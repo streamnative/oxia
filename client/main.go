@@ -1,0 +1,70 @@
+package main
+
+import (
+	"context"
+	"github.com/rs/zerolog/log"
+	"oxia/common"
+	"oxia/proto"
+	"time"
+)
+
+func main() {
+	common.ConfigureLogger(false, false)
+
+	connectionPool := common.NewConnectionPool()
+
+	// Set up a connection to the server.
+	conn, err := connectionPool.GetConnection("localhost:8190")
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to connect")
+	}
+	defer conn.Close()
+	c := proto.NewInternalAPIClient(conn)
+
+	// Contact the server and print out its response.
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+
+		r, err := c.UpdateStatus(ctx, &proto.ClusterStatus{
+			ShardsStatus: []*proto.ShardStatus{
+				{
+					Shard: 1,
+					Leader: &proto.ServerAddress{
+						InternalUrl: "localhost:8191",
+						PublicUrl:   "localhost:9191",
+					},
+					Followers: []*proto.ServerAddress{
+						{
+							InternalUrl: "localhost:8192",
+							PublicUrl:   "localhost:9192",
+						},
+						{
+							InternalUrl: "localhost:8193",
+							PublicUrl:   "localhost:9193",
+						},
+					},
+					Epochs: []*proto.EpochStatus{
+						{
+							Epoch:      0,
+							FirstEntry: 0,
+						},
+						{
+							Epoch:      1,
+							FirstEntry: 12,
+						},
+					},
+				},
+			},
+		})
+
+		if err != nil {
+			log.Error().Err(err).Msg("Could not update the cluster status")
+		} else {
+			log.Printf("Updated cluster status: %s", r.String())
+		}
+
+		time.Sleep(time.Second)
+	}
+
+}

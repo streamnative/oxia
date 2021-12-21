@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+option go_package = "github.com/streamnative/oxia/proto";
+
+package proto;
+
+service InternalAPI {
+  rpc UpdateStatus(ClusterStatus) returns (InternalEmpty) {}
+
+  /**
+   * Used by followers to attach to the leader. This is a bi-directional stream:
+   *  - Leader will send log entries to the follower
+   *  - Follower send a stream of updates with the last entry persisted
+   */
+  rpc Follow(stream ConfirmedEntryRequest) returns (stream LogEntry) {}
+}
+
+message InternalEmpty {
+
+}
+
+message LogEntry {
+  uint64 epoch = 1;
+  uint64 entry_id = 2;
+  int64 last_add_confirmed = 3;
+  bytes payload = 4;
+}
+
+message ReadLogRequest {
+  uint32 shard = 1;
+  uint64 first_entry_id = 2;
+}
+
+message ConfirmedEntryRequest {
+  uint32 shard = 1;
+  string follower = 2;
+  uint64 epoch = 3;
+  uint64 entryId = 4;
+}
+
+message FenceRequest {
+  uint32 shard = 1;
+  uint64 epoch = 2;
+}
+
+message FenceResponse {
+  int64 last_entry = 2;
+}
+
+message ClusterStatus {
+  repeated ShardStatus shards_status = 1;
+
+  uint32 ack_quorum = 2;
+}
+
+message ShardStatus {
+  uint32 shard = 1;
+  ServerAddress leader = 2;
+  repeated ServerAddress followers = 3;
+
+  repeated EpochStatus epochs = 4;
+}
+
+message EpochStatus {
+  uint64 epoch = 1;
+  uint64 first_entry = 2;
+}
+
+message ServerAddress {
+  string internal_url = 1;
+  string public_url = 2;
+}

@@ -1,0 +1,39 @@
+package main
+
+import (
+	"github.com/pkg/errors"
+	"io"
+	"oxia/proto"
+)
+
+type Wal interface {
+	io.Closer
+	Append(epoch uint64, payload []byte) (entryId uint64, err error)
+
+	Read(entryId uint64) (logEntry *proto.LogEntry, err error)
+}
+
+type wal struct {
+	shard uint32
+
+	log []proto.LogEntry
+}
+
+func NewWal(shard uint32) Wal {
+	return &wal{
+		shard: shard,
+		log:   make([]proto.LogEntry, 0),
+	}
+}
+
+func (w *wal) Close() error {
+	panic("implement me")
+}
+
+func (w *wal) Append(epoch uint64, payload []byte) (entryId uint64, err error) {
+	panic("implement me")
+}
+
+func (w *wal) Read(entryId uint64) (logEntry *proto.LogEntry, err error) {
+	return nil, errors.New("WAL.read not implemented")
+}

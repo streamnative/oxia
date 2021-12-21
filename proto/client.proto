@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+option go_package = "github.com/streamnative/oxia/proto";
+option java_multiple_files = true;
+
+package proto;
+
+service ClientAPI {
+  /**
+   * Return the current shards -> server mapping and all the subsequent updates
+   */
+  rpc GetShardsAssignments(Empty) returns (stream ShardsAssignments) {}
+
+  rpc Put(PutOp) returns (Stat) {}
+
+
+  rpc GetNotifications(GetNotificationOp) returns (stream Notification) {}
+}
+
+message Empty {
+}
+
+message ShardsAssignments {
+  repeated ShardAssignment shards = 1;
+}
+
+message ShardAssignment {
+  uint32 shard_id = 1;
+  string leader = 2;
+}
+
+message Stat {
+  uint32 version = 1;
+  fixed64 created_timestamp = 2;
+  fixed64 modified_timestamp = 3;
+}
+
+message PutOp {
+  uint32 shard_id = 1;
+  string key = 2;
+  bytes payload = 3;
+  uint64 expected_version = 4;
+}
+
+message GetNotificationOp {
+  uint32 shard_id = 1;
+  uint64 first_entry_id = 2;
+  string key_prefix = 3;
+  bool include_stat = 4;
+}
+
+enum OperationType {
+  INVALID = 0;
+  PUT = 1;
+  DELETE = 2;
+}
+
+message Notification {
+  uint64 entry_id = 1;
+  string key = 2;
+  OperationType operation_type = 3;
+  Stat stat = 4;
+}
