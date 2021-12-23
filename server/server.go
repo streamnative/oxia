@@ -22,7 +22,7 @@ type server struct {
 	*publicRpcServer
 
 	shardsManager  ShardsManager
-	connectionPool common.ConnectionPool
+	connectionPool common.ClientPool
 
 	identityInternalAddress proto.ServerAddress
 }
@@ -34,7 +34,7 @@ func NewServer(config *serverConfig) (*server, error) {
 		Msg("Starting Oxia server")
 
 	s := &server{
-		connectionPool: common.NewConnectionPool(),
+		connectionPool: common.NewClientPool(),
 	}
 
 	hostname, err := os.Hostname()

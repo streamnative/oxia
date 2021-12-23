@@ -26,13 +26,13 @@ type shardsManager struct {
 	assignments    *proto.ShardsAssignments
 	leading        map[uint32]ShardLeaderController
 	following      map[uint32]ShardFollowerController
-	connectionPool common.ConnectionPool
+	connectionPool common.ClientPool
 	identityAddr   string
 
 	log zerolog.Logger
 }
 
-func NewShardsManager(connectionPool common.ConnectionPool, identityAddr string) ShardsManager {
+func NewShardsManager(connectionPool common.ClientPool, identityAddr string) ShardsManager {
 	mutex := &sync.Mutex{}
 	return &shardsManager{
 		mutex:          mutex,

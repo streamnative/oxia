@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 	"os"
 	"oxia/common"
-	"oxia/proto"
 	"time"
 )
 
@@ -38,16 +37,14 @@ var (
 
 			cs := computeAssignments(staticNodes, replicationFactor, shards)
 
-			connectionPool := common.NewConnectionPool()
+			connectionPool := common.NewClientPool()
 			defer connectionPool.Close()
 
 			// Set up a connection to the server.
-			conn, err := connectionPool.GetConnection("localhost:8190")
+			c, err := connectionPool.GetInternalRpc("localhost:8190")
 			if err != nil {
 				log.Fatal().Err(err).Msg("Failed to connect")
 			}
-			defer conn.Close()
-			c := proto.NewInternalAPIClient(conn)
 
 			// Contact the server and print out its response.
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -77,6 +74,7 @@ func Execute() {
 func init() {
 	rootCmd.Flags().Uint32VarP(&shards, "shards", "s", 1, "Number of shards")
 	rootCmd.Flags().StringArrayVarP(&staticNodes, "static-nodes", "n", nil, "Static list of nodes")
+	rootCmd.MarkFlagRequired("static-nodes")
 	rootCmd.Flags().Uint32VarP(&replicationFactor, "replication-factor", "r", 1, "The replication factor")
 
 	//

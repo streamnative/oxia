@@ -11,15 +11,14 @@ import (
 func main() {
 	common.ConfigureLogger(false, false)
 
-	connectionPool := common.NewConnectionPool()
-	defer connectionPool.Close()
+	clientPool := common.NewClientPool()
+	defer clientPool.Close()
 
 	// Set up a connection to the server.
-	conn, err := connectionPool.GetConnection("localhost:8190")
+	c, err := clientPool.GetInternalRpc("localhost:8190")
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect")
 	}
-	c := proto.NewInternalAPIClient(conn)
 
 	// Contact the server and print out its response.
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
