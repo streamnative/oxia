@@ -15,23 +15,32 @@ type ShardLeaderController interface {
 }
 
 type shardLeaderController struct {
-	shard     uint32
-	epoch     uint64
-	ackQuorum uint8
+	shard             uint32
+	epoch             uint64
+	replicationFactor uint32
 
 	wal Wal
 }
 
-func NewShardLeaderController(shard uint32, ackQuorum uint8) ShardLeaderController {
+func NewShardLeaderController(shard uint32, replicationFactor uint32) ShardLeaderController {
+	log.Info().
+		Uint32("shard", shard).
+		Uint32("replicationFactor", replicationFactor).
+		Msg("Start leading")
+
 	return &shardLeaderController{
-		shard:     shard,
-		ackQuorum: ackQuorum,
-		wal:       NewWal(shard),
+		shard:             shard,
+		replicationFactor: replicationFactor,
+		wal:               NewWal(shard),
 	}
 }
 
 func (s *shardLeaderController) Close() error {
-	panic("implement me")
+	log.Info().
+		Uint32("shard", s.shard).
+		Msg("Closing leader controller")
+
+	return s.wal.Close()
 }
 
 func (s *shardLeaderController) readLog(firstEntry uint64, ifw proto.InternalAPI_FollowServer) {
@@ -63,6 +72,13 @@ func (s *shardLeaderController) Follow(follower string, firstEntry uint64, epoch
 	if epoch != s.epoch {
 		return errors.New(fmt.Sprintf("Invalid epoch. Expected: %d - Received: %d", s.epoch, epoch))
 	}
+
+	log.Info().
+		Uint32("shard", s.shard).
+		Uint64("epoch", s.epoch).
+		Uint64("firstEntry", firstEntry).
+		Str("follower", follower).
+		Msg("Follow")
 
 	go s.readLog(firstEntry, ifw)
 

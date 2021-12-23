@@ -14,25 +14,29 @@ type publicRpcServer struct {
 	proto.UnimplementedClientAPIServer
 
 	shardsManager ShardsManager
+
+	grpcServer *grpc.Server
 }
 
-func newPublicRpcServer(port int, shardsManager ShardsManager) (*publicRpcServer, error) {
-	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
+func newPublicRpcServer(port int, advertisedPublicAddress string, shardsManager ShardsManager) (*publicRpcServer, error) {
+	res := &publicRpcServer{
+		shardsManager: shardsManager,
+	}
+
+	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to listen")
 	}
 
-	res := &publicRpcServer{
-		shardsManager: shardsManager,
-	}
-	s := grpc.NewServer()
-	proto.RegisterClientAPIServer(s, res)
+	res.grpcServer = grpc.NewServer()
+	proto.RegisterClientAPIServer(res.grpcServer, res)
 	log.Info().
-		Str("address", lis.Addr().String()).
+		Str("bindAddress", listener.Addr().String()).
+		Str("advertisedAddress", advertisedPublicAddress).
 		Msg("Started public RPC server")
 
 	go func() {
-		if err := s.Serve(lis); err != nil {
+		if err := res.grpcServer.Serve(listener); err != nil {
 			log.Fatal().Err(err).Msg("Failed to serve")
 		}
 	}()
@@ -49,4 +53,9 @@ func (s *publicRpcServer) GetShardsAssignments(_ *proto.Empty, out proto.ClientA
 
 func (s *publicRpcServer) Put(context.Context, *proto.PutOp) (*proto.Stat, error) {
 	panic("not implemented")
+}
+
+func (s *publicRpcServer) Close() error {
+	s.grpcServer.GracefulStop()
+	return nil
 }

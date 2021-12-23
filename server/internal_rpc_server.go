@@ -22,30 +22,39 @@ const (
 type internalRpcServer struct {
 	proto.UnimplementedInternalAPIServer
 	shardsManager ShardsManager
+
+	grpcServer *grpc.Server
 }
 
-func newInternalRpcServer(port int, shardsManager ShardsManager) (*internalRpcServer, error) {
-	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
+func newInternalRpcServer(port int, advertisedInternalAddress string, shardsManager ShardsManager) (*internalRpcServer, error) {
+	res := &internalRpcServer{
+		shardsManager: shardsManager,
+	}
+
+	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to listen")
 	}
 
-	res := &internalRpcServer{
-		shardsManager: shardsManager,
-	}
-	s := grpc.NewServer()
-	proto.RegisterInternalAPIServer(s, res)
+	res.grpcServer = grpc.NewServer()
+	proto.RegisterInternalAPIServer(res.grpcServer, res)
 	log.Info().
-		Str("address", lis.Addr().String()).
+		Str("bindAddress", listener.Addr().String()).
+		Str("advertisedAddress", advertisedInternalAddress).
 		Msg("Started internal RPC server")
 
 	go func() {
-		if err := s.Serve(lis); err != nil {
+		if err := res.grpcServer.Serve(listener); err != nil {
 			log.Fatal().Err(err).Msg("Failed to serve")
 		}
 	}()
 
 	return res, nil
+}
+
+func (s *internalRpcServer) Close() error {
+	s.grpcServer.GracefulStop()
+	return nil
 }
 
 func (s *internalRpcServer) UpdateStatus(ctx context.Context, newClusterStatus *proto.ClusterStatus) (*proto.InternalEmpty, error) {

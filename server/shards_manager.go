@@ -11,7 +11,7 @@ import (
 type ShardsManager interface {
 	io.Closer
 
-	GetShardsAssignments(callback func(*proto.ShardsAssignments) ())
+	GetShardsAssignments(callback func(*proto.ShardsAssignments))
 
 	UpdateClusterStatus(status *proto.ClusterStatus) error
 
@@ -23,21 +23,26 @@ type shardsManager struct {
 	cond  *sync.Cond
 
 	assignments    *proto.ShardsAssignments
-	leading        sync.Map
-	following      sync.Map
+	leading        map[uint32]ShardLeaderController
+	following      map[uint32]ShardFollowerController
 	connectionPool common.ConnectionPool
+	identityAddr   string
 }
 
-func NewShardsManager(connectionPool common.ConnectionPool) ShardsManager {
+func NewShardsManager(connectionPool common.ConnectionPool, identityAddr string) ShardsManager {
 	mutex := &sync.Mutex{}
 	return &shardsManager{
 		mutex:          mutex,
 		cond:           sync.NewCond(mutex),
 		connectionPool: connectionPool,
+
+		identityAddr: identityAddr,
+		leading:      make(map[uint32]ShardLeaderController),
+		following:    make(map[uint32]ShardFollowerController),
 	}
 }
 
-func (s *shardsManager) GetShardsAssignments(callback func(*proto.ShardsAssignments) ()) {
+func (s *shardsManager) GetShardsAssignments(callback func(*proto.ShardsAssignments)) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -60,21 +65,74 @@ func (s *shardsManager) UpdateClusterStatus(status *proto.ClusterStatus) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	log.Info().
-		Msg("UpdateClusterStatus")
+	// Compare what we have and what we should have running in this node
+	for _, shard := range status.GetShardsStatus() {
+		if s.shouldLead(shard) {
+			// We are leaders for this shard
+			leaderCtrl, ok := s.leading[shard.Shard]
+			if ok {
+				log.Debug().
+					Uint32("shard", shard.Shard).
+					Msg("We are already leading, nothing to do")
+			} else {
+				followerCtrl, ok := s.following[shard.Shard]
+				if ok {
+					// We are being promoted from follower -> leader
+					followerCtrl.Close()
+					delete(s.following, shard.Shard)
+				}
+
+				leaderCtrl = NewShardLeaderController(shard.Shard, status.ReplicationFactor)
+				s.leading[shard.Shard] = leaderCtrl
+			}
+		} else if s.shouldFollow(shard) {
+			// We are followers for this shard
+			followerCtrl, ok := s.following[shard.Shard]
+			if ok {
+				log.Debug().
+					Uint32("shard", shard.Shard).
+					Msg("We are already following, nothing to do")
+			} else {
+				leaderCtrl, ok := s.leading[shard.Shard]
+				if ok {
+					// We are being demoted from leader -> follower
+					leaderCtrl.Close()
+					delete(s.leading, shard.Shard)
+				}
+
+				followerCtrl = NewShardFollowerController(shard.Shard, shard.Leader.InternalUrl)
+				s.following[shard.Shard] = followerCtrl
+			}
+		} else {
+			// We should not be running this shard, close it if it's running
+			if leaderCtrl, ok := s.leading[shard.Shard]; ok {
+				leaderCtrl.Close()
+			}
+
+			if followerCtrl, ok := s.following[shard.Shard]; ok {
+				followerCtrl.Close()
+			}
+		}
+	}
+
+	s.assignments = s.computeNewAssignments(status)
 	return nil
 }
 
-func computeNewAssignments(status *proto.ClusterStatus) *proto.ShardsAssignments {
-	//assignements := &proto.ShardsAssignments{
-	//	Shards: make([]*proto.ShardStatus, 0),
-	//}
-	//for _, shard := range status.GetShardsStatus() {
-	//	assignements
-	//}
-	//
-	//return assignements
-	panic(nil)
+func (s *shardsManager) computeNewAssignments(status *proto.ClusterStatus) *proto.ShardsAssignments {
+	assignments := &proto.ShardsAssignments{
+		Shards: make([]*proto.ShardAssignment, 0),
+	}
+	for _, shard := range status.GetShardsStatus() {
+		assignments.Shards = append(assignments.Shards, &proto.ShardAssignment{
+			ShardId: shard.Shard,
+			Leader:  shard.Leader.PublicUrl,
+		})
+	}
+
+	s.cond.Broadcast()
+
+	return assignments
 }
 
 func (s *shardsManager) GetLeaderController(shardId uint32) (ShardLeaderController, error) {
@@ -82,5 +140,40 @@ func (s *shardsManager) GetLeaderController(shardId uint32) (ShardLeaderControll
 }
 
 func (s *shardsManager) Close() error {
-	panic("implement me")
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	for shard, leaderCtrl := range s.leading {
+		if err := leaderCtrl.Close(); err != nil {
+			log.Error().
+				Err(err).
+				Uint32("shard", shard).
+				Msg("Failed to shutdown leader controller")
+		}
+	}
+
+	for shard, followerCtrl := range s.following {
+		if err := followerCtrl.Close(); err != nil {
+			log.Error().
+				Err(err).
+				Uint32("shard", shard).
+				Msg("Failed to shutdown follower controller")
+		}
+	}
+
+	return nil
+}
+
+func (s *shardsManager) shouldLead(shard *proto.ShardStatus) bool {
+	return shard.Leader.InternalUrl == s.identityAddr
+}
+
+func (s *shardsManager) shouldFollow(shard *proto.ShardStatus) bool {
+	for _, f := range shard.Followers {
+		if f.InternalUrl == s.identityAddr {
+			return true
+		}
+	}
+
+	return false
 }

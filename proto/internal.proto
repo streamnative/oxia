@@ -16,7 +16,6 @@ service InternalAPI {
 }
 
 message InternalEmpty {
-
 }
 
 message LogEntry {
@@ -50,7 +49,7 @@ message FenceResponse {
 message ClusterStatus {
   repeated ShardStatus shards_status = 1;
 
-  uint32 ack_quorum = 2;
+  uint32 replication_factor = 2;
 }
 
 message ShardStatus {

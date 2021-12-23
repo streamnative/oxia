@@ -16,6 +16,7 @@ type Wal interface {
 type wal struct {
 	shard uint32
 
+	// Dummy in-memory implementation
 	log []proto.LogEntry
 }
 
@@ -27,7 +28,7 @@ func NewWal(shard uint32) Wal {
 }
 
 func (w *wal) Close() error {
-	panic("implement me")
+	return nil
 }
 
 func (w *wal) Append(epoch uint64, payload []byte) (entryId uint64, err error) {

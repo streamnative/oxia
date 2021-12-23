@@ -22,6 +22,7 @@ type ClientAPIClient interface {
 	// Return the current shards -> server mapping and all the subsequent updates
 	GetShardsAssignments(ctx context.Context, in *Empty, opts ...grpc.CallOption) (ClientAPI_GetShardsAssignmentsClient, error)
 	Put(ctx context.Context, in *PutOp, opts ...grpc.CallOption) (*Stat, error)
+	GetNotifications(ctx context.Context, in *GetNotificationOp, opts ...grpc.CallOption) (ClientAPI_GetNotificationsClient, error)
 }
 
 type clientAPIClient struct {
@@ -73,6 +74,38 @@ func (c *clientAPIClient) Put(ctx context.Context, in *PutOp, opts ...grpc.CallO
 	return out, nil
 }
 
+func (c *clientAPIClient) GetNotifications(ctx context.Context, in *GetNotificationOp, opts ...grpc.CallOption) (ClientAPI_GetNotificationsClient, error) {
+	stream, err := c.cc.NewStream(ctx, &ClientAPI_ServiceDesc.Streams[1], "/proto.ClientAPI/GetNotifications", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &clientAPIGetNotificationsClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type ClientAPI_GetNotificationsClient interface {
+	Recv() (*Notification, error)
+	grpc.ClientStream
+}
+
+type clientAPIGetNotificationsClient struct {
+	grpc.ClientStream
+}
+
+func (x *clientAPIGetNotificationsClient) Recv() (*Notification, error) {
+	m := new(Notification)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // ClientAPIServer is the server API for ClientAPI service.
 // All implementations must embed UnimplementedClientAPIServer
 // for forward compatibility
@@ -81,6 +114,7 @@ type ClientAPIServer interface {
 	// Return the current shards -> server mapping and all the subsequent updates
 	GetShardsAssignments(*Empty, ClientAPI_GetShardsAssignmentsServer) error
 	Put(context.Context, *PutOp) (*Stat, error)
+	GetNotifications(*GetNotificationOp, ClientAPI_GetNotificationsServer) error
 	mustEmbedUnimplementedClientAPIServer()
 }
 
@@ -93,6 +127,9 @@ func (UnimplementedClientAPIServer) GetShardsAssignments(*Empty, ClientAPI_GetSh
 }
 func (UnimplementedClientAPIServer) Put(context.Context, *PutOp) (*Stat, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Put not implemented")
+}
+func (UnimplementedClientAPIServer) GetNotifications(*GetNotificationOp, ClientAPI_GetNotificationsServer) error {
+	return status.Errorf(codes.Unimplemented, "method GetNotifications not implemented")
 }
 func (UnimplementedClientAPIServer) mustEmbedUnimplementedClientAPIServer() {}
 
@@ -146,6 +183,27 @@ func _ClientAPI_Put_Handler(srv interface{}, ctx context.Context, dec func(inter
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ClientAPI_GetNotifications_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(GetNotificationOp)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ClientAPIServer).GetNotifications(m, &clientAPIGetNotificationsServer{stream})
+}
+
+type ClientAPI_GetNotificationsServer interface {
+	Send(*Notification) error
+	grpc.ServerStream
+}
+
+type clientAPIGetNotificationsServer struct {
+	grpc.ServerStream
+}
+
+func (x *clientAPIGetNotificationsServer) Send(m *Notification) error {
+	return x.ServerStream.SendMsg(m)
+}
+
 // ClientAPI_ServiceDesc is the grpc.ServiceDesc for ClientAPI service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -162,6 +220,11 @@ var ClientAPI_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "GetShardsAssignments",
 			Handler:       _ClientAPI_GetShardsAssignments_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "GetNotifications",
+			Handler:       _ClientAPI_GetNotifications_Handler,
 			ServerStreams: true,
 		},
 	},
