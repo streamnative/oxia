@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"net"
@@ -16,11 +17,15 @@ type publicRpcServer struct {
 	shardsManager ShardsManager
 
 	grpcServer *grpc.Server
+	log        zerolog.Logger
 }
 
 func newPublicRpcServer(port int, advertisedPublicAddress string, shardsManager ShardsManager) (*publicRpcServer, error) {
 	res := &publicRpcServer{
 		shardsManager: shardsManager,
+		log: log.With().
+			Str("component", "public-rpc-server").
+			Logger(),
 	}
 
 	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
@@ -30,7 +35,7 @@ func newPublicRpcServer(port int, advertisedPublicAddress string, shardsManager 
 
 	res.grpcServer = grpc.NewServer()
 	proto.RegisterClientAPIServer(res.grpcServer, res)
-	log.Info().
+	res.log.Info().
 		Str("bindAddress", listener.Addr().String()).
 		Str("advertisedAddress", advertisedPublicAddress).
 		Msg("Started public RPC server")

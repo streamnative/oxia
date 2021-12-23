@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"io"
 	"oxia/proto"
@@ -20,25 +21,28 @@ type shardLeaderController struct {
 	replicationFactor uint32
 
 	wal Wal
+	log zerolog.Logger
 }
 
 func NewShardLeaderController(shard uint32, replicationFactor uint32) ShardLeaderController {
-	log.Info().
-		Uint32("shard", shard).
-		Uint32("replicationFactor", replicationFactor).
-		Msg("Start leading")
-
-	return &shardLeaderController{
+	slc := &shardLeaderController{
 		shard:             shard,
 		replicationFactor: replicationFactor,
 		wal:               NewWal(shard),
+		log: log.With().
+			Str("component", "shard-leader").
+			Uint32("shard", shard).
+			Logger(),
 	}
+
+	slc.log.Info().
+		Uint32("replicationFactor", replicationFactor).
+		Msg("Start leading")
+	return slc
 }
 
 func (s *shardLeaderController) Close() error {
-	log.Info().
-		Uint32("shard", s.shard).
-		Msg("Closing leader controller")
+	s.log.Info().Msg("Closing leader controller")
 
 	return s.wal.Close()
 }
@@ -48,9 +52,8 @@ func (s *shardLeaderController) readLog(firstEntry uint64, ifw proto.InternalAPI
 	for {
 		logEntry, err := s.wal.Read(current)
 		if err != nil {
-			log.Error().
+			s.log.Error().
 				Err(err).
-				Uint32("shard", s.shard).
 				Uint64("entry", current).
 				Msg("Failed to read from wal")
 			return
@@ -58,9 +61,8 @@ func (s *shardLeaderController) readLog(firstEntry uint64, ifw proto.InternalAPI
 
 		err = ifw.Send(logEntry)
 		if err != nil {
-			log.Error().
+			s.log.Error().
 				Err(err).
-				Uint32("shard", s.shard).
 				Uint64("entry", current).
 				Msg("Failed to send entry to follower")
 			return
@@ -73,8 +75,7 @@ func (s *shardLeaderController) Follow(follower string, firstEntry uint64, epoch
 		return errors.New(fmt.Sprintf("Invalid epoch. Expected: %d - Received: %d", s.epoch, epoch))
 	}
 
-	log.Info().
-		Uint32("shard", s.shard).
+	s.log.Info().
 		Uint64("epoch", s.epoch).
 		Uint64("firstEntry", firstEntry).
 		Str("follower", follower).
@@ -88,8 +89,7 @@ func (s *shardLeaderController) Follow(follower string, firstEntry uint64, epoch
 			return err
 		}
 
-		log.Info().
-			Uint32("shard", s.shard).
+		s.log.Info().
 			Uint64("epoch", s.epoch).
 			Str("confirmedEntryRequest", confirmedEntryRequest.String()).
 			Msg("Received confirmed entry request")

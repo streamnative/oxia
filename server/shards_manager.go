@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"io"
 	"oxia/common"
@@ -27,6 +28,8 @@ type shardsManager struct {
 	following      map[uint32]ShardFollowerController
 	connectionPool common.ConnectionPool
 	identityAddr   string
+
+	log zerolog.Logger
 }
 
 func NewShardsManager(connectionPool common.ConnectionPool, identityAddr string) ShardsManager {
@@ -39,6 +42,9 @@ func NewShardsManager(connectionPool common.ConnectionPool, identityAddr string)
 		identityAddr: identityAddr,
 		leading:      make(map[uint32]ShardLeaderController),
 		following:    make(map[uint32]ShardFollowerController),
+		log: log.With().
+			Str("component", "shards-manager").
+			Logger(),
 	}
 }
 
@@ -71,7 +77,7 @@ func (s *shardsManager) UpdateClusterStatus(status *proto.ClusterStatus) error {
 			// We are leaders for this shard
 			leaderCtrl, ok := s.leading[shard.Shard]
 			if ok {
-				log.Debug().
+				s.log.Debug().
 					Uint32("shard", shard.Shard).
 					Msg("We are already leading, nothing to do")
 			} else {
@@ -89,7 +95,7 @@ func (s *shardsManager) UpdateClusterStatus(status *proto.ClusterStatus) error {
 			// We are followers for this shard
 			followerCtrl, ok := s.following[shard.Shard]
 			if ok {
-				log.Debug().
+				s.log.Debug().
 					Uint32("shard", shard.Shard).
 					Msg("We are already following, nothing to do")
 			} else {
@@ -145,7 +151,7 @@ func (s *shardsManager) Close() error {
 
 	for shard, leaderCtrl := range s.leading {
 		if err := leaderCtrl.Close(); err != nil {
-			log.Error().
+			s.log.Error().
 				Err(err).
 				Uint32("shard", shard).
 				Msg("Failed to shutdown leader controller")
@@ -154,7 +160,7 @@ func (s *shardsManager) Close() error {
 
 	for shard, followerCtrl := range s.following {
 		if err := followerCtrl.Close(); err != nil {
-			log.Error().
+			s.log.Error().
 				Err(err).
 				Uint32("shard", shard).
 				Msg("Failed to shutdown follower controller")

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
@@ -24,11 +25,15 @@ type internalRpcServer struct {
 	shardsManager ShardsManager
 
 	grpcServer *grpc.Server
+	log        zerolog.Logger
 }
 
 func newInternalRpcServer(port int, advertisedInternalAddress string, shardsManager ShardsManager) (*internalRpcServer, error) {
 	res := &internalRpcServer{
 		shardsManager: shardsManager,
+		log: log.With().
+			Str("component", "internal-rpc-server").
+			Logger(),
 	}
 
 	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
@@ -38,7 +43,7 @@ func newInternalRpcServer(port int, advertisedInternalAddress string, shardsMana
 
 	res.grpcServer = grpc.NewServer()
 	proto.RegisterInternalAPIServer(res.grpcServer, res)
-	log.Info().
+	res.log.Info().
 		Str("bindAddress", listener.Addr().String()).
 		Str("advertisedAddress", advertisedInternalAddress).
 		Msg("Started internal RPC server")
@@ -59,7 +64,7 @@ func (s *internalRpcServer) Close() error {
 
 func (s *internalRpcServer) UpdateStatus(ctx context.Context, newClusterStatus *proto.ClusterStatus) (*proto.InternalEmpty, error) {
 	b, _ := json.Marshal(newClusterStatus)
-	log.Info().
+	s.log.Info().
 		RawJSON("value", b).
 		Msg("Received new Cluster status")
 	err := s.shardsManager.UpdateClusterStatus(newClusterStatus)
@@ -118,7 +123,7 @@ func (s *internalRpcServer) Follow(in proto.InternalAPI_FollowServer) error {
 
 	slc, err := s.shardsManager.GetLeaderController(shard)
 	if err != nil {
-		log.Warn().
+		s.log.Warn().
 			Err(err).
 			Uint32("shard", shard).
 			Msg("This node is not leader for shard")
@@ -142,7 +147,7 @@ func (s *internalRpcServer) Follow(in proto.InternalAPI_FollowServer) error {
 
 	err = slc.Follow(followerName, firstEntry, epoch, in)
 	if err != nil {
-		log.Warn().
+		s.log.Warn().
 			Err(err).
 			Uint32("shard", shard).
 			Uint64("epoch", epoch).

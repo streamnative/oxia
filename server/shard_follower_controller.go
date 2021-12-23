@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"io"
 )
@@ -16,23 +17,26 @@ type shardFollowerController struct {
 	epoch uint64
 
 	wal Wal
+	log zerolog.Logger
 }
 
 func NewShardFollowerController(shard uint32, leader string) ShardFollowerController {
-	log.Info().
-		Uint32("shard", shard).
-		Str("leader", leader).
-		Msg("Start following")
-	return &shardFollowerController{
+
+	sfc := &shardFollowerController{
 		shard: shard,
 		wal:   NewWal(shard),
+		log: log.With().
+			Str("component", "shard-follower").
+			Uint32("shard", shard).
+			Str("leader", leader).
+			Logger(),
 	}
+
+	sfc.log.Info().Msg("Start following")
+	return sfc
 }
 
 func (s *shardFollowerController) Close() error {
-	log.Info().
-		Uint32("shard", s.shard).
-		Msg("Closing follower controller")
-
+	s.log.Info().Msg("Closing follower controller")
 	return s.wal.Close()
 }
