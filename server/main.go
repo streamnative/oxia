@@ -1,7 +1,8 @@
-package main
+package server
 
 import (
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/cobra"
 	"os"
 	"os/signal"
 	"oxia/common"
@@ -9,8 +10,21 @@ import (
 	"time"
 )
 
-func main() {
-	common.ConfigureLogger(true, false)
+var (
+	shards            uint32
+	staticNodes       []string
+	replicationFactor uint32
+
+	Cmd = &cobra.Command{
+		Use:   "server",
+		Short: "Start a storage node",
+		Long:  `Long description`,
+		Run:   main,
+	}
+)
+
+func main(cmd *cobra.Command, args []string) {
+	common.ConfigureLogger(common.LogDebug, common.LogJson)
 
 	server, err := NewServer(&serverConfig{
 		InternalServicePort: 8190,

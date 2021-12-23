@@ -5,19 +5,15 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/rs/zerolog/pkgerrors"
 	"os"
-	"strings"
 	"time"
 )
 
-func extractFileName(caller interface{}) string {
-	s, ok := caller.(string)
-	if !ok {
-		return ""
-	}
-
-	parts := strings.Split(s, "/")
-	return parts[len(parts)-1]
-}
+var (
+	// LogDebug Used for flags
+	LogDebug bool
+	// LogJson Used for flags
+	LogJson bool
+)
 
 func ConfigureLogger(debug bool, json bool) {
 	zerolog.TimeFieldFormat = time.RFC3339Nano
@@ -25,14 +21,12 @@ func ConfigureLogger(debug bool, json bool) {
 	log.Logger = zerolog.New(os.Stdout).
 		With().
 		Timestamp().
-		//Caller().
 		Logger()
 
 	if !json {
 		log.Logger = log.Output(zerolog.ConsoleWriter{
-			Out:          os.Stdout,
-			TimeFormat:   time.StampMicro,
-			FormatCaller: extractFileName,
+			Out:        os.Stdout,
+			TimeFormat: time.StampMicro,
 		})
 	}
 

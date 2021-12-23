@@ -1,21 +1,36 @@
-package main
+package client
 
 import (
 	"context"
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/cobra"
 	"oxia/common"
 	"oxia/proto"
 	"time"
 )
 
-func main() {
-	common.ConfigureLogger(false, false)
+var (
+	// Used for flags.
+	shards            uint32
+	staticNodes       []string
+	replicationFactor uint32
+
+	Cmd = &cobra.Command{
+		Use:   "client",
+		Short: "Short description",
+		Long:  `Test client`,
+		Run:   main,
+	}
+)
+
+func main(cmd *cobra.Command, args []string) {
+	common.ConfigureLogger(common.LogDebug, common.LogJson)
 
 	clientPool := common.NewClientPool()
 	defer clientPool.Close()
 
 	// Set up a connection to the server.
-	c, err := clientPool.GetInternalRpc("localhost:8190")
+	c, err := clientPool.GetClientRpc("localhost:9190")
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect")
 	}
@@ -24,65 +39,27 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	r, err := c.UpdateStatus(ctx, &proto.ClusterStatus{
-		ReplicationFactor: 1,
-		ShardsStatus: []*proto.ShardStatus{
-			{
-				Shard: 0,
-				Leader: &proto.ServerAddress{
-					InternalUrl: "matteo-laptop:8190",
-					PublicUrl:   "matteo-laptop:9190",
-				},
-				Followers: []*proto.ServerAddress{
-					{
-						InternalUrl: "localhost:8192",
-						PublicUrl:   "localhost:9192",
-					},
-					{
-						InternalUrl: "localhost:8193",
-						PublicUrl:   "localhost:9193",
-					},
-				},
-				Epochs: []*proto.EpochStatus{
-					{
-						Epoch:      0,
-						FirstEntry: 0,
-					},
-					{
-						Epoch:      1,
-						FirstEntry: 12,
-					},
-				},
-			},
-			{
-				Shard: 1,
-				Leader: &proto.ServerAddress{
-					InternalUrl: "other:8190",
-					PublicUrl:   "other:9190",
-				},
-				Followers: []*proto.ServerAddress{
-					{
-						InternalUrl: "matteo-laptop:8190",
-						PublicUrl:   "matteo-laptop:9190",
-					},
-				},
-				Epochs: []*proto.EpochStatus{
-					{
-						Epoch:      0,
-						FirstEntry: 0,
-					},
-					{
-						Epoch:      1,
-						FirstEntry: 12,
-					},
-				},
-			},
-		},
-	})
+	gsaClient, err := c.GetShardsAssignments(ctx, &proto.Empty{})
+	if err != nil {
+		log.Fatal().Err(err).Msg("GetShardsAssignments failed")
+	}
+
+	sa, err := gsaClient.Recv()
+	if err != nil {
+		log.Fatal().Err(err).Msg("GetShardsAssignments failed")
+	}
+
+	log.Info().
+		Interface("assignment", sa).
+		Msg("Received assignments")
+
+	r, err := c.Put(ctx, &proto.PutOp{})
 
 	if err != nil {
-		log.Error().Err(err).Msg("Could not update the cluster status")
+		log.Error().Err(err).Msg("Put operation failed")
 	} else {
-		log.Printf("Updated cluster status: %s", r.String())
+		log.Info().
+			Interface("res", r).
+			Msg("Operation succeeded")
 	}
 }

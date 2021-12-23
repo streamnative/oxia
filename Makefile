@@ -1,11 +1,9 @@
 
 build:
-	go build -o oxia ./server
-	go build -o oxia-client ./client
-	go build -o oxia-operator ./operator
+	go build -o oxia ./cmd
 
 clean:
-	rm -f oxia oxia-client oxia-operator
+	rm -f oxia
 
 docker: docker_arm docker_x86
 
