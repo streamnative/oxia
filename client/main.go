@@ -12,13 +12,13 @@ func main() {
 	common.ConfigureLogger(false, false)
 
 	connectionPool := common.NewConnectionPool()
+	defer connectionPool.Close()
 
 	// Set up a connection to the server.
 	conn, err := connectionPool.GetConnection("localhost:8190")
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect")
 	}
-	defer conn.Close()
 	c := proto.NewInternalAPIClient(conn)
 
 	// Contact the server and print out its response.
