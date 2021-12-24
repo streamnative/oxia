@@ -20,7 +20,7 @@ var (
 )
 
 func main(cmd *cobra.Command, args []string) {
-	common.ConfigureLogger(common.LogDebug, common.LogJson)
+	common.ConfigureLogger()
 
 	server, err := NewServer(&serverConfig{
 		InternalServicePort: 8190,

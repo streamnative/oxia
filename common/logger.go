@@ -15,7 +15,7 @@ var (
 	LogJson bool
 )
 
-func ConfigureLogger(debug bool, json bool) {
+func ConfigureLogger() {
 	zerolog.TimeFieldFormat = time.RFC3339Nano
 	zerolog.ErrorStackMarshaler = pkgerrors.MarshalStack
 	log.Logger = zerolog.New(os.Stdout).
@@ -23,14 +23,14 @@ func ConfigureLogger(debug bool, json bool) {
 		Timestamp().
 		Logger()
 
-	if !json {
+	if !LogJson {
 		log.Logger = log.Output(zerolog.ConsoleWriter{
 			Out:        os.Stdout,
 			TimeFormat: time.StampMicro,
 		})
 	}
 
-	if debug {
+	if LogDebug {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	} else {
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)

@@ -30,7 +30,7 @@ func init() {
 }
 
 func main(cmd *cobra.Command, args []string) {
-	common.ConfigureLogger(common.LogDebug, common.LogJson)
+	common.ConfigureLogger()
 
 	log.Info().
 		Strs("nodes", staticNodes).
