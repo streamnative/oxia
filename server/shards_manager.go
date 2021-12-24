@@ -4,7 +4,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"io"
-	"oxia/common"
 	"oxia/proto"
 	"sync"
 )
@@ -23,21 +22,19 @@ type shardsManager struct {
 	mutex *sync.Mutex
 	cond  *sync.Cond
 
-	assignments    *proto.ShardsAssignments
-	leading        map[uint32]ShardLeaderController
-	following      map[uint32]ShardFollowerController
-	connectionPool common.ClientPool
-	identityAddr   string
+	assignments  *proto.ShardsAssignments
+	leading      map[uint32]ShardLeaderController
+	following    map[uint32]ShardFollowerController
+	identityAddr string
 
 	log zerolog.Logger
 }
 
-func NewShardsManager(connectionPool common.ClientPool, identityAddr string) ShardsManager {
+func NewShardsManager(identityAddr string) ShardsManager {
 	mutex := &sync.Mutex{}
 	return &shardsManager{
-		mutex:          mutex,
-		cond:           sync.NewCond(mutex),
-		connectionPool: connectionPool,
+		mutex: mutex,
+		cond:  sync.NewCond(mutex),
 
 		identityAddr: identityAddr,
 		leading:      make(map[uint32]ShardLeaderController),

@@ -11,7 +11,7 @@ import (
 	"oxia/proto"
 )
 
-type publicRpcServer struct {
+type PublicRpcServer struct {
 	proto.UnimplementedClientAPIServer
 
 	shardsManager ShardsManager
@@ -20,8 +20,8 @@ type publicRpcServer struct {
 	log        zerolog.Logger
 }
 
-func newPublicRpcServer(port int, advertisedPublicAddress string, shardsManager ShardsManager) (*publicRpcServer, error) {
-	res := &publicRpcServer{
+func NewPublicRpcServer(port int, advertisedPublicAddress string, shardsManager ShardsManager) (*PublicRpcServer, error) {
+	res := &PublicRpcServer{
 		shardsManager: shardsManager,
 		log: log.With().
 			Str("component", "public-rpc-server").
@@ -49,18 +49,18 @@ func newPublicRpcServer(port int, advertisedPublicAddress string, shardsManager 
 	return res, nil
 }
 
-func (s *publicRpcServer) GetShardsAssignments(_ *proto.Empty, out proto.ClientAPI_GetShardsAssignmentsServer) error {
+func (s *PublicRpcServer) GetShardsAssignments(_ *proto.Empty, out proto.ClientAPI_GetShardsAssignmentsServer) error {
 	s.shardsManager.GetShardsAssignments(func(assignments *proto.ShardsAssignments) {
 		out.SendMsg(assignments)
 	})
 	return nil
 }
 
-func (s *publicRpcServer) Put(context.Context, *proto.PutOp) (*proto.Stat, error) {
+func (s *PublicRpcServer) Put(context.Context, *proto.PutOp) (*proto.Stat, error) {
 	panic("not implemented")
 }
 
-func (s *publicRpcServer) Close() error {
+func (s *PublicRpcServer) Close() error {
 	s.grpcServer.GracefulStop()
 	return nil
 }

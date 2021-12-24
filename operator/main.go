@@ -15,11 +15,10 @@ var (
 	replicationFactor uint32
 
 	Cmd = &cobra.Command{
-		Use:     "operator",
-		Short:   "Start an Oxia operator process",
-		Long:    `Long description`,
-		Version: "1.0",
-		Run:     main,
+		Use:   "operator",
+		Short: "Start an operator process",
+		Long:  `Long description`,
+		Run:   main,
 	}
 )
 
@@ -39,13 +38,13 @@ func main(cmd *cobra.Command, args []string) {
 		Uint32("replication-factor", replicationFactor).
 		Msg("Starting operator")
 
-	cs := computeAssignments(staticNodes, replicationFactor, shards)
+	cs := ComputeAssignments(staticNodes, replicationFactor, shards)
 
-	connectionPool := common.NewClientPool()
-	defer connectionPool.Close()
+	clientPool := common.NewClientPool()
+	defer clientPool.Close()
 
 	// Set up a connection to the server.
-	c, err := connectionPool.GetInternalRpc("localhost:8190")
+	c, err := clientPool.GetInternalRpc("localhost:8190")
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect")
 	}

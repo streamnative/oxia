@@ -2,7 +2,7 @@ package operator
 
 import "oxia/proto"
 
-func computeAssignments(availableNodes []string, replicationFactor uint32, shards uint32) *proto.ClusterStatus {
+func ComputeAssignments(availableNodes []string, replicationFactor uint32, shards uint32) *proto.ClusterStatus {
 	// Do a round-robin assignment of leaders and followers across the shards
 
 	cs := &proto.ClusterStatus{

@@ -19,10 +19,10 @@ type serverConfig struct {
 
 type server struct {
 	*internalRpcServer
-	*publicRpcServer
+	*PublicRpcServer
 
-	shardsManager  ShardsManager
-	connectionPool common.ClientPool
+	shardsManager ShardsManager
+	clientPool    common.ClientPool
 
 	identityInternalAddress proto.ServerAddress
 }
@@ -34,7 +34,7 @@ func NewServer(config *serverConfig) (*server, error) {
 		Msg("Starting Oxia server")
 
 	s := &server{
-		connectionPool: common.NewClientPool(),
+		clientPool: common.NewClientPool(),
 	}
 
 	hostname, err := os.Hostname()
@@ -53,14 +53,14 @@ func NewServer(config *serverConfig) (*server, error) {
 	}
 
 	identityAddr := fmt.Sprintf("%s:%d", advertisedInternalAddress, config.InternalServicePort)
-	s.shardsManager = NewShardsManager(s.connectionPool, identityAddr)
+	s.shardsManager = NewShardsManager(identityAddr)
 
 	s.internalRpcServer, err = newInternalRpcServer(config.InternalServicePort, advertisedInternalAddress, s.shardsManager)
 	if err != nil {
 		return nil, err
 	}
 
-	s.publicRpcServer, err = newPublicRpcServer(config.PublicServicePort, advertisedPublicAddress, s.shardsManager)
+	s.PublicRpcServer, err = NewPublicRpcServer(config.PublicServicePort, advertisedPublicAddress, s.shardsManager)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +69,7 @@ func NewServer(config *serverConfig) (*server, error) {
 }
 
 func (s *server) Close() error {
-	if err := s.publicRpcServer.Close(); err != nil {
+	if err := s.PublicRpcServer.Close(); err != nil {
 		return err
 	}
 
@@ -77,7 +77,7 @@ func (s *server) Close() error {
 		return err
 	}
 
-	if err := s.connectionPool.Close(); err != nil {
+	if err := s.clientPool.Close(); err != nil {
 		return err
 	}
 
