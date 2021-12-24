@@ -42,7 +42,10 @@ func NewStandalone(config *standaloneConfig) (*standalone, error) {
 	identityAddr := fmt.Sprintf("%s:%d", advertisedPublicAddress, config.PublicServicePort)
 	s.shardsManager = server.NewShardsManager(identityAddr)
 
-	cs := operator.ComputeAssignments([]string{identityAddr}, 1, conf.NumShards)
+	cs := operator.ComputeAssignments([]*proto.ServerAddress{{
+		InternalUrl: identityAddr,
+		PublicUrl:   identityAddr,
+	}}, 1, conf.NumShards)
 	s.shardsManager.UpdateClusterStatus(cs)
 
 	s.rpc, err = server.NewPublicRpcServer(int(config.PublicServicePort), advertisedPublicAddress, s.shardsManager)

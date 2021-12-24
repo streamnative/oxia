@@ -5,6 +5,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"oxia/common"
+	"oxia/proto"
 	"time"
 )
 
@@ -38,7 +39,14 @@ func main(cmd *cobra.Command, args []string) {
 		Uint32("replication-factor", replicationFactor).
 		Msg("Starting operator")
 
-	cs := ComputeAssignments(staticNodes, replicationFactor, shards)
+	addrs := make([]*proto.ServerAddress, len(staticNodes))
+	for i := 0; i < len(staticNodes); i++ {
+		addrs[i] = &proto.ServerAddress{
+			InternalUrl: staticNodes[i],
+			PublicUrl:   staticNodes[i],
+		}
+	}
+	cs := ComputeAssignments(addrs, replicationFactor, shards)
 
 	clientPool := common.NewClientPool()
 	defer clientPool.Close()
