@@ -7,12 +7,15 @@ import (
 	"github.com/rs/zerolog/log"
 	"io"
 	"oxia/proto"
+	"time"
 )
 
 type ShardLeaderController interface {
 	io.Closer
 
 	Follow(follower string, firstEntry uint64, epoch uint64, ifw proto.InternalAPI_FollowServer) error
+
+	Put(op *proto.PutOp) (*proto.Stat, error)
 }
 
 type shardLeaderController struct {
@@ -96,4 +99,16 @@ func (s *shardLeaderController) Follow(follower string, firstEntry uint64, epoch
 	}
 
 	return nil
+}
+
+func (s *shardLeaderController) Put(op *proto.PutOp) (*proto.Stat, error) {
+	s.log.Debug().
+		Interface("op", op).
+		Msg("Put operation")
+
+	return &proto.Stat{
+		Version:           1,
+		CreatedTimestamp:  uint64(time.Now().Unix()),
+		ModifiedTimestamp: uint64(time.Now().Unix()),
+	}, nil
 }

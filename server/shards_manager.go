@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"io"
@@ -139,7 +140,15 @@ func (s *shardsManager) computeNewAssignments(status *proto.ClusterStatus) *prot
 }
 
 func (s *shardsManager) GetLeaderController(shardId uint32) (ShardLeaderController, error) {
-	return NewShardLeaderController(shardId, 1), nil
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	slc, ok := s.leading[shardId]
+	if !ok {
+		s.log.Debug().Uint32("shard", shardId).Msg("This node is not leader for shard")
+		return nil, errors.Errorf("This node is not leader for shard %d", shardId)
+	}
+	return slc, nil
 }
 
 func (s *shardsManager) Close() error {

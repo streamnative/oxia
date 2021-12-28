@@ -56,8 +56,13 @@ func (s *PublicRpcServer) GetShardsAssignments(_ *proto.Empty, out proto.ClientA
 	return nil
 }
 
-func (s *PublicRpcServer) Put(context.Context, *proto.PutOp) (*proto.Stat, error) {
-	panic("not implemented")
+func (s *PublicRpcServer) Put(ctx context.Context, putOp *proto.PutOp) (*proto.Stat, error) {
+	slc, err := s.shardsManager.GetLeaderController(putOp.GetShardId())
+	if err != nil {
+		return nil, err
+	}
+
+	return slc.Put(putOp)
 }
 
 func (s *PublicRpcServer) Close() error {

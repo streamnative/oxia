@@ -30,7 +30,7 @@ message ShardAssignment {
 }
 
 message Stat {
-  uint32 version = 1;
+  uint64 version = 1;
   fixed64 created_timestamp = 2;
   fixed64 modified_timestamp = 3;
 }
@@ -39,7 +39,7 @@ message PutOp {
   uint32 shard_id = 1;
   string key = 2;
   bytes payload = 3;
-  uint64 expected_version = 4;
+  optional uint64 expected_version = 4;
 }
 
 message GetNotificationOp {

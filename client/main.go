@@ -7,13 +7,13 @@ import (
 	"oxia/common"
 	"oxia/proto"
 	"time"
+
+	pb "google.golang.org/protobuf/proto"
 )
 
 var (
 	// Used for flags.
-	shards            uint32
-	staticNodes       []string
-	replicationFactor uint32
+	serviceAddr string
 
 	Cmd = &cobra.Command{
 		Use:   "client",
@@ -23,6 +23,10 @@ var (
 	}
 )
 
+func init() {
+	Cmd.Flags().StringVarP(&serviceAddr, "service-address", "a", "localhost:9190", "Service address")
+}
+
 func main(cmd *cobra.Command, args []string) {
 	common.ConfigureLogger()
 
@@ -30,7 +34,7 @@ func main(cmd *cobra.Command, args []string) {
 	defer clientPool.Close()
 
 	// Set up a connection to the server.
-	c, err := clientPool.GetClientRpc("localhost:9190")
+	c, err := clientPool.GetClientRpc(serviceAddr)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect")
 	}
@@ -53,7 +57,12 @@ func main(cmd *cobra.Command, args []string) {
 		Interface("assignment", sa).
 		Msg("Received assignments")
 
-	r, err := c.Put(ctx, &proto.PutOp{})
+	r, err := c.Put(ctx, &proto.PutOp{
+		ShardId:         0,
+		Key:             "my-key",
+		Payload:         []byte("hello"),
+		ExpectedVersion: pb.Uint64(1),
+	})
 
 	if err != nil {
 		log.Error().Err(err).Msg("Put operation failed")

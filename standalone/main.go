@@ -19,7 +19,7 @@ var (
 
 func init() {
 	Cmd.Flags().Uint32VarP(&conf.NumShards, "shards", "s", 1, "Number of shards")
-	Cmd.Flags().Uint32VarP(&conf.PublicServicePort, "port", "p", 8190, "Public service port")
+	Cmd.Flags().Uint32VarP(&conf.PublicServicePort, "port", "p", 9190, "Public service port")
 	Cmd.Flags().StringVarP(&conf.AdvertisedPublicAddress, "advertised-address", "a", "", "Advertised address")
 }
 
