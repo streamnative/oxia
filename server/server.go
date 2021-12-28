@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/rs/zerolog/log"
 	"os"
@@ -28,9 +27,8 @@ type server struct {
 }
 
 func NewServer(config *serverConfig) (*server, error) {
-	b, _ := json.Marshal(config)
 	log.Info().
-		RawJSON("config", b).
+		Interface("config", config).
 		Msg("Starting Oxia server")
 
 	s := &server{

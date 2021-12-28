@@ -20,7 +20,7 @@ var (
 func init() {
 	Cmd.Flags().Uint32VarP(&conf.NumShards, "shards", "s", 1, "Number of shards")
 	Cmd.Flags().Uint32VarP(&conf.PublicServicePort, "port", "p", 8190, "Public service port")
-	Cmd.Flags().StringVarP(&conf.AdvertisedPublicAddress, "advertises-address", "a", "", "Advertised address")
+	Cmd.Flags().StringVarP(&conf.AdvertisedPublicAddress, "advertised-address", "a", "", "Advertised address")
 }
 
 func main(cmd *cobra.Command, args []string) {
