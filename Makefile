@@ -8,11 +8,11 @@ clean:
 docker: docker_arm docker_x86
 
 docker_arm:
-	env GOOS=linux GOARCH=arm64 go build -o oxia ./server
+	env GOOS=linux GOARCH=arm64 go build -o oxia ./cmd
 	docker build --platform arm64 -t oxia:latest .
 
 docker_x86:
-	env GOOS=linux GOARCH=amd64 go build -o oxia ./server
+	env GOOS=linux GOARCH=amd64 go build -o oxia ./cmd
 	docker build --platform x86_64 -t oxia:latest-x86_64 .
 
 proto:

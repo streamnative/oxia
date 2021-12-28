@@ -5,4 +5,5 @@ RUN mkdir /oxia
 WORKDIR /oxia
 
 COPY oxia /oxia/
+ENV PATH=$PATH:/oxia
 
