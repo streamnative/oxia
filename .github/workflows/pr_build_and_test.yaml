@@ -19,13 +19,14 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install Protoc
-        uses: arduino/setup-protoc@v1
-
       - name: Set up Go
         uses: actions/setup-go@v3
         with:
           go-version: 1.18
+
+      - uses: ConorMacBride/install-package@v1
+        with:
+          apt: protoc-gen-go
 
       - name: Build
         run: make
