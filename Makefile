@@ -1,6 +1,9 @@
 
 build:
-	go build -o oxia ./cmd
+	go build -v -o oxia ./cmd
+
+test: build
+	go test -v -o oxia ./cmd
 
 clean:
 	rm -f oxia

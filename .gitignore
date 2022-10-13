@@ -1,3 +1,4 @@
 .idea
 oxia
 oxia-client
+**/*.pb.go
