@@ -5,7 +5,7 @@
 ## Documentation
 * [SNIP-18][snip]
 * [High Level Overview][overview]
-* [Replcation Protocol][rep]
+* [Replication Protocol][rep]
 
 ## Development
 
