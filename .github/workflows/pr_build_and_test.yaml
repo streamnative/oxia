@@ -24,9 +24,8 @@ jobs:
         with:
           go-version: 1.18
 
-      - uses: ConorMacBride/install-package@v1
-        with:
-          apt: protoc-gen-go
+      - name: Install protobuf compiler for Golang
+        run: sudo apt update && sudo apt install -y protoc-gen-go
 
       - name: Build
         run: make
