@@ -16,5 +16,5 @@ make test
 ```shell
 make docker
 ```
-
+ 
 [protoc]: https://github.com/protocolbuffers/protobuf#protocol-compiler-installation
