@@ -24,8 +24,13 @@ jobs:
         with:
           go-version: 1.18
 
-      - name: Install protobuf compiler for Golang
-        run: sudo apt update && sudo apt install -y protoc-gen-go
+      - name: Install protoc
+        uses: arduino/setup-protoc@v1
+
+      - name: Installing protoc-gen-go
+        run: |
+          go get github.com/golang/protobuf/protoc-gen-go
+          go get google.golang.org/grpc/cmd/protoc-gen-go-grpc  
 
       - name: Build
         run: make
