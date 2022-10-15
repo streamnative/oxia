@@ -138,7 +138,7 @@ A node swap operation is the removing of one follower and replacing it with anot
 A node swap reconfiguration is performed via a two-phase commit:
   - PREPARE phase:
     1. Operator updates the metadata with the reconfiguration                       details of: NODE_SWAP op, old node, new node, PREPARE phase and incremented epoch.
-    2. Operators sends a Prepare Reconfiguration Request to the leader with the old node id and new epoch.
+    2. Operator sends a Prepare Reconfiguration Request to the leader with the old node id and new epoch.
                    3) Leader updates its epoch and fences the old node by deactivating its follow cursor. 
                       Sends back a snapshot to the operator.
                    4) Operator sends the snapshot to the new node.

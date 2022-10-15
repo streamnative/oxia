@@ -55,7 +55,7 @@ Only the data path needs to be highly optimized for performance. The control pat
 ## Components
 
 - **Client** → Fetches the list of shards assignments so that it will be able to connect to the right storage pod, the one that is leading a particular shard
-- **Storage pod** → Shards are assigned to storage pods, which can be either &quot;leader&quot; or &quot;follower&quot; on them. Storage pod _do not_ perform health/liveness checks against each others.
+- **Storage pod** → Shards are assigned to storage pods, which can be either &quot;leader&quot; or &quot;follower&quot; on them. Storage pod _do not_ perform health/aliveness checks against each others.
 - **K8S Operator** → Operator is in charge of 2 main tasks:
     - Perform error detection+recovery
     - Keep track on the shards status
@@ -186,7 +186,7 @@ Any write operation will be appended to the local WAL. Once enough followers, se
 
 Followers are meant to be very close the leader, tailing the leader WAL and applying all the changes, up to the LastAddConfirmed (same concept as in BookKeeper), which represents the latest entry that we know for sure that it was fully committed.
 
-This allow the followers, when it is required,  to be promoted to leader in very short amount of time.
+This allows the followers, when required, to be promoted to leader in a very short amount of time.
 
 A follower connects to the leader and opens up a 2 ways stream:
 
@@ -227,7 +227,7 @@ message FenceRequest {
 1. Each of the followers, will apply the fencing and respond with their latest appended entry for the current epoch.
 1. The operator will decide which one is the last fully committed entry in the current epoch by following these steps:
     1. Select the node with the highest last committed entry
-    1. Read entries from this nodes and write them to the other followers which have a lower last committed entry
+    1. Read entries from this node and write them to the other followers which have a lower last committed entry
     1. Use the highest last committed entry as the last entry for the epoch
 1. The operator will then start a new epoch and select a new leader, based on the overall shards assignments and load in the cluster, update it in the CRD status and communicate to all the interested pods.
 
@@ -259,4 +259,4 @@ On the leader side, serving the snapshot is implemented by having a &quot;consis
 
 ## Changing the replication factor
 
-It is possible to dynamically update update the replication factor for the cluster. The operator will apply the change by closing the current epoch for a shard and informing the leader of the new replication factor. The followers will be either started or stopped, depending on whether it&#39;s increasing or decreasing the replication factor. The leader will then use the new size when deciding when an entry is fully committed.
+It is possible to dynamically update the replication factor for the cluster. The operator will apply the change by closing the current epoch for a shard and informing the leader of the new replication factor. The followers will be either started or stopped, depending on whether it&#39;s increasing or decreasing the replication factor. The leader will then use the new size when deciding when an entry is fully committed.
