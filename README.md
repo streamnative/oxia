@@ -26,3 +26,4 @@ make docker
 [overview]: docs/Scalable%20Metadata%20Service.md
 [rep]: tlaplus/REPLICATION_PROTOCOL.md
 [protoc]: https://github.com/protocolbuffers/protobuf#protocol-compiler-installation
+[grpc]: https://grpc.io/docs/languages/go/quickstart/
