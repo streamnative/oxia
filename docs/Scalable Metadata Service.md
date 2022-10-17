@@ -259,4 +259,4 @@ On the leader side, serving the snapshot is implemented by having a &quot;consis
 
 ## Changing the replication factor
 
-It is possible to dynamically update the replication factor for the cluster. The operator will apply the change by closing the current epoch for a shard and informing the leader of the new replication factor. The followers will be either started or stopped, depending on whether it&#39;s increasing or decreasing the replication factor. The leader will then use the new size when deciding when an entry is fully committed.
+It is possible to dynamically update the replication factor for the cluster. The operator will apply the change by closing the current epoch for a shard and informing the leader of the new replication factor. The followers will be either started or stopped, depending on whether it's increasing or decreasing the replication factor. The leader will then use the new size when deciding when an entry is fully committed.
