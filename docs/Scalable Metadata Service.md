@@ -184,7 +184,7 @@ Any write operation will be appended to the local WAL. Once enough followers, se
 
 ## Follower
 
-Followers are meant to be very close the leader, tailing the leader WAL and applying all the changes, up to the LastAddConfirmed (same concept as in BookKeeper), which represents the latest entry that we know for sure that it was fully committed.
+Followers are meant to be very close the leader, tailing the leader WAL and applying all the changes, up to the `LastAddConfirmed` (same concept as in BookKeeper), which represents the latest entry that we know for sure that it was fully committed.
 
 This allows the followers, when required, to be promoted to leader in a very short amount of time.
 
