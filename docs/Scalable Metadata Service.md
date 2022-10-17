@@ -55,7 +55,7 @@ Only the data path needs to be highly optimized for performance. The control pat
 ## Components
 
 - **Client** → Fetches the list of shards assignments so that it will be able to connect to the right storage pod, the one that is leading a particular shard
-- **Storage pod** → Shards are assigned to storage pods, which can be either &quot;leader&quot; or &quot;follower&quot; on them. Storage pod _do not_ perform health/aliveness checks against each others.
+- **Storage pod** → Shards are assigned to storage pods, which can be either 'leader' or 'follower'. Storage pods _do not_ perform health/liveness checks against each other.
 - **K8S Operator** → Operator is in charge of 2 main tasks:
     - Perform error detection+recovery
     - Keep track on the shards status
