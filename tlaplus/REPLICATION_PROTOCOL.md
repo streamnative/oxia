@@ -172,7 +172,7 @@ A node swap reconfiguration is performed via a two-phase commit:
 - `PREPARE` phase:
   1. Operator updates the metadata with the reconfiguration details of: `NODE_SWAP` op, old node, new node, `PREPARE`
      phase and incremented epoch.
-  1. Operators sends a Prepare Reconfiguration Request to the leader with the old node id and new epoch.
+  1. Operator sends a Prepare Reconfiguration Request to the leader with the old node id and new epoch.
   1. Leader updates its epoch and fences the old node by deactivating its follow cursor. Sends back a snapshot to the
      operator.
   1. Operator sends the snapshot to the new node.
@@ -194,7 +194,7 @@ An expand reconfiguration is performed via a two-phase commit:
 - `PREPARE` phase:
   1. Operator updates the metadata with the reconfiguration details of: `EXPAND OP`, new node, `PREPARE` phase and
      incremented epoch.
-  1. Operators sends a Prepare Reconfiguration Request to the leader with the new epoch.
+  1. Operator sends a Prepare Reconfiguration Request to the leader with the new epoch.
   1. Leader updates its epoch and sends back a snapshot to the operator.
   1. Operator sends the snapshot to the new node.
 - `COMMIT` phase:

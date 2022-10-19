@@ -236,7 +236,7 @@ leader untouched. The new follower will sync-up with the leader or will get boot
 
 If the leader of a shard fails, the operator is responsible to ensure the correctness of the system, by doing:
 
-1. Fence the current &quot;epoch&quot; for the shard, on all the followers. After that, no more updates are allowed
+1. Fence the current 'epoch' for the shard, on all the followers. After that, no more updates are allowed
    on the shard for the given epoch
 
 ```java
@@ -276,7 +276,7 @@ has passed, and up to the point where all the transactions are already applied i
 
 If we are trying to bootstrap a new follower, a trying to recover a follower which has lagged behind for too much,
 when it tries to do the `Follow()` operation, it will get an error, because the 1st requested log entry is not found
-in the leader&#39;s WAL anymore.
+in the leader's WAL anymore.
 
 At that point, the follower needs to fetch a snapshot of the shard&#39;s data and start to `Follow()` again after
 that. The snapshot will be streamed back to the new follower and it will replace any previous existing state.
@@ -291,7 +291,7 @@ view of the KV state as it was at the moment when `le-x` was applied.
 
 ## Changing the replication factor
 
-It is possible to dynamically update update the replication factor for the cluster. The operator will apply the change
+It is possible to dynamically update the replication factor for the cluster. The operator will apply the change
 by closing the current epoch for a shard and informing the leader of the new replication factor. The followers will be
 either started or stopped, depending on whether it's increasing or decreasing the replication factor. The leader
 will then use the new size when deciding when an entry is fully committed.
