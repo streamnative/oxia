@@ -14,15 +14,15 @@ import (
 type PublicRpcServer struct {
 	proto.UnimplementedClientAPIServer
 
-	shardsManager ShardsManager
+	shardsDirector ShardsDirector
 
 	grpcServer *grpc.Server
 	log        zerolog.Logger
 }
 
-func NewPublicRpcServer(port int, advertisedPublicAddress string, shardsManager ShardsManager) (*PublicRpcServer, error) {
+func NewPublicRpcServer(port int, advertisedPublicAddress string, shardsDirector ShardsDirector) (*PublicRpcServer, error) {
 	res := &PublicRpcServer{
-		shardsManager: shardsManager,
+		shardsDirector: shardsDirector,
 		log: log.With().
 			Str("component", "public-rpc-server").
 			Logger(),
@@ -50,14 +50,14 @@ func NewPublicRpcServer(port int, advertisedPublicAddress string, shardsManager 
 }
 
 func (s *PublicRpcServer) GetShardsAssignments(_ *proto.Empty, out proto.ClientAPI_GetShardsAssignmentsServer) error {
-	s.shardsManager.GetShardsAssignments(func(assignments *proto.ShardsAssignments) {
+	s.shardsDirector.GetShardsAssignments(func(assignments *proto.ShardsAssignments) {
 		out.SendMsg(assignments)
 	})
 	return nil
 }
 
 func (s *PublicRpcServer) Put(ctx context.Context, putOp *proto.PutOp) (*proto.Stat, error) {
-	slc, err := s.shardsManager.GetLeaderController(putOp.GetShardId())
+	slc, err := s.shardsDirector.GetManager(putOp.GetShardId(), false)
 	if err != nil {
 		return nil, err
 	}

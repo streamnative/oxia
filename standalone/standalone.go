@@ -18,7 +18,7 @@ type standaloneConfig struct {
 type standalone struct {
 	rpc *server.PublicRpcServer
 
-	shardsManager           server.ShardsManager
+	shardsDirector          server.ShardsDirector
 	identityInternalAddress proto.ServerAddress
 }
 
@@ -40,15 +40,15 @@ func NewStandalone(config *standaloneConfig) (*standalone, error) {
 	}
 
 	identityAddr := fmt.Sprintf("%s:%d", advertisedPublicAddress, config.PublicServicePort)
-	s.shardsManager = server.NewShardsManager(identityAddr)
+	s.shardsDirector = server.NewShardsDirector(identityAddr)
 
-	cs := operator.ComputeAssignments([]*proto.ServerAddress{{
+	_ = operator.ComputeAssignments([]*proto.ServerAddress{{
 		InternalUrl: identityAddr,
 		PublicUrl:   identityAddr,
 	}}, 1, conf.NumShards)
-	s.shardsManager.UpdateClusterStatus(cs)
+	// TODO bootstrap shards in s.shardsDirector
 
-	s.rpc, err = server.NewPublicRpcServer(int(config.PublicServicePort), advertisedPublicAddress, s.shardsManager)
+	s.rpc, err = server.NewPublicRpcServer(int(config.PublicServicePort), advertisedPublicAddress, s.shardsDirector)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +61,7 @@ func (s *standalone) Close() error {
 		return err
 	}
 
-	if err := s.shardsManager.Close(); err != nil {
+	if err := s.shardsDirector.Close(); err != nil {
 		return err
 	}
 

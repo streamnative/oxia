@@ -2,15 +2,16 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 	"net"
-	"oxia/proto"
+	"oxia/coordination"
 )
 
 const (
@@ -20,19 +21,19 @@ const (
 	metadataFirstEntry = "first_entry"
 )
 
-type internalRpcServer struct {
-	proto.UnimplementedInternalAPIServer
-	shardsManager ShardsManager
+type coordinationRpcServer struct {
+	coordination.UnimplementedOxiaCoordinationServer
+	shardsDirector ShardsDirector
 
 	grpcServer *grpc.Server
 	log        zerolog.Logger
 }
 
-func newInternalRpcServer(port int, advertisedInternalAddress string, shardsManager ShardsManager) (*internalRpcServer, error) {
-	res := &internalRpcServer{
-		shardsManager: shardsManager,
+func newCoordinationRpcServer(port int, advertisedInternalAddress string, shardsDirector ShardsDirector) (*coordinationRpcServer, error) {
+	res := &coordinationRpcServer{
+		shardsDirector: shardsDirector,
 		log: log.With().
-			Str("component", "internal-rpc-server").
+			Str("component", "coordination-rpc-server").
 			Logger(),
 	}
 
@@ -42,11 +43,11 @@ func newInternalRpcServer(port int, advertisedInternalAddress string, shardsMana
 	}
 
 	res.grpcServer = grpc.NewServer()
-	proto.RegisterInternalAPIServer(res.grpcServer, res)
+	coordination.RegisterOxiaCoordinationServer(res.grpcServer, res)
 	res.log.Info().
 		Str("bindAddress", listener.Addr().String()).
 		Str("advertisedAddress", advertisedInternalAddress).
-		Msg("Started internal RPC server")
+		Msg("Started coordination RPC server")
 
 	go func() {
 		if err := res.grpcServer.Serve(listener); err != nil {
@@ -57,23 +58,9 @@ func newInternalRpcServer(port int, advertisedInternalAddress string, shardsMana
 	return res, nil
 }
 
-func (s *internalRpcServer) Close() error {
+func (s *coordinationRpcServer) Close() error {
 	s.grpcServer.GracefulStop()
 	return nil
-}
-
-func (s *internalRpcServer) UpdateStatus(ctx context.Context, newClusterStatus *proto.ClusterStatus) (*proto.InternalEmpty, error) {
-	b, _ := json.Marshal(newClusterStatus)
-	s.log.Info().
-		RawJSON("value", b).
-		Msg("Received new Cluster status")
-	err := s.shardsManager.UpdateClusterStatus(newClusterStatus)
-	if err != nil {
-		log.Warn().
-			Err(err).
-			Msg("Failed to update to new cluster status")
-	}
-	return &proto.InternalEmpty{}, err
 }
 
 func readHeader(md metadata.MD, key string) (value string, err error) {
@@ -110,49 +97,73 @@ func readHeaderUint32(md metadata.MD, key string) (v uint32, err error) {
 	return r, err
 }
 
-func (s *internalRpcServer) Follow(in proto.InternalAPI_FollowServer) error {
-	md, ok := metadata.FromIncomingContext(in.Context())
+func callShardManager[T any](c context.Context, s *coordinationRpcServer, f func(ShardManager) (T, error)) (T, error) {
+	var zeroT T
+	md, ok := metadata.FromIncomingContext(c)
 	if !ok {
-		return errors.New("There is no metadata header in Follow request")
+		return zeroT, errors.New("There is no metadata header in request")
 	}
-
 	shard, err := readHeaderUint32(md, metadataShard)
 	if err != nil {
-		return err
+		return zeroT, err
 	}
-
-	slc, err := s.shardsManager.GetLeaderController(shard)
+	manager, err := s.shardsDirector.GetManager(shard, true)
 	if err != nil {
-		s.log.Warn().
-			Err(err).
-			Uint32("shard", shard).
-			Msg("This node is not leader for shard")
-		return err
+		return zeroT, err
 	}
+	response, err := f(manager)
+	return response, err
+}
 
-	epoch, err := readHeaderUint64(md, metadataEpoch)
-	if !ok {
-		return err
-	}
-
-	firstEntry, err := readHeaderUint64(md, metadataFirstEntry)
-	if err != nil {
-		return err
-	}
-
-	followerName, err := readHeader(md, metadataFollower)
-	if err != nil {
-		return err
-	}
-
-	err = slc.Follow(followerName, firstEntry, epoch, in)
-	if err != nil {
-		s.log.Warn().
-			Err(err).
-			Uint32("shard", shard).
-			Uint64("epoch", epoch).
-			Uint64("firstEntry", firstEntry).
-			Msg("Failed to attach follower")
-	}
+func (s *coordinationRpcServer) Fence(c context.Context, req *coordination.FenceRequest) (*coordination.FenceResponse, error) {
+	response, err := callShardManager[*coordination.FenceResponse](c, s, func(m ShardManager) (*coordination.FenceResponse, error) {
+		response, err := m.Fence(req)
+		return response, err
+	})
+	return response, err
+}
+func (s *coordinationRpcServer) BecomeLeader(c context.Context, req *coordination.BecomeLeaderRequest) (*coordination.BecomeLeaderResponse, error) {
+	response, err := callShardManager[*coordination.BecomeLeaderResponse](c, s, func(m ShardManager) (*coordination.BecomeLeaderResponse, error) {
+		response, err := m.BecomeLeader(req)
+		return response, err
+	})
+	return response, err
+}
+func (s *coordinationRpcServer) AddFollower(context.Context, *coordination.AddFollowerRequest) (*coordination.CoordinationEmpty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AddFollower not implemented")
+}
+func (s *coordinationRpcServer) Truncate(c context.Context, req *coordination.TruncateRequest) (*coordination.TruncateResponse, error) {
+	response, err := callShardManager[*coordination.TruncateResponse](c, s, func(m ShardManager) (*coordination.TruncateResponse, error) {
+		response, err := m.Truncate(req)
+		return response, err
+	})
+	return response, err
+}
+func (s *coordinationRpcServer) AddEntries(srv coordination.OxiaCoordination_AddEntriesServer) error {
+	_, err := callShardManager[any](srv.Context(), s, func(m ShardManager) (any, error) {
+		response, err := m.AddEntries(srv)
+		return response, err
+	})
 	return err
+}
+func (s *coordinationRpcServer) PrepareReconfig(c context.Context, req *coordination.PrepareReconfigRequest) (*coordination.PrepareReconfigResponse, error) {
+	response, err := callShardManager[*coordination.PrepareReconfigResponse](c, s, func(m ShardManager) (*coordination.PrepareReconfigResponse, error) {
+		response, err := m.PrepareReconfig(req)
+		return response, err
+	})
+	return response, err
+}
+func (s *coordinationRpcServer) Snapshot(c context.Context, req *coordination.SnapshotRequest) (*coordination.SnapshotResponse, error) {
+	response, err := callShardManager[*coordination.SnapshotResponse](c, s, func(m ShardManager) (*coordination.SnapshotResponse, error) {
+		response, err := m.Snapshot(req)
+		return response, err
+	})
+	return response, err
+}
+func (s *coordinationRpcServer) CommitReconfig(c context.Context, req *coordination.CommitReconfigRequest) (*coordination.CommitReconfigResponse, error) {
+	response, err := callShardManager[*coordination.CommitReconfigResponse](c, s, func(m ShardManager) (*coordination.CommitReconfigResponse, error) {
+		response, err := m.CommitReconfig(req)
+		return response, err
+	})
+	return response, err
 }

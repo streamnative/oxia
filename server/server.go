@@ -17,11 +17,11 @@ type serverConfig struct {
 }
 
 type server struct {
-	*internalRpcServer
+	*coordinationRpcServer
 	*PublicRpcServer
 
-	shardsManager ShardsManager
-	clientPool    common.ClientPool
+	shardsDirector ShardsDirector
+	clientPool     common.ClientPool
 
 	identityInternalAddress proto.ServerAddress
 }
@@ -51,14 +51,14 @@ func NewServer(config *serverConfig) (*server, error) {
 	}
 
 	identityAddr := fmt.Sprintf("%s:%d", advertisedInternalAddress, config.InternalServicePort)
-	s.shardsManager = NewShardsManager(identityAddr)
+	s.shardsDirector = NewShardsDirector(identityAddr)
 
-	s.internalRpcServer, err = newInternalRpcServer(config.InternalServicePort, advertisedInternalAddress, s.shardsManager)
+	s.coordinationRpcServer, err = newCoordinationRpcServer(config.InternalServicePort, advertisedInternalAddress, s.shardsDirector)
 	if err != nil {
 		return nil, err
 	}
 
-	s.PublicRpcServer, err = NewPublicRpcServer(config.PublicServicePort, advertisedPublicAddress, s.shardsManager)
+	s.PublicRpcServer, err = NewPublicRpcServer(config.PublicServicePort, advertisedPublicAddress, s.shardsDirector)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +71,7 @@ func (s *server) Close() error {
 		return err
 	}
 
-	if err := s.internalRpcServer.Close(); err != nil {
+	if err := s.coordinationRpcServer.Close(); err != nil {
 		return err
 	}
 
@@ -79,7 +79,7 @@ func (s *server) Close() error {
 		return err
 	}
 
-	if err := s.shardsManager.Close(); err != nil {
+	if err := s.shardsDirector.Close(); err != nil {
 		return err
 	}
 
