@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
@@ -10,7 +11,6 @@ import (
 	"oxia/common"
 	"oxia/coordination"
 	"oxia/proto"
-	"time"
 )
 
 // ShardManager manages one shard.
@@ -26,7 +26,7 @@ type ShardManager interface {
 	PrepareReconfig(*coordination.PrepareReconfigRequest) (*coordination.PrepareReconfigResponse, error)
 	Snapshot(*coordination.SnapshotRequest) (*coordination.SnapshotResponse, error)
 	CommitReconfig(*coordination.CommitReconfigRequest) (*coordination.CommitReconfigResponse, error)
-	Put(op *proto.PutOp) (*proto.Stat, error)
+	Write(op *proto.PutOp) (*proto.Stat, error)
 	AddEntries(srv coordination.OxiaCoordination_AddEntriesServer) (any, error)
 }
 
@@ -127,6 +127,27 @@ func enqueueCommandAndWaitForResponse[T any](s *shardManager, f func() (T, bool,
 	return response.(T)
 }
 
+func sendRequestAndProcessResponse[RESP any](s *shardManager, target string, send func(client coordination.OxiaCoordinationClient) (RESP, error), process func(RESP) (bool, error)) error {
+	rpc, err := s.clientPool.GetInternalRpc(target)
+	if err != nil {
+		return err
+	}
+	go func() {
+
+		/*TODO create context with shard metadata and maybe timeout*/
+		resp, err2 := send(rpc)
+		if err2 != nil {
+			log.Error().Err(err2).Msg("Got error sending truncateRequest")
+		}
+		command := newCommand(func() (any, bool, error) {
+			exit, err3 := process(resp)
+			return nil, exit, err3
+		})
+		s.commandChannel <- command
+	}()
+	return nil
+}
+
 func (s *shardManager) checkEpochLaterIn(req interface{ GetEpoch() uint64 }) error {
 	if req.GetEpoch() <= s.epoch {
 		return status.Errorf(codes.FailedPrecondition, "Got old epoch %d, when at %d", req.GetEpoch(), s.epoch)
@@ -137,6 +158,13 @@ func (s *shardManager) checkEpochLaterIn(req interface{ GetEpoch() uint64 }) err
 func (s *shardManager) checkEpochEqualIn(req interface{ GetEpoch() uint64 }) error {
 	if req.GetEpoch() != s.epoch {
 		return status.Errorf(codes.FailedPrecondition, "Got clashing epoch %d, when at %d", req.GetEpoch(), s.epoch)
+	}
+	return nil
+}
+
+func (s *shardManager) checkStatus(expected Status) error {
+	if s.status != expected {
+		return status.Errorf(codes.FailedPrecondition, "Received message in the wrong state. In %s, should be %s.", s.status, expected)
 	}
 	return nil
 }
@@ -167,7 +195,6 @@ func (s *shardManager) Fence(req *coordination.FenceRequest) (*coordination.Fenc
 */
 func (s *shardManager) fenceSync(req *coordination.FenceRequest) (*coordination.FenceResponse, error) {
 	if err := s.checkEpochLaterIn(req); err != nil {
-		// TODO what to do? Error out or Respond with newer epoch? What if equal?
 		return nil, err
 	}
 	s.epoch = req.GetEpoch()
@@ -188,11 +215,6 @@ func (s *shardManager) BecomeLeader(req *coordination.BecomeLeaderRequest) (*coo
 		return resp, false, err
 	})
 	return response, nil
-}
-
-func (s *shardManager) getHighestEntryIdOfEpoch() (*coordination.EntryId, error) {
-	entryId, err := s.wal.LastEntryIdUptoEpoch(s.epoch)
-	return entryId, err
 }
 
 func (s *shardManager) needsTruncation(headIndex *coordination.EntryId) bool {
@@ -223,41 +245,87 @@ func (s *shardManager) getCursors(followers []*coordination.BecomeLeaderRequest_
 	return cursors
 }
 
-func (s *shardManager) sendTruncateRequest(k string, entryId *coordination.EntryId) error {
-	rpc, err := s.clientPool.GetInternalRpc(k)
+func (s *shardManager) sendTruncateRequest(target string, targetEpoch uint64) error {
+	headIndex, err := s.wal.LastEntryIdUptoEpoch(targetEpoch)
 	if err != nil {
 		return err
 	}
-	go func() {
-
-		_, err2 := rpc.(coordination.OxiaCoordinationClient).Truncate( /*TODO*/ nil, &coordination.TruncateRequest{
+	send := func(rpc coordination.OxiaCoordinationClient) (*coordination.TruncateResponse, error) {
+		resp, err2 := rpc.Truncate(nil, &coordination.TruncateRequest{
 			Epoch:     s.epoch,
-			HeadIndex: entryId,
+			HeadIndex: headIndex,
 		})
-		if err2 != nil {
-			log.Error().Err(err2).Msg("Got error sending truncateRequest")
-		}
-		/*TODO call something like truncateResponseSync(TruncateResponse) in run */
-	}()
-	return nil
+		return resp, err2
+	}
+	process := func(resp *coordination.TruncateResponse) (bool, error) {
+		exit, err2 := s.truncateResponseSync(target, resp)
+		return exit, err2
+	}
+	return sendRequestAndProcessResponse[*coordination.TruncateResponse](s, target, send, process)
 }
 
+/*
+truncateResponseSync: Leader handles a truncate response.
+
+The leader now activates the follow cursor as the follower
+log is now ready for replication.
+*/
+func (s *shardManager) truncateResponseSync(target string, resp *coordination.TruncateResponse) (bool, error) {
+	if err := s.checkStatus(Leader); err != nil {
+		return false, err
+	}
+	if err := s.checkEpochEqualIn(resp); err != nil {
+		return false, err
+	}
+	s.followCursor[target] = &cursor{
+		status:        Attached,
+		lastPushed:    resp.HeadIndex,
+		lastConfirmed: resp.HeadIndex,
+	}
+	// TODO start replication (send AppendEntries)
+
+	return false, nil
+}
+
+/*
+Node handles a Become Leader request
+
+The node inspects the head index of each follower and
+compares it to its own head index, and then either:
+  - Attaches a follow cursor for the follower the head indexes
+    have the same epoch, but the follower offset is lower or equal.
+  - Sends a truncate request to the follower if its head
+    index epoch does not match the leader's head index epoch or has
+    a higher offset.
+    The leader finds the highest entry id in its log prefix (of the
+    follower head index) and tells the follower to truncate its log
+    to that entry.
+
+Key points:
+  - The election only requires a majority to complete and so the
+    Become Leader request will likely only contain a majority,
+    not all the nodes.
+  - No followers in the Become Leader message "follower map" will
+    have a higher head index than the leader (as the leader was
+    chosen because it had the highest head index of the majority
+    that responded to the fencing requests first). But as the leader
+    receives more fencing responses from the remaining minority,
+    the new leader will be informed of these followers and it is
+    possible that their head index is higher than the leader and
+    therefore need truncating.
+*/
 func (s *shardManager) becomeLeaderSync(req *coordination.BecomeLeaderRequest) (*coordination.BecomeLeaderResponse, error) {
 	if err := s.checkEpochEqualIn(req); err != nil {
-		// TODO what to do? Error out or Respond with own epoch?
 		return nil, err
 	}
 	s.status = Leader
 	s.leader = s.identityAddress
 	s.replicationFactor = req.GetReplicationFactor()
 	s.followCursor = s.getCursors(req.GetFollowerMap())
-	highestEntryOfEpoch, err := s.getHighestEntryIdOfEpoch()
-	if err != nil {
-		return nil, err
-	}
+
 	for k, v := range s.followCursor {
 		if v.status == PendingTruncate {
-			err := s.sendTruncateRequest(k, highestEntryOfEpoch)
+			err := s.sendTruncateRequest(k, s.epoch)
 			if err != nil {
 				return nil, err
 			}
@@ -266,16 +334,143 @@ func (s *shardManager) becomeLeaderSync(req *coordination.BecomeLeaderRequest) (
 	}
 	return &coordination.BecomeLeaderResponse{Epoch: req.GetEpoch()}, nil
 }
+func (s *shardManager) Truncate(req *coordination.TruncateRequest) (*coordination.TruncateResponse, error) {
+	response := enqueueCommandAndWaitForResponse[*coordination.TruncateResponse](s, func() (*coordination.TruncateResponse, bool, error) {
+		resp, err := s.truncateSync(req)
+		return resp, false, err
+	})
+	return response, nil
+}
+
+/*
+Node handles a Truncate request
+
+A node that receives a truncate request knows that it
+has been selected as a follower. It truncates its log
+to the indicates entry id, updates its epoch and changes
+to a Follower.
+*/
+func (s *shardManager) truncateSync(req *coordination.TruncateRequest) (*coordination.TruncateResponse, error) {
+	if err := s.checkStatus(Fenced); err != nil {
+		return nil, err
+	}
+	if err := s.checkEpochEqualIn(req); err != nil {
+		return nil, err
+	}
+	s.status = Follower
+	s.epoch = req.Epoch
+	s.leader = "" // TODO msg.source_node
+	headEntryId, err := s.wal.TruncateLog(req.HeadIndex)
+	if err != nil {
+		return nil, err
+	}
+	s.headIndex = headEntryId
+	// IMO this should have been already done when we got fenced
+	s.followCursor = make(map[string]*cursor)
+
+	return &coordination.TruncateResponse{
+		Epoch:     req.Epoch,
+		HeadIndex: headEntryId,
+	}, nil
+}
 
 func (s *shardManager) AddFollower(req *coordination.AddFollowerRequest) (*emptypb.Empty, error) {
+	response := enqueueCommandAndWaitForResponse[*emptypb.Empty](s, func() (*emptypb.Empty, bool, error) {
+		resp, err := s.addFollowerSync(req)
+		return resp, false, err
+	})
+	return response, nil
+}
+
+/*
+Leader handles an Add Follower request
+
+The leader creates a cursor and will send a truncate
+request to the follower if their log might need
+truncating first.
+*/
+func (s *shardManager) addFollowerSync(req *coordination.AddFollowerRequest) (*emptypb.Empty, error) {
+	if err := s.checkStatus(Leader); err != nil {
+		return nil, err
+	}
+	if err := s.checkEpochEqualIn(req); err != nil {
+		return nil, err
+	}
+	if _, ok := s.followCursor[req.Follower.InternalUrl]; ok {
+		return nil, status.Errorf(codes.FailedPrecondition, "Follower %s already exists", req.Follower.InternalUrl)
+	}
+
+	s.followCursor[req.Follower.InternalUrl] = s.getCursor(req.HeadIndex)
+	if s.needsTruncation(req.HeadIndex) {
+		err := s.sendTruncateRequest(req.Follower.InternalUrl, req.HeadIndex.Epoch)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return nil, status.Errorf(codes.Unimplemented, "method AddFollower not implemented")
 }
-func (s *shardManager) Truncate(req *coordination.TruncateRequest) (*coordination.TruncateResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Truncate not implemented")
+
+func (s *shardManager) Write(op *proto.PutOp) (*proto.Stat, error) {
+	response := enqueueCommandAndWaitForResponse[*proto.Stat](s, func() (*proto.Stat, bool, error) {
+		resp, err := s.writeSync(op)
+		return resp, false, err
+	})
+	return response, nil
 }
+
+func serializeOp(op *proto.PutOp) ([]byte, error) {
+	// TODO reasonable serialization
+	val, err := json.Marshal(map[string]any{
+		"type": "Put",
+		"op":   op,
+	})
+	return val, err
+}
+
+/*
+Write A client writes an entry to the leader
+
+	A client writes a value from Values to a leader node
+	if that value has not previously been written. The leader adds
+	the entry to its log, updates its head_index.
+*/
+func (s *shardManager) writeSync(op *proto.PutOp) (*proto.Stat, error) {
+	s.log.Debug().
+		Interface("op", op).
+		Msg("Put operation")
+
+	if err := s.checkStatus(Leader); err != nil {
+		return nil, err
+	}
+	entryId := &coordination.EntryId{
+		Epoch:  s.epoch,
+		Offset: s.headIndex.Offset + 1,
+	}
+	value, err := serializeOp(op)
+	if err != nil {
+		return nil, err
+	}
+	logEntry := &coordination.LogEntry{
+		EntryId: entryId,
+		Value:   value,
+	}
+
+	err = s.wal.Append(logEntry)
+	if err != nil {
+		return nil, err
+	}
+	s.headIndex = entryId
+	// TODO replication
+	// TODO respond when majority acknowledges
+	return nil, nil
+
+}
+
 func (s *shardManager) AddEntries(srv coordination.OxiaCoordination_AddEntriesServer) (any, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AddEntries not implemented")
 }
+
 func (s *shardManager) PrepareReconfig(req *coordination.PrepareReconfigRequest) (*coordination.PrepareReconfigResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PrepareReconfig not implemented")
 }
@@ -284,18 +479,6 @@ func (s *shardManager) Snapshot(req *coordination.SnapshotRequest) (*coordinatio
 }
 func (s *shardManager) CommitReconfig(req *coordination.CommitReconfigRequest) (*coordination.CommitReconfigResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CommitReconfig not implemented")
-}
-
-func (s *shardManager) Put(op *proto.PutOp) (*proto.Stat, error) {
-	s.log.Debug().
-		Interface("op", op).
-		Msg("Put operation")
-
-	return &proto.Stat{
-		Version:           1,
-		CreatedTimestamp:  uint64(time.Now().Unix()),
-		ModifiedTimestamp: uint64(time.Now().Unix()),
-	}, nil
 }
 
 // run takes commands from the queue and executes them serially
@@ -325,5 +508,3 @@ func (s *shardManager) Close() error {
 
 	return s.wal.Close()
 }
-
-

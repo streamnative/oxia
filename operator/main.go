@@ -46,28 +46,28 @@ func main(cmd *cobra.Command, args []string) {
 			PublicUrl:   staticNodes[i],
 		}
 	}
-	cs := ComputeAssignments(addrs, replicationFactor, shards)
+	_ = ComputeAssignments(addrs, replicationFactor, shards)
 
 	clientPool := common.NewClientPool()
 	defer clientPool.Close()
 
 	// Set up a connection to the server.
-	c, err := clientPool.GetInternalRpc("localhost:8190")
+	_, err := clientPool.GetInternalRpc("localhost:8190")
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect")
 	}
 
 	// Contact the server and print out its response.
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	_, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	r, err := c.UpdateStatus(ctx, cs)
+	//	r, err := c.UpdateStatus(ctx, cs)
 
 	if err != nil {
 		log.Error().Err(err).Msg("Could not update the cluster status")
 	} else {
 		log.Info().
-			Interface("res", r).
+			Interface("res", nil).
 			Msg("Updated cluster status")
 	}
 }

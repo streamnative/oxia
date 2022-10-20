@@ -62,7 +62,7 @@ func (s *PublicRpcServer) Put(ctx context.Context, putOp *proto.PutOp) (*proto.S
 		return nil, err
 	}
 
-	return slc.Put(putOp)
+	return slc.Write(putOp)
 }
 
 func (s *PublicRpcServer) Close() error {
