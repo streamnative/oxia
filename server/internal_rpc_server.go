@@ -7,9 +7,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/status"
 	"net"
 	"oxia/coordination"
 )
@@ -129,8 +127,13 @@ func (s *coordinationRpcServer) BecomeLeader(c context.Context, req *coordinatio
 	})
 	return response, err
 }
-func (s *coordinationRpcServer) AddFollower(context.Context, *coordination.AddFollowerRequest) (*coordination.CoordinationEmpty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method AddFollower not implemented")
+func (s *coordinationRpcServer) AddFollower(c context.Context, req *coordination.AddFollowerRequest) (*coordination.CoordinationEmpty, error) {
+
+	response, err := callShardManager[*coordination.CoordinationEmpty](c, s, func(m ShardManager) (*coordination.CoordinationEmpty, error) {
+		response, err := m.AddFollower(req)
+		return response, err
+	})
+	return response, err
 }
 func (s *coordinationRpcServer) Truncate(c context.Context, req *coordination.TruncateRequest) (*coordination.TruncateResponse, error) {
 	response, err := callShardManager[*coordination.TruncateResponse](c, s, func(m ShardManager) (*coordination.TruncateResponse, error) {

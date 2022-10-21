@@ -1,12 +1,12 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/emptypb"
 	"io"
 	"oxia/common"
 	"oxia/coordination"
@@ -21,7 +21,7 @@ type ShardManager interface {
 
 	Fence(req *coordination.FenceRequest) (*coordination.FenceResponse, error)
 	BecomeLeader(*coordination.BecomeLeaderRequest) (*coordination.BecomeLeaderResponse, error)
-	AddFollower(*coordination.AddFollowerRequest) (*emptypb.Empty, error)
+	AddFollower(*coordination.AddFollowerRequest) (*coordination.CoordinationEmpty, error)
 	Truncate(*coordination.TruncateRequest) (*coordination.TruncateResponse, error)
 	PrepareReconfig(*coordination.PrepareReconfigRequest) (*coordination.PrepareReconfigResponse, error)
 	Snapshot(*coordination.SnapshotRequest) (*coordination.SnapshotResponse, error)
@@ -30,19 +30,22 @@ type ShardManager interface {
 	AddEntries(srv coordination.OxiaCoordination_AddEntriesServer) (any, error)
 }
 
-// Command is the representation of the work a [ShardManager] is supposed to do when it gets a request and a channel for the response.
+// Command is the representation of the work a [ShardManager] is supposed to do when it gets a request or response and a channel for the response.
 // Ideally it would be generic with the type parameter being the response type
 type Command struct {
 	execute      func() (any, bool, error)
 	responseChan chan any
 }
 
-func newCommand(execute func() (any, bool, error)) *Command {
+func newCommandWithChannel(execute func() (any, bool, error), responseChannel chan any) *Command {
 	return &Command{
-		// Command cannot be generic, because make(chan T, 1) does not compile
-		responseChan: make(chan any, 1),
+		responseChan: responseChannel,
 		execute:      execute,
 	}
+}
+
+func newCommand(execute func() (any, bool, error)) *Command {
+	return newCommandWithChannel(execute, make(chan any, 1))
 }
 
 type Status int16
@@ -59,8 +62,13 @@ type CursorStatus int16
 const (
 	Attached CursorStatus = iota
 	PendingTruncate
-	PendingRemoval
+	// PendingRemoval
 )
+
+type waitingRoomEntry struct {
+	counter             uint32
+	confirmationChannel chan any
+}
 
 type cursor struct {
 	status        CursorStatus
@@ -80,7 +88,9 @@ type shardManager struct {
 	status             Status
 
 	wal             Wal
+	kv              KeyValueStore
 	commandChannel  chan *Command // Individual requests are sent to this channel for serial processing
+	waitingRoom     map[*coordination.EntryId]waitingRoomEntry
 	clientPool      common.ClientPool
 	identityAddress string
 	log             zerolog.Logger
@@ -98,8 +108,11 @@ func NewShardManager(shard uint32, identityAddress string, pool common.ClientPoo
 		reconfigInProgress: false,
 		status:             NotMember,
 
+		// TODO dependency injection
 		wal:             NewWal(shard),
+		kv:              NewKVStore(shard),
 		commandChannel:  make(chan *Command, 8),
+		waitingRoom:     make(map[*coordination.EntryId]waitingRoomEntry),
 		clientPool:      pool,
 		identityAddress: identityAddress,
 		log: log.With().
@@ -115,12 +128,17 @@ func NewShardManager(shard uint32, identityAddress string, pool common.ClientPoo
 
 	return sm
 }
-
 func enqueueCommandAndWaitForResponse[T any](s *shardManager, f func() (T, bool, error)) T {
-	command := newCommand(func() (any, bool, error) {
+	return enqueueCommandAndWaitForResponseWithChannel[T](s, f, nil)
+}
+func enqueueCommandAndWaitForResponseWithChannel[T any](s *shardManager, f func() (T, bool, error), responseChannel chan any) T {
+	if responseChannel == nil {
+		responseChannel = make(chan any, 1)
+	}
+	command := newCommandWithChannel(func() (any, bool, error) {
 		r, e, err := f()
 		return r, e, err
-	})
+	}, responseChannel)
 	s.commandChannel <- command
 	response := <-command.responseChan
 	// TODO get rid of type assertion. It's ugly
@@ -201,7 +219,8 @@ func (s *shardManager) fenceSync(req *coordination.FenceRequest) (*coordination.
 	s.status = Fenced
 	s.replicationFactor = 0
 	s.followCursor = make(map[string]*cursor)
-	// TODO stop replicating in AddEntries
+	s.waitingRoom = make(map[*coordination.EntryId]waitingRoomEntry)
+	s.wal.StopReaders()
 	s.reconfigInProgress = false
 	return &coordination.FenceResponse{
 		Epoch:     s.epoch,
@@ -282,7 +301,7 @@ func (s *shardManager) truncateResponseSync(target string, resp *coordination.Tr
 		lastPushed:    resp.HeadIndex,
 		lastConfirmed: resp.HeadIndex,
 	}
-	// TODO start replication (send AppendEntries)
+	s.sendEntriesToFollower(target, resp.HeadIndex)
 
 	return false, nil
 }
@@ -310,7 +329,7 @@ Key points:
     chosen because it had the highest head index of the majority
     that responded to the fencing requests first). But as the leader
     receives more fencing responses from the remaining minority,
-    the new leader will be informed of these followers and it is
+    the new leader will be informed of these followers, and it is
     possible that their head index is higher than the leader and
     therefore need truncating.
 */
@@ -329,7 +348,8 @@ func (s *shardManager) becomeLeaderSync(req *coordination.BecomeLeaderRequest) (
 			if err != nil {
 				return nil, err
 			}
-
+		} else {
+			s.sendEntriesToFollower(k, v.lastPushed)
 		}
 	}
 	return &coordination.BecomeLeaderResponse{Epoch: req.GetEpoch()}, nil
@@ -365,7 +385,6 @@ func (s *shardManager) truncateSync(req *coordination.TruncateRequest) (*coordin
 		return nil, err
 	}
 	s.headIndex = headEntryId
-	// IMO this should have been already done when we got fenced
 	s.followCursor = make(map[string]*cursor)
 
 	return &coordination.TruncateResponse{
@@ -374,8 +393,8 @@ func (s *shardManager) truncateSync(req *coordination.TruncateRequest) (*coordin
 	}, nil
 }
 
-func (s *shardManager) AddFollower(req *coordination.AddFollowerRequest) (*emptypb.Empty, error) {
-	response := enqueueCommandAndWaitForResponse[*emptypb.Empty](s, func() (*emptypb.Empty, bool, error) {
+func (s *shardManager) AddFollower(req *coordination.AddFollowerRequest) (*coordination.CoordinationEmpty, error) {
+	response := enqueueCommandAndWaitForResponse[*coordination.CoordinationEmpty](s, func() (*coordination.CoordinationEmpty, bool, error) {
 		resp, err := s.addFollowerSync(req)
 		return resp, false, err
 	})
@@ -389,7 +408,7 @@ The leader creates a cursor and will send a truncate
 request to the follower if their log might need
 truncating first.
 */
-func (s *shardManager) addFollowerSync(req *coordination.AddFollowerRequest) (*emptypb.Empty, error) {
+func (s *shardManager) addFollowerSync(req *coordination.AddFollowerRequest) (*coordination.CoordinationEmpty, error) {
 	if err := s.checkStatus(Leader); err != nil {
 		return nil, err
 	}
@@ -412,36 +431,41 @@ func (s *shardManager) addFollowerSync(req *coordination.AddFollowerRequest) (*e
 }
 
 func (s *shardManager) Write(op *proto.PutOp) (*proto.Stat, error) {
-	response := enqueueCommandAndWaitForResponse[*proto.Stat](s, func() (*proto.Stat, bool, error) {
-		resp, err := s.writeSync(op)
-		return resp, false, err
-	})
-	return response, nil
+	responseChannel := make(chan any, 1)
+	response := enqueueCommandAndWaitForResponseWithChannel[proto.Stat](s, func() (proto.Stat, bool, error) {
+		err := s.writeSync(op, responseChannel)
+		return proto.Stat{}, false, err
+	}, responseChannel)
+	return &response, nil
 }
 
 func serializeOp(op *proto.PutOp) ([]byte, error) {
 	// TODO reasonable serialization
-	val, err := json.Marshal(map[string]any{
-		"type": "Put",
-		"op":   op,
-	})
+	val, err := json.Marshal(op)
 	return val, err
 }
 
+func deserializeOp(encoding []byte) (*proto.PutOp, error) {
+	// TODO reasonable serialization
+	data := &proto.PutOp{}
+	err := json.Unmarshal(encoding, data)
+	return data, err
+}
+
 /*
-Write A client writes an entry to the leader
+writeSync A client writes an entry to the leader
 
 	A client writes a value from Values to a leader node
 	if that value has not previously been written. The leader adds
 	the entry to its log, updates its head_index.
 */
-func (s *shardManager) writeSync(op *proto.PutOp) (*proto.Stat, error) {
+func (s *shardManager) writeSync(op *proto.PutOp, responseChannel chan any) error {
 	s.log.Debug().
 		Interface("op", op).
 		Msg("Put operation")
 
 	if err := s.checkStatus(Leader); err != nil {
-		return nil, err
+		return err
 	}
 	entryId := &coordination.EntryId{
 		Epoch:  s.epoch,
@@ -449,7 +473,7 @@ func (s *shardManager) writeSync(op *proto.PutOp) (*proto.Stat, error) {
 	}
 	value, err := serializeOp(op)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	logEntry := &coordination.LogEntry{
 		EntryId: entryId,
@@ -458,13 +482,125 @@ func (s *shardManager) writeSync(op *proto.PutOp) (*proto.Stat, error) {
 
 	err = s.wal.Append(logEntry)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	s.headIndex = entryId
-	// TODO replication
-	// TODO respond when majority acknowledges
-	return nil, nil
+	s.waitingRoom[entryId] = waitingRoomEntry{
+		counter:             0,
+		confirmationChannel: responseChannel,
+	}
+	return nil
 
+}
+
+func (s *shardManager) sendEntriesToFollower(target string, lastPushedEntry *coordination.EntryId) {
+	err := sendRequestAndProcessResponse[any](s, target, func(client coordination.OxiaCoordinationClient) (any, error) {
+		addEntries, err := client.AddEntries(context.TODO())
+		if err != nil {
+			return nil, err
+		}
+
+		err = s.wal.Read(lastPushedEntry, func(entry *coordination.LogEntry) error {
+			err := addEntries.Send(&coordination.AddEntryRequest{
+				Epoch:       s.epoch,
+				Entry:       entry,
+				CommitIndex: s.commitIndex,
+			})
+			if err != nil {
+				// TODO log error
+				return err
+			}
+			s.followCursor[target].lastPushed = entry.EntryId
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		go func() {
+			for {
+				addEntryResponse, err := addEntries.Recv()
+				if err != nil {
+					// TODO log error
+					return
+				}
+				command := newCommand(func() (any, bool, error) {
+					exit, err3 := s.addEntryResponseSync(target, addEntryResponse)
+					return nil, exit, err3
+				})
+				s.commandChannel <- command
+			}
+		}()
+
+		return nil, nil
+	}, func(any) (bool, error) {
+		return false, nil
+	})
+	if err != nil {
+		// TODO log error
+	}
+}
+
+/*
+A leader node handles an add entry response
+
+	The leader updates the follow cursor last_confirmed
+	entry id, it also may advance the commit index.
+
+	An entry is committed when all of the following
+	has occurred:
+	- it has reached majority quorum
+	- the entire log prefix has reached majority quorum
+	- the entry epoch matches the current epoch
+
+	Key points:
+	- Entries of prior epochs cannot be committed directly by
+	  themselves, only entries of the current epoch can be
+	  committed. Committing an entry of the current epoch
+	  also implicitly includes all prior entries.
+	  To find a counterexample where loss of confirmed writes
+	  occurs when committing entries of prior epochs directly,
+	  comment out the condition 'entry_id.epoch = nstate.epoch'
+	  below. Also see the Raft paper.
+*/
+func (s *shardManager) addEntryResponseSync(follower string, response *coordination.AddEntryResponse) (bool, error) {
+	if err := s.checkStatus(Leader); err != nil {
+		return false, err
+	}
+	if err := s.checkEpochEqualIn(response); err != nil {
+		return false, nil
+	}
+	// TODO check if 'IsEarliestReceivableEntryMessage'
+	if !response.InvalidEpoch && s.followCursor[follower].status == Attached {
+		s.followCursor[follower].lastConfirmed = response.EntryId
+		// TODO check this part against spec
+		waitingEntry, ok := s.waitingRoom[response.EntryId]
+		if ok {
+			// If the entry is not there, it has been confirmed
+			waitingEntry.counter++
+			if waitingEntry.counter >= s.replicationFactor/2 {
+				logEntry, err := s.wal.ReadOne(response.EntryId)
+				if err != nil {
+					return false, err
+				}
+				op, err := deserializeOp(logEntry.GetValue())
+				if err != nil {
+					return false, err
+				}
+				if err != nil {
+					return false, err
+				}
+				stat, err := s.kv.Apply(op)
+				if err != nil {
+					return false, err
+				}
+				waitingEntry.confirmationChannel <- stat
+			}
+		}
+	} else {
+		// TODO what now? at least log
+	}
+	return false, nil
 }
 
 func (s *shardManager) AddEntries(srv coordination.OxiaCoordination_AddEntriesServer) (any, error) {
