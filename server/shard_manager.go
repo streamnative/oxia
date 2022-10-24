@@ -23,11 +23,12 @@ type ShardManager interface {
 	BecomeLeader(*coordination.BecomeLeaderRequest) (*coordination.BecomeLeaderResponse, error)
 	AddFollower(*coordination.AddFollowerRequest) (*coordination.CoordinationEmpty, error)
 	Truncate(*coordination.TruncateRequest) (*coordination.TruncateResponse, error)
+	Write(op *proto.PutOp) (*proto.Stat, error)
+	AddEntries(srv coordination.OxiaCoordination_AddEntriesServer) (any, error)
+	// Later
 	PrepareReconfig(*coordination.PrepareReconfigRequest) (*coordination.PrepareReconfigResponse, error)
 	Snapshot(*coordination.SnapshotRequest) (*coordination.SnapshotResponse, error)
 	CommitReconfig(*coordination.CommitReconfigRequest) (*coordination.CommitReconfigResponse, error)
-	Write(op *proto.PutOp) (*proto.Stat, error)
-	AddEntries(srv coordination.OxiaCoordination_AddEntriesServer) (any, error)
 }
 
 // Command is the representation of the work a [ShardManager] is supposed to do when it gets a request or response and a channel for the response.
@@ -501,14 +502,14 @@ func (s *shardManager) sendEntriesToFollower(target string, lastPushedEntry *coo
 		}
 
 		err = s.wal.Read(lastPushedEntry, func(entry *coordination.LogEntry) error {
-			err := addEntries.Send(&coordination.AddEntryRequest{
+			err2 := addEntries.Send(&coordination.AddEntryRequest{
 				Epoch:       s.epoch,
 				Entry:       entry,
 				CommitIndex: s.commitIndex,
 			})
-			if err != nil {
+			if err2 != nil {
 				// TODO log error
-				return err
+				return err2
 			}
 			s.followCursor[target].lastPushed = entry.EntryId
 			return nil
@@ -587,9 +588,6 @@ func (s *shardManager) addEntryResponseSync(follower string, response *coordinat
 				if err != nil {
 					return false, err
 				}
-				if err != nil {
-					return false, err
-				}
 				stat, err := s.kv.Apply(op)
 				if err != nil {
 					return false, err
@@ -604,7 +602,67 @@ func (s *shardManager) addEntryResponseSync(follower string, response *coordinat
 }
 
 func (s *shardManager) AddEntries(srv coordination.OxiaCoordination_AddEntriesServer) (any, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method AddEntries not implemented")
+	for {
+		req, err := srv.Recv()
+		if err != nil {
+			return nil, err
+		}
+		response := enqueueCommandAndWaitForResponse[*coordination.AddEntryResponse](s, func() (*coordination.AddEntryResponse, bool, error) {
+			resp, exit, err2 := s.addEntrySync(req)
+			return resp, exit, err2
+		})
+		err = srv.Send(response)
+		if err != nil {
+			return nil, err
+		}
+	}
+}
+
+func (s *shardManager) addEntrySync(req *coordination.AddEntryRequest) (*coordination.AddEntryResponse, bool, error) {
+	if req.GetEpoch() <= s.epoch {
+		/*
+		 A follower node rejects an entry from the leader.
+
+
+		  If the leader has a lower epoch than the follower then the
+		  follower must reject it with an INVALID_EPOCH response.
+
+		  Key points:
+		  - The epoch of the response should be the epoch of the
+		    request so that the leader will not ignore the response.
+		*/
+		return &coordination.AddEntryResponse{
+			Epoch:        req.Epoch,
+			EntryId:      nil,
+			InvalidEpoch: true,
+		}, false, nil
+	}
+	if s.status != Follower && s.status != Fenced {
+		return nil, false, status.Errorf(codes.FailedPrecondition, "AddEntry reuest when status = %s", s.status)
+	}
+
+	/*
+	  A follower node confirms an entry to the leader
+
+	  The follower adds the entry to its log, sets the head index
+	  and updates its commit index with the commit index of
+	  the request.
+	*/
+	s.status = Follower
+	s.epoch = req.Epoch
+	s.leader = "" // TODO msg.source_node
+	err := s.wal.Append(req.GetEntry())
+	if err != nil {
+		return nil, false, err
+	}
+	s.headIndex = req.Entry.EntryId
+	s.commitIndex = req.CommitIndex
+	return &coordination.AddEntryResponse{
+		Epoch:        s.epoch,
+		EntryId:      req.Entry.EntryId,
+		InvalidEpoch: false,
+	}, false, nil
+
 }
 
 func (s *shardManager) PrepareReconfig(req *coordination.PrepareReconfigRequest) (*coordination.PrepareReconfigResponse, error) {
