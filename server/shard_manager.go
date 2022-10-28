@@ -6,6 +6,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"io"
 	"oxia/common"
@@ -22,9 +23,9 @@ type ShardManager interface {
 	Fence(req *coordination.FenceRequest) (*coordination.FenceResponse, error)
 	BecomeLeader(*coordination.BecomeLeaderRequest) (*coordination.BecomeLeaderResponse, error)
 	AddFollower(*coordination.AddFollowerRequest) (*coordination.CoordinationEmpty, error)
-	Truncate(*coordination.TruncateRequest) (*coordination.TruncateResponse, error)
+	Truncate(string, *coordination.TruncateRequest) (*coordination.TruncateResponse, error)
 	Write(op *proto.PutOp) (*proto.Stat, error)
-	AddEntries(srv coordination.OxiaCoordination_AddEntriesServer) (any, error)
+	AddEntries(string, coordination.OxiaCoordination_AddEntriesServer) (any, error)
 	// Later
 	PrepareReconfig(*coordination.PrepareReconfigRequest) (*coordination.PrepareReconfigResponse, error)
 	Snapshot(*coordination.SnapshotRequest) (*coordination.SnapshotResponse, error)
@@ -63,7 +64,7 @@ type CursorStatus int16
 const (
 	Attached CursorStatus = iota
 	PendingTruncate
-	// PendingRemoval
+	PendingRemoval
 )
 
 type waitingRoomEntry struct {
@@ -78,7 +79,7 @@ type cursor struct {
 }
 
 type shardManager struct {
-	shard              uint32
+	shard              ShardId
 	epoch              uint64
 	replicationFactor  uint32
 	leader             string
@@ -97,7 +98,7 @@ type shardManager struct {
 	log             zerolog.Logger
 }
 
-func NewShardManager(shard uint32, identityAddress string, pool common.ClientPool) ShardManager {
+func NewShardManager(shard ShardId, identityAddress string, pool common.ClientPool, wal Wal, kv KeyValueStore) ShardManager {
 	sm := &shardManager{
 		shard:              shard,
 		epoch:              0,
@@ -109,16 +110,15 @@ func NewShardManager(shard uint32, identityAddress string, pool common.ClientPoo
 		reconfigInProgress: false,
 		status:             NotMember,
 
-		// TODO dependency injection
-		wal:             NewWal(shard),
-		kv:              NewKVStore(shard),
+		wal:             wal,
+		kv:              kv,
 		commandChannel:  make(chan *Command, 8),
 		waitingRoom:     make(map[*coordination.EntryId]waitingRoomEntry),
 		clientPool:      pool,
 		identityAddress: identityAddress,
 		log: log.With().
 			Str("component", "shard-manager").
-			Uint32("shard", shard).
+			Str("shard", string(shard)).
 			Logger(),
 	}
 
@@ -142,19 +142,21 @@ func enqueueCommandAndWaitForResponseWithChannel[T any](s *shardManager, f func(
 	}, responseChannel)
 	s.commandChannel <- command
 	response := <-command.responseChan
-	// TODO get rid of type assertion. It's ugly
 	return response.(T)
 }
 
-func sendRequestAndProcessResponse[RESP any](s *shardManager, target string, send func(client coordination.OxiaCoordinationClient) (RESP, error), process func(RESP) (bool, error)) error {
+func sendRequestAndProcessResponse[RESP any](s *shardManager, target string, send func(context.Context, coordination.OxiaCoordinationClient) (RESP, error), process func(RESP) (bool, error)) error {
 	rpc, err := s.clientPool.GetInternalRpc(target)
 	if err != nil {
 		return err
 	}
 	go func() {
 
-		/*TODO create context with shard metadata and maybe timeout*/
-		resp, err2 := send(rpc)
+		ctx := context.Background()
+		ctx = metadata.AppendToOutgoingContext(ctx,
+			"shard", string(s.shard),
+			"source_node", s.identityAddress)
+		resp, err2 := send(ctx, rpc)
 		if err2 != nil {
 			log.Error().Err(err2).Msg("Got error sending truncateRequest")
 		}
@@ -266,12 +268,12 @@ func (s *shardManager) getCursors(followers []*coordination.BecomeLeaderRequest_
 }
 
 func (s *shardManager) sendTruncateRequest(target string, targetEpoch uint64) error {
-	headIndex, err := s.wal.LastEntryIdUptoEpoch(targetEpoch)
+	headIndex, err := s.wal.GetHighestEntryOfEpoch(targetEpoch)
 	if err != nil {
 		return err
 	}
-	send := func(rpc coordination.OxiaCoordinationClient) (*coordination.TruncateResponse, error) {
-		resp, err2 := rpc.Truncate(nil, &coordination.TruncateRequest{
+	send := func(ctx context.Context, rpc coordination.OxiaCoordinationClient) (*coordination.TruncateResponse, error) {
+		resp, err2 := rpc.Truncate(ctx, &coordination.TruncateRequest{
 			Epoch:     s.epoch,
 			HeadIndex: headIndex,
 		})
@@ -355,9 +357,9 @@ func (s *shardManager) becomeLeaderSync(req *coordination.BecomeLeaderRequest) (
 	}
 	return &coordination.BecomeLeaderResponse{Epoch: req.GetEpoch()}, nil
 }
-func (s *shardManager) Truncate(req *coordination.TruncateRequest) (*coordination.TruncateResponse, error) {
+func (s *shardManager) Truncate(source string, req *coordination.TruncateRequest) (*coordination.TruncateResponse, error) {
 	response := enqueueCommandAndWaitForResponse[*coordination.TruncateResponse](s, func() (*coordination.TruncateResponse, bool, error) {
-		resp, err := s.truncateSync(req)
+		resp, err := s.truncateSync(source, req)
 		return resp, false, err
 	})
 	return response, nil
@@ -371,7 +373,7 @@ has been selected as a follower. It truncates its log
 to the indicates entry id, updates its epoch and changes
 to a Follower.
 */
-func (s *shardManager) truncateSync(req *coordination.TruncateRequest) (*coordination.TruncateResponse, error) {
+func (s *shardManager) truncateSync(source string, req *coordination.TruncateRequest) (*coordination.TruncateResponse, error) {
 	if err := s.checkStatus(Fenced); err != nil {
 		return nil, err
 	}
@@ -380,7 +382,7 @@ func (s *shardManager) truncateSync(req *coordination.TruncateRequest) (*coordin
 	}
 	s.status = Follower
 	s.epoch = req.Epoch
-	s.leader = "" // TODO msg.source_node
+	s.leader = source
 	headEntryId, err := s.wal.TruncateLog(req.HeadIndex)
 	if err != nil {
 		return nil, err
@@ -441,13 +443,11 @@ func (s *shardManager) Write(op *proto.PutOp) (*proto.Stat, error) {
 }
 
 func serializeOp(op *proto.PutOp) ([]byte, error) {
-	// TODO reasonable serialization
 	val, err := json.Marshal(op)
 	return val, err
 }
 
 func deserializeOp(encoding []byte) (*proto.PutOp, error) {
-	// TODO reasonable serialization
 	data := &proto.PutOp{}
 	err := json.Unmarshal(encoding, data)
 	return data, err
@@ -480,7 +480,8 @@ func (s *shardManager) writeSync(op *proto.PutOp, responseChannel chan any) erro
 		EntryId: entryId,
 		Value:   value,
 	}
-
+	// TODO check op's expectedVersion.
+	// Note: the version in the KV store may be updated by the time this entry is applied
 	err = s.wal.Append(logEntry)
 	if err != nil {
 		return err
@@ -495,8 +496,8 @@ func (s *shardManager) writeSync(op *proto.PutOp, responseChannel chan any) erro
 }
 
 func (s *shardManager) sendEntriesToFollower(target string, lastPushedEntry *coordination.EntryId) {
-	err := sendRequestAndProcessResponse[any](s, target, func(client coordination.OxiaCoordinationClient) (any, error) {
-		addEntries, err := client.AddEntries(context.TODO())
+	err := sendRequestAndProcessResponse[any](s, target, func(ctx context.Context, client coordination.OxiaCoordinationClient) (any, error) {
+		addEntries, err := client.AddEntries(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -508,7 +509,7 @@ func (s *shardManager) sendEntriesToFollower(target string, lastPushedEntry *coo
 				CommitIndex: s.commitIndex,
 			})
 			if err2 != nil {
-				// TODO log error
+				log.Error().Err(err2).Msgf("Error replicating message to %s", target)
 				return err2
 			}
 			s.followCursor[target].lastPushed = entry.EntryId
@@ -520,9 +521,9 @@ func (s *shardManager) sendEntriesToFollower(target string, lastPushedEntry *coo
 
 		go func() {
 			for {
-				addEntryResponse, err := addEntries.Recv()
-				if err != nil {
-					// TODO log error
+				addEntryResponse, err2 := addEntries.Recv()
+				if err2 != nil {
+					log.Error().Err(err2).Msg("Error while waiting for ack")
 					return
 				}
 				command := newCommand(func() (any, bool, error) {
@@ -532,13 +533,12 @@ func (s *shardManager) sendEntriesToFollower(target string, lastPushedEntry *coo
 				s.commandChannel <- command
 			}
 		}()
-
 		return nil, nil
 	}, func(any) (bool, error) {
 		return false, nil
 	})
 	if err != nil {
-		// TODO log error
+		log.Error().Err(err).Msgf("Error sending message to '%s'", target)
 	}
 }
 
@@ -577,7 +577,7 @@ func (s *shardManager) addEntryResponseSync(follower string, response *coordinat
 		// TODO check this part against spec
 		waitingEntry, ok := s.waitingRoom[response.EntryId]
 		if ok {
-			// If the entry is not there, it has been confirmed
+			// If the entry is not there, it has already been confirmed
 			waitingEntry.counter++
 			if waitingEntry.counter >= s.replicationFactor/2 {
 				logEntry, err := s.wal.ReadOne(response.EntryId)
@@ -590,25 +590,28 @@ func (s *shardManager) addEntryResponseSync(follower string, response *coordinat
 				}
 				stat, err := s.kv.Apply(op)
 				if err != nil {
+					// TODO if op is inapplicable, it's not an error really. Maybe should be encapsulated in the stat
 					return false, err
 				}
 				waitingEntry.confirmationChannel <- stat
+				// TODO update commitIndex
+				// TODO notify watchers
 			}
 		}
 	} else {
-		// TODO what now? at least log
+		log.Error().Msgf("Entry rejected by '%s'")
 	}
 	return false, nil
 }
 
-func (s *shardManager) AddEntries(srv coordination.OxiaCoordination_AddEntriesServer) (any, error) {
+func (s *shardManager) AddEntries(source string, srv coordination.OxiaCoordination_AddEntriesServer) (any, error) {
 	for {
 		req, err := srv.Recv()
 		if err != nil {
 			return nil, err
 		}
 		response := enqueueCommandAndWaitForResponse[*coordination.AddEntryResponse](s, func() (*coordination.AddEntryResponse, bool, error) {
-			resp, exit, err2 := s.addEntrySync(req)
+			resp, exit, err2 := s.addEntrySync(source, req)
 			return resp, exit, err2
 		})
 		err = srv.Send(response)
@@ -618,7 +621,7 @@ func (s *shardManager) AddEntries(srv coordination.OxiaCoordination_AddEntriesSe
 	}
 }
 
-func (s *shardManager) addEntrySync(req *coordination.AddEntryRequest) (*coordination.AddEntryResponse, bool, error) {
+func (s *shardManager) addEntrySync(source string, req *coordination.AddEntryRequest) (*coordination.AddEntryResponse, bool, error) {
 	if req.GetEpoch() <= s.epoch {
 		/*
 		 A follower node rejects an entry from the leader.
@@ -638,7 +641,7 @@ func (s *shardManager) addEntrySync(req *coordination.AddEntryRequest) (*coordin
 		}, false, nil
 	}
 	if s.status != Follower && s.status != Fenced {
-		return nil, false, status.Errorf(codes.FailedPrecondition, "AddEntry reuest when status = %s", s.status)
+		return nil, false, status.Errorf(codes.FailedPrecondition, "AddEntry request from %s when status = %s", source, s.status)
 	}
 
 	/*
@@ -650,13 +653,14 @@ func (s *shardManager) addEntrySync(req *coordination.AddEntryRequest) (*coordin
 	*/
 	s.status = Follower
 	s.epoch = req.Epoch
-	s.leader = "" // TODO msg.source_node
+	s.leader = source
 	err := s.wal.Append(req.GetEntry())
 	if err != nil {
 		return nil, false, err
 	}
 	s.headIndex = req.Entry.EntryId
 	s.commitIndex = req.CommitIndex
+	// TODO apply entries up to commitIndex to the KV store
 	return &coordination.AddEntryResponse{
 		Epoch:        s.epoch,
 		EntryId:      req.Entry.EntryId,

@@ -17,7 +17,7 @@ type kvStore struct {
 	store map[string][]byte
 }
 
-func NewKVStore(shard uint32) KeyValueStore {
+func NewKVStore(shard ShardId) KeyValueStore {
 	return &kvStore{
 		store: make(map[string][]byte),
 	}

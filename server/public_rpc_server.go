@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc"
 	"net"
 	"oxia/proto"
+	"strconv"
 )
 
 type PublicRpcServer struct {
@@ -57,7 +58,8 @@ func (s *PublicRpcServer) GetShardsAssignments(_ *proto.Empty, out proto.ClientA
 }
 
 func (s *PublicRpcServer) Put(ctx context.Context, putOp *proto.PutOp) (*proto.Stat, error) {
-	slc, err := s.shardsDirector.GetManager(putOp.GetShardId(), false)
+	// TODO make shard ID string in client rpc
+	slc, err := s.shardsDirector.GetManager(ShardId(strconv.FormatInt(int64(putOp.GetShardId()), 10)), false)
 	if err != nil {
 		return nil, err
 	}

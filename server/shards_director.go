@@ -5,6 +5,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"io"
+	"oxia/common"
 	"oxia/proto"
 	"sync"
 )
@@ -14,15 +15,17 @@ type ShardsDirector interface {
 
 	GetShardsAssignments(callback func(*proto.ShardsAssignments))
 
-	GetManager(shardId uint32, create bool) (ShardManager, error)
+	GetManager(shardId ShardId, create bool) (ShardManager, error)
 }
+
+type ShardId string
 
 type shardsDirector struct {
 	mutex *sync.Mutex
 	cond  *sync.Cond
 
 	assignments   *proto.ShardsAssignments
-	shardManagers map[uint32]ShardManager
+	shardManagers map[ShardId]ShardManager
 	identityAddr  string
 
 	log zerolog.Logger
@@ -35,7 +38,7 @@ func NewShardsDirector(identityAddr string) ShardsDirector {
 		cond:  sync.NewCond(mutex),
 
 		identityAddr:  identityAddr,
-		shardManagers: make(map[uint32]ShardManager),
+		shardManagers: make(map[ShardId]ShardManager),
 		log: log.With().
 			Str("component", "shards-director").
 			Logger(),
@@ -61,15 +64,19 @@ func (s *shardsDirector) GetShardsAssignments(callback func(*proto.ShardsAssignm
 	}
 }
 
-func (s *shardsDirector) GetManager(shardId uint32, create bool) (ShardManager, error) {
+func (s *shardsDirector) GetManager(shardId ShardId, create bool) (ShardManager, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
 	manager, ok := s.shardManagers[shardId]
 	if !ok && create {
-		s.shardManagers[shardId] = NewShardManager(shardId, s.identityAddr /* TODO */, nil)
+		w := NewInMemoryWal(shardId)
+		kv := NewKVStore(shardId)
+		pool := common.NewClientPool()
+		s.shardManagers[shardId] = NewShardManager(shardId, s.identityAddr, pool, w, kv)
 	} else {
-		s.log.Debug().Uint32("shard", shardId).Msg("This node is not hosting shard")
+		s.log.Debug().Str("shard", string(shardId)).
+			Msg("This node is not hosting shard")
 		return nil, errors.Errorf("This node is not leader for shard %d", shardId)
 	}
 	return manager, nil
@@ -83,7 +90,7 @@ func (s *shardsDirector) Close() error {
 		if err := manager.Close(); err != nil {
 			s.log.Error().
 				Err(err).
-				Uint32("shard", shard).
+				Str("shard", string(shard)).
 				Msg("Failed to shutdown leader controller")
 		}
 	}
