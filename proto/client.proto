@@ -13,6 +13,8 @@ service ClientAPI {
 
   rpc Put(PutOp) returns (Stat) {}
 
+  rpc Get(GetOp) returns (GetResult) {}
+
 
   rpc GetNotifications(GetNotificationOp) returns (stream Notification) {}
 }
@@ -40,6 +42,16 @@ message PutOp {
   string key = 2;
   bytes payload = 3;
   optional uint64 expected_version = 4;
+}
+
+message GetOp {
+  uint32 shard_id = 1;
+  string key = 2;
+}
+
+message GetResult {
+  Stat stat = 1;
+  bytes payload = 2;
 }
 
 message GetNotificationOp {

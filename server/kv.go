@@ -1,45 +1,69 @@
 package server
 
 import (
+	"github.com/pkg/errors"
 	"io"
 	"oxia/proto"
-	"time"
 )
 
 type KeyValueStore interface {
 	io.Closer
-	Apply(op *proto.PutOp) (*proto.Stat, error)
-	Get(op *proto.PutOp) ([]byte, error)
+	Apply(op *proto.PutOp, timestamp uint64) (KVEntry, error)
+	Get(op *proto.GetOp) (KVEntry, error)
 }
 
-type kvStore struct {
-	// TODO persistent implementation
-	store map[string][]byte
+type inMemoryKVStore struct {
+	store map[string]KVEntry
 }
 
-func NewKVStore(shard ShardId) KeyValueStore {
-	return &kvStore{
-		store: make(map[string][]byte),
+type KVEntry struct {
+	Payload []byte
+	Version uint64
+	Created uint64
+	Updated uint64
+}
+
+func NewInMemoryKVStore() KeyValueStore {
+	return &inMemoryKVStore{
+		store: make(map[string]KVEntry),
 	}
 }
 
-func (k kvStore) Close() error {
-	k.store = make(map[string][]byte)
+func (k inMemoryKVStore) Close() error {
+	k.store = make(map[string]KVEntry)
 	return nil
 }
 
-func (k kvStore) Apply(op *proto.PutOp) (*proto.Stat, error) {
-	k.store[op.Key] = op.Payload
-	return &proto.Stat{
-		// TODO values that make sense
-		Version:           0,
-		CreatedTimestamp:  uint64(time.Now().Nanosecond()),
-		ModifiedTimestamp: uint64(time.Now().Nanosecond()),
-	}, nil
+func (k inMemoryKVStore) Apply(op *proto.PutOp, timestamp uint64) (KVEntry, error) {
+	old, existed := k.store[op.Key]
+	var version uint64
+	var created uint64
+	if existed {
+		created = old.Created
+		version = 0
+	} else {
+		created = timestamp
+		version = old.Version
+	}
+	if op.ExpectedVersion != nil && *op.ExpectedVersion != version {
+		return KVEntry{}, errors.Errorf("Version check (%d != %d)", *op.ExpectedVersion, version)
+	}
+	entry := KVEntry{
+		Payload: op.Payload,
+		Version: version,
+		Created: created,
+		Updated: timestamp,
+	}
+	k.store[op.Key] = entry
+	return entry, nil
+
 }
 
-func (k kvStore) Get(op *proto.PutOp) ([]byte, error) {
-	// TODO define GetOp
-	val, _ := k.store[op.Key]
-	return val, nil
+func (k inMemoryKVStore) Get(op *proto.GetOp) (KVEntry, error) {
+	val, ok := k.store[op.Key]
+	if ok {
+		return val, nil
+	} else {
+		return KVEntry{}, nil
+	}
 }

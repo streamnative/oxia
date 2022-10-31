@@ -67,6 +67,15 @@ func (s *PublicRpcServer) Put(ctx context.Context, putOp *proto.PutOp) (*proto.S
 	return slc.Write(putOp)
 }
 
+func (s *PublicRpcServer) Get(ctx context.Context, getOp *proto.GetOp) (*proto.GetResult, error) {
+	_, err := s.shardsDirector.GetManager(ShardId(strconv.FormatInt(int64(getOp.GetShardId()), 10)), false)
+	if err != nil {
+		return nil, err
+	}
+	// TODO Read from KVStore directly? Only if leader
+	return nil, nil
+}
+
 func (s *PublicRpcServer) Close() error {
 	s.grpcServer.GracefulStop()
 	return nil

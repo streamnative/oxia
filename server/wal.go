@@ -11,9 +11,10 @@ import (
 
 type Wal interface {
 	io.Closer
-	Append(entry *coordination.LogEntry) (err error)
+	Append(entry *coordination.LogEntry) error
 
-	Read(lastPushedEntryId *coordination.EntryId, callback func(*coordination.LogEntry) error) (err error)
+	Read(lastPushedEntryId *coordination.EntryId, callback func(*coordination.LogEntry) error) error
+	ReadSync(previousCommittedEntryId *coordination.EntryId, lastCommittedEntryId *coordination.EntryId, callback func(*coordination.LogEntry) error) error
 	GetHighestEntryOfEpoch(epoch uint64) (*coordination.EntryId, error)
 	TruncateLog(headIndex *coordination.EntryId) (*coordination.EntryId, error)
 	StopReaders()
@@ -48,6 +49,7 @@ func (w *inMemoryWal) Append(entry *coordination.LogEntry) error {
 		callback := w.callbacks[index]
 		err := callback(entry)
 		if err != nil {
+			// TODO retry
 			log.Error().Err(err).Msg("Encountered error. Removing callback")
 			w.callbacks[index] = w.callbacks[len(w.callbacks)-1]
 			w.callbacks = w.callbacks[:len(w.callbacks)-1]
@@ -66,13 +68,31 @@ func (w *inMemoryWal) ReadOne(id *coordination.EntryId) (*coordination.LogEntry,
 	return w.log[index], nil
 }
 
+func (w *inMemoryWal) ReadSync(previousCommittedEntryId *coordination.EntryId, lastCommittedEntryId *coordination.EntryId, callback func(*coordination.LogEntry) error) error {
+	index, err := findId(w, previousCommittedEntryId, true)
+	if err != nil {
+		return err
+	}
+	for index+1 < len(w.log) {
+		index++
+		entry := w.log[index]
+		if entry.EntryId.Epoch > lastCommittedEntryId.Epoch || (entry.EntryId.Epoch == lastCommittedEntryId.Epoch && entry.EntryId.Offset > lastCommittedEntryId.Offset) {
+			break
+		}
+		err2 := callback(entry)
+		if err2 != nil {
+			return err2
+		}
+	}
+	return nil
+}
+
 func (w *inMemoryWal) Read(lastPushedEntryId *coordination.EntryId, callback func(*coordination.LogEntry) error) error {
 	index, err := findId(w, lastPushedEntryId, true)
 	if err != nil {
 		return err
 	}
-	index++
-	for index < len(w.log) {
+	for index+1 < len(w.log) {
 		index++
 		err2 := callback(w.log[index])
 		if err2 != nil {

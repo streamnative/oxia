@@ -36,6 +36,7 @@ message EntryId {
 message LogEntry {
   EntryId entry_id = 1;
   bytes value = 2;
+  uint64 timestamp = 3;
 }
 
 message CoordinationEmpty {}

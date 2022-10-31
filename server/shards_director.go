@@ -69,17 +69,24 @@ func (s *shardsDirector) GetManager(shardId ShardId, create bool) (ShardManager,
 	defer s.mutex.Unlock()
 
 	manager, ok := s.shardManagers[shardId]
-	if !ok && create {
+	if ok {
+		return manager, nil
+	} else if create {
 		w := NewInMemoryWal(shardId)
-		kv := NewKVStore(shardId)
+		kv := NewInMemoryKVStore()
 		pool := common.NewClientPool()
-		s.shardManagers[shardId] = NewShardManager(shardId, s.identityAddr, pool, w, kv)
+		sm, err := NewShardManager(shardId, s.identityAddr, pool, w, kv)
+		if err != nil {
+			return nil, err
+		}
+		s.shardManagers[shardId] = sm
+		return sm, nil
 	} else {
 		s.log.Debug().Str("shard", string(shardId)).
 			Msg("This node is not hosting shard")
 		return nil, errors.Errorf("This node is not leader for shard %d", shardId)
 	}
-	return manager, nil
+
 }
 
 func (s *shardsDirector) Close() error {
