@@ -2,3 +2,5 @@
 oxia
 oxia-client
 **/*.pb.go
+.DS_Store
+**/*.toolbox
