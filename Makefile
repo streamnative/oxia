@@ -10,15 +10,11 @@ clean:
 	rm -f oxia
 	rm -f */*.pb.go
 
-docker: docker_arm docker_x86
+docker:
+	docker build -t oxia:latest .
 
-docker_arm:
-	env GOOS=linux GOARCH=arm64 go build -o oxia ./cmd
-	docker build --platform arm64 -t oxia:latest .
-
-docker_x86:
-	env GOOS=linux GOARCH=amd64 go build -o oxia ./cmd
-	docker build --platform x86_64 -t oxia:latest-x86_64 .
+docker_multi_arch:
+	docker buildx build --platform linux/x86_64,linux/arm64 -t oxia:latest .
 
 .PHONY: proto
 proto:
