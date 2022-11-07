@@ -4,8 +4,7 @@ build: proto
 	go build -v -o oxia ./cmd
 
 test: build
-	go test -v -o oxia ./cmd
-	go test -v -o oxia ./server
+	go test -race ./...
 
 clean:
 	rm -f oxia
