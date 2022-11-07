@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"github.com/rs/zerolog/log"
 	"os"
+	"oxia/coordination"
 	"oxia/operator"
-	"oxia/proto"
 	"oxia/server"
 )
 
@@ -18,8 +18,8 @@ type standaloneConfig struct {
 type standalone struct {
 	rpc *server.PublicRpcServer
 
-	shardsManager           server.ShardsManager
-	identityInternalAddress proto.ServerAddress
+	shardsDirector          server.ShardsDirector
+	identityInternalAddress coordination.ServerAddress
 }
 
 func NewStandalone(config *standaloneConfig) (*standalone, error) {
@@ -40,15 +40,15 @@ func NewStandalone(config *standaloneConfig) (*standalone, error) {
 	}
 
 	identityAddr := fmt.Sprintf("%s:%d", advertisedPublicAddress, config.PublicServicePort)
-	s.shardsManager = server.NewShardsManager(identityAddr)
+	s.shardsDirector = server.NewShardsDirector(identityAddr)
 
-	cs := operator.ComputeAssignments([]*proto.ServerAddress{{
+	_ = operator.ComputeAssignments([]*coordination.ServerAddress{{
 		InternalUrl: identityAddr,
 		PublicUrl:   identityAddr,
 	}}, 1, conf.NumShards)
-	s.shardsManager.UpdateClusterStatus(cs)
+	// TODO bootstrap shards in s.shardsDirector
 
-	s.rpc, err = server.NewPublicRpcServer(int(config.PublicServicePort), advertisedPublicAddress, s.shardsManager)
+	s.rpc, err = server.NewPublicRpcServer(int(config.PublicServicePort), advertisedPublicAddress, s.shardsDirector)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +61,7 @@ func (s *standalone) Close() error {
 		return err
 	}
 
-	if err := s.shardsManager.Close(); err != nil {
+	if err := s.shardsDirector.Close(); err != nil {
 		return err
 	}
 

@@ -1,0 +1,5568 @@
+diff --git a/Makefile b/Makefile
+index 719b1b7..122c76c 100644
+--- a/Makefile
++++ b/Makefile
+@@ -5,10 +5,11 @@ build: proto
+ 
+ test: build
+ 	go test -v -o oxia ./cmd
++	go test -v -o oxia ./server
+ 
+ clean:
+ 	rm -f oxia
+-	rm -f proto/*.pb.go
++	rm -f */*.pb.go
+ 
+ docker: docker_arm docker_x86
+ 
+@@ -23,3 +24,4 @@ docker_x86:
+ .PHONY: proto
+ proto:
+ 	protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative proto/*.proto
++	protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative coordination/*.proto
+diff --git a/common/client_pool.go b/common/client_pool.go
+index b2b81ae..944e035 100644
+--- a/common/client_pool.go
++++ b/common/client_pool.go
+@@ -5,6 +5,7 @@ import (
+ 	"github.com/rs/zerolog/log"
+ 	"google.golang.org/grpc"
+ 	"io"
++	"oxia/coordination"
+ 	"oxia/proto"
+ 	"sync"
+ )
+@@ -12,7 +13,8 @@ import (
+ type ClientPool interface {
+ 	io.Closer
+ 	GetClientRpc(target string) (proto.ClientAPIClient, error)
+-	GetInternalRpc(target string) (proto.InternalAPIClient, error)
++	GetControlRpc(target string) (coordination.OxiaControlClient, error)
++	GetReplicationRpc(target string) (coordination.OxiaLogReplicationClient, error)
+ }
+ 
+ type clientPool struct {
+@@ -54,12 +56,21 @@ func (cp *clientPool) GetClientRpc(target string) (proto.ClientAPIClient, error)
+ 	}
+ }
+ 
+-func (cp *clientPool) GetInternalRpc(target string) (proto.InternalAPIClient, error) {
++func (cp *clientPool) GetControlRpc(target string) (coordination.OxiaControlClient, error) {
+ 	cnx, err := cp.getConnection(target)
+ 	if err != nil {
+ 		return nil, err
+ 	} else {
+-		return proto.NewInternalAPIClient(cnx), nil
++		return coordination.NewOxiaControlClient(cnx), nil
++	}
++}
++
++func (cp *clientPool) GetReplicationRpc(target string) (coordination.OxiaLogReplicationClient, error) {
++	cnx, err := cp.getConnection(target)
++	if err != nil {
++		return nil, err
++	} else {
++		return coordination.NewOxiaLogReplicationClient(cnx), nil
+ 	}
+ }
+ 
+diff --git a/coordination/coordination.proto b/coordination/coordination.proto
+new file mode 100644
+index 0000000..9e602d3
+--- /dev/null
++++ b/coordination/coordination.proto
+@@ -0,0 +1,136 @@
++syntax = "proto3";
++
++option go_package = "github.com/streamnative/oxia/coordination";
++
++package coordination;
++
++//controller -> node
++service OxiaControl {
++  rpc Fence(FenceRequest) returns (FenceResponse) {}
++  rpc BecomeLeader(BecomeLeaderRequest) returns (BecomeLeaderResponse) {}
++  rpc AddFollower(AddFollowerRequest) returns (CoordinationEmpty) {}
++
++  rpc PrepareReconfig(PrepareReconfigRequest) returns (PrepareReconfigResponse) {}
++  rpc Snapshot(SnapshotRequest) returns (SnapshotResponse) {}
++  rpc CommitReconfig(CommitReconfigRequest) returns (CommitReconfigResponse) {}
++}
++
++//node (leader) -> node (follower)
++service OxiaLogReplication {
++  rpc Truncate(TruncateRequest) returns (TruncateResponse) {}
++  rpc AddEntries(stream AddEntryRequest) returns (stream AddEntryResponse) {}
++}
++
++message ServerAddress {
++  string internal_url = 1;
++  string public_url = 2;
++}
++
++message EntryId {
++  uint64 epoch = 1;
++  uint64 offset = 2;
++}
++
++message LogEntry {
++  EntryId entry_id = 1;
++  bytes value = 2;
++  uint64 timestamp = 3;
++}
++
++message CoordinationEmpty {}
++
++message FenceRequest {
++  uint64 epoch = 1;
++}
++message FenceResponse {
++  uint64 epoch = 1;
++  EntryId head_index = 2;
++}
++
++message BecomeLeaderRequest {
++  message FollowerEntry {
++    ServerAddress key = 1;
++    EntryId value = 2;
++  }
++  uint64 epoch = 1;
++  uint32 replication_factor = 2;
++  repeated FollowerEntry follower_map = 3;
++}
++message BecomeLeaderResponse {
++  uint64 epoch = 1;
++}
++
++message AddFollowerRequest {
++  uint64 epoch = 1;
++  ServerAddress follower = 2;
++  EntryId head_index = 3;
++}
++
++message TruncateRequest {
++  uint64 epoch = 1;
++  EntryId head_index = 2;
++}
++message TruncateResponse {
++  uint64 epoch = 1;
++  EntryId head_index = 2;
++}
++
++message AddEntryRequest {
++  uint64 epoch = 1;
++  LogEntry entry = 2;
++  EntryId commit_index = 3;
++}
++message AddEntryResponse {
++  uint64 epoch = 1;
++  EntryId entry_id = 2;
++  bool invalid_epoch = 3;
++
++}
++
++enum ReconfigOp {
++  contract = 0;
++  expand = 1;
++  nodeSwap = 2;
++}
++
++message PrepareReconfigRequest {
++  uint64 epoch = 1;
++  ReconfigOp op = 2;
++  optional ServerAddress old_node = 3;
++  optional ServerAddress new_node = 4;
++
++}
++
++message PrepareReconfigResponse {
++  uint64 epoch = 1;
++  optional EntryId head_index = 2;
++  optional EntryId commit_index = 3;
++  repeated LogEntry snapshot = 4;
++
++}
++
++message SnapshotRequest {
++  uint64 epoch = 1;
++  EntryId head_index = 2;
++  EntryId commit_index = 3;
++  LogEntry snapshot = 4;
++}
++message SnapshotResponse {
++  uint64 epoch = 1;
++  EntryId head_index = 2;
++}
++
++message CommitReconfigRequest {
++  uint64 epoch = 1;
++  uint32 replication_factor = 2;
++  ReconfigOp op = 3;
++  optional ServerAddress old_node = 4;
++  optional ServerAddress new_node = 5;
++  optional EntryId head_index = 6;
++}
++message CommitReconfigResponse {
++  uint64 epoch = 1;
++  ReconfigOp op = 2;
++  optional ServerAddress old_node = 3;
++  optional ServerAddress new_node = 4;
++}
+diff --git a/go.mod b/go.mod
+index 40c7fac..2fd1ee8 100644
+--- a/go.mod
++++ b/go.mod
+@@ -1,11 +1,13 @@
+ module oxia
+ 
+-go 1.17
++go 1.19
+ 
+ require (
++	github.com/boltdb/bolt v1.3.1
+ 	github.com/pkg/errors v0.9.1
+ 	github.com/rs/zerolog v1.26.0
+ 	github.com/spf13/cobra v1.3.0
++	github.com/tidwall/wal v1.1.7
+ 	google.golang.org/grpc v1.42.0
+ 	google.golang.org/protobuf v1.27.1
+ )
+@@ -14,6 +16,10 @@ require (
+ 	github.com/golang/protobuf v1.5.2 // indirect
+ 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
+ 	github.com/spf13/pflag v1.0.5 // indirect
++	github.com/tidwall/gjson v1.10.2 // indirect
++	github.com/tidwall/match v1.1.1 // indirect
++	github.com/tidwall/pretty v1.2.0 // indirect
++	github.com/tidwall/tinylru v1.1.0 // indirect
+ 	golang.org/x/net v0.0.0-20210813160813-60bc85c4be6d // indirect
+ 	golang.org/x/sys v0.0.0-20211205182925-97ca703d548d // indirect
+ 	golang.org/x/text v0.3.7 // indirect
+diff --git a/go.sum b/go.sum
+index a96205a..4692808 100644
+--- a/go.sum
++++ b/go.sum
+@@ -64,6 +64,8 @@ github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973/go.mod h1:Dwedo/Wpr24
+ github.com/beorn7/perks v1.0.0/go.mod h1:KWe93zE9D1o94FZ5RNwFwVgaQK1VOXiVxmqh+CedLV8=
+ github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
+ github.com/bgentry/speakeasy v0.1.0/go.mod h1:+zsyZBPWlz7T6j88CTgSN5bM796AkVf0kBD4zp0CCIs=
++github.com/boltdb/bolt v1.3.1 h1:JQmyP4ZBrce+ZQu0dY660FMfatumYDLun9hBCUVIkF4=
++github.com/boltdb/bolt v1.3.1/go.mod h1:clJnj/oiGkjum5o1McbSZDSLxVThjynRyGBgiAx27Ps=
+ github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
+ github.com/census-instrumentation/opencensus-proto v0.3.0/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
+ github.com/cespare/xxhash v1.1.0/go.mod h1:XrSqR1VqqWfGrhpAt58auRo0WTKS1nRRg3ghfAqPWnc=
+@@ -324,6 +326,16 @@ github.com/stretchr/testify v1.5.1/go.mod h1:5W2xD1RspED5o8YsWQXVCued0rvSQ+mT+I5
+ github.com/stretchr/testify v1.6.1/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
+ github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
+ github.com/subosito/gotenv v1.2.0/go.mod h1:N0PQaV/YGNqwC0u51sEeR/aUtSLEXKX9iv69rRypqCw=
++github.com/tidwall/gjson v1.10.2 h1:APbLGOM0rrEkd8WBw9C24nllro4ajFuJu0Sc9hRz8Bo=
++github.com/tidwall/gjson v1.10.2/go.mod h1:/wbyibRr2FHMks5tjHJ5F8dMZh3AcwJEMf5vlfC0lxk=
++github.com/tidwall/match v1.1.1 h1:+Ho715JplO36QYgwN9PGYNhgZvoUSc9X2c80KVTi+GA=
++github.com/tidwall/match v1.1.1/go.mod h1:eRSPERbgtNPcGhD8UCthc6PmLEQXEWd3PRB5JTxsfmM=
++github.com/tidwall/pretty v1.2.0 h1:RWIZEg2iJ8/g6fDDYzMpobmaoGh5OLl4AXtGUGPcqCs=
++github.com/tidwall/pretty v1.2.0/go.mod h1:ITEVvHYasfjBbM0u2Pg8T2nJnzm8xPwvNhhsoaGGjNU=
++github.com/tidwall/tinylru v1.1.0 h1:XY6IUfzVTU9rpwdhKUF6nQdChgCdGjkMfLzbWyiau6I=
++github.com/tidwall/tinylru v1.1.0/go.mod h1:3+bX+TJ2baOLMWTnlyNWHh4QMnFyARg2TLTQ6OFbzw8=
++github.com/tidwall/wal v1.1.7 h1:emc1TRjIVsdKKSnpwGBAcsAGg0767SvUk8+ygx7Bb+4=
++github.com/tidwall/wal v1.1.7/go.mod h1:r6lR1j27W9EPalgHiB7zLJDYu3mzW5BQP5KrzBpYY/E=
+ github.com/tv42/httpunix v0.0.0-20150427012821-b75d8614f926/go.mod h1:9ESjWnEqriFuLhtthL60Sar/7RFoluCcXsuvEwTV5KM=
+ github.com/yuin/goldmark v1.1.25/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
+ github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
+diff --git a/operator/assignments.go b/operator/assignments.go
+index c42c032..47e607d 100644
+--- a/operator/assignments.go
++++ b/operator/assignments.go
+@@ -1,31 +1,34 @@
+ package operator
+ 
+-import "oxia/proto"
+-
+-func ComputeAssignments(availableNodes []*proto.ServerAddress, replicationFactor uint32, shards uint32) *proto.ClusterStatus {
+-	// Do a round-robin assignment of leaders and followers across the shards
+-
+-	cs := &proto.ClusterStatus{
+-		ReplicationFactor: 1,
+-		ShardsStatus:      []*proto.ShardStatus{},
+-	}
+-
+-	nodesCount := len(availableNodes)
+-	s := int(shards)
+-	r := int(replicationFactor)
+-
+-	for i := 0; i < s; i++ {
+-		ss := &proto.ShardStatus{
+-			Shard:  uint32(i),
+-			Leader: availableNodes[i%nodesCount],
+-		}
+-
+-		for j := 1; j < r; j++ {
+-			ss.Followers = append(ss.Followers, availableNodes[(i+j)%nodesCount])
+-		}
+-
+-		cs.ShardsStatus = append(cs.ShardsStatus, ss)
+-	}
+-
+-	return cs
++import (
++	"oxia/coordination"
++	"oxia/proto"
++)
++
++func ComputeAssignments(availableNodes []*coordination.ServerAddress, replicationFactor uint32, shards uint32) *proto.ClusterStatus {
++	//// Do a round-robin assignment of leaders and followers across the shards
++	//
++	//cs := &proto.ClusterStatus{
++	//	ReplicationFactor: 1,
++	//	ShardsStatus:      []*proto.ShardStatus{},
++	//}
++	//
++	//nodesCount := len(availableNodes)
++	//s := int(shards)
++	//r := int(replicationFactor)
++	//
++	//for i := 0; i < s; i++ {
++	//	ss := &proto.ShardStatus{
++	//		Shard:  uint32(i),
++	//		Leader: availableNodes[i%nodesCount],
++	//	}
++	//
++	//	for j := 1; j < r; j++ {
++	//		ss.Followers = append(ss.Followers, availableNodes[(i+j)%nodesCount])
++	//	}
++	//
++	//	cs.ShardsStatus = append(cs.ShardsStatus, ss)
++	//}
++
++	return nil
+ }
+diff --git a/operator/main.go b/operator/main.go
+index 71bc6d0..3ff89fe 100644
+--- a/operator/main.go
++++ b/operator/main.go
+@@ -5,7 +5,6 @@ import (
+ 	"github.com/rs/zerolog/log"
+ 	"github.com/spf13/cobra"
+ 	"oxia/common"
+-	"oxia/proto"
+ 	"time"
+ )
+ 
+@@ -39,35 +38,35 @@ func main(cmd *cobra.Command, args []string) {
+ 		Uint32("replication-factor", replicationFactor).
+ 		Msg("Starting operator")
+ 
+-	addrs := make([]*proto.ServerAddress, len(staticNodes))
+-	for i := 0; i < len(staticNodes); i++ {
+-		addrs[i] = &proto.ServerAddress{
+-			InternalUrl: staticNodes[i],
+-			PublicUrl:   staticNodes[i],
+-		}
+-	}
+-	cs := ComputeAssignments(addrs, replicationFactor, shards)
++	//addrs := make([]*proto.ServerAddress, len(staticNodes))
++	//for i := 0; i < len(staticNodes); i++ {
++	//	addrs[i] = &proto.ServerAddress{
++	//		InternalUrl: staticNodes[i],
++	//		PublicUrl:   staticNodes[i],
++	//	}
++	//}
++	//_ = ComputeAssignments(addrs, replicationFactor, shards)
+ 
+ 	clientPool := common.NewClientPool()
+ 	defer clientPool.Close()
+ 
+ 	// Set up a connection to the server.
+-	c, err := clientPool.GetInternalRpc("localhost:8190")
++	_, err := clientPool.GetControlRpc("localhost:8190")
+ 	if err != nil {
+ 		log.Fatal().Err(err).Msg("Failed to connect")
+ 	}
+ 
+ 	// Contact the server and print out its response.
+-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
++	_, cancel := context.WithTimeout(context.Background(), time.Second)
+ 	defer cancel()
+ 
+-	r, err := c.UpdateStatus(ctx, cs)
++	//	r, err := c.UpdateStatus(ctx, cs)
+ 
+ 	if err != nil {
+ 		log.Error().Err(err).Msg("Could not update the cluster status")
+ 	} else {
+ 		log.Info().
+-			Interface("res", r).
++			Interface("res", nil).
+ 			Msg("Updated cluster status")
+ 	}
+ }
+diff --git a/proto/client.proto b/proto/client.proto
+index dab71cd..433089d 100644
+--- a/proto/client.proto
++++ b/proto/client.proto
+@@ -13,6 +13,8 @@ service ClientAPI {
+ 
+   rpc Put(PutOp) returns (Stat) {}
+ 
++  rpc Get(GetOp) returns (GetResult) {}
++
+ 
+   rpc GetNotifications(GetNotificationOp) returns (stream Notification) {}
+ }
+@@ -42,6 +44,16 @@ message PutOp {
+   optional uint64 expected_version = 4;
+ }
+ 
++message GetOp {
++  uint32 shard_id = 1;
++  string key = 2;
++}
++
++message GetResult {
++  Stat stat = 1;
++  bytes payload = 2;
++}
++
+ message GetNotificationOp {
+   uint32 shard_id = 1;
+   uint64 first_entry_id = 2;
+diff --git a/proto/internal.proto b/proto/internal.proto
+index 1bc0119..67bef80 100644
+--- a/proto/internal.proto
++++ b/proto/internal.proto
+@@ -4,6 +4,8 @@ option go_package = "github.com/streamnative/oxia/proto";
+ 
+ package proto;
+ 
++
++
+ service InternalAPI {
+   rpc UpdateStatus(ClusterStatus) returns (InternalEmpty) {}
+ 
+@@ -12,19 +14,11 @@ service InternalAPI {
+    *  - Leader will send log entries to the follower
+    *  - Follower send a stream of updates with the last entry persisted
+    */
+-  rpc Follow(stream ConfirmedEntryRequest) returns (stream LogEntry) {}
+ }
+ 
+ message InternalEmpty {
+ }
+ 
+-message LogEntry {
+-  uint64 epoch = 1;
+-  uint64 entry_id = 2;
+-  int64 last_add_confirmed = 3;
+-  bytes payload = 4;
+-}
+-
+ message ReadLogRequest {
+   uint32 shard = 1;
+   uint64 first_entry_id = 2;
+@@ -37,14 +31,6 @@ message ConfirmedEntryRequest {
+   uint64 entryId = 4;
+ }
+ 
+-message FenceRequest {
+-  uint32 shard = 1;
+-  uint64 epoch = 2;
+-}
+-
+-message FenceResponse {
+-  int64 last_entry = 2;
+-}
+ 
+ message ClusterStatus {
+   repeated ShardStatus shards_status = 1;
+@@ -54,8 +40,8 @@ message ClusterStatus {
+ 
+ message ShardStatus {
+   uint32 shard = 1;
+-  ServerAddress leader = 2;
+-  repeated ServerAddress followers = 3;
++//  ServerAddress leader = 2;
++//  repeated ServerAddress followers = 3;
+ 
+   repeated EpochStatus epochs = 4;
+ }
+@@ -64,8 +50,3 @@ message EpochStatus {
+   uint64 epoch = 1;
+   uint64 first_entry = 2;
+ }
+-
+-message ServerAddress {
+-  string internal_url = 1;
+-  string public_url = 2;
+-}
+\ No newline at end of file
+diff --git a/server/BoltKV.go b/server/BoltKV.go
+new file mode 100644
+index 0000000..0d4bbee
+--- /dev/null
++++ b/server/BoltKV.go
+@@ -0,0 +1,87 @@
++package server
++
++import (
++	"encoding/json"
++	"github.com/boltdb/bolt"
++	"github.com/pkg/errors"
++	"oxia/proto"
++)
++
++type boltKV struct {
++	store *bolt.DB
++	shard string
++}
++
++func (b *boltKV) Close() error {
++	return b.store.Close()
++}
++
++func (b *boltKV) Apply(op *proto.PutOp, timestamp uint64) (KVEntry, error) {
++	entry := KVEntry{}
++	err := b.store.Update(func(tx *bolt.Tx) error {
++		bucket := tx.Bucket([]byte(b.shard))
++		key := []byte(op.Key)
++		oldBytes := bucket.Get(key)
++		old := &KVEntry{}
++		err := json.Unmarshal(oldBytes, old)
++		if err != nil {
++			return err
++		}
++		var version uint64
++		var created uint64
++		if old != nil {
++			created = old.Created
++			version = 0
++		} else {
++			created = timestamp
++			version = old.Version
++		}
++		if op.ExpectedVersion != nil && *op.ExpectedVersion != version {
++			return errors.Errorf("Version check (%d != %d)", *op.ExpectedVersion, version)
++		}
++		entry.Payload = op.Payload
++		entry.Version = version
++		entry.Created = created
++		entry.Updated = timestamp
++		newBytes, err := json.Marshal(entry)
++		if err != nil {
++			return err
++		}
++		return bucket.Put(key, newBytes)
++	})
++	return entry, err
++
++}
++
++func (b *boltKV) Get(op *proto.GetOp) (KVEntry, error) {
++	entry := KVEntry{}
++	err := b.store.View(func(tx *bolt.Tx) error {
++		bucket := tx.Bucket([]byte(b.shard))
++		key := []byte(op.Key)
++		oldBytes := bucket.Get(key)
++		old := &KVEntry{}
++		err := json.Unmarshal(oldBytes, old)
++		if err != nil {
++			return err
++		}
++		if old != nil {
++			entry.Payload = old.Payload
++			entry.Version = old.Version
++			entry.Created = old.Created
++			entry.Updated = old.Updated
++		}
++		return nil
++	})
++	return entry, err
++}
++
++func NewBoltKV(shard string, kvDir string) KeyValueStore {
++	db, err := bolt.Open(kvDir+"/"+shard, 0600, nil)
++	if err != nil {
++		return nil
++	}
++	return &boltKV{
++		store: db,
++		shard: shard,
++	}
++}
+diff --git a/server/internal_rpc_server.go b/server/internal_rpc_server.go
+index 721a791..c69a293 100644
+--- a/server/internal_rpc_server.go
++++ b/server/internal_rpc_server.go
+@@ -2,7 +2,6 @@ package server
+ 
+ import (
+ 	"context"
+-	"encoding/json"
+ 	"fmt"
+ 	"github.com/pkg/errors"
+ 	"github.com/rs/zerolog"
+@@ -10,7 +9,7 @@ import (
+ 	"google.golang.org/grpc"
+ 	"google.golang.org/grpc/metadata"
+ 	"net"
+-	"oxia/proto"
++	"oxia/coordination"
+ )
+ 
+ const (
+@@ -21,18 +20,19 @@ const (
+ )
+ 
+ type internalRpcServer struct {
+-	proto.UnimplementedInternalAPIServer
+-	shardsManager ShardsManager
++	coordination.UnimplementedOxiaControlServer
++	coordination.UnimplementedOxiaLogReplicationServer
++	shardsDirector ShardsDirector
+ 
+ 	grpcServer *grpc.Server
+ 	log        zerolog.Logger
+ }
+ 
+-func newInternalRpcServer(port int, advertisedInternalAddress string, shardsManager ShardsManager) (*internalRpcServer, error) {
++func newCoordinationRpcServer(port int, advertisedInternalAddress string, shardsDirector ShardsDirector) (*internalRpcServer, error) {
+ 	res := &internalRpcServer{
+-		shardsManager: shardsManager,
++		shardsDirector: shardsDirector,
+ 		log: log.With().
+-			Str("component", "internal-rpc-server").
++			Str("component", "coordination-rpc-server").
+ 			Logger(),
+ 	}
+ 
+@@ -42,11 +42,12 @@ func newInternalRpcServer(port int, advertisedInternalAddress string, shardsMana
+ 	}
+ 
+ 	res.grpcServer = grpc.NewServer()
+-	proto.RegisterInternalAPIServer(res.grpcServer, res)
++	coordination.RegisterOxiaControlServer(res.grpcServer, res)
++	coordination.RegisterOxiaLogReplicationServer(res.grpcServer, res)
+ 	res.log.Info().
+ 		Str("bindAddress", listener.Addr().String()).
+ 		Str("advertisedAddress", advertisedInternalAddress).
+-		Msg("Started internal RPC server")
++		Msg("Started coordination RPC server")
+ 
+ 	go func() {
+ 		if err := res.grpcServer.Serve(listener); err != nil {
+@@ -62,20 +63,6 @@ func (s *internalRpcServer) Close() error {
+ 	return nil
+ }
+ 
+-func (s *internalRpcServer) UpdateStatus(ctx context.Context, newClusterStatus *proto.ClusterStatus) (*proto.InternalEmpty, error) {
+-	b, _ := json.Marshal(newClusterStatus)
+-	s.log.Info().
+-		RawJSON("value", b).
+-		Msg("Received new Cluster status")
+-	err := s.shardsManager.UpdateClusterStatus(newClusterStatus)
+-	if err != nil {
+-		log.Warn().
+-			Err(err).
+-			Msg("Failed to update to new cluster status")
+-	}
+-	return &proto.InternalEmpty{}, err
+-}
+-
+ func readHeader(md metadata.MD, key string) (value string, err error) {
+ 	arr := md.Get(key)
+ 	if len(arr) == 0 {
+@@ -110,49 +97,83 @@ func readHeaderUint32(md metadata.MD, key string) (v uint32, err error) {
+ 	return r, err
+ }
+ 
+-func (s *internalRpcServer) Follow(in proto.InternalAPI_FollowServer) error {
+-	md, ok := metadata.FromIncomingContext(in.Context())
++func callShardManager[T any](c context.Context, s *internalRpcServer, f func(ShardManager, string) (T, error)) (T, error) {
++	var zeroT T
++	md, ok := metadata.FromIncomingContext(c)
+ 	if !ok {
+-		return errors.New("There is no metadata header in Follow request")
++		return zeroT, errors.New("There is no metadata header in request")
+ 	}
+-
+-	shard, err := readHeaderUint32(md, metadataShard)
++	shard, err := readHeader(md, metadataShard)
+ 	if err != nil {
+-		return err
++		return zeroT, err
+ 	}
+-
+-	slc, err := s.shardsManager.GetLeaderController(shard)
++	source, err := readHeader(md, "source_node")
+ 	if err != nil {
+-		s.log.Warn().
+-			Err(err).
+-			Uint32("shard", shard).
+-			Msg("This node is not leader for shard")
+-		return err
++		return zeroT, err
+ 	}
+ 
+-	epoch, err := readHeaderUint64(md, metadataEpoch)
+-	if !ok {
+-		return err
+-	}
+-
+-	firstEntry, err := readHeaderUint64(md, metadataFirstEntry)
++	manager, err := s.shardsDirector.GetManager(ShardId(shard), true)
+ 	if err != nil {
+-		return err
++		return zeroT, err
+ 	}
++	response, err := f(manager, source)
++	return response, err
++}
+ 
+-	followerName, err := readHeader(md, metadataFollower)
+-	if err != nil {
+-		return err
+-	}
++func (s *internalRpcServer) Fence(c context.Context, req *coordination.FenceRequest) (*coordination.FenceResponse, error) {
++	response, err := callShardManager[*coordination.FenceResponse](c, s, func(m ShardManager, source string) (*coordination.FenceResponse, error) {
++		response, err := m.Fence(req)
++		return response, err
++	})
++	return response, err
++}
++func (s *internalRpcServer) BecomeLeader(c context.Context, req *coordination.BecomeLeaderRequest) (*coordination.BecomeLeaderResponse, error) {
++	response, err := callShardManager[*coordination.BecomeLeaderResponse](c, s, func(m ShardManager, source string) (*coordination.BecomeLeaderResponse, error) {
++		response, err := m.BecomeLeader(req)
++		return response, err
++	})
++	return response, err
++}
++func (s *internalRpcServer) AddFollower(c context.Context, req *coordination.AddFollowerRequest) (*coordination.CoordinationEmpty, error) {
+ 
+-	err = slc.Follow(followerName, firstEntry, epoch, in)
+-	if err != nil {
+-		s.log.Warn().
+-			Err(err).
+-			Uint32("shard", shard).
+-			Uint64("epoch", epoch).
+-			Uint64("firstEntry", firstEntry).
+-			Msg("Failed to attach follower")
+-	}
++	response, err := callShardManager[*coordination.CoordinationEmpty](c, s, func(m ShardManager, source string) (*coordination.CoordinationEmpty, error) {
++		response, err := m.AddFollower(req)
++		return response, err
++	})
++	return response, err
++}
++func (s *internalRpcServer) Truncate(c context.Context, req *coordination.TruncateRequest) (*coordination.TruncateResponse, error) {
++	response, err := callShardManager[*coordination.TruncateResponse](c, s, func(m ShardManager, source string) (*coordination.TruncateResponse, error) {
++		response, err := m.Truncate(source, req)
++		return response, err
++	})
++	return response, err
++}
++func (s *internalRpcServer) AddEntries(srv coordination.OxiaLogReplication_AddEntriesServer) error {
++	_, err := callShardManager[any](srv.Context(), s, func(m ShardManager, source string) (any, error) {
++		response, err := m.AddEntries(source, srv)
++		return response, err
++	})
+ 	return err
+ }
++func (s *internalRpcServer) PrepareReconfig(c context.Context, req *coordination.PrepareReconfigRequest) (*coordination.PrepareReconfigResponse, error) {
++	response, err := callShardManager[*coordination.PrepareReconfigResponse](c, s, func(m ShardManager, source string) (*coordination.PrepareReconfigResponse, error) {
++		response, err := m.PrepareReconfig(req)
++		return response, err
++	})
++	return response, err
++}
++func (s *internalRpcServer) Snapshot(c context.Context, req *coordination.SnapshotRequest) (*coordination.SnapshotResponse, error) {
++	response, err := callShardManager[*coordination.SnapshotResponse](c, s, func(m ShardManager, source string) (*coordination.SnapshotResponse, error) {
++		response, err := m.Snapshot(req)
++		return response, err
++	})
++	return response, err
++}
++func (s *internalRpcServer) CommitReconfig(c context.Context, req *coordination.CommitReconfigRequest) (*coordination.CommitReconfigResponse, error) {
++	response, err := callShardManager[*coordination.CommitReconfigResponse](c, s, func(m ShardManager, source string) (*coordination.CommitReconfigResponse, error) {
++		response, err := m.CommitReconfig(req)
++		return response, err
++	})
++	return response, err
++}
+diff --git a/server/kv.go b/server/kv.go
+new file mode 100644
+index 0000000..10635cd
+--- /dev/null
++++ b/server/kv.go
+@@ -0,0 +1,69 @@
++package server
++
++import (
++	"github.com/pkg/errors"
++	"io"
++	"oxia/proto"
++)
++
++type KeyValueStore interface {
++	io.Closer
++	Apply(op *proto.PutOp, timestamp uint64) (KVEntry, error)
++	Get(op *proto.GetOp) (KVEntry, error)
++}
++
++type inMemoryKVStore struct {
++	store map[string]KVEntry
++}
++
++type KVEntry struct {
++	Payload []byte
++	Version uint64
++	Created uint64
++	Updated uint64
++}
++
++func NewInMemoryKVStore() KeyValueStore {
++	return &inMemoryKVStore{
++		store: make(map[string]KVEntry),
++	}
++}
++
++func (k inMemoryKVStore) Close() error {
++	k.store = make(map[string]KVEntry)
++	return nil
++}
++
++func (k inMemoryKVStore) Apply(op *proto.PutOp, timestamp uint64) (KVEntry, error) {
++	old, existed := k.store[op.Key]
++	var version uint64
++	var created uint64
++	if existed {
++		created = old.Created
++		version = 0
++	} else {
++		created = timestamp
++		version = old.Version
++	}
++	if op.ExpectedVersion != nil && *op.ExpectedVersion != version {
++		return KVEntry{}, errors.Errorf("Version check (%d != %d)", *op.ExpectedVersion, version)
++	}
++	entry := KVEntry{
++		Payload: op.Payload,
++		Version: version,
++		Created: created,
++		Updated: timestamp,
++	}
++	k.store[op.Key] = entry
++	return entry, nil
++
++}
++
++func (k inMemoryKVStore) Get(op *proto.GetOp) (KVEntry, error) {
++	val, ok := k.store[op.Key]
++	if ok {
++		return val, nil
++	} else {
++		return KVEntry{}, nil
++	}
++}
+diff --git a/server/public_rpc_server.go b/server/public_rpc_server.go
+index ad7ce6d..7a4c6be 100644
+--- a/server/public_rpc_server.go
++++ b/server/public_rpc_server.go
+@@ -9,20 +9,21 @@ import (
+ 	"google.golang.org/grpc"
+ 	"net"
+ 	"oxia/proto"
++	"strconv"
+ )
+ 
+ type PublicRpcServer struct {
+ 	proto.UnimplementedClientAPIServer
+ 
+-	shardsManager ShardsManager
++	shardsDirector ShardsDirector
+ 
+ 	grpcServer *grpc.Server
+ 	log        zerolog.Logger
+ }
+ 
+-func NewPublicRpcServer(port int, advertisedPublicAddress string, shardsManager ShardsManager) (*PublicRpcServer, error) {
++func NewPublicRpcServer(port int, advertisedPublicAddress string, shardsDirector ShardsDirector) (*PublicRpcServer, error) {
+ 	res := &PublicRpcServer{
+-		shardsManager: shardsManager,
++		shardsDirector: shardsDirector,
+ 		log: log.With().
+ 			Str("component", "public-rpc-server").
+ 			Logger(),
+@@ -50,19 +51,29 @@ func NewPublicRpcServer(port int, advertisedPublicAddress string, shardsManager
+ }
+ 
+ func (s *PublicRpcServer) GetShardsAssignments(_ *proto.Empty, out proto.ClientAPI_GetShardsAssignmentsServer) error {
+-	s.shardsManager.GetShardsAssignments(func(assignments *proto.ShardsAssignments) {
++	s.shardsDirector.GetShardsAssignments(func(assignments *proto.ShardsAssignments) {
+ 		out.SendMsg(assignments)
+ 	})
+ 	return nil
+ }
+ 
+ func (s *PublicRpcServer) Put(ctx context.Context, putOp *proto.PutOp) (*proto.Stat, error) {
+-	slc, err := s.shardsManager.GetLeaderController(putOp.GetShardId())
++	// TODO make shard ID string in client rpc
++	slc, err := s.shardsDirector.GetManager(ShardId(strconv.FormatInt(int64(putOp.GetShardId()), 10)), false)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+ 
+-	return slc.Put(putOp)
++	return slc.Write(putOp)
++}
++
++func (s *PublicRpcServer) Get(ctx context.Context, getOp *proto.GetOp) (*proto.GetResult, error) {
++	_, err := s.shardsDirector.GetManager(ShardId(strconv.FormatInt(int64(getOp.GetShardId()), 10)), false)
++	if err != nil {
++		return nil, err
++	}
++	// TODO Read from KVStore directly? Only if leader
++	return nil, nil
+ }
+ 
+ func (s *PublicRpcServer) Close() error {
+diff --git a/server/server.go b/server/server.go
+index 9f6769f..9d30490 100644
+--- a/server/server.go
++++ b/server/server.go
+@@ -5,7 +5,7 @@ import (
+ 	"github.com/rs/zerolog/log"
+ 	"os"
+ 	"oxia/common"
+-	"oxia/proto"
++	"oxia/coordination"
+ )
+ 
+ type serverConfig struct {
+@@ -20,10 +20,10 @@ type server struct {
+ 	*internalRpcServer
+ 	*PublicRpcServer
+ 
+-	shardsManager ShardsManager
+-	clientPool    common.ClientPool
++	shardsDirector ShardsDirector
++	clientPool     common.ClientPool
+ 
+-	identityInternalAddress proto.ServerAddress
++	identityInternalAddress coordination.ServerAddress
+ }
+ 
+ func NewServer(config *serverConfig) (*server, error) {
+@@ -51,14 +51,14 @@ func NewServer(config *serverConfig) (*server, error) {
+ 	}
+ 
+ 	identityAddr := fmt.Sprintf("%s:%d", advertisedInternalAddress, config.InternalServicePort)
+-	s.shardsManager = NewShardsManager(identityAddr)
++	s.shardsDirector = NewShardsDirector(identityAddr)
+ 
+-	s.internalRpcServer, err = newInternalRpcServer(config.InternalServicePort, advertisedInternalAddress, s.shardsManager)
++	s.internalRpcServer, err = newCoordinationRpcServer(config.InternalServicePort, advertisedInternalAddress, s.shardsDirector)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+ 
+-	s.PublicRpcServer, err = NewPublicRpcServer(config.PublicServicePort, advertisedPublicAddress, s.shardsManager)
++	s.PublicRpcServer, err = NewPublicRpcServer(config.PublicServicePort, advertisedPublicAddress, s.shardsDirector)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+@@ -79,7 +79,7 @@ func (s *server) Close() error {
+ 		return err
+ 	}
+ 
+-	if err := s.shardsManager.Close(); err != nil {
++	if err := s.shardsDirector.Close(); err != nil {
+ 		return err
+ 	}
+ 
+diff --git a/server/shard_follower_controller.go b/server/shard_follower_controller.go
+deleted file mode 100644
+index 649cb28..0000000
+--- a/server/shard_follower_controller.go
++++ /dev/null
+@@ -1,42 +0,0 @@
+-package server
+-
+-import (
+-	"github.com/rs/zerolog"
+-	"github.com/rs/zerolog/log"
+-	"io"
+-)
+-
+-type ShardFollowerController interface {
+-	io.Closer
+-
+-	//Follow(follower string, firstEntry uint64, epoch uint64, ifw proto.InternalAPI_FollowServer) error
+-}
+-
+-type shardFollowerController struct {
+-	shard uint32
+-	epoch uint64
+-
+-	wal Wal
+-	log zerolog.Logger
+-}
+-
+-func NewShardFollowerController(shard uint32, leader string) ShardFollowerController {
+-
+-	sfc := &shardFollowerController{
+-		shard: shard,
+-		wal:   NewWal(shard),
+-		log: log.With().
+-			Str("component", "shard-follower").
+-			Uint32("shard", shard).
+-			Str("leader", leader).
+-			Logger(),
+-	}
+-
+-	sfc.log.Info().Msg("Start following")
+-	return sfc
+-}
+-
+-func (s *shardFollowerController) Close() error {
+-	s.log.Info().Msg("Closing follower controller")
+-	return s.wal.Close()
+-}
+diff --git a/server/shard_leader_controller.go b/server/shard_leader_controller.go
+deleted file mode 100644
+index 9805e99..0000000
+--- a/server/shard_leader_controller.go
++++ /dev/null
+@@ -1,114 +0,0 @@
+-package server
+-
+-import (
+-	"fmt"
+-	"github.com/pkg/errors"
+-	"github.com/rs/zerolog"
+-	"github.com/rs/zerolog/log"
+-	"io"
+-	"oxia/proto"
+-	"time"
+-)
+-
+-type ShardLeaderController interface {
+-	io.Closer
+-
+-	Follow(follower string, firstEntry uint64, epoch uint64, ifw proto.InternalAPI_FollowServer) error
+-
+-	Put(op *proto.PutOp) (*proto.Stat, error)
+-}
+-
+-type shardLeaderController struct {
+-	shard             uint32
+-	epoch             uint64
+-	replicationFactor uint32
+-
+-	wal Wal
+-	log zerolog.Logger
+-}
+-
+-func NewShardLeaderController(shard uint32, replicationFactor uint32) ShardLeaderController {
+-	slc := &shardLeaderController{
+-		shard:             shard,
+-		replicationFactor: replicationFactor,
+-		wal:               NewWal(shard),
+-		log: log.With().
+-			Str("component", "shard-leader").
+-			Uint32("shard", shard).
+-			Logger(),
+-	}
+-
+-	slc.log.Info().
+-		Uint32("replicationFactor", replicationFactor).
+-		Msg("Start leading")
+-	return slc
+-}
+-
+-func (s *shardLeaderController) Close() error {
+-	s.log.Info().Msg("Closing leader controller")
+-
+-	return s.wal.Close()
+-}
+-
+-func (s *shardLeaderController) readLog(firstEntry uint64, ifw proto.InternalAPI_FollowServer) {
+-	current := firstEntry
+-	for {
+-		logEntry, err := s.wal.Read(current)
+-		if err != nil {
+-			s.log.Error().
+-				Err(err).
+-				Uint64("entry", current).
+-				Msg("Failed to read from wal")
+-			return
+-		}
+-
+-		err = ifw.Send(logEntry)
+-		if err != nil {
+-			s.log.Error().
+-				Err(err).
+-				Uint64("entry", current).
+-				Msg("Failed to send entry to follower")
+-			return
+-		}
+-	}
+-}
+-
+-func (s *shardLeaderController) Follow(follower string, firstEntry uint64, epoch uint64, ifw proto.InternalAPI_FollowServer) error {
+-	if epoch != s.epoch {
+-		return errors.New(fmt.Sprintf("Invalid epoch. Expected: %d - Received: %d", s.epoch, epoch))
+-	}
+-
+-	s.log.Info().
+-		Uint64("epoch", s.epoch).
+-		Uint64("firstEntry", firstEntry).
+-		Str("follower", follower).
+-		Msg("Follow")
+-
+-	go s.readLog(firstEntry, ifw)
+-
+-	for {
+-		confirmedEntryRequest, err := ifw.Recv()
+-		if err != nil {
+-			return err
+-		}
+-
+-		s.log.Info().
+-			Uint64("epoch", s.epoch).
+-			Str("confirmedEntryRequest", confirmedEntryRequest.String()).
+-			Msg("Received confirmed entry request")
+-	}
+-
+-	return nil
+-}
+-
+-func (s *shardLeaderController) Put(op *proto.PutOp) (*proto.Stat, error) {
+-	s.log.Debug().
+-		Interface("op", op).
+-		Msg("Put operation")
+-
+-	return &proto.Stat{
+-		Version:           1,
+-		CreatedTimestamp:  uint64(time.Now().Unix()),
+-		ModifiedTimestamp: uint64(time.Now().Unix()),
+-	}, nil
+-}
+diff --git a/server/shard_manager.go b/server/shard_manager.go
+new file mode 100644
+index 0000000..dd3e651
+--- /dev/null
++++ b/server/shard_manager.go
+@@ -0,0 +1,741 @@
++package server
++
++import (
++	"context"
++	"encoding/json"
++	"github.com/rs/zerolog"
++	"github.com/rs/zerolog/log"
++	"google.golang.org/grpc/codes"
++	"google.golang.org/grpc/metadata"
++	"google.golang.org/grpc/status"
++	"io"
++	"oxia/common"
++	"oxia/coordination"
++	"oxia/proto"
++	"time"
++)
++
++type ShardManager interface {
++	io.Closer
++
++	Fence(req *coordination.FenceRequest) (*coordination.FenceResponse, error)
++	BecomeLeader(*coordination.BecomeLeaderRequest) (*coordination.BecomeLeaderResponse, error)
++	AddFollower(*coordination.AddFollowerRequest) (*coordination.CoordinationEmpty, error)
++	Truncate(string, *coordination.TruncateRequest) (*coordination.TruncateResponse, error)
++	Write(op *proto.PutOp) (*proto.Stat, error)
++	AddEntries(string, coordination.OxiaLogReplication_AddEntriesServer) (any, error)
++	// Later
++	PrepareReconfig(*coordination.PrepareReconfigRequest) (*coordination.PrepareReconfigResponse, error)
++	Snapshot(*coordination.SnapshotRequest) (*coordination.SnapshotResponse, error)
++	CommitReconfig(*coordination.CommitReconfigRequest) (*coordination.CommitReconfigResponse, error)
++}
++
++// Command is the representation of the work a ShardManager is supposed to do when it gets a request or response and a channel for the response.
++// Ideally it would be generic with the type parameter being the response type
++type Command struct {
++	execute      func() (any, error)
++	responseChan chan any
++}
++
++func newCommandWithChannel(execute func() (any, error), responseChannel chan any) *Command {
++	return &Command{
++		responseChan: responseChannel,
++		execute:      execute,
++	}
++}
++
++func newCommand(execute func() (any, error)) *Command {
++	return newCommandWithChannel(execute, make(chan any, 1))
++}
++
++type Status int16
++
++const (
++	NotMember Status = iota
++	Leader
++	Follower
++	Fenced
++)
++
++type CursorStatus int16
++
++const (
++	Attached CursorStatus = iota
++	PendingTruncate
++	PendingRemoval
++)
++
++type waitingRoomEntry struct {
++	counter             uint32
++	confirmationChannel chan any
++}
++
++type cursor struct {
++	status        CursorStatus
++	lastPushed    *coordination.EntryId
++	lastConfirmed *coordination.EntryId
++}
++
++type shardManager struct {
++	shard              ShardId
++	epoch              uint64
++	replicationFactor  uint32
++	leader             string
++	commitIndex        EntryId
++	headIndex          EntryId
++	followCursor       map[string]*cursor
++	reconfigInProgress bool
++	status             Status
++
++	wal             Wal
++	kv              KeyValueStore
++	commandChannel  chan *Command
++	waitingRoom     map[EntryId]waitingRoomEntry
++	clientPool      common.ClientPool
++	identityAddress string
++	closing         bool
++	log             zerolog.Logger
++}
++
++func NewShardManager(shard ShardId, identityAddress string, pool common.ClientPool, wal Wal, kv KeyValueStore) (ShardManager, error) {
++	sm := &shardManager{
++		shard:              shard,
++		epoch:              0,
++		replicationFactor:  0,
++		leader:             "",
++		commitIndex:        EntryId{},
++		headIndex:          EntryId{},
++		followCursor:       make(map[string]*cursor),
++		reconfigInProgress: false,
++		status:             NotMember,
++
++		wal:             wal,
++		kv:              kv,
++		commandChannel:  make(chan *Command, 8),
++		waitingRoom:     make(map[EntryId]waitingRoomEntry),
++		clientPool:      pool,
++		identityAddress: identityAddress,
++		closing:         false,
++		log: log.With().
++			Str("component", "shard-manager").
++			Str("shard", string(shard)).
++			Logger(),
++	}
++	entryId, err := wal.GetHighestEntryOfEpoch(^uint64(0))
++	if err != nil {
++		return nil, err
++	}
++	sm.headIndex = entryId
++	sm.log.Info().
++		Uint32("replicationFactor", sm.replicationFactor).
++		Msg("Start managing shard")
++	go sm.run()
++
++	return sm, nil
++}
++func enqueueCommandAndWaitForResponse[T any](s *shardManager, f func() (T, error)) T {
++	response, _ := enqueueCommandAndWaitForResponseWithChannel[T](s, f, nil)
++	return response
++}
++func enqueueCommandAndWaitForResponseWithChannel[T any](s *shardManager, f func() (T, error), responseChannel chan any) (T, error) {
++	if responseChannel == nil {
++		responseChannel = make(chan any, 1)
++	}
++	command := newCommandWithChannel(func() (any, error) {
++		r, err := f()
++		return r, err
++	}, responseChannel)
++	s.commandChannel <- command
++	response := <-command.responseChan
++
++	tResponse, ok := response.(T)
++	if ok {
++		return tResponse, nil
++	} else {
++		var zero T
++		return zero, response.(error)
++	}
++
++}
++
++func sendRequestAndProcessResponse[RESP any](s *shardManager, target string, send func(context.Context, coordination.OxiaLogReplicationClient) (RESP, error), process func(RESP) error) error {
++	rpc, err := s.clientPool.GetReplicationRpc(target)
++	if err != nil {
++		return err
++	}
++	go func() {
++		ctx := context.Background()
++		ctx = metadata.AppendToOutgoingContext(ctx,
++			"shard", string(s.shard),
++			"source_node", s.identityAddress)
++		resp, err2 := send(ctx, rpc)
++		if err2 != nil {
++			log.Error().Err(err2).Msg("Got error sending truncateRequest")
++		}
++		command := newCommand(func() (any, error) {
++			err3 := process(resp)
++			return nil, err3
++		})
++		s.commandChannel <- command
++	}()
++	return nil
++}
++
++func (s *shardManager) checkEpochLaterIn(req interface{ GetEpoch() uint64 }) error {
++	if req.GetEpoch() <= s.epoch {
++		return status.Errorf(codes.FailedPrecondition, "Got old epoch %d, when at %d", req.GetEpoch(), s.epoch)
++	}
++	return nil
++}
++
++func (s *shardManager) checkEpochEqualIn(req interface{ GetEpoch() uint64 }) error {
++	if req.GetEpoch() != s.epoch {
++		return status.Errorf(codes.FailedPrecondition, "Got clashing epoch %d, when at %d", req.GetEpoch(), s.epoch)
++	}
++	return nil
++}
++
++func (s *shardManager) checkStatus(expected Status) error {
++	if s.status != expected {
++		return status.Errorf(codes.FailedPrecondition, "Received message in the wrong state. In %+v, should be %+v.", s.status, expected)
++	}
++	return nil
++}
++
++// Fence enqueues a call to fenceSync and waits for the response
++func (s *shardManager) Fence(req *coordination.FenceRequest) (*coordination.FenceResponse, error) {
++	response := enqueueCommandAndWaitForResponse[*coordination.FenceResponse](s, func() (*coordination.FenceResponse, error) {
++		resp, err := s.fenceSync(req)
++		return resp, err
++	})
++	return response, nil
++}
++
++// fenceSync, like all *Sync methods, is called by run method serially
++/*
++  Node handles a fence request
++
++  A node receives a fencing request, fences itself and responds
++  with its head index.
++
++  When a node is fenced it cannot:
++  - accept any writes from a client.
++  - accept add entry requests from a leader.
++  - send any entries to followers if it was a leader.
++
++  Any existing follow cursors are destroyed as is any state
++  regarding reconfigurations.
++*/
++func (s *shardManager) fenceSync(req *coordination.FenceRequest) (*coordination.FenceResponse, error) {
++	if err := s.checkEpochLaterIn(req); err != nil {
++		return nil, err
++	}
++	s.epoch = req.GetEpoch()
++	s.purgeWaitingRoom()
++	s.status = Fenced
++	s.replicationFactor = 0
++	s.followCursor = make(map[string]*cursor)
++	s.waitingRoom = make(map[EntryId]waitingRoomEntry)
++	s.wal.StopReaders()
++	s.reconfigInProgress = false
++	return &coordination.FenceResponse{
++		Epoch:     s.epoch,
++		HeadIndex: s.headIndex.toProto(),
++	}, nil
++}
++
++func (s *shardManager) BecomeLeader(req *coordination.BecomeLeaderRequest) (*coordination.BecomeLeaderResponse, error) {
++	response := enqueueCommandAndWaitForResponse[*coordination.BecomeLeaderResponse](s, func() (*coordination.BecomeLeaderResponse, error) {
++		resp, err := s.becomeLeaderSync(req)
++		return resp, err
++	})
++	return response, nil
++}
++
++func (s *shardManager) needsTruncation(headIndex *coordination.EntryId) bool {
++	return headIndex.Epoch != s.headIndex.epoch || headIndex.Offset > s.headIndex.offset
++}
++
++func (s *shardManager) getCursor(headIndex *coordination.EntryId) *cursor {
++	if s.needsTruncation(headIndex) {
++		return &cursor{
++			status:        PendingTruncate,
++			lastPushed:    nil,
++			lastConfirmed: nil,
++		}
++	} else {
++		return &cursor{
++			status:        Attached,
++			lastPushed:    headIndex,
++			lastConfirmed: headIndex,
++		}
++	}
++}
++
++func (s *shardManager) getCursors(followers []*coordination.BecomeLeaderRequest_FollowerEntry) map[string]*cursor {
++	cursors := make(map[string]*cursor)
++	for _, kv := range followers {
++		cursors[kv.Key.InternalUrl] = s.getCursor(kv.Value)
++	}
++	return cursors
++}
++
++func (s *shardManager) sendTruncateRequest(target string, targetEpoch uint64) error {
++	headIndex, err := s.wal.GetHighestEntryOfEpoch(targetEpoch)
++	if err != nil {
++		return err
++	}
++	send := func(ctx context.Context, rpc coordination.OxiaLogReplicationClient) (*coordination.TruncateResponse, error) {
++		resp, err2 := rpc.Truncate(ctx, &coordination.TruncateRequest{
++			Epoch:     s.epoch,
++			HeadIndex: headIndex.toProto(),
++		})
++		return resp, err2
++	}
++	process := func(resp *coordination.TruncateResponse) error {
++		err2 := s.truncateResponseSync(target, resp)
++		return err2
++	}
++	return sendRequestAndProcessResponse[*coordination.TruncateResponse](s, target, send, process)
++}
++
++/*
++truncateResponseSync: Leader handles a truncate response.
++
++The leader now activates the follow cursor as the follower
++log is now ready for replication.
++*/
++func (s *shardManager) truncateResponseSync(target string, resp *coordination.TruncateResponse) error {
++	if err := s.checkStatus(Leader); err != nil {
++		return err
++	}
++	if err := s.checkEpochEqualIn(resp); err != nil {
++		return err
++	}
++	s.followCursor[target] = &cursor{
++		status:        Attached,
++		lastPushed:    resp.HeadIndex,
++		lastConfirmed: resp.HeadIndex,
++	}
++	s.sendEntriesToFollower(target, resp.HeadIndex)
++
++	return nil
++}
++
++/*
++Node handles a Become Leader request
++
++The node inspects the head index of each follower and
++compares it to its own head index, and then either:
++  - Attaches a follow cursor for the follower the head indexes
++    have the same epoch, but the follower offset is lower or equal.
++  - Sends a truncate request to the follower if its head
++    index epoch does not match the leader's head index epoch or has
++    a higher offset.
++    The leader finds the highest entry id in its log prefix (of the
++    follower head index) and tells the follower to truncate its log
++    to that entry.
++
++Key points:
++  - The election only requires a majority to complete and so the
++    Become Leader request will likely only contain a majority,
++    not all the nodes.
++  - No followers in the Become Leader message "follower map" will
++    have a higher head index than the leader (as the leader was
++    chosen because it had the highest head index of the majority
++    that responded to the fencing requests first). But as the leader
++    receives more fencing responses from the remaining minority,
++    the new leader will be informed of these followers, and it is
++    possible that their head index is higher than the leader and
++    therefore need truncating.
++*/
++func (s *shardManager) becomeLeaderSync(req *coordination.BecomeLeaderRequest) (*coordination.BecomeLeaderResponse, error) {
++	if err := s.checkEpochEqualIn(req); err != nil {
++		return nil, err
++	}
++	s.status = Leader
++	s.leader = s.identityAddress
++	s.replicationFactor = req.GetReplicationFactor()
++	s.followCursor = s.getCursors(req.GetFollowerMap())
++
++	for k, v := range s.followCursor {
++		if v.status == PendingTruncate {
++			err := s.sendTruncateRequest(k, s.epoch)
++			if err != nil {
++				return nil, err
++			}
++		} else {
++			s.sendEntriesToFollower(k, v.lastPushed)
++		}
++	}
++	return &coordination.BecomeLeaderResponse{Epoch: req.GetEpoch()}, nil
++}
++func (s *shardManager) Truncate(source string, req *coordination.TruncateRequest) (*coordination.TruncateResponse, error) {
++	response := enqueueCommandAndWaitForResponse[*coordination.TruncateResponse](s, func() (*coordination.TruncateResponse, error) {
++		resp, err := s.truncateSync(source, req)
++		return resp, err
++	})
++	return response, nil
++}
++
++/*
++Node handles a Truncate request
++
++A node that receives a truncate request knows that it
++has been selected as a follower. It truncates its log
++to the indicates entry id, updates its epoch and changes
++to a Follower.
++*/
++func (s *shardManager) truncateSync(source string, req *coordination.TruncateRequest) (*coordination.TruncateResponse, error) {
++	if err := s.checkStatus(Fenced); err != nil {
++		return nil, err
++	}
++	if err := s.checkEpochEqualIn(req); err != nil {
++		return nil, err
++	}
++	s.status = Follower
++	s.epoch = req.Epoch
++	s.leader = source
++	headEntryId, err := s.wal.TruncateLog(EntryIdFromProto(req.HeadIndex))
++	if err != nil {
++		return nil, err
++	}
++	s.headIndex = headEntryId
++	s.followCursor = make(map[string]*cursor)
++
++	return &coordination.TruncateResponse{
++		Epoch:     req.Epoch,
++		HeadIndex: headEntryId.toProto(),
++	}, nil
++}
++
++func (s *shardManager) AddFollower(req *coordination.AddFollowerRequest) (*coordination.CoordinationEmpty, error) {
++	response := enqueueCommandAndWaitForResponse[*coordination.CoordinationEmpty](s, func() (*coordination.CoordinationEmpty, error) {
++		resp, err := s.addFollowerSync(req)
++		return resp, err
++	})
++	return response, nil
++}
++
++/*
++Leader handles an Add Follower request
++
++The leader creates a cursor and will send a truncate
++request to the follower if their log might need
++truncating first.
++*/
++func (s *shardManager) addFollowerSync(req *coordination.AddFollowerRequest) (*coordination.CoordinationEmpty, error) {
++	if err := s.checkStatus(Leader); err != nil {
++		return nil, err
++	}
++	if err := s.checkEpochEqualIn(req); err != nil {
++		return nil, err
++	}
++	if _, ok := s.followCursor[req.Follower.InternalUrl]; ok {
++		return nil, status.Errorf(codes.FailedPrecondition, "Follower %s already exists", req.Follower.InternalUrl)
++	}
++
++	s.followCursor[req.Follower.InternalUrl] = s.getCursor(req.HeadIndex)
++	if s.needsTruncation(req.HeadIndex) {
++		err := s.sendTruncateRequest(req.Follower.InternalUrl, req.HeadIndex.Epoch)
++		if err != nil {
++			return nil, err
++		}
++	}
++
++	return nil, status.Errorf(codes.Unimplemented, "method AddFollower not implemented")
++}
++
++func (s *shardManager) Write(op *proto.PutOp) (*proto.Stat, error) {
++	responseChannel := make(chan any, 1)
++	response, err := enqueueCommandAndWaitForResponseWithChannel[proto.Stat](s, func() (proto.Stat, error) {
++		err2 := s.writeSync(op, responseChannel)
++		return proto.Stat{}, err2
++	}, responseChannel)
++	return &response, err
++}
++
++func serializeOp(op *proto.PutOp) ([]byte, error) {
++	val, err := json.Marshal(op)
++	return val, err
++}
++
++func deserializeOp(encoding []byte) (*proto.PutOp, error) {
++	data := &proto.PutOp{}
++	err := json.Unmarshal(encoding, data)
++	return data, err
++}
++
++/*
++writeSync A client writes an entry to the leader
++
++	A client writes a value from Values to a leader node
++	if that value has not previously been written. The leader adds
++	the entry to its log, updates its head_index.
++*/
++func (s *shardManager) writeSync(op *proto.PutOp, responseChannel chan any) error {
++	s.log.Debug().
++		Interface("op", op).
++		Msg("Put operation")
++
++	if err := s.checkStatus(Leader); err != nil {
++		return err
++	}
++	entryId := &coordination.EntryId{
++		Epoch:  s.epoch,
++		Offset: s.headIndex.offset + 1,
++	}
++	value, err := serializeOp(op)
++	if err != nil {
++		return err
++	}
++	logEntry := &coordination.LogEntry{
++		EntryId:   entryId,
++		Value:     value,
++		Timestamp: uint64(time.Now().Nanosecond()),
++	}
++	// Note: the version in the KV store may be updated by the time this entry is applied
++	err = s.wal.Append(logEntry)
++	if err != nil {
++		return err
++	}
++	s.headIndex = EntryIdFromProto(entryId)
++	s.waitingRoom[s.headIndex] = waitingRoomEntry{
++		counter:             0,
++		confirmationChannel: responseChannel,
++	}
++	return nil
++
++}
++
++func (s *shardManager) sendEntriesToFollower(target string, lastPushedEntry *coordination.EntryId) {
++	err := sendRequestAndProcessResponse[any](s, target, func(ctx context.Context, client coordination.OxiaLogReplicationClient) (any, error) {
++		addEntries, err := client.AddEntries(ctx)
++		if err != nil {
++			return nil, err
++		}
++
++		err = s.wal.Read(EntryIdFromProto(lastPushedEntry), func(entry *coordination.LogEntry) error {
++			err2 := addEntries.Send(&coordination.AddEntryRequest{
++				Epoch:       s.epoch,
++				Entry:       entry,
++				CommitIndex: s.commitIndex.toProto(),
++			})
++			if err2 != nil {
++				log.Error().Err(err2).Msgf("Error replicating message to %s", target)
++				return err2
++			}
++			s.followCursor[target].lastPushed = entry.EntryId
++			return nil
++		})
++		if err != nil {
++			return nil, err
++		}
++
++		go func() {
++			for {
++				addEntryResponse, err2 := addEntries.Recv()
++				if err2 != nil {
++					log.Error().Err(err2).Msg("Error while waiting for ack")
++					return
++				}
++				command := newCommand(func() (any, error) {
++					err3 := s.addEntryResponseSync(target, addEntryResponse)
++					return nil, err3
++				})
++				s.commandChannel <- command
++			}
++		}()
++		return nil, nil
++	}, func(any) error {
++		return nil
++	})
++	if err != nil {
++		log.Error().Err(err).Msgf("Error sending message to '%s'", target)
++	}
++}
++
++/*
++A leader node handles an add entry response
++
++	The leader updates the follow cursor last_confirmed
++	entry id, it also may advance the commit index.
++
++	An entry is committed when all of the following
++	has occurred:
++	- it has reached majority quorum
++	- the entire log prefix has reached majority quorum
++	- the entry epoch matches the current epoch
++
++	Key points:
++	- Entries of prior epochs cannot be committed directly by
++	  themselves, only entries of the current epoch can be
++	  committed. Committing an entry of the current epoch
++	  also implicitly includes all prior entries.
++	  To find a counterexample where loss of confirmed writes
++	  occurs when committing entries of prior epochs directly,
++	  comment out the condition 'entry_id.epoch = nstate.epoch'
++	  below. Also see the Raft paper.
++*/
++func (s *shardManager) addEntryResponseSync(follower string, response *coordination.AddEntryResponse) error {
++	if err := s.checkStatus(Leader); err != nil {
++		return err
++	}
++	if err := s.checkEpochEqualIn(response); err != nil {
++		return nil
++	}
++	// TODO check if 'IsEarliestReceivableEntryMessage'
++	if !response.InvalidEpoch && s.followCursor[follower].status == Attached {
++		s.followCursor[follower].lastConfirmed = response.EntryId
++		// TODO LogPrefixAtQuorum
++		waitingEntry, ok := s.waitingRoom[EntryIdFromProto(response.EntryId)]
++		if ok {
++			// If the entry is not there, it has already been confirmed
++			waitingEntry.counter++
++			if waitingEntry.counter >= s.replicationFactor/2 {
++				delete(s.waitingRoom, EntryIdFromProto(response.EntryId))
++				logEntry, err := s.wal.ReadOne(EntryIdFromProto(response.EntryId))
++				if err != nil {
++					return err
++				}
++				op, err := deserializeOp(logEntry.GetValue())
++				if err != nil {
++					return err
++				}
++				stat, err := s.kv.Apply(op, logEntry.Timestamp)
++				if err != nil {
++					// TODO if op is inapplicable, it's not an error really. Should be encapsulated in the stat
++					return err
++				}
++				waitingEntry.confirmationChannel <- stat
++				s.commitIndex = EntryIdFromProto(response.EntryId)
++				// TODO notify watchers
++			}
++		}
++	} else {
++		log.Error().Msgf("Entry rejected by '%s'", follower)
++	}
++	return nil
++}
++
++func (s *shardManager) AddEntries(source string, srv coordination.OxiaLogReplication_AddEntriesServer) (any, error) {
++	for {
++		req, err := srv.Recv()
++		if err != nil {
++			return nil, err
++		}
++		response := enqueueCommandAndWaitForResponse[*coordination.AddEntryResponse](s, func() (*coordination.AddEntryResponse, error) {
++			resp, err2 := s.addEntrySync(source, req)
++			return resp, err2
++		})
++		err = srv.Send(response)
++		if err != nil {
++			return nil, err
++		}
++	}
++}
++
++func (s *shardManager) addEntrySync(source string, req *coordination.AddEntryRequest) (*coordination.AddEntryResponse, error) {
++	if req.GetEpoch() <= s.epoch {
++		/*
++		 A follower node rejects an entry from the leader.
++
++
++		  If the leader has a lower epoch than the follower then the
++		  follower must reject it with an INVALID_EPOCH response.
++
++		  Key points:
++		  - The epoch of the response should be the epoch of the
++		    request so that the leader will not ignore the response.
++		*/
++		return &coordination.AddEntryResponse{
++			Epoch:        req.Epoch,
++			EntryId:      nil,
++			InvalidEpoch: true,
++		}, nil
++	}
++	if s.status != Follower && s.status != Fenced {
++		return nil, status.Errorf(codes.FailedPrecondition, "AddEntry request from %s when status = %+v", source, s.status)
++	}
++
++	/*
++	  A follower node confirms an entry to the leader
++
++	  The follower adds the entry to its log, sets the head index
++	  and updates its commit index with the commit index of
++	  the request.
++	*/
++	s.status = Follower
++	s.epoch = req.Epoch
++	s.leader = source
++	err := s.wal.Append(req.GetEntry())
++	if err != nil {
++		return nil, err
++	}
++	s.headIndex = EntryIdFromProto(req.Entry.EntryId)
++	oldCommitIndex := s.commitIndex
++	s.commitIndex = EntryIdFromProto(req.CommitIndex)
++	err = s.wal.ReadSync(oldCommitIndex, s.commitIndex, func(entry *coordination.LogEntry) error {
++		op, err2 := deserializeOp(entry.GetValue())
++		if err2 != nil {
++			return err2
++		}
++		_, err3 := s.kv.Apply(op, entry.Timestamp)
++		return err3
++	})
++	if err != nil {
++		return nil, err
++	}
++	return &coordination.AddEntryResponse{
++		Epoch:        s.epoch,
++		EntryId:      req.Entry.EntryId,
++		InvalidEpoch: false,
++	}, nil
++
++}
++
++func (s *shardManager) PrepareReconfig(req *coordination.PrepareReconfigRequest) (*coordination.PrepareReconfigResponse, error) {
++	return nil, status.Errorf(codes.Unimplemented, "method PrepareReconfig not implemented")
++}
++func (s *shardManager) Snapshot(req *coordination.SnapshotRequest) (*coordination.SnapshotResponse, error) {
++	return nil, status.Errorf(codes.Unimplemented, "method Snapshot not implemented")
++}
++func (s *shardManager) CommitReconfig(req *coordination.CommitReconfigRequest) (*coordination.CommitReconfigResponse, error) {
++	return nil, status.Errorf(codes.Unimplemented, "method CommitReconfig not implemented")
++}
++
++// run takes commands from the queue and executes them serially
++func (s *shardManager) run() {
++	for !s.closing {
++		command := <-s.commandChannel
++		response, err := command.execute()
++		if response != nil {
++			command.responseChan <- response
++		}
++		if err != nil {
++			log.Error().Err(err).Msg("Error executing command.")
++		}
++		if s.closing || err != nil {
++			log.Info().Msg("Shard manager closes.")
++			break
++		}
++	}
++}
++
++func (s *shardManager) Close() error {
++	s.log.Info().Msg("Closing shard manager")
++	s.commandChannel <- newCommand(func() (any, error) {
++		s.purgeWaitingRoom()
++		s.status = NotMember
++		return nil, nil
++	})
++
++	return s.wal.Close()
++}
++
++func (s *shardManager) purgeWaitingRoom() {
++	for _, v := range s.waitingRoom {
++		v.confirmationChannel <- status.Errorf(codes.Aborted, "Oxia shutting down")
++	}
++	s.waitingRoom = make(map[EntryId]waitingRoomEntry)
++}
+diff --git a/server/shard_manager_test.go b/server/shard_manager_test.go
+new file mode 100644
+index 0000000..d63fc2a
+--- /dev/null
++++ b/server/shard_manager_test.go
+@@ -0,0 +1,33 @@
++package server
++
++import (
++	"testing"
++)
++
++const shard = "0000-000F"
++
++func TestNewShardManager(t *testing.T) {
++	wal := NewInMemoryWal(shard)
++	sm, err := NewShardManager(shard, "augustus:31", nil, wal, nil)
++	if err != nil {
++		t.Log(err)
++		t.Fatalf("Unable to create shard manager")
++	}
++	impl := sm.(*shardManager)
++	assertEquals[uint64](t, 0, impl.epoch, "Epochs")
++	assertEquals[EntryId](t, EntryId{}, impl.commitIndex, "CommitIndexes")
++	assertEquals[EntryId](t, EntryId{}, impl.headIndex, "HeadIndexes")
++	assertEquals[Status](t, NotMember, impl.status, "Statuses")
++}
++
++func TestNewShardManagerInitializesFromWal(t *testing.T) {
++	wal := newWalWithEntries("Ticinus", "Cannae", "", "Cartagena", "Baecula", "Ilipa", "", "Utica", "Utica", "Zama")
++	sm, err := NewShardManager(shard, "scipio:202", nil, wal, nil)
++	if err != nil {
++		t.Log(err)
++		t.Fatalf("Unable to create shard manager")
++	}
++	impl := sm.(*shardManager)
++	assertEquals[EntryId](t, wal.EntryIdAt(wal.LogLength()-1), impl.headIndex, "HeadIndexes")
++
++}
+diff --git a/server/shards_director.go b/server/shards_director.go
+new file mode 100644
+index 0000000..8fb33e2
+--- /dev/null
++++ b/server/shards_director.go
+@@ -0,0 +1,119 @@
++package server
++
++import (
++	"github.com/pkg/errors"
++	"github.com/rs/zerolog"
++	"github.com/rs/zerolog/log"
++	"io"
++	"oxia/common"
++	"oxia/proto"
++	"sync"
++)
++
++type ShardsDirector interface {
++	io.Closer
++
++	GetShardsAssignments(callback func(*proto.ShardsAssignments))
++
++	GetManager(shardId ShardId, create bool) (ShardManager, error)
++}
++
++type ShardId string
++
++type shardsDirector struct {
++	mutex *sync.Mutex
++	cond  *sync.Cond
++
++	assignments   *proto.ShardsAssignments
++	shardManagers map[ShardId]ShardManager
++	identityAddr  string
++
++	log zerolog.Logger
++}
++
++func NewShardsDirector(identityAddr string) ShardsDirector {
++	mutex := &sync.Mutex{}
++	return &shardsDirector{
++		mutex: mutex,
++		cond:  sync.NewCond(mutex),
++
++		identityAddr:  identityAddr,
++		shardManagers: make(map[ShardId]ShardManager),
++		log: log.With().
++			Str("component", "shards-director").
++			Logger(),
++	}
++}
++
++func (s *shardsDirector) GetShardsAssignments(callback func(*proto.ShardsAssignments)) {
++	s.mutex.Lock()
++	defer s.mutex.Unlock()
++
++	if s.assignments != nil {
++		callback(s.assignments)
++	}
++
++	oldAssignments := s.assignments
++	for {
++		s.cond.Wait()
++
++		if oldAssignments != s.assignments {
++			callback(s.assignments)
++			oldAssignments = s.assignments
++		}
++	}
++}
++
++func (s *shardsDirector) GetManager(shardId ShardId, create bool) (ShardManager, error) {
++	s.mutex.Lock()
++	defer s.mutex.Unlock()
++
++	manager, ok := s.shardManagers[shardId]
++	if ok {
++		return manager, nil
++	} else if create {
++		w := NewInMemoryWal(shardId)
++		kv := NewInMemoryKVStore()
++		pool := common.NewClientPool()
++		sm, err := NewShardManager(shardId, s.identityAddr, pool, w, kv)
++		if err != nil {
++			return nil, err
++		}
++		s.shardManagers[shardId] = sm
++		return sm, nil
++	} else {
++		s.log.Debug().Str("shard", string(shardId)).
++			Msg("This node is not hosting shard")
++		return nil, errors.Errorf("This node is not leader for shard %s", shardId)
++	}
++
++}
++
++func (s *shardsDirector) Close() error {
++	s.mutex.Lock()
++	defer s.mutex.Unlock()
++
++	for shard, manager := range s.shardManagers {
++		if err := manager.Close(); err != nil {
++			s.log.Error().
++				Err(err).
++				Str("shard", string(shard)).
++				Msg("Failed to shutdown leader controller")
++		}
++	}
++	return nil
++}
++
++func (s *shardsDirector) shouldLead(shard *proto.ShardStatus) bool {
++	return true // shard.Leader.InternalUrl == s.identityAddr
++}
++
++func (s *shardsDirector) shouldFollow(shard *proto.ShardStatus) bool {
++	//for _, f := range shard.Followers {
++	//	if f.InternalUrl == s.identityAddr {
++	//		return true
++	//	}
++	//}
++
++	return false
++}
+diff --git a/server/shards_manager.go b/server/shards_manager.go
+deleted file mode 100644
+index b3fe7d6..0000000
+--- a/server/shards_manager.go
++++ /dev/null
+@@ -1,191 +0,0 @@
+-package server
+-
+-import (
+-	"github.com/pkg/errors"
+-	"github.com/rs/zerolog"
+-	"github.com/rs/zerolog/log"
+-	"io"
+-	"oxia/proto"
+-	"sync"
+-)
+-
+-type ShardsManager interface {
+-	io.Closer
+-
+-	GetShardsAssignments(callback func(*proto.ShardsAssignments))
+-
+-	UpdateClusterStatus(status *proto.ClusterStatus) error
+-
+-	GetLeaderController(shardId uint32) (ShardLeaderController, error)
+-}
+-
+-type shardsManager struct {
+-	mutex *sync.Mutex
+-	cond  *sync.Cond
+-
+-	assignments  *proto.ShardsAssignments
+-	leading      map[uint32]ShardLeaderController
+-	following    map[uint32]ShardFollowerController
+-	identityAddr string
+-
+-	log zerolog.Logger
+-}
+-
+-func NewShardsManager(identityAddr string) ShardsManager {
+-	mutex := &sync.Mutex{}
+-	return &shardsManager{
+-		mutex: mutex,
+-		cond:  sync.NewCond(mutex),
+-
+-		identityAddr: identityAddr,
+-		leading:      make(map[uint32]ShardLeaderController),
+-		following:    make(map[uint32]ShardFollowerController),
+-		log: log.With().
+-			Str("component", "shards-manager").
+-			Logger(),
+-	}
+-}
+-
+-func (s *shardsManager) GetShardsAssignments(callback func(*proto.ShardsAssignments)) {
+-	s.mutex.Lock()
+-	defer s.mutex.Unlock()
+-
+-	if s.assignments != nil {
+-		callback(s.assignments)
+-	}
+-
+-	oldAssignments := s.assignments
+-	for {
+-		s.cond.Wait()
+-
+-		if oldAssignments != s.assignments {
+-			callback(s.assignments)
+-			oldAssignments = s.assignments
+-		}
+-	}
+-}
+-
+-func (s *shardsManager) UpdateClusterStatus(status *proto.ClusterStatus) error {
+-	s.mutex.Lock()
+-	defer s.mutex.Unlock()
+-
+-	// Compare what we have and what we should have running in this node
+-	for _, shard := range status.GetShardsStatus() {
+-		if s.shouldLead(shard) {
+-			// We are leaders for this shard
+-			leaderCtrl, ok := s.leading[shard.Shard]
+-			if ok {
+-				s.log.Debug().
+-					Uint32("shard", shard.Shard).
+-					Msg("We are already leading, nothing to do")
+-			} else {
+-				followerCtrl, ok := s.following[shard.Shard]
+-				if ok {
+-					// We are being promoted from follower -> leader
+-					followerCtrl.Close()
+-					delete(s.following, shard.Shard)
+-				}
+-
+-				leaderCtrl = NewShardLeaderController(shard.Shard, status.ReplicationFactor)
+-				s.leading[shard.Shard] = leaderCtrl
+-			}
+-		} else if s.shouldFollow(shard) {
+-			// We are followers for this shard
+-			followerCtrl, ok := s.following[shard.Shard]
+-			if ok {
+-				s.log.Debug().
+-					Uint32("shard", shard.Shard).
+-					Msg("We are already following, nothing to do")
+-			} else {
+-				leaderCtrl, ok := s.leading[shard.Shard]
+-				if ok {
+-					// We are being demoted from leader -> follower
+-					leaderCtrl.Close()
+-					delete(s.leading, shard.Shard)
+-				}
+-
+-				followerCtrl = NewShardFollowerController(shard.Shard, shard.Leader.InternalUrl)
+-				s.following[shard.Shard] = followerCtrl
+-			}
+-		} else {
+-			// We should not be running this shard, close it if it's running
+-			if leaderCtrl, ok := s.leading[shard.Shard]; ok {
+-				leaderCtrl.Close()
+-			}
+-
+-			if followerCtrl, ok := s.following[shard.Shard]; ok {
+-				followerCtrl.Close()
+-			}
+-		}
+-	}
+-
+-	s.assignments = s.computeNewAssignments(status)
+-	return nil
+-}
+-
+-func (s *shardsManager) computeNewAssignments(status *proto.ClusterStatus) *proto.ShardsAssignments {
+-	assignments := &proto.ShardsAssignments{
+-		Shards: make([]*proto.ShardAssignment, 0),
+-	}
+-	for _, shard := range status.GetShardsStatus() {
+-		assignments.Shards = append(assignments.Shards, &proto.ShardAssignment{
+-			ShardId: shard.Shard,
+-			Leader:  shard.Leader.PublicUrl,
+-		})
+-	}
+-
+-	s.cond.Broadcast()
+-
+-	return assignments
+-}
+-
+-func (s *shardsManager) GetLeaderController(shardId uint32) (ShardLeaderController, error) {
+-	s.mutex.Lock()
+-	defer s.mutex.Unlock()
+-
+-	slc, ok := s.leading[shardId]
+-	if !ok {
+-		s.log.Debug().Uint32("shard", shardId).Msg("This node is not leader for shard")
+-		return nil, errors.Errorf("This node is not leader for shard %d", shardId)
+-	}
+-	return slc, nil
+-}
+-
+-func (s *shardsManager) Close() error {
+-	s.mutex.Lock()
+-	defer s.mutex.Unlock()
+-
+-	for shard, leaderCtrl := range s.leading {
+-		if err := leaderCtrl.Close(); err != nil {
+-			s.log.Error().
+-				Err(err).
+-				Uint32("shard", shard).
+-				Msg("Failed to shutdown leader controller")
+-		}
+-	}
+-
+-	for shard, followerCtrl := range s.following {
+-		if err := followerCtrl.Close(); err != nil {
+-			s.log.Error().
+-				Err(err).
+-				Uint32("shard", shard).
+-				Msg("Failed to shutdown follower controller")
+-		}
+-	}
+-
+-	return nil
+-}
+-
+-func (s *shardsManager) shouldLead(shard *proto.ShardStatus) bool {
+-	return shard.Leader.InternalUrl == s.identityAddr
+-}
+-
+-func (s *shardsManager) shouldFollow(shard *proto.ShardStatus) bool {
+-	for _, f := range shard.Followers {
+-		if f.InternalUrl == s.identityAddr {
+-			return true
+-		}
+-	}
+-
+-	return false
+-}
+diff --git a/server/tidwall_log.go b/server/tidwall_log.go
+new file mode 100644
+index 0000000..e7138d0
+--- /dev/null
++++ b/server/tidwall_log.go
+@@ -0,0 +1,231 @@
++package server
++
++import (
++	"encoding/json"
++	"github.com/pkg/errors"
++	"github.com/rs/zerolog/log"
++	tidwall "github.com/tidwall/wal"
++	"oxia/coordination"
++)
++
++type EntryId struct {
++	epoch  uint64
++	offset uint64
++}
++
++func EntryIdFromProto(id *coordination.EntryId) EntryId {
++	return EntryId{
++		epoch:  id.Epoch,
++		offset: id.Offset,
++	}
++}
++
++func (id EntryId) toProto() *coordination.EntryId {
++	return &coordination.EntryId{
++		Epoch:  id.epoch,
++		Offset: id.offset,
++	}
++}
++
++func (id EntryId) isHigherThan(other EntryId) bool {
++	return id.epoch > other.epoch || (id.epoch == other.epoch && id.offset > other.offset)
++}
++
++type tidwallLog struct {
++	log       *tidwall.Log
++	index     map[EntryId]uint64
++	reverse   map[uint64]EntryId
++	callbacks []func(*coordination.LogEntry) error
++}
++
++func NewTidwallLog(walDir string, shard string) (Wal, error) {
++	logImpl, err := tidwall.Open(walDir+"/"+shard, tidwall.DefaultOptions)
++	if err != nil {
++		return nil, err
++	}
++	// TODO persist index
++	if err != nil {
++		return nil, err
++	}
++	impl := &tidwallLog{
++		log:       logImpl,
++		index:     nil,
++		reverse:   nil,
++		callbacks: make([]func(*coordination.LogEntry) error, 0, 10000),
++	}
++	err = impl.buildIndexes()
++	if err != nil {
++		return nil, err
++	}
++	return impl, nil
++}
++
++func (t *tidwallLog) buildIndexes() error {
++	m := make(map[EntryId]uint64)
++	r := make(map[uint64]EntryId)
++	first, err := t.log.FirstIndex()
++	if err != nil {
++		return err
++	}
++	last, err := t.log.LastIndex()
++	if err != nil {
++		return err
++	}
++	for index := first; index != 0 && index <= last; index++ {
++		logEntry, err2 := t.readEntryAt(index)
++		if err2 != nil {
++			return err2
++		}
++		entryId := EntryIdFromProto(logEntry.EntryId)
++		m[entryId] = index
++		r[index] = entryId
++	}
++	t.index = m
++	t.reverse = r
++	return nil
++}
++func (t *tidwallLog) readEntryAt(index uint64) (*coordination.LogEntry, error) {
++	read, err2 := t.log.Read(index)
++	if err2 != nil {
++		return nil, err2
++	}
++	logEntry := &coordination.LogEntry{}
++	err2 = json.Unmarshal(read, logEntry)
++	if err2 != nil {
++		return nil, err2
++	}
++	return logEntry, nil
++
++}
++
++func (t *tidwallLog) LogLength() uint64 {
++	return uint64(len(t.index))
++}
++
++func (t *tidwallLog) EntryIdAt(internalOffset uint64) EntryId {
++	id := t.reverse[internalOffset]
++	return id
++}
++
++func (t *tidwallLog) Close() error {
++	return t.log.Close()
++}
++
++func (t *tidwallLog) Append(entry *coordination.LogEntry) error {
++	bytes, err := json.Marshal(entry)
++	if err != nil {
++		return err
++	}
++	index := t.LogLength() + 1
++	err = t.log.Write(index, bytes)
++	if err != nil {
++		return err
++	}
++	id := EntryIdFromProto(entry.EntryId)
++	t.index[id] = index
++	t.reverse[index] = id
++
++	for i := 0; i < len(t.callbacks); {
++		callback := t.callbacks[i]
++		err2 := callback(entry)
++		if err2 != nil {
++			// TODO retry
++			log.Error().Err(err2).Msg("Encountered error. Removing callback")
++			t.callbacks[i] = t.callbacks[len(t.callbacks)-1]
++			t.callbacks = t.callbacks[:len(t.callbacks)-1]
++		} else {
++			i++
++		}
++	}
++	return nil
++}
++
++func (t *tidwallLog) ReadOne(id EntryId) (*coordination.LogEntry, error) {
++	index, ok := t.index[id]
++	if !ok {
++		return nil, errors.Errorf("Can't read id %+v", id)
++	}
++	logEntry, err2 := t.readEntryAt(index)
++	if err2 != nil {
++		return nil, err2
++	}
++	return logEntry, nil
++}
++
++func (t *tidwallLog) ReadSync(previousCommittedEntryId EntryId, lastCommittedEntryId EntryId, callback func(*coordination.LogEntry) error) error {
++	start, ok := t.index[(previousCommittedEntryId)]
++	if !ok {
++		return errors.Errorf("Can't read id %+v", previousCommittedEntryId)
++	}
++	start++
++	end, ok := t.index[(lastCommittedEntryId)]
++	if !ok {
++		return errors.Errorf("Can't read id %+v", lastCommittedEntryId)
++	}
++	for i := start; i <= end; i++ {
++		logEntry, err := t.readEntryAt(i)
++		if err != nil {
++			return err
++		}
++		err = callback(logEntry)
++		if err != nil {
++			return err
++		}
++	}
++	return nil
++}
++
++func (t *tidwallLog) Read(lastPushedEntryId EntryId, callback func(*coordination.LogEntry) error) error {
++	start, ok := t.index[(lastPushedEntryId)]
++	if !ok {
++		return errors.Errorf("Can't read id %+v", lastPushedEntryId)
++	}
++	start++
++	for i := start; i <= t.LogLength(); i++ {
++		logEntry, err := t.readEntryAt(i)
++		if err != nil {
++			return err
++		}
++		err = callback(logEntry)
++		if err != nil {
++			return err
++		}
++	}
++	t.callbacks = append(t.callbacks, callback)
++	return nil
++}
++
++func (t *tidwallLog) StopReaders() {
++	t.callbacks = make([]func(*coordination.LogEntry) error, 0, 10000)
++}
++
++func (t *tidwallLog) GetHighestEntryOfEpoch(epoch uint64) (EntryId, error) {
++	offset, ok := t.index[EntryId{
++		epoch:  epoch + 1,
++		offset: 1,
++	}]
++	if ok {
++		return t.reverse[offset-1], nil
++	} else {
++		return t.reverse[t.LogLength()], nil
++	}
++}
++
++func (t *tidwallLog) TruncateLog(lastSafeEntryId EntryId) (EntryId, error) {
++	lastSafe, ok := t.index[lastSafeEntryId]
++	if !ok {
++		return EntryId{}, errors.Errorf("Can't read id %+v", lastSafeEntryId)
++	}
++	end := t.LogLength()
++	for i := lastSafe + 1; i <= end; i++ {
++		id := t.reverse[i]
++		delete(t.index, id)
++		delete(t.reverse, i)
++	}
++	err := t.log.TruncateBack(lastSafe)
++	if err != nil {
++		return EntryId{}, err
++	}
++	return t.reverse[lastSafe], nil
++
++}
+diff --git a/server/utils_test.go b/server/utils_test.go
+new file mode 100644
+index 0000000..b365b9b
+--- /dev/null
++++ b/server/utils_test.go
+@@ -0,0 +1,46 @@
++package server
++
++import (
++	"oxia/coordination"
++	"testing"
++)
++
++func assertEquals[X comparable](t *testing.T, expected X, actual X, message string) {
++	if expected != actual {
++		t.Fatalf("Equality check failed for %s. Got %v, expected %v", message, actual, expected)
++	}
++}
++
++func failOnErr(t *testing.T, err error, op string) {
++	if err != nil {
++		t.Log(err)
++		t.Fatalf("Error while %s", op)
++	}
++}
++
++func newWalWithEntries(payloads ...string) *inMemoryWal {
++	wal := NewInMemoryWal(shard)
++	return initWalWithEntries(wal, payloads)
++}
++
++func initWalWithEntries(wal Wal, payloads []string) *inMemoryWal {
++	epoch := uint64(1)
++	offset := uint64(1)
++	for _, p := range payloads {
++		if p == "" {
++			epoch++
++		} else {
++			entry := &coordination.LogEntry{
++				EntryId: &coordination.EntryId{
++					Epoch:  epoch,
++					Offset: offset,
++				},
++				Value:     []byte(p),
++				Timestamp: offset,
++			}
++			wal.Append(entry)
++			offset++
++		}
++	}
++	return wal.(*inMemoryWal)
++}
+diff --git a/server/wal.go b/server/wal.go
+index b31c189..d552387 100644
+--- a/server/wal.go
++++ b/server/wal.go
+@@ -2,39 +2,141 @@ package server
+ 
+ import (
+ 	"github.com/pkg/errors"
++	"github.com/rs/zerolog/log"
+ 	"io"
+-	"oxia/proto"
++	"oxia/coordination"
+ )
+ 
+ type Wal interface {
+ 	io.Closer
+-	Append(epoch uint64, payload []byte) (entryId uint64, err error)
++	Append(entry *coordination.LogEntry) error
+ 
+-	Read(entryId uint64) (logEntry *proto.LogEntry, err error)
++	Read(lastPushedEntryId EntryId, callback func(*coordination.LogEntry) error) error
++	ReadSync(previousCommittedEntryId EntryId, lastCommittedEntryId EntryId, callback func(*coordination.LogEntry) error) error
++	GetHighestEntryOfEpoch(epoch uint64) (EntryId, error)
++	TruncateLog(headIndex EntryId) (EntryId, error)
++	StopReaders()
++	ReadOne(id EntryId) (*coordination.LogEntry, error)
++
++	LogLength() uint64
++	EntryIdAt(index uint64) EntryId
++}
++
++type inMemoryWal struct {
++	shard     ShardId
++	log       []*coordination.LogEntry
++	index     map[EntryId]int
++	callbacks []func(*coordination.LogEntry) error
++}
++
++func NewInMemoryWal(shard ShardId) Wal {
++	return &inMemoryWal{
++		shard:     shard,
++		log:       make([]*coordination.LogEntry, 0, 10000),
++		index:     make(map[EntryId]int),
++		callbacks: make([]func(*coordination.LogEntry) error, 0, 10000),
++	}
++}
++
++func (w *inMemoryWal) Close() error {
++	return nil
+ }
+ 
+-type wal struct {
+-	shard uint32
++func (w *inMemoryWal) Append(entry *coordination.LogEntry) error {
++	w.log = append(w.log, entry)
++	w.index[EntryIdFromProto(entry.EntryId)] = len(w.log) - 1
++	index := 0
++	for index < len(w.callbacks) {
++		callback := w.callbacks[index]
++		err := callback(entry)
++		if err != nil {
++			// TODO retry
++			log.Error().Err(err).Msg("Encountered error. Removing callback")
++			w.callbacks[index] = w.callbacks[len(w.callbacks)-1]
++			w.callbacks = w.callbacks[:len(w.callbacks)-1]
++		} else {
++			index++
++		}
++	}
++	return nil
++}
+ 
+-	// Dummy in-memory implementation
+-	log []proto.LogEntry
++func (w *inMemoryWal) ReadOne(id EntryId) (*coordination.LogEntry, error) {
++	return w.log[w.index[id]], nil
+ }
+ 
+-func NewWal(shard uint32) Wal {
+-	return &wal{
+-		shard: shard,
+-		log:   make([]proto.LogEntry, 0),
++func (w *inMemoryWal) ReadSync(previousCommittedEntryId EntryId, lastCommittedEntryId EntryId, callback func(*coordination.LogEntry) error) error {
++	index := w.index[previousCommittedEntryId]
++	for index+1 < len(w.log) {
++		index++
++		entry := w.log[index]
++		if entry.EntryId.Epoch > lastCommittedEntryId.epoch || (entry.EntryId.Epoch == lastCommittedEntryId.epoch && entry.EntryId.Offset > lastCommittedEntryId.offset) {
++			break
++		}
++		err2 := callback(entry)
++		if err2 != nil {
++			return err2
++		}
+ 	}
++	return nil
+ }
+ 
+-func (w *wal) Close() error {
++func (w *inMemoryWal) Read(lastPushedEntryId EntryId, callback func(*coordination.LogEntry) error) error {
++	index := w.index[lastPushedEntryId]
++	for index+1 < len(w.log) {
++		index++
++		err2 := callback(w.log[index])
++		if err2 != nil {
++			return err2
++		}
++	}
++	w.callbacks = append(w.callbacks, callback)
+ 	return nil
+ }
+ 
+-func (w *wal) Append(epoch uint64, payload []byte) (entryId uint64, err error) {
+-	panic("implement me")
++func (w *inMemoryWal) StopReaders() {
++	w.callbacks = make([]func(*coordination.LogEntry) error, 0, 10000)
++}
++
++func (w *inMemoryWal) GetHighestEntryOfEpoch(epoch uint64) (EntryId, error) {
++	if len(w.log) == 0 {
++		return EntryId{}, nil
++	}
++	if w.log[0].EntryId.Epoch > epoch {
++		return EntryId{}, errors.Errorf("Snapshotting is not yet implemented")
++	}
++	if w.log[len(w.log)-1].EntryId.Epoch <= epoch {
++		return EntryIdFromProto(w.log[len(w.log)-1].EntryId), nil
++	}
++	for i := len(w.log) - 1; i >= 0; i-- {
++		if w.log[i].EntryId.Epoch == epoch {
++			return EntryIdFromProto(w.log[i].EntryId), nil
++		}
++	}
++	// Should not happen
++	return EntryId{}, nil
++
++}
++
++func (w *inMemoryWal) TruncateLog(lastSafeEntryId EntryId) (EntryId, error) {
++	index, ok := w.index[lastSafeEntryId]
++	if ok {
++		for i := index + 1; i < len(w.log); i++ {
++			delete(w.index, EntryIdFromProto(w.log[i].EntryId))
++		}
++		w.log = w.log[:index]
++	}
++	if len(w.log) == 0 {
++		return EntryId{}, nil
++	}
++	return EntryIdFromProto(w.log[len(w.log)-1].EntryId), nil
++
++}
++
++func (w *inMemoryWal) LogLength() uint64 {
++	return uint64(len(w.log))
+ }
+ 
+-func (w *wal) Read(entryId uint64) (logEntry *proto.LogEntry, err error) {
+-	return nil, errors.New("WAL.read not implemented")
++func (w *inMemoryWal) EntryIdAt(index uint64) EntryId {
++	return EntryIdFromProto(w.log[index].EntryId)
+ }
+diff --git a/server/wal_test.go b/server/wal_test.go
+new file mode 100644
+index 0000000..9b2fec5
+--- /dev/null
++++ b/server/wal_test.go
+@@ -0,0 +1,18 @@
++package server
++
++import "testing"
++
++// This serves as a compatibility test suite for WAL implementations
++
++func newWal() Wal {
++	// Change this to test another implementation
++	return new(inMemoryWal)
++}
++
++func TestNewWal(t *testing.T) {
++	wal := newWal()
++	assertEquals(t, 0, wal.LogLength(), "Log length")
++	entry, err := wal.GetHighestEntryOfEpoch(1)
++	failOnErr(t, err, "Getting highest entry")
++	assertEquals(t, EntryId{}, entry, "Highest entry of epoch")
++}
+diff --git a/standalone/standalone.go b/standalone/standalone.go
+index fddf6b6..6c33b48 100644
+--- a/standalone/standalone.go
++++ b/standalone/standalone.go
+@@ -4,8 +4,8 @@ import (
+ 	"fmt"
+ 	"github.com/rs/zerolog/log"
+ 	"os"
++	"oxia/coordination"
+ 	"oxia/operator"
+-	"oxia/proto"
+ 	"oxia/server"
+ )
+ 
+@@ -18,8 +18,8 @@ type standaloneConfig struct {
+ type standalone struct {
+ 	rpc *server.PublicRpcServer
+ 
+-	shardsManager           server.ShardsManager
+-	identityInternalAddress proto.ServerAddress
++	shardsDirector          server.ShardsDirector
++	identityInternalAddress coordination.ServerAddress
+ }
+ 
+ func NewStandalone(config *standaloneConfig) (*standalone, error) {
+@@ -40,15 +40,15 @@ func NewStandalone(config *standaloneConfig) (*standalone, error) {
+ 	}
+ 
+ 	identityAddr := fmt.Sprintf("%s:%d", advertisedPublicAddress, config.PublicServicePort)
+-	s.shardsManager = server.NewShardsManager(identityAddr)
++	s.shardsDirector = server.NewShardsDirector(identityAddr)
+ 
+-	cs := operator.ComputeAssignments([]*proto.ServerAddress{{
++	_ = operator.ComputeAssignments([]*coordination.ServerAddress{{
+ 		InternalUrl: identityAddr,
+ 		PublicUrl:   identityAddr,
+ 	}}, 1, conf.NumShards)
+-	s.shardsManager.UpdateClusterStatus(cs)
++	// TODO bootstrap shards in s.shardsDirector
+ 
+-	s.rpc, err = server.NewPublicRpcServer(int(config.PublicServicePort), advertisedPublicAddress, s.shardsManager)
++	s.rpc, err = server.NewPublicRpcServer(int(config.PublicServicePort), advertisedPublicAddress, s.shardsDirector)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+@@ -61,7 +61,7 @@ func (s *standalone) Close() error {
+ 		return err
+ 	}
+ 
+-	if err := s.shardsManager.Close(); err != nil {
++	if err := s.shardsDirector.Close(); err != nil {
+ 		return err
+ 	}
+ 
+diff --git a/Makefile b/Makefile
+index 719b1b7..122c76c 100644
+--- a/Makefile
++++ b/Makefile
+@@ -5,10 +5,11 @@ build: proto
+ 
+ test: build
+ 	go test -v -o oxia ./cmd
++	go test -v -o oxia ./server
+ 
+ clean:
+ 	rm -f oxia
+-	rm -f proto/*.pb.go
++	rm -f */*.pb.go
+ 
+ docker: docker_arm docker_x86
+ 
+@@ -23,3 +24,4 @@ docker_x86:
+ .PHONY: proto
+ proto:
+ 	protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative proto/*.proto
++	protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative coordination/*.proto
+diff --git a/common/client_pool.go b/common/client_pool.go
+index b2b81ae..944e035 100644
+--- a/common/client_pool.go
++++ b/common/client_pool.go
+@@ -5,6 +5,7 @@ import (
+ 	"github.com/rs/zerolog/log"
+ 	"google.golang.org/grpc"
+ 	"io"
++	"oxia/coordination"
+ 	"oxia/proto"
+ 	"sync"
+ )
+@@ -12,7 +13,8 @@ import (
+ type ClientPool interface {
+ 	io.Closer
+ 	GetClientRpc(target string) (proto.ClientAPIClient, error)
+-	GetInternalRpc(target string) (proto.InternalAPIClient, error)
++	GetControlRpc(target string) (coordination.OxiaControlClient, error)
++	GetReplicationRpc(target string) (coordination.OxiaLogReplicationClient, error)
+ }
+ 
+ type clientPool struct {
+@@ -54,12 +56,21 @@ func (cp *clientPool) GetClientRpc(target string) (proto.ClientAPIClient, error)
+ 	}
+ }
+ 
+-func (cp *clientPool) GetInternalRpc(target string) (proto.InternalAPIClient, error) {
++func (cp *clientPool) GetControlRpc(target string) (coordination.OxiaControlClient, error) {
+ 	cnx, err := cp.getConnection(target)
+ 	if err != nil {
+ 		return nil, err
+ 	} else {
+-		return proto.NewInternalAPIClient(cnx), nil
++		return coordination.NewOxiaControlClient(cnx), nil
++	}
++}
++
++func (cp *clientPool) GetReplicationRpc(target string) (coordination.OxiaLogReplicationClient, error) {
++	cnx, err := cp.getConnection(target)
++	if err != nil {
++		return nil, err
++	} else {
++		return coordination.NewOxiaLogReplicationClient(cnx), nil
+ 	}
+ }
+ 
+diff --git a/coordination/coordination.proto b/coordination/coordination.proto
+new file mode 100644
+index 0000000..9e602d3
+--- /dev/null
++++ b/coordination/coordination.proto
+@@ -0,0 +1,136 @@
++syntax = "proto3";
++
++option go_package = "github.com/streamnative/oxia/coordination";
++
++package coordination;
++
++//controller -> node
++service OxiaControl {
++  rpc Fence(FenceRequest) returns (FenceResponse) {}
++  rpc BecomeLeader(BecomeLeaderRequest) returns (BecomeLeaderResponse) {}
++  rpc AddFollower(AddFollowerRequest) returns (CoordinationEmpty) {}
++
++  rpc PrepareReconfig(PrepareReconfigRequest) returns (PrepareReconfigResponse) {}
++  rpc Snapshot(SnapshotRequest) returns (SnapshotResponse) {}
++  rpc CommitReconfig(CommitReconfigRequest) returns (CommitReconfigResponse) {}
++}
++
++//node (leader) -> node (follower)
++service OxiaLogReplication {
++  rpc Truncate(TruncateRequest) returns (TruncateResponse) {}
++  rpc AddEntries(stream AddEntryRequest) returns (stream AddEntryResponse) {}
++}
++
++message ServerAddress {
++  string internal_url = 1;
++  string public_url = 2;
++}
++
++message EntryId {
++  uint64 epoch = 1;
++  uint64 offset = 2;
++}
++
++message LogEntry {
++  EntryId entry_id = 1;
++  bytes value = 2;
++  uint64 timestamp = 3;
++}
++
++message CoordinationEmpty {}
++
++message FenceRequest {
++  uint64 epoch = 1;
++}
++message FenceResponse {
++  uint64 epoch = 1;
++  EntryId head_index = 2;
++}
++
++message BecomeLeaderRequest {
++  message FollowerEntry {
++    ServerAddress key = 1;
++    EntryId value = 2;
++  }
++  uint64 epoch = 1;
++  uint32 replication_factor = 2;
++  repeated FollowerEntry follower_map = 3;
++}
++message BecomeLeaderResponse {
++  uint64 epoch = 1;
++}
++
++message AddFollowerRequest {
++  uint64 epoch = 1;
++  ServerAddress follower = 2;
++  EntryId head_index = 3;
++}
++
++message TruncateRequest {
++  uint64 epoch = 1;
++  EntryId head_index = 2;
++}
++message TruncateResponse {
++  uint64 epoch = 1;
++  EntryId head_index = 2;
++}
++
++message AddEntryRequest {
++  uint64 epoch = 1;
++  LogEntry entry = 2;
++  EntryId commit_index = 3;
++}
++message AddEntryResponse {
++  uint64 epoch = 1;
++  EntryId entry_id = 2;
++  bool invalid_epoch = 3;
++
++}
++
++enum ReconfigOp {
++  contract = 0;
++  expand = 1;
++  nodeSwap = 2;
++}
++
++message PrepareReconfigRequest {
++  uint64 epoch = 1;
++  ReconfigOp op = 2;
++  optional ServerAddress old_node = 3;
++  optional ServerAddress new_node = 4;
++
++}
++
++message PrepareReconfigResponse {
++  uint64 epoch = 1;
++  optional EntryId head_index = 2;
++  optional EntryId commit_index = 3;
++  repeated LogEntry snapshot = 4;
++
++}
++
++message SnapshotRequest {
++  uint64 epoch = 1;
++  EntryId head_index = 2;
++  EntryId commit_index = 3;
++  LogEntry snapshot = 4;
++}
++message SnapshotResponse {
++  uint64 epoch = 1;
++  EntryId head_index = 2;
++}
++
++message CommitReconfigRequest {
++  uint64 epoch = 1;
++  uint32 replication_factor = 2;
++  ReconfigOp op = 3;
++  optional ServerAddress old_node = 4;
++  optional ServerAddress new_node = 5;
++  optional EntryId head_index = 6;
++}
++message CommitReconfigResponse {
++  uint64 epoch = 1;
++  ReconfigOp op = 2;
++  optional ServerAddress old_node = 3;
++  optional ServerAddress new_node = 4;
++}
+diff --git a/go.mod b/go.mod
+index 40c7fac..2fd1ee8 100644
+--- a/go.mod
++++ b/go.mod
+@@ -1,11 +1,13 @@
+ module oxia
+ 
+-go 1.17
++go 1.19
+ 
+ require (
++	github.com/boltdb/bolt v1.3.1
+ 	github.com/pkg/errors v0.9.1
+ 	github.com/rs/zerolog v1.26.0
+ 	github.com/spf13/cobra v1.3.0
++	github.com/tidwall/wal v1.1.7
+ 	google.golang.org/grpc v1.42.0
+ 	google.golang.org/protobuf v1.27.1
+ )
+@@ -14,6 +16,10 @@ require (
+ 	github.com/golang/protobuf v1.5.2 // indirect
+ 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
+ 	github.com/spf13/pflag v1.0.5 // indirect
++	github.com/tidwall/gjson v1.10.2 // indirect
++	github.com/tidwall/match v1.1.1 // indirect
++	github.com/tidwall/pretty v1.2.0 // indirect
++	github.com/tidwall/tinylru v1.1.0 // indirect
+ 	golang.org/x/net v0.0.0-20210813160813-60bc85c4be6d // indirect
+ 	golang.org/x/sys v0.0.0-20211205182925-97ca703d548d // indirect
+ 	golang.org/x/text v0.3.7 // indirect
+diff --git a/go.sum b/go.sum
+index a96205a..4692808 100644
+--- a/go.sum
++++ b/go.sum
+@@ -64,6 +64,8 @@ github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973/go.mod h1:Dwedo/Wpr24
+ github.com/beorn7/perks v1.0.0/go.mod h1:KWe93zE9D1o94FZ5RNwFwVgaQK1VOXiVxmqh+CedLV8=
+ github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
+ github.com/bgentry/speakeasy v0.1.0/go.mod h1:+zsyZBPWlz7T6j88CTgSN5bM796AkVf0kBD4zp0CCIs=
++github.com/boltdb/bolt v1.3.1 h1:JQmyP4ZBrce+ZQu0dY660FMfatumYDLun9hBCUVIkF4=
++github.com/boltdb/bolt v1.3.1/go.mod h1:clJnj/oiGkjum5o1McbSZDSLxVThjynRyGBgiAx27Ps=
+ github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
+ github.com/census-instrumentation/opencensus-proto v0.3.0/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
+ github.com/cespare/xxhash v1.1.0/go.mod h1:XrSqR1VqqWfGrhpAt58auRo0WTKS1nRRg3ghfAqPWnc=
+@@ -324,6 +326,16 @@ github.com/stretchr/testify v1.5.1/go.mod h1:5W2xD1RspED5o8YsWQXVCued0rvSQ+mT+I5
+ github.com/stretchr/testify v1.6.1/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
+ github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
+ github.com/subosito/gotenv v1.2.0/go.mod h1:N0PQaV/YGNqwC0u51sEeR/aUtSLEXKX9iv69rRypqCw=
++github.com/tidwall/gjson v1.10.2 h1:APbLGOM0rrEkd8WBw9C24nllro4ajFuJu0Sc9hRz8Bo=
++github.com/tidwall/gjson v1.10.2/go.mod h1:/wbyibRr2FHMks5tjHJ5F8dMZh3AcwJEMf5vlfC0lxk=
++github.com/tidwall/match v1.1.1 h1:+Ho715JplO36QYgwN9PGYNhgZvoUSc9X2c80KVTi+GA=
++github.com/tidwall/match v1.1.1/go.mod h1:eRSPERbgtNPcGhD8UCthc6PmLEQXEWd3PRB5JTxsfmM=
++github.com/tidwall/pretty v1.2.0 h1:RWIZEg2iJ8/g6fDDYzMpobmaoGh5OLl4AXtGUGPcqCs=
++github.com/tidwall/pretty v1.2.0/go.mod h1:ITEVvHYasfjBbM0u2Pg8T2nJnzm8xPwvNhhsoaGGjNU=
++github.com/tidwall/tinylru v1.1.0 h1:XY6IUfzVTU9rpwdhKUF6nQdChgCdGjkMfLzbWyiau6I=
++github.com/tidwall/tinylru v1.1.0/go.mod h1:3+bX+TJ2baOLMWTnlyNWHh4QMnFyARg2TLTQ6OFbzw8=
++github.com/tidwall/wal v1.1.7 h1:emc1TRjIVsdKKSnpwGBAcsAGg0767SvUk8+ygx7Bb+4=
++github.com/tidwall/wal v1.1.7/go.mod h1:r6lR1j27W9EPalgHiB7zLJDYu3mzW5BQP5KrzBpYY/E=
+ github.com/tv42/httpunix v0.0.0-20150427012821-b75d8614f926/go.mod h1:9ESjWnEqriFuLhtthL60Sar/7RFoluCcXsuvEwTV5KM=
+ github.com/yuin/goldmark v1.1.25/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
+ github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
+diff --git a/operator/assignments.go b/operator/assignments.go
+index c42c032..47e607d 100644
+--- a/operator/assignments.go
++++ b/operator/assignments.go
+@@ -1,31 +1,34 @@
+ package operator
+ 
+-import "oxia/proto"
+-
+-func ComputeAssignments(availableNodes []*proto.ServerAddress, replicationFactor uint32, shards uint32) *proto.ClusterStatus {
+-	// Do a round-robin assignment of leaders and followers across the shards
+-
+-	cs := &proto.ClusterStatus{
+-		ReplicationFactor: 1,
+-		ShardsStatus:      []*proto.ShardStatus{},
+-	}
+-
+-	nodesCount := len(availableNodes)
+-	s := int(shards)
+-	r := int(replicationFactor)
+-
+-	for i := 0; i < s; i++ {
+-		ss := &proto.ShardStatus{
+-			Shard:  uint32(i),
+-			Leader: availableNodes[i%nodesCount],
+-		}
+-
+-		for j := 1; j < r; j++ {
+-			ss.Followers = append(ss.Followers, availableNodes[(i+j)%nodesCount])
+-		}
+-
+-		cs.ShardsStatus = append(cs.ShardsStatus, ss)
+-	}
+-
+-	return cs
++import (
++	"oxia/coordination"
++	"oxia/proto"
++)
++
++func ComputeAssignments(availableNodes []*coordination.ServerAddress, replicationFactor uint32, shards uint32) *proto.ClusterStatus {
++	//// Do a round-robin assignment of leaders and followers across the shards
++	//
++	//cs := &proto.ClusterStatus{
++	//	ReplicationFactor: 1,
++	//	ShardsStatus:      []*proto.ShardStatus{},
++	//}
++	//
++	//nodesCount := len(availableNodes)
++	//s := int(shards)
++	//r := int(replicationFactor)
++	//
++	//for i := 0; i < s; i++ {
++	//	ss := &proto.ShardStatus{
++	//		Shard:  uint32(i),
++	//		Leader: availableNodes[i%nodesCount],
++	//	}
++	//
++	//	for j := 1; j < r; j++ {
++	//		ss.Followers = append(ss.Followers, availableNodes[(i+j)%nodesCount])
++	//	}
++	//
++	//	cs.ShardsStatus = append(cs.ShardsStatus, ss)
++	//}
++
++	return nil
+ }
+diff --git a/operator/main.go b/operator/main.go
+index 71bc6d0..3ff89fe 100644
+--- a/operator/main.go
++++ b/operator/main.go
+@@ -5,7 +5,6 @@ import (
+ 	"github.com/rs/zerolog/log"
+ 	"github.com/spf13/cobra"
+ 	"oxia/common"
+-	"oxia/proto"
+ 	"time"
+ )
+ 
+@@ -39,35 +38,35 @@ func main(cmd *cobra.Command, args []string) {
+ 		Uint32("replication-factor", replicationFactor).
+ 		Msg("Starting operator")
+ 
+-	addrs := make([]*proto.ServerAddress, len(staticNodes))
+-	for i := 0; i < len(staticNodes); i++ {
+-		addrs[i] = &proto.ServerAddress{
+-			InternalUrl: staticNodes[i],
+-			PublicUrl:   staticNodes[i],
+-		}
+-	}
+-	cs := ComputeAssignments(addrs, replicationFactor, shards)
++	//addrs := make([]*proto.ServerAddress, len(staticNodes))
++	//for i := 0; i < len(staticNodes); i++ {
++	//	addrs[i] = &proto.ServerAddress{
++	//		InternalUrl: staticNodes[i],
++	//		PublicUrl:   staticNodes[i],
++	//	}
++	//}
++	//_ = ComputeAssignments(addrs, replicationFactor, shards)
+ 
+ 	clientPool := common.NewClientPool()
+ 	defer clientPool.Close()
+ 
+ 	// Set up a connection to the server.
+-	c, err := clientPool.GetInternalRpc("localhost:8190")
++	_, err := clientPool.GetControlRpc("localhost:8190")
+ 	if err != nil {
+ 		log.Fatal().Err(err).Msg("Failed to connect")
+ 	}
+ 
+ 	// Contact the server and print out its response.
+-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
++	_, cancel := context.WithTimeout(context.Background(), time.Second)
+ 	defer cancel()
+ 
+-	r, err := c.UpdateStatus(ctx, cs)
++	//	r, err := c.UpdateStatus(ctx, cs)
+ 
+ 	if err != nil {
+ 		log.Error().Err(err).Msg("Could not update the cluster status")
+ 	} else {
+ 		log.Info().
+-			Interface("res", r).
++			Interface("res", nil).
+ 			Msg("Updated cluster status")
+ 	}
+ }
+diff --git a/proto/client.proto b/proto/client.proto
+index dab71cd..433089d 100644
+--- a/proto/client.proto
++++ b/proto/client.proto
+@@ -13,6 +13,8 @@ service ClientAPI {
+ 
+   rpc Put(PutOp) returns (Stat) {}
+ 
++  rpc Get(GetOp) returns (GetResult) {}
++
+ 
+   rpc GetNotifications(GetNotificationOp) returns (stream Notification) {}
+ }
+@@ -42,6 +44,16 @@ message PutOp {
+   optional uint64 expected_version = 4;
+ }
+ 
++message GetOp {
++  uint32 shard_id = 1;
++  string key = 2;
++}
++
++message GetResult {
++  Stat stat = 1;
++  bytes payload = 2;
++}
++
+ message GetNotificationOp {
+   uint32 shard_id = 1;
+   uint64 first_entry_id = 2;
+diff --git a/proto/internal.proto b/proto/internal.proto
+index 1bc0119..67bef80 100644
+--- a/proto/internal.proto
++++ b/proto/internal.proto
+@@ -4,6 +4,8 @@ option go_package = "github.com/streamnative/oxia/proto";
+ 
+ package proto;
+ 
++
++
+ service InternalAPI {
+   rpc UpdateStatus(ClusterStatus) returns (InternalEmpty) {}
+ 
+@@ -12,19 +14,11 @@ service InternalAPI {
+    *  - Leader will send log entries to the follower
+    *  - Follower send a stream of updates with the last entry persisted
+    */
+-  rpc Follow(stream ConfirmedEntryRequest) returns (stream LogEntry) {}
+ }
+ 
+ message InternalEmpty {
+ }
+ 
+-message LogEntry {
+-  uint64 epoch = 1;
+-  uint64 entry_id = 2;
+-  int64 last_add_confirmed = 3;
+-  bytes payload = 4;
+-}
+-
+ message ReadLogRequest {
+   uint32 shard = 1;
+   uint64 first_entry_id = 2;
+@@ -37,14 +31,6 @@ message ConfirmedEntryRequest {
+   uint64 entryId = 4;
+ }
+ 
+-message FenceRequest {
+-  uint32 shard = 1;
+-  uint64 epoch = 2;
+-}
+-
+-message FenceResponse {
+-  int64 last_entry = 2;
+-}
+ 
+ message ClusterStatus {
+   repeated ShardStatus shards_status = 1;
+@@ -54,8 +40,8 @@ message ClusterStatus {
+ 
+ message ShardStatus {
+   uint32 shard = 1;
+-  ServerAddress leader = 2;
+-  repeated ServerAddress followers = 3;
++//  ServerAddress leader = 2;
++//  repeated ServerAddress followers = 3;
+ 
+   repeated EpochStatus epochs = 4;
+ }
+@@ -64,8 +50,3 @@ message EpochStatus {
+   uint64 epoch = 1;
+   uint64 first_entry = 2;
+ }
+-
+-message ServerAddress {
+-  string internal_url = 1;
+-  string public_url = 2;
+-}
+\ No newline at end of file
+diff --git a/server/BoltKV.go b/server/BoltKV.go
+new file mode 100644
+index 0000000..0d4bbee
+--- /dev/null
++++ b/server/BoltKV.go
+@@ -0,0 +1,87 @@
++package server
++
++import (
++	"encoding/json"
++	"github.com/boltdb/bolt"
++	"github.com/pkg/errors"
++	"oxia/proto"
++)
++
++type boltKV struct {
++	store *bolt.DB
++	shard string
++}
++
++func (b *boltKV) Close() error {
++	return b.store.Close()
++}
++
++func (b *boltKV) Apply(op *proto.PutOp, timestamp uint64) (KVEntry, error) {
++	entry := KVEntry{}
++	err := b.store.Update(func(tx *bolt.Tx) error {
++		bucket := tx.Bucket([]byte(b.shard))
++		key := []byte(op.Key)
++		oldBytes := bucket.Get(key)
++		old := &KVEntry{}
++		err := json.Unmarshal(oldBytes, old)
++		if err != nil {
++			return err
++		}
++		var version uint64
++		var created uint64
++		if old != nil {
++			created = old.Created
++			version = 0
++		} else {
++			created = timestamp
++			version = old.Version
++		}
++		if op.ExpectedVersion != nil && *op.ExpectedVersion != version {
++			return errors.Errorf("Version check (%d != %d)", *op.ExpectedVersion, version)
++		}
++		entry.Payload = op.Payload
++		entry.Version = version
++		entry.Created = created
++		entry.Updated = timestamp
++		newBytes, err := json.Marshal(entry)
++		if err != nil {
++			return err
++		}
++		return bucket.Put(key, newBytes)
++	})
++	return entry, err
++
++}
++
++func (b *boltKV) Get(op *proto.GetOp) (KVEntry, error) {
++	entry := KVEntry{}
++	err := b.store.View(func(tx *bolt.Tx) error {
++		bucket := tx.Bucket([]byte(b.shard))
++		key := []byte(op.Key)
++		oldBytes := bucket.Get(key)
++		old := &KVEntry{}
++		err := json.Unmarshal(oldBytes, old)
++		if err != nil {
++			return err
++		}
++		if old != nil {
++			entry.Payload = old.Payload
++			entry.Version = old.Version
++			entry.Created = old.Created
++			entry.Updated = old.Updated
++		}
++		return nil
++	})
++	return entry, err
++}
++
++func NewBoltKV(shard string, kvDir string) KeyValueStore {
++	db, err := bolt.Open(kvDir+"/"+shard, 0600, nil)
++	if err != nil {
++		return nil
++	}
++	return &boltKV{
++		store: db,
++		shard: shard,
++	}
++}
+diff --git a/server/internal_rpc_server.go b/server/internal_rpc_server.go
+index 721a791..c69a293 100644
+--- a/server/internal_rpc_server.go
++++ b/server/internal_rpc_server.go
+@@ -2,7 +2,6 @@ package server
+ 
+ import (
+ 	"context"
+-	"encoding/json"
+ 	"fmt"
+ 	"github.com/pkg/errors"
+ 	"github.com/rs/zerolog"
+@@ -10,7 +9,7 @@ import (
+ 	"google.golang.org/grpc"
+ 	"google.golang.org/grpc/metadata"
+ 	"net"
+-	"oxia/proto"
++	"oxia/coordination"
+ )
+ 
+ const (
+@@ -21,18 +20,19 @@ const (
+ )
+ 
+ type internalRpcServer struct {
+-	proto.UnimplementedInternalAPIServer
+-	shardsManager ShardsManager
++	coordination.UnimplementedOxiaControlServer
++	coordination.UnimplementedOxiaLogReplicationServer
++	shardsDirector ShardsDirector
+ 
+ 	grpcServer *grpc.Server
+ 	log        zerolog.Logger
+ }
+ 
+-func newInternalRpcServer(port int, advertisedInternalAddress string, shardsManager ShardsManager) (*internalRpcServer, error) {
++func newCoordinationRpcServer(port int, advertisedInternalAddress string, shardsDirector ShardsDirector) (*internalRpcServer, error) {
+ 	res := &internalRpcServer{
+-		shardsManager: shardsManager,
++		shardsDirector: shardsDirector,
+ 		log: log.With().
+-			Str("component", "internal-rpc-server").
++			Str("component", "coordination-rpc-server").
+ 			Logger(),
+ 	}
+ 
+@@ -42,11 +42,12 @@ func newInternalRpcServer(port int, advertisedInternalAddress string, shardsMana
+ 	}
+ 
+ 	res.grpcServer = grpc.NewServer()
+-	proto.RegisterInternalAPIServer(res.grpcServer, res)
++	coordination.RegisterOxiaControlServer(res.grpcServer, res)
++	coordination.RegisterOxiaLogReplicationServer(res.grpcServer, res)
+ 	res.log.Info().
+ 		Str("bindAddress", listener.Addr().String()).
+ 		Str("advertisedAddress", advertisedInternalAddress).
+-		Msg("Started internal RPC server")
++		Msg("Started coordination RPC server")
+ 
+ 	go func() {
+ 		if err := res.grpcServer.Serve(listener); err != nil {
+@@ -62,20 +63,6 @@ func (s *internalRpcServer) Close() error {
+ 	return nil
+ }
+ 
+-func (s *internalRpcServer) UpdateStatus(ctx context.Context, newClusterStatus *proto.ClusterStatus) (*proto.InternalEmpty, error) {
+-	b, _ := json.Marshal(newClusterStatus)
+-	s.log.Info().
+-		RawJSON("value", b).
+-		Msg("Received new Cluster status")
+-	err := s.shardsManager.UpdateClusterStatus(newClusterStatus)
+-	if err != nil {
+-		log.Warn().
+-			Err(err).
+-			Msg("Failed to update to new cluster status")
+-	}
+-	return &proto.InternalEmpty{}, err
+-}
+-
+ func readHeader(md metadata.MD, key string) (value string, err error) {
+ 	arr := md.Get(key)
+ 	if len(arr) == 0 {
+@@ -110,49 +97,83 @@ func readHeaderUint32(md metadata.MD, key string) (v uint32, err error) {
+ 	return r, err
+ }
+ 
+-func (s *internalRpcServer) Follow(in proto.InternalAPI_FollowServer) error {
+-	md, ok := metadata.FromIncomingContext(in.Context())
++func callShardManager[T any](c context.Context, s *internalRpcServer, f func(ShardManager, string) (T, error)) (T, error) {
++	var zeroT T
++	md, ok := metadata.FromIncomingContext(c)
+ 	if !ok {
+-		return errors.New("There is no metadata header in Follow request")
++		return zeroT, errors.New("There is no metadata header in request")
+ 	}
+-
+-	shard, err := readHeaderUint32(md, metadataShard)
++	shard, err := readHeader(md, metadataShard)
+ 	if err != nil {
+-		return err
++		return zeroT, err
+ 	}
+-
+-	slc, err := s.shardsManager.GetLeaderController(shard)
++	source, err := readHeader(md, "source_node")
+ 	if err != nil {
+-		s.log.Warn().
+-			Err(err).
+-			Uint32("shard", shard).
+-			Msg("This node is not leader for shard")
+-		return err
++		return zeroT, err
+ 	}
+ 
+-	epoch, err := readHeaderUint64(md, metadataEpoch)
+-	if !ok {
+-		return err
+-	}
+-
+-	firstEntry, err := readHeaderUint64(md, metadataFirstEntry)
++	manager, err := s.shardsDirector.GetManager(ShardId(shard), true)
+ 	if err != nil {
+-		return err
++		return zeroT, err
+ 	}
++	response, err := f(manager, source)
++	return response, err
++}
+ 
+-	followerName, err := readHeader(md, metadataFollower)
+-	if err != nil {
+-		return err
+-	}
++func (s *internalRpcServer) Fence(c context.Context, req *coordination.FenceRequest) (*coordination.FenceResponse, error) {
++	response, err := callShardManager[*coordination.FenceResponse](c, s, func(m ShardManager, source string) (*coordination.FenceResponse, error) {
++		response, err := m.Fence(req)
++		return response, err
++	})
++	return response, err
++}
++func (s *internalRpcServer) BecomeLeader(c context.Context, req *coordination.BecomeLeaderRequest) (*coordination.BecomeLeaderResponse, error) {
++	response, err := callShardManager[*coordination.BecomeLeaderResponse](c, s, func(m ShardManager, source string) (*coordination.BecomeLeaderResponse, error) {
++		response, err := m.BecomeLeader(req)
++		return response, err
++	})
++	return response, err
++}
++func (s *internalRpcServer) AddFollower(c context.Context, req *coordination.AddFollowerRequest) (*coordination.CoordinationEmpty, error) {
+ 
+-	err = slc.Follow(followerName, firstEntry, epoch, in)
+-	if err != nil {
+-		s.log.Warn().
+-			Err(err).
+-			Uint32("shard", shard).
+-			Uint64("epoch", epoch).
+-			Uint64("firstEntry", firstEntry).
+-			Msg("Failed to attach follower")
+-	}
++	response, err := callShardManager[*coordination.CoordinationEmpty](c, s, func(m ShardManager, source string) (*coordination.CoordinationEmpty, error) {
++		response, err := m.AddFollower(req)
++		return response, err
++	})
++	return response, err
++}
++func (s *internalRpcServer) Truncate(c context.Context, req *coordination.TruncateRequest) (*coordination.TruncateResponse, error) {
++	response, err := callShardManager[*coordination.TruncateResponse](c, s, func(m ShardManager, source string) (*coordination.TruncateResponse, error) {
++		response, err := m.Truncate(source, req)
++		return response, err
++	})
++	return response, err
++}
++func (s *internalRpcServer) AddEntries(srv coordination.OxiaLogReplication_AddEntriesServer) error {
++	_, err := callShardManager[any](srv.Context(), s, func(m ShardManager, source string) (any, error) {
++		response, err := m.AddEntries(source, srv)
++		return response, err
++	})
+ 	return err
+ }
++func (s *internalRpcServer) PrepareReconfig(c context.Context, req *coordination.PrepareReconfigRequest) (*coordination.PrepareReconfigResponse, error) {
++	response, err := callShardManager[*coordination.PrepareReconfigResponse](c, s, func(m ShardManager, source string) (*coordination.PrepareReconfigResponse, error) {
++		response, err := m.PrepareReconfig(req)
++		return response, err
++	})
++	return response, err
++}
++func (s *internalRpcServer) Snapshot(c context.Context, req *coordination.SnapshotRequest) (*coordination.SnapshotResponse, error) {
++	response, err := callShardManager[*coordination.SnapshotResponse](c, s, func(m ShardManager, source string) (*coordination.SnapshotResponse, error) {
++		response, err := m.Snapshot(req)
++		return response, err
++	})
++	return response, err
++}
++func (s *internalRpcServer) CommitReconfig(c context.Context, req *coordination.CommitReconfigRequest) (*coordination.CommitReconfigResponse, error) {
++	response, err := callShardManager[*coordination.CommitReconfigResponse](c, s, func(m ShardManager, source string) (*coordination.CommitReconfigResponse, error) {
++		response, err := m.CommitReconfig(req)
++		return response, err
++	})
++	return response, err
++}
+diff --git a/server/kv.go b/server/kv.go
+new file mode 100644
+index 0000000..10635cd
+--- /dev/null
++++ b/server/kv.go
+@@ -0,0 +1,69 @@
++package server
++
++import (
++	"github.com/pkg/errors"
++	"io"
++	"oxia/proto"
++)
++
++type KeyValueStore interface {
++	io.Closer
++	Apply(op *proto.PutOp, timestamp uint64) (KVEntry, error)
++	Get(op *proto.GetOp) (KVEntry, error)
++}
++
++type inMemoryKVStore struct {
++	store map[string]KVEntry
++}
++
++type KVEntry struct {
++	Payload []byte
++	Version uint64
++	Created uint64
++	Updated uint64
++}
++
++func NewInMemoryKVStore() KeyValueStore {
++	return &inMemoryKVStore{
++		store: make(map[string]KVEntry),
++	}
++}
++
++func (k inMemoryKVStore) Close() error {
++	k.store = make(map[string]KVEntry)
++	return nil
++}
++
++func (k inMemoryKVStore) Apply(op *proto.PutOp, timestamp uint64) (KVEntry, error) {
++	old, existed := k.store[op.Key]
++	var version uint64
++	var created uint64
++	if existed {
++		created = old.Created
++		version = 0
++	} else {
++		created = timestamp
++		version = old.Version
++	}
++	if op.ExpectedVersion != nil && *op.ExpectedVersion != version {
++		return KVEntry{}, errors.Errorf("Version check (%d != %d)", *op.ExpectedVersion, version)
++	}
++	entry := KVEntry{
++		Payload: op.Payload,
++		Version: version,
++		Created: created,
++		Updated: timestamp,
++	}
++	k.store[op.Key] = entry
++	return entry, nil
++
++}
++
++func (k inMemoryKVStore) Get(op *proto.GetOp) (KVEntry, error) {
++	val, ok := k.store[op.Key]
++	if ok {
++		return val, nil
++	} else {
++		return KVEntry{}, nil
++	}
++}
+diff --git a/server/public_rpc_server.go b/server/public_rpc_server.go
+index ad7ce6d..7a4c6be 100644
+--- a/server/public_rpc_server.go
++++ b/server/public_rpc_server.go
+@@ -9,20 +9,21 @@ import (
+ 	"google.golang.org/grpc"
+ 	"net"
+ 	"oxia/proto"
++	"strconv"
+ )
+ 
+ type PublicRpcServer struct {
+ 	proto.UnimplementedClientAPIServer
+ 
+-	shardsManager ShardsManager
++	shardsDirector ShardsDirector
+ 
+ 	grpcServer *grpc.Server
+ 	log        zerolog.Logger
+ }
+ 
+-func NewPublicRpcServer(port int, advertisedPublicAddress string, shardsManager ShardsManager) (*PublicRpcServer, error) {
++func NewPublicRpcServer(port int, advertisedPublicAddress string, shardsDirector ShardsDirector) (*PublicRpcServer, error) {
+ 	res := &PublicRpcServer{
+-		shardsManager: shardsManager,
++		shardsDirector: shardsDirector,
+ 		log: log.With().
+ 			Str("component", "public-rpc-server").
+ 			Logger(),
+@@ -50,19 +51,29 @@ func NewPublicRpcServer(port int, advertisedPublicAddress string, shardsManager
+ }
+ 
+ func (s *PublicRpcServer) GetShardsAssignments(_ *proto.Empty, out proto.ClientAPI_GetShardsAssignmentsServer) error {
+-	s.shardsManager.GetShardsAssignments(func(assignments *proto.ShardsAssignments) {
++	s.shardsDirector.GetShardsAssignments(func(assignments *proto.ShardsAssignments) {
+ 		out.SendMsg(assignments)
+ 	})
+ 	return nil
+ }
+ 
+ func (s *PublicRpcServer) Put(ctx context.Context, putOp *proto.PutOp) (*proto.Stat, error) {
+-	slc, err := s.shardsManager.GetLeaderController(putOp.GetShardId())
++	// TODO make shard ID string in client rpc
++	slc, err := s.shardsDirector.GetManager(ShardId(strconv.FormatInt(int64(putOp.GetShardId()), 10)), false)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+ 
+-	return slc.Put(putOp)
++	return slc.Write(putOp)
++}
++
++func (s *PublicRpcServer) Get(ctx context.Context, getOp *proto.GetOp) (*proto.GetResult, error) {
++	_, err := s.shardsDirector.GetManager(ShardId(strconv.FormatInt(int64(getOp.GetShardId()), 10)), false)
++	if err != nil {
++		return nil, err
++	}
++	// TODO Read from KVStore directly? Only if leader
++	return nil, nil
+ }
+ 
+ func (s *PublicRpcServer) Close() error {
+diff --git a/server/server.go b/server/server.go
+index 9f6769f..9d30490 100644
+--- a/server/server.go
++++ b/server/server.go
+@@ -5,7 +5,7 @@ import (
+ 	"github.com/rs/zerolog/log"
+ 	"os"
+ 	"oxia/common"
+-	"oxia/proto"
++	"oxia/coordination"
+ )
+ 
+ type serverConfig struct {
+@@ -20,10 +20,10 @@ type server struct {
+ 	*internalRpcServer
+ 	*PublicRpcServer
+ 
+-	shardsManager ShardsManager
+-	clientPool    common.ClientPool
++	shardsDirector ShardsDirector
++	clientPool     common.ClientPool
+ 
+-	identityInternalAddress proto.ServerAddress
++	identityInternalAddress coordination.ServerAddress
+ }
+ 
+ func NewServer(config *serverConfig) (*server, error) {
+@@ -51,14 +51,14 @@ func NewServer(config *serverConfig) (*server, error) {
+ 	}
+ 
+ 	identityAddr := fmt.Sprintf("%s:%d", advertisedInternalAddress, config.InternalServicePort)
+-	s.shardsManager = NewShardsManager(identityAddr)
++	s.shardsDirector = NewShardsDirector(identityAddr)
+ 
+-	s.internalRpcServer, err = newInternalRpcServer(config.InternalServicePort, advertisedInternalAddress, s.shardsManager)
++	s.internalRpcServer, err = newCoordinationRpcServer(config.InternalServicePort, advertisedInternalAddress, s.shardsDirector)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+ 
+-	s.PublicRpcServer, err = NewPublicRpcServer(config.PublicServicePort, advertisedPublicAddress, s.shardsManager)
++	s.PublicRpcServer, err = NewPublicRpcServer(config.PublicServicePort, advertisedPublicAddress, s.shardsDirector)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+@@ -79,7 +79,7 @@ func (s *server) Close() error {
+ 		return err
+ 	}
+ 
+-	if err := s.shardsManager.Close(); err != nil {
++	if err := s.shardsDirector.Close(); err != nil {
+ 		return err
+ 	}
+ 
+diff --git a/server/shard_follower_controller.go b/server/shard_follower_controller.go
+deleted file mode 100644
+index 649cb28..0000000
+--- a/server/shard_follower_controller.go
++++ /dev/null
+@@ -1,42 +0,0 @@
+-package server
+-
+-import (
+-	"github.com/rs/zerolog"
+-	"github.com/rs/zerolog/log"
+-	"io"
+-)
+-
+-type ShardFollowerController interface {
+-	io.Closer
+-
+-	//Follow(follower string, firstEntry uint64, epoch uint64, ifw proto.InternalAPI_FollowServer) error
+-}
+-
+-type shardFollowerController struct {
+-	shard uint32
+-	epoch uint64
+-
+-	wal Wal
+-	log zerolog.Logger
+-}
+-
+-func NewShardFollowerController(shard uint32, leader string) ShardFollowerController {
+-
+-	sfc := &shardFollowerController{
+-		shard: shard,
+-		wal:   NewWal(shard),
+-		log: log.With().
+-			Str("component", "shard-follower").
+-			Uint32("shard", shard).
+-			Str("leader", leader).
+-			Logger(),
+-	}
+-
+-	sfc.log.Info().Msg("Start following")
+-	return sfc
+-}
+-
+-func (s *shardFollowerController) Close() error {
+-	s.log.Info().Msg("Closing follower controller")
+-	return s.wal.Close()
+-}
+diff --git a/server/shard_leader_controller.go b/server/shard_leader_controller.go
+deleted file mode 100644
+index 9805e99..0000000
+--- a/server/shard_leader_controller.go
++++ /dev/null
+@@ -1,114 +0,0 @@
+-package server
+-
+-import (
+-	"fmt"
+-	"github.com/pkg/errors"
+-	"github.com/rs/zerolog"
+-	"github.com/rs/zerolog/log"
+-	"io"
+-	"oxia/proto"
+-	"time"
+-)
+-
+-type ShardLeaderController interface {
+-	io.Closer
+-
+-	Follow(follower string, firstEntry uint64, epoch uint64, ifw proto.InternalAPI_FollowServer) error
+-
+-	Put(op *proto.PutOp) (*proto.Stat, error)
+-}
+-
+-type shardLeaderController struct {
+-	shard             uint32
+-	epoch             uint64
+-	replicationFactor uint32
+-
+-	wal Wal
+-	log zerolog.Logger
+-}
+-
+-func NewShardLeaderController(shard uint32, replicationFactor uint32) ShardLeaderController {
+-	slc := &shardLeaderController{
+-		shard:             shard,
+-		replicationFactor: replicationFactor,
+-		wal:               NewWal(shard),
+-		log: log.With().
+-			Str("component", "shard-leader").
+-			Uint32("shard", shard).
+-			Logger(),
+-	}
+-
+-	slc.log.Info().
+-		Uint32("replicationFactor", replicationFactor).
+-		Msg("Start leading")
+-	return slc
+-}
+-
+-func (s *shardLeaderController) Close() error {
+-	s.log.Info().Msg("Closing leader controller")
+-
+-	return s.wal.Close()
+-}
+-
+-func (s *shardLeaderController) readLog(firstEntry uint64, ifw proto.InternalAPI_FollowServer) {
+-	current := firstEntry
+-	for {
+-		logEntry, err := s.wal.Read(current)
+-		if err != nil {
+-			s.log.Error().
+-				Err(err).
+-				Uint64("entry", current).
+-				Msg("Failed to read from wal")
+-			return
+-		}
+-
+-		err = ifw.Send(logEntry)
+-		if err != nil {
+-			s.log.Error().
+-				Err(err).
+-				Uint64("entry", current).
+-				Msg("Failed to send entry to follower")
+-			return
+-		}
+-	}
+-}
+-
+-func (s *shardLeaderController) Follow(follower string, firstEntry uint64, epoch uint64, ifw proto.InternalAPI_FollowServer) error {
+-	if epoch != s.epoch {
+-		return errors.New(fmt.Sprintf("Invalid epoch. Expected: %d - Received: %d", s.epoch, epoch))
+-	}
+-
+-	s.log.Info().
+-		Uint64("epoch", s.epoch).
+-		Uint64("firstEntry", firstEntry).
+-		Str("follower", follower).
+-		Msg("Follow")
+-
+-	go s.readLog(firstEntry, ifw)
+-
+-	for {
+-		confirmedEntryRequest, err := ifw.Recv()
+-		if err != nil {
+-			return err
+-		}
+-
+-		s.log.Info().
+-			Uint64("epoch", s.epoch).
+-			Str("confirmedEntryRequest", confirmedEntryRequest.String()).
+-			Msg("Received confirmed entry request")
+-	}
+-
+-	return nil
+-}
+-
+-func (s *shardLeaderController) Put(op *proto.PutOp) (*proto.Stat, error) {
+-	s.log.Debug().
+-		Interface("op", op).
+-		Msg("Put operation")
+-
+-	return &proto.Stat{
+-		Version:           1,
+-		CreatedTimestamp:  uint64(time.Now().Unix()),
+-		ModifiedTimestamp: uint64(time.Now().Unix()),
+-	}, nil
+-}
+diff --git a/server/shard_manager.go b/server/shard_manager.go
+new file mode 100644
+index 0000000..dd3e651
+--- /dev/null
++++ b/server/shard_manager.go
+@@ -0,0 +1,741 @@
++package server
++
++import (
++	"context"
++	"encoding/json"
++	"github.com/rs/zerolog"
++	"github.com/rs/zerolog/log"
++	"google.golang.org/grpc/codes"
++	"google.golang.org/grpc/metadata"
++	"google.golang.org/grpc/status"
++	"io"
++	"oxia/common"
++	"oxia/coordination"
++	"oxia/proto"
++	"time"
++)
++
++type ShardManager interface {
++	io.Closer
++
++	Fence(req *coordination.FenceRequest) (*coordination.FenceResponse, error)
++	BecomeLeader(*coordination.BecomeLeaderRequest) (*coordination.BecomeLeaderResponse, error)
++	AddFollower(*coordination.AddFollowerRequest) (*coordination.CoordinationEmpty, error)
++	Truncate(string, *coordination.TruncateRequest) (*coordination.TruncateResponse, error)
++	Write(op *proto.PutOp) (*proto.Stat, error)
++	AddEntries(string, coordination.OxiaLogReplication_AddEntriesServer) (any, error)
++	// Later
++	PrepareReconfig(*coordination.PrepareReconfigRequest) (*coordination.PrepareReconfigResponse, error)
++	Snapshot(*coordination.SnapshotRequest) (*coordination.SnapshotResponse, error)
++	CommitReconfig(*coordination.CommitReconfigRequest) (*coordination.CommitReconfigResponse, error)
++}
++
++// Command is the representation of the work a ShardManager is supposed to do when it gets a request or response and a channel for the response.
++// Ideally it would be generic with the type parameter being the response type
++type Command struct {
++	execute      func() (any, error)
++	responseChan chan any
++}
++
++func newCommandWithChannel(execute func() (any, error), responseChannel chan any) *Command {
++	return &Command{
++		responseChan: responseChannel,
++		execute:      execute,
++	}
++}
++
++func newCommand(execute func() (any, error)) *Command {
++	return newCommandWithChannel(execute, make(chan any, 1))
++}
++
++type Status int16
++
++const (
++	NotMember Status = iota
++	Leader
++	Follower
++	Fenced
++)
++
++type CursorStatus int16
++
++const (
++	Attached CursorStatus = iota
++	PendingTruncate
++	PendingRemoval
++)
++
++type waitingRoomEntry struct {
++	counter             uint32
++	confirmationChannel chan any
++}
++
++type cursor struct {
++	status        CursorStatus
++	lastPushed    *coordination.EntryId
++	lastConfirmed *coordination.EntryId
++}
++
++type shardManager struct {
++	shard              ShardId
++	epoch              uint64
++	replicationFactor  uint32
++	leader             string
++	commitIndex        EntryId
++	headIndex          EntryId
++	followCursor       map[string]*cursor
++	reconfigInProgress bool
++	status             Status
++
++	wal             Wal
++	kv              KeyValueStore
++	commandChannel  chan *Command
++	waitingRoom     map[EntryId]waitingRoomEntry
++	clientPool      common.ClientPool
++	identityAddress string
++	closing         bool
++	log             zerolog.Logger
++}
++
++func NewShardManager(shard ShardId, identityAddress string, pool common.ClientPool, wal Wal, kv KeyValueStore) (ShardManager, error) {
++	sm := &shardManager{
++		shard:              shard,
++		epoch:              0,
++		replicationFactor:  0,
++		leader:             "",
++		commitIndex:        EntryId{},
++		headIndex:          EntryId{},
++		followCursor:       make(map[string]*cursor),
++		reconfigInProgress: false,
++		status:             NotMember,
++
++		wal:             wal,
++		kv:              kv,
++		commandChannel:  make(chan *Command, 8),
++		waitingRoom:     make(map[EntryId]waitingRoomEntry),
++		clientPool:      pool,
++		identityAddress: identityAddress,
++		closing:         false,
++		log: log.With().
++			Str("component", "shard-manager").
++			Str("shard", string(shard)).
++			Logger(),
++	}
++	entryId, err := wal.GetHighestEntryOfEpoch(^uint64(0))
++	if err != nil {
++		return nil, err
++	}
++	sm.headIndex = entryId
++	sm.log.Info().
++		Uint32("replicationFactor", sm.replicationFactor).
++		Msg("Start managing shard")
++	go sm.run()
++
++	return sm, nil
++}
++func enqueueCommandAndWaitForResponse[T any](s *shardManager, f func() (T, error)) T {
++	response, _ := enqueueCommandAndWaitForResponseWithChannel[T](s, f, nil)
++	return response
++}
++func enqueueCommandAndWaitForResponseWithChannel[T any](s *shardManager, f func() (T, error), responseChannel chan any) (T, error) {
++	if responseChannel == nil {
++		responseChannel = make(chan any, 1)
++	}
++	command := newCommandWithChannel(func() (any, error) {
++		r, err := f()
++		return r, err
++	}, responseChannel)
++	s.commandChannel <- command
++	response := <-command.responseChan
++
++	tResponse, ok := response.(T)
++	if ok {
++		return tResponse, nil
++	} else {
++		var zero T
++		return zero, response.(error)
++	}
++
++}
++
++func sendRequestAndProcessResponse[RESP any](s *shardManager, target string, send func(context.Context, coordination.OxiaLogReplicationClient) (RESP, error), process func(RESP) error) error {
++	rpc, err := s.clientPool.GetReplicationRpc(target)
++	if err != nil {
++		return err
++	}
++	go func() {
++		ctx := context.Background()
++		ctx = metadata.AppendToOutgoingContext(ctx,
++			"shard", string(s.shard),
++			"source_node", s.identityAddress)
++		resp, err2 := send(ctx, rpc)
++		if err2 != nil {
++			log.Error().Err(err2).Msg("Got error sending truncateRequest")
++		}
++		command := newCommand(func() (any, error) {
++			err3 := process(resp)
++			return nil, err3
++		})
++		s.commandChannel <- command
++	}()
++	return nil
++}
++
++func (s *shardManager) checkEpochLaterIn(req interface{ GetEpoch() uint64 }) error {
++	if req.GetEpoch() <= s.epoch {
++		return status.Errorf(codes.FailedPrecondition, "Got old epoch %d, when at %d", req.GetEpoch(), s.epoch)
++	}
++	return nil
++}
++
++func (s *shardManager) checkEpochEqualIn(req interface{ GetEpoch() uint64 }) error {
++	if req.GetEpoch() != s.epoch {
++		return status.Errorf(codes.FailedPrecondition, "Got clashing epoch %d, when at %d", req.GetEpoch(), s.epoch)
++	}
++	return nil
++}
++
++func (s *shardManager) checkStatus(expected Status) error {
++	if s.status != expected {
++		return status.Errorf(codes.FailedPrecondition, "Received message in the wrong state. In %+v, should be %+v.", s.status, expected)
++	}
++	return nil
++}
++
++// Fence enqueues a call to fenceSync and waits for the response
++func (s *shardManager) Fence(req *coordination.FenceRequest) (*coordination.FenceResponse, error) {
++	response := enqueueCommandAndWaitForResponse[*coordination.FenceResponse](s, func() (*coordination.FenceResponse, error) {
++		resp, err := s.fenceSync(req)
++		return resp, err
++	})
++	return response, nil
++}
++
++// fenceSync, like all *Sync methods, is called by run method serially
++/*
++  Node handles a fence request
++
++  A node receives a fencing request, fences itself and responds
++  with its head index.
++
++  When a node is fenced it cannot:
++  - accept any writes from a client.
++  - accept add entry requests from a leader.
++  - send any entries to followers if it was a leader.
++
++  Any existing follow cursors are destroyed as is any state
++  regarding reconfigurations.
++*/
++func (s *shardManager) fenceSync(req *coordination.FenceRequest) (*coordination.FenceResponse, error) {
++	if err := s.checkEpochLaterIn(req); err != nil {
++		return nil, err
++	}
++	s.epoch = req.GetEpoch()
++	s.purgeWaitingRoom()
++	s.status = Fenced
++	s.replicationFactor = 0
++	s.followCursor = make(map[string]*cursor)
++	s.waitingRoom = make(map[EntryId]waitingRoomEntry)
++	s.wal.StopReaders()
++	s.reconfigInProgress = false
++	return &coordination.FenceResponse{
++		Epoch:     s.epoch,
++		HeadIndex: s.headIndex.toProto(),
++	}, nil
++}
++
++func (s *shardManager) BecomeLeader(req *coordination.BecomeLeaderRequest) (*coordination.BecomeLeaderResponse, error) {
++	response := enqueueCommandAndWaitForResponse[*coordination.BecomeLeaderResponse](s, func() (*coordination.BecomeLeaderResponse, error) {
++		resp, err := s.becomeLeaderSync(req)
++		return resp, err
++	})
++	return response, nil
++}
++
++func (s *shardManager) needsTruncation(headIndex *coordination.EntryId) bool {
++	return headIndex.Epoch != s.headIndex.epoch || headIndex.Offset > s.headIndex.offset
++}
++
++func (s *shardManager) getCursor(headIndex *coordination.EntryId) *cursor {
++	if s.needsTruncation(headIndex) {
++		return &cursor{
++			status:        PendingTruncate,
++			lastPushed:    nil,
++			lastConfirmed: nil,
++		}
++	} else {
++		return &cursor{
++			status:        Attached,
++			lastPushed:    headIndex,
++			lastConfirmed: headIndex,
++		}
++	}
++}
++
++func (s *shardManager) getCursors(followers []*coordination.BecomeLeaderRequest_FollowerEntry) map[string]*cursor {
++	cursors := make(map[string]*cursor)
++	for _, kv := range followers {
++		cursors[kv.Key.InternalUrl] = s.getCursor(kv.Value)
++	}
++	return cursors
++}
++
++func (s *shardManager) sendTruncateRequest(target string, targetEpoch uint64) error {
++	headIndex, err := s.wal.GetHighestEntryOfEpoch(targetEpoch)
++	if err != nil {
++		return err
++	}
++	send := func(ctx context.Context, rpc coordination.OxiaLogReplicationClient) (*coordination.TruncateResponse, error) {
++		resp, err2 := rpc.Truncate(ctx, &coordination.TruncateRequest{
++			Epoch:     s.epoch,
++			HeadIndex: headIndex.toProto(),
++		})
++		return resp, err2
++	}
++	process := func(resp *coordination.TruncateResponse) error {
++		err2 := s.truncateResponseSync(target, resp)
++		return err2
++	}
++	return sendRequestAndProcessResponse[*coordination.TruncateResponse](s, target, send, process)
++}
++
++/*
++truncateResponseSync: Leader handles a truncate response.
++
++The leader now activates the follow cursor as the follower
++log is now ready for replication.
++*/
++func (s *shardManager) truncateResponseSync(target string, resp *coordination.TruncateResponse) error {
++	if err := s.checkStatus(Leader); err != nil {
++		return err
++	}
++	if err := s.checkEpochEqualIn(resp); err != nil {
++		return err
++	}
++	s.followCursor[target] = &cursor{
++		status:        Attached,
++		lastPushed:    resp.HeadIndex,
++		lastConfirmed: resp.HeadIndex,
++	}
++	s.sendEntriesToFollower(target, resp.HeadIndex)
++
++	return nil
++}
++
++/*
++Node handles a Become Leader request
++
++The node inspects the head index of each follower and
++compares it to its own head index, and then either:
++  - Attaches a follow cursor for the follower the head indexes
++    have the same epoch, but the follower offset is lower or equal.
++  - Sends a truncate request to the follower if its head
++    index epoch does not match the leader's head index epoch or has
++    a higher offset.
++    The leader finds the highest entry id in its log prefix (of the
++    follower head index) and tells the follower to truncate its log
++    to that entry.
++
++Key points:
++  - The election only requires a majority to complete and so the
++    Become Leader request will likely only contain a majority,
++    not all the nodes.
++  - No followers in the Become Leader message "follower map" will
++    have a higher head index than the leader (as the leader was
++    chosen because it had the highest head index of the majority
++    that responded to the fencing requests first). But as the leader
++    receives more fencing responses from the remaining minority,
++    the new leader will be informed of these followers, and it is
++    possible that their head index is higher than the leader and
++    therefore need truncating.
++*/
++func (s *shardManager) becomeLeaderSync(req *coordination.BecomeLeaderRequest) (*coordination.BecomeLeaderResponse, error) {
++	if err := s.checkEpochEqualIn(req); err != nil {
++		return nil, err
++	}
++	s.status = Leader
++	s.leader = s.identityAddress
++	s.replicationFactor = req.GetReplicationFactor()
++	s.followCursor = s.getCursors(req.GetFollowerMap())
++
++	for k, v := range s.followCursor {
++		if v.status == PendingTruncate {
++			err := s.sendTruncateRequest(k, s.epoch)
++			if err != nil {
++				return nil, err
++			}
++		} else {
++			s.sendEntriesToFollower(k, v.lastPushed)
++		}
++	}
++	return &coordination.BecomeLeaderResponse{Epoch: req.GetEpoch()}, nil
++}
++func (s *shardManager) Truncate(source string, req *coordination.TruncateRequest) (*coordination.TruncateResponse, error) {
++	response := enqueueCommandAndWaitForResponse[*coordination.TruncateResponse](s, func() (*coordination.TruncateResponse, error) {
++		resp, err := s.truncateSync(source, req)
++		return resp, err
++	})
++	return response, nil
++}
++
++/*
++Node handles a Truncate request
++
++A node that receives a truncate request knows that it
++has been selected as a follower. It truncates its log
++to the indicates entry id, updates its epoch and changes
++to a Follower.
++*/
++func (s *shardManager) truncateSync(source string, req *coordination.TruncateRequest) (*coordination.TruncateResponse, error) {
++	if err := s.checkStatus(Fenced); err != nil {
++		return nil, err
++	}
++	if err := s.checkEpochEqualIn(req); err != nil {
++		return nil, err
++	}
++	s.status = Follower
++	s.epoch = req.Epoch
++	s.leader = source
++	headEntryId, err := s.wal.TruncateLog(EntryIdFromProto(req.HeadIndex))
++	if err != nil {
++		return nil, err
++	}
++	s.headIndex = headEntryId
++	s.followCursor = make(map[string]*cursor)
++
++	return &coordination.TruncateResponse{
++		Epoch:     req.Epoch,
++		HeadIndex: headEntryId.toProto(),
++	}, nil
++}
++
++func (s *shardManager) AddFollower(req *coordination.AddFollowerRequest) (*coordination.CoordinationEmpty, error) {
++	response := enqueueCommandAndWaitForResponse[*coordination.CoordinationEmpty](s, func() (*coordination.CoordinationEmpty, error) {
++		resp, err := s.addFollowerSync(req)
++		return resp, err
++	})
++	return response, nil
++}
++
++/*
++Leader handles an Add Follower request
++
++The leader creates a cursor and will send a truncate
++request to the follower if their log might need
++truncating first.
++*/
++func (s *shardManager) addFollowerSync(req *coordination.AddFollowerRequest) (*coordination.CoordinationEmpty, error) {
++	if err := s.checkStatus(Leader); err != nil {
++		return nil, err
++	}
++	if err := s.checkEpochEqualIn(req); err != nil {
++		return nil, err
++	}
++	if _, ok := s.followCursor[req.Follower.InternalUrl]; ok {
++		return nil, status.Errorf(codes.FailedPrecondition, "Follower %s already exists", req.Follower.InternalUrl)
++	}
++
++	s.followCursor[req.Follower.InternalUrl] = s.getCursor(req.HeadIndex)
++	if s.needsTruncation(req.HeadIndex) {
++		err := s.sendTruncateRequest(req.Follower.InternalUrl, req.HeadIndex.Epoch)
++		if err != nil {
++			return nil, err
++		}
++	}
++
++	return nil, status.Errorf(codes.Unimplemented, "method AddFollower not implemented")
++}
++
++func (s *shardManager) Write(op *proto.PutOp) (*proto.Stat, error) {
++	responseChannel := make(chan any, 1)
++	response, err := enqueueCommandAndWaitForResponseWithChannel[proto.Stat](s, func() (proto.Stat, error) {
++		err2 := s.writeSync(op, responseChannel)
++		return proto.Stat{}, err2
++	}, responseChannel)
++	return &response, err
++}
++
++func serializeOp(op *proto.PutOp) ([]byte, error) {
++	val, err := json.Marshal(op)
++	return val, err
++}
++
++func deserializeOp(encoding []byte) (*proto.PutOp, error) {
++	data := &proto.PutOp{}
++	err := json.Unmarshal(encoding, data)
++	return data, err
++}
++
++/*
++writeSync A client writes an entry to the leader
++
++	A client writes a value from Values to a leader node
++	if that value has not previously been written. The leader adds
++	the entry to its log, updates its head_index.
++*/
++func (s *shardManager) writeSync(op *proto.PutOp, responseChannel chan any) error {
++	s.log.Debug().
++		Interface("op", op).
++		Msg("Put operation")
++
++	if err := s.checkStatus(Leader); err != nil {
++		return err
++	}
++	entryId := &coordination.EntryId{
++		Epoch:  s.epoch,
++		Offset: s.headIndex.offset + 1,
++	}
++	value, err := serializeOp(op)
++	if err != nil {
++		return err
++	}
++	logEntry := &coordination.LogEntry{
++		EntryId:   entryId,
++		Value:     value,
++		Timestamp: uint64(time.Now().Nanosecond()),
++	}
++	// Note: the version in the KV store may be updated by the time this entry is applied
++	err = s.wal.Append(logEntry)
++	if err != nil {
++		return err
++	}
++	s.headIndex = EntryIdFromProto(entryId)
++	s.waitingRoom[s.headIndex] = waitingRoomEntry{
++		counter:             0,
++		confirmationChannel: responseChannel,
++	}
++	return nil
++
++}
++
++func (s *shardManager) sendEntriesToFollower(target string, lastPushedEntry *coordination.EntryId) {
++	err := sendRequestAndProcessResponse[any](s, target, func(ctx context.Context, client coordination.OxiaLogReplicationClient) (any, error) {
++		addEntries, err := client.AddEntries(ctx)
++		if err != nil {
++			return nil, err
++		}
++
++		err = s.wal.Read(EntryIdFromProto(lastPushedEntry), func(entry *coordination.LogEntry) error {
++			err2 := addEntries.Send(&coordination.AddEntryRequest{
++				Epoch:       s.epoch,
++				Entry:       entry,
++				CommitIndex: s.commitIndex.toProto(),
++			})
++			if err2 != nil {
++				log.Error().Err(err2).Msgf("Error replicating message to %s", target)
++				return err2
++			}
++			s.followCursor[target].lastPushed = entry.EntryId
++			return nil
++		})
++		if err != nil {
++			return nil, err
++		}
++
++		go func() {
++			for {
++				addEntryResponse, err2 := addEntries.Recv()
++				if err2 != nil {
++					log.Error().Err(err2).Msg("Error while waiting for ack")
++					return
++				}
++				command := newCommand(func() (any, error) {
++					err3 := s.addEntryResponseSync(target, addEntryResponse)
++					return nil, err3
++				})
++				s.commandChannel <- command
++			}
++		}()
++		return nil, nil
++	}, func(any) error {
++		return nil
++	})
++	if err != nil {
++		log.Error().Err(err).Msgf("Error sending message to '%s'", target)
++	}
++}
++
++/*
++A leader node handles an add entry response
++
++	The leader updates the follow cursor last_confirmed
++	entry id, it also may advance the commit index.
++
++	An entry is committed when all of the following
++	has occurred:
++	- it has reached majority quorum
++	- the entire log prefix has reached majority quorum
++	- the entry epoch matches the current epoch
++
++	Key points:
++	- Entries of prior epochs cannot be committed directly by
++	  themselves, only entries of the current epoch can be
++	  committed. Committing an entry of the current epoch
++	  also implicitly includes all prior entries.
++	  To find a counterexample where loss of confirmed writes
++	  occurs when committing entries of prior epochs directly,
++	  comment out the condition 'entry_id.epoch = nstate.epoch'
++	  below. Also see the Raft paper.
++*/
++func (s *shardManager) addEntryResponseSync(follower string, response *coordination.AddEntryResponse) error {
++	if err := s.checkStatus(Leader); err != nil {
++		return err
++	}
++	if err := s.checkEpochEqualIn(response); err != nil {
++		return nil
++	}
++	// TODO check if 'IsEarliestReceivableEntryMessage'
++	if !response.InvalidEpoch && s.followCursor[follower].status == Attached {
++		s.followCursor[follower].lastConfirmed = response.EntryId
++		// TODO LogPrefixAtQuorum
++		waitingEntry, ok := s.waitingRoom[EntryIdFromProto(response.EntryId)]
++		if ok {
++			// If the entry is not there, it has already been confirmed
++			waitingEntry.counter++
++			if waitingEntry.counter >= s.replicationFactor/2 {
++				delete(s.waitingRoom, EntryIdFromProto(response.EntryId))
++				logEntry, err := s.wal.ReadOne(EntryIdFromProto(response.EntryId))
++				if err != nil {
++					return err
++				}
++				op, err := deserializeOp(logEntry.GetValue())
++				if err != nil {
++					return err
++				}
++				stat, err := s.kv.Apply(op, logEntry.Timestamp)
++				if err != nil {
++					// TODO if op is inapplicable, it's not an error really. Should be encapsulated in the stat
++					return err
++				}
++				waitingEntry.confirmationChannel <- stat
++				s.commitIndex = EntryIdFromProto(response.EntryId)
++				// TODO notify watchers
++			}
++		}
++	} else {
++		log.Error().Msgf("Entry rejected by '%s'", follower)
++	}
++	return nil
++}
++
++func (s *shardManager) AddEntries(source string, srv coordination.OxiaLogReplication_AddEntriesServer) (any, error) {
++	for {
++		req, err := srv.Recv()
++		if err != nil {
++			return nil, err
++		}
++		response := enqueueCommandAndWaitForResponse[*coordination.AddEntryResponse](s, func() (*coordination.AddEntryResponse, error) {
++			resp, err2 := s.addEntrySync(source, req)
++			return resp, err2
++		})
++		err = srv.Send(response)
++		if err != nil {
++			return nil, err
++		}
++	}
++}
++
++func (s *shardManager) addEntrySync(source string, req *coordination.AddEntryRequest) (*coordination.AddEntryResponse, error) {
++	if req.GetEpoch() <= s.epoch {
++		/*
++		 A follower node rejects an entry from the leader.
++
++
++		  If the leader has a lower epoch than the follower then the
++		  follower must reject it with an INVALID_EPOCH response.
++
++		  Key points:
++		  - The epoch of the response should be the epoch of the
++		    request so that the leader will not ignore the response.
++		*/
++		return &coordination.AddEntryResponse{
++			Epoch:        req.Epoch,
++			EntryId:      nil,
++			InvalidEpoch: true,
++		}, nil
++	}
++	if s.status != Follower && s.status != Fenced {
++		return nil, status.Errorf(codes.FailedPrecondition, "AddEntry request from %s when status = %+v", source, s.status)
++	}
++
++	/*
++	  A follower node confirms an entry to the leader
++
++	  The follower adds the entry to its log, sets the head index
++	  and updates its commit index with the commit index of
++	  the request.
++	*/
++	s.status = Follower
++	s.epoch = req.Epoch
++	s.leader = source
++	err := s.wal.Append(req.GetEntry())
++	if err != nil {
++		return nil, err
++	}
++	s.headIndex = EntryIdFromProto(req.Entry.EntryId)
++	oldCommitIndex := s.commitIndex
++	s.commitIndex = EntryIdFromProto(req.CommitIndex)
++	err = s.wal.ReadSync(oldCommitIndex, s.commitIndex, func(entry *coordination.LogEntry) error {
++		op, err2 := deserializeOp(entry.GetValue())
++		if err2 != nil {
++			return err2
++		}
++		_, err3 := s.kv.Apply(op, entry.Timestamp)
++		return err3
++	})
++	if err != nil {
++		return nil, err
++	}
++	return &coordination.AddEntryResponse{
++		Epoch:        s.epoch,
++		EntryId:      req.Entry.EntryId,
++		InvalidEpoch: false,
++	}, nil
++
++}
++
++func (s *shardManager) PrepareReconfig(req *coordination.PrepareReconfigRequest) (*coordination.PrepareReconfigResponse, error) {
++	return nil, status.Errorf(codes.Unimplemented, "method PrepareReconfig not implemented")
++}
++func (s *shardManager) Snapshot(req *coordination.SnapshotRequest) (*coordination.SnapshotResponse, error) {
++	return nil, status.Errorf(codes.Unimplemented, "method Snapshot not implemented")
++}
++func (s *shardManager) CommitReconfig(req *coordination.CommitReconfigRequest) (*coordination.CommitReconfigResponse, error) {
++	return nil, status.Errorf(codes.Unimplemented, "method CommitReconfig not implemented")
++}
++
++// run takes commands from the queue and executes them serially
++func (s *shardManager) run() {
++	for !s.closing {
++		command := <-s.commandChannel
++		response, err := command.execute()
++		if response != nil {
++			command.responseChan <- response
++		}
++		if err != nil {
++			log.Error().Err(err).Msg("Error executing command.")
++		}
++		if s.closing || err != nil {
++			log.Info().Msg("Shard manager closes.")
++			break
++		}
++	}
++}
++
++func (s *shardManager) Close() error {
++	s.log.Info().Msg("Closing shard manager")
++	s.commandChannel <- newCommand(func() (any, error) {
++		s.purgeWaitingRoom()
++		s.status = NotMember
++		return nil, nil
++	})
++
++	return s.wal.Close()
++}
++
++func (s *shardManager) purgeWaitingRoom() {
++	for _, v := range s.waitingRoom {
++		v.confirmationChannel <- status.Errorf(codes.Aborted, "Oxia shutting down")
++	}
++	s.waitingRoom = make(map[EntryId]waitingRoomEntry)
++}
+diff --git a/server/shard_manager_test.go b/server/shard_manager_test.go
+new file mode 100644
+index 0000000..d63fc2a
+--- /dev/null
++++ b/server/shard_manager_test.go
+@@ -0,0 +1,33 @@
++package server
++
++import (
++	"testing"
++)
++
++const shard = "0000-000F"
++
++func TestNewShardManager(t *testing.T) {
++	wal := NewInMemoryWal(shard)
++	sm, err := NewShardManager(shard, "augustus:31", nil, wal, nil)
++	if err != nil {
++		t.Log(err)
++		t.Fatalf("Unable to create shard manager")
++	}
++	impl := sm.(*shardManager)
++	assertEquals[uint64](t, 0, impl.epoch, "Epochs")
++	assertEquals[EntryId](t, EntryId{}, impl.commitIndex, "CommitIndexes")
++	assertEquals[EntryId](t, EntryId{}, impl.headIndex, "HeadIndexes")
++	assertEquals[Status](t, NotMember, impl.status, "Statuses")
++}
++
++func TestNewShardManagerInitializesFromWal(t *testing.T) {
++	wal := newWalWithEntries("Ticinus", "Cannae", "", "Cartagena", "Baecula", "Ilipa", "", "Utica", "Utica", "Zama")
++	sm, err := NewShardManager(shard, "scipio:202", nil, wal, nil)
++	if err != nil {
++		t.Log(err)
++		t.Fatalf("Unable to create shard manager")
++	}
++	impl := sm.(*shardManager)
++	assertEquals[EntryId](t, wal.EntryIdAt(wal.LogLength()-1), impl.headIndex, "HeadIndexes")
++
++}
+diff --git a/server/shards_director.go b/server/shards_director.go
+new file mode 100644
+index 0000000..8fb33e2
+--- /dev/null
++++ b/server/shards_director.go
+@@ -0,0 +1,119 @@
++package server
++
++import (
++	"github.com/pkg/errors"
++	"github.com/rs/zerolog"
++	"github.com/rs/zerolog/log"
++	"io"
++	"oxia/common"
++	"oxia/proto"
++	"sync"
++)
++
++type ShardsDirector interface {
++	io.Closer
++
++	GetShardsAssignments(callback func(*proto.ShardsAssignments))
++
++	GetManager(shardId ShardId, create bool) (ShardManager, error)
++}
++
++type ShardId string
++
++type shardsDirector struct {
++	mutex *sync.Mutex
++	cond  *sync.Cond
++
++	assignments   *proto.ShardsAssignments
++	shardManagers map[ShardId]ShardManager
++	identityAddr  string
++
++	log zerolog.Logger
++}
++
++func NewShardsDirector(identityAddr string) ShardsDirector {
++	mutex := &sync.Mutex{}
++	return &shardsDirector{
++		mutex: mutex,
++		cond:  sync.NewCond(mutex),
++
++		identityAddr:  identityAddr,
++		shardManagers: make(map[ShardId]ShardManager),
++		log: log.With().
++			Str("component", "shards-director").
++			Logger(),
++	}
++}
++
++func (s *shardsDirector) GetShardsAssignments(callback func(*proto.ShardsAssignments)) {
++	s.mutex.Lock()
++	defer s.mutex.Unlock()
++
++	if s.assignments != nil {
++		callback(s.assignments)
++	}
++
++	oldAssignments := s.assignments
++	for {
++		s.cond.Wait()
++
++		if oldAssignments != s.assignments {
++			callback(s.assignments)
++			oldAssignments = s.assignments
++		}
++	}
++}
++
++func (s *shardsDirector) GetManager(shardId ShardId, create bool) (ShardManager, error) {
++	s.mutex.Lock()
++	defer s.mutex.Unlock()
++
++	manager, ok := s.shardManagers[shardId]
++	if ok {
++		return manager, nil
++	} else if create {
++		w := NewInMemoryWal(shardId)
++		kv := NewInMemoryKVStore()
++		pool := common.NewClientPool()
++		sm, err := NewShardManager(shardId, s.identityAddr, pool, w, kv)
++		if err != nil {
++			return nil, err
++		}
++		s.shardManagers[shardId] = sm
++		return sm, nil
++	} else {
++		s.log.Debug().Str("shard", string(shardId)).
++			Msg("This node is not hosting shard")
++		return nil, errors.Errorf("This node is not leader for shard %s", shardId)
++	}
++
++}
++
++func (s *shardsDirector) Close() error {
++	s.mutex.Lock()
++	defer s.mutex.Unlock()
++
++	for shard, manager := range s.shardManagers {
++		if err := manager.Close(); err != nil {
++			s.log.Error().
++				Err(err).
++				Str("shard", string(shard)).
++				Msg("Failed to shutdown leader controller")
++		}
++	}
++	return nil
++}
++
++func (s *shardsDirector) shouldLead(shard *proto.ShardStatus) bool {
++	return true // shard.Leader.InternalUrl == s.identityAddr
++}
++
++func (s *shardsDirector) shouldFollow(shard *proto.ShardStatus) bool {
++	//for _, f := range shard.Followers {
++	//	if f.InternalUrl == s.identityAddr {
++	//		return true
++	//	}
++	//}
++
++	return false
++}
+diff --git a/server/shards_manager.go b/server/shards_manager.go
+deleted file mode 100644
+index b3fe7d6..0000000
+--- a/server/shards_manager.go
++++ /dev/null
+@@ -1,191 +0,0 @@
+-package server
+-
+-import (
+-	"github.com/pkg/errors"
+-	"github.com/rs/zerolog"
+-	"github.com/rs/zerolog/log"
+-	"io"
+-	"oxia/proto"
+-	"sync"
+-)
+-
+-type ShardsManager interface {
+-	io.Closer
+-
+-	GetShardsAssignments(callback func(*proto.ShardsAssignments))
+-
+-	UpdateClusterStatus(status *proto.ClusterStatus) error
+-
+-	GetLeaderController(shardId uint32) (ShardLeaderController, error)
+-}
+-
+-type shardsManager struct {
+-	mutex *sync.Mutex
+-	cond  *sync.Cond
+-
+-	assignments  *proto.ShardsAssignments
+-	leading      map[uint32]ShardLeaderController
+-	following    map[uint32]ShardFollowerController
+-	identityAddr string
+-
+-	log zerolog.Logger
+-}
+-
+-func NewShardsManager(identityAddr string) ShardsManager {
+-	mutex := &sync.Mutex{}
+-	return &shardsManager{
+-		mutex: mutex,
+-		cond:  sync.NewCond(mutex),
+-
+-		identityAddr: identityAddr,
+-		leading:      make(map[uint32]ShardLeaderController),
+-		following:    make(map[uint32]ShardFollowerController),
+-		log: log.With().
+-			Str("component", "shards-manager").
+-			Logger(),
+-	}
+-}
+-
+-func (s *shardsManager) GetShardsAssignments(callback func(*proto.ShardsAssignments)) {
+-	s.mutex.Lock()
+-	defer s.mutex.Unlock()
+-
+-	if s.assignments != nil {
+-		callback(s.assignments)
+-	}
+-
+-	oldAssignments := s.assignments
+-	for {
+-		s.cond.Wait()
+-
+-		if oldAssignments != s.assignments {
+-			callback(s.assignments)
+-			oldAssignments = s.assignments
+-		}
+-	}
+-}
+-
+-func (s *shardsManager) UpdateClusterStatus(status *proto.ClusterStatus) error {
+-	s.mutex.Lock()
+-	defer s.mutex.Unlock()
+-
+-	// Compare what we have and what we should have running in this node
+-	for _, shard := range status.GetShardsStatus() {
+-		if s.shouldLead(shard) {
+-			// We are leaders for this shard
+-			leaderCtrl, ok := s.leading[shard.Shard]
+-			if ok {
+-				s.log.Debug().
+-					Uint32("shard", shard.Shard).
+-					Msg("We are already leading, nothing to do")
+-			} else {
+-				followerCtrl, ok := s.following[shard.Shard]
+-				if ok {
+-					// We are being promoted from follower -> leader
+-					followerCtrl.Close()
+-					delete(s.following, shard.Shard)
+-				}
+-
+-				leaderCtrl = NewShardLeaderController(shard.Shard, status.ReplicationFactor)
+-				s.leading[shard.Shard] = leaderCtrl
+-			}
+-		} else if s.shouldFollow(shard) {
+-			// We are followers for this shard
+-			followerCtrl, ok := s.following[shard.Shard]
+-			if ok {
+-				s.log.Debug().
+-					Uint32("shard", shard.Shard).
+-					Msg("We are already following, nothing to do")
+-			} else {
+-				leaderCtrl, ok := s.leading[shard.Shard]
+-				if ok {
+-					// We are being demoted from leader -> follower
+-					leaderCtrl.Close()
+-					delete(s.leading, shard.Shard)
+-				}
+-
+-				followerCtrl = NewShardFollowerController(shard.Shard, shard.Leader.InternalUrl)
+-				s.following[shard.Shard] = followerCtrl
+-			}
+-		} else {
+-			// We should not be running this shard, close it if it's running
+-			if leaderCtrl, ok := s.leading[shard.Shard]; ok {
+-				leaderCtrl.Close()
+-			}
+-
+-			if followerCtrl, ok := s.following[shard.Shard]; ok {
+-				followerCtrl.Close()
+-			}
+-		}
+-	}
+-
+-	s.assignments = s.computeNewAssignments(status)
+-	return nil
+-}
+-
+-func (s *shardsManager) computeNewAssignments(status *proto.ClusterStatus) *proto.ShardsAssignments {
+-	assignments := &proto.ShardsAssignments{
+-		Shards: make([]*proto.ShardAssignment, 0),
+-	}
+-	for _, shard := range status.GetShardsStatus() {
+-		assignments.Shards = append(assignments.Shards, &proto.ShardAssignment{
+-			ShardId: shard.Shard,
+-			Leader:  shard.Leader.PublicUrl,
+-		})
+-	}
+-
+-	s.cond.Broadcast()
+-
+-	return assignments
+-}
+-
+-func (s *shardsManager) GetLeaderController(shardId uint32) (ShardLeaderController, error) {
+-	s.mutex.Lock()
+-	defer s.mutex.Unlock()
+-
+-	slc, ok := s.leading[shardId]
+-	if !ok {
+-		s.log.Debug().Uint32("shard", shardId).Msg("This node is not leader for shard")
+-		return nil, errors.Errorf("This node is not leader for shard %d", shardId)
+-	}
+-	return slc, nil
+-}
+-
+-func (s *shardsManager) Close() error {
+-	s.mutex.Lock()
+-	defer s.mutex.Unlock()
+-
+-	for shard, leaderCtrl := range s.leading {
+-		if err := leaderCtrl.Close(); err != nil {
+-			s.log.Error().
+-				Err(err).
+-				Uint32("shard", shard).
+-				Msg("Failed to shutdown leader controller")
+-		}
+-	}
+-
+-	for shard, followerCtrl := range s.following {
+-		if err := followerCtrl.Close(); err != nil {
+-			s.log.Error().
+-				Err(err).
+-				Uint32("shard", shard).
+-				Msg("Failed to shutdown follower controller")
+-		}
+-	}
+-
+-	return nil
+-}
+-
+-func (s *shardsManager) shouldLead(shard *proto.ShardStatus) bool {
+-	return shard.Leader.InternalUrl == s.identityAddr
+-}
+-
+-func (s *shardsManager) shouldFollow(shard *proto.ShardStatus) bool {
+-	for _, f := range shard.Followers {
+-		if f.InternalUrl == s.identityAddr {
+-			return true
+-		}
+-	}
+-
+-	return false
+-}
+diff --git a/server/tidwall_log.go b/server/tidwall_log.go
+new file mode 100644
+index 0000000..e7138d0
+--- /dev/null
++++ b/server/tidwall_log.go
+@@ -0,0 +1,231 @@
++package server
++
++import (
++	"encoding/json"
++	"github.com/pkg/errors"
++	"github.com/rs/zerolog/log"
++	tidwall "github.com/tidwall/wal"
++	"oxia/coordination"
++)
++
++type EntryId struct {
++	epoch  uint64
++	offset uint64
++}
++
++func EntryIdFromProto(id *coordination.EntryId) EntryId {
++	return EntryId{
++		epoch:  id.Epoch,
++		offset: id.Offset,
++	}
++}
++
++func (id EntryId) toProto() *coordination.EntryId {
++	return &coordination.EntryId{
++		Epoch:  id.epoch,
++		Offset: id.offset,
++	}
++}
++
++func (id EntryId) isHigherThan(other EntryId) bool {
++	return id.epoch > other.epoch || (id.epoch == other.epoch && id.offset > other.offset)
++}
++
++type tidwallLog struct {
++	log       *tidwall.Log
++	index     map[EntryId]uint64
++	reverse   map[uint64]EntryId
++	callbacks []func(*coordination.LogEntry) error
++}
++
++func NewTidwallLog(walDir string, shard string) (Wal, error) {
++	logImpl, err := tidwall.Open(walDir+"/"+shard, tidwall.DefaultOptions)
++	if err != nil {
++		return nil, err
++	}
++	// TODO persist index
++	if err != nil {
++		return nil, err
++	}
++	impl := &tidwallLog{
++		log:       logImpl,
++		index:     nil,
++		reverse:   nil,
++		callbacks: make([]func(*coordination.LogEntry) error, 0, 10000),
++	}
++	err = impl.buildIndexes()
++	if err != nil {
++		return nil, err
++	}
++	return impl, nil
++}
++
++func (t *tidwallLog) buildIndexes() error {
++	m := make(map[EntryId]uint64)
++	r := make(map[uint64]EntryId)
++	first, err := t.log.FirstIndex()
++	if err != nil {
++		return err
++	}
++	last, err := t.log.LastIndex()
++	if err != nil {
++		return err
++	}
++	for index := first; index != 0 && index <= last; index++ {
++		logEntry, err2 := t.readEntryAt(index)
++		if err2 != nil {
++			return err2
++		}
++		entryId := EntryIdFromProto(logEntry.EntryId)
++		m[entryId] = index
++		r[index] = entryId
++	}
++	t.index = m
++	t.reverse = r
++	return nil
++}
++func (t *tidwallLog) readEntryAt(index uint64) (*coordination.LogEntry, error) {
++	read, err2 := t.log.Read(index)
++	if err2 != nil {
++		return nil, err2
++	}
++	logEntry := &coordination.LogEntry{}
++	err2 = json.Unmarshal(read, logEntry)
++	if err2 != nil {
++		return nil, err2
++	}
++	return logEntry, nil
++
++}
++
++func (t *tidwallLog) LogLength() uint64 {
++	return uint64(len(t.index))
++}
++
++func (t *tidwallLog) EntryIdAt(internalOffset uint64) EntryId {
++	id := t.reverse[internalOffset]
++	return id
++}
++
++func (t *tidwallLog) Close() error {
++	return t.log.Close()
++}
++
++func (t *tidwallLog) Append(entry *coordination.LogEntry) error {
++	bytes, err := json.Marshal(entry)
++	if err != nil {
++		return err
++	}
++	index := t.LogLength() + 1
++	err = t.log.Write(index, bytes)
++	if err != nil {
++		return err
++	}
++	id := EntryIdFromProto(entry.EntryId)
++	t.index[id] = index
++	t.reverse[index] = id
++
++	for i := 0; i < len(t.callbacks); {
++		callback := t.callbacks[i]
++		err2 := callback(entry)
++		if err2 != nil {
++			// TODO retry
++			log.Error().Err(err2).Msg("Encountered error. Removing callback")
++			t.callbacks[i] = t.callbacks[len(t.callbacks)-1]
++			t.callbacks = t.callbacks[:len(t.callbacks)-1]
++		} else {
++			i++
++		}
++	}
++	return nil
++}
++
++func (t *tidwallLog) ReadOne(id EntryId) (*coordination.LogEntry, error) {
++	index, ok := t.index[id]
++	if !ok {
++		return nil, errors.Errorf("Can't read id %+v", id)
++	}
++	logEntry, err2 := t.readEntryAt(index)
++	if err2 != nil {
++		return nil, err2
++	}
++	return logEntry, nil
++}
++
++func (t *tidwallLog) ReadSync(previousCommittedEntryId EntryId, lastCommittedEntryId EntryId, callback func(*coordination.LogEntry) error) error {
++	start, ok := t.index[(previousCommittedEntryId)]
++	if !ok {
++		return errors.Errorf("Can't read id %+v", previousCommittedEntryId)
++	}
++	start++
++	end, ok := t.index[(lastCommittedEntryId)]
++	if !ok {
++		return errors.Errorf("Can't read id %+v", lastCommittedEntryId)
++	}
++	for i := start; i <= end; i++ {
++		logEntry, err := t.readEntryAt(i)
++		if err != nil {
++			return err
++		}
++		err = callback(logEntry)
++		if err != nil {
++			return err
++		}
++	}
++	return nil
++}
++
++func (t *tidwallLog) Read(lastPushedEntryId EntryId, callback func(*coordination.LogEntry) error) error {
++	start, ok := t.index[(lastPushedEntryId)]
++	if !ok {
++		return errors.Errorf("Can't read id %+v", lastPushedEntryId)
++	}
++	start++
++	for i := start; i <= t.LogLength(); i++ {
++		logEntry, err := t.readEntryAt(i)
++		if err != nil {
++			return err
++		}
++		err = callback(logEntry)
++		if err != nil {
++			return err
++		}
++	}
++	t.callbacks = append(t.callbacks, callback)
++	return nil
++}
++
++func (t *tidwallLog) StopReaders() {
++	t.callbacks = make([]func(*coordination.LogEntry) error, 0, 10000)
++}
++
++func (t *tidwallLog) GetHighestEntryOfEpoch(epoch uint64) (EntryId, error) {
++	offset, ok := t.index[EntryId{
++		epoch:  epoch + 1,
++		offset: 1,
++	}]
++	if ok {
++		return t.reverse[offset-1], nil
++	} else {
++		return t.reverse[t.LogLength()], nil
++	}
++}
++
++func (t *tidwallLog) TruncateLog(lastSafeEntryId EntryId) (EntryId, error) {
++	lastSafe, ok := t.index[lastSafeEntryId]
++	if !ok {
++		return EntryId{}, errors.Errorf("Can't read id %+v", lastSafeEntryId)
++	}
++	end := t.LogLength()
++	for i := lastSafe + 1; i <= end; i++ {
++		id := t.reverse[i]
++		delete(t.index, id)
++		delete(t.reverse, i)
++	}
++	err := t.log.TruncateBack(lastSafe)
++	if err != nil {
++		return EntryId{}, err
++	}
++	return t.reverse[lastSafe], nil
++
++}
+diff --git a/server/utils_test.go b/server/utils_test.go
+new file mode 100644
+index 0000000..b365b9b
+--- /dev/null
++++ b/server/utils_test.go
+@@ -0,0 +1,46 @@
++package server
++
++import (
++	"oxia/coordination"
++	"testing"
++)
++
++func assertEquals[X comparable](t *testing.T, expected X, actual X, message string) {
++	if expected != actual {
++		t.Fatalf("Equality check failed for %s. Got %v, expected %v", message, actual, expected)
++	}
++}
++
++func failOnErr(t *testing.T, err error, op string) {
++	if err != nil {
++		t.Log(err)
++		t.Fatalf("Error while %s", op)
++	}
++}
++
++func newWalWithEntries(payloads ...string) *inMemoryWal {
++	wal := NewInMemoryWal(shard)
++	return initWalWithEntries(wal, payloads)
++}
++
++func initWalWithEntries(wal Wal, payloads []string) *inMemoryWal {
++	epoch := uint64(1)
++	offset := uint64(1)
++	for _, p := range payloads {
++		if p == "" {
++			epoch++
++		} else {
++			entry := &coordination.LogEntry{
++				EntryId: &coordination.EntryId{
++					Epoch:  epoch,
++					Offset: offset,
++				},
++				Value:     []byte(p),
++				Timestamp: offset,
++			}
++			wal.Append(entry)
++			offset++
++		}
++	}
++	return wal.(*inMemoryWal)
++}
+diff --git a/server/wal.go b/server/wal.go
+index b31c189..d552387 100644
+--- a/server/wal.go
++++ b/server/wal.go
+@@ -2,39 +2,141 @@ package server
+ 
+ import (
+ 	"github.com/pkg/errors"
++	"github.com/rs/zerolog/log"
+ 	"io"
+-	"oxia/proto"
++	"oxia/coordination"
+ )
+ 
+ type Wal interface {
+ 	io.Closer
+-	Append(epoch uint64, payload []byte) (entryId uint64, err error)
++	Append(entry *coordination.LogEntry) error
+ 
+-	Read(entryId uint64) (logEntry *proto.LogEntry, err error)
++	Read(lastPushedEntryId EntryId, callback func(*coordination.LogEntry) error) error
++	ReadSync(previousCommittedEntryId EntryId, lastCommittedEntryId EntryId, callback func(*coordination.LogEntry) error) error
++	GetHighestEntryOfEpoch(epoch uint64) (EntryId, error)
++	TruncateLog(headIndex EntryId) (EntryId, error)
++	StopReaders()
++	ReadOne(id EntryId) (*coordination.LogEntry, error)
++
++	LogLength() uint64
++	EntryIdAt(index uint64) EntryId
++}
++
++type inMemoryWal struct {
++	shard     ShardId
++	log       []*coordination.LogEntry
++	index     map[EntryId]int
++	callbacks []func(*coordination.LogEntry) error
++}
++
++func NewInMemoryWal(shard ShardId) Wal {
++	return &inMemoryWal{
++		shard:     shard,
++		log:       make([]*coordination.LogEntry, 0, 10000),
++		index:     make(map[EntryId]int),
++		callbacks: make([]func(*coordination.LogEntry) error, 0, 10000),
++	}
++}
++
++func (w *inMemoryWal) Close() error {
++	return nil
+ }
+ 
+-type wal struct {
+-	shard uint32
++func (w *inMemoryWal) Append(entry *coordination.LogEntry) error {
++	w.log = append(w.log, entry)
++	w.index[EntryIdFromProto(entry.EntryId)] = len(w.log) - 1
++	index := 0
++	for index < len(w.callbacks) {
++		callback := w.callbacks[index]
++		err := callback(entry)
++		if err != nil {
++			// TODO retry
++			log.Error().Err(err).Msg("Encountered error. Removing callback")
++			w.callbacks[index] = w.callbacks[len(w.callbacks)-1]
++			w.callbacks = w.callbacks[:len(w.callbacks)-1]
++		} else {
++			index++
++		}
++	}
++	return nil
++}
+ 
+-	// Dummy in-memory implementation
+-	log []proto.LogEntry
++func (w *inMemoryWal) ReadOne(id EntryId) (*coordination.LogEntry, error) {
++	return w.log[w.index[id]], nil
+ }
+ 
+-func NewWal(shard uint32) Wal {
+-	return &wal{
+-		shard: shard,
+-		log:   make([]proto.LogEntry, 0),
++func (w *inMemoryWal) ReadSync(previousCommittedEntryId EntryId, lastCommittedEntryId EntryId, callback func(*coordination.LogEntry) error) error {
++	index := w.index[previousCommittedEntryId]
++	for index+1 < len(w.log) {
++		index++
++		entry := w.log[index]
++		if entry.EntryId.Epoch > lastCommittedEntryId.epoch || (entry.EntryId.Epoch == lastCommittedEntryId.epoch && entry.EntryId.Offset > lastCommittedEntryId.offset) {
++			break
++		}
++		err2 := callback(entry)
++		if err2 != nil {
++			return err2
++		}
+ 	}
++	return nil
+ }
+ 
+-func (w *wal) Close() error {
++func (w *inMemoryWal) Read(lastPushedEntryId EntryId, callback func(*coordination.LogEntry) error) error {
++	index := w.index[lastPushedEntryId]
++	for index+1 < len(w.log) {
++		index++
++		err2 := callback(w.log[index])
++		if err2 != nil {
++			return err2
++		}
++	}
++	w.callbacks = append(w.callbacks, callback)
+ 	return nil
+ }
+ 
+-func (w *wal) Append(epoch uint64, payload []byte) (entryId uint64, err error) {
+-	panic("implement me")
++func (w *inMemoryWal) StopReaders() {
++	w.callbacks = make([]func(*coordination.LogEntry) error, 0, 10000)
++}
++
++func (w *inMemoryWal) GetHighestEntryOfEpoch(epoch uint64) (EntryId, error) {
++	if len(w.log) == 0 {
++		return EntryId{}, nil
++	}
++	if w.log[0].EntryId.Epoch > epoch {
++		return EntryId{}, errors.Errorf("Snapshotting is not yet implemented")
++	}
++	if w.log[len(w.log)-1].EntryId.Epoch <= epoch {
++		return EntryIdFromProto(w.log[len(w.log)-1].EntryId), nil
++	}
++	for i := len(w.log) - 1; i >= 0; i-- {
++		if w.log[i].EntryId.Epoch == epoch {
++			return EntryIdFromProto(w.log[i].EntryId), nil
++		}
++	}
++	// Should not happen
++	return EntryId{}, nil
++
++}
++
++func (w *inMemoryWal) TruncateLog(lastSafeEntryId EntryId) (EntryId, error) {
++	index, ok := w.index[lastSafeEntryId]
++	if ok {
++		for i := index + 1; i < len(w.log); i++ {
++			delete(w.index, EntryIdFromProto(w.log[i].EntryId))
++		}
++		w.log = w.log[:index]
++	}
++	if len(w.log) == 0 {
++		return EntryId{}, nil
++	}
++	return EntryIdFromProto(w.log[len(w.log)-1].EntryId), nil
++
++}
++
++func (w *inMemoryWal) LogLength() uint64 {
++	return uint64(len(w.log))
+ }
+ 
+-func (w *wal) Read(entryId uint64) (logEntry *proto.LogEntry, err error) {
+-	return nil, errors.New("WAL.read not implemented")
++func (w *inMemoryWal) EntryIdAt(index uint64) EntryId {
++	return EntryIdFromProto(w.log[index].EntryId)
+ }
+diff --git a/server/wal_test.go b/server/wal_test.go
+new file mode 100644
+index 0000000..9b2fec5
+--- /dev/null
++++ b/server/wal_test.go
+@@ -0,0 +1,18 @@
++package server
++
++import "testing"
++
++// This serves as a compatibility test suite for WAL implementations
++
++func newWal() Wal {
++	// Change this to test another implementation
++	return new(inMemoryWal)
++}
++
++func TestNewWal(t *testing.T) {
++	wal := newWal()
++	assertEquals(t, 0, wal.LogLength(), "Log length")
++	entry, err := wal.GetHighestEntryOfEpoch(1)
++	failOnErr(t, err, "Getting highest entry")
++	assertEquals(t, EntryId{}, entry, "Highest entry of epoch")
++}
+diff --git a/standalone/standalone.go b/standalone/standalone.go
+index fddf6b6..6c33b48 100644
+--- a/standalone/standalone.go
++++ b/standalone/standalone.go
+@@ -4,8 +4,8 @@ import (
+ 	"fmt"
+ 	"github.com/rs/zerolog/log"
+ 	"os"
++	"oxia/coordination"
+ 	"oxia/operator"
+-	"oxia/proto"
+ 	"oxia/server"
+ )
+ 
+@@ -18,8 +18,8 @@ type standaloneConfig struct {
+ type standalone struct {
+ 	rpc *server.PublicRpcServer
+ 
+-	shardsManager           server.ShardsManager
+-	identityInternalAddress proto.ServerAddress
++	shardsDirector          server.ShardsDirector
++	identityInternalAddress coordination.ServerAddress
+ }
+ 
+ func NewStandalone(config *standaloneConfig) (*standalone, error) {
+@@ -40,15 +40,15 @@ func NewStandalone(config *standaloneConfig) (*standalone, error) {
+ 	}
+ 
+ 	identityAddr := fmt.Sprintf("%s:%d", advertisedPublicAddress, config.PublicServicePort)
+-	s.shardsManager = server.NewShardsManager(identityAddr)
++	s.shardsDirector = server.NewShardsDirector(identityAddr)
+ 
+-	cs := operator.ComputeAssignments([]*proto.ServerAddress{{
++	_ = operator.ComputeAssignments([]*coordination.ServerAddress{{
+ 		InternalUrl: identityAddr,
+ 		PublicUrl:   identityAddr,
+ 	}}, 1, conf.NumShards)
+-	s.shardsManager.UpdateClusterStatus(cs)
++	// TODO bootstrap shards in s.shardsDirector
+ 
+-	s.rpc, err = server.NewPublicRpcServer(int(config.PublicServicePort), advertisedPublicAddress, s.shardsManager)
++	s.rpc, err = server.NewPublicRpcServer(int(config.PublicServicePort), advertisedPublicAddress, s.shardsDirector)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+@@ -61,7 +61,7 @@ func (s *standalone) Close() error {
+ 		return err
+ 	}
+ 
+-	if err := s.shardsManager.Close(); err != nil {
++	if err := s.shardsDirector.Close(); err != nil {
+ 		return err
+ 	}
+ 
