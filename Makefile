@@ -8,7 +8,7 @@ test: build
 
 clean:
 	rm -f oxia
-	rm -f proto/*.pb.go
+	rm -f */*.pb.go
 
 docker: docker_arm docker_x86
 
@@ -23,3 +23,4 @@ docker_x86:
 .PHONY: proto
 proto:
 	protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative proto/*.proto
+	protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative coordination/*.proto

@@ -5,7 +5,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"os"
 	"oxia/common"
-	"oxia/proto"
+	"oxia/coordination"
 )
 
 type serverConfig struct {
@@ -16,14 +16,33 @@ type serverConfig struct {
 	AdvertisedPublicAddress   string
 }
 
+type EntryId struct {
+	epoch  uint64
+	offset uint64
+}
+
+func EntryIdFromProto(id *coordination.EntryId) EntryId {
+	return EntryId{
+		epoch:  id.Epoch,
+		offset: id.Offset,
+	}
+}
+
+func (id EntryId) toProto() *coordination.EntryId {
+	return &coordination.EntryId{
+		Epoch:  id.epoch,
+		Offset: id.offset,
+	}
+}
+
 type server struct {
 	*internalRpcServer
 	*PublicRpcServer
 
-	shardsManager ShardsManager
-	clientPool    common.ClientPool
+	shardsDirector ShardsDirector
+	clientPool     common.ClientPool
 
-	identityInternalAddress proto.ServerAddress
+	identityInternalAddress coordination.ServerAddress
 }
 
 func NewServer(config *serverConfig) (*server, error) {
@@ -51,14 +70,14 @@ func NewServer(config *serverConfig) (*server, error) {
 	}
 
 	identityAddr := fmt.Sprintf("%s:%d", advertisedInternalAddress, config.InternalServicePort)
-	s.shardsManager = NewShardsManager(identityAddr)
+	s.shardsDirector = NewShardsDirector(identityAddr)
 
-	s.internalRpcServer, err = newInternalRpcServer(config.InternalServicePort, advertisedInternalAddress, s.shardsManager)
+	s.internalRpcServer, err = newCoordinationRpcServer(config.InternalServicePort, advertisedInternalAddress, s.shardsDirector)
 	if err != nil {
 		return nil, err
 	}
 
-	s.PublicRpcServer, err = NewPublicRpcServer(config.PublicServicePort, advertisedPublicAddress, s.shardsManager)
+	s.PublicRpcServer, err = NewPublicRpcServer(config.PublicServicePort, advertisedPublicAddress, s.shardsDirector)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +98,7 @@ func (s *server) Close() error {
 		return err
 	}
 
-	if err := s.shardsManager.Close(); err != nil {
+	if err := s.shardsDirector.Close(); err != nil {
 		return err
 	}
 

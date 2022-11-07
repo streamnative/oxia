@@ -1,6 +1,6 @@
 module oxia
 
-go 1.17
+go 1.19
 
 require (
 	github.com/cockroachdb/pebble v0.0.0-20221104214247-8dc60b62ebbf

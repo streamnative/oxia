@@ -9,20 +9,21 @@ import (
 	"google.golang.org/grpc"
 	"net"
 	"oxia/proto"
+	"strconv"
 )
 
 type PublicRpcServer struct {
 	proto.UnimplementedClientAPIServer
 
-	shardsManager ShardsManager
+	shardsDirector ShardsDirector
 
 	grpcServer *grpc.Server
 	log        zerolog.Logger
 }
 
-func NewPublicRpcServer(port int, advertisedPublicAddress string, shardsManager ShardsManager) (*PublicRpcServer, error) {
+func NewPublicRpcServer(port int, advertisedPublicAddress string, shardsDirector ShardsDirector) (*PublicRpcServer, error) {
 	res := &PublicRpcServer{
-		shardsManager: shardsManager,
+		shardsDirector: shardsDirector,
 		log: log.With().
 			Str("component", "public-rpc-server").
 			Logger(),
@@ -50,19 +51,29 @@ func NewPublicRpcServer(port int, advertisedPublicAddress string, shardsManager 
 }
 
 func (s *PublicRpcServer) GetShardsAssignments(_ *proto.Empty, out proto.ClientAPI_GetShardsAssignmentsServer) error {
-	s.shardsManager.GetShardsAssignments(func(assignments *proto.ShardsAssignments) {
+	s.shardsDirector.GetShardsAssignments(func(assignments *proto.ShardsAssignments) {
 		out.SendMsg(assignments)
 	})
 	return nil
 }
 
 func (s *PublicRpcServer) Put(ctx context.Context, putOp *proto.PutOp) (*proto.Stat, error) {
-	slc, err := s.shardsManager.GetLeaderController(putOp.GetShardId())
+	// TODO make shard ID string in client rpc
+	slc, err := s.shardsDirector.GetManager(ShardId(strconv.FormatInt(int64(putOp.GetShardId()), 10)), false)
 	if err != nil {
 		return nil, err
 	}
 
-	return slc.Put(putOp)
+	return slc.Write(putOp)
+}
+
+func (s *PublicRpcServer) Get(ctx context.Context, getOp *proto.GetOp) (*proto.GetResult, error) {
+	_, err := s.shardsDirector.GetManager(ShardId(strconv.FormatInt(int64(getOp.GetShardId()), 10)), false)
+	if err != nil {
+		return nil, err
+	}
+	// TODO Read from KVStore directly? Only if leader
+	return nil, nil
 }
 
 func (s *PublicRpcServer) Close() error {
