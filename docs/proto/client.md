@@ -6,17 +6,17 @@
 - [client/client.proto](#client_client-proto)
     - [BatchRequest](#io-streamnative-oxia-client-BatchRequest)
     - [BatchResponse](#io-streamnative-oxia-client-BatchResponse)
+    - [DeleteRangeRequest](#io-streamnative-oxia-client-DeleteRangeRequest)
+    - [DeleteRangeResponse](#io-streamnative-oxia-client-DeleteRangeResponse)
     - [DeleteRequest](#io-streamnative-oxia-client-DeleteRequest)
     - [DeleteResponse](#io-streamnative-oxia-client-DeleteResponse)
     - [Error](#io-streamnative-oxia-client-Error)
+    - [GetRangeRequest](#io-streamnative-oxia-client-GetRangeRequest)
+    - [GetRangeResponse](#io-streamnative-oxia-client-GetRangeResponse)
     - [GetRequest](#io-streamnative-oxia-client-GetRequest)
     - [GetResponse](#io-streamnative-oxia-client-GetResponse)
     - [PutRequest](#io-streamnative-oxia-client-PutRequest)
     - [PutResponse](#io-streamnative-oxia-client-PutResponse)
-    - [RangedDeleteRequest](#io-streamnative-oxia-client-RangedDeleteRequest)
-    - [RangedDeleteResponse](#io-streamnative-oxia-client-RangedDeleteResponse)
-    - [RangedGetRequest](#io-streamnative-oxia-client-RangedGetRequest)
-    - [RangedGetResponse](#io-streamnative-oxia-client-RangedGetResponse)
     - [Shard](#io-streamnative-oxia-client-Shard)
     - [ShardAssignment](#io-streamnative-oxia-client-ShardAssignment)
     - [ShardAssignmentsRequest](#io-streamnative-oxia-client-ShardAssignmentsRequest)
@@ -43,7 +43,7 @@
 ### BatchRequest
 A batch request. Applies the batches of requests. Requests are processed in
 positional order within batches and the batch types are processed in the
-following order: puts, deletes, ranged_deletes, gets, ranged_gets.
+following order: puts, deletes, delete_ranges, gets, get_ranges.
 
 
 | Field | Type | Label | Description |
@@ -51,9 +51,9 @@ following order: puts, deletes, ranged_deletes, gets, ranged_gets.
 | shard_id | [uint32](#uint32) | optional | The shard id. This is also the minimum inclusive hash contained by the shard. The maximum exclusive hash is the shard id of the adjacent shard. This is optional allow for support for server-side hashing and proxying in the future. |
 | puts | [PutRequest](#io-streamnative-oxia-client-PutRequest) | repeated | The put requests |
 | deletes | [DeleteRequest](#io-streamnative-oxia-client-DeleteRequest) | repeated | The delete requests |
-| ranged_deletes | [RangedDeleteRequest](#io-streamnative-oxia-client-RangedDeleteRequest) | repeated | The ranged delete requests |
+| delete_ranges | [DeleteRangeRequest](#io-streamnative-oxia-client-DeleteRangeRequest) | repeated | The delete range requests |
 | gets | [GetRequest](#io-streamnative-oxia-client-GetRequest) | repeated | The get requests |
-| ranged_gets | [RangedGetRequest](#io-streamnative-oxia-client-RangedGetRequest) | repeated | The rangd requests |
+| get_ranges | [GetRangeRequest](#io-streamnative-oxia-client-GetRangeRequest) | repeated | The rangd requests |
 
 
 
@@ -71,9 +71,41 @@ of the original requests.
 | ----- | ---- | ----- | ----------- |
 | puts | [PutResponse](#io-streamnative-oxia-client-PutResponse) | repeated | The put responses |
 | deletes | [DeleteResponse](#io-streamnative-oxia-client-DeleteResponse) | repeated | The delete responses |
-| ranged_deletes | [RangedDeleteResponse](#io-streamnative-oxia-client-RangedDeleteResponse) | repeated | The ranged delete responses |
+| delete_ranges | [DeleteRangeResponse](#io-streamnative-oxia-client-DeleteRangeResponse) | repeated | The delete range responses |
 | gets | [GetResponse](#io-streamnative-oxia-client-GetResponse) | repeated | The get responses |
-| ranged_gets | [RangedGetResponse](#io-streamnative-oxia-client-RangedGetResponse) | repeated | The ranged get responses |
+| get_ranges | [GetRangeResponse](#io-streamnative-oxia-client-GetRangeResponse) | repeated | The get range responses |
+
+
+
+
+
+
+<a name="io-streamnative-oxia-client-DeleteRangeRequest"></a>
+
+### DeleteRangeRequest
+A delete range request. Deletes all keys that exist within the bounds of the
+range. The client should broadcast this request to all shards.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| start_inclusive | [string](#string) |  | The start of the range, inclusive |
+| end_exclusive | [string](#string) |  | The end of the range, exclusive |
+
+
+
+
+
+
+<a name="io-streamnative-oxia-client-DeleteRangeResponse"></a>
+
+### DeleteRangeResponse
+The response for a delete range request.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| deletes | [DeleteResponse](#io-streamnative-oxia-client-DeleteResponse) | repeated | All the keys deleted within the specified range |
 
 
 
@@ -99,8 +131,8 @@ A delete request. Deletes the specified key.
 <a name="io-streamnative-oxia-client-DeleteResponse"></a>
 
 ### DeleteResponse
-The response to a delete request or an item in a response to the ranged
-delete request.
+The response to a delete request or an item in a response to the
+delete range request.
 
 
 | Field | Type | Label | Description |
@@ -131,6 +163,39 @@ continue being processed.
 
 
 
+<a name="io-streamnative-oxia-client-GetRangeRequest"></a>
+
+### GetRangeRequest
+A get range request. Gets all keys that exist within the bounds of the
+range. The client should broadcast this request to all shards.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| start_inclusive | [string](#string) |  | The start of the range, inclusive |
+| end_exclusive | [string](#string) |  | The end of the range, exclusive |
+| include_payloads | [bool](#bool) |  | Specified whether response should include the payloads or only the stat |
+
+
+
+
+
+
+<a name="io-streamnative-oxia-client-GetRangeResponse"></a>
+
+### GetRangeResponse
+The response to a get range request.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| gets | [GetResponse](#io-streamnative-oxia-client-GetResponse) | repeated | All the keys found within the specified range |
+
+
+
+
+
+
 <a name="io-streamnative-oxia-client-GetRequest"></a>
 
 ### GetRequest
@@ -151,7 +216,7 @@ key.
 <a name="io-streamnative-oxia-client-GetResponse"></a>
 
 ### GetResponse
-The response to a get request or an item in a response to the ranged get
+The response to a get request or an item in a response to the get range
 request.
 
 
@@ -195,71 +260,6 @@ The response to a put request.
 | key | [string](#string) |  | The key |
 | stat | [Stat](#io-streamnative-oxia-client-Stat) |  | The stat if the put was successful |
 | error | [Error](#io-streamnative-oxia-client-Error) |  | The error if the put failed |
-
-
-
-
-
-
-<a name="io-streamnative-oxia-client-RangedDeleteRequest"></a>
-
-### RangedDeleteRequest
-A ranged delete request. Deletes all keys that exist within the bounds of the
-range. The client should broadcast this request to all shards.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| start_inclusive | [string](#string) |  | The start of the range, inclusive |
-| end_exclusive | [string](#string) |  | The end of the range, exclusive |
-
-
-
-
-
-
-<a name="io-streamnative-oxia-client-RangedDeleteResponse"></a>
-
-### RangedDeleteResponse
-The response for a ranged delete request.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| deletes | [DeleteResponse](#io-streamnative-oxia-client-DeleteResponse) | repeated | All the keys deleted within the specified range |
-
-
-
-
-
-
-<a name="io-streamnative-oxia-client-RangedGetRequest"></a>
-
-### RangedGetRequest
-A ranged get request. Gets all keys that exist within the bounds of the
-range. The client should broadcast this request to all shards.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| start_inclusive | [string](#string) |  | The start of the range, inclusive |
-| end_exclusive | [string](#string) |  | The end of the range, exclusive |
-| include_payloads | [bool](#bool) |  | Specified whether response should include the payloads or only the stat |
-
-
-
-
-
-
-<a name="io-streamnative-oxia-client-RangedGetResponse"></a>
-
-### RangedGetResponse
-The response to a ranged get request.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| gets | [GetResponse](#io-streamnative-oxia-client-GetResponse) | repeated | All the keys found within the specified range |
 
 
 
@@ -382,7 +382,7 @@ layer to allows clients to not be concerned with sharding.
 | ShardAssignments | [ShardAssignmentsRequest](#io-streamnative-oxia-client-ShardAssignmentsRequest) | [ShardAssignmentsResponse](#io-streamnative-oxia-client-ShardAssignmentsResponse) stream | Gets all shard-to-server assignments as a stream. Each set of assignments in the response stream will contain all the assignments to bring the client up to date. For example, if a shard is split, the stream will return a single response containing all the new shard assignments as opposed to multiple stream responses, each containing a single shard assignment.
 
 Clients should connect to a single random server which will stream the assignments for all shards on all servers. |
-| Batch | [BatchRequest](#io-streamnative-oxia-client-BatchRequest) | [BatchResponse](#io-streamnative-oxia-client-BatchResponse) | Batches put, delete, ranged_delete, get and ranged_get requests.
+| Batch | [BatchRequest](#io-streamnative-oxia-client-BatchRequest) | [BatchResponse](#io-streamnative-oxia-client-BatchResponse) | Batches put, delete, delete_range, get and get_range requests.
 
 Clients should send this request to the shard leader. In the future, this may be handled server-side in a proxy layer. |
 

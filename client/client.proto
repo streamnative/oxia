@@ -29,7 +29,7 @@ service OxiaClient {
       returns (stream ShardAssignmentsResponse);
 
   /**
-   * Batches put, delete, ranged_delete, get and ranged_get requests.
+   * Batches put, delete, delete_range, get and get_range requests.
    *
    * Clients should send this request to the shard leader. In the future,
    * this may be handled server-side in a proxy layer.
@@ -86,7 +86,7 @@ message Shard {
 /**
  * A batch request. Applies the batches of requests. Requests are processed in
  * positional order within batches and the batch types are processed in the
- * following order: puts, deletes, ranged_deletes, gets, ranged_gets.
+ * following order: puts, deletes, delete_ranges, gets, get_ranges.
  */
 message BatchRequest {
   // The shard id. This is also the minimum inclusive hash contained by the
@@ -98,12 +98,12 @@ message BatchRequest {
   repeated PutRequest puts = 2;
   // The delete requests
   repeated DeleteRequest deletes = 3;
-  // The ranged delete requests
-  repeated RangedDeleteRequest ranged_deletes = 4;
+  // The delete range requests
+  repeated DeleteRangeRequest delete_ranges = 4;
   // The get requests
   repeated GetRequest gets = 5;
   // The rangd requests
-  repeated RangedGetRequest ranged_gets = 6;
+  repeated GetRangeRequest get_ranges = 6;
 }
 
 /**
@@ -115,12 +115,12 @@ message BatchResponse {
   repeated PutResponse puts = 1;
   // The delete responses
   repeated DeleteResponse deletes = 2;
-  // The ranged delete responses
-  repeated RangedDeleteResponse ranged_deletes = 3;
+  // The delete range responses
+  repeated DeleteRangeResponse delete_ranges = 3;
   // The get responses
   repeated GetResponse gets = 4;
-  // The ranged get responses
-  repeated RangedGetResponse ranged_gets = 5;
+  // The get range responses
+  repeated GetRangeResponse get_ranges = 5;
 }
 
 /**
@@ -162,8 +162,8 @@ message DeleteRequest {
 }
 
 /**
- * The response to a delete request or an item in a response to the ranged
- * delete request.
+ * The response to a delete request or an item in a response to the
+ * delete range request.
  */
 message DeleteResponse {
   // The key
@@ -184,7 +184,7 @@ message GetRequest {
 }
 
 /**
- * The response to a get request or an item in a response to the ranged get
+ * The response to a get request or an item in a response to the get range
  * request.
  */
 message GetResponse {
@@ -201,10 +201,10 @@ message GetResponse {
 }
 
 /**
- * A ranged delete request. Deletes all keys that exist within the bounds of the
+ * A delete range request. Deletes all keys that exist within the bounds of the
  * range. The client should broadcast this request to all shards.
  */
-message RangedDeleteRequest {
+message DeleteRangeRequest {
   // The start of the range, inclusive
   string start_inclusive = 1;
   // The end of the range, exclusive
@@ -212,18 +212,18 @@ message RangedDeleteRequest {
 }
 
 /**
- * The response for a ranged delete request.
+ * The response for a delete range request.
  */
-message RangedDeleteResponse {
+message DeleteRangeResponse {
   // All the keys deleted within the specified range
   repeated DeleteResponse deletes = 1;
 }
 
 /**
- * A ranged get request. Gets all keys that exist within the bounds of the
+ * A get range request. Gets all keys that exist within the bounds of the
  * range. The client should broadcast this request to all shards.
  */
-message RangedGetRequest {
+message GetRangeRequest {
   // The start of the range, inclusive
   string start_inclusive = 1;
   // The end of the range, exclusive
@@ -233,9 +233,9 @@ message RangedGetRequest {
 }
 
 /**
- * The response to a ranged get request.
+ * The response to a get range request.
  */
-message RangedGetResponse {
+message GetRangeResponse {
   // All the keys found within the specified range
   repeated GetResponse gets = 1;
 }
