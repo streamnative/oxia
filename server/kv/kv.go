@@ -14,6 +14,7 @@ type WriteBatch interface {
 
 	Put(key string, payload []byte) error
 	Delete(key string) error
+	Get(key string) ([]byte, io.Closer, error)
 
 	Commit() error
 }
