@@ -238,3 +238,52 @@ func TestPebbleRangeScanWithSlashOrder(t *testing.T) {
 
 	assert.NoError(t, it.Close())
 }
+
+func TestPebbbleGetWithinBatch(t *testing.T) {
+	factory := NewPebbleKVFactory(testKVOptions)
+	kv, err := factory.NewKV(1)
+	assert.NoError(t, err)
+
+	wb := kv.NewWriteBatch()
+	wb.Put("a", []byte("0"))
+	wb.Put("b", []byte("1"))
+	wb.Put("c", []byte("2"))
+
+	payload, closer, err := wb.Get("a")
+	assert.NoError(t, err)
+	assert.Equal(t, "0", string(payload))
+	assert.NoError(t, closer.Close())
+
+	payload, closer, err = wb.Get("non-existent")
+	assert.ErrorIs(t, err, ErrorKeyNotFound)
+	assert.Nil(t, payload)
+	assert.Nil(t, closer)
+
+	assert.NoError(t, wb.Commit())
+	assert.NoError(t, wb.Close())
+
+	// Second batch
+
+	wb = kv.NewWriteBatch()
+	payload, closer, err = wb.Get("a")
+	assert.NoError(t, err)
+	assert.Equal(t, "0", string(payload))
+	assert.NoError(t, closer.Close())
+
+	wb.Put("a", []byte("00"))
+
+	payload, closer, err = wb.Get("a")
+	assert.NoError(t, err)
+	assert.Equal(t, "00", string(payload))
+	assert.NoError(t, closer.Close())
+
+	wb.Delete("a")
+
+	payload, closer, err = wb.Get("a")
+	assert.ErrorIs(t, err, ErrorKeyNotFound)
+	assert.Nil(t, payload)
+	assert.Nil(t, closer)
+
+	assert.NoError(t, kv.Close())
+	assert.NoError(t, factory.Close())
+}

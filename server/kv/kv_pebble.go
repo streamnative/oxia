@@ -102,7 +102,7 @@ func (p *Pebble) Close() error {
 }
 
 func (p *Pebble) NewWriteBatch() WriteBatch {
-	return &PebbleBatch{p.db.NewBatch()}
+	return &PebbleBatch{p.db.NewIndexedBatch()}
 }
 
 func (p *Pebble) Get(key string) ([]byte, io.Closer, error) {
@@ -148,6 +148,14 @@ func (b *PebbleBatch) Put(key string, payload []byte) error {
 
 func (b *PebbleBatch) Delete(key string) error {
 	return b.b.Delete([]byte(key), pebble.NoSync)
+}
+
+func (b *PebbleBatch) Get(key string) ([]byte, io.Closer, error) {
+	value, closer, err := b.b.Get([]byte(key))
+	if errors.Is(err, pebble.ErrNotFound) {
+		err = ErrorKeyNotFound
+	}
+	return value, closer, err
 }
 
 func (b *PebbleBatch) Commit() error {
