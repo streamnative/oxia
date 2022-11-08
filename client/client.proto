@@ -1,0 +1,267 @@
+syntax = "proto3";
+
+package io.streamnative.oxia.client;
+
+option go_package = "github.com/streamnative/oxia/client";
+option java_multiple_files = true;
+
+/**
+ * Oxia service that allows clients to discover shard-to-server assignments and
+ * submit batches of requests.
+ *
+ * Clients should connect to a random server to discover the shard-to-server
+ * assignments and then send the actual batched requests to the appropriate
+ * shard leader. In the future, this may be handled server-side in a proxy
+ * layer to allows clients to not be concerned with sharding.
+ */
+service OxiaClient {
+  /**
+   * Gets all shard-to-server assignments as a stream. Each set of assignments
+   * in the response stream will contain all the assignments to bring the client
+   * up to date. For example, if a shard is split, the stream will return a
+   * single response containing all the new shard assignments as opposed to
+   * multiple stream responses, each containing a single shard assignment.
+   *
+   * Clients should connect to a single random server which will stream the
+   * assignments for all shards on all servers.
+   */
+  rpc ShardAssignments(ShardAssignmentsRequest)
+      returns (stream ShardAssignmentsResponse);
+
+  /**
+   * Batches put, delete, delete_range, get and get_range requests.
+   *
+   * Clients should send this request to the shard leader. In the future,
+   * this may be handled server-side in a proxy layer.
+   */
+  rpc Batch(BatchRequest) returns (BatchResponse);
+}
+
+/**
+ * A shard assignments request. Gets all shard-to-server assignments as a
+ * stream. Each set of assignments in the response stream will contain all the
+ * assignments to bring the client up to date. For example, if a shard is split,
+ * the stream will return a single response containing all the new shard
+ * assignments as opposed to multiple stream responses, each containing a single
+ * shard assignment.
+ */
+message ShardAssignmentsRequest {
+  // Placeholder empty message. `namespace` may be added in the future.
+}
+
+/**
+ * The response to a shard assignments request.
+ */
+message ShardAssignmentsResponse {
+  // All assignments in the response stream will contain all the
+  // assignments to bring the client up to date. For example, if a shard is
+  // split, the stream will return a single response containing all the new
+  // shard assignments as opposed to multiple stream responses, each containing
+  // a single shard assignment.
+  repeated ShardAssignment assignments = 1;
+}
+
+/**
+ * The assignment of a shard to a server.
+ */
+message ShardAssignment {
+  // The shard id
+  uint32 shard_id = 1;
+  // The minimum inclusive hash that the shard can contain
+  uint32 min_hash_inclusive = 2;
+  // The maximum exclusive hash that the shard can contain
+  uint32 max_hash_exclusive = 3;
+  // The shard leader, e.g. `host:port`
+  string leader = 4;
+}
+
+/**
+ * A batch request. Applies the batches of requests. Requests are processed in
+ * positional order within batches and the batch types are processed in the
+ * following order: puts, deletes, delete_ranges, gets, get_ranges.
+ */
+message BatchRequest {
+  // The shard id. This is also the minimum inclusive hash contained by the
+  // shard. The maximum exclusive hash is the shard id of the adjacent shard.
+  // This is optional allow for support for server-side hashing and proxying in
+  // the future.
+  optional uint32 shard_id = 1;
+  // The put requests
+  repeated PutRequest puts = 2;
+  // The delete requests
+  repeated DeleteRequest deletes = 3;
+  // The delete range requests
+  repeated DeleteRangeRequest delete_ranges = 4;
+  // The get requests
+  repeated GetRequest gets = 5;
+  // The rangd requests
+  repeated GetRangeRequest get_ranges = 6;
+}
+
+/**
+ * The response to a batch request. Responses of each type respect the order
+ * of the original requests.
+ */
+message BatchResponse {
+  // The put responses
+  repeated PutResponse puts = 1;
+  // The delete responses
+  repeated DeleteResponse deletes = 2;
+  // The delete range responses
+  repeated DeleteRangeResponse delete_ranges = 3;
+  // The get responses
+  repeated GetResponse gets = 4;
+  // The get range responses
+  repeated GetRangeResponse get_ranges = 5;
+}
+
+/**
+ * A put request. Persists the specified key and payload
+ */
+message PutRequest {
+  // The key
+  string key = 1;
+  // The payload
+  bytes payload = 2;
+  // An optional expected version. The put will fail if the actual version
+  // does not match
+  optional uint64 expected_version = 3;
+}
+
+/**
+ * The response to a put request.
+ */
+message PutResponse {
+  // The key
+  string key = 1;
+  oneof result {
+    // The stat if the put was successful
+    Stat stat = 2;
+    // The error if the put failed
+    Error error = 3;
+  }
+}
+
+/**
+ * A delete request. Deletes the specified key.
+ */
+message DeleteRequest {
+  // The key
+  string key = 1;
+  // An optional expected version. The delete will fail if the actual version
+  // does not match
+  optional uint64 expected_version = 2;
+}
+
+/**
+ * The response to a delete request or an item in a response to the
+ * delete range request.
+ */
+message DeleteResponse {
+  // The key
+  string key = 1;
+  // The error if the delete failed
+  optional Error error = 2;
+}
+
+/**
+ * A get request. Gets the stat and optionally the payload for the specified
+ * key.
+ */
+message GetRequest {
+  // The key
+  string key = 1;
+  // Specifies whether the response should include the payload
+  bool include_payload = 2;
+}
+
+/**
+ * The response to a get request or an item in a response to the get range
+ * request.
+ */
+message GetResponse {
+  // The key
+  string key = 1;
+  // The payload, if it was requested and there was no error
+  optional bytes payload = 2;
+  oneof result {
+    // The stat if the key exists
+    Stat stat = 3;
+    // The error if the get failed
+    Error error = 4;
+  }
+}
+
+/**
+ * A delete range request. Deletes all keys that exist within the bounds of the
+ * range. The client should broadcast this request to all shards.
+ */
+message DeleteRangeRequest {
+  // The start of the range, inclusive
+  string start_inclusive = 1;
+  // The end of the range, exclusive
+  string end_exclusive = 2;
+}
+
+/**
+ * The response for a delete range request.
+ */
+message DeleteRangeResponse {
+  // All the keys deleted within the specified range
+  repeated DeleteResponse deletes = 1;
+}
+
+/**
+ * A get range request. Gets all keys that exist within the bounds of the
+ * range. The client should broadcast this request to all shards.
+ */
+message GetRangeRequest {
+  // The start of the range, inclusive
+  string start_inclusive = 1;
+  // The end of the range, exclusive
+  string end_exclusive = 2;
+  // Specified whether response should include the payloads or only the stat
+  bool include_payloads = 3;
+}
+
+/**
+ * The response to a get range request.
+ */
+message GetRangeResponse {
+  // All the keys found within the specified range
+  repeated GetResponse gets = 1;
+}
+
+/**
+ * Stats about the current version of a key.
+ */
+message Stat {
+  // The current version of the key
+  uint64 version = 1;
+  // The creation timestamp of the first version of the key
+  fixed64 created_timestamp = 2;
+  // The modified timestamp of the current version of the key
+  fixed64 modified_timestamp = 3;
+}
+
+/**
+ * One or more items in a batch may fail. For this scenario an error must be
+ * returned for a single item so that the whole batch is not failed and can
+ * continue being processed.
+ */
+message Error {
+  // The specific error type
+  ErrorType type = 1;
+  // The message associated with the error
+  string message = 2;
+}
+
+/**
+ * Represents all the possible errors and that can be encountered.
+ */
+enum ErrorType {
+  // Unspecified error
+  ERROR_TYPE_UNSPECIFIED = 0;
+  // The key was not found
+  ERROR_TYPE_KEY_NOT_FOUND = 1;
+}
