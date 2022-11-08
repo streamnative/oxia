@@ -22,7 +22,7 @@ message InternalEmpty {
 message ReadLogRequest {
   uint32 shard = 1;
   uint64 first_entry_id = 2;
-}
+} 
 
 message ConfirmedEntryRequest {
   uint32 shard = 1;
