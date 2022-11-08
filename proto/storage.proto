@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+option go_package = "github.com/streamnative/oxia/proto";
+
+package proto;
+
+message StorageEntry {
+  bytes payload = 1;
+  int64 version = 2;
+  fixed64 creationTimestamp = 3;
+  fixed64 modificationTimestamp = 4;
+} 

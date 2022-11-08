@@ -12,7 +12,7 @@ import (
 
 type ClientPool interface {
 	io.Closer
-	GetClientRpc(target string) (proto.ClientAPIClient, error)
+	GetClientRpc(target string) (proto.OxiaClientClient, error)
 	GetControlRpc(target string) (coordination.OxiaControlClient, error)
 	GetReplicationRpc(target string) (coordination.OxiaLogReplicationClient, error)
 }
@@ -47,12 +47,12 @@ func (cp *clientPool) Close() error {
 	return nil
 }
 
-func (cp *clientPool) GetClientRpc(target string) (proto.ClientAPIClient, error) {
+func (cp *clientPool) GetClientRpc(target string) (proto.OxiaClientClient, error) {
 	cnx, err := cp.getConnection(target)
 	if err != nil {
 		return nil, err
 	} else {
-		return proto.NewClientAPIClient(cnx), nil
+		return proto.NewOxiaClientClient(cnx), nil
 	}
 }
 
