@@ -17,7 +17,6 @@
     - [GetResponse](#io-streamnative-oxia-client-GetResponse)
     - [PutRequest](#io-streamnative-oxia-client-PutRequest)
     - [PutResponse](#io-streamnative-oxia-client-PutResponse)
-    - [Shard](#io-streamnative-oxia-client-Shard)
     - [ShardAssignment](#io-streamnative-oxia-client-ShardAssignment)
     - [ShardAssignmentsRequest](#io-streamnative-oxia-client-ShardAssignmentsRequest)
     - [ShardAssignmentsResponse](#io-streamnative-oxia-client-ShardAssignmentsResponse)
@@ -266,23 +265,6 @@ The response to a put request.
 
 
 
-<a name="io-streamnative-oxia-client-Shard"></a>
-
-### Shard
-A shard with the range of hashes that it can contain.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| id | [uint32](#uint32) |  | The shard id |
-| min_hash_inclusive | [uint32](#uint32) |  | The minimum inclusive hash that the shard can contain |
-| max_hash_exclusive | [uint32](#uint32) |  | The maximum exclusive hash that the shard can contain |
-
-
-
-
-
-
 <a name="io-streamnative-oxia-client-ShardAssignment"></a>
 
 ### ShardAssignment
@@ -291,7 +273,9 @@ The assignment of a shard to a server.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| shard | [Shard](#io-streamnative-oxia-client-Shard) |  | The shard |
+| shard_id | [uint32](#uint32) |  | The shard id |
+| min_hash_inclusive | [uint32](#uint32) |  | The minimum inclusive hash that the shard can contain |
+| max_hash_exclusive | [uint32](#uint32) |  | The maximum exclusive hash that the shard can contain |
 | leader | [string](#string) |  | The shard leader, e.g. `host:port` |
 
 

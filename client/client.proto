@@ -65,22 +65,14 @@ message ShardAssignmentsResponse {
  * The assignment of a shard to a server.
  */
 message ShardAssignment {
-  // The shard
-  Shard shard = 1;
-  // The shard leader, e.g. `host:port`
-  string leader = 2;
-}
-
-/**
- * A shard with the range of hashes that it can contain.
- */
-message Shard {
   // The shard id
-  uint32 id = 1;
+  uint32 shard_id = 1;
   // The minimum inclusive hash that the shard can contain
   uint32 min_hash_inclusive = 2;
   // The maximum exclusive hash that the shard can contain
   uint32 max_hash_exclusive = 3;
+  // The shard leader, e.g. `host:port`
+  string leader = 4;
 }
 
 /**
