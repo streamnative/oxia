@@ -14,7 +14,7 @@ func TestDBSimple(t *testing.T) {
 	assert.NoError(t, err)
 
 	req := &proto.BatchRequest{
-		Put: []*proto.PutRequest{
+		Puts: []*proto.PutRequest{
 			{ // Should succeed: no version check
 				Key:             "a",
 				Payload:         []byte("0"),
@@ -41,7 +41,7 @@ func TestDBSimple(t *testing.T) {
 				ExpectedVersion: pb.Int64(-1),
 			},
 		},
-		Delete: []*proto.DeleteRequest{
+		Deletes: []*proto.DeleteRequest{
 			{ // Should fail, non-existing key
 				Key:             "non-existing",
 				ExpectedVersion: pb.Int64(-1),
@@ -64,44 +64,44 @@ func TestDBSimple(t *testing.T) {
 	res, err := db.ProcessBatch(req)
 	assert.NoError(t, err)
 
-	assert.Equal(t, 5, len(res.GetPut()))
-	r0 := res.GetPut()[0]
-	assert.Equal(t, proto.Error_NO_ERROR, r0.Error)
+	assert.Equal(t, 5, len(res.Puts))
+	r0 := res.Puts[0]
+	assert.Equal(t, proto.Status_OK, r0.Status)
 	assert.EqualValues(t, 0, r0.Stat.Version)
 
-	r1 := res.GetPut()[1]
-	assert.Equal(t, proto.Error_NO_ERROR, r1.Error)
+	r1 := res.Puts[1]
+	assert.Equal(t, proto.Status_OK, r1.Status)
 	assert.EqualValues(t, 0, r1.Stat.Version)
 
-	r2 := res.GetPut()[2]
-	assert.Equal(t, proto.Error_BAD_VERSION, r2.Error)
+	r2 := res.Puts[2]
+	assert.Equal(t, proto.Status_BAD_VERSION, r2.Status)
 	assert.Nil(t, r2.Stat)
 
-	r3 := res.GetPut()[3]
-	assert.Equal(t, proto.Error_BAD_VERSION, r3.Error)
+	r3 := res.Puts[3]
+	assert.Equal(t, proto.Status_BAD_VERSION, r3.Status)
 	assert.Nil(t, r3.Stat)
 
-	r4 := res.GetPut()[4]
-	assert.Equal(t, proto.Error_NO_ERROR, r4.Error)
+	r4 := res.Puts[4]
+	assert.Equal(t, proto.Status_OK, r4.Status)
 	assert.EqualValues(t, 0, r4.Stat.Version)
 
-	assert.Equal(t, 4, len(res.GetDelete()))
-	r5 := res.GetDelete()[0]
-	assert.Equal(t, proto.Error_KEY_NOT_FOUND, r5.Error)
+	assert.Equal(t, 4, len(res.Deletes))
+	r5 := res.Deletes[0]
+	assert.Equal(t, proto.Status_KEY_NOT_FOUND, r5.Status)
 
-	r6 := res.GetDelete()[1]
-	assert.Equal(t, proto.Error_BAD_VERSION, r6.Error)
+	r6 := res.Deletes[1]
+	assert.Equal(t, proto.Status_BAD_VERSION, r6.Status)
 
-	r7 := res.GetDelete()[2]
-	assert.Equal(t, proto.Error_NO_ERROR, r7.Error)
+	r7 := res.Deletes[2]
+	assert.Equal(t, proto.Status_OK, r7.Status)
 
-	r8 := res.GetDelete()[3]
-	assert.Equal(t, proto.Error_KEY_NOT_FOUND, r8.Error)
+	r8 := res.Deletes[3]
+	assert.Equal(t, proto.Status_KEY_NOT_FOUND, r8.Status)
 
 	/// Second batch
 
 	req = &proto.BatchRequest{
-		Put: []*proto.PutRequest{
+		Puts: []*proto.PutRequest{
 			{ // Should succeed: no version check
 				Key:             "a",
 				Payload:         []byte("00"),
@@ -124,7 +124,7 @@ func TestDBSimple(t *testing.T) {
 				ExpectedVersion: pb.Int64(0),
 			},
 		},
-		Get: []*proto.GetRequest{
+		Gets: []*proto.GetRequest{
 			{
 				Key:            "a",
 				IncludePayload: true,
@@ -142,7 +142,7 @@ func TestDBSimple(t *testing.T) {
 				IncludePayload: true,
 			},
 		},
-		Delete: []*proto.DeleteRequest{
+		Deletes: []*proto.DeleteRequest{
 			{ // Should fail: the key was not inserted before the batch
 				Key:             "a",
 				ExpectedVersion: nil,
@@ -168,7 +168,7 @@ func TestDBSameKeyMutations(t *testing.T) {
 	assert.NoError(t, err)
 
 	req := &proto.BatchRequest{
-		Put: []*proto.PutRequest{
+		Puts: []*proto.PutRequest{
 			{ // Should succeed: no version check
 				Key:             "k1",
 				Payload:         []byte("v0"),
@@ -180,15 +180,15 @@ func TestDBSameKeyMutations(t *testing.T) {
 	res, err := db.ProcessBatch(req)
 	assert.NoError(t, err)
 
-	assert.Equal(t, 1, len(res.GetPut()))
-	r0 := res.GetPut()[0]
-	assert.Equal(t, proto.Error_NO_ERROR, r0.Error)
+	assert.Equal(t, 1, len(res.Puts))
+	r0 := res.Puts[0]
+	assert.Equal(t, proto.Status_OK, r0.Status)
 	assert.EqualValues(t, 0, r0.Stat.Version)
 
 	/// Second batch
 
 	req = &proto.BatchRequest{
-		Put: []*proto.PutRequest{
+		Puts: []*proto.PutRequest{
 			{ // Should succeed: version is correct
 				Key:             "k1",
 				Payload:         []byte("v1"),
@@ -200,7 +200,7 @@ func TestDBSameKeyMutations(t *testing.T) {
 				ExpectedVersion: pb.Int64(0),
 			},
 		},
-		Get: []*proto.GetRequest{
+		Gets: []*proto.GetRequest{
 			{ // Should return version v1
 				Key:            "k1",
 				IncludePayload: true,
@@ -214,7 +214,7 @@ func TestDBSameKeyMutations(t *testing.T) {
 				IncludePayload: true,
 			},
 		},
-		Delete: []*proto.DeleteRequest{
+		Deletes: []*proto.DeleteRequest{
 			{ // Should fail: the key was not inserted before the batch
 				Key:             "k1",
 				ExpectedVersion: pb.Int64(0),
@@ -225,32 +225,32 @@ func TestDBSameKeyMutations(t *testing.T) {
 	res, err = db.ProcessBatch(req)
 	assert.NoError(t, err)
 
-	assert.Equal(t, 2, len(res.GetPut()))
-	r0 = res.GetPut()[0]
-	assert.Equal(t, proto.Error_NO_ERROR, r0.Error)
+	assert.Equal(t, 2, len(res.Puts))
+	r0 = res.Puts[0]
+	assert.Equal(t, proto.Status_OK, r0.Status)
 	assert.EqualValues(t, 1, r0.Stat.Version)
 
-	r1 := res.GetPut()[1]
-	assert.Equal(t, proto.Error_BAD_VERSION, r1.Error)
+	r1 := res.Puts[1]
+	assert.Equal(t, proto.Status_BAD_VERSION, r1.Status)
 	assert.Nil(t, r1.Stat)
 
-	r2 := res.GetGet()[0]
-	assert.Equal(t, proto.Error_NO_ERROR, r2.Error)
+	r2 := res.Gets[0]
+	assert.Equal(t, proto.Status_OK, r2.Status)
 	assert.EqualValues(t, 1, r2.Stat.Version)
 	assert.Equal(t, "v1", string(r2.Payload))
 
-	r3 := res.GetGet()[1]
-	assert.Equal(t, proto.Error_NO_ERROR, r3.Error)
+	r3 := res.Gets[1]
+	assert.Equal(t, proto.Status_OK, r3.Status)
 	assert.EqualValues(t, 1, r3.Stat.Version)
 	assert.Nil(t, r3.Payload)
 
-	r4 := res.GetGet()[2]
-	assert.Equal(t, proto.Error_KEY_NOT_FOUND, r4.Error)
+	r4 := res.Gets[2]
+	assert.Equal(t, proto.Status_KEY_NOT_FOUND, r4.Status)
 	assert.Nil(t, r4.Stat)
 	assert.Nil(t, r4.Payload)
 
-	r5 := res.GetDelete()[0]
-	assert.Equal(t, proto.Error_BAD_VERSION, r5.Error)
+	r5 := res.Deletes[0]
+	assert.Equal(t, proto.Status_BAD_VERSION, r5.Status)
 
 	assert.NoError(t, db.Close())
 	assert.NoError(t, factory.Close())

@@ -26,7 +26,7 @@ proto_format:
 
 proto_lint:
 	#go install github.com/yoheimuta/protolint/cmd/protolint
-	protolint lint client/client.proto
+	protolint lint proto/client.proto
 
 proto_doc:
 	#go install github.com/pseudomuto/protoc-gen-doc/cmd/protoc-gen-doc
