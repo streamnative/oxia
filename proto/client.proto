@@ -62,6 +62,10 @@ message ShardAssignmentsResponse {
   // shard assignments as opposed to multiple stream responses, each containing
   // a single shard assignment.
   repeated ShardAssignment assignments = 1;
+
+  // Indicates the mechanism by which the keys are assigned to the individual
+  // shards.
+  ShardKeyRouter shard_key_router = 2;
 }
 
 /**
@@ -70,12 +74,31 @@ message ShardAssignmentsResponse {
 message ShardAssignment {
   // The shard id
   uint32 shard_id = 1;
-  // The minimum inclusive hash that the shard can contain
-  uint32 min_hash_inclusive = 2;
-  // The maximum exclusive hash that the shard can contain
-  uint32 max_hash_exclusive = 3;
+
   // The shard leader, e.g. `host:port`
-  string leader = 4;
+  string leader = 2;
+
+  // There could be multiple ways to describe the boundaries of a shard
+  oneof shard_boundaries {
+    Int32HashRange int32_hash_range = 3;
+  }
+}
+
+enum ShardKeyRouter {
+  UNKNOWN = 0;
+
+  XXHASH_64 = 1;
+}
+
+/**
+ * Represents a range of hash values [min, max)
+ */
+message Int32HashRange {
+  // The minimum inclusive hash that the shard can contain
+  fixed32 min_hash_inclusive = 1;
+
+  // The maximum exclusive hash that the shard can contain
+  fixed32 max_hash_exclusive = 2;
 }
 
 /**
