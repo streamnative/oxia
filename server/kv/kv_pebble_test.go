@@ -287,3 +287,41 @@ func TestPebbbleGetWithinBatch(t *testing.T) {
 	assert.NoError(t, kv.Close())
 	assert.NoError(t, factory.Close())
 }
+
+func TestPebbbleDurability(t *testing.T) {
+	options := &KVFactoryOptions{
+		DataDir:   t.TempDir(),
+		CacheSize: 10 * 1024,
+		InMemory:  false,
+	}
+
+	// Open and write a key
+	{
+		factory := NewPebbleKVFactory(options)
+		kv, err := factory.NewKV(1)
+		assert.NoError(t, err)
+
+		wb := kv.NewWriteBatch()
+		wb.Put("a", []byte("0"))
+		assert.NoError(t, wb.Commit())
+		assert.NoError(t, wb.Close())
+
+		assert.NoError(t, kv.Close())
+		assert.NoError(t, factory.Close())
+	}
+
+	// Open again and read it back
+	{
+		factory := NewPebbleKVFactory(options)
+		kv, err := factory.NewKV(1)
+		assert.NoError(t, err)
+
+		res, closer, err := kv.Get("a")
+		assert.NoError(t, err)
+		assert.Equal(t, "0", string(res))
+		assert.NoError(t, closer.Close())
+
+		assert.NoError(t, kv.Close())
+		assert.NoError(t, factory.Close())
+	}
+}

@@ -98,6 +98,9 @@ func newKVPebble(factory *PebbleFactory, shardId int32) (KV, error) {
 }
 
 func (p *Pebble) Close() error {
+	if err := p.db.Flush(); err != nil {
+		return err
+	}
 	return p.db.Close()
 }
 
