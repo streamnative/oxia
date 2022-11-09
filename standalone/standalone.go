@@ -4,21 +4,21 @@ import (
 	"fmt"
 	"github.com/rs/zerolog/log"
 	"os"
-	"oxia/operator"
 	"oxia/proto"
-	"oxia/server"
+	"oxia/server/kv"
 )
 
 type standaloneConfig struct {
 	PublicServicePort       uint32
 	AdvertisedPublicAddress string
 	NumShards               uint32
+	DataDir                 string
 }
 
 type standalone struct {
-	rpc *server.PublicRpcServer
+	rpc       *StandaloneRpcServer
+	kvFactory kv.KVFactory
 
-	shardsDirector          server.ShardsDirector
 	identityInternalAddress proto.ServerAddress
 }
 
@@ -40,15 +40,12 @@ func NewStandalone(config *standaloneConfig) (*standalone, error) {
 	}
 
 	identityAddr := fmt.Sprintf("%s:%d", advertisedPublicAddress, config.PublicServicePort)
-	s.shardsDirector = server.NewShardsDirector(identityAddr)
 
-	_ = operator.ComputeAssignments([]*proto.ServerAddress{{
-		InternalUrl: identityAddr,
-		PublicUrl:   identityAddr,
-	}}, 1, conf.NumShards)
-	// TODO bootstrap shards in s.shardsDirector
+	s.kvFactory = kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+		DataDir: config.DataDir,
+	})
 
-	s.rpc, err = server.NewPublicRpcServer(int(config.PublicServicePort), advertisedPublicAddress, s.shardsDirector)
+	s.rpc, err = NewStandaloneRpcServer(int(config.PublicServicePort), identityAddr, config.NumShards, s.kvFactory)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +58,7 @@ func (s *standalone) Close() error {
 		return err
 	}
 
-	if err := s.shardsDirector.Close(); err != nil {
+	if err := s.kvFactory.Close(); err != nil {
 		return err
 	}
 
