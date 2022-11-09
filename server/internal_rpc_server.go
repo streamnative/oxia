@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"net"
-	"oxia/coordination"
+	"oxia/proto"
 )
 
 const (
@@ -20,8 +20,8 @@ const (
 )
 
 type internalRpcServer struct {
-	coordination.UnimplementedOxiaControlServer
-	coordination.UnimplementedOxiaLogReplicationServer
+	proto.UnimplementedOxiaControlServer
+	proto.UnimplementedOxiaLogReplicationServer
 	shardsDirector ShardsDirector
 
 	grpcServer *grpc.Server
@@ -42,8 +42,8 @@ func newCoordinationRpcServer(port int, advertisedInternalAddress string, shards
 	}
 
 	res.grpcServer = grpc.NewServer()
-	coordination.RegisterOxiaControlServer(res.grpcServer, res)
-	coordination.RegisterOxiaLogReplicationServer(res.grpcServer, res)
+	proto.RegisterOxiaControlServer(res.grpcServer, res)
+	proto.RegisterOxiaLogReplicationServer(res.grpcServer, res)
 	res.log.Info().
 		Str("bindAddress", listener.Addr().String()).
 		Str("advertisedAddress", advertisedInternalAddress).
@@ -120,58 +120,58 @@ func callShardManager[T any](c context.Context, s *internalRpcServer, f func(Sha
 	return response, err
 }
 
-func (s *internalRpcServer) Fence(c context.Context, req *coordination.FenceRequest) (*coordination.FenceResponse, error) {
-	response, err := callShardManager[*coordination.FenceResponse](c, s, func(m ShardManager, source string) (*coordination.FenceResponse, error) {
+func (s *internalRpcServer) Fence(c context.Context, req *proto.FenceRequest) (*proto.FenceResponse, error) {
+	response, err := callShardManager[*proto.FenceResponse](c, s, func(m ShardManager, source string) (*proto.FenceResponse, error) {
 		response, err := m.Fence(req)
 		return response, err
 	})
 	return response, err
 }
-func (s *internalRpcServer) BecomeLeader(c context.Context, req *coordination.BecomeLeaderRequest) (*coordination.BecomeLeaderResponse, error) {
-	response, err := callShardManager[*coordination.BecomeLeaderResponse](c, s, func(m ShardManager, source string) (*coordination.BecomeLeaderResponse, error) {
+func (s *internalRpcServer) BecomeLeader(c context.Context, req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error) {
+	response, err := callShardManager[*proto.BecomeLeaderResponse](c, s, func(m ShardManager, source string) (*proto.BecomeLeaderResponse, error) {
 		response, err := m.BecomeLeader(req)
 		return response, err
 	})
 	return response, err
 }
-func (s *internalRpcServer) AddFollower(c context.Context, req *coordination.AddFollowerRequest) (*coordination.CoordinationEmpty, error) {
+func (s *internalRpcServer) AddFollower(c context.Context, req *proto.AddFollowerRequest) (*proto.CoordinationEmpty, error) {
 
-	response, err := callShardManager[*coordination.CoordinationEmpty](c, s, func(m ShardManager, source string) (*coordination.CoordinationEmpty, error) {
+	response, err := callShardManager[*proto.CoordinationEmpty](c, s, func(m ShardManager, source string) (*proto.CoordinationEmpty, error) {
 		response, err := m.AddFollower(req)
 		return response, err
 	})
 	return response, err
 }
-func (s *internalRpcServer) Truncate(c context.Context, req *coordination.TruncateRequest) (*coordination.TruncateResponse, error) {
-	response, err := callShardManager[*coordination.TruncateResponse](c, s, func(m ShardManager, source string) (*coordination.TruncateResponse, error) {
+func (s *internalRpcServer) Truncate(c context.Context, req *proto.TruncateRequest) (*proto.TruncateResponse, error) {
+	response, err := callShardManager[*proto.TruncateResponse](c, s, func(m ShardManager, source string) (*proto.TruncateResponse, error) {
 		response, err := m.Truncate(source, req)
 		return response, err
 	})
 	return response, err
 }
-func (s *internalRpcServer) AddEntries(srv coordination.OxiaLogReplication_AddEntriesServer) error {
+func (s *internalRpcServer) AddEntries(srv proto.OxiaLogReplication_AddEntriesServer) error {
 	_, err := callShardManager[any](srv.Context(), s, func(m ShardManager, source string) (any, error) {
 		response, err := m.AddEntries(source, srv)
 		return response, err
 	})
 	return err
 }
-func (s *internalRpcServer) PrepareReconfig(c context.Context, req *coordination.PrepareReconfigRequest) (*coordination.PrepareReconfigResponse, error) {
-	response, err := callShardManager[*coordination.PrepareReconfigResponse](c, s, func(m ShardManager, source string) (*coordination.PrepareReconfigResponse, error) {
+func (s *internalRpcServer) PrepareReconfig(c context.Context, req *proto.PrepareReconfigRequest) (*proto.PrepareReconfigResponse, error) {
+	response, err := callShardManager[*proto.PrepareReconfigResponse](c, s, func(m ShardManager, source string) (*proto.PrepareReconfigResponse, error) {
 		response, err := m.PrepareReconfig(req)
 		return response, err
 	})
 	return response, err
 }
-func (s *internalRpcServer) Snapshot(c context.Context, req *coordination.SnapshotRequest) (*coordination.SnapshotResponse, error) {
-	response, err := callShardManager[*coordination.SnapshotResponse](c, s, func(m ShardManager, source string) (*coordination.SnapshotResponse, error) {
+func (s *internalRpcServer) Snapshot(c context.Context, req *proto.SnapshotRequest) (*proto.SnapshotResponse, error) {
+	response, err := callShardManager[*proto.SnapshotResponse](c, s, func(m ShardManager, source string) (*proto.SnapshotResponse, error) {
 		response, err := m.Snapshot(req)
 		return response, err
 	})
 	return response, err
 }
-func (s *internalRpcServer) CommitReconfig(c context.Context, req *coordination.CommitReconfigRequest) (*coordination.CommitReconfigResponse, error) {
-	response, err := callShardManager[*coordination.CommitReconfigResponse](c, s, func(m ShardManager, source string) (*coordination.CommitReconfigResponse, error) {
+func (s *internalRpcServer) CommitReconfig(c context.Context, req *proto.CommitReconfigRequest) (*proto.CommitReconfigResponse, error) {
+	response, err := callShardManager[*proto.CommitReconfigResponse](c, s, func(m ShardManager, source string) (*proto.CommitReconfigResponse, error) {
 		response, err := m.CommitReconfig(req)
 		return response, err
 	})

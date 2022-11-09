@@ -4,19 +4,19 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"io"
-	"oxia/coordination"
+	"oxia/proto"
 )
 
 type Wal interface {
 	io.Closer
-	Append(entry *coordination.LogEntry) error
+	Append(entry *proto.LogEntry) error
 
-	Read(lastPushedEntryId EntryId, callback func(*coordination.LogEntry) error) error
-	ReadSync(previousCommittedEntryId EntryId, lastCommittedEntryId EntryId, callback func(*coordination.LogEntry) error) error
+	Read(lastPushedEntryId EntryId, callback func(*proto.LogEntry) error) error
+	ReadSync(previousCommittedEntryId EntryId, lastCommittedEntryId EntryId, callback func(*proto.LogEntry) error) error
 	GetHighestEntryOfEpoch(epoch uint64) (EntryId, error)
 	TruncateLog(headIndex EntryId) (EntryId, error)
 	StopReaders()
-	ReadOne(id EntryId) (*coordination.LogEntry, error)
+	ReadOne(id EntryId) (*proto.LogEntry, error)
 
 	LogLength() uint64
 	EntryIdAt(index uint64) EntryId
@@ -24,17 +24,17 @@ type Wal interface {
 
 type inMemoryWal struct {
 	shard     ShardId
-	log       []*coordination.LogEntry
+	log       []*proto.LogEntry
 	index     map[EntryId]int
-	callbacks []func(*coordination.LogEntry) error
+	callbacks []func(*proto.LogEntry) error
 }
 
 func NewInMemoryWal(shard ShardId) Wal {
 	return &inMemoryWal{
 		shard:     shard,
-		log:       make([]*coordination.LogEntry, 0, 10000),
+		log:       make([]*proto.LogEntry, 0, 10000),
 		index:     make(map[EntryId]int),
-		callbacks: make([]func(*coordination.LogEntry) error, 0, 10000),
+		callbacks: make([]func(*proto.LogEntry) error, 0, 10000),
 	}
 }
 
@@ -42,7 +42,7 @@ func (w *inMemoryWal) Close() error {
 	return nil
 }
 
-func (w *inMemoryWal) Append(entry *coordination.LogEntry) error {
+func (w *inMemoryWal) Append(entry *proto.LogEntry) error {
 	w.log = append(w.log, entry)
 	w.index[EntryIdFromProto(entry.EntryId)] = len(w.log) - 1
 	index := 0
@@ -61,11 +61,11 @@ func (w *inMemoryWal) Append(entry *coordination.LogEntry) error {
 	return nil
 }
 
-func (w *inMemoryWal) ReadOne(id EntryId) (*coordination.LogEntry, error) {
+func (w *inMemoryWal) ReadOne(id EntryId) (*proto.LogEntry, error) {
 	return w.log[w.index[id]], nil
 }
 
-func (w *inMemoryWal) ReadSync(previousCommittedEntryId EntryId, lastCommittedEntryId EntryId, callback func(*coordination.LogEntry) error) error {
+func (w *inMemoryWal) ReadSync(previousCommittedEntryId EntryId, lastCommittedEntryId EntryId, callback func(*proto.LogEntry) error) error {
 	index := w.index[previousCommittedEntryId]
 	for index+1 < len(w.log) {
 		index++
@@ -81,7 +81,7 @@ func (w *inMemoryWal) ReadSync(previousCommittedEntryId EntryId, lastCommittedEn
 	return nil
 }
 
-func (w *inMemoryWal) Read(lastPushedEntryId EntryId, callback func(*coordination.LogEntry) error) error {
+func (w *inMemoryWal) Read(lastPushedEntryId EntryId, callback func(*proto.LogEntry) error) error {
 	index := w.index[lastPushedEntryId]
 	for index+1 < len(w.log) {
 		index++
@@ -95,7 +95,7 @@ func (w *inMemoryWal) Read(lastPushedEntryId EntryId, callback func(*coordinatio
 }
 
 func (w *inMemoryWal) StopReaders() {
-	w.callbacks = make([]func(*coordination.LogEntry) error, 0, 10000)
+	w.callbacks = make([]func(*proto.LogEntry) error, 0, 10000)
 }
 
 func (w *inMemoryWal) GetHighestEntryOfEpoch(epoch uint64) (EntryId, error) {
