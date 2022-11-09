@@ -138,6 +138,19 @@ type PebbleBatch struct {
 	b *pebble.Batch
 }
 
+func (b *PebbleBatch) DeleteRange(lowerBound, upperBound string) error {
+	return b.b.DeleteRange([]byte(lowerBound), []byte(upperBound), pebble.NoSync)
+}
+
+func (b *PebbleBatch) KeyRangeScan(lowerBound, upperBound string) KeyIterator {
+	pbit := b.b.NewIter(&pebble.IterOptions{
+		LowerBound: []byte(lowerBound),
+		UpperBound: []byte(upperBound),
+	})
+	pbit.SeekGE([]byte(lowerBound))
+	return &PebbleIterator{pbit}
+}
+
 func (b *PebbleBatch) Close() error {
 	return b.b.Close()
 }

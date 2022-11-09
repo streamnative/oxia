@@ -255,3 +255,126 @@ func TestDBSameKeyMutations(t *testing.T) {
 	assert.NoError(t, db.Close())
 	assert.NoError(t, factory.Close())
 }
+
+func TestDBGetRange(t *testing.T) {
+	factory := NewPebbleKVFactory(testKVOptions)
+	db, err := NewDB(1, factory)
+	assert.NoError(t, err)
+
+	req := &proto.BatchRequest{
+		Puts: []*proto.PutRequest{{
+			Key:     "a",
+			Payload: []byte("a"),
+		}, {
+			Key:     "b",
+			Payload: []byte("b"),
+		}, {
+			Key:     "c",
+			Payload: []byte("c"),
+		}, {
+			Key:     "d",
+			Payload: []byte("d"),
+		}, {
+			Key:     "e",
+			Payload: []byte("e"),
+		}},
+		GetRanges: []*proto.RangeRequest{{
+			StartInclusive: "a",
+			EndExclusive:   "c",
+		}, {
+			StartInclusive: "a",
+			EndExclusive:   "d",
+		}, {
+			StartInclusive: "xyz",
+			EndExclusive:   "zzz",
+		}},
+	}
+
+	res, err := db.ProcessBatch(req)
+	assert.NoError(t, err)
+
+	assert.Equal(t, 5, len(res.Puts))
+
+	assert.Equal(t, 3, len(res.GetRanges))
+
+	// ["a", "c")
+	r0 := res.GetRanges[0]
+	assert.Equal(t, 2, len(r0.Keys))
+	assert.Equal(t, "a", r0.Keys[0])
+	assert.Equal(t, "b", r0.Keys[1])
+
+	// ["a", "d")
+	r1 := res.GetRanges[1]
+	assert.Equal(t, 3, len(r1.Keys))
+	assert.Equal(t, "a", r1.Keys[0])
+	assert.Equal(t, "b", r1.Keys[1])
+	assert.Equal(t, "c", r1.Keys[2])
+
+	// ["xyz", "zzz")
+	r2 := res.GetRanges[2]
+	assert.Equal(t, 0, len(r2.Keys))
+
+	assert.NoError(t, db.Close())
+	assert.NoError(t, factory.Close())
+}
+
+func TestDBDeleteRange(t *testing.T) {
+	factory := NewPebbleKVFactory(testKVOptions)
+	db, err := NewDB(1, factory)
+	assert.NoError(t, err)
+
+	req := &proto.BatchRequest{
+		Puts: []*proto.PutRequest{{
+			Key:     "a",
+			Payload: []byte("a"),
+		}, {
+			Key:     "b",
+			Payload: []byte("b"),
+		}, {
+			Key:     "c",
+			Payload: []byte("c"),
+		}, {
+			Key:     "d",
+			Payload: []byte("d"),
+		}, {
+			Key:     "e",
+			Payload: []byte("e"),
+		}},
+	}
+
+	_, err = db.ProcessBatch(req)
+	assert.NoError(t, err)
+
+	req = &proto.BatchRequest{
+		DeleteRanges: []*proto.RangeRequest{{
+			StartInclusive: "b",
+			EndExclusive:   "c",
+		}, {
+			StartInclusive: "b",
+			EndExclusive:   "e",
+		}},
+
+		GetRanges: []*proto.RangeRequest{{
+			StartInclusive: "a",
+			EndExclusive:   "z",
+		}},
+	}
+
+	res, err := db.ProcessBatch(req)
+	assert.NoError(t, err)
+
+	assert.Equal(t, 2, len(res.DeleteRanges))
+	assert.Equal(t, proto.Status_OK, res.DeleteRanges[0].Status)
+	assert.Equal(t, proto.Status_OK, res.DeleteRanges[1].Status)
+
+	assert.Equal(t, 1, len(res.GetRanges))
+
+	// ["a", "z")
+	r1 := res.GetRanges[0]
+	assert.Equal(t, 2, len(r1.Keys))
+	assert.Equal(t, "a", r1.Keys[0])
+	assert.Equal(t, "e", r1.Keys[1])
+
+	assert.NoError(t, db.Close())
+	assert.NoError(t, factory.Close())
+}

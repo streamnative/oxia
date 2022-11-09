@@ -59,11 +59,27 @@ func (d *db) ProcessBatch(b *proto.BatchRequest) (*proto.BatchResponse, error) {
 		}
 	}
 
+	for _, delRangeReq := range b.DeleteRanges {
+		if dr, err := applyDeleteRange(batch, delRangeReq); err != nil {
+			return nil, err
+		} else {
+			res.DeleteRanges = append(res.DeleteRanges, dr)
+		}
+	}
+
 	for _, getReq := range b.Gets {
 		if gr, err := applyGet(batch, getReq); err != nil {
 			return nil, err
 		} else {
 			res.Gets = append(res.Gets, gr)
+		}
+	}
+
+	for _, getRangeReq := range b.GetRanges {
+		if gr, err := applyGetRange(batch, getRangeReq); err != nil {
+			return nil, err
+		} else {
+			res.GetRanges = append(res.GetRanges, gr)
 		}
 	}
 
@@ -137,6 +153,14 @@ func applyDelete(batch WriteBatch, delReq *proto.DeleteRequest) (*proto.DeleteRe
 	}
 }
 
+func applyDeleteRange(batch WriteBatch, delReq *proto.RangeRequest) (*proto.DeleteRangeResponse, error) {
+	if err := batch.DeleteRange(delReq.StartInclusive, delReq.EndExclusive); err != nil {
+		return nil, errors.Wrap(err, "oxia db: failed to delete range")
+	}
+
+	return &proto.DeleteRangeResponse{Status: proto.Status_OK}, nil
+}
+
 func applyGet(batch WriteBatch, getReq *proto.GetRequest) (*proto.GetResponse, error) {
 	payload, closer, err := batch.Get(getReq.Key)
 	if errors.Is(err, ErrorKeyNotFound) {
@@ -163,6 +187,22 @@ func applyGet(batch WriteBatch, getReq *proto.GetRequest) (*proto.GetResponse, e
 			ModifiedTimestamp: se.ModificationTimestamp,
 		},
 	}, nil
+}
+
+func applyGetRange(batch WriteBatch, getRangeReq *proto.RangeRequest) (*proto.GetRangeResponse, error) {
+	it := batch.KeyRangeScan(getRangeReq.StartInclusive, getRangeReq.EndExclusive)
+
+	res := &proto.GetRangeResponse{}
+
+	for ; it.Valid(); it.Next() {
+		res.Keys = append(res.Keys, it.Key())
+	}
+
+	if err := it.Close(); err != nil {
+		return nil, err
+	}
+
+	return res, nil
 }
 
 func checkExpectedVersion(batch WriteBatch, key string, expectedVersion *int64) (*proto.StorageEntry, error) {
