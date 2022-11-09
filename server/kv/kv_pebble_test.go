@@ -136,18 +136,30 @@ func TestPebbbleSnapshot(t *testing.T) {
 
 	assert.True(t, it.Valid())
 	assert.Equal(t, "/root/a", it.Key())
+	v, err := it.Value()
+	assert.NoError(t, err)
+	assert.Equal(t, "a", string(v))
 	assert.True(t, it.Next())
 
 	assert.True(t, it.Valid())
 	assert.Equal(t, "/root/b", it.Key())
+	v, err = it.Value()
+	assert.NoError(t, err)
+	assert.Equal(t, "b", string(v))
 	assert.True(t, it.Next())
 
 	assert.True(t, it.Valid())
 	assert.Equal(t, "/root/c", it.Key())
+	v, err = it.Value()
+	assert.NoError(t, err)
+	assert.Equal(t, "c", string(v))
 	assert.True(t, it.Next())
 
 	assert.True(t, it.Valid())
 	assert.Equal(t, "/root/d", it.Key())
+	v, err = it.Value()
+	assert.NoError(t, err)
+	assert.Equal(t, "d", string(v))
 	assert.False(t, it.Next())
 
 	assert.False(t, it.Valid())
@@ -283,6 +295,98 @@ func TestPebbbleGetWithinBatch(t *testing.T) {
 	assert.ErrorIs(t, err, ErrorKeyNotFound)
 	assert.Nil(t, payload)
 	assert.Nil(t, closer)
+
+	assert.NoError(t, kv.Close())
+	assert.NoError(t, factory.Close())
+}
+
+func TestPebbbleRangeScanInBatch(t *testing.T) {
+	factory := NewPebbleKVFactory(testKVOptions)
+	kv, err := factory.NewKV(1)
+	assert.NoError(t, err)
+
+	wb := kv.NewWriteBatch()
+	wb.Put("/root/a", []byte("a"))
+	assert.NoError(t, wb.Commit())
+	assert.NoError(t, wb.Close())
+
+	wb = kv.NewWriteBatch()
+	wb.Put("/root/b", []byte("b"))
+	wb.Put("/root/c", []byte("c"))
+
+	it := wb.KeyRangeScan("/root/a", "/root/c")
+	assert.True(t, it.Valid())
+	assert.Equal(t, "/root/a", it.Key())
+	assert.True(t, it.Next())
+
+	assert.True(t, it.Valid())
+	assert.Equal(t, "/root/b", it.Key())
+	assert.False(t, it.Next())
+
+	assert.False(t, it.Valid())
+
+	assert.NoError(t, it.Close())
+
+	wb.Put("/root/d", []byte("d"))
+
+	wb.Delete("/root/a")
+
+	it = wb.KeyRangeScan("/root/a", "/root/c")
+	assert.True(t, it.Valid())
+	assert.Equal(t, "/root/b", it.Key())
+	assert.False(t, it.Next())
+
+	assert.False(t, it.Valid())
+
+	assert.NoError(t, it.Close())
+
+	assert.NoError(t, wb.Commit())
+	assert.NoError(t, wb.Close())
+
+	// Scan with empty result
+	it = kv.KeyRangeScan("/xyz/a", "/xyz/c")
+	assert.False(t, it.Valid())
+	assert.NoError(t, it.Close())
+
+	assert.NoError(t, kv.Close())
+	assert.NoError(t, factory.Close())
+}
+
+func TestPebbbleDeleteRangeInBatch(t *testing.T) {
+	keys := []string{
+		"/a/a/a/zzzzzz",
+		"/a/b/a/a/a/a",
+		"/a/b/a/c",
+		"/a/b/a/a",
+		"/a/b/a/a/a",
+		"/a/b/a/b",
+	}
+
+	factory := NewPebbleKVFactory(testKVOptions)
+	kv, err := factory.NewKV(1)
+	assert.NoError(t, err)
+
+	wb := kv.NewWriteBatch()
+
+	for _, k := range keys {
+		wb.Put(k, []byte(k))
+	}
+
+	err = wb.DeleteRange("/a/b/a/", "/a/b/a//")
+	assert.NoError(t, err)
+
+	assert.NoError(t, wb.Commit())
+	assert.NoError(t, wb.Close())
+
+	res, closer, err := kv.Get("/a/b/a/a")
+	assert.Nil(t, res)
+	assert.Nil(t, closer)
+	assert.ErrorIs(t, err, ErrorKeyNotFound)
+
+	res, closer, err = kv.Get("/a/a/a/zzzzzz")
+	assert.Equal(t, "/a/a/a/zzzzzz", string(res))
+	assert.NoError(t, closer.Close())
+	assert.Nil(t, err)
 
 	assert.NoError(t, kv.Close())
 	assert.NoError(t, factory.Close())
