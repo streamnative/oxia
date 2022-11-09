@@ -10,7 +10,6 @@ import (
 	"google.golang.org/grpc/status"
 	"io"
 	"oxia/common"
-	"oxia/coordination"
 	"oxia/proto"
 	"time"
 )
@@ -18,16 +17,16 @@ import (
 type ShardManager interface {
 	io.Closer
 
-	Fence(req *coordination.FenceRequest) (*coordination.FenceResponse, error)
-	BecomeLeader(*coordination.BecomeLeaderRequest) (*coordination.BecomeLeaderResponse, error)
-	AddFollower(*coordination.AddFollowerRequest) (*coordination.CoordinationEmpty, error)
-	Truncate(string, *coordination.TruncateRequest) (*coordination.TruncateResponse, error)
+	Fence(req *proto.FenceRequest) (*proto.FenceResponse, error)
+	BecomeLeader(*proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error)
+	AddFollower(*proto.AddFollowerRequest) (*proto.CoordinationEmpty, error)
+	Truncate(string, *proto.TruncateRequest) (*proto.TruncateResponse, error)
 	Write(op *proto.PutOp) (*proto.Stat, error)
-	AddEntries(string, coordination.OxiaLogReplication_AddEntriesServer) (any, error)
+	AddEntries(string, proto.OxiaLogReplication_AddEntriesServer) (any, error)
 	// Later
-	PrepareReconfig(*coordination.PrepareReconfigRequest) (*coordination.PrepareReconfigResponse, error)
-	Snapshot(*coordination.SnapshotRequest) (*coordination.SnapshotResponse, error)
-	CommitReconfig(*coordination.CommitReconfigRequest) (*coordination.CommitReconfigResponse, error)
+	PrepareReconfig(*proto.PrepareReconfigRequest) (*proto.PrepareReconfigResponse, error)
+	Snapshot(*proto.SnapshotRequest) (*proto.SnapshotResponse, error)
+	CommitReconfig(*proto.CommitReconfigRequest) (*proto.CommitReconfigResponse, error)
 }
 
 // Command is the representation of the work a ShardManager is supposed to do when it gets a request or response and a channel for the response.
@@ -72,8 +71,8 @@ type waitingRoomEntry struct {
 
 type cursor struct {
 	status        CursorStatus
-	lastPushed    *coordination.EntryId
-	lastConfirmed *coordination.EntryId
+	lastPushed    *proto.EntryId
+	lastConfirmed *proto.EntryId
 }
 
 type shardManager struct {
@@ -158,7 +157,7 @@ func enqueueCommandAndWaitForResponseWithChannel[T any](s *shardManager, f func(
 
 }
 
-func sendRequestAndProcessResponse[RESP any](s *shardManager, target string, send func(context.Context, coordination.OxiaLogReplicationClient) (RESP, error), process func(RESP) error) error {
+func sendRequestAndProcessResponse[RESP any](s *shardManager, target string, send func(context.Context, proto.OxiaLogReplicationClient) (RESP, error), process func(RESP) error) error {
 	rpc, err := s.clientPool.GetReplicationRpc(target)
 	if err != nil {
 		return err
@@ -203,8 +202,8 @@ func (s *shardManager) checkStatus(expected Status) error {
 }
 
 // Fence enqueues a call to fenceSync and waits for the response
-func (s *shardManager) Fence(req *coordination.FenceRequest) (*coordination.FenceResponse, error) {
-	response := enqueueCommandAndWaitForResponse[*coordination.FenceResponse](s, func() (*coordination.FenceResponse, error) {
+func (s *shardManager) Fence(req *proto.FenceRequest) (*proto.FenceResponse, error) {
+	response := enqueueCommandAndWaitForResponse[*proto.FenceResponse](s, func() (*proto.FenceResponse, error) {
 		resp, err := s.fenceSync(req)
 		return resp, err
 	})
@@ -226,7 +225,7 @@ func (s *shardManager) Fence(req *coordination.FenceRequest) (*coordination.Fenc
   Any existing follow cursors are destroyed as is any state
   regarding reconfigurations.
 */
-func (s *shardManager) fenceSync(req *coordination.FenceRequest) (*coordination.FenceResponse, error) {
+func (s *shardManager) fenceSync(req *proto.FenceRequest) (*proto.FenceResponse, error) {
 	if err := s.checkEpochLaterIn(req); err != nil {
 		return nil, err
 	}
@@ -238,25 +237,25 @@ func (s *shardManager) fenceSync(req *coordination.FenceRequest) (*coordination.
 	s.waitingRoom = make(map[EntryId]waitingRoomEntry)
 	s.wal.StopReaders()
 	s.reconfigInProgress = false
-	return &coordination.FenceResponse{
+	return &proto.FenceResponse{
 		Epoch:     s.epoch,
 		HeadIndex: s.headIndex.toProto(),
 	}, nil
 }
 
-func (s *shardManager) BecomeLeader(req *coordination.BecomeLeaderRequest) (*coordination.BecomeLeaderResponse, error) {
-	response := enqueueCommandAndWaitForResponse[*coordination.BecomeLeaderResponse](s, func() (*coordination.BecomeLeaderResponse, error) {
+func (s *shardManager) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error) {
+	response := enqueueCommandAndWaitForResponse[*proto.BecomeLeaderResponse](s, func() (*proto.BecomeLeaderResponse, error) {
 		resp, err := s.becomeLeaderSync(req)
 		return resp, err
 	})
 	return response, nil
 }
 
-func (s *shardManager) needsTruncation(headIndex *coordination.EntryId) bool {
+func (s *shardManager) needsTruncation(headIndex *proto.EntryId) bool {
 	return headIndex.Epoch != s.headIndex.epoch || headIndex.Offset > s.headIndex.offset
 }
 
-func (s *shardManager) getCursor(headIndex *coordination.EntryId) *cursor {
+func (s *shardManager) getCursor(headIndex *proto.EntryId) *cursor {
 	if s.needsTruncation(headIndex) {
 		return &cursor{
 			status:        PendingTruncate,
@@ -272,7 +271,7 @@ func (s *shardManager) getCursor(headIndex *coordination.EntryId) *cursor {
 	}
 }
 
-func (s *shardManager) getCursors(followers []*coordination.BecomeLeaderRequest_FollowerEntry) map[string]*cursor {
+func (s *shardManager) getCursors(followers []*proto.BecomeLeaderRequest_FollowerEntry) map[string]*cursor {
 	cursors := make(map[string]*cursor)
 	for _, kv := range followers {
 		cursors[kv.Key.InternalUrl] = s.getCursor(kv.Value)
@@ -285,18 +284,18 @@ func (s *shardManager) sendTruncateRequest(target string, targetEpoch uint64) er
 	if err != nil {
 		return err
 	}
-	send := func(ctx context.Context, rpc coordination.OxiaLogReplicationClient) (*coordination.TruncateResponse, error) {
-		resp, err2 := rpc.Truncate(ctx, &coordination.TruncateRequest{
+	send := func(ctx context.Context, rpc proto.OxiaLogReplicationClient) (*proto.TruncateResponse, error) {
+		resp, err2 := rpc.Truncate(ctx, &proto.TruncateRequest{
 			Epoch:     s.epoch,
 			HeadIndex: headIndex.toProto(),
 		})
 		return resp, err2
 	}
-	process := func(resp *coordination.TruncateResponse) error {
+	process := func(resp *proto.TruncateResponse) error {
 		err2 := s.truncateResponseSync(target, resp)
 		return err2
 	}
-	return sendRequestAndProcessResponse[*coordination.TruncateResponse](s, target, send, process)
+	return sendRequestAndProcessResponse[*proto.TruncateResponse](s, target, send, process)
 }
 
 /*
@@ -305,7 +304,7 @@ truncateResponseSync: Leader handles a truncate response.
 The leader now activates the follow cursor as the follower
 log is now ready for replication.
 */
-func (s *shardManager) truncateResponseSync(target string, resp *coordination.TruncateResponse) error {
+func (s *shardManager) truncateResponseSync(target string, resp *proto.TruncateResponse) error {
 	if err := s.checkStatus(Leader); err != nil {
 		return err
 	}
@@ -349,14 +348,14 @@ Key points:
     possible that their head index is higher than the leader and
     therefore need truncating.
 */
-func (s *shardManager) becomeLeaderSync(req *coordination.BecomeLeaderRequest) (*coordination.BecomeLeaderResponse, error) {
+func (s *shardManager) becomeLeaderSync(req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error) {
 	if err := s.checkEpochEqualIn(req); err != nil {
 		return nil, err
 	}
 	s.status = Leader
 	s.leader = s.identityAddress
 	s.replicationFactor = req.GetReplicationFactor()
-	s.followCursor = s.getCursors(req.GetFollowerMap())
+	s.followCursor = s.getCursors(req.GetFollowerMaps())
 
 	for k, v := range s.followCursor {
 		if v.status == PendingTruncate {
@@ -368,10 +367,10 @@ func (s *shardManager) becomeLeaderSync(req *coordination.BecomeLeaderRequest) (
 			s.sendEntriesToFollower(k, v.lastPushed)
 		}
 	}
-	return &coordination.BecomeLeaderResponse{Epoch: req.GetEpoch()}, nil
+	return &proto.BecomeLeaderResponse{Epoch: req.GetEpoch()}, nil
 }
-func (s *shardManager) Truncate(source string, req *coordination.TruncateRequest) (*coordination.TruncateResponse, error) {
-	response := enqueueCommandAndWaitForResponse[*coordination.TruncateResponse](s, func() (*coordination.TruncateResponse, error) {
+func (s *shardManager) Truncate(source string, req *proto.TruncateRequest) (*proto.TruncateResponse, error) {
+	response := enqueueCommandAndWaitForResponse[*proto.TruncateResponse](s, func() (*proto.TruncateResponse, error) {
 		resp, err := s.truncateSync(source, req)
 		return resp, err
 	})
@@ -386,7 +385,7 @@ has been selected as a follower. It truncates its log
 to the indicates entry id, updates its epoch and changes
 to a Follower.
 */
-func (s *shardManager) truncateSync(source string, req *coordination.TruncateRequest) (*coordination.TruncateResponse, error) {
+func (s *shardManager) truncateSync(source string, req *proto.TruncateRequest) (*proto.TruncateResponse, error) {
 	if err := s.checkStatus(Fenced); err != nil {
 		return nil, err
 	}
@@ -403,14 +402,14 @@ func (s *shardManager) truncateSync(source string, req *coordination.TruncateReq
 	s.headIndex = headEntryId
 	s.followCursor = make(map[string]*cursor)
 
-	return &coordination.TruncateResponse{
+	return &proto.TruncateResponse{
 		Epoch:     req.Epoch,
 		HeadIndex: headEntryId.toProto(),
 	}, nil
 }
 
-func (s *shardManager) AddFollower(req *coordination.AddFollowerRequest) (*coordination.CoordinationEmpty, error) {
-	response := enqueueCommandAndWaitForResponse[*coordination.CoordinationEmpty](s, func() (*coordination.CoordinationEmpty, error) {
+func (s *shardManager) AddFollower(req *proto.AddFollowerRequest) (*proto.CoordinationEmpty, error) {
+	response := enqueueCommandAndWaitForResponse[*proto.CoordinationEmpty](s, func() (*proto.CoordinationEmpty, error) {
 		resp, err := s.addFollowerSync(req)
 		return resp, err
 	})
@@ -424,7 +423,7 @@ The leader creates a cursor and will send a truncate
 request to the follower if their log might need
 truncating first.
 */
-func (s *shardManager) addFollowerSync(req *coordination.AddFollowerRequest) (*coordination.CoordinationEmpty, error) {
+func (s *shardManager) addFollowerSync(req *proto.AddFollowerRequest) (*proto.CoordinationEmpty, error) {
 	if err := s.checkStatus(Leader); err != nil {
 		return nil, err
 	}
@@ -481,7 +480,7 @@ func (s *shardManager) writeSync(op *proto.PutOp, responseChannel chan any) erro
 	if err := s.checkStatus(Leader); err != nil {
 		return err
 	}
-	entryId := &coordination.EntryId{
+	entryId := &proto.EntryId{
 		Epoch:  s.epoch,
 		Offset: s.headIndex.offset + 1,
 	}
@@ -489,7 +488,7 @@ func (s *shardManager) writeSync(op *proto.PutOp, responseChannel chan any) erro
 	if err != nil {
 		return err
 	}
-	logEntry := &coordination.LogEntry{
+	logEntry := &proto.LogEntry{
 		EntryId:   entryId,
 		Value:     value,
 		Timestamp: uint64(time.Now().Nanosecond()),
@@ -508,15 +507,15 @@ func (s *shardManager) writeSync(op *proto.PutOp, responseChannel chan any) erro
 
 }
 
-func (s *shardManager) sendEntriesToFollower(target string, lastPushedEntry *coordination.EntryId) {
-	err := sendRequestAndProcessResponse[any](s, target, func(ctx context.Context, client coordination.OxiaLogReplicationClient) (any, error) {
+func (s *shardManager) sendEntriesToFollower(target string, lastPushedEntry *proto.EntryId) {
+	err := sendRequestAndProcessResponse[any](s, target, func(ctx context.Context, client proto.OxiaLogReplicationClient) (any, error) {
 		addEntries, err := client.AddEntries(ctx)
 		if err != nil {
 			return nil, err
 		}
 
-		err = s.wal.Read(EntryIdFromProto(lastPushedEntry), func(entry *coordination.LogEntry) error {
-			err2 := addEntries.Send(&coordination.AddEntryRequest{
+		err = s.wal.Read(EntryIdFromProto(lastPushedEntry), func(entry *proto.LogEntry) error {
+			err2 := addEntries.Send(&proto.AddEntryRequest{
 				Epoch:       s.epoch,
 				Entry:       entry,
 				CommitIndex: s.commitIndex.toProto(),
@@ -577,7 +576,7 @@ A leader node handles an add entry response
 	  comment out the condition 'entry_id.epoch = nstate.epoch'
 	  below. Also see the Raft paper.
 */
-func (s *shardManager) addEntryResponseSync(follower string, response *coordination.AddEntryResponse) error {
+func (s *shardManager) addEntryResponseSync(follower string, response *proto.AddEntryResponse) error {
 	if err := s.checkStatus(Leader); err != nil {
 		return err
 	}
@@ -618,13 +617,13 @@ func (s *shardManager) addEntryResponseSync(follower string, response *coordinat
 	return nil
 }
 
-func (s *shardManager) AddEntries(source string, srv coordination.OxiaLogReplication_AddEntriesServer) (any, error) {
+func (s *shardManager) AddEntries(source string, srv proto.OxiaLogReplication_AddEntriesServer) (any, error) {
 	for {
 		req, err := srv.Recv()
 		if err != nil {
 			return nil, err
 		}
-		response := enqueueCommandAndWaitForResponse[*coordination.AddEntryResponse](s, func() (*coordination.AddEntryResponse, error) {
+		response := enqueueCommandAndWaitForResponse[*proto.AddEntryResponse](s, func() (*proto.AddEntryResponse, error) {
 			resp, err2 := s.addEntrySync(source, req)
 			return resp, err2
 		})
@@ -635,7 +634,7 @@ func (s *shardManager) AddEntries(source string, srv coordination.OxiaLogReplica
 	}
 }
 
-func (s *shardManager) addEntrySync(source string, req *coordination.AddEntryRequest) (*coordination.AddEntryResponse, error) {
+func (s *shardManager) addEntrySync(source string, req *proto.AddEntryRequest) (*proto.AddEntryResponse, error) {
 	if req.GetEpoch() <= s.epoch {
 		/*
 		 A follower node rejects an entry from the leader.
@@ -648,7 +647,7 @@ func (s *shardManager) addEntrySync(source string, req *coordination.AddEntryReq
 		  - The epoch of the response should be the epoch of the
 		    request so that the leader will not ignore the response.
 		*/
-		return &coordination.AddEntryResponse{
+		return &proto.AddEntryResponse{
 			Epoch:        req.Epoch,
 			EntryId:      nil,
 			InvalidEpoch: true,
@@ -675,7 +674,7 @@ func (s *shardManager) addEntrySync(source string, req *coordination.AddEntryReq
 	s.headIndex = EntryIdFromProto(req.Entry.EntryId)
 	oldCommitIndex := s.commitIndex
 	s.commitIndex = EntryIdFromProto(req.CommitIndex)
-	err = s.wal.ReadSync(oldCommitIndex, s.commitIndex, func(entry *coordination.LogEntry) error {
+	err = s.wal.ReadSync(oldCommitIndex, s.commitIndex, func(entry *proto.LogEntry) error {
 		op, err2 := deserializeOp(entry.GetValue())
 		if err2 != nil {
 			return err2
@@ -686,7 +685,7 @@ func (s *shardManager) addEntrySync(source string, req *coordination.AddEntryReq
 	if err != nil {
 		return nil, err
 	}
-	return &coordination.AddEntryResponse{
+	return &proto.AddEntryResponse{
 		Epoch:        s.epoch,
 		EntryId:      req.Entry.EntryId,
 		InvalidEpoch: false,
@@ -694,13 +693,13 @@ func (s *shardManager) addEntrySync(source string, req *coordination.AddEntryReq
 
 }
 
-func (s *shardManager) PrepareReconfig(req *coordination.PrepareReconfigRequest) (*coordination.PrepareReconfigResponse, error) {
+func (s *shardManager) PrepareReconfig(req *proto.PrepareReconfigRequest) (*proto.PrepareReconfigResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PrepareReconfig not implemented")
 }
-func (s *shardManager) Snapshot(req *coordination.SnapshotRequest) (*coordination.SnapshotResponse, error) {
+func (s *shardManager) Snapshot(req *proto.SnapshotRequest) (*proto.SnapshotResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Snapshot not implemented")
 }
-func (s *shardManager) CommitReconfig(req *coordination.CommitReconfigRequest) (*coordination.CommitReconfigResponse, error) {
+func (s *shardManager) CommitReconfig(req *proto.CommitReconfigRequest) (*proto.CommitReconfigResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CommitReconfig not implemented")
 }
 

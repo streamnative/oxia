@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"github.com/rs/zerolog/log"
 	"os"
-	"oxia/coordination"
 	"oxia/operator"
+	"oxia/proto"
 	"oxia/server"
 )
 
@@ -19,7 +19,7 @@ type standalone struct {
 	rpc *server.PublicRpcServer
 
 	shardsDirector          server.ShardsDirector
-	identityInternalAddress coordination.ServerAddress
+	identityInternalAddress proto.ServerAddress
 }
 
 func NewStandalone(config *standaloneConfig) (*standalone, error) {
@@ -42,7 +42,7 @@ func NewStandalone(config *standaloneConfig) (*standalone, error) {
 	identityAddr := fmt.Sprintf("%s:%d", advertisedPublicAddress, config.PublicServicePort)
 	s.shardsDirector = server.NewShardsDirector(identityAddr)
 
-	_ = operator.ComputeAssignments([]*coordination.ServerAddress{{
+	_ = operator.ComputeAssignments([]*proto.ServerAddress{{
 		InternalUrl: identityAddr,
 		PublicUrl:   identityAddr,
 	}}, 1, conf.NumShards)

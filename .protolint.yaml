@@ -1,0 +1,21 @@
+lint:
+  rules:
+    all_default: true
+    remove:
+      - ENUM_FIELD_NAMES_PREFIX
+      - ENUM_FIELD_NAMES_ZERO_VALUE_END_WITH
+      # TODO Enforce below COMMENT rules when APIs stabilize
+      - FILE_HAS_COMMENT
+      - SERVICES_HAVE_COMMENT
+      - RPCS_HAVE_COMMENT
+      - MESSAGES_HAVE_COMMENT
+      - FIELDS_HAVE_COMMENT
+      - ENUMS_HAVE_COMMENT
+      - ENUM_FIELDS_HAVE_COMMENT
+      # end
+  rules_option:
+    indent:
+      not_insert_newline: true
+    repeated_field_names_pluralized:
+      irregular_rules:
+        epoch: epochs

@@ -1,6 +1,9 @@
+/**
+ * OxiaClient
+ */
 syntax = "proto3";
 
-package io.streamnative.oxia.client;
+package io.streamnative.oxia.proto;
 
 option go_package = "github.com/streamnative/oxia/proto";
 option java_multiple_files = true;
@@ -81,21 +84,19 @@ message ShardAssignment {
  * following order: puts, deletes, delete_ranges, gets, get_ranges.
  */
 message BatchRequest {
-  // The shard id. This is also the minimum inclusive hash contained by the
-  // shard. The maximum exclusive hash is the shard id of the adjacent shard.
-  // This is optional allow for support for server-side hashing and proxying in
-  // the future.
+  // The shard id. This is optional allow for support for server-side hashing
+  // and proxying in the future.
   optional uint32 shard_id = 1;
   // The put requests
   repeated PutRequest puts = 2;
   // The delete requests
   repeated DeleteRequest deletes = 3;
   // The delete range requests
-  repeated DeleteRangeRequest delete_ranges = 4;
+  repeated RangeRequest delete_ranges = 4;
   // The get requests
   repeated GetRequest gets = 5;
-  // The range requests
-  repeated GetRangeRequest get_ranges = 6;
+  // The get range requests
+  repeated RangeRequest get_ranges = 6;
 }
 
 /**
@@ -154,7 +155,7 @@ message DeleteRequest {
  * delete range request.
  */
 message DeleteResponse {
-  // The error if the delete failed
+  // Includes the error or OK
   Status status = 1;
 }
 
@@ -176,19 +177,16 @@ message GetRequest {
 message GetResponse {
   // Includes the error or OK
   Status status = 1;
-
+  // The stat of the entry
+  Stat stat = 2;
   // The payload, if it was requested and there was no error
-  optional bytes payload = 2;
-
-  // The stat if the key exists
-  Stat stat = 3;
+  optional bytes payload = 3;
 }
 
 /**
- * A delete range request. Deletes all keys that exist within the bounds of the
- * range. The client should broadcast this request to all shards.
+ * Input to a delete range or get range request.
  */
-message DeleteRangeRequest {
+message RangeRequest {
   // The start of the range, inclusive
   string start_inclusive = 1;
   // The end of the range, exclusive
@@ -199,21 +197,8 @@ message DeleteRangeRequest {
  * The response for a delete range request.
  */
 message DeleteRangeResponse {
-  // All the keys deleted within the specified range
-  repeated DeleteResponse deletes = 1;
-}
-
-/**
- * A get range request. Gets all keys that exist within the bounds of the
- * range. The client should broadcast this request to all shards.
- */
-message GetRangeRequest {
-  // The start of the range, inclusive
-  string start_inclusive = 1;
-  // The end of the range, exclusive
-  string end_exclusive = 2;
-  // Specified whether response should include the payloads or only the stat
-  bool include_payloads = 3;
+  // Includes the error or OK
+  Status status = 1;
 }
 
 /**
@@ -221,7 +206,7 @@ message GetRangeRequest {
  */
 message GetRangeResponse {
   // All the keys found within the specified range
-  repeated GetResponse gets = 1;
+  repeated string keys = 1;
 }
 
 /**
@@ -237,14 +222,16 @@ message Stat {
 }
 
 /**
- * Represents all the possible errors and that can be encountered.
+ * Represents all the possible status.
  */
 enum Status {
-  OK = 0;            // Operation was successful
-  KEY_NOT_FOUND = 1; // The key was not found
-  BAD_VERSION = 2;   // The existing version does not match the expected version
+  // Operation was successful
+  OK = 0;
+  // The key was not found
+  KEY_NOT_FOUND = 1;
+  // The existing version does not match the expected version
+  BAD_VERSION = 2;
 }
-
 
 /// TODO: This is for compatibility with existing temporary code
 

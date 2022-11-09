@@ -1,10 +1,8 @@
 syntax = "proto3";
 
-option go_package = "github.com/streamnative/oxia/proto";
-
 package proto;
 
-
+option go_package = "github.com/streamnative/oxia/proto";
 
 service InternalAPI {
   rpc UpdateStatus(ClusterStatus) returns (InternalEmpty) {}
@@ -16,33 +14,29 @@ service InternalAPI {
    */
 }
 
-message InternalEmpty {
-}
+message InternalEmpty {}
 
 message ReadLogRequest {
   uint32 shard = 1;
   uint64 first_entry_id = 2;
-} 
+}
 
 message ConfirmedEntryRequest {
   uint32 shard = 1;
   string follower = 2;
   uint64 epoch = 3;
-  uint64 entryId = 4;
+  uint64 entry_id = 4;
 }
 
-
 message ClusterStatus {
-  repeated ShardStatus shards_status = 1;
-
+  repeated ShardStatus shard_statuses = 1;
   uint32 replication_factor = 2;
 }
 
 message ShardStatus {
   uint32 shard = 1;
-//  ServerAddress leader = 2;
-//  repeated ServerAddress followers = 3;
-
+  //  ServerAddress leader = 2;
+  //  repeated ServerAddress followers = 3;
   repeated EpochStatus epochs = 4;
 }
 

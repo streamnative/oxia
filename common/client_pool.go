@@ -5,7 +5,6 @@ import (
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"io"
-	"oxia/coordination"
 	"oxia/proto"
 	"sync"
 )
@@ -13,8 +12,8 @@ import (
 type ClientPool interface {
 	io.Closer
 	GetClientRpc(target string) (proto.OxiaClientClient, error)
-	GetControlRpc(target string) (coordination.OxiaControlClient, error)
-	GetReplicationRpc(target string) (coordination.OxiaLogReplicationClient, error)
+	GetControlRpc(target string) (proto.OxiaControlClient, error)
+	GetReplicationRpc(target string) (proto.OxiaLogReplicationClient, error)
 }
 
 type clientPool struct {
@@ -56,21 +55,21 @@ func (cp *clientPool) GetClientRpc(target string) (proto.OxiaClientClient, error
 	}
 }
 
-func (cp *clientPool) GetControlRpc(target string) (coordination.OxiaControlClient, error) {
+func (cp *clientPool) GetControlRpc(target string) (proto.OxiaControlClient, error) {
 	cnx, err := cp.getConnection(target)
 	if err != nil {
 		return nil, err
 	} else {
-		return coordination.NewOxiaControlClient(cnx), nil
+		return proto.NewOxiaControlClient(cnx), nil
 	}
 }
 
-func (cp *clientPool) GetReplicationRpc(target string) (coordination.OxiaLogReplicationClient, error) {
+func (cp *clientPool) GetReplicationRpc(target string) (proto.OxiaLogReplicationClient, error) {
 	cnx, err := cp.getConnection(target)
 	if err != nil {
 		return nil, err
 	} else {
-		return coordination.NewOxiaLogReplicationClient(cnx), nil
+		return proto.NewOxiaLogReplicationClient(cnx), nil
 	}
 }
 

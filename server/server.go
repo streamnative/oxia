@@ -5,7 +5,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"os"
 	"oxia/common"
-	"oxia/coordination"
+	"oxia/proto"
 )
 
 type serverConfig struct {
@@ -21,15 +21,15 @@ type EntryId struct {
 	offset uint64
 }
 
-func EntryIdFromProto(id *coordination.EntryId) EntryId {
+func EntryIdFromProto(id *proto.EntryId) EntryId {
 	return EntryId{
 		epoch:  id.Epoch,
 		offset: id.Offset,
 	}
 }
 
-func (id EntryId) toProto() *coordination.EntryId {
-	return &coordination.EntryId{
+func (id EntryId) toProto() *proto.EntryId {
+	return &proto.EntryId{
 		Epoch:  id.epoch,
 		Offset: id.offset,
 	}
@@ -42,7 +42,7 @@ type server struct {
 	shardsDirector ShardsDirector
 	clientPool     common.ClientPool
 
-	identityInternalAddress coordination.ServerAddress
+	identityInternalAddress proto.ServerAddress
 }
 
 func NewServer(config *serverConfig) (*server, error) {
