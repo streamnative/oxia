@@ -1,0 +1,102 @@
+package standalone
+
+import (
+	"context"
+	"fmt"
+	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+	"google.golang.org/grpc"
+	"math"
+	"net"
+	"oxia/proto"
+	"oxia/server/kv"
+)
+
+// This implementation is temporary, until all the WAL changes are ready
+
+type StandaloneRpcServer struct {
+	proto.UnimplementedOxiaClientServer
+
+	identityAddr string
+	numShards    uint32
+	dbs          map[int32]kv.DB
+
+	grpcServer *grpc.Server
+	log        zerolog.Logger
+}
+
+func NewStandaloneRpcServer(port int, identityAddr string, numShards uint32, kvFactory kv.KVFactory) (*StandaloneRpcServer, error) {
+	// Assuming 1 single shard
+	res := &StandaloneRpcServer{
+		numShards: numShards,
+		dbs:       make(map[int32]kv.DB),
+		log: log.With().
+			Str("component", "standalone-rpc-server").
+			Logger(),
+	}
+
+	var err error
+	for i := int32(0); i < int32(numShards); i++ {
+		if res.dbs[i], err = kv.NewDB(i, kvFactory); err != nil {
+			return nil, err
+		}
+	}
+
+	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to listen")
+	}
+
+	res.grpcServer = grpc.NewServer()
+	proto.RegisterOxiaClientServer(res.grpcServer, res)
+	res.log.Info().
+		Str("bindAddress", listener.Addr().String()).
+		Str("identityAddr", identityAddr).
+		Msg("Started Standalone RPC server")
+
+	go func() {
+		if err := res.grpcServer.Serve(listener); err != nil {
+			log.Fatal().Err(err).Msg("Failed to serve")
+		}
+	}()
+
+	return res, nil
+}
+
+func (s *StandaloneRpcServer) Close() error {
+	s.grpcServer.GracefulStop()
+	for _, db := range s.dbs {
+		if err := db.Close(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *StandaloneRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest, stream proto.OxiaClient_ShardAssignmentsServer) error {
+	res := &proto.ShardAssignmentsResponse{
+		ShardKeyRouter: proto.ShardKeyRouter_XXHASH_64,
+	}
+
+	bucketSize := math.MaxUint32 / s.numShards
+
+	for i := uint32(0); i < s.numShards; i++ {
+		res.Assignments = append(res.Assignments, &proto.ShardAssignment{
+			ShardId: i,
+			Leader:  s.identityAddr,
+			ShardBoundaries: &proto.ShardAssignment_Int32HashRange{
+				Int32HashRange: &proto.Int32HashRange{
+					MinHashInclusive: i * bucketSize,
+					MaxHashExclusive: (i + 1) * bucketSize,
+				},
+			},
+		})
+	}
+
+	return stream.Send(res)
+}
+
+func (s *StandaloneRpcServer) Batch(ctx context.Context, batch *proto.BatchRequest) (*proto.BatchResponse, error) {
+	return s.dbs[int32(*batch.ShardId)].ProcessBatch(batch)
+}
