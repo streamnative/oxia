@@ -1,13 +1,13 @@
 
 .PHONY: build
 build: proto
-	go build -v -o oxia ./cmd
+	go build -v -o bin/oxia ./cmd
 
 test: build
 	go test -cover -race ./...
 
 clean:
-	rm -f oxia
+	rm -f bin/oxia
 	rm -f */*.pb.go
 
 docker:
