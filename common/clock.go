@@ -10,9 +10,9 @@ type systemClock struct {
 }
 
 func SystemClock() Clock {
-	return systemClock{}
+	return &systemClock{}
 }
 
-func (c systemClock) NowMillis() uint64 {
+func (c *systemClock) NowMillis() uint64 {
 	return uint64(time.Now().UnixMilli())
 }

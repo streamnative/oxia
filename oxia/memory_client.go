@@ -18,11 +18,11 @@ func newMemoryClientWithClock(clock common.Clock) Client {
 	}
 }
 
-func (c memoryClient) Close() error {
+func (c *memoryClient) Close() error {
 	return nil
 }
 
-func (c memoryClient) Put(key string, payload []byte, expectedVersion *int64) (Stat, error) {
+func (c *memoryClient) Put(key string, payload []byte, expectedVersion *int64) (Stat, error) {
 	now := c.clock.NowMillis()
 	if value, ok := c.data[key]; ok {
 		if expectedVersion != nil && *expectedVersion != value.Stat.Version {
@@ -49,7 +49,7 @@ func (c memoryClient) Put(key string, payload []byte, expectedVersion *int64) (S
 	}
 }
 
-func (c memoryClient) Delete(key string, expectedVersion *int64) error {
+func (c *memoryClient) Delete(key string, expectedVersion *int64) error {
 	if value, ok := c.data[key]; ok {
 		if expectedVersion != nil && *expectedVersion != value.Stat.Version {
 			return ErrorBadVersion
@@ -61,7 +61,7 @@ func (c memoryClient) Delete(key string, expectedVersion *int64) error {
 	}
 }
 
-func (c memoryClient) DeleteRange(minKeyInclusive string, maxKeyExclusive string) error {
+func (c *memoryClient) DeleteRange(minKeyInclusive string, maxKeyExclusive string) error {
 	for key := range c.data {
 		if minKeyInclusive <= key && key < maxKeyExclusive {
 			_ = c.Delete(key, nil)
@@ -70,7 +70,7 @@ func (c memoryClient) DeleteRange(minKeyInclusive string, maxKeyExclusive string
 	return nil
 }
 
-func (c memoryClient) Get(key string) (Value, error) {
+func (c *memoryClient) Get(key string) (Value, error) {
 	if value, ok := c.data[key]; ok {
 		return value, nil
 	} else {
@@ -78,7 +78,7 @@ func (c memoryClient) Get(key string) (Value, error) {
 	}
 }
 
-func (c memoryClient) GetRange(minKeyInclusive string, maxKeyExclusive string) ([]string, error) {
+func (c *memoryClient) GetRange(minKeyInclusive string, maxKeyExclusive string) ([]string, error) {
 	result := make([]string, 0)
 	for key := range c.data {
 		if minKeyInclusive <= key && key < maxKeyExclusive {
