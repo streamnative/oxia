@@ -54,8 +54,9 @@ func ptr(t int64) *int64 {
 }
 
 func put(t *testing.T, client Client, key string) {
-	_, err := client.Put(key, payload0, nil)
-	assert.ErrorIs(t, nil, err)
+	c := client.Put(key, payload0, nil)
+	response := <-c
+	assert.ErrorIs(t, nil, response.Err)
 }
 
 func TestClose(t *testing.T) {
@@ -73,10 +74,11 @@ func TestPutNew(t *testing.T) {
 		{ptr(1), Stat{}, ErrorBadVersion},
 	}
 	runTests(items, func(client Client, item putItem) {
-		stat, err := client.Put(key, payload1, item.version)
+		c := client.Put(key, payload1, item.version)
+		response := <-c
 
-		assert.Equal(t, item.stat, stat)
-		assert.ErrorIs(t, item.err, err)
+		assert.Equal(t, item.stat, response.Stat)
+		assert.ErrorIs(t, item.err, response.Err)
 	})
 }
 
@@ -89,10 +91,11 @@ func TestPutExisting(t *testing.T) {
 	runTests(items, func(client Client, item putItem) {
 		put(t, client, key)
 
-		stat, err := client.Put(key, payload1, item.version)
+		c := client.Put(key, payload1, item.version)
+		response := <-c
 
-		assert.Equal(t, item.stat, stat)
-		assert.ErrorIs(t, item.err, err)
+		assert.Equal(t, item.stat, response.Stat)
+		assert.ErrorIs(t, item.err, response.Err)
 	})
 }
 
@@ -103,7 +106,8 @@ func TestDeleteMissing(t *testing.T) {
 		{ptr(1), ErrorKeyNotFound},
 	}
 	runTests(items, func(client Client, item deleteItem) {
-		err := client.Delete(key, item.version)
+		c := client.Delete(key, item.version)
+		err := <-c
 
 		assert.ErrorIs(t, item.err, err)
 	})
@@ -118,7 +122,8 @@ func TestDeleteExisting(t *testing.T) {
 	runTests(items, func(client Client, item deleteItem) {
 		put(t, client, key)
 
-		err := client.Delete(key, item.version)
+		c := client.Delete(key, item.version)
+		err := <-c
 
 		assert.ErrorIs(t, item.err, err)
 	})
@@ -130,23 +135,26 @@ func TestDeleteRange(t *testing.T) {
 		put(t, client, "/b")
 		put(t, client, "/c")
 
-		err := client.DeleteRange("/b", "/c")
+		c1 := client.DeleteRange("/b", "/c")
+		err := <-c1
 		assert.ErrorIs(t, err, nil)
 
-		keys, err := client.GetRange("/a", "/d")
+		c2 := client.GetRange("/a", "/d")
+		response := <-c2
 
-		sort.Strings(keys)
-		assert.Equal(t, []string{"/a", "/c"}, keys)
-		assert.ErrorIs(t, nil, err)
+		sort.Strings(response.Keys)
+		assert.Equal(t, []string{"/a", "/c"}, response.Keys)
+		assert.ErrorIs(t, nil, response.Err)
 	})
 }
 
 func TestGetMissing(t *testing.T) {
 	runTest(func(client Client) {
-		value, err := client.Get(key)
+		c := client.Get(key)
+		response := <-c
 
-		assert.Equal(t, Value{}, value)
-		assert.ErrorIs(t, ErrorKeyNotFound, err)
+		assert.Equal(t, Value{}, response.Value)
+		assert.ErrorIs(t, ErrorKeyNotFound, response.Err)
 	})
 }
 
@@ -154,10 +162,11 @@ func TestGetExisting(t *testing.T) {
 	runTest(func(client Client) {
 		put(t, client, key)
 
-		value, err := client.Get(key)
+		c := client.Get(key)
+		response := <-c
 
-		assert.Equal(t, Value{payload0, Stat{1, 1, 1}}, value)
-		assert.ErrorIs(t, nil, err)
+		assert.Equal(t, Value{payload0, Stat{1, 1, 1}}, response.Value)
+		assert.ErrorIs(t, nil, response.Err)
 	})
 }
 
@@ -167,9 +176,10 @@ func TestGetRange(t *testing.T) {
 		put(t, client, "/b")
 		put(t, client, "/c")
 
-		keys, err := client.GetRange("/b", "/c")
+		c := client.GetRange("/b", "/c")
+		response := <-c
 
-		assert.Equal(t, []string{"/b"}, keys)
-		assert.ErrorIs(t, nil, err)
+		assert.Equal(t, []string{"/b"}, response.Keys)
+		assert.ErrorIs(t, nil, response.Err)
 	})
 }
