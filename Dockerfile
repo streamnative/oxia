@@ -19,6 +19,6 @@ FROM alpine:3.16.1
 RUN mkdir /oxia
 WORKDIR /oxia
 
-COPY --from=build /oxia-src/oxia /oxia/bin/oxia
+COPY --from=build /oxia-src/bin/oxia /oxia/bin/oxia
 ENV PATH=$PATH:/oxia/bin
 
