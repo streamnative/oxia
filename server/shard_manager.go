@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
@@ -163,8 +164,7 @@ func sendRequestAndProcessResponse[RESP any](s *shardManager, target string, sen
 	go func() {
 		ctx := context.Background()
 		ctx = metadata.AppendToOutgoingContext(ctx,
-			"shard", string(s.shard),
-			"source_node", s.identityAddress)
+			metadataShardId, fmt.Sprintf("%d", s.shard))
 		resp, err2 := send(ctx, rpc)
 		if err2 != nil {
 			log.Error().Err(err2).Msg("Got error sending truncateRequest")
