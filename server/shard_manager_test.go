@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-const shard = "0000-000F"
+const shard = 1
 
 func TestNewShardManager(t *testing.T) {
 	wal := NewInMemoryWal(shard)

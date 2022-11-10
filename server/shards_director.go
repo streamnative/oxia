@@ -6,7 +6,6 @@ import (
 	"github.com/rs/zerolog/log"
 	"io"
 	"oxia/common"
-	"oxia/proto"
 	"sync"
 )
 
@@ -15,17 +14,15 @@ type ShardsDirector interface {
 
 	//GetShardsAssignments(callback func(*proto.ShardsAssignments))
 
-	GetManager(shardId ShardId, create bool) (ShardManager, error)
+	GetManager(shardId uint32, create bool) (ShardManager, error)
 }
-
-type ShardId string
 
 type shardsDirector struct {
 	mutex *sync.Mutex
 	cond  *sync.Cond
 
 	//assignments   *proto.ShardsAssignments
-	shardManagers map[ShardId]ShardManager
+	shardManagers map[uint32]ShardManager
 	identityAddr  string
 
 	log zerolog.Logger
@@ -38,7 +35,7 @@ func NewShardsDirector(identityAddr string) ShardsDirector {
 		cond:  sync.NewCond(mutex),
 
 		identityAddr:  identityAddr,
-		shardManagers: make(map[ShardId]ShardManager),
+		shardManagers: make(map[uint32]ShardManager),
 		log: log.With().
 			Str("component", "shards-director").
 			Logger(),
@@ -64,7 +61,7 @@ func NewShardsDirector(identityAddr string) ShardsDirector {
 //	}
 //}
 
-func (s *shardsDirector) GetManager(shardId ShardId, create bool) (ShardManager, error) {
+func (s *shardsDirector) GetManager(shardId uint32, create bool) (ShardManager, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -82,9 +79,10 @@ func (s *shardsDirector) GetManager(shardId ShardId, create bool) (ShardManager,
 		s.shardManagers[shardId] = sm
 		return sm, nil
 	} else {
-		s.log.Debug().Str("shard", string(shardId)).
+		s.log.Debug().
+			Uint32("shard", shardId).
 			Msg("This node is not hosting shard")
-		return nil, errors.Errorf("This node is not leader for shard %s", shardId)
+		return nil, errors.Errorf("This node is not leader for shard %d", shardId)
 	}
 
 }
@@ -97,23 +95,9 @@ func (s *shardsDirector) Close() error {
 		if err := manager.Close(); err != nil {
 			s.log.Error().
 				Err(err).
-				Str("shard", string(shard)).
+				Uint32("shard", shard).
 				Msg("Failed to shutdown leader controller")
 		}
 	}
 	return nil
-}
-
-func (s *shardsDirector) shouldLead(shard *proto.ShardStatus) bool {
-	return true // shard.Leader.InternalUrl == s.identityAddr
-}
-
-func (s *shardsDirector) shouldFollow(shard *proto.ShardStatus) bool {
-	//for _, f := range shard.Followers {
-	//	if f.InternalUrl == s.identityAddr {
-	//		return true
-	//	}
-	//}
-
-	return false
 }

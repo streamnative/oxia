@@ -20,9 +20,9 @@ type ShardManager interface {
 	Fence(req *proto.FenceRequest) (*proto.FenceResponse, error)
 	BecomeLeader(*proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error)
 	AddFollower(*proto.AddFollowerRequest) (*proto.CoordinationEmpty, error)
-	Truncate(string, *proto.TruncateRequest) (*proto.TruncateResponse, error)
+	Truncate(*proto.TruncateRequest) (*proto.TruncateResponse, error)
 	Write(op *proto.PutOp) (*proto.Stat, error)
-	AddEntries(string, proto.OxiaLogReplication_AddEntriesServer) (any, error)
+	AddEntries(proto.OxiaLogReplication_AddEntriesServer) error
 	// Later
 	PrepareReconfig(*proto.PrepareReconfigRequest) (*proto.PrepareReconfigResponse, error)
 	Snapshot(*proto.SnapshotRequest) (*proto.SnapshotResponse, error)
@@ -76,10 +76,9 @@ type cursor struct {
 }
 
 type shardManager struct {
-	shard              ShardId
+	shard              uint32
 	epoch              uint64
 	replicationFactor  uint32
-	leader             string
 	commitIndex        EntryId
 	headIndex          EntryId
 	followCursor       map[string]*cursor
@@ -96,12 +95,11 @@ type shardManager struct {
 	log             zerolog.Logger
 }
 
-func NewShardManager(shard ShardId, identityAddress string, pool common.ClientPool, wal Wal, kv KeyValueStore) (ShardManager, error) {
+func NewShardManager(shard uint32, identityAddress string, pool common.ClientPool, wal Wal, kv KeyValueStore) (ShardManager, error) {
 	sm := &shardManager{
 		shard:              shard,
 		epoch:              0,
 		replicationFactor:  0,
-		leader:             "",
 		commitIndex:        EntryId{},
 		headIndex:          EntryId{},
 		followCursor:       make(map[string]*cursor),
@@ -117,7 +115,7 @@ func NewShardManager(shard ShardId, identityAddress string, pool common.ClientPo
 		closing:         false,
 		log: log.With().
 			Str("component", "shard-manager").
-			Str("shard", string(shard)).
+			Uint32("shard", shard).
 			Logger(),
 	}
 	entryId, err := wal.GetHighestEntryOfEpoch(^uint64(0))
@@ -353,7 +351,6 @@ func (s *shardManager) becomeLeaderSync(req *proto.BecomeLeaderRequest) (*proto.
 		return nil, err
 	}
 	s.status = Leader
-	s.leader = s.identityAddress
 	s.replicationFactor = req.GetReplicationFactor()
 	s.followCursor = s.getCursors(req.GetFollowerMaps())
 
@@ -369,9 +366,9 @@ func (s *shardManager) becomeLeaderSync(req *proto.BecomeLeaderRequest) (*proto.
 	}
 	return &proto.BecomeLeaderResponse{Epoch: req.GetEpoch()}, nil
 }
-func (s *shardManager) Truncate(source string, req *proto.TruncateRequest) (*proto.TruncateResponse, error) {
+func (s *shardManager) Truncate(req *proto.TruncateRequest) (*proto.TruncateResponse, error) {
 	response := enqueueCommandAndWaitForResponse[*proto.TruncateResponse](s, func() (*proto.TruncateResponse, error) {
-		resp, err := s.truncateSync(source, req)
+		resp, err := s.truncateSync(req)
 		return resp, err
 	})
 	return response, nil
@@ -385,7 +382,7 @@ has been selected as a follower. It truncates its log
 to the indicates entry id, updates its epoch and changes
 to a Follower.
 */
-func (s *shardManager) truncateSync(source string, req *proto.TruncateRequest) (*proto.TruncateResponse, error) {
+func (s *shardManager) truncateSync(req *proto.TruncateRequest) (*proto.TruncateResponse, error) {
 	if err := s.checkStatus(Fenced); err != nil {
 		return nil, err
 	}
@@ -394,7 +391,6 @@ func (s *shardManager) truncateSync(source string, req *proto.TruncateRequest) (
 	}
 	s.status = Follower
 	s.epoch = req.Epoch
-	s.leader = source
 	headEntryId, err := s.wal.TruncateLog(EntryIdFromProto(req.HeadIndex))
 	if err != nil {
 		return nil, err
@@ -560,7 +556,7 @@ A leader node handles an add entry response
 	The leader updates the follow cursor last_confirmed
 	entry id, it also may advance the commit index.
 
-	An entry is committed when all of the following
+	An entry is committed when all the following
 	has occurred:
 	- it has reached majority quorum
 	- the entire log prefix has reached majority quorum
@@ -617,24 +613,25 @@ func (s *shardManager) addEntryResponseSync(follower string, response *proto.Add
 	return nil
 }
 
-func (s *shardManager) AddEntries(source string, srv proto.OxiaLogReplication_AddEntriesServer) (any, error) {
+func (s *shardManager) AddEntries(srv proto.OxiaLogReplication_AddEntriesServer) error {
 	for {
 		req, err := srv.Recv()
 		if err != nil {
-			return nil, err
+			return err
 		}
 		response := enqueueCommandAndWaitForResponse[*proto.AddEntryResponse](s, func() (*proto.AddEntryResponse, error) {
-			resp, err2 := s.addEntrySync(source, req)
-			return resp, err2
+			if resp, err := s.addEntrySync(req); err != nil {
+				return nil, err
+			} else {
+				srv.Send(resp)
+				return nil, nil
+			}
 		})
-		err = srv.Send(response)
-		if err != nil {
-			return nil, err
-		}
+		return srv.Send(response)
 	}
 }
 
-func (s *shardManager) addEntrySync(source string, req *proto.AddEntryRequest) (*proto.AddEntryResponse, error) {
+func (s *shardManager) addEntrySync(req *proto.AddEntryRequest) (*proto.AddEntryResponse, error) {
 	if req.GetEpoch() <= s.epoch {
 		/*
 		 A follower node rejects an entry from the leader.
@@ -654,7 +651,7 @@ func (s *shardManager) addEntrySync(source string, req *proto.AddEntryRequest) (
 		}, nil
 	}
 	if s.status != Follower && s.status != Fenced {
-		return nil, status.Errorf(codes.FailedPrecondition, "AddEntry request from %s when status = %+v", source, s.status)
+		return nil, status.Errorf(codes.FailedPrecondition, "AddEntry request when status = %+v", s.status)
 	}
 
 	/*
@@ -666,7 +663,6 @@ func (s *shardManager) addEntrySync(source string, req *proto.AddEntryRequest) (
 	*/
 	s.status = Follower
 	s.epoch = req.Epoch
-	s.leader = source
 	err := s.wal.Append(req.GetEntry())
 	if err != nil {
 		return nil, err
