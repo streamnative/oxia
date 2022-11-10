@@ -623,8 +623,7 @@ func (s *shardManager) AddEntries(srv proto.OxiaLogReplication_AddEntriesServer)
 			if resp, err := s.addEntrySync(req); err != nil {
 				return nil, err
 			} else {
-				srv.Send(resp)
-				return nil, nil
+				return resp, nil
 			}
 		})
 		return srv.Send(response)
