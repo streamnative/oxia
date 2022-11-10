@@ -1,5 +1,5 @@
 .idea
-oxia
+oxia/cmd
 oxia-client
 **/*.pb.go
 .DS_Store
