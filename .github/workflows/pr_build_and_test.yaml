@@ -1,19 +1,16 @@
-name: 'Build & Test'
-
-on:
-  pull_request:
-    branches: ['*']
-  push:
-    branches: ['main']
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
+name: "Build / Test"
+on: [pull_request]
+#  push:
+#    branches: ['main']
+#
+#concurrency:
+#  group: ${{ github.workflow }}-${{ github.ref }}
+#  cancel-in-progress: true
+#
 
 jobs:
   unit-tests:
-    name: 'Build & Test'
+    name: Unit tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
