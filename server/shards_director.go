@@ -13,7 +13,7 @@ import (
 type ShardsDirector interface {
 	io.Closer
 
-	GetShardsAssignments(callback func(*proto.ShardsAssignments))
+	//GetShardsAssignments(callback func(*proto.ShardsAssignments))
 
 	GetManager(shardId ShardId, create bool) (ShardManager, error)
 }
@@ -24,7 +24,7 @@ type shardsDirector struct {
 	mutex *sync.Mutex
 	cond  *sync.Cond
 
-	assignments   *proto.ShardsAssignments
+	//assignments   *proto.ShardsAssignments
 	shardManagers map[ShardId]ShardManager
 	identityAddr  string
 
@@ -45,24 +45,24 @@ func NewShardsDirector(identityAddr string) ShardsDirector {
 	}
 }
 
-func (s *shardsDirector) GetShardsAssignments(callback func(*proto.ShardsAssignments)) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	if s.assignments != nil {
-		callback(s.assignments)
-	}
-
-	oldAssignments := s.assignments
-	for {
-		s.cond.Wait()
-
-		if oldAssignments != s.assignments {
-			callback(s.assignments)
-			oldAssignments = s.assignments
-		}
-	}
-}
+//func (s *shardsDirector) GetShardsAssignments(callback func(*proto.ShardsAssignments)) {
+//	s.mutex.Lock()
+//	defer s.mutex.Unlock()
+//
+//	if s.assignments != nil {
+//		callback(s.assignments)
+//	}
+//
+//	oldAssignments := s.assignments
+//	for {
+//		s.cond.Wait()
+//
+//		if oldAssignments != s.assignments {
+//			callback(s.assignments)
+//			oldAssignments = s.assignments
+//		}
+//	}
+//}
 
 func (s *shardsDirector) GetManager(shardId ShardId, create bool) (ShardManager, error) {
 	s.mutex.Lock()

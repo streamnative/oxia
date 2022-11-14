@@ -4,11 +4,10 @@ import (
 	"context"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	pb "google.golang.org/protobuf/proto"
 	"oxia/common"
 	"oxia/proto"
 	"time"
-
-	pb "google.golang.org/protobuf/proto"
 )
 
 var (
@@ -43,32 +42,51 @@ func main(cmd *cobra.Command, args []string) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	gsaClient, err := c.GetShardsAssignments(ctx, &proto.Empty{})
+	gsaClient, err := c.ShardAssignments(ctx, &proto.ShardAssignmentsRequest{})
 	if err != nil {
-		log.Fatal().Err(err).Msg("GetShardsAssignments failed")
+		log.Fatal().Err(err).Msg("ShardAssignments failed")
 	}
 
 	sa, err := gsaClient.Recv()
 	if err != nil {
-		log.Fatal().Err(err).Msg("GetShardsAssignments failed")
+		log.Fatal().Err(err).Msg("ShardAssignments failed")
 	}
 
 	log.Info().
 		Interface("assignment", sa).
 		Msg("Received assignments")
 
-	r, err := c.Put(ctx, &proto.PutOp{
-		ShardId:         0,
-		Key:             "my-key",
-		Payload:         []byte("hello"),
-		ExpectedVersion: pb.Uint64(1),
-	})
-
-	if err != nil {
-		log.Error().Err(err).Msg("Put operation failed")
+	if res, err := c.Batch(ctx, &proto.BatchRequest{
+		ShardId: pb.Uint32(0),
+		Puts: []*proto.PutRequest{{
+			Key:             "a",
+			Payload:         []byte("Hello world"),
+			ExpectedVersion: nil,
+		}},
+	}); err != nil {
+		log.Fatal().Err(err).Msg("Put operation failed")
 	} else {
 		log.Info().
-			Interface("res", r).
-			Msg("Operation succeeded")
+			Interface("status", res.Puts[0].Status).
+			Interface("stat", res.Puts[0].Stat).
+			Msg("Put operation completed")
+	}
+
+	// Try to read it back
+
+	if res, err := c.Batch(ctx, &proto.BatchRequest{
+		ShardId: pb.Uint32(0),
+		Gets: []*proto.GetRequest{{
+			Key:            "a",
+			IncludePayload: true,
+		}},
+	}); err != nil {
+		log.Fatal().Err(err).Msg("Put operation failed")
+	} else {
+		log.Info().
+			Interface("status", res.Gets[0].Status).
+			Interface("stat", res.Gets[0].Stat).
+			Str("value", string(res.Gets[0].Payload)).
+			Msg("Get operation completed")
 	}
 }

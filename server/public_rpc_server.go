@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
@@ -9,11 +8,10 @@ import (
 	"google.golang.org/grpc"
 	"net"
 	"oxia/proto"
-	"strconv"
 )
 
 type PublicRpcServer struct {
-	proto.UnimplementedClientAPIServer
+	proto.UnimplementedOxiaClientServer
 
 	shardsDirector ShardsDirector
 
@@ -35,7 +33,7 @@ func NewPublicRpcServer(port int, advertisedPublicAddress string, shardsDirector
 	}
 
 	res.grpcServer = grpc.NewServer()
-	proto.RegisterClientAPIServer(res.grpcServer, res)
+	proto.RegisterOxiaClientServer(res.grpcServer, res)
 	res.log.Info().
 		Str("bindAddress", listener.Addr().String()).
 		Str("advertisedAddress", advertisedPublicAddress).
@@ -50,31 +48,31 @@ func NewPublicRpcServer(port int, advertisedPublicAddress string, shardsDirector
 	return res, nil
 }
 
-func (s *PublicRpcServer) GetShardsAssignments(_ *proto.Empty, out proto.ClientAPI_GetShardsAssignmentsServer) error {
-	s.shardsDirector.GetShardsAssignments(func(assignments *proto.ShardsAssignments) {
-		out.SendMsg(assignments)
-	})
-	return nil
-}
-
-func (s *PublicRpcServer) Put(ctx context.Context, putOp *proto.PutOp) (*proto.Stat, error) {
-	// TODO make shard ID string in client rpc
-	slc, err := s.shardsDirector.GetManager(ShardId(strconv.FormatInt(int64(putOp.GetShardId()), 10)), false)
-	if err != nil {
-		return nil, err
-	}
-
-	return slc.Write(putOp)
-}
-
-func (s *PublicRpcServer) Get(ctx context.Context, getOp *proto.GetOp) (*proto.GetResult, error) {
-	_, err := s.shardsDirector.GetManager(ShardId(strconv.FormatInt(int64(getOp.GetShardId()), 10)), false)
-	if err != nil {
-		return nil, err
-	}
-	// TODO Read from KVStore directly? Only if leader
-	return nil, nil
-}
+//func (s *PublicRpcServer) GetShardsAssignments(_ *proto.Empty, out proto.ClientAPI_GetShardsAssignmentsServer) error {
+//	s.shardsDirector.GetShardsAssignments(func(assignments *proto.ShardsAssignments) {
+//		out.SendMsg(assignments)
+//	})
+//	return nil
+//}
+//
+//func (s *PublicRpcServer) Put(ctx context.Context, putOp *proto.PutOp) (*proto.Stat, error) {
+//	// TODO make shard ID string in client rpc
+//	slc, err := s.shardsDirector.GetManager(ShardId(strconv.FormatInt(int64(putOp.GetShardId()), 10)), false)
+//	if err != nil {
+//		return nil, err
+//	}
+//
+//	return slc.Write(putOp)
+//}
+//
+//func (s *PublicRpcServer) Get(ctx context.Context, getOp *proto.GetOp) (*proto.GetResult, error) {
+//	_, err := s.shardsDirector.GetManager(ShardId(strconv.FormatInt(int64(getOp.GetShardId()), 10)), false)
+//	if err != nil {
+//		return nil, err
+//	}
+//	// TODO Read from KVStore directly? Only if leader
+//	return nil, nil
+//}
 
 func (s *PublicRpcServer) Close() error {
 	s.grpcServer.GracefulStop()

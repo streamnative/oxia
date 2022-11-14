@@ -1,6 +1,6 @@
 .idea
-oxia
-oxia-client
+bin/oxia
 **/*.pb.go
 .DS_Store
 **/*.toolbox
+data

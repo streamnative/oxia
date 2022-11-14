@@ -1,7 +1,7 @@
 package server
 
 import (
-	"oxia/coordination"
+	"oxia/proto"
 	"testing"
 )
 
@@ -30,8 +30,8 @@ func initWalWithEntries(wal Wal, payloads []string) *inMemoryWal {
 		if p == "" {
 			epoch++
 		} else {
-			entry := &coordination.LogEntry{
-				EntryId: &coordination.EntryId{
+			entry := &proto.LogEntry{
+				EntryId: &proto.EntryId{
 					Epoch:  epoch,
 					Offset: offset,
 				},

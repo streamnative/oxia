@@ -98,11 +98,14 @@ func newKVPebble(factory *PebbleFactory, shardId int32) (KV, error) {
 }
 
 func (p *Pebble) Close() error {
+	if err := p.db.Flush(); err != nil {
+		return err
+	}
 	return p.db.Close()
 }
 
 func (p *Pebble) NewWriteBatch() WriteBatch {
-	return &PebbleBatch{p.db.NewBatch()}
+	return &PebbleBatch{p.db.NewIndexedBatch()}
 }
 
 func (p *Pebble) Get(key string) ([]byte, io.Closer, error) {
@@ -138,6 +141,19 @@ type PebbleBatch struct {
 	b *pebble.Batch
 }
 
+func (b *PebbleBatch) DeleteRange(lowerBound, upperBound string) error {
+	return b.b.DeleteRange([]byte(lowerBound), []byte(upperBound), pebble.NoSync)
+}
+
+func (b *PebbleBatch) KeyRangeScan(lowerBound, upperBound string) KeyIterator {
+	pbit := b.b.NewIter(&pebble.IterOptions{
+		LowerBound: []byte(lowerBound),
+		UpperBound: []byte(upperBound),
+	})
+	pbit.SeekGE([]byte(lowerBound))
+	return &PebbleIterator{pbit}
+}
+
 func (b *PebbleBatch) Close() error {
 	return b.b.Close()
 }
@@ -148,6 +164,14 @@ func (b *PebbleBatch) Put(key string, payload []byte) error {
 
 func (b *PebbleBatch) Delete(key string) error {
 	return b.b.Delete([]byte(key), pebble.NoSync)
+}
+
+func (b *PebbleBatch) Get(key string) ([]byte, io.Closer, error) {
+	value, closer, err := b.b.Get([]byte(key))
+	if errors.Is(err, pebble.ErrNotFound) {
+		err = ErrorKeyNotFound
+	}
+	return value, closer, err
 }
 
 func (b *PebbleBatch) Commit() error {

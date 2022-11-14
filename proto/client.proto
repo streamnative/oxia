@@ -1,41 +1,262 @@
+/**
+ * OxiaClient
+ */
 syntax = "proto3";
+
+package io.streamnative.oxia.proto;
 
 option go_package = "github.com/streamnative/oxia/proto";
 option java_multiple_files = true;
 
-package proto;
-
-service ClientAPI {
+/**
+ * Oxia service that allows clients to discover shard-to-server assignments and
+ * submit batches of requests.
+ *
+ * Clients should connect to a random server to discover the shard-to-server
+ * assignments and then send the actual batched requests to the appropriate
+ * shard leader. In the future, this may be handled server-side in a proxy
+ * layer to allows clients to not be concerned with sharding.
+ */
+service OxiaClient {
   /**
-   * Return the current shards -> server mapping and all the subsequent updates
+   * Gets all shard-to-server assignments as a stream. Each set of assignments
+   * in the response stream will contain all the assignments to bring the client
+   * up to date. For example, if a shard is split, the stream will return a
+   * single response containing all the new shard assignments as opposed to
+   * multiple stream responses, each containing a single shard assignment.
+   *
+   * Clients should connect to a single random server which will stream the
+   * assignments for all shards on all servers.
    */
-  rpc GetShardsAssignments(Empty) returns (stream ShardsAssignments) {}
+  rpc ShardAssignments(ShardAssignmentsRequest)
+      returns (stream ShardAssignmentsResponse);
 
-  rpc Put(PutOp) returns (Stat) {}
-
-  rpc Get(GetOp) returns (GetResult) {}
-
-
-  rpc GetNotifications(GetNotificationOp) returns (stream Notification) {}
+  /**
+   * Batches put, delete, delete_range, get and get_range requests.
+   *
+   * Clients should send this request to the shard leader. In the future,
+   * this may be handled server-side in a proxy layer.
+   */
+  rpc Batch(BatchRequest) returns (BatchResponse);
 }
 
-message Empty {
+/**
+ * A shard assignments request. Gets all shard-to-server assignments as a
+ * stream. Each set of assignments in the response stream will contain all the
+ * assignments to bring the client up to date. For example, if a shard is split,
+ * the stream will return a single response containing all the new shard
+ * assignments as opposed to multiple stream responses, each containing a single
+ * shard assignment.
+ */
+message ShardAssignmentsRequest {
+  // Placeholder empty message. `namespace` may be added in the future.
 }
 
-message ShardsAssignments {
-  repeated ShardAssignment shards = 1;
+/**
+ * The response to a shard assignments request.
+ */
+message ShardAssignmentsResponse {
+  // All assignments in the response stream will contain all the
+  // assignments to bring the client up to date. For example, if a shard is
+  // split, the stream will return a single response containing all the new
+  // shard assignments as opposed to multiple stream responses, each containing
+  // a single shard assignment.
+  repeated ShardAssignment assignments = 1;
+
+  // Indicates the mechanism by which the keys are assigned to the individual
+  // shards.
+  ShardKeyRouter shard_key_router = 2;
 }
 
+/**
+ * The assignment of a shard to a server.
+ */
 message ShardAssignment {
+  // The shard id
   uint32 shard_id = 1;
+
+  // The shard leader, e.g. `host:port`
   string leader = 2;
+
+  // There could be multiple ways to describe the boundaries of a shard
+  oneof shard_boundaries {
+    Int32HashRange int32_hash_range = 3;
+  }
 }
 
+enum ShardKeyRouter {
+  UNKNOWN = 0;
+
+  XXHASH_64 = 1;
+}
+
+/**
+ * Represents a range of hash values [min, max)
+ */
+message Int32HashRange {
+  // The minimum inclusive hash that the shard can contain
+  fixed32 min_hash_inclusive = 1;
+
+  // The maximum exclusive hash that the shard can contain
+  fixed32 max_hash_exclusive = 2;
+}
+
+/**
+ * A batch request. Applies the batches of requests. Requests are processed in
+ * positional order within batches and the batch types are processed in the
+ * following order: puts, deletes, delete_ranges, gets, get_ranges.
+ */
+message BatchRequest {
+  // The shard id. This is optional allow for support for server-side hashing
+  // and proxying in the future.
+  optional uint32 shard_id = 1;
+  // The put requests
+  repeated PutRequest puts = 2;
+  // The delete requests
+  repeated DeleteRequest deletes = 3;
+  // The delete range requests
+  repeated RangeRequest delete_ranges = 4;
+  // The get requests
+  repeated GetRequest gets = 5;
+  // The get range requests
+  repeated RangeRequest get_ranges = 6;
+}
+
+/**
+ * The response to a batch request. Responses of each type respect the order
+ * of the original requests.
+ */
+message BatchResponse {
+  // The put responses
+  repeated PutResponse puts = 1;
+  // The delete responses
+  repeated DeleteResponse deletes = 2;
+  // The delete range responses
+  repeated DeleteRangeResponse delete_ranges = 3;
+  // The get responses
+  repeated GetResponse gets = 4;
+  // The get range responses
+  repeated GetRangeResponse get_ranges = 5;
+}
+
+/**
+ * A put request. Persists the specified key and payload
+ */
+message PutRequest {
+  // The key
+  string key = 1;
+  // The payload
+  bytes payload = 2;
+  // An optional expected version. The put will fail if the actual version
+  // does not match
+  optional int64 expected_version = 3;
+}
+
+/**
+ * The response to a put request.
+ */
+message PutResponse {
+  // Includes the error or OK
+  Status status = 1;
+  // The stat if the put was successful
+  Stat stat = 2;
+}
+
+/**
+ * A delete request. Deletes the specified key.
+ */
+message DeleteRequest {
+  // The key
+  string key = 1;
+  // An optional expected version. The delete will fail if the actual version
+  // does not match
+  optional int64 expected_version = 2;
+}
+
+/**
+ * The response to a delete request or an item in a response to the
+ * delete range request.
+ */
+message DeleteResponse {
+  // Includes the error or OK
+  Status status = 1;
+}
+
+/**
+ * A get request. Gets the stat and optionally the payload for the specified
+ * key.
+ */
+message GetRequest {
+  // The key
+  string key = 1;
+  // Specifies whether the response should include the payload
+  bool include_payload = 2;
+}
+
+/**
+ * The response to a get request or an item in a response to the get range
+ * request.
+ */
+message GetResponse {
+  // Includes the error or OK
+  Status status = 1;
+  // The stat of the entry
+  Stat stat = 2;
+  // The payload, if it was requested and there was no error
+  optional bytes payload = 3;
+}
+
+/**
+ * Input to a delete range or get range request.
+ */
+message RangeRequest {
+  // The start of the range, inclusive
+  string start_inclusive = 1;
+  // The end of the range, exclusive
+  string end_exclusive = 2;
+}
+
+/**
+ * The response for a delete range request.
+ */
+message DeleteRangeResponse {
+  // Includes the error or OK
+  Status status = 1;
+}
+
+/**
+ * The response to a get range request.
+ */
+message GetRangeResponse {
+  // All the keys found within the specified range
+  repeated string keys = 1;
+}
+
+/**
+ * Stats about the current version of a key.
+ */
 message Stat {
-  uint64 version = 1;
+  // The current version of the key
+  int64 version = 1;
+  // The creation timestamp of the first version of the key
   fixed64 created_timestamp = 2;
+  // The modified timestamp of the current version of the key
   fixed64 modified_timestamp = 3;
 }
+
+/**
+ * Represents all the possible status.
+ */
+enum Status {
+  // Operation was successful
+  OK = 0;
+  // The key was not found
+  KEY_NOT_FOUND = 1;
+  // The existing version does not match the expected version
+  BAD_VERSION = 2;
+}
+
+/// TODO: This is for compatibility with existing temporary code
 
 message PutOp {
   uint32 shard_id = 1;
@@ -47,29 +268,4 @@ message PutOp {
 message GetOp {
   uint32 shard_id = 1;
   string key = 2;
-}
-
-message GetResult {
-  Stat stat = 1;
-  bytes payload = 2;
-}
-
-message GetNotificationOp {
-  uint32 shard_id = 1;
-  uint64 first_entry_id = 2;
-  string key_prefix = 3;
-  bool include_stat = 4;
-}
-
-enum OperationType {
-  INVALID = 0;
-  PUT = 1;
-  DELETE = 2;
-}
-
-message Notification {
-  uint64 entry_id = 1;
-  string key = 2;
-  OperationType operation_type = 3;
-  Stat stat = 4;
 }
