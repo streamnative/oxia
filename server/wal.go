@@ -67,16 +67,19 @@ func (w *inMemoryWal) ReadOne(id EntryId) (*proto.LogEntry, error) {
 
 func (w *inMemoryWal) ReadSync(previousCommittedEntryId EntryId, lastCommittedEntryId EntryId, callback func(*proto.LogEntry) error) error {
 	index := w.index[previousCommittedEntryId]
-	for index+1 < len(w.log) {
-		index++
+	for index < len(w.log) {
 		entry := w.log[index]
-		if entry.EntryId.Epoch > lastCommittedEntryId.epoch || (entry.EntryId.Epoch == lastCommittedEntryId.epoch && entry.EntryId.Offset > lastCommittedEntryId.offset) {
+		if entry.EntryId.Epoch > lastCommittedEntryId.epoch ||
+			(entry.EntryId.Epoch == lastCommittedEntryId.epoch &&
+				entry.EntryId.Offset > lastCommittedEntryId.offset) {
 			break
 		}
 		err2 := callback(entry)
 		if err2 != nil {
 			return err2
 		}
+
+		index++
 	}
 	return nil
 }
