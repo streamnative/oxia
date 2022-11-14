@@ -23,13 +23,13 @@ type Wal interface {
 }
 
 type inMemoryWal struct {
-	shard     ShardId
+	shard     uint32
 	log       []*proto.LogEntry
 	index     map[EntryId]int
 	callbacks []func(*proto.LogEntry) error
 }
 
-func NewInMemoryWal(shard ShardId) Wal {
+func NewInMemoryWal(shard uint32) Wal {
 	return &inMemoryWal{
 		shard:     shard,
 		log:       make([]*proto.LogEntry, 0, 10000),
