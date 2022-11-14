@@ -124,6 +124,9 @@ func (fc *followerController) Epoch() uint64 {
 }
 
 func (fc *followerController) Fence(req *proto.FenceRequest) (*proto.FenceResponse, error) {
+	fc.Lock()
+	defer fc.Unlock()
+
 	if err := checkEpochLaterIn(req, fc.epoch); err != nil {
 		return nil, err
 	}
