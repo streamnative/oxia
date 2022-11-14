@@ -180,7 +180,7 @@ func (fc *followerController) addEntry(req *proto.AddEntryRequest) (*proto.AddEn
 	if fc.status != Follower && fc.status != Fenced {
 		return nil, errors.Wrapf(ErrorInvalidStatus, "AddEntry request when status = %+v", fc.status)
 	}
-	if req.GetEpoch() != fc.epoch {
+	if req.GetEpoch() < fc.epoch {
 		/*
 		 A follower node rejects an entry from the leader.
 

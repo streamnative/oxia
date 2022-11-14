@@ -84,20 +84,20 @@ func TestFollower(t *testing.T) {
 	assert.Equal(t, Follower, fc.Status())
 	assert.EqualValues(t, 1, fc.Epoch())
 
-	// Try to add entry with higher epoch
-	stream.AddRequest(createAddRequest(t, 2, 0, map[string]string{"a": "4", "b": "5"}, &proto.EntryId{
+	// Try to add entry with higher epoch. This should succeed
+	stream.AddRequest(createAddRequest(t, 3, 0, map[string]string{"a": "4", "b": "5"}, &proto.EntryId{
 		Epoch:  0,
 		Offset: 0,
 	}))
 
 	// Wait for response
 	response = stream.GetResponse()
-	assert.EqualValues(t, 2, response.Epoch)
-	assert.Nil(t, response.EntryId)
-	assert.True(t, response.InvalidEpoch)
+	assert.EqualValues(t, 3, response.Epoch)
+	assert.Equal(t, &proto.EntryId{Epoch: 3, Offset: 0}, response.EntryId)
+	assert.False(t, response.InvalidEpoch)
 
 	assert.Equal(t, Follower, fc.Status())
-	assert.EqualValues(t, 1, fc.Epoch())
+	assert.EqualValues(t, 3, fc.Epoch())
 
 	// Double-check the values in the DB
 	dbRes, err := fc.(*followerController).db.ProcessBatch(&proto.BatchRequest{Gets: []*proto.GetRequest{{
@@ -124,18 +124,6 @@ func TestReadingUpToCommitIndex(t *testing.T) {
 
 	fc, err := NewFollowerController(shardId, wal, kvFactory)
 	assert.NoError(t, err)
-
-	// Follower needs to be in "Fenced" state to receive a Truncate request
-	tr, err := fc.Truncate(&proto.TruncateRequest{
-		Epoch: 1,
-		HeadIndex: &proto.EntryId{
-			Epoch:  0,
-			Offset: 0,
-		},
-	})
-	assert.ErrorIs(t, err, ErrorInvalidStatus)
-	assert.Nil(t, tr)
-	assert.Equal(t, NotMember, fc.Status())
 
 	_, err = fc.Fence(&proto.FenceRequest{Epoch: 1})
 	assert.NoError(t, err)
@@ -246,6 +234,7 @@ func TestEpochInStateChanges(t *testing.T) {
 	})
 	assert.Nil(t, tr)
 	assert.ErrorIs(t, err, ErrorInvalidEpoch)
+	assert.EqualValues(t, 1, fc.Epoch())
 	assert.Equal(t, Fenced, fc.Status())
 
 	_, err = fc.Truncate(&proto.TruncateRequest{
@@ -256,7 +245,32 @@ func TestEpochInStateChanges(t *testing.T) {
 		},
 	})
 	assert.NoError(t, err)
+	assert.EqualValues(t, 1, fc.Epoch())
 	assert.Equal(t, Follower, fc.Status())
+
+	assert.NoError(t, fc.Close())
+	assert.NoError(t, kvFactory.Close())
+}
+
+func TestIgnoreInvalidStates(t *testing.T) {
+	var shardId uint32
+	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
+	wal := NewInMemoryWal(ShardId(fmt.Sprint(shardId)))
+
+	fc, err := NewFollowerController(shardId, wal, kvFactory)
+	assert.NoError(t, err)
+
+	// Follower needs to be in "Fenced" state to receive a Truncate request
+	tr, err := fc.Truncate(&proto.TruncateRequest{
+		Epoch: 1,
+		HeadIndex: &proto.EntryId{
+			Epoch:  0,
+			Offset: 0,
+		},
+	})
+	assert.ErrorIs(t, err, ErrorInvalidStatus)
+	assert.Nil(t, tr)
+	assert.Equal(t, NotMember, fc.Status())
 
 	assert.NoError(t, fc.Close())
 	assert.NoError(t, kvFactory.Close())
