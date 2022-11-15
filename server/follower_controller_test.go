@@ -1,7 +1,6 @@
 package server
 
 import (
-	"fmt"
 	"github.com/stretchr/testify/assert"
 	pb "google.golang.org/protobuf/proto"
 	"oxia/proto"
@@ -17,7 +16,7 @@ var testKVOptions = &kv.KVFactoryOptions{
 func TestFollower(t *testing.T) {
 	var shardId uint32
 	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
-	wal := NewInMemoryWal(ShardId(fmt.Sprint(shardId)))
+	wal := NewInMemoryWal(shardId)
 
 	fc, err := NewFollowerController(shardId, wal, kvFactory)
 	assert.NoError(t, err)
@@ -100,7 +99,7 @@ func TestFollower(t *testing.T) {
 	assert.EqualValues(t, 3, fc.Epoch())
 
 	// Double-check the values in the DB
-	dbRes, err := fc.(*followerController).db.ProcessBatch(&proto.BatchRequest{Gets: []*proto.GetRequest{{
+	dbRes, err := fc.(*followerController).db.ProcessRead(&proto.ReadRequest{Gets: []*proto.GetRequest{{
 		Key:            "a",
 		IncludePayload: true}, {
 		Key:            "b",
@@ -120,7 +119,7 @@ func TestFollower(t *testing.T) {
 func TestReadingUpToCommitIndex(t *testing.T) {
 	var shardId uint32
 	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
-	wal := NewInMemoryWal(ShardId(fmt.Sprint(shardId)))
+	wal := NewInMemoryWal(shardId)
 
 	fc, err := NewFollowerController(shardId, wal, kvFactory)
 	assert.NoError(t, err)
@@ -183,7 +182,7 @@ func TestReadingUpToCommitIndex(t *testing.T) {
 	}, r2.EntryId)
 	assert.False(t, r2.InvalidEpoch)
 
-	dbRes, err := fc.(*followerController).db.ProcessBatch(&proto.BatchRequest{Gets: []*proto.GetRequest{{
+	dbRes, err := fc.(*followerController).db.ProcessRead(&proto.ReadRequest{Gets: []*proto.GetRequest{{
 		Key:            "a",
 		IncludePayload: true}, {
 		Key:            "b",
@@ -205,7 +204,7 @@ func TestReadingUpToCommitIndex(t *testing.T) {
 func TestEpochInStateChanges(t *testing.T) {
 	var shardId uint32
 	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
-	wal := NewInMemoryWal(ShardId(fmt.Sprint(shardId)))
+	wal := NewInMemoryWal(shardId)
 
 	fc, err := NewFollowerController(shardId, wal, kvFactory)
 	assert.NoError(t, err)
@@ -255,7 +254,7 @@ func TestEpochInStateChanges(t *testing.T) {
 func TestIgnoreInvalidStates(t *testing.T) {
 	var shardId uint32
 	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
-	wal := NewInMemoryWal(ShardId(fmt.Sprint(shardId)))
+	wal := NewInMemoryWal(shardId)
 
 	fc, err := NewFollowerController(shardId, wal, kvFactory)
 	assert.NoError(t, err)
@@ -279,7 +278,7 @@ func TestIgnoreInvalidStates(t *testing.T) {
 func createAddRequest(t *testing.T, epoch uint64, offset uint64,
 	kvs map[string]string,
 	commitIndex *proto.EntryId) *proto.AddEntryRequest {
-	br := &proto.BatchRequest{}
+	br := &proto.WriteRequest{}
 
 	for k, v := range kvs {
 		br.Puts = append(br.Puts, &proto.PutRequest{
