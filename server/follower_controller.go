@@ -218,12 +218,12 @@ func (fc *followerController) addEntry(req *proto.AddEntryRequest) (*proto.AddEn
 	fc.commitIndex = EntryIdFromProto(req.CommitIndex)
 
 	err := fc.wal.ReadSync(oldCommitIndex, fc.commitIndex, func(entry *proto.LogEntry) error {
-		br := &proto.BatchRequest{}
+		br := &proto.WriteRequest{}
 		if err := pb.Unmarshal(entry.Value, br); err != nil {
 			return err
 		}
 
-		_, err := fc.db.ProcessBatch(br)
+		_, err := fc.db.ProcessWrite(br)
 		return err
 	})
 
