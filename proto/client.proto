@@ -140,9 +140,7 @@ message WriteResponse {
 }
 
 /**
- * A batch read request. Applies the batches of requests. Requests are processed
- * in positional order within batches and the batch types are processed in the
- * following order: gets, get_ranges.
+ * A batch read request. Applies the batches of requests.
  */
 message ReadRequest {
   // The shard id. This is optional allow for support for server-side hashing

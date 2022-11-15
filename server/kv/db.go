@@ -82,6 +82,7 @@ func (d *db) ProcessWrite(b *proto.WriteRequest) (*proto.WriteResponse, error) {
 func (d *db) ProcessRead(b *proto.ReadRequest) (*proto.ReadResponse, error) {
 	res := &proto.ReadResponse{}
 
+	//TODO Implement a ReadBatch to guarantee read consistency
 	kv := d.kv
 
 	for _, getReq := range b.Gets {
