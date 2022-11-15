@@ -7,95 +7,106 @@ import (
 	"oxia/proto"
 )
 
+var (
+	ErrorEntryNotFound = errors.New("oxia: entry not found")
+	ErrorReaderClosed  = errors.New("oxia: reader already closed")
+)
+
+type Reader interface {
+	io.Closer
+	ReadNext() (*proto.LogEntry, error)
+}
+
 type Wal interface {
 	io.Closer
 	Append(entry *proto.LogEntry) error
-
-	Read(lastPushedEntryId EntryId, callback func(*proto.LogEntry) error) error
-	ReadSync(previousCommittedEntryId EntryId, lastCommittedEntryId EntryId, callback func(*proto.LogEntry) error) error
 	GetHighestEntryOfEpoch(epoch uint64) (EntryId, error)
 	TruncateLog(headIndex EntryId) (EntryId, error)
-	StopReaders()
-	ReadOne(id EntryId) (*proto.LogEntry, error)
+	CloseReaders() error
+	Reader(firstOffset uint64) (Reader, error)
 
 	LogLength() uint64
-	EntryIdAt(index uint64) EntryId
 }
 
 type inMemoryWal struct {
-	shard     uint32
-	log       []*proto.LogEntry
-	index     map[EntryId]int
-	callbacks []func(*proto.LogEntry) error
+	shard        uint32
+	log          []*proto.LogEntry
+	index        map[EntryId]int
+	readers      map[int]*inMemoryWalReader
+	nextReaderId int
+}
+
+type inMemoryWalReader struct {
+	wal        *inMemoryWal
+	nextOffset uint64
+	maxOffset  uint64
+	channel    chan uint64
+	closed     bool
+	id         int
+}
+
+func (r *inMemoryWalReader) Close() error {
+	delete(r.wal.readers, r.id)
+	return nil
+}
+
+func (r *inMemoryWalReader) ReadNext() (*proto.LogEntry, error) {
+	if r.closed {
+		return nil, ErrorReaderClosed
+	}
+	if r.nextOffset >= r.maxOffset {
+		r.maxOffset = <-r.channel
+	}
+	entry := r.wal.log[r.nextOffset]
+	r.nextOffset++
+	return entry, nil
 }
 
 func NewInMemoryWal(shard uint32) Wal {
 	return &inMemoryWal{
-		shard:     shard,
-		log:       make([]*proto.LogEntry, 0, 10000),
-		index:     make(map[EntryId]int),
-		callbacks: make([]func(*proto.LogEntry) error, 0, 10000),
+		shard:   shard,
+		log:     make([]*proto.LogEntry, 10, 10000),
+		index:   make(map[EntryId]int),
+		readers: make(map[int]*inMemoryWalReader, 10000),
 	}
 }
 
 func (w *inMemoryWal) Close() error {
-	return nil
+	return w.CloseReaders()
+}
+
+func (w *inMemoryWal) Reader(firstOffset uint64) (Reader, error) {
+	r := &inMemoryWalReader{
+		wal:        w,
+		nextOffset: firstOffset,
+		maxOffset:  w.log[w.LogLength()-1].EntryId.Offset,
+		channel:    make(chan uint64, 1),
+		closed:     false,
+		id:         w.nextReaderId,
+	}
+	w.readers[w.nextReaderId] = r
+	w.nextReaderId++
+	return r, nil
 }
 
 func (w *inMemoryWal) Append(entry *proto.LogEntry) error {
 	w.log = append(w.log, entry)
 	w.index[EntryIdFromProto(entry.EntryId)] = len(w.log) - 1
-	index := 0
-	for index < len(w.callbacks) {
-		callback := w.callbacks[index]
-		err := callback(entry)
+	for _, reader := range w.readers {
+		reader.channel <- entry.EntryId.Offset
+	}
+	return nil
+}
+
+func (w *inMemoryWal) CloseReaders() error {
+	for _, r := range w.readers {
+		err := r.Close()
 		if err != nil {
-			// TODO retry
-			log.Error().Err(err).Msg("Encountered error. Removing callback")
-			w.callbacks[index] = w.callbacks[len(w.callbacks)-1]
-			w.callbacks = w.callbacks[:len(w.callbacks)-1]
-		} else {
-			index++
+			log.Error().Err(err).Msg("Error closing reader")
 		}
 	}
+	w.readers = make(map[int]*inMemoryWalReader, 10000)
 	return nil
-}
-
-func (w *inMemoryWal) ReadOne(id EntryId) (*proto.LogEntry, error) {
-	return w.log[w.index[id]], nil
-}
-
-func (w *inMemoryWal) ReadSync(previousCommittedEntryId EntryId, lastCommittedEntryId EntryId, callback func(*proto.LogEntry) error) error {
-	index := w.index[previousCommittedEntryId]
-	for index+1 < len(w.log) {
-		index++
-		entry := w.log[index]
-		if entry.EntryId.Epoch > lastCommittedEntryId.epoch || (entry.EntryId.Epoch == lastCommittedEntryId.epoch && entry.EntryId.Offset > lastCommittedEntryId.offset) {
-			break
-		}
-		err2 := callback(entry)
-		if err2 != nil {
-			return err2
-		}
-	}
-	return nil
-}
-
-func (w *inMemoryWal) Read(lastPushedEntryId EntryId, callback func(*proto.LogEntry) error) error {
-	index := w.index[lastPushedEntryId]
-	for index+1 < len(w.log) {
-		index++
-		err2 := callback(w.log[index])
-		if err2 != nil {
-			return err2
-		}
-	}
-	w.callbacks = append(w.callbacks, callback)
-	return nil
-}
-
-func (w *inMemoryWal) StopReaders() {
-	w.callbacks = make([]func(*proto.LogEntry) error, 0, 10000)
 }
 
 func (w *inMemoryWal) GetHighestEntryOfEpoch(epoch uint64) (EntryId, error) {
@@ -135,8 +146,4 @@ func (w *inMemoryWal) TruncateLog(lastSafeEntryId EntryId) (EntryId, error) {
 
 func (w *inMemoryWal) LogLength() uint64 {
 	return uint64(len(w.log))
-}
-
-func (w *inMemoryWal) EntryIdAt(index uint64) EntryId {
-	return EntryIdFromProto(w.log[index].EntryId)
 }

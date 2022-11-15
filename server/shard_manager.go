@@ -86,14 +86,15 @@ type shardManager struct {
 	reconfigInProgress bool
 	status             Status
 
-	wal             Wal
-	kv              KeyValueStore
-	commandChannel  chan *Command
-	waitingRoom     map[EntryId]waitingRoomEntry
-	clientPool      common.ClientPool
-	identityAddress string
-	closing         bool
-	log             zerolog.Logger
+	wal                 Wal
+	kv                  KeyValueStore
+	commandChannel      chan *Command
+	waitingRoom         map[EntryId]waitingRoomEntry
+	commitOffsetChannel chan uint64
+	clientPool          common.ClientPool
+	identityAddress     string
+	closing             bool
+	log                 zerolog.Logger
 }
 
 func NewShardManager(shard uint32, identityAddress string, pool common.ClientPool, wal Wal, kv KeyValueStore) (ShardManager, error) {
@@ -107,13 +108,14 @@ func NewShardManager(shard uint32, identityAddress string, pool common.ClientPoo
 		reconfigInProgress: false,
 		status:             NotMember,
 
-		wal:             wal,
-		kv:              kv,
-		commandChannel:  make(chan *Command, 8),
-		waitingRoom:     make(map[EntryId]waitingRoomEntry),
-		clientPool:      pool,
-		identityAddress: identityAddress,
-		closing:         false,
+		wal:                 wal,
+		kv:                  kv,
+		commandChannel:      make(chan *Command, 8),
+		waitingRoom:         make(map[EntryId]waitingRoomEntry),
+		commitOffsetChannel: make(chan uint64, 1),
+		clientPool:          pool,
+		identityAddress:     identityAddress,
+		closing:             false,
 		log: log.With().
 			Str("component", "shard-manager").
 			Uint32("shard", shard).
@@ -233,7 +235,9 @@ func (s *shardManager) fenceSync(req *proto.FenceRequest) (*proto.FenceResponse,
 	s.replicationFactor = 0
 	s.followCursor = make(map[string]*cursor)
 	s.waitingRoom = make(map[EntryId]waitingRoomEntry)
-	s.wal.StopReaders()
+	if err := s.wal.CloseReaders(); err != nil {
+		return nil, err
+	}
 	s.reconfigInProgress = false
 	return &proto.FenceResponse{
 		Epoch:     s.epoch,
@@ -364,6 +368,7 @@ func (s *shardManager) becomeLeaderSync(req *proto.BecomeLeaderRequest) (*proto.
 			s.sendEntriesToFollower(k, v.lastPushed)
 		}
 	}
+	go s.processCommittedEntries(s.commitIndex.offset)
 	return &proto.BecomeLeaderResponse{Epoch: req.GetEpoch()}, nil
 }
 func (s *shardManager) Truncate(req *proto.TruncateRequest) (*proto.TruncateResponse, error) {
@@ -438,7 +443,7 @@ func (s *shardManager) addFollowerSync(req *proto.AddFollowerRequest) (*proto.Co
 		}
 	}
 
-	return nil, status.Errorf(codes.Unimplemented, "method AddFollower not implemented")
+	return &proto.CoordinationEmpty{}, nil
 }
 
 func (s *shardManager) Write(op *proto.PutOp) (*proto.Stat, error) {
@@ -509,23 +514,41 @@ func (s *shardManager) sendEntriesToFollower(target string, lastPushedEntry *pro
 		if err != nil {
 			return nil, err
 		}
-
-		err = s.wal.Read(EntryIdFromProto(lastPushedEntry), func(entry *proto.LogEntry) error {
-			err2 := addEntries.Send(&proto.AddEntryRequest{
-				Epoch:       s.epoch,
-				Entry:       entry,
-				CommitIndex: s.commitIndex.toProto(),
-			})
-			if err2 != nil {
-				log.Error().Err(err2).Msgf("Error replicating message to %s", target)
-				return err2
-			}
-			s.followCursor[target].lastPushed = entry.EntryId
-			return nil
-		})
+		r, err := s.wal.Reader(lastPushedEntry.Offset + 1)
 		if err != nil {
 			return nil, err
 		}
+
+		go func() {
+			defer func() {
+				err = r.Close()
+				if err != nil {
+					s.log.Err(err).Msg("Error closing reader used for replication")
+				}
+			}()
+			for {
+				entry, err := r.ReadNext()
+				if err == ErrorReaderClosed {
+					s.log.Info().Msg("Stopped reading entries for replication")
+					return
+				} else if err != nil {
+					s.log.Err(err).Msg("Error reading entries for replication")
+					return
+				}
+				err = addEntries.Send(&proto.AddEntryRequest{
+					Epoch:       s.epoch,
+					Entry:       entry,
+					CommitIndex: s.commitIndex.toProto(),
+				})
+				if err != nil {
+					log.Error().Err(err).Msgf("Error replicating message to %s", target)
+					return
+				}
+				// TODO s.Lock()
+				s.followCursor[target].lastPushed = entry.EntryId
+				// TODO s.UnLock()
+			}
+		}()
 
 		go func() {
 			for {
@@ -588,29 +611,58 @@ func (s *shardManager) addEntryResponseSync(follower string, response *proto.Add
 			// If the entry is not there, it has already been confirmed
 			waitingEntry.counter++
 			if waitingEntry.counter >= s.replicationFactor/2 {
-				delete(s.waitingRoom, EntryIdFromProto(response.EntryId))
-				logEntry, err := s.wal.ReadOne(EntryIdFromProto(response.EntryId))
-				if err != nil {
-					return err
-				}
-				op, err := deserializeOp(logEntry.GetValue())
-				if err != nil {
-					return err
-				}
-				stat, err := s.kv.Apply(op, logEntry.Timestamp)
-				if err != nil {
-					// TODO if op is inapplicable, it's not an error really. Should be encapsulated in the stat
-					return err
-				}
-				waitingEntry.confirmationChannel <- stat
 				s.commitIndex = EntryIdFromProto(response.EntryId)
-				// TODO notify watchers
+				s.commitOffsetChannel <- s.commitIndex.offset
 			}
 		}
 	} else {
 		log.Error().Msgf("Entry rejected by '%s'", follower)
 	}
 	return nil
+}
+
+func (s *shardManager) processCommittedEntries(lastCommitted uint64) {
+	reader, err := s.wal.Reader(lastCommitted + 1)
+	if err != nil {
+		s.log.Err(err).Msg("Error opening reader used for committed entries")
+	}
+	defer func() {
+		err := reader.Close()
+		if err != nil {
+			s.log.Err(err).Msg("Error closing reader used for committed entries")
+		}
+	}()
+	limit := lastCommitted
+	nextOffset := lastCommitted + 1
+	for {
+		for nextOffset <= limit {
+			entry, err := reader.ReadNext()
+			if err == ErrorReaderClosed {
+				s.log.Info().Msg("Stopped reading committed entries for processing")
+				return
+			} else if err != nil {
+				s.log.Err(err).Msg("Error reading committed entry for processing")
+				return
+			}
+			op, err := deserializeOp(entry.GetValue())
+			if err != nil {
+				s.log.Err(err).Msg("Error deserializing committed entry for processing")
+				return
+			}
+			// TODO synchronization
+			stat, err := s.kv.Apply(op, entry.Timestamp)
+			if err != nil {
+				s.log.Err(err).Msg("Error applying committed entry")
+				return
+			}
+			waitingEntry := s.waitingRoom[EntryIdFromProto(entry.EntryId)]
+			waitingEntry.confirmationChannel <- stat
+			delete(s.waitingRoom, EntryIdFromProto(entry.EntryId))
+			// TODO notify watchers
+
+		}
+		limit = <-s.commitOffsetChannel
+	}
 }
 
 func (s *shardManager) AddEntries(srv proto.OxiaLogReplication_AddEntriesServer) error {
@@ -669,17 +721,42 @@ func (s *shardManager) addEntrySync(req *proto.AddEntryRequest) (*proto.AddEntry
 	s.headIndex = EntryIdFromProto(req.Entry.EntryId)
 	oldCommitIndex := s.commitIndex
 	s.commitIndex = EntryIdFromProto(req.CommitIndex)
-	err = s.wal.ReadSync(oldCommitIndex, s.commitIndex, func(entry *proto.LogEntry) error {
-		op, err2 := deserializeOp(entry.GetValue())
-		if err2 != nil {
-			return err2
+	// TODO maybe a long lived go routine instead of a go routine per request
+	go func() {
+		reader, err := s.wal.Reader(oldCommitIndex.offset + 1)
+		if err != nil {
+			s.log.Err(err).Msg("Error opening reader used for applying committed entries")
+			return
 		}
-		_, err3 := s.kv.Apply(op, entry.Timestamp)
-		return err3
-	})
-	if err != nil {
-		return nil, err
-	}
+		defer func() {
+			err := reader.Close()
+			if err != nil {
+				s.log.Err(err).Msg("Error closing reader used for applying committed entries")
+			}
+		}()
+		nextOffset := oldCommitIndex.offset + 1
+		for nextOffset <= s.commitIndex.offset {
+
+			entry, err := reader.ReadNext()
+			if err == ErrorReaderClosed {
+				s.log.Info().Msg("Stopped reading committed entries")
+				return
+			} else if err != nil {
+				s.log.Err(err).Msg("Error reading committed entry")
+				return
+			}
+			op, err := deserializeOp(entry.GetValue())
+			if err != nil {
+				s.log.Err(err).Msg("Error deserializing committed entry")
+				return
+			}
+			_, err = s.kv.Apply(op, entry.Timestamp)
+			if err != nil {
+				s.log.Err(err).Msg("Error applying committed entry")
+				return
+			}
+		}
+	}()
 	return &proto.AddEntryResponse{
 		Epoch:        s.epoch,
 		EntryId:      req.Entry.EntryId,

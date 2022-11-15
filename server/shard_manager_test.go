@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
@@ -14,10 +15,10 @@ func TestNewShardManager(t *testing.T) {
 		t.Fatalf("Unable to create shard manager")
 	}
 	impl := sm.(*shardManager)
-	assertEquals[uint64](t, 0, impl.epoch, "Epochs")
-	assertEquals[EntryId](t, EntryId{}, impl.commitIndex, "CommitIndexes")
-	assertEquals[EntryId](t, EntryId{}, impl.headIndex, "HeadIndexes")
-	assertEquals[Status](t, NotMember, impl.status, "Statuses")
+	assert.Equal(t, 0, impl.epoch, "Epochs")
+	assert.Equal(t, EntryId{}, impl.commitIndex, "CommitIndexes")
+	assert.Equal(t, EntryId{}, impl.headIndex, "HeadIndexes")
+	assert.Equal(t, NotMember, impl.status, "Statuses")
 }
 
 func TestNewShardManagerInitializesFromWal(t *testing.T) {
@@ -28,6 +29,6 @@ func TestNewShardManagerInitializesFromWal(t *testing.T) {
 		t.Fatalf("Unable to create shard manager")
 	}
 	impl := sm.(*shardManager)
-	assertEquals[EntryId](t, wal.EntryIdAt(wal.LogLength()-1), impl.headIndex, "HeadIndexes")
+	assert.Equal(t, nil, impl.headIndex, "HeadIndexes")
 
 }
