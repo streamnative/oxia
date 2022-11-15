@@ -6,7 +6,7 @@ option go_package = "github.com/streamnative/oxia/proto";
 
 // controller -> node
 service OxiaControl {
-  rpc Fence(FenceRequest) returns (FenceResponse) {}
+  rpc Fence(FenceRequest) returns (FenceResponse);
   rpc BecomeLeader(BecomeLeaderRequest) returns (BecomeLeaderResponse) {}
   rpc AddFollower(AddFollowerRequest) returns (CoordinationEmpty) {}
 
@@ -41,7 +41,9 @@ message LogEntry {
 message CoordinationEmpty {}
 
 message FenceRequest {
-  uint64 epoch = 1;
+  uint32 shard_id = 1;
+
+  uint64 epoch = 2;
 }
 message FenceResponse {
   uint64 epoch = 1;
@@ -53,24 +55,34 @@ message BecomeLeaderRequest {
     ServerAddress key = 1;
     EntryId value = 2;
   }
-  uint64 epoch = 1;
-  uint32 replication_factor = 2;
-  repeated FollowerEntry follower_maps = 3;
+
+  uint32 shard_id = 1;
+
+  uint64 epoch = 2;
+  uint32 replication_factor = 3;
+  repeated FollowerEntry follower_maps = 4;
 }
+
 message BecomeLeaderResponse {
   uint64 epoch = 1;
 }
 
 message AddFollowerRequest {
-  uint64 epoch = 1;
-  ServerAddress follower = 2;
-  EntryId head_index = 3;
+  uint32 shard_id = 1;
+
+  uint64 epoch = 2;
+  ServerAddress follower = 3;
+  EntryId head_index = 4;
 }
 
 message TruncateRequest {
-  uint64 epoch = 1;
-  EntryId head_index = 2;
+  uint32 shard_id = 1;
+
+  uint64 epoch = 2;
+  EntryId head_index = 3;
+  string source = 4;
 }
+
 message TruncateResponse {
   uint64 epoch = 1;
   EntryId head_index = 2;
@@ -94,10 +106,12 @@ enum ReconfigOp {
 }
 
 message PrepareReconfigRequest {
-  uint64 epoch = 1;
-  ReconfigOp op = 2;
-  optional ServerAddress old_node = 3;
-  optional ServerAddress new_node = 4;
+  uint32 shard_id = 1;
+
+  uint64 epoch = 2;
+  ReconfigOp op = 3;
+  optional ServerAddress old_node = 4;
+  optional ServerAddress new_node = 5;
 }
 
 message PrepareReconfigResponse {
@@ -108,10 +122,12 @@ message PrepareReconfigResponse {
 }
 
 message SnapshotRequest {
-  uint64 epoch = 1;
-  EntryId head_index = 2;
-  EntryId commit_index = 3;
-  LogEntry snapshot = 4;
+  uint32 shard_id = 1;
+
+  uint64 epoch = 2;
+  EntryId head_index = 3;
+  EntryId commit_index = 4;
+  LogEntry snapshot = 5;
 }
 message SnapshotResponse {
   uint64 epoch = 1;
@@ -119,13 +135,16 @@ message SnapshotResponse {
 }
 
 message CommitReconfigRequest {
-  uint64 epoch = 1;
-  uint32 replication_factor = 2;
-  ReconfigOp op = 3;
-  optional ServerAddress old_node = 4;
-  optional ServerAddress new_node = 5;
-  optional EntryId head_index = 6;
+  uint32 shard_id = 1;
+
+  uint64 epoch = 2;
+  uint32 replication_factor = 3;
+  ReconfigOp op = 4;
+  optional ServerAddress old_node = 5;
+  optional ServerAddress new_node = 6;
+  optional EntryId head_index = 7;
 }
+
 message CommitReconfigResponse {
   uint64 epoch = 1;
   ReconfigOp op = 2;
