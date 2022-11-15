@@ -16,7 +16,8 @@ var (
 type DB interface {
 	io.Closer
 
-	ProcessBatch(b *proto.BatchRequest) (*proto.BatchResponse, error)
+	ProcessWrite(b *proto.WriteRequest) (*proto.WriteResponse, error)
+	ProcessRead(b *proto.ReadRequest) (*proto.ReadResponse, error)
 }
 
 func NewDB(shardId int32, factory KVFactory) (DB, error) {
@@ -38,8 +39,8 @@ func (d *db) Close() error {
 	return d.kv.Close()
 }
 
-func (d *db) ProcessBatch(b *proto.BatchRequest) (*proto.BatchResponse, error) {
-	res := &proto.BatchResponse{}
+func (d *db) ProcessWrite(b *proto.WriteRequest) (*proto.WriteResponse, error) {
+	res := &proto.WriteResponse{}
 
 	batch := d.kv.NewWriteBatch()
 
@@ -67,8 +68,24 @@ func (d *db) ProcessBatch(b *proto.BatchRequest) (*proto.BatchResponse, error) {
 		}
 	}
 
+	if err := batch.Commit(); err != nil {
+		return nil, err
+	}
+
+	if err := batch.Close(); err != nil {
+		return nil, err
+	}
+
+	return res, nil
+}
+
+func (d *db) ProcessRead(b *proto.ReadRequest) (*proto.ReadResponse, error) {
+	res := &proto.ReadResponse{}
+
+	kv := d.kv
+
 	for _, getReq := range b.Gets {
-		if gr, err := applyGet(batch, getReq); err != nil {
+		if gr, err := applyGet(kv, getReq); err != nil {
 			return nil, err
 		} else {
 			res.Gets = append(res.Gets, gr)
@@ -76,19 +93,11 @@ func (d *db) ProcessBatch(b *proto.BatchRequest) (*proto.BatchResponse, error) {
 	}
 
 	for _, getRangeReq := range b.GetRanges {
-		if gr, err := applyGetRange(batch, getRangeReq); err != nil {
+		if gr, err := applyGetRange(kv, getRangeReq); err != nil {
 			return nil, err
 		} else {
 			res.GetRanges = append(res.GetRanges, gr)
 		}
-	}
-
-	if err := batch.Commit(); err != nil {
-		return nil, err
-	}
-
-	if err := batch.Close(); err != nil {
-		return nil, err
 	}
 
 	return res, nil
@@ -148,12 +157,14 @@ func applyDelete(batch WriteBatch, delReq *proto.DeleteRequest) (*proto.DeleteRe
 	} else if se == nil {
 		return &proto.DeleteResponse{Status: proto.Status_KEY_NOT_FOUND}, nil
 	} else {
-		batch.Delete(delReq.Key)
+		if err = batch.Delete(delReq.Key); err != nil {
+			return &proto.DeleteResponse{}, err
+		}
 		return &proto.DeleteResponse{Status: proto.Status_OK}, nil
 	}
 }
 
-func applyDeleteRange(batch WriteBatch, delReq *proto.RangeRequest) (*proto.DeleteRangeResponse, error) {
+func applyDeleteRange(batch WriteBatch, delReq *proto.DeleteRangeRequest) (*proto.DeleteRangeResponse, error) {
 	if err := batch.DeleteRange(delReq.StartInclusive, delReq.EndExclusive); err != nil {
 		return nil, errors.Wrap(err, "oxia db: failed to delete range")
 	}
@@ -161,8 +172,8 @@ func applyDeleteRange(batch WriteBatch, delReq *proto.RangeRequest) (*proto.Dele
 	return &proto.DeleteRangeResponse{Status: proto.Status_OK}, nil
 }
 
-func applyGet(batch WriteBatch, getReq *proto.GetRequest) (*proto.GetResponse, error) {
-	payload, closer, err := batch.Get(getReq.Key)
+func applyGet(kv KV, getReq *proto.GetRequest) (*proto.GetResponse, error) {
+	payload, closer, err := kv.Get(getReq.Key)
 	if errors.Is(err, ErrorKeyNotFound) {
 		return &proto.GetResponse{Status: proto.Status_KEY_NOT_FOUND}, nil
 	} else if err != nil {
@@ -189,8 +200,8 @@ func applyGet(batch WriteBatch, getReq *proto.GetRequest) (*proto.GetResponse, e
 	}, nil
 }
 
-func applyGetRange(batch WriteBatch, getRangeReq *proto.RangeRequest) (*proto.GetRangeResponse, error) {
-	it := batch.KeyRangeScan(getRangeReq.StartInclusive, getRangeReq.EndExclusive)
+func applyGetRange(kv KV, getRangeReq *proto.GetRangeRequest) (*proto.GetRangeResponse, error) {
+	it := kv.KeyRangeScan(getRangeReq.StartInclusive, getRangeReq.EndExclusive)
 
 	res := &proto.GetRangeResponse{}
 
