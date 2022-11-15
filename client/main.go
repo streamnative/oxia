@@ -56,7 +56,7 @@ func main(cmd *cobra.Command, args []string) {
 		Interface("assignment", sa).
 		Msg("Received assignments")
 
-	if res, err := c.Batch(ctx, &proto.BatchRequest{
+	if res, err := c.Write(ctx, &proto.WriteRequest{
 		ShardId: pb.Uint32(0),
 		Puts: []*proto.PutRequest{{
 			Key:             "a",
@@ -74,7 +74,7 @@ func main(cmd *cobra.Command, args []string) {
 
 	// Try to read it back
 
-	if res, err := c.Batch(ctx, &proto.BatchRequest{
+	if res, err := c.Read(ctx, &proto.ReadRequest{
 		ShardId: pb.Uint32(0),
 		Gets: []*proto.GetRequest{{
 			Key:            "a",

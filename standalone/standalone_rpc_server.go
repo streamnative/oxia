@@ -97,6 +97,10 @@ func (s *StandaloneRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest,
 	return stream.Send(res)
 }
 
-func (s *StandaloneRpcServer) Batch(ctx context.Context, batch *proto.BatchRequest) (*proto.BatchResponse, error) {
-	return s.dbs[int32(*batch.ShardId)].ProcessBatch(batch)
+func (s *StandaloneRpcServer) Write(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error) {
+	return s.dbs[int32(*write.ShardId)].ProcessWrite(write)
+}
+
+func (s *StandaloneRpcServer) Read(ctx context.Context, read *proto.ReadRequest) (*proto.ReadResponse, error) {
+	return s.dbs[int32(*read.ShardId)].ProcessRead(read)
 }

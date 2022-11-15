@@ -32,12 +32,20 @@ service OxiaClient {
       returns (stream ShardAssignmentsResponse);
 
   /**
-   * Batches put, delete, delete_range, get and get_range requests.
+   * Batches put, delete and delete_range requests.
    *
    * Clients should send this request to the shard leader. In the future,
    * this may be handled server-side in a proxy layer.
    */
-  rpc Batch(BatchRequest) returns (BatchResponse);
+  rpc Write(WriteRequest) returns (WriteResponse);
+
+  /**
+   * Batches get and get_range requests.
+   *
+   * Clients should send this request to the shard leader. In the future,
+   * this may be handled server-side in a proxy layer.
+   */
+  rpc Read(ReadRequest) returns (ReadResponse);
 }
 
 /**
@@ -102,11 +110,11 @@ message Int32HashRange {
 }
 
 /**
- * A batch request. Applies the batches of requests. Requests are processed in
- * positional order within batches and the batch types are processed in the
- * following order: puts, deletes, delete_ranges, gets, get_ranges.
+ * A batch write request. Applies the batches of requests. Requests are
+ * processed in positional order within batches and the batch types are
+ * processed in the following order: puts, deletes, delete_ranges.
  */
-message BatchRequest {
+message WriteRequest {
   // The shard id. This is optional allow for support for server-side hashing
   // and proxying in the future.
   optional uint32 shard_id = 1;
@@ -115,28 +123,44 @@ message BatchRequest {
   // The delete requests
   repeated DeleteRequest deletes = 3;
   // The delete range requests
-  repeated RangeRequest delete_ranges = 4;
-  // The get requests
-  repeated GetRequest gets = 5;
-  // The get range requests
-  repeated RangeRequest get_ranges = 6;
+  repeated DeleteRangeRequest delete_ranges = 4;
 }
 
 /**
- * The response to a batch request. Responses of each type respect the order
- * of the original requests.
+ * The response to a batch write request. Responses of each type respect the
+ * order of the original requests.
  */
-message BatchResponse {
+message WriteResponse {
   // The put responses
   repeated PutResponse puts = 1;
   // The delete responses
   repeated DeleteResponse deletes = 2;
   // The delete range responses
   repeated DeleteRangeResponse delete_ranges = 3;
+}
+
+/**
+ * A batch read request. Applies the batches of requests.
+ */
+message ReadRequest {
+  // The shard id. This is optional allow for support for server-side hashing
+  // and proxying in the future.
+  optional uint32 shard_id = 1;
+  // The get requests
+  repeated GetRequest gets = 2;
+  // The get range requests
+  repeated GetRangeRequest get_ranges = 3;
+}
+
+/**
+ * The response to a batch read request. Responses of each type respect the
+ * order of the original requests.
+ */
+message ReadResponse {
   // The get responses
-  repeated GetResponse gets = 4;
+  repeated GetResponse gets = 1;
   // The get range responses
-  repeated GetRangeResponse get_ranges = 5;
+  repeated GetRangeResponse get_ranges = 2;
 }
 
 /**
@@ -207,9 +231,9 @@ message GetResponse {
 }
 
 /**
- * Input to a delete range or get range request.
+ * Input to a get range request.
  */
-message RangeRequest {
+message DeleteRangeRequest {
   // The start of the range, inclusive
   string start_inclusive = 1;
   // The end of the range, exclusive
@@ -222,6 +246,16 @@ message RangeRequest {
 message DeleteRangeResponse {
   // Includes the error or OK
   Status status = 1;
+}
+
+/**
+ * Input to a delete range request.
+ */
+message GetRangeRequest {
+  // The start of the range, inclusive
+  string start_inclusive = 1;
+  // The end of the range, exclusive
+  string end_exclusive = 2;
 }
 
 /**
