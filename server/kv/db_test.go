@@ -100,45 +100,45 @@ func TestDBSimple(t *testing.T) {
 
 	/// Second batch
 
-	req = &proto.WriteRequest{
-		Puts: []*proto.PutRequest{
-			{ // Should succeed: no version check
-				Key:             "a",
-				Payload:         []byte("00"),
-				ExpectedVersion: nil,
-			},
-			{ // Should succeed: The version currently in the store is 0, the update just above will change
-				// the version, though we do the verification before the batch is applied
-				Key:             "a",
-				Payload:         []byte("111"),
-				ExpectedVersion: pb.Int64(0),
-			},
-			{ // Should fail: the key already exists
-				Key:             "b",
-				Payload:         []byte("2"),
-				ExpectedVersion: pb.Int64(-1),
-			},
-			{ // Should succeed: the version is correct
-				Key:             "b",
-				Payload:         []byte("2"),
-				ExpectedVersion: pb.Int64(0),
-			},
-		},
-		Deletes: []*proto.DeleteRequest{
-			{ // Should fail: the key was not inserted before the batch
-				Key:             "a",
-				ExpectedVersion: nil,
-			},
-			{ // Should fail: the key was not inserted before the batch
-				Key:             "c",
-				ExpectedVersion: pb.Int64(-1),
-			},
-			{ // Should fail: the key was not inserted before the batch
-				Key:             "c",
-				ExpectedVersion: pb.Int64(0),
-			},
-		},
-	}
+	//req = &proto.WriteRequest{
+	//	Puts: []*proto.PutRequest{
+	//		{ // Should succeed: no version check
+	//			Key:             "a",
+	//			Payload:         []byte("00"),
+	//			ExpectedVersion: nil,
+	//		},
+	//		{ // Should succeed: The version currently in the store is 0, the update just above will change
+	//			// the version, though we do the verification before the batch is applied
+	//			Key:             "a",
+	//			Payload:         []byte("111"),
+	//			ExpectedVersion: pb.Int64(0),
+	//		},
+	//		{ // Should fail: the key already exists
+	//			Key:             "b",
+	//			Payload:         []byte("2"),
+	//			ExpectedVersion: pb.Int64(-1),
+	//		},
+	//		{ // Should succeed: the version is correct
+	//			Key:             "b",
+	//			Payload:         []byte("2"),
+	//			ExpectedVersion: pb.Int64(0),
+	//		},
+	//	},
+	//	Deletes: []*proto.DeleteRequest{
+	//		{ // Should fail: the key was not inserted before the batch
+	//			Key:             "a",
+	//			ExpectedVersion: nil,
+	//		},
+	//		{ // Should fail: the key was not inserted before the batch
+	//			Key:             "c",
+	//			ExpectedVersion: pb.Int64(-1),
+	//		},
+	//		{ // Should fail: the key was not inserted before the batch
+	//			Key:             "c",
+	//			ExpectedVersion: pb.Int64(0),
+	//		},
+	//	},
+	//}
 
 	assert.NoError(t, db.Close())
 	assert.NoError(t, factory.Close())

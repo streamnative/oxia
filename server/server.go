@@ -42,7 +42,7 @@ type server struct {
 	shardsDirector ShardsDirector
 	clientPool     common.ClientPool
 
-	identityInternalAddress proto.ServerAddress
+	//identityInternalAddress proto.ServerAddress
 }
 
 func NewServer(config *serverConfig) (*server, error) {

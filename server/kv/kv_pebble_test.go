@@ -17,9 +17,9 @@ func TestPebbbleSimple(t *testing.T) {
 	assert.NoError(t, err)
 
 	wb := kv.NewWriteBatch()
-	wb.Put("a", []byte("0"))
-	wb.Put("b", []byte("1"))
-	wb.Put("c", []byte("2"))
+	_ = wb.Put("a", []byte("0"))
+	_ = wb.Put("b", []byte("1"))
+	_ = wb.Put("c", []byte("2"))
 	assert.NoError(t, wb.Commit())
 	assert.NoError(t, wb.Close())
 
@@ -44,10 +44,10 @@ func TestPebbbleSimple(t *testing.T) {
 	assert.Nil(t, closer)
 
 	wb = kv.NewWriteBatch()
-	wb.Put("a", []byte("00"))
-	wb.Put("b", []byte("11"))
-	wb.Put("d", []byte("22"))
-	wb.Delete("c")
+	_ = wb.Put("a", []byte("00"))
+	_ = wb.Put("b", []byte("11"))
+	_ = wb.Put("d", []byte("22"))
+	_ = wb.Delete("c")
 
 	assert.NoError(t, wb.Commit())
 	assert.NoError(t, wb.Close())
@@ -82,10 +82,10 @@ func TestPebbbleRangeScan(t *testing.T) {
 	assert.NoError(t, err)
 
 	wb := kv.NewWriteBatch()
-	wb.Put("/root/a", []byte("a"))
-	wb.Put("/root/b", []byte("b"))
-	wb.Put("/root/c", []byte("c"))
-	wb.Put("/root/d", []byte("d"))
+	_ = wb.Put("/root/a", []byte("a"))
+	_ = wb.Put("/root/b", []byte("b"))
+	_ = wb.Put("/root/c", []byte("c"))
+	_ = wb.Put("/root/d", []byte("d"))
 	assert.NoError(t, wb.Commit())
 	assert.NoError(t, wb.Close())
 
@@ -118,10 +118,10 @@ func TestPebbbleSnapshot(t *testing.T) {
 	assert.NoError(t, err)
 
 	wb := kv.NewWriteBatch()
-	wb.Put("/root/a", []byte("a"))
-	wb.Put("/root/b", []byte("b"))
-	wb.Put("/root/c", []byte("c"))
-	wb.Put("/root/d", []byte("d"))
+	_ = wb.Put("/root/a", []byte("a"))
+	_ = wb.Put("/root/b", []byte("b"))
+	_ = wb.Put("/root/c", []byte("c"))
+	_ = wb.Put("/root/d", []byte("d"))
 	assert.NoError(t, wb.Commit())
 	assert.NoError(t, wb.Close())
 
@@ -129,8 +129,8 @@ func TestPebbbleSnapshot(t *testing.T) {
 
 	// Delete / modify some existing keys
 	wb = kv.NewWriteBatch()
-	wb.Put("/root/a", []byte("aa"))
-	wb.Delete("/root/b")
+	_ = wb.Put("/root/a", []byte("aa"))
+	_ = wb.Delete("/root/b")
 	assert.NoError(t, wb.Commit())
 	assert.NoError(t, wb.Close())
 
@@ -226,7 +226,7 @@ func TestPebbleRangeScanWithSlashOrder(t *testing.T) {
 	wb := kv.NewWriteBatch()
 
 	for _, k := range keys {
-		wb.Put(k, []byte(k))
+		_ = wb.Put(k, []byte(k))
 	}
 
 	assert.NoError(t, wb.Commit())
@@ -257,9 +257,9 @@ func TestPebbbleGetWithinBatch(t *testing.T) {
 	assert.NoError(t, err)
 
 	wb := kv.NewWriteBatch()
-	wb.Put("a", []byte("0"))
-	wb.Put("b", []byte("1"))
-	wb.Put("c", []byte("2"))
+	_ = wb.Put("a", []byte("0"))
+	_ = wb.Put("b", []byte("1"))
+	_ = wb.Put("c", []byte("2"))
 
 	payload, closer, err := wb.Get("a")
 	assert.NoError(t, err)
@@ -282,14 +282,14 @@ func TestPebbbleGetWithinBatch(t *testing.T) {
 	assert.Equal(t, "0", string(payload))
 	assert.NoError(t, closer.Close())
 
-	wb.Put("a", []byte("00"))
+	_ = wb.Put("a", []byte("00"))
 
 	payload, closer, err = wb.Get("a")
 	assert.NoError(t, err)
 	assert.Equal(t, "00", string(payload))
 	assert.NoError(t, closer.Close())
 
-	wb.Delete("a")
+	_ = wb.Delete("a")
 
 	payload, closer, err = wb.Get("a")
 	assert.ErrorIs(t, err, ErrorKeyNotFound)
@@ -314,7 +314,7 @@ func TestPebbbleDurability(t *testing.T) {
 		assert.NoError(t, err)
 
 		wb := kv.NewWriteBatch()
-		wb.Put("a", []byte("0"))
+		_ = wb.Put("a", []byte("0"))
 		assert.NoError(t, wb.Commit())
 		assert.NoError(t, wb.Close())
 
@@ -344,13 +344,13 @@ func TestPebbbleRangeScanInBatch(t *testing.T) {
 	assert.NoError(t, err)
 
 	wb := kv.NewWriteBatch()
-	wb.Put("/root/a", []byte("a"))
+	_ = wb.Put("/root/a", []byte("a"))
 	assert.NoError(t, wb.Commit())
 	assert.NoError(t, wb.Close())
 
 	wb = kv.NewWriteBatch()
-	wb.Put("/root/b", []byte("b"))
-	wb.Put("/root/c", []byte("c"))
+	_ = wb.Put("/root/b", []byte("b"))
+	_ = wb.Put("/root/c", []byte("c"))
 
 	it := wb.KeyRangeScan("/root/a", "/root/c")
 	assert.True(t, it.Valid())
@@ -365,9 +365,9 @@ func TestPebbbleRangeScanInBatch(t *testing.T) {
 
 	assert.NoError(t, it.Close())
 
-	wb.Put("/root/d", []byte("d"))
+	_ = wb.Put("/root/d", []byte("d"))
 
-	wb.Delete("/root/a")
+	_ = wb.Delete("/root/a")
 
 	it = wb.KeyRangeScan("/root/a", "/root/c")
 	assert.True(t, it.Valid())
@@ -407,7 +407,7 @@ func TestPebbbleDeleteRangeInBatch(t *testing.T) {
 	wb := kv.NewWriteBatch()
 
 	for _, k := range keys {
-		wb.Put(k, []byte(k))
+		_ = wb.Put(k, []byte(k))
 	}
 
 	err = wb.DeleteRange("/a/b/a/", "/a/b/a//")
