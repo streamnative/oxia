@@ -48,7 +48,7 @@ func (p *PebbleFactory) Close() error {
 	return nil
 }
 
-func (p *PebbleFactory) NewKV(shardId int32) (KV, error) {
+func (p *PebbleFactory) NewKV(shardId uint32) (KV, error) {
 	return newKVPebble(p, shardId)
 }
 
@@ -58,7 +58,7 @@ type Pebble struct {
 	db *pebble.DB
 }
 
-func newKVPebble(factory *PebbleFactory, shardId int32) (KV, error) {
+func newKVPebble(factory *PebbleFactory, shardId uint32) (KV, error) {
 	pb := &Pebble{}
 
 	dbPath := filepath.Join(factory.dataDir, fmt.Sprint("shard-", shardId))
