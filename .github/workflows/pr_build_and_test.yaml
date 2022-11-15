@@ -24,11 +24,6 @@ jobs:
         with:
           go-version: 1.18
 
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v3
-        with:
-          version: v1.50.1
-
       - name: Install protoc
         uses: arduino/setup-protoc@v1
 
@@ -37,8 +32,16 @@ jobs:
           go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28
           go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2
 
+      - name: Generate proto
+        run: make proto
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v3
+        with:
+          version: v1.50.1
+
       - name: Build
-        run: make
+        run: make build
 
       - name: Test
         run: make test
