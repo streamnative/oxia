@@ -1,7 +1,6 @@
 package wal
 
 import (
-	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"oxia/proto"
 )
@@ -122,26 +121,6 @@ func (w *inMemoryWal) closeReaders() error {
 	}
 	w.readers = make(map[int]*inMemoryWalReader, 10000)
 	return nil
-}
-
-func (w *inMemoryWal) GetHighestEntryOfEpoch(epoch uint64) (EntryId, error) {
-	if len(w.log) == 0 {
-		return EntryId{}, nil
-	}
-	if w.log[0].EntryId.Epoch > epoch {
-		return EntryId{}, errors.Errorf("Snapshotting is not yet implemented")
-	}
-	if w.log[len(w.log)-1].EntryId.Epoch <= epoch {
-		return EntryIdFromProto(w.log[len(w.log)-1].EntryId), nil
-	}
-	for i := len(w.log) - 1; i >= 0; i-- {
-		if w.log[i].EntryId.Epoch == epoch {
-			return EntryIdFromProto(w.log[i].EntryId), nil
-		}
-	}
-	// Should not happen
-	return EntryId{}, nil
-
 }
 
 func (w *inMemoryWal) TruncateLog(lastSafeEntryId EntryId) (EntryId, error) {

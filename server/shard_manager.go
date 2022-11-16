@@ -835,7 +835,7 @@ func (s *shardManager) Close() error {
 
 func (s *shardManager) purgeWaitingRoom() {
 	for _, v := range s.waitingRoom {
-		v.confirmationChannel <- status.Errorf(codes.Aborted, "Oxia shutting down")
+		v.confirmationChannel <- status.Errorf(codes.Aborted, "oxia: server shutting down")
 	}
 	s.waitingRoom = make(map[wal.EntryId]waitingRoomEntry)
 }
@@ -843,8 +843,6 @@ func (s *shardManager) purgeWaitingRoom() {
 func (s *shardManager) CloseReaders(previousStatus Status) error {
 	if previousStatus == Leader {
 		close(s.commitOffsetChannel)
-	} else {
-
 	}
 	return nil
 }
