@@ -6,6 +6,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"io"
 	"oxia/common"
+	"oxia/server/wal"
 	"sync"
 )
 
@@ -24,6 +25,7 @@ type shardsDirector struct {
 	//assignments   *proto.ShardsAssignments
 	shardManagers map[uint32]ShardManager
 	identityAddr  string
+	walFactory    wal.WalFactory
 
 	log zerolog.Logger
 }
@@ -36,6 +38,7 @@ func NewShardsDirector(identityAddr string) ShardsDirector {
 
 		identityAddr:  identityAddr,
 		shardManagers: make(map[uint32]ShardManager),
+		walFactory:    nil,
 		log: log.With().
 			Str("component", "shards-director").
 			Logger(),
@@ -69,7 +72,10 @@ func (s *shardsDirector) GetManager(shardId uint32, create bool) (ShardManager, 
 	if ok {
 		return manager, nil
 	} else if create {
-		w := NewInMemoryWal(shardId)
+		w, err := s.walFactory.NewWal(shardId)
+		if err != nil {
+			return nil, err
+		}
 		kv := NewInMemoryKVStore()
 		pool := common.NewClientPool()
 		sm, err := NewShardManager(shardId, s.identityAddr, pool, w, kv)

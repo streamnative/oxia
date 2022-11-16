@@ -12,6 +12,7 @@ import (
 	"io"
 	"oxia/common"
 	"oxia/proto"
+	wal "oxia/server/wal"
 	"time"
 )
 
@@ -80,16 +81,16 @@ type shardManager struct {
 	shard              uint32
 	epoch              uint64
 	replicationFactor  uint32
-	commitIndex        EntryId
-	headIndex          EntryId
+	commitIndex        wal.EntryId
+	headIndex          wal.EntryId
 	followCursor       map[string]*cursor
 	reconfigInProgress bool
 	status             Status
 
-	wal                 Wal
+	wal                 wal.Wal
 	kv                  KeyValueStore
 	commandChannel      chan *Command
-	waitingRoom         map[EntryId]waitingRoomEntry
+	waitingRoom         map[wal.EntryId]waitingRoomEntry
 	commitOffsetChannel chan uint64
 	clientPool          common.ClientPool
 	identityAddress     string
@@ -97,21 +98,21 @@ type shardManager struct {
 	log                 zerolog.Logger
 }
 
-func NewShardManager(shard uint32, identityAddress string, pool common.ClientPool, wal Wal, kv KeyValueStore) (ShardManager, error) {
+func NewShardManager(shard uint32, identityAddress string, pool common.ClientPool, w wal.Wal, kv KeyValueStore) (ShardManager, error) {
 	sm := &shardManager{
 		shard:              shard,
 		epoch:              0,
 		replicationFactor:  0,
-		commitIndex:        EntryId{},
-		headIndex:          EntryId{},
+		commitIndex:        wal.EntryId{},
+		headIndex:          wal.EntryId{},
 		followCursor:       make(map[string]*cursor),
 		reconfigInProgress: false,
 		status:             NotMember,
 
-		wal:                 wal,
+		wal:                 w,
 		kv:                  kv,
 		commandChannel:      make(chan *Command, 8),
-		waitingRoom:         make(map[EntryId]waitingRoomEntry),
+		waitingRoom:         make(map[wal.EntryId]waitingRoomEntry),
 		commitOffsetChannel: make(chan uint64, 1),
 		clientPool:          pool,
 		identityAddress:     identityAddress,
@@ -121,7 +122,7 @@ func NewShardManager(shard uint32, identityAddress string, pool common.ClientPoo
 			Uint32("shard", shard).
 			Logger(),
 	}
-	entryId, err := wal.GetHighestEntryOfEpoch(^uint64(0))
+	entryId, err := sm.getHighestEntryOfEpoch(^uint64(0))
 	if err != nil {
 		return nil, err
 	}
@@ -133,6 +134,28 @@ func NewShardManager(shard uint32, identityAddress string, pool common.ClientPoo
 
 	return sm, nil
 }
+
+func (s *shardManager) getHighestEntryOfEpoch(epoch uint64) (wal.EntryId, error) {
+	zero := wal.EntryId{}
+	r, err := s.wal.NewReverseReader()
+	if err != nil {
+		return zero, err
+	}
+	defer r.Close()
+	hasNext, err := r.HasNext()
+	for err != nil && hasNext {
+		e, err := r.ReadNext()
+		if err != nil {
+			return zero, err
+		}
+		if e.EntryId.Epoch <= epoch {
+			return wal.EntryIdFromProto(e.EntryId), nil
+		}
+		hasNext, err = r.HasNext()
+	}
+	return zero, nil
+}
+
 func enqueueCommandAndWaitForResponse[T any](s *shardManager, f func() (T, error)) T {
 	response, _ := enqueueCommandAndWaitForResponseWithChannel[T](s, f, nil)
 	return response
@@ -231,17 +254,18 @@ func (s *shardManager) fenceSync(req *proto.FenceRequest) (*proto.FenceResponse,
 	}
 	s.epoch = req.GetEpoch()
 	s.purgeWaitingRoom()
+	oldStatus := s.status
 	s.status = Fenced
 	s.replicationFactor = 0
 	s.followCursor = make(map[string]*cursor)
-	s.waitingRoom = make(map[EntryId]waitingRoomEntry)
-	if err := s.wal.CloseReaders(); err != nil {
+	s.waitingRoom = make(map[wal.EntryId]waitingRoomEntry)
+	if err := s.CloseReaders(oldStatus); err != nil {
 		return nil, err
 	}
 	s.reconfigInProgress = false
 	return &proto.FenceResponse{
 		Epoch:     s.epoch,
-		HeadIndex: s.headIndex.toProto(),
+		HeadIndex: s.headIndex.ToProto(),
 	}, nil
 }
 
@@ -254,7 +278,7 @@ func (s *shardManager) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto.Beco
 }
 
 func (s *shardManager) needsTruncation(headIndex *proto.EntryId) bool {
-	return headIndex.Epoch != s.headIndex.epoch || headIndex.Offset > s.headIndex.offset
+	return headIndex.Epoch != s.headIndex.Epoch || headIndex.Offset > s.headIndex.Offset
 }
 
 func (s *shardManager) getCursor(headIndex *proto.EntryId) *cursor {
@@ -282,14 +306,14 @@ func (s *shardManager) getCursors(followers []*proto.BecomeLeaderRequest_Followe
 }
 
 func (s *shardManager) sendTruncateRequest(target string, targetEpoch uint64) error {
-	headIndex, err := s.wal.GetHighestEntryOfEpoch(targetEpoch)
+	headIndex, err := s.getHighestEntryOfEpoch(targetEpoch)
 	if err != nil {
 		return err
 	}
 	send := func(ctx context.Context, rpc proto.OxiaLogReplicationClient) (*proto.TruncateResponse, error) {
 		resp, err2 := rpc.Truncate(ctx, &proto.TruncateRequest{
 			Epoch:     s.epoch,
-			HeadIndex: headIndex.toProto(),
+			HeadIndex: headIndex.ToProto(),
 		})
 		return resp, err2
 	}
@@ -368,7 +392,7 @@ func (s *shardManager) becomeLeaderSync(req *proto.BecomeLeaderRequest) (*proto.
 			s.sendEntriesToFollower(k, v.lastPushed)
 		}
 	}
-	go s.processCommittedEntries(s.commitIndex.offset)
+	go s.processCommittedEntries(s.commitIndex.Offset)
 	return &proto.BecomeLeaderResponse{Epoch: req.GetEpoch()}, nil
 }
 func (s *shardManager) Truncate(req *proto.TruncateRequest) (*proto.TruncateResponse, error) {
@@ -396,7 +420,7 @@ func (s *shardManager) truncateSync(req *proto.TruncateRequest) (*proto.Truncate
 	}
 	s.status = Follower
 	s.epoch = req.Epoch
-	headEntryId, err := s.wal.TruncateLog(EntryIdFromProto(req.HeadIndex))
+	headEntryId, err := s.wal.TruncateLog(wal.EntryIdFromProto(req.HeadIndex))
 	if err != nil {
 		return nil, err
 	}
@@ -405,7 +429,7 @@ func (s *shardManager) truncateSync(req *proto.TruncateRequest) (*proto.Truncate
 
 	return &proto.TruncateResponse{
 		Epoch:     req.Epoch,
-		HeadIndex: headEntryId.toProto(),
+		HeadIndex: headEntryId.ToProto(),
 	}, nil
 }
 
@@ -483,7 +507,7 @@ func (s *shardManager) writeSync(op *proto.PutOp, responseChannel chan any) erro
 	}
 	entryId := &proto.EntryId{
 		Epoch:  s.epoch,
-		Offset: s.headIndex.offset + 1,
+		Offset: s.headIndex.Offset + 1,
 	}
 	value, err := serializeOp(op)
 	if err != nil {
@@ -499,7 +523,7 @@ func (s *shardManager) writeSync(op *proto.PutOp, responseChannel chan any) erro
 	if err != nil {
 		return err
 	}
-	s.headIndex = EntryIdFromProto(entryId)
+	s.headIndex = wal.EntryIdFromProto(entryId)
 	s.waitingRoom[s.headIndex] = waitingRoomEntry{
 		counter:             0,
 		confirmationChannel: responseChannel,
@@ -514,7 +538,7 @@ func (s *shardManager) sendEntriesToFollower(target string, lastPushedEntry *pro
 		if err != nil {
 			return nil, err
 		}
-		r, err := s.wal.Reader(lastPushedEntry.Offset + 1)
+		r, err := s.wal.NewReader(lastPushedEntry.Offset + 1)
 		if err != nil {
 			return nil, err
 		}
@@ -526,9 +550,9 @@ func (s *shardManager) sendEntriesToFollower(target string, lastPushedEntry *pro
 					s.log.Err(err).Msg("Error closing reader used for replication")
 				}
 			}()
-			for {
+			for s.status == Leader {
 				entry, err := r.ReadNext()
-				if err == ErrorReaderClosed {
+				if err == wal.ErrorReaderClosed {
 					s.log.Info().Msg("Stopped reading entries for replication")
 					return
 				} else if err != nil {
@@ -538,7 +562,7 @@ func (s *shardManager) sendEntriesToFollower(target string, lastPushedEntry *pro
 				err = addEntries.Send(&proto.AddEntryRequest{
 					Epoch:       s.epoch,
 					Entry:       entry,
-					CommitIndex: s.commitIndex.toProto(),
+					CommitIndex: s.commitIndex.ToProto(),
 				})
 				if err != nil {
 					log.Error().Err(err).Msgf("Error replicating message to %s", target)
@@ -606,13 +630,13 @@ func (s *shardManager) addEntryResponseSync(follower string, response *proto.Add
 	if !response.InvalidEpoch && s.followCursor[follower].status == Attached {
 		s.followCursor[follower].lastConfirmed = response.EntryId
 		// TODO LogPrefixAtQuorum
-		waitingEntry, ok := s.waitingRoom[EntryIdFromProto(response.EntryId)]
+		waitingEntry, ok := s.waitingRoom[wal.EntryIdFromProto(response.EntryId)]
 		if ok {
 			// If the entry is not there, it has already been confirmed
 			waitingEntry.counter++
 			if waitingEntry.counter >= s.replicationFactor/2 {
-				s.commitIndex = EntryIdFromProto(response.EntryId)
-				s.commitOffsetChannel <- s.commitIndex.offset
+				s.commitIndex = wal.EntryIdFromProto(response.EntryId)
+				s.commitOffsetChannel <- s.commitIndex.Offset
 			}
 		}
 	} else {
@@ -622,7 +646,7 @@ func (s *shardManager) addEntryResponseSync(follower string, response *proto.Add
 }
 
 func (s *shardManager) processCommittedEntries(lastCommitted uint64) {
-	reader, err := s.wal.Reader(lastCommitted + 1)
+	reader, err := s.wal.NewReader(lastCommitted + 1)
 	if err != nil {
 		s.log.Err(err).Msg("Error opening reader used for committed entries")
 	}
@@ -634,10 +658,10 @@ func (s *shardManager) processCommittedEntries(lastCommitted uint64) {
 	}()
 	limit := lastCommitted
 	nextOffset := lastCommitted + 1
-	for {
-		for nextOffset <= limit {
+	for s.status == Leader {
+		for s.status == Leader && nextOffset <= limit {
 			entry, err := reader.ReadNext()
-			if err == ErrorReaderClosed {
+			if err == wal.ErrorReaderClosed {
 				s.log.Info().Msg("Stopped reading committed entries for processing")
 				return
 			} else if err != nil {
@@ -655,13 +679,18 @@ func (s *shardManager) processCommittedEntries(lastCommitted uint64) {
 				s.log.Err(err).Msg("Error applying committed entry")
 				return
 			}
-			waitingEntry := s.waitingRoom[EntryIdFromProto(entry.EntryId)]
+			waitingEntry := s.waitingRoom[wal.EntryIdFromProto(entry.EntryId)]
 			waitingEntry.confirmationChannel <- stat
-			delete(s.waitingRoom, EntryIdFromProto(entry.EntryId))
+			delete(s.waitingRoom, wal.EntryIdFromProto(entry.EntryId))
 			// TODO notify watchers
 
 		}
-		limit = <-s.commitOffsetChannel
+		newLimit, more := <-s.commitOffsetChannel
+		if more {
+			limit = newLimit
+		} else {
+			break
+		}
 	}
 }
 
@@ -718,12 +747,12 @@ func (s *shardManager) addEntrySync(req *proto.AddEntryRequest) (*proto.AddEntry
 	if err != nil {
 		return nil, err
 	}
-	s.headIndex = EntryIdFromProto(req.Entry.EntryId)
+	s.headIndex = wal.EntryIdFromProto(req.Entry.EntryId)
 	oldCommitIndex := s.commitIndex
-	s.commitIndex = EntryIdFromProto(req.CommitIndex)
+	s.commitIndex = wal.EntryIdFromProto(req.CommitIndex)
 	// TODO maybe a long lived go routine instead of a go routine per request
 	go func() {
-		reader, err := s.wal.Reader(oldCommitIndex.offset + 1)
+		reader, err := s.wal.NewReader(oldCommitIndex.Offset + 1)
 		if err != nil {
 			s.log.Err(err).Msg("Error opening reader used for applying committed entries")
 			return
@@ -734,11 +763,11 @@ func (s *shardManager) addEntrySync(req *proto.AddEntryRequest) (*proto.AddEntry
 				s.log.Err(err).Msg("Error closing reader used for applying committed entries")
 			}
 		}()
-		nextOffset := oldCommitIndex.offset + 1
-		for nextOffset <= s.commitIndex.offset {
+		nextOffset := oldCommitIndex.Offset + 1
+		for nextOffset <= s.commitIndex.Offset {
 
 			entry, err := reader.ReadNext()
-			if err == ErrorReaderClosed {
+			if err == wal.ErrorReaderClosed {
 				s.log.Info().Msg("Stopped reading committed entries")
 				return
 			} else if err != nil {
@@ -808,5 +837,14 @@ func (s *shardManager) purgeWaitingRoom() {
 	for _, v := range s.waitingRoom {
 		v.confirmationChannel <- status.Errorf(codes.Aborted, "Oxia shutting down")
 	}
-	s.waitingRoom = make(map[EntryId]waitingRoomEntry)
+	s.waitingRoom = make(map[wal.EntryId]waitingRoomEntry)
+}
+
+func (s *shardManager) CloseReaders(previousStatus Status) error {
+	if previousStatus == Leader {
+		close(s.commitOffsetChannel)
+	} else {
+
+	}
+	return nil
 }

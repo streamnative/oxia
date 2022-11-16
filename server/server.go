@@ -16,25 +16,6 @@ type serverConfig struct {
 	AdvertisedPublicAddress   string
 }
 
-type EntryId struct {
-	epoch  uint64
-	offset uint64
-}
-
-func EntryIdFromProto(id *proto.EntryId) EntryId {
-	return EntryId{
-		epoch:  id.Epoch,
-		offset: id.Offset,
-	}
-}
-
-func (id EntryId) toProto() *proto.EntryId {
-	return &proto.EntryId{
-		Epoch:  id.epoch,
-		Offset: id.offset,
-	}
-}
-
 type server struct {
 	*internalRpcServer
 	*PublicRpcServer

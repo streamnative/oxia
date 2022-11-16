@@ -1,31 +1,20 @@
-package server
+package wal
 
 import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
-	"io"
 	"oxia/proto"
 )
 
-var (
-	ErrorEntryNotFound = errors.New("oxia: entry not found")
-	ErrorReaderClosed  = errors.New("oxia: reader already closed")
-)
+type InMemoryWalFactory struct{}
 
-type Reader interface {
-	io.Closer
-	ReadNext() (*proto.LogEntry, error)
-}
-
-type Wal interface {
-	io.Closer
-	Append(entry *proto.LogEntry) error
-	GetHighestEntryOfEpoch(epoch uint64) (EntryId, error)
-	TruncateLog(headIndex EntryId) (EntryId, error)
-	CloseReaders() error
-	Reader(firstOffset uint64) (Reader, error)
-
-	LogLength() uint64
+func (f *InMemoryWalFactory) NewWal(shard uint32) (Wal, error) {
+	return &inMemoryWal{
+		shard:   shard,
+		log:     make([]*proto.LogEntry, 10, 10000),
+		index:   make(map[EntryId]int),
+		readers: make(map[int]*inMemoryWalReader, 10000),
+	}, nil
 }
 
 type inMemoryWal struct {
@@ -43,6 +32,7 @@ type inMemoryWalReader struct {
 	channel    chan uint64
 	closed     bool
 	id         int
+	forward    bool
 }
 
 func (r *inMemoryWalReader) Close() error {
@@ -54,28 +44,36 @@ func (r *inMemoryWalReader) ReadNext() (*proto.LogEntry, error) {
 	if r.closed {
 		return nil, ErrorReaderClosed
 	}
-	if r.nextOffset >= r.maxOffset {
+	if !r.forward && r.nextOffset < 0 {
+		return nil, ErrorEntryNotFound
+	}
+	if r.forward && r.nextOffset >= r.maxOffset {
 		r.maxOffset = <-r.channel
 	}
 	entry := r.wal.log[r.nextOffset]
-	r.nextOffset++
+	if r.forward {
+		r.nextOffset++
+	} else {
+		r.nextOffset--
+	}
 	return entry, nil
 }
 
-func NewInMemoryWal(shard uint32) Wal {
-	return &inMemoryWal{
-		shard:   shard,
-		log:     make([]*proto.LogEntry, 10, 10000),
-		index:   make(map[EntryId]int),
-		readers: make(map[int]*inMemoryWalReader, 10000),
+func (r *inMemoryWalReader) HasNext() (bool, error) {
+	if r.closed {
+		return false, ErrorReaderClosed
 	}
+	if r.forward {
+		return r.nextOffset <= r.maxOffset, nil
+	}
+	return r.nextOffset >= 0, nil
 }
 
 func (w *inMemoryWal) Close() error {
-	return w.CloseReaders()
+	return w.closeReaders()
 }
 
-func (w *inMemoryWal) Reader(firstOffset uint64) (Reader, error) {
+func (w *inMemoryWal) NewReader(firstOffset uint64) (WalReader, error) {
 	r := &inMemoryWalReader{
 		wal:        w,
 		nextOffset: firstOffset,
@@ -83,6 +81,23 @@ func (w *inMemoryWal) Reader(firstOffset uint64) (Reader, error) {
 		channel:    make(chan uint64, 1),
 		closed:     false,
 		id:         w.nextReaderId,
+		forward:    true,
+	}
+	w.readers[w.nextReaderId] = r
+	w.nextReaderId++
+	return r, nil
+}
+
+func (w *inMemoryWal) NewReverseReader() (WalReader, error) {
+	// TODO
+	r := &inMemoryWalReader{
+		wal:        w,
+		nextOffset: w.log[w.LogLength()-1].EntryId.Offset,
+		maxOffset:  0,
+		channel:    make(chan uint64, 1),
+		closed:     false,
+		id:         w.nextReaderId,
+		forward:    false,
 	}
 	w.readers[w.nextReaderId] = r
 	w.nextReaderId++
@@ -98,7 +113,7 @@ func (w *inMemoryWal) Append(entry *proto.LogEntry) error {
 	return nil
 }
 
-func (w *inMemoryWal) CloseReaders() error {
+func (w *inMemoryWal) closeReaders() error {
 	for _, r := range w.readers {
 		err := r.Close()
 		if err != nil {
