@@ -25,7 +25,7 @@ var (
 func init() {
 	Cmd.Flags().Uint32VarP(&shards, "shards", "s", 1, "Number of shards")
 	Cmd.Flags().StringArrayVarP(&staticNodes, "static-nodes", "n", nil, "Static list of nodes")
-	Cmd.MarkFlagRequired("static-nodes")
+	_ = Cmd.MarkFlagRequired("static-nodes")
 	Cmd.Flags().Uint32VarP(&replicationFactor, "replication-factor", "r", 1, "The replication factor")
 }
 

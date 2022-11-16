@@ -18,12 +18,12 @@ func failOnErr(t *testing.T, err error, op string) {
 	}
 }
 
-func newWalWithEntries(payloads ...string) *inMemoryWal {
+func newWalWithEntries(payloads ...string) (*inMemoryWal, error) {
 	wal := NewInMemoryWal(shard)
 	return initWalWithEntries(wal, payloads)
 }
 
-func initWalWithEntries(wal Wal, payloads []string) *inMemoryWal {
+func initWalWithEntries(wal Wal, payloads []string) (*inMemoryWal, error) {
 	epoch := uint64(1)
 	offset := uint64(1)
 	for _, p := range payloads {
@@ -38,9 +38,12 @@ func initWalWithEntries(wal Wal, payloads []string) *inMemoryWal {
 				Value:     []byte(p),
 				Timestamp: offset,
 			}
-			wal.Append(entry)
+			err := wal.Append(entry)
+			if err != nil {
+				return nil, err
+			}
 			offset++
 		}
 	}
-	return wal.(*inMemoryWal)
+	return wal.(*inMemoryWal), nil
 }
