@@ -2,7 +2,6 @@ package internal
 
 import (
 	"github.com/stretchr/testify/assert"
-	"oxia/oxia"
 	"oxia/proto"
 	"testing"
 )
@@ -10,7 +9,7 @@ import (
 func TestToShard(t *testing.T) {
 	for _, item := range []struct {
 		assignment *proto.ShardAssignment
-		shard      oxia.Shard
+		shard      Shard
 		err        error
 	}{
 		{
@@ -23,7 +22,7 @@ func TestToShard(t *testing.T) {
 						MaxHashExclusive: 2,
 					},
 				},
-			}, oxia.Shard{
+			}, Shard{
 				Id:        1,
 				Leader:    "leader:1234",
 				HashRange: hashRange(1, 2),
