@@ -95,7 +95,7 @@ message ShardAssignment {
 enum ShardKeyRouter {
   UNKNOWN = 0;
 
-  XXHASH_64 = 1;
+  XXHASH3 = 1;
 }
 
 /**

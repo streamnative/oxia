@@ -1,7 +1,7 @@
 package oxia
 
 import (
-	"github.com/pkg/errors"
+	"errors"
 	"io"
 )
 
@@ -10,9 +10,20 @@ const (
 )
 
 var (
-	ErrorKeyNotFound = errors.New("Key not found")
-	ErrorBadVersion  = errors.New("Bad version")
+	ErrorKeyNotFound   = errors.New("key not found")
+	ErrorBadVersion    = errors.New("bad version")
+	ErrorUnknownStatus = errors.New("unknown status")
+	ErrorShuttingDown  = errors.New("shutting down")
 )
+
+type Client interface {
+	io.Closer
+	Put(key string, payload []byte, expectedVersion *int64) <-chan PutResult
+	Delete(key string, expectedVersion *int64) <-chan error
+	DeleteRange(minKeyInclusive string, maxKeyExclusive string) <-chan error
+	Get(key string) <-chan GetResult
+	GetRange(minKeyInclusive string, maxKeyExclusive string) <-chan GetRangeResult
+}
 
 type Stat struct {
 	Version           int64
@@ -25,11 +36,17 @@ type Value struct {
 	Stat    Stat
 }
 
-type Client interface {
-	io.Closer
-	Put(key string, payload []byte, expectedVersion *int64) (Stat, error)
-	Delete(key string, expectedVersion *int64) error
-	DeleteRange(minKeyInclusive string, maxKeyExclusive string) error
-	Get(key string) (Value, error)
-	GetRange(minKeyInclusive string, maxKeyExclusive string) ([]string, error)
+type PutResult struct {
+	Stat Stat
+	Err  error
+}
+
+type GetResult struct {
+	Value Value
+	Err   error
+}
+
+type GetRangeResult struct {
+	Keys []string
+	Err  error
 }
