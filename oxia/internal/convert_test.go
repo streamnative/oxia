@@ -9,12 +9,12 @@ import (
 
 func TestToShard(t *testing.T) {
 	for _, item := range []struct {
-		assignment proto.ShardAssignment
+		assignment *proto.ShardAssignment
 		shard      oxia.Shard
 		err        error
 	}{
 		{
-			proto.ShardAssignment{
+			&proto.ShardAssignment{
 				ShardId: 1,
 				Leader:  "leader:1234",
 				ShardBoundaries: &proto.ShardAssignment_Int32HashRange{
@@ -23,9 +23,13 @@ func TestToShard(t *testing.T) {
 						MaxHashExclusive: 2,
 					},
 				},
-			}, oxia.Shard{1, "leader:1234", oxia.HashRange{1, 2}}, nil},
+			}, oxia.Shard{
+				Id:        1,
+				Leader:    "leader:1234",
+				HashRange: hashRange(1, 2),
+			}, nil},
 	} {
-		result := toShard(&item.assignment)
+		result := toShard(item.assignment)
 		assert.Equal(t, item.shard, result)
 	}
 }

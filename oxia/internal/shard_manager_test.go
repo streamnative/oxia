@@ -50,11 +50,11 @@ func TestOverlap(t *testing.T) {
 		b         oxia.HashRange
 		isOverlap bool
 	}{
-		{oxia.HashRange{1, 2}, oxia.HashRange{3, 6}, false},
-		{oxia.HashRange{1, 4}, oxia.HashRange{3, 6}, true},
-		{oxia.HashRange{4, 5}, oxia.HashRange{3, 6}, true},
-		{oxia.HashRange{5, 8}, oxia.HashRange{3, 6}, true},
-		{oxia.HashRange{7, 8}, oxia.HashRange{3, 6}, false},
+		{hashRange(1, 2), hashRange(3, 6), false},
+		{hashRange(1, 4), hashRange(3, 6), true},
+		{hashRange(4, 5), hashRange(3, 6), true},
+		{hashRange(5, 8), hashRange(3, 6), true},
+		{hashRange(7, 8), hashRange(3, 6), false},
 	} {
 		assert.Equal(t, overlap(item.a, item.b), item.isOverlap)
 	}

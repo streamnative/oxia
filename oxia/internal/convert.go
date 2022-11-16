@@ -30,3 +30,10 @@ func toHashRange(assignment *proto.ShardAssignment) oxia.HashRange {
 		panic("unknown shard boundary")
 	}
 }
+
+func hashRange(minInclusive uint32, maxExclusive uint32) oxia.HashRange {
+	return oxia.HashRange{
+		MinInclusive: minInclusive,
+		MaxExclusive: maxExclusive,
+	}
+}

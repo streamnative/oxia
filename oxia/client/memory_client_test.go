@@ -70,8 +70,16 @@ func TestClose(t *testing.T) {
 
 func TestPutNew(t *testing.T) {
 	items := []putItem{
-		{nil, oxia.Stat{1, 1, 1}, nil},
-		{ptr(oxia.VersionNotExists), oxia.Stat{1, 1, 1}, nil},
+		{nil, oxia.Stat{
+			Version:           1,
+			CreatedTimestamp:  1,
+			ModifiedTimestamp: 1,
+		}, nil},
+		{ptr(oxia.VersionNotExists), oxia.Stat{
+			Version:           1,
+			CreatedTimestamp:  1,
+			ModifiedTimestamp: 1,
+		}, nil},
 		{ptr(1), oxia.Stat{}, oxia.ErrorBadVersion},
 	}
 	runTests(items, func(client oxia.Client, item putItem) {
@@ -85,9 +93,17 @@ func TestPutNew(t *testing.T) {
 
 func TestPutExisting(t *testing.T) {
 	items := []putItem{
-		{nil, oxia.Stat{2, 1, 2}, nil},
+		{nil, oxia.Stat{
+			Version:           2,
+			CreatedTimestamp:  1,
+			ModifiedTimestamp: 2,
+		}, nil},
 		{ptr(oxia.VersionNotExists), oxia.Stat{}, oxia.ErrorBadVersion},
-		{ptr(1), oxia.Stat{2, 1, 2}, nil},
+		{ptr(1), oxia.Stat{
+			Version:           2,
+			CreatedTimestamp:  1,
+			ModifiedTimestamp: 2,
+		}, nil},
 	}
 	runTests(items, func(client oxia.Client, item putItem) {
 		put(t, client, key)
@@ -166,7 +182,14 @@ func TestGetExisting(t *testing.T) {
 		c := client.Get(key)
 		response := <-c
 
-		assert.Equal(t, oxia.Value{payload0, oxia.Stat{1, 1, 1}}, response.Value)
+		assert.Equal(t, oxia.Value{
+			Payload: payload0,
+			Stat: oxia.Stat{
+				Version:           1,
+				CreatedTimestamp:  1,
+				ModifiedTimestamp: 1,
+			},
+		}, response.Value)
 		assert.ErrorIs(t, nil, response.Err)
 	})
 }
