@@ -98,8 +98,8 @@ func TestDBSimple(t *testing.T) {
 	r8 := res.Deletes[3]
 	assert.Equal(t, proto.Status_KEY_NOT_FOUND, r8.Status)
 
+	// TODO: Add the request call and the verification
 	/// Second batch
-
 	//req = &proto.WriteRequest{
 	//	Puts: []*proto.PutRequest{
 	//		{ // Should succeed: no version check

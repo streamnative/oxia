@@ -2,6 +2,8 @@ package server
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 const shard = 1
@@ -21,7 +23,8 @@ func TestNewShardManager(t *testing.T) {
 }
 
 func TestNewShardManagerInitializesFromWal(t *testing.T) {
-	wal := newWalWithEntries("Ticinus", "Cannae", "", "Cartagena", "Baecula", "Ilipa", "", "Utica", "Utica", "Zama")
+	wal, err := newWalWithEntries("Ticinus", "Cannae", "", "Cartagena", "Baecula", "Ilipa", "", "Utica", "Utica", "Zama")
+	assert.NoError(t, err)
 	sm, err := NewShardManager(shard, "scipio:202", nil, wal, nil)
 	if err != nil {
 		t.Log(err)
