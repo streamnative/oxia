@@ -20,7 +20,7 @@ type StandaloneRpcServer struct {
 
 	identityAddr string
 	numShards    uint32
-	dbs          map[int32]kv.DB
+	dbs          map[uint32]kv.DB
 
 	grpcServer *grpc.Server
 	log        zerolog.Logger
@@ -30,14 +30,14 @@ func NewStandaloneRpcServer(port int, identityAddr string, numShards uint32, kvF
 	// Assuming 1 single shard
 	res := &StandaloneRpcServer{
 		numShards: numShards,
-		dbs:       make(map[int32]kv.DB),
+		dbs:       make(map[uint32]kv.DB),
 		log: log.With().
 			Str("component", "standalone-rpc-server").
 			Logger(),
 	}
 
 	var err error
-	for i := int32(0); i < int32(numShards); i++ {
+	for i := uint32(0); i < numShards; i++ {
 		if res.dbs[i], err = kv.NewDB(i, kvFactory); err != nil {
 			return nil, err
 		}
@@ -98,9 +98,9 @@ func (s *StandaloneRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest,
 }
 
 func (s *StandaloneRpcServer) Write(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error) {
-	return s.dbs[int32(*write.ShardId)].ProcessWrite(write)
+	return s.dbs[*write.ShardId].ProcessWrite(write)
 }
 
 func (s *StandaloneRpcServer) Read(ctx context.Context, read *proto.ReadRequest) (*proto.ReadResponse, error) {
-	return s.dbs[int32(*read.ShardId)].ProcessRead(read)
+	return s.dbs[*read.ShardId].ProcessRead(read)
 }

@@ -80,7 +80,7 @@ func NewFollowerController(shardId uint32, wal Wal, kvFactory kv.KVFactory) (Fol
 			Logger(),
 	}
 
-	if db, err := kv.NewDB(int32(shardId), kvFactory); err != nil {
+	if db, err := kv.NewDB(shardId, kvFactory); err != nil {
 		return nil, err
 	} else {
 		fc.db = db

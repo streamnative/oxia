@@ -7,8 +7,7 @@ import (
 )
 
 var (
-	conf        = &serverConfig{}
-	staticNodes []string
+	conf = &serverConfig{}
 
 	Cmd = &cobra.Command{
 		Use:   "server",

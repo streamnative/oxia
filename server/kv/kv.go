@@ -65,5 +65,5 @@ var DefaultKVFactoryOptions = &KVFactoryOptions{
 type KVFactory interface {
 	io.Closer
 
-	NewKV(shardId int32) (KV, error)
+	NewKV(shardId uint32) (KV, error)
 }

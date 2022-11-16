@@ -12,11 +12,6 @@ import (
 )
 
 var (
-	// Used for flags.
-	shards            uint32
-	staticNodes       []string
-	replicationFactor uint32
-
 	rootCmd = &cobra.Command{
 		Use:   "oxia",
 		Short: "Short description",
