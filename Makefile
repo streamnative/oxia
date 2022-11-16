@@ -6,6 +6,10 @@ build: proto
 test: build
 	go test -cover -race ./...
 
+lint:
+	#brew install golangci-lint
+	golangci-lint run
+
 clean:
 	rm -f bin/oxia
 	rm -f */*.pb.go

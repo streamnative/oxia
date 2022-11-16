@@ -76,7 +76,7 @@ func (s *StandaloneRpcServer) Close() error {
 
 func (s *StandaloneRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest, stream proto.OxiaClient_ShardAssignmentsServer) error {
 	res := &proto.ShardAssignmentsResponse{
-		ShardKeyRouter: proto.ShardKeyRouter_XXHASH_64,
+		ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
 	}
 
 	bucketSize := math.MaxUint32 / s.numShards
