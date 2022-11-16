@@ -20,7 +20,7 @@ type DB interface {
 	ProcessRead(b *proto.ReadRequest) (*proto.ReadResponse, error)
 }
 
-func NewDB(shardId int32, factory KVFactory) (DB, error) {
+func NewDB(shardId uint32, factory KVFactory) (DB, error) {
 	kv, err := factory.NewKV(shardId)
 	if err != nil {
 		return nil, err

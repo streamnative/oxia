@@ -1,25 +1,36 @@
-package wal
+package server
 
 import (
 	"github.com/rs/zerolog/log"
 	"oxia/proto"
+	"oxia/server/wal"
+	"sync"
 )
 
-type InMemoryWalFactory struct{}
+type inMemoryWalFactory struct{}
 
-func (f *InMemoryWalFactory) NewWal(shard uint32) (Wal, error) {
+func NewInMemoryWalFactory() wal.WalFactory {
+	return &inMemoryWalFactory{}
+}
+
+func (f *inMemoryWalFactory) NewWal(shard uint32) (wal.Wal, error) {
 	return &inMemoryWal{
 		shard:   shard,
-		log:     make([]*proto.LogEntry, 10, 10000),
-		index:   make(map[EntryId]int),
-		readers: make(map[int]*inMemoryWalReader, 10000),
+		log:     make([]*proto.LogEntry, 0, 100),
+		index:   make(map[wal.EntryId]int),
+		readers: make(map[int]*inMemoryWalReader, 10),
 	}, nil
 }
 
+func (f *inMemoryWalFactory) Close() error {
+	return nil
+}
+
 type inMemoryWal struct {
+	sync.Mutex
 	shard        uint32
 	log          []*proto.LogEntry
-	index        map[EntryId]int
+	index        map[wal.EntryId]int
 	readers      map[int]*inMemoryWalReader
 	nextReaderId int
 }
@@ -34,17 +45,35 @@ type inMemoryWalReader struct {
 	forward    bool
 }
 
+type emptyReader struct{}
+
+func (r *emptyReader) Close() error {
+	return nil
+}
+
+func (r *emptyReader) ReadNext() (*proto.LogEntry, error) {
+	return nil, wal.ErrorEntryNotFound
+}
+
+func (r *emptyReader) HasNext() (bool, error) {
+	return false, nil
+}
+
 func (r *inMemoryWalReader) Close() error {
+	r.wal.Lock()
+	defer r.wal.Unlock()
 	delete(r.wal.readers, r.id)
 	return nil
 }
 
 func (r *inMemoryWalReader) ReadNext() (*proto.LogEntry, error) {
+	r.wal.Lock()
+	defer r.wal.Unlock()
 	if r.closed {
-		return nil, ErrorReaderClosed
+		return nil, wal.ErrorReaderClosed
 	}
 	if !r.forward && r.nextOffset < 0 {
-		return nil, ErrorEntryNotFound
+		return nil, wal.ErrorEntryNotFound
 	}
 	if r.forward && r.nextOffset >= r.maxOffset {
 		r.maxOffset = <-r.channel
@@ -59,8 +88,10 @@ func (r *inMemoryWalReader) ReadNext() (*proto.LogEntry, error) {
 }
 
 func (r *inMemoryWalReader) HasNext() (bool, error) {
+	r.wal.Lock()
+	defer r.wal.Unlock()
 	if r.closed {
-		return false, ErrorReaderClosed
+		return false, wal.ErrorReaderClosed
 	}
 	if r.forward {
 		return r.nextOffset <= r.maxOffset, nil
@@ -72,11 +103,13 @@ func (w *inMemoryWal) Close() error {
 	return w.closeReaders()
 }
 
-func (w *inMemoryWal) NewReader(firstOffset uint64) (WalReader, error) {
+func (w *inMemoryWal) NewReader(firstOffset uint64) (wal.WalReader, error) {
+	w.Lock()
+	defer w.Unlock()
 	r := &inMemoryWalReader{
 		wal:        w,
 		nextOffset: firstOffset,
-		maxOffset:  w.log[w.LogLength()-1].EntryId.Offset,
+		maxOffset:  w.log[w.logLength()-1].EntryId.Offset,
 		channel:    make(chan uint64, 1),
 		closed:     false,
 		id:         w.nextReaderId,
@@ -87,11 +120,15 @@ func (w *inMemoryWal) NewReader(firstOffset uint64) (WalReader, error) {
 	return r, nil
 }
 
-func (w *inMemoryWal) NewReverseReader() (WalReader, error) {
-	// TODO
+func (w *inMemoryWal) NewReverseReader() (wal.WalReader, error) {
+	w.Lock()
+	defer w.Unlock()
+	if w.logLength() == 0 {
+		return &emptyReader{}, nil
+	}
 	r := &inMemoryWalReader{
 		wal:        w,
-		nextOffset: w.log[w.LogLength()-1].EntryId.Offset,
+		nextOffset: w.log[len(w.log)-1].EntryId.Offset,
 		maxOffset:  0,
 		channel:    make(chan uint64, 1),
 		closed:     false,
@@ -104,8 +141,10 @@ func (w *inMemoryWal) NewReverseReader() (WalReader, error) {
 }
 
 func (w *inMemoryWal) Append(entry *proto.LogEntry) error {
+	w.Lock()
+	defer w.Unlock()
 	w.log = append(w.log, entry)
-	w.index[EntryIdFromProto(entry.EntryId)] = len(w.log) - 1
+	w.index[wal.EntryIdFromProto(entry.EntryId)] = len(w.log) - 1
 	for _, reader := range w.readers {
 		reader.channel <- entry.EntryId.Offset
 	}
@@ -113,6 +152,8 @@ func (w *inMemoryWal) Append(entry *proto.LogEntry) error {
 }
 
 func (w *inMemoryWal) closeReaders() error {
+	w.Lock()
+	defer w.Unlock()
 	for _, r := range w.readers {
 		err := r.Close()
 		if err != nil {
@@ -123,21 +164,23 @@ func (w *inMemoryWal) closeReaders() error {
 	return nil
 }
 
-func (w *inMemoryWal) TruncateLog(lastSafeEntryId EntryId) (EntryId, error) {
+func (w *inMemoryWal) TruncateLog(lastSafeEntryId wal.EntryId) (wal.EntryId, error) {
+	w.Lock()
+	defer w.Unlock()
 	index, ok := w.index[lastSafeEntryId]
 	if ok {
 		for i := index + 1; i < len(w.log); i++ {
-			delete(w.index, EntryIdFromProto(w.log[i].EntryId))
+			delete(w.index, wal.EntryIdFromProto(w.log[i].EntryId))
 		}
 		w.log = w.log[:index]
 	}
 	if len(w.log) == 0 {
-		return EntryId{}, nil
+		return wal.EntryId{}, nil
 	}
-	return EntryIdFromProto(w.log[len(w.log)-1].EntryId), nil
+	return wal.EntryIdFromProto(w.log[len(w.log)-1].EntryId), nil
 
 }
 
-func (w *inMemoryWal) LogLength() uint64 {
+func (w *inMemoryWal) logLength() uint64 {
 	return uint64(len(w.log))
 }

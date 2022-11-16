@@ -29,12 +29,12 @@ func NewInMemoryKVStore() KeyValueStore {
 	}
 }
 
-func (k inMemoryKVStore) Close() error {
+func (k *inMemoryKVStore) Close() error {
 	k.store = make(map[string]KVEntry)
 	return nil
 }
 
-func (k inMemoryKVStore) Apply(op *proto.PutOp, timestamp uint64) (KVEntry, error) {
+func (k *inMemoryKVStore) Apply(op *proto.PutOp, timestamp uint64) (KVEntry, error) {
 	old, existed := k.store[op.Key]
 	var version uint64
 	var created uint64
@@ -59,7 +59,7 @@ func (k inMemoryKVStore) Apply(op *proto.PutOp, timestamp uint64) (KVEntry, erro
 
 }
 
-func (k inMemoryKVStore) Get(op *proto.GetOp) (KVEntry, error) {
+func (k *inMemoryKVStore) Get(op *proto.GetOp) (KVEntry, error) {
 	val, ok := k.store[op.Key]
 	if ok {
 		return val, nil

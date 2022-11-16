@@ -33,3 +33,14 @@ proto_doc:
 	protoc --doc_out=docs/proto --doc_opt=markdown,proto.md proto/*.proto
 
 proto_quality: proto_format proto_lint
+
+fetch-tla-tools:
+	mkdir -p tlaplus/.tools
+	cd tlaplus/.tools && \
+		wget https://github.com/tlaplus/tlaplus/releases/download/v1.8.0/tla2tools.jar && \
+		wget https://github.com/tlaplus/CommunityModules/releases/download/202211012231/CommunityModules-deps.jar
+
+
+tla:
+	cd tlaplus && \
+		java -XX:+UseParallelGC -DTLA-Library=.tools/CommunityModules-deps.jar -jar .tools/tla2tools.jar -deadlock OxiaReplication.tla

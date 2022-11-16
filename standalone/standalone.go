@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/rs/zerolog/log"
 	"os"
-	"oxia/proto"
 	"oxia/server/kv"
 )
 
@@ -18,8 +17,6 @@ type standaloneConfig struct {
 type standalone struct {
 	rpc       *StandaloneRpcServer
 	kvFactory kv.KVFactory
-
-	identityInternalAddress proto.ServerAddress
 }
 
 func NewStandalone(config *standaloneConfig) (*standalone, error) {

@@ -707,7 +707,10 @@ func (s *shardManager) AddEntries(srv proto.OxiaLogReplication_AddEntriesServer)
 				return resp, nil
 			}
 		})
-		return srv.Send(response)
+		err = srv.Send(response)
+		if err != nil {
+			return err
+		}
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"io"
 	"oxia/proto"
 	"sync"
@@ -83,7 +84,7 @@ func (cp *clientPool) getConnection(target string) (grpc.ClientConnInterface, er
 		Str("server_address", target).
 		Msg("Creating new GRPC connection")
 
-	cnx, err := grpc.Dial(target, grpc.WithInsecure())
+	cnx, err := grpc.Dial(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		existing, loaded := cp.connections.LoadOrStore(target, cnx)
 		if loaded {

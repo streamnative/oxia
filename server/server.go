@@ -5,7 +5,6 @@ import (
 	"github.com/rs/zerolog/log"
 	"os"
 	"oxia/common"
-	"oxia/proto"
 )
 
 type serverConfig struct {
@@ -22,8 +21,6 @@ type server struct {
 
 	shardsDirector ShardsDirector
 	clientPool     common.ClientPool
-
-	identityInternalAddress proto.ServerAddress
 }
 
 func NewServer(config *serverConfig) (*server, error) {
