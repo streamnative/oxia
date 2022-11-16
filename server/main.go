@@ -8,7 +8,6 @@ import (
 
 var (
 	conf = &serverConfig{}
-	//staticNodes []string
 
 	Cmd = &cobra.Command{
 		Use:   "server",

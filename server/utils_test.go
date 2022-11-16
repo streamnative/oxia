@@ -38,7 +38,10 @@ func initWalWithEntries(wal Wal, payloads []string) *inMemoryWal {
 				Value:     []byte(p),
 				Timestamp: offset,
 			}
-			_ = wal.Append(entry)
+			err := wal.Append(entry)
+			if err != nil {
+				panic(err)
+			}
 			offset++
 		}
 	}
