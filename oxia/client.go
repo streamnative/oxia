@@ -26,7 +26,7 @@ type Client interface {
 }
 
 type ClientOptions struct {
-	serviceURL string
+	//serviceURL string
 }
 
 func NewClient(options *ClientOptions) Client {
