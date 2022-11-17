@@ -637,8 +637,8 @@ func (s *shardManager) processCommittedEntries(minExclusive wal.EntryId) {
 	}()
 	limit := s.commitIndex
 	for {
-		entry, err := reader.ReadNext()
-		for err == nil && wal.EntryIdFromProto(entry.EntryId).LessOrEqual(limit) {
+		entry, err2 := reader.ReadNext()
+		for err2 == nil && wal.EntryIdFromProto(entry.EntryId).LessOrEqual(limit) {
 			op, err := deserializeOp(entry.GetValue())
 			if err != nil {
 				s.log.Err(err).Msg("Error deserializing committed entry for processing")
@@ -654,13 +654,13 @@ func (s *shardManager) processCommittedEntries(minExclusive wal.EntryId) {
 			waitingEntry.confirmationChannel <- stat
 			delete(s.waitingRoom, wal.EntryIdFromProto(entry.EntryId))
 			// TODO notify watchers
-			entry, err = reader.ReadNext()
+			entry, err2 = reader.ReadNext()
 		}
-		if err == wal.ErrorReaderClosed {
+		if err2 == wal.ErrorReaderClosed {
 			s.log.Info().Msg("Stopped reading committed entries for processing")
 			return
-		} else if err != nil {
-			s.log.Err(err).Msg("Error reading committed entry for processing")
+		} else if err2 != nil {
+			s.log.Err(err2).Msg("Error reading committed entry for processing")
 			return
 		}
 		newLimit, more := <-s.commitOffsetChannel
@@ -745,8 +745,8 @@ func (s *shardManager) addEntrySync(req *proto.AddEntryRequest) (*proto.AddEntry
 				s.log.Err(err).Msg("Error closing reader used for applying committed entries")
 			}
 		}()
-		entry, err := reader.ReadNext()
-		for err == nil && wal.EntryIdFromProto(entry.EntryId).LessOrEqual(maxInclusive) {
+		entry, err2 := reader.ReadNext()
+		for err2 == nil && wal.EntryIdFromProto(entry.EntryId).LessOrEqual(maxInclusive) {
 
 			op, err := deserializeOp(entry.GetValue())
 			if err != nil {
@@ -758,13 +758,13 @@ func (s *shardManager) addEntrySync(req *proto.AddEntryRequest) (*proto.AddEntry
 				s.log.Err(err).Msg("Error applying committed entry")
 				return
 			}
-			entry, err = reader.ReadNext()
+			entry, err2 = reader.ReadNext()
 		}
-		if err == wal.ErrorReaderClosed {
+		if err2 == wal.ErrorReaderClosed {
 			s.log.Info().Msg("Stopped reading committed entries")
 			return
-		} else if err != nil {
-			s.log.Err(err).Msg("Error reading committed entry")
+		} else if err2 != nil {
+			s.log.Err(err2).Msg("Error reading committed entry")
 			return
 		}
 	}()

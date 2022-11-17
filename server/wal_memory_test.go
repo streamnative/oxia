@@ -239,7 +239,3 @@ func (w *inMemoryWal) TruncateLog(lastSafeEntryId wal.EntryId) (wal.EntryId, err
 	return wal.EntryIdFromProto(w.log[len(w.log)-1].EntryId), nil
 
 }
-
-func (w *inMemoryWal) logLength() uint64 {
-	return uint64(len(w.log))
-}
