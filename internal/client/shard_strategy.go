@@ -1,4 +1,4 @@
-package internal
+package client
 
 type ShardStrategy interface {
 	Get(key string) func(Shard) bool

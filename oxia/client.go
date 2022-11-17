@@ -25,14 +25,6 @@ type Client interface {
 	GetRange(minKeyInclusive string, maxKeyExclusive string) <-chan GetRangeResult
 }
 
-type ClientOptions struct {
-	//serviceURL string
-}
-
-func NewClient(options *ClientOptions) Client {
-	return newMemoryClient()
-}
-
 type Stat struct {
 	Version           int64
 	CreatedTimestamp  uint64
