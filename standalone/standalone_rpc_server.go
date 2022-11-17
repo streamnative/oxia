@@ -21,11 +21,9 @@ type StandaloneRpcServer struct {
 	identityAddr string
 	port         int
 	numShards    uint32
-
-	dbs        map[uint32]kv.DB
-	grpcServer *grpc.Server
-
-	log zerolog.Logger
+	dbs          map[uint32]kv.DB
+	grpcServer   *grpc.Server
+	log          zerolog.Logger
 }
 
 func NewStandaloneRpcServer(port int, identityAddr string, numShards uint32, kvFactory kv.KVFactory) (*StandaloneRpcServer, error) {
