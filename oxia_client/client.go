@@ -5,13 +5,9 @@ import (
 	"oxia/oxia"
 )
 
-type Options struct {
-	InMemory bool
-}
-
-func New(options *Options) oxia.Client {
+func New(options *oxia.Options) oxia.Client {
 	if options.InMemory {
 		return impl.NewMemoryClient()
 	}
-	panic("not yet implemented")
+	return impl.NewClient(options)
 }

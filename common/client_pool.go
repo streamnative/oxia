@@ -18,6 +18,7 @@ type ClientPool interface {
 }
 
 type clientPool struct {
+	sync.Mutex
 	connections sync.Map
 
 	log zerolog.Logger
@@ -80,19 +81,23 @@ func (cp *clientPool) getConnection(target string) (grpc.ClientConnInterface, er
 		return cnx.(grpc.ClientConnInterface), nil
 	}
 
+	cp.Lock()
+	defer cp.Unlock()
+
+	cnx, ok = cp.connections.Load(target)
+	if ok {
+		return cnx.(grpc.ClientConnInterface), nil
+	}
+
 	cp.log.Info().
 		Str("server_address", target).
 		Msg("Creating new GRPC connection")
 
 	cnx, err := grpc.Dial(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		existing, loaded := cp.connections.LoadOrStore(target, cnx)
-		if loaded {
-			// There was a race condition
-			cnx.(*grpc.ClientConn).Close()
-			cnx = existing
-		}
+		return nil, err
 	}
 
-	return cnx.(grpc.ClientConnInterface), err
+	cp.connections.Store(target, cnx)
+	return cnx.(grpc.ClientConnInterface), nil
 }

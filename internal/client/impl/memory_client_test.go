@@ -170,8 +170,9 @@ func TestGetMissing(t *testing.T) {
 		c := client.Get(key)
 		response := <-c
 
-		assert.Equal(t, oxia.Value{}, response.Value)
-		assert.ErrorIs(t, oxia.ErrorKeyNotFound, response.Err)
+		assert.Equal(t, oxia.GetResult{
+			Err: oxia.ErrorKeyNotFound,
+		}, response)
 	})
 }
 
@@ -182,14 +183,14 @@ func TestGetExisting(t *testing.T) {
 		c := client.Get(key)
 		response := <-c
 
-		assert.Equal(t, oxia.Value{
+		assert.Equal(t, oxia.GetResult{
 			Payload: payload0,
 			Stat: oxia.Stat{
 				Version:           1,
 				CreatedTimestamp:  1,
 				ModifiedTimestamp: 1,
 			},
-		}, response.Value)
+		}, response)
 		assert.ErrorIs(t, nil, response.Err)
 	})
 }

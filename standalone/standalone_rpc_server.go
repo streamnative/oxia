@@ -11,6 +11,7 @@ import (
 	"net"
 	"oxia/proto"
 	"oxia/server/kv"
+	"strconv"
 )
 
 // This implementation is temporary, until all the WAL changes are ready
@@ -29,8 +30,9 @@ type StandaloneRpcServer struct {
 func NewStandaloneRpcServer(port int, identityAddr string, numShards uint32, kvFactory kv.KVFactory) (*StandaloneRpcServer, error) {
 	// Assuming 1 single shard
 	res := &StandaloneRpcServer{
-		numShards: numShards,
-		dbs:       make(map[uint32]kv.DB),
+		identityAddr: identityAddr + ":" + strconv.FormatInt(int64(port), 10),
+		numShards:    numShards,
+		dbs:          make(map[uint32]kv.DB),
 		log: log.With().
 			Str("component", "standalone-rpc-server").
 			Logger(),

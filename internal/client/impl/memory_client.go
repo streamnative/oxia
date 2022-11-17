@@ -7,7 +7,7 @@ import (
 
 type memoryClient struct {
 	clock common.Clock
-	data  map[string]oxia.Value
+	data  map[string]oxia.GetResult
 }
 
 func NewMemoryClient() oxia.Client {
@@ -17,7 +17,7 @@ func NewMemoryClient() oxia.Client {
 func newMemoryClientWithClock(clock common.Clock) oxia.Client {
 	return &memoryClient{
 		clock: clock,
-		data:  make(map[string]oxia.Value),
+		data:  make(map[string]oxia.GetResult),
 	}
 }
 
@@ -43,7 +43,7 @@ func (c *memoryClient) Put(key string, payload []byte, expectedVersion *int64) <
 		if expectedVersion != nil && *expectedVersion != oxia.VersionNotExists {
 			ch <- oxia.PutResult{Err: oxia.ErrorBadVersion}
 		} else {
-			value = oxia.Value{
+			value = oxia.GetResult{
 				Payload: payload,
 				Stat: oxia.Stat{
 					Version:           1,
@@ -90,9 +90,7 @@ func (c *memoryClient) DeleteRange(minKeyInclusive string, maxKeyExclusive strin
 func (c *memoryClient) Get(key string) <-chan oxia.GetResult {
 	ch := make(chan oxia.GetResult, 1)
 	if value, ok := c.data[key]; ok {
-		ch <- oxia.GetResult{
-			Value: value,
-		}
+		ch <- value
 	} else {
 		ch <- oxia.GetResult{
 			Err: oxia.ErrorKeyNotFound,

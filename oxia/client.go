@@ -3,18 +3,32 @@ package oxia
 import (
 	"errors"
 	"io"
+	"time"
 )
 
 const (
-	VersionNotExists int64 = -1
+	DefaultBatchLinger  = 100 * time.Millisecond
+	DefaultBatchMaxSize = 100
+	DefaultBatchTimeout = 1 * time.Minute
 )
 
 var (
+	//not easy to use as a pointer if a const
+	VersionNotExists int64 = -1
+
 	ErrorKeyNotFound   = errors.New("key not found")
 	ErrorBadVersion    = errors.New("bad version")
 	ErrorUnknownStatus = errors.New("unknown status")
 	ErrorShuttingDown  = errors.New("shutting down")
 )
+
+type Options struct {
+	ServiceUrl   string
+	BatchLinger  time.Duration
+	BatchMaxSize int
+	BatchTimeout time.Duration
+	InMemory     bool
+}
 
 type Client interface {
 	io.Closer
@@ -31,19 +45,15 @@ type Stat struct {
 	ModifiedTimestamp uint64
 }
 
-type Value struct {
-	Payload []byte
-	Stat    Stat
-}
-
 type PutResult struct {
 	Stat Stat
 	Err  error
 }
 
 type GetResult struct {
-	Value Value
-	Err   error
+	Payload []byte
+	Stat    Stat
+	Err     error
 }
 
 type GetRangeResult struct {
