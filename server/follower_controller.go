@@ -9,6 +9,7 @@ import (
 	"math"
 	"oxia/proto"
 	"oxia/server/kv"
+	"oxia/server/wal"
 	"sync"
 )
 
@@ -56,23 +57,23 @@ type followerController struct {
 
 	shardId     uint32
 	epoch       uint64
-	commitIndex EntryId
-	headIndex   EntryId
+	commitIndex wal.EntryId
+	headIndex   wal.EntryId
 	status      Status
-	wal         Wal
+	wal         wal.Wal
 	db          kv.DB
 	closing     bool
 	log         zerolog.Logger
 }
 
-func NewFollowerController(shardId uint32, wal Wal, kvFactory kv.KVFactory) (FollowerController, error) {
+func NewFollowerController(shardId uint32, w wal.Wal, kvFactory kv.KVFactory) (FollowerController, error) {
 	fc := &followerController{
 		shardId:     shardId,
 		epoch:       0,
-		commitIndex: EntryId{},
-		headIndex:   EntryId{},
+		commitIndex: wal.EntryId{},
+		headIndex:   wal.EntryId{},
 		status:      NotMember,
-		wal:         wal,
+		wal:         w,
 		closing:     false,
 		log: log.With().
 			Str("component", "follower-controller").
@@ -86,7 +87,7 @@ func NewFollowerController(shardId uint32, wal Wal, kvFactory kv.KVFactory) (Fol
 		fc.db = db
 	}
 
-	entryId, err := wal.GetHighestEntryOfEpoch(MaxEpoch)
+	entryId, err := GetHighestEntryOfEpoch(fc.wal, MaxEpoch)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +136,7 @@ func (fc *followerController) Fence(req *proto.FenceRequest) (*proto.FenceRespon
 	fc.status = Fenced
 	return &proto.FenceResponse{
 		Epoch:     fc.epoch,
-		HeadIndex: fc.headIndex.toProto(),
+		HeadIndex: fc.headIndex.ToProto(),
 	}, nil
 }
 
@@ -152,15 +153,18 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 
 	fc.status = Follower
 	fc.epoch = req.Epoch
-	headEntryId, err := fc.wal.TruncateLog(EntryIdFromProto(req.HeadIndex))
+	headEntryId, err := fc.wal.TruncateLog(wal.EntryIdFromProto(req.HeadIndex))
 	if err != nil {
 		return nil, err
 	}
 	fc.headIndex = headEntryId
+	if err = fc.processCommittedEntries(wal.EntryId{}, fc.headIndex); err != nil {
+		return nil, err
+	}
 
 	return &proto.TruncateResponse{
 		Epoch:     req.Epoch,
-		HeadIndex: headEntryId.toProto(),
+		HeadIndex: headEntryId.ToProto(),
 	}, nil
 }
 
@@ -179,7 +183,6 @@ func (fc *followerController) AddEntries(stream proto.OxiaLogReplication_AddEntr
 func (fc *followerController) addEntry(req *proto.AddEntryRequest) (*proto.AddEntryResponse, error) {
 	fc.Lock()
 	defer fc.Unlock()
-
 	if fc.status != Follower && fc.status != Fenced {
 		return nil, errors.Wrapf(ErrorInvalidStatus, "AddEntry request when status = %+v", fc.status)
 	}
@@ -213,21 +216,10 @@ func (fc *followerController) addEntry(req *proto.AddEntryRequest) (*proto.AddEn
 		return nil, err
 	}
 
-	fc.headIndex = EntryIdFromProto(req.Entry.EntryId)
+	fc.headIndex = wal.EntryIdFromProto(req.Entry.EntryId)
 	oldCommitIndex := fc.commitIndex
-	fc.commitIndex = EntryIdFromProto(req.CommitIndex)
-
-	err := fc.wal.ReadSync(oldCommitIndex, fc.commitIndex, func(entry *proto.LogEntry) error {
-		br := &proto.WriteRequest{}
-		if err := pb.Unmarshal(entry.Value, br); err != nil {
-			return err
-		}
-
-		_, err := fc.db.ProcessWrite(br)
-		return err
-	})
-
-	if err != nil {
+	fc.commitIndex = wal.EntryIdFromProto(req.CommitIndex)
+	if err := fc.processCommittedEntries(oldCommitIndex, fc.commitIndex); err != nil {
 		return nil, err
 	}
 	return &proto.AddEntryResponse{
@@ -236,6 +228,68 @@ func (fc *followerController) addEntry(req *proto.AddEntryRequest) (*proto.AddEn
 		InvalidEpoch: false,
 	}, nil
 
+}
+
+func (fc *followerController) processCommittedEntries(minExclusive wal.EntryId, maxInclusive wal.EntryId) error {
+	if maxInclusive.LessOrEqual(minExclusive) {
+		return nil
+	}
+
+	reader, err := fc.wal.NewReader(minExclusive)
+	if err != nil {
+		fc.log.Err(err).Msg("Error opening reader used for applying committed entries")
+		return err
+	}
+	defer func() {
+		err := reader.Close()
+		if err != nil {
+			fc.log.Err(err).Msg("Error closing reader used for applying committed entries")
+		}
+	}()
+
+	entry, err := reader.ReadNext()
+	for err == nil && wal.EntryIdFromProto(entry.EntryId).LessOrEqual(maxInclusive) {
+		if err == wal.ErrorReaderClosed {
+			fc.log.Info().Msg("Stopped reading committed entries")
+			return err
+		} else if err != nil {
+			fc.log.Err(err).Msg("Error reading committed entry")
+			return err
+		}
+
+		br := &proto.WriteRequest{}
+		if err := pb.Unmarshal(entry.Value, br); err != nil {
+			fc.log.Err(err).Msg("Error unmarshalling committed entry")
+			return err
+		}
+
+		_, err = fc.db.ProcessWrite(br)
+		if err != nil {
+			fc.log.Err(err).Msg("Error applying committed entry")
+			return err
+		}
+		entry, err = reader.ReadNext()
+	}
+	return err
+}
+
+func GetHighestEntryOfEpoch(w wal.Wal, epoch uint64) (wal.EntryId, error) {
+	zero := wal.EntryId{}
+	r, err := w.NewReverseReader()
+	if err != nil {
+		return zero, err
+	}
+	defer r.Close()
+	for r.HasNext() {
+		e, err := r.ReadNext()
+		if err != nil {
+			return zero, err
+		}
+		if e.EntryId.Epoch <= epoch {
+			return wal.EntryIdFromProto(e.EntryId), nil
+		}
+	}
+	return zero, nil
 }
 
 type MessageWithEpoch interface {
