@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"github.com/rs/zerolog/log"
+	"math"
 	"oxia/proto"
 	"oxia/server/wal"
 	"sync"
@@ -82,9 +83,6 @@ func (r *inMemoryWalReader) ReadNext() (*proto.LogEntry, error) {
 	if r.closed {
 		return nil, wal.ErrorReaderClosed
 	}
-	if !r.forward && r.nextOffset < 0 {
-		return nil, wal.ErrorEntryNotFound
-	}
 	for r.forward && r.nextOffset >= r.offsetCeiling {
 		update, more := <-r.channel
 		if !more {
@@ -96,6 +94,8 @@ func (r *inMemoryWalReader) ReadNext() (*proto.LogEntry, error) {
 	entry := r.wal.log[r.nextOffset]
 	if r.forward {
 		r.nextOffset++
+	} else if r.nextOffset == 0 {
+		r.nextOffset = math.MaxUint64
 	} else {
 		r.nextOffset--
 	}
@@ -111,7 +111,7 @@ func (r *inMemoryWalReader) HasNext() bool {
 	if r.forward {
 		return r.nextOffset < r.offsetCeiling-1
 	}
-	return r.nextOffset >= 0
+	return r.nextOffset != math.MaxUint64
 }
 
 func (w *inMemoryWal) Close() error {
