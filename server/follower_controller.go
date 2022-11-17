@@ -1,7 +1,6 @@
 package server
 
 import (
-	"fmt"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -159,7 +158,7 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 		return nil, err
 	}
 	fc.headIndex = headEntryId
-	if err = fc.processCommittedEntries(0); err != nil {
+	if err = fc.processCommittedEntries(wal.EntryId{}, fc.headIndex); err != nil {
 		return nil, err
 	}
 
@@ -184,7 +183,6 @@ func (fc *followerController) AddEntries(stream proto.OxiaLogReplication_AddEntr
 func (fc *followerController) addEntry(req *proto.AddEntryRequest) (*proto.AddEntryResponse, error) {
 	fc.Lock()
 	defer fc.Unlock()
-
 	if fc.status != Follower && fc.status != Fenced {
 		return nil, errors.Wrapf(ErrorInvalidStatus, "AddEntry request when status = %+v", fc.status)
 	}
@@ -221,8 +219,7 @@ func (fc *followerController) addEntry(req *proto.AddEntryRequest) (*proto.AddEn
 	fc.headIndex = wal.EntryIdFromProto(req.Entry.EntryId)
 	oldCommitIndex := fc.commitIndex
 	fc.commitIndex = wal.EntryIdFromProto(req.CommitIndex)
-
-	if err := fc.processCommittedEntries(oldCommitIndex.Offset + 1); err != nil {
+	if err := fc.processCommittedEntries(oldCommitIndex, fc.commitIndex); err != nil {
 		return nil, err
 	}
 	return &proto.AddEntryResponse{
@@ -233,10 +230,12 @@ func (fc *followerController) addEntry(req *proto.AddEntryRequest) (*proto.AddEn
 
 }
 
-func (fc *followerController) processCommittedEntries(offset uint64) error {
-	fmt.Printf("ProcessCommitted (%d)", offset)
+func (fc *followerController) processCommittedEntries(minExclusive wal.EntryId, maxInclusive wal.EntryId) error {
+	if maxInclusive.LessOrEqual(minExclusive) {
+		return nil
+	}
 
-	reader, err := fc.wal.NewReader(offset)
+	reader, err := fc.wal.NewReader(minExclusive)
 	if err != nil {
 		fc.log.Err(err).Msg("Error opening reader used for applying committed entries")
 		return err
@@ -248,12 +247,8 @@ func (fc *followerController) processCommittedEntries(offset uint64) error {
 		}
 	}()
 
-	for limit := fc.commitIndex.Offset; offset <= limit && reader.HasNext(); offset++ {
-		fmt.Printf("Reading offset (%d)", offset)
-
-		entry, err := reader.ReadNext()
-		fmt.Printf("Read  (%d,%d)", entry.EntryId.Epoch, entry.EntryId.Offset)
-
+	entry, err := reader.ReadNext()
+	for err == nil && wal.EntryIdFromProto(entry.EntryId).LessOrEqual(maxInclusive) {
 		if err == wal.ErrorReaderClosed {
 			fc.log.Info().Msg("Stopped reading committed entries")
 			return err
@@ -273,8 +268,9 @@ func (fc *followerController) processCommittedEntries(offset uint64) error {
 			fc.log.Err(err).Msg("Error applying committed entry")
 			return err
 		}
+		entry, err = reader.ReadNext()
 	}
-	return nil
+	return err
 }
 
 func GetHighestEntryOfEpoch(w wal.Wal, epoch uint64) (wal.EntryId, error) {

@@ -30,6 +30,10 @@ func (id EntryId) ToProto() *proto.EntryId {
 	}
 }
 
+func (id EntryId) LessOrEqual(other EntryId) bool {
+	return id.Epoch < other.Epoch || (id.Epoch == other.Epoch && id.Offset <= other.Offset)
+}
+
 type WalFactory interface {
 	io.Closer
 	NewWal(shard uint32) (Wal, error)
@@ -53,8 +57,8 @@ type Wal interface {
 	Append(entry *proto.LogEntry) error
 	// TruncateLog removes entries from the end of the log that have an ID greater than headIndex.
 	TruncateLog(headIndex EntryId) (EntryId, error)
-	// NewReader returns a new WalReader to traverse the log from the specified offset towards the log end
-	NewReader(startOffset uint64) (WalReader, error)
-	// NewReverseReader returns a new WalReader to traverse the log from the end towards the beginning
+	// NewReader returns a new WalReader to traverse the log from the entry after `after` towards the log end
+	NewReader(after EntryId) (WalReader, error)
+	// NewReverseReader returns a new WalReader to traverse the log from the last entry towards the beginning
 	NewReverseReader() (WalReader, error)
 }

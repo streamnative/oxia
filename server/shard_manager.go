@@ -91,7 +91,7 @@ type shardManager struct {
 	kv                  KeyValueStore
 	commandChannel      chan *Command
 	waitingRoom         map[wal.EntryId]waitingRoomEntry
-	commitOffsetChannel chan uint64
+	commitOffsetChannel chan wal.EntryId
 	clientPool          common.ClientPool
 	identityAddress     string
 	closing             bool
@@ -113,7 +113,7 @@ func NewShardManager(shard uint32, identityAddress string, pool common.ClientPoo
 		kv:                  kv,
 		commandChannel:      make(chan *Command, 8),
 		waitingRoom:         make(map[wal.EntryId]waitingRoomEntry),
-		commitOffsetChannel: make(chan uint64, 1),
+		commitOffsetChannel: make(chan wal.EntryId, 1),
 		clientPool:          pool,
 		identityAddress:     identityAddress,
 		closing:             false,
@@ -371,7 +371,7 @@ func (s *shardManager) becomeLeaderSync(req *proto.BecomeLeaderRequest) (*proto.
 			s.sendEntriesToFollower(k, v.lastPushed)
 		}
 	}
-	go s.processCommittedEntries(s.commitIndex.Offset)
+	go s.processCommittedEntries(s.commitIndex)
 	return &proto.BecomeLeaderResponse{Epoch: req.GetEpoch()}, nil
 }
 func (s *shardManager) Truncate(req *proto.TruncateRequest) (*proto.TruncateResponse, error) {
@@ -517,7 +517,7 @@ func (s *shardManager) sendEntriesToFollower(target string, lastPushedEntry *pro
 		if err != nil {
 			return nil, err
 		}
-		r, err := s.wal.NewReader(lastPushedEntry.Offset + 1)
+		r, err := s.wal.NewReader(wal.EntryIdFromProto(lastPushedEntry))
 		if err != nil {
 			return nil, err
 		}
@@ -615,7 +615,7 @@ func (s *shardManager) addEntryResponseSync(follower string, response *proto.Add
 			waitingEntry.counter++
 			if waitingEntry.counter >= s.replicationFactor/2 {
 				s.commitIndex = wal.EntryIdFromProto(response.EntryId)
-				s.commitOffsetChannel <- s.commitIndex.Offset
+				s.commitOffsetChannel <- s.commitIndex
 			}
 		}
 	} else {
@@ -624,8 +624,8 @@ func (s *shardManager) addEntryResponseSync(follower string, response *proto.Add
 	return nil
 }
 
-func (s *shardManager) processCommittedEntries(lastCommitted uint64) {
-	reader, err := s.wal.NewReader(lastCommitted + 1)
+func (s *shardManager) processCommittedEntries(minExclusive wal.EntryId) {
+	reader, err := s.wal.NewReader(minExclusive)
 	if err != nil {
 		s.log.Err(err).Msg("Error opening reader used for committed entries")
 	}
@@ -635,18 +635,10 @@ func (s *shardManager) processCommittedEntries(lastCommitted uint64) {
 			s.log.Err(err).Msg("Error closing reader used for committed entries")
 		}
 	}()
-	limit := lastCommitted
-	nextOffset := lastCommitted + 1
-	for s.status == Leader {
-		for s.status == Leader && nextOffset <= limit {
-			entry, err := reader.ReadNext()
-			if err == wal.ErrorReaderClosed {
-				s.log.Info().Msg("Stopped reading committed entries for processing")
-				return
-			} else if err != nil {
-				s.log.Err(err).Msg("Error reading committed entry for processing")
-				return
-			}
+	limit := s.commitIndex
+	for {
+		entry, err := reader.ReadNext()
+		for err == nil && wal.EntryIdFromProto(entry.EntryId).LessOrEqual(limit) {
 			op, err := deserializeOp(entry.GetValue())
 			if err != nil {
 				s.log.Err(err).Msg("Error deserializing committed entry for processing")
@@ -662,7 +654,14 @@ func (s *shardManager) processCommittedEntries(lastCommitted uint64) {
 			waitingEntry.confirmationChannel <- stat
 			delete(s.waitingRoom, wal.EntryIdFromProto(entry.EntryId))
 			// TODO notify watchers
-
+			entry, err = reader.ReadNext()
+		}
+		if err == wal.ErrorReaderClosed {
+			s.log.Info().Msg("Stopped reading committed entries for processing")
+			return
+		} else if err != nil {
+			s.log.Err(err).Msg("Error reading committed entry for processing")
+			return
 		}
 		newLimit, more := <-s.commitOffsetChannel
 		if more {
@@ -732,9 +731,10 @@ func (s *shardManager) addEntrySync(req *proto.AddEntryRequest) (*proto.AddEntry
 	s.headIndex = wal.EntryIdFromProto(req.Entry.EntryId)
 	oldCommitIndex := s.commitIndex
 	s.commitIndex = wal.EntryIdFromProto(req.CommitIndex)
+	maxInclusive := s.commitIndex
 	// TODO maybe a long lived go routine instead of a go routine per request
 	go func() {
-		reader, err := s.wal.NewReader(oldCommitIndex.Offset + 1)
+		reader, err := s.wal.NewReader(oldCommitIndex)
 		if err != nil {
 			s.log.Err(err).Msg("Error opening reader used for applying committed entries")
 			return
@@ -745,17 +745,9 @@ func (s *shardManager) addEntrySync(req *proto.AddEntryRequest) (*proto.AddEntry
 				s.log.Err(err).Msg("Error closing reader used for applying committed entries")
 			}
 		}()
-		nextOffset := oldCommitIndex.Offset + 1
-		for nextOffset <= s.commitIndex.Offset {
+		entry, err := reader.ReadNext()
+		for err == nil && wal.EntryIdFromProto(entry.EntryId).LessOrEqual(maxInclusive) {
 
-			entry, err := reader.ReadNext()
-			if err == wal.ErrorReaderClosed {
-				s.log.Info().Msg("Stopped reading committed entries")
-				return
-			} else if err != nil {
-				s.log.Err(err).Msg("Error reading committed entry")
-				return
-			}
 			op, err := deserializeOp(entry.GetValue())
 			if err != nil {
 				s.log.Err(err).Msg("Error deserializing committed entry")
@@ -766,6 +758,14 @@ func (s *shardManager) addEntrySync(req *proto.AddEntryRequest) (*proto.AddEntry
 				s.log.Err(err).Msg("Error applying committed entry")
 				return
 			}
+			entry, err = reader.ReadNext()
+		}
+		if err == wal.ErrorReaderClosed {
+			s.log.Info().Msg("Stopped reading committed entries")
+			return
+		} else if err != nil {
+			s.log.Err(err).Msg("Error reading committed entry")
+			return
 		}
 	}()
 	return &proto.AddEntryResponse{
