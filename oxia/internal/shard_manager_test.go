@@ -4,7 +4,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"net"
 	"oxia/common"
-	"oxia/oxia"
 	"oxia/server/kv"
 	"oxia/standalone"
 	"strconv"
@@ -14,8 +13,8 @@ import (
 type testShardStrategy struct {
 }
 
-func (s *testShardStrategy) Get(key string) func(oxia.Shard) bool {
-	return func(shard oxia.Shard) bool {
+func (s *testShardStrategy) Get(key string) func(Shard) bool {
+	return func(shard Shard) bool {
 		return true
 	}
 }
@@ -46,8 +45,8 @@ func TestWithStandalone(t *testing.T) {
 
 func TestOverlap(t *testing.T) {
 	for _, item := range []struct {
-		a         oxia.HashRange
-		b         oxia.HashRange
+		a         HashRange
+		b         HashRange
 		isOverlap bool
 	}{
 		{hashRange(1, 2), hashRange(3, 6), false},

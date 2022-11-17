@@ -7,7 +7,6 @@ import (
 	"github.com/rs/zerolog/log"
 	"io"
 	"oxia/common"
-	"oxia/oxia"
 	"oxia/proto"
 	"sync"
 )
@@ -26,20 +25,20 @@ type ShardManager interface {
 
 type shardManagerImpl struct {
 	sync.Mutex
-	shardStrategy oxia.ShardStrategy
+	shardStrategy ShardStrategy
 	clientPool    common.ClientPool
 	serviceUrl    string
-	shards        map[uint32]oxia.Shard
+	shards        map[uint32]Shard
 	closeC        chan bool
 	logger        zerolog.Logger
 }
 
-func NewShardManager(shardStrategy oxia.ShardStrategy, clientPool common.ClientPool, serviceUrl string) ShardManager {
+func NewShardManager(shardStrategy ShardStrategy, clientPool common.ClientPool, serviceUrl string) ShardManager {
 	return &shardManagerImpl{
 		shardStrategy: shardStrategy,
 		clientPool:    clientPool,
 		serviceUrl:    serviceUrl,
-		shards:        make(map[uint32]oxia.Shard),
+		shards:        make(map[uint32]Shard),
 		closeC:        make(chan bool),
 		logger:        log.With().Str("component", "shardManager").Logger(),
 	}
@@ -139,7 +138,7 @@ func (s *shardManagerImpl) receive(ctx context.Context, wg *sync.WaitGroup) erro
 		if response, err := stream.Recv(); err != nil {
 			return err
 		} else {
-			shards := make([]oxia.Shard, len(response.Assignments))
+			shards := make([]Shard, len(response.Assignments))
 			for i, assignment := range response.Assignments {
 				shards[i] = toShard(assignment)
 			}
@@ -149,7 +148,7 @@ func (s *shardManagerImpl) receive(ctx context.Context, wg *sync.WaitGroup) erro
 	}
 }
 
-func (s *shardManagerImpl) update(updates []oxia.Shard) {
+func (s *shardManagerImpl) update(updates []Shard) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -167,6 +166,6 @@ func (s *shardManagerImpl) update(updates []oxia.Shard) {
 	}
 }
 
-func overlap(a oxia.HashRange, b oxia.HashRange) bool {
+func overlap(a HashRange, b HashRange) bool {
 	return !(a.MinInclusive >= b.MaxExclusive || a.MaxExclusive <= b.MinInclusive)
 }

@@ -1,8 +1,7 @@
-package client
+package internal
 
 import (
 	"github.com/stretchr/testify/assert"
-	"oxia/oxia"
 	"testing"
 )
 
@@ -24,8 +23,8 @@ func TestShardStrategy(t *testing.T) {
 		{3, 4, false},
 		{1, 2, false},
 	} {
-		shard := oxia.Shard{
-			HashRange: oxia.HashRange{
+		shard := Shard{
+			HashRange: HashRange{
 				MinInclusive: item.minInclusive,
 				MaxExclusive: item.maxExclusive,
 			},
