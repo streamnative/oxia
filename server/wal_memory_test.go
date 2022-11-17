@@ -20,7 +20,7 @@ func (f *inMemoryWalFactory) NewWal(shard uint32) (wal.Wal, error) {
 		shard:   shard,
 		log:     make([]*proto.LogEntry, 0, 100),
 		index:   make(map[wal.EntryId]int),
-		readers: make(map[int]*inMemoryWalReader, 10),
+		readers: make(map[int]updatableReader, 10),
 	}, nil
 }
 
@@ -33,22 +33,108 @@ type inMemoryWal struct {
 	shard        uint32
 	log          []*proto.LogEntry
 	index        map[wal.EntryId]int
-	readers      map[int]*inMemoryWalReader
+	readers      map[int]updatableReader
 	nextReaderId int
 }
 
-type inMemoryWalReader struct {
+type reader struct {
 	// wal the log to iterate
 	wal *inMemoryWal
 	// nextOffset the offset of the entry to read next
 	nextOffset uint64
-	// offsetCeiling the offset that must not be read (because it does not yet exist
-	offsetCeiling uint64
 	// channel chan to get updates of log progression
 	channel chan uint64
 	closed  bool
 	id      int
-	forward bool
+}
+
+type forwardReader struct {
+	reader
+	// offsetCeiling the offset that must not be read (because it does not yet exist
+	offsetCeiling uint64
+}
+type reverseReader struct {
+	reader
+}
+
+type updatableReader interface {
+	wal.WalReader
+	Channel() chan uint64
+}
+
+func (r *forwardReader) Close() error {
+	r.wal.Lock()
+	defer r.wal.Unlock()
+	r.closed = true
+	close(r.Channel())
+	delete(r.wal.readers, r.id)
+	return nil
+}
+
+func (r *reverseReader) Close() error {
+	r.wal.Lock()
+	defer r.wal.Unlock()
+	r.closed = true
+	close(r.Channel())
+	delete(r.wal.readers, r.id)
+	return nil
+}
+
+func (r *forwardReader) Channel() chan uint64 {
+	return r.channel
+}
+
+func (r *reverseReader) Channel() chan uint64 {
+	return make(chan uint64, 1)
+}
+
+func (r *forwardReader) ReadNext() (*proto.LogEntry, error) {
+	r.wal.Lock()
+	defer r.wal.Unlock()
+
+	if r.closed {
+		return nil, wal.ErrorReaderClosed
+	}
+	for r.nextOffset >= r.offsetCeiling {
+		update, more := <-r.channel
+		if !more {
+			return nil, wal.ErrorReaderClosed
+		} else {
+			r.offsetCeiling = update + 1
+		}
+	}
+	entry := r.wal.log[r.nextOffset]
+	r.nextOffset++
+	return entry, nil
+}
+
+func (r *forwardReader) HasNext() bool {
+	r.wal.Lock()
+	defer r.wal.Unlock()
+	if r.closed {
+		return false
+	}
+	return r.nextOffset < r.offsetCeiling-1
+}
+
+func (r *reverseReader) ReadNext() (*proto.LogEntry, error) {
+	r.wal.Lock()
+	defer r.wal.Unlock()
+
+	if r.closed {
+		return nil, wal.ErrorReaderClosed
+	}
+
+	entry := r.wal.log[r.nextOffset]
+	r.nextOffset--
+	return entry, nil
+}
+
+func (r *reverseReader) HasNext() bool {
+	if r.closed {
+		return false
+	}
+	return r.nextOffset != math.MaxUint64
 }
 
 type emptyReader struct{}
@@ -67,53 +153,6 @@ func (r *emptyReader) HasNext() bool {
 	return false
 }
 
-func (r *inMemoryWalReader) Close() error {
-	r.wal.Lock()
-	defer r.wal.Unlock()
-	close(r.channel)
-	delete(r.wal.readers, r.id)
-	return nil
-}
-
-func (r *inMemoryWalReader) ReadNext() (*proto.LogEntry, error) {
-	r.wal.Lock()
-	defer r.wal.Unlock()
-	fmt.Printf("Reader reading (%d)", r.nextOffset)
-
-	if r.closed {
-		return nil, wal.ErrorReaderClosed
-	}
-	for r.forward && r.nextOffset >= r.offsetCeiling {
-		update, more := <-r.channel
-		if !more {
-			return nil, wal.ErrorReaderClosed
-		} else {
-			r.offsetCeiling = update
-		}
-	}
-	entry := r.wal.log[r.nextOffset]
-	if r.forward {
-		r.nextOffset++
-	} else if r.nextOffset == 0 {
-		r.nextOffset = math.MaxUint64
-	} else {
-		r.nextOffset--
-	}
-	return entry, nil
-}
-
-func (r *inMemoryWalReader) HasNext() bool {
-	r.wal.Lock()
-	defer r.wal.Unlock()
-	if r.closed {
-		return false
-	}
-	if r.forward {
-		return r.nextOffset < r.offsetCeiling-1
-	}
-	return r.nextOffset != math.MaxUint64
-}
-
 func (w *inMemoryWal) Close() error {
 	return w.closeReaders()
 }
@@ -124,14 +163,15 @@ func (w *inMemoryWal) NewReader(firstOffset uint64) (wal.WalReader, error) {
 	if len(w.log) == 0 {
 		return &emptyReader{}, nil
 	}
-	r := &inMemoryWalReader{
-		wal:           w,
-		nextOffset:    firstOffset,
+	r := &forwardReader{
+		reader: reader{
+			wal:        w,
+			nextOffset: firstOffset,
+			channel:    make(chan uint64, 1),
+			closed:     false,
+			id:         w.nextReaderId,
+		},
 		offsetCeiling: w.log[w.logLength()-1].EntryId.Offset + 1,
-		channel:       make(chan uint64, 1),
-		closed:        false,
-		id:            w.nextReaderId,
-		forward:       true,
 	}
 	w.readers[w.nextReaderId] = r
 	w.nextReaderId++
@@ -144,15 +184,13 @@ func (w *inMemoryWal) NewReverseReader() (wal.WalReader, error) {
 	if len(w.log) == 0 {
 		return &emptyReader{}, nil
 	}
-	r := &inMemoryWalReader{
-		wal:           w,
-		nextOffset:    w.log[len(w.log)-1].EntryId.Offset,
-		offsetCeiling: 0,
-		channel:       make(chan uint64, 1),
-		closed:        false,
-		id:            w.nextReaderId,
-		forward:       false,
-	}
+	r := &reverseReader{reader{
+		wal:        w,
+		nextOffset: w.log[len(w.log)-1].EntryId.Offset,
+		channel:    make(chan uint64, 1),
+		closed:     false,
+		id:         w.nextReaderId,
+	}}
 	w.readers[w.nextReaderId] = r
 	w.nextReaderId++
 	return r, nil
@@ -166,7 +204,7 @@ func (w *inMemoryWal) Append(entry *proto.LogEntry) error {
 	w.log = append(w.log, entry)
 	w.index[wal.EntryIdFromProto(entry.EntryId)] = len(w.log) - 1
 	for _, reader := range w.readers {
-		reader.channel <- entry.EntryId.Offset
+		reader.Channel() <- entry.EntryId.Offset
 	}
 	return nil
 }
@@ -180,7 +218,7 @@ func (w *inMemoryWal) closeReaders() error {
 			log.Error().Err(err).Msg("Error closing reader")
 		}
 	}
-	w.readers = make(map[int]*inMemoryWalReader, 10000)
+	w.readers = make(map[int]updatableReader, 10000)
 	return nil
 }
 
