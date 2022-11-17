@@ -1,4 +1,4 @@
-package oxia
+package internal
 
 type ShardStrategy interface {
 	Get(key string) func(Shard) bool
