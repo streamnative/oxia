@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"github.com/rs/zerolog/log"
 	"oxia/proto"
 	"oxia/server/wal"
@@ -36,13 +37,17 @@ type inMemoryWal struct {
 }
 
 type inMemoryWalReader struct {
-	wal        *inMemoryWal
+	// wal the log to iterate
+	wal *inMemoryWal
+	// nextOffset the offset of the entry to read next
 	nextOffset uint64
-	maxOffset  uint64
-	channel    chan uint64
-	closed     bool
-	id         int
-	forward    bool
+	// offsetCeiling the offset that must not be read (because it does not yet exist
+	offsetCeiling uint64
+	// channel chan to get updates of log progression
+	channel chan uint64
+	closed  bool
+	id      int
+	forward bool
 }
 
 type emptyReader struct{}
@@ -52,16 +57,19 @@ func (r *emptyReader) Close() error {
 }
 
 func (r *emptyReader) ReadNext() (*proto.LogEntry, error) {
+	fmt.Printf("Reading empty reader")
+
 	return nil, wal.ErrorEntryNotFound
 }
 
-func (r *emptyReader) HasNext() (bool, error) {
-	return false, nil
+func (r *emptyReader) HasNext() bool {
+	return false
 }
 
 func (r *inMemoryWalReader) Close() error {
 	r.wal.Lock()
 	defer r.wal.Unlock()
+	close(r.channel)
 	delete(r.wal.readers, r.id)
 	return nil
 }
@@ -69,14 +77,21 @@ func (r *inMemoryWalReader) Close() error {
 func (r *inMemoryWalReader) ReadNext() (*proto.LogEntry, error) {
 	r.wal.Lock()
 	defer r.wal.Unlock()
+	fmt.Printf("Reader reading (%d)", r.nextOffset)
+
 	if r.closed {
 		return nil, wal.ErrorReaderClosed
 	}
 	if !r.forward && r.nextOffset < 0 {
 		return nil, wal.ErrorEntryNotFound
 	}
-	if r.forward && r.nextOffset >= r.maxOffset {
-		r.maxOffset = <-r.channel
+	for r.forward && r.nextOffset >= r.offsetCeiling {
+		update, more := <-r.channel
+		if !more {
+			return nil, wal.ErrorReaderClosed
+		} else {
+			r.offsetCeiling = update
+		}
 	}
 	entry := r.wal.log[r.nextOffset]
 	if r.forward {
@@ -87,16 +102,16 @@ func (r *inMemoryWalReader) ReadNext() (*proto.LogEntry, error) {
 	return entry, nil
 }
 
-func (r *inMemoryWalReader) HasNext() (bool, error) {
+func (r *inMemoryWalReader) HasNext() bool {
 	r.wal.Lock()
 	defer r.wal.Unlock()
 	if r.closed {
-		return false, wal.ErrorReaderClosed
+		return false
 	}
 	if r.forward {
-		return r.nextOffset <= r.maxOffset, nil
+		return r.nextOffset < r.offsetCeiling-1
 	}
-	return r.nextOffset >= 0, nil
+	return r.nextOffset >= 0
 }
 
 func (w *inMemoryWal) Close() error {
@@ -106,14 +121,17 @@ func (w *inMemoryWal) Close() error {
 func (w *inMemoryWal) NewReader(firstOffset uint64) (wal.WalReader, error) {
 	w.Lock()
 	defer w.Unlock()
+	if len(w.log) == 0 {
+		return &emptyReader{}, nil
+	}
 	r := &inMemoryWalReader{
-		wal:        w,
-		nextOffset: firstOffset,
-		maxOffset:  w.log[w.logLength()-1].EntryId.Offset,
-		channel:    make(chan uint64, 1),
-		closed:     false,
-		id:         w.nextReaderId,
-		forward:    true,
+		wal:           w,
+		nextOffset:    firstOffset,
+		offsetCeiling: w.log[w.logLength()-1].EntryId.Offset + 1,
+		channel:       make(chan uint64, 1),
+		closed:        false,
+		id:            w.nextReaderId,
+		forward:       true,
 	}
 	w.readers[w.nextReaderId] = r
 	w.nextReaderId++
@@ -123,17 +141,17 @@ func (w *inMemoryWal) NewReader(firstOffset uint64) (wal.WalReader, error) {
 func (w *inMemoryWal) NewReverseReader() (wal.WalReader, error) {
 	w.Lock()
 	defer w.Unlock()
-	if w.logLength() == 0 {
+	if len(w.log) == 0 {
 		return &emptyReader{}, nil
 	}
 	r := &inMemoryWalReader{
-		wal:        w,
-		nextOffset: w.log[len(w.log)-1].EntryId.Offset,
-		maxOffset:  0,
-		channel:    make(chan uint64, 1),
-		closed:     false,
-		id:         w.nextReaderId,
-		forward:    false,
+		wal:           w,
+		nextOffset:    w.log[len(w.log)-1].EntryId.Offset,
+		offsetCeiling: 0,
+		channel:       make(chan uint64, 1),
+		closed:        false,
+		id:            w.nextReaderId,
+		forward:       false,
 	}
 	w.readers[w.nextReaderId] = r
 	w.nextReaderId++
@@ -143,6 +161,8 @@ func (w *inMemoryWal) NewReverseReader() (wal.WalReader, error) {
 func (w *inMemoryWal) Append(entry *proto.LogEntry) error {
 	w.Lock()
 	defer w.Unlock()
+	fmt.Printf("Append (%d,%d)\n", entry.EntryId.Epoch, entry.EntryId.Offset)
+
 	w.log = append(w.log, entry)
 	w.index[wal.EntryIdFromProto(entry.EntryId)] = len(w.log) - 1
 	for _, reader := range w.readers {
@@ -167,6 +187,7 @@ func (w *inMemoryWal) closeReaders() error {
 func (w *inMemoryWal) TruncateLog(lastSafeEntryId wal.EntryId) (wal.EntryId, error) {
 	w.Lock()
 	defer w.Unlock()
+	fmt.Printf("Truncate (%d,%d)\n", lastSafeEntryId.Epoch, lastSafeEntryId.Offset)
 	index, ok := w.index[lastSafeEntryId]
 	if ok {
 		for i := index + 1; i < len(w.log); i++ {

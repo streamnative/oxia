@@ -122,7 +122,7 @@ func NewShardManager(shard uint32, identityAddress string, pool common.ClientPoo
 			Uint32("shard", shard).
 			Logger(),
 	}
-	entryId, err := sm.getHighestEntryOfEpoch(^uint64(0))
+	entryId, err := GetHighestEntryOfEpoch(sm.wal, MaxEpoch)
 	if err != nil {
 		return nil, err
 	}
@@ -133,27 +133,6 @@ func NewShardManager(shard uint32, identityAddress string, pool common.ClientPoo
 	go sm.run()
 
 	return sm, nil
-}
-
-func (s *shardManager) getHighestEntryOfEpoch(epoch uint64) (wal.EntryId, error) {
-	zero := wal.EntryId{}
-	r, err := s.wal.NewReverseReader()
-	if err != nil {
-		return zero, err
-	}
-	defer r.Close()
-	hasNext, err := r.HasNext()
-	for err != nil && hasNext {
-		e, err := r.ReadNext()
-		if err != nil {
-			return zero, err
-		}
-		if e.EntryId.Epoch <= epoch {
-			return wal.EntryIdFromProto(e.EntryId), nil
-		}
-		hasNext, err = r.HasNext()
-	}
-	return zero, nil
 }
 
 func enqueueCommandAndWaitForResponse[T any](s *shardManager, f func() (T, error)) T {
@@ -306,7 +285,7 @@ func (s *shardManager) getCursors(followers []*proto.BecomeLeaderRequest_Followe
 }
 
 func (s *shardManager) sendTruncateRequest(target string, targetEpoch uint64) error {
-	headIndex, err := s.getHighestEntryOfEpoch(targetEpoch)
+	headIndex, err := GetHighestEntryOfEpoch(s.wal, targetEpoch)
 	if err != nil {
 		return err
 	}

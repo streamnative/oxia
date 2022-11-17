@@ -44,7 +44,7 @@ type WalReader interface {
 	// HasNext returns true if there is an entry to read.
 	// For a reverse WalReader this means the reader has not yet reached the beginning of the log.
 	// For a forward WalReader this means that we have not yet reached the offset that was the log end when the reader was created.
-	HasNext() (bool, error)
+	HasNext() bool
 }
 
 type Wal interface {
