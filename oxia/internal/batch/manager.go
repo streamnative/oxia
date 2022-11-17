@@ -20,27 +20,29 @@ type Manager struct {
 	batchers       map[uint32]Batcher
 }
 
-func (b *Manager) Get(shardId uint32) Batcher {
+func (m *Manager) Get(shardId uint32) Batcher {
 	//double-check lock
-	batcher, ok := b.batchers[shardId]
+	batcher, ok := m.batchers[shardId]
 	if !ok {
-		b.Lock()
-		if batcher, ok = b.batchers[shardId]; !ok {
-			batcher = b.batcherFactory(&shardId)
-			b.batchers[shardId] = batcher
+		m.Lock()
+		if batcher, ok = m.batchers[shardId]; !ok {
+			batcher = m.batcherFactory(&shardId)
+			m.batchers[shardId] = batcher
 		}
-		b.Unlock()
+		m.Unlock()
 	}
 	return batcher
 }
 
-func (b *Manager) Close() error {
+func (m *Manager) Close() error {
 	var errs error
-	for id, batcher := range b.batchers {
-		delete(b.batchers, id)
+	m.Lock()
+	for id, batcher := range m.batchers {
+		delete(m.batchers, id)
 		if err := batcher.Close(); err != nil {
 			errs = multierr.Append(errs, err)
 		}
 	}
+	m.Unlock()
 	return errs
 }

@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	DefaultBatchLinger  = 100 * time.Millisecond
+	DefaultBatchLinger  = 5 * time.Millisecond
 	DefaultBatchMaxSize = 100
 	DefaultBatchTimeout = 1 * time.Minute
 )
@@ -19,10 +19,9 @@ var (
 	ErrorKeyNotFound   = errors.New("key not found")
 	ErrorBadVersion    = errors.New("bad version")
 	ErrorUnknownStatus = errors.New("unknown status")
-	ErrorShuttingDown  = errors.New("shutting down")
 )
 
-type Options struct {
+type ClientOptions struct {
 	ServiceUrl   string
 	BatchLinger  time.Duration
 	BatchMaxSize int
@@ -30,13 +29,33 @@ type Options struct {
 	InMemory     bool
 }
 
-type Client interface {
+func NewAsyncClient(options *ClientOptions) AsyncClient {
+	if options.InMemory {
+		return newMemoryClient()
+	}
+	return newAsyncClient(options)
+}
+
+func NewSyncClient(options *ClientOptions) SyncClient {
+	return newSyncClient(NewAsyncClient(options))
+}
+
+type AsyncClient interface {
 	io.Closer
 	Put(key string, payload []byte, expectedVersion *int64) <-chan PutResult
 	Delete(key string, expectedVersion *int64) <-chan error
 	DeleteRange(minKeyInclusive string, maxKeyExclusive string) <-chan error
 	Get(key string) <-chan GetResult
 	GetRange(minKeyInclusive string, maxKeyExclusive string) <-chan GetRangeResult
+}
+
+type SyncClient interface {
+	io.Closer
+	Put(key string, payload []byte, expectedVersion *int64) (Stat, error)
+	Delete(key string, expectedVersion *int64) error
+	DeleteRange(minKeyInclusive string, maxKeyExclusive string) error
+	Get(key string) ([]byte, Stat, error)
+	GetRange(minKeyInclusive string, maxKeyExclusive string) ([]string, error)
 }
 
 type Stat struct {

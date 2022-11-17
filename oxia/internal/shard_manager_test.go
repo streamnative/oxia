@@ -1,11 +1,11 @@
-package client
+package internal
 
 import (
+	"fmt"
 	"github.com/stretchr/testify/assert"
 	"oxia/common"
 	"oxia/server/kv"
 	"oxia/standalone"
-	"strconv"
 	"testing"
 )
 
@@ -19,15 +19,13 @@ func (s *testShardStrategy) Get(key string) func(Shard) bool {
 }
 
 func TestWithStandalone(t *testing.T) {
-	port := GetFreePort()
-
 	kvOptions := kv.KVFactoryOptions{InMemory: true}
 	kvFactory := kv.NewPebbleKVFactory(&kvOptions)
-	_, err := standalone.NewStandaloneRpcServer(port, "localhost", 2, kvFactory)
+	server, err := standalone.NewStandaloneRpcServer(0, "localhost", 2, kvFactory)
 	assert.ErrorIs(t, nil, err)
 
 	clientPool := common.NewClientPool()
-	serviceUrl := "localhost:" + strconv.FormatInt(int64(port), 10)
+	serviceUrl := fmt.Sprintf("localhost:%d", server.Port())
 	shardManager := NewShardManager(&testShardStrategy{}, clientPool, serviceUrl).(*shardManagerImpl)
 	defer func() {
 		if err := shardManager.Close(); err != nil {

@@ -1,4 +1,4 @@
-package client
+package internal
 
 import (
 	"oxia/common"

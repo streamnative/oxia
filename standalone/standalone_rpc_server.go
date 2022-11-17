@@ -11,7 +11,6 @@ import (
 	"net"
 	"oxia/proto"
 	"oxia/server/kv"
-	"strconv"
 )
 
 // This implementation is temporary, until all the WAL changes are ready
@@ -20,34 +19,36 @@ type StandaloneRpcServer struct {
 	proto.UnimplementedOxiaClientServer
 
 	identityAddr string
+	port         int
 	numShards    uint32
-	dbs          map[uint32]kv.DB
 
+	dbs        map[uint32]kv.DB
 	grpcServer *grpc.Server
-	log        zerolog.Logger
+
+	log zerolog.Logger
 }
 
 func NewStandaloneRpcServer(port int, identityAddr string, numShards uint32, kvFactory kv.KVFactory) (*StandaloneRpcServer, error) {
+	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to listen")
+	}
+
 	// Assuming 1 single shard
 	res := &StandaloneRpcServer{
-		identityAddr: identityAddr + ":" + strconv.FormatInt(int64(port), 10),
+		identityAddr: identityAddr,
 		numShards:    numShards,
 		dbs:          make(map[uint32]kv.DB),
 		log: log.With().
 			Str("component", "standalone-rpc-server").
 			Logger(),
+		port: listener.Addr().(*net.TCPAddr).Port,
 	}
 
-	var err error
 	for i := uint32(0); i < numShards; i++ {
 		if res.dbs[i], err = kv.NewDB(i, kvFactory); err != nil {
 			return nil, err
 		}
-	}
-
-	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to listen")
 	}
 
 	res.grpcServer = grpc.NewServer()
@@ -86,7 +87,7 @@ func (s *StandaloneRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest,
 	for i := uint32(0); i < s.numShards; i++ {
 		res.Assignments = append(res.Assignments, &proto.ShardAssignment{
 			ShardId: i,
-			Leader:  s.identityAddr,
+			Leader:  fmt.Sprintf("%s:%d", s.identityAddr, s.port),
 			ShardBoundaries: &proto.ShardAssignment_Int32HashRange{
 				Int32HashRange: &proto.Int32HashRange{
 					MinHashInclusive: i * bucketSize,
@@ -105,4 +106,8 @@ func (s *StandaloneRpcServer) Write(ctx context.Context, write *proto.WriteReque
 
 func (s *StandaloneRpcServer) Read(ctx context.Context, read *proto.ReadRequest) (*proto.ReadResponse, error) {
 	return s.dbs[*read.ShardId].ProcessRead(read)
+}
+
+func (s *StandaloneRpcServer) Port() int {
+	return s.port
 }

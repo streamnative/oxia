@@ -1,12 +1,10 @@
-package impl
+package oxia
 
 import (
+	"fmt"
 	"github.com/stretchr/testify/assert"
-	"oxia/internal/client"
-	"oxia/oxia"
 	"oxia/server/kv"
 	"oxia/standalone"
-	"strconv"
 	"testing"
 )
 
@@ -14,39 +12,37 @@ var (
 	versionZero int64 = 0
 )
 
-func TestClientImpl(t *testing.T) {
-	port := client.GetFreePort()
-
+func TestAsyncClientImpl(t *testing.T) {
 	kvOptions := kv.KVFactoryOptions{InMemory: true}
 	kvFactory := kv.NewPebbleKVFactory(&kvOptions)
-	server, err := standalone.NewStandaloneRpcServer(port, "localhost", 1, kvFactory)
+	server, err := standalone.NewStandaloneRpcServer(0, "localhost", 1, kvFactory)
 	assert.ErrorIs(t, nil, err)
 
-	options := oxia.Options{
-		ServiceUrl:   "localhost:" + strconv.FormatInt(int64(port), 10),
-		BatchLinger:  oxia.DefaultBatchLinger,
+	options := ClientOptions{
+		ServiceUrl:   fmt.Sprintf("localhost:%d", server.Port()),
+		BatchLinger:  DefaultBatchLinger,
 		BatchMaxSize: 1,
-		BatchTimeout: oxia.DefaultBatchTimeout,
+		BatchTimeout: DefaultBatchTimeout,
 	}
-	oxiaClient := NewClient(&options)
+	oxiaClient := NewAsyncClient(&options)
 
-	putResult := <-oxiaClient.Put("/a", []byte{0}, &oxia.VersionNotExists)
+	putResult := <-oxiaClient.Put("/a", []byte{0}, &VersionNotExists)
 	assert.Equal(t, versionZero, putResult.Stat.Version)
 
 	getResult := <-oxiaClient.Get("/a")
-	assert.Equal(t, oxia.GetResult{
+	assert.Equal(t, GetResult{
 		Payload: []byte{0},
 		Stat:    putResult.Stat,
 	}, getResult)
 
-	putResult = <-oxiaClient.Put("/c", []byte{0}, &oxia.VersionNotExists)
+	putResult = <-oxiaClient.Put("/c", []byte{0}, &VersionNotExists)
 	assert.Equal(t, versionZero, putResult.Stat.Version)
 
 	putResult = <-oxiaClient.Put("/c", []byte{1}, &versionZero)
 	assert.Equal(t, int64(1), putResult.Stat.Version)
 
 	getRangeResult := <-oxiaClient.GetRange("/a", "/d")
-	assert.Equal(t, oxia.GetRangeResult{
+	assert.Equal(t, GetRangeResult{
 		Keys: []string{"/a", "/c"},
 	}, getRangeResult)
 
@@ -54,16 +50,16 @@ func TestClientImpl(t *testing.T) {
 	assert.ErrorIs(t, nil, deleteErr)
 
 	getResult = <-oxiaClient.Get("/a")
-	assert.Equal(t, oxia.GetResult{
-		Err: oxia.ErrorKeyNotFound,
+	assert.Equal(t, GetResult{
+		Err: ErrorKeyNotFound,
 	}, getResult)
 
 	deleteRangeResult := <-oxiaClient.DeleteRange("/c", "/d")
 	assert.ErrorIs(t, nil, deleteRangeResult)
 
 	getResult = <-oxiaClient.Get("/d")
-	assert.Equal(t, oxia.GetResult{
-		Err: oxia.ErrorKeyNotFound,
+	assert.Equal(t, GetResult{
+		Err: ErrorKeyNotFound,
 	}, getResult)
 
 	err = oxiaClient.Close()

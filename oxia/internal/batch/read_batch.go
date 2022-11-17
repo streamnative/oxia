@@ -1,7 +1,6 @@
 package batch
 
 import (
-	"oxia/oxia"
 	"oxia/proto"
 )
 
@@ -9,7 +8,7 @@ type readBatchFactory struct {
 	execute func(*proto.ReadRequest) (*proto.ReadResponse, error)
 }
 
-func (b readBatchFactory) newBatch(shardId *uint32) batch {
+func (b readBatchFactory) newBatch(shardId *uint32) Batch {
 	return &readBatch{
 		shardId:   shardId,
 		execute:   b.execute,
@@ -27,7 +26,7 @@ type readBatch struct {
 	getRanges []GetRangeCall
 }
 
-func (b *readBatch) add(call any) {
+func (b *readBatch) Add(call any) {
 	switch c := call.(type) {
 	case GetCall:
 		b.gets = append(b.gets, c)
@@ -38,41 +37,33 @@ func (b *readBatch) add(call any) {
 	}
 }
 
-func (b *readBatch) size() int {
+func (b *readBatch) Size() int {
 	return len(b.gets) + len(b.getRanges)
 }
 
-func (b *readBatch) complete() {
+func (b *readBatch) Complete() {
 	if response, err := b.execute(b.toProto()); err != nil {
-		b.fail(err)
+		b.Fail(err)
 	} else {
 		b.handle(response)
 	}
 }
 
-func (b *readBatch) fail(err error) {
+func (b *readBatch) Fail(err error) {
 	for _, get := range b.gets {
-		get.C <- oxia.GetResult{
-			Err: err,
-		}
-		close(get.C)
+		get.Callback(nil, err)
 	}
 	for _, getRange := range b.getRanges {
-		getRange.C <- oxia.GetRangeResult{
-			Err: err,
-		}
-		close(getRange.C)
+		getRange.Callback(nil, err)
 	}
 }
 
 func (b *readBatch) handle(response *proto.ReadResponse) {
 	for i, get := range b.gets {
-		get.C <- toGetResult(response.Gets[i])
-		close(get.C)
+		get.Callback(response.Gets[i], nil)
 	}
 	for i, getRange := range b.getRanges {
-		getRange.C <- toGetRangeResult(response.GetRanges[i])
-		close(getRange.C)
+		getRange.Callback(response.GetRanges[i], nil)
 	}
 }
 

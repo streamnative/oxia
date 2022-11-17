@@ -2,7 +2,6 @@ package batch
 
 import (
 	"github.com/stretchr/testify/assert"
-	"oxia/oxia"
 	"sync"
 	"testing"
 	"time"
@@ -21,21 +20,21 @@ func newTestBatch() *testBatch {
 	}
 }
 
-func (b *testBatch) add(call any) {
+func (b *testBatch) Add(call any) {
 	b.count++
 }
 
-func (b *testBatch) size() int {
+func (b *testBatch) Size() int {
 	return b.count
 }
 
-func (b *testBatch) complete() {
+func (b *testBatch) Complete() {
 	close(b.result)
 }
 
-func (b *testBatch) fail(err error) {
+func (b *testBatch) Fail(err error) {
 	b.result <- err
-	//close(b.result)
+	//closeC(b.result)
 }
 
 func TestBatcher(t *testing.T) {
@@ -44,13 +43,13 @@ func TestBatcher(t *testing.T) {
 		maxSize     int
 		expectedErr error
 	}{
-		{1 * time.Second, 1, nil},                    //completes on maxSize
-		{1 * time.Millisecond, 2, nil},               //completes on linger
-		{1 * time.Second, 2, oxia.ErrorShuttingDown}, //fails on close
+		{1 * time.Second, 1, nil},               //completes on maxSize
+		{1 * time.Millisecond, 2, nil},          //completes on linger
+		{1 * time.Second, 2, ErrorShuttingDown}, //fails on closeC
 	} {
 		testBatch := newTestBatch()
 
-		batchFactory := func(shardId *uint32) batch {
+		batchFactory := func(shardId *uint32) Batch {
 			return testBatch
 		}
 

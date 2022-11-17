@@ -1,14 +1,16 @@
 package batch
 
 import (
+	"errors"
 	"io"
-	"oxia/internal/client"
-	"oxia/oxia"
+	"oxia/oxia/internal"
 	"time"
 )
 
+var ErrorShuttingDown = errors.New("shutting down")
+
 type BatcherFactory struct {
-	Executor client.Executor
+	Executor internal.Executor
 	Linger   time.Duration
 	MaxSize  int
 }
@@ -21,12 +23,12 @@ func (b *BatcherFactory) NewReadBatcher(shardId *uint32) Batcher {
 	return b.newBatcher(shardId, readBatchFactory{execute: b.Executor.ExecuteRead}.newBatch)
 }
 
-func (b *BatcherFactory) newBatcher(shardId *uint32, batchFactory func(shardId *uint32) batch) Batcher {
+func (b *BatcherFactory) newBatcher(shardId *uint32, batchFactory func(shardId *uint32) Batch) Batcher {
 	batcher := &batcherImpl{
 		shardId:      shardId,
 		batchFactory: batchFactory,
-		c:            make(chan any, b.MaxSize), //TODO maybe unbuffered?
-		close:        make(chan bool),
+		callC:        make(chan any),
+		closeC:       make(chan bool),
 		linger:       b.Linger,
 		maxSize:      b.MaxSize,
 	}
@@ -44,48 +46,48 @@ type Batcher interface {
 
 type batcherImpl struct {
 	shardId      *uint32
-	batchFactory func(shardId *uint32) batch
-	c            chan any
-	close        chan bool
+	batchFactory func(shardId *uint32) Batch
+	callC        chan any
+	closeC       chan bool
 	linger       time.Duration
 	maxSize      int
 }
 
 func (b *batcherImpl) Close() error {
-	close(b.close)
+	close(b.closeC)
 	return nil
 }
 
 func (b *batcherImpl) Add(call any) {
-	b.c <- call
+	b.callC <- call
 }
 
 func (b *batcherImpl) run() {
-	var batch batch
+	var batch Batch
 	var timer *time.Timer = nil
 	var timeout <-chan time.Time = nil
 	for {
 		select {
-		case call := <-b.c:
+		case call := <-b.callC:
 			if batch == nil {
 				batch = b.batchFactory(b.shardId)
 				timer = time.NewTimer(b.linger)
 				timeout = timer.C
 			}
-			batch.add(call)
-			if batch.size() == b.maxSize {
+			batch.Add(call)
+			if batch.Size() == b.maxSize {
 				timer.Stop()
-				go batch.complete()
+				batch.Complete()
 				batch = nil
 			}
 		case <-timeout:
 			timer.Stop()
-			go batch.complete()
+			batch.Complete()
 			batch = nil
-		case <-b.close:
+		case <-b.closeC:
 			if batch != nil {
 				timer.Stop()
-				batch.fail(oxia.ErrorShuttingDown)
+				batch.Fail(ErrorShuttingDown)
 				batch = nil
 			}
 			return

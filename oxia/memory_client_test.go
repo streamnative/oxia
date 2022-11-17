@@ -1,8 +1,7 @@
-package impl
+package oxia
 
 import (
 	"github.com/stretchr/testify/assert"
-	"oxia/oxia"
 	"sort"
 	"testing"
 )
@@ -15,7 +14,7 @@ var (
 
 type putItem struct {
 	version *int64
-	stat    oxia.Stat
+	stat    Stat
 	err     error
 }
 
@@ -35,16 +34,16 @@ func (c *clockStub) NowMillis() uint64 {
 	return millis
 }
 
-func runTest(test func(oxia.Client)) {
+func runTest(test func(AsyncClient)) {
 	client := newMemoryClientWithClock(&clockStub{
 		millis: []uint64{1, 2, 3},
 	})
 	test(client)
 }
 
-func runTests[ITEM any](items []ITEM, test func(oxia.Client, ITEM)) {
+func runTests[ITEM any](items []ITEM, test func(AsyncClient, ITEM)) {
 	for _, item := range items {
-		runTest(func(client oxia.Client) {
+		runTest(func(client AsyncClient) {
 			test(client, item)
 		})
 	}
@@ -54,14 +53,14 @@ func ptr(t int64) *int64 {
 	return &t
 }
 
-func put(t *testing.T, client oxia.Client, key string) {
+func put(t *testing.T, client AsyncClient, key string) {
 	c := client.Put(key, payload0, nil)
 	response := <-c
 	assert.ErrorIs(t, nil, response.Err)
 }
 
 func TestClose(t *testing.T) {
-	runTest(func(client oxia.Client) {
+	runTest(func(client AsyncClient) {
 		err := client.Close()
 
 		assert.ErrorIs(t, nil, err)
@@ -70,19 +69,19 @@ func TestClose(t *testing.T) {
 
 func TestPutNew(t *testing.T) {
 	items := []putItem{
-		{nil, oxia.Stat{
+		{nil, Stat{
 			Version:           1,
 			CreatedTimestamp:  1,
 			ModifiedTimestamp: 1,
 		}, nil},
-		{ptr(oxia.VersionNotExists), oxia.Stat{
+		{ptr(VersionNotExists), Stat{
 			Version:           1,
 			CreatedTimestamp:  1,
 			ModifiedTimestamp: 1,
 		}, nil},
-		{ptr(1), oxia.Stat{}, oxia.ErrorBadVersion},
+		{ptr(1), Stat{}, ErrorBadVersion},
 	}
-	runTests(items, func(client oxia.Client, item putItem) {
+	runTests(items, func(client AsyncClient, item putItem) {
 		c := client.Put(key, payload1, item.version)
 		response := <-c
 
@@ -93,19 +92,19 @@ func TestPutNew(t *testing.T) {
 
 func TestPutExisting(t *testing.T) {
 	items := []putItem{
-		{nil, oxia.Stat{
+		{nil, Stat{
 			Version:           2,
 			CreatedTimestamp:  1,
 			ModifiedTimestamp: 2,
 		}, nil},
-		{ptr(oxia.VersionNotExists), oxia.Stat{}, oxia.ErrorBadVersion},
-		{ptr(1), oxia.Stat{
+		{ptr(VersionNotExists), Stat{}, ErrorBadVersion},
+		{ptr(1), Stat{
 			Version:           2,
 			CreatedTimestamp:  1,
 			ModifiedTimestamp: 2,
 		}, nil},
 	}
-	runTests(items, func(client oxia.Client, item putItem) {
+	runTests(items, func(client AsyncClient, item putItem) {
 		put(t, client, key)
 
 		c := client.Put(key, payload1, item.version)
@@ -118,11 +117,11 @@ func TestPutExisting(t *testing.T) {
 
 func TestDeleteMissing(t *testing.T) {
 	items := []deleteItem{
-		{nil, oxia.ErrorKeyNotFound},
-		{ptr(oxia.VersionNotExists), oxia.ErrorKeyNotFound},
-		{ptr(1), oxia.ErrorKeyNotFound},
+		{nil, ErrorKeyNotFound},
+		{ptr(VersionNotExists), ErrorKeyNotFound},
+		{ptr(1), ErrorKeyNotFound},
 	}
-	runTests(items, func(client oxia.Client, item deleteItem) {
+	runTests(items, func(client AsyncClient, item deleteItem) {
 		c := client.Delete(key, item.version)
 		err := <-c
 
@@ -133,10 +132,10 @@ func TestDeleteMissing(t *testing.T) {
 func TestDeleteExisting(t *testing.T) {
 	items := []deleteItem{
 		{nil, nil},
-		{ptr(oxia.VersionNotExists), oxia.ErrorBadVersion},
+		{ptr(VersionNotExists), ErrorBadVersion},
 		{ptr(1), nil},
 	}
-	runTests(items, func(client oxia.Client, item deleteItem) {
+	runTests(items, func(client AsyncClient, item deleteItem) {
 		put(t, client, key)
 
 		c := client.Delete(key, item.version)
@@ -147,7 +146,7 @@ func TestDeleteExisting(t *testing.T) {
 }
 
 func TestDeleteRange(t *testing.T) {
-	runTest(func(client oxia.Client) {
+	runTest(func(client AsyncClient) {
 		put(t, client, "/a")
 		put(t, client, "/b")
 		put(t, client, "/c")
@@ -166,26 +165,26 @@ func TestDeleteRange(t *testing.T) {
 }
 
 func TestGetMissing(t *testing.T) {
-	runTest(func(client oxia.Client) {
+	runTest(func(client AsyncClient) {
 		c := client.Get(key)
 		response := <-c
 
-		assert.Equal(t, oxia.GetResult{
-			Err: oxia.ErrorKeyNotFound,
+		assert.Equal(t, GetResult{
+			Err: ErrorKeyNotFound,
 		}, response)
 	})
 }
 
 func TestGetExisting(t *testing.T) {
-	runTest(func(client oxia.Client) {
+	runTest(func(client AsyncClient) {
 		put(t, client, key)
 
 		c := client.Get(key)
 		response := <-c
 
-		assert.Equal(t, oxia.GetResult{
+		assert.Equal(t, GetResult{
 			Payload: payload0,
-			Stat: oxia.Stat{
+			Stat: Stat{
 				Version:           1,
 				CreatedTimestamp:  1,
 				ModifiedTimestamp: 1,
@@ -196,7 +195,7 @@ func TestGetExisting(t *testing.T) {
 }
 
 func TestGetRange(t *testing.T) {
-	runTest(func(client oxia.Client) {
+	runTest(func(client AsyncClient) {
 		put(t, client, "/a")
 		put(t, client, "/b")
 		put(t, client, "/c")

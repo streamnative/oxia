@@ -6,12 +6,12 @@ var (
 	two     = int64(2)
 )
 
-func add(batch batch, call any) (panicked bool) {
+func add(batch Batch, call any) (panicked bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			panicked = true
 		}
 	}()
-	batch.add(call)
+	batch.Add(call)
 	return
 }
