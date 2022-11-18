@@ -2,17 +2,12 @@ package internal
 
 import (
 	"context"
-	"errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"io"
 	"oxia/common"
 	"oxia/proto"
 	"sync"
-)
-
-var (
-	ErrorUnknownShardRange = errors.New("unknown shard range")
 )
 
 type ShardManager interface {

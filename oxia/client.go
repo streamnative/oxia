@@ -8,8 +8,8 @@ import (
 
 const (
 	DefaultBatchLinger  = 5 * time.Millisecond
-	DefaultBatchMaxSize = 100
-	DefaultBatchTimeout = 1 * time.Minute
+	DefaultBatchMaxSize = 1000
+	DefaultBatchTimeout = 30 * time.Second
 )
 
 var (
@@ -26,18 +26,6 @@ type ClientOptions struct {
 	BatchLinger  time.Duration
 	BatchMaxSize int
 	BatchTimeout time.Duration
-	InMemory     bool
-}
-
-func NewAsyncClient(options *ClientOptions) AsyncClient {
-	if options.InMemory {
-		return newMemoryClient()
-	}
-	return newAsyncClient(options)
-}
-
-func NewSyncClient(options *ClientOptions) SyncClient {
-	return newSyncClient(NewAsyncClient(options))
 }
 
 type AsyncClient interface {

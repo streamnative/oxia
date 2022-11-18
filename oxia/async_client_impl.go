@@ -17,7 +17,7 @@ type clientImpl struct {
 	readBatchManager  *batch.Manager
 }
 
-func newAsyncClient(options *ClientOptions) AsyncClient {
+func NewAsyncClient(options ClientOptions) AsyncClient {
 	clientPool := common.NewClientPool()
 	shardManager := internal.NewShardManager(internal.NewShardStrategy(), clientPool, options.ServiceUrl)
 	defer shardManager.Start()

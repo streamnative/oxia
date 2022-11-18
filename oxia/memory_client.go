@@ -9,7 +9,7 @@ type memoryClient struct {
 	data  map[string]GetResult
 }
 
-func newMemoryClient() AsyncClient {
+func NewMemoryClient() AsyncClient {
 	return newMemoryClientWithClock(common.SystemClock())
 }
 
