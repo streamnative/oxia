@@ -3,6 +3,7 @@ package kv
 import (
 	"github.com/pkg/errors"
 	"io"
+	"oxia/common"
 	"oxia/proto"
 	"time"
 
@@ -11,13 +12,16 @@ import (
 
 var (
 	ErrorBadVersion = errors.New("oxia: bad version")
+
+	commitIndexKey = common.InternalKeyPrefix + "commitIndex"
 )
 
 type DB interface {
 	io.Closer
 
-	ProcessWrite(b *proto.WriteRequest) (*proto.WriteResponse, error)
+	ProcessWrite(b *proto.WriteRequest, commitIndex *proto.EntryId) (*proto.WriteResponse, error)
 	ProcessRead(b *proto.ReadRequest) (*proto.ReadResponse, error)
+	ReadCommitIndex() (*proto.EntryId, error)
 }
 
 func NewDB(shardId uint32, factory KVFactory) (DB, error) {
@@ -39,7 +43,7 @@ func (d *db) Close() error {
 	return d.kv.Close()
 }
 
-func (d *db) ProcessWrite(b *proto.WriteRequest) (*proto.WriteResponse, error) {
+func (d *db) ProcessWrite(b *proto.WriteRequest, commitIndex *proto.EntryId) (*proto.WriteResponse, error) {
 	res := &proto.WriteResponse{}
 
 	batch := d.kv.NewWriteBatch()
@@ -67,6 +71,9 @@ func (d *db) ProcessWrite(b *proto.WriteRequest) (*proto.WriteResponse, error) {
 			res.DeleteRanges = append(res.DeleteRanges, dr)
 		}
 	}
+	if err := d.addCommitIndex(commitIndex, batch); err != nil {
+		return nil, err
+	}
 
 	if err := batch.Commit(); err != nil {
 		return nil, err
@@ -77,6 +84,19 @@ func (d *db) ProcessWrite(b *proto.WriteRequest) (*proto.WriteResponse, error) {
 	}
 
 	return res, nil
+}
+
+func (d *db) addCommitIndex(commitIndex *proto.EntryId, batch WriteBatch) error {
+	commitIndexPayload, err := pb.Marshal(commitIndex)
+	if err != nil {
+		return err
+	}
+	_, err = applyPut(batch, &proto.PutRequest{
+		Key:             commitIndexKey,
+		Payload:         commitIndexPayload,
+		ExpectedVersion: nil,
+	})
+	return err
 }
 
 func (d *db) ProcessRead(b *proto.ReadRequest) (*proto.ReadResponse, error) {
@@ -102,6 +122,30 @@ func (d *db) ProcessRead(b *proto.ReadRequest) (*proto.ReadResponse, error) {
 	}
 
 	return res, nil
+}
+
+func (d *db) ReadCommitIndex() (*proto.EntryId, error) {
+
+	// TODO ReadBatch?
+	kv := d.kv
+
+	getReq := &proto.GetRequest{
+		Key:            commitIndexKey,
+		IncludePayload: true,
+	}
+	gr, err := applyGet(kv, getReq)
+	if err != nil {
+		return nil, err
+	}
+	if gr.Status == proto.Status_KEY_NOT_FOUND {
+		return &proto.EntryId{}, nil
+	}
+	entryId := &proto.EntryId{}
+	err = pb.Unmarshal(gr.Payload, entryId)
+	if err != nil {
+		return nil, err
+	}
+	return entryId, nil
 }
 
 func applyPut(batch WriteBatch, putReq *proto.PutRequest) (*proto.PutResponse, error) {

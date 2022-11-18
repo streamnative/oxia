@@ -3,6 +3,7 @@ package kv
 import (
 	"github.com/stretchr/testify/assert"
 	"oxia/proto"
+	"oxia/server/wal"
 	"testing"
 
 	pb "google.golang.org/protobuf/proto"
@@ -61,7 +62,7 @@ func TestDBSimple(t *testing.T) {
 		},
 	}
 
-	res, err := db.ProcessWrite(req)
+	res, err := db.ProcessWrite(req, &proto.EntryId{})
 	assert.NoError(t, err)
 
 	assert.Equal(t, 5, len(res.Puts))
@@ -159,7 +160,7 @@ func TestDBSameKeyMutations(t *testing.T) {
 		},
 	}
 
-	writeRes, err := db.ProcessWrite(writeReq)
+	writeRes, err := db.ProcessWrite(writeReq, &proto.EntryId{})
 	assert.NoError(t, err)
 
 	assert.Equal(t, 1, len(writeRes.Puts))
@@ -190,7 +191,7 @@ func TestDBSameKeyMutations(t *testing.T) {
 		},
 	}
 
-	writeRes, err = db.ProcessWrite(writeReq)
+	writeRes, err = db.ProcessWrite(writeReq, &proto.EntryId{})
 	assert.NoError(t, err)
 
 	assert.Equal(t, 2, len(writeRes.Puts))
@@ -268,7 +269,7 @@ func TestDBGetRange(t *testing.T) {
 		}},
 	}
 
-	writeRes, err := db.ProcessWrite(writeReq)
+	writeRes, err := db.ProcessWrite(writeReq, &proto.EntryId{})
 	assert.NoError(t, err)
 
 	readReq := &proto.ReadRequest{
@@ -336,7 +337,7 @@ func TestDBDeleteRange(t *testing.T) {
 		}},
 	}
 
-	_, err = db.ProcessWrite(writeReq)
+	_, err = db.ProcessWrite(writeReq, &proto.EntryId{})
 	assert.NoError(t, err)
 
 	writeReq = &proto.WriteRequest{
@@ -349,7 +350,7 @@ func TestDBDeleteRange(t *testing.T) {
 		}},
 	}
 
-	writeRes, err := db.ProcessWrite(writeReq)
+	writeRes, err := db.ProcessWrite(writeReq, &proto.EntryId{})
 	assert.NoError(t, err)
 
 	readReq := &proto.ReadRequest{
@@ -373,6 +374,39 @@ func TestDBDeleteRange(t *testing.T) {
 	assert.Equal(t, 2, len(r1.Keys))
 	assert.Equal(t, "a", r1.Keys[0])
 	assert.Equal(t, "e", r1.Keys[1])
+
+	assert.NoError(t, db.Close())
+	assert.NoError(t, factory.Close())
+}
+
+func TestDB_ReadCommitIndex(t *testing.T) {
+	epoch := uint64(7)
+	offset := uint64(13)
+
+	factory := NewPebbleKVFactory(testKVOptions)
+	db, err := NewDB(1, factory)
+	assert.NoError(t, err)
+
+	commitIndex, err := db.ReadCommitIndex()
+	assert.NoError(t, err)
+	assert.Equal(t, wal.EntryId{}, wal.EntryIdFromProto(commitIndex))
+
+	writeReq := &proto.WriteRequest{
+		Puts: []*proto.PutRequest{{
+			Key:     "a",
+			Payload: []byte("a"),
+		}},
+	}
+	_, err = db.ProcessWrite(writeReq, &proto.EntryId{
+		Epoch:  epoch,
+		Offset: offset,
+	})
+	assert.NoError(t, err)
+
+	commitIndex, err = db.ReadCommitIndex()
+	assert.NoError(t, err)
+	assert.Equal(t, wal.EntryId{Epoch: epoch, Offset: offset},
+		wal.EntryIdFromProto(commitIndex))
 
 	assert.NoError(t, db.Close())
 	assert.NoError(t, factory.Close())

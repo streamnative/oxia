@@ -98,7 +98,7 @@ func (s *StandaloneRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest,
 }
 
 func (s *StandaloneRpcServer) Write(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error) {
-	return s.dbs[*write.ShardId].ProcessWrite(write)
+	return s.dbs[*write.ShardId].ProcessWrite(write, &proto.EntryId{})
 }
 
 func (s *StandaloneRpcServer) Read(ctx context.Context, read *proto.ReadRequest) (*proto.ReadResponse, error) {
