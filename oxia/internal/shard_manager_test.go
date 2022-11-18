@@ -1,12 +1,11 @@
 package internal
 
 import (
+	"fmt"
 	"github.com/stretchr/testify/assert"
-	"net"
 	"oxia/common"
 	"oxia/server/kv"
 	"oxia/standalone"
-	"strconv"
 	"testing"
 )
 
@@ -20,15 +19,13 @@ func (s *testShardStrategy) Get(key string) func(Shard) bool {
 }
 
 func TestWithStandalone(t *testing.T) {
-	port := getFreePort()
-
 	kvOptions := kv.KVFactoryOptions{InMemory: true}
 	kvFactory := kv.NewPebbleKVFactory(&kvOptions)
-	_, err := standalone.NewStandaloneRpcServer(port, "localhost", 2, kvFactory)
+	server, err := standalone.NewStandaloneRpcServer(0, "localhost", 2, kvFactory)
 	assert.ErrorIs(t, nil, err)
 
 	clientPool := common.NewClientPool()
-	serviceUrl := "localhost:" + strconv.FormatInt(int64(port), 10)
+	serviceUrl := fmt.Sprintf("localhost:%d", server.Port())
 	shardManager := NewShardManager(&testShardStrategy{}, clientPool, serviceUrl).(*shardManagerImpl)
 	defer func() {
 		if err := shardManager.Close(); err != nil {
@@ -57,22 +54,4 @@ func TestOverlap(t *testing.T) {
 	} {
 		assert.Equal(t, overlap(item.a, item.b), item.isOverlap)
 	}
-}
-
-func getFreePort() int {
-	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
-	if err != nil {
-		panic("could not find free port")
-	}
-	l, err := net.ListenTCP("tcp", addr)
-	if err != nil {
-		panic("could not find free port")
-	}
-	defer func() {
-		err := l.Close()
-		if err != nil {
-			panic("could not find free port")
-		}
-	}()
-	return l.Addr().(*net.TCPAddr).Port
 }

@@ -2,17 +2,12 @@ package internal
 
 import (
 	"context"
-	"errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"io"
 	"oxia/common"
 	"oxia/proto"
 	"sync"
-)
-
-var (
-	ErrorUnknownShardRange = errors.New("unknown shard range")
 )
 
 type ShardManager interface {
@@ -50,19 +45,18 @@ func (s *shardManagerImpl) Close() error {
 }
 
 func (s *shardManagerImpl) Start() {
-	var wg sync.WaitGroup
-	wg.Add(1)
+	readyC := make(chan bool)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	go s.receiveWithRecovery(ctx, &wg)
+	go s.receiveWithRecovery(ctx, readyC)
 	go func() {
 		if _, ok := <-s.closeC; !ok {
 			cancel()
 		}
 	}()
 
-	wg.Wait()
+	<-readyC
 }
 
 func (s *shardManagerImpl) Get(key string) uint32 {
@@ -112,16 +106,16 @@ func (s *shardManagerImpl) isClosed() bool {
 	return false
 }
 
-func (s *shardManagerImpl) receiveWithRecovery(ctx context.Context, wg *sync.WaitGroup) {
+func (s *shardManagerImpl) receiveWithRecovery(ctx context.Context, readyC chan bool) {
 	for {
-		err := s.receive(ctx, wg)
+		err := s.receive(ctx, readyC)
 		if err != nil && s.isClosed() {
 			return
 		}
 	}
 }
 
-func (s *shardManagerImpl) receive(ctx context.Context, wg *sync.WaitGroup) error {
+func (s *shardManagerImpl) receive(ctx context.Context, readyC chan bool) error {
 	rpc, err := s.clientPool.GetClientRpc(s.serviceUrl)
 	if err != nil {
 		return err
@@ -143,7 +137,7 @@ func (s *shardManagerImpl) receive(ctx context.Context, wg *sync.WaitGroup) erro
 				shards[i] = toShard(assignment)
 			}
 			s.update(shards)
-			wg.Done()
+			readyC <- true
 		}
 	}
 }
