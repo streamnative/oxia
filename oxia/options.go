@@ -1,12 +1,17 @@
 package oxia
 
-import "time"
+import (
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+	"time"
+)
 
 type ClientOptions struct {
 	serviceUrl   string
 	batchLinger  time.Duration
 	batchMaxSize int
 	batchTimeout time.Duration
+	logger       zerolog.Logger
 }
 
 func NewClientOptions(serviceUrl string) ClientOptions {
@@ -20,12 +25,13 @@ func NewClientOptions(serviceUrl string) ClientOptions {
 		batchLinger:  defaultBatchLinger,
 		batchMaxSize: defaultBatchMaxSize,
 		batchTimeout: defaultBatchTimeout,
+		logger:       log.With().Str("component", "oxia-client").Logger(),
 	}
 }
 
 func (o ClientOptions) BatchLinger(batchLinger time.Duration) ClientOptions {
 	if batchLinger <= 0 {
-		panic("BatchLinger must be greater than zero")
+		log.Fatal().Dur("BatchLinger", batchLinger).Msg("BatchLinger must be greater than zero")
 	}
 	o.batchLinger = batchLinger
 	return o
@@ -33,7 +39,7 @@ func (o ClientOptions) BatchLinger(batchLinger time.Duration) ClientOptions {
 
 func (o ClientOptions) BatchMaxSize(batchMaxSize int) ClientOptions {
 	if batchMaxSize <= 0 {
-		panic("BatchMaxSize must be greater than zero")
+		log.Fatal().Int("BatchMaxSize", batchMaxSize).Msg("BatchMaxSize must be greater than zero")
 	}
 	o.batchMaxSize = batchMaxSize
 	return o
@@ -41,7 +47,7 @@ func (o ClientOptions) BatchMaxSize(batchMaxSize int) ClientOptions {
 
 func (o ClientOptions) BatchTimeout(batchTimeout time.Duration) ClientOptions {
 	if batchTimeout <= 0 {
-		panic("BatchTimeout must be greater than zero")
+		log.Fatal().Dur("BatchTimeout", batchTimeout).Msg("BatchTimeout must be greater than zero")
 	}
 	o.batchTimeout = batchTimeout
 	return o
