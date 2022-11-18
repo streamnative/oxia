@@ -24,45 +24,45 @@ func TestAsyncClientImpl(t *testing.T) {
 		BatchMaxSize: 1,
 		BatchTimeout: DefaultBatchTimeout,
 	}
-	oxiaClient := NewAsyncClient(options)
+	client := NewAsyncClient(options)
 
-	putResult := <-oxiaClient.Put("/a", []byte{0}, &VersionNotExists)
+	putResult := <-client.Put("/a", []byte{0}, &VersionNotExists)
 	assert.Equal(t, versionZero, putResult.Stat.Version)
 
-	getResult := <-oxiaClient.Get("/a")
+	getResult := <-client.Get("/a")
 	assert.Equal(t, GetResult{
 		Payload: []byte{0},
 		Stat:    putResult.Stat,
 	}, getResult)
 
-	putResult = <-oxiaClient.Put("/c", []byte{0}, &VersionNotExists)
+	putResult = <-client.Put("/c", []byte{0}, &VersionNotExists)
 	assert.Equal(t, versionZero, putResult.Stat.Version)
 
-	putResult = <-oxiaClient.Put("/c", []byte{1}, &versionZero)
+	putResult = <-client.Put("/c", []byte{1}, &versionZero)
 	assert.Equal(t, int64(1), putResult.Stat.Version)
 
-	getRangeResult := <-oxiaClient.GetRange("/a", "/d")
+	getRangeResult := <-client.GetRange("/a", "/d")
 	assert.Equal(t, GetRangeResult{
 		Keys: []string{"/a", "/c"},
 	}, getRangeResult)
 
-	deleteErr := <-oxiaClient.Delete("/a", &versionZero)
+	deleteErr := <-client.Delete("/a", &versionZero)
 	assert.ErrorIs(t, nil, deleteErr)
 
-	getResult = <-oxiaClient.Get("/a")
+	getResult = <-client.Get("/a")
 	assert.Equal(t, GetResult{
 		Err: ErrorKeyNotFound,
 	}, getResult)
 
-	deleteRangeResult := <-oxiaClient.DeleteRange("/c", "/d")
+	deleteRangeResult := <-client.DeleteRange("/c", "/d")
 	assert.ErrorIs(t, nil, deleteRangeResult)
 
-	getResult = <-oxiaClient.Get("/d")
+	getResult = <-client.Get("/d")
 	assert.Equal(t, GetResult{
 		Err: ErrorKeyNotFound,
 	}, getResult)
 
-	err = oxiaClient.Close()
+	err = client.Close()
 	assert.ErrorIs(t, nil, err)
 
 	err = server.Close()
