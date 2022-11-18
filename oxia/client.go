@@ -3,13 +3,6 @@ package oxia
 import (
 	"errors"
 	"io"
-	"time"
-)
-
-const (
-	DefaultBatchLinger  = 5 * time.Millisecond
-	DefaultBatchMaxSize = 1000
-	DefaultBatchTimeout = 30 * time.Second
 )
 
 var (
@@ -20,13 +13,6 @@ var (
 	ErrorBadVersion    = errors.New("bad version")
 	ErrorUnknownStatus = errors.New("unknown status")
 )
-
-type ClientOptions struct {
-	ServiceUrl   string
-	BatchLinger  time.Duration
-	BatchMaxSize int
-	BatchTimeout time.Duration
-}
 
 type AsyncClient interface {
 	io.Closer

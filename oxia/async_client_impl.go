@@ -19,18 +19,18 @@ type clientImpl struct {
 
 func NewAsyncClient(options ClientOptions) AsyncClient {
 	clientPool := common.NewClientPool()
-	shardManager := internal.NewShardManager(internal.NewShardStrategy(), clientPool, options.ServiceUrl)
+	shardManager := internal.NewShardManager(internal.NewShardStrategy(), clientPool, options.serviceUrl)
 	defer shardManager.Start()
 	executor := &internal.ExecutorImpl{
 		ClientPool:   clientPool,
 		ShardManager: shardManager,
-		ServiceUrl:   options.ServiceUrl,
-		Timeout:      options.BatchTimeout,
+		ServiceUrl:   options.serviceUrl,
+		Timeout:      options.batchTimeout,
 	}
 	batcherFactory := &batch.BatcherFactory{
 		Executor: executor,
-		Linger:   options.BatchLinger,
-		MaxSize:  options.BatchMaxSize,
+		Linger:   options.batchLinger,
+		MaxSize:  options.batchMaxSize,
 	}
 	return &clientImpl{
 		shardManager:      shardManager,
