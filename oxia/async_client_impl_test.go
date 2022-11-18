@@ -24,7 +24,7 @@ func TestAsyncClientImpl(t *testing.T) {
 		BatchMaxSize: 1,
 		BatchTimeout: DefaultBatchTimeout,
 	}
-	oxiaClient := NewAsyncClient(&options)
+	oxiaClient := NewAsyncClient(options)
 
 	putResult := <-oxiaClient.Put("/a", []byte{0}, &VersionNotExists)
 	assert.Equal(t, versionZero, putResult.Stat.Version)
