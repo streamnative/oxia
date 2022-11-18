@@ -51,6 +51,7 @@ func assertReaderReadsEventually(t *testing.T, r WalReader, entries []string) ch
 func TestFactory_NewWal(t *testing.T) {
 	f, w := createWal(t)
 	rr, err := w.NewReverseReader()
+	assert.NoError(t, err)
 	assert.False(t, rr.HasNext())
 	assert.NoError(t, rr.Close())
 	fr, err := w.NewReader(EntryId{})
@@ -82,6 +83,7 @@ func TestAppend(t *testing.T) {
 
 	// Read entries backwards
 	rr, err := w.NewReverseReader()
+	assert.NoError(t, err)
 	assertReaderReads(t, rr, []string{"C", "B", "A"})
 	assert.NoError(t, rr.Close())
 
