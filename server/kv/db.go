@@ -5,6 +5,7 @@ import (
 	"io"
 	"oxia/common"
 	"oxia/proto"
+	"oxia/server/wal"
 	"time"
 
 	pb "google.golang.org/protobuf/proto"
@@ -125,8 +126,6 @@ func (d *db) ProcessRead(b *proto.ReadRequest) (*proto.ReadResponse, error) {
 }
 
 func (d *db) ReadCommitIndex() (*proto.EntryId, error) {
-
-	// TODO ReadBatch?
 	kv := d.kv
 
 	getReq := &proto.GetRequest{
@@ -138,7 +137,7 @@ func (d *db) ReadCommitIndex() (*proto.EntryId, error) {
 		return nil, err
 	}
 	if gr.Status == proto.Status_KEY_NOT_FOUND {
-		return &proto.EntryId{}, nil
+		return wal.NonExistentEntryId, nil
 	}
 	entryId := &proto.EntryId{}
 	err = pb.Unmarshal(gr.Payload, entryId)

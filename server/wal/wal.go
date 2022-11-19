@@ -9,6 +9,7 @@ import (
 var (
 	ErrorEntryNotFound = errors.New("oxia: entry not found")
 	ErrorReaderClosed  = errors.New("oxia: reader already closed")
+	NonExistentEntryId = &proto.EntryId{}
 )
 
 type EntryId struct {

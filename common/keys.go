@@ -1,4 +1,4 @@
 package common
 
-// InternalKeyPrefix are reserved for use by oxia.
-const InternalKeyPrefix = "oxia/"
+// InternalKeyPrefix is the prefix of keys used by oxia.
+const InternalKeyPrefix = "__oxia/"

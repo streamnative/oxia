@@ -62,7 +62,7 @@ func TestDBSimple(t *testing.T) {
 		},
 	}
 
-	res, err := db.ProcessWrite(req, &proto.EntryId{})
+	res, err := db.ProcessWrite(req, wal.NonExistentEntryId)
 	assert.NoError(t, err)
 
 	assert.Equal(t, 5, len(res.Puts))
@@ -160,7 +160,7 @@ func TestDBSameKeyMutations(t *testing.T) {
 		},
 	}
 
-	writeRes, err := db.ProcessWrite(writeReq, &proto.EntryId{})
+	writeRes, err := db.ProcessWrite(writeReq, wal.NonExistentEntryId)
 	assert.NoError(t, err)
 
 	assert.Equal(t, 1, len(writeRes.Puts))
@@ -191,7 +191,7 @@ func TestDBSameKeyMutations(t *testing.T) {
 		},
 	}
 
-	writeRes, err = db.ProcessWrite(writeReq, &proto.EntryId{})
+	writeRes, err = db.ProcessWrite(writeReq, wal.NonExistentEntryId)
 	assert.NoError(t, err)
 
 	assert.Equal(t, 2, len(writeRes.Puts))
@@ -269,7 +269,7 @@ func TestDBGetRange(t *testing.T) {
 		}},
 	}
 
-	writeRes, err := db.ProcessWrite(writeReq, &proto.EntryId{})
+	writeRes, err := db.ProcessWrite(writeReq, wal.NonExistentEntryId)
 	assert.NoError(t, err)
 
 	readReq := &proto.ReadRequest{
@@ -337,7 +337,7 @@ func TestDBDeleteRange(t *testing.T) {
 		}},
 	}
 
-	_, err = db.ProcessWrite(writeReq, &proto.EntryId{})
+	_, err = db.ProcessWrite(writeReq, wal.NonExistentEntryId)
 	assert.NoError(t, err)
 
 	writeReq = &proto.WriteRequest{
@@ -350,7 +350,7 @@ func TestDBDeleteRange(t *testing.T) {
 		}},
 	}
 
-	writeRes, err := db.ProcessWrite(writeReq, &proto.EntryId{})
+	writeRes, err := db.ProcessWrite(writeReq, wal.NonExistentEntryId)
 	assert.NoError(t, err)
 
 	readReq := &proto.ReadRequest{
