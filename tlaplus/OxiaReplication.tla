@@ -16,8 +16,6 @@ This spec includes:
 - Data replication
 - Reconfiguration
     - Swapping one node for another
-    - Expanding the cluster (increasing rep factor)
-    - Contracting the cluster (decreasing rep factor)
     - Handling failed/stalled reconfigurations
 
 Not modelling:
@@ -60,9 +58,7 @@ CONSTANTS FENCING,           \* prevent nodes from making progress
           LEADER_ELECTED     \* a leader has confirmed its leadership        
 
 \* Reconfiguration ops
-CONSTANTS NODE_SWAP,         \* one node is being swapped out for another
-          EXPAND,            \* the shard ensemble is being increased by one node
-          CONTRACT           \* the shard ensemble is being reduced by one node
+CONSTANTS NODE_SWAP         \* one node is being swapped out for another
 
 \* Reconfiguration phases
 CONSTANTS PREPARE,           \* preparation phase (coping of snapshots, fencing)
@@ -110,7 +106,7 @@ LogEntry == [entry_id: EntryId, value: Values]
 CursorStatus == { NIL, ATTACHED, PENDING_TRUNCATE, PENDING_REMOVAL }
 Cursor == [status: CursorStatus, last_pushed: EntryId, last_confirmed: EntryId]
 NodeStatus == { LEADER, FOLLOWER, FENCED, NOT_MEMBER }
-ReconfigOps == { NODE_SWAP, EXPAND, CONTRACT }
+ReconfigOps == { NODE_SWAP }
 
 \* equivalent of null for various record types
 NoEntryId == [offset |-> 0, epoch |-> 0]
@@ -201,37 +197,18 @@ PrepareReconfigRequest ==
      epoch:    Epoch,
      node:     Nodes,
      operator: Operators,
-     old_node: Nodes] 
-        \union
-    [type:     {PREPARE_RECONFIG_REQUEST},
-     op:       {EXPAND}, 
-     epoch:    Epoch,
-     node:     Nodes,
-     operator: Operators]
-        \union
-    [type:     {PREPARE_RECONFIG_REQUEST},
-     op:       {CONTRACT}, 
-     epoch:    Epoch,
-     node:     Nodes,
-     operator: Operators,
      old_node: Nodes]
 
 \* Node (Leader) -> Operator
 PrepareReconfigResponse ==
     [type:         {PREPARE_RECONFIG_RESPONSE},
-     op:           {NODE_SWAP, EXPAND}, 
+     op:           NODE_SWAP,
      epoch:        Epoch,
      node:         Nodes,
      operator:     Operators,
      snapshot:     SUBSET LogEntry,
      head_index:   EntryId,
      commit_index: EntryId]
-        \union
-    [type:     {PREPARE_RECONFIG_RESPONSE},
-     op:       {CONTRACT},
-     epoch:    Epoch,
-     node:     Nodes,
-     operator: Operators]
 
 \* Operator -> Node (New Follower)     
 SnapshotRequest ==
@@ -262,23 +239,6 @@ CommitReconfigRequest ==
      old_node:   Nodes,
      new_node:   Nodes,
      head_index: EntryId]
-        \union
-    [type:       {COMMIT_RECONFIG_REQUEST},
-     op:         {EXPAND},
-     node:       Nodes,
-     operator:   Operators,
-     epoch:      Epoch,
-     rep_factor: Nat,
-     new_node:   Nodes,
-     head_index: EntryId]
-        \union
-    [type:       {COMMIT_RECONFIG_REQUEST},
-     op:         {CONTRACT},
-     node:       Nodes,
-     operator:   Operators,
-     epoch:      Epoch,
-     rep_factor: Nat,
-     old_node:   Nodes]
 
 \* Node (Leader) -> Operator
 CommitReconfigResponse ==
@@ -289,20 +249,6 @@ CommitReconfigResponse ==
      epoch:    Epoch,
      old_node: Nodes,
      new_node: Nodes]
-        \union
-    [type:     {COMMIT_RECONFIG_RESPONSE},
-     op:       {EXPAND},
-     node:     Nodes,
-     operator: Operators,
-     epoch:    Epoch,
-     new_node: Nodes]
-        \union
-    [type:     {COMMIT_RECONFIG_RESPONSE},
-     op:       {CONTRACT},
-     node:     Nodes,
-     operator: Operators,
-     epoch:    Epoch,
-     old_node: Nodes]
      
 Message ==
     FenceRequest \union FenceResponse \union
@@ -325,19 +271,6 @@ ReconfigMetadata ==
      old_node:            Nodes,
      new_node:            Nodes,
      new_node_head_index: EntryId]
-        \union
-    [phase:               ReconfigPhase,
-     op:                  {EXPAND},
-     epoch:               Epoch, 
-     rep_factor:          Nat,
-     new_node:            Nodes,
-     new_node_head_index: EntryId]
-        \union
-    [phase:               ReconfigPhase,
-     op:                  {CONTRACT},
-     epoch:               Epoch, 
-     rep_factor:          Nat,
-     old_node:            Nodes]
         \union {NIL}    
      
 Metadata == [shard_status: ShardStatus,
@@ -585,7 +518,7 @@ GetFenceRequests(o, new_epoch, ensemble) ==
 FencingEnsemble ==
     IF /\ metadata.reconfig # NIL 
        /\ metadata.reconfig.phase = COMMIT
-       /\ metadata.reconfig.op \in { NODE_SWAP, EXPAND }
+       /\ metadata.reconfig.op \in { NODE_SWAP }
     THEN metadata.ensemble \union { metadata.reconfig.new_node }
     ELSE metadata.ensemble
 
@@ -698,7 +631,7 @@ OperatorHandlesPreQuorumFencingResponse ==
   factor.
   
   The final ensemble is also determined at this point. If
-  there is a reconfiguration process (NODE_SWAP or EXPAND)
+  there is a reconfiguration process (NODE_SWAP)
   that is in the commit phase that did not complete at
   the time of the election, then the ensemble change of
   that reconfiguration is set now.
@@ -706,7 +639,7 @@ OperatorHandlesPreQuorumFencingResponse ==
 FinalElectionEnsemble(ostate, responses) ==
     IF /\ ostate.md.reconfig # NIL
        /\ ostate.md.reconfig.phase = COMMIT
-       /\ ostate.md.reconfig.op \in { NODE_SWAP, EXPAND }
+       /\ ostate.md.reconfig.op \in { NODE_SWAP }
     THEN IF ostate.md.reconfig.op = NODE_SWAP
          THEN (ostate.md.ensemble \ {ostate.md.reconfig.old_node}) 
                     \union {ostate.md.reconfig.new_node}
@@ -1407,133 +1340,11 @@ OperatorStartsNodeSwapReconfiguration ==
 
 
 (*---------------------------------------------------------
-  The operator starts an expand reconfiguration
-  
-  The operator selects a new node to add to the shard
-  ensemble in order to increase the replication
-  factor.
-  
-  See the Node Swap reconfiguration for more details. All
-  applies except that there is no old node, only a new
-  node. The PREPARE phase only involves the obtaining
-  of the snapshot.
-----------------------------------------------------------*)
-
-GetPrepareExpandReconfigRequest(ostate, new_epoch) ==
-    [type        |-> PREPARE_RECONFIG_REQUEST,
-     op          |-> EXPAND,
-     epoch       |-> new_epoch,
-     node        |-> ostate.md.leader,
-     operator    |-> ostate.id]
-
-OperatorStartsExpandReconfiguration ==
-    \* enabling conditions
-    /\ metadata.epoch < MaxEpochs \* state space reduction
-    /\ \E o \in Operators :
-        LET ostate == operator_state[o]
-        IN /\ ReconfigurationAllowed(ostate)
-           /\ \E new_node \in Nodes :
-                /\ new_node \notin ostate.md.ensemble
-                /\ LET new_md_version == metadata_version + 1
-                       new_epoch      == metadata.epoch + 1
-                       reconfig       == [phase               |-> PREPARE,
-                                          op                  |-> EXPAND,
-                                          rep_factor          |-> ostate.md.rep_factor + 1,
-                                          new_node            |-> new_node,
-                                          epoch               |-> new_epoch,
-                                          new_node_head_index |-> NoEntryId]
-                       new_md         == [ostate.md EXCEPT !.shard_status = RECONFIGURATION,
-                                                           !.epoch        = new_epoch,
-                                                           !.reconfig     = reconfig]
-                   IN
-                      \* state changes
-                      /\ metadata_version' = new_md_version
-                      /\ metadata' = new_md
-                      /\ operator_state' = [operator_state EXCEPT ![o].md_version = new_md_version,
-                                                                  ![o].md         = new_md]
-                      /\ SendMessage(GetPrepareExpandReconfigRequest(ostate, new_epoch))
-                      /\ UNCHANGED << node_state, confirmed, operator_stop_ctr >>
-                      
-(*---------------------------------------------------------
-  The operator starts a contract reconfiguration
-  
-  This operation reduces the replication factor by removing
-  a node from the ensemble safely.
-  
-  A node cannot be removed safely if by removing it the leader's
-  commit index would be recalculated as a lower index. This
-  would leave previously committed entries as uncommitted and is
-  not safe.
-  
-  A contract reconfiguration is performed via a 2-phase commit although
-  it strictly does not require two phases for correctness. The reason
-  to use a two-phase commit is that we can fence off the node we want
-  to remove during the prepare phase and then wait for the commit index
-  in the leader to pass the head index of the node to be removed. At
-  that point the commit phase will succeed.
-  
-  - PREPARE phase: 1) Operator updates the metadata with the reconfiguration
-                      details of: old node, PREPARE phase.
-                   2) Leader fences the old node. This deactivates
-                      the follow cursor in the leader for the 
-                      old node.
-  - COMMIT phase:  1) Operator updates the phase in the reconfig metadata 
-                      to COMMIT.
-                   2) Send a commit request to the leader. 
-                   3) Leader removes the follow cursor for the old node 
-                      completely, only if the commit index is not affected.
-                      Confirms to the operator if it was successful or not.
-                   4) The operator updates the metadata to clear the
-                      reconfiguration op state upon success.
-                      
-Key points:
- - The operator can attempt the commit phase repeatedly
-   until the leader responds with success.
-----------------------------------------------------------*)
-
-GetPrepareContractReconfigRequest(ostate, old_node, new_epoch) ==
-    [type        |-> PREPARE_RECONFIG_REQUEST,
-     op          |-> CONTRACT,
-     epoch       |-> new_epoch,
-     node        |-> ostate.md.leader,
-     operator    |-> ostate.id,
-     old_node    |-> old_node]
-
-OperatorStartsContractReconfiguration ==
-    \* enabling conditions
-    /\ metadata.epoch < MaxEpochs \* state space reduction
-    /\ \E o \in Operators :
-        LET ostate == operator_state[o]
-        IN /\ ReconfigurationAllowed(ostate)
-           /\ ostate.md.rep_factor > 3
-           /\ \E old_node \in Nodes :
-                /\ old_node \in ostate.md.ensemble
-                /\ old_node # ostate.md.leader
-                /\ LET new_md_version == metadata_version + 1
-                       new_epoch      == metadata.epoch + 1
-                       reconfig       == [phase               |-> PREPARE,
-                                          op                  |-> CONTRACT,
-                                          rep_factor          |-> ostate.md.rep_factor - 1,
-                                          old_node            |-> old_node,
-                                          epoch               |-> new_epoch]
-                       new_md         == [ostate.md EXCEPT !.shard_status = RECONFIGURATION,
-                                                           !.epoch        = new_epoch,
-                                                           !.reconfig     = reconfig]
-                   IN
-                      \* state changes
-                      /\ metadata_version' = new_md_version
-                      /\ metadata' = new_md
-                      /\ operator_state' = [operator_state EXCEPT ![o].md_version = new_md_version,
-                                                                  ![o].md         = new_md]
-                      /\ SendMessage(GetPrepareContractReconfigRequest(ostate, old_node, new_epoch))
-                      /\ UNCHANGED << node_state, confirmed, operator_stop_ctr >>                      
-
-(*---------------------------------------------------------
   The leader handles a reconfiguration request
   
   This action covers all types of reconfiguration.
   
-  NODE_SWAP and CONTRACT:
+  NODE_SWAP:
   - change the old node follow cursor to PENDING_REMOVAL
     which deactivates it.
     
@@ -1541,20 +1352,14 @@ OperatorStartsContractReconfiguration ==
 ----------------------------------------------------------*)
 
 GetPrepareReconfigResponse(msg, nstate) ==
-    IF msg.op = CONTRACT
-    THEN [type         |-> PREPARE_RECONFIG_RESPONSE,
-          op           |-> msg.op,
-          operator     |-> msg.operator,
-          node         |-> nstate.id,
-          epoch        |-> msg.epoch]
-    ELSE [type         |-> PREPARE_RECONFIG_RESPONSE,
-          op           |-> msg.op,
-          operator     |-> msg.operator,
-          node         |-> nstate.id,
-          epoch        |-> msg.epoch,
-          snapshot     |-> nstate.log,
-          head_index   |-> nstate.head_index,
-          commit_index |-> nstate.commit_index]
+    [type         |-> PREPARE_RECONFIG_RESPONSE,
+     op           |-> msg.op,
+     operator     |-> msg.operator,
+     node         |-> nstate.id,
+     epoch        |-> msg.epoch,
+     snapshot     |-> nstate.log,
+     head_index   |-> nstate.head_index,
+     commit_index |-> nstate.commit_index]
 
 LeaderHandlesPrepareReconfigRequest ==
     \* enabling conditions
@@ -1565,13 +1370,10 @@ LeaderHandlesPrepareReconfigRequest ==
               /\ nstate.status = LEADER
               /\ nstate.reconfig_inprog = FALSE
               \* Actions
-              /\ IF msg.op = EXPAND 
-                 THEN node_state' = [node_state EXCEPT ![nstate.id].epoch           = msg.epoch,
-                                                       ![nstate.id].reconfig_inprog = TRUE]
-                 \* NODE_SWAP or CONTRACT
-                 ELSE node_state' = [node_state EXCEPT ![nstate.id].epoch           = msg.epoch,
-                                                       ![nstate.id].reconfig_inprog = TRUE,
-                                                       ![nstate.id].follow_cursor[msg.old_node].status = PENDING_REMOVAL]
+                 \* NODE_SWAP
+              /\ node_state' = [node_state EXCEPT ![nstate.id].epoch           = msg.epoch,
+                                                  ![nstate.id].reconfig_inprog = TRUE,
+                                                  ![nstate.id].follow_cursor[msg.old_node].status = PENDING_REMOVAL]
               /\ ProcessedOneAndSendAnother(msg, GetPrepareReconfigResponse(msg, nstate))
               /\ UNCHANGED << metadata_version, metadata, operator_state, confirmed, operator_stop_ctr >>
 
@@ -1579,22 +1381,10 @@ LeaderHandlesPrepareReconfigRequest ==
 (*---------------------------------------------------------
   Operator handles Prepare Reconfig response
   
-  NODE_SWAP and EXPAND:
+  NODE_SWAP:
   - Receives a snapshot from the leader and sends a snapshot
     request to the new node.
-    
-  CONTRACT
-  - Send a commit request to the leader
 ----------------------------------------------------------*)
-
-GetCommitContractReconfigRequest(ostate) ==
-    [type        |-> COMMIT_RECONFIG_REQUEST,
-     op          |-> CONTRACT,
-     rep_factor  |-> ostate.md.reconfig.rep_factor,
-     epoch       |-> ostate.md.epoch,
-     node        |-> ostate.md.leader,
-     operator    |-> ostate.id,
-     old_node    |-> ostate.md.reconfig.old_node]
 
 GetSnapshotRequest(ostate, snapshot, head_index, commit_index) ==
     [type         |-> SNAPSHOT_REQUEST,
@@ -1619,21 +1409,13 @@ OperatorHandlesPrepareReconfigResponse ==
                 /\ msg.operator = o
                 /\ ostate.md.epoch = msg.epoch
                 \* state changes
-                /\ IF msg.op \in {NODE_SWAP, EXPAND}
-                   THEN /\ ProcessedOneAndSendAnother(msg, GetSnapshotRequest(ostate,
-                                                                              msg.snapshot,
-                                                                              msg.head_index,
-                                                                              msg.commit_index))
-                        /\ UNCHANGED << metadata_version, metadata, operator_state, 
-                                        node_state, confirmed, operator_stop_ctr >>
-                   ELSE \* CONTRACT
-                        LET new_md == [ostate.md EXCEPT !.reconfig.phase = COMMIT]
-                        IN /\ metadata_version' = metadata_version + 1
-                           /\ metadata' = new_md
-                           /\ operator_state' = [operator_state EXCEPT ![o].md_version = metadata_version + 1,
-                                                                       ![o].md         = new_md] 
-                           /\ ProcessedOneAndSendAnother(msg, GetCommitContractReconfigRequest(ostate))
-                           /\ UNCHANGED << node_state, confirmed, operator_stop_ctr >>
+                \* Node swaps
+                /\ ProcessedOneAndSendAnother(msg, GetSnapshotRequest(ostate,
+                                                                      msg.snapshot,
+                                                                      msg.head_index,
+                                                                      msg.commit_index))
+                /\ UNCHANGED << metadata_version, metadata, operator_state,
+                                node_state, confirmed, operator_stop_ctr >>
 
 (*---------------------------------------------------------
   The new follower handles a snapshot request
@@ -1674,26 +1456,15 @@ NodeHandlesSnapshotRequest ==
 ----------------------------------------------------------*)
 
 GetCommitReconfigRequest(ostate, new_node_head_index) ==
-    IF ostate.md.reconfig.op = NODE_SWAP
-    THEN
-        [type       |-> COMMIT_RECONFIG_REQUEST,
-         op         |-> NODE_SWAP,
-         rep_factor |-> ostate.md.reconfig.rep_factor,
-         node       |-> ostate.md.leader,
-         operator   |-> ostate.id,
-         epoch      |-> ostate.md.epoch,
-         old_node   |-> ostate.md.reconfig.old_node,
-         new_node   |-> ostate.md.reconfig.new_node,
-         head_index |-> new_node_head_index]
-    ELSE
-        [type       |-> COMMIT_RECONFIG_REQUEST,
-         op         |-> EXPAND,
-         rep_factor |-> ostate.md.reconfig.rep_factor,
-         node       |-> ostate.md.leader,
-         operator   |-> ostate.id,
-         epoch      |-> ostate.md.epoch,
-         new_node   |-> ostate.md.reconfig.new_node,
-         head_index |-> new_node_head_index]
+    [type       |-> COMMIT_RECONFIG_REQUEST,
+     op         |-> NODE_SWAP,
+     rep_factor |-> ostate.md.reconfig.rep_factor,
+     node       |-> ostate.md.leader,
+     operator   |-> ostate.id,
+     epoch      |-> ostate.md.epoch,
+     old_node   |-> ostate.md.reconfig.old_node,
+     new_node   |-> ostate.md.reconfig.new_node,
+     head_index |-> new_node_head_index]
 
 OperatorHandlesSnapshotResponse ==
     \* enabling conditions
@@ -1787,105 +1558,6 @@ LeaderHandlesCommitNodeSwapReconfigRequest ==
                       /\ ProcessedOneAndSendAnother(msg, GetCommitNodeSwapReconfigResponse(msg))
                       /\ UNCHANGED << metadata_version, metadata, operator_state, operator_stop_ctr >>
 
-(*---------------------------------------------------------
-  The leader handles an EXPAND Commit Reconfig request
-  
-  The leader activates a cursor for the new node, to match its
-  head index.
-  
-  This may advance the commit index.
-----------------------------------------------------------*)
-
-GetCommitExpandReconfigResponse(msg) ==
-    [type     |-> COMMIT_RECONFIG_RESPONSE,
-     op       |-> EXPAND,
-     operator |-> msg.operator,
-     node     |-> msg.node,
-     epoch    |-> msg.epoch,
-     new_node |-> msg.new_node]
-
-LeaderHandlesCommitExpandReconfigRequest ==
-    \* enabling conditions
-    \E msg \in DOMAIN messages :
-        /\ ReceivableMessageOfType(messages, msg, COMMIT_RECONFIG_REQUEST)
-        /\ LET nstate == node_state[msg.node]
-           IN /\ nstate.epoch = msg.epoch
-              /\ nstate.status = LEADER
-              /\ nstate.reconfig_inprog = TRUE
-              /\ msg.op = EXPAND 
-              /\ nstate.follow_cursor[msg.new_node].status = NIL
-              \* state changes
-              /\ LET updated_cursor   == [n \in Nodes |->
-                                            IF n = msg.new_node
-                                            THEN [status         |-> ATTACHED,
-                                                  last_pushed    |-> msg.head_index,
-                                                  last_confirmed |-> msg.head_index]
-                                            ELSE nstate.follow_cursor[n]]
-                     new_commit_index == NewCommitIndex(nstate, updated_cursor, msg.rep_factor)
-                 IN
-                      /\ node_state' = [node_state EXCEPT ![nstate.id].rep_factor      = msg.rep_factor,
-                                                          ![nstate.id].follow_cursor   = updated_cursor,
-                                                          ![nstate.id].commit_index    = new_commit_index,
-                                                          ![nstate.id].reconfig_inprog = FALSE] 
-                      /\ confirmed' = UpdateConfirmed(nstate, new_commit_index)
-                      /\ ProcessedOneAndSendAnother(msg, GetCommitExpandReconfigResponse(msg))
-                      /\ UNCHANGED << metadata_version, metadata, operator_state, operator_stop_ctr >>
-
-(*---------------------------------------------------------
-  The leader handles a CONTRACT Commit Reconfig request
-  
-  The leader checks that the commit index is unaffected
-  by the removal of the old node and if so removes its
-  cursor.
-  
-  This does not affect the commit index.
-  
-  Key points:
-  - The leader would need to respond with an "unsafe"
-    return code if the commit index would have been
-    affected. That way the operator could periodically
-    retry the commit until a success reponse
-    is received. In this spec we simply model that
-    the commit only succeeds if the commit index is
-    unaffected. Because the message passing doesn't
-    lose messages, this implicitly models these retries. 
-  
-  - It would be possible to include a "force" flag to
-    force a leader to remove a node despite it being
-    unsafe.
-----------------------------------------------------------*)
-
-GetCommitContractReconfigResponse(msg) ==
-    [type       |-> COMMIT_RECONFIG_RESPONSE,
-     op         |-> CONTRACT,
-     operator   |-> msg.operator,
-     node       |-> msg.node,
-     epoch      |-> msg.epoch,
-     old_node   |-> msg.old_node]
-
-LeaderHandlesCommitContractReconfigRequest ==
-    \* enabling conditions
-    \E msg \in DOMAIN messages :
-        /\ ReceivableMessageOfType(messages, msg, COMMIT_RECONFIG_REQUEST)
-        /\ LET nstate == node_state[msg.node]
-           IN /\ nstate.epoch = msg.epoch
-              /\ nstate.status = LEADER
-              /\ nstate.reconfig_inprog = TRUE
-              /\ msg.op = CONTRACT 
-              /\ nstate.follow_cursor[msg.old_node].status = PENDING_REMOVAL
-              /\ LET updated_cursor   == [n \in Nodes |->
-                                            IF n = msg.old_node
-                                            THEN NoCursor
-                                            ELSE nstate.follow_cursor[n]]
-                     new_commit_index == NewCommitIndex(nstate, updated_cursor, msg.rep_factor)
-                 IN
-                      /\ IsSameId(new_commit_index, nstate.commit_index)
-                      \* state changes
-                      /\ node_state' = [node_state EXCEPT ![nstate.id].rep_factor      = msg.rep_factor,
-                                                          ![nstate.id].follow_cursor   = updated_cursor,
-                                                          ![nstate.id].reconfig_inprog = FALSE] 
-                      /\ ProcessedOneAndSendAnother(msg, GetCommitContractReconfigResponse(msg))
-                      /\ UNCHANGED << metadata_version, metadata, operator_state, confirmed, operator_stop_ctr >>
 
 (*---------------------------------------------------------
   Operator completes reconfiguration
@@ -1896,12 +1568,7 @@ LeaderHandlesCommitContractReconfigRequest ==
 ----------------------------------------------------------*)
 
 NewEnsemble(md, msg) ==
-    CASE msg.op = NODE_SWAP ->
-            (md.ensemble \ {msg.old_node}) \union {msg.new_node}
-      [] msg.op = EXPAND ->
-            md.ensemble \union {msg.new_node}
-      [] msg.op = CONTRACT ->
-            md.ensemble \ {msg.old_node}
+    (md.ensemble \ {msg.old_node}) \union {msg.new_node}
 
 OperatorCompletesReconfiguration ==
     \* enabling conditions
@@ -1954,15 +1621,11 @@ Next ==
     \/ LeaderHandlesEntryRejection                \* leader receives add rejection, abdicates
     \* Reconfiguration
     \/ OperatorStartsNodeSwapReconfiguration      \* operator sends node swap reconfig request to leader
-    \/ OperatorStartsExpandReconfiguration        \* operator sends expand reconfig request to leader
-    \/ OperatorStartsContractReconfiguration      \* operator sends contract reconfig request to leader
     \/ LeaderHandlesPrepareReconfigRequest        \* leader handles prepare phase reconfig request
     \/ OperatorHandlesPrepareReconfigResponse     \* operator handles prepare phase reconfig response
     \/ NodeHandlesSnapshotRequest                 \* node receives a snapshot
     \/ OperatorHandlesSnapshotResponse            \* operator handles snapshot confirmation from node
     \/ LeaderHandlesCommitNodeSwapReconfigRequest \* leader commits node swap reconfig
-    \/ LeaderHandlesCommitExpandReconfigRequest   \* leader commits expand reconfig
-    \/ LeaderHandlesCommitContractReconfigRequest \* leader commits contract reconfig
     \/ OperatorCompletesReconfiguration           \* operator completes reconfiguration
     
 (*-------------------------------------------------    
@@ -2020,12 +1683,8 @@ ValidMessages ==
         /\ msg.node = msg.old_node
     /\ ~\E msg \in DOMAIN messages :
         /\ msg.type = COMMIT_RECONFIG_REQUEST
-        /\ msg.op \in {NODE_SWAP, EXPAND}
+        /\ msg.op \in {NODE_SWAP}
         /\ msg.node = msg.new_node
-    /\ ~\E msg \in DOMAIN messages :
-        /\ msg.type = PREPARE_RECONFIG_REQUEST
-        /\ msg.op = CONTRACT
-        /\ msg.node = msg.old_node
 
 LegalLeaderAndEnsemble ==
     /\ IF metadata.leader # NIL
