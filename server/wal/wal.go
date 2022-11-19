@@ -35,11 +35,20 @@ func (id EntryId) LessOrEqual(other EntryId) bool {
 	return id.Epoch < other.Epoch || (id.Epoch == other.Epoch && id.Offset <= other.Offset)
 }
 
+type WalFactoryOptions struct {
+	LogDir string
+}
+
+var DefaultWalFactoryOptions = &WalFactoryOptions{
+	LogDir: "wal",
+}
+
 type WalFactory interface {
 	io.Closer
 	NewWal(shard uint32) (Wal, error)
 }
 
+// WalReader reads the Wal sequentially. It is not synchronized itself.
 type WalReader interface {
 	io.Closer
 	// ReadNext returns the next entry in the log according to the Reader's direction.
@@ -56,8 +65,8 @@ type Wal interface {
 	io.Closer
 	// Append writes an entry to the end of the log
 	Append(entry *proto.LogEntry) error
-	// TruncateLog removes entries from the end of the log that have an ID greater than headIndex.
-	TruncateLog(headIndex EntryId) (EntryId, error)
+	// TruncateLog removes entries from the end of the log that have an ID greater than lastSafeEntry.
+	TruncateLog(lastSafeEntry EntryId) (EntryId, error)
 	// NewReader returns a new WalReader to traverse the log from the entry after `after` towards the log end
 	NewReader(after EntryId) (WalReader, error)
 	// NewReverseReader returns a new WalReader to traverse the log from the last entry towards the beginning
