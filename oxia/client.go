@@ -3,20 +3,32 @@ package oxia
 import (
 	"errors"
 	"io"
+	"time"
 )
 
 const (
-	VersionNotExists int64 = -1
+	DefaultBatchLinger  = 5 * time.Millisecond
+	DefaultBatchMaxSize = 1000
+	DefaultBatchTimeout = 30 * time.Second
 )
 
 var (
+	//not easy to use as a pointer if a const
+	VersionNotExists int64 = -1
+
 	ErrorKeyNotFound   = errors.New("key not found")
 	ErrorBadVersion    = errors.New("bad version")
 	ErrorUnknownStatus = errors.New("unknown status")
-	ErrorShuttingDown  = errors.New("shutting down")
 )
 
-type Client interface {
+type ClientOptions struct {
+	ServiceUrl   string
+	BatchLinger  time.Duration
+	BatchMaxSize int
+	BatchTimeout time.Duration
+}
+
+type AsyncClient interface {
 	io.Closer
 	Put(key string, payload []byte, expectedVersion *int64) <-chan PutResult
 	Delete(key string, expectedVersion *int64) <-chan error
@@ -25,12 +37,13 @@ type Client interface {
 	GetRange(minKeyInclusive string, maxKeyExclusive string) <-chan GetRangeResult
 }
 
-type ClientOptions struct {
-	//serviceURL string
-}
-
-func NewClient(options *ClientOptions) Client {
-	return newMemoryClient()
+type SyncClient interface {
+	io.Closer
+	Put(key string, payload []byte, expectedVersion *int64) (Stat, error)
+	Delete(key string, expectedVersion *int64) error
+	DeleteRange(minKeyInclusive string, maxKeyExclusive string) error
+	Get(key string) ([]byte, Stat, error)
+	GetRange(minKeyInclusive string, maxKeyExclusive string) ([]string, error)
 }
 
 type Stat struct {
@@ -39,19 +52,15 @@ type Stat struct {
 	ModifiedTimestamp uint64
 }
 
-type Value struct {
-	Payload []byte
-	Stat    Stat
-}
-
 type PutResult struct {
 	Stat Stat
 	Err  error
 }
 
 type GetResult struct {
-	Value Value
-	Err   error
+	Payload []byte
+	Stat    Stat
+	Err     error
 }
 
 type GetRangeResult struct {

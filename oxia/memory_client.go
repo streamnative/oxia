@@ -6,17 +6,17 @@ import (
 
 type memoryClient struct {
 	clock common.Clock
-	data  map[string]Value
+	data  map[string]GetResult
 }
 
-func newMemoryClient() Client {
+func NewMemoryClient() AsyncClient {
 	return newMemoryClientWithClock(common.SystemClock())
 }
 
-func newMemoryClientWithClock(clock common.Clock) Client {
+func newMemoryClientWithClock(clock common.Clock) AsyncClient {
 	return &memoryClient{
 		clock: clock,
-		data:  make(map[string]Value),
+		data:  make(map[string]GetResult),
 	}
 }
 
@@ -42,7 +42,7 @@ func (c *memoryClient) Put(key string, payload []byte, expectedVersion *int64) <
 		if expectedVersion != nil && *expectedVersion != VersionNotExists {
 			ch <- PutResult{Err: ErrorBadVersion}
 		} else {
-			value = Value{
+			value = GetResult{
 				Payload: payload,
 				Stat: Stat{
 					Version:           1,
@@ -89,9 +89,7 @@ func (c *memoryClient) DeleteRange(minKeyInclusive string, maxKeyExclusive strin
 func (c *memoryClient) Get(key string) <-chan GetResult {
 	ch := make(chan GetResult, 1)
 	if value, ok := c.data[key]; ok {
-		ch <- GetResult{
-			Value: value,
-		}
+		ch <- value
 	} else {
 		ch <- GetResult{
 			Err: ErrorKeyNotFound,

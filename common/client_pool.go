@@ -18,13 +18,15 @@ type ClientPool interface {
 }
 
 type clientPool struct {
-	connections sync.Map
+	sync.Mutex
+	connections map[string]grpc.ClientConnInterface
 
 	log zerolog.Logger
 }
 
 func NewClientPool() ClientPool {
 	return &clientPool{
+		connections: make(map[string]grpc.ClientConnInterface),
 		log: log.With().
 			Str("component", "client-pool").
 			Logger(),
@@ -32,18 +34,15 @@ func NewClientPool() ClientPool {
 }
 
 func (cp *clientPool) Close() error {
-	cp.connections.Range(func(key interface{}, value interface{}) bool {
-		err := value.(*grpc.ClientConn).Close()
+	for target, cnx := range cp.connections {
+		err := cnx.(*grpc.ClientConn).Close()
 		if err != nil {
 			cp.log.Warn().
-				Str("server_address", key.(string)).
+				Str("server_address", target).
 				Err(err).
 				Msg("Failed to close GRPC connection")
-			return false
 		}
-		return true
-	})
-
+	}
 	return nil
 }
 
@@ -75,9 +74,17 @@ func (cp *clientPool) GetReplicationRpc(target string) (proto.OxiaLogReplication
 }
 
 func (cp *clientPool) getConnection(target string) (grpc.ClientConnInterface, error) {
-	cnx, ok := cp.connections.Load(target)
+	cnx, ok := cp.connections[target]
 	if ok {
-		return cnx.(grpc.ClientConnInterface), nil
+		return cnx, nil
+	}
+
+	cp.Lock()
+	defer cp.Unlock()
+
+	cnx, ok = cp.connections[target]
+	if ok {
+		return cnx, nil
 	}
 
 	cp.log.Info().
@@ -86,13 +93,9 @@ func (cp *clientPool) getConnection(target string) (grpc.ClientConnInterface, er
 
 	cnx, err := grpc.Dial(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		existing, loaded := cp.connections.LoadOrStore(target, cnx)
-		if loaded {
-			// There was a race condition
-			cnx.(*grpc.ClientConn).Close()
-			cnx = existing
-		}
+		return nil, err
 	}
 
-	return cnx.(grpc.ClientConnInterface), err
+	cp.connections[target] = cnx
+	return cnx, nil
 }
