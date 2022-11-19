@@ -14,9 +14,6 @@ This spec includes:
 - Multiple nodes
 - Leader election
 - Data replication
-- Reconfiguration
-    - Swapping one node for another
-    - Handling failed/stalled reconfigurations
 
 Not modelling:
 - Failure detection. There is no need to as:
@@ -39,8 +36,7 @@ CONSTANTS MaxEpochs,         \* The max number of epochs for the model checker t
 
 \* Shard statuses
 CONSTANTS STEADY_STATE,      \* The shard is in data replication mode
-          ELECTION,          \* An election is in progress
-          RECONFIGURATION    \* A reconfiguration operation is in progress
+          ELECTION           \* An election is in progress
 
 \* Operator statuses
 CONSTANTS RUNNING,           \* an operator is running
@@ -57,21 +53,13 @@ CONSTANTS FENCING,           \* prevent nodes from making progress
           NOTIFY_LEADER,     \* a leader has been selected and is being notified by the operator
           LEADER_ELECTED     \* a leader has confirmed its leadership        
 
-\* Reconfiguration ops
-CONSTANTS NODE_SWAP         \* one node is being swapped out for another
-
-\* Reconfiguration phases
-CONSTANTS PREPARE,           \* preparation phase (coping of snapshots, fencing)
-          COMMIT             \* commit phase (operator and leader commits the change)
-
 \* return codes
 CONSTANTS OK,                \* the request was serviced correctly
           INVALID_EPOCH      \* node has rejected a request because it has a higher epoch than the request
                     
 \* follow cursor states
 CONSTANTS ATTACHED,          \* a follow cursor is attached and operational
-          PENDING_TRUNCATE,  \* a follow cursor is inactive but will become active upon follower truncation
-          PENDING_REMOVAL    \* a follow cursor is inactive and will be removed on reconfig commit
+          PENDING_TRUNCATE   \* a follow cursor is inactive but will become active upon follower truncation
 
 \* other model values
 CONSTANTS NIL                \* used in various places to signify something does not exist
@@ -103,10 +91,9 @@ Epoch == 0..MaxEpochs
 NodesOrNil == Nodes \union {NIL}
 EntryId == [offset: Nat, epoch: Epoch]
 LogEntry == [entry_id: EntryId, value: Values]
-CursorStatus == { NIL, ATTACHED, PENDING_TRUNCATE, PENDING_REMOVAL }
+CursorStatus == { NIL, ATTACHED, PENDING_TRUNCATE }
 Cursor == [status: CursorStatus, last_pushed: EntryId, last_confirmed: EntryId]
 NodeStatus == { LEADER, FOLLOWER, FENCED, NOT_MEMBER }
-ReconfigOps == { NODE_SWAP }
 
 \* equivalent of null for various record types
 NoEntryId == [offset |-> 0, epoch |-> 0]
@@ -190,95 +177,21 @@ AddEntryResponse ==
      entry_id:    EntryId,
      epoch:       Epoch]
 
-\* Operator -> Node (Leader)
-PrepareReconfigRequest ==
-    [type:     {PREPARE_RECONFIG_REQUEST},
-     op:       {NODE_SWAP}, 
-     epoch:    Epoch,
-     node:     Nodes,
-     operator: Operators,
-     old_node: Nodes]
-
-\* Node (Leader) -> Operator
-PrepareReconfigResponse ==
-    [type:         {PREPARE_RECONFIG_RESPONSE},
-     op:           NODE_SWAP,
-     epoch:        Epoch,
-     node:         Nodes,
-     operator:     Operators,
-     snapshot:     SUBSET LogEntry,
-     head_index:   EntryId,
-     commit_index: EntryId]
-
-\* Operator -> Node (New Follower)     
-SnapshotRequest ==
-    [type:         {SNAPSHOT_REQUEST},
-     node:         Nodes,
-     operator:     Operators,
-     epoch:        Epoch,
-     snapshot:     SUBSET LogEntry,
-     head_index:   EntryId,
-     commit_index: EntryId]
-
-\* Node (New Follower) -> Operator
-SnapshotResponse ==
-    [type:       {SNAPSHOT_RESPONSE},
-     node:       Nodes,
-     operator:   Operators,
-     epoch:      Epoch,
-     head_index: EntryId]
-
-\* Operator -> Node (Leader)
-CommitReconfigRequest ==
-    [type:       {COMMIT_RECONFIG_REQUEST},
-     op:         {NODE_SWAP},
-     node:       Nodes,
-     operator:   Operators,
-     epoch:      Epoch,
-     rep_factor: Nat,
-     old_node:   Nodes,
-     new_node:   Nodes,
-     head_index: EntryId]
-
-\* Node (Leader) -> Operator
-CommitReconfigResponse ==
-    [type:     {COMMIT_RECONFIG_RESPONSE},
-     op:       {NODE_SWAP},
-     node:     Nodes,
-     operator: Operators,
-     epoch:    Epoch,
-     old_node: Nodes,
-     new_node: Nodes]
-     
 Message ==
     FenceRequest \union FenceResponse \union
     BecomeLeaderRequest \union BecomeLeaderResponse \union
     AddFollowerRequest \union
     TruncateRequest \union TruncateResponse \union
-    AddEntryRequest \union AddEntryResponse \union
-    PrepareReconfigRequest \union PrepareReconfigResponse \union 
-    SnapshotRequest \union SnapshotResponse \union
-    CommitReconfigRequest \union CommitReconfigResponse
+    AddEntryRequest \union AddEntryResponse
 
 \* Metadata store state
-ShardStatus == { NIL, STEADY_STATE, ELECTION, RECONFIGURATION }
-ReconfigPhase == { PREPARE, COMMIT }
-ReconfigMetadata == 
-    [phase:               ReconfigPhase,
-     op:                  {NODE_SWAP},
-     epoch:               Epoch, 
-     rep_factor:          Nat,
-     old_node:            Nodes,
-     new_node:            Nodes,
-     new_node_head_index: EntryId]
-        \union {NIL}    
-     
+ShardStatus == { NIL, STEADY_STATE, ELECTION }
+
 Metadata == [shard_status: ShardStatus,
              epoch:        Epoch,
              ensemble:     SUBSET Nodes,
              rep_factor:   Nat,
-             leader:       NodesOrNil,
-             reconfig:     ReconfigMetadata]
+             leader:       NodesOrNil]
 
 \* Node and Operator state
 NodeState == [id:              Nodes,
@@ -289,8 +202,7 @@ NodeState == [id:              Nodes,
               log:             SUBSET LogEntry,
               commit_index:    EntryId,
               head_index:      EntryId,
-              follow_cursor:   [Nodes -> Cursor],
-              reconfig_inprog: BOOLEAN]
+              follow_cursor:   [Nodes -> Cursor]]
 
 OperatorStatuses == {NOT_RUNNING, RUNNING}
 ElectionPhases == { NIL, FENCING, NOTIFY_LEADER, LEADER_ELECTED }
@@ -299,8 +211,6 @@ OperatorState == [id:                        Operators,
                   md_version:                Nat,
                   md:                        Metadata \union {NIL},
                   election_phase:            ElectionPhases,
-                  election_fencing_ensemble: SUBSET Nodes,
-                  election_final_ensemble:   SUBSET Nodes,
                   election_leader:           Nodes \union {NIL},
                   election_fence_responses:  SUBSET FenceResponse]
                   
@@ -332,8 +242,7 @@ Init ==
                        epoch        |-> 0,
                        ensemble     |-> ensemble,
                        rep_factor   |-> RepFactor,
-                       leader       |-> NIL,
-                       reconfig     |-> NIL]
+                       leader       |-> NIL]
         /\ node_state = [n \in Nodes |-> 
                             [id              |-> n,
                              status          |-> NOT_MEMBER,
@@ -343,9 +252,7 @@ Init ==
                              log             |-> {},
                              commit_index    |-> NoEntryId,
                              head_index      |-> NoEntryId,
-                             follow_cursor   |-> [n1 \in Nodes |-> NoCursor],
-                             reconfig_inprog |-> FALSE]]
-                             
+                             follow_cursor   |-> [n1 \in Nodes |-> NoCursor]]]
         /\ operator_state = [o \in Operators |->
                             [id                        |-> o,
                              status                    |-> NOT_RUNNING,
@@ -406,8 +313,7 @@ HeadEntry(log) ==
   
   The operator loads the metadata from the metadata store.
   The metadata will decide what the operator might do
-  next, such as continue a reconfiguration that was in-progress
-  when it crashed.
+  next.
 ----------------------------------------------------------*)
 
 OperatorStarts ==
@@ -466,28 +372,7 @@ OperatorStops ==
   
   Key points:
   - An election increments the epoch of the shard.
-  - The election has two different ensembles:
-        a) the fencing ensemble
-        b) the final ensemble 
-    The reason for this is that an election may be resolving a
-    stuck reconfiguration that is in the commit phase. 
-    Specifically either a Node Swap or an Expand operation but
-    not a Contract operation.
-     
-    If a reconfiguration is in the commit phase this means that 
-    the previous operator had started the commit phase but may 
-    or may not have been able to complete it. If an election 
-    doesn't take this into account it is possible to end up with 
-    two majority clusters both able to make progress. To avoid 
-    this, a fencing ensemble will include a node which may or 
-    may not have been added to the cluster in a reconfiguration 
-    op that did not complete.
-    
-    Upon receiving a fence response from a majority of the fencing
-    ensemble, the operator sets the final ensemble to match
-    the result of the reconfiguration ensemble change. This completes
-    the reconfiguration.    
-    
+
   - The message passing module assumes all sent messages are
     retried until abandoned by the sender. To simulate some nodes not 
     responding during an election, a non-deterministic subset of the fencing
@@ -514,33 +399,21 @@ GetFenceRequests(o, new_epoch, ensemble) ==
        operator |-> o,
        epoch    |-> new_epoch] : n \in ensemble }
 
-\* include the new node of an in-progress reconfig
-FencingEnsemble ==
-    IF /\ metadata.reconfig # NIL 
-       /\ metadata.reconfig.phase = COMMIT
-       /\ metadata.reconfig.op \in { NODE_SWAP }
-    THEN metadata.ensemble \union { metadata.reconfig.new_node }
-    ELSE metadata.ensemble
-
 OperatorStartsElection ==
     \* enabling conditions
     \E o \in Operators :
         LET ostate           == operator_state[o]
-            fencing_ensemble == FencingEnsemble
         IN 
             /\ metadata.epoch < MaxEpochs \* state space reduction
             /\ ostate.status = RUNNING
             /\ ostate.md_version = metadata_version
-            /\ \E visible_nodes \in SUBSET fencing_ensemble :
-                /\ IsQuorum(visible_nodes, fencing_ensemble)
+            /\ \E visible_nodes \in SUBSET metadata.ensemble :
+                /\ IsQuorum(visible_nodes, metadata.ensemble)
                 \* state changes
                 /\ LET new_epoch      == ostate.md.epoch + 1
                        new_metadata   == [metadata EXCEPT !.epoch        = new_epoch,
                                                           !.shard_status = ELECTION,
-                                                          !.leader       = NIL,
-                                                          !.reconfig     = IF @ # NIL /\ @.phase = COMMIT
-                                                                           THEN @
-                                                                           ELSE NIL]
+                                                          !.leader       = NIL]
                        new_md_version == metadata_version + 1                                             
                    IN
                        /\ metadata_version' = new_md_version
@@ -549,7 +422,6 @@ OperatorStartsElection ==
                                                                    ![o].md_version                = new_md_version,
                                                                    ![o].md                        = new_metadata,
                                                                    ![o].election_phase            = FENCING,
-                                                                   ![o].election_fencing_ensemble = fencing_ensemble,
                                                                    ![o].election_final_ensemble   = {},
                                                                    ![o].election_leader           = NIL,
                                                                    ![o].election_fence_responses  = {}]
@@ -568,8 +440,7 @@ OperatorStartsElection ==
   - accept add entry requests from a leader.
   - send any entries to followers if it was a leader.
   
-  Any existing follow cursors are destroyed as is any state
-  regarding reconfigurations.
+  Any existing follow cursors are destroyed.
 ----------------------------------------------------------*)              
 GetFenceResponse(nstate, new_epoch, o) ==
     [type           |-> FENCE_RESPONSE,
@@ -589,8 +460,7 @@ NodeHandlesFencingRequest ==
                                     [@ EXCEPT !.epoch           = msg.epoch,
                                               !.status          = FENCED,
                                               !.rep_factor      = 0,
-                                              !.follow_cursor   = [n \in Nodes |-> NoCursor],
-                                              !.reconfig_inprog = FALSE]]
+                                              !.follow_cursor   = [n \in Nodes |-> NoCursor]]]
               /\ ProcessedOneAndSendAnother(msg, GetFenceResponse(nstate, msg.epoch, msg.operator))  
               /\ UNCHANGED << metadata, metadata_version, operator_state, confirmed, operator_stop_ctr >>
 
@@ -620,31 +490,6 @@ OperatorHandlesPreQuorumFencingResponse ==
                       /\ operator_state' = [operator_state EXCEPT ![o].election_fence_responses = fenced_res]
                       /\ MessageProcessed(msg)
                       /\ UNCHANGED << metadata, metadata_version, node_state, confirmed, operator_stop_ctr >>
-
-(*---------------------------------------------------------
-  Operator handles fence response reaching quorum
-  
-  The operator handles a fencing response and reaches 
-  majority quorum. It selects the node with the highest head 
-  index and sends it a "become leader" request which
-  contains a {follower->head index} map and the current rep
-  factor.
-  
-  The final ensemble is also determined at this point. If
-  there is a reconfiguration process (NODE_SWAP)
-  that is in the commit phase that did not complete at
-  the time of the election, then the ensemble change of
-  that reconfiguration is set now.
-----------------------------------------------------------*)
-FinalElectionEnsemble(ostate, responses) ==
-    IF /\ ostate.md.reconfig # NIL
-       /\ ostate.md.reconfig.phase = COMMIT
-       /\ ostate.md.reconfig.op \in { NODE_SWAP }
-    THEN IF ostate.md.reconfig.op = NODE_SWAP
-         THEN (ostate.md.ensemble \ {ostate.md.reconfig.old_node}) 
-                    \union {ostate.md.reconfig.new_node}
-         ELSE ostate.md.ensemble \union {ostate.md.reconfig.new_node}
-    ELSE ostate.md.ensemble
 
 FollowerResponse(responses, f) ==
     CHOOSE r \in responses : r.node = f
@@ -686,18 +531,16 @@ OperatorHandlesQuorumFencingResponse ==
                 /\ msg.operator = o
                 /\ ostate.md.epoch = msg.epoch
                 /\ LET fenced_res          == ostate.election_fence_responses \union { msg }
-                       final_ensemble      == FinalElectionEnsemble(ostate, fenced_res)
-                       max_head_res        == WinnerResponse(fenced_res, final_ensemble)
+                       max_head_res        == WinnerResponse(fenced_res, metadata.ensemble)
                        new_leader          == max_head_res.node
                        last_epoch_entry_id == max_head_res.head_index
-                       follower_map        == GetFollowerMap(ostate, new_leader, fenced_res, final_ensemble) 
+                       follower_map        == GetFollowerMap(ostate, new_leader, fenced_res, metadata.ensemble)
                    IN
-                      /\ IsQuorum(fenced_res, ostate.election_fencing_ensemble)
+                      /\ IsQuorum(fenced_res, metadata.ensemble)
                       \* state changes 
                       /\ operator_state' = [operator_state EXCEPT ![o] = 
                                                 [@ EXCEPT !.election_phase           = NOTIFY_LEADER,
                                                           !.election_leader          = new_leader,
-                                                          !.election_final_ensemble  = final_ensemble,
                                                           !.election_fence_responses = fenced_res]]
                       /\ ProcessedOneAndSendAnother(msg, 
                                                     GetBecomeLeaderRequest(new_leader, 
@@ -821,16 +664,10 @@ NodeHandlesBecomeLeaderRequest ==
   Any concurrent change will cause this election to fail.
     
   Key points:
-  - The election may be resolving a reconfiguration operation
-    that got stuck in the commit phase (or was being carried 
-    out by another operator and is in the commit phase).
-    The operator commits such a reconfiguration by updating
-    the metadata with the ensemble change the reconfiguration
-    was performing.
   - A minority of followers may still not have been fenced yet.
     The operator will continue to try to fence these followers
     forever until either they respond with a fencing request,
-    or a new election/reconfiguration is performed. 
+    or a new election is performed.
 ----------------------------------------------------------*)
 
 OperatorHandlesBecomeLeaderResponse ==
@@ -849,9 +686,7 @@ OperatorHandlesBecomeLeaderResponse ==
                 \* state changes
                 /\ LET new_md   == [ostate.md EXCEPT !.shard_status = STEADY_STATE,
                                                      !.leader       = msg.node,
-                                                     !.ensemble     = ostate.election_final_ensemble,
-                                                     !.rep_factor   = Cardinality(ostate.election_final_ensemble),
-                                                     !.reconfig     = NIL]
+                                                     !.rep_factor   = Cardinality(metadata.ensemble)]
                    IN /\ operator_state' = [operator_state EXCEPT ![o].election_phase = LEADER_ELECTED,
                                                                   ![o].md_version     = metadata_version + 1,
                                                                   ![o].md             = new_md]
@@ -1260,342 +1095,6 @@ LeaderHandlesEntryRejection ==
 
 
 (*---------------------------------------------------------
-  The operator starts a node swap reconfiguration
-  
-  Reconfiguration is the process of changing the shard
-  ensemble safely through a controlled process. 
-  A node swap operation is the removing of one follower
-  and replacing it with another.
-  
-  Reconfiguration can only be performed when:
-  - there is an elected leader
-  - there is no active leader election in-progress
-  - there is no active reconfiguration in-progress
-  
-  A node swap reconfiguration is performed via a 2-phase commit:
-  - PREPARE phase: 1) Operator updates the metadata with the reconfiguration
-                      details of: old node, new node, PREPARE phase.
-                   2) Leader fences the old node. This deactivates
-                      the follow cursor in the leader for the 
-                      old node. Sends back a snapshot to the operator.
-                   3) Operator sends the snapshot to the new node.
-  - COMMIT phase:  1) Operator update the phase in the reconfig metadata 
-                      to COMMIT.
-                   2) Send a commit request to the leader. 
-                   3) Leader removes the follow cursor for the old node 
-                      completely and activates a follow cursor for the 
-                      new node and confirms to the operator.
-                   4) The operator updates the metadata to clear the
-                      reconfiguration op state.
-                   
-  Key points:
-  - a reconfiguration op increments the epoch
-  - a node swap cannot swap out the leader
-----------------------------------------------------------*)
-
-ReconfigurationAllowed(ostate) ==
-   /\ ostate.status = RUNNING
-   /\ ostate.md.shard_status = STEADY_STATE
-   /\ ostate.md.reconfig = NIL
-   /\ ostate.md_version = metadata_version
-
-GetPrepareNodeSwapReconfigRequest(ostate, old_node, new_epoch) ==
-    [type        |-> PREPARE_RECONFIG_REQUEST,
-     op          |-> NODE_SWAP,
-     epoch       |-> new_epoch,
-     node        |-> ostate.md.leader,
-     operator    |-> ostate.id,
-     old_node    |-> old_node]
-
-OperatorStartsNodeSwapReconfiguration ==
-    \* enabling conditions
-    /\ metadata.epoch < MaxEpochs \* state space reduction
-    /\ \E o \in Operators :
-        LET ostate == operator_state[o]
-        IN /\ ReconfigurationAllowed(ostate)
-           /\ \E old_node, new_node \in Nodes :
-                /\ old_node \in ostate.md.ensemble
-                /\ old_node # ostate.md.leader
-                /\ new_node \notin ostate.md.ensemble
-                /\ LET new_md_version == metadata_version + 1
-                       new_epoch      == metadata.epoch + 1
-                       reconfig       == [phase               |-> PREPARE,
-                                          op                  |-> NODE_SWAP,
-                                          rep_factor          |-> ostate.md.rep_factor,
-                                          old_node            |-> old_node,
-                                          new_node            |-> new_node,
-                                          epoch               |-> new_epoch,
-                                          new_node_head_index |-> NoEntryId]
-                       new_md         == [ostate.md EXCEPT !.shard_status = RECONFIGURATION,
-                                                           !.epoch        = new_epoch,
-                                                           !.reconfig     = reconfig]
-                   IN
-                      \* state changes
-                      /\ metadata_version' = new_md_version
-                      /\ metadata' = new_md
-                      /\ operator_state' = [operator_state EXCEPT ![o].md_version = new_md_version,
-                                                                  ![o].md         = new_md]
-                      /\ SendMessage(GetPrepareNodeSwapReconfigRequest(ostate, old_node, new_epoch))
-                      /\ UNCHANGED << node_state, confirmed, operator_stop_ctr >>
-
-
-(*---------------------------------------------------------
-  The leader handles a reconfiguration request
-  
-  This action covers all types of reconfiguration.
-  
-  NODE_SWAP:
-  - change the old node follow cursor to PENDING_REMOVAL
-    which deactivates it.
-    
-  Updates the epoch of the leader to the new epoch.
-----------------------------------------------------------*)
-
-GetPrepareReconfigResponse(msg, nstate) ==
-    [type         |-> PREPARE_RECONFIG_RESPONSE,
-     op           |-> msg.op,
-     operator     |-> msg.operator,
-     node         |-> nstate.id,
-     epoch        |-> msg.epoch,
-     snapshot     |-> nstate.log,
-     head_index   |-> nstate.head_index,
-     commit_index |-> nstate.commit_index]
-
-LeaderHandlesPrepareReconfigRequest ==
-    \* enabling conditions
-    \E msg \in DOMAIN messages :
-        /\ ReceivableMessageOfType(messages, msg, PREPARE_RECONFIG_REQUEST)
-        /\ LET nstate == node_state[msg.node]
-           IN /\ nstate.epoch < msg.epoch
-              /\ nstate.status = LEADER
-              /\ nstate.reconfig_inprog = FALSE
-              \* Actions
-                 \* NODE_SWAP
-              /\ node_state' = [node_state EXCEPT ![nstate.id].epoch           = msg.epoch,
-                                                  ![nstate.id].reconfig_inprog = TRUE,
-                                                  ![nstate.id].follow_cursor[msg.old_node].status = PENDING_REMOVAL]
-              /\ ProcessedOneAndSendAnother(msg, GetPrepareReconfigResponse(msg, nstate))
-              /\ UNCHANGED << metadata_version, metadata, operator_state, confirmed, operator_stop_ctr >>
-
-
-(*---------------------------------------------------------
-  Operator handles Prepare Reconfig response
-  
-  NODE_SWAP:
-  - Receives a snapshot from the leader and sends a snapshot
-    request to the new node.
-----------------------------------------------------------*)
-
-GetSnapshotRequest(ostate, snapshot, head_index, commit_index) ==
-    [type         |-> SNAPSHOT_REQUEST,
-     node         |-> ostate.md.reconfig.new_node,
-     operator     |-> ostate.id,
-     epoch        |-> ostate.md.epoch,
-     snapshot     |-> snapshot,
-     head_index   |-> head_index,
-     commit_index |-> commit_index]
-
-OperatorHandlesPrepareReconfigResponse ==
-    \* enabling conditions
-    \E o \in Operators :
-        LET ostate == operator_state[o]
-        IN
-            /\ ostate.status = RUNNING
-            /\ ostate.md.shard_status = RECONFIGURATION 
-            /\ ostate.md.reconfig.phase = PREPARE
-            /\ ostate.md_version = metadata_version
-            /\ \E msg \in DOMAIN messages :
-                /\ ReceivableMessageOfType(messages, msg, PREPARE_RECONFIG_RESPONSE)
-                /\ msg.operator = o
-                /\ ostate.md.epoch = msg.epoch
-                \* state changes
-                \* Node swaps
-                /\ ProcessedOneAndSendAnother(msg, GetSnapshotRequest(ostate,
-                                                                      msg.snapshot,
-                                                                      msg.head_index,
-                                                                      msg.commit_index))
-                /\ UNCHANGED << metadata_version, metadata, operator_state,
-                                node_state, confirmed, operator_stop_ctr >>
-
-(*---------------------------------------------------------
-  The new follower handles a snapshot request
-  
-  A follower updates its log, head and commit index. Sets
-  itself to FENCED while it waits for replication from
-  the leader.
-----------------------------------------------------------*)
-
-GetSnapshotResponse(msg) ==
-    [type         |-> SNAPSHOT_RESPONSE,
-     operator     |-> msg.operator,
-     node         |-> msg.node,
-     epoch        |-> msg.epoch,
-     head_index   |-> msg.head_index]
-
-NodeHandlesSnapshotRequest ==
-    \* enabling conditions
-    \E msg \in DOMAIN messages :
-        /\ ReceivableMessageOfType(messages, msg, SNAPSHOT_REQUEST)
-        /\ LET nstate == node_state[msg.node]
-           IN /\ nstate.epoch < msg.epoch
-              \* state changes
-              /\ node_state' = [node_state EXCEPT ![nstate.id] =
-                                    [@ EXCEPT !.status         = FENCED,
-                                              !.epoch          = msg.epoch,
-                                              !.follow_cursor  = [n \in Nodes |-> NoCursor],
-                                              !.log            = msg.snapshot,
-                                              !.head_index     = msg.head_index,
-                                              !.commit_index   = msg.commit_index]] 
-              /\ ProcessedOneAndSendAnother(msg, GetSnapshotResponse(msg))
-              /\ UNCHANGED << metadata_version, metadata, operator_state, confirmed, operator_stop_ctr >>
-
-(*---------------------------------------------------------
-  Operator handles Snapshop response
-  
-  Operator sends a commit reconfig request to the leader.
-----------------------------------------------------------*)
-
-GetCommitReconfigRequest(ostate, new_node_head_index) ==
-    [type       |-> COMMIT_RECONFIG_REQUEST,
-     op         |-> NODE_SWAP,
-     rep_factor |-> ostate.md.reconfig.rep_factor,
-     node       |-> ostate.md.leader,
-     operator   |-> ostate.id,
-     epoch      |-> ostate.md.epoch,
-     old_node   |-> ostate.md.reconfig.old_node,
-     new_node   |-> ostate.md.reconfig.new_node,
-     head_index |-> new_node_head_index]
-
-OperatorHandlesSnapshotResponse ==
-    \* enabling conditions
-    \E o \in Operators :
-        LET ostate == operator_state[o]
-        IN
-            /\ ostate.status = RUNNING
-            /\ ostate.md.shard_status = RECONFIGURATION
-            /\ ostate.md.reconfig.phase = PREPARE 
-            /\ metadata_version = ostate.md_version
-            /\ \E msg \in DOMAIN messages :
-                /\ ReceivableMessageOfType(messages, msg, SNAPSHOT_RESPONSE)
-                /\ msg.operator = o
-                /\ ostate.md.epoch = msg.epoch
-                \* state changes
-                /\ LET new_md == [ostate.md EXCEPT !.reconfig.phase               = COMMIT,
-                                                   !.reconfig.new_node_head_index = msg.head_index]
-                   IN /\ metadata_version' = metadata_version + 1
-                      /\ metadata' = new_md
-                      /\ operator_state' = [operator_state EXCEPT ![o].md_version = metadata_version + 1,
-                                                                  ![o].md         = new_md]
-                      /\ ProcessedOneAndSendAnother(msg, GetCommitReconfigRequest(ostate, msg.head_index))
-            /\ UNCHANGED << node_state, confirmed, operator_stop_ctr >>
-
-
-(*---------------------------------------------------------
-  The leader handles a NODE_SWAP Commit Reconfig request
-  
-  The leader removes the cursor of the old node and
-  activates a cursor for the new node, to match its
-  head index.
-  
-  This may advance the commit index.
-----------------------------------------------------------*)
-
-NewCommitIndex(nstate, updated_cursor, rep_factor) ==
-    IF \E entry \in nstate.log : EntryIsCommitted(nstate, entry.entry_id, updated_cursor, rep_factor)
-    THEN
-        LET max_entry == CHOOSE entry \in nstate.log :
-                            /\ EntryIsCommitted(nstate, entry.entry_id, updated_cursor, rep_factor)
-                            /\ ~\E e1 \in nstate.log :
-                                /\ IsHigherId(e1.entry_id, entry.entry_id)
-                                /\ EntryIsCommitted(nstate, e1.entry_id, updated_cursor, rep_factor)
-        IN max_entry.entry_id
-    ELSE NoEntryId
-
-UpdateConfirmed(nstate, commit_index) ==
-    [v \in DOMAIN confirmed |-> IF confirmed[v] = TRUE
-                                THEN TRUE
-                                ELSE IF \E entry \in nstate.log : 
-                                            /\ IsLowerOrEqualId(entry.entry_id, commit_index)
-                                            /\ entry.value = v
-                                     THEN TRUE
-                                     ELSE FALSE]
-
-GetCommitNodeSwapReconfigResponse(msg) ==
-    [type     |-> COMMIT_RECONFIG_RESPONSE,
-     op       |-> NODE_SWAP,
-     operator |-> msg.operator,
-     node     |-> msg.node,
-     epoch    |-> msg.epoch,
-     old_node |-> msg.old_node,
-     new_node |-> msg.new_node]
-
-LeaderHandlesCommitNodeSwapReconfigRequest ==
-    \* enabling conditions
-    \E msg \in DOMAIN messages :
-        /\ ReceivableMessageOfType(messages, msg, COMMIT_RECONFIG_REQUEST)
-        /\ LET nstate == node_state[msg.node]
-           IN /\ nstate.epoch = msg.epoch
-              /\ nstate.status = LEADER
-              /\ msg.op = NODE_SWAP 
-              /\ nstate.reconfig_inprog = TRUE
-              /\ nstate.follow_cursor[msg.old_node].status = PENDING_REMOVAL
-              /\ nstate.follow_cursor[msg.new_node].status = NIL
-              \* state changes
-              /\ LET updated_cursor   == [n \in Nodes |->
-                                            IF n = msg.old_node
-                                            THEN NoCursor
-                                            ELSE IF n = msg.new_node
-                                                 THEN [status         |-> ATTACHED,
-                                                       last_pushed    |-> msg.head_index,
-                                                       last_confirmed |-> msg.head_index]
-                                                 ELSE nstate.follow_cursor[n]]
-                     new_commit_index == NewCommitIndex(nstate, updated_cursor, msg.rep_factor)
-                 IN
-                      /\ node_state' = [node_state EXCEPT ![nstate.id].follow_cursor   = updated_cursor,
-                                                          ![nstate.id].commit_index    = new_commit_index,
-                                                          ![nstate.id].reconfig_inprog = FALSE] 
-                      /\ confirmed' = UpdateConfirmed(nstate, new_commit_index)
-                      /\ ProcessedOneAndSendAnother(msg, GetCommitNodeSwapReconfigResponse(msg))
-                      /\ UNCHANGED << metadata_version, metadata, operator_state, operator_stop_ctr >>
-
-
-(*---------------------------------------------------------
-  Operator completes reconfiguration
-  
-  The operator updates the shard ensemble according
-  to the type of reconfiguration and updates the
-  metadata.
-----------------------------------------------------------*)
-
-NewEnsemble(md, msg) ==
-    (md.ensemble \ {msg.old_node}) \union {msg.new_node}
-
-OperatorCompletesReconfiguration ==
-    \* enabling conditions
-    \E o \in Operators :
-        LET ostate == operator_state[o]
-        IN /\ ostate.status = RUNNING
-           /\ \E msg \in DOMAIN messages :
-                /\ ReceivableMessageOfType(messages, msg, COMMIT_RECONFIG_RESPONSE)
-                /\ msg.operator = o
-                /\ ostate.md.epoch = msg.epoch
-                /\ ostate.md.shard_status = RECONFIGURATION
-                /\ ostate.md.reconfig.phase = COMMIT
-                \* state changes
-                /\ LET new_ensemble == NewEnsemble(ostate.md, msg)
-                       new_md       == [ostate.md EXCEPT !.shard_status = STEADY_STATE,
-                                                         !.ensemble     = new_ensemble,
-                                                         !.rep_factor   = ostate.md.reconfig.rep_factor,
-                                                         !.reconfig     = NIL]
-                   IN 
-                      /\ metadata_version' = metadata_version + 1
-                      /\ metadata' = new_md
-                      /\ operator_state' = [operator_state EXCEPT ![o].md_version = metadata_version + 1,
-                                                                  ![o].md         = new_md]
-                      /\ MessageProcessed(msg)
-                      /\ UNCHANGED << node_state, confirmed, operator_stop_ctr >>
-
-(*---------------------------------------------------------
   Next state formula
 ----------------------------------------------------------*)        
 Next ==
@@ -1619,15 +1118,7 @@ Next ==
     \/ FollowerRejectsEntry                       \* follower receives an entry with a stale epoch, sends INVALID_EPOCH to leader
     \/ LeaderHandlesEntryConfirm                  \* leader receives add confirm, confirms to client if reached majority
     \/ LeaderHandlesEntryRejection                \* leader receives add rejection, abdicates
-    \* Reconfiguration
-    \/ OperatorStartsNodeSwapReconfiguration      \* operator sends node swap reconfig request to leader
-    \/ LeaderHandlesPrepareReconfigRequest        \* leader handles prepare phase reconfig request
-    \/ OperatorHandlesPrepareReconfigResponse     \* operator handles prepare phase reconfig response
-    \/ NodeHandlesSnapshotRequest                 \* node receives a snapshot
-    \/ OperatorHandlesSnapshotResponse            \* operator handles snapshot confirmation from node
-    \/ LeaderHandlesCommitNodeSwapReconfigRequest \* leader commits node swap reconfig
-    \/ OperatorCompletesReconfiguration           \* operator completes reconfiguration
-    
+
 (*-------------------------------------------------    
     INVARIANTS
 --------------------------------------------------*)
@@ -1677,14 +1168,6 @@ ValidMessages ==
         /\ msg.type \in { ADD_ENTRY_REQUEST, ADD_ENTRY_RESPONSE,
                           TRUNCATE_REQUEST, TRUNCATE_RESPONSE }
         /\ msg.dest_node = msg.source_node
-    /\ ~\E msg \in DOMAIN messages :
-        /\ msg.type = PREPARE_RECONFIG_REQUEST
-        /\ msg.op = NODE_SWAP
-        /\ msg.node = msg.old_node
-    /\ ~\E msg \in DOMAIN messages :
-        /\ msg.type = COMMIT_RECONFIG_REQUEST
-        /\ msg.op \in {NODE_SWAP}
-        /\ msg.node = msg.new_node
 
 LegalLeaderAndEnsemble ==
     /\ IF metadata.leader # NIL
@@ -1702,7 +1185,6 @@ LegalLeaderAndEnsemble ==
     
   Eventually:
   - all values will be committed.
-  - reconfigutions will be completed
 --------------------------------------------------*)
 AllValuesCommitted ==
     \A v \in Values :
@@ -1712,19 +1194,6 @@ AllValuesCommitted ==
 EventuallyAllValuesCommitted ==
     []<>AllValuesCommitted
 
-ReconfigurationStarted ==
-    metadata.reconfig # NIL
-
-ReconfigurationCompleted ==
-    metadata.reconfig = NIL
-
-EventuallyReconfigurationCompletes ==
-    ReconfigurationStarted ~> ReconfigurationCompleted
-
 LivenessSpec == Init /\ [][Next]_vars /\ WF_vars(Next)    
 
 =============================================================================
-\* Modification History
-\* Last modified Mon Jan 24 18:03:33 CET 2022 by GUNMETAL
-\* Last modified Mon Jan 24 15:25:04 CET 2022 by jvanlightly
-\* Created Mon Dec 27 18:48:47 CET 2021 by jvanlightly
