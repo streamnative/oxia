@@ -89,8 +89,10 @@ func TestPebbbleRangeScan(t *testing.T) {
 	assert.NoError(t, wb.Commit())
 	assert.NoError(t, wb.Close())
 
-	it := kv.KeyRangeScan("/root/a", "/root/c")
+	rb := kv.NewReadBatch()
 
+	it, err := rb.KeyRangeScan("/root/a", "/root/c")
+	assert.NoError(t, err)
 	assert.True(t, it.Valid())
 	assert.Equal(t, "/root/a", it.Key())
 	assert.True(t, it.Next())
@@ -104,10 +106,12 @@ func TestPebbbleRangeScan(t *testing.T) {
 	assert.NoError(t, it.Close())
 
 	// Scan with empty result
-	it = kv.KeyRangeScan("/xyz/a", "/xyz/c")
+	it, err = rb.KeyRangeScan("/xyz/a", "/xyz/c")
+	assert.NoError(t, err)
 	assert.False(t, it.Valid())
 	assert.NoError(t, it.Close())
 
+	assert.NoError(t, rb.Close())
 	assert.NoError(t, kv.Close())
 	assert.NoError(t, factory.Close())
 }
@@ -232,7 +236,10 @@ func TestPebbleRangeScanWithSlashOrder(t *testing.T) {
 	assert.NoError(t, wb.Commit())
 	assert.NoError(t, wb.Close())
 
-	it := kv.KeyRangeScan("/a/b/a/", "/a/b/a//")
+	rb := kv.NewReadBatch()
+
+	it, err := rb.KeyRangeScan("/a/b/a/", "/a/b/a//")
+	assert.NoError(t, err)
 
 	assert.True(t, it.Valid())
 	assert.Equal(t, "/a/b/a/a", it.Key())
@@ -249,6 +256,9 @@ func TestPebbleRangeScanWithSlashOrder(t *testing.T) {
 	assert.False(t, it.Valid())
 
 	assert.NoError(t, it.Close())
+	assert.NoError(t, rb.Close())
+	assert.NoError(t, kv.Close())
+	assert.NoError(t, factory.Close())
 }
 
 func TestPebbbleGetWithinBatch(t *testing.T) {
@@ -382,10 +392,13 @@ func TestPebbbleRangeScanInBatch(t *testing.T) {
 	assert.NoError(t, wb.Close())
 
 	// Scan with empty result
-	it = kv.KeyRangeScan("/xyz/a", "/xyz/c")
+	rb := kv.NewReadBatch()
+	it, err = rb.KeyRangeScan("/xyz/a", "/xyz/c")
+	assert.NoError(t, err)
 	assert.False(t, it.Valid())
 	assert.NoError(t, it.Close())
 
+	assert.NoError(t, rb.Close())
 	assert.NoError(t, kv.Close())
 	assert.NoError(t, factory.Close())
 }

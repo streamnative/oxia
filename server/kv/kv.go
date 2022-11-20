@@ -36,6 +36,13 @@ type KeyValueIterator interface {
 	Value() ([]byte, error)
 }
 
+type ReadBatch interface {
+	io.Closer
+
+	Get(key string) ([]byte, error)
+	KeyRangeScan(lowerBound, upperBound string) (KeyIterator, error)
+}
+
 type KV interface {
 	io.Closer
 
@@ -43,7 +50,7 @@ type KV interface {
 
 	Get(key string) ([]byte, io.Closer, error)
 
-	KeyRangeScan(lowerBound, upperBound string) KeyIterator
+	NewReadBatch() ReadBatch
 
 	Snapshot() KeyValueIterator
 }

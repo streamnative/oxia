@@ -108,6 +108,10 @@ func (p *Pebble) NewWriteBatch() WriteBatch {
 	return &PebbleBatch{p.db.NewIndexedBatch()}
 }
 
+func (p *Pebble) NewReadBatch() ReadBatch {
+	return &PebbleReadBatch{i: p.db.NewIter(&pebble.IterOptions{})}
+}
+
 func (p *Pebble) Get(key string) ([]byte, io.Closer, error) {
 	value, closer, err := p.db.Get([]byte(key))
 	if errors.Is(err, pebble.ErrNotFound) {
@@ -229,6 +233,44 @@ func (p *PebbleSnapshotIterator) Next() bool {
 
 func (p *PebbleSnapshotIterator) Value() ([]byte, error) {
 	return p.si.ValueAndErr()
+}
+
+/// Iterator wrapper methods for ReadBatch
+
+type PebbleReadBatch struct {
+	i *pebble.Iterator
+}
+
+func (p PebbleReadBatch) Close() error {
+	return p.i.Close()
+}
+
+func (p PebbleReadBatch) Get(key string) ([]byte, error) {
+	keyBytes := []byte(key)
+	valid := p.i.SeekGE(keyBytes)
+	if !valid {
+		return nil, ErrorKeyNotFound
+	}
+	currentKey := p.i.Key()
+	if CompareWithSlash(keyBytes, currentKey) != 0 {
+		return nil, ErrorKeyNotFound
+	}
+	return p.i.ValueAndErr()
+}
+
+func (p PebbleReadBatch) KeyRangeScan(lowerBound, upperBound string) (KeyIterator, error) {
+	it, err := p.i.Clone(pebble.CloneOptions{
+		IterOptions: &pebble.IterOptions{
+			LowerBound: []byte(lowerBound),
+			UpperBound: []byte(upperBound),
+		},
+		RefreshBatchView: false,
+	})
+	if err != nil {
+		return nil, err
+	}
+	it.SeekGE([]byte(lowerBound))
+	return &PebbleIterator{pi: it}, nil
 }
 
 /// Pebble logger wrapper

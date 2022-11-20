@@ -2,6 +2,7 @@ package kv
 
 import (
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
 	"io"
 	"oxia/common"
 	"oxia/proto"
@@ -100,14 +101,22 @@ func (d *db) addCommitIndex(commitIndex *proto.EntryId, batch WriteBatch) error 
 	return err
 }
 
-func (d *db) ProcessRead(b *proto.ReadRequest) (*proto.ReadResponse, error) {
+func (d *db) ProcessRead(b *proto.ReadRequest) (r *proto.ReadResponse, e error) {
 	res := &proto.ReadResponse{}
 
-	//TODO Implement a ReadBatch to guarantee read consistency
-	kv := d.kv
+	rb := d.kv.NewReadBatch()
+	defer func() {
+		err := rb.Close()
+		if err != nil {
+			if e == nil {
+				r, e = nil, err
+			}
+			log.Error().Err(err).Msg("Failed to close read batch")
+		}
+	}()
 
 	for _, getReq := range b.Gets {
-		if gr, err := applyGet(kv, getReq); err != nil {
+		if gr, err := applyGet(rb, getReq); err != nil {
 			return nil, err
 		} else {
 			res.Gets = append(res.Gets, gr)
@@ -115,7 +124,7 @@ func (d *db) ProcessRead(b *proto.ReadRequest) (*proto.ReadResponse, error) {
 	}
 
 	for _, getRangeReq := range b.GetRanges {
-		if gr, err := applyGetRange(kv, getRangeReq); err != nil {
+		if gr, err := applyGetRange(rb, getRangeReq); err != nil {
 			return nil, err
 		} else {
 			res.GetRanges = append(res.GetRanges, gr)
@@ -125,14 +134,23 @@ func (d *db) ProcessRead(b *proto.ReadRequest) (*proto.ReadResponse, error) {
 	return res, nil
 }
 
-func (d *db) ReadCommitIndex() (*proto.EntryId, error) {
-	kv := d.kv
+func (d *db) ReadCommitIndex() (i *proto.EntryId, e error) {
+	rb := d.kv.NewReadBatch()
+	defer func() {
+		err := rb.Close()
+		if err != nil {
+			if e == nil {
+				i, e = nil, err
+			}
+			log.Error().Err(err).Msg("Failed to close read batch")
+		}
+	}()
 
 	getReq := &proto.GetRequest{
 		Key:            commitIndexKey,
 		IncludePayload: true,
 	}
-	gr, err := applyGet(kv, getReq)
+	gr, err := applyGet(rb, getReq)
 	if err != nil {
 		return nil, err
 	}
@@ -216,15 +234,15 @@ func applyDeleteRange(batch WriteBatch, delReq *proto.DeleteRangeRequest) (*prot
 	return &proto.DeleteRangeResponse{Status: proto.Status_OK}, nil
 }
 
-func applyGet(kv KV, getReq *proto.GetRequest) (*proto.GetResponse, error) {
-	payload, closer, err := kv.Get(getReq.Key)
+func applyGet(rb ReadBatch, getReq *proto.GetRequest) (*proto.GetResponse, error) {
+	payload, err := rb.Get(getReq.Key)
 	if errors.Is(err, ErrorKeyNotFound) {
 		return &proto.GetResponse{Status: proto.Status_KEY_NOT_FOUND}, nil
 	} else if err != nil {
 		return nil, errors.Wrap(err, "oxia db: failed to apply batch")
 	}
 
-	se, err := deserialize(payload, closer)
+	se, err := deserialize(payload, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -244,9 +262,11 @@ func applyGet(kv KV, getReq *proto.GetRequest) (*proto.GetResponse, error) {
 	}, nil
 }
 
-func applyGetRange(kv KV, getRangeReq *proto.GetRangeRequest) (*proto.GetRangeResponse, error) {
-	it := kv.KeyRangeScan(getRangeReq.StartInclusive, getRangeReq.EndExclusive)
-
+func applyGetRange(rb ReadBatch, getRangeReq *proto.GetRangeRequest) (*proto.GetRangeResponse, error) {
+	it, err := rb.KeyRangeScan(getRangeReq.StartInclusive, getRangeReq.EndExclusive)
+	if err != nil {
+		return nil, err
+	}
 	res := &proto.GetRangeResponse{}
 
 	for ; it.Valid(); it.Next() {
@@ -291,9 +311,10 @@ func deserialize(payload []byte, closer io.Closer) (*proto.StorageEntry, error) 
 	if err := pb.Unmarshal(payload, se); err != nil {
 		return nil, errors.Wrap(err, "failed to deserialize storage entry")
 	}
-
-	if err := closer.Close(); err != nil {
-		return nil, err
+	if closer != nil {
+		if err := closer.Close(); err != nil {
+			return nil, err
+		}
 	}
 	return se, nil
 }
