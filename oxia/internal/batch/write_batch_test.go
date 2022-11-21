@@ -35,8 +35,8 @@ func TestWriteBatchAdd(t *testing.T) {
 func TestWriteBatchComplete(t *testing.T) {
 	putResponseOk := &proto.PutResponse{
 		Status: proto.Status_OK,
-		Stat: &proto.Stat{
-			Version:           1,
+		Version: &proto.Version{
+			VersionId:         1,
 			CreatedTimestamp:  2,
 			ModifiedTimestamp: 3,
 		},
@@ -114,13 +114,13 @@ func TestWriteBatchComplete(t *testing.T) {
 			assert.Equal(t, &proto.WriteRequest{
 				ShardId: &shardId,
 				Puts: []*proto.PutRequest{{
-					Key:             "/a",
-					Payload:         []byte{0},
-					ExpectedVersion: &one,
+					Key:               "/a",
+					Payload:           []byte{0},
+					ExpectedVersionId: &one,
 				}},
 				Deletes: []*proto.DeleteRequest{{
-					Key:             "/b",
-					ExpectedVersion: &two,
+					Key:               "/b",
+					ExpectedVersionId: &two,
 				}},
 				DeleteRanges: []*proto.DeleteRangeRequest{{
 					StartInclusive: "/callC",
@@ -160,15 +160,15 @@ func TestWriteBatchComplete(t *testing.T) {
 		}
 
 		batch.Add(PutCall{
-			Key:             "/a",
-			Payload:         []byte{0},
-			ExpectedVersion: &one,
-			Callback:        putCallback,
+			Key:               "/a",
+			Payload:           []byte{0},
+			ExpectedVersionId: &one,
+			Callback:          putCallback,
 		})
 		batch.Add(DeleteCall{
-			Key:             "/b",
-			ExpectedVersion: &two,
-			Callback:        deleteCallback,
+			Key:               "/b",
+			ExpectedVersionId: &two,
+			Callback:          deleteCallback,
 		})
 		batch.Add(DeleteRangeCall{
 			MinKeyInclusive: "/callC",

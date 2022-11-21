@@ -29,7 +29,7 @@ func toGetResult(r *proto.GetResponse) GetResult {
 	}
 	return GetResult{
 		Payload: r.Payload,
-		Stat:    toStat(r.Stat),
+		Version: toVersion(r.Version),
 	}
 }
 

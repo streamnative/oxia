@@ -27,19 +27,19 @@ func TestAsyncClientImpl(t *testing.T) {
 	client := NewAsyncClient(options)
 
 	putResult := <-client.Put("/a", []byte{0}, &VersionNotExists)
-	assert.Equal(t, versionZero, putResult.Stat.Version)
+	assert.Equal(t, versionZero, putResult.Version.VersionId)
 
 	getResult := <-client.Get("/a")
 	assert.Equal(t, GetResult{
 		Payload: []byte{0},
-		Stat:    putResult.Stat,
+		Version: putResult.Version,
 	}, getResult)
 
 	putResult = <-client.Put("/c", []byte{0}, &VersionNotExists)
-	assert.Equal(t, versionZero, putResult.Stat.Version)
+	assert.Equal(t, versionZero, putResult.Version.VersionId)
 
 	putResult = <-client.Put("/c", []byte{1}, &versionZero)
-	assert.Equal(t, int64(1), putResult.Stat.Version)
+	assert.Equal(t, int64(1), putResult.Version.VersionId)
 
 	getRangeResult := <-client.GetRange("/a", "/d")
 	assert.Equal(t, GetRangeResult{

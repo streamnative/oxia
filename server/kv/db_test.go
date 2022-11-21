@@ -17,47 +17,47 @@ func TestDBSimple(t *testing.T) {
 	req := &proto.WriteRequest{
 		Puts: []*proto.PutRequest{
 			{ // Should succeed: no version check
-				Key:             "a",
-				Payload:         []byte("0"),
-				ExpectedVersion: nil,
+				Key:               "a",
+				Payload:           []byte("0"),
+				ExpectedVersionId: nil,
 			},
 			{ // Should succeed: asserting that the key does not exist
-				Key:             "b",
-				Payload:         []byte("1"),
-				ExpectedVersion: pb.Int64(-1),
+				Key:               "b",
+				Payload:           []byte("1"),
+				ExpectedVersionId: pb.Int64(-1),
 			},
 			{ // Should fail: the version would mean that the key exists
-				Key:             "c",
-				Payload:         []byte("2"),
-				ExpectedVersion: pb.Int64(0),
+				Key:               "c",
+				Payload:           []byte("2"),
+				ExpectedVersionId: pb.Int64(0),
 			},
 			{ // Should fail: the version would mean that the key exists
-				Key:             "d",
-				Payload:         []byte("3"),
-				ExpectedVersion: pb.Int64(0),
+				Key:               "d",
+				Payload:           []byte("3"),
+				ExpectedVersionId: pb.Int64(0),
 			},
 			{ // Should succeed: asserting that the key does not exist
-				Key:             "c",
-				Payload:         []byte("1"),
-				ExpectedVersion: pb.Int64(-1),
+				Key:               "c",
+				Payload:           []byte("1"),
+				ExpectedVersionId: pb.Int64(-1),
 			},
 		},
 		Deletes: []*proto.DeleteRequest{
 			{ // Should fail, non-existing key
-				Key:             "non-existing",
-				ExpectedVersion: pb.Int64(-1),
+				Key:               "non-existing",
+				ExpectedVersionId: pb.Int64(-1),
 			},
 			{ // Should fail, version mismatch
-				Key:             "c",
-				ExpectedVersion: pb.Int64(1),
+				Key:               "c",
+				ExpectedVersionId: pb.Int64(1),
 			},
 			{ // Should succeed, the key was inserted in the batch
-				Key:             "c",
-				ExpectedVersion: pb.Int64(0),
+				Key:               "c",
+				ExpectedVersionId: pb.Int64(0),
 			},
 			{ // Should fail: the key was already just deleted
-				Key:             "c",
-				ExpectedVersion: nil,
+				Key:               "c",
+				ExpectedVersionId: nil,
 			},
 		},
 	}
@@ -68,23 +68,23 @@ func TestDBSimple(t *testing.T) {
 	assert.Equal(t, 5, len(res.Puts))
 	r0 := res.Puts[0]
 	assert.Equal(t, proto.Status_OK, r0.Status)
-	assert.EqualValues(t, 0, r0.Stat.Version)
+	assert.EqualValues(t, 0, r0.Version.VersionId)
 
 	r1 := res.Puts[1]
 	assert.Equal(t, proto.Status_OK, r1.Status)
-	assert.EqualValues(t, 0, r1.Stat.Version)
+	assert.EqualValues(t, 0, r1.Version.VersionId)
 
 	r2 := res.Puts[2]
 	assert.Equal(t, proto.Status_BAD_VERSION, r2.Status)
-	assert.Nil(t, r2.Stat)
+	assert.Nil(t, r2.Version)
 
 	r3 := res.Puts[3]
 	assert.Equal(t, proto.Status_BAD_VERSION, r3.Status)
-	assert.Nil(t, r3.Stat)
+	assert.Nil(t, r3.Version)
 
 	r4 := res.Puts[4]
 	assert.Equal(t, proto.Status_OK, r4.Status)
-	assert.EqualValues(t, 0, r4.Stat.Version)
+	assert.EqualValues(t, 0, r4.Version.VersionId)
 
 	assert.Equal(t, 4, len(res.Deletes))
 	r5 := res.Deletes[0]
@@ -153,9 +153,9 @@ func TestDBSameKeyMutations(t *testing.T) {
 	writeReq := &proto.WriteRequest{
 		Puts: []*proto.PutRequest{
 			{ // Should succeed: no version check
-				Key:             "k1",
-				Payload:         []byte("v0"),
-				ExpectedVersion: nil,
+				Key:               "k1",
+				Payload:           []byte("v0"),
+				ExpectedVersionId: nil,
 			},
 		},
 	}
@@ -166,27 +166,27 @@ func TestDBSameKeyMutations(t *testing.T) {
 	assert.Equal(t, 1, len(writeRes.Puts))
 	r0 := writeRes.Puts[0]
 	assert.Equal(t, proto.Status_OK, r0.Status)
-	assert.EqualValues(t, 0, r0.Stat.Version)
+	assert.EqualValues(t, 0, r0.Version.VersionId)
 
 	/// Second batch
 
 	writeReq = &proto.WriteRequest{
 		Puts: []*proto.PutRequest{
 			{ // Should succeed: version is correct
-				Key:             "k1",
-				Payload:         []byte("v1"),
-				ExpectedVersion: pb.Int64(0),
+				Key:               "k1",
+				Payload:           []byte("v1"),
+				ExpectedVersionId: pb.Int64(0),
 			},
 			{ // Should fail: version has now changed to 1
-				Key:             "k1",
-				Payload:         []byte("v2"),
-				ExpectedVersion: pb.Int64(0),
+				Key:               "k1",
+				Payload:           []byte("v2"),
+				ExpectedVersionId: pb.Int64(0),
 			},
 		},
 		Deletes: []*proto.DeleteRequest{
 			{ // Should fail: the key was not inserted before the batch
-				Key:             "k1",
-				ExpectedVersion: pb.Int64(0),
+				Key:               "k1",
+				ExpectedVersionId: pb.Int64(0),
 			},
 		},
 	}
@@ -197,11 +197,11 @@ func TestDBSameKeyMutations(t *testing.T) {
 	assert.Equal(t, 2, len(writeRes.Puts))
 	r0 = writeRes.Puts[0]
 	assert.Equal(t, proto.Status_OK, r0.Status)
-	assert.EqualValues(t, 1, r0.Stat.Version)
+	assert.EqualValues(t, 1, r0.Version.VersionId)
 
 	r1 := writeRes.Puts[1]
 	assert.Equal(t, proto.Status_BAD_VERSION, r1.Status)
-	assert.Nil(t, r1.Stat)
+	assert.Nil(t, r1.Version)
 
 	r2 := writeRes.Deletes[0]
 	assert.Equal(t, proto.Status_BAD_VERSION, r2.Status)
@@ -228,17 +228,17 @@ func TestDBSameKeyMutations(t *testing.T) {
 
 	r3 := readRes.Gets[0]
 	assert.Equal(t, proto.Status_OK, r3.Status)
-	assert.EqualValues(t, 1, r3.Stat.Version)
+	assert.EqualValues(t, 1, r3.Version.VersionId)
 	assert.Equal(t, "v1", string(r3.Payload))
 
 	r4 := readRes.Gets[1]
 	assert.Equal(t, proto.Status_OK, r4.Status)
-	assert.EqualValues(t, 1, r4.Stat.Version)
+	assert.EqualValues(t, 1, r4.Version.VersionId)
 	assert.Nil(t, r4.Payload)
 
 	r5 := readRes.Gets[2]
 	assert.Equal(t, proto.Status_KEY_NOT_FOUND, r5.Status)
-	assert.Nil(t, r5.Stat)
+	assert.Nil(t, r5.Version)
 	assert.Nil(t, r5.Payload)
 
 	assert.NoError(t, db.Close())

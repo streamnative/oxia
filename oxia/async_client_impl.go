@@ -45,7 +45,7 @@ func (c *clientImpl) Close() error {
 	return multierr.Append(writeErr, readErr)
 }
 
-func (c *clientImpl) Put(key string, payload []byte, expectedVersion *int64) <-chan PutResult {
+func (c *clientImpl) Put(key string, payload []byte, expectedVersionId *int64) <-chan PutResult {
 	ch := make(chan PutResult, 1)
 	shardId := c.shardManager.Get(key)
 	callback := func(response *proto.PutResponse, err error) {
@@ -57,15 +57,15 @@ func (c *clientImpl) Put(key string, payload []byte, expectedVersion *int64) <-c
 		close(ch)
 	}
 	c.writeBatchManager.Get(shardId).Add(batch.PutCall{
-		Key:             key,
-		Payload:         payload,
-		ExpectedVersion: expectedVersion,
-		Callback:        callback,
+		Key:               key,
+		Payload:           payload,
+		ExpectedVersionId: expectedVersionId,
+		Callback:          callback,
 	})
 	return ch
 }
 
-func (c *clientImpl) Delete(key string, expectedVersion *int64) <-chan error {
+func (c *clientImpl) Delete(key string, expectedVersionId *int64) <-chan error {
 	ch := make(chan error, 1)
 	shardId := c.shardManager.Get(key)
 	callback := func(response *proto.DeleteResponse, err error) {
@@ -77,9 +77,9 @@ func (c *clientImpl) Delete(key string, expectedVersion *int64) <-chan error {
 		close(ch)
 	}
 	c.writeBatchManager.Get(shardId).Add(batch.DeleteCall{
-		Key:             key,
-		ExpectedVersion: expectedVersion,
-		Callback:        callback,
+		Key:               key,
+		ExpectedVersionId: expectedVersionId,
+		Callback:          callback,
 	})
 	return ch
 }

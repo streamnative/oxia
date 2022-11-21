@@ -52,7 +52,7 @@ func (c *memoryClient) Put(key string, payload []byte, expectedVersionId *int64)
 			}
 			c.data[key] = value
 			ch <- PutResult{
-				Stat: value.Stat,
+				Version: value.Version,
 			}
 		}
 	}
@@ -60,7 +60,7 @@ func (c *memoryClient) Put(key string, payload []byte, expectedVersionId *int64)
 	return ch
 }
 
-func (c *memoryClient) Delete(key string, *int64) <-chan error {
+func (c *memoryClient) Delete(key string, expectedVersionId *int64) <-chan error {
 	ch := make(chan error, 1)
 	if value, ok := c.data[key]; ok {
 		if expectedVersionId != nil && *expectedVersionId != value.Version.VersionId {
