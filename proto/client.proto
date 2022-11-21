@@ -267,7 +267,7 @@ message GetRangeResponse {
 }
 
 /**
- * Stats about the current version of a key.
+ * Information about the current version of a key.
  */
 message Version {
   // The current version of the key
