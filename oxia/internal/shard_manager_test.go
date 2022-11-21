@@ -14,7 +14,7 @@ type testShardStrategy struct {
 
 func (s *testShardStrategy) Get(key string) func(Shard) bool {
 	return func(shard Shard) bool {
-		return true
+		return shard.Id%2 == 0
 	}
 }
 
