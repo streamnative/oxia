@@ -9,7 +9,7 @@ machine or any projected state. It consists of the log only.
 
 ## Design
 
-The protocol consists of four principle actors:
+The protocol consists of four principal actors:
 - a linearizable metadata store
 - a K8s operator responsible for the management of the data nodes.
 - nodes that store and replicate entries
@@ -100,7 +100,7 @@ Elections may be required to resolve stuck/stalled reconfigurations. Reconfigura
 two-phase commits. If a reconfiguration stalls in the commit phase then the leader may or may not have applied the
 ensemble change and any newly added node may or may not have received entries. In the example of a node swap
 reconfiguration, it is possible that the new node did indeed get added and received data, but we can't know for sure.
-If we only fence a majority of the current ensemble stored in the metadata is is possible for two disjoint majorities
+If we only fence a majority of the current ensemble stored in the metadata, it is possible for two disjoint majorities
 to be operating and replicating data (split-brain).
 
 To avoid this we must include the new node that was part of a node swap or expand reconfiguration in the ensemble of
