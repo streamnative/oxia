@@ -155,7 +155,7 @@ message GetNotificationOp {
   uint32 shard_id = 1;
   uint64 first_entry_id = 2;
   string key_prefix = 3;
-  bool include_stat = 4;
+  bool include_version = 4;
 }
 
 enum OperationType {
@@ -168,7 +168,7 @@ message Notification {
   uint64 entry_id = 1;
   string key = 2;
   OperationType operation_type = 3;
-  Stat stat = 4;
+  Version version = 4;
 }
 ```
 
