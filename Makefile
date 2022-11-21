@@ -47,4 +47,6 @@ fetch-tla-tools:
 
 tla:
 	cd tlaplus && \
-		java -XX:+UseParallelGC -DTLA-Library=.tools/CommunityModules-deps.jar -jar .tools/tla2tools.jar -deadlock OxiaReplication.tla
+		java -XX:+UseParallelGC -DTLA-Library=.tools/CommunityModules-deps.jar -jar .tools/tla2tools.jar \
+			-deadlock -workers auto\
+			OxiaReplication.tla
