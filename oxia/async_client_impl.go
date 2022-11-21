@@ -17,29 +17,26 @@ type clientImpl struct {
 	readBatchManager  *batch.Manager
 }
 
-func NewAsyncClient(options ClientOptions) (AsyncClient, error) {
-	if err := options.Validate(); err != nil {
-		return nil, err
-	}
+func NewAsyncClient(options ClientOptions) AsyncClient {
 	clientPool := common.NewClientPool()
-	shardManager := internal.NewShardManager(internal.NewShardStrategy(), clientPool, options.ServiceUrl)
+	shardManager := internal.NewShardManager(internal.NewShardStrategy(), clientPool, options.serviceUrl)
 	defer shardManager.Start()
 	executor := &internal.ExecutorImpl{
 		ClientPool:   clientPool,
 		ShardManager: shardManager,
-		ServiceUrl:   options.ServiceUrl,
-		Timeout:      options.BatchRequestTimeout,
+		ServiceUrl:   options.serviceUrl,
+		Timeout:      options.batchRequestTimeout,
 	}
 	batcherFactory := &batch.BatcherFactory{
 		Executor:            executor,
-		Linger:              options.BatchLinger,
-		MaxRequestsPerBatch: options.MaxRequestsPerBatch,
+		Linger:              options.batchLinger,
+		MaxRequestsPerBatch: options.maxRequestsPerBatch,
 	}
 	return &clientImpl{
 		shardManager:      shardManager,
 		writeBatchManager: batch.NewManager(batcherFactory.NewWriteBatcher),
 		readBatchManager:  batch.NewManager(batcherFactory.NewReadBatcher),
-	}, nil
+	}
 }
 
 func (c *clientImpl) Close() error {

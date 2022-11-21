@@ -18,12 +18,12 @@ func TestAsyncClientImpl(t *testing.T) {
 	server, err := standalone.NewStandaloneRpcServer(0, "localhost", 1, kvFactory)
 	assert.ErrorIs(t, nil, err)
 
-	options := NewClientOptions(fmt.Sprintf("localhost:%d", server.Port()))
-	options.BatchLinger = 0
-	client, err := NewAsyncClient(options)
+	serviceUrl := fmt.Sprintf("localhost:%d", server.Port())
+	options, err := NewClientOptions(serviceUrl, WithBatchLinger(0))
 	if err != nil {
 		assert.Fail(t, err.Error())
 	}
+	client := NewAsyncClient(options)
 
 	putResult := <-client.Put("/a", []byte{0}, &VersionNotExists)
 	assert.Equal(t, versionZero, putResult.Stat.Version)

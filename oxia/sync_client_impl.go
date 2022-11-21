@@ -4,16 +4,10 @@ type syncClientImpl struct {
 	asyncClient AsyncClient
 }
 
-func NewSyncClient(options ClientOptions) (SyncClient, error) {
-	options.BatchLinger = 0
-	if err := options.Validate(); err != nil {
-		return nil, err
-	}
-	if client, err := NewAsyncClient(options); err != nil {
-		return nil, err
-	} else {
-		return newSyncClient(client), nil
-	}
+func NewSyncClient(options ClientOptions) SyncClient {
+	options.batchLinger = 0
+	options.maxRequestsPerBatch = 1
+	return newSyncClient(NewAsyncClient(options))
 }
 
 func newSyncClient(asyncClient AsyncClient) SyncClient {
