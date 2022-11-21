@@ -31,6 +31,10 @@ func (id EntryId) ToProto() *proto.EntryId {
 	}
 }
 
+func (id EntryId) Equal(other EntryId) bool {
+	return id.Epoch == other.Epoch && id.Offset == other.Offset
+}
+
 func (id EntryId) LessOrEqual(other EntryId) bool {
 	return id.Epoch < other.Epoch || (id.Epoch == other.Epoch && id.Offset <= other.Offset)
 }

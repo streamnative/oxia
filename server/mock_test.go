@@ -6,59 +6,114 @@ import (
 	"oxia/proto"
 )
 
-func newMockAddEntriesStream() *mockAddEntriesStream {
-	return &mockAddEntriesStream{
+func newMockServerAddEntriesStream() *mockServerAddEntriesStream {
+	return &mockServerAddEntriesStream{
 		requests:  make(chan *proto.AddEntryRequest, 1000),
 		responses: make(chan *proto.AddEntryResponse, 1000),
 		md:        make(metadata.MD),
 	}
 }
 
-type mockAddEntriesStream struct {
+type mockServerAddEntriesStream struct {
 	requests  chan *proto.AddEntryRequest
 	responses chan *proto.AddEntryResponse
 	md        metadata.MD
 }
 
-func (m *mockAddEntriesStream) AddRequest(request *proto.AddEntryRequest) {
+func (m *mockServerAddEntriesStream) AddRequest(request *proto.AddEntryRequest) {
 	m.requests <- request
 }
 
-func (m *mockAddEntriesStream) GetResponse() *proto.AddEntryResponse {
+func (m *mockServerAddEntriesStream) GetResponse() *proto.AddEntryResponse {
 	return <-m.responses
 }
 
-func (m *mockAddEntriesStream) Send(response *proto.AddEntryResponse) error {
+func (m *mockServerAddEntriesStream) Send(response *proto.AddEntryResponse) error {
 	m.responses <- response
 	return nil
 }
 
-func (m *mockAddEntriesStream) Recv() (*proto.AddEntryRequest, error) {
+func (m *mockServerAddEntriesStream) Recv() (*proto.AddEntryRequest, error) {
 	request := <-m.requests
 	return request, nil
 }
 
-func (m *mockAddEntriesStream) SetHeader(md metadata.MD) error {
+func (m *mockServerAddEntriesStream) SetHeader(md metadata.MD) error {
 	m.md = md
 	return nil
 }
 
-func (m *mockAddEntriesStream) SendHeader(md metadata.MD) error {
+func (m *mockServerAddEntriesStream) SendHeader(md metadata.MD) error {
 	panic("not implemented")
 }
 
-func (m *mockAddEntriesStream) SetTrailer(md metadata.MD) {
+func (m *mockServerAddEntriesStream) SetTrailer(md metadata.MD) {
 	panic("not implemented")
 }
 
-func (m *mockAddEntriesStream) Context() context.Context {
+func (m *mockServerAddEntriesStream) Context() context.Context {
 	return context.Background()
 }
 
-func (m *mockAddEntriesStream) SendMsg(msg interface{}) error {
+func (m *mockServerAddEntriesStream) SendMsg(msg interface{}) error {
 	panic("not implemented")
 }
 
-func (m *mockAddEntriesStream) RecvMsg(msg interface{}) error {
+func (m *mockServerAddEntriesStream) RecvMsg(msg interface{}) error {
 	panic("not implemented")
+}
+
+/// Mock of the client side handler
+
+func newMockClientAddEntriesStream() *mockClientAddEntriesStream {
+	return &mockClientAddEntriesStream{
+		requests:  make(chan *proto.AddEntryRequest, 1000),
+		responses: make(chan *proto.AddEntryResponse, 1000),
+		md:        make(metadata.MD),
+	}
+}
+
+type mockClientAddEntriesStream struct {
+	requests  chan *proto.AddEntryRequest
+	responses chan *proto.AddEntryResponse
+	md        metadata.MD
+}
+
+func (m *mockClientAddEntriesStream) Send(request *proto.AddEntryRequest) error {
+	m.requests <- request
+	return nil
+}
+
+func (m *mockClientAddEntriesStream) Recv() (*proto.AddEntryResponse, error) {
+	res := <-m.responses
+	return res, nil
+}
+
+func (m *mockClientAddEntriesStream) Header() (metadata.MD, error) {
+	panic("not implemented")
+}
+
+func (m *mockClientAddEntriesStream) Trailer() metadata.MD {
+	panic("not implemented")
+}
+
+func (m *mockClientAddEntriesStream) CloseSend() error {
+	close(m.requests)
+	return nil
+}
+
+func (m *mockClientAddEntriesStream) Context() context.Context {
+	panic("not implemented")
+}
+
+func (m *mockClientAddEntriesStream) SendMsg(msg interface{}) error {
+	panic("not implemented")
+}
+
+func (m *mockClientAddEntriesStream) RecvMsg(msg interface{}) error {
+	panic("not implemented")
+}
+
+func (m *mockClientAddEntriesStream) GetAddEntriesStream(follower string) (proto.OxiaLogReplication_AddEntriesClient, error) {
+	return m, nil
 }
