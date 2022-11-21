@@ -1,54 +1,56 @@
 package oxia
 
 import (
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"time"
 )
 
 type ClientOptions struct {
-	serviceUrl   string
-	batchLinger  time.Duration
-	batchMaxSize int
-	batchTimeout time.Duration
-	logger       zerolog.Logger
+	/**
+	 * ServiceUrl is the target host:port of any Oxia server to bootstrap the client. It is used for establishing the
+	 * shard assignments. Ideally this should be a load-balanced endpoint.
+	 */
+	ServiceUrl string
+	/**
+	 * BatchLinger defines how long the batcher will wait before sending a batched request. The value must be greater
+	 * than or equal to zero. A value of zero will disable linger, effectively disabling batching.
+	 */
+	BatchLinger time.Duration
+	/**
+	 * MaxRequestsPerBatch defines how many individual requests a batch can contain before the batched request is sent.
+	 * The value must be greater than zero. A value of one will effectively disable batching.
+	 */
+	MaxRequestsPerBatch int
+	/**
+	 * BatchRequestTimeout defines how long the client will wait for responses before cancelling the request and failing
+	 * the batch.
+	 */
+	BatchRequestTimeout time.Duration
 }
 
 func NewClientOptions(serviceUrl string) ClientOptions {
 	const (
-		defaultBatchLinger  = 5 * time.Millisecond
-		defaultBatchMaxSize = 1000
-		defaultBatchTimeout = 30 * time.Second
+		defaultBatchLinger         = 5 * time.Millisecond
+		defaultMaxRequestsPerBatch = 1000
+		defaultBatchRequestTimeout = 30 * time.Second
 	)
 	return ClientOptions{
-		serviceUrl:   serviceUrl,
-		batchLinger:  defaultBatchLinger,
-		batchMaxSize: defaultBatchMaxSize,
-		batchTimeout: defaultBatchTimeout,
-		logger:       log.With().Str("component", "oxia-client").Logger(),
+		ServiceUrl:          serviceUrl,
+		BatchLinger:         defaultBatchLinger,
+		MaxRequestsPerBatch: defaultMaxRequestsPerBatch,
+		BatchRequestTimeout: defaultBatchRequestTimeout,
 	}
 }
 
-func (o ClientOptions) BatchLinger(batchLinger time.Duration) ClientOptions {
-	if batchLinger <= 0 {
-		log.Fatal().Dur("BatchLinger", batchLinger).Msg("BatchLinger must be greater than zero")
+func (o *ClientOptions) Validate() error {
+	if o.BatchLinger < 0 {
+		return errors.New("BatchLinger must be greater than or equal to zero")
 	}
-	o.batchLinger = batchLinger
-	return o
-}
-
-func (o ClientOptions) BatchMaxSize(batchMaxSize int) ClientOptions {
-	if batchMaxSize <= 0 {
-		log.Fatal().Int("BatchMaxSize", batchMaxSize).Msg("BatchMaxSize must be greater than zero")
+	if o.MaxRequestsPerBatch <= 0 {
+		return errors.New("MaxRequestsPerBatch must be greater than zero")
 	}
-	o.batchMaxSize = batchMaxSize
-	return o
-}
-
-func (o ClientOptions) BatchTimeout(batchTimeout time.Duration) ClientOptions {
-	if batchTimeout <= 0 {
-		log.Fatal().Dur("BatchTimeout", batchTimeout).Msg("BatchTimeout must be greater than zero")
+	if o.BatchRequestTimeout <= 0 {
+		return errors.New("BatchRequestTimeout must be greater than zero")
 	}
-	o.batchTimeout = batchTimeout
-	return o
+	return nil
 }

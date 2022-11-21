@@ -10,9 +10,9 @@ import (
 var ErrorShuttingDown = errors.New("shutting down")
 
 type BatcherFactory struct {
-	Executor internal.Executor
-	Linger   time.Duration
-	MaxSize  int
+	Executor            internal.Executor
+	Linger              time.Duration
+	MaxRequestsPerBatch int
 }
 
 func (b *BatcherFactory) NewWriteBatcher(shardId *uint32) Batcher {
@@ -25,12 +25,12 @@ func (b *BatcherFactory) NewReadBatcher(shardId *uint32) Batcher {
 
 func (b *BatcherFactory) newBatcher(shardId *uint32, batchFactory func(shardId *uint32) Batch) Batcher {
 	batcher := &batcherImpl{
-		shardId:      shardId,
-		batchFactory: batchFactory,
-		callC:        make(chan any),
-		closeC:       make(chan bool),
-		linger:       b.Linger,
-		maxSize:      b.MaxSize,
+		shardId:             shardId,
+		batchFactory:        batchFactory,
+		callC:               make(chan any),
+		closeC:              make(chan bool),
+		linger:              b.Linger,
+		maxRequestsPerBatch: b.MaxRequestsPerBatch,
 	}
 	go batcher.run()
 	return batcher
@@ -45,12 +45,12 @@ type Batcher interface {
 }
 
 type batcherImpl struct {
-	shardId      *uint32
-	batchFactory func(shardId *uint32) Batch
-	callC        chan any
-	closeC       chan bool
-	linger       time.Duration
-	maxSize      int
+	shardId             *uint32
+	batchFactory        func(shardId *uint32) Batch
+	callC               chan any
+	closeC              chan bool
+	linger              time.Duration
+	maxRequestsPerBatch int
 }
 
 func (b *batcherImpl) Close() error {
@@ -71,12 +71,16 @@ func (b *batcherImpl) run() {
 		case call := <-b.callC:
 			if batch == nil {
 				batch = b.batchFactory(b.shardId)
-				timer = time.NewTimer(b.linger)
-				timeout = timer.C
+				if b.linger > 0 {
+					timer = time.NewTimer(b.linger)
+					timeout = timer.C
+				}
 			}
 			batch.Add(call)
-			if batch.Size() == b.maxSize {
-				timer.Stop()
+			if batch.Size() == b.maxRequestsPerBatch || b.linger == 0 {
+				if b.linger > 0 {
+					timer.Stop()
+				}
 				batch.Complete()
 				batch = nil
 			}

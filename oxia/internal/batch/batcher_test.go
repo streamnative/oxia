@@ -43,7 +43,7 @@ func TestBatcher(t *testing.T) {
 		maxSize     int
 		expectedErr error
 	}{
-		{1 * time.Second, 1, nil},               //completes on maxSize
+		{1 * time.Second, 1, nil},               //completes on maxRequestsPerBatch
 		{1 * time.Millisecond, 2, nil},          //completes on linger
 		{1 * time.Second, 2, ErrorShuttingDown}, //fails on closeC
 	} {
@@ -54,8 +54,8 @@ func TestBatcher(t *testing.T) {
 		}
 
 		factory := &BatcherFactory{
-			Linger:  item.linger,
-			MaxSize: item.maxSize,
+			Linger:              item.linger,
+			MaxRequestsPerBatch: item.maxSize,
 		}
 		batcher := factory.newBatcher(&shardId, batchFactory)
 
