@@ -231,7 +231,7 @@ message GetResponse {
 }
 
 /**
- * Input to a delete range request.
+ * Input to a delete range request. Key ranges assume a UTF-8 byte sort order.
  */
 message DeleteRangeRequest {
   // The start of the range, inclusive
@@ -249,7 +249,7 @@ message DeleteRangeResponse {
 }
 
 /**
- * Input to a get range request.
+ * Input to a get range request. Key ranges assume a UTF-8 byte sort order.
  */
 message GetRangeRequest {
   // The start of the range, inclusive
