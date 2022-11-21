@@ -75,11 +75,11 @@ func TestDBSimple(t *testing.T) {
 	assert.EqualValues(t, 0, r1.Stat.Version)
 
 	r2 := res.Puts[2]
-	assert.Equal(t, proto.Status_BAD_VERSION, r2.Status)
+	assert.Equal(t, proto.Status_UNEXPECTED_VERSION, r2.Status)
 	assert.Nil(t, r2.Stat)
 
 	r3 := res.Puts[3]
-	assert.Equal(t, proto.Status_BAD_VERSION, r3.Status)
+	assert.Equal(t, proto.Status_UNEXPECTED_VERSION, r3.Status)
 	assert.Nil(t, r3.Stat)
 
 	r4 := res.Puts[4]
@@ -91,7 +91,7 @@ func TestDBSimple(t *testing.T) {
 	assert.Equal(t, proto.Status_KEY_NOT_FOUND, r5.Status)
 
 	r6 := res.Deletes[1]
-	assert.Equal(t, proto.Status_BAD_VERSION, r6.Status)
+	assert.Equal(t, proto.Status_UNEXPECTED_VERSION, r6.Status)
 
 	r7 := res.Deletes[2]
 	assert.Equal(t, proto.Status_OK, r7.Status)
@@ -200,11 +200,11 @@ func TestDBSameKeyMutations(t *testing.T) {
 	assert.EqualValues(t, 1, r0.Stat.Version)
 
 	r1 := writeRes.Puts[1]
-	assert.Equal(t, proto.Status_BAD_VERSION, r1.Status)
+	assert.Equal(t, proto.Status_UNEXPECTED_VERSION, r1.Status)
 	assert.Nil(t, r1.Stat)
 
 	r2 := writeRes.Deletes[0]
-	assert.Equal(t, proto.Status_BAD_VERSION, r2.Status)
+	assert.Equal(t, proto.Status_UNEXPECTED_VERSION, r2.Status)
 
 	readReq := &proto.ReadRequest{
 		Gets: []*proto.GetRequest{

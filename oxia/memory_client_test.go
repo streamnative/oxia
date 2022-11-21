@@ -79,7 +79,7 @@ func TestPutNew(t *testing.T) {
 			CreatedTimestamp:  1,
 			ModifiedTimestamp: 1,
 		}, nil},
-		{ptr(1), Stat{}, ErrorBadVersion},
+		{ptr(1), Stat{}, ErrorUnexpectedVersion},
 	}
 	runTests(items, func(client AsyncClient, item putItem) {
 		c := client.Put(key, payload1, item.version)
@@ -97,7 +97,7 @@ func TestPutExisting(t *testing.T) {
 			CreatedTimestamp:  1,
 			ModifiedTimestamp: 2,
 		}, nil},
-		{ptr(VersionNotExists), Stat{}, ErrorBadVersion},
+		{ptr(VersionNotExists), Stat{}, ErrorUnexpectedVersion},
 		{ptr(1), Stat{
 			Version:           2,
 			CreatedTimestamp:  1,
@@ -132,7 +132,7 @@ func TestDeleteMissing(t *testing.T) {
 func TestDeleteExisting(t *testing.T) {
 	items := []deleteItem{
 		{nil, nil},
-		{ptr(VersionNotExists), ErrorBadVersion},
+		{ptr(VersionNotExists), ErrorUnexpectedVersion},
 		{ptr(1), nil},
 	}
 	runTests(items, func(client AsyncClient, item deleteItem) {
