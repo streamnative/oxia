@@ -11,6 +11,7 @@ import (
 	"net"
 	"oxia/proto"
 	"oxia/server/kv"
+	"oxia/server/wal"
 )
 
 // This implementation is temporary, until all the WAL changes are ready
@@ -99,7 +100,8 @@ func (s *StandaloneRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest,
 }
 
 func (s *StandaloneRpcServer) Write(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error) {
-	return s.dbs[*write.ShardId].ProcessWrite(write)
+	// TODO generate an actual EntryId if needed
+	return s.dbs[*write.ShardId].ProcessWrite(write, wal.NonExistentEntryId)
 }
 
 func (s *StandaloneRpcServer) Read(ctx context.Context, read *proto.ReadRequest) (*proto.ReadResponse, error) {
