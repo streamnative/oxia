@@ -109,28 +109,6 @@ func (s *internalRpcServer) AddEntries(srv proto.OxiaLogReplication_AddEntriesSe
 	}
 }
 
-func (s *internalRpcServer) PrepareReconfig(c context.Context, req *proto.PrepareReconfigRequest) (*proto.PrepareReconfigResponse, error) {
-	if manager, err := s.shardsDirector.GetManager(req.ShardId, true); err != nil {
-		return nil, err
-	} else {
-		return manager.PrepareReconfig(req)
-	}
-}
-func (s *internalRpcServer) Snapshot(c context.Context, req *proto.SnapshotRequest) (*proto.SnapshotResponse, error) {
-	if manager, err := s.shardsDirector.GetManager(req.ShardId, true); err != nil {
-		return nil, err
-	} else {
-		return manager.Snapshot(req)
-	}
-}
-func (s *internalRpcServer) CommitReconfig(c context.Context, req *proto.CommitReconfigRequest) (*proto.CommitReconfigResponse, error) {
-	if manager, err := s.shardsDirector.GetManager(req.ShardId, true); err != nil {
-		return nil, err
-	} else {
-		return manager.CommitReconfig(req)
-	}
-}
-
 func readHeader(md metadata.MD, key string) (value string, err error) {
 	arr := md.Get(key)
 	if len(arr) == 0 {

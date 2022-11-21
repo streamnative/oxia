@@ -25,10 +25,6 @@ type ShardManager interface {
 	Truncate(*proto.TruncateRequest) (*proto.TruncateResponse, error)
 	Write(op *proto.PutOp) (*proto.Stat, error)
 	AddEntries(proto.OxiaLogReplication_AddEntriesServer) error
-	// Later
-	PrepareReconfig(*proto.PrepareReconfigRequest) (*proto.PrepareReconfigResponse, error)
-	Snapshot(*proto.SnapshotRequest) (*proto.SnapshotResponse, error)
-	CommitReconfig(*proto.CommitReconfigRequest) (*proto.CommitReconfigResponse, error)
 }
 
 // Command is the representation of the work a ShardManager is supposed to do when it gets a request or response and a channel for the response.
@@ -78,14 +74,13 @@ type cursor struct {
 }
 
 type shardManager struct {
-	shard              uint32
-	epoch              uint64
-	replicationFactor  uint32
-	commitIndex        wal.EntryId
-	headIndex          wal.EntryId
-	followCursor       map[string]*cursor
-	reconfigInProgress bool
-	status             Status
+	shard             uint32
+	epoch             uint64
+	replicationFactor uint32
+	commitIndex       wal.EntryId
+	headIndex         wal.EntryId
+	followCursor      map[string]*cursor
+	status            Status
 
 	wal                 wal.Wal
 	kv                  KeyValueStore
@@ -100,14 +95,13 @@ type shardManager struct {
 
 func NewShardManager(shard uint32, identityAddress string, pool common.ClientPool, w wal.Wal, kv KeyValueStore) (ShardManager, error) {
 	sm := &shardManager{
-		shard:              shard,
-		epoch:              0,
-		replicationFactor:  0,
-		commitIndex:        wal.EntryId{},
-		headIndex:          wal.EntryId{},
-		followCursor:       make(map[string]*cursor),
-		reconfigInProgress: false,
-		status:             NotMember,
+		shard:             shard,
+		epoch:             0,
+		replicationFactor: 0,
+		commitIndex:       wal.EntryId{},
+		headIndex:         wal.EntryId{},
+		followCursor:      make(map[string]*cursor),
+		status:            NotMember,
 
 		wal:                 w,
 		kv:                  kv,
@@ -241,7 +235,6 @@ func (s *shardManager) fenceSync(req *proto.FenceRequest) (*proto.FenceResponse,
 	if err := s.CloseReaders(oldStatus); err != nil {
 		return nil, err
 	}
-	s.reconfigInProgress = false
 	return &proto.FenceResponse{
 		Epoch:     s.epoch,
 		HeadIndex: s.headIndex.ToProto(),
@@ -774,16 +767,6 @@ func (s *shardManager) addEntrySync(req *proto.AddEntryRequest) (*proto.AddEntry
 		InvalidEpoch: false,
 	}, nil
 
-}
-
-func (s *shardManager) PrepareReconfig(req *proto.PrepareReconfigRequest) (*proto.PrepareReconfigResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method PrepareReconfig not implemented")
-}
-func (s *shardManager) Snapshot(req *proto.SnapshotRequest) (*proto.SnapshotResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Snapshot not implemented")
-}
-func (s *shardManager) CommitReconfig(req *proto.CommitReconfigRequest) (*proto.CommitReconfigResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CommitReconfig not implemented")
 }
 
 // run takes commands from the queue and executes them serially
