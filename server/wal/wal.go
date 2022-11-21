@@ -31,6 +31,10 @@ func (id EntryId) ToProto() *proto.EntryId {
 	}
 }
 
+func (id EntryId) Equal(other EntryId) bool {
+	return id.Epoch == other.Epoch && id.Offset == other.Offset
+}
+
 func (id EntryId) LessOrEqual(other EntryId) bool {
 	return id.Epoch < other.Epoch || (id.Epoch == other.Epoch && id.Offset <= other.Offset)
 }
@@ -61,7 +65,7 @@ type WalReader interface {
 	ReadNext() (*proto.LogEntry, error)
 	// HasNext returns true if there is an entry to read.
 	// For a reverse WalReader this means the reader has not yet reached the beginning of the log.
-	// For a forward WalReader this means that we have not yet reached the offset that was the log end when the reader was created.
+	// For a forward WalReader this means that we have not yet reached the end of the wal
 	HasNext() bool
 }
 
