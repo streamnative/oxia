@@ -10,10 +10,6 @@ service OxiaControl {
   rpc BecomeLeader(BecomeLeaderRequest) returns (BecomeLeaderResponse) {}
   rpc AddFollower(AddFollowerRequest) returns (CoordinationEmpty) {}
 
-  rpc PrepareReconfig(PrepareReconfigRequest)
-      returns (PrepareReconfigResponse) {}
-  rpc Snapshot(SnapshotRequest) returns (SnapshotResponse) {}
-  rpc CommitReconfig(CommitReconfigRequest) returns (CommitReconfigResponse) {}
 }
 
 // node (leader) -> node (follower)
@@ -97,57 +93,4 @@ message AddEntryResponse {
   uint64 epoch = 1;
   EntryId entry_id = 2;
   bool invalid_epoch = 3;
-}
-
-enum ReconfigOp {
-  CONTRACT = 0;
-  EXPAND = 1;
-  NODE_SWAP = 2;
-}
-
-message PrepareReconfigRequest {
-  uint32 shard_id = 1;
-
-  uint64 epoch = 2;
-  ReconfigOp op = 3;
-  optional ServerAddress old_node = 4;
-  optional ServerAddress new_node = 5;
-}
-
-message PrepareReconfigResponse {
-  uint64 epoch = 1;
-  optional EntryId head_index = 2;
-  optional EntryId commit_index = 3;
-  repeated LogEntry snapshots = 4;
-}
-
-message SnapshotRequest {
-  uint32 shard_id = 1;
-
-  uint64 epoch = 2;
-  EntryId head_index = 3;
-  EntryId commit_index = 4;
-  LogEntry snapshot = 5;
-}
-message SnapshotResponse {
-  uint64 epoch = 1;
-  EntryId head_index = 2;
-}
-
-message CommitReconfigRequest {
-  uint32 shard_id = 1;
-
-  uint64 epoch = 2;
-  uint32 replication_factor = 3;
-  ReconfigOp op = 4;
-  optional ServerAddress old_node = 5;
-  optional ServerAddress new_node = 6;
-  optional EntryId head_index = 7;
-}
-
-message CommitReconfigResponse {
-  uint64 epoch = 1;
-  ReconfigOp op = 2;
-  optional ServerAddress old_node = 3;
-  optional ServerAddress new_node = 4;
 }
