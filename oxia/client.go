@@ -30,8 +30,8 @@ type ClientOptions struct {
 
 type AsyncClient interface {
 	io.Closer
-	Put(key string, payload []byte, expectedVersion *int64) <-chan PutResult
-	Delete(key string, expectedVersion *int64) <-chan error
+	Put(key string, payload []byte, expectedVersionId *int64) <-chan PutResult
+	Delete(key string, expectedVersionId *int64) <-chan error
 	DeleteRange(minKeyInclusive string, maxKeyExclusive string) <-chan error
 	Get(key string) <-chan GetResult
 	GetRange(minKeyInclusive string, maxKeyExclusive string) <-chan GetRangeResult
@@ -39,27 +39,27 @@ type AsyncClient interface {
 
 type SyncClient interface {
 	io.Closer
-	Put(key string, payload []byte, expectedVersion *int64) (Stat, error)
-	Delete(key string, expectedVersion *int64) error
+	Put(key string, payload []byte, expectedVersionId *int64) (Version, error)
+	Delete(key string, expectedVersionId *int64) error
 	DeleteRange(minKeyInclusive string, maxKeyExclusive string) error
-	Get(key string) ([]byte, Stat, error)
+	Get(key string) ([]byte, Version, error)
 	GetRange(minKeyInclusive string, maxKeyExclusive string) ([]string, error)
 }
 
-type Stat struct {
-	Version           int64
+type Version struct {
+	VersionId         int64
 	CreatedTimestamp  uint64
 	ModifiedTimestamp uint64
 }
 
 type PutResult struct {
-	Stat Stat
-	Err  error
+	Version Version
+	Err     error
 }
 
 type GetResult struct {
 	Payload []byte
-	Stat    Stat
+	Version Version
 	Err     error
 }
 

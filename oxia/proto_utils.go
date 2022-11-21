@@ -9,7 +9,7 @@ func toPutResult(r *proto.PutResponse) PutResult {
 		}
 	}
 	return PutResult{
-		Stat: toStat(r.Stat),
+		Version: toVersion(r.Version),
 	}
 }
 
@@ -39,11 +39,11 @@ func toGetRangeResult(r *proto.GetRangeResponse) GetRangeResult {
 	}
 }
 
-func toStat(stat *proto.Stat) Stat {
-	return Stat{
-		Version:           stat.Version,
-		CreatedTimestamp:  stat.CreatedTimestamp,
-		ModifiedTimestamp: stat.ModifiedTimestamp,
+func toVersion(version *proto.Version) Version {
+	return Version{
+		VersionId:         version.VersionId,
+		CreatedTimestamp:  version.CreatedTimestamp,
+		ModifiedTimestamp: version.ModifiedTimestamp,
 	}
 }
 

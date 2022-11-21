@@ -173,7 +173,7 @@ message PutRequest {
   bytes payload = 2;
   // An optional expected version. The put will fail if the actual version
   // does not match
-  optional int64 expected_version = 3;
+  optional int64 expected_version_id = 3;
 }
 
 /**
@@ -183,7 +183,7 @@ message PutResponse {
   // Includes the error or OK
   Status status = 1;
   // The stat if the put was successful
-  Stat stat = 2;
+  Version version = 2;
 }
 
 /**
@@ -194,7 +194,7 @@ message DeleteRequest {
   string key = 1;
   // An optional expected version. The delete will fail if the actual version
   // does not match
-  optional int64 expected_version = 2;
+  optional int64 expected_version_id = 2;
 }
 
 /**
@@ -225,7 +225,7 @@ message GetResponse {
   // Includes the error or OK
   Status status = 1;
   // The stat of the entry
-  Stat stat = 2;
+  Version version = 2;
   // The payload, if it was requested and there was no error
   optional bytes payload = 3;
 }
@@ -269,9 +269,9 @@ message GetRangeResponse {
 /**
  * Stats about the current version of a key.
  */
-message Stat {
+message Version {
   // The current version of the key
-  int64 version = 1;
+  int64 version_id = 1;
   // The creation timestamp of the first version of the key
   fixed64 created_timestamp = 2;
   // The modified timestamp of the current version of the key
@@ -296,7 +296,7 @@ message PutOp {
   uint32 shard_id = 1;
   string key = 2;
   bytes payload = 3;
-  optional uint64 expected_version = 4;
+  optional uint64 expected_version_id = 4;
 }
 
 message GetOp {
