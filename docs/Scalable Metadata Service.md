@@ -118,7 +118,7 @@ After the cluster state is updated, the operator will propagate it back to every
 
 ## Client interactions
 
-Clients interact with storage nodes through a Grpc interface.
+Clients interact with storage nodes through a gRPC interface.
 
 ```java
 service ClientAPI {
@@ -127,7 +127,7 @@ service ClientAPI {
    */
   rpc GetShardsAssignments(Empty) returns (stream ShardsAssignments) {}
 
-  rpc Put(PutOp) returns (Stat) {}
+  rpc Put(PutOp) returns (Version) {}
   rpc Get(GetOp) returns (Entry) {}
   /* .... */
 }
@@ -137,7 +137,7 @@ service ClientAPI {
 The first step is to subscribe to a feed of 'shard-assignment' changes, so that the client is aware of the
 up-to-date state of the cluster.
 
-After that, clients will make GRPC request directly to the node where the shard's leader is running.
+After that, clients will make gRPC request directly to the node where the shard's leader is running.
 
 ### Receiving change data notifications
 
