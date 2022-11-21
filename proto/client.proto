@@ -182,7 +182,7 @@ message PutRequest {
 message PutResponse {
   // Includes the error or OK
   Status status = 1;
-  // The stat if the put was successful
+  // The version if the put was successful
   Version version = 2;
 }
 
@@ -207,7 +207,7 @@ message DeleteResponse {
 }
 
 /**
- * A get request. Gets the stat and optionally the payload for the specified
+ * A get request. Gets the version and optionally the payload for the specified
  * key.
  */
 message GetRequest {
@@ -224,7 +224,7 @@ message GetRequest {
 message GetResponse {
   // Includes the error or OK
   Status status = 1;
-  // The stat of the entry
+  // The version of the entry
   Version version = 2;
   // The payload, if it was requested and there was no error
   optional bytes payload = 3;
