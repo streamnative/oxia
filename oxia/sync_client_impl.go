@@ -5,7 +5,7 @@ type syncClientImpl struct {
 }
 
 func NewSyncClient(options ClientOptions) SyncClient {
-	options.BatchMaxSize = 1
+	options.batchLinger = 0
 	return newSyncClient(NewAsyncClient(options))
 }
 
