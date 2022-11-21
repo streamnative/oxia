@@ -29,7 +29,7 @@ func (c *memoryClient) Put(key string, payload []byte, expectedVersionId *int64)
 	now := c.clock.NowMillis()
 	if value, ok := c.data[key]; ok {
 		if expectedVersionId != nil && *expectedVersionId != value.Version.VersionId {
-			ch <- PutResult{Err: ErrorBadVersion}
+			ch <- PutResult{Err: ErrorUnexpectedVersion}
 		} else {
 			value.Payload = payload
 			value.Version.VersionId = value.Version.VersionId + 1
@@ -40,7 +40,7 @@ func (c *memoryClient) Put(key string, payload []byte, expectedVersionId *int64)
 		}
 	} else {
 		if expectedVersionId != nil && *expectedVersionId != VersionNotExists {
-			ch <- PutResult{Err: ErrorBadVersion}
+			ch <- PutResult{Err: ErrorUnexpectedVersion}
 		} else {
 			value = GetResult{
 				Payload: payload,
@@ -64,7 +64,7 @@ func (c *memoryClient) Delete(key string, expectedVersionId *int64) <-chan error
 	ch := make(chan error, 1)
 	if value, ok := c.data[key]; ok {
 		if expectedVersionId != nil && *expectedVersionId != value.Version.VersionId {
-			ch <- ErrorBadVersion
+			ch <- ErrorUnexpectedVersion
 		} else {
 			delete(c.data, key)
 		}

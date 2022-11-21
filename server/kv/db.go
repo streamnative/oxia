@@ -151,7 +151,7 @@ func applyPut(batch WriteBatch, putReq *proto.PutRequest) (*proto.PutResponse, e
 	se, err := checkExpectedVersionId(batch, putReq.Key, putReq.ExpectedVersionId)
 	if errors.Is(err, ErrorBadVersion) {
 		return &proto.PutResponse{
-			Status: proto.Status_BAD_VERSION,
+			Status: proto.Status_UNEXPECTED_VERSION,
 		}, nil
 	} else if err != nil {
 		return nil, errors.Wrap(err, "oxia db: failed to apply batch")
@@ -195,7 +195,7 @@ func applyDelete(batch WriteBatch, delReq *proto.DeleteRequest) (*proto.DeleteRe
 	se, err := checkExpectedVersionId(batch, delReq.Key, delReq.ExpectedVersionId)
 
 	if errors.Is(err, ErrorBadVersion) {
-		return &proto.DeleteResponse{Status: proto.Status_BAD_VERSION}, nil
+		return &proto.DeleteResponse{Status: proto.Status_UNEXPECTED_VERSION}, nil
 	} else if err != nil {
 		return nil, errors.Wrap(err, "oxia db: failed to apply batch")
 	} else if se == nil {

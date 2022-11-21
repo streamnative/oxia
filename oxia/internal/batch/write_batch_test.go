@@ -76,7 +76,7 @@ func TestWriteBatchComplete(t *testing.T) {
 		{
 			&proto.WriteResponse{
 				Puts: []*proto.PutResponse{{
-					Status: proto.Status_BAD_VERSION,
+					Status: proto.Status_UNEXPECTED_VERSION,
 				}},
 				Deletes: []*proto.DeleteResponse{{
 					Status: proto.Status_KEY_NOT_FOUND,
@@ -87,7 +87,7 @@ func TestWriteBatchComplete(t *testing.T) {
 			},
 			nil,
 			&proto.PutResponse{
-				Status: proto.Status_BAD_VERSION,
+				Status: proto.Status_UNEXPECTED_VERSION,
 			},
 			nil,
 			&proto.DeleteResponse{

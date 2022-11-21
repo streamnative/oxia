@@ -16,9 +16,9 @@ var (
 	//not easy to use as a pointer if a const
 	VersionNotExists int64 = -1
 
-	ErrorKeyNotFound   = errors.New("key not found")
-	ErrorBadVersion    = errors.New("bad version")
-	ErrorUnknownStatus = errors.New("unknown status")
+	ErrorKeyNotFound       = errors.New("key not found")
+	ErrorUnexpectedVersion = errors.New("unexpected version")
+	ErrorUnknownStatus     = errors.New("unknown status")
 )
 
 type ClientOptions struct {

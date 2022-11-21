@@ -51,8 +51,8 @@ func toError(status proto.Status) error {
 	switch status {
 	case proto.Status_OK:
 		return nil
-	case proto.Status_BAD_VERSION:
-		return ErrorBadVersion
+	case proto.Status_UNEXPECTED_VERSION:
+		return ErrorUnexpectedVersion
 	case proto.Status_KEY_NOT_FOUND:
 		return ErrorKeyNotFound
 	default:
