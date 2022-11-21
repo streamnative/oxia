@@ -9,52 +9,52 @@ import (
 )
 
 func TestQuorumAckTrackerNoFollower(t *testing.T) {
-	at := NewQuorumAckTracker(1, wal.EntryId{1, 1})
+	at := NewQuorumAckTracker(1, wal.EntryId{Epoch: 1, Offset: 1})
 
-	assert.Equal(t, wal.EntryId{1, 1}, at.HeadIndex())
-	assert.Equal(t, wal.EntryId{0, 0}, at.CommitIndex())
+	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 1}, at.HeadIndex())
+	assert.Equal(t, wal.EntryId{}, at.CommitIndex())
 
-	at.AdvanceHeadIndex(wal.EntryId{1, 5})
-	assert.Equal(t, wal.EntryId{1, 5}, at.HeadIndex())
-	assert.Equal(t, wal.EntryId{1, 5}, at.CommitIndex())
+	at.AdvanceHeadIndex(wal.EntryId{Epoch: 1, Offset: 5})
+	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 5}, at.HeadIndex())
+	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 5}, at.CommitIndex())
 
-	at.AdvanceHeadIndex(wal.EntryId{1, 6})
-	assert.Equal(t, wal.EntryId{1, 6}, at.HeadIndex())
-	assert.Equal(t, wal.EntryId{1, 6}, at.CommitIndex())
+	at.AdvanceHeadIndex(wal.EntryId{Epoch: 1, Offset: 6})
+	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 6}, at.HeadIndex())
+	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 6}, at.CommitIndex())
 
 	// Head index cannot go back in time
-	at.AdvanceHeadIndex(wal.EntryId{1, 2})
-	assert.Equal(t, wal.EntryId{1, 6}, at.HeadIndex())
-	assert.Equal(t, wal.EntryId{1, 6}, at.CommitIndex())
+	at.AdvanceHeadIndex(wal.EntryId{Epoch: 1, Offset: 2})
+	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 6}, at.HeadIndex())
+	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 6}, at.CommitIndex())
 }
 
 func TestQuorumAckTrackerRF2(t *testing.T) {
-	at := NewQuorumAckTracker(2, wal.EntryId{1, 1})
+	at := NewQuorumAckTracker(2, wal.EntryId{Epoch: 1, Offset: 1})
 
-	assert.Equal(t, wal.EntryId{1, 1}, at.HeadIndex())
-	assert.Equal(t, wal.EntryId{0, 0}, at.CommitIndex())
+	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 1}, at.HeadIndex())
+	assert.Equal(t, wal.EntryId{}, at.CommitIndex())
 
-	at.AdvanceHeadIndex(wal.EntryId{1, 2})
-	assert.Equal(t, wal.EntryId{1, 2}, at.HeadIndex())
-	assert.Equal(t, wal.EntryId{0, 0}, at.CommitIndex())
+	at.AdvanceHeadIndex(wal.EntryId{Epoch: 1, Offset: 2})
+	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 2}, at.HeadIndex())
+	assert.Equal(t, wal.EntryId{}, at.CommitIndex())
 
 	c1, err := at.NewCursorAcker()
 	assert.NoError(t, err)
 
-	c1.Ack(wal.EntryId{1, 2})
-	assert.Equal(t, wal.EntryId{1, 2}, at.HeadIndex())
-	assert.Equal(t, wal.EntryId{1, 2}, at.CommitIndex())
+	c1.Ack(wal.EntryId{Epoch: 1, Offset: 2})
+	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 2}, at.HeadIndex())
+	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 2}, at.CommitIndex())
 }
 
 func TestQuorumAckTrackerRF3(t *testing.T) {
-	at := NewQuorumAckTracker(3, wal.EntryId{1, 1})
+	at := NewQuorumAckTracker(3, wal.EntryId{Epoch: 1, Offset: 1})
 
-	assert.Equal(t, wal.EntryId{1, 1}, at.HeadIndex())
-	assert.Equal(t, wal.EntryId{0, 0}, at.CommitIndex())
+	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 1}, at.HeadIndex())
+	assert.Equal(t, wal.EntryId{}, at.CommitIndex())
 
-	at.AdvanceHeadIndex(wal.EntryId{1, 2})
-	assert.Equal(t, wal.EntryId{1, 2}, at.HeadIndex())
-	assert.Equal(t, wal.EntryId{0, 0}, at.CommitIndex())
+	at.AdvanceHeadIndex(wal.EntryId{Epoch: 1, Offset: 2})
+	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 2}, at.HeadIndex())
+	assert.Equal(t, wal.EntryId{}, at.CommitIndex())
 
 	c1, err := at.NewCursorAcker()
 	assert.NoError(t, err)
@@ -62,24 +62,24 @@ func TestQuorumAckTrackerRF3(t *testing.T) {
 	c2, err := at.NewCursorAcker()
 	assert.NoError(t, err)
 
-	c1.Ack(wal.EntryId{1, 2})
-	assert.Equal(t, wal.EntryId{1, 2}, at.HeadIndex())
-	assert.Equal(t, wal.EntryId{1, 2}, at.CommitIndex())
+	c1.Ack(wal.EntryId{Epoch: 1, Offset: 2})
+	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 2}, at.HeadIndex())
+	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 2}, at.CommitIndex())
 
-	c2.Ack(wal.EntryId{1, 2})
-	assert.Equal(t, wal.EntryId{1, 2}, at.HeadIndex())
-	assert.Equal(t, wal.EntryId{1, 2}, at.CommitIndex())
+	c2.Ack(wal.EntryId{Epoch: 1, Offset: 2})
+	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 2}, at.HeadIndex())
+	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 2}, at.CommitIndex())
 }
 
 func TestQuorumAckTrackerRF5(t *testing.T) {
-	at := NewQuorumAckTracker(5, wal.EntryId{1, 1})
+	at := NewQuorumAckTracker(5, wal.EntryId{Epoch: 1, Offset: 1})
 
-	assert.Equal(t, wal.EntryId{1, 1}, at.HeadIndex())
-	assert.Equal(t, wal.EntryId{0, 0}, at.CommitIndex())
+	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 1}, at.HeadIndex())
+	assert.Equal(t, wal.EntryId{}, at.CommitIndex())
 
-	at.AdvanceHeadIndex(wal.EntryId{1, 2})
-	assert.Equal(t, wal.EntryId{1, 2}, at.HeadIndex())
-	assert.Equal(t, wal.EntryId{0, 0}, at.CommitIndex())
+	at.AdvanceHeadIndex(wal.EntryId{Epoch: 1, Offset: 2})
+	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 2}, at.HeadIndex())
+	assert.Equal(t, wal.EntryId{}, at.CommitIndex())
 
 	c1, err := at.NewCursorAcker()
 	assert.NoError(t, err)
@@ -93,25 +93,25 @@ func TestQuorumAckTrackerRF5(t *testing.T) {
 	c4, err := at.NewCursorAcker()
 	assert.NoError(t, err)
 
-	c1.Ack(wal.EntryId{1, 2})
-	assert.Equal(t, wal.EntryId{1, 2}, at.HeadIndex())
-	assert.Equal(t, wal.EntryId{0, 0}, at.CommitIndex())
+	c1.Ack(wal.EntryId{Epoch: 1, Offset: 2})
+	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 2}, at.HeadIndex())
+	assert.Equal(t, wal.EntryId{}, at.CommitIndex())
 
-	c2.Ack(wal.EntryId{1, 2})
-	assert.Equal(t, wal.EntryId{1, 2}, at.HeadIndex())
-	assert.Equal(t, wal.EntryId{1, 2}, at.CommitIndex())
+	c2.Ack(wal.EntryId{Epoch: 1, Offset: 2})
+	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 2}, at.HeadIndex())
+	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 2}, at.CommitIndex())
 
-	c3.Ack(wal.EntryId{1, 2})
-	assert.Equal(t, wal.EntryId{1, 2}, at.HeadIndex())
-	assert.Equal(t, wal.EntryId{1, 2}, at.CommitIndex())
+	c3.Ack(wal.EntryId{Epoch: 1, Offset: 2})
+	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 2}, at.HeadIndex())
+	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 2}, at.CommitIndex())
 
-	c4.Ack(wal.EntryId{1, 2})
-	assert.Equal(t, wal.EntryId{1, 2}, at.HeadIndex())
-	assert.Equal(t, wal.EntryId{1, 2}, at.CommitIndex())
+	c4.Ack(wal.EntryId{Epoch: 1, Offset: 2})
+	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 2}, at.HeadIndex())
+	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 2}, at.CommitIndex())
 }
 
 func TestQuorumAckTrackerMaxCursors(t *testing.T) {
-	at := NewQuorumAckTracker(3, wal.EntryId{1, 1})
+	at := NewQuorumAckTracker(3, wal.EntryId{Epoch: 1, Offset: 1})
 
 	c1, err := at.NewCursorAcker()
 	assert.NoError(t, err)
@@ -127,14 +127,14 @@ func TestQuorumAckTrackerMaxCursors(t *testing.T) {
 }
 
 func TestQuorumAckTracker_WaitForHeadIndex(t *testing.T) {
-	at := NewQuorumAckTracker(1, wal.EntryId{1, 1})
+	at := NewQuorumAckTracker(1, wal.EntryId{Epoch: 1, Offset: 1})
 
-	assert.Equal(t, wal.EntryId{1, 1}, at.HeadIndex())
+	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 1}, at.HeadIndex())
 
 	ch := make(chan bool)
 
 	go func() {
-		at.WaitForHeadIndex(wal.EntryId{1, 4})
+		at.WaitForHeadIndex(wal.EntryId{Epoch: 1, Offset: 4})
 		ch <- true
 	}()
 
@@ -146,7 +146,7 @@ func TestQuorumAckTracker_WaitForHeadIndex(t *testing.T) {
 		// Expected. There should be nothing in the channel
 	}
 
-	at.AdvanceHeadIndex(wal.EntryId{1, 4})
+	at.AdvanceHeadIndex(wal.EntryId{Epoch: 1, Offset: 4})
 	assert.Eventually(t, func() bool {
 		select {
 		case <-ch:
@@ -161,18 +161,18 @@ func TestQuorumAckTracker_WaitForHeadIndex(t *testing.T) {
 }
 
 func TestQuorumAckTracker_WaitForCommitIndex(t *testing.T) {
-	at := NewQuorumAckTracker(3, wal.EntryId{1, 1})
+	at := NewQuorumAckTracker(3, wal.EntryId{Epoch: 1, Offset: 1})
 
-	assert.Equal(t, wal.EntryId{0, 0}, at.CommitIndex())
-	at.AdvanceHeadIndex(wal.EntryId{1, 2})
-	at.AdvanceHeadIndex(wal.EntryId{1, 3})
-	at.AdvanceHeadIndex(wal.EntryId{1, 4})
-	assert.Equal(t, wal.EntryId{0, 0}, at.CommitIndex())
+	assert.Equal(t, wal.EntryId{}, at.CommitIndex())
+	at.AdvanceHeadIndex(wal.EntryId{Epoch: 1, Offset: 2})
+	at.AdvanceHeadIndex(wal.EntryId{Epoch: 1, Offset: 3})
+	at.AdvanceHeadIndex(wal.EntryId{Epoch: 1, Offset: 4})
+	assert.Equal(t, wal.EntryId{}, at.CommitIndex())
 
 	ch := make(chan error)
 
 	go func() {
-		_, err := at.WaitForCommitIndex(wal.EntryId{1, 2}, func() (*proto.WriteResponse, error) {
+		_, err := at.WaitForCommitIndex(wal.EntryId{Epoch: 1, Offset: 2}, func() (*proto.WriteResponse, error) {
 			return nil, nil
 		})
 		ch <- err
@@ -189,7 +189,7 @@ func TestQuorumAckTracker_WaitForCommitIndex(t *testing.T) {
 	c1, err := at.NewCursorAcker()
 	assert.NoError(t, err)
 	assert.NotNil(t, c1)
-	c1.Ack(wal.EntryId{1, 2})
+	c1.Ack(wal.EntryId{Epoch: 1, Offset: 2})
 
 	assert.Eventually(t, func() bool {
 		select {
@@ -202,5 +202,5 @@ func TestQuorumAckTracker_WaitForCommitIndex(t *testing.T) {
 		}
 	}, 10*time.Second, 100*time.Millisecond)
 
-	assert.Equal(t, wal.EntryId{1, 2}, at.CommitIndex())
+	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 2}, at.CommitIndex())
 }

@@ -8,9 +8,6 @@ import (
 	"sync"
 )
 
-// We use an uint16 bitset to keep track of followers acks.
-const maxReplicationFactor = 15
-
 var ErrorTooManyCursors = errors.New("too many cursors")
 
 // QuorumAckTracker
