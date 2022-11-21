@@ -171,7 +171,7 @@ message PutRequest {
   string key = 1;
   // The payload
   bytes payload = 2;
-  // An optional expected version. The put will fail if the actual version
+  // An optional expected version. The put will fail if the server's current version
   // does not match
   optional int64 expected_version = 3;
 }
@@ -192,7 +192,7 @@ message PutResponse {
 message DeleteRequest {
   // The key
   string key = 1;
-  // An optional expected version. The delete will fail if the actual version
+  // An optional expected version. The delete will fail if the server's current version
   // does not match
   optional int64 expected_version = 2;
 }
@@ -231,7 +231,7 @@ message GetResponse {
 }
 
 /**
- * Input to a get range request.
+ * Input to a delete range request.
  */
 message DeleteRangeRequest {
   // The start of the range, inclusive
@@ -249,7 +249,7 @@ message DeleteRangeResponse {
 }
 
 /**
- * Input to a delete range request.
+ * Input to a get range request.
  */
 message GetRangeRequest {
   // The start of the range, inclusive
