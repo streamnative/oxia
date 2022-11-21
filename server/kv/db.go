@@ -93,9 +93,9 @@ func (d *db) addCommitIndex(commitIndex *proto.EntryId, batch WriteBatch) error 
 		return err
 	}
 	_, err = applyPut(batch, &proto.PutRequest{
-		Key:             commitIndexKey,
-		Payload:         commitIndexPayload,
-		ExpectedVersion: nil,
+		Key:               commitIndexKey,
+		Payload:           commitIndexPayload,
+		ExpectedVersionId: nil,
 	})
 	return err
 }
@@ -148,7 +148,7 @@ func (d *db) ReadCommitIndex() (*proto.EntryId, error) {
 }
 
 func applyPut(batch WriteBatch, putReq *proto.PutRequest) (*proto.PutResponse, error) {
-	se, err := checkExpectedVersion(batch, putReq.Key, putReq.ExpectedVersion)
+	se, err := checkExpectedVersionId(batch, putReq.Key, putReq.ExpectedVersionId)
 	if errors.Is(err, ErrorBadVersion) {
 		return &proto.PutResponse{
 			Status: proto.Status_BAD_VERSION,
@@ -161,13 +161,13 @@ func applyPut(batch WriteBatch, putReq *proto.PutRequest) (*proto.PutResponse, e
 		// No version conflict
 		if se == nil {
 			se = &proto.StorageEntry{
-				Version:               0,
+				VersionId:             0,
 				Payload:               putReq.Payload,
 				CreationTimestamp:     now,
 				ModificationTimestamp: now,
 			}
 		} else {
-			se.Version += 1
+			se.VersionId += 1
 			se.Payload = putReq.Payload
 			se.ModificationTimestamp = now
 		}
@@ -182,8 +182,8 @@ func applyPut(batch WriteBatch, putReq *proto.PutRequest) (*proto.PutResponse, e
 		}
 
 		return &proto.PutResponse{
-			Stat: &proto.Stat{
-				Version:           se.Version,
+			Version: &proto.Version{
+				VersionId:         se.VersionId,
 				CreatedTimestamp:  se.CreationTimestamp,
 				ModifiedTimestamp: se.ModificationTimestamp,
 			},
@@ -192,7 +192,7 @@ func applyPut(batch WriteBatch, putReq *proto.PutRequest) (*proto.PutResponse, e
 }
 
 func applyDelete(batch WriteBatch, delReq *proto.DeleteRequest) (*proto.DeleteResponse, error) {
-	se, err := checkExpectedVersion(batch, delReq.Key, delReq.ExpectedVersion)
+	se, err := checkExpectedVersionId(batch, delReq.Key, delReq.ExpectedVersionId)
 
 	if errors.Is(err, ErrorBadVersion) {
 		return &proto.DeleteResponse{Status: proto.Status_BAD_VERSION}, nil
@@ -236,8 +236,8 @@ func applyGet(kv KV, getReq *proto.GetRequest) (*proto.GetResponse, error) {
 
 	return &proto.GetResponse{
 		Payload: resPayload,
-		Stat: &proto.Stat{
-			Version:           se.Version,
+		Version: &proto.Version{
+			VersionId:         se.VersionId,
 			CreatedTimestamp:  se.CreationTimestamp,
 			ModifiedTimestamp: se.ModificationTimestamp,
 		},
@@ -260,11 +260,11 @@ func applyGetRange(kv KV, getRangeReq *proto.GetRangeRequest) (*proto.GetRangeRe
 	return res, nil
 }
 
-func checkExpectedVersion(batch WriteBatch, key string, expectedVersion *int64) (*proto.StorageEntry, error) {
+func checkExpectedVersionId(batch WriteBatch, key string, expectedVersionId *int64) (*proto.StorageEntry, error) {
 	payload, closer, err := batch.Get(key)
 	if err != nil {
 		if errors.Is(err, ErrorKeyNotFound) {
-			if expectedVersion == nil || *expectedVersion == -1 {
+			if expectedVersionId == nil || *expectedVersionId == -1 {
 				// OK, we were checking that the key was not there, and it's indeed not there
 				return nil, nil
 			} else {
@@ -279,7 +279,7 @@ func checkExpectedVersion(batch WriteBatch, key string, expectedVersion *int64) 
 		return nil, err
 	}
 
-	if expectedVersion != nil && se.Version != *expectedVersion {
+	if expectedVersionId != nil && se.VersionId != *expectedVersionId {
 		return nil, ErrorBadVersion
 	}
 

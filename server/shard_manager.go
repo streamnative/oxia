@@ -23,7 +23,7 @@ type ShardManager interface {
 	BecomeLeader(*proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error)
 	AddFollower(*proto.AddFollowerRequest) (*proto.CoordinationEmpty, error)
 	Truncate(*proto.TruncateRequest) (*proto.TruncateResponse, error)
-	Write(op *proto.PutOp) (*proto.Stat, error)
+	Write(op *proto.PutOp) (*proto.Version, error)
 	AddEntries(proto.OxiaLogReplication_AddEntriesServer) error
 	// Later
 	PrepareReconfig(*proto.PrepareReconfigRequest) (*proto.PrepareReconfigResponse, error)
@@ -449,11 +449,11 @@ func (s *shardManager) addFollowerSync(req *proto.AddFollowerRequest) (*proto.Co
 	return &proto.CoordinationEmpty{}, nil
 }
 
-func (s *shardManager) Write(op *proto.PutOp) (*proto.Stat, error) {
+func (s *shardManager) Write(op *proto.PutOp) (*proto.Version, error) {
 	responseChannel := make(chan any, 1)
-	response, err := enqueueCommandAndWaitForResponseWithChannel[proto.Stat](s, func() (proto.Stat, error) {
+	response, err := enqueueCommandAndWaitForResponseWithChannel[proto.Version](s, func() (proto.Version, error) {
 		err2 := s.writeSync(op, responseChannel)
-		return proto.Stat{}, err2
+		return proto.Version{}, err2
 	}, responseChannel)
 	return &response, err
 }

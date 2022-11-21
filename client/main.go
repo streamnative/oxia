@@ -59,16 +59,16 @@ func main(cmd *cobra.Command, args []string) {
 	if res, err := c.Write(ctx, &proto.WriteRequest{
 		ShardId: pb.Uint32(0),
 		Puts: []*proto.PutRequest{{
-			Key:             "a",
-			Payload:         []byte("Hello world"),
-			ExpectedVersion: nil,
+			Key:               "a",
+			Payload:           []byte("Hello world"),
+			ExpectedVersionId: nil,
 		}},
 	}); err != nil {
 		log.Fatal().Err(err).Msg("Put operation failed")
 	} else {
 		log.Info().
 			Interface("status", res.Puts[0].Status).
-			Interface("stat", res.Puts[0].Stat).
+			Interface("version", res.Puts[0].Version).
 			Msg("Put operation completed")
 	}
 
@@ -85,7 +85,7 @@ func main(cmd *cobra.Command, args []string) {
 	} else {
 		log.Info().
 			Interface("status", res.Gets[0].Status).
-			Interface("stat", res.Gets[0].Stat).
+			Interface("version", res.Gets[0].Version).
 			Str("value", string(res.Gets[0].Payload)).
 			Msg("Get operation completed")
 	}

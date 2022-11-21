@@ -17,10 +17,10 @@ type inMemoryKVStore struct {
 }
 
 type KVEntry struct {
-	Payload []byte
-	Version uint64
-	Created uint64
-	Updated uint64
+	Payload   []byte
+	VersionId uint64
+	Created   uint64
+	Updated   uint64
 }
 
 func NewInMemoryKVStore() KeyValueStore {
@@ -36,23 +36,23 @@ func (k *inMemoryKVStore) Close() error {
 
 func (k *inMemoryKVStore) Apply(op *proto.PutOp, timestamp uint64) (KVEntry, error) {
 	old, existed := k.store[op.Key]
-	var version uint64
+	var versionId uint64
 	var created uint64
 	if existed {
 		created = old.Created
-		version = 0
+		versionId = 0
 	} else {
 		created = timestamp
-		version = old.Version
+		versionId = old.VersionId
 	}
-	if op.ExpectedVersion != nil && *op.ExpectedVersion != version {
-		return KVEntry{}, errors.Errorf("Version check (%d != %d)", *op.ExpectedVersion, version)
+	if op.ExpectedVersionId != nil && *op.ExpectedVersionId != versionId {
+		return KVEntry{}, errors.Errorf("Version check (%d != %d)", *op.ExpectedVersionId, versionId)
 	}
 	entry := KVEntry{
-		Payload: op.Payload,
-		Version: version,
-		Created: created,
-		Updated: timestamp,
+		Payload:   op.Payload,
+		VersionId: versionId,
+		Created:   created,
+		Updated:   timestamp,
 	}
 	k.store[op.Key] = entry
 	return entry, nil
