@@ -38,7 +38,7 @@ func (_ *tidwallWalFactoryFactory) NewWalFactory(t *testing.T) WalFactory {
 }
 
 func (_ *tidwallWalFactoryFactory) Name() string {
-	return "Tidwall"
+	return "Tidwall/"
 }
 
 func (_ *tidwallWalFactoryFactory) Persistent() bool {
