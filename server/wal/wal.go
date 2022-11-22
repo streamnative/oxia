@@ -35,6 +35,10 @@ func (id EntryId) LessOrEqual(other EntryId) bool {
 	return id.Epoch < other.Epoch || (id.Epoch == other.Epoch && id.Offset <= other.Offset)
 }
 
+func (id EntryId) Less(other EntryId) bool {
+	return id.Epoch < other.Epoch || (id.Epoch == other.Epoch && id.Offset < other.Offset)
+}
+
 type WalFactoryOptions struct {
 	LogDir string
 }
