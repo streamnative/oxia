@@ -1,10 +1,11 @@
 package standalone
 
 import (
-	"fmt"
 	"github.com/rs/zerolog/log"
+	"go.uber.org/multierr"
 	"os"
 	"oxia/server/kv"
+	"oxia/server/wal"
 )
 
 type standaloneConfig struct {
@@ -12,11 +13,13 @@ type standaloneConfig struct {
 	AdvertisedPublicAddress string
 	NumShards               uint32
 	DataDir                 string
+	WalDir                  string
 }
 
 type standalone struct {
-	rpc       *StandaloneRpcServer
-	kvFactory kv.KVFactory
+	rpc        *StandaloneRpcServer
+	kvFactory  kv.KVFactory
+	walFactory wal.WalFactory
 }
 
 func NewStandalone(config *standaloneConfig) (*standalone, error) {
@@ -36,13 +39,15 @@ func NewStandalone(config *standaloneConfig) (*standalone, error) {
 		advertisedPublicAddress = hostname
 	}
 
-	identityAddr := fmt.Sprintf("%s:%d", advertisedPublicAddress, config.PublicServicePort)
+	s.walFactory = wal.NewWalFactory(&wal.WalFactoryOptions{
+		LogDir: config.WalDir,
+	})
 
 	s.kvFactory = kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
 		DataDir: config.DataDir,
 	})
 
-	s.rpc, err = NewStandaloneRpcServer(int(config.PublicServicePort), identityAddr, config.NumShards, s.kvFactory)
+	s.rpc, err = NewStandaloneRpcServer(int(config.PublicServicePort), advertisedPublicAddress, config.NumShards, s.walFactory, s.kvFactory)
 	if err != nil {
 		return nil, err
 	}
@@ -51,13 +56,8 @@ func NewStandalone(config *standaloneConfig) (*standalone, error) {
 }
 
 func (s *standalone) Close() error {
-	if err := s.rpc.Close(); err != nil {
-		return err
-	}
-
-	if err := s.kvFactory.Close(); err != nil {
-		return err
-	}
-
-	return nil
+	return multierr.Combine(
+		s.rpc.Close(),
+		s.kvFactory.Close(),
+	)
 }

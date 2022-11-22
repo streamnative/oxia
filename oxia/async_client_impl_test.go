@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"oxia/server/kv"
+	"oxia/server/wal"
 	"oxia/standalone"
 	"testing"
 )
@@ -15,7 +16,10 @@ var (
 func TestAsyncClientImpl(t *testing.T) {
 	kvOptions := kv.KVFactoryOptions{InMemory: true}
 	kvFactory := kv.NewPebbleKVFactory(&kvOptions)
-	server, err := standalone.NewStandaloneRpcServer(0, "localhost", 1, kvFactory)
+	defer kvFactory.Close()
+	walFactory := wal.NewInMemoryWalFactory()
+	defer walFactory.Close()
+	server, err := standalone.NewStandaloneRpcServer(0, "localhost", 1, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	serviceAddress := fmt.Sprintf("localhost:%d", server.Container.Port())

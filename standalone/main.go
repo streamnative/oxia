@@ -19,7 +19,8 @@ var (
 
 func init() {
 	Cmd.Flags().Uint32VarP(&conf.NumShards, "shards", "s", 1, "Number of shards")
-	Cmd.Flags().StringVar(&conf.DataDir, "data-dir", "./data", "Directory where to store data")
+	Cmd.Flags().StringVar(&conf.DataDir, "data-dir", "./data/db", "Directory where to store data")
+	Cmd.Flags().StringVar(&conf.WalDir, "wal-dir", "./data/wal", "Directory for write-ahead-logs")
 	Cmd.Flags().Uint32VarP(&conf.PublicServicePort, "port", "p", 9190, "Public service port")
 	Cmd.Flags().StringVarP(&conf.AdvertisedPublicAddress, "advertised-address", "a", "", "Advertised address")
 }

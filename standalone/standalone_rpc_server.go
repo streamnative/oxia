@@ -3,62 +3,84 @@ package standalone
 import (
 	"context"
 	"fmt"
+	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc"
 	"math"
+	"oxia/common"
 	"oxia/proto"
+	"oxia/server"
 	"oxia/server/container"
 	"oxia/server/kv"
 	"oxia/server/wal"
 )
 
-// This implementation is temporary, until all the WAL changes are ready
-
 type StandaloneRpcServer struct {
 	proto.UnimplementedOxiaClientServer
 
-	identityAddr string
-	numShards    uint32
-	dbs          map[uint32]kv.DB
-	Container    *container.Container
+	advertisedPublicAddress string
+	numShards               uint32
+	kvFactory               kv.KVFactory
+	walFactory              wal.WalFactory
+	clientPool              common.ClientPool
+	Container               *container.Container
+	controllers             map[uint32]server.LeaderController
+
+	log zerolog.Logger
 }
 
-func NewStandaloneRpcServer(port int, identityAddr string, numShards uint32, kvFactory kv.KVFactory) (*StandaloneRpcServer, error) {
-	// Assuming 1 single shard
-	server := &StandaloneRpcServer{
-		identityAddr: identityAddr,
-		numShards:    numShards,
-		dbs:          make(map[uint32]kv.DB),
+func NewStandaloneRpcServer(port int, advertisedPublicAddress string, numShards uint32, walFactory wal.WalFactory, kvFactory kv.KVFactory) (*StandaloneRpcServer, error) {
+	res := &StandaloneRpcServer{
+		advertisedPublicAddress: advertisedPublicAddress,
+		numShards:               numShards,
+		walFactory:              walFactory,
+		kvFactory:               kvFactory,
+		clientPool:              common.NewClientPool(),
+		controllers:             make(map[uint32]server.LeaderController),
+		log: log.With().
+			Str("component", "standalone-rpc-server").
+			Logger(),
 	}
 
 	var err error
 	for i := uint32(0); i < numShards; i++ {
-		if server.dbs[i], err = kv.NewDB(i, kvFactory); err != nil {
+		var lc server.LeaderController
+		if lc, err = server.NewLeaderController(i,
+			server.NewReplicationRpcProvider(res.clientPool), res.walFactory, res.kvFactory); err != nil {
 			return nil, err
 		}
+
+		if _, err := lc.BecomeLeader(&proto.BecomeLeaderRequest{
+			ShardId:           i,
+			Epoch:             0,
+			ReplicationFactor: 1,
+			FollowerMaps:      make(map[string]*proto.EntryId),
+		}); err != nil {
+			return nil, err
+		}
+
+		res.controllers[i] = lc
 	}
 
-	server.Container, err = container.Start("standalone", port, func(registrar grpc.ServiceRegistrar) {
-		proto.RegisterOxiaClientServer(registrar, server)
+	res.Container, err = container.Start("standalone", port, func(registrar grpc.ServiceRegistrar) {
+		proto.RegisterOxiaClientServer(registrar, res)
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	return server, nil
+	return res, nil
 }
 
 func (s *StandaloneRpcServer) Close() error {
-	var errs error
-	if err := s.Container.Close(); err != nil {
-		errs = multierr.Append(errs, err)
+	err := s.Container.Close()
+
+	for _, c := range s.controllers {
+		err = multierr.Append(err, c.Close())
 	}
-	for _, db := range s.dbs {
-		if err := db.Close(); err != nil {
-			errs = multierr.Append(errs, err)
-		}
-	}
-	return errs
+	return err
 }
 
 func (s *StandaloneRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest, stream proto.OxiaClient_ShardAssignmentsServer) error {
@@ -71,7 +93,7 @@ func (s *StandaloneRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest,
 	for i := uint32(0); i < s.numShards; i++ {
 		res.Assignments = append(res.Assignments, &proto.ShardAssignment{
 			ShardId: i,
-			Leader:  fmt.Sprintf("%s:%d", s.identityAddr, s.Container.Port()),
+			Leader:  fmt.Sprintf("%s:%d", s.advertisedPublicAddress, s.Container.Port()),
 			ShardBoundaries: &proto.ShardAssignment_Int32HashRange{
 				Int32HashRange: &proto.Int32HashRange{
 					MinHashInclusive: i * bucketSize,
@@ -85,10 +107,19 @@ func (s *StandaloneRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest,
 }
 
 func (s *StandaloneRpcServer) Write(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error) {
-	// TODO generate an actual EntryId if needed
-	return s.dbs[*write.ShardId].ProcessWrite(write, wal.NonExistentEntryId)
+	lc, ok := s.controllers[*write.ShardId]
+	if !ok {
+		return nil, errors.New("shard not found")
+	}
+
+	return lc.Write(write)
 }
 
 func (s *StandaloneRpcServer) Read(ctx context.Context, read *proto.ReadRequest) (*proto.ReadResponse, error) {
-	return s.dbs[*read.ShardId].ProcessRead(read)
+	lc, ok := s.controllers[*read.ShardId]
+	if !ok {
+		return nil, errors.New("shard not found")
+	}
+
+	return lc.Read(read)
 }
