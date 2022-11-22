@@ -10,9 +10,59 @@ import (
 
 const shard = uint32(100)
 
-func createWal(t *testing.T) (WalFactory, Wal) {
+type walFactoryFactory interface {
+	NewWalFactory(t *testing.T) WalFactory
+	Name() string
+	Persistent() bool
+}
+
+type inMemoryWalFactoryFactory struct{}
+type tidwallWalFactoryFactory struct{}
+
+func (_ *inMemoryWalFactoryFactory) NewWalFactory(_ *testing.T) WalFactory {
+	return NewInMemoryWalFactory()
+}
+
+func (_ *inMemoryWalFactoryFactory) Name() string {
+	return "InMemory/"
+}
+
+func (_ *inMemoryWalFactoryFactory) Persistent() bool {
+	return false
+}
+
+func (_ *tidwallWalFactoryFactory) NewWalFactory(t *testing.T) WalFactory {
 	dir := t.TempDir()
 	f := NewWalFactory(&WalFactoryOptions{dir})
+	return f
+}
+
+func (_ *tidwallWalFactoryFactory) Name() string {
+	return "Tidwall"
+}
+
+func (_ *tidwallWalFactoryFactory) Persistent() bool {
+	return true
+}
+
+var walFF walFactoryFactory = &inMemoryWalFactoryFactory{}
+
+func TestWal(t *testing.T) {
+	for _, f := range []walFactoryFactory{&inMemoryWalFactoryFactory{}, &tidwallWalFactoryFactory{}} {
+		walFF = f
+		t.Run(f.Name()+"Factory_NewWal", Factory_NewWal)
+		t.Run(f.Name()+"Append", Append)
+		t.Run(f.Name()+"Truncate", Truncate)
+		if f.Persistent() {
+			t.Run(f.Name()+"Reopen", Reopen)
+		}
+
+	}
+
+}
+
+func createWal(t *testing.T) (WalFactory, Wal) {
+	f := walFF.NewWalFactory(t)
 	w, err := f.NewWal(shard)
 	assert.NoError(t, err)
 
@@ -30,7 +80,7 @@ func assertReaderReads(t *testing.T, r WalReader, entries []string) {
 	assert.False(t, r.HasNext())
 }
 
-func assertReaderReadsEventually(t *testing.T, r WalReader, entries []string) chan error {
+func assertReaderReadsEventually(r WalReader, entries []string) chan error {
 	ch := make(chan error)
 	go func() {
 		for i := 0; i < len(entries); i++ {
@@ -48,7 +98,7 @@ func assertReaderReadsEventually(t *testing.T, r WalReader, entries []string) ch
 	return ch
 }
 
-func TestFactory_NewWal(t *testing.T) {
+func Factory_NewWal(t *testing.T) {
 	f, w := createWal(t)
 	rr, err := w.NewReverseReader()
 	assert.NoError(t, err)
@@ -64,7 +114,7 @@ func TestFactory_NewWal(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestAppend(t *testing.T) {
+func Append(t *testing.T) {
 	f, w := createWal(t)
 
 	// Append entries
@@ -102,7 +152,7 @@ func TestAppend(t *testing.T) {
 	// Read with forward reader waiting for new entries
 	fr, err = w.NewReader(EntryId{1, 0})
 	assert.NoError(t, err)
-	ch := assertReaderReadsEventually(t, fr, []string{"B", "C", "D"})
+	ch := assertReaderReadsEventually(fr, []string{"B", "C", "D"})
 
 	err = w.Append(&proto.LogEntry{
 		EntryId: &proto.EntryId{
@@ -134,7 +184,7 @@ func TestAppend(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestTruncate(t *testing.T) {
+func Truncate(t *testing.T) {
 	f, w := createWal(t)
 
 	// Append entries
@@ -168,7 +218,7 @@ func TestTruncate(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestReopen(t *testing.T) {
+func Reopen(t *testing.T) {
 	f, w := createWal(t)
 
 	// Append entries

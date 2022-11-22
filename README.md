@@ -22,6 +22,10 @@ make test
 make docker
 ```
 
+### IDE settings
+Make sure to add `testing` tag to your compiler settings. This will add files with `//go:build testing` to the compile path.
+In GoLand you can do that by adding `testing` in `Preferences`/`Go`/`Build Tags & Vendoring`/`Custom tags` *and* adding `--tags testing` to `Run`/`Edit Configurations...`/`Edit configuration templates`/`Go Test`/`Go tool arguments`.
+
 [snip]: https://streamnative.slab.com/public/posts/snip-18-scalable-metadata-service-03fw44kd
 [overview]: docs/Scalable%20Metadata%20Service.md
 [rep]: tlaplus/REPLICATION_PROTOCOL.md

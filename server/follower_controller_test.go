@@ -16,7 +16,7 @@ var testKVOptions = &kv.KVFactoryOptions{
 }
 
 func newInMemoryWal(shardId uint32) wal.Wal {
-	f, _ := NewInMemoryWalFactory().NewWal(shardId)
+	f, _ := w.NewInMemoryWalFactory().NewWal(shardId)
 	return f
 }
 
@@ -91,7 +91,7 @@ func TestFollower(t *testing.T) {
 	assert.EqualValues(t, 1, fc.Epoch())
 
 	// Try to add entry with higher epoch. This should succeed
-	stream.AddRequest(createAddRequest(t, 3, 0, map[string]string{"a": "4", "b": "5"}, &proto.EntryId{
+	stream.AddRequest(createAddRequest(t, 3, 1, map[string]string{"a": "4", "b": "5"}, &proto.EntryId{
 		Epoch:  0,
 		Offset: 0,
 	}))
@@ -99,7 +99,7 @@ func TestFollower(t *testing.T) {
 	// Wait for response
 	response = stream.GetResponse()
 	assert.EqualValues(t, 3, response.Epoch)
-	assert.Equal(t, w.EntryIdFromProto(&proto.EntryId{Epoch: 3, Offset: 0}), w.EntryIdFromProto(response.EntryId))
+	assert.Equal(t, w.EntryIdFromProto(&proto.EntryId{Epoch: 3, Offset: 1}), w.EntryIdFromProto(response.EntryId))
 	assert.False(t, response.InvalidEpoch)
 
 	assert.Equal(t, Follower, fc.Status())
