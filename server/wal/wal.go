@@ -79,4 +79,6 @@ type Wal interface {
 	NewReader(after EntryId) (WalReader, error)
 	// NewReverseReader returns a new WalReader to traverse the log from the last entry towards the beginning
 	NewReverseReader() (WalReader, error)
+
+	LastEntry() EntryId
 }

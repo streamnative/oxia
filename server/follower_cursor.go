@@ -203,6 +203,11 @@ func (fc *followerCursor) receiveAcks(stream proto.OxiaLogReplication_AddEntries
 			return
 		}
 
+		if res == nil {
+			// Stream was closed by server side
+			return
+		}
+
 		if res.InvalidEpoch {
 			fc.log.Error().Err(err).
 				Msg("Invalid epoch")

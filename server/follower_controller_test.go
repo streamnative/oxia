@@ -6,7 +6,6 @@ import (
 	"oxia/proto"
 	"oxia/server/kv"
 	"oxia/server/wal"
-	w "oxia/server/wal"
 	"testing"
 )
 
@@ -15,17 +14,12 @@ var testKVOptions = &kv.KVFactoryOptions{
 	CacheSize: 10 * 1024,
 }
 
-func newInMemoryWal(shardId uint32) wal.Wal {
-	f, _ := NewInMemoryWalFactory().NewWal(shardId)
-	return f
-}
-
 func TestFollower(t *testing.T) {
 	var shardId uint32
 	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
-	wal := newInMemoryWal(shardId)
+	walFactory := NewInMemoryWalFactory()
 
-	fc, err := NewFollowerController(shardId, wal, kvFactory)
+	fc, err := NewFollowerController(shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.Equal(t, NotMember, fc.Status())
@@ -47,10 +41,10 @@ func TestFollower(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.EqualValues(t, 1, truncateResp.Epoch)
-	assert.Equal(t, w.EntryIdFromProto(&proto.EntryId{
+	assert.Equal(t, wal.EntryIdFromProto(&proto.EntryId{
 		Epoch:  0,
 		Offset: 0,
-	}), w.EntryIdFromProto(truncateResp.HeadIndex))
+	}), wal.EntryIdFromProto(truncateResp.HeadIndex))
 
 	assert.Equal(t, Follower, fc.Status())
 
@@ -69,10 +63,10 @@ func TestFollower(t *testing.T) {
 	assert.Equal(t, Follower, fc.Status())
 
 	assert.EqualValues(t, 1, response.Epoch)
-	assert.Equal(t, w.EntryIdFromProto(&proto.EntryId{
+	assert.Equal(t, wal.EntryIdFromProto(&proto.EntryId{
 		Epoch:  1,
 		Offset: 0,
-	}), w.EntryIdFromProto(response.EntryId))
+	}), wal.EntryIdFromProto(response.EntryId))
 	assert.False(t, response.InvalidEpoch)
 
 	// Try to add entry with lower epoch
@@ -99,7 +93,7 @@ func TestFollower(t *testing.T) {
 	// Wait for response
 	response = stream.GetResponse()
 	assert.EqualValues(t, 3, response.Epoch)
-	assert.Equal(t, w.EntryIdFromProto(&proto.EntryId{Epoch: 3, Offset: 0}), w.EntryIdFromProto(response.EntryId))
+	assert.Equal(t, wal.EntryIdFromProto(&proto.EntryId{Epoch: 3, Offset: 0}), wal.EntryIdFromProto(response.EntryId))
 	assert.False(t, response.InvalidEpoch)
 
 	assert.Equal(t, Follower, fc.Status())
@@ -121,14 +115,15 @@ func TestFollower(t *testing.T) {
 
 	assert.NoError(t, fc.Close())
 	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
 }
 
 func TestReadingUpToCommitIndex(t *testing.T) {
 	var shardId uint32
 	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
-	wal := newInMemoryWal(shardId)
+	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 
-	fc, err := NewFollowerController(shardId, wal, kvFactory)
+	fc, err := NewFollowerController(shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	_, err = fc.Fence(&proto.FenceRequest{Epoch: 1})
@@ -168,25 +163,25 @@ func TestReadingUpToCommitIndex(t *testing.T) {
 			Offset: 0,
 		}))
 
-	// Wait for responses
+	// Wait for addEntryResponses
 	r1 := stream.GetResponse()
 
 	assert.Equal(t, Follower, fc.Status())
 
 	assert.EqualValues(t, 1, r1.Epoch)
-	assert.Equal(t, w.EntryIdFromProto(&proto.EntryId{
+	assert.Equal(t, wal.EntryIdFromProto(&proto.EntryId{
 		Epoch:  1,
 		Offset: 0,
-	}), w.EntryIdFromProto(r1.EntryId))
+	}), wal.EntryIdFromProto(r1.EntryId))
 	assert.False(t, r1.InvalidEpoch)
 
 	r2 := stream.GetResponse()
 
 	assert.EqualValues(t, 1, r2.Epoch)
-	assert.Equal(t, w.EntryIdFromProto(&proto.EntryId{
+	assert.Equal(t, wal.EntryIdFromProto(&proto.EntryId{
 		Epoch:  1,
 		Offset: 1,
-	}), w.EntryIdFromProto(r2.EntryId))
+	}), wal.EntryIdFromProto(r2.EntryId))
 	assert.False(t, r2.InvalidEpoch)
 
 	dbRes, err := fc.(*followerController).db.ProcessRead(&proto.ReadRequest{Gets: []*proto.GetRequest{{
@@ -206,14 +201,15 @@ func TestReadingUpToCommitIndex(t *testing.T) {
 
 	assert.NoError(t, fc.Close())
 	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
 }
 
 func TestEpochInStateChanges(t *testing.T) {
 	var shardId uint32
 	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
-	wal := newInMemoryWal(shardId)
+	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 
-	fc, err := NewFollowerController(shardId, wal, kvFactory)
+	fc, err := NewFollowerController(shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	stream := newMockServerAddEntriesStream()
@@ -256,14 +252,15 @@ func TestEpochInStateChanges(t *testing.T) {
 
 	assert.NoError(t, fc.Close())
 	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
 }
 
 func TestIgnoreInvalidStates(t *testing.T) {
 	var shardId uint32
 	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
-	wal := newInMemoryWal(shardId)
+	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 
-	fc, err := NewFollowerController(shardId, wal, kvFactory)
+	fc, err := NewFollowerController(shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	// Follower needs to be in "Fenced" state to receive a Truncate request
@@ -280,6 +277,7 @@ func TestIgnoreInvalidStates(t *testing.T) {
 
 	assert.NoError(t, fc.Close())
 	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
 }
 
 func createAddRequest(t *testing.T, epoch uint64, offset uint64,

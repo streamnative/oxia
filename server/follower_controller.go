@@ -31,7 +31,7 @@ type FollowerController interface {
 	//
 	// When a node is fenced it cannot:
 	// - accept any writes from a client.
-	// - accept add entry requests from a leader.
+	// - accept add entry addEntryRequests from a leader.
 	// - send any entries to followers if it was a leader.
 	//
 	// Any existing follow cursors are destroyed as is any state
@@ -66,19 +66,24 @@ type followerController struct {
 	log         zerolog.Logger
 }
 
-func NewFollowerController(shardId uint32, w wal.Wal, kvFactory kv.KVFactory) (FollowerController, error) {
+func NewFollowerController(shardId uint32, wf wal.WalFactory, kvFactory kv.KVFactory) (FollowerController, error) {
 	fc := &followerController{
 		shardId:     shardId,
 		epoch:       0,
 		commitIndex: wal.EntryId{},
 		headIndex:   wal.EntryId{},
 		status:      NotMember,
-		wal:         w,
 		closing:     false,
 		log: log.With().
 			Str("component", "follower-controller").
 			Uint32("shard", shardId).
 			Logger(),
+	}
+
+	if wal, err := wf.NewWal(shardId); err != nil {
+		return nil, err
+	} else {
+		fc.wal = wal
 	}
 
 	if db, err := kv.NewDB(shardId, kvFactory); err != nil {

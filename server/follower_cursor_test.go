@@ -12,7 +12,7 @@ func TestFollowerCursor(t *testing.T) {
 	var epoch uint64 = 1
 	var shard uint32 = 2
 
-	stream := newMockClientAddEntriesStream()
+	stream := newMockRpcClient()
 	ackTracker := NewQuorumAckTracker(3, wal.EntryId{Epoch: 0, Offset: 0})
 	wf := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 	w, err := wf.NewWal(shard)
@@ -25,9 +25,8 @@ func TestFollowerCursor(t *testing.T) {
 	assert.Equal(t, wal.EntryId{}, fc.AckIndex())
 
 	err = w.Append(&proto.LogEntry{
-		EntryId:   &proto.EntryId{Epoch: 1, Offset: 0},
-		Value:     []byte("v1"),
-		Timestamp: 0,
+		EntryId: &proto.EntryId{Epoch: 1, Offset: 0},
+		Value:   []byte("v1"),
 	})
 	assert.NoError(t, err)
 
@@ -43,11 +42,11 @@ func TestFollowerCursor(t *testing.T) {
 	assert.Equal(t, wal.EntryId{}, fc.AckIndex())
 
 	// The follower is acking back
-	req := <-stream.requests
+	req := <-stream.addEntryReqs
 	assert.EqualValues(t, 1, req.Epoch)
 	assert.Equal(t, &proto.EntryId{Epoch: 0, Offset: 0}, req.CommitIndex)
 
-	stream.responses <- &proto.AddEntryResponse{
+	stream.addEntryResps <- &proto.AddEntryResponse{
 		Epoch:        1,
 		EntryId:      &proto.EntryId{Epoch: 1, Offset: 0},
 		InvalidEpoch: false,
@@ -61,9 +60,8 @@ func TestFollowerCursor(t *testing.T) {
 
 	// Next entry should carry the correct commit index
 	err = w.Append(&proto.LogEntry{
-		EntryId:   &proto.EntryId{Epoch: 1, Offset: 1},
-		Value:     []byte("v2"),
-		Timestamp: 0,
+		EntryId: &proto.EntryId{Epoch: 1, Offset: 1},
+		Value:   []byte("v2"),
 	})
 	assert.NoError(t, err)
 
@@ -78,7 +76,7 @@ func TestFollowerCursor(t *testing.T) {
 
 	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 0}, fc.AckIndex())
 
-	req = <-stream.requests
+	req = <-stream.addEntryReqs
 	assert.EqualValues(t, 1, req.Epoch)
 	assert.EqualValues(t, 1, req.Entry.EntryId.Epoch)
 	assert.EqualValues(t, 1, req.Entry.EntryId.Offset)

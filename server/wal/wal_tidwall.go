@@ -53,9 +53,8 @@ func newTidwallWal(shard uint32, dir string) (Wal, error) {
 	if lastIndex == 0 {
 		// If this is a new log, we need to add an entry to it, because a full truncation is not allowed
 		entry := &proto.LogEntry{
-			EntryId:   &proto.EntryId{},
-			Value:     []byte("oxia"),
-			Timestamp: 20230331,
+			EntryId: &proto.EntryId{},
+			Value:   []byte("oxia"),
 		}
 		val, err := pb.Marshal(entry)
 		if err != nil {
@@ -92,6 +91,10 @@ func readAtIndex(log *tidwall.Log, index uint64) (*proto.LogEntry, error) {
 		return nil, err
 	}
 	return entry, nil
+}
+
+func (t *tidwallWal) LastEntry() EntryId {
+	return EntryIdFromProto(t.lastEntryId)
 }
 
 func (t *tidwallWal) Close() error {

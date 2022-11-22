@@ -65,7 +65,10 @@ func (r *forwardReader) Close() error {
 	r.wal.Lock()
 	defer r.wal.Unlock()
 	r.closed = true
-	close(r.Channel())
+	if r.channel != nil {
+		close(r.Channel())
+		r.channel = nil
+	}
 	delete(r.wal.readers, r.id)
 	return nil
 }
@@ -95,7 +98,10 @@ func (r *forwardReader) ReadNext() (*proto.LogEntry, error) {
 		return nil, wal.ErrorReaderClosed
 	}
 	for r.nextOffset >= r.maxOffsetExclusive {
+
+		r.wal.Unlock()
 		update, more := <-r.channel
+		r.wal.Lock()
 		if !more {
 			return nil, wal.ErrorReaderClosed
 		} else {
@@ -198,6 +204,14 @@ func (w *inMemoryWal) NewReverseReader() (wal.WalReader, error) {
 	return r, nil
 }
 
+func (w *inMemoryWal) LastEntry() wal.EntryId {
+	if len(w.log) == 0 {
+		return wal.EntryId{}
+	}
+
+	return wal.EntryIdFromProto(w.log[len(w.log)-1].EntryId)
+}
+
 func (w *inMemoryWal) Append(entry *proto.LogEntry) error {
 	w.Lock()
 	defer w.Unlock()
@@ -219,6 +233,7 @@ func (w *inMemoryWal) closeReaders() error {
 			log.Error().Err(err).Msg("Error closing reader")
 		}
 	}
+
 	w.readers = make(map[int]updatableReader, 10000)
 	return nil
 }
