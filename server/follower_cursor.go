@@ -7,7 +7,6 @@ import (
 	"oxia/proto"
 	"oxia/server/wal"
 	"sync"
-	"sync/atomic"
 )
 
 // AddEntriesStreamProvider
@@ -45,7 +44,7 @@ type followerCursor struct {
 	lastPushed  wal.EntryId
 	ackIndex    wal.EntryId
 
-	closed atomic.Bool
+	closed bool
 	log    zerolog.Logger
 }
 
@@ -89,7 +88,7 @@ func (fc *followerCursor) Close() error {
 	fc.Lock()
 	defer fc.Unlock()
 
-	fc.closed.Store(true)
+	fc.closed = true
 
 	if fc.stream != nil {
 		return fc.stream.CloseSend()
@@ -111,7 +110,15 @@ func (fc *followerCursor) AckIndex() wal.EntryId {
 }
 
 func (fc *followerCursor) run() {
-	for !fc.closed.Load() {
+	for {
+		fc.Lock()
+		closed := fc.closed
+		fc.Unlock()
+
+		if closed {
+			return
+		}
+
 		if err := fc.runOnce(); err != nil {
 			fc.log.Error().Err(err).
 				Msg("Error while pushing entries to follower")
@@ -143,7 +150,15 @@ func (fc *followerCursor) runOnce() error {
 		Interface("ack-index", currentEntry).
 		Msg("Successfully attached cursor follower")
 
-	for !fc.closed.Load() {
+	for {
+		fc.Lock()
+		closed := fc.closed
+		fc.Unlock()
+
+		if closed {
+			return nil
+		}
+
 		if !reader.HasNext() {
 			// We have reached the head of the wal
 			// Wait for more entries to be written
@@ -174,8 +189,6 @@ func (fc *followerCursor) runOnce() error {
 		currentEntry = fc.lastPushed
 		fc.Unlock()
 	}
-
-	return nil
 }
 
 func (fc *followerCursor) receiveAcks(stream proto.OxiaLogReplication_AddEntriesClient) {
