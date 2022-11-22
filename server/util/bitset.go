@@ -5,6 +5,8 @@ import (
 	"math/bits"
 )
 
+const MaxBitSetSize = 16
+
 // BitSet
 // Simplified and compact bitset
 type BitSet struct {
@@ -16,7 +18,7 @@ func (bs *BitSet) Count() int {
 }
 
 func (bs *BitSet) Set(idx int) {
-	if idx < 0 || idx >= 16 {
+	if idx < 0 || idx >= MaxBitSetSize {
 		panic(fmt.Sprintf("invalid index: %d", idx))
 	}
 	bs.bits |= 1 << idx

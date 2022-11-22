@@ -65,7 +65,7 @@ type cursorAcker struct {
 func NewQuorumAckTracker(replicationFactor uint32, headIndex wal.EntryId) QuorumAckTracker {
 	q := &quorumAckTracker{
 		// Ack quorum is number of follower acks that are required to consider the entry fully committed
-		// We are suing RF/2 (and not RF/2 + 1) because the leader is already storing 1 copy locally
+		// We are using RF/2 (and not RF/2 + 1) because the leader is already storing 1 copy locally
 		requiredAcks:      replicationFactor / 2,
 		replicationFactor: replicationFactor,
 		headIndex:         headIndex,
