@@ -4,7 +4,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"io"
-	"oxia/common"
 	"oxia/proto"
 	"oxia/server/wal"
 	"sync"
@@ -45,7 +44,6 @@ type followerCursor struct {
 	wal         wal.Wal
 	lastPushed  wal.EntryId
 	ackIndex    wal.EntryId
-	clientPool  common.ClientPool
 
 	closed atomic.Bool
 	log    zerolog.Logger
@@ -186,14 +184,20 @@ func (fc *followerCursor) receiveAcks(stream proto.OxiaLogReplication_AddEntries
 		if err != nil {
 			fc.log.Warn().Err(err).
 				Msg("Error while receiving acks")
-			stream.CloseSend()
+			if err := stream.CloseSend(); err != nil {
+				fc.log.Warn().Err(err).
+					Msg("Error while closing stream")
+			}
 			return
 		}
 
 		if res.InvalidEpoch {
 			fc.log.Error().Err(err).
 				Msg("Invalid epoch")
-			stream.CloseSend()
+			if err := stream.CloseSend(); err != nil {
+				fc.log.Warn().Err(err).
+					Msg("Error while closing stream")
+			}
 			return
 		}
 
