@@ -167,7 +167,6 @@ func (fc *followerCursor) runOnce() error {
 				Offset: currentEntry.Offset + 1,
 			})
 
-			//fmt.Printf("Waiting for offset %d -- DONE\n", currentEntry.Offset+1)
 			continue
 		}
 
