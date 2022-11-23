@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/spf13/cobra"
 	"os"
-	"oxia/client"
+	"oxia/cmd/client"
 	"oxia/common"
 	"oxia/operator"
 	"oxia/server"
@@ -20,13 +20,11 @@ var (
 )
 
 func init() {
-	//rootCmd.PersistentFlags().StringVarP(&userLicense, "license", "l", "", "name of license for the project")
 	rootCmd.PersistentFlags().BoolVarP(&common.LogDebug, "log-debug", "d", false, "Enable debug logs")
 	rootCmd.PersistentFlags().BoolVarP(&common.LogJson, "log-json", "j", false, "Print logs in JSON format")
-
-	rootCmd.AddCommand(server.Cmd)
-	rootCmd.AddCommand(operator.Cmd)
 	rootCmd.AddCommand(client.Cmd)
+	rootCmd.AddCommand(operator.Cmd)
+	rootCmd.AddCommand(server.Cmd)
 	rootCmd.AddCommand(standalone.Cmd)
 }
 

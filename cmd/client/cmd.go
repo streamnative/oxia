@@ -1,0 +1,36 @@
+package client
+
+import (
+	"github.com/spf13/cobra"
+	"oxia/cmd/client/delete"
+	"oxia/cmd/client/get"
+	"oxia/cmd/client/list"
+	"oxia/cmd/client/put"
+	"oxia/oxia"
+	"time"
+)
+
+var (
+	serviceAddr            string
+	batchLingerMs          int64
+	maxRequestsPerBatch    int
+	batchRequestTimeoutSec int64
+
+	Cmd = &cobra.Command{
+		Use:   "client",
+		Short: "Read/Write records",
+		Long:  `Operations to get, create, delete, and modify key-value records in an oxia cluster`,
+	}
+)
+
+func init() {
+	Cmd.Flags().StringVarP(&serviceAddr, "service-address", "a", "localhost:9190", "Service address")
+	Cmd.Flags().Int64Var(&batchLingerMs, "batch-linger", int64(oxia.DefaultBatchLinger/time.Millisecond), "Batch linger in milliseconds")
+	Cmd.Flags().IntVar(&maxRequestsPerBatch, "max-requests-per-batch", oxia.DefaultMaxRequestsPerBatch, "Maximum requests per batch")
+	Cmd.Flags().Int64Var(&batchRequestTimeoutSec, "batch-request-timeout", int64(oxia.DefaultBatchRequestTimeout/time.Second), "Batch timeout in seconds")
+
+	Cmd.AddCommand(put.Cmd)
+	Cmd.AddCommand(delete.Cmd)
+	Cmd.AddCommand(get.Cmd)
+	Cmd.AddCommand(list.Cmd)
+}
