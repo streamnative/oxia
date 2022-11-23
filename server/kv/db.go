@@ -1,6 +1,7 @@
 package kv
 
 import (
+	"fmt"
 	"github.com/pkg/errors"
 	"io"
 	"oxia/common"
@@ -20,9 +21,9 @@ var (
 type DB interface {
 	io.Closer
 
-	ProcessWrite(b *proto.WriteRequest, commitIndex *proto.EntryId) (*proto.WriteResponse, error)
+	ProcessWrite(b *proto.WriteRequest, commitIndex int64) (*proto.WriteResponse, error)
 	ProcessRead(b *proto.ReadRequest) (*proto.ReadResponse, error)
-	ReadCommitIndex() (*proto.EntryId, error)
+	ReadCommitIndex() (int64, error)
 }
 
 func NewDB(shardId uint32, factory KVFactory) (DB, error) {
@@ -44,7 +45,7 @@ func (d *db) Close() error {
 	return d.kv.Close()
 }
 
-func (d *db) ProcessWrite(b *proto.WriteRequest, commitIndex *proto.EntryId) (*proto.WriteResponse, error) {
+func (d *db) ProcessWrite(b *proto.WriteRequest, commitIndex int64) (*proto.WriteResponse, error) {
 	res := &proto.WriteResponse{}
 
 	batch := d.kv.NewWriteBatch()
@@ -87,12 +88,9 @@ func (d *db) ProcessWrite(b *proto.WriteRequest, commitIndex *proto.EntryId) (*p
 	return res, nil
 }
 
-func (d *db) addCommitIndex(commitIndex *proto.EntryId, batch WriteBatch) error {
-	commitIndexPayload, err := pb.Marshal(commitIndex)
-	if err != nil {
-		return err
-	}
-	_, err = applyPut(batch, &proto.PutRequest{
+func (d *db) addCommitIndex(commitIndex int64, batch WriteBatch) error {
+	commitIndexPayload := []byte(fmt.Sprintf("%d", commitIndex))
+	_, err := applyPut(batch, &proto.PutRequest{
 		Key:             commitIndexKey,
 		Payload:         commitIndexPayload,
 		ExpectedVersion: nil,
@@ -103,11 +101,8 @@ func (d *db) addCommitIndex(commitIndex *proto.EntryId, batch WriteBatch) error 
 func (d *db) ProcessRead(b *proto.ReadRequest) (*proto.ReadResponse, error) {
 	res := &proto.ReadResponse{}
 
-	//TODO Implement a ReadBatch to guarantee read consistency
-	kv := d.kv
-
 	for _, getReq := range b.Gets {
-		if gr, err := applyGet(kv, getReq); err != nil {
+		if gr, err := applyGet(d.kv, getReq); err != nil {
 			return nil, err
 		} else {
 			res.Gets = append(res.Gets, gr)
@@ -115,7 +110,7 @@ func (d *db) ProcessRead(b *proto.ReadRequest) (*proto.ReadResponse, error) {
 	}
 
 	for _, getRangeReq := range b.GetRanges {
-		if gr, err := applyGetRange(kv, getRangeReq); err != nil {
+		if gr, err := applyGetRange(d.kv, getRangeReq); err != nil {
 			return nil, err
 		} else {
 			res.GetRanges = append(res.GetRanges, gr)
@@ -125,7 +120,7 @@ func (d *db) ProcessRead(b *proto.ReadRequest) (*proto.ReadResponse, error) {
 	return res, nil
 }
 
-func (d *db) ReadCommitIndex() (*proto.EntryId, error) {
+func (d *db) ReadCommitIndex() (int64, error) {
 	kv := d.kv
 
 	getReq := &proto.GetRequest{
@@ -134,17 +129,17 @@ func (d *db) ReadCommitIndex() (*proto.EntryId, error) {
 	}
 	gr, err := applyGet(kv, getReq)
 	if err != nil {
-		return nil, err
+		return wal.InvalidOffset, err
 	}
 	if gr.Status == proto.Status_KEY_NOT_FOUND {
-		return wal.NonExistentEntryId, nil
+		return wal.InvalidOffset, nil
 	}
-	entryId := &proto.EntryId{}
-	err = pb.Unmarshal(gr.Payload, entryId)
-	if err != nil {
-		return nil, err
+
+	var commitIndex int64
+	if _, err = fmt.Sscanf(string(gr.Payload), "%d", &commitIndex); err != nil {
+		return wal.InvalidOffset, err
 	}
-	return entryId, nil
+	return commitIndex, nil
 }
 
 func applyPut(batch WriteBatch, putReq *proto.PutRequest) (*proto.PutResponse, error) {
