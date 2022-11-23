@@ -31,7 +31,7 @@ type FollowerController interface {
 	//
 	// When a node is fenced it cannot:
 	// - accept any writes from a client.
-	// - accept add entry addEntryRequests from a leader.
+	// - accept addEntryRequests from a leader.
 	// - send any entries to followers if it was a leader.
 	//
 	// Any existing follow cursors are destroyed as is any state
