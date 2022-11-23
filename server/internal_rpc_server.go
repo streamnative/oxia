@@ -13,21 +13,27 @@ import (
 )
 
 const (
-	metadataShardId = "shard-id"
+	metadataShardId = "shardAssignment-id"
 )
 
 type internalRpcServer struct {
 	proto.UnimplementedOxiaControlServer
 	proto.UnimplementedOxiaLogReplicationServer
-	shardsDirector ShardsDirector
+	shardsDirector       ShardsDirector
+	assignmentDispatcher ShardAssignmentsDispatcher
 
 	grpcServer *grpc.Server
 	log        zerolog.Logger
 }
 
-func newCoordinationRpcServer(port int, advertisedInternalAddress string, shardsDirector ShardsDirector) (*internalRpcServer, error) {
+func newCoordinationRpcServer(
+	port int,
+	advertisedInternalAddress string,
+	shardsDirector ShardsDirector,
+	assignmentDispatcher ShardAssignmentsDispatcher) (*internalRpcServer, error) {
 	res := &internalRpcServer{
-		shardsDirector: shardsDirector,
+		shardsDirector:       shardsDirector,
+		assignmentDispatcher: assignmentDispatcher,
 		log: log.With().
 			Str("component", "coordination-rpc-server").
 			Logger(),
@@ -57,7 +63,11 @@ func newCoordinationRpcServer(port int, advertisedInternalAddress string, shards
 
 func (s *internalRpcServer) Close() error {
 	s.grpcServer.GracefulStop()
-	return nil
+	return s.assignmentDispatcher.Close()
+}
+
+func (s *internalRpcServer) ShardAssignment(srv proto.OxiaControl_ShardAssignmentServer) error {
+	return s.assignmentDispatcher.ShardAssignment(srv)
 }
 
 func (s *internalRpcServer) Fence(c context.Context, req *proto.FenceRequest) (*proto.FenceResponse, error) {
@@ -94,7 +104,7 @@ func (s *internalRpcServer) AddEntries(srv proto.OxiaLogReplication_AddEntriesSe
 	// as a property in the metadata
 	md, ok := metadata.FromIncomingContext(srv.Context())
 	if !ok {
-		return errors.New("shard id is not set in the request metadata")
+		return errors.New("shardAssignment id is not set in the request metadata")
 	}
 
 	shardId, err := readHeaderUint32(md, metadataShardId)

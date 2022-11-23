@@ -19,8 +19,9 @@ type server struct {
 	*internalRpcServer
 	*PublicRpcServer
 
-	shardsDirector ShardsDirector
-	clientPool     common.ClientPool
+	shardAssignmentDispatcher ShardAssignmentsDispatcher
+	shardsDirector            ShardsDirector
+	clientPool                common.ClientPool
 }
 
 func NewServer(config *serverConfig) (*server, error) {
@@ -49,13 +50,14 @@ func NewServer(config *serverConfig) (*server, error) {
 
 	identityAddr := fmt.Sprintf("%s:%d", advertisedInternalAddress, config.InternalServicePort)
 	s.shardsDirector = NewShardsDirector(identityAddr)
+	s.shardAssignmentDispatcher = NewShardAssignmentDispatcher()
 
-	s.internalRpcServer, err = newCoordinationRpcServer(config.InternalServicePort, advertisedInternalAddress, s.shardsDirector)
+	s.internalRpcServer, err = newCoordinationRpcServer(config.InternalServicePort, advertisedInternalAddress, s.shardsDirector, s.shardAssignmentDispatcher)
 	if err != nil {
 		return nil, err
 	}
 
-	s.PublicRpcServer, err = NewPublicRpcServer(config.PublicServicePort, advertisedPublicAddress, s.shardsDirector)
+	s.PublicRpcServer, err = NewPublicRpcServer(config.PublicServicePort, advertisedPublicAddress, s.shardsDirector, s.shardAssignmentDispatcher)
 	if err != nil {
 		return nil, err
 	}

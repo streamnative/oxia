@@ -11,7 +11,7 @@ import (
 var ErrorTooManyCursors = errors.New("too many cursors")
 
 // QuorumAckTracker
-// The QuorumAckTracker is responsible for keeping track of the head index and commit index of a shard
+// The QuorumAckTracker is responsible for keeping track of the head index and commit index of a shardAssignment
 //   - Head index: the last entry written in the local WAL of the leader
 //   - Commit index: the oldest entry that is considered "fully committed", as it has received the requested amount
 //     of acks from the followers

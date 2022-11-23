@@ -86,9 +86,9 @@ func (s *shardsDirector) GetManager(shardId uint32, create bool) (ShardManager, 
 		return sm, nil
 	} else {
 		s.log.Debug().
-			Uint32("shard", shardId).
-			Msg("This node is not hosting shard")
-		return nil, errors.Errorf("This node is not leader for shard %d", shardId)
+			Uint32("shardAssignment", shardId).
+			Msg("This node is not hosting shardAssignment")
+		return nil, errors.Errorf("This node is not leader for shardAssignment %d", shardId)
 	}
 
 }
@@ -101,7 +101,7 @@ func (s *shardsDirector) Close() error {
 		if err := manager.Close(); err != nil {
 			s.log.Error().
 				Err(err).
-				Uint32("shard", shard).
+				Uint32("shardAssignment", shard).
 				Msg("Failed to shutdown leader controller")
 		}
 	}

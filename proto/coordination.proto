@@ -6,6 +6,8 @@ option go_package = "github.com/streamnative/oxia/proto";
 
 // controller -> node
 service OxiaControl {
+  rpc ShardAssignment(stream CoordinationShardAssignmentRequest) returns (stream CoordinationShardAssignmentResponse) {}
+
   rpc Fence(FenceRequest) returns (FenceResponse);
   rpc BecomeLeader(BecomeLeaderRequest) returns (BecomeLeaderResponse) {}
   rpc AddFollower(AddFollowerRequest) returns (CoordinationEmpty) {}
@@ -94,3 +96,49 @@ message AddEntryResponse {
   EntryId entry_id = 2;
   bool invalid_epoch = 3;
 }
+
+// Shard assignment
+
+message CoordinationShardAssignmentRequest {
+  repeated CoordinationShardAssignment assignments = 1;
+  CoordinationShardKeyRouter shard_key_router = 2;
+
+}
+
+message CoordinationShardAssignmentResponse {
+
+}
+
+/**
+ * The assignment of a shard to a server.
+ */
+message CoordinationShardAssignment {
+  // The shard id
+  uint32 shard_id = 1;
+
+  // The shard leader, e.g. `host:port`
+  string leader = 2;
+
+  // There could be multiple ways to describe the boundaries of a shard
+  oneof shard_boundaries {
+    CoordinationInt32HashRange int32_hash_range = 3;
+  }
+}
+
+enum CoordinationShardKeyRouter {
+  UNKNOWN = 0;
+
+  XXHASH3 = 1;
+}
+
+/**
+ * Represents a range of hash values [min, max)
+ */
+message CoordinationInt32HashRange {
+  // The minimum inclusive hash that the shard can contain
+  fixed32 min_hash_inclusive = 1;
+
+  // The maximum exclusive hash that the shard can contain
+  fixed32 max_hash_exclusive = 2;
+}
+

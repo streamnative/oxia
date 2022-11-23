@@ -7,9 +7,9 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
-	"math"
 	"net"
 	"oxia/proto"
+	"oxia/server"
 	"oxia/server/kv"
 	"oxia/server/wal"
 )
@@ -19,12 +19,12 @@ import (
 type StandaloneRpcServer struct {
 	proto.UnimplementedOxiaClientServer
 
-	identityAddr string
-	port         int
-	numShards    uint32
-	dbs          map[uint32]kv.DB
-	grpcServer   *grpc.Server
-	log          zerolog.Logger
+	identityAddr          string
+	port                  int
+	dbs                   map[uint32]kv.DB
+	grpcServer            *grpc.Server
+	log                   zerolog.Logger
+	assignmentsDispatcher server.ShardAssignmentsDispatcher
 }
 
 func NewStandaloneRpcServer(port int, identityAddr string, numShards uint32, kvFactory kv.KVFactory) (*StandaloneRpcServer, error) {
@@ -36,12 +36,12 @@ func NewStandaloneRpcServer(port int, identityAddr string, numShards uint32, kvF
 	// Assuming 1 single shard
 	res := &StandaloneRpcServer{
 		identityAddr: identityAddr,
-		numShards:    numShards,
 		dbs:          make(map[uint32]kv.DB),
 		log: log.With().
 			Str("component", "standalone-rpc-server").
 			Logger(),
-		port: listener.Addr().(*net.TCPAddr).Port,
+		port:                  listener.Addr().(*net.TCPAddr).Port,
+		assignmentsDispatcher: server.NewStandaloneShardAssignmentDispatcher(fmt.Sprintf("%s:%d", identityAddr, port), numShards),
 	}
 
 	for i := uint32(0); i < numShards; i++ {
@@ -77,26 +77,7 @@ func (s *StandaloneRpcServer) Close() error {
 }
 
 func (s *StandaloneRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest, stream proto.OxiaClient_ShardAssignmentsServer) error {
-	res := &proto.ShardAssignmentsResponse{
-		ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
-	}
-
-	bucketSize := math.MaxUint32 / s.numShards
-
-	for i := uint32(0); i < s.numShards; i++ {
-		res.Assignments = append(res.Assignments, &proto.ShardAssignment{
-			ShardId: i,
-			Leader:  fmt.Sprintf("%s:%d", s.identityAddr, s.port),
-			ShardBoundaries: &proto.ShardAssignment_Int32HashRange{
-				Int32HashRange: &proto.Int32HashRange{
-					MinHashInclusive: i * bucketSize,
-					MaxHashExclusive: (i + 1) * bucketSize,
-				},
-			},
-		})
-	}
-
-	return stream.Send(res)
+	return s.assignmentsDispatcher.AddClient(stream)
 }
 
 func (s *StandaloneRpcServer) Write(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error) {

@@ -13,15 +13,21 @@ import (
 type PublicRpcServer struct {
 	proto.UnimplementedOxiaClientServer
 
-	shardsDirector ShardsDirector
+	shardsDirector       ShardsDirector
+	assignmentDispatcher ShardAssignmentsDispatcher
 
 	grpcServer *grpc.Server
 	log        zerolog.Logger
 }
 
-func NewPublicRpcServer(port int, advertisedPublicAddress string, shardsDirector ShardsDirector) (*PublicRpcServer, error) {
+func NewPublicRpcServer(
+	port int,
+	advertisedPublicAddress string,
+	shardsDirector ShardsDirector,
+	assignmentDispatcher ShardAssignmentsDispatcher) (*PublicRpcServer, error) {
 	res := &PublicRpcServer{
-		shardsDirector: shardsDirector,
+		shardsDirector:       shardsDirector,
+		assignmentDispatcher: assignmentDispatcher,
 		log: log.With().
 			Str("component", "public-rpc-server").
 			Logger(),
@@ -56,7 +62,7 @@ func NewPublicRpcServer(port int, advertisedPublicAddress string, shardsDirector
 //}
 //
 //func (s *PublicRpcServer) Put(ctx context.Context, putOp *proto.PutOp) (*proto.Stat, error) {
-//	// TODO make shard ID string in client rpc
+//	// TODO make shardAssignment ID string in client rpc
 //	slc, err := s.shardsDirector.GetManager(ShardId(strconv.FormatInt(int64(putOp.GetShardId()), 10)), false)
 //	if err != nil {
 //		return nil, err

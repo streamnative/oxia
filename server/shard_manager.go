@@ -112,8 +112,8 @@ func NewShardManager(shard uint32, identityAddress string, pool common.ClientPoo
 		identityAddress:     identityAddress,
 		closing:             false,
 		log: log.With().
-			Str("component", "shard-manager").
-			Uint32("shard", shard).
+			Str("component", "shardAssignment-manager").
+			Uint32("shardAssignment", shard).
 			Logger(),
 	}
 	entryId, err := GetHighestEntryOfEpoch(sm.wal, MaxEpoch)
@@ -123,7 +123,7 @@ func NewShardManager(shard uint32, identityAddress string, pool common.ClientPoo
 	sm.headIndex = entryId
 	sm.log.Info().
 		Uint32("replicationFactor", sm.replicationFactor).
-		Msg("Start managing shard")
+		Msg("Start managing shardAssignment")
 	go sm.run()
 
 	return sm, nil
@@ -788,7 +788,7 @@ func (s *shardManager) run() {
 }
 
 func (s *shardManager) Close() error {
-	s.log.Info().Msg("Closing shard manager")
+	s.log.Info().Msg("Closing shardAssignment manager")
 	s.commandChannel <- newCommand(func() (any, error) {
 		s.purgeWaitingRoom()
 		s.status = NotMember
