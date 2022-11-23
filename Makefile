@@ -4,11 +4,11 @@ build: proto
 	go build -v -o bin/oxia ./cmd
 
 test: build
-	go test -cover -race -tags testing ./...
+	go test -cover -race ./...
 
 lint:
 	#brew install golangci-lint
-	golangci-lint run --build-tags testing
+	golangci-lint run
 
 clean:
 	rm -f bin/oxia
