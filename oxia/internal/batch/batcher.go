@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"oxia/oxia/internal"
+	"oxia/oxia/internal/metrics"
 	"time"
 )
 
@@ -13,14 +14,21 @@ type BatcherFactory struct {
 	Executor            internal.Executor
 	Linger              time.Duration
 	MaxRequestsPerBatch int
+	Metrics             *metrics.Metrics
 }
 
 func (b *BatcherFactory) NewWriteBatcher(shardId *uint32) Batcher {
-	return b.newBatcher(shardId, writeBatchFactory{execute: b.Executor.ExecuteWrite}.newBatch)
+	return b.newBatcher(shardId, writeBatchFactory{
+		execute: b.Executor.ExecuteWrite,
+		metrics: b.Metrics,
+	}.newBatch)
 }
 
 func (b *BatcherFactory) NewReadBatcher(shardId *uint32) Batcher {
-	return b.newBatcher(shardId, readBatchFactory{execute: b.Executor.ExecuteRead}.newBatch)
+	return b.newBatcher(shardId, readBatchFactory{
+		execute: b.Executor.ExecuteRead,
+		metrics: b.Metrics,
+	}.newBatch)
 }
 
 func (b *BatcherFactory) newBatcher(shardId *uint32, batchFactory func(shardId *uint32) Batch) Batcher {

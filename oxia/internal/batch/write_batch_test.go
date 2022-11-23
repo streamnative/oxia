@@ -2,7 +2,10 @@ package batch
 
 import (
 	"github.com/stretchr/testify/assert"
+	"go.opentelemetry.io/otel/metric"
 	"io"
+	"oxia/oxia/internal/metrics"
+	"oxia/oxia/internal/model"
 	"oxia/proto"
 	"reflect"
 	"sync"
@@ -15,13 +18,15 @@ func TestWriteBatchAdd(t *testing.T) {
 		expectPanic  bool
 		expectedSize int
 	}{
-		{PutCall{}, false, 1},
-		{DeleteCall{}, false, 1},
-		{DeleteRangeCall{}, false, 1},
-		{GetCall{}, true, 0},
-		{GetRangeCall{}, true, 0},
+		{model.PutCall{}, false, 1},
+		{model.DeleteCall{}, false, 1},
+		{model.DeleteRangeCall{}, false, 1},
+		{model.GetCall{}, true, 0},
+		{model.GetRangeCall{}, true, 0},
 	} {
-		factory := &writeBatchFactory{}
+		factory := &writeBatchFactory{
+			metrics: metrics.NewMetrics(metric.NewNoopMeterProvider()),
+		}
 		batch := factory.newBatch(&shardId)
 
 		panicked := add(batch, item.call)
@@ -130,7 +135,10 @@ func TestWriteBatchComplete(t *testing.T) {
 			return item.response, item.err
 		}
 
-		factory := &writeBatchFactory{execute: execute}
+		factory := &writeBatchFactory{
+			execute: execute,
+			metrics: metrics.NewMetrics(metric.NewNoopMeterProvider()),
+		}
 		batch := factory.newBatch(&shardId)
 
 		var wg sync.WaitGroup
@@ -159,18 +167,18 @@ func TestWriteBatchComplete(t *testing.T) {
 			wg.Done()
 		}
 
-		batch.Add(PutCall{
+		batch.Add(model.PutCall{
 			Key:             "/a",
 			Payload:         []byte{0},
 			ExpectedVersion: &one,
 			Callback:        putCallback,
 		})
-		batch.Add(DeleteCall{
+		batch.Add(model.DeleteCall{
 			Key:             "/b",
 			ExpectedVersion: &two,
 			Callback:        deleteCallback,
 		})
-		batch.Add(DeleteRangeCall{
+		batch.Add(model.DeleteRangeCall{
 			MinKeyInclusive: "/callC",
 			MaxKeyExclusive: "/d",
 			Callback:        deleteRangeCallback,
