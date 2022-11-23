@@ -70,8 +70,7 @@ func TestBatcher(t *testing.T) {
 			wg.Done()
 		}()
 
-		time.Sleep(1 * time.Millisecond)
-
+		time.Sleep(3 * time.Millisecond)
 		err := batcher.Close()
 		assert.ErrorIs(t, nil, err)
 
