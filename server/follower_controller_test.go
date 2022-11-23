@@ -54,7 +54,7 @@ func TestFollower(t *testing.T) {
 
 	assert.Equal(t, Follower, fc.Status())
 
-	stream := newMockAddEntriesStream()
+	stream := newMockServerAddEntriesStream()
 
 	go func() { assert.NoError(t, fc.AddEntries(stream)) }()
 
@@ -153,7 +153,7 @@ func TestReadingUpToCommitIndex(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, Follower, fc.Status())
 
-	stream := newMockAddEntriesStream()
+	stream := newMockServerAddEntriesStream()
 	go func() { assert.NoError(t, fc.AddEntries(stream)) }()
 
 	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, &proto.EntryId{
@@ -216,7 +216,7 @@ func TestEpochInStateChanges(t *testing.T) {
 	fc, err := NewFollowerController(shardId, wal, kvFactory)
 	assert.NoError(t, err)
 
-	stream := newMockAddEntriesStream()
+	stream := newMockServerAddEntriesStream()
 	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, &proto.EntryId{
 		Epoch:  0,
 		Offset: 0,

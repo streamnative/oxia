@@ -293,7 +293,8 @@ func (r *forwardReader) HasNext() bool {
 	if r.closed {
 		return false
 	}
-	return r.nextOffset <= r.maxIdInclusive.Offset && EntryIdFromProto(r.maxIdInclusive) != EntryId{}
+
+	return r.nextOffset <= r.wal.lastEntryId.Offset && EntryIdFromProto(r.maxIdInclusive) != EntryId{}
 }
 
 func (r *reverseReader) ReadNext() (*proto.LogEntry, error) {
