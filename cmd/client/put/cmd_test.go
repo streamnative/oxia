@@ -29,15 +29,15 @@ func TestCobraFlags(t *testing.T) {
 		{"stdin", []string{}, nil, nil, nil, nil, false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			f = flags{}
+			Config = flags{}
 			Cmd.SetArgs(test.args)
 			invoked := false
 			Cmd.RunE = func(cmd *cobra.Command, args []string) error {
 				invoked = true
-				assert.Equal(t, test.expectedKeys, f.keys)
-				assert.Equal(t, test.expectedVersions, f.expectedVersions)
-				assert.Equal(t, test.expectedPayloads, f.payloads)
-				assert.Equal(t, test.expectedBinaryPayloads, f.binaryPayloads)
+				assert.Equal(t, test.expectedKeys, Config.keys)
+				assert.Equal(t, test.expectedVersions, Config.expectedVersions)
+				assert.Equal(t, test.expectedPayloads, Config.payloads)
+				assert.Equal(t, test.expectedBinaryPayloads, Config.binaryPayloads)
 				return nil
 			}
 			err := Cmd.Execute()
@@ -53,7 +53,7 @@ func Test_exec(t *testing.T) {
 		stdin           string
 		flags           flags
 		expectedErr     error
-		expectedQueries []Query
+		expectedQueries []common.Query
 	}{
 		{"entry",
 			"",
@@ -62,7 +62,7 @@ func Test_exec(t *testing.T) {
 				payloads: []string{"y"},
 			},
 			nil,
-			[]Query{{
+			[]common.Query{Query{
 				Key:     "x",
 				Payload: "y",
 				Binary:  common.PtrBool(false),
@@ -73,14 +73,14 @@ func Test_exec(t *testing.T) {
 				payloads: []string{"y"},
 			},
 			ErrorExpectedKeyPayloadInconsistent,
-			[]Query{}},
+			nil},
 		{"entry-no-payload",
 			"",
 			flags{
 				keys: []string{"x"},
 			},
 			ErrorExpectedKeyPayloadInconsistent,
-			[]Query{}},
+			nil},
 		{"entry-missing-version",
 			"",
 			flags{
@@ -89,7 +89,7 @@ func Test_exec(t *testing.T) {
 				expectedVersions: []int64{1},
 			},
 			ErrorExpectedVersionInconsistent,
-			[]Query{}},
+			nil},
 		{"entry-binary",
 			"",
 			flags{
@@ -98,7 +98,7 @@ func Test_exec(t *testing.T) {
 				binaryPayloads: true,
 			},
 			nil,
-			[]Query{{
+			[]common.Query{Query{
 				Key:     "x",
 				Payload: "aGVsbG8y",
 				Binary:  common.PtrBool(true),
@@ -111,7 +111,7 @@ func Test_exec(t *testing.T) {
 				expectedVersions: []int64{1},
 			},
 			nil,
-			[]Query{{
+			[]common.Query{Query{
 				Key:             "x",
 				Payload:         "y",
 				ExpectedVersion: common.PtrInt64(1),
@@ -125,11 +125,11 @@ func Test_exec(t *testing.T) {
 				binaryPayloads: true,
 			},
 			nil,
-			[]Query{{
+			[]common.Query{Query{
 				Key:     "x",
 				Payload: "a",
 				Binary:  common.PtrBool(true),
-			}, {
+			}, Query{
 				Key:     "y",
 				Payload: "b",
 				Binary:  common.PtrBool(true),
@@ -142,12 +142,12 @@ func Test_exec(t *testing.T) {
 				expectedVersions: []int64{1, 4},
 			},
 			nil,
-			[]Query{{
+			[]common.Query{Query{
 				Key:             "x",
 				Payload:         "a",
 				ExpectedVersion: common.PtrInt64(1),
 				Binary:          common.PtrBool(false),
-			}, {
+			}, Query{
 				Key:             "y",
 				Payload:         "b",
 				ExpectedVersion: common.PtrInt64(4),
@@ -157,10 +157,10 @@ func Test_exec(t *testing.T) {
 			"{\"key\":\"a\",\"payload\":\"b\"}\n{\"key\":\"x\",\"payload\":\"y\"}\n",
 			flags{},
 			nil,
-			[]Query{{
+			[]common.Query{Query{
 				Key:     "a",
 				Payload: "b",
-			}, {
+			}, Query{
 				Key:     "x",
 				Payload: "y",
 			}}},
@@ -168,7 +168,7 @@ func Test_exec(t *testing.T) {
 			"{\"key\":\"a\",\"payload\":\"aGVsbG8y\",\"binary\":true}",
 			flags{},
 			nil,
-			[]Query{{
+			[]common.Query{Query{
 				Key:     "a",
 				Payload: "aGVsbG8y",
 				Binary:  common.PtrBool(true),
@@ -179,22 +179,13 @@ func Test_exec(t *testing.T) {
 				binaryPayloads: true,
 			},
 			ErrorIncorrectBinaryFlagUse,
-			[]Query{}},
+			nil},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			in := bytes.NewBufferString(test.stdin)
-			queries := make(chan common.Query, 10)
-			results := make([]Query, 0)
-			err := _exec(test.flags, in, queries)
-			close(queries)
-			for {
-				query, ok := <-queries
-				if !ok {
-					break
-				}
-				results = append(results, query.(Query))
-			}
-			assert.Equal(t, test.expectedQueries, results)
+			queue := fakeQueryQueue{}
+			err := _exec(test.flags, in, &queue)
+			assert.Equal(t, test.expectedQueries, queue.queries)
 			assert.ErrorIs(t, err, test.expectedErr)
 		})
 	}
@@ -355,4 +346,15 @@ func TestCall_Complete(t *testing.T) {
 			assert.Equalf(t, test.expected, call.Complete(), "Error")
 		})
 	}
+}
+
+type fakeQueryQueue struct {
+	queries []common.Query
+}
+
+func (q *fakeQueryQueue) Add(query common.Query) {
+	if q.queries == nil {
+		q.queries = []common.Query{}
+	}
+	q.queries = append(q.queries, query)
 }
