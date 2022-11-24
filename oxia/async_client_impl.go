@@ -6,6 +6,8 @@ import (
 	"oxia/common"
 	"oxia/oxia/internal"
 	"oxia/oxia/internal/batch"
+	"oxia/oxia/internal/metrics"
+	"oxia/oxia/internal/model"
 	"oxia/proto"
 	"sync"
 )
@@ -31,6 +33,7 @@ func NewAsyncClient(options ClientOptions) AsyncClient {
 		Executor:            executor,
 		Linger:              options.batchLinger,
 		MaxRequestsPerBatch: options.maxRequestsPerBatch,
+		Metrics:             metrics.NewMetrics(options.meterProvider),
 	}
 	return &clientImpl{
 		shardManager:      shardManager,
@@ -56,7 +59,7 @@ func (c *clientImpl) Put(key string, payload []byte, expectedVersion *int64) <-c
 		}
 		close(ch)
 	}
-	c.writeBatchManager.Get(shardId).Add(batch.PutCall{
+	c.writeBatchManager.Get(shardId).Add(model.PutCall{
 		Key:             key,
 		Payload:         payload,
 		ExpectedVersion: expectedVersion,
@@ -76,7 +79,7 @@ func (c *clientImpl) Delete(key string, expectedVersion *int64) <-chan error {
 		}
 		close(ch)
 	}
-	c.writeBatchManager.Get(shardId).Add(batch.DeleteCall{
+	c.writeBatchManager.Get(shardId).Add(model.DeleteCall{
 		Key:             key,
 		ExpectedVersion: expectedVersion,
 		Callback:        callback,
@@ -97,7 +100,7 @@ func (c *clientImpl) DeleteRange(minKeyInclusive string, maxKeyExclusive string)
 				chInner <- toDeleteRangeResult(response)
 			}
 		}
-		c.writeBatchManager.Get(shardId).Add(batch.DeleteRangeCall{
+		c.writeBatchManager.Get(shardId).Add(model.DeleteRangeCall{
 			MinKeyInclusive: minKeyInclusive,
 			MaxKeyExclusive: maxKeyExclusive,
 			Callback:        callback,
@@ -124,7 +127,7 @@ func (c *clientImpl) Get(key string) <-chan GetResult {
 		}
 		close(ch)
 	}
-	c.readBatchManager.Get(shardId).Add(batch.GetCall{
+	c.readBatchManager.Get(shardId).Add(model.GetCall{
 		Key:      key,
 		Callback: callback,
 	})
@@ -146,7 +149,7 @@ func (c *clientImpl) GetRange(minKeyInclusive string, maxKeyExclusive string) <-
 				cInner <- toGetRangeResult(response)
 			}
 		}
-		c.readBatchManager.Get(shardId).Add(batch.GetRangeCall{
+		c.readBatchManager.Get(shardId).Add(model.GetRangeCall{
 			MinKeyInclusive: minKeyInclusive,
 			MaxKeyExclusive: maxKeyExclusive,
 			Callback:        callback,

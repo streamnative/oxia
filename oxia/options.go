@@ -2,6 +2,8 @@ package oxia
 
 import (
 	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/global"
 	"go.uber.org/multierr"
 	"time"
 )
@@ -24,6 +26,7 @@ type ClientOptions struct {
 	batchLinger         time.Duration
 	maxRequestsPerBatch int
 	batchRequestTimeout time.Duration
+	meterProvider       metric.MeterProvider
 }
 
 // ServiceUrl is the target host:port of any Oxia server to bootstrap the client. It is used for establishing the
@@ -62,6 +65,7 @@ func NewClientOptions(serviceUrl string, opts ...ClientOption) (ClientOptions, e
 		batchLinger:         DefaultBatchLinger,
 		maxRequestsPerBatch: DefaultMaxRequestsPerBatch,
 		batchRequestTimeout: DefaultBatchRequestTimeout,
+		meterProvider:       metric.NewNoopMeterProvider(),
 	}
 	var errs error
 	var err error
@@ -108,4 +112,19 @@ func WithBatchRequestTimeout(batchRequestTimeout time.Duration) ClientOption {
 		options.batchRequestTimeout = batchRequestTimeout
 		return options, nil
 	})
+}
+
+func WithMeterProvider(meterProvider metric.MeterProvider) ClientOption {
+	return clientOptionFunc(func(options ClientOptions) (ClientOptions, error) {
+		if meterProvider == nil {
+			options.meterProvider = metric.NewNoopMeterProvider()
+		} else {
+			options.meterProvider = meterProvider
+		}
+		return options, nil
+	})
+}
+
+func WithGlobalMeterProvider() ClientOption {
+	return WithMeterProvider(global.MeterProvider())
 }

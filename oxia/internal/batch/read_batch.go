@@ -1,19 +1,26 @@
 package batch
 
 import (
+	"oxia/oxia/internal/metrics"
+	"oxia/oxia/internal/model"
 	"oxia/proto"
+	"time"
 )
 
 type readBatchFactory struct {
 	execute func(*proto.ReadRequest) (*proto.ReadResponse, error)
+	metrics *metrics.Metrics
 }
 
 func (b readBatchFactory) newBatch(shardId *uint32) Batch {
 	return &readBatch{
 		shardId:   shardId,
 		execute:   b.execute,
-		gets:      make([]GetCall, 0),
-		getRanges: make([]GetRangeCall, 0),
+		gets:      make([]model.GetCall, 0),
+		getRanges: make([]model.GetRangeCall, 0),
+		start:     time.Now(),
+		metrics:   b.metrics,
+		callback:  b.metrics.ReadCallback(),
 	}
 }
 
@@ -22,16 +29,19 @@ func (b readBatchFactory) newBatch(shardId *uint32) Batch {
 type readBatch struct {
 	shardId   *uint32
 	execute   func(*proto.ReadRequest) (*proto.ReadResponse, error)
-	gets      []GetCall
-	getRanges []GetRangeCall
+	gets      []model.GetCall
+	getRanges []model.GetRangeCall
+	start     time.Time
+	metrics   *metrics.Metrics
+	callback  func(time.Time, *proto.ReadRequest, *proto.ReadResponse, error)
 }
 
 func (b *readBatch) Add(call any) {
 	switch c := call.(type) {
-	case GetCall:
-		b.gets = append(b.gets, c)
-	case GetRangeCall:
-		b.getRanges = append(b.getRanges, c)
+	case model.GetCall:
+		b.gets = append(b.gets, b.metrics.DecorateGet(c))
+	case model.GetRangeCall:
+		b.getRanges = append(b.getRanges, b.metrics.DecorateGetRange(c))
 	default:
 		panic("invalid call")
 	}
@@ -42,7 +52,11 @@ func (b *readBatch) Size() int {
 }
 
 func (b *readBatch) Complete() {
-	if response, err := b.execute(b.toProto()); err != nil {
+	executionStart := time.Now()
+	request := b.toProto()
+	response, err := b.execute(request)
+	b.callback(executionStart, request, response, err)
+	if err != nil {
 		b.Fail(err)
 	} else {
 		b.handle(response)
@@ -70,7 +84,7 @@ func (b *readBatch) handle(response *proto.ReadResponse) {
 func (b *readBatch) toProto() *proto.ReadRequest {
 	return &proto.ReadRequest{
 		ShardId:   b.shardId,
-		Gets:      convert[GetCall, *proto.GetRequest](b.gets, GetCall.toProto),
-		GetRanges: convert[GetRangeCall, *proto.GetRangeRequest](b.getRanges, GetRangeCall.toProto),
+		Gets:      model.Convert[model.GetCall, *proto.GetRequest](b.gets, model.GetCall.ToProto),
+		GetRanges: model.Convert[model.GetRangeCall, *proto.GetRangeRequest](b.getRanges, model.GetRangeCall.ToProto),
 	}
 }
