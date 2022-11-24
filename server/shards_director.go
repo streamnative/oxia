@@ -77,7 +77,7 @@ func (s *shardsDirector) GetFollower(shardId uint32) (FollowerController, error)
 	s.log.Debug().
 		Uint32("shard", shardId).
 		Msg("This node is not hosting shard")
-	return nil, errors.Wrapf(ErrorNodeIsNotLeader, "node is not follower for shard %d", shardId)
+	return nil, errors.Wrapf(ErrorNodeIsNotFollower, "node is not follower for shard %d", shardId)
 }
 
 func (s *shardsDirector) GetOrCreateLeader(shardId uint32) (LeaderController, error) {

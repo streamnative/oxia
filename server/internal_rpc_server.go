@@ -61,10 +61,22 @@ func (s *internalRpcServer) Close() error {
 }
 
 func (s *internalRpcServer) Fence(c context.Context, req *proto.FenceRequest) (*proto.FenceResponse, error) {
-	if follower, err := s.shardsDirector.GetOrCreateFollower(req.ShardId); err != nil {
-		return nil, err
+	// Fence applies to both followers and leaders
+	// First check if we have already a follower controller running
+	if follower, err := s.shardsDirector.GetFollower(req.ShardId); err != nil {
+		if !errors.Is(err, ErrorNodeIsNotFollower) {
+			return nil, err
+		}
+
+		// If we don't have a follower, fallback to checking the leader controller
 	} else {
 		return follower.Fence(req)
+	}
+
+	if leader, err := s.shardsDirector.GetOrCreateLeader(req.ShardId); err != nil {
+		return nil, err
+	} else {
+		return leader.Fence(req)
 	}
 }
 
