@@ -18,7 +18,7 @@ type ClientPool interface {
 }
 
 type clientPool struct {
-	sync.Mutex
+	sync.RWMutex
 	connections map[string]grpc.ClientConnInterface
 
 	log zerolog.Logger
@@ -74,7 +74,9 @@ func (cp *clientPool) GetReplicationRpc(target string) (proto.OxiaLogReplication
 }
 
 func (cp *clientPool) getConnection(target string) (grpc.ClientConnInterface, error) {
+	cp.RLock()
 	cnx, ok := cp.connections[target]
+	cp.RUnlock()
 	if ok {
 		return cnx, nil
 	}
