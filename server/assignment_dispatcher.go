@@ -8,11 +8,15 @@ import (
 	"sync"
 )
 
+type Client interface {
+	Send(*proto.ShardAssignmentsResponse) error
+}
+
 type ShardAssignmentsDispatcher interface {
 	io.Closer
 	Initialized() bool
 	ShardAssignment(proto.OxiaControl_ShardAssignmentServer) error
-	AddClient(proto.OxiaClient_ShardAssignmentsServer) error
+	AddClient(Client) error
 }
 
 type shardAssignment struct {
@@ -27,10 +31,10 @@ type shardAssignmentDispatcher struct {
 	closed         bool
 	shardKeyRouter proto.CoordinationShardKeyRouter
 	assignments    map[uint32]shardAssignment
-	clients        []proto.OxiaClient_ShardAssignmentsServer
+	clients        []Client
 }
 
-func (s *shardAssignmentDispatcher) AddClient(clientStream proto.OxiaClient_ShardAssignmentsServer) error {
+func (s *shardAssignmentDispatcher) AddClient(clientStream Client) error {
 	s.Lock()
 	defer s.Unlock()
 	if !s.initialized {
@@ -168,7 +172,7 @@ func NewShardAssignmentDispatcher() ShardAssignmentsDispatcher {
 		closed:         false,
 		shardKeyRouter: proto.CoordinationShardKeyRouter_UNKNOWN,
 		assignments:    make(map[uint32]shardAssignment, 1000),
-		clients:        make([]proto.OxiaClient_ShardAssignmentsServer, 0, 1000),
+		clients:        make([]Client, 0, 1000),
 	}
 }
 
@@ -178,7 +182,7 @@ func NewStandaloneShardAssignmentDispatcher(address string, numShards uint32) Sh
 		closed:         false,
 		shardKeyRouter: proto.CoordinationShardKeyRouter_UNKNOWN,
 		assignments:    make(map[uint32]shardAssignment, 1000),
-		clients:        make([]proto.OxiaClient_ShardAssignmentsServer, 0, 1000),
+		clients:        make([]Client, 0, 1000),
 	}
 	res := &proto.CoordinationShardAssignmentRequest{
 		ShardKeyRouter: proto.CoordinationShardKeyRouter_XXHASH3,
