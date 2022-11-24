@@ -62,7 +62,7 @@ func NewPublicRpcServer(
 //}
 //
 //func (s *PublicRpcServer) Put(ctx context.Context, putOp *proto.PutOp) (*proto.Stat, error) {
-//	// TODO make shardAssignment ID string in client rpc
+//	// TODO make shard ID string in client rpc
 //	slc, err := s.shardsDirector.GetManager(ShardId(strconv.FormatInt(int64(putOp.GetShardId()), 10)), false)
 //	if err != nil {
 //		return nil, err

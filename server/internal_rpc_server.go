@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	metadataShardId = "shardAssignment-id"
+	metadataShardId = "shard-id"
 )
 
 type internalRpcServer struct {
@@ -104,7 +104,7 @@ func (s *internalRpcServer) AddEntries(srv proto.OxiaLogReplication_AddEntriesSe
 	// as a property in the metadata
 	md, ok := metadata.FromIncomingContext(srv.Context())
 	if !ok {
-		return errors.New("shardAssignment id is not set in the request metadata")
+		return errors.New("shard id is not set in the request metadata")
 	}
 
 	shardId, err := readHeaderUint32(md, metadataShardId)

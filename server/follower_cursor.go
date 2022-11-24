@@ -68,7 +68,7 @@ func NewFollowerCursor(
 
 		log: log.With().
 			Str("component", "follower-cursor").
-			Uint32("shardAssignment", shardId).
+			Uint32("shard", shardId).
 			Uint64("epoch", epoch).
 			Str("follower", follower).
 			Logger(),

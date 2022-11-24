@@ -29,7 +29,7 @@ type shardAssignmentDispatcher struct {
 	sync.Mutex
 	initialized    bool
 	closed         bool
-	shardKeyRouter proto.CoordinationShardKeyRouter
+	shardKeyRouter proto.ShardKeyRouter
 	assignments    map[uint32]shardAssignment
 	clients        []Client
 }
@@ -79,10 +79,10 @@ func (s *shardAssignmentDispatcher) ShardAssignment(srv proto.OxiaControl_ShardA
 	}
 }
 
-func (s *shardAssignmentDispatcher) updateShardAssignment(request *proto.CoordinationShardAssignmentRequest) error {
+func (s *shardAssignmentDispatcher) updateShardAssignment(request *proto.ShardAssignmentsResponse) error {
 	s.Lock()
 	defer s.Unlock()
-	if request.ShardKeyRouter == proto.CoordinationShardKeyRouter_UNKNOWN {
+	if request.ShardKeyRouter == proto.ShardKeyRouter_UNKNOWN {
 		return errors.New("oxia: unknown shard key router")
 	}
 
@@ -105,9 +105,8 @@ func (s *shardAssignmentDispatcher) updateShardAssignment(request *proto.Coordin
 		s.assignments[shard] = current
 	}
 
-	assignmentResponse := convertAssignment(request)
 	for idx, client := range s.clients {
-		err := client.Send(assignmentResponse)
+		err := client.Send(request)
 		if err != nil {
 			s.clients = removeAt(s.clients, idx)
 			return err
@@ -124,26 +123,6 @@ func removeAt[T any](slice []T, idx int) []T {
 	} else {
 		return append(slice[:idx], slice[idx+1:]...)
 	}
-}
-
-func convertAssignment(req *proto.CoordinationShardAssignmentRequest) *proto.ShardAssignmentsResponse {
-	assignments := make([]*proto.ShardAssignment, len(req.Assignments))
-	for _, assignment := range req.Assignments {
-		assignments = append(assignments, &proto.ShardAssignment{
-			ShardId: assignment.ShardId,
-			Leader:  assignment.Leader,
-			ShardBoundaries: &proto.ShardAssignment_Int32HashRange{
-				Int32HashRange: &proto.Int32HashRange{
-					MinHashInclusive: assignment.GetInt32HashRange().GetMinHashInclusive(),
-					MaxHashExclusive: assignment.GetInt32HashRange().GetMaxHashExclusive(),
-				}},
-		})
-	}
-	result := &proto.ShardAssignmentsResponse{
-		Assignments:    assignments,
-		ShardKeyRouter: proto.ShardKeyRouter(req.ShardKeyRouter.Number()),
-	}
-	return result
 }
 
 func (s *shardAssignmentDispatcher) convertAssignments() *proto.ShardAssignmentsResponse {
@@ -170,7 +149,7 @@ func NewShardAssignmentDispatcher() ShardAssignmentsDispatcher {
 	return &shardAssignmentDispatcher{
 		initialized:    false,
 		closed:         false,
-		shardKeyRouter: proto.CoordinationShardKeyRouter_UNKNOWN,
+		shardKeyRouter: proto.ShardKeyRouter_UNKNOWN,
 		assignments:    make(map[uint32]shardAssignment, 1000),
 		clients:        make([]Client, 0, 1000),
 	}
@@ -180,12 +159,12 @@ func NewStandaloneShardAssignmentDispatcher(address string, numShards uint32) Sh
 	assignmentDispatcher := &shardAssignmentDispatcher{
 		initialized:    false,
 		closed:         false,
-		shardKeyRouter: proto.CoordinationShardKeyRouter_UNKNOWN,
+		shardKeyRouter: proto.ShardKeyRouter_UNKNOWN,
 		assignments:    make(map[uint32]shardAssignment, 1000),
 		clients:        make([]Client, 0, 1000),
 	}
-	res := &proto.CoordinationShardAssignmentRequest{
-		ShardKeyRouter: proto.CoordinationShardKeyRouter_XXHASH3,
+	res := &proto.ShardAssignmentsResponse{
+		ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
 	}
 
 	bucketSize := math.MaxUint32 / numShards
@@ -195,11 +174,11 @@ func NewStandaloneShardAssignmentDispatcher(address string, numShards uint32) Sh
 		if i == numShards-1 {
 			upperBound = math.MaxUint32
 		}
-		res.Assignments = append(res.Assignments, &proto.CoordinationShardAssignment{
+		res.Assignments = append(res.Assignments, &proto.ShardAssignment{
 			ShardId: i,
 			Leader:  address,
-			ShardBoundaries: &proto.CoordinationShardAssignment_Int32HashRange{
-				Int32HashRange: &proto.CoordinationInt32HashRange{
+			ShardBoundaries: &proto.ShardAssignment_Int32HashRange{
+				Int32HashRange: &proto.Int32HashRange{
 					MinHashInclusive: i * bucketSize,
 					MaxHashExclusive: upperBound,
 				},

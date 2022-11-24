@@ -18,7 +18,7 @@ const MaxEpoch = math.MaxUint64
 var ErrorInvalidEpoch = errors.New("oxia: invalid epoch")
 var ErrorInvalidStatus = errors.New("oxia: invalid status")
 
-// FollowerController handles all the operations of a given shardAssignment's follower
+// FollowerController handles all the operations of a given shard's follower
 type FollowerController interface {
 	io.Closer
 
@@ -77,7 +77,7 @@ func NewFollowerController(shardId uint32, w wal.Wal, kvFactory kv.KVFactory) (F
 		closing:     false,
 		log: log.With().
 			Str("component", "follower-controller").
-			Uint32("shardAssignment", shardId).
+			Uint32("shard", shardId).
 			Logger(),
 	}
 
