@@ -26,8 +26,6 @@ message LogEntry {
   bytes value = 2;
 }
 
-message CoordinationEmpty {}
-
 message FenceRequest {
   uint32 shard_id = 1;
 
