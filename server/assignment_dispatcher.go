@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
 	"io"
 	"math"
 	"oxia/proto"
@@ -32,6 +34,7 @@ type shardAssignmentDispatcher struct {
 	shardKeyRouter proto.ShardKeyRouter
 	assignments    map[uint32]shardAssignment
 	clients        []Client
+	stopRecv       context.CancelFunc
 }
 
 func (s *shardAssignmentDispatcher) AddClient(clientStream Client) error {
@@ -53,6 +56,9 @@ func (s *shardAssignmentDispatcher) Close() error {
 	s.Lock()
 	defer s.Unlock()
 	s.closed = true
+	if s.stopRecv != nil {
+		s.stopRecv()
+	}
 	return nil
 }
 
@@ -63,20 +69,29 @@ func (s *shardAssignmentDispatcher) Initialized() bool {
 }
 
 func (s *shardAssignmentDispatcher) ShardAssignment(srv proto.OxiaControl_ShardAssignmentServer) error {
+	s.Lock()
+	_, s.stopRecv = context.WithCancel(srv.Context())
+	s.Unlock()
+	defer func() {
+		s.Lock()
+		err := srv.SendAndClose(&proto.CoordinationEmpty{})
+		if s.stopRecv != nil {
+			s.stopRecv()
+			s.stopRecv = nil
+		}
+		s.Unlock()
+		if err != nil {
+			log.Err(err).Msg("Error closing ShardAssignment stream")
+		}
+	}()
 	for {
 		request, err := srv.Recv()
-		if err == nil {
+		if err != nil {
 			return err
 		} else if request == nil {
 			return nil
 		} else if err := s.updateShardAssignment(request); err != nil {
 			return err
-		}
-		s.Lock()
-		closed := s.closed
-		s.Unlock()
-		if closed {
-			return nil
 		}
 	}
 }

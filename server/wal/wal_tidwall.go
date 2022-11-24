@@ -293,7 +293,8 @@ func (r *forwardReader) HasNext() bool {
 	if r.closed {
 		return false
 	}
-
+	r.wal.RLock()
+	defer r.wal.RUnlock()
 	return r.nextOffset <= r.wal.lastEntryId.Offset && EntryIdFromProto(r.maxIdInclusive) != EntryId{}
 }
 
