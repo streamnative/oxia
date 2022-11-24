@@ -32,7 +32,7 @@ func NewStandaloneRpcServer(port int, identityAddr string, numShards uint32, kvF
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to listen")
 	}
-
+	actualPort := listener.Addr().(*net.TCPAddr).Port
 	// Assuming 1 single shard
 	res := &StandaloneRpcServer{
 		identityAddr: identityAddr,
@@ -40,8 +40,8 @@ func NewStandaloneRpcServer(port int, identityAddr string, numShards uint32, kvF
 		log: log.With().
 			Str("component", "standalone-rpc-server").
 			Logger(),
-		port:                  listener.Addr().(*net.TCPAddr).Port,
-		assignmentsDispatcher: server.NewStandaloneShardAssignmentDispatcher(fmt.Sprintf("%s:%d", identityAddr, port), numShards),
+		port:                  actualPort,
+		assignmentsDispatcher: server.NewStandaloneShardAssignmentDispatcher(fmt.Sprintf("%s:%d", identityAddr, actualPort), numShards),
 	}
 
 	for i := uint32(0); i < numShards; i++ {
