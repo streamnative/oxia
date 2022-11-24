@@ -88,7 +88,7 @@ func (s *shardsDirector) GetManager(shardId uint32, create bool) (ShardManager, 
 		s.log.Debug().
 			Uint32("shard", shardId).
 			Msg("This node is not hosting shard")
-		return nil, errors.Errorf("This node is not leader for shardAssignment %d", shardId)
+		return nil, errors.Errorf("This node is not leader for shard %d", shardId)
 	}
 
 }

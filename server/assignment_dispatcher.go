@@ -67,6 +67,8 @@ func (s *shardAssignmentDispatcher) ShardAssignment(srv proto.OxiaControl_ShardA
 		request, err := srv.Recv()
 		if err == nil {
 			return err
+		} else if request == nil {
+			return nil
 		} else if err := s.updateShardAssignment(request); err != nil {
 			return err
 		}

@@ -8,64 +8,58 @@ import (
 
 func newMockServerAddEntriesStream() *mockServerAddEntriesStream {
 	return &mockServerAddEntriesStream{
-		mockServerStream: mockServerStream[*proto.AddEntryRequest, *proto.AddEntryResponse]{
-			requests:  make(chan *proto.AddEntryRequest, 1000),
-			responses: make(chan *proto.AddEntryResponse, 1000),
-			md:        make(metadata.MD),
-		},
+		requests:  make(chan *proto.AddEntryRequest, 1000),
+		responses: make(chan *proto.AddEntryResponse, 1000),
+		md:        make(metadata.MD),
 	}
 }
 
-type mockServerStream[Req any, Res any] struct {
-	requests  chan Req
-	responses chan Res
+type mockServerAddEntriesStream struct {
+	requests  chan *proto.AddEntryRequest
+	responses chan *proto.AddEntryResponse
 	md        metadata.MD
 }
 
-type mockServerAddEntriesStream struct {
-	mockServerStream[*proto.AddEntryRequest, *proto.AddEntryResponse]
-}
-
-func (m *mockServerStream[Req, Res]) AddRequest(request Req) {
+func (m *mockServerAddEntriesStream) AddRequest(request *proto.AddEntryRequest) {
 	m.requests <- request
 }
 
-func (m *mockServerStream[Req, Res]) GetResponse() Res {
+func (m *mockServerAddEntriesStream) GetResponse() *proto.AddEntryResponse {
 	return <-m.responses
 }
 
-func (m *mockServerStream[Req, Res]) Send(response Res) error {
+func (m *mockServerAddEntriesStream) Send(response *proto.AddEntryResponse) error {
 	m.responses <- response
 	return nil
 }
 
-func (m *mockServerStream[Req, Res]) Recv() (Req, error) {
+func (m *mockServerAddEntriesStream) Recv() (*proto.AddEntryRequest, error) {
 	request := <-m.requests
 	return request, nil
 }
 
-func (m *mockServerStream[Req, Res]) SetHeader(md metadata.MD) error {
+func (m *mockServerAddEntriesStream) SetHeader(md metadata.MD) error {
 	m.md = md
 	return nil
 }
 
-func (m *mockServerStream[Req, Res]) SendHeader(md metadata.MD) error {
+func (m *mockServerAddEntriesStream) SendHeader(md metadata.MD) error {
 	panic("not implemented")
 }
 
-func (m *mockServerStream[Req, Res]) SetTrailer(md metadata.MD) {
+func (m *mockServerAddEntriesStream) SetTrailer(md metadata.MD) {
 	panic("not implemented")
 }
 
-func (m *mockServerStream[Req, Res]) Context() context.Context {
+func (m *mockServerAddEntriesStream) Context() context.Context {
 	return context.Background()
 }
 
-func (m *mockServerStream[Req, Res]) SendMsg(msg interface{}) error {
+func (m *mockServerAddEntriesStream) SendMsg(msg interface{}) error {
 	panic("not implemented")
 }
 
-func (m *mockServerStream[Req, Res]) RecvMsg(msg interface{}) error {
+func (m *mockServerAddEntriesStream) RecvMsg(msg interface{}) error {
 	panic("not implemented")
 }
 
