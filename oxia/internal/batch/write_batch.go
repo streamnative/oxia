@@ -1,20 +1,27 @@
 package batch
 
 import (
+	"oxia/oxia/internal/metrics"
+	"oxia/oxia/internal/model"
 	"oxia/proto"
+	"time"
 )
 
 type writeBatchFactory struct {
 	execute func(*proto.WriteRequest) (*proto.WriteResponse, error)
+	metrics *metrics.Metrics
 }
 
 func (b writeBatchFactory) newBatch(shardId *uint32) Batch {
 	return &writeBatch{
 		shardId:      shardId,
 		execute:      b.execute,
-		puts:         make([]PutCall, 0),
-		deletes:      make([]DeleteCall, 0),
-		deleteRanges: make([]DeleteRangeCall, 0),
+		puts:         make([]model.PutCall, 0),
+		deletes:      make([]model.DeleteCall, 0),
+		deleteRanges: make([]model.DeleteRangeCall, 0),
+		start:        time.Now(),
+		metrics:      b.metrics,
+		callback:     b.metrics.WriteCallback(),
 	}
 }
 
@@ -23,19 +30,22 @@ func (b writeBatchFactory) newBatch(shardId *uint32) Batch {
 type writeBatch struct {
 	shardId      *uint32
 	execute      func(*proto.WriteRequest) (*proto.WriteResponse, error)
-	puts         []PutCall
-	deletes      []DeleteCall
-	deleteRanges []DeleteRangeCall
+	puts         []model.PutCall
+	deletes      []model.DeleteCall
+	deleteRanges []model.DeleteRangeCall
+	start        time.Time
+	metrics      *metrics.Metrics
+	callback     func(time.Time, *proto.WriteRequest, *proto.WriteResponse, error)
 }
 
 func (b *writeBatch) Add(call any) {
 	switch c := call.(type) {
-	case PutCall:
-		b.puts = append(b.puts, c)
-	case DeleteCall:
-		b.deletes = append(b.deletes, c)
-	case DeleteRangeCall:
-		b.deleteRanges = append(b.deleteRanges, c)
+	case model.PutCall:
+		b.puts = append(b.puts, b.metrics.DecoratePut(c))
+	case model.DeleteCall:
+		b.deletes = append(b.deletes, b.metrics.DecorateDelete(c))
+	case model.DeleteRangeCall:
+		b.deleteRanges = append(b.deleteRanges, b.metrics.DecorateDeleteRange(c))
 	default:
 		panic("invalid call")
 	}
@@ -46,7 +56,11 @@ func (b *writeBatch) Size() int {
 }
 
 func (b *writeBatch) Complete() {
-	if response, err := b.execute(b.toProto()); err != nil {
+	executionStart := time.Now()
+	request := b.toProto()
+	response, err := b.execute(request)
+	b.callback(executionStart, request, response, err)
+	if err != nil {
 		b.Fail(err)
 	} else {
 		b.handle(response)
@@ -80,8 +94,8 @@ func (b *writeBatch) handle(response *proto.WriteResponse) {
 func (b *writeBatch) toProto() *proto.WriteRequest {
 	return &proto.WriteRequest{
 		ShardId:      b.shardId,
-		Puts:         convert[PutCall, *proto.PutRequest](b.puts, PutCall.toProto),
-		Deletes:      convert[DeleteCall, *proto.DeleteRequest](b.deletes, DeleteCall.toProto),
-		DeleteRanges: convert[DeleteRangeCall, *proto.DeleteRangeRequest](b.deleteRanges, DeleteRangeCall.toProto),
+		Puts:         model.Convert[model.PutCall, *proto.PutRequest](b.puts, model.PutCall.ToProto),
+		Deletes:      model.Convert[model.DeleteCall, *proto.DeleteRequest](b.deletes, model.DeleteCall.ToProto),
+		DeleteRanges: model.Convert[model.DeleteRangeCall, *proto.DeleteRangeRequest](b.deleteRanges, model.DeleteRangeCall.ToProto),
 	}
 }
