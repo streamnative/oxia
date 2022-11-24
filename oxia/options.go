@@ -22,17 +22,17 @@ var (
 
 // ClientOptions contains options for the Oxia client.
 type ClientOptions struct {
-	serviceUrl          string
+	serviceAddress      string
 	batchLinger         time.Duration
 	maxRequestsPerBatch int
 	batchRequestTimeout time.Duration
 	meterProvider       metric.MeterProvider
 }
 
-// ServiceUrl is the target host:port of any Oxia server to bootstrap the client. It is used for establishing the
+// ServiceAddress is the target host:port of any Oxia server to bootstrap the client. It is used for establishing the
 // shard assignments. Ideally this should be a load-balanced endpoint.
-func (o ClientOptions) ServiceUrl() string {
-	return o.serviceUrl
+func (o ClientOptions) ServiceAddress() string {
+	return o.serviceAddress
 }
 
 // BatchLinger defines how long the batcher will wait before sending a batched request. The value must be greater
@@ -59,9 +59,9 @@ type ClientOption interface {
 	apply(option ClientOptions) (ClientOptions, error)
 }
 
-func NewClientOptions(serviceUrl string, opts ...ClientOption) (ClientOptions, error) {
+func NewClientOptions(serviceAddress string, opts ...ClientOption) (ClientOptions, error) {
 	options := ClientOptions{
-		serviceUrl:          serviceUrl,
+		serviceAddress:      serviceAddress,
 		batchLinger:         DefaultBatchLinger,
 		maxRequestsPerBatch: DefaultMaxRequestsPerBatch,
 		batchRequestTimeout: DefaultBatchRequestTimeout,

@@ -8,10 +8,10 @@ import (
 )
 
 func TestNewClientConfig(t *testing.T) {
-	options, err := NewClientOptions("serviceUrl")
+	options, err := NewClientOptions("serviceAddress")
 	assert.ErrorIs(t, nil, err)
 
-	assert.Equal(t, "serviceUrl", options.ServiceUrl())
+	assert.Equal(t, "serviceAddress", options.ServiceAddress())
 	assert.Equal(t, DefaultBatchLinger, options.BatchLinger())
 	assert.Equal(t, DefaultMaxRequestsPerBatch, options.MaxRequestsPerBatch())
 	assert.Equal(t, DefaultBatchRequestTimeout, options.BatchRequestTimeout())
@@ -27,7 +27,7 @@ func TestWithBatchLinger(t *testing.T) {
 		{0, 0, nil},
 		{1, 1, nil},
 	} {
-		options, err := NewClientOptions("serviceUrl", WithBatchLinger(item.batchLinger))
+		options, err := NewClientOptions("serviceAddress", WithBatchLinger(item.batchLinger))
 		fmt.Println(options)
 		assert.Equal(t, item.expectedBatchLinger, options.BatchLinger())
 		assert.ErrorIs(t, item.expectedErr, err)
@@ -44,7 +44,7 @@ func TestWithMaxRequestsPerBatch(t *testing.T) {
 		{0, DefaultMaxRequestsPerBatch, ErrorMaxRequestsPerBatch},
 		{1, 1, nil},
 	} {
-		options, err := NewClientOptions("serviceUrl", WithMaxRequestsPerBatch(item.maxRequestsPerBatch))
+		options, err := NewClientOptions("serviceAddress", WithMaxRequestsPerBatch(item.maxRequestsPerBatch))
 		fmt.Println(options)
 		assert.Equal(t, item.expectedMaxRequestsPerBatch, options.MaxRequestsPerBatch())
 		assert.ErrorIs(t, item.expectedErr, err)
@@ -61,7 +61,7 @@ func TestWithBatchRequestTimeout(t *testing.T) {
 		{0, DefaultBatchRequestTimeout, ErrorBatchRequestTimeout},
 		{1, 1, nil},
 	} {
-		options, err := NewClientOptions("serviceUrl", WithBatchRequestTimeout(item.batchRequestTimeout))
+		options, err := NewClientOptions("serviceAddress", WithBatchRequestTimeout(item.batchRequestTimeout))
 		fmt.Println(options)
 		assert.Equal(t, item.expectedBatchRequestTimeout, options.BatchRequestTimeout())
 		assert.ErrorIs(t, item.expectedErr, err)
