@@ -13,10 +13,10 @@ type Executor interface {
 }
 
 type ExecutorImpl struct {
-	ClientPool   common.ClientPool
-	ShardManager ShardManager
-	ServiceUrl   string
-	Timeout      time.Duration
+	ClientPool     common.ClientPool
+	ShardManager   ShardManager
+	ServiceAddress string
+	Timeout        time.Duration
 }
 
 func (e *ExecutorImpl) ExecuteWrite(request *proto.WriteRequest) (*proto.WriteResponse, error) {
@@ -48,7 +48,7 @@ func (e *ExecutorImpl) rpc(shardId *uint32) (proto.OxiaClientClient, error) {
 	if shardId != nil {
 		target = e.ShardManager.Leader(*shardId)
 	} else {
-		target = e.ServiceUrl
+		target = e.ServiceAddress
 	}
 
 	rpc, err := e.ClientPool.GetClientRpc(target)
