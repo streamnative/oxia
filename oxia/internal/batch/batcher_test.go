@@ -1,10 +1,10 @@
 package batch
 
 import (
-	"github.com/stretchr/testify/assert"
-	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 type testBatch struct {
@@ -39,41 +39,44 @@ func (b *testBatch) Fail(err error) {
 
 func TestBatcher(t *testing.T) {
 	for _, item := range []struct {
-		linger      time.Duration
-		maxSize     int
-		expectedErr error
+		name             string
+		linger           time.Duration
+		maxSize          int
+		closeImmediately bool
+		expectedErr      error
 	}{
-		{1 * time.Second, 1, nil},               //completes on maxRequestsPerBatch
-		{1 * time.Millisecond, 2, nil},          //completes on linger
-		{1 * time.Second, 2, ErrorShuttingDown}, //fails on closeC
+		{"complete on maxRequestsPerBatch", 1 * time.Second, 1, false, nil},
+		{"complete on linger", 1 * time.Millisecond, 2, false, nil},
+		{"fail on close", 1 * time.Second, 2, true, ErrorShuttingDown},
 	} {
-		testBatch := newTestBatch()
+		t.Run(item.name, func(t *testing.T) {
+			testBatch := newTestBatch()
 
-		batchFactory := func(shardId *uint32) Batch {
-			return testBatch
-		}
+			batchFactory := func(shardId *uint32) Batch {
+				return testBatch
+			}
 
-		factory := &BatcherFactory{
-			Linger:              item.linger,
-			MaxRequestsPerBatch: item.maxSize,
-		}
-		batcher := factory.newBatcher(&shardId, batchFactory)
+			factory := &BatcherFactory{
+				Linger:              item.linger,
+				MaxRequestsPerBatch: item.maxSize,
+			}
+			batcher := factory.newBatcher(&shardId, batchFactory)
 
-		go batcher.run()
+			go batcher.run()
 
-		batcher.Add(1)
+			batcher.Add(1)
 
-		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			assert.Equal(t, item.expectedErr, <-testBatch.result)
-			wg.Done()
-		}()
+			if item.closeImmediately {
+				err := batcher.Close()
+				assert.ErrorIs(t, nil, err)
+			}
 
-		time.Sleep(3 * time.Millisecond)
-		err := batcher.Close()
-		assert.ErrorIs(t, nil, err)
+			assert.ErrorIs(t, item.expectedErr, <-testBatch.result)
 
-		wg.Wait()
+			if !item.closeImmediately {
+				err := batcher.Close()
+				assert.ErrorIs(t, nil, err)
+			}
+		})
 	}
 }
