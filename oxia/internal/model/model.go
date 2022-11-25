@@ -1,4 +1,4 @@
-package batch
+package model
 
 import (
 	"oxia/proto"
@@ -34,7 +34,7 @@ type GetRangeCall struct {
 	Callback        func(*proto.GetRangeResponse, error)
 }
 
-func (r PutCall) toProto() *proto.PutRequest {
+func (r PutCall) ToProto() *proto.PutRequest {
 	return &proto.PutRequest{
 		Key:             r.Key,
 		Payload:         r.Payload,
@@ -42,35 +42,35 @@ func (r PutCall) toProto() *proto.PutRequest {
 	}
 }
 
-func (r DeleteCall) toProto() *proto.DeleteRequest {
+func (r DeleteCall) ToProto() *proto.DeleteRequest {
 	return &proto.DeleteRequest{
 		Key:             r.Key,
 		ExpectedVersion: r.ExpectedVersion,
 	}
 }
 
-func (r DeleteRangeCall) toProto() *proto.DeleteRangeRequest {
+func (r DeleteRangeCall) ToProto() *proto.DeleteRangeRequest {
 	return &proto.DeleteRangeRequest{
 		StartInclusive: r.MinKeyInclusive,
 		EndExclusive:   r.MaxKeyExclusive,
 	}
 }
 
-func (r GetCall) toProto() *proto.GetRequest {
+func (r GetCall) ToProto() *proto.GetRequest {
 	return &proto.GetRequest{
 		Key:            r.Key,
 		IncludePayload: true,
 	}
 }
 
-func (r GetRangeCall) toProto() *proto.GetRangeRequest {
+func (r GetRangeCall) ToProto() *proto.GetRangeRequest {
 	return &proto.GetRangeRequest{
 		StartInclusive: r.MinKeyInclusive,
 		EndExclusive:   r.MaxKeyExclusive,
 	}
 }
 
-func convert[CALL any, PROTO any](calls []CALL, toProto func(CALL) PROTO) []PROTO {
+func Convert[CALL any, PROTO any](calls []CALL, toProto func(CALL) PROTO) []PROTO {
 	protos := make([]PROTO, len(calls))
 	for i, call := range calls {
 		protos[i] = toProto(call)

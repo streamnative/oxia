@@ -130,7 +130,7 @@ func (t *tidwallWal) checkNextEntryId(entryId *proto.EntryId) error {
 	nextEpoch := entryId.Epoch
 	nextOffset := entryId.Offset
 	if (lastOffset == 0 && lastEpoch == 0 && !(nextEpoch == 1 && nextOffset == 0)) ||
-		(lastEpoch > 0 && ((nextOffset != lastOffset+1) || (nextEpoch != lastEpoch && nextEpoch != lastEpoch+1))) {
+		(lastEpoch > 0 && ((nextOffset != lastOffset+1) || (nextEpoch < lastEpoch))) {
 		return errors.New(fmt.Sprintf("Invalid next entry. EntryId{%d,%d} can not immediately follow EntryId{%d,%d}",
 			nextEpoch, nextOffset, lastEpoch, lastOffset))
 	}

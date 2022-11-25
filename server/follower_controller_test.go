@@ -17,7 +17,7 @@ var testKVOptions = &kv.KVFactoryOptions{
 func TestFollower(t *testing.T) {
 	var shardId uint32
 	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
-	walFactory := NewInMemoryWalFactory()
+	walFactory := wal.NewInMemoryWalFactory()
 
 	fc, err := NewFollowerController(shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
@@ -85,7 +85,7 @@ func TestFollower(t *testing.T) {
 	assert.EqualValues(t, 1, fc.Epoch())
 
 	// Try to add entry with higher epoch. This should succeed
-	stream.AddRequest(createAddRequest(t, 3, 0, map[string]string{"a": "4", "b": "5"}, &proto.EntryId{
+	stream.AddRequest(createAddRequest(t, 3, 1, map[string]string{"a": "4", "b": "5"}, &proto.EntryId{
 		Epoch:  0,
 		Offset: 0,
 	}))
@@ -93,7 +93,7 @@ func TestFollower(t *testing.T) {
 	// Wait for response
 	response = stream.GetResponse()
 	assert.EqualValues(t, 3, response.Epoch)
-	assert.Equal(t, wal.EntryIdFromProto(&proto.EntryId{Epoch: 3, Offset: 0}), wal.EntryIdFromProto(response.EntryId))
+	assert.Equal(t, wal.EntryIdFromProto(&proto.EntryId{Epoch: 3, Offset: 1}), wal.EntryIdFromProto(response.EntryId))
 	assert.False(t, response.InvalidEpoch)
 
 	assert.Equal(t, Follower, fc.Status())

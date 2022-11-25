@@ -20,22 +20,22 @@ type ShardManager interface {
 
 type shardManagerImpl struct {
 	sync.Mutex
-	shardStrategy ShardStrategy
-	clientPool    common.ClientPool
-	serviceUrl    string
-	shards        map[uint32]Shard
-	closeC        chan bool
-	logger        zerolog.Logger
+	shardStrategy  ShardStrategy
+	clientPool     common.ClientPool
+	serviceAddress string
+	shards         map[uint32]Shard
+	closeC         chan bool
+	logger         zerolog.Logger
 }
 
-func NewShardManager(shardStrategy ShardStrategy, clientPool common.ClientPool, serviceUrl string) ShardManager {
+func NewShardManager(shardStrategy ShardStrategy, clientPool common.ClientPool, serviceAddress string) ShardManager {
 	return &shardManagerImpl{
-		shardStrategy: shardStrategy,
-		clientPool:    clientPool,
-		serviceUrl:    serviceUrl,
-		shards:        make(map[uint32]Shard),
-		closeC:        make(chan bool),
-		logger:        log.With().Str("component", "shardManager").Logger(),
+		shardStrategy:  shardStrategy,
+		clientPool:     clientPool,
+		serviceAddress: serviceAddress,
+		shards:         make(map[uint32]Shard),
+		closeC:         make(chan bool),
+		logger:         log.With().Str("component", "shardManager").Logger(),
 	}
 }
 
@@ -116,7 +116,7 @@ func (s *shardManagerImpl) receiveWithRecovery(ctx context.Context, readyC chan 
 }
 
 func (s *shardManagerImpl) receive(ctx context.Context, readyC chan bool) error {
-	rpc, err := s.clientPool.GetClientRpc(s.serviceUrl)
+	rpc, err := s.clientPool.GetClientRpc(s.serviceAddress)
 	if err != nil {
 		return err
 	}

@@ -4,6 +4,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"oxia/proto"
 	"oxia/server/kv"
+	"oxia/server/wal"
 	"testing"
 )
 
@@ -11,7 +12,7 @@ func TestLeaderController_NotInitialized(t *testing.T) {
 	var shard uint32 = 1
 
 	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
-	walFactory := NewInMemoryWalFactory()
+	walFactory := wal.NewInMemoryWalFactory()
 
 	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
@@ -46,7 +47,7 @@ func TestLeaderController_BecomeLeader_NoFencing(t *testing.T) {
 	var shard uint32 = 1
 
 	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
-	walFactory := NewInMemoryWalFactory()
+	walFactory := wal.NewInMemoryWalFactory()
 
 	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
@@ -71,7 +72,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	var shard uint32 = 1
 
 	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
-	walFactory := NewInMemoryWalFactory()
+	walFactory := wal.NewInMemoryWalFactory()
 
 	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
@@ -166,7 +167,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	var shard uint32 = 1
 
 	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
-	walFactory := NewInMemoryWalFactory()
+	walFactory := wal.NewInMemoryWalFactory()
 
 	rpc := newMockRpcClient()
 
