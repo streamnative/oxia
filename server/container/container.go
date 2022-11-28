@@ -39,7 +39,6 @@ func Start(name string, port int, registerFunc func(grpc.ServiceRegistrar)) (*Co
 		if err := c.server.Serve(listener); err != nil {
 			c.log.Fatal().Err(err).Msg("Failed to start serving")
 		}
-		fmt.Println("XXX")
 	}()
 
 	c.log.Info().Msg("Started container")
