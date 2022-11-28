@@ -18,7 +18,7 @@ func TestAsyncClientImpl(t *testing.T) {
 	server, err := standalone.NewStandaloneRpcServer(0, "localhost", 1, kvFactory)
 	assert.NoError(t, err)
 
-	serviceAddress := fmt.Sprintf("localhost:%d", server.Port())
+	serviceAddress := fmt.Sprintf("localhost:%d", server.Container.Port())
 	options, err := NewClientOptions(serviceAddress, WithBatchLinger(0))
 	if err != nil {
 		assert.Fail(t, err.Error())

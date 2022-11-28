@@ -22,10 +22,10 @@ func TestWithStandalone(t *testing.T) {
 	kvOptions := kv.KVFactoryOptions{InMemory: true}
 	kvFactory := kv.NewPebbleKVFactory(&kvOptions)
 	server, err := standalone.NewStandaloneRpcServer(0, "localhost", 2, kvFactory)
-	assert.ErrorIs(t, nil, err)
+	assert.NoError(t, err)
 
 	clientPool := common.NewClientPool()
-	serviceAddress := fmt.Sprintf("localhost:%d", server.Port())
+	serviceAddress := fmt.Sprintf("localhost:%d", server.Container.Port())
 	shardManager := NewShardManager(&testShardStrategy{}, clientPool, serviceAddress).(*shardManagerImpl)
 	defer func() {
 		if err := shardManager.Close(); err != nil {

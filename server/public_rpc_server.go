@@ -1,51 +1,38 @@
 package server
 
 import (
-	"fmt"
-	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
-	"net"
 	"oxia/proto"
+	"oxia/server/container"
 )
 
 type PublicRpcServer struct {
 	proto.UnimplementedOxiaClientServer
 
 	shardsDirector ShardsDirector
-
-	grpcServer *grpc.Server
-	log        zerolog.Logger
+	container      *container.Container
+	log            zerolog.Logger
 }
 
-func NewPublicRpcServer(port int, advertisedPublicAddress string, shardsDirector ShardsDirector) (*PublicRpcServer, error) {
-	res := &PublicRpcServer{
+func NewPublicRpcServer(port int, shardsDirector ShardsDirector) (*PublicRpcServer, error) {
+	server := &PublicRpcServer{
 		shardsDirector: shardsDirector,
 		log: log.With().
 			Str("component", "public-rpc-server").
 			Logger(),
 	}
 
-	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
+	var err error
+	server.container, err = container.Start("public", port, func(registrar grpc.ServiceRegistrar) {
+		proto.RegisterOxiaClientServer(registrar, server)
+	})
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to listen")
+		return nil, err
 	}
 
-	res.grpcServer = grpc.NewServer()
-	proto.RegisterOxiaClientServer(res.grpcServer, res)
-	res.log.Info().
-		Str("bindAddress", listener.Addr().String()).
-		Str("advertisedAddress", advertisedPublicAddress).
-		Msg("Started public RPC server")
-
-	go func() {
-		if err := res.grpcServer.Serve(listener); err != nil {
-			log.Fatal().Err(err).Msg("Failed to serve")
-		}
-	}()
-
-	return res, nil
+	return server, nil
 }
 
 //func (s *PublicRpcServer) GetShardsAssignments(_ *proto.Empty, out proto.ClientAPI_GetShardsAssignmentsServer) error {
@@ -75,6 +62,5 @@ func NewPublicRpcServer(port int, advertisedPublicAddress string, shardsDirector
 //}
 
 func (s *PublicRpcServer) Close() error {
-	s.grpcServer.GracefulStop()
-	return nil
+	return s.container.Close()
 }

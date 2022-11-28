@@ -11,10 +11,10 @@ import (
 )
 
 func TestInternalHealthCheck(t *testing.T) {
-	server, err := newCoordinationRpcServer(0, "", nil)
+	server, err := newCoordinationRpcServer(0, nil)
 	assert.NoError(t, err)
 
-	target := fmt.Sprintf(":%d", server.Port())
+	target := fmt.Sprintf("localhost:%d", server.container.Port())
 	cnx, err := grpc.Dial(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	assert.NoError(t, err)
 
