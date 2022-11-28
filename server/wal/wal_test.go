@@ -56,7 +56,6 @@ func TestWal(t *testing.T) {
 		if f.Persistent() {
 			t.Run(f.Name()+"Reopen", Reopen)
 		}
-
 	}
 
 }

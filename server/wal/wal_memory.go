@@ -120,7 +120,13 @@ func (r *inMemForwardReader) HasNext() bool {
 	if r.closed {
 		return false
 	}
-	return r.nextOffset < r.wal.LastEntry().Offset
+
+	var maxOffsetExclusive uint64 = 0
+	if len(r.wal.log) != 0 {
+		maxOffsetExclusive = uint64(r.wal.index[r.wal.LastEntry()]) + 1
+	}
+
+	return r.nextOffset < maxOffsetExclusive
 }
 
 func (r *inMemReverseReader) ReadNext() (*proto.LogEntry, error) {
