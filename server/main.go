@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	conf = &serverConfig{}
+	conf = serverConfig{}
 
 	Cmd = &cobra.Command{
 		Use:   "server",
@@ -27,7 +27,7 @@ func init() {
 func main(cmd *cobra.Command, args []string) {
 	common.ConfigureLogger()
 
-	server, err := NewServer(conf)
+	server, err := newServer(conf)
 	if err != nil {
 		log.Fatal().Err(err).
 			Msg("Failed to start the server")
