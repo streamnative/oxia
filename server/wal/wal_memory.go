@@ -66,7 +66,10 @@ func (r *inMemForwardReader) Close() error {
 	r.wal.Lock()
 	defer r.wal.Unlock()
 	r.closed = true
-	close(r.Channel())
+	if r.channel != nil {
+		close(r.Channel())
+		r.channel = nil
+	}
 	delete(r.wal.readers, r.id)
 	return nil
 }
@@ -96,7 +99,10 @@ func (r *inMemForwardReader) ReadNext() (*proto.LogEntry, error) {
 		return nil, ErrorReaderClosed
 	}
 	for r.nextOffset >= r.maxOffsetExclusive {
+
+		r.wal.Unlock()
 		update, more := <-r.channel
+		r.wal.Lock()
 		if !more {
 			return nil, ErrorReaderClosed
 		} else {
@@ -114,7 +120,13 @@ func (r *inMemForwardReader) HasNext() bool {
 	if r.closed {
 		return false
 	}
-	return r.nextOffset < r.maxOffsetExclusive
+
+	var maxOffsetExclusive uint64 = 0
+	if len(r.wal.log) != 0 {
+		maxOffsetExclusive = uint64(r.wal.index[r.wal.LastEntry()]) + 1
+	}
+
+	return r.nextOffset < maxOffsetExclusive
 }
 
 func (r *inMemReverseReader) ReadNext() (*proto.LogEntry, error) {
@@ -199,6 +211,14 @@ func (w *inMemoryWal) NewReverseReader() (WalReader, error) {
 	return r, nil
 }
 
+func (w *inMemoryWal) LastEntry() EntryId {
+	if len(w.log) == 0 {
+		return EntryId{}
+	}
+
+	return EntryIdFromProto(w.log[len(w.log)-1].EntryId)
+}
+
 func (w *inMemoryWal) Append(entry *proto.LogEntry) error {
 	w.Lock()
 	defer w.Unlock()
@@ -213,10 +233,10 @@ func (w *inMemoryWal) Append(entry *proto.LogEntry) error {
 	lastOffset := lastEntryId.Offset
 	nextEpoch := entryId.Epoch
 	nextOffset := entryId.Offset
-	if (lastOffset == 0 && lastEpoch == 0 && !(nextEpoch == 1 && nextOffset == 0)) ||
-		(lastEpoch > 0 && ((nextOffset != lastOffset+1) || (nextEpoch < lastEpoch))) {
+	if nextOffset != lastOffset+1 &&
+		!(nextEpoch == lastEpoch+1 && nextOffset == 0) {
 		return errors.New(fmt.Sprintf("Invalid next entry. EntryId{%d,%d} can not immediately follow EntryId{%d,%d}",
-			nextEpoch, nextOffset, lastEpoch, lastOffset))
+			entryId.Epoch, entryId.Offset, lastEntryId.Epoch, lastEntryId.Offset))
 	}
 
 	w.log = append(w.log, entry)

@@ -1,10 +1,12 @@
 package server
 
 import (
-	"fmt"
 	"github.com/rs/zerolog/log"
+	"go.uber.org/multierr"
 	"os"
 	"oxia/common"
+	"oxia/server/kv"
+	"oxia/server/wal"
 )
 
 type serverConfig struct {
@@ -21,6 +23,8 @@ type server struct {
 
 	shardsDirector ShardsDirector
 	clientPool     common.ClientPool
+	walFactory     wal.WalFactory
+	kvFactory      kv.KVFactory
 }
 
 func NewServer(config *serverConfig) (*server, error) {
@@ -30,6 +34,8 @@ func NewServer(config *serverConfig) (*server, error) {
 
 	s := &server{
 		clientPool: common.NewClientPool(),
+		walFactory: wal.NewWalFactory(nil),
+		kvFactory:  kv.NewPebbleKVFactory(nil),
 	}
 
 	hostname, err := os.Hostname()
@@ -48,8 +54,7 @@ func NewServer(config *serverConfig) (*server, error) {
 	}
 	log.Info().Msgf("AdvertisedPublicAddress %s", advertisedPublicAddress)
 
-	identityAddr := fmt.Sprintf("%s:%d", advertisedInternalAddress, config.InternalServicePort)
-	s.shardsDirector = NewShardsDirector(identityAddr)
+	s.shardsDirector = NewShardsDirector(s.walFactory, s.kvFactory)
 
 	s.internalRpcServer, err = newCoordinationRpcServer(config.InternalServicePort, s.shardsDirector)
 	if err != nil {
@@ -65,21 +70,12 @@ func NewServer(config *serverConfig) (*server, error) {
 }
 
 func (s *server) Close() error {
-	if err := s.PublicRpcServer.Close(); err != nil {
-		return err
-	}
-
-	if err := s.internalRpcServer.Close(); err != nil {
-		return err
-	}
-
-	if err := s.clientPool.Close(); err != nil {
-		return err
-	}
-
-	if err := s.shardsDirector.Close(); err != nil {
-		return err
-	}
-
-	return nil
+	return multierr.Combine(
+		s.PublicRpcServer.Close(),
+		s.internalRpcServer.Close(),
+		s.clientPool.Close(),
+		s.shardsDirector.Close(),
+		s.kvFactory.Close(),
+		s.walFactory.Close(),
+	)
 }

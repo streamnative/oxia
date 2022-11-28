@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"io"
 	"oxia/proto"
 	"oxia/server/util"
 	"oxia/server/wal"
@@ -18,6 +19,8 @@ var ErrorTooManyCursors = errors.New("too many cursors")
 //
 // The quorum ack tracker is also used to block until the head index or commit index are advanced
 type QuorumAckTracker interface {
+	io.Closer
+
 	CommitIndex() wal.EntryId
 
 	// WaitForCommitIndex
@@ -51,6 +54,7 @@ type quorumAckTracker struct {
 	// The bitset is used to handle duplicate acks from a single follower
 	tracker            map[wal.EntryId]*util.BitSet
 	cursorIdxGenerator int
+	closed             bool
 }
 
 type CursorAcker interface {
@@ -112,7 +116,7 @@ func (q *quorumAckTracker) WaitForHeadIndex(entryId wal.EntryId) {
 	q.Lock()
 	defer q.Unlock()
 
-	for q.headIndex.Less(entryId) {
+	for !q.closed && q.headIndex.Offset < entryId.Offset {
 		q.waitForHeadIndex.Wait()
 	}
 }
@@ -121,11 +125,24 @@ func (q *quorumAckTracker) WaitForCommitIndex(entryId wal.EntryId, f func() (*pr
 	q.Lock()
 	defer q.Unlock()
 
-	for q.requiredAcks > 0 && q.commitIndex.Less(entryId) {
+	for !q.closed && q.requiredAcks > 0 && q.commitIndex.Offset < entryId.Offset {
 		q.waitForCommitIndex.Wait()
 	}
 
+	if q.closed {
+		return nil, errors.New("already closed")
+	}
 	return f()
+}
+
+func (q *quorumAckTracker) Close() error {
+	q.Lock()
+	defer q.Unlock()
+
+	q.closed = true
+	q.waitForCommitIndex.Broadcast()
+	q.waitForHeadIndex.Broadcast()
+	return nil
 }
 
 func (q *quorumAckTracker) NewCursorAcker() (CursorAcker, error) {

@@ -6,99 +6,149 @@ import (
 	"github.com/rs/zerolog/log"
 	"io"
 	"oxia/common"
+	"oxia/server/kv"
 	"oxia/server/wal"
 	"sync"
+)
+
+var (
+	ErrorNodeIsNotLeader   = errors.New("node is not leader for shard")
+	ErrorNodeIsNotFollower = errors.New("node is not follower for shard")
 )
 
 type ShardsDirector interface {
 	io.Closer
 
-	//GetShardsAssignments(callback func(*proto.ShardsAssignments))
+	GetLeader(shardId uint32) (LeaderController, error)
+	GetFollower(shardId uint32) (FollowerController, error)
 
-	GetManager(shardId uint32, create bool) (ShardManager, error)
+	GetOrCreateLeader(shardId uint32) (LeaderController, error)
+	GetOrCreateFollower(shardId uint32) (FollowerController, error)
 }
 
 type shardsDirector struct {
-	mutex *sync.Mutex
-	cond  *sync.Cond
+	sync.Mutex
 
-	//assignments   *proto.ShardsAssignments
-	shardManagers map[uint32]ShardManager
-	identityAddr  string
-	walFactory    wal.WalFactory
+	leaders   map[uint32]LeaderController
+	followers map[uint32]FollowerController
 
-	log zerolog.Logger
+	kvFactory  kv.KVFactory
+	walFactory wal.WalFactory
+	pool       common.ClientPool
+	log        zerolog.Logger
 }
 
-func NewShardsDirector(identityAddr string) ShardsDirector {
-	mutex := &sync.Mutex{}
+func NewShardsDirector(walFactory wal.WalFactory, kvFactory kv.KVFactory) ShardsDirector {
 	return &shardsDirector{
-		mutex: mutex,
-		cond:  sync.NewCond(mutex),
-
-		identityAddr:  identityAddr,
-		shardManagers: make(map[uint32]ShardManager),
-		walFactory:    nil,
+		walFactory: walFactory,
+		kvFactory:  kvFactory,
+		leaders:    make(map[uint32]LeaderController),
+		followers:  make(map[uint32]FollowerController),
 		log: log.With().
 			Str("component", "shards-director").
 			Logger(),
 	}
 }
 
-//func (s *shardsDirector) GetShardsAssignments(callback func(*proto.ShardsAssignments)) {
-//	s.mutex.Lock()
-//	defer s.mutex.Unlock()
-//
-//	if s.assignments != nil {
-//		callback(s.assignments)
-//	}
-//
-//	oldAssignments := s.assignments
-//	for {
-//		s.cond.Wait()
-//
-//		if oldAssignments != s.assignments {
-//			callback(s.assignments)
-//			oldAssignments = s.assignments
-//		}
-//	}
-//}
+func (s *shardsDirector) GetLeader(shardId uint32) (LeaderController, error) {
+	s.Lock()
+	defer s.Unlock()
 
-func (s *shardsDirector) GetManager(shardId uint32, create bool) (ShardManager, error) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	manager, ok := s.shardManagers[shardId]
-	if ok {
-		return manager, nil
-	} else if create {
-		w, err := s.walFactory.NewWal(shardId)
-		if err != nil {
-			return nil, err
-		}
-		kv := NewInMemoryKVStore()
-		pool := common.NewClientPool()
-		sm, err := NewShardManager(shardId, s.identityAddr, pool, w, kv)
-		if err != nil {
-			return nil, err
-		}
-		s.shardManagers[shardId] = sm
-		return sm, nil
-	} else {
-		s.log.Debug().
-			Uint32("shard", shardId).
-			Msg("This node is not hosting shard")
-		return nil, errors.Errorf("This node is not leader for shard %d", shardId)
+	if leader, ok := s.leaders[shardId]; ok {
+		// There is already a leader controller for this shard
+		return leader, nil
 	}
 
+	s.log.Debug().
+		Uint32("shard", shardId).
+		Msg("This node is not hosting shard")
+	return nil, errors.Wrapf(ErrorNodeIsNotLeader, "node is not leader for shard %d", shardId)
+}
+
+func (s *shardsDirector) GetFollower(shardId uint32) (FollowerController, error) {
+	s.Lock()
+	defer s.Unlock()
+
+	if follower, ok := s.followers[shardId]; ok {
+		// There is already a follower controller for this shard
+		return follower, nil
+	}
+
+	s.log.Debug().
+		Uint32("shard", shardId).
+		Msg("This node is not hosting shard")
+	return nil, errors.Wrapf(ErrorNodeIsNotFollower, "node is not follower for shard %d", shardId)
+}
+
+func (s *shardsDirector) GetOrCreateLeader(shardId uint32) (LeaderController, error) {
+	s.Lock()
+	defer s.Unlock()
+
+	if leader, ok := s.leaders[shardId]; ok {
+		// There is already a leader controller for this shard
+		return leader, nil
+	} else if follower, ok := s.followers[shardId]; ok {
+		// There is an existing follower controller
+		// Let's close it and before creating the leader controller
+
+		if err := follower.Close(); err != nil {
+			return nil, err
+		}
+
+		delete(s.followers, shardId)
+	}
+
+	// Create new leader controller
+	if lc, err := NewLeaderController(shardId, NewReplicationRpcProvider(s.pool), s.walFactory, s.kvFactory); err != nil {
+		return nil, err
+	} else {
+		s.leaders[shardId] = lc
+		return lc, nil
+	}
+}
+
+func (s *shardsDirector) GetOrCreateFollower(shardId uint32) (FollowerController, error) {
+	s.Lock()
+	defer s.Unlock()
+
+	if follower, ok := s.followers[shardId]; ok {
+		// There is already a follower controller for this shard
+		return follower, nil
+	} else if leader, ok := s.leaders[shardId]; ok {
+		// There is an existing leader controller
+		// Let's close it and before creating the follower controller
+
+		if err := leader.Close(); err != nil {
+			return nil, err
+		}
+
+		delete(s.leaders, shardId)
+	}
+
+	// Create new follower controller
+	if fc, err := NewFollowerController(shardId, s.walFactory, s.kvFactory); err != nil {
+		return nil, err
+	} else {
+		s.followers[shardId] = fc
+		return fc, nil
+	}
 }
 
 func (s *shardsDirector) Close() error {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+	s.Lock()
+	defer s.Unlock()
 
-	for shard, manager := range s.shardManagers {
-		if err := manager.Close(); err != nil {
+	for shard, leader := range s.leaders {
+		if err := leader.Close(); err != nil {
+			s.log.Error().
+				Err(err).
+				Uint32("shard", shard).
+				Msg("Failed to shutdown leader controller")
+		}
+	}
+
+	for shard, follower := range s.followers {
+		if err := follower.Close(); err != nil {
 			s.log.Error().
 				Err(err).
 				Uint32("shard", shard).
