@@ -46,6 +46,7 @@ func NewServer(config *serverConfig) (*server, error) {
 	if advertisedPublicAddress == "" {
 		advertisedPublicAddress = hostname
 	}
+	log.Info().Msgf("AdvertisedPublicAddress %s", advertisedPublicAddress)
 
 	identityAddr := fmt.Sprintf("%s:%d", advertisedInternalAddress, config.InternalServicePort)
 	s.shardsDirector = NewShardsDirector(identityAddr)
