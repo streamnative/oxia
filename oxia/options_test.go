@@ -1,7 +1,6 @@
 package oxia
 
 import (
-	"fmt"
 	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
@@ -9,7 +8,7 @@ import (
 
 func TestNewClientConfig(t *testing.T) {
 	options, err := NewClientOptions("serviceAddress")
-	assert.ErrorIs(t, nil, err)
+	assert.NoError(t, err)
 
 	assert.Equal(t, "serviceAddress", options.ServiceAddress())
 	assert.Equal(t, DefaultBatchLinger, options.BatchLinger())
@@ -28,9 +27,8 @@ func TestWithBatchLinger(t *testing.T) {
 		{1, 1, nil},
 	} {
 		options, err := NewClientOptions("serviceAddress", WithBatchLinger(item.batchLinger))
-		fmt.Println(options)
 		assert.Equal(t, item.expectedBatchLinger, options.BatchLinger())
-		assert.ErrorIs(t, item.expectedErr, err)
+		assert.ErrorIs(t, err, item.expectedErr)
 	}
 }
 
@@ -45,9 +43,8 @@ func TestWithMaxRequestsPerBatch(t *testing.T) {
 		{1, 1, nil},
 	} {
 		options, err := NewClientOptions("serviceAddress", WithMaxRequestsPerBatch(item.maxRequestsPerBatch))
-		fmt.Println(options)
 		assert.Equal(t, item.expectedMaxRequestsPerBatch, options.MaxRequestsPerBatch())
-		assert.ErrorIs(t, item.expectedErr, err)
+		assert.ErrorIs(t, err, item.expectedErr)
 	}
 }
 
@@ -62,8 +59,7 @@ func TestWithBatchRequestTimeout(t *testing.T) {
 		{1, 1, nil},
 	} {
 		options, err := NewClientOptions("serviceAddress", WithBatchRequestTimeout(item.batchRequestTimeout))
-		fmt.Println(options)
 		assert.Equal(t, item.expectedBatchRequestTimeout, options.BatchRequestTimeout())
-		assert.ErrorIs(t, item.expectedErr, err)
+		assert.ErrorIs(t, err, item.expectedErr)
 	}
 }
