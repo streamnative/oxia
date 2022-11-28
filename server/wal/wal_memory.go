@@ -120,7 +120,7 @@ func (r *inMemForwardReader) HasNext() bool {
 	if r.closed {
 		return false
 	}
-	return r.nextOffset < r.maxOffsetExclusive
+	return r.nextOffset < r.wal.LastEntry().Offset
 }
 
 func (r *inMemReverseReader) ReadNext() (*proto.LogEntry, error) {
@@ -227,10 +227,10 @@ func (w *inMemoryWal) Append(entry *proto.LogEntry) error {
 	lastOffset := lastEntryId.Offset
 	nextEpoch := entryId.Epoch
 	nextOffset := entryId.Offset
-	if (lastOffset == 0 && lastEpoch == 0 && !(nextEpoch == 1 && nextOffset == 0)) ||
-		(lastEpoch > 0 && ((nextOffset != lastOffset+1) || (nextEpoch < lastEpoch))) {
+	if nextOffset != lastOffset+1 &&
+		!(nextEpoch == lastEpoch+1 && nextOffset == 0) {
 		return errors.New(fmt.Sprintf("Invalid next entry. EntryId{%d,%d} can not immediately follow EntryId{%d,%d}",
-			nextEpoch, nextOffset, lastEpoch, lastOffset))
+			entryId.Epoch, entryId.Offset, lastEntryId.Epoch, lastEntryId.Offset))
 	}
 
 	w.log = append(w.log, entry)

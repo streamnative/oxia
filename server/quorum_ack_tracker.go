@@ -116,7 +116,7 @@ func (q *quorumAckTracker) WaitForHeadIndex(entryId wal.EntryId) {
 	q.Lock()
 	defer q.Unlock()
 
-	for !q.closed && q.headIndex.Less(entryId) {
+	for !q.closed && q.headIndex.Offset < entryId.Offset {
 		q.waitForHeadIndex.Wait()
 	}
 }
@@ -125,7 +125,7 @@ func (q *quorumAckTracker) WaitForCommitIndex(entryId wal.EntryId, f func() (*pr
 	q.Lock()
 	defer q.Unlock()
 
-	for !q.closed && q.requiredAcks > 0 && q.commitIndex.Less(entryId) {
+	for !q.closed && q.requiredAcks > 0 && q.commitIndex.Offset < entryId.Offset {
 		q.waitForCommitIndex.Wait()
 	}
 
