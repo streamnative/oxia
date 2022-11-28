@@ -47,17 +47,18 @@ func NewServer(config *serverConfig) (*server, error) {
 	if advertisedPublicAddress == "" {
 		advertisedPublicAddress = hostname
 	}
+	log.Info().Msgf("AdvertisedPublicAddress %s", advertisedPublicAddress)
 
 	identityAddr := fmt.Sprintf("%s:%d", advertisedInternalAddress, config.InternalServicePort)
 	s.shardsDirector = NewShardsDirector(identityAddr)
 	s.shardAssignmentDispatcher = NewShardAssignmentDispatcher()
 
-	s.internalRpcServer, err = newCoordinationRpcServer(config.InternalServicePort, advertisedInternalAddress, s.shardsDirector, s.shardAssignmentDispatcher)
+	s.internalRpcServer, err = newCoordinationRpcServer(config.InternalServicePort, s.shardsDirector, s.shardAssignmentDispatcher)
 	if err != nil {
 		return nil, err
 	}
 
-	s.PublicRpcServer, err = NewPublicRpcServer(config.PublicServicePort, advertisedPublicAddress, s.shardsDirector, s.shardAssignmentDispatcher)
+	s.PublicRpcServer, err = NewPublicRpcServer(config.PublicServicePort, s.shardsDirector, s.shardAssignmentDispatcher)
 	if err != nil {
 		return nil, err
 	}

@@ -6,10 +6,13 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"go.uber.org/multierr"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
-	"net"
 	"oxia/proto"
+	"oxia/server/container"
 )
 
 const (
@@ -19,19 +22,15 @@ const (
 type internalRpcServer struct {
 	proto.UnimplementedOxiaControlServer
 	proto.UnimplementedOxiaLogReplicationServer
+
 	shardsDirector       ShardsDirector
 	assignmentDispatcher ShardAssignmentsDispatcher
-
-	grpcServer *grpc.Server
-	log        zerolog.Logger
+	container            *container.Container
+	log                  zerolog.Logger
 }
 
-func newCoordinationRpcServer(
-	port int,
-	advertisedInternalAddress string,
-	shardsDirector ShardsDirector,
-	assignmentDispatcher ShardAssignmentsDispatcher) (*internalRpcServer, error) {
-	res := &internalRpcServer{
+func newCoordinationRpcServer(port int, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher) (*internalRpcServer, error) {
+	server := &internalRpcServer{
 		shardsDirector:       shardsDirector,
 		assignmentDispatcher: assignmentDispatcher,
 		log: log.With().
@@ -39,31 +38,23 @@ func newCoordinationRpcServer(
 			Logger(),
 	}
 
-	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
+	var err error
+	server.container, err = container.Start("internal", port, func(registrar grpc.ServiceRegistrar) {
+		proto.RegisterOxiaControlServer(registrar, server)
+		proto.RegisterOxiaLogReplicationServer(registrar, server)
+		grpc_health_v1.RegisterHealthServer(registrar, health.NewServer())
+	})
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to listen")
+		return nil, err
 	}
 
-	res.grpcServer = grpc.NewServer()
-	proto.RegisterOxiaControlServer(res.grpcServer, res)
-	proto.RegisterOxiaLogReplicationServer(res.grpcServer, res)
-	res.log.Info().
-		Str("bindAddress", listener.Addr().String()).
-		Str("advertisedAddress", advertisedInternalAddress).
-		Msg("Started coordination RPC server")
-
-	go func() {
-		if err := res.grpcServer.Serve(listener); err != nil {
-			log.Fatal().Err(err).Msg("Failed to serve")
-		}
-	}()
-
-	return res, nil
+	return server, nil
 }
 
 func (s *internalRpcServer) Close() error {
-	s.grpcServer.GracefulStop()
-	return s.assignmentDispatcher.Close()
+	return multierr.Combine(
+		s.container.Close(),
+		s.assignmentDispatcher.Close())
 }
 
 func (s *internalRpcServer) ShardAssignment(srv proto.OxiaControl_ShardAssignmentServer) error {
