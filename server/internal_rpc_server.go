@@ -24,6 +24,7 @@ type internalRpcServer struct {
 	shardsDirector ShardsDirector
 
 	grpcServer *grpc.Server
+	port       int
 	log        zerolog.Logger
 }
 
@@ -39,6 +40,8 @@ func newCoordinationRpcServer(port int, advertisedInternalAddress string, shards
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to listen")
 	}
+
+	res.port = listener.Addr().(*net.TCPAddr).Port
 
 	res.grpcServer = grpc.NewServer()
 	proto.RegisterOxiaControlServer(res.grpcServer, res)
@@ -134,3 +137,8 @@ func readHeaderUint32(md metadata.MD, key string) (v uint32, err error) {
 	_, err = fmt.Sscan(s, &r)
 	return r, err
 }
+
+func (s *internalRpcServer) Port() int {
+	return s.port
+}
+
