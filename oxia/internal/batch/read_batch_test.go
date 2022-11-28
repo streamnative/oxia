@@ -152,9 +152,9 @@ func TestReadBatchComplete(t *testing.T) {
 		batch.Complete()
 
 		assert.Equal(t, item.expectedGetResponse, getResponse)
-		assert.ErrorIs(t, item.expectedGetErr, getErr)
+		assert.ErrorIs(t, getErr, item.expectedGetErr)
 
 		assert.Equal(t, item.expectedGetRangeResponse, getRangeResponse)
-		assert.ErrorIs(t, item.expectedGetRangeErr, getRangeErr)
+		assert.ErrorIs(t, getRangeErr, item.expectedGetRangeErr)
 	}
 }
