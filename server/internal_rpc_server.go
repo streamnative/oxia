@@ -7,6 +7,8 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
 	"net"
 	"oxia/proto"
@@ -41,6 +43,7 @@ func newCoordinationRpcServer(port int, advertisedInternalAddress string, shards
 	res.grpcServer = grpc.NewServer()
 	proto.RegisterOxiaControlServer(res.grpcServer, res)
 	proto.RegisterOxiaLogReplicationServer(res.grpcServer, res)
+	grpc_health_v1.RegisterHealthServer(res.grpcServer, health.NewServer())
 	res.log.Info().
 		Str("bindAddress", listener.Addr().String()).
 		Str("advertisedAddress", advertisedInternalAddress).
