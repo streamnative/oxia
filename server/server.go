@@ -50,12 +50,12 @@ func NewServer(config *serverConfig) (*server, error) {
 	identityAddr := fmt.Sprintf("%s:%d", advertisedInternalAddress, config.InternalServicePort)
 	s.shardsDirector = NewShardsDirector(identityAddr)
 
-	s.internalRpcServer, err = newCoordinationRpcServer(config.InternalServicePort, advertisedInternalAddress, s.shardsDirector)
+	s.internalRpcServer, err = newCoordinationRpcServer(config.InternalServicePort, s.shardsDirector)
 	if err != nil {
 		return nil, err
 	}
 
-	s.PublicRpcServer, err = NewPublicRpcServer(config.PublicServicePort, advertisedPublicAddress, s.shardsDirector)
+	s.PublicRpcServer, err = NewPublicRpcServer(config.PublicServicePort, s.shardsDirector)
 	if err != nil {
 		return nil, err
 	}

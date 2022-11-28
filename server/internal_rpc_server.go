@@ -10,8 +10,8 @@ import (
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
-	"net"
 	"oxia/proto"
+	"oxia/server/container"
 )
 
 const (
@@ -21,49 +21,35 @@ const (
 type internalRpcServer struct {
 	proto.UnimplementedOxiaControlServer
 	proto.UnimplementedOxiaLogReplicationServer
-	shardsDirector ShardsDirector
 
-	grpcServer *grpc.Server
-	port       int
-	log        zerolog.Logger
+	shardsDirector ShardsDirector
+	container      *container.Container
+	log            zerolog.Logger
 }
 
-func newCoordinationRpcServer(port int, advertisedInternalAddress string, shardsDirector ShardsDirector) (*internalRpcServer, error) {
-	res := &internalRpcServer{
+func newCoordinationRpcServer(port int, shardsDirector ShardsDirector) (*internalRpcServer, error) {
+	server := &internalRpcServer{
 		shardsDirector: shardsDirector,
 		log: log.With().
 			Str("component", "coordination-rpc-server").
 			Logger(),
 	}
 
-	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
+	var err error
+	server.container, err = container.Start("internal", port, func(registrar grpc.ServiceRegistrar) {
+		proto.RegisterOxiaControlServer(registrar, server)
+		proto.RegisterOxiaLogReplicationServer(registrar, server)
+		grpc_health_v1.RegisterHealthServer(registrar, health.NewServer())
+	})
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to listen")
+		return nil, err
 	}
 
-	res.port = listener.Addr().(*net.TCPAddr).Port
-
-	res.grpcServer = grpc.NewServer()
-	proto.RegisterOxiaControlServer(res.grpcServer, res)
-	proto.RegisterOxiaLogReplicationServer(res.grpcServer, res)
-	grpc_health_v1.RegisterHealthServer(res.grpcServer, health.NewServer())
-	res.log.Info().
-		Str("bindAddress", listener.Addr().String()).
-		Str("advertisedAddress", advertisedInternalAddress).
-		Msg("Started coordination RPC server")
-
-	go func() {
-		if err := res.grpcServer.Serve(listener); err != nil {
-			log.Fatal().Err(err).Msg("Failed to serve")
-		}
-	}()
-
-	return res, nil
+	return server, nil
 }
 
 func (s *internalRpcServer) Close() error {
-	s.grpcServer.GracefulStop()
-	return nil
+	return s.container.Close()
 }
 
 func (s *internalRpcServer) Fence(c context.Context, req *proto.FenceRequest) (*proto.FenceResponse, error) {
@@ -137,8 +123,3 @@ func readHeaderUint32(md metadata.MD, key string) (v uint32, err error) {
 	_, err = fmt.Sscan(s, &r)
 	return r, err
 }
-
-func (s *internalRpcServer) Port() int {
-	return s.port
-}
-

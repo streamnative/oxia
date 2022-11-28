@@ -3,13 +3,11 @@ package standalone
 import (
 	"context"
 	"fmt"
-	"github.com/pkg/errors"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
+	"go.uber.org/multierr"
 	"google.golang.org/grpc"
 	"math"
-	"net"
 	"oxia/proto"
+	"oxia/server/container"
 	"oxia/server/kv"
 	"oxia/server/wal"
 )
@@ -20,60 +18,47 @@ type StandaloneRpcServer struct {
 	proto.UnimplementedOxiaClientServer
 
 	identityAddr string
-	port         int
 	numShards    uint32
 	dbs          map[uint32]kv.DB
-	grpcServer   *grpc.Server
-	log          zerolog.Logger
+	Container    *container.Container
 }
 
 func NewStandaloneRpcServer(port int, identityAddr string, numShards uint32, kvFactory kv.KVFactory) (*StandaloneRpcServer, error) {
-	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to listen")
-	}
-
 	// Assuming 1 single shard
-	res := &StandaloneRpcServer{
+	server := &StandaloneRpcServer{
 		identityAddr: identityAddr,
 		numShards:    numShards,
 		dbs:          make(map[uint32]kv.DB),
-		log: log.With().
-			Str("component", "standalone-rpc-server").
-			Logger(),
-		port: listener.Addr().(*net.TCPAddr).Port,
 	}
 
+	var err error
 	for i := uint32(0); i < numShards; i++ {
-		if res.dbs[i], err = kv.NewDB(i, kvFactory); err != nil {
+		if server.dbs[i], err = kv.NewDB(i, kvFactory); err != nil {
 			return nil, err
 		}
 	}
 
-	res.grpcServer = grpc.NewServer()
-	proto.RegisterOxiaClientServer(res.grpcServer, res)
-	res.log.Info().
-		Str("bindAddress", listener.Addr().String()).
-		Str("identityAddr", identityAddr).
-		Msg("Started Standalone RPC server")
+	server.Container, err = container.Start("standalone", port, func(registrar grpc.ServiceRegistrar) {
+		proto.RegisterOxiaClientServer(registrar, server)
+	})
+	if err != nil {
+		return nil, err
+	}
 
-	go func() {
-		if err := res.grpcServer.Serve(listener); err != nil {
-			log.Fatal().Err(err).Msg("Failed to serve")
-		}
-	}()
-
-	return res, nil
+	return server, nil
 }
 
 func (s *StandaloneRpcServer) Close() error {
-	s.grpcServer.GracefulStop()
+	var errs error
+	if err := s.Container.Close(); err != nil {
+		errs = multierr.Append(errs, err)
+	}
 	for _, db := range s.dbs {
 		if err := db.Close(); err != nil {
-			return err
+			errs = multierr.Append(errs, err)
 		}
 	}
-	return nil
+	return errs
 }
 
 func (s *StandaloneRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest, stream proto.OxiaClient_ShardAssignmentsServer) error {
@@ -86,7 +71,7 @@ func (s *StandaloneRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest,
 	for i := uint32(0); i < s.numShards; i++ {
 		res.Assignments = append(res.Assignments, &proto.ShardAssignment{
 			ShardId: i,
-			Leader:  fmt.Sprintf("%s:%d", s.identityAddr, s.port),
+			Leader:  fmt.Sprintf("%s:%d", s.identityAddr, s.Container.Port()),
 			ShardBoundaries: &proto.ShardAssignment_Int32HashRange{
 				Int32HashRange: &proto.Int32HashRange{
 					MinHashInclusive: i * bucketSize,
@@ -106,8 +91,4 @@ func (s *StandaloneRpcServer) Write(ctx context.Context, write *proto.WriteReque
 
 func (s *StandaloneRpcServer) Read(ctx context.Context, read *proto.ReadRequest) (*proto.ReadResponse, error) {
 	return s.dbs[*read.ShardId].ProcessRead(read)
-}
-
-func (s *StandaloneRpcServer) Port() int {
-	return s.port
 }
