@@ -190,12 +190,12 @@ func TestWriteBatchComplete(t *testing.T) {
 		wg.Wait()
 
 		assert.Equal(t, item.expectedPutResponse, putResponse)
-		assert.ErrorIs(t, item.expectedPutErr, putErr)
+		assert.ErrorIs(t, putErr, item.expectedPutErr)
 
 		assert.Equal(t, item.expectedDeleteResponse, deleteResponse)
-		assert.ErrorIs(t, item.expectedDeleteErr, deleteErr)
+		assert.ErrorIs(t, deleteErr, item.expectedDeleteErr)
 
 		assert.Equal(t, item.expectedDeleteRangeResponse, deleteRangeResponse)
-		assert.ErrorIs(t, item.expectedDeleteRangeErr, deleteRangeErr)
+		assert.ErrorIs(t, deleteRangeErr, item.expectedDeleteRangeErr)
 	}
 }

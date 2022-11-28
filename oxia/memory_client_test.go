@@ -56,14 +56,14 @@ func ptr(t int64) *int64 {
 func put(t *testing.T, client AsyncClient, key string) {
 	c := client.Put(key, payload0, nil)
 	response := <-c
-	assert.ErrorIs(t, nil, response.Err)
+	assert.NoError(t, response.Err)
 }
 
 func TestClose(t *testing.T) {
 	runTest(func(client AsyncClient) {
 		err := client.Close()
 
-		assert.ErrorIs(t, nil, err)
+		assert.NoError(t, err)
 	})
 }
 
@@ -86,7 +86,7 @@ func TestPutNew(t *testing.T) {
 		response := <-c
 
 		assert.Equal(t, item.stat, response.Stat)
-		assert.ErrorIs(t, item.err, response.Err)
+		assert.ErrorIs(t, response.Err, item.err)
 	})
 }
 
@@ -111,7 +111,7 @@ func TestPutExisting(t *testing.T) {
 		response := <-c
 
 		assert.Equal(t, item.stat, response.Stat)
-		assert.ErrorIs(t, item.err, response.Err)
+		assert.ErrorIs(t, response.Err, item.err)
 	})
 }
 
@@ -125,7 +125,7 @@ func TestDeleteMissing(t *testing.T) {
 		c := client.Delete(key, item.version)
 		err := <-c
 
-		assert.ErrorIs(t, item.err, err)
+		assert.ErrorIs(t, err, item.err)
 	})
 }
 
@@ -141,7 +141,7 @@ func TestDeleteExisting(t *testing.T) {
 		c := client.Delete(key, item.version)
 		err := <-c
 
-		assert.ErrorIs(t, item.err, err)
+		assert.ErrorIs(t, err, item.err)
 	})
 }
 
@@ -153,14 +153,14 @@ func TestDeleteRange(t *testing.T) {
 
 		c1 := client.DeleteRange("/b", "/c")
 		err := <-c1
-		assert.ErrorIs(t, err, nil)
+		assert.NoError(t, err)
 
 		c2 := client.GetRange("/a", "/d")
 		response := <-c2
 
 		sort.Strings(response.Keys)
 		assert.Equal(t, []string{"/a", "/c"}, response.Keys)
-		assert.ErrorIs(t, nil, response.Err)
+		assert.NoError(t, response.Err)
 	})
 }
 
@@ -190,7 +190,7 @@ func TestGetExisting(t *testing.T) {
 				ModifiedTimestamp: 1,
 			},
 		}, response)
-		assert.ErrorIs(t, nil, response.Err)
+		assert.NoError(t, response.Err)
 	})
 }
 
@@ -204,6 +204,6 @@ func TestGetRange(t *testing.T) {
 		response := <-c
 
 		assert.Equal(t, []string{"/b"}, response.Keys)
-		assert.ErrorIs(t, nil, response.Err)
+		assert.NoError(t, response.Err)
 	})
 }
