@@ -68,14 +68,14 @@ func TestBatcher(t *testing.T) {
 
 			if item.closeImmediately {
 				err := batcher.Close()
-				assert.ErrorIs(t, nil, err)
+				assert.NoError(t, err)
 			}
 
-			assert.ErrorIs(t, item.expectedErr, <-testBatch.result)
+			assert.ErrorIs(t, <-testBatch.result, item.expectedErr)
 
 			if !item.closeImmediately {
 				err := batcher.Close()
-				assert.ErrorIs(t, nil, err)
+				assert.NoError(t, err)
 			}
 		})
 	}
