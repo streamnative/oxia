@@ -1,6 +1,7 @@
 package get
 
 import (
+	"errors"
 	"fmt"
 	"github.com/spf13/cobra"
 )
@@ -8,6 +9,8 @@ import (
 var (
 	keys           []string
 	binaryPayloads bool
+
+	ErrorIncorrectBinaryFlagUse = errors.New("binary flag was set when config is being sourced from stdin")
 )
 
 func init() {
@@ -29,6 +32,9 @@ func exec(cmd *cobra.Command, args []string) error {
 			fmt.Printf("Get %v\n", k)
 		}
 	} else {
+		if binaryPayloads {
+			return ErrorIncorrectBinaryFlagUse
+		}
 		fmt.Println("Get - read keys from STDIN")
 	}
 	return nil
