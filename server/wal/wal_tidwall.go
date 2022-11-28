@@ -232,6 +232,7 @@ type reader struct {
 
 type forwardReader struct {
 	reader
+	sync.Mutex
 	// maxOffsetExclusive the offset that must not be read (because e.g. it does not yet exist)
 	maxIdInclusive *proto.EntryId
 	// channel chan to get updates of log progression
@@ -249,6 +250,8 @@ type updatableReader interface {
 }
 
 func (r *forwardReader) Close() error {
+	r.Lock()
+	defer r.Unlock()
 	r.wal.Lock()
 	defer r.wal.Unlock()
 	r.closed = true
@@ -267,19 +270,23 @@ func (r *forwardReader) updateMaxIdInclusive(maxIndexInclusive *proto.EntryId) {
 }
 
 func (r *forwardReader) ReadNext() (*proto.LogEntry, error) {
-
+	r.Lock()
 	if r.closed {
+		r.Unlock()
 		return nil, ErrorReaderClosed
 	}
 
 	for r.nextOffset > r.maxIdInclusive.Offset {
+		r.Unlock()
 		update, more := <-r.channel
 		if !more {
 			return nil, ErrorReaderClosed
 		} else {
+			r.Lock()
 			r.maxIdInclusive = update
 		}
 	}
+	defer r.Unlock()
 	index := offsetToIndex(r.nextOffset)
 	r.wal.RLock()
 	defer r.wal.RUnlock()
@@ -293,10 +300,26 @@ func (r *forwardReader) ReadNext() (*proto.LogEntry, error) {
 }
 
 func (r *forwardReader) HasNext() bool {
-	if r.closed {
+	r.Lock()
+	closed := r.closed
+	r.Unlock()
+	if closed {
 		return false
 	}
-
+	select {
+	case update, more := <-r.channel:
+		if !more {
+			return false
+		}
+		r.Lock()
+		r.maxIdInclusive = update
+		r.Unlock()
+	default:
+	}
+	r.Lock()
+	r.wal.Lock()
+	defer r.wal.Unlock()
+	defer r.Unlock()
 	return r.nextOffset <= r.wal.lastEntryId.Offset && EntryIdFromProto(r.maxIdInclusive) != EntryId{}
 }
 

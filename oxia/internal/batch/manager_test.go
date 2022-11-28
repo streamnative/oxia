@@ -41,7 +41,7 @@ func TestManager(t *testing.T) {
 	assert.Equal(t, 1, newBatcherInvocations)
 
 	err := manager.Close()
-	assert.ErrorIs(t, closeErr, err)
+	assert.ErrorIs(t, err, closeErr)
 
 	assert.True(t, testBatcher.closed)
 

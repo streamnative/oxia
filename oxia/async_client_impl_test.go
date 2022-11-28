@@ -16,7 +16,7 @@ func TestAsyncClientImpl(t *testing.T) {
 	kvOptions := kv.KVFactoryOptions{InMemory: true}
 	kvFactory := kv.NewPebbleKVFactory(&kvOptions)
 	server, err := standalone.NewStandaloneRpcServer(0, "localhost", 1, kvFactory)
-	assert.ErrorIs(t, nil, err)
+	assert.NoError(t, err)
 
 	serviceAddress := fmt.Sprintf("localhost:%d", server.Port())
 	options, err := NewClientOptions(serviceAddress, WithBatchLinger(0))
@@ -46,7 +46,7 @@ func TestAsyncClientImpl(t *testing.T) {
 	}, getRangeResult)
 
 	deleteErr := <-client.Delete("/a", &versionZero)
-	assert.ErrorIs(t, nil, deleteErr)
+	assert.NoError(t, deleteErr)
 
 	getResult = <-client.Get("/a")
 	assert.Equal(t, GetResult{
@@ -54,7 +54,7 @@ func TestAsyncClientImpl(t *testing.T) {
 	}, getResult)
 
 	deleteRangeResult := <-client.DeleteRange("/c", "/d")
-	assert.ErrorIs(t, nil, deleteRangeResult)
+	assert.NoError(t, deleteRangeResult)
 
 	getResult = <-client.Get("/d")
 	assert.Equal(t, GetResult{
@@ -62,8 +62,8 @@ func TestAsyncClientImpl(t *testing.T) {
 	}, getResult)
 
 	err = client.Close()
-	assert.ErrorIs(t, nil, err)
+	assert.NoError(t, err)
 
 	err = server.Close()
-	assert.ErrorIs(t, nil, err)
+	assert.NoError(t, err)
 }
