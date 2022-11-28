@@ -7,6 +7,8 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
 	"net"
 	"oxia/proto"
@@ -22,6 +24,7 @@ type internalRpcServer struct {
 	shardsDirector ShardsDirector
 
 	grpcServer *grpc.Server
+	port       int
 	log        zerolog.Logger
 }
 
@@ -38,9 +41,12 @@ func newCoordinationRpcServer(port int, advertisedInternalAddress string, shards
 		return nil, errors.Wrap(err, "failed to listen")
 	}
 
+	res.port = listener.Addr().(*net.TCPAddr).Port
+
 	res.grpcServer = grpc.NewServer()
 	proto.RegisterOxiaControlServer(res.grpcServer, res)
 	proto.RegisterOxiaLogReplicationServer(res.grpcServer, res)
+	grpc_health_v1.RegisterHealthServer(res.grpcServer, health.NewServer())
 	res.log.Info().
 		Str("bindAddress", listener.Addr().String()).
 		Str("advertisedAddress", advertisedInternalAddress).
@@ -131,3 +137,8 @@ func readHeaderUint32(md metadata.MD, key string) (v uint32, err error) {
 	_, err = fmt.Sscan(s, &r)
 	return r, err
 }
+
+func (s *internalRpcServer) Port() int {
+	return s.port
+}
+
