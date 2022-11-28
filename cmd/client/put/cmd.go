@@ -16,6 +16,7 @@ var (
 	ErrorExpectedKeyPayloadInconsistent = errors.New("inconsistent flags; key and payload flags must be in pairs")
 	ErrorExpectedVersionInconsistent    = errors.New("inconsistent flags; zero or all keys must have an expected version")
 	ErrorBase64PayloadInvalid           = errors.New("binary flag was set but payload is not valid base64")
+	ErrorIncorrectBinaryFlagUse         = errors.New("binary flag was set when config is being sourced from stdin")
 )
 
 func init() {
@@ -53,6 +54,9 @@ func exec(cmd *cobra.Command, args []string) error {
 			}
 		}
 	} else {
+		if binaryPayloads {
+			return ErrorIncorrectBinaryFlagUse
+		}
 		fmt.Println("Put - read keys/payloads/expectedVersions from STDIN")
 	}
 	return nil
