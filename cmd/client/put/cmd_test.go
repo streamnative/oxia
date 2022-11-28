@@ -25,7 +25,7 @@ func Test_exec(t *testing.T) {
 		{"entries", []string{"-k", "x1", "-p", "y1", "-k", "x2", "-p", "y2"}, nil, []string{"x1", "x2"}, []string{"y1", "y2"}, emptyVersions, false},
 		{"entries-expected-version", []string{"-k", "x1", "-p", "y1", "-e", "1", "-k", "x2", "-p", "y2", "-e", "4"}, nil, []string{"x1", "x2"}, []string{"y1", "y2"}, []int64{1, 4}, false},
 		{"stdin", []string{}, nil, emptyKeys, emptyPayloads, emptyVersions, false},
-		{"stdin-binary", []string{"-b"}, nil, emptyKeys, emptyPayloads, emptyVersions, true},
+		{"stdin-binary", []string{"-b"}, ErrorIncorrectBinaryFlagUse, emptyKeys, emptyPayloads, emptyVersions, true},
 		{"missing-key", []string{"-p", "y"}, ErrorExpectedKeyPayloadInconsistent, emptyKeys, []string{"y"}, emptyVersions, false},
 		{"missing-payload", []string{"-k", "x"}, ErrorExpectedKeyPayloadInconsistent, []string{"x"}, emptyPayloads, emptyVersions, false},
 		{"missing-version", []string{"-k", "x1", "-p", "y1", "-k", "x2", "-p", "y2", "-e", "4"}, ErrorExpectedVersionInconsistent, []string{"x1", "x2"}, []string{"y1", "y2"}, []int64{4}, false},

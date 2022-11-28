@@ -20,10 +20,11 @@ func Test_exec(t *testing.T) {
 		{"keys", []string{"-k", "x", "-k", "y"}, nil, []string{"x", "y"}, false},
 		{"keys-binary", []string{"-k", "x", "-k", "y", "-b"}, nil, []string{"x", "y"}, true},
 		{"stdin", []string{}, nil, emptyKeys, false},
-		{"stdin-binary", []string{"-b"}, nil, emptyKeys, true},
+		{"stdin-binary", []string{"-b"}, ErrorIncorrectBinaryFlagUse, emptyKeys, true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			keys = emptyKeys
+			binaryPayloads = false
 
 			buf := new(bytes.Buffer)
 			Cmd.SetArgs(test.args)
