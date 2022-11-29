@@ -287,7 +287,7 @@ func (l *Log) Close() error {
 }
 
 // Write an entry to the log.
-func (l *Log) Write(index int64, data []byte) error {
+func (l *Log) Write(data []byte) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.corrupt {
@@ -296,7 +296,7 @@ func (l *Log) Write(index int64, data []byte) error {
 		return ErrClosed
 	}
 	l.wbatch.Clear()
-	l.wbatch.Write(index, data)
+	l.wbatch.Write(data)
 	return l.writeBatch(&l.wbatch)
 }
 
@@ -350,8 +350,8 @@ type batchEntry struct {
 }
 
 // Write an entry to the batch
-func (b *Batch) Write(index int64, data []byte) {
-	b.entries = append(b.entries, batchEntry{index, len(data)})
+func (b *Batch) Write(data []byte) {
+	b.entries = append(b.entries, batchEntry{size: len(data)})
 	b.datas = append(b.datas, data...)
 }
 
@@ -380,9 +380,7 @@ func (l *Log) WriteBatch(b *Batch) error {
 func (l *Log) writeBatch(b *Batch) error {
 	// check that all indexes in batch are sane
 	for i := 0; i < len(b.entries); i++ {
-		if b.entries[i].index != l.lastIndex+int64(i+1) {
-			return ErrOutOfOrder
-		}
+		b.entries[i].index = l.lastIndex + int64(i+1)
 	}
 	// load the tail segment
 	s := l.segments[len(l.segments)-1]

@@ -103,8 +103,7 @@ func (t *tidwallWal) Append(entry *proto.LogEntry) error {
 		return err
 	}
 
-	tidwallIdx := offsetToTidwallIdx(entry.Offset)
-	err = t.log.Write(tidwallIdx, val)
+	err = t.log.Write(val)
 	if err != nil {
 		return err
 	}

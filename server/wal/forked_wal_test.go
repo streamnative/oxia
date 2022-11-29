@@ -44,13 +44,8 @@ func testLog(t *testing.T, path string, opts *Options, N int) {
 	}
 
 	for i := 1; i <= N; i++ {
-		// Write - try to append previous index, should fail
-		err = l.Write(int64(i-1), nil)
-		if err != ErrOutOfOrder {
-			t.Fatalf("expected %v, got %v", ErrOutOfOrder, err)
-		}
 		// Write - append next item
-		err = l.Write(int64(i), []byte(dataStr(int64(i))))
+		err = l.Write([]byte(dataStr(int64(i))))
 		if err != nil {
 			t.Fatalf("expected %v, got %v", nil, err)
 		}
@@ -134,7 +129,7 @@ func testLog(t *testing.T, path string, opts *Options, N int) {
 	}
 
 	// Write - try while closed
-	err = l.Write(1, nil)
+	err = l.Write(nil)
 	if err != ErrClosed {
 		t.Fatalf("expected %v, got %v", ErrClosed, err)
 	}
@@ -204,7 +199,7 @@ func testLog(t *testing.T, path string, opts *Options, N int) {
 	// Write -- add 50 more items
 	for i := N + 1; i <= N+50; i++ {
 		index := int64(i)
-		if err := l.Write(index, []byte(dataStr(index))); err != nil {
+		if err := l.Write([]byte(dataStr(index))); err != nil {
 			t.Fatal(err)
 		}
 		data, err := l.Read(index)
@@ -233,16 +228,6 @@ func testLog(t *testing.T, path string, opts *Options, N int) {
 	}
 	// Batch -- test batch writes
 	b := new(Batch)
-	b.Write(1, nil)
-	b.Write(2, nil)
-	b.Write(3, nil)
-	// WriteBatch -- should fail out of order
-	err = l.WriteBatch(b)
-	if err != ErrOutOfOrder {
-		t.Fatalf("expected %v, got %v", ErrOutOfOrder, nil)
-	}
-	// Clear -- clear the batch
-	b.Clear()
 	// WriteBatch -- should succeed
 	err = l.WriteBatch(b)
 	if err != nil {
@@ -252,7 +237,7 @@ func testLog(t *testing.T, path string, opts *Options, N int) {
 	for i := 0; i < 10; i++ {
 		for i := N + 1; i <= N+10; i++ {
 			index := int64(i)
-			b.Write(index, []byte(dataStr(index)))
+			b.Write([]byte(dataStr(index)))
 		}
 		err = l.WriteBatch(b)
 		if err != nil {
@@ -272,7 +257,7 @@ func testLog(t *testing.T, path string, opts *Options, N int) {
 	}
 
 	// Write -- one entry, so the buffer might be activated
-	err = l.Write(int64(N+1), []byte(dataStr(int64(N+1))))
+	err = l.Write([]byte(dataStr(int64(N + 1))))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,7 +300,7 @@ func testLog(t *testing.T, path string, opts *Options, N int) {
 	testFirstLast(t, l, int64(81), int64(N), nil)
 
 	// Write -- one entry, so the buffer might be activated
-	err = l.Write(int64(N+1), []byte(dataStr(int64(N+1))))
+	err = l.Write([]byte(dataStr(int64(N + 1))))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -395,7 +380,7 @@ func testLog(t *testing.T, path string, opts *Options, N int) {
 	testFirstLast(t, l, int64(N), int64(N), nil)
 
 	// Write -- write on entry
-	err = l.Write(int64(N+1), []byte(dataStr(int64(N+1))))
+	err = l.Write([]byte(dataStr(int64(N + 1))))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -409,7 +394,7 @@ func testLog(t *testing.T, path string, opts *Options, N int) {
 	N--
 	testFirstLast(t, l, int64(N), int64(N), nil)
 
-	if err = l.Write(int64(N+1), []byte(dataStr(int64(N+1)))); err != nil {
+	if err = l.Write([]byte(dataStr(int64(N + 1)))); err != nil {
 		t.Fatal(err)
 	}
 	N++
@@ -513,7 +498,7 @@ func TestOutliers(t *testing.T) {
 		l := must(Open(lpath, opts)).(*Log)
 		defer l.Close()
 		for i := int64(1); i <= 100; i++ {
-			must(nil, l.Write(i, []byte(dataStr(i))))
+			must(nil, l.Write([]byte(dataStr(i))))
 		}
 		path := l.segments[l.findSegment(35)].path
 		firstIndex := l.segments[l.findSegment(35)].index
@@ -546,7 +531,7 @@ func TestIssue1(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer l.Close()
-	if err := l.Write(1, in); err != nil {
+	if err := l.Write(in); err != nil {
 		t.Fatal(err)
 	}
 	out, err := l.Read(1)
@@ -616,7 +601,7 @@ func TestSimpleTruncateFront(t *testing.T) {
 		valid(t, first, last)
 	}
 	for i := 1; i <= 100; i++ {
-		err := l.Write(int64(i), makeData(int64(i)))
+		err := l.Write(makeData(int64(i)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -713,7 +698,7 @@ func TestSimpleTruncateBack(t *testing.T) {
 		valid(t, first, last)
 	}
 	for i := 1; i <= 100; i++ {
-		err := l.Write(int64(i), makeData(int64(i)))
+		err := l.Write(makeData(int64(i)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -725,7 +710,7 @@ func TestSimpleTruncateBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	validReopen(t, 1, 100)
-	if err := l.Write(101, makeData(101)); err != nil {
+	if err := l.Write(makeData(101)); err != nil {
 		t.Fatal(err)
 	}
 	validReopen(t, 1, 101)
@@ -735,7 +720,7 @@ func TestSimpleTruncateBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	validReopen(t, 1, 99)
-	if err := l.Write(100, makeData(100)); err != nil {
+	if err := l.Write(makeData(100)); err != nil {
 		t.Fatal(err)
 	}
 	validReopen(t, 1, 100)
@@ -771,7 +756,7 @@ func TestConcurrency(t *testing.T) {
 
 	// Write 1000 entries
 	for i := 1; i <= 1000; i++ {
-		err := l.Write(int64(i), []byte(dataStr(int64(i))))
+		err := l.Write([]byte(dataStr(int64(i))))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -797,7 +782,7 @@ func TestConcurrency(t *testing.T) {
 
 	// continue writing
 	for index := maxIndex + 1; atomic.LoadInt32(&finished) < 100; index++ {
-		err := l.Write(int64(index), []byte(dataStr(int64(index))))
+		err := l.Write([]byte(dataStr(int64(index))))
 		if err != nil {
 			t.Fatal(err)
 		}
