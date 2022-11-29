@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	conf = &serverConfig{}
+	conf = serverConfig{}
 
 	Cmd = &cobra.Command{
 		Use:   "server",
@@ -20,6 +20,7 @@ var (
 func init() {
 	Cmd.Flags().IntVarP(&conf.PublicServicePort, "public-port", "p", 9190, "Public service port")
 	Cmd.Flags().IntVarP(&conf.InternalServicePort, "internal-port", "i", 8190, "Internal service port")
+	Cmd.Flags().IntVarP(&conf.MetricsPort, "metrics-port", "m", 8080, "Metrics port")
 	Cmd.Flags().StringVar(&conf.AdvertisedPublicAddress, "advertised-public-address", "", "Advertised public address")
 	Cmd.Flags().StringVar(&conf.AdvertisedInternalAddress, "advertised-internal-address", "", "Advertised internal address")
 }
@@ -27,7 +28,7 @@ func init() {
 func main(cmd *cobra.Command, args []string) {
 	common.ConfigureLogger()
 
-	server, err := NewServer(conf)
+	server, err := newServer(conf)
 	if err != nil {
 		log.Fatal().Err(err).
 			Msg("Failed to start the server")

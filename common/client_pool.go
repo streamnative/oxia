@@ -1,6 +1,7 @@
 package common
 
 import (
+	"github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
@@ -93,7 +94,11 @@ func (cp *clientPool) getConnection(target string) (grpc.ClientConnInterface, er
 		Str("server_address", target).
 		Msg("Creating new GRPC connection")
 
-	cnx, err := grpc.Dial(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	cnx, err := grpc.Dial(target,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithStreamInterceptor(grpc_prometheus.StreamClientInterceptor),
+		grpc.WithUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor),
+	)
 	if err != nil {
 		return nil, err
 	}

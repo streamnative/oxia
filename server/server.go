@@ -6,12 +6,14 @@ import (
 	"os"
 	"oxia/common"
 	"oxia/server/kv"
+	"oxia/server/metrics"
 	"oxia/server/wal"
 )
 
 type serverConfig struct {
 	InternalServicePort int
 	PublicServicePort   int
+	MetricsPort         int
 
 	AdvertisedInternalAddress string
 	AdvertisedPublicAddress   string
@@ -23,11 +25,12 @@ type server struct {
 
 	shardsDirector ShardsDirector
 	clientPool     common.ClientPool
+	metrics        *metrics.PrometheusMetrics
 	walFactory     wal.WalFactory
 	kvFactory      kv.KVFactory
 }
 
-func NewServer(config *serverConfig) (*server, error) {
+func newServer(config serverConfig) (*server, error) {
 	log.Info().
 		Interface("config", config).
 		Msg("Starting Oxia server")
@@ -61,6 +64,11 @@ func NewServer(config *serverConfig) (*server, error) {
 		return nil, err
 	}
 
+	s.metrics, err = metrics.Start(config.MetricsPort)
+	if err != nil {
+		return nil, err
+	}
+
 	return s, nil
 }
 
@@ -72,5 +80,6 @@ func (s *server) Close() error {
 		s.shardsDirector.Close(),
 		s.kvFactory.Close(),
 		s.walFactory.Close(),
+		s.metrics.Close(),
 	)
 }

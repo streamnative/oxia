@@ -86,7 +86,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.EqualValues(t, 1, fr.Epoch)
-	assert.Equal(t, &proto.EntryId{}, fr.HeadIndex)
+	assert.Equal(t, InvalidEntryId, fr.HeadIndex)
 
 	resp, err := lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
@@ -133,7 +133,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.EqualValues(t, 2, fr2.Epoch)
-	assert.Equal(t, &proto.EntryId{Epoch: 1, Offset: 1}, fr2.HeadIndex)
+	assert.Equal(t, &proto.EntryId{Epoch: 1, Offset: 0}, fr2.HeadIndex)
 
 	assert.EqualValues(t, 2, lc.Epoch())
 	assert.Equal(t, Fenced, lc.Status())
@@ -183,14 +183,14 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.EqualValues(t, 1, fr.Epoch)
-	assert.Equal(t, &proto.EntryId{}, fr.HeadIndex)
+	assert.Equal(t, InvalidEntryId, fr.HeadIndex)
 
 	resp, err := lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
 		Epoch:             1,
 		ReplicationFactor: 2,
 		FollowerMaps: map[string]*proto.EntryId{
-			"f1": {Epoch: 0, Offset: 0},
+			"f1": InvalidEntryId,
 		},
 	})
 	assert.NoError(t, err)
@@ -204,7 +204,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 
 		rpc.addEntryResps <- &proto.AddEntryResponse{
 			Epoch:        req.Epoch,
-			EntryId:      req.Entry.EntryId,
+			Offset:       req.Entry.Offset,
 			InvalidEpoch: false,
 		}
 	}()
@@ -242,7 +242,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.EqualValues(t, 2, fr2.Epoch)
-	assert.Equal(t, &proto.EntryId{Epoch: 1, Offset: 1}, fr2.HeadIndex)
+	assert.Equal(t, &proto.EntryId{Epoch: 1, Offset: 0}, fr2.HeadIndex)
 
 	assert.EqualValues(t, 2, lc.Epoch())
 	assert.Equal(t, Fenced, lc.Status())
