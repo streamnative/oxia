@@ -24,16 +24,16 @@ type FollowerCursor interface {
 
 	// LastPushed
 	// The last entry that was sent to this follower
-	LastPushed() wal.EntryId
+	LastPushed() int64
 
 	// AckIndex The highest entry already acknowledged by this follower
-	AckIndex() wal.EntryId
+	AckIndex() int64
 }
 
 type followerCursor struct {
 	sync.Mutex
 
-	epoch                    uint64
+	epoch                    int64
 	follower                 string
 	addEntriesStreamProvider AddEntriesStreamProvider
 	stream                   proto.OxiaLogReplication_AddEntriesClient
@@ -41,8 +41,8 @@ type followerCursor struct {
 	ackTracker  QuorumAckTracker
 	cursorAcker CursorAcker
 	wal         wal.Wal
-	lastPushed  wal.EntryId
-	ackIndex    wal.EntryId
+	lastPushed  int64
+	ackIndex    int64
 
 	closed bool
 	log    zerolog.Logger
@@ -50,12 +50,12 @@ type followerCursor struct {
 
 func NewFollowerCursor(
 	follower string,
-	epoch uint64,
+	epoch int64,
 	shardId uint32,
 	addEntriesStreamProvider AddEntriesStreamProvider,
 	ackTracker QuorumAckTracker,
 	wal wal.Wal,
-	ackIndex wal.EntryId) (FollowerCursor, error) {
+	ackIndex int64) (FollowerCursor, error) {
 
 	fc := &followerCursor{
 		epoch:                    epoch,
@@ -69,7 +69,7 @@ func NewFollowerCursor(
 		log: log.With().
 			Str("component", "follower-cursor").
 			Uint32("shard", shardId).
-			Uint64("epoch", epoch).
+			Int64("epoch", epoch).
 			Str("follower", follower).
 			Logger(),
 	}
@@ -97,13 +97,13 @@ func (fc *followerCursor) Close() error {
 	return nil
 }
 
-func (fc *followerCursor) LastPushed() wal.EntryId {
+func (fc *followerCursor) LastPushed() int64 {
 	fc.Lock()
 	defer fc.Unlock()
 	return fc.lastPushed
 }
 
-func (fc *followerCursor) AckIndex() wal.EntryId {
+func (fc *followerCursor) AckIndex() int64 {
 	fc.Lock()
 	defer fc.Unlock()
 	return fc.ackIndex
@@ -135,10 +135,10 @@ func (fc *followerCursor) runOnce() error {
 		return err
 	}
 
-	currentEntry := fc.ackIndex
+	currentOffset := fc.ackIndex
 	fc.Unlock()
 
-	reader, err := fc.wal.NewReader(currentEntry)
+	reader, err := fc.wal.NewReader(currentOffset)
 	if err != nil {
 		return err
 	}
@@ -147,7 +147,7 @@ func (fc *followerCursor) runOnce() error {
 	go fc.receiveAcks(fc.stream)
 
 	fc.log.Info().
-		Interface("ack-index", currentEntry).
+		Interface("ack-index", currentOffset).
 		Msg("Successfully attached cursor follower")
 
 	for {
@@ -162,10 +162,7 @@ func (fc *followerCursor) runOnce() error {
 		if !reader.HasNext() {
 			// We have reached the head of the wal
 			// Wait for more entries to be written
-			fc.ackTracker.WaitForHeadIndex(wal.EntryId{
-				Epoch:  currentEntry.Epoch,
-				Offset: currentEntry.Offset + 1,
-			})
+			fc.ackTracker.WaitForHeadIndex(currentOffset + 1)
 
 			continue
 		}
@@ -178,14 +175,14 @@ func (fc *followerCursor) runOnce() error {
 		if err = fc.stream.Send(&proto.AddEntryRequest{
 			Epoch:       fc.epoch,
 			Entry:       le,
-			CommitIndex: fc.ackTracker.CommitIndex().ToProto(),
+			CommitIndex: fc.ackTracker.CommitIndex(),
 		}); err != nil {
 			return err
 		}
 
 		fc.Lock()
-		fc.lastPushed = wal.EntryIdFromProto(le.EntryId)
-		currentEntry = fc.lastPushed
+		fc.lastPushed = le.Offset
+		currentOffset = fc.lastPushed
 		fc.Unlock()
 	}
 }
@@ -218,10 +215,10 @@ func (fc *followerCursor) receiveAcks(stream proto.OxiaLogReplication_AddEntries
 			return
 		}
 
-		fc.cursorAcker.Ack(wal.EntryIdFromProto(res.EntryId))
+		fc.cursorAcker.Ack(res.Offset)
 
 		fc.Lock()
-		fc.ackIndex = wal.EntryIdFromProto(res.EntryId)
+		fc.ackIndex = res.Offset
 		fc.Unlock()
 	}
 }
