@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"github.com/spf13/cobra"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"oxia/operator"
 	"oxia/server"
 	"oxia/standalone"
+	"runtime/pprof"
 )
 
 var (
@@ -22,6 +24,9 @@ var (
 func init() {
 	rootCmd.PersistentFlags().BoolVarP(&common.LogDebug, "log-debug", "d", false, "Enable debug logs")
 	rootCmd.PersistentFlags().BoolVarP(&common.LogJson, "log-json", "j", false, "Print logs in JSON format")
+	rootCmd.PersistentFlags().BoolVar(&common.PprofEnable, "profile", false, "Enable pprof profiler")
+	rootCmd.PersistentFlags().StringVar(&common.PprofBindAddress, "profile-bind-address", "127.0.0.1:6060", "Bind address for pprof")
+
 	rootCmd.AddCommand(client.Cmd)
 	rootCmd.AddCommand(operator.Cmd)
 	rootCmd.AddCommand(server.Cmd)
@@ -29,8 +34,12 @@ func init() {
 }
 
 func main() {
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+	pprof.Do(context.Background(),
+		pprof.Labels("oxia", "main"),
+		func(_ context.Context) {
+			if err := rootCmd.Execute(); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+		})
 }

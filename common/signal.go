@@ -9,7 +9,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-func WaitUntilSignal(closer io.Closer) {
+func WaitUntilSignal(closers ...io.Closer) {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 
@@ -17,14 +17,19 @@ func WaitUntilSignal(closer io.Closer) {
 	log.Info().
 		Str("signal", sig.String()).
 		Msg("Received signal, exiting")
-	err := closer.Close()
-	if err != nil {
-		log.Error().
-			Err(err).
-			Msg("Failed when shutting down server")
-		os.Exit(1)
-	} else {
-		log.Info().Msg("Shutdown Completed")
-		os.Exit(0)
+
+	code := 0
+	for _, closer := range closers {
+		if err := closer.Close(); err != nil {
+			log.Error().
+				Err(err).
+				Msg("Failed when shutting down server")
+			os.Exit(1)
+		}
 	}
+
+	if code == 0 {
+		log.Info().Msg("Shutdown Completed")
+	}
+	os.Exit(code)
 }
