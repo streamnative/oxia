@@ -5,6 +5,7 @@ import (
 	"io"
 	"oxia/proto"
 	"oxia/server/util"
+	"oxia/server/wal"
 	"sync"
 	"sync/atomic"
 )
@@ -73,7 +74,7 @@ func NewQuorumAckTracker(replicationFactor uint32, headIndex int64) QuorumAckTra
 		requiredAcks:      replicationFactor / 2,
 		replicationFactor: replicationFactor,
 		headIndex:         headIndex,
-		commitIndex:       headIndex,
+		commitIndex:       wal.InvalidOffset,
 		tracker:           make(map[int64]*util.BitSet),
 	}
 
