@@ -4,7 +4,9 @@ go 1.19
 
 require (
 	github.com/cockroachdb/pebble v0.0.0-20221104214247-8dc60b62ebbf
+	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
 	github.com/pkg/errors v0.9.1
+	github.com/prometheus/client_golang v1.14.0
 	github.com/rs/zerolog v1.26.0
 	github.com/spf13/cobra v1.3.0
 	github.com/stretchr/testify v1.8.1
@@ -40,7 +42,6 @@ require (
 	github.com/kr/text v0.2.0 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/prometheus/client_golang v1.14.0 // indirect
 	github.com/prometheus/client_model v0.3.0 // indirect
 	github.com/prometheus/common v0.37.0 // indirect
 	github.com/prometheus/procfs v0.8.0 // indirect

@@ -7,41 +7,11 @@ import (
 )
 
 var (
-	ErrorEntryNotFound = errors.New("oxia: entry not found")
-	ErrorReaderClosed  = errors.New("oxia: reader already closed")
-	NonExistentEntryId = &proto.EntryId{}
+	ErrorEntryNotFound       = errors.New("oxia: entry not found")
+	ErrorReaderClosed        = errors.New("oxia: reader already closed")
+	InvalidEpoch       int64 = -1
+	InvalidOffset      int64 = -1
 )
-
-type EntryId struct {
-	Epoch  uint64
-	Offset uint64
-}
-
-func EntryIdFromProto(id *proto.EntryId) EntryId {
-	return EntryId{
-		Epoch:  id.Epoch,
-		Offset: id.Offset,
-	}
-}
-
-func (id EntryId) ToProto() *proto.EntryId {
-	return &proto.EntryId{
-		Epoch:  id.Epoch,
-		Offset: id.Offset,
-	}
-}
-
-func (id EntryId) Equal(other EntryId) bool {
-	return id.Epoch == other.Epoch && id.Offset == other.Offset
-}
-
-func (id EntryId) LessOrEqual(other EntryId) bool {
-	return id.Epoch < other.Epoch || (id.Epoch == other.Epoch && id.Offset <= other.Offset)
-}
-
-func (id EntryId) Less(other EntryId) bool {
-	return id.Epoch < other.Epoch || (id.Epoch == other.Epoch && id.Offset < other.Offset)
-}
 
 type WalFactoryOptions struct {
 	LogDir string
@@ -74,9 +44,13 @@ type Wal interface {
 	// Append writes an entry to the end of the log
 	Append(entry *proto.LogEntry) error
 	// TruncateLog removes entries from the end of the log that have an ID greater than lastSafeEntry.
-	TruncateLog(lastSafeEntry EntryId) (EntryId, error)
+	TruncateLog(lastSafeEntry int64) (int64, error)
 	// NewReader returns a new WalReader to traverse the log from the entry after `after` towards the log end
-	NewReader(after EntryId) (WalReader, error)
+	NewReader(after int64) (WalReader, error)
 	// NewReverseReader returns a new WalReader to traverse the log from the last entry towards the beginning
 	NewReverseReader() (WalReader, error)
+
+	// LastOffset Return the offset of the last entry committed to the WAL
+	// Return InvalidOffset if the WAL is empty
+	LastOffset() int64
 }

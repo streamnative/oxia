@@ -62,7 +62,7 @@ func TestDBSimple(t *testing.T) {
 		},
 	}
 
-	res, err := db.ProcessWrite(req, wal.NonExistentEntryId)
+	res, err := db.ProcessWrite(req, wal.InvalidOffset)
 	assert.NoError(t, err)
 
 	assert.Equal(t, 5, len(res.Puts))
@@ -160,7 +160,7 @@ func TestDBSameKeyMutations(t *testing.T) {
 		},
 	}
 
-	writeRes, err := db.ProcessWrite(writeReq, wal.NonExistentEntryId)
+	writeRes, err := db.ProcessWrite(writeReq, wal.InvalidOffset)
 	assert.NoError(t, err)
 
 	assert.Equal(t, 1, len(writeRes.Puts))
@@ -191,7 +191,7 @@ func TestDBSameKeyMutations(t *testing.T) {
 		},
 	}
 
-	writeRes, err = db.ProcessWrite(writeReq, wal.NonExistentEntryId)
+	writeRes, err = db.ProcessWrite(writeReq, wal.InvalidOffset)
 	assert.NoError(t, err)
 
 	assert.Equal(t, 2, len(writeRes.Puts))
@@ -269,7 +269,7 @@ func TestDBGetRange(t *testing.T) {
 		}},
 	}
 
-	writeRes, err := db.ProcessWrite(writeReq, wal.NonExistentEntryId)
+	writeRes, err := db.ProcessWrite(writeReq, wal.InvalidOffset)
 	assert.NoError(t, err)
 
 	readReq := &proto.ReadRequest{
@@ -337,7 +337,7 @@ func TestDBDeleteRange(t *testing.T) {
 		}},
 	}
 
-	_, err = db.ProcessWrite(writeReq, wal.NonExistentEntryId)
+	_, err = db.ProcessWrite(writeReq, wal.InvalidOffset)
 	assert.NoError(t, err)
 
 	writeReq = &proto.WriteRequest{
@@ -350,7 +350,7 @@ func TestDBDeleteRange(t *testing.T) {
 		}},
 	}
 
-	writeRes, err := db.ProcessWrite(writeReq, wal.NonExistentEntryId)
+	writeRes, err := db.ProcessWrite(writeReq, wal.InvalidOffset)
 	assert.NoError(t, err)
 
 	readReq := &proto.ReadRequest{
@@ -380,8 +380,7 @@ func TestDBDeleteRange(t *testing.T) {
 }
 
 func TestDB_ReadCommitIndex(t *testing.T) {
-	epoch := uint64(7)
-	offset := uint64(13)
+	offset := int64(13)
 
 	factory := NewPebbleKVFactory(testKVOptions)
 	db, err := NewDB(1, factory)
@@ -389,7 +388,7 @@ func TestDB_ReadCommitIndex(t *testing.T) {
 
 	commitIndex, err := db.ReadCommitIndex()
 	assert.NoError(t, err)
-	assert.Equal(t, wal.EntryId{}, wal.EntryIdFromProto(commitIndex))
+	assert.Equal(t, wal.InvalidOffset, commitIndex)
 
 	writeReq := &proto.WriteRequest{
 		Puts: []*proto.PutRequest{{
@@ -397,16 +396,12 @@ func TestDB_ReadCommitIndex(t *testing.T) {
 			Payload: []byte("a"),
 		}},
 	}
-	_, err = db.ProcessWrite(writeReq, &proto.EntryId{
-		Epoch:  epoch,
-		Offset: offset,
-	})
+	_, err = db.ProcessWrite(writeReq, offset)
 	assert.NoError(t, err)
 
 	commitIndex, err = db.ReadCommitIndex()
 	assert.NoError(t, err)
-	assert.Equal(t, wal.EntryId{Epoch: epoch, Offset: offset},
-		wal.EntryIdFromProto(commitIndex))
+	assert.Equal(t, offset, commitIndex)
 
 	assert.NoError(t, db.Close())
 	assert.NoError(t, factory.Close())

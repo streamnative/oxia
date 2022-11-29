@@ -289,17 +289,3 @@ enum Status {
   // The existing version does not match the expected version
   UNEXPECTED_VERSION = 2;
 }
-
-/// TODO: This is for compatibility with existing temporary code
-
-message PutOp {
-  uint32 shard_id = 1;
-  string key = 2;
-  bytes payload = 3;
-  optional uint64 expected_version = 4;
-}
-
-message GetOp {
-  uint32 shard_id = 1;
-  string key = 2;
-}

@@ -1,15 +1,19 @@
 package server
 
 import (
-	"fmt"
 	"github.com/rs/zerolog/log"
+	"go.uber.org/multierr"
 	"os"
 	"oxia/common"
+	"oxia/server/kv"
+	"oxia/server/metrics"
+	"oxia/server/wal"
 )
 
 type serverConfig struct {
 	InternalServicePort int
 	PublicServicePort   int
+	MetricsPort         int
 
 	AdvertisedInternalAddress string
 	AdvertisedPublicAddress   string
@@ -20,27 +24,27 @@ type server struct {
 	*PublicRpcServer
 
 	shardAssignmentDispatcher ShardAssignmentsDispatcher
-	shardsDirector            ShardsDirector
-	clientPool                common.ClientPool
+	shardsDirector ShardsDirector
+	clientPool     common.ClientPool
+	metrics        *metrics.PrometheusMetrics
+	walFactory     wal.WalFactory
+	kvFactory      kv.KVFactory
 }
 
-func NewServer(config *serverConfig) (*server, error) {
+func newServer(config serverConfig) (*server, error) {
 	log.Info().
 		Interface("config", config).
 		Msg("Starting Oxia server")
 
 	s := &server{
 		clientPool: common.NewClientPool(),
+		walFactory: wal.NewWalFactory(nil),
+		kvFactory:  kv.NewPebbleKVFactory(nil),
 	}
 
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, err
-	}
-
-	advertisedInternalAddress := config.AdvertisedInternalAddress
-	if advertisedInternalAddress == "" {
-		advertisedInternalAddress = hostname
 	}
 
 	advertisedPublicAddress := config.AdvertisedPublicAddress
@@ -49,8 +53,7 @@ func NewServer(config *serverConfig) (*server, error) {
 	}
 	log.Info().Msgf("AdvertisedPublicAddress %s", advertisedPublicAddress)
 
-	identityAddr := fmt.Sprintf("%s:%d", advertisedInternalAddress, config.InternalServicePort)
-	s.shardsDirector = NewShardsDirector(identityAddr)
+	s.shardsDirector = NewShardsDirector(s.walFactory, s.kvFactory)
 	s.shardAssignmentDispatcher = NewShardAssignmentDispatcher()
 
 	s.internalRpcServer, err = newCoordinationRpcServer(config.InternalServicePort, s.shardsDirector, s.shardAssignmentDispatcher)
@@ -63,25 +66,22 @@ func NewServer(config *serverConfig) (*server, error) {
 		return nil, err
 	}
 
+	s.metrics, err = metrics.Start(config.MetricsPort)
+	if err != nil {
+		return nil, err
+	}
+
 	return s, nil
 }
 
 func (s *server) Close() error {
-	if err := s.PublicRpcServer.Close(); err != nil {
-		return err
-	}
-
-	if err := s.internalRpcServer.Close(); err != nil {
-		return err
-	}
-
-	if err := s.clientPool.Close(); err != nil {
-		return err
-	}
-
-	if err := s.shardsDirector.Close(); err != nil {
-		return err
-	}
-
-	return nil
+	return multierr.Combine(
+		s.PublicRpcServer.Close(),
+		s.internalRpcServer.Close(),
+		s.clientPool.Close(),
+		s.shardsDirector.Close(),
+		s.kvFactory.Close(),
+		s.walFactory.Close(),
+		s.metrics.Close(),
+	)
 }

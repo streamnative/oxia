@@ -56,7 +56,6 @@ func TestWal(t *testing.T) {
 		if f.Persistent() {
 			t.Run(f.Name()+"Reopen", Reopen)
 		}
-
 	}
 
 }
@@ -103,8 +102,9 @@ func Factory_NewWal(t *testing.T) {
 	rr, err := w.NewReverseReader()
 	assert.NoError(t, err)
 	assert.False(t, rr.HasNext())
+
 	assert.NoError(t, rr.Close())
-	fr, err := w.NewReader(EntryId{})
+	fr, err := w.NewReader(InvalidOffset)
 	assert.NoError(t, err)
 	assert.False(t, fr.HasNext())
 	assert.NoError(t, fr.Close())
@@ -121,12 +121,9 @@ func Append(t *testing.T) {
 	input := []string{"A", "B", "C"}
 	for i, s := range input {
 		err := w.Append(&proto.LogEntry{
-			EntryId: &proto.EntryId{
-				Epoch:  1,
-				Offset: uint64(i),
-			},
-			Value:     []byte(s),
-			Timestamp: uint64(i),
+			Epoch:  1,
+			Offset: int64(i),
+			Value:  []byte(s),
 		})
 		assert.NoError(t, err)
 	}
@@ -138,29 +135,26 @@ func Append(t *testing.T) {
 	assert.NoError(t, rr.Close())
 
 	// Read with forward reader from beginning
-	fr, err := w.NewReader(EntryId{})
+	fr, err := w.NewReader(InvalidOffset)
 	assert.NoError(t, err)
 	assertReaderReads(t, fr, input)
 	assert.NoError(t, fr.Close())
 
 	// Read with forward reader from the middle
-	fr, err = w.NewReader(EntryId{1, 1})
+	fr, err = w.NewReader(1)
 	assert.NoError(t, err)
 	assertReaderReads(t, fr, []string{"C"})
 	assert.NoError(t, fr.Close())
 
 	// Read with forward reader waiting for new entries
-	fr, err = w.NewReader(EntryId{1, 0})
+	fr, err = w.NewReader(0)
 	assert.NoError(t, err)
 	ch := assertReaderReadsEventually(fr, []string{"B", "C", "D"})
 
 	err = w.Append(&proto.LogEntry{
-		EntryId: &proto.EntryId{
-			Epoch:  1,
-			Offset: uint64(3),
-		},
-		Value:     []byte("D"),
-		Timestamp: uint64(3),
+		Epoch:  1,
+		Offset: int64(3),
+		Value:  []byte("D"),
 	})
 	assert.NoError(t, err)
 	assert.NoError(t, <-ch)
@@ -169,14 +163,11 @@ func Append(t *testing.T) {
 
 	// Append invalid offset
 	err = w.Append(&proto.LogEntry{
-		EntryId: &proto.EntryId{
-			Epoch:  1,
-			Offset: uint64(88),
-		},
-		Value:     []byte("E"),
-		Timestamp: uint64(4),
+		Epoch:  1,
+		Offset: int64(88),
+		Value:  []byte("E"),
 	})
-	assert.True(t, err != nil && strings.Contains(err.Error(), "Invalid next entry"))
+	assert.True(t, err != nil && strings.Contains(err.Error(), "Invalid next offset"))
 
 	err = w.Close()
 	assert.NoError(t, err)
@@ -191,23 +182,20 @@ func Truncate(t *testing.T) {
 	input := []string{"A", "B", "C", "D", "E"}
 	for i, s := range input {
 		err := w.Append(&proto.LogEntry{
-			EntryId: &proto.EntryId{
-				Epoch:  1,
-				Offset: uint64(i),
-			},
-			Value:     []byte(s),
-			Timestamp: uint64(i),
+			Epoch:  1,
+			Offset: int64(i),
+			Value:  []byte(s),
 		})
 		assert.NoError(t, err)
 	}
 
-	headIndex, err := w.TruncateLog(EntryId{1, 2})
+	headIndex, err := w.TruncateLog(2)
 	assert.NoError(t, err)
 
-	assert.Equal(t, EntryId{1, 2}, headIndex)
+	assert.EqualValues(t, 2, headIndex)
 
 	// Read with forward reader from beginning
-	fr, err := w.NewReader(EntryId{})
+	fr, err := w.NewReader(InvalidOffset)
 	assert.NoError(t, err)
 	assertReaderReads(t, fr, input[:3])
 	assert.NoError(t, fr.Close())
@@ -225,12 +213,9 @@ func Reopen(t *testing.T) {
 	input := []string{"A", "B", "C", "D", "E"}
 	for i, s := range input {
 		err := w.Append(&proto.LogEntry{
-			EntryId: &proto.EntryId{
-				Epoch:  1,
-				Offset: uint64(i),
-			},
-			Value:     []byte(s),
-			Timestamp: uint64(i),
+			Epoch:  1,
+			Offset: int64(i),
+			Value:  []byte(s),
 		})
 		assert.NoError(t, err)
 	}
@@ -242,7 +227,7 @@ func Reopen(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Read with forward reader from beginning
-	fr, err := w.NewReader(EntryId{})
+	fr, err := w.NewReader(InvalidOffset)
 	assert.NoError(t, err)
 	assertReaderReads(t, fr, input)
 	assert.NoError(t, fr.Close())

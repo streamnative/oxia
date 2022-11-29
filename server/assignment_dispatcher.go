@@ -27,8 +27,8 @@ type shardAssignmentDispatcher struct {
 	closed         bool
 	shardKeyRouter proto.ShardKeyRouter
 	assignments    map[uint32]*proto.ShardAssignment
-	clients        map[uint32]Client
-	nextClientId   uint32
+	clients        map[int]Client
+	nextClientId   int
 	stopRecv       context.CancelFunc
 }
 
@@ -51,6 +51,7 @@ func (s *shardAssignmentDispatcher) AddClient(clientStream Client) error {
 		return err
 	}
 	s.clients[s.nextClientId] = clientStream
+	s.nextClientId++
 	return nil
 }
 
@@ -76,7 +77,7 @@ func (s *shardAssignmentDispatcher) ShardAssignment(srv proto.OxiaControl_ShardA
 	s.Unlock()
 	defer func() {
 		s.Lock()
-		err := srv.SendAndClose(&proto.CoordinationEmpty{})
+		err := srv.SendAndClose(&proto.CoordinationShardAssignmentsResponse{})
 		if s.stopRecv != nil {
 			s.stopRecv()
 			s.stopRecv = nil
@@ -151,7 +152,7 @@ func NewShardAssignmentDispatcher() ShardAssignmentsDispatcher {
 		closed:         false,
 		shardKeyRouter: proto.ShardKeyRouter_UNKNOWN,
 		assignments:    make(map[uint32]*proto.ShardAssignment),
-		clients:        make(map[uint32]Client),
+		clients:        make(map[int]Client),
 	}
 }
 
@@ -161,7 +162,7 @@ func NewStandaloneShardAssignmentDispatcher(address string, numShards uint32) Sh
 		closed:         false,
 		shardKeyRouter: proto.ShardKeyRouter_UNKNOWN,
 		assignments:    make(map[uint32]*proto.ShardAssignment),
-		clients:        make(map[uint32]Client),
+		clients:        make(map[int]Client),
 	}
 	res := &proto.ShardAssignmentsResponse{
 		ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,

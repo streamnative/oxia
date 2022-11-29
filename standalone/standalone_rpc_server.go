@@ -71,7 +71,7 @@ func (s *StandaloneRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest,
 
 func (s *StandaloneRpcServer) Write(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error) {
 	// TODO generate an actual EntryId if needed
-	return s.dbs[*write.ShardId].ProcessWrite(write, wal.NonExistentEntryId)
+	return s.dbs[*write.ShardId].ProcessWrite(write, wal.InvalidOffset)
 }
 
 func (s *StandaloneRpcServer) Read(ctx context.Context, read *proto.ReadRequest) (*proto.ReadResponse, error) {

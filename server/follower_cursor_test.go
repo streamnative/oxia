@@ -9,80 +9,80 @@ import (
 )
 
 func TestFollowerCursor(t *testing.T) {
-	var epoch uint64 = 1
+	var epoch int64 = 1
 	var shard uint32 = 2
 
-	stream := newMockClientAddEntriesStream()
-	ackTracker := NewQuorumAckTracker(3, wal.EntryId{Epoch: 0, Offset: 0})
+	stream := newMockRpcClient()
+	ackTracker := NewQuorumAckTracker(3, wal.InvalidOffset)
 	wf := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 	w, err := wf.NewWal(shard)
 	assert.NoError(t, err)
 
-	fc, err := NewFollowerCursor("f1", epoch, shard, stream, ackTracker, w, wal.EntryId{})
+	fc, err := NewFollowerCursor("f1", epoch, shard, stream, ackTracker, w, wal.InvalidOffset)
 	assert.NoError(t, err)
 
-	assert.Equal(t, wal.EntryId{}, fc.LastPushed())
-	assert.Equal(t, wal.EntryId{}, fc.AckIndex())
+	assert.Equal(t, wal.InvalidOffset, fc.LastPushed())
+	assert.Equal(t, wal.InvalidOffset, fc.AckIndex())
 
 	err = w.Append(&proto.LogEntry{
-		EntryId:   &proto.EntryId{Epoch: 1, Offset: 0},
-		Value:     []byte("v1"),
-		Timestamp: 0,
+		Epoch:  1,
+		Offset: 0,
+		Value:  []byte("v1"),
 	})
 	assert.NoError(t, err)
 
-	assert.Equal(t, wal.EntryId{}, fc.LastPushed())
-	assert.Equal(t, wal.EntryId{}, fc.AckIndex())
+	assert.Equal(t, wal.InvalidOffset, fc.LastPushed())
+	assert.Equal(t, wal.InvalidOffset, fc.AckIndex())
 
-	ackTracker.AdvanceHeadIndex(wal.EntryId{Epoch: 1, Offset: 0})
+	ackTracker.AdvanceHeadIndex(0)
 
 	assert.Eventually(t, func() bool {
-		return fc.LastPushed().Equal(wal.EntryId{Epoch: 1, Offset: 0})
+		return fc.LastPushed() == 0
 	}, 10*time.Second, 100*time.Millisecond)
 
-	assert.Equal(t, wal.EntryId{}, fc.AckIndex())
+	assert.Equal(t, wal.InvalidOffset, fc.AckIndex())
 
 	// The follower is acking back
-	req := <-stream.requests
+	req := <-stream.addEntryReqs
 	assert.EqualValues(t, 1, req.Epoch)
-	assert.Equal(t, &proto.EntryId{Epoch: 0, Offset: 0}, req.CommitIndex)
+	assert.Equal(t, wal.InvalidOffset, req.CommitIndex)
 
-	stream.responses <- &proto.AddEntryResponse{
+	stream.addEntryResps <- &proto.AddEntryResponse{
 		Epoch:        1,
-		EntryId:      &proto.EntryId{Epoch: 1, Offset: 0},
+		Offset:       0,
 		InvalidEpoch: false,
 	}
 
 	assert.Eventually(t, func() bool {
-		return fc.AckIndex().Equal(wal.EntryId{Epoch: 1, Offset: 0})
+		return fc.AckIndex() == 0
 	}, 10*time.Second, 100*time.Millisecond)
 
-	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 0}, ackTracker.CommitIndex())
+	assert.EqualValues(t, 0, ackTracker.CommitIndex())
 
 	// Next entry should carry the correct commit index
 	err = w.Append(&proto.LogEntry{
-		EntryId:   &proto.EntryId{Epoch: 1, Offset: 1},
-		Value:     []byte("v2"),
-		Timestamp: 0,
+		Epoch:  1,
+		Offset: 1,
+		Value:  []byte("v2"),
 	})
 	assert.NoError(t, err)
 
-	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 0}, fc.LastPushed())
-	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 0}, fc.AckIndex())
+	assert.EqualValues(t, 0, fc.LastPushed())
+	assert.EqualValues(t, 0, fc.AckIndex())
 
-	ackTracker.AdvanceHeadIndex(wal.EntryId{Epoch: 1, Offset: 1})
+	ackTracker.AdvanceHeadIndex(1)
 
 	assert.Eventually(t, func() bool {
-		return fc.LastPushed().Equal(wal.EntryId{Epoch: 1, Offset: 1})
+		return fc.LastPushed() == 1
 	}, 10*time.Second, 100*time.Millisecond)
 
-	assert.Equal(t, wal.EntryId{Epoch: 1, Offset: 0}, fc.AckIndex())
+	assert.EqualValues(t, 0, fc.AckIndex())
 
-	req = <-stream.requests
+	req = <-stream.addEntryReqs
 	assert.EqualValues(t, 1, req.Epoch)
-	assert.EqualValues(t, 1, req.Entry.EntryId.Epoch)
-	assert.EqualValues(t, 1, req.Entry.EntryId.Offset)
-	assert.Equal(t, &proto.EntryId{Epoch: 1, Offset: 0}, req.CommitIndex)
+	assert.EqualValues(t, 1, req.Entry.Epoch)
+	assert.EqualValues(t, 1, req.Entry.Offset)
+	assert.EqualValues(t, 0, req.CommitIndex)
 
 	assert.NoError(t, fc.Close())
 }
