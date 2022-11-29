@@ -53,34 +53,41 @@ func (s *internalRpcServer) Close() error {
 }
 
 func (s *internalRpcServer) Fence(c context.Context, req *proto.FenceRequest) (*proto.FenceResponse, error) {
-	if manager, err := s.shardsDirector.GetManager(req.ShardId, true); err != nil {
+	// Fence applies to both followers and leaders
+	// First check if we have already a follower controller running
+	if follower, err := s.shardsDirector.GetFollower(req.ShardId); err != nil {
+		if !errors.Is(err, ErrorNodeIsNotFollower) {
+			return nil, err
+		}
+
+		// If we don't have a follower, fallback to checking the leader controller
+	} else {
+		return follower.Fence(req)
+	}
+
+	if leader, err := s.shardsDirector.GetOrCreateLeader(req.ShardId); err != nil {
 		return nil, err
 	} else {
-		return manager.Fence(req)
+		return leader.Fence(req)
 	}
 }
 
 func (s *internalRpcServer) BecomeLeader(c context.Context, req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error) {
-	if manager, err := s.shardsDirector.GetManager(req.ShardId, true); err != nil {
+	if leader, err := s.shardsDirector.GetOrCreateLeader(req.ShardId); err != nil {
 		return nil, err
 	} else {
-		return manager.BecomeLeader(req)
+		return leader.BecomeLeader(req)
 	}
 }
-func (s *internalRpcServer) AddFollower(c context.Context, req *proto.AddFollowerRequest) (*proto.CoordinationEmpty, error) {
-	if manager, err := s.shardsDirector.GetManager(req.ShardId, true); err != nil {
-		return nil, err
-	} else {
-		return manager.AddFollower(req)
-	}
-}
+
 func (s *internalRpcServer) Truncate(c context.Context, req *proto.TruncateRequest) (*proto.TruncateResponse, error) {
-	if manager, err := s.shardsDirector.GetManager(req.ShardId, true); err != nil {
+	if follower, err := s.shardsDirector.GetOrCreateFollower(req.ShardId); err != nil {
 		return nil, err
 	} else {
-		return manager.Truncate(req)
+		return follower.Truncate(req)
 	}
 }
+
 func (s *internalRpcServer) AddEntries(srv proto.OxiaLogReplication_AddEntriesServer) error {
 	// Add entries receives an incoming stream of request, the shard_id needs to be encoded
 	// as a property in the metadata
@@ -94,10 +101,10 @@ func (s *internalRpcServer) AddEntries(srv proto.OxiaLogReplication_AddEntriesSe
 		return err
 	}
 
-	if manager, err := s.shardsDirector.GetManager(shardId, true); err != nil {
+	if follower, err := s.shardsDirector.GetOrCreateFollower(shardId); err != nil {
 		return err
 	} else {
-		return manager.AddEntries(srv)
+		return follower.AddEntries(srv)
 	}
 }
 

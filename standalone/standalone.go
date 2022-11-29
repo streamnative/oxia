@@ -62,15 +62,9 @@ func newStandalone(config *standaloneConfig) (*standalone, error) {
 }
 
 func (s *standalone) Close() error {
-	var errs error
-	if err := s.rpc.Close(); err != nil {
-		errs = multierr.Append(errs, err)
-	}
-	if err := s.kvFactory.Close(); err != nil {
-		errs = multierr.Append(errs, err)
-	}
-	if err := s.metrics.Close(); err != nil {
-		errs = multierr.Append(errs, err)
-	}
-	return nil
+	return multierr.Combine(
+		s.rpc.Close(),
+		s.kvFactory.Close(),
+		s.metrics.Close(),
+	)
 }

@@ -56,7 +56,6 @@ func TestWal(t *testing.T) {
 		if f.Persistent() {
 			t.Run(f.Name()+"Reopen", Reopen)
 		}
-
 	}
 
 }
@@ -125,8 +124,7 @@ func Append(t *testing.T) {
 				Epoch:  1,
 				Offset: uint64(i),
 			},
-			Value:     []byte(s),
-			Timestamp: uint64(i),
+			Value: []byte(s),
 		})
 		assert.NoError(t, err)
 	}
@@ -159,8 +157,7 @@ func Append(t *testing.T) {
 			Epoch:  1,
 			Offset: uint64(3),
 		},
-		Value:     []byte("D"),
-		Timestamp: uint64(3),
+		Value: []byte("D"),
 	})
 	assert.NoError(t, err)
 	assert.NoError(t, <-ch)
@@ -173,8 +170,7 @@ func Append(t *testing.T) {
 			Epoch:  1,
 			Offset: uint64(88),
 		},
-		Value:     []byte("E"),
-		Timestamp: uint64(4),
+		Value: []byte("E"),
 	})
 	assert.True(t, err != nil && strings.Contains(err.Error(), "Invalid next entry"))
 
@@ -195,8 +191,7 @@ func Truncate(t *testing.T) {
 				Epoch:  1,
 				Offset: uint64(i),
 			},
-			Value:     []byte(s),
-			Timestamp: uint64(i),
+			Value: []byte(s),
 		})
 		assert.NoError(t, err)
 	}
@@ -229,8 +224,7 @@ func Reopen(t *testing.T) {
 				Epoch:  1,
 				Offset: uint64(i),
 			},
-			Value:     []byte(s),
-			Timestamp: uint64(i),
+			Value: []byte(s),
 		})
 		assert.NoError(t, err)
 	}

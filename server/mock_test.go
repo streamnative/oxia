@@ -65,55 +65,74 @@ func (m *mockServerAddEntriesStream) RecvMsg(msg interface{}) error {
 
 /// Mock of the client side handler
 
-func newMockClientAddEntriesStream() *mockClientAddEntriesStream {
-	return &mockClientAddEntriesStream{
-		requests:  make(chan *proto.AddEntryRequest, 1000),
-		responses: make(chan *proto.AddEntryResponse, 1000),
-		md:        make(metadata.MD),
+func newMockRpcClient() *mockRpcClient {
+	return &mockRpcClient{
+		addEntryReqs:  make(chan *proto.AddEntryRequest, 1000),
+		addEntryResps: make(chan *proto.AddEntryResponse, 1000),
+		truncateReqs:  make(chan *proto.TruncateRequest, 1000),
+		truncateResps: make(chan struct {
+			*proto.TruncateResponse
+			error
+		}, 1000),
+		md: make(metadata.MD),
 	}
 }
 
-type mockClientAddEntriesStream struct {
-	requests  chan *proto.AddEntryRequest
-	responses chan *proto.AddEntryResponse
-	md        metadata.MD
+type mockRpcClient struct {
+	addEntryReqs  chan *proto.AddEntryRequest
+	addEntryResps chan *proto.AddEntryResponse
+	truncateReqs  chan *proto.TruncateRequest
+	truncateResps chan struct {
+		*proto.TruncateResponse
+		error
+	}
+	md metadata.MD
 }
 
-func (m *mockClientAddEntriesStream) Send(request *proto.AddEntryRequest) error {
-	m.requests <- request
+func (m *mockRpcClient) Send(request *proto.AddEntryRequest) error {
+	m.addEntryReqs <- request
 	return nil
 }
 
-func (m *mockClientAddEntriesStream) Recv() (*proto.AddEntryResponse, error) {
-	res := <-m.responses
+func (m *mockRpcClient) Recv() (*proto.AddEntryResponse, error) {
+	res := <-m.addEntryResps
 	return res, nil
 }
 
-func (m *mockClientAddEntriesStream) Header() (metadata.MD, error) {
+func (m *mockRpcClient) Header() (metadata.MD, error) {
 	panic("not implemented")
 }
 
-func (m *mockClientAddEntriesStream) Trailer() metadata.MD {
+func (m *mockRpcClient) Trailer() metadata.MD {
 	panic("not implemented")
 }
 
-func (m *mockClientAddEntriesStream) CloseSend() error {
-	close(m.requests)
+func (m *mockRpcClient) CloseSend() error {
+	close(m.addEntryReqs)
 	return nil
 }
 
-func (m *mockClientAddEntriesStream) Context() context.Context {
+func (m *mockRpcClient) Context() context.Context {
 	panic("not implemented")
 }
 
-func (m *mockClientAddEntriesStream) SendMsg(msg interface{}) error {
+func (m *mockRpcClient) SendMsg(msg interface{}) error {
 	panic("not implemented")
 }
 
-func (m *mockClientAddEntriesStream) RecvMsg(msg interface{}) error {
+func (m *mockRpcClient) RecvMsg(msg interface{}) error {
 	panic("not implemented")
 }
 
-func (m *mockClientAddEntriesStream) GetAddEntriesStream(follower string) (proto.OxiaLogReplication_AddEntriesClient, error) {
+func (m *mockRpcClient) GetAddEntriesStream(follower string) (proto.OxiaLogReplication_AddEntriesClient, error) {
 	return m, nil
+}
+
+func (m *mockRpcClient) Truncate(follower string, req *proto.TruncateRequest) (*proto.TruncateResponse, error) {
+	m.truncateReqs <- req
+
+	// Caller needs to provide response to the channel
+
+	x := <-m.truncateResps
+	return x.TruncateResponse, x.error
 }
