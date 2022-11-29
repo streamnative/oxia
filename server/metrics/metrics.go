@@ -1,12 +1,14 @@
 package metrics
 
 import (
+	"context"
 	"fmt"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog/log"
 	"io"
 	"net"
 	"net/http"
+	"runtime/pprof"
 )
 
 type PrometheusMetrics struct {
@@ -31,11 +33,13 @@ func Start(port int) (*PrometheusMetrics, error) {
 
 	log.Info().Msgf("Serving Prometheus metrics at http://localhost:%d/metrics", p.port)
 
-	go func() {
-		if err = p.server.Serve(listener); err != nil {
-			log.Error().Err(err).Msg("Failed to serve metrics")
-		}
-	}()
+	go pprof.Do(context.Background(),
+		pprof.Labels("oxia", "metrics"),
+		func(_ context.Context) {
+			if err = p.server.Serve(listener); err != nil {
+				log.Fatal().Err(err).Msg("Failed to serve metrics")
+			}
+		})
 
 	return p, nil
 }

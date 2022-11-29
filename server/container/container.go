@@ -1,6 +1,7 @@
 package container
 
 import (
+	"context"
 	"fmt"
 	"github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/rs/zerolog"
@@ -8,6 +9,7 @@ import (
 	"google.golang.org/grpc"
 	"io"
 	"net"
+	"runtime/pprof"
 )
 
 type Container struct {
@@ -39,11 +41,14 @@ func Start(name string, port int, registerFunc func(grpc.ServiceRegistrar)) (*Co
 		Str("bindAddress", listener.Addr().String()).
 		Logger()
 
-	go func() {
-		if err := c.server.Serve(listener); err != nil {
-			c.log.Fatal().Err(err).Msg("Failed to start serving")
-		}
-	}()
+	go pprof.Do(context.Background(),
+		pprof.Labels("oxia", name,
+			"bind", listener.Addr().String()),
+		func(_ context.Context) {
+			if err := c.server.Serve(listener); err != nil {
+				c.log.Fatal().Err(err).Msg("Failed to start serving")
+			}
+		})
 
 	c.log.Info().Msg("Started container")
 

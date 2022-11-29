@@ -1,10 +1,13 @@
 package batch
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"io"
 	"oxia/oxia/internal"
 	"oxia/oxia/internal/metrics"
+	"runtime/pprof"
 	"time"
 )
 
@@ -40,7 +43,13 @@ func (b *BatcherFactory) newBatcher(shardId *uint32, batchFactory func(shardId *
 		linger:              b.Linger,
 		maxRequestsPerBatch: b.MaxRequestsPerBatch,
 	}
-	go batcher.run()
+	go pprof.Do(context.Background(),
+		pprof.Labels("oxia", "batcher",
+			"shard", fmt.Sprintf("%d", *shardId)),
+		func(_ context.Context) {
+			batcher.run()
+		})
+
 	return batcher
 }
 

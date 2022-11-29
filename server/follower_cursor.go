@@ -1,11 +1,14 @@
 package server
 
 import (
+	"context"
+	"fmt"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"io"
 	"oxia/proto"
 	"oxia/server/wal"
+	"runtime/pprof"
 	"sync"
 )
 
@@ -43,6 +46,7 @@ type followerCursor struct {
 	wal         wal.Wal
 	lastPushed  int64
 	ackIndex    int64
+	shardId     uint32
 
 	closed bool
 	log    zerolog.Logger
@@ -79,7 +83,12 @@ func NewFollowerCursor(
 		return nil, err
 	}
 
-	go fc.run()
+	go pprof.Do(context.Background(),
+		pprof.Labels("oxia", "follower-cursor-send", "shard",
+			fmt.Sprintf("%d", fc.shardId)),
+		func(_ context.Context) {
+			fc.run()
+		})
 
 	return fc, nil
 }
@@ -144,7 +153,12 @@ func (fc *followerCursor) runOnce() error {
 	}
 	defer reader.Close()
 
-	go fc.receiveAcks(fc.stream)
+	go pprof.Do(context.Background(),
+		pprof.Labels("oxia", "follower-cursor-receive",
+			"shard", fmt.Sprintf("%d", fc.shardId)),
+		func(_ context.Context) {
+			fc.receiveAcks(fc.stream)
+		})
 
 	fc.log.Info().
 		Interface("ack-index", currentOffset).
