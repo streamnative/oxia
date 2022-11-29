@@ -43,11 +43,6 @@ func NewServer(config *serverConfig) (*server, error) {
 		return nil, err
 	}
 
-	advertisedInternalAddress := config.AdvertisedInternalAddress
-	if advertisedInternalAddress == "" {
-		advertisedInternalAddress = hostname
-	}
-
 	advertisedPublicAddress := config.AdvertisedPublicAddress
 	if advertisedPublicAddress == "" {
 		advertisedPublicAddress = hostname
