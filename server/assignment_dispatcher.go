@@ -24,7 +24,6 @@ type ShardAssignmentsDispatcher interface {
 type shardAssignmentDispatcher struct {
 	sync.Mutex
 	initialized    bool
-	closed         bool
 	shardKeyRouter proto.ShardKeyRouter
 	assignments    map[uint32]*proto.ShardAssignment
 	clients        map[int]Client
@@ -58,7 +57,6 @@ func (s *shardAssignmentDispatcher) AddClient(clientStream Client) error {
 func (s *shardAssignmentDispatcher) Close() error {
 	s.Lock()
 	defer s.Unlock()
-	s.closed = true
 	if s.stopRecv != nil {
 		s.stopRecv()
 	}
@@ -149,7 +147,6 @@ func (s *shardAssignmentDispatcher) convertAssignments() *proto.ShardAssignments
 func NewShardAssignmentDispatcher() ShardAssignmentsDispatcher {
 	return &shardAssignmentDispatcher{
 		initialized:    false,
-		closed:         false,
 		shardKeyRouter: proto.ShardKeyRouter_UNKNOWN,
 		assignments:    make(map[uint32]*proto.ShardAssignment),
 		clients:        make(map[int]Client),
@@ -159,7 +156,6 @@ func NewShardAssignmentDispatcher() ShardAssignmentsDispatcher {
 func NewStandaloneShardAssignmentDispatcher(address string, numShards uint32) ShardAssignmentsDispatcher {
 	assignmentDispatcher := &shardAssignmentDispatcher{
 		initialized:    false,
-		closed:         false,
 		shardKeyRouter: proto.ShardKeyRouter_UNKNOWN,
 		assignments:    make(map[uint32]*proto.ShardAssignment),
 		clients:        make(map[int]Client),
