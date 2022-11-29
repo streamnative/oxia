@@ -96,8 +96,8 @@ func (cp *clientPool) getConnection(target string) (grpc.ClientConnInterface, er
 
 	cnx, err := grpc.Dial(target,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor),
 		grpc.WithStreamInterceptor(grpc_prometheus.StreamClientInterceptor),
+		grpc.WithUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor),
 	)
 	if err != nil {
 		return nil, err

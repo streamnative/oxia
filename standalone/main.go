@@ -18,16 +18,17 @@ var (
 )
 
 func init() {
+	Cmd.Flags().Uint32VarP(&conf.PublicServicePort, "port", "p", 9190, "Public service port")
+	Cmd.Flags().IntVarP(&conf.MetricsPort, "metrics-port", "m", 8080, "Metrics port")
+	Cmd.Flags().StringVarP(&conf.AdvertisedPublicAddress, "advertised-address", "a", "", "Advertised address")
 	Cmd.Flags().Uint32VarP(&conf.NumShards, "shards", "s", 1, "Number of shards")
 	Cmd.Flags().StringVar(&conf.DataDir, "data-dir", "./data", "Directory where to store data")
-	Cmd.Flags().Uint32VarP(&conf.PublicServicePort, "port", "p", 9190, "Public service port")
-	Cmd.Flags().StringVarP(&conf.AdvertisedPublicAddress, "advertised-address", "a", "", "Advertised address")
 }
 
 func main(cmd *cobra.Command, args []string) {
 	common.ConfigureLogger()
 
-	server, err := NewStandalone(&conf)
+	server, err := newStandalone(&conf)
 	if err != nil {
 		log.Fatal().Err(err).
 			Msg("Failed to start the server")
