@@ -3,6 +3,7 @@ package metrics
 import (
 	"context"
 	"fmt"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog/log"
 	"io"
@@ -36,7 +37,7 @@ func Start(port int) (*PrometheusMetrics, error) {
 	go pprof.Do(context.Background(),
 		pprof.Labels("oxia", "metrics"),
 		func(_ context.Context) {
-			if err = p.server.Serve(listener); err != nil {
+			if err = p.server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				log.Fatal().Err(err).Msg("Failed to serve metrics")
 			}
 		})
