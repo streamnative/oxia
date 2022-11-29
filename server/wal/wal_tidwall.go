@@ -3,7 +3,6 @@ package wal
 import (
 	"fmt"
 	"github.com/pkg/errors"
-	tidwall "github.com/tidwall/wal"
 	pb "google.golang.org/protobuf/proto"
 	"os"
 	"oxia/proto"
@@ -32,13 +31,13 @@ func (f *factory) Close() error {
 type tidwallWal struct {
 	sync.RWMutex
 	shard      uint32
-	log        *tidwall.Log
+	log        *Log
 	lastOffset int64
 }
 
 func newTidwallWal(shard uint32, dir string) (Wal, error) {
-	opts := tidwall.DefaultOptions
-	log, err := tidwall.Open(fmt.Sprintf("%s%c%06d", dir, os.PathSeparator, shard), opts)
+	opts := DefaultOptions
+	log, err := Open(fmt.Sprintf("%s%c%06d", dir, os.PathSeparator, shard), opts)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +65,7 @@ func newTidwallWal(shard uint32, dir string) (Wal, error) {
 	return w, nil
 }
 
-func readAtIndex(log *tidwall.Log, index uint64) (*proto.LogEntry, error) {
+func readAtIndex(log *Log, index uint64) (*proto.LogEntry, error) {
 	val, err := log.Read(index)
 	if err != nil {
 		return nil, err
