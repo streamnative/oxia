@@ -21,34 +21,36 @@ type ShardAssignmentsDispatcher interface {
 	AddClient(Client) error
 }
 
-type shardAssignment struct {
-	leader              string
-	lowerBoundInclusive uint32
-	upperBoundExclusive uint32
-}
-
 type shardAssignmentDispatcher struct {
 	sync.Mutex
 	initialized    bool
 	closed         bool
 	shardKeyRouter proto.ShardKeyRouter
-	assignments    map[uint32]shardAssignment
-	clients        []Client
+	assignments    map[uint32]*proto.ShardAssignment
+	clients        map[uint32]Client
+	nextClientId   uint32
 	stopRecv       context.CancelFunc
 }
+
+var (
+	ErrorNotInitialized = errors.New("oxia: server not initialized yet")
+	ErrorUnknownRouter  = errors.New("oxia: unknown shard key router")
+	ErrorChangedRouter  = errors.New("oxia: changing shard key router is not supported")
+	ErrorShardSlitting  = errors.New("oxia: shard splitting is not yet supported")
+)
 
 func (s *shardAssignmentDispatcher) AddClient(clientStream Client) error {
 	s.Lock()
 	defer s.Unlock()
 	if !s.initialized {
-		return errors.New("oxia: server not initialized yet")
+		return ErrorNotInitialized
 	}
 	assignments := s.convertAssignments()
 	err := clientStream.Send(assignments)
 	if err != nil {
 		return err
 	}
-	s.clients = append(s.clients, clientStream)
+	s.clients[s.nextClientId] = clientStream
 	return nil
 }
 
@@ -100,7 +102,7 @@ func (s *shardAssignmentDispatcher) updateShardAssignment(request *proto.ShardAs
 	s.Lock()
 	defer s.Unlock()
 	if request.ShardKeyRouter == proto.ShardKeyRouter_UNKNOWN {
-		return errors.New("oxia: unknown shard key router")
+		return ErrorUnknownRouter
 	}
 
 	if !s.initialized {
@@ -108,25 +110,22 @@ func (s *shardAssignmentDispatcher) updateShardAssignment(request *proto.ShardAs
 
 	}
 	if s.shardKeyRouter != request.ShardKeyRouter {
-		return errors.New("oxia: changing shard key router is not supported")
+		return ErrorChangedRouter
 	}
 	for _, assignment := range request.Assignments {
 		shard := assignment.ShardId
-		current, found := s.assignments[shard]
+		_, found := s.assignments[shard]
 		if s.initialized && !found {
-			return errors.New("oxia: shard splitting is not supported")
+			return ErrorShardSlitting
 		}
-		current.leader = assignment.Leader
-		current.lowerBoundInclusive = assignment.GetInt32HashRange().MinHashInclusive
-		current.upperBoundExclusive = assignment.GetInt32HashRange().MaxHashExclusive
-		s.assignments[shard] = current
+		s.assignments[shard] = assignment
 	}
 
-	for idx, client := range s.clients {
+	for id, client := range s.clients {
 		err := client.Send(request)
 		if err != nil {
-			s.clients = removeAt(s.clients, idx)
-			return err
+			log.Err(err).Msg("Error sending shard assignment update to client")
+			delete(s.clients, id)
 		}
 	}
 
@@ -134,26 +133,10 @@ func (s *shardAssignmentDispatcher) updateShardAssignment(request *proto.ShardAs
 	return nil
 }
 
-func removeAt[T any](slice []T, idx int) []T {
-	if idx == len(slice)-1 {
-		return slice[:idx]
-	} else {
-		return append(slice[:idx], slice[idx+1:]...)
-	}
-}
-
 func (s *shardAssignmentDispatcher) convertAssignments() *proto.ShardAssignmentsResponse {
 	assignments := make([]*proto.ShardAssignment, 0, len(s.assignments))
-	for shard, assignment := range s.assignments {
-		assignments = append(assignments, &proto.ShardAssignment{
-			ShardId: shard,
-			Leader:  assignment.leader,
-			ShardBoundaries: &proto.ShardAssignment_Int32HashRange{
-				Int32HashRange: &proto.Int32HashRange{
-					MinHashInclusive: assignment.lowerBoundInclusive,
-					MaxHashExclusive: assignment.upperBoundExclusive,
-				}},
-		})
+	for _, assignment := range s.assignments {
+		assignments = append(assignments, assignment)
 	}
 	result := &proto.ShardAssignmentsResponse{
 		Assignments:    assignments,
@@ -167,8 +150,8 @@ func NewShardAssignmentDispatcher() ShardAssignmentsDispatcher {
 		initialized:    false,
 		closed:         false,
 		shardKeyRouter: proto.ShardKeyRouter_UNKNOWN,
-		assignments:    make(map[uint32]shardAssignment, 1000),
-		clients:        make([]Client, 0, 1000),
+		assignments:    make(map[uint32]*proto.ShardAssignment),
+		clients:        make(map[uint32]Client),
 	}
 }
 
@@ -177,8 +160,8 @@ func NewStandaloneShardAssignmentDispatcher(address string, numShards uint32) Sh
 		initialized:    false,
 		closed:         false,
 		shardKeyRouter: proto.ShardKeyRouter_UNKNOWN,
-		assignments:    make(map[uint32]shardAssignment, 1000),
-		clients:        make([]Client, 0, 1000),
+		assignments:    make(map[uint32]*proto.ShardAssignment),
+		clients:        make(map[uint32]Client),
 	}
 	res := &proto.ShardAssignmentsResponse{
 		ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,

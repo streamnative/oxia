@@ -13,7 +13,7 @@ func TestUninitializedAssignmentDispatcher(t *testing.T) {
 	mockClient := newMockShardAssignmentClientStream()
 	assert.False(t, dispatcher.Initialized())
 	err := dispatcher.AddClient(mockClient)
-	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrorNotInitialized)
 	assert.NoError(t, dispatcher.Close())
 }
 

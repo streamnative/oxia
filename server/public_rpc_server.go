@@ -37,13 +37,10 @@ func NewPublicRpcServer(port int, shardsDirector ShardsDirector, assignmentDispa
 	return server, nil
 }
 
-//func (s *PublicRpcServer) GetShardsAssignments(_ *proto.Empty, out proto.ClientAPI_GetShardsAssignmentsServer) error {
-//	s.shardsDirector.GetShardsAssignments(func(assignments *proto.ShardsAssignments) {
-//		out.SendMsg(assignments)
-//	})
-//	return nil
-//}
-//
+func (s *PublicRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest, srv proto.OxiaClient_ShardAssignmentsServer) error {
+	return s.assignmentDispatcher.AddClient(srv)
+}
+
 //func (s *PublicRpcServer) Put(ctx context.Context, putOp *proto.PutOp) (*proto.Stat, error) {
 //	// TODO make shard ID string in client rpc
 //	slc, err := s.shardsDirector.GetManager(ShardId(strconv.FormatInt(int64(putOp.GetShardId()), 10)), false)
