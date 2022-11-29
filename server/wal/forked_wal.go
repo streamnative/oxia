@@ -72,7 +72,7 @@ var DefaultOptions = &Options{
 	FilePerms:        0640,     // Permissions for the created data files
 }
 
-// Log represents a write ahead log
+// Log represents a write-ahead log
 type Log struct {
 	mu         sync.RWMutex
 	path       string      // absolute path to log directory
@@ -80,8 +80,8 @@ type Log struct {
 	closed     bool        // log is closed
 	corrupt    bool        // log may be corrupt
 	segments   []*segment  // all known log segments
-	firstIndex uint64      // index of the first entry in log
-	lastIndex  uint64      // index of the last entry in log
+	firstIndex int64       // index of the first entry in log
+	lastIndex  int64       // index of the last entry in log
 	sfile      *os.File    // tail segment file handle
 	wbatch     Batch       // reusable write batch
 	scache     tinylru.LRU // segment entries cache
@@ -90,7 +90,7 @@ type Log struct {
 // segment represents a single segment file.
 type segment struct {
 	path  string // path of segment file
-	index uint64 // first index of segment
+	index int64  // first index of segment
 	ebuf  []byte // cached entries buffer
 	epos  []bpos // cached entries positions in buffer
 }
@@ -164,7 +164,7 @@ func (l *Log) load() error {
 		if fi.IsDir() || len(name) < 20 {
 			continue
 		}
-		index, err := strconv.ParseUint(name[:20], 10, 64)
+		index, err := strconv.ParseInt(name[:20], 10, 64)
 		if err != nil || index == 0 {
 			continue
 		}
@@ -253,13 +253,13 @@ func (l *Log) load() error {
 	if err := l.loadSegmentEntries(lseg); err != nil {
 		return err
 	}
-	l.lastIndex = lseg.index + uint64(len(lseg.epos)) - 1
+	l.lastIndex = lseg.index + int64(len(lseg.epos)) - 1
 	return nil
 }
 
 // segmentName returns a 20-byte textual representation of an index
 // for lexical ordering. This is used for the file names of log segments.
-func segmentName(index uint64) string {
+func segmentName(index int64) string {
 	return fmt.Sprintf("%020d", index)
 }
 
@@ -287,7 +287,7 @@ func (l *Log) Close() error {
 }
 
 // Write an entry to the log.
-func (l *Log) Write(index uint64, data []byte) error {
+func (l *Log) Write(index int64, data []byte) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.corrupt {
@@ -298,11 +298,6 @@ func (l *Log) Write(index uint64, data []byte) error {
 	l.wbatch.Clear()
 	l.wbatch.Write(index, data)
 	return l.writeBatch(&l.wbatch)
-}
-
-func (l *Log) appendEntry(dst []byte, index uint64, data []byte) (out []byte,
-	epos bpos) {
-	return appendBinaryEntry(dst, data)
 }
 
 // Cycle the old segment for a new segment.
@@ -328,7 +323,7 @@ func (l *Log) cycle() error {
 	return nil
 }
 
-func appendBinaryEntry(dst []byte, data []byte) (out []byte, epos bpos) {
+func appendEntry(dst []byte, data []byte) (out []byte, epos bpos) {
 	// data_size + data
 	pos := len(dst)
 	dst = appendUvarint(dst, uint64(len(data)))
@@ -350,12 +345,12 @@ type Batch struct {
 }
 
 type batchEntry struct {
-	index uint64
+	index int64
 	size  int
 }
 
 // Write an entry to the batch
-func (b *Batch) Write(index uint64, data []byte) {
+func (b *Batch) Write(index int64, data []byte) {
 	b.entries = append(b.entries, batchEntry{index, len(data)})
 	b.datas = append(b.datas, data...)
 }
@@ -385,7 +380,7 @@ func (l *Log) WriteBatch(b *Batch) error {
 func (l *Log) writeBatch(b *Batch) error {
 	// check that all indexes in batch are sane
 	for i := 0; i < len(b.entries); i++ {
-		if b.entries[i].index != l.lastIndex+uint64(i+1) {
+		if b.entries[i].index != l.lastIndex+int64(i+1) {
 			return ErrOutOfOrder
 		}
 	}
@@ -404,7 +399,7 @@ func (l *Log) writeBatch(b *Batch) error {
 	for i := 0; i < len(b.entries); i++ {
 		data := datas[:b.entries[i].size]
 		var epos bpos
-		s.ebuf, epos = l.appendEntry(s.ebuf, b.entries[i].index, data)
+		s.ebuf, epos = appendEntry(s.ebuf, data)
 		s.epos = append(s.epos, epos)
 		if len(s.ebuf) >= l.opts.SegmentSize {
 			// segment has reached capacity, cycle now
@@ -437,7 +432,7 @@ func (l *Log) writeBatch(b *Batch) error {
 
 // FirstIndex returns the index of the first entry in the log. Returns zero
 // when log has no entries.
-func (l *Log) FirstIndex() (index uint64, err error) {
+func (l *Log) FirstIndex() (index int64, err error) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	if l.corrupt {
@@ -455,7 +450,7 @@ func (l *Log) FirstIndex() (index uint64, err error) {
 
 // LastIndex returns the index of the last entry in the log. Returns zero when
 // log has no entries.
-func (l *Log) LastIndex() (index uint64, err error) {
+func (l *Log) LastIndex() (index int64, err error) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	if l.corrupt {
@@ -470,7 +465,7 @@ func (l *Log) LastIndex() (index uint64, err error) {
 }
 
 // findSegment performs a bsearch on the segments
-func (l *Log) findSegment(index uint64) int {
+func (l *Log) findSegment(index int64) int {
 	i, j := 0, len(l.segments)
 	for i < j {
 		h := i + (j-i)/2
@@ -492,7 +487,7 @@ func (l *Log) loadSegmentEntries(s *segment) error {
 	var epos []bpos
 	var pos int
 	for exidx := s.index; len(data) > 0; exidx++ {
-		n, err := loadNextBinaryEntry(data)
+		n, err := loadNextEntry(data)
 		if err != nil {
 			return err
 		}
@@ -505,7 +500,7 @@ func (l *Log) loadSegmentEntries(s *segment) error {
 	return nil
 }
 
-func loadNextBinaryEntry(data []byte) (n int, err error) {
+func loadNextEntry(data []byte) (n int, err error) {
 	// data_size + data
 	size, n := binary.Uvarint(data)
 	if n <= 0 {
@@ -519,7 +514,7 @@ func loadNextBinaryEntry(data []byte) (n int, err error) {
 
 // loadSegment loads the segment entries into memory, pushes it to the front
 // of the lru cache, and returns it.
-func (l *Log) loadSegment(index uint64) (*segment, error) {
+func (l *Log) loadSegment(index int64) (*segment, error) {
 	// check the last segment first.
 	lseg := l.segments[len(l.segments)-1]
 	if index >= lseg.index {
@@ -529,7 +524,7 @@ func (l *Log) loadSegment(index uint64) (*segment, error) {
 	var rseg *segment
 	l.scache.Range(func(_, v interface{}) bool {
 		s := v.(*segment)
-		if index >= s.index && index < s.index+uint64(len(s.epos)) {
+		if index >= s.index && index < s.index+int64(len(s.epos)) {
 			rseg = s
 		}
 		return false
@@ -552,7 +547,7 @@ func (l *Log) loadSegment(index uint64) (*segment, error) {
 }
 
 // Read an entry from the log. Returns a byte slice containing the data entry.
-func (l *Log) Read(index uint64) (data []byte, err error) {
+func (l *Log) Read(index int64) (data []byte, err error) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	if l.corrupt {
@@ -569,7 +564,7 @@ func (l *Log) Read(index uint64) (data []byte, err error) {
 	}
 	epos := s.epos[index-s.index]
 	edata := s.ebuf[epos.pos:epos.end]
-	// binary read
+
 	size, n := binary.Uvarint(edata)
 	if n <= 0 {
 		return nil, ErrCorrupt
@@ -612,7 +607,7 @@ func (l *Log) clearCache() {
 // TruncateFront truncates the front of the log by removing all entries that
 // are before the provided `index`. In other words the entry at
 // `index` becomes the first entry in the log.
-func (l *Log) TruncateFront(index uint64) error {
+func (l *Log) TruncateFront(index int64) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.corrupt {
@@ -622,7 +617,7 @@ func (l *Log) TruncateFront(index uint64) error {
 	}
 	return l.truncateFront(index)
 }
-func (l *Log) truncateFront(index uint64) (err error) {
+func (l *Log) truncateFront(index int64) (err error) {
 	if index == 0 || l.lastIndex == 0 ||
 		index < l.firstIndex || index > l.lastIndex {
 		return ErrOutOfRange
@@ -717,7 +712,7 @@ func (l *Log) truncateFront(index uint64) (err error) {
 // TruncateBack truncates the back of the log by removing all entries that
 // are after the provided `index`. In other words the entry at `index`
 // becomes the last entry in the log.
-func (l *Log) TruncateBack(index uint64) error {
+func (l *Log) TruncateBack(index int64) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.corrupt {
@@ -728,7 +723,7 @@ func (l *Log) TruncateBack(index uint64) error {
 	return l.truncateBack(index)
 }
 
-func (l *Log) truncateBack(index uint64) (err error) {
+func (l *Log) truncateBack(index int64) (err error) {
 	if index == 0 || l.lastIndex == 0 ||
 		index < l.firstIndex || index > l.lastIndex {
 		return ErrOutOfRange

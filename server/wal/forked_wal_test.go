@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func dataStr(index uint64) string {
+func dataStr(index int64) string {
 	if index%2 == 0 {
 		return fmt.Sprintf("data-\"%d\"", index)
 	}
@@ -45,22 +45,22 @@ func testLog(t *testing.T, path string, opts *Options, N int) {
 
 	for i := 1; i <= N; i++ {
 		// Write - try to append previous index, should fail
-		err = l.Write(uint64(i-1), nil)
+		err = l.Write(int64(i-1), nil)
 		if err != ErrOutOfOrder {
 			t.Fatalf("expected %v, got %v", ErrOutOfOrder, err)
 		}
 		// Write - append next item
-		err = l.Write(uint64(i), []byte(dataStr(uint64(i))))
+		err = l.Write(int64(i), []byte(dataStr(int64(i))))
 		if err != nil {
 			t.Fatalf("expected %v, got %v", nil, err)
 		}
 		// Write - get next item
-		data, err := l.Read(uint64(i))
+		data, err := l.Read(int64(i))
 		if err != nil {
 			t.Fatalf("expected %v, got %v", nil, err)
 		}
-		if string(data) != dataStr(uint64(i)) {
-			t.Fatalf("expected %s, got %s", dataStr(uint64(i)), data)
+		if string(data) != dataStr(int64(i)) {
+			t.Fatalf("expected %s, got %s", dataStr(int64(i)), data)
 		}
 	}
 
@@ -71,38 +71,38 @@ func testLog(t *testing.T, path string, opts *Options, N int) {
 	}
 	// Read -- read back all entries
 	for i := 1; i <= N; i++ {
-		data, err := l.Read(uint64(i))
+		data, err := l.Read(int64(i))
 		if err != nil {
 			t.Fatalf("error while getting %d", i)
 		}
-		if string(data) != dataStr(uint64(i)) {
-			t.Fatalf("expected %s, got %s", dataStr(uint64(i)), data)
+		if string(data) != dataStr(int64(i)) {
+			t.Fatalf("expected %s, got %s", dataStr(int64(i)), data)
 		}
 	}
 	// Read -- read back first half entries
 	for i := 1; i <= N/2; i++ {
-		data, err := l.Read(uint64(i))
+		data, err := l.Read(int64(i))
 		if err != nil {
 			t.Fatalf("error while getting %d", i)
 		}
-		if string(data) != dataStr(uint64(i)) {
-			t.Fatalf("expected %s, got %s", dataStr(uint64(i)), data)
+		if string(data) != dataStr(int64(i)) {
+			t.Fatalf("expected %s, got %s", dataStr(int64(i)), data)
 		}
 	}
 	// Read -- read second third entries
 	for i := N / 3; i <= N/3+N/3; i++ {
-		data, err := l.Read(uint64(i))
+		data, err := l.Read(int64(i))
 		if err != nil {
 			t.Fatalf("error while getting %d", i)
 		}
-		if string(data) != dataStr(uint64(i)) {
-			t.Fatalf("expected %s, got %s", dataStr(uint64(i)), data)
+		if string(data) != dataStr(int64(i)) {
+			t.Fatalf("expected %s, got %s", dataStr(int64(i)), data)
 		}
 	}
 
 	// Read -- random access
 	for _, v := range rand.Perm(N) {
-		index := uint64(v + 1)
+		index := int64(v + 1)
 		data, err := l.Read(index)
 		if err != nil {
 			t.Fatal(err)
@@ -124,7 +124,7 @@ func testLog(t *testing.T, path string, opts *Options, N int) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n != uint64(N) {
+	if n != int64(N) {
 		t.Fatalf("expected %d, got %d", N, n)
 	}
 
@@ -178,12 +178,12 @@ func testLog(t *testing.T, path string, opts *Options, N int) {
 
 	// Read -- read back all entries
 	for i := 1; i <= N; i++ {
-		data, err := l.Read(uint64(i))
+		data, err := l.Read(int64(i))
 		if err != nil {
 			t.Fatalf("error while getting %d, err=%s", i, err)
 		}
-		if string(data) != dataStr(uint64(i)) {
-			t.Fatalf("expected %s, got %s", dataStr(uint64(i)), data)
+		if string(data) != dataStr(int64(i)) {
+			t.Fatalf("expected %s, got %s", dataStr(int64(i)), data)
 		}
 	}
 	// FirstIndex/LastIndex -- check valid first and last indexes
@@ -198,12 +198,12 @@ func testLog(t *testing.T, path string, opts *Options, N int) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n != uint64(N) {
+	if n != int64(N) {
 		t.Fatalf("expected %d, got %d", N, n)
 	}
 	// Write -- add 50 more items
 	for i := N + 1; i <= N+50; i++ {
-		index := uint64(i)
+		index := int64(i)
 		if err := l.Write(index, []byte(dataStr(index))); err != nil {
 			t.Fatal(err)
 		}
@@ -228,7 +228,7 @@ func testLog(t *testing.T, path string, opts *Options, N int) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n != uint64(N) {
+	if n != int64(N) {
 		t.Fatalf("expected %d, got %d", N, n)
 	}
 	// Batch -- test batch writes
@@ -251,7 +251,7 @@ func testLog(t *testing.T, path string, opts *Options, N int) {
 	// Write 100 entries in batches of 10
 	for i := 0; i < 10; i++ {
 		for i := N + 1; i <= N+10; i++ {
-			index := uint64(i)
+			index := int64(i)
 			b.Write(index, []byte(dataStr(index)))
 		}
 		err = l.WriteBatch(b)
@@ -262,37 +262,37 @@ func testLog(t *testing.T, path string, opts *Options, N int) {
 	}
 	// Read -- read back all entries
 	for i := 1; i <= N; i++ {
-		data, err := l.Read(uint64(i))
+		data, err := l.Read(int64(i))
 		if err != nil {
 			t.Fatalf("error while getting %d", i)
 		}
-		if string(data) != dataStr(uint64(i)) {
-			t.Fatalf("expected %s, got %s", dataStr(uint64(i)), data)
+		if string(data) != dataStr(int64(i)) {
+			t.Fatalf("expected %s, got %s", dataStr(int64(i)), data)
 		}
 	}
 
 	// Write -- one entry, so the buffer might be activated
-	err = l.Write(uint64(N+1), []byte(dataStr(uint64(N+1))))
+	err = l.Write(int64(N+1), []byte(dataStr(int64(N+1))))
 	if err != nil {
 		t.Fatal(err)
 	}
 	N++
 	// Read -- one random read, so there is an opened reader
-	data, err := l.Read(uint64(N / 2))
+	data, err := l.Read(int64(N / 2))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(data) != dataStr(uint64(N/2)) {
-		t.Fatalf("expected %v, got %v", dataStr(uint64(N/2)), string(data))
+	if string(data) != dataStr(int64(N/2)) {
+		t.Fatalf("expected %v, got %v", dataStr(int64(N/2)), string(data))
 	}
 
 	// TruncateFront -- should fail, out of range
 	for _, i := range []int{0, N + 1} {
-		index := uint64(i)
+		index := int64(i)
 		if err = l.TruncateFront(index); err != ErrOutOfRange {
 			t.Fatalf("expected %v, got %v", ErrOutOfRange, err)
 		}
-		testFirstLast(t, l, uint64(1), uint64(N), nil)
+		testFirstLast(t, l, int64(1), int64(N), nil)
 	}
 
 	// TruncateBack -- should fail, out of range
@@ -300,66 +300,66 @@ func testLog(t *testing.T, path string, opts *Options, N int) {
 	if err != ErrOutOfRange {
 		t.Fatalf("expected %v, got %v", ErrOutOfRange, err)
 	}
-	testFirstLast(t, l, uint64(1), uint64(N), nil)
+	testFirstLast(t, l, int64(1), int64(N), nil)
 
 	// TruncateFront -- Remove no entries
 	if err = l.TruncateFront(1); err != nil {
 		t.Fatal(err)
 	}
-	testFirstLast(t, l, uint64(1), uint64(N), nil)
+	testFirstLast(t, l, int64(1), int64(N), nil)
 
 	// TruncateFront -- Remove first 80 entries
 	if err = l.TruncateFront(81); err != nil {
 		t.Fatal(err)
 	}
-	testFirstLast(t, l, uint64(81), uint64(N), nil)
+	testFirstLast(t, l, int64(81), int64(N), nil)
 
 	// Write -- one entry, so the buffer might be activated
-	err = l.Write(uint64(N+1), []byte(dataStr(uint64(N+1))))
+	err = l.Write(int64(N+1), []byte(dataStr(int64(N+1))))
 	if err != nil {
 		t.Fatal(err)
 	}
 	N++
-	testFirstLast(t, l, uint64(81), uint64(N), nil)
+	testFirstLast(t, l, int64(81), int64(N), nil)
 
 	// Read -- one random read, so there is an opened reader
-	data, err = l.Read(uint64(N / 2))
+	data, err = l.Read(int64(N / 2))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(data) != dataStr(uint64(N/2)) {
-		t.Fatalf("expected %v, got %v", dataStr(uint64(N/2)), string(data))
+	if string(data) != dataStr(int64(N/2)) {
+		t.Fatalf("expected %v, got %v", dataStr(int64(N/2)), string(data))
 	}
 
 	// TruncateBack -- should fail, out of range
 	for _, i := range []int{0, 80} {
-		index := uint64(i)
+		index := int64(i)
 		if err = l.TruncateBack(index); err != ErrOutOfRange {
 			t.Fatalf("expected %v, got %v", ErrOutOfRange, err)
 		}
-		testFirstLast(t, l, uint64(81), uint64(N), nil)
+		testFirstLast(t, l, int64(81), int64(N), nil)
 	}
 
 	// TruncateBack -- Remove no entries
-	if err = l.TruncateBack(uint64(N)); err != nil {
+	if err = l.TruncateBack(int64(N)); err != nil {
 		t.Fatal(err)
 	}
-	testFirstLast(t, l, uint64(81), uint64(N), nil)
+	testFirstLast(t, l, int64(81), int64(N), nil)
 	// TruncateBack -- Remove last 80 entries
-	if err = l.TruncateBack(uint64(N - 80)); err != nil {
+	if err = l.TruncateBack(int64(N - 80)); err != nil {
 		t.Fatal(err)
 	}
 	N -= 80
-	testFirstLast(t, l, uint64(81), uint64(N), nil)
+	testFirstLast(t, l, int64(81), int64(N), nil)
 
 	// Read -- read back all entries
 	for i := 81; i <= N; i++ {
-		data, err := l.Read(uint64(i))
+		data, err := l.Read(int64(i))
 		if err != nil {
 			t.Fatalf("error while getting %d", i)
 		}
-		if string(data) != dataStr(uint64(i)) {
-			t.Fatalf("expected %s, got %s", dataStr(uint64(i)), data)
+		if string(data) != dataStr(int64(i)) {
+			t.Fatalf("expected %s, got %s", dataStr(int64(i)), data)
 		}
 	}
 
@@ -375,50 +375,50 @@ func testLog(t *testing.T, path string, opts *Options, N int) {
 	}
 	defer l.Close()
 
-	testFirstLast(t, l, uint64(81), uint64(N), nil)
+	testFirstLast(t, l, int64(81), int64(N), nil)
 
 	// Read -- read back all entries
 	for i := 81; i <= N; i++ {
-		data, err := l.Read(uint64(i))
+		data, err := l.Read(int64(i))
 		if err != nil {
 			t.Fatalf("error while getting %d", i)
 		}
-		if string(data) != dataStr(uint64(i)) {
-			t.Fatalf("expected %s, got %s", dataStr(uint64(i)), data)
+		if string(data) != dataStr(int64(i)) {
+			t.Fatalf("expected %s, got %s", dataStr(int64(i)), data)
 		}
 	}
 
 	// TruncateFront -- truncate all entries but one
-	if err = l.TruncateFront(uint64(N)); err != nil {
+	if err = l.TruncateFront(int64(N)); err != nil {
 		t.Fatal(err)
 	}
-	testFirstLast(t, l, uint64(N), uint64(N), nil)
+	testFirstLast(t, l, int64(N), int64(N), nil)
 
 	// Write -- write on entry
-	err = l.Write(uint64(N+1), []byte(dataStr(uint64(N+1))))
+	err = l.Write(int64(N+1), []byte(dataStr(int64(N+1))))
 	if err != nil {
 		t.Fatal(err)
 	}
 	N++
-	testFirstLast(t, l, uint64(N-1), uint64(N), nil)
+	testFirstLast(t, l, int64(N-1), int64(N), nil)
 
 	// TruncateBack -- truncate all entries but one
-	if err = l.TruncateBack(uint64(N - 1)); err != nil {
+	if err = l.TruncateBack(int64(N - 1)); err != nil {
 		t.Fatal(err)
 	}
 	N--
-	testFirstLast(t, l, uint64(N), uint64(N), nil)
+	testFirstLast(t, l, int64(N), int64(N), nil)
 
-	if err = l.Write(uint64(N+1), []byte(dataStr(uint64(N+1)))); err != nil {
+	if err = l.Write(int64(N+1), []byte(dataStr(int64(N+1)))); err != nil {
 		t.Fatal(err)
 	}
 	N++
 
 	assert.NoError(t, l.Sync())
-	testFirstLast(t, l, uint64(N-1), uint64(N), nil)
+	testFirstLast(t, l, int64(N-1), int64(N), nil)
 }
 
-func testFirstLast(t *testing.T, l *Log, expectFirst, expectLast uint64, data func(index uint64) []byte) {
+func testFirstLast(t *testing.T, l *Log, expectFirst, expectLast int64, data func(index int64) []byte) {
 	t.Helper()
 	fi, err := l.FirstIndex()
 	if err != nil {
@@ -512,7 +512,7 @@ func TestOutliers(t *testing.T) {
 		opts := makeOpts(512, true)
 		l := must(Open(lpath, opts)).(*Log)
 		defer l.Close()
-		for i := uint64(1); i <= 100; i++ {
+		for i := int64(1); i <= 100; i++ {
 			must(nil, l.Write(i, []byte(dataStr(i))))
 		}
 		path := l.segments[l.findSegment(35)].path
@@ -573,11 +573,11 @@ func TestSimpleTruncateFront(t *testing.T) {
 		l.Close()
 	}()
 
-	makeData := func(index uint64) []byte {
+	makeData := func(index int64) []byte {
 		return []byte(fmt.Sprintf("data-%d", index))
 	}
 
-	valid := func(t *testing.T, first, last uint64) {
+	valid := func(t *testing.T, first, last int64) {
 		t.Helper()
 		index, err := l.FirstIndex()
 		if err != nil {
@@ -603,7 +603,7 @@ func TestSimpleTruncateFront(t *testing.T) {
 			}
 		}
 	}
-	validReopen := func(t *testing.T, first, last uint64) {
+	validReopen := func(t *testing.T, first, last int64) {
 		t.Helper()
 		valid(t, first, last)
 		if err := l.Close(); err != nil {
@@ -616,7 +616,7 @@ func TestSimpleTruncateFront(t *testing.T) {
 		valid(t, first, last)
 	}
 	for i := 1; i <= 100; i++ {
-		err := l.Write(uint64(i), makeData(uint64(i)))
+		err := l.Write(int64(i), makeData(int64(i)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -670,11 +670,11 @@ func TestSimpleTruncateBack(t *testing.T) {
 		l.Close()
 	}()
 
-	makeData := func(index uint64) []byte {
+	makeData := func(index int64) []byte {
 		return []byte(fmt.Sprintf("data-%d", index))
 	}
 
-	valid := func(t *testing.T, first, last uint64) {
+	valid := func(t *testing.T, first, last int64) {
 		t.Helper()
 		index, err := l.FirstIndex()
 		if err != nil {
@@ -700,7 +700,7 @@ func TestSimpleTruncateBack(t *testing.T) {
 			}
 		}
 	}
-	validReopen := func(t *testing.T, first, last uint64) {
+	validReopen := func(t *testing.T, first, last int64) {
 		t.Helper()
 		valid(t, first, last)
 		if err := l.Close(); err != nil {
@@ -713,7 +713,7 @@ func TestSimpleTruncateBack(t *testing.T) {
 		valid(t, first, last)
 	}
 	for i := 1; i <= 100; i++ {
-		err := l.Write(uint64(i), makeData(uint64(i)))
+		err := l.Write(int64(i), makeData(int64(i)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -771,7 +771,7 @@ func TestConcurrency(t *testing.T) {
 
 	// Write 1000 entries
 	for i := 1; i <= 1000; i++ {
-		err := l.Write(uint64(i), []byte(dataStr(uint64(i))))
+		err := l.Write(int64(i), []byte(dataStr(int64(i))))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -787,7 +787,7 @@ func TestConcurrency(t *testing.T) {
 
 			for i := 0; i < 1_000; i++ {
 				index := rand.Int31n(atomic.LoadInt32(&maxIndex)) + 1
-				if _, err := l.Read(uint64(index)); err != nil {
+				if _, err := l.Read(int64(index)); err != nil {
 					panic(err)
 				}
 				atomic.AddInt32(&numReads, 1)
@@ -797,7 +797,7 @@ func TestConcurrency(t *testing.T) {
 
 	// continue writing
 	for index := maxIndex + 1; atomic.LoadInt32(&finished) < 100; index++ {
-		err := l.Write(uint64(index), []byte(dataStr(uint64(index))))
+		err := l.Write(int64(index), []byte(dataStr(int64(index))))
 		if err != nil {
 			t.Fatal(err)
 		}

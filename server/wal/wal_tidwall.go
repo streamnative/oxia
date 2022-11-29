@@ -65,7 +65,7 @@ func newTidwallWal(shard uint32, dir string) (Wal, error) {
 	return w, nil
 }
 
-func readAtIndex(log *Log, index uint64) (*proto.LogEntry, error) {
+func readAtIndex(log *Log, index int64) (*proto.LogEntry, error) {
 	val, err := log.Read(index)
 	if err != nil {
 		return nil, err
@@ -126,8 +126,8 @@ func (t *tidwallWal) checkNextOffset(nextOffset int64) error {
 // Convert between oxia offset and tidwall index
 // Oxia offsets go from 0 -> N
 // Tidwall offsets go from 1 -> N+1
-func offsetToTidwallIdx(offset int64) uint64 {
-	return uint64(offset + 1)
+func offsetToTidwallIdx(offset int64) int64 {
+	return offset + 1
 }
 
 func (t *tidwallWal) TruncateLog(lastSafeOffset int64) (int64, error) {
