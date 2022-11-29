@@ -36,7 +36,7 @@ var (
 	ErrorNotInitialized = errors.New("oxia: server not initialized yet")
 	ErrorUnknownRouter  = errors.New("oxia: unknown shard key router")
 	ErrorChangedRouter  = errors.New("oxia: changing shard key router is not supported")
-	ErrorShardSlitting  = errors.New("oxia: shard splitting is not yet supported")
+	ErrorShardSplitting = errors.New("oxia: shard splitting is not yet supported")
 )
 
 func (s *shardAssignmentDispatcher) AddClient(clientStream Client) error {
@@ -117,7 +117,7 @@ func (s *shardAssignmentDispatcher) updateShardAssignment(request *proto.ShardAs
 		shard := assignment.ShardId
 		_, found := s.assignments[shard]
 		if s.initialized && !found {
-			return ErrorShardSlitting
+			return ErrorShardSplitting
 		}
 		s.assignments[shard] = assignment
 	}
