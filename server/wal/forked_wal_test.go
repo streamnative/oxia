@@ -17,8 +17,8 @@ func dataStr(index uint64) string {
 	return fmt.Sprintf("data-'%d'", index)
 }
 
-func testLog(t *testing.T, opts *Options, N int) {
-	logPath := "testlog/" + strings.Join(strings.Split(t.Name(), "/")[1:], "/")
+func testLog(t *testing.T, path string, opts *Options, N int) {
+	logPath := path + strings.Join(strings.Split(t.Name(), "/")[1:], "/")
 	l, err := Open(logPath, opts)
 	if err != nil {
 		t.Fatal(err)
@@ -447,21 +447,20 @@ func testFirstLast(t *testing.T, l *Log, expectFirst, expectLast uint64, data fu
 }
 
 func TestLog(t *testing.T) {
-	os.RemoveAll("testlog")
-	defer os.RemoveAll("testlog")
+	path := t.TempDir()
 
 	t.Run("nil-opts", func(t *testing.T) {
-		testLog(t, nil, 100)
+		testLog(t, path, nil, 100)
 	})
 	t.Run("no-sync", func(t *testing.T) {
-		t.Run("binary", func(t *testing.T) {
-			testLog(t, makeOpts(512, true), 100)
-		})
+
+		testLog(t, path, makeOpts(512, true), 100)
+
 	})
 	t.Run("sync", func(t *testing.T) {
-		t.Run("binary", func(t *testing.T) {
-			testLog(t, makeOpts(512, false), 100)
-		})
+
+		testLog(t, path, makeOpts(512, false), 100)
+
 	})
 }
 
@@ -475,35 +474,33 @@ func TestOutliers(t *testing.T) {
 		}
 	})
 	t.Run("fail-not-a-directory", func(t *testing.T) {
-		defer os.RemoveAll("testlog/file")
-		if err := os.MkdirAll("testlog", 0777); err != nil {
-			t.Fatal(err)
-		} else if f, err := os.Create("testlog/file"); err != nil {
+		path := t.TempDir()
+		if f, err := os.Create(path + "/file"); err != nil {
 			t.Fatal(err)
 		} else if err := f.Close(); err != nil {
 			t.Fatal(err)
-		} else if l, err := Open("testlog/file", nil); err == nil {
+		} else if l, err := Open(path+"/file", nil); err == nil {
 			l.Close()
 			t.Fatal("expected error")
 		}
 	})
 	t.Run("load-with-junk-files", func(t *testing.T) {
+		path := t.TempDir()
 		// junk should be ignored
-		defer os.RemoveAll("testlog/junk")
-		if err := os.MkdirAll("testlog/junk/other1", 0777); err != nil {
+		if err := os.MkdirAll(path+"/junk/other1", 0777); err != nil {
 			t.Fatal(err)
 		}
-		f, err := os.Create("testlog/junk/other2")
+		f, err := os.Create(path + "/junk/other2")
 		if err != nil {
 			t.Fatal(err)
 		}
 		f.Close()
-		f, err = os.Create("testlog/junk/" + strings.Repeat("A", 20))
+		f, err = os.Create(path + "/junk/" + strings.Repeat("A", 20))
 		if err != nil {
 			t.Fatal(err)
 		}
 		f.Close()
-		l, err := Open("testlog/junk", nil)
+		l, err := Open(path+"/junk", nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -511,7 +508,7 @@ func TestOutliers(t *testing.T) {
 	})
 
 	t.Run("start-marker-file", func(t *testing.T) {
-		lpath := "testlog/start-marker"
+		lpath := t.TempDir() + "/start-marker"
 		opts := makeOpts(512, true)
 		l := must(Open(lpath, opts)).(*Log)
 		defer l.Close()
@@ -544,8 +541,7 @@ func TestIssue1(t *testing.T) {
 		27, 48, 23, 159, 63, 14, 240, 202, 206, 151, 131, 98, 45, 165, 151, 67,
 		38, 180, 54, 23, 138, 238, 246, 16, 0, 0, 0, 0}
 	opts := *DefaultOptions
-	os.RemoveAll("testlog")
-	l, err := Open("testlog", &opts)
+	l, err := Open(t.TempDir(), &opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -563,14 +559,13 @@ func TestIssue1(t *testing.T) {
 }
 
 func TestSimpleTruncateFront(t *testing.T) {
-	os.RemoveAll("testlog")
-
 	opts := &Options{
 		NoSync:      true,
 		SegmentSize: 100,
 	}
+	path := t.TempDir()
 
-	l, err := Open("testlog", opts)
+	l, err := Open(path, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -614,7 +609,7 @@ func TestSimpleTruncateFront(t *testing.T) {
 		if err := l.Close(); err != nil {
 			t.Fatal(err)
 		}
-		l, err = Open("testlog", opts)
+		l, err = Open(path, opts)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -661,14 +656,13 @@ func TestSimpleTruncateFront(t *testing.T) {
 }
 
 func TestSimpleTruncateBack(t *testing.T) {
-	os.RemoveAll("testlog")
 
 	opts := &Options{
 		NoSync:      true,
 		SegmentSize: 100,
 	}
-
-	l, err := Open("testlog", opts)
+	path := t.TempDir()
+	l, err := Open(path, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -712,7 +706,7 @@ func TestSimpleTruncateBack(t *testing.T) {
 		if err := l.Close(); err != nil {
 			t.Fatal(err)
 		}
-		l, err = Open("testlog", opts)
+		l, err = Open(path, opts)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -764,9 +758,9 @@ func TestSimpleTruncateBack(t *testing.T) {
 }
 
 func TestConcurrency(t *testing.T) {
-	os.RemoveAll("testlog")
 
-	l, err := Open("testlog", &Options{
+	path := t.TempDir()
+	l, err := Open(path, &Options{
 		NoSync: true,
 		NoCopy: true,
 	})
