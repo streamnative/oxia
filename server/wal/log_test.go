@@ -25,9 +25,7 @@ func dataStr(index int64) string {
 func testLog(t *testing.T, path string, opts *Options, N int) {
 	logPath := path + strings.Join(strings.Split(t.Name(), "/")[1:], "/")
 	l, err := Open(logPath, opts)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 	defer l.Close()
 
 	// FirstIndex - should be -1
@@ -325,14 +323,10 @@ func TestLog(t *testing.T) {
 		testLog(t, path, nil, 100)
 	})
 	t.Run("no-sync", func(t *testing.T) {
-
 		testLog(t, path, makeOpts(512, true), 100)
-
 	})
 	t.Run("sync", func(t *testing.T) {
-
 		testLog(t, path, makeOpts(512, false), 100)
-
 	})
 }
 
@@ -359,24 +353,20 @@ func TestOutliers(t *testing.T) {
 	t.Run("load-with-junk-files", func(t *testing.T) {
 		path := t.TempDir()
 		// junk should be ignored
-		if err := os.MkdirAll(path+"/junk/other1", 0777); err != nil {
-			t.Fatal(err)
-		}
+		err := os.MkdirAll(path+"/junk/other1", 0777)
+		assert.NoError(t, err)
 		f, err := os.Create(path + "/junk/other2")
-		if err != nil {
-			t.Fatal(err)
-		}
-		f.Close()
+		assert.NoError(t, err)
+
+		assert.NoError(t, f.Close())
 		f, err = os.Create(path + "/junk/" + strings.Repeat("A", 20))
-		if err != nil {
-			t.Fatal(err)
-		}
-		f.Close()
+		assert.NoError(t, err)
+
+		assert.NoError(t, f.Close())
 		l, err := Open(path+"/junk", nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		l.Close()
+		assert.NoError(t, err)
+
+		assert.NoError(t, l.Close())
 	})
 
 	t.Run("start-marker-file", func(t *testing.T) {
