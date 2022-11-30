@@ -1,7 +1,6 @@
 package standalone
 
 import (
-	"fmt"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
 	"os"
@@ -42,13 +41,11 @@ func newStandalone(config *standaloneConfig) (*standalone, error) {
 		advertisedPublicAddress = hostname
 	}
 
-	identityAddr := fmt.Sprintf("%s:%d", advertisedPublicAddress, config.PublicServicePort)
-
 	s.kvFactory = kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
 		DataDir: config.DataDir,
 	})
 
-	s.rpc, err = NewStandaloneRpcServer(int(config.PublicServicePort), identityAddr, config.NumShards, s.kvFactory)
+	s.rpc, err = NewStandaloneRpcServer(int(config.PublicServicePort), advertisedPublicAddress, config.NumShards, s.kvFactory)
 	if err != nil {
 		return nil, err
 	}
