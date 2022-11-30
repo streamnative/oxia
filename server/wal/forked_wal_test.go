@@ -2,11 +2,16 @@ package wal
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
-	"math/rand"
 	"os"
 	"strings"
 	"sync/atomic"
+)
+
+// Based on https://github.com/tidwall/wal
+
+import (
+	"github.com/stretchr/testify/assert"
+	"math/rand"
 	"testing"
 )
 
@@ -25,407 +30,289 @@ func testLog(t *testing.T, path string, opts *Options, N int) {
 	}
 	defer l.Close()
 
-	// FirstIndex - should be zero
+	// FirstIndex - should be -1
 	n, err := l.FirstIndex()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != 0 {
-		t.Fatalf("expected %d, got %d", 0, n)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, int64(0), n)
 
-	// LastIndex - should be zero
+	// LastIndex - should be -1
 	n, err = l.LastIndex()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != 0 {
-		t.Fatalf("expected %d, got %d", 0, n)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, int64(-1), n)
 
-	for i := 1; i <= N; i++ {
+	for i := 0; i < N; i++ {
 		// Write - append next item
 		err = l.Write([]byte(dataStr(int64(i))))
-		if err != nil {
-			t.Fatalf("expected %v, got %v", nil, err)
-		}
+		assert.NoError(t, err)
+
 		// Write - get next item
 		data, err := l.Read(int64(i))
-		if err != nil {
-			t.Fatalf("expected %v, got %v", nil, err)
-		}
-		if string(data) != dataStr(int64(i)) {
-			t.Fatalf("expected %s, got %s", dataStr(int64(i)), data)
-		}
+		assert.NoError(t, err, "Could not read index %d", i)
+
+		assert.Equal(t, dataStr(int64(i)), string(data))
 	}
 
 	// Read -- should fail, not found
-	_, err = l.Read(0)
-	if err != ErrNotFound {
-		t.Fatalf("expected %v, got %v", ErrNotFound, err)
-	}
+	_, err = l.Read(-1)
+	assert.ErrorIs(t, err, ErrNotFound)
 	// Read -- read back all entries
-	for i := 1; i <= N; i++ {
+	for i := 0; i < N; i++ {
 		data, err := l.Read(int64(i))
-		if err != nil {
-			t.Fatalf("error while getting %d", i)
-		}
-		if string(data) != dataStr(int64(i)) {
-			t.Fatalf("expected %s, got %s", dataStr(int64(i)), data)
-		}
+		assert.NoError(t, err)
+		assert.Equal(t, dataStr(int64(i)), string(data))
 	}
-	// Read -- read back first half entries
-	for i := 1; i <= N/2; i++ {
+	// Read -- read back first half of entries
+	for i := 0; i < N/2; i++ {
 		data, err := l.Read(int64(i))
-		if err != nil {
-			t.Fatalf("error while getting %d", i)
-		}
-		if string(data) != dataStr(int64(i)) {
-			t.Fatalf("expected %s, got %s", dataStr(int64(i)), data)
-		}
+		assert.NoError(t, err)
+		assert.Equal(t, dataStr(int64(i)), string(data))
 	}
 	// Read -- read second third entries
-	for i := N / 3; i <= N/3+N/3; i++ {
+	for i := N / 3; i < N/3+N/3; i++ {
 		data, err := l.Read(int64(i))
-		if err != nil {
-			t.Fatalf("error while getting %d", i)
-		}
-		if string(data) != dataStr(int64(i)) {
-			t.Fatalf("expected %s, got %s", dataStr(int64(i)), data)
-		}
+		assert.NoError(t, err)
+		assert.Equal(t, dataStr(int64(i)), string(data))
 	}
 
 	// Read -- random access
 	for _, v := range rand.Perm(N) {
-		index := int64(v + 1)
+		index := int64(v)
 		data, err := l.Read(index)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if dataStr(index) != string(data) {
-			t.Fatalf("expected %v, got %v", dataStr(index), string(data))
-		}
+		assert.NoError(t, err)
+		assert.Equal(t, dataStr(index), string(data))
 	}
 
 	// FirstIndex/LastIndex -- check valid first and last indexes
 	n, err = l.FirstIndex()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != 1 {
-		t.Fatalf("expected %d, got %d", 1, n)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, int64(0), n)
+
 	n, err = l.LastIndex()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != int64(N) {
-		t.Fatalf("expected %d, got %d", N, n)
-	}
+
+	assert.NoError(t, err)
+	assert.Equal(t, int64(N-1), n)
 
 	// Close -- close the log
-	if err := l.Close(); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, l.Close())
 
 	// Write - try while closed
 	err = l.Write(nil)
-	if err != ErrClosed {
-		t.Fatalf("expected %v, got %v", ErrClosed, err)
-	}
-	// WriteBatch - try while closed
-	err = l.WriteBatch(nil)
-	if err != ErrClosed {
-		t.Fatalf("expected %v, got %v", ErrClosed, err)
-	}
+	assert.ErrorIs(t, err, ErrClosed)
 	// FirstIndex - try while closed
 	_, err = l.FirstIndex()
-	if err != ErrClosed {
-		t.Fatalf("expected %v, got %v", ErrClosed, err)
-	}
+	assert.ErrorIs(t, err, ErrClosed)
+
 	// LastIndex - try while closed
 	_, err = l.LastIndex()
-	if err != ErrClosed {
-		t.Fatalf("expected %v, got %v", ErrClosed, err)
-	}
+	assert.ErrorIs(t, err, ErrClosed)
+
 	// Get - try while closed
 	_, err = l.Read(0)
-	if err != ErrClosed {
-		t.Fatalf("expected %v, got %v", ErrClosed, err)
-	}
+	assert.ErrorIs(t, err, ErrClosed)
+
 	// TruncateFront - try while closed
 	err = l.TruncateFront(0)
-	if err != ErrClosed {
-		t.Fatalf("expected %v, got %v", ErrClosed, err)
-	}
+	assert.ErrorIs(t, err, ErrClosed)
+
 	// TruncateBack - try while closed
 	err = l.TruncateBack(0)
-	if err != ErrClosed {
-		t.Fatalf("expected %v, got %v", ErrClosed, err)
-	}
+	assert.ErrorIs(t, err, ErrClosed)
 
 	// Open -- reopen log
 	l, err = Open(logPath, opts)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
+
 	defer l.Close()
 
 	// Read -- read back all entries
-	for i := 1; i <= N; i++ {
+	for i := 0; i < N; i++ {
 		data, err := l.Read(int64(i))
-		if err != nil {
-			t.Fatalf("error while getting %d, err=%s", i, err)
-		}
-		if string(data) != dataStr(int64(i)) {
-			t.Fatalf("expected %s, got %s", dataStr(int64(i)), data)
-		}
+		assert.NoError(t, err, "Could not read index %d", i)
+		assert.Equal(t, dataStr(int64(i)), string(data))
 	}
 	// FirstIndex/LastIndex -- check valid first and last indexes
 	n, err = l.FirstIndex()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != 1 {
-		t.Fatalf("expected %d, got %d", 1, n)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, int64(0), n)
+
 	n, err = l.LastIndex()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != int64(N) {
-		t.Fatalf("expected %d, got %d", N, n)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, int64(N-1), n)
 	// Write -- add 50 more items
-	for i := N + 1; i <= N+50; i++ {
+	for i := N; i < N+50; i++ {
 		index := int64(i)
-		if err := l.Write([]byte(dataStr(index))); err != nil {
-			t.Fatal(err)
-		}
+		err := l.Write([]byte(dataStr(index)))
+		assert.NoError(t, err)
+
 		data, err := l.Read(index)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if string(data) != dataStr(index) {
-			t.Fatalf("expected %v, got %v", dataStr(index), string(data))
-		}
+		assert.NoError(t, err)
+		assert.Equal(t, dataStr(index), string(data))
+
 	}
 	N += 50
 	// FirstIndex/LastIndex -- check valid first and last indexes
 	n, err = l.FirstIndex()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != 1 {
-		t.Fatalf("expected %d, got %d", 1, n)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, int64(0), n)
+
 	n, err = l.LastIndex()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != int64(N) {
-		t.Fatalf("expected %d, got %d", N, n)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, int64(N-1), n)
+
 	// Batch -- test batch writes
 	b := new(Batch)
 	// WriteBatch -- should succeed
 	err = l.WriteBatch(b)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
+
 	// Write 100 entries in batches of 10
 	for i := 0; i < 10; i++ {
-		for i := N + 1; i <= N+10; i++ {
+		for i := N; i < N+10; i++ {
 			index := int64(i)
 			b.Write([]byte(dataStr(index)))
 		}
 		err = l.WriteBatch(b)
-		if err != nil {
-			t.Fatal(err)
-		}
+		assert.NoError(t, err)
 		N += 10
 	}
 	// Read -- read back all entries
-	for i := 1; i <= N; i++ {
+	for i := 0; i < N; i++ {
 		data, err := l.Read(int64(i))
-		if err != nil {
-			t.Fatalf("error while getting %d", i)
-		}
-		if string(data) != dataStr(int64(i)) {
-			t.Fatalf("expected %s, got %s", dataStr(int64(i)), data)
-		}
+		assert.NoError(t, err)
+
+		assert.Equal(t, dataStr(int64(i)), string(data))
 	}
 
 	// Write -- one entry, so the buffer might be activated
 	err = l.Write([]byte(dataStr(int64(N + 1))))
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
+
 	N++
 	// Read -- one random read, so there is an opened reader
 	data, err := l.Read(int64(N / 2))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(data) != dataStr(int64(N/2)) {
-		t.Fatalf("expected %v, got %v", dataStr(int64(N/2)), string(data))
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, dataStr(int64(N/2)), string(data))
 
 	// TruncateFront -- should fail, out of range
-	for _, i := range []int{0, N + 1} {
+	for _, i := range []int{-1, N} {
 		index := int64(i)
-		if err = l.TruncateFront(index); err != ErrOutOfRange {
-			t.Fatalf("expected %v, got %v", ErrOutOfRange, err)
-		}
-		testFirstLast(t, l, int64(1), int64(N), nil)
+		err = l.TruncateFront(index)
+		assert.ErrorIs(t, err, ErrOutOfRange)
+		testFirstLast(t, l, int64(0), int64(N-1), nil)
 	}
 
 	// TruncateBack -- should fail, out of range
-	err = l.TruncateFront(0)
-	if err != ErrOutOfRange {
-		t.Fatalf("expected %v, got %v", ErrOutOfRange, err)
-	}
-	testFirstLast(t, l, int64(1), int64(N), nil)
+	err = l.TruncateFront(-1)
+	assert.ErrorIs(t, err, ErrOutOfRange)
+	testFirstLast(t, l, int64(0), int64(N-1), nil)
 
 	// TruncateFront -- Remove no entries
-	if err = l.TruncateFront(1); err != nil {
-		t.Fatal(err)
-	}
-	testFirstLast(t, l, int64(1), int64(N), nil)
+	err = l.TruncateFront(0)
+	assert.NoError(t, err)
+	testFirstLast(t, l, int64(0), int64(N-1), nil)
 
 	// TruncateFront -- Remove first 80 entries
-	if err = l.TruncateFront(81); err != nil {
-		t.Fatal(err)
-	}
-	testFirstLast(t, l, int64(81), int64(N), nil)
+	err = l.TruncateFront(80)
+	assert.NoError(t, err)
+	testFirstLast(t, l, int64(80), int64(N-1), nil)
 
 	// Write -- one entry, so the buffer might be activated
-	err = l.Write([]byte(dataStr(int64(N + 1))))
-	if err != nil {
-		t.Fatal(err)
-	}
+	err = l.Write([]byte(dataStr(int64(N))))
+	assert.NoError(t, err)
 	N++
-	testFirstLast(t, l, int64(81), int64(N), nil)
+	testFirstLast(t, l, int64(80), int64(N-1), nil)
 
 	// Read -- one random read, so there is an opened reader
 	data, err = l.Read(int64(N / 2))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(data) != dataStr(int64(N/2)) {
-		t.Fatalf("expected %v, got %v", dataStr(int64(N/2)), string(data))
-	}
+	assert.NoError(t, err)
+
+	assert.Equal(t, dataStr(int64(N/2)), string(data))
 
 	// TruncateBack -- should fail, out of range
-	for _, i := range []int{0, 80} {
+	for _, i := range []int{-1, 79} {
 		index := int64(i)
-		if err = l.TruncateBack(index); err != ErrOutOfRange {
-			t.Fatalf("expected %v, got %v", ErrOutOfRange, err)
-		}
-		testFirstLast(t, l, int64(81), int64(N), nil)
+		err = l.TruncateBack(index)
+		assert.ErrorIs(t, err, ErrOutOfRange)
+		testFirstLast(t, l, int64(80), int64(N-1), nil)
 	}
 
 	// TruncateBack -- Remove no entries
-	if err = l.TruncateBack(int64(N)); err != nil {
-		t.Fatal(err)
-	}
-	testFirstLast(t, l, int64(81), int64(N), nil)
+	err = l.TruncateBack(int64(N - 1))
+	assert.NoError(t, err)
+	testFirstLast(t, l, int64(80), int64(N-1), nil)
 	// TruncateBack -- Remove last 80 entries
-	if err = l.TruncateBack(int64(N - 80)); err != nil {
-		t.Fatal(err)
-	}
+	err = l.TruncateBack(int64(N - 81))
+	assert.NoError(t, err)
 	N -= 80
-	testFirstLast(t, l, int64(81), int64(N), nil)
+	testFirstLast(t, l, int64(80), int64(N-1), nil)
 
 	// Read -- read back all entries
-	for i := 81; i <= N; i++ {
+	for i := 80; i < N; i++ {
 		data, err := l.Read(int64(i))
-		if err != nil {
-			t.Fatalf("error while getting %d", i)
-		}
-		if string(data) != dataStr(int64(i)) {
-			t.Fatalf("expected %s, got %s", dataStr(int64(i)), data)
-		}
+		assert.NoError(t, err)
+		assert.Equal(t, string(data), dataStr(int64(i)))
 	}
 
 	// Close -- close log after truncating
-	if err = l.Close(); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, l.Close())
 
 	// Open -- open log after truncating
 	l, err = Open(logPath, opts)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 	defer l.Close()
 
-	testFirstLast(t, l, int64(81), int64(N), nil)
+	testFirstLast(t, l, int64(80), int64(N-1), nil)
 
 	// Read -- read back all entries
-	for i := 81; i <= N; i++ {
+	for i := 80; i < N; i++ {
 		data, err := l.Read(int64(i))
-		if err != nil {
-			t.Fatalf("error while getting %d", i)
-		}
-		if string(data) != dataStr(int64(i)) {
-			t.Fatalf("expected %s, got %s", dataStr(int64(i)), data)
-		}
+		assert.NoError(t, err)
+		assert.Equal(t, string(data), dataStr(int64(i)))
 	}
 
 	// TruncateFront -- truncate all entries but one
-	if err = l.TruncateFront(int64(N)); err != nil {
-		t.Fatal(err)
-	}
-	testFirstLast(t, l, int64(N), int64(N), nil)
+	err = l.TruncateFront(int64(N - 1))
+	assert.NoError(t, err)
+	testFirstLast(t, l, int64(N-1), int64(N-1), nil)
 
-	// Write -- write on entry
+	// Write -- write one entry
 	err = l.Write([]byte(dataStr(int64(N + 1))))
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 	N++
-	testFirstLast(t, l, int64(N-1), int64(N), nil)
+	testFirstLast(t, l, int64(N-2), int64(N-1), nil)
 
 	// TruncateBack -- truncate all entries but one
-	if err = l.TruncateBack(int64(N - 1)); err != nil {
-		t.Fatal(err)
-	}
+	err = l.TruncateBack(int64(N - 2))
+	assert.NoError(t, err)
 	N--
-	testFirstLast(t, l, int64(N), int64(N), nil)
+	testFirstLast(t, l, int64(N-1), int64(N-1), nil)
 
-	if err = l.Write([]byte(dataStr(int64(N + 1)))); err != nil {
-		t.Fatal(err)
-	}
+	err = l.Write([]byte(dataStr(int64(N))))
+	assert.NoError(t, err)
 	N++
 
 	assert.NoError(t, l.Sync())
-	testFirstLast(t, l, int64(N-1), int64(N), nil)
+	testFirstLast(t, l, int64(N-2), int64(N-1), nil)
 }
 
 func testFirstLast(t *testing.T, l *Log, expectFirst, expectLast int64, data func(index int64) []byte) {
 	t.Helper()
 	fi, err := l.FirstIndex()
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
+
 	li, err := l.LastIndex()
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
+
 	if fi != expectFirst || li != expectLast {
-		t.Fatalf("expected %v/%v, got %v/%v", expectFirst, expectLast, fi, li)
+		assert.Failf(t, "", "expected %v/%v, got %v/%v", expectFirst, expectLast, fi, li)
 	}
 	for i := fi; i <= li; i++ {
 		dt1, err := l.Read(i)
-		if err != nil {
-			t.Fatal(err)
-		}
+		assert.NoError(t, err)
+
 		if data != nil {
 			dt2 := data(i)
-			if string(dt1) != string(dt2) {
-				t.Fatalf("mismatch '%s' != '%s'", dt2, dt1)
-			}
+			assert.Equal(t, string(dt2), string(dt1))
 		}
 	}
 
@@ -497,7 +384,7 @@ func TestOutliers(t *testing.T) {
 		opts := makeOpts(512, true)
 		l := must(Open(lpath, opts)).(*Log)
 		defer l.Close()
-		for i := int64(1); i <= 100; i++ {
+		for i := int64(0); i < 100; i++ {
 			must(nil, l.Write([]byte(dataStr(i))))
 		}
 		path := l.segments[l.findSegment(35)].path
@@ -507,7 +394,7 @@ func TestOutliers(t *testing.T) {
 		must(nil, os.WriteFile(path+".START", data, 0666))
 		l = must(Open(lpath, opts)).(*Log)
 		defer l.Close()
-		testFirstLast(t, l, firstIndex, 100, nil)
+		testFirstLast(t, l, firstIndex, 99, nil)
 
 	})
 
@@ -534,12 +421,34 @@ func TestIssue1(t *testing.T) {
 	if err := l.Write(in); err != nil {
 		t.Fatal(err)
 	}
-	out, err := l.Read(1)
+	out, err := l.Read(0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(in) != string(out) {
 		t.Fatal("data mismatch")
+	}
+}
+
+func makeData(index int64) []byte {
+	return []byte(fmt.Sprintf("data-%d", index))
+}
+
+func valid(t *testing.T, l *Log, first, last int64) {
+	t.Helper()
+	index, err := l.FirstIndex()
+	assert.NoError(t, err)
+
+	assert.Equal(t, first, index)
+	index, err = l.LastIndex()
+	assert.NoError(t, err)
+	assert.Equal(t, last, index)
+
+	for i := first; i <= last; i++ {
+		data, err := l.Read(i)
+		assert.NoError(t, err)
+
+		assert.Equal(t, string(makeData(i)), string(data))
 	}
 }
 
@@ -551,92 +460,53 @@ func TestSimpleTruncateFront(t *testing.T) {
 	path := t.TempDir()
 
 	l, err := Open(path, opts)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 	defer func() {
-		l.Close()
+		assert.NoError(t, l.Close())
 	}()
 
-	makeData := func(index int64) []byte {
-		return []byte(fmt.Sprintf("data-%d", index))
-	}
-
-	valid := func(t *testing.T, first, last int64) {
-		t.Helper()
-		index, err := l.FirstIndex()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if index != first {
-			t.Fatalf("expected %v, got %v", first, index)
-		}
-		index, err = l.LastIndex()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if index != last {
-			t.Fatalf("expected %v, got %v", last, index)
-		}
-		for i := first; i <= last; i++ {
-			data, err := l.Read(i)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if string(data) != string(makeData(i)) {
-				t.Fatalf("expcted '%s', got '%s'", makeData(i), data)
-			}
-		}
-	}
 	validReopen := func(t *testing.T, first, last int64) {
 		t.Helper()
-		valid(t, first, last)
-		if err := l.Close(); err != nil {
-			t.Fatal(err)
-		}
+		valid(t, l, first, last)
+		assert.NoError(t, l.Close())
 		l, err = Open(path, opts)
-		if err != nil {
-			t.Fatal(err)
-		}
-		valid(t, first, last)
+		assert.NoError(t, err)
+		valid(t, l, first, last)
 	}
-	for i := 1; i <= 100; i++ {
+	for i := 0; i < 100; i++ {
 		err := l.Write(makeData(int64(i)))
-		if err != nil {
-			t.Fatal(err)
-		}
+		assert.NoError(t, err)
 	}
-	validReopen(t, 1, 100)
+	validReopen(t, 0, 99)
 
-	if err := l.TruncateFront(1); err != nil {
-		t.Fatal(err)
-	}
-	validReopen(t, 1, 100)
+	err = l.TruncateFront(0)
+	assert.NoError(t, err)
 
-	if err := l.TruncateFront(2); err != nil {
-		t.Fatal(err)
-	}
-	validReopen(t, 2, 100)
+	validReopen(t, 0, 99)
 
-	if err := l.TruncateFront(4); err != nil {
-		t.Fatal(err)
-	}
-	validReopen(t, 4, 100)
+	err = l.TruncateFront(1)
+	assert.NoError(t, err)
 
-	if err := l.TruncateFront(5); err != nil {
-		t.Fatal(err)
-	}
-	validReopen(t, 5, 100)
+	validReopen(t, 1, 99)
 
-	if err := l.TruncateFront(99); err != nil {
-		t.Fatal(err)
-	}
-	validReopen(t, 99, 100)
+	err = l.TruncateFront(3)
+	assert.NoError(t, err)
+	validReopen(t, 3, 99)
 
-	if err := l.TruncateFront(100); err != nil {
-		t.Fatal(err)
-	}
-	validReopen(t, 100, 100)
+	err = l.TruncateFront(5)
+	assert.NoError(t, err)
+	validReopen(t, 5, 99)
+
+	err = l.TruncateFront(98)
+	assert.NoError(t, err)
+	validReopen(t, 98, 99)
+
+	err = l.TruncateFront(99)
+	assert.NoError(t, err)
+
+	validReopen(t, 99, 99)
+
+	// TODO test complete truncation
 
 }
 
@@ -648,97 +518,56 @@ func TestSimpleTruncateBack(t *testing.T) {
 	}
 	path := t.TempDir()
 	l, err := Open(path, opts)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
+
 	defer func() {
 		l.Close()
 	}()
 
-	makeData := func(index int64) []byte {
-		return []byte(fmt.Sprintf("data-%d", index))
-	}
-
-	valid := func(t *testing.T, first, last int64) {
-		t.Helper()
-		index, err := l.FirstIndex()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if index != first {
-			t.Fatalf("expected %v, got %v", first, index)
-		}
-		index, err = l.LastIndex()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if index != last {
-			t.Fatalf("expected %v, got %v", last, index)
-		}
-		for i := first; i <= last; i++ {
-			data, err := l.Read(i)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if string(data) != string(makeData(i)) {
-				t.Fatalf("expcted '%s', got '%s'", makeData(i), data)
-			}
-		}
-	}
 	validReopen := func(t *testing.T, first, last int64) {
 		t.Helper()
-		valid(t, first, last)
-		if err := l.Close(); err != nil {
-			t.Fatal(err)
-		}
+		valid(t, l, first, last)
+		assert.NoError(t, l.Close())
 		l, err = Open(path, opts)
-		if err != nil {
-			t.Fatal(err)
-		}
-		valid(t, first, last)
+		assert.NoError(t, err)
+		valid(t, l, first, last)
 	}
-	for i := 1; i <= 100; i++ {
-		err := l.Write(makeData(int64(i)))
-		if err != nil {
-			t.Fatal(err)
-		}
+
+	// TODO Fix below (1 ... N) -> (0 ... N-1)
+
+	for i := 0; i < 100; i++ {
+		err = l.Write(makeData(int64(i)))
+		assert.NoError(t, err)
 	}
-	validReopen(t, 1, 100)
+	validReopen(t, 0, 99)
 
 	/////////////////////////////////////////////////////////////
-	if err := l.TruncateBack(100); err != nil {
-		t.Fatal(err)
-	}
-	validReopen(t, 1, 100)
-	if err := l.Write(makeData(101)); err != nil {
-		t.Fatal(err)
-	}
-	validReopen(t, 1, 101)
+	err = l.TruncateBack(99)
+	assert.NoError(t, err)
+	validReopen(t, 0, 99)
+	err = l.Write(makeData(100))
+	assert.NoError(t, err)
+	validReopen(t, 0, 100)
 
 	/////////////////////////////////////////////////////////////
-	if err := l.TruncateBack(99); err != nil {
-		t.Fatal(err)
-	}
-	validReopen(t, 1, 99)
-	if err := l.Write(makeData(100)); err != nil {
-		t.Fatal(err)
-	}
-	validReopen(t, 1, 100)
+	err = l.TruncateBack(98)
+	assert.NoError(t, err)
+	validReopen(t, 0, 98)
+	err = l.Write(makeData(99))
+	assert.NoError(t, err)
+	validReopen(t, 0, 99)
 
-	if err := l.TruncateBack(94); err != nil {
-		t.Fatal(err)
-	}
-	validReopen(t, 1, 94)
+	err = l.TruncateBack(93)
+	assert.NoError(t, err)
+	validReopen(t, 0, 93)
 
-	if err := l.TruncateBack(93); err != nil {
-		t.Fatal(err)
-	}
-	validReopen(t, 1, 93)
+	err = l.TruncateBack(92)
+	assert.NoError(t, err)
+	validReopen(t, 0, 92)
 
-	if err := l.TruncateBack(92); err != nil {
-		t.Fatal(err)
-	}
-	validReopen(t, 1, 92)
+	err = l.TruncateBack(91)
+	assert.NoError(t, err)
+	validReopen(t, 0, 91)
 
 }
 
@@ -749,17 +578,13 @@ func TestConcurrency(t *testing.T) {
 		NoSync: true,
 		NoCopy: true,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 	defer l.Close()
 
 	// Write 1000 entries
-	for i := 1; i <= 1000; i++ {
+	for i := 0; i < 1000; i++ {
 		err := l.Write([]byte(dataStr(int64(i))))
-		if err != nil {
-			t.Fatal(err)
-		}
+		assert.NoError(t, err)
 	}
 
 	// Perform 100,000 reads (over 100 threads)
@@ -771,7 +596,7 @@ func TestConcurrency(t *testing.T) {
 			defer atomic.AddInt32(&finished, 1)
 
 			for i := 0; i < 1_000; i++ {
-				index := rand.Int31n(atomic.LoadInt32(&maxIndex)) + 1
+				index := rand.Int31n(atomic.LoadInt32(&maxIndex))
 				if _, err := l.Read(int64(index)); err != nil {
 					panic(err)
 				}
@@ -781,11 +606,10 @@ func TestConcurrency(t *testing.T) {
 	}
 
 	// continue writing
-	for index := maxIndex + 1; atomic.LoadInt32(&finished) < 100; index++ {
+	for index := maxIndex; atomic.LoadInt32(&finished) < 100; index++ {
 		err := l.Write([]byte(dataStr(int64(index))))
-		if err != nil {
-			t.Fatal(err)
-		}
+		assert.NoError(t, err)
+
 		atomic.StoreInt32(&maxIndex, index)
 	}
 

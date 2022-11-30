@@ -1,5 +1,7 @@
 package wal
 
+// Based on https://github.com/tidwall/wal
+
 import (
 	"encoding/binary"
 	"errors"
@@ -23,16 +25,9 @@ var (
 	// ErrNotFound is returned when an entry is not found.
 	ErrNotFound = errors.New("not found")
 
-	// ErrOutOfOrder is returned from Write() when the index is not equal to
-	// LastIndex()+1. It's required that log monotonically grows by one and has
-	// no gaps. Thus, the series 10,11,12,13,14 is valid, but 10,11,13,14 is
-	// not because there's a gap between 11 and 13. Also, 10,12,11,13 is not
-	// valid because 12 and 11 are out of order.
-	ErrOutOfOrder = errors.New("out of order")
-
 	// ErrOutOfRange is returned from TruncateFront() and TruncateBack() when
-	// the index not in the range of the log's first and last index. Or, this
-	// may be returned when the caller is attempting to remove *all* entries;
+	// the index is not in the range of the log's first and last index.
+	// TODO Or, this may be returned when the caller is attempting to remove *all* entries;
 	// The log requires that at least one entry exists following a truncate.
 	ErrOutOfRange = errors.New("out of range")
 )
@@ -67,7 +62,7 @@ var DefaultOptions = &Options{
 	NoSync:           false,    // Fsync after every write
 	SegmentSize:      20971520, // 20 MB log segment files.
 	SegmentCacheSize: 2,        // Number of cached in-memory segments
-	NoCopy:           false,    // Make a new copy of data for every Read call.
+	NoCopy:           true,     // Make a new copy of data for every Read call.
 	DirPerms:         0750,     // Permissions for the created directories
 	FilePerms:        0640,     // Permissions for the created data files
 }
@@ -100,7 +95,7 @@ type bpos struct {
 	end int // one byte past pos
 }
 
-// Open a new write ahead log
+// Open a new write-ahead log
 func Open(path string, opts *Options) (*Log, error) {
 	if opts == nil {
 		opts = DefaultOptions
@@ -165,7 +160,7 @@ func (l *Log) load() error {
 			continue
 		}
 		index, err := strconv.ParseInt(name[:20], 10, 64)
-		if err != nil || index == 0 {
+		if err != nil || index == -1 {
 			continue
 		}
 		isStart := len(name) == 26 && strings.HasSuffix(name, ".START")
@@ -185,11 +180,11 @@ func (l *Log) load() error {
 	if len(l.segments) == 0 {
 		// Create a new log
 		l.segments = append(l.segments, &segment{
-			index: 1,
-			path:  filepath.Join(l.path, segmentName(1)),
+			index: 0,
+			path:  filepath.Join(l.path, segmentName(0)),
 		})
-		l.firstIndex = 1
-		l.lastIndex = 0
+		l.firstIndex = 0
+		l.lastIndex = -1
 		l.sfile, err = os.OpenFile(l.segments[0].path, os.O_CREATE|os.O_RDWR|os.O_TRUNC, l.opts.FilePerms)
 		return err
 	}
@@ -428,7 +423,7 @@ func (l *Log) writeBatch(b *Batch) error {
 	return nil
 }
 
-// FirstIndex returns the index of the first entry in the log. Returns zero
+// FirstIndex returns the index of the first entry in the log. Returns -1
 // when log has no entries.
 func (l *Log) FirstIndex() (index int64, err error) {
 	l.mu.RLock()
@@ -437,11 +432,6 @@ func (l *Log) FirstIndex() (index int64, err error) {
 		return 0, ErrCorrupt
 	} else if l.closed {
 		return 0, ErrClosed
-	}
-	// We check the lastIndex for zero because the firstIndex is always one or
-	// more, even when there's no entries
-	if l.lastIndex == 0 {
-		return 0, nil
 	}
 	return l.firstIndex, nil
 }
@@ -455,9 +445,6 @@ func (l *Log) LastIndex() (index int64, err error) {
 		return 0, ErrCorrupt
 	} else if l.closed {
 		return 0, ErrClosed
-	}
-	if l.lastIndex == 0 {
-		return 0, nil
 	}
 	return l.lastIndex, nil
 }
@@ -553,7 +540,7 @@ func (l *Log) Read(index int64) (data []byte, err error) {
 	} else if l.closed {
 		return nil, ErrClosed
 	}
-	if index == 0 || index < l.firstIndex || index > l.lastIndex {
+	if index < l.firstIndex || index > l.lastIndex {
 		return nil, ErrNotFound
 	}
 	s, err := l.loadSegment(index)
@@ -616,8 +603,7 @@ func (l *Log) TruncateFront(index int64) error {
 	return l.truncateFront(index)
 }
 func (l *Log) truncateFront(index int64) (err error) {
-	if index == 0 || l.lastIndex == 0 ||
-		index < l.firstIndex || index > l.lastIndex {
+	if index < l.firstIndex || index > l.lastIndex {
 		return ErrOutOfRange
 	}
 	if index == l.firstIndex {
@@ -654,9 +640,9 @@ func (l *Log) truncateFront(index int64) (err error) {
 		return err
 	}
 	// The log was truncated but still needs some file cleanup. Any errors
-	// following this message will not cause an on-disk data ocorruption, but
+	// following this message will not cause an on-disk data corruption, but
 	// may cause an inconsistency with the current program, so we'll return
-	// ErrCorrupt so the the user can attempt a recover by calling Close()
+	// ErrCorrupt so the user can attempt a recovery by calling Close()
 	// followed by Open().
 	defer func() {
 		if v := recover(); v != nil {
@@ -722,8 +708,7 @@ func (l *Log) TruncateBack(index int64) error {
 }
 
 func (l *Log) truncateBack(index int64) (err error) {
-	if index == 0 || l.lastIndex == 0 ||
-		index < l.firstIndex || index > l.lastIndex {
+	if index < l.firstIndex || index > l.lastIndex {
 		return ErrOutOfRange
 	}
 	if index == l.lastIndex {
