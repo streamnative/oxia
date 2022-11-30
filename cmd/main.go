@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"github.com/spf13/cobra"
 	"os"
@@ -10,7 +9,6 @@ import (
 	"oxia/operator"
 	"oxia/server"
 	"oxia/standalone"
-	"runtime/pprof"
 )
 
 var (
@@ -34,12 +32,12 @@ func init() {
 }
 
 func main() {
-	pprof.Do(context.Background(),
-		pprof.Labels("oxia", "main"),
-		func(_ context.Context) {
-			if err := rootCmd.Execute(); err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				os.Exit(1)
-			}
-		})
+	common.DoWithLabels(map[string]string{
+		"oxia": "main",
+	}, func() {
+		if err := rootCmd.Execute(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	})
 }
