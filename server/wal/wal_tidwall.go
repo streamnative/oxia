@@ -47,7 +47,7 @@ func newTidwallWal(shard uint32, dir string) (Wal, error) {
 	}
 
 	var lastOffset int64
-	if lastIndex == 0 {
+	if lastIndex == -1 {
 		lastOffset = InvalidOffset
 	} else {
 		lastEntry, err := readAtIndex(log, lastIndex)
@@ -122,13 +122,6 @@ func (t *tidwallWal) checkNextOffset(nextOffset int64) error {
 	return nil
 }
 
-// Convert between oxia offset and tidwall index
-// Oxia offsets go from 0 -> N
-// Tidwall offsets go from 1 -> N+1
-func offsetToTidwallIdx(offset int64) int64 {
-	return offset + 1
-}
-
 func (t *tidwallWal) TruncateLog(lastSafeOffset int64) (int64, error) {
 	t.Lock()
 	defer t.Unlock()
@@ -138,12 +131,12 @@ func (t *tidwallWal) TruncateLog(lastSafeOffset int64) (int64, error) {
 		return InvalidOffset, err
 	}
 
-	if lastIndex == 0 {
+	if lastIndex == -1 {
 		// The WAL is empty
 		return InvalidOffset, nil
 	}
 
-	lastSafeIndex := offsetToTidwallIdx(lastSafeOffset)
+	lastSafeIndex := lastSafeOffset
 	if err := t.log.TruncateBack(lastSafeIndex); err != nil {
 		return InvalidOffset, err
 	}
@@ -237,7 +230,7 @@ func (r *forwardReader) ReadNext() (*proto.LogEntry, error) {
 		return nil, ErrorReaderClosed
 	}
 
-	index := offsetToTidwallIdx(r.nextOffset)
+	index := r.nextOffset
 	r.wal.RLock()
 	defer r.wal.RUnlock()
 	entry, err := readAtIndex(r.wal.log, index)
@@ -269,7 +262,7 @@ func (r *reverseReader) ReadNext() (*proto.LogEntry, error) {
 		return nil, ErrorReaderClosed
 	}
 
-	index := offsetToTidwallIdx(r.nextOffset)
+	index := r.nextOffset
 	r.wal.RLock()
 	defer r.wal.RUnlock()
 
