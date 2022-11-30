@@ -6,6 +6,7 @@ import (
 	"os"
 	"oxia/server/kv"
 	"oxia/server/metrics"
+	"oxia/server/wal"
 )
 
 type standaloneConfig struct {
@@ -13,15 +14,16 @@ type standaloneConfig struct {
 	MetricsPort       int
 
 	AdvertisedPublicAddress string
-
-	NumShards uint32
-	DataDir   string
+	NumShards               uint32
+	DataDir                 string
+	WalDir                  string
 }
 
 type standalone struct {
-	rpc       *StandaloneRpcServer
-	kvFactory kv.KVFactory
-	metrics   *metrics.PrometheusMetrics
+	rpc        *StandaloneRpcServer
+	kvFactory  kv.KVFactory
+	walFactory wal.WalFactory
+	metrics    *metrics.PrometheusMetrics
 }
 
 func newStandalone(config *standaloneConfig) (*standalone, error) {
@@ -41,11 +43,15 @@ func newStandalone(config *standaloneConfig) (*standalone, error) {
 		advertisedPublicAddress = hostname
 	}
 
+	s.walFactory = wal.NewWalFactory(&wal.WalFactoryOptions{
+		LogDir: config.WalDir,
+	})
+
 	s.kvFactory = kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
 		DataDir: config.DataDir,
 	})
 
-	s.rpc, err = NewStandaloneRpcServer(int(config.PublicServicePort), advertisedPublicAddress, config.NumShards, s.kvFactory)
+	s.rpc, err = NewStandaloneRpcServer(int(config.PublicServicePort), advertisedPublicAddress, config.NumShards, s.walFactory, s.kvFactory)
 	if err != nil {
 		return nil, err
 	}

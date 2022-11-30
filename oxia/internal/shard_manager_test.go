@@ -5,6 +5,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"oxia/common"
 	"oxia/server/kv"
+	"oxia/server/wal"
 	"oxia/standalone"
 	"testing"
 )
@@ -21,7 +22,10 @@ func (s *testShardStrategy) Get(key string) func(Shard) bool {
 func TestWithStandalone(t *testing.T) {
 	kvOptions := kv.KVFactoryOptions{InMemory: true}
 	kvFactory := kv.NewPebbleKVFactory(&kvOptions)
-	server, err := standalone.NewStandaloneRpcServer(0, "localhost", 2, kvFactory)
+	defer kvFactory.Close()
+	walFactory := wal.NewInMemoryWalFactory()
+	defer walFactory.Close()
+	server, err := standalone.NewStandaloneRpcServer(0, "localhost", 2, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	clientPool := common.NewClientPool()
