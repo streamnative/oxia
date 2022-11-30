@@ -8,7 +8,6 @@ import (
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc"
-	"math"
 	"oxia/common"
 	"oxia/proto"
 	"oxia/server"
@@ -27,6 +26,7 @@ type StandaloneRpcServer struct {
 	clientPool              common.ClientPool
 	Container               *container.Container
 	controllers             map[uint32]server.LeaderController
+	assignmentDispatcher    server.ShardAssignmentsDispatcher
 
 	log zerolog.Logger
 }
@@ -42,6 +42,20 @@ func NewStandaloneRpcServer(port int, advertisedPublicAddress string, numShards 
 		log: log.With().
 			Str("component", "standalone-rpc-server").
 			Logger(),
+		//=======
+		//	identityAddr         string
+		//	numShards            uint32
+		//	dbs                  map[uint32]kv.DB
+		//	Container            *container.Container
+
+		//}
+		//
+		//func NewStandaloneRpcServer(port int, identityAddr string, numShards uint32, kvFactory kv.KVFactory) (*StandaloneRpcServer, error) {
+		//	s := &StandaloneRpcServer{
+		//		identityAddr: identityAddr,
+		//		numShards:    numShards,
+		//		dbs:          make(map[uint32]kv.DB),
+		//>>>>>>> sn/main
 	}
 
 	var err error
@@ -71,6 +85,10 @@ func NewStandaloneRpcServer(port int, advertisedPublicAddress string, numShards 
 		return nil, err
 	}
 
+	res.assignmentDispatcher = server.NewStandaloneShardAssignmentDispatcher(
+		fmt.Sprintf("%s:%d", advertisedPublicAddress, res.Container.Port()),
+		numShards)
+
 	return res, nil
 }
 
@@ -84,26 +102,7 @@ func (s *StandaloneRpcServer) Close() error {
 }
 
 func (s *StandaloneRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest, stream proto.OxiaClient_ShardAssignmentsServer) error {
-	res := &proto.ShardAssignmentsResponse{
-		ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
-	}
-
-	bucketSize := math.MaxUint32 / s.numShards
-
-	for i := uint32(0); i < s.numShards; i++ {
-		res.Assignments = append(res.Assignments, &proto.ShardAssignment{
-			ShardId: i,
-			Leader:  fmt.Sprintf("%s:%d", s.advertisedPublicAddress, s.Container.Port()),
-			ShardBoundaries: &proto.ShardAssignment_Int32HashRange{
-				Int32HashRange: &proto.Int32HashRange{
-					MinHashInclusive: i * bucketSize,
-					MaxHashExclusive: (i + 1) * bucketSize,
-				},
-			},
-		})
-	}
-
-	return stream.Send(res)
+	return s.assignmentDispatcher.AddClient(stream)
 }
 
 func (s *StandaloneRpcServer) Write(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error) {

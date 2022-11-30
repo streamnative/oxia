@@ -11,14 +11,16 @@ import (
 type PublicRpcServer struct {
 	proto.UnimplementedOxiaClientServer
 
-	shardsDirector ShardsDirector
-	container      *container.Container
-	log            zerolog.Logger
+	shardsDirector       ShardsDirector
+	assignmentDispatcher ShardAssignmentsDispatcher
+	container            *container.Container
+	log                  zerolog.Logger
 }
 
-func NewPublicRpcServer(port int, shardsDirector ShardsDirector) (*PublicRpcServer, error) {
+func NewPublicRpcServer(port int, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher) (*PublicRpcServer, error) {
 	server := &PublicRpcServer{
-		shardsDirector: shardsDirector,
+		shardsDirector:       shardsDirector,
+		assignmentDispatcher: assignmentDispatcher,
 		log: log.With().
 			Str("component", "public-rpc-server").
 			Logger(),
@@ -35,13 +37,10 @@ func NewPublicRpcServer(port int, shardsDirector ShardsDirector) (*PublicRpcServ
 	return server, nil
 }
 
-//func (s *PublicRpcServer) GetShardsAssignments(_ *proto.Empty, out proto.ClientAPI_GetShardsAssignmentsServer) error {
-//	s.shardsDirector.GetShardsAssignments(func(assignments *proto.ShardsAssignments) {
-//		out.SendMsg(assignments)
-//	})
-//	return nil
-//}
-//
+func (s *PublicRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest, srv proto.OxiaClient_ShardAssignmentsServer) error {
+	return s.assignmentDispatcher.AddClient(srv)
+}
+
 //func (s *PublicRpcServer) Put(ctx context.Context, putOp *proto.PutOp) (*proto.Stat, error) {
 //	// TODO make shard ID string in client rpc
 //	slc, err := s.shardsDirector.GetManager(ShardId(strconv.FormatInt(int64(putOp.GetShardId()), 10)), false)

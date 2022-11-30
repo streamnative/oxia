@@ -23,6 +23,7 @@ type server struct {
 	*internalRpcServer
 	*PublicRpcServer
 
+	shardAssignmentDispatcher ShardAssignmentsDispatcher
 	shardsDirector ShardsDirector
 	clientPool     common.ClientPool
 	metrics        *metrics.PrometheusMetrics
@@ -53,13 +54,14 @@ func newServer(config serverConfig) (*server, error) {
 	log.Info().Msgf("AdvertisedPublicAddress %s", advertisedPublicAddress)
 
 	s.shardsDirector = NewShardsDirector(s.walFactory, s.kvFactory)
+	s.shardAssignmentDispatcher = NewShardAssignmentDispatcher()
 
-	s.internalRpcServer, err = newCoordinationRpcServer(config.InternalServicePort, s.shardsDirector)
+	s.internalRpcServer, err = newCoordinationRpcServer(config.InternalServicePort, s.shardsDirector, s.shardAssignmentDispatcher)
 	if err != nil {
 		return nil, err
 	}
 
-	s.PublicRpcServer, err = NewPublicRpcServer(config.PublicServicePort, s.shardsDirector)
+	s.PublicRpcServer, err = NewPublicRpcServer(config.PublicServicePort, s.shardsDirector, s.shardAssignmentDispatcher)
 	if err != nil {
 		return nil, err
 	}

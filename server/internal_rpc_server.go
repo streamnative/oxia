@@ -6,6 +6,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"go.uber.org/multierr"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -22,14 +23,16 @@ type internalRpcServer struct {
 	proto.UnimplementedOxiaControlServer
 	proto.UnimplementedOxiaLogReplicationServer
 
-	shardsDirector ShardsDirector
-	container      *container.Container
-	log            zerolog.Logger
+	shardsDirector       ShardsDirector
+	assignmentDispatcher ShardAssignmentsDispatcher
+	container            *container.Container
+	log                  zerolog.Logger
 }
 
-func newCoordinationRpcServer(port int, shardsDirector ShardsDirector) (*internalRpcServer, error) {
+func newCoordinationRpcServer(port int, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher) (*internalRpcServer, error) {
 	server := &internalRpcServer{
-		shardsDirector: shardsDirector,
+		shardsDirector:       shardsDirector,
+		assignmentDispatcher: assignmentDispatcher,
 		log: log.With().
 			Str("component", "coordination-rpc-server").
 			Logger(),
@@ -49,7 +52,13 @@ func newCoordinationRpcServer(port int, shardsDirector ShardsDirector) (*interna
 }
 
 func (s *internalRpcServer) Close() error {
-	return s.container.Close()
+	return multierr.Combine(
+		s.container.Close(),
+		s.assignmentDispatcher.Close())
+}
+
+func (s *internalRpcServer) ShardAssignment(srv proto.OxiaControl_ShardAssignmentServer) error {
+	return s.assignmentDispatcher.ShardAssignment(srv)
 }
 
 func (s *internalRpcServer) Fence(c context.Context, req *proto.FenceRequest) (*proto.FenceResponse, error) {
