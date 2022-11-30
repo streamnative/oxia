@@ -15,8 +15,7 @@ type serverConfig struct {
 	PublicServicePort   int
 	MetricsPort         int
 
-	AdvertisedInternalAddress string
-	AdvertisedPublicAddress   string
+	AdvertisedPublicAddress string
 }
 
 type server struct {
@@ -24,11 +23,11 @@ type server struct {
 	*PublicRpcServer
 
 	shardAssignmentDispatcher ShardAssignmentsDispatcher
-	shardsDirector ShardsDirector
-	clientPool     common.ClientPool
-	metrics        *metrics.PrometheusMetrics
-	walFactory     wal.WalFactory
-	kvFactory      kv.KVFactory
+	shardsDirector            ShardsDirector
+	clientPool                common.ClientPool
+	metrics                   *metrics.PrometheusMetrics
+	walFactory                wal.WalFactory
+	kvFactory                 kv.KVFactory
 }
 
 func newServer(config serverConfig) (*server, error) {
