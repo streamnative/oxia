@@ -10,8 +10,7 @@ import (
 func DoWithLabels(labels map[string]string, f func()) {
 	var l []string
 	for k, v := range labels {
-		l = append(l, k)
-		l = append(l, v)
+		l = append(l, k, v)
 	}
 
 	pprof.Do(
