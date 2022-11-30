@@ -14,6 +14,13 @@ import (
 	"sync"
 )
 
+const (
+	startSuffix    = ".START"
+	endSuffix      = ".END"
+	truncateSuffix = ".TRUNCATE"
+	tempFileName   = "TEMP"
+)
+
 var (
 	// ErrCorrupt is returns when the log is corrupt.
 	ErrCorrupt = errors.New("log corrupt")
@@ -154,6 +161,7 @@ func (l *Log) load() error {
 	}
 	startIdx := -1
 	endIdx := -1
+	truncateIdx := -1
 	for _, fi := range fis {
 		name := fi.Name()
 		if fi.IsDir() || len(name) < 20 {
@@ -163,13 +171,19 @@ func (l *Log) load() error {
 		if err != nil || index == -1 {
 			continue
 		}
-		isStart := len(name) == 26 && strings.HasSuffix(name, ".START")
-		isEnd := len(name) == 24 && strings.HasSuffix(name, ".END")
-		if len(name) == 20 || isStart || isEnd {
+		isStart := len(name) == 26 && strings.HasSuffix(name, startSuffix)
+		isEnd := len(name) == 24 && strings.HasSuffix(name, endSuffix)
+		isTruncate := len(name) == 28 && strings.HasSuffix(name, truncateSuffix)
+		if len(name) == 20 || isStart || isEnd || isTruncate {
 			if isStart {
 				startIdx = len(l.segments)
 			} else if isEnd && endIdx == -1 {
 				endIdx = len(l.segments)
+			} else if isTruncate {
+				if truncateIdx != -1 {
+					return ErrCorrupt
+				}
+				truncateIdx = len(l.segments)
 			}
 			l.segments = append(l.segments, &segment{
 				index: index,
@@ -188,12 +202,11 @@ func (l *Log) load() error {
 		l.sfile, err = os.OpenFile(l.segments[0].path, os.O_CREATE|os.O_RDWR|os.O_TRUNC, l.opts.FilePerms)
 		return err
 	}
-	// Open existing log. Clean up log if START of END segments exists.
+	if (startIdx != -1 && endIdx != -1) || (startIdx != -1 && truncateIdx != -1) || (truncateIdx != -1 && endIdx != -1) {
+		return ErrCorrupt
+	}
+	// Open existing log. Clean up log if START or END segments exists.
 	if startIdx != -1 {
-		if endIdx != -1 {
-			// There should not be a START and END at the same time
-			return ErrCorrupt
-		}
 		// Delete all files leading up to START
 		for i := 0; i < startIdx; i++ {
 			if err := os.Remove(l.segments[i].path); err != nil {
@@ -203,7 +216,7 @@ func (l *Log) load() error {
 		l.segments = append([]*segment{}, l.segments[startIdx:]...)
 		// Rename the START segment
 		orgPath := l.segments[0].path
-		finalPath := orgPath[:len(orgPath)-len(".START")]
+		finalPath := orgPath[:len(orgPath)-len(startSuffix)]
 		err := os.Rename(orgPath, finalPath)
 		if err != nil {
 			return err
@@ -227,12 +240,32 @@ func (l *Log) load() error {
 		}
 		// Rename the END segment
 		orgPath := l.segments[len(l.segments)-1].path
-		finalPath := orgPath[:len(orgPath)-len(".END")]
+		finalPath := orgPath[:len(orgPath)-len(endSuffix)]
 		err := os.Rename(orgPath, finalPath)
 		if err != nil {
 			return err
 		}
 		l.segments[len(l.segments)-1].path = finalPath
+	}
+	if truncateIdx != -1 {
+		// Delete all files other than TRUNCATE
+		for i := 0; i < len(l.segments); i++ {
+			if i == truncateIdx {
+				continue
+			}
+			if err := os.Remove(l.segments[i].path); err != nil {
+				return err
+			}
+		}
+		l.segments = append([]*segment{}, l.segments[truncateIdx])
+		// Rename the TRUNCATE segment
+		orgPath := l.segments[0].path
+		finalPath := orgPath[:len(orgPath)-len(truncateSuffix)]
+		err := os.Rename(orgPath, finalPath)
+		if err != nil {
+			return err
+		}
+		l.segments[0].path = finalPath
 	}
 	l.firstIndex = l.segments[0].index
 	// Open the last segment for appending
@@ -589,7 +622,7 @@ func (l *Log) clearCache() {
 	l.scache.Resize(l.opts.SegmentCacheSize)
 }
 
-// TruncateFront truncates the front of the log by removing all entries that
+// TruncateFront trims the front of the log by removing all entries that
 // are before the provided `index`. In other words the entry at
 // `index` becomes the first entry in the log.
 func (l *Log) TruncateFront(index int64) error {
@@ -619,7 +652,7 @@ func (l *Log) truncateFront(index int64) (err error) {
 	epos := s.epos[index-s.index:]
 	ebuf := s.ebuf[epos[0].pos:]
 	// Create a temp file contains the truncated segment.
-	tempName := filepath.Join(l.path, "TEMP")
+	tempName := filepath.Join(l.path, tempFileName)
 	err = func() error {
 		f, err := os.OpenFile(tempName, os.O_CREATE|os.O_RDWR|os.O_TRUNC, l.opts.FilePerms)
 		if err != nil {
@@ -634,8 +667,8 @@ func (l *Log) truncateFront(index int64) (err error) {
 		}
 		return f.Close()
 	}()
-	// Rename the TEMP file to it's START file name.
-	startName := filepath.Join(l.path, segmentName(index)+".START")
+	// Rename the TEMP file to its START file name.
+	startName := filepath.Join(l.path, segmentName(index)+startSuffix)
 	if err = os.Rename(tempName, startName); err != nil {
 		return err
 	}
@@ -708,6 +741,9 @@ func (l *Log) TruncateBack(index int64) error {
 }
 
 func (l *Log) truncateBack(index int64) (err error) {
+	if index == l.firstIndex-1 {
+		return l.truncateBackAll(l.firstIndex)
+	}
 	if index < l.firstIndex || index > l.lastIndex {
 		return ErrOutOfRange
 	}
@@ -724,7 +760,7 @@ func (l *Log) truncateBack(index int64) (err error) {
 	epos := s.epos[:index-s.index+1]
 	ebuf := s.ebuf[:epos[len(epos)-1].end]
 	// Create a temp file contains the truncated segment.
-	tempName := filepath.Join(l.path, "TEMP")
+	tempName := filepath.Join(l.path, tempFileName)
 	err = func() error {
 		f, err := os.OpenFile(tempName, os.O_CREATE|os.O_RDWR|os.O_TRUNC, l.opts.FilePerms)
 		if err != nil {
@@ -739,15 +775,15 @@ func (l *Log) truncateBack(index int64) (err error) {
 		}
 		return f.Close()
 	}()
-	// Rename the TEMP file to it's END file name.
-	endName := filepath.Join(l.path, segmentName(s.index)+".END")
+	// Rename the TEMP file to its END file name.
+	endName := filepath.Join(l.path, segmentName(s.index)+endSuffix)
 	if err = os.Rename(tempName, endName); err != nil {
 		return err
 	}
 	// The log was truncated but still needs some file cleanup. Any errors
-	// following this message will not cause an on-disk data ocorruption, but
+	// following this message will not cause an on-disk data corruption, but
 	// may cause an inconsistency with the current program, so we'll return
-	// ErrCorrupt so the the user can attempt a recover by calling Close()
+	// ErrCorrupt so the user can attempt a recover by calling Close()
 	// followed by Open().
 	defer func() {
 		if v := recover(); v != nil {
@@ -792,6 +828,64 @@ func (l *Log) truncateBack(index int64) (err error) {
 		return err
 	}
 	return nil
+}
+
+func (l *Log) truncateBackAll(newFirstIndex int64) (err error) {
+	if newFirstIndex == l.lastIndex {
+		// nothing to truncate
+		return nil
+	}
+
+	// Create a temp file that contains the truncated segment.
+	tempName := filepath.Join(l.path, segmentName(newFirstIndex)+truncateSuffix)
+	f, err := os.OpenFile(tempName, os.O_CREATE|os.O_RDWR|os.O_TRUNC, l.opts.FilePerms)
+	if err != nil {
+		return err
+	}
+	err = f.Close()
+	if err != nil {
+		return err
+	}
+
+	// The log was truncated but still needs some file cleanup. Any errors
+	// following this message will not cause an on-disk data corruption, but
+	// may cause an inconsistency with the current program, so we'll return
+	// ErrCorrupt so the user can attempt a recover by calling Close()
+	// followed by Open().
+	defer func() {
+		if v := recover(); v != nil {
+			err = ErrCorrupt
+			l.corrupt = true
+		}
+	}()
+
+	// Close the tail segment file
+	if err = l.sfile.Close(); err != nil {
+		return err
+	}
+	// Delete all segment files
+	for i := 0; i < len(l.segments); i++ {
+		if err = os.Remove(l.segments[i].path); err != nil {
+			return err
+		}
+	}
+	// Rename the TRUNCATE file to the final truncated segment name.
+	newName := filepath.Join(l.path, segmentName(newFirstIndex))
+	if err = os.Rename(tempName, newName); err != nil {
+		return err
+	}
+	// Reopen the tail segment file
+	if l.sfile, err = os.OpenFile(newName, os.O_WRONLY, l.opts.FilePerms); err != nil {
+		return err
+	}
+
+	l.segments = append([]*segment{}, &segment{
+		path:  newName,
+		index: newFirstIndex,
+	})
+	l.lastIndex = newFirstIndex - 1
+	l.clearCache()
+	return l.loadSegmentEntries(l.segments[0])
 }
 
 // Sync performs an fsync on the log. This is not necessary when the

@@ -227,7 +227,7 @@ func testLog(t *testing.T, path string, opts *Options, N int) {
 	assert.Equal(t, dataStr(int64(N/2)), string(data))
 
 	// TruncateBack -- should fail, out of range
-	for _, i := range []int{-1, 79} {
+	for _, i := range []int{-1, 78} {
 		index := int64(i)
 		err = l.TruncateBack(index)
 		assert.ErrorIs(t, err, ErrOutOfRange)
@@ -522,8 +522,6 @@ func TestSimpleTruncateBack(t *testing.T) {
 		assert.NoError(t, err)
 		valid(t, l, first, last)
 	}
-
-	// TODO Fix below (1 ... N) -> (0 ... N-1)
 
 	for i := 0; i < 100; i++ {
 		err = l.Write(makeData(int64(i)))
