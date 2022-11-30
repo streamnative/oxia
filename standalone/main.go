@@ -35,5 +35,10 @@ func main(cmd *cobra.Command, args []string) {
 			Msg("Failed to start the server")
 	}
 
-	common.WaitUntilSignal(server)
+	profiler := common.RunProfiling()
+
+	common.WaitUntilSignal(
+		profiler,
+		server,
+	)
 }
