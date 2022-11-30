@@ -14,8 +14,6 @@ RUN apk add build-base
 RUN cd /oxia-src \
     && make
 
-
-
 FROM alpine:3.16.1
 
 RUN mkdir /oxia
@@ -24,3 +22,4 @@ WORKDIR /oxia
 COPY --from=build /oxia-src/bin/oxia /oxia/bin/oxia
 ENV PATH=$PATH:/oxia/bin
 
+ENTRYPOINT ["oxia"]
