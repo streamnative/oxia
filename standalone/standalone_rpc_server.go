@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc"
-	"math"
 	"oxia/proto"
+	"oxia/server"
 	"oxia/server/container"
 	"oxia/server/kv"
 	"oxia/server/wal"
@@ -17,15 +17,15 @@ import (
 type StandaloneRpcServer struct {
 	proto.UnimplementedOxiaClientServer
 
-	identityAddr string
-	numShards    uint32
-	dbs          map[uint32]kv.DB
-	Container    *container.Container
+	identityAddr         string
+	numShards            uint32
+	dbs                  map[uint32]kv.DB
+	Container            *container.Container
+	assignmentDispatcher server.ShardAssignmentsDispatcher
 }
 
 func NewStandaloneRpcServer(port int, identityAddr string, numShards uint32, kvFactory kv.KVFactory) (*StandaloneRpcServer, error) {
-	// Assuming 1 single shard
-	server := &StandaloneRpcServer{
+	s := &StandaloneRpcServer{
 		identityAddr: identityAddr,
 		numShards:    numShards,
 		dbs:          make(map[uint32]kv.DB),
@@ -33,19 +33,23 @@ func NewStandaloneRpcServer(port int, identityAddr string, numShards uint32, kvF
 
 	var err error
 	for i := uint32(0); i < numShards; i++ {
-		if server.dbs[i], err = kv.NewDB(i, kvFactory); err != nil {
+		if s.dbs[i], err = kv.NewDB(i, kvFactory); err != nil {
 			return nil, err
 		}
 	}
 
-	server.Container, err = container.Start("standalone", port, func(registrar grpc.ServiceRegistrar) {
-		proto.RegisterOxiaClientServer(registrar, server)
+	s.Container, err = container.Start("standalone", port, func(registrar grpc.ServiceRegistrar) {
+		proto.RegisterOxiaClientServer(registrar, s)
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	return server, nil
+	s.assignmentDispatcher = server.NewStandaloneShardAssignmentDispatcher(
+		fmt.Sprintf("%s:%d", identityAddr, s.Container.Port()),
+		numShards)
+
+	return s, nil
 }
 
 func (s *StandaloneRpcServer) Close() error {
@@ -62,26 +66,7 @@ func (s *StandaloneRpcServer) Close() error {
 }
 
 func (s *StandaloneRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest, stream proto.OxiaClient_ShardAssignmentsServer) error {
-	res := &proto.ShardAssignmentsResponse{
-		ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
-	}
-
-	bucketSize := math.MaxUint32 / s.numShards
-
-	for i := uint32(0); i < s.numShards; i++ {
-		res.Assignments = append(res.Assignments, &proto.ShardAssignment{
-			ShardId: i,
-			Leader:  fmt.Sprintf("%s:%d", s.identityAddr, s.Container.Port()),
-			ShardBoundaries: &proto.ShardAssignment_Int32HashRange{
-				Int32HashRange: &proto.Int32HashRange{
-					MinHashInclusive: i * bucketSize,
-					MaxHashExclusive: (i + 1) * bucketSize,
-				},
-			},
-		})
-	}
-
-	return stream.Send(res)
+	return s.assignmentDispatcher.AddClient(stream)
 }
 
 func (s *StandaloneRpcServer) Write(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error) {
