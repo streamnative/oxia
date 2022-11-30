@@ -26,12 +26,11 @@ type ShardAssignmentsDispatcher interface {
 
 type shardAssignmentDispatcher struct {
 	sync.Mutex
-	initialized    bool
-	shardKeyRouter proto.ShardKeyRouter
-	assignments    *proto.ShardAssignmentsResponse
-	clients        map[int]Client
-	nextClientId   int
-	stopRecv       context.CancelFunc
+	initialized  bool
+	assignments  *proto.ShardAssignmentsResponse
+	clients      map[int]Client
+	nextClientId int
+	stopRecv     context.CancelFunc
 }
 
 var (
