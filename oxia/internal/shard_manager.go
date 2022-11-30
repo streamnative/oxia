@@ -7,7 +7,6 @@ import (
 	"io"
 	"oxia/common"
 	"oxia/proto"
-	"runtime/pprof"
 	"sync"
 )
 
@@ -50,19 +49,19 @@ func (s *shardManagerImpl) Start() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	go pprof.Do(context.Background(),
-		pprof.Labels("oxia", "receive-shard-updates"),
-		func(_ context.Context) {
-			s.receiveWithRecovery(ctx, readyC)
-		})
+	go common.DoWithLabels(map[string]string{
+		"oxia": "receive-shard-updates",
+	}, func() {
+		s.receiveWithRecovery(ctx, readyC)
+	})
 
-	go pprof.Do(context.Background(),
-		pprof.Labels("oxia", "cancel-shard-updates"),
-		func(_ context.Context) {
-			if _, ok := <-s.closeC; !ok {
-				cancel()
-			}
-		})
+	go common.DoWithLabels(map[string]string{
+		"oxia": "cancel-shard-updates",
+	}, func() {
+		if _, ok := <-s.closeC; !ok {
+			cancel()
+		}
+	})
 
 	<-readyC
 }
