@@ -42,20 +42,6 @@ func NewStandaloneRpcServer(port int, advertisedPublicAddress string, numShards 
 		log: log.With().
 			Str("component", "standalone-rpc-server").
 			Logger(),
-		//=======
-		//	identityAddr         string
-		//	numShards            uint32
-		//	dbs                  map[uint32]kv.DB
-		//	Container            *container.Container
-
-		//}
-		//
-		//func NewStandaloneRpcServer(port int, identityAddr string, numShards uint32, kvFactory kv.KVFactory) (*StandaloneRpcServer, error) {
-		//	s := &StandaloneRpcServer{
-		//		identityAddr: identityAddr,
-		//		numShards:    numShards,
-		//		dbs:          make(map[uint32]kv.DB),
-		//>>>>>>> sn/main
 	}
 
 	var err error
