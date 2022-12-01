@@ -17,7 +17,7 @@ type Int32HashRange struct {
 }
 
 type ShardMetadata struct {
-	Status         ShardStatus     `json:"shardStatus""`
+	Status         ShardStatus     `json:"shardStatus"`
 	Epoch          int64           `json:"epoch"`
 	Leader         *ServerAddress  `json:"leader"`
 	Ensemble       []ServerAddress `json:"ensemble"`
@@ -48,9 +48,7 @@ func (sm *ShardMetadata) Clone() *ShardMetadata {
 		Int32HashRange: sm.Int32HashRange.Clone(),
 	}
 
-	for i, sa := range sm.Ensemble {
-		r.Ensemble[i] = sa
-	}
+	copy(r.Ensemble, sm.Ensemble)
 
 	return r
 }

@@ -45,7 +45,7 @@ func NewNodeController(addr string, shardAssignmentsProvider ShardAssignmentsPro
 		"oxia": "node-controller-send-updates",
 		"addr": nc.addr,
 	}, func() {
-		nc.sendAssignmentsUpdates()
+		nc.sendAssignmentsUpdatesWithRetries()
 	})
 	return nc
 }

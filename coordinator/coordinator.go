@@ -132,7 +132,7 @@ func (c *coordinator) Close() error {
 	err := c.clientPool.Close()
 
 	for _, sc := range c.shardControllers {
-		multierr.Append(err, sc.Close())
+		err = multierr.Append(err, sc.Close())
 	}
 	return err
 }
