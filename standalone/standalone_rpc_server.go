@@ -52,9 +52,18 @@ func NewStandaloneRpcServer(port int, advertisedPublicAddress string, numShards 
 			return nil, err
 		}
 
+		newEpoch := lc.Epoch() + 1
+
+		if _, err := lc.Fence(&proto.FenceRequest{
+			ShardId: i,
+			Epoch:   newEpoch,
+		}); err != nil {
+			return nil, err
+		}
+
 		if _, err := lc.BecomeLeader(&proto.BecomeLeaderRequest{
 			ShardId:           i,
-			Epoch:             0,
+			Epoch:             newEpoch,
 			ReplicationFactor: 1,
 			FollowerMaps:      make(map[string]*proto.EntryId),
 		}); err != nil {
