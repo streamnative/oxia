@@ -181,7 +181,7 @@ func (s *internalRpcServer) AddEntries(srv proto.OxiaLogReplication_AddEntriesSe
 	}
 
 	s.log.Info().
-		Interface("shard", shardId).
+		Uint32("shard", shardId).
 		Str("peer", common.GetPeer(srv.Context())).
 		Msg("Received AddEntries request")
 

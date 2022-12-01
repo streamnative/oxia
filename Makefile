@@ -23,6 +23,10 @@ docker_multi_arch:
 .PHONY: proto
 proto:
 	protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative proto/*.proto
+	# Remove the `omitempty` for JSON serialization. This is used to get better
+	# information for proto objects in the log files
+	find . -name '*.pb.go' | xargs -n 1 sed -i.bak 's/,omitempty//'
+	find . -name '*.pb.go.bak' | xargs rm
 
 proto_format:
 	#brew install clang-format

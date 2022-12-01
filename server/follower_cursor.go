@@ -160,7 +160,7 @@ func (fc *followerCursor) runOnce() error {
 	})
 
 	fc.log.Info().
-		Interface("ack-index", currentOffset).
+		Int64("ack-index", currentOffset).
 		Msg("Successfully attached cursor follower")
 
 	for {
