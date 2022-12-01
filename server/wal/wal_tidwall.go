@@ -5,8 +5,8 @@ import (
 	"github.com/pkg/errors"
 	tidwall "github.com/tidwall/wal"
 	pb "google.golang.org/protobuf/proto"
-	"os"
 	"oxia/proto"
+	"path/filepath"
 	"sync"
 )
 
@@ -38,7 +38,8 @@ type tidwallWal struct {
 
 func newTidwallWal(shard uint32, dir string) (Wal, error) {
 	opts := tidwall.DefaultOptions
-	log, err := tidwall.Open(fmt.Sprintf("%s%c%06d", dir, os.PathSeparator, shard), opts)
+	walPath := filepath.Join(dir, fmt.Sprint("shard-", shard))
+	log, err := tidwall.Open(walPath, opts)
 	if err != nil {
 		return nil, err
 	}
