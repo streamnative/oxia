@@ -17,7 +17,7 @@ func TestLeaderController_NotInitialized(t *testing.T) {
 	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, 0, lc.Epoch())
+	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
 	assert.Equal(t, NotMember, lc.Status())
 
 	res, err := lc.Write(&proto.WriteRequest{
@@ -52,7 +52,7 @@ func TestLeaderController_BecomeLeader_NoFencing(t *testing.T) {
 	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, 0, lc.Epoch())
+	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
 	assert.Equal(t, NotMember, lc.Status())
 	resp, err := lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
@@ -77,7 +77,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, 0, lc.Epoch())
+	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
 	assert.Equal(t, NotMember, lc.Status())
 
 	fr, err := lc.Fence(&proto.FenceRequest{
@@ -174,7 +174,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	lc, err := NewLeaderController(shard, rpc, walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, 0, lc.Epoch())
+	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
 	assert.Equal(t, NotMember, lc.Status())
 
 	fr, err := lc.Fence(&proto.FenceRequest{
