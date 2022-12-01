@@ -429,3 +429,19 @@ func TestPebbbleDeleteRangeInBatch(t *testing.T) {
 	assert.NoError(t, kv.Close())
 	assert.NoError(t, factory.Close())
 }
+
+func TestPebbbleDoubleOpen(t *testing.T) {
+	factory := NewPebbleKVFactory(&KVFactoryOptions{
+		DataDir:   t.TempDir(),
+		CacheSize: 1024,
+		InMemory:  false,
+	})
+	kv, err := factory.NewKV(1)
+	assert.NoError(t, err)
+
+	kv2, err2 := factory.NewKV(1)
+	assert.Error(t, err2)
+	assert.Nil(t, kv2)
+
+	assert.NoError(t, kv.Close())
+}
