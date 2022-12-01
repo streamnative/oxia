@@ -77,6 +77,7 @@ func newKVPebble(factory *PebbleFactory, shardId uint32) (KV, error) {
 			ImmediateSuccessor: pebble.DefaultComparer.ImmediateSuccessor,
 			Name:               "oxia-slash-spans",
 		},
+		FS:         vfs.Default,
 		DisableWAL: true,
 		Logger: &PebbleLogger{
 			log.With().
@@ -90,7 +91,7 @@ func newKVPebble(factory *PebbleFactory, shardId uint32) (KV, error) {
 
 	db, err := pebble.Open(dbPath, pbOptions)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to open database at %s", dbPath)
 	}
 
 	pb.db = db
