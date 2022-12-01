@@ -46,6 +46,8 @@ type KV interface {
 	KeyRangeScan(lowerBound, upperBound string) KeyIterator
 
 	Snapshot() KeyValueIterator
+
+	Flush() error
 }
 
 type KVFactoryOptions struct {

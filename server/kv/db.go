@@ -16,6 +16,7 @@ var (
 	ErrorBadVersion = errors.New("oxia: bad version")
 
 	commitIndexKey = common.InternalKeyPrefix + "commitIndex"
+	epochKey       = common.InternalKeyPrefix + "epoch"
 )
 
 type DB interface {
@@ -24,6 +25,9 @@ type DB interface {
 	ProcessWrite(b *proto.WriteRequest, commitIndex int64) (*proto.WriteResponse, error)
 	ProcessRead(b *proto.ReadRequest) (*proto.ReadResponse, error)
 	ReadCommitIndex() (int64, error)
+
+	UpdateEpoch(newEpoch int64) error
+	ReadEpoch() (epoch int64, err error)
 }
 
 func NewDB(shardId uint32, factory KVFactory) (DB, error) {
@@ -140,6 +144,48 @@ func (d *db) ReadCommitIndex() (int64, error) {
 		return wal.InvalidOffset, err
 	}
 	return commitIndex, nil
+}
+
+func (d *db) UpdateEpoch(newEpoch int64) error {
+	batch := d.kv.NewWriteBatch()
+
+	if _, err := applyPut(batch, &proto.PutRequest{
+		Key:     epochKey,
+		Payload: []byte(fmt.Sprintf("%d", newEpoch)),
+	}); err != nil {
+		return err
+	}
+
+	if err := batch.Commit(); err != nil {
+		return err
+	}
+
+	if err := batch.Close(); err != nil {
+		return err
+	}
+
+	// Since the epoch change is not stored in the WAL, we must force
+	// the database to flush, in order to ensure the epoch change is durable
+	return d.kv.Flush()
+}
+
+func (d *db) ReadEpoch() (epoch int64, err error) {
+	getReq := &proto.GetRequest{
+		Key:            epochKey,
+		IncludePayload: true,
+	}
+	gr, err := applyGet(d.kv, getReq)
+	if err != nil {
+		return wal.InvalidEpoch, err
+	}
+	if gr.Status == proto.Status_KEY_NOT_FOUND {
+		return wal.InvalidEpoch, nil
+	}
+
+	if _, err = fmt.Sscanf(string(gr.Payload), "%d", &epoch); err != nil {
+		return wal.InvalidEpoch, err
+	}
+	return epoch, nil
 }
 
 func applyPut(batch WriteBatch, putReq *proto.PutRequest) (*proto.PutResponse, error) {

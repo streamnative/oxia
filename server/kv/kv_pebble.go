@@ -104,6 +104,10 @@ func (p *Pebble) Close() error {
 	return p.db.Close()
 }
 
+func (p *Pebble) Flush() error {
+	return p.db.Flush()
+}
+
 func (p *Pebble) NewWriteBatch() WriteBatch {
 	return &PebbleBatch{p.db.NewIndexedBatch()}
 }
