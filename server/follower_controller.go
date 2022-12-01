@@ -69,7 +69,6 @@ type followerController struct {
 func NewFollowerController(shardId uint32, wf wal.WalFactory, kvFactory kv.KVFactory) (FollowerController, error) {
 	fc := &followerController{
 		shardId:     shardId,
-		epoch:       wal.InvalidEpoch,
 		commitIndex: wal.InvalidOffset,
 		headIndex:   wal.InvalidOffset,
 		status:      NotMember,
@@ -97,6 +96,12 @@ func NewFollowerController(shardId uint32, wf wal.WalFactory, kvFactory kv.KVFac
 		return nil, err
 	}
 	fc.headIndex = entryId.Offset
+
+	if fc.epoch, err = fc.db.ReadEpoch(); err != nil {
+		return nil, err
+	}
+
+	fc.log = fc.log.With().Int64("epoch", fc.epoch).Logger()
 
 	fc.log.Info().
 		Interface("head-index", fc.headIndex).
@@ -141,7 +146,12 @@ func (fc *followerController) Fence(req *proto.FenceRequest) (*proto.FenceRespon
 		return nil, err
 	}
 
-	fc.epoch = req.GetEpoch()
+	if err := fc.db.UpdateEpoch(req.Epoch); err != nil {
+		return nil, err
+	}
+
+	fc.epoch = req.Epoch
+	fc.log = fc.log.With().Int64("epoch", fc.epoch).Logger()
 	fc.status = Fenced
 
 	lastEntryId, err := getLastEntryIdInWal(fc.wal)
@@ -153,6 +163,8 @@ func (fc *followerController) Fence(req *proto.FenceRequest) (*proto.FenceRespon
 		return nil, err
 	}
 
+	fc.log.Info().
+		Msg("Follower successfully fenced")
 	return &proto.FenceResponse{
 		Epoch:     fc.epoch,
 		HeadIndex: lastEntryId,
@@ -171,7 +183,6 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 	}
 
 	fc.status = Follower
-	fc.epoch = req.Epoch
 	headIndex, err := fc.wal.TruncateLog(req.HeadIndex.Offset)
 	if err != nil {
 		return nil, err
@@ -215,7 +226,7 @@ func (fc *followerController) addEntry(req *proto.AddEntryRequest) (*proto.AddEn
 	if fc.status != Follower && fc.status != Fenced {
 		return nil, errors.Wrapf(ErrorInvalidStatus, "AddEntry request when status = %+v", fc.status)
 	}
-	if req.Entry.Epoch < fc.epoch {
+	if req.Epoch < fc.epoch {
 		/*
 		 A follower node rejects an entry from the leader.
 
@@ -240,7 +251,17 @@ func (fc *followerController) addEntry(req *proto.AddEntryRequest) (*proto.AddEn
 	// and updates its commit index with the commit index of
 	// the request.
 	fc.status = Follower
-	fc.epoch = req.Entry.Epoch
+
+	if req.Epoch > fc.epoch {
+		if err := fc.db.UpdateEpoch(req.Epoch); err != nil {
+			return nil, err
+		}
+		fc.epoch = req.Epoch
+		fc.log = fc.log.With().Int64("epoch", fc.epoch).Logger()
+		fc.log.Info().
+			Msg("Follower upgraded the epoch")
+	}
+
 	if err := fc.wal.Append(req.GetEntry()); err != nil {
 		return nil, err
 	}

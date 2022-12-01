@@ -406,3 +406,32 @@ func TestDB_ReadCommitIndex(t *testing.T) {
 	assert.NoError(t, db.Close())
 	assert.NoError(t, factory.Close())
 }
+
+func TestDb_UpdateEpoch(t *testing.T) {
+	factory := NewPebbleKVFactory(testKVOptions)
+	db, err := NewDB(1, factory)
+	assert.NoError(t, err)
+
+	epoch, err := db.ReadEpoch()
+	assert.NoError(t, err)
+	assert.Equal(t, wal.InvalidOffset, epoch)
+
+	err = db.UpdateEpoch(1)
+	assert.NoError(t, err)
+
+	epoch, err = db.ReadEpoch()
+	assert.NoError(t, err)
+	assert.EqualValues(t, 1, epoch)
+
+	assert.NoError(t, db.Close())
+
+	// Reopen and verify the epoch is maintained
+	db, err = NewDB(1, factory)
+	assert.NoError(t, err)
+
+	epoch, err = db.ReadEpoch()
+	assert.NoError(t, err)
+	assert.Equal(t, wal.InvalidOffset, epoch)
+
+	assert.NoError(t, factory.Close())
+}

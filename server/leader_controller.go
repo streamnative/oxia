@@ -58,13 +58,11 @@ type leaderController struct {
 
 func NewLeaderController(shardId uint32, rpcClient ReplicationRpcProvider, walFactory wal.WalFactory, kvFactory kv.KVFactory) (LeaderController, error) {
 	lc := &leaderController{
-		status:            NotMember,
-		shardId:           shardId,
-		epoch:             0,
-		replicationFactor: 0,
-		quorumAckTracker:  nil,
-		rpcClient:         rpcClient,
-		followers:         make(map[string]FollowerCursor),
+		status:           NotMember,
+		shardId:          shardId,
+		quorumAckTracker: nil,
+		rpcClient:        rpcClient,
+		followers:        make(map[string]FollowerCursor),
 
 		log: log.With().
 			Str("component", "leader-controller").
@@ -81,6 +79,13 @@ func NewLeaderController(shardId uint32, rpcClient ReplicationRpcProvider, walFa
 		return nil, err
 	}
 
+	if lc.epoch, err = lc.db.ReadEpoch(); err != nil {
+		return nil, err
+	}
+
+	lc.log = lc.log.With().Int64("epoch", lc.epoch).Logger()
+	lc.log.Info().
+		Msg("Created leader controller")
 	return lc, nil
 }
 
@@ -118,7 +123,12 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 		return nil, err
 	}
 
+	if err := lc.db.UpdateEpoch(req.GetEpoch()); err != nil {
+		return nil, err
+	}
+
 	lc.epoch = req.GetEpoch()
+	lc.log = lc.log.With().Int64("epoch", lc.epoch).Logger()
 	lc.status = Fenced
 	lc.replicationFactor = 0
 
@@ -140,6 +150,10 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 	if err != nil {
 		return nil, err
 	}
+
+	lc.log.Info().
+		Int64("offset", headIndex.Offset).
+		Msg("Fenced leader")
 
 	return &proto.FenceResponse{
 		Epoch:     lc.epoch,

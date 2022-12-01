@@ -251,6 +251,43 @@ func TestIgnoreInvalidStates(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
+func TestFollower_PersistentEpoch(t *testing.T) {
+	var shardId uint32
+	kvFactory := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+		DataDir:   t.TempDir(),
+		CacheSize: 10 * 1024,
+	})
+	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{
+		LogDir: t.TempDir(),
+	})
+
+	fc, err := NewFollowerController(shardId, walFactory, kvFactory)
+	assert.NoError(t, err)
+
+	assert.Equal(t, NotMember, fc.Status())
+	assert.Equal(t, wal.InvalidEpoch, fc.Epoch())
+
+	fenceRes, err := fc.Fence(&proto.FenceRequest{Epoch: 4})
+	assert.NoError(t, err)
+	assert.EqualValues(t, 4, fenceRes.Epoch)
+	assert.Equal(t, &proto.EntryId{Epoch: wal.InvalidEpoch, Offset: wal.InvalidOffset}, fenceRes.HeadIndex)
+
+	assert.Equal(t, Fenced, fc.Status())
+	assert.EqualValues(t, 4, fc.Epoch())
+
+	assert.NoError(t, fc.Close())
+
+	/// Reopen and verify epoch
+	fc, err = NewFollowerController(shardId, walFactory, kvFactory)
+	assert.NoError(t, err)
+
+	assert.Equal(t, NotMember, fc.Status())
+	assert.EqualValues(t, 4, fc.Epoch())
+
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
 func createAddRequest(t *testing.T, epoch int64, offset int64,
 	kvs map[string]string,
 	commitIndex int64) *proto.AddEntryRequest {

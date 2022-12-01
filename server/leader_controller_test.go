@@ -17,7 +17,7 @@ func TestLeaderController_NotInitialized(t *testing.T) {
 	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, 0, lc.Epoch())
+	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
 	assert.Equal(t, NotMember, lc.Status())
 
 	res, err := lc.Write(&proto.WriteRequest{
@@ -52,7 +52,7 @@ func TestLeaderController_BecomeLeader_NoFencing(t *testing.T) {
 	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, 0, lc.Epoch())
+	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
 	assert.Equal(t, NotMember, lc.Status())
 	resp, err := lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
@@ -77,7 +77,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, 0, lc.Epoch())
+	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
 	assert.Equal(t, NotMember, lc.Status())
 
 	fr, err := lc.Fence(&proto.FenceRequest{
@@ -174,7 +174,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	lc, err := NewLeaderController(shard, rpc, walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, 0, lc.Epoch())
+	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
 	assert.Equal(t, NotMember, lc.Status())
 
 	fr, err := lc.Fence(&proto.FenceRequest{
@@ -269,6 +269,50 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 
 	close(rpc.addEntryResps)
 	assert.NoError(t, lc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
+func TestLeaderController_EpochPersistent(t *testing.T) {
+	var shard uint32 = 1
+
+	kvFactory := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+		DataDir:   t.TempDir(),
+		CacheSize: 10 * 1024,
+	})
+	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{
+		LogDir: t.TempDir(),
+	})
+
+	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
+	assert.NoError(t, err)
+
+	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
+	assert.Equal(t, NotMember, lc.Status())
+
+	/// Fence leader
+
+	fr2, err := lc.Fence(&proto.FenceRequest{
+		ShardId: shard,
+		Epoch:   5,
+	})
+	assert.NoError(t, err)
+	assert.EqualValues(t, 5, fr2.Epoch)
+	assert.Equal(t, &proto.EntryId{Epoch: wal.InvalidEpoch, Offset: wal.InvalidOffset}, fr2.HeadIndex)
+
+	assert.EqualValues(t, 5, lc.Epoch())
+	assert.Equal(t, Fenced, lc.Status())
+
+	assert.NoError(t, lc.Close())
+
+	/// Re-Open lead controller
+	lc, err = NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
+	assert.NoError(t, err)
+
+	assert.EqualValues(t, 5, lc.Epoch())
+	assert.Equal(t, NotMember, lc.Status())
+	assert.NoError(t, lc.Close())
+
 	assert.NoError(t, kvFactory.Close())
 	assert.NoError(t, walFactory.Close())
 }
