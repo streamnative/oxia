@@ -134,6 +134,10 @@ func (fc *followerController) Fence(req *proto.FenceRequest) (*proto.FenceRespon
 	defer fc.Unlock()
 
 	if err := checkEpochLaterIn(req, fc.epoch); err != nil {
+		fc.log.Warn().Err(err).
+			Int64("follower-epoch", fc.epoch).
+			Int64("fence-epoch", req.Epoch).
+			Msg("Failed to fence with invalid epoch")
 		return nil, err
 	}
 
@@ -142,6 +146,10 @@ func (fc *followerController) Fence(req *proto.FenceRequest) (*proto.FenceRespon
 
 	lastEntryId, err := getLastEntryIdInWal(fc.wal)
 	if err != nil {
+		fc.log.Warn().Err(err).
+			Int64("follower-epoch", fc.epoch).
+			Int64("fence-epoch", req.Epoch).
+			Msg("Failed to get last")
 		return nil, err
 	}
 
