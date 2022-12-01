@@ -1,6 +1,7 @@
 package batch
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -78,5 +79,54 @@ func TestBatcher(t *testing.T) {
 				assert.NoError(t, err)
 			}
 		})
+	}
+}
+
+func TestBatcherWithBufferedChannel(t *testing.T) {
+	for _, item := range []struct {
+		size int
+	}{
+		{0},
+		{1},
+		{4},
+	} {
+
+		count := 100
+
+		var batches []*testBatch
+		mutex := sync.Mutex{}
+
+		wg := sync.WaitGroup{}
+		wg.Add(count)
+		batchFactory := func(shardId *uint32) Batch {
+			b := newTestBatch()
+			mutex.Lock()
+			defer mutex.Unlock()
+			batches = append(batches, b)
+			wg.Done()
+			return b
+		}
+
+		factory := &BatcherFactory{
+			Linger:              1,
+			MaxRequestsPerBatch: 1,
+			BatcherBufferSize:   item.size,
+		}
+		batcher := factory.newBatcher(&shardId, batchFactory)
+
+		go batcher.run()
+
+		for i := 0; i < 100; i++ {
+			batcher.Add(1)
+		}
+
+		wg.Wait()
+		for _, b := range batches {
+			assert.NoError(t, <-b.result)
+			assert.Equal(t, b.count, 1)
+		}
+
+		err := batcher.Close()
+		assert.NoError(t, err)
 	}
 }
