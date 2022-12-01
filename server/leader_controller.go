@@ -176,10 +176,6 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 	lc.Lock()
 	defer lc.Unlock()
 
-	lc.log.Info().
-		Interface("request", req).
-		Msg("BecomeLeader")
-
 	if err := checkEpochEqualIn(req, lc.epoch); err != nil {
 		return nil, err
 	}
@@ -221,6 +217,10 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 
 		lc.followers[follower] = cursor
 	}
+
+	lc.log.Info().
+		Int64("epoch", lc.epoch).
+		Msg("Started leading the shard")
 	return &proto.BecomeLeaderResponse{Epoch: req.GetEpoch()}, nil
 }
 
