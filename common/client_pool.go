@@ -1,11 +1,13 @@
 package common
 
 import (
+	"context"
 	"github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/peer"
 	"io"
 	"oxia/proto"
 	"sync"
@@ -105,4 +107,13 @@ func (cp *clientPool) getConnection(target string) (grpc.ClientConnInterface, er
 
 	cp.connections[target] = cnx
 	return cnx, nil
+}
+
+func GetPeer(ctx context.Context) string {
+	p, ok := peer.FromContext(ctx)
+	if !ok {
+		return ""
+	}
+
+	return p.Addr.String()
 }
