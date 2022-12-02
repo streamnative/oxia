@@ -9,13 +9,13 @@ import (
 )
 
 func TestNewServer(t *testing.T) {
-	config := serverConfig{
+	config := Config{
 		InternalServicePort: 0,
 		PublicServicePort:   0,
 		MetricsPort:         0,
 	}
 
-	server, err := newServer(config)
+	server, err := New(config)
 	assert.NoError(t, err)
 
 	url := fmt.Sprintf("http://localhost:%d/metrics", server.metrics.Port())

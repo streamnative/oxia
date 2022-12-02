@@ -1,19 +1,20 @@
 package standalone
 
 import (
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"io"
 	"oxia/common"
+	"oxia/standalone"
 )
 
 var (
-	conf = standaloneConfig{}
+	conf = standalone.Config{}
 
 	Cmd = &cobra.Command{
 		Use:   "standalone",
 		Short: "Start a standalone service",
 		Long:  `Long description`,
-		Run:   main,
+		Run:   exec,
 	}
 )
 
@@ -26,19 +27,8 @@ func init() {
 	Cmd.Flags().StringVar(&conf.WalDir, "wal-dir", "./data/wal", "Directory for write-ahead-logs")
 }
 
-func main(cmd *cobra.Command, args []string) {
-	common.ConfigureLogger()
-
-	server, err := newStandalone(&conf)
-	if err != nil {
-		log.Fatal().Err(err).
-			Msg("Failed to start the server")
-	}
-
-	profiler := common.RunProfiling()
-
-	common.WaitUntilSignal(
-		profiler,
-		server,
-	)
+func exec(*cobra.Command, []string) {
+	common.RunProcess(func() (io.Closer, error) {
+		return standalone.New(conf)
+	})
 }
