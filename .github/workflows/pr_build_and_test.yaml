@@ -36,7 +36,7 @@ jobs:
         run: make proto
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v3
+        uses: golangci/golangci-lint-action@0ad9a0988b3973e851ab0a07adf248ec2e100376 #v3.3.1
         with:
           version: v1.50.1
 
