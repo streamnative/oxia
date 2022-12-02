@@ -124,7 +124,7 @@ func (m *mockRpcClient) RecvMsg(msg interface{}) error {
 	panic("not implemented")
 }
 
-func (m *mockRpcClient) GetAddEntriesStream(follower string) (proto.OxiaLogReplication_AddEntriesClient, error) {
+func (m *mockRpcClient) GetAddEntriesStream(follower string, shard uint32) (proto.OxiaLogReplication_AddEntriesClient, error) {
 	return m, nil
 }
 
