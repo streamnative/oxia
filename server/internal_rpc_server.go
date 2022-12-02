@@ -194,7 +194,7 @@ func (s *internalRpcServer) AddEntries(srv proto.OxiaLogReplication_AddEntriesSe
 	} else {
 		err2 := follower.AddEntries(srv)
 		if err2 != nil {
-			s.log.Warn().Err(err).
+			s.log.Warn().Err(err2).
 				Uint32("shard", shardId).
 				Str("peer", common.GetPeer(srv.Context())).
 				Msg("AddEntries failed")

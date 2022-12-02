@@ -83,12 +83,19 @@ func (n *nodeController) sendAssignmentsUpdates() error {
 
 	var assignments *proto.ShardAssignmentsResponse
 	for !n.closed {
+
 		assignments = n.shardAssignmentsProvider.WaitForNextUpdate(assignments)
 		if assignments == nil {
 			continue
 		}
 
+		n.log.Debug().
+			Interface("assignments", assignments).
+			Msg("Sending assignments")
+
 		if err := stream.Send(assignments); err != nil {
+			n.log.Debug().Err(err).
+				Msg("Failed to send assignments")
 			return err
 		}
 	}

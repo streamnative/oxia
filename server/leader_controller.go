@@ -234,6 +234,7 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 
 	lc.log.Info().
 		Int64("epoch", lc.epoch).
+		Int64("head-index", leaderHeadIndex.Offset).
 		Msg("Started leading the shard")
 	return &proto.BecomeLeaderResponse{Epoch: req.GetEpoch()}, nil
 }

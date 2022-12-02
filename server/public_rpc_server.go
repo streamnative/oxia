@@ -1,9 +1,12 @@
 package server
 
 import (
+	"context"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
+	"oxia/common"
 	"oxia/proto"
 	"oxia/server/container"
 )
@@ -38,27 +41,66 @@ func NewPublicRpcServer(port int, shardsDirector ShardsDirector, assignmentDispa
 }
 
 func (s *PublicRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest, srv proto.OxiaClient_ShardAssignmentsServer) error {
-	return s.assignmentDispatcher.AddClient(srv)
+	s.log.Debug().
+		Str("peer", common.GetPeer(srv.Context())).
+		Msg("Shard assignments requests")
+	err := s.assignmentDispatcher.AddClient(srv)
+	if err != nil {
+		s.log.Warn().Err(err).
+			Str("peer", common.GetPeer(srv.Context())).
+			Msg("Failed to add client for shards assignments notifications")
+	}
+
+	return err
 }
 
-//func (s *PublicRpcServer) Put(ctx context.Context, putOp *proto.PutOp) (*proto.Stat, error) {
-//	// TODO make shard ID string in client rpc
-//	slc, err := s.shardsDirector.GetManager(ShardId(strconv.FormatInt(int64(putOp.GetShardId()), 10)), false)
-//	if err != nil {
-//		return nil, err
-//	}
-//
-//	return slc.Write(putOp)
-//}
-//
-//func (s *PublicRpcServer) Get(ctx context.Context, getOp *proto.GetOp) (*proto.GetResult, error) {
-//	_, err := s.shardsDirector.GetManager(ShardId(strconv.FormatInt(int64(getOp.GetShardId()), 10)), false)
-//	if err != nil {
-//		return nil, err
-//	}
-//	// TODO Read from KVStore directly? Only if leader
-//	return nil, nil
-//}
+func (s *PublicRpcServer) Write(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error) {
+	s.log.Debug().
+		Str("peer", common.GetPeer(ctx)).
+		Interface("req", write).
+		Msg("Write request")
+
+	lc, err := s.shardsDirector.GetLeader(*write.ShardId)
+	if err != nil {
+		if !errors.Is(err, ErrorNodeIsNotLeader) {
+			s.log.Warn().Err(err).
+				Msg("Failed to get the leader controller")
+		}
+		return nil, err
+	}
+
+	wr, err := lc.Write(write)
+	if err != nil {
+		s.log.Warn().Err(err).
+			Msg("Failed to perform write operation")
+	}
+
+	return wr, err
+}
+
+func (s *PublicRpcServer) Read(ctx context.Context, read *proto.ReadRequest) (*proto.ReadResponse, error) {
+	s.log.Debug().
+		Str("peer", common.GetPeer(ctx)).
+		Interface("req", read).
+		Msg("Write request")
+
+	lc, err := s.shardsDirector.GetLeader(*read.ShardId)
+	if err != nil {
+		if !errors.Is(err, ErrorNodeIsNotLeader) {
+			s.log.Warn().Err(err).
+				Msg("Failed to get the leader controller")
+		}
+		return nil, err
+	}
+
+	rr, err := lc.Read(read)
+	if err != nil {
+		s.log.Warn().Err(err).
+			Msg("Failed to perform read operation")
+	}
+
+	return rr, err
+}
 
 func (s *PublicRpcServer) Close() error {
 	return s.container.Close()

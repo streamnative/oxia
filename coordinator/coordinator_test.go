@@ -1,6 +1,7 @@
 package coordinator
 
 //func TestCoordinator(t *testing.T) {
+//	common.LogDebug = true
 //	common.ConfigureLogger()
 //
 //	mp := NewMetadataProviderMemory()
@@ -17,11 +18,12 @@ package coordinator
 //	_, err := NewCoordinator(mp, cc)
 //	assert.NoError(t, err)
 //
-//	time.Sleep(10 * time.Second)
+//	time.Sleep(5 * time.Second)
 //}
 //
 //// TODO: this is just temporary
 //func TestClient(t *testing.T) {
+//	common.LogDebug = true
 //	common.ConfigureLogger()
 //
 //	options, err := oxia.NewClientOptions("localhost:9190")

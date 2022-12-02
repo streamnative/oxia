@@ -1,11 +1,11 @@
 package coordinator
 
 import (
-	"github.com/google/go-cmp/cmp"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
+	pb "google.golang.org/protobuf/proto"
 	"io"
 	"math"
 	"oxia/common"
@@ -34,6 +34,7 @@ type coordinator struct {
 	ClusterConfig
 
 	shardControllers map[uint32]ShardController
+	nodeControllers  map[string]NodeController
 	clusterStatus    *ClusterStatus
 	assignments      *proto.ShardAssignmentsResponse
 	metadataVersion  int64
@@ -46,6 +47,7 @@ func NewCoordinator(metadataProvider MetadataProvider, clusterConfig ClusterConf
 		MetadataProvider: metadataProvider,
 		ClusterConfig:    clusterConfig,
 		shardControllers: make(map[uint32]ShardController),
+		nodeControllers:  make(map[string]NodeController),
 		clientPool:       common.NewClientPool(),
 		log: log.With().
 			Str("component", "coordinator").
@@ -64,6 +66,10 @@ func NewCoordinator(metadataProvider MetadataProvider, clusterConfig ClusterConf
 		if err = c.initialAssignment(); err != nil {
 			return nil, err
 		}
+	}
+
+	for _, sa := range clusterConfig.StorageServers {
+		c.nodeControllers[sa.Internal] = NewNodeController(sa.Internal, c, c.clientPool)
 	}
 
 	return c, nil
@@ -134,6 +140,10 @@ func (c *coordinator) Close() error {
 	for _, sc := range c.shardControllers {
 		err = multierr.Append(err, sc.Close())
 	}
+
+	for _, nc := range c.nodeControllers {
+		err = multierr.Append(err, nc.Close())
+	}
 	return err
 }
 
@@ -141,7 +151,7 @@ func (c *coordinator) WaitForNextUpdate(currentValue *proto.ShardAssignmentsResp
 	c.Lock()
 	defer c.Unlock()
 
-	for cmp.Equal(currentValue, c.assignments) {
+	for pb.Equal(currentValue, c.assignments) {
 		// Wait on the condition until the assignments get changed
 		c.assignmentsChanged.Wait()
 	}
@@ -176,6 +186,7 @@ func (c *coordinator) ElectedLeader(shard uint32, epoch int64, leader ServerAddr
 	sm.Status = ShardStatusSteadyState
 	sm.Epoch = epoch
 	sm.Leader = &leader
+	cs.Shards[shard] = sm
 
 	newMetadataVersion, err := c.MetadataProvider.Store(cs, c.metadataVersion)
 	if err != nil {
@@ -183,6 +194,7 @@ func (c *coordinator) ElectedLeader(shard uint32, epoch int64, leader ServerAddr
 	}
 
 	c.metadataVersion = newMetadataVersion
+	c.clusterStatus = cs
 
 	c.computeNewAssignments()
 	return nil
