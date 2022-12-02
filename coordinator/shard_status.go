@@ -37,7 +37,7 @@ func (s ShardStatus) MarshalJSON() ([]byte, error) {
 	return buffer.Bytes(), nil
 }
 
-// UnmarshalJSON unmashals a quoted json string to the enum value
+// UnmarshalJSON unmarshals a quoted json string to the enum value
 func (s *ShardStatus) UnmarshalJSON(b []byte) error {
 	var j string
 	if err := json.Unmarshal(b, &j); err != nil {
