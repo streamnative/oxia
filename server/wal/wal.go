@@ -18,7 +18,7 @@ type WalFactoryOptions struct {
 }
 
 var DefaultWalFactoryOptions = &WalFactoryOptions{
-	LogDir: "wal",
+	LogDir: "data/wal",
 }
 
 type WalFactory interface {
