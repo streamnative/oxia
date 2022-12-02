@@ -1,7 +1,7 @@
 
 .PHONY: build
 build: proto
-	go build -v -o bin/oxia .
+	go build -v -o bin/oxia ./cmd
 
 test: build
 	go test -cover -race ./...

@@ -1,4 +1,4 @@
-package cmd
+package main
 
 import (
 	"fmt"
@@ -30,7 +30,7 @@ func init() {
 	rootCmd.AddCommand(standalone.Cmd)
 }
 
-func Execute() {
+func main() {
 	common.DoWithLabels(map[string]string{
 		"oxia": "main",
 	}, func() {
