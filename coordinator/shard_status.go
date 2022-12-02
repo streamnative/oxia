@@ -8,7 +8,7 @@ import (
 type ShardStatus uint16
 
 const (
-	ShardStatusUnknown = iota
+	ShardStatusUnknown ShardStatus = iota
 	ShardStatusSteadyState
 	ShardStatusElection
 )
