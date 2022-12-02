@@ -63,3 +63,19 @@ func TestWithBatchRequestTimeout(t *testing.T) {
 		assert.ErrorIs(t, err, item.expectedErr)
 	}
 }
+
+func TestWithBatcherBufferSize(t *testing.T) {
+	for _, item := range []struct {
+		size         int
+		expectedSize int
+		expectedErr  error
+	}{
+		{-1, DefaultBatcherBufferSize, ErrorBatcherBuffereSize},
+		{0, 0, nil},
+		{1, 1, nil},
+	} {
+		options, err := NewClientOptions("serviceAddress", WithBatcherBufferSize(item.size))
+		assert.Equal(t, item.expectedSize, options.BatcherBufferSize())
+		assert.ErrorIs(t, item.expectedErr, err)
+	}
+}

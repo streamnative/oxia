@@ -2,13 +2,15 @@ package main
 
 import (
 	"fmt"
-	"github.com/spf13/cobra"
 	"os"
 	"oxia/cmd/client"
 	"oxia/common"
 	"oxia/operator"
 	"oxia/server"
 	"oxia/standalone"
+
+	"github.com/spf13/cobra"
+	"go.uber.org/automaxprocs/maxprocs"
 )
 
 var (
@@ -35,7 +37,12 @@ func main() {
 	common.DoWithLabels(map[string]string{
 		"oxia": "main",
 	}, func() {
-		if err := rootCmd.Execute(); err != nil {
+		_, err := maxprocs.Set()
+		if err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if err = rootCmd.Execute(); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}

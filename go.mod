@@ -15,6 +15,7 @@ require (
 	go.opentelemetry.io/otel v1.11.1
 	go.opentelemetry.io/otel/metric v0.33.0
 	go.opentelemetry.io/otel/sdk/metric v0.33.0
+	go.uber.org/automaxprocs v1.5.1
 	go.uber.org/multierr v1.8.0
 	golang.org/x/sync v0.0.0-20220601150217-0de741cfad7f
 	google.golang.org/grpc v1.50.1
