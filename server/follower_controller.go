@@ -104,7 +104,7 @@ func NewFollowerController(shardId uint32, wf wal.WalFactory, kvFactory kv.KVFac
 	fc.log = fc.log.With().Int64("epoch", fc.epoch).Logger()
 
 	fc.log.Info().
-		Interface("head-index", fc.headIndex).
+		Int64("head-index", fc.headIndex).
 		Msg("Created follower")
 	return fc, nil
 }

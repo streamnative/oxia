@@ -269,7 +269,7 @@ func (lc *leaderController) truncateFollower(follower string, targetEpoch int64)
 
 func (lc *leaderController) Read(request *proto.ReadRequest) (*proto.ReadResponse, error) {
 	lc.log.Debug().
-		Interface("read", request).
+		Interface("req", request).
 		Msg("Received read request")
 
 	{
@@ -291,7 +291,7 @@ func (lc *leaderController) Read(request *proto.ReadRequest) (*proto.ReadRespons
 // the entry to its log, updates its head_index.
 func (lc *leaderController) Write(request *proto.WriteRequest) (*proto.WriteResponse, error) {
 	lc.log.Debug().
-		Interface("request", request).
+		Interface("req", request).
 		Msg("Write operation")
 
 	var newOffset int64

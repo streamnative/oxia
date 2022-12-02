@@ -106,7 +106,7 @@ func (s *shardAssignmentDispatcher) updateShardAssignment(assignments *proto.Sha
 		if err != nil {
 			peer, _ := peer.FromContext(client.Context())
 			log.Warn().Err(err).
-				Interface("client", peer.Addr.String()).
+				Str("client", peer.Addr.String()).
 				Msg("Failed to send shard assignment update to client")
 			delete(s.clients, id)
 		}
