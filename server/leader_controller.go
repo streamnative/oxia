@@ -4,6 +4,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
+	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
 	"io"
 	"oxia/proto"
@@ -119,8 +120,8 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 	lc.Lock()
 	defer lc.Unlock()
 
-	if err := checkEpochLaterIn(req, lc.epoch); err != nil {
-		return nil, err
+	if req.Epoch <= lc.epoch {
+		return nil, status.Errorf(CodeInvalidEpoch, "invalid epoch - current epoch %d - request epoch %d", lc.epoch, req.Epoch)
 	}
 
 	if err := lc.db.UpdateEpoch(req.GetEpoch()); err != nil {
@@ -190,8 +191,8 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 	lc.Lock()
 	defer lc.Unlock()
 
-	if err := checkEpochEqualIn(req, lc.epoch); err != nil {
-		return nil, err
+	if req.Epoch != lc.epoch {
+		return nil, status.Errorf(CodeInvalidEpoch, "invalid epoch - current epoch %d - request epoch %d", lc.epoch, req.Epoch)
 	}
 
 	lc.status = Leader

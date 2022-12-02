@@ -22,7 +22,6 @@ const (
 )
 
 var (
-	ErrorInvalidEpoch  = errors.New("oxia: invalid epoch")
 	ErrorInvalidStatus = errors.New("oxia: invalid status")
 )
 
@@ -329,20 +328,6 @@ func GetHighestEntryOfEpoch(w wal.Wal, epoch int64) (*proto.EntryId, error) {
 
 type MessageWithEpoch interface {
 	GetEpoch() int64
-}
-
-func checkEpochLaterIn(req MessageWithEpoch, expected int64) error {
-	if req.GetEpoch() <= expected {
-		return errors.Wrapf(ErrorInvalidEpoch, "Got old epoch %d, when at %d", req.GetEpoch(), expected)
-	}
-	return nil
-}
-
-func checkEpochEqualIn(req MessageWithEpoch, expected int64) error {
-	if req.GetEpoch() != expected {
-		return errors.Wrapf(ErrorInvalidEpoch, "Got clashing epoch %d, when at %d", req.GetEpoch(), expected)
-	}
-	return nil
 }
 
 func checkStatus(expected, actual Status) error {
