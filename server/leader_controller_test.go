@@ -203,9 +203,8 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 		req := <-rpc.addEntryReqs
 
 		rpc.addEntryResps <- &proto.AddEntryResponse{
-			Epoch:        req.Epoch,
-			Offset:       req.Entry.Offset,
-			InvalidEpoch: false,
+			Epoch:  req.Epoch,
+			Offset: req.Entry.Offset,
 		}
 	}()
 

@@ -77,5 +77,4 @@ message AddEntryRequest {
 message AddEntryResponse {
   int64 epoch = 1;
   int64 offset = 2;
-  bool invalid_epoch = 3;
 }
