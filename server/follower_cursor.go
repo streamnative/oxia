@@ -223,16 +223,6 @@ func (fc *followerCursor) receiveAcks(stream proto.OxiaLogReplication_AddEntries
 			return
 		}
 
-		if res.InvalidEpoch {
-			fc.log.Error().Err(err).
-				Msg("Invalid epoch")
-			if err := stream.CloseSend(); err != nil {
-				fc.log.Warn().Err(err).
-					Msg("Error while closing stream")
-			}
-			return
-		}
-
 		fc.cursorAcker.Ack(res.Offset)
 
 		fc.Lock()
