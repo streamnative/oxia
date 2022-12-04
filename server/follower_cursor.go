@@ -1,9 +1,12 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"io"
 	"oxia/common"
 	"oxia/proto"
@@ -15,7 +18,7 @@ import (
 // This is a provider for the AddEntryStream Grpc handler
 // It's used to allow passing in a mocked version of the Grpc service
 type AddEntriesStreamProvider interface {
-	GetAddEntriesStream(follower string, shard uint32) (proto.OxiaLogReplication_AddEntriesClient, error)
+	GetAddEntriesStream(ctx context.Context, follower string, shard uint32) (proto.OxiaLogReplication_AddEntriesClient, error)
 }
 
 // FollowerCursor
@@ -48,6 +51,8 @@ type followerCursor struct {
 	shardId     uint32
 
 	closed bool
+	ctx    context.Context
+	cancel context.CancelFunc
 	log    zerolog.Logger
 }
 
@@ -77,6 +82,8 @@ func NewFollowerCursor(
 			Logger(),
 	}
 
+	fc.ctx, fc.cancel = context.WithCancel(context.Background())
+
 	var err error
 	if fc.cursorAcker, err = ackTracker.NewCursorAcker(); err != nil {
 		return nil, err
@@ -97,6 +104,7 @@ func (fc *followerCursor) Close() error {
 	defer fc.Unlock()
 
 	fc.closed = true
+	fc.cancel()
 
 	if fc.stream != nil {
 		return fc.stream.CloseSend()
@@ -140,7 +148,7 @@ func (fc *followerCursor) runOnce() error {
 	fc.Lock()
 
 	var err error
-	if fc.stream, err = fc.addEntriesStreamProvider.GetAddEntriesStream(fc.follower, fc.shardId); err != nil {
+	if fc.stream, err = fc.addEntriesStreamProvider.GetAddEntriesStream(fc.ctx, fc.follower, fc.shardId); err != nil {
 		return err
 	}
 
@@ -209,8 +217,10 @@ func (fc *followerCursor) receiveAcks(stream proto.OxiaLogReplication_AddEntries
 	for {
 		res, err := stream.Recv()
 		if err != nil {
-			fc.log.Warn().Err(err).
-				Msg("Error while receiving acks")
+			if status.Code(err) != codes.Canceled {
+				fc.log.Warn().Err(err).
+					Msg("Error while receiving acks")
+			}
 			if err := stream.CloseSend(); err != nil {
 				fc.log.Warn().Err(err).
 					Msg("Error while closing stream")
