@@ -158,15 +158,15 @@ func (s *shardController) selectNewLeader(fenceResponses map[ServerAddress]*prot
 	var currentMax int64 = -1
 	var candidates []ServerAddress
 
-	for a, e := range fenceResponses {
-		if e.Offset < currentMax {
+	for addr, headIndex := range fenceResponses {
+		if headIndex.Offset < currentMax {
 			continue
-		} else if e.Offset == currentMax {
-			candidates = append(candidates, a)
+		} else if headIndex.Offset == currentMax {
+			candidates = append(candidates, addr)
 		} else {
 			// Found a new max
-			currentMax = e.Offset
-			candidates = []ServerAddress{a}
+			currentMax = headIndex.Offset
+			candidates = []ServerAddress{addr}
 		}
 	}
 

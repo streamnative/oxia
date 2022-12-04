@@ -7,6 +7,7 @@ import (
 	"io"
 	"oxia/common"
 	"oxia/proto"
+	"sync/atomic"
 )
 
 // The NodeController takes care of checking the health-status of each node
@@ -20,7 +21,7 @@ type nodeController struct {
 	shardAssignmentsProvider ShardAssignmentsProvider
 	clientPool               common.ClientPool
 	log                      zerolog.Logger
-	closed                   bool
+	closed                   atomic.Bool
 }
 
 func NewNodeController(addr string, shardAssignmentsProvider ShardAssignmentsProvider, clientPool common.ClientPool) NodeController {
@@ -55,7 +56,7 @@ func (n *nodeController) healthCheck() {
 }
 
 func (n *nodeController) sendAssignmentsUpdatesWithRetries() {
-	for !n.closed {
+	for !n.closed.Load() {
 		err := n.sendAssignmentsUpdates()
 		if err != nil {
 			n.log.Warn().Err(err).
@@ -73,16 +74,13 @@ func (n *nodeController) sendAssignmentsUpdates() error {
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), common.DefaultRpcTimeout)
-	defer cancel()
-
-	stream, err := rpc.ShardAssignment(ctx)
+	stream, err := rpc.ShardAssignment(context.Background())
 	if err != nil {
 		return err
 	}
 
 	var assignments *proto.ShardAssignmentsResponse
-	for !n.closed {
+	for !n.closed.Load() {
 
 		assignments = n.shardAssignmentsProvider.WaitForNextUpdate(assignments)
 		if assignments == nil {
@@ -104,6 +102,6 @@ func (n *nodeController) sendAssignmentsUpdates() error {
 }
 
 func (n *nodeController) Close() error {
-	n.closed = true
+	n.closed.Store(true)
 	return nil
 }
