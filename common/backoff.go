@@ -48,17 +48,15 @@ func (b *backoff) WaitNext(ctx context.Context) error {
 	defer b.Unlock()
 
 	timer := time.NewTimer(b.nextWait)
+	b.nextWait = b.computeNextWait(b.nextWait)
 
 	select {
 	case <-timer.C:
-		break
+		return nil
 	case <-ctx.Done():
 		timer.Stop()
 		return ctx.Err()
 	}
-
-	b.nextWait = b.computeNextWait(b.nextWait)
-	return nil
 }
 
 func minDuration(a, b time.Duration) time.Duration {
