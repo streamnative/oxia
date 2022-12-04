@@ -22,6 +22,8 @@ type nodeController struct {
 	clientPool               common.ClientPool
 	log                      zerolog.Logger
 	closed                   atomic.Bool
+	ctx                      context.Context
+	cancel                   context.CancelFunc
 }
 
 func NewNodeController(addr string, shardAssignmentsProvider ShardAssignmentsProvider, clientPool common.ClientPool) NodeController {
@@ -34,6 +36,8 @@ func NewNodeController(addr string, shardAssignmentsProvider ShardAssignmentsPro
 			Str("addr", addr).
 			Logger(),
 	}
+
+	nc.ctx, nc.cancel = context.WithCancel(context.Background())
 
 	go common.DoWithLabels(map[string]string{
 		"oxia": "node-controller",
@@ -74,7 +78,7 @@ func (n *nodeController) sendAssignmentsUpdates() error {
 		return err
 	}
 
-	stream, err := rpc.ShardAssignment(context.Background())
+	stream, err := rpc.ShardAssignment(n.ctx)
 	if err != nil {
 		return err
 	}
@@ -103,5 +107,6 @@ func (n *nodeController) sendAssignmentsUpdates() error {
 
 func (n *nodeController) Close() error {
 	n.closed.Store(true)
+	n.cancel()
 	return nil
 }
