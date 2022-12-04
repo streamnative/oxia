@@ -9,7 +9,7 @@ import (
 	"oxia/server/wal"
 )
 
-type standaloneConfig struct {
+type Config struct {
 	PublicServicePort uint32
 	MetricsPort       int
 
@@ -19,19 +19,19 @@ type standaloneConfig struct {
 	WalDir                  string
 }
 
-type standalone struct {
+type Standalone struct {
 	rpc        *StandaloneRpcServer
 	kvFactory  kv.KVFactory
 	walFactory wal.WalFactory
 	metrics    *metrics.PrometheusMetrics
 }
 
-func newStandalone(config *standaloneConfig) (*standalone, error) {
+func New(config Config) (*Standalone, error) {
 	log.Info().
 		Interface("config", config).
 		Msg("Starting Oxia standalone")
 
-	s := &standalone{}
+	s := &Standalone{}
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -64,7 +64,7 @@ func newStandalone(config *standaloneConfig) (*standalone, error) {
 	return s, nil
 }
 
-func (s *standalone) Close() error {
+func (s *Standalone) Close() error {
 	return multierr.Combine(
 		s.rpc.Close(),
 		s.kvFactory.Close(),

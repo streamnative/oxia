@@ -33,6 +33,7 @@ func NewAsyncClient(options ClientOptions) AsyncClient {
 		Executor:            executor,
 		Linger:              options.batchLinger,
 		MaxRequestsPerBatch: options.maxRequestsPerBatch,
+		BatcherBufferSize:   options.batcherBufferSize,
 		Metrics:             metrics.NewMetrics(options.meterProvider),
 	}
 	return &clientImpl{

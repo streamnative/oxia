@@ -9,7 +9,7 @@ import (
 	"oxia/server/wal"
 )
 
-type serverConfig struct {
+type Config struct {
 	InternalServicePort int
 	PublicServicePort   int
 	MetricsPort         int
@@ -17,7 +17,7 @@ type serverConfig struct {
 	WalDir              string
 }
 
-type server struct {
+type Server struct {
 	*internalRpcServer
 	*PublicRpcServer
 
@@ -29,12 +29,12 @@ type server struct {
 	kvFactory                 kv.KVFactory
 }
 
-func newServer(config serverConfig) (*server, error) {
+func New(config Config) (*Server, error) {
 	log.Info().
 		Interface("config", config).
 		Msg("Starting Oxia server")
 
-	s := &server{
+	s := &Server{
 		clientPool: common.NewClientPool(),
 		walFactory: wal.NewWalFactory(&wal.WalFactoryOptions{
 			LogDir: config.WalDir,
@@ -67,7 +67,7 @@ func newServer(config serverConfig) (*server, error) {
 	return s, nil
 }
 
-func (s *server) Close() error {
+func (s *Server) Close() error {
 	return multierr.Combine(
 		s.PublicRpcServer.Close(),
 		s.internalRpcServer.Close(),

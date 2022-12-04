@@ -15,7 +15,7 @@ import (
 // This is a provider for the AddEntryStream Grpc handler
 // It's used to allow passing in a mocked version of the Grpc service
 type AddEntriesStreamProvider interface {
-	GetAddEntriesStream(follower string) (proto.OxiaLogReplication_AddEntriesClient, error)
+	GetAddEntriesStream(follower string, shard uint32) (proto.OxiaLogReplication_AddEntriesClient, error)
 }
 
 // FollowerCursor
@@ -138,8 +138,9 @@ func (fc *followerCursor) run() {
 
 func (fc *followerCursor) runOnce() error {
 	fc.Lock()
+
 	var err error
-	if fc.stream, err = fc.addEntriesStreamProvider.GetAddEntriesStream(fc.follower); err != nil {
+	if fc.stream, err = fc.addEntriesStreamProvider.GetAddEntriesStream(fc.follower, fc.shardId); err != nil {
 		return err
 	}
 
@@ -160,7 +161,7 @@ func (fc *followerCursor) runOnce() error {
 	})
 
 	fc.log.Info().
-		Interface("ack-index", currentOffset).
+		Int64("ack-index", currentOffset).
 		Msg("Successfully attached cursor follower")
 
 	for {
@@ -184,6 +185,10 @@ func (fc *followerCursor) runOnce() error {
 		if err != nil {
 			return err
 		}
+
+		fc.log.Debug().
+			Int64("offset", le.Offset).
+			Msg("Sending entries to follower")
 
 		if err = fc.stream.Send(&proto.AddEntryRequest{
 			Epoch:       fc.epoch,
@@ -215,16 +220,6 @@ func (fc *followerCursor) receiveAcks(stream proto.OxiaLogReplication_AddEntries
 
 		if res == nil {
 			// Stream was closed by server side
-			return
-		}
-
-		if res.InvalidEpoch {
-			fc.log.Error().Err(err).
-				Msg("Invalid epoch")
-			if err := stream.CloseSend(); err != nil {
-				fc.log.Warn().Err(err).
-					Msg("Error while closing stream")
-			}
 			return
 		}
 

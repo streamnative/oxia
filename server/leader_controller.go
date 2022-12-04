@@ -4,6 +4,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
+	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
 	"io"
 	"oxia/proto"
@@ -119,8 +120,8 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 	lc.Lock()
 	defer lc.Unlock()
 
-	if err := checkEpochLaterIn(req, lc.epoch); err != nil {
-		return nil, err
+	if req.Epoch <= lc.epoch {
+		return nil, status.Errorf(CodeInvalidEpoch, "invalid epoch - current epoch %d - request epoch %d", lc.epoch, req.Epoch)
 	}
 
 	if err := lc.db.UpdateEpoch(req.GetEpoch()); err != nil {
@@ -190,8 +191,8 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 	lc.Lock()
 	defer lc.Unlock()
 
-	if err := checkEpochEqualIn(req, lc.epoch); err != nil {
-		return nil, err
+	if req.Epoch != lc.epoch {
+		return nil, status.Errorf(CodeInvalidEpoch, "invalid epoch - current epoch %d - request epoch %d", lc.epoch, req.Epoch)
 	}
 
 	lc.status = Leader
@@ -270,7 +271,7 @@ func (lc *leaderController) truncateFollower(follower string, targetEpoch int64)
 
 func (lc *leaderController) Read(request *proto.ReadRequest) (*proto.ReadResponse, error) {
 	lc.log.Debug().
-		Interface("read", request).
+		Interface("req", request).
 		Msg("Received read request")
 
 	{
@@ -292,7 +293,7 @@ func (lc *leaderController) Read(request *proto.ReadRequest) (*proto.ReadRespons
 // the entry to its log, updates its head_index.
 func (lc *leaderController) Write(request *proto.WriteRequest) (*proto.WriteResponse, error) {
 	lc.log.Debug().
-		Interface("request", request).
+		Interface("req", request).
 		Msg("Write operation")
 
 	var newOffset int64

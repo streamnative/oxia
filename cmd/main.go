@@ -3,12 +3,12 @@ package main
 import (
 	"fmt"
 	"github.com/spf13/cobra"
+	"go.uber.org/automaxprocs/maxprocs"
 	"os"
 	"oxia/cmd/client"
+	"oxia/cmd/server"
+	"oxia/cmd/standalone"
 	"oxia/common"
-	"oxia/operator"
-	"oxia/server"
-	"oxia/standalone"
 )
 
 var (
@@ -26,7 +26,6 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&common.PprofBindAddress, "profile-bind-address", "127.0.0.1:6060", "Bind address for pprof")
 
 	rootCmd.AddCommand(client.Cmd)
-	rootCmd.AddCommand(operator.Cmd)
 	rootCmd.AddCommand(server.Cmd)
 	rootCmd.AddCommand(standalone.Cmd)
 }
@@ -35,8 +34,12 @@ func main() {
 	common.DoWithLabels(map[string]string{
 		"oxia": "main",
 	}, func() {
+		if _, err := maxprocs.Set(); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 		if err := rootCmd.Execute(); err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			_, _ = fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
 	})

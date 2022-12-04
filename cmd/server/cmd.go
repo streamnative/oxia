@@ -1,19 +1,20 @@
 package server
 
 import (
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"io"
 	"oxia/common"
+	"oxia/server"
 )
 
 var (
-	conf = serverConfig{}
+	conf = server.Config{}
 
 	Cmd = &cobra.Command{
 		Use:   "server",
-		Short: "Start a storage node",
+		Short: "Start a server",
 		Long:  `Long description`,
-		Run:   main,
+		Run:   exec,
 	}
 )
 
@@ -25,19 +26,8 @@ func init() {
 	Cmd.Flags().StringVar(&conf.WalDir, "wal-dir", "./data/wal", "Directory for write-ahead-logs")
 }
 
-func main(cmd *cobra.Command, args []string) {
-	common.ConfigureLogger()
-
-	server, err := newServer(conf)
-	if err != nil {
-		log.Fatal().Err(err).
-			Msg("Failed to start the server")
-	}
-
-	profiler := common.RunProfiling()
-
-	common.WaitUntilSignal(
-		profiler,
-		server,
-	)
+func exec(*cobra.Command, []string) {
+	common.RunProcess(func() (io.Closer, error) {
+		return server.New(conf)
+	})
 }
