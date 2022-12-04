@@ -15,7 +15,7 @@ import (
 // This is a provider for the AddEntryStream Grpc handler
 // It's used to allow passing in a mocked version of the Grpc service
 type AddEntriesStreamProvider interface {
-	GetAddEntriesStream(follower string) (proto.OxiaLogReplication_AddEntriesClient, error)
+	GetAddEntriesStream(follower string, shard uint32) (proto.OxiaLogReplication_AddEntriesClient, error)
 }
 
 // FollowerCursor
@@ -138,8 +138,9 @@ func (fc *followerCursor) run() {
 
 func (fc *followerCursor) runOnce() error {
 	fc.Lock()
+
 	var err error
-	if fc.stream, err = fc.addEntriesStreamProvider.GetAddEntriesStream(fc.follower); err != nil {
+	if fc.stream, err = fc.addEntriesStreamProvider.GetAddEntriesStream(fc.follower, fc.shardId); err != nil {
 		return err
 	}
 
@@ -184,6 +185,10 @@ func (fc *followerCursor) runOnce() error {
 		if err != nil {
 			return err
 		}
+
+		fc.log.Debug().
+			Int64("offset", le.Offset).
+			Msg("Sending entries to follower")
 
 		if err = fc.stream.Send(&proto.AddEntryRequest{
 			Epoch:       fc.epoch,
