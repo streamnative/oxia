@@ -130,7 +130,7 @@ func (fc *followerCursor) AckIndex() int64 {
 }
 
 func (fc *followerCursor) run() {
-	backoff.RetryNotify(func() error {
+	_ = backoff.RetryNotify(func() error {
 		return fc.runOnce()
 	}, fc.backoff, func(err error, duration time.Duration) {
 		fc.log.Error().Err(err).
