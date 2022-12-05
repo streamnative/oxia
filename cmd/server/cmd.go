@@ -23,7 +23,8 @@ func init() {
 	flag.PublicPort(Cmd, &conf.PublicServicePort)
 	flag.InternalPort(Cmd, &conf.InternalServicePort)
 	flag.MetricsPort(Cmd, &conf.MetricsPort)
-	Cmd.Flags().StringVar(&conf.AdvertisedPublicAddress, "advertised-public-address", "", "Advertised public address")
+	Cmd.Flags().StringVar(&conf.DataDir, "data-dir", "./data/db", "Directory where to store data")
+	Cmd.Flags().StringVar(&conf.WalDir, "wal-dir", "./data/wal", "Directory for write-ahead-logs")
 }
 
 func exec(*cobra.Command, []string) {

@@ -11,7 +11,10 @@ import (
 	"io"
 	"oxia/proto"
 	"sync"
+	"time"
 )
+
+const DefaultRpcTimeout = 30 * time.Second
 
 type ClientPool interface {
 	io.Closer

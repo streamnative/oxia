@@ -44,6 +44,7 @@ func NewShardsDirector(walFactory wal.WalFactory, kvFactory kv.KVFactory) Shards
 		kvFactory:  kvFactory,
 		leaders:    make(map[uint32]LeaderController),
 		followers:  make(map[uint32]FollowerController),
+		pool:       common.NewClientPool(),
 		log: log.With().
 			Str("component", "shards-director").
 			Logger(),
@@ -155,5 +156,5 @@ func (s *shardsDirector) Close() error {
 				Msg("Failed to shutdown leader controller")
 		}
 	}
-	return nil
+	return s.pool.Close()
 }

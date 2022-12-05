@@ -3,7 +3,6 @@ package server
 import (
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
-	"os"
 	"oxia/common"
 	"oxia/server/kv"
 	"oxia/server/metrics"
@@ -14,8 +13,8 @@ type Config struct {
 	PublicServicePort   int
 	InternalServicePort int
 	MetricsPort         int
-
-	AdvertisedPublicAddress string
+	DataDir             string
+	WalDir              string
 }
 
 type Server struct {
@@ -37,24 +36,19 @@ func New(config Config) (*Server, error) {
 
 	s := &Server{
 		clientPool: common.NewClientPool(),
-		walFactory: wal.NewWalFactory(nil),
-		kvFactory:  kv.NewPebbleKVFactory(nil),
+		walFactory: wal.NewWalFactory(&wal.WalFactoryOptions{
+			LogDir: config.WalDir,
+		}),
+		kvFactory: kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+			DataDir:   config.DataDir,
+			CacheSize: 100 * 1024 * 1024,
+		}),
 	}
-
-	hostname, err := os.Hostname()
-	if err != nil {
-		return nil, err
-	}
-
-	advertisedPublicAddress := config.AdvertisedPublicAddress
-	if advertisedPublicAddress == "" {
-		advertisedPublicAddress = hostname
-	}
-	log.Info().Msgf("AdvertisedPublicAddress %s", advertisedPublicAddress)
 
 	s.shardsDirector = NewShardsDirector(s.walFactory, s.kvFactory)
 	s.shardAssignmentDispatcher = NewShardAssignmentDispatcher()
 
+	var err error
 	s.internalRpcServer, err = newCoordinationRpcServer(config.InternalServicePort, s.shardsDirector, s.shardAssignmentDispatcher)
 	if err != nil {
 		return nil, err
