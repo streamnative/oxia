@@ -3,6 +3,7 @@ package server
 import (
 	"github.com/spf13/cobra"
 	"io"
+	"oxia/cmd/flag"
 	"oxia/common"
 	"oxia/server"
 )
@@ -19,9 +20,9 @@ var (
 )
 
 func init() {
-	Cmd.Flags().IntVarP(&conf.PublicServicePort, "public-port", "p", 9190, "Public service port")
-	Cmd.Flags().IntVarP(&conf.InternalServicePort, "internal-port", "i", 8190, "Internal service port")
-	Cmd.Flags().IntVarP(&conf.MetricsPort, "metrics-port", "m", 8080, "Metrics port")
+	flag.PublicPort(Cmd, &conf.PublicServicePort)
+	flag.InternalPort(Cmd, &conf.InternalServicePort)
+	flag.MetricsPort(Cmd, &conf.MetricsPort)
 	Cmd.Flags().StringVar(&conf.DataDir, "data-dir", "./data/db", "Directory where to store data")
 	Cmd.Flags().StringVar(&conf.WalDir, "wal-dir", "./data/wal", "Directory for write-ahead-logs")
 }

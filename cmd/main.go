@@ -6,6 +6,7 @@ import (
 	"go.uber.org/automaxprocs/maxprocs"
 	"os"
 	"oxia/cmd/client"
+	"oxia/cmd/controller"
 	"oxia/cmd/server"
 	"oxia/cmd/standalone"
 	"oxia/common"
@@ -26,6 +27,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&common.PprofBindAddress, "profile-bind-address", "127.0.0.1:6060", "Bind address for pprof")
 
 	rootCmd.AddCommand(client.Cmd)
+	rootCmd.AddCommand(controller.Cmd)
 	rootCmd.AddCommand(server.Cmd)
 	rootCmd.AddCommand(standalone.Cmd)
 }
