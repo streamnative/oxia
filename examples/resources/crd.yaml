@@ -19,6 +19,8 @@ spec:
                   type: integer
                 shardCount:
                   type: integer
+                replicationFactor:
+                  type: integer
             status:
               type: object
               properties: {}
@@ -38,3 +40,4 @@ metadata:
 spec:
   serverReplicas: 1
   shardCount: 1
+  replicationFactor: 1

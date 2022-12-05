@@ -18,8 +18,9 @@ type OxiaCluster struct {
 
 // OxiaClusterSpec is the spec for an OxiaCluster resource
 type OxiaClusterSpec struct {
-	ServerReplicas *int32 `json:"serverReplicas"`
-	ShardCount     *int32 `json:"shardCount"`
+	ServerReplicas    *int32 `json:"serverReplicas"`
+	ShardCount        *int32 `json:"shardCount"`
+	ReplicationFactor *int32 `json:"replicationFactor"`
 }
 
 // OxiaClusterStatus is the status for an OxiaCluster resource
