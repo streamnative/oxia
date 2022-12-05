@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"github.com/cenkalti/backoff/v4"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
@@ -52,7 +53,7 @@ type followerCursor struct {
 	ackIndex    atomic.Int64
 	shardId     uint32
 
-	backoff common.Backoff
+	backoff backoff.BackOff
 	closed  atomic.Bool
 	ctx     context.Context
 	cancel  context.CancelFunc
@@ -74,7 +75,6 @@ func NewFollowerCursor(
 		ackTracker:               ackTracker,
 		addEntriesStreamProvider: addEntriesStreamProvider,
 		wal:                      wal,
-		backoff:                  common.NewBackoff(100*time.Millisecond, 30*time.Second),
 
 		log: log.With().
 			Str("component", "follower-cursor").
@@ -83,6 +83,9 @@ func NewFollowerCursor(
 			Str("follower", follower).
 			Logger(),
 	}
+
+	fc.ctx, fc.cancel = context.WithCancel(context.Background())
+	fc.backoff = common.NewBackOff(fc.ctx)
 
 	fc.lastPushed.Store(ackIndex)
 	fc.ackIndex.Store(ackIndex)
@@ -127,32 +130,21 @@ func (fc *followerCursor) AckIndex() int64 {
 }
 
 func (fc *followerCursor) run() {
-	for {
-		if fc.closed.Load() {
-			fc.log.Debug().
-				Msg("Follower cursor is closed")
-			return
-		}
-
-		if err := fc.runOnce(); err != nil {
-			fc.log.Error().Err(err).
-				Msg("Error while pushing entries to follower")
-
-			if err := fc.backoff.WaitNext(fc.ctx); err != nil {
-				continue
-			}
-		}
-	}
+	backoff.RetryNotify(func() error {
+		return fc.runOnce()
+	}, fc.backoff, func(err error, duration time.Duration) {
+		fc.log.Error().Err(err).
+			Dur("retry-after", duration).
+			Msg("Error while pushing entries to follower")
+	})
 }
 
 func (fc *followerCursor) runOnce() error {
-	fc.Lock()
-
-	fc.ctx, fc.cancel = context.WithCancel(context.Background())
-	fc.Unlock()
+	ctx, cancel := context.WithCancel(fc.ctx)
+	defer cancel()
 
 	var err error
-	if fc.stream, err = fc.addEntriesStreamProvider.GetAddEntriesStream(fc.ctx, fc.follower, fc.shardId); err != nil {
+	if fc.stream, err = fc.addEntriesStreamProvider.GetAddEntriesStream(ctx, fc.follower, fc.shardId); err != nil {
 		return err
 	}
 
@@ -168,7 +160,7 @@ func (fc *followerCursor) runOnce() error {
 		"oxia":  "follower-cursor-receive",
 		"shard": fmt.Sprintf("%d", fc.shardId),
 	}, func() {
-		fc.receiveAcks(fc.stream)
+		fc.receiveAcks(cancel, fc.stream)
 	})
 
 	fc.log.Info().
@@ -213,7 +205,7 @@ func (fc *followerCursor) runOnce() error {
 	}
 }
 
-func (fc *followerCursor) receiveAcks(stream proto.OxiaLogReplication_AddEntriesClient) {
+func (fc *followerCursor) receiveAcks(cancel context.CancelFunc, stream proto.OxiaLogReplication_AddEntriesClient) {
 	for {
 		res, err := stream.Recv()
 		if err != nil {
@@ -222,9 +214,7 @@ func (fc *followerCursor) receiveAcks(stream proto.OxiaLogReplication_AddEntries
 					Msg("Error while receiving acks")
 			}
 
-			fc.Lock()
-			fc.cancel()
-			fc.Unlock()
+			cancel()
 			return
 		}
 
