@@ -1,13 +1,14 @@
 package client
 
 import (
-	"github.com/spf13/cobra"
 	"oxia/cmd/client/delete"
 	"oxia/cmd/client/get"
 	"oxia/cmd/client/list"
 	"oxia/cmd/client/put"
 	"oxia/oxia"
 	"time"
+
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -15,6 +16,7 @@ var (
 	batchLingerMs          int64
 	maxRequestsPerBatch    int
 	batchRequestTimeoutSec int64
+	batcherBufferSize      int
 
 	Cmd = &cobra.Command{
 		Use:   "client",
@@ -28,6 +30,7 @@ func init() {
 	Cmd.Flags().Int64Var(&batchLingerMs, "batch-linger", int64(oxia.DefaultBatchLinger/time.Millisecond), "Batch linger in milliseconds")
 	Cmd.Flags().IntVar(&maxRequestsPerBatch, "max-requests-per-batch", oxia.DefaultMaxRequestsPerBatch, "Maximum requests per batch")
 	Cmd.Flags().Int64Var(&batchRequestTimeoutSec, "batch-request-timeout", int64(oxia.DefaultBatchRequestTimeout/time.Second), "Batch timeout in seconds")
+	Cmd.Flags().IntVar(&batcherBufferSize, "batcher-buffer-size", oxia.DefaultBatcherBufferSize, "Batcher buffer size")
 
 	Cmd.AddCommand(put.Cmd)
 	Cmd.AddCommand(delete.Cmd)

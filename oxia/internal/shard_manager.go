@@ -49,12 +49,19 @@ func (s *shardManagerImpl) Start() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	go s.receiveWithRecovery(ctx, readyC)
-	go func() {
+	go common.DoWithLabels(map[string]string{
+		"oxia": "receive-shard-updates",
+	}, func() {
+		s.receiveWithRecovery(ctx, readyC)
+	})
+
+	go common.DoWithLabels(map[string]string{
+		"oxia": "cancel-shard-updates",
+	}, func() {
 		if _, ok := <-s.closeC; !ok {
 			cancel()
 		}
-	}()
+	})
 
 	<-readyC
 }

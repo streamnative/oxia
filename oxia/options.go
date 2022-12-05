@@ -1,11 +1,13 @@
 package oxia
 
 import (
+	"runtime"
+	"time"
+
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/global"
 	"go.uber.org/multierr"
-	"time"
 )
 
 const (
@@ -18,6 +20,8 @@ var (
 	ErrorBatchLinger         = errors.New("BatchLinger must be greater than or equal to zero")
 	ErrorMaxRequestsPerBatch = errors.New("MaxRequestsPerBatch must be greater than zero")
 	ErrorBatchRequestTimeout = errors.New("BatchRequestTimeout must be greater than zero")
+	ErrorBatcherBuffereSize  = errors.New("BatcherBufferSize must be greater than or equal to zero")
+	DefaultBatcherBufferSize = runtime.GOMAXPROCS(-1)
 )
 
 // ClientOptions contains options for the Oxia client.
@@ -27,6 +31,7 @@ type ClientOptions struct {
 	maxRequestsPerBatch int
 	batchRequestTimeout time.Duration
 	meterProvider       metric.MeterProvider
+	batcherBufferSize   int
 }
 
 // ServiceAddress is the target host:port of any Oxia server to bootstrap the client. It is used for establishing the
@@ -45,6 +50,11 @@ func (o ClientOptions) BatchLinger() time.Duration {
 // The value must be greater than zero. A value of one will effectively disable batching.
 func (o ClientOptions) MaxRequestsPerBatch() int {
 	return o.maxRequestsPerBatch
+}
+
+// BatcherBufferSize defines how many batch requests can be queued.
+func (o ClientOptions) BatcherBufferSize() int {
+	return o.batcherBufferSize
 }
 
 // BatchRequestTimeout defines how long the client will wait for responses before cancelling the request and failing
@@ -66,6 +76,7 @@ func NewClientOptions(serviceAddress string, opts ...ClientOption) (ClientOption
 		maxRequestsPerBatch: DefaultMaxRequestsPerBatch,
 		batchRequestTimeout: DefaultBatchRequestTimeout,
 		meterProvider:       metric.NewNoopMeterProvider(),
+		batcherBufferSize:   DefaultBatcherBufferSize,
 	}
 	var errs error
 	var err error
@@ -127,4 +138,14 @@ func WithMeterProvider(meterProvider metric.MeterProvider) ClientOption {
 
 func WithGlobalMeterProvider() ClientOption {
 	return WithMeterProvider(global.MeterProvider())
+}
+
+func WithBatcherBufferSize(batcherBufferSize int) ClientOption {
+	return clientOptionFunc(func(options ClientOptions) (ClientOptions, error) {
+		if batcherBufferSize < 0 {
+			return options, ErrorBatcherBuffereSize
+		}
+		options.batcherBufferSize = batcherBufferSize
+		return options, nil
+	})
 }

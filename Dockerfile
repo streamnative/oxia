@@ -9,6 +9,8 @@ RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 ENV PATH=$PATH:/go/bin
 ADD . /oxia-src
 
+RUN apk add build-base
+
 RUN cd /oxia-src \
     && make
 

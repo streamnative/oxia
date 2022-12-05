@@ -3,48 +3,10 @@ package batch
 import (
 	"errors"
 	"io"
-	"oxia/oxia/internal"
-	"oxia/oxia/internal/metrics"
 	"time"
 )
 
 var ErrorShuttingDown = errors.New("shutting down")
-
-type BatcherFactory struct {
-	Executor            internal.Executor
-	Linger              time.Duration
-	MaxRequestsPerBatch int
-	Metrics             *metrics.Metrics
-}
-
-func (b *BatcherFactory) NewWriteBatcher(shardId *uint32) Batcher {
-	return b.newBatcher(shardId, writeBatchFactory{
-		execute: b.Executor.ExecuteWrite,
-		metrics: b.Metrics,
-	}.newBatch)
-}
-
-func (b *BatcherFactory) NewReadBatcher(shardId *uint32) Batcher {
-	return b.newBatcher(shardId, readBatchFactory{
-		execute: b.Executor.ExecuteRead,
-		metrics: b.Metrics,
-	}.newBatch)
-}
-
-func (b *BatcherFactory) newBatcher(shardId *uint32, batchFactory func(shardId *uint32) Batch) Batcher {
-	batcher := &batcherImpl{
-		shardId:             shardId,
-		batchFactory:        batchFactory,
-		callC:               make(chan any),
-		closeC:              make(chan bool),
-		linger:              b.Linger,
-		maxRequestsPerBatch: b.MaxRequestsPerBatch,
-	}
-	go batcher.run()
-	return batcher
-}
-
-//////////
 
 type Batcher interface {
 	io.Closer
@@ -93,9 +55,11 @@ func (b *batcherImpl) run() {
 				batch = nil
 			}
 		case <-timeout:
-			timer.Stop()
-			batch.Complete()
-			batch = nil
+			if batch != nil {
+				timer.Stop()
+				batch.Complete()
+				batch = nil
+			}
 		case <-b.closeC:
 			if batch != nil {
 				timer.Stop()

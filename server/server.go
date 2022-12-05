@@ -3,63 +3,58 @@ package server
 import (
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
-	"os"
 	"oxia/common"
 	"oxia/server/kv"
 	"oxia/server/metrics"
 	"oxia/server/wal"
 )
 
-type serverConfig struct {
+type Config struct {
 	InternalServicePort int
 	PublicServicePort   int
 	MetricsPort         int
-
-	AdvertisedInternalAddress string
-	AdvertisedPublicAddress   string
+	DataDir             string
+	WalDir              string
 }
 
-type server struct {
+type Server struct {
 	*internalRpcServer
 	*PublicRpcServer
 
-	shardsDirector ShardsDirector
-	clientPool     common.ClientPool
-	metrics        *metrics.PrometheusMetrics
-	walFactory     wal.WalFactory
-	kvFactory      kv.KVFactory
+	shardAssignmentDispatcher ShardAssignmentsDispatcher
+	shardsDirector            ShardsDirector
+	clientPool                common.ClientPool
+	metrics                   *metrics.PrometheusMetrics
+	walFactory                wal.WalFactory
+	kvFactory                 kv.KVFactory
 }
 
-func newServer(config serverConfig) (*server, error) {
+func New(config Config) (*Server, error) {
 	log.Info().
 		Interface("config", config).
 		Msg("Starting Oxia server")
 
-	s := &server{
+	s := &Server{
 		clientPool: common.NewClientPool(),
-		walFactory: wal.NewWalFactory(nil),
-		kvFactory:  kv.NewPebbleKVFactory(nil),
+		walFactory: wal.NewWalFactory(&wal.WalFactoryOptions{
+			LogDir: config.WalDir,
+		}),
+		kvFactory: kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+			DataDir:   config.DataDir,
+			CacheSize: 100 * 1024 * 1024,
+		}),
 	}
-
-	hostname, err := os.Hostname()
-	if err != nil {
-		return nil, err
-	}
-
-	advertisedPublicAddress := config.AdvertisedPublicAddress
-	if advertisedPublicAddress == "" {
-		advertisedPublicAddress = hostname
-	}
-	log.Info().Msgf("AdvertisedPublicAddress %s", advertisedPublicAddress)
 
 	s.shardsDirector = NewShardsDirector(s.walFactory, s.kvFactory)
+	s.shardAssignmentDispatcher = NewShardAssignmentDispatcher()
 
-	s.internalRpcServer, err = newCoordinationRpcServer(config.InternalServicePort, s.shardsDirector)
+	var err error
+	s.internalRpcServer, err = newCoordinationRpcServer(config.InternalServicePort, s.shardsDirector, s.shardAssignmentDispatcher)
 	if err != nil {
 		return nil, err
 	}
 
-	s.PublicRpcServer, err = NewPublicRpcServer(config.PublicServicePort, s.shardsDirector)
+	s.PublicRpcServer, err = NewPublicRpcServer(config.PublicServicePort, s.shardsDirector, s.shardAssignmentDispatcher)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +67,7 @@ func newServer(config serverConfig) (*server, error) {
 	return s, nil
 }
 
-func (s *server) Close() error {
+func (s *Server) Close() error {
 	return multierr.Combine(
 		s.PublicRpcServer.Close(),
 		s.internalRpcServer.Close(),

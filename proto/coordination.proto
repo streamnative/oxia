@@ -4,8 +4,12 @@ package coordination;
 
 option go_package = "github.com/streamnative/oxia/proto";
 
+import "proto/client.proto";
+
 // controller -> node
 service OxiaControl {
+  rpc ShardAssignment(stream io.streamnative.oxia.proto.ShardAssignmentsResponse) returns (CoordinationShardAssignmentsResponse) {}
+
   rpc Fence(FenceRequest) returns (FenceResponse);
   rpc BecomeLeader(BecomeLeaderRequest) returns (BecomeLeaderResponse) {}
 }
@@ -15,6 +19,8 @@ service OxiaLogReplication {
   rpc Truncate(TruncateRequest) returns (TruncateResponse) {}
   rpc AddEntries(stream AddEntryRequest) returns (stream AddEntryResponse) {}
 }
+
+message CoordinationShardAssignmentsResponse {}
 
 message EntryId {
   int64 epoch = 1;
@@ -71,5 +77,4 @@ message AddEntryRequest {
 message AddEntryResponse {
   int64 epoch = 1;
   int64 offset = 2;
-  bool invalid_epoch = 3;
 }

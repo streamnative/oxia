@@ -8,6 +8,7 @@ import (
 	"google.golang.org/grpc"
 	"io"
 	"net"
+	"oxia/common"
 )
 
 type Container struct {
@@ -39,11 +40,14 @@ func Start(name string, port int, registerFunc func(grpc.ServiceRegistrar)) (*Co
 		Str("bindAddress", listener.Addr().String()).
 		Logger()
 
-	go func() {
+	go common.DoWithLabels(map[string]string{
+		"oxia": name,
+		"bind": listener.Addr().String(),
+	}, func() {
 		if err := c.server.Serve(listener); err != nil {
 			c.log.Fatal().Err(err).Msg("Failed to start serving")
 		}
-	}()
+	})
 
 	c.log.Info().Msg("Started container")
 

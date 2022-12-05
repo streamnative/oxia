@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	pb "google.golang.org/protobuf/proto"
-	"os"
 	"oxia/proto"
+	"path/filepath"
 	"sync"
 )
 
@@ -37,7 +37,8 @@ type persistentWal struct {
 
 func newPersistentWal(shard uint32, dir string) (Wal, error) {
 	opts := DefaultOptions
-	log, err := Open(fmt.Sprintf("%s%c%06d", dir, os.PathSeparator, shard), opts)
+	walPath := filepath.Join(dir, fmt.Sprint("shard-", shard))
+	log, err := Open(walPath, opts)
 	if err != nil {
 		return nil, err
 	}

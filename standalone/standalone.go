@@ -1,36 +1,37 @@
 package standalone
 
 import (
-	"fmt"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
 	"os"
 	"oxia/server/kv"
 	"oxia/server/metrics"
+	"oxia/server/wal"
 )
 
-type standaloneConfig struct {
+type Config struct {
 	PublicServicePort uint32
 	MetricsPort       int
 
 	AdvertisedPublicAddress string
-
-	NumShards uint32
-	DataDir   string
+	NumShards               uint32
+	DataDir                 string
+	WalDir                  string
 }
 
-type standalone struct {
-	rpc       *StandaloneRpcServer
-	kvFactory kv.KVFactory
-	metrics   *metrics.PrometheusMetrics
+type Standalone struct {
+	rpc        *StandaloneRpcServer
+	kvFactory  kv.KVFactory
+	walFactory wal.WalFactory
+	metrics    *metrics.PrometheusMetrics
 }
 
-func newStandalone(config *standaloneConfig) (*standalone, error) {
+func New(config Config) (*Standalone, error) {
 	log.Info().
 		Interface("config", config).
 		Msg("Starting Oxia standalone")
 
-	s := &standalone{}
+	s := &Standalone{}
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -42,13 +43,15 @@ func newStandalone(config *standaloneConfig) (*standalone, error) {
 		advertisedPublicAddress = hostname
 	}
 
-	identityAddr := fmt.Sprintf("%s:%d", advertisedPublicAddress, config.PublicServicePort)
+	s.walFactory = wal.NewWalFactory(&wal.WalFactoryOptions{
+		LogDir: config.WalDir,
+	})
 
 	s.kvFactory = kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
 		DataDir: config.DataDir,
 	})
 
-	s.rpc, err = NewStandaloneRpcServer(int(config.PublicServicePort), identityAddr, config.NumShards, s.kvFactory)
+	s.rpc, err = NewStandaloneRpcServer(int(config.PublicServicePort), advertisedPublicAddress, config.NumShards, s.walFactory, s.kvFactory)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +64,7 @@ func newStandalone(config *standaloneConfig) (*standalone, error) {
 	return s, nil
 }
 
-func (s *standalone) Close() error {
+func (s *Standalone) Close() error {
 	return multierr.Combine(
 		s.rpc.Close(),
 		s.kvFactory.Close(),

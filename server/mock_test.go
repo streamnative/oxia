@@ -124,7 +124,7 @@ func (m *mockRpcClient) RecvMsg(msg interface{}) error {
 	panic("not implemented")
 }
 
-func (m *mockRpcClient) GetAddEntriesStream(follower string) (proto.OxiaLogReplication_AddEntriesClient, error) {
+func (m *mockRpcClient) GetAddEntriesStream(follower string, shard uint32) (proto.OxiaLogReplication_AddEntriesClient, error) {
 	return m, nil
 }
 
@@ -135,4 +135,108 @@ func (m *mockRpcClient) Truncate(follower string, req *proto.TruncateRequest) (*
 
 	x := <-m.truncateResps
 	return x.TruncateResponse, x.error
+}
+
+func newMockShardAssignmentClientStream() *mockShardAssignmentClientStream {
+	return &mockShardAssignmentClientStream{
+		responses: make(chan *proto.ShardAssignmentsResponse, 1000),
+		md:        make(metadata.MD),
+	}
+}
+
+type mockShardAssignmentClientStream struct {
+	responses chan *proto.ShardAssignmentsResponse
+	md        metadata.MD
+}
+
+func (m *mockShardAssignmentClientStream) GetResponse() *proto.ShardAssignmentsResponse {
+	x := <-m.responses
+	return x
+}
+
+func (m *mockShardAssignmentClientStream) Send(response *proto.ShardAssignmentsResponse) error {
+	m.responses <- response
+	return nil
+}
+
+func (m *mockShardAssignmentClientStream) SetHeader(md metadata.MD) error {
+	m.md = md
+	return nil
+}
+
+func (m *mockShardAssignmentClientStream) SendHeader(md metadata.MD) error {
+	panic("not implemented")
+}
+
+func (m *mockShardAssignmentClientStream) SetTrailer(md metadata.MD) {
+	panic("not implemented")
+}
+
+func (m *mockShardAssignmentClientStream) Context() context.Context {
+	return context.Background()
+}
+
+func (m *mockShardAssignmentClientStream) SendMsg(msg interface{}) error {
+	panic("not implemented")
+}
+
+func (m *mockShardAssignmentClientStream) RecvMsg(msg interface{}) error {
+	panic("not implemented")
+}
+
+func newMockShardAssignmentControllerStream() *mockShardAssignmentControllerStream {
+	return &mockShardAssignmentControllerStream{
+		requests:  make(chan *proto.ShardAssignmentsResponse, 1000),
+		responses: make(chan *proto.CoordinationShardAssignmentsResponse, 1000),
+		md:        make(metadata.MD),
+	}
+}
+
+type mockShardAssignmentControllerStream struct {
+	requests  chan *proto.ShardAssignmentsResponse
+	responses chan *proto.CoordinationShardAssignmentsResponse
+	md        metadata.MD
+}
+
+func (m *mockShardAssignmentControllerStream) GetResponse() *proto.CoordinationShardAssignmentsResponse {
+	return <-m.responses
+}
+
+func (m *mockShardAssignmentControllerStream) SendAndClose(empty *proto.CoordinationShardAssignmentsResponse) error {
+	m.responses <- empty
+	return nil
+}
+
+func (m *mockShardAssignmentControllerStream) AddRequest(request *proto.ShardAssignmentsResponse) {
+	m.requests <- request
+}
+
+func (m *mockShardAssignmentControllerStream) Recv() (*proto.ShardAssignmentsResponse, error) {
+	request := <-m.requests
+	return request, nil
+}
+
+func (m *mockShardAssignmentControllerStream) SetHeader(md metadata.MD) error {
+	m.md = md
+	return nil
+}
+
+func (m *mockShardAssignmentControllerStream) SendHeader(md metadata.MD) error {
+	panic("not implemented")
+}
+
+func (m *mockShardAssignmentControllerStream) SetTrailer(md metadata.MD) {
+	panic("not implemented")
+}
+
+func (m *mockShardAssignmentControllerStream) Context() context.Context {
+	return context.Background()
+}
+
+func (m *mockShardAssignmentControllerStream) SendMsg(msg interface{}) error {
+	panic("not implemented")
+}
+
+func (m *mockShardAssignmentControllerStream) RecvMsg(msg interface{}) error {
+	panic("not implemented")
 }

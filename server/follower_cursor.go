@@ -1,9 +1,11 @@
 package server
 
 import (
+	"fmt"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"io"
+	"oxia/common"
 	"oxia/proto"
 	"oxia/server/wal"
 	"sync"
@@ -13,7 +15,7 @@ import (
 // This is a provider for the AddEntryStream Grpc handler
 // It's used to allow passing in a mocked version of the Grpc service
 type AddEntriesStreamProvider interface {
-	GetAddEntriesStream(follower string) (proto.OxiaLogReplication_AddEntriesClient, error)
+	GetAddEntriesStream(follower string, shard uint32) (proto.OxiaLogReplication_AddEntriesClient, error)
 }
 
 // FollowerCursor
@@ -43,6 +45,7 @@ type followerCursor struct {
 	wal         wal.Wal
 	lastPushed  int64
 	ackIndex    int64
+	shardId     uint32
 
 	closed bool
 	log    zerolog.Logger
@@ -79,7 +82,12 @@ func NewFollowerCursor(
 		return nil, err
 	}
 
-	go fc.run()
+	go common.DoWithLabels(map[string]string{
+		"oxia":  "follower-cursor-send",
+		"shard": fmt.Sprintf("%d", fc.shardId),
+	}, func() {
+		fc.run()
+	})
 
 	return fc, nil
 }
@@ -130,8 +138,9 @@ func (fc *followerCursor) run() {
 
 func (fc *followerCursor) runOnce() error {
 	fc.Lock()
+
 	var err error
-	if fc.stream, err = fc.addEntriesStreamProvider.GetAddEntriesStream(fc.follower); err != nil {
+	if fc.stream, err = fc.addEntriesStreamProvider.GetAddEntriesStream(fc.follower, fc.shardId); err != nil {
 		return err
 	}
 
@@ -144,10 +153,15 @@ func (fc *followerCursor) runOnce() error {
 	}
 	defer reader.Close()
 
-	go fc.receiveAcks(fc.stream)
+	go common.DoWithLabels(map[string]string{
+		"oxia":  "follower-cursor-receive",
+		"shard": fmt.Sprintf("%d", fc.shardId),
+	}, func() {
+		fc.receiveAcks(fc.stream)
+	})
 
 	fc.log.Info().
-		Interface("ack-index", currentOffset).
+		Int64("ack-index", currentOffset).
 		Msg("Successfully attached cursor follower")
 
 	for {
@@ -171,6 +185,10 @@ func (fc *followerCursor) runOnce() error {
 		if err != nil {
 			return err
 		}
+
+		fc.log.Debug().
+			Int64("offset", le.Offset).
+			Msg("Sending entries to follower")
 
 		if err = fc.stream.Send(&proto.AddEntryRequest{
 			Epoch:       fc.epoch,
@@ -202,16 +220,6 @@ func (fc *followerCursor) receiveAcks(stream proto.OxiaLogReplication_AddEntries
 
 		if res == nil {
 			// Stream was closed by server side
-			return
-		}
-
-		if res.InvalidEpoch {
-			fc.log.Error().Err(err).
-				Msg("Invalid epoch")
-			if err := stream.CloseSend(); err != nil {
-				fc.log.Warn().Err(err).
-					Msg("Error while closing stream")
-			}
 			return
 		}
 

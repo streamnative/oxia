@@ -4,6 +4,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
 	"io"
 	"math"
@@ -13,10 +15,15 @@ import (
 	"sync"
 )
 
-const MaxEpoch = math.MaxInt64
+const (
+	MaxEpoch = math.MaxInt64
 
-var ErrorInvalidEpoch = errors.New("oxia: invalid epoch")
-var ErrorInvalidStatus = errors.New("oxia: invalid status")
+	CodeInvalidEpoch codes.Code = 100
+)
+
+var (
+	ErrorInvalidStatus = errors.New("oxia: invalid status")
+)
 
 // FollowerController handles all the operations of a given shard's follower
 type FollowerController interface {
@@ -69,7 +76,6 @@ type followerController struct {
 func NewFollowerController(shardId uint32, wf wal.WalFactory, kvFactory kv.KVFactory) (FollowerController, error) {
 	fc := &followerController{
 		shardId:     shardId,
-		epoch:       wal.InvalidEpoch,
 		commitIndex: wal.InvalidOffset,
 		headIndex:   wal.InvalidOffset,
 		status:      NotMember,
@@ -98,8 +104,14 @@ func NewFollowerController(shardId uint32, wf wal.WalFactory, kvFactory kv.KVFac
 	}
 	fc.headIndex = entryId.Offset
 
+	if fc.epoch, err = fc.db.ReadEpoch(); err != nil {
+		return nil, err
+	}
+
+	fc.log = fc.log.With().Int64("epoch", fc.epoch).Logger()
+
 	fc.log.Info().
-		Interface("head-index", fc.headIndex).
+		Int64("head-index", fc.headIndex).
 		Msg("Created follower")
 	return fc, nil
 }
@@ -133,18 +145,33 @@ func (fc *followerController) Fence(req *proto.FenceRequest) (*proto.FenceRespon
 	fc.Lock()
 	defer fc.Unlock()
 
-	if err := checkEpochLaterIn(req, fc.epoch); err != nil {
+	if req.Epoch <= fc.epoch {
+		fc.log.Warn().
+			Int64("follower-epoch", fc.epoch).
+			Int64("fence-epoch", req.Epoch).
+			Msg("Failed to fence with invalid epoch")
+		return nil, status.Errorf(CodeInvalidEpoch, "invalid epoch - current epoch %d - request epoch %d", fc.epoch, req.Epoch)
+	}
+
+	if err := fc.db.UpdateEpoch(req.Epoch); err != nil {
 		return nil, err
 	}
 
-	fc.epoch = req.GetEpoch()
+	fc.epoch = req.Epoch
+	fc.log = fc.log.With().Int64("epoch", fc.epoch).Logger()
 	fc.status = Fenced
 
 	lastEntryId, err := getLastEntryIdInWal(fc.wal)
 	if err != nil {
+		fc.log.Warn().Err(err).
+			Int64("follower-epoch", fc.epoch).
+			Int64("fence-epoch", req.Epoch).
+			Msg("Failed to get last")
 		return nil, err
 	}
 
+	fc.log.Info().
+		Msg("Follower successfully fenced")
 	return &proto.FenceResponse{
 		Epoch:     fc.epoch,
 		HeadIndex: lastEntryId,
@@ -158,12 +185,12 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 	if err := checkStatus(Fenced, fc.status); err != nil {
 		return nil, err
 	}
-	if err := checkEpochEqualIn(req, fc.epoch); err != nil {
-		return nil, err
+
+	if req.Epoch != fc.epoch {
+		return nil, status.Errorf(CodeInvalidEpoch, "invalid epoch - current epoch %d - request epoch %d", fc.epoch, req.Epoch)
 	}
 
 	fc.status = Follower
-	fc.epoch = req.Epoch
 	headIndex, err := fc.wal.TruncateLog(req.HeadIndex.Offset)
 	if err != nil {
 		return nil, err
@@ -193,6 +220,8 @@ func (fc *followerController) AddEntries(stream proto.OxiaLogReplication_AddEntr
 	for {
 		if addEntryReq, err := stream.Recv(); err != nil {
 			return err
+		} else if addEntryReq == nil {
+			return nil
 		} else if res, err := fc.addEntry(addEntryReq); err != nil {
 			return err
 		} else if err = stream.Send(res); err != nil {
@@ -204,26 +233,9 @@ func (fc *followerController) AddEntries(stream proto.OxiaLogReplication_AddEntr
 func (fc *followerController) addEntry(req *proto.AddEntryRequest) (*proto.AddEntryResponse, error) {
 	fc.Lock()
 	defer fc.Unlock()
-	if fc.status != Follower && fc.status != Fenced {
-		return nil, errors.Wrapf(ErrorInvalidStatus, "AddEntry request when status = %+v", fc.status)
-	}
-	if req.Entry.Epoch < fc.epoch {
-		/*
-		 A follower node rejects an entry from the leader.
 
-
-		  If the leader has a lower epoch than the follower then the
-		  follower must reject it with an INVALID_EPOCH response.
-
-		  Key points:
-		  - The epoch of the response should be the epoch of the
-		    request so that the leader will not ignore the response.
-		*/
-		return &proto.AddEntryResponse{
-			Epoch:        req.Entry.Epoch,
-			Offset:       wal.InvalidOffset,
-			InvalidEpoch: true,
-		}, nil
+	if req.Epoch != fc.epoch {
+		return nil, status.Errorf(CodeInvalidEpoch, "invalid epoch - current epoch %d - request epoch %d", fc.epoch, req.Epoch)
 	}
 
 	// A follower node confirms an entry to the leader
@@ -232,7 +244,7 @@ func (fc *followerController) addEntry(req *proto.AddEntryRequest) (*proto.AddEn
 	// and updates its commit index with the commit index of
 	// the request.
 	fc.status = Follower
-	fc.epoch = req.Entry.Epoch
+
 	if err := fc.wal.Append(req.GetEntry()); err != nil {
 		return nil, err
 	}
@@ -244,9 +256,8 @@ func (fc *followerController) addEntry(req *proto.AddEntryRequest) (*proto.AddEn
 		return nil, err
 	}
 	return &proto.AddEntryResponse{
-		Epoch:        fc.epoch,
-		Offset:       req.Entry.Offset,
-		InvalidEpoch: false,
+		Epoch:  fc.epoch,
+		Offset: req.Entry.Offset,
 	}, nil
 
 }
@@ -268,14 +279,19 @@ func (fc *followerController) processCommittedEntries(minExclusive int64, maxInc
 		}
 	}()
 
-	entry, err := reader.ReadNext()
-	for err == nil && entry.Offset <= maxInclusive {
+	for reader.HasNext() {
+		entry, err := reader.ReadNext()
 		if err == wal.ErrorReaderClosed {
 			fc.log.Info().Msg("Stopped reading committed entries")
 			return err
 		} else if err != nil {
 			fc.log.Err(err).Msg("Error reading committed entry")
 			return err
+		}
+
+		if entry.Offset > maxInclusive {
+			// We read up to the max point
+			return nil
 		}
 
 		br := &proto.WriteRequest{}
@@ -289,7 +305,6 @@ func (fc *followerController) processCommittedEntries(minExclusive int64, maxInc
 			fc.log.Err(err).Msg("Error applying committed entry")
 			return err
 		}
-		entry, err = reader.ReadNext()
 	}
 	return err
 }
@@ -317,20 +332,6 @@ func GetHighestEntryOfEpoch(w wal.Wal, epoch int64) (*proto.EntryId, error) {
 
 type MessageWithEpoch interface {
 	GetEpoch() int64
-}
-
-func checkEpochLaterIn(req MessageWithEpoch, expected int64) error {
-	if req.GetEpoch() <= expected {
-		return errors.Wrapf(ErrorInvalidEpoch, "Got old epoch %d, when at %d", req.GetEpoch(), expected)
-	}
-	return nil
-}
-
-func checkEpochEqualIn(req MessageWithEpoch, expected int64) error {
-	if req.GetEpoch() != expected {
-		return errors.Wrapf(ErrorInvalidEpoch, "Got clashing epoch %d, when at %d", req.GetEpoch(), expected)
-	}
-	return nil
 }
 
 func checkStatus(expected, actual Status) error {
