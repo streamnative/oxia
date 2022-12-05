@@ -1,33 +1,31 @@
-package server
+package controller
 
 import (
 	"github.com/spf13/cobra"
 	"io"
 	"oxia/cmd/flag"
 	"oxia/common"
-	"oxia/server"
+	"oxia/controller"
 )
 
 var (
-	conf = server.Config{}
+	conf = controller.Config{}
 
 	Cmd = &cobra.Command{
-		Use:   "server",
-		Short: "Start a server",
-		Long:  `Long description`,
+		Use:   "controller",
+		Short: "Start a controller",
+		Long:  `Start a controller`,
 		Run:   exec,
 	}
 )
 
 func init() {
-	flag.PublicPort(Cmd, &conf.PublicServicePort)
 	flag.InternalPort(Cmd, &conf.InternalServicePort)
 	flag.MetricsPort(Cmd, &conf.MetricsPort)
-	Cmd.Flags().StringVar(&conf.AdvertisedPublicAddress, "advertised-public-address", "", "Advertised public address")
 }
 
 func exec(*cobra.Command, []string) {
 	common.RunProcess(func() (io.Closer, error) {
-		return server.New(conf)
+		return controller.New(conf)
 	})
 }

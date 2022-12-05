@@ -1,10 +1,12 @@
 package client
 
 import (
+	"fmt"
 	"oxia/cmd/client/delete"
 	"oxia/cmd/client/get"
 	"oxia/cmd/client/list"
 	"oxia/cmd/client/put"
+	"oxia/operator/resource"
 	"oxia/oxia"
 	"time"
 
@@ -26,7 +28,8 @@ var (
 )
 
 func init() {
-	Cmd.Flags().StringVarP(&serviceAddr, "service-address", "a", "localhost:9190", "Service address")
+	defaultServiceAddress := fmt.Sprintf("localhost:%d", resource.MetricsPort())
+	Cmd.Flags().StringVarP(&serviceAddr, "service-address", "a", defaultServiceAddress, "Service address")
 	Cmd.Flags().Int64Var(&batchLingerMs, "batch-linger", int64(oxia.DefaultBatchLinger/time.Millisecond), "Batch linger in milliseconds")
 	Cmd.Flags().IntVar(&maxRequestsPerBatch, "max-requests-per-batch", oxia.DefaultMaxRequestsPerBatch, "Maximum requests per batch")
 	Cmd.Flags().Int64Var(&batchRequestTimeoutSec, "batch-request-timeout", int64(oxia.DefaultBatchRequestTimeout/time.Second), "Batch timeout in seconds")

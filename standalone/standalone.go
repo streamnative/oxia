@@ -10,7 +10,7 @@ import (
 )
 
 type Config struct {
-	PublicServicePort uint32
+	PublicServicePort int
 	MetricsPort       int
 
 	AdvertisedPublicAddress string
@@ -51,7 +51,7 @@ func New(config Config) (*Standalone, error) {
 		DataDir: config.DataDir,
 	})
 
-	s.rpc, err = NewStandaloneRpcServer(int(config.PublicServicePort), advertisedPublicAddress, config.NumShards, s.walFactory, s.kvFactory)
+	s.rpc, err = NewStandaloneRpcServer(config.PublicServicePort, advertisedPublicAddress, config.NumShards, s.walFactory, s.kvFactory)
 	if err != nil {
 		return nil, err
 	}

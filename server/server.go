@@ -11,8 +11,8 @@ import (
 )
 
 type Config struct {
-	InternalServicePort int
 	PublicServicePort   int
+	InternalServicePort int
 	MetricsPort         int
 
 	AdvertisedPublicAddress string
