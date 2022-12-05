@@ -28,7 +28,7 @@ var (
 )
 
 func init() {
-	defaultServiceAddress := fmt.Sprintf("localhost:%d", resource.MetricsPort())
+	defaultServiceAddress := fmt.Sprintf("localhost:%d", resource.PublicPort())
 	Cmd.Flags().StringVarP(&serviceAddr, "service-address", "a", defaultServiceAddress, "Service address")
 	Cmd.Flags().Int64Var(&batchLingerMs, "batch-linger", int64(oxia.DefaultBatchLinger/time.Millisecond), "Batch linger in milliseconds")
 	Cmd.Flags().IntVar(&maxRequestsPerBatch, "max-requests-per-batch", oxia.DefaultMaxRequestsPerBatch, "Maximum requests per batch")
