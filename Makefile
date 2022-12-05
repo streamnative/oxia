@@ -1,6 +1,6 @@
 
 .PHONY: build
-build: proto
+build: proto crd
 	go build -v -o bin/oxia ./cmd
 
 test: build
@@ -50,3 +50,8 @@ tla:
 		java -XX:+UseParallelGC -DTLA-Library=.tools/CommunityModules-deps.jar -jar .tools/tla2tools.jar \
 			-deadlock -workers auto\
 			OxiaReplication.tla
+
+crd:
+	go mod vendor
+	hack/update-codegen.sh
+	rm -rf vendor
