@@ -2,4 +2,4 @@
 // +groupName=oxia.streamnative.io
 
 // Package v1alpha1 is the v1alpha1 version of the API.
-package v1alpha1 // TODO import "k8s.io/sample-operator/pkg/apis/samplecontroller/v1alpha1"
+package v1alpha1 // import "oxia/pkg/apis/oxia/v1alpha1"
