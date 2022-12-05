@@ -25,7 +25,7 @@ type OxiaClusterSpec struct {
 
 // OxiaClusterStatus is the status for an OxiaCluster resource
 type OxiaClusterStatus struct {
-	//TODO CRD status fields
+	//TODO inherit from coordinator.ClusterStatus
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
