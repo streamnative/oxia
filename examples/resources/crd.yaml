@@ -1,0 +1,43 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: oxiaclusters.oxia.streamnative.io
+spec:
+  group: oxia.streamnative.io
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                serverReplicas:
+                  type: integer
+                shardCount:
+                  type: integer
+                replicationFactor:
+                  type: integer
+            status:
+              type: object
+              properties: {}
+      subresources:
+        status: {}
+  names:
+    kind: OxiaCluster
+    singular: oxiacluster
+    plural: oxiaclusters
+    shortNames: ["oc"]
+  scope: Cluster #or Namespaced
+---
+apiVersion: oxia.streamnative.io/v1alpha1
+kind: OxiaCluster
+metadata:
+  name: oxia
+spec:
+  serverReplicas: 1
+  shardCount: 1
+  replicationFactor: 1

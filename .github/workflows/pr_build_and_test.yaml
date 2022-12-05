@@ -32,18 +32,14 @@ jobs:
           go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28
           go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2
 
-      - name: Generate proto
-        run: make proto
+      - name: Build
+        run: make build
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@0ad9a0988b3973e851ab0a07adf248ec2e100376 #v3.3.1
         with:
           version: v1.50.1
           args: --verbose --timeout=10m
-
-
-      - name: Build
-        run: make build
 
       - name: Test
         run: make test
