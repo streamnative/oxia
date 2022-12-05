@@ -279,14 +279,19 @@ func (fc *followerController) processCommittedEntries(minExclusive int64, maxInc
 		}
 	}()
 
-	entry, err := reader.ReadNext()
-	for err == nil && entry.Offset <= maxInclusive {
+	for reader.HasNext() {
+		entry, err := reader.ReadNext()
 		if err == wal.ErrorReaderClosed {
 			fc.log.Info().Msg("Stopped reading committed entries")
 			return err
 		} else if err != nil {
 			fc.log.Err(err).Msg("Error reading committed entry")
 			return err
+		}
+
+		if entry.Offset > maxInclusive {
+			// We read up to the max point
+			return nil
 		}
 
 		br := &proto.WriteRequest{}

@@ -261,6 +261,51 @@ func TestFollower_PersistentEpoch(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
+func TestFollower_CommitIndexLastEntry(t *testing.T) {
+	var shardId uint32
+	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
+	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
+
+	fc, err := NewFollowerController(shardId, walFactory, kvFactory)
+	assert.NoError(t, err)
+
+	_, err = fc.Fence(&proto.FenceRequest{Epoch: 1})
+	assert.NoError(t, err)
+	assert.Equal(t, Fenced, fc.Status())
+	assert.EqualValues(t, 1, fc.Epoch())
+
+	stream := newMockServerAddEntriesStream()
+	go func() { assert.NoError(t, fc.AddEntries(stream)) }()
+
+	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, 0))
+
+	// Wait for addEntryResponses
+	r1 := stream.GetResponse()
+
+	assert.Equal(t, Follower, fc.Status())
+
+	assert.EqualValues(t, 1, r1.Epoch)
+	assert.EqualValues(t, 0, r1.Offset)
+
+	dbRes, err := fc.(*followerController).db.ProcessRead(&proto.ReadRequest{Gets: []*proto.GetRequest{{
+		Key:            "a",
+		IncludePayload: true}, {
+		Key:            "b",
+		IncludePayload: true,
+	},
+	}})
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(dbRes.Gets))
+	assert.Equal(t, proto.Status_OK, dbRes.Gets[0].Status)
+	assert.Equal(t, []byte("0"), dbRes.Gets[0].Payload)
+	assert.Equal(t, proto.Status_OK, dbRes.Gets[1].Status)
+	assert.Equal(t, []byte("1"), dbRes.Gets[1].Payload)
+
+	assert.NoError(t, fc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
 func TestFollowerController_RejectEntriesWithDifferentEpoch(t *testing.T) {
 	var shardId uint32
 	kvFactory := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
