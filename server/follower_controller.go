@@ -305,7 +305,6 @@ func (fc *followerController) processCommittedEntries(minExclusive int64, maxInc
 			fc.log.Err(err).Msg("Error applying committed entry")
 			return err
 		}
-		entry, err = reader.ReadNext()
 	}
 	return err
 }
