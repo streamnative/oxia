@@ -12,6 +12,8 @@ import (
 	"oxia/proto"
 	"oxia/server/wal"
 	"sync"
+	"sync/atomic"
+	"time"
 )
 
 // AddEntriesStreamProvider
@@ -46,14 +48,15 @@ type followerCursor struct {
 	ackTracker  QuorumAckTracker
 	cursorAcker CursorAcker
 	wal         wal.Wal
-	lastPushed  int64
-	ackIndex    int64
+	lastPushed  atomic.Int64
+	ackIndex    atomic.Int64
 	shardId     uint32
 
-	closed bool
-	ctx    context.Context
-	cancel context.CancelFunc
-	log    zerolog.Logger
+	backoff common.Backoff
+	closed  atomic.Bool
+	ctx     context.Context
+	cancel  context.CancelFunc
+	log     zerolog.Logger
 }
 
 func NewFollowerCursor(
@@ -71,8 +74,7 @@ func NewFollowerCursor(
 		ackTracker:               ackTracker,
 		addEntriesStreamProvider: addEntriesStreamProvider,
 		wal:                      wal,
-		lastPushed:               ackIndex,
-		ackIndex:                 ackIndex,
+		backoff:                  common.NewBackoff(100*time.Millisecond, 30*time.Second),
 
 		log: log.With().
 			Str("component", "follower-cursor").
@@ -82,7 +84,8 @@ func NewFollowerCursor(
 			Logger(),
 	}
 
-	fc.ctx, fc.cancel = context.WithCancel(context.Background())
+	fc.lastPushed.Store(ackIndex)
+	fc.ackIndex.Store(ackIndex)
 
 	var err error
 	if fc.cursorAcker, err = ackTracker.NewCursorAcker(); err != nil {
@@ -103,8 +106,10 @@ func (fc *followerCursor) Close() error {
 	fc.Lock()
 	defer fc.Unlock()
 
-	fc.closed = true
-	fc.cancel()
+	fc.closed.Store(true)
+	if fc.cancel != nil {
+		fc.cancel()
+	}
 
 	if fc.stream != nil {
 		return fc.stream.CloseSend()
@@ -114,24 +119,18 @@ func (fc *followerCursor) Close() error {
 }
 
 func (fc *followerCursor) LastPushed() int64 {
-	fc.Lock()
-	defer fc.Unlock()
-	return fc.lastPushed
+	return fc.lastPushed.Load()
 }
 
 func (fc *followerCursor) AckIndex() int64 {
-	fc.Lock()
-	defer fc.Unlock()
-	return fc.ackIndex
+	return fc.ackIndex.Load()
 }
 
 func (fc *followerCursor) run() {
 	for {
-		fc.Lock()
-		closed := fc.closed
-		fc.Unlock()
-
-		if closed {
+		if fc.closed.Load() {
+			fc.log.Debug().
+				Msg("Follower cursor is closed")
 			return
 		}
 
@@ -139,7 +138,9 @@ func (fc *followerCursor) run() {
 			fc.log.Error().Err(err).
 				Msg("Error while pushing entries to follower")
 
-			// TODO: Add exponential backoff strategy
+			if err := fc.backoff.WaitNext(fc.ctx); err != nil {
+				continue
+			}
 		}
 	}
 }
@@ -147,13 +148,15 @@ func (fc *followerCursor) run() {
 func (fc *followerCursor) runOnce() error {
 	fc.Lock()
 
+	fc.ctx, fc.cancel = context.WithCancel(context.Background())
+	fc.Unlock()
+
 	var err error
 	if fc.stream, err = fc.addEntriesStreamProvider.GetAddEntriesStream(fc.ctx, fc.follower, fc.shardId); err != nil {
 		return err
 	}
 
-	currentOffset := fc.ackIndex
-	fc.Unlock()
+	currentOffset := fc.ackIndex.Load()
 
 	reader, err := fc.wal.NewReader(currentOffset)
 	if err != nil {
@@ -173,11 +176,7 @@ func (fc *followerCursor) runOnce() error {
 		Msg("Successfully attached cursor follower")
 
 	for {
-		fc.Lock()
-		closed := fc.closed
-		fc.Unlock()
-
-		if closed {
+		if fc.closed.Load() {
 			return nil
 		}
 
@@ -206,10 +205,11 @@ func (fc *followerCursor) runOnce() error {
 			return err
 		}
 
-		fc.Lock()
-		fc.lastPushed = le.Offset
-		currentOffset = fc.lastPushed
-		fc.Unlock()
+		fc.lastPushed.Store(le.Offset)
+		currentOffset = le.Offset
+
+		// Since we've made progress, we can reset the backoff to initial setting
+		fc.backoff.Reset()
 	}
 }
 
@@ -217,14 +217,14 @@ func (fc *followerCursor) receiveAcks(stream proto.OxiaLogReplication_AddEntries
 	for {
 		res, err := stream.Recv()
 		if err != nil {
-			if status.Code(err) != codes.Canceled {
+			if status.Code(err) != codes.Canceled && status.Code(err) != codes.Unavailable {
 				fc.log.Warn().Err(err).
 					Msg("Error while receiving acks")
 			}
-			if err := stream.CloseSend(); err != nil {
-				fc.log.Warn().Err(err).
-					Msg("Error while closing stream")
-			}
+
+			fc.Lock()
+			fc.cancel()
+			fc.Unlock()
 			return
 		}
 
@@ -235,8 +235,6 @@ func (fc *followerCursor) receiveAcks(stream proto.OxiaLogReplication_AddEntries
 
 		fc.cursorAcker.Ack(res.Offset)
 
-		fc.Lock()
-		fc.ackIndex = res.Offset
-		fc.Unlock()
+		fc.ackIndex.Store(res.Offset)
 	}
 }
