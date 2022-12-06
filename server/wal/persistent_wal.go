@@ -3,7 +3,6 @@ package wal
 import (
 	"fmt"
 	"github.com/pkg/errors"
-	tidwall "github.com/tidwall/wal"
 	pb "google.golang.org/protobuf/proto"
 	"oxia/proto"
 	"path/filepath"
@@ -21,7 +20,7 @@ func NewWalFactory(options *WalFactoryOptions) WalFactory {
 }
 
 func (f *factory) NewWal(shard uint32) (Wal, error) {
-	impl, err := newTidwallWal(shard, f.options.LogDir)
+	impl, err := newPersistentWal(shard, f.options.LogDir)
 	return impl, err
 }
 
@@ -29,17 +28,17 @@ func (f *factory) Close() error {
 	return nil
 }
 
-type tidwallWal struct {
+type persistentWal struct {
 	sync.RWMutex
 	shard      uint32
-	log        *tidwall.Log
+	log        *Log
 	lastOffset int64
 }
 
-func newTidwallWal(shard uint32, dir string) (Wal, error) {
-	opts := tidwall.DefaultOptions
+func newPersistentWal(shard uint32, dir string) (Wal, error) {
+	opts := DefaultOptions
 	walPath := filepath.Join(dir, fmt.Sprint("shard-", shard))
-	log, err := tidwall.Open(walPath, opts)
+	log, err := Open(walPath, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +48,7 @@ func newTidwallWal(shard uint32, dir string) (Wal, error) {
 	}
 
 	var lastOffset int64
-	if lastIndex == 0 {
+	if lastIndex == -1 {
 		lastOffset = InvalidOffset
 	} else {
 		lastEntry, err := readAtIndex(log, lastIndex)
@@ -59,7 +58,7 @@ func newTidwallWal(shard uint32, dir string) (Wal, error) {
 
 		lastOffset = lastEntry.Offset
 	}
-	w := &tidwallWal{
+	w := &persistentWal{
 		shard:      shard,
 		log:        log,
 		lastOffset: lastOffset,
@@ -67,7 +66,7 @@ func newTidwallWal(shard uint32, dir string) (Wal, error) {
 	return w, nil
 }
 
-func readAtIndex(log *tidwall.Log, index uint64) (*proto.LogEntry, error) {
+func readAtIndex(log *Log, index int64) (*proto.LogEntry, error) {
 	val, err := log.Read(index)
 	if err != nil {
 		return nil, err
@@ -80,19 +79,19 @@ func readAtIndex(log *tidwall.Log, index uint64) (*proto.LogEntry, error) {
 	return entry, nil
 }
 
-func (t *tidwallWal) LastOffset() int64 {
+func (t *persistentWal) LastOffset() int64 {
 	t.Lock()
 	defer t.Unlock()
 	return t.lastOffset
 }
 
-func (t *tidwallWal) Close() error {
+func (t *persistentWal) Close() error {
 	t.Lock()
 	defer t.Unlock()
 	return t.log.Close()
 }
 
-func (t *tidwallWal) Append(entry *proto.LogEntry) error {
+func (t *persistentWal) Append(entry *proto.LogEntry) error {
 	t.Lock()
 	defer t.Unlock()
 
@@ -105,8 +104,7 @@ func (t *tidwallWal) Append(entry *proto.LogEntry) error {
 		return err
 	}
 
-	tidwallIdx := offsetToTidwallIdx(entry.Offset)
-	err = t.log.Write(tidwallIdx, val)
+	err = t.log.Write(val)
 	if err != nil {
 		return err
 	}
@@ -114,7 +112,7 @@ func (t *tidwallWal) Append(entry *proto.LogEntry) error {
 	return err
 }
 
-func (t *tidwallWal) checkNextOffset(nextOffset int64) error {
+func (t *persistentWal) checkNextOffset(nextOffset int64) error {
 	if nextOffset < 0 {
 		return errors.New(fmt.Sprintf("Invalid next offset. %d should be > 0", nextOffset))
 	}
@@ -125,14 +123,7 @@ func (t *tidwallWal) checkNextOffset(nextOffset int64) error {
 	return nil
 }
 
-// Convert between oxia offset and tidwall index
-// Oxia offsets go from 0 -> N
-// Tidwall offsets go from 1 -> N+1
-func offsetToTidwallIdx(offset int64) uint64 {
-	return uint64(offset + 1)
-}
-
-func (t *tidwallWal) TruncateLog(lastSafeOffset int64) (int64, error) {
+func (t *persistentWal) TruncateLog(lastSafeOffset int64) (int64, error) {
 	t.Lock()
 	defer t.Unlock()
 
@@ -141,12 +132,12 @@ func (t *tidwallWal) TruncateLog(lastSafeOffset int64) (int64, error) {
 		return InvalidOffset, err
 	}
 
-	if lastIndex == 0 {
+	if lastIndex == -1 {
 		// The WAL is empty
 		return InvalidOffset, nil
 	}
 
-	lastSafeIndex := offsetToTidwallIdx(lastSafeOffset)
+	lastSafeIndex := lastSafeOffset
 	if err := t.log.TruncateBack(lastSafeIndex); err != nil {
 		return InvalidOffset, err
 	}
@@ -172,7 +163,7 @@ func (t *tidwallWal) TruncateLog(lastSafeOffset int64) (int64, error) {
 	return lastEntry.Offset, nil
 }
 
-func (t *tidwallWal) NewReader(after int64) (WalReader, error) {
+func (t *persistentWal) NewReader(after int64) (WalReader, error) {
 	t.Lock()
 	defer t.Unlock()
 
@@ -188,7 +179,7 @@ func (t *tidwallWal) NewReader(after int64) (WalReader, error) {
 	return r, nil
 }
 
-func (t *tidwallWal) NewReverseReader() (WalReader, error) {
+func (t *persistentWal) NewReverseReader() (WalReader, error) {
 	t.RLock()
 	defer t.RUnlock()
 
@@ -202,7 +193,7 @@ func (t *tidwallWal) NewReverseReader() (WalReader, error) {
 
 type reader struct {
 	// wal the log to iterate
-	wal *tidwallWal
+	wal *persistentWal
 
 	nextOffset int64
 
@@ -240,7 +231,7 @@ func (r *forwardReader) ReadNext() (*proto.LogEntry, error) {
 		return nil, ErrorReaderClosed
 	}
 
-	index := offsetToTidwallIdx(r.nextOffset)
+	index := r.nextOffset
 	r.wal.RLock()
 	defer r.wal.RUnlock()
 	entry, err := readAtIndex(r.wal.log, index)
@@ -272,7 +263,7 @@ func (r *reverseReader) ReadNext() (*proto.LogEntry, error) {
 		return nil, ErrorReaderClosed
 	}
 
-	index := offsetToTidwallIdx(r.nextOffset)
+	index := r.nextOffset
 	r.wal.RLock()
 	defer r.wal.RUnlock()
 
