@@ -17,9 +17,9 @@ func PublicPort() int {
 }
 
 func InternalPort() int {
-	return Ports[PublicPortName]
+	return Ports[InternalPortName]
 }
 
 func MetricsPort() int {
-	return Ports[PublicPortName]
+	return Ports[MetricsPortName]
 }
