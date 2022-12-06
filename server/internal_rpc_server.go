@@ -8,9 +8,12 @@ import (
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
+	"io"
 	"oxia/common"
 	"oxia/proto"
 	"oxia/server/container"
@@ -64,7 +67,7 @@ func (s *internalRpcServer) ShardAssignment(srv proto.OxiaControl_ShardAssignmen
 		Msg("Received shard assignment request from coordinator")
 
 	err := s.assignmentDispatcher.ShardAssignment(srv)
-	if err != nil {
+	if err != nil && status.Code(err) != codes.Canceled {
 		s.log.Warn().Err(err).
 			Str("peer", common.GetPeer(srv.Context())).
 			Msg("Failed to provide shards assignments updates")
@@ -193,7 +196,7 @@ func (s *internalRpcServer) AddEntries(srv proto.OxiaLogReplication_AddEntriesSe
 		return err
 	} else {
 		err2 := follower.AddEntries(srv)
-		if err2 != nil {
+		if err2 != nil && !errors.Is(err2, io.EOF) {
 			s.log.Warn().Err(err2).
 				Uint32("shard", shardId).
 				Str("peer", common.GetPeer(srv.Context())).

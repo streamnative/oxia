@@ -3,6 +3,7 @@ module oxia
 go 1.19
 
 require (
+	github.com/cenkalti/backoff/v4 v4.2.0
 	github.com/cockroachdb/pebble v0.0.0-20221104214247-8dc60b62ebbf
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
 	github.com/pkg/errors v0.9.1

@@ -25,14 +25,14 @@ func NewReplicationRpcProvider(pool common.ClientPool) ReplicationRpcProvider {
 	return &replicationRpcProvider{pool: pool}
 }
 
-func (r *replicationRpcProvider) GetAddEntriesStream(follower string, shard uint32) (
+func (r *replicationRpcProvider) GetAddEntriesStream(ctx context.Context, follower string, shard uint32) (
 	proto.OxiaLogReplication_AddEntriesClient, error) {
 	rpc, err := r.pool.GetReplicationRpc(follower)
 	if err != nil {
 		return nil, err
 	}
 
-	ctx := metadata.AppendToOutgoingContext(context.Background(), metadataShardId, fmt.Sprintf("%d", shard))
+	ctx = metadata.AppendToOutgoingContext(ctx, metadataShardId, fmt.Sprintf("%d", shard))
 
 	stream, err := rpc.AddEntries(ctx)
 	return stream, err

@@ -4,7 +4,9 @@ import (
 	"context"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/peer"
+	"google.golang.org/grpc/status"
 	"io"
 	"math"
 	"oxia/proto"
@@ -79,7 +81,7 @@ func (s *shardAssignmentDispatcher) ShardAssignment(srv proto.OxiaControl_ShardA
 			s.stopRecv = nil
 		}
 		s.Unlock()
-		if err != nil {
+		if err != nil && status.Code(err) != codes.Unavailable {
 			log.Err(err).Msg("Error closing ShardAssignment stream")
 		}
 	}()
