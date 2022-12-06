@@ -7,6 +7,7 @@ import (
 	"os"
 	"oxia/cmd/client"
 	"oxia/cmd/controller"
+	"oxia/cmd/operator"
 	"oxia/cmd/server"
 	"oxia/cmd/standalone"
 	"oxia/common"
@@ -28,6 +29,7 @@ func init() {
 
 	rootCmd.AddCommand(client.Cmd)
 	rootCmd.AddCommand(controller.Cmd)
+	rootCmd.AddCommand(operator.Cmd)
 	rootCmd.AddCommand(server.Cmd)
 	rootCmd.AddCommand(standalone.Cmd)
 }
