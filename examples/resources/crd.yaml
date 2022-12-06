@@ -31,12 +31,13 @@ spec:
     singular: oxiacluster
     plural: oxiaclusters
     shortNames: ["oc"]
-  scope: Cluster #or Namespaced
+  scope: Namespaced
 ---
 apiVersion: oxia.streamnative.io/v1alpha1
 kind: OxiaCluster
 metadata:
   name: oxia
+  namespace: oxia
 spec:
   serverReplicas: 1
   shardCount: 1

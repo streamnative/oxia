@@ -3,53 +3,35 @@ package crd
 import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
-	"oxia/operator/resource/crd"
-	"strings"
 	"testing"
 )
 
-func TestCrdInstall(t *testing.T) {
+func TestCrd(t *testing.T) {
 	for _, test := range []struct {
-		args              []string
-		expectedErr       error
-		expectedInvoked   bool
-		expectedScope     string
-		expectedNamespace string
+		op              string
+		expectedErr     error
+		expectedInvoked bool
 	}{
-		{[]string{"install", "--scope=cluster", "--namespace=myns"}, nil, true, crd.ClusterScope, "myns"},
-		{[]string{"install", "--scope=namespaced", "--namespace=myns"}, nil, true, crd.NamespacedScope, "myns"},
-		{[]string{"install", "--scope=cluster"}, nil, true, crd.ClusterScope, ""},
-		{[]string{"install", "--scope=namespaced"}, errInvalidNamespace, false, "", ""},
-		{[]string{"install", "--scope=invalid"}, errInvalidScope, false, "", ""},
-		{[]string{"install", "--namespace=myns"}, errInvalidScope, false, "", ""},
-		{[]string{"install"}, errInvalidScope, false, "", ""},
+		{"install", nil, true},
+		{"uninstall", nil, true},
 	} {
-		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
-			config = crd.Config{}
-
-			Cmd.SetArgs(test.args)
+		t.Run(test.op, func(t *testing.T) {
+			Cmd.SetArgs([]string{test.op})
 			invoked := false
-			installCmd.RunE = func(*cobra.Command, []string) error {
-				invoked = true
-				assert.Equal(t, test.expectedScope, config.Scope)
-				assert.Equal(t, test.expectedNamespace, config.Namespace)
-				return nil
+			if test.op == "install" {
+				installCmd.RunE = func(*cobra.Command, []string) error {
+					invoked = true
+					return nil
+				}
+			} else {
+				uninstallCmd.RunE = func(*cobra.Command, []string) error {
+					invoked = true
+					return nil
+				}
 			}
 			err := Cmd.Execute()
 			assert.ErrorIs(t, err, test.expectedErr)
 			assert.Equal(t, test.expectedInvoked, invoked)
 		})
 	}
-}
-
-func TestCrdUninstall(t *testing.T) {
-	Cmd.SetArgs([]string{"uninstall"})
-	invoked := false
-	uninstallCmd.RunE = func(*cobra.Command, []string) error {
-		invoked = true
-		return nil
-	}
-	err := Cmd.Execute()
-	assert.NoError(t, err)
-	assert.True(t, invoked)
 }
