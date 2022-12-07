@@ -96,7 +96,7 @@ func (m *Metrics) DecorateGet(get model.GetCall) model.GetCall {
 
 func (m *Metrics) DecorateList(getRange model.ListCall) model.ListCall {
 	callback := getRange.Callback
-	metricContext := m.metricContextFunc("get_range")
+	metricContext := m.metricContextFunc("list")
 	getRange.Callback = func(response *proto.ListResponse, err error) {
 		callback(response, err)
 		ctx, start, _attrs := metricContext(err)
