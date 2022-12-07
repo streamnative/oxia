@@ -135,22 +135,22 @@ func (c *clientImpl) Get(key string) <-chan GetResult {
 	return ch
 }
 
-func (c *clientImpl) GetRange(minKeyInclusive string, maxKeyExclusive string) <-chan GetRangeResult {
+func (c *clientImpl) List(minKeyInclusive string, maxKeyExclusive string) <-chan ListResult {
 	shardIds := c.shardManager.GetAll()
-	ch := make(chan GetRangeResult, 1)
+	ch := make(chan ListResult, 1)
 	var wg sync.WaitGroup
 	wg.Add(len(shardIds))
 	keys := make([]string, 0)
 	for _, shardId := range shardIds {
-		cInner := make(chan GetRangeResult, 1)
-		callback := func(response *proto.GetRangeResponse, err error) {
+		cInner := make(chan ListResult, 1)
+		callback := func(response *proto.ListResponse, err error) {
 			if err != nil {
-				cInner <- GetRangeResult{Err: err}
+				cInner <- ListResult{Err: err}
 			} else {
-				cInner <- toGetRangeResult(response)
+				cInner <- toListResult(response)
 			}
 		}
-		c.readBatchManager.Get(shardId).Add(model.GetRangeCall{
+		c.readBatchManager.Get(shardId).Add(model.ListCall{
 			MinKeyInclusive: minKeyInclusive,
 			MaxKeyExclusive: maxKeyExclusive,
 			Callback:        callback,
@@ -163,7 +163,7 @@ func (c *clientImpl) GetRange(minKeyInclusive string, maxKeyExclusive string) <-
 	}
 	go func() {
 		wg.Wait()
-		ch <- GetRangeResult{
+		ch <- ListResult{
 			Keys: keys,
 		}
 		close(ch)

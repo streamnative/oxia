@@ -20,7 +20,7 @@ type AsyncClient interface {
 	Delete(key string, expectedVersion *int64) <-chan error
 	DeleteRange(minKeyInclusive string, maxKeyExclusive string) <-chan error
 	Get(key string) <-chan GetResult
-	GetRange(minKeyInclusive string, maxKeyExclusive string) <-chan GetRangeResult
+	List(minKeyInclusive string, maxKeyExclusive string) <-chan ListResult
 }
 
 type SyncClient interface {
@@ -29,7 +29,7 @@ type SyncClient interface {
 	Delete(key string, expectedVersion *int64) error
 	DeleteRange(minKeyInclusive string, maxKeyExclusive string) error
 	Get(key string) ([]byte, Stat, error)
-	GetRange(minKeyInclusive string, maxKeyExclusive string) ([]string, error)
+	List(minKeyInclusive string, maxKeyExclusive string) ([]string, error)
 }
 
 type Stat struct {
@@ -49,7 +49,7 @@ type GetResult struct {
 	Err     error
 }
 
-type GetRangeResult struct {
+type ListResult struct {
 	Keys []string
 	Err  error
 }

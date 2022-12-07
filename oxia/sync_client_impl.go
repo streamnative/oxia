@@ -39,7 +39,7 @@ func (c *syncClientImpl) Get(key string) ([]byte, Stat, error) {
 	return r.Payload, r.Stat, r.Err
 }
 
-func (c *syncClientImpl) GetRange(minKeyInclusive string, maxKeyExclusive string) ([]string, error) {
-	r := <-c.asyncClient.GetRange(minKeyInclusive, maxKeyExclusive)
+func (c *syncClientImpl) List(minKeyInclusive string, maxKeyExclusive string) ([]string, error) {
+	r := <-c.asyncClient.List(minKeyInclusive, maxKeyExclusive)
 	return r.Keys, r.Err
 }
