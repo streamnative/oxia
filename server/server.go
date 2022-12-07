@@ -59,16 +59,25 @@ func New(config Config) (*Server, error) {
 		return nil, err
 	}
 
-	s.metrics, err = metrics.Start(config.MetricsPort)
-	if err != nil {
-		return nil, err
+	if config.MetricsPort >= 0 {
+		s.metrics, err = metrics.Start(config.MetricsPort)
+		if err != nil {
+			return nil, err
+		}
 	}
-
 	return s, nil
 }
 
+func (s *Server) PublicPort() int {
+	return s.PublicRpcServer.container.Port()
+}
+
+func (s *Server) InternalPort() int {
+	return s.internalRpcServer.container.Port()
+}
+
 func (s *Server) Close() error {
-	return multierr.Combine(
+	err := multierr.Combine(
 		s.shardAssignmentDispatcher.Close(),
 		s.shardsDirector.Close(),
 		s.PublicRpcServer.Close(),
@@ -76,6 +85,11 @@ func (s *Server) Close() error {
 		s.clientPool.Close(),
 		s.kvFactory.Close(),
 		s.walFactory.Close(),
-		s.metrics.Close(),
 	)
+
+	if s.metrics != nil {
+		err = multierr.Append(err, s.metrics.Close())
+	}
+
+	return err
 }

@@ -31,6 +31,8 @@ const (
 // and to push all the service discovery updates
 type NodeController interface {
 	io.Closer
+
+	Status() NodeStatus
 }
 
 type nodeController struct {
@@ -39,7 +41,7 @@ type nodeController struct {
 	status                   NodeStatus
 	shardAssignmentsProvider ShardAssignmentsProvider
 	nodeAvailabilityListener NodeAvailabilityListener
-	clientPool               common.ClientPool
+	rpc                      RpcProvider
 	log                      zerolog.Logger
 	backoff                  backoff.BackOff
 	closed                   atomic.Bool
@@ -50,12 +52,12 @@ type nodeController struct {
 func NewNodeController(addr ServerAddress,
 	shardAssignmentsProvider ShardAssignmentsProvider,
 	nodeAvailabilityListener NodeAvailabilityListener,
-	clientPool common.ClientPool) NodeController {
+	rpc RpcProvider) NodeController {
 	nc := &nodeController{
 		addr:                     addr,
 		shardAssignmentsProvider: shardAssignmentsProvider,
 		nodeAvailabilityListener: nodeAvailabilityListener,
-		clientPool:               clientPool,
+		rpc:                      rpc,
 		status:                   Running,
 		log: log.With().
 			Str("component", "node-controller").
@@ -78,6 +80,12 @@ func NewNodeController(addr ServerAddress,
 	return nc
 }
 
+func (n *nodeController) Status() NodeStatus {
+	n.Lock()
+	defer n.Unlock()
+	return n.status
+}
+
 func (n *nodeController) healthCheckWithRetries() {
 	backOff := common.NewBackOffWithInitialInterval(n.ctx, 1*time.Second)
 	_ = backoff.RetryNotify(func() error {
@@ -97,7 +105,7 @@ func (n *nodeController) healthCheckWithRetries() {
 }
 
 func (n *nodeController) healthCheck(backoff backoff.BackOff) error {
-	health, err := n.clientPool.GetHealthRpc(n.addr.Internal)
+	health, err := n.rpc.GetHealthClient(n.addr)
 	if err != nil {
 		return err
 	}
@@ -118,12 +126,15 @@ func (n *nodeController) healthCheck(backoff backoff.BackOff) error {
 
 				res, err := health.Check(pingCtx, &grpc_health_v1.HealthCheckRequest{Service: ""})
 				pingCancel()
-				if err2 := n.processHealtCheckResponse(res, err); err2 != nil {
+				if err2 := n.processHealthCheckResponse(res, err); err2 != nil {
 					n.log.Warn().
 						Msg("Node stopped responding to ping")
 					cancel()
 					return
 				}
+
+				// Ping was successful
+				backoff.Reset()
 
 			case <-ctx.Done():
 				return
@@ -139,7 +150,7 @@ func (n *nodeController) healthCheck(backoff backoff.BackOff) error {
 	for ctx.Err() == nil {
 		res, err := watch.Recv()
 
-		if err2 := n.processHealtCheckResponse(res, err); err2 != nil {
+		if err2 := n.processHealthCheckResponse(res, err); err2 != nil {
 			return err2
 		}
 	}
@@ -147,7 +158,7 @@ func (n *nodeController) healthCheck(backoff backoff.BackOff) error {
 	return ctx.Err()
 }
 
-func (n *nodeController) processHealtCheckResponse(res *grpc_health_v1.HealthCheckResponse, err error) error {
+func (n *nodeController) processHealthCheckResponse(res *grpc_health_v1.HealthCheckResponse, err error) error {
 	if err != nil {
 		return err
 	}
@@ -177,12 +188,7 @@ func (n *nodeController) sendAssignmentsUpdatesWithRetries() {
 }
 
 func (n *nodeController) sendAssignmentsUpdates() error {
-	rpc, err := n.clientPool.GetControlRpc(n.addr.Internal)
-	if err != nil {
-		return err
-	}
-
-	stream, err := rpc.ShardAssignment(n.ctx)
+	stream, err := n.rpc.GetShardAssignmentStream(n.ctx, n.addr)
 	if err != nil {
 		return err
 	}
