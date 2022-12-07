@@ -7,6 +7,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/peer"
 	"io"
 	"oxia/proto"
@@ -19,6 +20,7 @@ const DefaultRpcTimeout = 30 * time.Second
 type ClientPool interface {
 	io.Closer
 	GetClientRpc(target string) (proto.OxiaClientClient, error)
+	GetHealthRpc(target string) (grpc_health_v1.HealthClient, error)
 	GetControlRpc(target string) (proto.OxiaControlClient, error)
 	GetReplicationRpc(target string) (proto.OxiaLogReplicationClient, error)
 }
@@ -50,6 +52,15 @@ func (cp *clientPool) Close() error {
 		}
 	}
 	return nil
+}
+
+func (cp *clientPool) GetHealthRpc(target string) (grpc_health_v1.HealthClient, error) {
+	cnx, err := cp.getConnection(target)
+	if err != nil {
+		return nil, err
+	} else {
+		return grpc_health_v1.NewHealthClient(cnx), nil
+	}
 }
 
 func (cp *clientPool) GetClientRpc(target string) (proto.OxiaClientClient, error) {
