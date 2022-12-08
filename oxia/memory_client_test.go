@@ -155,7 +155,7 @@ func TestDeleteRange(t *testing.T) {
 		err := <-c1
 		assert.NoError(t, err)
 
-		c2 := client.GetRange("/a", "/d")
+		c2 := client.List("/a", "/d")
 		response := <-c2
 
 		sort.Strings(response.Keys)
@@ -194,13 +194,13 @@ func TestGetExisting(t *testing.T) {
 	})
 }
 
-func TestGetRange(t *testing.T) {
+func TestList(t *testing.T) {
 	runTest(func(client AsyncClient) {
 		put(t, client, "/a")
 		put(t, client, "/b")
 		put(t, client, "/c")
 
-		c := client.GetRange("/b", "/c")
+		c := client.List("/b", "/c")
 		response := <-c
 
 		assert.Equal(t, []string{"/b"}, response.Keys)

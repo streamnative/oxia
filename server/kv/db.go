@@ -113,11 +113,11 @@ func (d *db) ProcessRead(b *proto.ReadRequest) (*proto.ReadResponse, error) {
 		}
 	}
 
-	for _, getRangeReq := range b.GetRanges {
-		if gr, err := applyGetRange(d.kv, getRangeReq); err != nil {
+	for _, listReq := range b.Lists {
+		if gr, err := applyList(d.kv, listReq); err != nil {
 			return nil, err
 		} else {
-			res.GetRanges = append(res.GetRanges, gr)
+			res.Lists = append(res.Lists, gr)
 		}
 	}
 
@@ -285,10 +285,10 @@ func applyGet(kv KV, getReq *proto.GetRequest) (*proto.GetResponse, error) {
 	}, nil
 }
 
-func applyGetRange(kv KV, getRangeReq *proto.GetRangeRequest) (*proto.GetRangeResponse, error) {
-	it := kv.KeyRangeScan(getRangeReq.StartInclusive, getRangeReq.EndExclusive)
+func applyList(kv KV, listReq *proto.ListRequest) (*proto.ListResponse, error) {
+	it := kv.KeyRangeScan(listReq.StartInclusive, listReq.EndExclusive)
 
-	res := &proto.GetRangeResponse{}
+	res := &proto.ListResponse{}
 
 	for ; it.Valid(); it.Next() {
 		res.Keys = append(res.Keys, it.Key())

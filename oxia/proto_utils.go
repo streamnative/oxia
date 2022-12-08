@@ -33,8 +33,8 @@ func toGetResult(r *proto.GetResponse) GetResult {
 	}
 }
 
-func toGetRangeResult(r *proto.GetRangeResponse) GetRangeResult {
-	return GetRangeResult{
+func toListResult(r *proto.ListResponse) ListResult {
+	return ListResult{
 		Keys: r.Keys,
 	}
 }

@@ -70,7 +70,7 @@ type Query struct {
 
 func (query Query) Perform(client oxia.AsyncClient) common.Call {
 	return Call{
-		clientCall: client.GetRange(query.KeyMinimum, query.KeyMaximum),
+		clientCall: client.List(query.KeyMinimum, query.KeyMaximum),
 	}
 }
 
@@ -81,7 +81,7 @@ func (query Query) Unmarshal(b []byte) (common.Query, error) {
 }
 
 type Call struct {
-	clientCall <-chan oxia.GetRangeResult
+	clientCall <-chan oxia.ListResult
 }
 
 func (call Call) Complete() any {
