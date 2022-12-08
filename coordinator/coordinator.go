@@ -17,6 +17,10 @@ type ShardAssignmentsProvider interface {
 	WaitForNextUpdate(currentValue *proto.ShardAssignmentsResponse) *proto.ShardAssignmentsResponse
 }
 
+type NodeAvailabilityListener interface {
+	NodeBecameUnavailable(node ServerAddress)
+}
+
 type Coordinator interface {
 	io.Closer
 
@@ -24,6 +28,8 @@ type Coordinator interface {
 
 	InitiateLeaderElection(shard uint32, newEpoch int64) error
 	ElectedLeader(shard uint32, epoch int64, leader ServerAddress) error
+
+	NodeAvailabilityListener
 }
 
 type coordinator struct {
@@ -69,7 +75,7 @@ func NewCoordinator(metadataProvider MetadataProvider, clusterConfig ClusterConf
 	}
 
 	for _, sa := range clusterConfig.StorageServers {
-		c.nodeControllers[sa.Internal] = NewNodeController(sa.Internal, c, c.clientPool)
+		c.nodeControllers[sa.Internal] = NewNodeController(sa, c, c, c.clientPool)
 	}
 
 	return c, nil
@@ -145,6 +151,15 @@ func (c *coordinator) Close() error {
 		err = multierr.Append(err, nc.Close())
 	}
 	return err
+}
+
+func (c *coordinator) NodeBecameUnavailable(node ServerAddress) {
+	c.Lock()
+	defer c.Unlock()
+
+	for _, sc := range c.shardControllers {
+		sc.HandleNodeFailure(node)
+	}
 }
 
 func (c *coordinator) WaitForNextUpdate(currentValue *proto.ShardAssignmentsResponse) *proto.ShardAssignmentsResponse {
