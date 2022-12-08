@@ -2,6 +2,7 @@ package crd
 
 import (
 	"github.com/spf13/cobra"
+	"oxia/operator/resource/crd"
 )
 
 var (
@@ -31,12 +32,10 @@ func init() {
 	Cmd.AddCommand(uninstallCmd)
 }
 
-func install(*cobra.Command, []string) error {
-	//TODO to be implemented
-	panic("not yet implemented")
+func install(cmd *cobra.Command, _ []string) error {
+	return crd.NewClient().Install(cmd.OutOrStdout())
 }
 
-func uninstall(*cobra.Command, []string) error {
-	//TODO to be implemented
-	panic("not yet implemented")
+func uninstall(cmd *cobra.Command, _ []string) error {
+	return crd.NewClient().Uninstall(cmd.OutOrStdout())
 }
