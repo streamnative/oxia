@@ -14,6 +14,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"oxia/pkg/apis/oxia/v1alpha1"
+	oxia "oxia/pkg/generated/clientset/versioned"
 )
 
 func NewConfig() *rest.Config {
@@ -27,6 +29,14 @@ func NewConfig() *rest.Config {
 
 func NewApiExtensionsClientset(config *rest.Config) apiExtensions.Interface {
 	clientset, err := apiExtensions.NewForConfig(config)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create client")
+	}
+	return clientset
+}
+
+func NewOxiaClientset(config *rest.Config) oxia.Interface {
+	clientset, err := oxia.NewForConfig(config)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create client")
 	}
@@ -57,6 +67,24 @@ func ClusterRoleBindings(kubernetes kubernetes.Interface) ClusterClient[rbacV1.C
 	return newClusterClient[rbacV1.ClusterRoleBinding](kubernetes.RbacV1().ClusterRoleBindings())
 }
 
+func Roles(kubernetes kubernetes.Interface) NamespaceClient[rbacV1.Role] {
+	return newNamespaceClient[rbacV1.Role](func(namespace string) ResourceInterface[rbacV1.Role] {
+		return kubernetes.RbacV1().Roles(namespace)
+	})
+}
+
+func RoleBindings(kubernetes kubernetes.Interface) NamespaceClient[rbacV1.RoleBinding] {
+	return newNamespaceClient[rbacV1.RoleBinding](func(namespace string) ResourceInterface[rbacV1.RoleBinding] {
+		return kubernetes.RbacV1().RoleBindings(namespace)
+	})
+}
+
+func OxiaClusters(oxia oxia.Interface) NamespaceClient[v1alpha1.OxiaCluster] {
+	return newNamespaceClient[v1alpha1.OxiaCluster](func(namespace string) ResourceInterface[v1alpha1.OxiaCluster] {
+		return oxia.OxiaV1alpha1().OxiaClusters(namespace)
+	})
+}
+
 func ServiceAccounts(kubernetes kubernetes.Interface) NamespaceClient[coreV1.ServiceAccount] {
 	return newNamespaceClient[coreV1.ServiceAccount](func(namespace string) ResourceInterface[coreV1.ServiceAccount] {
 		return kubernetes.CoreV1().ServiceAccounts(namespace)
@@ -72,6 +100,12 @@ func Services(kubernetes kubernetes.Interface) NamespaceClient[coreV1.Service] {
 func Deployments(kubernetes kubernetes.Interface) NamespaceClient[appsV1.Deployment] {
 	return newNamespaceClient[appsV1.Deployment](func(namespace string) ResourceInterface[appsV1.Deployment] {
 		return kubernetes.AppsV1().Deployments(namespace)
+	})
+}
+
+func StatefulSets(kubernetes kubernetes.Interface) NamespaceClient[appsV1.StatefulSet] {
+	return newNamespaceClient[appsV1.StatefulSet](func(namespace string) ResourceInterface[appsV1.StatefulSet] {
+		return kubernetes.AppsV1().StatefulSets(namespace)
 	})
 }
 
@@ -104,9 +138,13 @@ type resource interface {
 	rbacV1.ClusterRole |
 		rbacV1.ClusterRoleBinding |
 		//namespace scoped
+		v1alpha1.OxiaCluster |
+		rbacV1.Role |
+		rbacV1.RoleBinding |
 		coreV1.ServiceAccount |
 		coreV1.Service |
 		appsV1.Deployment |
+		appsV1.StatefulSet |
 		monitoringV1.ServiceMonitor
 }
 
