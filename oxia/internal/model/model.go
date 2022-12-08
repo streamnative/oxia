@@ -28,10 +28,10 @@ type GetCall struct {
 	Callback func(*proto.GetResponse, error)
 }
 
-type GetRangeCall struct {
+type ListCall struct {
 	MinKeyInclusive string
 	MaxKeyExclusive string
-	Callback        func(*proto.GetRangeResponse, error)
+	Callback        func(*proto.ListResponse, error)
 }
 
 func (r PutCall) ToProto() *proto.PutRequest {
@@ -63,8 +63,8 @@ func (r GetCall) ToProto() *proto.GetRequest {
 	}
 }
 
-func (r GetRangeCall) ToProto() *proto.GetRangeRequest {
-	return &proto.GetRangeRequest{
+func (r ListCall) ToProto() *proto.ListRequest {
+	return &proto.ListRequest{
 		StartInclusive: r.MinKeyInclusive,
 		EndExclusive:   r.MaxKeyExclusive,
 	}

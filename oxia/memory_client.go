@@ -95,15 +95,15 @@ func (c *memoryClient) Get(key string) <-chan GetResult {
 	return ch
 }
 
-func (c *memoryClient) GetRange(minKeyInclusive string, maxKeyExclusive string) <-chan GetRangeResult {
-	ch := make(chan GetRangeResult, 1)
+func (c *memoryClient) List(minKeyInclusive string, maxKeyExclusive string) <-chan ListResult {
+	ch := make(chan ListResult, 1)
 	result := make([]string, 0)
 	for key := range c.data {
 		if minKeyInclusive <= key && key < maxKeyExclusive {
 			result = append(result, key)
 		}
 	}
-	ch <- GetRangeResult{
+	ch <- ListResult{
 		Keys: result,
 	}
 	close(ch)

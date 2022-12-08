@@ -149,7 +149,7 @@ message ReadRequest {
   // The get requests
   repeated GetRequest gets = 2;
   // The get range requests
-  repeated GetRangeRequest get_ranges = 3;
+  repeated ListRequest lists = 3;
 }
 
 /**
@@ -160,7 +160,7 @@ message ReadResponse {
   // The get responses
   repeated GetResponse gets = 1;
   // The get range responses
-  repeated GetRangeResponse get_ranges = 2;
+  repeated ListResponse lists = 2;
 }
 
 /**
@@ -249,9 +249,9 @@ message DeleteRangeResponse {
 }
 
 /**
- * Input to a get range request. Key ranges assume a UTF-8 byte sort order.
+ * Input to a list request. Key ranges assume a UTF-8 byte sort order.
  */
-message GetRangeRequest {
+message ListRequest {
   // The start of the range, inclusive
   string start_inclusive = 1;
   // The end of the range, exclusive
@@ -259,9 +259,9 @@ message GetRangeRequest {
 }
 
 /**
- * The response to a get range request.
+ * The response to a list request.
  */
-message GetRangeResponse {
+message ListResponse {
   // All the keys found within the specified range
   repeated string keys = 1;
 }

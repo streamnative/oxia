@@ -163,12 +163,12 @@ func TestOutputMarshal(t *testing.T) {
 func TestCall_Complete(t *testing.T) {
 	tests := []struct {
 		name         string
-		clientResult oxia.GetRangeResult
+		clientResult oxia.ListResult
 		expected     any
 	}{
 		{
 			"keys",
-			oxia.GetRangeResult{
+			oxia.ListResult{
 				Keys: []string{"a", "b"},
 			}, Output{
 				Keys: []string{"a", "b"},
@@ -176,7 +176,7 @@ func TestCall_Complete(t *testing.T) {
 		},
 		{
 			"empty",
-			oxia.GetRangeResult{
+			oxia.ListResult{
 				Keys: []string{},
 			}, Output{
 				Keys: []string{},
@@ -184,7 +184,7 @@ func TestCall_Complete(t *testing.T) {
 		},
 		{
 			"error",
-			oxia.GetRangeResult{
+			oxia.ListResult{
 				Err: errors.New("error"),
 			}, common.OutputError{
 				Err: "error",
@@ -193,7 +193,7 @@ func TestCall_Complete(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			results := make(chan oxia.GetRangeResult, 1)
+			results := make(chan oxia.ListResult, 1)
 			results <- test.clientResult
 			call := Call{
 				clientCall: results,

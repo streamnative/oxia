@@ -31,9 +31,9 @@ func TestMetricsDecorate(t *testing.T) {
 		metrics.DecorateGet(model.GetCall{Callback: func(*proto.GetResponse, error) {}}).
 			Callback(&proto.GetResponse{Payload: []byte{0, 1, 2, 3, 4}}, err)
 	}
-	getRangeFunc := func(metrics *Metrics, err error) {
-		metrics.DecorateGetRange(model.GetRangeCall{Callback: func(*proto.GetRangeResponse, error) {}}).
-			Callback(&proto.GetRangeResponse{}, err)
+	listFunc := func(metrics *Metrics, err error) {
+		metrics.DecorateList(model.ListCall{Callback: func(*proto.ListResponse, error) {}}).
+			Callback(&proto.ListResponse{}, err)
 	}
 
 	for _, item := range []struct {
@@ -45,7 +45,7 @@ func TestMetricsDecorate(t *testing.T) {
 		{deleteFunc, "delete", false},
 		{deleteRangeFunc, "delete_range", false},
 		{getFunc, "get", true},
-		{getRangeFunc, "get_range", false},
+		{listFunc, "list", false},
 	} {
 		for _, condition := range []struct {
 			err            error

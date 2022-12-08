@@ -44,8 +44,8 @@ func TestAsyncClientImpl(t *testing.T) {
 	putResult = <-client.Put("/c", []byte{1}, &versionZero)
 	assert.Equal(t, int64(1), putResult.Stat.Version)
 
-	getRangeResult := <-client.GetRange("/a", "/d")
-	assert.Equal(t, GetRangeResult{
+	getRangeResult := <-client.List("/a", "/d")
+	assert.Equal(t, ListResult{
 		Keys: []string{"/a", "/c"},
 	}, getRangeResult)
 

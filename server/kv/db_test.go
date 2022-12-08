@@ -245,7 +245,7 @@ func TestDBSameKeyMutations(t *testing.T) {
 	assert.NoError(t, factory.Close())
 }
 
-func TestDBGetRange(t *testing.T) {
+func TestDBList(t *testing.T) {
 	factory := NewPebbleKVFactory(testKVOptions)
 	db, err := NewDB(1, factory)
 	assert.NoError(t, err)
@@ -273,7 +273,7 @@ func TestDBGetRange(t *testing.T) {
 	assert.NoError(t, err)
 
 	readReq := &proto.ReadRequest{
-		GetRanges: []*proto.GetRangeRequest{{
+		Lists: []*proto.ListRequest{{
 			StartInclusive: "a",
 			EndExclusive:   "c",
 		}, {
@@ -290,23 +290,23 @@ func TestDBGetRange(t *testing.T) {
 
 	assert.Equal(t, 5, len(writeRes.Puts))
 
-	assert.Equal(t, 3, len(readRes.GetRanges))
+	assert.Equal(t, 3, len(readRes.Lists))
 
 	// ["a", "c")
-	r0 := readRes.GetRanges[0]
+	r0 := readRes.Lists[0]
 	assert.Equal(t, 2, len(r0.Keys))
 	assert.Equal(t, "a", r0.Keys[0])
 	assert.Equal(t, "b", r0.Keys[1])
 
 	// ["a", "d")
-	r1 := readRes.GetRanges[1]
+	r1 := readRes.Lists[1]
 	assert.Equal(t, 3, len(r1.Keys))
 	assert.Equal(t, "a", r1.Keys[0])
 	assert.Equal(t, "b", r1.Keys[1])
 	assert.Equal(t, "c", r1.Keys[2])
 
 	// ["xyz", "zzz")
-	r2 := readRes.GetRanges[2]
+	r2 := readRes.Lists[2]
 	assert.Equal(t, 0, len(r2.Keys))
 
 	assert.NoError(t, db.Close())
@@ -354,7 +354,7 @@ func TestDBDeleteRange(t *testing.T) {
 	assert.NoError(t, err)
 
 	readReq := &proto.ReadRequest{
-		GetRanges: []*proto.GetRangeRequest{{
+		Lists: []*proto.ListRequest{{
 			StartInclusive: "a",
 			EndExclusive:   "z",
 		}},
@@ -367,10 +367,10 @@ func TestDBDeleteRange(t *testing.T) {
 	assert.Equal(t, proto.Status_OK, writeRes.DeleteRanges[0].Status)
 	assert.Equal(t, proto.Status_OK, writeRes.DeleteRanges[1].Status)
 
-	assert.Equal(t, 1, len(readRes.GetRanges))
+	assert.Equal(t, 1, len(readRes.Lists))
 
 	// ["a", "z")
-	r1 := readRes.GetRanges[0]
+	r1 := readRes.Lists[0]
 	assert.Equal(t, 2, len(r1.Keys))
 	assert.Equal(t, "a", r1.Keys[0])
 	assert.Equal(t, "e", r1.Keys[1])
