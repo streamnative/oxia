@@ -1,11 +1,13 @@
 package wal
 
 import (
+	"fmt"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"oxia/proto"
 	"strings"
 	"testing"
+	"time"
 )
 
 const shard = uint32(100)
@@ -79,10 +81,14 @@ func assertReaderReads(t *testing.T, r WalReader, entries []string) {
 	assert.False(t, r.HasNext())
 }
 
-func assertReaderReadsEventually(r WalReader, entries []string) chan error {
+func assertReaderReadsEventually(t *testing.T, r WalReader, entries []string) chan error {
 	ch := make(chan error)
 	go func() {
 		for i := 0; i < len(entries); i++ {
+			assert.Eventually(t, r.HasNext,
+				100*time.Millisecond,
+				10*time.Millisecond,
+				fmt.Sprintf("did not read all expected entries: only read %d/%d", i, len(entries)))
 			e, err := r.ReadNext()
 			if err != nil {
 				ch <- err
@@ -149,7 +155,7 @@ func Append(t *testing.T) {
 	// Read with forward reader waiting for new entries
 	fr, err = w.NewReader(0)
 	assert.NoError(t, err)
-	ch := assertReaderReadsEventually(fr, []string{"B", "C", "D"})
+	ch := assertReaderReadsEventually(t, fr, []string{"B", "C", "D"})
 
 	err = w.Append(&proto.LogEntry{
 		Epoch:  1,
