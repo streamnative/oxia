@@ -6,16 +6,12 @@ import (
 	"errors"
 	"github.com/spf13/cobra"
 	"io"
-	"os"
 	"oxia/cmd/client/common"
 	"oxia/oxia"
 )
 
 var (
-	f                           = flags{}
-	in      io.Reader           = os.Stdin
-	queries chan<- common.Query = common.Queries
-	done    <-chan bool         = common.Done
+	Config = flags{}
 
 	ErrorExpectedKeyPayloadInconsistent = errors.New("inconsistent flags; key and payload flags must be in pairs")
 	ErrorExpectedVersionInconsistent    = errors.New("inconsistent flags; zero or all keys must have an expected version")
@@ -30,11 +26,18 @@ type flags struct {
 	binaryPayloads   bool
 }
 
+func (flags *flags) Reset() {
+	flags.keys = nil
+	flags.payloads = nil
+	flags.expectedVersions = nil
+	flags.binaryPayloads = false
+}
+
 func init() {
-	Cmd.Flags().StringSliceVarP(&f.keys, "key", "k", []string{}, "The target key")
-	Cmd.Flags().StringSliceVarP(&f.payloads, "payload", "p", []string{}, "Associated payload, assumed to be encoded with local charset unless -b is used")
-	Cmd.Flags().Int64SliceVarP(&f.expectedVersions, "expected-version", "e", []int64{}, "Version of entry expected to be on the server")
-	Cmd.Flags().BoolVarP(&f.binaryPayloads, "binary", "b", false, "Base64 decode the input payloads (required for binary payloads)")
+	Cmd.Flags().StringSliceVarP(&Config.keys, "key", "k", []string{}, "The target key")
+	Cmd.Flags().StringSliceVarP(&Config.payloads, "payload", "p", []string{}, "Associated payload, assumed to be encoded with local charset unless -b is used")
+	Cmd.Flags().Int64SliceVarP(&Config.expectedVersions, "expected-version", "e", []int64{}, "Version of entry expected to be on the server")
+	Cmd.Flags().BoolVarP(&Config.binaryPayloads, "binary", "b", false, "Base64 decode the input payloads (required for binary payloads)")
 	Cmd.MarkFlagsRequiredTogether("key", "payload")
 }
 
@@ -47,14 +50,14 @@ var Cmd = &cobra.Command{
 }
 
 func exec(cmd *cobra.Command, args []string) error {
+	loop, _ := common.NewCommandLoop(cmd.OutOrStdout())
 	defer func() {
-		close(queries)
-		<-done
+		loop.Complete()
 	}()
-	return _exec(f, in, queries)
+	return _exec(Config, cmd.InOrStdin(), loop)
 }
 
-func _exec(flags flags, in io.Reader, queries chan<- common.Query) error {
+func _exec(flags flags, in io.Reader, queue common.QueryQueue) error {
 	if len(flags.keys) != len(flags.payloads) && (len(flags.payloads) > 0 || len(flags.keys) > 0) {
 		return ErrorExpectedKeyPayloadInconsistent
 	}
@@ -71,13 +74,13 @@ func _exec(flags flags, in io.Reader, queries chan<- common.Query) error {
 			if len(flags.expectedVersions) > 0 {
 				query.ExpectedVersion = &flags.expectedVersions[i]
 			}
-			queries <- query
+			queue.Add(query)
 		}
 	} else {
 		if flags.binaryPayloads {
 			return ErrorIncorrectBinaryFlagUse
 		}
-		common.ReadStdin(in, Query{}, queries)
+		common.ReadStdin(in, Query{}, queue)
 	}
 	return nil
 }
@@ -90,7 +93,11 @@ type Query struct {
 }
 
 func (query Query) Perform(client oxia.AsyncClient) common.Call {
-	payload, err := convertPayload(*query.Binary, query.Payload)
+	binary := false
+	if query.Binary != nil {
+		binary = *query.Binary
+	}
+	payload, err := convertPayload(binary, query.Payload)
 	call := Call{}
 	if err != nil {
 		errChan := make(chan oxia.PutResult, 1)

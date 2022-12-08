@@ -6,7 +6,7 @@ import (
 	"io"
 )
 
-func ReadStdin(stdin io.Reader, input Input, queries chan<- Query) {
+func ReadStdin(stdin io.Reader, input Input, queue QueryQueue) {
 	scanner := bufio.NewScanner(stdin)
 	for {
 		scanner.Scan()
@@ -16,7 +16,7 @@ func ReadStdin(stdin io.Reader, input Input, queries chan<- Query) {
 			if err != nil {
 				panic(err)
 			}
-			queries <- query
+			queue.Add(query)
 		} else {
 			break
 		}

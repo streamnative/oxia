@@ -5,16 +5,12 @@ import (
 	"errors"
 	"github.com/spf13/cobra"
 	"io"
-	"os"
 	"oxia/cmd/client/common"
 	"oxia/oxia"
 )
 
 var (
-	f                           = flags{}
-	in      io.Reader           = os.Stdin
-	queries chan<- common.Query = common.Queries
-	done    <-chan bool         = common.Done
+	Config = flags{}
 
 	ErrorExpectedVersionInconsistent = errors.New("inconsistent flags; zero or all keys must have an expected version")
 	ErrorExpectedRangeInconsistent   = errors.New("inconsistent flags; min and max flags must be in pairs")
@@ -27,11 +23,18 @@ type flags struct {
 	keyMaximums      []string
 }
 
+func (flags *flags) Reset() {
+	flags.keys = nil
+	flags.expectedVersions = nil
+	flags.keyMinimums = nil
+	flags.keyMaximums = nil
+}
+
 func init() {
-	Cmd.Flags().StringSliceVarP(&f.keys, "key", "k", []string{}, "The target key")
-	Cmd.Flags().Int64SliceVarP(&f.expectedVersions, "expected-version", "e", []int64{}, "Version of entry expected to be on the server")
-	Cmd.Flags().StringSliceVarP(&f.keyMinimums, "key-min", "n", []string{}, "Key range minimum (inclusive)")
-	Cmd.Flags().StringSliceVarP(&f.keyMaximums, "key-max", "x", []string{}, "Key range maximum (exclusive)")
+	Cmd.Flags().StringSliceVarP(&Config.keys, "key", "k", []string{}, "The target key")
+	Cmd.Flags().Int64SliceVarP(&Config.expectedVersions, "expected-version", "e", []int64{}, "Version of entry expected to be on the server")
+	Cmd.Flags().StringSliceVarP(&Config.keyMinimums, "key-min", "n", []string{}, "Key range minimum (inclusive)")
+	Cmd.Flags().StringSliceVarP(&Config.keyMaximums, "key-max", "x", []string{}, "Key range maximum (exclusive)")
 	Cmd.MarkFlagsRequiredTogether("key-min", "key-max")
 }
 
@@ -44,14 +47,14 @@ var Cmd = &cobra.Command{
 }
 
 func exec(cmd *cobra.Command, args []string) error {
+	loop, _ := common.NewCommandLoop(cmd.OutOrStdout())
 	defer func() {
-		close(queries)
-		<-done
+		loop.Complete()
 	}()
-	return _exec(f, in, queries)
+	return _exec(Config, cmd.InOrStdin(), loop)
 }
 
-func _exec(flags flags, in io.Reader, queries chan<- common.Query) error {
+func _exec(flags flags, in io.Reader, queue common.QueryQueue) error {
 	if len(flags.keyMinimums) != len(flags.keyMaximums) {
 		return ErrorExpectedRangeInconsistent
 	}
@@ -60,10 +63,10 @@ func _exec(flags flags, in io.Reader, queries chan<- common.Query) error {
 	}
 	if len(flags.keyMinimums) > 0 || len(flags.keys) > 0 {
 		for i, n := range flags.keyMinimums {
-			queries <- QueryByRange{
+			queue.Add(QueryByRange{
 				KeyMinimum: n,
 				KeyMaximum: flags.keyMaximums[i],
-			}
+			})
 		}
 		for i, k := range flags.keys {
 			query := QueryByKey{
@@ -72,10 +75,10 @@ func _exec(flags flags, in io.Reader, queries chan<- common.Query) error {
 			if len(flags.expectedVersions) > 0 {
 				query.ExpectedVersion = &flags.expectedVersions[i]
 			}
-			queries <- query
+			queue.Add(query)
 		}
 	} else {
-		common.ReadStdin(in, QueryInput{}, queries)
+		common.ReadStdin(in, QueryInput{}, queue)
 	}
 	return nil
 }

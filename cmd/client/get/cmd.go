@@ -6,16 +6,12 @@ import (
 	"errors"
 	"github.com/spf13/cobra"
 	"io"
-	"os"
 	"oxia/cmd/client/common"
 	"oxia/oxia"
 )
 
 var (
-	f                           = flags{}
-	in      io.Reader           = os.Stdin
-	queries chan<- common.Query = common.Queries
-	done    <-chan bool         = common.Done
+	Config = flags{}
 
 	ErrorIncorrectBinaryFlagUse = errors.New("binary flag was set when config is being sourced from stdin")
 )
@@ -25,9 +21,14 @@ type flags struct {
 	binaryPayloads bool
 }
 
+func (flags *flags) Reset() {
+	flags.keys = nil
+	flags.binaryPayloads = false
+}
+
 func init() {
-	Cmd.Flags().StringSliceVarP(&f.keys, "key", "k", []string{}, "The target key")
-	Cmd.Flags().BoolVarP(&f.binaryPayloads, "binary", "b", false, "Output payloads as a base64 encoded string, use when payloads are binary")
+	Cmd.Flags().StringSliceVarP(&Config.keys, "key", "k", []string{}, "The target key")
+	Cmd.Flags().BoolVarP(&Config.binaryPayloads, "binary", "b", false, "Output payloads as a base64 encoded string, use when payloads are binary")
 }
 
 var Cmd = &cobra.Command{
@@ -39,32 +40,32 @@ var Cmd = &cobra.Command{
 }
 
 func exec(cmd *cobra.Command, args []string) error {
+	loop, _ := common.NewCommandLoop(cmd.OutOrStdout())
 	defer func() {
-		close(queries)
-		<-done
+		loop.Complete()
 	}()
-	return _exec(f, in, queries)
+	return _exec(Config, cmd.InOrStdin(), loop)
 }
 
-func _exec(flags flags, in io.Reader, queries chan<- common.Query) error {
+func _exec(flags flags, in io.Reader, queue common.QueryQueue) error {
 	if len(flags.keys) > 0 {
 		for _, k := range flags.keys {
 			if flags.binaryPayloads {
-				queries <- Query{
+				queue.Add(Query{
 					Key:    k,
 					Binary: &flags.binaryPayloads,
-				}
+				})
 			} else {
-				queries <- Query{
+				queue.Add(Query{
 					Key: k,
-				}
+				})
 			}
 		}
 	} else {
 		if flags.binaryPayloads {
 			return ErrorIncorrectBinaryFlagUse
 		}
-		common.ReadStdin(in, Query{}, queries)
+		common.ReadStdin(in, Query{}, queue)
 	}
 	return nil
 }

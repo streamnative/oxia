@@ -24,13 +24,13 @@ func TestCobra(t *testing.T) {
 		{"stdin", []string{}, nil, nil, nil},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			f = flags{}
+			Config = flags{}
 			Cmd.SetArgs(test.args)
 			invoked := false
 			Cmd.RunE = func(cmd *cobra.Command, args []string) error {
 				invoked = true
-				assert.Equal(t, test.expectedKeyMinimums, f.keyMinimums)
-				assert.Equal(t, test.expectedKeyMaximums, f.keyMaximums)
+				assert.Equal(t, test.expectedKeyMinimums, Config.keyMinimums)
+				assert.Equal(t, test.expectedKeyMaximums, Config.keyMaximums)
 				assert.True(t, invoked)
 				return nil
 			}
@@ -47,7 +47,7 @@ func Test_exec(t *testing.T) {
 		stdin           string
 		flags           flags
 		expectedErr     error
-		expectedQueries []Query
+		expectedQueries []common.Query
 	}{
 		{"range",
 			"",
@@ -56,7 +56,7 @@ func Test_exec(t *testing.T) {
 				keyMaximums: []string{"b"},
 			},
 			nil,
-			[]Query{{
+			[]common.Query{Query{
 				KeyMinimum: "a",
 				KeyMaximum: "b",
 			}}},
@@ -67,10 +67,10 @@ func Test_exec(t *testing.T) {
 				keyMaximums: []string{"b", "y"},
 			},
 			nil,
-			[]Query{{
+			[]common.Query{Query{
 				KeyMinimum: "a",
 				KeyMaximum: "b",
-			}, {
+			}, Query{
 				KeyMinimum: "x",
 				KeyMaximum: "y",
 			}}},
@@ -78,10 +78,10 @@ func Test_exec(t *testing.T) {
 			"{\"key_minimum\":\"a\",\"key_maximum\":\"b\"}\n{\"key_minimum\":\"x\",\"key_maximum\":\"y\"}\n",
 			flags{},
 			nil,
-			[]Query{{
+			[]common.Query{Query{
 				KeyMinimum: "a",
 				KeyMaximum: "b",
-			}, {
+			}, Query{
 				KeyMinimum: "x",
 				KeyMaximum: "y",
 			}}},
@@ -91,29 +91,20 @@ func Test_exec(t *testing.T) {
 				keyMaximums: []string{"b"},
 			},
 			ErrorExpectedRangeInconsistent,
-			[]Query{}},
+			nil},
 		{"range-no-max",
 			"",
 			flags{
 				keyMaximums: []string{"b"},
 			},
 			ErrorExpectedRangeInconsistent,
-			[]Query{}},
+			nil},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			in := bytes.NewBufferString(test.stdin)
-			queries := make(chan common.Query, 10)
-			results := make([]Query, 0)
-			err := _exec(test.flags, in, queries)
-			close(queries)
-			for {
-				query, ok := <-queries
-				if !ok {
-					break
-				}
-				results = append(results, query.(Query))
-			}
-			assert.Equal(t, test.expectedQueries, results)
+			queue := fakeQueryQueue{}
+			err := _exec(test.flags, in, &queue)
+			assert.Equal(t, test.expectedQueries, queue.queries)
 			assert.ErrorIs(t, err, test.expectedErr)
 		})
 	}
@@ -210,4 +201,15 @@ func TestCall_Complete(t *testing.T) {
 			assert.Equalf(t, test.expected, call.Complete(), "Error")
 		})
 	}
+}
+
+type fakeQueryQueue struct {
+	queries []common.Query
+}
+
+func (q *fakeQueryQueue) Add(query common.Query) {
+	if q.queries == nil {
+		q.queries = []common.Query{}
+	}
+	q.queries = append(q.queries, query)
 }

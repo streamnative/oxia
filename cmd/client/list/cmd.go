@@ -5,16 +5,12 @@ import (
 	"errors"
 	"github.com/spf13/cobra"
 	"io"
-	"os"
 	"oxia/cmd/client/common"
 	"oxia/oxia"
 )
 
 var (
-	f                           = flags{}
-	in      io.Reader           = os.Stdin
-	queries chan<- common.Query = common.Queries
-	done    <-chan bool         = common.Done
+	Config = flags{}
 
 	ErrorExpectedRangeInconsistent = errors.New("inconsistent flags; min and max flags must be in pairs")
 )
@@ -24,9 +20,14 @@ type flags struct {
 	keyMaximums []string
 }
 
+func (flags *flags) Reset() {
+	flags.keyMinimums = nil
+	flags.keyMaximums = nil
+}
+
 func init() {
-	Cmd.Flags().StringSliceVarP(&f.keyMinimums, "key-min", "n", []string{}, "Key range minimum (inclusive)")
-	Cmd.Flags().StringSliceVarP(&f.keyMaximums, "key-max", "x", []string{}, "Key range maximum (exclusive)")
+	Cmd.Flags().StringSliceVarP(&Config.keyMinimums, "key-min", "n", []string{}, "Key range minimum (inclusive)")
+	Cmd.Flags().StringSliceVarP(&Config.keyMaximums, "key-max", "x", []string{}, "Key range maximum (exclusive)")
 	Cmd.MarkFlagsRequiredTogether("key-min", "key-max")
 }
 
@@ -39,26 +40,26 @@ var Cmd = &cobra.Command{
 }
 
 func exec(cmd *cobra.Command, args []string) error {
+	loop, _ := common.NewCommandLoop(cmd.OutOrStdout())
 	defer func() {
-		close(queries)
-		<-done
+		loop.Complete()
 	}()
-	return _exec(f, in, queries)
+	return _exec(Config, cmd.InOrStdin(), loop)
 }
 
-func _exec(flags flags, in io.Reader, queries chan<- common.Query) error {
+func _exec(flags flags, in io.Reader, queue common.QueryQueue) error {
 	if len(flags.keyMinimums) != len(flags.keyMaximums) {
 		return ErrorExpectedRangeInconsistent
 	}
 	if len(flags.keyMinimums) > 0 {
 		for i, n := range flags.keyMinimums {
-			queries <- Query{
+			queue.Add(Query{
 				KeyMinimum: n,
 				KeyMaximum: flags.keyMaximums[i],
-			}
+			})
 		}
 	} else {
-		common.ReadStdin(in, Query{}, queries)
+		common.ReadStdin(in, Query{}, queue)
 	}
 	return nil
 }

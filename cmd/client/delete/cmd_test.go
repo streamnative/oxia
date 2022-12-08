@@ -28,16 +28,16 @@ func TestCorba(t *testing.T) {
 		{"stdin", []string{}, nil, nil, nil, nil, nil},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			f = flags{}
+			Config = flags{}
 
 			Cmd.SetArgs(test.args)
 			invoked := false
 			Cmd.RunE = func(cmd *cobra.Command, args []string) error {
 				invoked = true
-				assert.Equal(t, test.expectedKeys, f.keys)
-				assert.Equal(t, test.expectedVersions, f.expectedVersions)
-				assert.Equal(t, test.expectedKeyMinimums, f.keyMinimums)
-				assert.Equal(t, test.expectedKeyMaximums, f.keyMaximums)
+				assert.Equal(t, test.expectedKeys, Config.keys)
+				assert.Equal(t, test.expectedVersions, Config.expectedVersions)
+				assert.Equal(t, test.expectedKeyMinimums, Config.keyMinimums)
+				assert.Equal(t, test.expectedKeyMaximums, Config.keyMaximums)
 				return nil
 			}
 			err := Cmd.Execute()
@@ -49,12 +49,11 @@ func TestCorba(t *testing.T) {
 
 func Test_exec(t *testing.T) {
 	for _, test := range []struct {
-		name                 string
-		stdin                string
-		flags                flags
-		expectedErr          error
-		expectedKeyQueries   []QueryByKey
-		expectedRangeQueries []QueryByRange
+		name            string
+		stdin           string
+		flags           flags
+		expectedErr     error
+		expectedQueries []common.Query
 	}{
 		{"key",
 			"",
@@ -62,10 +61,9 @@ func Test_exec(t *testing.T) {
 				keys: []string{"x"},
 			},
 			nil,
-			[]QueryByKey{{
+			[]common.Query{QueryByKey{
 				Key: "x",
-			}},
-			nil},
+			}}},
 		{"key-expected-version",
 			"",
 			flags{
@@ -73,24 +71,21 @@ func Test_exec(t *testing.T) {
 				expectedVersions: []int64{1},
 			},
 			nil,
-			[]QueryByKey{{
+			[]common.Query{QueryByKey{
 				Key:             "x",
 				ExpectedVersion: common.PtrInt64(1),
-			}},
-			nil},
+			}}},
 		{"keys",
 			"",
 			flags{
 				keys: []string{"x", "y"},
 			},
 			nil,
-			[]QueryByKey{{
+			[]common.Query{QueryByKey{
 				Key: "x",
-			}, {
+			}, QueryByKey{
 				Key: "y",
-			}},
-			nil,
-		},
+			}}},
 		{"keys-expected-version",
 			"",
 			flags{
@@ -98,22 +93,19 @@ func Test_exec(t *testing.T) {
 				expectedVersions: []int64{1, 4},
 			},
 			nil,
-			[]QueryByKey{{
+			[]common.Query{QueryByKey{
 				Key:             "x",
 				ExpectedVersion: common.PtrInt64(1),
-			}, {
+			}, QueryByKey{
 				Key:             "y",
 				ExpectedVersion: common.PtrInt64(4),
-			}},
-			nil,
-		},
+			}}},
 		{"missing-key",
 			"",
 			flags{
 				expectedVersions: []int64{1},
 			},
 			ErrorExpectedVersionInconsistent,
-			nil,
 			nil},
 		{"missing-version",
 			"",
@@ -122,7 +114,6 @@ func Test_exec(t *testing.T) {
 				expectedVersions: []int64{1},
 			},
 			ErrorExpectedVersionInconsistent,
-			nil,
 			nil},
 		{"range-no-max",
 			"",
@@ -132,7 +123,6 @@ func Test_exec(t *testing.T) {
 			},
 			ErrorExpectedRangeInconsistent,
 			nil,
-			nil,
 		},
 		{"range",
 			"",
@@ -141,16 +131,13 @@ func Test_exec(t *testing.T) {
 				keyMaximums: []string{"b", "y"},
 			},
 			nil,
-			nil,
-			[]QueryByRange{{
+			[]common.Query{QueryByRange{
 				KeyMinimum: "a",
 				KeyMaximum: "b",
-			},
-				{
-					KeyMinimum: "x",
-					KeyMaximum: "y",
-				}},
-		},
+			}, QueryByRange{
+				KeyMinimum: "x",
+				KeyMaximum: "y",
+			}}},
 		{"range-no-min",
 			"",
 			flags{
@@ -159,22 +146,20 @@ func Test_exec(t *testing.T) {
 			},
 			ErrorExpectedRangeInconsistent,
 			nil,
-			nil,
 		},
 		{"stdin",
 			"{\"key\":\"x\"}\n{\"key\":\"y\",\"expected_version\":4}\n{\"key_minimum\":\"a\",\"key_maximum\":\"b\"}\n{\"key_minimum\":\"x\",\"key_maximum\":\"y\"}\n",
 			flags{},
 			nil,
-			[]QueryByKey{{
+			[]common.Query{QueryByKey{
 				Key: "x",
-			}, {
+			}, QueryByKey{
 				Key:             "y",
 				ExpectedVersion: common.PtrInt64(4),
-			}},
-			[]QueryByRange{{
+			}, QueryByRange{
 				KeyMinimum: "a",
 				KeyMaximum: "b",
-			}, {
+			}, QueryByRange{
 				KeyMinimum: "x",
 				KeyMaximum: "y",
 			}},
@@ -182,31 +167,9 @@ func Test_exec(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			in := bytes.NewBufferString(test.stdin)
-			queries := make(chan common.Query, 10)
-			keyResults := make([]QueryByKey, 0)
-			rangeResults := make([]QueryByRange, 0)
-			err := _exec(test.flags, in, queries)
-			close(queries)
-			for {
-				query, ok := <-queries
-				if !ok {
-					break
-				}
-				switch q := query.(type) {
-				case QueryByKey:
-					keyResults = append(keyResults, q)
-				case QueryByRange:
-					rangeResults = append(rangeResults, q)
-				}
-			}
-			if len(keyResults) < 1 {
-				keyResults = nil
-			}
-			if len(rangeResults) < 1 {
-				rangeResults = nil
-			}
-			assert.Equal(t, test.expectedKeyQueries, keyResults)
-			assert.Equal(t, test.expectedRangeQueries, rangeResults)
+			queue := fakeQueryQueue{}
+			err := _exec(test.flags, in, &queue)
+			assert.Equal(t, test.expectedQueries, queue.queries)
 			assert.ErrorIs(t, err, test.expectedErr)
 		})
 	}
@@ -275,4 +238,15 @@ func TestCall_Complete(t *testing.T) {
 			assert.Equalf(t, test.expected, call.Complete(), "Error")
 		})
 	}
+}
+
+type fakeQueryQueue struct {
+	queries []common.Query
+}
+
+func (q *fakeQueryQueue) Add(query common.Query) {
+	if q.queries == nil {
+		q.queries = []common.Query{}
+	}
+	q.queries = append(q.queries, query)
 }
