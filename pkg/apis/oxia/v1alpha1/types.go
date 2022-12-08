@@ -18,14 +18,33 @@ type OxiaCluster struct {
 
 // OxiaClusterSpec is the spec for an OxiaCluster resource
 type OxiaClusterSpec struct {
-	ServerReplicas    *int32 `json:"serverReplicas"`
-	ShardCount        *int32 `json:"shardCount"`
-	ReplicationFactor *int32 `json:"replicationFactor"`
+	ServerReplicas    *uint32 `json:"serverReplicas"`
+	ShardCount        *uint32 `json:"shardCount"`
+	ReplicationFactor *uint32 `json:"replicationFactor"`
 }
 
 // OxiaClusterStatus is the status for an OxiaCluster resource
 type OxiaClusterStatus struct {
-	//TODO inherit from coordinator.ClusterStatus
+	Shards []*ShardMetadata `json:"shards"`
+}
+
+type ShardMetadata struct {
+	Id        uint32          `json:"id"`
+	Status    string          `json:"shardStatus"`
+	Epoch     int64           `json:"epoch"`
+	Leader    ServerAddress   `json:"leader"`
+	Ensemble  []ServerAddress `json:"ensemble"`
+	HashRange HashRange       `json:"hashRange"`
+}
+
+type ServerAddress struct {
+	Public   string `json:"public"`
+	Internal string `json:"internal"`
+}
+
+type HashRange struct {
+	Min uint32 `json:"min"`
+	Max uint32 `json:"max"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
