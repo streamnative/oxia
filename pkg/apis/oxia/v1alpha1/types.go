@@ -32,7 +32,7 @@ type ShardMetadata struct {
 	Id        uint32          `json:"id"`
 	Status    string          `json:"shardStatus"`
 	Epoch     int64           `json:"epoch"`
-	Leader    *ServerAddress  `json:"leader"`
+	Leader    ServerAddress   `json:"leader"`
 	Ensemble  []ServerAddress `json:"ensemble"`
 	HashRange HashRange       `json:"hashRange"`
 }
