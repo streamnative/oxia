@@ -23,3 +23,8 @@ func InternalPort() int {
 func MetricsPort() int {
 	return Ports[MetricsPortName]
 }
+
+type Resources struct {
+	Cpu    string
+	Memory string
+}
