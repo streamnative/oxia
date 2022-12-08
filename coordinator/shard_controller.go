@@ -3,6 +3,7 @@ package coordinator
 import (
 	"context"
 	"fmt"
+	"github.com/cenkalti/backoff/v4"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -10,6 +11,7 @@ import (
 	"math/rand"
 	"oxia/common"
 	"oxia/proto"
+	"sync"
 	"time"
 )
 
@@ -17,16 +19,21 @@ import (
 // e.g. electing a new leader
 type ShardController interface {
 	io.Closer
+
+	HandleNodeFailure(failedNode ServerAddress)
 }
 
 type shardController struct {
+	sync.Mutex
+
 	shard         uint32
 	shardMetadata *ShardMetadata
 	clientPool    common.ClientPool
 	coordinator   Coordinator
 
+	ctx    context.Context
+	cancel context.CancelFunc
 	log    zerolog.Logger
-	closed bool
 }
 
 func NewShardController(shard uint32, shardMetadata *ShardMetadata, clientPool common.ClientPool, coordinator Coordinator) ShardController {
@@ -41,32 +48,59 @@ func NewShardController(shard uint32, shardMetadata *ShardMetadata, clientPool c
 			Logger(),
 	}
 
-	go common.DoWithLabels(map[string]string{
-		"oxia":  "shard-controller",
-		"shard": fmt.Sprintf("%d", s.shard),
-	}, func() {
-		s.run()
-	})
+	s.ctx, s.cancel = context.WithCancel(context.Background())
 
-	return s
-}
-
-func (s *shardController) run() {
 	s.log.Info().
 		Interface("shard-metadata", s.shardMetadata).
 		Msg("Started shard controller")
 
-	if err := s.electLeader(); err != nil {
-		s.log.Error().Err(err).
-			Msg("Failed to perform leader election")
-	}
+	s.electLeaderWithRetries()
+	return s
+}
 
-	for !s.closed {
-		time.Sleep(1 * time.Second)
+func (s *shardController) HandleNodeFailure(failedNode ServerAddress) {
+	s.Lock()
+	defer s.Unlock()
+
+	s.log.Debug().
+		Interface("failed-node", failedNode).
+		Interface("current-leader", s.shardMetadata.Leader).
+		Msg("Received notification of failed node")
+
+	if s.shardMetadata.Leader != nil &&
+		*s.shardMetadata.Leader == failedNode {
+		s.log.Info().
+			Interface("leader", failedNode).
+			Msg("Detected failure on shard leader")
+		s.electLeaderWithRetries()
 	}
 }
 
+func (s *shardController) electLeaderWithRetries() {
+	go common.DoWithLabels(map[string]string{
+		"oxia":  "shard-controller-leader-election",
+		"shard": fmt.Sprintf("%d", s.shard),
+	}, func() {
+		err := backoff.RetryNotify(s.electLeader, common.NewBackOff(s.ctx),
+			func(err error, duration time.Duration) {
+				s.log.Warn().Err(err).
+					Dur("retry-after", duration).
+					Msg("Leader election has failed, retrying later")
+			})
+
+		if err == nil {
+			s.log.Info().
+				Interface("leader", s.shardMetadata.Leader).
+				Int64("epoch", s.shardMetadata.Epoch).
+				Msg("Elected new leader for shard")
+		}
+	})
+}
+
 func (s *shardController) electLeader() error {
+	s.Lock()
+	defer s.Unlock()
+
 	s.shardMetadata.Epoch++
 	s.log.Info().
 		Int64("epoch", s.shardMetadata.Epoch).
@@ -94,7 +128,16 @@ func (s *shardController) electLeader() error {
 		return err
 	}
 
-	return s.coordinator.ElectedLeader(s.shard, s.shardMetadata.Epoch, newLeader)
+	if err = s.coordinator.ElectedLeader(s.shard, s.shardMetadata.Epoch, newLeader); err != nil {
+		return err
+	}
+
+	s.shardMetadata.Leader = &newLeader
+	s.log.Info().
+		Int64("epoch", s.shardMetadata.Epoch).
+		Interface("leader", s.shardMetadata.Leader).
+		Msg("Elected new leader")
+	return nil
 }
 
 func (s *shardController) fenceQuorum() (map[ServerAddress]*proto.EntryId, error) {
@@ -134,7 +177,7 @@ func (s *shardController) fence(node string) (*proto.EntryId, error) {
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), common.DefaultRpcTimeout)
+	ctx, cancel := context.WithTimeout(s.ctx, common.DefaultRpcTimeout)
 	defer cancel()
 
 	res, err := rpc.Fence(ctx, &proto.FenceRequest{
@@ -187,7 +230,7 @@ func (s *shardController) becomeLeader(leader string, followers map[string]*prot
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), common.DefaultRpcTimeout)
+	ctx, cancel := context.WithTimeout(s.ctx, common.DefaultRpcTimeout)
 	defer cancel()
 
 	res, err := rpc.BecomeLeader(ctx, &proto.BecomeLeaderRequest{
@@ -208,5 +251,6 @@ func (s *shardController) becomeLeader(leader string, followers map[string]*prot
 }
 
 func (s *shardController) Close() error {
+	s.cancel()
 	return nil
 }
