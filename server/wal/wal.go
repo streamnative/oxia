@@ -30,12 +30,9 @@ type WalFactory interface {
 type WalReader interface {
 	io.Closer
 	// ReadNext returns the next entry in the log according to the Reader's direction.
-	// If a reverse WalReader has passed the beginning of the log, it returns [ErrorEntryNotFound]. To avoid this error, use HasNext.
-	// If a forward WalReader has passed the log end, it will wait for new entries appended. To avoid waiting, you can use HasNext.
+	// If a forward/reverse WalReader has passed the end/beginning of the log, it returns [ErrorEntryNotFound]. To avoid this error, use HasNext.
 	ReadNext() (*proto.LogEntry, error)
 	// HasNext returns true if there is an entry to read.
-	// For a reverse WalReader this means the reader has not yet reached the beginning of the log.
-	// For a forward WalReader this means that we have not yet reached the end of the wal
 	HasNext() bool
 }
 
