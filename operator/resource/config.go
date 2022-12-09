@@ -1,25 +1,30 @@
 package resource
 
-const (
-	PublicPortName   = "public"
-	InternalPortName = "internal"
-	MetricsPortName  = "metrics"
+var (
+	AllPorts     = []NamedPort{PublicPort, InternalPort, MetricsPort}
+	PublicPort   = NamedPort{"public", 6650}
+	InternalPort = NamedPort{"internal", 8080}
+	MetricsPort  = NamedPort{"metrics", 6648}
 )
 
-var Ports = map[string]int{
-	PublicPortName:   6648,
-	InternalPortName: 6649,
-	MetricsPortName:  8080,
+type NamedPort struct {
+	Name string
+	Port int
 }
 
-func PublicPort() int {
-	return Ports[PublicPortName]
+type Resources struct {
+	Cpu, Memory string
 }
 
-func InternalPort() int {
-	return Ports[InternalPortName]
+type ServiceConfig struct {
+	Name     string
+	Headless bool
+	Ports    []NamedPort
 }
 
-func MetricsPort() int {
-	return Ports[MetricsPortName]
+type DeploymentConfig struct {
+	Name, Image, Command string
+	Replicas             int32
+	Ports                []NamedPort
+	Resources            Resources
 }
