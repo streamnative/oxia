@@ -94,7 +94,9 @@ func (s *shardAssignmentDispatcher) closeChannel(err error) {
 	defer s.Unlock()
 
 	if s.closeCh != nil {
-		s.closeCh <- err
+		if err != nil {
+			s.closeCh <- err
+		}
 		close(s.closeCh)
 		s.closeCh = nil
 	}
