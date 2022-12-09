@@ -7,6 +7,8 @@ require (
 	github.com/cockroachdb/pebble v0.0.0-20221104214247-8dc60b62ebbf
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
 	github.com/pkg/errors v0.9.1
+	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.61.1
+	github.com/prometheus-operator/prometheus-operator/pkg/client v0.61.1
 	github.com/prometheus/client_golang v1.14.0
 	github.com/rs/zerolog v1.26.0
 	github.com/spf13/cobra v1.6.1
@@ -21,10 +23,12 @@ require (
 	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4
 	google.golang.org/grpc v1.50.1
 	google.golang.org/protobuf v1.28.1
+	k8s.io/api v0.25.4
 	k8s.io/apiextensions-apiserver v0.25.4
 	k8s.io/apimachinery v0.25.4
 	k8s.io/client-go v0.25.4
 	k8s.io/code-generator v0.25.4
+	k8s.io/utils v0.0.0-20221108210102-8e77b1f39fe2
 )
 
 require (
@@ -84,11 +88,10 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/api v0.25.4 // indirect
 	k8s.io/gengo v0.0.0-20211129171323-c02415ce4185 // indirect
 	k8s.io/klog/v2 v2.80.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20221110221610-a28e98eb7c70 // indirect
-	k8s.io/utils v0.0.0-20221108210102-8e77b1f39fe2 // indirect
+	sigs.k8s.io/controller-runtime v0.13.1 // indirect
 	sigs.k8s.io/json v0.0.0-20220713155537-f223a00ba0e2 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.3 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
