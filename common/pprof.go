@@ -5,6 +5,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"io"
 	"net/http"
+	_ "net/http/pprof"
 	"runtime/pprof"
 )
 
@@ -46,7 +47,7 @@ func RunProfiling() io.Closer {
 	log.Info().Msgf("  use `go tool pprof http://%s/debug/pprof/heap` to get inuse_space file", s.Addr)
 	log.Info().Msg("")
 
-	DoWithLabels(map[string]string{
+	go DoWithLabels(map[string]string{
 		"oxia": "pprof",
 	}, func() {
 		if err := s.ListenAndServe(); err != nil && err != http.ErrServerClosed {

@@ -17,7 +17,7 @@ func RunProcess(startProcess func() (io.Closer, error)) {
 	profiler := RunProfiling()
 
 	WaitUntilSignal(
-		profiler,
 		process,
+		profiler,
 	)
 }
