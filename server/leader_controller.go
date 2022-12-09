@@ -337,13 +337,14 @@ func (lc *leaderController) Close() error {
 	lc.log.Info().Msg("Closing leader controller")
 
 	lc.status = NotMember
-	var err error
-	for _, follower := range lc.followers {
-		err = multierr.Append(err, follower.Close())
-	}
 
+	var err error
 	if lc.quorumAckTracker != nil {
 		err = multierr.Append(err, lc.quorumAckTracker.Close())
+	}
+
+	for _, follower := range lc.followers {
+		err = multierr.Append(err, follower.Close())
 	}
 
 	err = multierr.Combine(err,

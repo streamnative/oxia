@@ -6,7 +6,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"go.uber.org/multierr"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
@@ -56,9 +55,7 @@ func newCoordinationRpcServer(port int, shardsDirector ShardsDirector, assignmen
 }
 
 func (s *internalRpcServer) Close() error {
-	return multierr.Combine(
-		s.container.Close(),
-		s.assignmentDispatcher.Close())
+	return s.container.Close()
 }
 
 func (s *internalRpcServer) ShardAssignment(srv proto.OxiaControl_ShardAssignmentServer) error {

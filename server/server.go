@@ -69,10 +69,11 @@ func New(config Config) (*Server, error) {
 
 func (s *Server) Close() error {
 	return multierr.Combine(
+		s.shardAssignmentDispatcher.Close(),
+		s.shardsDirector.Close(),
 		s.PublicRpcServer.Close(),
 		s.internalRpcServer.Close(),
 		s.clientPool.Close(),
-		s.shardsDirector.Close(),
 		s.kvFactory.Close(),
 		s.walFactory.Close(),
 		s.metrics.Close(),

@@ -12,6 +12,7 @@ import (
 )
 
 var (
+	ErrorAlreadyClosed     = errors.New("node is shutting down")
 	ErrorNodeIsNotLeader   = errors.New("node is not leader for shard")
 	ErrorNodeIsNotFollower = errors.New("node is not follower for shard")
 )
@@ -35,6 +36,7 @@ type shardsDirector struct {
 	kvFactory  kv.KVFactory
 	walFactory wal.WalFactory
 	pool       common.ClientPool
+	closed     bool
 	log        zerolog.Logger
 }
 
@@ -55,6 +57,10 @@ func (s *shardsDirector) GetLeader(shardId uint32) (LeaderController, error) {
 	s.Lock()
 	defer s.Unlock()
 
+	if s.closed {
+		return nil, ErrorAlreadyClosed
+	}
+
 	if leader, ok := s.leaders[shardId]; ok {
 		// There is already a leader controller for this shard
 		return leader, nil
@@ -70,6 +76,10 @@ func (s *shardsDirector) GetFollower(shardId uint32) (FollowerController, error)
 	s.Lock()
 	defer s.Unlock()
 
+	if s.closed {
+		return nil, ErrorAlreadyClosed
+	}
+
 	if follower, ok := s.followers[shardId]; ok {
 		// There is already a follower controller for this shard
 		return follower, nil
@@ -84,6 +94,10 @@ func (s *shardsDirector) GetFollower(shardId uint32) (FollowerController, error)
 func (s *shardsDirector) GetOrCreateLeader(shardId uint32) (LeaderController, error) {
 	s.Lock()
 	defer s.Unlock()
+
+	if s.closed {
+		return nil, ErrorAlreadyClosed
+	}
 
 	if leader, ok := s.leaders[shardId]; ok {
 		// There is already a leader controller for this shard
@@ -112,6 +126,10 @@ func (s *shardsDirector) GetOrCreateFollower(shardId uint32) (FollowerController
 	s.Lock()
 	defer s.Unlock()
 
+	if s.closed {
+		return nil, ErrorAlreadyClosed
+	}
+
 	if follower, ok := s.followers[shardId]; ok {
 		// There is already a follower controller for this shard
 		return follower, nil
@@ -138,6 +156,8 @@ func (s *shardsDirector) GetOrCreateFollower(shardId uint32) (FollowerController
 func (s *shardsDirector) Close() error {
 	s.Lock()
 	defer s.Unlock()
+
+	s.closed = true
 
 	for shard, leader := range s.leaders {
 		if err := leader.Close(); err != nil {

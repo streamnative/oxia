@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -9,6 +10,7 @@ import (
 	pb "google.golang.org/protobuf/proto"
 	"io"
 	"math"
+	"oxia/common"
 	"oxia/proto"
 	"oxia/server/kv"
 	"oxia/server/wal"
@@ -22,7 +24,8 @@ const (
 )
 
 var (
-	ErrorInvalidStatus = errors.New("oxia: invalid status")
+	ErrorInvalidStatus          = errors.New("oxia: invalid status")
+	ErrorLeaderAlreadyConnected = errors.New("oxia: leader is already connected")
 )
 
 // FollowerController handles all the operations of a given shard's follower
@@ -69,7 +72,7 @@ type followerController struct {
 	status      Status
 	wal         wal.Wal
 	db          kv.DB
-	closing     bool
+	closeCh     chan error
 	log         zerolog.Logger
 }
 
@@ -79,7 +82,7 @@ func NewFollowerController(shardId uint32, wf wal.WalFactory, kvFactory kv.KVFac
 		commitIndex: wal.InvalidOffset,
 		headIndex:   wal.InvalidOffset,
 		status:      NotMember,
-		closing:     false,
+		closeCh:     nil,
 		log: log.With().
 			Str("component", "follower-controller").
 			Uint32("shard", shardId).
@@ -117,6 +120,9 @@ func NewFollowerController(shardId uint32, wf wal.WalFactory, kvFactory kv.KVFac
 }
 
 func (fc *followerController) Close() error {
+	fc.log.Debug().Msg("Closing follower controller")
+	fc.closeChannel(nil)
+
 	if err := fc.wal.Close(); err != nil {
 		return err
 	}
@@ -127,6 +133,22 @@ func (fc *followerController) Close() error {
 
 	fc.log.Info().Msg("Closed follower")
 	return nil
+}
+
+func (fc *followerController) closeChannel(err error) {
+	if err != nil && err != io.EOF && status.Code(err) != codes.Canceled {
+		fc.log.Warn().Err(err).
+			Msg("Error in handle AddEntries stream")
+	}
+
+	fc.Lock()
+	defer fc.Unlock()
+
+	if fc.closeCh != nil {
+		fc.closeCh <- err
+		close(fc.closeCh)
+		fc.closeCh = nil
+	}
 }
 
 func (fc *followerController) Status() Status {
@@ -217,15 +239,37 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 }
 
 func (fc *followerController) AddEntries(stream proto.OxiaLogReplication_AddEntriesServer) error {
+	fc.Lock()
+	if fc.closeCh != nil {
+		fc.Unlock()
+		return ErrorLeaderAlreadyConnected
+	}
+
+	fc.closeCh = make(chan error)
+	fc.Unlock()
+
+	go common.DoWithLabels(map[string]string{
+		"oxia":  "receive-shards-assignments",
+		"shard": fmt.Sprintf("%d", fc.shardId),
+	}, func() { fc.handleServerStream(stream) })
+
+	return <-fc.closeCh
+}
+
+func (fc *followerController) handleServerStream(stream proto.OxiaLogReplication_AddEntriesServer) {
 	for {
 		if addEntryReq, err := stream.Recv(); err != nil {
-			return err
+			fc.closeChannel(err)
+			return
 		} else if addEntryReq == nil {
-			return nil
+			fc.closeChannel(nil)
+			return
 		} else if res, err := fc.addEntry(addEntryReq); err != nil {
-			return err
+			fc.closeChannel(err)
+			return
 		} else if err = stream.Send(res); err != nil {
-			return err
+			fc.closeChannel(err)
+			return
 		}
 	}
 }
