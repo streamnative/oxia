@@ -253,10 +253,7 @@ func (fc *followerController) AddEntries(stream proto.OxiaLogReplication_AddEntr
 		"shard": fmt.Sprintf("%d", fc.shardId),
 	}, func() { fc.handleServerStream(stream) })
 
-	select {
-	case err := <-fc.closeCh:
-		return err
-	}
+	return <-fc.closeCh
 }
 
 func (fc *followerController) handleServerStream(stream proto.OxiaLogReplication_AddEntriesServer) {

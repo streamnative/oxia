@@ -70,10 +70,7 @@ func (s *shardAssignmentDispatcher) ShardAssignment(stream proto.OxiaControl_Sha
 		"oxia": "receive-shards-assignments",
 	}, func() { s.handleServerStream(stream) })
 
-	select {
-	case err := <-s.closeCh:
-		return err
-	}
+	return <-s.closeCh
 }
 
 func (s *shardAssignmentDispatcher) handleServerStream(stream proto.OxiaControl_ShardAssignmentServer) {
