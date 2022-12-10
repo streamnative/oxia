@@ -4,25 +4,20 @@ import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"oxia/common"
-	"oxia/oxia"
 	"oxia/server"
 	"testing"
 	"time"
 )
 
-var port = 9000
-
 func newServer(t *testing.T) (s *server.Server, addr ServerAddress) {
 	var err error
 	s, err = server.New(server.Config{
-		PublicServicePort:   port,
+		PublicServicePort:   0,
 		InternalServicePort: 0,
 		MetricsPort:         -1, // Disable metrics to avoid conflict
 		DataDir:             t.TempDir(),
 		WalDir:              t.TempDir(),
 	})
-
-	port++
 
 	assert.NoError(t, err)
 
@@ -32,13 +27,6 @@ func newServer(t *testing.T) (s *server.Server, addr ServerAddress) {
 	}
 
 	return s, addr
-}
-
-func newClient(t *testing.T, addr ServerAddress) oxia.SyncClient {
-	opts, err := oxia.NewClientOptions(addr.Public)
-	assert.NoError(t, err)
-
-	return oxia.NewSyncClient(opts)
 }
 
 func TestCoordinatorE2E(t *testing.T) {
