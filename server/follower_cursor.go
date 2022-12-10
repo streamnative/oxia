@@ -190,9 +190,8 @@ func (fc *followerCursor) runOnce() error {
 			Msg("Sending entries to follower")
 
 		if err = fc.stream.Send(&proto.AddEntryRequest{
-			Epoch:       fc.epoch,
-			Entry:       le,
-			CommitIndex: fc.ackTracker.CommitIndex(),
+			Epoch: fc.epoch,
+			Entry: le,
 		}); err != nil {
 			return err
 		}
@@ -223,6 +222,9 @@ func (fc *followerCursor) receiveAcks(cancel context.CancelFunc, stream proto.Ox
 			return
 		}
 
+		fc.log.Debug().
+			Int64("offset", res.Offset).
+			Msg("Received ack")
 		fc.cursorAcker.Ack(res.Offset)
 
 		fc.ackIndex.Store(res.Offset)

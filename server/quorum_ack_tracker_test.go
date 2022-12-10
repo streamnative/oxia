@@ -9,7 +9,7 @@ import (
 )
 
 func TestQuorumAckTrackerNoFollower(t *testing.T) {
-	at := NewQuorumAckTracker(1, 1)
+	at := NewQuorumAckTracker(1, 1, wal.InvalidOffset)
 
 	assert.EqualValues(t, 1, at.HeadIndex())
 	assert.Equal(t, wal.InvalidOffset, at.CommitIndex())
@@ -29,7 +29,7 @@ func TestQuorumAckTrackerNoFollower(t *testing.T) {
 }
 
 func TestQuorumAckTrackerRF2(t *testing.T) {
-	at := NewQuorumAckTracker(2, 1)
+	at := NewQuorumAckTracker(2, 1, wal.InvalidOffset)
 
 	assert.EqualValues(t, 1, at.HeadIndex())
 	assert.Equal(t, wal.InvalidOffset, at.CommitIndex())
@@ -47,7 +47,7 @@ func TestQuorumAckTrackerRF2(t *testing.T) {
 }
 
 func TestQuorumAckTrackerRF3(t *testing.T) {
-	at := NewQuorumAckTracker(3, 1)
+	at := NewQuorumAckTracker(3, 1, wal.InvalidOffset)
 
 	assert.EqualValues(t, 1, at.HeadIndex())
 	assert.Equal(t, wal.InvalidOffset, at.CommitIndex())
@@ -72,7 +72,7 @@ func TestQuorumAckTrackerRF3(t *testing.T) {
 }
 
 func TestQuorumAckTrackerRF5(t *testing.T) {
-	at := NewQuorumAckTracker(5, 1)
+	at := NewQuorumAckTracker(5, 1, wal.InvalidOffset)
 
 	assert.EqualValues(t, 1, at.HeadIndex())
 	assert.Equal(t, wal.InvalidOffset, at.CommitIndex())
@@ -111,7 +111,7 @@ func TestQuorumAckTrackerRF5(t *testing.T) {
 }
 
 func TestQuorumAckTrackerMaxCursors(t *testing.T) {
-	at := NewQuorumAckTracker(3, 1)
+	at := NewQuorumAckTracker(3, 1, wal.InvalidOffset)
 
 	c1, err := at.NewCursorAcker()
 	assert.NoError(t, err)
@@ -127,7 +127,7 @@ func TestQuorumAckTrackerMaxCursors(t *testing.T) {
 }
 
 func TestQuorumAckTracker_WaitForHeadIndex(t *testing.T) {
-	at := NewQuorumAckTracker(1, 1)
+	at := NewQuorumAckTracker(1, 1, wal.InvalidOffset)
 
 	assert.EqualValues(t, 1, at.HeadIndex())
 
@@ -161,7 +161,7 @@ func TestQuorumAckTracker_WaitForHeadIndex(t *testing.T) {
 }
 
 func TestQuorumAckTracker_WaitForCommitIndex(t *testing.T) {
-	at := NewQuorumAckTracker(3, 1)
+	at := NewQuorumAckTracker(3, 1, wal.InvalidOffset)
 
 	assert.Equal(t, wal.InvalidOffset, at.CommitIndex())
 	at.AdvanceHeadIndex(2)

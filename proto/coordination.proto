@@ -30,7 +30,9 @@ message EntryId {
 message LogEntry {
   int64 epoch = 1;
   int64 offset = 2;
-  bytes value = 3;
+  int64 commit_index = 3;
+
+  bytes value = 4;
 }
 
 message FenceRequest {
@@ -71,7 +73,6 @@ message TruncateResponse {
 message AddEntryRequest {
   int64 epoch = 1;
   LogEntry entry = 2;
-  int64 commit_index = 3;
 }
 
 message AddEntryResponse {

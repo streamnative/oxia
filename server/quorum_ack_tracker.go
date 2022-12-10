@@ -5,7 +5,6 @@ import (
 	"io"
 	"oxia/proto"
 	"oxia/server/util"
-	"oxia/server/wal"
 	"sync"
 	"sync/atomic"
 )
@@ -67,15 +66,19 @@ type cursorAcker struct {
 	cursorIdx     int
 }
 
-func NewQuorumAckTracker(replicationFactor uint32, headIndex int64) QuorumAckTracker {
+func NewQuorumAckTracker(replicationFactor uint32, headIndex int64, commitIndex int64) QuorumAckTracker {
 	q := &quorumAckTracker{
 		// Ack quorum is number of follower acks that are required to consider the entry fully committed
 		// We are using RF/2 (and not RF/2 + 1) because the leader is already storing 1 copy locally
 		requiredAcks:      replicationFactor / 2,
 		replicationFactor: replicationFactor,
 		headIndex:         headIndex,
-		commitIndex:       wal.InvalidOffset,
+		commitIndex:       commitIndex,
 		tracker:           make(map[int64]*util.BitSet),
+	}
+
+	for i := commitIndex; i <= headIndex; i++ {
+		q.tracker[i] = &util.BitSet{}
 	}
 
 	q.waitForHeadIndex = sync.NewCond(q)
@@ -130,7 +133,12 @@ func (q *quorumAckTracker) WaitForCommitIndex(offset int64, f func() (*proto.Wri
 	if q.closed {
 		return nil, errors.New("already closed")
 	}
-	return f()
+
+	if f != nil {
+		return f()
+	}
+
+	return nil, nil
 }
 
 func (q *quorumAckTracker) Close() error {

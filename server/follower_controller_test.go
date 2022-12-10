@@ -17,6 +17,7 @@ var testKVOptions = &kv.KVFactoryOptions{
 }
 
 func init() {
+	common.LogDebug = true
 	common.ConfigureLogger()
 }
 
@@ -33,7 +34,7 @@ func TestFollower(t *testing.T) {
 	fenceRes, err := fc.Fence(&proto.FenceRequest{Epoch: 1})
 	assert.NoError(t, err)
 	assert.EqualValues(t, 1, fenceRes.Epoch)
-	assert.Equal(t, &proto.EntryId{Epoch: wal.InvalidEpoch, Offset: wal.InvalidOffset}, fenceRes.HeadIndex)
+	assert.Equal(t, InvalidEntryId, fenceRes.HeadIndex)
 
 	assert.Equal(t, Fenced, fc.Status())
 	assert.EqualValues(t, 1, fc.Epoch())
@@ -243,7 +244,7 @@ func TestFollower_PersistentEpoch(t *testing.T) {
 	fenceRes, err := fc.Fence(&proto.FenceRequest{Epoch: 4})
 	assert.NoError(t, err)
 	assert.EqualValues(t, 4, fenceRes.Epoch)
-	assert.Equal(t, &proto.EntryId{Epoch: wal.InvalidEpoch, Offset: wal.InvalidOffset}, fenceRes.HeadIndex)
+	assert.Equal(t, InvalidEntryId, fenceRes.HeadIndex)
 
 	assert.Equal(t, Fenced, fc.Status())
 	assert.EqualValues(t, 4, fc.Epoch())
@@ -379,7 +380,7 @@ func TestFollower_RejectTruncateInvalidEpoch(t *testing.T) {
 	fenceRes, err := fc.Fence(&proto.FenceRequest{Epoch: 5})
 	assert.NoError(t, err)
 	assert.EqualValues(t, 5, fenceRes.Epoch)
-	assert.Equal(t, &proto.EntryId{Epoch: wal.InvalidEpoch, Offset: wal.InvalidOffset}, fenceRes.HeadIndex)
+	assert.Equal(t, InvalidEntryId, fenceRes.HeadIndex)
 
 	assert.Equal(t, Fenced, fc.Status())
 	assert.EqualValues(t, 5, fc.Epoch())
@@ -427,14 +428,14 @@ func createAddRequest(t *testing.T, epoch int64, offset int64,
 	assert.NoError(t, err)
 
 	le := &proto.LogEntry{
-		Epoch:  epoch,
-		Offset: offset,
-		Value:  entry,
+		Epoch:       epoch,
+		Offset:      offset,
+		Value:       entry,
+		CommitIndex: commitIndex,
 	}
 
 	return &proto.AddEntryRequest{
-		Epoch:       epoch,
-		Entry:       le,
-		CommitIndex: commitIndex,
+		Epoch: epoch,
+		Entry: le,
 	}
 }

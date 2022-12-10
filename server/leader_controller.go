@@ -147,18 +147,26 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 	}
 
 	lc.followers = nil
-	headIndex, err := getLastEntryIdInWal(lc.wal)
+	lastEntry, err := getLastEntryInWal(lc.wal)
 	if err != nil {
 		return nil, err
 	}
 
+	lastEntryId := InvalidEntryId
+	if lastEntry != nil {
+		lastEntryId = &proto.EntryId{
+			Epoch:  lastEntry.Epoch,
+			Offset: lastEntry.Offset,
+		}
+	}
+
 	lc.log.Info().
-		Int64("offset", headIndex.Offset).
+		Interface("last-entry", lastEntryId).
 		Msg("Fenced leader")
 
 	return &proto.FenceResponse{
 		Epoch:     lc.epoch,
-		HeadIndex: headIndex,
+		HeadIndex: lastEntryId,
 	}, nil
 }
 
@@ -199,12 +207,22 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 	lc.replicationFactor = req.GetReplicationFactor()
 	lc.followers = make(map[string]FollowerCursor)
 
-	leaderHeadIndex, err := getLastEntryIdInWal(lc.wal)
+	lastEntry, err := getLastEntryInWal(lc.wal)
 	if err != nil {
 		return nil, err
 	}
 
-	lc.quorumAckTracker = NewQuorumAckTracker(req.GetReplicationFactor(), leaderHeadIndex.Offset)
+	leaderHeadIndex := InvalidEntryId
+	commitIndex := wal.InvalidOffset
+	if lastEntry != nil {
+		leaderHeadIndex = &proto.EntryId{
+			Epoch:  lastEntry.Epoch,
+			Offset: lastEntry.Offset,
+		}
+		commitIndex = lastEntry.CommitIndex
+	}
+
+	lc.quorumAckTracker = NewQuorumAckTracker(req.GetReplicationFactor(), leaderHeadIndex.Offset, commitIndex)
 
 	for follower, followerHeadIndex := range req.FollowerMaps {
 		if needsTruncation(leaderHeadIndex, followerHeadIndex) {
@@ -233,11 +251,57 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 		lc.followers[follower] = cursor
 	}
 
+	// We must wait until all the entries in the leader WAL are fully
+	// committed in the quorum, to avoid missing any entries in the DB
+	// by the moment we make the leader controller accepting new write/read
+	// requests
+	if _, err = lc.quorumAckTracker.WaitForCommitIndex(leaderHeadIndex.Offset, nil); err != nil {
+		return nil, err
+	}
+
+	if err = lc.applyAllEntriesIntoDB(); err != nil {
+		return nil, err
+	}
+
 	lc.log.Info().
 		Int64("epoch", lc.epoch).
 		Int64("head-index", leaderHeadIndex.Offset).
 		Msg("Started leading the shard")
 	return &proto.BecomeLeaderResponse{Epoch: req.GetEpoch()}, nil
+}
+
+func (lc *leaderController) applyAllEntriesIntoDB() error {
+	dbCommitIndex, err := lc.db.ReadCommitIndex()
+	if err != nil {
+		return err
+	}
+
+	lc.log.Info().
+		Int64("commit-index", dbCommitIndex).
+		Int64("head-index", lc.quorumAckTracker.HeadIndex()).
+		Msg("Applying all pending entries to database")
+
+	r, err := lc.wal.NewReader(dbCommitIndex)
+	if err != nil {
+		return err
+	}
+	for r.HasNext() {
+		entry, err := r.ReadNext()
+		if err != nil {
+			return err
+		}
+
+		writeRequest := &proto.WriteRequest{}
+		if err = pb.Unmarshal(entry.Value, writeRequest); err != nil {
+			return err
+		}
+
+		if _, err = lc.db.ProcessWrite(writeRequest, entry.Offset); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func needsTruncation(leaderHeadIndex *proto.EntryId, followerHeadIndex *proto.EntryId) bool {
@@ -312,9 +376,10 @@ func (lc *leaderController) Write(request *proto.WriteRequest) (*proto.WriteResp
 			return nil, err
 		}
 		logEntry := &proto.LogEntry{
-			Epoch:  lc.epoch,
-			Offset: newOffset,
-			Value:  value,
+			Epoch:       lc.epoch,
+			Offset:      newOffset,
+			CommitIndex: lc.quorumAckTracker.CommitIndex(),
+			Value:       value,
 		}
 
 		err = lc.wal.Append(logEntry)
@@ -354,19 +419,15 @@ func (lc *leaderController) Close() error {
 	return err
 }
 
-func getLastEntryIdInWal(wal wal.Wal) (*proto.EntryId, error) {
+func getLastEntryInWal(wal wal.Wal) (*proto.LogEntry, error) {
 	reader, err := wal.NewReverseReader()
 	if err != nil {
 		return nil, err
 	}
 
 	if !reader.HasNext() {
-		return InvalidEntryId, nil
+		return nil, nil
 	}
 
-	entry, err := reader.ReadNext()
-	if err != nil {
-		return nil, err
-	}
-	return &proto.EntryId{Epoch: entry.Epoch, Offset: entry.Offset}, nil
+	return reader.ReadNext()
 }
