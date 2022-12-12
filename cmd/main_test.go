@@ -27,18 +27,27 @@ func TestCall_LogLevel(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Run(test.name, func(t *testing.T) {
-				logLevelStr = ""
-				rootCmd.SetArgs(append([]string{"-g"}, test.level))
-				rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
-					if test.expectedErr == nil {
-						assert.Equal(t, test.expectedLevel, common.LogLevel)
-					}
-					return nil
+			logLevelStr = ""
+			rootCmd.SetArgs(append([]string{"-g"}, test.level))
+			rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
+				if test.expectedErr == nil {
+					assert.Equal(t, test.expectedLevel, common.LogLevel)
 				}
-				err := rootCmd.Execute()
-				assert.ErrorIs(t, test.expectedErr, err)
-			})
+				return nil
+			}
+			err := rootCmd.Execute()
+			assert.ErrorIs(t, test.expectedErr, err)
 		})
 	}
+}
+
+func TestCall_LogLevel_Default(t *testing.T) {
+	t.Run("default-log-level", func(t *testing.T) {
+		rootCmd.SetArgs([]string{})
+		rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
+			assert.Equal(t, zerolog.InfoLevel, common.LogLevel)
+			return nil
+		}
+		assert.ErrorIs(t, rootCmd.Execute(), nil)
+	})
 }
