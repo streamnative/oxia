@@ -54,7 +54,7 @@ func TestCall_LogLevel(t *testing.T) {
 			} else {
 				assert.False(t, invoked)
 			}
-			assert.ErrorIs(t, test.expectedErr, err)
+			assert.ErrorIs(t, err, test.expectedErr)
 		})
 	}
 }
