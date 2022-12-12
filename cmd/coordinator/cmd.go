@@ -24,7 +24,7 @@ func init() {
 	flag.MetricsPort(Cmd, &conf.MetricsPort)
 	Cmd.Flags().StringVar(&conf.Name, "name", conf.Name, "THe name of the Oxia cluster")
 	Cmd.Flags().Uint32Var(&conf.ReplicationFactor, "replication-factor", conf.ReplicationFactor, "The replication factor")
-	Cmd.Flags().Uint32Var(&conf.ShardsCount, "shards", conf.ShardsCount, "The number of shards")
+	Cmd.Flags().Uint32Var(&conf.ShardCount, "shards", conf.ShardCount, "The number of shards")
 	Cmd.Flags().Uint32Var(&conf.ServerReplicas, "servers", conf.ServerReplicas, "The number of servers")
 }
 

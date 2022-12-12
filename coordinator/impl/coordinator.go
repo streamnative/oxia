@@ -93,12 +93,12 @@ func (c *coordinator) initialAssignment() error {
 		Shards:            make(map[uint32]*ShardMetadata),
 	}
 
-	bucketSize := math.MaxUint32 / cc.ShardsCount
+	bucketSize := math.MaxUint32 / cc.ShardCount
 
 	// Do round-robin assignment of shards to storage servers
 	serverIdx := uint32(0)
 
-	for i := uint32(0); i < cc.ShardsCount; i++ {
+	for i := uint32(0); i < cc.ShardCount; i++ {
 		cs.Shards[i] = &ShardMetadata{
 			Status:   ShardStatusUnknown,
 			Epoch:    -1,

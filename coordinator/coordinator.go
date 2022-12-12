@@ -14,7 +14,7 @@ type Config struct {
 	MetricsPort         int
 	Name                string
 	ReplicationFactor   uint32
-	ShardsCount         uint32
+	ShardCount          uint32
 	ServerReplicas      uint32
 }
 
@@ -24,7 +24,7 @@ func NewConfig() Config {
 		MetricsPort:         resource.MetricsPort.Port,
 		Name:                "oxia",
 		ReplicationFactor:   3,
-		ShardsCount:         3,
+		ShardCount:          3,
 		ServerReplicas:      3,
 	}
 }
@@ -47,7 +47,7 @@ func New(config Config) (*Coordinator, error) {
 	// perhaps a controller -> coordinator RPC
 	clusterConfig := impl.ClusterConfig{
 		ReplicationFactor: config.ReplicationFactor,
-		ShardsCount:       config.ShardsCount,
+		ShardCount:        config.ShardCount,
 		StorageServers:    storageServers(config),
 	}
 
