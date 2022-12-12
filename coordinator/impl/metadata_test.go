@@ -1,4 +1,4 @@
-package coordinator
+package impl
 
 import (
 	"github.com/stretchr/testify/assert"

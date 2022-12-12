@@ -1,4 +1,4 @@
-package coordinator
+package impl
 
 type ServerAddress struct {
 	// Public is the endpoint that is advertised to clients
