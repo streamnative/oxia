@@ -9,17 +9,15 @@ import (
 )
 
 func TestCall_LogLevel_Default(t *testing.T) {
-	t.Run("default-log-level", func(t *testing.T) {
-		var captured zerolog.Level
-		rootCmd.SetArgs([]string{})
-		rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
-			captured = common.LogLevel
-			return nil
-		}
-		err := rootCmd.Execute()
-		assert.Equal(t, common.DefaultLogLevel, captured)
-		assert.ErrorIs(t, err, nil)
-	})
+	var captured zerolog.Level
+	rootCmd.SetArgs([]string{})
+	rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		captured = common.LogLevel
+		return nil
+	}
+	err := rootCmd.Execute()
+	assert.Equal(t, common.DefaultLogLevel, captured)
+	assert.ErrorIs(t, err, nil)
 }
 
 func TestCall_LogLevel(t *testing.T) {
@@ -42,7 +40,7 @@ func TestCall_LogLevel(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			invoked := false
-			rootCmd.SetArgs(append([]string{"-g"}, test.level))
+			rootCmd.SetArgs(append([]string{"-l"}, test.level))
 			rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
 				invoked = true
 				assert.Equal(t, test.expectedLevel, common.LogLevel)
