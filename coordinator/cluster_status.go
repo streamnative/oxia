@@ -27,7 +27,7 @@ type ShardMetadata struct {
 type ClusterStatus struct {
 	ReplicationFactor uint32 `json:"replicationFactor"`
 
-	Shards map[uint32]*ShardMetadata
+	Shards map[uint32]ShardMetadata
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -39,8 +39,8 @@ func (sm Int32HashRange) Clone() Int32HashRange {
 	}
 }
 
-func (sm *ShardMetadata) Clone() *ShardMetadata {
-	r := &ShardMetadata{
+func (sm ShardMetadata) Clone() ShardMetadata {
+	r := ShardMetadata{
 		Status:         sm.Status,
 		Epoch:          sm.Epoch,
 		Leader:         sm.Leader,
@@ -53,10 +53,10 @@ func (sm *ShardMetadata) Clone() *ShardMetadata {
 	return r
 }
 
-func (c *ClusterStatus) Clone() *ClusterStatus {
+func (c ClusterStatus) Clone() *ClusterStatus {
 	r := &ClusterStatus{
 		ReplicationFactor: c.ReplicationFactor,
-		Shards:            make(map[uint32]*ShardMetadata),
+		Shards:            make(map[uint32]ShardMetadata),
 	}
 
 	for shard, sm := range c.Shards {

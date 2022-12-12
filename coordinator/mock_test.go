@@ -354,6 +354,9 @@ func (m *mockHealthClient) Check(ctx context.Context, in *grpc_health_v1.HealthC
 }
 
 func (m *mockHealthClient) Watch(ctx context.Context, in *grpc_health_v1.HealthCheckRequest, opts ...grpc.CallOption) (grpc_health_v1.Health_WatchClient, error) {
+	m.Lock()
+	defer m.Unlock()
+
 	w := newMockHealthWatchClient(ctx)
 	m.watches = append(m.watches, w)
 	return w, nil

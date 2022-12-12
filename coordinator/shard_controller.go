@@ -31,7 +31,7 @@ type shardController struct {
 	sync.Mutex
 
 	shard         uint32
-	shardMetadata *ShardMetadata
+	shardMetadata ShardMetadata
 	rpc           RpcProvider
 	coordinator   Coordinator
 
@@ -40,7 +40,7 @@ type shardController struct {
 	log    zerolog.Logger
 }
 
-func NewShardController(shard uint32, shardMetadata *ShardMetadata, rpc RpcProvider, coordinator Coordinator) ShardController {
+func NewShardController(shard uint32, shardMetadata ShardMetadata, rpc RpcProvider, coordinator Coordinator) ShardController {
 	s := &shardController{
 		shard:         shard,
 		shardMetadata: shardMetadata,
@@ -85,19 +85,12 @@ func (s *shardController) electLeaderWithRetries() {
 		"oxia":  "shard-controller-leader-election",
 		"shard": fmt.Sprintf("%d", s.shard),
 	}, func() {
-		err := backoff.RetryNotify(s.electLeader, common.NewBackOff(s.ctx),
+		backoff.RetryNotify(s.electLeader, common.NewBackOff(s.ctx),
 			func(err error, duration time.Duration) {
 				s.log.Warn().Err(err).
 					Dur("retry-after", duration).
 					Msg("Leader election has failed, retrying later")
 			})
-
-		if err == nil {
-			s.log.Info().
-				Interface("leader", s.shardMetadata.Leader).
-				Int64("epoch", s.shardMetadata.Epoch).
-				Msg("Elected new leader for shard")
-		}
 	})
 }
 

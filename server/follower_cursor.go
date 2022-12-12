@@ -143,10 +143,13 @@ func (fc *followerCursor) runOnce() error {
 	ctx, cancel := context.WithCancel(fc.ctx)
 	defer cancel()
 
+	fc.Lock()
 	var err error
 	if fc.stream, err = fc.addEntriesStreamProvider.GetAddEntriesStream(ctx, fc.follower, fc.shardId); err != nil {
+		fc.Unlock()
 		return err
 	}
+	fc.Unlock()
 
 	currentOffset := fc.ackIndex.Load()
 

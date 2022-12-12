@@ -36,7 +36,7 @@ func (m *metadataProviderMemory) Store(cs *ClusterStatus, expectedVersion int64)
 		return MetadataNotExists, ErrorMetadataBadVersion
 	}
 
-	m.cs = cs
+	m.cs = cs.Clone()
 	m.version++
 	return m.version, nil
 }

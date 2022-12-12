@@ -25,12 +25,12 @@ type Coordinator interface {
 
 	ShardAssignmentsProvider
 
-	InitiateLeaderElection(shard uint32, metadata *ShardMetadata) error
-	ElectedLeader(shard uint32, metadata *ShardMetadata) error
+	InitiateLeaderElection(shard uint32, metadata ShardMetadata) error
+	ElectedLeader(shard uint32, metadata ShardMetadata) error
 
 	NodeAvailabilityListener
 
-	ClusterStatus() *ClusterStatus
+	ClusterStatus() ClusterStatus
 }
 
 type coordinator struct {
@@ -91,7 +91,7 @@ func (c *coordinator) initialAssignment() error {
 	cc := c.ClusterConfig
 	cs := &ClusterStatus{
 		ReplicationFactor: cc.ReplicationFactor,
-		Shards:            make(map[uint32]*ShardMetadata),
+		Shards:            make(map[uint32]ShardMetadata),
 	}
 
 	bucketSize := math.MaxUint32 / cc.ShardsCount
@@ -100,7 +100,7 @@ func (c *coordinator) initialAssignment() error {
 	serverIdx := uint32(0)
 
 	for i := uint32(0); i < cc.ShardsCount; i++ {
-		cs.Shards[i] = &ShardMetadata{
+		cs.Shards[i] = ShardMetadata{
 			Status:   ShardStatusUnknown,
 			Epoch:    -1,
 			Leader:   nil,
@@ -175,12 +175,12 @@ func (c *coordinator) WaitForNextUpdate(currentValue *proto.ShardAssignmentsResp
 	return c.assignments
 }
 
-func (c *coordinator) InitiateLeaderElection(shard uint32, metadata *ShardMetadata) error {
+func (c *coordinator) InitiateLeaderElection(shard uint32, metadata ShardMetadata) error {
 	c.Lock()
 	defer c.Unlock()
 
 	cs := c.clusterStatus.Clone()
-	cs.Shards[shard] = metadata
+	cs.Shards[shard] = metadata.Clone()
 
 	newMetadataVersion, err := c.MetadataProvider.Store(cs, c.metadataVersion)
 	if err != nil {
@@ -191,12 +191,12 @@ func (c *coordinator) InitiateLeaderElection(shard uint32, metadata *ShardMetada
 	return nil
 }
 
-func (c *coordinator) ElectedLeader(shard uint32, metadata *ShardMetadata) error {
+func (c *coordinator) ElectedLeader(shard uint32, metadata ShardMetadata) error {
 	c.Lock()
 	defer c.Unlock()
 
 	cs := c.clusterStatus.Clone()
-	cs.Shards[shard] = metadata
+	cs.Shards[shard] = metadata.Clone()
 
 	newMetadataVersion, err := c.MetadataProvider.Store(cs, c.metadataVersion)
 	if err != nil {
@@ -240,8 +240,8 @@ func (c *coordinator) computeNewAssignments() {
 	c.assignmentsChanged.Broadcast()
 }
 
-func (c *coordinator) ClusterStatus() *ClusterStatus {
+func (c *coordinator) ClusterStatus() ClusterStatus {
 	c.Lock()
 	defer c.Unlock()
-	return c.clusterStatus.Clone()
+	return *c.clusterStatus.Clone()
 }
