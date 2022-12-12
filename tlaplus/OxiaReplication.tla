@@ -10,7 +10,7 @@ for the action to take place, such as an epoch being of the right value.
 An action wil only occur if all the enabling conditions are true.
 
 This spec includes:
-- One or more operators
+- One or more coordinators
 - Multiple nodes
 - Leader election
 - Data replication
@@ -25,22 +25,22 @@ The state space is large as expected. Use of simulation for non-trivial numbers 
 and epochs is required.      
 *)
 
-CONSTANTS Operators,         \* The set of all operators (should only be one but the protocol should handle multiple)
+CONSTANTS Coordinators,         \* The set of all coordinators (should only be one but the protocol should handle multiple)
           Nodes,             \* The set of all nodes
           Values,            \* The set of all values that can be sent by clients
           RepFactor          \* The desired initial replication factor
           
 \* State space          
 CONSTANTS MaxEpochs,         \* The max number of epochs for the model checker to explore
-          MaxOperatorStops   \* The max number of operator crashes that the model checker will explore
+          MaxCoordinatorStops   \* The max number of coordinator crashes that the model checker will explore
 
 \* Shard statuses
 CONSTANTS STEADY_STATE,      \* The shard is in data replication mode
           ELECTION           \* An election is in progress
 
-\* Operator statuses
-CONSTANTS RUNNING,           \* an operator is running
-          NOT_RUNNING        \* an operator is not running
+\* Coordinator statuses
+CONSTANTS RUNNING,           \* an coordinator is running
+          NOT_RUNNING        \* an coordinator is not running
 
 \* Node statuses
 CONSTANTS FENCED,            \* denotes a node that has been fenced during an election
@@ -50,7 +50,7 @@ CONSTANTS FENCED,            \* denotes a node that has been fenced during an el
 
 \* Election phases
 CONSTANTS FENCING,           \* prevent nodes from making progress
-          NOTIFY_LEADER,     \* a leader has been selected and is being notified by the operator
+          NOTIFY_LEADER,     \* a leader has been selected and is being notified by the coordinator
           LEADER_ELECTED     \* a leader has confirmed its leadership        
 
 \* return codes
@@ -69,14 +69,14 @@ VARIABLES
           metadata_version,  \* monotonic counter incremented on each metadata change   
           metadata,          \* the metadata shard state
           node_state,        \* the nodes and their state
-          operator_state,    \* the operators and their state
+          coordinator_state,    \* the coordinators and their state
           
           \* auxilliary state required by the spec
           confirmed,         \* the confirmation status of each written value
-          operator_stop_ctr  \* a counter that incremented each time an operator crashes/stops
+          coordinator_stop_ctr  \* a counter that incremented each time an coordinator crashes/stops
 
-vars == << metadata_version, metadata, node_state, operator_state, confirmed, messages, operator_stop_ctr >>
-view == << metadata_version, metadata, node_state, operator_state, confirmed, messages >>
+vars == << metadata_version, metadata, node_state, coordinator_state, confirmed, messages, coordinator_stop_ctr >>
+view == << metadata_version, metadata, node_state, coordinator_state, confirmed, messages >>
 
 (* -----------------------------------------
    TYPE DEFINITIONS
@@ -104,38 +104,38 @@ NoCursor == [status |-> NIL, last_pushed |-> NoEntryId, last_confirmed |-> NoEnt
 \* Messages
 \* ------------------------------
 
-\* Operator -> Nodes
+\* Coordinator -> Nodes
 FenceRequest ==
     [type:     {FENCE_REQUEST},
      node:     Nodes,
-     operator: Operators,
+     coordinator: Coordinators,
      epoch:    Epoch]
 
-\* Node -> Operator
+\* Node -> Coordinator
 FenceResponse == 
     [type:       {FENCE_RESPONSE},
      node:       Nodes,
-     operator:   Operators,
+     coordinator:   Coordinators,
      head_index: EntryId,
      epoch:      Epoch]
 
-\* Operator -> Node
+\* Coordinator -> Node
 BecomeLeaderRequest ==
     [type:         {BECOME_LEADER_REQUEST},
      node:         Nodes,
-     operator:     Operators,
+     coordinator:     Coordinators,
      epoch:        Epoch,
      rep_factor:   Nat,
      follower_map: [Nodes -> EntryId \union {NIL}]]
 
-\* Node -> Operator
+\* Node -> Coordinator
 BecomeLeaderResponse ==
     [type:     {BECOME_LEADER_RESPONSE},
      node:     Nodes,
-     operator: Operators,
+     coordinator: Coordinators,
      epoch:    Epoch]
 
-\* Operator -> Node (Leader)
+\* Coordinator -> Node (Leader)
 AddFollowerRequest ==
     [type:       {ADD_FOLLOWER_REQUEST},
      node:       Nodes,
@@ -193,7 +193,7 @@ Metadata == [shard_status: ShardStatus,
              rep_factor:   Nat,
              leader:       NodesOrNil]
 
-\* Node and Operator state
+\* Node and Coordinator state
 NodeState == [id:              Nodes,
               status:          NodeStatus,
               epoch:           Epoch,
@@ -204,10 +204,10 @@ NodeState == [id:              Nodes,
               head_index:      EntryId,
               follow_cursor:   [Nodes -> Cursor]]
 
-OperatorStatuses == {NOT_RUNNING, RUNNING}
+CoordinatorStatuses == {NOT_RUNNING, RUNNING}
 ElectionPhases == { NIL, FENCING, NOTIFY_LEADER, LEADER_ELECTED }
-OperatorState == [id:                        Operators,
-                  status:                    OperatorStatuses,
+CoordinatorState == [id:                        Coordinators,
+                  status:                    CoordinatorStatuses,
                   md_version:                Nat,
                   md:                        Metadata \union {NIL},
                   election_phase:            ElectionPhases,
@@ -218,7 +218,7 @@ OperatorState == [id:                        Operators,
 TypeOK ==
     /\ metadata \in Metadata
     /\ node_state \in [Nodes -> NodeState]
-    /\ operator_state \in [Operators -> OperatorState]
+    /\ coordinator_state \in [Coordinators -> CoordinatorState]
     /\ \A v \in DOMAIN confirmed :
         /\ v \in Values
         /\ confirmed[v] \in BOOLEAN
@@ -230,7 +230,7 @@ TypeOK ==
  
    The only initial state is the shard ensemble
    and rep factor. There is no leader, followers
-   or even a running operator.
+   or even a running coordinator.
    -----------------------------------------
 *)
 
@@ -253,7 +253,7 @@ Init ==
                              commit_index    |-> NoEntryId,
                              head_index      |-> NoEntryId,
                              follow_cursor   |-> [n1 \in Nodes |-> NoCursor]]]
-        /\ operator_state = [o \in Operators |->
+        /\ coordinator_state = [o \in Coordinators |->
                             [id                        |-> o,
                              status                    |-> NOT_RUNNING,
                              md_version                |-> 0,
@@ -265,7 +265,7 @@ Init ==
                              election_fence_responses  |-> {}]]
         /\ confirmed = <<>>
         /\ messages = <<>>
-        /\ operator_stop_ctr = 0
+        /\ coordinator_stop_ctr = 0
 
 (* -----------------------------------------
    HELPER OPERATORS
@@ -309,19 +309,19 @@ HeadEntry(log) ==
         \A e \in log : IsHigherOrEqualId(entry.entry_id, e.entry_id)
 
 (*---------------------------------------------------------
-  Operator starts
+  Coordinator starts
   
-  The operator loads the metadata from the metadata store.
-  The metadata will decide what the operator might do
+  The coordinator loads the metadata from the metadata store.
+  The metadata will decide what the coordinator might do
   next.
 ----------------------------------------------------------*)
 
-OperatorStarts ==
+CoordinatorStarts ==
     \* enabling conditions
-    /\ \E o \in Operators :
-        /\ operator_state[o].status = NOT_RUNNING
+    /\ \E o \in Coordinators :
+        /\ coordinator_state[o].status = NOT_RUNNING
         \* state changes
-        /\ operator_state' = [operator_state EXCEPT ![o] = 
+        /\ coordinator_state' = [coordinator_state EXCEPT ![o] = 
             [id                        |-> o,
              status                    |-> RUNNING,
              md_version                |-> metadata_version,
@@ -331,21 +331,21 @@ OperatorStarts ==
              election_final_ensemble   |-> {},
              election_leader           |-> NIL,
              election_fence_responses  |-> {}]]
-        /\ UNCHANGED << confirmed, metadata, metadata_version, node_state, messages, operator_stop_ctr >> 
+        /\ UNCHANGED << confirmed, metadata, metadata_version, node_state, messages, coordinator_stop_ctr >> 
              
 (*---------------------------------------------------------
-  Operator stops
+  Coordinator stops
   
-  The operator crashes/stops and loses all local state.
+  The coordinator crashes/stops and loses all local state.
 ----------------------------------------------------------*)
 
-OperatorStops ==
+CoordinatorStops ==
     \* enabling conditions
-    /\ operator_stop_ctr < MaxOperatorStops
-    /\ \E o \in Operators :
-        /\ operator_state[o].status = RUNNING
+    /\ coordinator_stop_ctr < MaxCoordinatorStops
+    /\ \E o \in Coordinators :
+        /\ coordinator_state[o].status = RUNNING
         \* state changes
-        /\ operator_state' = [operator_state EXCEPT ![o].status                    = NOT_RUNNING,
+        /\ coordinator_state' = [coordinator_state EXCEPT ![o].status                    = NOT_RUNNING,
                                                     ![o].md_version                = 0,
                                                     ![o].md                        = NIL,
                                                     ![o].election_phase            = NIL,
@@ -353,20 +353,20 @@ OperatorStops ==
                                                     ![o].election_final_ensemble   = {},
                                                     ![o].election_leader           = NIL,
                                                     ![o].election_fence_responses  = {}]
-        /\ operator_stop_ctr' = operator_stop_ctr + 1
-        /\ OperatorMessagesLost(o)
+        /\ coordinator_stop_ctr' = coordinator_stop_ctr + 1
+        /\ CoordinatorMessagesLost(o)
         /\ UNCHANGED << confirmed, metadata, metadata_version, node_state >>
              
 
 (*---------------------------------------------------------
-  Operator starts an election
+  Coordinator starts an election
   
   In reality this will be triggered by some kind of failure
   detection outside the scope of this spec. This
-  spec simply allows the operator to decide to start an
+  spec simply allows the coordinator to decide to start an
   election at anytime.
   
-  The first phase of an election is for the operator to
+  The first phase of an election is for the coordinator to
   ensure that the shard cannot make progress by fencing
   a majority of nodes and getting their head index.
   
@@ -383,26 +383,26 @@ OperatorStops ==
     fencing requests is one atomic action. In an implementation, the
     metadata would need to be updated first, then the fencing requests sent.
     
-  - The election phases are local state for the operator only. The only
+  - The election phases are local state for the coordinator only. The only
     required state in the metadata is the epoch and that an election is
-    in-progress. If the operator were to fail at any time during an
-    election then the next operator that starts would see the ELECTION 
+    in-progress. If the coordinator were to fail at any time during an
+    election then the next coordinator that starts would see the ELECTION 
     status in the metadata and trigger a new election.
     
   - The metadata update will fail if the version does not match the version
-    held by the operator.
+    held by the coordinator.
 ----------------------------------------------------------*)
 
 GetFenceRequests(o, new_epoch, ensemble) ==
     { [type     |-> FENCE_REQUEST,
        node     |-> n,
-       operator |-> o,
+       coordinator |-> o,
        epoch    |-> new_epoch] : n \in ensemble }
 
-OperatorStartsElection ==
+CoordinatorStartsElection ==
     \* enabling conditions
-    \E o \in Operators :
-        LET ostate           == operator_state[o]
+    \E o \in Coordinators :
+        LET ostate           == coordinator_state[o]
         IN 
             /\ metadata.epoch < MaxEpochs \* state space reduction
             /\ ostate.status = RUNNING
@@ -418,7 +418,7 @@ OperatorStartsElection ==
                    IN
                        /\ metadata_version' = new_md_version
                        /\ metadata' = new_metadata
-                       /\ operator_state' = [operator_state EXCEPT ![o].id                        = o,
+                       /\ coordinator_state' = [coordinator_state EXCEPT ![o].id                        = o,
                                                                    ![o].md_version                = new_md_version,
                                                                    ![o].md                        = new_metadata,
                                                                    ![o].election_phase            = FENCING,
@@ -426,7 +426,7 @@ OperatorStartsElection ==
                                                                    ![o].election_leader           = NIL,
                                                                    ![o].election_fence_responses  = {}]
                        /\ SendMessages(GetFenceRequests(o, new_epoch, ostate.md.ensemble))     
-    /\ UNCHANGED << node_state, confirmed, operator_stop_ctr >>
+    /\ UNCHANGED << node_state, confirmed, coordinator_stop_ctr >>
            
 
 (*---------------------------------------------------------
@@ -445,7 +445,7 @@ OperatorStartsElection ==
 GetFenceResponse(nstate, new_epoch, o) ==
     [type           |-> FENCE_RESPONSE,
      node           |-> nstate.id,
-     operator       |-> o,
+     coordinator       |-> o,
      head_index     |-> nstate.head_index,
      epoch          |-> new_epoch]
 
@@ -461,35 +461,35 @@ NodeHandlesFencingRequest ==
                                               !.status          = FENCED,
                                               !.rep_factor      = 0,
                                               !.follow_cursor   = [n \in Nodes |-> NoCursor]]]
-              /\ ProcessedOneAndSendAnother(msg, GetFenceResponse(nstate, msg.epoch, msg.operator))  
-              /\ UNCHANGED << metadata, metadata_version, operator_state, confirmed, operator_stop_ctr >>
+              /\ ProcessedOneAndSendAnother(msg, GetFenceResponse(nstate, msg.epoch, msg.coordinator))  
+              /\ UNCHANGED << metadata, metadata_version, coordinator_state, confirmed, coordinator_stop_ctr >>
 
 
 (*---------------------------------------------------------
-  Operator handles fence response not yet reaching quorum
+  Coordinator handles fence response not yet reaching quorum
   
-  The operator handles a fence response but has not reached 
+  The coordinator handles a fence response but has not reached 
   quorum yet so simply stores the response.
 ----------------------------------------------------------*)
 
-OperatorHandlesPreQuorumFencingResponse ==
+CoordinatorHandlesPreQuorumFencingResponse ==
     \* enabling conditions
-    \E o \in Operators :
-        LET ostate == operator_state[o]
+    \E o \in Coordinators :
+        LET ostate == coordinator_state[o]
         IN
             /\ ostate.status = RUNNING
             /\ ostate.md.shard_status = ELECTION
             /\ ostate.election_phase = FENCING 
             /\ \E msg \in DOMAIN messages :
                 /\ ReceivableMessageOfType(messages, msg, FENCE_RESPONSE)
-                /\ msg.operator = o
+                /\ msg.coordinator = o
                 /\ ostate.md.epoch = msg.epoch
                 /\ LET fenced_res    == ostate.election_fence_responses \union { msg }
                    IN /\ ~IsQuorum(fenced_res, ostate.election_fencing_ensemble)
                       \* state changes
-                      /\ operator_state' = [operator_state EXCEPT ![o].election_fence_responses = fenced_res]
+                      /\ coordinator_state' = [coordinator_state EXCEPT ![o].election_fence_responses = fenced_res]
                       /\ MessageProcessed(msg)
-                      /\ UNCHANGED << metadata, metadata_version, node_state, confirmed, operator_stop_ctr >>
+                      /\ UNCHANGED << metadata, metadata_version, node_state, confirmed, coordinator_stop_ctr >>
 
 FollowerResponse(responses, f) ==
     CHOOSE r \in responses : r.node = f
@@ -506,7 +506,7 @@ GetFollowerMap(ostate, leader, responses, final_ensemble) ==
 GetBecomeLeaderRequest(n, epoch, o, follower_map, rep_factor) ==
     [type         |-> BECOME_LEADER_REQUEST,
      node         |-> n,
-     operator     |-> o,
+     coordinator     |-> o,
      follower_map |-> follower_map,
      rep_factor   |-> rep_factor,
      epoch        |-> epoch]
@@ -518,17 +518,17 @@ WinnerResponse(responses, final_ensemble) ==
             /\ IsHigherId(r2.head_index, r1.head_index)
             /\ r2.node \in final_ensemble  
     
-OperatorHandlesQuorumFencingResponse ==
+CoordinatorHandlesQuorumFencingResponse ==
     \* enabling conditions
-    \E o \in Operators :
-        LET ostate == operator_state[o]
+    \E o \in Coordinators :
+        LET ostate == coordinator_state[o]
         IN
             /\ ostate.status = RUNNING
             /\ ostate.md.shard_status = ELECTION
             /\ ostate.election_phase = FENCING 
             /\ \E msg \in DOMAIN messages :
                 /\ ReceivableMessageOfType(messages, msg, FENCE_RESPONSE)
-                /\ msg.operator = o
+                /\ msg.coordinator = o
                 /\ ostate.md.epoch = msg.epoch
                 /\ LET fenced_res          == ostate.election_fence_responses \union { msg }
                        max_head_res        == WinnerResponse(fenced_res, metadata.ensemble)
@@ -538,7 +538,7 @@ OperatorHandlesQuorumFencingResponse ==
                    IN
                       /\ IsQuorum(fenced_res, metadata.ensemble)
                       \* state changes 
-                      /\ operator_state' = [operator_state EXCEPT ![o] = 
+                      /\ coordinator_state' = [coordinator_state EXCEPT ![o] = 
                                                 [@ EXCEPT !.election_phase           = NOTIFY_LEADER,
                                                           !.election_leader          = new_leader,
                                                           !.election_fence_responses = fenced_res]]
@@ -548,7 +548,7 @@ OperatorHandlesQuorumFencingResponse ==
                                                                            o,
                                                                            follower_map,
                                                                            ostate.md.rep_factor))
-                      /\ UNCHANGED << metadata, metadata_version, node_state, confirmed, operator_stop_ctr >>    
+                      /\ UNCHANGED << metadata, metadata_version, node_state, confirmed, coordinator_stop_ctr >>    
 
 (*---------------------------------------------------------
   Node handles a Become Leader request
@@ -631,7 +631,7 @@ GetBecomeLeaderResponse(n, epoch, o) ==
     [type     |-> BECOME_LEADER_RESPONSE,
      epoch    |-> epoch,
      node     |-> n,
-     operator |-> o]
+     coordinator |-> o]
 
 NodeHandlesBecomeLeaderRequest ==
     \* enabling conditions
@@ -639,7 +639,7 @@ NodeHandlesBecomeLeaderRequest ==
         /\ ReceivableMessageOfType(messages, msg, BECOME_LEADER_REQUEST)
         /\ node_state[msg.node].epoch = msg.epoch
         /\ LET truncate_requests == GetTruncateRequests(node_state[msg.node], msg.follower_map)
-               leader_response   == GetBecomeLeaderResponse(msg.node, msg.epoch, msg.operator)
+               leader_response   == GetBecomeLeaderResponse(msg.node, msg.epoch, msg.coordinator)
                updated_cursors   == GetCursors(node_state[msg.node], msg.follower_map)
            IN
               \* state changes
@@ -649,13 +649,13 @@ NodeHandlesBecomeLeaderRequest ==
                                                     !.rep_factor    = msg.rep_factor,
                                                     !.follow_cursor = updated_cursors]]
               /\ ProcessedOneAndSendMore(msg, truncate_requests \union {leader_response})
-              /\ UNCHANGED << metadata, metadata_version, operator_state, confirmed, operator_stop_ctr >>
+              /\ UNCHANGED << metadata, metadata_version, coordinator_state, confirmed, coordinator_stop_ctr >>
 
 (*---------------------------------------------------------
-  Operator handles Become Leader response
+  Coordinator handles Become Leader response
   
   The election is completed on receiving the Become Leader
-  response. The operator updates the metadata with the
+  response. The coordinator updates the metadata with the
   new leader, the ensemble and that the shard is now back 
   in steady state.
   
@@ -665,21 +665,21 @@ NodeHandlesBecomeLeaderRequest ==
     
   Key points:
   - A minority of followers may still not have been fenced yet.
-    The operator will continue to try to fence these followers
+    The coordinator will continue to try to fence these followers
     forever until either they respond with a fencing request,
     or a new election is performed.
 ----------------------------------------------------------*)
 
-OperatorHandlesBecomeLeaderResponse ==
+CoordinatorHandlesBecomeLeaderResponse ==
     \* enabling conditions
-    \E o \in Operators :
-        LET ostate == operator_state[o]
+    \E o \in Coordinators :
+        LET ostate == coordinator_state[o]
         IN
             /\ ostate.status = RUNNING
             /\ ostate.md.shard_status = ELECTION
             /\ \E msg \in DOMAIN messages :
                 /\ ReceivableMessageOfType(messages, msg, BECOME_LEADER_RESPONSE)
-                /\ msg.operator = o
+                /\ msg.coordinator = o
                 /\ ostate.election_phase = NOTIFY_LEADER
                 /\ ostate.md.epoch = msg.epoch
                 /\ metadata_version = ostate.md_version
@@ -687,18 +687,18 @@ OperatorHandlesBecomeLeaderResponse ==
                 /\ LET new_md   == [ostate.md EXCEPT !.shard_status = STEADY_STATE,
                                                      !.leader       = msg.node,
                                                      !.rep_factor   = Cardinality(metadata.ensemble)]
-                   IN /\ operator_state' = [operator_state EXCEPT ![o].election_phase = LEADER_ELECTED,
+                   IN /\ coordinator_state' = [coordinator_state EXCEPT ![o].election_phase = LEADER_ELECTED,
                                                                   ![o].md_version     = metadata_version + 1,
                                                                   ![o].md             = new_md]
                       /\ metadata' = new_md
                       /\ metadata_version' = metadata_version + 1
                       /\ MessageProcessed(msg)
-                      /\ UNCHANGED << node_state, confirmed, operator_stop_ctr >>
+                      /\ UNCHANGED << node_state, confirmed, coordinator_stop_ctr >>
 
 (*---------------------------------------------------------
-  Operator handles post quorum fence response
+  Coordinator handles post quorum fence response
   
-  The operator handles a fencing response at a time after
+  The coordinator handles a fencing response at a time after
   it has selected a new leader. The leader must have confirmed
   its leadership before the opertator acts on any late 
   follower fence responses.
@@ -715,26 +715,26 @@ GetAddFollowerRequest(n, epoch, follower, head_index) ==
      head_index |-> head_index,
      epoch      |-> epoch]
 
-OperatorHandlesPostQuorumFencingResponse ==
+CoordinatorHandlesPostQuorumFencingResponse ==
     \* enabling conditions
-    \E o \in Operators :
-        LET ostate == operator_state[o]
+    \E o \in Coordinators :
+        LET ostate == coordinator_state[o]
         IN
             /\ ostate.status = RUNNING
             /\ ostate.election_phase = LEADER_ELECTED 
             /\ \E msg \in DOMAIN messages :
                 /\ ReceivableMessageOfType(messages, msg, FENCE_RESPONSE)
-                /\ msg.operator = o
+                /\ msg.coordinator = o
                 /\ msg.node \in ostate.md.ensemble \* might be the old_node
                 /\ ostate.md.epoch = msg.epoch
                 \* state changes
-                /\ operator_state' = [operator_state EXCEPT ![o].election_fence_responses = @ \union {msg}]
+                /\ coordinator_state' = [coordinator_state EXCEPT ![o].election_fence_responses = @ \union {msg}]
                 /\ ProcessedOneAndSendAnother(msg, 
                                               GetAddFollowerRequest(ostate.election_leader, 
                                                                     ostate.md.epoch, 
                                                                     msg.node,
                                                                     msg.head_index))
-            /\ UNCHANGED << metadata, metadata_version, node_state, confirmed, operator_stop_ctr >>
+            /\ UNCHANGED << metadata, metadata_version, node_state, confirmed, coordinator_stop_ctr >>
 
 (*---------------------------------------------------------
   Leader handles an Add Follower request
@@ -760,7 +760,7 @@ LeaderHandlesAddFollowerRequest ==
                                                               msg.follower,
                                                               msg.head_index.epoch))
            ELSE MessageProcessed(msg)
-        /\ UNCHANGED << metadata, metadata_version, operator_state, confirmed, operator_stop_ctr >>
+        /\ UNCHANGED << metadata, metadata_version, coordinator_state, confirmed, coordinator_stop_ctr >>
                             
 
 (*---------------------------------------------------------
@@ -801,7 +801,7 @@ NodeHandlesTruncateRequest ==
                                                   !.head_index    = head_entry.entry_id,
                                                   !.follow_cursor = [n \in Nodes |-> NoCursor]]]
                 /\ ProcessedOneAndSendAnother(msg, GetTruncateResponse(msg, head_entry.entry_id))
-                /\ UNCHANGED << metadata, metadata_version, operator_state, confirmed, operator_stop_ctr >>
+                /\ UNCHANGED << metadata, metadata_version, coordinator_state, confirmed, coordinator_stop_ctr >>
 
 (*---------------------------------------------------------
   Leader handles a truncate response.
@@ -824,7 +824,7 @@ LeaderHandlesTruncateResponse ==
                                                                         last_pushed    |-> msg.head_index,
                                                                         last_confirmed |-> msg.head_index]]]
                 /\ MessageProcessed(msg)
-                /\ UNCHANGED << metadata, metadata_version, operator_state, confirmed, operator_stop_ctr >>
+                /\ UNCHANGED << metadata, metadata_version, coordinator_state, confirmed, coordinator_stop_ctr >>
 
 (*---------------------------------------------------------
   A client writes an entry to the leader
@@ -851,7 +851,7 @@ Write ==
                                         [@ EXCEPT !.log        = @ \union { log_entry },
                                                   !.head_index = entry_id]]
                     /\ confirmed' = confirmed @@ (v :> FALSE)
-            /\ UNCHANGED << metadata, metadata_version, operator_state, metadata, messages, operator_stop_ctr >>
+            /\ UNCHANGED << metadata, metadata_version, coordinator_state, metadata, messages, coordinator_stop_ctr >>
 
 
 (*---------------------------------------------------------
@@ -929,7 +929,7 @@ LeaderSendsEntriesToFollowers ==
                                             THEN [lstate.follow_cursor[n] EXCEPT !.last_pushed = next_entries[n].entry_id]
                                             ELSE lstate.follow_cursor[n]]]
                   /\ SendMessages(GetNextAddEntryRequests(lstate, next_entries, followers))
-                  /\ UNCHANGED << metadata, metadata_version, operator_state, metadata, confirmed, operator_stop_ctr >>
+                  /\ UNCHANGED << metadata, metadata_version, coordinator_state, metadata, confirmed, coordinator_stop_ctr >>
 
 (*---------------------------------------------------------
   A follower node confirms an entry to the leader
@@ -965,7 +965,7 @@ FollowerConfirmsEntry ==
                                                     ![f].commit_index = msg.commit_index]
                 
                 /\ ProcessedOneAndSendAnother(msg, GetAddEntryOkResponse(msg, fstate, msg.entry))
-                /\ UNCHANGED << metadata, metadata_version, operator_state, metadata, confirmed, operator_stop_ctr >>
+                /\ UNCHANGED << metadata, metadata_version, coordinator_state, metadata, confirmed, coordinator_stop_ctr >>
 
 
 (*---------------------------------------------------------
@@ -997,14 +997,14 @@ FollowerRejectsEntry ==
                 /\ nstate.epoch > msg.epoch
                 \* state changes
                 /\ ProcessedOneAndSendAnother(msg, GetAddEntryInvalidEpochResponse(nstate, msg))
-                /\ UNCHANGED << metadata, metadata_version, operator_state, metadata, node_state, confirmed, operator_stop_ctr >>
+                /\ UNCHANGED << metadata, metadata_version, coordinator_state, metadata, node_state, confirmed, coordinator_stop_ctr >>
                 
 (*---------------------------------------------------------
   A leader node handles an add entry response
   
   The leader updates the follow cursor last_confirmed
   entry id, it also may advance the commit index.
-  
+
   An entry is committed when all of the following
   has occurred:
   - it has reached majority quorum
@@ -1070,7 +1070,7 @@ LeaderHandlesEntryConfirm ==
                          ELSE /\ node_state' = [node_state EXCEPT ![leader].follow_cursor = updated_cursor]
                               /\ UNCHANGED confirmed
                       /\ MessageProcessed(msg)
-            /\ UNCHANGED << metadata, metadata_version, operator_state, metadata, operator_stop_ctr >>
+            /\ UNCHANGED << metadata, metadata_version, coordinator_state, metadata, coordinator_stop_ctr >>
             
 (*---------------------------------------------------------
   A leader node handles an add entry rejection response
@@ -1091,7 +1091,7 @@ LeaderHandlesEntryRejection ==
                 /\ node_state' = [node_state EXCEPT ![msg.dest_node].status        = FENCED,
                                                     ![msg.dest_node].follow_cursor = [n1 \in Nodes |-> NoCursor]]
                 /\ MessageProcessed(msg)
-                /\ UNCHANGED << metadata, metadata_version, operator_state, metadata, confirmed, operator_stop_ctr >>            
+                /\ UNCHANGED << metadata, metadata_version, coordinator_state, metadata, confirmed, coordinator_stop_ctr >>            
 
 
 (*---------------------------------------------------------
@@ -1099,17 +1099,17 @@ LeaderHandlesEntryRejection ==
 ----------------------------------------------------------*)        
 Next ==
     \* Election
-    \/ OperatorStarts                             \* an operator starts and loads the metadata
-    \/ OperatorStops                              \* a running operator stops, losing all local state
-    \/ OperatorStartsElection                     \* election starts, fencing requests sent
+    \/ CoordinatorStarts                             \* an coordinator starts and loads the metadata
+    \/ CoordinatorStops                              \* a running coordinator stops, losing all local state
+    \/ CoordinatorStartsElection                     \* election starts, fencing requests sent
     \/ NodeHandlesFencingRequest                  \* node fences itself, responds with head index
-    \/ OperatorHandlesPreQuorumFencingResponse    \* operator handles fence response, not reached quorum yet
-    \/ OperatorHandlesQuorumFencingResponse       \* operator handles fence response, reaching quorum, choosing leader
+    \/ CoordinatorHandlesPreQuorumFencingResponse    \* coordinator handles fence response, not reached quorum yet
+    \/ CoordinatorHandlesQuorumFencingResponse       \* coordinator handles fence response, reaching quorum, choosing leader
     \/ NodeHandlesBecomeLeaderRequest             \* new leader receives notification of leadership
-    \/ OperatorHandlesBecomeLeaderResponse        \* operator handles new leader confirmation
+    \/ CoordinatorHandlesBecomeLeaderResponse        \* coordinator handles new leader confirmation
     \/ NodeHandlesTruncateRequest                 \* follower truncates it log to safe point
     \/ LeaderHandlesTruncateResponse              \* leader receives truncation response
-    \/ OperatorHandlesPostQuorumFencingResponse   \* operator handles fence response after leader elected, adds as a follower
+    \/ CoordinatorHandlesPostQuorumFencingResponse   \* coordinator handles fence response after leader elected, adds as a follower
     \/ LeaderHandlesAddFollowerRequest            \* leader notified of follower (post election)
     \* Writes and replication
     \/ Write                                      \* a client writes an entry to the leader
@@ -1173,10 +1173,10 @@ LegalLeaderAndEnsemble ==
     /\ IF metadata.leader # NIL
        THEN metadata.leader \in metadata.ensemble
        ELSE TRUE
-    /\ \A o \in Operators :
-        IF /\ operator_state[o].md # NIL
-           /\ operator_state[o].md.leader # NIL
-        THEN operator_state[o].md.leader \in operator_state[o].md.ensemble
+    /\ \A o \in Coordinators :
+        IF /\ coordinator_state[o].md # NIL
+           /\ coordinator_state[o].md.leader # NIL
+        THEN coordinator_state[o].md.leader \in coordinator_state[o].md.ensemble
         ELSE TRUE
     /\ metadata.rep_factor = Cardinality(metadata.ensemble)
 
