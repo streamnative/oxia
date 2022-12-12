@@ -17,7 +17,7 @@ func TestCall_LogLevel_Default(t *testing.T) {
 	}
 	err := rootCmd.Execute()
 	assert.Equal(t, common.DefaultLogLevel, captured)
-	assert.ErrorIs(t, err, nil)
+	assert.NoError(t, err)
 }
 
 func TestCall_LogLevel(t *testing.T) {
