@@ -85,7 +85,7 @@ func (s *shardController) electLeaderWithRetries() {
 		"oxia":  "shard-controller-leader-election",
 		"shard": fmt.Sprintf("%d", s.shard),
 	}, func() {
-		backoff.RetryNotify(s.electLeader, common.NewBackOff(s.ctx),
+		_ = backoff.RetryNotify(s.electLeader, common.NewBackOff(s.ctx),
 			func(err error, duration time.Duration) {
 				s.log.Warn().Err(err).
 					Dur("retry-after", duration).
