@@ -1,4 +1,4 @@
-package coordinator
+package impl
 
 import (
 	"github.com/pkg/errors"
@@ -18,7 +18,7 @@ func TestShardController(t *testing.T) {
 	s2 := ServerAddress{"s2:9091", "s2:8191"}
 	s3 := ServerAddress{"s3:9091", "s3:8191"}
 
-	sc := NewShardController(shard, &ShardMetadata{
+	sc := NewShardController(shard, ShardMetadata{
 		Status:   ShardStatusUnknown,
 		Epoch:    1,
 		Leader:   nil,
@@ -87,7 +87,7 @@ func TestShardController_FenceWithNonRespondingServer(t *testing.T) {
 	s2 := ServerAddress{"s2:9091", "s2:8191"}
 	s3 := ServerAddress{"s3:9091", "s3:8191"}
 
-	sc := NewShardController(shard, &ShardMetadata{
+	sc := NewShardController(shard, ShardMetadata{
 		Status:   ShardStatusUnknown,
 		Epoch:    1,
 		Leader:   nil,
@@ -122,7 +122,7 @@ func TestShardController_FenceWithNonRespondingServer(t *testing.T) {
 
 type sCoordinatorEvents struct {
 	shard    uint32
-	metadata *ShardMetadata
+	metadata ShardMetadata
 }
 
 type mockCoordinator struct {
@@ -143,7 +143,7 @@ func (m *mockCoordinator) Close() error {
 	return nil
 }
 
-func (m *mockCoordinator) ClusterStatus() *ClusterStatus {
+func (m *mockCoordinator) ClusterStatus() ClusterStatus {
 	panic("not implemented")
 }
 
@@ -151,7 +151,7 @@ func (m *mockCoordinator) WaitForNextUpdate(currentValue *proto.ShardAssignments
 	panic("not implemented")
 }
 
-func (m *mockCoordinator) InitiateLeaderElection(shard uint32, metadata *ShardMetadata) error {
+func (m *mockCoordinator) InitiateLeaderElection(shard uint32, metadata ShardMetadata) error {
 	m.Lock()
 	defer m.Unlock()
 	if m.err != nil {
@@ -167,7 +167,7 @@ func (m *mockCoordinator) InitiateLeaderElection(shard uint32, metadata *ShardMe
 	return nil
 }
 
-func (m *mockCoordinator) ElectedLeader(shard uint32, metadata *ShardMetadata) error {
+func (m *mockCoordinator) ElectedLeader(shard uint32, metadata ShardMetadata) error {
 	m.Lock()
 	defer m.Unlock()
 	if m.err != nil {

@@ -77,11 +77,11 @@ IsEarliestReceivableEntryMessage(msgs, msg, type) ==
         /\ msg2.dest_node = msg.dest_node
         /\ msg2.source_node = msg.source_node
         
-OperatorMessagesLost(o) ==
+CoordinatorMessagesLost(o) ==
     messages' = [msg \in DOMAIN messages |->
                     IF /\ msg.type \in {BECOME_LEADER_REQUEST,
                                         BECOME_LEADER_RESPONSE}
-                       /\ msg.operator = o
+                       /\ msg.coordinator = o
                     THEN 0
                     ELSE messages[msg]]
 

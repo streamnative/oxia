@@ -1,4 +1,4 @@
-package coordinator
+package impl
 
 import (
 	"fmt"
@@ -37,7 +37,7 @@ func TestCoordinatorE2E(t *testing.T) {
 	metadataProvider := NewMetadataProviderMemory()
 	clusterConfig := ClusterConfig{
 		ReplicationFactor: 3,
-		ShardsCount:       1,
+		ShardCount:        1,
 		StorageServers:    []ServerAddress{sa1, sa2, sa3},
 	}
 	clientPool := common.NewClientPool()

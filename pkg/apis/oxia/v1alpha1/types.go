@@ -18,14 +18,24 @@ type OxiaCluster struct {
 
 // OxiaClusterSpec is the spec for an OxiaCluster resource
 type OxiaClusterSpec struct {
-	ServerReplicas    *uint32 `json:"serverReplicas"`
-	ShardCount        *uint32 `json:"shardCount"`
-	ReplicationFactor *uint32 `json:"replicationFactor"`
+	ShardCount           *uint32   `json:"shardCount"`
+	ReplicationFactor    *uint32   `json:"replicationFactor"`
+	ServerReplicas       *uint32   `json:"serverReplicas"`
+	ServerResources      Resources `json:"serverResources"`
+	ServerVolume         string    `json:"serverVolume"`
+	CoordinatorResources Resources `json:"coordinatorResources"`
+	Image                string    `json:"image"`
+	MonitoringEnabled    bool      `json:"monitoringEnabled"`
 }
 
 // OxiaClusterStatus is the status for an OxiaCluster resource
 type OxiaClusterStatus struct {
 	Shards []*ShardMetadata `json:"shards"`
+}
+
+type Resources struct {
+	Cpu    string `json:"cpu"`
+	Memory string `json:"memory"`
 }
 
 type ShardMetadata struct {
