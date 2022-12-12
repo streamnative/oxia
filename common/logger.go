@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const DefaultLogLevel zerolog.Level = zerolog.InfoLevel
+const DefaultLogLevel = zerolog.InfoLevel
 
 var (
 	// LogLevel Used for flags
