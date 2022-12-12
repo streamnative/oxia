@@ -19,10 +19,15 @@ var (
 	epochKey       = common.InternalKeyPrefix + "epoch"
 )
 
+type PutCustomizer interface {
+	CheckApplicability(WriteBatch, *proto.PutRequest) (proto.Status, error)
+	AdditionalData(*proto.PutRequest) *proto.PutRequest
+}
+
 type DB interface {
 	io.Closer
 
-	ProcessWrite(b *proto.WriteRequest, commitIndex int64) (*proto.WriteResponse, error)
+	ProcessWrite(b *proto.WriteRequest, commitIndex int64, putCustomizer PutCustomizer) (*proto.WriteResponse, error)
 	ProcessRead(b *proto.ReadRequest) (*proto.ReadResponse, error)
 	ReadCommitIndex() (int64, error)
 
@@ -49,13 +54,13 @@ func (d *db) Close() error {
 	return d.kv.Close()
 }
 
-func (d *db) ProcessWrite(b *proto.WriteRequest, commitIndex int64) (*proto.WriteResponse, error) {
+func (d *db) ProcessWrite(b *proto.WriteRequest, commitIndex int64, putCustomizer PutCustomizer) (*proto.WriteResponse, error) {
 	res := &proto.WriteResponse{}
 
 	batch := d.kv.NewWriteBatch()
 
 	for _, putReq := range b.Puts {
-		if pr, err := applyPut(batch, putReq); err != nil {
+		if pr, err := applyPut(batch, putReq, putCustomizer); err != nil {
 			return nil, err
 		} else {
 			res.Puts = append(res.Puts, pr)
@@ -98,7 +103,7 @@ func (d *db) addCommitIndex(commitIndex int64, batch WriteBatch) error {
 		Key:             commitIndexKey,
 		Payload:         commitIndexPayload,
 		ExpectedVersion: nil,
-	})
+	}, nil)
 	return err
 }
 
@@ -152,7 +157,7 @@ func (d *db) UpdateEpoch(newEpoch int64) error {
 	if _, err := applyPut(batch, &proto.PutRequest{
 		Key:     epochKey,
 		Payload: []byte(fmt.Sprintf("%d", newEpoch)),
-	}); err != nil {
+	}, nil); err != nil {
 		return err
 	}
 
@@ -188,7 +193,7 @@ func (d *db) ReadEpoch() (epoch int64, err error) {
 	return epoch, nil
 }
 
-func applyPut(batch WriteBatch, putReq *proto.PutRequest) (*proto.PutResponse, error) {
+func applyPut(batch WriteBatch, putReq *proto.PutRequest, putCustomizer PutCustomizer) (*proto.PutResponse, error) {
 	se, err := checkExpectedVersion(batch, putReq.Key, putReq.ExpectedVersion)
 	if errors.Is(err, ErrorBadVersion) {
 		return &proto.PutResponse{
@@ -196,40 +201,55 @@ func applyPut(batch WriteBatch, putReq *proto.PutRequest) (*proto.PutResponse, e
 		}, nil
 	} else if err != nil {
 		return nil, errors.Wrap(err, "oxia db: failed to apply batch")
-	} else {
-		now := uint64(time.Now().UnixMilli())
-
-		// No version conflict
-		if se == nil {
-			se = &proto.StorageEntry{
-				Version:               0,
-				Payload:               putReq.Payload,
-				CreationTimestamp:     now,
-				ModificationTimestamp: now,
-			}
-		} else {
-			se.Version += 1
-			se.Payload = putReq.Payload
-			se.ModificationTimestamp = now
-		}
-
-		ser, err := pb.Marshal(se)
+	}
+	if putCustomizer != nil {
+		status, err := putCustomizer.CheckApplicability(batch, putReq)
 		if err != nil {
 			return nil, err
 		}
-
-		if err = batch.Put(putReq.Key, ser); err != nil {
+		if status != proto.Status_OK {
+			return &proto.PutResponse{
+				Status: status,
+			}, nil
+		}
+		_, err = applyPut(batch, putCustomizer.AdditionalData(putReq), nil)
+		if err != nil {
 			return nil, err
 		}
-
-		return &proto.PutResponse{
-			Stat: &proto.Stat{
-				Version:           se.Version,
-				CreatedTimestamp:  se.CreationTimestamp,
-				ModifiedTimestamp: se.ModificationTimestamp,
-			},
-		}, nil
 	}
+	now := uint64(time.Now().UnixMilli())
+
+	// No version conflict
+	if se == nil {
+		se = &proto.StorageEntry{
+			Version:               0,
+			Payload:               putReq.Payload,
+			CreationTimestamp:     now,
+			ModificationTimestamp: now,
+		}
+	} else {
+		se.Version += 1
+		se.Payload = putReq.Payload
+		se.ModificationTimestamp = now
+	}
+
+	ser, err := pb.Marshal(se)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = batch.Put(putReq.Key, ser); err != nil {
+		return nil, err
+	}
+
+	return &proto.PutResponse{
+		Stat: &proto.Stat{
+			Version:           se.Version,
+			CreatedTimestamp:  se.CreationTimestamp,
+			ModifiedTimestamp: se.ModificationTimestamp,
+		},
+	}, nil
+
 }
 
 func applyDelete(batch WriteBatch, delReq *proto.DeleteRequest) (*proto.DeleteResponse, error) {

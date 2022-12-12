@@ -9,6 +9,7 @@ import (
 	"io"
 	"oxia/proto"
 	"oxia/server/kv"
+	"oxia/server/session"
 	"oxia/server/wal"
 	"sync"
 )
@@ -30,6 +31,8 @@ type LeaderController interface {
 
 	// Status The Status of the leader
 	Status() Status
+
+	session.Controller
 }
 
 type Status int16
@@ -51,13 +54,14 @@ type leaderController struct {
 	quorumAckTracker  QuorumAckTracker
 	followers         map[string]FollowerCursor
 
-	wal       wal.Wal
-	db        kv.DB
-	rpcClient ReplicationRpcProvider
-	log       zerolog.Logger
+	wal            wal.Wal
+	db             kv.DB
+	rpcClient      ReplicationRpcProvider
+	log            zerolog.Logger
+	sessionManager session.SessionManager
 }
 
-func NewLeaderController(shardId uint32, rpcClient ReplicationRpcProvider, walFactory wal.WalFactory, kvFactory kv.KVFactory) (LeaderController, error) {
+func NewLeaderController(shardId uint32, rpcClient ReplicationRpcProvider, walFactory wal.WalFactory, kvFactory kv.KVFactory, smFactory session.SessionManagerFactory) (LeaderController, error) {
 	lc := &leaderController{
 		status:           NotMember,
 		shardId:          shardId,
@@ -81,6 +85,10 @@ func NewLeaderController(shardId uint32, rpcClient ReplicationRpcProvider, walFa
 	}
 
 	if lc.epoch, err = lc.db.ReadEpoch(); err != nil {
+		return nil, err
+	}
+
+	if lc.sessionManager, err = smFactory.NewSessionManager(shardId, lc); err != nil {
 		return nil, err
 	}
 
@@ -233,6 +241,14 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 		lc.followers[follower] = cursor
 	}
 
+	err = lc.sessionManager.Initialize()
+	if err != nil {
+		lc.log.Error().Err(err).
+			Int64("epoch", lc.epoch).
+			Msg("Failed to initialize session manager")
+		return nil, err
+	}
+
 	lc.log.Info().
 		Int64("epoch", lc.epoch).
 		Int64("head-index", leaderHeadIndex.Offset).
@@ -326,7 +342,7 @@ func (lc *leaderController) Write(request *proto.WriteRequest) (*proto.WriteResp
 	lc.quorumAckTracker.AdvanceHeadIndex(newOffset)
 
 	return lc.quorumAckTracker.WaitForCommitIndex(newOffset, func() (*proto.WriteResponse, error) {
-		return lc.db.ProcessWrite(request, newOffset)
+		return lc.db.ProcessWrite(request, newOffset, session.PutDecorator)
 	})
 }
 
@@ -350,6 +366,7 @@ func (lc *leaderController) Close() error {
 	err = multierr.Combine(err,
 		lc.wal.Close(),
 		lc.db.Close(),
+		lc.sessionManager.Close(),
 	)
 	return err
 }
@@ -369,4 +386,8 @@ func getLastEntryIdInWal(wal wal.Wal) (*proto.EntryId, error) {
 		return nil, err
 	}
 	return &proto.EntryId{Epoch: entry.Epoch, Offset: entry.Offset}, nil
+}
+
+func (lc *leaderController) SessionManager() session.SessionManager {
+	return lc.sessionManager
 }

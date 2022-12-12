@@ -13,6 +13,7 @@ import (
 	"oxia/server"
 	"oxia/server/container"
 	"oxia/server/kv"
+	"oxia/server/session"
 	"oxia/server/wal"
 )
 
@@ -23,6 +24,7 @@ type StandaloneRpcServer struct {
 	numShards               uint32
 	kvFactory               kv.KVFactory
 	walFactory              wal.WalFactory
+	smFactory               session.SessionManagerFactory
 	clientPool              common.ClientPool
 	Container               *container.Container
 	controllers             map[uint32]server.LeaderController
@@ -37,6 +39,7 @@ func NewStandaloneRpcServer(port int, advertisedPublicAddress string, numShards 
 		numShards:               numShards,
 		walFactory:              walFactory,
 		kvFactory:               kvFactory,
+		smFactory:               session.NewSessionManagerFactory(),
 		clientPool:              common.NewClientPool(),
 		controllers:             make(map[uint32]server.LeaderController),
 		log: log.With().
@@ -48,7 +51,7 @@ func NewStandaloneRpcServer(port int, advertisedPublicAddress string, numShards 
 	for i := uint32(0); i < numShards; i++ {
 		var lc server.LeaderController
 		if lc, err = server.NewLeaderController(i,
-			server.NewReplicationRpcProvider(res.clientPool), res.walFactory, res.kvFactory); err != nil {
+			server.NewReplicationRpcProvider(res.clientPool), res.walFactory, res.kvFactory, res.smFactory); err != nil {
 			return nil, err
 		}
 

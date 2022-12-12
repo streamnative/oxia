@@ -46,6 +46,8 @@ service OxiaClient {
    * this may be handled server-side in a proxy layer.
    */
   rpc Read(ReadRequest) returns (ReadResponse);
+
+  rpc Session(stream Heartbeat) returns (SessionResponse);
 }
 
 /**
@@ -174,6 +176,8 @@ message PutRequest {
   // An optional expected version. The put will fail if the server's current version
   // does not match
   optional int64 expected_version = 3;
+
+  optional string session_id = 4;
 }
 
 /**
@@ -288,4 +292,15 @@ enum Status {
   KEY_NOT_FOUND = 1;
   // The existing version does not match the expected version
   UNEXPECTED_VERSION = 2;
+  // TODO doc
+  SESSION_DOES_NOT_EXIST = 3;
+}
+
+message Heartbeat {
+  string session_id = 1;
+  uint32 shard_id = 2;
+}
+
+message SessionResponse {
+
 }

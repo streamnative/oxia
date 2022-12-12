@@ -5,6 +5,7 @@ import (
 	"google.golang.org/grpc/status"
 	"oxia/proto"
 	"oxia/server/kv"
+	"oxia/server/session"
 	"oxia/server/wal"
 	"testing"
 )
@@ -14,8 +15,9 @@ func TestLeaderController_NotInitialized(t *testing.T) {
 
 	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := wal.NewInMemoryWalFactory()
+	smFactory := session.NewSessionManagerFactory()
 
-	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory, smFactory)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
@@ -49,8 +51,9 @@ func TestLeaderController_BecomeLeader_NoFencing(t *testing.T) {
 
 	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := wal.NewInMemoryWalFactory()
+	smFactory := session.NewSessionManagerFactory()
 
-	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory, smFactory)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
@@ -74,8 +77,9 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 
 	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := wal.NewInMemoryWalFactory()
+	smFactory := session.NewSessionManagerFactory()
 
-	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory, smFactory)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
@@ -169,10 +173,11 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 
 	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := wal.NewInMemoryWalFactory()
+	smFactory := session.NewSessionManagerFactory()
 
 	rpc := newMockRpcClient()
 
-	lc, err := NewLeaderController(shard, rpc, walFactory, kvFactory)
+	lc, err := NewLeaderController(shard, rpc, walFactory, kvFactory, smFactory)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
@@ -283,8 +288,9 @@ func TestLeaderController_EpochPersistent(t *testing.T) {
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{
 		LogDir: t.TempDir(),
 	})
+	smFactory := session.NewSessionManagerFactory()
 
-	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory, smFactory)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
@@ -306,7 +312,7 @@ func TestLeaderController_EpochPersistent(t *testing.T) {
 	assert.NoError(t, lc.Close())
 
 	/// Re-Open lead controller
-	lc, err = NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err = NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory, smFactory)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 5, lc.Epoch())
@@ -327,6 +333,7 @@ func TestLeaderController_FenceEpoch(t *testing.T) {
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{
 		LogDir: t.TempDir(),
 	})
+	smFactory := session.NewSessionManagerFactory()
 
 	db, err := kv.NewDB(shard, kvFactory)
 	assert.NoError(t, err)
@@ -334,7 +341,7 @@ func TestLeaderController_FenceEpoch(t *testing.T) {
 	assert.NoError(t, db.UpdateEpoch(5))
 	assert.NoError(t, db.Close())
 
-	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory, smFactory)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 5, lc.Epoch())
@@ -372,13 +379,15 @@ func TestLeaderController_BecomeLeaderEpoch(t *testing.T) {
 		LogDir: t.TempDir(),
 	})
 
+	smFactory := session.NewSessionManagerFactory()
+
 	db, err := kv.NewDB(shard, kvFactory)
 	assert.NoError(t, err)
 	// Force a new epoch in the DB before opening
 	assert.NoError(t, db.UpdateEpoch(5))
 	assert.NoError(t, db.Close())
 
-	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory, smFactory)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 5, lc.Epoch())

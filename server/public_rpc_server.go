@@ -9,6 +9,7 @@ import (
 	"oxia/common"
 	"oxia/proto"
 	"oxia/server/container"
+	"oxia/server/session"
 )
 
 type PublicRpcServer struct {
@@ -16,6 +17,7 @@ type PublicRpcServer struct {
 
 	shardsDirector       ShardsDirector
 	assignmentDispatcher ShardAssignmentsDispatcher
+	smFactory            session.SessionManagerFactory
 	container            *container.Container
 	log                  zerolog.Logger
 }
@@ -24,6 +26,7 @@ func NewPublicRpcServer(port int, shardsDirector ShardsDirector, assignmentDispa
 	server := &PublicRpcServer{
 		shardsDirector:       shardsDirector,
 		assignmentDispatcher: assignmentDispatcher,
+		smFactory:            session.NewSessionManagerFactory(),
 		log: log.With().
 			Str("component", "public-rpc-server").
 			Logger(),
@@ -100,6 +103,14 @@ func (s *PublicRpcServer) Read(ctx context.Context, read *proto.ReadRequest) (*p
 	}
 
 	return rr, err
+}
+
+func (s *PublicRpcServer) Session(heartbeats proto.OxiaClient_SessionServer) error {
+	s.log.Debug().
+		Str("peer", common.GetPeer(heartbeats.Context())).
+		Msg("Session request")
+
+	return s.smFactory.HandleSessionStream(s.shardsDirector, heartbeats)
 }
 
 func (s *PublicRpcServer) Close() error {
