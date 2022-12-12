@@ -231,7 +231,7 @@ func (s *shardController) fenceQuorum() (map[ServerAddress]*proto.EntryId, error
 				err = multierr.Append(err, r.error)
 			}
 
-		case <-time.After(100 * time.Millisecond):
+		case <-time.After(quorumFencingGracePeriod):
 			return res, nil
 		}
 	}
