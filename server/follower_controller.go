@@ -20,7 +20,8 @@ import (
 const (
 	MaxEpoch = math.MaxInt64
 
-	CodeInvalidEpoch codes.Code = 100
+	CodeInvalidEpoch  codes.Code = 100
+	CodeInvalidStatus codes.Code = 101
 )
 
 var (

@@ -8,10 +8,12 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
+	"google.golang.org/grpc/status"
 	"io"
 	"math/rand"
 	"oxia/common"
 	"oxia/proto"
+	"oxia/server"
 	"sync"
 	"time"
 )
@@ -44,7 +46,10 @@ type shardController struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
-	log    zerolog.Logger
+
+	currentElectionCtx    context.Context
+	currentElectionCancel context.CancelFunc
+	log                   zerolog.Logger
 }
 
 func NewShardController(shard uint32, shardMetadata ShardMetadata, rpc RpcProvider, coordinator Coordinator) ShardController {
@@ -105,6 +110,11 @@ func (s *shardController) electLeader() error {
 	s.Lock()
 	defer s.Unlock()
 
+	if s.currentElectionCancel != nil {
+		// Cancel any pending activity from the previous election
+		s.currentElectionCancel()
+	}
+
 	s.shardMetadata.Status = ShardStatusElection
 	s.shardMetadata.Leader = nil
 	s.shardMetadata.Epoch++
@@ -148,6 +158,94 @@ func (s *shardController) electLeader() error {
 		Int64("epoch", s.shardMetadata.Epoch).
 		Interface("leader", s.shardMetadata.Leader).
 		Msg("Elected new leader")
+
+	s.keepFencingFailedFollowers(followers)
+	return nil
+}
+
+func (s *shardController) keepFencingFailedFollowers(successfulFollowers map[ServerAddress]*proto.EntryId) {
+	if len(successfulFollowers) == len(s.shardMetadata.Ensemble)-1 {
+		s.log.Debug().
+			Int64("epoch", s.shardMetadata.Epoch).
+			Msg("All the member of the ensemble were successfully added")
+		return
+	}
+
+	s.currentElectionCtx, s.currentElectionCancel = context.WithCancel(s.ctx)
+
+	// Identify failed followers
+	for _, sa := range s.shardMetadata.Ensemble {
+		if sa == *s.shardMetadata.Leader {
+			continue
+		}
+
+		if _, found := successfulFollowers[sa]; found {
+			continue
+		}
+
+		s.keepFencingFollower(s.currentElectionCtx, sa)
+	}
+}
+
+func (s *shardController) keepFencingFollower(ctx context.Context, node ServerAddress) {
+	s.log.Info().
+		Interface("follower", node).
+		Msg("Node has failed in leader election, retrying")
+
+	go common.DoWithLabels(map[string]string{
+		"oxia":     "shard-controller-retry-failed-follower",
+		"shard":    fmt.Sprintf("%d", s.shard),
+		"follower": node.Internal,
+	}, func() {
+		backOff := common.NewBackOffWithInitialInterval(ctx, 1*time.Second)
+
+		backoff.RetryNotify(func() error {
+			err := s.fenceAndAddFollower(ctx, node)
+			if status.Code(err) == server.CodeInvalidEpoch {
+				// If we're receiving invalid epoch error, it would mean
+				// there's already a new epoch generated and we don't have
+				// to keep trying with this old epoch
+				s.log.Warn().Err(err).
+					Interface("follower", node).
+					Int64("epoch", s.Epoch()).
+					Msg("Failed to fence, invalid epoch. Stop trying")
+				return nil
+			}
+			return err
+		}, backOff, func(err error, duration time.Duration) {
+			s.log.Warn().Err(err).
+				Interface("follower", node).
+				Int64("epoch", s.Epoch()).
+				Dur("retry-after", duration).
+				Msg("Failed to fence, retrying later")
+		})
+	})
+}
+
+func (s *shardController) fenceAndAddFollower(ctx context.Context, node ServerAddress) error {
+	fr, err := s.fence(ctx, node)
+	if err != nil {
+		return err
+	}
+
+	s.Lock()
+	leader := s.shardMetadata.Leader
+	s.Unlock()
+	if leader == nil {
+		return errors.New("not leader is active on the shard")
+	}
+
+	if err = s.addFollower(*s.shardMetadata.Leader, node.Internal, &proto.EntryId{
+		Epoch:  fr.Epoch,
+		Offset: fr.Offset,
+	}); err != nil {
+		return err
+	}
+
+	s.log.Info().
+		Interface("follower", node).
+		Int64("epoch", fr.Epoch).
+		Msg("Successfully rejoined the quorum")
 	return nil
 }
 
@@ -256,7 +354,7 @@ func (s *shardController) fence(ctx context.Context, node ServerAddress) (*proto
 }
 
 func (s *shardController) selectNewLeader(fenceResponses map[ServerAddress]*proto.EntryId) (
-	leader ServerAddress, followers map[string]*proto.EntryId) {
+	leader ServerAddress, followers map[ServerAddress]*proto.EntryId) {
 	// Select all the nodes that have the highest entry in the wal
 	var currentMax int64 = -1
 	var candidates []ServerAddress
@@ -275,21 +373,44 @@ func (s *shardController) selectNewLeader(fenceResponses map[ServerAddress]*prot
 
 	// Select a random leader among the nodes with the highest entry in the wal
 	leader = candidates[rand.Intn(len(candidates))]
-	followers = make(map[string]*proto.EntryId)
+	followers = make(map[ServerAddress]*proto.EntryId)
 	for a, e := range fenceResponses {
 		if a != leader {
-			followers[a.Internal] = e
+			followers[a] = e
 		}
 	}
 	return leader, followers
 }
 
-func (s *shardController) becomeLeader(leader ServerAddress, followers map[string]*proto.EntryId) error {
+func (s *shardController) becomeLeader(leader ServerAddress, followers map[ServerAddress]*proto.EntryId) error {
+	followersMap := make(map[string]*proto.EntryId)
+	for sa, e := range followers {
+		followersMap[sa.Internal] = e
+	}
+
 	res, err := s.rpc.BecomeLeader(s.ctx, leader, &proto.BecomeLeaderRequest{
 		ShardId:           s.shard,
 		Epoch:             s.shardMetadata.Epoch,
 		ReplicationFactor: uint32(len(s.shardMetadata.Ensemble)),
-		FollowerMaps:      followers,
+		FollowerMaps:      followersMap,
+	})
+	if err != nil {
+		return err
+	}
+
+	if res.Epoch != s.shardMetadata.Epoch {
+		return errors.New("invalid epoch")
+	}
+
+	return nil
+}
+
+func (s *shardController) addFollower(leader ServerAddress, follower string, followerHeadIndex *proto.EntryId) error {
+	res, err := s.rpc.AddFollower(s.ctx, leader, &proto.AddFollowerRequest{
+		ShardId:           s.shard,
+		Epoch:             s.shardMetadata.Epoch,
+		FollowerName:      follower,
+		FollowerHeadIndex: followerHeadIndex,
 	})
 	if err != nil {
 		return err

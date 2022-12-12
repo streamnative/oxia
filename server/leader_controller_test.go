@@ -298,7 +298,7 @@ func TestLeaderController_EpochPersistent(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.EqualValues(t, 5, fr2.Epoch)
-	assert.Equal(t, &proto.EntryId{Epoch: wal.InvalidEpoch, Offset: wal.InvalidOffset}, fr2.HeadIndex)
+	assert.Equal(t, InvalidEntryId, fr2.HeadIndex)
 
 	assert.EqualValues(t, 5, lc.Epoch())
 	assert.Equal(t, Fenced, lc.Status())
@@ -394,7 +394,7 @@ func TestLeaderController_BecomeLeaderEpoch(t *testing.T) {
 	assert.Nil(t, resp)
 	assert.Equal(t, CodeInvalidEpoch, status.Code(err))
 
-	// Higher epoch will succeed
+	// Higher epoch will fail
 	resp, err = lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
 		Epoch:             6,
@@ -404,7 +404,7 @@ func TestLeaderController_BecomeLeaderEpoch(t *testing.T) {
 	assert.Nil(t, resp)
 	assert.Equal(t, CodeInvalidEpoch, status.Code(err))
 
-	// Same epoch will fail
+	// Same epoch will succeed
 	resp, err = lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
 		Epoch:             5,
@@ -413,6 +413,114 @@ func TestLeaderController_BecomeLeaderEpoch(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.EqualValues(t, 5, resp.Epoch)
+
+	assert.NoError(t, lc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
+func TestLeaderController_AddFollower(t *testing.T) {
+	var shard uint32 = 1
+
+	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
+	walFactory := wal.NewInMemoryWalFactory()
+
+	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
+	assert.NoError(t, err)
+
+	lc.Fence(&proto.FenceRequest{
+		Epoch:   5,
+		ShardId: shard,
+	})
+
+	assert.EqualValues(t, 5, lc.Epoch())
+	assert.Equal(t, Fenced, lc.Status())
+
+	_, err = lc.BecomeLeader(&proto.BecomeLeaderRequest{
+		ShardId:           shard,
+		Epoch:             5,
+		ReplicationFactor: 3,
+		FollowerMaps: map[string]*proto.EntryId{
+			"f1": InvalidEntryId,
+		},
+	})
+	assert.NoError(t, err)
+
+	// f1 is already connected
+	afRes, err := lc.AddFollower(&proto.AddFollowerRequest{
+		ShardId:           shard,
+		Epoch:             5,
+		FollowerName:      "f1",
+		FollowerHeadIndex: InvalidEntryId,
+	})
+	assert.Nil(t, afRes)
+	assert.Error(t, err)
+
+	_, err = lc.AddFollower(&proto.AddFollowerRequest{
+		ShardId:           shard,
+		Epoch:             5,
+		FollowerName:      "f2",
+		FollowerHeadIndex: InvalidEntryId,
+	})
+	assert.NoError(t, err)
+
+	// We have already 2 followers and with replication-factor=3
+	// it's not possible to add any more followers
+	afRes, err = lc.AddFollower(&proto.AddFollowerRequest{
+		ShardId:           shard,
+		Epoch:             5,
+		FollowerName:      "f3",
+		FollowerHeadIndex: InvalidEntryId,
+	})
+	assert.Nil(t, afRes)
+	assert.Error(t, err)
+
+	assert.NoError(t, lc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
+func TestLeaderController_AddFollowerCheckEpoch(t *testing.T) {
+	var shard uint32 = 1
+
+	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
+	walFactory := wal.NewInMemoryWalFactory()
+
+	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
+	assert.NoError(t, err)
+
+	lc.Fence(&proto.FenceRequest{
+		Epoch:   5,
+		ShardId: shard,
+	})
+
+	_, err = lc.BecomeLeader(&proto.BecomeLeaderRequest{
+		ShardId:           shard,
+		Epoch:             5,
+		ReplicationFactor: 3,
+		FollowerMaps: map[string]*proto.EntryId{
+			"f1": InvalidEntryId,
+		},
+	})
+	assert.NoError(t, err)
+
+	afRes, err := lc.AddFollower(&proto.AddFollowerRequest{
+		ShardId:           shard,
+		Epoch:             4,
+		FollowerName:      "f2",
+		FollowerHeadIndex: InvalidEntryId,
+	})
+	assert.Nil(t, afRes)
+	assert.Equal(t, CodeInvalidEpoch, status.Code(err))
+
+	afRes, err = lc.AddFollower(&proto.AddFollowerRequest{
+		ShardId:           shard,
+		Epoch:             6,
+		FollowerName:      "f2",
+		FollowerHeadIndex: InvalidEntryId,
+	})
+	assert.Nil(t, afRes)
+	assert.Equal(t, CodeInvalidEpoch, status.Code(err))
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())

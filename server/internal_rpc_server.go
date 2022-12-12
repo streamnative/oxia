@@ -135,10 +135,34 @@ func (s *internalRpcServer) BecomeLeader(c context.Context, req *proto.BecomeLea
 	} else {
 		res, err2 := leader.BecomeLeader(req)
 		if err2 != nil {
-			s.log.Warn().Err(err).
+			s.log.Warn().Err(err2).
 				Uint32("shard", req.ShardId).
 				Str("peer", common.GetPeer(c)).
 				Msg("BecomeLeader failed")
+		}
+		return res, err2
+	}
+}
+
+func (s *internalRpcServer) AddFollower(c context.Context, req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error) {
+	s.log.Info().
+		Interface("req", req).
+		Str("peer", common.GetPeer(c)).
+		Msg("Received AddFollower request")
+
+	if leader, err := s.shardsDirector.GetLeader(req.ShardId); err != nil {
+		s.log.Warn().Err(err).
+			Uint32("shard", req.ShardId).
+			Str("peer", common.GetPeer(c)).
+			Msg("AddFollower failed: could not get leader controller")
+		return nil, err
+	} else {
+		res, err2 := leader.AddFollower(req)
+		if err2 != nil {
+			s.log.Warn().Err(err2).
+				Uint32("shard", req.ShardId).
+				Str("peer", common.GetPeer(c)).
+				Msg("AddFollower failed")
 		}
 		return res, err2
 	}

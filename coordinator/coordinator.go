@@ -78,8 +78,8 @@ func storageServers(config Config) []impl.ServerAddress {
 	servers := make([]impl.ServerAddress, config.ServerReplicas)
 	for i := 0; i < int(config.ServerReplicas); i++ {
 		servers[i] = impl.ServerAddress{
-			Public:   fmt.Sprintf("%s-%d:%d", config.Name, i, resource.PublicPort.Port),
-			Internal: fmt.Sprintf("%s-%d:%d", config.Name, i, resource.InternalPort.Port),
+			Public:   fmt.Sprintf("localhost:%d", 9190+i),
+			Internal: fmt.Sprintf("localhost:%d", 8190+i),
 		}
 	}
 	return servers
