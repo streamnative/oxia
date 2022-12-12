@@ -27,7 +27,6 @@ func TestCall_LogLevel(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			logLevelStr = ""
 			rootCmd.SetArgs(append([]string{"-g"}, test.level))
 			rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
 				if test.expectedErr == nil {
