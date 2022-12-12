@@ -1,4 +1,4 @@
-package coordinator
+package impl
 
 type ClusterConfig struct {
 	ReplicationFactor uint32          `json:"replicationFactor"`
