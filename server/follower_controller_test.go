@@ -32,7 +32,6 @@ func TestFollower(t *testing.T) {
 
 	fenceRes, err := fc.Fence(&proto.FenceRequest{Epoch: 1})
 	assert.NoError(t, err)
-	assert.EqualValues(t, 1, fenceRes.Epoch)
 	assert.Equal(t, &proto.EntryId{Epoch: wal.InvalidEpoch, Offset: wal.InvalidOffset}, fenceRes.HeadIndex)
 
 	assert.Equal(t, Fenced, fc.Status())
@@ -46,7 +45,6 @@ func TestFollower(t *testing.T) {
 		},
 	})
 	assert.NoError(t, err)
-	assert.EqualValues(t, 1, truncateResp.Epoch)
 	assert.EqualValues(t, 1, truncateResp.HeadIndex.Epoch)
 	assert.Equal(t, wal.InvalidOffset, truncateResp.HeadIndex.Offset)
 
@@ -63,7 +61,6 @@ func TestFollower(t *testing.T) {
 
 	assert.Equal(t, Follower, fc.Status())
 
-	assert.EqualValues(t, 1, response.Epoch)
 	assert.EqualValues(t, 0, response.Offset)
 
 	// Write next entry
@@ -71,7 +68,6 @@ func TestFollower(t *testing.T) {
 
 	// Wait for response
 	response = stream.GetResponse()
-	assert.EqualValues(t, 1, response.Epoch)
 	assert.EqualValues(t, 1, response.Offset)
 
 	assert.Equal(t, Follower, fc.Status())
@@ -133,12 +129,10 @@ func TestReadingUpToCommitIndex(t *testing.T) {
 
 	assert.Equal(t, Follower, fc.Status())
 
-	assert.EqualValues(t, 1, r1.Epoch)
 	assert.EqualValues(t, 0, r1.Offset)
 
 	r2 := stream.GetResponse()
 
-	assert.EqualValues(t, 1, r2.Epoch)
 	assert.EqualValues(t, 1, r2.Offset)
 
 	dbRes, err := fc.(*followerController).db.ProcessRead(&proto.ReadRequest{Gets: []*proto.GetRequest{{
@@ -242,7 +236,6 @@ func TestFollower_PersistentEpoch(t *testing.T) {
 
 	fenceRes, err := fc.Fence(&proto.FenceRequest{Epoch: 4})
 	assert.NoError(t, err)
-	assert.EqualValues(t, 4, fenceRes.Epoch)
 	assert.Equal(t, &proto.EntryId{Epoch: wal.InvalidEpoch, Offset: wal.InvalidOffset}, fenceRes.HeadIndex)
 
 	assert.Equal(t, Fenced, fc.Status())
@@ -284,7 +277,6 @@ func TestFollower_CommitIndexLastEntry(t *testing.T) {
 
 	assert.Equal(t, Follower, fc.Status())
 
-	assert.EqualValues(t, 1, r1.Epoch)
 	assert.EqualValues(t, 0, r1.Offset)
 
 	dbRes, err := fc.(*followerController).db.ProcessRead(&proto.ReadRequest{Gets: []*proto.GetRequest{{
@@ -345,7 +337,6 @@ func TestFollowerController_RejectEntriesWithDifferentEpoch(t *testing.T) {
 	r1 := stream.GetResponse()
 
 	assert.Equal(t, Follower, fc.Status())
-	assert.EqualValues(t, 5, r1.Epoch)
 	assert.EqualValues(t, 0, r1.Offset)
 	assert.NoError(t, fc.Close())
 	close(stream.requests)
@@ -378,7 +369,6 @@ func TestFollower_RejectTruncateInvalidEpoch(t *testing.T) {
 
 	fenceRes, err := fc.Fence(&proto.FenceRequest{Epoch: 5})
 	assert.NoError(t, err)
-	assert.EqualValues(t, 5, fenceRes.Epoch)
 	assert.Equal(t, &proto.EntryId{Epoch: wal.InvalidEpoch, Offset: wal.InvalidOffset}, fenceRes.HeadIndex)
 
 	assert.Equal(t, Fenced, fc.Status())

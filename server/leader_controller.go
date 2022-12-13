@@ -14,6 +14,8 @@ import (
 	"sync"
 )
 
+var emptyResponse = &proto.EmptyResponse{}
+
 type LeaderController interface {
 	io.Closer
 
@@ -24,9 +26,9 @@ type LeaderController interface {
 	Fence(req *proto.FenceRequest) (*proto.FenceResponse, error)
 
 	// BecomeLeader Handles BecomeLeaderRequest from coordinator and prepares to be leader for the shard
-	BecomeLeader(*proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error)
+	BecomeLeader(*proto.BecomeLeaderRequest) (*proto.EmptyResponse, error)
 
-	AddFollower(request *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error)
+	AddFollower(request *proto.AddFollowerRequest) (*proto.EmptyResponse, error)
 
 	// Epoch The current epoch of the leader
 	Epoch() int64
@@ -160,7 +162,6 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 		Msg("Fenced leader")
 
 	return &proto.FenceResponse{
-		Epoch:     lc.epoch,
 		HeadIndex: headIndex,
 	}, nil
 }
@@ -190,7 +191,7 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 //     the new leader will be informed of these followers, and it is
 //     possible that their head index is higher than the leader and
 //     therefore need truncating.
-func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error) {
+func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto.EmptyResponse, error) {
 	lc.Lock()
 	defer lc.Unlock()
 
@@ -219,10 +220,10 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 		Int64("epoch", lc.epoch).
 		Int64("head-index", leaderHeadIndex.Offset).
 		Msg("Started leading the shard")
-	return &proto.BecomeLeaderResponse{Epoch: req.GetEpoch()}, nil
+	return emptyResponse, nil
 }
 
-func (lc *leaderController) AddFollower(req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error) {
+func (lc *leaderController) AddFollower(req *proto.AddFollowerRequest) (*proto.EmptyResponse, error) {
 	lc.Lock()
 	defer lc.Unlock()
 
@@ -251,7 +252,7 @@ func (lc *leaderController) AddFollower(req *proto.AddFollowerRequest) (*proto.A
 		return nil, err
 	}
 
-	return &proto.AddFollowerResponse{Epoch: req.GetEpoch()}, nil
+	return emptyResponse, nil
 }
 
 func (lc *leaderController) addFollower(leaderHeadIndex *proto.EntryId, follower string, followerHeadIndex *proto.EntryId) error {

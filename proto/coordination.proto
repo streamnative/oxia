@@ -8,20 +8,20 @@ import "proto/client.proto";
 
 // controller -> node
 service OxiaControl {
-  rpc ShardAssignment(stream io.streamnative.oxia.proto.ShardAssignmentsResponse) returns (CoordinationShardAssignmentsResponse) {}
+  rpc ShardAssignment(stream io.streamnative.oxia.proto.ShardAssignmentsResponse) returns (EmptyResponse);
 
   rpc Fence(FenceRequest) returns (FenceResponse);
-  rpc BecomeLeader(BecomeLeaderRequest) returns (BecomeLeaderResponse);
-  rpc AddFollower(AddFollowerRequest) returns (AddFollowerResponse);
+  rpc BecomeLeader(BecomeLeaderRequest) returns (EmptyResponse);
+  rpc AddFollower(AddFollowerRequest) returns (EmptyResponse);
 }
 
 // node (leader) -> node (follower)
 service OxiaLogReplication {
-  rpc Truncate(TruncateRequest) returns (TruncateResponse) {}
-  rpc AddEntries(stream AddEntryRequest) returns (stream AddEntryResponse) {}
+  rpc Truncate(TruncateRequest) returns (TruncateResponse);
+  rpc AddEntries(stream AddEntryRequest) returns (stream AddEntryResponse);
 }
 
-message CoordinationShardAssignmentsResponse {}
+message EmptyResponse {}
 
 message EntryId {
   int64 epoch = 1;
@@ -40,7 +40,6 @@ message FenceRequest {
 }
 
 message FenceResponse {
-  int64 epoch = 1;
   EntryId head_index = 2;
 }
 
@@ -60,14 +59,6 @@ message AddFollowerRequest {
   EntryId follower_head_index = 4;
 }
 
-message BecomeLeaderResponse {
-  int64 epoch = 1;
-}
-
-message AddFollowerResponse {
-  int64 epoch = 1;
-}
-
 message TruncateRequest {
   uint32 shard_id = 1;
 
@@ -77,7 +68,6 @@ message TruncateRequest {
 }
 
 message TruncateResponse {
-  int64 epoch = 1;
   EntryId head_index = 2;
 }
 
@@ -88,6 +78,5 @@ message AddEntryRequest {
 }
 
 message AddEntryResponse {
-  int64 epoch = 1;
   int64 offset = 2;
 }
