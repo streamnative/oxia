@@ -199,7 +199,7 @@ func (s *shardController) keepFencingFollower(ctx context.Context, node ServerAd
 	}, func() {
 		backOff := common.NewBackOffWithInitialInterval(ctx, 1*time.Second)
 
-		backoff.RetryNotify(func() error {
+		_ = backoff.RetryNotify(func() error {
 			err := s.fenceAndAddFollower(ctx, node)
 			if status.Code(err) == server.CodeInvalidEpoch {
 				// If we're receiving invalid epoch error, it would mean

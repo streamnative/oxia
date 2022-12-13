@@ -428,10 +428,11 @@ func TestLeaderController_AddFollower(t *testing.T) {
 	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	lc.Fence(&proto.FenceRequest{
+	_, err = lc.Fence(&proto.FenceRequest{
 		Epoch:   5,
 		ShardId: shard,
 	})
+	assert.NoError(t, err)
 
 	assert.EqualValues(t, 5, lc.Epoch())
 	assert.Equal(t, Fenced, lc.Status())
@@ -489,10 +490,11 @@ func TestLeaderController_AddFollowerCheckEpoch(t *testing.T) {
 	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	lc.Fence(&proto.FenceRequest{
+	_, err = lc.Fence(&proto.FenceRequest{
 		Epoch:   5,
 		ShardId: shard,
 	})
+	assert.NoError(t, err)
 
 	_, err = lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,

@@ -247,7 +247,9 @@ func (lc *leaderController) AddFollower(req *proto.AddFollowerRequest) (*proto.A
 		return nil, err
 	}
 
-	lc.addFollower(leaderHeadIndex, req.FollowerName, req.FollowerHeadIndex)
+	if err := lc.addFollower(leaderHeadIndex, req.FollowerName, req.FollowerHeadIndex); err != nil {
+		return nil, err
+	}
 
 	return &proto.AddFollowerResponse{Epoch: req.GetEpoch()}, nil
 }
