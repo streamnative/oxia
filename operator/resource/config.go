@@ -23,8 +23,24 @@ type ServiceConfig struct {
 }
 
 type DeploymentConfig struct {
+	PodConfig
+	Replicas uint32
+}
+
+type StatefulSetConfig struct {
+	PodConfig
+	Replicas uint32
+	Volume   string
+}
+
+type PodConfig struct {
 	Name, Image, Command string
-	Replicas             int32
+	Args                 []string
 	Ports                []NamedPort
 	Resources            Resources
+	VolumeConfig         *VolumeConfig
+}
+
+type VolumeConfig struct {
+	Name, Path, Volume string
 }
