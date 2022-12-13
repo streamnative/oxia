@@ -46,6 +46,10 @@ func init() {
 	applyCmd.Flags().StringVar(&conf.CoordinatorResources.Memory, "coordinator-memory", conf.CoordinatorResources.Memory, "Coordinator memory")
 	applyCmd.Flags().StringVar(&conf.Image, "image", conf.Image, "Oxia docker image")
 	applyCmd.Flags().BoolVar(&conf.MonitoringEnabled, "monitoring-enabled", conf.MonitoringEnabled, "Prometheus ServiceMonitor")
+
+	deleteCmd.Flags().StringVar(&conf.Name, "name", conf.Name, "Cluster name")
+	deleteCmd.Flags().StringVar(&conf.Namespace, "namespace", conf.Namespace, "Cluster namespace")
+	deleteCmd.Flags().BoolVar(&conf.MonitoringEnabled, "monitoring-enabled", conf.MonitoringEnabled, "Prometheus ServiceMonitor")
 }
 
 func validate(*cobra.Command, []string) error {

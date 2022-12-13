@@ -39,7 +39,9 @@ func TestShardController(t *testing.T) {
 	rpc.GetNode(s1).BecomeLeaderResponse(2, nil)
 	rpc.GetNode(s1).expectBecomeLeaderRequest(t, shard, 2, 3)
 
-	assert.Equal(t, ShardStatusSteadyState, sc.Status())
+	assert.Eventually(t, func() bool {
+		return sc.Status() == ShardStatusSteadyState
+	}, 10*time.Second, 100*time.Millisecond)
 	assert.EqualValues(t, 2, sc.Epoch())
 	assert.Equal(t, s1, *sc.Leader())
 
