@@ -165,6 +165,7 @@ func (s *shardController) fenceQuorum() (map[ServerAddress]*proto.EntryId, error
 		s.log.Info().
 			Interface("server-address", sa).
 			Interface("entry-id", entryId).
+			Int64("epoch", s.shardMetadata.Epoch).
 			Msg("Processed fence response")
 	}
 
