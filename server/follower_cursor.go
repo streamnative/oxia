@@ -91,7 +91,7 @@ func NewFollowerCursor(
 	fc.ackIndex.Store(ackIndex)
 
 	var err error
-	if fc.cursorAcker, err = ackTracker.NewCursorAcker(); err != nil {
+	if fc.cursorAcker, err = ackTracker.NewCursorAcker(ackIndex); err != nil {
 		return nil, err
 	}
 

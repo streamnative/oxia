@@ -36,7 +36,9 @@ type QuorumAckTracker interface {
 	// Waits until the specified entry is written on the wal
 	WaitForHeadIndex(offset int64)
 
-	NewCursorAcker() (CursorAcker, error)
+	// NewCursorAcker creates a tracker for a new cursor
+	// The `ackIndex` is the previous last-acked position for the cursor
+	NewCursorAcker(ackIndex int64) (CursorAcker, error)
 }
 
 type quorumAckTracker struct {
@@ -77,8 +79,9 @@ func NewQuorumAckTracker(replicationFactor uint32, headIndex int64, commitIndex 
 		tracker:           make(map[int64]*util.BitSet),
 	}
 
-	for i := commitIndex; i <= headIndex; i++ {
-		q.tracker[i] = &util.BitSet{}
+	// Add entries to track the entries we're not yet sure that are fully committed
+	for offset := commitIndex + 1; offset <= headIndex; offset++ {
+		q.tracker[offset] = &util.BitSet{}
 	}
 
 	q.waitForHeadIndex = sync.NewCond(q)
@@ -151,7 +154,7 @@ func (q *quorumAckTracker) Close() error {
 	return nil
 }
 
-func (q *quorumAckTracker) NewCursorAcker() (CursorAcker, error) {
+func (q *quorumAckTracker) NewCursorAcker(ackIndex int64) (CursorAcker, error) {
 	q.Lock()
 	defer q.Unlock()
 
@@ -159,13 +162,19 @@ func (q *quorumAckTracker) NewCursorAcker() (CursorAcker, error) {
 		return nil, ErrorTooManyCursors
 	}
 
-	cursoridx := q.cursorIdxGenerator
-	q.cursorIdxGenerator++
-
-	return &cursorAcker{
+	qa := &cursorAcker{
 		quorumTracker: q,
-		cursorIdx:     cursoridx,
-	}, nil
+		cursorIdx:     q.cursorIdxGenerator,
+	}
+
+	// If the new cursor is already past the current quorum commit index, we have
+	// to mark these entries as acked (by that cursor).
+	for offset := q.commitIndex + 1; offset <= ackIndex; offset++ {
+		qa.Ack(offset)
+	}
+
+	q.cursorIdxGenerator++
+	return qa, nil
 }
 
 func (c *cursorAcker) Ack(offset int64) {
