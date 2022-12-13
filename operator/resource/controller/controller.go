@@ -59,16 +59,19 @@ func (c *clientImpl) Install(out io.Writer, config Config) error {
 	err = client.ClusterRoles(c.kubernetes).Upsert(clusterRole(name))
 	errs = resource.PrintAndAppend(out, errs, err, "install", "ClusterRole")
 
-	err = client.ClusterRoleBindings(c.kubernetes).Upsert(clusterRoleBinding(config.Namespace))
+	err = client.ClusterRoleBindings(c.kubernetes).Upsert(clusterRoleBinding(name, config.Namespace))
 	errs = resource.PrintAndAppend(out, errs, err, "install", "ClusterRoleBinding")
 
 	deploymentConfig := resource.DeploymentConfig{
-		Name:      name,
-		Image:     config.Image,
-		Command:   "controller",
-		Replicas:  1,
-		Ports:     []resource.NamedPort{resource.MetricsPort},
-		Resources: config.Resources,
+		PodConfig: resource.PodConfig{
+			Name:      name,
+			Image:     config.Image,
+			Command:   "controller",
+			Args:      []string{},
+			Ports:     []resource.NamedPort{resource.MetricsPort},
+			Resources: config.Resources,
+		},
+		Replicas: 1,
 	}
 	err = client.Deployments(c.kubernetes).Upsert(config.Namespace, resource.Deployment(deploymentConfig))
 	errs = resource.PrintAndAppend(out, errs, err, "install", "Deployment")
@@ -135,7 +138,7 @@ func policyRules() []rbacV1.PolicyRule {
 	}
 }
 
-func clusterRoleBinding(namespace string) *rbacV1.ClusterRoleBinding {
+func clusterRoleBinding(name, namespace string) *rbacV1.ClusterRoleBinding {
 	return &rbacV1.ClusterRoleBinding{
 		ObjectMeta: resource.Meta(name),
 		Subjects: []rbacV1.Subject{{
@@ -147,7 +150,7 @@ func clusterRoleBinding(namespace string) *rbacV1.ClusterRoleBinding {
 		RoleRef: rbacV1.RoleRef{
 			APIGroup: "rbac.authorization.k8s.io",
 			Kind:     "ClusterRole",
-			Name:     crd.Resource,
+			Name:     name,
 		},
 	}
 }
