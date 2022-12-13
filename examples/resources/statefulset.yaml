@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: oxia-server
+  labels:
+    app: oxia-server
+spec:
+  serviceName: oxia-server
+  replicas: 3
+  selector:
+    matchLabels:
+      app: oxia-server
+  template:
+    metadata:
+      labels:
+        app: oxia-server
+    spec:
+      containers:
+        - args:
+            - server
+            - --public-port=6648
+            - --internal-port=6649
+            - --metrics-port=8080
+          name: oxia
+          image: "oxia:latest"
+          ports:
+            - containerPort: 80
+              name: nginx
+            - containerPort: 6648
+              name: public
+            - containerPort: 6649
+              name: internal
+            - containerPort: 8080
+              name: metrics
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 1Gi
+---
+# Headless Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: oxia-server
+  labels:
+    app: oxia-server
+spec:
+  clusterIP: None
+  ports:
+    - name: public
+      targetPort: public
+      port: 6648
+    - name: internal
+      targetPort: internal
+      port: 6649
+    - name: metrics
+      targetPort: metrics
+      port: 8080
+  selector:
+    app: oxia-server

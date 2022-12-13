@@ -1,4 +1,4 @@
-package coordinator
+package impl
 
 //func TestCoordinator(t *testing.T) {
 //	common.LogDebug = true
@@ -7,7 +7,7 @@ package coordinator
 //	mp := NewMetadataProviderMemory()
 //	cc := ClusterConfig{
 //		ReplicationFactor: 3,
-//		ShardsCount:       1,
+//		ShardCount:       1,
 //		StorageServers: []ServerAddress{
 //			{"localhost:9190", "localhost:8190"},
 //			{"localhost:9191", "localhost:8191"},
