@@ -9,7 +9,10 @@ import (
 	"sync/atomic"
 )
 
-var ErrorTooManyCursors = errors.New("too many cursors")
+var (
+	ErrorTooManyCursors   = errors.New("too many cursors")
+	ErrorInvalidHeadIndex = errors.New("invalid head index")
+)
 
 // QuorumAckTracker
 // The QuorumAckTracker is responsible for keeping track of the head index and commit index of a shard
@@ -162,6 +165,10 @@ func (q *quorumAckTracker) NewCursorAcker(ackIndex int64) (CursorAcker, error) {
 		return nil, ErrorTooManyCursors
 	}
 
+	if ackIndex > q.headIndex {
+		return nil, ErrorInvalidHeadIndex
+	}
+
 	qa := &cursorAcker{
 		quorumTracker: q,
 		cursorIdx:     q.cursorIdxGenerator,
@@ -170,7 +177,7 @@ func (q *quorumAckTracker) NewCursorAcker(ackIndex int64) (CursorAcker, error) {
 	// If the new cursor is already past the current quorum commit index, we have
 	// to mark these entries as acked (by that cursor).
 	for offset := q.commitIndex + 1; offset <= ackIndex; offset++ {
-		qa.Ack(offset)
+		qa.ack(offset)
 	}
 
 	q.cursorIdxGenerator++
@@ -178,9 +185,14 @@ func (q *quorumAckTracker) NewCursorAcker(ackIndex int64) (CursorAcker, error) {
 }
 
 func (c *cursorAcker) Ack(offset int64) {
+	c.quorumTracker.Lock()
+	defer c.quorumTracker.Unlock()
+
+	c.ack(offset)
+}
+
+func (c *cursorAcker) ack(offset int64) {
 	q := c.quorumTracker
-	q.Lock()
-	defer q.Unlock()
 
 	e, found := q.tracker[offset]
 	if !found {
