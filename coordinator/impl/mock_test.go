@@ -182,18 +182,18 @@ func newMockRpcProvider() *mockRpcProvider {
 }
 
 func (r *mockRpcProvider) FailNode(node ServerAddress, err error) {
-	n := r.GetNode(node)
-
 	r.Lock()
 	defer r.Unlock()
+
+	n := r.getNode(node)
 	n.err = err
 }
 
 func (r *mockRpcProvider) RecoverNode(node ServerAddress) {
-	n := r.GetNode(node)
-
 	r.Lock()
 	defer r.Unlock()
+
+	n := r.getNode(node)
 	n.err = nil
 }
 
@@ -201,6 +201,10 @@ func (r *mockRpcProvider) GetNode(node ServerAddress) *mockPerNodeChannels {
 	r.Lock()
 	defer r.Unlock()
 
+	return r.getNode(node)
+}
+
+func (r *mockRpcProvider) getNode(node ServerAddress) *mockPerNodeChannels {
 	res, ok := r.channels[node.Internal]
 	if ok {
 		return res
@@ -212,7 +216,10 @@ func (r *mockRpcProvider) GetNode(node ServerAddress) *mockPerNodeChannels {
 }
 
 func (r *mockRpcProvider) GetShardAssignmentStream(ctx context.Context, node ServerAddress) (proto.OxiaControl_ShardAssignmentClient, error) {
-	n := r.GetNode(node)
+	r.Lock()
+	defer r.Unlock()
+
+	n := r.getNode(node)
 	if n.err != nil {
 		return nil, n.err
 	}
@@ -220,7 +227,10 @@ func (r *mockRpcProvider) GetShardAssignmentStream(ctx context.Context, node Ser
 }
 
 func (r *mockRpcProvider) Fence(ctx context.Context, node ServerAddress, req *proto.FenceRequest) (*proto.FenceResponse, error) {
-	s := r.GetNode(node)
+	r.Lock()
+	defer r.Unlock()
+
+	s := r.getNode(node)
 	s.fenceRequests <- req
 
 	if s.err != nil {
@@ -238,7 +248,10 @@ func (r *mockRpcProvider) Fence(ctx context.Context, node ServerAddress, req *pr
 }
 
 func (r *mockRpcProvider) BecomeLeader(ctx context.Context, node ServerAddress, req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error) {
-	s := r.GetNode(node)
+	r.Lock()
+	defer r.Unlock()
+
+	s := r.getNode(node)
 	s.becomeLeaderRequests <- req
 
 	if s.err != nil {
@@ -256,7 +269,10 @@ func (r *mockRpcProvider) BecomeLeader(ctx context.Context, node ServerAddress, 
 }
 
 func (r *mockRpcProvider) AddFollower(ctx context.Context, node ServerAddress, req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error) {
-	s := r.GetNode(node)
+	r.Lock()
+	defer r.Unlock()
+
+	s := r.getNode(node)
 	s.addFollowerRequests <- req
 
 	if s.err != nil {
