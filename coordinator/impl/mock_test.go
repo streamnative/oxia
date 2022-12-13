@@ -80,13 +80,13 @@ type mockPerNodeChannels struct {
 
 	becomeLeaderRequests  chan *proto.BecomeLeaderRequest
 	becomeLeaderResponses chan struct {
-		*proto.BecomeLeaderResponse
+		*proto.EmptyResponse
 		error
 	}
 
 	addFollowerRequests  chan *proto.AddFollowerRequest
 	addFollowerResponses chan struct {
-		*proto.AddFollowerResponse
+		*proto.EmptyResponse
 		error
 	}
 
@@ -117,12 +117,11 @@ func (m *mockPerNodeChannels) expectAddFollowerRequest(t *testing.T, shard uint3
 	assert.Equal(t, epoch, r.Epoch)
 }
 
-func (m *mockPerNodeChannels) FenceResponse(reqEpoch int64, epoch int64, offset int64, err error) {
+func (m *mockPerNodeChannels) FenceResponse(epoch int64, offset int64, err error) {
 	m.fenceResponses <- struct {
 		*proto.FenceResponse
 		error
 	}{&proto.FenceResponse{
-		Epoch: reqEpoch,
 		HeadIndex: &proto.EntryId{
 			Epoch:  epoch,
 			Offset: offset,
@@ -130,22 +129,18 @@ func (m *mockPerNodeChannels) FenceResponse(reqEpoch int64, epoch int64, offset 
 	}, err}
 }
 
-func (m *mockPerNodeChannels) BecomeLeaderResponse(epoch int64, err error) {
+func (m *mockPerNodeChannels) BecomeLeaderResponse(err error) {
 	m.becomeLeaderResponses <- struct {
-		*proto.BecomeLeaderResponse
+		*proto.EmptyResponse
 		error
-	}{&proto.BecomeLeaderResponse{
-		Epoch: epoch,
-	}, err}
+	}{&proto.EmptyResponse{}, err}
 }
 
-func (m *mockPerNodeChannels) AddFollowerResponse(epoch int64, err error) {
+func (m *mockPerNodeChannels) AddFollowerResponse(err error) {
 	m.addFollowerResponses <- struct {
-		*proto.AddFollowerResponse
+		*proto.EmptyResponse
 		error
-	}{&proto.AddFollowerResponse{
-		Epoch: epoch,
-	}, err}
+	}{&proto.EmptyResponse{}, err}
 }
 
 func newMockPerNodeChannels() *mockPerNodeChannels {
@@ -157,12 +152,12 @@ func newMockPerNodeChannels() *mockPerNodeChannels {
 		}, 100),
 		becomeLeaderRequests: make(chan *proto.BecomeLeaderRequest, 100),
 		becomeLeaderResponses: make(chan struct {
-			*proto.BecomeLeaderResponse
+			*proto.EmptyResponse
 			error
 		}, 100),
 		addFollowerRequests: make(chan *proto.AddFollowerRequest, 100),
 		addFollowerResponses: make(chan struct {
-			*proto.AddFollowerResponse
+			*proto.EmptyResponse
 			error
 		}, 100),
 		shardAssignmentsStream: newMockShardAssignmentClient(),
@@ -247,7 +242,7 @@ func (r *mockRpcProvider) Fence(ctx context.Context, node ServerAddress, req *pr
 	}
 }
 
-func (r *mockRpcProvider) BecomeLeader(ctx context.Context, node ServerAddress, req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error) {
+func (r *mockRpcProvider) BecomeLeader(ctx context.Context, node ServerAddress, req *proto.BecomeLeaderRequest) (*proto.EmptyResponse, error) {
 	r.Lock()
 	defer r.Unlock()
 
@@ -260,7 +255,7 @@ func (r *mockRpcProvider) BecomeLeader(ctx context.Context, node ServerAddress, 
 
 	select {
 	case response := <-s.becomeLeaderResponses:
-		return response.BecomeLeaderResponse, response.error
+		return response.EmptyResponse, response.error
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-time.After(3 * time.Second):
@@ -268,7 +263,7 @@ func (r *mockRpcProvider) BecomeLeader(ctx context.Context, node ServerAddress, 
 	}
 }
 
-func (r *mockRpcProvider) AddFollower(ctx context.Context, node ServerAddress, req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error) {
+func (r *mockRpcProvider) AddFollower(ctx context.Context, node ServerAddress, req *proto.AddFollowerRequest) (*proto.EmptyResponse, error) {
 	r.Lock()
 	defer r.Unlock()
 
@@ -281,7 +276,7 @@ func (r *mockRpcProvider) AddFollower(ctx context.Context, node ServerAddress, r
 
 	select {
 	case response := <-s.addFollowerResponses:
-		return response.AddFollowerResponse, response.error
+		return response.EmptyResponse, response.error
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-time.After(3 * time.Second):
@@ -329,7 +324,7 @@ func (m *mockShardAssignmentClient) Send(response *proto.ShardAssignmentsRespons
 	return nil
 }
 
-func (m *mockShardAssignmentClient) CloseAndRecv() (*proto.CoordinationShardAssignmentsResponse, error) {
+func (m *mockShardAssignmentClient) CloseAndRecv() (*proto.EmptyResponse, error) {
 	panic("not implemented")
 }
 
