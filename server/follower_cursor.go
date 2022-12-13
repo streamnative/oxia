@@ -190,8 +190,9 @@ func (fc *followerCursor) runOnce() error {
 			Msg("Sending entries to follower")
 
 		if err = fc.stream.Send(&proto.AddEntryRequest{
-			Epoch: fc.epoch,
-			Entry: le,
+			Epoch:       fc.epoch,
+			Entry:       le,
+			CommitIndex: fc.ackTracker.CommitIndex(),
 		}); err != nil {
 			return err
 		}

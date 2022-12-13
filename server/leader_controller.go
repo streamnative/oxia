@@ -147,26 +147,18 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 	}
 
 	lc.followers = nil
-	lastEntry, err := getLastEntryInWal(lc.wal)
+	headIndex, err := getLastEntryIdInWal(lc.wal)
 	if err != nil {
 		return nil, err
 	}
 
-	lastEntryId := InvalidEntryId
-	if lastEntry != nil {
-		lastEntryId = &proto.EntryId{
-			Epoch:  lastEntry.Epoch,
-			Offset: lastEntry.Offset,
-		}
-	}
-
 	lc.log.Info().
-		Interface("last-entry", lastEntryId).
+		Interface("last-entry", headIndex).
 		Msg("Fenced leader")
 
 	return &proto.FenceResponse{
 		Epoch:     lc.epoch,
-		HeadIndex: lastEntryId,
+		HeadIndex: headIndex,
 	}, nil
 }
 
@@ -207,22 +199,17 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 	lc.replicationFactor = req.GetReplicationFactor()
 	lc.followers = make(map[string]FollowerCursor)
 
-	lastEntry, err := getLastEntryInWal(lc.wal)
+	leaderHeadIndex, err := getLastEntryIdInWal(lc.wal)
 	if err != nil {
 		return nil, err
 	}
 
-	leaderHeadIndex := InvalidEntryId
-	commitIndex := wal.InvalidOffset
-	if lastEntry != nil {
-		leaderHeadIndex = &proto.EntryId{
-			Epoch:  lastEntry.Epoch,
-			Offset: lastEntry.Offset,
-		}
-		commitIndex = lastEntry.CommitIndex
+	leaderCommitIndex, err := lc.db.ReadCommitIndex()
+	if err != nil {
+		return nil, err
 	}
 
-	lc.quorumAckTracker = NewQuorumAckTracker(req.GetReplicationFactor(), leaderHeadIndex.Offset, commitIndex)
+	lc.quorumAckTracker = NewQuorumAckTracker(req.GetReplicationFactor(), leaderHeadIndex.Offset, leaderCommitIndex)
 
 	for follower, followerHeadIndex := range req.FollowerMaps {
 		if needsTruncation(leaderHeadIndex, followerHeadIndex) {
@@ -376,10 +363,9 @@ func (lc *leaderController) Write(request *proto.WriteRequest) (*proto.WriteResp
 			return nil, err
 		}
 		logEntry := &proto.LogEntry{
-			Epoch:       lc.epoch,
-			Offset:      newOffset,
-			CommitIndex: lc.quorumAckTracker.CommitIndex(),
-			Value:       value,
+			Epoch:  lc.epoch,
+			Offset: newOffset,
+			Value:  value,
 		}
 
 		err = lc.wal.Append(logEntry)
@@ -419,15 +405,19 @@ func (lc *leaderController) Close() error {
 	return err
 }
 
-func getLastEntryInWal(wal wal.Wal) (*proto.LogEntry, error) {
+func getLastEntryIdInWal(wal wal.Wal) (*proto.EntryId, error) {
 	reader, err := wal.NewReverseReader()
 	if err != nil {
 		return nil, err
 	}
 
 	if !reader.HasNext() {
-		return nil, nil
+		return InvalidEntryId, nil
 	}
 
-	return reader.ReadNext()
+	entry, err := reader.ReadNext()
+	if err != nil {
+		return nil, err
+	}
+	return &proto.EntryId{Epoch: entry.Epoch, Offset: entry.Offset}, nil
 }

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
@@ -17,7 +18,7 @@ var testKVOptions = &kv.KVFactoryOptions{
 }
 
 func init() {
-	common.LogDebug = true
+	common.LogLevel = zerolog.DebugLevel
 	common.ConfigureLogger()
 }
 
@@ -428,14 +429,14 @@ func createAddRequest(t *testing.T, epoch int64, offset int64,
 	assert.NoError(t, err)
 
 	le := &proto.LogEntry{
-		Epoch:       epoch,
-		Offset:      offset,
-		Value:       entry,
-		CommitIndex: commitIndex,
+		Epoch:  epoch,
+		Offset: offset,
+		Value:  entry,
 	}
 
 	return &proto.AddEntryRequest{
-		Epoch: epoch,
-		Entry: le,
+		Epoch:       epoch,
+		Entry:       le,
+		CommitIndex: commitIndex,
 	}
 }

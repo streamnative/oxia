@@ -183,23 +183,13 @@ func (fc *followerController) Fence(req *proto.FenceRequest) (*proto.FenceRespon
 	fc.log = fc.log.With().Int64("epoch", fc.epoch).Logger()
 	fc.status = Fenced
 
-	lastEntry, err := getLastEntryInWal(fc.wal)
+	lastEntryId, err := getLastEntryIdInWal(fc.wal)
 	if err != nil {
 		fc.log.Warn().Err(err).
 			Int64("follower-epoch", fc.epoch).
 			Int64("fence-epoch", req.Epoch).
 			Msg("Failed to get last")
 		return nil, err
-	}
-
-	var lastEntryId *proto.EntryId
-	if lastEntry == nil {
-		lastEntryId = InvalidEntryId
-	} else {
-		lastEntryId = &proto.EntryId{
-			Epoch:  lastEntry.Epoch,
-			Offset: lastEntry.Offset,
-		}
 	}
 
 	fc.log.Info().
@@ -307,7 +297,7 @@ func (fc *followerController) addEntry(req *proto.AddEntryRequest) (*proto.AddEn
 
 	fc.headIndex = req.Entry.Offset
 	oldCommitIndex := fc.commitIndex
-	fc.commitIndex = req.Entry.CommitIndex
+	fc.commitIndex = req.CommitIndex
 	if err := fc.processCommittedEntries(oldCommitIndex, fc.commitIndex); err != nil {
 		return nil, err
 	}

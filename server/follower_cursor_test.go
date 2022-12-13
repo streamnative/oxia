@@ -25,10 +25,9 @@ func TestFollowerCursor(t *testing.T) {
 	assert.Equal(t, wal.InvalidOffset, fc.AckIndex())
 
 	err = w.Append(&proto.LogEntry{
-		Epoch:       1,
-		Offset:      0,
-		Value:       []byte("v1"),
-		CommitIndex: wal.InvalidOffset,
+		Epoch:  1,
+		Offset: 0,
+		Value:  []byte("v1"),
 	})
 	assert.NoError(t, err)
 
@@ -46,7 +45,7 @@ func TestFollowerCursor(t *testing.T) {
 	// The follower is acking back
 	req := <-stream.addEntryReqs
 	assert.EqualValues(t, 1, req.Epoch)
-	assert.Equal(t, wal.InvalidOffset, req.Entry.CommitIndex)
+	assert.Equal(t, wal.InvalidOffset, req.CommitIndex)
 
 	stream.addEntryResps <- &proto.AddEntryResponse{
 		Epoch:  1,
@@ -82,7 +81,7 @@ func TestFollowerCursor(t *testing.T) {
 	assert.EqualValues(t, 1, req.Epoch)
 	assert.EqualValues(t, 1, req.Entry.Epoch)
 	assert.EqualValues(t, 1, req.Entry.Offset)
-	assert.EqualValues(t, 0, req.Entry.CommitIndex)
+	assert.EqualValues(t, 0, req.CommitIndex)
 
 	assert.NoError(t, fc.Close())
 }
