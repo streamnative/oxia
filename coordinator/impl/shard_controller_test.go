@@ -46,14 +46,14 @@ func TestShardController(t *testing.T) {
 	assert.EqualValues(t, 2, sc.Epoch())
 	assert.Equal(t, s1, *sc.Leader())
 
-	// Simulate the failure of the leader
-	rpc.FailNode(s1, errors.New("failed to connect"))
-	sc.HandleNodeFailure(s1)
-
 	rpc.GetNode(s2).FenceResponse(3, 2, 0, nil)
 	rpc.GetNode(s3).FenceResponse(3, 2, -1, nil)
 
 	rpc.GetNode(s2).BecomeLeaderResponse(3, nil)
+
+	// Simulate the failure of the leader
+	rpc.FailNode(s1, errors.New("failed to connect"))
+	sc.HandleNodeFailure(s1)
 
 	rpc.GetNode(s1).expectFenceRequest(t, shard, 3)
 	rpc.GetNode(s2).expectFenceRequest(t, shard, 3)
