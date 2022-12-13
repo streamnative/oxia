@@ -3,6 +3,7 @@ package impl
 import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"oxia/proto"
 	"sync"
 	"testing"
@@ -149,8 +150,11 @@ func TestShardController_FenceFollowerUntilItRecovers(t *testing.T) {
 	rpc.GetNode(s1).BecomeLeaderResponse(2, nil)
 	rpc.GetNode(s1).expectBecomeLeaderRequest(t, shard, 2, 3)
 
-	assert.Equal(t, ShardStatusSteadyState, sc.Status())
+	assert.Eventually(t, func() bool {
+		return sc.Status() == ShardStatusSteadyState
+	}, 10*time.Second, 100*time.Millisecond)
 	assert.EqualValues(t, 2, sc.Epoch())
+	require.NotNil(t, sc.Leader())
 	assert.Equal(t, s1, *sc.Leader())
 
 	// One more failure from s1
