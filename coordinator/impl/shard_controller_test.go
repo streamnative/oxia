@@ -60,7 +60,6 @@ func TestShardController(t *testing.T) {
 	rpc.GetNode(s3).expectFenceRequest(t, shard, 3)
 
 	// s2 should be selected as new leader, because it has the highest offset
-
 	rpc.GetNode(s2).expectBecomeLeaderRequest(t, shard, 3, 3)
 
 	assert.Eventually(t, func() bool {
@@ -79,6 +78,47 @@ func TestShardController(t *testing.T) {
 	rpc.GetNode(s1).expectFenceRequest(t, shard, 4)
 	rpc.GetNode(s2).expectFenceRequest(t, shard, 4)
 	rpc.GetNode(s3).expectFenceRequest(t, shard, 4)
+
+	assert.NoError(t, sc.Close())
+}
+
+func TestShardController_FenceWithNonRespondingServer(t *testing.T) {
+	var shard uint32 = 5
+	rpc := newMockRpcProvider()
+	coordinator := newMockCoordinator()
+
+	s1 := ServerAddress{"s1:9091", "s1:8191"}
+	s2 := ServerAddress{"s2:9091", "s2:8191"}
+	s3 := ServerAddress{"s3:9091", "s3:8191"}
+
+	sc := NewShardController(shard, ShardMetadata{
+		Status:   ShardStatusUnknown,
+		Epoch:    1,
+		Leader:   nil,
+		Ensemble: []ServerAddress{s1, s2, s3},
+	}, rpc, coordinator)
+
+	timeStart := time.Now()
+
+	rpc.GetNode(s1).BecomeLeaderResponse(2, nil)
+
+	// Shard controller should initiate a leader election
+	// and fence each server
+	rpc.GetNode(s1).FenceResponse(2, 1, 0, nil)
+	rpc.GetNode(s2).FenceResponse(2, 1, -1, nil)
+	// s3 is not responding
+
+	rpc.GetNode(s1).expectFenceRequest(t, shard, 2)
+	rpc.GetNode(s2).expectFenceRequest(t, shard, 2)
+	rpc.GetNode(s3).expectFenceRequest(t, shard, 2)
+
+	// s1 should be selected as new leader, without waiting for s3 to timeout
+	rpc.GetNode(s1).expectBecomeLeaderRequest(t, shard, 2, 3)
+
+	assert.WithinDuration(t, timeStart, time.Now(), 1*time.Second)
+	assert.Equal(t, ShardStatusSteadyState, sc.Status())
+	assert.EqualValues(t, 2, sc.Epoch())
+	assert.Equal(t, s1, *sc.Leader())
 
 	assert.NoError(t, sc.Close())
 }
