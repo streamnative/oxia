@@ -91,7 +91,7 @@ func NewFollowerCursor(
 	fc.ackIndex.Store(ackIndex)
 
 	var err error
-	if fc.cursorAcker, err = ackTracker.NewCursorAcker(); err != nil {
+	if fc.cursorAcker, err = ackTracker.NewCursorAcker(ackIndex); err != nil {
 		return nil, err
 	}
 
@@ -226,6 +226,9 @@ func (fc *followerCursor) receiveAcks(cancel context.CancelFunc, stream proto.Ox
 			return
 		}
 
+		fc.log.Debug().
+			Int64("offset", res.Offset).
+			Msg("Received ack")
 		fc.cursorAcker.Ack(res.Offset)
 
 		fc.ackIndex.Store(res.Offset)

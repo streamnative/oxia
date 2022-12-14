@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
@@ -17,6 +18,7 @@ var testKVOptions = &kv.KVFactoryOptions{
 }
 
 func init() {
+	common.LogLevel = zerolog.DebugLevel
 	common.ConfigureLogger()
 }
 
@@ -33,7 +35,7 @@ func TestFollower(t *testing.T) {
 	fenceRes, err := fc.Fence(&proto.FenceRequest{Epoch: 1})
 	assert.NoError(t, err)
 	assert.EqualValues(t, 1, fenceRes.Epoch)
-	assert.Equal(t, &proto.EntryId{Epoch: wal.InvalidEpoch, Offset: wal.InvalidOffset}, fenceRes.HeadIndex)
+	assert.Equal(t, InvalidEntryId, fenceRes.HeadIndex)
 
 	assert.Equal(t, Fenced, fc.Status())
 	assert.EqualValues(t, 1, fc.Epoch())
@@ -243,7 +245,7 @@ func TestFollower_PersistentEpoch(t *testing.T) {
 	fenceRes, err := fc.Fence(&proto.FenceRequest{Epoch: 4})
 	assert.NoError(t, err)
 	assert.EqualValues(t, 4, fenceRes.Epoch)
-	assert.Equal(t, &proto.EntryId{Epoch: wal.InvalidEpoch, Offset: wal.InvalidOffset}, fenceRes.HeadIndex)
+	assert.Equal(t, InvalidEntryId, fenceRes.HeadIndex)
 
 	assert.Equal(t, Fenced, fc.Status())
 	assert.EqualValues(t, 4, fc.Epoch())
@@ -379,7 +381,7 @@ func TestFollower_RejectTruncateInvalidEpoch(t *testing.T) {
 	fenceRes, err := fc.Fence(&proto.FenceRequest{Epoch: 5})
 	assert.NoError(t, err)
 	assert.EqualValues(t, 5, fenceRes.Epoch)
-	assert.Equal(t, &proto.EntryId{Epoch: wal.InvalidEpoch, Offset: wal.InvalidOffset}, fenceRes.HeadIndex)
+	assert.Equal(t, InvalidEntryId, fenceRes.HeadIndex)
 
 	assert.Equal(t, Fenced, fc.Status())
 	assert.EqualValues(t, 5, fc.Epoch())

@@ -194,7 +194,9 @@ func (fc *followerController) Fence(req *proto.FenceRequest) (*proto.FenceRespon
 	}
 
 	fc.log.Info().
+		Interface("last-entry", lastEntryId).
 		Msg("Follower successfully fenced")
+
 	return &proto.FenceResponse{
 		Epoch:     fc.epoch,
 		HeadIndex: lastEntryId,

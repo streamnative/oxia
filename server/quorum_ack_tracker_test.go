@@ -9,7 +9,7 @@ import (
 )
 
 func TestQuorumAckTrackerNoFollower(t *testing.T) {
-	at := NewQuorumAckTracker(1, 1)
+	at := NewQuorumAckTracker(1, 1, wal.InvalidOffset)
 
 	assert.EqualValues(t, 1, at.HeadIndex())
 	assert.Equal(t, wal.InvalidOffset, at.CommitIndex())
@@ -29,7 +29,7 @@ func TestQuorumAckTrackerNoFollower(t *testing.T) {
 }
 
 func TestQuorumAckTrackerRF2(t *testing.T) {
-	at := NewQuorumAckTracker(2, 1)
+	at := NewQuorumAckTracker(2, 1, wal.InvalidOffset)
 
 	assert.EqualValues(t, 1, at.HeadIndex())
 	assert.Equal(t, wal.InvalidOffset, at.CommitIndex())
@@ -38,7 +38,7 @@ func TestQuorumAckTrackerRF2(t *testing.T) {
 	assert.EqualValues(t, 2, at.HeadIndex())
 	assert.Equal(t, wal.InvalidOffset, at.CommitIndex())
 
-	c1, err := at.NewCursorAcker()
+	c1, err := at.NewCursorAcker(wal.InvalidOffset)
 	assert.NoError(t, err)
 
 	c1.Ack(2)
@@ -47,7 +47,7 @@ func TestQuorumAckTrackerRF2(t *testing.T) {
 }
 
 func TestQuorumAckTrackerRF3(t *testing.T) {
-	at := NewQuorumAckTracker(3, 1)
+	at := NewQuorumAckTracker(3, 1, wal.InvalidOffset)
 
 	assert.EqualValues(t, 1, at.HeadIndex())
 	assert.Equal(t, wal.InvalidOffset, at.CommitIndex())
@@ -56,10 +56,10 @@ func TestQuorumAckTrackerRF3(t *testing.T) {
 	assert.EqualValues(t, 2, at.HeadIndex())
 	assert.Equal(t, wal.InvalidOffset, at.CommitIndex())
 
-	c1, err := at.NewCursorAcker()
+	c1, err := at.NewCursorAcker(wal.InvalidOffset)
 	assert.NoError(t, err)
 
-	c2, err := at.NewCursorAcker()
+	c2, err := at.NewCursorAcker(wal.InvalidOffset)
 	assert.NoError(t, err)
 
 	c1.Ack(2)
@@ -72,7 +72,7 @@ func TestQuorumAckTrackerRF3(t *testing.T) {
 }
 
 func TestQuorumAckTrackerRF5(t *testing.T) {
-	at := NewQuorumAckTracker(5, 1)
+	at := NewQuorumAckTracker(5, 1, wal.InvalidOffset)
 
 	assert.EqualValues(t, 1, at.HeadIndex())
 	assert.Equal(t, wal.InvalidOffset, at.CommitIndex())
@@ -81,16 +81,16 @@ func TestQuorumAckTrackerRF5(t *testing.T) {
 	assert.EqualValues(t, 2, at.HeadIndex())
 	assert.Equal(t, wal.InvalidOffset, at.CommitIndex())
 
-	c1, err := at.NewCursorAcker()
+	c1, err := at.NewCursorAcker(wal.InvalidOffset)
 	assert.NoError(t, err)
 
-	c2, err := at.NewCursorAcker()
+	c2, err := at.NewCursorAcker(wal.InvalidOffset)
 	assert.NoError(t, err)
 
-	c3, err := at.NewCursorAcker()
+	c3, err := at.NewCursorAcker(wal.InvalidOffset)
 	assert.NoError(t, err)
 
-	c4, err := at.NewCursorAcker()
+	c4, err := at.NewCursorAcker(wal.InvalidOffset)
 	assert.NoError(t, err)
 
 	c1.Ack(2)
@@ -111,23 +111,23 @@ func TestQuorumAckTrackerRF5(t *testing.T) {
 }
 
 func TestQuorumAckTrackerMaxCursors(t *testing.T) {
-	at := NewQuorumAckTracker(3, 1)
+	at := NewQuorumAckTracker(3, 1, wal.InvalidOffset)
 
-	c1, err := at.NewCursorAcker()
+	c1, err := at.NewCursorAcker(wal.InvalidOffset)
 	assert.NoError(t, err)
 	assert.NotNil(t, c1)
 
-	c2, err := at.NewCursorAcker()
+	c2, err := at.NewCursorAcker(wal.InvalidOffset)
 	assert.NoError(t, err)
 	assert.NotNil(t, c2)
 
-	c3, err := at.NewCursorAcker()
+	c3, err := at.NewCursorAcker(wal.InvalidOffset)
 	assert.ErrorIs(t, err, ErrorTooManyCursors)
 	assert.Nil(t, c3)
 }
 
 func TestQuorumAckTracker_WaitForHeadIndex(t *testing.T) {
-	at := NewQuorumAckTracker(1, 1)
+	at := NewQuorumAckTracker(1, 1, wal.InvalidOffset)
 
 	assert.EqualValues(t, 1, at.HeadIndex())
 
@@ -161,7 +161,7 @@ func TestQuorumAckTracker_WaitForHeadIndex(t *testing.T) {
 }
 
 func TestQuorumAckTracker_WaitForCommitIndex(t *testing.T) {
-	at := NewQuorumAckTracker(3, 1)
+	at := NewQuorumAckTracker(3, 1, wal.InvalidOffset)
 
 	assert.Equal(t, wal.InvalidOffset, at.CommitIndex())
 	at.AdvanceHeadIndex(2)
@@ -186,7 +186,7 @@ func TestQuorumAckTracker_WaitForCommitIndex(t *testing.T) {
 		// Expected. There should be nothing in the channel
 	}
 
-	c1, err := at.NewCursorAcker()
+	c1, err := at.NewCursorAcker(wal.InvalidOffset)
 	assert.NoError(t, err)
 	assert.NotNil(t, c1)
 	c1.Ack(2)
@@ -203,4 +203,54 @@ func TestQuorumAckTracker_WaitForCommitIndex(t *testing.T) {
 	}, 10*time.Second, 100*time.Millisecond)
 
 	assert.EqualValues(t, 2, at.CommitIndex())
+}
+
+func TestQuorumAckTracker_AddingCursors_RF3(t *testing.T) {
+	at := NewQuorumAckTracker(3, 10, 5)
+
+	assert.EqualValues(t, 10, at.HeadIndex())
+	assert.EqualValues(t, 5, at.CommitIndex())
+
+	c, err := at.NewCursorAcker(11)
+	assert.Nil(t, c)
+	assert.ErrorIs(t, err, ErrorInvalidHeadIndex)
+
+	c1, err := at.NewCursorAcker(7)
+	assert.NotNil(t, c1)
+	assert.NoError(t, err)
+
+	assert.EqualValues(t, 10, at.HeadIndex())
+	assert.EqualValues(t, 7, at.CommitIndex())
+
+	c2, err := at.NewCursorAcker(9)
+	assert.NotNil(t, c2)
+	assert.NoError(t, err)
+
+	assert.EqualValues(t, 10, at.HeadIndex())
+	assert.EqualValues(t, 9, at.CommitIndex())
+}
+
+func TestQuorumAckTracker_AddingCursors_RF5(t *testing.T) {
+	at := NewQuorumAckTracker(5, 10, 5)
+
+	assert.EqualValues(t, 10, at.HeadIndex())
+	assert.EqualValues(t, 5, at.CommitIndex())
+
+	c, err := at.NewCursorAcker(11)
+	assert.Nil(t, c)
+	assert.ErrorIs(t, err, ErrorInvalidHeadIndex)
+
+	c1, err := at.NewCursorAcker(7)
+	assert.NotNil(t, c1)
+	assert.NoError(t, err)
+
+	assert.EqualValues(t, 10, at.HeadIndex())
+	assert.EqualValues(t, 5, at.CommitIndex())
+
+	c2, err := at.NewCursorAcker(9)
+	assert.NotNil(t, c2)
+	assert.NoError(t, err)
+
+	assert.EqualValues(t, 10, at.HeadIndex())
+	assert.EqualValues(t, 7, at.CommitIndex())
 }

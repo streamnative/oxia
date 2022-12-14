@@ -228,14 +228,16 @@ func (r *mockRpcProvider) GetShardAssignmentStream(ctx context.Context, node Ser
 
 func (r *mockRpcProvider) Fence(ctx context.Context, node ServerAddress, req *proto.FenceRequest) (*proto.FenceResponse, error) {
 	r.Lock()
-	defer r.Unlock()
 
 	s := r.getNode(node)
 	s.fenceRequests <- req
 
 	if s.err != nil {
+		r.Unlock()
 		return nil, s.err
 	}
+
+	r.Unlock()
 
 	select {
 	case response := <-s.fenceResponses:
@@ -249,14 +251,16 @@ func (r *mockRpcProvider) Fence(ctx context.Context, node ServerAddress, req *pr
 
 func (r *mockRpcProvider) BecomeLeader(ctx context.Context, node ServerAddress, req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error) {
 	r.Lock()
-	defer r.Unlock()
 
 	s := r.getNode(node)
 	s.becomeLeaderRequests <- req
 
 	if s.err != nil {
+		r.Unlock()
 		return nil, s.err
 	}
+
+	r.Unlock()
 
 	select {
 	case response := <-s.becomeLeaderResponses:
@@ -270,14 +274,16 @@ func (r *mockRpcProvider) BecomeLeader(ctx context.Context, node ServerAddress, 
 
 func (r *mockRpcProvider) AddFollower(ctx context.Context, node ServerAddress, req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error) {
 	r.Lock()
-	defer r.Unlock()
 
 	s := r.getNode(node)
 	s.addFollowerRequests <- req
 
 	if s.err != nil {
+		r.Unlock()
 		return nil, s.err
 	}
+
+	r.Unlock()
 
 	select {
 	case response := <-s.addFollowerResponses:
