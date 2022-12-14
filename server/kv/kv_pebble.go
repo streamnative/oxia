@@ -9,7 +9,9 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"io"
+	"os"
 	"path/filepath"
+	"sync/atomic"
 )
 
 type PebbleFactory struct {
@@ -18,7 +20,7 @@ type PebbleFactory struct {
 	options *KVFactoryOptions
 }
 
-func NewPebbleKVFactory(options *KVFactoryOptions) KVFactory {
+func NewPebbleKVFactory(options *KVFactoryOptions) (KVFactory, error) {
 	if options == nil {
 		options = DefaultKVFactoryOptions
 	}
@@ -32,15 +34,37 @@ func NewPebbleKVFactory(options *KVFactoryOptions) KVFactory {
 		dataDir = DefaultKVFactoryOptions.DataDir
 	}
 
+	// Cleanup leftover snapshots from previous runs
+
 	cache := pebble.NewCache(cacheSize)
 
-	return &PebbleFactory{
+	pf := &PebbleFactory{
 		dataDir: dataDir,
 		options: options,
 
 		// Share a single cache instance across the databases for all the shards
 		cache: cache,
 	}
+
+	if err := pf.cleanupSnapshots(); err != nil {
+		return nil, errors.Wrap(err, "failed to delete database snapshots")
+	}
+
+	return pf, nil
+}
+
+func (p *PebbleFactory) cleanupSnapshots() error {
+	snapshotsPath := filepath.Join(p.dataDir, "snapshots")
+	_, err := os.Stat(snapshotsPath)
+
+	if err == nil {
+		return os.RemoveAll(snapshotsPath)
+	} else if os.IsNotExist(err) {
+		// Snapshot directory does not exist, nothing to do
+		return nil
+	}
+
+	return err
 }
 
 func (p *PebbleFactory) Close() error {
@@ -55,13 +79,22 @@ func (p *PebbleFactory) NewKV(shardId uint32) (KV, error) {
 ////////////////////
 
 type Pebble struct {
-	db *pebble.DB
+	shardId         uint32
+	dataDir         string
+	db              *pebble.DB
+	snapshotCounter atomic.Int64
 }
 
 func newKVPebble(factory *PebbleFactory, shardId uint32) (KV, error) {
-	pb := &Pebble{}
+	pb := &Pebble{
+		shardId: shardId,
+		dataDir: factory.dataDir,
+	}
 
 	dbPath := filepath.Join(factory.dataDir, fmt.Sprint("shard-", shardId))
+
+	levels := make([]pebble.LevelOptions, 1)
+	levels[0].Compression = pebble.ZstdCompression
 
 	pbOptions := &pebble.Options{
 		Cache: factory.cache,
@@ -77,11 +110,14 @@ func newKVPebble(factory *PebbleFactory, shardId uint32) (KV, error) {
 			ImmediateSuccessor: pebble.DefaultComparer.ImmediateSuccessor,
 			Name:               "oxia-slash-spans",
 		},
+		Levels:     levels,
 		FS:         vfs.Default,
 		DisableWAL: true,
 		Logger: &PebbleLogger{
 			log.With().
-				Str("component", "pebble").Logger(),
+				Str("component", "pebble").
+				Uint32("shard", shardId).
+				Logger(),
 		},
 	}
 
@@ -130,14 +166,8 @@ func (p *Pebble) KeyRangeScan(lowerBound, upperBound string) KeyIterator {
 	return &PebbleIterator{pbit}
 }
 
-func (p *Pebble) Snapshot() KeyValueIterator {
-	s := p.db.NewSnapshot()
-	si := s.NewIter(nil)
-	si.First()
-	return &PebbleSnapshotIterator{
-		s:  s,
-		si: si,
-	}
+func (p *Pebble) Snapshot() (Snapshot, error) {
+	return newPebbleSnapshot(p)
 }
 
 /// Batch wrapper methods
@@ -281,4 +311,79 @@ func CompareWithSlash(a, b []byte) int {
 	} else {
 		return 0
 	}
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///// Snapshots
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+type pebbleSnapshot struct {
+	path  string
+	files []string
+}
+
+type pebbleSnapshotFile struct {
+	ps       *pebbleSnapshot
+	filePath string
+}
+
+func newPebbleSnapshot(p *Pebble) (Snapshot, error) {
+	ps := &pebbleSnapshot{
+		path: filepath.Join(p.dataDir, "snapshots",
+			fmt.Sprintf("shard-%d", p.shardId),
+			fmt.Sprintf("snapshot-%d", p.snapshotCounter.Add(1))),
+	}
+
+	// Flush the DB to ensure the snapshot content is as close as possible to
+	// the head
+	if err := p.db.Flush(); err != nil {
+		return nil, err
+	}
+
+	if err := p.db.Checkpoint(ps.path); err != nil {
+		return nil, err
+	}
+
+	dirEntries, err := os.ReadDir(ps.path)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, de := range dirEntries {
+		if !de.IsDir() {
+			ps.files = append(ps.files, de.Name())
+		}
+	}
+
+	return ps, nil
+}
+
+func (ps *pebbleSnapshot) Close() error {
+	return os.RemoveAll(ps.path)
+}
+
+func (ps *pebbleSnapshot) BasePath() string {
+	return ps.path
+}
+
+func (ps *pebbleSnapshot) Valid() bool {
+	return len(ps.files) > 0
+}
+
+func (ps *pebbleSnapshot) Next() bool {
+	ps.files = ps.files[1:]
+	return ps.Valid()
+}
+
+func (ps *pebbleSnapshot) File() SnapshotFile {
+	return &pebbleSnapshotFile{ps, ps.files[0]}
+}
+
+func (psf *pebbleSnapshotFile) Path() string {
+	return psf.filePath
+}
+
+func (psf *pebbleSnapshotFile) Content() ([]byte, error) {
+	fp := filepath.Join(psf.ps.path, psf.filePath)
+	return os.ReadFile(fp)
 }

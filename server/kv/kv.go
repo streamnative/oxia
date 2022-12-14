@@ -36,6 +36,21 @@ type KeyValueIterator interface {
 	Value() ([]byte, error)
 }
 
+type SnapshotFile interface {
+	Path() string
+	Content() ([]byte, error)
+}
+
+type Snapshot interface {
+	io.Closer
+
+	BasePath() string
+
+	Valid() bool
+	File() SnapshotFile
+	Next() bool
+}
+
 type KV interface {
 	io.Closer
 
@@ -45,7 +60,7 @@ type KV interface {
 
 	KeyRangeScan(lowerBound, upperBound string) KeyIterator
 
-	Snapshot() KeyValueIterator
+	Snapshot() (Snapshot, error)
 
 	Flush() error
 }
