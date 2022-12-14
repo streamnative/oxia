@@ -34,8 +34,6 @@ func NewPebbleKVFactory(options *KVFactoryOptions) (KVFactory, error) {
 		dataDir = DefaultKVFactoryOptions.DataDir
 	}
 
-	// Cleanup leftover snapshots from previous runs
-
 	cache := pebble.NewCache(cacheSize)
 
 	pf := &PebbleFactory{
@@ -46,6 +44,7 @@ func NewPebbleKVFactory(options *KVFactoryOptions) (KVFactory, error) {
 		cache: cache,
 	}
 
+	// Cleanup leftover snapshots from previous runs
 	if err := pf.cleanupSnapshots(); err != nil {
 		return nil, errors.Wrap(err, "failed to delete database snapshots")
 	}
@@ -76,7 +75,7 @@ func (p *PebbleFactory) NewKV(shardId uint32) (KV, error) {
 	return newKVPebble(p, shardId)
 }
 
-func (p *PebbleFactory) NewKVFromSnapshot(shardId uint32) (SnapshotLoader, error) {
+func (p *PebbleFactory) NewSnapshotLoader(shardId uint32) (SnapshotLoader, error) {
 	return newPebbleSnapshotLoader(p, shardId)
 }
 
@@ -329,7 +328,7 @@ type pebbleSnapshot struct {
 	files []string
 }
 
-type pebbleSnapshotFile struct {
+type pebbleSnapshotChunk struct {
 	ps       *pebbleSnapshot
 	filePath string
 }
@@ -342,7 +341,7 @@ func newPebbleSnapshot(p *Pebble) (Snapshot, error) {
 	}
 
 	// Flush the DB to ensure the snapshot content is as close as possible to
-	// the head
+	// the last committed entry
 	if err := p.db.Flush(); err != nil {
 		return nil, err
 	}
@@ -382,24 +381,24 @@ func (ps *pebbleSnapshot) Next() bool {
 	return ps.Valid()
 }
 
-func (ps *pebbleSnapshot) File() SnapshotFile {
-	return &pebbleSnapshotFile{ps, ps.files[0]}
+func (ps *pebbleSnapshot) Chunk() SnapshotChunk {
+	return &pebbleSnapshotChunk{ps, ps.files[0]}
 }
 
-func (psf *pebbleSnapshotFile) Path() string {
+func (psf *pebbleSnapshotChunk) Name() string {
 	return psf.filePath
 }
 
-func (psf *pebbleSnapshotFile) Content() ([]byte, error) {
+func (psf *pebbleSnapshotChunk) Content() ([]byte, error) {
 	fp := filepath.Join(psf.ps.path, psf.filePath)
 	return os.ReadFile(fp)
 }
 
 type pebbleSnapshotLoader struct {
-	pf     *PebbleFactory
-	shard  uint32
-	dbPath string
-	loaded bool
+	pf       *PebbleFactory
+	shard    uint32
+	dbPath   string
+	complete bool
 }
 
 func newPebbleSnapshotLoader(pf *PebbleFactory, shard uint32) (SnapshotLoader, error) {
@@ -421,7 +420,7 @@ func newPebbleSnapshotLoader(pf *PebbleFactory, shard uint32) (SnapshotLoader, e
 }
 
 func (sl *pebbleSnapshotLoader) Close() error {
-	if sl.loaded {
+	if sl.complete {
 		return nil
 	}
 
@@ -429,10 +428,14 @@ func (sl *pebbleSnapshotLoader) Close() error {
 	return os.RemoveAll(sl.dbPath)
 }
 
-func (sl *pebbleSnapshotLoader) AddFile(path string, content []byte) error {
-	return os.WriteFile(filepath.Join(sl.dbPath, path), content, 0644)
+func (sl *pebbleSnapshotLoader) AddChunk(name string, content []byte) error {
+	return os.WriteFile(filepath.Join(sl.dbPath, name), content, 0644)
 }
 
 func (sl *pebbleSnapshotLoader) Load() (KV, error) {
 	return newKVPebble(sl.pf, sl.shard)
+}
+
+func (sl *pebbleSnapshotLoader) Complete() {
+	sl.complete = true
 }

@@ -28,8 +28,6 @@ type DB interface {
 
 	UpdateEpoch(newEpoch int64) error
 	ReadEpoch() (epoch int64, err error)
-
-	KV() KV
 }
 
 func NewDB(shardId uint32, factory KVFactory) (DB, error) {
@@ -49,10 +47,6 @@ type db struct {
 
 func (d *db) Close() error {
 	return d.kv.Close()
-}
-
-func (d *db) KV() KV {
-	return d.kv
 }
 
 func (d *db) ProcessWrite(b *proto.WriteRequest, commitIndex int64) (*proto.WriteResponse, error) {

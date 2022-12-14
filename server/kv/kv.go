@@ -36,8 +36,8 @@ type KeyValueIterator interface {
 	Value() ([]byte, error)
 }
 
-type SnapshotFile interface {
-	Path() string
+type SnapshotChunk interface {
+	Name() string
 	Content() ([]byte, error)
 }
 
@@ -47,16 +47,17 @@ type Snapshot interface {
 	BasePath() string
 
 	Valid() bool
-	File() SnapshotFile
+	Chunk() SnapshotChunk
 	Next() bool
 }
 
 type SnapshotLoader interface {
 	io.Closer
 
-	AddFile(path string, content []byte) error
+	AddChunk(name string, content []byte) error
 
-	Load() (KV, error)
+	// Complete signals that the snapshot is now complete
+	Complete()
 }
 
 type KV interface {
@@ -92,5 +93,5 @@ type KVFactory interface {
 
 	NewKV(shardId uint32) (KV, error)
 
-	NewKVFromSnapshot(shardId uint32) (SnapshotLoader, error)
+	NewSnapshotLoader(shardId uint32) (SnapshotLoader, error)
 }
