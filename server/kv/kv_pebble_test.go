@@ -418,12 +418,12 @@ func TestPebbleSnapshot(t *testing.T) {
 		for i := 0; i < 100; i++ {
 			wb := kv.NewWriteBatch()
 			for j := 0; j < 100; j++ {
-				wb.Put(fmt.Sprintf("key-%d-%d", i, j),
-					[]byte(fmt.Sprintf("value-%d-%d", i, j)))
+				assert.NoError(t, wb.Put(fmt.Sprintf("key-%d-%d", i, j),
+					[]byte(fmt.Sprintf("value-%d-%d", i, j))))
 			}
 
-			wb.Commit()
-			wb.Close()
+			assert.NoError(t, wb.Commit())
+			assert.NoError(t, wb.Close())
 		}
 
 		s, err := kv.Snapshot()
@@ -476,4 +476,82 @@ func TestPebbleSnapshot(t *testing.T) {
 		assert.NoError(t, kv2.Close())
 		assert.NoError(t, factory2.Close())
 	}
+}
+
+func TestPebbleSnapshot_Loader(t *testing.T) {
+	originalLocation := t.TempDir()
+	newLocation := t.TempDir()
+
+	factory, err := NewPebbleKVFactory(&KVFactoryOptions{
+		DataDir:   originalLocation,
+		CacheSize: 1024,
+		InMemory:  false,
+	})
+	assert.NoError(t, err)
+	kv, err := factory.NewKV(1)
+	assert.NoError(t, err)
+
+	for i := 0; i < 100; i++ {
+		wb := kv.NewWriteBatch()
+		for j := 0; j < 100; j++ {
+			assert.NoError(t, wb.Put(fmt.Sprintf("key-%d-%d", i, j),
+				[]byte(fmt.Sprintf("value-%d-%d", i, j))))
+		}
+
+		assert.NoError(t, wb.Commit())
+		assert.NoError(t, wb.Close())
+	}
+
+	snapshot, err := kv.Snapshot()
+	assert.NoError(t, err)
+
+	// Use the snapshot to load a new DB
+	factory2, err := NewPebbleKVFactory(&KVFactoryOptions{
+		DataDir:   newLocation,
+		CacheSize: 1024,
+		InMemory:  false,
+	})
+	assert.NoError(t, err)
+
+	kv2, err := factory2.NewKV(1)
+	assert.NoError(t, err)
+
+	// Any existing key would be removed when we load the snapshot
+	wb := kv2.NewWriteBatch()
+	assert.NoError(t, wb.Put("my-key-2", []byte("my-value-2")))
+	assert.NoError(t, wb.Commit())
+	assert.NoError(t, wb.Close())
+	assert.NoError(t, kv2.Close())
+
+	loader, err := factory2.NewKVFromSnapshot(1)
+	assert.NoError(t, err)
+
+	for ; snapshot.Valid(); snapshot.Next() {
+		f := snapshot.File()
+		content, err := f.Content()
+		assert.NoError(t, err)
+		assert.NoError(t, loader.AddFile(f.Path(), content))
+	}
+
+	kv2, err = loader.Load()
+	assert.NoError(t, err)
+	assert.NoError(t, loader.Close())
+	assert.NoError(t, snapshot.Close())
+
+	for i := 0; i < 100; i++ {
+		for j := 0; j < 100; j++ {
+			r, closer, err := kv2.Get(fmt.Sprintf("key-%d-%d", i, j))
+			assert.NoError(t, err)
+			assert.Equal(t, fmt.Sprintf("value-%d-%d", i, j), string(r))
+			assert.NoError(t, closer.Close())
+		}
+	}
+
+	r, closer, err := kv2.Get("my-key")
+	assert.ErrorIs(t, err, ErrorKeyNotFound)
+	assert.Nil(t, r)
+	assert.Nil(t, closer)
+
+	assert.NoError(t, kv2.Close())
+	assert.NoError(t, factory2.Close())
 }

@@ -76,6 +76,14 @@ func (p *PebbleFactory) NewKV(shardId uint32) (KV, error) {
 	return newKVPebble(p, shardId)
 }
 
+func (p *PebbleFactory) NewKVFromSnapshot(shardId uint32) (SnapshotLoader, error) {
+	return newPebbleSnapshotLoader(p, shardId)
+}
+
+func (p *PebbleFactory) getKVPath(shard uint32) string {
+	return filepath.Join(p.dataDir, fmt.Sprint("shard-", shard))
+}
+
 ////////////////////
 
 type Pebble struct {
@@ -90,8 +98,6 @@ func newKVPebble(factory *PebbleFactory, shardId uint32) (KV, error) {
 		shardId: shardId,
 		dataDir: factory.dataDir,
 	}
-
-	dbPath := filepath.Join(factory.dataDir, fmt.Sprint("shard-", shardId))
 
 	levels := make([]pebble.LevelOptions, 1)
 	levels[0].Compression = pebble.ZstdCompression
@@ -125,6 +131,7 @@ func newKVPebble(factory *PebbleFactory, shardId uint32) (KV, error) {
 		pbOptions.FS = vfs.NewMem()
 	}
 
+	dbPath := factory.getKVPath(shardId)
 	db, err := pebble.Open(dbPath, pbOptions)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to open database at %s", dbPath)
@@ -386,4 +393,46 @@ func (psf *pebbleSnapshotFile) Path() string {
 func (psf *pebbleSnapshotFile) Content() ([]byte, error) {
 	fp := filepath.Join(psf.ps.path, psf.filePath)
 	return os.ReadFile(fp)
+}
+
+type pebbleSnapshotLoader struct {
+	pf     *PebbleFactory
+	shard  uint32
+	dbPath string
+	loaded bool
+}
+
+func newPebbleSnapshotLoader(pf *PebbleFactory, shard uint32) (SnapshotLoader, error) {
+	sl := &pebbleSnapshotLoader{
+		pf:     pf,
+		shard:  shard,
+		dbPath: pf.getKVPath(shard),
+	}
+
+	if err := os.RemoveAll(sl.dbPath); err != nil {
+		return nil, errors.Wrap(err, "failed to remove existing database")
+	}
+
+	if err := os.MkdirAll(sl.dbPath, 0755); err != nil {
+		return nil, errors.Wrap(err, "failed to create database dir")
+	}
+
+	return sl, nil
+}
+
+func (sl *pebbleSnapshotLoader) Close() error {
+	if sl.loaded {
+		return nil
+	}
+
+	// If we failed to successfully load, remove all intermediate files
+	return os.RemoveAll(sl.dbPath)
+}
+
+func (sl *pebbleSnapshotLoader) AddFile(path string, content []byte) error {
+	return os.WriteFile(filepath.Join(sl.dbPath, path), content, 0644)
+}
+
+func (sl *pebbleSnapshotLoader) Load() (KV, error) {
+	return newKVPebble(sl.pf, sl.shard)
 }

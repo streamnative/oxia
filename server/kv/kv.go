@@ -51,6 +51,14 @@ type Snapshot interface {
 	Next() bool
 }
 
+type SnapshotLoader interface {
+	io.Closer
+
+	AddFile(path string, content []byte) error
+
+	Load() (KV, error)
+}
+
 type KV interface {
 	io.Closer
 
@@ -83,4 +91,6 @@ type KVFactory interface {
 	io.Closer
 
 	NewKV(shardId uint32) (KV, error)
+
+	NewKVFromSnapshot(shardId uint32) (SnapshotLoader, error)
 }
