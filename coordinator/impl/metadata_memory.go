@@ -25,7 +25,7 @@ func (m *metadataProviderMemory) Close() error {
 func (m *metadataProviderMemory) Get() (cs *ClusterStatus, version int64, err error) {
 	m.Lock()
 	defer m.Unlock()
-	return cs, version, nil
+	return m.cs, m.version, nil
 }
 
 func (m *metadataProviderMemory) Store(cs *ClusterStatus, expectedVersion int64) (newVersion int64, err error) {
@@ -36,7 +36,7 @@ func (m *metadataProviderMemory) Store(cs *ClusterStatus, expectedVersion int64)
 		return MetadataNotExists, ErrorMetadataBadVersion
 	}
 
-	m.cs = cs
+	m.cs = cs.Clone()
 	m.version++
 	return m.version, nil
 }

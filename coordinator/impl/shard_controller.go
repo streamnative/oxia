@@ -21,14 +21,18 @@ type ShardController interface {
 	io.Closer
 
 	HandleNodeFailure(failedNode ServerAddress)
+
+	Epoch() int64
+	Leader() *ServerAddress
+	Status() ShardStatus
 }
 
 type shardController struct {
 	sync.Mutex
 
 	shard         uint32
-	shardMetadata *ShardMetadata
-	clientPool    common.ClientPool
+	shardMetadata ShardMetadata
+	rpc           RpcProvider
 	coordinator   Coordinator
 
 	ctx    context.Context
@@ -36,11 +40,11 @@ type shardController struct {
 	log    zerolog.Logger
 }
 
-func NewShardController(shard uint32, shardMetadata *ShardMetadata, clientPool common.ClientPool, coordinator Coordinator) ShardController {
+func NewShardController(shard uint32, shardMetadata ShardMetadata, rpc RpcProvider, coordinator Coordinator) ShardController {
 	s := &shardController{
 		shard:         shard,
 		shardMetadata: shardMetadata,
-		clientPool:    clientPool,
+		rpc:           rpc,
 		coordinator:   coordinator,
 		log: log.With().
 			Str("component", "shard-controller").
@@ -81,19 +85,12 @@ func (s *shardController) electLeaderWithRetries() {
 		"oxia":  "shard-controller-leader-election",
 		"shard": fmt.Sprintf("%d", s.shard),
 	}, func() {
-		err := backoff.RetryNotify(s.electLeader, common.NewBackOff(s.ctx),
+		_ = backoff.RetryNotify(s.electLeader, common.NewBackOff(s.ctx),
 			func(err error, duration time.Duration) {
 				s.log.Warn().Err(err).
 					Dur("retry-after", duration).
 					Msg("Leader election has failed, retrying later")
 			})
-
-		if err == nil {
-			s.log.Info().
-				Interface("leader", s.shardMetadata.Leader).
-				Int64("epoch", s.shardMetadata.Epoch).
-				Msg("Elected new leader for shard")
-		}
 	})
 }
 
@@ -101,12 +98,14 @@ func (s *shardController) electLeader() error {
 	s.Lock()
 	defer s.Unlock()
 
+	s.shardMetadata.Status = ShardStatusElection
+	s.shardMetadata.Leader = nil
 	s.shardMetadata.Epoch++
 	s.log.Info().
 		Int64("epoch", s.shardMetadata.Epoch).
 		Msg("Starting leader election")
 
-	if err := s.coordinator.InitiateLeaderElection(s.shard, s.shardMetadata.Epoch); err != nil {
+	if err := s.coordinator.InitiateLeaderElection(s.shard, s.shardMetadata); err != nil {
 		return err
 	}
 
@@ -124,15 +123,20 @@ func (s *shardController) electLeader() error {
 		Interface("followers", followers).
 		Msg("Successfully fenced ensemble")
 
-	if err = s.becomeLeader(newLeader.Internal, followers); err != nil {
+	if err = s.becomeLeader(newLeader, followers); err != nil {
 		return err
 	}
 
-	if err = s.coordinator.ElectedLeader(s.shard, s.shardMetadata.Epoch, newLeader); err != nil {
+	metadata := s.shardMetadata.Clone()
+	metadata.Status = ShardStatusSteadyState
+	metadata.Leader = &newLeader
+
+	if err = s.coordinator.ElectedLeader(s.shard, metadata); err != nil {
 		return err
 	}
 
-	s.shardMetadata.Leader = &newLeader
+	s.shardMetadata = metadata
+
 	s.log.Info().
 		Int64("epoch", s.shardMetadata.Epoch).
 		Interface("leader", s.shardMetadata.Leader).
@@ -148,7 +152,7 @@ func (s *shardController) fenceQuorum() (map[ServerAddress]*proto.EntryId, error
 	// TODO: send fence requests in parallel
 	successResponses := 0
 	for _, sa := range s.shardMetadata.Ensemble {
-		entryId, err := s.fence(sa.Internal)
+		entryId, err := s.fence(sa)
 		if err != nil {
 			s.log.Warn().Err(err).
 				Str("node", sa.Internal).
@@ -161,6 +165,7 @@ func (s *shardController) fenceQuorum() (map[ServerAddress]*proto.EntryId, error
 		s.log.Info().
 			Interface("server-address", sa).
 			Interface("entry-id", entryId).
+			Int64("epoch", s.shardMetadata.Epoch).
 			Msg("Processed fence response")
 	}
 
@@ -171,16 +176,8 @@ func (s *shardController) fenceQuorum() (map[ServerAddress]*proto.EntryId, error
 	return res, nil
 }
 
-func (s *shardController) fence(node string) (*proto.EntryId, error) {
-	rpc, err := s.clientPool.GetControlRpc(node)
-	if err != nil {
-		return nil, err
-	}
-
-	ctx, cancel := context.WithTimeout(s.ctx, common.DefaultRpcTimeout)
-	defer cancel()
-
-	res, err := rpc.Fence(ctx, &proto.FenceRequest{
+func (s *shardController) fence(node ServerAddress) (*proto.EntryId, error) {
+	res, err := s.rpc.Fence(s.ctx, node, &proto.FenceRequest{
 		ShardId: s.shard,
 		Epoch:   s.shardMetadata.Epoch,
 	})
@@ -224,16 +221,8 @@ func (s *shardController) selectNewLeader(fenceResponses map[ServerAddress]*prot
 	return leader, followers
 }
 
-func (s *shardController) becomeLeader(leader string, followers map[string]*proto.EntryId) error {
-	rpc, err := s.clientPool.GetControlRpc(leader)
-	if err != nil {
-		return err
-	}
-
-	ctx, cancel := context.WithTimeout(s.ctx, common.DefaultRpcTimeout)
-	defer cancel()
-
-	res, err := rpc.BecomeLeader(ctx, &proto.BecomeLeaderRequest{
+func (s *shardController) becomeLeader(leader ServerAddress, followers map[string]*proto.EntryId) error {
+	res, err := s.rpc.BecomeLeader(s.ctx, leader, &proto.BecomeLeaderRequest{
 		ShardId:           s.shard,
 		Epoch:             s.shardMetadata.Epoch,
 		ReplicationFactor: uint32(len(s.shardMetadata.Ensemble)),
@@ -248,6 +237,24 @@ func (s *shardController) becomeLeader(leader string, followers map[string]*prot
 	}
 
 	return nil
+}
+
+func (s *shardController) Epoch() int64 {
+	s.Lock()
+	defer s.Unlock()
+	return s.shardMetadata.Epoch
+}
+
+func (s *shardController) Leader() *ServerAddress {
+	s.Lock()
+	defer s.Unlock()
+	return s.shardMetadata.Leader
+}
+
+func (s *shardController) Status() ShardStatus {
+	s.Lock()
+	defer s.Unlock()
+	return s.shardMetadata.Status
 }
 
 func (s *shardController) Close() error {

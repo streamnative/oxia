@@ -31,6 +31,8 @@ const (
 // and to push all the service discovery updates
 type NodeController interface {
 	io.Closer
+
+	Status() NodeStatus
 }
 
 type nodeController struct {
@@ -39,9 +41,8 @@ type nodeController struct {
 	status                   NodeStatus
 	shardAssignmentsProvider ShardAssignmentsProvider
 	nodeAvailabilityListener NodeAvailabilityListener
-	clientPool               common.ClientPool
+	rpc                      RpcProvider
 	log                      zerolog.Logger
-	backoff                  backoff.BackOff
 	closed                   atomic.Bool
 	ctx                      context.Context
 	cancel                   context.CancelFunc
@@ -50,12 +51,12 @@ type nodeController struct {
 func NewNodeController(addr ServerAddress,
 	shardAssignmentsProvider ShardAssignmentsProvider,
 	nodeAvailabilityListener NodeAvailabilityListener,
-	clientPool common.ClientPool) NodeController {
+	rpc RpcProvider) NodeController {
 	nc := &nodeController{
 		addr:                     addr,
 		shardAssignmentsProvider: shardAssignmentsProvider,
 		nodeAvailabilityListener: nodeAvailabilityListener,
-		clientPool:               clientPool,
+		rpc:                      rpc,
 		status:                   Running,
 		log: log.With().
 			Str("component", "node-controller").
@@ -64,7 +65,6 @@ func NewNodeController(addr ServerAddress,
 	}
 
 	nc.ctx, nc.cancel = context.WithCancel(context.Background())
-	nc.backoff = common.NewBackOffWithInitialInterval(nc.ctx, 1*time.Second)
 
 	go common.DoWithLabels(map[string]string{
 		"oxia": "node-controller",
@@ -76,6 +76,12 @@ func NewNodeController(addr ServerAddress,
 		"addr": nc.addr.Internal,
 	}, nc.sendAssignmentsUpdatesWithRetries)
 	return nc
+}
+
+func (n *nodeController) Status() NodeStatus {
+	n.Lock()
+	defer n.Unlock()
+	return n.status
 }
 
 func (n *nodeController) healthCheckWithRetries() {
@@ -97,7 +103,7 @@ func (n *nodeController) healthCheckWithRetries() {
 }
 
 func (n *nodeController) healthCheck(backoff backoff.BackOff) error {
-	health, err := n.clientPool.GetHealthRpc(n.addr.Internal)
+	health, err := n.rpc.GetHealthClient(n.addr)
 	if err != nil {
 		return err
 	}
@@ -118,7 +124,7 @@ func (n *nodeController) healthCheck(backoff backoff.BackOff) error {
 
 				res, err := health.Check(pingCtx, &grpc_health_v1.HealthCheckRequest{Service: ""})
 				pingCancel()
-				if err2 := n.processHealtCheckResponse(res, err); err2 != nil {
+				if err2 := n.processHealthCheckResponse(res, err); err2 != nil {
 					n.log.Warn().
 						Msg("Node stopped responding to ping")
 					cancel()
@@ -139,15 +145,17 @@ func (n *nodeController) healthCheck(backoff backoff.BackOff) error {
 	for ctx.Err() == nil {
 		res, err := watch.Recv()
 
-		if err2 := n.processHealtCheckResponse(res, err); err2 != nil {
+		if err2 := n.processHealthCheckResponse(res, err); err2 != nil {
 			return err2
 		}
+
+		backoff.Reset()
 	}
 
 	return ctx.Err()
 }
 
-func (n *nodeController) processHealtCheckResponse(res *grpc_health_v1.HealthCheckResponse, err error) error {
+func (n *nodeController) processHealthCheckResponse(res *grpc_health_v1.HealthCheckResponse, err error) error {
 	if err != nil {
 		return err
 	}
@@ -168,21 +176,19 @@ func (n *nodeController) processHealtCheckResponse(res *grpc_health_v1.HealthChe
 }
 
 func (n *nodeController) sendAssignmentsUpdatesWithRetries() {
-	_ = backoff.RetryNotify(n.sendAssignmentsUpdates,
-		n.backoff, func(err error, duration time.Duration) {
-			n.log.Warn().Err(err).
-				Dur("retry-after", duration).
-				Msg("Failed to send assignments updates to storage node")
-		})
+	backOff := common.NewBackOffWithInitialInterval(n.ctx, 1*time.Second)
+
+	_ = backoff.RetryNotify(func() error {
+		return n.sendAssignmentsUpdates(backOff)
+	}, backOff, func(err error, duration time.Duration) {
+		n.log.Warn().Err(err).
+			Dur("retry-after", duration).
+			Msg("Failed to send assignments updates to storage node")
+	})
 }
 
-func (n *nodeController) sendAssignmentsUpdates() error {
-	rpc, err := n.clientPool.GetControlRpc(n.addr.Internal)
-	if err != nil {
-		return err
-	}
-
-	stream, err := rpc.ShardAssignment(n.ctx)
+func (n *nodeController) sendAssignmentsUpdates(backoff backoff.BackOff) error {
+	stream, err := n.rpc.GetShardAssignmentStream(n.ctx, n.addr)
 	if err != nil {
 		return err
 	}
@@ -205,7 +211,7 @@ func (n *nodeController) sendAssignmentsUpdates() error {
 			return err
 		}
 
-		n.backoff.Reset()
+		backoff.Reset()
 	}
 
 	return nil

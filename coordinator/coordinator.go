@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
+	"oxia/common"
 	"oxia/coordinator/impl"
 	"oxia/operator/resource"
 	"oxia/server/metrics"
@@ -31,7 +32,8 @@ func NewConfig() Config {
 
 type Coordinator struct {
 	coordinator impl.Coordinator
-	rpc         *CoordinatorRpcServer
+	clientPool  common.ClientPool
+	rpcServer   *CoordinatorRpcServer
 	metrics     *metrics.PrometheusMetrics
 }
 
@@ -40,7 +42,9 @@ func New(config Config) (*Coordinator, error) {
 		Interface("config", config).
 		Msg("Starting Oxia coordinator")
 
-	s := &Coordinator{}
+	s := &Coordinator{
+		clientPool: common.NewClientPool(),
+	}
 
 	metadataProvider := impl.NewMetadataProviderMemory()
 	// TODO Eventually this will need a more dynamic method of updating the config when it changes
@@ -51,14 +55,14 @@ func New(config Config) (*Coordinator, error) {
 		StorageServers:    storageServers(config),
 	}
 
+	rpcClient := impl.NewRpcProvider(s.clientPool)
+
 	var err error
-	s.coordinator, err = impl.NewCoordinator(metadataProvider, clusterConfig)
-	if err != nil {
+	if s.coordinator, err = impl.NewCoordinator(metadataProvider, clusterConfig, rpcClient); err != nil {
 		return nil, err
 	}
 
-	s.rpc, err = NewCoordinatorRpcServer(config.InternalServicePort)
-	if err != nil {
+	if s.rpcServer, err = NewCoordinatorRpcServer(config.InternalServicePort); err != nil {
 		return nil, err
 	}
 
@@ -84,7 +88,8 @@ func storageServers(config Config) []impl.ServerAddress {
 func (s *Coordinator) Close() error {
 	return multierr.Combine(
 		s.coordinator.Close(),
-		s.rpc.Close(),
+		s.rpcServer.Close(),
+		s.clientPool.Close(),
 		s.metrics.Close(),
 	)
 }

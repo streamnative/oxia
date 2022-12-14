@@ -8,7 +8,6 @@ import (
 	pb "google.golang.org/protobuf/proto"
 	"io"
 	"math"
-	"oxia/common"
 	"oxia/proto"
 	"sync"
 )
@@ -26,10 +25,12 @@ type Coordinator interface {
 
 	ShardAssignmentsProvider
 
-	InitiateLeaderElection(shard uint32, newEpoch int64) error
-	ElectedLeader(shard uint32, epoch int64, leader ServerAddress) error
+	InitiateLeaderElection(shard uint32, metadata ShardMetadata) error
+	ElectedLeader(shard uint32, metadata ShardMetadata) error
 
 	NodeAvailabilityListener
+
+	ClusterStatus() ClusterStatus
 }
 
 type coordinator struct {
@@ -44,17 +45,17 @@ type coordinator struct {
 	clusterStatus    *ClusterStatus
 	assignments      *proto.ShardAssignmentsResponse
 	metadataVersion  int64
-	clientPool       common.ClientPool
+	rpc              RpcProvider
 	log              zerolog.Logger
 }
 
-func NewCoordinator(metadataProvider MetadataProvider, clusterConfig ClusterConfig) (Coordinator, error) {
+func NewCoordinator(metadataProvider MetadataProvider, clusterConfig ClusterConfig, rpc RpcProvider) (Coordinator, error) {
 	c := &coordinator{
 		MetadataProvider: metadataProvider,
 		ClusterConfig:    clusterConfig,
 		shardControllers: make(map[uint32]ShardController),
 		nodeControllers:  make(map[string]NodeController),
-		clientPool:       common.NewClientPool(),
+		rpc:              rpc,
 		log: log.With().
 			Str("component", "coordinator").
 			Logger(),
@@ -75,7 +76,7 @@ func NewCoordinator(metadataProvider MetadataProvider, clusterConfig ClusterConf
 	}
 
 	for _, sa := range clusterConfig.StorageServers {
-		c.nodeControllers[sa.Internal] = NewNodeController(sa, c, c, c.clientPool)
+		c.nodeControllers[sa.Internal] = NewNodeController(sa, c, c, c.rpc)
 	}
 
 	return c, nil
@@ -90,7 +91,7 @@ func (c *coordinator) initialAssignment() error {
 	cc := c.ClusterConfig
 	cs := &ClusterStatus{
 		ReplicationFactor: cc.ReplicationFactor,
-		Shards:            make(map[uint32]*ShardMetadata),
+		Shards:            make(map[uint32]ShardMetadata),
 	}
 
 	bucketSize := math.MaxUint32 / cc.ShardCount
@@ -99,7 +100,7 @@ func (c *coordinator) initialAssignment() error {
 	serverIdx := uint32(0)
 
 	for i := uint32(0); i < cc.ShardCount; i++ {
-		cs.Shards[i] = &ShardMetadata{
+		cs.Shards[i] = ShardMetadata{
 			Status:   ShardStatusUnknown,
 			Epoch:    -1,
 			Leader:   nil,
@@ -125,7 +126,7 @@ func (c *coordinator) initialAssignment() error {
 	c.clusterStatus = cs
 
 	for shard, shardMetadata := range c.clusterStatus.Shards {
-		c.shardControllers[shard] = NewShardController(shard, shardMetadata, c.clientPool, c)
+		c.shardControllers[shard] = NewShardController(shard, shardMetadata, c.rpc, c)
 	}
 
 	return nil
@@ -141,7 +142,7 @@ func getServers(servers []ServerAddress, startIdx uint32, count uint32) []Server
 }
 
 func (c *coordinator) Close() error {
-	err := c.clientPool.Close()
+	var err error
 
 	for _, sc := range c.shardControllers {
 		err = multierr.Append(err, sc.Close())
@@ -174,14 +175,12 @@ func (c *coordinator) WaitForNextUpdate(currentValue *proto.ShardAssignmentsResp
 	return c.assignments
 }
 
-func (c *coordinator) InitiateLeaderElection(shard uint32, newEpoch int64) error {
+func (c *coordinator) InitiateLeaderElection(shard uint32, metadata ShardMetadata) error {
 	c.Lock()
 	defer c.Unlock()
 
 	cs := c.clusterStatus.Clone()
-	sm := cs.Shards[shard]
-	sm.Status = ShardStatusElection
-	sm.Epoch = newEpoch
+	cs.Shards[shard] = metadata
 
 	newMetadataVersion, err := c.MetadataProvider.Store(cs, c.metadataVersion)
 	if err != nil {
@@ -192,16 +191,12 @@ func (c *coordinator) InitiateLeaderElection(shard uint32, newEpoch int64) error
 	return nil
 }
 
-func (c *coordinator) ElectedLeader(shard uint32, epoch int64, leader ServerAddress) error {
+func (c *coordinator) ElectedLeader(shard uint32, metadata ShardMetadata) error {
 	c.Lock()
 	defer c.Unlock()
 
 	cs := c.clusterStatus.Clone()
-	sm := cs.Shards[shard]
-	sm.Status = ShardStatusSteadyState
-	sm.Epoch = epoch
-	sm.Leader = &leader
-	cs.Shards[shard] = sm
+	cs.Shards[shard] = metadata
 
 	newMetadataVersion, err := c.MetadataProvider.Store(cs, c.metadataVersion)
 	if err != nil {
@@ -243,4 +238,10 @@ func (c *coordinator) computeNewAssignments() {
 	}
 
 	c.assignmentsChanged.Broadcast()
+}
+
+func (c *coordinator) ClusterStatus() ClusterStatus {
+	c.Lock()
+	defer c.Unlock()
+	return *c.clusterStatus.Clone()
 }
