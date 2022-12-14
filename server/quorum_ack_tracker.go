@@ -5,12 +5,14 @@ import (
 	"io"
 	"oxia/proto"
 	"oxia/server/util"
-	"oxia/server/wal"
 	"sync"
 	"sync/atomic"
 )
 
-var ErrorTooManyCursors = errors.New("too many cursors")
+var (
+	ErrorTooManyCursors   = errors.New("too many cursors")
+	ErrorInvalidHeadIndex = errors.New("invalid head index")
+)
 
 // QuorumAckTracker
 // The QuorumAckTracker is responsible for keeping track of the head index and commit index of a shard
@@ -37,7 +39,9 @@ type QuorumAckTracker interface {
 	// Waits until the specified entry is written on the wal
 	WaitForHeadIndex(offset int64)
 
-	NewCursorAcker() (CursorAcker, error)
+	// NewCursorAcker creates a tracker for a new cursor
+	// The `ackIndex` is the previous last-acked position for the cursor
+	NewCursorAcker(ackIndex int64) (CursorAcker, error)
 }
 
 type quorumAckTracker struct {
@@ -67,15 +71,20 @@ type cursorAcker struct {
 	cursorIdx     int
 }
 
-func NewQuorumAckTracker(replicationFactor uint32, headIndex int64) QuorumAckTracker {
+func NewQuorumAckTracker(replicationFactor uint32, headIndex int64, commitIndex int64) QuorumAckTracker {
 	q := &quorumAckTracker{
 		// Ack quorum is number of follower acks that are required to consider the entry fully committed
 		// We are using RF/2 (and not RF/2 + 1) because the leader is already storing 1 copy locally
 		requiredAcks:      replicationFactor / 2,
 		replicationFactor: replicationFactor,
 		headIndex:         headIndex,
-		commitIndex:       wal.InvalidOffset,
+		commitIndex:       commitIndex,
 		tracker:           make(map[int64]*util.BitSet),
+	}
+
+	// Add entries to track the entries we're not yet sure that are fully committed
+	for offset := commitIndex + 1; offset <= headIndex; offset++ {
+		q.tracker[offset] = &util.BitSet{}
 	}
 
 	q.waitForHeadIndex = sync.NewCond(q)
@@ -130,7 +139,12 @@ func (q *quorumAckTracker) WaitForCommitIndex(offset int64, f func() (*proto.Wri
 	if q.closed {
 		return nil, errors.New("already closed")
 	}
-	return f()
+
+	if f != nil {
+		return f()
+	}
+
+	return nil, nil
 }
 
 func (q *quorumAckTracker) Close() error {
@@ -143,7 +157,7 @@ func (q *quorumAckTracker) Close() error {
 	return nil
 }
 
-func (q *quorumAckTracker) NewCursorAcker() (CursorAcker, error) {
+func (q *quorumAckTracker) NewCursorAcker(ackIndex int64) (CursorAcker, error) {
 	q.Lock()
 	defer q.Unlock()
 
@@ -151,19 +165,34 @@ func (q *quorumAckTracker) NewCursorAcker() (CursorAcker, error) {
 		return nil, ErrorTooManyCursors
 	}
 
-	cursoridx := q.cursorIdxGenerator
-	q.cursorIdxGenerator++
+	if ackIndex > q.headIndex {
+		return nil, ErrorInvalidHeadIndex
+	}
 
-	return &cursorAcker{
+	qa := &cursorAcker{
 		quorumTracker: q,
-		cursorIdx:     cursoridx,
-	}, nil
+		cursorIdx:     q.cursorIdxGenerator,
+	}
+
+	// If the new cursor is already past the current quorum commit index, we have
+	// to mark these entries as acked (by that cursor).
+	for offset := q.commitIndex + 1; offset <= ackIndex; offset++ {
+		qa.ack(offset)
+	}
+
+	q.cursorIdxGenerator++
+	return qa, nil
 }
 
 func (c *cursorAcker) Ack(offset int64) {
+	c.quorumTracker.Lock()
+	defer c.quorumTracker.Unlock()
+
+	c.ack(offset)
+}
+
+func (c *cursorAcker) ack(offset int64) {
 	q := c.quorumTracker
-	q.Lock()
-	defer q.Unlock()
 
 	e, found := q.tracker[offset]
 	if !found {
