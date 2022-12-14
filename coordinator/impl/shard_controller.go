@@ -7,12 +7,19 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"go.uber.org/multierr"
 	"io"
 	"math/rand"
 	"oxia/common"
 	"oxia/proto"
 	"sync"
 	"time"
+)
+
+const (
+	// When fencing quorum of servers, after we reach the majority, wait a bit more
+	// to include responses from all healthy servers
+	quorumFencingGracePeriod = 100 * time.Millisecond
 )
 
 // The ShardController is responsible to handle all the state transition for a given a shard
@@ -144,40 +151,96 @@ func (s *shardController) electLeader() error {
 	return nil
 }
 
+// Fence all the ensemble members in parallel and wait for
+// a majority of them to reply successfully
 func (s *shardController) fenceQuorum() (map[ServerAddress]*proto.EntryId, error) {
-	majority := len(s.shardMetadata.Ensemble)/2 + 1
+	ensembleSize := len(s.shardMetadata.Ensemble)
+	majority := ensembleSize/2 + 1
+
+	// Use a new context, so we can cancel the pending requests
+	ctx, cancel := context.WithCancel(s.ctx)
+	defer cancel()
+
+	// Channel to receive responses or errors from each server
+	ch := make(chan struct {
+		ServerAddress
+		*proto.EntryId
+		error
+	})
+
+	for _, sa := range s.shardMetadata.Ensemble {
+		// We need to save the address because it gets modified in the loop
+		serverAddress := sa
+		go common.DoWithLabels(map[string]string{
+			"oxia":  "shard-controller-leader-election",
+			"shard": fmt.Sprintf("%d", s.shard),
+			"node":  sa.Internal,
+		}, func() {
+			entryId, err := s.fence(ctx, serverAddress)
+			if err != nil {
+				s.log.Warn().Err(err).
+					Str("node", serverAddress.Internal).
+					Msg("Failed to fence node")
+			} else {
+				s.log.Info().
+					Interface("server-address", serverAddress).
+					Interface("entry-id", entryId).
+					Msg("Processed fence response")
+			}
+
+			ch <- struct {
+				ServerAddress
+				*proto.EntryId
+				error
+			}{serverAddress, entryId, err}
+		})
+	}
+
+	successResponses := 0
+	totalResponses := 0
 
 	res := make(map[ServerAddress]*proto.EntryId)
+	var err error
 
-	// TODO: send fence requests in parallel
-	successResponses := 0
-	for _, sa := range s.shardMetadata.Ensemble {
-		entryId, err := s.fence(sa)
-		if err != nil {
-			s.log.Warn().Err(err).
-				Str("node", sa.Internal).
-				Msg("Failed to fence node")
-			continue
+	// Wait for a majority to respond
+	for successResponses < majority && totalResponses < ensembleSize {
+		r := <-ch
+
+		totalResponses++
+		if r.error == nil {
+			successResponses++
+			res[r.ServerAddress] = r.EntryId
+		} else {
+			err = multierr.Append(err, r.error)
 		}
-
-		successResponses++
-		res[sa] = entryId
-		s.log.Info().
-			Interface("server-address", sa).
-			Interface("entry-id", entryId).
-			Int64("epoch", s.shardMetadata.Epoch).
-			Msg("Processed fence response")
 	}
 
 	if successResponses < majority {
-		return nil, errors.New("failed to fence shard")
+		return nil, errors.Wrap(err, "failed to fence shard")
+	}
+
+	// If we have already reached a quorum of successful responses, we can wait a
+	// tiny bit more, to allow time for all the "healthy" nodes to respond.
+	for err == nil && totalResponses < ensembleSize {
+		select {
+		case r := <-ch:
+			totalResponses++
+			if r.error == nil {
+				res[r.ServerAddress] = r.EntryId
+			} else {
+				err = multierr.Append(err, r.error)
+			}
+
+		case <-time.After(quorumFencingGracePeriod):
+			return res, nil
+		}
 	}
 
 	return res, nil
 }
 
-func (s *shardController) fence(node ServerAddress) (*proto.EntryId, error) {
-	res, err := s.rpc.Fence(s.ctx, node, &proto.FenceRequest{
+func (s *shardController) fence(ctx context.Context, node ServerAddress) (*proto.EntryId, error) {
+	res, err := s.rpc.Fence(ctx, node, &proto.FenceRequest{
 		ShardId: s.shard,
 		Epoch:   s.shardMetadata.Epoch,
 	})
