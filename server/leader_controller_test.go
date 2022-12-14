@@ -446,10 +446,11 @@ func TestLeaderController_BecomeLeaderEpoch(t *testing.T) {
 func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
 	var shard uint32 = 1
 
-	kvFactory := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
 		DataDir:   t.TempDir(),
 		CacheSize: 10 * 1024,
 	})
+	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{
 		LogDir: t.TempDir(),
 	})
