@@ -100,6 +100,8 @@ func TestShardController_FenceWithNonRespondingServer(t *testing.T) {
 
 	timeStart := time.Now()
 
+	rpc.GetNode(s1).BecomeLeaderResponse(2, nil)
+
 	// Shard controller should initiate a leader election
 	// and fence each server
 	rpc.GetNode(s1).FenceResponse(2, 1, 0, nil)
@@ -111,7 +113,6 @@ func TestShardController_FenceWithNonRespondingServer(t *testing.T) {
 	rpc.GetNode(s3).expectFenceRequest(t, shard, 2)
 
 	// s1 should be selected as new leader, without waiting for s3 to timeout
-	rpc.GetNode(s1).BecomeLeaderResponse(2, nil)
 	rpc.GetNode(s1).expectBecomeLeaderRequest(t, shard, 2, 3)
 
 	assert.WithinDuration(t, timeStart, time.Now(), 1*time.Second)
