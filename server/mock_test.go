@@ -186,22 +186,22 @@ func (m *mockShardAssignmentClientStream) RecvMsg(msg interface{}) error {
 func newMockShardAssignmentControllerStream() *mockShardAssignmentControllerStream {
 	return &mockShardAssignmentControllerStream{
 		requests:  make(chan *proto.ShardAssignmentsResponse, 1000),
-		responses: make(chan *proto.EmptyResponse, 1000),
+		responses: make(chan *proto.CoordinationShardAssignmentsResponse, 1000),
 		md:        make(metadata.MD),
 	}
 }
 
 type mockShardAssignmentControllerStream struct {
 	requests  chan *proto.ShardAssignmentsResponse
-	responses chan *proto.EmptyResponse
+	responses chan *proto.CoordinationShardAssignmentsResponse
 	md        metadata.MD
 }
 
-func (m *mockShardAssignmentControllerStream) GetResponse() *proto.EmptyResponse {
+func (m *mockShardAssignmentControllerStream) GetResponse() *proto.CoordinationShardAssignmentsResponse {
 	return <-m.responses
 }
 
-func (m *mockShardAssignmentControllerStream) SendAndClose(empty *proto.EmptyResponse) error {
+func (m *mockShardAssignmentControllerStream) SendAndClose(empty *proto.CoordinationShardAssignmentsResponse) error {
 	m.responses <- empty
 	return nil
 }

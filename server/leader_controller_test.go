@@ -417,7 +417,7 @@ func TestLeaderController_BecomeLeaderEpoch(t *testing.T) {
 	assert.Equal(t, CodeInvalidEpoch, status.Code(err))
 
 	// Same epoch will succeed
-	resp, err = lc.BecomeLeader(&proto.BecomeLeaderRequest{
+	_, err = lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
 		Epoch:             5,
 		ReplicationFactor: 1,
