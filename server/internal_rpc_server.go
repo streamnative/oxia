@@ -120,7 +120,7 @@ func (s *internalRpcServer) Fence(c context.Context, req *proto.FenceRequest) (*
 	}
 }
 
-func (s *internalRpcServer) BecomeLeader(c context.Context, req *proto.BecomeLeaderRequest) (*proto.EmptyResponse, error) {
+func (s *internalRpcServer) BecomeLeader(c context.Context, req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error) {
 	s.log.Info().
 		Interface("req", req).
 		Str("peer", common.GetPeer(c)).
@@ -144,7 +144,7 @@ func (s *internalRpcServer) BecomeLeader(c context.Context, req *proto.BecomeLea
 	}
 }
 
-func (s *internalRpcServer) AddFollower(c context.Context, req *proto.AddFollowerRequest) (*proto.EmptyResponse, error) {
+func (s *internalRpcServer) AddFollower(c context.Context, req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error) {
 	s.log.Info().
 		Interface("req", req).
 		Str("peer", common.GetPeer(c)).

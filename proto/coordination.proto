@@ -8,11 +8,11 @@ import "proto/client.proto";
 
 // controller -> node
 service OxiaControl {
-  rpc ShardAssignment(stream io.streamnative.oxia.proto.ShardAssignmentsResponse) returns (EmptyResponse);
+  rpc ShardAssignment(stream io.streamnative.oxia.proto.ShardAssignmentsResponse) returns (CoordinationShardAssignmentsResponse);
 
   rpc Fence(FenceRequest) returns (FenceResponse);
-  rpc BecomeLeader(BecomeLeaderRequest) returns (EmptyResponse);
-  rpc AddFollower(AddFollowerRequest) returns (EmptyResponse);
+  rpc BecomeLeader(BecomeLeaderRequest) returns (BecomeLeaderResponse);
+  rpc AddFollower(AddFollowerRequest) returns (AddFollowerResponse);
 }
 
 // node (leader) -> node (follower)
@@ -21,7 +21,7 @@ service OxiaLogReplication {
   rpc AddEntries(stream AddEntryRequest) returns (stream AddEntryResponse);
 }
 
-message EmptyResponse {}
+message CoordinationShardAssignmentsResponse {}
 
 message EntryId {
   int64 epoch = 1;
@@ -51,12 +51,18 @@ message BecomeLeaderRequest {
   map<string, EntryId> follower_maps = 4;
 }
 
+message BecomeLeaderResponse {
+}
+
 message AddFollowerRequest {
   uint32 shard_id = 1;
 
   int64 epoch = 2;
   string follower_name = 3;
   EntryId follower_head_index = 4;
+}
+
+message AddFollowerResponse {
 }
 
 message TruncateRequest {

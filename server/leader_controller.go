@@ -14,8 +14,6 @@ import (
 	"sync"
 )
 
-var emptyResponse = &proto.EmptyResponse{}
-
 type LeaderController interface {
 	io.Closer
 
@@ -26,9 +24,9 @@ type LeaderController interface {
 	Fence(req *proto.FenceRequest) (*proto.FenceResponse, error)
 
 	// BecomeLeader Handles BecomeLeaderRequest from coordinator and prepares to be leader for the shard
-	BecomeLeader(*proto.BecomeLeaderRequest) (*proto.EmptyResponse, error)
+	BecomeLeader(*proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error)
 
-	AddFollower(request *proto.AddFollowerRequest) (*proto.EmptyResponse, error)
+	AddFollower(request *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error)
 
 	// Epoch The current epoch of the leader
 	Epoch() int64
@@ -191,7 +189,7 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 //     the new leader will be informed of these followers, and it is
 //     possible that their head index is higher than the leader and
 //     therefore need truncating.
-func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto.EmptyResponse, error) {
+func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error) {
 	lc.Lock()
 	defer lc.Unlock()
 
@@ -220,10 +218,10 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 		Int64("epoch", lc.epoch).
 		Int64("head-index", leaderHeadIndex.Offset).
 		Msg("Started leading the shard")
-	return emptyResponse, nil
+	return &proto.BecomeLeaderResponse{}, nil
 }
 
-func (lc *leaderController) AddFollower(req *proto.AddFollowerRequest) (*proto.EmptyResponse, error) {
+func (lc *leaderController) AddFollower(req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error) {
 	lc.Lock()
 	defer lc.Unlock()
 
@@ -252,7 +250,7 @@ func (lc *leaderController) AddFollower(req *proto.AddFollowerRequest) (*proto.E
 		return nil, err
 	}
 
-	return emptyResponse, nil
+	return &proto.AddFollowerResponse{}, nil
 }
 
 func (lc *leaderController) addFollower(leaderHeadIndex *proto.EntryId, follower string, followerHeadIndex *proto.EntryId) error {
