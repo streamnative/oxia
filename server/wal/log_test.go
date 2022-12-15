@@ -44,58 +44,58 @@ func dataStr(index int64) string {
 	return fmt.Sprintf("data-'%d'", index)
 }
 
-func testLog(t *testing.T, path string, opts *Options, N int) {
+func testLog(t *testing.T, path string, opts *Options, N int64) {
 	logPath := path + strings.Join(strings.Split(t.Name(), "/")[1:], "/")
 	l, err := Open(logPath, opts)
 	assert.NoError(t, err)
 	defer l.Close()
 
-	// FirstIndex - should be -1
+	// FirstIndex - should be 0
 	n, err := l.FirstIndex()
 	assert.NoError(t, err)
-	assert.Equal(t, int64(0), n)
+	assert.EqualValues(t, 0, n)
 
 	// LastIndex - should be -1
 	n, err = l.LastIndex()
 	assert.NoError(t, err)
-	assert.Equal(t, int64(-1), n)
+	assert.EqualValues(t, -1, n)
 
-	for i := 0; i < N; i++ {
+	for i := int64(0); i < N; i++ {
 		// Write - append next item
-		err = l.Write([]byte(dataStr(int64(i))))
+		err = l.Write(i, []byte(dataStr(i)))
 		assert.NoError(t, err)
 
 		// Write - get next item
-		data, err := l.Read(int64(i))
+		data, err := l.Read(i)
 		assert.NoError(t, err, "Could not read index %d", i)
 
-		assert.Equal(t, dataStr(int64(i)), string(data))
+		assert.Equal(t, dataStr(i), string(data))
 	}
 
 	// Read -- should fail, not found
 	_, err = l.Read(-1)
 	assert.ErrorIs(t, err, ErrNotFound)
 	// Read -- read back all entries
-	for i := 0; i < N; i++ {
-		data, err := l.Read(int64(i))
+	for i := int64(0); i < N; i++ {
+		data, err := l.Read(i)
 		assert.NoError(t, err)
-		assert.Equal(t, dataStr(int64(i)), string(data))
+		assert.Equal(t, dataStr(i), string(data))
 	}
 	// Read -- read back first half of entries
-	for i := 0; i < N/2; i++ {
-		data, err := l.Read(int64(i))
+	for i := int64(0); i < N/2; i++ {
+		data, err := l.Read(i)
 		assert.NoError(t, err)
-		assert.Equal(t, dataStr(int64(i)), string(data))
+		assert.Equal(t, dataStr(i), string(data))
 	}
 	// Read -- read second third entries
 	for i := N / 3; i < N/3+N/3; i++ {
-		data, err := l.Read(int64(i))
+		data, err := l.Read(i)
 		assert.NoError(t, err)
-		assert.Equal(t, dataStr(int64(i)), string(data))
+		assert.Equal(t, dataStr(i), string(data))
 	}
 
 	// Read -- random access
-	for _, v := range rand.Perm(N) {
+	for _, v := range rand.Perm(int(N)) {
 		index := int64(v)
 		data, err := l.Read(index)
 		assert.NoError(t, err)
@@ -105,18 +105,18 @@ func testLog(t *testing.T, path string, opts *Options, N int) {
 	// FirstIndex/LastIndex -- check valid first and last indexes
 	n, err = l.FirstIndex()
 	assert.NoError(t, err)
-	assert.Equal(t, int64(0), n)
+	assert.EqualValues(t, 0, n)
 
 	n, err = l.LastIndex()
 
 	assert.NoError(t, err)
-	assert.Equal(t, int64(N-1), n)
+	assert.Equal(t, N-1, n)
 
 	// Close -- close the log
 	assert.NoError(t, l.Close())
 
 	// Write - try while closed
-	err = l.Write(nil)
+	err = l.Write(0, nil)
 	assert.ErrorIs(t, err, ErrClosed)
 	// FirstIndex - try while closed
 	_, err = l.FirstIndex()
@@ -145,39 +145,38 @@ func testLog(t *testing.T, path string, opts *Options, N int) {
 	defer l.Close()
 
 	// Read -- read back all entries
-	for i := 0; i < N; i++ {
-		data, err := l.Read(int64(i))
+	for i := int64(0); i < N; i++ {
+		data, err := l.Read(i)
 		assert.NoError(t, err, "Could not read index %d", i)
-		assert.Equal(t, dataStr(int64(i)), string(data))
+		assert.Equal(t, dataStr(i), string(data))
 	}
 	// FirstIndex/LastIndex -- check valid first and last indexes
 	n, err = l.FirstIndex()
 	assert.NoError(t, err)
-	assert.Equal(t, int64(0), n)
+	assert.EqualValues(t, 0, n)
 
 	n, err = l.LastIndex()
 	assert.NoError(t, err)
-	assert.Equal(t, int64(N-1), n)
+	assert.Equal(t, N-1, n)
 	// Write -- add 50 more items
 	for i := N; i < N+50; i++ {
-		index := int64(i)
-		err := l.Write([]byte(dataStr(index)))
+		err := l.Write(i, []byte(dataStr(i)))
 		assert.NoError(t, err)
 
-		data, err := l.Read(index)
+		data, err := l.Read(i)
 		assert.NoError(t, err)
-		assert.Equal(t, dataStr(index), string(data))
+		assert.Equal(t, dataStr(i), string(data))
 
 	}
 	N += 50
 	// FirstIndex/LastIndex -- check valid first and last indexes
 	n, err = l.FirstIndex()
 	assert.NoError(t, err)
-	assert.Equal(t, int64(0), n)
+	assert.EqualValues(t, 0, n)
 
 	n, err = l.LastIndex()
 	assert.NoError(t, err)
-	assert.Equal(t, int64(N-1), n)
+	assert.Equal(t, N-1, n)
 
 	// Batch -- test batch writes
 	b := new(Batch)
@@ -188,89 +187,88 @@ func testLog(t *testing.T, path string, opts *Options, N int) {
 	// Write 100 entries in batches of 10
 	for i := 0; i < 10; i++ {
 		for i := N; i < N+10; i++ {
-			index := int64(i)
-			b.Write([]byte(dataStr(index)))
+			offset := int64(i)
+			b.Write(offset, []byte(dataStr(offset)))
 		}
 		err = l.WriteBatch(b)
 		assert.NoError(t, err)
 		N += 10
 	}
 	// Read -- read back all entries
-	for i := 0; i < N; i++ {
-		data, err := l.Read(int64(i))
+	for i := int64(0); i < N; i++ {
+		data, err := l.Read(i)
 		assert.NoError(t, err)
 
-		assert.Equal(t, dataStr(int64(i)), string(data))
+		assert.Equal(t, dataStr(i), string(data))
 	}
 
 	// Write -- one entry, so the buffer might be activated
-	err = l.Write([]byte(dataStr(int64(N + 1))))
+	err = l.Write(N, []byte(dataStr(N)))
 	assert.NoError(t, err)
 
 	N++
 	// Read -- one random read, so there is an opened reader
-	data, err := l.Read(int64(N / 2))
+	data, err := l.Read(N / 2)
 	assert.NoError(t, err)
-	assert.Equal(t, dataStr(int64(N/2)), string(data))
+	assert.Equal(t, dataStr(N/2), string(data))
 
 	// TruncateFront -- should fail, out of range
-	for _, i := range []int{-1, N} {
-		index := int64(i)
-		err = l.TruncateFront(index)
+	for _, i := range []int64{-1, N} {
+		err = l.TruncateFront(i)
 		assert.ErrorIs(t, err, ErrOutOfRange)
-		testFirstLast(t, l, int64(0), int64(N-1), nil)
+		testFirstLast(t, l, 0, N-1, nil)
 	}
 
 	// TruncateBack -- should fail, out of range
 	err = l.TruncateFront(-1)
 	assert.ErrorIs(t, err, ErrOutOfRange)
-	testFirstLast(t, l, int64(0), int64(N-1), nil)
+	testFirstLast(t, l, 0, N-1, nil)
 
 	// TruncateFront -- Remove no entries
 	err = l.TruncateFront(0)
 	assert.NoError(t, err)
-	testFirstLast(t, l, int64(0), int64(N-1), nil)
+	testFirstLast(t, l, 0, N-1, nil)
 
 	// TruncateFront -- Remove first 80 entries
 	err = l.TruncateFront(80)
 	assert.NoError(t, err)
-	testFirstLast(t, l, int64(80), int64(N-1), nil)
+	testFirstLast(t, l, 80, N-1, nil)
 
 	// Write -- one entry, so the buffer might be activated
-	err = l.Write([]byte(dataStr(int64(N))))
+	err = l.Write(N, []byte(dataStr(N)))
 	assert.NoError(t, err)
 	N++
-	testFirstLast(t, l, int64(80), int64(N-1), nil)
+	testFirstLast(t, l, 80, N-1, nil)
 
 	// Read -- one random read, so there is an opened reader
-	data, err = l.Read(int64(N / 2))
+	data, err = l.Read(N / 2)
 	assert.NoError(t, err)
 
-	assert.Equal(t, dataStr(int64(N/2)), string(data))
+	assert.Equal(t, dataStr(N/2), string(data))
 
 	// TruncateBack -- should fail, out of range
 	for _, i := range []int{-1, 78} {
 		index := int64(i)
 		err = l.TruncateBack(index)
 		assert.ErrorIs(t, err, ErrOutOfRange)
-		testFirstLast(t, l, int64(80), int64(N-1), nil)
+		testFirstLast(t, l, 80, N-1, nil)
 	}
 
 	// TruncateBack -- Remove no entries
-	err = l.TruncateBack(int64(N - 1))
+	err = l.TruncateBack(N - 1)
 	assert.NoError(t, err)
-	testFirstLast(t, l, int64(80), int64(N-1), nil)
+	testFirstLast(t, l, 80, N-1, nil)
 	// TruncateBack -- Remove last 80 entries
-	err = l.TruncateBack(int64(N - 81))
+	err = l.TruncateBack(N - 81)
 	assert.NoError(t, err)
 	N -= 80
-	testFirstLast(t, l, int64(80), int64(N-1), nil)
+	testFirstLast(t, l, 80, N-1, nil)
 
 	// Read -- read back all entries
-	for i := 80; i < N; i++ {
-		data, err := l.Read(int64(i))
+	for i := int64(80); i < N; i++ {
+		data, err := l.Read(i)
 		assert.NoError(t, err)
-		assert.Equal(t, string(data), dataStr(int64(i)))
+		assert.Equal(t, string(data), dataStr(i))
 	}
 
 	// Close -- close log after truncating
@@ -281,38 +279,38 @@ func testLog(t *testing.T, path string, opts *Options, N int) {
 	assert.NoError(t, err)
 	defer l.Close()
 
-	testFirstLast(t, l, int64(80), int64(N-1), nil)
+	testFirstLast(t, l, 80, N-1, nil)
 
 	// Read -- read back all entries
-	for i := 80; i < N; i++ {
-		data, err := l.Read(int64(i))
+	for i := int64(80); i < N; i++ {
+		data, err := l.Read(i)
 		assert.NoError(t, err)
-		assert.Equal(t, string(data), dataStr(int64(i)))
+		assert.Equal(t, string(data), dataStr(i))
 	}
 
 	// TruncateFront -- truncate all entries but one
-	err = l.TruncateFront(int64(N - 1))
+	err = l.TruncateFront(N - 1)
 	assert.NoError(t, err)
-	testFirstLast(t, l, int64(N-1), int64(N-1), nil)
+	testFirstLast(t, l, N-1, N-1, nil)
 
 	// Write -- write one entry
-	err = l.Write([]byte(dataStr(int64(N + 1))))
+	err = l.Write(N, []byte(dataStr(N)))
 	assert.NoError(t, err)
 	N++
-	testFirstLast(t, l, int64(N-2), int64(N-1), nil)
+	testFirstLast(t, l, N-2, N-1, nil)
 
 	// TruncateBack -- truncate all entries but one
-	err = l.TruncateBack(int64(N - 2))
+	err = l.TruncateBack(N - 2)
 	assert.NoError(t, err)
 	N--
-	testFirstLast(t, l, int64(N-1), int64(N-1), nil)
+	testFirstLast(t, l, N-1, N-1, nil)
 
-	err = l.Write([]byte(dataStr(int64(N))))
+	err = l.Write(N, []byte(dataStr(N)))
 	assert.NoError(t, err)
 	N++
 
 	assert.NoError(t, l.Sync())
-	testFirstLast(t, l, int64(N-2), int64(N-1), nil)
+	testFirstLast(t, l, N-2, N-1, nil)
 }
 
 func testFirstLast(t *testing.T, l *Log, expectFirst, expectLast int64, data func(index int64) []byte) {
@@ -323,9 +321,9 @@ func testFirstLast(t *testing.T, l *Log, expectFirst, expectLast int64, data fun
 	li, err := l.LastIndex()
 	assert.NoError(t, err)
 
-	if fi != expectFirst || li != expectLast {
-		assert.Failf(t, "", "expected %v/%v, got %v/%v", expectFirst, expectLast, fi, li)
-	}
+	assert.Equal(t, expectFirst, fi)
+	assert.Equal(t, expectLast, li)
+
 	for i := fi; i <= li; i++ {
 		dt1, err := l.Read(i)
 		assert.NoError(t, err)
@@ -397,16 +395,16 @@ func TestOutliers(t *testing.T) {
 		l := must(Open(lpath, opts)).(*Log)
 		defer l.Close()
 		for i := int64(0); i < 100; i++ {
-			must(nil, l.Write([]byte(dataStr(i))))
+			must(nil, l.Write(i, []byte(dataStr(i))))
 		}
 		path := l.segments[l.findSegment(35)].path
-		firstIndex := l.segments[l.findSegment(35)].index
+		firstOffset := l.segments[l.findSegment(35)].offset
 		must(nil, l.Close())
 		data := must(os.ReadFile(path)).([]byte)
 		must(nil, os.WriteFile(path+".START", data, 0666))
 		l = must(Open(lpath, opts)).(*Log)
 		defer l.Close()
-		testFirstLast(t, l, firstIndex, 99, nil)
+		testFirstLast(t, l, firstOffset, 99, nil)
 
 	})
 
@@ -430,7 +428,7 @@ func TestIssue1(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer l.Close()
-	if err := l.Write(in); err != nil {
+	if err := l.Write(0, in); err != nil {
 		t.Fatal(err)
 	}
 	out, err := l.Read(0)
@@ -485,8 +483,8 @@ func TestSimpleTruncateFront(t *testing.T) {
 		assert.NoError(t, err)
 		valid(t, l, first, last)
 	}
-	for i := 0; i < 100; i++ {
-		err := l.Write(makeData(int64(i)))
+	for i := int64(0); i < 100; i++ {
+		err := l.Write(i, makeData(i))
 		assert.NoError(t, err)
 	}
 	validReopen(t, 0, 99)
@@ -545,8 +543,8 @@ func TestSimpleTruncateBack(t *testing.T) {
 		valid(t, l, first, last)
 	}
 
-	for i := 0; i < 100; i++ {
-		err = l.Write(makeData(int64(i)))
+	for i := int64(0); i < 100; i++ {
+		err = l.Write(i, makeData(int64(i)))
 		assert.NoError(t, err)
 	}
 	validReopen(t, 0, 99)
@@ -555,7 +553,7 @@ func TestSimpleTruncateBack(t *testing.T) {
 	err = l.TruncateBack(99)
 	assert.NoError(t, err)
 	validReopen(t, 0, 99)
-	err = l.Write(makeData(100))
+	err = l.Write(100, makeData(100))
 	assert.NoError(t, err)
 	validReopen(t, 0, 100)
 
@@ -563,7 +561,7 @@ func TestSimpleTruncateBack(t *testing.T) {
 	err = l.TruncateBack(98)
 	assert.NoError(t, err)
 	validReopen(t, 0, 98)
-	err = l.Write(makeData(99))
+	err = l.Write(99, makeData(99))
 	assert.NoError(t, err)
 	validReopen(t, 0, 99)
 
@@ -592,8 +590,8 @@ func TestConcurrency(t *testing.T) {
 	defer l.Close()
 
 	// Write 1000 entries
-	for i := 0; i < 1000; i++ {
-		err := l.Write([]byte(dataStr(int64(i))))
+	for i := int64(0); i < 1000; i++ {
+		err := l.Write(i, []byte(dataStr(i)))
 		assert.NoError(t, err)
 	}
 
@@ -617,7 +615,7 @@ func TestConcurrency(t *testing.T) {
 
 	// continue writing
 	for index := maxIndex; atomic.LoadInt32(&finished) < 100; index++ {
-		err := l.Write([]byte(dataStr(int64(index))))
+		err := l.Write(int64(index), []byte(dataStr(int64(index))))
 		assert.NoError(t, err)
 
 		atomic.StoreInt32(&maxIndex, index)

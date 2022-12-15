@@ -7,10 +7,12 @@ import (
 )
 
 var (
-	ErrorEntryNotFound       = errors.New("oxia: entry not found")
-	ErrorReaderClosed        = errors.New("oxia: reader already closed")
-	InvalidEpoch       int64 = -1
-	InvalidOffset      int64 = -1
+	ErrorEntryNotFound     = errors.New("oxia: entry not found")
+	ErrorReaderClosed      = errors.New("oxia: reader already closed")
+	ErrorInvalidNextOffset = errors.New("oxia: invalid next offset in wal")
+
+	InvalidEpoch  int64 = -1
+	InvalidOffset int64 = -1
 )
 
 type WalFactoryOptions struct {
@@ -50,4 +52,7 @@ type Wal interface {
 	// LastOffset Return the offset of the last entry committed to the WAL
 	// Return InvalidOffset if the WAL is empty
 	LastOffset() int64
+
+	// Clear removes all the entries in the WAL
+	Clear() error
 }
