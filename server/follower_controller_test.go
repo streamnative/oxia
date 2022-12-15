@@ -24,7 +24,8 @@ func init() {
 
 func TestFollower(t *testing.T) {
 	var shardId uint32
-	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
+	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
 
 	fc, err := NewFollowerController(shardId, walFactory, kvFactory)
@@ -100,7 +101,8 @@ func TestFollower(t *testing.T) {
 
 func TestReadingUpToCommitIndex(t *testing.T) {
 	var shardId uint32
-	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
+	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 
 	fc, err := NewFollowerController(shardId, walFactory, kvFactory)
@@ -165,7 +167,8 @@ func TestReadingUpToCommitIndex(t *testing.T) {
 
 func TestFollower_FenceEpoch(t *testing.T) {
 	var shardId uint32
-	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
+	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 
 	fc, err := NewFollowerController(shardId, walFactory, kvFactory)
@@ -203,7 +206,8 @@ func TestFollower_FenceEpoch(t *testing.T) {
 
 func TestIgnoreInvalidStates(t *testing.T) {
 	var shardId uint32
-	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
+	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 
 	fc, err := NewFollowerController(shardId, walFactory, kvFactory)
@@ -228,10 +232,11 @@ func TestIgnoreInvalidStates(t *testing.T) {
 
 func TestFollower_PersistentEpoch(t *testing.T) {
 	var shardId uint32
-	kvFactory := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
 		DataDir:   t.TempDir(),
 		CacheSize: 10 * 1024,
 	})
+	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{
 		LogDir: t.TempDir(),
 	})
@@ -265,7 +270,8 @@ func TestFollower_PersistentEpoch(t *testing.T) {
 
 func TestFollower_CommitIndexLastEntry(t *testing.T) {
 	var shardId uint32
-	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
+	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 
 	fc, err := NewFollowerController(shardId, walFactory, kvFactory)
@@ -310,10 +316,11 @@ func TestFollower_CommitIndexLastEntry(t *testing.T) {
 
 func TestFollowerController_RejectEntriesWithDifferentEpoch(t *testing.T) {
 	var shardId uint32
-	kvFactory := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
 		DataDir:   t.TempDir(),
 		CacheSize: 10 * 1024,
 	})
+	assert.NoError(t, err)
 
 	db, err := kv.NewDB(shardId, kvFactory)
 	assert.NoError(t, err)
@@ -370,7 +377,8 @@ func TestFollowerController_RejectEntriesWithDifferentEpoch(t *testing.T) {
 
 func TestFollower_RejectTruncateInvalidEpoch(t *testing.T) {
 	var shardId uint32
-	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
+	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
 
 	fc, err := NewFollowerController(shardId, walFactory, kvFactory)
