@@ -104,7 +104,7 @@ func (t *persistentWal) Append(entry *proto.LogEntry) error {
 		return err
 	}
 
-	err = t.log.Write(val)
+	err = t.log.Write(entry.Offset, val)
 	if err != nil {
 		return err
 	}
@@ -116,10 +116,19 @@ func (t *persistentWal) checkNextOffset(nextOffset int64) error {
 	if nextOffset < 0 {
 		return errors.New(fmt.Sprintf("Invalid next offset. %d should be > 0", nextOffset))
 	}
-	if nextOffset != t.lastOffset+1 {
-		return errors.New(fmt.Sprintf("Invalid next offset. %d can not immediately follow %d",
-			nextOffset, t.lastOffset))
+	if t.lastOffset != InvalidOffset && nextOffset != t.lastOffset+1 {
+		return errors.Wrapf(ErrorInvalidNextOffset,
+			"%d can not immediately follow %d", nextOffset, t.lastOffset)
 	}
+	return nil
+}
+
+func (t *persistentWal) Clear() error {
+	if err := t.log.Clear(); err != nil {
+		return err
+	}
+
+	t.lastOffset = InvalidOffset
 	return nil
 }
 
@@ -277,10 +286,11 @@ func (r *reverseReader) ReadNext() (*proto.LogEntry, error) {
 }
 
 func (r *reverseReader) HasNext() bool {
+	r.wal.Lock()
+	defer r.wal.Unlock()
+
 	if r.closed {
 		return false
 	}
-	res := r.nextOffset != InvalidOffset
-
-	return res
+	return r.nextOffset != (r.wal.log.firstOffset - 1)
 }

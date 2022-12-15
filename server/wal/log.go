@@ -55,7 +55,7 @@ var (
 	ErrNotFound = errors.New("not found")
 
 	// ErrOutOfRange is returned from TruncateFront() and TruncateBack() when
-	// the index is not in the range of the log's first and last index.
+	// the offset is not in the range of the log's first and last offset.
 	// TODO Or, this may be returned when the caller is attempting to remove *all* entries;
 	// The log requires that at least one entry exists following a truncate.
 	ErrOutOfRange = errors.New("out of range")
@@ -98,25 +98,25 @@ var DefaultOptions = &Options{
 
 // Log represents a write-ahead log
 type Log struct {
-	mu         sync.RWMutex
-	path       string      // absolute path to log directory
-	opts       Options     // log options
-	closed     bool        // log is closed
-	corrupt    bool        // log may be corrupt
-	segments   []*segment  // all known log segments
-	firstIndex int64       // index of the first entry in log
-	lastIndex  int64       // index of the last entry in log
-	sfile      *os.File    // tail segment file handle
-	wbatch     Batch       // reusable write batch
-	scache     tinylru.LRU // segment entries cache
+	mu          sync.RWMutex
+	path        string      // absolute path to log directory
+	opts        Options     // log options
+	closed      bool        // log is closed
+	corrupt     bool        // log may be corrupt
+	segments    []*segment  // all known log segments
+	firstOffset int64       // offset of the first entry in log
+	lastOffset  int64       // offset of the last entry in log
+	sfile       *os.File    // tail segment file handle
+	wbatch      Batch       // reusable write batch
+	scache      tinylru.LRU // segment entries cache
 }
 
 // segment represents a single segment file.
 type segment struct {
-	path  string // path of segment file
-	index int64  // first index of segment
-	ebuf  []byte // cached entries buffer
-	epos  []bpos // cached entries positions in buffer
+	path   string // path of segment file
+	offset int64  // first offset of segment
+	ebuf   []byte // cached entries buffer
+	epos   []bpos // cached entries positions in buffer
 }
 
 type bpos struct {
@@ -208,21 +208,14 @@ func (l *Log) load() error {
 				truncateIdx = len(l.segments)
 			}
 			l.segments = append(l.segments, &segment{
-				index: index,
-				path:  filepath.Join(l.path, name),
+				offset: index,
+				path:   filepath.Join(l.path, name),
 			})
 		}
 	}
 	if len(l.segments) == 0 {
 		// Create a new log
-		l.segments = append(l.segments, &segment{
-			index: 0,
-			path:  filepath.Join(l.path, segmentName(0)),
-		})
-		l.firstIndex = 0
-		l.lastIndex = -1
-		l.sfile, err = os.OpenFile(l.segments[0].path, os.O_CREATE|os.O_RDWR|os.O_TRUNC, l.opts.FilePerms)
-		return err
+		return l.createInitialSegment(0)
 	}
 	if (startIdx != -1 && endIdx != -1) || (startIdx != -1 && truncateIdx != -1) || (truncateIdx != -1 && endIdx != -1) {
 		return ErrCorrupt
@@ -253,10 +246,10 @@ func (l *Log) load() error {
 			}
 		}
 		l.segments = append([]*segment{}, l.segments[:endIdx+1]...)
-		if len(l.segments) > 1 && l.segments[len(l.segments)-2].index ==
-			l.segments[len(l.segments)-1].index {
+		if len(l.segments) > 1 && l.segments[len(l.segments)-2].offset ==
+			l.segments[len(l.segments)-1].offset {
 			// remove the segment prior to the END segment because it shares
-			// the same starting index.
+			// the same starting offset.
 			l.segments[len(l.segments)-2] = l.segments[len(l.segments)-1]
 			l.segments = l.segments[:len(l.segments)-1]
 		}
@@ -289,7 +282,7 @@ func (l *Log) load() error {
 		}
 		l.segments[0].path = finalPath
 	}
-	l.firstIndex = l.segments[0].index
+	l.firstOffset = l.segments[0].offset
 	// Open the last segment for appending
 	lseg := l.segments[len(l.segments)-1]
 	l.sfile, err = os.OpenFile(lseg.path, os.O_WRONLY, l.opts.FilePerms)
@@ -303,14 +296,27 @@ func (l *Log) load() error {
 	if err := l.loadSegmentEntries(lseg); err != nil {
 		return err
 	}
-	l.lastIndex = lseg.index + int64(len(lseg.epos)) - 1
+	l.lastOffset = lseg.offset + int64(len(lseg.epos)) - 1
 	return nil
 }
 
-// segmentName returns a 20-byte textual representation of an index
+// segmentName returns a 20-byte textual representation of an offset
 // for lexical ordering. This is used for the file names of log segments.
-func segmentName(index int64) string {
-	return fmt.Sprintf("%020d", index)
+func segmentName(offset int64) string {
+	return fmt.Sprintf("%020d", offset)
+}
+
+func (l *Log) createInitialSegment(offset int64) error {
+	l.segments = append(l.segments, &segment{
+		offset: offset,
+		path:   filepath.Join(l.path, segmentName(offset)),
+	})
+	l.firstOffset = offset
+	l.lastOffset = offset - 1
+
+	var err error
+	l.sfile, err = os.OpenFile(l.segments[0].path, os.O_CREATE|os.O_RDWR|os.O_TRUNC, l.opts.FilePerms)
+	return err
 }
 
 // Close the log.
@@ -337,7 +343,7 @@ func (l *Log) Close() error {
 }
 
 // Write an entry to the log.
-func (l *Log) Write(data []byte) error {
+func (l *Log) Write(offset int64, data []byte) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.corrupt {
@@ -346,23 +352,35 @@ func (l *Log) Write(data []byte) error {
 		return ErrClosed
 	}
 	l.wbatch.Clear()
-	l.wbatch.Write(data)
+	l.wbatch.Write(offset, data)
 	return l.writeBatch(&l.wbatch)
 }
 
 // Cycle the old segment for a new segment.
-func (l *Log) cycle() error {
+func (l *Log) cycle(nextOffset int64) error {
 	if err := l.sfile.Sync(); err != nil {
 		return err
 	}
 	if err := l.sfile.Close(); err != nil {
 		return err
 	}
-	// cache the previous segment
-	l.pushCache(len(l.segments) - 1)
+
+	lastSegment := l.segments[len(l.segments)-1]
+	if lastSegment.offset == 0 && len(lastSegment.ebuf) == 0 {
+		// We're removing an initial empty segment, because we're
+		// jumping to a new offset
+		l.firstOffset = nextOffset
+		if err := os.Remove(lastSegment.path); err != nil {
+			return err
+		}
+	} else {
+		// cache the previous segment
+		l.pushCache(len(l.segments) - 1)
+	}
+
 	s := &segment{
-		index: l.lastIndex + 1,
-		path:  filepath.Join(l.path, segmentName(l.lastIndex+1)),
+		offset: nextOffset,
+		path:   filepath.Join(l.path, segmentName(nextOffset)),
 	}
 	var err error
 	l.sfile, err = os.OpenFile(s.path, os.O_CREATE|os.O_RDWR|os.O_TRUNC, l.opts.FilePerms)
@@ -395,13 +413,13 @@ type Batch struct {
 }
 
 type batchEntry struct {
-	index int64
-	size  int
+	offset int64
+	size   int
 }
 
 // Write an entry to the batch
-func (b *Batch) Write(data []byte) {
-	b.entries = append(b.entries, batchEntry{size: len(data)})
+func (b *Batch) Write(offset int64, data []byte) {
+	b.entries = append(b.entries, batchEntry{offset: offset, size: len(data)})
 	b.datas = append(b.datas, data...)
 }
 
@@ -428,15 +446,13 @@ func (l *Log) WriteBatch(b *Batch) error {
 }
 
 func (l *Log) writeBatch(b *Batch) error {
-	// check that all indexes in batch are sane
-	for i := 0; i < len(b.entries); i++ {
-		b.entries[i].index = l.lastIndex + int64(i+1)
-	}
 	// load the tail segment
 	s := l.segments[len(l.segments)-1]
-	if len(s.ebuf) > l.opts.SegmentSize {
+	firstOffsetInBatch := b.entries[0].offset
+	if firstOffsetInBatch > l.lastOffset+1 ||
+		len(s.ebuf) > l.opts.SegmentSize {
 		// tail segment has reached capacity. Close it and create a new one.
-		if err := l.cycle(); err != nil {
+		if err := l.cycle(firstOffsetInBatch); err != nil {
 			return err
 		}
 		s = l.segments[len(l.segments)-1]
@@ -454,8 +470,8 @@ func (l *Log) writeBatch(b *Batch) error {
 			if _, err := l.sfile.Write(s.ebuf[mark:]); err != nil {
 				return err
 			}
-			l.lastIndex = b.entries[i].index
-			if err := l.cycle(); err != nil {
+			l.lastOffset = b.entries[i].offset
+			if err := l.cycle(b.entries[i].offset + 1); err != nil {
 				return err
 			}
 			s = l.segments[len(l.segments)-1]
@@ -467,7 +483,7 @@ func (l *Log) writeBatch(b *Batch) error {
 		if _, err := l.sfile.Write(s.ebuf[mark:]); err != nil {
 			return err
 		}
-		l.lastIndex = b.entries[len(b.entries)-1].index
+		l.lastOffset = b.entries[len(b.entries)-1].offset
 	}
 	if !l.opts.NoSync {
 		if err := l.sfile.Sync(); err != nil {
@@ -478,7 +494,7 @@ func (l *Log) writeBatch(b *Batch) error {
 	return nil
 }
 
-// FirstIndex returns the index of the first entry in the log. Returns -1
+// FirstIndex returns the offset of the first entry in the log. Returns -1
 // when log has no entries.
 func (l *Log) FirstIndex() (index int64, err error) {
 	l.mu.RLock()
@@ -488,10 +504,10 @@ func (l *Log) FirstIndex() (index int64, err error) {
 	} else if l.closed {
 		return 0, ErrClosed
 	}
-	return l.firstIndex, nil
+	return l.firstOffset, nil
 }
 
-// LastIndex returns the index of the last entry in the log. Returns zero when
+// LastIndex returns the offset of the last entry in the log. Returns zero when
 // log has no entries.
 func (l *Log) LastIndex() (index int64, err error) {
 	l.mu.RLock()
@@ -501,7 +517,7 @@ func (l *Log) LastIndex() (index int64, err error) {
 	} else if l.closed {
 		return 0, ErrClosed
 	}
-	return l.lastIndex, nil
+	return l.lastOffset, nil
 }
 
 // findSegment performs a bsearch on the segments
@@ -509,7 +525,7 @@ func (l *Log) findSegment(index int64) int {
 	i, j := 0, len(l.segments)
 	for i < j {
 		h := i + (j-i)/2
-		if index >= l.segments[h].index {
+		if index >= l.segments[h].offset {
 			i = h + 1
 		} else {
 			j = h
@@ -526,7 +542,7 @@ func (l *Log) loadSegmentEntries(s *segment) error {
 	ebuf := data
 	var epos []bpos
 	var pos int
-	for exidx := s.index; len(data) > 0; exidx++ {
+	for exidx := s.offset; len(data) > 0; exidx++ {
 		n, err := loadNextEntry(data)
 		if err != nil {
 			return err
@@ -557,14 +573,14 @@ func loadNextEntry(data []byte) (n int, err error) {
 func (l *Log) loadSegment(index int64) (*segment, error) {
 	// check the last segment first.
 	lseg := l.segments[len(l.segments)-1]
-	if index >= lseg.index {
+	if index >= lseg.offset {
 		return lseg, nil
 	}
 	// check the most recent cached segment
 	var rseg *segment
 	l.scache.Range(func(_, v interface{}) bool {
 		s := v.(*segment)
-		if index >= s.index && index < s.index+int64(len(s.epos)) {
+		if index >= s.offset && index < s.offset+int64(len(s.epos)) {
 			rseg = s
 		}
 		return false
@@ -587,7 +603,7 @@ func (l *Log) loadSegment(index int64) (*segment, error) {
 }
 
 // Read an entry from the log. Returns a byte slice containing the data entry.
-func (l *Log) Read(index int64) (data []byte, err error) {
+func (l *Log) Read(offset int64) (data []byte, err error) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	if l.corrupt {
@@ -595,14 +611,19 @@ func (l *Log) Read(index int64) (data []byte, err error) {
 	} else if l.closed {
 		return nil, ErrClosed
 	}
-	if index < l.firstIndex || index > l.lastIndex {
+	if offset < l.firstOffset || offset > l.lastOffset {
 		return nil, ErrNotFound
 	}
-	s, err := l.loadSegment(index)
+	s, err := l.loadSegment(offset)
 	if err != nil {
 		return nil, err
 	}
-	epos := s.epos[index-s.index]
+
+	if s.offset == 52 {
+		fmt.Printf("READ OFFSET: %d s.OFFSET: %d\n", offset, s.offset)
+	}
+
+	epos := s.epos[offset-s.offset]
 	edata := s.ebuf[epos.pos:epos.end]
 
 	size, n := binary.Uvarint(edata)
@@ -645,8 +666,8 @@ func (l *Log) clearCache() {
 }
 
 // TruncateFront trims the front of the log by removing all entries that
-// are before the provided `index`. In other words the entry at
-// `index` becomes the first entry in the log.
+// are before the provided `offset`. In other words the entry at
+// `offset` becomes the first entry in the log.
 func (l *Log) TruncateFront(index int64) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -658,10 +679,10 @@ func (l *Log) TruncateFront(index int64) error {
 	return l.truncateFront(index)
 }
 func (l *Log) truncateFront(index int64) (err error) {
-	if index < l.firstIndex || index > l.lastIndex {
+	if index < l.firstOffset || index > l.lastOffset {
 		return ErrOutOfRange
 	}
-	if index == l.firstIndex {
+	if index == l.firstOffset {
 		// nothing to truncate
 		return nil
 	}
@@ -671,7 +692,7 @@ func (l *Log) truncateFront(index int64) (err error) {
 	if err != nil {
 		return err
 	}
-	epos := s.epos[index-s.index:]
+	epos := s.epos[index-s.offset:]
 	ebuf := s.ebuf[epos[0].pos:]
 	// Create a temp file contains the truncated segment.
 	tempName := filepath.Join(l.path, tempFileName)
@@ -723,7 +744,7 @@ func (l *Log) truncateFront(index int64) (err error) {
 		return err
 	}
 	s.path = newName
-	s.index = index
+	s.offset = index
 	if segIdx == len(l.segments)-1 {
 		// Reopen the tail segment file
 		if l.sfile, err = os.OpenFile(newName, os.O_WRONLY, l.opts.FilePerms); err != nil {
@@ -743,13 +764,36 @@ func (l *Log) truncateFront(index int64) (err error) {
 		}
 	}
 	l.segments = append([]*segment{}, l.segments[segIdx:]...)
-	l.firstIndex = index
+	l.firstOffset = index
 	l.clearCache()
 	return nil
 }
 
+func (l *Log) Clear() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.corrupt {
+		return ErrCorrupt
+	} else if l.closed {
+		return ErrClosed
+	}
+
+	return l.clear()
+}
+
+func (l *Log) clear() error {
+	l.clearCache()
+
+	for _, s := range l.segments {
+		os.Remove(s.path)
+	}
+
+	l.segments = make([]*segment, 0)
+	return l.createInitialSegment(0)
+}
+
 // TruncateBack truncates the back of the log by removing all entries that
-// are after the provided `index`. In other words the entry at `index`
+// are after the provided `offset`. In other words the entry at `offset`
 // becomes the last entry in the log.
 func (l *Log) TruncateBack(index int64) error {
 	l.mu.Lock()
@@ -763,13 +807,13 @@ func (l *Log) TruncateBack(index int64) error {
 }
 
 func (l *Log) truncateBack(index int64) (err error) {
-	if index == l.firstIndex-1 {
-		return l.truncateBackAll(l.firstIndex)
+	if index == l.firstOffset-1 {
+		return l.truncateBackAll(l.firstOffset)
 	}
-	if index < l.firstIndex || index > l.lastIndex {
+	if index < l.firstOffset || index > l.lastOffset {
 		return ErrOutOfRange
 	}
-	if index == l.lastIndex {
+	if index == l.lastOffset {
 		// nothing to truncate
 		return nil
 	}
@@ -779,7 +823,7 @@ func (l *Log) truncateBack(index int64) (err error) {
 	if err != nil {
 		return err
 	}
-	epos := s.epos[:index-s.index+1]
+	epos := s.epos[:index-s.offset+1]
 	ebuf := s.ebuf[:epos[len(epos)-1].end]
 	// Create a temp file contains the truncated segment.
 	tempName := filepath.Join(l.path, tempFileName)
@@ -798,7 +842,7 @@ func (l *Log) truncateBack(index int64) (err error) {
 		return f.Close()
 	}()
 	// Rename the TEMP file to its END file name.
-	endName := filepath.Join(l.path, segmentName(s.index)+endSuffix)
+	endName := filepath.Join(l.path, segmentName(s.offset)+endSuffix)
 	if err = os.Rename(tempName, endName); err != nil {
 		return err
 	}
@@ -825,7 +869,7 @@ func (l *Log) truncateBack(index int64) (err error) {
 		}
 	}
 	// Rename the END file to the final truncated segment name.
-	newName := filepath.Join(l.path, segmentName(s.index))
+	newName := filepath.Join(l.path, segmentName(s.offset))
 	if err = os.Rename(endName, newName); err != nil {
 		return err
 	}
@@ -844,7 +888,7 @@ func (l *Log) truncateBack(index int64) (err error) {
 	}
 	s.path = newName
 	l.segments = append([]*segment{}, l.segments[:segIdx+1]...)
-	l.lastIndex = index
+	l.lastOffset = index
 	l.clearCache()
 	if err = l.loadSegmentEntries(s); err != nil {
 		return err
@@ -853,7 +897,7 @@ func (l *Log) truncateBack(index int64) (err error) {
 }
 
 func (l *Log) truncateBackAll(newFirstIndex int64) (err error) {
-	if newFirstIndex == l.lastIndex {
+	if newFirstIndex == l.lastOffset {
 		// nothing to truncate
 		return nil
 	}
@@ -902,10 +946,10 @@ func (l *Log) truncateBackAll(newFirstIndex int64) (err error) {
 	}
 
 	l.segments = append([]*segment{}, &segment{
-		path:  newName,
-		index: newFirstIndex,
+		path:   newName,
+		offset: newFirstIndex,
 	})
-	l.lastIndex = newFirstIndex - 1
+	l.lastOffset = newFirstIndex - 1
 	l.clearCache()
 	return l.loadSegmentEntries(l.segments[0])
 }
