@@ -108,7 +108,6 @@ func (m *mockRpcClient) Trailer() metadata.MD {
 }
 
 func (m *mockRpcClient) CloseSend() error {
-	close(m.addEntryReqs)
 	return nil
 }
 
