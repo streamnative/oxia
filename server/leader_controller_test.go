@@ -442,7 +442,8 @@ func TestLeaderController_BecomeLeaderEpoch(t *testing.T) {
 func TestLeaderController_AddFollower(t *testing.T) {
 	var shard uint32 = 1
 
-	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
+	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
 
 	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
@@ -504,7 +505,8 @@ func TestLeaderController_AddFollower(t *testing.T) {
 func TestLeaderController_AddFollowerCheckEpoch(t *testing.T) {
 	var shard uint32 = 1
 
-	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
+	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
 
 	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
