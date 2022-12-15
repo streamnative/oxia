@@ -44,7 +44,7 @@ func (s *PublicRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest, srv
 	s.log.Debug().
 		Str("peer", common.GetPeer(srv.Context())).
 		Msg("Shard assignments requests")
-	err := s.assignmentDispatcher.AddClient(srv)
+	err := s.assignmentDispatcher.RegisterForUpdates(srv)
 	if err != nil {
 		s.log.Warn().Err(err).
 			Str("peer", common.GetPeer(srv.Context())).

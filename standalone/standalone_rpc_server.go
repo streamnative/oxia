@@ -97,7 +97,7 @@ func (s *StandaloneRpcServer) Close() error {
 }
 
 func (s *StandaloneRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest, stream proto.OxiaClient_ShardAssignmentsServer) error {
-	return s.assignmentDispatcher.AddClient(stream)
+	return s.assignmentDispatcher.RegisterForUpdates(stream)
 }
 
 func (s *StandaloneRpcServer) Write(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error) {

@@ -4,6 +4,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"math"
 	"oxia/proto"
+	"sync"
 	"testing"
 	"time"
 )
@@ -12,7 +13,7 @@ func TestUninitializedAssignmentDispatcher(t *testing.T) {
 	dispatcher := NewShardAssignmentDispatcher()
 	mockClient := newMockShardAssignmentClientStream()
 	assert.False(t, dispatcher.Initialized())
-	err := dispatcher.AddClient(mockClient)
+	err := dispatcher.RegisterForUpdates(mockClient)
 	assert.ErrorIs(t, err, ErrorNotInitialized)
 	assert.NoError(t, dispatcher.Close())
 }
@@ -35,8 +36,19 @@ func TestShardAssignmentDispatcher_Initialized(t *testing.T) {
 	})
 	assert.Eventually(t, func() bool { return dispatcher.Initialized() }, 1*time.Second, 10*time.Millisecond)
 	mockClient := newMockShardAssignmentClientStream()
-	err := dispatcher.AddClient(mockClient)
-	assert.NoError(t, err)
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+
+	go func() {
+		err := dispatcher.RegisterForUpdates(mockClient)
+		assert.NoError(t, err)
+		wg.Done()
+	}()
+
+	mockClient.cancel()
+	wg.Wait()
+
 	assert.NoError(t, dispatcher.Close())
 
 }
@@ -69,8 +81,15 @@ func TestShardAssignmentDispatcher_AddClient(t *testing.T) {
 
 	// Should get the whole assignment as they arrived from controller
 	mockClient := newMockShardAssignmentClientStream()
-	err := dispatcher.AddClient(mockClient)
-	assert.NoError(t, err)
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		err := dispatcher.RegisterForUpdates(mockClient)
+		assert.NoError(t, err)
+		wg.Done()
+	}()
+
 	response := mockClient.GetResponse()
 	assert.Equal(t, request, response)
 
@@ -87,12 +106,25 @@ func TestShardAssignmentDispatcher_AddClient(t *testing.T) {
 	response = mockClient.GetResponse()
 	assert.Equal(t, request, response)
 
+	mockClient.cancel()
+	wg.Wait()
+
 	// Should get the whole assignment with the update applied
 	mockClient = newMockShardAssignmentClientStream()
-	err = dispatcher.AddClient(mockClient)
-	assert.NoError(t, err)
+	wg2 := sync.WaitGroup{}
+	wg2.Add(1)
+
+	go func() {
+		err := dispatcher.RegisterForUpdates(mockClient)
+		assert.NoError(t, err)
+		wg2.Done()
+	}()
+
 	response = mockClient.GetResponse()
 	assert.Equal(t, request, response)
+
+	mockClient.cancel()
+	wg.Wait()
 
 	assert.NoError(t, dispatcher.Close())
 }
