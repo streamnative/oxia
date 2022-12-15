@@ -21,7 +21,7 @@ type PrometheusMetrics struct {
 func Start(port int) (*PrometheusMetrics, error) {
 	http.Handle("/metrics", promhttp.Handler())
 
-	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		return nil, err
 	}

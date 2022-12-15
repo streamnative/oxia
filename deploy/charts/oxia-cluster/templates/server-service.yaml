@@ -5,7 +5,7 @@ metadata:
     {{- include "oxia-cluster.server.labels" . | nindent 4 }}
   name: {{ .Release.Name }}
 spec:
-  clusterIP: ""
+  clusterIP: None
   ports:
     {{- range $key, $value := .Values.server.ports }}
     - name: {{ $key }}

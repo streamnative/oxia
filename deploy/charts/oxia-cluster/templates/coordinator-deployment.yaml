@@ -16,7 +16,7 @@ spec:
       name: {{ .Release.Name }}-coordinator
     spec:
       containers:
-        - command: ["oxia", "coordinator"]
+        - command: ["oxia", "coordinator", "--log-json"]
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           name: coordinator
