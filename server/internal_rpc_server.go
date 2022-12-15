@@ -227,6 +227,42 @@ func (s *internalRpcServer) AddEntries(srv proto.OxiaLogReplication_AddEntriesSe
 	}
 }
 
+func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapshotServer) error {
+	// Add entries receives an incoming stream of request, the shard_id needs to be encoded
+	// as a property in the metadata
+	md, ok := metadata.FromIncomingContext(srv.Context())
+	if !ok {
+		return errors.New("shard id is not set in the request metadata")
+	}
+
+	shardId, err := readHeaderUint32(md, metadataShardId)
+	if err != nil {
+		return err
+	}
+
+	s.log.Info().
+		Uint32("shard", shardId).
+		Str("peer", common.GetPeer(srv.Context())).
+		Msg("Received SendSnapshot request")
+
+	if follower, err := s.shardsDirector.GetOrCreateFollower(shardId); err != nil {
+		s.log.Warn().Err(err).
+			Uint32("shard", shardId).
+			Str("peer", common.GetPeer(srv.Context())).
+			Msg("SendSnapshot failed: could not get follower controller")
+		return err
+	} else {
+		err2 := follower.SendSnapshot(srv)
+		if err2 != nil {
+			s.log.Warn().Err(err2).
+				Uint32("shard", shardId).
+				Str("peer", common.GetPeer(srv.Context())).
+				Msg("SendSnapshot failed")
+		}
+		return err2
+	}
+}
+
 func readHeader(md metadata.MD, key string) (value string, err error) {
 	arr := md.Get(key)
 	if len(arr) == 0 {
