@@ -5,13 +5,11 @@ import (
 	"fmt"
 	monitoring "github.com/prometheus-operator/prometheus-operator/pkg/client/versioned"
 	"go.uber.org/multierr"
-	"io"
 	rbacV1 "k8s.io/api/rbac/v1"
 	k8sResource "k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/client-go/kubernetes"
 	"oxia/operator/client"
 	"oxia/operator/resource"
-	"oxia/operator/resource/crd"
 )
 
 type Config struct {
@@ -79,8 +77,8 @@ func (c *Config) Validate() error {
 }
 
 type Client interface {
-	Apply(out io.Writer, config Config) error
-	Delete(out io.Writer, config Config) error
+	Apply(config Config) error
+	Delete(config Config) error
 }
 
 type clientImpl struct {
@@ -96,32 +94,32 @@ func NewClient() Client {
 	}
 }
 
-func (c *clientImpl) Apply(out io.Writer, config Config) error {
+func (c *clientImpl) Apply(config Config) error {
 	var errs error
 
-	err := c.applyCoordinator(out, config)
+	err := c.applyCoordinator(config)
 	errs = multierr.Append(errs, err)
 
-	err = c.applyServers(out, config)
+	err = c.applyServers(config)
 	errs = multierr.Append(errs, err)
 
 	return errs
 }
 
-func (c *clientImpl) applyCoordinator(out io.Writer, config Config) error {
+func (c *clientImpl) applyCoordinator(config Config) error {
 	var errs error
 
 	name := config.Name + "-coordinator"
 	ports := []resource.NamedPort{resource.MetricsPort}
 
 	err := client.ServiceAccounts(c.kubernetes).Upsert(config.Namespace, resource.ServiceAccount(name))
-	errs = resource.PrintAndAppend(out, errs, err, "apply", "coordinator ServiceAccount")
+	errs = multierr.Append(errs, err)
 
 	err = client.Roles(c.kubernetes).Upsert(config.Namespace, role(name))
-	errs = resource.PrintAndAppend(out, errs, err, "apply", "coordinator Role")
+	errs = multierr.Append(errs, err)
 
 	err = client.RoleBindings(c.kubernetes).Upsert(config.Namespace, roleBinding(name, config.Namespace))
-	errs = resource.PrintAndAppend(out, errs, err, "apply", "coordinator RoleBinding")
+	errs = multierr.Append(errs, err)
 
 	deploymentConfig := resource.DeploymentConfig{
 		PodConfig: resource.PodConfig{
@@ -135,7 +133,7 @@ func (c *clientImpl) applyCoordinator(out io.Writer, config Config) error {
 		Replicas: 1,
 	}
 	err = client.Deployments(c.kubernetes).Upsert(config.Namespace, resource.Deployment(deploymentConfig))
-	errs = resource.PrintAndAppend(out, errs, err, "apply", "coordinator Deployment")
+	errs = multierr.Append(errs, err)
 
 	serviceConfig := resource.ServiceConfig{
 		Name:     name,
@@ -143,11 +141,11 @@ func (c *clientImpl) applyCoordinator(out io.Writer, config Config) error {
 		Ports:    ports,
 	}
 	err = client.Services(c.kubernetes).Upsert(config.Namespace, resource.Service(serviceConfig))
-	errs = resource.PrintAndAppend(out, errs, err, "apply", "coordinator Service")
+	errs = multierr.Append(errs, err)
 
 	if config.MonitoringEnabled {
 		err = client.ServiceMonitors(c.monitoring).Upsert(config.Namespace, resource.ServiceMonitor(name))
-		errs = resource.PrintAndAppend(out, errs, err, "apply", "coordinator ServiceMonitor")
+		errs = multierr.Append(errs, err)
 	}
 
 	//TODO PodDisruptionBudget
@@ -155,13 +153,13 @@ func (c *clientImpl) applyCoordinator(out io.Writer, config Config) error {
 	return errs
 }
 
-func (c *clientImpl) applyServers(out io.Writer, config Config) error {
+func (c *clientImpl) applyServers(config Config) error {
 	var errs error
 
 	ports := resource.AllPorts
 
 	err := client.ServiceAccounts(c.kubernetes).Upsert(config.Namespace, resource.ServiceAccount(config.Name))
-	errs = resource.PrintAndAppend(out, errs, err, "apply", "server ServiceAccount")
+	errs = multierr.Append(errs, err)
 
 	statefulSetConfig := resource.StatefulSetConfig{
 		PodConfig: resource.PodConfig{
@@ -181,7 +179,7 @@ func (c *clientImpl) applyServers(out io.Writer, config Config) error {
 		Volume:   config.ServerVolume,
 	}
 	err = client.StatefulSets(c.kubernetes).Upsert(config.Namespace, resource.StatefulSet(statefulSetConfig))
-	errs = resource.PrintAndAppend(out, errs, err, "apply", "server StatefulSet")
+	errs = multierr.Append(errs, err)
 
 	serviceConfig := resource.ServiceConfig{
 		Name:     config.Name,
@@ -189,11 +187,11 @@ func (c *clientImpl) applyServers(out io.Writer, config Config) error {
 		Ports:    ports,
 	}
 	err = client.Services(c.kubernetes).Upsert(config.Namespace, resource.Service(serviceConfig))
-	errs = resource.PrintAndAppend(out, errs, err, "apply", "server Service")
+	errs = multierr.Append(errs, err)
 
 	if config.MonitoringEnabled {
 		err = client.ServiceMonitors(c.monitoring).Upsert(config.Namespace, resource.ServiceMonitor(config.Name))
-		errs = resource.PrintAndAppend(out, errs, err, "apply", "server ServiceMonitor")
+		errs = multierr.Append(errs, err)
 	}
 
 	//TODO PodDisruptionBudget
@@ -201,62 +199,62 @@ func (c *clientImpl) applyServers(out io.Writer, config Config) error {
 	return errs
 }
 
-func (c *clientImpl) Delete(out io.Writer, config Config) error {
+func (c *clientImpl) Delete(config Config) error {
 	var errs error
 
-	err := c.deleteServers(out, config)
+	err := c.deleteServers(config)
 	errs = multierr.Append(errs, err)
 
-	err = c.deleteCoordinator(out, config)
+	err = c.deleteCoordinator(config)
 	errs = multierr.Append(errs, err)
 
 	return errs
 }
 
-func (c *clientImpl) deleteCoordinator(out io.Writer, config Config) error {
+func (c *clientImpl) deleteCoordinator(config Config) error {
 	var errs error
 
 	name := config.Name + "-coordinator"
 
 	if config.MonitoringEnabled {
 		err := client.ServiceMonitors(c.monitoring).Delete(config.Namespace, name)
-		errs = resource.PrintAndAppend(out, errs, err, "delete", "coordinator ServiceMonitor")
+		errs = multierr.Append(errs, err)
 	}
 
 	err := client.Services(c.kubernetes).Delete(config.Namespace, name)
-	errs = resource.PrintAndAppend(out, errs, err, "delete", "coordinator Service")
+	errs = multierr.Append(errs, err)
 
 	err = client.Deployments(c.kubernetes).Delete(config.Namespace, name)
-	errs = resource.PrintAndAppend(out, errs, err, "delete", "coordinator Deployment")
+	errs = multierr.Append(errs, err)
 
 	err = client.RoleBindings(c.kubernetes).Delete(config.Namespace, name)
-	errs = resource.PrintAndAppend(out, errs, err, "delete", "coordinator RoleBinding")
+	errs = multierr.Append(errs, err)
 
 	err = client.Roles(c.kubernetes).Delete(config.Namespace, name)
-	errs = resource.PrintAndAppend(out, errs, err, "delete", "coordinator Role")
+	errs = multierr.Append(errs, err)
 
 	err = client.ServiceAccounts(c.kubernetes).Delete(config.Namespace, name)
-	errs = resource.PrintAndAppend(out, errs, err, "delete", "coordinator ServiceAccount")
+	errs = multierr.Append(errs, err)
 
 	return errs
 }
 
-func (c *clientImpl) deleteServers(out io.Writer, config Config) error {
+func (c *clientImpl) deleteServers(config Config) error {
 	var errs error
 
 	if config.MonitoringEnabled {
 		err := client.ServiceMonitors(c.monitoring).Delete(config.Namespace, config.Name)
-		errs = resource.PrintAndAppend(out, errs, err, "delete", "server ServiceMonitor")
+		errs = multierr.Append(errs, err)
 	}
 
 	err := client.Services(c.kubernetes).Delete(config.Namespace, config.Name)
-	errs = resource.PrintAndAppend(out, errs, err, "delete", "server Service")
+	errs = multierr.Append(errs, err)
 
 	err = client.StatefulSets(c.kubernetes).Delete(config.Namespace, config.Name)
-	errs = resource.PrintAndAppend(out, errs, err, "delete", "server StatefulSet")
+	errs = multierr.Append(errs, err)
 
 	err = client.ServiceAccounts(c.kubernetes).Delete(config.Namespace, config.Name)
-	errs = resource.PrintAndAppend(out, errs, err, "delete", "server ServiceAccount")
+	errs = multierr.Append(errs, err)
 
 	return errs
 }
@@ -271,7 +269,7 @@ func role(name string) *rbacV1.Role {
 func policyRules() []rbacV1.PolicyRule {
 	return []rbacV1.PolicyRule{
 		//If storing shard state on the OxiaCluster status
-		resource.PolicyRule(crd.Group, []string{crd.Resource}, []string{"get", "update"}),
+		resource.PolicyRule("oxia.streamnative.io", []string{"oxiaclusters"}, []string{"get", "update"}),
 		//If storing shard state on a configmap data
 		resource.PolicyRule("", []string{"configmaps"}, []string{"*"}),
 	}
@@ -281,7 +279,6 @@ func roleBinding(name, namespace string) *rbacV1.RoleBinding {
 	return &rbacV1.RoleBinding{
 		ObjectMeta: resource.Meta(name),
 		Subjects: []rbacV1.Subject{{
-			APIGroup:  "rbac.authorization.k8s.io",
 			Kind:      "ServiceAccount",
 			Name:      name,
 			Namespace: namespace,

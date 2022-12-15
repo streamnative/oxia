@@ -36,6 +36,30 @@ type KeyValueIterator interface {
 	Value() ([]byte, error)
 }
 
+type SnapshotChunk interface {
+	Name() string
+	Content() ([]byte, error)
+}
+
+type Snapshot interface {
+	io.Closer
+
+	BasePath() string
+
+	Valid() bool
+	Chunk() SnapshotChunk
+	Next() bool
+}
+
+type SnapshotLoader interface {
+	io.Closer
+
+	AddChunk(name string, content []byte) error
+
+	// Complete signals that the snapshot is now complete
+	Complete()
+}
+
 type KV interface {
 	io.Closer
 
@@ -45,7 +69,7 @@ type KV interface {
 
 	KeyRangeScan(lowerBound, upperBound string) KeyIterator
 
-	Snapshot() KeyValueIterator
+	Snapshot() (Snapshot, error)
 
 	Flush() error
 }
@@ -68,4 +92,6 @@ type KVFactory interface {
 	io.Closer
 
 	NewKV(shardId uint32) (KV, error)
+
+	NewSnapshotLoader(shardId uint32) (SnapshotLoader, error)
 }

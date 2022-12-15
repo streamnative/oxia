@@ -1,7 +1,6 @@
 package cluster
 
 import (
-	"bytes"
 	"context"
 	monitoring "github.com/prometheus-operator/prometheus-operator/pkg/client/versioned"
 	fakeMonitoring "github.com/prometheus-operator/prometheus-operator/pkg/client/versioned/fake"
@@ -24,37 +23,13 @@ func TestCluster(t *testing.T) {
 	config.Namespace = "myns"
 	config.MonitoringEnabled = true
 
-	var out bytes.Buffer
-	err := client.Apply(&out, config)
+	err := client.Apply(config)
 	assert.NoError(t, err)
-	assert.Equal(t, `coordinator ServiceAccount apply succeeded
-coordinator Role apply succeeded
-coordinator RoleBinding apply succeeded
-coordinator Deployment apply succeeded
-coordinator Service apply succeeded
-coordinator ServiceMonitor apply succeeded
-server ServiceAccount apply succeeded
-server StatefulSet apply succeeded
-server Service apply succeeded
-server ServiceMonitor apply succeeded
-`, out.String())
-	out.Reset()
 
 	assertClusterResources(t, _kubernetes, _monitoring, config.Namespace, 1)
 
-	err = client.Delete(&out, config)
+	err = client.Delete(config)
 	assert.NoError(t, err)
-	assert.Equal(t, `server ServiceMonitor delete succeeded
-server Service delete succeeded
-server StatefulSet delete succeeded
-server ServiceAccount delete succeeded
-coordinator ServiceMonitor delete succeeded
-coordinator Service delete succeeded
-coordinator Deployment delete succeeded
-coordinator RoleBinding delete succeeded
-coordinator Role delete succeeded
-coordinator ServiceAccount delete succeeded
-`, out.String())
 
 	assertClusterResources(t, _kubernetes, _monitoring, config.Namespace, 0)
 }

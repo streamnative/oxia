@@ -2,9 +2,9 @@ package resource
 
 var (
 	AllPorts     = []NamedPort{PublicPort, InternalPort, MetricsPort}
-	PublicPort   = NamedPort{"public", 6650}
-	InternalPort = NamedPort{"internal", 8080}
-	MetricsPort  = NamedPort{"metrics", 6648}
+	PublicPort   = NamedPort{"public", 6648}
+	InternalPort = NamedPort{"internal", 6649}
+	MetricsPort  = NamedPort{"metrics", 8080}
 )
 
 type NamedPort struct {

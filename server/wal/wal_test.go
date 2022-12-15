@@ -5,7 +5,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"oxia/proto"
-	"strings"
 	"testing"
 	"time"
 )
@@ -50,16 +49,16 @@ func (_ *tidwallWalFactoryFactory) Persistent() bool {
 var walFF walFactoryFactory = &inMemoryWalFactoryFactory{}
 
 func TestWal(t *testing.T) {
-	for _, f := range []walFactoryFactory{&inMemoryWalFactoryFactory{}, &tidwallWalFactoryFactory{}} {
+	for _, f := range []walFactoryFactory{ /*&inMemoryWalFactoryFactory{}, */ &tidwallWalFactoryFactory{}} {
 		walFF = f
 		t.Run(f.Name()+"Factory_NewWal", Factory_NewWal)
 		t.Run(f.Name()+"Append", Append)
 		t.Run(f.Name()+"Truncate", Truncate)
+		t.Run(f.Name()+"Clear", Clear)
 		if f.Persistent() {
 			t.Run(f.Name()+"Reopen", Reopen)
 		}
 	}
-
 }
 
 func createWal(t *testing.T) (WalFactory, Wal) {
@@ -173,7 +172,7 @@ func Append(t *testing.T) {
 		Offset: int64(88),
 		Value:  []byte("E"),
 	})
-	assert.True(t, err != nil && strings.Contains(err.Error(), "Invalid next offset"))
+	assert.ErrorIs(t, err, ErrorInvalidNextOffset)
 
 	err = w.Close()
 	assert.NoError(t, err)
@@ -242,4 +241,67 @@ func Reopen(t *testing.T) {
 	assert.NoError(t, err)
 	err = f.Close()
 	assert.NoError(t, err)
+}
+
+func Clear(t *testing.T) {
+	f, w := createWal(t)
+
+	for i := 0; i < 100; i++ {
+		assert.NoError(t, w.Append(&proto.LogEntry{
+			Epoch:  1,
+			Offset: int64(i),
+			Value:  []byte(fmt.Sprintf("entry-%d", i)),
+		}))
+	}
+
+	assert.EqualValues(t, 99, w.LastOffset())
+
+	assert.NoError(t, w.Clear())
+
+	assert.EqualValues(t, InvalidOffset, w.LastOffset())
+
+	for i := 250; i < 300; i++ {
+		assert.NoError(t, w.Append(&proto.LogEntry{
+			Epoch:  1,
+			Offset: int64(i),
+			Value:  []byte(fmt.Sprintf("entry-%d", i)),
+		}))
+
+		assert.EqualValues(t, i, w.LastOffset())
+	}
+
+	// Test forward reader
+	r, err := w.NewReader(249)
+	assert.NoError(t, err)
+
+	for i := 250; i < 300; i++ {
+		assert.True(t, r.HasNext())
+		le, err := r.ReadNext()
+		assert.NoError(t, err)
+
+		assert.EqualValues(t, i, le.Offset)
+		assert.Equal(t, fmt.Sprintf("entry-%d", i), string(le.Value))
+	}
+
+	assert.False(t, r.HasNext())
+	assert.NoError(t, r.Close())
+
+	// Test reverse reader
+	r, err = w.NewReverseReader()
+	assert.NoError(t, err)
+
+	for i := 299; i >= 250; i-- {
+		assert.True(t, r.HasNext())
+		le, err := r.ReadNext()
+		assert.NoError(t, err)
+
+		assert.EqualValues(t, i, le.Offset)
+		assert.Equal(t, fmt.Sprintf("entry-%d", i), string(le.Value))
+	}
+
+	assert.False(t, r.HasNext())
+	assert.NoError(t, r.Close())
+
+	assert.NoError(t, w.Close())
+	assert.NoError(t, f.Close())
 }

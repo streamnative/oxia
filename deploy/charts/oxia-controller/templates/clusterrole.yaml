@@ -1,0 +1,22 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    {{- include "oxia-controller.labels" . | nindent 4 }}
+  name: {{ .Release.Name }}
+rules:
+  - apiGroups: [ "" ]
+    resources: [ "configmaps", "services", "serviceaccounts" ]
+    verbs: [ "*" ]
+  - apiGroups: [ "apps" ]
+    resources: [ "deployments", "statefulsets" ]
+    verbs: [ "*" ]
+  - apiGroups: [ "oxia.streamnative.io" ]
+    resources: [ "oxiaclusters" ]
+    verbs: [ "*" ]
+  - apiGroups: [ "monitoring.coreos.com" ]
+    resources: [ "servicemonitors" ]
+    verbs: [ "*" ]
+  - apiGroups: [ "rbac" ]
+    resources: [ "rolebindings", "roles" ]
+    verbs: [ "*" ]

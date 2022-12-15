@@ -80,13 +80,13 @@ type mockPerNodeChannels struct {
 
 	becomeLeaderRequests  chan *proto.BecomeLeaderRequest
 	becomeLeaderResponses chan struct {
-		*proto.EmptyResponse
+		*proto.BecomeLeaderResponse
 		error
 	}
 
 	addFollowerRequests  chan *proto.AddFollowerRequest
 	addFollowerResponses chan struct {
-		*proto.EmptyResponse
+		*proto.AddFollowerResponse
 		error
 	}
 
@@ -131,16 +131,16 @@ func (m *mockPerNodeChannels) FenceResponse(epoch int64, offset int64, err error
 
 func (m *mockPerNodeChannels) BecomeLeaderResponse(err error) {
 	m.becomeLeaderResponses <- struct {
-		*proto.EmptyResponse
+		*proto.BecomeLeaderResponse
 		error
-	}{&proto.EmptyResponse{}, err}
+	}{&proto.BecomeLeaderResponse{}, err}
 }
 
 func (m *mockPerNodeChannels) AddFollowerResponse(err error) {
 	m.addFollowerResponses <- struct {
-		*proto.EmptyResponse
+		*proto.AddFollowerResponse
 		error
-	}{&proto.EmptyResponse{}, err}
+	}{&proto.AddFollowerResponse{}, err}
 }
 
 func newMockPerNodeChannels() *mockPerNodeChannels {
@@ -152,12 +152,12 @@ func newMockPerNodeChannels() *mockPerNodeChannels {
 		}, 100),
 		becomeLeaderRequests: make(chan *proto.BecomeLeaderRequest, 100),
 		becomeLeaderResponses: make(chan struct {
-			*proto.EmptyResponse
+			*proto.BecomeLeaderResponse
 			error
 		}, 100),
 		addFollowerRequests: make(chan *proto.AddFollowerRequest, 100),
 		addFollowerResponses: make(chan struct {
-			*proto.EmptyResponse
+			*proto.AddFollowerResponse
 			error
 		}, 100),
 		shardAssignmentsStream: newMockShardAssignmentClient(),
@@ -223,14 +223,16 @@ func (r *mockRpcProvider) GetShardAssignmentStream(ctx context.Context, node Ser
 
 func (r *mockRpcProvider) Fence(ctx context.Context, node ServerAddress, req *proto.FenceRequest) (*proto.FenceResponse, error) {
 	r.Lock()
-	defer r.Unlock()
 
 	s := r.getNode(node)
 	s.fenceRequests <- req
 
 	if s.err != nil {
+		r.Unlock()
 		return nil, s.err
 	}
+
+	r.Unlock()
 
 	select {
 	case response := <-s.fenceResponses:
@@ -242,20 +244,22 @@ func (r *mockRpcProvider) Fence(ctx context.Context, node ServerAddress, req *pr
 	}
 }
 
-func (r *mockRpcProvider) BecomeLeader(ctx context.Context, node ServerAddress, req *proto.BecomeLeaderRequest) (*proto.EmptyResponse, error) {
+func (r *mockRpcProvider) BecomeLeader(ctx context.Context, node ServerAddress, req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error) {
 	r.Lock()
-	defer r.Unlock()
 
 	s := r.getNode(node)
 	s.becomeLeaderRequests <- req
 
 	if s.err != nil {
+		r.Unlock()
 		return nil, s.err
 	}
 
+	r.Unlock()
+
 	select {
 	case response := <-s.becomeLeaderResponses:
-		return response.EmptyResponse, response.error
+		return response.BecomeLeaderResponse, response.error
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-time.After(3 * time.Second):
@@ -263,20 +267,22 @@ func (r *mockRpcProvider) BecomeLeader(ctx context.Context, node ServerAddress, 
 	}
 }
 
-func (r *mockRpcProvider) AddFollower(ctx context.Context, node ServerAddress, req *proto.AddFollowerRequest) (*proto.EmptyResponse, error) {
+func (r *mockRpcProvider) AddFollower(ctx context.Context, node ServerAddress, req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error) {
 	r.Lock()
-	defer r.Unlock()
 
 	s := r.getNode(node)
 	s.addFollowerRequests <- req
 
 	if s.err != nil {
+		r.Unlock()
 		return nil, s.err
 	}
 
+	r.Unlock()
+
 	select {
 	case response := <-s.addFollowerResponses:
-		return response.EmptyResponse, response.error
+		return response.AddFollowerResponse, response.error
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-time.After(3 * time.Second):
@@ -324,7 +330,7 @@ func (m *mockShardAssignmentClient) Send(response *proto.ShardAssignmentsRespons
 	return nil
 }
 
-func (m *mockShardAssignmentClient) CloseAndRecv() (*proto.EmptyResponse, error) {
+func (m *mockShardAssignmentClient) CloseAndRecv() (*proto.CoordinationShardAssignmentsResponse, error) {
 	panic("not implemented")
 }
 

@@ -156,7 +156,7 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 	}
 
 	lc.log.Info().
-		Int64("offset", headIndex.Offset).
+		Interface("last-entry", headIndex).
 		Msg("Fenced leader")
 
 	return &proto.FenceResponse{
@@ -206,12 +206,29 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 		return nil, err
 	}
 
-	lc.quorumAckTracker = NewQuorumAckTracker(req.GetReplicationFactor(), leaderHeadIndex.Offset)
+	leaderCommitIndex, err := lc.db.ReadCommitIndex()
+	if err != nil {
+		return nil, err
+	}
+
+	lc.quorumAckTracker = NewQuorumAckTracker(req.GetReplicationFactor(), leaderHeadIndex.Offset, leaderCommitIndex)
 
 	for follower, followerHeadIndex := range req.FollowerMaps {
 		if err := lc.addFollower(leaderHeadIndex, follower, followerHeadIndex); err != nil {
 			return nil, err
 		}
+	}
+
+	// We must wait until all the entries in the leader WAL are fully
+	// committed in the quorum, to avoid missing any entries in the DB
+	// by the moment we make the leader controller accepting new write/read
+	// requests
+	if _, err = lc.quorumAckTracker.WaitForCommitIndex(leaderHeadIndex.Offset, nil); err != nil {
+		return nil, err
+	}
+
+	if err = lc.applyAllEntriesIntoDB(); err != nil {
+		return nil, err
 	}
 
 	lc.log.Info().
@@ -284,6 +301,40 @@ func (lc *leaderController) addFollower(leaderHeadIndex *proto.EntryId, follower
 		Interface("follower-head-index", followerHeadIndex).
 		Msg("Added follower")
 	lc.followers[follower] = cursor
+	return nil
+}
+
+func (lc *leaderController) applyAllEntriesIntoDB() error {
+	dbCommitIndex, err := lc.db.ReadCommitIndex()
+	if err != nil {
+		return err
+	}
+
+	lc.log.Info().
+		Int64("commit-index", dbCommitIndex).
+		Int64("head-index", lc.quorumAckTracker.HeadIndex()).
+		Msg("Applying all pending entries to database")
+
+	r, err := lc.wal.NewReader(dbCommitIndex)
+	if err != nil {
+		return err
+	}
+	for r.HasNext() {
+		entry, err := r.ReadNext()
+		if err != nil {
+			return err
+		}
+
+		writeRequest := &proto.WriteRequest{}
+		if err = pb.Unmarshal(entry.Value, writeRequest); err != nil {
+			return err
+		}
+
+		if _, err = lc.db.ProcessWrite(writeRequest, entry.Offset); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

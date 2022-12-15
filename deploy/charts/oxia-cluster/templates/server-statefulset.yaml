@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  labels:
+    {{- include "oxia-cluster.server.labels" . | nindent 4 }}
+  name: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.server.replicas }}
+  selector:
+    matchLabels:
+      {{- include "oxia-cluster.server.selectorLabels" . | nindent 6 }}
+  serviceName: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        {{- include "oxia-cluster.server.labels" . | nindent 8 }}
+      name: {{ .Release.Name }}
+    spec:
+      containers:
+        - command: [ "oxia", "server" ]
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          name: server
+          ports:
+            {{- range $key, $value := .Values.server.ports }}
+            - containerPort: {{ $value | int }}
+              name: {{ $key }}
+            {{- end}}
+          resources:
+            limits:
+              cpu: {{ .Values.server.resources.cpu }}
+              memory: {{ .Values.server.resources.memory }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          livenessProbe:
+            {{- include "oxia-cluster.probe" .Values.server.ports.internal | nindent 12 }}
+          readinessProbe:
+            {{- include "oxia-cluster.probe" .Values.server.ports.internal | nindent 12 }}
+      serviceAccountName: {{ .Release.Name }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        {{- if .Values.storageClass }}
+        storageClassName: {{ .Values.storageClass }}
+        {{- end}}
+        resources:
+          requests:
+            storage: {{ .Values.server.volume }}

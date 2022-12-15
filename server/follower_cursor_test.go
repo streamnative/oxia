@@ -13,7 +13,7 @@ func TestFollowerCursor(t *testing.T) {
 	var shard uint32 = 2
 
 	stream := newMockRpcClient()
-	ackTracker := NewQuorumAckTracker(3, wal.InvalidOffset)
+	ackTracker := NewQuorumAckTracker(3, wal.InvalidOffset, wal.InvalidOffset)
 	wf := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 	w, err := wf.NewWal(shard)
 	assert.NoError(t, err)

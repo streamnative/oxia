@@ -1,0 +1,36 @@
+# Default values for oxia-controller.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+#imagePullSecrets: oxia
+#storageClass: gp2
+
+image:
+  repository: oxia
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+
+replicationFactor: 3
+shardCount: 3
+
+coordinator:
+  ports:
+    internal: 6649
+    metrics: 8080
+  resources:
+    cpu: 100m
+    memory: 128Mi
+
+server:
+  replicas: 3
+  ports:
+    public: 6648
+    internal: 6649
+    metrics: 8080
+  resources:
+    cpu: 100m
+    memory: 128Mi
+  volume: 1Gi
+
+serviceMonitor: false

@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    {{- include "oxia-cluster.coordinator.labels" . | nindent 4 }}
+  name: {{ .Release.Name }}-coordinator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "oxia-cluster.coordinator.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "oxia-cluster.coordinator.labels" . | nindent 8 }}
+      name: {{ .Release.Name }}-coordinator
+    spec:
+      containers:
+        - command: ["oxia", "coordinator"]
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          name: coordinator
+          ports:
+            {{- range $key, $value := .Values.coordinator.ports }}
+            - containerPort: {{ $value | int }}
+              name: {{ $key }}
+            {{- end}}
+          resources:
+            limits:
+              cpu: {{ .Values.coordinator.resources.cpu }}
+              memory: {{ .Values.coordinator.resources.memory }}
+          volumeMounts:
+            - name: conf
+              mountPath: /oxia/conf
+          livenessProbe:
+            {{- include "oxia-cluster.probe" .Values.coordinator.ports.internal | nindent 12 }}
+          readinessProbe:
+            {{- include "oxia-cluster.probe" .Values.coordinator.ports.internal | nindent 12 }}
+      volumes:
+        - name: conf
+          configMap:
+            name: {{ .Release.Name }}
+      serviceAccountName: {{ .Release.Name }}-coordinator

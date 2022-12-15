@@ -3,16 +3,30 @@ package server
 import (
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
+	pb "google.golang.org/protobuf/proto"
 	"oxia/proto"
 	"oxia/server/kv"
 	"oxia/server/wal"
 	"testing"
 )
 
+func AssertProtoEqual(t *testing.T, expected, actual pb.Message) {
+	if !pb.Equal(expected, actual) {
+		protoMarshal := protojson.MarshalOptions{
+			EmitUnpopulated: true,
+		}
+		expectedJson, _ := protoMarshal.Marshal(expected)
+		actualJson, _ := protoMarshal.Marshal(actual)
+		assert.Equal(t, string(expectedJson), string(actualJson))
+	}
+}
+
 func TestLeaderController_NotInitialized(t *testing.T) {
 	var shard uint32 = 1
 
-	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
+	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
 
 	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
@@ -47,7 +61,8 @@ func TestLeaderController_NotInitialized(t *testing.T) {
 func TestLeaderController_BecomeLeader_NoFencing(t *testing.T) {
 	var shard uint32 = 1
 
-	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
+	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
 
 	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
@@ -72,7 +87,8 @@ func TestLeaderController_BecomeLeader_NoFencing(t *testing.T) {
 func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	var shard uint32 = 1
 
-	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
+	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
 
 	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
@@ -86,7 +102,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 		Epoch:   1,
 	})
 	assert.NoError(t, err)
-	assert.Equal(t, InvalidEntryId, fr.HeadIndex)
+	AssertProtoEqual(t, InvalidEntryId, fr.HeadIndex)
 
 	_, err = lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
@@ -131,7 +147,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 		Epoch:   2,
 	})
 	assert.NoError(t, err)
-	assert.Equal(t, &proto.EntryId{Epoch: 1, Offset: 0}, fr2.HeadIndex)
+	AssertProtoEqual(t, &proto.EntryId{Epoch: 1, Offset: 0}, fr2.HeadIndex)
 
 	assert.EqualValues(t, 2, lc.Epoch())
 	assert.Equal(t, Fenced, lc.Status())
@@ -164,7 +180,8 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	var shard uint32 = 1
 
-	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
+	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
 
 	rpc := newMockRpcClient()
@@ -235,7 +252,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 		Epoch:   2,
 	})
 	assert.NoError(t, err)
-	assert.Equal(t, &proto.EntryId{Epoch: 1, Offset: 0}, fr2.HeadIndex)
+	AssertProtoEqual(t, &proto.EntryId{Epoch: 1, Offset: 0}, fr2.HeadIndex)
 
 	assert.EqualValues(t, 2, lc.Epoch())
 	assert.Equal(t, Fenced, lc.Status())
@@ -269,10 +286,11 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 func TestLeaderController_EpochPersistent(t *testing.T) {
 	var shard uint32 = 1
 
-	kvFactory := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
 		DataDir:   t.TempDir(),
 		CacheSize: 10 * 1024,
 	})
+	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{
 		LogDir: t.TempDir(),
 	})
@@ -290,7 +308,7 @@ func TestLeaderController_EpochPersistent(t *testing.T) {
 		Epoch:   5,
 	})
 	assert.NoError(t, err)
-	assert.Equal(t, InvalidEntryId, fr2.HeadIndex)
+	AssertProtoEqual(t, &proto.EntryId{Epoch: wal.InvalidEpoch, Offset: wal.InvalidOffset}, fr2.HeadIndex)
 
 	assert.EqualValues(t, 5, lc.Epoch())
 	assert.Equal(t, Fenced, lc.Status())
@@ -312,10 +330,11 @@ func TestLeaderController_EpochPersistent(t *testing.T) {
 func TestLeaderController_FenceEpoch(t *testing.T) {
 	var shard uint32 = 1
 
-	kvFactory := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
 		DataDir:   t.TempDir(),
 		CacheSize: 10 * 1024,
 	})
+	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{
 		LogDir: t.TempDir(),
 	})
@@ -356,10 +375,11 @@ func TestLeaderController_FenceEpoch(t *testing.T) {
 func TestLeaderController_BecomeLeaderEpoch(t *testing.T) {
 	var shard uint32 = 1
 
-	kvFactory := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
 		DataDir:   t.TempDir(),
 		CacheSize: 10 * 1024,
 	})
+	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{
 		LogDir: t.TempDir(),
 	})
@@ -413,7 +433,8 @@ func TestLeaderController_BecomeLeaderEpoch(t *testing.T) {
 func TestLeaderController_AddFollower(t *testing.T) {
 	var shard uint32 = 1
 
-	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
+	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
 
 	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
@@ -475,7 +496,8 @@ func TestLeaderController_AddFollower(t *testing.T) {
 func TestLeaderController_AddFollowerCheckEpoch(t *testing.T) {
 	var shard uint32 = 1
 
-	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
+	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
 
 	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
@@ -514,6 +536,83 @@ func TestLeaderController_AddFollowerCheckEpoch(t *testing.T) {
 	})
 	assert.Nil(t, afRes)
 	assert.Equal(t, CodeInvalidEpoch, status.Code(err))
+
+	assert.NoError(t, lc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
+// When a leader starts, before we can start to serve write/read requests, we need to ensure
+// that all the entries that are in the leader wal are fully committed and applied into the db.
+// Otherwise, we could have the scenario where entries were already acked to a client though
+// are not appearing when doing a subsequent read if the leader has changed.
+func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
+	var shard uint32 = 1
+
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+		DataDir:   t.TempDir(),
+		CacheSize: 10 * 1024,
+	})
+	assert.NoError(t, err)
+	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{
+		LogDir: t.TempDir(),
+	})
+
+	wal, err := walFactory.NewWal(shard)
+	assert.NoError(t, err)
+	v, err := pb.Marshal(&proto.WriteRequest{
+		ShardId: &shard,
+		Puts: []*proto.PutRequest{{
+			Key:     "my-key",
+			Payload: []byte("my-value"),
+		}},
+	})
+	assert.NoError(t, err)
+	assert.NoError(t, wal.Append(&proto.LogEntry{
+		Epoch:  0,
+		Offset: 0,
+		Value:  v,
+	}))
+
+	rpc := newMockRpcClient()
+
+	lc, _ := NewLeaderController(shard, rpc, walFactory, kvFactory)
+
+	_, _ = lc.Fence(&proto.FenceRequest{
+		ShardId: shard,
+		Epoch:   1,
+	})
+
+	// Respond to replication flow to follower
+	go func() {
+		req := <-rpc.addEntryReqs
+
+		rpc.addEntryResps <- &proto.AddEntryResponse{
+			Offset: req.Entry.Offset,
+		}
+	}()
+
+	_, _ = lc.BecomeLeader(&proto.BecomeLeaderRequest{
+		ShardId:           shard,
+		Epoch:             1,
+		ReplicationFactor: 2,
+		FollowerMaps: map[string]*proto.EntryId{
+			// The follower does not have the entry in its wal yet
+			"f1": {Epoch: 0, Offset: -1},
+		},
+	})
+
+	/// We should be able to read the entry, even if it was not fully committed before the leader started
+	res, err := lc.Read(&proto.ReadRequest{
+		ShardId: &shard,
+		Gets:    []*proto.GetRequest{{Key: "my-key", IncludePayload: true}},
+	})
+
+	assert.NoError(t, err)
+	assert.EqualValues(t, 1, len(res.Gets))
+	assert.Equal(t, proto.Status_OK, res.Gets[0].Status)
+	assert.Equal(t, []byte("my-value"), res.Gets[0].Payload)
+	assert.EqualValues(t, 0, res.Gets[0].Stat.Version)
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())
