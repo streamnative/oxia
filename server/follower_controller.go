@@ -196,11 +196,7 @@ func (fc *followerController) Fence(req *proto.FenceRequest) (*proto.FenceRespon
 	fc.log.Info().
 		Interface("last-entry", lastEntryId).
 		Msg("Follower successfully fenced")
-
-	return &proto.FenceResponse{
-		Epoch:     fc.epoch,
-		HeadIndex: lastEntryId,
-	}, nil
+	return &proto.FenceResponse{HeadIndex: lastEntryId}, nil
 }
 
 func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.TruncateResponse, error) {
@@ -233,7 +229,6 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 	fc.commitIndex = headIndex
 
 	return &proto.TruncateResponse{
-		Epoch: req.Epoch,
 		HeadIndex: &proto.EntryId{
 			Epoch:  req.Epoch,
 			Offset: headIndex,
@@ -303,7 +298,6 @@ func (fc *followerController) addEntry(req *proto.AddEntryRequest) (*proto.AddEn
 		return nil, err
 	}
 	return &proto.AddEntryResponse{
-		Epoch:  fc.epoch,
 		Offset: req.Entry.Offset,
 	}, nil
 

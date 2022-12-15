@@ -27,11 +27,11 @@ func TestShardController(t *testing.T) {
 
 	// Shard controller should initiate a leader election
 	// and fence each server
-	rpc.GetNode(s1).FenceResponse(2, 1, 0, nil)
-	rpc.GetNode(s2).FenceResponse(2, 1, -1, nil)
-	rpc.GetNode(s3).FenceResponse(2, 1, -1, nil)
+	rpc.GetNode(s1).FenceResponse(1, 0, nil)
+	rpc.GetNode(s2).FenceResponse(1, -1, nil)
+	rpc.GetNode(s3).FenceResponse(1, -1, nil)
 
-	rpc.GetNode(s1).BecomeLeaderResponse(2, nil)
+	rpc.GetNode(s1).BecomeLeaderResponse(nil)
 
 	rpc.GetNode(s1).expectFenceRequest(t, shard, 2)
 	rpc.GetNode(s2).expectFenceRequest(t, shard, 2)
@@ -46,10 +46,10 @@ func TestShardController(t *testing.T) {
 	assert.EqualValues(t, 2, sc.Epoch())
 	assert.Equal(t, s1, *sc.Leader())
 
-	rpc.GetNode(s2).FenceResponse(3, 2, 0, nil)
-	rpc.GetNode(s3).FenceResponse(3, 2, -1, nil)
+	rpc.GetNode(s2).FenceResponse(2, 0, nil)
+	rpc.GetNode(s3).FenceResponse(2, -1, nil)
 
-	rpc.GetNode(s2).BecomeLeaderResponse(3, nil)
+	rpc.GetNode(s2).BecomeLeaderResponse(nil)
 
 	// Simulate the failure of the leader
 	rpc.FailNode(s1, errors.New("failed to connect"))
@@ -73,7 +73,7 @@ func TestShardController(t *testing.T) {
 	sc.HandleNodeFailure(s2)
 
 	rpc.FailNode(s2, errors.New("failed to connect"))
-	rpc.GetNode(s3).FenceResponse(4, 2, -1, nil)
+	rpc.GetNode(s3).FenceResponse(2, -1, nil)
 
 	rpc.GetNode(s1).expectFenceRequest(t, shard, 3)
 	rpc.GetNode(s2).expectFenceRequest(t, shard, 4)
@@ -101,12 +101,12 @@ func TestShardController_FenceWithNonRespondingServer(t *testing.T) {
 
 	timeStart := time.Now()
 
-	rpc.GetNode(s1).BecomeLeaderResponse(2, nil)
+	rpc.GetNode(s1).BecomeLeaderResponse(nil)
 
 	// Shard controller should initiate a leader election
 	// and fence each server
-	rpc.GetNode(s1).FenceResponse(2, 1, 0, nil)
-	rpc.GetNode(s2).FenceResponse(2, 1, -1, nil)
+	rpc.GetNode(s1).FenceResponse(1, 0, nil)
+	rpc.GetNode(s2).FenceResponse(1, -1, nil)
 	// s3 is not responding
 
 	rpc.GetNode(s1).expectFenceRequest(t, shard, 2)
@@ -141,16 +141,16 @@ func TestShardController_FenceFollowerUntilItRecovers(t *testing.T) {
 	}, rpc, coordinator)
 
 	// s3 is failing, though we can still elect a leader
-	rpc.GetNode(s1).FenceResponse(2, 1, 0, nil)
-	rpc.GetNode(s2).FenceResponse(2, 1, -1, nil)
-	rpc.GetNode(s3).FenceResponse(2, 1, -1, errors.New("fails"))
+	rpc.GetNode(s1).FenceResponse(1, 0, nil)
+	rpc.GetNode(s2).FenceResponse(1, -1, nil)
+	rpc.GetNode(s3).FenceResponse(1, -1, errors.New("fails"))
 
 	rpc.GetNode(s1).expectFenceRequest(t, shard, 2)
 	rpc.GetNode(s2).expectFenceRequest(t, shard, 2)
 	rpc.GetNode(s3).expectFenceRequest(t, shard, 2)
 
 	// s1 should be selected as new leader, without waiting for s3 to timeout
-	rpc.GetNode(s1).BecomeLeaderResponse(2, nil)
+	rpc.GetNode(s1).BecomeLeaderResponse(nil)
 	rpc.GetNode(s1).expectBecomeLeaderRequest(t, shard, 2, 3)
 
 	assert.Eventually(t, func() bool {
@@ -161,15 +161,15 @@ func TestShardController_FenceFollowerUntilItRecovers(t *testing.T) {
 	assert.Equal(t, s1, *sc.Leader())
 
 	// One more failure from s1
-	rpc.GetNode(s3).FenceResponse(2, 1, -1, errors.New("fails"))
+	rpc.GetNode(s3).FenceResponse(1, -1, errors.New("fails"))
 	rpc.GetNode(s3).expectFenceRequest(t, shard, 2)
 
 	// Now it succeeds
-	rpc.GetNode(s3).FenceResponse(2, 1, -1, nil)
+	rpc.GetNode(s3).FenceResponse(1, -1, nil)
 	rpc.GetNode(s3).expectFenceRequest(t, shard, 2)
 
 	// Leader should be notified
-	rpc.GetNode(s1).AddFollowerResponse(2, nil)
+	rpc.GetNode(s1).AddFollowerResponse(nil)
 	rpc.GetNode(s1).expectAddFollowerRequest(t, shard, 2)
 
 	assert.NoError(t, sc.Close())

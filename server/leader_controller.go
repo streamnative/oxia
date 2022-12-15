@@ -160,7 +160,6 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 		Msg("Fenced leader")
 
 	return &proto.FenceResponse{
-		Epoch:     lc.epoch,
 		HeadIndex: headIndex,
 	}, nil
 }
@@ -236,7 +235,7 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 		Int64("epoch", lc.epoch).
 		Int64("head-index", leaderHeadIndex.Offset).
 		Msg("Started leading the shard")
-	return &proto.BecomeLeaderResponse{Epoch: req.GetEpoch()}, nil
+	return &proto.BecomeLeaderResponse{}, nil
 }
 
 func (lc *leaderController) AddFollower(req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error) {
@@ -268,7 +267,7 @@ func (lc *leaderController) AddFollower(req *proto.AddFollowerRequest) (*proto.A
 		return nil, err
 	}
 
-	return &proto.AddFollowerResponse{Epoch: req.GetEpoch()}, nil
+	return &proto.AddFollowerResponse{}, nil
 }
 
 func (lc *leaderController) addFollower(leaderHeadIndex *proto.EntryId, follower string, followerHeadIndex *proto.EntryId) error {

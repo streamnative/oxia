@@ -346,10 +346,6 @@ func (s *shardController) fence(ctx context.Context, node ServerAddress) (*proto
 		return nil, err
 	}
 
-	if res.Epoch != s.shardMetadata.Epoch {
-		return nil, errors.New("invalid epoch")
-	}
-
 	return res.HeadIndex, nil
 }
 
@@ -388,36 +384,26 @@ func (s *shardController) becomeLeader(leader ServerAddress, followers map[Serve
 		followersMap[sa.Internal] = e
 	}
 
-	res, err := s.rpc.BecomeLeader(s.ctx, leader, &proto.BecomeLeaderRequest{
+	if _, err := s.rpc.BecomeLeader(s.ctx, leader, &proto.BecomeLeaderRequest{
 		ShardId:           s.shard,
 		Epoch:             s.shardMetadata.Epoch,
 		ReplicationFactor: uint32(len(s.shardMetadata.Ensemble)),
 		FollowerMaps:      followersMap,
-	})
-	if err != nil {
+	}); err != nil {
 		return err
-	}
-
-	if res.Epoch != s.shardMetadata.Epoch {
-		return errors.New("invalid epoch")
 	}
 
 	return nil
 }
 
 func (s *shardController) addFollower(leader ServerAddress, follower string, followerHeadIndex *proto.EntryId) error {
-	res, err := s.rpc.AddFollower(s.ctx, leader, &proto.AddFollowerRequest{
+	if _, err := s.rpc.AddFollower(s.ctx, leader, &proto.AddFollowerRequest{
 		ShardId:           s.shard,
 		Epoch:             s.shardMetadata.Epoch,
 		FollowerName:      follower,
 		FollowerHeadIndex: followerHeadIndex,
-	})
-	if err != nil {
+	}); err != nil {
 		return err
-	}
-
-	if res.Epoch != s.shardMetadata.Epoch {
-		return errors.New("invalid epoch")
 	}
 
 	return nil

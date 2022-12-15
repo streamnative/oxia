@@ -117,12 +117,11 @@ func (m *mockPerNodeChannels) expectAddFollowerRequest(t *testing.T, shard uint3
 	assert.Equal(t, epoch, r.Epoch)
 }
 
-func (m *mockPerNodeChannels) FenceResponse(reqEpoch int64, epoch int64, offset int64, err error) {
+func (m *mockPerNodeChannels) FenceResponse(epoch int64, offset int64, err error) {
 	m.fenceResponses <- struct {
 		*proto.FenceResponse
 		error
 	}{&proto.FenceResponse{
-		Epoch: reqEpoch,
 		HeadIndex: &proto.EntryId{
 			Epoch:  epoch,
 			Offset: offset,
@@ -130,22 +129,18 @@ func (m *mockPerNodeChannels) FenceResponse(reqEpoch int64, epoch int64, offset 
 	}, err}
 }
 
-func (m *mockPerNodeChannels) BecomeLeaderResponse(epoch int64, err error) {
+func (m *mockPerNodeChannels) BecomeLeaderResponse(err error) {
 	m.becomeLeaderResponses <- struct {
 		*proto.BecomeLeaderResponse
 		error
-	}{&proto.BecomeLeaderResponse{
-		Epoch: epoch,
-	}, err}
+	}{&proto.BecomeLeaderResponse{}, err}
 }
 
-func (m *mockPerNodeChannels) AddFollowerResponse(epoch int64, err error) {
+func (m *mockPerNodeChannels) AddFollowerResponse(err error) {
 	m.addFollowerResponses <- struct {
 		*proto.AddFollowerResponse
 		error
-	}{&proto.AddFollowerResponse{
-		Epoch: epoch,
-	}, err}
+	}{&proto.AddFollowerResponse{}, err}
 }
 
 func newMockPerNodeChannels() *mockPerNodeChannels {

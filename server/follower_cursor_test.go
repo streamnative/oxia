@@ -48,7 +48,6 @@ func TestFollowerCursor(t *testing.T) {
 	assert.Equal(t, wal.InvalidOffset, req.CommitIndex)
 
 	stream.addEntryResps <- &proto.AddEntryResponse{
-		Epoch:  1,
 		Offset: 0,
 	}
 
