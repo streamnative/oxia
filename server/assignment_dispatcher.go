@@ -174,7 +174,7 @@ func (s *shardAssignmentDispatcher) updateShardAssignment(assignments *proto.Sha
 func NewShardAssignmentDispatcher() ShardAssignmentsDispatcher {
 	s := &shardAssignmentDispatcher{
 		assignments: nil,
-		clients:     make(map[int]chan *proto.ShardAssignmentsResponse),
+		clients:     make(map[int64]chan *proto.ShardAssignmentsResponse),
 		closeCh:     make(chan error),
 		log: log.With().
 			Str("component", "shard-assignment-dispatcher").
