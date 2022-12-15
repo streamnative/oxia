@@ -84,6 +84,12 @@ type mockPerNodeChannels struct {
 		error
 	}
 
+	addFollowerRequests  chan *proto.AddFollowerRequest
+	addFollowerResponses chan struct {
+		*proto.AddFollowerResponse
+		error
+	}
+
 	shardAssignmentsStream *mockShardAssignmentClient
 	healthClient           *mockHealthClient
 	err                    error
@@ -99,6 +105,13 @@ func (m *mockPerNodeChannels) expectBecomeLeaderRequest(t *testing.T, shard uint
 
 func (m *mockPerNodeChannels) expectFenceRequest(t *testing.T, shard uint32, epoch int64) {
 	r := <-m.fenceRequests
+
+	assert.Equal(t, shard, r.ShardId)
+	assert.Equal(t, epoch, r.Epoch)
+}
+
+func (m *mockPerNodeChannels) expectAddFollowerRequest(t *testing.T, shard uint32, epoch int64) {
+	r := <-m.addFollowerRequests
 
 	assert.Equal(t, shard, r.ShardId)
 	assert.Equal(t, epoch, r.Epoch)
@@ -126,6 +139,15 @@ func (m *mockPerNodeChannels) BecomeLeaderResponse(epoch int64, err error) {
 	}, err}
 }
 
+func (m *mockPerNodeChannels) AddFollowerResponse(epoch int64, err error) {
+	m.addFollowerResponses <- struct {
+		*proto.AddFollowerResponse
+		error
+	}{&proto.AddFollowerResponse{
+		Epoch: epoch,
+	}, err}
+}
+
 func newMockPerNodeChannels() *mockPerNodeChannels {
 	return &mockPerNodeChannels{
 		fenceRequests: make(chan *proto.FenceRequest, 100),
@@ -136,6 +158,11 @@ func newMockPerNodeChannels() *mockPerNodeChannels {
 		becomeLeaderRequests: make(chan *proto.BecomeLeaderRequest, 100),
 		becomeLeaderResponses: make(chan struct {
 			*proto.BecomeLeaderResponse
+			error
+		}, 100),
+		addFollowerRequests: make(chan *proto.AddFollowerRequest, 100),
+		addFollowerResponses: make(chan struct {
+			*proto.AddFollowerResponse
 			error
 		}, 100),
 		shardAssignmentsStream: newMockShardAssignmentClient(),
@@ -238,6 +265,29 @@ func (r *mockRpcProvider) BecomeLeader(ctx context.Context, node ServerAddress, 
 	select {
 	case response := <-s.becomeLeaderResponses:
 		return response.BecomeLeaderResponse, response.error
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-time.After(3 * time.Second):
+		return nil, errors.New("timeout")
+	}
+}
+
+func (r *mockRpcProvider) AddFollower(ctx context.Context, node ServerAddress, req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error) {
+	r.Lock()
+
+	s := r.getNode(node)
+	s.addFollowerRequests <- req
+
+	if s.err != nil {
+		r.Unlock()
+		return nil, s.err
+	}
+
+	r.Unlock()
+
+	select {
+	case response := <-s.addFollowerResponses:
+		return response.AddFollowerResponse, response.error
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-time.After(3 * time.Second):
