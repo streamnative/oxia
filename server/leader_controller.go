@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
@@ -24,6 +25,8 @@ type LeaderController interface {
 
 	// BecomeLeader Handles BecomeLeaderRequest from coordinator and prepares to be leader for the shard
 	BecomeLeader(*proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error)
+
+	AddFollower(request *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error)
 
 	// Epoch The current epoch of the leader
 	Epoch() int64
@@ -212,30 +215,9 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 	lc.quorumAckTracker = NewQuorumAckTracker(req.GetReplicationFactor(), leaderHeadIndex.Offset, leaderCommitIndex)
 
 	for follower, followerHeadIndex := range req.FollowerMaps {
-		if needsTruncation(leaderHeadIndex, followerHeadIndex) {
-			newHeadIndex, err := lc.truncateFollower(follower, lc.epoch)
-			if err != nil {
-				lc.log.Error().Err(err).
-					Str("follower", follower).
-					Int64("epoch", lc.epoch).
-					Msg("Failed to truncate follower")
-				return nil, err
-			}
-
-			followerHeadIndex = newHeadIndex
-		}
-
-		cursor, err := NewFollowerCursor(follower, lc.epoch, lc.shardId, lc.rpcClient, lc.quorumAckTracker, lc.wal,
-			followerHeadIndex.Offset)
-		if err != nil {
-			lc.log.Error().Err(err).
-				Str("follower", follower).
-				Int64("epoch", lc.epoch).
-				Msg("Failed to create follower cursor")
+		if err := lc.addFollower(leaderHeadIndex, follower, followerHeadIndex); err != nil {
 			return nil, err
 		}
-
-		lc.followers[follower] = cursor
 	}
 
 	// We must wait until all the entries in the leader WAL are fully
@@ -255,6 +237,72 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 		Int64("head-index", leaderHeadIndex.Offset).
 		Msg("Started leading the shard")
 	return &proto.BecomeLeaderResponse{Epoch: req.GetEpoch()}, nil
+}
+
+func (lc *leaderController) AddFollower(req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error) {
+	lc.Lock()
+	defer lc.Unlock()
+
+	if req.Epoch != lc.epoch {
+		return nil, status.Errorf(CodeInvalidEpoch, "invalid epoch - current epoch %d - request epoch %d", lc.epoch, req.Epoch)
+	}
+
+	if lc.status != Leader {
+		return nil, status.Error(CodeInvalidStatus, "Node is not leader")
+	}
+
+	if _, followerAlreadyPresent := lc.followers[req.FollowerName]; followerAlreadyPresent {
+		return nil, errors.Errorf("follower %s is already present", req.FollowerName)
+	}
+
+	if len(lc.followers) == int(lc.replicationFactor)-1 {
+		return nil, errors.New("all followers are already attached")
+	}
+
+	leaderHeadIndex, err := getLastEntryIdInWal(lc.wal)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := lc.addFollower(leaderHeadIndex, req.FollowerName, req.FollowerHeadIndex); err != nil {
+		return nil, err
+	}
+
+	return &proto.AddFollowerResponse{Epoch: req.GetEpoch()}, nil
+}
+
+func (lc *leaderController) addFollower(leaderHeadIndex *proto.EntryId, follower string, followerHeadIndex *proto.EntryId) error {
+	if needsTruncation(leaderHeadIndex, followerHeadIndex) {
+		newHeadIndex, err := lc.truncateFollower(follower, lc.epoch)
+		if err != nil {
+			lc.log.Error().Err(err).
+				Str("follower", follower).
+				Int64("epoch", lc.epoch).
+				Msg("Failed to truncate follower")
+			return err
+		}
+
+		followerHeadIndex = newHeadIndex
+	}
+
+	cursor, err := NewFollowerCursor(follower, lc.epoch, lc.shardId, lc.rpcClient, lc.quorumAckTracker, lc.wal,
+		followerHeadIndex.Offset)
+	if err != nil {
+		lc.log.Error().Err(err).
+			Str("follower", follower).
+			Int64("epoch", lc.epoch).
+			Msg("Failed to create follower cursor")
+		return err
+	}
+
+	lc.log.Info().
+		Int64("epoch", lc.epoch).
+		Interface("head-index", leaderHeadIndex).
+		Str("follower", follower).
+		Interface("follower-head-index", followerHeadIndex).
+		Msg("Added follower")
+	lc.followers[follower] = cursor
+	return nil
 }
 
 func (lc *leaderController) applyAllEntriesIntoDB() error {
