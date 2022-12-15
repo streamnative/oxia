@@ -1,7 +1,6 @@
 package wal
 
 import (
-	"fmt"
 	"github.com/pkg/errors"
 	"oxia/proto"
 	"sync"
@@ -15,9 +14,9 @@ func NewInMemoryWalFactory() WalFactory {
 
 func (f *inMemoryWalFactory) NewWal(shard uint32) (Wal, error) {
 	return &inMemoryWal{
-		shard: shard,
-		log:   make([]*proto.LogEntry, 0, 100),
-		index: make(map[int64]int),
+		shard:      shard,
+		log:        make(map[int64]*proto.LogEntry),
+		lastOffset: InvalidOffset,
 	}, nil
 }
 
@@ -27,9 +26,10 @@ func (f *inMemoryWalFactory) Close() error {
 
 type inMemoryWal struct {
 	sync.Mutex
-	shard uint32
-	log   []*proto.LogEntry
-	index map[int64]int
+	shard       uint32
+	log         map[int64]*proto.LogEntry
+	firstOffset int64
+	lastOffset  int64
 }
 
 type inMemReader struct {
@@ -77,7 +77,7 @@ func (r *inMemForwardReader) HasNext() bool {
 		return false
 	}
 
-	return r.nextOffset <= r.wal.lastOffset()
+	return r.nextOffset <= r.wal.lastOffset
 }
 
 func (r *inMemReverseReader) ReadNext() (*proto.LogEntry, error) {
@@ -94,12 +94,20 @@ func (r *inMemReverseReader) ReadNext() (*proto.LogEntry, error) {
 }
 
 func (r *inMemReverseReader) HasNext() bool {
+	r.wal.Lock()
+	defer r.wal.Unlock()
+
 	if r.closed {
 		return false
 	}
-	res := r.nextOffset != InvalidOffset
 
-	return res
+	return r.nextOffset >= r.wal.firstOffset
+}
+
+func (w *inMemoryWal) Clear() error {
+	w.log = make(map[int64]*proto.LogEntry)
+	w.lastOffset = InvalidOffset
+	return nil
 }
 
 func (w *inMemoryWal) Close() error {
@@ -126,61 +134,60 @@ func (w *inMemoryWal) NewReverseReader() (WalReader, error) {
 
 	r := &inMemReverseReader{inMemReader{
 		wal:        w,
-		nextOffset: w.lastOffset(),
+		nextOffset: w.lastOffset,
 		closed:     false,
 	}}
 	return r, nil
-}
-
-func (w *inMemoryWal) lastOffset() int64 {
-	if len(w.log) == 0 {
-		return InvalidOffset
-	}
-
-	return w.log[len(w.log)-1].Offset
 }
 
 func (w *inMemoryWal) LastOffset() int64 {
 	w.Lock()
 	defer w.Unlock()
 
-	return w.lastOffset()
+	return w.lastOffset
 }
 
 func (w *inMemoryWal) Append(entry *proto.LogEntry) error {
 	w.Lock()
 	defer w.Unlock()
 
-	lastOffset := w.lastOffset()
-
-	if entry.Offset != lastOffset+1 {
-		return errors.New(fmt.Sprintf("Invalid next offset. Offset %d can not immediately follow %d",
-			entry.Offset, lastOffset))
+	if w.lastOffset != InvalidOffset && entry.Offset != w.lastOffset+1 {
+		return errors.Wrapf(ErrorInvalidNextOffset,
+			"%d can not immediately follow %d", entry.Offset, w.lastOffset)
 	}
 
-	w.log = append(w.log, entry)
-	w.index[entry.Offset] = len(w.log) - 1
+	w.lastOffset = entry.Offset
+	if len(w.log) == 0 {
+		w.firstOffset = entry.Offset
+	}
+	w.log[entry.Offset] = entry
 	return nil
 }
 
 func (w *inMemoryWal) TruncateLog(lastSafeOffset int64) (int64, error) {
 	w.Lock()
 	defer w.Unlock()
+
 	if lastSafeOffset == InvalidOffset {
-		w.log = make([]*proto.LogEntry, 0, 100)
-		w.index = make(map[int64]int)
+		w.log = make(map[int64]*proto.LogEntry)
 	} else {
-		index, ok := w.index[lastSafeOffset]
-		if ok {
-			for i := index + 1; i < len(w.log); i++ {
-				delete(w.index, w.log[i].Offset)
+		for offset, _ := range w.log {
+			if offset > lastSafeOffset {
+				delete(w.log, offset)
 			}
-			w.log = w.log[:index+1]
 		}
 	}
 	if len(w.log) == 0 {
 		return InvalidOffset, nil
 	}
-	return w.log[len(w.log)-1].Offset, nil
 
+	if lastSafeOffset < w.lastOffset {
+		w.lastOffset = lastSafeOffset
+	}
+
+	if lastSafeOffset < w.firstOffset {
+		w.firstOffset = lastSafeOffset
+	}
+
+	return w.lastOffset, nil
 }
