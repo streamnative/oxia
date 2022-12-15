@@ -62,19 +62,7 @@ message AddFollowerRequest {
 message BecomeLeaderResponse {
 }
 
-message AddFollowerRequest {
-  uint32 shard_id = 1;
-
-  int64 epoch = 2;
-  string follower_name = 3;
-  EntryId follower_head_index = 4;
-}
-
 message AddFollowerResponse {
-}
-
-message AddFollowerResponse {
-  int64 epoch = 1;
 }
 
 message TruncateRequest {
