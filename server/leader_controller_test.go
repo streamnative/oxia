@@ -25,7 +25,8 @@ func AssertProtoEqual(t *testing.T, expected, actual pb.Message) {
 func TestLeaderController_NotInitialized(t *testing.T) {
 	var shard uint32 = 1
 
-	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
+	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
 
 	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
@@ -60,7 +61,8 @@ func TestLeaderController_NotInitialized(t *testing.T) {
 func TestLeaderController_BecomeLeader_NoFencing(t *testing.T) {
 	var shard uint32 = 1
 
-	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
+	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
 
 	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
@@ -85,7 +87,8 @@ func TestLeaderController_BecomeLeader_NoFencing(t *testing.T) {
 func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	var shard uint32 = 1
 
-	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
+	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
 
 	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
@@ -180,7 +183,8 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	var shard uint32 = 1
 
-	kvFactory := kv.NewPebbleKVFactory(testKVOptions)
+	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
 
 	rpc := newMockRpcClient()
@@ -289,10 +293,11 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 func TestLeaderController_EpochPersistent(t *testing.T) {
 	var shard uint32 = 1
 
-	kvFactory := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
 		DataDir:   t.TempDir(),
 		CacheSize: 10 * 1024,
 	})
+	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{
 		LogDir: t.TempDir(),
 	})
@@ -333,10 +338,11 @@ func TestLeaderController_EpochPersistent(t *testing.T) {
 func TestLeaderController_FenceEpoch(t *testing.T) {
 	var shard uint32 = 1
 
-	kvFactory := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
 		DataDir:   t.TempDir(),
 		CacheSize: 10 * 1024,
 	})
+	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{
 		LogDir: t.TempDir(),
 	})
@@ -377,10 +383,11 @@ func TestLeaderController_FenceEpoch(t *testing.T) {
 func TestLeaderController_BecomeLeaderEpoch(t *testing.T) {
 	var shard uint32 = 1
 
-	kvFactory := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
 		DataDir:   t.TempDir(),
 		CacheSize: 10 * 1024,
 	})
+	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{
 		LogDir: t.TempDir(),
 	})
@@ -549,10 +556,11 @@ func TestLeaderController_AddFollowerCheckEpoch(t *testing.T) {
 func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
 	var shard uint32 = 1
 
-	kvFactory := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
 		DataDir:   t.TempDir(),
 		CacheSize: 10 * 1024,
 	})
+	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{
 		LogDir: t.TempDir(),
 	})

@@ -47,9 +47,11 @@ func New(config Config) (*Standalone, error) {
 		LogDir: config.WalDir,
 	})
 
-	s.kvFactory = kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+	if s.kvFactory, err = kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
 		DataDir: config.DataDir,
-	})
+	}); err != nil {
+		return nil, err
+	}
 
 	s.rpc, err = NewStandaloneRpcServer(config.PublicServicePort, advertisedPublicAddress, config.NumShards, s.walFactory, s.kvFactory)
 	if err != nil {
