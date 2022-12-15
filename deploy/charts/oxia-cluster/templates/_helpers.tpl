@@ -38,9 +38,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 Probe
 */}}
 {{- define "oxia-cluster.probe" -}}
-exec:
-  command:
-    - /bin/grpc-health-probe
-    - -addr=:{{ . }}
+grpc:
+  port: {{ . }}
 timeoutSeconds: 10
 {{- end }}

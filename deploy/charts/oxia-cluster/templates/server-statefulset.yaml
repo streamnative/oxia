@@ -17,7 +17,7 @@ spec:
       name: {{ .Release.Name }}
     spec:
       containers:
-        - command: [ "oxia", "server" ]
+        - command: [ "oxia", "server", "--log-json", "--data-dir=/data/db", "--wal-dir=/data/wal" ]
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           name: server

@@ -16,7 +16,7 @@ spec:
       name: {{ .Release.Name }}
     spec:
       containers:
-        - command: ["oxia", "controller"]
+        - command: ["oxia", "controller", "--log-json"]
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           name: controller

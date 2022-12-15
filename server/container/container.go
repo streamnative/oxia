@@ -28,7 +28,7 @@ func Start(name string, port int, registerFunc func(grpc.ServiceRegistrar)) (*Co
 	registerFunc(c.server)
 	grpc_prometheus.Register(c.server)
 
-	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		return nil, err
 	}
