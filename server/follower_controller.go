@@ -13,7 +13,6 @@ import (
 	"oxia/common"
 	"oxia/proto"
 	"oxia/server/kv"
-	"oxia/server/session"
 	"oxia/server/wal"
 	"sync"
 )
@@ -345,7 +344,7 @@ func (fc *followerController) processCommittedEntries(minExclusive int64, maxInc
 			return err
 		}
 
-		_, err = fc.db.ProcessWrite(br, entry.Offset, session.PutDecorator)
+		_, err = fc.db.ProcessWrite(br, entry.Offset, PutDecorator)
 		if err != nil {
 			fc.log.Err(err).Msg("Error applying committed entry")
 			return err

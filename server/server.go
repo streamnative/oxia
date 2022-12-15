@@ -6,7 +6,6 @@ import (
 	"oxia/common"
 	"oxia/server/kv"
 	"oxia/server/metrics"
-	"oxia/server/session"
 	"oxia/server/wal"
 )
 
@@ -28,7 +27,6 @@ type Server struct {
 	metrics                   *metrics.PrometheusMetrics
 	walFactory                wal.WalFactory
 	kvFactory                 kv.KVFactory
-	smFactory                 session.SessionManagerFactory
 }
 
 func New(config Config) (*Server, error) {
@@ -45,10 +43,11 @@ func New(config Config) (*Server, error) {
 			DataDir:   config.DataDir,
 			CacheSize: 100 * 1024 * 1024,
 		}),
-		smFactory: session.NewSessionManagerFactory(),
 	}
 
-	s.shardsDirector = NewShardsDirector(s.walFactory, s.kvFactory, s.smFactory)
+	s.sessionManager = NewSessionManager()
+	s.shardsDirector = NewShardsDirector(s.walFactory, s.kvFactory, s.sessionManager)
+	s.sessionManager.UseLeaderControllerSupplier(s.shardsDirector.GetLeader)
 	s.shardAssignmentDispatcher = NewShardAssignmentDispatcher()
 
 	var err error
@@ -57,7 +56,7 @@ func New(config Config) (*Server, error) {
 		return nil, err
 	}
 
-	s.PublicRpcServer, err = NewPublicRpcServer(config.PublicServicePort, s.shardsDirector, s.shardAssignmentDispatcher)
+	s.PublicRpcServer, err = NewPublicRpcServer(config.PublicServicePort, s.shardsDirector, s.shardAssignmentDispatcher, s.sessionManager)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +78,7 @@ func (s *Server) Close() error {
 		s.clientPool.Close(),
 		s.kvFactory.Close(),
 		s.walFactory.Close(),
-		s.smFactory.Close(),
+		s.sessionManager.Close(),
 		s.metrics.Close(),
 	)
 }

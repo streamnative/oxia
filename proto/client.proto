@@ -47,7 +47,20 @@ service OxiaClient {
    */
   rpc Read(ReadRequest) returns (ReadResponse);
 
-  rpc Session(stream Heartbeat) returns (SessionResponse);
+  /*
+   * Creates a new client session. Sessions are kapt alive by regularly sending heartbeats via the KeepAlive rpc.
+   */
+  rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
+
+  /*
+   * Sends heartbeats to prevent the session from timing out.
+   */
+  rpc KeepAlive(stream Heartbeat) returns (KeepAliveResponse);
+
+  /*
+   * Closes a session and removes all ephemeral values associated with it.
+   */
+  rpc CloseSession(CloseSessionRequest) returns (CloseSessionResponse);
 }
 
 /**
@@ -176,8 +189,9 @@ message PutRequest {
   // An optional expected version. The put will fail if the server's current version
   // does not match
   optional int64 expected_version = 3;
-
-  optional string session_id = 4;
+  // Optional. Associate the new value with the session (i.e. ephemeral value).
+  // When the session times out or is closed, the key-payload pair will be removed
+  optional uint32 session_id = 4;
 }
 
 /**
@@ -292,15 +306,27 @@ enum Status {
   KEY_NOT_FOUND = 1;
   // The existing version does not match the expected version
   UNEXPECTED_VERSION = 2;
-  // TODO doc
+  // The session that the put request referred to is not alive
   SESSION_DOES_NOT_EXIST = 3;
 }
 
+message CreateSessionRequest {
+  uint32 shard_id = 1;
+  uint32 session_timeout_ms = 2;
+}
+
+message CreateSessionResponse {
+  uint32 session_id = 1;
+}
+
 message Heartbeat {
-  string session_id = 1;
-  uint32 shard_id = 2;
+  uint32 session_id = 1;
 }
 
-message SessionResponse {
+message KeepAliveResponse {}
 
+message CloseSessionRequest {
+  uint32 session_id = 1;
 }
+
+message CloseSessionResponse {}

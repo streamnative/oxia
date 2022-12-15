@@ -212,9 +212,13 @@ func applyPut(batch WriteBatch, putReq *proto.PutRequest, putCustomizer PutCusto
 				Status: status,
 			}, nil
 		}
-		_, err = applyPut(batch, putCustomizer.AdditionalData(putReq), nil)
-		if err != nil {
-			return nil, err
+		additionalData := putCustomizer.AdditionalData(putReq)
+		if additionalData != nil {
+			_, err = applyPut(batch, additionalData, nil)
+			if err != nil {
+				return nil, err
+			}
+
 		}
 	}
 	now := uint64(time.Now().UnixMilli())

@@ -13,7 +13,6 @@ import (
 	"oxia/server"
 	"oxia/server/container"
 	"oxia/server/kv"
-	"oxia/server/session"
 	"oxia/server/wal"
 )
 
@@ -24,7 +23,7 @@ type StandaloneRpcServer struct {
 	numShards               uint32
 	kvFactory               kv.KVFactory
 	walFactory              wal.WalFactory
-	smFactory               session.SessionManagerFactory
+	sessionManager          server.SessionManager
 	clientPool              common.ClientPool
 	Container               *container.Container
 	controllers             map[uint32]server.LeaderController
@@ -39,7 +38,6 @@ func NewStandaloneRpcServer(port int, advertisedPublicAddress string, numShards 
 		numShards:               numShards,
 		walFactory:              walFactory,
 		kvFactory:               kvFactory,
-		smFactory:               session.NewSessionManagerFactory(),
 		clientPool:              common.NewClientPool(),
 		controllers:             make(map[uint32]server.LeaderController),
 		log: log.With().
@@ -47,11 +45,19 @@ func NewStandaloneRpcServer(port int, advertisedPublicAddress string, numShards 
 			Logger(),
 	}
 
+	res.sessionManager = server.NewSessionManager().UseLeaderControllerSupplier(func(shardId uint32) (server.LeaderController, error) {
+		controller, found := res.controllers[shardId]
+		if !found {
+			return nil, errors.New("shard not found")
+		}
+		return controller, nil
+	})
+
 	var err error
 	for i := uint32(0); i < numShards; i++ {
 		var lc server.LeaderController
 		if lc, err = server.NewLeaderController(i,
-			server.NewReplicationRpcProvider(res.clientPool), res.walFactory, res.kvFactory, res.smFactory); err != nil {
+			server.NewReplicationRpcProvider(res.clientPool), res.walFactory, res.kvFactory, res.sessionManager); err != nil {
 			return nil, err
 		}
 

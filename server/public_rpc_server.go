@@ -9,7 +9,6 @@ import (
 	"oxia/common"
 	"oxia/proto"
 	"oxia/server/container"
-	"oxia/server/session"
 )
 
 type PublicRpcServer struct {
@@ -17,16 +16,16 @@ type PublicRpcServer struct {
 
 	shardsDirector       ShardsDirector
 	assignmentDispatcher ShardAssignmentsDispatcher
-	smFactory            session.SessionManagerFactory
+	sessionManager       SessionManager
 	container            *container.Container
 	log                  zerolog.Logger
 }
 
-func NewPublicRpcServer(port int, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher) (*PublicRpcServer, error) {
+func NewPublicRpcServer(port int, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher, sessionManager SessionManager) (*PublicRpcServer, error) {
 	server := &PublicRpcServer{
 		shardsDirector:       shardsDirector,
 		assignmentDispatcher: assignmentDispatcher,
-		smFactory:            session.NewSessionManagerFactory(),
+		sessionManager:       sessionManager,
 		log: log.With().
 			Str("component", "public-rpc-server").
 			Logger(),
@@ -105,12 +104,45 @@ func (s *PublicRpcServer) Read(ctx context.Context, read *proto.ReadRequest) (*p
 	return rr, err
 }
 
-func (s *PublicRpcServer) Session(heartbeats proto.OxiaClient_SessionServer) error {
+func (s *PublicRpcServer) CreateSession(ctx context.Context, req *proto.CreateSessionRequest) (*proto.CreateSessionResponse, error) {
 	s.log.Debug().
-		Str("peer", common.GetPeer(heartbeats.Context())).
-		Msg("Session request")
+		Str("peer", common.GetPeer(ctx)).
+		Interface("req", req).
+		Msg("Create session request")
+	res, err := s.sessionManager.CreateSession(req)
+	if err != nil {
+		s.log.Warn().Err(err).
+			Msg("Failed to create session")
+		return nil, err
+	}
+	return res, nil
+}
 
-	return s.smFactory.HandleSessionStream(s.shardsDirector, heartbeats)
+func (s *PublicRpcServer) KeepAlive(stream proto.OxiaClient_KeepAliveServer) error {
+	s.log.Debug().
+		Str("peer", common.GetPeer(stream.Context())).
+		Msg("Session keep alive")
+	err := s.sessionManager.KeepAlive(stream)
+	if err != nil {
+		s.log.Warn().Err(err).
+			Msg("Failed to keep alive session")
+		return err
+	}
+	return nil
+}
+
+func (s *PublicRpcServer) CloseSession(ctx context.Context, req *proto.CloseSessionRequest) (*proto.CloseSessionResponse, error) {
+	s.log.Debug().
+		Str("peer", common.GetPeer(ctx)).
+		Interface("req", req).
+		Msg("Close session request")
+	res, err := s.sessionManager.CloseSession(req)
+	if err != nil {
+		s.log.Warn().Err(err).
+			Msg("Failed to close session")
+		return nil, err
+	}
+	return res, nil
 }
 
 func (s *PublicRpcServer) Close() error {

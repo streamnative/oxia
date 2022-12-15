@@ -7,7 +7,6 @@ import (
 	"io"
 	"oxia/common"
 	"oxia/server/kv"
-	"oxia/server/session"
 	"oxia/server/wal"
 	"sync"
 )
@@ -26,8 +25,6 @@ type ShardsDirector interface {
 
 	GetOrCreateLeader(shardId uint32) (LeaderController, error)
 	GetOrCreateFollower(shardId uint32) (FollowerController, error)
-	// TODO needed to break circular dependency between oxia/server and oxia/server/session
-	GetLeaderController(shardId uint32) (session.Controller, error)
 }
 
 type shardsDirector struct {
@@ -36,30 +33,27 @@ type shardsDirector struct {
 	leaders   map[uint32]LeaderController
 	followers map[uint32]FollowerController
 
-	kvFactory  kv.KVFactory
-	walFactory wal.WalFactory
-	smFactory  session.SessionManagerFactory
-	pool       common.ClientPool
-	closed     bool
-	log        zerolog.Logger
+	kvFactory      kv.KVFactory
+	walFactory     wal.WalFactory
+	sessionManager SessionManager
+	pool           common.ClientPool
+	closed         bool
+	log            zerolog.Logger
 }
 
-func NewShardsDirector(walFactory wal.WalFactory, kvFactory kv.KVFactory, smFactory session.SessionManagerFactory) ShardsDirector {
-	return &shardsDirector{
-		walFactory: walFactory,
-		kvFactory:  kvFactory,
-		smFactory:  smFactory,
-		leaders:    make(map[uint32]LeaderController),
-		followers:  make(map[uint32]FollowerController),
-		pool:       common.NewClientPool(),
+func NewShardsDirector(walFactory wal.WalFactory, kvFactory kv.KVFactory, sessionManager SessionManager) ShardsDirector {
+	s := &shardsDirector{
+		walFactory:     walFactory,
+		kvFactory:      kvFactory,
+		sessionManager: sessionManager,
+		leaders:        make(map[uint32]LeaderController),
+		followers:      make(map[uint32]FollowerController),
+		pool:           common.NewClientPool(),
 		log: log.With().
 			Str("component", "shards-director").
 			Logger(),
 	}
-}
-
-func (s *shardsDirector) GetLeaderController(shardId uint32) (session.Controller, error) {
-	return s.GetLeader(shardId)
+	return s
 }
 
 func (s *shardsDirector) GetLeader(shardId uint32) (LeaderController, error) {
@@ -123,7 +117,7 @@ func (s *shardsDirector) GetOrCreateLeader(shardId uint32) (LeaderController, er
 	}
 
 	// Create new leader controller
-	if lc, err := NewLeaderController(shardId, NewReplicationRpcProvider(s.pool), s.walFactory, s.kvFactory, s.smFactory); err != nil {
+	if lc, err := NewLeaderController(shardId, NewReplicationRpcProvider(s.pool), s.walFactory, s.kvFactory, s.sessionManager); err != nil {
 		return nil, err
 	} else {
 		s.leaders[shardId] = lc
