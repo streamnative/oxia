@@ -21,7 +21,8 @@ func (s *testShardStrategy) Get(key string) func(Shard) bool {
 
 func TestWithStandalone(t *testing.T) {
 	kvOptions := kv.KVFactoryOptions{InMemory: true}
-	kvFactory := kv.NewPebbleKVFactory(&kvOptions)
+	kvFactory, err := kv.NewPebbleKVFactory(&kvOptions)
+	assert.NoError(t, err)
 	defer kvFactory.Close()
 	walFactory := wal.NewInMemoryWalFactory()
 	defer walFactory.Close()

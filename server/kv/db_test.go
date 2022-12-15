@@ -10,7 +10,8 @@ import (
 )
 
 func TestDBSimple(t *testing.T) {
-	factory := NewPebbleKVFactory(testKVOptions)
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	db, err := NewDB(1, factory)
 	assert.NoError(t, err)
 
@@ -146,7 +147,8 @@ func TestDBSimple(t *testing.T) {
 }
 
 func TestDBSameKeyMutations(t *testing.T) {
-	factory := NewPebbleKVFactory(testKVOptions)
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	db, err := NewDB(1, factory)
 	assert.NoError(t, err)
 
@@ -246,7 +248,8 @@ func TestDBSameKeyMutations(t *testing.T) {
 }
 
 func TestDBList(t *testing.T) {
-	factory := NewPebbleKVFactory(testKVOptions)
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	db, err := NewDB(1, factory)
 	assert.NoError(t, err)
 
@@ -314,7 +317,8 @@ func TestDBList(t *testing.T) {
 }
 
 func TestDBDeleteRange(t *testing.T) {
-	factory := NewPebbleKVFactory(testKVOptions)
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	db, err := NewDB(1, factory)
 	assert.NoError(t, err)
 
@@ -382,7 +386,8 @@ func TestDBDeleteRange(t *testing.T) {
 func TestDB_ReadCommitIndex(t *testing.T) {
 	offset := int64(13)
 
-	factory := NewPebbleKVFactory(testKVOptions)
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	db, err := NewDB(1, factory)
 	assert.NoError(t, err)
 
@@ -408,7 +413,8 @@ func TestDB_ReadCommitIndex(t *testing.T) {
 }
 
 func TestDb_UpdateEpoch(t *testing.T) {
-	factory := NewPebbleKVFactory(testKVOptions)
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	db, err := NewDB(1, factory)
 	assert.NoError(t, err)
 
