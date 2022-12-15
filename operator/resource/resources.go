@@ -1,10 +1,7 @@
 package resource
 
 import (
-	"fmt"
 	monitoringV1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
-	"go.uber.org/multierr"
-	"io"
 	appsV1 "k8s.io/api/apps/v1"
 	coreV1 "k8s.io/api/core/v1"
 	rbacV1 "k8s.io/api/rbac/v1"
@@ -158,6 +155,8 @@ func probe() *coreV1.Probe {
 				Port: int32(InternalPort.Port),
 			},
 		},
+		InitialDelaySeconds: 10,
+		TimeoutSeconds:      10,
 	}
 }
 
@@ -185,14 +184,4 @@ func transform[To any](ports []NamedPort, toFunc func(NamedPort) To) []To {
 		to[i] = toFunc(port)
 	}
 	return to
-}
-
-func PrintAndAppend(out io.Writer, errs error, err error, operation string, resource string) error {
-	if err == nil {
-		_, _ = fmt.Fprintf(out, "%s %s succeeded\n", resource, operation)
-		return nil
-	} else {
-		_, _ = fmt.Fprintf(out, "%s %s failed\n", resource, operation)
-		return multierr.Append(errs, err)
-	}
 }
