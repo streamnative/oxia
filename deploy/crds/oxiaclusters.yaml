@@ -21,12 +21,32 @@ spec:
             spec:
               type: object
               properties:
-                serverReplicas:
-                  type: integer
                 shardCount:
                   type: integer
                 replicationFactor:
                   type: integer
+                serverReplicas:
+                  type: integer
+                serverResources:
+                  type: object
+                  properties:
+                    cpu:
+                      type: string
+                    memory:
+                      type: string
+                serverVolume:
+                  type: string
+                coordinatorResources:
+                  type: object
+                  properties:
+                    cpu:
+                      type: string
+                    memory:
+                      type: string
+                image:
+                  type: string
+                monitoringEnabled:
+                  type: boolean
             status:
               type: object
               properties:
@@ -66,31 +86,3 @@ spec:
                             type: integer
       subresources:
         status: {}
----
-apiVersion: oxia.streamnative.io/v1alpha1
-kind: OxiaCluster
-metadata:
-  name: oxia
-  namespace: oxia
-spec:
-  serverReplicas: 1
-  shardCount: 1
-  replicationFactor: 1
-status:
-  shards:
-    - id: 0
-      status: Unknown # or SteadyState/Election
-      epoch: 1670403094
-      leader:
-        public: oxia-server-0:6648
-        internal: oxia-server-0:6649
-      ensemble:
-        - public: oxia-server-0:6648
-          internal: oxia-server-0:6649
-        - public: oxia-server-1:6648
-          internal: oxia-server-1:6649
-        - public: oxia-server-2:6648
-          internal: oxia-server-2:6649
-      hashRange:
-        min: 0
-        max: 4294967295
