@@ -34,21 +34,25 @@ func New(config Config) (*Server, error) {
 		Interface("config", config).
 		Msg("Starting Oxia server")
 
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+		DataDir:   config.DataDir,
+		CacheSize: 100 * 1024 * 1024,
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	s := &Server{
 		clientPool: common.NewClientPool(),
 		walFactory: wal.NewWalFactory(&wal.WalFactoryOptions{
 			LogDir: config.WalDir,
 		}),
-		kvFactory: kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
-			DataDir:   config.DataDir,
-			CacheSize: 100 * 1024 * 1024,
-		}),
+		kvFactory: kvFactory,
 	}
 
 	s.shardsDirector = NewShardsDirector(s.walFactory, s.kvFactory)
 	s.shardAssignmentDispatcher = NewShardAssignmentDispatcher()
 
-	var err error
 	s.internalRpcServer, err = newCoordinationRpcServer(config.InternalServicePort, s.shardsDirector, s.shardAssignmentDispatcher)
 	if err != nil {
 		return nil, err
