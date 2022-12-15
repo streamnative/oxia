@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    {{- include "oxia-controller.labels" . | nindent 4 }}
+  name: {{ .Release.Name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "oxia-controller.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "oxia-controller.labels" . | nindent 8 }}
+      name: {{ .Release.Name }}
+    spec:
+      containers:
+        - command: ["oxia", "controller"]
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          name: controller
+          ports:
+            {{- range $key, $value := .Values.ports }}
+            - containerPort: {{ $value | int }}
+              name: {{ $key }}
+            {{- end}}
+          resources:
+            limits:
+              cpu: {{ .Values.resources.cpu }}
+              memory: {{ .Values.resources.memory }}
+          livenessProbe:
+            {{- include "oxia-controller.probe" .Values.ports.internal | nindent 12 }}
+          readinessProbe:
+            {{- include "oxia-controller.probe" .Values.ports.internal | nindent 12 }}
+      serviceAccountName: {{ .Release.Name }}
