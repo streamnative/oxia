@@ -6,8 +6,6 @@ import (
 )
 
 func RunProcess(startProcess func() (io.Closer, error)) {
-	ConfigureLogger()
-
 	process, err := startProcess()
 	if err != nil {
 		log.Fatal().Err(err).

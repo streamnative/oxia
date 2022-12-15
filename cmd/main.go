@@ -17,10 +17,10 @@ import (
 var (
 	logLevelStr string
 	rootCmd     = &cobra.Command{
-		Use:     "oxia",
-		Short:   "Short description",
-		Long:    `Long description`,
-		PreRunE: configureLogLevel,
+		Use:               "oxia",
+		Short:             "Oxia root command",
+		Long:              `Oxia root command`,
+		PersistentPreRunE: configureLogLevel,
 	}
 )
 
@@ -49,6 +49,7 @@ func configureLogLevel(cmd *cobra.Command, args []string) error {
 		return LogLevelError(logLevelStr)
 	}
 	common.LogLevel = logLevel
+	common.ConfigureLogger()
 	return nil
 }
 
