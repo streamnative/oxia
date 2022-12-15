@@ -16,6 +16,32 @@ eksctl create cluster \
 
 :notebook: This also creates a kubeconfig and sets it as the default.
 
+## Configure AWS EBS CSI Driver
+
+```shell
+eksctl utils associate-iam-oidc-provider \
+  --region=us-west-2 \
+  --cluster=oxia-test \
+  --approve
+
+eksctl create iamserviceaccount \
+  --name ebs-csi-controller-sa \
+  --namespace kube-system \
+  --cluster oxia-test \
+  --attach-policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy \
+  --approve \
+  --role-only \
+  --role-name AmazonEKS_EBS_CSI_DriverRole \
+  --region us-west-2
+
+eksctl create addon \
+  --name aws-ebs-csi-driver \
+  --cluster oxia-test \
+  --service-account-role-arn arn:aws:iam::598203581484:role/AmazonEKS_EBS_CSI_DriverRole \
+  --force \
+  --region us-west-2
+```
+
 ## Install Prometheus Stack
 
 ```shell
@@ -80,4 +106,18 @@ helm upgrade --install oxia-controller \
   --set imagePullSecrets=oxia \
   --set serviceMonitor=true \
   deploy/charts/oxia-controller
+```
+
+## Create an unmanaged Oxia Cluster
+
+```shell
+helm upgrade --install oxia-cluster \
+  --namespace oxia \
+  --set image.repository=$REPOSITORY \
+  --set image.tag=$TAG \
+  --set image.pullPolicy=Always \
+  --set imagePullSecrets=oxia \
+  --set storageClass=gp2 \
+  --set serviceMonitor=true \
+  deploy/charts/oxia-cluster
 ```
