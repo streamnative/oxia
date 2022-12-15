@@ -171,7 +171,7 @@ func (w *inMemoryWal) TruncateLog(lastSafeOffset int64) (int64, error) {
 	if lastSafeOffset == InvalidOffset {
 		w.log = make(map[int64]*proto.LogEntry)
 	} else {
-		for offset, _ := range w.log {
+		for offset := range w.log {
 			if offset > lastSafeOffset {
 				delete(w.log, offset)
 			}
