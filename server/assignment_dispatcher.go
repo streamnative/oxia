@@ -98,8 +98,6 @@ func (s *shardAssignmentDispatcher) RegisterForUpdates(clientStream Client) erro
 			return ErrorAlreadyClosed
 		}
 	}
-
-	return nil
 }
 
 func (s *shardAssignmentDispatcher) Close() error {
