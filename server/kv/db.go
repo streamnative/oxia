@@ -28,6 +28,8 @@ type DB interface {
 
 	UpdateEpoch(newEpoch int64) error
 	ReadEpoch() (epoch int64, err error)
+
+	Snapshot() (Snapshot, error)
 }
 
 func NewDB(shardId uint32, factory KVFactory) (DB, error) {
@@ -43,6 +45,10 @@ func NewDB(shardId uint32, factory KVFactory) (DB, error) {
 
 type db struct {
 	kv KV
+}
+
+func (d *db) Snapshot() (Snapshot, error) {
+	return d.kv.Snapshot()
 }
 
 func (d *db) Close() error {
