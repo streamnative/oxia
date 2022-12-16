@@ -1,13 +1,13 @@
 package coordinator
 
 import (
-	"fmt"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
 	"oxia/common"
 	"oxia/common/metrics"
 	"oxia/coordinator/impl"
 	"oxia/kubernetes"
+	"oxia/server/metrics"
 )
 
 type Config struct {
