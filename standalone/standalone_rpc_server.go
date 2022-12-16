@@ -88,7 +88,10 @@ func NewStandaloneRpcServer(port int, advertisedPublicAddress string, numShards 
 }
 
 func (s *StandaloneRpcServer) Close() error {
-	err := s.Container.Close()
+	err := multierr.Combine(
+		s.assignmentDispatcher.Close(),
+		s.Container.Close(),
+	)
 
 	for _, c := range s.controllers {
 		err = multierr.Append(err, c.Close())
