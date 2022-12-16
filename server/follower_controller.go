@@ -341,7 +341,7 @@ func (fc *followerController) processCommittedEntries(minExclusive int64, maxInc
 			return err
 		}
 
-		_, err = fc.db.ProcessWrite(br, entry.Offset)
+		_, err = fc.db.ProcessWrite(br, entry.Offset, entry.Timestamp)
 		if err != nil {
 			fc.log.Err(err).Msg("Error applying committed entry")
 			return err

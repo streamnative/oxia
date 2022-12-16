@@ -12,6 +12,7 @@ import (
 	"oxia/server/kv"
 	"oxia/server/wal"
 	"sync"
+	"time"
 )
 
 type LeaderController interface {
@@ -330,7 +331,7 @@ func (lc *leaderController) applyAllEntriesIntoDB() error {
 			return err
 		}
 
-		if _, err = lc.db.ProcessWrite(writeRequest, entry.Offset); err != nil {
+		if _, err = lc.db.ProcessWrite(writeRequest, entry.Offset, entry.Timestamp); err != nil {
 			return err
 		}
 	}
@@ -395,6 +396,7 @@ func (lc *leaderController) Write(request *proto.WriteRequest) (*proto.WriteResp
 		Msg("Write operation")
 
 	var newOffset int64
+	var timestamp uint64
 
 	{
 		lc.Lock()
@@ -410,10 +412,13 @@ func (lc *leaderController) Write(request *proto.WriteRequest) (*proto.WriteResp
 			return nil, err
 		}
 		logEntry := &proto.LogEntry{
-			Epoch:  lc.epoch,
-			Offset: newOffset,
-			Value:  value,
+			Epoch:     lc.epoch,
+			Offset:    newOffset,
+			Value:     value,
+			Timestamp: uint64(time.Now().UnixMilli()),
 		}
+
+		timestamp = logEntry.Timestamp
 
 		err = lc.wal.Append(logEntry)
 		if err != nil {
@@ -424,7 +429,7 @@ func (lc *leaderController) Write(request *proto.WriteRequest) (*proto.WriteResp
 	lc.quorumAckTracker.AdvanceHeadIndex(newOffset)
 
 	return lc.quorumAckTracker.WaitForCommitIndex(newOffset, func() (*proto.WriteResponse, error) {
-		return lc.db.ProcessWrite(request, newOffset)
+		return lc.db.ProcessWrite(request, newOffset, timestamp)
 	})
 }
 

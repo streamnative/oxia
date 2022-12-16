@@ -32,6 +32,7 @@ message LogEntry {
   int64 epoch = 1;
   int64 offset = 2;
   bytes value = 3;
+  fixed64 timestamp = 4;
 }
 
 message FenceRequest {
