@@ -75,7 +75,7 @@ func NewCoordinator(metadataProvider MetadataProvider, clusterConfig ClusterConf
 		}
 	}
 
-	for _, sa := range clusterConfig.StorageServers {
+	for _, sa := range clusterConfig.Servers {
 		c.nodeControllers[sa.Internal] = NewNodeController(sa, c, c, c.rpc)
 	}
 
@@ -104,7 +104,7 @@ func (c *coordinator) initialAssignment() error {
 			Status:   ShardStatusUnknown,
 			Epoch:    -1,
 			Leader:   nil,
-			Ensemble: getServers(cc.StorageServers, serverIdx, cc.ReplicationFactor),
+			Ensemble: getServers(cc.Servers, serverIdx, cc.ReplicationFactor),
 			Int32HashRange: Int32HashRange{
 				Min: bucketSize * i,
 				Max: bucketSize*(i+1) - 1,

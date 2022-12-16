@@ -4,6 +4,7 @@ Coordinator labels
 {{- define "oxia-cluster.coordinator.labels" -}}
 {{ include "oxia-cluster.coordinator.selectorLabels" . }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+app.kubernetes.io/part-of: oxia
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 

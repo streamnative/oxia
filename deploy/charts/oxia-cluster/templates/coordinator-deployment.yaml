@@ -15,6 +15,7 @@ spec:
         {{- include "oxia-cluster.coordinator.labels" . | nindent 8 }}
       name: {{ .Release.Name }}-coordinator
     spec:
+      serviceAccountName: {{ .Release.Name }}-coordinator
       containers:
         - command: ["oxia", "coordinator", "--log-json"]
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
@@ -39,5 +40,4 @@ spec:
       volumes:
         - name: conf
           configMap:
-            name: {{ .Release.Name }}
-      serviceAccountName: {{ .Release.Name }}-coordinator
+            name: {{ .Release.Name }}-coordinator

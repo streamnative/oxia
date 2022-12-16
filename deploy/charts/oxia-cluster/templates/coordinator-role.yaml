@@ -3,7 +3,7 @@ kind: Role
 metadata:
   labels:
     {{- include "oxia-cluster.coordinator.labels" . | nindent 4 }}
-  name: {{ .Release.Name }}
+  name: {{ .Release.Name }}-coordinator
 rules:
   - apiGroups: [ "" ]
     resources: [ "configmaps" ]

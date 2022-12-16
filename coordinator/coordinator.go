@@ -1,32 +1,24 @@
 package coordinator
 
 import (
-	"fmt"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
 	"oxia/common"
 	"oxia/coordinator/impl"
-	"oxia/operator/resource"
+	"oxia/kubernetes"
 	"oxia/server/metrics"
 )
 
 type Config struct {
 	InternalServicePort int
 	MetricsPort         int
-	Name                string
-	ReplicationFactor   uint32
-	ShardCount          uint32
-	ServerReplicas      uint32
+	ClusterConfig       impl.ClusterConfig
 }
 
 func NewConfig() Config {
 	return Config{
-		InternalServicePort: resource.InternalPort.Port,
-		MetricsPort:         resource.MetricsPort.Port,
-		Name:                "oxia",
-		ReplicationFactor:   3,
-		ShardCount:          3,
-		ServerReplicas:      3,
+		InternalServicePort: kubernetes.InternalPort.Port,
+		MetricsPort:         kubernetes.MetricsPort.Port,
 	}
 }
 
@@ -47,18 +39,11 @@ func New(config Config) (*Coordinator, error) {
 	}
 
 	metadataProvider := impl.NewMetadataProviderMemory()
-	// TODO Eventually this will need a more dynamic method of updating the config when it changes
-	// perhaps a controller -> coordinator RPC
-	clusterConfig := impl.ClusterConfig{
-		ReplicationFactor: config.ReplicationFactor,
-		ShardCount:        config.ShardCount,
-		StorageServers:    storageServers(config),
-	}
 
 	rpcClient := impl.NewRpcProvider(s.clientPool)
 
 	var err error
-	if s.coordinator, err = impl.NewCoordinator(metadataProvider, clusterConfig, rpcClient); err != nil {
+	if s.coordinator, err = impl.NewCoordinator(metadataProvider, config.ClusterConfig, rpcClient); err != nil {
 		return nil, err
 	}
 
@@ -66,23 +51,11 @@ func New(config Config) (*Coordinator, error) {
 		return nil, err
 	}
 
-	s.metrics, err = metrics.Start(config.MetricsPort)
-	if err != nil {
+	if s.metrics, err = metrics.Start(config.MetricsPort); err != nil {
 		return nil, err
 	}
 
 	return s, nil
-}
-
-func storageServers(config Config) []impl.ServerAddress {
-	servers := make([]impl.ServerAddress, config.ServerReplicas)
-	for i := 0; i < int(config.ServerReplicas); i++ {
-		servers[i] = impl.ServerAddress{
-			Public:   fmt.Sprintf("%s-%d:%d", config.Name, i, resource.PublicPort.Port),
-			Internal: fmt.Sprintf("%s-%d:%d", config.Name, i, resource.InternalPort.Port),
-		}
-	}
-	return servers
 }
 
 func (s *Coordinator) Close() error {

@@ -3,7 +3,7 @@ kind: ConfigMap
 metadata:
   labels:
     {{- include "oxia-cluster.coordinator.labels" . | nindent 4 }}
-  name: {{ .Release.Name }}
+  name: {{ .Release.Name }}-coordinator
 data:
   config.yaml: |
     replicationFactor: {{ .Values.replicationFactor }}
