@@ -1,7 +1,6 @@
 package coordinator
 
 import (
-	"fmt"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v3"
@@ -12,11 +11,7 @@ import (
 	"testing"
 )
 
-func TestName(t *testing.T) {
-	fmt.Println(os.Getwd())
-
-	//os.ReadFile("config.")
-
+func TestCmd(t *testing.T) {
 	clusterConfig := impl.ClusterConfig{
 		ReplicationFactor: 1,
 		ShardCount:        2,
