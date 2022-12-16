@@ -211,8 +211,8 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 	fc.Lock()
 	defer fc.Unlock()
 
-	if err := checkStatus(Fenced, fc.status); err != nil {
-		return nil, err
+	if fc.status != Fenced && fc.status != NotMember {
+		return nil, ErrorInvalidStatus
 	}
 
 	if req.Epoch != fc.epoch {
@@ -222,7 +222,8 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 	fc.status = Follower
 	headIndex, err := fc.wal.TruncateLog(req.HeadIndex.Offset)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to truncate wal. truncate-offset: %d - wal-last-offset: %d",
+			req.HeadIndex.Offset, fc.wal.LastOffset())
 	}
 
 	oldCommitIndex, err := fc.db.ReadCommitIndex()
