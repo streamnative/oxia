@@ -9,9 +9,9 @@ import (
 	"go.uber.org/multierr"
 	"google.golang.org/grpc"
 	"oxia/common"
+	"oxia/common/container"
 	"oxia/proto"
 	"oxia/server"
-	"oxia/server/container"
 	"oxia/server/kv"
 	"oxia/server/wal"
 )
@@ -31,7 +31,7 @@ type StandaloneRpcServer struct {
 	log zerolog.Logger
 }
 
-func NewStandaloneRpcServer(port int, advertisedPublicAddress string, numShards uint32, walFactory wal.WalFactory, kvFactory kv.KVFactory) (*StandaloneRpcServer, error) {
+func NewStandaloneRpcServer(bindAddress string, advertisedPublicAddress string, numShards uint32, walFactory wal.WalFactory, kvFactory kv.KVFactory) (*StandaloneRpcServer, error) {
 	res := &StandaloneRpcServer{
 		advertisedPublicAddress: advertisedPublicAddress,
 		numShards:               numShards,
@@ -73,7 +73,7 @@ func NewStandaloneRpcServer(port int, advertisedPublicAddress string, numShards 
 		res.controllers[i] = lc
 	}
 
-	res.Container, err = container.Start("standalone", port, func(registrar grpc.ServiceRegistrar) {
+	res.Container, err = container.Start("standalone", bindAddress, func(registrar grpc.ServiceRegistrar) {
 		proto.RegisterOxiaClientServer(registrar, res)
 	})
 	if err != nil {

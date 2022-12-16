@@ -14,8 +14,8 @@ import (
 	"google.golang.org/grpc/status"
 	"io"
 	"oxia/common"
+	"oxia/common/container"
 	"oxia/proto"
-	"oxia/server/container"
 )
 
 const (
@@ -32,7 +32,7 @@ type internalRpcServer struct {
 	log                  zerolog.Logger
 }
 
-func newCoordinationRpcServer(port int, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher) (*internalRpcServer, error) {
+func newCoordinationRpcServer(bindAddress string, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher) (*internalRpcServer, error) {
 	server := &internalRpcServer{
 		shardsDirector:       shardsDirector,
 		assignmentDispatcher: assignmentDispatcher,
@@ -42,7 +42,7 @@ func newCoordinationRpcServer(port int, shardsDirector ShardsDirector, assignmen
 	}
 
 	var err error
-	server.container, err = container.Start("internal", port, func(registrar grpc.ServiceRegistrar) {
+	server.container, err = container.Start("internal", bindAddress, func(registrar grpc.ServiceRegistrar) {
 		proto.RegisterOxiaControlServer(registrar, server)
 		proto.RegisterOxiaLogReplicationServer(registrar, server)
 		grpc_health_v1.RegisterHealthServer(registrar, health.NewServer())

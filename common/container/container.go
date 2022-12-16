@@ -1,7 +1,6 @@
 package container
 
 import (
-	"fmt"
 	"github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -18,7 +17,7 @@ type Container struct {
 	log    zerolog.Logger
 }
 
-func Start(name string, port int, registerFunc func(grpc.ServiceRegistrar)) (*Container, error) {
+func Start(name, bindAddress string, registerFunc func(grpc.ServiceRegistrar)) (*Container, error) {
 	c := &Container{
 		server: grpc.NewServer(
 			grpc.ChainStreamInterceptor(grpc_prometheus.StreamServerInterceptor),
@@ -28,7 +27,7 @@ func Start(name string, port int, registerFunc func(grpc.ServiceRegistrar)) (*Co
 	registerFunc(c.server)
 	grpc_prometheus.Register(c.server)
 
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	listener, err := net.Listen("tcp", bindAddress)
 	if err != nil {
 		return nil, err
 	}
