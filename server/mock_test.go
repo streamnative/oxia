@@ -239,3 +239,61 @@ func (m *mockShardAssignmentControllerStream) SendMsg(msg interface{}) error {
 func (m *mockShardAssignmentControllerStream) RecvMsg(msg interface{}) error {
 	panic("not implemented")
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+func newMockServerSendSnapshotStream() *mockServerSendSnapshotStream {
+	return &mockServerSendSnapshotStream{
+		chunks:    make(chan *proto.SnapshotChunk, 1000),
+		responses: make(chan *proto.SnapshotResponse, 1000),
+		md:        make(metadata.MD),
+	}
+}
+
+type mockServerSendSnapshotStream struct {
+	chunks    chan *proto.SnapshotChunk
+	responses chan *proto.SnapshotResponse
+	md        metadata.MD
+}
+
+func (m *mockServerSendSnapshotStream) AddChunk(chunk *proto.SnapshotChunk) {
+	m.chunks <- chunk
+}
+
+func (m *mockServerSendSnapshotStream) GetResponse() *proto.SnapshotResponse {
+	return <-m.responses
+}
+
+func (m *mockServerSendSnapshotStream) SendAndClose(empty *proto.SnapshotResponse) error {
+	m.responses <- empty
+	return nil
+}
+
+func (m *mockServerSendSnapshotStream) Recv() (*proto.SnapshotChunk, error) {
+	return <-m.chunks, nil
+}
+
+func (m *mockServerSendSnapshotStream) SetHeader(md metadata.MD) error {
+	m.md = md
+	return nil
+}
+
+func (m *mockServerSendSnapshotStream) SendHeader(md metadata.MD) error {
+	panic("not implemented")
+}
+
+func (m *mockServerSendSnapshotStream) SetTrailer(md metadata.MD) {
+	panic("not implemented")
+}
+
+func (m *mockServerSendSnapshotStream) Context() context.Context {
+	return context.Background()
+}
+
+func (m *mockServerSendSnapshotStream) SendMsg(msg interface{}) error {
+	panic("not implemented")
+}
+
+func (m *mockServerSendSnapshotStream) RecvMsg(msg interface{}) error {
+	panic("not implemented")
+}

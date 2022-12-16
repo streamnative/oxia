@@ -59,6 +59,8 @@ type FollowerController interface {
 
 	AddEntries(stream proto.OxiaLogReplication_AddEntriesServer) error
 
+	SendSnapshot(stream proto.OxiaLogReplication_SendSnapshotServer) error
+
 	Epoch() int64
 	Status() Status
 }
@@ -72,6 +74,7 @@ type followerController struct {
 	headIndex   int64
 	status      Status
 	wal         wal.Wal
+	kvFactory   kv.KVFactory
 	db          kv.DB
 	closeCh     chan error
 	log         zerolog.Logger
@@ -80,6 +83,7 @@ type followerController struct {
 func NewFollowerController(shardId uint32, wf wal.WalFactory, kvFactory kv.KVFactory) (FollowerController, error) {
 	fc := &followerController{
 		shardId:     shardId,
+		kvFactory:   kvFactory,
 		commitIndex: wal.InvalidOffset,
 		headIndex:   wal.InvalidOffset,
 		status:      NotMember,
@@ -137,13 +141,17 @@ func (fc *followerController) Close() error {
 }
 
 func (fc *followerController) closeChannel(err error) {
+	fc.Lock()
+	defer fc.Unlock()
+
+	fc.closeChannelNoMutex(err)
+}
+
+func (fc *followerController) closeChannelNoMutex(err error) {
 	if err != nil && err != io.EOF && status.Code(err) != codes.Canceled {
 		fc.log.Warn().Err(err).
 			Msg("Error in handle AddEntries stream")
 	}
-
-	fc.Lock()
-	defer fc.Unlock()
 
 	if fc.closeCh != nil {
 		fc.closeCh <- err
@@ -380,4 +388,97 @@ func checkStatus(expected, actual Status) error {
 		return errors.Wrapf(ErrorInvalidStatus, "Received message in the wrong state. In %+v, should be %+v.", actual, expected)
 	}
 	return nil
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////// Handling of snapshots
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+func (fc *followerController) SendSnapshot(stream proto.OxiaLogReplication_SendSnapshotServer) error {
+	fc.Lock()
+	if fc.closeCh != nil {
+		fc.Unlock()
+		return ErrorLeaderAlreadyConnected
+	}
+
+	fc.closeCh = make(chan error)
+	fc.Unlock()
+
+	go common.DoWithLabels(map[string]string{
+		"oxia":  "receive-snapshot",
+		"shard": fmt.Sprintf("%d", fc.shardId),
+	}, func() { fc.handleSnapshot(stream) })
+
+	return <-fc.closeCh
+}
+
+func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_SendSnapshotServer) {
+	fc.Lock()
+	defer fc.Unlock()
+
+	// Wipe out both WAL and DB contents
+	err := fc.wal.Clear()
+	if err != nil {
+		fc.closeChannelNoMutex(err)
+		return
+	}
+
+	err = fc.db.Close()
+	if err != nil {
+		fc.closeChannelNoMutex(err)
+		return
+	}
+
+	loader, err := fc.kvFactory.NewSnapshotLoader(fc.shardId)
+	if err != nil {
+		fc.closeChannelNoMutex(err)
+		return
+	}
+
+	defer loader.Close()
+
+	var totalSize int64
+
+	for {
+		snapChunk, err := stream.Recv()
+		if err != nil {
+			fc.closeChannelNoMutex(err)
+			return
+		} else if snapChunk == nil {
+			break
+		} else if snapChunk.Epoch != fc.epoch {
+			fc.closeChannelNoMutex(status.Errorf(CodeInvalidEpoch, "invalid epoch - current epoch %d - request epoch %d",
+				fc.epoch, snapChunk.Epoch))
+			return
+		}
+
+		fc.log.Debug().
+			Str("chunk-name", snapChunk.Name).
+			Int("chunk-size", len(snapChunk.Content)).
+			Int64("epoch", fc.epoch).
+			Msg("Applying snapshot chunk")
+		if err = loader.AddChunk(snapChunk.Name, snapChunk.Content); err != nil {
+			fc.closeChannel(err)
+			return
+		}
+
+		totalSize += int64(len(snapChunk.Content))
+	}
+
+	// We have received all the files for the database
+	loader.Complete()
+
+	newDb, err := kv.NewDB(fc.shardId, fc.kvFactory)
+	if err != nil {
+		fc.closeChannelNoMutex(errors.Wrap(err, "failed to open database after loading snapshot"))
+		return
+	}
+
+	fc.db = newDb
+	fc.closeChannelNoMutex(nil)
+
+	fc.log.Info().
+		Int64("epoch", fc.epoch).
+		Int64("snapshot-size", totalSize).
+		Msg("Successfully applied snapshot")
 }

@@ -19,6 +19,7 @@ service OxiaControl {
 service OxiaLogReplication {
   rpc Truncate(TruncateRequest) returns (TruncateResponse);
   rpc AddEntries(stream AddEntryRequest) returns (stream AddEntryResponse);
+  rpc SendSnapshot(stream SnapshotChunk) returns (SnapshotResponse);
 }
 
 message CoordinationShardAssignmentsResponse {}
@@ -32,6 +33,12 @@ message LogEntry {
   int64 epoch = 1;
   int64 offset = 2;
   bytes value = 3;
+}
+
+message SnapshotChunk {
+  int64 epoch = 1;
+  string name = 2;
+  bytes content = 3;
 }
 
 message FenceRequest {
@@ -85,4 +92,7 @@ message AddEntryRequest {
 
 message AddEntryResponse {
   int64 offset = 2;
+}
+
+message SnapshotResponse {
 }
