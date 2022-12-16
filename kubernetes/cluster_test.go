@@ -1,37 +1,61 @@
-package cluster
+package kubernetes
 
 import (
 	"context"
 	monitoring "github.com/prometheus-operator/prometheus-operator/pkg/client/versioned"
 	fakeMonitoring "github.com/prometheus-operator/prometheus-operator/pkg/client/versioned/fake"
 	"github.com/stretchr/testify/assert"
+	coreV1 "k8s.io/api/core/v1"
+	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	fakeKubernetes "k8s.io/client-go/kubernetes/fake"
+	"k8s.io/utils/pointer"
+	"oxia/pkg/apis/oxia/v1alpha1"
 	"testing"
 )
 
 func TestCluster(t *testing.T) {
 	_kubernetes := fakeKubernetes.NewSimpleClientset()
 	_monitoring := fakeMonitoring.NewSimpleClientset()
-	client := &clientImpl{
+	client := &clusterClientImpl{
 		kubernetes: _kubernetes,
 		monitoring: _monitoring,
 	}
 
-	config := NewConfig()
-	config.Namespace = "myns"
-	config.MonitoringEnabled = true
+	cluster := v1alpha1.OxiaCluster{
+		ObjectMeta: metaV1.ObjectMeta{
+			Namespace: "nyns",
+			Name:      "oxia",
+		},
+		Spec: v1alpha1.OxiaClusterSpec{
+			ShardCount:        pointer.Uint32(1),
+			ReplicationFactor: pointer.Uint32(2),
+			ServerReplicas:    pointer.Uint32(3),
+			ServerResources: v1alpha1.Resources{
+				Cpu:    "100m",
+				Memory: "128Mi",
+			},
+			ServerVolume: "1Gi",
+			CoordinatorResources: v1alpha1.Resources{
+				Cpu:    "100m",
+				Memory: "128Mi",
+			},
+			Image:             "oxia:latest",
+			ImagePullPolicy:   coreV1.PullAlways,
+			MonitoringEnabled: true,
+		},
+	}
 
-	err := client.Apply(config)
+	err := client.Apply(cluster)
 	assert.NoError(t, err)
 
-	assertClusterResources(t, _kubernetes, _monitoring, config.Namespace, 1)
+	assertClusterResources(t, _kubernetes, _monitoring, cluster.Namespace, 1)
 
-	err = client.Delete(config)
+	err = client.Delete(cluster.Namespace, cluster.Name, true)
 	assert.NoError(t, err)
 
-	assertClusterResources(t, _kubernetes, _monitoring, config.Namespace, 0)
+	assertClusterResources(t, _kubernetes, _monitoring, cluster.Namespace, 0)
 }
 
 func assertClusterResources(t *testing.T, _kubernetes kubernetes.Interface, _monitoring monitoring.Interface, namespace string, length int) {

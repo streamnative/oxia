@@ -3,12 +3,12 @@ kind: RoleBinding
 metadata:
   labels:
     {{- include "oxia-cluster.coordinator.labels" . | nindent 4 }}
-  name: {{ .Release.Name }}
+  name: {{ .Release.Name }}-coordinator
 subjects:
   - kind: ServiceAccount
-    name: {{ .Release.Name }}
+    name: {{ .Release.Name }}-coordinator
     namespace: {{ .Release.Namespace }}
 roleRef:
   apiGroup: ""
   kind: Role
-  name: {{ .Release.Name }}
+  name: {{ .Release.Name }}-coordinator

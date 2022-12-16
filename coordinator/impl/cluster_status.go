@@ -2,10 +2,10 @@ package impl
 
 type ServerAddress struct {
 	// Public is the endpoint that is advertised to clients
-	Public string `json:"public"`
+	Public string `json:"public" yaml:"public"`
 
 	// Internal is the endpoint for server->server RPCs
-	Internal string `json:"internal"`
+	Internal string `json:"internal" yaml:"internal"`
 }
 
 type Int32HashRange struct {

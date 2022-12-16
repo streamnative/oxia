@@ -6,7 +6,7 @@ spec:
   group: oxia.streamnative.io
   names:
     kind: OxiaCluster
-    singular: oxiacluster
+    singular: cluster
     plural: oxiaclusters
     shortNames: [ "oc" ]
   scope: Namespaced

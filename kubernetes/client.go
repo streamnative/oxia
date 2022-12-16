@@ -1,4 +1,4 @@
-package client
+package kubernetes
 
 import (
 	"context"
@@ -17,7 +17,7 @@ import (
 	oxia "oxia/pkg/generated/clientset/versioned"
 )
 
-func NewConfig() *rest.Config {
+func NewClientConfig() *rest.Config {
 	kubeconfigGetter := clientcmd.NewDefaultClientConfigLoadingRules().Load
 	config, err := clientcmd.BuildConfigFromKubeconfigGetter("", kubeconfigGetter)
 	if err != nil {
@@ -80,6 +80,12 @@ func Services(kubernetes kubernetes.Interface) Client[coreV1.Service] {
 	})
 }
 
+func ConfigMaps(kubernetes kubernetes.Interface) Client[coreV1.ConfigMap] {
+	return newNamespaceClient[coreV1.ConfigMap](func(namespace string) ResourceInterface[coreV1.ConfigMap] {
+		return kubernetes.CoreV1().ConfigMaps(namespace)
+	})
+}
+
 func Deployments(kubernetes kubernetes.Interface) Client[appsV1.Deployment] {
 	return newNamespaceClient[appsV1.Deployment](func(namespace string) ResourceInterface[appsV1.Deployment] {
 		return kubernetes.AppsV1().Deployments(namespace)
@@ -116,6 +122,7 @@ type resource interface {
 		rbacV1.RoleBinding |
 		coreV1.ServiceAccount |
 		coreV1.Service |
+		coreV1.ConfigMap |
 		appsV1.Deployment |
 		appsV1.StatefulSet |
 		monitoringV1.ServiceMonitor

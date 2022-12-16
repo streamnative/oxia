@@ -38,7 +38,7 @@ func TestCoordinatorE2E(t *testing.T) {
 	clusterConfig := ClusterConfig{
 		ReplicationFactor: 3,
 		ShardCount:        1,
-		StorageServers:    []ServerAddress{sa1, sa2, sa3},
+		Servers:           []ServerAddress{sa1, sa2, sa3},
 	}
 	clientPool := common.NewClientPool()
 

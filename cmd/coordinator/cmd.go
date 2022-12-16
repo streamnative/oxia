@@ -2,6 +2,7 @@ package coordinator
 
 import (
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"io"
 	"oxia/cmd/flag"
 	"oxia/common"
@@ -9,23 +10,37 @@ import (
 )
 
 var (
-	conf = coordinator.NewConfig()
+	conf       = coordinator.NewConfig()
+	configFile string
 
 	Cmd = &cobra.Command{
-		Use:   "coordinator",
-		Short: "Start a coordinator",
-		Long:  `Start a coordinator`,
-		Run:   exec,
+		Use:     "coordinator",
+		Short:   "Start a coordinator",
+		Long:    `Start a coordinator`,
+		PreRunE: loadClusterConfig,
+		Run:     exec,
 	}
 )
 
 func init() {
 	flag.InternalPort(Cmd, &conf.InternalServicePort)
 	flag.MetricsPort(Cmd, &conf.MetricsPort)
-	Cmd.Flags().StringVar(&conf.Name, "name", conf.Name, "THe name of the Oxia cluster")
-	Cmd.Flags().Uint32Var(&conf.ReplicationFactor, "replication-factor", conf.ReplicationFactor, "The replication factor")
-	Cmd.Flags().Uint32Var(&conf.ShardCount, "shards", conf.ShardCount, "The number of shards")
-	Cmd.Flags().Uint32Var(&conf.ServerReplicas, "servers", conf.ServerReplicas, "The number of servers")
+	Cmd.Flags().StringVarP(&configFile, "conf", "f", "", "Cluster config file")
+}
+
+func loadClusterConfig(*cobra.Command, []string) error {
+	if configFile == "" {
+		viper.AddConfigPath("/oxia/conf")
+		viper.AddConfigPath(".")
+	} else {
+		viper.SetConfigFile(configFile)
+	}
+
+	if err := viper.ReadInConfig(); err != nil {
+		return err
+	}
+
+	return viper.Unmarshal(&conf.ClusterConfig)
 }
 
 func exec(*cobra.Command, []string) {

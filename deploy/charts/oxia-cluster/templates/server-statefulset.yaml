@@ -16,6 +16,7 @@ spec:
         {{- include "oxia-cluster.server.labels" . | nindent 8 }}
       name: {{ .Release.Name }}
     spec:
+      serviceAccountName: {{ .Release.Name }}
       containers:
         - command: [ "oxia", "server", "--log-json", "--data-dir=/data/db", "--wal-dir=/data/wal" ]
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
@@ -37,7 +38,6 @@ spec:
             {{- include "oxia-cluster.probe" .Values.server.ports.internal | nindent 12 }}
           readinessProbe:
             {{- include "oxia-cluster.probe" .Values.server.ports.internal | nindent 12 }}
-      serviceAccountName: {{ .Release.Name }}
   volumeClaimTemplates:
     - metadata:
         name: data

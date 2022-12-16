@@ -4,6 +4,7 @@ Common labels
 {{- define "oxia-controller.labels" -}}
 {{ include "oxia-controller.selectorLabels" . }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+app.kubernetes.io/part-of: oxia
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
