@@ -44,7 +44,8 @@ var (
 
 func (s *shardAssignmentDispatcher) RegisterForUpdates(clientStream Client) error {
 	s.Lock()
-	if s.assignments == nil {
+	initialAssignments := s.assignments
+	if initialAssignments == nil {
 		s.Unlock()
 		return ErrorNotInitialized
 	}
@@ -57,8 +58,10 @@ func (s *shardAssignmentDispatcher) RegisterForUpdates(clientStream Client) erro
 	s.Unlock()
 
 	// Send initial assignments
-	err := clientStream.Send(s.assignments)
+	err := clientStream.Send(initialAssignments)
 	if err != nil {
+		s.Lock()
+		delete(s.clients, clientId)
 		s.Unlock()
 		return err
 	}
@@ -78,7 +81,9 @@ func (s *shardAssignmentDispatcher) RegisterForUpdates(clientStream Client) erro
 						Str("client", peer.Addr.String()).
 						Msg("Failed to send shard assignment update to client")
 				}
+				s.Lock()
 				delete(s.clients, clientId)
+				s.Unlock()
 			}
 
 		case <-clientStream.Context().Done():
@@ -162,7 +167,7 @@ func (s *shardAssignmentDispatcher) updateShardAssignment(assignments *proto.Sha
 			// Good, we were able to pass the update to the client
 
 		default:
-			// The client is not responsive, cut him off
+			// The client is not responsive, cut it off
 			close(clientCh)
 			delete(s.clients, id)
 		}
