@@ -6,16 +6,16 @@ import (
 	"gopkg.in/yaml.v3"
 	"os"
 	"oxia/coordinator"
-	"oxia/coordinator/impl"
+	"oxia/coordinator/model"
 	"strings"
 	"testing"
 )
 
 func TestCmd(t *testing.T) {
-	clusterConfig := impl.ClusterConfig{
+	clusterConfig := model.ClusterConfig{
 		ReplicationFactor: 1,
 		ShardCount:        2,
-		Servers: []impl.ServerAddress{{
+		Servers: []model.ServerAddress{{
 			Public:   "public:1234",
 			Internal: "internal:5678",
 		}},
@@ -42,47 +42,47 @@ func TestCmd(t *testing.T) {
 		{[]string{}, coordinator.Config{
 			InternalServicePort: 6649,
 			MetricsPort:         8080,
-			ClusterConfig: impl.ClusterConfig{
+			ClusterConfig: model.ClusterConfig{
 				ReplicationFactor: 1,
 				ShardCount:        2,
-				Servers: []impl.ServerAddress{{
+				Servers: []model.ServerAddress{{
 					Public:   "public:1234",
 					Internal: "internal:5678",
 				}}}}, false},
 		{[]string{"-i=1234"}, coordinator.Config{
 			InternalServicePort: 1234,
 			MetricsPort:         8080,
-			ClusterConfig: impl.ClusterConfig{
+			ClusterConfig: model.ClusterConfig{
 				ReplicationFactor: 1,
 				ShardCount:        2,
-				Servers: []impl.ServerAddress{{
+				Servers: []model.ServerAddress{{
 					Public:   "public:1234",
 					Internal: "internal:5678",
 				}}}}, false},
 		{[]string{"-m=1234"}, coordinator.Config{
 			InternalServicePort: 6649,
 			MetricsPort:         1234,
-			ClusterConfig: impl.ClusterConfig{
+			ClusterConfig: model.ClusterConfig{
 				ReplicationFactor: 1,
 				ShardCount:        2,
-				Servers: []impl.ServerAddress{{
+				Servers: []model.ServerAddress{{
 					Public:   "public:1234",
 					Internal: "internal:5678",
 				}}}}, false},
 		{[]string{"-f=" + name}, coordinator.Config{
 			InternalServicePort: 6649,
 			MetricsPort:         8080,
-			ClusterConfig: impl.ClusterConfig{
+			ClusterConfig: model.ClusterConfig{
 				ReplicationFactor: 1,
 				ShardCount:        2,
-				Servers: []impl.ServerAddress{{
+				Servers: []model.ServerAddress{{
 					Public:   "public:1234",
 					Internal: "internal:5678",
 				}}}}, false},
 		{[]string{"-f=invalid.yaml"}, coordinator.Config{
 			InternalServicePort: 6649,
 			MetricsPort:         8080,
-			ClusterConfig:       impl.ClusterConfig{}}, true},
+			ClusterConfig:       model.ClusterConfig{}}, true},
 	} {
 		t.Run(strings.Join(test.args, "_"), func(t *testing.T) {
 			conf = coordinator.NewConfig()

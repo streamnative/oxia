@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"io"
 	"oxia/common"
+	"oxia/coordinator/model"
 	"oxia/proto"
 	"sync"
 	"sync/atomic"
@@ -37,7 +38,7 @@ type NodeController interface {
 
 type nodeController struct {
 	sync.Mutex
-	addr                     ServerAddress
+	addr                     model.ServerAddress
 	status                   NodeStatus
 	shardAssignmentsProvider ShardAssignmentsProvider
 	nodeAvailabilityListener NodeAvailabilityListener
@@ -48,7 +49,7 @@ type nodeController struct {
 	cancel                   context.CancelFunc
 }
 
-func NewNodeController(addr ServerAddress,
+func NewNodeController(addr model.ServerAddress,
 	shardAssignmentsProvider ShardAssignmentsProvider,
 	nodeAvailabilityListener NodeAvailabilityListener,
 	rpc RpcProvider) NodeController {

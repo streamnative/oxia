@@ -8,6 +8,7 @@ import (
 	pb "google.golang.org/protobuf/proto"
 	"io"
 	"math"
+	"oxia/coordinator/model"
 	"oxia/proto"
 	"sync"
 )
@@ -17,7 +18,7 @@ type ShardAssignmentsProvider interface {
 }
 
 type NodeAvailabilityListener interface {
-	NodeBecameUnavailable(node ServerAddress)
+	NodeBecameUnavailable(node model.ServerAddress)
 }
 
 type Coordinator interface {
@@ -25,12 +26,12 @@ type Coordinator interface {
 
 	ShardAssignmentsProvider
 
-	InitiateLeaderElection(shard uint32, metadata ShardMetadata) error
-	ElectedLeader(shard uint32, metadata ShardMetadata) error
+	InitiateLeaderElection(shard uint32, metadata model.ShardMetadata) error
+	ElectedLeader(shard uint32, metadata model.ShardMetadata) error
 
 	NodeAvailabilityListener
 
-	ClusterStatus() ClusterStatus
+	ClusterStatus() model.ClusterStatus
 }
 
 type coordinator struct {
@@ -38,18 +39,18 @@ type coordinator struct {
 	assignmentsChanged *sync.Cond
 
 	MetadataProvider
-	ClusterConfig
+	model.ClusterConfig
 
 	shardControllers map[uint32]ShardController
 	nodeControllers  map[string]NodeController
-	clusterStatus    *ClusterStatus
+	clusterStatus    *model.ClusterStatus
 	assignments      *proto.ShardAssignmentsResponse
-	metadataVersion  int64
+	metadataVersion  Version
 	rpc              RpcProvider
 	log              zerolog.Logger
 }
 
-func NewCoordinator(metadataProvider MetadataProvider, clusterConfig ClusterConfig, rpc RpcProvider) (Coordinator, error) {
+func NewCoordinator(metadataProvider MetadataProvider, clusterConfig model.ClusterConfig, rpc RpcProvider) (Coordinator, error) {
 	c := &coordinator{
 		MetadataProvider: metadataProvider,
 		ClusterConfig:    clusterConfig,
@@ -89,9 +90,9 @@ func (c *coordinator) initialAssignment() error {
 		Msg("Performing initial assignment")
 
 	cc := c.ClusterConfig
-	cs := &ClusterStatus{
+	cs := &model.ClusterStatus{
 		ReplicationFactor: cc.ReplicationFactor,
-		Shards:            make(map[uint32]ShardMetadata),
+		Shards:            make(map[uint32]model.ShardMetadata),
 	}
 
 	bucketSize := math.MaxUint32 / cc.ShardCount
@@ -100,12 +101,12 @@ func (c *coordinator) initialAssignment() error {
 	serverIdx := uint32(0)
 
 	for i := uint32(0); i < cc.ShardCount; i++ {
-		cs.Shards[i] = ShardMetadata{
-			Status:   ShardStatusUnknown,
+		cs.Shards[i] = model.ShardMetadata{
+			Status:   model.ShardStatusUnknown,
 			Epoch:    -1,
 			Leader:   nil,
 			Ensemble: getServers(cc.Servers, serverIdx, cc.ReplicationFactor),
-			Int32HashRange: Int32HashRange{
+			Int32HashRange: model.Int32HashRange{
 				Min: bucketSize * i,
 				Max: bucketSize*(i+1) - 1,
 			},
@@ -132,9 +133,9 @@ func (c *coordinator) initialAssignment() error {
 	return nil
 }
 
-func getServers(servers []ServerAddress, startIdx uint32, count uint32) []ServerAddress {
+func getServers(servers []model.ServerAddress, startIdx uint32, count uint32) []model.ServerAddress {
 	n := len(servers)
-	res := make([]ServerAddress, count)
+	res := make([]model.ServerAddress, count)
 	for i := uint32(0); i < count; i++ {
 		res[i] = servers[int(startIdx+i)%n]
 	}
@@ -154,7 +155,7 @@ func (c *coordinator) Close() error {
 	return err
 }
 
-func (c *coordinator) NodeBecameUnavailable(node ServerAddress) {
+func (c *coordinator) NodeBecameUnavailable(node model.ServerAddress) {
 	c.Lock()
 	defer c.Unlock()
 
@@ -175,7 +176,7 @@ func (c *coordinator) WaitForNextUpdate(currentValue *proto.ShardAssignmentsResp
 	return c.assignments
 }
 
-func (c *coordinator) InitiateLeaderElection(shard uint32, metadata ShardMetadata) error {
+func (c *coordinator) InitiateLeaderElection(shard uint32, metadata model.ShardMetadata) error {
 	c.Lock()
 	defer c.Unlock()
 
@@ -191,7 +192,7 @@ func (c *coordinator) InitiateLeaderElection(shard uint32, metadata ShardMetadat
 	return nil
 }
 
-func (c *coordinator) ElectedLeader(shard uint32, metadata ShardMetadata) error {
+func (c *coordinator) ElectedLeader(shard uint32, metadata model.ShardMetadata) error {
 	c.Lock()
 	defer c.Unlock()
 
@@ -240,7 +241,7 @@ func (c *coordinator) computeNewAssignments() {
 	c.assignmentsChanged.Broadcast()
 }
 
-func (c *coordinator) ClusterStatus() ClusterStatus {
+func (c *coordinator) ClusterStatus() model.ClusterStatus {
 	c.Lock()
 	defer c.Unlock()
 	return *c.clusterStatus.Clone()

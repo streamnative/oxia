@@ -4,13 +4,14 @@ import (
 	"errors"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"oxia/coordinator/model"
 	"oxia/proto"
 	"testing"
 	"time"
 )
 
 func TestNodeController_HealthCheck(t *testing.T) {
-	addr := ServerAddress{
+	addr := model.ServerAddress{
 		Public:   "my-server:9190",
 		Internal: "my-server:8190",
 	}
@@ -47,7 +48,7 @@ func TestNodeController_HealthCheck(t *testing.T) {
 }
 
 func TestNodeController_ShardsAssignments(t *testing.T) {
-	addr := ServerAddress{
+	addr := model.ServerAddress{
 		Public:   "my-server:9190",
 		Internal: "my-server:8190",
 	}

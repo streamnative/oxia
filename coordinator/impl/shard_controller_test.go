@@ -3,6 +3,7 @@ package impl
 import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
+	"oxia/coordinator/model"
 	"oxia/proto"
 	"sync"
 	"testing"
@@ -14,15 +15,15 @@ func TestShardController(t *testing.T) {
 	rpc := newMockRpcProvider()
 	coordinator := newMockCoordinator()
 
-	s1 := ServerAddress{"s1:9091", "s1:8191"}
-	s2 := ServerAddress{"s2:9091", "s2:8191"}
-	s3 := ServerAddress{"s3:9091", "s3:8191"}
+	s1 := model.ServerAddress{Public: "s1:9091", Internal: "s1:8191"}
+	s2 := model.ServerAddress{Public: "s2:9091", Internal: "s2:8191"}
+	s3 := model.ServerAddress{Public: "s3:9091", Internal: "s3:8191"}
 
-	sc := NewShardController(shard, ShardMetadata{
-		Status:   ShardStatusUnknown,
+	sc := NewShardController(shard, model.ShardMetadata{
+		Status:   model.ShardStatusUnknown,
 		Epoch:    1,
 		Leader:   nil,
-		Ensemble: []ServerAddress{s1, s2, s3},
+		Ensemble: []model.ServerAddress{s1, s2, s3},
 	}, rpc, coordinator)
 
 	// Shard controller should initiate a leader election
@@ -41,7 +42,7 @@ func TestShardController(t *testing.T) {
 	rpc.GetNode(s1).expectBecomeLeaderRequest(t, shard, 2, 3)
 
 	assert.Eventually(t, func() bool {
-		return sc.Status() == ShardStatusSteadyState
+		return sc.Status() == model.ShardStatusSteadyState
 	}, 10*time.Second, 100*time.Millisecond)
 	assert.EqualValues(t, 2, sc.Epoch())
 	assert.Equal(t, s1, *sc.Leader())
@@ -63,7 +64,7 @@ func TestShardController(t *testing.T) {
 	rpc.GetNode(s2).expectBecomeLeaderRequest(t, shard, 3, 3)
 
 	assert.Eventually(t, func() bool {
-		return sc.Status() == ShardStatusSteadyState
+		return sc.Status() == model.ShardStatusSteadyState
 	}, 10*time.Second, 100*time.Millisecond)
 
 	assert.EqualValues(t, 3, sc.Epoch())
@@ -88,15 +89,15 @@ func TestShardController_FenceWithNonRespondingServer(t *testing.T) {
 	rpc := newMockRpcProvider()
 	coordinator := newMockCoordinator()
 
-	s1 := ServerAddress{"s1:9091", "s1:8191"}
-	s2 := ServerAddress{"s2:9091", "s2:8191"}
-	s3 := ServerAddress{"s3:9091", "s3:8191"}
+	s1 := model.ServerAddress{Public: "s1:9091", Internal: "s1:8191"}
+	s2 := model.ServerAddress{Public: "s2:9091", Internal: "s2:8191"}
+	s3 := model.ServerAddress{Public: "s3:9091", Internal: "s3:8191"}
 
-	sc := NewShardController(shard, ShardMetadata{
-		Status:   ShardStatusUnknown,
+	sc := NewShardController(shard, model.ShardMetadata{
+		Status:   model.ShardStatusUnknown,
 		Epoch:    1,
 		Leader:   nil,
-		Ensemble: []ServerAddress{s1, s2, s3},
+		Ensemble: []model.ServerAddress{s1, s2, s3},
 	}, rpc, coordinator)
 
 	timeStart := time.Now()
@@ -117,7 +118,7 @@ func TestShardController_FenceWithNonRespondingServer(t *testing.T) {
 	rpc.GetNode(s1).expectBecomeLeaderRequest(t, shard, 2, 3)
 
 	assert.WithinDuration(t, timeStart, time.Now(), 1*time.Second)
-	assert.Equal(t, ShardStatusSteadyState, sc.Status())
+	assert.Equal(t, model.ShardStatusSteadyState, sc.Status())
 	assert.EqualValues(t, 2, sc.Epoch())
 	assert.Equal(t, s1, *sc.Leader())
 
@@ -129,15 +130,15 @@ func TestShardController_FenceFollowerUntilItRecovers(t *testing.T) {
 	rpc := newMockRpcProvider()
 	coordinator := newMockCoordinator()
 
-	s1 := ServerAddress{"s1:9091", "s1:8191"}
-	s2 := ServerAddress{"s2:9091", "s2:8191"}
-	s3 := ServerAddress{"s3:9091", "s3:8191"}
+	s1 := model.ServerAddress{Public: "s1:9091", Internal: "s1:8191"}
+	s2 := model.ServerAddress{Public: "s2:9091", Internal: "s2:8191"}
+	s3 := model.ServerAddress{Public: "s3:9091", Internal: "s3:8191"}
 
-	sc := NewShardController(shard, ShardMetadata{
-		Status:   ShardStatusUnknown,
+	sc := NewShardController(shard, model.ShardMetadata{
+		Status:   model.ShardStatusUnknown,
 		Epoch:    1,
 		Leader:   nil,
-		Ensemble: []ServerAddress{s1, s2, s3},
+		Ensemble: []model.ServerAddress{s1, s2, s3},
 	}, rpc, coordinator)
 
 	// s3 is failing, though we can still elect a leader
@@ -154,7 +155,7 @@ func TestShardController_FenceFollowerUntilItRecovers(t *testing.T) {
 	rpc.GetNode(s1).expectBecomeLeaderRequest(t, shard, 2, 3)
 
 	assert.Eventually(t, func() bool {
-		return sc.Status() == ShardStatusSteadyState
+		return sc.Status() == model.ShardStatusSteadyState
 	}, 10*time.Second, 100*time.Millisecond)
 	assert.EqualValues(t, 2, sc.Epoch())
 	assert.NotNil(t, sc.Leader())
@@ -179,7 +180,7 @@ func TestShardController_FenceFollowerUntilItRecovers(t *testing.T) {
 
 type sCoordinatorEvents struct {
 	shard    uint32
-	metadata ShardMetadata
+	metadata model.ShardMetadata
 }
 
 type mockCoordinator struct {
@@ -200,7 +201,7 @@ func (m *mockCoordinator) Close() error {
 	return nil
 }
 
-func (m *mockCoordinator) ClusterStatus() ClusterStatus {
+func (m *mockCoordinator) ClusterStatus() model.ClusterStatus {
 	panic("not implemented")
 }
 
@@ -208,7 +209,7 @@ func (m *mockCoordinator) WaitForNextUpdate(currentValue *proto.ShardAssignments
 	panic("not implemented")
 }
 
-func (m *mockCoordinator) InitiateLeaderElection(shard uint32, metadata ShardMetadata) error {
+func (m *mockCoordinator) InitiateLeaderElection(shard uint32, metadata model.ShardMetadata) error {
 	m.Lock()
 	defer m.Unlock()
 	if m.err != nil {
@@ -224,7 +225,7 @@ func (m *mockCoordinator) InitiateLeaderElection(shard uint32, metadata ShardMet
 	return nil
 }
 
-func (m *mockCoordinator) ElectedLeader(shard uint32, metadata ShardMetadata) error {
+func (m *mockCoordinator) ElectedLeader(shard uint32, metadata model.ShardMetadata) error {
 	m.Lock()
 	defer m.Unlock()
 	if m.err != nil {
@@ -237,6 +238,6 @@ func (m *mockCoordinator) ElectedLeader(shard uint32, metadata ShardMetadata) er
 	return nil
 }
 
-func (m *mockCoordinator) NodeBecameUnavailable(node ServerAddress) {
+func (m *mockCoordinator) NodeBecameUnavailable(node model.ServerAddress) {
 	panic("not implemented")
 }

@@ -114,6 +114,7 @@ type ResourceInterface[Resource resource] interface {
 	Create(ctx context.Context, Resource *Resource, opts metaV1.CreateOptions) (*Resource, error)
 	Update(ctx context.Context, Resource *Resource, opts metaV1.UpdateOptions) (*Resource, error)
 	Delete(ctx context.Context, name string, opts metaV1.DeleteOptions) error
+	Get(ctx context.Context, name string, opts metaV1.GetOptions) (*Resource, error)
 }
 
 type resource interface {
@@ -129,19 +130,23 @@ type resource interface {
 }
 
 type Client[Resource resource] interface {
-	Upsert(namespace string, resource *Resource) error
+	Upsert(namespace string, resource *Resource) (*Resource, error)
 	Delete(namespace, name string) error
+	Get(namespace, name string) (*Resource, error)
 }
 
 type clientImpl[Resource resource] struct {
 	clientFunc func(string) ResourceInterface[Resource]
 }
 
-func (c *clientImpl[Resource]) Upsert(namespace string, resource *Resource) (err error) {
+func (c *clientImpl[Resource]) Upsert(namespace string, resource *Resource) (result *Resource, err error) {
 	client := c.clientFunc(namespace)
-	_, err = client.Update(context.Background(), resource, metaV1.UpdateOptions{})
+	result, err = client.Update(context.Background(), resource, metaV1.UpdateOptions{})
+	if errors.IsConflict(err) {
+		return
+	}
 	if errors.IsNotFound(err) {
-		_, err = client.Create(context.Background(), resource, metaV1.CreateOptions{})
+		result, err = client.Create(context.Background(), resource, metaV1.CreateOptions{})
 	}
 	return
 }
@@ -149,4 +154,9 @@ func (c *clientImpl[Resource]) Upsert(namespace string, resource *Resource) (err
 func (c *clientImpl[Resource]) Delete(namespace, name string) error {
 	client := c.clientFunc(namespace)
 	return client.Delete(context.Background(), name, metaV1.DeleteOptions{})
+}
+
+func (c *clientImpl[Resource]) Get(namespace, name string) (*Resource, error) {
+	client := c.clientFunc(namespace)
+	return client.Get(context.Background(), name, metaV1.GetOptions{})
 }
