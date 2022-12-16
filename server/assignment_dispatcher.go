@@ -55,6 +55,7 @@ func (s *shardAssignmentDispatcher) RegisterForUpdates(clientStream Client) erro
 	s.nextClientId++
 
 	s.clients[clientId] = clientCh
+	closeCh := s.closeCh
 	s.Unlock()
 
 	// Send initial assignments
@@ -93,7 +94,7 @@ func (s *shardAssignmentDispatcher) RegisterForUpdates(clientStream Client) erro
 			s.Unlock()
 			return nil
 
-		case <-s.closeCh:
+		case <-closeCh:
 			// the server is closing
 			return ErrorAlreadyClosed
 		}
