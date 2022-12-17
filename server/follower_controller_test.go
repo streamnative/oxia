@@ -427,7 +427,7 @@ func prepareTestDb(t *testing.T) kv.Snapshot {
 				Key:     fmt.Sprintf("key-%d", i),
 				Payload: []byte(fmt.Sprintf("value-%d", i)),
 			}},
-		}, int64(i))
+		}, int64(i), 0)
 		assert.NoError(t, err)
 	}
 
