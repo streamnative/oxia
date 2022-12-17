@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/status"
@@ -9,6 +10,7 @@ import (
 	"oxia/proto"
 	"oxia/server/kv"
 	"oxia/server/wal"
+	"sync"
 	"testing"
 )
 
@@ -409,6 +411,123 @@ func TestFollower_RejectTruncateInvalidEpoch(t *testing.T) {
 	assert.Equal(t, CodeInvalidEpoch, status.Code(err))
 	assert.Equal(t, Fenced, fc.Status())
 	assert.EqualValues(t, 5, fc.Epoch())
+}
+
+func prepareTestDb(t *testing.T) kv.Snapshot {
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+		DataDir: t.TempDir(),
+	})
+	assert.NoError(t, err)
+	db, err := kv.NewDB(0, kvFactory)
+	assert.NoError(t, err)
+
+	for i := 0; i < 100; i++ {
+		_, err := db.ProcessWrite(&proto.WriteRequest{
+			Puts: []*proto.PutRequest{{
+				Key:     fmt.Sprintf("key-%d", i),
+				Payload: []byte(fmt.Sprintf("value-%d", i)),
+			}},
+		}, int64(i))
+		assert.NoError(t, err)
+	}
+
+	snapshot, err := db.Snapshot()
+	assert.NoError(t, err)
+
+	assert.NoError(t, kvFactory.Close())
+
+	return snapshot
+}
+
+func TestFollower_HandleSnapshot(t *testing.T) {
+	var shardId uint32
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+		DataDir: t.TempDir(),
+	})
+	assert.NoError(t, err)
+	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
+
+	fc, err := NewFollowerController(shardId, walFactory, kvFactory)
+	assert.NoError(t, err)
+
+	_, err = fc.Fence(&proto.FenceRequest{Epoch: 1})
+	assert.NoError(t, err)
+	assert.Equal(t, Fenced, fc.Status())
+	assert.EqualValues(t, 1, fc.Epoch())
+
+	stream := newMockServerAddEntriesStream()
+	go func() { assert.NoError(t, fc.AddEntries(stream)) }()
+
+	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, 0))
+
+	// Wait for addEntryResponses
+	r1 := stream.GetResponse()
+	assert.Equal(t, Follower, fc.Status())
+	assert.EqualValues(t, 0, r1.Offset)
+	close(stream.requests)
+
+	// Load snapshot into follower
+	snapshot := prepareTestDb(t)
+
+	snapshotStream := newMockServerSendSnapshotStream()
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+
+	go func() {
+		err := fc.SendSnapshot(snapshotStream)
+		assert.NoError(t, err)
+		wg.Done()
+	}()
+
+	for ; snapshot.Valid(); snapshot.Next() {
+		chunk := snapshot.Chunk()
+		content, err := chunk.Content()
+		assert.NoError(t, err)
+		snapshotStream.AddChunk(&proto.SnapshotChunk{
+			Epoch:   1,
+			Name:    chunk.Name(),
+			Content: content,
+		})
+	}
+
+	close(snapshotStream.chunks)
+
+	// Wait for follower to fully load the snapshot
+	wg.Wait()
+
+	// At this point the content of the follower should only include the
+	// data from the snapshot and any existing data should be gone
+
+	dbRes, err := fc.(*followerController).db.ProcessRead(&proto.ReadRequest{Gets: []*proto.GetRequest{{
+		Key:            "a",
+		IncludePayload: true}, {
+		Key:            "b",
+		IncludePayload: true,
+	}}})
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(dbRes.Gets))
+	assert.Equal(t, proto.Status_KEY_NOT_FOUND, dbRes.Gets[0].Status)
+	assert.Nil(t, dbRes.Gets[0].Payload)
+	assert.Equal(t, proto.Status_KEY_NOT_FOUND, dbRes.Gets[1].Status)
+	assert.Nil(t, dbRes.Gets[1].Payload)
+
+	for i := 0; i < 100; i++ {
+		dbRes, err := fc.(*followerController).db.ProcessRead(&proto.ReadRequest{Gets: []*proto.GetRequest{{
+			Key:            fmt.Sprintf("key-%d", i),
+			IncludePayload: true,
+		},
+		}})
+		assert.NoError(t, err)
+		assert.Equal(t, 1, len(dbRes.Gets))
+		assert.Equal(t, proto.Status_OK, dbRes.Gets[0].Status)
+		assert.Equal(t, []byte(fmt.Sprintf("value-%d", i)), dbRes.Gets[0].Payload)
+	}
+
+	assert.Equal(t, wal.InvalidOffset, fc.(*followerController).wal.LastOffset())
+
+	assert.NoError(t, fc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
 }
 
 func createAddRequest(t *testing.T, epoch int64, offset int64,
