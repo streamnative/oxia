@@ -12,6 +12,7 @@ import (
 func newServer(t *testing.T) (s *server.Server, addr ServerAddress) {
 	var err error
 	s, err = server.New(server.Config{
+		BindHost:            "localhost",
 		PublicServicePort:   0,
 		InternalServicePort: 0,
 		MetricsPort:         -1, // Disable metrics to avoid conflict
