@@ -85,6 +85,7 @@ func (s *shardAssignmentDispatcher) RegisterForUpdates(clientStream Client) erro
 				s.Lock()
 				delete(s.clients, clientId)
 				s.Unlock()
+				return err
 			}
 
 		case <-clientStream.Context().Done():
