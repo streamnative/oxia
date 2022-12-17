@@ -130,10 +130,9 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 		return shard.Status == ShardStatusSteadyState
 	}, 10*time.Second, 10*time.Millisecond)
 
-	client = oxia.NewSyncClient(clientOptions)
-
 	// Wait for the client to receive the updated assignment list
 	assert.Eventually(t, func() bool {
+		client = oxia.NewSyncClient(clientOptions)
 		_, _, err := client.Get("my-key")
 		return err == nil
 	}, 10*time.Second, 10*time.Millisecond)
