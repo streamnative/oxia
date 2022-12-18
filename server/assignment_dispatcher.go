@@ -33,8 +33,11 @@ type shardAssignmentDispatcher struct {
 	assignments  *proto.ShardAssignmentsResponse
 	clients      map[int64]chan *proto.ShardAssignmentsResponse
 	nextClientId int64
-	closeCh      chan error
-	log          zerolog.Logger
+
+	ctx    context.Context
+	cancel context.CancelFunc
+
+	log zerolog.Logger
 }
 
 var (
@@ -55,7 +58,6 @@ func (s *shardAssignmentDispatcher) RegisterForUpdates(clientStream Client) erro
 	s.nextClientId++
 
 	s.clients[clientId] = clientCh
-	closeCh := s.closeCh
 	s.Unlock()
 
 	// Send initial assignments
@@ -85,6 +87,7 @@ func (s *shardAssignmentDispatcher) RegisterForUpdates(clientStream Client) erro
 				s.Lock()
 				delete(s.clients, clientId)
 				s.Unlock()
+				return err
 			}
 
 		case <-clientStream.Context().Done():
@@ -94,15 +97,15 @@ func (s *shardAssignmentDispatcher) RegisterForUpdates(clientStream Client) erro
 			s.Unlock()
 			return nil
 
-		case <-closeCh:
+		case <-s.ctx.Done():
 			// the server is closing
-			return ErrorAlreadyClosed
+			return nil
 		}
 	}
 }
 
 func (s *shardAssignmentDispatcher) Close() error {
-	s.closeChannel(nil)
+	s.cancel()
 	return nil
 }
 
@@ -113,43 +116,35 @@ func (s *shardAssignmentDispatcher) Initialized() bool {
 }
 
 func (s *shardAssignmentDispatcher) ShardAssignment(stream proto.OxiaControl_ShardAssignmentServer) error {
+	ch := make(chan error)
 	go common.DoWithLabels(map[string]string{
 		"oxia": "receive-shards-assignments",
-	}, func() { s.handleServerStream(stream) })
+	}, func() { s.handleServerStream(stream, ch) })
 
-	s.Lock()
-	ch := s.closeCh
-	s.Unlock()
+	select {
+	case err := <-ch:
+		return err
 
-	return <-ch
-}
-
-func (s *shardAssignmentDispatcher) handleServerStream(stream proto.OxiaControl_ShardAssignmentServer) {
-	for {
-		request, err := stream.Recv()
-		if err != nil {
-			s.closeChannel(err)
-			return
-		} else if request == nil {
-			// The stream is already closing
-			return
-		} else if err := s.updateShardAssignment(request); err != nil {
-			s.closeChannel(err)
-			return
-		}
+	case <-s.ctx.Done():
+		// Server is closing
+		return nil
 	}
 }
 
-func (s *shardAssignmentDispatcher) closeChannel(err error) {
-	s.Lock()
-	defer s.Unlock()
-
-	if s.closeCh != nil {
+func (s *shardAssignmentDispatcher) handleServerStream(stream proto.OxiaControl_ShardAssignmentServer, ch chan error) {
+	for {
+		request, err := stream.Recv()
 		if err != nil {
-			s.closeCh <- err
+			ch <- err
+			return
+		} else if request == nil {
+			// The stream is already closing
+			close(ch)
+			return
+		} else if err := s.updateShardAssignment(request); err != nil {
+			ch <- err
+			return
 		}
-		close(s.closeCh)
-		s.closeCh = nil
 	}
 }
 
@@ -179,11 +174,12 @@ func NewShardAssignmentDispatcher() ShardAssignmentsDispatcher {
 	s := &shardAssignmentDispatcher{
 		assignments: nil,
 		clients:     make(map[int64]chan *proto.ShardAssignmentsResponse),
-		closeCh:     make(chan error),
 		log: log.With().
 			Str("component", "shard-assignment-dispatcher").
 			Logger(),
 	}
+
+	s.ctx, s.cancel = context.WithCancel(context.Background())
 
 	return s
 }
