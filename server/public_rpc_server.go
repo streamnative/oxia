@@ -7,8 +7,8 @@ import (
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"oxia/common"
+	"oxia/common/container"
 	"oxia/proto"
-	"oxia/server/container"
 )
 
 type PublicRpcServer struct {
@@ -20,7 +20,7 @@ type PublicRpcServer struct {
 	log                  zerolog.Logger
 }
 
-func NewPublicRpcServer(port int, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher) (*PublicRpcServer, error) {
+func NewPublicRpcServer(bindAddress string, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher) (*PublicRpcServer, error) {
 	server := &PublicRpcServer{
 		shardsDirector:       shardsDirector,
 		assignmentDispatcher: assignmentDispatcher,
@@ -30,7 +30,7 @@ func NewPublicRpcServer(port int, shardsDirector ShardsDirector, assignmentDispa
 	}
 
 	var err error
-	server.container, err = container.Start("public", port, func(registrar grpc.ServiceRegistrar) {
+	server.container, err = container.Start("public", bindAddress, func(registrar grpc.ServiceRegistrar) {
 		proto.RegisterOxiaClientServer(registrar, server)
 	})
 	if err != nil {
@@ -44,7 +44,7 @@ func (s *PublicRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest, srv
 	s.log.Debug().
 		Str("peer", common.GetPeer(srv.Context())).
 		Msg("Shard assignments requests")
-	err := s.assignmentDispatcher.AddClient(srv)
+	err := s.assignmentDispatcher.RegisterForUpdates(srv)
 	if err != nil {
 		s.log.Warn().Err(err).
 			Str("peer", common.GetPeer(srv.Context())).

@@ -137,15 +137,20 @@ func (m *mockRpcClient) Truncate(follower string, req *proto.TruncateRequest) (*
 }
 
 func newMockShardAssignmentClientStream() *mockShardAssignmentClientStream {
-	return &mockShardAssignmentClientStream{
+	r := &mockShardAssignmentClientStream{
 		responses: make(chan *proto.ShardAssignmentsResponse, 1000),
 		md:        make(metadata.MD),
 	}
+
+	r.ctx, r.cancel = context.WithCancel(context.Background())
+	return r
 }
 
 type mockShardAssignmentClientStream struct {
 	responses chan *proto.ShardAssignmentsResponse
 	md        metadata.MD
+	ctx       context.Context
+	cancel    context.CancelFunc
 }
 
 func (m *mockShardAssignmentClientStream) GetResponse() *proto.ShardAssignmentsResponse {
@@ -172,7 +177,7 @@ func (m *mockShardAssignmentClientStream) SetTrailer(md metadata.MD) {
 }
 
 func (m *mockShardAssignmentClientStream) Context() context.Context {
-	return context.Background()
+	return m.ctx
 }
 
 func (m *mockShardAssignmentClientStream) SendMsg(msg interface{}) error {

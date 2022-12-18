@@ -11,7 +11,7 @@ import (
 )
 
 func TestInternalHealthCheck(t *testing.T) {
-	server, err := newCoordinationRpcServer(0, nil, NewShardAssignmentDispatcher())
+	server, err := newCoordinationRpcServer("localhost:0", nil, NewShardAssignmentDispatcher())
 	assert.NoError(t, err)
 
 	target := fmt.Sprintf("localhost:%d", server.container.Port())

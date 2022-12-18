@@ -1,7 +1,6 @@
 package metrics
 
 import (
-	"fmt"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog/log"
@@ -18,10 +17,10 @@ type PrometheusMetrics struct {
 	port   int
 }
 
-func Start(port int) (*PrometheusMetrics, error) {
+func Start(bindAddress string) (*PrometheusMetrics, error) {
 	http.Handle("/metrics", promhttp.Handler())
 
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	listener, err := net.Listen("tcp", bindAddress)
 	if err != nil {
 		return nil, err
 	}

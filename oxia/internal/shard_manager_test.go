@@ -26,7 +26,7 @@ func TestWithStandalone(t *testing.T) {
 	defer kvFactory.Close()
 	walFactory := wal.NewInMemoryWalFactory()
 	defer walFactory.Close()
-	server, err := standalone.NewStandaloneRpcServer(0, "localhost", 2, walFactory, kvFactory)
+	server, err := standalone.NewStandaloneRpcServer("localhost:0", "localhost", 2, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	clientPool := common.NewClientPool()

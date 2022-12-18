@@ -1,15 +1,17 @@
 package coordinator
 
 import (
+	"fmt"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
 	"oxia/common"
+	"oxia/common/metrics"
 	"oxia/coordinator/impl"
 	"oxia/kubernetes"
-	"oxia/server/metrics"
 )
 
 type Config struct {
+	BindHost            string
 	InternalServicePort int
 	MetricsPort         int
 	ClusterConfig       impl.ClusterConfig
@@ -47,11 +49,11 @@ func New(config Config) (*Coordinator, error) {
 		return nil, err
 	}
 
-	if s.rpcServer, err = NewCoordinatorRpcServer(config.InternalServicePort); err != nil {
+	if s.rpcServer, err = NewCoordinatorRpcServer(fmt.Sprintf("%s:%d", config.BindHost, config.InternalServicePort)); err != nil {
 		return nil, err
 	}
 
-	if s.metrics, err = metrics.Start(config.MetricsPort); err != nil {
+	if s.metrics, err = metrics.Start(fmt.Sprintf("%s:%d", config.BindHost, config.MetricsPort)); err != nil {
 		return nil, err
 	}
 
