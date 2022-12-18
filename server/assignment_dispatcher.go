@@ -99,7 +99,7 @@ func (s *shardAssignmentDispatcher) RegisterForUpdates(clientStream Client) erro
 
 		case <-s.ctx.Done():
 			// the server is closing
-			return ErrorAlreadyClosed
+			return nil
 		}
 	}
 }
@@ -127,7 +127,7 @@ func (s *shardAssignmentDispatcher) ShardAssignment(stream proto.OxiaControl_Sha
 
 	case <-s.ctx.Done():
 		// Server is closing
-		return ErrorAlreadyClosed
+		return nil
 	}
 }
 

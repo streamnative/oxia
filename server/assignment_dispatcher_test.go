@@ -34,7 +34,9 @@ func TestShardAssignmentDispatcher_Initialized(t *testing.T) {
 		},
 		ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
 	})
-	assert.Eventually(t, func() bool { return dispatcher.Initialized() }, 1*time.Second, 10*time.Millisecond)
+	assert.Eventually(t, func() bool {
+		return dispatcher.Initialized()
+	}, 10*time.Second, 10*time.Millisecond)
 	mockClient := newMockShardAssignmentClientStream()
 
 	wg := sync.WaitGroup{}
