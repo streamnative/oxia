@@ -231,7 +231,7 @@ func (c *coordinator) computeNewAssignments() {
 				ShardBoundaries: &proto.ShardAssignment_Int32HashRange{
 					Int32HashRange: &proto.Int32HashRange{
 						MinHashInclusive: a.Int32HashRange.Min,
-						MaxHashExclusive: a.Int32HashRange.Max,
+						MaxHashInclusive: a.Int32HashRange.Max,
 					},
 				},
 			},

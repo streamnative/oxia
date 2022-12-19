@@ -18,6 +18,6 @@ func (s *shardStrategyImpl) Get(key string) func(Shard) bool {
 	hash := s.hashFunc(key)
 	return func(shard Shard) bool {
 		hashRange := shard.HashRange
-		return hashRange.MinInclusive <= hash && hash < hashRange.MaxExclusive
+		return hashRange.MinInclusive <= hash && hash <= hashRange.MaxInclusive
 	}
 }
