@@ -12,6 +12,7 @@ import (
 	"io"
 	"math/rand"
 	"oxia/common"
+	"oxia/coordinator/model"
 	"oxia/proto"
 	"oxia/server"
 	"sync"
@@ -29,18 +30,18 @@ const (
 type ShardController interface {
 	io.Closer
 
-	HandleNodeFailure(failedNode ServerAddress)
+	HandleNodeFailure(failedNode model.ServerAddress)
 
 	Epoch() int64
-	Leader() *ServerAddress
-	Status() ShardStatus
+	Leader() *model.ServerAddress
+	Status() model.ShardStatus
 }
 
 type shardController struct {
 	sync.Mutex
 
 	shard         uint32
-	shardMetadata ShardMetadata
+	shardMetadata model.ShardMetadata
 	rpc           RpcProvider
 	coordinator   Coordinator
 
@@ -52,7 +53,7 @@ type shardController struct {
 	log                   zerolog.Logger
 }
 
-func NewShardController(shard uint32, shardMetadata ShardMetadata, rpc RpcProvider, coordinator Coordinator) ShardController {
+func NewShardController(shard uint32, shardMetadata model.ShardMetadata, rpc RpcProvider, coordinator Coordinator) ShardController {
 	s := &shardController{
 		shard:         shard,
 		shardMetadata: shardMetadata,
@@ -74,7 +75,7 @@ func NewShardController(shard uint32, shardMetadata ShardMetadata, rpc RpcProvid
 	return s
 }
 
-func (s *shardController) HandleNodeFailure(failedNode ServerAddress) {
+func (s *shardController) HandleNodeFailure(failedNode model.ServerAddress) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -115,7 +116,7 @@ func (s *shardController) electLeader() error {
 		s.currentElectionCancel()
 	}
 
-	s.shardMetadata.Status = ShardStatusElection
+	s.shardMetadata.Status = model.ShardStatusElection
 	s.shardMetadata.Leader = nil
 	s.shardMetadata.Epoch++
 	s.log.Info().
@@ -145,7 +146,7 @@ func (s *shardController) electLeader() error {
 	}
 
 	metadata := s.shardMetadata.Clone()
-	metadata.Status = ShardStatusSteadyState
+	metadata.Status = model.ShardStatusSteadyState
 	metadata.Leader = &newLeader
 
 	if err = s.coordinator.ElectedLeader(s.shard, metadata); err != nil {
@@ -163,7 +164,7 @@ func (s *shardController) electLeader() error {
 	return nil
 }
 
-func (s *shardController) keepFencingFailedFollowers(successfulFollowers map[ServerAddress]*proto.EntryId) {
+func (s *shardController) keepFencingFailedFollowers(successfulFollowers map[model.ServerAddress]*proto.EntryId) {
 	if len(successfulFollowers) == len(s.shardMetadata.Ensemble)-1 {
 		s.log.Debug().
 			Int64("epoch", s.shardMetadata.Epoch).
@@ -187,7 +188,7 @@ func (s *shardController) keepFencingFailedFollowers(successfulFollowers map[Ser
 	}
 }
 
-func (s *shardController) keepFencingFollower(ctx context.Context, node ServerAddress) {
+func (s *shardController) keepFencingFollower(ctx context.Context, node model.ServerAddress) {
 	s.log.Info().
 		Interface("follower", node).
 		Msg("Node has failed in leader election, retrying")
@@ -222,7 +223,7 @@ func (s *shardController) keepFencingFollower(ctx context.Context, node ServerAd
 	})
 }
 
-func (s *shardController) fenceAndAddFollower(ctx context.Context, node ServerAddress) error {
+func (s *shardController) fenceAndAddFollower(ctx context.Context, node model.ServerAddress) error {
 	fr, err := s.fence(ctx, node)
 	if err != nil {
 		return err
@@ -251,7 +252,7 @@ func (s *shardController) fenceAndAddFollower(ctx context.Context, node ServerAd
 
 // Fence all the ensemble members in parallel and wait for
 // a majority of them to reply successfully
-func (s *shardController) fenceQuorum() (map[ServerAddress]*proto.EntryId, error) {
+func (s *shardController) fenceQuorum() (map[model.ServerAddress]*proto.EntryId, error) {
 	ensembleSize := len(s.shardMetadata.Ensemble)
 	majority := ensembleSize/2 + 1
 
@@ -261,7 +262,7 @@ func (s *shardController) fenceQuorum() (map[ServerAddress]*proto.EntryId, error
 
 	// Channel to receive responses or errors from each server
 	ch := make(chan struct {
-		ServerAddress
+		model.ServerAddress
 		*proto.EntryId
 		error
 	})
@@ -287,7 +288,7 @@ func (s *shardController) fenceQuorum() (map[ServerAddress]*proto.EntryId, error
 			}
 
 			ch <- struct {
-				ServerAddress
+				model.ServerAddress
 				*proto.EntryId
 				error
 			}{serverAddress, entryId, err}
@@ -297,7 +298,7 @@ func (s *shardController) fenceQuorum() (map[ServerAddress]*proto.EntryId, error
 	successResponses := 0
 	totalResponses := 0
 
-	res := make(map[ServerAddress]*proto.EntryId)
+	res := make(map[model.ServerAddress]*proto.EntryId)
 	var err error
 
 	// Wait for a majority to respond
@@ -337,7 +338,7 @@ func (s *shardController) fenceQuorum() (map[ServerAddress]*proto.EntryId, error
 	return res, nil
 }
 
-func (s *shardController) fence(ctx context.Context, node ServerAddress) (*proto.EntryId, error) {
+func (s *shardController) fence(ctx context.Context, node model.ServerAddress) (*proto.EntryId, error) {
 	res, err := s.rpc.Fence(ctx, node, &proto.FenceRequest{
 		ShardId: s.shard,
 		Epoch:   s.shardMetadata.Epoch,
@@ -349,11 +350,11 @@ func (s *shardController) fence(ctx context.Context, node ServerAddress) (*proto
 	return res.HeadIndex, nil
 }
 
-func (s *shardController) selectNewLeader(fenceResponses map[ServerAddress]*proto.EntryId) (
-	leader ServerAddress, followers map[ServerAddress]*proto.EntryId) {
+func (s *shardController) selectNewLeader(fenceResponses map[model.ServerAddress]*proto.EntryId) (
+	leader model.ServerAddress, followers map[model.ServerAddress]*proto.EntryId) {
 	// Select all the nodes that have the highest entry in the wal
 	var currentMax int64 = -1
-	var candidates []ServerAddress
+	var candidates []model.ServerAddress
 
 	for addr, headIndex := range fenceResponses {
 		if headIndex.Offset < currentMax {
@@ -363,13 +364,13 @@ func (s *shardController) selectNewLeader(fenceResponses map[ServerAddress]*prot
 		} else {
 			// Found a new max
 			currentMax = headIndex.Offset
-			candidates = []ServerAddress{addr}
+			candidates = []model.ServerAddress{addr}
 		}
 	}
 
 	// Select a random leader among the nodes with the highest entry in the wal
 	leader = candidates[rand.Intn(len(candidates))]
-	followers = make(map[ServerAddress]*proto.EntryId)
+	followers = make(map[model.ServerAddress]*proto.EntryId)
 	for a, e := range fenceResponses {
 		if a != leader {
 			followers[a] = e
@@ -378,7 +379,7 @@ func (s *shardController) selectNewLeader(fenceResponses map[ServerAddress]*prot
 	return leader, followers
 }
 
-func (s *shardController) becomeLeader(leader ServerAddress, followers map[ServerAddress]*proto.EntryId) error {
+func (s *shardController) becomeLeader(leader model.ServerAddress, followers map[model.ServerAddress]*proto.EntryId) error {
 	followersMap := make(map[string]*proto.EntryId)
 	for sa, e := range followers {
 		followersMap[sa.Internal] = e
@@ -396,7 +397,7 @@ func (s *shardController) becomeLeader(leader ServerAddress, followers map[Serve
 	return nil
 }
 
-func (s *shardController) addFollower(leader ServerAddress, follower string, followerHeadIndex *proto.EntryId) error {
+func (s *shardController) addFollower(leader model.ServerAddress, follower string, followerHeadIndex *proto.EntryId) error {
 	if _, err := s.rpc.AddFollower(s.ctx, leader, &proto.AddFollowerRequest{
 		ShardId:           s.shard,
 		Epoch:             s.shardMetadata.Epoch,
@@ -415,13 +416,13 @@ func (s *shardController) Epoch() int64 {
 	return s.shardMetadata.Epoch
 }
 
-func (s *shardController) Leader() *ServerAddress {
+func (s *shardController) Leader() *model.ServerAddress {
 	s.Lock()
 	defer s.Unlock()
 	return s.shardMetadata.Leader
 }
 
-func (s *shardController) Status() ShardStatus {
+func (s *shardController) Status() model.ShardStatus {
 	s.Lock()
 	defer s.Unlock()
 	return s.shardMetadata.Status

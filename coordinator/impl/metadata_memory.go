@@ -1,14 +1,18 @@
 package impl
 
-import "sync"
+import (
+	"oxia/coordinator/model"
+	"strconv"
+	"sync"
+)
 
 // MetadataProviderMemory is a provider that just keeps the cluster status in memory
 // Used for unit tests
 type metadataProviderMemory struct {
 	sync.Mutex
 
-	cs      *ClusterStatus
-	version int64
+	cs      *model.ClusterStatus
+	version Version
 }
 
 func NewMetadataProviderMemory() MetadataProvider {
@@ -22,13 +26,13 @@ func (m *metadataProviderMemory) Close() error {
 	return nil
 }
 
-func (m *metadataProviderMemory) Get() (cs *ClusterStatus, version int64, err error) {
+func (m *metadataProviderMemory) Get() (cs *model.ClusterStatus, version Version, err error) {
 	m.Lock()
 	defer m.Unlock()
 	return m.cs, m.version, nil
 }
 
-func (m *metadataProviderMemory) Store(cs *ClusterStatus, expectedVersion int64) (newVersion int64, err error) {
+func (m *metadataProviderMemory) Store(cs *model.ClusterStatus, expectedVersion Version) (newVersion Version, err error) {
 	m.Lock()
 	defer m.Unlock()
 
@@ -37,6 +41,15 @@ func (m *metadataProviderMemory) Store(cs *ClusterStatus, expectedVersion int64)
 	}
 
 	m.cs = cs.Clone()
-	m.version++
+	m.version = incrVersion(m.version)
 	return m.version, nil
+}
+
+func incrVersion(version Version) Version {
+	i, err := strconv.ParseInt(string(version), 10, 32)
+	if err != nil {
+		return ""
+	}
+	i++
+	return Version(strconv.FormatInt(i, 10))
 }

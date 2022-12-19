@@ -1,4 +1,4 @@
-package impl
+package model
 
 type ServerAddress struct {
 	// Public is the endpoint that is advertised to clients
@@ -17,17 +17,16 @@ type Int32HashRange struct {
 }
 
 type ShardMetadata struct {
-	Status         ShardStatus     `json:"shardStatus"`
-	Epoch          int64           `json:"epoch"`
-	Leader         *ServerAddress  `json:"leader"`
-	Ensemble       []ServerAddress `json:"ensemble"`
-	Int32HashRange Int32HashRange  `json:"int32HashRange"`
+	Status         ShardStatus     `json:"status" yaml:"status"`
+	Epoch          int64           `json:"epoch" yaml:"epoch"`
+	Leader         *ServerAddress  `json:"leader" yaml:"leader"`
+	Ensemble       []ServerAddress `json:"ensemble" yaml:"ensemble"`
+	Int32HashRange Int32HashRange  `json:"int32HashRange" yaml:"int32HashRange"`
 }
 
 type ClusterStatus struct {
-	ReplicationFactor uint32 `json:"replicationFactor"`
-
-	Shards map[uint32]ShardMetadata
+	ReplicationFactor uint32                   `json:"replicationFactor" yaml:"replicationFactor"`
+	Shards            map[uint32]ShardMetadata `json:"shards" yaml:"shards"`
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////

@@ -13,7 +13,7 @@ import (
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
-	"oxia/coordinator/impl"
+	"oxia/coordinator/model"
 	"oxia/pkg/apis/oxia/v1alpha1"
 )
 
@@ -131,14 +131,14 @@ func service(component Component, cluster v1alpha1.OxiaCluster, ports []NamedPor
 }
 
 func configMap(cluster v1alpha1.OxiaCluster) *coreV1.ConfigMap {
-	servers := make([]impl.ServerAddress, *cluster.Spec.ServerReplicas)
+	servers := make([]model.ServerAddress, *cluster.Spec.ServerReplicas)
 	for i := 0; i < int(*cluster.Spec.ServerReplicas); i++ {
-		servers[i] = impl.ServerAddress{
+		servers[i] = model.ServerAddress{
 			Public:   serviceAddress(cluster.Namespace, cluster.Name, i, PublicPort.Port),
 			Internal: serviceAddress(cluster.Namespace, cluster.Name, i, InternalPort.Port),
 		}
 	}
-	config := impl.ClusterConfig{
+	config := model.ClusterConfig{
 		ReplicationFactor: 1,
 		ShardCount:        2,
 		Servers:           servers,
