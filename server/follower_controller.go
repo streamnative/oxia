@@ -62,6 +62,7 @@ type FollowerController interface {
 	SendSnapshot(stream proto.OxiaLogReplication_SendSnapshotServer) error
 
 	Epoch() int64
+	CommitIndex() int64
 	Status() Status
 }
 
@@ -82,12 +83,10 @@ type followerController struct {
 
 func NewFollowerController(shardId uint32, wf wal.WalFactory, kvFactory kv.KVFactory) (FollowerController, error) {
 	fc := &followerController{
-		shardId:     shardId,
-		kvFactory:   kvFactory,
-		commitIndex: wal.InvalidOffset,
-		headIndex:   wal.InvalidOffset,
-		status:      NotMember,
-		closeCh:     nil,
+		shardId:   shardId,
+		kvFactory: kvFactory,
+		status:    NotMember,
+		closeCh:   nil,
 		log: log.With().
 			Str("component", "follower-controller").
 			Uint32("shard", shardId).
@@ -116,10 +115,15 @@ func NewFollowerController(shardId uint32, wf wal.WalFactory, kvFactory kv.KVFac
 		return nil, err
 	}
 
+	if fc.commitIndex, err = fc.db.ReadCommitIndex(); err != nil {
+		return nil, err
+	}
+
 	fc.log = fc.log.With().Int64("epoch", fc.epoch).Logger()
 
 	fc.log.Info().
 		Int64("head-index", fc.headIndex).
+		Int64("commit-index", fc.commitIndex).
 		Msg("Created follower")
 	return fc, nil
 }
@@ -170,6 +174,12 @@ func (fc *followerController) Epoch() int64 {
 	fc.Lock()
 	defer fc.Unlock()
 	return fc.epoch
+}
+
+func (fc *followerController) CommitIndex() int64 {
+	fc.Lock()
+	defer fc.Unlock()
+	return fc.commitIndex
 }
 
 func (fc *followerController) Fence(req *proto.FenceRequest) (*proto.FenceResponse, error) {
@@ -225,16 +235,7 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 		return nil, err
 	}
 
-	oldCommitIndex, err := fc.db.ReadCommitIndex()
-	if err != nil {
-		return nil, err
-	}
-
-	if err = fc.processCommittedEntries(oldCommitIndex, fc.headIndex); err != nil {
-		return nil, err
-	}
 	fc.headIndex = headIndex
-	fc.commitIndex = headIndex
 
 	return &proto.TruncateResponse{
 		HeadIndex: &proto.EntryId{
@@ -288,6 +289,11 @@ func (fc *followerController) addEntry(req *proto.AddEntryRequest) (*proto.AddEn
 		return nil, status.Errorf(CodeInvalidEpoch, "invalid epoch - current epoch %d - request epoch %d", fc.epoch, req.Epoch)
 	}
 
+	fc.log.Debug().
+		Int64("commit-index", req.CommitIndex).
+		Int64("offset", req.Entry.Offset).
+		Msg("Add entry")
+
 	// A follower node confirms an entry to the leader
 	//
 	// The follower adds the entry to its log, sets the head index
@@ -300,9 +306,7 @@ func (fc *followerController) addEntry(req *proto.AddEntryRequest) (*proto.AddEn
 	}
 
 	fc.headIndex = req.Entry.Offset
-	oldCommitIndex := fc.commitIndex
-	fc.commitIndex = req.CommitIndex
-	if err := fc.processCommittedEntries(oldCommitIndex, fc.commitIndex); err != nil {
+	if err := fc.processCommittedEntries(req.CommitIndex); err != nil {
 		return nil, err
 	}
 	return &proto.AddEntryResponse{
@@ -311,12 +315,17 @@ func (fc *followerController) addEntry(req *proto.AddEntryRequest) (*proto.AddEn
 
 }
 
-func (fc *followerController) processCommittedEntries(minExclusive int64, maxInclusive int64) error {
-	if maxInclusive <= minExclusive {
+func (fc *followerController) processCommittedEntries(maxInclusive int64) error {
+	fc.log.Debug().
+		Int64("min-exclusive", fc.commitIndex).
+		Int64("max-inclusive", maxInclusive).
+		Int64("head-index", fc.headIndex).
+		Msg("Process committed entries")
+	if maxInclusive <= fc.commitIndex {
 		return nil
 	}
 
-	reader, err := fc.wal.NewReader(minExclusive)
+	reader, err := fc.wal.NewReader(fc.commitIndex)
 	if err != nil {
 		fc.log.Err(err).Msg("Error opening reader used for applying committed entries")
 		return err
@@ -330,6 +339,10 @@ func (fc *followerController) processCommittedEntries(minExclusive int64, maxInc
 
 	for reader.HasNext() {
 		entry, err := reader.ReadNext()
+		fc.log.Debug().
+			Int64("offset", entry.Offset).
+			Msg("Reading entry")
+
 		if err == wal.ErrorReaderClosed {
 			fc.log.Info().Msg("Stopped reading committed entries")
 			return err
@@ -354,6 +367,8 @@ func (fc *followerController) processCommittedEntries(minExclusive int64, maxInc
 			fc.log.Err(err).Msg("Error applying committed entry")
 			return err
 		}
+
+		fc.commitIndex = entry.Offset
 	}
 	return err
 }

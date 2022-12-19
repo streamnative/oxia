@@ -161,6 +161,63 @@ func TestReadingUpToCommitIndex(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
+func TestFollower_RestoreCommitIndex(t *testing.T) {
+	var shardId uint32
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{DataDir: t.TempDir()})
+	assert.NoError(t, err)
+	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
+
+	db, err := kv.NewDB(shardId, kvFactory)
+	assert.NoError(t, err)
+	_, err = db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
+		Key:     "xx",
+		Payload: []byte(""),
+	}}}, 9)
+	assert.NoError(t, err)
+
+	assert.NoError(t, db.UpdateEpoch(6))
+	assert.NoError(t, db.Close())
+
+	fc, err := NewFollowerController(shardId, walFactory, kvFactory)
+	assert.NoError(t, err)
+
+	assert.Equal(t, NotMember, fc.Status())
+	assert.EqualValues(t, 6, fc.Epoch())
+	assert.EqualValues(t, 9, fc.CommitIndex())
+
+	assert.NoError(t, fc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
+// If a follower receives a commit index from the leader that is ahead
+// of the current follower head index, it needs to advance the commit
+// index only up to the current head.
+func TestFollower_AdvanceCommitIndexToHead(t *testing.T) {
+	var shardId uint32
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{DataDir: t.TempDir()})
+	assert.NoError(t, err)
+	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
+
+	fc, _ := NewFollowerController(shardId, walFactory, kvFactory)
+	_, _ = fc.Fence(&proto.FenceRequest{Epoch: 1})
+
+	stream := newMockServerAddEntriesStream()
+	go func() { assert.NoError(t, fc.AddEntries(stream)) }()
+
+	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, 10))
+
+	// Wait for addEntryResponses
+	r1 := stream.GetResponse()
+
+	assert.EqualValues(t, 0, r1.Offset)
+	assert.EqualValues(t, 0, fc.CommitIndex())
+
+	assert.NoError(t, fc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
 func TestFollower_FenceEpoch(t *testing.T) {
 	var shardId uint32
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
