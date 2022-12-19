@@ -493,6 +493,116 @@ func TestLeaderController_AddFollower(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
+// When a follower is added after the initial leader election,
+// the leader should use the head-index at the time of the
+// election instead of the current head-index.
+// Also, it should never ask to truncate to an offset higher
+// than what the follower has.
+func TestLeaderController_AddFollower_Truncate(t *testing.T) {
+	var shard uint32 = 1
+
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{DataDir: t.TempDir()})
+	assert.NoError(t, err)
+	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
+
+	// Prepare some data in the leader log & db
+	wal, err := walFactory.NewWal(shard)
+	assert.NoError(t, err)
+	db, err := kv.NewDB(shard, kvFactory)
+	assert.NoError(t, err)
+
+	for i := int64(0); i < 10; i++ {
+		assert.NoError(t, wal.Append(&proto.LogEntry{
+			Epoch:  5,
+			Offset: i,
+			Value:  []byte(""), // Log content entries are not important for this test
+		}))
+
+		_, err := db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
+			Key:     "my-key",
+			Payload: []byte(""),
+		}}}, i-1, 0)
+		assert.NoError(t, err)
+	}
+
+	assert.NoError(t, db.UpdateEpoch(5))
+	assert.NoError(t, db.Close())
+	assert.NoError(t, wal.Close())
+
+	rpcClient := newMockRpcClient()
+
+	lc, err := NewLeaderController(shard, rpcClient, walFactory, kvFactory)
+	assert.NoError(t, err)
+
+	_, err = lc.Fence(&proto.FenceRequest{
+		Epoch:   6,
+		ShardId: shard,
+	})
+	assert.NoError(t, err)
+
+	_, err = lc.BecomeLeader(&proto.BecomeLeaderRequest{
+		ShardId:           shard,
+		Epoch:             6,
+		ReplicationFactor: 3,
+		FollowerMaps: map[string]*proto.EntryId{
+			"f1": {Epoch: 5, Offset: 9},
+		},
+	})
+	assert.NoError(t, err)
+
+	/// Add some entries in epoch 6 that will be only in the
+	/// leader and f1
+	go func() {
+		for i := 0; i < 10; i++ {
+			req := <-rpcClient.addEntryReqs
+
+			rpcClient.addEntryResps <- &proto.AddEntryResponse{
+				Offset: req.Entry.Offset,
+			}
+		}
+	}()
+
+	/// Write entries
+	for i := 10; i < 20; i++ {
+		res, err := lc.Write(&proto.WriteRequest{
+			ShardId: &shard,
+			Puts: []*proto.PutRequest{{
+				Key:     "my-key",
+				Payload: []byte("")}},
+		})
+
+		assert.NoError(t, err)
+		assert.EqualValues(t, 1, len(res.Puts))
+		assert.Equal(t, proto.Status_OK, res.Puts[0].Status)
+		assert.EqualValues(t, i, res.Puts[0].Stat.Version)
+	}
+
+	rpcClient.truncateResps <- struct {
+		*proto.TruncateResponse
+		error
+	}{&proto.TruncateResponse{HeadIndex: &proto.EntryId{Epoch: 5, Offset: 9}}, nil}
+
+	// Adding a follower that needs to be truncated
+	_, err = lc.AddFollower(&proto.AddFollowerRequest{
+		ShardId:      shard,
+		Epoch:        6,
+		FollowerName: "f2",
+		FollowerHeadIndex: &proto.EntryId{
+			Epoch:  5,
+			Offset: 12,
+		},
+	})
+	assert.NoError(t, err)
+
+	trReq := <-rpcClient.truncateReqs
+	assert.EqualValues(t, 6, trReq.Epoch)
+	AssertProtoEqual(t, &proto.EntryId{Epoch: 5, Offset: 9}, trReq.HeadIndex)
+
+	assert.NoError(t, lc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
 func TestLeaderController_AddFollowerCheckEpoch(t *testing.T) {
 	var shard uint32 = 1
 

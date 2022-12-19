@@ -55,6 +55,11 @@ type leaderController struct {
 	quorumAckTracker  QuorumAckTracker
 	followers         map[string]FollowerCursor
 
+	// This represents the last entry in the WAL at the time this node
+	// became leader. It's used in the logic for deciding where to
+	// truncate the followers.
+	leaderElectionHeadIndex *proto.EntryId
+
 	wal       wal.Wal
 	db        kv.DB
 	rpcClient ReplicationRpcProvider
@@ -202,7 +207,8 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 	lc.replicationFactor = req.GetReplicationFactor()
 	lc.followers = make(map[string]FollowerCursor)
 
-	leaderHeadIndex, err := getLastEntryIdInWal(lc.wal)
+	var err error
+	lc.leaderElectionHeadIndex, err = getLastEntryIdInWal(lc.wal)
 	if err != nil {
 		return nil, err
 	}
@@ -212,10 +218,10 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 		return nil, err
 	}
 
-	lc.quorumAckTracker = NewQuorumAckTracker(req.GetReplicationFactor(), leaderHeadIndex.Offset, leaderCommitIndex)
+	lc.quorumAckTracker = NewQuorumAckTracker(req.GetReplicationFactor(), lc.leaderElectionHeadIndex.Offset, leaderCommitIndex)
 
 	for follower, followerHeadIndex := range req.FollowerMaps {
-		if err := lc.addFollower(leaderHeadIndex, follower, followerHeadIndex); err != nil {
+		if err := lc.addFollower(follower, followerHeadIndex); err != nil {
 			return nil, err
 		}
 	}
@@ -224,7 +230,7 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 	// committed in the quorum, to avoid missing any entries in the DB
 	// by the moment we make the leader controller accepting new write/read
 	// requests
-	if _, err = lc.quorumAckTracker.WaitForCommitIndex(leaderHeadIndex.Offset, nil); err != nil {
+	if _, err = lc.quorumAckTracker.WaitForCommitIndex(lc.leaderElectionHeadIndex.Offset, nil); err != nil {
 		return nil, err
 	}
 
@@ -234,7 +240,7 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 
 	lc.log.Info().
 		Int64("epoch", lc.epoch).
-		Int64("head-index", leaderHeadIndex.Offset).
+		Int64("head-index", lc.leaderElectionHeadIndex.Offset).
 		Msg("Started leading the shard")
 	return &proto.BecomeLeaderResponse{}, nil
 }
@@ -259,30 +265,22 @@ func (lc *leaderController) AddFollower(req *proto.AddFollowerRequest) (*proto.A
 		return nil, errors.New("all followers are already attached")
 	}
 
-	leaderHeadIndex, err := getLastEntryIdInWal(lc.wal)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := lc.addFollower(leaderHeadIndex, req.FollowerName, req.FollowerHeadIndex); err != nil {
+	if err := lc.addFollower(req.FollowerName, req.FollowerHeadIndex); err != nil {
 		return nil, err
 	}
 
 	return &proto.AddFollowerResponse{}, nil
 }
 
-func (lc *leaderController) addFollower(leaderHeadIndex *proto.EntryId, follower string, followerHeadIndex *proto.EntryId) error {
-	if needsTruncation(leaderHeadIndex, followerHeadIndex) {
-		newHeadIndex, err := lc.truncateFollower(follower, lc.epoch)
-		if err != nil {
-			lc.log.Error().Err(err).
-				Str("follower", follower).
-				Int64("epoch", lc.epoch).
-				Msg("Failed to truncate follower")
-			return err
-		}
-
-		followerHeadIndex = newHeadIndex
+func (lc *leaderController) addFollower(follower string, followerHeadIndex *proto.EntryId) error {
+	followerHeadIndex, err := lc.truncateFollowerIfNeeded(follower, followerHeadIndex)
+	if err != nil {
+		lc.log.Error().Err(err).
+			Str("follower", follower).
+			Interface("follower-head-index", followerHeadIndex).
+			Int64("epoch", lc.epoch).
+			Msg("Failed to truncate follower")
+		return err
 	}
 
 	cursor, err := NewFollowerCursor(follower, lc.epoch, lc.shardId, lc.rpcClient, lc.quorumAckTracker, lc.wal,
@@ -297,9 +295,10 @@ func (lc *leaderController) addFollower(leaderHeadIndex *proto.EntryId, follower
 
 	lc.log.Info().
 		Int64("epoch", lc.epoch).
-		Interface("head-index", leaderHeadIndex).
+		Interface("leader-election-head-index", lc.leaderElectionHeadIndex).
 		Str("follower", follower).
 		Interface("follower-head-index", followerHeadIndex).
+		Int64("head-index", lc.wal.LastOffset()).
 		Msg("Added follower")
 	lc.followers[follower] = cursor
 	return nil
@@ -339,20 +338,46 @@ func (lc *leaderController) applyAllEntriesIntoDB() error {
 	return nil
 }
 
-func needsTruncation(leaderHeadIndex *proto.EntryId, followerHeadIndex *proto.EntryId) bool {
-	return followerHeadIndex.Epoch != leaderHeadIndex.Epoch ||
-		followerHeadIndex.Offset > leaderHeadIndex.Offset
-}
+func (lc *leaderController) truncateFollowerIfNeeded(follower string, followerHeadIndex *proto.EntryId) (*proto.EntryId, error) {
+	lc.log.Debug().
+		Int64("epoch", lc.epoch).
+		Str("follower", follower).
+		Interface("leader-head-index", lc.leaderElectionHeadIndex).
+		Interface("follower-head-index", followerHeadIndex).
+		Msg("Needs truncation?")
+	if followerHeadIndex.Epoch == lc.leaderElectionHeadIndex.Epoch &&
+		followerHeadIndex.Offset <= lc.leaderElectionHeadIndex.Offset {
+		// No need for truncation
+		return followerHeadIndex, nil
+	}
 
-func (lc *leaderController) truncateFollower(follower string, targetEpoch int64) (*proto.EntryId, error) {
-	headIndex, err := GetHighestEntryOfEpoch(lc.wal, targetEpoch)
+	// Coordinator should never send us a follower with an invalid epoch.
+	// Checking for sanity here.
+	if followerHeadIndex.Epoch > lc.leaderElectionHeadIndex.Epoch {
+		return nil, ErrorInvalidStatus
+	}
+
+	lastEntryInFollowerEpoch, err := GetHighestEntryOfEpoch(lc.wal, followerHeadIndex.Epoch)
 	if err != nil {
 		return nil, err
 	}
 
+	if followerHeadIndex.Epoch == lastEntryInFollowerEpoch.Epoch &&
+		followerHeadIndex.Offset <= lastEntryInFollowerEpoch.Offset {
+		// If the follower is on a previous epoch, but we have the same entry,
+		// we don't need to truncate
+		lc.log.Debug().
+			Int64("epoch", lc.epoch).
+			Str("follower", follower).
+			Interface("last-entry-in-follower-epoch", lastEntryInFollowerEpoch).
+			Interface("follower-head-index", followerHeadIndex).
+			Msg("No need to truncate follower")
+		return followerHeadIndex, nil
+	}
+
 	tr, err := lc.rpcClient.Truncate(follower, &proto.TruncateRequest{
 		Epoch:     lc.epoch,
-		HeadIndex: headIndex,
+		HeadIndex: lastEntryInFollowerEpoch,
 	})
 
 	if err != nil {
@@ -361,7 +386,7 @@ func (lc *leaderController) truncateFollower(follower string, targetEpoch int64)
 		lc.log.Info().
 			Int64("epoch", lc.epoch).
 			Str("follower", follower).
-			Interface("head-index", tr.HeadIndex).
+			Interface("follower-head-index", tr.HeadIndex).
 			Msg("Truncated follower")
 
 		return tr.HeadIndex, nil

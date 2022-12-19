@@ -3,6 +3,8 @@ package kv
 import (
 	"fmt"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"io"
 	"oxia/common"
 	"oxia/proto"
@@ -40,11 +42,16 @@ func NewDB(shardId uint32, factory KVFactory) (DB, error) {
 
 	return &db{
 		kv: kv,
+		log: log.Logger.With().
+			Str("component", "db").
+			Uint32("shard", shardId).
+			Logger(),
 	}, nil
 }
 
 type db struct {
-	kv KV
+	kv  KV
+	log zerolog.Logger
 }
 
 func (d *db) Snapshot() (Snapshot, error) {
@@ -65,7 +72,7 @@ func (d *db) ProcessWrite(b *proto.WriteRequest, commitIndex int64, timestamp ui
 	batch := d.kv.NewWriteBatch()
 
 	for _, putReq := range b.Puts {
-		if pr, err := applyPut(batch, putReq, timestamp); err != nil {
+		if pr, err := d.applyPut(batch, putReq, timestamp); err != nil {
 			return nil, err
 		} else {
 			res.Puts = append(res.Puts, pr)
@@ -73,7 +80,7 @@ func (d *db) ProcessWrite(b *proto.WriteRequest, commitIndex int64, timestamp ui
 	}
 
 	for _, delReq := range b.Deletes {
-		if dr, err := applyDelete(batch, delReq); err != nil {
+		if dr, err := d.applyDelete(batch, delReq); err != nil {
 			return nil, err
 		} else {
 			res.Deletes = append(res.Deletes, dr)
@@ -81,7 +88,7 @@ func (d *db) ProcessWrite(b *proto.WriteRequest, commitIndex int64, timestamp ui
 	}
 
 	for _, delRangeReq := range b.DeleteRanges {
-		if dr, err := applyDeleteRange(batch, delRangeReq); err != nil {
+		if dr, err := d.applyDeleteRange(batch, delRangeReq); err != nil {
 			return nil, err
 		} else {
 			res.DeleteRanges = append(res.DeleteRanges, dr)
@@ -104,7 +111,7 @@ func (d *db) ProcessWrite(b *proto.WriteRequest, commitIndex int64, timestamp ui
 
 func (d *db) addCommitIndex(commitIndex int64, batch WriteBatch, timestamp uint64) error {
 	commitIndexPayload := []byte(fmt.Sprintf("%d", commitIndex))
-	_, err := applyPut(batch, &proto.PutRequest{
+	_, err := d.applyPut(batch, &proto.PutRequest{
 		Key:             commitIndexKey,
 		Payload:         commitIndexPayload,
 		ExpectedVersion: nil,
@@ -159,7 +166,7 @@ func (d *db) ReadCommitIndex() (int64, error) {
 func (d *db) UpdateEpoch(newEpoch int64) error {
 	batch := d.kv.NewWriteBatch()
 
-	if _, err := applyPut(batch, &proto.PutRequest{
+	if _, err := d.applyPut(batch, &proto.PutRequest{
 		Key:     epochKey,
 		Payload: []byte(fmt.Sprintf("%d", newEpoch)),
 	}, now()); err != nil {
@@ -198,7 +205,7 @@ func (d *db) ReadEpoch() (epoch int64, err error) {
 	return epoch, nil
 }
 
-func applyPut(batch WriteBatch, putReq *proto.PutRequest, timestamp uint64) (*proto.PutResponse, error) {
+func (d *db) applyPut(batch WriteBatch, putReq *proto.PutRequest, timestamp uint64) (*proto.PutResponse, error) {
 	se, err := checkExpectedVersion(batch, putReq.Key, putReq.ExpectedVersion)
 	if errors.Is(err, ErrorBadVersion) {
 		return &proto.PutResponse{
@@ -230,17 +237,22 @@ func applyPut(batch WriteBatch, putReq *proto.PutRequest, timestamp uint64) (*pr
 			return nil, err
 		}
 
-		return &proto.PutResponse{
-			Stat: &proto.Stat{
-				Version:           se.Version,
-				CreatedTimestamp:  se.CreationTimestamp,
-				ModifiedTimestamp: se.ModificationTimestamp,
-			},
-		}, nil
+		stat := &proto.Stat{
+			Version:           se.Version,
+			CreatedTimestamp:  se.CreationTimestamp,
+			ModifiedTimestamp: se.ModificationTimestamp,
+		}
+
+		d.log.Debug().
+			Str("key", putReq.Key).
+			Interface("stat", stat).
+			Msg("Applied put operation")
+
+		return &proto.PutResponse{Stat: stat}, nil
 	}
 }
 
-func applyDelete(batch WriteBatch, delReq *proto.DeleteRequest) (*proto.DeleteResponse, error) {
+func (d *db) applyDelete(batch WriteBatch, delReq *proto.DeleteRequest) (*proto.DeleteResponse, error) {
 	se, err := checkExpectedVersion(batch, delReq.Key, delReq.ExpectedVersion)
 
 	if errors.Is(err, ErrorBadVersion) {
@@ -253,15 +265,22 @@ func applyDelete(batch WriteBatch, delReq *proto.DeleteRequest) (*proto.DeleteRe
 		if err = batch.Delete(delReq.Key); err != nil {
 			return &proto.DeleteResponse{}, err
 		}
+		d.log.Debug().
+			Str("key", delReq.Key).
+			Msg("Applied delete operation")
 		return &proto.DeleteResponse{Status: proto.Status_OK}, nil
 	}
 }
 
-func applyDeleteRange(batch WriteBatch, delReq *proto.DeleteRangeRequest) (*proto.DeleteRangeResponse, error) {
+func (d *db) applyDeleteRange(batch WriteBatch, delReq *proto.DeleteRangeRequest) (*proto.DeleteRangeResponse, error) {
 	if err := batch.DeleteRange(delReq.StartInclusive, delReq.EndExclusive); err != nil {
 		return nil, errors.Wrap(err, "oxia db: failed to delete range")
 	}
 
+	d.log.Debug().
+		Str("key-start", delReq.StartInclusive).
+		Str("key-end", delReq.EndExclusive).
+		Msg("Applied delete range operation")
 	return &proto.DeleteRangeResponse{Status: proto.Status_OK}, nil
 }
 

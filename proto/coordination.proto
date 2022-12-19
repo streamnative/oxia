@@ -78,7 +78,6 @@ message TruncateRequest {
 
   int64 epoch = 2;
   EntryId head_index = 3;
-  string source = 4;
 }
 
 message TruncateResponse {

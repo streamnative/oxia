@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"oxia/common"
 	"oxia/coordinator/model"
+	"oxia/oxia"
 	"oxia/server"
 	"testing"
 	"time"
@@ -68,17 +69,17 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 	s1, sa1 := newServer(t)
 	s2, sa2 := newServer(t)
 	s3, sa3 := newServer(t)
-	servers := map[ServerAddress]*server.Server{
+	servers := map[model.ServerAddress]*server.Server{
 		sa1: s1,
 		sa2: s2,
 		sa3: s3,
 	}
 
 	metadataProvider := NewMetadataProviderMemory()
-	clusterConfig := ClusterConfig{
+	clusterConfig := model.ClusterConfig{
 		ReplicationFactor: 3,
 		ShardCount:        1,
-		Servers:           []ServerAddress{sa1, sa2, sa3},
+		Servers:           []model.ServerAddress{sa1, sa2, sa3},
 	}
 	clientPool := common.NewClientPool()
 
@@ -90,13 +91,13 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 
 	assert.Eventually(t, func() bool {
 		shard := coordinator.ClusterStatus().Shards[0]
-		return shard.Status == ShardStatusSteadyState
+		return shard.Status == model.ShardStatusSteadyState
 	}, 10*time.Second, 10*time.Millisecond)
 
 	cs := coordinator.ClusterStatus()
 
 	leader := *cs.Shards[0].Leader
-	var follower ServerAddress
+	var follower model.ServerAddress
 	for server := range servers {
 		if server != leader {
 			follower = server
@@ -128,7 +129,7 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 
 	assert.Eventually(t, func() bool {
 		shard := coordinator.ClusterStatus().Shards[0]
-		return shard.Status == ShardStatusSteadyState
+		return shard.Status == model.ShardStatusSteadyState
 	}, 10*time.Second, 10*time.Millisecond)
 
 	// Wait for the client to receive the updated assignment list

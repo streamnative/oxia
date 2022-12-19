@@ -183,7 +183,7 @@ func (s *internalRpcServer) Truncate(c context.Context, req *proto.TruncateReque
 	} else {
 		res, err2 := follower.Truncate(req)
 
-		s.log.Warn().Err(err).
+		s.log.Warn().Err(err2).
 			Uint32("shard", req.ShardId).
 			Str("peer", common.GetPeer(c)).
 			Msg("Truncate failed")
