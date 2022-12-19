@@ -343,7 +343,7 @@ func TestFollower_PersistentEpoch(t *testing.T) {
 	fc, err = NewFollowerController(shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.Equal(t, NotMember, fc.Status())
+	assert.Equal(t, Fenced, fc.Status())
 	assert.EqualValues(t, 4, fc.Epoch())
 
 	assert.NoError(t, kvFactory.Close())
