@@ -24,7 +24,7 @@ var (
 type DB interface {
 	io.Closer
 
-	ProcessWrite(b *proto.WriteRequest, commitIndex int64) (*proto.WriteResponse, error)
+	ProcessWrite(b *proto.WriteRequest, commitIndex int64, timestamp uint64) (*proto.WriteResponse, error)
 	ProcessRead(b *proto.ReadRequest) (*proto.ReadResponse, error)
 	ReadCommitIndex() (int64, error)
 
@@ -62,13 +62,17 @@ func (d *db) Close() error {
 	return d.kv.Close()
 }
 
-func (d *db) ProcessWrite(b *proto.WriteRequest, commitIndex int64) (*proto.WriteResponse, error) {
+func now() uint64 {
+	return uint64(time.Now().UnixMilli())
+}
+
+func (d *db) ProcessWrite(b *proto.WriteRequest, commitIndex int64, timestamp uint64) (*proto.WriteResponse, error) {
 	res := &proto.WriteResponse{}
 
 	batch := d.kv.NewWriteBatch()
 
 	for _, putReq := range b.Puts {
-		if pr, err := d.applyPut(batch, putReq); err != nil {
+		if pr, err := d.applyPut(batch, putReq, timestamp); err != nil {
 			return nil, err
 		} else {
 			res.Puts = append(res.Puts, pr)
@@ -90,7 +94,7 @@ func (d *db) ProcessWrite(b *proto.WriteRequest, commitIndex int64) (*proto.Writ
 			res.DeleteRanges = append(res.DeleteRanges, dr)
 		}
 	}
-	if err := d.addCommitIndex(commitIndex, batch); err != nil {
+	if err := d.addCommitIndex(commitIndex, batch, timestamp); err != nil {
 		return nil, err
 	}
 
@@ -105,13 +109,13 @@ func (d *db) ProcessWrite(b *proto.WriteRequest, commitIndex int64) (*proto.Writ
 	return res, nil
 }
 
-func (d *db) addCommitIndex(commitIndex int64, batch WriteBatch) error {
+func (d *db) addCommitIndex(commitIndex int64, batch WriteBatch, timestamp uint64) error {
 	commitIndexPayload := []byte(fmt.Sprintf("%d", commitIndex))
 	_, err := d.applyPut(batch, &proto.PutRequest{
 		Key:             commitIndexKey,
 		Payload:         commitIndexPayload,
 		ExpectedVersion: nil,
-	})
+	}, timestamp)
 	return err
 }
 
@@ -165,7 +169,7 @@ func (d *db) UpdateEpoch(newEpoch int64) error {
 	if _, err := d.applyPut(batch, &proto.PutRequest{
 		Key:     epochKey,
 		Payload: []byte(fmt.Sprintf("%d", newEpoch)),
-	}); err != nil {
+	}, now()); err != nil {
 		return err
 	}
 
@@ -201,7 +205,7 @@ func (d *db) ReadEpoch() (epoch int64, err error) {
 	return epoch, nil
 }
 
-func (d *db) applyPut(batch WriteBatch, putReq *proto.PutRequest) (*proto.PutResponse, error) {
+func (d *db) applyPut(batch WriteBatch, putReq *proto.PutRequest, timestamp uint64) (*proto.PutResponse, error) {
 	se, err := checkExpectedVersion(batch, putReq.Key, putReq.ExpectedVersion)
 	if errors.Is(err, ErrorBadVersion) {
 		return &proto.PutResponse{
@@ -210,20 +214,18 @@ func (d *db) applyPut(batch WriteBatch, putReq *proto.PutRequest) (*proto.PutRes
 	} else if err != nil {
 		return nil, errors.Wrap(err, "oxia db: failed to apply batch")
 	} else {
-		now := uint64(time.Now().UnixMilli())
-
 		// No version conflict
 		if se == nil {
 			se = &proto.StorageEntry{
 				Version:               0,
 				Payload:               putReq.Payload,
-				CreationTimestamp:     now,
-				ModificationTimestamp: now,
+				CreationTimestamp:     timestamp,
+				ModificationTimestamp: timestamp,
 			}
 		} else {
 			se.Version += 1
 			se.Payload = putReq.Payload
-			se.ModificationTimestamp = now
+			se.ModificationTimestamp = timestamp
 		}
 
 		ser, err := pb.Marshal(se)

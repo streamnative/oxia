@@ -521,7 +521,7 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 		_, err := db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
 			Key:     "my-key",
 			Payload: []byte(""),
-		}}}, i-1)
+		}}}, i-1, 0)
 		assert.NoError(t, err)
 	}
 
