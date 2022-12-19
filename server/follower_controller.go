@@ -9,24 +9,11 @@ import (
 	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
 	"io"
-	"math"
 	"oxia/common"
 	"oxia/proto"
 	"oxia/server/kv"
 	"oxia/server/wal"
 	"sync"
-)
-
-const (
-	MaxEpoch = math.MaxInt64
-
-	CodeInvalidEpoch  codes.Code = 100
-	CodeInvalidStatus codes.Code = 101
-)
-
-var (
-	ErrorInvalidStatus          = errors.New("oxia: invalid status")
-	ErrorLeaderAlreadyConnected = errors.New("oxia: leader is already connected")
 )
 
 // FollowerController handles all the operations of a given shard's follower
@@ -115,6 +102,10 @@ func NewFollowerController(shardId uint32, wf wal.WalFactory, kvFactory kv.KVFac
 		return nil, err
 	}
 
+	if fc.epoch != wal.InvalidEpoch {
+		fc.status = Fenced
+	}
+
 	if fc.commitIndex, err = fc.db.ReadCommitIndex(); err != nil {
 		return nil, err
 	}
@@ -186,12 +177,21 @@ func (fc *followerController) Fence(req *proto.FenceRequest) (*proto.FenceRespon
 	fc.Lock()
 	defer fc.Unlock()
 
-	if req.Epoch <= fc.epoch {
+	if req.Epoch < fc.epoch {
 		fc.log.Warn().
 			Int64("follower-epoch", fc.epoch).
 			Int64("fence-epoch", req.Epoch).
 			Msg("Failed to fence with invalid epoch")
-		return nil, status.Errorf(CodeInvalidEpoch, "invalid epoch - current epoch %d - request epoch %d", fc.epoch, req.Epoch)
+		return nil, ErrorInvalidEpoch
+	} else if req.Epoch == fc.epoch && fc.status != Fenced {
+		// It's OK to receive a duplicate Fence request, for the same epoch, as long as we haven't moved
+		// out of the Fenced state for that epoch
+		fc.log.Warn().
+			Int64("follower-epoch", fc.epoch).
+			Int64("fence-epoch", req.Epoch).
+			Interface("status", fc.status).
+			Msg("Failed to fence with same epoch in invalid state")
+		return nil, ErrorInvalidStatus
 	}
 
 	if err := fc.db.UpdateEpoch(req.Epoch); err != nil {
@@ -221,12 +221,12 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 	fc.Lock()
 	defer fc.Unlock()
 
-	if fc.status != Fenced && fc.status != NotMember {
+	if fc.status != Fenced {
 		return nil, ErrorInvalidStatus
 	}
 
 	if req.Epoch != fc.epoch {
-		return nil, status.Errorf(CodeInvalidEpoch, "invalid epoch - current epoch %d - request epoch %d", fc.epoch, req.Epoch)
+		return nil, ErrorInvalidEpoch
 	}
 
 	fc.status = Follower
@@ -248,6 +248,10 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 
 func (fc *followerController) AddEntries(stream proto.OxiaLogReplication_AddEntriesServer) error {
 	fc.Lock()
+	if fc.status != Fenced && fc.status != Follower {
+		return ErrorInvalidStatus
+	}
+
 	if fc.closeCh != nil {
 		fc.Unlock()
 		return ErrorLeaderAlreadyConnected
@@ -287,7 +291,7 @@ func (fc *followerController) addEntry(req *proto.AddEntryRequest) (*proto.AddEn
 	defer fc.Unlock()
 
 	if req.Epoch != fc.epoch {
-		return nil, status.Errorf(CodeInvalidEpoch, "invalid epoch - current epoch %d - request epoch %d", fc.epoch, req.Epoch)
+		return nil, ErrorInvalidEpoch
 	}
 
 	fc.log.Debug().
@@ -412,6 +416,11 @@ func checkStatus(expected, actual Status) error {
 
 func (fc *followerController) SendSnapshot(stream proto.OxiaLogReplication_SendSnapshotServer) error {
 	fc.Lock()
+
+	if fc.status != Fenced && fc.status != Follower {
+		return ErrorInvalidStatus
+	}
+
 	if fc.closeCh != nil {
 		fc.Unlock()
 		return ErrorLeaderAlreadyConnected
@@ -463,8 +472,7 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 		} else if snapChunk == nil {
 			break
 		} else if snapChunk.Epoch != fc.epoch {
-			fc.closeChannelNoMutex(status.Errorf(CodeInvalidEpoch, "invalid epoch - current epoch %d - request epoch %d",
-				fc.epoch, snapChunk.Epoch))
+			fc.closeChannelNoMutex(ErrorInvalidEpoch)
 			return
 		}
 

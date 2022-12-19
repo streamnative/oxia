@@ -5,7 +5,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
-	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
 	"io"
 	"oxia/proto"
@@ -35,15 +34,6 @@ type LeaderController interface {
 	// Status The Status of the leader
 	Status() Status
 }
-
-type Status int16
-
-const (
-	NotMember Status = iota
-	Leader
-	Follower
-	Fenced
-)
 
 type leaderController struct {
 	sync.Mutex
@@ -93,6 +83,10 @@ func NewLeaderController(shardId uint32, rpcClient ReplicationRpcProvider, walFa
 		return nil, err
 	}
 
+	if lc.epoch != wal.InvalidEpoch {
+		lc.status = Fenced
+	}
+
 	lc.log = lc.log.With().Int64("epoch", lc.epoch).Logger()
 	lc.log.Info().
 		Msg("Created leader controller")
@@ -129,8 +123,17 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 	lc.Lock()
 	defer lc.Unlock()
 
-	if req.Epoch <= lc.epoch {
-		return nil, status.Errorf(CodeInvalidEpoch, "invalid epoch - current epoch %d - request epoch %d", lc.epoch, req.Epoch)
+	if req.Epoch < lc.epoch {
+		return nil, ErrorInvalidEpoch
+	} else if req.Epoch == lc.epoch && lc.status != Fenced {
+		// It's OK to receive a duplicate Fence request, for the same epoch, as long as we haven't moved
+		// out of the Fenced state for that epoch
+		lc.log.Warn().
+			Int64("follower-epoch", lc.epoch).
+			Int64("fence-epoch", req.Epoch).
+			Interface("status", lc.status).
+			Msg("Failed to fence with same epoch in invalid state")
+		return nil, ErrorInvalidStatus
 	}
 
 	if err := lc.db.UpdateEpoch(req.GetEpoch()); err != nil {
@@ -199,8 +202,12 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 	lc.Lock()
 	defer lc.Unlock()
 
+	if lc.status != Fenced {
+		return nil, ErrorInvalidStatus
+	}
+
 	if req.Epoch != lc.epoch {
-		return nil, status.Errorf(CodeInvalidEpoch, "invalid epoch - current epoch %d - request epoch %d", lc.epoch, req.Epoch)
+		return nil, ErrorInvalidEpoch
 	}
 
 	lc.status = Leader
@@ -250,11 +257,11 @@ func (lc *leaderController) AddFollower(req *proto.AddFollowerRequest) (*proto.A
 	defer lc.Unlock()
 
 	if req.Epoch != lc.epoch {
-		return nil, status.Errorf(CodeInvalidEpoch, "invalid epoch - current epoch %d - request epoch %d", lc.epoch, req.Epoch)
+		return nil, ErrorInvalidEpoch
 	}
 
 	if lc.status != Leader {
-		return nil, status.Error(CodeInvalidStatus, "Node is not leader")
+		return nil, errors.Wrap(ErrorInvalidStatus, "Node is not leader")
 	}
 
 	if _, followerAlreadyPresent := lc.followers[req.FollowerName]; followerAlreadyPresent {
