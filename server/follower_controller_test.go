@@ -257,7 +257,11 @@ func TestFollower_FenceEpoch(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
-func TestIgnoreInvalidStates(t *testing.T) {
+// If a node is restarted, it might get the truncate request
+// when it's in the `NotMember` state. That is ok, provided
+// the request comes in the same epoch that the follower
+// currently has
+func TestFollower_TruncateAfterRestart(t *testing.T) {
 	var shardId uint32
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
@@ -274,9 +278,24 @@ func TestIgnoreInvalidStates(t *testing.T) {
 			Offset: 0,
 		},
 	})
-	assert.ErrorIs(t, err, ErrorInvalidStatus)
+
+	assert.Equal(t, CodeInvalidEpoch, status.Code(err))
 	assert.Nil(t, tr)
 	assert.Equal(t, NotMember, fc.Status())
+
+	fc.(*followerController).epoch = 2
+
+	tr, err = fc.Truncate(&proto.TruncateRequest{
+		Epoch: 2,
+		HeadIndex: &proto.EntryId{
+			Epoch:  -1,
+			Offset: -1,
+		},
+	})
+
+	assert.NoError(t, err)
+	AssertProtoEqual(t, &proto.EntryId{Epoch: 2, Offset: -1}, tr.HeadIndex)
+	assert.Equal(t, Follower, fc.Status())
 
 	assert.NoError(t, fc.Close())
 	assert.NoError(t, kvFactory.Close())
