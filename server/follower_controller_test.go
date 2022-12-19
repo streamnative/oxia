@@ -241,6 +241,7 @@ func TestFollower_FenceEpoch(t *testing.T) {
 
 	// A fence with same epoch needs to be accepted
 	fr, err = fc.Fence(&proto.FenceRequest{Epoch: 1})
+	assert.NotNil(t, fr)
 	assert.NoError(t, err)
 	assert.Equal(t, Fenced, fc.Status())
 	assert.EqualValues(t, 1, fc.Epoch())
