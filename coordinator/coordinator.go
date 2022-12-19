@@ -7,6 +7,7 @@ import (
 	"oxia/common"
 	"oxia/common/metrics"
 	"oxia/coordinator/impl"
+	"oxia/coordinator/model"
 	"oxia/kubernetes"
 )
 
@@ -14,7 +15,7 @@ type Config struct {
 	BindHost            string
 	InternalServicePort int
 	MetricsPort         int
-	ClusterConfig       impl.ClusterConfig
+	ClusterConfig       model.ClusterConfig
 }
 
 func NewConfig() Config {

@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	pb "google.golang.org/protobuf/proto"
 	"oxia/common"
+	"oxia/coordinator/model"
 	"oxia/proto"
 	"sync"
 	"testing"
@@ -56,16 +57,16 @@ func (sap *mockShardAssignmentsProvider) WaitForNextUpdate(currentValue *proto.S
 /////////////////////////////////////////////////////////////////
 
 type mockNodeAvailabilityListener struct {
-	events chan ServerAddress
+	events chan model.ServerAddress
 }
 
 func newMockNodeAvailabilityListener() *mockNodeAvailabilityListener {
 	return &mockNodeAvailabilityListener{
-		events: make(chan ServerAddress, 100),
+		events: make(chan model.ServerAddress, 100),
 	}
 }
 
-func (nal *mockNodeAvailabilityListener) NodeBecameUnavailable(node ServerAddress) {
+func (nal *mockNodeAvailabilityListener) NodeBecameUnavailable(node model.ServerAddress) {
 	nal.events <- node
 }
 
@@ -176,7 +177,7 @@ func newMockRpcProvider() *mockRpcProvider {
 	}
 }
 
-func (r *mockRpcProvider) FailNode(node ServerAddress, err error) {
+func (r *mockRpcProvider) FailNode(node model.ServerAddress, err error) {
 	r.Lock()
 	defer r.Unlock()
 
@@ -184,7 +185,7 @@ func (r *mockRpcProvider) FailNode(node ServerAddress, err error) {
 	n.err = err
 }
 
-func (r *mockRpcProvider) RecoverNode(node ServerAddress) {
+func (r *mockRpcProvider) RecoverNode(node model.ServerAddress) {
 	r.Lock()
 	defer r.Unlock()
 
@@ -192,14 +193,14 @@ func (r *mockRpcProvider) RecoverNode(node ServerAddress) {
 	n.err = nil
 }
 
-func (r *mockRpcProvider) GetNode(node ServerAddress) *mockPerNodeChannels {
+func (r *mockRpcProvider) GetNode(node model.ServerAddress) *mockPerNodeChannels {
 	r.Lock()
 	defer r.Unlock()
 
 	return r.getNode(node)
 }
 
-func (r *mockRpcProvider) getNode(node ServerAddress) *mockPerNodeChannels {
+func (r *mockRpcProvider) getNode(node model.ServerAddress) *mockPerNodeChannels {
 	res, ok := r.channels[node.Internal]
 	if ok {
 		return res
@@ -210,7 +211,7 @@ func (r *mockRpcProvider) getNode(node ServerAddress) *mockPerNodeChannels {
 	return res
 }
 
-func (r *mockRpcProvider) GetShardAssignmentStream(ctx context.Context, node ServerAddress) (proto.OxiaControl_ShardAssignmentClient, error) {
+func (r *mockRpcProvider) GetShardAssignmentStream(ctx context.Context, node model.ServerAddress) (proto.OxiaControl_ShardAssignmentClient, error) {
 	r.Lock()
 	defer r.Unlock()
 
@@ -221,7 +222,7 @@ func (r *mockRpcProvider) GetShardAssignmentStream(ctx context.Context, node Ser
 	return n.shardAssignmentsStream, nil
 }
 
-func (r *mockRpcProvider) Fence(ctx context.Context, node ServerAddress, req *proto.FenceRequest) (*proto.FenceResponse, error) {
+func (r *mockRpcProvider) Fence(ctx context.Context, node model.ServerAddress, req *proto.FenceRequest) (*proto.FenceResponse, error) {
 	r.Lock()
 
 	s := r.getNode(node)
@@ -244,7 +245,7 @@ func (r *mockRpcProvider) Fence(ctx context.Context, node ServerAddress, req *pr
 	}
 }
 
-func (r *mockRpcProvider) BecomeLeader(ctx context.Context, node ServerAddress, req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error) {
+func (r *mockRpcProvider) BecomeLeader(ctx context.Context, node model.ServerAddress, req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error) {
 	r.Lock()
 
 	s := r.getNode(node)
@@ -267,7 +268,7 @@ func (r *mockRpcProvider) BecomeLeader(ctx context.Context, node ServerAddress, 
 	}
 }
 
-func (r *mockRpcProvider) AddFollower(ctx context.Context, node ServerAddress, req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error) {
+func (r *mockRpcProvider) AddFollower(ctx context.Context, node model.ServerAddress, req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error) {
 	r.Lock()
 
 	s := r.getNode(node)
@@ -290,7 +291,7 @@ func (r *mockRpcProvider) AddFollower(ctx context.Context, node ServerAddress, r
 	}
 }
 
-func (r *mockRpcProvider) GetHealthClient(node ServerAddress) (grpc_health_v1.HealthClient, error) {
+func (r *mockRpcProvider) GetHealthClient(node model.ServerAddress) (grpc_health_v1.HealthClient, error) {
 	return r.GetNode(node).healthClient, nil
 }
 

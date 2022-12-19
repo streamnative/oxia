@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"oxia/common"
+	"oxia/coordinator/model"
 	"oxia/server"
 	"testing"
 	"time"
 )
 
-func newServer(t *testing.T) (s *server.Server, addr ServerAddress) {
+func newServer(t *testing.T) (s *server.Server, addr model.ServerAddress) {
 	var err error
 	s, err = server.New(server.Config{
 		BindHost:            "localhost",
@@ -22,7 +23,7 @@ func newServer(t *testing.T) (s *server.Server, addr ServerAddress) {
 
 	assert.NoError(t, err)
 
-	addr = ServerAddress{
+	addr = model.ServerAddress{
 		Public:   fmt.Sprintf("localhost:%d", s.PublicPort()),
 		Internal: fmt.Sprintf("localhost:%d", s.InternalPort()),
 	}
@@ -36,10 +37,10 @@ func TestCoordinatorE2E(t *testing.T) {
 	s3, sa3 := newServer(t)
 
 	metadataProvider := NewMetadataProviderMemory()
-	clusterConfig := ClusterConfig{
+	clusterConfig := model.ClusterConfig{
 		ReplicationFactor: 3,
 		ShardCount:        1,
-		Servers:           []ServerAddress{sa1, sa2, sa3},
+		Servers:           []model.ServerAddress{sa1, sa2, sa3},
 	}
 	clientPool := common.NewClientPool()
 
@@ -51,7 +52,7 @@ func TestCoordinatorE2E(t *testing.T) {
 
 	assert.Eventually(t, func() bool {
 		shard := coordinator.ClusterStatus().Shards[0]
-		return shard.Status == ShardStatusSteadyState
+		return shard.Status == model.ShardStatusSteadyState
 	}, 10*time.Second, 10*time.Millisecond)
 
 	assert.NoError(t, coordinator.Close())
