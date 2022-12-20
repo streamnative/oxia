@@ -620,9 +620,7 @@ func TestFollower_DisconnectLeader(t *testing.T) {
 
 	go func() { assert.NoError(t, fc.AddEntries(stream)) }()
 
-	assert.Eventually(t, func() bool {
-		return fc.(*followerController).closeCh != nil
-	}, 10*time.Second, 10*time.Millisecond)
+	assert.Eventually(t, closeChanIsNotNil(fc), 10*time.Second, 10*time.Millisecond)
 
 	// It's not possible to add a new leader stream
 	assert.ErrorIs(t, fc.AddEntries(stream), ErrorLeaderAlreadyConnected)
@@ -635,13 +633,20 @@ func TestFollower_DisconnectLeader(t *testing.T) {
 
 	go func() { assert.NoError(t, fc.AddEntries(stream)) }()
 
-	assert.Eventually(t, func() bool {
-		return fc.(*followerController).closeCh != nil
-	}, 10*time.Second, 10*time.Millisecond)
+	assert.Eventually(t, closeChanIsNotNil(fc), 10*time.Second, 10*time.Millisecond)
 
 	assert.NoError(t, fc.Close())
 	assert.NoError(t, kvFactory.Close())
 	assert.NoError(t, walFactory.Close())
+}
+
+func closeChanIsNotNil(fc FollowerController) func() bool {
+	return func() bool {
+		_fc := fc.(*followerController)
+		_fc.Lock()
+		defer _fc.Unlock()
+		return _fc.closeCh != nil
+	}
 }
 
 func createAddRequest(t *testing.T, epoch int64, offset int64,
