@@ -17,7 +17,13 @@ spec:
     spec:
       serviceAccountName: {{ .Release.Name }}-coordinator
       containers:
-        - command: ["oxia", "coordinator", "--log-json"]
+        - command:
+            - "oxia"
+            - "coordinator"
+            - "--log-json"
+            - "--metadata=configmap"
+            - "--namespace={{ .Release.Namespace }}"
+            - "--name={{ .Release.Name }}-status"
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           name: coordinator

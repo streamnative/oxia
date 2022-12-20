@@ -171,8 +171,15 @@ func coordinatorDeployment(cluster v1alpha1.OxiaCluster) *appsV1.Deployment {
 				Spec: coreV1.PodSpec{
 					ServiceAccountName: _resourceName,
 					Containers: []coreV1.Container{{
-						Name:            "coordinator",
-						Command:         []string{"oxia", "coordinator", "--log-json"},
+						Name: "coordinator",
+						Command: []string{
+							"oxia",
+							"coordinator",
+							"--log-json",
+							"--metadata=configmap",
+							fmt.Sprintf("--namespace=%s", cluster.Namespace),
+							fmt.Sprintf("--name=%s-status", cluster.Name),
+						},
 						Image:           cluster.Spec.Image,
 						ImagePullPolicy: cluster.Spec.ImagePullPolicy,
 						Ports:           transform(CoordinatorPorts, containerPort),
