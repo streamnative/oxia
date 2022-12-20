@@ -168,5 +168,5 @@ func (s *shardManagerImpl) update(updates []Shard) {
 }
 
 func overlap(a HashRange, b HashRange) bool {
-	return !(a.MinInclusive >= b.MaxExclusive || a.MaxExclusive <= b.MinInclusive)
+	return !(a.MinInclusive > b.MaxInclusive || a.MaxInclusive < b.MinInclusive)
 }

@@ -12,5 +12,5 @@ type Shard struct {
 
 type HashRange struct {
 	MinInclusive uint32
-	MaxExclusive uint32
+	MaxInclusive uint32
 }
