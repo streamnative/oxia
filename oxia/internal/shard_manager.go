@@ -2,12 +2,14 @@ package internal
 
 import (
 	"context"
+	"github.com/cenkalti/backoff/v4"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"io"
 	"oxia/common"
 	"oxia/proto"
 	"sync"
+	"time"
 )
 
 type ShardManager interface {
@@ -114,15 +116,29 @@ func (s *shardManagerImpl) isClosed() bool {
 }
 
 func (s *shardManagerImpl) receiveWithRecovery(ctx context.Context, readyC chan bool) {
-	for {
-		err := s.receive(ctx, readyC)
-		if err != nil && s.isClosed() {
-			return
-		}
+	backOff := common.NewBackOff(context.Background())
+	err := backoff.RetryNotify(
+		func() error {
+			err := s.receive(backOff, ctx, readyC)
+			if s.isClosed() {
+				s.logger.Debug().Err(err).Msg("Closed")
+				return nil
+			}
+			return err
+		},
+		backOff,
+		func(err error, duration time.Duration) {
+			s.logger.Warn().Err(err).
+				Dur("retry-after", duration).
+				Msg("Failed receiving shard assignments, retrying later")
+		},
+	)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("Failed receiving shard assignments")
 	}
 }
 
-func (s *shardManagerImpl) receive(ctx context.Context, readyC chan bool) error {
+func (s *shardManagerImpl) receive(backOff backoff.BackOff, ctx context.Context, readyC chan bool) error {
 	rpc, err := s.clientPool.GetClientRpc(s.serviceAddress)
 	if err != nil {
 		return err
@@ -145,6 +161,7 @@ func (s *shardManagerImpl) receive(ctx context.Context, readyC chan bool) error 
 			}
 			s.update(shards)
 			readyC <- true
+			backOff.Reset()
 		}
 	}
 }
