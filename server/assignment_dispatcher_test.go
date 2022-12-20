@@ -149,7 +149,7 @@ func TestShardGenerator(t *testing.T) {
 	assertNext(t, assignments[0], 0, 0, 1073741823)
 	assertNext(t, assignments[1], 1, 1073741824, 2147483647)
 	assertNext(t, assignments[2], 2, 2147483648, 3221225471)
-	assertNext(t, assignments[3], 3, 3221225472, 4294967295)
+	assertNext(t, assignments[3], 3, 3221225472, math.MaxUint32)
 }
 
 func assertNext(
