@@ -109,9 +109,9 @@ func TestCmd(t *testing.T) {
 		{[]string{}, false},
 		{[]string{"--metadata=memory"}, false},
 		{[]string{"--metadata=configmap"}, true},
-		{[]string{"--metadata=configmap", "--namespace=foo", "--name=bar"}, false},
-		{[]string{"--metadata=configmap", "--namespace=foo}"}, true},
-		{[]string{"--metadata=configmap", "--name=bar"}, true},
+		{[]string{"--metadata=configmap", "--k8s-namespace=foo", "--k8s-configmap-name=bar"}, false},
+		{[]string{"--metadata=configmap", "--k8s-namespace=foo}"}, true},
+		{[]string{"--metadata=configmap", "--k8s-configmap-name=bar"}, true},
 		{[]string{"--metadata=invalid"}, true},
 	} {
 		t.Run(strings.Join(test.args, "_"), func(t *testing.T) {

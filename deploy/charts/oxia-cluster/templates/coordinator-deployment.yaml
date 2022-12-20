@@ -22,8 +22,8 @@ spec:
             - "coordinator"
             - "--log-json"
             - "--metadata=configmap"
-            - "--namespace={{ .Release.Namespace }}"
-            - "--name={{ .Release.Name }}-status"
+            - "--k8s-namespace={{ .Release.Namespace }}"
+            - "--k8s-configmap-name={{ .Release.Name }}-status"
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           name: coordinator

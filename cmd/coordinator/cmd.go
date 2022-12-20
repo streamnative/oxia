@@ -27,18 +27,18 @@ func init() {
 	flag.InternalPort(Cmd, &conf.InternalServicePort)
 	flag.MetricsPort(Cmd, &conf.MetricsPort)
 	Cmd.Flags().Var(&conf.MetadataProviderImpl, "metadata", "Metadata provider implementation: memory or configmap")
-	Cmd.Flags().StringVar(&conf.MetadataNamespace, "namespace", conf.MetadataNamespace, "Kubernetes namespace for metadata configmap")
-	Cmd.Flags().StringVar(&conf.MetadataName, "name", conf.MetadataName, "ConfigMap name for metadata configmap")
+	Cmd.Flags().StringVar(&conf.MetadataNamespace, "k8s-namespace", conf.MetadataNamespace, "Kubernetes namespace for metadata configmap")
+	Cmd.Flags().StringVar(&conf.MetadataName, "k8s-configmap-name", conf.MetadataName, "ConfigMap name for metadata configmap")
 	Cmd.Flags().StringVarP(&configFile, "conf", "f", "", "Cluster config file")
 }
 
 func validate(*cobra.Command, []string) error {
 	if conf.MetadataProviderImpl == coordinator.Configmap {
 		if conf.MetadataNamespace == "" {
-			return errors.New("namespace must be set with metadata=configmap")
+			return errors.New("k8s-namespace must be set with metadata=configmap")
 		}
 		if conf.MetadataName == "" {
-			return errors.New("name must be set with metadata=configmap")
+			return errors.New("k8s-configmap-name must be set with metadata=configmap")
 		}
 	}
 	if err := loadClusterConfig(); err != nil {
