@@ -105,8 +105,8 @@ message Int32HashRange {
   // The minimum inclusive hash that the shard can contain
   fixed32 min_hash_inclusive = 1;
 
-  // The maximum exclusive hash that the shard can contain
-  fixed32 max_hash_exclusive = 2;
+  // The maximum inclusive hash that the shard can contain
+  fixed32 max_hash_inclusive = 2;
 }
 
 /**
