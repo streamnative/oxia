@@ -4,7 +4,7 @@ build: proto crd
 	go build -v -o bin/oxia ./cmd
 
 test: build
-	go test -cover -race ./...
+	go test -cover -coverprofile=coverage.out -race ./...
 
 lint:
 	#brew install golangci-lint
