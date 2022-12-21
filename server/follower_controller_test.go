@@ -415,7 +415,7 @@ func TestFollowerController_RejectEntriesWithDifferentEpoch(t *testing.T) {
 	fc, err := NewFollowerController(shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.Equal(t, NotMember, fc.Status())
+	assert.Equal(t, Fenced, fc.Status())
 	assert.EqualValues(t, 5, fc.Epoch())
 
 	stream := newMockServerAddEntriesStream()
@@ -424,7 +424,7 @@ func TestFollowerController_RejectEntriesWithDifferentEpoch(t *testing.T) {
 	// Follower will reject the entry because it's from an earlier epoch
 	err = fc.AddEntries(stream)
 	assert.Equal(t, CodeInvalidEpoch, status.Code(err))
-	assert.Equal(t, NotMember, fc.Status())
+	assert.Equal(t, Fenced, fc.Status())
 	assert.EqualValues(t, 5, fc.Epoch())
 
 	// If we send an entry of same epoch, it will be accepted
@@ -448,7 +448,7 @@ func TestFollowerController_RejectEntriesWithDifferentEpoch(t *testing.T) {
 	stream.AddRequest(createAddRequest(t, 6, 0, map[string]string{"a": "2", "b": "2"}, wal.InvalidOffset))
 	err = fc.AddEntries(stream)
 	assert.Equal(t, CodeInvalidEpoch, status.Code(err))
-	assert.Equal(t, NotMember, fc.Status())
+	assert.Equal(t, Fenced, fc.Status())
 	assert.EqualValues(t, 5, fc.Epoch())
 
 	assert.NoError(t, fc.Close())
