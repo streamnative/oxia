@@ -420,42 +420,46 @@ func (lc *leaderController) Write(request *proto.WriteRequest) (*proto.WriteResp
 		Interface("req", request).
 		Msg("Write operation")
 
-	var newOffset int64
-	var timestamp uint64
+	timestamp := uint64(time.Now().UnixMilli())
 
-	{
-		lc.Lock()
-		defer lc.Unlock()
-
-		if err := checkStatus(Leader, lc.status); err != nil {
-			return nil, err
-		}
-
-		newOffset = lc.quorumAckTracker.HeadIndex() + 1
-		value, err := pb.Marshal(request)
-		if err != nil {
-			return nil, err
-		}
-		logEntry := &proto.LogEntry{
-			Epoch:     lc.epoch,
-			Offset:    newOffset,
-			Value:     value,
-			Timestamp: uint64(time.Now().UnixMilli()),
-		}
-
-		timestamp = logEntry.Timestamp
-
-		err = lc.wal.Append(logEntry)
-		if err != nil {
-			return nil, err
-		}
+	newOffset, err := lc.appendToWal(request, timestamp)
+	if err != nil {
+		return nil, errors.Wrap(err, "oxia: failed to append to wal")
 	}
-
 	lc.quorumAckTracker.AdvanceHeadIndex(newOffset)
 
 	return lc.quorumAckTracker.WaitForCommitIndex(newOffset, func() (*proto.WriteResponse, error) {
 		return lc.db.ProcessWrite(request, newOffset, timestamp)
 	})
+}
+
+func (lc *leaderController) appendToWal(request *proto.WriteRequest, timestamp uint64) (offset int64, err error) {
+	lc.Lock()
+	defer lc.Unlock()
+
+	if err := checkStatus(Leader, lc.status); err != nil {
+		return wal.InvalidOffset, err
+	}
+
+	newOffset := lc.quorumAckTracker.HeadIndex() + 1
+	value, err := pb.Marshal(request)
+	if err != nil {
+		return wal.InvalidOffset, err
+	}
+	logEntry := &proto.LogEntry{
+		Epoch:     lc.epoch,
+		Offset:    newOffset,
+		Value:     value,
+		Timestamp: timestamp,
+	}
+
+	timestamp = logEntry.Timestamp
+
+	if err = lc.wal.Append(logEntry); err != nil {
+		return wal.InvalidOffset, err
+	}
+
+	return newOffset, nil
 }
 
 func (lc *leaderController) Close() error {
