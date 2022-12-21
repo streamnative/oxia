@@ -6,9 +6,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"go.uber.org/multierr"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -28,6 +28,7 @@ type internalRpcServer struct {
 
 	shardsDirector       ShardsDirector
 	assignmentDispatcher ShardAssignmentsDispatcher
+	healthServer         *container.HealthServer
 	container            *container.Container
 	log                  zerolog.Logger
 }
@@ -36,6 +37,7 @@ func newCoordinationRpcServer(bindAddress string, shardsDirector ShardsDirector,
 	server := &internalRpcServer{
 		shardsDirector:       shardsDirector,
 		assignmentDispatcher: assignmentDispatcher,
+		healthServer:         container.NewHealthServer(),
 		log: log.With().
 			Str("component", "coordination-rpc-server").
 			Logger(),
@@ -45,7 +47,7 @@ func newCoordinationRpcServer(bindAddress string, shardsDirector ShardsDirector,
 	server.container, err = container.Start("internal", bindAddress, func(registrar grpc.ServiceRegistrar) {
 		proto.RegisterOxiaControlServer(registrar, server)
 		proto.RegisterOxiaLogReplicationServer(registrar, server)
-		grpc_health_v1.RegisterHealthServer(registrar, health.NewServer())
+		grpc_health_v1.RegisterHealthServer(registrar, server.healthServer)
 	})
 	if err != nil {
 		return nil, err
@@ -55,7 +57,10 @@ func newCoordinationRpcServer(bindAddress string, shardsDirector ShardsDirector,
 }
 
 func (s *internalRpcServer) Close() error {
-	return s.container.Close()
+	return multierr.Combine(
+		s.healthServer.Close(),
+		s.container.Close(),
+	)
 }
 
 func (s *internalRpcServer) ShardAssignment(srv proto.OxiaControl_ShardAssignmentServer) error {
