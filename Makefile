@@ -3,6 +3,13 @@
 build: proto crd
 	go build -v -o bin/oxia ./cmd
 
+.PHONY: maelstrom
+maelstrom:
+	#protoc --grpchan_out=proto proto/coordination.proto
+#--go_out=plugins=grpc:maelstrom --grpchan_out=maelstrom proto/coordination.proto
+#--go_opt=paths=source_relative
+	go build -v -o bin/oxia-maelstrom ./maelstrom
+
 test: build
 	go test -cover -race ./...
 
