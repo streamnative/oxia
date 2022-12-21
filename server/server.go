@@ -49,6 +49,7 @@ func NewWithGrpcProvider(config Config, provider container.GrpcProvider, replica
 	}
 
 	s := &Server{
+		replicationRpcProvider: replicationRpcProvider,
 		walFactory: wal.NewWalFactory(&wal.WalFactoryOptions{
 			LogDir: config.WalDir,
 		}),
