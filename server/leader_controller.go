@@ -453,8 +453,6 @@ func (lc *leaderController) appendToWal(request *proto.WriteRequest, timestamp u
 		Timestamp: timestamp,
 	}
 
-	timestamp = logEntry.Timestamp
-
 	if err = lc.wal.Append(logEntry); err != nil {
 		return wal.InvalidOffset, err
 	}
