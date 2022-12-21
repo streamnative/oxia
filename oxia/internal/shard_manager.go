@@ -116,7 +116,7 @@ func (s *shardManagerImpl) isClosed() bool {
 }
 
 func (s *shardManagerImpl) receiveWithRecovery(ctx context.Context, readyC chan bool) {
-	backOff := common.NewBackOff(context.Background())
+	backOff := common.NewBackOff(ctx)
 	err := backoff.RetryNotify(
 		func() error {
 			err := s.receive(backOff, ctx, readyC)
