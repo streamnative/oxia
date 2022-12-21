@@ -19,8 +19,17 @@ func NewWalFactory(options *WalFactoryOptions) WalFactory {
 	}
 }
 
+func NewInMemoryWalFactory() WalFactory {
+	return &factory{
+		options: &WalFactoryOptions{
+			LogDir:   "/",
+			InMemory: true,
+		},
+	}
+}
+
 func (f *factory) NewWal(shard uint32) (Wal, error) {
-	impl, err := newPersistentWal(shard, f.options.LogDir)
+	impl, err := newPersistentWal(shard, f.options)
 	return impl, err
 }
 
@@ -35,9 +44,10 @@ type persistentWal struct {
 	lastOffset int64
 }
 
-func newPersistentWal(shard uint32, dir string) (Wal, error) {
-	opts := DefaultOptions
-	walPath := filepath.Join(dir, fmt.Sprint("shard-", shard))
+func newPersistentWal(shard uint32, options *WalFactoryOptions) (Wal, error) {
+	opts := DefaultOptions()
+	opts.InMemory = options.InMemory
+	walPath := filepath.Join(options.LogDir, fmt.Sprint("shard-", shard))
 	log, err := Open(walPath, opts)
 	if err != nil {
 		return nil, err

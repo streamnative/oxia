@@ -16,11 +16,13 @@ var (
 )
 
 type WalFactoryOptions struct {
-	LogDir string
+	LogDir   string
+	InMemory bool
 }
 
 var DefaultWalFactoryOptions = &WalFactoryOptions{
-	LogDir: "data/wal",
+	LogDir:   "data/wal",
+	InMemory: false,
 }
 
 type WalFactory interface {
