@@ -1,6 +1,7 @@
 package coordinator
 
 import (
+	"errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"io"
@@ -17,7 +18,7 @@ var (
 		Use:     "coordinator",
 		Short:   "Start a coordinator",
 		Long:    `Start a coordinator`,
-		PreRunE: loadClusterConfig,
+		PreRunE: validate,
 		Run:     exec,
 	}
 )
@@ -25,10 +26,28 @@ var (
 func init() {
 	flag.InternalPort(Cmd, &conf.InternalServicePort)
 	flag.MetricsPort(Cmd, &conf.MetricsPort)
+	Cmd.Flags().Var(&conf.MetadataProviderImpl, "metadata", "Metadata provider implementation: memory or configmap")
+	Cmd.Flags().StringVar(&conf.MetadataNamespace, "k8s-namespace", conf.MetadataNamespace, "Kubernetes namespace for metadata configmap")
+	Cmd.Flags().StringVar(&conf.MetadataName, "k8s-configmap-name", conf.MetadataName, "ConfigMap name for metadata configmap")
 	Cmd.Flags().StringVarP(&configFile, "conf", "f", "", "Cluster config file")
 }
 
-func loadClusterConfig(*cobra.Command, []string) error {
+func validate(*cobra.Command, []string) error {
+	if conf.MetadataProviderImpl == coordinator.Configmap {
+		if conf.MetadataNamespace == "" {
+			return errors.New("k8s-namespace must be set with metadata=configmap")
+		}
+		if conf.MetadataName == "" {
+			return errors.New("k8s-configmap-name must be set with metadata=configmap")
+		}
+	}
+	if err := loadClusterConfig(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func loadClusterConfig() error {
 	if configFile == "" {
 		viper.AddConfigPath("/oxia/conf")
 		viper.AddConfigPath(".")

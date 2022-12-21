@@ -1,6 +1,7 @@
 package coordinator
 
 import (
+	"errors"
 	"fmt"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
@@ -12,16 +13,45 @@ import (
 )
 
 type Config struct {
-	BindHost            string
-	InternalServicePort int
-	MetricsPort         int
-	ClusterConfig       model.ClusterConfig
+	BindHost             string
+	InternalServicePort  int
+	MetricsPort          int
+	MetadataProviderImpl MetadataProviderImpl
+	MetadataNamespace    string
+	MetadataName         string
+	ClusterConfig        model.ClusterConfig
 }
+
+type MetadataProviderImpl string
+
+func (m *MetadataProviderImpl) String() string {
+	return string(*m)
+}
+
+func (m *MetadataProviderImpl) Set(s string) error {
+	switch s {
+	case "memory", "configmap":
+		*m = MetadataProviderImpl(s)
+		return nil
+	default:
+		return errors.New(`must be one of "memory" or "configmap"`)
+	}
+}
+
+func (m *MetadataProviderImpl) Type() string {
+	return "MetadataProviderImpl"
+}
+
+var (
+	Memory    MetadataProviderImpl = "memory"
+	Configmap MetadataProviderImpl = "configmap"
+)
 
 func NewConfig() Config {
 	return Config{
-		InternalServicePort: kubernetes.InternalPort.Port,
-		MetricsPort:         kubernetes.MetricsPort.Port,
+		InternalServicePort:  kubernetes.InternalPort.Port,
+		MetricsPort:          kubernetes.MetricsPort.Port,
+		MetadataProviderImpl: Memory,
 	}
 }
 
@@ -41,7 +71,13 @@ func New(config Config) (*Coordinator, error) {
 		clientPool: common.NewClientPool(),
 	}
 
-	metadataProvider := impl.NewMetadataProviderMemory()
+	var metadataProvider impl.MetadataProvider
+	switch config.MetadataProviderImpl {
+	case Memory:
+		metadataProvider = impl.NewMetadataProviderMemory()
+	case Configmap:
+		metadataProvider = impl.NewMetadataProviderConfigMap(config.MetadataNamespace, config.MetadataName)
+	}
 
 	rpcClient := impl.NewRpcProvider(s.clientPool)
 
