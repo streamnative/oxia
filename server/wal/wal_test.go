@@ -18,7 +18,7 @@ type walFactoryFactory interface {
 }
 
 type inMemoryWalFactoryFactory struct{}
-type tidwallWalFactoryFactory struct{}
+type persistentWalFactoryFactory struct{}
 
 func (_ *inMemoryWalFactoryFactory) NewWalFactory(_ *testing.T) WalFactory {
 	return NewInMemoryWalFactory()
@@ -32,26 +32,26 @@ func (_ *inMemoryWalFactoryFactory) Persistent() bool {
 	return false
 }
 
-func (_ *tidwallWalFactoryFactory) NewWalFactory(t *testing.T) WalFactory {
+func (_ *persistentWalFactoryFactory) NewWalFactory(t *testing.T) WalFactory {
 	dir := t.TempDir()
-	f := NewWalFactory(&WalFactoryOptions{dir})
+	f := NewWalFactory(&WalFactoryOptions{dir, false})
 	return f
 }
 
-func (_ *tidwallWalFactoryFactory) Name() string {
-	return "Tidwall/"
+func (_ *persistentWalFactoryFactory) Name() string {
+	return "Persistent/"
 }
 
-func (_ *tidwallWalFactoryFactory) Persistent() bool {
+func (_ *persistentWalFactoryFactory) Persistent() bool {
 	return true
 }
 
 var walFF walFactoryFactory = &inMemoryWalFactoryFactory{}
 
 func TestWal(t *testing.T) {
-	for _, f := range []walFactoryFactory{ /*&inMemoryWalFactoryFactory{}, */ &tidwallWalFactoryFactory{}} {
+	for _, f := range []walFactoryFactory{&inMemoryWalFactoryFactory{}, &persistentWalFactoryFactory{}} {
 		walFF = f
-		t.Run(f.Name()+"Factory_NewWal", Factory_NewWal)
+		t.Run(f.Name()+"FactoryNewWal", FactoryNewWal)
 		t.Run(f.Name()+"Append", Append)
 		t.Run(f.Name()+"Truncate", Truncate)
 		t.Run(f.Name()+"Clear", Clear)
@@ -102,7 +102,7 @@ func assertReaderReadsEventually(t *testing.T, r WalReader, entries []string) ch
 	return ch
 }
 
-func Factory_NewWal(t *testing.T) {
+func FactoryNewWal(t *testing.T) {
 	f, w := createWal(t)
 	rr, err := w.NewReverseReader()
 	assert.NoError(t, err)
