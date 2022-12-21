@@ -69,7 +69,7 @@ func (m *metadataProviderFile) Store(cs *model.ClusterStatus, expectedVersion Ve
 	if err := m.fileLock.Lock(); err != nil {
 		return "", errors.Wrap(err, "failed to acquire file lock")
 	}
-	defer m.fileLock.Unlock()
+	defer func() { _ = m.fileLock.Unlock() }()
 
 	_, existingVersion, err := m.Get()
 	if err != nil {
