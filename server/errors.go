@@ -7,8 +7,9 @@ import (
 )
 
 const (
-	CodeInvalidEpoch  codes.Code = 100
-	CodeInvalidStatus codes.Code = 101
+	CodeInvalidEpoch    codes.Code = 100
+	CodeInvalidStatus   codes.Code = 101
+	CodeNotServingShard codes.Code = 102
 )
 
 var (
@@ -16,6 +17,7 @@ var (
 	ErrorCancelled              = errors.New("oxia: operation was cancelled")
 	ErrorInvalidEpoch           = status.Error(CodeInvalidEpoch, "oxia: invalid epoch")
 	ErrorInvalidStatus          = status.Error(CodeInvalidStatus, "oxia: invalid status")
+	ErrorNotServingShard        = status.Error(CodeNotServingShard, "oxia: not serving shard")
 	ErrorLeaderAlreadyConnected = errors.New("oxia: leader is already connected")
 	ErrorAlreadyClosed          = errors.New("oxia: node is shutting down")
 	ErrorNodeIsNotLeader        = errors.New("oxia: node is not leader for shard")

@@ -263,6 +263,24 @@ func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapsh
 	}
 }
 
+func (s *internalRpcServer) GetStatus(c context.Context, req *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
+	if follower, err := s.shardsDirector.GetFollower(req.ShardId); err != nil {
+		if !errors.Is(err, ErrorNodeIsNotFollower) {
+			return nil, err
+		}
+
+		// If we don't have a follower, fallback to checking the leader controller
+		if leader, err := s.shardsDirector.GetLeader(req.ShardId); err != nil {
+			return nil, err
+		} else {
+			return leader.GetStatus(req)
+		}
+
+	} else {
+		return follower.GetStatus(req)
+	}
+}
+
 func readHeader(md metadata.MD, key string) (value string, err error) {
 	arr := md.Get(key)
 	if len(arr) == 0 {
