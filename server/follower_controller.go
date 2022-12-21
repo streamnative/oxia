@@ -201,6 +201,7 @@ func (fc *followerController) Fence(req *proto.FenceRequest) (*proto.FenceRespon
 	fc.epoch = req.Epoch
 	fc.log = fc.log.With().Int64("epoch", fc.epoch).Logger()
 	fc.status = Fenced
+	fc.closeChannelNoMutex(nil)
 
 	lastEntryId, err := getLastEntryIdInWal(fc.wal)
 	if err != nil {

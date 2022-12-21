@@ -12,6 +12,7 @@ import (
 	"oxia/server/wal"
 	"sync"
 	"testing"
+	"time"
 )
 
 var testKVOptions = &kv.KVFactoryOptions{
@@ -615,6 +616,48 @@ func TestFollower_HandleSnapshot(t *testing.T) {
 	assert.NoError(t, fc.Close())
 	assert.NoError(t, kvFactory.Close())
 	assert.NoError(t, walFactory.Close())
+}
+
+func TestFollower_DisconnectLeader(t *testing.T) {
+	var shardId uint32
+	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
+	walFactory := wal.NewInMemoryWalFactory()
+
+	fc, _ := NewFollowerController(shardId, walFactory, kvFactory)
+	_, _ = fc.Fence(&proto.FenceRequest{Epoch: 1})
+
+	stream := newMockServerAddEntriesStream()
+
+	go func() { assert.NoError(t, fc.AddEntries(stream)) }()
+
+	assert.Eventually(t, closeChanIsNotNil(fc), 10*time.Second, 10*time.Millisecond)
+
+	// It's not possible to add a new leader stream
+	assert.ErrorIs(t, fc.AddEntries(stream), ErrorLeaderAlreadyConnected)
+
+	// When we fence again, the leader should have been cutoff
+	_, err = fc.Fence(&proto.FenceRequest{Epoch: 2})
+	assert.NoError(t, err)
+
+	assert.Nil(t, fc.(*followerController).closeCh)
+
+	go func() { assert.NoError(t, fc.AddEntries(stream)) }()
+
+	assert.Eventually(t, closeChanIsNotNil(fc), 10*time.Second, 10*time.Millisecond)
+
+	assert.NoError(t, fc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
+func closeChanIsNotNil(fc FollowerController) func() bool {
+	return func() bool {
+		_fc := fc.(*followerController)
+		_fc.Lock()
+		defer _fc.Unlock()
+		return _fc.closeCh != nil
+	}
 }
 
 func createAddRequest(t *testing.T, epoch int64, offset int64,

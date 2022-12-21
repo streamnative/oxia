@@ -182,29 +182,35 @@ func NewStandaloneShardAssignmentDispatcher(address string, numShards uint32) Sh
 	assignmentDispatcher := NewShardAssignmentDispatcher().(*shardAssignmentDispatcher)
 	res := &proto.ShardAssignmentsResponse{
 		ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
+		Assignments:    generateShards(address, numShards),
 	}
 
-	bucketSize := math.MaxUint32 / numShards
-
-	for i := uint32(0); i < numShards; i++ {
-		upperBound := (i + 1) * bucketSize
-		if i == numShards-1 {
-			upperBound = math.MaxUint32
-		}
-		res.Assignments = append(res.Assignments, &proto.ShardAssignment{
-			ShardId: i,
-			Leader:  address,
-			ShardBoundaries: &proto.ShardAssignment_Int32HashRange{
-				Int32HashRange: &proto.Int32HashRange{
-					MinHashInclusive: i * bucketSize,
-					MaxHashExclusive: upperBound,
-				},
-			},
-		})
-	}
 	err := assignmentDispatcher.updateShardAssignment(res)
 	if err != nil {
 		panic(err)
 	}
 	return assignmentDispatcher
+}
+
+func generateShards(address string, numShards uint32) []*proto.ShardAssignment {
+	bucketSize := (math.MaxUint32 / numShards) + 1
+	assignments := make([]*proto.ShardAssignment, numShards)
+	for i := uint32(0); i < numShards; i++ {
+		lowerBound := i * bucketSize
+		upperBound := lowerBound + bucketSize - 1
+		if i == numShards-1 {
+			upperBound = math.MaxUint32
+		}
+		assignments[i] = &proto.ShardAssignment{
+			ShardId: i,
+			Leader:  address,
+			ShardBoundaries: &proto.ShardAssignment_Int32HashRange{
+				Int32HashRange: &proto.Int32HashRange{
+					MinHashInclusive: lowerBound,
+					MaxHashInclusive: upperBound,
+				},
+			},
+		}
+	}
+	return assignments
 }

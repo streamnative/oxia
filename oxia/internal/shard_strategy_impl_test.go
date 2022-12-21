@@ -15,18 +15,19 @@ func TestShardStrategy(t *testing.T) {
 
 	for _, item := range []struct {
 		minInclusive uint32
-		maxExclusive uint32
+		maxInclusive uint32
 		match        bool
 	}{
-		{1, 4, true},
-		{2, 4, true},
-		{3, 4, false},
-		{1, 2, false},
+		{1, 3, true},
+		{2, 3, true},
+		{1, 2, true},
+		{1, 1, false},
+		{3, 3, false},
 	} {
 		shard := Shard{
 			HashRange: HashRange{
 				MinInclusive: item.minInclusive,
-				MaxExclusive: item.maxExclusive,
+				MaxInclusive: item.maxInclusive,
 			},
 		}
 		assert.Equal(t, item.match, predicate(shard))

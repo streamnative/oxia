@@ -348,17 +348,16 @@ func TestLog(t *testing.T) {
 	t.Run("sync", func(t *testing.T) {
 		testLog(t, path, makeOpts(512, false), 100)
 	})
+	t.Run("in-memory", func(t *testing.T) {
+		opts := makeOpts(512, false)
+		opts.InMemory = true
+		testLog(t, path, makeOpts(512, true), 100)
+	})
 }
 
 func TestOutliers(t *testing.T) {
 	// Create some scenarios where the log has been corrupted, operations
-	// fail, or various weirdnesses.
-	t.Run("fail-in-memory", func(t *testing.T) {
-		if l, err := Open(":memory:", nil); err == nil {
-			l.Close()
-			t.Fatal("expected error")
-		}
-	})
+	// fail, or various weirdness.
 	t.Run("fail-not-a-directory", func(t *testing.T) {
 		path := t.TempDir()
 		if f, err := os.Create(path + "/file"); err != nil {
@@ -411,10 +410,10 @@ func TestOutliers(t *testing.T) {
 }
 
 func makeOpts(segSize int, noSync bool) *Options {
-	opts := *DefaultOptions
+	opts := DefaultOptions()
 	opts.SegmentSize = segSize
 	opts.NoSync = noSync
-	return &opts
+	return opts
 }
 
 // https://github.com/tidwall/wal/issues/1
@@ -422,8 +421,7 @@ func TestIssue1(t *testing.T) {
 	in := []byte{0, 0, 0, 0, 0, 0, 0, 1, 37, 108, 131, 178, 151, 17, 77, 32,
 		27, 48, 23, 159, 63, 14, 240, 202, 206, 151, 131, 98, 45, 165, 151, 67,
 		38, 180, 54, 23, 138, 238, 246, 16, 0, 0, 0, 0}
-	opts := *DefaultOptions
-	l, err := Open(t.TempDir(), &opts)
+	l, err := Open(t.TempDir(), DefaultOptions())
 	if err != nil {
 		t.Fatal(err)
 	}

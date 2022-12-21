@@ -28,6 +28,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/spf13/afero"
 	"github.com/tidwall/tinylru"
 	"os"
 	"path/filepath"
@@ -37,10 +38,11 @@ import (
 )
 
 const (
-	startSuffix    = ".START"
-	endSuffix      = ".END"
-	truncateSuffix = ".TRUNCATE"
-	tempFileName   = "TEMP"
+	startSuffix           = ".START"
+	endSuffix             = ".END"
+	truncateSuffix        = ".TRUNCATE"
+	tempFileName          = "TEMP"
+	segmentFilenameLength = 20
 )
 
 var (
@@ -56,8 +58,6 @@ var (
 
 	// ErrOutOfRange is returned from TruncateFront() and TruncateBack() when
 	// the offset is not in the range of the log's first and last offset.
-	// TODO Or, this may be returned when the caller is attempting to remove *all* entries;
-	// The log requires that at least one entry exists following a truncate.
 	ErrOutOfRange = errors.New("out of range")
 )
 
@@ -84,16 +84,21 @@ type Options struct {
 	// Perms represents the datafiles modes and permission bits
 	DirPerms  os.FileMode
 	FilePerms os.FileMode
+
+	InMemory bool
 }
 
 // DefaultOptions for Open().
-var DefaultOptions = &Options{
-	NoSync:           false,    // Fsync after every write
-	SegmentSize:      20971520, // 20 MB log segment files.
-	SegmentCacheSize: 2,        // Number of cached in-memory segments
-	NoCopy:           true,     // Make a new copy of data for every Read call.
-	DirPerms:         0750,     // Permissions for the created directories
-	FilePerms:        0640,     // Permissions for the created data files
+func DefaultOptions() *Options {
+	return &Options{
+		NoSync:           false,    // Fsync after every write
+		SegmentSize:      20971520, // 20 MB log segment files.
+		SegmentCacheSize: 2,        // Number of cached in-memory segments
+		NoCopy:           true,     // Make a new copy of data for every Read call.
+		DirPerms:         0750,     // Permissions for the created directories
+		FilePerms:        0640,     // Permissions for the created data files
+		InMemory:         false,
+	}
 }
 
 // Log represents a write-ahead log
@@ -106,9 +111,10 @@ type Log struct {
 	segments    []*segment  // all known log segments
 	firstOffset int64       // offset of the first entry in log
 	lastOffset  int64       // offset of the last entry in log
-	sfile       *os.File    // tail segment file handle
+	sfile       afero.File  // tail segment file handle
 	wbatch      Batch       // reusable write batch
 	scache      tinylru.LRU // segment entries cache
+	fs          afero.Fs    // Filesystem
 }
 
 // segment represents a single segment file.
@@ -126,30 +132,34 @@ type bpos struct {
 
 // Open a new write-ahead log
 func Open(path string, opts *Options) (*Log, error) {
+	defaultOptions := DefaultOptions()
 	if opts == nil {
-		opts = DefaultOptions
+		opts = defaultOptions
 	}
 	if opts.SegmentCacheSize <= 0 {
-		opts.SegmentCacheSize = DefaultOptions.SegmentCacheSize
+		opts.SegmentCacheSize = defaultOptions.SegmentCacheSize
 	}
 	if opts.SegmentSize <= 0 {
-		opts.SegmentSize = DefaultOptions.SegmentSize
+		opts.SegmentSize = defaultOptions.SegmentSize
 	}
 	if opts.DirPerms == 0 {
-		opts.DirPerms = DefaultOptions.DirPerms
+		opts.DirPerms = defaultOptions.DirPerms
 	}
 	if opts.FilePerms == 0 {
-		opts.FilePerms = DefaultOptions.FilePerms
+		opts.FilePerms = defaultOptions.FilePerms
 	}
-
+	fs := afero.NewOsFs()
+	if opts.InMemory {
+		fs = afero.NewMemMapFs()
+	}
 	var err error
-	path, err = abs(path)
+	path, err = abs(fs, path)
 	if err != nil {
 		return nil, err
 	}
-	l := &Log{path: path, opts: *opts}
+	l := &Log{path: path, opts: *opts, fs: fs}
 	l.scache.Resize(l.opts.SegmentCacheSize)
-	if err := os.MkdirAll(path, l.opts.DirPerms); err != nil {
+	if err := l.fs.MkdirAll(path, l.opts.DirPerms); err != nil {
 		return nil, err
 	}
 	if err := l.load(); err != nil {
@@ -158,11 +168,12 @@ func Open(path string, opts *Options) (*Log, error) {
 	return l, nil
 }
 
-func abs(path string) (string, error) {
-	if path == ":memory:" {
-		return "", errors.New("in-memory log not supported")
+func abs(fs afero.Fs, path string) (string, error) {
+
+	if _, os := fs.(afero.OsFs); os {
+		return filepath.Abs(path)
 	}
-	return filepath.Abs(path)
+	return filepath.Clean(path), nil
 }
 
 func (l *Log) pushCache(segIdx int) {
@@ -177,7 +188,7 @@ func (l *Log) pushCache(segIdx int) {
 
 // load all the segments. This operation also cleans up any START/END segments.
 func (l *Log) load() error {
-	fis, err := os.ReadDir(l.path)
+	fis, err := afero.ReadDir(l.fs, l.path)
 	if err != nil {
 		return err
 	}
@@ -186,17 +197,17 @@ func (l *Log) load() error {
 	truncateIdx := -1
 	for _, fi := range fis {
 		name := fi.Name()
-		if fi.IsDir() || len(name) < 20 {
+		if fi.IsDir() || len(name) < segmentFilenameLength {
 			continue
 		}
-		index, err := strconv.ParseInt(name[:20], 10, 64)
+		index, err := strconv.ParseInt(name[:segmentFilenameLength], 10, 64)
 		if err != nil || index == -1 {
 			continue
 		}
-		isStart := len(name) == 26 && strings.HasSuffix(name, startSuffix)
-		isEnd := len(name) == 24 && strings.HasSuffix(name, endSuffix)
-		isTruncate := len(name) == 28 && strings.HasSuffix(name, truncateSuffix)
-		if len(name) == 20 || isStart || isEnd || isTruncate {
+		isStart := len(name) == segmentFilenameLength+len(startSuffix) && strings.HasSuffix(name, startSuffix)
+		isEnd := len(name) == segmentFilenameLength+len(endSuffix) && strings.HasSuffix(name, endSuffix)
+		isTruncate := len(name) == segmentFilenameLength+len(truncateSuffix) && strings.HasSuffix(name, truncateSuffix)
+		if len(name) == segmentFilenameLength || isStart || isEnd || isTruncate {
 			if isStart {
 				startIdx = len(l.segments)
 			} else if isEnd && endIdx == -1 {
@@ -224,7 +235,7 @@ func (l *Log) load() error {
 	if startIdx != -1 {
 		// Delete all files leading up to START
 		for i := 0; i < startIdx; i++ {
-			if err := os.Remove(l.segments[i].path); err != nil {
+			if err := l.fs.Remove(l.segments[i].path); err != nil {
 				return err
 			}
 		}
@@ -232,7 +243,7 @@ func (l *Log) load() error {
 		// Rename the START segment
 		orgPath := l.segments[0].path
 		finalPath := orgPath[:len(orgPath)-len(startSuffix)]
-		err := os.Rename(orgPath, finalPath)
+		err := l.fs.Rename(orgPath, finalPath)
 		if err != nil {
 			return err
 		}
@@ -241,7 +252,7 @@ func (l *Log) load() error {
 	if endIdx != -1 {
 		// Delete all files following END
 		for i := len(l.segments) - 1; i > endIdx; i-- {
-			if err := os.Remove(l.segments[i].path); err != nil {
+			if err := l.fs.Remove(l.segments[i].path); err != nil {
 				return err
 			}
 		}
@@ -256,7 +267,7 @@ func (l *Log) load() error {
 		// Rename the END segment
 		orgPath := l.segments[len(l.segments)-1].path
 		finalPath := orgPath[:len(orgPath)-len(endSuffix)]
-		err := os.Rename(orgPath, finalPath)
+		err := l.fs.Rename(orgPath, finalPath)
 		if err != nil {
 			return err
 		}
@@ -268,7 +279,7 @@ func (l *Log) load() error {
 			if i == truncateIdx {
 				continue
 			}
-			if err := os.Remove(l.segments[i].path); err != nil {
+			if err := l.fs.Remove(l.segments[i].path); err != nil {
 				return err
 			}
 		}
@@ -276,7 +287,7 @@ func (l *Log) load() error {
 		// Rename the TRUNCATE segment
 		orgPath := l.segments[0].path
 		finalPath := orgPath[:len(orgPath)-len(truncateSuffix)]
-		err := os.Rename(orgPath, finalPath)
+		err := l.fs.Rename(orgPath, finalPath)
 		if err != nil {
 			return err
 		}
@@ -285,7 +296,7 @@ func (l *Log) load() error {
 	l.firstOffset = l.segments[0].offset
 	// Open the last segment for appending
 	lseg := l.segments[len(l.segments)-1]
-	l.sfile, err = os.OpenFile(lseg.path, os.O_WRONLY, l.opts.FilePerms)
+	l.sfile, err = l.openFile(lseg.path)
 	if err != nil {
 		return err
 	}
@@ -315,7 +326,7 @@ func (l *Log) createInitialSegment(offset int64) error {
 	l.lastOffset = offset - 1
 
 	var err error
-	l.sfile, err = os.OpenFile(l.segments[0].path, os.O_CREATE|os.O_RDWR|os.O_TRUNC, l.opts.FilePerms)
+	l.sfile, err = l.newFile(l.segments[0].path)
 	return err
 }
 
@@ -370,7 +381,7 @@ func (l *Log) cycle(nextOffset int64) error {
 		// We're removing an initial empty segment, because we're
 		// jumping to a new offset
 		l.firstOffset = nextOffset
-		if err := os.Remove(lastSegment.path); err != nil {
+		if err := l.fs.Remove(lastSegment.path); err != nil {
 			return err
 		}
 	} else {
@@ -383,7 +394,7 @@ func (l *Log) cycle(nextOffset int64) error {
 		path:   filepath.Join(l.path, segmentName(nextOffset)),
 	}
 	var err error
-	l.sfile, err = os.OpenFile(s.path, os.O_CREATE|os.O_RDWR|os.O_TRUNC, l.opts.FilePerms)
+	l.sfile, err = l.newFile(s.path)
 	if err != nil {
 		return err
 	}
@@ -535,7 +546,7 @@ func (l *Log) findSegment(index int64) int {
 }
 
 func (l *Log) loadSegmentEntries(s *segment) error {
-	data, err := os.ReadFile(s.path)
+	data, err := afero.ReadFile(l.fs, s.path)
 	if err != nil {
 		return err
 	}
@@ -697,7 +708,7 @@ func (l *Log) truncateFront(index int64) (err error) {
 	// Create a temp file contains the truncated segment.
 	tempName := filepath.Join(l.path, tempFileName)
 	err = func() error {
-		f, err := os.OpenFile(tempName, os.O_CREATE|os.O_RDWR|os.O_TRUNC, l.opts.FilePerms)
+		f, err := l.newFile(tempName)
 		if err != nil {
 			return err
 		}
@@ -712,7 +723,7 @@ func (l *Log) truncateFront(index int64) (err error) {
 	}()
 	// Rename the TEMP file to its START file name.
 	startName := filepath.Join(l.path, segmentName(index)+startSuffix)
-	if err = os.Rename(tempName, startName); err != nil {
+	if err = l.fs.Rename(tempName, startName); err != nil {
 		return err
 	}
 	// The log was truncated but still needs some file cleanup. Any errors
@@ -734,20 +745,20 @@ func (l *Log) truncateFront(index int64) (err error) {
 	}
 	// Delete truncated segment files
 	for i := 0; i <= segIdx; i++ {
-		if err = os.Remove(l.segments[i].path); err != nil {
+		if err = l.fs.Remove(l.segments[i].path); err != nil {
 			return err
 		}
 	}
 	// Rename the START file to the final truncated segment name.
 	newName := filepath.Join(l.path, segmentName(index))
-	if err = os.Rename(startName, newName); err != nil {
+	if err = l.fs.Rename(startName, newName); err != nil {
 		return err
 	}
 	s.path = newName
 	s.offset = index
 	if segIdx == len(l.segments)-1 {
 		// Reopen the tail segment file
-		if l.sfile, err = os.OpenFile(newName, os.O_WRONLY, l.opts.FilePerms); err != nil {
+		if l.sfile, err = l.openFile(newName); err != nil {
 			return err
 		}
 		var n int64
@@ -828,7 +839,7 @@ func (l *Log) truncateBack(index int64) (err error) {
 	// Create a temp file contains the truncated segment.
 	tempName := filepath.Join(l.path, tempFileName)
 	err = func() error {
-		f, err := os.OpenFile(tempName, os.O_CREATE|os.O_RDWR|os.O_TRUNC, l.opts.FilePerms)
+		f, err := l.newFile(tempName)
 		if err != nil {
 			return err
 		}
@@ -843,7 +854,7 @@ func (l *Log) truncateBack(index int64) (err error) {
 	}()
 	// Rename the TEMP file to its END file name.
 	endName := filepath.Join(l.path, segmentName(s.offset)+endSuffix)
-	if err = os.Rename(tempName, endName); err != nil {
+	if err = l.fs.Rename(tempName, endName); err != nil {
 		return err
 	}
 	// The log was truncated but still needs some file cleanup. Any errors
@@ -864,17 +875,17 @@ func (l *Log) truncateBack(index int64) (err error) {
 	}
 	// Delete truncated segment files
 	for i := segIdx; i < len(l.segments); i++ {
-		if err = os.Remove(l.segments[i].path); err != nil {
+		if err = l.fs.Remove(l.segments[i].path); err != nil {
 			return err
 		}
 	}
 	// Rename the END file to the final truncated segment name.
 	newName := filepath.Join(l.path, segmentName(s.offset))
-	if err = os.Rename(endName, newName); err != nil {
+	if err = l.fs.Rename(endName, newName); err != nil {
 		return err
 	}
 	// Reopen the tail segment file
-	if l.sfile, err = os.OpenFile(newName, os.O_WRONLY, l.opts.FilePerms); err != nil {
+	if l.sfile, err = l.openFile(newName); err != nil {
 		return err
 	}
 	var n int64
@@ -904,7 +915,7 @@ func (l *Log) truncateBackAll(newFirstIndex int64) (err error) {
 
 	// Create a temp file that contains the truncated segment.
 	tempName := filepath.Join(l.path, segmentName(newFirstIndex)+truncateSuffix)
-	f, err := os.OpenFile(tempName, os.O_CREATE|os.O_RDWR|os.O_TRUNC, l.opts.FilePerms)
+	f, err := l.openFile(tempName)
 	if err != nil {
 		return err
 	}
@@ -931,17 +942,17 @@ func (l *Log) truncateBackAll(newFirstIndex int64) (err error) {
 	}
 	// Delete all segment files
 	for i := 0; i < len(l.segments); i++ {
-		if err = os.Remove(l.segments[i].path); err != nil {
+		if err = l.fs.Remove(l.segments[i].path); err != nil {
 			return err
 		}
 	}
 	// Rename the TRUNCATE file to the final truncated segment name.
 	newName := filepath.Join(l.path, segmentName(newFirstIndex))
-	if err = os.Rename(tempName, newName); err != nil {
+	if err = l.fs.Rename(tempName, newName); err != nil {
 		return err
 	}
 	// Reopen the tail segment file
-	if l.sfile, err = os.OpenFile(newName, os.O_WRONLY, l.opts.FilePerms); err != nil {
+	if l.sfile, err = l.openFile(newName); err != nil {
 		return err
 	}
 
@@ -965,4 +976,12 @@ func (l *Log) Sync() error {
 		return ErrClosed
 	}
 	return l.sfile.Sync()
+}
+
+func (l *Log) newFile(name string) (afero.File, error) {
+	return l.fs.OpenFile(name, os.O_CREATE|os.O_RDWR|os.O_TRUNC, l.opts.FilePerms)
+}
+
+func (l *Log) openFile(name string) (afero.File, error) {
+	return l.fs.OpenFile(name, os.O_WRONLY, l.opts.FilePerms)
 }

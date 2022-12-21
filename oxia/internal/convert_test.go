@@ -19,7 +19,7 @@ func TestToShard(t *testing.T) {
 				ShardBoundaries: &proto.ShardAssignment_Int32HashRange{
 					Int32HashRange: &proto.Int32HashRange{
 						MinHashInclusive: 1,
-						MaxHashExclusive: 2,
+						MaxHashInclusive: 2,
 					},
 				},
 			}, Shard{
