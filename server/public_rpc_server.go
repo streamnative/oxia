@@ -16,11 +16,11 @@ type PublicRpcServer struct {
 
 	shardsDirector       ShardsDirector
 	assignmentDispatcher ShardAssignmentsDispatcher
-	container            *container.Container
+	grpcServer           container.GrpcServer
 	log                  zerolog.Logger
 }
 
-func NewPublicRpcServer(bindAddress string, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher) (*PublicRpcServer, error) {
+func NewPublicRpcServer(provider container.GrpcProvider, bindAddress string, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher) (*PublicRpcServer, error) {
 	server := &PublicRpcServer{
 		shardsDirector:       shardsDirector,
 		assignmentDispatcher: assignmentDispatcher,
@@ -30,7 +30,7 @@ func NewPublicRpcServer(bindAddress string, shardsDirector ShardsDirector, assig
 	}
 
 	var err error
-	server.container, err = container.Start("public", bindAddress, func(registrar grpc.ServiceRegistrar) {
+	server.grpcServer, err = provider.StartGrpcServer("public", bindAddress, func(registrar grpc.ServiceRegistrar) {
 		proto.RegisterOxiaClientServer(registrar, server)
 	})
 	if err != nil {
@@ -103,5 +103,5 @@ func (s *PublicRpcServer) Read(ctx context.Context, read *proto.ReadRequest) (*p
 }
 
 func (s *PublicRpcServer) Close() error {
-	return s.container.Close()
+	return s.grpcServer.Close()
 }

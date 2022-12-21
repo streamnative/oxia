@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
-	"oxia/common"
+	"oxia/common/container"
 	"oxia/common/metrics"
 	"oxia/server/kv"
 	"oxia/server/wal"
@@ -23,15 +23,19 @@ type Server struct {
 	*internalRpcServer
 	*PublicRpcServer
 
+	replicationRpcProvider    ReplicationRpcProvider
 	shardAssignmentDispatcher ShardAssignmentsDispatcher
 	shardsDirector            ShardsDirector
-	clientPool                common.ClientPool
 	metrics                   *metrics.PrometheusMetrics
 	walFactory                wal.WalFactory
 	kvFactory                 kv.KVFactory
 }
 
 func New(config Config) (*Server, error) {
+	return NewWithGrpcProvider(config, container.Default, NewReplicationRpcProvider())
+}
+
+func NewWithGrpcProvider(config Config, provider container.GrpcProvider, replicationRpcProvider ReplicationRpcProvider) (*Server, error) {
 	log.Info().
 		Interface("config", config).
 		Msg("Starting Oxia server")
@@ -45,22 +49,24 @@ func New(config Config) (*Server, error) {
 	}
 
 	s := &Server{
-		clientPool: common.NewClientPool(),
 		walFactory: wal.NewWalFactory(&wal.WalFactoryOptions{
 			LogDir: config.WalDir,
 		}),
 		kvFactory: kvFactory,
 	}
 
-	s.shardsDirector = NewShardsDirector(s.walFactory, s.kvFactory)
+	s.shardsDirector = NewShardsDirector(s.walFactory, s.kvFactory, replicationRpcProvider)
 	s.shardAssignmentDispatcher = NewShardAssignmentDispatcher()
 
-	s.internalRpcServer, err = newCoordinationRpcServer(fmt.Sprintf("%s:%d", config.BindHost, config.InternalServicePort), s.shardsDirector, s.shardAssignmentDispatcher)
+	s.internalRpcServer, err = newCoordinationRpcServer(provider,
+		fmt.Sprintf("%s:%d", config.BindHost, config.InternalServicePort),
+		s.shardsDirector, s.shardAssignmentDispatcher)
 	if err != nil {
 		return nil, err
 	}
 
-	s.PublicRpcServer, err = NewPublicRpcServer(fmt.Sprintf("%s:%d", config.BindHost, config.PublicServicePort), s.shardsDirector, s.shardAssignmentDispatcher)
+	s.PublicRpcServer, err = NewPublicRpcServer(provider,
+		fmt.Sprintf("%s:%d", config.BindHost, config.PublicServicePort), s.shardsDirector, s.shardAssignmentDispatcher)
 	if err != nil {
 		return nil, err
 	}
@@ -75,11 +81,11 @@ func New(config Config) (*Server, error) {
 }
 
 func (s *Server) PublicPort() int {
-	return s.PublicRpcServer.container.Port()
+	return s.PublicRpcServer.grpcServer.Port()
 }
 
 func (s *Server) InternalPort() int {
-	return s.internalRpcServer.container.Port()
+	return s.internalRpcServer.grpcServer.Port()
 }
 
 func (s *Server) Close() error {
@@ -88,9 +94,9 @@ func (s *Server) Close() error {
 		s.shardsDirector.Close(),
 		s.PublicRpcServer.Close(),
 		s.internalRpcServer.Close(),
-		s.clientPool.Close(),
 		s.kvFactory.Close(),
 		s.walFactory.Close(),
+		s.replicationRpcProvider.Close(),
 	)
 
 	if s.metrics != nil {
