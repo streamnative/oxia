@@ -37,6 +37,7 @@ func ConfigureLogger() {
 	log.Logger = zerolog.New(os.Stdout).
 		With().
 		Timestamp().
+		Stack().
 		Logger()
 
 	if !LogJson {

@@ -26,18 +26,19 @@ var (
 func init() {
 	flag.InternalPort(Cmd, &conf.InternalServicePort)
 	flag.MetricsPort(Cmd, &conf.MetricsPort)
-	Cmd.Flags().Var(&conf.MetadataProviderImpl, "metadata", "Metadata provider implementation: memory or configmap")
-	Cmd.Flags().StringVar(&conf.MetadataNamespace, "k8s-namespace", conf.MetadataNamespace, "Kubernetes namespace for metadata configmap")
-	Cmd.Flags().StringVar(&conf.MetadataName, "k8s-configmap-name", conf.MetadataName, "ConfigMap name for metadata configmap")
+	Cmd.Flags().Var(&conf.MetadataProviderImpl, "metadata", "Metadata provider implementation: file, configmap or memory")
+	Cmd.Flags().StringVar(&conf.K8SMetadataNamespace, "k8s-namespace", conf.K8SMetadataNamespace, "Kubernetes namespace for metadata configmap")
+	Cmd.Flags().StringVar(&conf.K8SMetadataConfigMapName, "k8s-configmap-name", conf.K8SMetadataConfigMapName, "ConfigMap name for metadata configmap")
+	Cmd.Flags().StringVar(&conf.FileMetadataPath, "file-clusters-status-path", "data/cluster-status.json", "The path where the store the cluster status when using 'file' provider")
 	Cmd.Flags().StringVarP(&configFile, "conf", "f", "", "Cluster config file")
 }
 
 func validate(*cobra.Command, []string) error {
 	if conf.MetadataProviderImpl == coordinator.Configmap {
-		if conf.MetadataNamespace == "" {
+		if conf.K8SMetadataNamespace == "" {
 			return errors.New("k8s-namespace must be set with metadata=configmap")
 		}
-		if conf.MetadataName == "" {
+		if conf.K8SMetadataConfigMapName == "" {
 			return errors.New("k8s-configmap-name must be set with metadata=configmap")
 		}
 	}
