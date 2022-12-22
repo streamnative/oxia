@@ -84,7 +84,7 @@ func runPerf() (io.Closer, error) {
 	return closer, nil
 }
 
-func perfMain(closer *closer) error {
+func perfMain(closer *closer) {
 	defer closer.cancel()
 
 	log.Info().
@@ -161,7 +161,7 @@ func perfMain(closer *closer) error {
 			rq.Insert(float64(rl) / 1000.0) // Convert to millis
 
 		case <-closer.ctx.Done():
-			return closer.ctx.Err()
+			return
 		}
 	}
 }
