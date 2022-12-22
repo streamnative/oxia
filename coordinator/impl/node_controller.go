@@ -197,7 +197,11 @@ func (n *nodeController) sendAssignmentsUpdates(backoff backoff.BackOff) error {
 	var assignments *proto.ShardAssignmentsResponse
 	for !n.closed.Load() {
 
-		assignments = n.shardAssignmentsProvider.WaitForNextUpdate(assignments)
+		assignments, err = n.shardAssignmentsProvider.WaitForNextUpdate(stream.Context(), assignments)
+		if err != nil {
+			return err
+		}
+
 		if assignments == nil {
 			continue
 		}
