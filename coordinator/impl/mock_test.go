@@ -350,7 +350,7 @@ func (m *mockShardAssignmentClient) CloseSend() error {
 }
 
 func (m *mockShardAssignmentClient) Context() context.Context {
-	panic("not implemented")
+	return context.Background()
 }
 
 func (m *mockShardAssignmentClient) SendMsg(msg interface{}) error {
