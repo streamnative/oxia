@@ -341,9 +341,6 @@ func (fc *followerController) processCommittedEntries(maxInclusive int64) error 
 
 	for reader.HasNext() {
 		entry, err := reader.ReadNext()
-		fc.log.Debug().
-			Int64("offset", entry.Offset).
-			Msg("Reading entry")
 
 		if err == wal.ErrorReaderClosed {
 			fc.log.Info().Msg("Stopped reading committed entries")
@@ -352,6 +349,10 @@ func (fc *followerController) processCommittedEntries(maxInclusive int64) error 
 			fc.log.Err(err).Msg("Error reading committed entry")
 			return err
 		}
+
+		fc.log.Debug().
+			Int64("offset", entry.Offset).
+			Msg("Reading entry")
 
 		if entry.Offset > maxInclusive {
 			// We read up to the max point
