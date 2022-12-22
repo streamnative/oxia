@@ -22,7 +22,7 @@ func init() {
 
 type mockShardAssignmentsProvider struct {
 	sync.Mutex
-	cond    *sync.Cond
+	cond    common.ConditionContext
 	current *proto.ShardAssignmentsResponse
 }
 
@@ -31,7 +31,7 @@ func newMockShardAssignmentsProvider() *mockShardAssignmentsProvider {
 		current: nil,
 	}
 
-	sap.cond = sync.NewCond(sap)
+	sap.cond = common.NewConditionContext(sap)
 	return sap
 }
 
@@ -43,15 +43,17 @@ func (sap *mockShardAssignmentsProvider) set(value *proto.ShardAssignmentsRespon
 	sap.cond.Broadcast()
 }
 
-func (sap *mockShardAssignmentsProvider) WaitForNextUpdate(currentValue *proto.ShardAssignmentsResponse) *proto.ShardAssignmentsResponse {
+func (sap *mockShardAssignmentsProvider) WaitForNextUpdate(ctx context.Context, currentValue *proto.ShardAssignmentsResponse) (*proto.ShardAssignmentsResponse, error) {
 	sap.Lock()
 	defer sap.Unlock()
 
 	for pb.Equal(currentValue, sap.current) {
-		sap.cond.Wait()
+		if err := sap.cond.Wait(ctx); err != nil {
+			return nil, err
+		}
 	}
 
-	return sap.current
+	return sap.current, nil
 }
 
 /////////////////////////////////////////////////////////////////

@@ -63,7 +63,7 @@ func TestCondSignal(t *testing.T) {
 		go func() {
 			m.Lock()
 			running <- true
-			c.Wait(context.Background())
+			assert.NoError(t, c.Wait(context.Background()))
 			awake <- true
 			m.Unlock()
 		}()
@@ -101,7 +101,7 @@ func TestCondSignalGenerations(t *testing.T) {
 		go func(i int) {
 			m.Lock()
 			running <- true
-			c.Wait(context.Background())
+			assert.NoError(t, c.Wait(context.Background()))
 			awake <- i
 			m.Unlock()
 		}(i)
@@ -130,7 +130,7 @@ func TestCondBroadcast(t *testing.T) {
 			m.Lock()
 			for !exit {
 				running <- g
-				c.Wait(context.Background())
+				assert.NoError(t, c.Wait(context.Background()))
 				awake <- g
 			}
 			m.Unlock()
@@ -178,7 +178,7 @@ func TestRace(t *testing.T) {
 	go func() {
 		m.Lock()
 		x = 1
-		c.Wait(context.Background())
+		assert.NoError(t, c.Wait(context.Background()))
 		if x != 2 {
 			t.Error("want 2")
 		}
@@ -206,7 +206,7 @@ func TestRace(t *testing.T) {
 		m.Lock()
 		for {
 			if x == 2 {
-				c.Wait(context.Background())
+				assert.NoError(t, c.Wait(context.Background()))
 				if x != 3 {
 					t.Error("want 3")
 				}
@@ -237,7 +237,7 @@ func TestCondSignalStealing(t *testing.T) {
 		go func() {
 			m.Lock()
 			ch <- struct{}{}
-			cond.Wait(context.Background())
+			assert.NoError(t, cond.Wait(context.Background()))
 			m.Unlock()
 
 			ch <- struct{}{}
@@ -245,6 +245,10 @@ func TestCondSignalStealing(t *testing.T) {
 
 		<-ch
 		m.Lock()
+		select {
+		case <-ch:
+		default:
+		}
 		m.Unlock()
 
 		// We know that the waiter is in the cond.Wait() call because we
@@ -264,7 +268,7 @@ func TestCondSignalStealing(t *testing.T) {
 		go func() {
 			m.Lock()
 			for !done {
-				cond.Wait(context.Background())
+				assert.NoError(t, cond.Wait(context.Background()))
 			}
 			m.Unlock()
 		}()
@@ -330,7 +334,7 @@ func benchmarkCond(b *testing.B, waiters int) {
 					id = 0
 					c.Broadcast()
 				} else {
-					c.Wait(ctx)
+					assert.NoError(b, c.Wait(ctx))
 				}
 				m.Unlock()
 			}

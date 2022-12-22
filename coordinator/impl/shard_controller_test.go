@@ -1,6 +1,7 @@
 package impl
 
 import (
+	"context"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"oxia/coordinator/model"
@@ -205,7 +206,7 @@ func (m *mockCoordinator) ClusterStatus() model.ClusterStatus {
 	panic("not implemented")
 }
 
-func (m *mockCoordinator) WaitForNextUpdate(currentValue *proto.ShardAssignmentsResponse) *proto.ShardAssignmentsResponse {
+func (m *mockCoordinator) WaitForNextUpdate(ctx context.Context, currentValue *proto.ShardAssignmentsResponse) (*proto.ShardAssignmentsResponse, error) {
 	panic("not implemented")
 }
 
