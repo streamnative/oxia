@@ -24,11 +24,8 @@ func TestAsyncClientImpl(t *testing.T) {
 	assert.NoError(t, err)
 
 	serviceAddress := fmt.Sprintf("localhost:%d", server.Container.Port())
-	options, err := NewClientOptions(serviceAddress, WithBatchLinger(0))
-	if err != nil {
-		assert.Fail(t, err.Error())
-	}
-	client := NewAsyncClient(options)
+	client, err := NewAsyncClient(serviceAddress, WithBatchLinger(0))
+	assert.NoError(t, err)
 
 	putResult := <-client.Put("/a", []byte{0}, &VersionNotExists)
 	assert.Equal(t, versionZero, putResult.Stat.Version)
