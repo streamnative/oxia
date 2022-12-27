@@ -76,6 +76,10 @@ func NewCoordinator(metadataProvider MetadataProvider, clusterConfig model.Clust
 		}
 	}
 
+	for shard, shardMetadata := range c.clusterStatus.Shards {
+		c.shardControllers[shard] = NewShardController(shard, shardMetadata, c.rpc, c)
+	}
+
 	for _, sa := range clusterConfig.Servers {
 		c.nodeControllers[sa.Internal] = NewNodeController(sa, c, c, c.rpc)
 	}
@@ -133,10 +137,6 @@ func (c *coordinator) initialAssignment() error {
 	}
 
 	c.clusterStatus = cs
-
-	for shard, shardMetadata := range c.clusterStatus.Shards {
-		c.shardControllers[shard] = NewShardController(shard, shardMetadata, c.rpc, c)
-	}
 
 	return nil
 }
