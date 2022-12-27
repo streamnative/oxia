@@ -182,7 +182,7 @@ func TestFollower_RestoreCommitIndex(t *testing.T) {
 	fc, err := NewFollowerController(shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.Equal(t, NotMember, fc.Status())
+	assert.Equal(t, Fenced, fc.Status())
 	assert.EqualValues(t, 6, fc.Epoch())
 	assert.EqualValues(t, 9, fc.CommitIndex())
 
@@ -240,10 +240,10 @@ func TestFollower_FenceEpoch(t *testing.T) {
 	assert.Equal(t, Fenced, fc.Status())
 	assert.EqualValues(t, 1, fc.Epoch())
 
-	// We cannot fence with same epoch
+	// A fence with same epoch needs to be accepted
 	fr, err = fc.Fence(&proto.FenceRequest{Epoch: 1})
-	assert.Nil(t, fr)
-	assert.Equal(t, CodeInvalidEpoch, status.Code(err))
+	assert.NotNil(t, fr)
+	assert.NoError(t, err)
 	assert.Equal(t, Fenced, fc.Status())
 	assert.EqualValues(t, 1, fc.Epoch())
 
@@ -264,7 +264,7 @@ func TestFollower_FenceEpoch(t *testing.T) {
 // currently has
 func TestFollower_TruncateAfterRestart(t *testing.T) {
 	var shardId uint32
-	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{DataDir: t.TempDir()})
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 
@@ -280,11 +280,22 @@ func TestFollower_TruncateAfterRestart(t *testing.T) {
 		},
 	})
 
-	assert.Equal(t, CodeInvalidEpoch, status.Code(err))
+	assert.Equal(t, CodeInvalidStatus, status.Code(err))
 	assert.Nil(t, tr)
 	assert.Equal(t, NotMember, fc.Status())
 
-	fc.(*followerController).epoch = 2
+	_, err = fc.Fence(&proto.FenceRequest{
+		ShardId: shardId,
+		Epoch:   2,
+	})
+	assert.NoError(t, err)
+	fc.Close()
+
+	// Restart
+	fc, err = NewFollowerController(shardId, walFactory, kvFactory)
+	assert.NoError(t, err)
+
+	assert.Equal(t, Fenced, fc.Status())
 
 	tr, err = fc.Truncate(&proto.TruncateRequest{
 		Epoch: 2,
@@ -333,7 +344,7 @@ func TestFollower_PersistentEpoch(t *testing.T) {
 	fc, err = NewFollowerController(shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.Equal(t, NotMember, fc.Status())
+	assert.Equal(t, Fenced, fc.Status())
 	assert.EqualValues(t, 4, fc.Epoch())
 
 	assert.NoError(t, kvFactory.Close())
@@ -404,7 +415,7 @@ func TestFollowerController_RejectEntriesWithDifferentEpoch(t *testing.T) {
 	fc, err := NewFollowerController(shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.Equal(t, NotMember, fc.Status())
+	assert.Equal(t, Fenced, fc.Status())
 	assert.EqualValues(t, 5, fc.Epoch())
 
 	stream := newMockServerAddEntriesStream()
@@ -413,7 +424,7 @@ func TestFollowerController_RejectEntriesWithDifferentEpoch(t *testing.T) {
 	// Follower will reject the entry because it's from an earlier epoch
 	err = fc.AddEntries(stream)
 	assert.Equal(t, CodeInvalidEpoch, status.Code(err))
-	assert.Equal(t, NotMember, fc.Status())
+	assert.Equal(t, Fenced, fc.Status())
 	assert.EqualValues(t, 5, fc.Epoch())
 
 	// If we send an entry of same epoch, it will be accepted
@@ -437,7 +448,7 @@ func TestFollowerController_RejectEntriesWithDifferentEpoch(t *testing.T) {
 	stream.AddRequest(createAddRequest(t, 6, 0, map[string]string{"a": "2", "b": "2"}, wal.InvalidOffset))
 	err = fc.AddEntries(stream)
 	assert.Equal(t, CodeInvalidEpoch, status.Code(err))
-	assert.Equal(t, NotMember, fc.Status())
+	assert.Equal(t, Fenced, fc.Status())
 	assert.EqualValues(t, 5, fc.Epoch())
 
 	assert.NoError(t, fc.Close())
