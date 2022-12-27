@@ -77,7 +77,7 @@ func TestLeaderController_BecomeLeader_NoFencing(t *testing.T) {
 		FollowerMaps:      nil,
 	})
 	assert.Nil(t, resp)
-	assert.Equal(t, CodeInvalidEpoch, status.Code(err))
+	assert.Equal(t, CodeInvalidStatus, status.Code(err))
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())
@@ -320,7 +320,7 @@ func TestLeaderController_EpochPersistent(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 5, lc.Epoch())
-	assert.Equal(t, NotMember, lc.Status())
+	assert.Equal(t, Fenced, lc.Status())
 	assert.NoError(t, lc.Close())
 
 	assert.NoError(t, kvFactory.Close())
@@ -349,7 +349,7 @@ func TestLeaderController_FenceEpoch(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 5, lc.Epoch())
-	assert.Equal(t, NotMember, lc.Status())
+	assert.Equal(t, Fenced, lc.Status())
 
 	// Smaller epoch will fail
 	fr, err := lc.Fence(&proto.FenceRequest{
@@ -358,14 +358,16 @@ func TestLeaderController_FenceEpoch(t *testing.T) {
 	})
 	assert.Nil(t, fr)
 	assert.Equal(t, CodeInvalidEpoch, status.Code(err))
+	assert.Equal(t, Fenced, lc.Status())
 
-	// Same epoch will fail
+	// Same epoch will succeed
 	fr, err = lc.Fence(&proto.FenceRequest{
 		ShardId: shard,
 		Epoch:   5,
 	})
-	assert.Nil(t, fr)
-	assert.Equal(t, CodeInvalidEpoch, status.Code(err))
+	assert.NoError(t, err)
+	assert.NotNil(t, fr)
+	AssertProtoEqual(t, InvalidEntryId, fr.HeadIndex)
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())
@@ -394,7 +396,7 @@ func TestLeaderController_BecomeLeaderEpoch(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 5, lc.Epoch())
-	assert.Equal(t, NotMember, lc.Status())
+	assert.Equal(t, Fenced, lc.Status())
 
 	// Smaller epoch will fail
 	resp, err := lc.BecomeLeader(&proto.BecomeLeaderRequest{
