@@ -43,6 +43,9 @@ func NewClientPool() ClientPool {
 }
 
 func (cp *clientPool) Close() error {
+	cp.Lock()
+	defer cp.Unlock()
+
 	for target, cnx := range cp.connections {
 		err := cnx.(*grpc.ClientConn).Close()
 		if err != nil {

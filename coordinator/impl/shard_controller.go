@@ -71,7 +71,13 @@ func NewShardController(shard uint32, shardMetadata model.ShardMetadata, rpc Rpc
 		Interface("shard-metadata", s.shardMetadata).
 		Msg("Started shard controller")
 
-	s.electLeaderWithRetries()
+	if shardMetadata.Leader == nil || shardMetadata.Status != model.ShardStatusSteadyState {
+		s.electLeaderWithRetries()
+	} else {
+		s.log.Info().
+			Interface("current-leader", s.shardMetadata.Leader).
+			Msg("There is already an active leader on the shard")
+	}
 	return s
 }
 
