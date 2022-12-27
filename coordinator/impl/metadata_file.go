@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"github.com/juju/fslock"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
 	"os"
 	"oxia/coordinator/model"
 	"path/filepath"
@@ -69,7 +70,11 @@ func (m *metadataProviderFile) Store(cs *model.ClusterStatus, expectedVersion Ve
 	if err := m.fileLock.Lock(); err != nil {
 		return "", errors.Wrap(err, "failed to acquire file lock")
 	}
-	defer func() { _ = m.fileLock.Unlock() }()
+	defer func() {
+		if err := m.fileLock.Unlock(); err != nil {
+			log.Warn().Err(err).Msg("Failed to release file lock on metadata")
+		}
+	}()
 
 	_, existingVersion, err := m.Get()
 	if err != nil {
