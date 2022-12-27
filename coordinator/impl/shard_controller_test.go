@@ -101,11 +101,11 @@ func TestShardController_StartingWithLeaderAlreadyPresent(t *testing.T) {
 	}, rpc, coordinator)
 
 	select {
-	case <-rpc.getNode(s1).fenceRequests:
+	case <-rpc.GetNode(s1).fenceRequests:
 		assert.Fail(t, "shouldn't have received any fence requests")
-	case <-rpc.getNode(s2).fenceRequests:
+	case <-rpc.GetNode(s2).fenceRequests:
 		assert.Fail(t, "shouldn't have received any fence requests")
-	case <-rpc.getNode(s3).fenceRequests:
+	case <-rpc.GetNode(s3).fenceRequests:
 		assert.Fail(t, "shouldn't have received any fence requests")
 
 	case <-time.After(1 * time.Second):
