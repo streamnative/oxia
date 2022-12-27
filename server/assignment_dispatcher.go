@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
@@ -39,11 +38,6 @@ type shardAssignmentDispatcher struct {
 
 	log zerolog.Logger
 }
-
-var (
-	ErrorNotInitialized = errors.New("oxia: server not initialized yet")
-	ErrorCancelled      = errors.New("oxia: operation was cancelled")
-)
 
 func (s *shardAssignmentDispatcher) RegisterForUpdates(clientStream Client) error {
 	s.Lock()

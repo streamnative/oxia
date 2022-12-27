@@ -76,6 +76,10 @@ func NewCoordinator(metadataProvider MetadataProvider, clusterConfig model.Clust
 		}
 	}
 
+	for shard, shardMetadata := range c.clusterStatus.Shards {
+		c.shardControllers[shard] = NewShardController(shard, shardMetadata, c.rpc, c)
+	}
+
 	for _, sa := range clusterConfig.Servers {
 		c.nodeControllers[sa.Internal] = NewNodeController(sa, c, c, c.rpc)
 	}
@@ -101,7 +105,7 @@ func (c *coordinator) initialAssignment() error {
 	serverIdx := uint32(0)
 
 	for i := uint32(0); i < cc.ShardCount; i++ {
-		cs.Shards[i] = model.ShardMetadata{
+		shard := model.ShardMetadata{
 			Status:   model.ShardStatusUnknown,
 			Epoch:    -1,
 			Leader:   nil,
@@ -112,6 +116,14 @@ func (c *coordinator) initialAssignment() error {
 			},
 		}
 
+		if i == cc.ShardCount-1 {
+			// Last shard should always be set at the max of 32bit. Depending on the
+			// shard count, the division might fell few numbers earlier. It's OK in
+			// this case to have a (tinily) bigger last-shard range.
+			shard.Int32HashRange.Max = math.MaxUint32
+		}
+
+		cs.Shards[i] = shard
 		serverIdx += cc.ReplicationFactor
 	}
 
@@ -125,10 +137,6 @@ func (c *coordinator) initialAssignment() error {
 	}
 
 	c.clusterStatus = cs
-
-	for shard, shardMetadata := range c.clusterStatus.Shards {
-		c.shardControllers[shard] = NewShardController(shard, shardMetadata, c.rpc, c)
-	}
 
 	return nil
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
+	"math"
 	"oxia/common"
 	"oxia/coordinator/model"
 	"oxia/oxia"
@@ -56,6 +57,49 @@ func TestCoordinatorE2E(t *testing.T) {
 		shard := coordinator.ClusterStatus().Shards[0]
 		return shard.Status == model.ShardStatusSteadyState
 	}, 10*time.Second, 10*time.Millisecond)
+
+	assert.NoError(t, coordinator.Close())
+	assert.NoError(t, clientPool.Close())
+
+	assert.NoError(t, s1.Close())
+	assert.NoError(t, s2.Close())
+	assert.NoError(t, s3.Close())
+}
+
+func TestCoordinatorE2E_ShardsRanges(t *testing.T) {
+	s1, sa1 := newServer(t)
+	s2, sa2 := newServer(t)
+	s3, sa3 := newServer(t)
+
+	metadataProvider := NewMetadataProviderMemory()
+	clusterConfig := model.ClusterConfig{
+		ReplicationFactor: 3,
+		ShardCount:        4,
+		Servers:           []model.ServerAddress{sa1, sa2, sa3},
+	}
+	clientPool := common.NewClientPool()
+
+	coordinator, err := NewCoordinator(metadataProvider, clusterConfig, NewRpcProvider(clientPool))
+	assert.NoError(t, err)
+
+	cs := coordinator.ClusterStatus()
+	assert.EqualValues(t, 3, cs.ReplicationFactor)
+	assert.EqualValues(t, 4, len(cs.Shards))
+
+	// Check that the entire hash range is covered
+	assert.EqualValues(t, 0, cs.Shards[0].Int32HashRange.Min)
+
+	for i := uint32(1); i < 4; i++ {
+		log.Info().
+			Interface("range", cs.Shards[i].Int32HashRange).
+			Uint32("shard", i).
+			Msg("Checking shard")
+
+		// The hash ranges should be exclusive & consecutive
+		assert.Equal(t, cs.Shards[i-1].Int32HashRange.Max+1, cs.Shards[i].Int32HashRange.Min)
+	}
+
+	assert.EqualValues(t, math.MaxUint32, cs.Shards[3].Int32HashRange.Max)
 
 	assert.NoError(t, coordinator.Close())
 	assert.NoError(t, clientPool.Close())

@@ -11,12 +11,6 @@ import (
 	"sync"
 )
 
-var (
-	ErrorAlreadyClosed     = errors.New("node is shutting down")
-	ErrorNodeIsNotLeader   = errors.New("node is not leader for shard")
-	ErrorNodeIsNotFollower = errors.New("node is not follower for shard")
-)
-
 type ShardsDirector interface {
 	io.Closer
 
