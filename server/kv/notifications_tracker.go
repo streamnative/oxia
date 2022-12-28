@@ -112,5 +112,6 @@ func (nt *notificationsTracker) ReadNextNotifications(startOffset int64) ([]*pro
 
 func (nt *notificationsTracker) Close() error {
 	nt.closed.Store(true)
+	nt.cond.Broadcast()
 	return nil
 }
