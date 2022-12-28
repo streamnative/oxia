@@ -13,13 +13,14 @@ import (
 )
 
 type Config struct {
-	BindHost             string
-	InternalServicePort  int
-	MetricsPort          int
-	MetadataProviderImpl MetadataProviderImpl
-	MetadataNamespace    string
-	MetadataName         string
-	ClusterConfig        model.ClusterConfig
+	BindHost                 string
+	InternalServicePort      int
+	MetricsPort              int
+	MetadataProviderImpl     MetadataProviderImpl
+	K8SMetadataNamespace     string
+	K8SMetadataConfigMapName string
+	FileMetadataPath         string
+	ClusterConfig            model.ClusterConfig
 }
 
 type MetadataProviderImpl string
@@ -45,13 +46,14 @@ func (m *MetadataProviderImpl) Type() string {
 var (
 	Memory    MetadataProviderImpl = "memory"
 	Configmap MetadataProviderImpl = "configmap"
+	File      MetadataProviderImpl = "file"
 )
 
 func NewConfig() Config {
 	return Config{
 		InternalServicePort:  kubernetes.InternalPort.Port,
 		MetricsPort:          kubernetes.MetricsPort.Port,
-		MetadataProviderImpl: Memory,
+		MetadataProviderImpl: File,
 	}
 }
 
@@ -75,8 +77,10 @@ func New(config Config) (*Coordinator, error) {
 	switch config.MetadataProviderImpl {
 	case Memory:
 		metadataProvider = impl.NewMetadataProviderMemory()
+	case File:
+		metadataProvider = impl.NewMetadataProviderFile(config.FileMetadataPath)
 	case Configmap:
-		metadataProvider = impl.NewMetadataProviderConfigMap(config.MetadataNamespace, config.MetadataName)
+		metadataProvider = impl.NewMetadataProviderConfigMap(config.K8SMetadataNamespace, config.K8SMetadataConfigMapName)
 	}
 
 	rpcClient := impl.NewRpcProvider(s.clientPool)

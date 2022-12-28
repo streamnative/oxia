@@ -43,7 +43,7 @@ func TestCmd(t *testing.T) {
 		{[]string{}, coordinator.Config{
 			InternalServicePort:  6649,
 			MetricsPort:          8080,
-			MetadataProviderImpl: coordinator.Memory,
+			MetadataProviderImpl: coordinator.File,
 			ClusterConfig: model.ClusterConfig{
 				ReplicationFactor: 1,
 				ShardCount:        2,
@@ -54,7 +54,7 @@ func TestCmd(t *testing.T) {
 		{[]string{"-i=1234"}, coordinator.Config{
 			InternalServicePort:  1234,
 			MetricsPort:          8080,
-			MetadataProviderImpl: coordinator.Memory,
+			MetadataProviderImpl: coordinator.File,
 			ClusterConfig: model.ClusterConfig{
 				ReplicationFactor: 1,
 				ShardCount:        2,
@@ -65,7 +65,7 @@ func TestCmd(t *testing.T) {
 		{[]string{"-m=1234"}, coordinator.Config{
 			InternalServicePort:  6649,
 			MetricsPort:          1234,
-			MetadataProviderImpl: coordinator.Memory,
+			MetadataProviderImpl: coordinator.File,
 			ClusterConfig: model.ClusterConfig{
 				ReplicationFactor: 1,
 				ShardCount:        2,
@@ -76,7 +76,7 @@ func TestCmd(t *testing.T) {
 		{[]string{"-f=" + name}, coordinator.Config{
 			InternalServicePort:  6649,
 			MetricsPort:          8080,
-			MetadataProviderImpl: coordinator.Memory,
+			MetadataProviderImpl: coordinator.File,
 			ClusterConfig: model.ClusterConfig{
 				ReplicationFactor: 1,
 				ShardCount:        2,
