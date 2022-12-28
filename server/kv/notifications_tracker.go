@@ -1,6 +1,7 @@
 package kv
 
 import (
+	"context"
 	"fmt"
 	"github.com/pkg/errors"
 	pb "google.golang.org/protobuf/proto"
@@ -58,7 +59,7 @@ func notificationKey(offset int64) string {
 
 type notificationsTracker struct {
 	sync.Mutex
-	cond       *sync.Cond
+	cond       common.ConditionContext
 	lastOffset atomic.Int64
 	closed     atomic.Bool
 	kv         KV
@@ -69,7 +70,7 @@ func newNotificationsTracker(lastOffset int64, kv KV) *notificationsTracker {
 		kv: kv,
 	}
 	nt.lastOffset.Store(lastOffset)
-	nt.cond = sync.NewCond(nt)
+	nt.cond = common.NewConditionContext(nt)
 	return nt
 }
 
@@ -78,15 +79,26 @@ func (nt *notificationsTracker) UpdatedCommitIndex(offset int64) {
 	nt.cond.Broadcast()
 }
 
-func (nt *notificationsTracker) ReadNextNotifications(startOffset int64) ([]*proto.NotificationBatch, error) {
+func (nt *notificationsTracker) waitForNotifications(ctx context.Context, startOffset int64) error {
 	nt.Lock()
+	defer nt.Unlock()
+
 	for startOffset > nt.lastOffset.Load() && !nt.closed.Load() {
-		nt.cond.Wait()
+		if err := nt.cond.Wait(ctx); err != nil {
+			return err
+		}
 	}
-	nt.Unlock()
 
 	if nt.closed.Load() {
-		return nil, errors.New("already closed")
+		return errors.New("already closed")
+	}
+
+	return nil
+}
+
+func (nt *notificationsTracker) ReadNextNotifications(ctx context.Context, startOffset int64) ([]*proto.NotificationBatch, error) {
+	if err := nt.waitForNotifications(ctx, startOffset); err != nil {
+		return nil, err
 	}
 
 	it := nt.kv.RangeScan(notificationKey(startOffset), lastNotificationKey)

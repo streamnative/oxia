@@ -1,10 +1,12 @@
 package kv
 
 import (
+	"context"
 	"github.com/stretchr/testify/assert"
 	"oxia/common"
 	"oxia/proto"
 	"testing"
+	"time"
 )
 
 func init() {
@@ -25,7 +27,7 @@ func TestDB_Notifications(t *testing.T) {
 		}},
 	}, 0, t0)
 
-	notifications, err := db.ReadNextNotifications(0)
+	notifications, err := db.ReadNextNotifications(context.Background(), 0)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(notifications))
 
@@ -55,7 +57,7 @@ func TestDB_Notifications(t *testing.T) {
 		}},
 	}, 2, t2)
 
-	notifications, err = db.ReadNextNotifications(1)
+	notifications, err = db.ReadNextNotifications(context.Background(), 1)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(notifications))
 
@@ -94,7 +96,7 @@ func TestDB_Notifications(t *testing.T) {
 		}},
 	}, 3, t3)
 
-	notifications, err = db.ReadNextNotifications(3)
+	notifications, err = db.ReadNextNotifications(context.Background(), 3)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(notifications))
 
@@ -129,7 +131,7 @@ func TestDB_Notifications(t *testing.T) {
 		}},
 	}, 4, t4)
 
-	notifications, err = db.ReadNextNotifications(4)
+	notifications, err = db.ReadNextNotifications(context.Background(), 4)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(notifications))
 
@@ -142,6 +144,46 @@ func TestDB_Notifications(t *testing.T) {
 	assert.True(t, found)
 	assert.Equal(t, proto.NotificationType_KeyModified, n.Type)
 	assert.EqualValues(t, 1, *n.Version)
+
+	assert.NoError(t, db.Close())
+	assert.NoError(t, factory.Close())
+}
+
+func TestDB_NotificationsCancelWait(t *testing.T) {
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
+	db, err := NewDB(1, factory)
+	assert.NoError(t, err)
+
+	t0 := now()
+	_, _ = db.ProcessWrite(&proto.WriteRequest{
+		Puts: []*proto.PutRequest{{
+			Key:     "a",
+			Payload: []byte("0"),
+		}},
+	}, 0, t0)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	doneCh := make(chan error)
+
+	go func() {
+		notifications, err := db.ReadNextNotifications(ctx, 5)
+		assert.ErrorIs(t, err, context.Canceled)
+		assert.Nil(t, notifications)
+		close(doneCh)
+	}()
+
+	// Cancel the context to trigger exit from the wait
+	cancel()
+
+	select {
+	case <-doneCh:
+	// Ok
+
+	case <-time.After(1 * time.Second):
+		assert.Fail(t, "Should not have timed out")
+	}
 
 	assert.NoError(t, db.Close())
 	assert.NoError(t, factory.Close())

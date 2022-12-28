@@ -1,6 +1,7 @@
 package kv
 
 import (
+	"context"
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
@@ -29,7 +30,7 @@ type DB interface {
 	ProcessRead(b *proto.ReadRequest) (*proto.ReadResponse, error)
 	ReadCommitIndex() (int64, error)
 
-	ReadNextNotifications(startOffset int64) ([]*proto.NotificationBatch, error)
+	ReadNextNotifications(ctx context.Context, startOffset int64) ([]*proto.NotificationBatch, error)
 
 	UpdateEpoch(newEpoch int64) error
 	ReadEpoch() (epoch int64, err error)
@@ -422,6 +423,6 @@ func deserialize(payload []byte, closer io.Closer) (*proto.StorageEntry, error) 
 	return se, nil
 }
 
-func (d *db) ReadNextNotifications(startOffset int64) ([]*proto.NotificationBatch, error) {
-	return d.notificationsTracker.ReadNextNotifications(startOffset)
+func (d *db) ReadNextNotifications(ctx context.Context, startOffset int64) ([]*proto.NotificationBatch, error) {
+	return d.notificationsTracker.ReadNextNotifications(ctx, startOffset)
 }
