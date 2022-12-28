@@ -6,11 +6,13 @@ require (
 	github.com/cenkalti/backoff/v4 v4.2.0
 	github.com/cockroachdb/pebble v0.0.0-20221104214247-8dc60b62ebbf
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
+	github.com/juju/fslock v0.0.0-20160525022230-4d5c94c67b4b
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.61.1
 	github.com/prometheus-operator/prometheus-operator/pkg/client v0.61.1
 	github.com/prometheus/client_golang v1.14.0
 	github.com/rs/zerolog v1.26.0
+	github.com/spf13/afero v1.9.3
 	github.com/spf13/cobra v1.6.1
 	github.com/spf13/viper v1.14.0
 	github.com/stretchr/testify v1.8.1
@@ -82,7 +84,6 @@ require (
 	github.com/prometheus/common v0.37.0 // indirect
 	github.com/prometheus/procfs v0.8.0 // indirect
 	github.com/rogpeppe/go-internal v1.6.1 // indirect
-	github.com/spf13/afero v1.9.3 // indirect
 	github.com/spf13/cast v1.5.0 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
