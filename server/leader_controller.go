@@ -432,7 +432,7 @@ func (lc *leaderController) Write(request *proto.WriteRequest) (*proto.WriteResp
 
 	newOffset, err := lc.appendToWal(request, timestamp)
 	if err != nil {
-		return nil, errors.Wrap(err, "oxia: failed to append to wal")
+		return nil, err
 	}
 	lc.quorumAckTracker.AdvanceHeadIndex(newOffset)
 
@@ -462,7 +462,7 @@ func (lc *leaderController) appendToWal(request *proto.WriteRequest, timestamp u
 	}
 
 	if err = lc.wal.Append(logEntry); err != nil {
-		return wal.InvalidOffset, err
+		return wal.InvalidOffset, errors.Wrap(err, "oxia: failed to append to wal")
 	}
 
 	return newOffset, nil

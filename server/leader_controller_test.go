@@ -44,7 +44,7 @@ func TestLeaderController_NotInitialized(t *testing.T) {
 	})
 
 	assert.Nil(t, res)
-	assert.ErrorIs(t, err, common.ErrorInvalidStatus)
+	assert.Equal(t, common.CodeInvalidStatus, status.Code(err))
 
 	res2, err := lc.Read(&proto.ReadRequest{
 		ShardId: &shard,
@@ -52,7 +52,7 @@ func TestLeaderController_NotInitialized(t *testing.T) {
 	})
 
 	assert.Nil(t, res2)
-	assert.ErrorIs(t, err, common.ErrorInvalidStatus)
+	assert.Equal(t, common.CodeInvalidStatus, status.Code(err))
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())
@@ -163,7 +163,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	})
 
 	assert.Nil(t, res3)
-	assert.ErrorIs(t, err, common.ErrorInvalidStatus)
+	assert.Equal(t, common.CodeInvalidStatus, status.Code(err))
 
 	res4, err := lc.Read(&proto.ReadRequest{
 		ShardId: &shard,
@@ -171,7 +171,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	})
 
 	assert.Nil(t, res4)
-	assert.ErrorIs(t, err, common.ErrorInvalidStatus)
+	assert.Equal(t, common.CodeInvalidStatus, status.Code(err))
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())
@@ -268,7 +268,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	})
 
 	assert.Nil(t, res3)
-	assert.ErrorIs(t, err, common.ErrorInvalidStatus)
+	assert.Equal(t, common.CodeInvalidStatus, status.Code(err))
 
 	res4, err := lc.Read(&proto.ReadRequest{
 		ShardId: &shard,
@@ -276,7 +276,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	})
 
 	assert.Nil(t, res4)
-	assert.ErrorIs(t, err, common.ErrorInvalidStatus)
+	assert.Equal(t, common.CodeInvalidStatus, status.Code(err))
 
 	close(rpc.addEntryResps)
 	assert.NoError(t, lc.Close())
