@@ -68,6 +68,19 @@ const (
 	KeyDeleted
 )
 
+func (n NotificationType) String() string {
+	switch n {
+	case KeyCreated:
+		return "KeyCreated"
+	case KeyModified:
+		return "KeyModified"
+	case KeyDeleted:
+		return "KeyDeleted"
+	}
+
+	return "Unknown"
+}
+
 type Notification struct {
 	Type    NotificationType
 	Key     string

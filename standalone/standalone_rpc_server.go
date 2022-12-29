@@ -88,15 +88,15 @@ func NewStandaloneRpcServer(bindAddress string, advertisedPublicAddress string, 
 }
 
 func (s *StandaloneRpcServer) Close() error {
-	err := multierr.Combine(
-		s.assignmentDispatcher.Close(),
-		s.Container.Close(),
-	)
-
+	var err error
 	for _, c := range s.controllers {
 		err = multierr.Append(err, c.Close())
 	}
-	return err
+
+	return multierr.Combine(err,
+		s.assignmentDispatcher.Close(),
+		s.Container.Close(),
+	)
 }
 
 func (s *StandaloneRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest, stream proto.OxiaClient_ShardAssignmentsServer) error {

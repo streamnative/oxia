@@ -122,6 +122,8 @@ func (snm *shardNotificationsManager) getNotifications() error {
 		return err
 	}
 
+	snm.backoff.Reset()
+
 	for {
 		nb, err := notifications.Recv()
 		if err != nil {
