@@ -27,10 +27,13 @@ type clientImpl struct {
 // A list of ClientOption arguments can be passed to configure the Oxia client
 func NewAsyncClient(serviceAddress string, opts ...ClientOption) (AsyncClient, error) {
 	clientPool := common.NewClientPool()
-	shardManager := internal.NewShardManager(internal.NewShardStrategy(), clientPool, serviceAddress)
-	defer shardManager.Start()
 
 	options, err := newClientOptions(serviceAddress, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	shardManager, err := internal.NewShardManager(internal.NewShardStrategy(), clientPool, serviceAddress, options.batchRequestTimeout)
 	if err != nil {
 		return nil, err
 	}
