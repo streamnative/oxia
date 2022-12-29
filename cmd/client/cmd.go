@@ -7,6 +7,7 @@ import (
 	"oxia/cmd/client/delete"
 	"oxia/cmd/client/get"
 	"oxia/cmd/client/list"
+	"oxia/cmd/client/notifications"
 	"oxia/cmd/client/put"
 	"oxia/kubernetes"
 	"oxia/oxia"
@@ -32,4 +33,5 @@ func init() {
 	Cmd.AddCommand(delete.Cmd)
 	Cmd.AddCommand(get.Cmd)
 	Cmd.AddCommand(list.Cmd)
+	Cmd.AddCommand(notifications.Cmd)
 }
