@@ -10,15 +10,34 @@ import (
 	"oxia/common"
 )
 
-type Container struct {
+type GrpcServer interface {
+	io.Closer
+
+	Port() int
+}
+
+type GrpcProvider interface {
+	StartGrpcServer(name, bindAddress string, registerFunc func(grpc.ServiceRegistrar)) (GrpcServer, error)
+}
+
+var Default = &defaultProvider{}
+
+type defaultProvider struct {
+}
+
+func (d *defaultProvider) StartGrpcServer(name, bindAddress string, registerFunc func(grpc.ServiceRegistrar)) (GrpcServer, error) {
+	return newDefaultGrpcProvider(name, bindAddress, registerFunc)
+}
+
+type defaultGrpcServer struct {
 	io.Closer
 	server *grpc.Server
 	port   int
 	log    zerolog.Logger
 }
 
-func Start(name, bindAddress string, registerFunc func(grpc.ServiceRegistrar)) (*Container, error) {
-	c := &Container{
+func newDefaultGrpcProvider(name, bindAddress string, registerFunc func(grpc.ServiceRegistrar)) (GrpcServer, error) {
+	c := &defaultGrpcServer{
 		server: grpc.NewServer(
 			grpc.ChainStreamInterceptor(grpc_prometheus.StreamServerInterceptor),
 			grpc.ChainUnaryInterceptor(grpc_prometheus.UnaryServerInterceptor),
@@ -35,7 +54,7 @@ func Start(name, bindAddress string, registerFunc func(grpc.ServiceRegistrar)) (
 	c.port = listener.Addr().(*net.TCPAddr).Port
 
 	c.log = log.With().
-		Str("container", name).
+		Str("grpc-server", name).
 		Str("bindAddress", listener.Addr().String()).
 		Logger()
 
@@ -48,17 +67,17 @@ func Start(name, bindAddress string, registerFunc func(grpc.ServiceRegistrar)) (
 		}
 	})
 
-	c.log.Info().Msg("Started container")
+	c.log.Info().Msg("Started Grpc server")
 
 	return c, nil
 }
 
-func (c *Container) Port() int {
+func (c *defaultGrpcServer) Port() int {
 	return c.port
 }
 
-func (c *Container) Close() error {
+func (c *defaultGrpcServer) Close() error {
 	c.server.GracefulStop()
-	c.log.Info().Msg("Stopped container")
+	c.log.Info().Msg("Stopped Grpc server")
 	return nil
 }

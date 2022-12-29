@@ -8,14 +8,14 @@ import (
 )
 
 type CoordinatorRpcServer struct {
-	container *container.Container
+	grpcServer container.GrpcServer
 }
 
 func NewCoordinatorRpcServer(bindAddress string) (*CoordinatorRpcServer, error) {
 	server := &CoordinatorRpcServer{}
 
 	var err error
-	server.container, err = container.Start("coordinator", bindAddress, func(registrar grpc.ServiceRegistrar) {
+	server.grpcServer, err = container.Default.StartGrpcServer("coordinator", bindAddress, func(registrar grpc.ServiceRegistrar) {
 		grpc_health_v1.RegisterHealthServer(registrar, health.NewServer())
 	})
 	if err != nil {
@@ -26,5 +26,5 @@ func NewCoordinatorRpcServer(bindAddress string) (*CoordinatorRpcServer, error) 
 }
 
 func (s *CoordinatorRpcServer) Close() error {
-	return s.container.Close()
+	return s.grpcServer.Close()
 }
