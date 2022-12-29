@@ -81,7 +81,7 @@ func (s *internalRpcServer) Fence(c context.Context, req *proto.FenceRequest) (*
 	// Fence applies to both followers and leaders
 	// First check if we have already a follower controller running
 	if follower, err := s.shardsDirector.GetFollower(req.ShardId); err != nil {
-		if !errors.Is(err, ErrorNodeIsNotFollower) {
+		if status.Code(err) != common.CodeNodeIsNotFollower {
 			s.log.Warn().Err(err).
 				Uint32("shard", req.ShardId).
 				Str("peer", common.GetPeer(c)).

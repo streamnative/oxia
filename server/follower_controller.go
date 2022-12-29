@@ -182,7 +182,7 @@ func (fc *followerController) Fence(req *proto.FenceRequest) (*proto.FenceRespon
 			Int64("follower-epoch", fc.epoch).
 			Int64("fence-epoch", req.Epoch).
 			Msg("Failed to fence with invalid epoch")
-		return nil, ErrorInvalidEpoch
+		return nil, common.ErrorInvalidEpoch
 	} else if req.Epoch == fc.epoch && fc.status != Fenced {
 		// It's OK to receive a duplicate Fence request, for the same epoch, as long as we haven't moved
 		// out of the Fenced state for that epoch
@@ -191,7 +191,7 @@ func (fc *followerController) Fence(req *proto.FenceRequest) (*proto.FenceRespon
 			Int64("fence-epoch", req.Epoch).
 			Interface("status", fc.status).
 			Msg("Failed to fence with same epoch in invalid state")
-		return nil, ErrorInvalidStatus
+		return nil, common.ErrorInvalidStatus
 	}
 
 	if err := fc.db.UpdateEpoch(req.Epoch); err != nil {
@@ -223,11 +223,11 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 	defer fc.Unlock()
 
 	if fc.status != Fenced {
-		return nil, ErrorInvalidStatus
+		return nil, common.ErrorInvalidStatus
 	}
 
 	if req.Epoch != fc.epoch {
-		return nil, ErrorInvalidEpoch
+		return nil, common.ErrorInvalidEpoch
 	}
 
 	fc.status = Follower
@@ -250,12 +250,12 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 func (fc *followerController) AddEntries(stream proto.OxiaLogReplication_AddEntriesServer) error {
 	fc.Lock()
 	if fc.status != Fenced && fc.status != Follower {
-		return ErrorInvalidStatus
+		return common.ErrorInvalidStatus
 	}
 
 	if fc.closeCh != nil {
 		fc.Unlock()
-		return ErrorLeaderAlreadyConnected
+		return common.ErrorLeaderAlreadyConnected
 	}
 
 	fc.closeCh = make(chan error)
@@ -292,7 +292,7 @@ func (fc *followerController) addEntry(req *proto.AddEntryRequest) (*proto.AddEn
 	defer fc.Unlock()
 
 	if req.Epoch != fc.epoch {
-		return nil, ErrorInvalidEpoch
+		return nil, common.ErrorInvalidEpoch
 	}
 
 	fc.log.Debug().
@@ -407,7 +407,7 @@ type MessageWithEpoch interface {
 
 func checkStatus(expected, actual Status) error {
 	if actual != expected {
-		return errors.Wrapf(ErrorInvalidStatus, "Received message in the wrong state. In %+v, should be %+v.", actual, expected)
+		return status.Errorf(common.CodeInvalidStatus, "Received message in the wrong state. In %+v, should be %+v.", actual, expected)
 	}
 	return nil
 }
@@ -420,12 +420,12 @@ func (fc *followerController) SendSnapshot(stream proto.OxiaLogReplication_SendS
 	fc.Lock()
 
 	if fc.status != Fenced && fc.status != Follower {
-		return ErrorInvalidStatus
+		return common.ErrorInvalidStatus
 	}
 
 	if fc.closeCh != nil {
 		fc.Unlock()
-		return ErrorLeaderAlreadyConnected
+		return common.ErrorLeaderAlreadyConnected
 	}
 
 	fc.closeCh = make(chan error)
@@ -474,7 +474,7 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 		} else if snapChunk == nil {
 			break
 		} else if snapChunk.Epoch != fc.epoch {
-			fc.closeChannelNoMutex(ErrorInvalidEpoch)
+			fc.closeChannelNoMutex(common.ErrorInvalidEpoch)
 			return
 		}
 

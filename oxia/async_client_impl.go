@@ -27,7 +27,6 @@ func NewAsyncClient(options ClientOptions) AsyncClient {
 		ClientPool:     clientPool,
 		ShardManager:   shardManager,
 		ServiceAddress: options.serviceAddress,
-		Timeout:        options.batchRequestTimeout,
 	}
 	batcherFactory := &batch.BatcherFactory{
 		Executor:            executor,
@@ -35,6 +34,7 @@ func NewAsyncClient(options ClientOptions) AsyncClient {
 		MaxRequestsPerBatch: options.maxRequestsPerBatch,
 		BatcherBufferSize:   options.batcherBufferSize,
 		Metrics:             metrics.NewMetrics(options.meterProvider),
+		RequestTimeout:      options.requestTimeout,
 	}
 	return &clientImpl{
 		shardManager:      shardManager,

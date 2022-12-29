@@ -1,6 +1,10 @@
 package batch
 
 import (
+	"context"
+	"github.com/cenkalti/backoff/v4"
+	"github.com/rs/zerolog/log"
+	"oxia/common"
 	"oxia/oxia/internal/metrics"
 	"oxia/oxia/internal/model"
 	"oxia/proto"
@@ -8,34 +12,35 @@ import (
 )
 
 type writeBatchFactory struct {
-	execute func(*proto.WriteRequest) (*proto.WriteResponse, error)
-	metrics *metrics.Metrics
+	execute        func(context.Context, *proto.WriteRequest) (*proto.WriteResponse, error)
+	metrics        *metrics.Metrics
+	requestTimeout time.Duration
 }
 
 func (b writeBatchFactory) newBatch(shardId *uint32) Batch {
 	return &writeBatch{
-		shardId:      shardId,
-		execute:      b.execute,
-		puts:         make([]model.PutCall, 0),
-		deletes:      make([]model.DeleteCall, 0),
-		deleteRanges: make([]model.DeleteRangeCall, 0),
-		start:        time.Now(),
-		metrics:      b.metrics,
-		callback:     b.metrics.WriteCallback(),
+		shardId:        shardId,
+		execute:        b.execute,
+		puts:           make([]model.PutCall, 0),
+		deletes:        make([]model.DeleteCall, 0),
+		deleteRanges:   make([]model.DeleteRangeCall, 0),
+		requestTimeout: b.requestTimeout,
+		metrics:        b.metrics,
+		callback:       b.metrics.WriteCallback(),
 	}
 }
 
 //////////
 
 type writeBatch struct {
-	shardId      *uint32
-	execute      func(*proto.WriteRequest) (*proto.WriteResponse, error)
-	puts         []model.PutCall
-	deletes      []model.DeleteCall
-	deleteRanges []model.DeleteRangeCall
-	start        time.Time
-	metrics      *metrics.Metrics
-	callback     func(time.Time, *proto.WriteRequest, *proto.WriteResponse, error)
+	shardId        *uint32
+	execute        func(context.Context, *proto.WriteRequest) (*proto.WriteResponse, error)
+	puts           []model.PutCall
+	deletes        []model.DeleteCall
+	deleteRanges   []model.DeleteRangeCall
+	metrics        *metrics.Metrics
+	requestTimeout time.Duration
+	callback       func(time.Time, *proto.WriteRequest, *proto.WriteResponse, error)
 }
 
 func (b *writeBatch) Add(call any) {
@@ -58,13 +63,35 @@ func (b *writeBatch) Size() int {
 func (b *writeBatch) Complete() {
 	executionStart := time.Now()
 	request := b.toProto()
-	response, err := b.execute(request)
+
+	response, err := b.doRequestWithRetries(request)
+
 	b.callback(executionStart, request, response, err)
+
 	if err != nil {
 		b.Fail(err)
 	} else {
 		b.handle(response)
 	}
+}
+
+func (b *writeBatch) doRequestWithRetries(request *proto.WriteRequest) (response *proto.WriteResponse, err error) {
+	ctx, _ := context.WithTimeout(context.Background(), b.requestTimeout)
+	backOff := common.NewBackOff(ctx)
+
+	err = backoff.RetryNotify(func() error {
+		response, err = b.execute(ctx, request)
+		if !isRetriable(err) {
+			return backoff.Permanent(err)
+		}
+		return err
+	}, backOff, func(err error, duration time.Duration) {
+		log.Logger.Debug().Err(err).
+			Dur("retry-after", duration).
+			Msg("Failed to perform request, retrying later")
+	})
+
+	return response, err
 }
 
 func (b *writeBatch) Fail(err error) {

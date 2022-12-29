@@ -90,7 +90,7 @@ func (nt *notificationsTracker) waitForNotifications(ctx context.Context, startO
 	}
 
 	if nt.closed.Load() {
-		return errors.New("already closed")
+		return common.ErrorAlreadyClosed
 	}
 
 	return nil

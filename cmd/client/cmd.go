@@ -27,7 +27,7 @@ func init() {
 	Cmd.PersistentFlags().StringVarP(&common.Config.ServiceAddr, "service-address", "a", defaultServiceAddress, "Service address")
 	Cmd.PersistentFlags().IntVar(&common.Config.BatchLingerMs, "batch-linger", int(oxia.DefaultBatchLinger/time.Millisecond), "Batch linger in milliseconds")
 	Cmd.PersistentFlags().IntVar(&common.Config.MaxRequestsPerBatch, "max-requests-per-batch", oxia.DefaultMaxRequestsPerBatch, "Maximum requests per batch")
-	Cmd.PersistentFlags().IntVar(&common.Config.BatchRequestTimeoutSec, "batch-request-timeout", int(oxia.DefaultBatchRequestTimeout/time.Second), "Batch timeout in seconds")
+	Cmd.PersistentFlags().IntVar(&common.Config.BatchRequestTimeoutSec, "request-timeout", int(oxia.DefaultRequestTimeout/time.Second), "Batch timeout in seconds")
 	Cmd.PersistentFlags().IntVar(&common.Config.BatcherBufferSize, "batcher-buffer-size", oxia.DefaultBatcherBufferSize, "Batcher buffer size")
 
 	Cmd.AddCommand(put.Cmd)

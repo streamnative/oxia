@@ -54,7 +54,7 @@ func init() {
 
 	Cmd.Flags().DurationVar(&config.BatchLinger, "batch-linger", oxia.DefaultBatchLinger, "Batch linger in milliseconds")
 	Cmd.Flags().IntVar(&config.MaxRequestsPerBatch, "max-requests-per-batch", oxia.DefaultMaxRequestsPerBatch, "Maximum requests per batch")
-	Cmd.Flags().DurationVar(&config.BatchRequestTimeout, "batch-request-timeout", oxia.DefaultBatchRequestTimeout, "Batch timeout in seconds")
+	Cmd.Flags().DurationVar(&config.BatchRequestTimeout, "batch-request-timeout", oxia.DefaultRequestTimeout, "Batch timeout in seconds")
 	Cmd.Flags().IntVar(&config.BatcherBufferSize, "batcher-buffer-size", oxia.DefaultBatcherBufferSize, "Batcher buffer size")
 }
 

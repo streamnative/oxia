@@ -2,10 +2,10 @@ package server
 
 import (
 	"context"
-	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/status"
 	"oxia/common"
 	"oxia/common/container"
 	"oxia/proto"
@@ -62,7 +62,7 @@ func (s *PublicRpcServer) Write(ctx context.Context, write *proto.WriteRequest) 
 
 	lc, err := s.shardsDirector.GetLeader(*write.ShardId)
 	if err != nil {
-		if !errors.Is(err, ErrorNodeIsNotLeader) {
+		if status.Code(err) != common.CodeNodeIsNotLeader {
 			s.log.Warn().Err(err).
 				Msg("Failed to get the leader controller")
 		}
@@ -86,7 +86,7 @@ func (s *PublicRpcServer) Read(ctx context.Context, read *proto.ReadRequest) (*p
 
 	lc, err := s.shardsDirector.GetLeader(*read.ShardId)
 	if err != nil {
-		if !errors.Is(err, ErrorNodeIsNotLeader) {
+		if status.Code(err) != common.CodeNodeIsNotLeader {
 			s.log.Warn().Err(err).
 				Msg("Failed to get the leader controller")
 		}
