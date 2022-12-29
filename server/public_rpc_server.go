@@ -102,6 +102,29 @@ func (s *PublicRpcServer) Read(ctx context.Context, read *proto.ReadRequest) (*p
 	return rr, err
 }
 
+func (s *PublicRpcServer) GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
+	s.log.Debug().
+		Str("peer", common.GetPeer(stream.Context())).
+		Interface("req", req).
+		Msg("Get notifications")
+
+	lc, err := s.shardsDirector.GetLeader(*req.ShardId)
+	if err != nil {
+		if !errors.Is(err, ErrorNodeIsNotLeader) {
+			s.log.Warn().Err(err).
+				Msg("Failed to get the leader controller")
+		}
+		return err
+	}
+
+	if err = lc.GetNotifications(req, stream); err != nil && !errors.Is(err, context.Canceled) {
+		s.log.Warn().Err(err).
+			Msg("Failed to handle notifications request")
+	}
+
+	return err
+}
+
 func (s *PublicRpcServer) Close() error {
 	return s.container.Close()
 }
