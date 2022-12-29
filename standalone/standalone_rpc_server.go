@@ -120,3 +120,23 @@ func (s *StandaloneRpcServer) Read(ctx context.Context, read *proto.ReadRequest)
 
 	return lc.Read(read)
 }
+
+func (s *StandaloneRpcServer) GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
+	s.log.Debug().
+		Str("peer", common.GetPeer(stream.Context())).
+		Interface("req", req).
+		Msg("Get notifications")
+
+	lc, ok := s.controllers[req.ShardId]
+	if !ok {
+		return errors.New("shard not found")
+	}
+
+	err := lc.GetNotifications(req, stream)
+	if err != nil && !errors.Is(err, context.Canceled) {
+		s.log.Warn().Err(err).
+			Msg("Failed to handle notifications request")
+	}
+
+	return err
+}

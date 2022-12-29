@@ -108,7 +108,7 @@ func (s *PublicRpcServer) GetNotifications(req *proto.NotificationsRequest, stre
 		Interface("req", req).
 		Msg("Get notifications")
 
-	lc, err := s.shardsDirector.GetLeader(*req.ShardId)
+	lc, err := s.shardsDirector.GetLeader(req.ShardId)
 	if err != nil {
 		if !errors.Is(err, ErrorNodeIsNotLeader) {
 			s.log.Warn().Err(err).

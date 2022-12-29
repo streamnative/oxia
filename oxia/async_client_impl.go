@@ -1,6 +1,7 @@
 package oxia
 
 import (
+	"context"
 	"go.uber.org/multierr"
 	"golang.org/x/sync/errgroup"
 	"oxia/common"
@@ -17,6 +18,10 @@ type clientImpl struct {
 	shardManager      internal.ShardManager
 	writeBatchManager *batch.Manager
 	readBatchManager  *batch.Manager
+
+	clientPool common.ClientPool
+	ctx        context.Context
+	cancel     context.CancelFunc
 }
 
 func NewAsyncClient(options ClientOptions) AsyncClient {
@@ -36,17 +41,25 @@ func NewAsyncClient(options ClientOptions) AsyncClient {
 		BatcherBufferSize:   options.batcherBufferSize,
 		Metrics:             metrics.NewMetrics(options.meterProvider),
 	}
-	return &clientImpl{
+	c := &clientImpl{
+		clientPool:        clientPool,
 		shardManager:      shardManager,
 		writeBatchManager: batch.NewManager(batcherFactory.NewWriteBatcher),
 		readBatchManager:  batch.NewManager(batcherFactory.NewReadBatcher),
 	}
+
+	c.ctx, c.cancel = context.WithCancel(context.Background())
+	return c
 }
 
 func (c *clientImpl) Close() error {
-	writeErr := c.writeBatchManager.Close()
-	readErr := c.readBatchManager.Close()
-	return multierr.Append(writeErr, readErr)
+	c.cancel()
+
+	return multierr.Combine(
+		c.writeBatchManager.Close(),
+		c.readBatchManager.Close(),
+		c.clientPool.Close(),
+	)
 }
 
 func (c *clientImpl) Put(key string, payload []byte, expectedVersion *int64) <-chan PutResult {
@@ -169,4 +182,8 @@ func (c *clientImpl) List(minKeyInclusive string, maxKeyExclusive string) <-chan
 		close(ch)
 	}()
 	return ch
+}
+
+func (c *clientImpl) GetNotifications() <-chan Notification {
+	return newNotificationsManager(c.ctx, c.clientPool, c.shardManager).Ch()
 }
