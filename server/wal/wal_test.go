@@ -55,6 +55,7 @@ func TestWal(t *testing.T) {
 		t.Run(f.Name()+"Append", Append)
 		t.Run(f.Name()+"Truncate", Truncate)
 		t.Run(f.Name()+"Clear", Clear)
+		t.Run(f.Name()+"Trim", Trim)
 		if f.Persistent() {
 			t.Run(f.Name()+"Reopen", Reopen)
 		}
@@ -301,6 +302,69 @@ func Clear(t *testing.T) {
 
 	assert.False(t, r.HasNext())
 	assert.NoError(t, r.Close())
+
+	assert.NoError(t, w.Close())
+	assert.NoError(t, f.Close())
+}
+
+func Trim(t *testing.T) {
+	f, w := createWal(t)
+
+	assert.EqualValues(t, InvalidOffset, w.FirstOffset())
+	assert.EqualValues(t, InvalidOffset, w.LastOffset())
+
+	for i := 0; i < 100; i++ {
+		assert.NoError(t, w.Append(&proto.LogEntry{
+			Epoch:  1,
+			Offset: int64(i),
+			Value:  []byte(fmt.Sprintf("entry-%d", i)),
+		}))
+	}
+
+	assert.EqualValues(t, 0, w.FirstOffset())
+	assert.EqualValues(t, 99, w.LastOffset())
+
+	assert.NoError(t, w.Trim(50))
+
+	assert.EqualValues(t, 50, w.FirstOffset())
+	assert.EqualValues(t, 99, w.LastOffset())
+
+	// Test forward reader
+	r, err := w.NewReader(49)
+	assert.NoError(t, err)
+
+	for i := 50; i < 100; i++ {
+		assert.True(t, r.HasNext())
+		le, err := r.ReadNext()
+		assert.NoError(t, err)
+
+		assert.EqualValues(t, i, le.Offset)
+		assert.Equal(t, fmt.Sprintf("entry-%d", i), string(le.Value))
+	}
+
+	assert.False(t, r.HasNext())
+	assert.NoError(t, r.Close())
+
+	// Test reverse reader
+	r, err = w.NewReverseReader()
+	assert.NoError(t, err)
+
+	for i := 99; i >= 50; i-- {
+		assert.True(t, r.HasNext())
+		le, err := r.ReadNext()
+		assert.NoError(t, err)
+
+		assert.EqualValues(t, i, le.Offset)
+		assert.Equal(t, fmt.Sprintf("entry-%d", i), string(le.Value))
+	}
+
+	assert.False(t, r.HasNext())
+	assert.NoError(t, r.Close())
+
+	// Test reading a trimmed offset
+	r, err = w.NewReader(48)
+	assert.ErrorIs(t, err, ErrorEntryNotFound)
+	assert.Nil(t, r)
 
 	assert.NoError(t, w.Close())
 	assert.NoError(t, f.Close())
