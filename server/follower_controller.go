@@ -307,6 +307,15 @@ func (fc *followerController) addEntry(req *proto.AddEntryRequest) (*proto.AddEn
 	// the request.
 	fc.status = Follower
 
+	if req.Entry.Offset <= fc.headIndex {
+		// This was a duplicated request. We already have this entry
+		fc.log.Debug().
+			Int64("commit-index", req.CommitIndex).
+			Int64("offset", req.Entry.Offset).
+			Msg("Ignoring duplicated entry")
+		return &proto.AddEntryResponse{Offset: req.Entry.Offset}, nil
+	}
+
 	if err := fc.wal.Append(req.GetEntry()); err != nil {
 		return nil, err
 	}
