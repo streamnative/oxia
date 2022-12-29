@@ -76,7 +76,9 @@ func (b *writeBatch) Complete() {
 }
 
 func (b *writeBatch) doRequestWithRetries(request *proto.WriteRequest) (response *proto.WriteResponse, err error) {
-	ctx, _ := context.WithTimeout(context.Background(), b.requestTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), b.requestTimeout)
+	defer cancel()
+
 	backOff := common.NewBackOff(ctx)
 
 	err = backoff.RetryNotify(func() error {

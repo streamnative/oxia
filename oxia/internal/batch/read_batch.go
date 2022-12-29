@@ -71,7 +71,9 @@ func (b *readBatch) Complete() {
 }
 
 func (b *readBatch) doRequestWithRetries(request *proto.ReadRequest) (response *proto.ReadResponse, err error) {
-	ctx, _ := context.WithTimeout(context.Background(), b.requestTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), b.requestTimeout)
+	defer cancel()
+
 	backOff := common.NewBackOff(ctx)
 
 	err = backoff.RetryNotify(func() error {
