@@ -30,6 +30,8 @@ type AddEntriesStreamProvider interface {
 type FollowerCursor interface {
 	io.Closer
 
+	ShardId() uint32
+
 	// LastPushed
 	// The last entry that was sent to this follower
 	LastPushed() int64
@@ -75,6 +77,7 @@ func NewFollowerCursor(
 		ackTracker:               ackTracker,
 		addEntriesStreamProvider: addEntriesStreamProvider,
 		wal:                      wal,
+		shardId:                  shardId,
 
 		log: log.With().
 			Str("component", "follower-cursor").
@@ -119,6 +122,10 @@ func (fc *followerCursor) Close() error {
 	}
 
 	return nil
+}
+
+func (fc *followerCursor) ShardId() uint32 {
+	return fc.shardId
 }
 
 func (fc *followerCursor) LastPushed() int64 {

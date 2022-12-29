@@ -1,6 +1,7 @@
 package impl
 
 import (
+	"context"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"oxia/coordinator/model"
@@ -81,6 +82,37 @@ func TestShardController(t *testing.T) {
 	rpc.GetNode(s3).expectFenceRequest(t, shard, 4)
 
 	rpc.GetNode(s1).expectFenceRequest(t, shard, 4)
+	assert.NoError(t, sc.Close())
+}
+
+func TestShardController_StartingWithLeaderAlreadyPresent(t *testing.T) {
+	var shard uint32 = 5
+	rpc := newMockRpcProvider()
+	coordinator := newMockCoordinator()
+
+	s1 := model.ServerAddress{Public: "s1:9091", Internal: "s1:8191"}
+	s2 := model.ServerAddress{Public: "s2:9091", Internal: "s2:8191"}
+	s3 := model.ServerAddress{Public: "s3:9091", Internal: "s3:8191"}
+
+	sc := NewShardController(shard, model.ShardMetadata{
+		Status:   model.ShardStatusSteadyState,
+		Epoch:    1,
+		Leader:   &s1,
+		Ensemble: []model.ServerAddress{s1, s2, s3},
+	}, rpc, coordinator)
+
+	select {
+	case <-rpc.getNode(s1).fenceRequests:
+		assert.Fail(t, "shouldn't have received any fence requests")
+	case <-rpc.getNode(s2).fenceRequests:
+		assert.Fail(t, "shouldn't have received any fence requests")
+	case <-rpc.getNode(s3).fenceRequests:
+		assert.Fail(t, "shouldn't have received any fence requests")
+
+	case <-time.After(1 * time.Second):
+		// Ok
+	}
+
 	assert.NoError(t, sc.Close())
 }
 
@@ -205,7 +237,7 @@ func (m *mockCoordinator) ClusterStatus() model.ClusterStatus {
 	panic("not implemented")
 }
 
-func (m *mockCoordinator) WaitForNextUpdate(currentValue *proto.ShardAssignmentsResponse) *proto.ShardAssignmentsResponse {
+func (m *mockCoordinator) WaitForNextUpdate(ctx context.Context, currentValue *proto.ShardAssignmentsResponse) (*proto.ShardAssignmentsResponse, error) {
 	panic("not implemented")
 }
 

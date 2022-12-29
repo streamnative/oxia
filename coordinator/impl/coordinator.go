@@ -1,6 +1,7 @@
 package impl
 
 import (
+	"context"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -8,13 +9,14 @@ import (
 	pb "google.golang.org/protobuf/proto"
 	"io"
 	"math"
+	"oxia/common"
 	"oxia/coordinator/model"
 	"oxia/proto"
 	"sync"
 )
 
 type ShardAssignmentsProvider interface {
-	WaitForNextUpdate(currentValue *proto.ShardAssignmentsResponse) *proto.ShardAssignmentsResponse
+	WaitForNextUpdate(ctx context.Context, currentValue *proto.ShardAssignmentsResponse) (*proto.ShardAssignmentsResponse, error)
 }
 
 type NodeAvailabilityListener interface {
@@ -36,7 +38,7 @@ type Coordinator interface {
 
 type coordinator struct {
 	sync.Mutex
-	assignmentsChanged *sync.Cond
+	assignmentsChanged common.ConditionContext
 
 	MetadataProvider
 	model.ClusterConfig
@@ -62,7 +64,7 @@ func NewCoordinator(metadataProvider MetadataProvider, clusterConfig model.Clust
 			Logger(),
 	}
 
-	c.assignmentsChanged = sync.NewCond(c)
+	c.assignmentsChanged = common.NewConditionContext(c)
 
 	var err error
 	c.clusterStatus, c.metadataVersion, err = metadataProvider.Get()
@@ -74,6 +76,10 @@ func NewCoordinator(metadataProvider MetadataProvider, clusterConfig model.Clust
 		if err = c.initialAssignment(); err != nil {
 			return nil, err
 		}
+	}
+
+	for shard, shardMetadata := range c.clusterStatus.Shards {
+		c.shardControllers[shard] = NewShardController(shard, shardMetadata, c.rpc, c)
 	}
 
 	for _, sa := range clusterConfig.Servers {
@@ -134,10 +140,6 @@ func (c *coordinator) initialAssignment() error {
 
 	c.clusterStatus = cs
 
-	for shard, shardMetadata := range c.clusterStatus.Shards {
-		c.shardControllers[shard] = NewShardController(shard, shardMetadata, c.rpc, c)
-	}
-
 	return nil
 }
 
@@ -172,16 +174,18 @@ func (c *coordinator) NodeBecameUnavailable(node model.ServerAddress) {
 	}
 }
 
-func (c *coordinator) WaitForNextUpdate(currentValue *proto.ShardAssignmentsResponse) *proto.ShardAssignmentsResponse {
+func (c *coordinator) WaitForNextUpdate(ctx context.Context, currentValue *proto.ShardAssignmentsResponse) (*proto.ShardAssignmentsResponse, error) {
 	c.Lock()
 	defer c.Unlock()
 
 	for pb.Equal(currentValue, c.assignments) {
 		// Wait on the condition until the assignments get changed
-		c.assignmentsChanged.Wait()
+		if err := c.assignmentsChanged.Wait(ctx); err != nil {
+			return nil, err
+		}
 	}
 
-	return c.assignments
+	return c.assignments, nil
 }
 
 func (c *coordinator) InitiateLeaderElection(shard uint32, metadata model.ShardMetadata) error {

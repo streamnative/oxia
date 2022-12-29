@@ -26,7 +26,7 @@ func TestClientCmd(t *testing.T) {
 	server, err := standalone.NewStandaloneRpcServer("localhost:0", "localhost", 1, walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	serviceAddress := fmt.Sprintf("localhost:%d", server.Container.Port())
+	serviceAddress := fmt.Sprintf("localhost:%d", server.Port())
 
 	stdin := bytes.NewBufferString("")
 	stdout := bytes.NewBufferString("")

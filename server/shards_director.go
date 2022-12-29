@@ -4,17 +4,11 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"go.uber.org/multierr"
 	"io"
-	"oxia/common"
 	"oxia/server/kv"
 	"oxia/server/wal"
 	"sync"
-)
-
-var (
-	ErrorAlreadyClosed     = errors.New("node is shutting down")
-	ErrorNodeIsNotLeader   = errors.New("node is not leader for shard")
-	ErrorNodeIsNotFollower = errors.New("node is not follower for shard")
 )
 
 type ShardsDirector interface {
@@ -33,20 +27,20 @@ type shardsDirector struct {
 	leaders   map[uint32]LeaderController
 	followers map[uint32]FollowerController
 
-	kvFactory  kv.KVFactory
-	walFactory wal.WalFactory
-	pool       common.ClientPool
-	closed     bool
-	log        zerolog.Logger
+	kvFactory              kv.KVFactory
+	walFactory             wal.WalFactory
+	replicationRpcProvider ReplicationRpcProvider
+	closed                 bool
+	log                    zerolog.Logger
 }
 
-func NewShardsDirector(walFactory wal.WalFactory, kvFactory kv.KVFactory) ShardsDirector {
+func NewShardsDirector(walFactory wal.WalFactory, kvFactory kv.KVFactory, provider ReplicationRpcProvider) ShardsDirector {
 	return &shardsDirector{
-		walFactory: walFactory,
-		kvFactory:  kvFactory,
-		leaders:    make(map[uint32]LeaderController),
-		followers:  make(map[uint32]FollowerController),
-		pool:       common.NewClientPool(),
+		walFactory:             walFactory,
+		kvFactory:              kvFactory,
+		leaders:                make(map[uint32]LeaderController),
+		followers:              make(map[uint32]FollowerController),
+		replicationRpcProvider: provider,
 		log: log.With().
 			Str("component", "shards-director").
 			Logger(),
@@ -114,7 +108,7 @@ func (s *shardsDirector) GetOrCreateLeader(shardId uint32) (LeaderController, er
 	}
 
 	// Create new leader controller
-	if lc, err := NewLeaderController(shardId, NewReplicationRpcProvider(s.pool), s.walFactory, s.kvFactory); err != nil {
+	if lc, err := NewLeaderController(shardId, s.replicationRpcProvider, s.walFactory, s.kvFactory); err != nil {
 		return nil, err
 	} else {
 		s.leaders[shardId] = lc
@@ -158,23 +152,15 @@ func (s *shardsDirector) Close() error {
 	defer s.Unlock()
 
 	s.closed = true
+	var err error
 
-	for shard, leader := range s.leaders {
-		if err := leader.Close(); err != nil {
-			s.log.Error().
-				Err(err).
-				Uint32("shard", shard).
-				Msg("Failed to shutdown leader controller")
-		}
+	for _, leader := range s.leaders {
+		err = multierr.Append(err, leader.Close())
 	}
 
-	for shard, follower := range s.followers {
-		if err := follower.Close(); err != nil {
-			s.log.Error().
-				Err(err).
-				Uint32("shard", shard).
-				Msg("Failed to shutdown leader controller")
-		}
+	for _, follower := range s.followers {
+		err = multierr.Append(err, follower.Close())
 	}
-	return s.pool.Close()
+
+	return err
 }
