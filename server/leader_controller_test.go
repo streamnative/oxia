@@ -754,7 +754,7 @@ func TestLeaderController_Notifications(t *testing.T) {
 	closeCh := make(chan any)
 
 	go func() {
-		err := lc.GetNotifications(&proto.NotificationsRequest{ShardId: &shard, StartOffsetExclusive: wal.InvalidOffset}, stream)
+		err := lc.GetNotifications(&proto.NotificationsRequest{ShardId: shard, StartOffsetExclusive: &wal.InvalidOffset}, stream)
 		assert.ErrorIs(t, err, context.Canceled)
 		close(closeCh)
 	}()
@@ -819,7 +819,7 @@ func TestLeaderController_NotificationsCloseLeader(t *testing.T) {
 	closeCh := make(chan any)
 
 	go func() {
-		err := lc.GetNotifications(&proto.NotificationsRequest{ShardId: &shard, StartOffsetExclusive: wal.InvalidOffset}, stream)
+		err := lc.GetNotifications(&proto.NotificationsRequest{ShardId: shard, StartOffsetExclusive: &wal.InvalidOffset}, stream)
 		assert.ErrorIs(t, err, context.Canceled)
 		close(closeCh)
 	}()
