@@ -89,6 +89,10 @@ type mockRpcClient struct {
 	md metadata.MD
 }
 
+func (m *mockRpcClient) Close() error {
+	return nil
+}
+
 func (m *mockRpcClient) Send(request *proto.AddEntryRequest) error {
 	m.addEntryReqs <- request
 	return nil
