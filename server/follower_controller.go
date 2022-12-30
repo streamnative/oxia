@@ -267,7 +267,8 @@ func (fc *followerController) AddEntries(stream proto.OxiaLogReplication_AddEntr
 		return ErrorLeaderAlreadyConnected
 	}
 
-	fc.closeStreamCh = make(chan error)
+	closeStreamCh := make(chan error)
+	fc.closeStreamCh = closeStreamCh
 	fc.Unlock()
 
 	go common.DoWithLabels(map[string]string{
@@ -276,7 +277,7 @@ func (fc *followerController) AddEntries(stream proto.OxiaLogReplication_AddEntr
 	}, func() { fc.handleServerStream(stream) })
 
 	select {
-	case err := <-fc.closeStreamCh:
+	case err := <-closeStreamCh:
 		return err
 	case <-fc.ctx.Done():
 		return nil
@@ -442,7 +443,8 @@ func (fc *followerController) SendSnapshot(stream proto.OxiaLogReplication_SendS
 		return ErrorLeaderAlreadyConnected
 	}
 
-	fc.closeStreamCh = make(chan error)
+	closeStreamCh := make(chan error)
+	fc.closeStreamCh = closeStreamCh
 	fc.Unlock()
 
 	go common.DoWithLabels(map[string]string{
@@ -451,7 +453,7 @@ func (fc *followerController) SendSnapshot(stream proto.OxiaLogReplication_SendS
 	}, func() { fc.handleSnapshot(stream) })
 
 	select {
-	case err := <-fc.closeStreamCh:
+	case err := <-closeStreamCh:
 		return err
 	case <-fc.ctx.Done():
 		return fc.ctx.Err()
