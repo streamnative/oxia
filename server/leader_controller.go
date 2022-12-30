@@ -1,12 +1,15 @@
 package server
 
 import (
+	"context"
+	"fmt"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
 	pb "google.golang.org/protobuf/proto"
 	"io"
+	"oxia/common"
 	"oxia/proto"
 	"oxia/server/kv"
 	"oxia/server/wal"
@@ -27,6 +30,8 @@ type LeaderController interface {
 	BecomeLeader(*proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error)
 
 	AddFollower(request *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error)
+
+	GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error
 
 	// Epoch The current epoch of the leader
 	Epoch() int64
@@ -50,6 +55,8 @@ type leaderController struct {
 	// truncate the followers.
 	leaderElectionHeadIndex *proto.EntryId
 
+	ctx       context.Context
+	cancel    context.CancelFunc
 	wal       wal.Wal
 	db        kv.DB
 	rpcClient ReplicationRpcProvider
@@ -69,6 +76,8 @@ func NewLeaderController(shardId uint32, rpcClient ReplicationRpcProvider, walFa
 			Uint32("shard", shardId).
 			Logger(),
 	}
+
+	lc.ctx, lc.cancel = context.WithCancel(context.Background())
 
 	var err error
 	if lc.wal, err = walFactory.NewWal(shardId); err != nil {
@@ -467,6 +476,57 @@ func (lc *leaderController) appendToWal(request *proto.WriteRequest, timestamp u
 	return newOffset, nil
 }
 
+func (lc *leaderController) GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
+	// Create a context for handling this stream
+	ctx, cancel := context.WithCancel(stream.Context())
+
+	go common.DoWithLabels(map[string]string{
+		"oxia":  "dispatch-notifications",
+		"shard": fmt.Sprintf("%d", lc.shardId),
+		"peer":  common.GetPeer(stream.Context()),
+	}, func() {
+		if err := lc.dispatchNotifications(ctx, req, stream); err != nil && !errors.Is(err, context.Canceled) {
+			lc.log.Warn().Err(err).
+				Str("peer", common.GetPeer(stream.Context())).
+				Msg("Failed to dispatch notifications")
+			cancel()
+		}
+	})
+
+	select {
+	case <-lc.ctx.Done():
+		// Leader is getting closed
+		cancel()
+		return lc.ctx.Err()
+
+	case <-stream.Context().Done():
+		// The stream is getting closed
+		cancel()
+		return stream.Context().Err()
+	}
+}
+
+func (lc *leaderController) dispatchNotifications(ctx context.Context, req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
+	offsetInclusive := req.StartOffsetExclusive + 1
+
+	for ctx.Err() == nil {
+		notifications, err := lc.db.ReadNextNotifications(ctx, offsetInclusive)
+		if err != nil {
+			return err
+		}
+
+		for _, n := range notifications {
+			if err := stream.Send(n); err != nil {
+				return err
+			}
+		}
+
+		offsetInclusive += int64(len(notifications))
+	}
+
+	return ctx.Err()
+}
+
 func (lc *leaderController) Close() error {
 	lc.Lock()
 	defer lc.Unlock()
@@ -474,6 +534,7 @@ func (lc *leaderController) Close() error {
 	lc.log.Info().Msg("Closing leader controller")
 
 	lc.status = NotMember
+	lc.cancel()
 
 	var err error
 	if lc.quorumAckTracker != nil {
