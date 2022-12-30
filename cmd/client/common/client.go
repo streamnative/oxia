@@ -20,7 +20,7 @@ type ClientConfig struct {
 func (config *ClientConfig) NewClient() (oxia.AsyncClient, error) {
 	return oxia.NewAsyncClient(Config.ServiceAddr,
 		oxia.WithBatchLinger(Config.BatchLinger),
-		oxia.WithBatchRequestTimeout(Config.BatchRequestTimeoutSec),
+		oxia.WithBatchRequestTimeout(Config.BatchRequestTimeout),
 		oxia.WithMaxRequestsPerBatch(Config.MaxRequestsPerBatch),
-  )
+	)
 }
