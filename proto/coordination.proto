@@ -95,4 +95,5 @@ message AddEntryResponse {
 }
 
 message SnapshotResponse {
+  int64 ack_index = 1;
 }

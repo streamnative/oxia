@@ -299,7 +299,7 @@ func (lc *leaderController) addFollower(follower string, followerHeadIndex *prot
 		return err
 	}
 
-	cursor, err := NewFollowerCursor(follower, lc.epoch, lc.shardId, lc.rpcClient, lc.quorumAckTracker, lc.wal,
+	cursor, err := NewFollowerCursor(follower, lc.epoch, lc.shardId, lc.rpcClient, lc.quorumAckTracker, lc.wal, lc.db,
 		followerHeadIndex.Offset)
 	if err != nil {
 		lc.log.Error().Err(err).
