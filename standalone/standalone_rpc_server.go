@@ -23,10 +23,10 @@ type StandaloneRpcServer struct {
 	numShards               uint32
 	kvFactory               kv.KVFactory
 	walFactory              wal.WalFactory
-	clientPool              common.ClientPool
-	Container               *container.Container
+	grpcServer              container.GrpcServer
 	controllers             map[uint32]server.LeaderController
 	assignmentDispatcher    server.ShardAssignmentsDispatcher
+	replicationRpcProvider  server.ReplicationRpcProvider
 
 	log zerolog.Logger
 }
@@ -37,7 +37,7 @@ func NewStandaloneRpcServer(bindAddress string, advertisedPublicAddress string, 
 		numShards:               numShards,
 		walFactory:              walFactory,
 		kvFactory:               kvFactory,
-		clientPool:              common.NewClientPool(),
+		replicationRpcProvider:  server.NewReplicationRpcProvider(),
 		controllers:             make(map[uint32]server.LeaderController),
 		log: log.With().
 			Str("component", "standalone-rpc-server").
@@ -47,8 +47,7 @@ func NewStandaloneRpcServer(bindAddress string, advertisedPublicAddress string, 
 	var err error
 	for i := uint32(0); i < numShards; i++ {
 		var lc server.LeaderController
-		if lc, err = server.NewLeaderController(i,
-			server.NewReplicationRpcProvider(res.clientPool), res.walFactory, res.kvFactory); err != nil {
+		if lc, err = server.NewLeaderController(i, res.replicationRpcProvider, res.walFactory, res.kvFactory); err != nil {
 			return nil, err
 		}
 
@@ -73,7 +72,7 @@ func NewStandaloneRpcServer(bindAddress string, advertisedPublicAddress string, 
 		res.controllers[i] = lc
 	}
 
-	res.Container, err = container.Start("standalone", bindAddress, func(registrar grpc.ServiceRegistrar) {
+	res.grpcServer, err = container.Default.StartGrpcServer("standalone", bindAddress, func(registrar grpc.ServiceRegistrar) {
 		proto.RegisterOxiaClientServer(registrar, res)
 	})
 	if err != nil {
@@ -81,7 +80,7 @@ func NewStandaloneRpcServer(bindAddress string, advertisedPublicAddress string, 
 	}
 
 	res.assignmentDispatcher = server.NewStandaloneShardAssignmentDispatcher(
-		fmt.Sprintf("%s:%d", advertisedPublicAddress, res.Container.Port()),
+		fmt.Sprintf("%s:%d", advertisedPublicAddress, res.grpcServer.Port()),
 		numShards)
 
 	return res, nil
@@ -95,12 +94,16 @@ func (s *StandaloneRpcServer) Close() error {
 
 	return multierr.Combine(err,
 		s.assignmentDispatcher.Close(),
-		s.Container.Close(),
+		s.grpcServer.Close(),
 	)
 }
 
 func (s *StandaloneRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest, stream proto.OxiaClient_ShardAssignmentsServer) error {
 	return s.assignmentDispatcher.RegisterForUpdates(stream)
+}
+
+func (s *StandaloneRpcServer) Port() int {
+	return s.grpcServer.Port()
 }
 
 func (s *StandaloneRpcServer) Write(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error) {

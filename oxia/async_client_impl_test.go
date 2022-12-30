@@ -29,7 +29,7 @@ func TestAsyncClientImpl(t *testing.T) {
 	server, err := standalone.NewStandaloneRpcServer("localhost:0", "localhost", 1, walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	serviceAddress := fmt.Sprintf("localhost:%d", server.Container.Port())
+	serviceAddress := fmt.Sprintf("localhost:%d", server.Port())
 	options, err := NewClientOptions(serviceAddress, WithBatchLinger(0))
 	if err != nil {
 		assert.Fail(t, err.Error())
@@ -89,7 +89,7 @@ func TestAsyncClientImpl_Notifications(t *testing.T) {
 	server, err := standalone.NewStandaloneRpcServer("localhost:0", "localhost", 3, walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	serviceAddress := fmt.Sprintf("localhost:%d", server.Container.Port())
+	serviceAddress := fmt.Sprintf("localhost:%d", server.Port())
 	options, err := NewClientOptions(serviceAddress, WithBatchLinger(0))
 	assert.NoError(t, err)
 	client := NewSyncClient(options)
