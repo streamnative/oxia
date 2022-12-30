@@ -46,7 +46,7 @@ func (m *metadataProviderMemory) Store(cs *model.ClusterStatus, expectedVersion 
 }
 
 func incrVersion(version Version) Version {
-	i, err := strconv.ParseInt(string(version), 10, 32)
+	i, err := strconv.ParseInt(string(version), 10, 64)
 	if err != nil {
 		return ""
 	}

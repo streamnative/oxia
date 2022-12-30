@@ -28,11 +28,11 @@ type internalRpcServer struct {
 
 	shardsDirector       ShardsDirector
 	assignmentDispatcher ShardAssignmentsDispatcher
-	container            *container.Container
+	grpcServer           container.GrpcServer
 	log                  zerolog.Logger
 }
 
-func newCoordinationRpcServer(bindAddress string, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher) (*internalRpcServer, error) {
+func newCoordinationRpcServer(grpcProvider container.GrpcProvider, bindAddress string, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher) (*internalRpcServer, error) {
 	server := &internalRpcServer{
 		shardsDirector:       shardsDirector,
 		assignmentDispatcher: assignmentDispatcher,
@@ -42,7 +42,7 @@ func newCoordinationRpcServer(bindAddress string, shardsDirector ShardsDirector,
 	}
 
 	var err error
-	server.container, err = container.Start("internal", bindAddress, func(registrar grpc.ServiceRegistrar) {
+	server.grpcServer, err = grpcProvider.StartGrpcServer("internal", bindAddress, func(registrar grpc.ServiceRegistrar) {
 		proto.RegisterOxiaControlServer(registrar, server)
 		proto.RegisterOxiaLogReplicationServer(registrar, server)
 		grpc_health_v1.RegisterHealthServer(registrar, health.NewServer())
@@ -55,7 +55,7 @@ func newCoordinationRpcServer(bindAddress string, shardsDirector ShardsDirector,
 }
 
 func (s *internalRpcServer) Close() error {
-	return s.container.Close()
+	return s.grpcServer.Close()
 }
 
 func (s *internalRpcServer) ShardAssignment(srv proto.OxiaControl_ShardAssignmentServer) error {

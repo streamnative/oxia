@@ -89,6 +89,10 @@ type mockRpcClient struct {
 	md metadata.MD
 }
 
+func (m *mockRpcClient) Close() error {
+	return nil
+}
+
 func (m *mockRpcClient) Send(request *proto.AddEntryRequest) error {
 	m.addEntryReqs <- request
 	return nil
@@ -300,5 +304,48 @@ func (m *mockServerSendSnapshotStream) SendMsg(msg interface{}) error {
 }
 
 func (m *mockServerSendSnapshotStream) RecvMsg(msg interface{}) error {
+	panic("not implemented")
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+type mockGetNotificationsServer struct {
+	ch  chan *proto.NotificationBatch
+	ctx context.Context
+}
+
+func newMockGetNotificationsServer(ctx context.Context) *mockGetNotificationsServer {
+	return &mockGetNotificationsServer{
+		ch:  make(chan *proto.NotificationBatch, 100),
+		ctx: ctx,
+	}
+}
+
+func (m *mockGetNotificationsServer) Send(batch *proto.NotificationBatch) error {
+	m.ch <- batch
+	return nil
+}
+
+func (m *mockGetNotificationsServer) SetHeader(md metadata.MD) error {
+	panic("not implemented")
+}
+
+func (m *mockGetNotificationsServer) SendHeader(md metadata.MD) error {
+	panic("not implemented")
+}
+
+func (m *mockGetNotificationsServer) SetTrailer(md metadata.MD) {
+	panic("not implemented")
+}
+
+func (m *mockGetNotificationsServer) Context() context.Context {
+	return m.ctx
+}
+
+func (m *mockGetNotificationsServer) SendMsg(msg interface{}) error {
+	panic("not implemented")
+}
+
+func (m *mockGetNotificationsServer) RecvMsg(msg interface{}) error {
 	panic("not implemented")
 }

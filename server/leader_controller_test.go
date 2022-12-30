@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -9,6 +10,7 @@ import (
 	"oxia/server/kv"
 	"oxia/server/wal"
 	"testing"
+	"time"
 )
 
 func AssertProtoEqual(t *testing.T, expected, actual pb.Message) {
@@ -727,6 +729,121 @@ func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
 	assert.EqualValues(t, 0, res.Gets[0].Stat.Version)
 
 	assert.NoError(t, lc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
+func TestLeaderController_Notifications(t *testing.T) {
+	var shard uint32 = 1
+
+	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
+	walFactory := wal.NewInMemoryWalFactory()
+
+	lc, _ := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
+	_, _ = lc.Fence(&proto.FenceRequest{ShardId: shard, Epoch: 1})
+	_, _ = lc.BecomeLeader(&proto.BecomeLeaderRequest{
+		ShardId:           shard,
+		Epoch:             1,
+		ReplicationFactor: 1,
+		FollowerMaps:      nil,
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	stream := newMockGetNotificationsServer(ctx)
+
+	closeCh := make(chan any)
+
+	go func() {
+		err := lc.GetNotifications(&proto.NotificationsRequest{ShardId: &shard, StartOffsetExclusive: wal.InvalidOffset}, stream)
+		assert.ErrorIs(t, err, context.Canceled)
+		close(closeCh)
+	}()
+
+	/// Write entry
+	_, _ = lc.Write(&proto.WriteRequest{
+		ShardId: &shard,
+		Puts: []*proto.PutRequest{{
+			Key:     "a",
+			Payload: []byte("value-a")}},
+	})
+
+	nb1 := <-stream.ch
+	assert.EqualValues(t, 0, nb1.Offset)
+	assert.Equal(t, 1, len(nb1.Notifications))
+	n1 := nb1.Notifications["a"]
+	assert.Equal(t, proto.NotificationType_KeyCreated, n1.Type)
+	assert.EqualValues(t, 0, *n1.Version)
+	
+	// The handler is still running waiting for more notifications
+	select {
+	case <-closeCh:
+		assert.Fail(t, "Shouldn't have been terminated")
+
+	case <-time.After(1 * time.Second):
+		// Expected to timeout
+	}
+
+	// Cancelling the stream context should close the `GetNotification()` handler
+	cancel()
+
+	select {
+	case <-closeCh:
+		// Expected to be already closed
+
+	case <-time.After(1 * time.Second):
+		assert.Fail(t, "Shouldn't have timed out")
+	}
+
+	assert.NoError(t, lc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
+func TestLeaderController_NotificationsCloseLeader(t *testing.T) {
+	var shard uint32 = 1
+
+	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
+	walFactory := wal.NewInMemoryWalFactory()
+
+	lc, _ := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
+	_, _ = lc.Fence(&proto.FenceRequest{ShardId: shard, Epoch: 1})
+	_, _ = lc.BecomeLeader(&proto.BecomeLeaderRequest{
+		ShardId:           shard,
+		Epoch:             1,
+		ReplicationFactor: 1,
+		FollowerMaps:      nil,
+	})
+
+	stream := newMockGetNotificationsServer(context.Background())
+
+	closeCh := make(chan any)
+
+	go func() {
+		err := lc.GetNotifications(&proto.NotificationsRequest{ShardId: &shard, StartOffsetExclusive: wal.InvalidOffset}, stream)
+		assert.ErrorIs(t, err, context.Canceled)
+		close(closeCh)
+	}()
+
+	// The handler is still running waiting for more notifications
+	select {
+	case <-closeCh:
+		assert.Fail(t, "Shouldn't have been terminated")
+
+	case <-time.After(1 * time.Second):
+		// Expected to timeout
+	}
+
+	// Closing the leader should close the `GetNotification()` handler
+	assert.NoError(t, lc.Close())
+
+	select {
+	case <-closeCh:
+		// Expected to be already closed
+
+	case <-time.After(1 * time.Second):
+		assert.Fail(t, "Shouldn't have timed out")
+	}
+
 	assert.NoError(t, kvFactory.Close())
 	assert.NoError(t, walFactory.Close())
 }

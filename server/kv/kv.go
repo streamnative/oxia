@@ -69,6 +69,8 @@ type KV interface {
 
 	KeyRangeScan(lowerBound, upperBound string) KeyIterator
 
+	RangeScan(lowerBound, upperBound string) KeyValueIterator
+
 	Snapshot() (Snapshot, error)
 
 	Flush() error

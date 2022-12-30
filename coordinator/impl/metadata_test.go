@@ -5,6 +5,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	"oxia/coordinator/model"
 	k8sTesting "oxia/kubernetes/testing"
+	"path/filepath"
 	"testing"
 )
 
@@ -14,9 +15,14 @@ var (
 		f.PrependReactor("*", "*", k8sTesting.ResourceVersionSupport(f.Tracker()))
 		return f
 	}()
-	metadataProviders = map[string]func() MetadataProvider{
-		"memory": NewMetadataProviderMemory,
-		"configmap": func() MetadataProvider {
+	metadataProviders = map[string]func(t *testing.T) MetadataProvider{
+		"memory": func(t *testing.T) MetadataProvider {
+			return NewMetadataProviderMemory()
+		},
+		"file": func(t *testing.T) MetadataProvider {
+			return NewMetadataProviderFile(filepath.Join(t.TempDir(), "metadata"))
+		},
+		"configmap": func(t *testing.T) MetadataProvider {
 			return &metadataProviderConfigMap{
 				kubernetes: _fake,
 				namespace:  "ns",
@@ -29,7 +35,7 @@ var (
 func TestMetadataProvider(t *testing.T) {
 	for name, provider := range metadataProviders {
 		t.Run(name, func(t *testing.T) {
-			m := provider()
+			m := provider(t)
 
 			res, version, err := m.Get()
 			assert.NoError(t, err)
