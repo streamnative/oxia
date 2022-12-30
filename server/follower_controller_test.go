@@ -640,7 +640,7 @@ func TestFollower_DisconnectLeader(t *testing.T) {
 	_, err = fc.Fence(&proto.FenceRequest{Epoch: 2})
 	assert.NoError(t, err)
 
-	assert.Nil(t, fc.(*followerController).closeCh)
+	assert.Nil(t, fc.(*followerController).closeStreamCh)
 
 	go func() { assert.NoError(t, fc.AddEntries(stream)) }()
 
@@ -656,7 +656,7 @@ func closeChanIsNotNil(fc FollowerController) func() bool {
 		_fc := fc.(*followerController)
 		_fc.Lock()
 		defer _fc.Unlock()
-		return _fc.closeCh != nil
+		return _fc.closeStreamCh != nil
 	}
 }
 
