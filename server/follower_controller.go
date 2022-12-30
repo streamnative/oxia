@@ -279,7 +279,7 @@ func (fc *followerController) AddEntries(stream proto.OxiaLogReplication_AddEntr
 	case err := <-fc.closeStreamCh:
 		return err
 	case <-fc.ctx.Done():
-		return fc.ctx.Err()
+		return nil
 	}
 }
 
