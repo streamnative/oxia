@@ -31,7 +31,7 @@ func TestFollower(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
 
-	fc, err := NewFollowerController(shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.Equal(t, NotMember, fc.Status())
@@ -104,7 +104,7 @@ func TestReadingUpToCommitIndex(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 
-	fc, err := NewFollowerController(shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	_, err = fc.Fence(&proto.FenceRequest{Epoch: 1})
@@ -179,7 +179,7 @@ func TestFollower_RestoreCommitIndex(t *testing.T) {
 	assert.NoError(t, db.UpdateEpoch(6))
 	assert.NoError(t, db.Close())
 
-	fc, err := NewFollowerController(shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.Equal(t, Fenced, fc.Status())
@@ -200,7 +200,7 @@ func TestFollower_AdvanceCommitIndexToHead(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 
-	fc, _ := NewFollowerController(shardId, walFactory, kvFactory)
+	fc, _ := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	_, _ = fc.Fence(&proto.FenceRequest{Epoch: 1})
 
 	stream := newMockServerAddEntriesStream()
@@ -225,7 +225,7 @@ func TestFollower_FenceEpoch(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 
-	fc, err := NewFollowerController(shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	_, err = fc.Fence(&proto.FenceRequest{Epoch: 1})
@@ -268,7 +268,7 @@ func TestFollower_TruncateAfterRestart(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 
-	fc, err := NewFollowerController(shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	// Follower needs to be in "Fenced" state to receive a Truncate request
@@ -292,7 +292,7 @@ func TestFollower_TruncateAfterRestart(t *testing.T) {
 	fc.Close()
 
 	// Restart
-	fc, err = NewFollowerController(shardId, walFactory, kvFactory)
+	fc, err = NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.Equal(t, Fenced, fc.Status())
@@ -325,7 +325,7 @@ func TestFollower_PersistentEpoch(t *testing.T) {
 		LogDir: t.TempDir(),
 	})
 
-	fc, err := NewFollowerController(shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.Equal(t, NotMember, fc.Status())
@@ -341,7 +341,7 @@ func TestFollower_PersistentEpoch(t *testing.T) {
 	assert.NoError(t, fc.Close())
 
 	/// Reopen and verify epoch
-	fc, err = NewFollowerController(shardId, walFactory, kvFactory)
+	fc, err = NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.Equal(t, Fenced, fc.Status())
@@ -357,7 +357,7 @@ func TestFollower_CommitIndexLastEntry(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 
-	fc, err := NewFollowerController(shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	_, err = fc.Fence(&proto.FenceRequest{Epoch: 1})
@@ -412,7 +412,7 @@ func TestFollowerController_RejectEntriesWithDifferentEpoch(t *testing.T) {
 
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 
-	fc, err := NewFollowerController(shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.Equal(t, Fenced, fc.Status())
@@ -441,7 +441,7 @@ func TestFollowerController_RejectEntriesWithDifferentEpoch(t *testing.T) {
 	close(stream.requests)
 
 	//// A higher epoch will also be rejected
-	fc, err = NewFollowerController(shardId, walFactory, kvFactory)
+	fc, err = NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	stream = newMockServerAddEntriesStream()
@@ -462,7 +462,7 @@ func TestFollower_RejectTruncateInvalidEpoch(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
 
-	fc, err := NewFollowerController(shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.Equal(t, NotMember, fc.Status())
@@ -535,7 +535,7 @@ func TestFollower_HandleSnapshot(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 
-	fc, err := NewFollowerController(shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	_, err = fc.Fence(&proto.FenceRequest{Epoch: 1})
@@ -624,7 +624,7 @@ func TestFollower_DisconnectLeader(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
 
-	fc, _ := NewFollowerController(shardId, walFactory, kvFactory)
+	fc, _ := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	_, _ = fc.Fence(&proto.FenceRequest{Epoch: 1})
 
 	stream := newMockServerAddEntriesStream()

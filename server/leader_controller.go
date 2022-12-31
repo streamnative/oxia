@@ -55,15 +55,16 @@ type leaderController struct {
 	// truncate the followers.
 	leaderElectionHeadIndex *proto.EntryId
 
-	ctx       context.Context
-	cancel    context.CancelFunc
-	wal       wal.Wal
-	db        kv.DB
-	rpcClient ReplicationRpcProvider
-	log       zerolog.Logger
+	ctx        context.Context
+	cancel     context.CancelFunc
+	wal        wal.Wal
+	walTrimmer wal.Trimmer
+	db         kv.DB
+	rpcClient  ReplicationRpcProvider
+	log        zerolog.Logger
 }
 
-func NewLeaderController(shardId uint32, rpcClient ReplicationRpcProvider, walFactory wal.WalFactory, kvFactory kv.KVFactory) (LeaderController, error) {
+func NewLeaderController(config Config, shardId uint32, rpcClient ReplicationRpcProvider, walFactory wal.WalFactory, kvFactory kv.KVFactory) (LeaderController, error) {
 	lc := &leaderController{
 		status:           NotMember,
 		shardId:          shardId,
@@ -83,6 +84,8 @@ func NewLeaderController(shardId uint32, rpcClient ReplicationRpcProvider, walFa
 	if lc.wal, err = walFactory.NewWal(shardId); err != nil {
 		return nil, err
 	}
+
+	lc.walTrimmer = wal.NewTrimmer(shardId, lc.wal, config.WalRetentionTime, wal.DefaultCheckInterval, wal.SystemClock)
 
 	if lc.db, err = kv.NewDB(shardId, kvFactory); err != nil {
 		return nil, err
@@ -546,6 +549,7 @@ func (lc *leaderController) Close() error {
 	}
 
 	err = multierr.Combine(err,
+		lc.walTrimmer.Close(),
 		lc.wal.Close(),
 		lc.db.Close(),
 	)

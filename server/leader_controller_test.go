@@ -31,7 +31,7 @@ func TestLeaderController_NotInitialized(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
 
-	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(Config{}, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
@@ -67,7 +67,7 @@ func TestLeaderController_BecomeLeader_NoFencing(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
 
-	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(Config{}, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
@@ -93,7 +93,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
 
-	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(Config{}, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
@@ -188,7 +188,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 
 	rpc := newMockRpcClient()
 
-	lc, err := NewLeaderController(shard, rpc, walFactory, kvFactory)
+	lc, err := NewLeaderController(Config{}, shard, rpc, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
@@ -297,7 +297,7 @@ func TestLeaderController_EpochPersistent(t *testing.T) {
 		LogDir: t.TempDir(),
 	})
 
-	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(Config{}, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
@@ -318,7 +318,7 @@ func TestLeaderController_EpochPersistent(t *testing.T) {
 	assert.NoError(t, lc.Close())
 
 	/// Re-Open lead controller
-	lc, err = NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err = NewLeaderController(Config{}, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 5, lc.Epoch())
@@ -347,7 +347,7 @@ func TestLeaderController_FenceEpoch(t *testing.T) {
 	assert.NoError(t, db.UpdateEpoch(5))
 	assert.NoError(t, db.Close())
 
-	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(Config{}, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 5, lc.Epoch())
@@ -394,7 +394,7 @@ func TestLeaderController_BecomeLeaderEpoch(t *testing.T) {
 	assert.NoError(t, db.UpdateEpoch(5))
 	assert.NoError(t, db.Close())
 
-	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(Config{}, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 5, lc.Epoch())
@@ -441,7 +441,7 @@ func TestLeaderController_AddFollower(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
 
-	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(Config{}, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	_, err = lc.Fence(&proto.FenceRequest{
@@ -535,7 +535,7 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 
 	rpcClient := newMockRpcClient()
 
-	lc, err := NewLeaderController(shard, rpcClient, walFactory, kvFactory)
+	lc, err := NewLeaderController(Config{}, shard, rpcClient, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	_, err = lc.Fence(&proto.FenceRequest{
@@ -614,7 +614,7 @@ func TestLeaderController_AddFollowerCheckEpoch(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
 
-	lc, err := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(Config{}, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	_, err = lc.Fence(&proto.FenceRequest{
@@ -690,7 +690,7 @@ func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
 
 	rpc := newMockRpcClient()
 
-	lc, _ := NewLeaderController(shard, rpc, walFactory, kvFactory)
+	lc, _ := NewLeaderController(Config{}, shard, rpc, walFactory, kvFactory)
 
 	_, _ = lc.Fence(&proto.FenceRequest{
 		ShardId: shard,
@@ -739,7 +739,7 @@ func TestLeaderController_Notifications(t *testing.T) {
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := wal.NewInMemoryWalFactory()
 
-	lc, _ := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, _ := NewLeaderController(Config{}, shard, newMockRpcClient(), walFactory, kvFactory)
 	_, _ = lc.Fence(&proto.FenceRequest{ShardId: shard, Epoch: 1})
 	_, _ = lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
@@ -773,7 +773,7 @@ func TestLeaderController_Notifications(t *testing.T) {
 	n1 := nb1.Notifications["a"]
 	assert.Equal(t, proto.NotificationType_KeyCreated, n1.Type)
 	assert.EqualValues(t, 0, *n1.Version)
-	
+
 	// The handler is still running waiting for more notifications
 	select {
 	case <-closeCh:
@@ -805,7 +805,7 @@ func TestLeaderController_NotificationsCloseLeader(t *testing.T) {
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := wal.NewInMemoryWalFactory()
 
-	lc, _ := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, _ := NewLeaderController(Config{}, shard, newMockRpcClient(), walFactory, kvFactory)
 	_, _ = lc.Fence(&proto.FenceRequest{ShardId: shard, Epoch: 1})
 	_, _ = lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,

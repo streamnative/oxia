@@ -30,7 +30,7 @@ type StandaloneRpcServer struct {
 	log zerolog.Logger
 }
 
-func NewStandaloneRpcServer(bindAddress string, advertisedPublicAddress string, numShards uint32, walFactory wal.WalFactory, kvFactory kv.KVFactory) (*StandaloneRpcServer, error) {
+func NewStandaloneRpcServer(config Config, bindAddress string, advertisedPublicAddress string, numShards uint32, walFactory wal.WalFactory, kvFactory kv.KVFactory) (*StandaloneRpcServer, error) {
 	res := &StandaloneRpcServer{
 		advertisedPublicAddress: advertisedPublicAddress,
 		numShards:               numShards,
@@ -46,7 +46,7 @@ func NewStandaloneRpcServer(bindAddress string, advertisedPublicAddress string, 
 	var err error
 	for i := uint32(0); i < numShards; i++ {
 		var lc server.LeaderController
-		if lc, err = server.NewLeaderController(i, res.replicationRpcProvider, res.walFactory, res.kvFactory); err != nil {
+		if lc, err = server.NewLeaderController(config.Config, i, res.replicationRpcProvider, res.walFactory, res.kvFactory); err != nil {
 			return nil, err
 		}
 
