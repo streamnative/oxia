@@ -247,6 +247,9 @@ func Reopen(t *testing.T) {
 func Clear(t *testing.T) {
 	f, w := createWal(t)
 
+	assert.EqualValues(t, InvalidOffset, w.FirstOffset())
+	assert.EqualValues(t, InvalidOffset, w.LastOffset())
+
 	for i := 0; i < 100; i++ {
 		assert.NoError(t, w.Append(&proto.LogEntry{
 			Epoch:  1,
@@ -255,10 +258,12 @@ func Clear(t *testing.T) {
 		}))
 	}
 
+	assert.EqualValues(t, 0, w.FirstOffset())
 	assert.EqualValues(t, 99, w.LastOffset())
 
 	assert.NoError(t, w.Clear())
 
+	assert.EqualValues(t, InvalidOffset, w.FirstOffset())
 	assert.EqualValues(t, InvalidOffset, w.LastOffset())
 
 	for i := 250; i < 300; i++ {
@@ -268,6 +273,7 @@ func Clear(t *testing.T) {
 			Value:  []byte(fmt.Sprintf("entry-%d", i)),
 		}))
 
+		assert.EqualValues(t, 250, w.FirstOffset())
 		assert.EqualValues(t, i, w.LastOffset())
 	}
 
