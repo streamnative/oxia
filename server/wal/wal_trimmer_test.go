@@ -30,12 +30,12 @@ func TestWalTrimmer(t *testing.T) {
 	clock := &mockClock{}
 
 	for i := int64(0); i < 100; i++ {
-		w.Append(&proto.LogEntry{
+		assert.NoError(t, w.Append(&proto.LogEntry{
 			Epoch:     0,
 			Offset:    i,
 			Value:     []byte(""),
 			Timestamp: uint64(i),
-		})
+		}))
 	}
 
 	trimmer := NewTrimmer(1, w, 2*time.Millisecond, 10*time.Millisecond, clock)

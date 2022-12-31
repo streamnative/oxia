@@ -20,7 +20,7 @@ func TestAsyncClientImpl(t *testing.T) {
 	defer kvFactory.Close()
 	walFactory := wal.NewInMemoryWalFactory()
 	defer walFactory.Close()
-	server, err := standalone.NewStandaloneRpcServer("localhost:0", "localhost", 1, walFactory, kvFactory)
+	server, err := standalone.NewStandaloneRpcServer(standalone.Config{}, "localhost:0", "localhost", 1, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	serviceAddress := fmt.Sprintf("localhost:%d", server.Port())
