@@ -13,6 +13,8 @@ service OxiaControl {
   rpc Fence(FenceRequest) returns (FenceResponse);
   rpc BecomeLeader(BecomeLeaderRequest) returns (BecomeLeaderResponse);
   rpc AddFollower(AddFollowerRequest) returns (AddFollowerResponse);
+
+  rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
 }
 
 // node (leader) -> node (follower)
@@ -95,4 +97,26 @@ message AddEntryResponse {
 }
 
 message SnapshotResponse {
+}
+
+
+//// Status RPC
+
+message GetStatusRequest {
+  uint32 shard_id = 1;
+}
+
+enum ServingStatus {
+  NotMember = 0;
+  Fenced    = 1;
+  Follower  = 2;
+  Leader    = 3;
+}
+
+message GetStatusResponse {
+  int64 epoch = 1;
+  ServingStatus status = 2;
+
+  // More info to add for leaders
+  // ensemble, lag for each follower, etc...
 }

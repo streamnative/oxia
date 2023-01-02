@@ -87,6 +87,12 @@ type mockPerNodeChannels struct {
 		error
 	}
 
+	getStatusRequests  chan *proto.GetStatusRequest
+	getStatusResponses chan struct {
+		*proto.GetStatusResponse
+		error
+	}
+
 	addFollowerRequests  chan *proto.AddFollowerRequest
 	addFollowerResponses chan struct {
 		*proto.AddFollowerResponse
@@ -156,6 +162,11 @@ func newMockPerNodeChannels() *mockPerNodeChannels {
 		becomeLeaderRequests: make(chan *proto.BecomeLeaderRequest, 100),
 		becomeLeaderResponses: make(chan struct {
 			*proto.BecomeLeaderResponse
+			error
+		}, 100),
+		getStatusRequests: make(chan *proto.GetStatusRequest, 100),
+		getStatusResponses: make(chan struct {
+			*proto.GetStatusResponse
 			error
 		}, 100),
 		addFollowerRequests: make(chan *proto.AddFollowerRequest, 100),
@@ -263,6 +274,29 @@ func (r *mockRpcProvider) BecomeLeader(ctx context.Context, node model.ServerAdd
 	select {
 	case response := <-s.becomeLeaderResponses:
 		return response.BecomeLeaderResponse, response.error
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-time.After(3 * time.Second):
+		return nil, errors.New("timeout")
+	}
+}
+
+func (r *mockRpcProvider) GetStatus(ctx context.Context, node model.ServerAddress, req *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
+	r.Lock()
+
+	s := r.getNode(node)
+	s.getStatusRequests <- req
+
+	if s.err != nil {
+		r.Unlock()
+		return nil, s.err
+	}
+
+	r.Unlock()
+
+	select {
+	case response := <-s.getStatusResponses:
+		return response.GetStatusResponse, response.error
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-time.After(3 * time.Second):
