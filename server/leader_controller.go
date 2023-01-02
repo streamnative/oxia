@@ -33,18 +33,20 @@ type LeaderController interface {
 
 	GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error
 
+	GetStatus(request *proto.GetStatusRequest) (*proto.GetStatusResponse, error)
+
 	// Epoch The current epoch of the leader
 	Epoch() int64
 
 	// Status The Status of the leader
-	Status() Status
+	Status() proto.ServingStatus
 }
 
 type leaderController struct {
 	sync.Mutex
 
 	shardId           uint32
-	status            Status
+	status            proto.ServingStatus
 	epoch             int64
 	replicationFactor uint32
 	quorumAckTracker  QuorumAckTracker
@@ -65,7 +67,7 @@ type leaderController struct {
 
 func NewLeaderController(shardId uint32, rpcClient ReplicationRpcProvider, walFactory wal.WalFactory, kvFactory kv.KVFactory) (LeaderController, error) {
 	lc := &leaderController{
-		status:           NotMember,
+		status:           proto.ServingStatus_NotMember,
 		shardId:          shardId,
 		quorumAckTracker: nil,
 		rpcClient:        rpcClient,
@@ -93,7 +95,7 @@ func NewLeaderController(shardId uint32, rpcClient ReplicationRpcProvider, walFa
 	}
 
 	if lc.epoch != wal.InvalidEpoch {
-		lc.status = Fenced
+		lc.status = proto.ServingStatus_Fenced
 	}
 
 	lc.log = lc.log.With().Int64("epoch", lc.epoch).Logger()
@@ -102,7 +104,7 @@ func NewLeaderController(shardId uint32, rpcClient ReplicationRpcProvider, walFa
 	return lc, nil
 }
 
-func (lc *leaderController) Status() Status {
+func (lc *leaderController) Status() proto.ServingStatus {
 	lc.Lock()
 	defer lc.Unlock()
 	return lc.status
@@ -134,7 +136,7 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 
 	if req.Epoch < lc.epoch {
 		return nil, ErrorInvalidEpoch
-	} else if req.Epoch == lc.epoch && lc.status != Fenced {
+	} else if req.Epoch == lc.epoch && lc.status != proto.ServingStatus_Fenced {
 		// It's OK to receive a duplicate Fence request, for the same epoch, as long as we haven't moved
 		// out of the Fenced state for that epoch
 		lc.log.Warn().
@@ -151,7 +153,7 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 
 	lc.epoch = req.GetEpoch()
 	lc.log = lc.log.With().Int64("epoch", lc.epoch).Logger()
-	lc.status = Fenced
+	lc.status = proto.ServingStatus_Fenced
 	lc.replicationFactor = 0
 
 	if lc.quorumAckTracker != nil {
@@ -211,7 +213,7 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 	lc.Lock()
 	defer lc.Unlock()
 
-	if lc.status != Fenced {
+	if lc.status != proto.ServingStatus_Fenced {
 		return nil, ErrorInvalidStatus
 	}
 
@@ -219,7 +221,7 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 		return nil, ErrorInvalidEpoch
 	}
 
-	lc.status = Leader
+	lc.status = proto.ServingStatus_Leader
 	lc.replicationFactor = req.GetReplicationFactor()
 	lc.followers = make(map[string]FollowerCursor)
 
@@ -269,7 +271,7 @@ func (lc *leaderController) AddFollower(req *proto.AddFollowerRequest) (*proto.A
 		return nil, ErrorInvalidEpoch
 	}
 
-	if lc.status != Leader {
+	if lc.status != proto.ServingStatus_Leader {
 		return nil, errors.Wrap(ErrorInvalidStatus, "Node is not leader")
 	}
 
@@ -417,7 +419,7 @@ func (lc *leaderController) Read(request *proto.ReadRequest) (*proto.ReadRespons
 	{
 		lc.Lock()
 		defer lc.Unlock()
-		if err := checkStatus(Leader, lc.status); err != nil {
+		if err := checkStatus(proto.ServingStatus_Leader, lc.status); err != nil {
 			return nil, err
 		}
 	}
@@ -442,7 +444,6 @@ func (lc *leaderController) Write(request *proto.WriteRequest) (*proto.WriteResp
 	if err != nil {
 		return nil, errors.Wrap(err, "oxia: failed to append to wal")
 	}
-	lc.quorumAckTracker.AdvanceHeadIndex(newOffset)
 
 	return lc.quorumAckTracker.WaitForCommitIndex(newOffset, func() (*proto.WriteResponse, error) {
 		return lc.db.ProcessWrite(request, newOffset, timestamp)
@@ -453,7 +454,7 @@ func (lc *leaderController) appendToWal(request *proto.WriteRequest, timestamp u
 	lc.Lock()
 	defer lc.Unlock()
 
-	if err := checkStatus(Leader, lc.status); err != nil {
+	if err := checkStatus(proto.ServingStatus_Leader, lc.status); err != nil {
 		return wal.InvalidOffset, err
 	}
 
@@ -472,6 +473,8 @@ func (lc *leaderController) appendToWal(request *proto.WriteRequest, timestamp u
 	if err = lc.wal.Append(logEntry); err != nil {
 		return wal.InvalidOffset, err
 	}
+
+	lc.quorumAckTracker.AdvanceHeadIndex(newOffset)
 
 	return newOffset, nil
 }
@@ -551,7 +554,7 @@ func (lc *leaderController) Close() error {
 
 	lc.log.Info().Msg("Closing leader controller")
 
-	lc.status = NotMember
+	lc.status = proto.ServingStatus_NotMember
 	lc.cancel()
 
 	var err error
@@ -585,4 +588,14 @@ func getLastEntryIdInWal(wal wal.Wal) (*proto.EntryId, error) {
 		return nil, err
 	}
 	return &proto.EntryId{Epoch: entry.Epoch, Offset: entry.Offset}, nil
+}
+
+func (lc *leaderController) GetStatus(request *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
+	lc.Lock()
+	defer lc.Unlock()
+
+	return &proto.GetStatusResponse{
+		Epoch:  lc.epoch,
+		Status: lc.status,
+	}, nil
 }

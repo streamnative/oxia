@@ -76,7 +76,8 @@ func NewShardController(shard uint32, shardMetadata model.ShardMetadata, rpc Rpc
 	} else {
 		s.log.Info().
 			Interface("current-leader", s.shardMetadata.Leader).
-			Msg("There is already an active leader on the shard")
+			Msg("There is already a node marked as leader on the shard, verifying")
+		go s.verifyCurrentLeader(*shardMetadata.Leader)
 	}
 	return s
 }
@@ -97,6 +98,37 @@ func (s *shardController) HandleNodeFailure(failedNode model.ServerAddress) {
 			Msg("Detected failure on shard leader")
 		s.electLeaderWithRetries()
 	}
+}
+
+func (s *shardController) verifyCurrentLeader(leader model.ServerAddress) {
+	s.Lock()
+	defer s.Unlock()
+
+	status, err := s.rpc.GetStatus(s.ctx, leader, &proto.GetStatusRequest{ShardId: s.shard})
+
+	if err != nil {
+		s.log.Warn().Err(err).
+			Interface("leader", leader).
+			Msg("Failed to verify leader for shard. Start a new election")
+	} else if status.Status != proto.ServingStatus_Leader {
+		s.log.Warn().
+			Interface("leader", leader).
+			Interface("status", status.Status).
+			Msg("Node is not in leader status")
+	} else if status.Epoch != s.shardMetadata.Epoch {
+		s.log.Warn().
+			Interface("leader", leader).
+			Interface("node-epoch", status.Epoch).
+			Interface("coordinator-epoch", s.shardMetadata.Epoch).
+			Msg("Node has a wrong epoch")
+	} else {
+		s.log.Info().
+			Interface("leader", leader).
+			Msg("Leader looks ok. Do not trigger a new election for now")
+		return
+	}
+
+	s.electLeaderWithRetries()
 }
 
 func (s *shardController) electLeaderWithRetries() {
