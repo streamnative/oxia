@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -9,6 +10,7 @@ import (
 	"oxia/server/kv"
 	"oxia/server/wal"
 	"testing"
+	"time"
 )
 
 func AssertProtoEqual(t *testing.T, expected, actual pb.Message) {
@@ -33,7 +35,7 @@ func TestLeaderController_NotInitialized(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
-	assert.Equal(t, NotMember, lc.Status())
+	assert.Equal(t, proto.ServingStatus_NotMember, lc.Status())
 
 	res, err := lc.Write(&proto.WriteRequest{
 		ShardId: &shard,
@@ -69,7 +71,7 @@ func TestLeaderController_BecomeLeader_NoFencing(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
-	assert.Equal(t, NotMember, lc.Status())
+	assert.Equal(t, proto.ServingStatus_NotMember, lc.Status())
 	resp, err := lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
 		Epoch:             1,
@@ -95,7 +97,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
-	assert.Equal(t, NotMember, lc.Status())
+	assert.Equal(t, proto.ServingStatus_NotMember, lc.Status())
 
 	fr, err := lc.Fence(&proto.FenceRequest{
 		ShardId: shard,
@@ -113,7 +115,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 1, lc.Epoch())
-	assert.Equal(t, Leader, lc.Status())
+	assert.Equal(t, proto.ServingStatus_Leader, lc.Status())
 
 	/// Write entry
 	res, err := lc.Write(&proto.WriteRequest{
@@ -150,7 +152,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	AssertProtoEqual(t, &proto.EntryId{Epoch: 1, Offset: 0}, fr2.HeadIndex)
 
 	assert.EqualValues(t, 2, lc.Epoch())
-	assert.Equal(t, Fenced, lc.Status())
+	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
 
 	// Should not accept anymore writes & reads
 
@@ -190,7 +192,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
-	assert.Equal(t, NotMember, lc.Status())
+	assert.Equal(t, proto.ServingStatus_NotMember, lc.Status())
 
 	fr, err := lc.Fence(&proto.FenceRequest{
 		ShardId: shard,
@@ -210,7 +212,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 1, lc.Epoch())
-	assert.Equal(t, Leader, lc.Status())
+	assert.Equal(t, proto.ServingStatus_Leader, lc.Status())
 
 	go func() {
 		req := <-rpc.addEntryReqs
@@ -255,7 +257,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	AssertProtoEqual(t, &proto.EntryId{Epoch: 1, Offset: 0}, fr2.HeadIndex)
 
 	assert.EqualValues(t, 2, lc.Epoch())
-	assert.Equal(t, Fenced, lc.Status())
+	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
 
 	// Should not accept anymore writes & reads
 
@@ -299,7 +301,7 @@ func TestLeaderController_EpochPersistent(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
-	assert.Equal(t, NotMember, lc.Status())
+	assert.Equal(t, proto.ServingStatus_NotMember, lc.Status())
 
 	/// Fence leader
 
@@ -311,7 +313,7 @@ func TestLeaderController_EpochPersistent(t *testing.T) {
 	AssertProtoEqual(t, &proto.EntryId{Epoch: wal.InvalidEpoch, Offset: wal.InvalidOffset}, fr2.HeadIndex)
 
 	assert.EqualValues(t, 5, lc.Epoch())
-	assert.Equal(t, Fenced, lc.Status())
+	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
 
 	assert.NoError(t, lc.Close())
 
@@ -320,7 +322,7 @@ func TestLeaderController_EpochPersistent(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 5, lc.Epoch())
-	assert.Equal(t, Fenced, lc.Status())
+	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
 	assert.NoError(t, lc.Close())
 
 	assert.NoError(t, kvFactory.Close())
@@ -349,7 +351,7 @@ func TestLeaderController_FenceEpoch(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 5, lc.Epoch())
-	assert.Equal(t, Fenced, lc.Status())
+	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
 
 	// Smaller epoch will fail
 	fr, err := lc.Fence(&proto.FenceRequest{
@@ -358,7 +360,7 @@ func TestLeaderController_FenceEpoch(t *testing.T) {
 	})
 	assert.Nil(t, fr)
 	assert.Equal(t, CodeInvalidEpoch, status.Code(err))
-	assert.Equal(t, Fenced, lc.Status())
+	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
 
 	// Same epoch will succeed
 	fr, err = lc.Fence(&proto.FenceRequest{
@@ -396,7 +398,7 @@ func TestLeaderController_BecomeLeaderEpoch(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 5, lc.Epoch())
-	assert.Equal(t, Fenced, lc.Status())
+	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
 
 	// Smaller epoch will fail
 	resp, err := lc.BecomeLeader(&proto.BecomeLeaderRequest{
@@ -449,7 +451,7 @@ func TestLeaderController_AddFollower(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 5, lc.Epoch())
-	assert.Equal(t, Fenced, lc.Status())
+	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
 
 	_, err = lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
@@ -727,6 +729,121 @@ func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
 	assert.EqualValues(t, 0, res.Gets[0].Stat.Version)
 
 	assert.NoError(t, lc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
+func TestLeaderController_Notifications(t *testing.T) {
+	var shard uint32 = 1
+
+	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
+	walFactory := wal.NewInMemoryWalFactory()
+
+	lc, _ := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
+	_, _ = lc.Fence(&proto.FenceRequest{ShardId: shard, Epoch: 1})
+	_, _ = lc.BecomeLeader(&proto.BecomeLeaderRequest{
+		ShardId:           shard,
+		Epoch:             1,
+		ReplicationFactor: 1,
+		FollowerMaps:      nil,
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	stream := newMockGetNotificationsServer(ctx)
+
+	closeCh := make(chan any)
+
+	go func() {
+		err := lc.GetNotifications(&proto.NotificationsRequest{ShardId: &shard, StartOffsetExclusive: wal.InvalidOffset}, stream)
+		assert.ErrorIs(t, err, context.Canceled)
+		close(closeCh)
+	}()
+
+	/// Write entry
+	_, _ = lc.Write(&proto.WriteRequest{
+		ShardId: &shard,
+		Puts: []*proto.PutRequest{{
+			Key:     "a",
+			Payload: []byte("value-a")}},
+	})
+
+	nb1 := <-stream.ch
+	assert.EqualValues(t, 0, nb1.Offset)
+	assert.Equal(t, 1, len(nb1.Notifications))
+	n1 := nb1.Notifications["a"]
+	assert.Equal(t, proto.NotificationType_KeyCreated, n1.Type)
+	assert.EqualValues(t, 0, *n1.Version)
+	
+	// The handler is still running waiting for more notifications
+	select {
+	case <-closeCh:
+		assert.Fail(t, "Shouldn't have been terminated")
+
+	case <-time.After(1 * time.Second):
+		// Expected to timeout
+	}
+
+	// Cancelling the stream context should close the `GetNotification()` handler
+	cancel()
+
+	select {
+	case <-closeCh:
+		// Expected to be already closed
+
+	case <-time.After(1 * time.Second):
+		assert.Fail(t, "Shouldn't have timed out")
+	}
+
+	assert.NoError(t, lc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
+func TestLeaderController_NotificationsCloseLeader(t *testing.T) {
+	var shard uint32 = 1
+
+	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
+	walFactory := wal.NewInMemoryWalFactory()
+
+	lc, _ := NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
+	_, _ = lc.Fence(&proto.FenceRequest{ShardId: shard, Epoch: 1})
+	_, _ = lc.BecomeLeader(&proto.BecomeLeaderRequest{
+		ShardId:           shard,
+		Epoch:             1,
+		ReplicationFactor: 1,
+		FollowerMaps:      nil,
+	})
+
+	stream := newMockGetNotificationsServer(context.Background())
+
+	closeCh := make(chan any)
+
+	go func() {
+		err := lc.GetNotifications(&proto.NotificationsRequest{ShardId: &shard, StartOffsetExclusive: wal.InvalidOffset}, stream)
+		assert.ErrorIs(t, err, context.Canceled)
+		close(closeCh)
+	}()
+
+	// The handler is still running waiting for more notifications
+	select {
+	case <-closeCh:
+		assert.Fail(t, "Shouldn't have been terminated")
+
+	case <-time.After(1 * time.Second):
+		// Expected to timeout
+	}
+
+	// Closing the leader should close the `GetNotification()` handler
+	assert.NoError(t, lc.Close())
+
+	select {
+	case <-closeCh:
+		// Expected to be already closed
+
+	case <-time.After(1 * time.Second):
+		assert.Fail(t, "Shouldn't have timed out")
+	}
+
 	assert.NoError(t, kvFactory.Close())
 	assert.NoError(t, walFactory.Close())
 }

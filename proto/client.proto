@@ -46,6 +46,8 @@ service OxiaClient {
    * this may be handled server-side in a proxy layer.
    */
   rpc Read(ReadRequest) returns (ReadResponse);
+
+  rpc GetNotifications(NotificationsRequest) returns (stream NotificationBatch);
 }
 
 /**
@@ -288,4 +290,29 @@ enum Status {
   KEY_NOT_FOUND = 1;
   // The existing version does not match the expected version
   UNEXPECTED_VERSION = 2;
+}
+
+enum NotificationType {
+    KeyCreated = 0;
+    KeyModified = 1;
+    KeyDeleted = 2;
+}
+
+message NotificationsRequest {
+  optional uint32 shard_id = 1;
+
+  int64 start_offset_exclusive = 2;
+}
+
+message NotificationBatch {
+  uint32 shard_id = 1;
+  int64 offset = 2;
+  fixed64 timestamp = 3;
+
+  map<string, Notification> notifications = 4;
+}
+
+message Notification {
+  NotificationType type = 1;
+  optional int64 version = 2;
 }

@@ -29,6 +29,7 @@ type internalRpcServer struct {
 	shardsDirector       ShardsDirector
 	assignmentDispatcher ShardAssignmentsDispatcher
 	grpcServer           container.GrpcServer
+	healthServer         *health.Server
 	log                  zerolog.Logger
 }
 
@@ -36,6 +37,7 @@ func newCoordinationRpcServer(grpcProvider container.GrpcProvider, bindAddress s
 	server := &internalRpcServer{
 		shardsDirector:       shardsDirector,
 		assignmentDispatcher: assignmentDispatcher,
+		healthServer:         health.NewServer(),
 		log: log.With().
 			Str("component", "coordination-rpc-server").
 			Logger(),
@@ -45,7 +47,7 @@ func newCoordinationRpcServer(grpcProvider container.GrpcProvider, bindAddress s
 	server.grpcServer, err = grpcProvider.StartGrpcServer("internal", bindAddress, func(registrar grpc.ServiceRegistrar) {
 		proto.RegisterOxiaControlServer(registrar, server)
 		proto.RegisterOxiaLogReplicationServer(registrar, server)
-		grpc_health_v1.RegisterHealthServer(registrar, health.NewServer())
+		grpc_health_v1.RegisterHealthServer(registrar, server.healthServer)
 	})
 	if err != nil {
 		return nil, err
@@ -55,6 +57,7 @@ func newCoordinationRpcServer(grpcProvider container.GrpcProvider, bindAddress s
 }
 
 func (s *internalRpcServer) Close() error {
+	s.healthServer.Shutdown()
 	return s.grpcServer.Close()
 }
 
@@ -260,6 +263,24 @@ func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapsh
 				Msg("SendSnapshot failed")
 		}
 		return err2
+	}
+}
+
+func (s *internalRpcServer) GetStatus(c context.Context, req *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
+	if follower, err := s.shardsDirector.GetFollower(req.ShardId); err != nil {
+		if !errors.Is(err, ErrorNodeIsNotFollower) {
+			return nil, err
+		}
+
+		// If we don't have a follower, fallback to checking the leader controller
+		if leader, err := s.shardsDirector.GetLeader(req.ShardId); err != nil {
+			return nil, err
+		} else {
+			return leader.GetStatus(req)
+		}
+
+	} else {
+		return follower.GetStatus(req)
 	}
 }
 
