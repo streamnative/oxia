@@ -172,6 +172,15 @@ func (p *Pebble) KeyRangeScan(lowerBound, upperBound string) KeyIterator {
 	return &PebbleIterator{pbit}
 }
 
+func (p *Pebble) RangeScan(lowerBound, upperBound string) KeyValueIterator {
+	pbit := p.db.NewIter(&pebble.IterOptions{
+		LowerBound: []byte(lowerBound),
+		UpperBound: []byte(upperBound),
+	})
+	pbit.SeekGE([]byte(lowerBound))
+	return &PebbleIterator{pbit}
+}
+
 func (p *Pebble) Snapshot() (Snapshot, error) {
 	return newPebbleSnapshot(p)
 }
@@ -239,6 +248,10 @@ func (p *PebbleIterator) Key() string {
 
 func (p *PebbleIterator) Next() bool {
 	return p.pi.Next()
+}
+
+func (p *PebbleIterator) Value() ([]byte, error) {
+	return p.pi.ValueAndErr()
 }
 
 /// Snapshot Iterator wrapper methods

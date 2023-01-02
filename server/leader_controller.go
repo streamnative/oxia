@@ -1,12 +1,15 @@
 package server
 
 import (
+	"context"
+	"fmt"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
 	pb "google.golang.org/protobuf/proto"
 	"io"
+	"oxia/common"
 	"oxia/proto"
 	"oxia/server/kv"
 	"oxia/server/wal"
@@ -28,18 +31,22 @@ type LeaderController interface {
 
 	AddFollower(request *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error)
 
+	GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error
+
+	GetStatus(request *proto.GetStatusRequest) (*proto.GetStatusResponse, error)
+
 	// Epoch The current epoch of the leader
 	Epoch() int64
 
 	// Status The Status of the leader
-	Status() Status
+	Status() proto.ServingStatus
 }
 
 type leaderController struct {
 	sync.Mutex
 
 	shardId           uint32
-	status            Status
+	status            proto.ServingStatus
 	epoch             int64
 	replicationFactor uint32
 	quorumAckTracker  QuorumAckTracker
@@ -50,6 +57,8 @@ type leaderController struct {
 	// truncate the followers.
 	leaderElectionHeadIndex *proto.EntryId
 
+	ctx       context.Context
+	cancel    context.CancelFunc
 	wal       wal.Wal
 	db        kv.DB
 	rpcClient ReplicationRpcProvider
@@ -58,7 +67,7 @@ type leaderController struct {
 
 func NewLeaderController(shardId uint32, rpcClient ReplicationRpcProvider, walFactory wal.WalFactory, kvFactory kv.KVFactory) (LeaderController, error) {
 	lc := &leaderController{
-		status:           NotMember,
+		status:           proto.ServingStatus_NotMember,
 		shardId:          shardId,
 		quorumAckTracker: nil,
 		rpcClient:        rpcClient,
@@ -69,6 +78,8 @@ func NewLeaderController(shardId uint32, rpcClient ReplicationRpcProvider, walFa
 			Uint32("shard", shardId).
 			Logger(),
 	}
+
+	lc.ctx, lc.cancel = context.WithCancel(context.Background())
 
 	var err error
 	if lc.wal, err = walFactory.NewWal(shardId); err != nil {
@@ -84,7 +95,7 @@ func NewLeaderController(shardId uint32, rpcClient ReplicationRpcProvider, walFa
 	}
 
 	if lc.epoch != wal.InvalidEpoch {
-		lc.status = Fenced
+		lc.status = proto.ServingStatus_Fenced
 	}
 
 	lc.log = lc.log.With().Int64("epoch", lc.epoch).Logger()
@@ -93,7 +104,7 @@ func NewLeaderController(shardId uint32, rpcClient ReplicationRpcProvider, walFa
 	return lc, nil
 }
 
-func (lc *leaderController) Status() Status {
+func (lc *leaderController) Status() proto.ServingStatus {
 	lc.Lock()
 	defer lc.Unlock()
 	return lc.status
@@ -125,7 +136,7 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 
 	if req.Epoch < lc.epoch {
 		return nil, ErrorInvalidEpoch
-	} else if req.Epoch == lc.epoch && lc.status != Fenced {
+	} else if req.Epoch == lc.epoch && lc.status != proto.ServingStatus_Fenced {
 		// It's OK to receive a duplicate Fence request, for the same epoch, as long as we haven't moved
 		// out of the Fenced state for that epoch
 		lc.log.Warn().
@@ -142,7 +153,7 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 
 	lc.epoch = req.GetEpoch()
 	lc.log = lc.log.With().Int64("epoch", lc.epoch).Logger()
-	lc.status = Fenced
+	lc.status = proto.ServingStatus_Fenced
 	lc.replicationFactor = 0
 
 	if lc.quorumAckTracker != nil {
@@ -202,7 +213,7 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 	lc.Lock()
 	defer lc.Unlock()
 
-	if lc.status != Fenced {
+	if lc.status != proto.ServingStatus_Fenced {
 		return nil, ErrorInvalidStatus
 	}
 
@@ -210,7 +221,7 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 		return nil, ErrorInvalidEpoch
 	}
 
-	lc.status = Leader
+	lc.status = proto.ServingStatus_Leader
 	lc.replicationFactor = req.GetReplicationFactor()
 	lc.followers = make(map[string]FollowerCursor)
 
@@ -260,7 +271,7 @@ func (lc *leaderController) AddFollower(req *proto.AddFollowerRequest) (*proto.A
 		return nil, ErrorInvalidEpoch
 	}
 
-	if lc.status != Leader {
+	if lc.status != proto.ServingStatus_Leader {
 		return nil, errors.Wrap(ErrorInvalidStatus, "Node is not leader")
 	}
 
@@ -408,7 +419,7 @@ func (lc *leaderController) Read(request *proto.ReadRequest) (*proto.ReadRespons
 	{
 		lc.Lock()
 		defer lc.Unlock()
-		if err := checkStatus(Leader, lc.status); err != nil {
+		if err := checkStatus(proto.ServingStatus_Leader, lc.status); err != nil {
 			return nil, err
 		}
 	}
@@ -433,7 +444,6 @@ func (lc *leaderController) Write(request *proto.WriteRequest) (*proto.WriteResp
 	if err != nil {
 		return nil, errors.Wrap(err, "oxia: failed to append to wal")
 	}
-	lc.quorumAckTracker.AdvanceHeadIndex(newOffset)
 
 	return lc.quorumAckTracker.WaitForCommitIndex(newOffset, func() (*proto.WriteResponse, error) {
 		return lc.db.ProcessWrite(request, newOffset, timestamp)
@@ -444,7 +454,7 @@ func (lc *leaderController) appendToWal(request *proto.WriteRequest, timestamp u
 	lc.Lock()
 	defer lc.Unlock()
 
-	if err := checkStatus(Leader, lc.status); err != nil {
+	if err := checkStatus(proto.ServingStatus_Leader, lc.status); err != nil {
 		return wal.InvalidOffset, err
 	}
 
@@ -464,7 +474,60 @@ func (lc *leaderController) appendToWal(request *proto.WriteRequest, timestamp u
 		return wal.InvalidOffset, err
 	}
 
+	lc.quorumAckTracker.AdvanceHeadIndex(newOffset)
+
 	return newOffset, nil
+}
+
+func (lc *leaderController) GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
+	// Create a context for handling this stream
+	ctx, cancel := context.WithCancel(stream.Context())
+
+	go common.DoWithLabels(map[string]string{
+		"oxia":  "dispatch-notifications",
+		"shard": fmt.Sprintf("%d", lc.shardId),
+		"peer":  common.GetPeer(stream.Context()),
+	}, func() {
+		if err := lc.dispatchNotifications(ctx, req, stream); err != nil && !errors.Is(err, context.Canceled) {
+			lc.log.Warn().Err(err).
+				Str("peer", common.GetPeer(stream.Context())).
+				Msg("Failed to dispatch notifications")
+			cancel()
+		}
+	})
+
+	select {
+	case <-lc.ctx.Done():
+		// Leader is getting closed
+		cancel()
+		return lc.ctx.Err()
+
+	case <-stream.Context().Done():
+		// The stream is getting closed
+		cancel()
+		return stream.Context().Err()
+	}
+}
+
+func (lc *leaderController) dispatchNotifications(ctx context.Context, req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
+	offsetInclusive := req.StartOffsetExclusive + 1
+
+	for ctx.Err() == nil {
+		notifications, err := lc.db.ReadNextNotifications(ctx, offsetInclusive)
+		if err != nil {
+			return err
+		}
+
+		for _, n := range notifications {
+			if err := stream.Send(n); err != nil {
+				return err
+			}
+		}
+
+		offsetInclusive += int64(len(notifications))
+	}
+
+	return ctx.Err()
 }
 
 func (lc *leaderController) Close() error {
@@ -473,7 +536,8 @@ func (lc *leaderController) Close() error {
 
 	lc.log.Info().Msg("Closing leader controller")
 
-	lc.status = NotMember
+	lc.status = proto.ServingStatus_NotMember
+	lc.cancel()
 
 	var err error
 	if lc.quorumAckTracker != nil {
@@ -506,4 +570,14 @@ func getLastEntryIdInWal(wal wal.Wal) (*proto.EntryId, error) {
 		return nil, err
 	}
 	return &proto.EntryId{Epoch: entry.Epoch, Offset: entry.Offset}, nil
+}
+
+func (lc *leaderController) GetStatus(request *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
+	lc.Lock()
+	defer lc.Unlock()
+
+	return &proto.GetStatusResponse{
+		Epoch:  lc.epoch,
+		Status: lc.status,
+	}, nil
 }
