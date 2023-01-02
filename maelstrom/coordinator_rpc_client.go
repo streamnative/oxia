@@ -209,8 +209,6 @@ func (m *maelstromHealthCheckClientStream) Recv() (*grpc_health_v1.HealthCheckRe
 		return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
 	}
 
-	select {
-	case <-m.ctx.Done():
-		return nil, m.ctx.Err()
-	}
+	<-m.ctx.Done()
+	return nil, m.ctx.Err()
 }

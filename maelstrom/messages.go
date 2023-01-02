@@ -14,35 +14,35 @@ type MsgType string
 
 const (
 	MsgTypeInit  MsgType = "init"
-	MsgTypeError         = "error"
+	MsgTypeError MsgType = "error"
 
 	// Maelstrom "lin-kv" workload messages
 
-	MsgTypeWrite   = "write"
-	MsgTypeWriteOk = "write_ok"
-	MsgTypeRead    = "read"
-	MsgTypeReadOk  = "read_ok"
-	MsgTypeCas     = "cas"
-	MsgTypeCasOk   = "cas_ok"
+	MsgTypeWrite   MsgType = "write"
+	MsgTypeWriteOk MsgType = "write_ok"
+	MsgTypeRead    MsgType = "read"
+	MsgTypeReadOk  MsgType = "read_ok"
+	MsgTypeCas     MsgType = "cas"
+	MsgTypeCasOk   MsgType = "cas_ok"
 
 	/* Oxia specific messages */
 
-	MsgTypeFenceRequest         = "fence-req"
-	MsgTypeFenceResponse        = "fence-resp"
-	MsgTypeTruncateRequest      = "truncate-req"
-	MsgTypeTruncateResponse     = "truncate-resp"
-	MsgTypeBecomeLeaderRequest  = "leader-req"
-	MsgTypeBecomeLeaderResponse = "leader-resp"
-	MsgTypeAddEntryRequest      = "add-entry"
-	MsgTypeAddEntryResponse     = "ack"
-	MsgTypeAddFollowerRequest   = "add-follower-req"
-	MsgTypeAddFollowerResponse  = "add-follower-resp"
-	MsgTypeGetStatusRequest     = "get-status"
-	MsgTypeGetStatusResponse    = "status"
-	MsgTypeHealthCheck          = "health"
-	MsgTypeHealthCheckOk        = "health-ok"
+	MsgTypeFenceRequest         MsgType = "fence-req"
+	MsgTypeFenceResponse        MsgType = "fence-resp"
+	MsgTypeTruncateRequest      MsgType = "truncate-req"
+	MsgTypeTruncateResponse     MsgType = "truncate-resp"
+	MsgTypeBecomeLeaderRequest  MsgType = "leader-req"
+	MsgTypeBecomeLeaderResponse MsgType = "leader-resp"
+	MsgTypeAddEntryRequest      MsgType = "add-entry"
+	MsgTypeAddEntryResponse     MsgType = "ack"
+	MsgTypeAddFollowerRequest   MsgType = "add-follower-req"
+	MsgTypeAddFollowerResponse  MsgType = "add-follower-resp"
+	MsgTypeGetStatusRequest     MsgType = "get-status"
+	MsgTypeGetStatusResponse    MsgType = "status"
+	MsgTypeHealthCheck          MsgType = "health"
+	MsgTypeHealthCheckOk        MsgType = "health-ok"
 
-	MsgTypeShardAssignmentsResponse = "shards"
+	MsgTypeShardAssignmentsResponse MsgType = "shards"
 )
 
 var (
