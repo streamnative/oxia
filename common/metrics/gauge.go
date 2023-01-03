@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"context"
+	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel/metric/instrument"
 	"go.opentelemetry.io/otel/metric/unit"
 )
@@ -15,8 +16,11 @@ func NewGauge(name string, description string, unit unit.Unit, labels map[string
 
 	attrs := getAttrs(labels)
 
-	meter.RegisterCallback([]instrument.Asynchronous{g}, func(ctx context.Context) {
+	err = meter.RegisterCallback([]instrument.Asynchronous{g}, func(ctx context.Context) {
 		value := callback()
 		g.Observe(ctx, value, attrs...)
 	})
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to register gauge")
+	}
 }

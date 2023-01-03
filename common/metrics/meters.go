@@ -28,19 +28,19 @@ func getAttrs(labels map[string]any) (attrs []attribute.KeyValue) {
 	for k, v := range labels {
 		key := attribute.Key(k)
 		var attr attribute.KeyValue
-		switch v.(type) {
+		switch t := v.(type) {
 		case uint32:
-			attr = key.Int64(int64(v.(uint32)))
+			attr = key.Int64(int64(t))
 		case int64:
-			attr = key.Int64(v.(int64))
+			attr = key.Int64(t)
 		case int:
-			attr = key.Int(v.(int))
+			attr = key.Int(t)
 		case float64:
-			attr = key.Float64(v.(float64))
+			attr = key.Float64(t)
 		case bool:
-			attr = key.Bool(v.(bool))
+			attr = key.Bool(t)
 		case string:
-			attr = key.String(v.(string))
+			attr = key.String(t)
 
 		default:
 			log.Fatal().Msgf("Invalid label type %#v", v)
