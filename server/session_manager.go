@@ -32,6 +32,9 @@ func SessionKey(sessionId SessionId) string {
 }
 
 func KeyToId(key string) (SessionId, error) {
+	if len(key) < len(KeyPrefix)+2 || KeyPrefix != key[:len(KeyPrefix)] || "/" != key[len(key)-1:] {
+		return 0, errors.New("invalid sessionId key " + key)
+	}
 	s := key[len(KeyPrefix):]
 	s = s[:len(s)-1]
 	longInt, err := strconv.ParseUint(s, 10, 64)
@@ -44,7 +47,8 @@ func KeyToId(key string) (SessionId, error) {
 // PutDecorator performs two operations on Put requests that have a session ID.
 // First, it checks whether the session is alive. If it is not, it errors out.
 // Then it adds an "index" entry as the child of the session key.
-var PutDecorator = &putDecorator{}
+var PutDecorator kv.PutCustomizer = &putDecorator{}
+
 var versionNotExists int64 = -1
 
 type putDecorator struct{}
@@ -119,12 +123,6 @@ func NewSessionManager(controllerSupplier LeaderControllerSupplier) SessionManag
 	}
 }
 
-func SingleLeaderController(controller *LeaderController) LeaderControllerSupplier {
-	return func(_ uint32) (LeaderController, error) {
-		return *controller, nil
-	}
-}
-
 func (sm *sessionManager) CreateSession(request *proto.CreateSessionRequest) (*proto.CreateSessionResponse, error) {
 	timeout := time.Duration(request.SessionTimeoutMs) * time.Millisecond
 	if timeout > MaxTimeout {
@@ -132,6 +130,9 @@ func (sm *sessionManager) CreateSession(request *proto.CreateSessionRequest) (*p
 	}
 	sm.Lock()
 	defer sm.Unlock()
+	if _, initialized := sm.sessionCounters[request.ShardId]; !initialized {
+		return nil, errors.Errorf("session management for shard %d not initialized", request.ShardId)
+	}
 	sm.sessionCounters[request.ShardId]++
 
 	sessionId := (SessionId(request.ShardId) << 32) + sm.sessionCounters[request.ShardId]
@@ -362,16 +363,14 @@ func (sm *sessionManager) startSession(sessionId SessionId, shardId uint32, time
 		heartbeatCh: make(chan *proto.Heartbeat, 1),
 		log:         sm.log.With().Uint64("session-id", uint64(sessionId)).Logger(),
 	}
-	go s.waitForHeartbeats(sessionId)
+	go s.waitForHeartbeats()
 	return s
 
 }
 
-func (s *session) waitForHeartbeats(sessionId SessionId) {
+func (s *session) waitForHeartbeats() {
 	s.log.Debug().Msg("Waiting for heartbeats")
-	s.Lock()
 	timeout := s.timeout
-	s.Unlock()
 	for {
 		select {
 		case heartbeat := <-s.heartbeatCh:
@@ -380,14 +379,12 @@ func (s *session) waitForHeartbeats(sessionId SessionId) {
 				return
 			}
 		case <-time.After(timeout):
-			s.sm.log.Info().
-				Uint64("session-id", uint64(sessionId)).
+			s.log.Info().
 				Msg("Session timed out")
 
 			err := s.close(false)
 			if err != nil {
-				s.sm.log.Error().Err(err).
-					Uint64("session-id", uint64(sessionId)).
+				s.log.Error().Err(err).
 					Msg("Failed to close session")
 			}
 		}

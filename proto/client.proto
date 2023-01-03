@@ -193,7 +193,7 @@ message PutRequest {
   optional int64 expected_version = 3;
   // Optional. Associate the new value with the session (i.e. ephemeral value).
   // When the session times out or is closed, the key-payload pair will be removed
-  optional uint32 session_id = 4;
+  optional uint64 session_id = 4;
 }
 
 /**
