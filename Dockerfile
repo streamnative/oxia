@@ -12,8 +12,6 @@ ADD . /oxia-src
 RUN cd /oxia-src \
     && make
 
-
-
 FROM alpine:3.16.1
 
 RUN mkdir /oxia

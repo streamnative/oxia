@@ -2,15 +2,15 @@ package kv
 
 import (
 	"github.com/stretchr/testify/assert"
+	pb "google.golang.org/protobuf/proto"
 	"oxia/proto"
 	"oxia/server/wal"
 	"testing"
-
-	pb "google.golang.org/protobuf/proto"
 )
 
 func TestDBSimple(t *testing.T) {
-	factory := NewPebbleKVFactory(testKVOptions)
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	db, err := NewDB(1, factory)
 	assert.NoError(t, err)
 
@@ -62,7 +62,7 @@ func TestDBSimple(t *testing.T) {
 		},
 	}
 
-	res, err := db.ProcessWrite(req, wal.InvalidOffset, nil)
+	res, err := db.ProcessWrite(req, wal.InvalidOffset, 0, nil)
 	assert.NoError(t, err)
 
 	assert.Equal(t, 5, len(res.Puts))
@@ -146,7 +146,8 @@ func TestDBSimple(t *testing.T) {
 }
 
 func TestDBSameKeyMutations(t *testing.T) {
-	factory := NewPebbleKVFactory(testKVOptions)
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	db, err := NewDB(1, factory)
 	assert.NoError(t, err)
 
@@ -160,13 +161,16 @@ func TestDBSameKeyMutations(t *testing.T) {
 		},
 	}
 
-	writeRes, err := db.ProcessWrite(writeReq, wal.InvalidOffset, nil)
+	t0 := now()
+	writeRes, err := db.ProcessWrite(writeReq, wal.InvalidOffset, t0, nil)
 	assert.NoError(t, err)
 
 	assert.Equal(t, 1, len(writeRes.Puts))
 	r0 := writeRes.Puts[0]
 	assert.Equal(t, proto.Status_OK, r0.Status)
 	assert.EqualValues(t, 0, r0.Stat.Version)
+	assert.Equal(t, t0, r0.Stat.CreatedTimestamp)
+	assert.Equal(t, t0, r0.Stat.ModifiedTimestamp)
 
 	/// Second batch
 
@@ -191,13 +195,16 @@ func TestDBSameKeyMutations(t *testing.T) {
 		},
 	}
 
-	writeRes, err = db.ProcessWrite(writeReq, wal.InvalidOffset, nil)
+	t1 := now()
+	writeRes, err = db.ProcessWrite(writeReq, wal.InvalidOffset, t1, nil)
 	assert.NoError(t, err)
 
 	assert.Equal(t, 2, len(writeRes.Puts))
 	r0 = writeRes.Puts[0]
 	assert.Equal(t, proto.Status_OK, r0.Status)
 	assert.EqualValues(t, 1, r0.Stat.Version)
+	assert.Equal(t, t0, r0.Stat.CreatedTimestamp)
+	assert.Equal(t, t1, r0.Stat.ModifiedTimestamp)
 
 	r1 := writeRes.Puts[1]
 	assert.Equal(t, proto.Status_UNEXPECTED_VERSION, r1.Status)
@@ -230,11 +237,15 @@ func TestDBSameKeyMutations(t *testing.T) {
 	assert.Equal(t, proto.Status_OK, r3.Status)
 	assert.EqualValues(t, 1, r3.Stat.Version)
 	assert.Equal(t, "v1", string(r3.Payload))
+	assert.Equal(t, t0, r3.Stat.CreatedTimestamp)
+	assert.Equal(t, t1, r3.Stat.ModifiedTimestamp)
 
 	r4 := readRes.Gets[1]
 	assert.Equal(t, proto.Status_OK, r4.Status)
 	assert.EqualValues(t, 1, r4.Stat.Version)
 	assert.Nil(t, r4.Payload)
+	assert.Equal(t, t0, r4.Stat.CreatedTimestamp)
+	assert.Equal(t, t1, r4.Stat.ModifiedTimestamp)
 
 	r5 := readRes.Gets[2]
 	assert.Equal(t, proto.Status_KEY_NOT_FOUND, r5.Status)
@@ -246,7 +257,8 @@ func TestDBSameKeyMutations(t *testing.T) {
 }
 
 func TestDBList(t *testing.T) {
-	factory := NewPebbleKVFactory(testKVOptions)
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	db, err := NewDB(1, factory)
 	assert.NoError(t, err)
 
@@ -269,7 +281,7 @@ func TestDBList(t *testing.T) {
 		}},
 	}
 
-	writeRes, err := db.ProcessWrite(writeReq, wal.InvalidOffset, nil)
+	writeRes, err := db.ProcessWrite(writeReq, wal.InvalidOffset, now(), nil)
 	assert.NoError(t, err)
 
 	readReq := &proto.ReadRequest{
@@ -314,7 +326,8 @@ func TestDBList(t *testing.T) {
 }
 
 func TestDBDeleteRange(t *testing.T) {
-	factory := NewPebbleKVFactory(testKVOptions)
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	db, err := NewDB(1, factory)
 	assert.NoError(t, err)
 
@@ -337,7 +350,7 @@ func TestDBDeleteRange(t *testing.T) {
 		}},
 	}
 
-	_, err = db.ProcessWrite(writeReq, wal.InvalidOffset, nil)
+	_, err = db.ProcessWrite(writeReq, wal.InvalidOffset, 0, nil)
 	assert.NoError(t, err)
 
 	writeReq = &proto.WriteRequest{
@@ -350,7 +363,7 @@ func TestDBDeleteRange(t *testing.T) {
 		}},
 	}
 
-	writeRes, err := db.ProcessWrite(writeReq, wal.InvalidOffset, nil)
+	writeRes, err := db.ProcessWrite(writeReq, wal.InvalidOffset, 0, nil)
 	assert.NoError(t, err)
 
 	readReq := &proto.ReadRequest{
@@ -382,7 +395,8 @@ func TestDBDeleteRange(t *testing.T) {
 func TestDB_ReadCommitIndex(t *testing.T) {
 	offset := int64(13)
 
-	factory := NewPebbleKVFactory(testKVOptions)
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	db, err := NewDB(1, factory)
 	assert.NoError(t, err)
 
@@ -396,7 +410,7 @@ func TestDB_ReadCommitIndex(t *testing.T) {
 			Payload: []byte("a"),
 		}},
 	}
-	_, err = db.ProcessWrite(writeReq, offset, nil)
+	_, err = db.ProcessWrite(writeReq, offset, 0, nil)
 	assert.NoError(t, err)
 
 	commitIndex, err = db.ReadCommitIndex()
@@ -408,7 +422,8 @@ func TestDB_ReadCommitIndex(t *testing.T) {
 }
 
 func TestDb_UpdateEpoch(t *testing.T) {
-	factory := NewPebbleKVFactory(testKVOptions)
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	db, err := NewDB(1, factory)
 	assert.NoError(t, err)
 

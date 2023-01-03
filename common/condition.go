@@ -1,0 +1,97 @@
+package common
+
+import (
+	"context"
+	"sync"
+)
+
+// ConditionContext implements a condition variable, a rendezvous point
+// for goroutines waiting for or announcing the occurrence
+// of an event.
+//
+// This version of condition takes a `context.Context` in the `Wait()`
+// method, to allow for timeouts and cancellations of the operation.
+type ConditionContext interface {
+	// Wait atomically unlocks the locker and suspends execution
+	// of the calling goroutine. After later resuming execution,
+	// Wait locks c.L before returning. Unlike in other systems,
+	// Wait cannot return unless awoken by Broadcast or Signal.
+	//
+	// Because c.L is not locked when Wait first resumes, the caller
+	// typically cannot assume that the condition is true when
+	// Wait returns. Instead, the caller should Wait in a loop:
+	//
+	//	lock.Lock()
+	//	for !condition() {
+	//	    c.Wait(ctx)
+	//	}
+	//	... make use of condition ...
+	//	lock.Unlock()
+	Wait(ctx context.Context) error
+
+	// Signal wakes one goroutine waiting on c, if there is any.
+	//
+	// It is allowed but not required for the caller to hold c.L
+	// during the call.
+	//
+	// Signal() does not affect goroutine scheduling priority; if other goroutines
+	// are attempting to lock c.L, they may be awoken before a "waiting" goroutine.
+	Signal()
+
+	// Broadcast wakes all goroutines waiting on c.
+	//
+	// It is allowed but not required for the caller to hold c.L
+	// during the call.
+	Broadcast()
+}
+
+type conditionContext struct {
+	sync.RWMutex
+	locker sync.Locker
+
+	ch chan any
+}
+
+func NewConditionContext(locker sync.Locker) ConditionContext {
+	return &conditionContext{
+		locker: locker,
+		ch:     make(chan any),
+	}
+}
+
+func (c *conditionContext) Wait(ctx context.Context) error {
+	c.RLock()
+	ch := c.ch
+	c.RUnlock()
+
+	// While we're waiting on the condition, the mutex is unlocked and
+	// gets relocked just after the wait is done
+	c.locker.Unlock()
+	defer c.locker.Lock()
+	select {
+	case <-ch:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (c *conditionContext) Signal() {
+	c.RLock()
+	defer c.RLock()
+
+	// Signal to 1 single waiter, if any is there
+	select {
+	case c.ch <- struct{}{}:
+	default:
+	}
+}
+
+func (c *conditionContext) Broadcast() {
+	c.Lock()
+	defer c.Unlock()
+
+	// Broadcast closes the channel to wake every waiter
+	close(c.ch)
+	c.ch = make(chan any)
+}

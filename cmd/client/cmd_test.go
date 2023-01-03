@@ -18,14 +18,15 @@ import (
 func TestClientCmd(t *testing.T) {
 	zerolog.SetGlobalLevel(zerolog.Disabled)
 	kvOptions := kv.KVFactoryOptions{InMemory: true}
-	kvFactory := kv.NewPebbleKVFactory(&kvOptions)
+	kvFactory, err := kv.NewPebbleKVFactory(&kvOptions)
+	assert.NoError(t, err)
 	defer kvFactory.Close()
 	walFactory := wal.NewInMemoryWalFactory()
 	defer walFactory.Close()
-	server, err := standalone.NewStandaloneRpcServer(0, "localhost", 1, walFactory, kvFactory)
+	server, err := standalone.NewStandaloneRpcServer("localhost:0", "localhost", 1, walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	serviceAddress := fmt.Sprintf("localhost:%d", server.Container.Port())
+	serviceAddress := fmt.Sprintf("localhost:%d", server.Port())
 
 	stdin := bytes.NewBufferString("")
 	stdout := bytes.NewBufferString("")

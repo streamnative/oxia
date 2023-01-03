@@ -7,18 +7,22 @@ import (
 )
 
 var (
-	ErrorEntryNotFound       = errors.New("oxia: entry not found")
-	ErrorReaderClosed        = errors.New("oxia: reader already closed")
-	InvalidEpoch       int64 = -1
-	InvalidOffset      int64 = -1
+	ErrorEntryNotFound     = errors.New("oxia: entry not found")
+	ErrorReaderClosed      = errors.New("oxia: reader already closed")
+	ErrorInvalidNextOffset = errors.New("oxia: invalid next offset in wal")
+
+	InvalidEpoch  int64 = -1
+	InvalidOffset int64 = -1
 )
 
 type WalFactoryOptions struct {
-	LogDir string
+	LogDir   string
+	InMemory bool
 }
 
 var DefaultWalFactoryOptions = &WalFactoryOptions{
-	LogDir: "data/wal",
+	LogDir:   "data/wal",
+	InMemory: false,
 }
 
 type WalFactory interface {
@@ -40,8 +44,13 @@ type Wal interface {
 	io.Closer
 	// Append writes an entry to the end of the log
 	Append(entry *proto.LogEntry) error
+
+	// Trim removes all the entries that are before firstOffset
+	Trim(firstOffset int64) error
+
 	// TruncateLog removes entries from the end of the log that have an ID greater than lastSafeEntry.
 	TruncateLog(lastSafeEntry int64) (int64, error)
+
 	// NewReader returns a new WalReader to traverse the log from the entry after `after` towards the log end
 	NewReader(after int64) (WalReader, error)
 	// NewReverseReader returns a new WalReader to traverse the log from the last entry towards the beginning
@@ -50,4 +59,11 @@ type Wal interface {
 	// LastOffset Return the offset of the last entry committed to the WAL
 	// Return InvalidOffset if the WAL is empty
 	LastOffset() int64
+
+	// FirstOffset Return the offset of the first valid entry that is present in the WAL
+	// Return InvalidOffset if the WAL is empty
+	FirstOffset() int64
+
+	// Clear removes all the entries in the WAL
+	Clear() error
 }

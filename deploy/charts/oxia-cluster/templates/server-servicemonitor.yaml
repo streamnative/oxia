@@ -1,0 +1,14 @@
+{{- if .Values.serviceMonitor }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:
+    {{- include "oxia-cluster.server.labels" . | nindent 4 }}
+  name: {{ .Release.Name }}
+spec:
+  endpoints:
+    - port: metrics
+  selector:
+    matchLabels:
+      {{- include "oxia-cluster.server.selectorLabels" . | nindent 6 }}
+{{- end }}

@@ -7,14 +7,15 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"oxia/common/container"
 	"testing"
 )
 
 func TestInternalHealthCheck(t *testing.T) {
-	server, err := newCoordinationRpcServer(0, nil, NewShardAssignmentDispatcher())
+	server, err := newCoordinationRpcServer(container.Default, "localhost:0", nil, NewShardAssignmentDispatcher())
 	assert.NoError(t, err)
 
-	target := fmt.Sprintf("localhost:%d", server.container.Port())
+	target := fmt.Sprintf("localhost:%d", server.grpcServer.Port())
 	cnx, err := grpc.Dial(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	assert.NoError(t, err)
 

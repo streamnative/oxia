@@ -1,0 +1,22 @@
+
+
+digraph StateDiagram {
+    rankdir=LR;
+
+    Start [shape = "point"]
+    Start -> NotMember
+    NotMember -> Fenced [label = "Fence"]
+
+    Fenced -> Fenced [label = "Fence"];
+    Fenced -> Follower [label = "AddEntries"]
+    Fenced -> Follower [label = "Truncate"]
+
+    Follower -> Fenced [label = "Fence"]
+    Leader -> Fenced [label = "Fence"]
+    Leader -> Leader [label = "AddFollower"]
+    Follower -> Follower [label = "AddEntries"]
+    Fenced -> Leader [label = "BecomeLeader"]
+
+    Fenced -> Follower [label = "Snapshot"]
+    Follower -> Follower [label = "Snapshot"]
+}

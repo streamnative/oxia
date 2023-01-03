@@ -27,15 +27,3 @@ make docker
 [rep]: tlaplus/REPLICATION_PROTOCOL.md
 [protoc]: https://github.com/protocolbuffers/protobuf#protocol-compiler-installation
 [grpc]: https://grpc.io/docs/languages/go/quickstart/
-
-## Deploy
-
-### CRD
-
-```shell
-oxia operator crd install
-```
-
-```shell
-docker run -v ~/.kube:/root/.kube oxia:latest oxia operator crd install
-```

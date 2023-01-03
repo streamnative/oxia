@@ -13,7 +13,7 @@ func TestFollowerCursor(t *testing.T) {
 	var shard uint32 = 2
 
 	stream := newMockRpcClient()
-	ackTracker := NewQuorumAckTracker(3, wal.InvalidOffset)
+	ackTracker := NewQuorumAckTracker(3, wal.InvalidOffset, wal.InvalidOffset)
 	wf := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 	w, err := wf.NewWal(shard)
 	assert.NoError(t, err)
@@ -21,6 +21,7 @@ func TestFollowerCursor(t *testing.T) {
 	fc, err := NewFollowerCursor("f1", epoch, shard, stream, ackTracker, w, wal.InvalidOffset)
 	assert.NoError(t, err)
 
+	assert.Equal(t, shard, fc.ShardId())
 	assert.Equal(t, wal.InvalidOffset, fc.LastPushed())
 	assert.Equal(t, wal.InvalidOffset, fc.AckIndex())
 
@@ -48,7 +49,6 @@ func TestFollowerCursor(t *testing.T) {
 	assert.Equal(t, wal.InvalidOffset, req.CommitIndex)
 
 	stream.addEntryResps <- &proto.AddEntryResponse{
-		Epoch:  1,
 		Offset: 0,
 	}
 

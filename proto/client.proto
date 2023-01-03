@@ -47,6 +47,8 @@ service OxiaClient {
    */
   rpc Read(ReadRequest) returns (ReadResponse);
 
+  rpc GetNotifications(NotificationsRequest) returns (stream NotificationBatch);
+
   /*
    * Creates a new client session. Sessions are kept alive by regularly sending heartbeats via the KeepAlive rpc.
    */
@@ -120,8 +122,8 @@ message Int32HashRange {
   // The minimum inclusive hash that the shard can contain
   fixed32 min_hash_inclusive = 1;
 
-  // The maximum exclusive hash that the shard can contain
-  fixed32 max_hash_exclusive = 2;
+  // The maximum inclusive hash that the shard can contain
+  fixed32 max_hash_inclusive = 2;
 }
 
 /**
@@ -330,3 +332,28 @@ message CloseSessionRequest {
 }
 
 message CloseSessionResponse {}
+
+enum NotificationType {
+    KeyCreated = 0;
+    KeyModified = 1;
+    KeyDeleted = 2;
+}
+
+message NotificationsRequest {
+  optional uint32 shard_id = 1;
+
+  int64 start_offset_exclusive = 2;
+}
+
+message NotificationBatch {
+  uint32 shard_id = 1;
+  int64 offset = 2;
+  fixed64 timestamp = 3;
+
+  map<string, Notification> notifications = 4;
+}
+
+message Notification {
+  NotificationType type = 1;
+  optional int64 version = 2;
+}

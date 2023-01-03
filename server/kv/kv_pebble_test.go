@@ -2,6 +2,9 @@ package kv
 
 import (
 	"bytes"
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 )
 import "github.com/stretchr/testify/assert"
@@ -12,7 +15,8 @@ var testKVOptions = &KVFactoryOptions{
 }
 
 func TestPebbbleSimple(t *testing.T) {
-	factory := NewPebbleKVFactory(testKVOptions)
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	kv, err := factory.NewKV(1)
 	assert.NoError(t, err)
 
@@ -76,8 +80,9 @@ func TestPebbbleSimple(t *testing.T) {
 	assert.NoError(t, factory.Close())
 }
 
-func TestPebbbleRangeScan(t *testing.T) {
-	factory := NewPebbleKVFactory(testKVOptions)
+func TestPebbbleKeyRangeScan(t *testing.T) {
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	kv, err := factory.NewKV(1)
 	assert.NoError(t, err)
 
@@ -112,8 +117,9 @@ func TestPebbbleRangeScan(t *testing.T) {
 	assert.NoError(t, factory.Close())
 }
 
-func TestPebbbleSnapshot(t *testing.T) {
-	factory := NewPebbleKVFactory(testKVOptions)
+func TestPebbleRangeScan(t *testing.T) {
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	kv, err := factory.NewKV(1)
 	assert.NoError(t, err)
 
@@ -125,45 +131,29 @@ func TestPebbbleSnapshot(t *testing.T) {
 	assert.NoError(t, wb.Commit())
 	assert.NoError(t, wb.Close())
 
-	it := kv.Snapshot()
-
-	// Delete / modify some existing keys
-	wb = kv.NewWriteBatch()
-	assert.NoError(t, wb.Put("/root/a", []byte("aa")))
-	assert.NoError(t, wb.Delete("/root/b"))
-	assert.NoError(t, wb.Commit())
-	assert.NoError(t, wb.Close())
+	it := kv.RangeScan("/root/a", "/root/c")
 
 	assert.True(t, it.Valid())
 	assert.Equal(t, "/root/a", it.Key())
-	v, err := it.Value()
+	value, err := it.Value()
 	assert.NoError(t, err)
-	assert.Equal(t, "a", string(v))
+	assert.Equal(t, "a", string(value))
 	assert.True(t, it.Next())
 
 	assert.True(t, it.Valid())
 	assert.Equal(t, "/root/b", it.Key())
-	v, err = it.Value()
+	value, err = it.Value()
 	assert.NoError(t, err)
-	assert.Equal(t, "b", string(v))
-	assert.True(t, it.Next())
-
-	assert.True(t, it.Valid())
-	assert.Equal(t, "/root/c", it.Key())
-	v, err = it.Value()
-	assert.NoError(t, err)
-	assert.Equal(t, "c", string(v))
-	assert.True(t, it.Next())
-
-	assert.True(t, it.Valid())
-	assert.Equal(t, "/root/d", it.Key())
-	v, err = it.Value()
-	assert.NoError(t, err)
-	assert.Equal(t, "d", string(v))
+	assert.Equal(t, "b", string(value))
 	assert.False(t, it.Next())
 
 	assert.False(t, it.Valid())
 
+	assert.NoError(t, it.Close())
+
+	// Scan with empty result
+	it = kv.RangeScan("/xyz/a", "/xyz/c")
+	assert.False(t, it.Valid())
 	assert.NoError(t, it.Close())
 
 	assert.NoError(t, kv.Close())
@@ -219,7 +209,8 @@ func TestPebbleRangeScanWithSlashOrder(t *testing.T) {
 		"/a/b/a/b",
 	}
 
-	factory := NewPebbleKVFactory(testKVOptions)
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	kv, err := factory.NewKV(1)
 	assert.NoError(t, err)
 
@@ -252,7 +243,8 @@ func TestPebbleRangeScanWithSlashOrder(t *testing.T) {
 }
 
 func TestPebbbleGetWithinBatch(t *testing.T) {
-	factory := NewPebbleKVFactory(testKVOptions)
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	kv, err := factory.NewKV(1)
 	assert.NoError(t, err)
 
@@ -309,7 +301,8 @@ func TestPebbbleDurability(t *testing.T) {
 
 	// Open and write a key
 	{
-		factory := NewPebbleKVFactory(options)
+		factory, err := NewPebbleKVFactory(options)
+		assert.NoError(t, err)
 		kv, err := factory.NewKV(1)
 		assert.NoError(t, err)
 
@@ -324,7 +317,8 @@ func TestPebbbleDurability(t *testing.T) {
 
 	// Open again and read it back
 	{
-		factory := NewPebbleKVFactory(options)
+		factory, err := NewPebbleKVFactory(options)
+		assert.NoError(t, err)
 		kv, err := factory.NewKV(1)
 		assert.NoError(t, err)
 
@@ -339,7 +333,8 @@ func TestPebbbleDurability(t *testing.T) {
 }
 
 func TestPebbbleRangeScanInBatch(t *testing.T) {
-	factory := NewPebbleKVFactory(testKVOptions)
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	kv, err := factory.NewKV(1)
 	assert.NoError(t, err)
 
@@ -400,7 +395,8 @@ func TestPebbbleDeleteRangeInBatch(t *testing.T) {
 		"/a/b/a/b",
 	}
 
-	factory := NewPebbleKVFactory(testKVOptions)
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
 	kv, err := factory.NewKV(1)
 	assert.NoError(t, err)
 
@@ -431,11 +427,12 @@ func TestPebbbleDeleteRangeInBatch(t *testing.T) {
 }
 
 func TestPebbbleDoubleOpen(t *testing.T) {
-	factory := NewPebbleKVFactory(&KVFactoryOptions{
+	factory, err := NewPebbleKVFactory(&KVFactoryOptions{
 		DataDir:   t.TempDir(),
 		CacheSize: 1024,
 		InMemory:  false,
 	})
+	assert.NoError(t, err)
 	kv, err := factory.NewKV(1)
 	assert.NoError(t, err)
 
@@ -444,4 +441,162 @@ func TestPebbbleDoubleOpen(t *testing.T) {
 	assert.Nil(t, kv2)
 
 	assert.NoError(t, kv.Close())
+}
+
+func TestPebbleSnapshot(t *testing.T) {
+	originalLocation := t.TempDir()
+	copiedLocation := t.TempDir()
+	copiedLocationDbPath := filepath.Join(copiedLocation, "shard-1")
+
+	{
+		factory, err := NewPebbleKVFactory(&KVFactoryOptions{
+			DataDir:   originalLocation,
+			CacheSize: 1024,
+			InMemory:  false,
+		})
+		assert.NoError(t, err)
+		kv, err := factory.NewKV(1)
+		assert.NoError(t, err)
+
+		for i := 0; i < 100; i++ {
+			wb := kv.NewWriteBatch()
+			for j := 0; j < 100; j++ {
+				assert.NoError(t, wb.Put(fmt.Sprintf("key-%d-%d", i, j),
+					[]byte(fmt.Sprintf("value-%d-%d", i, j))))
+			}
+
+			assert.NoError(t, wb.Commit())
+			assert.NoError(t, wb.Close())
+		}
+
+		s, err := kv.Snapshot()
+		assert.NoError(t, err)
+
+		// Copy the snapshot to a new directory
+		assert.NoError(t, os.MkdirAll(copiedLocationDbPath, 0755))
+
+		for ; s.Valid(); s.Next() {
+			f := s.Chunk()
+			content, err := f.Content()
+			assert.NoError(t, err)
+
+			err = os.WriteFile(filepath.Join(copiedLocationDbPath, f.Name()), content, 0644)
+			assert.NoError(t, err)
+		}
+
+		_, err = os.Stat(s.BasePath())
+		assert.NoError(t, err)
+
+		// Closing the snapshot must get rid of its directory
+		assert.NoError(t, s.Close())
+
+		_, err = os.Stat(s.BasePath())
+		assert.ErrorIs(t, err, os.ErrNotExist)
+
+		assert.NoError(t, kv.Close())
+	}
+
+	{
+		// Open the database from the copied location
+		factory2, err := NewPebbleKVFactory(&KVFactoryOptions{
+			DataDir:   copiedLocation,
+			CacheSize: 1024,
+			InMemory:  false,
+		})
+		assert.NoError(t, err)
+		kv2, err := factory2.NewKV(1)
+		assert.NoError(t, err)
+
+		for i := 0; i < 100; i++ {
+			for j := 0; j < 100; j++ {
+				r, closer, err := kv2.Get(fmt.Sprintf("key-%d-%d", i, j))
+				assert.NoError(t, err)
+				assert.Equal(t, fmt.Sprintf("value-%d-%d", i, j), string(r))
+				assert.NoError(t, closer.Close())
+			}
+		}
+
+		assert.NoError(t, kv2.Close())
+		assert.NoError(t, factory2.Close())
+	}
+}
+
+func TestPebbleSnapshot_Loader(t *testing.T) {
+	originalLocation := t.TempDir()
+	newLocation := t.TempDir()
+
+	factory, err := NewPebbleKVFactory(&KVFactoryOptions{
+		DataDir:   originalLocation,
+		CacheSize: 1024,
+		InMemory:  false,
+	})
+	assert.NoError(t, err)
+	kv, err := factory.NewKV(1)
+	assert.NoError(t, err)
+
+	for i := 0; i < 100; i++ {
+		wb := kv.NewWriteBatch()
+		for j := 0; j < 100; j++ {
+			assert.NoError(t, wb.Put(fmt.Sprintf("key-%d-%d", i, j),
+				[]byte(fmt.Sprintf("value-%d-%d", i, j))))
+		}
+
+		assert.NoError(t, wb.Commit())
+		assert.NoError(t, wb.Close())
+	}
+
+	snapshot, err := kv.Snapshot()
+	assert.NoError(t, err)
+
+	// Use the snapshot to load a new DB
+	factory2, err := NewPebbleKVFactory(&KVFactoryOptions{
+		DataDir:   newLocation,
+		CacheSize: 1024,
+		InMemory:  false,
+	})
+	assert.NoError(t, err)
+
+	kv2, err := factory2.NewKV(1)
+	assert.NoError(t, err)
+
+	// Any existing key would be removed when we load the snapshot
+	wb := kv2.NewWriteBatch()
+	assert.NoError(t, wb.Put("my-key-2", []byte("my-value-2")))
+	assert.NoError(t, wb.Commit())
+	assert.NoError(t, wb.Close())
+	assert.NoError(t, kv2.Close())
+
+	loader, err := factory2.NewSnapshotLoader(1)
+	assert.NoError(t, err)
+
+	for ; snapshot.Valid(); snapshot.Next() {
+		f := snapshot.Chunk()
+		content, err := f.Content()
+		assert.NoError(t, err)
+		assert.NoError(t, loader.AddChunk(f.Name(), content))
+	}
+
+	loader.Complete()
+	assert.NoError(t, loader.Close())
+	assert.NoError(t, snapshot.Close())
+
+	kv2, err = factory2.NewKV(1)
+	assert.NoError(t, err)
+
+	for i := 0; i < 100; i++ {
+		for j := 0; j < 100; j++ {
+			r, closer, err := kv2.Get(fmt.Sprintf("key-%d-%d", i, j))
+			assert.NoError(t, err)
+			assert.Equal(t, fmt.Sprintf("value-%d-%d", i, j), string(r))
+			assert.NoError(t, closer.Close())
+		}
+	}
+
+	r, closer, err := kv2.Get("my-key")
+	assert.ErrorIs(t, err, ErrorKeyNotFound)
+	assert.Nil(t, r)
+	assert.Nil(t, closer)
+
+	assert.NoError(t, kv2.Close())
+	assert.NoError(t, factory2.Close())
 }

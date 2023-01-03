@@ -1,15 +1,17 @@
 package standalone
 
 import (
+	"fmt"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
 	"os"
+	"oxia/common/metrics"
 	"oxia/server/kv"
-	"oxia/server/metrics"
 	"oxia/server/wal"
 )
 
 type Config struct {
+	BindHost          string
 	PublicServicePort int
 	MetricsPort       int
 
@@ -47,16 +49,18 @@ func New(config Config) (*Standalone, error) {
 		LogDir: config.WalDir,
 	})
 
-	s.kvFactory = kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+	if s.kvFactory, err = kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
 		DataDir: config.DataDir,
-	})
+	}); err != nil {
+		return nil, err
+	}
 
-	s.rpc, err = NewStandaloneRpcServer(config.PublicServicePort, advertisedPublicAddress, config.NumShards, s.walFactory, s.kvFactory)
+	s.rpc, err = NewStandaloneRpcServer(fmt.Sprintf("%s:%d", config.BindHost, config.PublicServicePort), advertisedPublicAddress, config.NumShards, s.walFactory, s.kvFactory)
 	if err != nil {
 		return nil, err
 	}
 
-	s.metrics, err = metrics.Start(config.MetricsPort)
+	s.metrics, err = metrics.Start(fmt.Sprintf("%s:%d", config.BindHost, config.MetricsPort))
 	if err != nil {
 		return nil, err
 	}

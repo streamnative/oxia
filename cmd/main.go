@@ -2,36 +2,57 @@ package main
 
 import (
 	"fmt"
+	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 	"go.uber.org/automaxprocs/maxprocs"
 	"os"
 	"oxia/cmd/client"
 	"oxia/cmd/controller"
-	"oxia/cmd/operator"
+	"oxia/cmd/coordinator"
+	"oxia/cmd/perf"
 	"oxia/cmd/server"
 	"oxia/cmd/standalone"
 	"oxia/common"
 )
 
 var (
-	rootCmd = &cobra.Command{
-		Use:   "oxia",
-		Short: "Short description",
-		Long:  `Long description`,
+	logLevelStr string
+	rootCmd     = &cobra.Command{
+		Use:               "oxia",
+		Short:             "Oxia root command",
+		Long:              `Oxia root command`,
+		PersistentPreRunE: configureLogLevel,
 	}
 )
 
+type LogLevelError string
+
+func (l LogLevelError) Error() string {
+	return fmt.Sprintf("unknown log level (%s)", string(l))
+}
+
 func init() {
-	rootCmd.PersistentFlags().BoolVarP(&common.LogDebug, "log-debug", "d", false, "Enable debug logs")
+	rootCmd.PersistentFlags().StringVarP(&logLevelStr, "log-level", "l", common.DefaultLogLevel.String(), "Set logging level [disabled|trace|debug|info|warn|error|fatal|panic]")
 	rootCmd.PersistentFlags().BoolVarP(&common.LogJson, "log-json", "j", false, "Print logs in JSON format")
 	rootCmd.PersistentFlags().BoolVar(&common.PprofEnable, "profile", false, "Enable pprof profiler")
 	rootCmd.PersistentFlags().StringVar(&common.PprofBindAddress, "profile-bind-address", "127.0.0.1:6060", "Bind address for pprof")
 
 	rootCmd.AddCommand(client.Cmd)
 	rootCmd.AddCommand(controller.Cmd)
-	rootCmd.AddCommand(operator.Cmd)
+	rootCmd.AddCommand(coordinator.Cmd)
 	rootCmd.AddCommand(server.Cmd)
 	rootCmd.AddCommand(standalone.Cmd)
+	rootCmd.AddCommand(perf.Cmd)
+}
+
+func configureLogLevel(cmd *cobra.Command, args []string) error {
+	logLevel, err := zerolog.ParseLevel(logLevelStr)
+	if err != nil {
+		return LogLevelError(logLevelStr)
+	}
+	common.LogLevel = logLevel
+	common.ConfigureLogger()
+	return nil
 }
 
 func main() {

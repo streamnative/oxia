@@ -17,16 +17,16 @@ func toHashRange(assignment *proto.ShardAssignment) HashRange {
 	case *proto.ShardAssignment_Int32HashRange:
 		return HashRange{
 			MinInclusive: boundaries.Int32HashRange.MinHashInclusive,
-			MaxExclusive: boundaries.Int32HashRange.MaxHashExclusive,
+			MaxInclusive: boundaries.Int32HashRange.MaxHashInclusive,
 		}
 	default:
 		panic("unknown shard boundary")
 	}
 }
 
-func hashRange(minInclusive uint32, maxExclusive uint32) HashRange {
+func hashRange(minInclusive uint32, maxInclusive uint32) HashRange {
 	return HashRange{
 		MinInclusive: minInclusive,
-		MaxExclusive: maxExclusive,
+		MaxInclusive: maxInclusive,
 	}
 }

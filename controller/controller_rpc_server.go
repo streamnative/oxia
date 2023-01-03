@@ -4,19 +4,22 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
-	"oxia/server/container"
+	"oxia/common/container"
 )
 
 type ControllerRpcServer struct {
-	container *container.Container
+	container    container.GrpcServer
+	healthServer *health.Server
 }
 
-func NewControllerRpcServer(port int) (*ControllerRpcServer, error) {
-	server := &ControllerRpcServer{}
+func NewControllerRpcServer(bindAddress string) (*ControllerRpcServer, error) {
+	server := &ControllerRpcServer{
+		healthServer: health.NewServer(),
+	}
 
 	var err error
-	server.container, err = container.Start("controller", port, func(registrar grpc.ServiceRegistrar) {
-		grpc_health_v1.RegisterHealthServer(registrar, health.NewServer())
+	server.container, err = container.Default.StartGrpcServer("controller", bindAddress, func(registrar grpc.ServiceRegistrar) {
+		grpc_health_v1.RegisterHealthServer(registrar, server.healthServer)
 	})
 	if err != nil {
 		return nil, err
@@ -26,5 +29,6 @@ func NewControllerRpcServer(port int) (*ControllerRpcServer, error) {
 }
 
 func (s *ControllerRpcServer) Close() error {
+	s.healthServer.Shutdown()
 	return s.container.Close()
 }

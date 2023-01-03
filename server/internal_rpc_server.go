@@ -14,8 +14,8 @@ import (
 	"google.golang.org/grpc/status"
 	"io"
 	"oxia/common"
+	"oxia/common/container"
 	"oxia/proto"
-	"oxia/server/container"
 )
 
 const (
@@ -28,24 +28,26 @@ type internalRpcServer struct {
 
 	shardsDirector       ShardsDirector
 	assignmentDispatcher ShardAssignmentsDispatcher
-	container            *container.Container
+	grpcServer           container.GrpcServer
+	healthServer         *health.Server
 	log                  zerolog.Logger
 }
 
-func newCoordinationRpcServer(port int, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher) (*internalRpcServer, error) {
+func newCoordinationRpcServer(grpcProvider container.GrpcProvider, bindAddress string, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher) (*internalRpcServer, error) {
 	server := &internalRpcServer{
 		shardsDirector:       shardsDirector,
 		assignmentDispatcher: assignmentDispatcher,
+		healthServer:         health.NewServer(),
 		log: log.With().
 			Str("component", "coordination-rpc-server").
 			Logger(),
 	}
 
 	var err error
-	server.container, err = container.Start("internal", port, func(registrar grpc.ServiceRegistrar) {
+	server.grpcServer, err = grpcProvider.StartGrpcServer("internal", bindAddress, func(registrar grpc.ServiceRegistrar) {
 		proto.RegisterOxiaControlServer(registrar, server)
 		proto.RegisterOxiaLogReplicationServer(registrar, server)
-		grpc_health_v1.RegisterHealthServer(registrar, health.NewServer())
+		grpc_health_v1.RegisterHealthServer(registrar, server.healthServer)
 	})
 	if err != nil {
 		return nil, err
@@ -55,7 +57,8 @@ func newCoordinationRpcServer(port int, shardsDirector ShardsDirector, assignmen
 }
 
 func (s *internalRpcServer) Close() error {
-	return s.container.Close()
+	s.healthServer.Shutdown()
+	return s.grpcServer.Close()
 }
 
 func (s *internalRpcServer) ShardAssignment(srv proto.OxiaControl_ShardAssignmentServer) error {
@@ -135,10 +138,34 @@ func (s *internalRpcServer) BecomeLeader(c context.Context, req *proto.BecomeLea
 	} else {
 		res, err2 := leader.BecomeLeader(req)
 		if err2 != nil {
-			s.log.Warn().Err(err).
+			s.log.Warn().Err(err2).
 				Uint32("shard", req.ShardId).
 				Str("peer", common.GetPeer(c)).
 				Msg("BecomeLeader failed")
+		}
+		return res, err2
+	}
+}
+
+func (s *internalRpcServer) AddFollower(c context.Context, req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error) {
+	s.log.Info().
+		Interface("req", req).
+		Str("peer", common.GetPeer(c)).
+		Msg("Received AddFollower request")
+
+	if leader, err := s.shardsDirector.GetLeader(req.ShardId); err != nil {
+		s.log.Warn().Err(err).
+			Uint32("shard", req.ShardId).
+			Str("peer", common.GetPeer(c)).
+			Msg("AddFollower failed: could not get leader controller")
+		return nil, err
+	} else {
+		res, err2 := leader.AddFollower(req)
+		if err2 != nil {
+			s.log.Warn().Err(err2).
+				Uint32("shard", req.ShardId).
+				Str("peer", common.GetPeer(c)).
+				Msg("AddFollower failed")
 		}
 		return res, err2
 	}
@@ -159,7 +186,7 @@ func (s *internalRpcServer) Truncate(c context.Context, req *proto.TruncateReque
 	} else {
 		res, err2 := follower.Truncate(req)
 
-		s.log.Warn().Err(err).
+		s.log.Warn().Err(err2).
 			Uint32("shard", req.ShardId).
 			Str("peer", common.GetPeer(c)).
 			Msg("Truncate failed")
@@ -200,6 +227,60 @@ func (s *internalRpcServer) AddEntries(srv proto.OxiaLogReplication_AddEntriesSe
 				Msg("AddEntries failed")
 		}
 		return err2
+	}
+}
+
+func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapshotServer) error {
+	// Send snapshot receives an incoming stream of requests, the shard_id needs to be encoded
+	// as a property in the metadata
+	md, ok := metadata.FromIncomingContext(srv.Context())
+	if !ok {
+		return errors.New("shard id is not set in the request metadata")
+	}
+
+	shardId, err := readHeaderUint32(md, metadataShardId)
+	if err != nil {
+		return err
+	}
+
+	s.log.Info().
+		Uint32("shard", shardId).
+		Str("peer", common.GetPeer(srv.Context())).
+		Msg("Received SendSnapshot request")
+
+	if follower, err := s.shardsDirector.GetOrCreateFollower(shardId); err != nil {
+		s.log.Warn().Err(err).
+			Uint32("shard", shardId).
+			Str("peer", common.GetPeer(srv.Context())).
+			Msg("SendSnapshot failed: could not get follower controller")
+		return err
+	} else {
+		err2 := follower.SendSnapshot(srv)
+		if err2 != nil {
+			s.log.Warn().Err(err2).
+				Uint32("shard", shardId).
+				Str("peer", common.GetPeer(srv.Context())).
+				Msg("SendSnapshot failed")
+		}
+		return err2
+	}
+}
+
+func (s *internalRpcServer) GetStatus(c context.Context, req *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
+	if follower, err := s.shardsDirector.GetFollower(req.ShardId); err != nil {
+		if !errors.Is(err, ErrorNodeIsNotFollower) {
+			return nil, err
+		}
+
+		// If we don't have a follower, fallback to checking the leader controller
+		if leader, err := s.shardsDirector.GetLeader(req.ShardId); err != nil {
+			return nil, err
+		} else {
+			return leader.GetStatus(req)
+		}
+
+	} else {
+		return follower.GetStatus(req)
 	}
 }
 

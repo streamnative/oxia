@@ -1,16 +1,20 @@
 package server
 
 import (
+	"context"
+	"fmt"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
-	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
 	"io"
+	"oxia/common"
 	"oxia/proto"
 	"oxia/server/kv"
 	"oxia/server/wal"
 	"sync"
+	"time"
 )
 
 type LeaderController interface {
@@ -25,42 +29,46 @@ type LeaderController interface {
 	// BecomeLeader Handles BecomeLeaderRequest from coordinator and prepares to be leader for the shard
 	BecomeLeader(*proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error)
 
+	AddFollower(request *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error)
+
+	GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error
+
+	GetStatus(request *proto.GetStatusRequest) (*proto.GetStatusResponse, error)
+
 	// Epoch The current epoch of the leader
 	Epoch() int64
 
 	// Status The Status of the leader
-	Status() Status
+	Status() proto.ServingStatus
 }
-
-type Status int16
-
-const (
-	NotMember Status = iota
-	Leader
-	Follower
-	Fenced
-)
 
 type leaderController struct {
 	sync.Mutex
 
 	shardId           uint32
-	status            Status
+	status            proto.ServingStatus
 	epoch             int64
 	replicationFactor uint32
 	quorumAckTracker  QuorumAckTracker
 	followers         map[string]FollowerCursor
 
+	// This represents the last entry in the WAL at the time this node
+	// became leader. It's used in the logic for deciding where to
+	// truncate the followers.
+	leaderElectionHeadIndex *proto.EntryId
+
+	ctx            context.Context
+	cancel         context.CancelFunc
 	wal            wal.Wal
 	db             kv.DB
 	rpcClient      ReplicationRpcProvider
-	log            zerolog.Logger
 	sessionManager SessionManager
+	log            zerolog.Logger
 }
 
 func NewLeaderController(shardId uint32, rpcClient ReplicationRpcProvider, walFactory wal.WalFactory, kvFactory kv.KVFactory, sessionManager SessionManager) (LeaderController, error) {
 	lc := &leaderController{
-		status:           NotMember,
+		status:           proto.ServingStatus_NotMember,
 		shardId:          shardId,
 		quorumAckTracker: nil,
 		rpcClient:        rpcClient,
@@ -72,6 +80,8 @@ func NewLeaderController(shardId uint32, rpcClient ReplicationRpcProvider, walFa
 			Uint32("shard", shardId).
 			Logger(),
 	}
+
+	lc.ctx, lc.cancel = context.WithCancel(context.Background())
 
 	var err error
 	if lc.wal, err = walFactory.NewWal(shardId); err != nil {
@@ -86,13 +96,17 @@ func NewLeaderController(shardId uint32, rpcClient ReplicationRpcProvider, walFa
 		return nil, err
 	}
 
+	if lc.epoch != wal.InvalidEpoch {
+		lc.status = proto.ServingStatus_Fenced
+	}
+
 	lc.log = lc.log.With().Int64("epoch", lc.epoch).Logger()
 	lc.log.Info().
 		Msg("Created leader controller")
 	return lc, nil
 }
 
-func (lc *leaderController) Status() Status {
+func (lc *leaderController) Status() proto.ServingStatus {
 	lc.Lock()
 	defer lc.Unlock()
 	return lc.status
@@ -122,8 +136,17 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 	lc.Lock()
 	defer lc.Unlock()
 
-	if req.Epoch <= lc.epoch {
-		return nil, status.Errorf(CodeInvalidEpoch, "invalid epoch - current epoch %d - request epoch %d", lc.epoch, req.Epoch)
+	if req.Epoch < lc.epoch {
+		return nil, ErrorInvalidEpoch
+	} else if req.Epoch == lc.epoch && lc.status != proto.ServingStatus_Fenced {
+		// It's OK to receive a duplicate Fence request, for the same epoch, as long as we haven't moved
+		// out of the Fenced state for that epoch
+		lc.log.Warn().
+			Int64("follower-epoch", lc.epoch).
+			Int64("fence-epoch", req.Epoch).
+			Interface("status", lc.status).
+			Msg("Failed to fence with same epoch in invalid state")
+		return nil, ErrorInvalidStatus
 	}
 
 	if err := lc.db.UpdateEpoch(req.GetEpoch()); err != nil {
@@ -132,7 +155,7 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 
 	lc.epoch = req.GetEpoch()
 	lc.log = lc.log.With().Int64("epoch", lc.epoch).Logger()
-	lc.status = Fenced
+	lc.status = proto.ServingStatus_Fenced
 	lc.replicationFactor = 0
 
 	if lc.quorumAckTracker != nil {
@@ -160,11 +183,10 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 	}
 
 	lc.log.Info().
-		Int64("offset", headIndex.Offset).
+		Interface("last-entry", headIndex).
 		Msg("Fenced leader")
 
 	return &proto.FenceResponse{
-		Epoch:     lc.epoch,
 		HeadIndex: headIndex,
 	}, nil
 }
@@ -198,77 +220,198 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 	lc.Lock()
 	defer lc.Unlock()
 
-	if req.Epoch != lc.epoch {
-		return nil, status.Errorf(CodeInvalidEpoch, "invalid epoch - current epoch %d - request epoch %d", lc.epoch, req.Epoch)
+	if lc.status != proto.ServingStatus_Fenced {
+		return nil, ErrorInvalidStatus
 	}
 
-	lc.status = Leader
+	if req.Epoch != lc.epoch {
+		return nil, ErrorInvalidEpoch
+	}
+
+	lc.status = proto.ServingStatus_Leader
 	lc.replicationFactor = req.GetReplicationFactor()
 	lc.followers = make(map[string]FollowerCursor)
 
-	leaderHeadIndex, err := getLastEntryIdInWal(lc.wal)
+	var err error
+	lc.leaderElectionHeadIndex, err = getLastEntryIdInWal(lc.wal)
 	if err != nil {
 		return nil, err
 	}
 
-	lc.quorumAckTracker = NewQuorumAckTracker(req.GetReplicationFactor(), leaderHeadIndex.Offset)
+	leaderCommitIndex, err := lc.db.ReadCommitIndex()
+	if err != nil {
+		return nil, err
+	}
+
+	lc.quorumAckTracker = NewQuorumAckTracker(req.GetReplicationFactor(), lc.leaderElectionHeadIndex.Offset, leaderCommitIndex)
 
 	for follower, followerHeadIndex := range req.FollowerMaps {
-		if needsTruncation(leaderHeadIndex, followerHeadIndex) {
-			newHeadIndex, err := lc.truncateFollower(follower, lc.epoch)
-			if err != nil {
-				lc.log.Error().Err(err).
-					Str("follower", follower).
-					Int64("epoch", lc.epoch).
-					Msg("Failed to truncate follower")
-				return nil, err
-			}
-
-			followerHeadIndex = newHeadIndex
-		}
-
-		cursor, err := NewFollowerCursor(follower, lc.epoch, lc.shardId, lc.rpcClient, lc.quorumAckTracker, lc.wal,
-			followerHeadIndex.Offset)
-		if err != nil {
-			lc.log.Error().Err(err).
-				Str("follower", follower).
-				Int64("epoch", lc.epoch).
-				Msg("Failed to create follower cursor")
+		if err := lc.addFollower(follower, followerHeadIndex); err != nil {
 			return nil, err
 		}
+	}
 
-		lc.followers[follower] = cursor
+	// We must wait until all the entries in the leader WAL are fully
+	// committed in the quorum, to avoid missing any entries in the DB
+	// by the moment we make the leader controller accepting new write/read
+	// requests
+	if _, err = lc.quorumAckTracker.WaitForCommitIndex(lc.leaderElectionHeadIndex.Offset, nil); err != nil {
+		return nil, err
+	}
+
+	if err = lc.applyAllEntriesIntoDB(); err != nil {
+		return nil, err
+	}
+
+	lc.log.Info().
+		Int64("epoch", lc.epoch).
+		Int64("head-index", lc.leaderElectionHeadIndex.Offset).
+		Msg("Started leading the shard")
+	return &proto.BecomeLeaderResponse{}, nil
+}
+
+func (lc *leaderController) AddFollower(req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error) {
+	lc.Lock()
+	defer lc.Unlock()
+
+	if req.Epoch != lc.epoch {
+		return nil, ErrorInvalidEpoch
+	}
+
+	if lc.status != proto.ServingStatus_Leader {
+		return nil, errors.Wrap(ErrorInvalidStatus, "Node is not leader")
+	}
+
+	if _, followerAlreadyPresent := lc.followers[req.FollowerName]; followerAlreadyPresent {
+		return nil, errors.Errorf("follower %s is already present", req.FollowerName)
+	}
+
+	if len(lc.followers) == int(lc.replicationFactor)-1 {
+		return nil, errors.New("all followers are already attached")
+	}
+
+	if err := lc.addFollower(req.FollowerName, req.FollowerHeadIndex); err != nil {
+		return nil, err
+	}
+
+	return &proto.AddFollowerResponse{}, nil
+}
+
+func (lc *leaderController) addFollower(follower string, followerHeadIndex *proto.EntryId) error {
+	followerHeadIndex, err := lc.truncateFollowerIfNeeded(follower, followerHeadIndex)
+	if err != nil {
+		lc.log.Error().Err(err).
+			Str("follower", follower).
+			Interface("follower-head-index", followerHeadIndex).
+			Int64("epoch", lc.epoch).
+			Msg("Failed to truncate follower")
+		return err
+	}
+
+	cursor, err := NewFollowerCursor(follower, lc.epoch, lc.shardId, lc.rpcClient, lc.quorumAckTracker, lc.wal,
+		followerHeadIndex.Offset)
+	if err != nil {
+		lc.log.Error().Err(err).
+			Str("follower", follower).
+			Int64("epoch", lc.epoch).
+			Msg("Failed to create follower cursor")
+		return err
+	}
+
+	lc.log.Info().
+		Int64("epoch", lc.epoch).
+		Interface("leader-election-head-index", lc.leaderElectionHeadIndex).
+		Str("follower", follower).
+		Interface("follower-head-index", followerHeadIndex).
+		Int64("head-index", lc.wal.LastOffset()).
+		Msg("Added follower")
+	lc.followers[follower] = cursor
+	return nil
+}
+
+func (lc *leaderController) applyAllEntriesIntoDB() error {
+	dbCommitIndex, err := lc.db.ReadCommitIndex()
+	if err != nil {
+		return err
 	}
 
 	err = lc.sessionManager.InitializeShard(lc.shardId, lc)
 	if err != nil {
 		lc.log.Error().Err(err).
 			Int64("epoch", lc.epoch).
+			Uint32("shard", lc.shardId).
 			Msg("Failed to initialize session manager")
-		return nil, err
+		return err
 	}
 
 	lc.log.Info().
+		Int64("commit-index", dbCommitIndex).
+		Int64("head-index", lc.quorumAckTracker.HeadIndex()).
+		Msg("Applying all pending entries to database")
+
+	r, err := lc.wal.NewReader(dbCommitIndex)
+	if err != nil {
+		return err
+	}
+	for r.HasNext() {
+		entry, err := r.ReadNext()
+		if err != nil {
+			return err
+		}
+
+		writeRequest := &proto.WriteRequest{}
+		if err = pb.Unmarshal(entry.Value, writeRequest); err != nil {
+			return err
+		}
+
+		if _, err = lc.db.ProcessWrite(writeRequest, entry.Offset, entry.Timestamp, PutDecorator); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (lc *leaderController) truncateFollowerIfNeeded(follower string, followerHeadIndex *proto.EntryId) (*proto.EntryId, error) {
+	lc.log.Debug().
 		Int64("epoch", lc.epoch).
-		Int64("head-index", leaderHeadIndex.Offset).
-		Msg("Started leading the shard")
-	return &proto.BecomeLeaderResponse{Epoch: req.GetEpoch()}, nil
-}
+		Str("follower", follower).
+		Interface("leader-head-index", lc.leaderElectionHeadIndex).
+		Interface("follower-head-index", followerHeadIndex).
+		Msg("Needs truncation?")
+	if followerHeadIndex.Epoch == lc.leaderElectionHeadIndex.Epoch &&
+		followerHeadIndex.Offset <= lc.leaderElectionHeadIndex.Offset {
+		// No need for truncation
+		return followerHeadIndex, nil
+	}
 
-func needsTruncation(leaderHeadIndex *proto.EntryId, followerHeadIndex *proto.EntryId) bool {
-	return followerHeadIndex.Epoch != leaderHeadIndex.Epoch ||
-		followerHeadIndex.Offset > leaderHeadIndex.Offset
-}
+	// Coordinator should never send us a follower with an invalid epoch.
+	// Checking for sanity here.
+	if followerHeadIndex.Epoch > lc.leaderElectionHeadIndex.Epoch {
+		return nil, ErrorInvalidStatus
+	}
 
-func (lc *leaderController) truncateFollower(follower string, targetEpoch int64) (*proto.EntryId, error) {
-	headIndex, err := GetHighestEntryOfEpoch(lc.wal, targetEpoch)
+	lastEntryInFollowerEpoch, err := GetHighestEntryOfEpoch(lc.wal, followerHeadIndex.Epoch)
 	if err != nil {
 		return nil, err
 	}
 
+	if followerHeadIndex.Epoch == lastEntryInFollowerEpoch.Epoch &&
+		followerHeadIndex.Offset <= lastEntryInFollowerEpoch.Offset {
+		// If the follower is on a previous epoch, but we have the same entry,
+		// we don't need to truncate
+		lc.log.Debug().
+			Int64("epoch", lc.epoch).
+			Str("follower", follower).
+			Interface("last-entry-in-follower-epoch", lastEntryInFollowerEpoch).
+			Interface("follower-head-index", followerHeadIndex).
+			Msg("No need to truncate follower")
+		return followerHeadIndex, nil
+	}
+
 	tr, err := lc.rpcClient.Truncate(follower, &proto.TruncateRequest{
 		Epoch:     lc.epoch,
-		HeadIndex: headIndex,
+		HeadIndex: lastEntryInFollowerEpoch,
 	})
 
 	if err != nil {
@@ -277,7 +420,7 @@ func (lc *leaderController) truncateFollower(follower string, targetEpoch int64)
 		lc.log.Info().
 			Int64("epoch", lc.epoch).
 			Str("follower", follower).
-			Interface("head-index", tr.HeadIndex).
+			Interface("follower-head-index", tr.HeadIndex).
 			Msg("Truncated follower")
 
 		return tr.HeadIndex, nil
@@ -292,7 +435,7 @@ func (lc *leaderController) Read(request *proto.ReadRequest) (*proto.ReadRespons
 	{
 		lc.Lock()
 		defer lc.Unlock()
-		if err := checkStatus(Leader, lc.status); err != nil {
+		if err := checkStatus(proto.ServingStatus_Leader, lc.status); err != nil {
 			return nil, err
 		}
 	}
@@ -311,38 +454,96 @@ func (lc *leaderController) Write(request *proto.WriteRequest) (*proto.WriteResp
 		Interface("req", request).
 		Msg("Write operation")
 
-	var newOffset int64
+	timestamp := uint64(time.Now().UnixMilli())
 
-	{
-		lc.Lock()
-		defer lc.Unlock()
+	newOffset, err := lc.appendToWal(request, timestamp)
+	if err != nil {
+		return nil, errors.Wrap(err, "oxia: failed to append to wal")
+	}
 
-		if err := checkStatus(Leader, lc.status); err != nil {
-			return nil, err
-		}
+	return lc.quorumAckTracker.WaitForCommitIndex(newOffset, func() (*proto.WriteResponse, error) {
+		return lc.db.ProcessWrite(request, newOffset, timestamp, PutDecorator)
+	})
+}
 
-		newOffset = lc.quorumAckTracker.HeadIndex() + 1
-		value, err := pb.Marshal(request)
-		if err != nil {
-			return nil, err
-		}
-		logEntry := &proto.LogEntry{
-			Epoch:  lc.epoch,
-			Offset: newOffset,
-			Value:  value,
-		}
+func (lc *leaderController) appendToWal(request *proto.WriteRequest, timestamp uint64) (offset int64, err error) {
+	lc.Lock()
+	defer lc.Unlock()
 
-		err = lc.wal.Append(logEntry)
-		if err != nil {
-			return nil, err
-		}
+	if err := checkStatus(proto.ServingStatus_Leader, lc.status); err != nil {
+		return wal.InvalidOffset, err
+	}
+
+	newOffset := lc.quorumAckTracker.HeadIndex() + 1
+	value, err := pb.Marshal(request)
+	if err != nil {
+		return wal.InvalidOffset, err
+	}
+	logEntry := &proto.LogEntry{
+		Epoch:     lc.epoch,
+		Offset:    newOffset,
+		Value:     value,
+		Timestamp: timestamp,
+	}
+
+	if err = lc.wal.Append(logEntry); err != nil {
+		return wal.InvalidOffset, err
 	}
 
 	lc.quorumAckTracker.AdvanceHeadIndex(newOffset)
 
-	return lc.quorumAckTracker.WaitForCommitIndex(newOffset, func() (*proto.WriteResponse, error) {
-		return lc.db.ProcessWrite(request, newOffset, PutDecorator)
+	return newOffset, nil
+}
+
+func (lc *leaderController) GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
+	// Create a context for handling this stream
+	ctx, cancel := context.WithCancel(stream.Context())
+
+	go common.DoWithLabels(map[string]string{
+		"oxia":  "dispatch-notifications",
+		"shard": fmt.Sprintf("%d", lc.shardId),
+		"peer":  common.GetPeer(stream.Context()),
+	}, func() {
+		if err := lc.dispatchNotifications(ctx, req, stream); err != nil && !errors.Is(err, context.Canceled) {
+			lc.log.Warn().Err(err).
+				Str("peer", common.GetPeer(stream.Context())).
+				Msg("Failed to dispatch notifications")
+			cancel()
+		}
 	})
+
+	select {
+	case <-lc.ctx.Done():
+		// Leader is getting closed
+		cancel()
+		return lc.ctx.Err()
+
+	case <-stream.Context().Done():
+		// The stream is getting closed
+		cancel()
+		return stream.Context().Err()
+	}
+}
+
+func (lc *leaderController) dispatchNotifications(ctx context.Context, req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
+	offsetInclusive := req.StartOffsetExclusive + 1
+
+	for ctx.Err() == nil {
+		notifications, err := lc.db.ReadNextNotifications(ctx, offsetInclusive)
+		if err != nil {
+			return err
+		}
+
+		for _, n := range notifications {
+			if err := stream.Send(n); err != nil {
+				return err
+			}
+		}
+
+		offsetInclusive += int64(len(notifications))
+	}
+
+	return ctx.Err()
 }
 
 func (lc *leaderController) Close() error {
@@ -351,7 +552,8 @@ func (lc *leaderController) Close() error {
 
 	lc.log.Info().Msg("Closing leader controller")
 
-	lc.status = NotMember
+	lc.status = proto.ServingStatus_NotMember
+	lc.cancel()
 
 	var err error
 	if lc.quorumAckTracker != nil {
@@ -385,4 +587,14 @@ func getLastEntryIdInWal(wal wal.Wal) (*proto.EntryId, error) {
 		return nil, err
 	}
 	return &proto.EntryId{Epoch: entry.Epoch, Offset: entry.Offset}, nil
+}
+
+func (lc *leaderController) GetStatus(request *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
+	lc.Lock()
+	defer lc.Unlock()
+
+	return &proto.GetStatusResponse{
+		Epoch:  lc.epoch,
+		Status: lc.status,
+	}, nil
 }

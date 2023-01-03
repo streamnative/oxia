@@ -19,8 +19,17 @@ func NewWalFactory(options *WalFactoryOptions) WalFactory {
 	}
 }
 
+func NewInMemoryWalFactory() WalFactory {
+	return &factory{
+		options: &WalFactoryOptions{
+			LogDir:   "/",
+			InMemory: true,
+		},
+	}
+}
+
 func (f *factory) NewWal(shard uint32) (Wal, error) {
-	impl, err := newPersistentWal(shard, f.options.LogDir)
+	impl, err := newPersistentWal(shard, f.options)
 	return impl, err
 }
 
@@ -30,14 +39,16 @@ func (f *factory) Close() error {
 
 type persistentWal struct {
 	sync.RWMutex
-	shard      uint32
-	log        *Log
-	lastOffset int64
+	shard       uint32
+	log         *Log
+	firstOffset int64
+	lastOffset  int64
 }
 
-func newPersistentWal(shard uint32, dir string) (Wal, error) {
-	opts := DefaultOptions
-	walPath := filepath.Join(dir, fmt.Sprint("shard-", shard))
+func newPersistentWal(shard uint32, options *WalFactoryOptions) (Wal, error) {
+	opts := DefaultOptions()
+	opts.InMemory = options.InMemory
+	walPath := filepath.Join(options.LogDir, fmt.Sprint("shard-", shard))
 	log, err := Open(walPath, opts)
 	if err != nil {
 		return nil, err
@@ -47,9 +58,10 @@ func newPersistentWal(shard uint32, dir string) (Wal, error) {
 		return nil, err
 	}
 
-	var lastOffset int64
+	var firstOffset, lastOffset int64
 	if lastIndex == -1 {
 		lastOffset = InvalidOffset
+		firstOffset = InvalidOffset
 	} else {
 		lastEntry, err := readAtIndex(log, lastIndex)
 		if err != nil {
@@ -57,11 +69,13 @@ func newPersistentWal(shard uint32, dir string) (Wal, error) {
 		}
 
 		lastOffset = lastEntry.Offset
+		firstOffset = log.firstOffset
 	}
 	w := &persistentWal{
-		shard:      shard,
-		log:        log,
-		lastOffset: lastOffset,
+		shard:       shard,
+		log:         log,
+		lastOffset:  lastOffset,
+		firstOffset: firstOffset,
 	}
 	return w, nil
 }
@@ -85,6 +99,24 @@ func (t *persistentWal) LastOffset() int64 {
 	return t.lastOffset
 }
 
+func (t *persistentWal) FirstOffset() int64 {
+	t.Lock()
+	defer t.Unlock()
+	return t.firstOffset
+}
+
+func (t *persistentWal) Trim(firstOffset int64) error {
+	t.Lock()
+	defer t.Unlock()
+
+	if err := t.log.TruncateFront(firstOffset); err != nil {
+		return err
+	}
+
+	t.firstOffset = t.log.firstOffset
+	return nil
+}
+
 func (t *persistentWal) Close() error {
 	t.Lock()
 	defer t.Unlock()
@@ -104,11 +136,14 @@ func (t *persistentWal) Append(entry *proto.LogEntry) error {
 		return err
 	}
 
-	err = t.log.Write(val)
+	err = t.log.Write(entry.Offset, val)
 	if err != nil {
 		return err
 	}
 	t.lastOffset = entry.Offset
+	if t.firstOffset == InvalidOffset {
+		t.firstOffset = t.log.firstOffset
+	}
 	return err
 }
 
@@ -116,10 +151,20 @@ func (t *persistentWal) checkNextOffset(nextOffset int64) error {
 	if nextOffset < 0 {
 		return errors.New(fmt.Sprintf("Invalid next offset. %d should be > 0", nextOffset))
 	}
-	if nextOffset != t.lastOffset+1 {
-		return errors.New(fmt.Sprintf("Invalid next offset. %d can not immediately follow %d",
-			nextOffset, t.lastOffset))
+	if t.lastOffset != InvalidOffset && nextOffset != t.lastOffset+1 {
+		return errors.Wrapf(ErrorInvalidNextOffset,
+			"%d can not immediately follow %d", nextOffset, t.lastOffset)
 	}
+	return nil
+}
+
+func (t *persistentWal) Clear() error {
+	if err := t.log.Clear(); err != nil {
+		return err
+	}
+
+	t.lastOffset = InvalidOffset
+	t.firstOffset = InvalidOffset
 	return nil
 }
 
@@ -168,6 +213,11 @@ func (t *persistentWal) NewReader(after int64) (WalReader, error) {
 	defer t.Unlock()
 
 	firstOffset := after + 1
+
+	if firstOffset < t.firstOffset {
+		return nil, ErrorEntryNotFound
+	}
+
 	r := &forwardReader{
 		reader: reader{
 			wal:        t,
@@ -277,10 +327,11 @@ func (r *reverseReader) ReadNext() (*proto.LogEntry, error) {
 }
 
 func (r *reverseReader) HasNext() bool {
+	r.wal.Lock()
+	defer r.wal.Unlock()
+
 	if r.closed {
 		return false
 	}
-	res := r.nextOffset != InvalidOffset
-
-	return res
+	return r.nextOffset != (r.wal.log.firstOffset - 1)
 }

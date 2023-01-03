@@ -8,10 +8,9 @@ import (
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc"
-	"oxia/common"
+	"oxia/common/container"
 	"oxia/proto"
 	"oxia/server"
-	"oxia/server/container"
 	"oxia/server/kv"
 	"oxia/server/wal"
 )
@@ -24,21 +23,21 @@ type StandaloneRpcServer struct {
 	kvFactory               kv.KVFactory
 	walFactory              wal.WalFactory
 	sessionManager          server.SessionManager
-	clientPool              common.ClientPool
-	Container               *container.Container
+	grpcServer              container.GrpcServer
 	controllers             map[uint32]server.LeaderController
 	assignmentDispatcher    server.ShardAssignmentsDispatcher
+	replicationRpcProvider  server.ReplicationRpcProvider
 
 	log zerolog.Logger
 }
 
-func NewStandaloneRpcServer(port int, advertisedPublicAddress string, numShards uint32, walFactory wal.WalFactory, kvFactory kv.KVFactory) (*StandaloneRpcServer, error) {
+func NewStandaloneRpcServer(bindAddress string, advertisedPublicAddress string, numShards uint32, walFactory wal.WalFactory, kvFactory kv.KVFactory) (*StandaloneRpcServer, error) {
 	res := &StandaloneRpcServer{
 		advertisedPublicAddress: advertisedPublicAddress,
 		numShards:               numShards,
 		walFactory:              walFactory,
 		kvFactory:               kvFactory,
-		clientPool:              common.NewClientPool(),
+		replicationRpcProvider:  server.NewReplicationRpcProvider(),
 		controllers:             make(map[uint32]server.LeaderController),
 		log: log.With().
 			Str("component", "standalone-rpc-server").
@@ -56,8 +55,7 @@ func NewStandaloneRpcServer(port int, advertisedPublicAddress string, numShards 
 	var err error
 	for i := uint32(0); i < numShards; i++ {
 		var lc server.LeaderController
-		if lc, err = server.NewLeaderController(i,
-			server.NewReplicationRpcProvider(res.clientPool), res.walFactory, res.kvFactory, res.sessionManager); err != nil {
+		if lc, err = server.NewLeaderController(i, res.replicationRpcProvider, res.walFactory, res.kvFactory, res.sessionManager); err != nil {
 			return nil, err
 		}
 
@@ -82,7 +80,7 @@ func NewStandaloneRpcServer(port int, advertisedPublicAddress string, numShards 
 		res.controllers[i] = lc
 	}
 
-	res.Container, err = container.Start("standalone", port, func(registrar grpc.ServiceRegistrar) {
+	res.grpcServer, err = container.Default.StartGrpcServer("standalone", bindAddress, func(registrar grpc.ServiceRegistrar) {
 		proto.RegisterOxiaClientServer(registrar, res)
 	})
 	if err != nil {
@@ -90,14 +88,18 @@ func NewStandaloneRpcServer(port int, advertisedPublicAddress string, numShards 
 	}
 
 	res.assignmentDispatcher = server.NewStandaloneShardAssignmentDispatcher(
-		fmt.Sprintf("%s:%d", advertisedPublicAddress, res.Container.Port()),
+		fmt.Sprintf("%s:%d", advertisedPublicAddress, res.grpcServer.Port()),
 		numShards)
 
 	return res, nil
 }
 
 func (s *StandaloneRpcServer) Close() error {
-	err := s.Container.Close()
+	err := multierr.Combine(
+		s.assignmentDispatcher.Close(),
+		s.grpcServer.Close(),
+		s.replicationRpcProvider.Close(),
+	)
 
 	for _, c := range s.controllers {
 		err = multierr.Append(err, c.Close())
@@ -106,7 +108,11 @@ func (s *StandaloneRpcServer) Close() error {
 }
 
 func (s *StandaloneRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest, stream proto.OxiaClient_ShardAssignmentsServer) error {
-	return s.assignmentDispatcher.AddClient(stream)
+	return s.assignmentDispatcher.RegisterForUpdates(stream)
+}
+
+func (s *StandaloneRpcServer) Port() int {
+	return s.grpcServer.Port()
 }
 
 func (s *StandaloneRpcServer) Write(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error) {

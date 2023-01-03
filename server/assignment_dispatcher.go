@@ -2,10 +2,11 @@ package server
 
 import (
 	"context"
-	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/peer"
+	"google.golang.org/grpc/status"
 	"io"
 	"math"
 	"oxia/common"
@@ -23,39 +24,82 @@ type ShardAssignmentsDispatcher interface {
 	io.Closer
 	Initialized() bool
 	ShardAssignment(stream proto.OxiaControl_ShardAssignmentServer) error
-	AddClient(client Client) error
+	RegisterForUpdates(client Client) error
 }
 
 type shardAssignmentDispatcher struct {
 	sync.Mutex
 	assignments  *proto.ShardAssignmentsResponse
-	clients      map[int]Client
-	nextClientId int
-	closeCh      chan error
-	log          zerolog.Logger
+	clients      map[int64]chan *proto.ShardAssignmentsResponse
+	nextClientId int64
+
+	ctx    context.Context
+	cancel context.CancelFunc
+
+	log zerolog.Logger
 }
 
-var (
-	ErrorNotInitialized = errors.New("oxia: server not initialized yet")
-)
-
-func (s *shardAssignmentDispatcher) AddClient(clientStream Client) error {
+func (s *shardAssignmentDispatcher) RegisterForUpdates(clientStream Client) error {
 	s.Lock()
-	defer s.Unlock()
-	if s.assignments == nil {
+	initialAssignments := s.assignments
+	if initialAssignments == nil {
+		s.Unlock()
 		return ErrorNotInitialized
 	}
-	err := clientStream.Send(s.assignments)
+
+	clientCh := make(chan *proto.ShardAssignmentsResponse)
+	clientId := s.nextClientId
+	s.nextClientId++
+
+	s.clients[clientId] = clientCh
+	s.Unlock()
+
+	// Send initial assignments
+	err := clientStream.Send(initialAssignments)
 	if err != nil {
+		s.Lock()
+		delete(s.clients, clientId)
+		s.Unlock()
 		return err
 	}
-	s.clients[s.nextClientId] = clientStream
-	s.nextClientId++
-	return nil
+
+	for {
+		select {
+		case assignments := <-clientCh:
+			if assignments == nil {
+				return ErrorCancelled
+			}
+
+			err := clientStream.Send(assignments)
+			if err != nil {
+				if status.Code(err) != codes.Canceled {
+					peer, _ := peer.FromContext(clientStream.Context())
+					s.log.Warn().Err(err).
+						Str("client", peer.Addr.String()).
+						Msg("Failed to send shard assignment update to client")
+				}
+				s.Lock()
+				delete(s.clients, clientId)
+				s.Unlock()
+				return err
+			}
+
+		case <-clientStream.Context().Done():
+			// The client has disconnected or timed out
+			s.Lock()
+			delete(s.clients, clientId)
+			s.Unlock()
+			return nil
+
+		case <-s.ctx.Done():
+			// the server is closing
+			return nil
+		}
+	}
 }
 
 func (s *shardAssignmentDispatcher) Close() error {
-	s.closeChannel(nil)
+	s.cancel()
 	return nil
 }
 
@@ -66,43 +110,35 @@ func (s *shardAssignmentDispatcher) Initialized() bool {
 }
 
 func (s *shardAssignmentDispatcher) ShardAssignment(stream proto.OxiaControl_ShardAssignmentServer) error {
+	ch := make(chan error)
 	go common.DoWithLabels(map[string]string{
 		"oxia": "receive-shards-assignments",
-	}, func() { s.handleServerStream(stream) })
+	}, func() { s.handleServerStream(stream, ch) })
 
-	s.Lock()
-	ch := s.closeCh
-	s.Unlock()
+	select {
+	case err := <-ch:
+		return err
 
-	return <-ch
-}
-
-func (s *shardAssignmentDispatcher) handleServerStream(stream proto.OxiaControl_ShardAssignmentServer) {
-	for {
-		request, err := stream.Recv()
-		if err != nil {
-			s.closeChannel(err)
-			return
-		} else if request == nil {
-			// The stream is already closing
-			return
-		} else if err := s.updateShardAssignment(request); err != nil {
-			s.closeChannel(err)
-			return
-		}
+	case <-s.ctx.Done():
+		// Server is closing
+		return nil
 	}
 }
 
-func (s *shardAssignmentDispatcher) closeChannel(err error) {
-	s.Lock()
-	defer s.Unlock()
-
-	if s.closeCh != nil {
+func (s *shardAssignmentDispatcher) handleServerStream(stream proto.OxiaControl_ShardAssignmentServer, ch chan error) {
+	for {
+		request, err := stream.Recv()
 		if err != nil {
-			s.closeCh <- err
+			ch <- err
+			return
+		} else if request == nil {
+			// The stream is already closing
+			close(ch)
+			return
+		} else if err := s.updateShardAssignment(request); err != nil {
+			ch <- err
+			return
 		}
-		close(s.closeCh)
-		s.closeCh = nil
 	}
 }
 
@@ -112,13 +148,15 @@ func (s *shardAssignmentDispatcher) updateShardAssignment(assignments *proto.Sha
 
 	s.assignments = assignments
 
-	for id, client := range s.clients {
-		err := client.Send(assignments)
-		if err != nil {
-			peer, _ := peer.FromContext(client.Context())
-			s.log.Warn().Err(err).
-				Str("client", peer.Addr.String()).
-				Msg("Failed to send shard assignment update to client")
+	// Update all the clients, without getting stuck if any client is not responsive
+	for id, clientCh := range s.clients {
+		select {
+		case clientCh <- assignments:
+			// Good, we were able to pass the update to the client
+
+		default:
+			// The client is not responsive, cut it off
+			close(clientCh)
 			delete(s.clients, id)
 		}
 	}
@@ -129,12 +167,13 @@ func (s *shardAssignmentDispatcher) updateShardAssignment(assignments *proto.Sha
 func NewShardAssignmentDispatcher() ShardAssignmentsDispatcher {
 	s := &shardAssignmentDispatcher{
 		assignments: nil,
-		clients:     make(map[int]Client),
-		closeCh:     make(chan error),
+		clients:     make(map[int64]chan *proto.ShardAssignmentsResponse),
 		log: log.With().
 			Str("component", "shard-assignment-dispatcher").
 			Logger(),
 	}
+
+	s.ctx, s.cancel = context.WithCancel(context.Background())
 
 	return s
 }
@@ -143,29 +182,35 @@ func NewStandaloneShardAssignmentDispatcher(address string, numShards uint32) Sh
 	assignmentDispatcher := NewShardAssignmentDispatcher().(*shardAssignmentDispatcher)
 	res := &proto.ShardAssignmentsResponse{
 		ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
+		Assignments:    generateShards(address, numShards),
 	}
 
-	bucketSize := math.MaxUint32 / numShards
-
-	for i := uint32(0); i < numShards; i++ {
-		upperBound := (i + 1) * bucketSize
-		if i == numShards-1 {
-			upperBound = math.MaxUint32
-		}
-		res.Assignments = append(res.Assignments, &proto.ShardAssignment{
-			ShardId: i,
-			Leader:  address,
-			ShardBoundaries: &proto.ShardAssignment_Int32HashRange{
-				Int32HashRange: &proto.Int32HashRange{
-					MinHashInclusive: i * bucketSize,
-					MaxHashExclusive: upperBound,
-				},
-			},
-		})
-	}
 	err := assignmentDispatcher.updateShardAssignment(res)
 	if err != nil {
 		panic(err)
 	}
 	return assignmentDispatcher
+}
+
+func generateShards(address string, numShards uint32) []*proto.ShardAssignment {
+	bucketSize := (math.MaxUint32 / numShards) + 1
+	assignments := make([]*proto.ShardAssignment, numShards)
+	for i := uint32(0); i < numShards; i++ {
+		lowerBound := i * bucketSize
+		upperBound := lowerBound + bucketSize - 1
+		if i == numShards-1 {
+			upperBound = math.MaxUint32
+		}
+		assignments[i] = &proto.ShardAssignment{
+			ShardId: i,
+			Leader:  address,
+			ShardBoundaries: &proto.ShardAssignment_Int32HashRange{
+				Int32HashRange: &proto.Int32HashRange{
+					MinHashInclusive: lowerBound,
+					MaxHashInclusive: upperBound,
+				},
+			},
+		}
+	}
+	return assignments
 }

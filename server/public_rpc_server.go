@@ -7,8 +7,8 @@ import (
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"oxia/common"
+	"oxia/common/container"
 	"oxia/proto"
-	"oxia/server/container"
 )
 
 type PublicRpcServer struct {
@@ -17,11 +17,11 @@ type PublicRpcServer struct {
 	shardsDirector       ShardsDirector
 	assignmentDispatcher ShardAssignmentsDispatcher
 	sessionManager       SessionManager
-	container            *container.Container
+	grpcServer           container.GrpcServer
 	log                  zerolog.Logger
 }
 
-func NewPublicRpcServer(port int, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher, sessionManager SessionManager) (*PublicRpcServer, error) {
+func NewPublicRpcServer(provider container.GrpcProvider, bindAddress string, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher, sessionManager SessionManager) (*PublicRpcServer, error) {
 	server := &PublicRpcServer{
 		shardsDirector:       shardsDirector,
 		assignmentDispatcher: assignmentDispatcher,
@@ -32,7 +32,7 @@ func NewPublicRpcServer(port int, shardsDirector ShardsDirector, assignmentDispa
 	}
 
 	var err error
-	server.container, err = container.Start("public", port, func(registrar grpc.ServiceRegistrar) {
+	server.grpcServer, err = provider.StartGrpcServer("public", bindAddress, func(registrar grpc.ServiceRegistrar) {
 		proto.RegisterOxiaClientServer(registrar, server)
 	})
 	if err != nil {
@@ -46,7 +46,7 @@ func (s *PublicRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest, srv
 	s.log.Debug().
 		Str("peer", common.GetPeer(srv.Context())).
 		Msg("Shard assignments requests")
-	err := s.assignmentDispatcher.AddClient(srv)
+	err := s.assignmentDispatcher.RegisterForUpdates(srv)
 	if err != nil {
 		s.log.Warn().Err(err).
 			Str("peer", common.GetPeer(srv.Context())).
@@ -104,6 +104,29 @@ func (s *PublicRpcServer) Read(ctx context.Context, read *proto.ReadRequest) (*p
 	return rr, err
 }
 
+func (s *PublicRpcServer) GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
+	s.log.Debug().
+		Str("peer", common.GetPeer(stream.Context())).
+		Interface("req", req).
+		Msg("Get notifications")
+
+	lc, err := s.shardsDirector.GetLeader(*req.ShardId)
+	if err != nil {
+		if !errors.Is(err, ErrorNodeIsNotLeader) {
+			s.log.Warn().Err(err).
+				Msg("Failed to get the leader controller")
+		}
+		return err
+	}
+
+	if err = lc.GetNotifications(req, stream); err != nil && !errors.Is(err, context.Canceled) {
+		s.log.Warn().Err(err).
+			Msg("Failed to handle notifications request")
+	}
+
+	return err
+}
+
 func (s *PublicRpcServer) CreateSession(ctx context.Context, req *proto.CreateSessionRequest) (*proto.CreateSessionResponse, error) {
 	s.log.Debug().
 		Str("peer", common.GetPeer(ctx)).
@@ -146,5 +169,5 @@ func (s *PublicRpcServer) CloseSession(ctx context.Context, req *proto.CloseSess
 }
 
 func (s *PublicRpcServer) Close() error {
-	return s.container.Close()
+	return s.grpcServer.Close()
 }

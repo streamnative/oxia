@@ -1,8 +1,12 @@
 package kv
 
 import (
+	"context"
 	"fmt"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+	"go.uber.org/multierr"
 	"io"
 	"oxia/common"
 	"oxia/proto"
@@ -12,9 +16,9 @@ import (
 	pb "google.golang.org/protobuf/proto"
 )
 
-var (
-	ErrorBadVersion = errors.New("oxia: bad version")
+var ErrorBadVersion = errors.New("oxia: bad version")
 
+const (
 	commitIndexKey = common.InternalKeyPrefix + "commitIndex"
 	epochKey       = common.InternalKeyPrefix + "epoch"
 )
@@ -27,12 +31,16 @@ type PutCustomizer interface {
 type DB interface {
 	io.Closer
 
-	ProcessWrite(b *proto.WriteRequest, commitIndex int64, putCustomizer PutCustomizer) (*proto.WriteResponse, error)
+	ProcessWrite(b *proto.WriteRequest, commitIndex int64, timestamp uint64, putCustomizer PutCustomizer) (*proto.WriteResponse, error)
 	ProcessRead(b *proto.ReadRequest) (*proto.ReadResponse, error)
 	ReadCommitIndex() (int64, error)
 
+	ReadNextNotifications(ctx context.Context, startOffset int64) ([]*proto.NotificationBatch, error)
+
 	UpdateEpoch(newEpoch int64) error
 	ReadEpoch() (epoch int64, err error)
+
+	Snapshot() (Snapshot, error)
 }
 
 func NewDB(shardId uint32, factory KVFactory) (DB, error) {
@@ -41,26 +49,54 @@ func NewDB(shardId uint32, factory KVFactory) (DB, error) {
 		return nil, err
 	}
 
-	return &db{
-		kv: kv,
-	}, nil
+	db := &db{
+		kv:      kv,
+		shardId: shardId,
+		log: log.Logger.With().
+			Str("component", "db").
+			Uint32("shard", shardId).
+			Logger(),
+	}
+
+	commitIndex, err := db.ReadCommitIndex()
+	if err != nil {
+		return nil, err
+	}
+
+	db.notificationsTracker = newNotificationsTracker(commitIndex, kv)
+	return db, nil
 }
 
 type db struct {
-	kv KV
+	kv                   KV
+	shardId              uint32
+	notificationsTracker *notificationsTracker
+	log                  zerolog.Logger
+}
+
+func (d *db) Snapshot() (Snapshot, error) {
+	return d.kv.Snapshot()
 }
 
 func (d *db) Close() error {
-	return d.kv.Close()
+	return multierr.Combine(
+		d.notificationsTracker.Close(),
+		d.kv.Close(),
+	)
 }
 
-func (d *db) ProcessWrite(b *proto.WriteRequest, commitIndex int64, putCustomizer PutCustomizer) (*proto.WriteResponse, error) {
+func now() uint64 {
+	return uint64(time.Now().UnixMilli())
+}
+
+func (d *db) ProcessWrite(b *proto.WriteRequest, commitIndex int64, timestamp uint64, putCustomizer PutCustomizer) (*proto.WriteResponse, error) {
 	res := &proto.WriteResponse{}
 
 	batch := d.kv.NewWriteBatch()
+	notifications := newNotifications(d.shardId, commitIndex, timestamp)
 
 	for _, putReq := range b.Puts {
-		if pr, err := applyPut(batch, putReq, putCustomizer); err != nil {
+		if pr, err := d.applyPut(batch, notifications, putReq, timestamp, putCustomizer); err != nil {
 			return nil, err
 		} else {
 			res.Puts = append(res.Puts, pr)
@@ -68,7 +104,7 @@ func (d *db) ProcessWrite(b *proto.WriteRequest, commitIndex int64, putCustomize
 	}
 
 	for _, delReq := range b.Deletes {
-		if dr, err := applyDelete(batch, delReq); err != nil {
+		if dr, err := d.applyDelete(batch, notifications, delReq); err != nil {
 			return nil, err
 		} else {
 			res.Deletes = append(res.Deletes, dr)
@@ -76,19 +112,26 @@ func (d *db) ProcessWrite(b *proto.WriteRequest, commitIndex int64, putCustomize
 	}
 
 	for _, delRangeReq := range b.DeleteRanges {
-		if dr, err := applyDeleteRange(batch, delRangeReq); err != nil {
+		if dr, err := d.applyDeleteRange(batch, notifications, delRangeReq); err != nil {
 			return nil, err
 		} else {
 			res.DeleteRanges = append(res.DeleteRanges, dr)
 		}
 	}
-	if err := d.addCommitIndex(commitIndex, batch); err != nil {
+	if err := d.addCommitIndex(commitIndex, batch, timestamp); err != nil {
+		return nil, err
+	}
+
+	// Add the notifications to the batch as well
+	if err := d.addNotifications(batch, notifications); err != nil {
 		return nil, err
 	}
 
 	if err := batch.Commit(); err != nil {
 		return nil, err
 	}
+
+	d.notificationsTracker.UpdatedCommitIndex(commitIndex)
 
 	if err := batch.Close(); err != nil {
 		return nil, err
@@ -97,13 +140,26 @@ func (d *db) ProcessWrite(b *proto.WriteRequest, commitIndex int64, putCustomize
 	return res, nil
 }
 
-func (d *db) addCommitIndex(commitIndex int64, batch WriteBatch) error {
+func (d *db) addNotifications(batch WriteBatch, notifications *notifications) error {
+	value, err := pb.Marshal(&notifications.batch)
+	if err != nil {
+		return err
+	}
+
+	if err = batch.Put(notificationKey(notifications.batch.Offset), value); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (d *db) addCommitIndex(commitIndex int64, batch WriteBatch, timestamp uint64) error {
 	commitIndexPayload := []byte(fmt.Sprintf("%d", commitIndex))
-	_, err := applyPut(batch, &proto.PutRequest{
+	_, err := d.applyPut(batch, nil, &proto.PutRequest{
 		Key:             commitIndexKey,
 		Payload:         commitIndexPayload,
 		ExpectedVersion: nil,
-	}, nil)
+	}, timestamp, nil)
 	return err
 }
 
@@ -154,10 +210,10 @@ func (d *db) ReadCommitIndex() (int64, error) {
 func (d *db) UpdateEpoch(newEpoch int64) error {
 	batch := d.kv.NewWriteBatch()
 
-	if _, err := applyPut(batch, &proto.PutRequest{
+	if _, err := d.applyPut(batch, nil, &proto.PutRequest{
 		Key:     epochKey,
 		Payload: []byte(fmt.Sprintf("%d", newEpoch)),
-	}, nil); err != nil {
+	}, now(), nil); err != nil {
 		return err
 	}
 
@@ -193,7 +249,7 @@ func (d *db) ReadEpoch() (epoch int64, err error) {
 	return epoch, nil
 }
 
-func applyPut(batch WriteBatch, putReq *proto.PutRequest, putCustomizer PutCustomizer) (*proto.PutResponse, error) {
+func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *proto.PutRequest, timestamp uint64, putCustomizer PutCustomizer) (*proto.PutResponse, error) {
 	se, err := checkExpectedVersion(batch, putReq.Key, putReq.ExpectedVersion)
 	if errors.Is(err, ErrorBadVersion) {
 		return &proto.PutResponse{
@@ -201,62 +257,69 @@ func applyPut(batch WriteBatch, putReq *proto.PutRequest, putCustomizer PutCusto
 		}, nil
 	} else if err != nil {
 		return nil, errors.Wrap(err, "oxia db: failed to apply batch")
-	}
-	if putCustomizer != nil {
-		status, err := putCustomizer.CheckApplicability(batch, putReq)
-		if err != nil {
-			return nil, err
-		}
-		if status != proto.Status_OK {
-			return &proto.PutResponse{
-				Status: status,
-			}, nil
-		}
-		additionalData := putCustomizer.AdditionalData(putReq)
-		if additionalData != nil {
-			_, err = applyPut(batch, additionalData, nil)
+	} else {
+		if putCustomizer != nil {
+			status, err := putCustomizer.CheckApplicability(batch, putReq)
 			if err != nil {
 				return nil, err
 			}
+			if status != proto.Status_OK {
+				return &proto.PutResponse{
+					Status: status,
+				}, nil
+			}
+			additionalData := putCustomizer.AdditionalData(putReq)
+			if additionalData != nil {
+				_, err = d.applyPut(batch, nil, additionalData, timestamp, nil)
+				if err != nil {
+					return nil, err
+				}
 
+			}
 		}
-	}
-	now := uint64(time.Now().UnixMilli())
-
-	// No version conflict
-	if se == nil {
-		se = &proto.StorageEntry{
-			Version:               0,
-			Payload:               putReq.Payload,
-			CreationTimestamp:     now,
-			ModificationTimestamp: now,
+		// No version conflict
+		if se == nil {
+			se = &proto.StorageEntry{
+				Version:               0,
+				Payload:               putReq.Payload,
+				CreationTimestamp:     timestamp,
+				ModificationTimestamp: timestamp,
+			}
+		} else {
+			se.Version += 1
+			se.Payload = putReq.Payload
+			se.ModificationTimestamp = timestamp
 		}
-	} else {
-		se.Version += 1
-		se.Payload = putReq.Payload
-		se.ModificationTimestamp = now
-	}
 
-	ser, err := pb.Marshal(se)
-	if err != nil {
-		return nil, err
-	}
+		ser, err := pb.Marshal(se)
+		if err != nil {
+			return nil, err
+		}
 
-	if err = batch.Put(putReq.Key, ser); err != nil {
-		return nil, err
-	}
+		if err = batch.Put(putReq.Key, ser); err != nil {
+			return nil, err
+		}
 
-	return &proto.PutResponse{
-		Stat: &proto.Stat{
+		if notifications != nil {
+			notifications.Modified(putReq.Key, se.Version)
+		}
+
+		stat := &proto.Stat{
 			Version:           se.Version,
 			CreatedTimestamp:  se.CreationTimestamp,
 			ModifiedTimestamp: se.ModificationTimestamp,
-		},
-	}, nil
+		}
 
+		d.log.Debug().
+			Str("key", putReq.Key).
+			Interface("stat", stat).
+			Msg("Applied put operation")
+
+		return &proto.PutResponse{Stat: stat}, nil
+	}
 }
 
-func applyDelete(batch WriteBatch, delReq *proto.DeleteRequest) (*proto.DeleteResponse, error) {
+func (d *db) applyDelete(batch WriteBatch, notifications *notifications, delReq *proto.DeleteRequest) (*proto.DeleteResponse, error) {
 	se, err := checkExpectedVersion(batch, delReq.Key, delReq.ExpectedVersion)
 
 	if errors.Is(err, ErrorBadVersion) {
@@ -269,15 +332,36 @@ func applyDelete(batch WriteBatch, delReq *proto.DeleteRequest) (*proto.DeleteRe
 		if err = batch.Delete(delReq.Key); err != nil {
 			return &proto.DeleteResponse{}, err
 		}
+
+		if notifications != nil {
+			notifications.Deleted(delReq.Key)
+		}
+
+		d.log.Debug().
+			Str("key", delReq.Key).
+			Msg("Applied delete operation")
 		return &proto.DeleteResponse{Status: proto.Status_OK}, nil
 	}
 }
 
-func applyDeleteRange(batch WriteBatch, delReq *proto.DeleteRangeRequest) (*proto.DeleteRangeResponse, error) {
+func (d *db) applyDeleteRange(batch WriteBatch, notifications *notifications, delReq *proto.DeleteRangeRequest) (*proto.DeleteRangeResponse, error) {
+	if notifications != nil {
+		it := batch.KeyRangeScan(delReq.StartInclusive, delReq.EndExclusive)
+		for it.Next() {
+			notifications.Deleted(it.Key())
+		}
+
+		it.Close()
+	}
+
 	if err := batch.DeleteRange(delReq.StartInclusive, delReq.EndExclusive); err != nil {
 		return nil, errors.Wrap(err, "oxia db: failed to delete range")
 	}
 
+	d.log.Debug().
+		Str("key-start", delReq.StartInclusive).
+		Str("key-end", delReq.EndExclusive).
+		Msg("Applied delete range operation")
 	return &proto.DeleteRangeResponse{Status: proto.Status_OK}, nil
 }
 
@@ -361,4 +445,8 @@ func deserialize(payload []byte, closer io.Closer) (*proto.StorageEntry, error) 
 		return nil, err
 	}
 	return se, nil
+}
+
+func (d *db) ReadNextNotifications(ctx context.Context, startOffset int64) ([]*proto.NotificationBatch, error) {
+	return d.notificationsTracker.ReadNextNotifications(ctx, startOffset)
 }

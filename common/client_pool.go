@@ -3,6 +3,7 @@ package common
 import (
 	"context"
 	"github.com/grpc-ecosystem/go-grpc-prometheus"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
@@ -42,6 +43,9 @@ func NewClientPool() ClientPool {
 }
 
 func (cp *clientPool) Close() error {
+	cp.Lock()
+	defer cp.Unlock()
+
 	for target, cnx := range cp.connections {
 		err := cnx.(*grpc.ClientConn).Close()
 		if err != nil {
@@ -106,7 +110,7 @@ func (cp *clientPool) getConnection(target string) (grpc.ClientConnInterface, er
 		return cnx, nil
 	}
 
-	cp.log.Info().
+	cp.log.Debug().
 		Str("server_address", target).
 		Msg("Creating new GRPC connection")
 
@@ -116,7 +120,7 @@ func (cp *clientPool) getConnection(target string) (grpc.ClientConnInterface, er
 		grpc.WithUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor),
 	)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "error connecting to %s", target)
 	}
 
 	cp.connections[target] = cnx

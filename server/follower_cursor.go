@@ -30,6 +30,8 @@ type AddEntriesStreamProvider interface {
 type FollowerCursor interface {
 	io.Closer
 
+	ShardId() uint32
+
 	// LastPushed
 	// The last entry that was sent to this follower
 	LastPushed() int64
@@ -75,6 +77,7 @@ func NewFollowerCursor(
 		ackTracker:               ackTracker,
 		addEntriesStreamProvider: addEntriesStreamProvider,
 		wal:                      wal,
+		shardId:                  shardId,
 
 		log: log.With().
 			Str("component", "follower-cursor").
@@ -91,7 +94,7 @@ func NewFollowerCursor(
 	fc.ackIndex.Store(ackIndex)
 
 	var err error
-	if fc.cursorAcker, err = ackTracker.NewCursorAcker(); err != nil {
+	if fc.cursorAcker, err = ackTracker.NewCursorAcker(ackIndex); err != nil {
 		return nil, err
 	}
 
@@ -121,6 +124,10 @@ func (fc *followerCursor) Close() error {
 	return nil
 }
 
+func (fc *followerCursor) ShardId() uint32 {
+	return fc.shardId
+}
+
 func (fc *followerCursor) LastPushed() int64 {
 	return fc.lastPushed.Load()
 }
@@ -143,10 +150,13 @@ func (fc *followerCursor) runOnce() error {
 	ctx, cancel := context.WithCancel(fc.ctx)
 	defer cancel()
 
+	fc.Lock()
 	var err error
 	if fc.stream, err = fc.addEntriesStreamProvider.GetAddEntriesStream(ctx, fc.follower, fc.shardId); err != nil {
+		fc.Unlock()
 		return err
 	}
+	fc.Unlock()
 
 	currentOffset := fc.ackIndex.Load()
 
@@ -223,6 +233,9 @@ func (fc *followerCursor) receiveAcks(cancel context.CancelFunc, stream proto.Ox
 			return
 		}
 
+		fc.log.Debug().
+			Int64("offset", res.Offset).
+			Msg("Received ack")
 		fc.cursorAcker.Ack(res.Offset)
 
 		fc.ackIndex.Store(res.Offset)

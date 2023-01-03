@@ -5,7 +5,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"oxia/proto"
-	"strings"
 	"testing"
 	"time"
 )
@@ -19,7 +18,7 @@ type walFactoryFactory interface {
 }
 
 type inMemoryWalFactoryFactory struct{}
-type tidwallWalFactoryFactory struct{}
+type persistentWalFactoryFactory struct{}
 
 func (_ *inMemoryWalFactoryFactory) NewWalFactory(_ *testing.T) WalFactory {
 	return NewInMemoryWalFactory()
@@ -33,33 +32,34 @@ func (_ *inMemoryWalFactoryFactory) Persistent() bool {
 	return false
 }
 
-func (_ *tidwallWalFactoryFactory) NewWalFactory(t *testing.T) WalFactory {
+func (_ *persistentWalFactoryFactory) NewWalFactory(t *testing.T) WalFactory {
 	dir := t.TempDir()
-	f := NewWalFactory(&WalFactoryOptions{dir})
+	f := NewWalFactory(&WalFactoryOptions{dir, false})
 	return f
 }
 
-func (_ *tidwallWalFactoryFactory) Name() string {
-	return "Tidwall/"
+func (_ *persistentWalFactoryFactory) Name() string {
+	return "Persistent/"
 }
 
-func (_ *tidwallWalFactoryFactory) Persistent() bool {
+func (_ *persistentWalFactoryFactory) Persistent() bool {
 	return true
 }
 
 var walFF walFactoryFactory = &inMemoryWalFactoryFactory{}
 
 func TestWal(t *testing.T) {
-	for _, f := range []walFactoryFactory{&inMemoryWalFactoryFactory{}, &tidwallWalFactoryFactory{}} {
+	for _, f := range []walFactoryFactory{&inMemoryWalFactoryFactory{}, &persistentWalFactoryFactory{}} {
 		walFF = f
-		t.Run(f.Name()+"Factory_NewWal", Factory_NewWal)
+		t.Run(f.Name()+"FactoryNewWal", FactoryNewWal)
 		t.Run(f.Name()+"Append", Append)
 		t.Run(f.Name()+"Truncate", Truncate)
+		t.Run(f.Name()+"Clear", Clear)
+		t.Run(f.Name()+"Trim", Trim)
 		if f.Persistent() {
 			t.Run(f.Name()+"Reopen", Reopen)
 		}
 	}
-
 }
 
 func createWal(t *testing.T) (WalFactory, Wal) {
@@ -103,7 +103,7 @@ func assertReaderReadsEventually(t *testing.T, r WalReader, entries []string) ch
 	return ch
 }
 
-func Factory_NewWal(t *testing.T) {
+func FactoryNewWal(t *testing.T) {
 	f, w := createWal(t)
 	rr, err := w.NewReverseReader()
 	assert.NoError(t, err)
@@ -173,7 +173,7 @@ func Append(t *testing.T) {
 		Offset: int64(88),
 		Value:  []byte("E"),
 	})
-	assert.True(t, err != nil && strings.Contains(err.Error(), "Invalid next offset"))
+	assert.ErrorIs(t, err, ErrorInvalidNextOffset)
 
 	err = w.Close()
 	assert.NoError(t, err)
@@ -242,4 +242,136 @@ func Reopen(t *testing.T) {
 	assert.NoError(t, err)
 	err = f.Close()
 	assert.NoError(t, err)
+}
+
+func Clear(t *testing.T) {
+	f, w := createWal(t)
+
+	assert.EqualValues(t, InvalidOffset, w.FirstOffset())
+	assert.EqualValues(t, InvalidOffset, w.LastOffset())
+
+	for i := 0; i < 100; i++ {
+		assert.NoError(t, w.Append(&proto.LogEntry{
+			Epoch:  1,
+			Offset: int64(i),
+			Value:  []byte(fmt.Sprintf("entry-%d", i)),
+		}))
+	}
+
+	assert.EqualValues(t, 0, w.FirstOffset())
+	assert.EqualValues(t, 99, w.LastOffset())
+
+	assert.NoError(t, w.Clear())
+
+	assert.EqualValues(t, InvalidOffset, w.FirstOffset())
+	assert.EqualValues(t, InvalidOffset, w.LastOffset())
+
+	for i := 250; i < 300; i++ {
+		assert.NoError(t, w.Append(&proto.LogEntry{
+			Epoch:  1,
+			Offset: int64(i),
+			Value:  []byte(fmt.Sprintf("entry-%d", i)),
+		}))
+
+		assert.EqualValues(t, 250, w.FirstOffset())
+		assert.EqualValues(t, i, w.LastOffset())
+	}
+
+	// Test forward reader
+	r, err := w.NewReader(249)
+	assert.NoError(t, err)
+
+	for i := 250; i < 300; i++ {
+		assert.True(t, r.HasNext())
+		le, err := r.ReadNext()
+		assert.NoError(t, err)
+
+		assert.EqualValues(t, i, le.Offset)
+		assert.Equal(t, fmt.Sprintf("entry-%d", i), string(le.Value))
+	}
+
+	assert.False(t, r.HasNext())
+	assert.NoError(t, r.Close())
+
+	// Test reverse reader
+	r, err = w.NewReverseReader()
+	assert.NoError(t, err)
+
+	for i := 299; i >= 250; i-- {
+		assert.True(t, r.HasNext())
+		le, err := r.ReadNext()
+		assert.NoError(t, err)
+
+		assert.EqualValues(t, i, le.Offset)
+		assert.Equal(t, fmt.Sprintf("entry-%d", i), string(le.Value))
+	}
+
+	assert.False(t, r.HasNext())
+	assert.NoError(t, r.Close())
+
+	assert.NoError(t, w.Close())
+	assert.NoError(t, f.Close())
+}
+
+func Trim(t *testing.T) {
+	f, w := createWal(t)
+
+	assert.EqualValues(t, InvalidOffset, w.FirstOffset())
+	assert.EqualValues(t, InvalidOffset, w.LastOffset())
+
+	for i := 0; i < 100; i++ {
+		assert.NoError(t, w.Append(&proto.LogEntry{
+			Epoch:  1,
+			Offset: int64(i),
+			Value:  []byte(fmt.Sprintf("entry-%d", i)),
+		}))
+	}
+
+	assert.EqualValues(t, 0, w.FirstOffset())
+	assert.EqualValues(t, 99, w.LastOffset())
+
+	assert.NoError(t, w.Trim(50))
+
+	assert.EqualValues(t, 50, w.FirstOffset())
+	assert.EqualValues(t, 99, w.LastOffset())
+
+	// Test forward reader
+	r, err := w.NewReader(49)
+	assert.NoError(t, err)
+
+	for i := 50; i < 100; i++ {
+		assert.True(t, r.HasNext())
+		le, err := r.ReadNext()
+		assert.NoError(t, err)
+
+		assert.EqualValues(t, i, le.Offset)
+		assert.Equal(t, fmt.Sprintf("entry-%d", i), string(le.Value))
+	}
+
+	assert.False(t, r.HasNext())
+	assert.NoError(t, r.Close())
+
+	// Test reverse reader
+	r, err = w.NewReverseReader()
+	assert.NoError(t, err)
+
+	for i := 99; i >= 50; i-- {
+		assert.True(t, r.HasNext())
+		le, err := r.ReadNext()
+		assert.NoError(t, err)
+
+		assert.EqualValues(t, i, le.Offset)
+		assert.Equal(t, fmt.Sprintf("entry-%d", i), string(le.Value))
+	}
+
+	assert.False(t, r.HasNext())
+	assert.NoError(t, r.Close())
+
+	// Test reading a trimmed offset
+	r, err = w.NewReader(48)
+	assert.ErrorIs(t, err, ErrorEntryNotFound)
+	assert.Nil(t, r)
+
+	assert.NoError(t, w.Close())
+	assert.NoError(t, f.Close())
 }

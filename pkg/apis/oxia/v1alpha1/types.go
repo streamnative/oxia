@@ -1,6 +1,7 @@
 package v1alpha1
 
 import (
+	coreV1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -18,14 +19,27 @@ type OxiaCluster struct {
 
 // OxiaClusterSpec is the spec for an OxiaCluster resource
 type OxiaClusterSpec struct {
-	ServerReplicas    *uint32 `json:"serverReplicas"`
-	ShardCount        *uint32 `json:"shardCount"`
-	ReplicationFactor *uint32 `json:"replicationFactor"`
+	ReplicationFactor    *uint32           `json:"replicationFactor"`
+	ShardCount           *uint32           `json:"shardCount"`
+	ServerReplicas       *uint32           `json:"serverReplicas"`
+	ServerResources      Resources         `json:"serverResources"`
+	ServerVolume         string            `json:"serverVolume"`
+	StorageClassName     *string           `json:"storageClass"`
+	CoordinatorResources Resources         `json:"coordinatorResources"`
+	Image                string            `json:"image"`
+	ImagePullSecrets     *string           `json:"imagePullSecrets"`
+	ImagePullPolicy      coreV1.PullPolicy `json:"imagePullPolicy"`
+	MonitoringEnabled    bool              `json:"monitoringEnabled"`
 }
 
 // OxiaClusterStatus is the status for an OxiaCluster resource
 type OxiaClusterStatus struct {
 	Shards []*ShardMetadata `json:"shards"`
+}
+
+type Resources struct {
+	Cpu    string `json:"cpu"`
+	Memory string `json:"memory"`
 }
 
 type ShardMetadata struct {

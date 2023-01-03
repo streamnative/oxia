@@ -11,9 +11,11 @@ import (
 	"time"
 )
 
+const DefaultLogLevel = zerolog.InfoLevel
+
 var (
-	// LogDebug Used for flags
-	LogDebug bool
+	// LogLevel Used for flags
+	LogLevel zerolog.Level
 	// LogJson Used for flags
 	LogJson bool
 )
@@ -35,6 +37,7 @@ func ConfigureLogger() {
 	log.Logger = zerolog.New(os.Stdout).
 		With().
 		Timestamp().
+		Stack().
 		Logger()
 
 	if !LogJson {
@@ -43,10 +46,5 @@ func ConfigureLogger() {
 			TimeFormat: time.StampMicro,
 		})
 	}
-
-	if LogDebug {
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
-	} else {
-		zerolog.SetGlobalLevel(zerolog.InfoLevel)
-	}
+	zerolog.SetGlobalLevel(LogLevel)
 }

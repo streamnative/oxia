@@ -1,12 +1,14 @@
 package controller
 
 import (
+	"fmt"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
-	"oxia/server/metrics"
+	"oxia/common/metrics"
 )
 
 type Config struct {
+	BindHost            string
 	InternalServicePort int
 	MetricsPort         int
 }
@@ -28,12 +30,12 @@ func New(config Config) (*Controller, error) {
 	// create and manage Oxia clusters
 
 	var err error
-	s.rpc, err = NewControllerRpcServer(config.InternalServicePort)
+	s.rpc, err = NewControllerRpcServer(fmt.Sprintf("%s:%d", config.BindHost, config.InternalServicePort))
 	if err != nil {
 		return nil, err
 	}
 
-	s.metrics, err = metrics.Start(config.MetricsPort)
+	s.metrics, err = metrics.Start(fmt.Sprintf("%s:%d", config.BindHost, config.MetricsPort))
 	if err != nil {
 		return nil, err
 	}
