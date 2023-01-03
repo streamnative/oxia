@@ -3,7 +3,9 @@ package wal
 import (
 	"fmt"
 	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel/metric/unit"
 	pb "google.golang.org/protobuf/proto"
+	"oxia/common/metrics"
 	"oxia/proto"
 	"path/filepath"
 	"sync"
@@ -43,13 +45,19 @@ type persistentWal struct {
 	log         *Log
 	firstOffset int64
 	lastOffset  int64
+
+	appendLatency metrics.LatencyHistogram
+	appendBytes   metrics.Counter
+	readLatency   metrics.LatencyHistogram
+	readBytes     metrics.Counter
+	trimOps       metrics.Counter
 }
 
 func newPersistentWal(shard uint32, options *WalFactoryOptions) (Wal, error) {
 	opts := DefaultOptions()
 	opts.InMemory = options.InMemory
 	walPath := filepath.Join(options.LogDir, fmt.Sprint("shard-", shard))
-	log, err := Open(walPath, opts)
+	log, err := OpenWithShard(walPath, shard, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -58,29 +66,47 @@ func newPersistentWal(shard uint32, options *WalFactoryOptions) (Wal, error) {
 		return nil, err
 	}
 
-	var firstOffset, lastOffset int64
+	labels := metrics.LabelsForShard(shard)
+	w := &persistentWal{
+		shard: shard,
+		log:   log,
+
+		appendLatency: metrics.NewLatencyHistogram("oxia_server_wal_append_latency",
+			"The time it takes to append entries to the WAL", labels),
+		appendBytes: metrics.NewCounter("oxia_server_wal_append",
+			"Bytes appended to the WAL", unit.Bytes, labels),
+		readLatency: metrics.NewLatencyHistogram("oxia_server_wal_read_latency",
+			"The time it takes to read an entry from the WAL", labels),
+		readBytes: metrics.NewCounter("oxia_server_wal_read",
+			"Bytes read from the WAL", unit.Bytes, labels),
+		trimOps: metrics.NewCounter("oxia_server_wal_trim",
+			"The number of trim operations happening on the WAL", unit.Dimensionless, labels),
+	}
+
+	metrics.NewGauge("oxia_server_wal_entries",
+		"The number of active entries in the wal", "count", labels, func() int64 {
+			return w.lastOffset - w.firstOffset
+		})
+
 	if lastIndex == -1 {
-		lastOffset = InvalidOffset
-		firstOffset = InvalidOffset
+		w.lastOffset = InvalidOffset
+		w.firstOffset = InvalidOffset
 	} else {
-		lastEntry, err := readAtIndex(log, lastIndex)
+		lastEntry, err := w.readAtIndex(log, lastIndex)
 		if err != nil {
 			return nil, err
 		}
 
-		lastOffset = lastEntry.Offset
-		firstOffset = log.firstOffset
-	}
-	w := &persistentWal{
-		shard:       shard,
-		log:         log,
-		lastOffset:  lastOffset,
-		firstOffset: firstOffset,
+		w.lastOffset = lastEntry.Offset
+		w.firstOffset = log.firstOffset
 	}
 	return w, nil
 }
 
-func readAtIndex(log *Log, index int64) (*proto.LogEntry, error) {
+func (t *persistentWal) readAtIndex(log *Log, index int64) (*proto.LogEntry, error) {
+	timer := t.readLatency.Timer()
+	defer timer.Done()
+
 	val, err := log.Read(index)
 	if err != nil {
 		return nil, err
@@ -90,6 +116,7 @@ func readAtIndex(log *Log, index int64) (*proto.LogEntry, error) {
 	if err = pb.Unmarshal(val, entry); err != nil {
 		return nil, err
 	}
+	t.readBytes.Add(len(val))
 	return entry, nil
 }
 
@@ -114,6 +141,7 @@ func (t *persistentWal) Trim(firstOffset int64) error {
 	}
 
 	t.firstOffset = t.log.firstOffset
+	t.trimOps.Inc()
 	return nil
 }
 
@@ -124,6 +152,9 @@ func (t *persistentWal) Close() error {
 }
 
 func (t *persistentWal) Append(entry *proto.LogEntry) error {
+	timer := t.appendLatency.Timer()
+	defer timer.Done()
+
 	t.Lock()
 	defer t.Unlock()
 
@@ -144,6 +175,8 @@ func (t *persistentWal) Append(entry *proto.LogEntry) error {
 	if t.firstOffset == InvalidOffset {
 		t.firstOffset = t.log.firstOffset
 	}
+
+	t.appendBytes.Add(len(val))
 	return err
 }
 
@@ -274,6 +307,9 @@ func (r *reverseReader) Close() error {
 }
 
 func (r *forwardReader) ReadNext() (*proto.LogEntry, error) {
+	timer := r.wal.readLatency.Timer()
+	defer timer.Done()
+
 	r.Lock()
 	defer r.Unlock()
 
@@ -284,7 +320,7 @@ func (r *forwardReader) ReadNext() (*proto.LogEntry, error) {
 	index := r.nextOffset
 	r.wal.RLock()
 	defer r.wal.RUnlock()
-	entry, err := readAtIndex(r.wal.log, index)
+	entry, err := r.wal.readAtIndex(r.wal.log, index)
 	if err != nil {
 		return nil, err
 	}
@@ -317,7 +353,7 @@ func (r *reverseReader) ReadNext() (*proto.LogEntry, error) {
 	r.wal.RLock()
 	defer r.wal.RUnlock()
 
-	entry, err := readAtIndex(r.wal.log, index)
+	entry, err := r.wal.readAtIndex(r.wal.log, index)
 	if err != nil {
 		return nil, err
 	}
