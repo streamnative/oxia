@@ -13,7 +13,7 @@ const (
 	CodeAlreadyClosed          codes.Code = 104
 	CodeLeaderAlreadyConnected codes.Code = 105
 	CodeNodeIsNotLeader        codes.Code = 106
-	CodeNodeIsNotFollower      codes.Code = 106
+	CodeNodeIsNotFollower      codes.Code = 107
 )
 
 var (
