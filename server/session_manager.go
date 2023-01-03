@@ -19,25 +19,25 @@ const (
 	MaxTimeout = 10 * time.Second
 )
 
-type SessionId uint32
+var ErrorSessionNotFound = errors.New("session not found")
 
-func Key(sessionId SessionId) string {
+var ErrorInvalidSessionTimeout = errors.New("invalid session timeout")
+
+type SessionId uint64
+
+func SessionKey(sessionId SessionId) string {
 	return KeyPrefix + strconv.FormatUint(uint64(sessionId), 16) + "/"
 }
 
 func KeyToId(key string) (SessionId, error) {
 	s := key[len(KeyPrefix):]
 	s = s[:len(s)-1]
-	longInt, err := strconv.ParseUint(s, 16, 32)
+	longInt, err := strconv.ParseUint(s, 16, 64)
 	if err != nil {
 		return 0, err
 	}
 	return SessionId(longInt), nil
 }
-
-var ErrorSessionNotFound = errors.New("session not found")
-
-var ErrorInvalidSessionTimeout = errors.New("invalid session timeout")
 
 // PutDecorator performs two operations on Put requests that have a session ID.
 // First, it checks whether the session is alive. If it is not, it errors out.
@@ -53,7 +53,7 @@ func (_ *putDecorator) AdditionalData(putReq *proto.PutRequest) *proto.PutReques
 		return nil
 	}
 	return &proto.PutRequest{
-		Key:             Key(SessionId(*sessionId)) + url.PathEscape(putReq.Key),
+		Key:             SessionKey(SessionId(*sessionId)) + url.PathEscape(putReq.Key),
 		Payload:         []byte{},
 		ExpectedVersion: &versionNotExists,
 	}
@@ -64,7 +64,7 @@ func (_ *putDecorator) CheckApplicability(batch kv.WriteBatch, putReq *proto.Put
 	if sessionId == nil {
 		return proto.Status_OK, nil
 	}
-	var _, closer, err = batch.Get(Key(SessionId(*sessionId)))
+	var _, closer, err = batch.Get(SessionKey(SessionId(*sessionId)))
 	if err != nil {
 		if errors.Is(err, kv.ErrorKeyNotFound) {
 			return proto.Status_SESSION_DOES_NOT_EXIST, nil
@@ -131,7 +131,7 @@ func (sm *sessionManager) CreateSession(request *proto.CreateSessionRequest) (*p
 	defer sm.Unlock()
 	sm.sessionCounters[request.ShardId]++
 
-	sessionId := sm.sessionCounters[request.ShardId]
+	sessionId := (SessionId(request.ShardId) << 32) + sm.sessionCounters[request.ShardId]
 
 	controller, err := sm.controllerSupplier(request.ShardId)
 	if err != nil {
@@ -140,7 +140,7 @@ func (sm *sessionManager) CreateSession(request *proto.CreateSessionRequest) (*p
 	resp, err := controller.Write(&proto.WriteRequest{
 		ShardId: &request.ShardId,
 		Puts: []*proto.PutRequest{{
-			Key:     Key(sessionId),
+			Key:     SessionKey(sessionId),
 			Payload: []byte{},
 		}},
 	})
@@ -154,7 +154,7 @@ func (sm *sessionManager) CreateSession(request *proto.CreateSessionRequest) (*p
 	s := sm.startSession(sessionId, request.ShardId, timeout)
 	sm.sessions[sessionId] = s
 
-	return &proto.CreateSessionResponse{SessionId: uint32(s.id)}, nil
+	return &proto.CreateSessionResponse{SessionId: uint64(s.id)}, nil
 
 }
 
@@ -303,7 +303,7 @@ func (s *session) close(delete bool) error {
 	if err != nil {
 		return err
 	}
-	sessionKey := Key(s.id)
+	sessionKey := SessionKey(s.id)
 	// Read "index"
 	list, err := controller.Read(&proto.ReadRequest{
 		ShardId: &s.shardId,
@@ -347,7 +347,7 @@ func (s *session) close(delete bool) error {
 
 func (s *session) heartbeat(heartbeat *proto.Heartbeat) {
 	s.Lock()
-	s.Unlock()
+	defer s.Unlock()
 	if s.heartbeatCh != nil {
 		s.heartbeatCh <- heartbeat
 	}

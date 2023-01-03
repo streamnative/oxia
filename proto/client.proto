@@ -48,7 +48,7 @@ service OxiaClient {
   rpc Read(ReadRequest) returns (ReadResponse);
 
   /*
-   * Creates a new client session. Sessions are kapt alive by regularly sending heartbeats via the KeepAlive rpc.
+   * Creates a new client session. Sessions are kept alive by regularly sending heartbeats via the KeepAlive rpc.
    */
   rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
 
@@ -316,17 +316,17 @@ message CreateSessionRequest {
 }
 
 message CreateSessionResponse {
-  uint32 session_id = 1;
+  uint64 session_id = 1;
 }
 
 message Heartbeat {
-  uint32 session_id = 1;
+  uint64 session_id = 2;
 }
 
 message KeepAliveResponse {}
 
 message CloseSessionRequest {
-  uint32 session_id = 1;
+  uint64 session_id = 1;
 }
 
 message CloseSessionResponse {}
