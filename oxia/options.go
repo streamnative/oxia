@@ -115,12 +115,12 @@ func WithMaxRequestsPerBatch(maxRequestsPerBatch int) ClientOption {
 	})
 }
 
-func WithBatchRequestTimeout(batchRequestTimeout time.Duration) ClientOption {
+func WithRequestTimeout(requestTimeout time.Duration) ClientOption {
 	return clientOptionFunc(func(options ClientOptions) (ClientOptions, error) {
-		if batchRequestTimeout <= 0 {
+		if requestTimeout <= 0 {
 			return options, ErrorRequestTimeout
 		}
-		options.requestTimeout = batchRequestTimeout
+		options.requestTimeout = requestTimeout
 		return options, nil
 	})
 }

@@ -10,6 +10,10 @@ import (
 	"oxia/common"
 )
 
+const (
+	maxGrpcFrameSize = 256 * 1024 * 1024
+)
+
 type GrpcServer interface {
 	io.Closer
 
@@ -41,6 +45,7 @@ func newDefaultGrpcProvider(name, bindAddress string, registerFunc func(grpc.Ser
 		server: grpc.NewServer(
 			grpc.ChainStreamInterceptor(grpc_prometheus.StreamServerInterceptor),
 			grpc.ChainUnaryInterceptor(grpc_prometheus.UnaryServerInterceptor),
+			grpc.MaxRecvMsgSize(maxGrpcFrameSize),
 		),
 	}
 	registerFunc(c.server)

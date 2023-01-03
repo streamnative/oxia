@@ -58,7 +58,7 @@ func TestWithBatchRequestTimeout(t *testing.T) {
 		{0, DefaultRequestTimeout, ErrorRequestTimeout},
 		{1, 1, nil},
 	} {
-		options, err := NewClientOptions("serviceAddress", WithBatchRequestTimeout(item.batchRequestTimeout))
+		options, err := NewClientOptions("serviceAddress", WithRequestTimeout(item.batchRequestTimeout))
 		assert.Equal(t, item.expectedBatchRequestTimeout, options.RequestTimeout())
 		assert.ErrorIs(t, err, item.expectedErr)
 	}
