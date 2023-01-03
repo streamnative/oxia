@@ -16,16 +16,14 @@ type PublicRpcServer struct {
 
 	shardsDirector       ShardsDirector
 	assignmentDispatcher ShardAssignmentsDispatcher
-	sessionManager       SessionManager
 	grpcServer           container.GrpcServer
 	log                  zerolog.Logger
 }
 
-func NewPublicRpcServer(provider container.GrpcProvider, bindAddress string, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher, sessionManager SessionManager) (*PublicRpcServer, error) {
+func NewPublicRpcServer(provider container.GrpcProvider, bindAddress string, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher) (*PublicRpcServer, error) {
 	server := &PublicRpcServer{
 		shardsDirector:       shardsDirector,
 		assignmentDispatcher: assignmentDispatcher,
-		sessionManager:       sessionManager,
 		log: log.With().
 			Str("component", "public-rpc-server").
 			Logger(),
@@ -132,7 +130,7 @@ func (s *PublicRpcServer) CreateSession(ctx context.Context, req *proto.CreateSe
 		Str("peer", common.GetPeer(ctx)).
 		Interface("req", req).
 		Msg("Create session request")
-	res, err := s.sessionManager.CreateSession(req)
+	res, err := s.shardsDirector.GetSessionManager().CreateSession(req)
 	if err != nil {
 		s.log.Warn().Err(err).
 			Msg("Failed to create session")
@@ -145,10 +143,10 @@ func (s *PublicRpcServer) KeepAlive(stream proto.OxiaClient_KeepAliveServer) err
 	s.log.Debug().
 		Str("peer", common.GetPeer(stream.Context())).
 		Msg("Session keep alive")
-	err := s.sessionManager.KeepAlive(stream)
+	err := s.shardsDirector.GetSessionManager().KeepAlive(stream)
 	if err != nil {
 		s.log.Warn().Err(err).
-			Msg("Failed to keep alive session")
+			Msg("Failed to listen to heartbeats")
 		return err
 	}
 	return nil
@@ -159,7 +157,7 @@ func (s *PublicRpcServer) CloseSession(ctx context.Context, req *proto.CloseSess
 		Str("peer", common.GetPeer(ctx)).
 		Interface("req", req).
 		Msg("Close session request")
-	res, err := s.sessionManager.CloseSession(req)
+	res, err := s.shardsDirector.GetSessionManager().CloseSession(req)
 	if err != nil {
 		s.log.Warn().Err(err).
 			Msg("Failed to close session")

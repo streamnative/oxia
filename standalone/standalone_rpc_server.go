@@ -44,7 +44,7 @@ func NewStandaloneRpcServer(bindAddress string, advertisedPublicAddress string, 
 			Logger(),
 	}
 
-	res.sessionManager = server.NewSessionManager().UseLeaderControllerSupplier(func(shardId uint32) (server.LeaderController, error) {
+	res.sessionManager = server.NewSessionManager(func(shardId uint32) (server.LeaderController, error) {
 		controller, found := res.controllers[shardId]
 		if !found {
 			return nil, errors.New("shard not found")
@@ -104,7 +104,7 @@ func (s *StandaloneRpcServer) Close() error {
 	for _, c := range s.controllers {
 		err = multierr.Append(err, c.Close())
 	}
-	return err
+	return multierr.Append(err, s.sessionManager.Close())
 }
 
 func (s *StandaloneRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest, stream proto.OxiaClient_ShardAssignmentsServer) error {

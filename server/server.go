@@ -56,9 +56,7 @@ func NewWithGrpcProvider(config Config, provider container.GrpcProvider, replica
 		kvFactory: kvFactory,
 	}
 
-	s.sessionManager = NewSessionManager()
-	s.shardsDirector = NewShardsDirector(s.walFactory, s.kvFactory, replicationRpcProvider, s.sessionManager)
-	s.sessionManager.UseLeaderControllerSupplier(s.shardsDirector.GetLeader)
+	s.shardsDirector = NewShardsDirector(s.walFactory, s.kvFactory, replicationRpcProvider)
 	s.shardAssignmentDispatcher = NewShardAssignmentDispatcher()
 
 	s.internalRpcServer, err = newCoordinationRpcServer(provider,
@@ -69,7 +67,7 @@ func NewWithGrpcProvider(config Config, provider container.GrpcProvider, replica
 	}
 
 	s.PublicRpcServer, err = NewPublicRpcServer(provider,
-		fmt.Sprintf("%s:%d", config.BindHost, config.PublicServicePort), s.shardsDirector, s.shardAssignmentDispatcher, s.sessionManager)
+		fmt.Sprintf("%s:%d", config.BindHost, config.PublicServicePort), s.shardsDirector, s.shardAssignmentDispatcher)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +98,6 @@ func (s *Server) Close() error {
 		s.kvFactory.Close(),
 		s.walFactory.Close(),
 		s.replicationRpcProvider.Close(),
-		s.sessionManager.Close(),
 	)
 
 	if s.metrics != nil {

@@ -22,6 +22,7 @@ type LeaderController interface {
 
 	Write(write *proto.WriteRequest) (*proto.WriteResponse, error)
 	Read(read *proto.ReadRequest) (*proto.ReadResponse, error)
+	readWithoutLocking(read *proto.ReadRequest) (*proto.ReadResponse, error)
 
 	// Fence Handle fence request
 	Fence(req *proto.FenceRequest) (*proto.FenceResponse, error)
@@ -440,6 +441,10 @@ func (lc *leaderController) Read(request *proto.ReadRequest) (*proto.ReadRespons
 		}
 	}
 
+	return lc.readWithoutLocking(request)
+}
+
+func (lc *leaderController) readWithoutLocking(request *proto.ReadRequest) (*proto.ReadResponse, error) {
 	return lc.db.ProcessRead(request)
 }
 

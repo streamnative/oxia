@@ -3,6 +3,8 @@ package server
 import (
 	"fmt"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
 	"io"
 	"net/url"
@@ -26,13 +28,13 @@ var ErrorInvalidSessionTimeout = errors.New("invalid session timeout")
 type SessionId uint64
 
 func SessionKey(sessionId SessionId) string {
-	return KeyPrefix + strconv.FormatUint(uint64(sessionId), 16) + "/"
+	return KeyPrefix + strconv.FormatUint(uint64(sessionId), 10) + "/"
 }
 
 func KeyToId(key string) (SessionId, error) {
 	s := key[len(KeyPrefix):]
 	s = s[:len(s)-1]
-	longInt, err := strconv.ParseUint(s, 16, 64)
+	longInt, err := strconv.ParseUint(s, 10, 64)
 	if err != nil {
 		return 0, err
 	}
@@ -85,13 +87,14 @@ type LeaderControllerSupplier func(shardId uint32) (LeaderController, error)
 
 type SessionManager interface {
 	io.Closer
-	UseLeaderControllerSupplier(controllerSupplier LeaderControllerSupplier) SessionManager
 	CreateSession(*proto.CreateSessionRequest) (*proto.CreateSessionResponse, error)
 	KeepAlive(proto.OxiaClient_KeepAliveServer) error
 	CloseSession(*proto.CloseSessionRequest) (*proto.CloseSessionResponse, error)
 	InitializeShard(shardId uint32, controller LeaderController) error
 	CloseShard(shardId uint32) error
 }
+
+var _ SessionManager = (*sessionManager)(nil)
 
 type sessionManager struct {
 	sync.Mutex
@@ -100,25 +103,25 @@ type sessionManager struct {
 	sessionCounters    map[uint32]SessionId
 	// channels to close heartbeat listeners
 	closeChannels []chan error
+	log           zerolog.Logger
 }
 
-func NewSessionManager() SessionManager {
+func NewSessionManager(controllerSupplier LeaderControllerSupplier) SessionManager {
 	return &sessionManager{
-		Mutex:           sync.Mutex{},
-		sessions:        make(map[SessionId]*session),
-		sessionCounters: make(map[uint32]SessionId),
-		closeChannels:   make([]chan error, 0),
+		Mutex:              sync.Mutex{},
+		sessions:           make(map[SessionId]*session),
+		sessionCounters:    make(map[uint32]SessionId),
+		closeChannels:      make([]chan error, 0),
+		controllerSupplier: controllerSupplier,
+		log: log.With().
+			Str("component", "session-manager").
+			Logger(),
 	}
 }
 
-func (sm *sessionManager) UseLeaderControllerSupplier(controllerSupplier LeaderControllerSupplier) SessionManager {
-	sm.controllerSupplier = controllerSupplier
-	return sm
-}
-
-func SingleLeaderController(controller LeaderController) LeaderControllerSupplier {
+func SingleLeaderController(controller *LeaderController) LeaderControllerSupplier {
 	return func(_ uint32) (LeaderController, error) {
-		return controller, nil
+		return *controller, nil
 	}
 }
 
@@ -188,11 +191,8 @@ func (sm *sessionManager) CloseSession(request *proto.CloseSessionRequest) (*pro
 func (sm *sessionManager) InitializeShard(shardId uint32, controller LeaderController) error {
 	sm.Lock()
 	defer sm.Unlock()
-	if !false {
-		return nil
-	}
 	if _, loaded := sm.sessionCounters[shardId]; loaded {
-		return errors.New("session already loaded")
+		return errors.New("shard already loaded")
 	}
 	sessionIds, err := sm.readSessions(shardId, controller)
 	if err != nil {
@@ -210,8 +210,7 @@ func (sm *sessionManager) InitializeShard(shardId uint32, controller LeaderContr
 }
 
 func (sm *sessionManager) readSessions(shardId uint32, controller LeaderController) ([]SessionId, error) {
-	// TODO resolve deadlock caused by  controller's Mutex not being reentrant and that this is called from BecomeLeader
-	resp, err := controller.Read(&proto.ReadRequest{
+	resp, err := controller.readWithoutLocking(&proto.ReadRequest{
 		ShardId: &shardId,
 		Gets:    nil,
 		Lists: []*proto.ListRequest{
@@ -280,12 +279,12 @@ type session struct {
 	attached    bool
 	heartbeatCh chan *proto.Heartbeat
 	closeCh     chan error
+	log         zerolog.Logger
 }
 
 func (s *session) close(delete bool) error {
 	s.Lock()
 	defer s.Unlock()
-	// TODO send close msg to client if err == nil?
 	if s.closeCh != nil {
 		close(s.closeCh)
 		s.closeCh = nil
@@ -361,13 +360,15 @@ func (sm *sessionManager) startSession(sessionId SessionId, shardId uint32, time
 		timeout:     timeout,
 		sm:          sm,
 		heartbeatCh: make(chan *proto.Heartbeat, 1),
+		log:         sm.log.With().Uint64("session-id", uint64(sessionId)).Logger(),
 	}
-	go s.waitForHeartbeats()
+	go s.waitForHeartbeats(sessionId)
 	return s
 
 }
 
-func (s *session) waitForHeartbeats() {
+func (s *session) waitForHeartbeats(sessionId SessionId) {
+	s.log.Debug().Msg("Waiting for heartbeats")
 	s.Lock()
 	timeout := s.timeout
 	s.Unlock()
@@ -379,9 +380,16 @@ func (s *session) waitForHeartbeats() {
 				return
 			}
 		case <-time.After(timeout):
+			s.sm.log.Info().
+				Uint64("session-id", uint64(sessionId)).
+				Msg("Session timed out")
+
 			err := s.close(false)
-			err = errors.Wrap(err, "session timed out")
-			// TODO Log
+			if err != nil {
+				s.sm.log.Error().Err(err).
+					Uint64("session-id", uint64(sessionId)).
+					Msg("Failed to close session")
+			}
 		}
 	}
 }
@@ -389,7 +397,10 @@ func (s *session) waitForHeartbeats() {
 func (sm *sessionManager) receiveHeartbeats(stream proto.OxiaClient_KeepAliveServer, closeChannel chan error) {
 
 	firstBeat, err := stream.Recv()
-	if err != nil {
+	if errors.Is(err, io.EOF) {
+		// Got EOF because we are shutting down
+		return
+	} else if err != nil {
 		sm.Lock()
 		sm.sendErrorAndRemove(closeChannel, err)
 		sm.Unlock()
@@ -424,7 +435,10 @@ func (sm *sessionManager) receiveHeartbeats(stream proto.OxiaClient_KeepAliveSer
 
 	for {
 		heartbeat, err := stream.Recv()
-		if err != nil {
+		if errors.Is(err, io.EOF) {
+			// closing already
+			return
+		} else if err != nil {
 			sm.Lock()
 			sm.sendErrorAndRemove(closeChannel, errors.New(fmt.Sprintf("session (sessionId=%d) already attached", sessionId)))
 			sm.Unlock()
