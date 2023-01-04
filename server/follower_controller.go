@@ -494,7 +494,7 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 			break
 		} else if fc.epoch != wal.InvalidEpoch && snapChunk.Epoch != fc.epoch {
 			// The follower could be left with epoch=-1 by a previous failed
-			// attempt at sending the snapshot. It's ok to proceed int that case.
+			// attempt at sending the snapshot. It's ok to proceed in that case.
 			fc.closeChannelNoMutex(ErrorInvalidEpoch)
 			return
 		}
@@ -525,7 +525,7 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 
 	// The new epoch must be persisted, to avoid rolling it back
 	if err = newDb.UpdateEpoch(fc.epoch); err != nil {
-		fc.closeChannelNoMutex(errors.Wrap(err, "failed to update epoch in db"))
+		fc.closeChannelNoMutex(errors.Wrap(err, "Failed to update epoch in db"))
 	}
 
 	commitIndex, err := newDb.ReadCommitIndex()
