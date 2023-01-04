@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
@@ -110,7 +111,7 @@ func (s *PublicRpcServer) GetNotifications(req *proto.NotificationsRequest, stre
 
 	lc, err := s.shardsDirector.GetLeader(req.ShardId)
 	if err != nil {
-		if !errors.Is(err, ErrorNodeIsNotLeader) {
+		if status.Code(err) != common.CodeNodeIsNotLeader {
 			s.log.Warn().Err(err).
 				Msg("Failed to get the leader controller")
 		}

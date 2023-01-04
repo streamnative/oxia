@@ -48,18 +48,18 @@ func TestWithMaxRequestsPerBatch(t *testing.T) {
 	}
 }
 
-func TestWithBatchRequestTimeout(t *testing.T) {
+func TestWithRequestTimeout(t *testing.T) {
 	for _, item := range []struct {
-		batchRequestTimeout         time.Duration
-		expectedBatchRequestTimeout time.Duration
-		expectedErr                 error
+		requestTimeout         time.Duration
+		expectedRequestTimeout time.Duration
+		expectedErr            error
 	}{
 		{-1, DefaultRequestTimeout, ErrorRequestTimeout},
 		{0, DefaultRequestTimeout, ErrorRequestTimeout},
 		{1, 1, nil},
 	} {
-		options, err := newClientOptions("serviceAddress", WithRequestTimeout(item.batchRequestTimeout))
-		assert.Equal(t, item.expectedBatchRequestTimeout, options.RequestTimeout())
+		options, err := newClientOptions("serviceAddress", WithRequestTimeout(item.requestTimeout))
+		assert.Equal(t, item.expectedRequestTimeout, options.RequestTimeout())
 		assert.ErrorIs(t, err, item.expectedErr)
 	}
 }

@@ -268,7 +268,7 @@ func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapsh
 
 func (s *internalRpcServer) GetStatus(c context.Context, req *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
 	if follower, err := s.shardsDirector.GetFollower(req.ShardId); err != nil {
-		if !errors.Is(err, ErrorNodeIsNotFollower) {
+		if status.Code(err) != common.CodeNodeIsNotFollower {
 			return nil, err
 		}
 
