@@ -5,6 +5,8 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"io"
 	"oxia/common"
 	"oxia/proto"
@@ -128,9 +130,11 @@ func (s *shardManagerImpl) receiveWithRecovery(ctx context.Context, readyC chan 
 		},
 		backOff,
 		func(err error, duration time.Duration) {
-			s.logger.Warn().Err(err).
-				Dur("retry-after", duration).
-				Msg("Failed receiving shard assignments, retrying later")
+			if status.Code(err) != codes.Canceled {
+				s.logger.Warn().Err(err).
+					Dur("retry-after", duration).
+					Msg("Failed receiving shard assignments, retrying later")
+			}
 		},
 	)
 	if err != nil {

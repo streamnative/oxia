@@ -510,13 +510,31 @@ func (lc *leaderController) GetNotifications(req *proto.NotificationsRequest, st
 }
 
 func (lc *leaderController) dispatchNotifications(ctx context.Context, req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
-	offsetInclusive := req.StartOffsetExclusive + 1
+	lc.log.Debug().
+		Interface("start-offset-exclusive", req.StartOffsetExclusive).
+		Msg("Dispatch notifications")
+
+	var offsetInclusive int64
+	if req.StartOffsetExclusive != nil {
+		offsetInclusive = *req.StartOffsetExclusive + 1
+	} else {
+		commitIndex, err := lc.db.ReadCommitIndex()
+		if err != nil {
+			return err
+		}
+
+		offsetInclusive = commitIndex + 1
+	}
 
 	for ctx.Err() == nil {
 		notifications, err := lc.db.ReadNextNotifications(ctx, offsetInclusive)
 		if err != nil {
 			return err
 		}
+
+		lc.log.Debug().
+			Int("list-size", len(notifications)).
+			Msg("Got a new list of notification batches")
 
 		for _, n := range notifications {
 			if err := stream.Send(n); err != nil {

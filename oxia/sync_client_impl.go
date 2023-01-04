@@ -54,3 +54,7 @@ func (c *syncClientImpl) List(minKeyInclusive string, maxKeyExclusive string) ([
 	r := <-c.asyncClient.List(minKeyInclusive, maxKeyExclusive)
 	return r.Keys, r.Err
 }
+
+func (c *syncClientImpl) GetNotifications() <-chan Notification {
+	return c.asyncClient.GetNotifications()
+}
