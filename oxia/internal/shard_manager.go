@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"github.com/cenkalti/backoff/v4"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
@@ -16,58 +17,62 @@ import (
 
 type ShardManager interface {
 	io.Closer
-	Start()
 	Get(key string) uint32
 	GetAll() []uint32
 	Leader(shardId uint32) string
 }
 
 type shardManagerImpl struct {
-	sync.Mutex
+	sync.RWMutex
+	updatedCondition common.ConditionContext
+
 	shardStrategy  ShardStrategy
 	clientPool     common.ClientPool
 	serviceAddress string
 	shards         map[uint32]Shard
-	closeC         chan bool
+	ctx            context.Context
+	cancel         context.CancelFunc
 	logger         zerolog.Logger
+	requestTimeout time.Duration
 }
 
-func NewShardManager(shardStrategy ShardStrategy, clientPool common.ClientPool, serviceAddress string) ShardManager {
-	return &shardManagerImpl{
+func NewShardManager(shardStrategy ShardStrategy, clientPool common.ClientPool, serviceAddress string, requestTimeout time.Duration) (ShardManager, error) {
+	sm := &shardManagerImpl{
 		shardStrategy:  shardStrategy,
 		clientPool:     clientPool,
 		serviceAddress: serviceAddress,
 		shards:         make(map[uint32]Shard),
-		closeC:         make(chan bool),
+		requestTimeout: requestTimeout,
 		logger:         log.With().Str("component", "shardManager").Logger(),
 	}
+
+	sm.updatedCondition = common.NewConditionContext(sm)
+	sm.ctx, sm.cancel = context.WithCancel(context.Background())
+
+	if err := sm.start(); err != nil {
+		return nil, errors.Wrap(err, "oxia: failed retrieve the initial list of shard assignments")
+	}
+
+	return sm, nil
 }
 
 func (s *shardManagerImpl) Close() error {
-	close(s.closeC)
+	s.cancel()
 	return nil
 }
 
-func (s *shardManagerImpl) Start() {
-	readyC := make(chan bool)
-
-	ctx, cancel := context.WithCancel(context.Background())
+func (s *shardManagerImpl) start() error {
+	s.Lock()
+	defer s.Unlock()
 
 	go common.DoWithLabels(map[string]string{
 		"oxia": "receive-shard-updates",
-	}, func() {
-		s.receiveWithRecovery(ctx, readyC)
-	})
+	}, s.receiveWithRecovery)
 
-	go common.DoWithLabels(map[string]string{
-		"oxia": "cancel-shard-updates",
-	}, func() {
-		if _, ok := <-s.closeC; !ok {
-			cancel()
-		}
-	})
+	ctx, cancel := context.WithTimeout(s.ctx, s.requestTimeout)
+	defer cancel()
 
-	<-readyC
+	return s.updatedCondition.Wait(ctx)
 }
 
 func (s *shardManagerImpl) Get(key string) uint32 {
@@ -85,8 +90,8 @@ func (s *shardManagerImpl) Get(key string) uint32 {
 }
 
 func (s *shardManagerImpl) GetAll() []uint32 {
-	s.Lock()
-	defer s.Unlock()
+	s.RLock()
+	defer s.RUnlock()
 
 	shardIds := make([]uint32, 0, len(s.shards))
 	for shardId := range s.shards {
@@ -96,8 +101,8 @@ func (s *shardManagerImpl) GetAll() []uint32 {
 }
 
 func (s *shardManagerImpl) Leader(shardId uint32) string {
-	s.Lock()
-	defer s.Unlock()
+	s.RLock()
+	defer s.RUnlock()
 
 	if shard, ok := s.shards[shardId]; ok {
 		return shard.Leader
@@ -106,22 +111,14 @@ func (s *shardManagerImpl) Leader(shardId uint32) string {
 }
 
 func (s *shardManagerImpl) isClosed() bool {
-	select {
-	case _, ok := <-s.closeC:
-		if !ok {
-			return true
-		}
-	default:
-		//noop
-	}
-	return false
+	return s.ctx.Err() != nil
 }
 
-func (s *shardManagerImpl) receiveWithRecovery(ctx context.Context, readyC chan bool) {
-	backOff := common.NewBackOff(ctx)
+func (s *shardManagerImpl) receiveWithRecovery() {
+	backOff := common.NewBackOff(s.ctx)
 	err := backoff.RetryNotify(
 		func() error {
-			err := s.receive(backOff, ctx, readyC)
+			err := s.receive(backOff)
 			if s.isClosed() {
 				s.logger.Debug().Err(err).Msg("Closed")
 				return nil
@@ -142,7 +139,7 @@ func (s *shardManagerImpl) receiveWithRecovery(ctx context.Context, readyC chan 
 	}
 }
 
-func (s *shardManagerImpl) receive(backOff backoff.BackOff, ctx context.Context, readyC chan bool) error {
+func (s *shardManagerImpl) receive(backOff backoff.BackOff) error {
 	rpc, err := s.clientPool.GetClientRpc(s.serviceAddress)
 	if err != nil {
 		return err
@@ -150,7 +147,7 @@ func (s *shardManagerImpl) receive(backOff backoff.BackOff, ctx context.Context,
 
 	request := proto.ShardAssignmentsRequest{}
 
-	stream, err := rpc.ShardAssignments(ctx, &request)
+	stream, err := rpc.ShardAssignments(s.ctx, &request)
 	if err != nil {
 		return err
 	}
@@ -164,7 +161,6 @@ func (s *shardManagerImpl) receive(backOff backoff.BackOff, ctx context.Context,
 				shards[i] = toShard(assignment)
 			}
 			s.update(shards)
-			readyC <- true
 			backOff.Reset()
 		}
 	}
@@ -186,6 +182,8 @@ func (s *shardManagerImpl) update(updates []Shard) {
 		}
 		s.shards[update.Id] = update
 	}
+
+	s.updatedCondition.Signal()
 }
 
 func overlap(a HashRange, b HashRange) bool {
