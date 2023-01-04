@@ -49,13 +49,13 @@ type conditionContext struct {
 	sync.RWMutex
 	locker sync.Locker
 
-	ch chan any
+	ch chan bool
 }
 
 func NewConditionContext(locker sync.Locker) ConditionContext {
 	return &conditionContext{
 		locker: locker,
-		ch:     make(chan any),
+		ch:     make(chan bool, 1),
 	}
 }
 
@@ -78,11 +78,11 @@ func (c *conditionContext) Wait(ctx context.Context) error {
 
 func (c *conditionContext) Signal() {
 	c.RLock()
-	defer c.RLock()
+	defer c.RUnlock()
 
 	// Signal to 1 single waiter, if any is there
 	select {
-	case c.ch <- struct{}{}:
+	case c.ch <- true:
 	default:
 	}
 }
@@ -93,5 +93,5 @@ func (c *conditionContext) Broadcast() {
 
 	// Broadcast closes the channel to wake every waiter
 	close(c.ch)
-	c.ch = make(chan any)
+	c.ch = make(chan bool, 1)
 }
