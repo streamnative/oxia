@@ -35,7 +35,7 @@ func TestLeaderController_NotInitialized(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
-	assert.Equal(t, NotMember, lc.Status())
+	assert.Equal(t, proto.ServingStatus_NotMember, lc.Status())
 
 	res, err := lc.Write(&proto.WriteRequest{
 		ShardId: &shard,
@@ -71,7 +71,7 @@ func TestLeaderController_BecomeLeader_NoFencing(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
-	assert.Equal(t, NotMember, lc.Status())
+	assert.Equal(t, proto.ServingStatus_NotMember, lc.Status())
 	resp, err := lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
 		Epoch:             1,
@@ -97,7 +97,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
-	assert.Equal(t, NotMember, lc.Status())
+	assert.Equal(t, proto.ServingStatus_NotMember, lc.Status())
 
 	fr, err := lc.Fence(&proto.FenceRequest{
 		ShardId: shard,
@@ -115,7 +115,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 1, lc.Epoch())
-	assert.Equal(t, Leader, lc.Status())
+	assert.Equal(t, proto.ServingStatus_Leader, lc.Status())
 
 	/// Write entry
 	res, err := lc.Write(&proto.WriteRequest{
@@ -152,7 +152,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	AssertProtoEqual(t, &proto.EntryId{Epoch: 1, Offset: 0}, fr2.HeadIndex)
 
 	assert.EqualValues(t, 2, lc.Epoch())
-	assert.Equal(t, Fenced, lc.Status())
+	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
 
 	// Should not accept anymore writes & reads
 
@@ -192,7 +192,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
-	assert.Equal(t, NotMember, lc.Status())
+	assert.Equal(t, proto.ServingStatus_NotMember, lc.Status())
 
 	fr, err := lc.Fence(&proto.FenceRequest{
 		ShardId: shard,
@@ -212,7 +212,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 1, lc.Epoch())
-	assert.Equal(t, Leader, lc.Status())
+	assert.Equal(t, proto.ServingStatus_Leader, lc.Status())
 
 	go func() {
 		req := <-rpc.addEntryReqs
@@ -257,7 +257,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	AssertProtoEqual(t, &proto.EntryId{Epoch: 1, Offset: 0}, fr2.HeadIndex)
 
 	assert.EqualValues(t, 2, lc.Epoch())
-	assert.Equal(t, Fenced, lc.Status())
+	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
 
 	// Should not accept anymore writes & reads
 
@@ -301,7 +301,7 @@ func TestLeaderController_EpochPersistent(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
-	assert.Equal(t, NotMember, lc.Status())
+	assert.Equal(t, proto.ServingStatus_NotMember, lc.Status())
 
 	/// Fence leader
 
@@ -313,7 +313,7 @@ func TestLeaderController_EpochPersistent(t *testing.T) {
 	AssertProtoEqual(t, &proto.EntryId{Epoch: wal.InvalidEpoch, Offset: wal.InvalidOffset}, fr2.HeadIndex)
 
 	assert.EqualValues(t, 5, lc.Epoch())
-	assert.Equal(t, Fenced, lc.Status())
+	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
 
 	assert.NoError(t, lc.Close())
 
@@ -322,7 +322,7 @@ func TestLeaderController_EpochPersistent(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 5, lc.Epoch())
-	assert.Equal(t, Fenced, lc.Status())
+	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
 	assert.NoError(t, lc.Close())
 
 	assert.NoError(t, kvFactory.Close())
@@ -351,7 +351,7 @@ func TestLeaderController_FenceEpoch(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 5, lc.Epoch())
-	assert.Equal(t, Fenced, lc.Status())
+	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
 
 	// Smaller epoch will fail
 	fr, err := lc.Fence(&proto.FenceRequest{
@@ -360,7 +360,7 @@ func TestLeaderController_FenceEpoch(t *testing.T) {
 	})
 	assert.Nil(t, fr)
 	assert.Equal(t, CodeInvalidEpoch, status.Code(err))
-	assert.Equal(t, Fenced, lc.Status())
+	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
 
 	// Same epoch will succeed
 	fr, err = lc.Fence(&proto.FenceRequest{
@@ -398,7 +398,7 @@ func TestLeaderController_BecomeLeaderEpoch(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 5, lc.Epoch())
-	assert.Equal(t, Fenced, lc.Status())
+	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
 
 	// Smaller epoch will fail
 	resp, err := lc.BecomeLeader(&proto.BecomeLeaderRequest{
@@ -451,7 +451,7 @@ func TestLeaderController_AddFollower(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 5, lc.Epoch())
-	assert.Equal(t, Fenced, lc.Status())
+	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
 
 	_, err = lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
@@ -754,7 +754,7 @@ func TestLeaderController_Notifications(t *testing.T) {
 	closeCh := make(chan any)
 
 	go func() {
-		err := lc.GetNotifications(&proto.NotificationsRequest{ShardId: &shard, StartOffsetExclusive: wal.InvalidOffset}, stream)
+		err := lc.GetNotifications(&proto.NotificationsRequest{ShardId: shard, StartOffsetExclusive: &wal.InvalidOffset}, stream)
 		assert.ErrorIs(t, err, context.Canceled)
 		close(closeCh)
 	}()
@@ -819,7 +819,7 @@ func TestLeaderController_NotificationsCloseLeader(t *testing.T) {
 	closeCh := make(chan any)
 
 	go func() {
-		err := lc.GetNotifications(&proto.NotificationsRequest{ShardId: &shard, StartOffsetExclusive: wal.InvalidOffset}, stream)
+		err := lc.GetNotifications(&proto.NotificationsRequest{ShardId: shard, StartOffsetExclusive: &wal.InvalidOffset}, stream)
 		assert.ErrorIs(t, err, context.Canceled)
 		close(closeCh)
 	}()

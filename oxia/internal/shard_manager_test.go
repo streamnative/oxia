@@ -8,6 +8,7 @@ import (
 	"oxia/server/wal"
 	"oxia/standalone"
 	"testing"
+	"time"
 )
 
 type testShardStrategy struct {
@@ -31,14 +32,12 @@ func TestWithStandalone(t *testing.T) {
 
 	clientPool := common.NewClientPool()
 	serviceAddress := fmt.Sprintf("localhost:%d", server.Port())
-	shardManager := NewShardManager(&testShardStrategy{}, clientPool, serviceAddress).(*shardManagerImpl)
-	defer func() {
-		if err := shardManager.Close(); err != nil {
-			assert.Fail(t, "could not close shard manager")
-		}
-	}()
+	shardManager, err := NewShardManager(&testShardStrategy{}, clientPool, serviceAddress, 30*time.Second)
+	assert.NoError(t, err)
 
-	shardManager.Start()
+	defer func() {
+		assert.NoError(t, shardManager.Close())
+	}()
 
 	shardId := shardManager.Get("foo")
 
