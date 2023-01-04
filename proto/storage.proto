@@ -10,3 +10,7 @@ message StorageEntry {
   fixed64 creation_timestamp = 3;
   fixed64 modification_timestamp = 4;
 }
+
+message SessionMetadata {
+  uint64 timeoutMS = 1;
+}

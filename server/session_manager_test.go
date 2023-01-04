@@ -11,14 +11,14 @@ import (
 )
 
 func TestSessionKey(t *testing.T) {
-	id := SessionId(12345)
+	id := SessionId(0xC0DE)
 	sessionKey := SessionKey(id)
-	assert.Equal(t, "__oxia/session/12345/", sessionKey)
+	assert.Equal(t, "__oxia/session/000000000000c0de/", sessionKey)
 	parsed, err := KeyToId(sessionKey)
 	assert.NoError(t, err)
 	assert.Equal(t, id, parsed)
 
-	for _, key := range []string{"__oxia/session/", "too_short", "__oxia/session/123456", "__oxia/session/12E45/"} {
+	for _, key := range []string{"__oxia/session/", "too_short", "__oxia/session/000000000000dead5", "__oxia/session/000000000000woof/"} {
 		_, err = KeyToId(key)
 		assert.Error(t, err)
 	}

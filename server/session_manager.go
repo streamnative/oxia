@@ -6,6 +6,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
+	pb "google.golang.org/protobuf/proto"
 	"io"
 	"net/url"
 	"oxia/common"
@@ -27,17 +28,21 @@ var ErrorInvalidSessionTimeout = errors.New("invalid session timeout")
 
 type SessionId uint64
 
+func hexId(sessionId SessionId) string {
+	return fmt.Sprintf("%016x", sessionId)
+}
+
 func SessionKey(sessionId SessionId) string {
-	return KeyPrefix + strconv.FormatUint(uint64(sessionId), 10) + "/"
+	return fmt.Sprintf("%s%s/", KeyPrefix, hexId(sessionId))
 }
 
 func KeyToId(key string) (SessionId, error) {
-	if len(key) < len(KeyPrefix)+2 || KeyPrefix != key[:len(KeyPrefix)] || "/" != key[len(key)-1:] {
+	if len(key) != len(KeyPrefix)+17 || KeyPrefix != key[:len(KeyPrefix)] || "/" != key[len(key)-1:] {
 		return 0, errors.New("invalid sessionId key " + key)
 	}
 	s := key[len(KeyPrefix):]
 	s = s[:len(s)-1]
-	longInt, err := strconv.ParseUint(s, 10, 64)
+	longInt, err := strconv.ParseUint(s, 16, 64)
 	if err != nil {
 		return 0, err
 	}
@@ -137,6 +142,12 @@ func (sm *sessionManager) CreateSession(request *proto.CreateSessionRequest) (*p
 
 	sessionId := (SessionId(request.ShardId) << 32) + sm.sessionCounters[request.ShardId]
 
+	metadata := &proto.SessionMetadata{TimeoutMS: uint64(timeout.Milliseconds())}
+
+	marshalledMetadata, err := pb.Marshal(metadata)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not marshal session metadata")
+	}
 	controller, err := sm.controllerSupplier(request.ShardId)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not register session")
@@ -145,7 +156,7 @@ func (sm *sessionManager) CreateSession(request *proto.CreateSessionRequest) (*p
 		ShardId: &request.ShardId,
 		Puts: []*proto.PutRequest{{
 			Key:     SessionKey(sessionId),
-			Payload: []byte{},
+			Payload: marshalledMetadata,
 		}},
 	})
 	if err != nil || resp.Puts[0].Status != proto.Status_OK {
@@ -155,7 +166,7 @@ func (sm *sessionManager) CreateSession(request *proto.CreateSessionRequest) (*p
 		return nil, err
 	}
 
-	s := sm.startSession(sessionId, request.ShardId, timeout)
+	s := sm.startSession(sessionId, request.ShardId, metadata)
 	sm.sessions[sessionId] = s
 
 	return &proto.CreateSessionResponse{SessionId: uint64(s.id)}, nil
@@ -195,23 +206,23 @@ func (sm *sessionManager) InitializeShard(shardId uint32, controller LeaderContr
 	if _, loaded := sm.sessionCounters[shardId]; loaded {
 		return errors.New("shard already loaded")
 	}
-	sessionIds, err := sm.readSessions(shardId, controller)
+	sessions, err := sm.readSessions(shardId, controller)
 	if err != nil {
 		return err
 	}
 	maxSessionId := SessionId(0)
-	for _, sessionId := range sessionIds {
+	for sessionId, sessionMetadata := range sessions {
 		if sessionId > maxSessionId {
 			maxSessionId = sessionId
 		}
-		sm.startSession(sessionId, shardId, 0)
+		sm.startSession(sessionId, shardId, sessionMetadata)
 	}
 	sm.sessionCounters[shardId] = maxSessionId + 1
 	return nil
 }
 
-func (sm *sessionManager) readSessions(shardId uint32, controller LeaderController) ([]SessionId, error) {
-	resp, err := controller.readWithoutLocking(&proto.ReadRequest{
+func (sm *sessionManager) readSessions(shardId uint32, controller LeaderController) (map[SessionId]*proto.SessionMetadata, error) {
+	listResp, err := controller.readWithoutLocking(&proto.ReadRequest{
 		ShardId: &shardId,
 		Gets:    nil,
 		Lists: []*proto.ListRequest{
@@ -224,20 +235,54 @@ func (sm *sessionManager) readSessions(shardId uint32, controller LeaderControll
 	if err != nil {
 		return nil, err
 	}
-	sessionIds := make([]SessionId, 0, len(resp.Lists[0].Keys))
-	err = nil
-	for _, key := range resp.Lists[0].Keys {
-		sessionId, err2 := KeyToId(key)
-		if err2 != nil {
-			err = multierr.Append(err, err2)
-		} else {
-			sessionIds = append(sessionIds, sessionId)
-		}
+	var gets []*proto.GetRequest
+	for _, key := range listResp.Lists[0].Keys {
+		gets = append(gets, &proto.GetRequest{
+			Key:            key,
+			IncludePayload: true,
+		})
 	}
+	getResp, err := controller.readWithoutLocking(&proto.ReadRequest{
+		ShardId: &shardId,
+		Gets:    gets,
+		Lists:   nil,
+	})
 	if err != nil {
 		return nil, err
 	}
-	return sessionIds, nil
+
+	result := map[SessionId]*proto.SessionMetadata{}
+
+	for i, metaEntry := range getResp.Gets {
+		key := gets[i].Key
+		if metaEntry.Status != proto.Status_OK {
+			sm.log.Warn().
+				Uint32("shard", shardId).
+				Msgf("error reading session metadata at `%s`, status: %d", key, metaEntry.Status)
+			continue
+		}
+		payload := metaEntry.Payload
+		metadata := proto.SessionMetadata{}
+		err = pb.Unmarshal(payload, &metadata)
+		if err != nil {
+			sm.log.Warn().
+				Uint32("shard", shardId).
+				Err(err).
+				Msgf("error unmarshalling session metadata at `%s`", key)
+			continue
+		}
+		sessionId, err := KeyToId(key)
+		if err != nil {
+			sm.log.Warn().
+				Uint32("shard", shardId).
+				Err(err).
+				Msgf("error parsing session key `%s`", key)
+			continue
+		}
+		result[sessionId] = &metadata
+	}
+
+	return result, nil
 }
 
 func (sm *sessionManager) CloseShard(shardId uint32) error {
@@ -353,15 +398,17 @@ func (s *session) heartbeat(heartbeat *proto.Heartbeat) {
 	}
 }
 
-func (sm *sessionManager) startSession(sessionId SessionId, shardId uint32, timeout time.Duration) *session {
+func (sm *sessionManager) startSession(sessionId SessionId, shardId uint32, sessionMetadata *proto.SessionMetadata) *session {
 	s := &session{
 		Mutex:       sync.Mutex{},
 		id:          sessionId,
 		shardId:     shardId,
-		timeout:     timeout,
+		timeout:     time.Duration(sessionMetadata.TimeoutMS) * time.Millisecond,
 		sm:          sm,
 		heartbeatCh: make(chan *proto.Heartbeat, 1),
-		log:         sm.log.With().Uint64("session-id", uint64(sessionId)).Logger(),
+		log: sm.log.With().
+			Uint32("shard", shardId).
+			Str("session-id", hexId(sessionId)).Logger(),
 	}
 	go s.waitForHeartbeats()
 	return s
