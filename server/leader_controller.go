@@ -178,10 +178,7 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 		return nil, err
 	}
 
-	err = lc.sessionManager.CloseShard(lc.shardId)
-	if err != nil {
-		return nil, err
-	}
+	lc.sessionManager.CloseShard(lc.shardId)
 
 	lc.log.Info().
 		Interface("last-entry", headIndex).
@@ -569,10 +566,10 @@ func (lc *leaderController) Close() error {
 		err = multierr.Append(err, follower.Close())
 	}
 
+	lc.sessionManager.CloseShard(lc.shardId)
 	err = multierr.Combine(err,
 		lc.wal.Close(),
 		lc.db.Close(),
-		lc.sessionManager.CloseShard(lc.shardId),
 	)
 	return err
 }

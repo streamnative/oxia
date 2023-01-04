@@ -5,7 +5,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"go.uber.org/multierr"
 	pb "google.golang.org/protobuf/proto"
 	"io"
 	"net/url"
@@ -100,7 +99,7 @@ type SessionManager interface {
 	KeepAlive(proto.OxiaClient_KeepAliveServer) error
 	CloseSession(*proto.CloseSessionRequest) (*proto.CloseSessionResponse, error)
 	InitializeShard(shardId uint32, controller LeaderController) error
-	CloseShard(shardId uint32) error
+	CloseShard(shardId uint32)
 }
 
 var _ SessionManager = (*sessionManager)(nil)
@@ -193,7 +192,10 @@ func (sm *sessionManager) CloseSession(request *proto.CloseSessionRequest) (*pro
 		return nil, errors.Wrap(ErrorSessionNotFound, fmt.Sprintf("sessionId=%d", request.SessionId))
 	}
 	delete(sm.sessions, sessionId)
-	err := s.close(true)
+	s.Lock()
+	defer s.Unlock()
+	s.closeChannels()
+	err := s.delete()
 	if err != nil {
 		return nil, err
 	}
@@ -285,33 +287,33 @@ func (sm *sessionManager) readSessions(shardId uint32, controller LeaderControll
 	return result, nil
 }
 
-func (sm *sessionManager) CloseShard(shardId uint32) error {
+func (sm *sessionManager) CloseShard(shardId uint32) {
 	sm.Lock()
 	defer sm.Unlock()
-	var err error = nil
 	for _, s := range sm.sessions {
 		if s.shardId == shardId {
 			delete(sm.sessions, s.id)
-			err = multierr.Append(err,
-				s.close(false))
+			s.Lock()
+			s.closeChannels()
+			s.Unlock()
 		}
 	}
 	delete(sm.sessionCounters, shardId)
-	return err
 }
 
 func (sm *sessionManager) Close() error {
 	sm.Lock()
 	defer sm.Unlock()
-	var err error = nil
 	for _, s := range sm.sessions {
-		err = multierr.Append(err, s.close(false))
+		s.Lock()
+		s.closeChannels()
+		s.Unlock()
 	}
 	for _, ch := range sm.closeChannels {
 		ch <- nil
 		close(ch)
 	}
-	return err
+	return nil
 }
 
 // --- Session
@@ -328,9 +330,7 @@ type session struct {
 	log         zerolog.Logger
 }
 
-func (s *session) close(delete bool) error {
-	s.Lock()
-	defer s.Unlock()
+func (s *session) closeChannels() {
 	if s.closeCh != nil {
 		close(s.closeCh)
 		s.closeCh = nil
@@ -339,10 +339,9 @@ func (s *session) close(delete bool) error {
 		close(s.heartbeatCh)
 		s.heartbeatCh = nil
 	}
+}
 
-	if !delete {
-		return nil
-	}
+func (s *session) delete() error {
 	// Delete ephemeral data associated with this session
 	controller, err := s.sm.controllerSupplier(s.shardId)
 	if err != nil {
@@ -429,11 +428,15 @@ func (s *session) waitForHeartbeats() {
 			s.log.Info().
 				Msg("Session timed out")
 
-			err := s.close(false)
+			s.Lock()
+			s.closeChannels()
+			err := s.delete()
+
 			if err != nil {
 				s.log.Error().Err(err).
-					Msg("Failed to close session")
+					Msg("Failed to delete session")
 			}
+			s.Unlock()
 		}
 	}
 }
