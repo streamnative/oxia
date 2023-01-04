@@ -51,6 +51,8 @@ type persistentWal struct {
 	readLatency   metrics.LatencyHistogram
 	readBytes     metrics.Counter
 	trimOps       metrics.Counter
+	readErrors    metrics.Counter
+	writeErrors   metrics.Counter
 	activeEntries metrics.Gauge
 }
 
@@ -80,8 +82,12 @@ func newPersistentWal(shard uint32, options *WalFactoryOptions) (Wal, error) {
 			"The time it takes to read an entry from the WAL", labels),
 		readBytes: metrics.NewCounter("oxia_server_wal_read",
 			"Bytes read from the WAL", unit.Bytes, labels),
-		trimOps: metrics.NewCounter("oxia_server_wal_trim",
-			"The number of trim operations happening on the WAL", unit.Dimensionless, labels),
+		trimOps: metrics.NewCounter("oxia_server_wal_trim_total",
+			"The number of trim operations happening on the WAL", "count", labels),
+		readErrors: metrics.NewCounter("oxia_server_wal_read_errors_total",
+			"The number of IO errors in the WAL read operations", "count", labels),
+		writeErrors: metrics.NewCounter("oxia_server_wal_write_errors_total",
+			"The number of IO errors in the WAL read operations", "count", labels),
 	}
 
 	w.activeEntries = metrics.NewGauge("oxia_server_wal_entries",
@@ -110,11 +116,13 @@ func (t *persistentWal) readAtIndex(index int64) (*proto.LogEntry, error) {
 
 	val, err := t.log.Read(index)
 	if err != nil {
+		t.readErrors.Inc()
 		return nil, err
 	}
 
 	entry := &proto.LogEntry{}
 	if err = pb.Unmarshal(val, entry); err != nil {
+		t.readErrors.Inc()
 		return nil, err
 	}
 	t.readBytes.Add(len(val))
@@ -138,6 +146,7 @@ func (t *persistentWal) Trim(firstOffset int64) error {
 	defer t.Unlock()
 
 	if err := t.log.TruncateFront(firstOffset); err != nil {
+		t.writeErrors.Inc()
 		return err
 	}
 
@@ -162,16 +171,19 @@ func (t *persistentWal) Append(entry *proto.LogEntry) error {
 	defer t.Unlock()
 
 	if err := t.checkNextOffset(entry.Offset); err != nil {
+		t.writeErrors.Inc()
 		return err
 	}
 
 	val, err := pb.Marshal(entry)
 	if err != nil {
+		t.writeErrors.Inc()
 		return err
 	}
 
 	err = t.log.Write(entry.Offset, val)
 	if err != nil {
+		t.writeErrors.Inc()
 		return err
 	}
 	t.lastOffset = entry.Offset
@@ -180,7 +192,7 @@ func (t *persistentWal) Append(entry *proto.LogEntry) error {
 	}
 
 	t.appendBytes.Add(len(val))
-	return err
+	return nil
 }
 
 func (t *persistentWal) checkNextOffset(nextOffset int64) error {
@@ -196,6 +208,7 @@ func (t *persistentWal) checkNextOffset(nextOffset int64) error {
 
 func (t *persistentWal) Clear() error {
 	if err := t.log.Clear(); err != nil {
+		t.writeErrors.Inc()
 		return err
 	}
 
@@ -210,6 +223,7 @@ func (t *persistentWal) TruncateLog(lastSafeOffset int64) (int64, error) {
 
 	lastIndex, err := t.log.LastIndex()
 	if err != nil {
+		t.writeErrors.Inc()
 		return InvalidOffset, err
 	}
 
@@ -220,23 +234,28 @@ func (t *persistentWal) TruncateLog(lastSafeOffset int64) (int64, error) {
 
 	lastSafeIndex := lastSafeOffset
 	if err := t.log.TruncateBack(lastSafeIndex); err != nil {
+		t.writeErrors.Inc()
 		return InvalidOffset, err
 	}
 
 	if lastIndex, err = t.log.LastIndex(); err != nil {
+		t.writeErrors.Inc()
 		return InvalidOffset, err
 	}
 	val, err := t.log.Read(lastIndex)
 	if err != nil {
+		t.readErrors.Inc()
 		return InvalidOffset, err
 	}
 	lastEntry := &proto.LogEntry{}
 	err = pb.Unmarshal(val, lastEntry)
 	if err != nil {
+		t.readErrors.Inc()
 		return InvalidOffset, err
 	}
 
 	if lastEntry.Offset != lastSafeOffset {
+		t.writeErrors.Inc()
 		return InvalidOffset, errors.New(fmt.Sprintf("Truncating to %+v resulted in last entry %+v",
 			lastSafeOffset, lastEntry.Offset))
 	}
