@@ -164,6 +164,7 @@ func (t *persistentWal) Clear() error {
 	}
 
 	t.lastOffset = InvalidOffset
+	t.firstOffset = InvalidOffset
 	return nil
 }
 

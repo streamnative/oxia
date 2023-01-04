@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	pb "google.golang.org/protobuf/proto"
 	"math"
 	"oxia/common"
@@ -60,14 +62,21 @@ func notificationKey(offset int64) string {
 type notificationsTracker struct {
 	sync.Mutex
 	cond       common.ConditionContext
+	shard      uint32
 	lastOffset atomic.Int64
 	closed     atomic.Bool
 	kv         KV
+	log        zerolog.Logger
 }
 
-func newNotificationsTracker(lastOffset int64, kv KV) *notificationsTracker {
+func newNotificationsTracker(shard uint32, lastOffset int64, kv KV) *notificationsTracker {
 	nt := &notificationsTracker{
-		kv: kv,
+		shard: shard,
+		kv:    kv,
+		log: log.Logger.With().
+			Str("component", "notifications-tracker").
+			Uint32("shard", shard).
+			Logger(),
 	}
 	nt.lastOffset.Store(lastOffset)
 	nt.cond = common.NewConditionContext(nt)
@@ -84,6 +93,10 @@ func (nt *notificationsTracker) waitForNotifications(ctx context.Context, startO
 	defer nt.Unlock()
 
 	for startOffset > nt.lastOffset.Load() && !nt.closed.Load() {
+		nt.log.Debug().
+			Int64("start-offset", startOffset).
+			Int64("last-committed-offset", nt.lastOffset.Load()).
+			Msg("Waiting for notification to be available")
 		if err := nt.cond.Wait(ctx); err != nil {
 			return err
 		}

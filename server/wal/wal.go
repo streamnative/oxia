@@ -45,7 +45,7 @@ type Wal interface {
 	// Append writes an entry to the end of the log
 	Append(entry *proto.LogEntry) error
 
-	// Trim removes all the entries that are
+	// Trim removes all the entries that are before firstOffset
 	Trim(firstOffset int64) error
 
 	// TruncateLog removes entries from the end of the log that have an ID greater than lastSafeEntry.
