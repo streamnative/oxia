@@ -87,9 +87,8 @@ func TestAsyncClientImpl_Notifications(t *testing.T) {
 	assert.NoError(t, err)
 
 	serviceAddress := fmt.Sprintf("localhost:%d", server.Port())
-	options, err := NewClientOptions(serviceAddress, WithBatchLinger(0))
+	client, err := NewSyncClient(serviceAddress, WithBatchLinger(0))
 	assert.NoError(t, err)
-	client := NewSyncClient(options)
 
 	notificationsCh := client.GetNotifications()
 
