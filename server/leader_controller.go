@@ -416,12 +416,10 @@ func (lc *leaderController) Read(request *proto.ReadRequest) (*proto.ReadRespons
 		Interface("req", request).
 		Msg("Received read request")
 
-	{
-		lc.Lock()
-		defer lc.Unlock()
-		if err := checkStatus(proto.ServingStatus_Leader, lc.status); err != nil {
-			return nil, err
-		}
+	lc.Lock()
+	defer lc.Unlock()
+	if err := checkStatus(proto.ServingStatus_Leader, lc.status); err != nil {
+		return nil, err
 	}
 
 	return lc.db.ProcessRead(request)
