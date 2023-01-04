@@ -65,7 +65,7 @@ func TestWalTrimmer(t *testing.T) {
 
 	clock.currentTime.Store(95)
 
-	// The trimmer should be operating anymore once it's closed
+	// The trimmer should not be operating anymore once it's closed
 	time.Sleep(100 * time.Millisecond)
 	assert.EqualValues(t, 87, w.FirstOffset())
 	assert.EqualValues(t, 99, w.LastOffset())
