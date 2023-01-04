@@ -24,7 +24,6 @@ type StandaloneRpcServer struct {
 	numShards               uint32
 	kvFactory               kv.KVFactory
 	walFactory              wal.WalFactory
-	sessionManager          server.SessionManager
 	grpcServer              container.GrpcServer
 	controllers             map[uint32]server.LeaderController
 	assignmentDispatcher    server.ShardAssignmentsDispatcher
@@ -32,6 +31,10 @@ type StandaloneRpcServer struct {
 
 	log zerolog.Logger
 }
+
+var (
+	ErrorShardNotFound = errors.New("shard not found")
+)
 
 func NewStandaloneRpcServer(bindAddress string, advertisedPublicAddress string, numShards uint32, walFactory wal.WalFactory, kvFactory kv.KVFactory) (*StandaloneRpcServer, error) {
 	res := &StandaloneRpcServer{
@@ -46,18 +49,10 @@ func NewStandaloneRpcServer(bindAddress string, advertisedPublicAddress string, 
 			Logger(),
 	}
 
-	res.sessionManager = server.NewSessionManager(func(shardId uint32) (server.LeaderController, error) {
-		controller, found := res.controllers[shardId]
-		if !found {
-			return nil, errors.New("shard not found")
-		}
-		return controller, nil
-	})
-
 	var err error
 	for i := uint32(0); i < numShards; i++ {
 		var lc server.LeaderController
-		if lc, err = server.NewLeaderController(i, res.replicationRpcProvider, res.walFactory, res.kvFactory, res.sessionManager); err != nil {
+		if lc, err = server.NewLeaderController(i, res.replicationRpcProvider, res.walFactory, res.kvFactory); err != nil {
 			return nil, err
 		}
 
@@ -106,7 +101,7 @@ func (s *StandaloneRpcServer) Close() error {
 	for _, c := range s.controllers {
 		err = multierr.Append(err, c.Close())
 	}
-	return multierr.Append(err, s.sessionManager.Close())
+	return err
 }
 
 func (s *StandaloneRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest, stream proto.OxiaClient_ShardAssignmentsServer) error {
@@ -120,7 +115,7 @@ func (s *StandaloneRpcServer) Port() int {
 func (s *StandaloneRpcServer) Write(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error) {
 	lc, ok := s.controllers[*write.ShardId]
 	if !ok {
-		return nil, errors.New("shard not found")
+		return nil, ErrorShardNotFound
 	}
 
 	return lc.Write(write)
@@ -129,7 +124,7 @@ func (s *StandaloneRpcServer) Write(ctx context.Context, write *proto.WriteReque
 func (s *StandaloneRpcServer) Read(ctx context.Context, read *proto.ReadRequest) (*proto.ReadResponse, error) {
 	lc, ok := s.controllers[*read.ShardId]
 	if !ok {
-		return nil, errors.New("shard not found")
+		return nil, ErrorShardNotFound
 	}
 
 	return lc.Read(read)
@@ -140,7 +135,11 @@ func (s *StandaloneRpcServer) CreateSession(ctx context.Context, req *proto.Crea
 		Str("peer", common.GetPeer(ctx)).
 		Interface("req", req).
 		Msg("Create session request")
-	res, err := s.sessionManager.CreateSession(req)
+	lc, ok := s.controllers[req.ShardId]
+	if !ok {
+		return nil, ErrorShardNotFound
+	}
+	res, err := lc.CreateSession(req)
 	if err != nil {
 		s.log.Warn().Err(err).
 			Msg("Failed to create session")
@@ -166,12 +165,16 @@ func (s *StandaloneRpcServer) KeepAlive(stream proto.OxiaClient_KeepAliveServer)
 		return err
 	}
 
+	lc, ok := s.controllers[shardId]
+	if !ok {
+		return ErrorShardNotFound
+	}
 	s.log.Debug().
 		Uint32("shard", shardId).
 		Uint64("session", sessionId).
 		Str("peer", common.GetPeer(stream.Context())).
 		Msg("Session keep alive")
-	err = s.sessionManager.KeepAlive(stream)
+	err = lc.KeepAlive(shardId, sessionId, stream)
 	if err != nil {
 		s.log.Warn().Err(err).
 			Msg("Failed to listen to heartbeats")
@@ -185,7 +188,11 @@ func (s *StandaloneRpcServer) CloseSession(ctx context.Context, req *proto.Close
 		Str("peer", common.GetPeer(ctx)).
 		Interface("req", req).
 		Msg("Close session request")
-	res, err := s.sessionManager.CloseSession(req)
+	lc, ok := s.controllers[req.ShardId]
+	if !ok {
+		return nil, ErrorShardNotFound
+	}
+	res, err := lc.CloseSession(req)
 	if err != nil {
 		s.log.Warn().Err(err).
 			Msg("Failed to close session")

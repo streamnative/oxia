@@ -19,8 +19,6 @@ type ShardsDirector interface {
 
 	GetOrCreateLeader(shardId uint32) (LeaderController, error)
 	GetOrCreateFollower(shardId uint32) (FollowerController, error)
-
-	GetSessionManager() SessionManager
 }
 
 type shardsDirector struct {
@@ -31,7 +29,6 @@ type shardsDirector struct {
 
 	kvFactory              kv.KVFactory
 	walFactory             wal.WalFactory
-	sessionManager         SessionManager
 	replicationRpcProvider ReplicationRpcProvider
 	closed                 bool
 	log                    zerolog.Logger
@@ -48,7 +45,6 @@ func NewShardsDirector(walFactory wal.WalFactory, kvFactory kv.KVFactory, provid
 			Str("component", "shards-director").
 			Logger(),
 	}
-	s.sessionManager = NewSessionManager(s.GetLeader)
 	return s
 }
 
@@ -113,7 +109,7 @@ func (s *shardsDirector) GetOrCreateLeader(shardId uint32) (LeaderController, er
 	}
 
 	// Create new leader controller
-	if lc, err := NewLeaderController(shardId, s.replicationRpcProvider, s.walFactory, s.kvFactory, s.sessionManager); err != nil {
+	if lc, err := NewLeaderController(shardId, s.replicationRpcProvider, s.walFactory, s.kvFactory); err != nil {
 		return nil, err
 	} else {
 		s.leaders[shardId] = lc
@@ -152,10 +148,6 @@ func (s *shardsDirector) GetOrCreateFollower(shardId uint32) (FollowerController
 	}
 }
 
-func (s *shardsDirector) GetSessionManager() SessionManager {
-	return s.sessionManager
-}
-
 func (s *shardsDirector) Close() error {
 	s.Lock()
 	defer s.Unlock()
@@ -171,5 +163,5 @@ func (s *shardsDirector) Close() error {
 		err = multierr.Append(err, follower.Close())
 	}
 
-	return multierr.Append(err, s.sessionManager.Close())
+	return err
 }

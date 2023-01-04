@@ -48,79 +48,37 @@ func KeyToId(key string) (SessionId, error) {
 	return SessionId(longInt), nil
 }
 
-// PutDecorator performs two operations on Put requests that have a session ID.
-// First, it checks whether the session is alive. If it is not, it errors out.
-// Then it adds an "index" entry as the child of the session key.
-var PutDecorator kv.PutCustomizer = &putDecorator{}
-
-var versionNotExists int64 = -1
-
-type putDecorator struct{}
-
-func (_ *putDecorator) AdditionalData(putReq *proto.PutRequest) *proto.PutRequest {
-	sessionId := putReq.SessionId
-	if sessionId == nil {
-		return nil
-	}
-	return &proto.PutRequest{
-		Key:             SessionKey(SessionId(*sessionId)) + url.PathEscape(putReq.Key),
-		Payload:         []byte{},
-		ExpectedVersion: &versionNotExists,
-	}
-}
-
-func (_ *putDecorator) CheckApplicability(batch kv.WriteBatch, putReq *proto.PutRequest) (proto.Status, error) {
-	sessionId := putReq.SessionId
-	if sessionId == nil {
-		return proto.Status_OK, nil
-	}
-	var _, closer, err = batch.Get(SessionKey(SessionId(*sessionId)))
-	if err != nil {
-		if errors.Is(err, kv.ErrorKeyNotFound) {
-			return proto.Status_SESSION_DOES_NOT_EXIST, nil
-
-		}
-		return proto.Status_SESSION_DOES_NOT_EXIST, err
-	}
-	if err = closer.Close(); err != nil {
-		return proto.Status_SESSION_DOES_NOT_EXIST, err
-	}
-	return proto.Status_OK, nil
-
-}
-
-type LeaderControllerSupplier func(shardId uint32) (LeaderController, error)
-
 // --- SessionManager
 
 type SessionManager interface {
 	io.Closer
 	CreateSession(*proto.CreateSessionRequest) (*proto.CreateSessionResponse, error)
-	KeepAlive(proto.OxiaClient_KeepAliveServer) error
+	KeepAlive(shardId uint32, sessionId uint64, stream proto.OxiaClient_KeepAliveServer) error
 	CloseSession(*proto.CloseSessionRequest) (*proto.CloseSessionResponse, error)
-	InitializeShard(shardId uint32, controller LeaderController) error
-	CloseShard(shardId uint32)
+	Initialize() error
 }
 
 var _ SessionManager = (*sessionManager)(nil)
 
 type sessionManager struct {
 	sync.Mutex
-	controllerSupplier LeaderControllerSupplier
-	sessions           map[SessionId]*session
-	sessionCounters    map[uint32]SessionId
+	controller     LeaderController
+	shardId        uint32
+	sessions       map[SessionId]*session
+	sessionCounter SessionId
 	// channels to close heartbeat listeners
 	closeChannels []chan error
 	log           zerolog.Logger
 }
 
-func NewSessionManager(controllerSupplier LeaderControllerSupplier) SessionManager {
+func NewSessionManager(shardId uint32, controller LeaderController) SessionManager {
 	return &sessionManager{
-		Mutex:              sync.Mutex{},
-		sessions:           make(map[SessionId]*session),
-		sessionCounters:    make(map[uint32]SessionId),
-		closeChannels:      make([]chan error, 0),
-		controllerSupplier: controllerSupplier,
+		Mutex:          sync.Mutex{},
+		sessions:       make(map[SessionId]*session),
+		sessionCounter: SessionId(0),
+		closeChannels:  make([]chan error, 0),
+		shardId:        shardId,
+		controller:     controller,
 		log: log.With().
 			Str("component", "session-manager").
 			Logger(),
@@ -134,12 +92,9 @@ func (sm *sessionManager) CreateSession(request *proto.CreateSessionRequest) (*p
 	}
 	sm.Lock()
 	defer sm.Unlock()
-	if _, initialized := sm.sessionCounters[request.ShardId]; !initialized {
-		return nil, errors.Errorf("session management for shard %d not initialized", request.ShardId)
-	}
-	sm.sessionCounters[request.ShardId]++
 
-	sessionId := sm.sessionCounters[request.ShardId]
+	sm.sessionCounter++
+	sessionId := sm.sessionCounter
 
 	metadata := &proto.SessionMetadata{TimeoutMS: uint64(timeout.Milliseconds())}
 
@@ -147,11 +102,7 @@ func (sm *sessionManager) CreateSession(request *proto.CreateSessionRequest) (*p
 	if err != nil {
 		return nil, errors.Wrap(err, "could not marshal session metadata")
 	}
-	controller, err := sm.controllerSupplier(request.ShardId)
-	if err != nil {
-		return nil, errors.Wrap(err, "could not register session")
-	}
-	resp, err := controller.Write(&proto.WriteRequest{
+	resp, err := sm.controller.Write(&proto.WriteRequest{
 		ShardId: &request.ShardId,
 		Puts: []*proto.PutRequest{{
 			Key:     SessionKey(sessionId),
@@ -165,14 +116,14 @@ func (sm *sessionManager) CreateSession(request *proto.CreateSessionRequest) (*p
 		return nil, err
 	}
 
-	s := sm.startSession(sessionId, request.ShardId, metadata)
+	s := sm.startSession(sessionId, metadata)
 	sm.sessions[sessionId] = s
 
 	return &proto.CreateSessionResponse{SessionId: uint64(s.id)}, nil
 
 }
 
-func (sm *sessionManager) KeepAlive(server proto.OxiaClient_KeepAliveServer) error {
+func (sm *sessionManager) KeepAlive(shardId uint32, sessionId uint64, server proto.OxiaClient_KeepAliveServer) error {
 	sm.Lock()
 	defer sm.Unlock()
 	closeChannel := make(chan error, 1)
@@ -202,13 +153,10 @@ func (sm *sessionManager) CloseSession(request *proto.CloseSessionRequest) (*pro
 	return &proto.CloseSessionResponse{}, nil
 }
 
-func (sm *sessionManager) InitializeShard(shardId uint32, controller LeaderController) error {
+func (sm *sessionManager) Initialize() error {
 	sm.Lock()
 	defer sm.Unlock()
-	if _, loaded := sm.sessionCounters[shardId]; loaded {
-		return errors.New("shard already loaded")
-	}
-	sessions, err := sm.readSessions(shardId, controller)
+	sessions, err := sm.readSessions()
 	if err != nil {
 		return err
 	}
@@ -217,15 +165,15 @@ func (sm *sessionManager) InitializeShard(shardId uint32, controller LeaderContr
 		if sessionId > maxSessionId {
 			maxSessionId = sessionId
 		}
-		sm.startSession(sessionId, shardId, sessionMetadata)
+		sm.startSession(sessionId, sessionMetadata)
 	}
-	sm.sessionCounters[shardId] = maxSessionId + 1
+	sm.sessionCounter = maxSessionId
 	return nil
 }
 
-func (sm *sessionManager) readSessions(shardId uint32, controller LeaderController) (map[SessionId]*proto.SessionMetadata, error) {
-	listResp, err := controller.readWithoutLocking(&proto.ReadRequest{
-		ShardId: &shardId,
+func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, error) {
+	listResp, err := sm.controller.readWithoutLocking(&proto.ReadRequest{
+		ShardId: &sm.shardId,
 		Gets:    nil,
 		Lists: []*proto.ListRequest{
 			{
@@ -244,8 +192,8 @@ func (sm *sessionManager) readSessions(shardId uint32, controller LeaderControll
 			IncludePayload: true,
 		})
 	}
-	getResp, err := controller.readWithoutLocking(&proto.ReadRequest{
-		ShardId: &shardId,
+	getResp, err := sm.controller.readWithoutLocking(&proto.ReadRequest{
+		ShardId: &sm.shardId,
 		Gets:    gets,
 		Lists:   nil,
 	})
@@ -259,7 +207,7 @@ func (sm *sessionManager) readSessions(shardId uint32, controller LeaderControll
 		key := gets[i].Key
 		if metaEntry.Status != proto.Status_OK {
 			sm.log.Warn().
-				Uint32("shard", shardId).
+				Uint32("shard", sm.shardId).
 				Msgf("error reading session metadata at `%s`, status: %d", key, metaEntry.Status)
 			continue
 		}
@@ -268,7 +216,7 @@ func (sm *sessionManager) readSessions(shardId uint32, controller LeaderControll
 		err = pb.Unmarshal(payload, &metadata)
 		if err != nil {
 			sm.log.Warn().
-				Uint32("shard", shardId).
+				Uint32("shard", sm.shardId).
 				Err(err).
 				Msgf("error unmarshalling session metadata at `%s`", key)
 			continue
@@ -276,7 +224,7 @@ func (sm *sessionManager) readSessions(shardId uint32, controller LeaderControll
 		sessionId, err := KeyToId(key)
 		if err != nil {
 			sm.log.Warn().
-				Uint32("shard", shardId).
+				Uint32("shard", sm.shardId).
 				Err(err).
 				Msgf("error parsing session key `%s`", key)
 			continue
@@ -287,24 +235,11 @@ func (sm *sessionManager) readSessions(shardId uint32, controller LeaderControll
 	return result, nil
 }
 
-func (sm *sessionManager) CloseShard(shardId uint32) {
-	sm.Lock()
-	defer sm.Unlock()
-	for _, s := range sm.sessions {
-		if s.shardId == shardId {
-			delete(sm.sessions, s.id)
-			s.Lock()
-			s.closeChannels()
-			s.Unlock()
-		}
-	}
-	delete(sm.sessionCounters, shardId)
-}
-
 func (sm *sessionManager) Close() error {
 	sm.Lock()
 	defer sm.Unlock()
 	for _, s := range sm.sessions {
+		delete(sm.sessions, s.id)
 		s.Lock()
 		s.closeChannels()
 		s.Unlock()
@@ -343,13 +278,9 @@ func (s *session) closeChannels() {
 
 func (s *session) delete() error {
 	// Delete ephemeral data associated with this session
-	controller, err := s.sm.controllerSupplier(s.shardId)
-	if err != nil {
-		return err
-	}
 	sessionKey := SessionKey(s.id)
 	// Read "index"
-	list, err := controller.Read(&proto.ReadRequest{
+	list, err := s.sm.controller.Read(&proto.ReadRequest{
 		ShardId: &s.shardId,
 		Lists: []*proto.ListRequest{{
 			StartInclusive: sessionKey,
@@ -373,7 +304,7 @@ func (s *session) delete() error {
 			})
 		}
 	}
-	_, err = controller.Write(&proto.WriteRequest{
+	_, err = s.sm.controller.Write(&proto.WriteRequest{
 		ShardId: &s.shardId,
 		Puts:    nil,
 		Deletes: deletes,
@@ -397,16 +328,16 @@ func (s *session) heartbeat(heartbeat *proto.SessionHeartbeat) {
 	}
 }
 
-func (sm *sessionManager) startSession(sessionId SessionId, shardId uint32, sessionMetadata *proto.SessionMetadata) *session {
+func (sm *sessionManager) startSession(sessionId SessionId, sessionMetadata *proto.SessionMetadata) *session {
 	s := &session{
 		Mutex:       sync.Mutex{},
 		id:          sessionId,
-		shardId:     shardId,
+		shardId:     sm.shardId, // TODO remove, use s.sm.shardId if needed at all
 		timeout:     time.Duration(sessionMetadata.TimeoutMS) * time.Millisecond,
 		sm:          sm,
 		heartbeatCh: make(chan *proto.SessionHeartbeat, 1),
 		log: sm.log.With().
-			Uint32("shard", shardId).
+			Uint32("shard", sm.shardId).
 			Str("session-id", hexId(sessionId)).Logger(),
 	}
 	go s.waitForHeartbeats()
@@ -507,4 +438,76 @@ func (sm *sessionManager) sendErrorAndRemove(closeChannel chan error, err error)
 			sm.closeChannels = append(sm.closeChannels[:i], sm.closeChannels[i+1:]...)
 		}
 	}
+}
+
+/*
+func (_ *putDecorator) AdditionalData(putReq *proto.PutRequest) *proto.PutRequest {
+	sessionId := putReq.SessionId
+	if sessionId == nil {
+		return nil
+	}
+	return &proto.PutRequest{
+		Key:             SessionKey(SessionId(*sessionId)) + url.PathEscape(putReq.Key),
+		Payload:         []byte{},
+		ExpectedVersion: &versionNotExists,
+	}
+}
+
+func (_ *putDecorator) CheckApplicability(batch kv.WriteBatch, putReq *proto.PutRequest) (proto.Status, error) {
+	sessionId := putReq.SessionId
+	if sessionId == nil {
+		return proto.Status_OK, nil
+	}
+	var _, closer, err = batch.Get(SessionKey(SessionId(*sessionId)))
+	if err != nil {
+		if errors.Is(err, kv.ErrorKeyNotFound) {
+			return proto.Status_SESSION_DOES_NOT_EXIST, nil
+
+		}
+		return proto.Status_SESSION_DOES_NOT_EXIST, err
+	}
+	if err = closer.Close(); err != nil {
+		return proto.Status_SESSION_DOES_NOT_EXIST, err
+	}
+	return proto.Status_OK, nil
+
+}*/
+
+type updateCallback struct{}
+
+var SessionUpdateOperationCallback kv.UpdateOperationCallback = &updateCallback{}
+
+func (_ *updateCallback) OnPut(batch kv.WriteBatch, request *proto.PutRequest) (proto.Status, error) {
+	// If the PutRequest does not refer to any session, we have nothing to do
+	sessionId := request.SessionId
+	if sessionId == nil {
+		return proto.Status_OK, nil
+	}
+	// Check if the session exists
+	var _, closer, err = batch.Get(SessionKey(SessionId(*sessionId)))
+	if err != nil {
+		if errors.Is(err, kv.ErrorKeyNotFound) {
+			return proto.Status_SESSION_DOES_NOT_EXIST, nil
+		}
+		return proto.Status_SESSION_DOES_NOT_EXIST, err
+	}
+	if err = closer.Close(); err != nil {
+		return proto.Status_SESSION_DOES_NOT_EXIST, err
+	}
+	// Create the session shadow entry
+	err = batch.Put(SessionKey(SessionId(*sessionId))+url.PathEscape(request.Key), []byte{})
+	if err != nil {
+		return proto.Status_SESSION_DOES_NOT_EXIST, err
+	}
+	return proto.Status_OK, nil
+}
+
+func (_ *updateCallback) OnDelete(batch kv.WriteBatch, request *proto.DeleteRequest) (proto.Status, error) {
+	// TODO implement me
+	return proto.Status_OK, nil
+}
+
+func (_ *updateCallback) OnDeleteRange(batch kv.WriteBatch, request *proto.DeleteRangeRequest) (proto.Status, error) {
+	//TODO implement me
+	return proto.Status_OK, nil
 }

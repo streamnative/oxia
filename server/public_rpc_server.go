@@ -61,12 +61,8 @@ func (s *PublicRpcServer) Write(ctx context.Context, write *proto.WriteRequest) 
 		Interface("req", write).
 		Msg("Write request")
 
-	lc, err := s.shardsDirector.GetLeader(*write.ShardId)
+	lc, err := s.getLeader(*write.ShardId)
 	if err != nil {
-		if !errors.Is(err, ErrorNodeIsNotLeader) {
-			s.log.Warn().Err(err).
-				Msg("Failed to get the leader controller")
-		}
 		return nil, err
 	}
 
@@ -85,12 +81,8 @@ func (s *PublicRpcServer) Read(ctx context.Context, read *proto.ReadRequest) (*p
 		Interface("req", read).
 		Msg("Write request")
 
-	lc, err := s.shardsDirector.GetLeader(*read.ShardId)
+	lc, err := s.getLeader(*read.ShardId)
 	if err != nil {
-		if !errors.Is(err, ErrorNodeIsNotLeader) {
-			s.log.Warn().Err(err).
-				Msg("Failed to get the leader controller")
-		}
 		return nil, err
 	}
 
@@ -109,12 +101,8 @@ func (s *PublicRpcServer) GetNotifications(req *proto.NotificationsRequest, stre
 		Interface("req", req).
 		Msg("Get notifications")
 
-	lc, err := s.shardsDirector.GetLeader(*req.ShardId)
+	lc, err := s.getLeader(*req.ShardId)
 	if err != nil {
-		if !errors.Is(err, ErrorNodeIsNotLeader) {
-			s.log.Warn().Err(err).
-				Msg("Failed to get the leader controller")
-		}
 		return err
 	}
 
@@ -131,7 +119,11 @@ func (s *PublicRpcServer) CreateSession(ctx context.Context, req *proto.CreateSe
 		Str("peer", common.GetPeer(ctx)).
 		Interface("req", req).
 		Msg("Create session request")
-	res, err := s.shardsDirector.GetSessionManager().CreateSession(req)
+	lc, err := s.getLeader(req.ShardId)
+	if err != nil {
+		return nil, err
+	}
+	res, err := lc.CreateSession(req)
 	if err != nil {
 		s.log.Warn().Err(err).
 			Msg("Failed to create session")
@@ -162,7 +154,11 @@ func (s *PublicRpcServer) KeepAlive(stream proto.OxiaClient_KeepAliveServer) err
 		Uint64("session", sessionId).
 		Str("peer", common.GetPeer(stream.Context())).
 		Msg("Session keep alive")
-	err = s.shardsDirector.GetSessionManager().KeepAlive(stream)
+	lc, err := s.getLeader(shardId)
+	if err != nil {
+		return err
+	}
+	err = lc.KeepAlive(shardId, sessionId, stream)
 	if err != nil {
 		s.log.Warn().Err(err).
 			Msg("Failed to listen to heartbeats")
@@ -176,13 +172,29 @@ func (s *PublicRpcServer) CloseSession(ctx context.Context, req *proto.CloseSess
 		Str("peer", common.GetPeer(ctx)).
 		Interface("req", req).
 		Msg("Close session request")
-	res, err := s.shardsDirector.GetSessionManager().CloseSession(req)
+	lc, err := s.getLeader(req.ShardId)
+	if err != nil {
+		return nil, err
+	}
+	res, err := lc.CloseSession(req)
 	if err != nil {
 		s.log.Warn().Err(err).
 			Msg("Failed to close session")
 		return nil, err
 	}
 	return res, nil
+}
+
+func (s *PublicRpcServer) getLeader(shardId uint32) (LeaderController, error) {
+	lc, err := s.shardsDirector.GetLeader(shardId)
+	if err != nil {
+		if !errors.Is(err, ErrorNodeIsNotLeader) {
+			s.log.Warn().Err(err).
+				Msg("Failed to get the leader controller")
+		}
+		return nil, err
+	}
+	return lc, nil
 }
 
 func (s *PublicRpcServer) Close() error {

@@ -41,7 +41,14 @@ func (m mockWriteBatch) Close() error {
 	return nil
 }
 
-func (m mockWriteBatch) Put(_ string, _ []byte) error {
+func (m mockWriteBatch) Put(key string, payload []byte) error {
+	val, found := m[key]
+	if found {
+		if valAsError, wasError := val.(error); wasError {
+			return valAsError
+		}
+	}
+	m[key] = payload
 	return nil
 }
 
@@ -74,31 +81,29 @@ func (m mockWriteBatch) Commit() error {
 	return nil
 }
 
-func TestPutDecorator(t *testing.T) {
+func TestSessionUpdateOperationCallback(t *testing.T) {
 
 	noSessionPutRequest := &proto.PutRequest{
 		Key:     "a",
 		Payload: []byte("b"),
 	}
-	// If there's no session ID, we should not touch the DB at all
-	status, err := PutDecorator.CheckApplicability(nil, noSessionPutRequest)
+	writeBatch := mockWriteBatch{}
+
+	status, err := SessionUpdateOperationCallback.OnPut(writeBatch, noSessionPutRequest)
 	assert.NoError(t, err)
 	assert.Equal(t, proto.Status_OK, status)
-
-	additionalPut := PutDecorator.AdditionalData(noSessionPutRequest)
-	assert.Nil(t, additionalPut)
+	assert.Equal(t, len(writeBatch), 0)
 
 	sessionId := uint64(12345)
 	version := int64(2)
-	writeBatch := mockWriteBatch{}
+	writeBatch = mockWriteBatch{}
 	sessionPutRequest := &proto.PutRequest{
 		Key:             "a/b/c",
 		Payload:         []byte("b"),
 		ExpectedVersion: &version,
 		SessionId:       &sessionId,
 	}
-
-	status, err = PutDecorator.CheckApplicability(writeBatch, sessionPutRequest)
+	status, err = SessionUpdateOperationCallback.OnPut(writeBatch, sessionPutRequest)
 	assert.NoError(t, err)
 	assert.Equal(t, proto.Status_SESSION_DOES_NOT_EXIST, status)
 
@@ -106,24 +111,26 @@ func TestPutDecorator(t *testing.T) {
 	writeBatch = mockWriteBatch{
 		SessionKey(SessionId(sessionId)): expectedErr,
 	}
-
-	_, err = PutDecorator.CheckApplicability(writeBatch, sessionPutRequest)
+	_, err = SessionUpdateOperationCallback.OnPut(writeBatch, sessionPutRequest)
 	assert.ErrorIs(t, err, expectedErr)
 
 	writeBatch = mockWriteBatch{
 		SessionKey(SessionId(sessionId)): []byte{},
 	}
-
-	status, err = PutDecorator.CheckApplicability(writeBatch, sessionPutRequest)
+	status, err = SessionUpdateOperationCallback.OnPut(writeBatch, sessionPutRequest)
 	assert.NoError(t, err)
 	assert.Equal(t, proto.Status_OK, status)
+	sessionKey := SessionKey(SessionId(sessionId)) + "a%2Fb%2Fc"
+	_, found := writeBatch[sessionKey]
+	assert.True(t, found)
 
-	additionalPut = PutDecorator.AdditionalData(sessionPutRequest)
-	assert.Equal(t, SessionKey(SessionId(sessionId))+"a%2Fb%2Fc", additionalPut.Key)
-	assert.Equal(t, []byte{}, additionalPut.Payload)
-	assert.Equal(t, versionNotExists, *additionalPut.ExpectedVersion)
-	assert.Nil(t, additionalPut.SessionId)
-
+	expectedErr = errors.New("error coming from the DB on write")
+	writeBatch = mockWriteBatch{
+		SessionKey(SessionId(sessionId)): []byte{},
+		sessionKey:                       expectedErr,
+	}
+	_, err = SessionUpdateOperationCallback.OnPut(writeBatch, sessionPutRequest)
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestNewSessionManager(t *testing.T) {
@@ -139,8 +146,7 @@ func withSessionManager(t *testing.T, f func(SessionManager, LeaderController)) 
 	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
 	var lc LeaderController
-	sManager := NewSessionManager(singleLeaderController(&lc))
-	lc, err = NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory, sManager)
+	lc, err = NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 	_, err = lc.Fence(&proto.FenceRequest{ShardId: shard, Epoch: 1})
 	assert.NoError(t, err)
@@ -151,14 +157,6 @@ func withSessionManager(t *testing.T, f func(SessionManager, LeaderController)) 
 		FollowerMaps:      nil,
 	})
 	assert.NoError(t, err)
-	f(sManager, lc)
+	f(lc.(*leaderController).sessionManager, lc)
 	assert.NoError(t, lc.Close())
-	assert.NoError(t, sManager.Close())
-
-}
-
-func singleLeaderController(controller *LeaderController) LeaderControllerSupplier {
-	return func(_ uint32) (LeaderController, error) {
-		return *controller, nil
-	}
 }

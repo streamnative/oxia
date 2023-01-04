@@ -41,6 +41,10 @@ type LeaderController interface {
 
 	// Status The Status of the leader
 	Status() proto.ServingStatus
+
+	CreateSession(*proto.CreateSessionRequest) (*proto.CreateSessionResponse, error)
+	KeepAlive(shardId uint32, sessionId uint64, stream proto.OxiaClient_KeepAliveServer) error
+	CloseSession(*proto.CloseSessionRequest) (*proto.CloseSessionResponse, error)
 }
 
 type leaderController struct {
@@ -67,20 +71,19 @@ type leaderController struct {
 	log            zerolog.Logger
 }
 
-func NewLeaderController(shardId uint32, rpcClient ReplicationRpcProvider, walFactory wal.WalFactory, kvFactory kv.KVFactory, sessionManager SessionManager) (LeaderController, error) {
+func NewLeaderController(shardId uint32, rpcClient ReplicationRpcProvider, walFactory wal.WalFactory, kvFactory kv.KVFactory) (LeaderController, error) {
 	lc := &leaderController{
 		status:           proto.ServingStatus_NotMember,
 		shardId:          shardId,
 		quorumAckTracker: nil,
 		rpcClient:        rpcClient,
 		followers:        make(map[string]FollowerCursor),
-		sessionManager:   sessionManager,
-
 		log: log.With().
 			Str("component", "leader-controller").
 			Uint32("shard", shardId).
 			Logger(),
 	}
+	lc.sessionManager = NewSessionManager(shardId, lc)
 
 	lc.ctx, lc.cancel = context.WithCancel(context.Background())
 
@@ -178,7 +181,10 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 		return nil, err
 	}
 
-	lc.sessionManager.CloseShard(lc.shardId)
+	err = lc.sessionManager.Close()
+	if err != nil {
+		return nil, err
+	}
 
 	lc.log.Info().
 		Interface("last-entry", headIndex).
@@ -333,7 +339,7 @@ func (lc *leaderController) applyAllEntriesIntoDB() error {
 		return err
 	}
 
-	err = lc.sessionManager.InitializeShard(lc.shardId, lc)
+	err = lc.sessionManager.Initialize()
 	if err != nil {
 		lc.log.Error().Err(err).
 			Int64("epoch", lc.epoch).
@@ -362,7 +368,7 @@ func (lc *leaderController) applyAllEntriesIntoDB() error {
 			return err
 		}
 
-		if _, err = lc.db.ProcessWrite(writeRequest, entry.Offset, entry.Timestamp, PutDecorator); err != nil {
+		if _, err = lc.db.ProcessWrite(writeRequest, entry.Offset, entry.Timestamp, SessionUpdateOperationCallback); err != nil {
 			return err
 		}
 	}
@@ -464,7 +470,7 @@ func (lc *leaderController) Write(request *proto.WriteRequest) (*proto.WriteResp
 	}
 
 	return lc.quorumAckTracker.WaitForCommitIndex(newOffset, func() (*proto.WriteResponse, error) {
-		return lc.db.ProcessWrite(request, newOffset, timestamp, PutDecorator)
+		return lc.db.ProcessWrite(request, newOffset, timestamp, SessionUpdateOperationCallback)
 	})
 }
 
@@ -566,10 +572,10 @@ func (lc *leaderController) Close() error {
 		err = multierr.Append(err, follower.Close())
 	}
 
-	lc.sessionManager.CloseShard(lc.shardId)
 	err = multierr.Combine(err,
 		lc.wal.Close(),
 		lc.db.Close(),
+		lc.sessionManager.Close(),
 	)
 	return err
 }
@@ -599,4 +605,16 @@ func (lc *leaderController) GetStatus(request *proto.GetStatusRequest) (*proto.G
 		Epoch:  lc.epoch,
 		Status: lc.status,
 	}, nil
+}
+
+func (lc *leaderController) CreateSession(request *proto.CreateSessionRequest) (*proto.CreateSessionResponse, error) {
+	return lc.sessionManager.CreateSession(request)
+}
+
+func (lc *leaderController) KeepAlive(shardId uint32, sessionId uint64, stream proto.OxiaClient_KeepAliveServer) error {
+	return lc.sessionManager.KeepAlive(shardId, sessionId, stream)
+}
+
+func (lc *leaderController) CloseSession(request *proto.CloseSessionRequest) (*proto.CloseSessionResponse, error) {
+	return lc.sessionManager.CloseSession(request)
 }
