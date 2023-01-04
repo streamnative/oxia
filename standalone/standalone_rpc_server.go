@@ -8,6 +8,8 @@ import (
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
+	"oxia/common"
 	"oxia/common/container"
 	"oxia/proto"
 	"oxia/server"
@@ -131,4 +133,63 @@ func (s *StandaloneRpcServer) Read(ctx context.Context, read *proto.ReadRequest)
 	}
 
 	return lc.Read(read)
+}
+
+func (s *StandaloneRpcServer) CreateSession(ctx context.Context, req *proto.CreateSessionRequest) (*proto.CreateSessionResponse, error) {
+	s.log.Debug().
+		Str("peer", common.GetPeer(ctx)).
+		Interface("req", req).
+		Msg("Create session request")
+	res, err := s.sessionManager.CreateSession(req)
+	if err != nil {
+		s.log.Warn().Err(err).
+			Msg("Failed to create session")
+		return nil, err
+	}
+	return res, nil
+}
+
+func (s *StandaloneRpcServer) KeepAlive(stream proto.OxiaClient_KeepAliveServer) error {
+	// KeepAlive receives an incoming stream of request, the shard_id needs to be encoded
+	// as a property in the metadata
+	md, ok := metadata.FromIncomingContext(stream.Context())
+	if !ok {
+		return errors.New("shard id is not set in the request metadata")
+	}
+
+	shardId, err := server.ReadHeaderUint32(md, server.MetadataShardId)
+	if err != nil {
+		return err
+	}
+	sessionId, err := server.ReadHeaderUint64(md, "session-id")
+	if err != nil {
+		return err
+	}
+
+	s.log.Debug().
+		Uint32("shard", shardId).
+		Uint64("session", sessionId).
+		Str("peer", common.GetPeer(stream.Context())).
+		Msg("Session keep alive")
+	err = s.sessionManager.KeepAlive(stream)
+	if err != nil {
+		s.log.Warn().Err(err).
+			Msg("Failed to listen to heartbeats")
+		return err
+	}
+	return nil
+}
+
+func (s *StandaloneRpcServer) CloseSession(ctx context.Context, req *proto.CloseSessionRequest) (*proto.CloseSessionResponse, error) {
+	s.log.Debug().
+		Str("peer", common.GetPeer(ctx)).
+		Interface("req", req).
+		Msg("Close session request")
+	res, err := s.sessionManager.CloseSession(req)
+	if err != nil {
+		s.log.Warn().Err(err).
+			Msg("Failed to close session")
+		return nil, err
+	}
+	return res, nil
 }

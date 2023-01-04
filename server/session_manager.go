@@ -139,7 +139,7 @@ func (sm *sessionManager) CreateSession(request *proto.CreateSessionRequest) (*p
 	}
 	sm.sessionCounters[request.ShardId]++
 
-	sessionId := (SessionId(request.ShardId) << 32) + sm.sessionCounters[request.ShardId]
+	sessionId := sm.sessionCounters[request.ShardId]
 
 	metadata := &proto.SessionMetadata{TimeoutMS: uint64(timeout.Milliseconds())}
 
@@ -325,7 +325,7 @@ type session struct {
 	timeout     time.Duration
 	sm          *sessionManager
 	attached    bool
-	heartbeatCh chan *proto.Heartbeat
+	heartbeatCh chan *proto.SessionHeartbeat
 	closeCh     chan error
 	log         zerolog.Logger
 }
@@ -389,7 +389,7 @@ func (s *session) delete() error {
 
 }
 
-func (s *session) heartbeat(heartbeat *proto.Heartbeat) {
+func (s *session) heartbeat(heartbeat *proto.SessionHeartbeat) {
 	s.Lock()
 	defer s.Unlock()
 	if s.heartbeatCh != nil {
@@ -404,7 +404,7 @@ func (sm *sessionManager) startSession(sessionId SessionId, shardId uint32, sess
 		shardId:     shardId,
 		timeout:     time.Duration(sessionMetadata.TimeoutMS) * time.Millisecond,
 		sm:          sm,
-		heartbeatCh: make(chan *proto.Heartbeat, 1),
+		heartbeatCh: make(chan *proto.SessionHeartbeat, 1),
 		log: sm.log.With().
 			Uint32("shard", shardId).
 			Str("session-id", hexId(sessionId)).Logger(),

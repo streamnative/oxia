@@ -57,7 +57,7 @@ service OxiaClient {
   /*
    * Sends heartbeats to prevent the session from timing out.
    */
-  rpc KeepAlive(stream Heartbeat) returns (KeepAliveResponse);
+  rpc KeepAlive(stream SessionHeartbeat) returns (KeepAliveResponse);
 
   /*
    * Closes a session and removes all ephemeral values associated with it.
@@ -321,14 +321,16 @@ message CreateSessionResponse {
   uint64 session_id = 1;
 }
 
-message Heartbeat {
+message SessionHeartbeat {
+  uint32 shard_id = 1;
   uint64 session_id = 2;
 }
 
 message KeepAliveResponse {}
 
 message CloseSessionRequest {
-  uint64 session_id = 1;
+  uint32 shard_id = 1;
+  uint64 session_id = 2;
 }
 
 message CloseSessionResponse {}
