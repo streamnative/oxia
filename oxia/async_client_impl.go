@@ -2,6 +2,7 @@ package oxia
 
 import (
 	"context"
+	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"golang.org/x/sync/errgroup"
 	"oxia/common"
@@ -15,6 +16,7 @@ import (
 
 type clientImpl struct {
 	sync.Mutex
+	options           clientOptions
 	shardManager      internal.ShardManager
 	writeBatchManager *batch.Manager
 	readBatchManager  *batch.Manager
@@ -57,6 +59,7 @@ func NewAsyncClient(serviceAddress string, opts ...ClientOption) (AsyncClient, e
 		Metrics:             metrics.NewMetrics(options.meterProvider),
 	}
 	c := &clientImpl{
+		options:           options,
 		clientPool:        clientPool,
 		shardManager:      shardManager,
 		writeBatchManager: batch.NewManager(batcherFactory.NewWriteBatcher),
@@ -199,6 +202,11 @@ func (c *clientImpl) List(minKeyInclusive string, maxKeyExclusive string) <-chan
 	return ch
 }
 
-func (c *clientImpl) GetNotifications() <-chan Notification {
-	return newNotificationsManager(c.ctx, c.clientPool, c.shardManager).Ch()
+func (c *clientImpl) GetNotifications() (NotificationManager, error) {
+	nm, err := newNotificationsManager(c.options, c.ctx, c.clientPool, c.shardManager)
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to create notification stream")
+	}
+
+	return nm, nil
 }

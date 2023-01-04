@@ -23,7 +23,7 @@ type AsyncClient interface {
 	Get(key string) <-chan GetResult
 	List(minKeyInclusive string, maxKeyExclusive string) <-chan ListResult
 
-	GetNotifications() <-chan Notification
+	GetNotifications() (NotificationManager, error)
 }
 
 type SyncClient interface {
@@ -35,7 +35,7 @@ type SyncClient interface {
 	Get(key string) ([]byte, Stat, error)
 	List(minKeyInclusive string, maxKeyExclusive string) ([]string, error)
 
-	GetNotifications() <-chan Notification
+	GetNotifications() (NotificationManager, error)
 }
 
 type Stat struct {
@@ -58,6 +58,12 @@ type GetResult struct {
 type ListResult struct {
 	Keys []string
 	Err  error
+}
+
+type NotificationManager interface {
+	io.Closer
+
+	Ch() <-chan *Notification
 }
 
 type NotificationType int

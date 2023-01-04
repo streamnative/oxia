@@ -14,24 +14,31 @@ import (
 )
 
 type notificationsManager struct {
-	multiplexCh  chan Notification
+	multiplexCh  chan *Notification
 	closeCh      chan any
 	shardManager internal.ShardManager
 	clientPool   common.ClientPool
+
+	initialized chan error
+	ctx         context.Context
+	cancel      context.CancelFunc
 }
 
-func newNotificationsManager(ctx context.Context, clientPool common.ClientPool, shardManager internal.ShardManager) *notificationsManager {
+func newNotificationsManager(options clientOptions, ctx context.Context, clientPool common.ClientPool, shardManager internal.ShardManager) (*notificationsManager, error) {
 	nm := &notificationsManager{
-		multiplexCh:  make(chan Notification, 100),
+		multiplexCh:  make(chan *Notification, 100),
 		closeCh:      make(chan any),
 		shardManager: shardManager,
 		clientPool:   clientPool,
+		initialized:  make(chan error),
 	}
+
+	nm.ctx, nm.cancel = context.WithCancel(ctx)
 
 	// Create a notification manager for each shard
 	shards := shardManager.GetAll()
 	for _, shard := range shards {
-		newShardNotificationsManager(shard, ctx, nm)
+		newShardNotificationsManager(shard, nm)
 	}
 
 	go common.DoWithLabels(map[string]string{
@@ -46,11 +53,32 @@ func newNotificationsManager(ctx context.Context, clientPool common.ClientPool, 
 		close(nm.multiplexCh)
 	})
 
-	return nm
+	// Wait for the notifications on all the shards to be initialized
+	timeoutCtx, cancel := context.WithTimeout(nm.ctx, options.batchRequestTimeout)
+	defer cancel()
+
+	for i := 0; i < len(shards); i++ {
+		select {
+		case err := <-nm.initialized:
+			if err != nil {
+				return nil, err
+			}
+
+		case <-timeoutCtx.Done():
+			return nil, timeoutCtx.Err()
+		}
+	}
+
+	return nm, nil
 }
 
-func (nm *notificationsManager) Ch() <-chan Notification {
+func (nm *notificationsManager) Ch() <-chan *Notification {
 	return nm.multiplexCh
+}
+
+func (nm *notificationsManager) Close() error {
+	nm.cancel()
+	return nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -62,16 +90,17 @@ type shardNotificationsManager struct {
 	nm                 *notificationsManager
 	backoff            backoff.BackOff
 	lastOffsetReceived int64
+	initialized        bool
 	log                zerolog.Logger
 }
 
-func newShardNotificationsManager(shard uint32, ctx context.Context, nm *notificationsManager) *shardNotificationsManager {
+func newShardNotificationsManager(shard uint32, nm *notificationsManager) *shardNotificationsManager {
 	snm := &shardNotificationsManager{
 		shard:              shard,
-		ctx:                ctx,
+		ctx:                nm.ctx,
 		nm:                 nm,
 		lastOffsetReceived: -1,
-		backoff:            common.NewBackOffWithInitialInterval(ctx, 1*time.Second),
+		backoff:            common.NewBackOffWithInitialInterval(nm.ctx, 1*time.Second),
 		log: log.Logger.With().
 			Str("component", "oxia-notifications-manager").
 			Uint32("shard", shard).
@@ -93,6 +122,12 @@ func (snm *shardNotificationsManager) getNotificationsWithRetries() {
 				snm.log.Error().Err(err).
 					Dur("retry-after", duration).
 					Msg("Error while getting notifications")
+			}
+
+			if !snm.initialized {
+				snm.initialized = true
+				snm.nm.initialized <- err
+				snm.nm.cancel()
 			}
 		})
 }
@@ -144,6 +179,18 @@ func (snm *shardNotificationsManager) getNotifications() error {
 			Int("count", len(nb.Notifications)).
 			Msg("Received batch notification")
 
+		if !snm.initialized {
+			snm.log.Debug().Msg("Initialized the notification manager")
+
+			// We need to discard the very first notification, because it's only
+			// needed to ensure that the notification cursor is created on the
+			// server side.
+			snm.initialized = true
+			snm.nm.initialized <- nil
+			snm.lastOffsetReceived = nb.Offset
+			continue
+		}
+
 		for key, n := range nb.Notifications {
 			select {
 			case snm.nm.multiplexCh <- convertNotification(key, n):
@@ -154,6 +201,8 @@ func (snm *shardNotificationsManager) getNotifications() error {
 				return snm.ctx.Err()
 			}
 		}
+
+		snm.lastOffsetReceived = nb.Offset
 	}
 }
 
@@ -170,12 +219,12 @@ func convertNotificationType(t proto.NotificationType) NotificationType {
 	}
 }
 
-func convertNotification(key string, n *proto.Notification) Notification {
+func convertNotification(key string, n *proto.Notification) *Notification {
 	version := int64(-1)
 	if n.Version != nil {
 		version = *n.Version
 	}
-	return Notification{
+	return &Notification{
 		Type:    convertNotificationType(n.Type),
 		Key:     key,
 		Version: version,
