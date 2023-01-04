@@ -8,15 +8,18 @@ import (
 )
 
 type ControllerRpcServer struct {
-	container container.GrpcServer
+	container    container.GrpcServer
+	healthServer *health.Server
 }
 
 func NewControllerRpcServer(bindAddress string) (*ControllerRpcServer, error) {
-	server := &ControllerRpcServer{}
+	server := &ControllerRpcServer{
+		healthServer: health.NewServer(),
+	}
 
 	var err error
 	server.container, err = container.Default.StartGrpcServer("controller", bindAddress, func(registrar grpc.ServiceRegistrar) {
-		grpc_health_v1.RegisterHealthServer(registrar, health.NewServer())
+		grpc_health_v1.RegisterHealthServer(registrar, server.healthServer)
 	})
 	if err != nil {
 		return nil, err
@@ -26,5 +29,6 @@ func NewControllerRpcServer(bindAddress string) (*ControllerRpcServer, error) {
 }
 
 func (s *ControllerRpcServer) Close() error {
+	s.healthServer.Shutdown()
 	return s.container.Close()
 }
