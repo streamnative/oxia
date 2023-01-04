@@ -656,7 +656,7 @@ func TestFollower_DupEntries(t *testing.T) {
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := wal.NewInMemoryWalFactory()
 
-	fc, _ := NewFollowerController(shardId, walFactory, kvFactory)
+	fc, _ := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	_, _ = fc.Fence(&proto.FenceRequest{Epoch: 1})
 
 	stream := newMockServerAddEntriesStream()

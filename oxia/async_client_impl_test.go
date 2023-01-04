@@ -83,7 +83,7 @@ func TestAsyncClientImpl_Notifications(t *testing.T) {
 	walFactory := wal.NewInMemoryWalFactory()
 	defer walFactory.Close()
 
-	server, err := standalone.NewStandaloneRpcServer("localhost:0", "localhost", 3, walFactory, kvFactory)
+	server, err := standalone.NewStandaloneRpcServer(standalone.Config{}, "localhost:0", "localhost", 3, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	serviceAddress := fmt.Sprintf("localhost:%d", server.Port())
