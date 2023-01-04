@@ -19,10 +19,22 @@ type clientImpl struct {
 	readBatchManager  *batch.Manager
 }
 
-func NewAsyncClient(options ClientOptions) AsyncClient {
+// NewAsyncClient creates a new Oxia client with the async interface
+//
+// ServiceAddress is the target host:port of any Oxia server to bootstrap the client. It is used for establishing the
+// shard assignments. Ideally this should be a load-balanced endpoint.
+//
+// A list of ClientOption arguments can be passed to configure the Oxia client
+func NewAsyncClient(serviceAddress string, opts ...ClientOption) (AsyncClient, error) {
 	clientPool := common.NewClientPool()
-	shardManager := internal.NewShardManager(internal.NewShardStrategy(), clientPool, options.serviceAddress)
+	shardManager := internal.NewShardManager(internal.NewShardStrategy(), clientPool, serviceAddress)
 	defer shardManager.Start()
+
+	options, err := newClientOptions(serviceAddress, opts...)
+	if err != nil {
+		return nil, err
+	}
+
 	executor := &internal.ExecutorImpl{
 		ClientPool:     clientPool,
 		ShardManager:   shardManager,
@@ -40,7 +52,7 @@ func NewAsyncClient(options ClientOptions) AsyncClient {
 		shardManager:      shardManager,
 		writeBatchManager: batch.NewManager(batcherFactory.NewWriteBatcher),
 		readBatchManager:  batch.NewManager(batcherFactory.NewReadBatcher),
-	}
+	}, nil
 }
 
 func (c *clientImpl) Close() error {
