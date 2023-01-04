@@ -51,7 +51,7 @@ func NewTrimmer(shard uint32, wal Wal, retention time.Duration, checkInterval ti
 	go common.DoWithLabels(map[string]string{
 		"oxia":  "wal-trimmer",
 		"shard": fmt.Sprintf("%d", shard),
-	}, t.start)
+	}, t.run)
 
 	return t
 }
@@ -76,7 +76,7 @@ func (t *trimmer) Close() error {
 	return nil
 }
 
-func (t *trimmer) start() {
+func (t *trimmer) run() {
 	for {
 		select {
 		case <-t.ticker.C:
