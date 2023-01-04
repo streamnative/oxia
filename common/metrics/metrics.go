@@ -39,6 +39,8 @@ func init() {
 	provider := metric.NewMeterProvider(metric.WithReader(exporter),
 		metric.WithView(customBucketsView, defaultView))
 	meter = provider.Meter("oxia")
+
+	registry.register()
 }
 
 type PrometheusMetrics struct {

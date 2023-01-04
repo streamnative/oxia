@@ -51,6 +51,7 @@ type persistentWal struct {
 	readLatency   metrics.LatencyHistogram
 	readBytes     metrics.Counter
 	trimOps       metrics.Counter
+	activeEntries metrics.Gauge
 }
 
 func newPersistentWal(shard uint32, options *WalFactoryOptions) (Wal, error) {
@@ -83,7 +84,7 @@ func newPersistentWal(shard uint32, options *WalFactoryOptions) (Wal, error) {
 			"The number of trim operations happening on the WAL", unit.Dimensionless, labels),
 	}
 
-	metrics.NewGauge("oxia_server_wal_entries",
+	w.activeEntries = metrics.NewGauge("oxia_server_wal_entries",
 		"The number of active entries in the wal", "count", labels, func() int64 {
 			return w.lastOffset - w.firstOffset
 		})
@@ -148,6 +149,8 @@ func (t *persistentWal) Trim(firstOffset int64) error {
 func (t *persistentWal) Close() error {
 	t.Lock()
 	defer t.Unlock()
+
+	t.activeEntries.Unregister()
 	return t.log.Close()
 }
 
