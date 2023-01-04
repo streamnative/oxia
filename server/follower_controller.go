@@ -483,7 +483,7 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 			break
 		} else if fc.epoch != wal.InvalidEpoch && snapChunk.Epoch != fc.epoch {
 			// The follower could be left with epoch=-1 by a previous failed
-			// attempt at sending the snapshot. It's ok to proceed int that case.
+			// attempt at sending the snapshot. It's ok to proceed in that case.
 			fc.closeChannelNoMutex(ErrorInvalidEpoch)
 			return
 		}
