@@ -8,6 +8,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc"
+	"oxia/common"
 	"oxia/common/container"
 	"oxia/proto"
 	"oxia/server"
@@ -86,16 +87,15 @@ func NewStandaloneRpcServer(bindAddress string, advertisedPublicAddress string, 
 }
 
 func (s *StandaloneRpcServer) Close() error {
-	err := multierr.Combine(
-		s.assignmentDispatcher.Close(),
-		s.grpcServer.Close(),
-		s.replicationRpcProvider.Close(),
-	)
-
+	var err error
 	for _, c := range s.controllers {
 		err = multierr.Append(err, c.Close())
 	}
-	return err
+
+	return multierr.Combine(err,
+		s.assignmentDispatcher.Close(),
+		s.grpcServer.Close(),
+	)
 }
 
 func (s *StandaloneRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest, stream proto.OxiaClient_ShardAssignmentsServer) error {
@@ -122,4 +122,24 @@ func (s *StandaloneRpcServer) Read(ctx context.Context, read *proto.ReadRequest)
 	}
 
 	return lc.Read(read)
+}
+
+func (s *StandaloneRpcServer) GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
+	s.log.Debug().
+		Str("peer", common.GetPeer(stream.Context())).
+		Interface("req", req).
+		Msg("Get notifications")
+
+	lc, ok := s.controllers[req.ShardId]
+	if !ok {
+		return errors.New("shard not found")
+	}
+
+	err := lc.GetNotifications(req, stream)
+	if err != nil && !errors.Is(err, context.Canceled) {
+		s.log.Warn().Err(err).
+			Msg("Failed to handle notifications request")
+	}
+
+	return err
 }

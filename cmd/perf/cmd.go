@@ -96,17 +96,15 @@ func perfMain(closer *closer) {
 		keys[i] = fmt.Sprintf("key-%d", i)
 	}
 
-	options, err := oxia.NewClientOptions(config.ServiceAddr,
+	client, err := oxia.NewAsyncClient(config.ServiceAddr,
 		oxia.WithBatchLinger(config.BatchLinger),
 		oxia.WithMaxRequestsPerBatch(config.MaxRequestsPerBatch),
 		oxia.WithRequestTimeout(config.RequestTimeout),
 		oxia.WithBatcherBufferSize(config.BatcherBufferSize),
 	)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Invalid configuration")
+		log.Fatal().Err(err).Msg("Failed to create Oxia client")
 	}
-
-	client := oxia.NewAsyncClient(options)
 
 	writeLatencyCh := make(chan int64)
 	go generateWriteTraffic(closer, client, writeLatencyCh)

@@ -1,6 +1,7 @@
 package oxia
 
 import (
+	"context"
 	"go.uber.org/multierr"
 	"golang.org/x/sync/errgroup"
 	"oxia/common"
@@ -17,12 +18,31 @@ type clientImpl struct {
 	shardManager      internal.ShardManager
 	writeBatchManager *batch.Manager
 	readBatchManager  *batch.Manager
+
+	clientPool common.ClientPool
+	ctx        context.Context
+	cancel     context.CancelFunc
 }
 
-func NewAsyncClient(options ClientOptions) AsyncClient {
+// NewAsyncClient creates a new Oxia client with the async interface
+//
+// ServiceAddress is the target host:port of any Oxia server to bootstrap the client. It is used for establishing the
+// shard assignments. Ideally this should be a load-balanced endpoint.
+//
+// A list of ClientOption arguments can be passed to configure the Oxia client
+func NewAsyncClient(serviceAddress string, opts ...ClientOption) (AsyncClient, error) {
 	clientPool := common.NewClientPool()
-	shardManager := internal.NewShardManager(internal.NewShardStrategy(), clientPool, options.serviceAddress)
-	defer shardManager.Start()
+
+	options, err := newClientOptions(serviceAddress, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	shardManager, err := internal.NewShardManager(internal.NewShardStrategy(), clientPool, serviceAddress, options.batchRequestTimeout)
+	if err != nil {
+		return nil, err
+	}
+
 	executor := &internal.ExecutorImpl{
 		ClientPool:     clientPool,
 		ShardManager:   shardManager,
@@ -36,17 +56,25 @@ func NewAsyncClient(options ClientOptions) AsyncClient {
 		Metrics:             metrics.NewMetrics(options.meterProvider),
 		RequestTimeout:      options.requestTimeout,
 	}
-	return &clientImpl{
+	c := &clientImpl{
+		clientPool:        clientPool,
 		shardManager:      shardManager,
 		writeBatchManager: batch.NewManager(batcherFactory.NewWriteBatcher),
 		readBatchManager:  batch.NewManager(batcherFactory.NewReadBatcher),
 	}
+
+	c.ctx, c.cancel = context.WithCancel(context.Background())
+	return c, nil
 }
 
 func (c *clientImpl) Close() error {
-	writeErr := c.writeBatchManager.Close()
-	readErr := c.readBatchManager.Close()
-	return multierr.Append(writeErr, readErr)
+	c.cancel()
+
+	return multierr.Combine(
+		c.writeBatchManager.Close(),
+		c.readBatchManager.Close(),
+		c.clientPool.Close(),
+	)
 }
 
 func (c *clientImpl) Put(key string, payload []byte, expectedVersion *int64) <-chan PutResult {
@@ -169,4 +197,8 @@ func (c *clientImpl) List(minKeyInclusive string, maxKeyExclusive string) <-chan
 		close(ch)
 	}()
 	return ch
+}
+
+func (c *clientImpl) GetNotifications() <-chan Notification {
+	return newNotificationsManager(c.ctx, c.clientPool, c.shardManager).Ch()
 }

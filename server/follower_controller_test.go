@@ -651,6 +651,42 @@ func TestFollower_DisconnectLeader(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
+func TestFollower_DupEntries(t *testing.T) {
+	var shardId uint32
+	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
+	walFactory := wal.NewInMemoryWalFactory()
+
+	fc, _ := NewFollowerController(shardId, walFactory, kvFactory)
+	_, _ = fc.Fence(&proto.FenceRequest{Epoch: 1})
+
+	stream := newMockServerAddEntriesStream()
+	go func() { assert.NoError(t, fc.AddEntries(stream)) }()
+
+	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, wal.InvalidOffset))
+	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, wal.InvalidOffset))
+
+	// Wait for responses
+	r1 := stream.GetResponse()
+	assert.EqualValues(t, 0, r1.Offset)
+
+	r2 := stream.GetResponse()
+	assert.EqualValues(t, 0, r2.Offset)
+
+	// Write next entry
+	stream.AddRequest(createAddRequest(t, 1, 1, map[string]string{"a": "4", "b": "5"}, wal.InvalidOffset))
+	r3 := stream.GetResponse()
+	assert.EqualValues(t, 1, r3.Offset)
+
+	// Go back with older offset
+	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "4", "b": "5"}, wal.InvalidOffset))
+	r4 := stream.GetResponse()
+	assert.EqualValues(t, 0, r4.Offset)
+
+	assert.NoError(t, fc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
 func closeChanIsNotNil(fc FollowerController) func() bool {
 	return func() bool {
 		_fc := fc.(*followerController)
