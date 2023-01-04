@@ -93,7 +93,7 @@ func newPersistentWal(shard uint32, options *WalFactoryOptions) (Wal, error) {
 		w.lastOffset = InvalidOffset
 		w.firstOffset = InvalidOffset
 	} else {
-		lastEntry, err := w.readAtIndex(log, lastIndex)
+		lastEntry, err := w.readAtIndex(lastIndex)
 		if err != nil {
 			return nil, err
 		}
@@ -104,11 +104,11 @@ func newPersistentWal(shard uint32, options *WalFactoryOptions) (Wal, error) {
 	return w, nil
 }
 
-func (t *persistentWal) readAtIndex(log *Log, index int64) (*proto.LogEntry, error) {
+func (t *persistentWal) readAtIndex(index int64) (*proto.LogEntry, error) {
 	timer := t.readLatency.Timer()
 	defer timer.Done()
 
-	val, err := log.Read(index)
+	val, err := t.log.Read(index)
 	if err != nil {
 		return nil, err
 	}
@@ -323,7 +323,7 @@ func (r *forwardReader) ReadNext() (*proto.LogEntry, error) {
 	index := r.nextOffset
 	r.wal.RLock()
 	defer r.wal.RUnlock()
-	entry, err := r.wal.readAtIndex(r.wal.log, index)
+	entry, err := r.wal.readAtIndex(index)
 	if err != nil {
 		return nil, err
 	}
@@ -356,7 +356,7 @@ func (r *reverseReader) ReadNext() (*proto.LogEntry, error) {
 	r.wal.RLock()
 	defer r.wal.RUnlock()
 
-	entry, err := r.wal.readAtIndex(r.wal.log, index)
+	entry, err := r.wal.readAtIndex(index)
 	if err != nil {
 		return nil, err
 	}
