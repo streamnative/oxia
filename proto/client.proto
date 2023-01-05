@@ -299,9 +299,9 @@ enum NotificationType {
 }
 
 message NotificationsRequest {
-  optional uint32 shard_id = 1;
+  uint32 shard_id = 1;
 
-  int64 start_offset_exclusive = 2;
+  optional int64 start_offset_exclusive = 2;
 }
 
 message NotificationBatch {

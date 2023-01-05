@@ -153,9 +153,8 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 		Interface("follower", follower).
 		Msg("Cluster is ready")
 
-	clientOptions, err := oxia.NewClientOptions(follower.Public)
+	client, err := oxia.NewSyncClient(follower.Public)
 	assert.NoError(t, err)
-	client := oxia.NewSyncClient(clientOptions)
 
 	stat1, err := client.Put("my-key", []byte("my-value"), nil)
 	assert.NoError(t, err)
@@ -178,7 +177,7 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 
 	// Wait for the client to receive the updated assignment list
 	assert.Eventually(t, func() bool {
-		client = oxia.NewSyncClient(clientOptions)
+		client, _ = oxia.NewSyncClient(follower.Public)
 		_, _, err := client.Get("my-key")
 		return err == nil
 	}, 10*time.Second, 10*time.Millisecond)
