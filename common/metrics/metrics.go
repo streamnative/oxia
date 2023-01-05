@@ -18,7 +18,8 @@ type PrometheusMetrics struct {
 }
 
 func Start(bindAddress string) (*PrometheusMetrics, error) {
-	http.Handle("/metrics", promhttp.Handler())
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
 
 	listener, err := net.Listen("tcp", bindAddress)
 	if err != nil {
@@ -26,7 +27,7 @@ func Start(bindAddress string) (*PrometheusMetrics, error) {
 	}
 
 	p := &PrometheusMetrics{
-		server: &http.Server{},
+		server: &http.Server{Handler: mux},
 		port:   listener.Addr().(*net.TCPAddr).Port,
 	}
 

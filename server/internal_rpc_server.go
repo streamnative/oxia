@@ -33,7 +33,7 @@ type internalRpcServer struct {
 	log                  zerolog.Logger
 }
 
-func newCoordinationRpcServer(grpcProvider container.GrpcProvider, bindAddress string, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher) (*internalRpcServer, error) {
+func newInternalRpcServer(grpcProvider container.GrpcProvider, bindAddress string, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher) (*internalRpcServer, error) {
 	server := &internalRpcServer{
 		shardsDirector:       shardsDirector,
 		assignmentDispatcher: assignmentDispatcher,
