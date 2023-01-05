@@ -94,7 +94,7 @@ func NewFollowerController(config Config, shardId uint32, wf wal.WalFactory, kvF
 		return nil, err
 	}
 
-	fc.walTrimmer = wal.NewTrimmer(shardId, fc.wal, config.WalRetentionTime, wal.DefaultCheckInterval, wal.SystemClock)
+	fc.walTrimmer = wal.NewTrimmer(shardId, fc.wal, config.WalRetentionTime, wal.DefaultCheckInterval, common.SystemClock)
 
 	if fc.db, err = kv.NewDB(shardId, kvFactory); err != nil {
 		return nil, err

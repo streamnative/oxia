@@ -4,6 +4,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"sort"
 	"testing"
+	"time"
 )
 
 var (
@@ -28,10 +29,10 @@ type clockStub struct {
 	index  int
 }
 
-func (c *clockStub) NowMillis() uint64 {
+func (c *clockStub) Now() time.Time {
 	millis := c.millis[c.index]
 	c.index++
-	return millis
+	return time.UnixMilli(int64(millis))
 }
 
 func runTest(test func(AsyncClient)) {

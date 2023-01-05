@@ -3,16 +3,14 @@ package common
 import "time"
 
 type Clock interface {
-	NowMillis() uint64
+	Now() time.Time
 }
 
 type systemClock struct {
 }
 
-func SystemClock() Clock {
-	return &systemClock{}
-}
+var SystemClock = &systemClock{}
 
-func (c *systemClock) NowMillis() uint64 {
-	return uint64(time.Now().UnixMilli())
+func (systemClock) Now() time.Time {
+	return time.Now()
 }

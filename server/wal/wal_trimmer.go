@@ -20,17 +20,7 @@ type Trimmer interface {
 	io.Closer
 }
 
-type Clock interface {
-	Now() time.Time
-}
-
-type systemClock struct{}
-
-func (systemClock) Now() time.Time { return time.Now() }
-
-var SystemClock = &systemClock{}
-
-func NewTrimmer(shard uint32, wal Wal, retention time.Duration, checkInterval time.Duration, clock Clock) Trimmer {
+func NewTrimmer(shard uint32, wal Wal, retention time.Duration, checkInterval time.Duration, clock common.Clock) Trimmer {
 	if retention.Nanoseconds() == 0 {
 		retention = DefaultRetention
 	}
@@ -59,7 +49,7 @@ func NewTrimmer(shard uint32, wal Wal, retention time.Duration, checkInterval ti
 type trimmer struct {
 	wal       Wal
 	retention time.Duration
-	clock     Clock
+	clock     common.Clock
 	ticker    *time.Ticker
 	ctx       context.Context
 	cancel    context.CancelFunc
