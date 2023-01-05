@@ -9,6 +9,7 @@ import (
 	"oxia/server/kv"
 	"oxia/server/wal"
 	"testing"
+	"time"
 )
 
 func TestSessionKey(t *testing.T) {
@@ -198,13 +199,76 @@ func TestSessionUpdateOperationCallback_OnDelete(t *testing.T) {
 
 }
 
-func TestNewSessionManager(t *testing.T) {
-	withSessionManager(t, func(sManager SessionManager, controller LeaderController) {
-
+func TestSessionManager(t *testing.T) {
+	// Invalid session timeout
+	sManager, controller := createSessionManager(t)
+	_, err := sManager.CreateSession(&proto.CreateSessionRequest{
+		ShardId:          1,
+		SessionTimeoutMs: 60 * 1000,
 	})
+	assert.ErrorIs(t, err, ErrorInvalidSessionTimeout)
+
+	// Create and close a session, check if its persisted
+	createResp, err := sManager.CreateSession(&proto.CreateSessionRequest{
+		ShardId:          1,
+		SessionTimeoutMs: 5 * 1000,
+	})
+	assert.NoError(t, err)
+	sessionId := createResp.SessionId
+	meta := getSessionMetadata(t, controller, sessionId)
+	assert.NotNil(t, meta)
+	assert.Equal(t, uint64(5000), meta.TimeoutMS)
+
+	_, err = sManager.CloseSession(&proto.CloseSessionRequest{
+		ShardId:   1,
+		SessionId: sessionId,
+	})
+	assert.NoError(t, err)
+	assert.Nil(t, getSessionMetadata(t, controller, sessionId))
+
+	// Create a session, watch it time out
+	createResp, err = sManager.CreateSession(&proto.CreateSessionRequest{
+		ShardId:          1,
+		SessionTimeoutMs: 50,
+	})
+	assert.NoError(t, err)
+	newSessionId := createResp.SessionId
+	assert.NotEqual(t, sessionId, newSessionId)
+	sessionId = newSessionId
+	meta = getSessionMetadata(t, controller, sessionId)
+	assert.NotNil(t, meta)
+
+	assert.Eventually(t, func() bool {
+		return getSessionMetadata(t, controller, sessionId) == nil
+	}, time.Second, 30*time.Millisecond)
+
+	assert.NoError(t, controller.Close())
+
 }
 
-func withSessionManager(t *testing.T, f func(SessionManager, LeaderController)) {
+func getSessionMetadata(t *testing.T, controller *leaderController, sessionId uint64) *proto.SessionMetadata {
+	shard := uint32(1)
+	resp, err := controller.db.ProcessRead(&proto.ReadRequest{
+		ShardId: &shard,
+		Gets: []*proto.GetRequest{{
+			Key:            SessionKey(SessionId(sessionId)),
+			IncludePayload: true,
+		}},
+		Lists: nil,
+	})
+	assert.NoError(t, err)
+
+	found := resp.Gets[0].Status == proto.Status_OK
+	if !found {
+		return nil
+	}
+	meta := proto.SessionMetadata{}
+	err = pb.Unmarshal(resp.Gets[0].Payload, &meta)
+	assert.NoError(t, err)
+	return &meta
+}
+
+func createSessionManager(t *testing.T) (*sessionManager, *leaderController) {
 	var shard uint32 = 1
 
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
@@ -222,6 +286,5 @@ func withSessionManager(t *testing.T, f func(SessionManager, LeaderController)) 
 		FollowerMaps:      nil,
 	})
 	assert.NoError(t, err)
-	f(lc.(*leaderController).sessionManager, lc)
-	assert.NoError(t, lc.Close())
+	return lc.(*leaderController).sessionManager.(*sessionManager), lc.(*leaderController)
 }

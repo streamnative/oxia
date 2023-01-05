@@ -10,6 +10,7 @@ const (
 	CodeInvalidEpoch    codes.Code = 100
 	CodeInvalidStatus   codes.Code = 101
 	CodeNotServingShard codes.Code = 102
+	CodeInvalidSession  codes.Code = 103
 )
 
 var (
@@ -22,4 +23,5 @@ var (
 	ErrorAlreadyClosed          = errors.New("oxia: node is shutting down")
 	ErrorNodeIsNotLeader        = errors.New("oxia: node is not leader for shard")
 	ErrorNodeIsNotFollower      = errors.New("oxia: node is not follower for shard")
+	ErrorInvalidSession         = status.Error(CodeInvalidSession, "oxia: session does not exist")
 )

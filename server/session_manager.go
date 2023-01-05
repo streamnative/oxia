@@ -21,8 +21,6 @@ const (
 	MaxTimeout = 10 * time.Second
 )
 
-var ErrorSessionNotFound = errors.New("session not found")
-
 var ErrorInvalidSessionTimeout = errors.New("invalid session timeout")
 
 type SessionId uint64
@@ -62,25 +60,21 @@ var _ SessionManager = (*sessionManager)(nil)
 
 type sessionManager struct {
 	sync.Mutex
-	controller     LeaderController
-	shardId        uint32
-	sessions       map[SessionId]*session
-	sessionCounter SessionId
-	// channels to close heartbeat listeners
-	closeChannels []chan error
-	log           zerolog.Logger
+	controller LeaderController
+	shardId    uint32
+	sessions   map[SessionId]*session
+	log        zerolog.Logger
 }
 
 func NewSessionManager(shardId uint32, controller LeaderController) SessionManager {
 	return &sessionManager{
-		Mutex:          sync.Mutex{},
-		sessions:       make(map[SessionId]*session),
-		sessionCounter: SessionId(0),
-		closeChannels:  make([]chan error, 0),
-		shardId:        shardId,
-		controller:     controller,
+		Mutex:      sync.Mutex{},
+		sessions:   make(map[SessionId]*session),
+		shardId:    shardId,
+		controller: controller,
 		log: log.With().
 			Str("component", "session-manager").
+			Uint32("shard", shardId).
 			Logger(),
 	}
 }
@@ -123,30 +117,45 @@ func (sm *sessionManager) CreateSession(request *proto.CreateSessionRequest) (*p
 
 }
 
-func (sm *sessionManager) KeepAlive(shardId uint32, sessionId uint64, server proto.OxiaClient_KeepAliveServer) error {
+func (sm *sessionManager) getSession(sessionId uint64) (*session, error) {
+	s, found := sm.sessions[SessionId(sessionId)]
+	if !found {
+		sm.log.Warn().
+			Uint64("session-id", sessionId).
+			Msg("Session not found")
+		return nil, ErrorInvalidSession
+	}
+	return s, nil
+}
+
+func (sm *sessionManager) KeepAlive(_ uint32, sessionId uint64, server proto.OxiaClient_KeepAliveServer) error {
 	sm.Lock()
 	defer sm.Unlock()
-	closeChannel := make(chan error, 1)
-	sm.closeChannels = append(sm.closeChannels, closeChannel)
+	s, err := sm.getSession(sessionId)
+	if err != nil {
+		return err
+	}
+	s.Lock()
+	defer s.Unlock()
+	s.attached = true
 
-	go sm.receiveHeartbeats(server, closeChannel)
-	return <-closeChannel
+	go s.receiveHeartbeats(server)
+	return <-s.closeCh
 
 }
 
 func (sm *sessionManager) CloseSession(request *proto.CloseSessionRequest) (*proto.CloseSessionResponse, error) {
 	sm.Lock()
 	defer sm.Unlock()
-	sessionId := SessionId(request.SessionId)
-	s, found := sm.sessions[sessionId]
-	if !found {
-		return nil, errors.Wrap(ErrorSessionNotFound, fmt.Sprintf("sessionId=%d", request.SessionId))
+	s, err := sm.getSession(request.SessionId)
+	if err != nil {
+		return nil, err
 	}
-	delete(sm.sessions, sessionId)
+	delete(sm.sessions, s.id)
 	s.Lock()
 	defer s.Unlock()
 	s.closeChannels()
-	err := s.delete()
+	err = s.delete()
 	if err != nil {
 		return nil, err
 	}
@@ -160,14 +169,9 @@ func (sm *sessionManager) Initialize() error {
 	if err != nil {
 		return err
 	}
-	maxSessionId := SessionId(0)
 	for sessionId, sessionMetadata := range sessions {
-		if sessionId > maxSessionId {
-			maxSessionId = sessionId
-		}
 		sm.startSession(sessionId, sessionMetadata)
 	}
-	sm.sessionCounter = maxSessionId
 	return nil
 }
 
@@ -207,7 +211,6 @@ func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, 
 		key := gets[i].Key
 		if metaEntry.Status != proto.Status_OK {
 			sm.log.Warn().
-				Uint32("shard", sm.shardId).
 				Msgf("error reading session metadata at `%s`, status: %d", key, metaEntry.Status)
 			continue
 		}
@@ -216,7 +219,6 @@ func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, 
 		err = pb.Unmarshal(payload, &metadata)
 		if err != nil {
 			sm.log.Warn().
-				Uint32("shard", sm.shardId).
 				Err(err).
 				Msgf("error unmarshalling session metadata at `%s`", key)
 			continue
@@ -224,7 +226,6 @@ func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, 
 		sessionId, err := KeyToId(key)
 		if err != nil {
 			sm.log.Warn().
-				Uint32("shard", sm.shardId).
 				Err(err).
 				Msgf("error parsing session key `%s`", key)
 			continue
@@ -243,10 +244,6 @@ func (sm *sessionManager) Close() error {
 		s.Lock()
 		s.closeChannels()
 		s.Unlock()
-	}
-	for _, ch := range sm.closeChannels {
-		ch <- nil
-		close(ch)
 	}
 	return nil
 }
@@ -332,12 +329,11 @@ func (sm *sessionManager) startSession(sessionId SessionId, sessionMetadata *pro
 	s := &session{
 		Mutex:       sync.Mutex{},
 		id:          sessionId,
-		shardId:     sm.shardId, // TODO remove, use s.sm.shardId if needed at all
 		timeout:     time.Duration(sessionMetadata.TimeoutMS) * time.Millisecond,
 		sm:          sm,
 		heartbeatCh: make(chan *proto.SessionHeartbeat, 1),
+		closeCh:     make(chan error),
 		log: sm.log.With().
-			Uint32("shard", sm.shardId).
 			Str("session-id", hexId(sessionId)).Logger(),
 	}
 	go s.waitForHeartbeats()
@@ -346,11 +342,15 @@ func (sm *sessionManager) startSession(sessionId SessionId, sessionMetadata *pro
 }
 
 func (s *session) waitForHeartbeats() {
+	s.Lock()
+	heartbeatChannel := s.heartbeatCh
+	s.Unlock()
 	s.log.Debug().Msg("Waiting for heartbeats")
 	timeout := s.timeout
 	for {
 		select {
-		case heartbeat := <-s.heartbeatCh:
+
+		case heartbeat := <-heartbeatChannel:
 			if heartbeat == nil {
 				// The channel is closed, so the session must be closing
 				return
@@ -372,44 +372,7 @@ func (s *session) waitForHeartbeats() {
 	}
 }
 
-func (sm *sessionManager) receiveHeartbeats(stream proto.OxiaClient_KeepAliveServer, closeChannel chan error) {
-
-	firstBeat, err := stream.Recv()
-	if errors.Is(err, io.EOF) {
-		// Got EOF because we are shutting down
-		return
-	} else if err != nil {
-		sm.Lock()
-		sm.sendErrorAndRemove(closeChannel, err)
-		sm.Unlock()
-		return
-	}
-	if firstBeat == nil {
-		// Got nil because we are shutting down
-		return
-	}
-
-	sessionId := SessionId(firstBeat.SessionId)
-	sm.Lock()
-	s, found := sm.sessions[sessionId]
-	if !found {
-		sm.sendErrorAndRemove(closeChannel, errors.Wrap(ErrorSessionNotFound, fmt.Sprintf("sessioId=%d", sessionId)))
-		sm.Unlock()
-		return
-	}
-	s.Lock()
-	if s.attached {
-		s.Unlock()
-		sm.sendErrorAndRemove(closeChannel, errors.New(fmt.Sprintf("session (sessionId=%d) already attached", sessionId)))
-		sm.Unlock()
-		return
-	} else {
-		s.attached = true
-		s.closeCh = closeChannel
-	}
-
-	s.Unlock()
-	sm.Unlock()
+func (s *session) receiveHeartbeats(stream proto.OxiaClient_KeepAliveServer) {
 
 	for {
 		heartbeat, err := stream.Recv()
@@ -417,9 +380,8 @@ func (sm *sessionManager) receiveHeartbeats(stream proto.OxiaClient_KeepAliveSer
 			// closing already
 			return
 		} else if err != nil {
-			sm.Lock()
-			sm.sendErrorAndRemove(closeChannel, errors.New(fmt.Sprintf("session (sessionId=%d) already attached", sessionId)))
-			sm.Unlock()
+			s.closeCh <- errors.New(fmt.Sprintf("session (sessionId=%d) already attached", s.id))
+			return
 		}
 		if heartbeat == nil {
 			// closing already
@@ -428,16 +390,6 @@ func (sm *sessionManager) receiveHeartbeats(stream proto.OxiaClient_KeepAliveSer
 		s.heartbeat(heartbeat)
 	}
 
-}
-
-func (sm *sessionManager) sendErrorAndRemove(closeChannel chan error, err error) {
-	closeChannel <- err
-	close(closeChannel)
-	for i, c := range sm.closeChannels {
-		if c == closeChannel {
-			sm.closeChannels = append(sm.closeChannels[:i], sm.closeChannels[i+1:]...)
-		}
-	}
 }
 
 type updateCallback struct{}
