@@ -11,20 +11,23 @@ type BatcherFactory struct {
 	Linger              time.Duration
 	MaxRequestsPerBatch int
 	BatcherBufferSize   int
+	RequestTimeout      time.Duration
 	Metrics             *metrics.Metrics
 }
 
 func (b *BatcherFactory) NewWriteBatcher(shardId *uint32) Batcher {
 	return b.newBatcher(shardId, writeBatchFactory{
-		execute: b.Executor.ExecuteWrite,
-		metrics: b.Metrics,
+		execute:        b.Executor.ExecuteWrite,
+		metrics:        b.Metrics,
+		requestTimeout: b.RequestTimeout,
 	}.newBatch)
 }
 
 func (b *BatcherFactory) NewReadBatcher(shardId *uint32) Batcher {
 	return b.newBatcher(shardId, readBatchFactory{
-		execute: b.Executor.ExecuteRead,
-		metrics: b.Metrics,
+		execute:        b.Executor.ExecuteRead,
+		metrics:        b.Metrics,
+		requestTimeout: b.RequestTimeout,
 	}.newBatch)
 }
 

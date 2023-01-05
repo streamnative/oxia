@@ -13,14 +13,14 @@ import (
 const (
 	DefaultBatchLinger         = 5 * time.Millisecond
 	DefaultMaxRequestsPerBatch = 1000
-	DefaultBatchRequestTimeout = 30 * time.Second
+	DefaultRequestTimeout      = 30 * time.Second
 )
 
 var (
 	ErrorBatchLinger         = errors.New("BatchLinger must be greater than or equal to zero")
 	ErrorMaxRequestsPerBatch = errors.New("MaxRequestsPerBatch must be greater than zero")
-	ErrorBatchRequestTimeout = errors.New("BatchRequestTimeout must be greater than zero")
-	ErrorBatcherBuffereSize  = errors.New("BatcherBufferSize must be greater than or equal to zero")
+	ErrorRequestTimeout      = errors.New("RequestTimeout must be greater than zero")
+	ErrorBatcherBufferSize   = errors.New("BatcherBufferSize must be greater than or equal to zero")
 	DefaultBatcherBufferSize = runtime.GOMAXPROCS(-1)
 )
 
@@ -29,7 +29,7 @@ type clientOptions struct {
 	serviceAddress      string
 	batchLinger         time.Duration
 	maxRequestsPerBatch int
-	batchRequestTimeout time.Duration
+	requestTimeout      time.Duration
 	meterProvider       metric.MeterProvider
 	batcherBufferSize   int
 }
@@ -50,8 +50,10 @@ func (o clientOptions) BatcherBufferSize() int {
 	return o.batcherBufferSize
 }
 
-func (o clientOptions) BatchRequestTimeout() time.Duration {
-	return o.batchRequestTimeout
+// RequestTimeout defines how long the client will wait for responses before cancelling the request and failing
+// the request.
+func (o clientOptions) RequestTimeout() time.Duration {
+	return o.requestTimeout
 }
 
 // ClientOption is an interface for applying Oxia client options.
@@ -65,7 +67,7 @@ func newClientOptions(serviceAddress string, opts ...ClientOption) (clientOption
 		serviceAddress:      serviceAddress,
 		batchLinger:         DefaultBatchLinger,
 		maxRequestsPerBatch: DefaultMaxRequestsPerBatch,
-		batchRequestTimeout: DefaultBatchRequestTimeout,
+		requestTimeout:      DefaultRequestTimeout,
 		meterProvider:       metric.NewNoopMeterProvider(),
 		batcherBufferSize:   DefaultBatcherBufferSize,
 	}
@@ -110,14 +112,12 @@ func WithMaxRequestsPerBatch(maxRequestsPerBatch int) ClientOption {
 	})
 }
 
-// WithBatchRequestTimeout defines how long the client will wait for responses before cancelling the request and failing
-// the batch.
-func WithBatchRequestTimeout(batchRequestTimeout time.Duration) ClientOption {
+func WithRequestTimeout(requestTimeout time.Duration) ClientOption {
 	return clientOptionFunc(func(options clientOptions) (clientOptions, error) {
-		if batchRequestTimeout <= 0 {
-			return options, ErrorBatchRequestTimeout
+		if requestTimeout <= 0 {
+			return options, ErrorRequestTimeout
 		}
-		options.batchRequestTimeout = batchRequestTimeout
+		options.requestTimeout = requestTimeout
 		return options, nil
 	})
 }
@@ -141,7 +141,7 @@ func WithGlobalMeterProvider() ClientOption {
 func WithBatcherBufferSize(batcherBufferSize int) ClientOption {
 	return clientOptionFunc(func(options clientOptions) (clientOptions, error) {
 		if batcherBufferSize < 0 {
-			return options, ErrorBatcherBuffereSize
+			return options, ErrorBatcherBufferSize
 		}
 		options.batcherBufferSize = batcherBufferSize
 		return options, nil
