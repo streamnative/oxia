@@ -12,7 +12,7 @@ import (
 )
 
 func TestInternalHealthCheck(t *testing.T) {
-	server, err := newCoordinationRpcServer(container.Default, "localhost:0", nil, NewShardAssignmentDispatcher())
+	server, err := newInternalRpcServer(container.Default, "localhost:0", nil, NewShardAssignmentDispatcher())
 	assert.NoError(t, err)
 
 	target := fmt.Sprintf("localhost:%d", server.grpcServer.Port())
