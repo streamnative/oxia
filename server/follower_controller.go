@@ -49,9 +49,11 @@ type FollowerController interface {
 
 	SendSnapshot(stream proto.OxiaLogReplication_SendSnapshotServer) error
 
+	GetStatus(request *proto.GetStatusRequest) (*proto.GetStatusResponse, error)
+
 	Epoch() int64
 	CommitIndex() int64
-	Status() Status
+	Status() proto.ServingStatus
 }
 
 type followerController struct {
@@ -61,7 +63,7 @@ type followerController struct {
 	epoch       int64
 	commitIndex int64
 	headIndex   int64
-	status      Status
+	status      proto.ServingStatus
 	wal         wal.Wal
 	kvFactory   kv.KVFactory
 	db          kv.DB
@@ -76,7 +78,7 @@ func NewFollowerController(shardId uint32, wf wal.WalFactory, kvFactory kv.KVFac
 	fc := &followerController{
 		shardId:       shardId,
 		kvFactory:     kvFactory,
-		status:        NotMember,
+		status:        proto.ServingStatus_NotMember,
 		closeStreamCh: nil,
 		log: log.With().
 			Str("component", "follower-controller").
@@ -108,7 +110,7 @@ func NewFollowerController(shardId uint32, wf wal.WalFactory, kvFactory kv.KVFac
 	}
 
 	if fc.epoch != wal.InvalidEpoch {
-		fc.status = Fenced
+		fc.status = proto.ServingStatus_Fenced
 	}
 
 	if fc.commitIndex, err = fc.db.ReadCommitIndex(); err != nil {
@@ -164,7 +166,7 @@ func (fc *followerController) closeChannelNoMutex(err error) {
 	}
 }
 
-func (fc *followerController) Status() Status {
+func (fc *followerController) Status() proto.ServingStatus {
 	fc.Lock()
 	defer fc.Unlock()
 	return fc.status
@@ -191,8 +193,8 @@ func (fc *followerController) Fence(req *proto.FenceRequest) (*proto.FenceRespon
 			Int64("follower-epoch", fc.epoch).
 			Int64("fence-epoch", req.Epoch).
 			Msg("Failed to fence with invalid epoch")
-		return nil, ErrorInvalidEpoch
-	} else if req.Epoch == fc.epoch && fc.status != Fenced {
+		return nil, common.ErrorInvalidEpoch
+	} else if req.Epoch == fc.epoch && fc.status != proto.ServingStatus_Fenced {
 		// It's OK to receive a duplicate Fence request, for the same epoch, as long as we haven't moved
 		// out of the Fenced state for that epoch
 		fc.log.Warn().
@@ -200,7 +202,7 @@ func (fc *followerController) Fence(req *proto.FenceRequest) (*proto.FenceRespon
 			Int64("fence-epoch", req.Epoch).
 			Interface("status", fc.status).
 			Msg("Failed to fence with same epoch in invalid state")
-		return nil, ErrorInvalidStatus
+		return nil, common.ErrorInvalidStatus
 	}
 
 	if err := fc.db.UpdateEpoch(req.Epoch); err != nil {
@@ -209,7 +211,7 @@ func (fc *followerController) Fence(req *proto.FenceRequest) (*proto.FenceRespon
 
 	fc.epoch = req.Epoch
 	fc.log = fc.log.With().Int64("epoch", fc.epoch).Logger()
-	fc.status = Fenced
+	fc.status = proto.ServingStatus_Fenced
 	fc.closeChannelNoMutex(nil)
 
 	lastEntryId, err := getLastEntryIdInWal(fc.wal)
@@ -231,15 +233,15 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 	fc.Lock()
 	defer fc.Unlock()
 
-	if fc.status != Fenced {
-		return nil, ErrorInvalidStatus
+	if fc.status != proto.ServingStatus_Fenced {
+		return nil, common.ErrorInvalidStatus
 	}
 
 	if req.Epoch != fc.epoch {
-		return nil, ErrorInvalidEpoch
+		return nil, common.ErrorInvalidEpoch
 	}
 
-	fc.status = Follower
+	fc.status = proto.ServingStatus_Follower
 	headIndex, err := fc.wal.TruncateLog(req.HeadIndex.Offset)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to truncate wal. truncate-offset: %d - wal-last-offset: %d",
@@ -258,13 +260,13 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 
 func (fc *followerController) AddEntries(stream proto.OxiaLogReplication_AddEntriesServer) error {
 	fc.Lock()
-	if fc.status != Fenced && fc.status != Follower {
-		return ErrorInvalidStatus
+	if fc.status != proto.ServingStatus_Fenced && fc.status != proto.ServingStatus_Follower {
+		return common.ErrorInvalidStatus
 	}
 
 	if fc.closeStreamCh != nil {
 		fc.Unlock()
-		return ErrorLeaderAlreadyConnected
+		return common.ErrorLeaderAlreadyConnected
 	}
 
 	closeStreamCh := make(chan error)
@@ -307,7 +309,7 @@ func (fc *followerController) addEntry(req *proto.AddEntryRequest) (*proto.AddEn
 	defer fc.Unlock()
 
 	if req.Epoch != fc.epoch {
-		return nil, ErrorInvalidEpoch
+		return nil, common.ErrorInvalidEpoch
 	}
 
 	fc.log.Debug().
@@ -320,7 +322,16 @@ func (fc *followerController) addEntry(req *proto.AddEntryRequest) (*proto.AddEn
 	// The follower adds the entry to its log, sets the head index
 	// and updates its commit index with the commit index of
 	// the request.
-	fc.status = Follower
+	fc.status = proto.ServingStatus_Follower
+
+	if req.Entry.Offset <= fc.headIndex {
+		// This was a duplicated request. We already have this entry
+		fc.log.Debug().
+			Int64("commit-index", req.CommitIndex).
+			Int64("offset", req.Entry.Offset).
+			Msg("Ignoring duplicated entry")
+		return &proto.AddEntryResponse{Offset: req.Entry.Offset}, nil
+	}
 
 	if err := fc.wal.Append(req.GetEntry()); err != nil {
 		return nil, err
@@ -420,9 +431,9 @@ type MessageWithEpoch interface {
 	GetEpoch() int64
 }
 
-func checkStatus(expected, actual Status) error {
+func checkStatus(expected, actual proto.ServingStatus) error {
 	if actual != expected {
-		return errors.Wrapf(ErrorInvalidStatus, "Received message in the wrong state. In %+v, should be %+v.", actual, expected)
+		return status.Errorf(common.CodeInvalidStatus, "Received message in the wrong state. In %+v, should be %+v.", actual, expected)
 	}
 	return nil
 }
@@ -434,13 +445,13 @@ func checkStatus(expected, actual Status) error {
 func (fc *followerController) SendSnapshot(stream proto.OxiaLogReplication_SendSnapshotServer) error {
 	fc.Lock()
 
-	if fc.status != Fenced && fc.status != Follower {
-		return ErrorInvalidStatus
+	if fc.status != proto.ServingStatus_Fenced && fc.status != proto.ServingStatus_Follower {
+		return common.ErrorInvalidStatus
 	}
 
 	if fc.closeStreamCh != nil {
 		fc.Unlock()
-		return ErrorLeaderAlreadyConnected
+		return common.ErrorLeaderAlreadyConnected
 	}
 
 	closeStreamCh := make(chan error)
@@ -495,7 +506,7 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 		} else if snapChunk == nil {
 			break
 		} else if snapChunk.Epoch != fc.epoch {
-			fc.closeChannelNoMutex(ErrorInvalidEpoch)
+			fc.closeChannelNoMutex(common.ErrorInvalidEpoch)
 			return
 		}
 
@@ -528,4 +539,14 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 		Int64("epoch", fc.epoch).
 		Int64("snapshot-size", totalSize).
 		Msg("Successfully applied snapshot")
+}
+
+func (fc *followerController) GetStatus(request *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
+	fc.Lock()
+	defer fc.Unlock()
+
+	return &proto.GetStatusResponse{
+		Epoch:  fc.epoch,
+		Status: fc.status,
+	}, nil
 }

@@ -33,18 +33,20 @@ type LeaderController interface {
 
 	GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error
 
+	GetStatus(request *proto.GetStatusRequest) (*proto.GetStatusResponse, error)
+
 	// Epoch The current epoch of the leader
 	Epoch() int64
 
 	// Status The Status of the leader
-	Status() Status
+	Status() proto.ServingStatus
 }
 
 type leaderController struct {
 	sync.Mutex
 
 	shardId           uint32
-	status            Status
+	status            proto.ServingStatus
 	epoch             int64
 	replicationFactor uint32
 	quorumAckTracker  QuorumAckTracker
@@ -65,7 +67,7 @@ type leaderController struct {
 
 func NewLeaderController(shardId uint32, rpcClient ReplicationRpcProvider, walFactory wal.WalFactory, kvFactory kv.KVFactory) (LeaderController, error) {
 	lc := &leaderController{
-		status:           NotMember,
+		status:           proto.ServingStatus_NotMember,
 		shardId:          shardId,
 		quorumAckTracker: nil,
 		rpcClient:        rpcClient,
@@ -93,7 +95,7 @@ func NewLeaderController(shardId uint32, rpcClient ReplicationRpcProvider, walFa
 	}
 
 	if lc.epoch != wal.InvalidEpoch {
-		lc.status = Fenced
+		lc.status = proto.ServingStatus_Fenced
 	}
 
 	lc.log = lc.log.With().Int64("epoch", lc.epoch).Logger()
@@ -102,7 +104,7 @@ func NewLeaderController(shardId uint32, rpcClient ReplicationRpcProvider, walFa
 	return lc, nil
 }
 
-func (lc *leaderController) Status() Status {
+func (lc *leaderController) Status() proto.ServingStatus {
 	lc.Lock()
 	defer lc.Unlock()
 	return lc.status
@@ -133,8 +135,8 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 	defer lc.Unlock()
 
 	if req.Epoch < lc.epoch {
-		return nil, ErrorInvalidEpoch
-	} else if req.Epoch == lc.epoch && lc.status != Fenced {
+		return nil, common.ErrorInvalidEpoch
+	} else if req.Epoch == lc.epoch && lc.status != proto.ServingStatus_Fenced {
 		// It's OK to receive a duplicate Fence request, for the same epoch, as long as we haven't moved
 		// out of the Fenced state for that epoch
 		lc.log.Warn().
@@ -142,7 +144,7 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 			Int64("fence-epoch", req.Epoch).
 			Interface("status", lc.status).
 			Msg("Failed to fence with same epoch in invalid state")
-		return nil, ErrorInvalidStatus
+		return nil, common.ErrorInvalidStatus
 	}
 
 	if err := lc.db.UpdateEpoch(req.GetEpoch()); err != nil {
@@ -151,7 +153,7 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 
 	lc.epoch = req.GetEpoch()
 	lc.log = lc.log.With().Int64("epoch", lc.epoch).Logger()
-	lc.status = Fenced
+	lc.status = proto.ServingStatus_Fenced
 	lc.replicationFactor = 0
 
 	if lc.quorumAckTracker != nil {
@@ -211,15 +213,15 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 	lc.Lock()
 	defer lc.Unlock()
 
-	if lc.status != Fenced {
-		return nil, ErrorInvalidStatus
+	if lc.status != proto.ServingStatus_Fenced {
+		return nil, common.ErrorInvalidStatus
 	}
 
 	if req.Epoch != lc.epoch {
-		return nil, ErrorInvalidEpoch
+		return nil, common.ErrorInvalidEpoch
 	}
 
-	lc.status = Leader
+	lc.status = proto.ServingStatus_Leader
 	lc.replicationFactor = req.GetReplicationFactor()
 	lc.followers = make(map[string]FollowerCursor)
 
@@ -266,11 +268,11 @@ func (lc *leaderController) AddFollower(req *proto.AddFollowerRequest) (*proto.A
 	defer lc.Unlock()
 
 	if req.Epoch != lc.epoch {
-		return nil, ErrorInvalidEpoch
+		return nil, common.ErrorInvalidEpoch
 	}
 
-	if lc.status != Leader {
-		return nil, errors.Wrap(ErrorInvalidStatus, "Node is not leader")
+	if lc.status != proto.ServingStatus_Leader {
+		return nil, errors.Wrap(common.ErrorInvalidStatus, "Node is not leader")
 	}
 
 	if _, followerAlreadyPresent := lc.followers[req.FollowerName]; followerAlreadyPresent {
@@ -370,7 +372,7 @@ func (lc *leaderController) truncateFollowerIfNeeded(follower string, followerHe
 	// Coordinator should never send us a follower with an invalid epoch.
 	// Checking for sanity here.
 	if followerHeadIndex.Epoch > lc.leaderElectionHeadIndex.Epoch {
-		return nil, ErrorInvalidStatus
+		return nil, common.ErrorInvalidStatus
 	}
 
 	lastEntryInFollowerEpoch, err := GetHighestEntryOfEpoch(lc.wal, followerHeadIndex.Epoch)
@@ -414,12 +416,11 @@ func (lc *leaderController) Read(request *proto.ReadRequest) (*proto.ReadRespons
 		Interface("req", request).
 		Msg("Received read request")
 
-	{
-		lc.Lock()
-		defer lc.Unlock()
-		if err := checkStatus(Leader, lc.status); err != nil {
-			return nil, err
-		}
+	lc.Lock()
+	err := checkStatus(proto.ServingStatus_Leader, lc.status)
+	lc.Unlock()
+	if err != nil {
+		return nil, err
 	}
 
 	return lc.db.ProcessRead(request)
@@ -440,9 +441,8 @@ func (lc *leaderController) Write(request *proto.WriteRequest) (*proto.WriteResp
 
 	newOffset, err := lc.appendToWal(request, timestamp)
 	if err != nil {
-		return nil, errors.Wrap(err, "oxia: failed to append to wal")
+		return nil, err
 	}
-	lc.quorumAckTracker.AdvanceHeadIndex(newOffset)
 
 	return lc.quorumAckTracker.WaitForCommitIndex(newOffset, func() (*proto.WriteResponse, error) {
 		return lc.db.ProcessWrite(request, newOffset, timestamp)
@@ -453,7 +453,7 @@ func (lc *leaderController) appendToWal(request *proto.WriteRequest, timestamp u
 	lc.Lock()
 	defer lc.Unlock()
 
-	if err := checkStatus(Leader, lc.status); err != nil {
+	if err := checkStatus(proto.ServingStatus_Leader, lc.status); err != nil {
 		return wal.InvalidOffset, err
 	}
 
@@ -470,8 +470,10 @@ func (lc *leaderController) appendToWal(request *proto.WriteRequest, timestamp u
 	}
 
 	if err = lc.wal.Append(logEntry); err != nil {
-		return wal.InvalidOffset, err
+		return wal.InvalidOffset, errors.Wrap(err, "oxia: failed to append to wal")
 	}
+
+	lc.quorumAckTracker.AdvanceHeadIndex(newOffset)
 
 	return newOffset, nil
 }
@@ -507,13 +509,31 @@ func (lc *leaderController) GetNotifications(req *proto.NotificationsRequest, st
 }
 
 func (lc *leaderController) dispatchNotifications(ctx context.Context, req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
-	offsetInclusive := req.StartOffsetExclusive + 1
+	lc.log.Debug().
+		Interface("start-offset-exclusive", req.StartOffsetExclusive).
+		Msg("Dispatch notifications")
+
+	var offsetInclusive int64
+	if req.StartOffsetExclusive != nil {
+		offsetInclusive = *req.StartOffsetExclusive + 1
+	} else {
+		commitIndex, err := lc.db.ReadCommitIndex()
+		if err != nil {
+			return err
+		}
+
+		offsetInclusive = commitIndex + 1
+	}
 
 	for ctx.Err() == nil {
 		notifications, err := lc.db.ReadNextNotifications(ctx, offsetInclusive)
 		if err != nil {
 			return err
 		}
+
+		lc.log.Debug().
+			Int("list-size", len(notifications)).
+			Msg("Got a new list of notification batches")
 
 		for _, n := range notifications {
 			if err := stream.Send(n); err != nil {
@@ -533,7 +553,7 @@ func (lc *leaderController) Close() error {
 
 	lc.log.Info().Msg("Closing leader controller")
 
-	lc.status = NotMember
+	lc.status = proto.ServingStatus_NotMember
 	lc.cancel()
 
 	var err error
@@ -567,4 +587,14 @@ func getLastEntryIdInWal(wal wal.Wal) (*proto.EntryId, error) {
 		return nil, err
 	}
 	return &proto.EntryId{Epoch: entry.Epoch, Offset: entry.Offset}, nil
+}
+
+func (lc *leaderController) GetStatus(request *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
+	lc.Lock()
+	defer lc.Unlock()
+
+	return &proto.GetStatusResponse{
+		Epoch:  lc.epoch,
+		Status: lc.status,
+	}, nil
 }

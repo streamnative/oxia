@@ -630,10 +630,6 @@ func (l *Log) Read(offset int64) (data []byte, err error) {
 		return nil, err
 	}
 
-	if s.offset == 52 {
-		fmt.Printf("READ OFFSET: %d s.OFFSET: %d\n", offset, s.offset)
-	}
-
 	epos := s.epos[offset-s.offset]
 	edata := s.ebuf[epos.pos:epos.end]
 

@@ -4,41 +4,33 @@ import (
 	"context"
 	"oxia/common"
 	"oxia/proto"
-	"time"
 )
 
 type Executor interface {
-	ExecuteWrite(request *proto.WriteRequest) (*proto.WriteResponse, error)
-	ExecuteRead(request *proto.ReadRequest) (*proto.ReadResponse, error)
+	ExecuteWrite(ctx context.Context, request *proto.WriteRequest) (*proto.WriteResponse, error)
+	ExecuteRead(ctx context.Context, request *proto.ReadRequest) (*proto.ReadResponse, error)
 }
 
 type ExecutorImpl struct {
 	ClientPool     common.ClientPool
 	ShardManager   ShardManager
 	ServiceAddress string
-	Timeout        time.Duration
 }
 
-func (e *ExecutorImpl) ExecuteWrite(request *proto.WriteRequest) (*proto.WriteResponse, error) {
+func (e *ExecutorImpl) ExecuteWrite(ctx context.Context, request *proto.WriteRequest) (*proto.WriteResponse, error) {
 	rpc, err := e.rpc(request.ShardId)
 	if err != nil {
 		return nil, err
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), e.Timeout)
-	defer cancel()
 
 	return rpc.Write(ctx, request)
 }
 
-func (e *ExecutorImpl) ExecuteRead(request *proto.ReadRequest) (*proto.ReadResponse, error) {
+func (e *ExecutorImpl) ExecuteRead(ctx context.Context, request *proto.ReadRequest) (*proto.ReadResponse, error) {
 	rpc, err := e.rpc(request.ShardId)
 	if err != nil {
 		return nil, err
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), e.Timeout)
-	defer cancel()
 
 	return rpc.Read(ctx, request)
 }

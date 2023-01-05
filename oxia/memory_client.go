@@ -109,3 +109,7 @@ func (c *memoryClient) List(minKeyInclusive string, maxKeyExclusive string) <-ch
 	close(ch)
 	return ch
 }
+
+func (c *memoryClient) GetNotifications() <-chan Notification {
+	return make(chan Notification)
+}
