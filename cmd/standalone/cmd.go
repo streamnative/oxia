@@ -5,11 +5,11 @@ import (
 	"io"
 	"oxia/cmd/flag"
 	"oxia/common"
-	"oxia/standalone"
+	"oxia/server"
 )
 
 var (
-	conf = standalone.Config{}
+	conf = server.StandaloneConfig{}
 
 	Cmd = &cobra.Command{
 		Use:   "standalone",
@@ -30,6 +30,6 @@ func init() {
 
 func exec(*cobra.Command, []string) {
 	common.RunProcess(func() (io.Closer, error) {
-		return standalone.New(conf)
+		return server.NewStandalone(conf)
 	})
 }

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"oxia/common"
-	"oxia/standalone"
+	"oxia/server"
 	"testing"
 	"time"
 )
@@ -18,7 +18,7 @@ func init() {
 }
 
 func TestAsyncClientImpl(t *testing.T) {
-	server, err := standalone.New(standalone.NewTestConfig())
+	server, err := server.NewStandalone(server.NewTestConfig())
 	assert.NoError(t, err)
 
 	serviceAddress := fmt.Sprintf("localhost:%d", server.RpcPort())
@@ -69,7 +69,7 @@ func TestAsyncClientImpl(t *testing.T) {
 }
 
 func TestAsyncClientImpl_Notifications(t *testing.T) {
-	server, err := standalone.New(standalone.NewTestConfig())
+	server, err := server.NewStandalone(server.NewTestConfig())
 	assert.NoError(t, err)
 
 	serviceAddress := fmt.Sprintf("localhost:%d", server.RpcPort())

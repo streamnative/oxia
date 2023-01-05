@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"oxia/common"
-	"oxia/standalone"
+	"oxia/server"
 	"testing"
 	"time"
 )
@@ -19,7 +19,7 @@ func (s *testShardStrategy) Get(key string) func(Shard) bool {
 }
 
 func TestWithStandalone(t *testing.T) {
-	server, err := standalone.New(standalone.NewTestConfig())
+	server, err := server.NewStandalone(server.NewTestConfig())
 	assert.NoError(t, err)
 
 	clientPool := common.NewClientPool()

@@ -126,6 +126,10 @@ func (s *publicRpcServer) GetNotifications(req *proto.NotificationsRequest, stre
 	return err
 }
 
+func (s *publicRpcServer) Port() int {
+	return s.grpcServer.Port()
+}
+
 func (s *publicRpcServer) Close() error {
 	return s.grpcServer.Close()
 }
