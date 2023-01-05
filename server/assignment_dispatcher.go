@@ -9,8 +9,8 @@ import (
 	"google.golang.org/grpc/status"
 	"io"
 	"math"
-	"oxia/common"
 	"oxia/proto"
+	"oxia/server/util"
 	"sync"
 )
 
@@ -109,14 +109,23 @@ func (s *shardAssignmentDispatcher) Initialized() bool {
 	return s.assignments != nil
 }
 
-func (s *shardAssignmentDispatcher) ShardAssignment(stream proto.OxiaControl_ShardAssignmentServer) error {
-	ch := make(chan error)
-	go common.DoWithLabels(map[string]string{
-		"oxia": "receive-shards-assignments",
-	}, func() { s.handleServerStream(stream, ch) })
+func (s *shardAssignmentDispatcher) logError(err error) {
+	s.log.Warn().Err(err).
+		Msg("error while handling shard assignment stream")
+}
 
+func (s *shardAssignmentDispatcher) ShardAssignment(stream proto.OxiaControl_ShardAssignmentServer) error {
+
+	streamReader := util.ReadStream[proto.ShardAssignmentsResponse, any](
+		stream,
+		s.updateShardAssignment,
+		s.logError,
+		map[string]string{
+			"oxia": "receive-shards-assignments",
+		},
+	)
 	select {
-	case err := <-ch:
+	case err := <-streamReader.Run():
 		return err
 
 	case <-s.ctx.Done():
@@ -125,24 +134,7 @@ func (s *shardAssignmentDispatcher) ShardAssignment(stream proto.OxiaControl_Sha
 	}
 }
 
-func (s *shardAssignmentDispatcher) handleServerStream(stream proto.OxiaControl_ShardAssignmentServer, ch chan error) {
-	for {
-		request, err := stream.Recv()
-		if err != nil {
-			ch <- err
-			return
-		} else if request == nil {
-			// The stream is already closing
-			close(ch)
-			return
-		} else if err := s.updateShardAssignment(request); err != nil {
-			ch <- err
-			return
-		}
-	}
-}
-
-func (s *shardAssignmentDispatcher) updateShardAssignment(assignments *proto.ShardAssignmentsResponse) error {
+func (s *shardAssignmentDispatcher) updateShardAssignment(assignments *proto.ShardAssignmentsResponse) (*any, error) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -161,7 +153,7 @@ func (s *shardAssignmentDispatcher) updateShardAssignment(assignments *proto.Sha
 		}
 	}
 
-	return nil
+	return nil, nil
 }
 
 func NewShardAssignmentDispatcher() ShardAssignmentsDispatcher {
@@ -185,7 +177,7 @@ func NewStandaloneShardAssignmentDispatcher(address string, numShards uint32) Sh
 		Assignments:    generateShards(address, numShards),
 	}
 
-	err := assignmentDispatcher.updateShardAssignment(res)
+	_, err := assignmentDispatcher.updateShardAssignment(res)
 	if err != nil {
 		panic(err)
 	}
