@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-type notificationsManager struct {
+type notifications struct {
 	multiplexCh  chan *Notification
 	closeCh      chan any
 	shardManager internal.ShardManager
@@ -24,8 +24,8 @@ type notificationsManager struct {
 	cancel      context.CancelFunc
 }
 
-func newNotificationsManager(options clientOptions, ctx context.Context, clientPool common.ClientPool, shardManager internal.ShardManager) (*notificationsManager, error) {
-	nm := &notificationsManager{
+func newNotifications(options clientOptions, ctx context.Context, clientPool common.ClientPool, shardManager internal.ShardManager) (*notifications, error) {
+	nm := &notifications{
 		multiplexCh:  make(chan *Notification, 100),
 		closeCh:      make(chan any),
 		shardManager: shardManager,
@@ -54,7 +54,7 @@ func newNotificationsManager(options clientOptions, ctx context.Context, clientP
 	})
 
 	// Wait for the notifications on all the shards to be initialized
-	timeoutCtx, cancel := context.WithTimeout(nm.ctx, options.batchRequestTimeout)
+	timeoutCtx, cancel := context.WithTimeout(nm.ctx, options.requestTimeout)
 	defer cancel()
 
 	for i := 0; i < len(shards); i++ {
@@ -72,11 +72,11 @@ func newNotificationsManager(options clientOptions, ctx context.Context, clientP
 	return nm, nil
 }
 
-func (nm *notificationsManager) Ch() <-chan *Notification {
+func (nm *notifications) Ch() <-chan *Notification {
 	return nm.multiplexCh
 }
 
-func (nm *notificationsManager) Close() error {
+func (nm *notifications) Close() error {
 	nm.cancel()
 	return nil
 }
@@ -87,14 +87,14 @@ func (nm *notificationsManager) Close() error {
 type shardNotificationsManager struct {
 	shard              uint32
 	ctx                context.Context
-	nm                 *notificationsManager
+	nm                 *notifications
 	backoff            backoff.BackOff
 	lastOffsetReceived int64
 	initialized        bool
 	log                zerolog.Logger
 }
 
-func newShardNotificationsManager(shard uint32, nm *notificationsManager) *shardNotificationsManager {
+func newShardNotificationsManager(shard uint32, nm *notifications) *shardNotificationsManager {
 	snm := &shardNotificationsManager{
 		shard:              shard,
 		ctx:                nm.ctx,

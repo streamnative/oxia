@@ -155,16 +155,10 @@ func TestAsyncClientImpl_Notifications(t *testing.T) {
 }
 
 func TestAsyncClientImpl_NotificationsClose(t *testing.T) {
-	kvOptions := kv.KVFactoryOptions{InMemory: true}
-	kvFactory, _ := kv.NewPebbleKVFactory(&kvOptions)
-	defer kvFactory.Close()
-	walFactory := wal.NewInMemoryWalFactory()
-	defer walFactory.Close()
-
-	server, err := standalone.NewStandaloneRpcServer("localhost:0", "localhost", 3, walFactory, kvFactory)
+	server, err := standalone.New(standalone.NewTestConfig())
 	assert.NoError(t, err)
 
-	serviceAddress := fmt.Sprintf("localhost:%d", server.Port())
+	serviceAddress := fmt.Sprintf("localhost:%d", server.RpcPort())
 	client, err := NewSyncClient(serviceAddress, WithBatchLinger(0))
 	assert.NoError(t, err)
 
