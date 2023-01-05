@@ -202,7 +202,7 @@ func (c *clientImpl) List(minKeyInclusive string, maxKeyExclusive string) <-chan
 	return ch
 }
 
-func (c *clientImpl) GetNotifications() (NotificationManager, error) {
+func (c *clientImpl) GetNotifications() (Notifications, error) {
 	nm, err := newNotificationsManager(c.options, c.ctx, c.clientPool, c.shardManager)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to create notification stream")

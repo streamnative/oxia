@@ -122,6 +122,6 @@ func (m memoryNotifcationManager) Close() error {
 	return nil
 }
 
-func (c *memoryClient) GetNotifications() (NotificationManager, error) {
+func (c *memoryClient) GetNotifications() (Notifications, error) {
 	return &memoryNotifcationManager{make(chan *Notification)}, nil
 }
