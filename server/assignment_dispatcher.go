@@ -44,7 +44,7 @@ func (s *shardAssignmentDispatcher) RegisterForUpdates(clientStream Client) erro
 	initialAssignments := s.assignments
 	if initialAssignments == nil {
 		s.Unlock()
-		return ErrorNotInitialized
+		return common.ErrorNotInitialized
 	}
 
 	clientCh := make(chan *proto.ShardAssignmentsResponse)
@@ -67,7 +67,7 @@ func (s *shardAssignmentDispatcher) RegisterForUpdates(clientStream Client) erro
 		select {
 		case assignments := <-clientCh:
 			if assignments == nil {
-				return ErrorCancelled
+				return common.ErrorCancelled
 			}
 
 			err := clientStream.Send(assignments)

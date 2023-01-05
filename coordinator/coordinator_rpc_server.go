@@ -7,13 +7,13 @@ import (
 	"oxia/common/container"
 )
 
-type CoordinatorRpcServer struct {
+type rpcServer struct {
 	grpcServer   container.GrpcServer
 	healthServer *health.Server
 }
 
-func NewCoordinatorRpcServer(bindAddress string) (*CoordinatorRpcServer, error) {
-	server := &CoordinatorRpcServer{
+func newRpcServer(bindAddress string) (*rpcServer, error) {
+	server := &rpcServer{
 		healthServer: health.NewServer(),
 	}
 
@@ -28,7 +28,7 @@ func NewCoordinatorRpcServer(bindAddress string) (*CoordinatorRpcServer, error) 
 	return server, nil
 }
 
-func (s *CoordinatorRpcServer) Close() error {
+func (s *rpcServer) Close() error {
 	s.healthServer.Shutdown()
 	return s.grpcServer.Close()
 }

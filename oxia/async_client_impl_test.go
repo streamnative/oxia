@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"oxia/common"
-	"oxia/server/kv"
-	"oxia/server/wal"
 	"oxia/standalone"
 	"testing"
 	"time"
@@ -20,16 +18,10 @@ func init() {
 }
 
 func TestAsyncClientImpl(t *testing.T) {
-	kvOptions := kv.KVFactoryOptions{InMemory: true}
-	kvFactory, err := kv.NewPebbleKVFactory(&kvOptions)
-	assert.NoError(t, err)
-	defer kvFactory.Close()
-	walFactory := wal.NewInMemoryWalFactory()
-	defer walFactory.Close()
-	server, err := standalone.NewStandaloneRpcServer("localhost:0", "localhost", 1, walFactory, kvFactory)
+	server, err := standalone.New(standalone.NewTestConfig())
 	assert.NoError(t, err)
 
-	serviceAddress := fmt.Sprintf("localhost:%d", server.Port())
+	serviceAddress := fmt.Sprintf("localhost:%d", server.RpcPort())
 	client, err := NewAsyncClient(serviceAddress, WithBatchLinger(0))
 	assert.NoError(t, err)
 
@@ -77,16 +69,10 @@ func TestAsyncClientImpl(t *testing.T) {
 }
 
 func TestAsyncClientImpl_Notifications(t *testing.T) {
-	kvOptions := kv.KVFactoryOptions{InMemory: true}
-	kvFactory, _ := kv.NewPebbleKVFactory(&kvOptions)
-	defer kvFactory.Close()
-	walFactory := wal.NewInMemoryWalFactory()
-	defer walFactory.Close()
-
-	server, err := standalone.NewStandaloneRpcServer("localhost:0", "localhost", 3, walFactory, kvFactory)
+	server, err := standalone.New(standalone.NewTestConfig())
 	assert.NoError(t, err)
 
-	serviceAddress := fmt.Sprintf("localhost:%d", server.Port())
+	serviceAddress := fmt.Sprintf("localhost:%d", server.RpcPort())
 	client, err := NewSyncClient(serviceAddress, WithBatchLinger(0))
 	assert.NoError(t, err)
 
