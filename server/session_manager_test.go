@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"github.com/stretchr/testify/assert"
+	pb "google.golang.org/protobuf/proto"
 	"io"
 	"oxia/proto"
 	"oxia/server/kv"
@@ -52,7 +53,8 @@ func (m mockWriteBatch) Put(key string, payload []byte) error {
 	return nil
 }
 
-func (m mockWriteBatch) Delete(_ string) error {
+func (m mockWriteBatch) Delete(key string) error {
+	delete(m, key)
 	return nil
 }
 
@@ -81,29 +83,64 @@ func (m mockWriteBatch) Commit() error {
 	return nil
 }
 
-func TestSessionUpdateOperationCallback(t *testing.T) {
-
-	noSessionPutRequest := &proto.PutRequest{
-		Key:     "a",
-		Payload: []byte("b"),
-	}
-	writeBatch := mockWriteBatch{}
-
-	status, err := SessionUpdateOperationCallback.OnPut(writeBatch, noSessionPutRequest)
-	assert.NoError(t, err)
-	assert.Equal(t, proto.Status_OK, status)
-	assert.Equal(t, len(writeBatch), 0)
-
+func TestSessionUpdateOperationCallback_OnPut(t *testing.T) {
 	sessionId := uint64(12345)
 	version := int64(2)
-	writeBatch = mockWriteBatch{}
+
+	noSessionPutRequest := &proto.PutRequest{
+		Key:     "a/b/c",
+		Payload: []byte("b"),
+	}
 	sessionPutRequest := &proto.PutRequest{
 		Key:             "a/b/c",
 		Payload:         []byte("b"),
 		ExpectedVersion: &version,
 		SessionId:       &sessionId,
 	}
-	status, err = SessionUpdateOperationCallback.OnPut(writeBatch, sessionPutRequest)
+
+	writeBatch := mockWriteBatch{}
+
+	status, err := SessionUpdateOperationCallback.OnPut(writeBatch, noSessionPutRequest, nil)
+	assert.NoError(t, err)
+	assert.Equal(t, proto.Status_OK, status)
+	assert.Equal(t, len(writeBatch), 0)
+
+	writeBatch = mockWriteBatch{
+		"a/b/c": []byte{},
+		SessionKey(SessionId(sessionId-1)) + "a%2Fb%2Fc": []byte{},
+	}
+
+	se := &proto.StorageEntry{
+		Payload:               []byte("payload"),
+		Version:               0,
+		CreationTimestamp:     0,
+		ModificationTimestamp: 0,
+		SessionId:             &sessionId,
+	}
+
+	status, err = SessionUpdateOperationCallback.OnPut(writeBatch, noSessionPutRequest, se)
+	assert.NoError(t, err)
+	assert.Equal(t, proto.Status_OK, status)
+	_, oldKeyFound := writeBatch[SessionKey(SessionId(sessionId))+"a"]
+	assert.False(t, oldKeyFound)
+
+	writeBatch = mockWriteBatch{
+		"a/b/c": []byte{},
+		SessionKey(SessionId(sessionId-1)) + "a%2Fb%2Fc": []byte{},
+		SessionKey(SessionId(sessionId - 1)):             []byte{},
+		SessionKey(SessionId(sessionId)):                 []byte{},
+	}
+
+	status, err = SessionUpdateOperationCallback.OnPut(writeBatch, sessionPutRequest, se)
+	assert.NoError(t, err)
+	assert.Equal(t, proto.Status_OK, status)
+	_, oldKeyFound = writeBatch[SessionKey(SessionId(sessionId-1))+"a"]
+	assert.False(t, oldKeyFound)
+	_, newKeyFound := writeBatch[SessionKey(SessionId(sessionId))+"a"]
+	assert.False(t, newKeyFound)
+
+	writeBatch = mockWriteBatch{}
+	status, err = SessionUpdateOperationCallback.OnPut(writeBatch, sessionPutRequest, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, proto.Status_SESSION_DOES_NOT_EXIST, status)
 
@@ -111,13 +148,13 @@ func TestSessionUpdateOperationCallback(t *testing.T) {
 	writeBatch = mockWriteBatch{
 		SessionKey(SessionId(sessionId)): expectedErr,
 	}
-	_, err = SessionUpdateOperationCallback.OnPut(writeBatch, sessionPutRequest)
+	_, err = SessionUpdateOperationCallback.OnPut(writeBatch, sessionPutRequest, nil)
 	assert.ErrorIs(t, err, expectedErr)
 
 	writeBatch = mockWriteBatch{
 		SessionKey(SessionId(sessionId)): []byte{},
 	}
-	status, err = SessionUpdateOperationCallback.OnPut(writeBatch, sessionPutRequest)
+	status, err = SessionUpdateOperationCallback.OnPut(writeBatch, sessionPutRequest, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, proto.Status_OK, status)
 	sessionKey := SessionKey(SessionId(sessionId)) + "a%2Fb%2Fc"
@@ -129,8 +166,36 @@ func TestSessionUpdateOperationCallback(t *testing.T) {
 		SessionKey(SessionId(sessionId)): []byte{},
 		sessionKey:                       expectedErr,
 	}
-	_, err = SessionUpdateOperationCallback.OnPut(writeBatch, sessionPutRequest)
+	_, err = SessionUpdateOperationCallback.OnPut(writeBatch, sessionPutRequest, nil)
 	assert.ErrorIs(t, err, expectedErr)
+}
+
+func storageEntry(t *testing.T, sessionId uint64) []byte {
+	entry := &proto.StorageEntry{
+		Payload:               nil,
+		Version:               0,
+		CreationTimestamp:     0,
+		ModificationTimestamp: 0,
+		SessionId:             &sessionId,
+	}
+	bytes, err := pb.Marshal(entry)
+	assert.NoError(t, err)
+	return bytes
+}
+
+func TestSessionUpdateOperationCallback_OnDelete(t *testing.T) {
+	sessionId := uint64(12345)
+
+	writeBatch := mockWriteBatch{
+		"a/b/c": storageEntry(t, sessionId),
+		SessionKey(SessionId(sessionId)) + "a%2Fb%2Fc": []byte{},
+	}
+
+	err := SessionUpdateOperationCallback.OnDelete(writeBatch, "a/b/c")
+	assert.NoError(t, err)
+	_, found := writeBatch[SessionKey(SessionId(sessionId))+"a%2Fb%2Fc"]
+	assert.False(t, found)
+
 }
 
 func TestNewSessionManager(t *testing.T) {

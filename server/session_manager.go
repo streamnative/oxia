@@ -52,9 +52,9 @@ func KeyToId(key string) (SessionId, error) {
 
 type SessionManager interface {
 	io.Closer
-	CreateSession(*proto.CreateSessionRequest) (*proto.CreateSessionResponse, error)
+	CreateSession(request *proto.CreateSessionRequest) (*proto.CreateSessionResponse, error)
 	KeepAlive(shardId uint32, sessionId uint64, stream proto.OxiaClient_KeepAliveServer) error
-	CloseSession(*proto.CloseSessionRequest) (*proto.CloseSessionResponse, error)
+	CloseSession(request *proto.CloseSessionRequest) (*proto.CloseSessionResponse, error)
 	Initialize() error
 }
 
@@ -93,22 +93,22 @@ func (sm *sessionManager) CreateSession(request *proto.CreateSessionRequest) (*p
 	sm.Lock()
 	defer sm.Unlock()
 
-	sm.sessionCounter++
-	sessionId := sm.sessionCounter
-
 	metadata := &proto.SessionMetadata{TimeoutMS: uint64(timeout.Milliseconds())}
 
 	marshalledMetadata, err := pb.Marshal(metadata)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not marshal session metadata")
 	}
-	resp, err := sm.controller.Write(&proto.WriteRequest{
-		ShardId: &request.ShardId,
-		Puts: []*proto.PutRequest{{
-			Key:     SessionKey(sessionId),
-			Payload: marshalledMetadata,
-		}},
+	id, resp, err := sm.controller.write(func(id int64) *proto.WriteRequest {
+		return &proto.WriteRequest{
+			ShardId: &request.ShardId,
+			Puts: []*proto.PutRequest{{
+				Key:     SessionKey(SessionId(id)),
+				Payload: marshalledMetadata,
+			}},
+		}
 	})
+	sessionId := SessionId(id)
 	if err != nil || resp.Puts[0].Status != proto.Status_OK {
 		if err == nil {
 			err = errors.New("failed to register session")
@@ -440,74 +440,55 @@ func (sm *sessionManager) sendErrorAndRemove(closeChannel chan error, err error)
 	}
 }
 
-/*
-func (_ *putDecorator) AdditionalData(putReq *proto.PutRequest) *proto.PutRequest {
-	sessionId := putReq.SessionId
-	if sessionId == nil {
-		return nil
-	}
-	return &proto.PutRequest{
-		Key:             SessionKey(SessionId(*sessionId)) + url.PathEscape(putReq.Key),
-		Payload:         []byte{},
-		ExpectedVersion: &versionNotExists,
-	}
-}
-
-func (_ *putDecorator) CheckApplicability(batch kv.WriteBatch, putReq *proto.PutRequest) (proto.Status, error) {
-	sessionId := putReq.SessionId
-	if sessionId == nil {
-		return proto.Status_OK, nil
-	}
-	var _, closer, err = batch.Get(SessionKey(SessionId(*sessionId)))
-	if err != nil {
-		if errors.Is(err, kv.ErrorKeyNotFound) {
-			return proto.Status_SESSION_DOES_NOT_EXIST, nil
-
-		}
-		return proto.Status_SESSION_DOES_NOT_EXIST, err
-	}
-	if err = closer.Close(); err != nil {
-		return proto.Status_SESSION_DOES_NOT_EXIST, err
-	}
-	return proto.Status_OK, nil
-
-}*/
-
 type updateCallback struct{}
 
 var SessionUpdateOperationCallback kv.UpdateOperationCallback = &updateCallback{}
 
-func (_ *updateCallback) OnPut(batch kv.WriteBatch, request *proto.PutRequest) (proto.Status, error) {
-	// If the PutRequest does not refer to any session, we have nothing to do
-	sessionId := request.SessionId
-	if sessionId == nil {
-		return proto.Status_OK, nil
-	}
-	// Check if the session exists
-	var _, closer, err = batch.Get(SessionKey(SessionId(*sessionId)))
-	if err != nil {
-		if errors.Is(err, kv.ErrorKeyNotFound) {
-			return proto.Status_SESSION_DOES_NOT_EXIST, nil
+func (_ *updateCallback) OnPut(batch kv.WriteBatch, request *proto.PutRequest, existingEntry *proto.StorageEntry) (proto.Status, error) {
+	if existingEntry != nil && existingEntry.SessionId != nil {
+		// We are overwriting an ephemeral value, let's delete its shadow
+		status, err := deleteShadow(batch, request.Key, existingEntry)
+		if err != nil {
+			return status, err
 		}
-		return proto.Status_SESSION_DOES_NOT_EXIST, err
 	}
-	if err = closer.Close(); err != nil {
-		return proto.Status_SESSION_DOES_NOT_EXIST, err
+
+	sessionId := request.SessionId
+	if sessionId != nil {
+
+		// We are adding an ephemeral value, let's check if the session exists
+		var _, closer, err = batch.Get(SessionKey(SessionId(*sessionId)))
+		if err != nil {
+			if errors.Is(err, kv.ErrorKeyNotFound) {
+				return proto.Status_SESSION_DOES_NOT_EXIST, nil
+			}
+			return proto.Status_SESSION_DOES_NOT_EXIST, err
+		}
+		if err = closer.Close(); err != nil {
+			return proto.Status_SESSION_DOES_NOT_EXIST, err
+		}
+		// Create the session shadow entry
+		err = batch.Put(SessionKey(SessionId(*sessionId))+url.PathEscape(request.Key), []byte{})
+		if err != nil {
+			return proto.Status_SESSION_DOES_NOT_EXIST, err
+		}
 	}
-	// Create the session shadow entry
-	err = batch.Put(SessionKey(SessionId(*sessionId))+url.PathEscape(request.Key), []byte{})
+	return proto.Status_OK, nil
+}
+
+func deleteShadow(batch kv.WriteBatch, key string, existingEntry *proto.StorageEntry) (proto.Status, error) {
+	existingSessionId := SessionId(*existingEntry.SessionId)
+	err := batch.Delete(SessionKey(existingSessionId) + url.PathEscape(key))
 	if err != nil {
 		return proto.Status_SESSION_DOES_NOT_EXIST, err
 	}
 	return proto.Status_OK, nil
 }
 
-func (_ *updateCallback) OnDelete(batch kv.WriteBatch, request *proto.DeleteRequest) (proto.Status, error) {
-	// TODO implement me
-	return proto.Status_OK, nil
-}
-
-func (_ *updateCallback) OnDeleteRange(batch kv.WriteBatch, request *proto.DeleteRangeRequest) (proto.Status, error) {
-	//TODO implement me
-	return proto.Status_OK, nil
+func (_ *updateCallback) OnDelete(batch kv.WriteBatch, key string) error {
+	se, err := kv.GetStorageEntry(batch, key)
+	if err == nil && se.SessionId != nil {
+		_, err = deleteShadow(batch, key, se)
+	}
+	return err
 }
