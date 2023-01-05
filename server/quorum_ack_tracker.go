@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"io"
+	"oxia/common"
 	"oxia/proto"
 	"oxia/server/util"
 	"sync"
@@ -137,7 +138,7 @@ func (q *quorumAckTracker) WaitForCommitIndex(offset int64, f func() (*proto.Wri
 	}
 
 	if q.closed {
-		return nil, errors.New("already closed")
+		return nil, common.ErrorAlreadyClosed
 	}
 
 	if f != nil {
