@@ -127,6 +127,9 @@ func NewFollowerController(shardId uint32, wf wal.WalFactory, kvFactory kv.KVFac
 }
 
 func (fc *followerController) Close() error {
+	fc.Lock()
+	defer fc.Unlock()
+
 	fc.log.Debug().Msg("Closing follower controller")
 	fc.cancel()
 
@@ -134,8 +137,10 @@ func (fc *followerController) Close() error {
 		return err
 	}
 
-	if err := fc.db.Close(); err != nil {
-		return err
+	if fc.db != nil {
+		if err := fc.db.Close(); err != nil {
+			return err
+		}
 	}
 
 	fc.log.Info().Msg("Closed follower")
@@ -445,10 +450,6 @@ func checkStatus(expected, actual proto.ServingStatus) error {
 func (fc *followerController) SendSnapshot(stream proto.OxiaLogReplication_SendSnapshotServer) error {
 	fc.Lock()
 
-	if fc.status != proto.ServingStatus_Fenced && fc.status != proto.ServingStatus_Follower {
-		return common.ErrorInvalidStatus
-	}
-
 	if fc.closeStreamCh != nil {
 		fc.Unlock()
 		return common.ErrorLeaderAlreadyConnected
@@ -482,10 +483,14 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 		return
 	}
 
-	err = fc.db.Close()
-	if err != nil {
-		fc.closeChannelNoMutex(err)
-		return
+	if fc.db != nil {
+		err = fc.db.Close()
+		if err != nil {
+			fc.closeChannelNoMutex(err)
+			return
+		}
+
+		fc.db = nil
 	}
 
 	loader, err := fc.kvFactory.NewSnapshotLoader(fc.shardId)
@@ -501,14 +506,21 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 	for {
 		snapChunk, err := stream.Recv()
 		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
 			fc.closeChannelNoMutex(err)
 			return
 		} else if snapChunk == nil {
 			break
-		} else if snapChunk.Epoch != fc.epoch {
+		} else if fc.epoch != wal.InvalidEpoch && snapChunk.Epoch != fc.epoch {
+			// The follower could be left with epoch=-1 by a previous failed
+			// attempt at sending the snapshot. It's ok to proceed in that case.
 			fc.closeChannelNoMutex(common.ErrorInvalidEpoch)
 			return
 		}
+
+		fc.epoch = snapChunk.Epoch
 
 		fc.log.Debug().
 			Str("chunk-name", snapChunk.Name).
@@ -532,12 +544,32 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 		return
 	}
 
+	// The new epoch must be persisted, to avoid rolling it back
+	if err = newDb.UpdateEpoch(fc.epoch); err != nil {
+		fc.closeChannelNoMutex(errors.Wrap(err, "Failed to update epoch in db"))
+	}
+
+	commitIndex, err := newDb.ReadCommitIndex()
+	if err != nil {
+		fc.closeChannelNoMutex(errors.Wrap(err, "Failed to read committed index in the new snapshot"))
+		return
+	}
+
+	if err = stream.SendAndClose(&proto.SnapshotResponse{
+		AckIndex: commitIndex,
+	}); err != nil {
+		fc.closeChannelNoMutex(errors.Wrap(err, "Failed to send response after processing snapshot"))
+		return
+	}
+
 	fc.db = newDb
+	fc.commitIndex = commitIndex
 	fc.closeChannelNoMutex(nil)
 
 	fc.log.Info().
 		Int64("epoch", fc.epoch).
 		Int64("snapshot-size", totalSize).
+		Int64("commit-index", commitIndex).
 		Msg("Successfully applied snapshot")
 }
 

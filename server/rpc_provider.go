@@ -42,6 +42,19 @@ func (r *replicationRpcProvider) GetAddEntriesStream(ctx context.Context, follow
 	return stream, err
 }
 
+func (r *replicationRpcProvider) SendSnapshot(ctx context.Context, follower string, shard uint32) (
+	proto.OxiaLogReplication_SendSnapshotClient, error) {
+	rpc, err := r.pool.GetReplicationRpc(follower)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx = metadata.AppendToOutgoingContext(ctx, metadataShardId, fmt.Sprintf("%d", shard))
+
+	stream, err := rpc.SendSnapshot(ctx)
+	return stream, err
+}
+
 func (r *replicationRpcProvider) Truncate(follower string, req *proto.TruncateRequest) (*proto.TruncateResponse, error) {
 	rpc, err := r.pool.GetReplicationRpc(follower)
 	if err != nil {
