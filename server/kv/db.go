@@ -9,6 +9,7 @@ import (
 	"go.uber.org/multierr"
 	"io"
 	"oxia/common"
+	"oxia/common/metrics"
 	"oxia/proto"
 	"oxia/server/wal"
 	"time"
@@ -49,6 +50,7 @@ func NewDB(shardId uint32, factory KVFactory) (DB, error) {
 		return nil, err
 	}
 
+	labels := metrics.LabelsForShard(shardId)
 	db := &db{
 		kv:      kv,
 		shardId: shardId,
@@ -56,6 +58,9 @@ func NewDB(shardId uint32, factory KVFactory) (DB, error) {
 			Str("component", "db").
 			Uint32("shard", shardId).
 			Logger(),
+
+		batchWriteLatencyHisto: metrics.NewLatencyHistogram("oxia_server_db_batch_write_latency",
+			"The time it takes to write a batch in the db", labels),
 	}
 
 	commitIndex, err := db.ReadCommitIndex()
@@ -72,6 +77,14 @@ type db struct {
 	shardId              uint32
 	notificationsTracker *notificationsTracker
 	log                  zerolog.Logger
+
+	putCounter          metrics.Counter
+	deleteCounter       metrics.Counter
+	deleteRangesCounter metrics.Counter
+	getCounter          metrics.Counter
+	listCounter         metrics.Counter
+
+	batchWriteLatencyHisto metrics.LatencyHistogram
 }
 
 func (d *db) Snapshot() (Snapshot, error) {
@@ -90,6 +103,9 @@ func now() uint64 {
 }
 
 func (d *db) ProcessWrite(b *proto.WriteRequest, commitIndex int64, timestamp uint64, updateOperationCallback UpdateOperationCallback) (*proto.WriteResponse, error) {
+	timer := d.batchWriteLatencyHisto.Timer()
+	defer timer.Done()
+
 	res := &proto.WriteResponse{}
 
 	batch := d.kv.NewWriteBatch()

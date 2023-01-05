@@ -14,7 +14,7 @@ var latencyBucketsMillis = []float64{
 }
 
 type Timer struct {
-	histo *histogram
+	histo *latencyHistogram
 	start time.Time
 }
 
@@ -26,12 +26,12 @@ type LatencyHistogram interface {
 	Timer() Timer
 }
 
-type histogram struct {
+type latencyHistogram struct {
 	syncfloat64.Histogram
 	attrs []attribute.KeyValue
 }
 
-func (t *histogram) Timer() Timer {
+func (t *latencyHistogram) Timer() Timer {
 	return Timer{t, time.Now()}
 }
 
@@ -43,5 +43,5 @@ func NewLatencyHistogram(name string, description string, labels map[string]any)
 	)
 	fatalOnErr(err, name)
 
-	return &histogram{h, getAttrs(labels)}
+	return &latencyHistogram{h, getAttrs(labels)}
 }
