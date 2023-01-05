@@ -417,8 +417,9 @@ func (lc *leaderController) Read(request *proto.ReadRequest) (*proto.ReadRespons
 		Msg("Received read request")
 
 	lc.Lock()
-	defer lc.Unlock()
-	if err := checkStatus(proto.ServingStatus_Leader, lc.status); err != nil {
+	err := checkStatus(proto.ServingStatus_Leader, lc.status)
+	lc.Unlock()
+	if err != nil {
 		return nil, err
 	}
 
