@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
@@ -66,21 +67,25 @@ type followerController struct {
 	wal         wal.Wal
 	kvFactory   kv.KVFactory
 	db          kv.DB
-	closeCh     chan error
-	log         zerolog.Logger
+
+	ctx           context.Context
+	cancel        context.CancelFunc
+	closeStreamCh chan error
+	log           zerolog.Logger
 }
 
 func NewFollowerController(shardId uint32, wf wal.WalFactory, kvFactory kv.KVFactory) (FollowerController, error) {
 	fc := &followerController{
-		shardId:   shardId,
-		kvFactory: kvFactory,
-		status:    proto.ServingStatus_NotMember,
-		closeCh:   nil,
+		shardId:       shardId,
+		kvFactory:     kvFactory,
+		status:        proto.ServingStatus_NotMember,
+		closeStreamCh: nil,
 		log: log.With().
 			Str("component", "follower-controller").
 			Uint32("shard", shardId).
 			Logger(),
 	}
+	fc.ctx, fc.cancel = context.WithCancel(context.Background())
 
 	if wal, err := wf.NewWal(shardId); err != nil {
 		return nil, err
@@ -123,7 +128,7 @@ func NewFollowerController(shardId uint32, wf wal.WalFactory, kvFactory kv.KVFac
 
 func (fc *followerController) Close() error {
 	fc.log.Debug().Msg("Closing follower controller")
-	fc.closeChannel(nil)
+	fc.cancel()
 
 	if err := fc.wal.Close(); err != nil {
 		return err
@@ -150,10 +155,14 @@ func (fc *followerController) closeChannelNoMutex(err error) {
 			Msg("Error in handle AddEntries stream")
 	}
 
-	if fc.closeCh != nil {
-		fc.closeCh <- err
-		close(fc.closeCh)
-		fc.closeCh = nil
+	if fc.closeStreamCh != nil {
+		select {
+		case fc.closeStreamCh <- err:
+		default:
+			// Only write if there's a listener
+		}
+		close(fc.closeStreamCh)
+		fc.closeStreamCh = nil
 	}
 }
 
@@ -255,12 +264,13 @@ func (fc *followerController) AddEntries(stream proto.OxiaLogReplication_AddEntr
 		return common.ErrorInvalidStatus
 	}
 
-	if fc.closeCh != nil {
+	if fc.closeStreamCh != nil {
 		fc.Unlock()
 		return common.ErrorLeaderAlreadyConnected
 	}
 
-	fc.closeCh = make(chan error)
+	closeStreamCh := make(chan error)
+	fc.closeStreamCh = closeStreamCh
 	fc.Unlock()
 
 	go common.DoWithLabels(map[string]string{
@@ -268,7 +278,12 @@ func (fc *followerController) AddEntries(stream proto.OxiaLogReplication_AddEntr
 		"shard": fmt.Sprintf("%d", fc.shardId),
 	}, func() { fc.handleServerStream(stream) })
 
-	return <-fc.closeCh
+	select {
+	case err := <-closeStreamCh:
+		return err
+	case <-fc.ctx.Done():
+		return nil
+	}
 }
 
 func (fc *followerController) handleServerStream(stream proto.OxiaLogReplication_AddEntriesServer) {
@@ -434,12 +449,13 @@ func (fc *followerController) SendSnapshot(stream proto.OxiaLogReplication_SendS
 		return common.ErrorInvalidStatus
 	}
 
-	if fc.closeCh != nil {
+	if fc.closeStreamCh != nil {
 		fc.Unlock()
 		return common.ErrorLeaderAlreadyConnected
 	}
 
-	fc.closeCh = make(chan error)
+	closeStreamCh := make(chan error)
+	fc.closeStreamCh = closeStreamCh
 	fc.Unlock()
 
 	go common.DoWithLabels(map[string]string{
@@ -447,7 +463,12 @@ func (fc *followerController) SendSnapshot(stream proto.OxiaLogReplication_SendS
 		"shard": fmt.Sprintf("%d", fc.shardId),
 	}, func() { fc.handleSnapshot(stream) })
 
-	return <-fc.closeCh
+	select {
+	case err := <-closeStreamCh:
+		return err
+	case <-fc.ctx.Done():
+		return fc.ctx.Err()
+	}
 }
 
 func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_SendSnapshotServer) {
