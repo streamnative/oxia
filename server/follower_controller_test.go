@@ -173,7 +173,7 @@ func TestFollower_RestoreCommitIndex(t *testing.T) {
 	_, err = db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
 		Key:     "xx",
 		Payload: []byte(""),
-	}}}, 9, 0, nil)
+	}}}, 9, 0, kv.NoOpCallback)
 	assert.NoError(t, err)
 
 	assert.NoError(t, db.UpdateEpoch(6))
@@ -515,7 +515,7 @@ func prepareTestDb(t *testing.T) kv.Snapshot {
 				Key:     fmt.Sprintf("key-%d", i),
 				Payload: []byte(fmt.Sprintf("value-%d", i)),
 			}},
-		}, int64(i), 0, nil)
+		}, int64(i), 0, kv.NoOpCallback)
 		assert.NoError(t, err)
 	}
 

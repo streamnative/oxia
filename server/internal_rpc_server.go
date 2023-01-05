@@ -18,10 +18,6 @@ import (
 	"oxia/proto"
 )
 
-const (
-	MetadataShardId = "shard-id"
-)
-
 type internalRpcServer struct {
 	proto.UnimplementedOxiaControlServer
 	proto.UnimplementedOxiaLogReplicationServer
@@ -202,7 +198,7 @@ func (s *internalRpcServer) AddEntries(srv proto.OxiaLogReplication_AddEntriesSe
 		return errors.New("shard id is not set in the request metadata")
 	}
 
-	shardId, err := ReadHeaderUint32(md, MetadataShardId)
+	shardId, err := ReadHeaderUint32(md, proto.MetadataShardId)
 	if err != nil {
 		return err
 	}
@@ -238,7 +234,7 @@ func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapsh
 		return errors.New("shard id is not set in the request metadata")
 	}
 
-	shardId, err := ReadHeaderUint32(md, MetadataShardId)
+	shardId, err := ReadHeaderUint32(md, proto.MetadataShardId)
 	if err != nil {
 		return err
 	}

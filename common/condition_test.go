@@ -92,7 +92,6 @@ func TestCondSignal(t *testing.T) {
 }
 
 func TestCondSignalGenerations(t *testing.T) {
-	t.SkipNow()
 	var m sync.Mutex
 	c := NewConditionContext(&m)
 	n := 100

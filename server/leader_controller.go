@@ -45,7 +45,7 @@ type LeaderController interface {
 	Status() proto.ServingStatus
 
 	CreateSession(*proto.CreateSessionRequest) (*proto.CreateSessionResponse, error)
-	KeepAlive(shardId uint32, sessionId uint64, stream proto.OxiaClient_KeepAliveServer) error
+	KeepAlive(sessionId uint64, stream proto.OxiaClient_KeepAliveServer) error
 	CloseSession(*proto.CloseSessionRequest) (*proto.CloseSessionResponse, error)
 }
 
@@ -344,8 +344,6 @@ func (lc *leaderController) applyAllEntriesIntoDB() error {
 	err = lc.sessionManager.Initialize()
 	if err != nil {
 		lc.log.Error().Err(err).
-			Int64("epoch", lc.epoch).
-			Uint32("shard", lc.shardId).
 			Msg("Failed to initialize session manager")
 		return err
 	}
@@ -585,9 +583,9 @@ func (lc *leaderController) Close() error {
 	}
 
 	err = multierr.Combine(err,
+		lc.sessionManager.Close(),
 		lc.wal.Close(),
 		lc.db.Close(),
-		lc.sessionManager.Close(),
 	)
 	return err
 }
@@ -623,8 +621,8 @@ func (lc *leaderController) CreateSession(request *proto.CreateSessionRequest) (
 	return lc.sessionManager.CreateSession(request)
 }
 
-func (lc *leaderController) KeepAlive(shardId uint32, sessionId uint64, stream proto.OxiaClient_KeepAliveServer) error {
-	return lc.sessionManager.KeepAlive(shardId, sessionId, stream)
+func (lc *leaderController) KeepAlive(sessionId uint64, stream proto.OxiaClient_KeepAliveServer) error {
+	return lc.sessionManager.KeepAlive(sessionId, stream)
 }
 
 func (lc *leaderController) CloseSession(request *proto.CloseSessionRequest) (*proto.CloseSessionResponse, error) {

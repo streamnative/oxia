@@ -159,7 +159,7 @@ func (d *db) addCommitIndex(commitIndex int64, batch WriteBatch, timestamp uint6
 		Key:             commitIndexKey,
 		Payload:         commitIndexPayload,
 		ExpectedVersion: nil,
-	}, timestamp, nil)
+	}, timestamp, NoOpCallback)
 	return err
 }
 
@@ -213,7 +213,7 @@ func (d *db) UpdateEpoch(newEpoch int64) error {
 	if _, err := d.applyPut(batch, nil, &proto.PutRequest{
 		Key:     epochKey,
 		Payload: []byte(fmt.Sprintf("%d", newEpoch)),
-	}, now(), nil); err != nil {
+	}, now(), NoOpCallback); err != nil {
 		return err
 	}
 
@@ -259,17 +259,16 @@ func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *pr
 		return nil, errors.Wrap(err, "oxia db: failed to apply batch")
 	} else {
 		// No version conflict
-		if updateOperationCallback != nil {
-			status, err := updateOperationCallback.OnPut(batch, putReq, se)
-			if err != nil {
-				return nil, err
-			}
-			if status != proto.Status_OK {
-				return &proto.PutResponse{
-					Status: status,
-				}, nil
-			}
+		status, err := updateOperationCallback.OnPut(batch, putReq, se)
+		if err != nil {
+			return nil, err
 		}
+		if status != proto.Status_OK {
+			return &proto.PutResponse{
+				Status: status,
+			}, nil
+		}
+
 		if se == nil {
 			se = &proto.StorageEntry{
 				Version:               0,
@@ -323,13 +322,11 @@ func (d *db) applyDelete(batch WriteBatch, notifications *notifications, delReq 
 	} else if se == nil {
 		return &proto.DeleteResponse{Status: proto.Status_KEY_NOT_FOUND}, nil
 	} else {
-		if updateOperationCallback != nil {
-			err = updateOperationCallback.OnDelete(batch, delReq.Key)
-			if err != nil {
-				return nil, err
-			}
-
+		err = updateOperationCallback.OnDelete(batch, delReq.Key)
+		if err != nil {
+			return nil, err
 		}
+
 		if err = batch.Delete(delReq.Key); err != nil {
 			return &proto.DeleteResponse{}, err
 		}
@@ -350,12 +347,10 @@ func (d *db) applyDeleteRange(batch WriteBatch, notifications *notifications, de
 		it := batch.KeyRangeScan(delReq.StartInclusive, delReq.EndExclusive)
 		for it.Next() {
 			notifications.Deleted(it.Key())
-			if updateOperationCallback != nil {
-				err := updateOperationCallback.OnDelete(batch, it.Key())
-				if err != nil {
-					return nil,
-						errors.Wrap(multierr.Combine(err, it.Close()), "oxia db: failed to delete range")
-				}
+			err := updateOperationCallback.OnDelete(batch, it.Key())
+			if err != nil {
+				return nil,
+					errors.Wrap(multierr.Combine(err, it.Close()), "oxia db: failed to delete range")
 			}
 		}
 
@@ -469,3 +464,15 @@ func deserialize(payload []byte, closer io.Closer) (*proto.StorageEntry, error) 
 func (d *db) ReadNextNotifications(ctx context.Context, startOffset int64) ([]*proto.NotificationBatch, error) {
 	return d.notificationsTracker.ReadNextNotifications(ctx, startOffset)
 }
+
+type noopCallback struct{}
+
+func (_ *noopCallback) OnPut(WriteBatch, *proto.PutRequest, *proto.StorageEntry) (proto.Status, error) {
+	return proto.Status_OK, nil
+}
+
+func (_ *noopCallback) OnDelete(WriteBatch, string) error {
+	return nil
+}
+
+var NoOpCallback UpdateOperationCallback = &noopCallback{}

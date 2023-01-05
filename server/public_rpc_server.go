@@ -140,11 +140,11 @@ func (s *PublicRpcServer) KeepAlive(stream proto.OxiaClient_KeepAliveServer) err
 		return errors.New("shard id is not set in the request metadata")
 	}
 
-	shardId, err := ReadHeaderUint32(md, MetadataShardId)
+	shardId, err := ReadHeaderUint32(md, proto.MetadataShardId)
 	if err != nil {
 		return err
 	}
-	sessionId, err := ReadHeaderUint64(md, "session-id")
+	sessionId, err := ReadHeaderUint64(md, proto.MetadataSessionId)
 	if err != nil {
 		return err
 	}
@@ -158,7 +158,7 @@ func (s *PublicRpcServer) KeepAlive(stream proto.OxiaClient_KeepAliveServer) err
 	if err != nil {
 		return err
 	}
-	err = lc.KeepAlive(shardId, sessionId, stream)
+	err = lc.KeepAlive(sessionId, stream)
 	if err != nil {
 		s.log.Warn().Err(err).
 			Msg("Failed to listen to heartbeats")

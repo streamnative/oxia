@@ -25,7 +25,7 @@ func TestDB_Notifications(t *testing.T) {
 			Key:     "a",
 			Payload: []byte("0"),
 		}},
-	}, 0, t0, nil)
+	}, 0, t0, NoOpCallback)
 
 	notifications, err := db.ReadNextNotifications(context.Background(), 0)
 	assert.NoError(t, err)
@@ -47,7 +47,7 @@ func TestDB_Notifications(t *testing.T) {
 			Key:     "a",
 			Payload: []byte("1"),
 		}},
-	}, 1, t1, nil)
+	}, 1, t1, NoOpCallback)
 
 	t2 := now()
 	_, _ = db.ProcessWrite(&proto.WriteRequest{
@@ -55,7 +55,7 @@ func TestDB_Notifications(t *testing.T) {
 			Key:     "b",
 			Payload: []byte("0"),
 		}},
-	}, 2, t2, nil)
+	}, 2, t2, NoOpCallback)
 
 	notifications, err = db.ReadNextNotifications(context.Background(), 1)
 	assert.NoError(t, err)
@@ -94,7 +94,7 @@ func TestDB_Notifications(t *testing.T) {
 		Deletes: []*proto.DeleteRequest{{
 			Key: "a",
 		}},
-	}, 3, t3, nil)
+	}, 3, t3, NoOpCallback)
 
 	notifications, err = db.ReadNextNotifications(context.Background(), 3)
 	assert.NoError(t, err)
@@ -129,7 +129,7 @@ func TestDB_Notifications(t *testing.T) {
 			Key:     "x1",
 			Payload: []byte("1"),
 		}},
-	}, 4, t4, nil)
+	}, 4, t4, NoOpCallback)
 
 	notifications, err = db.ReadNextNotifications(context.Background(), 4)
 	assert.NoError(t, err)
@@ -161,7 +161,7 @@ func TestDB_NotificationsCancelWait(t *testing.T) {
 			Key:     "a",
 			Payload: []byte("0"),
 		}},
-	}, 0, t0, nil)
+	}, 0, t0, NoOpCallback)
 
 	ctx, cancel := context.WithCancel(context.Background())
 

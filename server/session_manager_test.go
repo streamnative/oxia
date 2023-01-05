@@ -217,7 +217,7 @@ func TestSessionManager(t *testing.T) {
 	sessionId := createResp.SessionId
 	meta := getSessionMetadata(t, controller, sessionId)
 	assert.NotNil(t, meta)
-	assert.Equal(t, uint64(5000), meta.TimeoutMS)
+	assert.Equal(t, uint32(5000), meta.TimeoutMS)
 
 	_, err = sManager.CloseSession(&proto.CloseSessionRequest{
 		ShardId:   1,
@@ -241,6 +241,25 @@ func TestSessionManager(t *testing.T) {
 	assert.Eventually(t, func() bool {
 		return getSessionMetadata(t, controller, sessionId) == nil
 	}, time.Second, 30*time.Millisecond)
+
+	// Create a session, keep it alive
+	//createResp, err = sManager.CreateSession(&proto.CreateSessionRequest{
+	//	ShardId:          1,
+	//	SessionTimeoutMs: 50,
+	//})
+	//assert.NoError(t, err)
+	//sessionId = createResp.SessionId
+	//meta = getSessionMetadata(t, controller, sessionId)
+	//assert.NotNil(t, meta)
+	//
+	//go func() {
+	//	sManager.KeepAlive(1, sessionId, )
+	//	i := 0
+	//	for i < 6 {
+	//		time.Sleep(30 * time.Millisecond)
+	//		i++
+	//	}
+	//}()
 
 	assert.NoError(t, controller.Close())
 

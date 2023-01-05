@@ -62,7 +62,7 @@ func TestDBSimple(t *testing.T) {
 		},
 	}
 
-	res, err := db.ProcessWrite(req, wal.InvalidOffset, 0, nil)
+	res, err := db.ProcessWrite(req, wal.InvalidOffset, 0, NoOpCallback)
 	assert.NoError(t, err)
 
 	assert.Equal(t, 5, len(res.Puts))
@@ -162,7 +162,7 @@ func TestDBSameKeyMutations(t *testing.T) {
 	}
 
 	t0 := now()
-	writeRes, err := db.ProcessWrite(writeReq, wal.InvalidOffset, t0, nil)
+	writeRes, err := db.ProcessWrite(writeReq, wal.InvalidOffset, t0, NoOpCallback)
 	assert.NoError(t, err)
 
 	assert.Equal(t, 1, len(writeRes.Puts))
@@ -196,7 +196,7 @@ func TestDBSameKeyMutations(t *testing.T) {
 	}
 
 	t1 := now()
-	writeRes, err = db.ProcessWrite(writeReq, wal.InvalidOffset, t1, nil)
+	writeRes, err = db.ProcessWrite(writeReq, wal.InvalidOffset, t1, NoOpCallback)
 	assert.NoError(t, err)
 
 	assert.Equal(t, 2, len(writeRes.Puts))
@@ -281,7 +281,7 @@ func TestDBList(t *testing.T) {
 		}},
 	}
 
-	writeRes, err := db.ProcessWrite(writeReq, wal.InvalidOffset, now(), nil)
+	writeRes, err := db.ProcessWrite(writeReq, wal.InvalidOffset, now(), NoOpCallback)
 	assert.NoError(t, err)
 
 	readReq := &proto.ReadRequest{
@@ -350,7 +350,7 @@ func TestDBDeleteRange(t *testing.T) {
 		}},
 	}
 
-	_, err = db.ProcessWrite(writeReq, wal.InvalidOffset, 0, nil)
+	_, err = db.ProcessWrite(writeReq, wal.InvalidOffset, 0, NoOpCallback)
 	assert.NoError(t, err)
 
 	writeReq = &proto.WriteRequest{
@@ -363,7 +363,7 @@ func TestDBDeleteRange(t *testing.T) {
 		}},
 	}
 
-	writeRes, err := db.ProcessWrite(writeReq, wal.InvalidOffset, 0, nil)
+	writeRes, err := db.ProcessWrite(writeReq, wal.InvalidOffset, 0, NoOpCallback)
 	assert.NoError(t, err)
 
 	readReq := &proto.ReadRequest{
@@ -410,7 +410,7 @@ func TestDB_ReadCommitIndex(t *testing.T) {
 			Payload: []byte("a"),
 		}},
 	}
-	_, err = db.ProcessWrite(writeReq, offset, 0, nil)
+	_, err = db.ProcessWrite(writeReq, offset, 0, NoOpCallback)
 	assert.NoError(t, err)
 
 	commitIndex, err = db.ReadCommitIndex()
