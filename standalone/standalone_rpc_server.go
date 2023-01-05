@@ -16,7 +16,7 @@ import (
 	"oxia/server/wal"
 )
 
-type StandaloneRpcServer struct {
+type rpcServer struct {
 	proto.UnimplementedOxiaClientServer
 
 	advertisedPublicAddress string
@@ -31,8 +31,8 @@ type StandaloneRpcServer struct {
 	log zerolog.Logger
 }
 
-func NewStandaloneRpcServer(config Config, bindAddress string, advertisedPublicAddress string, numShards uint32, walFactory wal.WalFactory, kvFactory kv.KVFactory) (*StandaloneRpcServer, error) {
-	res := &StandaloneRpcServer{
+func newRpcServer(config Config, bindAddress string, advertisedPublicAddress string, numShards uint32, walFactory wal.WalFactory, kvFactory kv.KVFactory) (*rpcServer, error) {
+	res := &rpcServer{
 		advertisedPublicAddress: advertisedPublicAddress,
 		numShards:               numShards,
 		walFactory:              walFactory,
@@ -86,7 +86,7 @@ func NewStandaloneRpcServer(config Config, bindAddress string, advertisedPublicA
 	return res, nil
 }
 
-func (s *StandaloneRpcServer) Close() error {
+func (s *rpcServer) Close() error {
 	var err error
 	for _, c := range s.controllers {
 		err = multierr.Append(err, c.Close())
@@ -98,15 +98,15 @@ func (s *StandaloneRpcServer) Close() error {
 	)
 }
 
-func (s *StandaloneRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest, stream proto.OxiaClient_ShardAssignmentsServer) error {
+func (s *rpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest, stream proto.OxiaClient_ShardAssignmentsServer) error {
 	return s.assignmentDispatcher.RegisterForUpdates(stream)
 }
 
-func (s *StandaloneRpcServer) Port() int {
+func (s *rpcServer) Port() int {
 	return s.grpcServer.Port()
 }
 
-func (s *StandaloneRpcServer) Write(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error) {
+func (s *rpcServer) Write(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error) {
 	lc, ok := s.controllers[*write.ShardId]
 	if !ok {
 		return nil, errors.New("shard not found")
@@ -115,7 +115,7 @@ func (s *StandaloneRpcServer) Write(ctx context.Context, write *proto.WriteReque
 	return lc.Write(write)
 }
 
-func (s *StandaloneRpcServer) Read(ctx context.Context, read *proto.ReadRequest) (*proto.ReadResponse, error) {
+func (s *rpcServer) Read(ctx context.Context, read *proto.ReadRequest) (*proto.ReadResponse, error) {
 	lc, ok := s.controllers[*read.ShardId]
 	if !ok {
 		return nil, errors.New("shard not found")
@@ -124,7 +124,7 @@ func (s *StandaloneRpcServer) Read(ctx context.Context, read *proto.ReadRequest)
 	return lc.Read(read)
 }
 
-func (s *StandaloneRpcServer) GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
+func (s *rpcServer) GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
 	s.log.Debug().
 		Str("peer", common.GetPeer(stream.Context())).
 		Interface("req", req).

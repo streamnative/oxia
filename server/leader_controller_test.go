@@ -6,6 +6,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 	pb "google.golang.org/protobuf/proto"
+	"oxia/common"
 	"oxia/proto"
 	"oxia/server/kv"
 	"oxia/server/wal"
@@ -45,7 +46,7 @@ func TestLeaderController_NotInitialized(t *testing.T) {
 	})
 
 	assert.Nil(t, res)
-	assert.ErrorIs(t, err, ErrorInvalidStatus)
+	assert.Equal(t, common.CodeInvalidStatus, status.Code(err))
 
 	res2, err := lc.Read(&proto.ReadRequest{
 		ShardId: &shard,
@@ -53,7 +54,7 @@ func TestLeaderController_NotInitialized(t *testing.T) {
 	})
 
 	assert.Nil(t, res2)
-	assert.ErrorIs(t, err, ErrorInvalidStatus)
+	assert.Equal(t, common.CodeInvalidStatus, status.Code(err))
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())
@@ -79,7 +80,7 @@ func TestLeaderController_BecomeLeader_NoFencing(t *testing.T) {
 		FollowerMaps:      nil,
 	})
 	assert.Nil(t, resp)
-	assert.Equal(t, CodeInvalidStatus, status.Code(err))
+	assert.Equal(t, common.CodeInvalidStatus, status.Code(err))
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())
@@ -164,7 +165,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	})
 
 	assert.Nil(t, res3)
-	assert.ErrorIs(t, err, ErrorInvalidStatus)
+	assert.Equal(t, common.CodeInvalidStatus, status.Code(err))
 
 	res4, err := lc.Read(&proto.ReadRequest{
 		ShardId: &shard,
@@ -172,7 +173,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	})
 
 	assert.Nil(t, res4)
-	assert.ErrorIs(t, err, ErrorInvalidStatus)
+	assert.Equal(t, common.CodeInvalidStatus, status.Code(err))
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())
@@ -269,7 +270,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	})
 
 	assert.Nil(t, res3)
-	assert.ErrorIs(t, err, ErrorInvalidStatus)
+	assert.Equal(t, common.CodeInvalidStatus, status.Code(err))
 
 	res4, err := lc.Read(&proto.ReadRequest{
 		ShardId: &shard,
@@ -277,7 +278,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	})
 
 	assert.Nil(t, res4)
-	assert.ErrorIs(t, err, ErrorInvalidStatus)
+	assert.Equal(t, common.CodeInvalidStatus, status.Code(err))
 
 	close(rpc.addEntryResps)
 	assert.NoError(t, lc.Close())
@@ -359,7 +360,7 @@ func TestLeaderController_FenceEpoch(t *testing.T) {
 		Epoch:   4,
 	})
 	assert.Nil(t, fr)
-	assert.Equal(t, CodeInvalidEpoch, status.Code(err))
+	assert.Equal(t, common.CodeInvalidEpoch, status.Code(err))
 	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
 
 	// Same epoch will succeed
@@ -408,7 +409,7 @@ func TestLeaderController_BecomeLeaderEpoch(t *testing.T) {
 		FollowerMaps:      nil,
 	})
 	assert.Nil(t, resp)
-	assert.Equal(t, CodeInvalidEpoch, status.Code(err))
+	assert.Equal(t, common.CodeInvalidEpoch, status.Code(err))
 
 	// Higher epoch will fail
 	resp, err = lc.BecomeLeader(&proto.BecomeLeaderRequest{
@@ -418,7 +419,7 @@ func TestLeaderController_BecomeLeaderEpoch(t *testing.T) {
 		FollowerMaps:      nil,
 	})
 	assert.Nil(t, resp)
-	assert.Equal(t, CodeInvalidEpoch, status.Code(err))
+	assert.Equal(t, common.CodeInvalidEpoch, status.Code(err))
 
 	// Same epoch will succeed
 	_, err = lc.BecomeLeader(&proto.BecomeLeaderRequest{
@@ -640,7 +641,7 @@ func TestLeaderController_AddFollowerCheckEpoch(t *testing.T) {
 		FollowerHeadIndex: InvalidEntryId,
 	})
 	assert.Nil(t, afRes)
-	assert.Equal(t, CodeInvalidEpoch, status.Code(err))
+	assert.Equal(t, common.CodeInvalidEpoch, status.Code(err))
 
 	afRes, err = lc.AddFollower(&proto.AddFollowerRequest{
 		ShardId:           shard,
@@ -649,7 +650,7 @@ func TestLeaderController_AddFollowerCheckEpoch(t *testing.T) {
 		FollowerHeadIndex: InvalidEntryId,
 	})
 	assert.Nil(t, afRes)
-	assert.Equal(t, CodeInvalidEpoch, status.Code(err))
+	assert.Equal(t, common.CodeInvalidEpoch, status.Code(err))
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())

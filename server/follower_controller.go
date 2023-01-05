@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
@@ -68,21 +69,25 @@ type followerController struct {
 	walTrimmer  wal.Trimmer
 	kvFactory   kv.KVFactory
 	db          kv.DB
-	closeCh     chan error
-	log         zerolog.Logger
+
+	ctx           context.Context
+	cancel        context.CancelFunc
+	closeStreamCh chan error
+	log           zerolog.Logger
 }
 
 func NewFollowerController(config Config, shardId uint32, wf wal.WalFactory, kvFactory kv.KVFactory) (FollowerController, error) {
 	fc := &followerController{
-		shardId:   shardId,
-		kvFactory: kvFactory,
-		status:    proto.ServingStatus_NotMember,
-		closeCh:   nil,
+		shardId:       shardId,
+		kvFactory:     kvFactory,
+		status:        proto.ServingStatus_NotMember,
+		closeStreamCh: nil,
 		log: log.With().
 			Str("component", "follower-controller").
 			Uint32("shard", shardId).
 			Logger(),
 	}
+	fc.ctx, fc.cancel = context.WithCancel(context.Background())
 
 	var err error
 	if fc.wal, err = wf.NewWal(shardId); err != nil {
@@ -123,17 +128,19 @@ func NewFollowerController(config Config, shardId uint32, wf wal.WalFactory, kvF
 }
 
 func (fc *followerController) Close() error {
+	fc.Lock()
+	defer fc.Unlock()
+
 	fc.log.Debug().Msg("Closing follower controller")
-	fc.closeChannel(nil)
+	fc.cancel()
 
 	err := multierr.Combine(
 		fc.walTrimmer.Close(),
 		fc.wal.Close(),
-		fc.db.Close(),
 	)
 
-	if err == nil {
-		fc.log.Info().Msg("Closed follower")
+	if fc.db != nil {
+		err = multierr.Append(err, fc.db.Close())
 	}
 	return err
 }
@@ -151,10 +158,14 @@ func (fc *followerController) closeChannelNoMutex(err error) {
 			Msg("Error in handle AddEntries stream")
 	}
 
-	if fc.closeCh != nil {
-		fc.closeCh <- err
-		close(fc.closeCh)
-		fc.closeCh = nil
+	if fc.closeStreamCh != nil {
+		select {
+		case fc.closeStreamCh <- err:
+		default:
+			// Only write if there's a listener
+		}
+		close(fc.closeStreamCh)
+		fc.closeStreamCh = nil
 	}
 }
 
@@ -185,7 +196,7 @@ func (fc *followerController) Fence(req *proto.FenceRequest) (*proto.FenceRespon
 			Int64("follower-epoch", fc.epoch).
 			Int64("fence-epoch", req.Epoch).
 			Msg("Failed to fence with invalid epoch")
-		return nil, ErrorInvalidEpoch
+		return nil, common.ErrorInvalidEpoch
 	} else if req.Epoch == fc.epoch && fc.status != proto.ServingStatus_Fenced {
 		// It's OK to receive a duplicate Fence request, for the same epoch, as long as we haven't moved
 		// out of the Fenced state for that epoch
@@ -194,7 +205,7 @@ func (fc *followerController) Fence(req *proto.FenceRequest) (*proto.FenceRespon
 			Int64("fence-epoch", req.Epoch).
 			Interface("status", fc.status).
 			Msg("Failed to fence with same epoch in invalid state")
-		return nil, ErrorInvalidStatus
+		return nil, common.ErrorInvalidStatus
 	}
 
 	if err := fc.db.UpdateEpoch(req.Epoch); err != nil {
@@ -226,11 +237,11 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 	defer fc.Unlock()
 
 	if fc.status != proto.ServingStatus_Fenced {
-		return nil, ErrorInvalidStatus
+		return nil, common.ErrorInvalidStatus
 	}
 
 	if req.Epoch != fc.epoch {
-		return nil, ErrorInvalidEpoch
+		return nil, common.ErrorInvalidEpoch
 	}
 
 	fc.status = proto.ServingStatus_Follower
@@ -253,15 +264,16 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 func (fc *followerController) AddEntries(stream proto.OxiaLogReplication_AddEntriesServer) error {
 	fc.Lock()
 	if fc.status != proto.ServingStatus_Fenced && fc.status != proto.ServingStatus_Follower {
-		return ErrorInvalidStatus
+		return common.ErrorInvalidStatus
 	}
 
-	if fc.closeCh != nil {
+	if fc.closeStreamCh != nil {
 		fc.Unlock()
-		return ErrorLeaderAlreadyConnected
+		return common.ErrorLeaderAlreadyConnected
 	}
 
-	fc.closeCh = make(chan error)
+	closeStreamCh := make(chan error)
+	fc.closeStreamCh = closeStreamCh
 	fc.Unlock()
 
 	go common.DoWithLabels(map[string]string{
@@ -269,7 +281,12 @@ func (fc *followerController) AddEntries(stream proto.OxiaLogReplication_AddEntr
 		"shard": fmt.Sprintf("%d", fc.shardId),
 	}, func() { fc.handleServerStream(stream) })
 
-	return <-fc.closeCh
+	select {
+	case err := <-closeStreamCh:
+		return err
+	case <-fc.ctx.Done():
+		return nil
+	}
 }
 
 func (fc *followerController) handleServerStream(stream proto.OxiaLogReplication_AddEntriesServer) {
@@ -295,7 +312,7 @@ func (fc *followerController) addEntry(req *proto.AddEntryRequest) (*proto.AddEn
 	defer fc.Unlock()
 
 	if req.Epoch != fc.epoch {
-		return nil, ErrorInvalidEpoch
+		return nil, common.ErrorInvalidEpoch
 	}
 
 	fc.log.Debug().
@@ -419,7 +436,7 @@ type MessageWithEpoch interface {
 
 func checkStatus(expected, actual proto.ServingStatus) error {
 	if actual != expected {
-		return errors.Wrapf(ErrorInvalidStatus, "Received message in the wrong state. In %+v, should be %+v.", actual, expected)
+		return status.Errorf(common.CodeInvalidStatus, "Received message in the wrong state. In %+v, should be %+v.", actual, expected)
 	}
 	return nil
 }
@@ -431,16 +448,13 @@ func checkStatus(expected, actual proto.ServingStatus) error {
 func (fc *followerController) SendSnapshot(stream proto.OxiaLogReplication_SendSnapshotServer) error {
 	fc.Lock()
 
-	if fc.status != proto.ServingStatus_Fenced && fc.status != proto.ServingStatus_Follower {
-		return ErrorInvalidStatus
-	}
-
-	if fc.closeCh != nil {
+	if fc.closeStreamCh != nil {
 		fc.Unlock()
-		return ErrorLeaderAlreadyConnected
+		return common.ErrorLeaderAlreadyConnected
 	}
 
-	fc.closeCh = make(chan error)
+	closeStreamCh := make(chan error)
+	fc.closeStreamCh = closeStreamCh
 	fc.Unlock()
 
 	go common.DoWithLabels(map[string]string{
@@ -448,7 +462,12 @@ func (fc *followerController) SendSnapshot(stream proto.OxiaLogReplication_SendS
 		"shard": fmt.Sprintf("%d", fc.shardId),
 	}, func() { fc.handleSnapshot(stream) })
 
-	return <-fc.closeCh
+	select {
+	case err := <-closeStreamCh:
+		return err
+	case <-fc.ctx.Done():
+		return fc.ctx.Err()
+	}
 }
 
 func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_SendSnapshotServer) {
@@ -462,10 +481,14 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 		return
 	}
 
-	err = fc.db.Close()
-	if err != nil {
-		fc.closeChannelNoMutex(err)
-		return
+	if fc.db != nil {
+		err = fc.db.Close()
+		if err != nil {
+			fc.closeChannelNoMutex(err)
+			return
+		}
+
+		fc.db = nil
 	}
 
 	loader, err := fc.kvFactory.NewSnapshotLoader(fc.shardId)
@@ -481,14 +504,21 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 	for {
 		snapChunk, err := stream.Recv()
 		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
 			fc.closeChannelNoMutex(err)
 			return
 		} else if snapChunk == nil {
 			break
-		} else if snapChunk.Epoch != fc.epoch {
-			fc.closeChannelNoMutex(ErrorInvalidEpoch)
+		} else if fc.epoch != wal.InvalidEpoch && snapChunk.Epoch != fc.epoch {
+			// The follower could be left with epoch=-1 by a previous failed
+			// attempt at sending the snapshot. It's ok to proceed in that case.
+			fc.closeChannelNoMutex(common.ErrorInvalidEpoch)
 			return
 		}
+
+		fc.epoch = snapChunk.Epoch
 
 		fc.log.Debug().
 			Str("chunk-name", snapChunk.Name).
@@ -512,12 +542,32 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 		return
 	}
 
+	// The new epoch must be persisted, to avoid rolling it back
+	if err = newDb.UpdateEpoch(fc.epoch); err != nil {
+		fc.closeChannelNoMutex(errors.Wrap(err, "Failed to update epoch in db"))
+	}
+
+	commitIndex, err := newDb.ReadCommitIndex()
+	if err != nil {
+		fc.closeChannelNoMutex(errors.Wrap(err, "Failed to read committed index in the new snapshot"))
+		return
+	}
+
+	if err = stream.SendAndClose(&proto.SnapshotResponse{
+		AckIndex: commitIndex,
+	}); err != nil {
+		fc.closeChannelNoMutex(errors.Wrap(err, "Failed to send response after processing snapshot"))
+		return
+	}
+
 	fc.db = newDb
+	fc.commitIndex = commitIndex
 	fc.closeChannelNoMutex(nil)
 
 	fc.log.Info().
 		Int64("epoch", fc.epoch).
 		Int64("snapshot-size", totalSize).
+		Int64("commit-index", commitIndex).
 		Msg("Successfully applied snapshot")
 }
 

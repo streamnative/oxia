@@ -1,11 +1,12 @@
 package server
 
 import (
-	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
+	"google.golang.org/grpc/status"
 	"io"
+	"oxia/common"
 	"oxia/server/kv"
 	"oxia/server/wal"
 	"sync"
@@ -54,7 +55,7 @@ func (s *shardsDirector) GetLeader(shardId uint32) (LeaderController, error) {
 	defer s.Unlock()
 
 	if s.closed {
-		return nil, ErrorAlreadyClosed
+		return nil, common.ErrorAlreadyClosed
 	}
 
 	if leader, ok := s.leaders[shardId]; ok {
@@ -65,7 +66,7 @@ func (s *shardsDirector) GetLeader(shardId uint32) (LeaderController, error) {
 	s.log.Debug().
 		Uint32("shard", shardId).
 		Msg("This node is not hosting shard")
-	return nil, errors.Wrapf(ErrorNodeIsNotLeader, "node is not leader for shard %d", shardId)
+	return nil, status.Errorf(common.CodeNodeIsNotLeader, "node is not leader for shard %d", shardId)
 }
 
 func (s *shardsDirector) GetFollower(shardId uint32) (FollowerController, error) {
@@ -73,7 +74,7 @@ func (s *shardsDirector) GetFollower(shardId uint32) (FollowerController, error)
 	defer s.Unlock()
 
 	if s.closed {
-		return nil, ErrorAlreadyClosed
+		return nil, common.ErrorAlreadyClosed
 	}
 
 	if follower, ok := s.followers[shardId]; ok {
@@ -84,7 +85,7 @@ func (s *shardsDirector) GetFollower(shardId uint32) (FollowerController, error)
 	s.log.Debug().
 		Uint32("shard", shardId).
 		Msg("This node is not hosting shard")
-	return nil, errors.Wrapf(ErrorNodeIsNotFollower, "node is not follower for shard %d", shardId)
+	return nil, status.Errorf(common.CodeNodeIsNotFollower, "node is not follower for shard %d", shardId)
 }
 
 func (s *shardsDirector) GetOrCreateLeader(shardId uint32) (LeaderController, error) {
@@ -92,7 +93,7 @@ func (s *shardsDirector) GetOrCreateLeader(shardId uint32) (LeaderController, er
 	defer s.Unlock()
 
 	if s.closed {
-		return nil, ErrorAlreadyClosed
+		return nil, common.ErrorAlreadyClosed
 	}
 
 	if leader, ok := s.leaders[shardId]; ok {
@@ -123,7 +124,7 @@ func (s *shardsDirector) GetOrCreateFollower(shardId uint32) (FollowerController
 	defer s.Unlock()
 
 	if s.closed {
-		return nil, ErrorAlreadyClosed
+		return nil, common.ErrorAlreadyClosed
 	}
 
 	if follower, ok := s.followers[shardId]; ok {

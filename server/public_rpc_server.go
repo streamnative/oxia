@@ -6,12 +6,13 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/status"
 	"oxia/common"
 	"oxia/common/container"
 	"oxia/proto"
 )
 
-type PublicRpcServer struct {
+type publicRpcServer struct {
 	proto.UnimplementedOxiaClientServer
 
 	shardsDirector       ShardsDirector
@@ -20,8 +21,8 @@ type PublicRpcServer struct {
 	log                  zerolog.Logger
 }
 
-func NewPublicRpcServer(provider container.GrpcProvider, bindAddress string, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher) (*PublicRpcServer, error) {
-	server := &PublicRpcServer{
+func newPublicRpcServer(provider container.GrpcProvider, bindAddress string, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher) (*publicRpcServer, error) {
+	server := &publicRpcServer{
 		shardsDirector:       shardsDirector,
 		assignmentDispatcher: assignmentDispatcher,
 		log: log.With().
@@ -40,7 +41,7 @@ func NewPublicRpcServer(provider container.GrpcProvider, bindAddress string, sha
 	return server, nil
 }
 
-func (s *PublicRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest, srv proto.OxiaClient_ShardAssignmentsServer) error {
+func (s *publicRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest, srv proto.OxiaClient_ShardAssignmentsServer) error {
 	s.log.Debug().
 		Str("peer", common.GetPeer(srv.Context())).
 		Msg("Shard assignments requests")
@@ -54,7 +55,7 @@ func (s *PublicRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest, srv
 	return err
 }
 
-func (s *PublicRpcServer) Write(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error) {
+func (s *publicRpcServer) Write(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error) {
 	s.log.Debug().
 		Str("peer", common.GetPeer(ctx)).
 		Interface("req", write).
@@ -62,7 +63,7 @@ func (s *PublicRpcServer) Write(ctx context.Context, write *proto.WriteRequest) 
 
 	lc, err := s.shardsDirector.GetLeader(*write.ShardId)
 	if err != nil {
-		if !errors.Is(err, ErrorNodeIsNotLeader) {
+		if status.Code(err) != common.CodeNodeIsNotLeader {
 			s.log.Warn().Err(err).
 				Msg("Failed to get the leader controller")
 		}
@@ -78,7 +79,7 @@ func (s *PublicRpcServer) Write(ctx context.Context, write *proto.WriteRequest) 
 	return wr, err
 }
 
-func (s *PublicRpcServer) Read(ctx context.Context, read *proto.ReadRequest) (*proto.ReadResponse, error) {
+func (s *publicRpcServer) Read(ctx context.Context, read *proto.ReadRequest) (*proto.ReadResponse, error) {
 	s.log.Debug().
 		Str("peer", common.GetPeer(ctx)).
 		Interface("req", read).
@@ -86,7 +87,7 @@ func (s *PublicRpcServer) Read(ctx context.Context, read *proto.ReadRequest) (*p
 
 	lc, err := s.shardsDirector.GetLeader(*read.ShardId)
 	if err != nil {
-		if !errors.Is(err, ErrorNodeIsNotLeader) {
+		if status.Code(err) != common.CodeNodeIsNotLeader {
 			s.log.Warn().Err(err).
 				Msg("Failed to get the leader controller")
 		}
@@ -102,7 +103,7 @@ func (s *PublicRpcServer) Read(ctx context.Context, read *proto.ReadRequest) (*p
 	return rr, err
 }
 
-func (s *PublicRpcServer) GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
+func (s *publicRpcServer) GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
 	s.log.Debug().
 		Str("peer", common.GetPeer(stream.Context())).
 		Interface("req", req).
@@ -110,7 +111,7 @@ func (s *PublicRpcServer) GetNotifications(req *proto.NotificationsRequest, stre
 
 	lc, err := s.shardsDirector.GetLeader(req.ShardId)
 	if err != nil {
-		if !errors.Is(err, ErrorNodeIsNotLeader) {
+		if status.Code(err) != common.CodeNodeIsNotLeader {
 			s.log.Warn().Err(err).
 				Msg("Failed to get the leader controller")
 		}
@@ -125,6 +126,6 @@ func (s *PublicRpcServer) GetNotifications(req *proto.NotificationsRequest, stre
 	return err
 }
 
-func (s *PublicRpcServer) Close() error {
+func (s *publicRpcServer) Close() error {
 	return s.grpcServer.Close()
 }

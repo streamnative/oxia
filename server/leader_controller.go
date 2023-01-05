@@ -138,7 +138,7 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 	defer lc.Unlock()
 
 	if req.Epoch < lc.epoch {
-		return nil, ErrorInvalidEpoch
+		return nil, common.ErrorInvalidEpoch
 	} else if req.Epoch == lc.epoch && lc.status != proto.ServingStatus_Fenced {
 		// It's OK to receive a duplicate Fence request, for the same epoch, as long as we haven't moved
 		// out of the Fenced state for that epoch
@@ -147,7 +147,7 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 			Int64("fence-epoch", req.Epoch).
 			Interface("status", lc.status).
 			Msg("Failed to fence with same epoch in invalid state")
-		return nil, ErrorInvalidStatus
+		return nil, common.ErrorInvalidStatus
 	}
 
 	if err := lc.db.UpdateEpoch(req.GetEpoch()); err != nil {
@@ -217,11 +217,11 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 	defer lc.Unlock()
 
 	if lc.status != proto.ServingStatus_Fenced {
-		return nil, ErrorInvalidStatus
+		return nil, common.ErrorInvalidStatus
 	}
 
 	if req.Epoch != lc.epoch {
-		return nil, ErrorInvalidEpoch
+		return nil, common.ErrorInvalidEpoch
 	}
 
 	lc.status = proto.ServingStatus_Leader
@@ -271,11 +271,11 @@ func (lc *leaderController) AddFollower(req *proto.AddFollowerRequest) (*proto.A
 	defer lc.Unlock()
 
 	if req.Epoch != lc.epoch {
-		return nil, ErrorInvalidEpoch
+		return nil, common.ErrorInvalidEpoch
 	}
 
 	if lc.status != proto.ServingStatus_Leader {
-		return nil, errors.Wrap(ErrorInvalidStatus, "Node is not leader")
+		return nil, errors.Wrap(common.ErrorInvalidStatus, "Node is not leader")
 	}
 
 	if _, followerAlreadyPresent := lc.followers[req.FollowerName]; followerAlreadyPresent {
@@ -304,7 +304,7 @@ func (lc *leaderController) addFollower(follower string, followerHeadIndex *prot
 		return err
 	}
 
-	cursor, err := NewFollowerCursor(follower, lc.epoch, lc.shardId, lc.rpcClient, lc.quorumAckTracker, lc.wal,
+	cursor, err := NewFollowerCursor(follower, lc.epoch, lc.shardId, lc.rpcClient, lc.quorumAckTracker, lc.wal, lc.db,
 		followerHeadIndex.Offset)
 	if err != nil {
 		lc.log.Error().Err(err).
@@ -375,7 +375,7 @@ func (lc *leaderController) truncateFollowerIfNeeded(follower string, followerHe
 	// Coordinator should never send us a follower with an invalid epoch.
 	// Checking for sanity here.
 	if followerHeadIndex.Epoch > lc.leaderElectionHeadIndex.Epoch {
-		return nil, ErrorInvalidStatus
+		return nil, common.ErrorInvalidStatus
 	}
 
 	lastEntryInFollowerEpoch, err := GetHighestEntryOfEpoch(lc.wal, followerHeadIndex.Epoch)
@@ -419,12 +419,11 @@ func (lc *leaderController) Read(request *proto.ReadRequest) (*proto.ReadRespons
 		Interface("req", request).
 		Msg("Received read request")
 
-	{
-		lc.Lock()
-		defer lc.Unlock()
-		if err := checkStatus(proto.ServingStatus_Leader, lc.status); err != nil {
-			return nil, err
-		}
+	lc.Lock()
+	err := checkStatus(proto.ServingStatus_Leader, lc.status)
+	lc.Unlock()
+	if err != nil {
+		return nil, err
 	}
 
 	return lc.db.ProcessRead(request)
@@ -445,7 +444,7 @@ func (lc *leaderController) Write(request *proto.WriteRequest) (*proto.WriteResp
 
 	newOffset, err := lc.appendToWal(request, timestamp)
 	if err != nil {
-		return nil, errors.Wrap(err, "oxia: failed to append to wal")
+		return nil, err
 	}
 
 	return lc.quorumAckTracker.WaitForCommitIndex(newOffset, func() (*proto.WriteResponse, error) {
@@ -474,7 +473,7 @@ func (lc *leaderController) appendToWal(request *proto.WriteRequest, timestamp u
 	}
 
 	if err = lc.wal.Append(logEntry); err != nil {
-		return wal.InvalidOffset, err
+		return wal.InvalidOffset, errors.Wrap(err, "oxia: failed to append to wal")
 	}
 
 	lc.quorumAckTracker.AdvanceHeadIndex(newOffset)

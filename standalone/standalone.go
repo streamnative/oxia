@@ -18,13 +18,23 @@ type Config struct {
 
 	AdvertisedPublicAddress string
 	NumShards               uint32
+	InMemory                bool
 }
 
 type Standalone struct {
-	rpc        *StandaloneRpcServer
+	rpc        *rpcServer
 	kvFactory  kv.KVFactory
 	walFactory wal.WalFactory
 	metrics    *metrics.PrometheusMetrics
+}
+
+func NewTestConfig() Config {
+	return Config{
+		NumShards:               1,
+		BindHost:                "localhost",
+		AdvertisedPublicAddress: "localhost",
+		InMemory:                true,
+	}
 }
 
 func New(config Config) (*Standalone, error) {
@@ -34,27 +44,30 @@ func New(config Config) (*Standalone, error) {
 
 	s := &Standalone{}
 
-	hostname, err := os.Hostname()
-	if err != nil {
-		return nil, err
-	}
-
 	advertisedPublicAddress := config.AdvertisedPublicAddress
 	if advertisedPublicAddress == "" {
+		hostname, err := os.Hostname()
+		if err != nil {
+			return nil, err
+		}
 		advertisedPublicAddress = hostname
 	}
 
-	s.walFactory = wal.NewWalFactory(&wal.WalFactoryOptions{
-		LogDir: config.WalDir,
-	})
-
-	if s.kvFactory, err = kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
-		DataDir: config.DataDir,
-	}); err != nil {
+	var kvOptions kv.KVFactoryOptions
+	if config.InMemory {
+		kvOptions = kv.KVFactoryOptions{InMemory: true}
+		s.walFactory = wal.NewInMemoryWalFactory()
+	} else {
+		kvOptions = kv.KVFactoryOptions{DataDir: config.DataDir}
+		s.walFactory = wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: config.WalDir})
+	}
+	var err error
+	if s.kvFactory, err = kv.NewPebbleKVFactory(&kvOptions); err != nil {
 		return nil, err
 	}
 
-	s.rpc, err = NewStandaloneRpcServer(config, fmt.Sprintf("%s:%d", config.BindHost, config.PublicServicePort), advertisedPublicAddress, config.NumShards, s.walFactory, s.kvFactory)
+	s.rpc, err = newRpcServer(config, fmt.Sprintf("%s:%d", config.BindHost, config.PublicServicePort),
+		advertisedPublicAddress, config.NumShards, s.walFactory, s.kvFactory)
 	if err != nil {
 		return nil, err
 	}
@@ -65,6 +78,10 @@ func New(config Config) (*Standalone, error) {
 	}
 
 	return s, nil
+}
+
+func (s *Standalone) RpcPort() int {
+	return s.rpc.Port()
 }
 
 func (s *Standalone) Close() error {

@@ -1,6 +1,7 @@
 package batch
 
 import (
+	"context"
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/otel/metric"
 	"io"
@@ -98,7 +99,7 @@ func TestReadBatchComplete(t *testing.T) {
 			io.EOF,
 		},
 	} {
-		execute := func(request *proto.ReadRequest) (*proto.ReadResponse, error) {
+		execute := func(ctx context.Context, request *proto.ReadRequest) (*proto.ReadResponse, error) {
 			assert.Equal(t, &proto.ReadRequest{
 				ShardId: &shardId,
 				Gets: []*proto.GetRequest{{

@@ -26,7 +26,7 @@ type Config struct {
 
 	BatchLinger         time.Duration
 	MaxRequestsPerBatch int
-	BatchRequestTimeout time.Duration
+	RequestTimeout      time.Duration
 	BatcherBufferSize   int
 }
 
@@ -52,9 +52,9 @@ func init() {
 	Cmd.Flags().Uint32Var(&config.KeysCardinality, "keys-cardinality", 1000, "Batch linger in milliseconds")
 	Cmd.Flags().Uint32VarP(&config.PayloadSize, "payload-size", "s", 128, "Size of the payload to write")
 
-	Cmd.Flags().DurationVar(&config.BatchLinger, "batch-linger", oxia.DefaultBatchLinger, "Batch linger in milliseconds")
+	Cmd.Flags().DurationVar(&config.BatchLinger, "batch-linger", oxia.DefaultBatchLinger, "Batch linger time")
 	Cmd.Flags().IntVar(&config.MaxRequestsPerBatch, "max-requests-per-batch", oxia.DefaultMaxRequestsPerBatch, "Maximum requests per batch")
-	Cmd.Flags().DurationVar(&config.BatchRequestTimeout, "batch-request-timeout", oxia.DefaultBatchRequestTimeout, "Batch timeout in seconds")
+	Cmd.Flags().DurationVar(&config.RequestTimeout, "request-timeout", oxia.DefaultRequestTimeout, "Request timeout")
 	Cmd.Flags().IntVar(&config.BatcherBufferSize, "batcher-buffer-size", oxia.DefaultBatcherBufferSize, "Batcher buffer size")
 }
 
@@ -99,7 +99,7 @@ func perfMain(closer *closer) {
 	client, err := oxia.NewAsyncClient(config.ServiceAddr,
 		oxia.WithBatchLinger(config.BatchLinger),
 		oxia.WithMaxRequestsPerBatch(config.MaxRequestsPerBatch),
-		oxia.WithBatchRequestTimeout(config.BatchRequestTimeout),
+		oxia.WithRequestTimeout(config.RequestTimeout),
 		oxia.WithBatcherBufferSize(config.BatcherBufferSize),
 	)
 	if err != nil {
