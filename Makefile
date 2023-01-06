@@ -3,6 +3,10 @@
 build: proto crd
 	go build -v -o bin/oxia ./cmd
 
+.PHONY: maelstrom
+maelstrom: proto
+	go build -v -o bin/oxia-maelstrom ./maelstrom
+
 test: build
 	go test -cover -race ./...
 
