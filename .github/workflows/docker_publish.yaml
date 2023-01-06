@@ -1,11 +1,6 @@
 name: DockerHub Publish
 
 on:
-  # Test only
-  pull_request:
-    branches:
-      - main
-
   push:
     branches:
       - "*"
@@ -33,7 +28,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v4
         with:
-          images: streamnative/oxia
+          images: ${{ github.repository }}
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
@@ -53,3 +48,5 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ steps.meta.outputs.tags }}
+          cache-to: type=inline
