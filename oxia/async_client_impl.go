@@ -38,7 +38,7 @@ func NewAsyncClient(serviceAddress string, opts ...ClientOption) (AsyncClient, e
 		return nil, err
 	}
 
-	shardManager, err := internal.NewShardManager(internal.NewShardStrategy(), clientPool, serviceAddress, options.batchRequestTimeout)
+	shardManager, err := internal.NewShardManager(internal.NewShardStrategy(), clientPool, serviceAddress, options.requestTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,6 @@ func NewAsyncClient(serviceAddress string, opts ...ClientOption) (AsyncClient, e
 		ClientPool:     clientPool,
 		ShardManager:   shardManager,
 		ServiceAddress: options.serviceAddress,
-		Timeout:        options.batchRequestTimeout,
 	}
 	batcherFactory := &batch.BatcherFactory{
 		Executor:            executor,
@@ -55,6 +54,7 @@ func NewAsyncClient(serviceAddress string, opts ...ClientOption) (AsyncClient, e
 		MaxRequestsPerBatch: options.maxRequestsPerBatch,
 		BatcherBufferSize:   options.batcherBufferSize,
 		Metrics:             metrics.NewMetrics(options.meterProvider),
+		RequestTimeout:      options.requestTimeout,
 	}
 	c := &clientImpl{
 		clientPool:        clientPool,

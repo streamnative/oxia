@@ -31,6 +31,7 @@ import (
 	"github.com/spf13/afero"
 	"github.com/tidwall/tinylru"
 	"os"
+	"oxia/common/metrics"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -115,6 +116,8 @@ type Log struct {
 	wbatch      Batch       // reusable write batch
 	scache      tinylru.LRU // segment entries cache
 	fs          afero.Fs    // Filesystem
+
+	syncLatency metrics.LatencyHistogram
 }
 
 // segment represents a single segment file.
@@ -132,6 +135,10 @@ type bpos struct {
 
 // Open a new write-ahead log
 func Open(path string, opts *Options) (*Log, error) {
+	return OpenWithShard(path, 0, opts)
+}
+
+func OpenWithShard(path string, shard uint32, opts *Options) (*Log, error) {
 	defaultOptions := DefaultOptions()
 	if opts == nil {
 		opts = defaultOptions
@@ -157,7 +164,14 @@ func Open(path string, opts *Options) (*Log, error) {
 	if err != nil {
 		return nil, err
 	}
-	l := &Log{path: path, opts: *opts, fs: fs}
+	l := &Log{
+		path: path,
+		opts: *opts,
+		fs:   fs,
+		syncLatency: metrics.NewLatencyHistogram("oxia_server_wal_sync_latency",
+			"The time it takes to fsync the wal data on disk",
+			metrics.LabelsForShard(shard)),
+	}
 	l.scache.Resize(l.opts.SegmentCacheSize)
 	if err := l.fs.MkdirAll(path, l.opts.DirPerms); err != nil {
 		return nil, err
@@ -340,7 +354,7 @@ func (l *Log) Close() error {
 		}
 		return ErrClosed
 	}
-	if err := l.sfile.Sync(); err != nil {
+	if err := l.syncNoMutex(); err != nil {
 		return err
 	}
 	if err := l.sfile.Close(); err != nil {
@@ -369,7 +383,7 @@ func (l *Log) Write(offset int64, data []byte) error {
 
 // Cycle the old segment for a new segment.
 func (l *Log) cycle(nextOffset int64) error {
-	if err := l.sfile.Sync(); err != nil {
+	if err := l.syncNoMutex(); err != nil {
 		return err
 	}
 	if err := l.sfile.Close(); err != nil {
@@ -497,7 +511,7 @@ func (l *Log) writeBatch(b *Batch) error {
 		l.lastOffset = b.entries[len(b.entries)-1].offset
 	}
 	if !l.opts.NoSync {
-		if err := l.sfile.Sync(); err != nil {
+		if err := l.syncNoMutex(); err != nil {
 			return err
 		}
 	}
@@ -971,6 +985,13 @@ func (l *Log) Sync() error {
 	} else if l.closed {
 		return ErrClosed
 	}
+	return l.syncNoMutex()
+}
+
+func (l *Log) syncNoMutex() error {
+	timer := l.syncLatency.Timer()
+	defer timer.Done()
+
 	return l.sfile.Sync()
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/cenkalti/backoff/v4"
+	"github.com/dustin/go-humanize"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
@@ -11,6 +12,7 @@ import (
 	"io"
 	"oxia/common"
 	"oxia/proto"
+	"oxia/server/kv"
 	"oxia/server/wal"
 	"sync"
 	"sync/atomic"
@@ -22,6 +24,7 @@ import (
 // It's used to allow passing in a mocked version of the Grpc service
 type AddEntriesStreamProvider interface {
 	GetAddEntriesStream(ctx context.Context, follower string, shard uint32) (proto.OxiaLogReplication_AddEntriesClient, error)
+	SendSnapshot(ctx context.Context, follower string, shard uint32) (proto.OxiaLogReplication_SendSnapshotClient, error)
 }
 
 // FollowerCursor
@@ -51,6 +54,7 @@ type followerCursor struct {
 	ackTracker  QuorumAckTracker
 	cursorAcker CursorAcker
 	wal         wal.Wal
+	db          kv.DB
 	lastPushed  atomic.Int64
 	ackIndex    atomic.Int64
 	shardId     uint32
@@ -69,6 +73,7 @@ func NewFollowerCursor(
 	addEntriesStreamProvider AddEntriesStreamProvider,
 	ackTracker QuorumAckTracker,
 	wal wal.Wal,
+	db kv.DB,
 	ackIndex int64) (FollowerCursor, error) {
 
 	fc := &followerCursor{
@@ -77,6 +82,7 @@ func NewFollowerCursor(
 		ackTracker:               ackTracker,
 		addEntriesStreamProvider: addEntriesStreamProvider,
 		wal:                      wal,
+		db:                       db,
 		shardId:                  shardId,
 
 		log: log.With().
@@ -108,14 +114,38 @@ func NewFollowerCursor(
 	return fc, nil
 }
 
-func (fc *followerCursor) Close() error {
+func (fc *followerCursor) shouldSendSnapshot() bool {
 	fc.Lock()
 	defer fc.Unlock()
 
-	fc.closed.Store(true)
-	if fc.cancel != nil {
-		fc.cancel()
+	ackIndex := fc.ackIndex.Load()
+	walFirstOffset := fc.wal.FirstOffset()
+
+	if ackIndex == wal.InvalidOffset && fc.ackTracker.CommitIndex() >= 0 {
+		fc.log.Info().
+			Int64("follower-ack-index", ackIndex).
+			Int64("leader-commit-index", fc.ackTracker.CommitIndex()).
+			Msg("Sending snapshot to empty follower")
+		return true
+	} else if walFirstOffset > 0 && ackIndex < walFirstOffset {
+		fc.log.Info().
+			Int64("follower-ack-index", ackIndex).
+			Int64("wal-first-offset", fc.wal.FirstOffset()).
+			Int64("wal-last-offset", fc.wal.LastOffset()).
+			Msg("The follower is behind the first available entry in the leader WAL")
+		return true
 	}
+
+	// No snapshot, just tail the log
+	return false
+}
+
+func (fc *followerCursor) Close() error {
+	fc.closed.Store(true)
+	fc.cancel()
+
+	fc.Lock()
+	defer fc.Unlock()
 
 	if fc.stream != nil {
 		return fc.stream.CloseSend()
@@ -137,16 +167,94 @@ func (fc *followerCursor) AckIndex() int64 {
 }
 
 func (fc *followerCursor) run() {
-	_ = backoff.RetryNotify(func() error {
-		return fc.runOnce()
-	}, fc.backoff, func(err error, duration time.Duration) {
-		fc.log.Error().Err(err).
-			Dur("retry-after", duration).
-			Msg("Error while pushing entries to follower")
-	})
+	_ = backoff.RetryNotify(fc.runOnce, fc.backoff,
+		func(err error, duration time.Duration) {
+			fc.log.Error().Err(err).
+				Dur("retry-after", duration).
+				Msg("Error while pushing entries to follower")
+		})
 }
 
 func (fc *followerCursor) runOnce() error {
+	if fc.shouldSendSnapshot() {
+		if err := fc.sendSnapshot(); err != nil {
+			return err
+		}
+	}
+
+	return fc.streamEntries()
+}
+
+func (fc *followerCursor) sendSnapshot() error {
+	fc.Lock()
+	defer fc.Unlock()
+
+	ctx, cancel := context.WithCancel(fc.ctx)
+	defer cancel()
+
+	stream, err := fc.addEntriesStreamProvider.SendSnapshot(ctx, fc.follower, fc.shardId)
+	if err != nil {
+		return err
+	}
+
+	snapshot, err := fc.db.Snapshot()
+	if err != nil {
+		return err
+	}
+
+	defer snapshot.Close()
+
+	var chunksCount, totalSize int64
+	startTime := time.Now()
+
+	for ; snapshot.Valid(); snapshot.Next() {
+		chunk := snapshot.Chunk()
+		content, err := chunk.Content()
+		if err != nil {
+			return err
+		}
+
+		fc.log.Debug().
+			Str("chunk-name", chunk.Name()).
+			Int("chunk-size", len(content)).
+			Msg("Sending snapshot chunk")
+
+		if err := stream.Send(&proto.SnapshotChunk{
+			Epoch:   fc.epoch,
+			Name:    chunk.Name(),
+			Content: content,
+		}); err != nil {
+			return err
+		}
+
+		chunksCount++
+		totalSize += int64(len(content))
+	}
+
+	fc.log.Debug().
+		Msg("Sent the complete snapshot, waiting for response")
+
+	// Sent all the chunks. Wait for the follower ack
+	response, err := stream.CloseAndRecv()
+	if err != nil {
+		return err
+	}
+
+	elapsedTime := time.Since(startTime)
+	throughput := float64(totalSize) / elapsedTime.Seconds()
+
+	fc.log.Info().
+		Int64("chunks-count", chunksCount).
+		Str("total-size", humanize.IBytes(uint64(totalSize))).
+		Stringer("elapsed-time", elapsedTime).
+		Str("throughput", fmt.Sprintf("%s/s", humanize.IBytes(uint64(throughput)))).
+		Int64("follower-ack-index", response.AckIndex).
+		Msg("Successfully sent snapshot to follower")
+	fc.ackIndex.Store(response.AckIndex)
+	return nil
+}
+
+func (fc *followerCursor) streamEntries() error {
 	ctx, cancel := context.WithCancel(fc.ctx)
 	defer cancel()
 

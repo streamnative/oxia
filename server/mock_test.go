@@ -67,9 +67,10 @@ func (m *mockServerAddEntriesStream) RecvMsg(msg interface{}) error {
 
 func newMockRpcClient() *mockRpcClient {
 	return &mockRpcClient{
-		addEntryReqs:  make(chan *proto.AddEntryRequest, 1000),
-		addEntryResps: make(chan *proto.AddEntryResponse, 1000),
-		truncateReqs:  make(chan *proto.TruncateRequest, 1000),
+		sendSnapshotStream: newMockSendSnapshotClientStream(context.Background()),
+		addEntryReqs:       make(chan *proto.AddEntryRequest, 1000),
+		addEntryResps:      make(chan *proto.AddEntryResponse, 1000),
+		truncateReqs:       make(chan *proto.TruncateRequest, 1000),
 		truncateResps: make(chan struct {
 			*proto.TruncateResponse
 			error
@@ -79,10 +80,11 @@ func newMockRpcClient() *mockRpcClient {
 }
 
 type mockRpcClient struct {
-	addEntryReqs  chan *proto.AddEntryRequest
-	addEntryResps chan *proto.AddEntryResponse
-	truncateReqs  chan *proto.TruncateRequest
-	truncateResps chan struct {
+	sendSnapshotStream *mockSendSnapshotClientStream
+	addEntryReqs       chan *proto.AddEntryRequest
+	addEntryResps      chan *proto.AddEntryResponse
+	truncateReqs       chan *proto.TruncateRequest
+	truncateResps      chan struct {
 		*proto.TruncateResponse
 		error
 	}
@@ -129,6 +131,10 @@ func (m *mockRpcClient) RecvMsg(msg interface{}) error {
 
 func (m *mockRpcClient) GetAddEntriesStream(ctx context.Context, follower string, shard uint32) (proto.OxiaLogReplication_AddEntriesClient, error) {
 	return m, nil
+}
+
+func (m *mockRpcClient) SendSnapshot(ctx context.Context, follower string, shard uint32) (proto.OxiaLogReplication_SendSnapshotClient, error) {
+	return m.sendSnapshotStream, nil
 }
 
 func (m *mockRpcClient) Truncate(follower string, req *proto.TruncateRequest) (*proto.TruncateResponse, error) {
@@ -347,5 +353,79 @@ func (m *mockGetNotificationsServer) SendMsg(msg interface{}) error {
 }
 
 func (m *mockGetNotificationsServer) RecvMsg(msg interface{}) error {
+	panic("not implemented")
+}
+
+//////
+
+func newMockSendSnapshotClientStream(ctx context.Context) *mockSendSnapshotClientStream {
+	r := &mockSendSnapshotClientStream{
+		requests: make(chan *proto.SnapshotChunk, 100),
+		response: make(chan *proto.SnapshotResponse, 1),
+		md:       make(metadata.MD),
+	}
+
+	r.ctx, r.cancel = context.WithCancel(ctx)
+	return r
+}
+
+type mockSendSnapshotClientStream struct {
+	requests chan *proto.SnapshotChunk
+	response chan *proto.SnapshotResponse
+	md       metadata.MD
+	ctx      context.Context
+	cancel   context.CancelFunc
+}
+
+func (m *mockSendSnapshotClientStream) Send(chunk *proto.SnapshotChunk) error {
+	select {
+	case <-m.ctx.Done():
+		return m.ctx.Err()
+	case m.requests <- chunk:
+		return nil
+	}
+}
+
+func (m *mockSendSnapshotClientStream) CloseAndRecv() (*proto.SnapshotResponse, error) {
+	m.cancel()
+	close(m.requests)
+	return <-m.response, nil
+}
+
+func (m *mockSendSnapshotClientStream) Header() (metadata.MD, error) {
+	panic("not implemented")
+}
+
+func (m *mockSendSnapshotClientStream) Trailer() metadata.MD {
+	panic("not implemented")
+}
+
+func (m *mockSendSnapshotClientStream) CloseSend() error {
+	m.cancel()
+	return nil
+}
+
+func (m *mockSendSnapshotClientStream) SetHeader(md metadata.MD) error {
+	m.md = md
+	return nil
+}
+
+func (m *mockSendSnapshotClientStream) SendHeader(md metadata.MD) error {
+	panic("not implemented")
+}
+
+func (m *mockSendSnapshotClientStream) SetTrailer(md metadata.MD) {
+	panic("not implemented")
+}
+
+func (m *mockSendSnapshotClientStream) Context() context.Context {
+	return m.ctx
+}
+
+func (m *mockSendSnapshotClientStream) SendMsg(msg interface{}) error {
+	panic("not implemented")
+}
+
+func (m *mockSendSnapshotClientStream) RecvMsg(msg interface{}) error {
 	panic("not implemented")
 }
