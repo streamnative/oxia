@@ -6,6 +6,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"oxia/common"
 	"oxia/common/container"
@@ -61,12 +62,8 @@ func (s *publicRpcServer) Write(ctx context.Context, write *proto.WriteRequest) 
 		Interface("req", write).
 		Msg("Write request")
 
-	lc, err := s.shardsDirector.GetLeader(*write.ShardId)
+	lc, err := s.getLeader(*write.ShardId)
 	if err != nil {
-		if status.Code(err) != common.CodeNodeIsNotLeader {
-			s.log.Warn().Err(err).
-				Msg("Failed to get the leader controller")
-		}
 		return nil, err
 	}
 
@@ -85,12 +82,8 @@ func (s *publicRpcServer) Read(ctx context.Context, read *proto.ReadRequest) (*p
 		Interface("req", read).
 		Msg("Write request")
 
-	lc, err := s.shardsDirector.GetLeader(*read.ShardId)
+	lc, err := s.getLeader(*read.ShardId)
 	if err != nil {
-		if status.Code(err) != common.CodeNodeIsNotLeader {
-			s.log.Warn().Err(err).
-				Msg("Failed to get the leader controller")
-		}
 		return nil, err
 	}
 
@@ -109,12 +102,8 @@ func (s *publicRpcServer) GetNotifications(req *proto.NotificationsRequest, stre
 		Interface("req", req).
 		Msg("Get notifications")
 
-	lc, err := s.shardsDirector.GetLeader(req.ShardId)
+	lc, err := s.getLeader(req.ShardId)
 	if err != nil {
-		if status.Code(err) != common.CodeNodeIsNotLeader {
-			s.log.Warn().Err(err).
-				Msg("Failed to get the leader controller")
-		}
 		return err
 	}
 
@@ -128,6 +117,89 @@ func (s *publicRpcServer) GetNotifications(req *proto.NotificationsRequest, stre
 
 func (s *publicRpcServer) Port() int {
 	return s.grpcServer.Port()
+}
+
+func (s *publicRpcServer) CreateSession(ctx context.Context, req *proto.CreateSessionRequest) (*proto.CreateSessionResponse, error) {
+	s.log.Debug().
+		Str("peer", common.GetPeer(ctx)).
+		Interface("req", req).
+		Msg("Create session request")
+	lc, err := s.getLeader(req.ShardId)
+	if err != nil {
+		return nil, err
+	}
+	res, err := lc.CreateSession(req)
+	if err != nil {
+		s.log.Warn().Err(err).
+			Msg("Failed to create session")
+		return nil, err
+	}
+	return res, nil
+}
+
+func (s *publicRpcServer) KeepAlive(stream proto.OxiaClient_KeepAliveServer) error {
+	// KeepAlive receives an incoming stream of request, the shard_id needs to be encoded
+	// as a property in the metadata
+	md, ok := metadata.FromIncomingContext(stream.Context())
+	if !ok {
+		return errors.New("shard id is not set in the request metadata")
+	}
+
+	shardId, err := ReadHeaderUint32(md, common.MetadataShardId)
+	if err != nil {
+		return err
+	}
+	sessionId, err := ReadHeaderInt64(md, common.MetadataSessionId)
+	if err != nil {
+		return err
+	}
+
+	s.log.Debug().
+		Uint32("shard", shardId).
+		Int64("session", sessionId).
+		Str("peer", common.GetPeer(stream.Context())).
+		Msg("Session keep alive")
+	lc, err := s.getLeader(shardId)
+	if err != nil {
+		return err
+	}
+	err = lc.KeepAlive(sessionId, stream)
+	if err != nil {
+		s.log.Warn().Err(err).
+			Msg("Failed to listen to heartbeats")
+		return err
+	}
+	return nil
+}
+
+func (s *publicRpcServer) CloseSession(ctx context.Context, req *proto.CloseSessionRequest) (*proto.CloseSessionResponse, error) {
+	s.log.Debug().
+		Str("peer", common.GetPeer(ctx)).
+		Interface("req", req).
+		Msg("Close session request")
+	lc, err := s.getLeader(req.ShardId)
+	if err != nil {
+		return nil, err
+	}
+	res, err := lc.CloseSession(req)
+	if err != nil {
+		s.log.Warn().Err(err).
+			Msg("Failed to close session")
+		return nil, err
+	}
+	return res, nil
+}
+
+func (s *publicRpcServer) getLeader(shardId uint32) (LeaderController, error) {
+	lc, err := s.shardsDirector.GetLeader(shardId)
+	if err != nil {
+		if status.Code(err) != common.CodeNodeIsNotLeader {
+			s.log.Warn().Err(err).
+				Msg("Failed to get the leader controller")
+		}
+		return nil, err
+	}
+	return lc, nil
 }
 
 func (s *publicRpcServer) Close() error {

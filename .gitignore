@@ -1,5 +1,6 @@
 .idea
 bin/oxia
+bin/oxia-maelstrom
 **/*.pb.go
 .DS_Store
 **/*.toolbox
