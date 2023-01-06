@@ -174,7 +174,7 @@ func (sm *sessionManager) Initialize() error {
 }
 
 func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, error) {
-	listResp, err := sm.leaderController.readWithoutLocking(&proto.ReadRequest{
+	listResp, err := sm.leaderController.db.ProcessRead(&proto.ReadRequest{
 		ShardId: &sm.shardId,
 		Gets:    nil,
 		Lists: []*proto.ListRequest{
@@ -194,7 +194,7 @@ func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, 
 			IncludePayload: true,
 		})
 	}
-	getResp, err := sm.leaderController.readWithoutLocking(&proto.ReadRequest{
+	getResp, err := sm.leaderController.db.ProcessRead(&proto.ReadRequest{
 		ShardId: &sm.shardId,
 		Gets:    gets,
 		Lists:   nil,

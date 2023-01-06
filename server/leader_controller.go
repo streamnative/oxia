@@ -444,10 +444,6 @@ func (lc *leaderController) Read(request *proto.ReadRequest) (*proto.ReadRespons
 		return nil, err
 	}
 
-	return lc.readWithoutLocking(request)
-}
-
-func (lc *leaderController) readWithoutLocking(request *proto.ReadRequest) (*proto.ReadResponse, error) {
 	return lc.db.ProcessRead(request)
 }
 
