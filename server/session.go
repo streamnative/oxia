@@ -2,10 +2,10 @@ package server
 
 import (
 	"errors"
-	"fmt"
 	"github.com/rs/zerolog"
 	"io"
 	"net/url"
+	"oxia/common"
 	"oxia/proto"
 	"sync"
 	"time"
@@ -33,9 +33,11 @@ func startSession(sessionId SessionId, sessionMetadata *proto.SessionMetadata, s
 		heartbeatCh: make(chan *proto.SessionHeartbeat, 1),
 		closeCh:     make(chan error),
 		log: sm.log.With().
+			Str("component", "session").
 			Str("session-id", hexId(sessionId)).Logger(),
 	}
 	go s.waitForHeartbeats()
+	s.log.Info().Msg("Session started")
 	return s
 }
 
@@ -48,6 +50,10 @@ func (s *session) closeChannels() {
 		close(s.heartbeatCh)
 		s.heartbeatCh = nil
 	}
+	s.log.Debug().Msg("Session channels closed")
+	s.sm.Lock()
+	delete(s.sm.sessions, s.id)
+	s.sm.Unlock()
 }
 
 func (s *session) delete() error {
@@ -66,11 +72,12 @@ func (s *session) delete() error {
 	}
 	// Delete ephemerals
 	var deletes []*proto.DeleteRequest
+	s.log.Debug().Strs("keys", list.Lists[0].Keys).Msg("Keys to delete")
 	for _, key := range list.Lists[0].Keys {
-		unescapedKey, err := url.PathUnescape(key[:len(sessionKey)])
+		unescapedKey, err := url.PathUnescape(key[len(sessionKey):])
 		if err != nil {
-			// TODO maybe only log the error and continue. Although this error should never happen
-			return err
+			s.log.Error().Err(err).Str("key", sessionKey).Msg("Invalid session key")
+			continue
 		}
 		if unescapedKey != "" {
 			deletes = append(deletes, &proto.DeleteRequest{
@@ -90,8 +97,23 @@ func (s *session) delete() error {
 			},
 		},
 	})
+	s.log.Debug().Msg("Session deleted")
 	return err
 
+}
+
+func (s *session) attach(server proto.OxiaClient_KeepAliveServer) (chan error, error) {
+	s.Lock()
+	if s.attached {
+		s.log.Error().Msg("Session already attached")
+		s.Unlock()
+		return nil, common.ErrorInvalidSession
+	}
+	s.attached = true
+	ch := s.closeCh
+	s.Unlock()
+	go s.receiveHeartbeats(server)
+	return ch, nil
 }
 
 func (s *session) heartbeat(heartbeat *proto.SessionHeartbeat) {
@@ -107,8 +129,9 @@ func (s *session) waitForHeartbeats() {
 	heartbeatChannel := s.heartbeatCh
 	s.Unlock()
 	s.log.Debug().Msg("Waiting for heartbeats")
-	timeout := s.timeout
 	for {
+		var timer = time.NewTimer(s.timeout)
+		var timeoutCh = timer.C
 		select {
 
 		case heartbeat := <-heartbeatChannel:
@@ -116,7 +139,8 @@ func (s *session) waitForHeartbeats() {
 				// The channel is closed, so the session must be closing
 				return
 			}
-		case <-time.After(timeout):
+			timer.Reset(s.timeout)
+		case <-timeoutCh:
 			s.log.Info().
 				Msg("Session expired")
 
@@ -134,14 +158,13 @@ func (s *session) waitForHeartbeats() {
 }
 
 func (s *session) receiveHeartbeats(stream proto.OxiaClient_KeepAliveServer) {
-
 	for {
 		heartbeat, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
 			// closing already
 			return
 		} else if err != nil {
-			s.closeCh <- fmt.Errorf("session (sessionId=%d) already attached", s.id)
+			s.closeCh <- err
 			return
 		}
 		if heartbeat == nil {

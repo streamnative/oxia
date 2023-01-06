@@ -86,7 +86,7 @@ func (m mockWriteBatch) Commit() error {
 }
 
 func TestSessionUpdateOperationCallback_OnPut(t *testing.T) {
-	sessionId := uint64(12345)
+	sessionId := int64(12345)
 	version := int64(2)
 
 	noSessionPutRequest := &proto.PutRequest{
@@ -172,7 +172,7 @@ func TestSessionUpdateOperationCallback_OnPut(t *testing.T) {
 	assert.ErrorIs(t, err, expectedErr)
 }
 
-func storageEntry(t *testing.T, sessionId uint64) []byte {
+func storageEntry(t *testing.T, sessionId int64) []byte {
 	entry := &proto.StorageEntry{
 		Payload:               nil,
 		Version:               0,
@@ -186,7 +186,7 @@ func storageEntry(t *testing.T, sessionId uint64) []byte {
 }
 
 func TestSessionUpdateOperationCallback_OnDelete(t *testing.T) {
-	sessionId := uint64(12345)
+	sessionId := int64(12345)
 
 	writeBatch := mockWriteBatch{
 		"a/b/c": storageEntry(t, sessionId),
@@ -201,74 +201,129 @@ func TestSessionUpdateOperationCallback_OnDelete(t *testing.T) {
 }
 
 func TestSessionManager(t *testing.T) {
+	shardId := uint32(1)
 	// Invalid session timeout
-	sManager, controller := createSessionManager(t)
+	sManager, lc := createSessionManager(t)
 	_, err := sManager.CreateSession(&proto.CreateSessionRequest{
-		ShardId:          1,
+		ShardId:          shardId,
 		SessionTimeoutMs: uint32((1 * time.Hour).Milliseconds()),
 	})
 	assert.ErrorIs(t, err, common.ErrorInvalidSessionTimeout)
 
 	// Create and close a session, check if its persisted
 	createResp, err := sManager.CreateSession(&proto.CreateSessionRequest{
-		ShardId:          1,
+		ShardId:          shardId,
 		SessionTimeoutMs: 5 * 1000,
 	})
 	assert.NoError(t, err)
 	sessionId := createResp.SessionId
-	meta := getSessionMetadata(t, controller, sessionId)
+	meta := getSessionMetadata(t, lc, sessionId)
 	assert.NotNil(t, meta)
 	assert.Equal(t, uint32(5000), meta.TimeoutMs)
 
 	_, err = sManager.CloseSession(&proto.CloseSessionRequest{
-		ShardId:   1,
+		ShardId:   shardId,
 		SessionId: sessionId,
 	})
 	assert.NoError(t, err)
-	assert.Nil(t, getSessionMetadata(t, controller, sessionId))
+	assert.Nil(t, getSessionMetadata(t, lc, sessionId))
 
 	// Create a session, watch it time out
 	createResp, err = sManager.CreateSession(&proto.CreateSessionRequest{
-		ShardId:          1,
+		ShardId:          shardId,
 		SessionTimeoutMs: 50,
 	})
 	assert.NoError(t, err)
 	newSessionId := createResp.SessionId
 	assert.NotEqual(t, sessionId, newSessionId)
 	sessionId = newSessionId
-	meta = getSessionMetadata(t, controller, sessionId)
+	meta = getSessionMetadata(t, lc, sessionId)
 	assert.NotNil(t, meta)
 
 	assert.Eventually(t, func() bool {
-		return getSessionMetadata(t, controller, sessionId) == nil
+		return getSessionMetadata(t, lc, sessionId) == nil
 	}, time.Second, 30*time.Millisecond)
 
 	// Create a session, keep it alive
-	//createResp, err = sManager.CreateSession(&proto.CreateSessionRequest{
-	//	ShardId:          1,
-	//	SessionTimeoutMs: 50,
-	//})
-	//assert.NoError(t, err)
-	//sessionId = createResp.SessionId
-	//meta = getSessionMetadata(t, leaderController, sessionId)
-	//assert.NotNil(t, meta)
-	//
-	//go func() {
-	//	sManager.KeepAlive(1, sessionId, )
-	//	i := 0
-	//	for i < 6 {
-	//		time.Sleep(30 * time.Millisecond)
-	//		i++
-	//	}
-	//}()
+	createResp, err = sManager.CreateSession(&proto.CreateSessionRequest{
+		ShardId:          shardId,
+		SessionTimeoutMs: 50,
+	})
+	assert.NoError(t, err)
+	sessionId = createResp.SessionId
+	meta = getSessionMetadata(t, lc, sessionId)
+	assert.NotNil(t, meta)
+	keepAlive(t, sManager, sessionId, err, 30*time.Millisecond, 6)
+	time.Sleep(200 * time.Millisecond)
+	assert.NotNil(t, getSessionMetadata(t, lc, sessionId))
 
-	assert.NoError(t, controller.Close())
+	assert.Eventually(t, func() bool {
+		return getSessionMetadata(t, lc, sessionId) == nil
+	}, 10*time.Second, 30*time.Millisecond)
+
+	// Create a session, put an ephemeral value
+	createResp, err = sManager.CreateSession(&proto.CreateSessionRequest{
+		ShardId:          shardId,
+		SessionTimeoutMs: 50,
+	})
+	assert.NoError(t, err)
+	sessionId = createResp.SessionId
+	meta = getSessionMetadata(t, lc, sessionId)
+	assert.NotNil(t, meta)
+	keepAlive(t, sManager, sessionId, err, 30*time.Millisecond, 6)
+
+	_, err = lc.Write(&proto.WriteRequest{
+		ShardId: &shardId,
+		Puts: []*proto.PutRequest{{
+			Key:       "a/b",
+			Payload:   []byte("a/b"),
+			SessionId: &sessionId,
+		}},
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, "a/b", getData(t, lc, "a/b"))
+	assert.Eventually(t, func() bool {
+		return getSessionMetadata(t, lc, sessionId) == nil &&
+			getData(t, lc, "a/b") == ""
+
+	}, 10*time.Second, 30*time.Millisecond)
+
+	assert.NoError(t, lc.Close())
 
 }
 
-func getSessionMetadata(t *testing.T, controller *leaderController, sessionId int64) *proto.SessionMetadata {
+func getData(t *testing.T, lc *leaderController, key string) string {
 	shard := uint32(1)
-	resp, err := controller.db.ProcessRead(&proto.ReadRequest{
+	resp, err := lc.db.ProcessRead(&proto.ReadRequest{
+		ShardId: &shard,
+		Gets: []*proto.GetRequest{{
+			Key:            key,
+			IncludePayload: true,
+		}},
+		Lists: nil,
+	})
+	assert.NoError(t, err)
+	if resp.Gets[0].Status != proto.Status_KEY_NOT_FOUND {
+		return string(resp.Gets[0].Payload)
+	}
+	return ""
+}
+
+func keepAlive(t *testing.T, sManager *sessionManager, sessionId int64, err error, sleepTime time.Duration, heartbeatCount int) {
+	stream := newMockKeepAliveServer()
+	go func() {
+		go func() { assert.NoError(t, sManager.KeepAlive(sessionId, stream)) }()
+		assert.NoError(t, err)
+		for i := 0; i < heartbeatCount; i++ {
+			time.Sleep(sleepTime)
+			stream.sendHeartbeat(&proto.SessionHeartbeat{})
+		}
+	}()
+}
+
+func getSessionMetadata(t *testing.T, lc *leaderController, sessionId int64) *proto.SessionMetadata {
+	shard := uint32(1)
+	resp, err := lc.db.ProcessRead(&proto.ReadRequest{
 		ShardId: &shard,
 		Gets: []*proto.GetRequest{{
 			Key:            SessionKey(SessionId(sessionId)),

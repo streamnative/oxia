@@ -128,28 +128,29 @@ func (sm *sessionManager) getSession(sessionId int64) (*session, error) {
 
 func (sm *sessionManager) KeepAlive(sessionId int64, server proto.OxiaClient_KeepAliveServer) error {
 	sm.Lock()
-	defer sm.Unlock()
 	s, err := sm.getSession(sessionId)
+	sm.Unlock()
 	if err != nil {
 		return err
 	}
-	s.Lock()
-	defer s.Unlock()
-	s.attached = true
+	closeCh, err := s.attach(server)
+	if err != nil {
+		return err
+	}
 
-	go s.receiveHeartbeats(server)
-	return <-s.closeCh
+	return <-closeCh
 
 }
 
 func (sm *sessionManager) CloseSession(request *proto.CloseSessionRequest) (*proto.CloseSessionResponse, error) {
 	sm.Lock()
-	defer sm.Unlock()
 	s, err := sm.getSession(request.SessionId)
 	if err != nil {
+		sm.Unlock()
 		return nil, err
 	}
 	delete(sm.sessions, s.id)
+	sm.Unlock()
 	s.Lock()
 	defer s.Unlock()
 	s.closeChannels()

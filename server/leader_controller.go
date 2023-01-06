@@ -463,7 +463,6 @@ func (lc *leaderController) Write(request *proto.WriteRequest) (*proto.WriteResp
 func (lc *leaderController) write(request func(int64) *proto.WriteRequest) (int64, *proto.WriteResponse, error) {
 
 	lc.log.Debug().
-		Interface("req", request).
 		Msg("Write operation")
 
 	timestamp := uint64(time.Now().UnixMilli())
@@ -489,6 +488,11 @@ func (lc *leaderController) appendToWal(request func(int64) *proto.WriteRequest,
 
 	newOffset := lc.quorumAckTracker.HeadIndex() + 1
 	actualRequest = request(newOffset)
+
+	lc.log.Debug().
+		Interface("req", actualRequest).
+		Msg("Append operation")
+
 	value, err := pb.Marshal(actualRequest)
 	if err != nil {
 		return actualRequest, wal.InvalidOffset, err
