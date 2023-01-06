@@ -57,15 +57,16 @@ type leaderController struct {
 	// truncate the followers.
 	leaderElectionHeadIndex *proto.EntryId
 
-	ctx       context.Context
-	cancel    context.CancelFunc
-	wal       wal.Wal
-	db        kv.DB
-	rpcClient ReplicationRpcProvider
-	log       zerolog.Logger
+	ctx        context.Context
+	cancel     context.CancelFunc
+	wal        wal.Wal
+	walTrimmer wal.Trimmer
+	db         kv.DB
+	rpcClient  ReplicationRpcProvider
+	log        zerolog.Logger
 }
 
-func NewLeaderController(shardId uint32, rpcClient ReplicationRpcProvider, walFactory wal.WalFactory, kvFactory kv.KVFactory) (LeaderController, error) {
+func NewLeaderController(config Config, shardId uint32, rpcClient ReplicationRpcProvider, walFactory wal.WalFactory, kvFactory kv.KVFactory) (LeaderController, error) {
 	lc := &leaderController{
 		status:           proto.ServingStatus_NotMember,
 		shardId:          shardId,
@@ -85,6 +86,8 @@ func NewLeaderController(shardId uint32, rpcClient ReplicationRpcProvider, walFa
 	if lc.wal, err = walFactory.NewWal(shardId); err != nil {
 		return nil, err
 	}
+
+	lc.walTrimmer = wal.NewTrimmer(shardId, lc.wal, config.WalRetentionTime, wal.DefaultCheckInterval, common.SystemClock)
 
 	if lc.db, err = kv.NewDB(shardId, kvFactory); err != nil {
 		return nil, err
@@ -135,7 +138,7 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 	defer lc.Unlock()
 
 	if req.Epoch < lc.epoch {
-		return nil, ErrorInvalidEpoch
+		return nil, common.ErrorInvalidEpoch
 	} else if req.Epoch == lc.epoch && lc.status != proto.ServingStatus_Fenced {
 		// It's OK to receive a duplicate Fence request, for the same epoch, as long as we haven't moved
 		// out of the Fenced state for that epoch
@@ -144,7 +147,7 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 			Int64("fence-epoch", req.Epoch).
 			Interface("status", lc.status).
 			Msg("Failed to fence with same epoch in invalid state")
-		return nil, ErrorInvalidStatus
+		return nil, common.ErrorInvalidStatus
 	}
 
 	if err := lc.db.UpdateEpoch(req.GetEpoch()); err != nil {
@@ -214,11 +217,11 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 	defer lc.Unlock()
 
 	if lc.status != proto.ServingStatus_Fenced {
-		return nil, ErrorInvalidStatus
+		return nil, common.ErrorInvalidStatus
 	}
 
 	if req.Epoch != lc.epoch {
-		return nil, ErrorInvalidEpoch
+		return nil, common.ErrorInvalidEpoch
 	}
 
 	lc.status = proto.ServingStatus_Leader
@@ -268,11 +271,11 @@ func (lc *leaderController) AddFollower(req *proto.AddFollowerRequest) (*proto.A
 	defer lc.Unlock()
 
 	if req.Epoch != lc.epoch {
-		return nil, ErrorInvalidEpoch
+		return nil, common.ErrorInvalidEpoch
 	}
 
 	if lc.status != proto.ServingStatus_Leader {
-		return nil, errors.Wrap(ErrorInvalidStatus, "Node is not leader")
+		return nil, errors.Wrap(common.ErrorInvalidStatus, "Node is not leader")
 	}
 
 	if _, followerAlreadyPresent := lc.followers[req.FollowerName]; followerAlreadyPresent {
@@ -301,7 +304,7 @@ func (lc *leaderController) addFollower(follower string, followerHeadIndex *prot
 		return err
 	}
 
-	cursor, err := NewFollowerCursor(follower, lc.epoch, lc.shardId, lc.rpcClient, lc.quorumAckTracker, lc.wal,
+	cursor, err := NewFollowerCursor(follower, lc.epoch, lc.shardId, lc.rpcClient, lc.quorumAckTracker, lc.wal, lc.db,
 		followerHeadIndex.Offset)
 	if err != nil {
 		lc.log.Error().Err(err).
@@ -372,7 +375,7 @@ func (lc *leaderController) truncateFollowerIfNeeded(follower string, followerHe
 	// Coordinator should never send us a follower with an invalid epoch.
 	// Checking for sanity here.
 	if followerHeadIndex.Epoch > lc.leaderElectionHeadIndex.Epoch {
-		return nil, ErrorInvalidStatus
+		return nil, common.ErrorInvalidStatus
 	}
 
 	lastEntryInFollowerEpoch, err := GetHighestEntryOfEpoch(lc.wal, followerHeadIndex.Epoch)
@@ -416,12 +419,11 @@ func (lc *leaderController) Read(request *proto.ReadRequest) (*proto.ReadRespons
 		Interface("req", request).
 		Msg("Received read request")
 
-	{
-		lc.Lock()
-		defer lc.Unlock()
-		if err := checkStatus(proto.ServingStatus_Leader, lc.status); err != nil {
-			return nil, err
-		}
+	lc.Lock()
+	err := checkStatus(proto.ServingStatus_Leader, lc.status)
+	lc.Unlock()
+	if err != nil {
+		return nil, err
 	}
 
 	return lc.db.ProcessRead(request)
@@ -442,7 +444,7 @@ func (lc *leaderController) Write(request *proto.WriteRequest) (*proto.WriteResp
 
 	newOffset, err := lc.appendToWal(request, timestamp)
 	if err != nil {
-		return nil, errors.Wrap(err, "oxia: failed to append to wal")
+		return nil, err
 	}
 
 	return lc.quorumAckTracker.WaitForCommitIndex(newOffset, func() (*proto.WriteResponse, error) {
@@ -471,7 +473,7 @@ func (lc *leaderController) appendToWal(request *proto.WriteRequest, timestamp u
 	}
 
 	if err = lc.wal.Append(logEntry); err != nil {
-		return wal.InvalidOffset, err
+		return wal.InvalidOffset, errors.Wrap(err, "oxia: failed to append to wal")
 	}
 
 	lc.quorumAckTracker.AdvanceHeadIndex(newOffset)
@@ -510,13 +512,43 @@ func (lc *leaderController) GetNotifications(req *proto.NotificationsRequest, st
 }
 
 func (lc *leaderController) dispatchNotifications(ctx context.Context, req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
-	offsetInclusive := req.StartOffsetExclusive + 1
+	lc.log.Debug().
+		Interface("start-offset-exclusive", req.StartOffsetExclusive).
+		Msg("Dispatch notifications")
+
+	var offsetInclusive int64
+	if req.StartOffsetExclusive != nil {
+		offsetInclusive = *req.StartOffsetExclusive + 1
+	} else {
+		commitIndex := lc.quorumAckTracker.CommitIndex()
+
+		// The client is creating a new notification stream and wants to receive the notification from the next
+		// entry that will be written.
+		// In order to ensure the client will positioned on a given offset, we need to send a first "dummy"
+		// notification. The client will wait for this first notification before making the notification
+		// channel available to the application
+		lc.log.Debug().Int64("commit-idx", commitIndex).Msg("Sending first dummy notification")
+		if err := stream.Send(&proto.NotificationBatch{
+			ShardId:       lc.shardId,
+			Offset:        commitIndex,
+			Timestamp:     0,
+			Notifications: nil,
+		}); err != nil {
+			return err
+		}
+
+		offsetInclusive = commitIndex + 1
+	}
 
 	for ctx.Err() == nil {
 		notifications, err := lc.db.ReadNextNotifications(ctx, offsetInclusive)
 		if err != nil {
 			return err
 		}
+
+		lc.log.Debug().
+			Int("list-size", len(notifications)).
+			Msg("Got a new list of notification batches")
 
 		for _, n := range notifications {
 			if err := stream.Send(n); err != nil {
@@ -549,6 +581,7 @@ func (lc *leaderController) Close() error {
 	}
 
 	err = multierr.Combine(err,
+		lc.walTrimmer.Close(),
 		lc.wal.Close(),
 		lc.db.Close(),
 	)

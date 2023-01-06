@@ -14,7 +14,6 @@ import (
 	"oxia/common"
 	"oxia/coordinator/model"
 	"oxia/proto"
-	"oxia/server"
 	"sync"
 	"time"
 )
@@ -240,7 +239,7 @@ func (s *shardController) keepFencingFollower(ctx context.Context, node model.Se
 
 		_ = backoff.RetryNotify(func() error {
 			err := s.fenceAndAddFollower(ctx, node)
-			if status.Code(err) == server.CodeInvalidEpoch {
+			if status.Code(err) == common.CodeInvalidEpoch {
 				// If we're receiving invalid epoch error, it would mean
 				// there's already a new epoch generated and we don't have
 				// to keep trying with this old epoch

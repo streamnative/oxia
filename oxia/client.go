@@ -16,20 +16,26 @@ var (
 
 type AsyncClient interface {
 	io.Closer
+
 	Put(key string, payload []byte, expectedVersion *int64) <-chan PutResult
 	Delete(key string, expectedVersion *int64) <-chan error
 	DeleteRange(minKeyInclusive string, maxKeyExclusive string) <-chan error
 	Get(key string) <-chan GetResult
 	List(minKeyInclusive string, maxKeyExclusive string) <-chan ListResult
+
+	GetNotifications() (Notifications, error)
 }
 
 type SyncClient interface {
 	io.Closer
+
 	Put(key string, payload []byte, expectedVersion *int64) (Stat, error)
 	Delete(key string, expectedVersion *int64) error
 	DeleteRange(minKeyInclusive string, maxKeyExclusive string) error
 	Get(key string) ([]byte, Stat, error)
 	List(minKeyInclusive string, maxKeyExclusive string) ([]string, error)
+
+	GetNotifications() (Notifications, error)
 }
 
 type Stat struct {
@@ -52,4 +58,37 @@ type GetResult struct {
 type ListResult struct {
 	Keys []string
 	Err  error
+}
+
+type Notifications interface {
+	io.Closer
+
+	Ch() <-chan *Notification
+}
+
+type NotificationType int
+
+const (
+	KeyCreated NotificationType = iota
+	KeyModified
+	KeyDeleted
+)
+
+func (n NotificationType) String() string {
+	switch n {
+	case KeyCreated:
+		return "KeyCreated"
+	case KeyModified:
+		return "KeyModified"
+	case KeyDeleted:
+		return "KeyDeleted"
+	}
+
+	return "Unknown"
+}
+
+type Notification struct {
+	Type    NotificationType
+	Key     string
+	Version int64
 }

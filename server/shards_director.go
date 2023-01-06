@@ -1,11 +1,12 @@
 package server
 
 import (
-	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
+	"google.golang.org/grpc/status"
 	"io"
+	"oxia/common"
 	"oxia/server/kv"
 	"oxia/server/wal"
 	"sync"
@@ -24,6 +25,7 @@ type ShardsDirector interface {
 type shardsDirector struct {
 	sync.Mutex
 
+	config    Config
 	leaders   map[uint32]LeaderController
 	followers map[uint32]FollowerController
 
@@ -34,8 +36,9 @@ type shardsDirector struct {
 	log                    zerolog.Logger
 }
 
-func NewShardsDirector(walFactory wal.WalFactory, kvFactory kv.KVFactory, provider ReplicationRpcProvider) ShardsDirector {
+func NewShardsDirector(config Config, walFactory wal.WalFactory, kvFactory kv.KVFactory, provider ReplicationRpcProvider) ShardsDirector {
 	return &shardsDirector{
+		config:                 config,
 		walFactory:             walFactory,
 		kvFactory:              kvFactory,
 		leaders:                make(map[uint32]LeaderController),
@@ -52,7 +55,7 @@ func (s *shardsDirector) GetLeader(shardId uint32) (LeaderController, error) {
 	defer s.Unlock()
 
 	if s.closed {
-		return nil, ErrorAlreadyClosed
+		return nil, common.ErrorAlreadyClosed
 	}
 
 	if leader, ok := s.leaders[shardId]; ok {
@@ -63,7 +66,7 @@ func (s *shardsDirector) GetLeader(shardId uint32) (LeaderController, error) {
 	s.log.Debug().
 		Uint32("shard", shardId).
 		Msg("This node is not hosting shard")
-	return nil, errors.Wrapf(ErrorNodeIsNotLeader, "node is not leader for shard %d", shardId)
+	return nil, status.Errorf(common.CodeNodeIsNotLeader, "node is not leader for shard %d", shardId)
 }
 
 func (s *shardsDirector) GetFollower(shardId uint32) (FollowerController, error) {
@@ -71,7 +74,7 @@ func (s *shardsDirector) GetFollower(shardId uint32) (FollowerController, error)
 	defer s.Unlock()
 
 	if s.closed {
-		return nil, ErrorAlreadyClosed
+		return nil, common.ErrorAlreadyClosed
 	}
 
 	if follower, ok := s.followers[shardId]; ok {
@@ -82,7 +85,7 @@ func (s *shardsDirector) GetFollower(shardId uint32) (FollowerController, error)
 	s.log.Debug().
 		Uint32("shard", shardId).
 		Msg("This node is not hosting shard")
-	return nil, errors.Wrapf(ErrorNodeIsNotFollower, "node is not follower for shard %d", shardId)
+	return nil, status.Errorf(common.CodeNodeIsNotFollower, "node is not follower for shard %d", shardId)
 }
 
 func (s *shardsDirector) GetOrCreateLeader(shardId uint32) (LeaderController, error) {
@@ -90,7 +93,7 @@ func (s *shardsDirector) GetOrCreateLeader(shardId uint32) (LeaderController, er
 	defer s.Unlock()
 
 	if s.closed {
-		return nil, ErrorAlreadyClosed
+		return nil, common.ErrorAlreadyClosed
 	}
 
 	if leader, ok := s.leaders[shardId]; ok {
@@ -108,7 +111,7 @@ func (s *shardsDirector) GetOrCreateLeader(shardId uint32) (LeaderController, er
 	}
 
 	// Create new leader controller
-	if lc, err := NewLeaderController(shardId, s.replicationRpcProvider, s.walFactory, s.kvFactory); err != nil {
+	if lc, err := NewLeaderController(s.config, shardId, s.replicationRpcProvider, s.walFactory, s.kvFactory); err != nil {
 		return nil, err
 	} else {
 		s.leaders[shardId] = lc
@@ -121,7 +124,7 @@ func (s *shardsDirector) GetOrCreateFollower(shardId uint32) (FollowerController
 	defer s.Unlock()
 
 	if s.closed {
-		return nil, ErrorAlreadyClosed
+		return nil, common.ErrorAlreadyClosed
 	}
 
 	if follower, ok := s.followers[shardId]; ok {
@@ -139,7 +142,7 @@ func (s *shardsDirector) GetOrCreateFollower(shardId uint32) (FollowerController
 	}
 
 	// Create new follower controller
-	if fc, err := NewFollowerController(shardId, s.walFactory, s.kvFactory); err != nil {
+	if fc, err := NewFollowerController(s.config, shardId, s.walFactory, s.kvFactory); err != nil {
 		return nil, err
 	} else {
 		s.followers[shardId] = fc

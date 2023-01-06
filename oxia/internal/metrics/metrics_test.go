@@ -140,14 +140,16 @@ func assertTimer(t *testing.T, rm metricdata.ResourceMetrics, name string, expec
 }
 func assertHistogram(t *testing.T, rm metricdata.ResourceMetrics, name string, hasHistogram bool, expectedSum float64, expectedType string, expectedResult string) {
 	datapoints, err := histogram(rm, name)
-	assert.NoError(t, err)
+
 	if hasHistogram {
+		assert.NoError(t, err)
 		assert.Equal(t, 1, len(datapoints))
 		histogram := datapoints[0]
 		assert.Equal(t, expectedSum, histogram.Sum)
 		assert.Equal(t, uint64(1), histogram.Count)
 		assertAttributes(t, histogram.Attributes, expectedType, expectedResult)
 	} else {
+		assert.Error(t, err)
 		assert.Equal(t, 0, len(datapoints))
 	}
 }

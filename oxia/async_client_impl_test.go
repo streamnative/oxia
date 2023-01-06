@@ -3,32 +3,27 @@ package oxia
 import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
-	"oxia/server/kv"
-	"oxia/server/wal"
+	"oxia/common"
 	"oxia/standalone"
 	"testing"
+	"time"
 )
 
 var (
 	versionZero int64 = 0
 )
 
+func init() {
+	common.ConfigureLogger()
+}
+
 func TestAsyncClientImpl(t *testing.T) {
-	kvOptions := kv.KVFactoryOptions{InMemory: true}
-	kvFactory, err := kv.NewPebbleKVFactory(&kvOptions)
-	assert.NoError(t, err)
-	defer kvFactory.Close()
-	walFactory := wal.NewInMemoryWalFactory()
-	defer walFactory.Close()
-	server, err := standalone.NewStandaloneRpcServer("localhost:0", "localhost", 1, walFactory, kvFactory)
+	server, err := standalone.New(standalone.NewTestConfig())
 	assert.NoError(t, err)
 
-	serviceAddress := fmt.Sprintf("localhost:%d", server.Port())
-	options, err := NewClientOptions(serviceAddress, WithBatchLinger(0))
-	if err != nil {
-		assert.Fail(t, err.Error())
-	}
-	client := NewAsyncClient(options)
+	serviceAddress := fmt.Sprintf("localhost:%d", server.RpcPort())
+	client, err := NewAsyncClient(serviceAddress, WithBatchLinger(0))
+	assert.NoError(t, err)
 
 	putResult := <-client.Put("/a", []byte{0}, &VersionNotExists)
 	assert.Equal(t, versionZero, putResult.Stat.Version)
@@ -71,4 +66,115 @@ func TestAsyncClientImpl(t *testing.T) {
 
 	err = server.Close()
 	assert.NoError(t, err)
+}
+
+func TestAsyncClientImpl_Notifications(t *testing.T) {
+	server, err := standalone.New(standalone.NewTestConfig())
+	assert.NoError(t, err)
+
+	serviceAddress := fmt.Sprintf("localhost:%d", server.RpcPort())
+	client, err := NewSyncClient(serviceAddress, WithBatchLinger(0))
+	assert.NoError(t, err)
+
+	notifications, err := client.GetNotifications()
+	assert.NoError(t, err)
+
+	s1, _ := client.Put("/a", []byte("0"), nil)
+
+	n := <-notifications.Ch()
+	assert.Equal(t, KeyCreated, n.Type)
+	assert.Equal(t, "/a", n.Key)
+	assert.Equal(t, s1.Version, n.Version)
+
+	s2, _ := client.Put("/a", []byte("1"), nil)
+
+	n = <-notifications.Ch()
+	assert.Equal(t, KeyModified, n.Type)
+	assert.Equal(t, "/a", n.Key)
+	assert.Equal(t, s2.Version, n.Version)
+
+	s3, _ := client.Put("/b", []byte("0"), nil)
+	assert.NoError(t, client.Delete("/a", nil))
+
+	n = <-notifications.Ch()
+	assert.Equal(t, KeyCreated, n.Type)
+	assert.Equal(t, "/b", n.Key)
+	assert.Equal(t, s3.Version, n.Version)
+
+	n = <-notifications.Ch()
+	assert.Equal(t, KeyDeleted, n.Type)
+	assert.Equal(t, "/a", n.Key)
+	assert.EqualValues(t, -1, n.Version)
+
+	// Create a 2nd notifications channel
+	// This will only receive new updates
+	notifications2, err := client.GetNotifications()
+	assert.NoError(t, err)
+
+	select {
+	case <-notifications2.Ch():
+		assert.Fail(t, "shouldn't have received any notifications")
+	case <-time.After(100 * time.Millisecond):
+		// Ok, we expect it to time out
+	}
+
+	s4, _ := client.Put("/x", []byte("1"), nil)
+
+	n = <-notifications.Ch()
+	assert.Equal(t, KeyCreated, n.Type)
+	assert.Equal(t, "/x", n.Key)
+	assert.Equal(t, s4.Version, n.Version)
+
+	n = <-notifications2.Ch()
+	assert.Equal(t, KeyCreated, n.Type)
+	assert.Equal(t, "/x", n.Key)
+	assert.Equal(t, s4.Version, n.Version)
+
+	////
+
+	assert.NoError(t, client.Close())
+
+	// Channels should be closed after the client is closed
+	select {
+	case <-notifications.Ch():
+		// Ok
+
+	case <-time.After(1 * time.Second):
+		assert.Fail(t, "should have been closed")
+	}
+
+	select {
+	case <-notifications2.Ch():
+		// Ok
+
+	case <-time.After(1 * time.Second):
+		assert.Fail(t, "should have been closed")
+	}
+
+	assert.NoError(t, server.Close())
+}
+
+func TestAsyncClientImpl_NotificationsClose(t *testing.T) {
+	server, err := standalone.New(standalone.NewTestConfig())
+	assert.NoError(t, err)
+
+	serviceAddress := fmt.Sprintf("localhost:%d", server.RpcPort())
+	client, err := NewSyncClient(serviceAddress, WithBatchLinger(0))
+	assert.NoError(t, err)
+
+	notifications, err := client.GetNotifications()
+	assert.NoError(t, err)
+
+	assert.NoError(t, notifications.Close())
+
+	select {
+	case n := <-notifications.Ch():
+		assert.Nil(t, n)
+
+	case <-time.After(1 * time.Second):
+		assert.Fail(t, "Shouldn't have timed out")
+	}
+
+	assert.NoError(t, client.Close())
+	assert.NoError(t, server.Close())
 }

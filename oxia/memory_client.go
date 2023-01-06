@@ -22,7 +22,7 @@ func (c *memoryClient) Close() error {
 
 func (c *memoryClient) Put(key string, payload []byte, expectedVersion *int64) <-chan PutResult {
 	ch := make(chan PutResult, 1)
-	now := c.clock.NowMillis()
+	now := uint64(c.clock.Now().UnixMilli())
 	if value, ok := c.data[key]; ok {
 		if expectedVersion != nil && *expectedVersion != value.Stat.Version {
 			ch <- PutResult{Err: ErrorUnexpectedVersion}
@@ -108,4 +108,20 @@ func (c *memoryClient) List(minKeyInclusive string, maxKeyExclusive string) <-ch
 	}
 	close(ch)
 	return ch
+}
+
+type memoryNotifcationManager struct {
+	ch chan *Notification
+}
+
+func (m memoryNotifcationManager) Ch() <-chan *Notification {
+	return m.ch
+}
+
+func (m memoryNotifcationManager) Close() error {
+	return nil
+}
+
+func (c *memoryClient) GetNotifications() (Notifications, error) {
+	return &memoryNotifcationManager{make(chan *Notification)}, nil
 }

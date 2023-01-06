@@ -8,6 +8,7 @@ import (
 	"oxia/common/metrics"
 	"oxia/server/kv"
 	"oxia/server/wal"
+	"time"
 )
 
 type Config struct {
@@ -17,11 +18,12 @@ type Config struct {
 	MetricsPort         int
 	DataDir             string
 	WalDir              string
+	WalRetentionTime    time.Duration
 }
 
 type Server struct {
 	*internalRpcServer
-	*PublicRpcServer
+	*publicRpcServer
 
 	replicationRpcProvider    ReplicationRpcProvider
 	shardAssignmentDispatcher ShardAssignmentsDispatcher
@@ -56,17 +58,17 @@ func NewWithGrpcProvider(config Config, provider container.GrpcProvider, replica
 		kvFactory: kvFactory,
 	}
 
-	s.shardsDirector = NewShardsDirector(s.walFactory, s.kvFactory, replicationRpcProvider)
+	s.shardsDirector = NewShardsDirector(config, s.walFactory, s.kvFactory, replicationRpcProvider)
 	s.shardAssignmentDispatcher = NewShardAssignmentDispatcher()
 
-	s.internalRpcServer, err = newCoordinationRpcServer(provider,
+	s.internalRpcServer, err = newInternalRpcServer(provider,
 		fmt.Sprintf("%s:%d", config.BindHost, config.InternalServicePort),
 		s.shardsDirector, s.shardAssignmentDispatcher)
 	if err != nil {
 		return nil, err
 	}
 
-	s.PublicRpcServer, err = NewPublicRpcServer(provider,
+	s.publicRpcServer, err = newPublicRpcServer(provider,
 		fmt.Sprintf("%s:%d", config.BindHost, config.PublicServicePort), s.shardsDirector, s.shardAssignmentDispatcher)
 	if err != nil {
 		return nil, err
@@ -82,7 +84,7 @@ func NewWithGrpcProvider(config Config, provider container.GrpcProvider, replica
 }
 
 func (s *Server) PublicPort() int {
-	return s.PublicRpcServer.grpcServer.Port()
+	return s.publicRpcServer.grpcServer.Port()
 }
 
 func (s *Server) InternalPort() int {
@@ -93,7 +95,7 @@ func (s *Server) Close() error {
 	err := multierr.Combine(
 		s.shardAssignmentDispatcher.Close(),
 		s.shardsDirector.Close(),
-		s.PublicRpcServer.Close(),
+		s.publicRpcServer.Close(),
 		s.internalRpcServer.Close(),
 		s.kvFactory.Close(),
 		s.walFactory.Close(),
