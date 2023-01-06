@@ -14,14 +14,12 @@ import (
 )
 
 type StandaloneConfig struct {
-	BindHost          string
-	PublicServicePort int
-	MetricsPort       int
+	Config
+
+	BindHost string
 
 	AdvertisedPublicAddress string
 	NumShards               uint32
-	DataDir                 string
-	WalDir                  string
 	InMemory                bool
 }
 
@@ -76,7 +74,7 @@ func NewStandalone(config StandaloneConfig) (*Standalone, error) {
 	bindAddress := fmt.Sprintf("%s:%d", config.BindHost, config.PublicServicePort)
 	s.shardAssignmentDispatcher = NewStandaloneShardAssignmentDispatcher(advertisedPublicAddress, config.NumShards)
 
-	s.shardsDirector = NewShardsDirector(s.walFactory, s.kvFactory, newNoOpReplicationRpcProvider())
+	s.shardsDirector = NewShardsDirector(config.Config, s.walFactory, s.kvFactory, newNoOpReplicationRpcProvider())
 
 	if err := s.initializeShards(config.NumShards); err != nil {
 		return nil, err

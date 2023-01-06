@@ -57,15 +57,16 @@ type leaderController struct {
 	// truncate the followers.
 	leaderElectionHeadIndex *proto.EntryId
 
-	ctx       context.Context
-	cancel    context.CancelFunc
-	wal       wal.Wal
-	db        kv.DB
-	rpcClient ReplicationRpcProvider
-	log       zerolog.Logger
+	ctx        context.Context
+	cancel     context.CancelFunc
+	wal        wal.Wal
+	walTrimmer wal.Trimmer
+	db         kv.DB
+	rpcClient  ReplicationRpcProvider
+	log        zerolog.Logger
 }
 
-func NewLeaderController(shardId uint32, rpcClient ReplicationRpcProvider, walFactory wal.WalFactory, kvFactory kv.KVFactory) (LeaderController, error) {
+func NewLeaderController(config Config, shardId uint32, rpcClient ReplicationRpcProvider, walFactory wal.WalFactory, kvFactory kv.KVFactory) (LeaderController, error) {
 	lc := &leaderController{
 		status:           proto.ServingStatus_NotMember,
 		shardId:          shardId,
@@ -85,6 +86,8 @@ func NewLeaderController(shardId uint32, rpcClient ReplicationRpcProvider, walFa
 	if lc.wal, err = walFactory.NewWal(shardId); err != nil {
 		return nil, err
 	}
+
+	lc.walTrimmer = wal.NewTrimmer(shardId, lc.wal, config.WalRetentionTime, wal.DefaultCheckInterval, common.SystemClock)
 
 	if lc.db, err = kv.NewDB(shardId, kvFactory); err != nil {
 		return nil, err
@@ -517,8 +520,20 @@ func (lc *leaderController) dispatchNotifications(ctx context.Context, req *prot
 	if req.StartOffsetExclusive != nil {
 		offsetInclusive = *req.StartOffsetExclusive + 1
 	} else {
-		commitIndex, err := lc.db.ReadCommitIndex()
-		if err != nil {
+		commitIndex := lc.quorumAckTracker.CommitIndex()
+
+		// The client is creating a new notification stream and wants to receive the notification from the next
+		// entry that will be written.
+		// In order to ensure the client will positioned on a given offset, we need to send a first "dummy"
+		// notification. The client will wait for this first notification before making the notification
+		// channel available to the application
+		lc.log.Debug().Int64("commit-idx", commitIndex).Msg("Sending first dummy notification")
+		if err := stream.Send(&proto.NotificationBatch{
+			ShardId:       lc.shardId,
+			Offset:        commitIndex,
+			Timestamp:     0,
+			Notifications: nil,
+		}); err != nil {
 			return err
 		}
 
@@ -566,6 +581,7 @@ func (lc *leaderController) Close() error {
 	}
 
 	err = multierr.Combine(err,
+		lc.walTrimmer.Close(),
 		lc.wal.Close(),
 		lc.db.Close(),
 	)
