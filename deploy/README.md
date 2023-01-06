@@ -1,6 +1,10 @@
 
 # Set up a test environment in AWS
 
+## Prerequisites
+
+AWS credentials, config and permissions
+
 ## Create an EKS cluster
 
 ```shell
@@ -52,17 +56,25 @@ helm repo update
 helm install monitoring prometheus-community/kube-prometheus-stack --namespace monitoring
 ```
 
-## Publish Oxia Docker Image
+## Set some basic variables
+
+:note: Only applicable if using ECR
 
 ```shell
-aws ecr create-repository --repository-name oxia --region us-west-2
-
 AWS_ACCOUNT=598203581484
 REGISTRY=$AWS_ACCOUNT.dkr.ecr.us-west-2.amazonaws.com
 NAME=oxia
 TAG=latest
 IMAGE=$NAME:$TAG
 REPOSITORY=$REGISTRY/$NAME
+```
+
+## Publish Oxia Docker Image
+
+:note: Only applicable if using ECR
+
+```shell
+aws ecr create-repository --repository-name oxia --region us-west-2
 
 aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin $REGISTRY
 
