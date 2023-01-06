@@ -34,10 +34,10 @@ func startSession(sessionId SessionId, sessionMetadata *proto.SessionMetadata, s
 		closeCh:     make(chan error),
 		log: sm.log.With().
 			Str("component", "session").
-			Str("session-id", hexId(sessionId)).Logger(),
+			Int64("session-id", int64(sessionId)).Logger(),
 	}
 	go s.waitForHeartbeats()
-	s.log.Info().Msg("Session started")
+	s.log.Debug().Msg("Session started")
 	return s
 }
 

@@ -72,6 +72,7 @@ func NewSessionManager(shardId uint32, controller *leaderController) SessionMana
 		log: log.With().
 			Str("component", "session-manager").
 			Uint32("shard", shardId).
+			Int64("epoch", controller.epoch).
 			Logger(),
 	}
 }
@@ -211,7 +212,7 @@ func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, 
 		if metaEntry.Status != proto.Status_OK {
 			sm.log.Warn().
 				Str("key", key).
-				Str("status", fmt.Sprintf("%#v", metaEntry.Status)).
+				Stringer("status", metaEntry.Status).
 				Msgf("error reading session metadata")
 			continue
 		}
@@ -229,7 +230,7 @@ func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, 
 		if err != nil {
 			sm.log.Warn().
 				Err(err).
-				Int32("session-id", int32(sessionId)).
+				Int64("session-id", int64(sessionId)).
 				Str("key", key).
 				Msgf("error unmarshalling session metadata")
 			continue
