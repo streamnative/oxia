@@ -31,7 +31,7 @@ type rpcServer struct {
 	log zerolog.Logger
 }
 
-func newRpcServer(bindAddress string, advertisedPublicAddress string, numShards uint32, walFactory wal.WalFactory, kvFactory kv.KVFactory) (*rpcServer, error) {
+func newRpcServer(config Config, bindAddress string, advertisedPublicAddress string, numShards uint32, walFactory wal.WalFactory, kvFactory kv.KVFactory) (*rpcServer, error) {
 	res := &rpcServer{
 		advertisedPublicAddress: advertisedPublicAddress,
 		numShards:               numShards,
@@ -47,7 +47,7 @@ func newRpcServer(bindAddress string, advertisedPublicAddress string, numShards 
 	var err error
 	for i := uint32(0); i < numShards; i++ {
 		var lc server.LeaderController
-		if lc, err = server.NewLeaderController(i, res.replicationRpcProvider, res.walFactory, res.kvFactory); err != nil {
+		if lc, err = server.NewLeaderController(config.Config, i, res.replicationRpcProvider, res.walFactory, res.kvFactory); err != nil {
 			return nil, err
 		}
 

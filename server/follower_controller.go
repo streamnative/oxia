@@ -6,6 +6,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"go.uber.org/multierr"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
@@ -65,6 +66,7 @@ type followerController struct {
 	headIndex   int64
 	status      proto.ServingStatus
 	wal         wal.Wal
+	walTrimmer  wal.Trimmer
 	kvFactory   kv.KVFactory
 	db          kv.DB
 
@@ -74,7 +76,7 @@ type followerController struct {
 	log           zerolog.Logger
 }
 
-func NewFollowerController(shardId uint32, wf wal.WalFactory, kvFactory kv.KVFactory) (FollowerController, error) {
+func NewFollowerController(config Config, shardId uint32, wf wal.WalFactory, kvFactory kv.KVFactory) (FollowerController, error) {
 	fc := &followerController{
 		shardId:       shardId,
 		kvFactory:     kvFactory,
@@ -87,16 +89,15 @@ func NewFollowerController(shardId uint32, wf wal.WalFactory, kvFactory kv.KVFac
 	}
 	fc.ctx, fc.cancel = context.WithCancel(context.Background())
 
-	if wal, err := wf.NewWal(shardId); err != nil {
+	var err error
+	if fc.wal, err = wf.NewWal(shardId); err != nil {
 		return nil, err
-	} else {
-		fc.wal = wal
 	}
 
-	if db, err := kv.NewDB(shardId, kvFactory); err != nil {
+	fc.walTrimmer = wal.NewTrimmer(shardId, fc.wal, config.WalRetentionTime, wal.DefaultCheckInterval, common.SystemClock)
+
+	if fc.db, err = kv.NewDB(shardId, kvFactory); err != nil {
 		return nil, err
-	} else {
-		fc.db = db
 	}
 
 	entryId, err := GetHighestEntryOfEpoch(fc.wal, MaxEpoch)
@@ -133,18 +134,15 @@ func (fc *followerController) Close() error {
 	fc.log.Debug().Msg("Closing follower controller")
 	fc.cancel()
 
-	if err := fc.wal.Close(); err != nil {
-		return err
-	}
+	err := multierr.Combine(
+		fc.walTrimmer.Close(),
+		fc.wal.Close(),
+	)
 
 	if fc.db != nil {
-		if err := fc.db.Close(); err != nil {
-			return err
-		}
+		err = multierr.Append(err, fc.db.Close())
 	}
-
-	fc.log.Info().Msg("Closed follower")
-	return nil
+	return err
 }
 
 func (fc *followerController) closeChannel(err error) {

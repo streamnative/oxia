@@ -6,19 +6,18 @@ import (
 	"go.uber.org/multierr"
 	"os"
 	"oxia/common/metrics"
+	"oxia/server"
 	"oxia/server/kv"
 	"oxia/server/wal"
 )
 
 type Config struct {
-	BindHost          string
-	PublicServicePort int
-	MetricsPort       int
+	server.Config
+
+	BindHost string
 
 	AdvertisedPublicAddress string
 	NumShards               uint32
-	DataDir                 string
-	WalDir                  string
 	InMemory                bool
 }
 
@@ -67,7 +66,7 @@ func New(config Config) (*Standalone, error) {
 		return nil, err
 	}
 
-	s.rpc, err = newRpcServer(fmt.Sprintf("%s:%d", config.BindHost, config.PublicServicePort),
+	s.rpc, err = newRpcServer(config, fmt.Sprintf("%s:%d", config.BindHost, config.PublicServicePort),
 		advertisedPublicAddress, config.NumShards, s.walFactory, s.kvFactory)
 	if err != nil {
 		return nil, err

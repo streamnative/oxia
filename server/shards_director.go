@@ -25,6 +25,7 @@ type ShardsDirector interface {
 type shardsDirector struct {
 	sync.Mutex
 
+	config    Config
 	leaders   map[uint32]LeaderController
 	followers map[uint32]FollowerController
 
@@ -35,8 +36,9 @@ type shardsDirector struct {
 	log                    zerolog.Logger
 }
 
-func NewShardsDirector(walFactory wal.WalFactory, kvFactory kv.KVFactory, provider ReplicationRpcProvider) ShardsDirector {
+func NewShardsDirector(config Config, walFactory wal.WalFactory, kvFactory kv.KVFactory, provider ReplicationRpcProvider) ShardsDirector {
 	return &shardsDirector{
+		config:                 config,
 		walFactory:             walFactory,
 		kvFactory:              kvFactory,
 		leaders:                make(map[uint32]LeaderController),
@@ -109,7 +111,7 @@ func (s *shardsDirector) GetOrCreateLeader(shardId uint32) (LeaderController, er
 	}
 
 	// Create new leader controller
-	if lc, err := NewLeaderController(shardId, s.replicationRpcProvider, s.walFactory, s.kvFactory); err != nil {
+	if lc, err := NewLeaderController(s.config, shardId, s.replicationRpcProvider, s.walFactory, s.kvFactory); err != nil {
 		return nil, err
 	} else {
 		s.leaders[shardId] = lc
@@ -140,7 +142,7 @@ func (s *shardsDirector) GetOrCreateFollower(shardId uint32) (FollowerController
 	}
 
 	// Create new follower controller
-	if fc, err := NewFollowerController(shardId, s.walFactory, s.kvFactory); err != nil {
+	if fc, err := NewFollowerController(s.config, shardId, s.walFactory, s.kvFactory); err != nil {
 		return nil, err
 	} else {
 		s.followers[shardId] = fc
