@@ -55,7 +55,7 @@ func (s *session) delete() error {
 	// Delete ephemeral data associated with this session
 	sessionKey := SessionKey(s.id)
 	// Read "index"
-	list, err := s.sm.controller.Read(&proto.ReadRequest{
+	list, err := s.sm.leaderController.Read(&proto.ReadRequest{
 		ShardId: &s.shardId,
 		Lists: []*proto.ListRequest{{
 			StartInclusive: sessionKey,
@@ -79,7 +79,7 @@ func (s *session) delete() error {
 			})
 		}
 	}
-	_, err = s.sm.controller.Write(&proto.WriteRequest{
+	_, err = s.sm.leaderController.Write(&proto.WriteRequest{
 		ShardId: &s.shardId,
 		Puts:    nil,
 		Deletes: deletes,

@@ -4,10 +4,9 @@ import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"oxia/common"
-	"oxia/server/kv"
-	"oxia/server/wal"
 	"oxia/standalone"
 	"testing"
+	"time"
 )
 
 type testShardStrategy struct {
@@ -20,25 +19,17 @@ func (s *testShardStrategy) Get(key string) func(Shard) bool {
 }
 
 func TestWithStandalone(t *testing.T) {
-	kvOptions := kv.KVFactoryOptions{InMemory: true}
-	kvFactory, err := kv.NewPebbleKVFactory(&kvOptions)
-	assert.NoError(t, err)
-	defer kvFactory.Close()
-	walFactory := wal.NewInMemoryWalFactory()
-	defer walFactory.Close()
-	server, err := standalone.NewStandaloneRpcServer("localhost:0", "localhost", 2, walFactory, kvFactory)
+	server, err := standalone.New(standalone.NewTestConfig())
 	assert.NoError(t, err)
 
 	clientPool := common.NewClientPool()
-	serviceAddress := fmt.Sprintf("localhost:%d", server.Port())
-	shardManager := NewShardManager(&testShardStrategy{}, clientPool, serviceAddress).(*shardManagerImpl)
-	defer func() {
-		if err := shardManager.Close(); err != nil {
-			assert.Fail(t, "could not close shard manager")
-		}
-	}()
+	serviceAddress := fmt.Sprintf("localhost:%d", server.RpcPort())
+	shardManager, err := NewShardManager(&testShardStrategy{}, clientPool, serviceAddress, 30*time.Second)
+	assert.NoError(t, err)
 
-	shardManager.Start()
+	defer func() {
+		assert.NoError(t, shardManager.Close())
+	}()
 
 	shardId := shardManager.Get("foo")
 

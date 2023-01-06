@@ -21,8 +21,6 @@ const (
 	MaxTimeout = 5 * time.Minute
 )
 
-var ErrorInvalidSessionTimeout = errors.New("invalid session timeout")
-
 type SessionId uint64
 
 func hexId(sessionId SessionId) string {
@@ -60,18 +58,18 @@ var _ SessionManager = (*sessionManager)(nil)
 
 type sessionManager struct {
 	sync.Mutex
-	controller LeaderController
-	shardId    uint32
-	sessions   map[SessionId]*session
-	log        zerolog.Logger
+	leaderController *leaderController
+	shardId          uint32
+	sessions         map[SessionId]*session
+	log              zerolog.Logger
 }
 
-func NewSessionManager(shardId uint32, controller LeaderController) SessionManager {
+func NewSessionManager(shardId uint32, controller *leaderController) SessionManager {
 	return &sessionManager{
-		Mutex:      sync.Mutex{},
-		sessions:   make(map[SessionId]*session),
-		shardId:    shardId,
-		controller: controller,
+		Mutex:            sync.Mutex{},
+		sessions:         make(map[SessionId]*session),
+		shardId:          shardId,
+		leaderController: controller,
 		log: log.With().
 			Str("component", "session-manager").
 			Uint32("shard", shardId).
@@ -82,7 +80,7 @@ func NewSessionManager(shardId uint32, controller LeaderController) SessionManag
 func (sm *sessionManager) CreateSession(request *proto.CreateSessionRequest) (*proto.CreateSessionResponse, error) {
 	timeout := time.Duration(request.SessionTimeoutMs) * time.Millisecond
 	if timeout > MaxTimeout {
-		return nil, errors.Wrap(ErrorInvalidSessionTimeout, fmt.Sprintf("timeoutMs=%d", request.SessionTimeoutMs))
+		return nil, errors.Wrap(common.ErrorInvalidSessionTimeout, fmt.Sprintf("timeoutMs=%d", request.SessionTimeoutMs))
 	}
 	sm.Lock()
 	defer sm.Unlock()
@@ -93,7 +91,7 @@ func (sm *sessionManager) CreateSession(request *proto.CreateSessionRequest) (*p
 	if err != nil {
 		return nil, errors.Wrap(err, "could not marshal session metadata")
 	}
-	id, resp, err := sm.controller.write(func(id int64) *proto.WriteRequest {
+	id, resp, err := sm.leaderController.write(func(id int64) *proto.WriteRequest {
 		return &proto.WriteRequest{
 			ShardId: &request.ShardId,
 			Puts: []*proto.PutRequest{{
@@ -124,7 +122,7 @@ func (sm *sessionManager) getSession(sessionId uint64) (*session, error) {
 		sm.log.Warn().
 			Uint64("session-id", sessionId).
 			Msg("Session not found")
-		return nil, ErrorInvalidSession
+		return nil, common.ErrorInvalidSession
 	}
 	return s, nil
 }
@@ -177,7 +175,7 @@ func (sm *sessionManager) Initialize() error {
 }
 
 func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, error) {
-	listResp, err := sm.controller.readWithoutLocking(&proto.ReadRequest{
+	listResp, err := sm.leaderController.readWithoutLocking(&proto.ReadRequest{
 		ShardId: &sm.shardId,
 		Gets:    nil,
 		Lists: []*proto.ListRequest{
@@ -197,7 +195,7 @@ func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, 
 			IncludePayload: true,
 		})
 	}
-	getResp, err := sm.controller.readWithoutLocking(&proto.ReadRequest{
+	getResp, err := sm.leaderController.readWithoutLocking(&proto.ReadRequest{
 		ShardId: &sm.shardId,
 		Gets:    gets,
 		Lists:   nil,

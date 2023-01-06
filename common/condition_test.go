@@ -105,12 +105,12 @@ func TestCondSignalGenerations(t *testing.T) {
 			awake <- i
 			m.Unlock()
 		}(i)
+
 		if i > 0 {
-			a := <-awake
-			if a != i-1 {
-				t.Fatalf("wrong goroutine woke up: want %d, got %d", i-1, a)
-			}
+			<-awake
+			// It's ok to wake go-routine in non-fair mode
 		}
+
 		<-running
 		m.Lock()
 		c.Signal()

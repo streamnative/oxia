@@ -63,7 +63,7 @@ func NewDB(shardId uint32, factory KVFactory) (DB, error) {
 		return nil, err
 	}
 
-	db.notificationsTracker = newNotificationsTracker(commitIndex, kv)
+	db.notificationsTracker = newNotificationsTracker(shardId, commitIndex, kv)
 	return db, nil
 }
 

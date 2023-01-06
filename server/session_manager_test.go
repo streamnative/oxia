@@ -5,6 +5,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	pb "google.golang.org/protobuf/proto"
 	"io"
+	"oxia/common"
 	"oxia/proto"
 	"oxia/server/kv"
 	"oxia/server/wal"
@@ -204,9 +205,9 @@ func TestSessionManager(t *testing.T) {
 	sManager, controller := createSessionManager(t)
 	_, err := sManager.CreateSession(&proto.CreateSessionRequest{
 		ShardId:          1,
-		SessionTimeoutMs: 60 * 1000,
+		SessionTimeoutMs: uint32((1 * time.Hour).Milliseconds()),
 	})
-	assert.ErrorIs(t, err, ErrorInvalidSessionTimeout)
+	assert.ErrorIs(t, err, common.ErrorInvalidSessionTimeout)
 
 	// Create and close a session, check if its persisted
 	createResp, err := sManager.CreateSession(&proto.CreateSessionRequest{
@@ -249,7 +250,7 @@ func TestSessionManager(t *testing.T) {
 	//})
 	//assert.NoError(t, err)
 	//sessionId = createResp.SessionId
-	//meta = getSessionMetadata(t, controller, sessionId)
+	//meta = getSessionMetadata(t, leaderController, sessionId)
 	//assert.NotNil(t, meta)
 	//
 	//go func() {
@@ -293,8 +294,7 @@ func createSessionManager(t *testing.T) (*sessionManager, *leaderController) {
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
-	var lc LeaderController
-	lc, err = NewLeaderController(shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(Config{}, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 	_, err = lc.Fence(&proto.FenceRequest{ShardId: shard, Epoch: 1})
 	assert.NoError(t, err)

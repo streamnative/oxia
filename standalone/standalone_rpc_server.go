@@ -17,7 +17,7 @@ import (
 	"oxia/server/wal"
 )
 
-type StandaloneRpcServer struct {
+type rpcServer struct {
 	proto.UnimplementedOxiaClientServer
 
 	advertisedPublicAddress string
@@ -36,8 +36,8 @@ var (
 	ErrorShardNotFound = errors.New("shard not found")
 )
 
-func NewStandaloneRpcServer(bindAddress string, advertisedPublicAddress string, numShards uint32, walFactory wal.WalFactory, kvFactory kv.KVFactory) (*StandaloneRpcServer, error) {
-	res := &StandaloneRpcServer{
+func newRpcServer(config Config, bindAddress string, advertisedPublicAddress string, numShards uint32, walFactory wal.WalFactory, kvFactory kv.KVFactory) (*rpcServer, error) {
+	res := &rpcServer{
 		advertisedPublicAddress: advertisedPublicAddress,
 		numShards:               numShards,
 		walFactory:              walFactory,
@@ -52,7 +52,7 @@ func NewStandaloneRpcServer(bindAddress string, advertisedPublicAddress string, 
 	var err error
 	for i := uint32(0); i < numShards; i++ {
 		var lc server.LeaderController
-		if lc, err = server.NewLeaderController(i, res.replicationRpcProvider, res.walFactory, res.kvFactory); err != nil {
+		if lc, err = server.NewLeaderController(config.Config, i, res.replicationRpcProvider, res.walFactory, res.kvFactory); err != nil {
 			return nil, err
 		}
 
@@ -91,28 +91,27 @@ func NewStandaloneRpcServer(bindAddress string, advertisedPublicAddress string, 
 	return res, nil
 }
 
-func (s *StandaloneRpcServer) Close() error {
-	err := multierr.Combine(
-		s.assignmentDispatcher.Close(),
-		s.grpcServer.Close(),
-		s.replicationRpcProvider.Close(),
-	)
-
+func (s *rpcServer) Close() error {
+	var err error
 	for _, c := range s.controllers {
 		err = multierr.Append(err, c.Close())
 	}
-	return err
+
+	return multierr.Combine(err,
+		s.assignmentDispatcher.Close(),
+		s.grpcServer.Close(),
+	)
 }
 
-func (s *StandaloneRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest, stream proto.OxiaClient_ShardAssignmentsServer) error {
+func (s *rpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest, stream proto.OxiaClient_ShardAssignmentsServer) error {
 	return s.assignmentDispatcher.RegisterForUpdates(stream)
 }
 
-func (s *StandaloneRpcServer) Port() int {
+func (s *rpcServer) Port() int {
 	return s.grpcServer.Port()
 }
 
-func (s *StandaloneRpcServer) Write(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error) {
+func (s *rpcServer) Write(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error) {
 	lc, ok := s.controllers[*write.ShardId]
 	if !ok {
 		return nil, ErrorShardNotFound
@@ -121,7 +120,7 @@ func (s *StandaloneRpcServer) Write(ctx context.Context, write *proto.WriteReque
 	return lc.Write(write)
 }
 
-func (s *StandaloneRpcServer) Read(ctx context.Context, read *proto.ReadRequest) (*proto.ReadResponse, error) {
+func (s *rpcServer) Read(ctx context.Context, read *proto.ReadRequest) (*proto.ReadResponse, error) {
 	lc, ok := s.controllers[*read.ShardId]
 	if !ok {
 		return nil, ErrorShardNotFound
@@ -130,7 +129,27 @@ func (s *StandaloneRpcServer) Read(ctx context.Context, read *proto.ReadRequest)
 	return lc.Read(read)
 }
 
-func (s *StandaloneRpcServer) CreateSession(ctx context.Context, req *proto.CreateSessionRequest) (*proto.CreateSessionResponse, error) {
+func (s *rpcServer) GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
+	s.log.Debug().
+		Str("peer", common.GetPeer(stream.Context())).
+		Interface("req", req).
+		Msg("Get notifications")
+
+	lc, ok := s.controllers[req.ShardId]
+	if !ok {
+		return ErrorShardNotFound
+	}
+
+	err := lc.GetNotifications(req, stream)
+	if err != nil && !errors.Is(err, context.Canceled) {
+		s.log.Warn().Err(err).
+			Msg("Failed to handle notifications request")
+	}
+
+	return err
+}
+
+func (s *rpcServer) CreateSession(ctx context.Context, req *proto.CreateSessionRequest) (*proto.CreateSessionResponse, error) {
 	s.log.Debug().
 		Str("peer", common.GetPeer(ctx)).
 		Interface("req", req).
@@ -148,7 +167,7 @@ func (s *StandaloneRpcServer) CreateSession(ctx context.Context, req *proto.Crea
 	return res, nil
 }
 
-func (s *StandaloneRpcServer) KeepAlive(stream proto.OxiaClient_KeepAliveServer) error {
+func (s *rpcServer) KeepAlive(stream proto.OxiaClient_KeepAliveServer) error {
 	// KeepAlive receives an incoming stream of request, the shard_id needs to be encoded
 	// as a property in the metadata
 	md, ok := metadata.FromIncomingContext(stream.Context())
@@ -183,7 +202,7 @@ func (s *StandaloneRpcServer) KeepAlive(stream proto.OxiaClient_KeepAliveServer)
 	return nil
 }
 
-func (s *StandaloneRpcServer) CloseSession(ctx context.Context, req *proto.CloseSessionRequest) (*proto.CloseSessionResponse, error) {
+func (s *rpcServer) CloseSession(ctx context.Context, req *proto.CloseSessionRequest) (*proto.CloseSessionResponse, error) {
 	s.log.Debug().
 		Str("peer", common.GetPeer(ctx)).
 		Interface("req", req).

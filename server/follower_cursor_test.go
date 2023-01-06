@@ -1,8 +1,12 @@
 package server
 
 import (
+	"fmt"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
+	pb "google.golang.org/protobuf/proto"
 	"oxia/proto"
+	"oxia/server/kv"
 	"oxia/server/wal"
 	"testing"
 	"time"
@@ -14,11 +18,15 @@ func TestFollowerCursor(t *testing.T) {
 
 	stream := newMockRpcClient()
 	ackTracker := NewQuorumAckTracker(3, wal.InvalidOffset, wal.InvalidOffset)
+	kvf, err := kv.NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
+	db, err := kv.NewDB(shard, kvf)
+	assert.NoError(t, err)
 	wf := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 	w, err := wf.NewWal(shard)
 	assert.NoError(t, err)
 
-	fc, err := NewFollowerCursor("f1", epoch, shard, stream, ackTracker, w, wal.InvalidOffset)
+	fc, err := NewFollowerCursor("f1", epoch, shard, stream, ackTracker, w, db, wal.InvalidOffset)
 	assert.NoError(t, err)
 
 	assert.Equal(t, shard, fc.ShardId())
@@ -31,6 +39,7 @@ func TestFollowerCursor(t *testing.T) {
 		Value:  []byte("v1"),
 	})
 	assert.NoError(t, err)
+	log.Logger.Info().Msg("Appended entry 0 to the log")
 
 	assert.Equal(t, wal.InvalidOffset, fc.LastPushed())
 	assert.Equal(t, wal.InvalidOffset, fc.AckIndex())
@@ -82,6 +91,62 @@ func TestFollowerCursor(t *testing.T) {
 	assert.EqualValues(t, 1, req.Entry.Epoch)
 	assert.EqualValues(t, 1, req.Entry.Offset)
 	assert.EqualValues(t, 0, req.CommitIndex)
+
+	assert.NoError(t, fc.Close())
+}
+
+func TestFollowerCursor_SendSnapshot(t *testing.T) {
+	var epoch int64 = 1
+	var shard uint32 = 2
+
+	N := int64(10)
+	stream := newMockRpcClient()
+	kvf, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{DataDir: t.TempDir()})
+	assert.NoError(t, err)
+	db, err := kv.NewDB(shard, kvf)
+	assert.NoError(t, err)
+	wf := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
+	w, err := wf.NewWal(shard)
+	assert.NoError(t, err)
+
+	// Load some entries into the db & wal
+	for i := int64(0); i < N; i++ {
+		wr := &proto.WriteRequest{
+			ShardId: &shard,
+			Puts: []*proto.PutRequest{{
+				Key:     fmt.Sprintf("key-%d", i),
+				Payload: []byte(fmt.Sprintf("value-%d", i)),
+			}},
+		}
+		e, _ := pb.Marshal(wr)
+		assert.NoError(t, w.Append(&proto.LogEntry{
+			Epoch:     1,
+			Offset:    i,
+			Value:     e,
+			Timestamp: uint64(i),
+		}))
+
+		_, err := db.ProcessWrite(wr, i, uint64(i), kv.NoOpCallback)
+		assert.NoError(t, err)
+	}
+
+	ackTracker := NewQuorumAckTracker(3, N-1, N-1)
+
+	fc, err := NewFollowerCursor("f1", epoch, shard, stream, ackTracker, w, db, wal.InvalidOffset)
+	assert.NoError(t, err)
+
+	s := stream.sendSnapshotStream
+	for req := range s.requests {
+		assert.EqualValues(t, 1, req.Epoch)
+	}
+
+	log.Info().Msg("Snapshot complete")
+
+	s.response <- &proto.SnapshotResponse{AckIndex: N - 1}
+
+	assert.Eventually(t, func() bool {
+		return fc.AckIndex() == N-1
+	}, 10*time.Second, 10*time.Millisecond)
 
 	assert.NoError(t, fc.Close())
 }

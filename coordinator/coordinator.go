@@ -60,7 +60,7 @@ func NewConfig() Config {
 type Coordinator struct {
 	coordinator impl.Coordinator
 	clientPool  common.ClientPool
-	rpcServer   *CoordinatorRpcServer
+	rpcServer   *rpcServer
 	metrics     *metrics.PrometheusMetrics
 }
 
@@ -90,7 +90,7 @@ func New(config Config) (*Coordinator, error) {
 		return nil, err
 	}
 
-	if s.rpcServer, err = NewCoordinatorRpcServer(fmt.Sprintf("%s:%d", config.BindHost, config.InternalServicePort)); err != nil {
+	if s.rpcServer, err = newRpcServer(fmt.Sprintf("%s:%d", config.BindHost, config.InternalServicePort)); err != nil {
 		return nil, err
 	}
 

@@ -3,6 +3,7 @@ package server
 import (
 	"github.com/stretchr/testify/assert"
 	"math"
+	"oxia/common"
 	"oxia/proto"
 	"sync"
 	"testing"
@@ -14,7 +15,7 @@ func TestUninitializedAssignmentDispatcher(t *testing.T) {
 	mockClient := newMockShardAssignmentClientStream()
 	assert.False(t, dispatcher.Initialized())
 	err := dispatcher.RegisterForUpdates(mockClient)
-	assert.ErrorIs(t, err, ErrorNotInitialized)
+	assert.ErrorIs(t, err, common.ErrorNotInitialized)
 	assert.NoError(t, dispatcher.Close())
 }
 
