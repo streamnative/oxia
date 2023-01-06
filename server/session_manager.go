@@ -87,7 +87,7 @@ func (sm *sessionManager) CreateSession(request *proto.CreateSessionRequest) (*p
 	sm.Lock()
 	defer sm.Unlock()
 
-	metadata := &proto.SessionMetadata{TimeoutMS: uint32(timeout.Milliseconds())}
+	metadata := &proto.SessionMetadata{TimeoutMs: uint32(timeout.Milliseconds())}
 
 	marshalledMetadata, err := pb.Marshal(metadata)
 	if err != nil {

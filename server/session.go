@@ -29,7 +29,7 @@ func startSession(sessionId SessionId, sessionMetadata *proto.SessionMetadata, s
 	s := &session{
 		Mutex:       sync.Mutex{},
 		id:          sessionId,
-		timeout:     time.Duration(sessionMetadata.TimeoutMS) * time.Millisecond,
+		timeout:     time.Duration(sessionMetadata.TimeoutMs) * time.Millisecond,
 		sm:          sm,
 		heartbeatCh: make(chan *proto.SessionHeartbeat, 1),
 		closeCh:     make(chan error),

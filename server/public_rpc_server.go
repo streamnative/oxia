@@ -140,11 +140,11 @@ func (s *PublicRpcServer) KeepAlive(stream proto.OxiaClient_KeepAliveServer) err
 		return errors.New("shard id is not set in the request metadata")
 	}
 
-	shardId, err := ReadHeaderUint32(md, proto.MetadataShardId)
+	shardId, err := ReadHeaderUint32(md, common.MetadataShardId)
 	if err != nil {
 		return err
 	}
-	sessionId, err := ReadHeaderUint64(md, proto.MetadataSessionId)
+	sessionId, err := ReadHeaderUint64(md, common.MetadataSessionId)
 	if err != nil {
 		return err
 	}

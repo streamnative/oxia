@@ -13,5 +13,5 @@ message StorageEntry {
 }
 
 message SessionMetadata {
-  uint32 timeoutMS = 1;
+  uint32 timeout_ms = 1;
 }

@@ -217,7 +217,7 @@ func TestSessionManager(t *testing.T) {
 	sessionId := createResp.SessionId
 	meta := getSessionMetadata(t, controller, sessionId)
 	assert.NotNil(t, meta)
-	assert.Equal(t, uint32(5000), meta.TimeoutMS)
+	assert.Equal(t, uint32(5000), meta.TimeoutMs)
 
 	_, err = sManager.CloseSession(&proto.CloseSessionRequest{
 		ShardId:   1,

@@ -36,7 +36,7 @@ func (r *replicationRpcProvider) GetAddEntriesStream(ctx context.Context, follow
 		return nil, err
 	}
 
-	ctx = metadata.AppendToOutgoingContext(ctx, proto.MetadataShardId, fmt.Sprintf("%d", shard))
+	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataShardId, fmt.Sprintf("%d", shard))
 
 	stream, err := rpc.AddEntries(ctx)
 	return stream, err
