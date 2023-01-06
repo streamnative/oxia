@@ -118,7 +118,7 @@ func (s *shardAssignmentDispatcher) ShardAssignment(stream proto.OxiaControl_Sha
 			"oxia": "receive-shards-assignments",
 		},
 		s.ctx,
-		s.log,
+		s.log.With().Str("stream", "receive-shards-assignments").Logger(),
 	)
 	return streamReader.Run()
 }
