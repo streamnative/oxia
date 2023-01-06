@@ -2,9 +2,6 @@ name: DockerHub Publish
 
 on:
   push:
-    branches:
-      - "*"
-
     tags:
       - 'v*'
 
@@ -18,6 +15,7 @@ concurrency:
 
 jobs:
   publish-docker:
+    name: Publish docker image
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
