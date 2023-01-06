@@ -66,7 +66,6 @@ type sessionManager struct {
 
 func NewSessionManager(shardId uint32, controller *leaderController) SessionManager {
 	return &sessionManager{
-		Mutex:            sync.Mutex{},
 		sessions:         make(map[SessionId]*session),
 		shardId:          shardId,
 		leaderController: controller,

@@ -27,7 +27,6 @@ type session struct {
 
 func startSession(sessionId SessionId, sessionMetadata *proto.SessionMetadata, sm *sessionManager) *session {
 	s := &session{
-		Mutex:       sync.Mutex{},
 		id:          sessionId,
 		timeout:     time.Duration(sessionMetadata.TimeoutMs) * time.Millisecond,
 		sm:          sm,
