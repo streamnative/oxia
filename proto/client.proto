@@ -297,7 +297,7 @@ message Stat {
   // The modified timestamp of the current version of the key
   fixed64 modified_timestamp = 3;
   // Identifier of the session if this Stat object belongs to an ephemeral value
-  int64 session_id = 4;
+  optional int64 session_id = 4;
 }
 
 /**

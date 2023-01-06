@@ -214,16 +214,6 @@ func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, 
 				Msgf("error reading session metadata")
 			continue
 		}
-		payload := metaEntry.Payload
-		metadata := proto.SessionMetadata{}
-		err = pb.Unmarshal(payload, &metadata)
-		if err != nil {
-			sm.log.Warn().
-				Err(err).
-				Str("key", key).
-				Msgf("error unmarshalling session metadata")
-			continue
-		}
 		sessionId, err := KeyToId(key)
 		if err != nil {
 			sm.log.Warn().
@@ -232,6 +222,18 @@ func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, 
 				Msgf("error parsing session key")
 			continue
 		}
+		payload := metaEntry.Payload
+		metadata := proto.SessionMetadata{}
+		err = pb.Unmarshal(payload, &metadata)
+		if err != nil {
+			sm.log.Warn().
+				Err(err).
+				Int32("session-id", int32(sessionId)).
+				Str("key", key).
+				Msgf("error unmarshalling session metadata")
+			continue
+		}
+
 		result[sessionId] = &metadata
 	}
 
@@ -257,8 +259,7 @@ var SessionUpdateOperationCallback kv.UpdateOperationCallback = &updateCallback{
 func (_ *updateCallback) OnPut(batch kv.WriteBatch, request *proto.PutRequest, existingEntry *proto.StorageEntry) (proto.Status, error) {
 	if existingEntry != nil && existingEntry.SessionId != nil {
 		// We are overwriting an ephemeral value, let's delete its shadow
-		status, err := deleteShadow(batch, request.Key, existingEntry)
-		if err != nil {
+		if status, err := deleteShadow(batch, request.Key, existingEntry); err != nil {
 			return status, err
 		}
 	}
