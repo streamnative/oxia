@@ -132,7 +132,7 @@ func (s *shardsDirector) GetOrCreateFollower(shardId uint32) (FollowerController
 		return follower, nil
 	} else if leader, ok := s.leaders[shardId]; ok {
 		// There is an existing leader controller
-		// Let's close it and before creating the follower controller
+		// Let's close it before creating the follower controller
 
 		if err := leader.Close(); err != nil {
 			return nil, err

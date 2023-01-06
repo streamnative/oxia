@@ -8,6 +8,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 	"oxia/common"
 	"oxia/common/container"
 	"oxia/proto"
@@ -30,6 +31,10 @@ type rpcServer struct {
 
 	log zerolog.Logger
 }
+
+var (
+	ErrorShardNotFound = errors.New("shard not found")
+)
 
 func newRpcServer(config Config, bindAddress string, advertisedPublicAddress string, numShards uint32, walFactory wal.WalFactory, kvFactory kv.KVFactory) (*rpcServer, error) {
 	res := &rpcServer{
@@ -109,7 +114,7 @@ func (s *rpcServer) Port() int {
 func (s *rpcServer) Write(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error) {
 	lc, ok := s.controllers[*write.ShardId]
 	if !ok {
-		return nil, errors.New("shard not found")
+		return nil, ErrorShardNotFound
 	}
 
 	return lc.Write(write)
@@ -118,7 +123,7 @@ func (s *rpcServer) Write(ctx context.Context, write *proto.WriteRequest) (*prot
 func (s *rpcServer) Read(ctx context.Context, read *proto.ReadRequest) (*proto.ReadResponse, error) {
 	lc, ok := s.controllers[*read.ShardId]
 	if !ok {
-		return nil, errors.New("shard not found")
+		return nil, ErrorShardNotFound
 	}
 
 	return lc.Read(read)
@@ -132,7 +137,7 @@ func (s *rpcServer) GetNotifications(req *proto.NotificationsRequest, stream pro
 
 	lc, ok := s.controllers[req.ShardId]
 	if !ok {
-		return errors.New("shard not found")
+		return ErrorShardNotFound
 	}
 
 	err := lc.GetNotifications(req, stream)
@@ -142,4 +147,75 @@ func (s *rpcServer) GetNotifications(req *proto.NotificationsRequest, stream pro
 	}
 
 	return err
+}
+
+func (s *rpcServer) CreateSession(ctx context.Context, req *proto.CreateSessionRequest) (*proto.CreateSessionResponse, error) {
+	s.log.Debug().
+		Str("peer", common.GetPeer(ctx)).
+		Interface("req", req).
+		Msg("Create session request")
+	lc, ok := s.controllers[req.ShardId]
+	if !ok {
+		return nil, ErrorShardNotFound
+	}
+	res, err := lc.CreateSession(req)
+	if err != nil {
+		s.log.Warn().Err(err).
+			Msg("Failed to create session")
+		return nil, err
+	}
+	return res, nil
+}
+
+func (s *rpcServer) KeepAlive(stream proto.OxiaClient_KeepAliveServer) error {
+	// KeepAlive receives an incoming stream of request, the shard_id needs to be encoded
+	// as a property in the metadata
+	md, ok := metadata.FromIncomingContext(stream.Context())
+	if !ok {
+		return errors.New("shard id is not set in the request metadata")
+	}
+
+	shardId, err := server.ReadHeaderUint32(md, common.MetadataShardId)
+	if err != nil {
+		return err
+	}
+	sessionId, err := server.ReadHeaderInt64(md, common.MetadataSessionId)
+	if err != nil {
+		return err
+	}
+
+	lc, ok := s.controllers[shardId]
+	if !ok {
+		return ErrorShardNotFound
+	}
+	s.log.Debug().
+		Uint32("shard", shardId).
+		Int64("session", sessionId).
+		Str("peer", common.GetPeer(stream.Context())).
+		Msg("Session keep alive")
+	err = lc.KeepAlive(sessionId, stream)
+	if err != nil {
+		s.log.Warn().Err(err).
+			Msg("Failed to listen to heartbeats")
+		return err
+	}
+	return nil
+}
+
+func (s *rpcServer) CloseSession(ctx context.Context, req *proto.CloseSessionRequest) (*proto.CloseSessionResponse, error) {
+	s.log.Debug().
+		Str("peer", common.GetPeer(ctx)).
+		Interface("req", req).
+		Msg("Close session request")
+	lc, ok := s.controllers[req.ShardId]
+	if !ok {
+		return nil, ErrorShardNotFound
+	}
+	res, err := lc.CloseSession(req)
+	if err != nil {
+		s.log.Warn().Err(err).
+			Msg("Failed to close session")
+		return nil, err
+	}
+	return res, nil
 }

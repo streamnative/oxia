@@ -429,3 +429,60 @@ func (m *mockSendSnapshotClientStream) SendMsg(msg interface{}) error {
 func (m *mockSendSnapshotClientStream) RecvMsg(msg interface{}) error {
 	panic("not implemented")
 }
+
+//////
+
+func newMockKeepAliveServer() *mockKeepAliveServer {
+	r := &mockKeepAliveServer{
+		requests: make(chan *proto.SessionHeartbeat, 100),
+		response: make(chan *proto.KeepAliveResponse, 1),
+		md:       make(metadata.MD),
+	}
+
+	return r
+}
+
+type mockKeepAliveServer struct {
+	requests chan *proto.SessionHeartbeat
+	response chan *proto.KeepAliveResponse
+	md       metadata.MD
+}
+
+func (m *mockKeepAliveServer) SendAndClose(empty *proto.KeepAliveResponse) error {
+	m.response <- empty
+	close(m.response)
+	return nil
+}
+
+func (m *mockKeepAliveServer) Recv() (*proto.SessionHeartbeat, error) {
+	return <-m.requests, nil
+}
+
+func (m *mockKeepAliveServer) sendHeartbeat(heartbeat *proto.SessionHeartbeat) {
+	m.requests <- heartbeat
+}
+
+func (m *mockKeepAliveServer) SetHeader(md metadata.MD) error {
+	m.md = md
+	return nil
+}
+
+func (m *mockKeepAliveServer) SendHeader(md metadata.MD) error {
+	panic("implement me")
+}
+
+func (m *mockKeepAliveServer) SetTrailer(md metadata.MD) {
+	panic("implement me")
+}
+
+func (m *mockKeepAliveServer) Context() context.Context {
+	return context.Background()
+}
+
+func (_ *mockKeepAliveServer) SendMsg(m interface{}) error {
+	panic("implement me")
+}
+
+func (_ *mockKeepAliveServer) RecvMsg(m interface{}) error {
+	panic("implement me")
+}

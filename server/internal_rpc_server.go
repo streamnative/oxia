@@ -18,10 +18,6 @@ import (
 	"oxia/proto"
 )
 
-const (
-	metadataShardId = "shard-id"
-)
-
 type internalRpcServer struct {
 	proto.UnimplementedOxiaControlServer
 	proto.UnimplementedOxiaLogReplicationServer
@@ -202,7 +198,7 @@ func (s *internalRpcServer) AddEntries(srv proto.OxiaLogReplication_AddEntriesSe
 		return errors.New("shard id is not set in the request metadata")
 	}
 
-	shardId, err := readHeaderUint32(md, metadataShardId)
+	shardId, err := ReadHeaderUint32(md, common.MetadataShardId)
 	if err != nil {
 		return err
 	}
@@ -238,7 +234,7 @@ func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapsh
 		return errors.New("shard id is not set in the request metadata")
 	}
 
-	shardId, err := readHeaderUint32(md, metadataShardId)
+	shardId, err := ReadHeaderUint32(md, common.MetadataShardId)
 	if err != nil {
 		return err
 	}
@@ -296,13 +292,24 @@ func readHeader(md metadata.MD, key string) (value string, err error) {
 	return arr[0], nil
 }
 
-func readHeaderUint32(md metadata.MD, key string) (v uint32, err error) {
+func ReadHeaderUint32(md metadata.MD, key string) (v uint32, err error) {
 	s, err := readHeader(md, key)
 	if err != nil {
 		return 0, err
 	}
 
 	var r uint32
+	_, err = fmt.Sscan(s, &r)
+	return r, err
+}
+
+func ReadHeaderInt64(md metadata.MD, key string) (v int64, err error) {
+	s, err := readHeader(md, key)
+	if err != nil {
+		return 0, err
+	}
+
+	var r int64
 	_, err = fmt.Sscan(s, &r)
 	return r, err
 }

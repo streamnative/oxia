@@ -9,4 +9,9 @@ message StorageEntry {
   int64 version = 2;
   fixed64 creation_timestamp = 3;
   fixed64 modification_timestamp = 4;
+  optional int64 sessionId = 5;
+}
+
+message SessionMetadata {
+  uint32 timeout_ms = 1;
 }

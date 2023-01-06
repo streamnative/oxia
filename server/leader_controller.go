@@ -40,6 +40,10 @@ type LeaderController interface {
 
 	// Status The Status of the leader
 	Status() proto.ServingStatus
+
+	CreateSession(*proto.CreateSessionRequest) (*proto.CreateSessionResponse, error)
+	KeepAlive(sessionId int64, stream proto.OxiaClient_KeepAliveServer) error
+	CloseSession(*proto.CloseSessionRequest) (*proto.CloseSessionResponse, error)
 }
 
 type leaderController struct {
@@ -57,13 +61,14 @@ type leaderController struct {
 	// truncate the followers.
 	leaderElectionHeadIndex *proto.EntryId
 
-	ctx        context.Context
-	cancel     context.CancelFunc
-	wal        wal.Wal
-	walTrimmer wal.Trimmer
-	db         kv.DB
-	rpcClient  ReplicationRpcProvider
-	log        zerolog.Logger
+	ctx            context.Context
+	cancel         context.CancelFunc
+	wal            wal.Wal
+	walTrimmer     wal.Trimmer
+	db             kv.DB
+	rpcClient      ReplicationRpcProvider
+	sessionManager SessionManager
+	log            zerolog.Logger
 }
 
 func NewLeaderController(config Config, shardId uint32, rpcClient ReplicationRpcProvider, walFactory wal.WalFactory, kvFactory kv.KVFactory) (LeaderController, error) {
@@ -79,6 +84,7 @@ func NewLeaderController(config Config, shardId uint32, rpcClient ReplicationRpc
 			Uint32("shard", shardId).
 			Logger(),
 	}
+	lc.sessionManager = NewSessionManager(shardId, lc)
 
 	lc.ctx, lc.cancel = context.WithCancel(context.Background())
 
@@ -174,6 +180,11 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 
 	lc.followers = nil
 	headIndex, err := getLastEntryIdInWal(lc.wal)
+	if err != nil {
+		return nil, err
+	}
+
+	err = lc.sessionManager.Close()
 	if err != nil {
 		return nil, err
 	}
@@ -331,6 +342,13 @@ func (lc *leaderController) applyAllEntriesIntoDB() error {
 		return err
 	}
 
+	err = lc.sessionManager.Initialize()
+	if err != nil {
+		lc.log.Error().Err(err).
+			Msg("Failed to initialize session manager")
+		return err
+	}
+
 	lc.log.Info().
 		Int64("commit-index", dbCommitIndex).
 		Int64("head-index", lc.quorumAckTracker.HeadIndex()).
@@ -351,7 +369,7 @@ func (lc *leaderController) applyAllEntriesIntoDB() error {
 			return err
 		}
 
-		if _, err = lc.db.ProcessWrite(writeRequest, entry.Offset, entry.Timestamp); err != nil {
+		if _, err = lc.db.ProcessWrite(writeRequest, entry.Offset, entry.Timestamp, SessionUpdateOperationCallback); err != nil {
 			return err
 		}
 	}
@@ -436,34 +454,48 @@ func (lc *leaderController) Read(request *proto.ReadRequest) (*proto.ReadRespons
 // if that value has not previously been written. The leader adds
 // the entry to its log, updates its head_index.
 func (lc *leaderController) Write(request *proto.WriteRequest) (*proto.WriteResponse, error) {
+	_, resp, err := lc.write(func(_ int64) *proto.WriteRequest {
+		return request
+	})
+	return resp, err
+}
+
+func (lc *leaderController) write(request func(int64) *proto.WriteRequest) (int64, *proto.WriteResponse, error) {
+
 	lc.log.Debug().
-		Interface("req", request).
 		Msg("Write operation")
 
 	timestamp := uint64(time.Now().UnixMilli())
 
-	newOffset, err := lc.appendToWal(request, timestamp)
+	actualRequest, newOffset, err := lc.appendToWal(request, timestamp)
 	if err != nil {
-		return nil, err
+		return wal.InvalidOffset, nil, err
 	}
 
-	return lc.quorumAckTracker.WaitForCommitIndex(newOffset, func() (*proto.WriteResponse, error) {
-		return lc.db.ProcessWrite(request, newOffset, timestamp)
+	resp, err := lc.quorumAckTracker.WaitForCommitIndex(newOffset, func() (*proto.WriteResponse, error) {
+		return lc.db.ProcessWrite(actualRequest, newOffset, timestamp, SessionUpdateOperationCallback)
 	})
+	return newOffset, resp, err
 }
 
-func (lc *leaderController) appendToWal(request *proto.WriteRequest, timestamp uint64) (offset int64, err error) {
+func (lc *leaderController) appendToWal(request func(int64) *proto.WriteRequest, timestamp uint64) (actualRequest *proto.WriteRequest, offset int64, err error) {
 	lc.Lock()
 	defer lc.Unlock()
 
 	if err := checkStatus(proto.ServingStatus_Leader, lc.status); err != nil {
-		return wal.InvalidOffset, err
+		return nil, wal.InvalidOffset, err
 	}
 
 	newOffset := lc.quorumAckTracker.HeadIndex() + 1
-	value, err := pb.Marshal(request)
+	actualRequest = request(newOffset)
+
+	lc.log.Debug().
+		Interface("req", actualRequest).
+		Msg("Append operation")
+
+	value, err := pb.Marshal(actualRequest)
 	if err != nil {
-		return wal.InvalidOffset, err
+		return actualRequest, wal.InvalidOffset, err
 	}
 	logEntry := &proto.LogEntry{
 		Epoch:     lc.epoch,
@@ -473,12 +505,12 @@ func (lc *leaderController) appendToWal(request *proto.WriteRequest, timestamp u
 	}
 
 	if err = lc.wal.Append(logEntry); err != nil {
-		return wal.InvalidOffset, errors.Wrap(err, "oxia: failed to append to wal")
+		return actualRequest, wal.InvalidOffset, errors.Wrap(err, "oxia: failed to append to wal")
 	}
 
 	lc.quorumAckTracker.AdvanceHeadIndex(newOffset)
 
-	return newOffset, nil
+	return actualRequest, newOffset, nil
 }
 
 func (lc *leaderController) GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
@@ -581,6 +613,7 @@ func (lc *leaderController) Close() error {
 	}
 
 	err = multierr.Combine(err,
+		lc.sessionManager.Close(),
 		lc.walTrimmer.Close(),
 		lc.wal.Close(),
 		lc.db.Close(),
@@ -613,4 +646,16 @@ func (lc *leaderController) GetStatus(request *proto.GetStatusRequest) (*proto.G
 		Epoch:  lc.epoch,
 		Status: lc.status,
 	}, nil
+}
+
+func (lc *leaderController) CreateSession(request *proto.CreateSessionRequest) (*proto.CreateSessionResponse, error) {
+	return lc.sessionManager.CreateSession(request)
+}
+
+func (lc *leaderController) KeepAlive(sessionId int64, stream proto.OxiaClient_KeepAliveServer) error {
+	return lc.sessionManager.KeepAlive(sessionId, stream)
+}
+
+func (lc *leaderController) CloseSession(request *proto.CloseSessionRequest) (*proto.CloseSessionResponse, error) {
+	return lc.sessionManager.CloseSession(request)
 }

@@ -126,7 +126,7 @@ func TestFollowerCursor_SendSnapshot(t *testing.T) {
 			Timestamp: uint64(i),
 		}))
 
-		_, err := db.ProcessWrite(wr, i, uint64(i))
+		_, err := db.ProcessWrite(wr, i, uint64(i), kv.NoOpCallback)
 		assert.NoError(t, err)
 	}
 
