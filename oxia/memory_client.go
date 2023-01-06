@@ -110,6 +110,18 @@ func (c *memoryClient) List(minKeyInclusive string, maxKeyExclusive string) <-ch
 	return ch
 }
 
-func (c *memoryClient) GetNotifications() <-chan Notification {
-	return make(chan Notification)
+type memoryNotifcationManager struct {
+	ch chan *Notification
+}
+
+func (m memoryNotifcationManager) Ch() <-chan *Notification {
+	return m.ch
+}
+
+func (m memoryNotifcationManager) Close() error {
+	return nil
+}
+
+func (c *memoryClient) GetNotifications() (Notifications, error) {
+	return &memoryNotifcationManager{make(chan *Notification)}, nil
 }

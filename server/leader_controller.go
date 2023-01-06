@@ -520,8 +520,20 @@ func (lc *leaderController) dispatchNotifications(ctx context.Context, req *prot
 	if req.StartOffsetExclusive != nil {
 		offsetInclusive = *req.StartOffsetExclusive + 1
 	} else {
-		commitIndex, err := lc.db.ReadCommitIndex()
-		if err != nil {
+		commitIndex := lc.quorumAckTracker.CommitIndex()
+
+		// The client is creating a new notification stream and wants to receive the notification from the next
+		// entry that will be written.
+		// In order to ensure the client will positioned on a given offset, we need to send a first "dummy"
+		// notification. The client will wait for this first notification before making the notification
+		// channel available to the application
+		lc.log.Debug().Int64("commit-idx", commitIndex).Msg("Sending first dummy notification")
+		if err := stream.Send(&proto.NotificationBatch{
+			ShardId:       lc.shardId,
+			Offset:        commitIndex,
+			Timestamp:     0,
+			Notifications: nil,
+		}); err != nil {
 			return err
 		}
 
