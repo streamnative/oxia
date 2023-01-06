@@ -21,7 +21,7 @@ const (
 	MaxTimeout = 5 * time.Minute
 )
 
-type SessionId uint64
+type SessionId int64
 
 func hexId(sessionId SessionId) string {
 	return fmt.Sprintf("%016x", sessionId)
@@ -49,7 +49,7 @@ func KeyToId(key string) (SessionId, error) {
 type SessionManager interface {
 	io.Closer
 	CreateSession(request *proto.CreateSessionRequest) (*proto.CreateSessionResponse, error)
-	KeepAlive(sessionId uint64, stream proto.OxiaClient_KeepAliveServer) error
+	KeepAlive(sessionId int64, stream proto.OxiaClient_KeepAliveServer) error
 	CloseSession(request *proto.CloseSessionRequest) (*proto.CloseSessionResponse, error)
 	Initialize() error
 }
@@ -111,22 +111,22 @@ func (sm *sessionManager) CreateSession(request *proto.CreateSessionRequest) (*p
 	s := startSession(sessionId, metadata, sm)
 	sm.sessions[sessionId] = s
 
-	return &proto.CreateSessionResponse{SessionId: uint64(s.id)}, nil
+	return &proto.CreateSessionResponse{SessionId: int64(s.id)}, nil
 
 }
 
-func (sm *sessionManager) getSession(sessionId uint64) (*session, error) {
+func (sm *sessionManager) getSession(sessionId int64) (*session, error) {
 	s, found := sm.sessions[SessionId(sessionId)]
 	if !found {
 		sm.log.Warn().
-			Uint64("session-id", sessionId).
+			Int64("session-id", sessionId).
 			Msg("Session not found")
 		return nil, common.ErrorInvalidSession
 	}
 	return s, nil
 }
 
-func (sm *sessionManager) KeepAlive(sessionId uint64, server proto.OxiaClient_KeepAliveServer) error {
+func (sm *sessionManager) KeepAlive(sessionId int64, server proto.OxiaClient_KeepAliveServer) error {
 	sm.Lock()
 	defer sm.Unlock()
 	s, err := sm.getSession(sessionId)

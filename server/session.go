@@ -118,7 +118,7 @@ func (s *session) waitForHeartbeats() {
 			}
 		case <-time.After(timeout):
 			s.log.Info().
-				Msg("Session timed out")
+				Msg("Session expired")
 
 			s.Lock()
 			s.closeChannels()

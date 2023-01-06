@@ -179,7 +179,7 @@ func (s *rpcServer) KeepAlive(stream proto.OxiaClient_KeepAliveServer) error {
 	if err != nil {
 		return err
 	}
-	sessionId, err := server.ReadHeaderUint64(md, common.MetadataSessionId)
+	sessionId, err := server.ReadHeaderInt64(md, common.MetadataSessionId)
 	if err != nil {
 		return err
 	}
@@ -190,7 +190,7 @@ func (s *rpcServer) KeepAlive(stream proto.OxiaClient_KeepAliveServer) error {
 	}
 	s.log.Debug().
 		Uint32("shard", shardId).
-		Uint64("session", sessionId).
+		Int64("session", sessionId).
 		Str("peer", common.GetPeer(stream.Context())).
 		Msg("Session keep alive")
 	err = lc.KeepAlive(sessionId, stream)

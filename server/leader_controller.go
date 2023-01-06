@@ -42,7 +42,7 @@ type LeaderController interface {
 	Status() proto.ServingStatus
 
 	CreateSession(*proto.CreateSessionRequest) (*proto.CreateSessionResponse, error)
-	KeepAlive(sessionId uint64, stream proto.OxiaClient_KeepAliveServer) error
+	KeepAlive(sessionId int64, stream proto.OxiaClient_KeepAliveServer) error
 	CloseSession(*proto.CloseSessionRequest) (*proto.CloseSessionResponse, error)
 }
 
@@ -61,14 +61,14 @@ type leaderController struct {
 	// truncate the followers.
 	leaderElectionHeadIndex *proto.EntryId
 
-	ctx        context.Context
-	cancel     context.CancelFunc
-	wal        wal.Wal
-	walTrimmer wal.Trimmer
-	db         kv.DB
-	rpcClient  ReplicationRpcProvider
+	ctx            context.Context
+	cancel         context.CancelFunc
+	wal            wal.Wal
+	walTrimmer     wal.Trimmer
+	db             kv.DB
+	rpcClient      ReplicationRpcProvider
 	sessionManager SessionManager
-	log        zerolog.Logger
+	log            zerolog.Logger
 }
 
 func NewLeaderController(config Config, shardId uint32, rpcClient ReplicationRpcProvider, walFactory wal.WalFactory, kvFactory kv.KVFactory) (LeaderController, error) {
@@ -640,7 +640,7 @@ func (lc *leaderController) CreateSession(request *proto.CreateSessionRequest) (
 	return lc.sessionManager.CreateSession(request)
 }
 
-func (lc *leaderController) KeepAlive(sessionId uint64, stream proto.OxiaClient_KeepAliveServer) error {
+func (lc *leaderController) KeepAlive(sessionId int64, stream proto.OxiaClient_KeepAliveServer) error {
 	return lc.sessionManager.KeepAlive(sessionId, stream)
 }
 

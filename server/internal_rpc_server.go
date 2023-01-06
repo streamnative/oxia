@@ -303,13 +303,13 @@ func ReadHeaderUint32(md metadata.MD, key string) (v uint32, err error) {
 	return r, err
 }
 
-func ReadHeaderUint64(md metadata.MD, key string) (v uint64, err error) {
+func ReadHeaderInt64(md metadata.MD, key string) (v int64, err error) {
 	s, err := readHeader(md, key)
 	if err != nil {
 		return 0, err
 	}
 
-	var r uint64
+	var r int64
 	_, err = fmt.Sscan(s, &r)
 	return r, err
 }

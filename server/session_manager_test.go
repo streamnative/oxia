@@ -266,7 +266,7 @@ func TestSessionManager(t *testing.T) {
 
 }
 
-func getSessionMetadata(t *testing.T, controller *leaderController, sessionId uint64) *proto.SessionMetadata {
+func getSessionMetadata(t *testing.T, controller *leaderController, sessionId int64) *proto.SessionMetadata {
 	shard := uint32(1)
 	resp, err := controller.db.ProcessRead(&proto.ReadRequest{
 		ShardId: &shard,
