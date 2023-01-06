@@ -155,7 +155,7 @@ func TestAsyncClientImpl_Notifications(t *testing.T) {
 }
 
 func TestAsyncClientImpl_NotificationsClose(t *testing.T) {
-	server, err := standalone.New(standalone.NewTestConfig())
+	server, err := server.NewStandalone(server.NewTestConfig())
 	assert.NoError(t, err)
 
 	serviceAddress := fmt.Sprintf("localhost:%d", server.RpcPort())
