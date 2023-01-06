@@ -11,6 +11,7 @@ import (
 	"math"
 	"oxia/common"
 	"oxia/proto"
+	"oxia/server/util"
 	"sync"
 )
 
@@ -110,36 +111,17 @@ func (s *shardAssignmentDispatcher) Initialized() bool {
 }
 
 func (s *shardAssignmentDispatcher) ShardAssignment(stream proto.OxiaControl_ShardAssignmentServer) error {
-	ch := make(chan error)
-	go common.DoWithLabels(map[string]string{
-		"oxia": "receive-shards-assignments",
-	}, func() { s.handleServerStream(stream, ch) })
 
-	select {
-	case err := <-ch:
-		return err
-
-	case <-s.ctx.Done():
-		// Server is closing
-		return nil
-	}
-}
-
-func (s *shardAssignmentDispatcher) handleServerStream(stream proto.OxiaControl_ShardAssignmentServer, ch chan error) {
-	for {
-		request, err := stream.Recv()
-		if err != nil {
-			ch <- err
-			return
-		} else if request == nil {
-			// The stream is already closing
-			close(ch)
-			return
-		} else if err := s.updateShardAssignment(request); err != nil {
-			ch <- err
-			return
-		}
-	}
+	streamReader := util.ReadStream[proto.ShardAssignmentsResponse](
+		stream,
+		s.updateShardAssignment,
+		map[string]string{
+			"oxia": "receive-shards-assignments",
+		},
+		s.ctx,
+		s.log.With().Str("stream", "receive-shards-assignments").Logger(),
+	)
+	return streamReader.Run()
 }
 
 func (s *shardAssignmentDispatcher) updateShardAssignment(assignments *proto.ShardAssignmentsResponse) error {
