@@ -109,32 +109,21 @@ func (s *shardAssignmentDispatcher) Initialized() bool {
 	return s.assignments != nil
 }
 
-func (s *shardAssignmentDispatcher) logError(err error) {
-	s.log.Warn().Err(err).
-		Msg("error while handling shard assignment stream")
-}
-
 func (s *shardAssignmentDispatcher) ShardAssignment(stream proto.OxiaControl_ShardAssignmentServer) error {
 
-	streamReader := util.ReadStream[proto.ShardAssignmentsResponse, any](
+	streamReader := util.ReadStream[proto.ShardAssignmentsResponse](
 		stream,
 		s.updateShardAssignment,
-		s.logError,
 		map[string]string{
 			"oxia": "receive-shards-assignments",
 		},
+		s.ctx,
+		s.log,
 	)
-	select {
-	case err := <-streamReader.Run():
-		return err
-
-	case <-s.ctx.Done():
-		// Server is closing
-		return nil
-	}
+	return streamReader.Run()
 }
 
-func (s *shardAssignmentDispatcher) updateShardAssignment(assignments *proto.ShardAssignmentsResponse) (*any, error) {
+func (s *shardAssignmentDispatcher) updateShardAssignment(assignments *proto.ShardAssignmentsResponse) error {
 	s.Lock()
 	defer s.Unlock()
 
@@ -153,7 +142,7 @@ func (s *shardAssignmentDispatcher) updateShardAssignment(assignments *proto.Sha
 		}
 	}
 
-	return nil, nil
+	return nil
 }
 
 func NewShardAssignmentDispatcher() ShardAssignmentsDispatcher {
@@ -177,7 +166,7 @@ func NewStandaloneShardAssignmentDispatcher(address string, numShards uint32) Sh
 		Assignments:    generateShards(address, numShards),
 	}
 
-	_, err := assignmentDispatcher.updateShardAssignment(res)
+	err := assignmentDispatcher.updateShardAssignment(res)
 	if err != nil {
 		panic(err)
 	}
