@@ -64,6 +64,10 @@ func (r *maelstromReplicationRpcProvider) Truncate(follower string, req *proto.T
 	}
 }
 
+func (r *maelstromReplicationRpcProvider) SendSnapshot(ctx context.Context, follower string, shard uint32) (proto.OxiaLogReplication_SendSnapshotClient, error) {
+	panic("not implemented")
+}
+
 // //////// AddEntriesClient
 type maelstromAddEntriesClient struct {
 	BaseStream
