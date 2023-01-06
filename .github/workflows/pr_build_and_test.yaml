@@ -43,3 +43,15 @@ jobs:
 
       - name: Test
         run: make test
+
+  build-docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build and push
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          push: false
+          cache-from: type=registry,ref=${{ steps.meta.outputs.tags }}
+          cache-to: type=inline
