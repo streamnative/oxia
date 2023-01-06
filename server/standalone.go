@@ -71,19 +71,23 @@ func NewStandalone(config StandaloneConfig) (*Standalone, error) {
 		return nil, err
 	}
 
-	bindAddress := fmt.Sprintf("%s:%d", config.BindHost, config.PublicServicePort)
-	s.shardAssignmentDispatcher = NewStandaloneShardAssignmentDispatcher(advertisedPublicAddress, config.NumShards)
-
 	s.shardsDirector = NewShardsDirector(config.Config, s.walFactory, s.kvFactory, newNoOpReplicationRpcProvider())
 
 	if err := s.initializeShards(config.NumShards); err != nil {
 		return nil, err
 	}
 
-	s.rpc, err = newPublicRpcServer(container.Default, bindAddress, s.shardsDirector, s.shardAssignmentDispatcher)
+	bindAddress := fmt.Sprintf("%s:%d", config.BindHost, config.PublicServicePort)
+	s.rpc, err = newPublicRpcServer(container.Default, bindAddress, s.shardsDirector, nil)
 	if err != nil {
 		return nil, err
 	}
+
+	s.shardAssignmentDispatcher = NewStandaloneShardAssignmentDispatcher(
+		fmt.Sprintf("%s:%d", advertisedPublicAddress, s.rpc.Port()),
+		config.NumShards)
+
+	s.rpc.assignmentDispatcher = s.shardAssignmentDispatcher
 
 	s.metrics, err = metrics.Start(fmt.Sprintf("%s:%d", config.BindHost, config.MetricsPort))
 	if err != nil {
