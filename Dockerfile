@@ -14,9 +14,14 @@ RUN cd /src/oxia \
 
 FROM alpine:3.16.1
 
+RUN apk add --no-cache bash bash-completion
+
 RUN mkdir /oxia
 WORKDIR /oxia
 
 COPY --from=build /src/oxia/bin/oxia /oxia/bin/oxia
 ENV PATH=$PATH:/oxia/bin
 
+RUN oxia completion bash > ~/.bashrc
+
+CMD /bin/bash
