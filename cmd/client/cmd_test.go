@@ -9,13 +9,13 @@ import (
 	"oxia/cmd/client/get"
 	"oxia/cmd/client/list"
 	"oxia/cmd/client/put"
-	"oxia/standalone"
+	"oxia/server"
 	"testing"
 )
 
 func TestClientCmd(t *testing.T) {
 	zerolog.SetGlobalLevel(zerolog.Disabled)
-	server, err := standalone.New(standalone.NewTestConfig())
+	server, err := server.NewStandalone(server.NewTestConfig())
 	assert.NoError(t, err)
 
 	serviceAddress := fmt.Sprintf("localhost:%d", server.RpcPort())

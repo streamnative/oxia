@@ -115,6 +115,10 @@ func (s *publicRpcServer) GetNotifications(req *proto.NotificationsRequest, stre
 	return err
 }
 
+func (s *publicRpcServer) Port() int {
+	return s.grpcServer.Port()
+}
+
 func (s *publicRpcServer) CreateSession(ctx context.Context, req *proto.CreateSessionRequest) (*proto.CreateSessionResponse, error) {
 	s.log.Debug().
 		Str("peer", common.GetPeer(ctx)).
