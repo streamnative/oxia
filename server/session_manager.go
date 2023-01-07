@@ -134,12 +134,8 @@ func (sm *sessionManager) KeepAlive(sessionId int64, server proto.OxiaClient_Kee
 	if err != nil {
 		return err
 	}
-	closeCh, err := s.attach(server)
-	if err != nil {
-		return err
-	}
-
-	return <-closeCh
+	err = s.attach(server)
+	return err
 
 }
 
