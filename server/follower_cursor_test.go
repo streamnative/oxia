@@ -41,14 +41,13 @@ func TestFollowerCursor(t *testing.T) {
 	assert.NoError(t, err)
 	log.Logger.Info().Msg("Appended entry 0 to the log")
 
-	assert.Equal(t, wal.InvalidOffset, fc.LastPushed())
-	assert.Equal(t, wal.InvalidOffset, fc.AckIndex())
-
-	ackTracker.AdvanceHeadIndex(0)
-
 	assert.Eventually(t, func() bool {
 		return fc.LastPushed() == 0
 	}, 10*time.Second, 100*time.Millisecond)
+
+	assert.Equal(t, wal.InvalidOffset, fc.AckIndex())
+
+	ackTracker.AdvanceHeadIndex(0)
 
 	assert.Equal(t, wal.InvalidOffset, fc.AckIndex())
 
