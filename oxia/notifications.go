@@ -19,9 +19,9 @@ type notifications struct {
 	shardManager internal.ShardManager
 	clientPool   common.ClientPool
 
-	initialized chan error
-	ctx         context.Context
-	cancel      context.CancelFunc
+	initWaitGroup common.WaitGroup
+	ctx           context.Context
+	cancel        context.CancelFunc
 }
 
 func newNotifications(options clientOptions, ctx context.Context, clientPool common.ClientPool, shardManager internal.ShardManager) (*notifications, error) {
@@ -30,7 +30,6 @@ func newNotifications(options clientOptions, ctx context.Context, clientPool com
 		closeCh:      make(chan any),
 		shardManager: shardManager,
 		clientPool:   clientPool,
-		initialized:  make(chan error),
 	}
 
 	nm.ctx, nm.cancel = context.WithCancel(ctx)
@@ -53,20 +52,14 @@ func newNotifications(options clientOptions, ctx context.Context, clientPool com
 		close(nm.multiplexCh)
 	})
 
+	nm.initWaitGroup = common.NewWaitGroup(len(shards))
+
 	// Wait for the notifications on all the shards to be initialized
 	timeoutCtx, cancel := context.WithTimeout(nm.ctx, options.requestTimeout)
 	defer cancel()
 
-	for i := 0; i < len(shards); i++ {
-		select {
-		case err := <-nm.initialized:
-			if err != nil {
-				return nil, err
-			}
-
-		case <-timeoutCtx.Done():
-			return nil, timeoutCtx.Err()
-		}
+	if err := nm.initWaitGroup.Wait(timeoutCtx); err != nil {
+		return nil, err
 	}
 
 	return nm, nil
@@ -126,7 +119,7 @@ func (snm *shardNotificationsManager) getNotificationsWithRetries() {
 
 			if !snm.initialized {
 				snm.initialized = true
-				snm.nm.initialized <- err
+				snm.nm.initWaitGroup.Fail(err)
 				snm.nm.cancel()
 			}
 		})
@@ -186,7 +179,7 @@ func (snm *shardNotificationsManager) getNotifications() error {
 			// needed to ensure that the notification cursor is created on the
 			// server side.
 			snm.initialized = true
-			snm.nm.initialized <- nil
+			snm.nm.initWaitGroup.Done()
 			snm.lastOffsetReceived = nb.Offset
 			continue
 		}
