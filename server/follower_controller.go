@@ -12,6 +12,7 @@ import (
 	pb "google.golang.org/protobuf/proto"
 	"io"
 	"oxia/common"
+	"oxia/common/metrics"
 	"oxia/proto"
 	"oxia/server/kv"
 	"oxia/server/wal"
@@ -74,6 +75,8 @@ type followerController struct {
 	cancel        context.CancelFunc
 	closeStreamCh chan error
 	log           zerolog.Logger
+
+	writeLatencyHisto metrics.LatencyHistogram
 }
 
 func NewFollowerController(config Config, shardId uint32, wf wal.WalFactory, kvFactory kv.KVFactory) (FollowerController, error) {
@@ -86,6 +89,8 @@ func NewFollowerController(config Config, shardId uint32, wf wal.WalFactory, kvF
 			Str("component", "follower-controller").
 			Uint32("shard", shardId).
 			Logger(),
+		writeLatencyHisto: metrics.NewLatencyHistogram("oxia_server_follower_write_latency",
+			"Latency for write operations in the follower", metrics.LabelsForShard(shardId)),
 	}
 	fc.ctx, fc.cancel = context.WithCancel(context.Background())
 
@@ -308,6 +313,9 @@ func (fc *followerController) handleServerStream(stream proto.OxiaLogReplication
 }
 
 func (fc *followerController) addEntry(req *proto.AddEntryRequest) (*proto.AddEntryResponse, error) {
+	timer := fc.writeLatencyHisto.Timer()
+	defer timer.Done()
+
 	fc.Lock()
 	defer fc.Unlock()
 

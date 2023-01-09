@@ -7,10 +7,12 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"go.opentelemetry.io/otel/metric/unit"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"io"
 	"oxia/common"
+	"oxia/common/metrics"
 	"oxia/proto"
 	"oxia/server/kv"
 	"oxia/server/wal"
@@ -64,6 +66,12 @@ type followerCursor struct {
 	ctx     context.Context
 	cancel  context.CancelFunc
 	log     zerolog.Logger
+
+	snapshotsTransferTime     metrics.LatencyHistogram
+	snapshotsStartedCounter   metrics.Counter
+	snapshotsCompletedCounter metrics.Counter
+	snapshotsFailedCounter    metrics.Counter
+	snapshotsBytesSent        metrics.Counter
 }
 
 func NewFollowerCursor(
@@ -75,6 +83,11 @@ func NewFollowerCursor(
 	wal wal.Wal,
 	db kv.DB,
 	ackIndex int64) (FollowerCursor, error) {
+
+	labels := map[string]any{
+		"shard":    shardId,
+		"follower": follower,
+	}
 
 	fc := &followerCursor{
 		epoch:                    epoch,
@@ -91,6 +104,17 @@ func NewFollowerCursor(
 			Int64("epoch", epoch).
 			Str("follower", follower).
 			Logger(),
+
+		snapshotsTransferTime: metrics.NewLatencyHistogram("oxia_server_snapshots_transfer_time",
+			"The time taken to transfer a full snapshot", labels),
+		snapshotsStartedCounter: metrics.NewCounter("oxia_server_snapshots_started_total",
+			"The number of DB snapshots started", "count", labels),
+		snapshotsCompletedCounter: metrics.NewCounter("oxia_server_snapshots_completed_total",
+			"The number of DB snapshots completed", "count", labels),
+		snapshotsFailedCounter: metrics.NewCounter("oxia_server_snapshots_failed_total",
+			"The number of DB snapshots failed", "count", labels),
+		snapshotsBytesSent: metrics.NewCounter("oxia_server_snapshots_sent",
+			"The amount of data sent as snapshot", unit.Bytes, labels),
 	}
 
 	fc.ctx, fc.cancel = context.WithCancel(context.Background())
@@ -177,9 +201,14 @@ func (fc *followerCursor) run() {
 
 func (fc *followerCursor) runOnce() error {
 	if fc.shouldSendSnapshot() {
+		timer := fc.snapshotsTransferTime.Timer()
+
 		if err := fc.sendSnapshot(); err != nil {
+			fc.snapshotsFailedCounter.Inc()
 			return err
 		}
+
+		timer.Done()
 	}
 
 	return fc.streamEntries()
@@ -188,6 +217,8 @@ func (fc *followerCursor) runOnce() error {
 func (fc *followerCursor) sendSnapshot() error {
 	fc.Lock()
 	defer fc.Unlock()
+
+	fc.snapshotsStartedCounter.Inc()
 
 	ctx, cancel := context.WithCancel(fc.ctx)
 	defer cancel()
@@ -228,7 +259,9 @@ func (fc *followerCursor) sendSnapshot() error {
 		}
 
 		chunksCount++
-		totalSize += int64(len(content))
+		size := len(content)
+		totalSize += int64(size)
+		fc.snapshotsBytesSent.Add(size)
 	}
 
 	fc.log.Debug().
@@ -251,6 +284,7 @@ func (fc *followerCursor) sendSnapshot() error {
 		Int64("follower-ack-index", response.AckIndex).
 		Msg("Successfully sent snapshot to follower")
 	fc.ackIndex.Store(response.AckIndex)
+	fc.snapshotsCompletedCounter.Inc()
 	return nil
 }
 

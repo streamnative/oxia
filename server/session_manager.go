@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/url"
 	"oxia/common"
+	"oxia/common/metrics"
 	"oxia/proto"
 	"oxia/server/kv"
 	"strconv"
@@ -57,15 +58,20 @@ type SessionManager interface {
 var _ SessionManager = (*sessionManager)(nil)
 
 type sessionManager struct {
-	sync.Mutex
+	sync.RWMutex
 	leaderController *leaderController
 	shardId          uint32
 	sessions         map[SessionId]*session
 	log              zerolog.Logger
+
+	createdSessions metrics.Counter
+	closedSessions  metrics.Counter
+	expiredSessions metrics.Counter
+	activeSessions  metrics.Gauge
 }
 
 func NewSessionManager(shardId uint32, controller *leaderController) SessionManager {
-	return &sessionManager{
+	sm := &sessionManager{
 		sessions:         make(map[SessionId]*session),
 		shardId:          shardId,
 		leaderController: controller,
@@ -74,7 +80,23 @@ func NewSessionManager(shardId uint32, controller *leaderController) SessionMana
 			Uint32("shard", shardId).
 			Int64("epoch", controller.epoch).
 			Logger(),
+
+		createdSessions: metrics.NewCounter("oxia_server_sessions_created",
+			"The total number of sessions created", "count", metrics.LabelsForShard(shardId)),
+		closedSessions: metrics.NewCounter("oxia_server_sessions_closed",
+			"The total number of sessions closed", "count", metrics.LabelsForShard(shardId)),
+		expiredSessions: metrics.NewCounter("oxia_server_sessions_expired",
+			"The total number of sessions_expired", "count", metrics.LabelsForShard(shardId)),
 	}
+
+	sm.activeSessions = metrics.NewGauge("oxia_server_session_active",
+		"The number of sessions currently active", "count", metrics.LabelsForShard(shardId), func() int64 {
+			sm.RLock()
+			defer sm.RUnlock()
+			return int64(len(sm.sessions))
+		})
+
+	return sm
 }
 
 func (sm *sessionManager) CreateSession(request *proto.CreateSessionRequest) (*proto.CreateSessionResponse, error) {
@@ -112,6 +134,7 @@ func (sm *sessionManager) CreateSession(request *proto.CreateSessionRequest) (*p
 	s := startSession(sessionId, metadata, sm)
 	sm.sessions[sessionId] = s
 
+	sm.createdSessions.Inc()
 	return &proto.CreateSessionResponse{SessionId: int64(s.id)}, nil
 
 }
@@ -128,9 +151,9 @@ func (sm *sessionManager) getSession(sessionId int64) (*session, error) {
 }
 
 func (sm *sessionManager) KeepAlive(sessionId int64, server proto.OxiaClient_KeepAliveServer) error {
-	sm.Lock()
+	sm.RLock()
 	s, err := sm.getSession(sessionId)
-	sm.Unlock()
+	sm.RUnlock()
 	if err != nil {
 		return err
 	}
@@ -155,6 +178,8 @@ func (sm *sessionManager) CloseSession(request *proto.CloseSessionRequest) (*pro
 	if err != nil {
 		return nil, err
 	}
+
+	sm.closedSessions.Inc()
 	return &proto.CloseSessionResponse{}, nil
 }
 
@@ -247,6 +272,8 @@ func (sm *sessionManager) Close() error {
 		s.closeChannels()
 		s.Unlock()
 	}
+
+	sm.activeSessions.Unregister()
 	return nil
 }
 

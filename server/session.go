@@ -145,6 +145,7 @@ func (s *session) waitForHeartbeats() {
 
 			s.Lock()
 			s.closeChannels()
+			s.sm.expiredSessions.Inc()
 			err := s.delete()
 
 			if err != nil {
