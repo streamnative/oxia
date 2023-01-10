@@ -10,6 +10,7 @@ import (
 	pb "google.golang.org/protobuf/proto"
 	"io"
 	"oxia/common"
+	"oxia/common/metrics"
 	"oxia/proto"
 	"oxia/server/kv"
 	"oxia/server/wal"
@@ -69,9 +70,15 @@ type leaderController struct {
 	rpcClient      ReplicationRpcProvider
 	sessionManager SessionManager
 	log            zerolog.Logger
+
+	writeLatencyHisto      metrics.LatencyHistogram
+	headIdxGauge           metrics.Gauge
+	commitIdxGauge         metrics.Gauge
+	followerAckIndexGauges map[string]metrics.Gauge
 }
 
 func NewLeaderController(config Config, shardId uint32, rpcClient ReplicationRpcProvider, walFactory wal.WalFactory, kvFactory kv.KVFactory) (LeaderController, error) {
+	labels := metrics.LabelsForShard(shardId)
 	lc := &leaderController{
 		status:           proto.ServingStatus_NotMember,
 		shardId:          shardId,
@@ -83,7 +90,30 @@ func NewLeaderController(config Config, shardId uint32, rpcClient ReplicationRpc
 			Str("component", "leader-controller").
 			Uint32("shard", shardId).
 			Logger(),
+		writeLatencyHisto: metrics.NewLatencyHistogram("oxia_server_leader_write_latency",
+			"Latency for write operations in the leader", labels),
+		followerAckIndexGauges: map[string]metrics.Gauge{},
 	}
+
+	lc.headIdxGauge = metrics.NewGauge("oxia_server_leader_head_idx", "The current head index offset", "offset", labels, func() int64 {
+		lc.Lock()
+		defer lc.Unlock()
+		if lc.quorumAckTracker != nil {
+			return lc.quorumAckTracker.HeadIndex()
+		}
+
+		return -1
+	})
+	lc.commitIdxGauge = metrics.NewGauge("oxia_server_leader_commit_idx", "The current commit index offset", "offset", labels, func() int64 {
+		lc.Lock()
+		defer lc.Unlock()
+		if lc.quorumAckTracker != nil {
+			return lc.quorumAckTracker.CommitIndex()
+		}
+
+		return -1
+	})
+
 	lc.sessionManager = NewSessionManager(shardId, lc)
 
 	lc.ctx, lc.cancel = context.WithCancel(context.Background())
@@ -165,6 +195,9 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 	lc.status = proto.ServingStatus_Fenced
 	lc.replicationFactor = 0
 
+	lc.headIdxGauge.Unregister()
+	lc.commitIdxGauge.Unregister()
+
 	if lc.quorumAckTracker != nil {
 		if err := lc.quorumAckTracker.Close(); err != nil {
 			return nil, err
@@ -176,6 +209,10 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 		if err := follower.Close(); err != nil {
 			return nil, err
 		}
+	}
+
+	for _, g := range lc.followerAckIndexGauges {
+		g.Unregister()
 	}
 
 	lc.followers = nil
@@ -333,6 +370,13 @@ func (lc *leaderController) addFollower(follower string, followerHeadIndex *prot
 		Int64("head-index", lc.wal.LastOffset()).
 		Msg("Added follower")
 	lc.followers[follower] = cursor
+	lc.followerAckIndexGauges[follower] = metrics.NewGauge("oxia_server_follower_ack_index", "", "count",
+		map[string]any{
+			"shard":    lc.shardId,
+			"follower": follower,
+		}, func() int64 {
+			return cursor.AckIndex()
+		})
 	return nil
 }
 
@@ -461,6 +505,8 @@ func (lc *leaderController) Write(request *proto.WriteRequest) (*proto.WriteResp
 }
 
 func (lc *leaderController) write(request func(int64) *proto.WriteRequest) (int64, *proto.WriteResponse, error) {
+	timer := lc.writeLatencyHisto.Timer()
+	defer timer.Done()
 
 	lc.log.Debug().
 		Msg("Write operation")
@@ -610,6 +656,10 @@ func (lc *leaderController) Close() error {
 
 	for _, follower := range lc.followers {
 		err = multierr.Append(err, follower.Close())
+	}
+
+	for _, g := range lc.followerAckIndexGauges {
+		g.Unregister()
 	}
 
 	err = multierr.Combine(err,

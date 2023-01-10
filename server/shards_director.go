@@ -7,6 +7,7 @@ import (
 	"google.golang.org/grpc/status"
 	"io"
 	"oxia/common"
+	"oxia/common/metrics"
 	"oxia/server/kv"
 	"oxia/server/wal"
 	"sync"
@@ -23,7 +24,7 @@ type ShardsDirector interface {
 }
 
 type shardsDirector struct {
-	sync.Mutex
+	sync.RWMutex
 
 	config    Config
 	leaders   map[uint32]LeaderController
@@ -37,7 +38,7 @@ type shardsDirector struct {
 }
 
 func NewShardsDirector(config Config, walFactory wal.WalFactory, kvFactory kv.KVFactory, provider ReplicationRpcProvider) ShardsDirector {
-	return &shardsDirector{
+	sd := &shardsDirector{
 		config:                 config,
 		walFactory:             walFactory,
 		kvFactory:              kvFactory,
@@ -48,11 +49,24 @@ func NewShardsDirector(config Config, walFactory wal.WalFactory, kvFactory kv.KV
 			Str("component", "shards-director").
 			Logger(),
 	}
+
+	metrics.NewGauge("oxia_server_leaders_count", "The number of leader controllers in a server", "count", nil, func() int64 {
+		sd.RLock()
+		defer sd.RUnlock()
+		return int64(len(sd.leaders))
+	})
+	metrics.NewGauge("oxia_server_followers_count", "The number of followers controllers in a server", "count", nil, func() int64 {
+		sd.RLock()
+		defer sd.RUnlock()
+		return int64(len(sd.followers))
+	})
+
+	return sd
 }
 
 func (s *shardsDirector) GetLeader(shardId uint32) (LeaderController, error) {
-	s.Lock()
-	defer s.Unlock()
+	s.RLock()
+	defer s.RUnlock()
 
 	if s.closed {
 		return nil, common.ErrorAlreadyClosed
@@ -70,8 +84,8 @@ func (s *shardsDirector) GetLeader(shardId uint32) (LeaderController, error) {
 }
 
 func (s *shardsDirector) GetFollower(shardId uint32) (FollowerController, error) {
-	s.Lock()
-	defer s.Unlock()
+	s.RLock()
+	defer s.RUnlock()
 
 	if s.closed {
 		return nil, common.ErrorAlreadyClosed

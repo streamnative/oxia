@@ -10,6 +10,7 @@ import (
 	"io"
 	"math"
 	"oxia/common"
+	"oxia/common/metrics"
 	"oxia/proto"
 	"oxia/server/util"
 	"sync"
@@ -38,6 +39,8 @@ type shardAssignmentDispatcher struct {
 	cancel context.CancelFunc
 
 	log zerolog.Logger
+
+	activeClientsGauge metrics.Gauge
 }
 
 func (s *shardAssignmentDispatcher) RegisterForUpdates(clientStream Client) error {
@@ -100,6 +103,7 @@ func (s *shardAssignmentDispatcher) RegisterForUpdates(clientStream Client) erro
 }
 
 func (s *shardAssignmentDispatcher) Close() error {
+	s.activeClientsGauge.Unregister()
 	s.cancel()
 	return nil
 }
@@ -156,6 +160,15 @@ func NewShardAssignmentDispatcher() ShardAssignmentsDispatcher {
 	}
 
 	s.ctx, s.cancel = context.WithCancel(context.Background())
+
+	s.activeClientsGauge = metrics.NewGauge("oxia_server_shards_assignments_active_clients",
+		"The number of client currently connected for fetching the shards assignments updates", "count",
+		map[string]any{}, func() int64 {
+			s.Lock()
+			defer s.Unlock()
+
+			return int64(len(s.clients))
+		})
 
 	return s
 }
