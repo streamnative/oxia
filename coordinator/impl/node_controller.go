@@ -70,7 +70,7 @@ func NewNodeController(addr model.ServerAddress,
 			Interface("addr", addr).
 			Logger(),
 
-		failedHealthChecks: metrics.NewCounter("oxia_coordinator_node_health_checks_failed_total",
+		failedHealthChecks: metrics.NewCounter("oxia_coordinator_node_health_checks_failed",
 			"The number of failed health checks to a node", "count", labels),
 	}
 

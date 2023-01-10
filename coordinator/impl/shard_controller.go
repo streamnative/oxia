@@ -53,6 +53,8 @@ type shardController struct {
 	log                   zerolog.Logger
 
 	leaderElectionLatency metrics.LatencyHistogram
+	fenceQuorumLatency    metrics.LatencyHistogram
+	becomeLeaderLatency   metrics.LatencyHistogram
 	leaderElectionsFailed metrics.Counter
 	epochGauge            metrics.Gauge
 }
@@ -71,8 +73,12 @@ func NewShardController(shard uint32, shardMetadata model.ShardMetadata, rpc Rpc
 
 		leaderElectionLatency: metrics.NewLatencyHistogram("oxia_coordinator_leader_election_latency",
 			"The time it takes to elect a leader for the shard", labels),
-		leaderElectionsFailed: metrics.NewCounter("oxia_coordinator_leader_election_failed_total",
+		leaderElectionsFailed: metrics.NewCounter("oxia_coordinator_leader_election_failed",
 			"The number of failed leader elections", "count", labels),
+		fenceQuorumLatency: metrics.NewLatencyHistogram("oxia_coordinator_fence_quorum_latency",
+			"The time it takes to fence the ensemble of nodes", labels),
+		becomeLeaderLatency: metrics.NewLatencyHistogram("oxia_coordinator_become_leader_latency",
+			"The time it takes for the new elected leader to start", labels),
 	}
 
 	s.epochGauge = metrics.NewGauge("oxia_coordinator_epoch",
@@ -163,7 +169,6 @@ func (s *shardController) electLeaderWithRetries() {
 
 func (s *shardController) electLeader() error {
 	timer := s.leaderElectionLatency.Timer()
-	defer timer.Done()
 
 	s.Lock()
 	defer s.Unlock()
@@ -217,6 +222,7 @@ func (s *shardController) electLeader() error {
 		Interface("leader", s.shardMetadata.Leader).
 		Msg("Elected new leader")
 
+	defer timer.Done()
 	s.keepFencingFailedFollowers(followers)
 	return nil
 }
@@ -310,6 +316,8 @@ func (s *shardController) fenceAndAddFollower(ctx context.Context, node model.Se
 // Fence all the ensemble members in parallel and wait for
 // a majority of them to reply successfully
 func (s *shardController) fenceQuorum() (map[model.ServerAddress]*proto.EntryId, error) {
+	timer := s.fenceQuorumLatency.Timer()
+
 	ensembleSize := len(s.shardMetadata.Ensemble)
 	majority := ensembleSize/2 + 1
 
@@ -388,10 +396,12 @@ func (s *shardController) fenceQuorum() (map[model.ServerAddress]*proto.EntryId,
 			}
 
 		case <-time.After(quorumFencingGracePeriod):
+			timer.Done()
 			return res, nil
 		}
 	}
 
+	timer.Done()
 	return res, nil
 }
 
@@ -437,6 +447,8 @@ func (s *shardController) selectNewLeader(fenceResponses map[model.ServerAddress
 }
 
 func (s *shardController) becomeLeader(leader model.ServerAddress, followers map[model.ServerAddress]*proto.EntryId) error {
+	timer := s.leaderElectionLatency.Timer()
+
 	followersMap := make(map[string]*proto.EntryId)
 	for sa, e := range followers {
 		followersMap[sa.Internal] = e
@@ -451,6 +463,7 @@ func (s *shardController) becomeLeader(leader model.ServerAddress, followers map
 		return err
 	}
 
+	timer.Done()
 	return nil
 }
 
