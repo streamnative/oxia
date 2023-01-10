@@ -6,8 +6,8 @@ metadata:
   name: {{ .Release.Name }}-coordinator
 data:
   config.yaml: |
+    initialShardCount: {{ .Values.initialShardCount }}
     replicationFactor: {{ .Values.replicationFactor }}
-    shardCount: {{ .Values.shardCount }}
     servers:
       {{- $vars := dict "name" .Release.Name "namespace" .Release.Namespace "public" .Values.server.ports.public "internal" .Values.server.ports.internal }}
       {{- range until (int .Values.server.replicas) }}

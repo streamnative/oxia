@@ -3,16 +3,16 @@
 # Declare variables to be passed into your templates.
 
 #imagePullSecrets: oxia
-#storageClass: gp2
+#storageClassName: gp2
 
 image:
-  repository: oxia
+  repository: streamnative/oxia
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
 
+initialShardCount: 3
 replicationFactor: 3
-shardCount: 3
 
 coordinator:
   ports:
