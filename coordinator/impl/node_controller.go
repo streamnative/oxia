@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"io"
 	"oxia/common"
+	"oxia/common/metrics"
 	"oxia/coordinator/model"
 	"oxia/proto"
 	"sync"
@@ -47,12 +48,17 @@ type nodeController struct {
 	closed                   atomic.Bool
 	ctx                      context.Context
 	cancel                   context.CancelFunc
+
+	nodeIsRunningGauge metrics.Gauge
+	failedHealthChecks metrics.Counter
 }
 
 func NewNodeController(addr model.ServerAddress,
 	shardAssignmentsProvider ShardAssignmentsProvider,
 	nodeAvailabilityListener NodeAvailabilityListener,
 	rpc RpcProvider) NodeController {
+
+	labels := map[string]any{"node": addr.Internal}
 	nc := &nodeController{
 		addr:                     addr,
 		shardAssignmentsProvider: shardAssignmentsProvider,
@@ -63,9 +69,20 @@ func NewNodeController(addr model.ServerAddress,
 			Str("component", "node-controller").
 			Interface("addr", addr).
 			Logger(),
+
+		failedHealthChecks: metrics.NewCounter("oxia_coordinator_node_health_checks_failed_total",
+			"The number of failed health checks to a node", "count", labels),
 	}
 
 	nc.ctx, nc.cancel = context.WithCancel(context.Background())
+
+	nc.nodeIsRunningGauge = metrics.NewGauge("oxia_coordinator_node_running",
+		"Whether the node is considered to be running by the coordinator", "count", labels, func() int64 {
+			if nc.status == Running {
+				return 1
+			}
+			return 0
+		})
 
 	go common.DoWithLabels(map[string]string{
 		"oxia": "node-controller",
@@ -98,6 +115,7 @@ func (n *nodeController) healthCheckWithRetries() {
 		defer n.Unlock()
 		if n.status == Running {
 			n.status = NotRunning
+			n.failedHealthChecks.Inc()
 			n.nodeAvailabilityListener.NodeBecameUnavailable(n.addr)
 		}
 	})
@@ -224,6 +242,7 @@ func (n *nodeController) sendAssignmentsUpdates(backoff backoff.BackOff) error {
 
 func (n *nodeController) Close() error {
 	n.closed.Store(true)
+	n.nodeIsRunningGauge.Unregister()
 	n.cancel()
 	return nil
 }

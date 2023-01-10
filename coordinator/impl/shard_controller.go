@@ -12,6 +12,7 @@ import (
 	"io"
 	"math/rand"
 	"oxia/common"
+	"oxia/common/metrics"
 	"oxia/coordinator/model"
 	"oxia/proto"
 	"sync"
@@ -50,9 +51,14 @@ type shardController struct {
 	currentElectionCtx    context.Context
 	currentElectionCancel context.CancelFunc
 	log                   zerolog.Logger
+
+	leaderElectionLatency metrics.LatencyHistogram
+	leaderElectionsFailed metrics.Counter
+	epochGauge            metrics.Gauge
 }
 
 func NewShardController(shard uint32, shardMetadata model.ShardMetadata, rpc RpcProvider, coordinator Coordinator) ShardController {
+	labels := metrics.LabelsForShard(shard)
 	s := &shardController{
 		shard:         shard,
 		shardMetadata: shardMetadata,
@@ -62,7 +68,17 @@ func NewShardController(shard uint32, shardMetadata model.ShardMetadata, rpc Rpc
 			Str("component", "shard-controller").
 			Uint32("shard", shard).
 			Logger(),
+
+		leaderElectionLatency: metrics.NewLatencyHistogram("oxia_coordinator_leader_election_latency",
+			"The time it takes to elect a leader for the shard", labels),
+		leaderElectionsFailed: metrics.NewCounter("oxia_coordinator_leader_election_failed_total",
+			"The number of failed leader elections", "count", labels),
 	}
+
+	s.epochGauge = metrics.NewGauge("oxia_coordinator_epoch",
+		"The epoch of the shard", "count", labels, func() int64 {
+			return s.shardMetadata.Epoch
+		})
 
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 
@@ -137,6 +153,7 @@ func (s *shardController) electLeaderWithRetries() {
 	}, func() {
 		_ = backoff.RetryNotify(s.electLeader, common.NewBackOff(s.ctx),
 			func(err error, duration time.Duration) {
+				s.leaderElectionsFailed.Inc()
 				s.log.Warn().Err(err).
 					Dur("retry-after", duration).
 					Msg("Leader election has failed, retrying later")
@@ -145,6 +162,9 @@ func (s *shardController) electLeaderWithRetries() {
 }
 
 func (s *shardController) electLeader() error {
+	timer := s.leaderElectionLatency.Timer()
+	defer timer.Done()
+
 	s.Lock()
 	defer s.Unlock()
 
@@ -467,5 +487,6 @@ func (s *shardController) Status() model.ShardStatus {
 
 func (s *shardController) Close() error {
 	s.cancel()
+	s.epochGauge.Unregister()
 	return nil
 }
