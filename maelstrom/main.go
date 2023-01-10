@@ -123,7 +123,7 @@ func main() {
 			impl.NewMetadataProviderFile(filepath.Join(dataDir, "cluster-status.json")),
 			model.ClusterConfig{
 				ReplicationFactor: 3,
-				ShardCount:        1,
+				InitialShardCount: 1,
 				Servers:           servers,
 			}, newRpcProvider(dispatcher))
 		if err != nil {

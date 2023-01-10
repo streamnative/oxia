@@ -101,12 +101,12 @@ func (c *coordinator) initialAssignment() error {
 		Shards:            make(map[uint32]model.ShardMetadata),
 	}
 
-	bucketSize := math.MaxUint32 / cc.ShardCount
+	bucketSize := math.MaxUint32 / cc.InitialShardCount
 
 	// Do round-robin assignment of shards to storage servers
 	serverIdx := uint32(0)
 
-	for i := uint32(0); i < cc.ShardCount; i++ {
+	for i := uint32(0); i < cc.InitialShardCount; i++ {
 		shard := model.ShardMetadata{
 			Status:   model.ShardStatusUnknown,
 			Epoch:    -1,
@@ -118,7 +118,7 @@ func (c *coordinator) initialAssignment() error {
 			},
 		}
 
-		if i == cc.ShardCount-1 {
+		if i == cc.InitialShardCount-1 {
 			// Last shard should always be set at the max of 32bit. Depending on the
 			// shard count, the division might fell few numbers earlier. It's OK in
 			// this case to have a (tinily) bigger last-shard range.

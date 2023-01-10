@@ -19,46 +19,25 @@ type OxiaCluster struct {
 
 // OxiaClusterSpec is the spec for an OxiaCluster resource
 type OxiaClusterSpec struct {
-	ReplicationFactor    *uint32           `json:"replicationFactor"`
-	ShardCount           *uint32           `json:"shardCount"`
-	ServerReplicas       *uint32           `json:"serverReplicas"`
-	ServerResources      Resources         `json:"serverResources"`
-	ServerVolume         string            `json:"serverVolume"`
-	StorageClassName     *string           `json:"storageClass"`
-	CoordinatorResources Resources         `json:"coordinatorResources"`
-	Image                string            `json:"image"`
-	ImagePullSecrets     *string           `json:"imagePullSecrets"`
-	ImagePullPolicy      coreV1.PullPolicy `json:"imagePullPolicy"`
-	MonitoringEnabled    bool              `json:"monitoringEnabled"`
+	InitialShardCount    uint32             `json:"initialShardCount"`
+	ReplicationFactor    uint32             `json:"replicationFactor"`
+	ServerReplicas       uint32             `json:"serverReplicas"`
+	ServerResources      Resources          `json:"serverResources"`
+	ServerVolume         string             `json:"serverVolume"`
+	StorageClassName     *string            `json:"storageClassName,omitempty"`
+	CoordinatorResources Resources          `json:"coordinatorResources"`
+	Image                string             `json:"image"`
+	ImagePullSecrets     *string            `json:"imagePullSecrets,omitempty"`
+	ImagePullPolicy      *coreV1.PullPolicy `json:"imagePullPolicy,omitempty"`
+	MonitoringEnabled    bool               `json:"monitoringEnabled"`
 }
 
 // OxiaClusterStatus is the status for an OxiaCluster resource
-type OxiaClusterStatus struct {
-	Shards []*ShardMetadata `json:"shards"`
-}
+type OxiaClusterStatus struct{}
 
 type Resources struct {
 	Cpu    string `json:"cpu"`
 	Memory string `json:"memory"`
-}
-
-type ShardMetadata struct {
-	Id        uint32          `json:"id"`
-	Status    string          `json:"shardStatus"`
-	Epoch     int64           `json:"epoch"`
-	Leader    ServerAddress   `json:"leader"`
-	Ensemble  []ServerAddress `json:"ensemble"`
-	HashRange HashRange       `json:"hashRange"`
-}
-
-type ServerAddress struct {
-	Public   string `json:"public"`
-	Internal string `json:"internal"`
-}
-
-type HashRange struct {
-	Min uint32 `json:"min"`
-	Max uint32 `json:"max"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

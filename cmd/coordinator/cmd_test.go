@@ -15,7 +15,7 @@ import (
 func TestCmd(t *testing.T) {
 	clusterConfig := model.ClusterConfig{
 		ReplicationFactor: 1,
-		ShardCount:        2,
+		InitialShardCount: 2,
 		Servers: []model.ServerAddress{{
 			Public:   "public:1234",
 			Internal: "internal:5678",
@@ -46,7 +46,7 @@ func TestCmd(t *testing.T) {
 			MetadataProviderImpl: coordinator.File,
 			ClusterConfig: model.ClusterConfig{
 				ReplicationFactor: 1,
-				ShardCount:        2,
+				InitialShardCount: 2,
 				Servers: []model.ServerAddress{{
 					Public:   "public:1234",
 					Internal: "internal:5678",
@@ -57,7 +57,7 @@ func TestCmd(t *testing.T) {
 			MetadataProviderImpl: coordinator.File,
 			ClusterConfig: model.ClusterConfig{
 				ReplicationFactor: 1,
-				ShardCount:        2,
+				InitialShardCount: 2,
 				Servers: []model.ServerAddress{{
 					Public:   "public:1234",
 					Internal: "internal:5678",
@@ -68,7 +68,7 @@ func TestCmd(t *testing.T) {
 			MetadataProviderImpl: coordinator.File,
 			ClusterConfig: model.ClusterConfig{
 				ReplicationFactor: 1,
-				ShardCount:        2,
+				InitialShardCount: 2,
 				Servers: []model.ServerAddress{{
 					Public:   "public:1234",
 					Internal: "internal:5678",
@@ -79,7 +79,7 @@ func TestCmd(t *testing.T) {
 			MetadataProviderImpl: coordinator.File,
 			ClusterConfig: model.ClusterConfig{
 				ReplicationFactor: 1,
-				ShardCount:        2,
+				InitialShardCount: 2,
 				Servers: []model.ServerAddress{{
 					Public:   "public:1234",
 					Internal: "internal:5678",

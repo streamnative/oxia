@@ -18,11 +18,10 @@ type clusterClientImpl struct {
 	monitoring monitoring.Interface
 }
 
-func NewClusterClient() ClusterClient {
-	config := NewClientConfig()
+func NewClusterClient(kubernetes kubernetes.Interface, monitoring monitoring.Interface) ClusterClient {
 	return &clusterClientImpl{
-		kubernetes: NewKubernetesClientset(config),
-		monitoring: NewMonitoringClientset(config),
+		kubernetes: kubernetes,
+		monitoring: monitoring,
 	}
 }
 

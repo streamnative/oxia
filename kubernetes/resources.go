@@ -131,16 +131,16 @@ func service(component Component, cluster v1alpha1.OxiaCluster, ports []NamedPor
 }
 
 func configMap(cluster v1alpha1.OxiaCluster) *coreV1.ConfigMap {
-	servers := make([]model.ServerAddress, *cluster.Spec.ServerReplicas)
-	for i := 0; i < int(*cluster.Spec.ServerReplicas); i++ {
+	servers := make([]model.ServerAddress, cluster.Spec.ServerReplicas)
+	for i := 0; i < int(cluster.Spec.ServerReplicas); i++ {
 		servers[i] = model.ServerAddress{
 			Public:   serviceAddress(cluster.Namespace, cluster.Name, i, PublicPort.Port),
 			Internal: serviceAddress(cluster.Namespace, cluster.Name, i, InternalPort.Port),
 		}
 	}
 	config := model.ClusterConfig{
-		ReplicationFactor: 1,
-		ShardCount:        2,
+		InitialShardCount: cluster.Spec.InitialShardCount,
+		ReplicationFactor: cluster.Spec.ReplicationFactor,
 		Servers:           servers,
 	}
 	bytes, err := yaml.Marshal(config)
@@ -161,7 +161,7 @@ func serviceAddress(namespace, name string, ordinal, port int) string {
 
 func coordinatorDeployment(cluster v1alpha1.OxiaCluster) *appsV1.Deployment {
 	_resourceName := resourceName(Coordinator, cluster.Name)
-	return &appsV1.Deployment{
+	deployment := &appsV1.Deployment{
 		ObjectMeta: objectMeta(Coordinator, cluster.Name),
 		Spec: appsV1.DeploymentSpec{
 			Replicas: pointer.Int32(1),
@@ -180,13 +180,12 @@ func coordinatorDeployment(cluster v1alpha1.OxiaCluster) *appsV1.Deployment {
 							fmt.Sprintf("--k8s-namespace=%s", cluster.Namespace),
 							fmt.Sprintf("--k8s-configmap-name=%s-status", cluster.Name),
 						},
-						Image:           cluster.Spec.Image,
-						ImagePullPolicy: cluster.Spec.ImagePullPolicy,
-						Ports:           transform(CoordinatorPorts, containerPort),
-						Resources:       coreV1.ResourceRequirements{Limits: resourceList(cluster.Spec.CoordinatorResources)},
-						VolumeMounts:    []coreV1.VolumeMount{{Name: "conf", MountPath: "/oxia/conf"}},
-						LivenessProbe:   probe(),
-						ReadinessProbe:  probe(),
+						Image:          cluster.Spec.Image,
+						Ports:          transform(CoordinatorPorts, containerPort),
+						Resources:      coreV1.ResourceRequirements{Limits: resourceList(cluster.Spec.CoordinatorResources)},
+						VolumeMounts:   []coreV1.VolumeMount{{Name: "conf", MountPath: "/oxia/conf"}},
+						LivenessProbe:  probe(),
+						ReadinessProbe: probe(),
 					}},
 					Volumes: []coreV1.Volume{{
 						Name: "conf",
@@ -200,14 +199,18 @@ func coordinatorDeployment(cluster v1alpha1.OxiaCluster) *appsV1.Deployment {
 			},
 		},
 	}
+	if cluster.Spec.ImagePullPolicy != nil {
+		deployment.Spec.Template.Spec.Containers[0].ImagePullPolicy = *cluster.Spec.ImagePullPolicy
+	}
+	return deployment
 }
 
 func serverStatefulSet(cluster v1alpha1.OxiaCluster) *appsV1.StatefulSet {
 	_resourceName := resourceName(Server, cluster.Name)
-	return &appsV1.StatefulSet{
+	statefulSet := &appsV1.StatefulSet{
 		ObjectMeta: objectMeta(Server, cluster.Name),
 		Spec: appsV1.StatefulSetSpec{
-			Replicas:    pointer.Int32(int32(*cluster.Spec.ServerReplicas)),
+			Replicas:    pointer.Int32(int32(cluster.Spec.ServerReplicas)),
 			Selector:    &metaV1.LabelSelector{MatchLabels: selectorLabels(Server, cluster.Name)},
 			ServiceName: _resourceName,
 			Template: coreV1.PodTemplateSpec{
@@ -215,15 +218,14 @@ func serverStatefulSet(cluster v1alpha1.OxiaCluster) *appsV1.StatefulSet {
 				Spec: coreV1.PodSpec{
 					ServiceAccountName: _resourceName,
 					Containers: []coreV1.Container{{
-						Name:            "server",
-						Command:         []string{"oxia", "server", "--log-json", "--data-dir=/data/db", "--wal-dir=/data/wal"},
-						Image:           cluster.Spec.Image,
-						ImagePullPolicy: cluster.Spec.ImagePullPolicy,
-						Ports:           transform(ServerPorts, containerPort),
-						Resources:       coreV1.ResourceRequirements{Limits: resourceList(cluster.Spec.ServerResources)},
-						VolumeMounts:    []coreV1.VolumeMount{{Name: "data", MountPath: "/data"}},
-						LivenessProbe:   probe(),
-						ReadinessProbe:  probe(),
+						Name:           "server",
+						Command:        []string{"oxia", "server", "--log-json", "--data-dir=/data/db", "--wal-dir=/data/wal"},
+						Image:          cluster.Spec.Image,
+						Ports:          transform(ServerPorts, containerPort),
+						Resources:      coreV1.ResourceRequirements{Limits: resourceList(cluster.Spec.ServerResources)},
+						VolumeMounts:   []coreV1.VolumeMount{{Name: "data", MountPath: "/data"}},
+						LivenessProbe:  probe(),
+						ReadinessProbe: probe(),
 					}},
 				},
 			},
@@ -241,6 +243,10 @@ func serverStatefulSet(cluster v1alpha1.OxiaCluster) *appsV1.StatefulSet {
 			}},
 		},
 	}
+	if cluster.Spec.ImagePullPolicy != nil {
+		statefulSet.Spec.Template.Spec.Containers[0].ImagePullPolicy = *cluster.Spec.ImagePullPolicy
+	}
+	return statefulSet
 }
 
 func probe() *coreV1.Probe {

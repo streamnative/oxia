@@ -5,6 +5,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
 	"oxia/common/metrics"
+	"oxia/kubernetes"
 )
 
 type Config struct {
@@ -16,6 +17,7 @@ type Config struct {
 type Controller struct {
 	rpc     *ControllerRpcServer
 	metrics *metrics.PrometheusMetrics
+	watcher Watcher
 }
 
 func New(config Config) (*Controller, error) {
@@ -25,11 +27,22 @@ func New(config Config) (*Controller, error) {
 
 	s := &Controller{}
 
-	// TODO add controller behaviour
-	// watch for OxiaCluster resources
-	// create and manage Oxia clusters
+	// TODO periodic full bidirectional reconciliation
+	// query for resources with label: app.kubernetes.io/managed-by: oxia-controller
+	// query for OxiaClusters
+	// compare and resolve differences
+
+	conf := kubernetes.NewClientConfig()
+	oxia := kubernetes.NewOxiaClientset(conf)
+	_kubernetes := kubernetes.NewKubernetesClientset(conf)
+	monitoring := kubernetes.NewMonitoringClientset(conf)
 
 	var err error
+	s.watcher, err = newWatcher(oxia, newReconciler(_kubernetes, monitoring))
+	if err != nil {
+		return nil, err
+	}
+
 	s.rpc, err = NewControllerRpcServer(fmt.Sprintf("%s:%d", config.BindHost, config.InternalServicePort))
 	if err != nil {
 		return nil, err
@@ -47,5 +60,6 @@ func (s *Controller) Close() error {
 	return multierr.Combine(
 		s.rpc.Close(),
 		s.metrics.Close(),
+		s.watcher.Close(),
 	)
 }

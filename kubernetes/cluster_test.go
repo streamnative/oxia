@@ -10,7 +10,6 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	fakeKubernetes "k8s.io/client-go/kubernetes/fake"
-	"k8s.io/utils/pointer"
 	"oxia/pkg/apis/oxia/v1alpha1"
 	"testing"
 )
@@ -18,20 +17,17 @@ import (
 func TestCluster(t *testing.T) {
 	_kubernetes := fakeKubernetes.NewSimpleClientset()
 	_monitoring := fakeMonitoring.NewSimpleClientset()
-	client := &clusterClientImpl{
-		kubernetes: _kubernetes,
-		monitoring: _monitoring,
-	}
-
+	client := NewClusterClient(_kubernetes, _monitoring)
+	pullAlways := coreV1.PullAlways
 	cluster := v1alpha1.OxiaCluster{
 		ObjectMeta: metaV1.ObjectMeta{
 			Namespace: "nyns",
 			Name:      "oxia",
 		},
 		Spec: v1alpha1.OxiaClusterSpec{
-			ShardCount:        pointer.Uint32(1),
-			ReplicationFactor: pointer.Uint32(2),
-			ServerReplicas:    pointer.Uint32(3),
+			InitialShardCount: 1,
+			ReplicationFactor: 2,
+			ServerReplicas:    3,
 			ServerResources: v1alpha1.Resources{
 				Cpu:    "100m",
 				Memory: "128Mi",
@@ -42,7 +38,7 @@ func TestCluster(t *testing.T) {
 				Memory: "128Mi",
 			},
 			Image:             "oxia:latest",
-			ImagePullPolicy:   coreV1.PullAlways,
+			ImagePullPolicy:   &pullAlways,
 			MonitoringEnabled: true,
 		},
 	}
