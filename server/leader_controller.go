@@ -96,10 +96,22 @@ func NewLeaderController(config Config, shardId uint32, rpcClient ReplicationRpc
 	}
 
 	lc.headIdxGauge = metrics.NewGauge("oxia_server_leader_head_idx", "The current head index offset", "offset", labels, func() int64 {
-		return lc.quorumAckTracker.HeadIndex()
+		lc.Lock()
+		defer lc.Unlock()
+		if lc.quorumAckTracker != nil {
+			return lc.quorumAckTracker.HeadIndex()
+		}
+
+		return -1
 	})
 	lc.commitIdxGauge = metrics.NewGauge("oxia_server_leader_commit_idx", "The current commit index offset", "offset", labels, func() int64 {
-		return lc.quorumAckTracker.CommitIndex()
+		lc.Lock()
+		defer lc.Unlock()
+		if lc.quorumAckTracker != nil {
+			return lc.quorumAckTracker.CommitIndex()
+		}
+
+		return -1
 	})
 
 	lc.sessionManager = NewSessionManager(shardId, lc)
