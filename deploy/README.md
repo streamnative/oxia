@@ -53,34 +53,9 @@ kubectl create namespace monitoring
 
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
-helm install monitoring prometheus-community/kube-prometheus-stack --namespace monitoring
-```
-
-## Set some basic variables
-
-:note: Only applicable if using ECR
-
-```shell
-AWS_ACCOUNT=598203581484
-REGISTRY=$AWS_ACCOUNT.dkr.ecr.us-west-2.amazonaws.com
-NAME=oxia
-TAG=latest
-IMAGE=$NAME:$TAG
-REPOSITORY=$REGISTRY/$NAME
-```
-
-## Publish Oxia Docker Image
-
-:note: Only applicable if using ECR
-
-```shell
-aws ecr create-repository --repository-name oxia --region us-west-2
-
-aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin $REGISTRY
-
-docker build --platform linux/x86_64 -t $NAME:$TAG .
-docker tag $NAME:$TAG $REPOSITORY:$TAG
-docker push $REPOSITORY:$TAG
+helm install monitoring prometheus-community/kube-prometheus-stack \
+  --namespace monitoring \
+  --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false
 ```
 
 ## Install Oxia Operator
@@ -95,7 +70,38 @@ kubectl apply -f deploy/crds/oxiaclusters.yaml
 
 ```shell
 kubectl create namespace oxia
+```
 
+If you need to use a custom image in ECR then you'll need to configure appropriately:
+
+#### Set some basic variables
+
+```shell
+AWS_ACCOUNT=598203581484
+REGISTRY=$AWS_ACCOUNT.dkr.ecr.us-west-2.amazonaws.com
+NAME=oxia
+TAG=latest
+IMAGE=$NAME:$TAG
+REPOSITORY=$REGISTRY/$NAME
+```
+
+#### Publish Oxia Docker Image
+
+:notebook: Only applicable if using ECR
+
+```shell
+aws ecr create-repository --repository-name oxia --region us-west-2
+
+aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin $REGISTRY
+
+docker build --platform linux/x86_64 -t $NAME:$TAG .
+docker tag $NAME:$TAG $REPOSITORY:$TAG
+docker push $REPOSITORY:$TAG
+```
+
+#### Create Docker registry secret
+
+```shell
 kubectl create secret docker-registry oxia \
   --docker-server=$REGISTRY \
   --docker-username=AWS \
@@ -127,7 +133,7 @@ helm upgrade --install oxia-cluster \
   --set image.tag=$TAG \
   --set image.pullPolicy=Always \
   --set imagePullSecrets=oxia \
-  --set storageClass=gp2 \
+  --set storageClassName=gp2 \
   --set serviceMonitor=true \
   deploy/charts/oxia-cluster
 ```

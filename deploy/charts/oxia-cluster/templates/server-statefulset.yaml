@@ -43,8 +43,8 @@ spec:
         name: data
       spec:
         accessModes: [ "ReadWriteOnce" ]
-        {{- if .Values.storageClass }}
-        storageClassName: {{ .Values.storageClass }}
+        {{- if .Values.storageClassName }}
+        storageClassName: {{ .Values.storageClassName }}
         {{- end}}
         resources:
           requests:
