@@ -4,15 +4,16 @@ metadata:
   name: oxia
   namespace: oxia
 spec:
-  shardCount: 3
+  initialShardCount: 3
   replicationFactor: 3
   serverReplicas: 3
   serverResources:
     cpu: 100m
     memory: 128Mi
-  serviceVolume: 1Gi
+  serverVolume: 1Gi
   coordinatorResources:
     cpu: 100m
     memory: 128Mi
-  image: oxia:latest
+  image: streamnative/oxia:main
+  imagePullPolicy: Always
   monitoringEnabled: true

@@ -45,8 +45,16 @@ This binds the Role to the ServiceAccount.
 
 ### ConfigMap
 
-This contains the cluster configuration: `replicationFactor`, `shardCount` and the list of the public and internal
+The coordinator has two ConfigMaps.
+
+#### Config
+
+This contains the cluster configuration: `replicationFactor`, `initialShardCount` and the list of the public and internal
 bind addresses of all the servers in the cluster. It is mounted as a yaml file in the coordinator container.
+
+#### Status
+
+This is created and updated by the coordinator periodically. It is used to recover state on restarts.
 
 ### Deployment
 

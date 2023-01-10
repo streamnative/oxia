@@ -42,7 +42,7 @@ func TestCoordinatorE2E(t *testing.T) {
 	metadataProvider := NewMetadataProviderMemory()
 	clusterConfig := model.ClusterConfig{
 		ReplicationFactor: 3,
-		ShardCount:        1,
+		InitialShardCount: 1,
 		Servers:           []model.ServerAddress{sa1, sa2, sa3},
 	}
 	clientPool := common.NewClientPool()
@@ -74,7 +74,7 @@ func TestCoordinatorE2E_ShardsRanges(t *testing.T) {
 	metadataProvider := NewMetadataProviderMemory()
 	clusterConfig := model.ClusterConfig{
 		ReplicationFactor: 3,
-		ShardCount:        4,
+		InitialShardCount: 4,
 		Servers:           []model.ServerAddress{sa1, sa2, sa3},
 	}
 	clientPool := common.NewClientPool()
@@ -122,7 +122,7 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 	metadataProvider := NewMetadataProviderMemory()
 	clusterConfig := model.ClusterConfig{
 		ReplicationFactor: 3,
-		ShardCount:        1,
+		InitialShardCount: 1,
 		Servers:           []model.ServerAddress{sa1, sa2, sa3},
 	}
 	clientPool := common.NewClientPool()

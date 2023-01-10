@@ -3,7 +3,6 @@ package kubernetes
 import (
 	"github.com/stretchr/testify/assert"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/pointer"
 	"oxia/pkg/apis/oxia/v1alpha1"
 	"testing"
 )
@@ -15,15 +14,15 @@ func TestConfigMap(t *testing.T) {
 			Name:      "oxia",
 		},
 		Spec: v1alpha1.OxiaClusterSpec{
-			ReplicationFactor: pointer.Uint32(2),
-			ShardCount:        pointer.Uint32(1),
-			ServerReplicas:    pointer.Uint32(3),
+			InitialShardCount: 1,
+			ReplicationFactor: 2,
+			ServerReplicas:    3,
 		},
 	}
 	configMap := configMap(cluster)
 
-	assert.Equal(t, `replicationFactor: 1
-shardCount: 2
+	assert.Equal(t, `initialShardCount: 1
+replicationFactor: 2
 servers:
 - public: oxia-0.oxia.nyns.svc.cluster.local:6648
   internal: oxia-0.oxia.nyns.svc.cluster.local:6649

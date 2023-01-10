@@ -17,72 +17,96 @@ spec:
       schema:
         openAPIV3Schema:
           type: object
+          #TODO field validation, i.e. >0, cpu/memory/volume resources
+          #TODO field defaults
           properties:
             spec:
               type: object
               properties:
-                shardCount:
+                initialShardCount:
                   type: integer
+                  x-kubernetes-validations:
+                    - message: InitialShardCount is immutable
+                      rule: self == oldSelf
                 replicationFactor:
                   type: integer
+                  x-kubernetes-validations:
+                    - message: ReplicationFactor is immutable
+                      rule: self == oldSelf
                 serverReplicas:
                   type: integer
+                  x-kubernetes-validations:
+                    - message: ServerReplicas is immutable
+                      rule: self == oldSelf
                 serverResources:
                   type: object
                   properties:
                     cpu:
                       type: string
+                      x-kubernetes-validations:
+                        - message: Cpu is immutable
+                          rule: self == oldSelf
                     memory:
                       type: string
+                      x-kubernetes-validations:
+                        - message: Memory is immutable
+                          rule: self == oldSelf
+                  required:
+                    - cpu
+                    - memory
                 serverVolume:
+                  type: string
+                  x-kubernetes-validations:
+                    - message: ServerVolume is immutable
+                      rule: self == oldSelf
+                storageClassName:
                   type: string
                 coordinatorResources:
                   type: object
                   properties:
                     cpu:
                       type: string
+                      x-kubernetes-validations:
+                        - message: Cpu is immutable
+                          rule: self == oldSelf
                     memory:
                       type: string
+                      x-kubernetes-validations:
+                        - message: Memory is immutable
+                          rule: self == oldSelf
+                  required:
+                    - cpu
+                    - memory
                 image:
                   type: string
+                  x-kubernetes-validations:
+                    - message: Image is immutable
+                      rule: self == oldSelf
+                imagePullSecrets:
+                  type: string
+                  x-kubernetes-validations:
+                    - message: ImagePullSecrets is immutable
+                      rule: self == oldSelf
+                imagePullPolicy:
+                  type: string
+                  x-kubernetes-validations:
+                    - message: ImagePullPolicy is immutable
+                      rule: self == oldSelf
                 monitoringEnabled:
                   type: boolean
+                  x-kubernetes-validations:
+                    - message: MonitoringEnabled is immutable
+                      rule: self == oldSelf
+              required:
+                - initialShardCount
+                - replicationFactor
+                - serverReplicas
+                - serverResources
+                - serverVolume
+                - coordinatorResources
+                - image
+                - monitoringEnabled
             status:
               type: object
-              properties:
-                shards:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      id:
-                        type: integer
-                      status:
-                        type: string
-                      epoch:
-                        type: integer
-                      leader:
-                        type: object
-                        properties:
-                          public:
-                            type: string
-                          internal:
-                            type: string
-                      ensemble:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            public:
-                              type: string
-                            internal:
-                              type: string
-                      hashRange:
-                        type: object
-                        properties:
-                          min:
-                            type: integer
-                          max:
-                            type: integer
       subresources:
         status: {}

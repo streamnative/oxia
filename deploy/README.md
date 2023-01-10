@@ -101,8 +101,6 @@ kubectl create secret docker-registry oxia \
   --docker-username=AWS \
   --docker-password=$(aws ecr get-login-password --region us-west-2) \
   --namespace oxia
-  
-kubectl apply -f deploy/storage/storageclass.yaml
 ```
 
 :notebook: The above secret is valid for 12 hours.
