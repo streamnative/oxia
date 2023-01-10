@@ -82,11 +82,11 @@ func newPersistentWal(shard uint32, options *WalFactoryOptions) (Wal, error) {
 			"The time it takes to read an entry from the WAL", labels),
 		readBytes: metrics.NewCounter("oxia_server_wal_read",
 			"Bytes read from the WAL", unit.Bytes, labels),
-		trimOps: metrics.NewCounter("oxia_server_wal_trim_total",
+		trimOps: metrics.NewCounter("oxia_server_wal_trim",
 			"The number of trim operations happening on the WAL", "count", labels),
-		readErrors: metrics.NewCounter("oxia_server_wal_read_errors_total",
+		readErrors: metrics.NewCounter("oxia_server_wal_read_errors",
 			"The number of IO errors in the WAL read operations", "count", labels),
-		writeErrors: metrics.NewCounter("oxia_server_wal_write_errors_total",
+		writeErrors: metrics.NewCounter("oxia_server_wal_write_errors",
 			"The number of IO errors in the WAL read operations", "count", labels),
 	}
 
