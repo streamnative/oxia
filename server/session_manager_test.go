@@ -30,6 +30,14 @@ func TestSessionKey(t *testing.T) {
 
 type mockWriteBatch map[string]any
 
+func (m mockWriteBatch) Count() int {
+	return 0
+}
+
+func (m mockWriteBatch) Size() int {
+	return 0
+}
+
 var _ kv.WriteBatch = (*mockWriteBatch)(nil)
 
 type mockCloser struct{}

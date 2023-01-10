@@ -9,6 +9,7 @@ import (
 	"go.uber.org/multierr"
 	"io"
 	"oxia/common"
+	"oxia/common/metrics"
 	"oxia/proto"
 	"oxia/server/wal"
 	"time"
@@ -49,6 +50,7 @@ func NewDB(shardId uint32, factory KVFactory) (DB, error) {
 		return nil, err
 	}
 
+	labels := metrics.LabelsForShard(shardId)
 	db := &db{
 		kv:      kv,
 		shardId: shardId,
@@ -56,6 +58,21 @@ func NewDB(shardId uint32, factory KVFactory) (DB, error) {
 			Str("component", "db").
 			Uint32("shard", shardId).
 			Logger(),
+
+		batchWriteLatencyHisto: metrics.NewLatencyHistogram("oxia_server_db_batch_write_latency",
+			"The time it takes to write a batch in the db", labels),
+		batchReadLatencyHisto: metrics.NewLatencyHistogram("oxia_server_db_batch_read_latency",
+			"The time it takes to read a batch from the db", labels),
+		putCounter: metrics.NewCounter("oxia_server_db_puts",
+			"The total number of put operations", "count", labels),
+		deleteCounter: metrics.NewCounter("oxia_server_db_deletes",
+			"The total number of delete operations", "count", labels),
+		deleteRangesCounter: metrics.NewCounter("oxia_server_db_delete_ranges",
+			"The total number of delete ranges operations", "count", labels),
+		getCounter: metrics.NewCounter("oxia_server_db_gets",
+			"The total number of get operations", "count", labels),
+		listCounter: metrics.NewCounter("oxia_server_db_lists",
+			"The total number of list operations", "count", labels),
 	}
 
 	commitIndex, err := db.ReadCommitIndex()
@@ -72,6 +89,15 @@ type db struct {
 	shardId              uint32
 	notificationsTracker *notificationsTracker
 	log                  zerolog.Logger
+
+	putCounter          metrics.Counter
+	deleteCounter       metrics.Counter
+	deleteRangesCounter metrics.Counter
+	getCounter          metrics.Counter
+	listCounter         metrics.Counter
+
+	batchWriteLatencyHisto metrics.LatencyHistogram
+	batchReadLatencyHisto  metrics.LatencyHistogram
 }
 
 func (d *db) Snapshot() (Snapshot, error) {
@@ -90,11 +116,15 @@ func now() uint64 {
 }
 
 func (d *db) ProcessWrite(b *proto.WriteRequest, commitIndex int64, timestamp uint64, updateOperationCallback UpdateOperationCallback) (*proto.WriteResponse, error) {
+	timer := d.batchWriteLatencyHisto.Timer()
+	defer timer.Done()
+
 	res := &proto.WriteResponse{}
 
 	batch := d.kv.NewWriteBatch()
 	notifications := newNotifications(d.shardId, commitIndex, timestamp)
 
+	d.putCounter.Add(len(b.Puts))
 	for _, putReq := range b.Puts {
 		if pr, err := d.applyPut(batch, notifications, putReq, timestamp, updateOperationCallback); err != nil {
 			return nil, err
@@ -103,6 +133,7 @@ func (d *db) ProcessWrite(b *proto.WriteRequest, commitIndex int64, timestamp ui
 		}
 	}
 
+	d.deleteCounter.Add(len(b.Deletes))
 	for _, delReq := range b.Deletes {
 		if dr, err := d.applyDelete(batch, notifications, delReq, updateOperationCallback); err != nil {
 			return nil, err
@@ -111,6 +142,7 @@ func (d *db) ProcessWrite(b *proto.WriteRequest, commitIndex int64, timestamp ui
 		}
 	}
 
+	d.deleteRangesCounter.Add(len(b.DeleteRanges))
 	for _, delRangeReq := range b.DeleteRanges {
 		if dr, err := d.applyDeleteRange(batch, notifications, delRangeReq, updateOperationCallback); err != nil {
 			return nil, err
@@ -164,8 +196,12 @@ func (d *db) addCommitIndex(commitIndex int64, batch WriteBatch, timestamp uint6
 }
 
 func (d *db) ProcessRead(b *proto.ReadRequest) (*proto.ReadResponse, error) {
+	timer := d.batchReadLatencyHisto.Timer()
+	defer timer.Done()
+
 	res := &proto.ReadResponse{}
 
+	d.getCounter.Add(len(b.Gets))
 	for _, getReq := range b.Gets {
 		if gr, err := applyGet(d.kv, getReq); err != nil {
 			return nil, err
@@ -174,6 +210,7 @@ func (d *db) ProcessRead(b *proto.ReadRequest) (*proto.ReadResponse, error) {
 		}
 	}
 
+	d.listCounter.Add(len(b.Lists))
 	for _, listReq := range b.Lists {
 		if gr, err := applyList(d.kv, listReq); err != nil {
 			return nil, err

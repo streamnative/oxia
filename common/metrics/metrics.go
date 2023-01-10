@@ -20,8 +20,8 @@ func init() {
 		log.Fatal().Err(err).Msg("Failed to initialize Prometheus metrics exporter")
 	}
 
-	// Use a specific list of buckets for latency histograms
-	customBucketsView := metric.NewView(
+	// Use a specific list of buckets for different types of histograms
+	latencyHistogramView := metric.NewView(
 		metric.Instrument{
 			Kind: metric.InstrumentKindSyncHistogram,
 			Unit: unit.Milliseconds,
@@ -32,12 +32,34 @@ func init() {
 			},
 		},
 	)
+	sizeHistogramView := metric.NewView(
+		metric.Instrument{
+			Kind: metric.InstrumentKindSyncHistogram,
+			Unit: unit.Bytes,
+		},
+		metric.Stream{
+			Aggregation: aggregation.ExplicitBucketHistogram{
+				Boundaries: sizeBucketsBytes,
+			},
+		},
+	)
+	countHistogramView := metric.NewView(
+		metric.Instrument{
+			Kind: metric.InstrumentKindSyncHistogram,
+			Unit: "count",
+		},
+		metric.Stream{
+			Aggregation: aggregation.ExplicitBucketHistogram{
+				Boundaries: sizeBucketsCount,
+			},
+		},
+	)
 
 	// Default view to keep all instruments
 	defaultView := metric.NewView(metric.Instrument{Name: "*"}, metric.Stream{})
 
 	provider := metric.NewMeterProvider(metric.WithReader(exporter),
-		metric.WithView(customBucketsView, defaultView))
+		metric.WithView(latencyHistogramView, sizeHistogramView, countHistogramView, defaultView))
 	meter = provider.Meter("oxia")
 
 	registry.register()

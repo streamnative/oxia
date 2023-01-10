@@ -6,9 +6,11 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"go.opentelemetry.io/otel/metric/unit"
 	pb "google.golang.org/protobuf/proto"
 	"math"
 	"oxia/common"
+	"oxia/common/metrics"
 	"oxia/proto"
 	"sync"
 	"sync/atomic"
@@ -67,6 +69,10 @@ type notificationsTracker struct {
 	closed     atomic.Bool
 	kv         KV
 	log        zerolog.Logger
+
+	readCounter      metrics.Counter
+	readBatchCounter metrics.Counter
+	readBytesCounter metrics.Counter
 }
 
 func newNotificationsTracker(shard uint32, lastOffset int64, kv KV) *notificationsTracker {
@@ -77,6 +83,12 @@ func newNotificationsTracker(shard uint32, lastOffset int64, kv KV) *notificatio
 			Str("component", "notifications-tracker").
 			Uint32("shard", shard).
 			Logger(),
+		readCounter: metrics.NewCounter("oxia_server_notifications_read",
+			"The total number of notifications", "count", metrics.LabelsForShard(shard)),
+		readBatchCounter: metrics.NewCounter("oxia_server_notifications_read_batches",
+			"The total number of notification batches", "count", metrics.LabelsForShard(shard)),
+		readBytesCounter: metrics.NewCounter("oxia_server_notifications_read",
+			"The total size in bytes of notifications reads", unit.Bytes, metrics.LabelsForShard(shard)),
 	}
 	nt.lastOffset.Store(lastOffset)
 	nt.cond = common.NewConditionContext(nt)
@@ -119,6 +131,9 @@ func (nt *notificationsTracker) ReadNextNotifications(ctx context.Context, start
 
 	var res []*proto.NotificationBatch
 
+	totalCount := 0
+	totalSize := 0
+
 	for count := 0; count < maxNotificationBatchSize && it.Valid(); it.Next() {
 		value, err := it.Value()
 		if err != nil {
@@ -130,8 +145,14 @@ func (nt *notificationsTracker) ReadNextNotifications(ctx context.Context, start
 			return nil, errors.Wrap(err, "failed to deserialize notification batch")
 		}
 		res = append(res, nb)
+
+		totalSize += len(value)
+		totalCount += len(nb.Notifications)
 	}
 
+	nt.readBatchCounter.Add(len(res))
+	nt.readBytesCounter.Add(totalSize)
+	nt.readCounter.Add(totalCount)
 	return res, nil
 }
 

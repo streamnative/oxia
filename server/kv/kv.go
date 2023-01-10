@@ -19,6 +19,12 @@ type WriteBatch interface {
 	DeleteRange(lowerBound, upperBound string) error
 	KeyRangeScan(lowerBound, upperBound string) KeyIterator
 
+	// Count is the number of transactions that are currently in the batch
+	Count() int
+
+	// Size of all the transactions that are currently in the batch
+	Size() int
+
 	Commit() error
 }
 

@@ -8,16 +8,22 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"go.opentelemetry.io/otel/metric/unit"
 	"io"
 	"os"
+	"oxia/common"
+	"oxia/common/metrics"
 	"path/filepath"
 	"sync/atomic"
+	"time"
 )
 
 type PebbleFactory struct {
 	dataDir string
 	cache   *pebble.Cache
 	options *KVFactoryOptions
+
+	gaugeCacheSize metrics.Gauge
 }
 
 func NewPebbleKVFactory(options *KVFactoryOptions) (KVFactory, error) {
@@ -42,6 +48,12 @@ func NewPebbleKVFactory(options *KVFactoryOptions) (KVFactory, error) {
 
 		// Share a single cache instance across the databases for all the shards
 		cache: cache,
+
+		gaugeCacheSize: metrics.NewGauge("oxia_server_kv_pebble_max_cache_size",
+			"The max size configured for the Pebble block cache in bytes",
+			unit.Bytes, map[string]any{}, func() int64 {
+				return options.CacheSize
+			}),
 	}
 
 	// Cleanup leftover snapshots from previous runs
@@ -67,6 +79,7 @@ func (p *PebbleFactory) cleanupSnapshots() error {
 }
 
 func (p *PebbleFactory) Close() error {
+	p.gaugeCacheSize.Unregister()
 	p.cache.Unref()
 	return nil
 }
@@ -90,12 +103,50 @@ type Pebble struct {
 	dataDir         string
 	db              *pebble.DB
 	snapshotCounter atomic.Int64
+
+	dbMetrics          func() *pebble.Metrics
+	gauges             []metrics.Gauge
+	batchCommitLatency metrics.LatencyHistogram
+
+	writeBytes  metrics.Counter
+	writeCount  metrics.Counter
+	readBytes   metrics.Counter
+	readCount   metrics.Counter
+	readLatency metrics.LatencyHistogram
+	writeErrors metrics.Counter
+	readErrors  metrics.Counter
+
+	batchSizeHisto  metrics.Histogram
+	batchCountHisto metrics.Histogram
 }
 
 func newKVPebble(factory *PebbleFactory, shardId uint32) (KV, error) {
+	labels := metrics.LabelsForShard(shardId)
 	pb := &Pebble{
 		shardId: shardId,
 		dataDir: factory.dataDir,
+
+		batchCommitLatency: metrics.NewLatencyHistogram("oxia_server_kv_batch_commit_latency",
+			"The latency for committing a batch into the database", labels),
+		readLatency: metrics.NewLatencyHistogram("oxia_server_kv_read_latency",
+			"The latency for reading a value from the database", labels),
+		writeBytes: metrics.NewCounter("oxia_server_kv_write",
+			"The amount of bytes written into the database", unit.Bytes, labels),
+		writeCount: metrics.NewCounter("oxia_server_kv_write_ops",
+			"The amount of write operations", "count", labels),
+		readBytes: metrics.NewCounter("oxia_server_kv_read",
+			"The amount of bytes read from the database", unit.Bytes, labels),
+		readCount: metrics.NewCounter("oxia_server_kv_write_ops",
+			"The amount of write operations", "count", labels),
+		writeErrors: metrics.NewCounter("oxia_server_kv_write_errors",
+			"The count of write operations errors", "count", labels),
+		readErrors: metrics.NewCounter("oxia_server_kv_read_errors",
+			"The count of read operations errors", "count", labels),
+
+		batchSizeHisto: metrics.NewBytesHistogram("oxia_server_kv_batch_size",
+			"The size in bytes for a given batch", labels),
+		batchCountHisto: metrics.NewCountHistogram("oxia_server_kv_batch_count",
+			"The number of operations in a given batch", labels),
 	}
 
 	levels := make([]pebble.LevelOptions, 1)
@@ -137,10 +188,118 @@ func newKVPebble(factory *PebbleFactory, shardId uint32) (KV, error) {
 	}
 
 	pb.db = db
+
+	// Cache the calls to db.Metrics() which are common to all the gauges
+	pb.dbMetrics = common.Memoize(func() *pebble.Metrics {
+		return pb.db.Metrics()
+	}, 5*time.Second)
+
+	pb.gauges = []metrics.Gauge{
+		metrics.NewGauge("oxia_server_kv_pebble_block_cache_used",
+			"The size of the block cache used by a given db shard",
+			unit.Bytes, labels, func() int64 {
+				return pb.dbMetrics().BlockCache.Size
+			}),
+		metrics.NewGauge("oxia_server_kv_pebble_block_cache_hits",
+			"The number of hits in the block cache",
+			"count", labels, func() int64 {
+				return pb.dbMetrics().BlockCache.Hits
+			}),
+		metrics.NewGauge("oxia_server_kv_pebble_block_cache_misses",
+			"The number of misses in the block cache",
+			"count", labels, func() int64 {
+				return pb.dbMetrics().BlockCache.Misses
+			}),
+		metrics.NewGauge("oxia_server_kv_pebble_read_iterators",
+			"The number of iterators open",
+			"value", labels, func() int64 {
+				return pb.dbMetrics().TableIters
+			}),
+
+		metrics.NewGauge("oxia_server_kv_pebble_compactions_total",
+			"The number of compactions operations",
+			"count", labels, func() int64 {
+				return pb.dbMetrics().Compact.Count
+			}),
+		metrics.NewGauge("oxia_server_kv_pebble_compaction_debt",
+			"The estimated number of bytes that need to be compacted",
+			unit.Bytes, labels, func() int64 {
+				return int64(pb.dbMetrics().Compact.EstimatedDebt)
+			}),
+		metrics.NewGauge("oxia_server_kv_pebble_flush_total",
+			"The total number of db flushes",
+			"count", labels, func() int64 {
+				return pb.dbMetrics().Flush.Count
+			}),
+		metrics.NewGauge("oxia_server_kv_pebble_flush",
+			"The total amount of bytes flushed into the db",
+			unit.Bytes, labels, func() int64 {
+				return pb.dbMetrics().Flush.WriteThroughput.Bytes
+			}),
+		metrics.NewGauge("oxia_server_kv_pebble_memtable_size",
+			"The size of the memtable",
+			unit.Bytes, labels, func() int64 {
+				return int64(pb.dbMetrics().MemTable.Size)
+			}),
+
+		metrics.NewGauge("oxia_server_kv_pebble_disk_space",
+			"The total size of all the db files",
+			unit.Bytes, labels, func() int64 {
+				return int64(pb.dbMetrics().DiskSpaceUsage())
+			}),
+		metrics.NewGauge("oxia_server_kv_pebble_num_files_total",
+			"The total number of files for the db",
+			"count", labels, func() int64 {
+				return pb.dbMetrics().Total().NumFiles
+			}),
+		metrics.NewGauge("oxia_server_kv_pebble_read",
+			"The total amount of bytes read at this db level",
+			unit.Bytes, labels, func() int64 {
+				return int64(pb.dbMetrics().Total().BytesRead)
+			}),
+		metrics.NewGauge("oxia_server_kv_pebble_write_amplification_percent",
+			"The total amount of bytes read at this db level",
+			"percent", labels, func() int64 {
+				t := pb.dbMetrics().Total()
+				return int64(t.WriteAmp() * 100)
+			}),
+	}
+
+	// Add the per-LSM level metrics
+	for i := 0; i < 7; i++ {
+		level := i
+		labels := map[string]any{
+			"shard": shardId,
+			"level": level,
+		}
+
+		pb.gauges = append(pb.gauges,
+			metrics.NewGauge("oxia_server_kv_pebble_per_level_num_files",
+				"The total number of files at this db level",
+				"count", labels, func() int64 {
+					return pb.dbMetrics().Levels[level].NumFiles
+				}),
+			metrics.NewGauge("oxia_server_kv_pebble_per_level_size",
+				"The total size in bytes of the files at this db level",
+				unit.Bytes, labels, func() int64 {
+					return pb.dbMetrics().Levels[level].Size
+				}),
+			metrics.NewGauge("oxia_server_kv_pebble_per_level_read",
+				"The total amount of bytes read at this db level",
+				unit.Bytes, labels, func() int64 {
+					return int64(pb.dbMetrics().Levels[level].BytesRead)
+				}),
+		)
+	}
+
 	return pb, nil
 }
 
 func (p *Pebble) Close() error {
+	for _, g := range p.gauges {
+		g.Unregister()
+	}
+
 	if err := p.db.Flush(); err != nil {
 		return err
 	}
@@ -152,13 +311,15 @@ func (p *Pebble) Flush() error {
 }
 
 func (p *Pebble) NewWriteBatch() WriteBatch {
-	return &PebbleBatch{p.db.NewIndexedBatch()}
+	return &PebbleBatch{p: p, b: p.db.NewIndexedBatch()}
 }
 
 func (p *Pebble) Get(key string) ([]byte, io.Closer, error) {
 	value, closer, err := p.db.Get([]byte(key))
 	if errors.Is(err, pebble.ErrNotFound) {
 		err = ErrorKeyNotFound
+	} else {
+		p.readErrors.Inc()
 	}
 	return value, closer, err
 }
@@ -169,7 +330,7 @@ func (p *Pebble) KeyRangeScan(lowerBound, upperBound string) KeyIterator {
 		UpperBound: []byte(upperBound),
 	})
 	pbit.SeekGE([]byte(lowerBound))
-	return &PebbleIterator{pbit}
+	return &PebbleIterator{p, pbit}
 }
 
 func (p *Pebble) RangeScan(lowerBound, upperBound string) KeyValueIterator {
@@ -178,7 +339,7 @@ func (p *Pebble) RangeScan(lowerBound, upperBound string) KeyValueIterator {
 		UpperBound: []byte(upperBound),
 	})
 	pbit.SeekGE([]byte(lowerBound))
-	return &PebbleIterator{pbit}
+	return &PebbleIterator{p, pbit}
 }
 
 func (p *Pebble) Snapshot() (Snapshot, error) {
@@ -188,7 +349,16 @@ func (p *Pebble) Snapshot() (Snapshot, error) {
 /// Batch wrapper methods
 
 type PebbleBatch struct {
+	p *Pebble
 	b *pebble.Batch
+}
+
+func (b *PebbleBatch) Count() int {
+	return int(b.b.Count())
+}
+
+func (b *PebbleBatch) Size() int {
+	return b.b.Len()
 }
 
 func (b *PebbleBatch) DeleteRange(lowerBound, upperBound string) error {
@@ -201,7 +371,7 @@ func (b *PebbleBatch) KeyRangeScan(lowerBound, upperBound string) KeyIterator {
 		UpperBound: []byte(upperBound),
 	})
 	pbit.SeekGE([]byte(lowerBound))
-	return &PebbleIterator{pbit}
+	return &PebbleIterator{b.p, pbit}
 }
 
 func (b *PebbleBatch) Close() error {
@@ -209,28 +379,51 @@ func (b *PebbleBatch) Close() error {
 }
 
 func (b *PebbleBatch) Put(key string, payload []byte) error {
-	return b.b.Set([]byte(key), payload, pebble.NoSync)
+	err := b.b.Set([]byte(key), payload, pebble.NoSync)
+	if err != nil {
+		b.p.writeErrors.Inc()
+	}
+	return err
 }
 
 func (b *PebbleBatch) Delete(key string) error {
-	return b.b.Delete([]byte(key), pebble.NoSync)
+	err := b.b.Delete([]byte(key), pebble.NoSync)
+	if err != nil {
+		b.p.writeErrors.Inc()
+	}
+	return err
 }
 
 func (b *PebbleBatch) Get(key string) ([]byte, io.Closer, error) {
 	value, closer, err := b.b.Get([]byte(key))
 	if errors.Is(err, pebble.ErrNotFound) {
 		err = ErrorKeyNotFound
+	} else {
+		b.p.readErrors.Inc()
 	}
 	return value, closer, err
 }
 
 func (b *PebbleBatch) Commit() error {
-	return b.b.Commit(pebble.NoSync)
+	b.p.writeCount.Add(b.Count())
+	b.p.writeBytes.Add(b.Size())
+	b.p.batchCountHisto.Record(b.Count())
+	b.p.batchSizeHisto.Record(b.Size())
+
+	timer := b.p.batchCommitLatency.Timer()
+	defer timer.Done()
+
+	err := b.b.Commit(pebble.NoSync)
+	if err != nil {
+		b.p.writeErrors.Inc()
+	}
+	return err
 }
 
 /// Iterator wrapper methods
 
 type PebbleIterator struct {
+	p  *Pebble
 	pi *pebble.Iterator
 }
 
@@ -251,38 +444,11 @@ func (p *PebbleIterator) Next() bool {
 }
 
 func (p *PebbleIterator) Value() ([]byte, error) {
-	return p.pi.ValueAndErr()
-}
-
-/// Snapshot Iterator wrapper methods
-
-type PebbleSnapshotIterator struct {
-	s  *pebble.Snapshot
-	si *pebble.Iterator
-}
-
-func (p *PebbleSnapshotIterator) Close() error {
-	err := p.si.Close()
+	res, err := p.pi.ValueAndErr()
 	if err != nil {
-		return err
+		p.p.readErrors.Inc()
 	}
-	return p.s.Close()
-}
-
-func (p *PebbleSnapshotIterator) Valid() bool {
-	return p.si.Valid()
-}
-
-func (p *PebbleSnapshotIterator) Key() string {
-	return string(p.si.Key())
-}
-
-func (p *PebbleSnapshotIterator) Next() bool {
-	return p.si.Next()
-}
-
-func (p *PebbleSnapshotIterator) Value() ([]byte, error) {
-	return p.si.ValueAndErr()
+	return res, err
 }
 
 /// Pebble logger wrapper
