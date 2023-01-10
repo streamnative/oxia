@@ -36,6 +36,8 @@ func newNotifications(options clientOptions, ctx context.Context, clientPool com
 
 	// Create a notification manager for each shard
 	shards := shardManager.GetAll()
+	nm.initWaitGroup = common.NewWaitGroup(len(shards))
+
 	for _, shard := range shards {
 		newShardNotificationsManager(shard, nm)
 	}
@@ -51,8 +53,6 @@ func newNotifications(options clientOptions, ctx context.Context, clientPool com
 
 		close(nm.multiplexCh)
 	})
-
-	nm.initWaitGroup = common.NewWaitGroup(len(shards))
 
 	// Wait for the notifications on all the shards to be initialized
 	timeoutCtx, cancel := context.WithTimeout(nm.ctx, options.requestTimeout)
