@@ -86,7 +86,7 @@ func NewSessionManager(shardId uint32, controller *leaderController) SessionMana
 		closedSessions: metrics.NewCounter("oxia_server_sessions_closed",
 			"The total number of sessions closed", "count", metrics.LabelsForShard(shardId)),
 		expiredSessions: metrics.NewCounter("oxia_server_sessions_expired",
-			"The total number of sessions_expired", "count", metrics.LabelsForShard(shardId)),
+			"The total number of sessions expired", "count", metrics.LabelsForShard(shardId)),
 	}
 
 	sm.activeSessions = metrics.NewGauge("oxia_server_session_active",
