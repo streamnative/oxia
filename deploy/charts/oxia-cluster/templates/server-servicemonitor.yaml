@@ -11,4 +11,6 @@ spec:
   selector:
     matchLabels:
       {{- include "oxia-cluster.server.selectorLabels" . | nindent 6 }}
+  targetLabels:
+    - oxia_cluster
 {{- end }}
