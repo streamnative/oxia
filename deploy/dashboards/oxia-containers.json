@@ -24,7 +24,6 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 33,
   "links": [],
   "liveNow": false,
   "panels": [
@@ -32,7 +31,7 @@
       "collapsed": false,
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "${DataSource}"
       },
       "gridPos": {
         "h": 1,
@@ -47,7 +46,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "${DataSource}"
           },
           "refId": "A"
         }
@@ -58,7 +57,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "${DataSource}"
       },
       "description": "",
       "fieldConfig": {
@@ -144,7 +143,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "${DataSource}"
           },
           "editorMode": "code",
           "expr": "100 * sum(   rate(container_cpu_user_seconds_total{namespace=~\"$namespace\", pod=~\"$pod\", container !=\"\"}[5m])) by (pod)",
@@ -155,7 +154,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "${DataSource}"
           },
           "editorMode": "code",
           "expr": "100 * sum(   rate(container_cpu_cfs_throttled_seconds_total{namespace!~\"kube-system\", pod=\"$pod\", container!=\"\"}[5m])) by (pod)",
@@ -167,7 +166,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "${DataSource}"
           },
           "editorMode": "code",
           "expr": "100 * sum(rate(container_cpu_system_seconds_total{namespace!~\"kube-system\", pod=\"$pod\", container !=\"\"}[5m])) by (pod)",
@@ -183,7 +182,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "${DataSource}"
       },
       "description": "container_spec_memory_limit_bytes = 0 mean no resource limits configured for this container.",
       "fieldConfig": {
@@ -349,7 +348,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "${DataSource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -505,7 +504,7 @@
       "dashes": false,
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "${DataSource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -563,7 +562,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "${DataSource}"
           },
           "editorMode": "code",
           "exemplar": true,
@@ -577,7 +576,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "${DataSource}"
           },
           "editorMode": "code",
           "exemplar": true,
@@ -633,12 +632,30 @@
       {
         "current": {
           "selected": false,
-          "text": "oxia",
-          "value": "oxia"
+          "text": "Prometheus",
+          "value": "Prometheus"
+        },
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "name": "DataSource",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {
+          "isNone": true,
+          "selected": false,
+          "text": "None",
+          "value": ""
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "prometheus"
+          "uid": "${DataSource}"
         },
         "definition": "label_values(oxia_coordinator_node_running, oxia_cluster)",
         "hide": 0,
@@ -665,7 +682,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "prometheus"
+          "uid": "${DataSource}"
         },
         "definition": "process_resident_memory_bytes{oxia_cluster=~\"$cluster\"}",
         "description": "kubernetes_namespace",
@@ -697,7 +714,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "prometheus"
+          "uid": "${DataSource}"
         },
         "definition": "grpc_server_handled_total{oxia_cluster=~\"$cluster\"}",
         "hide": 0,
@@ -724,7 +741,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "prometheus"
+          "uid": "${DataSource}"
         },
         "definition": "process_cpu_seconds_total{oxia_cluster=~\"$cluster\", job=~\"$component\", namespace=~\"$k8s_namespace\"}",
         "hide": 0,
@@ -777,6 +794,6 @@
   "timezone": "browser",
   "title": "Oxia - Containers Metrics",
   "uid": "n8PAzdPazx",
-  "version": 3,
+  "version": 1,
   "weekStart": ""
 }

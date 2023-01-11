@@ -24,14 +24,13 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 29,
   "links": [],
   "liveNow": false,
   "panels": [
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "${DataSource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -87,7 +86,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "${DataSource}"
           },
           "editorMode": "code",
           "expr": "sum(oxia_coordinator_node_running{oxia_cluster=\"$cluster\"}) by (node)",
@@ -115,7 +114,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "${DataSource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -193,7 +192,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "${DataSource}"
           },
           "editorMode": "code",
           "expr": "sum by(shard) (rate(oxia_coordinator_leader_election_latency_milliseconds_count{oxia_cluster=~\"$cluster\", shard=~\"$shard\"}[1m])) * 60",
@@ -208,7 +207,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "${DataSource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -286,7 +285,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "${DataSource}"
           },
           "editorMode": "code",
           "expr": "sum by (shard) (rate(oxia_coordinator_leader_election_failed_total_total{oxia_cluster=~\"$cluster\", shard=~\"$shard\"}[1m]) * 60)",
@@ -301,7 +300,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "${DataSource}"
       },
       "description": "",
       "fieldConfig": {
@@ -381,7 +380,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "${DataSource}"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.50, sum(oxia_coordinator_leader_election_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\"}) by (le, shard))",
@@ -396,7 +395,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "${DataSource}"
       },
       "description": "",
       "fieldConfig": {
@@ -476,7 +475,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "${DataSource}"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.99, sum(oxia_coordinator_leader_election_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\"}) by (le, shard))",
@@ -491,7 +490,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "${DataSource}"
       },
       "description": "",
       "fieldConfig": {
@@ -571,7 +570,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "${DataSource}"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.999, sum(oxia_coordinator_leader_election_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\"}) by (le, shard))",
@@ -599,7 +598,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "${DataSource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -678,7 +677,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "${DataSource}"
           },
           "editorMode": "code",
           "expr": "sum(rate(oxia_coordinator_metadata_store_latency_milliseconds_count{oxia_cluster=~\"$cluster\"}[1m]))",
@@ -693,7 +692,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "${DataSource}"
       },
       "description": "",
       "fieldConfig": {
@@ -773,7 +772,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "${DataSource}"
           },
           "editorMode": "code",
           "expr": "sum(rate(oxia_coordinator_metadata_get_latency_milliseconds_count{oxia_cluster=~\"$cluster\"}[1m]))",
@@ -788,7 +787,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "${DataSource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -831,7 +830,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "red",
@@ -866,7 +866,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "${DataSource}"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.99, sum by (le) (oxia_coordinator_metadata_store_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\"}))",
@@ -881,7 +881,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "${DataSource}"
       },
       "description": "",
       "fieldConfig": {
@@ -925,7 +925,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "red",
@@ -960,7 +961,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "${DataSource}"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.99, sum by (le) (oxia_coordinator_metadata_get_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\"}))",
@@ -975,7 +976,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "${DataSource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1018,7 +1019,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "red",
@@ -1053,7 +1055,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "${DataSource}"
           },
           "editorMode": "code",
           "expr": "sum(oxia_coordinator_metadata_size_bytes{oxia_cluster=~\"$cluster\"})",
@@ -1075,12 +1077,30 @@
       {
         "current": {
           "selected": false,
-          "text": "oxia",
-          "value": "oxia"
+          "text": "Prometheus",
+          "value": "Prometheus"
+        },
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "name": "DataSource",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {
+          "isNone": true,
+          "selected": false,
+          "text": "None",
+          "value": ""
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "prometheus"
+          "uid": "${DataSource}"
         },
         "definition": "label_values(oxia_coordinator_node_running, oxia_cluster)",
         "hide": 0,
@@ -1111,7 +1131,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "prometheus"
+          "uid": "${DataSource}"
         },
         "definition": "oxia_coordinator_leader_election_latency_milliseconds_sum{oxia_cluster~=\"$cluster\"}",
         "hide": 0,
@@ -1140,6 +1160,6 @@
   "timezone": "",
   "title": "Oxia - Coordinator",
   "uid": "tfvR1o24k",
-  "version": 11,
+  "version": 1,
   "weekStart": ""
 }
