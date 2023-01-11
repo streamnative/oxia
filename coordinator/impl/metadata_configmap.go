@@ -26,10 +26,9 @@ type metadataProviderConfigMap struct {
 	metadataSizeGauge metrics.Gauge
 }
 
-func NewMetadataProviderConfigMap(namespace, name string) MetadataProvider {
-	config := kubernetes.NewClientConfig()
+func NewMetadataProviderConfigMap(k8s k8s.Interface, namespace, name string) MetadataProvider {
 	m := &metadataProviderConfigMap{
-		kubernetes: kubernetes.NewKubernetesClientset(config),
+		kubernetes: k8s,
 		namespace:  namespace,
 		name:       name,
 

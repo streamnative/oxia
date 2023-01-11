@@ -23,11 +23,7 @@ var (
 			return NewMetadataProviderFile(filepath.Join(t.TempDir(), "metadata"))
 		},
 		"configmap": func(t *testing.T) MetadataProvider {
-			return &metadataProviderConfigMap{
-				kubernetes: _fake,
-				namespace:  "ns",
-				name:       "n",
-			}
+			return NewMetadataProviderConfigMap(_fake, "ns", "n")
 		},
 	}
 )

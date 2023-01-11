@@ -80,7 +80,9 @@ func New(config Config) (*Coordinator, error) {
 	case File:
 		metadataProvider = impl.NewMetadataProviderFile(config.FileMetadataPath)
 	case Configmap:
-		metadataProvider = impl.NewMetadataProviderConfigMap(config.K8SMetadataNamespace, config.K8SMetadataConfigMapName)
+		k8sConfig := kubernetes.NewClientConfig()
+		metadataProvider = impl.NewMetadataProviderConfigMap(kubernetes.NewKubernetesClientset(k8sConfig),
+			config.K8SMetadataNamespace, config.K8SMetadataConfigMapName)
 	}
 
 	rpcClient := impl.NewRpcProvider(s.clientPool)
