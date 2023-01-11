@@ -1,0 +1,33 @@
+prometheus:
+  prometheusSpec:
+    serviceMonitorSelectorNilUsesHelmValues: false
+
+grafana:
+
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+      - name: 'oxia'
+        orgId: 1
+        folder: 'Oxia'
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards/oxia
+
+  dashboards:
+    oxia:
+      oxia-containers:
+        file: dashboards/oxia-containers.json
+      oxia-coordinator:
+        file: dashboards/oxia-coordinator.json
+      oxia-golang:
+        file: dashboards/oxia-golang.json
+      oxia-grpc:
+        file: dashboards/oxia-grpc.json
+      oxia-nodes:
+        file: dashboards/oxia-nodes.json
+      oxia-shards:
+        file: dashboards/oxia-shards.json
