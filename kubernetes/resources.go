@@ -120,7 +120,7 @@ func service(component Component, cluster v1alpha1.OxiaCluster, ports []NamedPor
 	} else {
 		clusterIp = ""
 	}
-	return &coreV1.Service{
+	service := &coreV1.Service{
 		ObjectMeta: objectMeta(component, cluster.Name),
 		Spec: coreV1.ServiceSpec{
 			Selector:  selectorLabels(component, cluster.Name),
@@ -128,6 +128,8 @@ func service(component Component, cluster v1alpha1.OxiaCluster, ports []NamedPor
 			ClusterIP: clusterIp,
 		},
 	}
+	service.Labels["oxia_cluster"] = cluster.Name
+	return service
 }
 
 func configMap(cluster v1alpha1.OxiaCluster) *coreV1.ConfigMap {
@@ -261,8 +263,9 @@ func serviceMonitor(component Component, cluster v1alpha1.OxiaCluster) *monitori
 	return &monitoringV1.ServiceMonitor{
 		ObjectMeta: objectMeta(component, cluster.Name),
 		Spec: monitoringV1.ServiceMonitorSpec{
-			Selector:  metaV1.LabelSelector{MatchLabels: selectorLabels(component, cluster.Name)},
-			Endpoints: []monitoringV1.Endpoint{{Port: MetricsPort.Name}},
+			Selector:     metaV1.LabelSelector{MatchLabels: selectorLabels(component, cluster.Name)},
+			Endpoints:    []monitoringV1.Endpoint{{Port: MetricsPort.Name}},
+			TargetLabels: []string{"oxia_cluster"},
 		},
 	}
 }
