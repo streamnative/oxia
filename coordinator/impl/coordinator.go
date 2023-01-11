@@ -13,6 +13,7 @@ import (
 	"oxia/coordinator/model"
 	"oxia/proto"
 	"sync"
+	"time"
 )
 
 type ShardAssignmentsProvider interface {
@@ -50,6 +51,9 @@ type coordinator struct {
 	metadataVersion  Version
 	rpc              RpcProvider
 	log              zerolog.Logger
+
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 func NewCoordinator(metadataProvider MetadataProvider, clusterConfig model.ClusterConfig, rpc RpcProvider) (Coordinator, error) {
@@ -64,6 +68,8 @@ func NewCoordinator(metadataProvider MetadataProvider, clusterConfig model.Clust
 			Logger(),
 	}
 
+	c.ctx, c.cancel = context.WithCancel(context.Background())
+
 	c.assignmentsChanged = common.NewConditionContext(c)
 
 	var err error
@@ -72,7 +78,17 @@ func NewCoordinator(metadataProvider MetadataProvider, clusterConfig model.Clust
 		return nil, err
 	}
 
+	for _, sa := range clusterConfig.Servers {
+		c.nodeControllers[sa.Internal] = NewNodeController(sa, c, c, c.rpc)
+	}
+
 	if c.clusterStatus == nil {
+		// Before initializing the cluster, it's better to make sure we
+		// have all the nodes available, otherwise the coordinator might be
+		// the first component in getting started and will print out a lot
+		// of error logs regarding failed leader elections
+		c.waitForAllNodesToBeAvailable()
+
 		if err = c.initialAssignment(); err != nil {
 			return nil, err
 		}
@@ -82,11 +98,32 @@ func NewCoordinator(metadataProvider MetadataProvider, clusterConfig model.Clust
 		c.shardControllers[shard] = NewShardController(shard, shardMetadata, c.rpc, c)
 	}
 
-	for _, sa := range clusterConfig.Servers {
-		c.nodeControllers[sa.Internal] = NewNodeController(sa, c, c, c.rpc)
-	}
-
 	return c, nil
+}
+
+func (c *coordinator) waitForAllNodesToBeAvailable() {
+	c.log.Info().Msg("Waiting for all the nodes to be available")
+	for {
+
+		select {
+
+		case <-time.After(1 * time.Second):
+			allNodesAvailable := true
+			for _, n := range c.nodeControllers {
+				if n.Status() != Running {
+					allNodesAvailable = false
+				}
+			}
+			if allNodesAvailable {
+				c.log.Info().Msg("All nodes are now available")
+				return
+			}
+
+		case <-c.ctx.Done():
+			// Give up if we're closing the coordinator
+			return
+		}
+	}
 }
 
 // Assign the shards to the available servers

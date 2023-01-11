@@ -103,7 +103,7 @@ func (n *nodeController) Status() NodeStatus {
 }
 
 func (n *nodeController) healthCheckWithRetries() {
-	backOff := common.NewBackOffWithInitialInterval(n.ctx, 1*time.Second)
+	backOff := common.NewBackOffWithInitialInterval(n.ctx, 10*time.Second)
 	_ = backoff.RetryNotify(func() error {
 		return n.healthCheck(backOff)
 	}, backOff, func(err error, duration time.Duration) {
@@ -195,7 +195,7 @@ func (n *nodeController) processHealthCheckResponse(res *grpc_health_v1.HealthCh
 }
 
 func (n *nodeController) sendAssignmentsUpdatesWithRetries() {
-	backOff := common.NewBackOffWithInitialInterval(n.ctx, 1*time.Second)
+	backOff := common.NewBackOffWithInitialInterval(n.ctx, 10*time.Second)
 
 	_ = backoff.RetryNotify(func() error {
 		return n.sendAssignmentsUpdates(backOff)
