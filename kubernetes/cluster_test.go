@@ -6,6 +6,7 @@ import (
 	fakeMonitoring "github.com/prometheus-operator/prometheus-operator/pkg/client/versioned/fake"
 	"github.com/stretchr/testify/assert"
 	coreV1 "k8s.io/api/core/v1"
+	k8sResource "k8s.io/apimachinery/pkg/api/resource"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -27,18 +28,20 @@ func TestCluster(t *testing.T) {
 		Spec: v1alpha1.OxiaClusterSpec{
 			InitialShardCount: 1,
 			ReplicationFactor: 2,
-			ServerReplicas:    3,
-			ServerResources: v1alpha1.Resources{
-				Cpu:    "100m",
-				Memory: "128Mi",
+			Coordinator: v1alpha1.Coordinator{
+				Cpu:    k8sResource.MustParse("100m"),
+				Memory: k8sResource.MustParse("128Mi"),
 			},
-			ServerVolume: "1Gi",
-			CoordinatorResources: v1alpha1.Resources{
-				Cpu:    "100m",
-				Memory: "128Mi",
+			Server: v1alpha1.Server{
+				Replicas: 3,
+				Cpu:      k8sResource.MustParse("100m"),
+				Memory:   k8sResource.MustParse("128Mi"),
+				Storage:  k8sResource.MustParse("1Gi"),
 			},
-			Image:             "oxia:latest",
-			ImagePullPolicy:   &pullAlways,
+			Image: v1alpha1.Image{
+				Name:       "streamnative/oxia:latest",
+				PullPolicy: &pullAlways,
+			},
 			MonitoringEnabled: true,
 		},
 	}
