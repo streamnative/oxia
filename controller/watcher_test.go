@@ -4,7 +4,9 @@ import (
 	"context"
 	monitoring "github.com/prometheus-operator/prometheus-operator/pkg/client/versioned/fake"
 	"github.com/stretchr/testify/assert"
+	coreV1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	k8sResource "k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubernetes "k8s.io/client-go/kubernetes/fake"
 	"oxia/pkg/apis/oxia/v1alpha1"
@@ -34,7 +36,7 @@ func TestWatcher(t *testing.T) {
 		get, err := _kubernetes.AppsV1().StatefulSets(namespace).
 			Get(context.Background(), name, v1.GetOptions{})
 		assert.NoError(t, err)
-		assert.Equal(t, int32(1), *get.Spec.Replicas)
+		assert.Equal(t, int32(3), *get.Spec.Replicas)
 		return true
 	}, 10*time.Second, 100*time.Millisecond)
 
@@ -54,24 +56,28 @@ func TestWatcher(t *testing.T) {
 }
 
 func testOxiaCluster(name string) *v1alpha1.OxiaCluster {
+	pullAlways := coreV1.PullAlways
 	return &v1alpha1.OxiaCluster{
 		ObjectMeta: v1.ObjectMeta{
 			Name: name,
 		},
 		Spec: v1alpha1.OxiaClusterSpec{
 			InitialShardCount: 1,
-			ReplicationFactor: 1,
-			ServerReplicas:    1,
-			ServerResources: v1alpha1.Resources{
-				Cpu:    "100m",
-				Memory: "128Mi",
+			ReplicationFactor: 2,
+			Coordinator: v1alpha1.Coordinator{
+				Cpu:    k8sResource.MustParse("100m"),
+				Memory: k8sResource.MustParse("128Mi"),
 			},
-			ServerVolume: "1Gi",
-			CoordinatorResources: v1alpha1.Resources{
-				Cpu:    "100m",
-				Memory: "128Mi",
+			Server: v1alpha1.Server{
+				Replicas: 3,
+				Cpu:      k8sResource.MustParse("100m"),
+				Memory:   k8sResource.MustParse("128Mi"),
+				Storage:  k8sResource.MustParse("1Gi"),
 			},
-			Image:             "oxia:latest",
+			Image: v1alpha1.Image{
+				Name:       "streamnative/oxia:latest",
+				PullPolicy: &pullAlways,
+			},
 			MonitoringEnabled: true,
 		},
 	}

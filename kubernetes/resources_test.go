@@ -16,7 +16,9 @@ func TestConfigMap(t *testing.T) {
 		Spec: v1alpha1.OxiaClusterSpec{
 			InitialShardCount: 1,
 			ReplicationFactor: 2,
-			ServerReplicas:    3,
+			Server: v1alpha1.Server{
+				Replicas: 3,
+			},
 		},
 	}
 	configMap := configMap(cluster)
