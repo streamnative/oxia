@@ -20,11 +20,12 @@ func (c *memoryClient) Close() error {
 	return nil
 }
 
-func (c *memoryClient) Put(key string, payload []byte, expectedVersion *int64) <-chan PutResult {
+func (c *memoryClient) Put(key string, payload []byte, options ...PutOption) <-chan PutResult {
 	ch := make(chan PutResult, 1)
 	now := uint64(c.clock.Now().UnixMilli())
+	opts := newPutOptions(options)
 	if value, ok := c.data[key]; ok {
-		if expectedVersion != nil && *expectedVersion != value.Stat.Version {
+		if opts.expectedVersion != nil && *opts.expectedVersion != value.Stat.Version {
 			ch <- PutResult{Err: ErrorUnexpectedVersion}
 		} else {
 			value.Payload = payload
@@ -35,7 +36,7 @@ func (c *memoryClient) Put(key string, payload []byte, expectedVersion *int64) <
 			}
 		}
 	} else {
-		if expectedVersion != nil && *expectedVersion != VersionNotExists {
+		if opts.expectedVersion != nil && *opts.expectedVersion != VersionNotExists {
 			ch <- PutResult{Err: ErrorUnexpectedVersion}
 		} else {
 			value = GetResult{
@@ -56,10 +57,11 @@ func (c *memoryClient) Put(key string, payload []byte, expectedVersion *int64) <
 	return ch
 }
 
-func (c *memoryClient) Delete(key string, expectedVersion *int64) <-chan error {
+func (c *memoryClient) Delete(key string, options ...DeleteOption) <-chan error {
 	ch := make(chan error, 1)
+	opts := newDeleteOptions(options)
 	if value, ok := c.data[key]; ok {
-		if expectedVersion != nil && *expectedVersion != value.Stat.Version {
+		if opts.expectedVersion != nil && *opts.expectedVersion != value.Stat.Version {
 			ch <- ErrorUnexpectedVersion
 		} else {
 			delete(c.data, key)

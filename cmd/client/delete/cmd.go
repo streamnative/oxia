@@ -112,8 +112,12 @@ type QueryByKey struct {
 }
 
 func (query QueryByKey) Perform(client oxia.AsyncClient) common.Call {
+	var deleteOptions []oxia.DeleteOption
+	if query.ExpectedVersion != nil {
+		deleteOptions = append(deleteOptions, oxia.ExpectedVersion(*query.ExpectedVersion))
+	}
 	return Call{
-		clientCall: client.Delete(query.Key, query.ExpectedVersion),
+		clientCall: client.Delete(query.Key, deleteOptions...),
 	}
 }
 

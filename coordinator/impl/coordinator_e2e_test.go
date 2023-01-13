@@ -156,7 +156,7 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 	client, err := oxia.NewSyncClient(follower.Public)
 	assert.NoError(t, err)
 
-	stat1, err := client.Put("my-key", []byte("my-value"), nil)
+	stat1, err := client.Put("my-key", []byte("my-value"))
 	assert.NoError(t, err)
 	assert.EqualValues(t, 0, stat1.Version)
 

@@ -25,8 +25,8 @@ func TestAsyncClientImpl(t *testing.T) {
 	client, err := NewAsyncClient(serviceAddress, WithBatchLinger(0))
 	assert.NoError(t, err)
 
-	putResult := <-client.Put("/a", []byte{0}, &VersionNotExists)
-	assert.Equal(t, versionZero, putResult.Stat.Version)
+	putResult := <-client.Put("/a", []byte{0}, ExpectedVersion(VersionNotExists))
+	assert.Equal(t, int64(0), putResult.Stat.Version)
 
 	getResult := <-client.Get("/a")
 	assert.Equal(t, GetResult{
@@ -34,10 +34,10 @@ func TestAsyncClientImpl(t *testing.T) {
 		Stat:    putResult.Stat,
 	}, getResult)
 
-	putResult = <-client.Put("/c", []byte{0}, &VersionNotExists)
-	assert.Equal(t, versionZero, putResult.Stat.Version)
+	putResult = <-client.Put("/c", []byte{0}, ExpectedVersion(VersionNotExists))
+	assert.Equal(t, int64(0), putResult.Stat.Version)
 
-	putResult = <-client.Put("/c", []byte{1}, &versionZero)
+	putResult = <-client.Put("/c", []byte{1}, ExpectedVersion(versionZero))
 	assert.Equal(t, int64(1), putResult.Stat.Version)
 
 	getRangeResult := <-client.List("/a", "/d")
@@ -45,7 +45,7 @@ func TestAsyncClientImpl(t *testing.T) {
 		Keys: []string{"/a", "/c"},
 	}, getRangeResult)
 
-	deleteErr := <-client.Delete("/a", &versionZero)
+	deleteErr := <-client.Delete("/a", ExpectedVersion(versionZero))
 	assert.NoError(t, deleteErr)
 
 	getResult = <-client.Get("/a")
@@ -79,22 +79,22 @@ func TestAsyncClientImpl_Notifications(t *testing.T) {
 	notifications, err := client.GetNotifications()
 	assert.NoError(t, err)
 
-	s1, _ := client.Put("/a", []byte("0"), nil)
+	s1, _ := client.Put("/a", []byte("0"))
 
 	n := <-notifications.Ch()
 	assert.Equal(t, KeyCreated, n.Type)
 	assert.Equal(t, "/a", n.Key)
 	assert.Equal(t, s1.Version, n.Version)
 
-	s2, _ := client.Put("/a", []byte("1"), nil)
+	s2, _ := client.Put("/a", []byte("1"))
 
 	n = <-notifications.Ch()
 	assert.Equal(t, KeyModified, n.Type)
 	assert.Equal(t, "/a", n.Key)
 	assert.Equal(t, s2.Version, n.Version)
 
-	s3, _ := client.Put("/b", []byte("0"), nil)
-	assert.NoError(t, client.Delete("/a", nil))
+	s3, _ := client.Put("/b", []byte("0"))
+	assert.NoError(t, client.Delete("/a"))
 
 	n = <-notifications.Ch()
 	assert.Equal(t, KeyCreated, n.Type)
@@ -118,7 +118,7 @@ func TestAsyncClientImpl_Notifications(t *testing.T) {
 		// Ok, we expect it to time out
 	}
 
-	s4, _ := client.Put("/x", []byte("1"), nil)
+	s4, _ := client.Put("/x", []byte("1"))
 
 	n = <-notifications.Ch()
 	assert.Equal(t, KeyCreated, n.Type)

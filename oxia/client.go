@@ -17,8 +17,8 @@ var (
 type AsyncClient interface {
 	io.Closer
 
-	Put(key string, payload []byte, expectedVersion *int64) <-chan PutResult
-	Delete(key string, expectedVersion *int64) <-chan error
+	Put(key string, payload []byte, options ...PutOption) <-chan PutResult
+	Delete(key string, options ...DeleteOption) <-chan error
 	DeleteRange(minKeyInclusive string, maxKeyExclusive string) <-chan error
 	Get(key string) <-chan GetResult
 	List(minKeyInclusive string, maxKeyExclusive string) <-chan ListResult
@@ -29,8 +29,8 @@ type AsyncClient interface {
 type SyncClient interface {
 	io.Closer
 
-	Put(key string, payload []byte, expectedVersion *int64) (Stat, error)
-	Delete(key string, expectedVersion *int64) error
+	Put(key string, payload []byte, options ...PutOption) (Stat, error)
+	Delete(key string, options ...DeleteOption) error
 	DeleteRange(minKeyInclusive string, maxKeyExclusive string) error
 	Get(key string) ([]byte, Stat, error)
 	List(minKeyInclusive string, maxKeyExclusive string) ([]string, error)

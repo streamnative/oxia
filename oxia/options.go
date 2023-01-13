@@ -14,6 +14,7 @@ const (
 	DefaultBatchLinger         = 5 * time.Millisecond
 	DefaultMaxRequestsPerBatch = 1000
 	DefaultRequestTimeout      = 30 * time.Second
+	DefaultSessionTimeout      = 5 * time.Minute
 )
 
 var (
@@ -21,6 +22,8 @@ var (
 	ErrorMaxRequestsPerBatch = errors.New("MaxRequestsPerBatch must be greater than zero")
 	ErrorRequestTimeout      = errors.New("RequestTimeout must be greater than zero")
 	ErrorBatcherBufferSize   = errors.New("BatcherBufferSize must be greater than or equal to zero")
+	ErrorSessionTimeout      = errors.New("SessionTimeout must be greater than zero")
+
 	DefaultBatcherBufferSize = runtime.GOMAXPROCS(-1)
 )
 
@@ -32,6 +35,7 @@ type clientOptions struct {
 	requestTimeout      time.Duration
 	meterProvider       metric.MeterProvider
 	batcherBufferSize   int
+	sessionTimeout      time.Duration
 }
 
 func (o clientOptions) ServiceAddress() string {
@@ -48,6 +52,10 @@ func (o clientOptions) MaxRequestsPerBatch() int {
 
 func (o clientOptions) BatcherBufferSize() int {
 	return o.batcherBufferSize
+}
+
+func (o clientOptions) SessionTimeout() time.Duration {
+	return o.sessionTimeout
 }
 
 // RequestTimeout defines how long the client will wait for responses before cancelling the request and failing
@@ -70,6 +78,7 @@ func newClientOptions(serviceAddress string, opts ...ClientOption) (clientOption
 		requestTimeout:      DefaultRequestTimeout,
 		meterProvider:       metric.NewNoopMeterProvider(),
 		batcherBufferSize:   DefaultBatcherBufferSize,
+		sessionTimeout:      DefaultSessionTimeout,
 	}
 	var errs error
 	var err error
@@ -147,3 +156,73 @@ func WithBatcherBufferSize(batcherBufferSize int) ClientOption {
 		return options, nil
 	})
 }
+
+func WithSessionTimeout(sessionTimeout time.Duration) ClientOption {
+	return clientOptionFunc(func(options clientOptions) (clientOptions, error) {
+		if sessionTimeout <= 0 {
+			return options, ErrorSessionTimeout
+		}
+		options.sessionTimeout = sessionTimeout
+		return options, nil
+	})
+}
+
+type putOptions struct {
+	expectedVersion *int64
+	ephemeral       bool
+}
+
+type PutOption interface {
+	applyPut(opts putOptions) putOptions
+}
+
+func newPutOptions(opts []PutOption) putOptions {
+	putOpts := putOptions{}
+	for _, opt := range opts {
+		putOpts = opt.applyPut(putOpts)
+	}
+	return putOpts
+}
+
+type deleteOptions struct {
+	expectedVersion *int64
+}
+type DeleteOption interface {
+	PutOption
+	applyDelete(opts deleteOptions) deleteOptions
+}
+
+func newDeleteOptions(opts []DeleteOption) deleteOptions {
+	deleteOpts := deleteOptions{}
+	for _, opt := range opts {
+		deleteOpts = opt.applyDelete(deleteOpts)
+	}
+	return deleteOpts
+}
+
+func ExpectedVersion(version int64) DeleteOption {
+	return &expectedVersion{version}
+}
+
+type expectedVersion struct {
+	version int64
+}
+
+func (e *expectedVersion) applyPut(opts putOptions) putOptions {
+	opts.expectedVersion = &e.version
+	return opts
+}
+
+func (e *expectedVersion) applyDelete(opts deleteOptions) deleteOptions {
+	opts.expectedVersion = &e.version
+	return opts
+}
+
+type ephemeral struct{}
+
+func (e *ephemeral) applyPut(opts putOptions) putOptions {
+	opts.ephemeral = true
+	return opts
+}
+
+var Ephemeral PutOption = &ephemeral{}

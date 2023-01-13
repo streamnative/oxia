@@ -178,7 +178,7 @@ func generateWriteTraffic(closer *closer, client oxia.AsyncClient, latencyCh cha
 		key := keys[rand.Intn(int(config.KeysCardinality))]
 
 		start := time.Now()
-		ch := client.Put(key, payload, nil)
+		ch := client.Put(key, payload)
 		go func() {
 			r := <-ch
 			if r.Err != nil {

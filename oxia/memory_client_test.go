@@ -14,13 +14,13 @@ var (
 )
 
 type putItem struct {
-	version *int64
+	version []PutOption
 	stat    Stat
 	err     error
 }
 
 type deleteItem struct {
-	version *int64
+	version []DeleteOption
 	err     error
 }
 
@@ -50,12 +50,20 @@ func runTests[ITEM any](items []ITEM, test func(AsyncClient, ITEM)) {
 	}
 }
 
-func ptr(t int64) *int64 {
-	return &t
+func putOpt(t int64) []PutOption {
+	return []PutOption{
+		ExpectedVersion(t),
+	}
+}
+
+func delOpt(t int64) []DeleteOption {
+	return []DeleteOption{
+		ExpectedVersion(t),
+	}
 }
 
 func put(t *testing.T, client AsyncClient, key string) {
-	c := client.Put(key, payload0, nil)
+	c := client.Put(key, payload0)
 	response := <-c
 	assert.NoError(t, response.Err)
 }
@@ -75,15 +83,15 @@ func TestPutNew(t *testing.T) {
 			CreatedTimestamp:  1,
 			ModifiedTimestamp: 1,
 		}, nil},
-		{ptr(VersionNotExists), Stat{
+		{putOpt(VersionNotExists), Stat{
 			Version:           1,
 			CreatedTimestamp:  1,
 			ModifiedTimestamp: 1,
 		}, nil},
-		{ptr(1), Stat{}, ErrorUnexpectedVersion},
+		{putOpt(1), Stat{}, ErrorUnexpectedVersion},
 	}
 	runTests(items, func(client AsyncClient, item putItem) {
-		c := client.Put(key, payload1, item.version)
+		c := client.Put(key, payload1, item.version...)
 		response := <-c
 
 		assert.Equal(t, item.stat, response.Stat)
@@ -98,8 +106,8 @@ func TestPutExisting(t *testing.T) {
 			CreatedTimestamp:  1,
 			ModifiedTimestamp: 2,
 		}, nil},
-		{ptr(VersionNotExists), Stat{}, ErrorUnexpectedVersion},
-		{ptr(1), Stat{
+		{putOpt(VersionNotExists), Stat{}, ErrorUnexpectedVersion},
+		{putOpt(1), Stat{
 			Version:           2,
 			CreatedTimestamp:  1,
 			ModifiedTimestamp: 2,
@@ -108,7 +116,7 @@ func TestPutExisting(t *testing.T) {
 	runTests(items, func(client AsyncClient, item putItem) {
 		put(t, client, key)
 
-		c := client.Put(key, payload1, item.version)
+		c := client.Put(key, payload1, item.version...)
 		response := <-c
 
 		assert.Equal(t, item.stat, response.Stat)
@@ -119,11 +127,11 @@ func TestPutExisting(t *testing.T) {
 func TestDeleteMissing(t *testing.T) {
 	items := []deleteItem{
 		{nil, ErrorKeyNotFound},
-		{ptr(VersionNotExists), ErrorKeyNotFound},
-		{ptr(1), ErrorKeyNotFound},
+		{delOpt(VersionNotExists), ErrorKeyNotFound},
+		{delOpt(1), ErrorKeyNotFound},
 	}
 	runTests(items, func(client AsyncClient, item deleteItem) {
-		c := client.Delete(key, item.version)
+		c := client.Delete(key, item.version...)
 		err := <-c
 
 		assert.ErrorIs(t, err, item.err)
@@ -133,13 +141,13 @@ func TestDeleteMissing(t *testing.T) {
 func TestDeleteExisting(t *testing.T) {
 	items := []deleteItem{
 		{nil, nil},
-		{ptr(VersionNotExists), ErrorUnexpectedVersion},
-		{ptr(1), nil},
+		{delOpt(VersionNotExists), ErrorUnexpectedVersion},
+		{delOpt(1), nil},
 	}
 	runTests(items, func(client AsyncClient, item deleteItem) {
 		put(t, client, key)
 
-		c := client.Delete(key, item.version)
+		c := client.Delete(key, item.version...)
 		err := <-c
 
 		assert.ErrorIs(t, err, item.err)

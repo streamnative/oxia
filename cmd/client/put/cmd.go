@@ -104,7 +104,11 @@ func (query Query) Perform(client oxia.AsyncClient) common.Call {
 		errChan <- oxia.PutResult{Err: err}
 		call.clientCall = errChan
 	} else {
-		call.clientCall = client.Put(query.Key, payload, query.ExpectedVersion)
+		var putOptions []oxia.PutOption
+		if query.ExpectedVersion != nil {
+			putOptions = append(putOptions, oxia.ExpectedVersion(*query.ExpectedVersion))
+		}
+		call.clientCall = client.Put(query.Key, payload, putOptions...)
 	}
 	return call
 }
