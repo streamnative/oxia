@@ -17,6 +17,6 @@ rules:
   - apiGroups: [ "monitoring.coreos.com" ]
     resources: [ "servicemonitors" ]
     verbs: [ "*" ]
-  - apiGroups: [ "rbac" ]
+  - apiGroups: [ "rbac.authorization.k8s.io" ]
     resources: [ "rolebindings", "roles" ]
     verbs: [ "*" ]
