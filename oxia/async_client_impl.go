@@ -68,7 +68,7 @@ func NewAsyncClient(serviceAddress string, opts ...ClientOption) (AsyncClient, e
 	}
 
 	c.ctx, c.cancel = context.WithCancel(context.Background())
-	c.sessions = NewSessions(c.ctx, c.shardManager, c.clientPool, c.options)
+	c.sessions = newSessions(c.ctx, c.shardManager, c.clientPool, c.options)
 	return c, nil
 }
 

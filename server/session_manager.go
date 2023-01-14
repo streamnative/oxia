@@ -18,8 +18,7 @@ import (
 )
 
 const (
-	KeyPrefix  = common.InternalKeyPrefix + "session/"
-	MaxTimeout = 5 * time.Minute
+	KeyPrefix = common.InternalKeyPrefix + "session/"
 )
 
 type SessionId int64
@@ -101,7 +100,7 @@ func NewSessionManager(shardId uint32, controller *leaderController) SessionMana
 
 func (sm *sessionManager) CreateSession(request *proto.CreateSessionRequest) (*proto.CreateSessionResponse, error) {
 	timeout := time.Duration(request.SessionTimeoutMs) * time.Millisecond
-	if timeout > MaxTimeout {
+	if timeout > common.MaxSessionTimeout || timeout < common.MinSessionTimeout {
 		return nil, errors.Wrap(common.ErrorInvalidSessionTimeout, fmt.Sprintf("timeoutMs=%d", request.SessionTimeoutMs))
 	}
 	sm.Lock()

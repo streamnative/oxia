@@ -9,10 +9,6 @@ import (
 	"time"
 )
 
-var (
-	versionZero int64 = 0
-)
-
 func init() {
 	common.ConfigureLogger()
 }
@@ -26,7 +22,7 @@ func TestAsyncClientImpl(t *testing.T) {
 	assert.NoError(t, err)
 
 	putResult := <-client.Put("/a", []byte{0}, ExpectedVersion(VersionNotExists))
-	assert.Equal(t, int64(0), putResult.Stat.Version)
+	assert.EqualValues(t, 0, putResult.Stat.Version)
 
 	getResult := <-client.Get("/a")
 	assert.Equal(t, GetResult{
@@ -35,17 +31,17 @@ func TestAsyncClientImpl(t *testing.T) {
 	}, getResult)
 
 	putResult = <-client.Put("/c", []byte{0}, ExpectedVersion(VersionNotExists))
-	assert.Equal(t, int64(0), putResult.Stat.Version)
+	assert.EqualValues(t, 0, putResult.Stat.Version)
 
-	putResult = <-client.Put("/c", []byte{1}, ExpectedVersion(versionZero))
-	assert.Equal(t, int64(1), putResult.Stat.Version)
+	putResult = <-client.Put("/c", []byte{1}, ExpectedVersion(0))
+	assert.EqualValues(t, 1, putResult.Stat.Version)
 
 	getRangeResult := <-client.List("/a", "/d")
 	assert.Equal(t, ListResult{
 		Keys: []string{"/a", "/c"},
 	}, getRangeResult)
 
-	deleteErr := <-client.Delete("/a", ExpectedVersion(versionZero))
+	deleteErr := <-client.Delete("/a", ExpectedVersion(0))
 	assert.NoError(t, deleteErr)
 
 	getResult = <-client.Get("/a")

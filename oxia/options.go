@@ -14,7 +14,7 @@ const (
 	DefaultBatchLinger         = 5 * time.Millisecond
 	DefaultMaxRequestsPerBatch = 1000
 	DefaultRequestTimeout      = 30 * time.Second
-	DefaultSessionTimeout      = 5 * time.Minute
+	DefaultSessionTimeout      = 15 * time.Second
 )
 
 var (

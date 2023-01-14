@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-func NewSessions(ctx context.Context, shardManager internal.ShardManager, pool common.ClientPool, options clientOptions) *sessions {
+func newSessions(ctx context.Context, shardManager internal.ShardManager, pool common.ClientPool, options clientOptions) *sessions {
 	s := &sessions{
 		ctx:             ctx,
 		shardManager:    shardManager,
@@ -38,14 +38,13 @@ type sessions struct {
 
 func (s *sessions) executeWithSessionId(ctx context.Context, shardId uint32, callback func(int64, error)) {
 	s.Lock()
+	defer s.Unlock()
 	session, found := s.sessionsByShard[shardId]
 	if !found {
 		session = s.startSession(ctx, shardId)
 		s.sessionsByShard[shardId] = session
 	}
 	session.executeWithId(ctx, callback)
-	defer s.Unlock()
-
 }
 
 func (s *sessions) startSession(ctx context.Context, shardId uint32) *clientSession {
@@ -54,7 +53,7 @@ func (s *sessions) startSession(ctx context.Context, shardId uint32) *clientSess
 		sessions: s,
 		log: log.With().
 			Str("component", "session").
-			Uint32("shard-id", shardId).Logger(),
+			Uint32("shard", shardId).Logger(),
 	}
 	cs.start(ctx)
 	return cs
@@ -159,7 +158,12 @@ func (cs *clientSession) keepAlive(rpc proto.OxiaClientClient) {
 	cs.Unlock()
 	cs.sessions.Unlock()
 
-	timer := time.NewTicker(2 * timeout / 3)
+	tickTime := timeout / 10
+	if tickTime < 2*time.Second {
+		tickTime = 2 * time.Second
+	}
+
+	timer := time.NewTicker(tickTime)
 
 	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataShardId, fmt.Sprintf("%d", shardId))
 	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataSessionId, fmt.Sprintf("%d", sessionId))
@@ -180,7 +184,17 @@ func (cs *clientSession) keepAlive(rpc proto.OxiaClientClient) {
 				return
 			}
 		case <-ctx.Done():
-			// TODO rpc.Close()?
+			err = client.CloseSend()
+			if err != nil {
+				cs.log.Error().Err(err).Msg("Failed to close heartbeat stream.")
+			}
+			_, err = rpc.CloseSession(ctx, &proto.CloseSessionRequest{
+				ShardId:   shardId,
+				SessionId: sessionId,
+			})
+			if err != nil {
+				cs.log.Error().Err(err).Msg("Failed to close session.")
+			}
 			return
 		}
 	}
