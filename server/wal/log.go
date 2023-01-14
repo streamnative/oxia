@@ -992,7 +992,7 @@ func (l *Log) syncNoMutex() error {
 	timer := l.syncLatency.Timer()
 	defer timer.Done()
 
-	return l.sfile.Sync()
+	return doFSync(l.sfile)
 }
 
 func (l *Log) newFile(name string) (afero.File, error) {
