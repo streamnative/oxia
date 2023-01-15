@@ -26,13 +26,6 @@ func TestFollowerCursor(t *testing.T) {
 	w, err := wf.NewWal(shard)
 	assert.NoError(t, err)
 
-	fc, err := NewFollowerCursor("f1", epoch, shard, stream, ackTracker, w, db, wal.InvalidOffset)
-	assert.NoError(t, err)
-
-	assert.Equal(t, shard, fc.ShardId())
-	assert.Equal(t, wal.InvalidOffset, fc.LastPushed())
-	assert.Equal(t, wal.InvalidOffset, fc.AckIndex())
-
 	err = w.Append(&proto.LogEntry{
 		Epoch:  1,
 		Offset: 0,
@@ -40,6 +33,13 @@ func TestFollowerCursor(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	log.Logger.Info().Msg("Appended entry 0 to the log")
+
+	fc, err := NewFollowerCursor("f1", epoch, shard, stream, ackTracker, w, db, wal.InvalidOffset)
+	assert.NoError(t, err)
+
+	assert.Equal(t, shard, fc.ShardId())
+	assert.Equal(t, wal.InvalidOffset, fc.LastPushed())
+	assert.Equal(t, wal.InvalidOffset, fc.AckIndex())
 
 	assert.Eventually(t, func() bool {
 		return fc.LastPushed() == 0
