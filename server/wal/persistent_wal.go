@@ -58,7 +58,7 @@ type persistentWal struct {
 	cancel      context.CancelFunc
 	syncRequest common.ConditionContext
 	syncDone    common.ConditionContext
-	lastSyncErr error // The error from the last sync operation, if any
+	lastSyncErr atomic.Pointer[error] // The error from the last sync operation, if any
 
 	appendLatency metrics.LatencyHistogram
 	appendBytes   metrics.Counter
@@ -236,25 +236,22 @@ func (t *persistentWal) runSync() {
 			return
 		}
 
-		if t.lastSyncedOffset == t.lastAppendedOffset {
-			// We are already at the end, no need to sync
-			t.syncDone.Broadcast()
-		}
-
-		lastAppendedOffset := t.lastAppendedOffset
 		t.Unlock()
 
-		if err := t.log.Sync(); err != nil {
-			t.Lock()
-			t.lastSyncErr = err
-			t.Unlock()
+		lastAppendedOffset := t.lastAppendedOffset.Load()
 
+		if t.lastSyncedOffset.Load() == lastAppendedOffset {
+			// We are already at the end, no need to sync
+			t.syncDone.Broadcast()
+			continue
+		}
+
+		if err := t.log.Sync(); err != nil {
+			t.lastSyncErr.Store(&err)
 			t.writeErrors.Inc()
 		} else {
-			t.Lock()
-			t.lastSyncedOffset = lastAppendedOffset
-			t.lastSyncErr = nil
-			t.Unlock()
+			t.lastSyncedOffset.Store(lastAppendedOffset)
+			t.lastSyncErr.Store(nil)
 		}
 
 		t.syncDone.Broadcast()
@@ -276,7 +273,11 @@ func (t *persistentWal) Sync(ctx context.Context) error {
 		}
 	}
 
-	return t.lastSyncErr
+	if lastErr := t.lastSyncErr.Load(); lastErr != nil {
+		return *lastErr
+	}
+
+	return nil
 }
 
 func (t *persistentWal) checkNextOffset(nextOffset int64) error {
