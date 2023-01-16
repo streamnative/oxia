@@ -90,8 +90,8 @@ func (s *shardManagerImpl) start() error {
 }
 
 func (s *shardManagerImpl) Get(key string) uint32 {
-	s.Lock()
-	defer s.Unlock()
+	s.RLock()
+	defer s.RUnlock()
 
 	predicate := s.shardStrategy.Get(key)
 
