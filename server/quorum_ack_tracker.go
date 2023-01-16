@@ -46,6 +46,10 @@ type QuorumAckTracker interface {
 	// After that, invokes the function f
 	WaitForCommitIndex(offset int64, f func() (*proto.WriteResponse, error)) (*proto.WriteResponse, error)
 
+	// NextOffset returns the offset for the next entry to write
+	// Note this can go ahead of the head-index as there can be multiple operations in flight.
+	NextOffset() int64
+
 	HeadIndex() int64
 
 	AdvanceHeadIndex(headIndex int64)
@@ -67,8 +71,9 @@ type quorumAckTracker struct {
 	replicationFactor uint32
 	requiredAcks      uint32
 
-	headIndex   int64
-	commitIndex int64
+	nextOffset  atomic.Int64
+	headIndex   atomic.Int64
+	commitIndex atomic.Int64
 
 	// Keep track of the number of acks that each entry has received
 	// The bitset is used to handle duplicate acks from a single follower
@@ -92,10 +97,12 @@ func NewQuorumAckTracker(replicationFactor uint32, headIndex int64, commitIndex 
 		// We are using RF/2 (and not RF/2 + 1) because the leader is already storing 1 copy locally
 		requiredAcks:      replicationFactor / 2,
 		replicationFactor: replicationFactor,
-		headIndex:         headIndex,
-		commitIndex:       commitIndex,
 		tracker:           make(map[int64]*util.BitSet),
 	}
+
+	q.nextOffset.Store(headIndex)
+	q.headIndex.Store(headIndex)
+	q.commitIndex.Store(commitIndex)
 
 	// Add entries to track the entries we're not yet sure that are fully committed
 	for offset := commitIndex + 1; offset <= headIndex; offset++ {
@@ -111,34 +118,38 @@ func (q *quorumAckTracker) AdvanceHeadIndex(headIndex int64) {
 	q.Lock()
 	defer q.Unlock()
 
-	if headIndex <= q.headIndex {
+	if headIndex <= q.headIndex.Load() {
 		return
 	}
 
-	atomic.StoreInt64(&q.headIndex, headIndex)
+	q.headIndex.Store(headIndex)
 	q.waitForHeadIndex.Broadcast()
 
 	if q.requiredAcks == 0 {
-		atomic.StoreInt64(&q.commitIndex, headIndex)
+		q.commitIndex.Store(headIndex)
 		q.waitForCommitIndex.Broadcast()
 	} else {
 		q.tracker[headIndex] = &util.BitSet{}
 	}
 }
 
+func (q *quorumAckTracker) NextOffset() int64 {
+	return q.nextOffset.Add(1)
+}
+
 func (q *quorumAckTracker) CommitIndex() int64 {
-	return atomic.LoadInt64(&q.commitIndex)
+	return q.commitIndex.Load()
 }
 
 func (q *quorumAckTracker) HeadIndex() int64 {
-	return atomic.LoadInt64(&q.headIndex)
+	return q.headIndex.Load()
 }
 
 func (q *quorumAckTracker) WaitForHeadIndex(offset int64) {
 	q.Lock()
 	defer q.Unlock()
 
-	for !q.closed && q.headIndex < offset {
+	for !q.closed && q.headIndex.Load() < offset {
 		q.waitForHeadIndex.Wait()
 	}
 }
@@ -147,7 +158,7 @@ func (q *quorumAckTracker) WaitForCommitIndex(offset int64, f func() (*proto.Wri
 	q.Lock()
 	defer q.Unlock()
 
-	for !q.closed && q.requiredAcks > 0 && q.commitIndex < offset {
+	for !q.closed && q.requiredAcks > 0 && q.commitIndex.Load() < offset {
 		q.waitForCommitIndex.Wait()
 	}
 
@@ -180,7 +191,7 @@ func (q *quorumAckTracker) NewCursorAcker(ackIndex int64) (CursorAcker, error) {
 		return nil, ErrorTooManyCursors
 	}
 
-	if ackIndex > q.headIndex {
+	if ackIndex > q.headIndex.Load() {
 		return nil, ErrorInvalidHeadIndex
 	}
 
@@ -191,7 +202,7 @@ func (q *quorumAckTracker) NewCursorAcker(ackIndex int64) (CursorAcker, error) {
 
 	// If the new cursor is already past the current quorum commit index, we have
 	// to mark these entries as acked (by that cursor).
-	for offset := q.commitIndex + 1; offset <= ackIndex; offset++ {
+	for offset := q.commitIndex.Load() + 1; offset <= ackIndex; offset++ {
 		qa.ack(offset)
 	}
 
@@ -222,7 +233,7 @@ func (c *cursorAcker) ack(offset int64) {
 		delete(q.tracker, offset)
 
 		// Advance the commit index
-		atomic.StoreInt64(&q.commitIndex, offset)
+		q.commitIndex.Store(offset)
 		q.waitForCommitIndex.Broadcast()
 	}
 }

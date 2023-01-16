@@ -15,6 +15,7 @@
 package wal
 
 import (
+	"context"
 	"github.com/pkg/errors"
 	"io"
 	"oxia/proto"
@@ -56,8 +57,16 @@ type WalReader interface {
 
 type Wal interface {
 	io.Closer
-	// Append writes an entry to the end of the log
+	// Append writes an entry to the end of the log.
+	// The wal is synced when Append returns
 	Append(entry *proto.LogEntry) error
+
+	// AppendAsync an entry without syncing the WAL
+	// Caller should use Sync to make the entry visible
+	AppendAsync(entry *proto.LogEntry) error
+
+	// Sync flushes all the entries in the wal to disk
+	Sync(ctx context.Context) error
 
 	// Trim removes all the entries that are before firstOffset
 	Trim(firstOffset int64) error
