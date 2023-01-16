@@ -15,6 +15,7 @@
 package oxia
 
 import (
+	"context"
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"oxia/common"
@@ -82,7 +83,7 @@ func TestAsyncClientImpl(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestAsyncClientImpl_Notifications(t *testing.T) {
+func TestSyncClientImpl_Notifications(t *testing.T) {
 	server, err := server.NewStandalone(server.NewTestConfig())
 	assert.NoError(t, err)
 
@@ -93,22 +94,24 @@ func TestAsyncClientImpl_Notifications(t *testing.T) {
 	notifications, err := client.GetNotifications()
 	assert.NoError(t, err)
 
-	s1, _ := client.Put("/a", []byte("0"), nil)
+	ctx := context.Background()
+
+	s1, _ := client.Put(ctx, "/a", []byte("0"), nil)
 
 	n := <-notifications.Ch()
 	assert.Equal(t, KeyCreated, n.Type)
 	assert.Equal(t, "/a", n.Key)
 	assert.Equal(t, s1.Version, n.Version)
 
-	s2, _ := client.Put("/a", []byte("1"), nil)
+	s2, _ := client.Put(ctx, "/a", []byte("1"), nil)
 
 	n = <-notifications.Ch()
 	assert.Equal(t, KeyModified, n.Type)
 	assert.Equal(t, "/a", n.Key)
 	assert.Equal(t, s2.Version, n.Version)
 
-	s3, _ := client.Put("/b", []byte("0"), nil)
-	assert.NoError(t, client.Delete("/a", nil))
+	s3, _ := client.Put(ctx, "/b", []byte("0"), nil)
+	assert.NoError(t, client.Delete(ctx, "/a", nil))
 
 	n = <-notifications.Ch()
 	assert.Equal(t, KeyCreated, n.Type)
@@ -132,7 +135,7 @@ func TestAsyncClientImpl_Notifications(t *testing.T) {
 		// Ok, we expect it to time out
 	}
 
-	s4, _ := client.Put("/x", []byte("1"), nil)
+	s4, _ := client.Put(ctx, "/x", []byte("1"), nil)
 
 	n = <-notifications.Ch()
 	assert.Equal(t, KeyCreated, n.Type)
