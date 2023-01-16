@@ -22,9 +22,7 @@ import (
 	oxia "oxia/pkg/generated/clientset/versioned"
 )
 
-type Watcher interface {
-	io.Closer
-}
+type Watcher io.Closer
 
 type watcher struct {
 	watch   watch.Interface
@@ -43,12 +41,12 @@ func newWatcher(client oxia.Interface, reconciler Reconciler) (Watcher, error) {
 	if err != nil {
 		return nil, err
 	}
-	_watcher := &watcher{
+	w := &watcher{
 		watch:   _watch,
 		closeCh: make(chan bool),
 	}
-	go _watcher.run(reconciler)
-	return _watcher, nil
+	go w.run(reconciler)
+	return w, nil
 }
 
 func (w *watcher) run(reconciler Reconciler) {
