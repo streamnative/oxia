@@ -15,6 +15,7 @@
 package impl
 
 import (
+	"context"
 	"fmt"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
@@ -170,11 +171,13 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 	client, err := oxia.NewSyncClient(follower.Public)
 	assert.NoError(t, err)
 
-	stat1, err := client.Put("my-key", []byte("my-value"), nil)
+	ctx := context.Background()
+
+	stat1, err := client.Put(ctx, "my-key", []byte("my-value"))
 	assert.NoError(t, err)
 	assert.EqualValues(t, 0, stat1.Version)
 
-	res, stat2, err := client.Get("my-key")
+	res, stat2, err := client.Get(ctx, "my-key")
 	assert.NoError(t, err)
 	assert.Equal(t, []byte("my-value"), res)
 	assert.Equal(t, stat1, stat2)
@@ -192,11 +195,11 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 	// Wait for the client to receive the updated assignment list
 	assert.Eventually(t, func() bool {
 		client, _ = oxia.NewSyncClient(follower.Public)
-		_, _, err := client.Get("my-key")
+		_, _, err := client.Get(ctx, "my-key")
 		return err == nil
 	}, 10*time.Second, 10*time.Millisecond)
 
-	res, stat3, err := client.Get("my-key")
+	res, stat3, err := client.Get(ctx, "my-key")
 	assert.NoError(t, err)
 	assert.Equal(t, []byte("my-value"), res)
 	assert.Equal(t, stat1, stat3)

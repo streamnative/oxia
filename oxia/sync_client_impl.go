@@ -14,6 +14,10 @@
 
 package oxia
 
+import (
+	"context"
+)
+
 type syncClientImpl struct {
 	asyncClient AsyncClient
 }
@@ -44,29 +48,49 @@ func (c *syncClientImpl) Close() error {
 	return c.asyncClient.Close()
 }
 
-func (c *syncClientImpl) Put(key string, payload []byte, expectedVersion *int64) (Stat, error) {
-	r := <-c.asyncClient.Put(key, payload, expectedVersion)
-	return r.Stat, r.Err
+func (c *syncClientImpl) Put(ctx context.Context, key string, payload []byte, options ...PutOption) (Stat, error) {
+	select {
+	case r := <-c.asyncClient.Put(key, payload, options...):
+		return r.Stat, r.Err
+	case <-ctx.Done():
+		return Stat{}, ctx.Err()
+	}
 }
 
-func (c *syncClientImpl) Delete(key string, expectedVersion *int64) error {
-	r := <-c.asyncClient.Delete(key, expectedVersion)
-	return r
+func (c *syncClientImpl) Delete(ctx context.Context, key string, options ...DeleteOption) error {
+	select {
+	case err := <-c.asyncClient.Delete(key, options...):
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
-func (c *syncClientImpl) DeleteRange(minKeyInclusive string, maxKeyExclusive string) error {
-	r := <-c.asyncClient.DeleteRange(minKeyInclusive, maxKeyExclusive)
-	return r
+func (c *syncClientImpl) DeleteRange(ctx context.Context, minKeyInclusive string, maxKeyExclusive string) error {
+	select {
+	case err := <-c.asyncClient.DeleteRange(minKeyInclusive, maxKeyExclusive):
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
-func (c *syncClientImpl) Get(key string) ([]byte, Stat, error) {
-	r := <-c.asyncClient.Get(key)
-	return r.Payload, r.Stat, r.Err
+func (c *syncClientImpl) Get(ctx context.Context, key string) ([]byte, Stat, error) {
+	select {
+	case r := <-c.asyncClient.Get(key):
+		return r.Payload, r.Stat, r.Err
+	case <-ctx.Done():
+		return nil, Stat{}, ctx.Err()
+	}
 }
 
-func (c *syncClientImpl) List(minKeyInclusive string, maxKeyExclusive string) ([]string, error) {
-	r := <-c.asyncClient.List(minKeyInclusive, maxKeyExclusive)
-	return r.Keys, r.Err
+func (c *syncClientImpl) List(ctx context.Context, minKeyInclusive string, maxKeyExclusive string) ([]string, error) {
+	select {
+	case r := <-c.asyncClient.List(minKeyInclusive, maxKeyExclusive):
+		return r.Keys, r.Err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 func (c *syncClientImpl) GetNotifications() (Notifications, error) {
