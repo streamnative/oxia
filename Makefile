@@ -13,11 +13,11 @@
 # limitations under the License.
 
 .PHONY: build
-build: proto crd
+build: crd
 	go build -v -o bin/oxia ./cmd
 
 .PHONY: maelstrom
-maelstrom: proto
+maelstrom:
 	go build -v -o bin/oxia-maelstrom ./maelstrom
 
 test: build
