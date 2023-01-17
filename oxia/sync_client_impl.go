@@ -48,18 +48,18 @@ func (c *syncClientImpl) Close() error {
 	return c.asyncClient.Close()
 }
 
-func (c *syncClientImpl) Put(ctx context.Context, key string, payload []byte, expectedVersion *int64) (Stat, error) {
+func (c *syncClientImpl) Put(ctx context.Context, key string, payload []byte, options ...PutOption) (Stat, error) {
 	select {
-	case r := <-c.asyncClient.Put(key, payload, expectedVersion):
+	case r := <-c.asyncClient.Put(key, payload, options...):
 		return r.Stat, r.Err
 	case <-ctx.Done():
 		return Stat{}, ctx.Err()
 	}
 }
 
-func (c *syncClientImpl) Delete(ctx context.Context, key string, expectedVersion *int64) error {
+func (c *syncClientImpl) Delete(ctx context.Context, key string, options ...DeleteOption) error {
 	select {
-	case err := <-c.asyncClient.Delete(key, expectedVersion):
+	case err := <-c.asyncClient.Delete(key, options...):
 		return err
 	case <-ctx.Done():
 		return ctx.Err()

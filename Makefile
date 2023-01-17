@@ -30,6 +30,8 @@ lint:
 clean:
 	rm -f bin/oxia
 	rm -f */*.pb.go
+	rm -rf pkg/generated/*
+	find . -type f -name '*.deepcopy.go' | xargs rm
 
 docker:
 	docker build -t oxia:latest .
