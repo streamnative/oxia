@@ -253,11 +253,11 @@ func (fc *followerCursor) sendSnapshot() error {
 	startTime := time.Now()
 
 	for ; snapshot.Valid(); snapshot.Next() {
-		chunk := snapshot.Chunk()
-		content, err := chunk.Content()
+		chunk, err := snapshot.Chunk()
 		if err != nil {
 			return err
 		}
+		content := chunk.Content()
 
 		fc.log.Debug().
 			Str("chunk-name", chunk.Name()).

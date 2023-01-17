@@ -23,11 +23,14 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel/metric/unit"
+	"go.uber.org/multierr"
 	"io"
 	"os"
 	"oxia/common"
 	"oxia/common/metrics"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"sync/atomic"
 	"time"
 )
@@ -517,13 +520,16 @@ func CompareWithSlash(a, b []byte) int {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 type pebbleSnapshot struct {
-	path  string
-	files []string
+	path       string
+	files      []string
+	chunkCount int64
+	chunkIndex int64
+	file       *os.File
 }
 
 type pebbleSnapshotChunk struct {
-	ps       *pebbleSnapshot
-	filePath string
+	name    string
+	content []byte
 }
 
 func newPebbleSnapshot(p *Pebble) (Snapshot, error) {
@@ -558,7 +564,11 @@ func newPebbleSnapshot(p *Pebble) (Snapshot, error) {
 }
 
 func (ps *pebbleSnapshot) Close() error {
-	return os.RemoveAll(ps.path)
+	var err error
+	if ps.file != nil {
+		err = ps.file.Close()
+	}
+	return multierr.Combine(err, os.RemoveAll(ps.path))
 }
 
 func (ps *pebbleSnapshot) BasePath() string {
@@ -570,21 +580,76 @@ func (ps *pebbleSnapshot) Valid() bool {
 }
 
 func (ps *pebbleSnapshot) Next() bool {
-	ps.files = ps.files[1:]
+	ps.chunkIndex += 1
+	if ps.chunkIndex == ps.chunkCount {
+		ps.chunkIndex = 0
+		ps.files = ps.files[1:]
+	}
 	return ps.Valid()
 }
 
-func (ps *pebbleSnapshot) Chunk() SnapshotChunk {
-	return &pebbleSnapshotChunk{ps, ps.files[0]}
+func (ps *pebbleSnapshot) Chunk() (SnapshotChunk, error) {
+	content, err := ps.NextChunkContent()
+	if err != nil {
+		return nil, err
+	}
+	return &pebbleSnapshotChunk{
+		fmt.Sprintf("%s:%d/%d", ps.files[0], ps.chunkIndex, ps.chunkCount),
+		content}, nil
 }
 
 func (psf *pebbleSnapshotChunk) Name() string {
-	return psf.filePath
+	return psf.name
 }
 
-func (psf *pebbleSnapshotChunk) Content() ([]byte, error) {
-	fp := filepath.Join(psf.ps.path, psf.filePath)
-	return os.ReadFile(fp)
+func (psf *pebbleSnapshotChunk) Content() []byte {
+	return psf.content
+}
+
+func (ps *pebbleSnapshot) NextChunkContent() ([]byte, error) {
+	if ps.chunkIndex == 0 {
+		var err error
+		filePath := filepath.Join(ps.path, ps.files[0])
+		stat, err := os.Stat(filePath)
+		if err != nil {
+			return nil, err
+		}
+		fileSize := stat.Size()
+		ps.chunkCount = fileSize / MaxSnapshotChunkSize
+		if fileSize%MaxSnapshotChunkSize != 0 {
+			ps.chunkCount += 1
+		}
+		if ps.chunkCount == 0 {
+			// empty file
+			ps.chunkCount = 1
+		}
+
+		ps.file, err = os.Open(filePath)
+		if err != nil {
+			return nil, err
+		}
+
+	}
+
+	_, err := ps.file.Seek(ps.chunkIndex*MaxSnapshotChunkSize, io.SeekStart)
+	if err != nil {
+		return nil, err
+	}
+	content := make([]byte, MaxSnapshotChunkSize)
+	byteCount, err := io.ReadFull(ps.file, content)
+	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+		return nil, err
+	}
+	if int64(byteCount) < MaxSnapshotChunkSize {
+		content = content[:byteCount]
+
+		err = ps.file.Close()
+		if err != nil {
+			return nil, err
+		}
+		ps.file = nil
+	}
+	return content, nil
 }
 
 type pebbleSnapshotLoader struct {
@@ -592,6 +657,7 @@ type pebbleSnapshotLoader struct {
 	shard    uint32
 	dbPath   string
 	complete bool
+	file     *os.File
 }
 
 func newPebbleSnapshotLoader(pf *PebbleFactory, shard uint32) (SnapshotLoader, error) {
@@ -622,7 +688,46 @@ func (sl *pebbleSnapshotLoader) Close() error {
 }
 
 func (sl *pebbleSnapshotLoader) AddChunk(name string, content []byte) error {
-	return os.WriteFile(filepath.Join(sl.dbPath, name), content, 0644)
+	r := regexp.MustCompile(`^(.+):(\d+)/(\d+)$`)
+	matches := r.FindStringSubmatch(name)
+	if matches == nil {
+		return errors.Errorf("Malformed chunk name: '%s'", name)
+	}
+	fileName := filepath.Join(sl.dbPath, matches[1])
+	chunkIndex, err := strconv.ParseInt(matches[2], 10, 64)
+	if err != nil {
+		return errors.Errorf("Malformed chunk name: '%s'", name)
+	}
+	chunkCount, err := strconv.ParseInt(matches[3], 10, 64)
+	if err != nil {
+		return errors.Errorf("Malformed chunk name: '%s'", name)
+	}
+
+	if chunkIndex == 0 {
+		if sl.file != nil {
+			return errors.Errorf("Inconsistent snapshot: previous file not finished")
+		}
+		sl.file, err = os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+		if err != nil {
+			return err
+		}
+	}
+	for len(content) > 0 {
+		w, err := sl.file.Write(content)
+		if err != nil {
+			return err
+		}
+		content = content[w:]
+	}
+	if chunkIndex == chunkCount-1 {
+		err = sl.file.Close()
+		sl.file = nil
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (sl *pebbleSnapshotLoader) Load() (KV, error) {
