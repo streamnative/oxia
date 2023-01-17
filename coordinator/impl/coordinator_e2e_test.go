@@ -181,7 +181,7 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 	assert.NoError(t, client.Close())
 
 	// Stop the leader to cause a leader election
-	assert.NoError(t, servers[leader].Close()) //TODO blocks here
+	assert.NoError(t, servers[leader].Close())
 	delete(servers, leader)
 
 	assert.Eventually(t, func() bool {

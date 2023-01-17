@@ -20,7 +20,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"go.uber.org/multierr"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
@@ -69,11 +68,7 @@ func newInternalRpcServer(grpcProvider container.GrpcProvider, bindAddress strin
 
 func (s *internalRpcServer) Close() error {
 	s.healthServer.Shutdown()
-	return multierr.Combine(
-		s.assignmentDispatcher.Close(),
-		s.shardsDirector.Close(),
-		s.grpcServer.Close(),
-	)
+	return s.grpcServer.Close()
 }
 
 func (s *internalRpcServer) ShardAssignment(srv proto.OxiaControl_ShardAssignmentServer) error {
