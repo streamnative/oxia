@@ -28,8 +28,7 @@ lint:
 	golangci-lint run
 
 clean:
-	rm -f bin/oxia
-	rm -f */*.pb.go
+	rm -f bin/oxia bin/oxia-maelstrom
 	rm -rf pkg/generated/*
 	find . -type f -name '*.deepcopy.go' | xargs rm
 
