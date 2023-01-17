@@ -17,7 +17,6 @@ package impl
 import (
 	"context"
 	"github.com/cenkalti/backoff/v4"
-	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -39,8 +38,9 @@ const (
 )
 
 const (
-	healthCheckProbeInterval = 2 * time.Second
-	healthCheckProbeTimeout  = 2 * time.Second
+	healthCheckProbeInterval   = 2 * time.Second
+	healthCheckProbeTimeout    = 2 * time.Second
+	defaultInitialRetryBackoff = 10 * time.Second
 )
 
 // The NodeController takes care of checking the health-status of each node
@@ -62,6 +62,7 @@ type nodeController struct {
 	closed                   atomic.Bool
 	ctx                      context.Context
 	cancel                   context.CancelFunc
+	initialRetryBackoff      time.Duration
 
 	nodeIsRunningGauge metrics.Gauge
 	failedHealthChecks metrics.Counter
@@ -71,6 +72,14 @@ func NewNodeController(addr model.ServerAddress,
 	shardAssignmentsProvider ShardAssignmentsProvider,
 	nodeAvailabilityListener NodeAvailabilityListener,
 	rpc RpcProvider) NodeController {
+	return newNodeController(addr, shardAssignmentsProvider, nodeAvailabilityListener, rpc, defaultInitialRetryBackoff)
+}
+
+func newNodeController(addr model.ServerAddress,
+	shardAssignmentsProvider ShardAssignmentsProvider,
+	nodeAvailabilityListener NodeAvailabilityListener,
+	rpc RpcProvider,
+	initialRetryBackoff time.Duration) NodeController {
 
 	labels := map[string]any{"node": addr.Internal}
 	nc := &nodeController{
@@ -83,6 +92,7 @@ func NewNodeController(addr model.ServerAddress,
 			Str("component", "node-controller").
 			Interface("addr", addr).
 			Logger(),
+		initialRetryBackoff: initialRetryBackoff,
 
 		failedHealthChecks: metrics.NewCounter("oxia_coordinator_node_health_checks_failed",
 			"The number of failed health checks to a node", "count", labels),
@@ -117,21 +127,14 @@ func (n *nodeController) Status() NodeStatus {
 }
 
 func (n *nodeController) healthCheckWithRetries() {
-	backOff := common.NewBackOffWithInitialInterval(n.ctx, 10*time.Second)
+	backOff := common.NewBackOffWithInitialInterval(n.ctx, n.initialRetryBackoff)
 	_ = backoff.RetryNotify(func() error {
 		return n.healthCheck(backOff)
 	}, backOff, func(err error, duration time.Duration) {
 		n.log.Warn().Err(err).
 			Dur("retry-after", duration).
 			Msg("Storage node health check failed")
-
-		n.Lock()
-		defer n.Unlock()
-		if n.status == Running {
-			n.status = NotRunning
-			n.failedHealthChecks.Inc()
-			n.nodeAvailabilityListener.NodeBecameUnavailable(n.addr)
-		}
+		n.setNotRunning()
 	})
 }
 
@@ -144,72 +147,50 @@ func (n *nodeController) healthCheck(backoff backoff.BackOff) error {
 	ctx, cancel := context.WithCancel(n.ctx)
 	defer cancel()
 
-	go common.DoWithLabels(map[string]string{
-		"oxia": "node-controller-health-check-ping",
-		"addr": n.addr.Internal,
-	}, func() {
-		ticker := time.NewTicker(healthCheckProbeInterval)
-
-		for {
-			select {
-			case <-ticker.C:
-				pingCtx, pingCancel := context.WithTimeout(ctx, healthCheckProbeTimeout)
-
-				res, err := health.Check(pingCtx, &grpc_health_v1.HealthCheckRequest{Service: ""})
-				pingCancel()
-				if err2 := n.processHealthCheckResponse(res, err); err2 != nil {
-					n.log.Warn().
-						Msg("Node stopped responding to ping")
-					cancel()
-					return
-				}
-
-			case <-ctx.Done():
-				return
-			}
-		}
-	})
-
 	watch, err := health.Watch(ctx, &grpc_health_v1.HealthCheckRequest{Service: ""})
 	if err != nil {
 		return err
 	}
 
-	for ctx.Err() == nil {
+	for {
 		res, err := watch.Recv()
-
-		if err2 := n.processHealthCheckResponse(res, err); err2 != nil {
-			return err2
+		if err != nil {
+			n.log.Warn().Err(err).
+				Msg("error starting watch")
+			return err
 		}
 
+		n.processHealthCheckResponse(res)
 		backoff.Reset()
 	}
-
-	return ctx.Err()
 }
 
-func (n *nodeController) processHealthCheckResponse(res *grpc_health_v1.HealthCheckResponse, err error) error {
-	if err != nil {
-		return err
-	}
-
+func (n *nodeController) processHealthCheckResponse(res *grpc_health_v1.HealthCheckResponse) {
 	if res.Status != grpc_health_v1.HealthCheckResponse_SERVING {
-		return errors.New("node is not actively serving")
+		n.setNotRunning()
+	} else {
+		n.Lock()
+		defer n.Unlock()
+		if n.status == NotRunning {
+			n.log.Info().
+				Msg("Storage node is back online")
+			n.status = Running
+		}
 	}
+}
 
+func (n *nodeController) setNotRunning() {
 	n.Lock()
-	if n.status == NotRunning {
-		n.log.Info().
-			Msg("Storage node is back online")
+	defer n.Unlock()
+	if n.status == Running {
+		n.status = NotRunning
+		n.failedHealthChecks.Inc()
+		n.nodeAvailabilityListener.NodeBecameUnavailable(n.addr)
 	}
-	n.status = Running
-	n.Unlock()
-
-	return nil
 }
 
 func (n *nodeController) sendAssignmentsUpdatesWithRetries() {
-	backOff := common.NewBackOffWithInitialInterval(n.ctx, 10*time.Second)
+	backOff := common.NewBackOffWithInitialInterval(n.ctx, n.initialRetryBackoff)
 
 	_ = backoff.RetryNotify(func() error {
 		return n.sendAssignmentsUpdates(backOff)
