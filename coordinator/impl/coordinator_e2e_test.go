@@ -173,7 +173,7 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 
 	ctx := context.Background()
 
-	stat1, err := client.Put(ctx, "my-key", []byte("my-value"), nil)
+	stat1, err := client.Put(ctx, "my-key", []byte("my-value"))
 	assert.NoError(t, err)
 	assert.EqualValues(t, 0, stat1.Version)
 

@@ -54,11 +54,11 @@ func TestCancelContext(t *testing.T) {
 	syncClient := newSyncClient(_asyncClient)
 
 	assertCancellable(t, func(ctx context.Context) error {
-		_, err := syncClient.Put(ctx, "/a", []byte{}, nil)
+		_, err := syncClient.Put(ctx, "/a", []byte{})
 		return err
 	})
 	assertCancellable(t, func(ctx context.Context) error {
-		return syncClient.Delete(ctx, "/a", nil)
+		return syncClient.Delete(ctx, "/a")
 	})
 	assertCancellable(t, func(ctx context.Context) error {
 		return syncClient.DeleteRange(ctx, "/a", "/b")
