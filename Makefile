@@ -42,6 +42,9 @@ docker_multi_arch:
 proto:
 	protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative proto/*.proto
 
+proto_clean:
+	rm -f */*.pb.go
+
 proto_format:
 	#brew install clang-format
 	clang-format -i --style=Google proto/*.proto
