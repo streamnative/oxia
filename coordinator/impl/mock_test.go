@@ -433,12 +433,7 @@ func (m *mockHealthClient) SetStatus(status grpc_health_v1.HealthCheckResponse_S
 	m.status = status
 	m.err = nil
 	for _, w := range m.watches {
-		w.responses <- struct {
-			*grpc_health_v1.HealthCheckResponse
-			error
-		}{&grpc_health_v1.HealthCheckResponse{
-			Status: status,
-		}, nil}
+		m.sendWatchResponse(w)
 	}
 }
 
@@ -448,12 +443,7 @@ func (m *mockHealthClient) SetError(err error) {
 
 	m.err = err
 	for _, w := range m.watches {
-		w.responses <- struct {
-			*grpc_health_v1.HealthCheckResponse
-			error
-		}{&grpc_health_v1.HealthCheckResponse{
-			Status: m.status,
-		}, m.err}
+		m.sendWatchResponse(w)
 	}
 }
 
@@ -471,8 +461,18 @@ func (m *mockHealthClient) Watch(ctx context.Context, in *grpc_health_v1.HealthC
 	defer m.Unlock()
 
 	w := newMockHealthWatchClient(ctx)
+	m.sendWatchResponse(w)
 	m.watches = append(m.watches, w)
 	return w, nil
+}
+
+func (m *mockHealthClient) sendWatchResponse(w *mockHealthWatchClient) {
+	w.responses <- struct {
+		*grpc_health_v1.HealthCheckResponse
+		error
+	}{&grpc_health_v1.HealthCheckResponse{
+		Status: m.status,
+	}, m.err}
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

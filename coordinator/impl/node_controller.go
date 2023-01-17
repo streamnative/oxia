@@ -39,8 +39,9 @@ const (
 )
 
 const (
-	healthCheckProbeInterval = 2 * time.Second
-	healthCheckProbeTimeout  = 2 * time.Second
+	healthCheckProbeInterval   = 2 * time.Second
+	healthCheckProbeTimeout    = 2 * time.Second
+	defaultInitialRetryBackoff = 10 * time.Second
 )
 
 // The NodeController takes care of checking the health-status of each node
@@ -62,6 +63,7 @@ type nodeController struct {
 	closed                   atomic.Bool
 	ctx                      context.Context
 	cancel                   context.CancelFunc
+	initialRetryBackoff      time.Duration
 
 	nodeIsRunningGauge metrics.Gauge
 	failedHealthChecks metrics.Counter
@@ -71,6 +73,14 @@ func NewNodeController(addr model.ServerAddress,
 	shardAssignmentsProvider ShardAssignmentsProvider,
 	nodeAvailabilityListener NodeAvailabilityListener,
 	rpc RpcProvider) NodeController {
+	return newNodeController(addr, shardAssignmentsProvider, nodeAvailabilityListener, rpc, defaultInitialRetryBackoff)
+}
+
+func newNodeController(addr model.ServerAddress,
+	shardAssignmentsProvider ShardAssignmentsProvider,
+	nodeAvailabilityListener NodeAvailabilityListener,
+	rpc RpcProvider,
+	initialRetryBackoff time.Duration) NodeController {
 
 	labels := map[string]any{"node": addr.Internal}
 	nc := &nodeController{
@@ -83,6 +93,7 @@ func NewNodeController(addr model.ServerAddress,
 			Str("component", "node-controller").
 			Interface("addr", addr).
 			Logger(),
+		initialRetryBackoff: initialRetryBackoff,
 
 		failedHealthChecks: metrics.NewCounter("oxia_coordinator_node_health_checks_failed",
 			"The number of failed health checks to a node", "count", labels),
@@ -117,14 +128,13 @@ func (n *nodeController) Status() NodeStatus {
 }
 
 func (n *nodeController) healthCheckWithRetries() {
-	backOff := common.NewBackOffWithInitialInterval(n.ctx, 10*time.Second)
+	backOff := common.NewBackOffWithInitialInterval(n.ctx, n.initialRetryBackoff)
 	_ = backoff.RetryNotify(func() error {
 		return n.healthCheck(backOff)
 	}, backOff, func(err error, duration time.Duration) {
 		n.log.Warn().Err(err).
 			Dur("retry-after", duration).
 			Msg("Storage node health check failed")
-
 		n.Lock()
 		defer n.Unlock()
 		if n.status == Running {
@@ -209,7 +219,7 @@ func (n *nodeController) processHealthCheckResponse(res *grpc_health_v1.HealthCh
 }
 
 func (n *nodeController) sendAssignmentsUpdatesWithRetries() {
-	backOff := common.NewBackOffWithInitialInterval(n.ctx, 10*time.Second)
+	backOff := common.NewBackOffWithInitialInterval(n.ctx, n.initialRetryBackoff)
 
 	_ = backoff.RetryNotify(func() error {
 		return n.sendAssignmentsUpdates(backOff)
