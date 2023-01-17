@@ -33,7 +33,7 @@ func TestNodeController_HealthCheck(t *testing.T) {
 	sap := newMockShardAssignmentsProvider()
 	nal := newMockNodeAvailabilityListener()
 	rpc := newMockRpcProvider()
-	nc := NewNodeController(addr, sap, nal, rpc)
+	nc := newNodeController(addr, sap, nal, rpc, 1*time.Second)
 
 	assert.Equal(t, Running, nc.Status())
 
@@ -70,7 +70,7 @@ func TestNodeController_ShardsAssignments(t *testing.T) {
 	sap := newMockShardAssignmentsProvider()
 	nal := newMockNodeAvailabilityListener()
 	rpc := newMockRpcProvider()
-	nc := NewNodeController(addr, sap, nal, rpc)
+	nc := newNodeController(addr, sap, nal, rpc, 1*time.Second)
 
 	node := rpc.GetNode(addr)
 
