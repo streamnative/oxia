@@ -368,7 +368,9 @@ func (fc *followerController) addEntry(req *proto.AddEntryRequest, stream proto.
 			Int64("commit-index", req.CommitIndex).
 			Int64("offset", req.Entry.Offset).
 			Msg("Ignoring duplicated entry")
-		stream.Send(&proto.AddEntryResponse{Offset: req.Entry.Offset})
+		if err := stream.Send(&proto.AddEntryResponse{Offset: req.Entry.Offset}); err != nil {
+			fc.closeChannelNoMutex(err)
+		}
 		return nil
 	}
 
