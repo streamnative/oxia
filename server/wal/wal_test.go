@@ -1,6 +1,21 @@
+// Copyright 2023 StreamNative, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package wal
 
 import (
+	"context"
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
@@ -53,6 +68,7 @@ func TestWal(t *testing.T) {
 		walFF = f
 		t.Run(f.Name()+"FactoryNewWal", FactoryNewWal)
 		t.Run(f.Name()+"Append", Append)
+		t.Run(f.Name()+"AppendAsync", AppendAsync)
 		t.Run(f.Name()+"Truncate", Truncate)
 		t.Run(f.Name()+"Clear", Clear)
 		t.Run(f.Name()+"Trim", Trim)
@@ -174,6 +190,49 @@ func Append(t *testing.T) {
 		Value:  []byte("E"),
 	})
 	assert.ErrorIs(t, err, ErrorInvalidNextOffset)
+
+	err = w.Close()
+	assert.NoError(t, err)
+	err = f.Close()
+	assert.NoError(t, err)
+}
+
+func AppendAsync(t *testing.T) {
+	f, w := createWal(t)
+
+	// Append entries
+	input := []string{"A", "B", "C"}
+	for i, s := range input {
+		err := w.AppendAsync(&proto.LogEntry{
+			Epoch:  1,
+			Offset: int64(i),
+			Value:  []byte(s),
+		})
+		assert.NoError(t, err)
+	}
+
+	assert.Equal(t, InvalidOffset, w.LastOffset())
+
+	// Read with forward reader from beginning
+	fr, err := w.NewReader(InvalidOffset)
+	assert.NoError(t, err)
+	assert.False(t, fr.HasNext())
+
+	rr, err := w.NewReverseReader()
+	assert.NoError(t, err)
+	assert.False(t, rr.HasNext())
+
+	assert.NoError(t, w.Sync(context.Background()))
+
+	assert.EqualValues(t, 2, w.LastOffset())
+
+	fr, err = w.NewReader(InvalidOffset)
+	assert.NoError(t, err)
+	assert.True(t, fr.HasNext())
+
+	rr, err = w.NewReverseReader()
+	assert.NoError(t, err)
+	assert.True(t, rr.HasNext())
 
 	err = w.Close()
 	assert.NoError(t, err)

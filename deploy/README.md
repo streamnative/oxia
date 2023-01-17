@@ -48,15 +48,41 @@ eksctl create addon \
 
 ## Install Prometheus Stack
 
+Prepare:
+
 ```shell
 kubectl create namespace monitoring
 
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
+```
+
+Install an empty prometheus stack:
+
+```shell
 helm install monitoring prometheus-community/kube-prometheus-stack \
   --namespace monitoring \
   --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false
 ```
+
+To deploy the stack with grafana dashboards pre-configured:
+
+:notebook: The unpack method has to be used as the grafana chart utilises Helm's `.Files.Get` to load custom dashboards
+which cannot reach files outside the chart directory.
+
+```shell
+helm pull prometheus-community/kube-prometheus-stack
+tar -xf kube-prometheus-stack-*.tgz
+cp deploy/dashboards/*.json kube-prometheus-stack/charts/grafana/dashboards
+
+helm upgrade --install monitoring kube-prometheus-stack \
+  --namespace monitoring \
+  --values deploy/dashboards/values-kube-prometheus-stack.yaml
+
+rm -rf kube-prometheus-stack*
+```
+
+:notebook: The default login credentials for grafana are admin/prom-operator.
 
 ## Install Oxia Operator
 

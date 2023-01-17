@@ -1,14 +1,31 @@
+// Copyright 2023 StreamNative, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package wal
 
 import (
+	"context"
 	"fmt"
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel/metric/unit"
 	pb "google.golang.org/protobuf/proto"
+	"oxia/common"
 	"oxia/common/metrics"
 	"oxia/proto"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 )
 
 type factory struct {
@@ -43,8 +60,19 @@ type persistentWal struct {
 	sync.RWMutex
 	shard       uint32
 	log         *Log
-	firstOffset int64
-	lastOffset  int64
+	firstOffset atomic.Int64
+
+	// The last offset appended to the Wal. It might not yet be synced
+	lastAppendedOffset atomic.Int64
+
+	// The last offset synced in the Wal.
+	lastSyncedOffset atomic.Int64
+
+	ctx         context.Context
+	cancel      context.CancelFunc
+	syncRequest common.ConditionContext
+	syncDone    common.ConditionContext
+	lastSyncErr atomic.Pointer[error] // The error from the last sync operation, if any
 
 	appendLatency metrics.LatencyHistogram
 	appendBytes   metrics.Counter
@@ -59,6 +87,8 @@ type persistentWal struct {
 func newPersistentWal(shard uint32, options *WalFactoryOptions) (Wal, error) {
 	opts := DefaultOptions()
 	opts.InMemory = options.InMemory
+	opts.NoSync = true // We always sync explicitly
+
 	walPath := filepath.Join(options.LogDir, fmt.Sprint("shard-", shard))
 	log, err := OpenWithShard(walPath, shard, opts)
 	if err != nil {
@@ -90,23 +120,35 @@ func newPersistentWal(shard uint32, options *WalFactoryOptions) (Wal, error) {
 			"The number of IO errors in the WAL read operations", "count", labels),
 	}
 
+	w.ctx, w.cancel = context.WithCancel(context.Background())
+	w.syncRequest = common.NewConditionContext(w)
+	w.syncDone = common.NewConditionContext(w)
+
 	w.activeEntries = metrics.NewGauge("oxia_server_wal_entries",
 		"The number of active entries in the wal", "count", labels, func() int64 {
-			return w.lastOffset - w.firstOffset
+			return w.lastSyncedOffset.Load() - w.firstOffset.Load()
 		})
 
 	if lastIndex == -1 {
-		w.lastOffset = InvalidOffset
-		w.firstOffset = InvalidOffset
+		w.lastAppendedOffset.Store(InvalidOffset)
+		w.lastSyncedOffset.Store(InvalidOffset)
+		w.firstOffset.Store(InvalidOffset)
 	} else {
 		lastEntry, err := w.readAtIndex(lastIndex)
 		if err != nil {
 			return nil, err
 		}
 
-		w.lastOffset = lastEntry.Offset
-		w.firstOffset = log.firstOffset
+		w.lastAppendedOffset.Store(lastEntry.Offset)
+		w.lastSyncedOffset.Store(lastEntry.Offset)
+		w.firstOffset.Store(log.firstOffset)
 	}
+
+	go common.DoWithLabels(map[string]string{
+		"oxia":  "wal-sync",
+		"shard": fmt.Sprintf("%d", shard),
+	}, w.runSync)
+
 	return w, nil
 }
 
@@ -130,15 +172,11 @@ func (t *persistentWal) readAtIndex(index int64) (*proto.LogEntry, error) {
 }
 
 func (t *persistentWal) LastOffset() int64 {
-	t.Lock()
-	defer t.Unlock()
-	return t.lastOffset
+	return t.lastSyncedOffset.Load()
 }
 
 func (t *persistentWal) FirstOffset() int64 {
-	t.Lock()
-	defer t.Unlock()
-	return t.firstOffset
+	return t.firstOffset.Load()
 }
 
 func (t *persistentWal) Trim(firstOffset int64) error {
@@ -150,7 +188,7 @@ func (t *persistentWal) Trim(firstOffset int64) error {
 		return err
 	}
 
-	t.firstOffset = t.log.firstOffset
+	t.firstOffset.Store(t.log.firstOffset)
 	t.trimOps.Inc()
 	return nil
 }
@@ -159,11 +197,20 @@ func (t *persistentWal) Close() error {
 	t.Lock()
 	defer t.Unlock()
 
+	t.cancel()
 	t.activeEntries.Unregister()
 	return t.log.Close()
 }
 
 func (t *persistentWal) Append(entry *proto.LogEntry) error {
+	if err := t.AppendAsync(entry); err != nil {
+		return err
+	}
+
+	return t.Sync(context.Background())
+}
+
+func (t *persistentWal) AppendAsync(entry *proto.LogEntry) error {
 	timer := t.appendLatency.Timer()
 	defer timer.Done()
 
@@ -186,12 +233,64 @@ func (t *persistentWal) Append(entry *proto.LogEntry) error {
 		t.writeErrors.Inc()
 		return err
 	}
-	t.lastOffset = entry.Offset
-	if t.firstOffset == InvalidOffset {
-		t.firstOffset = t.log.firstOffset
-	}
+	t.lastAppendedOffset.Store(entry.Offset)
+	t.firstOffset.CompareAndSwap(InvalidOffset, t.log.firstOffset)
 
 	t.appendBytes.Add(len(val))
+	return nil
+}
+
+func (t *persistentWal) runSync() {
+	for {
+		t.Lock()
+
+		if err := t.syncRequest.Wait(t.ctx); err != nil {
+			// Wal is closing, exit the go routine
+			t.Unlock()
+			return
+		}
+
+		t.Unlock()
+
+		lastAppendedOffset := t.lastAppendedOffset.Load()
+
+		if t.lastSyncedOffset.Load() == lastAppendedOffset {
+			// We are already at the end, no need to sync
+			t.syncDone.Broadcast()
+			continue
+		}
+
+		if err := t.log.Sync(); err != nil {
+			t.lastSyncErr.Store(&err)
+			t.writeErrors.Inc()
+		} else {
+			t.lastSyncedOffset.Store(lastAppendedOffset)
+			t.lastSyncErr.Store(nil)
+		}
+
+		t.syncDone.Broadcast()
+	}
+}
+
+func (t *persistentWal) Sync(ctx context.Context) error {
+	t.Lock()
+	defer t.Unlock()
+
+	// Wait until the currently last appended offset is synced
+	lastOffset := t.lastAppendedOffset.Load()
+
+	for lastOffset > t.lastSyncedOffset.Load() {
+		t.syncRequest.Signal()
+
+		if err := t.syncDone.Wait(ctx); err != nil {
+			return err
+		}
+	}
+
+	if lastErr := t.lastSyncErr.Load(); lastErr != nil {
+		return *lastErr
+	}
+
 	return nil
 }
 
@@ -199,9 +298,13 @@ func (t *persistentWal) checkNextOffset(nextOffset int64) error {
 	if nextOffset < 0 {
 		return errors.New(fmt.Sprintf("Invalid next offset. %d should be > 0", nextOffset))
 	}
-	if t.lastOffset != InvalidOffset && nextOffset != t.lastOffset+1 {
+
+	lastAppendedOffset := t.lastAppendedOffset.Load()
+	expectedOffset := lastAppendedOffset + 1
+
+	if lastAppendedOffset != InvalidOffset && nextOffset != expectedOffset {
 		return errors.Wrapf(ErrorInvalidNextOffset,
-			"%d can not immediately follow %d", nextOffset, t.lastOffset)
+			"%d can not immediately follow %d", nextOffset, lastAppendedOffset)
 	}
 	return nil
 }
@@ -212,8 +315,9 @@ func (t *persistentWal) Clear() error {
 		return err
 	}
 
-	t.lastOffset = InvalidOffset
-	t.firstOffset = InvalidOffset
+	t.lastAppendedOffset.Store(InvalidOffset)
+	t.lastSyncedOffset.Store(InvalidOffset)
+	t.firstOffset.Store(InvalidOffset)
 	return nil
 }
 
@@ -259,17 +363,14 @@ func (t *persistentWal) TruncateLog(lastSafeOffset int64) (int64, error) {
 		return InvalidOffset, errors.New(fmt.Sprintf("Truncating to %+v resulted in last entry %+v",
 			lastSafeOffset, lastEntry.Offset))
 	}
-	t.lastOffset = lastEntry.Offset
+	t.lastSyncedOffset.Store(lastEntry.Offset)
 	return lastEntry.Offset, nil
 }
 
 func (t *persistentWal) NewReader(after int64) (WalReader, error) {
-	t.Lock()
-	defer t.Unlock()
-
 	firstOffset := after + 1
 
-	if firstOffset < t.firstOffset {
+	if firstOffset < t.FirstOffset() {
 		return nil, ErrorEntryNotFound
 	}
 
@@ -285,12 +386,9 @@ func (t *persistentWal) NewReader(after int64) (WalReader, error) {
 }
 
 func (t *persistentWal) NewReverseReader() (WalReader, error) {
-	t.RLock()
-	defer t.RUnlock()
-
 	r := &reverseReader{reader{
 		wal:        t,
-		nextOffset: t.lastOffset,
+		nextOffset: t.LastOffset(),
 		closed:     false,
 	}}
 	return r, nil
@@ -340,8 +438,6 @@ func (r *forwardReader) ReadNext() (*proto.LogEntry, error) {
 	}
 
 	index := r.nextOffset
-	r.wal.RLock()
-	defer r.wal.RUnlock()
 	entry, err := r.wal.readAtIndex(index)
 	if err != nil {
 		return nil, err
@@ -359,23 +455,15 @@ func (r *forwardReader) HasNext() bool {
 		return false
 	}
 
-	r.wal.Lock()
-	defer r.wal.Unlock()
-
-	return r.nextOffset <= r.wal.lastOffset
+	return r.nextOffset <= r.wal.LastOffset()
 }
 
 func (r *reverseReader) ReadNext() (*proto.LogEntry, error) {
-
 	if r.closed {
 		return nil, ErrorReaderClosed
 	}
 
-	index := r.nextOffset
-	r.wal.RLock()
-	defer r.wal.RUnlock()
-
-	entry, err := r.wal.readAtIndex(index)
+	entry, err := r.wal.readAtIndex(r.nextOffset)
 	if err != nil {
 		return nil, err
 	}
@@ -385,11 +473,10 @@ func (r *reverseReader) ReadNext() (*proto.LogEntry, error) {
 }
 
 func (r *reverseReader) HasNext() bool {
-	r.wal.Lock()
-	defer r.wal.Unlock()
-
 	if r.closed {
 		return false
 	}
-	return r.nextOffset != (r.wal.log.firstOffset - 1)
+
+	firstOffset := r.wal.FirstOffset()
+	return firstOffset != InvalidOffset && r.nextOffset != (firstOffset-1)
 }

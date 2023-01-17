@@ -1,112 +1,223 @@
+# Copyright 2023 StreamNative, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.10.0
+  creationTimestamp: null
   name: oxiaclusters.oxia.streamnative.io
 spec:
   group: oxia.streamnative.io
   names:
     kind: OxiaCluster
-    singular: cluster
+    listKind: OxiaClusterList
     plural: oxiaclusters
-    shortNames: [ "oc" ]
+    shortNames:
+      - oc
+    singular: oxiacluster
   scope: Namespaced
   versions:
     - name: v1alpha1
-      served: true
-      storage: true
       schema:
         openAPIV3Schema:
-          type: object
-          #TODO field validation, i.e. >0, cpu/memory/volume resources
-          #TODO field defaults
+          description: OxiaCluster is the Schema for the oxiaclusters API
           properties:
-            spec:
+            apiVersion:
+              description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+              type: string
+            kind:
+              description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+              type: string
+            metadata:
               type: object
+            spec:
+              description: OxiaClusterSpec defines the desired state of OxiaCluster
               properties:
+                coordinator:
+                  description: Coordinator contains configuration specific to the coordinator
+                    component
+                  properties:
+                    cpu:
+                      anyOf:
+                        - type: integer
+                        - type: string
+                      description: Cpu describes the requests and limits of CPU cores
+                        allocated to the pod
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                      x-kubernetes-validations:
+                        - message: Cpu is immutable
+                          rule: self == oldSelf
+                    memory:
+                      anyOf:
+                        - type: integer
+                        - type: string
+                      description: Memory describes the requests and limits of Memory
+                        allocated to the pod
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                      x-kubernetes-validations:
+                        - message: Memory is immutable
+                          rule: self == oldSelf
+                  required:
+                    - cpu
+                    - memory
+                  type: object
+                  x-kubernetes-validations:
+                    - message: Coordinator is immutable
+                      rule: self == oldSelf
+                image:
+                  description: Image contains configuration specific to the image being
+                    used
+                  properties:
+                    name:
+                      description: Image is the container image name
+                      type: string
+                      x-kubernetes-validations:
+                        - message: Name is immutable
+                          rule: self == oldSelf
+                    pullPolicy:
+                      description: PullPolicy is one of Always, Never, IfNotPresent
+                      enum:
+                        - Always
+                        - Never
+                        - IfNotPresent
+                      type: string
+                      x-kubernetes-validations:
+                        - message: PullPolicy is immutable
+                          rule: self == oldSelf
+                    pullSecrets:
+                      description: PullSecrets is the optional name of a secret in the
+                        same namespace to use for pulling the image
+                      type: string
+                      x-kubernetes-validations:
+                        - message: PullSecrets is immutable
+                          rule: self == oldSelf
+                  required:
+                    - name
+                  type: object
+                  x-kubernetes-validations:
+                    - message: Image is immutable
+                      rule: self == oldSelf
                 initialShardCount:
+                  description: InitialShardCount is the initial number of shard to bootstrap
+                    a new cluster with
+                  format: int32
+                  minimum: 1
                   type: integer
                   x-kubernetes-validations:
                     - message: InitialShardCount is immutable
                       rule: self == oldSelf
-                replicationFactor:
-                  type: integer
-                  x-kubernetes-validations:
-                    - message: ReplicationFactor is immutable
-                      rule: self == oldSelf
-                serverReplicas:
-                  type: integer
-                  x-kubernetes-validations:
-                    - message: ServerReplicas is immutable
-                      rule: self == oldSelf
-                serverResources:
-                  type: object
-                  properties:
-                    cpu:
-                      type: string
-                      x-kubernetes-validations:
-                        - message: Cpu is immutable
-                          rule: self == oldSelf
-                    memory:
-                      type: string
-                      x-kubernetes-validations:
-                        - message: Memory is immutable
-                          rule: self == oldSelf
-                  required:
-                    - cpu
-                    - memory
-                serverVolume:
-                  type: string
-                  x-kubernetes-validations:
-                    - message: ServerVolume is immutable
-                      rule: self == oldSelf
-                storageClassName:
-                  type: string
-                coordinatorResources:
-                  type: object
-                  properties:
-                    cpu:
-                      type: string
-                      x-kubernetes-validations:
-                        - message: Cpu is immutable
-                          rule: self == oldSelf
-                    memory:
-                      type: string
-                      x-kubernetes-validations:
-                        - message: Memory is immutable
-                          rule: self == oldSelf
-                  required:
-                    - cpu
-                    - memory
-                image:
-                  type: string
-                  x-kubernetes-validations:
-                    - message: Image is immutable
-                      rule: self == oldSelf
-                imagePullSecrets:
-                  type: string
-                  x-kubernetes-validations:
-                    - message: ImagePullSecrets is immutable
-                      rule: self == oldSelf
-                imagePullPolicy:
-                  type: string
-                  x-kubernetes-validations:
-                    - message: ImagePullPolicy is immutable
-                      rule: self == oldSelf
                 monitoringEnabled:
+                  description: MonitoringEnabled determines whether a Prometheus ServiceMonitor
+                    should be created
                   type: boolean
                   x-kubernetes-validations:
                     - message: MonitoringEnabled is immutable
                       rule: self == oldSelf
+                replicationFactor:
+                  description: ReplicationFactor is the number of copies the cluster
+                    will maintain for each shard. leader + followers
+                  format: int32
+                  maximum: 15
+                  minimum: 1
+                  type: integer
+                  x-kubernetes-validations:
+                    - message: ReplicationFactor is immutable
+                      rule: self == oldSelf
+                server:
+                  description: Server contains configuration specific to the server
+                    component
+                  properties:
+                    cpu:
+                      anyOf:
+                        - type: integer
+                        - type: string
+                      description: Cpu describes the requests and limits of CPU cores
+                        allocated to each pod
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                      x-kubernetes-validations:
+                        - message: Cpu is immutable
+                          rule: self == oldSelf
+                    memory:
+                      anyOf:
+                        - type: integer
+                        - type: string
+                      description: Memory describes the requests and limits of memory
+                        allocated to each pod
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                      x-kubernetes-validations:
+                        - message: Memory is immutable
+                          rule: self == oldSelf
+                    replicas:
+                      description: Replicas is the number of server pods that should
+                        be running
+                      format: int32
+                      minimum: 1
+                      type: integer
+                      x-kubernetes-validations:
+                        - message: Replicas is immutable
+                          rule: self == oldSelf
+                    storage:
+                      anyOf:
+                        - type: integer
+                        - type: string
+                      description: Storage describes the size of the persistent volume
+                        allocated to each pod
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                      x-kubernetes-validations:
+                        - message: Volume is immutable
+                          rule: self == oldSelf
+                    storageClassName:
+                      description: StorageClassName is the name of StorageClass to which
+                        the persistent volume belongs
+                      type: string
+                      x-kubernetes-validations:
+                        - message: StorageClassName is immutable
+                          rule: self == oldSelf
+                  required:
+                    - cpu
+                    - memory
+                    - replicas
+                    - storage
+                  type: object
+                  x-kubernetes-validations:
+                    - message: Server is immutable
+                      rule: self == oldSelf
               required:
-                - initialShardCount
-                - replicationFactor
-                - serverReplicas
-                - serverResources
-                - serverVolume
-                - coordinatorResources
+                - coordinator
                 - image
+                - initialShardCount
                 - monitoringEnabled
-            status:
+                - replicationFactor
+                - server
               type: object
+            status:
+              description: OxiaClusterStatus defines the observed state of OxiaCluster
+              type: object
+          type: object
+      served: true
+      storage: true
       subresources:
         status: {}
