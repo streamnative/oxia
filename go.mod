@@ -17,8 +17,10 @@ module oxia
 go 1.19
 
 require (
+	github.com/bmizerany/perks v0.0.0-20220928223023-dcf613bf3504
 	github.com/cenkalti/backoff/v4 v4.2.0
 	github.com/cockroachdb/pebble v0.0.0-20221104214247-8dc60b62ebbf
+	github.com/dustin/go-humanize v1.0.0
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
 	github.com/juju/fslock v0.0.0-20160525022230-4d5c94c67b4b
 	github.com/pkg/errors v0.9.1
@@ -33,12 +35,15 @@ require (
 	github.com/tidwall/tinylru v1.1.0
 	github.com/zeebo/xxh3 v1.0.2
 	go.opentelemetry.io/otel v1.11.2
+	go.opentelemetry.io/otel/exporters/prometheus v0.34.0
 	go.opentelemetry.io/otel/metric v0.34.0
 	go.opentelemetry.io/otel/sdk/metric v0.34.0
 	go.uber.org/automaxprocs v1.5.1
 	go.uber.org/multierr v1.8.0
 	golang.org/x/exp v0.0.0-20221215174704-0915cd710c24
+	golang.org/x/net v0.2.0
 	golang.org/x/sync v0.1.0
+	golang.org/x/sys v0.2.0
 	golang.org/x/time v0.3.0
 	google.golang.org/grpc v1.50.1
 	google.golang.org/protobuf v1.28.1
@@ -54,14 +59,12 @@ require (
 require (
 	github.com/DataDog/zstd v1.4.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/bmizerany/perks v0.0.0-20220928223023-dcf613bf3504 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/cockroachdb/errors v1.8.1 // indirect
 	github.com/cockroachdb/logtags v0.0.0-20190617123548-eb05cc24525f // indirect
 	github.com/cockroachdb/redact v1.0.8 // indirect
 	github.com/cockroachdb/sentry-go v0.6.1-cockroachdb.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/dustin/go-humanize v1.0.0 // indirect
 	github.com/emicklei/go-restful/v3 v3.10.0 // indirect
 	github.com/evanphx/json-patch v5.6.0+incompatible // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
@@ -103,14 +106,11 @@ require (
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/subosito/gotenv v1.4.1 // indirect
-	go.opentelemetry.io/otel/exporters/prometheus v0.34.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.11.2 // indirect
 	go.opentelemetry.io/otel/trace v1.11.2 // indirect
 	go.uber.org/atomic v1.10.0 // indirect
 	golang.org/x/mod v0.6.0 // indirect
-	golang.org/x/net v0.2.0 // indirect
 	golang.org/x/oauth2 v0.2.0 // indirect
-	golang.org/x/sys v0.2.0 // indirect
 	golang.org/x/term v0.2.0 // indirect
 	golang.org/x/text v0.4.0 // indirect
 	golang.org/x/tools v0.2.0 // indirect
