@@ -25,11 +25,11 @@ type neverCompleteAsyncClient struct {
 
 func (c *neverCompleteAsyncClient) Close() error { return nil }
 
-func (c *neverCompleteAsyncClient) Put(key string, payload []byte, expectedVersion *int64) <-chan PutResult {
+func (c *neverCompleteAsyncClient) Put(key string, payload []byte, options ...PutOption) <-chan PutResult {
 	return make(chan PutResult)
 }
 
-func (c *neverCompleteAsyncClient) Delete(key string, expectedVersion *int64) <-chan error {
+func (c *neverCompleteAsyncClient) Delete(key string, options ...DeleteOption) <-chan error {
 	return make(chan error)
 }
 
