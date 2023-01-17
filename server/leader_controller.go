@@ -540,13 +540,13 @@ func (lc *leaderController) write(request func(int64) *proto.WriteRequest) (int6
 
 func (lc *leaderController) appendToWal(request func(int64) *proto.WriteRequest, timestamp uint64) (actualRequest *proto.WriteRequest, offset int64, err error) {
 	lc.Lock()
-	defer lc.Unlock()
 
 	if err := checkStatus(proto.ServingStatus_Leader, lc.status); err != nil {
+		lc.Unlock()
 		return nil, wal.InvalidOffset, err
 	}
 
-	newOffset := lc.quorumAckTracker.HeadIndex() + 1
+	newOffset := lc.quorumAckTracker.NextOffset()
 	actualRequest = request(newOffset)
 
 	lc.log.Debug().
@@ -555,6 +555,7 @@ func (lc *leaderController) appendToWal(request func(int64) *proto.WriteRequest,
 
 	value, err := pb.Marshal(actualRequest)
 	if err != nil {
+		lc.Unlock()
 		return actualRequest, wal.InvalidOffset, err
 	}
 	logEntry := &proto.LogEntry{
@@ -564,8 +565,17 @@ func (lc *leaderController) appendToWal(request func(int64) *proto.WriteRequest,
 		Timestamp: timestamp,
 	}
 
-	if err = lc.wal.Append(logEntry); err != nil {
+	if err = lc.wal.AppendAsync(logEntry); err != nil {
+		lc.Unlock()
 		return actualRequest, wal.InvalidOffset, errors.Wrap(err, "oxia: failed to append to wal")
+	}
+
+	lc.Unlock()
+
+	// Sync the WAL outside the mutex, so that we can have multiple waiting
+	// sync requests
+	if err = lc.wal.Sync(context.TODO()); err != nil {
+		return actualRequest, wal.InvalidOffset, errors.Wrap(err, "oxia: failed to sync the wal")
 	}
 
 	lc.quorumAckTracker.AdvanceHeadIndex(newOffset)

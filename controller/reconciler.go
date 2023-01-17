@@ -52,6 +52,11 @@ func (r *reconciler) Reconcile(event watch.Event) {
 				Str("namespace", cluster.Namespace).
 				Str("name", cluster.Name).
 				Msg("failed to create cluster")
+		} else {
+			r.log.Info().
+				Str("namespace", cluster.Namespace).
+				Str("name", cluster.Name).
+				Msg("created cluster")
 		}
 	case watch.Deleted:
 		cluster := event.Object.(*v1alpha1.OxiaCluster)
@@ -61,6 +66,11 @@ func (r *reconciler) Reconcile(event watch.Event) {
 				Str("namespace", cluster.Namespace).
 				Str("name", cluster.Name).
 				Msg("failed to delete cluster")
+		} else {
+			r.log.Info().
+				Str("namespace", cluster.Namespace).
+				Str("name", cluster.Name).
+				Msg("deleted cluster")
 		}
 	default:
 		r.log.Warn().
