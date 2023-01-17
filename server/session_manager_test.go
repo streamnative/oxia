@@ -231,6 +231,11 @@ func TestSessionManager(t *testing.T) {
 		SessionTimeoutMs: uint32((1 * time.Hour).Milliseconds()),
 	})
 	assert.ErrorIs(t, err, common.ErrorInvalidSessionTimeout)
+	_, err = sManager.CreateSession(&proto.CreateSessionRequest{
+		ShardId:          shardId,
+		SessionTimeoutMs: uint32((1 * time.Second).Milliseconds()),
+	})
+	assert.ErrorIs(t, err, common.ErrorInvalidSessionTimeout)
 
 	// Create and close a session, check if its persisted
 	createResp, err := sManager.CreateSession(&proto.CreateSessionRequest{
@@ -251,10 +256,10 @@ func TestSessionManager(t *testing.T) {
 	assert.Nil(t, getSessionMetadata(t, lc, sessionId))
 
 	// Create a session, watch it time out
-	createResp, err = sManager.CreateSession(&proto.CreateSessionRequest{
+	createResp, err = sManager.createSession(&proto.CreateSessionRequest{
 		ShardId:          shardId,
-		SessionTimeoutMs: 50,
-	})
+		SessionTimeoutMs: uint32(50),
+	}, 0)
 	assert.NoError(t, err)
 	newSessionId := createResp.SessionId
 	assert.NotEqual(t, sessionId, newSessionId)
@@ -267,10 +272,10 @@ func TestSessionManager(t *testing.T) {
 	}, time.Second, 30*time.Millisecond)
 
 	// Create a session, keep it alive
-	createResp, err = sManager.CreateSession(&proto.CreateSessionRequest{
+	createResp, err = sManager.createSession(&proto.CreateSessionRequest{
 		ShardId:          shardId,
-		SessionTimeoutMs: 50,
-	})
+		SessionTimeoutMs: uint32(50),
+	}, 0)
 	assert.NoError(t, err)
 	sessionId = createResp.SessionId
 	meta = getSessionMetadata(t, lc, sessionId)
@@ -284,10 +289,10 @@ func TestSessionManager(t *testing.T) {
 	}, 10*time.Second, 30*time.Millisecond)
 
 	// Create a session, put an ephemeral value
-	createResp, err = sManager.CreateSession(&proto.CreateSessionRequest{
+	createResp, err = sManager.createSession(&proto.CreateSessionRequest{
 		ShardId:          shardId,
-		SessionTimeoutMs: 50,
-	})
+		SessionTimeoutMs: uint32(50),
+	}, 0)
 	assert.NoError(t, err)
 	sessionId = createResp.SessionId
 	meta = getSessionMetadata(t, lc, sessionId)

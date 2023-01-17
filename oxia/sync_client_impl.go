@@ -44,13 +44,13 @@ func (c *syncClientImpl) Close() error {
 	return c.asyncClient.Close()
 }
 
-func (c *syncClientImpl) Put(key string, payload []byte, expectedVersion *int64) (Stat, error) {
-	r := <-c.asyncClient.Put(key, payload, expectedVersion)
+func (c *syncClientImpl) Put(key string, payload []byte, options ...PutOption) (Stat, error) {
+	r := <-c.asyncClient.Put(key, payload, options...)
 	return r.Stat, r.Err
 }
 
-func (c *syncClientImpl) Delete(key string, expectedVersion *int64) error {
-	r := <-c.asyncClient.Delete(key, expectedVersion)
+func (c *syncClientImpl) Delete(key string, options ...DeleteOption) error {
+	r := <-c.asyncClient.Delete(key, options...)
 	return r
 }
 

@@ -34,6 +34,7 @@ type clientImpl struct {
 	shardManager      internal.ShardManager
 	writeBatchManager *batch.Manager
 	readBatchManager  *batch.Manager
+	sessions          *sessions
 
 	clientPool common.ClientPool
 	ctx        context.Context
@@ -81,6 +82,7 @@ func NewAsyncClient(serviceAddress string, opts ...ClientOption) (AsyncClient, e
 	}
 
 	c.ctx, c.cancel = context.WithCancel(context.Background())
+	c.sessions = newSessions(c.ctx, c.shardManager, c.clientPool, c.options)
 	return c, nil
 }
 
@@ -94,7 +96,7 @@ func (c *clientImpl) Close() error {
 	)
 }
 
-func (c *clientImpl) Put(key string, payload []byte, expectedVersion *int64) <-chan PutResult {
+func (c *clientImpl) Put(key string, payload []byte, options ...PutOption) <-chan PutResult {
 	ch := make(chan PutResult, 1)
 	shardId := c.shardManager.Get(key)
 	callback := func(response *proto.PutResponse, err error) {
@@ -105,16 +107,29 @@ func (c *clientImpl) Put(key string, payload []byte, expectedVersion *int64) <-c
 		}
 		close(ch)
 	}
-	c.writeBatchManager.Get(shardId).Add(model.PutCall{
+	opts := newPutOptions(options)
+	putCall := model.PutCall{
 		Key:             key,
 		Payload:         payload,
-		ExpectedVersion: expectedVersion,
+		ExpectedVersion: opts.expectedVersion,
 		Callback:        callback,
-	})
+	}
+	if opts.ephemeral {
+		c.sessions.executeWithSessionId(shardId, func(sessionId int64, err error) {
+			if err != nil {
+				callback(nil, err)
+				return
+			}
+			putCall.SessionId = &sessionId
+			c.writeBatchManager.Get(shardId).Add(putCall)
+		})
+	} else {
+		c.writeBatchManager.Get(shardId).Add(putCall)
+	}
 	return ch
 }
 
-func (c *clientImpl) Delete(key string, expectedVersion *int64) <-chan error {
+func (c *clientImpl) Delete(key string, options ...DeleteOption) <-chan error {
 	ch := make(chan error, 1)
 	shardId := c.shardManager.Get(key)
 	callback := func(response *proto.DeleteResponse, err error) {
@@ -125,9 +140,10 @@ func (c *clientImpl) Delete(key string, expectedVersion *int64) <-chan error {
 		}
 		close(ch)
 	}
+	opts := newDeleteOptions(options)
 	c.writeBatchManager.Get(shardId).Add(model.DeleteCall{
 		Key:             key,
-		ExpectedVersion: expectedVersion,
+		ExpectedVersion: opts.expectedVersion,
 		Callback:        callback,
 	})
 	return ch
