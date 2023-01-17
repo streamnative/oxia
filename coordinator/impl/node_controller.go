@@ -17,6 +17,7 @@ package impl
 import (
 	"context"
 	"github.com/cenkalti/backoff/v4"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -134,7 +135,13 @@ func (n *nodeController) healthCheckWithRetries() {
 		n.log.Warn().Err(err).
 			Dur("retry-after", duration).
 			Msg("Storage node health check failed")
-		n.setNotRunning()
+		n.Lock()
+		defer n.Unlock()
+		if n.status == Running {
+			n.status = NotRunning
+			n.failedHealthChecks.Inc()
+			n.nodeAvailabilityListener.NodeBecameUnavailable(n.addr)
+		}
 	})
 }
 
@@ -147,46 +154,68 @@ func (n *nodeController) healthCheck(backoff backoff.BackOff) error {
 	ctx, cancel := context.WithCancel(n.ctx)
 	defer cancel()
 
+	go common.DoWithLabels(map[string]string{
+		"oxia": "node-controller-health-check-ping",
+		"addr": n.addr.Internal,
+	}, func() {
+		ticker := time.NewTicker(healthCheckProbeInterval)
+
+		for {
+			select {
+			case <-ticker.C:
+				pingCtx, pingCancel := context.WithTimeout(ctx, healthCheckProbeTimeout)
+
+				res, err := health.Check(pingCtx, &grpc_health_v1.HealthCheckRequest{Service: ""})
+				pingCancel()
+				if err2 := n.processHealthCheckResponse(res, err); err2 != nil {
+					n.log.Warn().
+						Msg("Node stopped responding to ping")
+					cancel()
+					return
+				}
+
+			case <-ctx.Done():
+				return
+			}
+		}
+	})
+
 	watch, err := health.Watch(ctx, &grpc_health_v1.HealthCheckRequest{Service: ""})
 	if err != nil {
 		return err
 	}
 
-	for {
+	for ctx.Err() == nil {
 		res, err := watch.Recv()
-		if err != nil {
-			n.log.Warn().Err(err).
-				Msg("error starting watch")
-			return err
+
+		if err2 := n.processHealthCheckResponse(res, err); err2 != nil {
+			return err2
 		}
 
-		n.processHealthCheckResponse(res)
 		backoff.Reset()
 	}
+
+	return ctx.Err()
 }
 
-func (n *nodeController) processHealthCheckResponse(res *grpc_health_v1.HealthCheckResponse) {
+func (n *nodeController) processHealthCheckResponse(res *grpc_health_v1.HealthCheckResponse, err error) error {
+	if err != nil {
+		return err
+	}
+
 	if res.Status != grpc_health_v1.HealthCheckResponse_SERVING {
-		n.setNotRunning()
-	} else {
-		n.Lock()
-		defer n.Unlock()
-		if n.status == NotRunning {
-			n.log.Info().
-				Msg("Storage node is back online")
-			n.status = Running
-		}
+		return errors.New("node is not actively serving")
 	}
-}
 
-func (n *nodeController) setNotRunning() {
 	n.Lock()
-	defer n.Unlock()
-	if n.status == Running {
-		n.status = NotRunning
-		n.failedHealthChecks.Inc()
-		n.nodeAvailabilityListener.NodeBecameUnavailable(n.addr)
+	if n.status == NotRunning {
+		n.log.Info().
+			Msg("Storage node is back online")
 	}
+	n.status = Running
+	n.Unlock()
+
+	return nil
 }
 
 func (n *nodeController) sendAssignmentsUpdatesWithRetries() {
