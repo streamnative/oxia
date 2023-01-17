@@ -2,6 +2,8 @@ package oxia
 
 import (
 	"fmt"
+	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"oxia/common"
 	"oxia/server"
@@ -173,4 +175,57 @@ func TestAsyncClientImpl_NotificationsClose(t *testing.T) {
 
 	assert.NoError(t, client.Close())
 	assert.NoError(t, server.Close())
+}
+
+func TestAsyncClientImpl_Sessions(t *testing.T) {
+	server, err := server.NewStandalone(server.NewTestConfig())
+	assert.NoError(t, err)
+
+	serviceAddress := fmt.Sprintf("localhost:%d", server.RpcPort())
+	client, err := NewAsyncClient(serviceAddress, WithBatchLinger(0), WithSessionTimeout(5*time.Second))
+	assert.NoError(t, err)
+
+	putCh := client.Put("/x", []byte("x"), Ephemeral)
+	select {
+	case res := <-putCh:
+		assert.NotNil(t, res)
+		assert.NoError(t, res.Err)
+		assert.EqualValues(t, 0, res.Stat.Version)
+
+	case <-time.After(1 * time.Second):
+		assert.Fail(t, "Shouldn't have timed out")
+	}
+	getCh := client.Get("/x")
+	select {
+	case res := <-getCh:
+		assert.NotNil(t, res)
+		assert.NoError(t, res.Err)
+		assert.EqualValues(t, 0, res.Stat.Version)
+
+	case <-time.After(1 * time.Second):
+		assert.Fail(t, "Shouldn't have timed out")
+	}
+	assert.NoError(t, client.Close())
+	log.Debug().Msg("First client closed")
+
+	client, err = NewAsyncClient(serviceAddress, WithBatchLinger(0))
+	assert.NoError(t, err)
+	assert.Eventually(t, func() bool {
+		getCh = client.Get("/x")
+		select {
+		case res := <-getCh:
+			assert.NotNil(t, res)
+			log.Debug().Interface("res", res).Msg("Get resulted in")
+			return errors.Is(res.Err, ErrorKeyNotFound)
+
+		case <-time.After(1 * time.Second):
+			assert.Fail(t, "Shouldn't have timed out")
+			return false
+		}
+
+	}, 8*time.Second, 500*time.Millisecond)
+
+	assert.NoError(t, client.Close())
+	assert.NoError(t, server.Close())
+
 }

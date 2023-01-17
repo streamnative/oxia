@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/rs/zerolog"
+	"io"
 	"net/url"
 	"oxia/common"
 	"oxia/proto"
@@ -168,5 +169,10 @@ func (s *session) receiveHeartbeats(stream proto.OxiaClient_KeepAliveServer) err
 			"shard":   fmt.Sprintf("%d", s.shardId),
 		}, s.ctx, s.log)
 	s.Unlock()
-	return reader.Run()
+	err := reader.Run()
+	if err == io.EOF {
+		s.log.Debug().Msg("Session heartbeat stream closed by peer")
+		return nil
+	}
+	return err
 }

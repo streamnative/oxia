@@ -101,7 +101,7 @@ func (c *clientImpl) Put(key string, payload []byte, options ...PutOption) <-cha
 		Callback:        callback,
 	}
 	if opts.ephemeral {
-		c.sessions.executeWithSessionId(c.ctx, shardId, func(sessionId int64, err error) {
+		c.sessions.executeWithSessionId(shardId, func(sessionId int64, err error) {
 			if err != nil {
 				callback(nil, err)
 				return

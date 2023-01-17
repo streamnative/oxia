@@ -2,11 +2,13 @@ package oxia
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 	"oxia/common"
 	"oxia/oxia/internal"
 	"oxia/proto"
@@ -36,26 +38,32 @@ type sessions struct {
 	clientOpts      clientOptions
 }
 
-func (s *sessions) executeWithSessionId(ctx context.Context, shardId uint32, callback func(int64, error)) {
+func (s *sessions) executeWithSessionId(shardId uint32, callback func(int64, error)) {
 	s.Lock()
 	defer s.Unlock()
 	session, found := s.sessionsByShard[shardId]
 	if !found {
-		session = s.startSession(ctx, shardId)
+		session = s.startSession(shardId)
 		s.sessionsByShard[shardId] = session
 	}
-	session.executeWithId(ctx, callback)
+	session.executeWithId(callback)
 }
 
-func (s *sessions) startSession(ctx context.Context, shardId uint32) *clientSession {
+func (s *sessions) startSession(shardId uint32) *clientSession {
 	cs := &clientSession{
 		shardId:  shardId,
 		sessions: s,
+		ctx:      s.ctx,
+		started:  make(chan error),
 		log: log.With().
 			Str("component", "session").
 			Uint32("shard", shardId).Logger(),
 	}
-	cs.start(ctx)
+	cs.log.Debug().Msg("Creating session")
+	go common.DoWithLabels(map[string]string{
+		"oxia":  "session-start",
+		"shard": fmt.Sprintf("%d", cs.shardId),
+	}, func() { cs.createSessionWithRetries() })
 	return cs
 }
 
@@ -66,9 +74,10 @@ type clientSession struct {
 	sessionId int64
 	log       zerolog.Logger
 	sessions  *sessions
+	ctx       context.Context
 }
 
-func (cs *clientSession) executeWithId(ctx context.Context, callback func(int64, error)) {
+func (cs *clientSession) executeWithId(callback func(int64, error)) {
 	select {
 	case err := <-cs.started:
 		if err != nil {
@@ -83,31 +92,21 @@ func (cs *clientSession) executeWithId(ctx context.Context, callback func(int64,
 			callback(cs.sessionId, nil)
 			cs.Unlock()
 		}
-	case <-ctx.Done():
-		if ctx.Err() != nil && ctx.Err() != context.Canceled {
-			callback(-1, ctx.Err())
-
+	case <-cs.ctx.Done():
+		if cs.ctx.Err() != nil && cs.ctx.Err() != context.Canceled {
+			callback(-1, cs.ctx.Err())
 		}
 	}
 }
 
-func (cs *clientSession) start(ctx context.Context) {
-	cs.started = make(chan error)
-	backOff := common.NewBackOff(ctx)
-	go common.DoWithLabels(map[string]string{
-		"oxia":  "session-start",
-		"shard": fmt.Sprintf("%d", cs.shardId),
-	}, func() { cs.createSessionWithRetries(ctx, backOff) })
-
-}
-
-func (cs *clientSession) createSessionWithRetries(ctx context.Context, backOff backoff.BackOff) {
-	err := backoff.RetryNotify(func() error { return cs.createSession(ctx) },
+func (cs *clientSession) createSessionWithRetries() {
+	backOff := common.NewBackOff(cs.ctx)
+	err := backoff.RetryNotify(cs.createSession,
 		backOff, func(err error, duration time.Duration) {
 			if err != context.Canceled {
 				cs.log.Error().Err(err).
 					Dur("retry-after", duration).
-					Msg("Error while starting session")
+					Msg("Error while creating session")
 			}
 
 		})
@@ -119,12 +118,13 @@ func (cs *clientSession) createSessionWithRetries(ctx context.Context, backOff b
 	}
 }
 
-func (cs *clientSession) createSession(ctx context.Context) error {
-	leader := cs.sessions.shardManager.Leader(cs.shardId)
-	rpc, err := cs.sessions.pool.GetClientRpc(leader)
+func (cs *clientSession) createSession() error {
+	rpc, err := cs.getRpc()
 	if err != nil {
 		return err
 	}
+	ctx, cancel := context.WithTimeout(cs.ctx, cs.sessions.clientOpts.requestTimeout)
+	defer cancel()
 	createSessionResponse, err := rpc.CreateSession(ctx, &proto.CreateSessionRequest{
 		ShardId:          cs.shardId,
 		SessionTimeoutMs: uint32(cs.sessions.clientOpts.sessionTimeout.Milliseconds()),
@@ -132,23 +132,53 @@ func (cs *clientSession) createSession(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-
 	sessionId := createSessionResponse.SessionId
 	cs.Lock()
 	defer cs.Unlock()
 	cs.sessionId = sessionId
 	cs.log = cs.log.With().Int64("session-id", sessionId).Logger()
 	close(cs.started)
+	cs.log.Debug().Msg("Successfully created session")
 
 	go common.DoWithLabels(map[string]string{
-		"oxia":  "session-keep-alive",
-		"shard": fmt.Sprintf("%d", cs.shardId),
-	}, func() { cs.keepAlive(rpc) })
+		"oxia":    "session-keep-alive",
+		"shard":   fmt.Sprintf("%d", cs.shardId),
+		"session": fmt.Sprintf("%x016", cs.sessionId),
+	}, func() {
+
+		backOff := common.NewBackOff(cs.sessions.ctx)
+		err := backoff.RetryNotify(func() error {
+			err := cs.keepAlive()
+			if status.Code(err) == common.CodeInvalidSession {
+				cs.log.Error().Err(err).Msg("Session is no longer valid")
+
+				cs.sessions.Lock()
+				defer cs.sessions.Unlock()
+				cs.Lock()
+				defer cs.Unlock()
+				delete(cs.sessions.sessionsByShard, cs.shardId)
+				return backoff.Permanent(err)
+			}
+			return err
+		}, backOff, func(err error, duration time.Duration) {
+			log.Logger.Debug().Err(err).
+				Dur("retry-after", duration).
+				Msg("Failed to send session heartbeat, retrying later")
+		})
+		if !errors.Is(err, context.Canceled) {
+			cs.log.Error().Err(err).Msg("Failed to keep alive session.")
+		}
+	})
 
 	return nil
 }
 
-func (cs *clientSession) keepAlive(rpc proto.OxiaClientClient) {
+func (cs *clientSession) getRpc() (proto.OxiaClientClient, error) {
+	leader := cs.sessions.shardManager.Leader(cs.shardId)
+	return cs.sessions.pool.GetClientRpc(leader)
+}
+
+func (cs *clientSession) keepAlive() error {
 	cs.sessions.Lock()
 	cs.Lock()
 	timeout := cs.sessions.clientOpts.sessionTimeout
@@ -163,39 +193,48 @@ func (cs *clientSession) keepAlive(rpc proto.OxiaClientClient) {
 		tickTime = 2 * time.Second
 	}
 
-	timer := time.NewTicker(tickTime)
+	ticker := time.NewTicker(tickTime)
+	defer ticker.Stop()
+
+	rpc, err := cs.getRpc()
+	if err != nil {
+		return err
+	}
 
 	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataShardId, fmt.Sprintf("%d", shardId))
 	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataSessionId, fmt.Sprintf("%d", sessionId))
 	client, err := rpc.KeepAlive(ctx)
 	if err != nil {
-		return
-		// TODO log, retry
+		return err
 	}
 	for {
 		select {
-		case <-timer.C:
+		case <-ticker.C:
 			err = client.Send(&proto.SessionHeartbeat{
 				ShardId:   shardId,
 				SessionId: sessionId,
 			})
 			if err != nil {
-				// TODO log, retry
-				return
+				return err
 			}
 		case <-ctx.Done():
 			err = client.CloseSend()
 			if err != nil {
 				cs.log.Error().Err(err).Msg("Failed to close heartbeat stream.")
 			}
+			ctx, cancel := context.WithTimeout(context.Background(), cs.sessions.clientOpts.requestTimeout)
+			rpc, err = cs.getRpc()
+			if err != nil {
+				cancel()
+				return err
+			}
 			_, err = rpc.CloseSession(ctx, &proto.CloseSessionRequest{
 				ShardId:   shardId,
 				SessionId: sessionId,
 			})
-			if err != nil {
-				cs.log.Error().Err(err).Msg("Failed to close session.")
-			}
-			return
+
+			cancel()
+			return err
 		}
 	}
 

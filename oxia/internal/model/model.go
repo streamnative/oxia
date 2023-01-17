@@ -40,6 +40,7 @@ func (r PutCall) ToProto() *proto.PutRequest {
 		Key:             r.Key,
 		Payload:         r.Payload,
 		ExpectedVersion: r.ExpectedVersion,
+		SessionId:       r.SessionId,
 	}
 }
 

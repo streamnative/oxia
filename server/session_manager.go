@@ -99,8 +99,13 @@ func NewSessionManager(shardId uint32, controller *leaderController) SessionMana
 }
 
 func (sm *sessionManager) CreateSession(request *proto.CreateSessionRequest) (*proto.CreateSessionResponse, error) {
+	return sm.createSession(request, common.MinSessionTimeout)
+}
+
+func (sm *sessionManager) createSession(request *proto.CreateSessionRequest, minTimeout time.Duration) (*proto.CreateSessionResponse, error) {
+
 	timeout := time.Duration(request.SessionTimeoutMs) * time.Millisecond
-	if timeout > common.MaxSessionTimeout || timeout < common.MinSessionTimeout {
+	if timeout > common.MaxSessionTimeout || timeout < minTimeout {
 		return nil, errors.Wrap(common.ErrorInvalidSessionTimeout, fmt.Sprintf("timeoutMs=%d", request.SessionTimeoutMs))
 	}
 	sm.Lock()
