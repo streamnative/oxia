@@ -1,10 +1,7 @@
 .idea
 bin/oxia
 bin/oxia-maelstrom
-**/*.pb.go
 .DS_Store
 **/*.toolbox
 data
 vendor/
-zz_generated.deepcopy.go
-pkg/generated/
