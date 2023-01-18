@@ -14,20 +14,26 @@
 
 package batch
 
-import "oxia/common/batch"
-
-var (
-	shardId = uint32(1)
-	one     = int64(1)
-	two     = int64(2)
+import (
+	"time"
 )
 
-func add(batch batch.Batch, call any) (panicked bool) {
-	defer func() {
-		if r := recover(); r != nil {
-			panicked = true
-		}
-	}()
-	batch.Add(call)
-	return
+type BatcherFactory struct {
+	Linger              time.Duration
+	MaxRequestsPerBatch int
+	BatcherBufferSize   int
+}
+
+func (b *BatcherFactory) NewBatcher(batchFactory func() Batch) Batcher {
+	batcher := &batcherImpl{
+		batchFactory:        batchFactory,
+		callC:               make(chan any, b.BatcherBufferSize),
+		closeC:              make(chan bool),
+		linger:              b.Linger,
+		maxRequestsPerBatch: b.MaxRequestsPerBatch,
+	}
+
+	go batcher.Run()
+
+	return batcher
 }

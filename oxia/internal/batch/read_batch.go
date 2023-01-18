@@ -19,6 +19,7 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/rs/zerolog/log"
 	"oxia/common"
+	"oxia/common/batch"
 	"oxia/oxia/internal/metrics"
 	"oxia/oxia/internal/model"
 	"oxia/proto"
@@ -31,7 +32,7 @@ type readBatchFactory struct {
 	requestTimeout time.Duration
 }
 
-func (b readBatchFactory) newBatch(shardId *uint32) Batch {
+func (b readBatchFactory) newBatch(shardId *uint32) batch.Batch {
 	return &readBatch{
 		shardId:        shardId,
 		execute:        b.execute,
