@@ -28,7 +28,7 @@ import (
 )
 
 func TestFollowerCursor(t *testing.T) {
-	var epoch int64 = 1
+	var term int64 = 1
 	var shard uint32 = 2
 
 	stream := newMockRpcClient()
@@ -42,14 +42,14 @@ func TestFollowerCursor(t *testing.T) {
 	assert.NoError(t, err)
 
 	err = w.Append(&proto.LogEntry{
-		Epoch:  1,
+		Term:   1,
 		Offset: 0,
 		Value:  []byte("v1"),
 	})
 	assert.NoError(t, err)
 	log.Logger.Info().Msg("Appended entry 0 to the log")
 
-	fc, err := NewFollowerCursor("f1", epoch, shard, stream, ackTracker, w, db, wal.InvalidOffset)
+	fc, err := NewFollowerCursor("f1", term, shard, stream, ackTracker, w, db, wal.InvalidOffset)
 	assert.NoError(t, err)
 
 	assert.Equal(t, shard, fc.ShardId())
@@ -68,7 +68,7 @@ func TestFollowerCursor(t *testing.T) {
 
 	// The follower is acking back
 	req := <-stream.addEntryReqs
-	assert.EqualValues(t, 1, req.Epoch)
+	assert.EqualValues(t, 1, req.Term)
 	assert.Equal(t, wal.InvalidOffset, req.CommitOffset)
 
 	stream.addEntryResps <- &proto.Ack{
@@ -83,7 +83,7 @@ func TestFollowerCursor(t *testing.T) {
 
 	// Next entry should carry the correct commit offset
 	err = w.Append(&proto.LogEntry{
-		Epoch:  1,
+		Term:   1,
 		Offset: 1,
 		Value:  []byte("v2"),
 	})
@@ -101,8 +101,8 @@ func TestFollowerCursor(t *testing.T) {
 	assert.EqualValues(t, 0, fc.AckOffset())
 
 	req = <-stream.addEntryReqs
-	assert.EqualValues(t, 1, req.Epoch)
-	assert.EqualValues(t, 1, req.Entry.Epoch)
+	assert.EqualValues(t, 1, req.Term)
+	assert.EqualValues(t, 1, req.Entry.Term)
 	assert.EqualValues(t, 1, req.Entry.Offset)
 	assert.EqualValues(t, 0, req.CommitOffset)
 
@@ -110,7 +110,7 @@ func TestFollowerCursor(t *testing.T) {
 }
 
 func TestFollowerCursor_SendSnapshot(t *testing.T) {
-	var epoch int64 = 1
+	var term int64 = 1
 	var shard uint32 = 2
 
 	N := int64(10)
@@ -134,7 +134,7 @@ func TestFollowerCursor_SendSnapshot(t *testing.T) {
 		}
 		e, _ := pb.Marshal(wr)
 		assert.NoError(t, w.Append(&proto.LogEntry{
-			Epoch:     1,
+			Term:      1,
 			Offset:    i,
 			Value:     e,
 			Timestamp: uint64(i),
@@ -146,12 +146,12 @@ func TestFollowerCursor_SendSnapshot(t *testing.T) {
 
 	ackTracker := NewQuorumAckTracker(3, N-1, N-1)
 
-	fc, err := NewFollowerCursor("f1", epoch, shard, stream, ackTracker, w, db, wal.InvalidOffset)
+	fc, err := NewFollowerCursor("f1", term, shard, stream, ackTracker, w, db, wal.InvalidOffset)
 	assert.NoError(t, err)
 
 	s := stream.sendSnapshotStream
 	for req := range s.requests {
-		assert.EqualValues(t, 1, req.Epoch)
+		assert.EqualValues(t, 1, req.Term)
 	}
 
 	log.Info().Msg("Snapshot complete")

@@ -50,8 +50,8 @@ type LeaderController interface {
 
 	GetStatus(request *proto.GetStatusRequest) (*proto.GetStatusResponse, error)
 
-	// Epoch The current epoch of the leader
-	Epoch() int64
+	// Term The current term of the leader
+	Term() int64
 
 	// Status The Status of the leader
 	Status() proto.ServingStatus
@@ -66,7 +66,7 @@ type leaderController struct {
 
 	shardId           uint32
 	status            proto.ServingStatus
-	epoch             int64
+	term              int64
 	replicationFactor uint32
 	quorumAckTracker  QuorumAckTracker
 	followers         map[string]FollowerCursor
@@ -143,15 +143,15 @@ func NewLeaderController(config Config, shardId uint32, rpcClient ReplicationRpc
 		return nil, err
 	}
 
-	if lc.epoch, err = lc.db.ReadEpoch(); err != nil {
+	if lc.term, err = lc.db.ReadTerm(); err != nil {
 		return nil, err
 	}
 
-	if lc.epoch != wal.InvalidEpoch {
+	if lc.term != wal.InvalidTerm {
 		lc.status = proto.ServingStatus_Fenced
 	}
 
-	lc.log = lc.log.With().Int64("epoch", lc.epoch).Logger()
+	lc.log = lc.log.With().Int64("term", lc.term).Logger()
 	lc.log.Info().
 		Msg("Created leader controller")
 	return lc, nil
@@ -163,10 +163,10 @@ func (lc *leaderController) Status() proto.ServingStatus {
 	return lc.status
 }
 
-func (lc *leaderController) Epoch() int64 {
+func (lc *leaderController) Term() int64 {
 	lc.Lock()
 	defer lc.Unlock()
-	return lc.epoch
+	return lc.term
 }
 
 // Fence
@@ -187,25 +187,25 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 	lc.Lock()
 	defer lc.Unlock()
 
-	if req.Epoch < lc.epoch {
-		return nil, common.ErrorInvalidEpoch
-	} else if req.Epoch == lc.epoch && lc.status != proto.ServingStatus_Fenced {
-		// It's OK to receive a duplicate Fence request, for the same epoch, as long as we haven't moved
-		// out of the Fenced state for that epoch
+	if req.Term < lc.term {
+		return nil, common.ErrorInvalidTerm
+	} else if req.Term == lc.term && lc.status != proto.ServingStatus_Fenced {
+		// It's OK to receive a duplicate Fence request, for the same term, as long as we haven't moved
+		// out of the Fenced state for that term
 		lc.log.Warn().
-			Int64("follower-epoch", lc.epoch).
-			Int64("fence-epoch", req.Epoch).
+			Int64("follower-term", lc.term).
+			Int64("fence-term", req.Term).
 			Interface("status", lc.status).
-			Msg("Failed to fence with same epoch in invalid state")
+			Msg("Failed to fence with same term in invalid state")
 		return nil, common.ErrorInvalidStatus
 	}
 
-	if err := lc.db.UpdateEpoch(req.GetEpoch()); err != nil {
+	if err := lc.db.UpdateTerm(req.Term); err != nil {
 		return nil, err
 	}
 
-	lc.epoch = req.GetEpoch()
-	lc.log = lc.log.With().Int64("epoch", lc.epoch).Logger()
+	lc.term = req.Term
+	lc.log = lc.log.With().Int64("term", lc.term).Logger()
 	lc.status = proto.ServingStatus_Fenced
 	lc.replicationFactor = 0
 
@@ -254,9 +254,9 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 // The node inspects the head offset of each follower and
 // compares it to its own head offset, and then either:
 //   - Attaches a follow cursor for the follower the head entry ids
-//     have the same epoch, but the follower offset is lower or equal.
+//     have the same term, but the follower offset is lower or equal.
 //   - Sends a truncate request to the follower if its head
-//     entry epoch does not match the leader's head entry epoch or has
+//     entry term does not match the leader's head entry term or has
 //     a higher offset.
 //     The leader finds the highest entry id in its log prefix (of the
 //     follower head entry) and tells the follower to truncate its log
@@ -282,8 +282,8 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 		return nil, common.ErrorInvalidStatus
 	}
 
-	if req.Epoch != lc.epoch {
-		return nil, common.ErrorInvalidEpoch
+	if req.Term != lc.term {
+		return nil, common.ErrorInvalidTerm
 	}
 
 	lc.status = proto.ServingStatus_Leader
@@ -322,7 +322,7 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 	}
 
 	lc.log.Info().
-		Int64("epoch", lc.epoch).
+		Int64("term", lc.term).
 		Int64("head-offset", lc.leaderElectionHeadEntryId.Offset).
 		Msg("Started leading the shard")
 	return &proto.BecomeLeaderResponse{}, nil
@@ -332,8 +332,8 @@ func (lc *leaderController) AddFollower(req *proto.AddFollowerRequest) (*proto.A
 	lc.Lock()
 	defer lc.Unlock()
 
-	if req.Epoch != lc.epoch {
-		return nil, common.ErrorInvalidEpoch
+	if req.Term != lc.term {
+		return nil, common.ErrorInvalidTerm
 	}
 
 	if lc.status != proto.ServingStatus_Leader {
@@ -361,23 +361,23 @@ func (lc *leaderController) addFollower(follower string, followerHeadEntryId *pr
 		lc.log.Error().Err(err).
 			Str("follower", follower).
 			Interface("follower-head-entry", followerHeadEntryId).
-			Int64("epoch", lc.epoch).
+			Int64("term", lc.term).
 			Msg("Failed to truncate follower")
 		return err
 	}
 
-	cursor, err := NewFollowerCursor(follower, lc.epoch, lc.shardId, lc.rpcClient, lc.quorumAckTracker, lc.wal, lc.db,
+	cursor, err := NewFollowerCursor(follower, lc.term, lc.shardId, lc.rpcClient, lc.quorumAckTracker, lc.wal, lc.db,
 		followerHeadEntryId.Offset)
 	if err != nil {
 		lc.log.Error().Err(err).
 			Str("follower", follower).
-			Int64("epoch", lc.epoch).
+			Int64("term", lc.term).
 			Msg("Failed to create follower cursor")
 		return err
 	}
 
 	lc.log.Info().
-		Int64("epoch", lc.epoch).
+		Int64("term", lc.term).
 		Interface("leader-election-head-entry", lc.leaderElectionHeadEntryId).
 		Str("follower", follower).
 		Interface("follower-head-entry", followerHeadEntryId).
@@ -437,51 +437,51 @@ func (lc *leaderController) applyAllEntriesIntoDB() error {
 
 func (lc *leaderController) truncateFollowerIfNeeded(follower string, followerHeadEntryId *proto.EntryId) (*proto.EntryId, error) {
 	lc.log.Debug().
-		Int64("epoch", lc.epoch).
+		Int64("term", lc.term).
 		Str("follower", follower).
 		Interface("leader-head-entry", lc.leaderElectionHeadEntryId).
 		Interface("follower-head-entry", followerHeadEntryId).
 		Msg("Needs truncation?")
-	if followerHeadEntryId.Epoch == lc.leaderElectionHeadEntryId.Epoch &&
+	if followerHeadEntryId.Term == lc.leaderElectionHeadEntryId.Term &&
 		followerHeadEntryId.Offset <= lc.leaderElectionHeadEntryId.Offset {
 		// No need for truncation
 		return followerHeadEntryId, nil
 	}
 
-	// Coordinator should never send us a follower with an invalid epoch.
+	// Coordinator should never send us a follower with an invalid term.
 	// Checking for sanity here.
-	if followerHeadEntryId.Epoch > lc.leaderElectionHeadEntryId.Epoch {
+	if followerHeadEntryId.Term > lc.leaderElectionHeadEntryId.Term {
 		return nil, common.ErrorInvalidStatus
 	}
 
-	lastEntryInFollowerEpoch, err := GetHighestEntryOfEpoch(lc.wal, followerHeadEntryId.Epoch)
+	lastEntryInFollowerTerm, err := GetHighestEntryOfTerm(lc.wal, followerHeadEntryId.Term)
 	if err != nil {
 		return nil, err
 	}
 
-	if followerHeadEntryId.Epoch == lastEntryInFollowerEpoch.Epoch &&
-		followerHeadEntryId.Offset <= lastEntryInFollowerEpoch.Offset {
-		// If the follower is on a previous epoch, but we have the same entry,
+	if followerHeadEntryId.Term == lastEntryInFollowerTerm.Term &&
+		followerHeadEntryId.Offset <= lastEntryInFollowerTerm.Offset {
+		// If the follower is on a previous term, but we have the same entry,
 		// we don't need to truncate
 		lc.log.Debug().
-			Int64("epoch", lc.epoch).
+			Int64("term", lc.term).
 			Str("follower", follower).
-			Interface("last-entry-in-follower-epoch", lastEntryInFollowerEpoch).
+			Interface("last-entry-in-follower-term", lastEntryInFollowerTerm).
 			Interface("follower-head-entry", followerHeadEntryId).
 			Msg("No need to truncate follower")
 		return followerHeadEntryId, nil
 	}
 
 	tr, err := lc.rpcClient.Truncate(follower, &proto.TruncateRequest{
-		Epoch:       lc.epoch,
-		HeadEntryId: lastEntryInFollowerEpoch,
+		Term:        lc.term,
+		HeadEntryId: lastEntryInFollowerTerm,
 	})
 
 	if err != nil {
 		return nil, err
 	} else {
 		lc.log.Info().
-			Int64("epoch", lc.epoch).
+			Int64("term", lc.term).
 			Str("follower", follower).
 			Interface("follower-head-entry", tr.HeadEntryId).
 			Msg("Truncated follower")
@@ -559,7 +559,7 @@ func (lc *leaderController) appendToWal(request func(int64) *proto.WriteRequest,
 		return actualRequest, wal.InvalidOffset, err
 	}
 	logEntry := &proto.LogEntry{
-		Epoch:     lc.epoch,
+		Term:      lc.term,
 		Offset:    newOffset,
 		Value:     value,
 		Timestamp: timestamp,
@@ -709,7 +709,7 @@ func getLastEntryIdInWal(wal wal.Wal) (*proto.EntryId, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &proto.EntryId{Epoch: entry.Epoch, Offset: entry.Offset}, nil
+	return &proto.EntryId{Term: entry.Term, Offset: entry.Offset}, nil
 }
 
 func (lc *leaderController) GetStatus(request *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
@@ -717,7 +717,7 @@ func (lc *leaderController) GetStatus(request *proto.GetStatusRequest) (*proto.G
 	defer lc.Unlock()
 
 	return &proto.GetStatusResponse{
-		Epoch:  lc.epoch,
+		Term:   lc.term,
 		Status: lc.status,
 	}, nil
 }

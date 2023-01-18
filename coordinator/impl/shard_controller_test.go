@@ -36,7 +36,7 @@ func TestShardController(t *testing.T) {
 
 	sc := NewShardController(shard, model.ShardMetadata{
 		Status:   model.ShardStatusUnknown,
-		Epoch:    1,
+		Term:     1,
 		Leader:   nil,
 		Ensemble: []model.ServerAddress{s1, s2, s3},
 	}, rpc, coordinator)
@@ -59,7 +59,7 @@ func TestShardController(t *testing.T) {
 	assert.Eventually(t, func() bool {
 		return sc.Status() == model.ShardStatusSteadyState
 	}, 10*time.Second, 100*time.Millisecond)
-	assert.EqualValues(t, 2, sc.Epoch())
+	assert.EqualValues(t, 2, sc.Term())
 	assert.Equal(t, s1, *sc.Leader())
 
 	rpc.GetNode(s2).FenceResponse(2, 0, nil)
@@ -82,7 +82,7 @@ func TestShardController(t *testing.T) {
 		return sc.Status() == model.ShardStatusSteadyState
 	}, 10*time.Second, 100*time.Millisecond)
 
-	assert.EqualValues(t, 3, sc.Epoch())
+	assert.EqualValues(t, 3, sc.Term())
 	assert.Equal(t, s2, *sc.Leader())
 
 	// Simulate the failure of the leader
@@ -110,7 +110,7 @@ func TestShardController_StartingWithLeaderAlreadyPresent(t *testing.T) {
 
 	sc := NewShardController(shard, model.ShardMetadata{
 		Status:   model.ShardStatusSteadyState,
-		Epoch:    1,
+		Term:     1,
 		Leader:   &s1,
 		Ensemble: []model.ServerAddress{s1, s2, s3},
 	}, rpc, coordinator)
@@ -141,7 +141,7 @@ func TestShardController_FenceWithNonRespondingServer(t *testing.T) {
 
 	sc := NewShardController(shard, model.ShardMetadata{
 		Status:   model.ShardStatusUnknown,
-		Epoch:    1,
+		Term:     1,
 		Leader:   nil,
 		Ensemble: []model.ServerAddress{s1, s2, s3},
 	}, rpc, coordinator)
@@ -165,7 +165,7 @@ func TestShardController_FenceWithNonRespondingServer(t *testing.T) {
 
 	assert.WithinDuration(t, timeStart, time.Now(), 1*time.Second)
 	assert.Equal(t, model.ShardStatusSteadyState, sc.Status())
-	assert.EqualValues(t, 2, sc.Epoch())
+	assert.EqualValues(t, 2, sc.Term())
 	assert.Equal(t, s1, *sc.Leader())
 
 	assert.NoError(t, sc.Close())
@@ -182,7 +182,7 @@ func TestShardController_FenceFollowerUntilItRecovers(t *testing.T) {
 
 	sc := NewShardController(shard, model.ShardMetadata{
 		Status:   model.ShardStatusUnknown,
-		Epoch:    1,
+		Term:     1,
 		Leader:   nil,
 		Ensemble: []model.ServerAddress{s1, s2, s3},
 	}, rpc, coordinator)
@@ -203,7 +203,7 @@ func TestShardController_FenceFollowerUntilItRecovers(t *testing.T) {
 	assert.Eventually(t, func() bool {
 		return sc.Status() == model.ShardStatusSteadyState
 	}, 10*time.Second, 100*time.Millisecond)
-	assert.EqualValues(t, 2, sc.Epoch())
+	assert.EqualValues(t, 2, sc.Term())
 	assert.NotNil(t, sc.Leader())
 	assert.Equal(t, s1, *sc.Leader())
 

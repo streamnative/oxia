@@ -25,7 +25,7 @@ func TestClusterStatus_Clone(t *testing.T) {
 		Shards: map[uint32]ShardMetadata{
 			0: {
 				Status: ShardStatusSteadyState,
-				Epoch:  1,
+				Term:   1,
 				Leader: &ServerAddress{
 					Public:   "l1",
 					Internal: "l1",

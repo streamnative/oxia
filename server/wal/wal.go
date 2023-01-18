@@ -26,7 +26,7 @@ var (
 	ErrorReaderClosed      = errors.New("oxia: reader already closed")
 	ErrorInvalidNextOffset = errors.New("oxia: invalid next offset in wal")
 
-	InvalidEpoch  int64 = -1
+	InvalidTerm   int64 = -1
 	InvalidOffset int64 = -1
 )
 

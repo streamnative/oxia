@@ -119,18 +119,18 @@ func (s *Standalone) initializeShards(numShards uint32) error {
 			return err
 		}
 
-		newEpoch := lc.Epoch() + 1
+		newTerm := lc.Term() + 1
 
 		if _, err := lc.Fence(&proto.FenceRequest{
 			ShardId: i,
-			Epoch:   newEpoch,
+			Term:    newTerm,
 		}); err != nil {
 			return err
 		}
 
 		if _, err := lc.BecomeLeader(&proto.BecomeLeaderRequest{
 			ShardId:           i,
-			Epoch:             newEpoch,
+			Term:              newTerm,
 			ReplicationFactor: 1,
 			FollowerMaps:      make(map[string]*proto.EntryId),
 		}); err != nil {

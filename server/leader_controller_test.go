@@ -49,7 +49,7 @@ func TestLeaderController_NotInitialized(t *testing.T) {
 	lc, err := NewLeaderController(Config{}, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
+	assert.EqualValues(t, wal.InvalidTerm, lc.Term())
 	assert.Equal(t, proto.ServingStatus_NotMember, lc.Status())
 
 	res, err := lc.Write(&proto.WriteRequest{
@@ -85,11 +85,11 @@ func TestLeaderController_BecomeLeader_NoFencing(t *testing.T) {
 	lc, err := NewLeaderController(Config{}, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
+	assert.EqualValues(t, wal.InvalidTerm, lc.Term())
 	assert.Equal(t, proto.ServingStatus_NotMember, lc.Status())
 	resp, err := lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
-		Epoch:             1,
+		Term:              1,
 		ReplicationFactor: 1,
 		FollowerMaps:      nil,
 	})
@@ -111,25 +111,25 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	lc, err := NewLeaderController(Config{}, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
+	assert.EqualValues(t, wal.InvalidTerm, lc.Term())
 	assert.Equal(t, proto.ServingStatus_NotMember, lc.Status())
 
 	fr, err := lc.Fence(&proto.FenceRequest{
 		ShardId: shard,
-		Epoch:   1,
+		Term:    1,
 	})
 	assert.NoError(t, err)
 	AssertProtoEqual(t, InvalidEntryId, fr.HeadEntryId)
 
 	_, err = lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
-		Epoch:             1,
+		Term:              1,
 		ReplicationFactor: 1,
 		FollowerMaps:      nil,
 	})
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, 1, lc.Epoch())
+	assert.EqualValues(t, 1, lc.Term())
 	assert.Equal(t, proto.ServingStatus_Leader, lc.Status())
 
 	/// Write entry
@@ -161,12 +161,12 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 
 	fr2, err := lc.Fence(&proto.FenceRequest{
 		ShardId: shard,
-		Epoch:   2,
+		Term:    2,
 	})
 	assert.NoError(t, err)
-	AssertProtoEqual(t, &proto.EntryId{Epoch: 1, Offset: 0}, fr2.HeadEntryId)
+	AssertProtoEqual(t, &proto.EntryId{Term: 1, Offset: 0}, fr2.HeadEntryId)
 
-	assert.EqualValues(t, 2, lc.Epoch())
+	assert.EqualValues(t, 2, lc.Term())
 	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
 
 	// Should not accept anymore writes & reads
@@ -206,19 +206,19 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	lc, err := NewLeaderController(Config{}, shard, rpc, walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
+	assert.EqualValues(t, wal.InvalidTerm, lc.Term())
 	assert.Equal(t, proto.ServingStatus_NotMember, lc.Status())
 
 	fr, err := lc.Fence(&proto.FenceRequest{
 		ShardId: shard,
-		Epoch:   1,
+		Term:    1,
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, InvalidEntryId, fr.HeadEntryId)
 
 	_, err = lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
-		Epoch:             1,
+		Term:              1,
 		ReplicationFactor: 2,
 		FollowerMaps: map[string]*proto.EntryId{
 			"f1": InvalidEntryId,
@@ -226,7 +226,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, 1, lc.Epoch())
+	assert.EqualValues(t, 1, lc.Term())
 	assert.Equal(t, proto.ServingStatus_Leader, lc.Status())
 
 	go func() {
@@ -266,12 +266,12 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 
 	fr2, err := lc.Fence(&proto.FenceRequest{
 		ShardId: shard,
-		Epoch:   2,
+		Term:    2,
 	})
 	assert.NoError(t, err)
-	AssertProtoEqual(t, &proto.EntryId{Epoch: 1, Offset: 0}, fr2.HeadEntryId)
+	AssertProtoEqual(t, &proto.EntryId{Term: 1, Offset: 0}, fr2.HeadEntryId)
 
-	assert.EqualValues(t, 2, lc.Epoch())
+	assert.EqualValues(t, 2, lc.Term())
 	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
 
 	// Should not accept anymore writes & reads
@@ -300,7 +300,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
-func TestLeaderController_EpochPersistent(t *testing.T) {
+func TestLeaderController_TermPersistent(t *testing.T) {
 	var shard uint32 = 1
 
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
@@ -315,19 +315,19 @@ func TestLeaderController_EpochPersistent(t *testing.T) {
 	lc, err := NewLeaderController(Config{}, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, wal.InvalidEpoch, lc.Epoch())
+	assert.EqualValues(t, wal.InvalidTerm, lc.Term())
 	assert.Equal(t, proto.ServingStatus_NotMember, lc.Status())
 
 	/// Fence leader
 
 	fr2, err := lc.Fence(&proto.FenceRequest{
 		ShardId: shard,
-		Epoch:   5,
+		Term:    5,
 	})
 	assert.NoError(t, err)
-	AssertProtoEqual(t, &proto.EntryId{Epoch: wal.InvalidEpoch, Offset: wal.InvalidOffset}, fr2.HeadEntryId)
+	AssertProtoEqual(t, &proto.EntryId{Term: wal.InvalidTerm, Offset: wal.InvalidOffset}, fr2.HeadEntryId)
 
-	assert.EqualValues(t, 5, lc.Epoch())
+	assert.EqualValues(t, 5, lc.Term())
 	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
 
 	assert.NoError(t, lc.Close())
@@ -336,7 +336,7 @@ func TestLeaderController_EpochPersistent(t *testing.T) {
 	lc, err = NewLeaderController(Config{}, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, 5, lc.Epoch())
+	assert.EqualValues(t, 5, lc.Term())
 	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
 	assert.NoError(t, lc.Close())
 
@@ -344,7 +344,7 @@ func TestLeaderController_EpochPersistent(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
-func TestLeaderController_FenceEpoch(t *testing.T) {
+func TestLeaderController_FenceTerm(t *testing.T) {
 	var shard uint32 = 1
 
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
@@ -358,29 +358,29 @@ func TestLeaderController_FenceEpoch(t *testing.T) {
 
 	db, err := kv.NewDB(shard, kvFactory, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
-	// Force a new epoch in the DB before opening
-	assert.NoError(t, db.UpdateEpoch(5))
+	// Force a new term in the DB before opening
+	assert.NoError(t, db.UpdateTerm(5))
 	assert.NoError(t, db.Close())
 
 	lc, err := NewLeaderController(Config{}, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, 5, lc.Epoch())
+	assert.EqualValues(t, 5, lc.Term())
 	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
 
-	// Smaller epoch will fail
+	// Smaller term will fail
 	fr, err := lc.Fence(&proto.FenceRequest{
 		ShardId: shard,
-		Epoch:   4,
+		Term:    4,
 	})
 	assert.Nil(t, fr)
-	assert.Equal(t, common.CodeInvalidEpoch, status.Code(err))
+	assert.Equal(t, common.CodeInvalidTerm, status.Code(err))
 	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
 
-	// Same epoch will succeed
+	// Same term will succeed
 	fr, err = lc.Fence(&proto.FenceRequest{
 		ShardId: shard,
-		Epoch:   5,
+		Term:    5,
 	})
 	assert.NoError(t, err)
 	assert.NotNil(t, fr)
@@ -391,7 +391,7 @@ func TestLeaderController_FenceEpoch(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
-func TestLeaderController_BecomeLeaderEpoch(t *testing.T) {
+func TestLeaderController_BecomeLeaderTerm(t *testing.T) {
 	var shard uint32 = 1
 
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
@@ -405,40 +405,40 @@ func TestLeaderController_BecomeLeaderEpoch(t *testing.T) {
 
 	db, err := kv.NewDB(shard, kvFactory, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
-	// Force a new epoch in the DB before opening
-	assert.NoError(t, db.UpdateEpoch(5))
+	// Force a new term in the DB before opening
+	assert.NoError(t, db.UpdateTerm(5))
 	assert.NoError(t, db.Close())
 
 	lc, err := NewLeaderController(Config{}, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, 5, lc.Epoch())
+	assert.EqualValues(t, 5, lc.Term())
 	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
 
-	// Smaller epoch will fail
+	// Smaller term will fail
 	resp, err := lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
-		Epoch:             4,
+		Term:              4,
 		ReplicationFactor: 1,
 		FollowerMaps:      nil,
 	})
 	assert.Nil(t, resp)
-	assert.Equal(t, common.CodeInvalidEpoch, status.Code(err))
+	assert.Equal(t, common.CodeInvalidTerm, status.Code(err))
 
-	// Higher epoch will fail
+	// Higher term will fail
 	resp, err = lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
-		Epoch:             6,
+		Term:              6,
 		ReplicationFactor: 1,
 		FollowerMaps:      nil,
 	})
 	assert.Nil(t, resp)
-	assert.Equal(t, common.CodeInvalidEpoch, status.Code(err))
+	assert.Equal(t, common.CodeInvalidTerm, status.Code(err))
 
-	// Same epoch will succeed
+	// Same term will succeed
 	_, err = lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
-		Epoch:             5,
+		Term:              5,
 		ReplicationFactor: 1,
 		FollowerMaps:      nil,
 	})
@@ -460,17 +460,17 @@ func TestLeaderController_AddFollower(t *testing.T) {
 	assert.NoError(t, err)
 
 	_, err = lc.Fence(&proto.FenceRequest{
-		Epoch:   5,
+		Term:    5,
 		ShardId: shard,
 	})
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, 5, lc.Epoch())
+	assert.EqualValues(t, 5, lc.Term())
 	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
 
 	_, err = lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
-		Epoch:             5,
+		Term:              5,
 		ReplicationFactor: 3,
 		FollowerMaps: map[string]*proto.EntryId{
 			"f1": InvalidEntryId,
@@ -481,7 +481,7 @@ func TestLeaderController_AddFollower(t *testing.T) {
 	// f1 is already connected
 	afRes, err := lc.AddFollower(&proto.AddFollowerRequest{
 		ShardId:             shard,
-		Epoch:               5,
+		Term:                5,
 		FollowerName:        "f1",
 		FollowerHeadEntryId: InvalidEntryId,
 	})
@@ -490,7 +490,7 @@ func TestLeaderController_AddFollower(t *testing.T) {
 
 	_, err = lc.AddFollower(&proto.AddFollowerRequest{
 		ShardId:             shard,
-		Epoch:               5,
+		Term:                5,
 		FollowerName:        "f2",
 		FollowerHeadEntryId: InvalidEntryId,
 	})
@@ -500,7 +500,7 @@ func TestLeaderController_AddFollower(t *testing.T) {
 	// it's not possible to add any more followers
 	afRes, err = lc.AddFollower(&proto.AddFollowerRequest{
 		ShardId:             shard,
-		Epoch:               5,
+		Term:                5,
 		FollowerName:        "f3",
 		FollowerHeadEntryId: InvalidEntryId,
 	})
@@ -532,7 +532,7 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 
 	for i := int64(0); i < 10; i++ {
 		assert.NoError(t, wal.Append(&proto.LogEntry{
-			Epoch:  5,
+			Term:   5,
 			Offset: i,
 			Value:  []byte(""), // Log content entries are not important for this test
 		}))
@@ -544,7 +544,7 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	assert.NoError(t, db.UpdateEpoch(5))
+	assert.NoError(t, db.UpdateTerm(5))
 	assert.NoError(t, db.Close())
 	assert.NoError(t, wal.Close())
 
@@ -554,22 +554,22 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 	assert.NoError(t, err)
 
 	_, err = lc.Fence(&proto.FenceRequest{
-		Epoch:   6,
+		Term:    6,
 		ShardId: shard,
 	})
 	assert.NoError(t, err)
 
 	_, err = lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
-		Epoch:             6,
+		Term:              6,
 		ReplicationFactor: 3,
 		FollowerMaps: map[string]*proto.EntryId{
-			"f1": {Epoch: 5, Offset: 9},
+			"f1": {Term: 5, Offset: 9},
 		},
 	})
 	assert.NoError(t, err)
 
-	/// Add some entries in epoch 6 that will be only in the
+	/// Add some entries in term 6 that will be only in the
 	/// leader and f1
 	go func() {
 		for i := 0; i < 10; i++ {
@@ -599,30 +599,30 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 	rpcClient.truncateResps <- struct {
 		*proto.TruncateResponse
 		error
-	}{&proto.TruncateResponse{HeadEntryId: &proto.EntryId{Epoch: 5, Offset: 9}}, nil}
+	}{&proto.TruncateResponse{HeadEntryId: &proto.EntryId{Term: 5, Offset: 9}}, nil}
 
 	// Adding a follower that needs to be truncated
 	_, err = lc.AddFollower(&proto.AddFollowerRequest{
 		ShardId:      shard,
-		Epoch:        6,
+		Term:         6,
 		FollowerName: "f2",
 		FollowerHeadEntryId: &proto.EntryId{
-			Epoch:  5,
+			Term:   5,
 			Offset: 12,
 		},
 	})
 	assert.NoError(t, err)
 
 	trReq := <-rpcClient.truncateReqs
-	assert.EqualValues(t, 6, trReq.Epoch)
-	AssertProtoEqual(t, &proto.EntryId{Epoch: 5, Offset: 9}, trReq.HeadEntryId)
+	assert.EqualValues(t, 6, trReq.Term)
+	AssertProtoEqual(t, &proto.EntryId{Term: 5, Offset: 9}, trReq.HeadEntryId)
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())
 	assert.NoError(t, walFactory.Close())
 }
 
-func TestLeaderController_AddFollowerCheckEpoch(t *testing.T) {
+func TestLeaderController_AddFollowerCheckTerm(t *testing.T) {
 	var shard uint32 = 1
 
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
@@ -633,14 +633,14 @@ func TestLeaderController_AddFollowerCheckEpoch(t *testing.T) {
 	assert.NoError(t, err)
 
 	_, err = lc.Fence(&proto.FenceRequest{
-		Epoch:   5,
+		Term:    5,
 		ShardId: shard,
 	})
 	assert.NoError(t, err)
 
 	_, err = lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
-		Epoch:             5,
+		Term:              5,
 		ReplicationFactor: 3,
 		FollowerMaps: map[string]*proto.EntryId{
 			"f1": InvalidEntryId,
@@ -650,21 +650,21 @@ func TestLeaderController_AddFollowerCheckEpoch(t *testing.T) {
 
 	afRes, err := lc.AddFollower(&proto.AddFollowerRequest{
 		ShardId:             shard,
-		Epoch:               4,
+		Term:                4,
 		FollowerName:        "f2",
 		FollowerHeadEntryId: InvalidEntryId,
 	})
 	assert.Nil(t, afRes)
-	assert.Equal(t, common.CodeInvalidEpoch, status.Code(err))
+	assert.Equal(t, common.CodeInvalidTerm, status.Code(err))
 
 	afRes, err = lc.AddFollower(&proto.AddFollowerRequest{
 		ShardId:             shard,
-		Epoch:               6,
+		Term:                6,
 		FollowerName:        "f2",
 		FollowerHeadEntryId: InvalidEntryId,
 	})
 	assert.Nil(t, afRes)
-	assert.Equal(t, common.CodeInvalidEpoch, status.Code(err))
+	assert.Equal(t, common.CodeInvalidTerm, status.Code(err))
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())
@@ -698,7 +698,7 @@ func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.NoError(t, wal.Append(&proto.LogEntry{
-		Epoch:  0,
+		Term:   0,
 		Offset: 0,
 		Value:  v,
 	}))
@@ -709,7 +709,7 @@ func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
 
 	_, _ = lc.Fence(&proto.FenceRequest{
 		ShardId: shard,
-		Epoch:   1,
+		Term:    1,
 	})
 
 	// Respond to replication flow to follower
@@ -723,11 +723,11 @@ func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
 
 	_, _ = lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
-		Epoch:             1,
+		Term:              1,
 		ReplicationFactor: 2,
 		FollowerMaps: map[string]*proto.EntryId{
 			// The follower does not have the entry in its wal yet
-			"f1": {Epoch: 0, Offset: -1},
+			"f1": {Term: 0, Offset: -1},
 		},
 	})
 
@@ -755,10 +755,10 @@ func TestLeaderController_Notifications(t *testing.T) {
 	walFactory := wal.NewInMemoryWalFactory()
 
 	lc, _ := NewLeaderController(Config{}, shard, newMockRpcClient(), walFactory, kvFactory)
-	_, _ = lc.Fence(&proto.FenceRequest{ShardId: shard, Epoch: 1})
+	_, _ = lc.Fence(&proto.FenceRequest{ShardId: shard, Term: 1})
 	_, _ = lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
-		Epoch:             1,
+		Term:              1,
 		ReplicationFactor: 1,
 		FollowerMaps:      nil,
 	})
@@ -821,10 +821,10 @@ func TestLeaderController_NotificationsCloseLeader(t *testing.T) {
 	walFactory := wal.NewInMemoryWalFactory()
 
 	lc, _ := NewLeaderController(Config{}, shard, newMockRpcClient(), walFactory, kvFactory)
-	_, _ = lc.Fence(&proto.FenceRequest{ShardId: shard, Epoch: 1})
+	_, _ = lc.Fence(&proto.FenceRequest{ShardId: shard, Term: 1})
 	_, _ = lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
-		Epoch:             1,
+		Term:              1,
 		ReplicationFactor: 1,
 		FollowerMaps:      nil,
 	})

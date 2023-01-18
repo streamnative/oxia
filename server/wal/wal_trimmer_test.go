@@ -36,7 +36,7 @@ func TestWalTrimmer(t *testing.T) {
 
 	for i := int64(0); i < 100; i++ {
 		assert.NoError(t, w.Append(&proto.LogEntry{
-			Epoch:     0,
+			Term:      0,
 			Offset:    i,
 			Value:     []byte(""),
 			Timestamp: uint64(i),
