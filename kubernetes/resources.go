@@ -143,7 +143,7 @@ func configMap(cluster v1alpha1.OxiaCluster) *coreV1.ConfigMap {
 	for i := 0; i < int(cluster.Spec.Server.Replicas); i++ {
 		servers[i] = model.ServerAddress{
 			Public:   serviceAddress(cluster.Namespace, cluster.Name, i, PublicPort.Port),
-			Internal: serviceAddress(cluster.Namespace, cluster.Name, i, InternalPort.Port),
+			Internal: fmt.Sprintf("%s-%d.%s:%d", cluster.Name, i, cluster.Name, InternalPort.Port),
 		}
 	}
 	config := model.ClusterConfig{
