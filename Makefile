@@ -81,8 +81,8 @@ crd:
 
 license-check:
 	# go install github.com/palantir/go-license@latest
-	find . -type f -name '*.go' | xargs go-license --config=.github/license.yml --verify
+	find . -type f -name '*.go' | grep -v '.pb.go'| xargs go-license --config=.github/license.yml --verify
 
 license-format:
 	# go install github.com/palantir/go-license@latest
-	find . -type f -name '*.go' | xargs go-license --config=.github/license.yml
+	find . -type f -name '*.go' | grep -v '.pb.go'| xargs go-license --config=.github/license.yml
