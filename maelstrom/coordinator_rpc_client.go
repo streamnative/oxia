@@ -169,11 +169,11 @@ func (m *BaseStream) RecvMsg(msg interface{}) error {
 	panic("not implemented")
 }
 
-func (m *maelstromAddEntriesServerStream) SendHeader(md metadata.MD) error {
+func (m *maelstromReplicateServerStream) SendHeader(md metadata.MD) error {
 	panic("not implemented")
 }
 
-func (m *maelstromAddEntriesServerStream) SetTrailer(md metadata.MD) {
+func (m *maelstromReplicateServerStream) SetTrailer(md metadata.MD) {
 	panic("not implemented")
 }
 

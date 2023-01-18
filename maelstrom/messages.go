@@ -47,8 +47,8 @@ const (
 	MsgTypeTruncateResponse     MsgType = "truncate-resp"
 	MsgTypeBecomeLeaderRequest  MsgType = "leader-req"
 	MsgTypeBecomeLeaderResponse MsgType = "leader-resp"
-	MsgTypeAddEntryRequest      MsgType = "add-entry"
-	MsgTypeAddEntryResponse     MsgType = "ack"
+	MsgTypeAppend               MsgType = "add-entry"
+	MsgTypeAck                  MsgType = "ack"
 	MsgTypeAddFollowerRequest   MsgType = "add-follower-req"
 	MsgTypeAddFollowerResponse  MsgType = "add-follower-resp"
 	MsgTypeGetStatusRequest     MsgType = "get-status"
@@ -79,8 +79,8 @@ var (
 	}
 
 	oxiaStreamRequests = map[MsgType]bool{
-		MsgTypeAddEntryRequest:          true,
-		MsgTypeAddEntryResponse:         true,
+		MsgTypeAppend:                   true,
+		MsgTypeAck:                      true,
 		MsgTypeShardAssignmentsResponse: true,
 	}
 )
@@ -210,7 +210,7 @@ var jsonMsgMapping = map[MsgType]any{
 	MsgTypeHealthCheck:   &Message[OxiaMessage]{},
 	MsgTypeHealthCheckOk: &Message[OxiaMessage]{},
 
-	MsgTypeAddEntryRequest: &Message[OxiaStreamMessage]{},
+	MsgTypeAppend: &Message[OxiaStreamMessage]{},
 }
 
 var protoMsgMapping = map[MsgType]pb.Message{
@@ -220,8 +220,8 @@ var protoMsgMapping = map[MsgType]pb.Message{
 	MsgTypeTruncateResponse:     &proto.TruncateResponse{},
 	MsgTypeBecomeLeaderRequest:  &proto.BecomeLeaderRequest{},
 	MsgTypeBecomeLeaderResponse: &proto.BecomeLeaderResponse{},
-	MsgTypeAddEntryRequest:      &proto.AddEntryRequest{},
-	MsgTypeAddEntryResponse:     &proto.AddEntryResponse{},
+	MsgTypeAppend:               &proto.Append{},
+	MsgTypeAck:                  &proto.Ack{},
 	MsgTypeAddFollowerRequest:   &proto.AddFollowerRequest{},
 	MsgTypeAddFollowerResponse:  &proto.AddFollowerResponse{},
 	MsgTypeGetStatusRequest:     &proto.GetStatusRequest{},
