@@ -18,22 +18,14 @@ import (
 	"context"
 	"fmt"
 	"github.com/stretchr/testify/assert"
+	"oxia/common"
 	"oxia/proto"
-	"sync/atomic"
 	"testing"
 	"time"
 )
 
-type mockedClock struct {
-	t atomic.Int64
-}
-
-func (c *mockedClock) Now() time.Time {
-	return time.UnixMilli(c.t.Load())
-}
-
 func TestNotificationsTrimmer(t *testing.T) {
-	clock := &mockedClock{}
+	clock := &common.MockedClock{}
 
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
@@ -56,25 +48,25 @@ func TestNotificationsTrimmer(t *testing.T) {
 	assert.EqualValues(t, 0, firstNotification(t, dbx))
 
 	// Clock has advanced, though not enough to have the trimming started
-	clock.t.Store(3)
+	clock.Set(3)
 
 	time.Sleep(1 * time.Second)
 	// No entries should have been trimmed
 	assert.EqualValues(t, 0, firstNotification(t, dbx))
 
-	clock.t.Store(15)
+	clock.Set(15)
 
 	assert.Eventually(t, func() bool {
 		return firstNotification(t, dbx) == 6
 	}, 10*time.Second, 1*time.Second)
 
-	clock.t.Store(75)
+	clock.Set(75)
 
 	assert.Eventually(t, func() bool {
 		return firstNotification(t, dbx) == 66
 	}, 10*time.Second, 1*time.Second)
 
-	clock.t.Store(120)
+	clock.Set(120)
 
 	assert.Eventually(t, func() bool {
 		return firstNotification(t, dbx) == -1
