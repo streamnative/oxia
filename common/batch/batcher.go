@@ -29,7 +29,6 @@ type Batcher interface {
 }
 
 type batcherImpl struct {
-	shardId             *uint32
 	batchFactory        func() Batch
 	callC               chan any
 	closeC              chan bool
