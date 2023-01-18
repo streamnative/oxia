@@ -164,7 +164,7 @@ func (n noOpReplicationRpcProvider) Close() error {
 	return nil
 }
 
-func (n noOpReplicationRpcProvider) GetAddEntriesStream(ctx context.Context, follower string, shard uint32) (proto.OxiaLogReplication_AddEntriesClient, error) {
+func (n noOpReplicationRpcProvider) GetReplicateStream(ctx context.Context, follower string, shard uint32) (proto.OxiaLogReplication_ReplicateClient, error) {
 	panic("not implemented")
 }
 

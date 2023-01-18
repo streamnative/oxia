@@ -204,7 +204,7 @@ func (s *internalRpcServer) Truncate(c context.Context, req *proto.TruncateReque
 	}
 }
 
-func (s *internalRpcServer) AddEntries(srv proto.OxiaLogReplication_AddEntriesServer) error {
+func (s *internalRpcServer) AddEntries(srv proto.OxiaLogReplication_ReplicateServer) error {
 	// Add entries receives an incoming stream of request, the shard_id needs to be encoded
 	// as a property in the metadata
 	md, ok := metadata.FromIncomingContext(srv.Context())

@@ -62,7 +62,7 @@ type FollowerController interface {
 	// to a Follower.
 	Truncate(req *proto.TruncateRequest) (*proto.TruncateResponse, error)
 
-	AddEntries(stream proto.OxiaLogReplication_AddEntriesServer) error
+	AddEntries(stream proto.OxiaLogReplication_ReplicateServer) error
 
 	SendSnapshot(stream proto.OxiaLogReplication_SendSnapshotServer) error
 
@@ -293,7 +293,7 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 	}, nil
 }
 
-func (fc *followerController) AddEntries(stream proto.OxiaLogReplication_AddEntriesServer) error {
+func (fc *followerController) AddEntries(stream proto.OxiaLogReplication_ReplicateServer) error {
 	fc.Lock()
 	if fc.status != proto.ServingStatus_Fenced && fc.status != proto.ServingStatus_Follower {
 		return common.ErrorInvalidStatus
@@ -316,7 +316,7 @@ func (fc *followerController) AddEntries(stream proto.OxiaLogReplication_AddEntr
 	go common.DoWithLabels(map[string]string{
 		"oxia":  "add-entries-sync",
 		"shard": fmt.Sprintf("%d", fc.shardId),
-	}, func() { fc.handleAddEntriesSync(stream) })
+	}, func() { fc.handleReplicateSync(stream) })
 
 	select {
 	case err := <-closeStreamCh:
@@ -326,7 +326,7 @@ func (fc *followerController) AddEntries(stream proto.OxiaLogReplication_AddEntr
 	}
 }
 
-func (fc *followerController) handleServerStream(stream proto.OxiaLogReplication_AddEntriesServer) {
+func (fc *followerController) handleServerStream(stream proto.OxiaLogReplication_ReplicateServer) {
 	for {
 		if addEntryReq, err := stream.Recv(); err != nil {
 			fc.closeChannel(err)
@@ -334,14 +334,14 @@ func (fc *followerController) handleServerStream(stream proto.OxiaLogReplication
 		} else if addEntryReq == nil {
 			fc.closeChannel(nil)
 			return
-		} else if err := fc.addEntry(addEntryReq, stream); err != nil {
+		} else if err := fc.append(addEntryReq, stream); err != nil {
 			fc.closeChannel(err)
 			return
 		}
 	}
 }
 
-func (fc *followerController) addEntry(req *proto.AddEntryRequest, stream proto.OxiaLogReplication_AddEntriesServer) error {
+func (fc *followerController) append(req *proto.Append, stream proto.OxiaLogReplication_ReplicateServer) error {
 	timer := fc.writeLatencyHisto.Timer()
 	defer timer.Done()
 
@@ -370,7 +370,7 @@ func (fc *followerController) addEntry(req *proto.AddEntryRequest, stream proto.
 			Int64("commit-offset", req.CommitOffset).
 			Int64("offset", req.Entry.Offset).
 			Msg("Ignoring duplicated entry")
-		if err := stream.Send(&proto.AddEntryResponse{Offset: req.Entry.Offset}); err != nil {
+		if err := stream.Send(&proto.Ack{Offset: req.Entry.Offset}); err != nil {
 			fc.closeChannelNoMutex(err)
 		}
 		return nil
@@ -390,7 +390,7 @@ func (fc *followerController) addEntry(req *proto.AddEntryRequest, stream proto.
 	return nil
 }
 
-func (fc *followerController) handleAddEntriesSync(stream proto.OxiaLogReplication_AddEntriesServer) {
+func (fc *followerController) handleReplicateSync(stream proto.OxiaLogReplication_ReplicateServer) {
 	for {
 		fc.Lock()
 		if err := fc.syncCond.Wait(stream.Context()); err != nil {
@@ -410,7 +410,7 @@ func (fc *followerController) handleAddEntriesSync(stream proto.OxiaLogReplicati
 		// Ack all the entries that were synced in the last round
 		newHeadOffset := fc.wal.LastOffset()
 		for offset := oldHeadOffset + 1; offset <= newHeadOffset; offset++ {
-			if err := stream.Send(&proto.AddEntryResponse{Offset: offset}); err != nil {
+			if err := stream.Send(&proto.Ack{Offset: offset}); err != nil {
 				fc.closeChannel(err)
 				return
 			}

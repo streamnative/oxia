@@ -232,7 +232,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	go func() {
 		req := <-rpc.addEntryReqs
 
-		rpc.addEntryResps <- &proto.AddEntryResponse{
+		rpc.addEntryResps <- &proto.Ack{
 			Offset: req.Entry.Offset,
 		}
 	}()
@@ -575,7 +575,7 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 		for i := 0; i < 10; i++ {
 			req := <-rpcClient.addEntryReqs
 
-			rpcClient.addEntryResps <- &proto.AddEntryResponse{
+			rpcClient.addEntryResps <- &proto.Ack{
 				Offset: req.Entry.Offset,
 			}
 		}
@@ -716,7 +716,7 @@ func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
 	go func() {
 		req := <-rpc.addEntryReqs
 
-		rpc.addEntryResps <- &proto.AddEntryResponse{
+		rpc.addEntryResps <- &proto.Ack{
 			Offset: req.Entry.Offset,
 		}
 	}()

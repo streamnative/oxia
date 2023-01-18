@@ -70,7 +70,7 @@ func TestFollower(t *testing.T) {
 
 	assert.Equal(t, proto.ServingStatus_Follower, fc.Status())
 
-	stream := newMockServerAddEntriesStream()
+	stream := newMockServerReplicateStream()
 
 	go func() { assert.NoError(t, fc.AddEntries(stream)) }()
 
@@ -136,7 +136,7 @@ func TestReadingUpToCommitOffset(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, proto.ServingStatus_Follower, fc.Status())
 
-	stream := newMockServerAddEntriesStream()
+	stream := newMockServerReplicateStream()
 	go func() { assert.NoError(t, fc.AddEntries(stream)) }()
 
 	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, wal.InvalidOffset))
@@ -221,7 +221,7 @@ func TestFollower_AdvanceCommitOffsetToHead(t *testing.T) {
 	fc, _ := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	_, _ = fc.Fence(&proto.FenceRequest{Epoch: 1})
 
-	stream := newMockServerAddEntriesStream()
+	stream := newMockServerReplicateStream()
 	go func() { assert.NoError(t, fc.AddEntries(stream)) }()
 
 	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, 10))
@@ -386,7 +386,7 @@ func TestFollower_CommitOffsetLastEntry(t *testing.T) {
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
 	assert.EqualValues(t, 1, fc.Epoch())
 
-	stream := newMockServerAddEntriesStream()
+	stream := newMockServerReplicateStream()
 	go func() { assert.NoError(t, fc.AddEntries(stream)) }()
 
 	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, 0))
@@ -443,7 +443,7 @@ func TestFollowerController_RejectEntriesWithDifferentEpoch(t *testing.T) {
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
 	assert.EqualValues(t, 5, fc.Epoch())
 
-	stream := newMockServerAddEntriesStream()
+	stream := newMockServerReplicateStream()
 	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "1", "b": "1"}, wal.InvalidOffset))
 
 	// Follower will reject the entry because it's from an earlier epoch
@@ -469,7 +469,7 @@ func TestFollowerController_RejectEntriesWithDifferentEpoch(t *testing.T) {
 	fc, err = NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	stream = newMockServerAddEntriesStream()
+	stream = newMockServerReplicateStream()
 	stream.AddRequest(createAddRequest(t, 6, 0, map[string]string{"a": "2", "b": "2"}, wal.InvalidOffset))
 	err = fc.AddEntries(stream)
 	assert.Equal(t, common.CodeInvalidEpoch, status.Code(err))
@@ -568,7 +568,7 @@ func TestFollower_HandleSnapshot(t *testing.T) {
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
 	assert.EqualValues(t, 1, fc.Epoch())
 
-	stream := newMockServerAddEntriesStream()
+	stream := newMockServerReplicateStream()
 	go func() { assert.NoError(t, fc.AddEntries(stream)) }()
 
 	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, 0))
@@ -652,7 +652,7 @@ func TestFollower_DisconnectLeader(t *testing.T) {
 	fc, _ := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	_, _ = fc.Fence(&proto.FenceRequest{Epoch: 1})
 
-	stream := newMockServerAddEntriesStream()
+	stream := newMockServerReplicateStream()
 
 	go func() { assert.NoError(t, fc.AddEntries(stream)) }()
 
@@ -684,7 +684,7 @@ func TestFollower_DupEntries(t *testing.T) {
 	fc, _ := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	_, _ = fc.Fence(&proto.FenceRequest{Epoch: 1})
 
-	stream := newMockServerAddEntriesStream()
+	stream := newMockServerReplicateStream()
 	go func() { assert.NoError(t, fc.AddEntries(stream)) }()
 
 	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, wal.InvalidOffset))
@@ -723,7 +723,7 @@ func closeChanIsNotNil(fc FollowerController) func() bool {
 
 func createAddRequest(t *testing.T, epoch int64, offset int64,
 	kvs map[string]string,
-	commitOffset int64) *proto.AddEntryRequest {
+	commitOffset int64) *proto.Append {
 	br := &proto.WriteRequest{}
 
 	for k, v := range kvs {
@@ -742,7 +742,7 @@ func createAddRequest(t *testing.T, epoch int64, offset int64,
 		Value:  entry,
 	}
 
-	return &proto.AddEntryRequest{
+	return &proto.Append{
 		Epoch:        epoch,
 		Entry:        le,
 		CommitOffset: commitOffset,
