@@ -115,7 +115,7 @@ func (m *mockRpcClient) Truncate(follower string, req *proto.TruncateRequest) (*
 
 func newMockShardAssignmentClientStream() *mockShardAssignmentClientStream {
 	r := &mockShardAssignmentClientStream{
-		responses: make(chan *proto.ShardAssignmentsResponse, 1000),
+		responses: make(chan *proto.ShardAssignments, 1000),
 	}
 
 	r.ctx, r.cancel = context.WithCancel(context.Background())
@@ -124,30 +124,30 @@ func newMockShardAssignmentClientStream() *mockShardAssignmentClientStream {
 
 type mockShardAssignmentClientStream struct {
 	mockBase
-	responses chan *proto.ShardAssignmentsResponse
+	responses chan *proto.ShardAssignments
 	cancel    context.CancelFunc
 }
 
-func (m *mockShardAssignmentClientStream) GetResponse() *proto.ShardAssignmentsResponse {
+func (m *mockShardAssignmentClientStream) GetResponse() *proto.ShardAssignments {
 	x := <-m.responses
 	return x
 }
 
-func (m *mockShardAssignmentClientStream) Send(response *proto.ShardAssignmentsResponse) error {
+func (m *mockShardAssignmentClientStream) Send(response *proto.ShardAssignments) error {
 	m.responses <- response
 	return nil
 }
 
 func newMockShardAssignmentControllerStream() *mockShardAssignmentControllerStream {
 	return &mockShardAssignmentControllerStream{
-		requests:  make(chan *proto.ShardAssignmentsResponse, 1000),
+		requests:  make(chan *proto.ShardAssignments, 1000),
 		responses: make(chan *proto.CoordinationShardAssignmentsResponse, 1000),
 	}
 }
 
 type mockShardAssignmentControllerStream struct {
 	mockBase
-	requests  chan *proto.ShardAssignmentsResponse
+	requests  chan *proto.ShardAssignments
 	responses chan *proto.CoordinationShardAssignmentsResponse
 }
 
@@ -160,11 +160,11 @@ func (m *mockShardAssignmentControllerStream) SendAndClose(empty *proto.Coordina
 	return nil
 }
 
-func (m *mockShardAssignmentControllerStream) AddRequest(request *proto.ShardAssignmentsResponse) {
+func (m *mockShardAssignmentControllerStream) AddRequest(request *proto.ShardAssignments) {
 	m.requests <- request
 }
 
-func (m *mockShardAssignmentControllerStream) Recv() (*proto.ShardAssignmentsResponse, error) {
+func (m *mockShardAssignmentControllerStream) Recv() (*proto.ShardAssignments, error) {
 	request := <-m.requests
 	return request, nil
 }

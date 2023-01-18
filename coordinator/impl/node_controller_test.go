@@ -74,7 +74,7 @@ func TestNodeController_ShardsAssignments(t *testing.T) {
 
 	node := rpc.GetNode(addr)
 
-	resp := &proto.ShardAssignmentsResponse{
+	resp := &proto.ShardAssignments{
 		Assignments: []*proto.ShardAssignment{{
 			ShardId: 0,
 			Leader:  "leader-0",
@@ -93,7 +93,7 @@ func TestNodeController_ShardsAssignments(t *testing.T) {
 	// Simulate 1 single stream send error
 	node.shardAssignmentsStream.SetError(errors.New("failed to send"))
 
-	resp2 := &proto.ShardAssignmentsResponse{
+	resp2 := &proto.ShardAssignments{
 		Assignments: []*proto.ShardAssignment{{
 			ShardId: 0,
 			Leader:  "leader-1",

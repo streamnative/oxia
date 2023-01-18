@@ -26,7 +26,7 @@ import (
 const rpcTimeout = 30 * time.Second
 
 type RpcProvider interface {
-	GetShardAssignmentStream(ctx context.Context, node model.ServerAddress) (proto.OxiaCoordination_ShardAssignmentClient, error)
+	PushShardAssignments(ctx context.Context, node model.ServerAddress) (proto.OxiaCoordination_PushShardAssignmentsClient, error)
 	Fence(ctx context.Context, node model.ServerAddress, req *proto.FenceRequest) (*proto.FenceResponse, error)
 	BecomeLeader(ctx context.Context, node model.ServerAddress, req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error)
 	AddFollower(ctx context.Context, node model.ServerAddress, req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error)
@@ -43,13 +43,13 @@ func NewRpcProvider(pool common.ClientPool) RpcProvider {
 	return &rpcProvider{pool: pool}
 }
 
-func (r *rpcProvider) GetShardAssignmentStream(ctx context.Context, node model.ServerAddress) (proto.OxiaCoordination_ShardAssignmentClient, error) {
+func (r *rpcProvider) PushShardAssignments(ctx context.Context, node model.ServerAddress) (proto.OxiaCoordination_PushShardAssignmentsClient, error) {
 	rpc, err := r.pool.GetCoordinationRpc(node.Internal)
 	if err != nil {
 		return nil, err
 	}
 
-	return rpc.ShardAssignment(ctx)
+	return rpc.PushShardAssignments(ctx)
 }
 
 func (r *rpcProvider) Fence(ctx context.Context, node model.ServerAddress, req *proto.FenceRequest) (*proto.FenceResponse, error) {

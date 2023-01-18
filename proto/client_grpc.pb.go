@@ -27,7 +27,7 @@ type OxiaClientClient interface {
 	//
 	// Clients should connect to a single random server which will stream the
 	// assignments for all shards on all servers.
-	ShardAssignments(ctx context.Context, in *ShardAssignmentsRequest, opts ...grpc.CallOption) (OxiaClient_ShardAssignmentsClient, error)
+	GetShardAssignments(ctx context.Context, in *ShardAssignmentsRequest, opts ...grpc.CallOption) (OxiaClient_GetShardAssignmentsClient, error)
 	//*
 	// Batches put, delete and delete_range requests.
 	//
@@ -60,12 +60,12 @@ func NewOxiaClientClient(cc grpc.ClientConnInterface) OxiaClientClient {
 	return &oxiaClientClient{cc}
 }
 
-func (c *oxiaClientClient) ShardAssignments(ctx context.Context, in *ShardAssignmentsRequest, opts ...grpc.CallOption) (OxiaClient_ShardAssignmentsClient, error) {
-	stream, err := c.cc.NewStream(ctx, &OxiaClient_ServiceDesc.Streams[0], "/io.streamnative.oxia.proto.OxiaClient/ShardAssignments", opts...)
+func (c *oxiaClientClient) GetShardAssignments(ctx context.Context, in *ShardAssignmentsRequest, opts ...grpc.CallOption) (OxiaClient_GetShardAssignmentsClient, error) {
+	stream, err := c.cc.NewStream(ctx, &OxiaClient_ServiceDesc.Streams[0], "/io.streamnative.oxia.proto.OxiaClient/GetShardAssignments", opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &oxiaClientShardAssignmentsClient{stream}
+	x := &oxiaClientGetShardAssignmentsClient{stream}
 	if err := x.ClientStream.SendMsg(in); err != nil {
 		return nil, err
 	}
@@ -75,17 +75,17 @@ func (c *oxiaClientClient) ShardAssignments(ctx context.Context, in *ShardAssign
 	return x, nil
 }
 
-type OxiaClient_ShardAssignmentsClient interface {
-	Recv() (*ShardAssignmentsResponse, error)
+type OxiaClient_GetShardAssignmentsClient interface {
+	Recv() (*ShardAssignments, error)
 	grpc.ClientStream
 }
 
-type oxiaClientShardAssignmentsClient struct {
+type oxiaClientGetShardAssignmentsClient struct {
 	grpc.ClientStream
 }
 
-func (x *oxiaClientShardAssignmentsClient) Recv() (*ShardAssignmentsResponse, error) {
-	m := new(ShardAssignmentsResponse)
+func (x *oxiaClientGetShardAssignmentsClient) Recv() (*ShardAssignments, error) {
+	m := new(ShardAssignments)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -207,7 +207,7 @@ type OxiaClientServer interface {
 	//
 	// Clients should connect to a single random server which will stream the
 	// assignments for all shards on all servers.
-	ShardAssignments(*ShardAssignmentsRequest, OxiaClient_ShardAssignmentsServer) error
+	GetShardAssignments(*ShardAssignmentsRequest, OxiaClient_GetShardAssignmentsServer) error
 	//*
 	// Batches put, delete and delete_range requests.
 	//
@@ -237,8 +237,8 @@ type OxiaClientServer interface {
 type UnimplementedOxiaClientServer struct {
 }
 
-func (UnimplementedOxiaClientServer) ShardAssignments(*ShardAssignmentsRequest, OxiaClient_ShardAssignmentsServer) error {
-	return status.Errorf(codes.Unimplemented, "method ShardAssignments not implemented")
+func (UnimplementedOxiaClientServer) GetShardAssignments(*ShardAssignmentsRequest, OxiaClient_GetShardAssignmentsServer) error {
+	return status.Errorf(codes.Unimplemented, "method GetShardAssignments not implemented")
 }
 func (UnimplementedOxiaClientServer) Write(context.Context, *WriteRequest) (*WriteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Write not implemented")
@@ -271,24 +271,24 @@ func RegisterOxiaClientServer(s grpc.ServiceRegistrar, srv OxiaClientServer) {
 	s.RegisterService(&OxiaClient_ServiceDesc, srv)
 }
 
-func _OxiaClient_ShardAssignments_Handler(srv interface{}, stream grpc.ServerStream) error {
+func _OxiaClient_GetShardAssignments_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(ShardAssignmentsRequest)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
-	return srv.(OxiaClientServer).ShardAssignments(m, &oxiaClientShardAssignmentsServer{stream})
+	return srv.(OxiaClientServer).GetShardAssignments(m, &oxiaClientGetShardAssignmentsServer{stream})
 }
 
-type OxiaClient_ShardAssignmentsServer interface {
-	Send(*ShardAssignmentsResponse) error
+type OxiaClient_GetShardAssignmentsServer interface {
+	Send(*ShardAssignments) error
 	grpc.ServerStream
 }
 
-type oxiaClientShardAssignmentsServer struct {
+type oxiaClientGetShardAssignmentsServer struct {
 	grpc.ServerStream
 }
 
-func (x *oxiaClientShardAssignmentsServer) Send(m *ShardAssignmentsResponse) error {
+func (x *oxiaClientGetShardAssignmentsServer) Send(m *ShardAssignments) error {
 	return x.ServerStream.SendMsg(m)
 }
 
@@ -437,8 +437,8 @@ var OxiaClient_ServiceDesc = grpc.ServiceDesc{
 	},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "ShardAssignments",
-			Handler:       _OxiaClient_ShardAssignments_Handler,
+			StreamName:    "GetShardAssignments",
+			Handler:       _OxiaClient_GetShardAssignments_Handler,
 			ServerStreams: true,
 		},
 		{

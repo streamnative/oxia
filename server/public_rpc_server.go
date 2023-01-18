@@ -56,7 +56,7 @@ func newPublicRpcServer(provider container.GrpcProvider, bindAddress string, sha
 	return server, nil
 }
 
-func (s *publicRpcServer) ShardAssignments(_ *proto.ShardAssignmentsRequest, srv proto.OxiaClient_ShardAssignmentsServer) error {
+func (s *publicRpcServer) GetShardAssignments(_ *proto.ShardAssignmentsRequest, srv proto.OxiaClient_GetShardAssignmentsServer) error {
 	s.log.Debug().
 		Str("peer", common.GetPeer(srv.Context())).
 		Msg("Shard assignments requests")

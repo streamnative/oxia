@@ -161,7 +161,7 @@ func (s *shardManagerImpl) receive(backOff backoff.BackOff) error {
 
 	request := proto.ShardAssignmentsRequest{}
 
-	stream, err := rpc.ShardAssignments(s.ctx, &request)
+	stream, err := rpc.GetShardAssignments(s.ctx, &request)
 	if err != nil {
 		return err
 	}

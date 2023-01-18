@@ -42,8 +42,8 @@ service OxiaClient {
    * Clients should connect to a single random server which will stream the
    * assignments for all shards on all servers.
    */
-  rpc ShardAssignments(ShardAssignmentsRequest)
-      returns (stream ShardAssignmentsResponse);
+  rpc GetShardAssignments(ShardAssignmentsRequest)
+      returns (stream ShardAssignments);
 
   /**
    * Batches put, delete and delete_range requests.
@@ -94,7 +94,7 @@ message ShardAssignmentsRequest {
 /**
  * The response to a shard assignments request.
  */
-message ShardAssignmentsResponse {
+message ShardAssignments {
   // All assignments in the response stream will contain all the
   // assignments to bring the client up to date. For example, if a shard is
   // split, the stream will return a single response containing all the new

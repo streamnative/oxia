@@ -18,7 +18,7 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type OxiaCoordinationClient interface {
-	ShardAssignment(ctx context.Context, opts ...grpc.CallOption) (OxiaCoordination_ShardAssignmentClient, error)
+	PushShardAssignments(ctx context.Context, opts ...grpc.CallOption) (OxiaCoordination_PushShardAssignmentsClient, error)
 	Fence(ctx context.Context, in *FenceRequest, opts ...grpc.CallOption) (*FenceResponse, error)
 	BecomeLeader(ctx context.Context, in *BecomeLeaderRequest, opts ...grpc.CallOption) (*BecomeLeaderResponse, error)
 	AddFollower(ctx context.Context, in *AddFollowerRequest, opts ...grpc.CallOption) (*AddFollowerResponse, error)
@@ -33,30 +33,30 @@ func NewOxiaCoordinationClient(cc grpc.ClientConnInterface) OxiaCoordinationClie
 	return &oxiaCoordinationClient{cc}
 }
 
-func (c *oxiaCoordinationClient) ShardAssignment(ctx context.Context, opts ...grpc.CallOption) (OxiaCoordination_ShardAssignmentClient, error) {
-	stream, err := c.cc.NewStream(ctx, &OxiaCoordination_ServiceDesc.Streams[0], "/replication.OxiaCoordination/ShardAssignment", opts...)
+func (c *oxiaCoordinationClient) PushShardAssignments(ctx context.Context, opts ...grpc.CallOption) (OxiaCoordination_PushShardAssignmentsClient, error) {
+	stream, err := c.cc.NewStream(ctx, &OxiaCoordination_ServiceDesc.Streams[0], "/replication.OxiaCoordination/PushShardAssignments", opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &oxiaCoordinationShardAssignmentClient{stream}
+	x := &oxiaCoordinationPushShardAssignmentsClient{stream}
 	return x, nil
 }
 
-type OxiaCoordination_ShardAssignmentClient interface {
-	Send(*ShardAssignmentsResponse) error
+type OxiaCoordination_PushShardAssignmentsClient interface {
+	Send(*ShardAssignments) error
 	CloseAndRecv() (*CoordinationShardAssignmentsResponse, error)
 	grpc.ClientStream
 }
 
-type oxiaCoordinationShardAssignmentClient struct {
+type oxiaCoordinationPushShardAssignmentsClient struct {
 	grpc.ClientStream
 }
 
-func (x *oxiaCoordinationShardAssignmentClient) Send(m *ShardAssignmentsResponse) error {
+func (x *oxiaCoordinationPushShardAssignmentsClient) Send(m *ShardAssignments) error {
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *oxiaCoordinationShardAssignmentClient) CloseAndRecv() (*CoordinationShardAssignmentsResponse, error) {
+func (x *oxiaCoordinationPushShardAssignmentsClient) CloseAndRecv() (*CoordinationShardAssignmentsResponse, error) {
 	if err := x.ClientStream.CloseSend(); err != nil {
 		return nil, err
 	}
@@ -107,7 +107,7 @@ func (c *oxiaCoordinationClient) GetStatus(ctx context.Context, in *GetStatusReq
 // All implementations must embed UnimplementedOxiaCoordinationServer
 // for forward compatibility
 type OxiaCoordinationServer interface {
-	ShardAssignment(OxiaCoordination_ShardAssignmentServer) error
+	PushShardAssignments(OxiaCoordination_PushShardAssignmentsServer) error
 	Fence(context.Context, *FenceRequest) (*FenceResponse, error)
 	BecomeLeader(context.Context, *BecomeLeaderRequest) (*BecomeLeaderResponse, error)
 	AddFollower(context.Context, *AddFollowerRequest) (*AddFollowerResponse, error)
@@ -119,8 +119,8 @@ type OxiaCoordinationServer interface {
 type UnimplementedOxiaCoordinationServer struct {
 }
 
-func (UnimplementedOxiaCoordinationServer) ShardAssignment(OxiaCoordination_ShardAssignmentServer) error {
-	return status.Errorf(codes.Unimplemented, "method ShardAssignment not implemented")
+func (UnimplementedOxiaCoordinationServer) PushShardAssignments(OxiaCoordination_PushShardAssignmentsServer) error {
+	return status.Errorf(codes.Unimplemented, "method PushShardAssignments not implemented")
 }
 func (UnimplementedOxiaCoordinationServer) Fence(context.Context, *FenceRequest) (*FenceResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Fence not implemented")
@@ -147,26 +147,26 @@ func RegisterOxiaCoordinationServer(s grpc.ServiceRegistrar, srv OxiaCoordinatio
 	s.RegisterService(&OxiaCoordination_ServiceDesc, srv)
 }
 
-func _OxiaCoordination_ShardAssignment_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(OxiaCoordinationServer).ShardAssignment(&oxiaCoordinationShardAssignmentServer{stream})
+func _OxiaCoordination_PushShardAssignments_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(OxiaCoordinationServer).PushShardAssignments(&oxiaCoordinationPushShardAssignmentsServer{stream})
 }
 
-type OxiaCoordination_ShardAssignmentServer interface {
+type OxiaCoordination_PushShardAssignmentsServer interface {
 	SendAndClose(*CoordinationShardAssignmentsResponse) error
-	Recv() (*ShardAssignmentsResponse, error)
+	Recv() (*ShardAssignments, error)
 	grpc.ServerStream
 }
 
-type oxiaCoordinationShardAssignmentServer struct {
+type oxiaCoordinationPushShardAssignmentsServer struct {
 	grpc.ServerStream
 }
 
-func (x *oxiaCoordinationShardAssignmentServer) SendAndClose(m *CoordinationShardAssignmentsResponse) error {
+func (x *oxiaCoordinationPushShardAssignmentsServer) SendAndClose(m *CoordinationShardAssignmentsResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
-func (x *oxiaCoordinationShardAssignmentServer) Recv() (*ShardAssignmentsResponse, error) {
-	m := new(ShardAssignmentsResponse)
+func (x *oxiaCoordinationPushShardAssignmentsServer) Recv() (*ShardAssignments, error) {
+	m := new(ShardAssignments)
 	if err := x.ServerStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -271,8 +271,8 @@ var OxiaCoordination_ServiceDesc = grpc.ServiceDesc{
 	},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "ShardAssignment",
-			Handler:       _OxiaCoordination_ShardAssignment_Handler,
+			StreamName:    "PushShardAssignments",
+			Handler:       _OxiaCoordination_PushShardAssignments_Handler,
 			ClientStreams: true,
 		},
 	},
