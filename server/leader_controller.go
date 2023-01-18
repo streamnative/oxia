@@ -139,7 +139,7 @@ func NewLeaderController(config Config, shardId uint32, rpcClient ReplicationRpc
 
 	lc.walTrimmer = wal.NewTrimmer(shardId, lc.wal, config.WalRetentionTime, wal.DefaultCheckInterval, common.SystemClock)
 
-	if lc.db, err = kv.NewDB(shardId, kvFactory); err != nil {
+	if lc.db, err = kv.NewDB(shardId, kvFactory, config.NotificationsRetentionTime, common.SystemClock); err != nil {
 		return nil, err
 	}
 

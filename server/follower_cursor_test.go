@@ -19,6 +19,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	pb "google.golang.org/protobuf/proto"
+	"oxia/common"
 	"oxia/proto"
 	"oxia/server/kv"
 	"oxia/server/wal"
@@ -34,7 +35,7 @@ func TestFollowerCursor(t *testing.T) {
 	ackTracker := NewQuorumAckTracker(3, wal.InvalidOffset, wal.InvalidOffset)
 	kvf, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := kv.NewDB(shard, kvf)
+	db, err := kv.NewDB(shard, kvf, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
 	wf := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 	w, err := wf.NewWal(shard)
@@ -116,7 +117,7 @@ func TestFollowerCursor_SendSnapshot(t *testing.T) {
 	stream := newMockRpcClient()
 	kvf, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{DataDir: t.TempDir()})
 	assert.NoError(t, err)
-	db, err := kv.NewDB(shard, kvf)
+	db, err := kv.NewDB(shard, kvf, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
 	wf := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 	w, err := wf.NewWal(shard)

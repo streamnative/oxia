@@ -50,6 +50,14 @@ type KeyIterator interface {
 	Next() bool
 }
 
+type ReverseKeyIterator interface {
+	io.Closer
+
+	Valid() bool
+	Key() string
+	Prev() bool
+}
+
 type KeyValueIterator interface {
 	KeyIterator
 
@@ -88,6 +96,7 @@ type KV interface {
 	Get(key string) ([]byte, io.Closer, error)
 
 	KeyRangeScan(lowerBound, upperBound string) KeyIterator
+	KeyRangeScanReverse(lowerBound, upperBound string) ReverseKeyIterator
 
 	RangeScan(lowerBound, upperBound string) KeyValueIterator
 

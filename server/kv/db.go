@@ -58,7 +58,7 @@ type DB interface {
 	Snapshot() (Snapshot, error)
 }
 
-func NewDB(shardId uint32, factory KVFactory) (DB, error) {
+func NewDB(shardId uint32, factory KVFactory, notificationRetentionTime time.Duration, clock common.Clock) (DB, error) {
 	kv, err := factory.NewKV(shardId)
 	if err != nil {
 		return nil, err
@@ -94,7 +94,7 @@ func NewDB(shardId uint32, factory KVFactory) (DB, error) {
 		return nil, err
 	}
 
-	db.notificationsTracker = newNotificationsTracker(shardId, commitIndex, kv)
+	db.notificationsTracker = newNotificationsTracker(shardId, commitIndex, kv, notificationRetentionTime, clock)
 	return db, nil
 }
 
