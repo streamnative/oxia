@@ -13,11 +13,11 @@
 # limitations under the License.
 
 .PHONY: build
-build: proto crd
+build: crd
 	go build -v -o bin/oxia ./cmd
 
 .PHONY: maelstrom
-maelstrom: proto
+maelstrom:
 	go build -v -o bin/oxia-maelstrom ./maelstrom
 
 test: build
@@ -28,8 +28,7 @@ lint:
 	golangci-lint run
 
 clean:
-	rm -f bin/oxia
-	rm -f */*.pb.go
+	rm -f bin/oxia bin/oxia-maelstrom
 	rm -rf pkg/generated/*
 	find . -type f -name '*.deepcopy.go' | xargs rm
 
@@ -42,6 +41,9 @@ docker_multi_arch:
 .PHONY: proto
 proto:
 	protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative proto/*.proto
+
+proto_clean:
+	rm -f */*.pb.go
 
 proto_format:
 	#brew install clang-format
