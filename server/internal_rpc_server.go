@@ -33,7 +33,7 @@ import (
 )
 
 type internalRpcServer struct {
-	proto.UnimplementedOxiaControlServer
+	proto.UnimplementedOxiaCoordinationServer
 	proto.UnimplementedOxiaLogReplicationServer
 
 	shardsDirector       ShardsDirector
@@ -55,7 +55,7 @@ func newInternalRpcServer(grpcProvider container.GrpcProvider, bindAddress strin
 
 	var err error
 	server.grpcServer, err = grpcProvider.StartGrpcServer("internal", bindAddress, func(registrar grpc.ServiceRegistrar) {
-		proto.RegisterOxiaControlServer(registrar, server)
+		proto.RegisterOxiaCoordinationServer(registrar, server)
 		proto.RegisterOxiaLogReplicationServer(registrar, server)
 		grpc_health_v1.RegisterHealthServer(registrar, server.healthServer)
 	})
@@ -71,7 +71,7 @@ func (s *internalRpcServer) Close() error {
 	return s.grpcServer.Close()
 }
 
-func (s *internalRpcServer) ShardAssignment(srv proto.OxiaControl_ShardAssignmentServer) error {
+func (s *internalRpcServer) ShardAssignment(srv proto.OxiaCoordination_ShardAssignmentServer) error {
 	s.log.Info().
 		Str("peer", common.GetPeer(srv.Context())).
 		Msg("Received shard assignment request from coordinator")

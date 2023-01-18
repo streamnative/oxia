@@ -68,14 +68,14 @@ func (m *maelstromGrpcProvider) RegisterService(desc *grpc.ServiceDesc, impl any
 func (m *maelstromGrpcProvider) HandleOxiaRequest(msgType MsgType, msg *Message[OxiaMessage], message pb.Message) {
 	switch msgType {
 	case MsgTypeFenceRequest:
-		if fr, err := m.getService(oxiaControl).(proto.OxiaControlServer).Fence(context.Background(), message.(*proto.FenceRequest)); err != nil {
+		if fr, err := m.getService(oxiaControl).(proto.OxiaCoordinationServer).Fence(context.Background(), message.(*proto.FenceRequest)); err != nil {
 			sendError(msg.Body.MsgId, msg.Src, err)
 		} else {
 			m.sendResponse(msg, MsgTypeFenceResponse, fr)
 		}
 
 	case MsgTypeBecomeLeaderRequest:
-		if blr, err := m.getService(oxiaControl).(proto.OxiaControlServer).BecomeLeader(context.Background(), message.(*proto.BecomeLeaderRequest)); err != nil {
+		if blr, err := m.getService(oxiaControl).(proto.OxiaCoordinationServer).BecomeLeader(context.Background(), message.(*proto.BecomeLeaderRequest)); err != nil {
 			sendError(msg.Body.MsgId, msg.Src, err)
 		} else {
 			m.sendResponse(msg, MsgTypeBecomeLeaderResponse, blr)
@@ -89,7 +89,7 @@ func (m *maelstromGrpcProvider) HandleOxiaRequest(msgType MsgType, msg *Message[
 		}
 
 	case MsgTypeGetStatusRequest:
-		if gsr, err := m.getService(oxiaControl).(proto.OxiaControlServer).GetStatus(context.Background(), message.(*proto.GetStatusRequest)); err != nil {
+		if gsr, err := m.getService(oxiaControl).(proto.OxiaCoordinationServer).GetStatus(context.Background(), message.(*proto.GetStatusRequest)); err != nil {
 			sendError(msg.Body.MsgId, msg.Src, err)
 		} else {
 			m.sendResponse(msg, MsgTypeGetStatusResponse, gsr)
