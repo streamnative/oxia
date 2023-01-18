@@ -60,6 +60,7 @@ jobs:
         with:
           version: v1.50.1
           args: --timeout=10m
+          skip-pkg-cache: true
 
       - name: Test
         run: make test
