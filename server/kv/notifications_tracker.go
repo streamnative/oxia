@@ -127,7 +127,7 @@ func newNotificationsTracker(shard uint32, lastOffset int64, kv KV, notification
 	return nt
 }
 
-func (nt *notificationsTracker) UpdatedCommitIndex(offset int64) {
+func (nt *notificationsTracker) UpdatedCommitOffset(offset int64) {
 	nt.lastOffset.Store(offset)
 	nt.cond.Broadcast()
 }
