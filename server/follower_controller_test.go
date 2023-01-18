@@ -156,6 +156,10 @@ func TestReadingUpToCommitIndex(t *testing.T) {
 
 	assert.EqualValues(t, 1, r2.Offset)
 
+	assert.Eventually(t, func() bool {
+		return fc.CommitIndex() == 0
+	}, 10*time.Second, 10*time.Millisecond)
+
 	dbRes, err := fc.(*followerController).db.ProcessRead(&proto.ReadRequest{Gets: []*proto.GetRequest{{
 		Key:            "a",
 		IncludePayload: true}, {
@@ -226,7 +230,10 @@ func TestFollower_AdvanceCommitIndexToHead(t *testing.T) {
 	r1 := stream.GetResponse()
 
 	assert.EqualValues(t, 0, r1.Offset)
-	assert.EqualValues(t, 0, fc.CommitIndex())
+
+	assert.Eventually(t, func() bool {
+		return fc.CommitIndex() == 0
+	}, 10*time.Second, 10*time.Millisecond)
 
 	assert.NoError(t, fc.Close())
 	assert.NoError(t, kvFactory.Close())
@@ -390,6 +397,10 @@ func TestFollower_CommitIndexLastEntry(t *testing.T) {
 	assert.Equal(t, proto.ServingStatus_Follower, fc.Status())
 
 	assert.EqualValues(t, 0, r1.Offset)
+
+	assert.Eventually(t, func() bool {
+		return fc.CommitIndex() == 0
+	}, 10*time.Second, 10*time.Millisecond)
 
 	dbRes, err := fc.(*followerController).db.ProcessRead(&proto.ReadRequest{Gets: []*proto.GetRequest{{
 		Key:            "a",
