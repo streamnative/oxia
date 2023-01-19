@@ -597,9 +597,9 @@ func TestFollower_HandleSnapshot(t *testing.T) {
 		assert.NoError(t, err)
 		content := chunk.Content()
 		snapshotStream.AddChunk(&proto.SnapshotChunk{
-			Term:    1,
-			Name:    chunk.Name(),
-			Content: content,
+			Term:       1,
+			Name:       chunk.Name(),
+			Content:    content,
 			ChunkIndex: chunk.Index(),
 			ChunkCount: chunk.TotalCount(),
 		})
@@ -710,6 +710,45 @@ func TestFollower_DupEntries(t *testing.T) {
 	assert.EqualValues(t, 0, r4.Offset)
 
 	assert.NoError(t, fc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
+func TestFollowerController_Closed(t *testing.T) {
+	var shard uint32 = 1
+
+	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
+	walFactory := wal.NewInMemoryWalFactory()
+
+	fc, err := NewFollowerController(Config{}, shard, walFactory, kvFactory)
+	assert.NoError(t, err)
+
+	assert.EqualValues(t, wal.InvalidTerm, fc.Term())
+	assert.Equal(t, proto.ServingStatus_NotMember, fc.Status())
+
+	assert.NoError(t, fc.Close())
+
+	res, err := fc.Fence(&proto.FenceRequest{
+		ShardId: shard,
+		Term:    2,
+	})
+
+	assert.Nil(t, res)
+	assert.Equal(t, common.CodeAlreadyClosed, status.Code(err))
+
+	res2, err := fc.Truncate(&proto.TruncateRequest{
+		ShardId: shard,
+		Term:    2,
+		HeadEntryId: &proto.EntryId{
+			Term:   2,
+			Offset: 1,
+		},
+	})
+
+	assert.Nil(t, res2)
+	assert.Equal(t, common.CodeAlreadyClosed, status.Code(err))
+
 	assert.NoError(t, kvFactory.Close())
 	assert.NoError(t, walFactory.Close())
 }
