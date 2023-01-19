@@ -53,7 +53,8 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 Probe
 */}}
 {{- define "oxia-cluster.probe" -}}
-grpc:
-  port: {{ . }}
+exec:
+  command: ["oxia", "health", "--port={{ . }}"]
+initialDelaySeconds: 10
 timeoutSeconds: 10
 {{- end }}
