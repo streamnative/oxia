@@ -86,7 +86,7 @@ type Snapshot interface {
 type SnapshotLoader interface {
 	io.Closer
 
-	AddChunk(string, int32, int32, []byte) error
+	AddChunk(fileName string, chunkIndex int32, chunkCount int32, content []byte) error
 
 	// Complete signals that the snapshot is now complete
 	Complete()

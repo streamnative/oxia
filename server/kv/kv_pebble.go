@@ -560,8 +560,8 @@ func CompareWithSlash(a, b []byte) int {
 type pebbleSnapshot struct {
 	path       string
 	files      []string
-	chunkCount int64
-	chunkIndex int64
+	chunkCount int32
+	chunkIndex int32
 	file       *os.File
 }
 
@@ -665,7 +665,7 @@ func (ps *pebbleSnapshot) NextChunkContent() ([]byte, error) {
 			return nil, err
 		}
 		fileSize := stat.Size()
-		ps.chunkCount = fileSize / MaxSnapshotChunkSize
+		ps.chunkCount = int32(fileSize / MaxSnapshotChunkSize)
 		if fileSize%MaxSnapshotChunkSize != 0 {
 			ps.chunkCount += 1
 		}
