@@ -25,12 +25,11 @@ var ErrorShuttingDown = errors.New("shutting down")
 type Batcher interface {
 	io.Closer
 	Add(request any)
-	run()
+	Run()
 }
 
 type batcherImpl struct {
-	shardId             *uint32
-	batchFactory        func(shardId *uint32) Batch
+	batchFactory        func() Batch
 	callC               chan any
 	closeC              chan bool
 	linger              time.Duration
@@ -46,7 +45,7 @@ func (b *batcherImpl) Add(call any) {
 	b.callC <- call
 }
 
-func (b *batcherImpl) run() {
+func (b *batcherImpl) Run() {
 	var batch Batch
 	var timer *time.Timer = nil
 	var timeout <-chan time.Time = nil
@@ -54,7 +53,7 @@ func (b *batcherImpl) run() {
 		select {
 		case call := <-b.callC:
 			if batch == nil {
-				batch = b.batchFactory(b.shardId)
+				batch = b.batchFactory()
 				if b.linger > 0 {
 					timer = time.NewTimer(b.linger)
 					timeout = timer.C

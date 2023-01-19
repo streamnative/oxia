@@ -67,7 +67,7 @@ func TestBatcher(t *testing.T) {
 		t.Run(item.name, func(t *testing.T) {
 			testBatch := newTestBatch()
 
-			batchFactory := func(shardId *uint32) Batch {
+			batchFactory := func() Batch {
 				return testBatch
 			}
 
@@ -75,9 +75,9 @@ func TestBatcher(t *testing.T) {
 				Linger:              item.linger,
 				MaxRequestsPerBatch: item.maxSize,
 			}
-			batcher := factory.newBatcher(&shardId, batchFactory)
+			batcher := factory.NewBatcher(batchFactory)
 
-			go batcher.run()
+			go batcher.Run()
 
 			batcher.Add(1)
 
@@ -112,7 +112,7 @@ func TestBatcherWithBufferedChannel(t *testing.T) {
 
 		wg := sync.WaitGroup{}
 		wg.Add(count)
-		batchFactory := func(shardId *uint32) Batch {
+		batchFactory := func() Batch {
 			b := newTestBatch()
 			mutex.Lock()
 			defer mutex.Unlock()
@@ -126,9 +126,9 @@ func TestBatcherWithBufferedChannel(t *testing.T) {
 			MaxRequestsPerBatch: 1,
 			BatcherBufferSize:   item.size,
 		}
-		batcher := factory.newBatcher(&shardId, batchFactory)
+		batcher := factory.NewBatcher(batchFactory)
 
-		go batcher.run()
+		go batcher.Run()
 
 		for i := 0; i < 100; i++ {
 			batcher.Add(1)
