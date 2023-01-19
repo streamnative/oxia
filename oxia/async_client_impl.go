@@ -65,14 +65,13 @@ func NewAsyncClient(serviceAddress string, opts ...ClientOption) (AsyncClient, e
 		ShardManager:   shardManager,
 		ServiceAddress: options.serviceAddress,
 	}
-	batcherFactory := &batch.BatcherFactory{
-		Executor:            executor,
-		Linger:              options.batchLinger,
-		MaxRequestsPerBatch: options.maxRequestsPerBatch,
-		BatcherBufferSize:   options.batcherBufferSize,
-		Metrics:             metrics.NewMetrics(options.meterProvider),
-		RequestTimeout:      options.requestTimeout,
-	}
+	batcherFactory := batch.NewBatcherFactory(
+		executor,
+		options.batchLinger,
+		options.maxRequestsPerBatch,
+		options.batcherBufferSize,
+		metrics.NewMetrics(options.meterProvider),
+		options.requestTimeout)
 	c := &clientImpl{
 		options:           options,
 		clientPool:        clientPool,

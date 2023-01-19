@@ -17,6 +17,7 @@ package batch
 import (
 	"errors"
 	"github.com/stretchr/testify/assert"
+	"oxia/common/batch"
 	"testing"
 )
 
@@ -33,13 +34,13 @@ func (b *testBatcher) Close() error {
 
 func (b *testBatcher) Add(any) {}
 
-func (b *testBatcher) run() {}
+func (b *testBatcher) Run() {}
 
 func TestManager(t *testing.T) {
 	testBatcher := &testBatcher{}
 
 	newBatcherInvocations := 0
-	batcherFactory := func(*uint32) Batcher {
+	batcherFactory := func(*uint32) batch.Batcher {
 		newBatcherInvocations++
 		return testBatcher
 	}

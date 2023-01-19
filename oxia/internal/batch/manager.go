@@ -16,13 +16,14 @@ package batch
 
 import (
 	"go.uber.org/multierr"
+	"oxia/common/batch"
 	"sync"
 )
 
-func NewManager(batcherFactory func(*uint32) Batcher) *Manager {
+func NewManager(batcherFactory func(*uint32) batch.Batcher) *Manager {
 	return &Manager{
 		batcherFactory: batcherFactory,
-		batchers:       make(map[uint32]Batcher),
+		batchers:       make(map[uint32]batch.Batcher),
 	}
 }
 
@@ -30,11 +31,11 @@ func NewManager(batcherFactory func(*uint32) Batcher) *Manager {
 
 type Manager struct {
 	sync.Mutex
-	batcherFactory func(*uint32) Batcher
-	batchers       map[uint32]Batcher
+	batcherFactory func(*uint32) batch.Batcher
+	batchers       map[uint32]batch.Batcher
 }
 
-func (m *Manager) Get(shardId uint32) Batcher {
+func (m *Manager) Get(shardId uint32) batch.Batcher {
 	//double-check lock
 	batcher, ok := m.batchers[shardId]
 	if !ok {
