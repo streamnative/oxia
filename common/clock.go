@@ -14,7 +14,10 @@
 
 package common
 
-import "time"
+import (
+	"sync/atomic"
+	"time"
+)
 
 type Clock interface {
 	Now() time.Time
@@ -27,4 +30,18 @@ var SystemClock = &systemClock{}
 
 func (systemClock) Now() time.Time {
 	return time.Now()
+}
+
+///// Mocked clock
+
+type MockedClock struct {
+	currentTime atomic.Int64
+}
+
+func (c *MockedClock) Set(currentTime int64) {
+	c.currentTime.Store(currentTime)
+}
+
+func (c *MockedClock) Now() time.Time {
+	return time.UnixMilli(c.currentTime.Load())
 }

@@ -39,7 +39,7 @@ type Client interface {
 type ShardAssignmentsDispatcher interface {
 	io.Closer
 	Initialized() bool
-	ShardAssignment(stream proto.OxiaControl_ShardAssignmentServer) error
+	ShardAssignment(stream proto.OxiaCoordination_ShardAssignmentServer) error
 	RegisterForUpdates(client Client) error
 }
 
@@ -128,7 +128,7 @@ func (s *shardAssignmentDispatcher) Initialized() bool {
 	return s.assignments != nil
 }
 
-func (s *shardAssignmentDispatcher) ShardAssignment(stream proto.OxiaControl_ShardAssignmentServer) error {
+func (s *shardAssignmentDispatcher) ShardAssignment(stream proto.OxiaCoordination_ShardAssignmentServer) error {
 
 	streamReader := util.ReadStream[proto.ShardAssignmentsResponse](
 		stream,

@@ -265,7 +265,13 @@ func serverStatefulSet(cluster v1alpha1.OxiaCluster) *appsV1.StatefulSet {
 
 func probe() *coreV1.Probe {
 	return &coreV1.Probe{
-		ProbeHandler:        coreV1.ProbeHandler{GRPC: &coreV1.GRPCAction{Port: int32(InternalPort.Port)}},
+		ProbeHandler: coreV1.ProbeHandler{
+			Exec: &coreV1.ExecAction{
+				Command: []string{"oxia", "health", fmt.Sprintf("--port=%d", InternalPort.Port)},
+			},
+			//The GRPC probe can be used instead of Exec once kubernetes <v1.24 is deemed established enough
+			//GRPC: &coreV1.GRPCAction{Port: int32(InternalPort.Port)},
+		},
 		InitialDelaySeconds: 10,
 		TimeoutSeconds:      10,
 	}

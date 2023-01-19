@@ -238,7 +238,7 @@ func (r *mockRpcProvider) getNode(node model.ServerAddress) *mockPerNodeChannels
 	return res
 }
 
-func (r *mockRpcProvider) GetShardAssignmentStream(ctx context.Context, node model.ServerAddress) (proto.OxiaControl_ShardAssignmentClient, error) {
+func (r *mockRpcProvider) GetShardAssignmentStream(ctx context.Context, node model.ServerAddress) (proto.OxiaCoordination_ShardAssignmentClient, error) {
 	r.Lock()
 	defer r.Unlock()
 
