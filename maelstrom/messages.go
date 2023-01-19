@@ -227,7 +227,7 @@ var protoMsgMapping = map[MsgType]pb.Message{
 	MsgTypeGetStatusRequest:     &proto.GetStatusRequest{},
 	MsgTypeGetStatusResponse:    &proto.GetStatusResponse{},
 
-	MsgTypeShardAssignmentsResponse: &proto.ShardAssignmentsResponse{},
+	MsgTypeShardAssignmentsResponse: &proto.ShardAssignments{},
 }
 
 func parseRequest(line string) (msgType MsgType, msg any, protoMsg pb.Message) {

@@ -42,7 +42,7 @@ func newRpcProvider(dispatcher *dispatcher) impl.RpcProvider {
 	}
 }
 
-func (m *maelstromCoordinatorRpcProvider) GetShardAssignmentStream(ctx context.Context, node model.ServerAddress) (proto.OxiaCoordination_ShardAssignmentClient, error) {
+func (m *maelstromCoordinatorRpcProvider) PushShardAssignments(ctx context.Context, node model.ServerAddress) (proto.OxiaCoordination_PushShardAssignmentsClient, error) {
 	return newShardAssignmentClient(ctx, m, node.Internal), nil
 }
 
@@ -98,7 +98,7 @@ type maelstromShardAssignmentClient struct {
 	cancel context.CancelFunc
 }
 
-func newShardAssignmentClient(ctx context.Context, provider *maelstromCoordinatorRpcProvider, node string) proto.OxiaCoordination_ShardAssignmentClient {
+func newShardAssignmentClient(ctx context.Context, provider *maelstromCoordinatorRpcProvider, node string) proto.OxiaCoordination_PushShardAssignmentsClient {
 	sac := &maelstromShardAssignmentClient{
 		provider: provider,
 		node:     node,
@@ -114,7 +114,7 @@ func newShardAssignmentClient(ctx context.Context, provider *maelstromCoordinato
 	return sac
 }
 
-func (m *maelstromShardAssignmentClient) Send(response *proto.ShardAssignmentsResponse) error {
+func (m *maelstromShardAssignmentClient) Send(response *proto.ShardAssignments) error {
 	m.provider.dispatcher.currentLeader = response.Assignments[0].Leader
 	req := &Message[OxiaStreamMessage]{
 		Src:  thisNode,

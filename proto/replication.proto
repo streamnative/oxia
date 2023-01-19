@@ -22,7 +22,7 @@ import "proto/client.proto";
 
 // coordinator -> node
 service OxiaCoordination {
-  rpc ShardAssignment(stream io.streamnative.oxia.proto.ShardAssignmentsResponse) returns (CoordinationShardAssignmentsResponse);
+  rpc PushShardAssignments(stream io.streamnative.oxia.proto.ShardAssignments) returns (CoordinationShardAssignmentsResponse);
 
   rpc Fence(FenceRequest) returns (FenceResponse);
   rpc BecomeLeader(BecomeLeaderRequest) returns (BecomeLeaderResponse);

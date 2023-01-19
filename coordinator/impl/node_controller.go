@@ -231,12 +231,12 @@ func (n *nodeController) sendAssignmentsUpdatesWithRetries() {
 }
 
 func (n *nodeController) sendAssignmentsUpdates(backoff backoff.BackOff) error {
-	stream, err := n.rpc.GetShardAssignmentStream(n.ctx, n.addr)
+	stream, err := n.rpc.PushShardAssignments(n.ctx, n.addr)
 	if err != nil {
 		return err
 	}
 
-	var assignments *proto.ShardAssignmentsResponse
+	var assignments *proto.ShardAssignments
 	for !n.closed.Load() {
 
 		assignments, err = n.shardAssignmentsProvider.WaitForNextUpdate(stream.Context(), assignments)

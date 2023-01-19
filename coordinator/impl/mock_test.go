@@ -37,7 +37,7 @@ func init() {
 type mockShardAssignmentsProvider struct {
 	sync.Mutex
 	cond    common.ConditionContext
-	current *proto.ShardAssignmentsResponse
+	current *proto.ShardAssignments
 }
 
 func newMockShardAssignmentsProvider() *mockShardAssignmentsProvider {
@@ -49,7 +49,7 @@ func newMockShardAssignmentsProvider() *mockShardAssignmentsProvider {
 	return sap
 }
 
-func (sap *mockShardAssignmentsProvider) set(value *proto.ShardAssignmentsResponse) {
+func (sap *mockShardAssignmentsProvider) set(value *proto.ShardAssignments) {
 	sap.Lock()
 	defer sap.Unlock()
 
@@ -57,7 +57,7 @@ func (sap *mockShardAssignmentsProvider) set(value *proto.ShardAssignmentsRespon
 	sap.cond.Broadcast()
 }
 
-func (sap *mockShardAssignmentsProvider) WaitForNextUpdate(ctx context.Context, currentValue *proto.ShardAssignmentsResponse) (*proto.ShardAssignmentsResponse, error) {
+func (sap *mockShardAssignmentsProvider) WaitForNextUpdate(ctx context.Context, currentValue *proto.ShardAssignments) (*proto.ShardAssignments, error) {
 	sap.Lock()
 	defer sap.Unlock()
 
@@ -238,7 +238,7 @@ func (r *mockRpcProvider) getNode(node model.ServerAddress) *mockPerNodeChannels
 	return res
 }
 
-func (r *mockRpcProvider) GetShardAssignmentStream(ctx context.Context, node model.ServerAddress) (proto.OxiaCoordination_ShardAssignmentClient, error) {
+func (r *mockRpcProvider) PushShardAssignments(ctx context.Context, node model.ServerAddress) (proto.OxiaCoordination_PushShardAssignmentsClient, error) {
 	r.Lock()
 	defer r.Unlock()
 
@@ -351,12 +351,12 @@ type mockShardAssignmentClient struct {
 	sync.Mutex
 
 	err     error
-	updates chan *proto.ShardAssignmentsResponse
+	updates chan *proto.ShardAssignments
 }
 
 func newMockShardAssignmentClient() *mockShardAssignmentClient {
 	return &mockShardAssignmentClient{
-		updates: make(chan *proto.ShardAssignmentsResponse, 100),
+		updates: make(chan *proto.ShardAssignments, 100),
 	}
 }
 
@@ -367,7 +367,7 @@ func (m *mockShardAssignmentClient) SetError(err error) {
 	m.err = err
 }
 
-func (m *mockShardAssignmentClient) Send(response *proto.ShardAssignmentsResponse) error {
+func (m *mockShardAssignmentClient) Send(response *proto.ShardAssignments) error {
 	m.Lock()
 	defer m.Unlock()
 

@@ -251,7 +251,7 @@ func (m *mockCoordinator) ClusterStatus() model.ClusterStatus {
 	panic("not implemented")
 }
 
-func (m *mockCoordinator) WaitForNextUpdate(ctx context.Context, currentValue *proto.ShardAssignmentsResponse) (*proto.ShardAssignmentsResponse, error) {
+func (m *mockCoordinator) WaitForNextUpdate(ctx context.Context, currentValue *proto.ShardAssignments) (*proto.ShardAssignments, error) {
 	panic("not implemented")
 }
 

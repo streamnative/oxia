@@ -71,12 +71,12 @@ func (s *internalRpcServer) Close() error {
 	return s.grpcServer.Close()
 }
 
-func (s *internalRpcServer) ShardAssignment(srv proto.OxiaCoordination_ShardAssignmentServer) error {
+func (s *internalRpcServer) PushShardAssignments(srv proto.OxiaCoordination_PushShardAssignmentsServer) error {
 	s.log.Info().
 		Str("peer", common.GetPeer(srv.Context())).
 		Msg("Received shard assignment request from coordinator")
 
-	err := s.assignmentDispatcher.ShardAssignment(srv)
+	err := s.assignmentDispatcher.PushShardAssignments(srv)
 	if err != nil && status.Code(err) != codes.Canceled {
 		s.log.Warn().Err(err).
 			Str("peer", common.GetPeer(srv.Context())).
