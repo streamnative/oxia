@@ -41,10 +41,10 @@ func TestConfigMap(t *testing.T) {
 replicationFactor: 2
 servers:
 - public: oxia-0.oxia.nyns.svc.cluster.local:6648
-  internal: oxia-0.oxia.nyns.svc.cluster.local:6649
+  internal: oxia-0.oxia:6649
 - public: oxia-1.oxia.nyns.svc.cluster.local:6648
-  internal: oxia-1.oxia.nyns.svc.cluster.local:6649
+  internal: oxia-1.oxia:6649
 - public: oxia-2.oxia.nyns.svc.cluster.local:6648
-  internal: oxia-2.oxia.nyns.svc.cluster.local:6649
+  internal: oxia-2.oxia:6649
 `, configMap.Data["config.yaml"])
 }
