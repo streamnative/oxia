@@ -545,9 +545,10 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 		fc.log.Debug().
 			Str("chunk-name", snapChunk.Name).
 			Int("chunk-size", len(snapChunk.Content)).
+			Str("chunk-progress", fmt.Sprintf("%d/%d", snapChunk.ChunkIndex, snapChunk.ChunkCount)).
 			Int64("epoch", fc.epoch).
 			Msg("Applying snapshot chunk")
-		if err = loader.AddChunk(snapChunk.Name, snapChunk.Content); err != nil {
+		if err = loader.AddChunk(snapChunk.Name, snapChunk.ChunkIndex, snapChunk.ChunkCount, snapChunk.Content); err != nil {
 			fc.closeChannel(err)
 			return
 		}

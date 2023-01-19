@@ -29,8 +29,6 @@ import (
 	"oxia/common"
 	"oxia/common/metrics"
 	"path/filepath"
-	"regexp"
-	"strconv"
 	"sync/atomic"
 	"time"
 )
@@ -528,8 +526,10 @@ type pebbleSnapshot struct {
 }
 
 type pebbleSnapshotChunk struct {
-	name    string
-	content []byte
+	name       string
+	index      int32
+	totalCount int32
+	content    []byte
 }
 
 func newPebbleSnapshot(p *Pebble) (Snapshot, error) {
@@ -594,7 +594,9 @@ func (ps *pebbleSnapshot) Chunk() (SnapshotChunk, error) {
 		return nil, err
 	}
 	return &pebbleSnapshotChunk{
-		fmt.Sprintf("%s:%d/%d", ps.files[0], ps.chunkIndex, ps.chunkCount),
+		ps.files[0],
+		int32(ps.chunkIndex),
+		int32(ps.chunkCount),
 		content}, nil
 }
 
@@ -604,6 +606,14 @@ func (psf *pebbleSnapshotChunk) Name() string {
 
 func (psf *pebbleSnapshotChunk) Content() []byte {
 	return psf.content
+}
+
+func (psf *pebbleSnapshotChunk) Index() int32 {
+	return psf.index
+}
+
+func (psf *pebbleSnapshotChunk) TotalCount() int32 {
+	return psf.totalCount
 }
 
 func (ps *pebbleSnapshot) NextChunkContent() ([]byte, error) {
@@ -687,27 +697,13 @@ func (sl *pebbleSnapshotLoader) Close() error {
 	return os.RemoveAll(sl.dbPath)
 }
 
-func (sl *pebbleSnapshotLoader) AddChunk(name string, content []byte) error {
-	r := regexp.MustCompile(`^(.+):(\d+)/(\d+)$`)
-	matches := r.FindStringSubmatch(name)
-	if matches == nil {
-		return errors.Errorf("Malformed chunk name: '%s'", name)
-	}
-	fileName := filepath.Join(sl.dbPath, matches[1])
-	chunkIndex, err := strconv.ParseInt(matches[2], 10, 64)
-	if err != nil {
-		return errors.Errorf("Malformed chunk name: '%s'", name)
-	}
-	chunkCount, err := strconv.ParseInt(matches[3], 10, 64)
-	if err != nil {
-		return errors.Errorf("Malformed chunk name: '%s'", name)
-	}
-
+func (sl *pebbleSnapshotLoader) AddChunk(fileName string, chunkIndex int32, chunkCount int32, content []byte) error {
+	var err error
 	if chunkIndex == 0 {
 		if sl.file != nil {
 			return errors.Errorf("Inconsistent snapshot: previous file not finished")
 		}
-		sl.file, err = os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+		sl.file, err = os.OpenFile(filepath.Join(sl.dbPath, fileName), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 		if err != nil {
 			return err
 		}

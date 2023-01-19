@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 import "github.com/stretchr/testify/assert"
@@ -494,8 +493,7 @@ func TestPebbleSnapshot(t *testing.T) {
 			f, err := s.Chunk()
 			assert.NoError(t, err)
 			content := f.Content()
-			index := strings.Index(f.Name(), ":")
-			fileName := f.Name()[:index]
+			fileName := f.Name()
 			file, err := os.OpenFile(filepath.Join(copiedLocationDbPath, fileName), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
 			assert.NoError(t, err)
 			for len(content) > 0 {
@@ -594,8 +592,7 @@ func TestPebbleSnapshot_Loader(t *testing.T) {
 	for ; snapshot.Valid(); snapshot.Next() {
 		f, err := snapshot.Chunk()
 		assert.NoError(t, err)
-		content := f.Content()
-		assert.NoError(t, loader.AddChunk(f.Name(), content))
+		assert.NoError(t, loader.AddChunk(f.Name(), f.Index(), f.TotalCount(), f.Content()))
 	}
 
 	loader.Complete()

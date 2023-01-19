@@ -265,9 +265,11 @@ func (fc *followerCursor) sendSnapshot() error {
 			Msg("Sending snapshot chunk")
 
 		if err := stream.Send(&proto.SnapshotChunk{
-			Epoch:   fc.epoch,
-			Name:    chunk.Name(),
-			Content: content,
+			Epoch:      fc.epoch,
+			Name:       chunk.Name(),
+			ChunkIndex: chunk.Index(),
+			ChunkCount: chunk.TotalCount(),
+			Content:    content,
 		}); err != nil {
 			return err
 		}

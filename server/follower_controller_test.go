@@ -586,9 +586,11 @@ func TestFollower_HandleSnapshot(t *testing.T) {
 		assert.NoError(t, err)
 		content := chunk.Content()
 		snapshotStream.AddChunk(&proto.SnapshotChunk{
-			Epoch:   1,
-			Name:    chunk.Name(),
-			Content: content,
+			Epoch:      1,
+			Name:       chunk.Name(),
+			ChunkIndex: chunk.Index(),
+			ChunkCount: chunk.TotalCount(),
+			Content:    content,
 		})
 	}
 

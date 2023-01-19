@@ -60,6 +60,8 @@ type KeyValueIterator interface {
 
 type SnapshotChunk interface {
 	Name() string
+	Index() int32
+	TotalCount() int32
 	Content() []byte
 }
 
@@ -76,7 +78,7 @@ type Snapshot interface {
 type SnapshotLoader interface {
 	io.Closer
 
-	AddChunk(name string, content []byte) error
+	AddChunk(string, int32, int32, []byte) error
 
 	// Complete signals that the snapshot is now complete
 	Complete()
