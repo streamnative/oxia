@@ -20,6 +20,6 @@ import (
 )
 
 var InvalidEntryId = &proto.EntryId{
-	Epoch:  wal.InvalidEpoch,
+	Term:   wal.InvalidTerm,
 	Offset: wal.InvalidOffset,
 }

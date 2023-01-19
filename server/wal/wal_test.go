@@ -143,7 +143,7 @@ func Append(t *testing.T) {
 	input := []string{"A", "B", "C"}
 	for i, s := range input {
 		err := w.Append(&proto.LogEntry{
-			Epoch:  1,
+			Term:   1,
 			Offset: int64(i),
 			Value:  []byte(s),
 		})
@@ -174,7 +174,7 @@ func Append(t *testing.T) {
 	ch := assertReaderReadsEventually(t, fr, []string{"B", "C", "D"})
 
 	err = w.Append(&proto.LogEntry{
-		Epoch:  1,
+		Term:   1,
 		Offset: int64(3),
 		Value:  []byte("D"),
 	})
@@ -185,7 +185,7 @@ func Append(t *testing.T) {
 
 	// Append invalid offset
 	err = w.Append(&proto.LogEntry{
-		Epoch:  1,
+		Term:   1,
 		Offset: int64(88),
 		Value:  []byte("E"),
 	})
@@ -204,7 +204,7 @@ func AppendAsync(t *testing.T) {
 	input := []string{"A", "B", "C"}
 	for i, s := range input {
 		err := w.AppendAsync(&proto.LogEntry{
-			Epoch:  1,
+			Term:   1,
 			Offset: int64(i),
 			Value:  []byte(s),
 		})
@@ -247,7 +247,7 @@ func Truncate(t *testing.T) {
 	input := []string{"A", "B", "C", "D", "E"}
 	for i, s := range input {
 		err := w.Append(&proto.LogEntry{
-			Epoch:  1,
+			Term:   1,
 			Offset: int64(i),
 			Value:  []byte(s),
 		})
@@ -278,7 +278,7 @@ func Reopen(t *testing.T) {
 	input := []string{"A", "B", "C", "D", "E"}
 	for i, s := range input {
 		err := w.Append(&proto.LogEntry{
-			Epoch:  1,
+			Term:   1,
 			Offset: int64(i),
 			Value:  []byte(s),
 		})
@@ -311,7 +311,7 @@ func Clear(t *testing.T) {
 
 	for i := 0; i < 100; i++ {
 		assert.NoError(t, w.Append(&proto.LogEntry{
-			Epoch:  1,
+			Term:   1,
 			Offset: int64(i),
 			Value:  []byte(fmt.Sprintf("entry-%d", i)),
 		}))
@@ -327,7 +327,7 @@ func Clear(t *testing.T) {
 
 	for i := 250; i < 300; i++ {
 		assert.NoError(t, w.Append(&proto.LogEntry{
-			Epoch:  1,
+			Term:   1,
 			Offset: int64(i),
 			Value:  []byte(fmt.Sprintf("entry-%d", i)),
 		}))
@@ -380,7 +380,7 @@ func Trim(t *testing.T) {
 
 	for i := 0; i < 100; i++ {
 		assert.NoError(t, w.Append(&proto.LogEntry{
-			Epoch:  1,
+			Term:   1,
 			Offset: int64(i),
 			Value:  []byte(fmt.Sprintf("entry-%d", i)),
 		}))

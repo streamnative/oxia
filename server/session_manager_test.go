@@ -378,11 +378,11 @@ func createSessionManager(t *testing.T) (*sessionManager, *leaderController) {
 	walFactory := wal.NewInMemoryWalFactory()
 	lc, err := NewLeaderController(Config{}, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
-	_, err = lc.Fence(&proto.FenceRequest{ShardId: shard, Epoch: 1})
+	_, err = lc.Fence(&proto.FenceRequest{ShardId: shard, Term: 1})
 	assert.NoError(t, err)
 	_, err = lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
-		Epoch:             1,
+		Term:              1,
 		ReplicationFactor: 1,
 		FollowerMaps:      nil,
 	})

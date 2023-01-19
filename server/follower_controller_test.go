@@ -50,22 +50,22 @@ func TestFollower(t *testing.T) {
 
 	assert.Equal(t, proto.ServingStatus_NotMember, fc.Status())
 
-	fenceRes, err := fc.Fence(&proto.FenceRequest{Epoch: 1})
+	fenceRes, err := fc.Fence(&proto.FenceRequest{Term: 1})
 	assert.NoError(t, err)
 	assert.Equal(t, InvalidEntryId, fenceRes.HeadEntryId)
 
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
-	assert.EqualValues(t, 1, fc.Epoch())
+	assert.EqualValues(t, 1, fc.Term())
 
 	truncateResp, err := fc.Truncate(&proto.TruncateRequest{
-		Epoch: 1,
+		Term: 1,
 		HeadEntryId: &proto.EntryId{
-			Epoch:  1,
+			Term:   1,
 			Offset: 0,
 		},
 	})
 	assert.NoError(t, err)
-	assert.EqualValues(t, 1, truncateResp.HeadEntryId.Epoch)
+	assert.EqualValues(t, 1, truncateResp.HeadEntryId.Term)
 	assert.Equal(t, wal.InvalidOffset, truncateResp.HeadEntryId.Offset)
 
 	assert.Equal(t, proto.ServingStatus_Follower, fc.Status())
@@ -91,7 +91,7 @@ func TestFollower(t *testing.T) {
 	assert.EqualValues(t, 1, response.Offset)
 
 	assert.Equal(t, proto.ServingStatus_Follower, fc.Status())
-	assert.EqualValues(t, 1, fc.Epoch())
+	assert.EqualValues(t, 1, fc.Term())
 
 	// Double-check the values in the DB
 	dbRes, err := fc.(*followerController).db.ProcessRead(&proto.ReadRequest{Gets: []*proto.GetRequest{{
@@ -121,15 +121,15 @@ func TestReadingUpToCommitOffset(t *testing.T) {
 	fc, err := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	_, err = fc.Fence(&proto.FenceRequest{Epoch: 1})
+	_, err = fc.Fence(&proto.FenceRequest{Term: 1})
 	assert.NoError(t, err)
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
-	assert.EqualValues(t, 1, fc.Epoch())
+	assert.EqualValues(t, 1, fc.Term())
 
 	_, err = fc.Truncate(&proto.TruncateRequest{
-		Epoch: 1,
+		Term: 1,
 		HeadEntryId: &proto.EntryId{
-			Epoch:  0,
+			Term:   0,
 			Offset: wal.InvalidOffset,
 		},
 	})
@@ -194,14 +194,14 @@ func TestFollower_RestoreCommitOffset(t *testing.T) {
 	}}}, 9, 0, kv.NoOpCallback)
 	assert.NoError(t, err)
 
-	assert.NoError(t, db.UpdateEpoch(6))
+	assert.NoError(t, db.UpdateTerm(6))
 	assert.NoError(t, db.Close())
 
 	fc, err := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
-	assert.EqualValues(t, 6, fc.Epoch())
+	assert.EqualValues(t, 6, fc.Term())
 	assert.EqualValues(t, 9, fc.CommitOffset())
 
 	assert.NoError(t, fc.Close())
@@ -219,7 +219,7 @@ func TestFollower_AdvanceCommitOffsetToHead(t *testing.T) {
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 
 	fc, _ := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
-	_, _ = fc.Fence(&proto.FenceRequest{Epoch: 1})
+	_, _ = fc.Fence(&proto.FenceRequest{Term: 1})
 
 	stream := newMockServerReplicateStream()
 	go func() { assert.NoError(t, fc.Replicate(stream)) }()
@@ -240,7 +240,7 @@ func TestFollower_AdvanceCommitOffsetToHead(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
-func TestFollower_FenceEpoch(t *testing.T) {
+func TestFollower_FenceTerm(t *testing.T) {
 	var shardId uint32
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
@@ -249,30 +249,30 @@ func TestFollower_FenceEpoch(t *testing.T) {
 	fc, err := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	_, err = fc.Fence(&proto.FenceRequest{Epoch: 1})
+	_, err = fc.Fence(&proto.FenceRequest{Term: 1})
 	assert.NoError(t, err)
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
-	assert.EqualValues(t, 1, fc.Epoch())
+	assert.EqualValues(t, 1, fc.Term())
 
-	// We cannot fence with earlier epoch
-	fr, err := fc.Fence(&proto.FenceRequest{Epoch: 0})
+	// We cannot fence with earlier term
+	fr, err := fc.Fence(&proto.FenceRequest{Term: 0})
 	assert.Nil(t, fr)
-	assert.Equal(t, common.CodeInvalidEpoch, status.Code(err))
+	assert.Equal(t, common.CodeInvalidTerm, status.Code(err))
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
-	assert.EqualValues(t, 1, fc.Epoch())
+	assert.EqualValues(t, 1, fc.Term())
 
-	// A fence with same epoch needs to be accepted
-	fr, err = fc.Fence(&proto.FenceRequest{Epoch: 1})
+	// A fence with same term needs to be accepted
+	fr, err = fc.Fence(&proto.FenceRequest{Term: 1})
 	assert.NotNil(t, fr)
 	assert.NoError(t, err)
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
-	assert.EqualValues(t, 1, fc.Epoch())
+	assert.EqualValues(t, 1, fc.Term())
 
-	// Higher epoch will work
-	_, err = fc.Fence(&proto.FenceRequest{Epoch: 3})
+	// Higher term will work
+	_, err = fc.Fence(&proto.FenceRequest{Term: 3})
 	assert.NoError(t, err)
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
-	assert.EqualValues(t, 3, fc.Epoch())
+	assert.EqualValues(t, 3, fc.Term())
 
 	assert.NoError(t, fc.Close())
 	assert.NoError(t, kvFactory.Close())
@@ -281,7 +281,7 @@ func TestFollower_FenceEpoch(t *testing.T) {
 
 // If a node is restarted, it might get the truncate request
 // when it's in the `NotMember` state. That is ok, provided
-// the request comes in the same epoch that the follower
+// the request comes in the same term that the follower
 // currently has
 func TestFollower_TruncateAfterRestart(t *testing.T) {
 	var shardId uint32
@@ -294,9 +294,9 @@ func TestFollower_TruncateAfterRestart(t *testing.T) {
 
 	// Follower needs to be in "Fenced" state to receive a Truncate request
 	tr, err := fc.Truncate(&proto.TruncateRequest{
-		Epoch: 1,
+		Term: 1,
 		HeadEntryId: &proto.EntryId{
-			Epoch:  0,
+			Term:   0,
 			Offset: 0,
 		},
 	})
@@ -307,7 +307,7 @@ func TestFollower_TruncateAfterRestart(t *testing.T) {
 
 	_, err = fc.Fence(&proto.FenceRequest{
 		ShardId: shardId,
-		Epoch:   2,
+		Term:    2,
 	})
 	assert.NoError(t, err)
 	fc.Close()
@@ -319,15 +319,15 @@ func TestFollower_TruncateAfterRestart(t *testing.T) {
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
 
 	tr, err = fc.Truncate(&proto.TruncateRequest{
-		Epoch: 2,
+		Term: 2,
 		HeadEntryId: &proto.EntryId{
-			Epoch:  -1,
+			Term:   -1,
 			Offset: -1,
 		},
 	})
 
 	assert.NoError(t, err)
-	AssertProtoEqual(t, &proto.EntryId{Epoch: 2, Offset: -1}, tr.HeadEntryId)
+	AssertProtoEqual(t, &proto.EntryId{Term: 2, Offset: -1}, tr.HeadEntryId)
 	assert.Equal(t, proto.ServingStatus_Follower, fc.Status())
 
 	assert.NoError(t, fc.Close())
@@ -335,7 +335,7 @@ func TestFollower_TruncateAfterRestart(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
-func TestFollower_PersistentEpoch(t *testing.T) {
+func TestFollower_PersistentTerm(t *testing.T) {
 	var shardId uint32
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
 		DataDir:   t.TempDir(),
@@ -350,23 +350,23 @@ func TestFollower_PersistentEpoch(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, proto.ServingStatus_NotMember, fc.Status())
-	assert.Equal(t, wal.InvalidEpoch, fc.Epoch())
+	assert.Equal(t, wal.InvalidTerm, fc.Term())
 
-	fenceRes, err := fc.Fence(&proto.FenceRequest{Epoch: 4})
+	fenceRes, err := fc.Fence(&proto.FenceRequest{Term: 4})
 	assert.NoError(t, err)
 	assert.Equal(t, InvalidEntryId, fenceRes.HeadEntryId)
 
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
-	assert.EqualValues(t, 4, fc.Epoch())
+	assert.EqualValues(t, 4, fc.Term())
 
 	assert.NoError(t, fc.Close())
 
-	/// Reopen and verify epoch
+	/// Reopen and verify term
 	fc, err = NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
-	assert.EqualValues(t, 4, fc.Epoch())
+	assert.EqualValues(t, 4, fc.Term())
 
 	assert.NoError(t, kvFactory.Close())
 	assert.NoError(t, walFactory.Close())
@@ -381,10 +381,10 @@ func TestFollower_CommitOffsetLastEntry(t *testing.T) {
 	fc, err := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	_, err = fc.Fence(&proto.FenceRequest{Epoch: 1})
+	_, err = fc.Fence(&proto.FenceRequest{Term: 1})
 	assert.NoError(t, err)
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
-	assert.EqualValues(t, 1, fc.Epoch())
+	assert.EqualValues(t, 1, fc.Term())
 
 	stream := newMockServerReplicateStream()
 	go func() { assert.NoError(t, fc.Replicate(stream)) }()
@@ -421,7 +421,7 @@ func TestFollower_CommitOffsetLastEntry(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
-func TestFollowerController_RejectEntriesWithDifferentEpoch(t *testing.T) {
+func TestFollowerController_RejectEntriesWithDifferentTerm(t *testing.T) {
 	var shardId uint32
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
 		DataDir:   t.TempDir(),
@@ -431,8 +431,8 @@ func TestFollowerController_RejectEntriesWithDifferentEpoch(t *testing.T) {
 
 	db, err := kv.NewDB(shardId, kvFactory, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
-	// Force a new epoch in the DB before opening
-	assert.NoError(t, db.UpdateEpoch(5))
+	// Force a new term in the DB before opening
+	assert.NoError(t, db.UpdateTerm(5))
 	assert.NoError(t, db.Close())
 
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
@@ -441,18 +441,18 @@ func TestFollowerController_RejectEntriesWithDifferentEpoch(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
-	assert.EqualValues(t, 5, fc.Epoch())
+	assert.EqualValues(t, 5, fc.Term())
 
 	stream := newMockServerReplicateStream()
 	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "1", "b": "1"}, wal.InvalidOffset))
 
-	// Follower will reject the entry because it's from an earlier epoch
+	// Follower will reject the entry because it's from an earlier term
 	err = fc.Replicate(stream)
-	assert.Equal(t, common.CodeInvalidEpoch, status.Code(err))
+	assert.Equal(t, common.CodeInvalidTerm, status.Code(err))
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
-	assert.EqualValues(t, 5, fc.Epoch())
+	assert.EqualValues(t, 5, fc.Term())
 
-	// If we send an entry of same epoch, it will be accepted
+	// If we send an entry of same term, it will be accepted
 	stream.AddRequest(createAddRequest(t, 5, 0, map[string]string{"a": "2", "b": "2"}, wal.InvalidOffset))
 
 	go func() { assert.NoError(t, fc.Replicate(stream)) }()
@@ -465,23 +465,23 @@ func TestFollowerController_RejectEntriesWithDifferentEpoch(t *testing.T) {
 	assert.NoError(t, fc.Close())
 	close(stream.requests)
 
-	//// A higher epoch will also be rejected
+	//// A higher term will also be rejected
 	fc, err = NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	stream = newMockServerReplicateStream()
 	stream.AddRequest(createAddRequest(t, 6, 0, map[string]string{"a": "2", "b": "2"}, wal.InvalidOffset))
 	err = fc.Replicate(stream)
-	assert.Equal(t, common.CodeInvalidEpoch, status.Code(err))
+	assert.Equal(t, common.CodeInvalidTerm, status.Code(err))
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
-	assert.EqualValues(t, 5, fc.Epoch())
+	assert.EqualValues(t, 5, fc.Term())
 
 	assert.NoError(t, fc.Close())
 	assert.NoError(t, kvFactory.Close())
 	assert.NoError(t, walFactory.Close())
 }
 
-func TestFollower_RejectTruncateInvalidEpoch(t *testing.T) {
+func TestFollower_RejectTruncateInvalidTerm(t *testing.T) {
 	var shardId uint32
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
@@ -492,38 +492,38 @@ func TestFollower_RejectTruncateInvalidEpoch(t *testing.T) {
 
 	assert.Equal(t, proto.ServingStatus_NotMember, fc.Status())
 
-	fenceRes, err := fc.Fence(&proto.FenceRequest{Epoch: 5})
+	fenceRes, err := fc.Fence(&proto.FenceRequest{Term: 5})
 	assert.NoError(t, err)
 	assert.Equal(t, InvalidEntryId, fenceRes.HeadEntryId)
 
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
-	assert.EqualValues(t, 5, fc.Epoch())
+	assert.EqualValues(t, 5, fc.Term())
 
-	// Lower epoch should be rejected
+	// Lower term should be rejected
 	truncateResp, err := fc.Truncate(&proto.TruncateRequest{
-		Epoch: 4,
+		Term: 4,
 		HeadEntryId: &proto.EntryId{
-			Epoch:  1,
+			Term:   1,
 			Offset: 0,
 		},
 	})
 	assert.Nil(t, truncateResp)
-	assert.Equal(t, common.CodeInvalidEpoch, status.Code(err))
+	assert.Equal(t, common.CodeInvalidTerm, status.Code(err))
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
-	assert.EqualValues(t, 5, fc.Epoch())
+	assert.EqualValues(t, 5, fc.Term())
 
-	// Truncate with higher epoch should also fail
+	// Truncate with higher term should also fail
 	truncateResp, err = fc.Truncate(&proto.TruncateRequest{
-		Epoch: 6,
+		Term: 6,
 		HeadEntryId: &proto.EntryId{
-			Epoch:  1,
+			Term:   1,
 			Offset: 0,
 		},
 	})
 	assert.Nil(t, truncateResp)
-	assert.Equal(t, common.CodeInvalidEpoch, status.Code(err))
+	assert.Equal(t, common.CodeInvalidTerm, status.Code(err))
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
-	assert.EqualValues(t, 5, fc.Epoch())
+	assert.EqualValues(t, 5, fc.Term())
 }
 
 func prepareTestDb(t *testing.T) kv.Snapshot {
@@ -563,10 +563,10 @@ func TestFollower_HandleSnapshot(t *testing.T) {
 	fc, err := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	_, err = fc.Fence(&proto.FenceRequest{Epoch: 1})
+	_, err = fc.Fence(&proto.FenceRequest{Term: 1})
 	assert.NoError(t, err)
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
-	assert.EqualValues(t, 1, fc.Epoch())
+	assert.EqualValues(t, 1, fc.Term())
 
 	stream := newMockServerReplicateStream()
 	go func() { assert.NoError(t, fc.Replicate(stream)) }()
@@ -597,7 +597,7 @@ func TestFollower_HandleSnapshot(t *testing.T) {
 		content, err := chunk.Content()
 		assert.NoError(t, err)
 		snapshotStream.AddChunk(&proto.SnapshotChunk{
-			Epoch:   1,
+			Term:    1,
 			Name:    chunk.Name(),
 			Content: content,
 		})
@@ -650,7 +650,7 @@ func TestFollower_DisconnectLeader(t *testing.T) {
 	walFactory := wal.NewInMemoryWalFactory()
 
 	fc, _ := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
-	_, _ = fc.Fence(&proto.FenceRequest{Epoch: 1})
+	_, _ = fc.Fence(&proto.FenceRequest{Term: 1})
 
 	stream := newMockServerReplicateStream()
 
@@ -662,7 +662,7 @@ func TestFollower_DisconnectLeader(t *testing.T) {
 	assert.ErrorIs(t, fc.Replicate(stream), common.ErrorLeaderAlreadyConnected)
 
 	// When we fence again, the leader should have been cutoff
-	_, err = fc.Fence(&proto.FenceRequest{Epoch: 2})
+	_, err = fc.Fence(&proto.FenceRequest{Term: 2})
 	assert.NoError(t, err)
 
 	assert.Nil(t, fc.(*followerController).closeStreamCh)
@@ -682,7 +682,7 @@ func TestFollower_DupEntries(t *testing.T) {
 	walFactory := wal.NewInMemoryWalFactory()
 
 	fc, _ := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
-	_, _ = fc.Fence(&proto.FenceRequest{Epoch: 1})
+	_, _ = fc.Fence(&proto.FenceRequest{Term: 1})
 
 	stream := newMockServerReplicateStream()
 	go func() { assert.NoError(t, fc.Replicate(stream)) }()
@@ -721,7 +721,7 @@ func closeChanIsNotNil(fc FollowerController) func() bool {
 	}
 }
 
-func createAddRequest(t *testing.T, epoch int64, offset int64,
+func createAddRequest(t *testing.T, term int64, offset int64,
 	kvs map[string]string,
 	commitOffset int64) *proto.Append {
 	br := &proto.WriteRequest{}
@@ -737,13 +737,13 @@ func createAddRequest(t *testing.T, epoch int64, offset int64,
 	assert.NoError(t, err)
 
 	le := &proto.LogEntry{
-		Epoch:  epoch,
+		Term:   term,
 		Offset: offset,
 		Value:  entry,
 	}
 
 	return &proto.Append{
-		Epoch:        epoch,
+		Term:         term,
 		Entry:        le,
 		CommitOffset: commitOffset,
 	}

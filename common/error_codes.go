@@ -21,7 +21,7 @@ import (
 
 const (
 	CodeNotInitialized         codes.Code = 100
-	CodeInvalidEpoch           codes.Code = 101
+	CodeInvalidTerm            codes.Code = 101
 	CodeInvalidStatus          codes.Code = 102
 	CodeCancelled              codes.Code = 103
 	CodeAlreadyClosed          codes.Code = 104
@@ -35,7 +35,7 @@ const (
 var (
 	ErrorNotInitialized         = status.Error(CodeNotInitialized, "oxia: server not initialized yet")
 	ErrorCancelled              = status.Error(CodeCancelled, "oxia: operation was cancelled")
-	ErrorInvalidEpoch           = status.Error(CodeInvalidEpoch, "oxia: invalid epoch")
+	ErrorInvalidTerm            = status.Error(CodeInvalidTerm, "oxia: invalid term")
 	ErrorInvalidStatus          = status.Error(CodeInvalidStatus, "oxia: invalid status")
 	ErrorLeaderAlreadyConnected = status.Error(CodeLeaderAlreadyConnected, "oxia: leader is already connected")
 	ErrorAlreadyClosed          = status.Error(CodeAlreadyClosed, "oxia: node is shutting down")

@@ -436,32 +436,32 @@ func TestDB_ReadCommitOffset(t *testing.T) {
 	assert.NoError(t, factory.Close())
 }
 
-func TestDb_UpdateEpoch(t *testing.T) {
+func TestDb_UpdateTerm(t *testing.T) {
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
 	db, err := NewDB(1, factory, 0, common.SystemClock)
 	assert.NoError(t, err)
 
-	epoch, err := db.ReadEpoch()
+	term, err := db.ReadTerm()
 	assert.NoError(t, err)
-	assert.Equal(t, wal.InvalidOffset, epoch)
+	assert.Equal(t, wal.InvalidOffset, term)
 
-	err = db.UpdateEpoch(1)
+	err = db.UpdateTerm(1)
 	assert.NoError(t, err)
 
-	epoch, err = db.ReadEpoch()
+	term, err = db.ReadTerm()
 	assert.NoError(t, err)
-	assert.EqualValues(t, 1, epoch)
+	assert.EqualValues(t, 1, term)
 
 	assert.NoError(t, db.Close())
 
-	// Reopen and verify the epoch is maintained
+	// Reopen and verify the term is maintained
 	db, err = NewDB(1, factory, 0, common.SystemClock)
 	assert.NoError(t, err)
 
-	epoch, err = db.ReadEpoch()
+	term, err = db.ReadTerm()
 	assert.NoError(t, err)
-	assert.Equal(t, wal.InvalidOffset, epoch)
+	assert.Equal(t, wal.InvalidOffset, term)
 
 	assert.NoError(t, factory.Close())
 }

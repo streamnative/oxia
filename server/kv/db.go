@@ -35,7 +35,7 @@ var ErrorBadVersion = errors.New("oxia: bad version")
 
 const (
 	commitOffsetKey = common.InternalKeyPrefix + "commit-offset"
-	epochKey        = common.InternalKeyPrefix + "epoch"
+	termKey         = common.InternalKeyPrefix + "term"
 )
 
 type UpdateOperationCallback interface {
@@ -52,8 +52,8 @@ type DB interface {
 
 	ReadNextNotifications(ctx context.Context, startOffset int64) ([]*proto.NotificationBatch, error)
 
-	UpdateEpoch(newEpoch int64) error
-	ReadEpoch() (epoch int64, err error)
+	UpdateTerm(newTerm int64) error
+	ReadTerm() (term int64, err error)
 
 	Snapshot() (Snapshot, error)
 }
@@ -258,12 +258,12 @@ func (d *db) ReadCommitOffset() (int64, error) {
 	return commitOffset, nil
 }
 
-func (d *db) UpdateEpoch(newEpoch int64) error {
+func (d *db) UpdateTerm(newTerm int64) error {
 	batch := d.kv.NewWriteBatch()
 
 	if _, err := d.applyPut(batch, nil, &proto.PutRequest{
-		Key:     epochKey,
-		Payload: []byte(fmt.Sprintf("%d", newEpoch)),
+		Key:     termKey,
+		Payload: []byte(fmt.Sprintf("%d", newTerm)),
 	}, now(), NoOpCallback); err != nil {
 		return err
 	}
@@ -276,28 +276,28 @@ func (d *db) UpdateEpoch(newEpoch int64) error {
 		return err
 	}
 
-	// Since the epoch change is not stored in the WAL, we must force
-	// the database to flush, in order to ensure the epoch change is durable
+	// Since the term change is not stored in the WAL, we must force
+	// the database to flush, in order to ensure the term change is durable
 	return d.kv.Flush()
 }
 
-func (d *db) ReadEpoch() (epoch int64, err error) {
+func (d *db) ReadTerm() (term int64, err error) {
 	getReq := &proto.GetRequest{
-		Key:            epochKey,
+		Key:            termKey,
 		IncludePayload: true,
 	}
 	gr, err := applyGet(d.kv, getReq)
 	if err != nil {
-		return wal.InvalidEpoch, err
+		return wal.InvalidTerm, err
 	}
 	if gr.Status == proto.Status_KEY_NOT_FOUND {
-		return wal.InvalidEpoch, nil
+		return wal.InvalidTerm, nil
 	}
 
-	if _, err = fmt.Sscanf(string(gr.Payload), "%d", &epoch); err != nil {
-		return wal.InvalidEpoch, err
+	if _, err = fmt.Sscanf(string(gr.Payload), "%d", &term); err != nil {
+		return wal.InvalidTerm, err
 	}
-	return epoch, nil
+	return term, nil
 }
 
 func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *proto.PutRequest, timestamp uint64, updateOperationCallback UpdateOperationCallback) (*proto.PutResponse, error) {

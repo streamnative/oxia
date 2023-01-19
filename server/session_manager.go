@@ -91,7 +91,7 @@ func NewSessionManager(shardId uint32, controller *leaderController) SessionMana
 		log: log.With().
 			Str("component", "session-manager").
 			Uint32("shard", shardId).
-			Int64("epoch", controller.epoch).
+			Int64("term", controller.term).
 			Logger(),
 
 		createdSessions: metrics.NewCounter("oxia_server_sessions_created",
