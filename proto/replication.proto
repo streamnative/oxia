@@ -57,6 +57,8 @@ message SnapshotChunk {
   int64 term = 1;
   string name = 2;
   bytes content = 3;
+  int32 chunk_index = 4;
+  int32 chunk_count = 5;
 }
 
 message FenceRequest {

@@ -20,7 +20,9 @@ import (
 )
 
 var (
-	ErrorKeyNotFound = errors.New("oxia: key not found")
+	ErrorKeyNotFound           = errors.New("oxia: key not found")
+	MaxSnapshotChunkSize int64 = 1024 * 1024 // bytes
+
 )
 
 type WriteBatch interface {
@@ -66,7 +68,9 @@ type KeyValueIterator interface {
 
 type SnapshotChunk interface {
 	Name() string
-	Content() ([]byte, error)
+	Index() int32
+	TotalCount() int32
+	Content() []byte
 }
 
 type Snapshot interface {
@@ -75,14 +79,14 @@ type Snapshot interface {
 	BasePath() string
 
 	Valid() bool
-	Chunk() SnapshotChunk
+	Chunk() (SnapshotChunk, error)
 	Next() bool
 }
 
 type SnapshotLoader interface {
 	io.Closer
 
-	AddChunk(name string, content []byte) error
+	AddChunk(fileName string, chunkIndex int32, chunkCount int32, content []byte) error
 
 	// Complete signals that the snapshot is now complete
 	Complete()
