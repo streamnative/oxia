@@ -348,6 +348,15 @@ func (p *Pebble) KeyRangeScan(lowerBound, upperBound string) KeyIterator {
 	return &PebbleIterator{p, pbit}
 }
 
+func (p *Pebble) KeyRangeScanReverse(lowerBound, upperBound string) ReverseKeyIterator {
+	pbit := p.db.NewIter(&pebble.IterOptions{
+		LowerBound: []byte(lowerBound),
+		UpperBound: []byte(upperBound),
+	})
+	pbit.Last()
+	return &PebbleReverseIterator{p, pbit}
+}
+
 func (p *Pebble) RangeScan(lowerBound, upperBound string) KeyValueIterator {
 	pbit := p.db.NewIter(&pebble.IterOptions{
 		LowerBound: []byte(lowerBound),
@@ -459,6 +468,37 @@ func (p *PebbleIterator) Next() bool {
 }
 
 func (p *PebbleIterator) Value() ([]byte, error) {
+	res, err := p.pi.ValueAndErr()
+	if err != nil {
+		p.p.readErrors.Inc()
+	}
+	return res, err
+}
+
+/// Iterator wrapper methods
+
+type PebbleReverseIterator struct {
+	p  *Pebble
+	pi *pebble.Iterator
+}
+
+func (p *PebbleReverseIterator) Close() error {
+	return p.pi.Close()
+}
+
+func (p *PebbleReverseIterator) Valid() bool {
+	return p.pi.Valid()
+}
+
+func (p *PebbleReverseIterator) Key() string {
+	return string(p.pi.Key())
+}
+
+func (p *PebbleReverseIterator) Prev() bool {
+	return p.pi.Prev()
+}
+
+func (p *PebbleReverseIterator) Value() ([]byte, error) {
 	res, err := p.pi.ValueAndErr()
 	if err != nil {
 		p.p.readErrors.Inc()

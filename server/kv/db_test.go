@@ -17,6 +17,7 @@ package kv
 import (
 	"github.com/stretchr/testify/assert"
 	pb "google.golang.org/protobuf/proto"
+	"oxia/common"
 	"oxia/proto"
 	"oxia/server/wal"
 	"testing"
@@ -25,7 +26,7 @@ import (
 func TestDBSimple(t *testing.T) {
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := NewDB(1, factory)
+	db, err := NewDB(1, factory, 0, common.SystemClock)
 	assert.NoError(t, err)
 
 	req := &proto.WriteRequest{
@@ -162,7 +163,7 @@ func TestDBSimple(t *testing.T) {
 func TestDBSameKeyMutations(t *testing.T) {
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := NewDB(1, factory)
+	db, err := NewDB(1, factory, 0, common.SystemClock)
 	assert.NoError(t, err)
 
 	writeReq := &proto.WriteRequest{
@@ -273,7 +274,7 @@ func TestDBSameKeyMutations(t *testing.T) {
 func TestDBList(t *testing.T) {
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := NewDB(1, factory)
+	db, err := NewDB(1, factory, 0, common.SystemClock)
 	assert.NoError(t, err)
 
 	writeReq := &proto.WriteRequest{
@@ -342,7 +343,7 @@ func TestDBList(t *testing.T) {
 func TestDBDeleteRange(t *testing.T) {
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := NewDB(1, factory)
+	db, err := NewDB(1, factory, 0, common.SystemClock)
 	assert.NoError(t, err)
 
 	writeReq := &proto.WriteRequest{
@@ -406,17 +407,17 @@ func TestDBDeleteRange(t *testing.T) {
 	assert.NoError(t, factory.Close())
 }
 
-func TestDB_ReadCommitIndex(t *testing.T) {
+func TestDB_ReadCommitOffset(t *testing.T) {
 	offset := int64(13)
 
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := NewDB(1, factory)
+	db, err := NewDB(1, factory, 0, common.SystemClock)
 	assert.NoError(t, err)
 
-	commitIndex, err := db.ReadCommitIndex()
+	commitOffset, err := db.ReadCommitOffset()
 	assert.NoError(t, err)
-	assert.Equal(t, wal.InvalidOffset, commitIndex)
+	assert.Equal(t, wal.InvalidOffset, commitOffset)
 
 	writeReq := &proto.WriteRequest{
 		Puts: []*proto.PutRequest{{
@@ -427,9 +428,9 @@ func TestDB_ReadCommitIndex(t *testing.T) {
 	_, err = db.ProcessWrite(writeReq, offset, 0, NoOpCallback)
 	assert.NoError(t, err)
 
-	commitIndex, err = db.ReadCommitIndex()
+	commitOffset, err = db.ReadCommitOffset()
 	assert.NoError(t, err)
-	assert.Equal(t, offset, commitIndex)
+	assert.Equal(t, offset, commitOffset)
 
 	assert.NoError(t, db.Close())
 	assert.NoError(t, factory.Close())
@@ -438,7 +439,7 @@ func TestDB_ReadCommitIndex(t *testing.T) {
 func TestDb_UpdateEpoch(t *testing.T) {
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := NewDB(1, factory)
+	db, err := NewDB(1, factory, 0, common.SystemClock)
 	assert.NoError(t, err)
 
 	epoch, err := db.ReadEpoch()
@@ -455,7 +456,7 @@ func TestDb_UpdateEpoch(t *testing.T) {
 	assert.NoError(t, db.Close())
 
 	// Reopen and verify the epoch is maintained
-	db, err = NewDB(1, factory)
+	db, err = NewDB(1, factory, 0, common.SystemClock)
 	assert.NoError(t, err)
 
 	epoch, err = db.ReadEpoch()

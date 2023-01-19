@@ -15,6 +15,7 @@
 package oxia
 
 import (
+	"context"
 	"errors"
 	"io"
 )
@@ -31,8 +32,8 @@ var (
 type AsyncClient interface {
 	io.Closer
 
-	Put(key string, payload []byte, expectedVersion *int64) <-chan PutResult
-	Delete(key string, expectedVersion *int64) <-chan error
+	Put(key string, payload []byte, options ...PutOption) <-chan PutResult
+	Delete(key string, options ...DeleteOption) <-chan error
 	DeleteRange(minKeyInclusive string, maxKeyExclusive string) <-chan error
 	Get(key string) <-chan GetResult
 	List(minKeyInclusive string, maxKeyExclusive string) <-chan ListResult
@@ -43,11 +44,11 @@ type AsyncClient interface {
 type SyncClient interface {
 	io.Closer
 
-	Put(key string, payload []byte, expectedVersion *int64) (Stat, error)
-	Delete(key string, expectedVersion *int64) error
-	DeleteRange(minKeyInclusive string, maxKeyExclusive string) error
-	Get(key string) ([]byte, Stat, error)
-	List(minKeyInclusive string, maxKeyExclusive string) ([]string, error)
+	Put(ctx context.Context, key string, payload []byte, options ...PutOption) (Stat, error)
+	Delete(ctx context.Context, key string, options ...DeleteOption) error
+	DeleteRange(ctx context.Context, minKeyInclusive string, maxKeyExclusive string) error
+	Get(ctx context.Context, key string) ([]byte, Stat, error)
+	List(ctx context.Context, minKeyInclusive string, maxKeyExclusive string) ([]string, error)
 
 	GetNotifications() (Notifications, error)
 }

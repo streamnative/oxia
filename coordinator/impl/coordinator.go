@@ -31,7 +31,7 @@ import (
 )
 
 type ShardAssignmentsProvider interface {
-	WaitForNextUpdate(ctx context.Context, currentValue *proto.ShardAssignmentsResponse) (*proto.ShardAssignmentsResponse, error)
+	WaitForNextUpdate(ctx context.Context, currentValue *proto.ShardAssignments) (*proto.ShardAssignments, error)
 }
 
 type NodeAvailabilityListener interface {
@@ -61,7 +61,7 @@ type coordinator struct {
 	shardControllers map[uint32]ShardController
 	nodeControllers  map[string]NodeController
 	clusterStatus    *model.ClusterStatus
-	assignments      *proto.ShardAssignmentsResponse
+	assignments      *proto.ShardAssignments
 	metadataVersion  Version
 	rpc              RpcProvider
 	log              zerolog.Logger
@@ -225,7 +225,7 @@ func (c *coordinator) NodeBecameUnavailable(node model.ServerAddress) {
 	}
 }
 
-func (c *coordinator) WaitForNextUpdate(ctx context.Context, currentValue *proto.ShardAssignmentsResponse) (*proto.ShardAssignmentsResponse, error) {
+func (c *coordinator) WaitForNextUpdate(ctx context.Context, currentValue *proto.ShardAssignments) (*proto.ShardAssignments, error) {
 	c.Lock()
 	defer c.Unlock()
 
@@ -276,7 +276,7 @@ func (c *coordinator) ElectedLeader(shard uint32, metadata model.ShardMetadata) 
 
 // This is called while already holding the lock on the coordinator
 func (c *coordinator) computeNewAssignments() {
-	c.assignments = &proto.ShardAssignmentsResponse{
+	c.assignments = &proto.ShardAssignments{
 		Assignments:    make([]*proto.ShardAssignment, 0),
 		ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
 	}

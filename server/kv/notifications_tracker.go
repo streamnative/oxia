@@ -28,6 +28,7 @@ import (
 	"oxia/proto"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 const (
@@ -36,7 +37,10 @@ const (
 )
 
 var (
-	lastNotificationKey = notificationKey(math.MaxInt64)
+	firstNotificationKey = notificationKey(0)
+	lastNotificationKey  = notificationKey(math.MaxInt64)
+
+	notificationsPrefixScanFormat = fmt.Sprintf("%s/%%016x", notificationsPrefix)
 )
 
 type notifications struct {
@@ -75,6 +79,13 @@ func notificationKey(offset int64) string {
 	return fmt.Sprintf("%s/%016x", notificationsPrefix, offset)
 }
 
+func parseNotificationKey(key string) (offset int64, err error) {
+	if _, err = fmt.Sscanf(key, notificationsPrefixScanFormat, &offset); err != nil {
+		return offset, err
+	}
+	return offset, nil
+}
+
 type notificationsTracker struct {
 	sync.Mutex
 	cond       common.ConditionContext
@@ -84,15 +95,20 @@ type notificationsTracker struct {
 	kv         KV
 	log        zerolog.Logger
 
+	ctx       context.Context
+	cancel    context.CancelFunc
+	waitClose common.WaitGroup
+
 	readCounter      metrics.Counter
 	readBatchCounter metrics.Counter
 	readBytesCounter metrics.Counter
 }
 
-func newNotificationsTracker(shard uint32, lastOffset int64, kv KV) *notificationsTracker {
+func newNotificationsTracker(shard uint32, lastOffset int64, kv KV, notificationRetentionTime time.Duration, clock common.Clock) *notificationsTracker {
 	nt := &notificationsTracker{
-		shard: shard,
-		kv:    kv,
+		shard:     shard,
+		kv:        kv,
+		waitClose: common.NewWaitGroup(1),
 		log: log.Logger.With().
 			Str("component", "notifications-tracker").
 			Uint32("shard", shard).
@@ -106,10 +122,12 @@ func newNotificationsTracker(shard uint32, lastOffset int64, kv KV) *notificatio
 	}
 	nt.lastOffset.Store(lastOffset)
 	nt.cond = common.NewConditionContext(nt)
+	nt.ctx, nt.cancel = context.WithCancel(context.Background())
+	newNotificationsTrimmer(nt.ctx, shard, kv, notificationRetentionTime, nt.waitClose, clock)
 	return nt
 }
 
-func (nt *notificationsTracker) UpdatedCommitIndex(offset int64) {
+func (nt *notificationsTracker) UpdatedCommitOffset(offset int64) {
 	nt.lastOffset.Store(offset)
 	nt.cond.Broadcast()
 }
@@ -171,7 +189,8 @@ func (nt *notificationsTracker) ReadNextNotifications(ctx context.Context, start
 }
 
 func (nt *notificationsTracker) Close() error {
+	nt.cancel()
 	nt.closed.Store(true)
 	nt.cond.Broadcast()
-	return nil
+	return nt.waitClose.Wait(context.Background())
 }

@@ -37,7 +37,7 @@ func init() {
 type mockShardAssignmentsProvider struct {
 	sync.Mutex
 	cond    common.ConditionContext
-	current *proto.ShardAssignmentsResponse
+	current *proto.ShardAssignments
 }
 
 func newMockShardAssignmentsProvider() *mockShardAssignmentsProvider {
@@ -49,7 +49,7 @@ func newMockShardAssignmentsProvider() *mockShardAssignmentsProvider {
 	return sap
 }
 
-func (sap *mockShardAssignmentsProvider) set(value *proto.ShardAssignmentsResponse) {
+func (sap *mockShardAssignmentsProvider) set(value *proto.ShardAssignments) {
 	sap.Lock()
 	defer sap.Unlock()
 
@@ -57,7 +57,7 @@ func (sap *mockShardAssignmentsProvider) set(value *proto.ShardAssignmentsRespon
 	sap.cond.Broadcast()
 }
 
-func (sap *mockShardAssignmentsProvider) WaitForNextUpdate(ctx context.Context, currentValue *proto.ShardAssignmentsResponse) (*proto.ShardAssignmentsResponse, error) {
+func (sap *mockShardAssignmentsProvider) WaitForNextUpdate(ctx context.Context, currentValue *proto.ShardAssignments) (*proto.ShardAssignments, error) {
 	sap.Lock()
 	defer sap.Unlock()
 
@@ -145,7 +145,7 @@ func (m *mockPerNodeChannels) FenceResponse(epoch int64, offset int64, err error
 		*proto.FenceResponse
 		error
 	}{&proto.FenceResponse{
-		HeadIndex: &proto.EntryId{
+		HeadEntryId: &proto.EntryId{
 			Epoch:  epoch,
 			Offset: offset,
 		},
@@ -238,7 +238,7 @@ func (r *mockRpcProvider) getNode(node model.ServerAddress) *mockPerNodeChannels
 	return res
 }
 
-func (r *mockRpcProvider) GetShardAssignmentStream(ctx context.Context, node model.ServerAddress) (proto.OxiaControl_ShardAssignmentClient, error) {
+func (r *mockRpcProvider) PushShardAssignments(ctx context.Context, node model.ServerAddress) (proto.OxiaCoordination_PushShardAssignmentsClient, error) {
 	r.Lock()
 	defer r.Unlock()
 
@@ -351,12 +351,12 @@ type mockShardAssignmentClient struct {
 	sync.Mutex
 
 	err     error
-	updates chan *proto.ShardAssignmentsResponse
+	updates chan *proto.ShardAssignments
 }
 
 func newMockShardAssignmentClient() *mockShardAssignmentClient {
 	return &mockShardAssignmentClient{
-		updates: make(chan *proto.ShardAssignmentsResponse, 100),
+		updates: make(chan *proto.ShardAssignments, 100),
 	}
 }
 
@@ -367,7 +367,7 @@ func (m *mockShardAssignmentClient) SetError(err error) {
 	m.err = err
 }
 
-func (m *mockShardAssignmentClient) Send(response *proto.ShardAssignmentsResponse) error {
+func (m *mockShardAssignmentClient) Send(response *proto.ShardAssignments) error {
 	m.Lock()
 	defer m.Unlock()
 
@@ -433,12 +433,7 @@ func (m *mockHealthClient) SetStatus(status grpc_health_v1.HealthCheckResponse_S
 	m.status = status
 	m.err = nil
 	for _, w := range m.watches {
-		w.responses <- struct {
-			*grpc_health_v1.HealthCheckResponse
-			error
-		}{&grpc_health_v1.HealthCheckResponse{
-			Status: status,
-		}, nil}
+		m.sendWatchResponse(w)
 	}
 }
 
@@ -448,12 +443,7 @@ func (m *mockHealthClient) SetError(err error) {
 
 	m.err = err
 	for _, w := range m.watches {
-		w.responses <- struct {
-			*grpc_health_v1.HealthCheckResponse
-			error
-		}{&grpc_health_v1.HealthCheckResponse{
-			Status: m.status,
-		}, m.err}
+		m.sendWatchResponse(w)
 	}
 }
 
@@ -471,8 +461,18 @@ func (m *mockHealthClient) Watch(ctx context.Context, in *grpc_health_v1.HealthC
 	defer m.Unlock()
 
 	w := newMockHealthWatchClient(ctx)
+	m.sendWatchResponse(w)
 	m.watches = append(m.watches, w)
 	return w, nil
+}
+
+func (m *mockHealthClient) sendWatchResponse(w *mockHealthWatchClient) {
+	w.responses <- struct {
+		*grpc_health_v1.HealthCheckResponse
+		error
+	}{&grpc_health_v1.HealthCheckResponse{
+		Status: m.status,
+	}, m.err}
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

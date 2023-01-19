@@ -37,12 +37,12 @@ func TestShardAssignmentDispatcher_Initialized(t *testing.T) {
 	dispatcher := NewShardAssignmentDispatcher()
 	coordinatorStream := newMockShardAssignmentControllerStream()
 	go func() {
-		err := dispatcher.ShardAssignment(coordinatorStream)
+		err := dispatcher.PushShardAssignments(coordinatorStream)
 		assert.NoError(t, err)
 	}()
 
 	assert.False(t, dispatcher.Initialized())
-	coordinatorStream.AddRequest(&proto.ShardAssignmentsResponse{
+	coordinatorStream.AddRequest(&proto.ShardAssignments{
 		Assignments: []*proto.ShardAssignment{
 			newShardAssignment(0, "server1", 0, 100),
 			newShardAssignment(1, "server2", 100, math.MaxUint32),
@@ -79,11 +79,11 @@ func TestShardAssignmentDispatcher_AddClient(t *testing.T) {
 
 	coordinatorStream := newMockShardAssignmentControllerStream()
 	go func() {
-		err := dispatcher.ShardAssignment(coordinatorStream)
+		err := dispatcher.PushShardAssignments(coordinatorStream)
 		assert.NoError(t, err)
 	}()
 
-	request := &proto.ShardAssignmentsResponse{
+	request := &proto.ShardAssignments{
 		Assignments: []*proto.ShardAssignment{
 			shard0InitialAssignment,
 			shard1InitialAssignment,
@@ -110,7 +110,7 @@ func TestShardAssignmentDispatcher_AddClient(t *testing.T) {
 	response := mockClient.GetResponse()
 	assert.Equal(t, request, response)
 
-	request = &proto.ShardAssignmentsResponse{
+	request = &proto.ShardAssignments{
 		Assignments: []*proto.ShardAssignment{
 			shard0InitialAssignment,
 			shard1UpdatedAssignment,

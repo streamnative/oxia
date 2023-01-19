@@ -31,7 +31,7 @@ import (
 )
 
 type Client interface {
-	Send(*proto.ShardAssignmentsResponse) error
+	Send(*proto.ShardAssignments) error
 
 	Context() context.Context
 }
@@ -39,14 +39,14 @@ type Client interface {
 type ShardAssignmentsDispatcher interface {
 	io.Closer
 	Initialized() bool
-	ShardAssignment(stream proto.OxiaControl_ShardAssignmentServer) error
+	PushShardAssignments(stream proto.OxiaCoordination_PushShardAssignmentsServer) error
 	RegisterForUpdates(client Client) error
 }
 
 type shardAssignmentDispatcher struct {
 	sync.Mutex
-	assignments  *proto.ShardAssignmentsResponse
-	clients      map[int64]chan *proto.ShardAssignmentsResponse
+	assignments  *proto.ShardAssignments
+	clients      map[int64]chan *proto.ShardAssignments
 	nextClientId int64
 
 	ctx    context.Context
@@ -65,7 +65,7 @@ func (s *shardAssignmentDispatcher) RegisterForUpdates(clientStream Client) erro
 		return common.ErrorNotInitialized
 	}
 
-	clientCh := make(chan *proto.ShardAssignmentsResponse)
+	clientCh := make(chan *proto.ShardAssignments)
 	clientId := s.nextClientId
 	s.nextClientId++
 
@@ -128,9 +128,9 @@ func (s *shardAssignmentDispatcher) Initialized() bool {
 	return s.assignments != nil
 }
 
-func (s *shardAssignmentDispatcher) ShardAssignment(stream proto.OxiaControl_ShardAssignmentServer) error {
+func (s *shardAssignmentDispatcher) PushShardAssignments(stream proto.OxiaCoordination_PushShardAssignmentsServer) error {
 
-	streamReader := util.ReadStream[proto.ShardAssignmentsResponse](
+	streamReader := util.ReadStream[proto.ShardAssignments](
 		stream,
 		s.updateShardAssignment,
 		map[string]string{
@@ -142,7 +142,7 @@ func (s *shardAssignmentDispatcher) ShardAssignment(stream proto.OxiaControl_Sha
 	return streamReader.Run()
 }
 
-func (s *shardAssignmentDispatcher) updateShardAssignment(assignments *proto.ShardAssignmentsResponse) error {
+func (s *shardAssignmentDispatcher) updateShardAssignment(assignments *proto.ShardAssignments) error {
 	s.Lock()
 	defer s.Unlock()
 
@@ -167,7 +167,7 @@ func (s *shardAssignmentDispatcher) updateShardAssignment(assignments *proto.Sha
 func NewShardAssignmentDispatcher() ShardAssignmentsDispatcher {
 	s := &shardAssignmentDispatcher{
 		assignments: nil,
-		clients:     make(map[int64]chan *proto.ShardAssignmentsResponse),
+		clients:     make(map[int64]chan *proto.ShardAssignments),
 		log: log.With().
 			Str("component", "shard-assignment-dispatcher").
 			Logger(),
@@ -189,7 +189,7 @@ func NewShardAssignmentDispatcher() ShardAssignmentsDispatcher {
 
 func NewStandaloneShardAssignmentDispatcher(address string, numShards uint32) ShardAssignmentsDispatcher {
 	assignmentDispatcher := NewShardAssignmentDispatcher().(*shardAssignmentDispatcher)
-	res := &proto.ShardAssignmentsResponse{
+	res := &proto.ShardAssignments{
 		ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
 		Assignments:    generateShards(address, numShards),
 	}

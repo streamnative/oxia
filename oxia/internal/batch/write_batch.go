@@ -19,6 +19,7 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/rs/zerolog/log"
 	"oxia/common"
+	"oxia/common/batch"
 	"oxia/oxia/internal/metrics"
 	"oxia/oxia/internal/model"
 	"oxia/proto"
@@ -31,7 +32,7 @@ type writeBatchFactory struct {
 	requestTimeout time.Duration
 }
 
-func (b writeBatchFactory) newBatch(shardId *uint32) Batch {
+func (b writeBatchFactory) newBatch(shardId *uint32) batch.Batch {
 	return &writeBatch{
 		shardId:        shardId,
 		execute:        b.execute,

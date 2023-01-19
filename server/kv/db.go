@@ -34,8 +34,8 @@ import (
 var ErrorBadVersion = errors.New("oxia: bad version")
 
 const (
-	commitIndexKey = common.InternalKeyPrefix + "commitIndex"
-	epochKey       = common.InternalKeyPrefix + "epoch"
+	commitOffsetKey = common.InternalKeyPrefix + "commit-offset"
+	epochKey        = common.InternalKeyPrefix + "epoch"
 )
 
 type UpdateOperationCallback interface {
@@ -46,9 +46,9 @@ type UpdateOperationCallback interface {
 type DB interface {
 	io.Closer
 
-	ProcessWrite(b *proto.WriteRequest, commitIndex int64, timestamp uint64, updateOperationCallback UpdateOperationCallback) (*proto.WriteResponse, error)
+	ProcessWrite(b *proto.WriteRequest, commitOffset int64, timestamp uint64, updateOperationCallback UpdateOperationCallback) (*proto.WriteResponse, error)
 	ProcessRead(b *proto.ReadRequest) (*proto.ReadResponse, error)
-	ReadCommitIndex() (int64, error)
+	ReadCommitOffset() (int64, error)
 
 	ReadNextNotifications(ctx context.Context, startOffset int64) ([]*proto.NotificationBatch, error)
 
@@ -58,7 +58,7 @@ type DB interface {
 	Snapshot() (Snapshot, error)
 }
 
-func NewDB(shardId uint32, factory KVFactory) (DB, error) {
+func NewDB(shardId uint32, factory KVFactory, notificationRetentionTime time.Duration, clock common.Clock) (DB, error) {
 	kv, err := factory.NewKV(shardId)
 	if err != nil {
 		return nil, err
@@ -89,12 +89,12 @@ func NewDB(shardId uint32, factory KVFactory) (DB, error) {
 			"The total number of list operations", "count", labels),
 	}
 
-	commitIndex, err := db.ReadCommitIndex()
+	commitOffset, err := db.ReadCommitOffset()
 	if err != nil {
 		return nil, err
 	}
 
-	db.notificationsTracker = newNotificationsTracker(shardId, commitIndex, kv)
+	db.notificationsTracker = newNotificationsTracker(shardId, commitOffset, kv, notificationRetentionTime, clock)
 	return db, nil
 }
 
@@ -129,14 +129,14 @@ func now() uint64 {
 	return uint64(time.Now().UnixMilli())
 }
 
-func (d *db) ProcessWrite(b *proto.WriteRequest, commitIndex int64, timestamp uint64, updateOperationCallback UpdateOperationCallback) (*proto.WriteResponse, error) {
+func (d *db) ProcessWrite(b *proto.WriteRequest, commitOffset int64, timestamp uint64, updateOperationCallback UpdateOperationCallback) (*proto.WriteResponse, error) {
 	timer := d.batchWriteLatencyHisto.Timer()
 	defer timer.Done()
 
 	res := &proto.WriteResponse{}
 
 	batch := d.kv.NewWriteBatch()
-	notifications := newNotifications(d.shardId, commitIndex, timestamp)
+	notifications := newNotifications(d.shardId, commitOffset, timestamp)
 
 	d.putCounter.Add(len(b.Puts))
 	for _, putReq := range b.Puts {
@@ -164,7 +164,7 @@ func (d *db) ProcessWrite(b *proto.WriteRequest, commitIndex int64, timestamp ui
 			res.DeleteRanges = append(res.DeleteRanges, dr)
 		}
 	}
-	if err := d.addCommitIndex(commitIndex, batch, timestamp); err != nil {
+	if err := d.addCommitOffset(commitOffset, batch, timestamp); err != nil {
 		return nil, err
 	}
 
@@ -177,7 +177,7 @@ func (d *db) ProcessWrite(b *proto.WriteRequest, commitIndex int64, timestamp ui
 		return nil, err
 	}
 
-	d.notificationsTracker.UpdatedCommitIndex(commitIndex)
+	d.notificationsTracker.UpdatedCommitOffset(commitOffset)
 
 	if err := batch.Close(); err != nil {
 		return nil, err
@@ -199,11 +199,11 @@ func (d *db) addNotifications(batch WriteBatch, notifications *notifications) er
 	return nil
 }
 
-func (d *db) addCommitIndex(commitIndex int64, batch WriteBatch, timestamp uint64) error {
-	commitIndexPayload := []byte(fmt.Sprintf("%d", commitIndex))
+func (d *db) addCommitOffset(commitOffset int64, batch WriteBatch, timestamp uint64) error {
+	commitOffsetPayload := []byte(fmt.Sprintf("%d", commitOffset))
 	_, err := d.applyPut(batch, nil, &proto.PutRequest{
-		Key:             commitIndexKey,
-		Payload:         commitIndexPayload,
+		Key:             commitOffsetKey,
+		Payload:         commitOffsetPayload,
 		ExpectedVersion: nil,
 	}, timestamp, NoOpCallback)
 	return err
@@ -236,11 +236,11 @@ func (d *db) ProcessRead(b *proto.ReadRequest) (*proto.ReadResponse, error) {
 	return res, nil
 }
 
-func (d *db) ReadCommitIndex() (int64, error) {
+func (d *db) ReadCommitOffset() (int64, error) {
 	kv := d.kv
 
 	getReq := &proto.GetRequest{
-		Key:            commitIndexKey,
+		Key:            commitOffsetKey,
 		IncludePayload: true,
 	}
 	gr, err := applyGet(kv, getReq)
@@ -251,11 +251,11 @@ func (d *db) ReadCommitIndex() (int64, error) {
 		return wal.InvalidOffset, nil
 	}
 
-	var commitIndex int64
-	if _, err = fmt.Sscanf(string(gr.Payload), "%d", &commitIndex); err != nil {
+	var commitOffset int64
+	if _, err = fmt.Sscanf(string(gr.Payload), "%d", &commitOffset); err != nil {
 		return wal.InvalidOffset, err
 	}
-	return commitIndex, nil
+	return commitOffset, nil
 }
 
 func (d *db) UpdateEpoch(newEpoch int64) error {

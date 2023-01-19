@@ -35,11 +35,11 @@ import (
 	"time"
 )
 
-// AddEntriesStreamProvider
-// This is a provider for the AddEntryStream Grpc handler
+// ReplicateStreamProvider
+// This is a provider for the ReplicateStream Grpc handler
 // It's used to allow passing in a mocked version of the Grpc service
-type AddEntriesStreamProvider interface {
-	GetAddEntriesStream(ctx context.Context, follower string, shard uint32) (proto.OxiaLogReplication_AddEntriesClient, error)
+type ReplicateStreamProvider interface {
+	GetReplicateStream(ctx context.Context, follower string, shard uint32) (proto.OxiaLogReplication_ReplicateClient, error)
 	SendSnapshot(ctx context.Context, follower string, shard uint32) (proto.OxiaLogReplication_SendSnapshotClient, error)
 }
 
@@ -55,24 +55,24 @@ type FollowerCursor interface {
 	// The last entry that was sent to this follower
 	LastPushed() int64
 
-	// AckIndex The highest entry already acknowledged by this follower
-	AckIndex() int64
+	// AckOffset The highest entry already acknowledged by this follower
+	AckOffset() int64
 }
 
 type followerCursor struct {
 	sync.Mutex
 
-	epoch                    int64
-	follower                 string
-	addEntriesStreamProvider AddEntriesStreamProvider
-	stream                   proto.OxiaLogReplication_AddEntriesClient
+	epoch                   int64
+	follower                string
+	replicateStreamProvider ReplicateStreamProvider
+	stream                  proto.OxiaLogReplication_ReplicateClient
 
 	ackTracker  QuorumAckTracker
 	cursorAcker CursorAcker
 	wal         wal.Wal
 	db          kv.DB
 	lastPushed  atomic.Int64
-	ackIndex    atomic.Int64
+	ackOffset   atomic.Int64
 	shardId     uint32
 
 	backoff backoff.BackOff
@@ -92,11 +92,11 @@ func NewFollowerCursor(
 	follower string,
 	epoch int64,
 	shardId uint32,
-	addEntriesStreamProvider AddEntriesStreamProvider,
+	replicateStreamProvider ReplicateStreamProvider,
 	ackTracker QuorumAckTracker,
 	wal wal.Wal,
 	db kv.DB,
-	ackIndex int64) (FollowerCursor, error) {
+	ackOffset int64) (FollowerCursor, error) {
 
 	labels := map[string]any{
 		"shard":    shardId,
@@ -104,13 +104,13 @@ func NewFollowerCursor(
 	}
 
 	fc := &followerCursor{
-		epoch:                    epoch,
-		follower:                 follower,
-		ackTracker:               ackTracker,
-		addEntriesStreamProvider: addEntriesStreamProvider,
-		wal:                      wal,
-		db:                       db,
-		shardId:                  shardId,
+		epoch:                   epoch,
+		follower:                follower,
+		ackTracker:              ackTracker,
+		replicateStreamProvider: replicateStreamProvider,
+		wal:                     wal,
+		db:                      db,
+		shardId:                 shardId,
 
 		log: log.With().
 			Str("component", "follower-cursor").
@@ -134,11 +134,11 @@ func NewFollowerCursor(
 	fc.ctx, fc.cancel = context.WithCancel(context.Background())
 	fc.backoff = common.NewBackOff(fc.ctx)
 
-	fc.lastPushed.Store(ackIndex)
-	fc.ackIndex.Store(ackIndex)
+	fc.lastPushed.Store(ackOffset)
+	fc.ackOffset.Store(ackOffset)
 
 	var err error
-	if fc.cursorAcker, err = ackTracker.NewCursorAcker(ackIndex); err != nil {
+	if fc.cursorAcker, err = ackTracker.NewCursorAcker(ackOffset); err != nil {
 		return nil, err
 	}
 
@@ -156,18 +156,18 @@ func (fc *followerCursor) shouldSendSnapshot() bool {
 	fc.Lock()
 	defer fc.Unlock()
 
-	ackIndex := fc.ackIndex.Load()
+	ackOffset := fc.ackOffset.Load()
 	walFirstOffset := fc.wal.FirstOffset()
 
-	if ackIndex == wal.InvalidOffset && fc.ackTracker.CommitIndex() >= 0 {
+	if ackOffset == wal.InvalidOffset && fc.ackTracker.CommitOffset() >= 0 {
 		fc.log.Info().
-			Int64("follower-ack-index", ackIndex).
-			Int64("leader-commit-index", fc.ackTracker.CommitIndex()).
+			Int64("follower-ack-offset", ackOffset).
+			Int64("leader-commit-offset", fc.ackTracker.CommitOffset()).
 			Msg("Sending snapshot to empty follower")
 		return true
-	} else if walFirstOffset > 0 && ackIndex < walFirstOffset {
+	} else if walFirstOffset > 0 && ackOffset < walFirstOffset {
 		fc.log.Info().
-			Int64("follower-ack-index", ackIndex).
+			Int64("follower-ack-offset", ackOffset).
 			Int64("wal-first-offset", fc.wal.FirstOffset()).
 			Int64("wal-last-offset", fc.wal.LastOffset()).
 			Msg("The follower is behind the first available entry in the leader WAL")
@@ -200,8 +200,8 @@ func (fc *followerCursor) LastPushed() int64 {
 	return fc.lastPushed.Load()
 }
 
-func (fc *followerCursor) AckIndex() int64 {
-	return fc.ackIndex.Load()
+func (fc *followerCursor) AckOffset() int64 {
+	return fc.ackOffset.Load()
 }
 
 func (fc *followerCursor) run() {
@@ -237,7 +237,7 @@ func (fc *followerCursor) sendSnapshot() error {
 	ctx, cancel := context.WithCancel(fc.ctx)
 	defer cancel()
 
-	stream, err := fc.addEntriesStreamProvider.SendSnapshot(ctx, fc.follower, fc.shardId)
+	stream, err := fc.replicateStreamProvider.SendSnapshot(ctx, fc.follower, fc.shardId)
 	if err != nil {
 		return err
 	}
@@ -297,9 +297,9 @@ func (fc *followerCursor) sendSnapshot() error {
 		Str("total-size", humanize.IBytes(uint64(totalSize))).
 		Stringer("elapsed-time", elapsedTime).
 		Str("throughput", fmt.Sprintf("%s/s", humanize.IBytes(uint64(throughput)))).
-		Int64("follower-ack-index", response.AckIndex).
+		Int64("follower-ack-offset", response.AckOffset).
 		Msg("Successfully sent snapshot to follower")
-	fc.ackIndex.Store(response.AckIndex)
+	fc.ackOffset.Store(response.AckOffset)
 	fc.snapshotsCompletedCounter.Inc()
 	return nil
 }
@@ -310,13 +310,13 @@ func (fc *followerCursor) streamEntries() error {
 
 	fc.Lock()
 	var err error
-	if fc.stream, err = fc.addEntriesStreamProvider.GetAddEntriesStream(ctx, fc.follower, fc.shardId); err != nil {
+	if fc.stream, err = fc.replicateStreamProvider.GetReplicateStream(ctx, fc.follower, fc.shardId); err != nil {
 		fc.Unlock()
 		return err
 	}
 	fc.Unlock()
 
-	currentOffset := fc.ackIndex.Load()
+	currentOffset := fc.ackOffset.Load()
 
 	reader, err := fc.wal.NewReader(currentOffset)
 	if err != nil {
@@ -332,7 +332,7 @@ func (fc *followerCursor) streamEntries() error {
 	})
 
 	fc.log.Info().
-		Int64("ack-index", currentOffset).
+		Int64("ack-offset", currentOffset).
 		Msg("Successfully attached cursor follower")
 
 	for {
@@ -343,7 +343,7 @@ func (fc *followerCursor) streamEntries() error {
 		if !reader.HasNext() {
 			// We have reached the head of the wal
 			// Wait for more entries to be written
-			fc.ackTracker.WaitForHeadIndex(currentOffset + 1)
+			fc.ackTracker.WaitForHeadOffset(currentOffset + 1)
 
 			continue
 		}
@@ -357,10 +357,10 @@ func (fc *followerCursor) streamEntries() error {
 			Int64("offset", le.Offset).
 			Msg("Sending entries to follower")
 
-		if err = fc.stream.Send(&proto.AddEntryRequest{
-			Epoch:       fc.epoch,
-			Entry:       le,
-			CommitIndex: fc.ackTracker.CommitIndex(),
+		if err = fc.stream.Send(&proto.Append{
+			Epoch:        fc.epoch,
+			Entry:        le,
+			CommitOffset: fc.ackTracker.CommitOffset(),
 		}); err != nil {
 			return err
 		}
@@ -373,7 +373,7 @@ func (fc *followerCursor) streamEntries() error {
 	}
 }
 
-func (fc *followerCursor) receiveAcks(cancel context.CancelFunc, stream proto.OxiaLogReplication_AddEntriesClient) {
+func (fc *followerCursor) receiveAcks(cancel context.CancelFunc, stream proto.OxiaLogReplication_ReplicateClient) {
 	for {
 		res, err := stream.Recv()
 		if err != nil {
@@ -396,6 +396,6 @@ func (fc *followerCursor) receiveAcks(cancel context.CancelFunc, stream proto.Ox
 			Msg("Received ack")
 		fc.cursorAcker.Ack(res.Offset)
 
-		fc.ackIndex.Store(res.Offset)
+		fc.ackOffset.Store(res.Offset)
 	}
 }

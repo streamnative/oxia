@@ -52,27 +52,27 @@ func TestFollower(t *testing.T) {
 
 	fenceRes, err := fc.Fence(&proto.FenceRequest{Epoch: 1})
 	assert.NoError(t, err)
-	assert.Equal(t, InvalidEntryId, fenceRes.HeadIndex)
+	assert.Equal(t, InvalidEntryId, fenceRes.HeadEntryId)
 
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
 	assert.EqualValues(t, 1, fc.Epoch())
 
 	truncateResp, err := fc.Truncate(&proto.TruncateRequest{
 		Epoch: 1,
-		HeadIndex: &proto.EntryId{
+		HeadEntryId: &proto.EntryId{
 			Epoch:  1,
 			Offset: 0,
 		},
 	})
 	assert.NoError(t, err)
-	assert.EqualValues(t, 1, truncateResp.HeadIndex.Epoch)
-	assert.Equal(t, wal.InvalidOffset, truncateResp.HeadIndex.Offset)
+	assert.EqualValues(t, 1, truncateResp.HeadEntryId.Epoch)
+	assert.Equal(t, wal.InvalidOffset, truncateResp.HeadEntryId.Offset)
 
 	assert.Equal(t, proto.ServingStatus_Follower, fc.Status())
 
-	stream := newMockServerAddEntriesStream()
+	stream := newMockServerReplicateStream()
 
-	go func() { assert.NoError(t, fc.AddEntries(stream)) }()
+	go func() { assert.NoError(t, fc.Replicate(stream)) }()
 
 	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, wal.InvalidOffset))
 
@@ -103,7 +103,7 @@ func TestFollower(t *testing.T) {
 	}})
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(dbRes.Gets))
-	// Keys are not there because they were not part of the commit index
+	// Keys are not there because they were not part of the commit offset
 	assert.Equal(t, proto.Status_KEY_NOT_FOUND, dbRes.Gets[0].Status)
 	assert.Equal(t, proto.Status_KEY_NOT_FOUND, dbRes.Gets[1].Status)
 
@@ -112,7 +112,7 @@ func TestFollower(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
-func TestReadingUpToCommitIndex(t *testing.T) {
+func TestReadingUpToCommitOffset(t *testing.T) {
 	var shardId uint32
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
@@ -128,7 +128,7 @@ func TestReadingUpToCommitIndex(t *testing.T) {
 
 	_, err = fc.Truncate(&proto.TruncateRequest{
 		Epoch: 1,
-		HeadIndex: &proto.EntryId{
+		HeadEntryId: &proto.EntryId{
 			Epoch:  0,
 			Offset: wal.InvalidOffset,
 		},
@@ -136,16 +136,16 @@ func TestReadingUpToCommitIndex(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, proto.ServingStatus_Follower, fc.Status())
 
-	stream := newMockServerAddEntriesStream()
-	go func() { assert.NoError(t, fc.AddEntries(stream)) }()
+	stream := newMockServerReplicateStream()
+	go func() { assert.NoError(t, fc.Replicate(stream)) }()
 
 	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, wal.InvalidOffset))
 
 	stream.AddRequest(createAddRequest(t, 1, 1, map[string]string{"a": "2", "b": "3"},
-		// Commit index points to previous entry
+		// Commit offset points to previous entry
 		0))
 
-	// Wait for addEntryResponses
+	// Wait for acks
 	r1 := stream.GetResponse()
 
 	assert.Equal(t, proto.ServingStatus_Follower, fc.Status())
@@ -156,6 +156,10 @@ func TestReadingUpToCommitIndex(t *testing.T) {
 
 	assert.EqualValues(t, 1, r2.Offset)
 
+	assert.Eventually(t, func() bool {
+		return fc.CommitOffset() == 0
+	}, 10*time.Second, 10*time.Millisecond)
+
 	dbRes, err := fc.(*followerController).db.ProcessRead(&proto.ReadRequest{Gets: []*proto.GetRequest{{
 		Key:            "a",
 		IncludePayload: true}, {
@@ -165,7 +169,7 @@ func TestReadingUpToCommitIndex(t *testing.T) {
 	}})
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(dbRes.Gets))
-	// Keys are not there because they were not part of the commit index
+	// Keys are not there because they were not part of the commit offset
 	assert.Equal(t, proto.Status_OK, dbRes.Gets[0].Status)
 	assert.Equal(t, []byte("0"), dbRes.Gets[0].Payload)
 	assert.Equal(t, proto.Status_OK, dbRes.Gets[1].Status)
@@ -176,13 +180,13 @@ func TestReadingUpToCommitIndex(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
-func TestFollower_RestoreCommitIndex(t *testing.T) {
+func TestFollower_RestoreCommitOffset(t *testing.T) {
 	var shardId uint32
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{DataDir: t.TempDir()})
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 
-	db, err := kv.NewDB(shardId, kvFactory)
+	db, err := kv.NewDB(shardId, kvFactory, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
 	_, err = db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
 		Key:     "xx",
@@ -198,17 +202,17 @@ func TestFollower_RestoreCommitIndex(t *testing.T) {
 
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
 	assert.EqualValues(t, 6, fc.Epoch())
-	assert.EqualValues(t, 9, fc.CommitIndex())
+	assert.EqualValues(t, 9, fc.CommitOffset())
 
 	assert.NoError(t, fc.Close())
 	assert.NoError(t, kvFactory.Close())
 	assert.NoError(t, walFactory.Close())
 }
 
-// If a follower receives a commit index from the leader that is ahead
-// of the current follower head index, it needs to advance the commit
-// index only up to the current head.
-func TestFollower_AdvanceCommitIndexToHead(t *testing.T) {
+// If a follower receives a commit offset from the leader that is ahead
+// of the current follower head offset, it needs to advance the commit
+// offset only up to the current head.
+func TestFollower_AdvanceCommitOffsetToHead(t *testing.T) {
 	var shardId uint32
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{DataDir: t.TempDir()})
 	assert.NoError(t, err)
@@ -217,16 +221,19 @@ func TestFollower_AdvanceCommitIndexToHead(t *testing.T) {
 	fc, _ := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	_, _ = fc.Fence(&proto.FenceRequest{Epoch: 1})
 
-	stream := newMockServerAddEntriesStream()
-	go func() { assert.NoError(t, fc.AddEntries(stream)) }()
+	stream := newMockServerReplicateStream()
+	go func() { assert.NoError(t, fc.Replicate(stream)) }()
 
 	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, 10))
 
-	// Wait for addEntryResponses
+	// Wait for acks
 	r1 := stream.GetResponse()
 
 	assert.EqualValues(t, 0, r1.Offset)
-	assert.EqualValues(t, 0, fc.CommitIndex())
+
+	assert.Eventually(t, func() bool {
+		return fc.CommitOffset() == 0
+	}, 10*time.Second, 10*time.Millisecond)
 
 	assert.NoError(t, fc.Close())
 	assert.NoError(t, kvFactory.Close())
@@ -288,7 +295,7 @@ func TestFollower_TruncateAfterRestart(t *testing.T) {
 	// Follower needs to be in "Fenced" state to receive a Truncate request
 	tr, err := fc.Truncate(&proto.TruncateRequest{
 		Epoch: 1,
-		HeadIndex: &proto.EntryId{
+		HeadEntryId: &proto.EntryId{
 			Epoch:  0,
 			Offset: 0,
 		},
@@ -313,14 +320,14 @@ func TestFollower_TruncateAfterRestart(t *testing.T) {
 
 	tr, err = fc.Truncate(&proto.TruncateRequest{
 		Epoch: 2,
-		HeadIndex: &proto.EntryId{
+		HeadEntryId: &proto.EntryId{
 			Epoch:  -1,
 			Offset: -1,
 		},
 	})
 
 	assert.NoError(t, err)
-	AssertProtoEqual(t, &proto.EntryId{Epoch: 2, Offset: -1}, tr.HeadIndex)
+	AssertProtoEqual(t, &proto.EntryId{Epoch: 2, Offset: -1}, tr.HeadEntryId)
 	assert.Equal(t, proto.ServingStatus_Follower, fc.Status())
 
 	assert.NoError(t, fc.Close())
@@ -347,7 +354,7 @@ func TestFollower_PersistentEpoch(t *testing.T) {
 
 	fenceRes, err := fc.Fence(&proto.FenceRequest{Epoch: 4})
 	assert.NoError(t, err)
-	assert.Equal(t, InvalidEntryId, fenceRes.HeadIndex)
+	assert.Equal(t, InvalidEntryId, fenceRes.HeadEntryId)
 
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
 	assert.EqualValues(t, 4, fc.Epoch())
@@ -365,7 +372,7 @@ func TestFollower_PersistentEpoch(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
-func TestFollower_CommitIndexLastEntry(t *testing.T) {
+func TestFollower_CommitOffsetLastEntry(t *testing.T) {
 	var shardId uint32
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
@@ -379,17 +386,21 @@ func TestFollower_CommitIndexLastEntry(t *testing.T) {
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
 	assert.EqualValues(t, 1, fc.Epoch())
 
-	stream := newMockServerAddEntriesStream()
-	go func() { assert.NoError(t, fc.AddEntries(stream)) }()
+	stream := newMockServerReplicateStream()
+	go func() { assert.NoError(t, fc.Replicate(stream)) }()
 
 	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, 0))
 
-	// Wait for addEntryResponses
+	// Wait for acks
 	r1 := stream.GetResponse()
 
 	assert.Equal(t, proto.ServingStatus_Follower, fc.Status())
 
 	assert.EqualValues(t, 0, r1.Offset)
+
+	assert.Eventually(t, func() bool {
+		return fc.CommitOffset() == 0
+	}, 10*time.Second, 10*time.Millisecond)
 
 	dbRes, err := fc.(*followerController).db.ProcessRead(&proto.ReadRequest{Gets: []*proto.GetRequest{{
 		Key:            "a",
@@ -418,7 +429,7 @@ func TestFollowerController_RejectEntriesWithDifferentEpoch(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	db, err := kv.NewDB(shardId, kvFactory)
+	db, err := kv.NewDB(shardId, kvFactory, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
 	// Force a new epoch in the DB before opening
 	assert.NoError(t, db.UpdateEpoch(5))
@@ -432,11 +443,11 @@ func TestFollowerController_RejectEntriesWithDifferentEpoch(t *testing.T) {
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
 	assert.EqualValues(t, 5, fc.Epoch())
 
-	stream := newMockServerAddEntriesStream()
+	stream := newMockServerReplicateStream()
 	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "1", "b": "1"}, wal.InvalidOffset))
 
 	// Follower will reject the entry because it's from an earlier epoch
-	err = fc.AddEntries(stream)
+	err = fc.Replicate(stream)
 	assert.Equal(t, common.CodeInvalidEpoch, status.Code(err))
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
 	assert.EqualValues(t, 5, fc.Epoch())
@@ -444,9 +455,9 @@ func TestFollowerController_RejectEntriesWithDifferentEpoch(t *testing.T) {
 	// If we send an entry of same epoch, it will be accepted
 	stream.AddRequest(createAddRequest(t, 5, 0, map[string]string{"a": "2", "b": "2"}, wal.InvalidOffset))
 
-	go func() { assert.NoError(t, fc.AddEntries(stream)) }()
+	go func() { assert.NoError(t, fc.Replicate(stream)) }()
 
-	// Wait for addEntryResponses
+	// Wait for acks
 	r1 := stream.GetResponse()
 
 	assert.Equal(t, proto.ServingStatus_Follower, fc.Status())
@@ -458,9 +469,9 @@ func TestFollowerController_RejectEntriesWithDifferentEpoch(t *testing.T) {
 	fc, err = NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	stream = newMockServerAddEntriesStream()
+	stream = newMockServerReplicateStream()
 	stream.AddRequest(createAddRequest(t, 6, 0, map[string]string{"a": "2", "b": "2"}, wal.InvalidOffset))
-	err = fc.AddEntries(stream)
+	err = fc.Replicate(stream)
 	assert.Equal(t, common.CodeInvalidEpoch, status.Code(err))
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
 	assert.EqualValues(t, 5, fc.Epoch())
@@ -483,7 +494,7 @@ func TestFollower_RejectTruncateInvalidEpoch(t *testing.T) {
 
 	fenceRes, err := fc.Fence(&proto.FenceRequest{Epoch: 5})
 	assert.NoError(t, err)
-	assert.Equal(t, InvalidEntryId, fenceRes.HeadIndex)
+	assert.Equal(t, InvalidEntryId, fenceRes.HeadEntryId)
 
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
 	assert.EqualValues(t, 5, fc.Epoch())
@@ -491,7 +502,7 @@ func TestFollower_RejectTruncateInvalidEpoch(t *testing.T) {
 	// Lower epoch should be rejected
 	truncateResp, err := fc.Truncate(&proto.TruncateRequest{
 		Epoch: 4,
-		HeadIndex: &proto.EntryId{
+		HeadEntryId: &proto.EntryId{
 			Epoch:  1,
 			Offset: 0,
 		},
@@ -504,7 +515,7 @@ func TestFollower_RejectTruncateInvalidEpoch(t *testing.T) {
 	// Truncate with higher epoch should also fail
 	truncateResp, err = fc.Truncate(&proto.TruncateRequest{
 		Epoch: 6,
-		HeadIndex: &proto.EntryId{
+		HeadEntryId: &proto.EntryId{
 			Epoch:  1,
 			Offset: 0,
 		},
@@ -520,7 +531,7 @@ func prepareTestDb(t *testing.T) kv.Snapshot {
 		DataDir: t.TempDir(),
 	})
 	assert.NoError(t, err)
-	db, err := kv.NewDB(0, kvFactory)
+	db, err := kv.NewDB(0, kvFactory, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
 
 	for i := 0; i < 100; i++ {
@@ -557,12 +568,12 @@ func TestFollower_HandleSnapshot(t *testing.T) {
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
 	assert.EqualValues(t, 1, fc.Epoch())
 
-	stream := newMockServerAddEntriesStream()
-	go func() { assert.NoError(t, fc.AddEntries(stream)) }()
+	stream := newMockServerReplicateStream()
+	go func() { assert.NoError(t, fc.Replicate(stream)) }()
 
 	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, 0))
 
-	// Wait for addEntryResponses
+	// Wait for acks
 	r1 := stream.GetResponse()
 	assert.Equal(t, proto.ServingStatus_Follower, fc.Status())
 	assert.EqualValues(t, 0, r1.Offset)
@@ -643,14 +654,14 @@ func TestFollower_DisconnectLeader(t *testing.T) {
 	fc, _ := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	_, _ = fc.Fence(&proto.FenceRequest{Epoch: 1})
 
-	stream := newMockServerAddEntriesStream()
+	stream := newMockServerReplicateStream()
 
-	go func() { assert.NoError(t, fc.AddEntries(stream)) }()
+	go func() { assert.NoError(t, fc.Replicate(stream)) }()
 
 	assert.Eventually(t, closeChanIsNotNil(fc), 10*time.Second, 10*time.Millisecond)
 
 	// It's not possible to add a new leader stream
-	assert.ErrorIs(t, fc.AddEntries(stream), common.ErrorLeaderAlreadyConnected)
+	assert.ErrorIs(t, fc.Replicate(stream), common.ErrorLeaderAlreadyConnected)
 
 	// When we fence again, the leader should have been cutoff
 	_, err = fc.Fence(&proto.FenceRequest{Epoch: 2})
@@ -658,7 +669,7 @@ func TestFollower_DisconnectLeader(t *testing.T) {
 
 	assert.Nil(t, fc.(*followerController).closeStreamCh)
 
-	go func() { assert.NoError(t, fc.AddEntries(stream)) }()
+	go func() { assert.NoError(t, fc.Replicate(stream)) }()
 
 	assert.Eventually(t, closeChanIsNotNil(fc), 10*time.Second, 10*time.Millisecond)
 
@@ -675,8 +686,8 @@ func TestFollower_DupEntries(t *testing.T) {
 	fc, _ := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	_, _ = fc.Fence(&proto.FenceRequest{Epoch: 1})
 
-	stream := newMockServerAddEntriesStream()
-	go func() { assert.NoError(t, fc.AddEntries(stream)) }()
+	stream := newMockServerReplicateStream()
+	go func() { assert.NoError(t, fc.Replicate(stream)) }()
 
 	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, wal.InvalidOffset))
 	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, wal.InvalidOffset))
@@ -714,7 +725,7 @@ func closeChanIsNotNil(fc FollowerController) func() bool {
 
 func createAddRequest(t *testing.T, epoch int64, offset int64,
 	kvs map[string]string,
-	commitIndex int64) *proto.AddEntryRequest {
+	commitOffset int64) *proto.Append {
 	br := &proto.WriteRequest{}
 
 	for k, v := range kvs {
@@ -733,9 +744,9 @@ func createAddRequest(t *testing.T, epoch int64, offset int64,
 		Value:  entry,
 	}
 
-	return &proto.AddEntryRequest{
-		Epoch:       epoch,
-		Entry:       le,
-		CommitIndex: commitIndex,
+	return &proto.Append{
+		Epoch:        epoch,
+		Entry:        le,
+		CommitOffset: commitOffset,
 	}
 }

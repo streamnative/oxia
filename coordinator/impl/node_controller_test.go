@@ -33,7 +33,7 @@ func TestNodeController_HealthCheck(t *testing.T) {
 	sap := newMockShardAssignmentsProvider()
 	nal := newMockNodeAvailabilityListener()
 	rpc := newMockRpcProvider()
-	nc := NewNodeController(addr, sap, nal, rpc)
+	nc := newNodeController(addr, sap, nal, rpc, 1*time.Second)
 
 	assert.Equal(t, Running, nc.Status())
 
@@ -70,11 +70,11 @@ func TestNodeController_ShardsAssignments(t *testing.T) {
 	sap := newMockShardAssignmentsProvider()
 	nal := newMockNodeAvailabilityListener()
 	rpc := newMockRpcProvider()
-	nc := NewNodeController(addr, sap, nal, rpc)
+	nc := newNodeController(addr, sap, nal, rpc, 1*time.Second)
 
 	node := rpc.GetNode(addr)
 
-	resp := &proto.ShardAssignmentsResponse{
+	resp := &proto.ShardAssignments{
 		Assignments: []*proto.ShardAssignment{{
 			ShardId: 0,
 			Leader:  "leader-0",
@@ -93,7 +93,7 @@ func TestNodeController_ShardsAssignments(t *testing.T) {
 	// Simulate 1 single stream send error
 	node.shardAssignmentsStream.SetError(errors.New("failed to send"))
 
-	resp2 := &proto.ShardAssignmentsResponse{
+	resp2 := &proto.ShardAssignments{
 		Assignments: []*proto.ShardAssignment{{
 			ShardId: 0,
 			Leader:  "leader-1",

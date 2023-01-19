@@ -14,15 +14,15 @@
 
 syntax = "proto3";
 
-package coordination;
+package replication;
 
 option go_package = "github.com/streamnative/oxia/proto";
 
 import "proto/client.proto";
 
-// controller -> node
-service OxiaControl {
-  rpc ShardAssignment(stream io.streamnative.oxia.proto.ShardAssignmentsResponse) returns (CoordinationShardAssignmentsResponse);
+// coordinator -> node
+service OxiaCoordination {
+  rpc PushShardAssignments(stream io.streamnative.oxia.proto.ShardAssignments) returns (CoordinationShardAssignmentsResponse);
 
   rpc Fence(FenceRequest) returns (FenceResponse);
   rpc BecomeLeader(BecomeLeaderRequest) returns (BecomeLeaderResponse);
@@ -34,7 +34,7 @@ service OxiaControl {
 // node (leader) -> node (follower)
 service OxiaLogReplication {
   rpc Truncate(TruncateRequest) returns (TruncateResponse);
-  rpc AddEntries(stream AddEntryRequest) returns (stream AddEntryResponse);
+  rpc Replicate(stream Append) returns (stream Ack);
   rpc SendSnapshot(stream SnapshotChunk) returns (SnapshotResponse);
 }
 
@@ -66,7 +66,7 @@ message FenceRequest {
 }
 
 message FenceResponse {
-  EntryId head_index = 2;
+  EntryId head_entry_id= 2;
 }
 
 message BecomeLeaderRequest {
@@ -82,7 +82,7 @@ message AddFollowerRequest {
 
   int64 epoch = 2;
   string follower_name = 3;
-  EntryId follower_head_index = 4;
+  EntryId follower_head_entry_id = 4;
 }
 
 message BecomeLeaderResponse {
@@ -95,25 +95,25 @@ message TruncateRequest {
   uint32 shard_id = 1;
 
   int64 epoch = 2;
-  EntryId head_index = 3;
+  EntryId head_entry_id = 3;
 }
 
 message TruncateResponse {
-  EntryId head_index = 2;
+  EntryId head_entry_id = 2;
 }
 
-message AddEntryRequest {
+message Append {
   int64 epoch = 1;
   LogEntry entry = 2;
-  int64 commit_index = 3;
+  int64 commit_offset = 3;
 }
 
-message AddEntryResponse {
+message Ack {
   int64 offset = 2;
 }
 
 message SnapshotResponse {
-  int64 ack_index = 1;
+  int64 ack_offset = 1;
 }
 
 //// Status RPC
