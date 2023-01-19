@@ -54,34 +54,34 @@ func TestFollowerCursor(t *testing.T) {
 
 	assert.Equal(t, shard, fc.ShardId())
 	assert.Equal(t, wal.InvalidOffset, fc.LastPushed())
-	assert.Equal(t, wal.InvalidOffset, fc.AckIndex())
+	assert.Equal(t, wal.InvalidOffset, fc.AckOffset())
 
 	assert.Eventually(t, func() bool {
 		return fc.LastPushed() == 0
 	}, 10*time.Second, 100*time.Millisecond)
 
-	assert.Equal(t, wal.InvalidOffset, fc.AckIndex())
+	assert.Equal(t, wal.InvalidOffset, fc.AckOffset())
 
-	ackTracker.AdvanceHeadIndex(0)
+	ackTracker.AdvanceHeadOffset(0)
 
-	assert.Equal(t, wal.InvalidOffset, fc.AckIndex())
+	assert.Equal(t, wal.InvalidOffset, fc.AckOffset())
 
 	// The follower is acking back
 	req := <-stream.addEntryReqs
 	assert.EqualValues(t, 1, req.Epoch)
-	assert.Equal(t, wal.InvalidOffset, req.CommitIndex)
+	assert.Equal(t, wal.InvalidOffset, req.CommitOffset)
 
 	stream.addEntryResps <- &proto.AddEntryResponse{
 		Offset: 0,
 	}
 
 	assert.Eventually(t, func() bool {
-		return fc.AckIndex() == 0
+		return fc.AckOffset() == 0
 	}, 10*time.Second, 100*time.Millisecond)
 
-	assert.EqualValues(t, 0, ackTracker.CommitIndex())
+	assert.EqualValues(t, 0, ackTracker.CommitOffset())
 
-	// Next entry should carry the correct commit index
+	// Next entry should carry the correct commit offset
 	err = w.Append(&proto.LogEntry{
 		Epoch:  1,
 		Offset: 1,
@@ -90,21 +90,21 @@ func TestFollowerCursor(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 0, fc.LastPushed())
-	assert.EqualValues(t, 0, fc.AckIndex())
+	assert.EqualValues(t, 0, fc.AckOffset())
 
-	ackTracker.AdvanceHeadIndex(1)
+	ackTracker.AdvanceHeadOffset(1)
 
 	assert.Eventually(t, func() bool {
 		return fc.LastPushed() == 1
 	}, 10*time.Second, 100*time.Millisecond)
 
-	assert.EqualValues(t, 0, fc.AckIndex())
+	assert.EqualValues(t, 0, fc.AckOffset())
 
 	req = <-stream.addEntryReqs
 	assert.EqualValues(t, 1, req.Epoch)
 	assert.EqualValues(t, 1, req.Entry.Epoch)
 	assert.EqualValues(t, 1, req.Entry.Offset)
-	assert.EqualValues(t, 0, req.CommitIndex)
+	assert.EqualValues(t, 0, req.CommitOffset)
 
 	assert.NoError(t, fc.Close())
 }
@@ -156,10 +156,10 @@ func TestFollowerCursor_SendSnapshot(t *testing.T) {
 
 	log.Info().Msg("Snapshot complete")
 
-	s.response <- &proto.SnapshotResponse{AckIndex: N - 1}
+	s.response <- &proto.SnapshotResponse{AckOffset: N - 1}
 
 	assert.Eventually(t, func() bool {
-		return fc.AckIndex() == N-1
+		return fc.AckOffset() == N-1
 	}, 10*time.Second, 10*time.Millisecond)
 
 	assert.NoError(t, fc.Close())

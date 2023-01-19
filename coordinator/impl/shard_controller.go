@@ -428,7 +428,7 @@ func (s *shardController) fence(ctx context.Context, node model.ServerAddress) (
 		return nil, err
 	}
 
-	return res.HeadIndex, nil
+	return res.HeadEntryId, nil
 }
 
 func (s *shardController) selectNewLeader(fenceResponses map[model.ServerAddress]*proto.EntryId) (
@@ -437,14 +437,14 @@ func (s *shardController) selectNewLeader(fenceResponses map[model.ServerAddress
 	var currentMax int64 = -1
 	var candidates []model.ServerAddress
 
-	for addr, headIndex := range fenceResponses {
-		if headIndex.Offset < currentMax {
+	for addr, headEntryId := range fenceResponses {
+		if headEntryId.Offset < currentMax {
 			continue
-		} else if headIndex.Offset == currentMax {
+		} else if headEntryId.Offset == currentMax {
 			candidates = append(candidates, addr)
 		} else {
 			// Found a new max
-			currentMax = headIndex.Offset
+			currentMax = headEntryId.Offset
 			candidates = []model.ServerAddress{addr}
 		}
 	}
@@ -481,12 +481,12 @@ func (s *shardController) becomeLeader(leader model.ServerAddress, followers map
 	return nil
 }
 
-func (s *shardController) addFollower(leader model.ServerAddress, follower string, followerHeadIndex *proto.EntryId) error {
+func (s *shardController) addFollower(leader model.ServerAddress, follower string, followerHeadEntryId *proto.EntryId) error {
 	if _, err := s.rpc.AddFollower(s.ctx, leader, &proto.AddFollowerRequest{
-		ShardId:           s.shard,
-		Epoch:             s.shardMetadata.Epoch,
-		FollowerName:      follower,
-		FollowerHeadIndex: followerHeadIndex,
+		ShardId:             s.shard,
+		Epoch:               s.shardMetadata.Epoch,
+		FollowerName:        follower,
+		FollowerHeadEntryId: followerHeadEntryId,
 	}); err != nil {
 		return err
 	}

@@ -25,50 +25,50 @@ import (
 func TestQuorumAckTrackerNoFollower(t *testing.T) {
 	at := NewQuorumAckTracker(1, 1, wal.InvalidOffset)
 
-	assert.EqualValues(t, 1, at.HeadIndex())
-	assert.Equal(t, wal.InvalidOffset, at.CommitIndex())
+	assert.EqualValues(t, 1, at.HeadOffset())
+	assert.Equal(t, wal.InvalidOffset, at.CommitOffset())
 
-	at.AdvanceHeadIndex(5)
-	assert.EqualValues(t, 5, at.HeadIndex())
-	assert.EqualValues(t, 5, at.CommitIndex())
+	at.AdvanceHeadOffset(5)
+	assert.EqualValues(t, 5, at.HeadOffset())
+	assert.EqualValues(t, 5, at.CommitOffset())
 
-	at.AdvanceHeadIndex(6)
-	assert.EqualValues(t, 6, at.HeadIndex())
-	assert.EqualValues(t, 6, at.CommitIndex())
+	at.AdvanceHeadOffset(6)
+	assert.EqualValues(t, 6, at.HeadOffset())
+	assert.EqualValues(t, 6, at.CommitOffset())
 
-	// Head index cannot go back in time
-	at.AdvanceHeadIndex(2)
-	assert.EqualValues(t, 6, at.HeadIndex())
-	assert.EqualValues(t, 6, at.CommitIndex())
+	// Head offset cannot go back in time
+	at.AdvanceHeadOffset(2)
+	assert.EqualValues(t, 6, at.HeadOffset())
+	assert.EqualValues(t, 6, at.CommitOffset())
 }
 
 func TestQuorumAckTrackerRF2(t *testing.T) {
 	at := NewQuorumAckTracker(2, 1, wal.InvalidOffset)
 
-	assert.EqualValues(t, 1, at.HeadIndex())
-	assert.Equal(t, wal.InvalidOffset, at.CommitIndex())
+	assert.EqualValues(t, 1, at.HeadOffset())
+	assert.Equal(t, wal.InvalidOffset, at.CommitOffset())
 
-	at.AdvanceHeadIndex(2)
-	assert.EqualValues(t, 2, at.HeadIndex())
-	assert.Equal(t, wal.InvalidOffset, at.CommitIndex())
+	at.AdvanceHeadOffset(2)
+	assert.EqualValues(t, 2, at.HeadOffset())
+	assert.Equal(t, wal.InvalidOffset, at.CommitOffset())
 
 	c1, err := at.NewCursorAcker(wal.InvalidOffset)
 	assert.NoError(t, err)
 
 	c1.Ack(2)
-	assert.EqualValues(t, 2, at.HeadIndex())
-	assert.EqualValues(t, 2, at.CommitIndex())
+	assert.EqualValues(t, 2, at.HeadOffset())
+	assert.EqualValues(t, 2, at.CommitOffset())
 }
 
 func TestQuorumAckTrackerRF3(t *testing.T) {
 	at := NewQuorumAckTracker(3, 1, wal.InvalidOffset)
 
-	assert.EqualValues(t, 1, at.HeadIndex())
-	assert.Equal(t, wal.InvalidOffset, at.CommitIndex())
+	assert.EqualValues(t, 1, at.HeadOffset())
+	assert.Equal(t, wal.InvalidOffset, at.CommitOffset())
 
-	at.AdvanceHeadIndex(2)
-	assert.EqualValues(t, 2, at.HeadIndex())
-	assert.Equal(t, wal.InvalidOffset, at.CommitIndex())
+	at.AdvanceHeadOffset(2)
+	assert.EqualValues(t, 2, at.HeadOffset())
+	assert.Equal(t, wal.InvalidOffset, at.CommitOffset())
 
 	c1, err := at.NewCursorAcker(wal.InvalidOffset)
 	assert.NoError(t, err)
@@ -77,23 +77,23 @@ func TestQuorumAckTrackerRF3(t *testing.T) {
 	assert.NoError(t, err)
 
 	c1.Ack(2)
-	assert.EqualValues(t, 2, at.HeadIndex())
-	assert.EqualValues(t, 2, at.CommitIndex())
+	assert.EqualValues(t, 2, at.HeadOffset())
+	assert.EqualValues(t, 2, at.CommitOffset())
 
 	c2.Ack(2)
-	assert.EqualValues(t, 2, at.HeadIndex())
-	assert.EqualValues(t, 2, at.CommitIndex())
+	assert.EqualValues(t, 2, at.HeadOffset())
+	assert.EqualValues(t, 2, at.CommitOffset())
 }
 
 func TestQuorumAckTrackerRF5(t *testing.T) {
 	at := NewQuorumAckTracker(5, 1, wal.InvalidOffset)
 
-	assert.EqualValues(t, 1, at.HeadIndex())
-	assert.Equal(t, wal.InvalidOffset, at.CommitIndex())
+	assert.EqualValues(t, 1, at.HeadOffset())
+	assert.Equal(t, wal.InvalidOffset, at.CommitOffset())
 
-	at.AdvanceHeadIndex(2)
-	assert.EqualValues(t, 2, at.HeadIndex())
-	assert.Equal(t, wal.InvalidOffset, at.CommitIndex())
+	at.AdvanceHeadOffset(2)
+	assert.EqualValues(t, 2, at.HeadOffset())
+	assert.Equal(t, wal.InvalidOffset, at.CommitOffset())
 
 	c1, err := at.NewCursorAcker(wal.InvalidOffset)
 	assert.NoError(t, err)
@@ -108,20 +108,20 @@ func TestQuorumAckTrackerRF5(t *testing.T) {
 	assert.NoError(t, err)
 
 	c1.Ack(2)
-	assert.EqualValues(t, 2, at.HeadIndex())
-	assert.Equal(t, wal.InvalidOffset, at.CommitIndex())
+	assert.EqualValues(t, 2, at.HeadOffset())
+	assert.Equal(t, wal.InvalidOffset, at.CommitOffset())
 
 	c2.Ack(2)
-	assert.EqualValues(t, 2, at.HeadIndex())
-	assert.EqualValues(t, 2, at.CommitIndex())
+	assert.EqualValues(t, 2, at.HeadOffset())
+	assert.EqualValues(t, 2, at.CommitOffset())
 
 	c3.Ack(2)
-	assert.EqualValues(t, 2, at.HeadIndex())
-	assert.EqualValues(t, 2, at.CommitIndex())
+	assert.EqualValues(t, 2, at.HeadOffset())
+	assert.EqualValues(t, 2, at.CommitOffset())
 
 	c4.Ack(2)
-	assert.EqualValues(t, 2, at.HeadIndex())
-	assert.EqualValues(t, 2, at.CommitIndex())
+	assert.EqualValues(t, 2, at.HeadOffset())
+	assert.EqualValues(t, 2, at.CommitOffset())
 }
 
 func TestQuorumAckTrackerMaxCursors(t *testing.T) {
@@ -140,15 +140,15 @@ func TestQuorumAckTrackerMaxCursors(t *testing.T) {
 	assert.Nil(t, c3)
 }
 
-func TestQuorumAckTracker_WaitForHeadIndex(t *testing.T) {
+func TestQuorumAckTracker_WaitForHeadOffset(t *testing.T) {
 	at := NewQuorumAckTracker(1, 1, wal.InvalidOffset)
 
-	assert.EqualValues(t, 1, at.HeadIndex())
+	assert.EqualValues(t, 1, at.HeadOffset())
 
 	ch := make(chan bool)
 
 	go func() {
-		at.WaitForHeadIndex(4)
+		at.WaitForHeadOffset(4)
 		ch <- true
 	}()
 
@@ -160,7 +160,7 @@ func TestQuorumAckTracker_WaitForHeadIndex(t *testing.T) {
 		// Expected. There should be nothing in the channel
 	}
 
-	at.AdvanceHeadIndex(4)
+	at.AdvanceHeadOffset(4)
 	assert.Eventually(t, func() bool {
 		select {
 		case <-ch:
@@ -174,19 +174,19 @@ func TestQuorumAckTracker_WaitForHeadIndex(t *testing.T) {
 
 }
 
-func TestQuorumAckTracker_WaitForCommitIndex(t *testing.T) {
+func TestQuorumAckTracker_WaitForCommitOffset(t *testing.T) {
 	at := NewQuorumAckTracker(3, 1, wal.InvalidOffset)
 
-	assert.Equal(t, wal.InvalidOffset, at.CommitIndex())
-	at.AdvanceHeadIndex(2)
-	at.AdvanceHeadIndex(3)
-	at.AdvanceHeadIndex(4)
-	assert.Equal(t, wal.InvalidOffset, at.CommitIndex())
+	assert.Equal(t, wal.InvalidOffset, at.CommitOffset())
+	at.AdvanceHeadOffset(2)
+	at.AdvanceHeadOffset(3)
+	at.AdvanceHeadOffset(4)
+	assert.Equal(t, wal.InvalidOffset, at.CommitOffset())
 
 	ch := make(chan error)
 
 	go func() {
-		_, err := at.WaitForCommitIndex(2, func() (*proto.WriteResponse, error) {
+		_, err := at.WaitForCommitOffset(2, func() (*proto.WriteResponse, error) {
 			return nil, nil
 		})
 		ch <- err
@@ -216,55 +216,55 @@ func TestQuorumAckTracker_WaitForCommitIndex(t *testing.T) {
 		}
 	}, 10*time.Second, 100*time.Millisecond)
 
-	assert.EqualValues(t, 2, at.CommitIndex())
+	assert.EqualValues(t, 2, at.CommitOffset())
 }
 
 func TestQuorumAckTracker_AddingCursors_RF3(t *testing.T) {
 	at := NewQuorumAckTracker(3, 10, 5)
 
-	assert.EqualValues(t, 10, at.HeadIndex())
-	assert.EqualValues(t, 5, at.CommitIndex())
+	assert.EqualValues(t, 10, at.HeadOffset())
+	assert.EqualValues(t, 5, at.CommitOffset())
 
 	c, err := at.NewCursorAcker(11)
 	assert.Nil(t, c)
-	assert.ErrorIs(t, err, ErrorInvalidHeadIndex)
+	assert.ErrorIs(t, err, ErrorInvalidHeadOffset)
 
 	c1, err := at.NewCursorAcker(7)
 	assert.NotNil(t, c1)
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, 10, at.HeadIndex())
-	assert.EqualValues(t, 7, at.CommitIndex())
+	assert.EqualValues(t, 10, at.HeadOffset())
+	assert.EqualValues(t, 7, at.CommitOffset())
 
 	c2, err := at.NewCursorAcker(9)
 	assert.NotNil(t, c2)
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, 10, at.HeadIndex())
-	assert.EqualValues(t, 9, at.CommitIndex())
+	assert.EqualValues(t, 10, at.HeadOffset())
+	assert.EqualValues(t, 9, at.CommitOffset())
 }
 
 func TestQuorumAckTracker_AddingCursors_RF5(t *testing.T) {
 	at := NewQuorumAckTracker(5, 10, 5)
 
-	assert.EqualValues(t, 10, at.HeadIndex())
-	assert.EqualValues(t, 5, at.CommitIndex())
+	assert.EqualValues(t, 10, at.HeadOffset())
+	assert.EqualValues(t, 5, at.CommitOffset())
 
 	c, err := at.NewCursorAcker(11)
 	assert.Nil(t, c)
-	assert.ErrorIs(t, err, ErrorInvalidHeadIndex)
+	assert.ErrorIs(t, err, ErrorInvalidHeadOffset)
 
 	c1, err := at.NewCursorAcker(7)
 	assert.NotNil(t, c1)
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, 10, at.HeadIndex())
-	assert.EqualValues(t, 5, at.CommitIndex())
+	assert.EqualValues(t, 10, at.HeadOffset())
+	assert.EqualValues(t, 5, at.CommitOffset())
 
 	c2, err := at.NewCursorAcker(9)
 	assert.NotNil(t, c2)
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, 10, at.HeadIndex())
-	assert.EqualValues(t, 7, at.CommitIndex())
+	assert.EqualValues(t, 10, at.HeadOffset())
+	assert.EqualValues(t, 7, at.CommitOffset())
 }

@@ -407,7 +407,7 @@ func TestDBDeleteRange(t *testing.T) {
 	assert.NoError(t, factory.Close())
 }
 
-func TestDB_ReadCommitIndex(t *testing.T) {
+func TestDB_ReadCommitOffset(t *testing.T) {
 	offset := int64(13)
 
 	factory, err := NewPebbleKVFactory(testKVOptions)
@@ -415,9 +415,9 @@ func TestDB_ReadCommitIndex(t *testing.T) {
 	db, err := NewDB(1, factory, 0, common.SystemClock)
 	assert.NoError(t, err)
 
-	commitIndex, err := db.ReadCommitIndex()
+	commitOffset, err := db.ReadCommitOffset()
 	assert.NoError(t, err)
-	assert.Equal(t, wal.InvalidOffset, commitIndex)
+	assert.Equal(t, wal.InvalidOffset, commitOffset)
 
 	writeReq := &proto.WriteRequest{
 		Puts: []*proto.PutRequest{{
@@ -428,9 +428,9 @@ func TestDB_ReadCommitIndex(t *testing.T) {
 	_, err = db.ProcessWrite(writeReq, offset, 0, NoOpCallback)
 	assert.NoError(t, err)
 
-	commitIndex, err = db.ReadCommitIndex()
+	commitOffset, err = db.ReadCommitOffset()
 	assert.NoError(t, err)
-	assert.Equal(t, offset, commitIndex)
+	assert.Equal(t, offset, commitOffset)
 
 	assert.NoError(t, db.Close())
 	assert.NoError(t, factory.Close())

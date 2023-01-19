@@ -74,7 +74,7 @@ type leaderController struct {
 	// This represents the last entry in the WAL at the time this node
 	// became leader. It's used in the logic for deciding where to
 	// truncate the followers.
-	leaderElectionHeadIndex *proto.EntryId
+	leaderElectionHeadEntryId *proto.EntryId
 
 	ctx            context.Context
 	cancel         context.CancelFunc
@@ -85,10 +85,10 @@ type leaderController struct {
 	sessionManager SessionManager
 	log            zerolog.Logger
 
-	writeLatencyHisto      metrics.LatencyHistogram
-	headIdxGauge           metrics.Gauge
-	commitIdxGauge         metrics.Gauge
-	followerAckIndexGauges map[string]metrics.Gauge
+	writeLatencyHisto       metrics.LatencyHistogram
+	headOffsetGauge         metrics.Gauge
+	commitOffsetGauge       metrics.Gauge
+	followerAckOffsetGauges map[string]metrics.Gauge
 }
 
 func NewLeaderController(config Config, shardId uint32, rpcClient ReplicationRpcProvider, walFactory wal.WalFactory, kvFactory kv.KVFactory) (LeaderController, error) {
@@ -106,23 +106,23 @@ func NewLeaderController(config Config, shardId uint32, rpcClient ReplicationRpc
 			Logger(),
 		writeLatencyHisto: metrics.NewLatencyHistogram("oxia_server_leader_write_latency",
 			"Latency for write operations in the leader", labels),
-		followerAckIndexGauges: map[string]metrics.Gauge{},
+		followerAckOffsetGauges: map[string]metrics.Gauge{},
 	}
 
-	lc.headIdxGauge = metrics.NewGauge("oxia_server_leader_head_idx", "The current head index offset", "offset", labels, func() int64 {
+	lc.headOffsetGauge = metrics.NewGauge("oxia_server_leader_head_offset", "The current head offset", "offset", labels, func() int64 {
 		lc.Lock()
 		defer lc.Unlock()
 		if lc.quorumAckTracker != nil {
-			return lc.quorumAckTracker.HeadIndex()
+			return lc.quorumAckTracker.HeadOffset()
 		}
 
 		return -1
 	})
-	lc.commitIdxGauge = metrics.NewGauge("oxia_server_leader_commit_idx", "The current commit index offset", "offset", labels, func() int64 {
+	lc.commitOffsetGauge = metrics.NewGauge("oxia_server_leader_commit_offset", "The current commit offset", "offset", labels, func() int64 {
 		lc.Lock()
 		defer lc.Unlock()
 		if lc.quorumAckTracker != nil {
-			return lc.quorumAckTracker.CommitIndex()
+			return lc.quorumAckTracker.CommitOffset()
 		}
 
 		return -1
@@ -174,7 +174,7 @@ func (lc *leaderController) Epoch() int64 {
 // # Node handles a fence request
 //
 // A node receives a fencing request, fences itself and responds
-// with its head index.
+// with its head offset.
 //
 // When a node is fenced it cannot:
 //   - accept any writes from a client.
@@ -209,8 +209,8 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 	lc.status = proto.ServingStatus_Fenced
 	lc.replicationFactor = 0
 
-	lc.headIdxGauge.Unregister()
-	lc.commitIdxGauge.Unregister()
+	lc.headOffsetGauge.Unregister()
+	lc.commitOffsetGauge.Unregister()
 
 	if lc.quorumAckTracker != nil {
 		if err := lc.quorumAckTracker.Close(); err != nil {
@@ -225,12 +225,12 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 		}
 	}
 
-	for _, g := range lc.followerAckIndexGauges {
+	for _, g := range lc.followerAckOffsetGauges {
 		g.Unregister()
 	}
 
 	lc.followers = nil
-	headIndex, err := getLastEntryIdInWal(lc.wal)
+	headEntryId, err := getLastEntryIdInWal(lc.wal)
 	if err != nil {
 		return nil, err
 	}
@@ -241,25 +241,25 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 	}
 
 	lc.log.Info().
-		Interface("last-entry", headIndex).
+		Interface("last-entry", headEntryId).
 		Msg("Fenced leader")
 
 	return &proto.FenceResponse{
-		HeadIndex: headIndex,
+		HeadEntryId: headEntryId,
 	}, nil
 }
 
 // BecomeLeader : Node handles a Become Leader request
 //
-// The node inspects the head index of each follower and
-// compares it to its own head index, and then either:
-//   - Attaches a follow cursor for the follower the head indexes
+// The node inspects the head offset of each follower and
+// compares it to its own head offset, and then either:
+//   - Attaches a follow cursor for the follower the head entry ids
 //     have the same epoch, but the follower offset is lower or equal.
 //   - Sends a truncate request to the follower if its head
-//     index epoch does not match the leader's head index epoch or has
+//     entry epoch does not match the leader's head entry epoch or has
 //     a higher offset.
 //     The leader finds the highest entry id in its log prefix (of the
-//     follower head index) and tells the follower to truncate its log
+//     follower head entry) and tells the follower to truncate its log
 //     to that entry.
 //
 // Key points:
@@ -267,12 +267,12 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 //     Become Leader request will likely only contain a majority,
 //     not all the nodes.
 //   - No followers in the Become Leader message "follower map" will
-//     have a higher head index than the leader (as the leader was
-//     chosen because it had the highest head index of the majority
+//     have a higher head offset than the leader (as the leader was
+//     chosen because it had the highest head entry of the majority
 //     that responded to the fencing addEntryRequests first). But as the leader
 //     receives more fencing addEntryResponses from the remaining minority,
 //     the new leader will be informed of these followers, and it is
-//     possible that their head index is higher than the leader and
+//     possible that their head entry id is higher than the leader and
 //     therefore need truncating.
 func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error) {
 	lc.Lock()
@@ -291,20 +291,20 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 	lc.followers = make(map[string]FollowerCursor)
 
 	var err error
-	lc.leaderElectionHeadIndex, err = getLastEntryIdInWal(lc.wal)
+	lc.leaderElectionHeadEntryId, err = getLastEntryIdInWal(lc.wal)
 	if err != nil {
 		return nil, err
 	}
 
-	leaderCommitIndex, err := lc.db.ReadCommitIndex()
+	leaderCommitOffset, err := lc.db.ReadCommitOffset()
 	if err != nil {
 		return nil, err
 	}
 
-	lc.quorumAckTracker = NewQuorumAckTracker(req.GetReplicationFactor(), lc.leaderElectionHeadIndex.Offset, leaderCommitIndex)
+	lc.quorumAckTracker = NewQuorumAckTracker(req.GetReplicationFactor(), lc.leaderElectionHeadEntryId.Offset, leaderCommitOffset)
 
-	for follower, followerHeadIndex := range req.FollowerMaps {
-		if err := lc.addFollower(follower, followerHeadIndex); err != nil {
+	for follower, followerHeadEntryId := range req.FollowerMaps {
+		if err := lc.addFollower(follower, followerHeadEntryId); err != nil {
 			return nil, err
 		}
 	}
@@ -313,7 +313,7 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 	// committed in the quorum, to avoid missing any entries in the DB
 	// by the moment we make the leader controller accepting new write/read
 	// requests
-	if _, err = lc.quorumAckTracker.WaitForCommitIndex(lc.leaderElectionHeadIndex.Offset, nil); err != nil {
+	if _, err = lc.quorumAckTracker.WaitForCommitOffset(lc.leaderElectionHeadEntryId.Offset, nil); err != nil {
 		return nil, err
 	}
 
@@ -323,7 +323,7 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 
 	lc.log.Info().
 		Int64("epoch", lc.epoch).
-		Int64("head-index", lc.leaderElectionHeadIndex.Offset).
+		Int64("head-offset", lc.leaderElectionHeadEntryId.Offset).
 		Msg("Started leading the shard")
 	return &proto.BecomeLeaderResponse{}, nil
 }
@@ -348,26 +348,26 @@ func (lc *leaderController) AddFollower(req *proto.AddFollowerRequest) (*proto.A
 		return nil, errors.New("all followers are already attached")
 	}
 
-	if err := lc.addFollower(req.FollowerName, req.FollowerHeadIndex); err != nil {
+	if err := lc.addFollower(req.FollowerName, req.FollowerHeadEntryId); err != nil {
 		return nil, err
 	}
 
 	return &proto.AddFollowerResponse{}, nil
 }
 
-func (lc *leaderController) addFollower(follower string, followerHeadIndex *proto.EntryId) error {
-	followerHeadIndex, err := lc.truncateFollowerIfNeeded(follower, followerHeadIndex)
+func (lc *leaderController) addFollower(follower string, followerHeadEntryId *proto.EntryId) error {
+	followerHeadEntryId, err := lc.truncateFollowerIfNeeded(follower, followerHeadEntryId)
 	if err != nil {
 		lc.log.Error().Err(err).
 			Str("follower", follower).
-			Interface("follower-head-index", followerHeadIndex).
+			Interface("follower-head-entry", followerHeadEntryId).
 			Int64("epoch", lc.epoch).
 			Msg("Failed to truncate follower")
 		return err
 	}
 
 	cursor, err := NewFollowerCursor(follower, lc.epoch, lc.shardId, lc.rpcClient, lc.quorumAckTracker, lc.wal, lc.db,
-		followerHeadIndex.Offset)
+		followerHeadEntryId.Offset)
 	if err != nil {
 		lc.log.Error().Err(err).
 			Str("follower", follower).
@@ -378,24 +378,24 @@ func (lc *leaderController) addFollower(follower string, followerHeadIndex *prot
 
 	lc.log.Info().
 		Int64("epoch", lc.epoch).
-		Interface("leader-election-head-index", lc.leaderElectionHeadIndex).
+		Interface("leader-election-head-entry", lc.leaderElectionHeadEntryId).
 		Str("follower", follower).
-		Interface("follower-head-index", followerHeadIndex).
-		Int64("head-index", lc.wal.LastOffset()).
+		Interface("follower-head-entry", followerHeadEntryId).
+		Int64("head-offset", lc.wal.LastOffset()).
 		Msg("Added follower")
 	lc.followers[follower] = cursor
-	lc.followerAckIndexGauges[follower] = metrics.NewGauge("oxia_server_follower_ack_index", "", "count",
+	lc.followerAckOffsetGauges[follower] = metrics.NewGauge("oxia_server_follower_ack_offset", "", "count",
 		map[string]any{
 			"shard":    lc.shardId,
 			"follower": follower,
 		}, func() int64 {
-			return cursor.AckIndex()
+			return cursor.AckOffset()
 		})
 	return nil
 }
 
 func (lc *leaderController) applyAllEntriesIntoDB() error {
-	dbCommitIndex, err := lc.db.ReadCommitIndex()
+	dbCommitOffset, err := lc.db.ReadCommitOffset()
 	if err != nil {
 		return err
 	}
@@ -408,11 +408,11 @@ func (lc *leaderController) applyAllEntriesIntoDB() error {
 	}
 
 	lc.log.Info().
-		Int64("commit-index", dbCommitIndex).
-		Int64("head-index", lc.quorumAckTracker.HeadIndex()).
+		Int64("commit-offset", dbCommitOffset).
+		Int64("head-offset", lc.quorumAckTracker.HeadOffset()).
 		Msg("Applying all pending entries to database")
 
-	r, err := lc.wal.NewReader(dbCommitIndex)
+	r, err := lc.wal.NewReader(dbCommitOffset)
 	if err != nil {
 		return err
 	}
@@ -435,46 +435,46 @@ func (lc *leaderController) applyAllEntriesIntoDB() error {
 	return nil
 }
 
-func (lc *leaderController) truncateFollowerIfNeeded(follower string, followerHeadIndex *proto.EntryId) (*proto.EntryId, error) {
+func (lc *leaderController) truncateFollowerIfNeeded(follower string, followerHeadEntryId *proto.EntryId) (*proto.EntryId, error) {
 	lc.log.Debug().
 		Int64("epoch", lc.epoch).
 		Str("follower", follower).
-		Interface("leader-head-index", lc.leaderElectionHeadIndex).
-		Interface("follower-head-index", followerHeadIndex).
+		Interface("leader-head-entry", lc.leaderElectionHeadEntryId).
+		Interface("follower-head-entry", followerHeadEntryId).
 		Msg("Needs truncation?")
-	if followerHeadIndex.Epoch == lc.leaderElectionHeadIndex.Epoch &&
-		followerHeadIndex.Offset <= lc.leaderElectionHeadIndex.Offset {
+	if followerHeadEntryId.Epoch == lc.leaderElectionHeadEntryId.Epoch &&
+		followerHeadEntryId.Offset <= lc.leaderElectionHeadEntryId.Offset {
 		// No need for truncation
-		return followerHeadIndex, nil
+		return followerHeadEntryId, nil
 	}
 
 	// Coordinator should never send us a follower with an invalid epoch.
 	// Checking for sanity here.
-	if followerHeadIndex.Epoch > lc.leaderElectionHeadIndex.Epoch {
+	if followerHeadEntryId.Epoch > lc.leaderElectionHeadEntryId.Epoch {
 		return nil, common.ErrorInvalidStatus
 	}
 
-	lastEntryInFollowerEpoch, err := GetHighestEntryOfEpoch(lc.wal, followerHeadIndex.Epoch)
+	lastEntryInFollowerEpoch, err := GetHighestEntryOfEpoch(lc.wal, followerHeadEntryId.Epoch)
 	if err != nil {
 		return nil, err
 	}
 
-	if followerHeadIndex.Epoch == lastEntryInFollowerEpoch.Epoch &&
-		followerHeadIndex.Offset <= lastEntryInFollowerEpoch.Offset {
+	if followerHeadEntryId.Epoch == lastEntryInFollowerEpoch.Epoch &&
+		followerHeadEntryId.Offset <= lastEntryInFollowerEpoch.Offset {
 		// If the follower is on a previous epoch, but we have the same entry,
 		// we don't need to truncate
 		lc.log.Debug().
 			Int64("epoch", lc.epoch).
 			Str("follower", follower).
 			Interface("last-entry-in-follower-epoch", lastEntryInFollowerEpoch).
-			Interface("follower-head-index", followerHeadIndex).
+			Interface("follower-head-entry", followerHeadEntryId).
 			Msg("No need to truncate follower")
-		return followerHeadIndex, nil
+		return followerHeadEntryId, nil
 	}
 
 	tr, err := lc.rpcClient.Truncate(follower, &proto.TruncateRequest{
-		Epoch:     lc.epoch,
-		HeadIndex: lastEntryInFollowerEpoch,
+		Epoch:       lc.epoch,
+		HeadEntryId: lastEntryInFollowerEpoch,
 	})
 
 	if err != nil {
@@ -483,10 +483,10 @@ func (lc *leaderController) truncateFollowerIfNeeded(follower string, followerHe
 		lc.log.Info().
 			Int64("epoch", lc.epoch).
 			Str("follower", follower).
-			Interface("follower-head-index", tr.HeadIndex).
+			Interface("follower-head-entry", tr.HeadEntryId).
 			Msg("Truncated follower")
 
-		return tr.HeadIndex, nil
+		return tr.HeadEntryId, nil
 	}
 }
 
@@ -510,7 +510,7 @@ func (lc *leaderController) Read(request *proto.ReadRequest) (*proto.ReadRespons
 //
 // A client writes a value from Values to a leader node
 // if that value has not previously been written. The leader adds
-// the entry to its log, updates its head_index.
+// the entry to its log, updates its head offset.
 func (lc *leaderController) Write(request *proto.WriteRequest) (*proto.WriteResponse, error) {
 	_, resp, err := lc.write(func(_ int64) *proto.WriteRequest {
 		return request
@@ -532,7 +532,7 @@ func (lc *leaderController) write(request func(int64) *proto.WriteRequest) (int6
 		return wal.InvalidOffset, nil, err
 	}
 
-	resp, err := lc.quorumAckTracker.WaitForCommitIndex(newOffset, func() (*proto.WriteResponse, error) {
+	resp, err := lc.quorumAckTracker.WaitForCommitOffset(newOffset, func() (*proto.WriteResponse, error) {
 		return lc.db.ProcessWrite(actualRequest, newOffset, timestamp, SessionUpdateOperationCallback)
 	})
 	return newOffset, resp, err
@@ -578,7 +578,7 @@ func (lc *leaderController) appendToWal(request func(int64) *proto.WriteRequest,
 		return actualRequest, wal.InvalidOffset, errors.Wrap(err, "oxia: failed to sync the wal")
 	}
 
-	lc.quorumAckTracker.AdvanceHeadIndex(newOffset)
+	lc.quorumAckTracker.AdvanceHeadOffset(newOffset)
 
 	return actualRequest, newOffset, nil
 }
@@ -622,24 +622,24 @@ func (lc *leaderController) dispatchNotifications(ctx context.Context, req *prot
 	if req.StartOffsetExclusive != nil {
 		offsetInclusive = *req.StartOffsetExclusive + 1
 	} else {
-		commitIndex := lc.quorumAckTracker.CommitIndex()
+		commitOffset := lc.quorumAckTracker.CommitOffset()
 
 		// The client is creating a new notification stream and wants to receive the notification from the next
 		// entry that will be written.
 		// In order to ensure the client will positioned on a given offset, we need to send a first "dummy"
 		// notification. The client will wait for this first notification before making the notification
 		// channel available to the application
-		lc.log.Debug().Int64("commit-idx", commitIndex).Msg("Sending first dummy notification")
+		lc.log.Debug().Int64("commit-offset", commitOffset).Msg("Sending first dummy notification")
 		if err := stream.Send(&proto.NotificationBatch{
 			ShardId:       lc.shardId,
-			Offset:        commitIndex,
+			Offset:        commitOffset,
 			Timestamp:     0,
 			Notifications: nil,
 		}); err != nil {
 			return err
 		}
 
-		offsetInclusive = commitIndex + 1
+		offsetInclusive = commitOffset + 1
 	}
 
 	for ctx.Err() == nil {
@@ -682,7 +682,7 @@ func (lc *leaderController) Close() error {
 		err = multierr.Append(err, follower.Close())
 	}
 
-	for _, g := range lc.followerAckIndexGauges {
+	for _, g := range lc.followerAckOffsetGauges {
 		g.Unregister()
 	}
 

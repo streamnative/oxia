@@ -119,7 +119,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 		Epoch:   1,
 	})
 	assert.NoError(t, err)
-	AssertProtoEqual(t, InvalidEntryId, fr.HeadIndex)
+	AssertProtoEqual(t, InvalidEntryId, fr.HeadEntryId)
 
 	_, err = lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
@@ -164,7 +164,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 		Epoch:   2,
 	})
 	assert.NoError(t, err)
-	AssertProtoEqual(t, &proto.EntryId{Epoch: 1, Offset: 0}, fr2.HeadIndex)
+	AssertProtoEqual(t, &proto.EntryId{Epoch: 1, Offset: 0}, fr2.HeadEntryId)
 
 	assert.EqualValues(t, 2, lc.Epoch())
 	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
@@ -214,7 +214,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 		Epoch:   1,
 	})
 	assert.NoError(t, err)
-	assert.Equal(t, InvalidEntryId, fr.HeadIndex)
+	assert.Equal(t, InvalidEntryId, fr.HeadEntryId)
 
 	_, err = lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
@@ -269,7 +269,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 		Epoch:   2,
 	})
 	assert.NoError(t, err)
-	AssertProtoEqual(t, &proto.EntryId{Epoch: 1, Offset: 0}, fr2.HeadIndex)
+	AssertProtoEqual(t, &proto.EntryId{Epoch: 1, Offset: 0}, fr2.HeadEntryId)
 
 	assert.EqualValues(t, 2, lc.Epoch())
 	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
@@ -325,7 +325,7 @@ func TestLeaderController_EpochPersistent(t *testing.T) {
 		Epoch:   5,
 	})
 	assert.NoError(t, err)
-	AssertProtoEqual(t, &proto.EntryId{Epoch: wal.InvalidEpoch, Offset: wal.InvalidOffset}, fr2.HeadIndex)
+	AssertProtoEqual(t, &proto.EntryId{Epoch: wal.InvalidEpoch, Offset: wal.InvalidOffset}, fr2.HeadEntryId)
 
 	assert.EqualValues(t, 5, lc.Epoch())
 	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
@@ -384,7 +384,7 @@ func TestLeaderController_FenceEpoch(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.NotNil(t, fr)
-	AssertProtoEqual(t, InvalidEntryId, fr.HeadIndex)
+	AssertProtoEqual(t, InvalidEntryId, fr.HeadEntryId)
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())
@@ -480,29 +480,29 @@ func TestLeaderController_AddFollower(t *testing.T) {
 
 	// f1 is already connected
 	afRes, err := lc.AddFollower(&proto.AddFollowerRequest{
-		ShardId:           shard,
-		Epoch:             5,
-		FollowerName:      "f1",
-		FollowerHeadIndex: InvalidEntryId,
+		ShardId:             shard,
+		Epoch:               5,
+		FollowerName:        "f1",
+		FollowerHeadEntryId: InvalidEntryId,
 	})
 	assert.Nil(t, afRes)
 	assert.Error(t, err)
 
 	_, err = lc.AddFollower(&proto.AddFollowerRequest{
-		ShardId:           shard,
-		Epoch:             5,
-		FollowerName:      "f2",
-		FollowerHeadIndex: InvalidEntryId,
+		ShardId:             shard,
+		Epoch:               5,
+		FollowerName:        "f2",
+		FollowerHeadEntryId: InvalidEntryId,
 	})
 	assert.NoError(t, err)
 
 	// We have already 2 followers and with replication-factor=3
 	// it's not possible to add any more followers
 	afRes, err = lc.AddFollower(&proto.AddFollowerRequest{
-		ShardId:           shard,
-		Epoch:             5,
-		FollowerName:      "f3",
-		FollowerHeadIndex: InvalidEntryId,
+		ShardId:             shard,
+		Epoch:               5,
+		FollowerName:        "f3",
+		FollowerHeadEntryId: InvalidEntryId,
 	})
 	assert.Nil(t, afRes)
 	assert.Error(t, err)
@@ -513,8 +513,8 @@ func TestLeaderController_AddFollower(t *testing.T) {
 }
 
 // When a follower is added after the initial leader election,
-// the leader should use the head-index at the time of the
-// election instead of the current head-index.
+// the leader should use the head-entry at the time of the
+// election instead of the current head-entry.
 // Also, it should never ask to truncate to an offset higher
 // than what the follower has.
 func TestLeaderController_AddFollower_Truncate(t *testing.T) {
@@ -599,14 +599,14 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 	rpcClient.truncateResps <- struct {
 		*proto.TruncateResponse
 		error
-	}{&proto.TruncateResponse{HeadIndex: &proto.EntryId{Epoch: 5, Offset: 9}}, nil}
+	}{&proto.TruncateResponse{HeadEntryId: &proto.EntryId{Epoch: 5, Offset: 9}}, nil}
 
 	// Adding a follower that needs to be truncated
 	_, err = lc.AddFollower(&proto.AddFollowerRequest{
 		ShardId:      shard,
 		Epoch:        6,
 		FollowerName: "f2",
-		FollowerHeadIndex: &proto.EntryId{
+		FollowerHeadEntryId: &proto.EntryId{
 			Epoch:  5,
 			Offset: 12,
 		},
@@ -615,7 +615,7 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 
 	trReq := <-rpcClient.truncateReqs
 	assert.EqualValues(t, 6, trReq.Epoch)
-	AssertProtoEqual(t, &proto.EntryId{Epoch: 5, Offset: 9}, trReq.HeadIndex)
+	AssertProtoEqual(t, &proto.EntryId{Epoch: 5, Offset: 9}, trReq.HeadEntryId)
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())
@@ -649,19 +649,19 @@ func TestLeaderController_AddFollowerCheckEpoch(t *testing.T) {
 	assert.NoError(t, err)
 
 	afRes, err := lc.AddFollower(&proto.AddFollowerRequest{
-		ShardId:           shard,
-		Epoch:             4,
-		FollowerName:      "f2",
-		FollowerHeadIndex: InvalidEntryId,
+		ShardId:             shard,
+		Epoch:               4,
+		FollowerName:        "f2",
+		FollowerHeadEntryId: InvalidEntryId,
 	})
 	assert.Nil(t, afRes)
 	assert.Equal(t, common.CodeInvalidEpoch, status.Code(err))
 
 	afRes, err = lc.AddFollower(&proto.AddFollowerRequest{
-		ShardId:           shard,
-		Epoch:             6,
-		FollowerName:      "f2",
-		FollowerHeadIndex: InvalidEntryId,
+		ShardId:             shard,
+		Epoch:               6,
+		FollowerName:        "f2",
+		FollowerHeadEntryId: InvalidEntryId,
 	})
 	assert.Nil(t, afRes)
 	assert.Equal(t, common.CodeInvalidEpoch, status.Code(err))

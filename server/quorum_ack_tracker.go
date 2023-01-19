@@ -25,55 +25,55 @@ import (
 )
 
 var (
-	ErrorTooManyCursors   = errors.New("too many cursors")
-	ErrorInvalidHeadIndex = errors.New("invalid head index")
+	ErrorTooManyCursors    = errors.New("too many cursors")
+	ErrorInvalidHeadOffset = errors.New("invalid head offset")
 )
 
 // QuorumAckTracker
-// The QuorumAckTracker is responsible for keeping track of the head index and commit index of a shard
-//   - Head index: the last entry written in the local WAL of the leader
-//   - Commit index: the oldest entry that is considered "fully committed", as it has received the requested amount
+// The QuorumAckTracker is responsible for keeping track of the head offset and commit offset of a shard
+//   - Head offset: the last entry written in the local WAL of the leader
+//   - Commit offset: the oldest entry that is considered "fully committed", as it has received the requested amount
 //     of acks from the followers
 //
-// The quorum ack tracker is also used to block until the head index or commit index are advanced
+// The quorum ack tracker is also used to block until the head offset or commit offset are advanced
 type QuorumAckTracker interface {
 	io.Closer
 
-	CommitIndex() int64
+	CommitOffset() int64
 
-	// WaitForCommitIndex
+	// WaitForCommitOffset
 	// Waits for the specific entry id to be fully committed.
 	// After that, invokes the function f
-	WaitForCommitIndex(offset int64, f func() (*proto.WriteResponse, error)) (*proto.WriteResponse, error)
+	WaitForCommitOffset(offset int64, f func() (*proto.WriteResponse, error)) (*proto.WriteResponse, error)
 
 	// NextOffset returns the offset for the next entry to write
-	// Note this can go ahead of the head-index as there can be multiple operations in flight.
+	// Note this can go ahead of the head-offset as there can be multiple operations in flight.
 	NextOffset() int64
 
-	HeadIndex() int64
+	HeadOffset() int64
 
-	AdvanceHeadIndex(headIndex int64)
+	AdvanceHeadOffset(headOffset int64)
 
-	// WaitForHeadIndex
+	// WaitForHeadOffset
 	// Waits until the specified entry is written on the wal
-	WaitForHeadIndex(offset int64)
+	WaitForHeadOffset(offset int64)
 
 	// NewCursorAcker creates a tracker for a new cursor
-	// The `ackIndex` is the previous last-acked position for the cursor
-	NewCursorAcker(ackIndex int64) (CursorAcker, error)
+	// The `ackOffset` is the previous last-acked position for the cursor
+	NewCursorAcker(ackOffset int64) (CursorAcker, error)
 }
 
 type quorumAckTracker struct {
 	sync.Mutex
-	waitForHeadIndex   *sync.Cond
-	waitForCommitIndex *sync.Cond
+	waitForHeadOffset   *sync.Cond
+	waitForCommitOffset *sync.Cond
 
 	replicationFactor uint32
 	requiredAcks      uint32
 
-	nextOffset  atomic.Int64
-	headIndex   atomic.Int64
-	commitIndex atomic.Int64
+	nextOffset   atomic.Int64
+	headOffset   atomic.Int64
+	commitOffset atomic.Int64
 
 	// Keep track of the number of acks that each entry has received
 	// The bitset is used to handle duplicate acks from a single follower
@@ -91,7 +91,7 @@ type cursorAcker struct {
 	cursorIdx     int
 }
 
-func NewQuorumAckTracker(replicationFactor uint32, headIndex int64, commitIndex int64) QuorumAckTracker {
+func NewQuorumAckTracker(replicationFactor uint32, headOffset int64, commitOffset int64) QuorumAckTracker {
 	q := &quorumAckTracker{
 		// Ack quorum is number of follower acks that are required to consider the entry fully committed
 		// We are using RF/2 (and not RF/2 + 1) because the leader is already storing 1 copy locally
@@ -100,36 +100,36 @@ func NewQuorumAckTracker(replicationFactor uint32, headIndex int64, commitIndex 
 		tracker:           make(map[int64]*util.BitSet),
 	}
 
-	q.nextOffset.Store(headIndex)
-	q.headIndex.Store(headIndex)
-	q.commitIndex.Store(commitIndex)
+	q.nextOffset.Store(headOffset)
+	q.headOffset.Store(headOffset)
+	q.commitOffset.Store(commitOffset)
 
 	// Add entries to track the entries we're not yet sure that are fully committed
-	for offset := commitIndex + 1; offset <= headIndex; offset++ {
+	for offset := commitOffset + 1; offset <= headOffset; offset++ {
 		q.tracker[offset] = &util.BitSet{}
 	}
 
-	q.waitForHeadIndex = sync.NewCond(q)
-	q.waitForCommitIndex = sync.NewCond(q)
+	q.waitForHeadOffset = sync.NewCond(q)
+	q.waitForCommitOffset = sync.NewCond(q)
 	return q
 }
 
-func (q *quorumAckTracker) AdvanceHeadIndex(headIndex int64) {
+func (q *quorumAckTracker) AdvanceHeadOffset(headOffset int64) {
 	q.Lock()
 	defer q.Unlock()
 
-	if headIndex <= q.headIndex.Load() {
+	if headOffset <= q.headOffset.Load() {
 		return
 	}
 
-	q.headIndex.Store(headIndex)
-	q.waitForHeadIndex.Broadcast()
+	q.headOffset.Store(headOffset)
+	q.waitForHeadOffset.Broadcast()
 
 	if q.requiredAcks == 0 {
-		q.commitIndex.Store(headIndex)
-		q.waitForCommitIndex.Broadcast()
+		q.commitOffset.Store(headOffset)
+		q.waitForCommitOffset.Broadcast()
 	} else {
-		q.tracker[headIndex] = &util.BitSet{}
+		q.tracker[headOffset] = &util.BitSet{}
 	}
 }
 
@@ -137,29 +137,29 @@ func (q *quorumAckTracker) NextOffset() int64 {
 	return q.nextOffset.Add(1)
 }
 
-func (q *quorumAckTracker) CommitIndex() int64 {
-	return q.commitIndex.Load()
+func (q *quorumAckTracker) CommitOffset() int64 {
+	return q.commitOffset.Load()
 }
 
-func (q *quorumAckTracker) HeadIndex() int64 {
-	return q.headIndex.Load()
+func (q *quorumAckTracker) HeadOffset() int64 {
+	return q.headOffset.Load()
 }
 
-func (q *quorumAckTracker) WaitForHeadIndex(offset int64) {
+func (q *quorumAckTracker) WaitForHeadOffset(offset int64) {
 	q.Lock()
 	defer q.Unlock()
 
-	for !q.closed && q.headIndex.Load() < offset {
-		q.waitForHeadIndex.Wait()
+	for !q.closed && q.headOffset.Load() < offset {
+		q.waitForHeadOffset.Wait()
 	}
 }
 
-func (q *quorumAckTracker) WaitForCommitIndex(offset int64, f func() (*proto.WriteResponse, error)) (*proto.WriteResponse, error) {
+func (q *quorumAckTracker) WaitForCommitOffset(offset int64, f func() (*proto.WriteResponse, error)) (*proto.WriteResponse, error) {
 	q.Lock()
 	defer q.Unlock()
 
-	for !q.closed && q.requiredAcks > 0 && q.commitIndex.Load() < offset {
-		q.waitForCommitIndex.Wait()
+	for !q.closed && q.requiredAcks > 0 && q.commitOffset.Load() < offset {
+		q.waitForCommitOffset.Wait()
 	}
 
 	if q.closed {
@@ -178,12 +178,12 @@ func (q *quorumAckTracker) Close() error {
 	defer q.Unlock()
 
 	q.closed = true
-	q.waitForCommitIndex.Broadcast()
-	q.waitForHeadIndex.Broadcast()
+	q.waitForCommitOffset.Broadcast()
+	q.waitForHeadOffset.Broadcast()
 	return nil
 }
 
-func (q *quorumAckTracker) NewCursorAcker(ackIndex int64) (CursorAcker, error) {
+func (q *quorumAckTracker) NewCursorAcker(ackOffset int64) (CursorAcker, error) {
 	q.Lock()
 	defer q.Unlock()
 
@@ -191,8 +191,8 @@ func (q *quorumAckTracker) NewCursorAcker(ackIndex int64) (CursorAcker, error) {
 		return nil, ErrorTooManyCursors
 	}
 
-	if ackIndex > q.headIndex.Load() {
-		return nil, ErrorInvalidHeadIndex
+	if ackOffset > q.headOffset.Load() {
+		return nil, ErrorInvalidHeadOffset
 	}
 
 	qa := &cursorAcker{
@@ -200,9 +200,9 @@ func (q *quorumAckTracker) NewCursorAcker(ackIndex int64) (CursorAcker, error) {
 		cursorIdx:     q.cursorIdxGenerator,
 	}
 
-	// If the new cursor is already past the current quorum commit index, we have
+	// If the new cursor is already past the current quorum commit offset, we have
 	// to mark these entries as acked (by that cursor).
-	for offset := q.commitIndex.Load() + 1; offset <= ackIndex; offset++ {
+	for offset := q.commitOffset.Load() + 1; offset <= ackOffset; offset++ {
 		qa.ack(offset)
 	}
 
@@ -232,8 +232,8 @@ func (c *cursorAcker) ack(offset int64) {
 	if uint32(e.Count()) == q.requiredAcks {
 		delete(q.tracker, offset)
 
-		// Advance the commit index
-		q.commitIndex.Store(offset)
-		q.waitForCommitIndex.Broadcast()
+		// Advance the commit offset
+		q.commitOffset.Store(offset)
+		q.waitForCommitOffset.Broadcast()
 	}
 }

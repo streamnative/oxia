@@ -145,7 +145,7 @@ func (m *mockPerNodeChannels) FenceResponse(epoch int64, offset int64, err error
 		*proto.FenceResponse
 		error
 	}{&proto.FenceResponse{
-		HeadIndex: &proto.EntryId{
+		HeadEntryId: &proto.EntryId{
 			Epoch:  epoch,
 			Offset: offset,
 		},

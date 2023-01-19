@@ -43,7 +43,7 @@ type FollowerController interface {
 	// Node handles a fence request
 	//
 	// A node receives a fencing request, fences itself and responds
-	// with its head index.
+	// with its head offset.
 	//
 	// When a node is fenced it cannot:
 	// - accept any writes from a client.
@@ -69,7 +69,7 @@ type FollowerController interface {
 	GetStatus(request *proto.GetStatusRequest) (*proto.GetStatusResponse, error)
 
 	Epoch() int64
-	CommitIndex() int64
+	CommitOffset() int64
 	Status() proto.ServingStatus
 }
 
@@ -79,14 +79,14 @@ type followerController struct {
 	shardId uint32
 	epoch   int64
 
-	// The highest commit index advertised by the leader
-	advertisedCommitIndex atomic.Int64
+	// The highest commit offset advertised by the leader
+	advertisedCommitOffset atomic.Int64
 
-	// The commit index already applied in the database
-	commitIndex atomic.Int64
+	// The commit offset already applied in the database
+	commitOffset atomic.Int64
 
-	// Index of the last entry appended and not fully synced yet on the wal
-	lastAppendedIndex int64
+	// Offset of the last entry appended and not fully synced yet on the wal
+	lastAppendedOffset int64
 
 	status     proto.ServingStatus
 	wal        wal.Wal
@@ -128,7 +128,7 @@ func NewFollowerController(config Config, shardId uint32, wf wal.WalFactory, kvF
 		return nil, err
 	}
 
-	fc.lastAppendedIndex = fc.wal.LastOffset()
+	fc.lastAppendedOffset = fc.wal.LastOffset()
 	fc.walTrimmer = wal.NewTrimmer(shardId, fc.wal, config.WalRetentionTime, wal.DefaultCheckInterval, common.SystemClock)
 
 	if fc.db, err = kv.NewDB(shardId, kvFactory, config.NotificationsRetentionTime, common.SystemClock); err != nil {
@@ -143,11 +143,11 @@ func NewFollowerController(config Config, shardId uint32, wf wal.WalFactory, kvF
 		fc.status = proto.ServingStatus_Fenced
 	}
 
-	commitIndex, err := fc.db.ReadCommitIndex()
+	commitOffset, err := fc.db.ReadCommitOffset()
 	if err != nil {
 		return nil, err
 	}
-	fc.commitIndex.Store(commitIndex)
+	fc.commitOffset.Store(commitOffset)
 
 	fc.log = fc.log.With().Int64("epoch", fc.epoch).Logger()
 
@@ -157,8 +157,8 @@ func NewFollowerController(config Config, shardId uint32, wf wal.WalFactory, kvF
 	}, fc.applyAllCommittedEntries)
 
 	fc.log.Info().
-		Int64("head-index", fc.wal.LastOffset()).
-		Int64("commit-index", commitIndex).
+		Int64("head-offset", fc.wal.LastOffset()).
+		Int64("commit-offset", commitOffset).
 		Msg("Created follower")
 	return fc, nil
 }
@@ -217,8 +217,8 @@ func (fc *followerController) Epoch() int64 {
 	return fc.epoch
 }
 
-func (fc *followerController) CommitIndex() int64 {
-	return fc.commitIndex.Load()
+func (fc *followerController) CommitOffset() int64 {
+	return fc.commitOffset.Load()
 }
 
 func (fc *followerController) Fence(req *proto.FenceRequest) (*proto.FenceResponse, error) {
@@ -263,7 +263,7 @@ func (fc *followerController) Fence(req *proto.FenceRequest) (*proto.FenceRespon
 	fc.log.Info().
 		Interface("last-entry", lastEntryId).
 		Msg("Follower successfully fenced")
-	return &proto.FenceResponse{HeadIndex: lastEntryId}, nil
+	return &proto.FenceResponse{HeadEntryId: lastEntryId}, nil
 }
 
 func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.TruncateResponse, error) {
@@ -279,16 +279,16 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 	}
 
 	fc.status = proto.ServingStatus_Follower
-	headIndex, err := fc.wal.TruncateLog(req.HeadIndex.Offset)
+	headOffset, err := fc.wal.TruncateLog(req.HeadEntryId.Offset)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to truncate wal. truncate-offset: %d - wal-last-offset: %d",
-			req.HeadIndex.Offset, fc.wal.LastOffset())
+			req.HeadEntryId.Offset, fc.wal.LastOffset())
 	}
 
 	return &proto.TruncateResponse{
-		HeadIndex: &proto.EntryId{
+		HeadEntryId: &proto.EntryId{
 			Epoch:  req.Epoch,
-			Offset: headIndex,
+			Offset: headOffset,
 		},
 	}, nil
 }
@@ -353,21 +353,21 @@ func (fc *followerController) addEntry(req *proto.AddEntryRequest, stream proto.
 	}
 
 	fc.log.Debug().
-		Int64("commit-index", req.CommitIndex).
+		Int64("commit-offset", req.CommitOffset).
 		Int64("offset", req.Entry.Offset).
 		Msg("Add entry")
 
 	// A follower node confirms an entry to the leader
 	//
-	// The follower adds the entry to its log, sets the head index
-	// and updates its commit index with the commit index of
+	// The follower adds the entry to its log, sets the head offset
+	// and updates its commit offset with the commit offset of
 	// the request.
 	fc.status = proto.ServingStatus_Follower
 
-	if req.Entry.Offset <= fc.lastAppendedIndex {
+	if req.Entry.Offset <= fc.lastAppendedOffset {
 		// This was a duplicated request. We already have this entry
 		fc.log.Debug().
-			Int64("commit-index", req.CommitIndex).
+			Int64("commit-offset", req.CommitOffset).
 			Int64("offset", req.Entry.Offset).
 			Msg("Ignoring duplicated entry")
 		if err := stream.Send(&proto.AddEntryResponse{Offset: req.Entry.Offset}); err != nil {
@@ -382,8 +382,8 @@ func (fc *followerController) addEntry(req *proto.AddEntryRequest, stream proto.
 		return err
 	}
 
-	fc.advertisedCommitIndex.Store(req.CommitIndex)
-	fc.lastAppendedIndex = req.Entry.Offset
+	fc.advertisedCommitOffset.Store(req.CommitOffset)
+	fc.lastAppendedOffset = req.Entry.Offset
 
 	// Trigger the sync
 	fc.syncCond.Signal()
@@ -400,7 +400,7 @@ func (fc *followerController) handleAddEntriesSync(stream proto.OxiaLogReplicati
 		}
 		fc.Unlock()
 
-		oldHeadIndex := fc.wal.LastOffset()
+		oldHeadOffset := fc.wal.LastOffset()
 
 		if err := fc.wal.Sync(stream.Context()); err != nil {
 			fc.closeChannel(err)
@@ -408,9 +408,9 @@ func (fc *followerController) handleAddEntriesSync(stream proto.OxiaLogReplicati
 		}
 
 		// Ack all the entries that were synced in the last round
-		newHeadIndex := fc.wal.LastOffset()
-		for idx := oldHeadIndex + 1; idx <= newHeadIndex; idx++ {
-			if err := stream.Send(&proto.AddEntryResponse{Offset: idx}); err != nil {
+		newHeadOffset := fc.wal.LastOffset()
+		for offset := oldHeadOffset + 1; offset <= newHeadOffset; offset++ {
+			if err := stream.Send(&proto.AddEntryResponse{Offset: offset}); err != nil {
 				fc.closeChannel(err)
 				return
 			}
@@ -429,7 +429,7 @@ func (fc *followerController) applyAllCommittedEntries() {
 		}
 		fc.Unlock()
 
-		maxInclusive := fc.advertisedCommitIndex.Load()
+		maxInclusive := fc.advertisedCommitOffset.Load()
 		if err := fc.processCommittedEntries(maxInclusive); err != nil {
 			fc.closeChannel(err)
 			return
@@ -439,15 +439,15 @@ func (fc *followerController) applyAllCommittedEntries() {
 
 func (fc *followerController) processCommittedEntries(maxInclusive int64) error {
 	fc.log.Debug().
-		Int64("min-exclusive", fc.commitIndex.Load()).
+		Int64("min-exclusive", fc.commitOffset.Load()).
 		Int64("max-inclusive", maxInclusive).
-		Int64("head-index", fc.wal.LastOffset()).
+		Int64("head-offset", fc.wal.LastOffset()).
 		Msg("Process committed entries")
-	if maxInclusive <= fc.commitIndex.Load() {
+	if maxInclusive <= fc.commitOffset.Load() {
 		return nil
 	}
 
-	reader, err := fc.wal.NewReader(fc.commitIndex.Load())
+	reader, err := fc.wal.NewReader(fc.commitOffset.Load())
 	if err != nil {
 		fc.log.Err(err).Msg("Error opening reader used for applying committed entries")
 		return err
@@ -492,7 +492,7 @@ func (fc *followerController) processCommittedEntries(maxInclusive int64) error 
 			return err
 		}
 
-		fc.commitIndex.Store(entry.Offset)
+		fc.commitOffset.Store(entry.Offset)
 	}
 
 	return err
@@ -636,27 +636,27 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 		fc.closeChannelNoMutex(errors.Wrap(err, "Failed to update epoch in db"))
 	}
 
-	commitIndex, err := newDb.ReadCommitIndex()
+	commitOffset, err := newDb.ReadCommitOffset()
 	if err != nil {
-		fc.closeChannelNoMutex(errors.Wrap(err, "Failed to read committed index in the new snapshot"))
+		fc.closeChannelNoMutex(errors.Wrap(err, "Failed to read committed offset in the new snapshot"))
 		return
 	}
 
 	if err = stream.SendAndClose(&proto.SnapshotResponse{
-		AckIndex: commitIndex,
+		AckOffset: commitOffset,
 	}); err != nil {
 		fc.closeChannelNoMutex(errors.Wrap(err, "Failed to send response after processing snapshot"))
 		return
 	}
 
 	fc.db = newDb
-	fc.commitIndex.Store(commitIndex)
+	fc.commitOffset.Store(commitOffset)
 	fc.closeChannelNoMutex(nil)
 
 	fc.log.Info().
 		Int64("epoch", fc.epoch).
 		Int64("snapshot-size", totalSize).
-		Int64("commit-index", commitIndex).
+		Int64("commit-offset", commitOffset).
 		Msg("Successfully applied snapshot")
 }
 

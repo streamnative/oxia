@@ -52,21 +52,21 @@ func TestFollower(t *testing.T) {
 
 	fenceRes, err := fc.Fence(&proto.FenceRequest{Epoch: 1})
 	assert.NoError(t, err)
-	assert.Equal(t, InvalidEntryId, fenceRes.HeadIndex)
+	assert.Equal(t, InvalidEntryId, fenceRes.HeadEntryId)
 
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
 	assert.EqualValues(t, 1, fc.Epoch())
 
 	truncateResp, err := fc.Truncate(&proto.TruncateRequest{
 		Epoch: 1,
-		HeadIndex: &proto.EntryId{
+		HeadEntryId: &proto.EntryId{
 			Epoch:  1,
 			Offset: 0,
 		},
 	})
 	assert.NoError(t, err)
-	assert.EqualValues(t, 1, truncateResp.HeadIndex.Epoch)
-	assert.Equal(t, wal.InvalidOffset, truncateResp.HeadIndex.Offset)
+	assert.EqualValues(t, 1, truncateResp.HeadEntryId.Epoch)
+	assert.Equal(t, wal.InvalidOffset, truncateResp.HeadEntryId.Offset)
 
 	assert.Equal(t, proto.ServingStatus_Follower, fc.Status())
 
@@ -103,7 +103,7 @@ func TestFollower(t *testing.T) {
 	}})
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(dbRes.Gets))
-	// Keys are not there because they were not part of the commit index
+	// Keys are not there because they were not part of the commit offset
 	assert.Equal(t, proto.Status_KEY_NOT_FOUND, dbRes.Gets[0].Status)
 	assert.Equal(t, proto.Status_KEY_NOT_FOUND, dbRes.Gets[1].Status)
 
@@ -112,7 +112,7 @@ func TestFollower(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
-func TestReadingUpToCommitIndex(t *testing.T) {
+func TestReadingUpToCommitOffset(t *testing.T) {
 	var shardId uint32
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
@@ -128,7 +128,7 @@ func TestReadingUpToCommitIndex(t *testing.T) {
 
 	_, err = fc.Truncate(&proto.TruncateRequest{
 		Epoch: 1,
-		HeadIndex: &proto.EntryId{
+		HeadEntryId: &proto.EntryId{
 			Epoch:  0,
 			Offset: wal.InvalidOffset,
 		},
@@ -142,7 +142,7 @@ func TestReadingUpToCommitIndex(t *testing.T) {
 	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, wal.InvalidOffset))
 
 	stream.AddRequest(createAddRequest(t, 1, 1, map[string]string{"a": "2", "b": "3"},
-		// Commit index points to previous entry
+		// Commit offset points to previous entry
 		0))
 
 	// Wait for addEntryResponses
@@ -157,7 +157,7 @@ func TestReadingUpToCommitIndex(t *testing.T) {
 	assert.EqualValues(t, 1, r2.Offset)
 
 	assert.Eventually(t, func() bool {
-		return fc.CommitIndex() == 0
+		return fc.CommitOffset() == 0
 	}, 10*time.Second, 10*time.Millisecond)
 
 	dbRes, err := fc.(*followerController).db.ProcessRead(&proto.ReadRequest{Gets: []*proto.GetRequest{{
@@ -169,7 +169,7 @@ func TestReadingUpToCommitIndex(t *testing.T) {
 	}})
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(dbRes.Gets))
-	// Keys are not there because they were not part of the commit index
+	// Keys are not there because they were not part of the commit offset
 	assert.Equal(t, proto.Status_OK, dbRes.Gets[0].Status)
 	assert.Equal(t, []byte("0"), dbRes.Gets[0].Payload)
 	assert.Equal(t, proto.Status_OK, dbRes.Gets[1].Status)
@@ -180,7 +180,7 @@ func TestReadingUpToCommitIndex(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
-func TestFollower_RestoreCommitIndex(t *testing.T) {
+func TestFollower_RestoreCommitOffset(t *testing.T) {
 	var shardId uint32
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{DataDir: t.TempDir()})
 	assert.NoError(t, err)
@@ -202,17 +202,17 @@ func TestFollower_RestoreCommitIndex(t *testing.T) {
 
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
 	assert.EqualValues(t, 6, fc.Epoch())
-	assert.EqualValues(t, 9, fc.CommitIndex())
+	assert.EqualValues(t, 9, fc.CommitOffset())
 
 	assert.NoError(t, fc.Close())
 	assert.NoError(t, kvFactory.Close())
 	assert.NoError(t, walFactory.Close())
 }
 
-// If a follower receives a commit index from the leader that is ahead
-// of the current follower head index, it needs to advance the commit
-// index only up to the current head.
-func TestFollower_AdvanceCommitIndexToHead(t *testing.T) {
+// If a follower receives a commit offset from the leader that is ahead
+// of the current follower head offset, it needs to advance the commit
+// offset only up to the current head.
+func TestFollower_AdvanceCommitOffsetToHead(t *testing.T) {
 	var shardId uint32
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{DataDir: t.TempDir()})
 	assert.NoError(t, err)
@@ -232,7 +232,7 @@ func TestFollower_AdvanceCommitIndexToHead(t *testing.T) {
 	assert.EqualValues(t, 0, r1.Offset)
 
 	assert.Eventually(t, func() bool {
-		return fc.CommitIndex() == 0
+		return fc.CommitOffset() == 0
 	}, 10*time.Second, 10*time.Millisecond)
 
 	assert.NoError(t, fc.Close())
@@ -295,7 +295,7 @@ func TestFollower_TruncateAfterRestart(t *testing.T) {
 	// Follower needs to be in "Fenced" state to receive a Truncate request
 	tr, err := fc.Truncate(&proto.TruncateRequest{
 		Epoch: 1,
-		HeadIndex: &proto.EntryId{
+		HeadEntryId: &proto.EntryId{
 			Epoch:  0,
 			Offset: 0,
 		},
@@ -320,14 +320,14 @@ func TestFollower_TruncateAfterRestart(t *testing.T) {
 
 	tr, err = fc.Truncate(&proto.TruncateRequest{
 		Epoch: 2,
-		HeadIndex: &proto.EntryId{
+		HeadEntryId: &proto.EntryId{
 			Epoch:  -1,
 			Offset: -1,
 		},
 	})
 
 	assert.NoError(t, err)
-	AssertProtoEqual(t, &proto.EntryId{Epoch: 2, Offset: -1}, tr.HeadIndex)
+	AssertProtoEqual(t, &proto.EntryId{Epoch: 2, Offset: -1}, tr.HeadEntryId)
 	assert.Equal(t, proto.ServingStatus_Follower, fc.Status())
 
 	assert.NoError(t, fc.Close())
@@ -354,7 +354,7 @@ func TestFollower_PersistentEpoch(t *testing.T) {
 
 	fenceRes, err := fc.Fence(&proto.FenceRequest{Epoch: 4})
 	assert.NoError(t, err)
-	assert.Equal(t, InvalidEntryId, fenceRes.HeadIndex)
+	assert.Equal(t, InvalidEntryId, fenceRes.HeadEntryId)
 
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
 	assert.EqualValues(t, 4, fc.Epoch())
@@ -372,7 +372,7 @@ func TestFollower_PersistentEpoch(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
-func TestFollower_CommitIndexLastEntry(t *testing.T) {
+func TestFollower_CommitOffsetLastEntry(t *testing.T) {
 	var shardId uint32
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
@@ -399,7 +399,7 @@ func TestFollower_CommitIndexLastEntry(t *testing.T) {
 	assert.EqualValues(t, 0, r1.Offset)
 
 	assert.Eventually(t, func() bool {
-		return fc.CommitIndex() == 0
+		return fc.CommitOffset() == 0
 	}, 10*time.Second, 10*time.Millisecond)
 
 	dbRes, err := fc.(*followerController).db.ProcessRead(&proto.ReadRequest{Gets: []*proto.GetRequest{{
@@ -494,7 +494,7 @@ func TestFollower_RejectTruncateInvalidEpoch(t *testing.T) {
 
 	fenceRes, err := fc.Fence(&proto.FenceRequest{Epoch: 5})
 	assert.NoError(t, err)
-	assert.Equal(t, InvalidEntryId, fenceRes.HeadIndex)
+	assert.Equal(t, InvalidEntryId, fenceRes.HeadEntryId)
 
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
 	assert.EqualValues(t, 5, fc.Epoch())
@@ -502,7 +502,7 @@ func TestFollower_RejectTruncateInvalidEpoch(t *testing.T) {
 	// Lower epoch should be rejected
 	truncateResp, err := fc.Truncate(&proto.TruncateRequest{
 		Epoch: 4,
-		HeadIndex: &proto.EntryId{
+		HeadEntryId: &proto.EntryId{
 			Epoch:  1,
 			Offset: 0,
 		},
@@ -515,7 +515,7 @@ func TestFollower_RejectTruncateInvalidEpoch(t *testing.T) {
 	// Truncate with higher epoch should also fail
 	truncateResp, err = fc.Truncate(&proto.TruncateRequest{
 		Epoch: 6,
-		HeadIndex: &proto.EntryId{
+		HeadEntryId: &proto.EntryId{
 			Epoch:  1,
 			Offset: 0,
 		},
@@ -723,7 +723,7 @@ func closeChanIsNotNil(fc FollowerController) func() bool {
 
 func createAddRequest(t *testing.T, epoch int64, offset int64,
 	kvs map[string]string,
-	commitIndex int64) *proto.AddEntryRequest {
+	commitOffset int64) *proto.AddEntryRequest {
 	br := &proto.WriteRequest{}
 
 	for k, v := range kvs {
@@ -743,8 +743,8 @@ func createAddRequest(t *testing.T, epoch int64, offset int64,
 	}
 
 	return &proto.AddEntryRequest{
-		Epoch:       epoch,
-		Entry:       le,
-		CommitIndex: commitIndex,
+		Epoch:        epoch,
+		Entry:        le,
+		CommitOffset: commitOffset,
 	}
 }
