@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.2.0
 // - protoc             v3.21.9
-// source: proto/client.proto
+// source: client.proto
 
 package proto
 
@@ -45,7 +45,8 @@ type OxiaClientClient interface {
 	// this may be handled server-side in a proxy layer.
 	Read(ctx context.Context, in *ReadRequest, opts ...grpc.CallOption) (*ReadResponse, error)
 	GetNotifications(ctx context.Context, in *NotificationsRequest, opts ...grpc.CallOption) (OxiaClient_GetNotificationsClient, error)
-	// Creates a new client session. Sessions are kept alive by regularly sending heartbeats via the KeepAlive rpc.
+	// Creates a new client session. Sessions are kept alive by regularly sending
+	// heartbeats via the KeepAlive rpc.
 	CreateSession(ctx context.Context, in *CreateSessionRequest, opts ...grpc.CallOption) (*CreateSessionResponse, error)
 	// Sends heartbeats to prevent the session from timing out.
 	KeepAlive(ctx context.Context, opts ...grpc.CallOption) (OxiaClient_KeepAliveClient, error)
@@ -222,7 +223,8 @@ type OxiaClientServer interface {
 	// this may be handled server-side in a proxy layer.
 	Read(context.Context, *ReadRequest) (*ReadResponse, error)
 	GetNotifications(*NotificationsRequest, OxiaClient_GetNotificationsServer) error
-	// Creates a new client session. Sessions are kept alive by regularly sending heartbeats via the KeepAlive rpc.
+	// Creates a new client session. Sessions are kept alive by regularly sending
+	// heartbeats via the KeepAlive rpc.
 	CreateSession(context.Context, *CreateSessionRequest) (*CreateSessionResponse, error)
 	// Sends heartbeats to prevent the session from timing out.
 	KeepAlive(OxiaClient_KeepAliveServer) error
@@ -450,5 +452,5 @@ var OxiaClient_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "proto/client.proto",
+	Metadata: "client.proto",
 }

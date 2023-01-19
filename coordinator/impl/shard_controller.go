@@ -145,7 +145,7 @@ func (s *shardController) verifyCurrentLeader(leader model.ServerAddress) {
 		s.log.Warn().Err(err).
 			Interface("leader", leader).
 			Msg("Failed to verify leader for shard. Start a new election")
-	} else if status.Status != proto.ServingStatus_Leader {
+	} else if status.Status != proto.ServingStatus_LEADER {
 		s.log.Warn().
 			Interface("leader", leader).
 			Interface("status", status.Status).

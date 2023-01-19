@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.2.0
 // - protoc             v3.21.9
-// source: proto/replication.proto
+// source: replication.proto
 
 package proto
 
@@ -280,7 +280,7 @@ var OxiaCoordination_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "proto/replication.proto",
+	Metadata: "replication.proto",
 }
 
 // OxiaLogReplicationClient is the client API for OxiaLogReplication service.
@@ -505,5 +505,5 @@ var OxiaLogReplication_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "proto/replication.proto",
+	Metadata: "replication.proto",
 }

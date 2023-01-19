@@ -52,7 +52,7 @@ func TestDB_Notifications(t *testing.T) {
 	assert.Equal(t, 1, len(nb.Notifications))
 	n, found := nb.Notifications["a"]
 	assert.True(t, found)
-	assert.Equal(t, proto.NotificationType_KeyCreated, n.Type)
+	assert.Equal(t, proto.NotificationType_KEY_CREATED, n.Type)
 	assert.EqualValues(t, 0, *n.Version)
 
 	t1 := now()
@@ -82,7 +82,7 @@ func TestDB_Notifications(t *testing.T) {
 	assert.Equal(t, 1, len(nb.Notifications))
 	n, found = nb.Notifications["a"]
 	assert.True(t, found)
-	assert.Equal(t, proto.NotificationType_KeyModified, n.Type)
+	assert.Equal(t, proto.NotificationType_KEY_MODIFIED, n.Type)
 	assert.EqualValues(t, 1, *n.Version)
 
 	nb = notifications[1]
@@ -92,7 +92,7 @@ func TestDB_Notifications(t *testing.T) {
 	assert.Equal(t, 1, len(nb.Notifications))
 	n, found = nb.Notifications["b"]
 	assert.True(t, found)
-	assert.Equal(t, proto.NotificationType_KeyCreated, n.Type)
+	assert.Equal(t, proto.NotificationType_KEY_CREATED, n.Type)
 	assert.EqualValues(t, 0, *n.Version)
 
 	/// Write one batch
@@ -121,15 +121,15 @@ func TestDB_Notifications(t *testing.T) {
 	assert.Equal(t, 3, len(nb.Notifications))
 	n, found = nb.Notifications["c"]
 	assert.True(t, found)
-	assert.Equal(t, proto.NotificationType_KeyCreated, n.Type)
+	assert.Equal(t, proto.NotificationType_KEY_CREATED, n.Type)
 	assert.EqualValues(t, 0, *n.Version)
 	n, found = nb.Notifications["d"]
 	assert.True(t, found)
-	assert.Equal(t, proto.NotificationType_KeyCreated, n.Type)
+	assert.Equal(t, proto.NotificationType_KEY_CREATED, n.Type)
 	assert.EqualValues(t, 0, *n.Version)
 	n, found = nb.Notifications["a"]
 	assert.True(t, found)
-	assert.Equal(t, proto.NotificationType_KeyDeleted, n.Type)
+	assert.Equal(t, proto.NotificationType_KEY_DELETED, n.Type)
 	assert.Nil(t, n.Version)
 
 	// When there are multiple keys in one batch, only 1 notification
@@ -156,7 +156,7 @@ func TestDB_Notifications(t *testing.T) {
 	assert.Equal(t, 1, len(nb.Notifications))
 	n, found = nb.Notifications["x1"]
 	assert.True(t, found)
-	assert.Equal(t, proto.NotificationType_KeyModified, n.Type)
+	assert.Equal(t, proto.NotificationType_KEY_MODIFIED, n.Type)
 	assert.EqualValues(t, 1, *n.Version)
 
 	assert.NoError(t, db.Close())
