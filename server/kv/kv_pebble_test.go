@@ -527,12 +527,18 @@ func TestPebbleSnapshot(t *testing.T) {
 		assert.NoError(t, os.MkdirAll(copiedLocationDbPath, 0755))
 
 		for ; s.Valid(); s.Next() {
-			f := s.Chunk()
-			content, err := f.Content()
+			f, err := s.Chunk()
 			assert.NoError(t, err)
-
-			err = os.WriteFile(filepath.Join(copiedLocationDbPath, f.Name()), content, 0644)
+			content := f.Content()
+			fileName := f.Name()
+			file, err := os.OpenFile(filepath.Join(copiedLocationDbPath, fileName), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
 			assert.NoError(t, err)
+			for len(content) > 0 {
+				n, err := file.Write(content)
+				assert.NoError(t, err)
+				content = content[n:]
+			}
+			assert.NoError(t, file.Close())
 		}
 
 		_, err = os.Stat(s.BasePath())
@@ -621,10 +627,9 @@ func TestPebbleSnapshot_Loader(t *testing.T) {
 	assert.NoError(t, err)
 
 	for ; snapshot.Valid(); snapshot.Next() {
-		f := snapshot.Chunk()
-		content, err := f.Content()
+		f, err := snapshot.Chunk()
 		assert.NoError(t, err)
-		assert.NoError(t, loader.AddChunk(f.Name(), content))
+		assert.NoError(t, loader.AddChunk(f.Name(), f.Index(), f.TotalCount(), f.Content()))
 	}
 
 	loader.Complete()

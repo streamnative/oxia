@@ -253,11 +253,11 @@ func (fc *followerCursor) sendSnapshot() error {
 	startTime := time.Now()
 
 	for ; snapshot.Valid(); snapshot.Next() {
-		chunk := snapshot.Chunk()
-		content, err := chunk.Content()
+		chunk, err := snapshot.Chunk()
 		if err != nil {
 			return err
 		}
+		content := chunk.Content()
 
 		fc.log.Debug().
 			Str("chunk-name", chunk.Name()).
@@ -266,8 +266,10 @@ func (fc *followerCursor) sendSnapshot() error {
 
 		if err := stream.Send(&proto.SnapshotChunk{
 			Term:    fc.term,
-			Name:    chunk.Name(),
-			Content: content,
+			Name:       chunk.Name(),
+			ChunkIndex: chunk.Index(),
+			ChunkCount: chunk.TotalCount(),
+			Content:    content,
 		}); err != nil {
 			return err
 		}
