@@ -53,8 +53,8 @@ var (
 )
 
 func init() {
-	Cmd.Flags().StringVar(&config.Host, "host", config.Host, "Bind host")
-	Cmd.Flags().IntVar(&config.Port, "port", config.Port, "Bind port")
+	Cmd.Flags().StringVar(&config.Host, "host", config.Host, "Server host")
+	Cmd.Flags().IntVar(&config.Port, "port", config.Port, "Server port")
 	Cmd.Flags().DurationVar(&config.Timeout, "timeout", config.Timeout, "Health check timeout")
 	Cmd.Flags().StringVar(&config.Service, "service", config.Service, "Health check service")
 	Cmd.SilenceUsage = true
