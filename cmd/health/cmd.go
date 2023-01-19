@@ -64,9 +64,9 @@ func init() {
 func exec(*cobra.Command, []string) error {
 	clientPool := common.NewClientPool()
 
-	bindAddress := fmt.Sprintf("%s:%d", config.Host, config.Port)
+	serverAddress := fmt.Sprintf("%s:%d", config.Host, config.Port)
 
-	rpc, err := clientPool.GetHealthRpc(bindAddress)
+	rpc, err := clientPool.GetHealthRpc(serverAddress)
 	if err != nil {
 		return err
 	}
