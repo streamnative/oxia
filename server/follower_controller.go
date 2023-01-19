@@ -322,7 +322,7 @@ func (fc *followerController) Replicate(stream proto.OxiaLogReplication_Replicat
 	case err := <-closeStreamCh:
 		return err
 	case <-fc.ctx.Done():
-		return nil
+		return fc.ctx.Err()
 	}
 }
 
