@@ -39,13 +39,13 @@ type maelstromGrpcProvider struct {
 	sync.Mutex
 	services map[string]any
 
-	addEntriesStreams map[string]*maelstromReplicateServerStream
+	replicateStreams map[string]*maelstromReplicateServerStream
 }
 
 func newMaelstromGrpcProvider() *maelstromGrpcProvider {
 	return &maelstromGrpcProvider{
-		services:          make(map[string]any),
-		addEntriesStreams: make(map[string]*maelstromReplicateServerStream),
+		services:         make(map[string]any),
+		replicateStreams: make(map[string]*maelstromReplicateServerStream),
 	}
 }
 
@@ -107,10 +107,10 @@ func (m *maelstromGrpcProvider) HandleOxiaStreamRequest(msgType MsgType, msg *Me
 		key := fmt.Sprintf("%s-%d", msg.Src, msg.Body.StreamId)
 
 		m.Lock()
-		stream, alreadyCreated := m.addEntriesStreams[key]
+		stream, alreadyCreated := m.replicateStreams[key]
 		if !alreadyCreated {
 			stream = newMaelstromReplicateServerStream(msg)
-			m.addEntriesStreams[key] = stream
+			m.replicateStreams[key] = stream
 
 			go func() {
 				err := m.getService(oxiaLogReplication).(proto.OxiaLogReplicationServer).Replicate(stream)

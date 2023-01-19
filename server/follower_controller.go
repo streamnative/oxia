@@ -47,7 +47,7 @@ type FollowerController interface {
 	//
 	// When a node is fenced it cannot:
 	// - accept any writes from a client.
-	// - accept addEntryRequests from a leader.
+	// - accept append from a leader.
 	// - send any entries to followers if it was a leader.
 	//
 	// Any existing follow cursors are destroyed as is any state
@@ -62,7 +62,7 @@ type FollowerController interface {
 	// to a Follower.
 	Truncate(req *proto.TruncateRequest) (*proto.TruncateResponse, error)
 
-	AddEntries(stream proto.OxiaLogReplication_ReplicateServer) error
+	Replicate(stream proto.OxiaLogReplication_ReplicateServer) error
 
 	SendSnapshot(stream proto.OxiaLogReplication_SendSnapshotServer) error
 
@@ -191,7 +191,7 @@ func (fc *followerController) closeChannel(err error) {
 func (fc *followerController) closeChannelNoMutex(err error) {
 	if err != nil && err != io.EOF && status.Code(err) != codes.Canceled {
 		fc.log.Warn().Err(err).
-			Msg("Error in handle AddEntries stream")
+			Msg("Error in handle Replicate stream")
 	}
 
 	if fc.closeStreamCh != nil {
@@ -293,7 +293,7 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 	}, nil
 }
 
-func (fc *followerController) AddEntries(stream proto.OxiaLogReplication_ReplicateServer) error {
+func (fc *followerController) Replicate(stream proto.OxiaLogReplication_ReplicateServer) error {
 	fc.Lock()
 	if fc.status != proto.ServingStatus_Fenced && fc.status != proto.ServingStatus_Follower {
 		return common.ErrorInvalidStatus
@@ -328,13 +328,13 @@ func (fc *followerController) AddEntries(stream proto.OxiaLogReplication_Replica
 
 func (fc *followerController) handleServerStream(stream proto.OxiaLogReplication_ReplicateServer) {
 	for {
-		if addEntryReq, err := stream.Recv(); err != nil {
+		if req, err := stream.Recv(); err != nil {
 			fc.closeChannel(err)
 			return
-		} else if addEntryReq == nil {
+		} else if req == nil {
 			fc.closeChannel(nil)
 			return
-		} else if err := fc.append(addEntryReq, stream); err != nil {
+		} else if err := fc.append(req, stream); err != nil {
 			fc.closeChannel(err)
 			return
 		}

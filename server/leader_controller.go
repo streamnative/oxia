@@ -178,7 +178,7 @@ func (lc *leaderController) Epoch() int64 {
 //
 // When a node is fenced it cannot:
 //   - accept any writes from a client.
-//   - accept add entry addEntryRequests from a leader.
+//   - accept add entry append from a leader.
 //   - send any entries to followers if it was a leader.
 //
 // Any existing follow cursors are destroyed as is any state
@@ -269,8 +269,8 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 //   - No followers in the Become Leader message "follower map" will
 //     have a higher head offset than the leader (as the leader was
 //     chosen because it had the highest head entry of the majority
-//     that responded to the fencing addEntryRequests first). But as the leader
-//     receives more fencing addEntryResponses from the remaining minority,
+//     that responded to the fencing append first). But as the leader
+//     receives more fencing acks from the remaining minority,
 //     the new leader will be informed of these followers, and it is
 //     possible that their head entry id is higher than the leader and
 //     therefore need truncating.

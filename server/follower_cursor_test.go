@@ -67,11 +67,11 @@ func TestFollowerCursor(t *testing.T) {
 	assert.Equal(t, wal.InvalidOffset, fc.AckOffset())
 
 	// The follower is acking back
-	req := <-stream.addEntryReqs
+	req := <-stream.appendReqs
 	assert.EqualValues(t, 1, req.Epoch)
 	assert.Equal(t, wal.InvalidOffset, req.CommitOffset)
 
-	stream.addEntryResps <- &proto.Ack{
+	stream.ackResps <- &proto.Ack{
 		Offset: 0,
 	}
 
@@ -100,7 +100,7 @@ func TestFollowerCursor(t *testing.T) {
 
 	assert.EqualValues(t, 0, fc.AckOffset())
 
-	req = <-stream.addEntryReqs
+	req = <-stream.appendReqs
 	assert.EqualValues(t, 1, req.Epoch)
 	assert.EqualValues(t, 1, req.Entry.Epoch)
 	assert.EqualValues(t, 1, req.Entry.Offset)

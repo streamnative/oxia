@@ -30,12 +30,12 @@ type maelstromReplicationRpcProvider struct {
 
 	dispatcher Dispatcher
 
-	addEntryStreams map[int64]*maelstromReplicateClient
+	replicateStreams map[int64]*maelstromReplicateClient
 }
 
 func newMaelstromReplicationRpcProvider() *maelstromReplicationRpcProvider {
 	return &maelstromReplicationRpcProvider{
-		addEntryStreams: make(map[int64]*maelstromReplicateClient),
+		replicateStreams: make(map[int64]*maelstromReplicateClient),
 	}
 }
 
@@ -56,12 +56,12 @@ func (r *maelstromReplicationRpcProvider) GetReplicateStream(ctx context.Context
 
 	r.Lock()
 	defer r.Unlock()
-	r.addEntryStreams[s.streamId] = s
+	r.replicateStreams[s.streamId] = s
 	return s, nil
 }
 
-func (r *maelstromReplicationRpcProvider) HandleAddEntryResponse(streamId int64, res *proto.Ack) {
-	s, ok := r.addEntryStreams[streamId]
+func (r *maelstromReplicationRpcProvider) HandleAck(streamId int64, res *proto.Ack) {
+	s, ok := r.replicateStreams[streamId]
 	if !ok {
 		log.Warn().Int64("stream-id", streamId).Msg("Stream not found")
 		return
@@ -82,7 +82,7 @@ func (r *maelstromReplicationRpcProvider) SendSnapshot(ctx context.Context, foll
 	panic("not implemented")
 }
 
-// //////// AddEntriesClient
+// //////// ReplicateClient
 type maelstromReplicateClient struct {
 	BaseStream
 
