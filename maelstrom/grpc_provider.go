@@ -30,8 +30,8 @@ import (
 )
 
 const (
-	oxiaControl        = "coordination.OxiaControl"
-	oxiaLogReplication = "coordination.OxiaLogReplication"
+	oxiaCoordination   = "replication.OxiaCoordination"
+	oxiaLogReplication = "replication.OxiaLogReplication"
 	oxiaClient         = "io.streamnative.oxia.proto.OxiaClient"
 )
 
@@ -39,13 +39,13 @@ type maelstromGrpcProvider struct {
 	sync.Mutex
 	services map[string]any
 
-	addEntriesStreams map[string]*maelstromReplicateServerStream
+	replicateStreams map[string]*maelstromReplicateServerStream
 }
 
 func newMaelstromGrpcProvider() *maelstromGrpcProvider {
 	return &maelstromGrpcProvider{
-		services:          make(map[string]any),
-		addEntriesStreams: make(map[string]*maelstromReplicateServerStream),
+		services:         make(map[string]any),
+		replicateStreams: make(map[string]*maelstromReplicateServerStream),
 	}
 }
 
@@ -68,14 +68,14 @@ func (m *maelstromGrpcProvider) RegisterService(desc *grpc.ServiceDesc, impl any
 func (m *maelstromGrpcProvider) HandleOxiaRequest(msgType MsgType, msg *Message[OxiaMessage], message pb.Message) {
 	switch msgType {
 	case MsgTypeFenceRequest:
-		if fr, err := m.getService(oxiaControl).(proto.OxiaCoordinationServer).Fence(context.Background(), message.(*proto.FenceRequest)); err != nil {
+		if fr, err := m.getService(oxiaCoordination).(proto.OxiaCoordinationServer).Fence(context.Background(), message.(*proto.FenceRequest)); err != nil {
 			sendError(msg.Body.MsgId, msg.Src, err)
 		} else {
 			m.sendResponse(msg, MsgTypeFenceResponse, fr)
 		}
 
 	case MsgTypeBecomeLeaderRequest:
-		if blr, err := m.getService(oxiaControl).(proto.OxiaCoordinationServer).BecomeLeader(context.Background(), message.(*proto.BecomeLeaderRequest)); err != nil {
+		if blr, err := m.getService(oxiaCoordination).(proto.OxiaCoordinationServer).BecomeLeader(context.Background(), message.(*proto.BecomeLeaderRequest)); err != nil {
 			sendError(msg.Body.MsgId, msg.Src, err)
 		} else {
 			m.sendResponse(msg, MsgTypeBecomeLeaderResponse, blr)
@@ -89,7 +89,7 @@ func (m *maelstromGrpcProvider) HandleOxiaRequest(msgType MsgType, msg *Message[
 		}
 
 	case MsgTypeGetStatusRequest:
-		if gsr, err := m.getService(oxiaControl).(proto.OxiaCoordinationServer).GetStatus(context.Background(), message.(*proto.GetStatusRequest)); err != nil {
+		if gsr, err := m.getService(oxiaCoordination).(proto.OxiaCoordinationServer).GetStatus(context.Background(), message.(*proto.GetStatusRequest)); err != nil {
 			sendError(msg.Body.MsgId, msg.Src, err)
 		} else {
 			m.sendResponse(msg, MsgTypeGetStatusResponse, gsr)
@@ -107,10 +107,10 @@ func (m *maelstromGrpcProvider) HandleOxiaStreamRequest(msgType MsgType, msg *Me
 		key := fmt.Sprintf("%s-%d", msg.Src, msg.Body.StreamId)
 
 		m.Lock()
-		stream, alreadyCreated := m.addEntriesStreams[key]
+		stream, alreadyCreated := m.replicateStreams[key]
 		if !alreadyCreated {
 			stream = newMaelstromReplicateServerStream(msg)
-			m.addEntriesStreams[key] = stream
+			m.replicateStreams[key] = stream
 
 			go func() {
 				err := m.getService(oxiaLogReplication).(proto.OxiaLogReplicationServer).Replicate(stream)

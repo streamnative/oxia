@@ -97,7 +97,7 @@ func (d *dispatcher) ReceivedMessage(msgType MsgType, m any, message pb.Message)
 
 		case MsgTypeAck:
 			streamId := m.(*Message[OxiaStreamMessage]).Body.StreamId
-			go d.replicationProvider.HandleAddEntryResponse(streamId, message.(*proto.Ack))
+			go d.replicationProvider.HandleAck(streamId, message.(*proto.Ack))
 		}
 
 	} else {

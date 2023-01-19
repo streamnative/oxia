@@ -56,8 +56,8 @@ func (m *mockServerReplicateStream) Recv() (*proto.Append, error) {
 func newMockRpcClient() *mockRpcClient {
 	return &mockRpcClient{
 		sendSnapshotStream: newMockSendSnapshotClientStream(context.Background()),
-		addEntryReqs:       make(chan *proto.Append, 1000),
-		addEntryResps:      make(chan *proto.Ack, 1000),
+		appendReqs:         make(chan *proto.Append, 1000),
+		ackResps:           make(chan *proto.Ack, 1000),
 		truncateReqs:       make(chan *proto.TruncateRequest, 1000),
 		truncateResps: make(chan struct {
 			*proto.TruncateResponse
@@ -69,8 +69,8 @@ func newMockRpcClient() *mockRpcClient {
 type mockRpcClient struct {
 	mockBase
 	sendSnapshotStream *mockSendSnapshotClientStream
-	addEntryReqs       chan *proto.Append
-	addEntryResps      chan *proto.Ack
+	appendReqs         chan *proto.Append
+	ackResps           chan *proto.Ack
 	truncateReqs       chan *proto.TruncateRequest
 	truncateResps      chan struct {
 		*proto.TruncateResponse
@@ -83,12 +83,12 @@ func (m *mockRpcClient) Close() error {
 }
 
 func (m *mockRpcClient) Send(request *proto.Append) error {
-	m.addEntryReqs <- request
+	m.appendReqs <- request
 	return nil
 }
 
 func (m *mockRpcClient) Recv() (*proto.Ack, error) {
-	res := <-m.addEntryResps
+	res := <-m.ackResps
 	return res, nil
 }
 
