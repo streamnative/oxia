@@ -186,7 +186,7 @@ func TestFollower_RestoreCommitIndex(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 
-	db, err := kv.NewDB(shardId, kvFactory)
+	db, err := kv.NewDB(shardId, kvFactory, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
 	_, err = db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
 		Key:     "xx",
@@ -429,7 +429,7 @@ func TestFollowerController_RejectEntriesWithDifferentEpoch(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	db, err := kv.NewDB(shardId, kvFactory)
+	db, err := kv.NewDB(shardId, kvFactory, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
 	// Force a new epoch in the DB before opening
 	assert.NoError(t, db.UpdateEpoch(5))
@@ -531,7 +531,7 @@ func prepareTestDb(t *testing.T) kv.Snapshot {
 		DataDir: t.TempDir(),
 	})
 	assert.NoError(t, err)
-	db, err := kv.NewDB(0, kvFactory)
+	db, err := kv.NewDB(0, kvFactory, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
 
 	for i := 0; i < 100; i++ {

@@ -131,6 +131,43 @@ func TestPebbbleKeyRangeScan(t *testing.T) {
 	assert.NoError(t, factory.Close())
 }
 
+func TestPebbbleKeyRangeScanReverse(t *testing.T) {
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
+	kv, err := factory.NewKV(1)
+	assert.NoError(t, err)
+
+	wb := kv.NewWriteBatch()
+	assert.NoError(t, wb.Put("/root/a", []byte("a")))
+	assert.NoError(t, wb.Put("/root/b", []byte("b")))
+	assert.NoError(t, wb.Put("/root/c", []byte("c")))
+	assert.NoError(t, wb.Put("/root/d", []byte("d")))
+	assert.NoError(t, wb.Commit())
+	assert.NoError(t, wb.Close())
+
+	it := kv.KeyRangeScanReverse("/root/a", "/root/c")
+
+	assert.True(t, it.Valid())
+	assert.Equal(t, "/root/b", it.Key())
+	assert.True(t, it.Prev())
+
+	assert.True(t, it.Valid())
+	assert.Equal(t, "/root/a", it.Key())
+	assert.False(t, it.Prev())
+
+	assert.False(t, it.Valid())
+
+	assert.NoError(t, it.Close())
+
+	// Scan with empty result
+	it = kv.KeyRangeScanReverse("/xyz/a", "/xyz/c")
+	assert.False(t, it.Valid())
+	assert.NoError(t, it.Close())
+
+	assert.NoError(t, kv.Close())
+	assert.NoError(t, factory.Close())
+}
+
 func TestPebbleRangeScan(t *testing.T) {
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)

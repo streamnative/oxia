@@ -32,7 +32,9 @@ type Config struct {
 	MetricsPort         int
 	DataDir             string
 	WalDir              string
-	WalRetentionTime    time.Duration
+
+	WalRetentionTime           time.Duration
+	NotificationsRetentionTime time.Duration
 }
 
 type Server struct {

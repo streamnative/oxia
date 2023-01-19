@@ -100,12 +100,14 @@ type followerController struct {
 	applyEntriesCond common.ConditionContext
 	closeStreamCh    chan error
 	log              zerolog.Logger
+	config           Config
 
 	writeLatencyHisto metrics.LatencyHistogram
 }
 
 func NewFollowerController(config Config, shardId uint32, wf wal.WalFactory, kvFactory kv.KVFactory) (FollowerController, error) {
 	fc := &followerController{
+		config:        config,
 		shardId:       shardId,
 		kvFactory:     kvFactory,
 		status:        proto.ServingStatus_NotMember,
@@ -129,7 +131,7 @@ func NewFollowerController(config Config, shardId uint32, wf wal.WalFactory, kvF
 	fc.lastAppendedIndex = fc.wal.LastOffset()
 	fc.walTrimmer = wal.NewTrimmer(shardId, fc.wal, config.WalRetentionTime, wal.DefaultCheckInterval, common.SystemClock)
 
-	if fc.db, err = kv.NewDB(shardId, kvFactory); err != nil {
+	if fc.db, err = kv.NewDB(shardId, kvFactory, config.NotificationsRetentionTime, common.SystemClock); err != nil {
 		return nil, err
 	}
 
@@ -623,7 +625,7 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 	// We have received all the files for the database
 	loader.Complete()
 
-	newDb, err := kv.NewDB(fc.shardId, fc.kvFactory)
+	newDb, err := kv.NewDB(fc.shardId, fc.kvFactory, fc.config.NotificationsRetentionTime, common.SystemClock)
 	if err != nil {
 		fc.closeChannelNoMutex(errors.Wrap(err, "failed to open database after loading snapshot"))
 		return

@@ -356,7 +356,7 @@ func TestLeaderController_FenceEpoch(t *testing.T) {
 		LogDir: t.TempDir(),
 	})
 
-	db, err := kv.NewDB(shard, kvFactory)
+	db, err := kv.NewDB(shard, kvFactory, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
 	// Force a new epoch in the DB before opening
 	assert.NoError(t, db.UpdateEpoch(5))
@@ -403,7 +403,7 @@ func TestLeaderController_BecomeLeaderEpoch(t *testing.T) {
 		LogDir: t.TempDir(),
 	})
 
-	db, err := kv.NewDB(shard, kvFactory)
+	db, err := kv.NewDB(shard, kvFactory, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
 	// Force a new epoch in the DB before opening
 	assert.NoError(t, db.UpdateEpoch(5))
@@ -527,7 +527,7 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 	// Prepare some data in the leader log & db
 	wal, err := walFactory.NewWal(shard)
 	assert.NoError(t, err)
-	db, err := kv.NewDB(shard, kvFactory)
+	db, err := kv.NewDB(shard, kvFactory, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
 
 	for i := int64(0); i < 10; i++ {
