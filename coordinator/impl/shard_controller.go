@@ -67,7 +67,7 @@ type shardController struct {
 	log                   zerolog.Logger
 
 	leaderElectionLatency metrics.LatencyHistogram
-	fenceQuorumLatency    metrics.LatencyHistogram
+	newTermQuorumLatency  metrics.LatencyHistogram
 	becomeLeaderLatency   metrics.LatencyHistogram
 	leaderElectionsFailed metrics.Counter
 	termGauge             metrics.Gauge
@@ -89,8 +89,8 @@ func NewShardController(shard uint32, shardMetadata model.ShardMetadata, rpc Rpc
 			"The time it takes to elect a leader for the shard", labels),
 		leaderElectionsFailed: metrics.NewCounter("oxia_coordinator_leader_election_failed",
 			"The number of failed leader elections", "count", labels),
-		fenceQuorumLatency: metrics.NewLatencyHistogram("oxia_coordinator_fence_quorum_latency",
-			"The time it takes to fence the ensemble of nodes", labels),
+		newTermQuorumLatency: metrics.NewLatencyHistogram("oxia_coordinator_new_term_quorum_latency",
+			"The time it takes to take the ensemble of nodes to a new term", labels),
 		becomeLeaderLatency: metrics.NewLatencyHistogram("oxia_coordinator_become_leader_latency",
 			"The time it takes for the new elected leader to start", labels),
 	}
@@ -203,8 +203,8 @@ func (s *shardController) electLeader() error {
 		return err
 	}
 
-	// Fence all the ensemble members
-	fr, err := s.fenceQuorum()
+	// Send NewTerm to all the ensemble members
+	fr, err := s.newTermQuorum()
 	if err != nil {
 		return err
 	}
@@ -215,7 +215,7 @@ func (s *shardController) electLeader() error {
 		Int64("term", s.shardMetadata.Term).
 		Interface("new-leader", newLeader).
 		Interface("followers", followers).
-		Msg("Successfully fenced ensemble")
+		Msg("Successfully moved ensemble to a new term")
 
 	if err = s.becomeLeader(newLeader, followers); err != nil {
 		return err
@@ -278,7 +278,7 @@ func (s *shardController) keepFencingFollower(ctx context.Context, node model.Se
 		backOff := common.NewBackOffWithInitialInterval(ctx, 1*time.Second)
 
 		_ = backoff.RetryNotify(func() error {
-			err := s.fenceAndAddFollower(ctx, node)
+			err := s.newTermAndAddFollower(ctx, node)
 			if status.Code(err) == common.CodeInvalidTerm {
 				// If we're receiving invalid term error, it would mean
 				// there's already a new term generated, and we don't have
@@ -286,7 +286,7 @@ func (s *shardController) keepFencingFollower(ctx context.Context, node model.Se
 				s.log.Warn().Err(err).
 					Interface("follower", node).
 					Int64("term", s.Term()).
-					Msg("Failed to fence, invalid term. Stop trying")
+					Msg("Failed to newTerm, invalid term. Stop trying")
 				return nil
 			}
 			return err
@@ -295,13 +295,13 @@ func (s *shardController) keepFencingFollower(ctx context.Context, node model.Se
 				Interface("follower", node).
 				Int64("term", s.Term()).
 				Dur("retry-after", duration).
-				Msg("Failed to fence, retrying later")
+				Msg("Failed to newTerm, retrying later")
 		})
 	})
 }
 
-func (s *shardController) fenceAndAddFollower(ctx context.Context, node model.ServerAddress) error {
-	fr, err := s.fence(ctx, node)
+func (s *shardController) newTermAndAddFollower(ctx context.Context, node model.ServerAddress) error {
+	fr, err := s.newTerm(ctx, node)
 	if err != nil {
 		return err
 	}
@@ -327,10 +327,10 @@ func (s *shardController) fenceAndAddFollower(ctx context.Context, node model.Se
 	return nil
 }
 
-// Fence all the ensemble members in parallel and wait for
+// Send NewTerm to all the ensemble members in parallel and wait for
 // a majority of them to reply successfully
-func (s *shardController) fenceQuorum() (map[model.ServerAddress]*proto.EntryId, error) {
-	timer := s.fenceQuorumLatency.Timer()
+func (s *shardController) newTermQuorum() (map[model.ServerAddress]*proto.EntryId, error) {
+	timer := s.newTermQuorumLatency.Timer()
 
 	ensembleSize := len(s.shardMetadata.Ensemble)
 	majority := ensembleSize/2 + 1
@@ -354,16 +354,16 @@ func (s *shardController) fenceQuorum() (map[model.ServerAddress]*proto.EntryId,
 			"shard": fmt.Sprintf("%d", s.shard),
 			"node":  sa.Internal,
 		}, func() {
-			entryId, err := s.fence(ctx, serverAddress)
+			entryId, err := s.newTerm(ctx, serverAddress)
 			if err != nil {
 				s.log.Warn().Err(err).
 					Str("node", serverAddress.Internal).
-					Msg("Failed to fence node")
+					Msg("Failed to newTerm node")
 			} else {
 				s.log.Info().
 					Interface("server-address", serverAddress).
 					Interface("entry-id", entryId).
-					Msg("Processed fence response")
+					Msg("Processed newTerm response")
 			}
 
 			ch <- struct {
@@ -394,7 +394,7 @@ func (s *shardController) fenceQuorum() (map[model.ServerAddress]*proto.EntryId,
 	}
 
 	if successResponses < majority {
-		return nil, errors.Wrap(err, "failed to fence shard")
+		return nil, errors.Wrap(err, "failed to newTerm shard")
 	}
 
 	// If we have already reached a quorum of successful responses, we can wait a
@@ -419,8 +419,8 @@ func (s *shardController) fenceQuorum() (map[model.ServerAddress]*proto.EntryId,
 	return res, nil
 }
 
-func (s *shardController) fence(ctx context.Context, node model.ServerAddress) (*proto.EntryId, error) {
-	res, err := s.rpc.Fence(ctx, node, &proto.FenceRequest{
+func (s *shardController) newTerm(ctx context.Context, node model.ServerAddress) (*proto.EntryId, error) {
+	res, err := s.rpc.NewTerm(ctx, node, &proto.NewTermRequest{
 		ShardId: s.shard,
 		Term:    s.shardMetadata.Term,
 	})
@@ -431,13 +431,13 @@ func (s *shardController) fence(ctx context.Context, node model.ServerAddress) (
 	return res.HeadEntryId, nil
 }
 
-func (s *shardController) selectNewLeader(fenceResponses map[model.ServerAddress]*proto.EntryId) (
+func (s *shardController) selectNewLeader(newTermResponses map[model.ServerAddress]*proto.EntryId) (
 	leader model.ServerAddress, followers map[model.ServerAddress]*proto.EntryId) {
 	// Select all the nodes that have the highest entry in the wal
 	var currentMax int64 = -1
 	var candidates []model.ServerAddress
 
-	for addr, headEntryId := range fenceResponses {
+	for addr, headEntryId := range newTermResponses {
 		if headEntryId.Offset < currentMax {
 			continue
 		} else if headEntryId.Offset == currentMax {
@@ -452,7 +452,7 @@ func (s *shardController) selectNewLeader(fenceResponses map[model.ServerAddress
 	// Select a random leader among the nodes with the highest entry in the wal
 	leader = candidates[rand.Intn(len(candidates))]
 	followers = make(map[model.ServerAddress]*proto.EntryId)
-	for a, e := range fenceResponses {
+	for a, e := range newTermResponses {
 		if a != leader {
 			followers[a] = e
 		}

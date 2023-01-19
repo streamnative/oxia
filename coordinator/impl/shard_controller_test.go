@@ -42,16 +42,16 @@ func TestShardController(t *testing.T) {
 	}, rpc, coordinator)
 
 	// Shard controller should initiate a leader election
-	// and fence each server
-	rpc.GetNode(s1).FenceResponse(1, 0, nil)
-	rpc.GetNode(s2).FenceResponse(1, -1, nil)
-	rpc.GetNode(s3).FenceResponse(1, -1, nil)
+	// and newTerm each server
+	rpc.GetNode(s1).NewTermResponse(1, 0, nil)
+	rpc.GetNode(s2).NewTermResponse(1, -1, nil)
+	rpc.GetNode(s3).NewTermResponse(1, -1, nil)
 
 	rpc.GetNode(s1).BecomeLeaderResponse(nil)
 
-	rpc.GetNode(s1).expectFenceRequest(t, shard, 2)
-	rpc.GetNode(s2).expectFenceRequest(t, shard, 2)
-	rpc.GetNode(s3).expectFenceRequest(t, shard, 2)
+	rpc.GetNode(s1).expectNewTermRequest(t, shard, 2)
+	rpc.GetNode(s2).expectNewTermRequest(t, shard, 2)
+	rpc.GetNode(s3).expectNewTermRequest(t, shard, 2)
 
 	// s1 should be selected as new leader, because it has the highest offset
 	rpc.GetNode(s1).expectBecomeLeaderRequest(t, shard, 2, 3)
@@ -62,8 +62,8 @@ func TestShardController(t *testing.T) {
 	assert.EqualValues(t, 2, sc.Term())
 	assert.Equal(t, s1, *sc.Leader())
 
-	rpc.GetNode(s2).FenceResponse(2, 0, nil)
-	rpc.GetNode(s3).FenceResponse(2, -1, nil)
+	rpc.GetNode(s2).NewTermResponse(2, 0, nil)
+	rpc.GetNode(s3).NewTermResponse(2, -1, nil)
 
 	rpc.GetNode(s2).BecomeLeaderResponse(nil)
 
@@ -71,9 +71,9 @@ func TestShardController(t *testing.T) {
 	rpc.FailNode(s1, errors.New("failed to connect"))
 	sc.HandleNodeFailure(s1)
 
-	rpc.GetNode(s1).expectFenceRequest(t, shard, 3)
-	rpc.GetNode(s2).expectFenceRequest(t, shard, 3)
-	rpc.GetNode(s3).expectFenceRequest(t, shard, 3)
+	rpc.GetNode(s1).expectNewTermRequest(t, shard, 3)
+	rpc.GetNode(s2).expectNewTermRequest(t, shard, 3)
+	rpc.GetNode(s3).expectNewTermRequest(t, shard, 3)
 
 	// s2 should be selected as new leader, because it has the highest offset
 	rpc.GetNode(s2).expectBecomeLeaderRequest(t, shard, 3, 3)
@@ -89,13 +89,13 @@ func TestShardController(t *testing.T) {
 	sc.HandleNodeFailure(s2)
 
 	rpc.FailNode(s2, errors.New("failed to connect"))
-	rpc.GetNode(s3).FenceResponse(2, -1, nil)
+	rpc.GetNode(s3).NewTermResponse(2, -1, nil)
 
-	rpc.GetNode(s1).expectFenceRequest(t, shard, 3)
-	rpc.GetNode(s2).expectFenceRequest(t, shard, 4)
-	rpc.GetNode(s3).expectFenceRequest(t, shard, 4)
+	rpc.GetNode(s1).expectNewTermRequest(t, shard, 3)
+	rpc.GetNode(s2).expectNewTermRequest(t, shard, 4)
+	rpc.GetNode(s3).expectNewTermRequest(t, shard, 4)
 
-	rpc.GetNode(s1).expectFenceRequest(t, shard, 4)
+	rpc.GetNode(s1).expectNewTermRequest(t, shard, 4)
 	assert.NoError(t, sc.Close())
 }
 
@@ -116,12 +116,12 @@ func TestShardController_StartingWithLeaderAlreadyPresent(t *testing.T) {
 	}, rpc, coordinator)
 
 	select {
-	case <-rpc.GetNode(s1).fenceRequests:
-		assert.Fail(t, "shouldn't have received any fence requests")
-	case <-rpc.GetNode(s2).fenceRequests:
-		assert.Fail(t, "shouldn't have received any fence requests")
-	case <-rpc.GetNode(s3).fenceRequests:
-		assert.Fail(t, "shouldn't have received any fence requests")
+	case <-rpc.GetNode(s1).newTermRequests:
+		assert.Fail(t, "shouldn't have received any newTerm requests")
+	case <-rpc.GetNode(s2).newTermRequests:
+		assert.Fail(t, "shouldn't have received any newTerm requests")
+	case <-rpc.GetNode(s3).newTermRequests:
+		assert.Fail(t, "shouldn't have received any newTerm requests")
 
 	case <-time.After(1 * time.Second):
 		// Ok
@@ -130,7 +130,7 @@ func TestShardController_StartingWithLeaderAlreadyPresent(t *testing.T) {
 	assert.NoError(t, sc.Close())
 }
 
-func TestShardController_FenceWithNonRespondingServer(t *testing.T) {
+func TestShardController_NewTermWithNonRespondingServer(t *testing.T) {
 	var shard uint32 = 5
 	rpc := newMockRpcProvider()
 	coordinator := newMockCoordinator()
@@ -151,14 +151,14 @@ func TestShardController_FenceWithNonRespondingServer(t *testing.T) {
 	rpc.GetNode(s1).BecomeLeaderResponse(nil)
 
 	// Shard controller should initiate a leader election
-	// and fence each server
-	rpc.GetNode(s1).FenceResponse(1, 0, nil)
-	rpc.GetNode(s2).FenceResponse(1, -1, nil)
+	// and newTerm each server
+	rpc.GetNode(s1).NewTermResponse(1, 0, nil)
+	rpc.GetNode(s2).NewTermResponse(1, -1, nil)
 	// s3 is not responding
 
-	rpc.GetNode(s1).expectFenceRequest(t, shard, 2)
-	rpc.GetNode(s2).expectFenceRequest(t, shard, 2)
-	rpc.GetNode(s3).expectFenceRequest(t, shard, 2)
+	rpc.GetNode(s1).expectNewTermRequest(t, shard, 2)
+	rpc.GetNode(s2).expectNewTermRequest(t, shard, 2)
+	rpc.GetNode(s3).expectNewTermRequest(t, shard, 2)
 
 	// s1 should be selected as new leader, without waiting for s3 to timeout
 	rpc.GetNode(s1).expectBecomeLeaderRequest(t, shard, 2, 3)
@@ -171,7 +171,7 @@ func TestShardController_FenceWithNonRespondingServer(t *testing.T) {
 	assert.NoError(t, sc.Close())
 }
 
-func TestShardController_FenceFollowerUntilItRecovers(t *testing.T) {
+func TestShardController_NewTermFollowerUntilItRecovers(t *testing.T) {
 	var shard uint32 = 5
 	rpc := newMockRpcProvider()
 	coordinator := newMockCoordinator()
@@ -188,13 +188,13 @@ func TestShardController_FenceFollowerUntilItRecovers(t *testing.T) {
 	}, rpc, coordinator)
 
 	// s3 is failing, though we can still elect a leader
-	rpc.GetNode(s1).FenceResponse(1, 0, nil)
-	rpc.GetNode(s2).FenceResponse(1, -1, nil)
-	rpc.GetNode(s3).FenceResponse(1, -1, errors.New("fails"))
+	rpc.GetNode(s1).NewTermResponse(1, 0, nil)
+	rpc.GetNode(s2).NewTermResponse(1, -1, nil)
+	rpc.GetNode(s3).NewTermResponse(1, -1, errors.New("fails"))
 
-	rpc.GetNode(s1).expectFenceRequest(t, shard, 2)
-	rpc.GetNode(s2).expectFenceRequest(t, shard, 2)
-	rpc.GetNode(s3).expectFenceRequest(t, shard, 2)
+	rpc.GetNode(s1).expectNewTermRequest(t, shard, 2)
+	rpc.GetNode(s2).expectNewTermRequest(t, shard, 2)
+	rpc.GetNode(s3).expectNewTermRequest(t, shard, 2)
 
 	// s1 should be selected as new leader, without waiting for s3 to timeout
 	rpc.GetNode(s1).BecomeLeaderResponse(nil)
@@ -208,12 +208,12 @@ func TestShardController_FenceFollowerUntilItRecovers(t *testing.T) {
 	assert.Equal(t, s1, *sc.Leader())
 
 	// One more failure from s1
-	rpc.GetNode(s3).FenceResponse(1, -1, errors.New("fails"))
-	rpc.GetNode(s3).expectFenceRequest(t, shard, 2)
+	rpc.GetNode(s3).NewTermResponse(1, -1, errors.New("fails"))
+	rpc.GetNode(s3).expectNewTermRequest(t, shard, 2)
 
 	// Now it succeeds
-	rpc.GetNode(s3).FenceResponse(1, -1, nil)
-	rpc.GetNode(s3).expectFenceRequest(t, shard, 2)
+	rpc.GetNode(s3).NewTermResponse(1, -1, nil)
+	rpc.GetNode(s3).expectNewTermRequest(t, shard, 2)
 
 	// Leader should be notified
 	rpc.GetNode(s1).AddFollowerResponse(nil)

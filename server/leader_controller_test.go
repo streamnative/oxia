@@ -114,7 +114,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	assert.EqualValues(t, wal.InvalidTerm, lc.Term())
 	assert.Equal(t, proto.ServingStatus_NotMember, lc.Status())
 
-	fr, err := lc.Fence(&proto.FenceRequest{
+	fr, err := lc.NewTerm(&proto.NewTermRequest{
 		ShardId: shard,
 		Term:    1,
 	})
@@ -157,9 +157,9 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	assert.Equal(t, []byte("value-a"), res2.Gets[0].Payload)
 	assert.EqualValues(t, 0, res.Puts[0].Stat.Version)
 
-	/// Fence leader
+	/// Set NewTerm to leader
 
-	fr2, err := lc.Fence(&proto.FenceRequest{
+	fr2, err := lc.NewTerm(&proto.NewTermRequest{
 		ShardId: shard,
 		Term:    2,
 	})
@@ -209,7 +209,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	assert.EqualValues(t, wal.InvalidTerm, lc.Term())
 	assert.Equal(t, proto.ServingStatus_NotMember, lc.Status())
 
-	fr, err := lc.Fence(&proto.FenceRequest{
+	fr, err := lc.NewTerm(&proto.NewTermRequest{
 		ShardId: shard,
 		Term:    1,
 	})
@@ -262,9 +262,9 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	assert.Equal(t, []byte("value-a"), res2.Gets[0].Payload)
 	assert.EqualValues(t, 0, res.Puts[0].Stat.Version)
 
-	/// Fence leader
+	/// Set NewTerm to leader
 
-	fr2, err := lc.Fence(&proto.FenceRequest{
+	fr2, err := lc.NewTerm(&proto.NewTermRequest{
 		ShardId: shard,
 		Term:    2,
 	})
@@ -318,9 +318,9 @@ func TestLeaderController_TermPersistent(t *testing.T) {
 	assert.EqualValues(t, wal.InvalidTerm, lc.Term())
 	assert.Equal(t, proto.ServingStatus_NotMember, lc.Status())
 
-	/// Fence leader
+	/// Set NewTerm to leader
 
-	fr2, err := lc.Fence(&proto.FenceRequest{
+	fr2, err := lc.NewTerm(&proto.NewTermRequest{
 		ShardId: shard,
 		Term:    5,
 	})
@@ -369,7 +369,7 @@ func TestLeaderController_FenceTerm(t *testing.T) {
 	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
 
 	// Smaller term will fail
-	fr, err := lc.Fence(&proto.FenceRequest{
+	fr, err := lc.NewTerm(&proto.NewTermRequest{
 		ShardId: shard,
 		Term:    4,
 	})
@@ -378,7 +378,7 @@ func TestLeaderController_FenceTerm(t *testing.T) {
 	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
 
 	// Same term will succeed
-	fr, err = lc.Fence(&proto.FenceRequest{
+	fr, err = lc.NewTerm(&proto.NewTermRequest{
 		ShardId: shard,
 		Term:    5,
 	})
@@ -459,7 +459,7 @@ func TestLeaderController_AddFollower(t *testing.T) {
 	lc, err := NewLeaderController(Config{}, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	_, err = lc.Fence(&proto.FenceRequest{
+	_, err = lc.NewTerm(&proto.NewTermRequest{
 		Term:    5,
 		ShardId: shard,
 	})
@@ -553,7 +553,7 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 	lc, err := NewLeaderController(Config{}, shard, rpcClient, walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	_, err = lc.Fence(&proto.FenceRequest{
+	_, err = lc.NewTerm(&proto.NewTermRequest{
 		Term:    6,
 		ShardId: shard,
 	})
@@ -632,7 +632,7 @@ func TestLeaderController_AddFollowerCheckTerm(t *testing.T) {
 	lc, err := NewLeaderController(Config{}, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	_, err = lc.Fence(&proto.FenceRequest{
+	_, err = lc.NewTerm(&proto.NewTermRequest{
 		Term:    5,
 		ShardId: shard,
 	})
@@ -707,7 +707,7 @@ func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
 
 	lc, _ := NewLeaderController(Config{}, shard, rpc, walFactory, kvFactory)
 
-	_, _ = lc.Fence(&proto.FenceRequest{
+	_, _ = lc.NewTerm(&proto.NewTermRequest{
 		ShardId: shard,
 		Term:    1,
 	})
@@ -755,7 +755,7 @@ func TestLeaderController_Notifications(t *testing.T) {
 	walFactory := wal.NewInMemoryWalFactory()
 
 	lc, _ := NewLeaderController(Config{}, shard, newMockRpcClient(), walFactory, kvFactory)
-	_, _ = lc.Fence(&proto.FenceRequest{ShardId: shard, Term: 1})
+	_, _ = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})
 	_, _ = lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
 		Term:              1,
@@ -821,7 +821,7 @@ func TestLeaderController_NotificationsCloseLeader(t *testing.T) {
 	walFactory := wal.NewInMemoryWalFactory()
 
 	lc, _ := NewLeaderController(Config{}, shard, newMockRpcClient(), walFactory, kvFactory)
-	_, _ = lc.Fence(&proto.FenceRequest{ShardId: shard, Term: 1})
+	_, _ = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})
 	_, _ = lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
 		Term:              1,

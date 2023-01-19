@@ -38,11 +38,11 @@ import (
 type FollowerController interface {
 	io.Closer
 
-	// Fence
+	// NewTerm
 	//
-	// Node handles a fence request
+	// Node handles a new term request
 	//
-	// A node receives a fencing request, fences itself and responds
+	// A node receives a new term request, fences itself and responds
 	// with its head offset.
 	//
 	// When a node is fenced it cannot:
@@ -52,7 +52,7 @@ type FollowerController interface {
 	//
 	// Any existing follow cursors are destroyed as is any state
 	//regarding reconfigurations.
-	Fence(req *proto.FenceRequest) (*proto.FenceResponse, error)
+	NewTerm(req *proto.NewTermRequest) (*proto.NewTermResponse, error)
 
 	// Truncate
 	//
@@ -221,22 +221,22 @@ func (fc *followerController) CommitOffset() int64 {
 	return fc.commitOffset.Load()
 }
 
-func (fc *followerController) Fence(req *proto.FenceRequest) (*proto.FenceResponse, error) {
+func (fc *followerController) NewTerm(req *proto.NewTermRequest) (*proto.NewTermResponse, error) {
 	fc.Lock()
 	defer fc.Unlock()
 
 	if req.Term < fc.term {
 		fc.log.Warn().
 			Int64("follower-term", fc.term).
-			Int64("fence-term", req.Term).
+			Int64("new-term", req.Term).
 			Msg("Failed to fence with invalid term")
 		return nil, common.ErrorInvalidTerm
 	} else if req.Term == fc.term && fc.status != proto.ServingStatus_Fenced {
-		// It's OK to receive a duplicate Fence request, for the same term, as long as we haven't moved
+		// It's OK to receive a duplicate NewTerm request, for the same term, as long as we haven't moved
 		// out of the Fenced state for that term
 		fc.log.Warn().
 			Int64("follower-term", fc.term).
-			Int64("fence-term", req.Term).
+			Int64("new-term", req.Term).
 			Interface("status", fc.status).
 			Msg("Failed to fence with same term in invalid state")
 		return nil, common.ErrorInvalidStatus
@@ -255,15 +255,15 @@ func (fc *followerController) Fence(req *proto.FenceRequest) (*proto.FenceRespon
 	if err != nil {
 		fc.log.Warn().Err(err).
 			Int64("follower-term", fc.term).
-			Int64("fence-term", req.Term).
+			Int64("new-term", req.Term).
 			Msg("Failed to get last")
 		return nil, err
 	}
 
 	fc.log.Info().
 		Interface("last-entry", lastEntryId).
-		Msg("Follower successfully fenced")
-	return &proto.FenceResponse{HeadEntryId: lastEntryId}, nil
+		Msg("Follower successfully initialized in new term")
+	return &proto.NewTermResponse{HeadEntryId: lastEntryId}, nil
 }
 
 func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.TruncateResponse, error) {

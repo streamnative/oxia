@@ -24,7 +24,7 @@ import "proto/client.proto";
 service OxiaCoordination {
   rpc PushShardAssignments(stream io.streamnative.oxia.proto.ShardAssignments) returns (CoordinationShardAssignmentsResponse);
 
-  rpc Fence(FenceRequest) returns (FenceResponse);
+  rpc NewTerm(NewTermRequest) returns (NewTermResponse);
   rpc BecomeLeader(BecomeLeaderRequest) returns (BecomeLeaderResponse);
   rpc AddFollower(AddFollowerRequest) returns (AddFollowerResponse);
 
@@ -60,13 +60,13 @@ message SnapshotChunk {
   int32 chunk_count = 5;
 }
 
-message FenceRequest {
+message NewTermRequest {
   uint32 shard_id = 1;
   int64 term = 2;
 }
 
-message FenceResponse {
-  EntryId head_entry_id= 2;
+message NewTermResponse {
+  EntryId head_entry_id = 1;
 }
 
 message BecomeLeaderRequest {
@@ -99,7 +99,7 @@ message TruncateRequest {
 }
 
 message TruncateResponse {
-  EntryId head_entry_id = 2;
+  EntryId head_entry_id = 1;
 }
 
 message Append {
@@ -109,7 +109,7 @@ message Append {
 }
 
 message Ack {
-  int64 offset = 2;
+  int64 offset = 1;
 }
 
 message SnapshotResponse {

@@ -46,11 +46,11 @@ func (m *maelstromCoordinatorRpcProvider) PushShardAssignments(ctx context.Conte
 	return newShardAssignmentClient(ctx, m, node.Internal), nil
 }
 
-func (m *maelstromCoordinatorRpcProvider) Fence(ctx context.Context, node model.ServerAddress, req *proto.FenceRequest) (*proto.FenceResponse, error) {
-	if res, err := m.dispatcher.RpcRequest(ctx, node.Internal, MsgTypeFenceRequest, req); err != nil {
+func (m *maelstromCoordinatorRpcProvider) NewTerm(ctx context.Context, node model.ServerAddress, req *proto.NewTermRequest) (*proto.NewTermResponse, error) {
+	if res, err := m.dispatcher.RpcRequest(ctx, node.Internal, MsgTypeNewTermRequest, req); err != nil {
 		return nil, err
 	} else {
-		return res.(*proto.FenceResponse), nil
+		return res.(*proto.NewTermResponse), nil
 	}
 }
 
