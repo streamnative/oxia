@@ -472,7 +472,7 @@ func TestFollowerController_RejectEntriesWithDifferentTerm(t *testing.T) {
 	stream = newMockServerReplicateStream()
 	stream.AddRequest(createAddRequest(t, 6, 0, map[string]string{"a": "2", "b": "2"}, wal.InvalidOffset))
 	err = fc.Replicate(stream)
-	assert.Equal(t, common.CodeInvalidTerm, status.Code(err))
+	assert.Equal(t, common.CodeInvalidTerm, status.Code(err), "Unexpected error: %s", err)
 	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
 	assert.EqualValues(t, 5, fc.Term())
 
