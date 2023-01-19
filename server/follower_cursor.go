@@ -62,7 +62,7 @@ type FollowerCursor interface {
 type followerCursor struct {
 	sync.Mutex
 
-	epoch                   int64
+	term                    int64
 	follower                string
 	replicateStreamProvider ReplicateStreamProvider
 	stream                  proto.OxiaLogReplication_ReplicateClient
@@ -90,7 +90,7 @@ type followerCursor struct {
 
 func NewFollowerCursor(
 	follower string,
-	epoch int64,
+	term int64,
 	shardId uint32,
 	replicateStreamProvider ReplicateStreamProvider,
 	ackTracker QuorumAckTracker,
@@ -104,7 +104,7 @@ func NewFollowerCursor(
 	}
 
 	fc := &followerCursor{
-		epoch:                   epoch,
+		term:                    term,
 		follower:                follower,
 		ackTracker:              ackTracker,
 		replicateStreamProvider: replicateStreamProvider,
@@ -115,7 +115,7 @@ func NewFollowerCursor(
 		log: log.With().
 			Str("component", "follower-cursor").
 			Uint32("shard", shardId).
-			Int64("epoch", epoch).
+			Int64("term", term).
 			Str("follower", follower).
 			Logger(),
 
@@ -265,7 +265,7 @@ func (fc *followerCursor) sendSnapshot() error {
 			Msg("Sending snapshot chunk")
 
 		if err := stream.Send(&proto.SnapshotChunk{
-			Epoch:      fc.epoch,
+			Term:    fc.term,
 			Name:       chunk.Name(),
 			ChunkIndex: chunk.Index(),
 			ChunkCount: chunk.TotalCount(),
@@ -358,7 +358,7 @@ func (fc *followerCursor) streamEntries() error {
 			Msg("Sending entries to follower")
 
 		if err = fc.stream.Send(&proto.Append{
-			Epoch:        fc.epoch,
+			Term:         fc.term,
 			Entry:        le,
 			CommitOffset: fc.ackTracker.CommitOffset(),
 		}); err != nil {

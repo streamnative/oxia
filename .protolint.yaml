@@ -30,6 +30,3 @@ lint:
   rules_option:
     indent:
       not_insert_newline: true
-    repeated_field_names_pluralized:
-      irregular_rules:
-        epoch: epochs

@@ -118,35 +118,35 @@ type mockPerNodeChannels struct {
 	err                    error
 }
 
-func (m *mockPerNodeChannels) expectBecomeLeaderRequest(t *testing.T, shard uint32, epoch int64, replicationFactor uint32) {
+func (m *mockPerNodeChannels) expectBecomeLeaderRequest(t *testing.T, shard uint32, term int64, replicationFactor uint32) {
 	r := <-m.becomeLeaderRequests
 
 	assert.Equal(t, shard, r.ShardId)
-	assert.Equal(t, epoch, r.Epoch)
+	assert.Equal(t, term, r.Term)
 	assert.Equal(t, replicationFactor, r.ReplicationFactor)
 }
 
-func (m *mockPerNodeChannels) expectFenceRequest(t *testing.T, shard uint32, epoch int64) {
+func (m *mockPerNodeChannels) expectFenceRequest(t *testing.T, shard uint32, term int64) {
 	r := <-m.fenceRequests
 
 	assert.Equal(t, shard, r.ShardId)
-	assert.Equal(t, epoch, r.Epoch)
+	assert.Equal(t, term, r.Term)
 }
 
-func (m *mockPerNodeChannels) expectAddFollowerRequest(t *testing.T, shard uint32, epoch int64) {
+func (m *mockPerNodeChannels) expectAddFollowerRequest(t *testing.T, shard uint32, term int64) {
 	r := <-m.addFollowerRequests
 
 	assert.Equal(t, shard, r.ShardId)
-	assert.Equal(t, epoch, r.Epoch)
+	assert.Equal(t, term, r.Term)
 }
 
-func (m *mockPerNodeChannels) FenceResponse(epoch int64, offset int64, err error) {
+func (m *mockPerNodeChannels) FenceResponse(term int64, offset int64, err error) {
 	m.fenceResponses <- struct {
 		*proto.FenceResponse
 		error
 	}{&proto.FenceResponse{
 		HeadEntryId: &proto.EntryId{
-			Epoch:  epoch,
+			Term:   term,
 			Offset: offset,
 		},
 	}, err}

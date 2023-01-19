@@ -32,7 +32,7 @@ type Int32HashRange struct {
 
 type ShardMetadata struct {
 	Status         ShardStatus     `json:"status" yaml:"status"`
-	Epoch          int64           `json:"epoch" yaml:"epoch"`
+	Term           int64           `json:"term" yaml:"term"`
 	Leader         *ServerAddress  `json:"leader" yaml:"leader"`
 	Ensemble       []ServerAddress `json:"ensemble" yaml:"ensemble"`
 	Int32HashRange Int32HashRange  `json:"int32HashRange" yaml:"int32HashRange"`
@@ -55,7 +55,7 @@ func (sm Int32HashRange) Clone() Int32HashRange {
 func (sm ShardMetadata) Clone() ShardMetadata {
 	r := ShardMetadata{
 		Status:         sm.Status,
-		Epoch:          sm.Epoch,
+		Term:           sm.Term,
 		Leader:         sm.Leader,
 		Ensemble:       make([]ServerAddress, len(sm.Ensemble)),
 		Int32HashRange: sm.Int32HashRange.Clone(),

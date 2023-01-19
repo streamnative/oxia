@@ -681,7 +681,7 @@ func (ps *pebbleSnapshot) NextChunkContent() ([]byte, error) {
 
 	}
 
-	_, err := ps.file.Seek(ps.chunkIndex*MaxSnapshotChunkSize, io.SeekStart)
+	_, err := ps.file.Seek(int64(ps.chunkIndex)*MaxSnapshotChunkSize, io.SeekStart)
 	if err != nil {
 		return nil, err
 	}

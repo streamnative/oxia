@@ -46,7 +46,7 @@ type ShardController interface {
 
 	HandleNodeFailure(failedNode model.ServerAddress)
 
-	Epoch() int64
+	Term() int64
 	Leader() *model.ServerAddress
 	Status() model.ShardStatus
 }
@@ -70,7 +70,7 @@ type shardController struct {
 	fenceQuorumLatency    metrics.LatencyHistogram
 	becomeLeaderLatency   metrics.LatencyHistogram
 	leaderElectionsFailed metrics.Counter
-	epochGauge            metrics.Gauge
+	termGauge             metrics.Gauge
 }
 
 func NewShardController(shard uint32, shardMetadata model.ShardMetadata, rpc RpcProvider, coordinator Coordinator) ShardController {
@@ -95,9 +95,9 @@ func NewShardController(shard uint32, shardMetadata model.ShardMetadata, rpc Rpc
 			"The time it takes for the new elected leader to start", labels),
 	}
 
-	s.epochGauge = metrics.NewGauge("oxia_coordinator_epoch",
-		"The epoch of the shard", "count", labels, func() int64 {
-			return s.shardMetadata.Epoch
+	s.termGauge = metrics.NewGauge("oxia_coordinator_term",
+		"The term of the shard", "count", labels, func() int64 {
+			return s.shardMetadata.Term
 		})
 
 	s.ctx, s.cancel = context.WithCancel(context.Background())
@@ -150,12 +150,12 @@ func (s *shardController) verifyCurrentLeader(leader model.ServerAddress) {
 			Interface("leader", leader).
 			Interface("status", status.Status).
 			Msg("Node is not in leader status")
-	} else if status.Epoch != s.shardMetadata.Epoch {
+	} else if status.Term != s.shardMetadata.Term {
 		s.log.Warn().
 			Interface("leader", leader).
-			Interface("node-epoch", status.Epoch).
-			Interface("coordinator-epoch", s.shardMetadata.Epoch).
-			Msg("Node has a wrong epoch")
+			Interface("node-term", status.Term).
+			Interface("coordinator-term", s.shardMetadata.Term).
+			Msg("Node has a wrong term")
 	} else {
 		s.log.Info().
 			Interface("leader", leader).
@@ -194,9 +194,9 @@ func (s *shardController) electLeader() error {
 
 	s.shardMetadata.Status = model.ShardStatusElection
 	s.shardMetadata.Leader = nil
-	s.shardMetadata.Epoch++
+	s.shardMetadata.Term++
 	s.log.Info().
-		Int64("epoch", s.shardMetadata.Epoch).
+		Int64("term", s.shardMetadata.Term).
 		Msg("Starting leader election")
 
 	if err := s.coordinator.InitiateLeaderElection(s.shard, s.shardMetadata); err != nil {
@@ -212,7 +212,7 @@ func (s *shardController) electLeader() error {
 	newLeader, followers := s.selectNewLeader(fr)
 
 	s.log.Info().
-		Int64("epoch", s.shardMetadata.Epoch).
+		Int64("term", s.shardMetadata.Term).
 		Interface("new-leader", newLeader).
 		Interface("followers", followers).
 		Msg("Successfully fenced ensemble")
@@ -232,7 +232,7 @@ func (s *shardController) electLeader() error {
 	s.shardMetadata = metadata
 
 	s.log.Info().
-		Int64("epoch", s.shardMetadata.Epoch).
+		Int64("term", s.shardMetadata.Term).
 		Interface("leader", s.shardMetadata.Leader).
 		Msg("Elected new leader")
 
@@ -244,7 +244,7 @@ func (s *shardController) electLeader() error {
 func (s *shardController) keepFencingFailedFollowers(successfulFollowers map[model.ServerAddress]*proto.EntryId) {
 	if len(successfulFollowers) == len(s.shardMetadata.Ensemble)-1 {
 		s.log.Debug().
-			Int64("epoch", s.shardMetadata.Epoch).
+			Int64("term", s.shardMetadata.Term).
 			Msg("All the member of the ensemble were successfully added")
 		return
 	}
@@ -279,21 +279,21 @@ func (s *shardController) keepFencingFollower(ctx context.Context, node model.Se
 
 		_ = backoff.RetryNotify(func() error {
 			err := s.fenceAndAddFollower(ctx, node)
-			if status.Code(err) == common.CodeInvalidEpoch {
-				// If we're receiving invalid epoch error, it would mean
-				// there's already a new epoch generated and we don't have
-				// to keep trying with this old epoch
+			if status.Code(err) == common.CodeInvalidTerm {
+				// If we're receiving invalid term error, it would mean
+				// there's already a new term generated, and we don't have
+				// to keep trying with this old term
 				s.log.Warn().Err(err).
 					Interface("follower", node).
-					Int64("epoch", s.Epoch()).
-					Msg("Failed to fence, invalid epoch. Stop trying")
+					Int64("term", s.Term()).
+					Msg("Failed to fence, invalid term. Stop trying")
 				return nil
 			}
 			return err
 		}, backOff, func(err error, duration time.Duration) {
 			s.log.Warn().Err(err).
 				Interface("follower", node).
-				Int64("epoch", s.Epoch()).
+				Int64("term", s.Term()).
 				Dur("retry-after", duration).
 				Msg("Failed to fence, retrying later")
 		})
@@ -314,7 +314,7 @@ func (s *shardController) fenceAndAddFollower(ctx context.Context, node model.Se
 	}
 
 	if err = s.addFollower(*s.shardMetadata.Leader, node.Internal, &proto.EntryId{
-		Epoch:  fr.Epoch,
+		Term:   fr.Term,
 		Offset: fr.Offset,
 	}); err != nil {
 		return err
@@ -322,7 +322,7 @@ func (s *shardController) fenceAndAddFollower(ctx context.Context, node model.Se
 
 	s.log.Info().
 		Interface("follower", node).
-		Int64("epoch", fr.Epoch).
+		Int64("term", fr.Term).
 		Msg("Successfully rejoined the quorum")
 	return nil
 }
@@ -422,7 +422,7 @@ func (s *shardController) fenceQuorum() (map[model.ServerAddress]*proto.EntryId,
 func (s *shardController) fence(ctx context.Context, node model.ServerAddress) (*proto.EntryId, error) {
 	res, err := s.rpc.Fence(ctx, node, &proto.FenceRequest{
 		ShardId: s.shard,
-		Epoch:   s.shardMetadata.Epoch,
+		Term:    s.shardMetadata.Term,
 	})
 	if err != nil {
 		return nil, err
@@ -470,7 +470,7 @@ func (s *shardController) becomeLeader(leader model.ServerAddress, followers map
 
 	if _, err := s.rpc.BecomeLeader(s.ctx, leader, &proto.BecomeLeaderRequest{
 		ShardId:           s.shard,
-		Epoch:             s.shardMetadata.Epoch,
+		Term:              s.shardMetadata.Term,
 		ReplicationFactor: uint32(len(s.shardMetadata.Ensemble)),
 		FollowerMaps:      followersMap,
 	}); err != nil {
@@ -484,7 +484,7 @@ func (s *shardController) becomeLeader(leader model.ServerAddress, followers map
 func (s *shardController) addFollower(leader model.ServerAddress, follower string, followerHeadEntryId *proto.EntryId) error {
 	if _, err := s.rpc.AddFollower(s.ctx, leader, &proto.AddFollowerRequest{
 		ShardId:             s.shard,
-		Epoch:               s.shardMetadata.Epoch,
+		Term:                s.shardMetadata.Term,
 		FollowerName:        follower,
 		FollowerHeadEntryId: followerHeadEntryId,
 	}); err != nil {
@@ -494,10 +494,10 @@ func (s *shardController) addFollower(leader model.ServerAddress, follower strin
 	return nil
 }
 
-func (s *shardController) Epoch() int64 {
+func (s *shardController) Term() int64 {
 	s.Lock()
 	defer s.Unlock()
-	return s.shardMetadata.Epoch
+	return s.shardMetadata.Term
 }
 
 func (s *shardController) Leader() *model.ServerAddress {
@@ -514,6 +514,6 @@ func (s *shardController) Status() model.ShardStatus {
 
 func (s *shardController) Close() error {
 	s.cancel()
-	s.epochGauge.Unregister()
+	s.termGauge.Unregister()
 	return nil
 }

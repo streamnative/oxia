@@ -58,7 +58,7 @@ type FollowerController interface {
 	//
 	// A node that receives a truncate request knows that it
 	// has been selected as a follower. It truncates its log
-	// to the indicates entry id, updates its epoch and changes
+	// to the indicates entry id, updates its term and changes
 	// to a Follower.
 	Truncate(req *proto.TruncateRequest) (*proto.TruncateResponse, error)
 
@@ -68,7 +68,7 @@ type FollowerController interface {
 
 	GetStatus(request *proto.GetStatusRequest) (*proto.GetStatusResponse, error)
 
-	Epoch() int64
+	Term() int64
 	CommitOffset() int64
 	Status() proto.ServingStatus
 }
@@ -77,7 +77,7 @@ type followerController struct {
 	sync.Mutex
 
 	shardId uint32
-	epoch   int64
+	term    int64
 
 	// The highest commit offset advertised by the leader
 	advertisedCommitOffset atomic.Int64
@@ -135,11 +135,11 @@ func NewFollowerController(config Config, shardId uint32, wf wal.WalFactory, kvF
 		return nil, err
 	}
 
-	if fc.epoch, err = fc.db.ReadEpoch(); err != nil {
+	if fc.term, err = fc.db.ReadTerm(); err != nil {
 		return nil, err
 	}
 
-	if fc.epoch != wal.InvalidEpoch {
+	if fc.term != wal.InvalidTerm {
 		fc.status = proto.ServingStatus_Fenced
 	}
 
@@ -149,7 +149,7 @@ func NewFollowerController(config Config, shardId uint32, wf wal.WalFactory, kvF
 	}
 	fc.commitOffset.Store(commitOffset)
 
-	fc.log = fc.log.With().Int64("epoch", fc.epoch).Logger()
+	fc.log = fc.log.With().Int64("term", fc.term).Logger()
 
 	go common.DoWithLabels(map[string]string{
 		"oxia":  "follower-apply-committed-entries",
@@ -211,10 +211,10 @@ func (fc *followerController) Status() proto.ServingStatus {
 	return fc.status
 }
 
-func (fc *followerController) Epoch() int64 {
+func (fc *followerController) Term() int64 {
 	fc.Lock()
 	defer fc.Unlock()
-	return fc.epoch
+	return fc.term
 }
 
 func (fc *followerController) CommitOffset() int64 {
@@ -225,37 +225,37 @@ func (fc *followerController) Fence(req *proto.FenceRequest) (*proto.FenceRespon
 	fc.Lock()
 	defer fc.Unlock()
 
-	if req.Epoch < fc.epoch {
+	if req.Term < fc.term {
 		fc.log.Warn().
-			Int64("follower-epoch", fc.epoch).
-			Int64("fence-epoch", req.Epoch).
-			Msg("Failed to fence with invalid epoch")
-		return nil, common.ErrorInvalidEpoch
-	} else if req.Epoch == fc.epoch && fc.status != proto.ServingStatus_Fenced {
-		// It's OK to receive a duplicate Fence request, for the same epoch, as long as we haven't moved
-		// out of the Fenced state for that epoch
+			Int64("follower-term", fc.term).
+			Int64("fence-term", req.Term).
+			Msg("Failed to fence with invalid term")
+		return nil, common.ErrorInvalidTerm
+	} else if req.Term == fc.term && fc.status != proto.ServingStatus_Fenced {
+		// It's OK to receive a duplicate Fence request, for the same term, as long as we haven't moved
+		// out of the Fenced state for that term
 		fc.log.Warn().
-			Int64("follower-epoch", fc.epoch).
-			Int64("fence-epoch", req.Epoch).
+			Int64("follower-term", fc.term).
+			Int64("fence-term", req.Term).
 			Interface("status", fc.status).
-			Msg("Failed to fence with same epoch in invalid state")
+			Msg("Failed to fence with same term in invalid state")
 		return nil, common.ErrorInvalidStatus
 	}
 
-	if err := fc.db.UpdateEpoch(req.Epoch); err != nil {
+	if err := fc.db.UpdateTerm(req.Term); err != nil {
 		return nil, err
 	}
 
-	fc.epoch = req.Epoch
-	fc.log = fc.log.With().Int64("epoch", fc.epoch).Logger()
+	fc.term = req.Term
+	fc.log = fc.log.With().Int64("term", fc.term).Logger()
 	fc.status = proto.ServingStatus_Fenced
 	fc.closeChannelNoMutex(nil)
 
 	lastEntryId, err := getLastEntryIdInWal(fc.wal)
 	if err != nil {
 		fc.log.Warn().Err(err).
-			Int64("follower-epoch", fc.epoch).
-			Int64("fence-epoch", req.Epoch).
+			Int64("follower-term", fc.term).
+			Int64("fence-term", req.Term).
 			Msg("Failed to get last")
 		return nil, err
 	}
@@ -274,8 +274,8 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 		return nil, common.ErrorInvalidStatus
 	}
 
-	if req.Epoch != fc.epoch {
-		return nil, common.ErrorInvalidEpoch
+	if req.Term != fc.term {
+		return nil, common.ErrorInvalidTerm
 	}
 
 	fc.status = proto.ServingStatus_Follower
@@ -287,7 +287,7 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 
 	return &proto.TruncateResponse{
 		HeadEntryId: &proto.EntryId{
-			Epoch:  req.Epoch,
+			Term:   req.Term,
 			Offset: headOffset,
 		},
 	}, nil
@@ -348,8 +348,8 @@ func (fc *followerController) append(req *proto.Append, stream proto.OxiaLogRepl
 	fc.Lock()
 	defer fc.Unlock()
 
-	if req.Epoch != fc.epoch {
-		return common.ErrorInvalidEpoch
+	if req.Term != fc.term {
+		return common.ErrorInvalidTerm
 	}
 
 	fc.log.Debug().
@@ -498,7 +498,7 @@ func (fc *followerController) processCommittedEntries(maxInclusive int64) error 
 	return err
 }
 
-func GetHighestEntryOfEpoch(w wal.Wal, epoch int64) (*proto.EntryId, error) {
+func GetHighestEntryOfTerm(w wal.Wal, term int64) (*proto.EntryId, error) {
 	r, err := w.NewReverseReader()
 	if err != nil {
 		return InvalidEntryId, err
@@ -509,9 +509,9 @@ func GetHighestEntryOfEpoch(w wal.Wal, epoch int64) (*proto.EntryId, error) {
 		if err != nil {
 			return InvalidEntryId, err
 		}
-		if e.Epoch <= epoch {
+		if e.Term <= term {
 			return &proto.EntryId{
-				Epoch:  e.Epoch,
+				Term:   e.Term,
 				Offset: e.Offset,
 			}, nil
 		}
@@ -519,8 +519,8 @@ func GetHighestEntryOfEpoch(w wal.Wal, epoch int64) (*proto.EntryId, error) {
 	return InvalidEntryId, nil
 }
 
-type MessageWithEpoch interface {
-	GetEpoch() int64
+type MessageWithTerm interface {
+	GetTerm() int64
 }
 
 func checkStatus(expected, actual proto.ServingStatus) error {
@@ -600,20 +600,20 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 			return
 		} else if snapChunk == nil {
 			break
-		} else if fc.epoch != wal.InvalidEpoch && snapChunk.Epoch != fc.epoch {
-			// The follower could be left with epoch=-1 by a previous failed
+		} else if fc.term != wal.InvalidTerm && snapChunk.Term != fc.term {
+			// The follower could be left with term=-1 by a previous failed
 			// attempt at sending the snapshot. It's ok to proceed in that case.
-			fc.closeChannelNoMutex(common.ErrorInvalidEpoch)
+			fc.closeChannelNoMutex(common.ErrorInvalidTerm)
 			return
 		}
 
-		fc.epoch = snapChunk.Epoch
+		fc.term = snapChunk.Term
 
 		fc.log.Debug().
 			Str("chunk-name", snapChunk.Name).
 			Int("chunk-size", len(snapChunk.Content)).
 			Str("chunk-progress", fmt.Sprintf("%d/%d", snapChunk.ChunkIndex, snapChunk.ChunkCount)).
-			Int64("epoch", fc.epoch).
+			Int64("term", fc.term).
 			Msg("Applying snapshot chunk")
 		if err = loader.AddChunk(snapChunk.Name, snapChunk.ChunkIndex, snapChunk.ChunkCount, snapChunk.Content); err != nil {
 			fc.closeChannel(err)
@@ -632,9 +632,9 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 		return
 	}
 
-	// The new epoch must be persisted, to avoid rolling it back
-	if err = newDb.UpdateEpoch(fc.epoch); err != nil {
-		fc.closeChannelNoMutex(errors.Wrap(err, "Failed to update epoch in db"))
+	// The new term must be persisted, to avoid rolling it back
+	if err = newDb.UpdateTerm(fc.term); err != nil {
+		fc.closeChannelNoMutex(errors.Wrap(err, "Failed to update term in db"))
 	}
 
 	commitOffset, err := newDb.ReadCommitOffset()
@@ -655,7 +655,7 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 	fc.closeChannelNoMutex(nil)
 
 	fc.log.Info().
-		Int64("epoch", fc.epoch).
+		Int64("term", fc.term).
 		Int64("snapshot-size", totalSize).
 		Int64("commit-offset", commitOffset).
 		Msg("Successfully applied snapshot")
@@ -666,7 +666,7 @@ func (fc *followerController) GetStatus(request *proto.GetStatusRequest) (*proto
 	defer fc.Unlock()
 
 	return &proto.GetStatusResponse{
-		Epoch:  fc.epoch,
+		Term:   fc.term,
 		Status: fc.status,
 	}, nil
 }

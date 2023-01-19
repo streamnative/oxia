@@ -41,19 +41,19 @@ service OxiaLogReplication {
 message CoordinationShardAssignmentsResponse {}
 
 message EntryId {
-  int64 epoch = 1;
+  int64 term = 1;
   int64 offset = 2;
 }
 
 message LogEntry {
-  int64 epoch = 1;
+  int64 term = 1;
   int64 offset = 2;
   bytes value = 3;
   fixed64 timestamp = 4;
 }
 
 message SnapshotChunk {
-  int64 epoch = 1;
+  int64 term = 1;
   string name = 2;
   bytes content = 3;
   int32 chunk_index = 4;
@@ -62,7 +62,7 @@ message SnapshotChunk {
 
 message FenceRequest {
   uint32 shard_id = 1;
-  int64 epoch = 2;
+  int64 term = 2;
 }
 
 message FenceResponse {
@@ -72,7 +72,7 @@ message FenceResponse {
 message BecomeLeaderRequest {
   uint32 shard_id = 1;
 
-  int64 epoch = 2;
+  int64 term = 2;
   uint32 replication_factor = 3;
   map<string, EntryId> follower_maps = 4;
 }
@@ -80,7 +80,7 @@ message BecomeLeaderRequest {
 message AddFollowerRequest {
   uint32 shard_id = 1;
 
-  int64 epoch = 2;
+  int64 term = 2;
   string follower_name = 3;
   EntryId follower_head_entry_id = 4;
 }
@@ -94,7 +94,7 @@ message AddFollowerResponse {
 message TruncateRequest {
   uint32 shard_id = 1;
 
-  int64 epoch = 2;
+  int64 term = 2;
   EntryId head_entry_id = 3;
 }
 
@@ -103,7 +103,7 @@ message TruncateResponse {
 }
 
 message Append {
-  int64 epoch = 1;
+  int64 term = 1;
   LogEntry entry = 2;
   int64 commit_offset = 3;
 }
@@ -130,7 +130,7 @@ enum ServingStatus {
 }
 
 message GetStatusResponse {
-  int64 epoch = 1;
+  int64 term = 1;
   ServingStatus status = 2;
 
   // More info to add for leaders

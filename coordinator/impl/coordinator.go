@@ -160,7 +160,7 @@ func (c *coordinator) initialAssignment() error {
 	for i := uint32(0); i < cc.InitialShardCount; i++ {
 		shard := model.ShardMetadata{
 			Status:   model.ShardStatusUnknown,
-			Epoch:    -1,
+			Term:     -1,
 			Leader:   nil,
 			Ensemble: getServers(cc.Servers, serverIdx, cc.ReplicationFactor),
 			Int32HashRange: model.Int32HashRange{
