@@ -28,7 +28,7 @@ const rpcTimeout = 30 * time.Second
 
 type ReplicationRpcProvider interface {
 	io.Closer
-	AddEntriesStreamProvider
+	ReplicateStreamProvider
 
 	Truncate(follower string, req *proto.TruncateRequest) (*proto.TruncateResponse, error)
 }
@@ -43,8 +43,8 @@ func NewReplicationRpcProvider() ReplicationRpcProvider {
 	}
 }
 
-func (r *replicationRpcProvider) GetAddEntriesStream(ctx context.Context, follower string, shard uint32) (
-	proto.OxiaLogReplication_AddEntriesClient, error) {
+func (r *replicationRpcProvider) GetReplicateStream(ctx context.Context, follower string, shard uint32) (
+	proto.OxiaLogReplication_ReplicateClient, error) {
 	rpc, err := r.pool.GetReplicationRpc(follower)
 	if err != nil {
 		return nil, err
@@ -52,7 +52,7 @@ func (r *replicationRpcProvider) GetAddEntriesStream(ctx context.Context, follow
 
 	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataShardId, fmt.Sprintf("%d", shard))
 
-	stream, err := rpc.AddEntries(ctx)
+	stream, err := rpc.Replicate(ctx)
 	return stream, err
 }
 

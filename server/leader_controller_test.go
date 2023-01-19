@@ -230,9 +230,9 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	assert.Equal(t, proto.ServingStatus_Leader, lc.Status())
 
 	go func() {
-		req := <-rpc.addEntryReqs
+		req := <-rpc.appendReqs
 
-		rpc.addEntryResps <- &proto.AddEntryResponse{
+		rpc.ackResps <- &proto.Ack{
 			Offset: req.Entry.Offset,
 		}
 	}()
@@ -294,7 +294,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	assert.Nil(t, res4)
 	assert.Equal(t, common.CodeInvalidStatus, status.Code(err))
 
-	close(rpc.addEntryResps)
+	close(rpc.ackResps)
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())
 	assert.NoError(t, walFactory.Close())
@@ -573,9 +573,9 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 	/// leader and f1
 	go func() {
 		for i := 0; i < 10; i++ {
-			req := <-rpcClient.addEntryReqs
+			req := <-rpcClient.appendReqs
 
-			rpcClient.addEntryResps <- &proto.AddEntryResponse{
+			rpcClient.ackResps <- &proto.Ack{
 				Offset: req.Entry.Offset,
 			}
 		}
@@ -714,9 +714,9 @@ func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
 
 	// Respond to replication flow to follower
 	go func() {
-		req := <-rpc.addEntryReqs
+		req := <-rpc.appendReqs
 
-		rpc.addEntryResps <- &proto.AddEntryResponse{
+		rpc.ackResps <- &proto.Ack{
 			Offset: req.Entry.Offset,
 		}
 	}()

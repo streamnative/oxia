@@ -288,7 +288,7 @@ var OxiaCoordination_ServiceDesc = grpc.ServiceDesc{
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type OxiaLogReplicationClient interface {
 	Truncate(ctx context.Context, in *TruncateRequest, opts ...grpc.CallOption) (*TruncateResponse, error)
-	AddEntries(ctx context.Context, opts ...grpc.CallOption) (OxiaLogReplication_AddEntriesClient, error)
+	Replicate(ctx context.Context, opts ...grpc.CallOption) (OxiaLogReplication_ReplicateClient, error)
 	SendSnapshot(ctx context.Context, opts ...grpc.CallOption) (OxiaLogReplication_SendSnapshotClient, error)
 }
 
@@ -309,31 +309,31 @@ func (c *oxiaLogReplicationClient) Truncate(ctx context.Context, in *TruncateReq
 	return out, nil
 }
 
-func (c *oxiaLogReplicationClient) AddEntries(ctx context.Context, opts ...grpc.CallOption) (OxiaLogReplication_AddEntriesClient, error) {
-	stream, err := c.cc.NewStream(ctx, &OxiaLogReplication_ServiceDesc.Streams[0], "/replication.OxiaLogReplication/AddEntries", opts...)
+func (c *oxiaLogReplicationClient) Replicate(ctx context.Context, opts ...grpc.CallOption) (OxiaLogReplication_ReplicateClient, error) {
+	stream, err := c.cc.NewStream(ctx, &OxiaLogReplication_ServiceDesc.Streams[0], "/replication.OxiaLogReplication/Replicate", opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &oxiaLogReplicationAddEntriesClient{stream}
+	x := &oxiaLogReplicationReplicateClient{stream}
 	return x, nil
 }
 
-type OxiaLogReplication_AddEntriesClient interface {
-	Send(*AddEntryRequest) error
-	Recv() (*AddEntryResponse, error)
+type OxiaLogReplication_ReplicateClient interface {
+	Send(*Append) error
+	Recv() (*Ack, error)
 	grpc.ClientStream
 }
 
-type oxiaLogReplicationAddEntriesClient struct {
+type oxiaLogReplicationReplicateClient struct {
 	grpc.ClientStream
 }
 
-func (x *oxiaLogReplicationAddEntriesClient) Send(m *AddEntryRequest) error {
+func (x *oxiaLogReplicationReplicateClient) Send(m *Append) error {
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *oxiaLogReplicationAddEntriesClient) Recv() (*AddEntryResponse, error) {
-	m := new(AddEntryResponse)
+func (x *oxiaLogReplicationReplicateClient) Recv() (*Ack, error) {
+	m := new(Ack)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -379,7 +379,7 @@ func (x *oxiaLogReplicationSendSnapshotClient) CloseAndRecv() (*SnapshotResponse
 // for forward compatibility
 type OxiaLogReplicationServer interface {
 	Truncate(context.Context, *TruncateRequest) (*TruncateResponse, error)
-	AddEntries(OxiaLogReplication_AddEntriesServer) error
+	Replicate(OxiaLogReplication_ReplicateServer) error
 	SendSnapshot(OxiaLogReplication_SendSnapshotServer) error
 	mustEmbedUnimplementedOxiaLogReplicationServer()
 }
@@ -391,8 +391,8 @@ type UnimplementedOxiaLogReplicationServer struct {
 func (UnimplementedOxiaLogReplicationServer) Truncate(context.Context, *TruncateRequest) (*TruncateResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Truncate not implemented")
 }
-func (UnimplementedOxiaLogReplicationServer) AddEntries(OxiaLogReplication_AddEntriesServer) error {
-	return status.Errorf(codes.Unimplemented, "method AddEntries not implemented")
+func (UnimplementedOxiaLogReplicationServer) Replicate(OxiaLogReplication_ReplicateServer) error {
+	return status.Errorf(codes.Unimplemented, "method Replicate not implemented")
 }
 func (UnimplementedOxiaLogReplicationServer) SendSnapshot(OxiaLogReplication_SendSnapshotServer) error {
 	return status.Errorf(codes.Unimplemented, "method SendSnapshot not implemented")
@@ -428,26 +428,26 @@ func _OxiaLogReplication_Truncate_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
-func _OxiaLogReplication_AddEntries_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(OxiaLogReplicationServer).AddEntries(&oxiaLogReplicationAddEntriesServer{stream})
+func _OxiaLogReplication_Replicate_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(OxiaLogReplicationServer).Replicate(&oxiaLogReplicationReplicateServer{stream})
 }
 
-type OxiaLogReplication_AddEntriesServer interface {
-	Send(*AddEntryResponse) error
-	Recv() (*AddEntryRequest, error)
+type OxiaLogReplication_ReplicateServer interface {
+	Send(*Ack) error
+	Recv() (*Append, error)
 	grpc.ServerStream
 }
 
-type oxiaLogReplicationAddEntriesServer struct {
+type oxiaLogReplicationReplicateServer struct {
 	grpc.ServerStream
 }
 
-func (x *oxiaLogReplicationAddEntriesServer) Send(m *AddEntryResponse) error {
+func (x *oxiaLogReplicationReplicateServer) Send(m *Ack) error {
 	return x.ServerStream.SendMsg(m)
 }
 
-func (x *oxiaLogReplicationAddEntriesServer) Recv() (*AddEntryRequest, error) {
-	m := new(AddEntryRequest)
+func (x *oxiaLogReplicationReplicateServer) Recv() (*Append, error) {
+	m := new(Append)
 	if err := x.ServerStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -494,8 +494,8 @@ var OxiaLogReplication_ServiceDesc = grpc.ServiceDesc{
 	},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "AddEntries",
-			Handler:       _OxiaLogReplication_AddEntries_Handler,
+			StreamName:    "Replicate",
+			Handler:       _OxiaLogReplication_Replicate_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},

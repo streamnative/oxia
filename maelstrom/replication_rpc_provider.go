@@ -30,12 +30,12 @@ type maelstromReplicationRpcProvider struct {
 
 	dispatcher Dispatcher
 
-	addEntryStreams map[int64]*maelstromAddEntriesClient
+	replicateStreams map[int64]*maelstromReplicateClient
 }
 
 func newMaelstromReplicationRpcProvider() *maelstromReplicationRpcProvider {
 	return &maelstromReplicationRpcProvider{
-		addEntryStreams: make(map[int64]*maelstromAddEntriesClient),
+		replicateStreams: make(map[int64]*maelstromReplicateClient),
 	}
 }
 
@@ -43,25 +43,25 @@ func (r *maelstromReplicationRpcProvider) Close() error {
 	return nil
 }
 
-func (r *maelstromReplicationRpcProvider) GetAddEntriesStream(ctx context.Context, follower string, shard uint32) (
-	proto.OxiaLogReplication_AddEntriesClient, error) {
-	s := &maelstromAddEntriesClient{
+func (r *maelstromReplicationRpcProvider) GetReplicateStream(ctx context.Context, follower string, shard uint32) (
+	proto.OxiaLogReplication_ReplicateClient, error) {
+	s := &maelstromReplicateClient{
 		ctx:       ctx,
 		follower:  follower,
 		shard:     shard,
 		streamId:  msgIdGenerator.Add(1),
 		md:        make(metadata.MD),
-		responses: make(chan *proto.AddEntryResponse),
+		responses: make(chan *proto.Ack),
 	}
 
 	r.Lock()
 	defer r.Unlock()
-	r.addEntryStreams[s.streamId] = s
+	r.replicateStreams[s.streamId] = s
 	return s, nil
 }
 
-func (r *maelstromReplicationRpcProvider) HandleAddEntryResponse(streamId int64, res *proto.AddEntryResponse) {
-	s, ok := r.addEntryStreams[streamId]
+func (r *maelstromReplicationRpcProvider) HandleAck(streamId int64, res *proto.Ack) {
+	s, ok := r.replicateStreams[streamId]
 	if !ok {
 		log.Warn().Int64("stream-id", streamId).Msg("Stream not found")
 		return
@@ -82,8 +82,8 @@ func (r *maelstromReplicationRpcProvider) SendSnapshot(ctx context.Context, foll
 	panic("not implemented")
 }
 
-// //////// AddEntriesClient
-type maelstromAddEntriesClient struct {
+// //////// ReplicateClient
+type maelstromReplicateClient struct {
 	BaseStream
 
 	ctx       context.Context
@@ -91,16 +91,16 @@ type maelstromAddEntriesClient struct {
 	shard     uint32
 	streamId  int64
 	md        metadata.MD
-	responses chan *proto.AddEntryResponse
+	responses chan *proto.Ack
 }
 
-func (m *maelstromAddEntriesClient) Send(request *proto.AddEntryRequest) error {
+func (m *maelstromReplicateClient) Send(request *proto.Append) error {
 	b, err := json.Marshal(&Message[OxiaStreamMessage]{
 		Src:  thisNode,
 		Dest: m.follower,
 		Body: OxiaStreamMessage{
 			BaseMessageBody: BaseMessageBody{
-				Type:  MsgTypeAddEntryRequest,
+				Type:  MsgTypeAppend,
 				MsgId: msgIdGenerator.Add(1),
 			},
 			OxiaMsg:  toJson(request),
@@ -115,7 +115,7 @@ func (m *maelstromAddEntriesClient) Send(request *proto.AddEntryRequest) error {
 	return nil
 }
 
-func (m *maelstromAddEntriesClient) Recv() (*proto.AddEntryResponse, error) {
+func (m *maelstromReplicateClient) Recv() (*proto.Ack, error) {
 	select {
 	case r := <-m.responses:
 		return r, nil
@@ -124,6 +124,6 @@ func (m *maelstromAddEntriesClient) Recv() (*proto.AddEntryResponse, error) {
 	}
 }
 
-func (m *maelstromAddEntriesClient) Header() (metadata.MD, error) {
+func (m *maelstromReplicateClient) Header() (metadata.MD, error) {
 	return m.md, nil
 }

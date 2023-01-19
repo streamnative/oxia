@@ -35,11 +35,11 @@ import (
 	"time"
 )
 
-// AddEntriesStreamProvider
-// This is a provider for the AddEntryStream Grpc handler
+// ReplicateStreamProvider
+// This is a provider for the ReplicateStream Grpc handler
 // It's used to allow passing in a mocked version of the Grpc service
-type AddEntriesStreamProvider interface {
-	GetAddEntriesStream(ctx context.Context, follower string, shard uint32) (proto.OxiaLogReplication_AddEntriesClient, error)
+type ReplicateStreamProvider interface {
+	GetReplicateStream(ctx context.Context, follower string, shard uint32) (proto.OxiaLogReplication_ReplicateClient, error)
 	SendSnapshot(ctx context.Context, follower string, shard uint32) (proto.OxiaLogReplication_SendSnapshotClient, error)
 }
 
@@ -62,10 +62,10 @@ type FollowerCursor interface {
 type followerCursor struct {
 	sync.Mutex
 
-	epoch                    int64
-	follower                 string
-	addEntriesStreamProvider AddEntriesStreamProvider
-	stream                   proto.OxiaLogReplication_AddEntriesClient
+	epoch                   int64
+	follower                string
+	replicateStreamProvider ReplicateStreamProvider
+	stream                  proto.OxiaLogReplication_ReplicateClient
 
 	ackTracker  QuorumAckTracker
 	cursorAcker CursorAcker
@@ -92,7 +92,7 @@ func NewFollowerCursor(
 	follower string,
 	epoch int64,
 	shardId uint32,
-	addEntriesStreamProvider AddEntriesStreamProvider,
+	replicateStreamProvider ReplicateStreamProvider,
 	ackTracker QuorumAckTracker,
 	wal wal.Wal,
 	db kv.DB,
@@ -104,13 +104,13 @@ func NewFollowerCursor(
 	}
 
 	fc := &followerCursor{
-		epoch:                    epoch,
-		follower:                 follower,
-		ackTracker:               ackTracker,
-		addEntriesStreamProvider: addEntriesStreamProvider,
-		wal:                      wal,
-		db:                       db,
-		shardId:                  shardId,
+		epoch:                   epoch,
+		follower:                follower,
+		ackTracker:              ackTracker,
+		replicateStreamProvider: replicateStreamProvider,
+		wal:                     wal,
+		db:                      db,
+		shardId:                 shardId,
 
 		log: log.With().
 			Str("component", "follower-cursor").
@@ -237,7 +237,7 @@ func (fc *followerCursor) sendSnapshot() error {
 	ctx, cancel := context.WithCancel(fc.ctx)
 	defer cancel()
 
-	stream, err := fc.addEntriesStreamProvider.SendSnapshot(ctx, fc.follower, fc.shardId)
+	stream, err := fc.replicateStreamProvider.SendSnapshot(ctx, fc.follower, fc.shardId)
 	if err != nil {
 		return err
 	}
@@ -308,7 +308,7 @@ func (fc *followerCursor) streamEntries() error {
 
 	fc.Lock()
 	var err error
-	if fc.stream, err = fc.addEntriesStreamProvider.GetAddEntriesStream(ctx, fc.follower, fc.shardId); err != nil {
+	if fc.stream, err = fc.replicateStreamProvider.GetReplicateStream(ctx, fc.follower, fc.shardId); err != nil {
 		fc.Unlock()
 		return err
 	}
@@ -355,7 +355,7 @@ func (fc *followerCursor) streamEntries() error {
 			Int64("offset", le.Offset).
 			Msg("Sending entries to follower")
 
-		if err = fc.stream.Send(&proto.AddEntryRequest{
+		if err = fc.stream.Send(&proto.Append{
 			Epoch:        fc.epoch,
 			Entry:        le,
 			CommitOffset: fc.ackTracker.CommitOffset(),
@@ -371,7 +371,7 @@ func (fc *followerCursor) streamEntries() error {
 	}
 }
 
-func (fc *followerCursor) receiveAcks(cancel context.CancelFunc, stream proto.OxiaLogReplication_AddEntriesClient) {
+func (fc *followerCursor) receiveAcks(cancel context.CancelFunc, stream proto.OxiaLogReplication_ReplicateClient) {
 	for {
 		res, err := stream.Recv()
 		if err != nil {

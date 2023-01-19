@@ -204,7 +204,7 @@ func (s *internalRpcServer) Truncate(c context.Context, req *proto.TruncateReque
 	}
 }
 
-func (s *internalRpcServer) AddEntries(srv proto.OxiaLogReplication_AddEntriesServer) error {
+func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServer) error {
 	// Add entries receives an incoming stream of request, the shard_id needs to be encoded
 	// as a property in the metadata
 	md, ok := metadata.FromIncomingContext(srv.Context())
@@ -220,21 +220,21 @@ func (s *internalRpcServer) AddEntries(srv proto.OxiaLogReplication_AddEntriesSe
 	s.log.Info().
 		Uint32("shard", shardId).
 		Str("peer", common.GetPeer(srv.Context())).
-		Msg("Received AddEntries request")
+		Msg("Received Replicate request")
 
 	if follower, err := s.shardsDirector.GetOrCreateFollower(shardId); err != nil {
 		s.log.Warn().Err(err).
 			Uint32("shard", shardId).
 			Str("peer", common.GetPeer(srv.Context())).
-			Msg("AddEntries failed: could not get follower controller")
+			Msg("Replicate failed: could not get follower controller")
 		return err
 	} else {
-		err2 := follower.AddEntries(srv)
+		err2 := follower.Replicate(srv)
 		if err2 != nil && !errors.Is(err2, io.EOF) {
 			s.log.Warn().Err(err2).
 				Uint32("shard", shardId).
 				Str("peer", common.GetPeer(srv.Context())).
-				Msg("AddEntries failed")
+				Msg("Replicate failed")
 		}
 		return err2
 	}

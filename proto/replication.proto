@@ -34,7 +34,7 @@ service OxiaCoordination {
 // node (leader) -> node (follower)
 service OxiaLogReplication {
   rpc Truncate(TruncateRequest) returns (TruncateResponse);
-  rpc AddEntries(stream AddEntryRequest) returns (stream AddEntryResponse);
+  rpc Replicate(stream Append) returns (stream Ack);
   rpc SendSnapshot(stream SnapshotChunk) returns (SnapshotResponse);
 }
 
@@ -100,13 +100,13 @@ message TruncateResponse {
   EntryId head_entry_id = 2;
 }
 
-message AddEntryRequest {
+message Append {
   int64 epoch = 1;
   LogEntry entry = 2;
   int64 commit_offset = 3;
 }
 
-message AddEntryResponse {
+message Ack {
   int64 offset = 2;
 }
 

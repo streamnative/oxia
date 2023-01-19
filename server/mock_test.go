@@ -20,33 +20,33 @@ import (
 	"oxia/proto"
 )
 
-func newMockServerAddEntriesStream() *mockServerAddEntriesStream {
-	return &mockServerAddEntriesStream{
-		requests:  make(chan *proto.AddEntryRequest, 1000),
-		responses: make(chan *proto.AddEntryResponse, 1000),
+func newMockServerReplicateStream() *mockServerReplicateStream {
+	return &mockServerReplicateStream{
+		requests:  make(chan *proto.Append, 1000),
+		responses: make(chan *proto.Ack, 1000),
 	}
 }
 
-type mockServerAddEntriesStream struct {
+type mockServerReplicateStream struct {
 	mockBase
-	requests  chan *proto.AddEntryRequest
-	responses chan *proto.AddEntryResponse
+	requests  chan *proto.Append
+	responses chan *proto.Ack
 }
 
-func (m *mockServerAddEntriesStream) AddRequest(request *proto.AddEntryRequest) {
+func (m *mockServerReplicateStream) AddRequest(request *proto.Append) {
 	m.requests <- request
 }
 
-func (m *mockServerAddEntriesStream) GetResponse() *proto.AddEntryResponse {
+func (m *mockServerReplicateStream) GetResponse() *proto.Ack {
 	return <-m.responses
 }
 
-func (m *mockServerAddEntriesStream) Send(response *proto.AddEntryResponse) error {
+func (m *mockServerReplicateStream) Send(response *proto.Ack) error {
 	m.responses <- response
 	return nil
 }
 
-func (m *mockServerAddEntriesStream) Recv() (*proto.AddEntryRequest, error) {
+func (m *mockServerReplicateStream) Recv() (*proto.Append, error) {
 	request := <-m.requests
 	return request, nil
 }
@@ -56,8 +56,8 @@ func (m *mockServerAddEntriesStream) Recv() (*proto.AddEntryRequest, error) {
 func newMockRpcClient() *mockRpcClient {
 	return &mockRpcClient{
 		sendSnapshotStream: newMockSendSnapshotClientStream(context.Background()),
-		addEntryReqs:       make(chan *proto.AddEntryRequest, 1000),
-		addEntryResps:      make(chan *proto.AddEntryResponse, 1000),
+		appendReqs:         make(chan *proto.Append, 1000),
+		ackResps:           make(chan *proto.Ack, 1000),
 		truncateReqs:       make(chan *proto.TruncateRequest, 1000),
 		truncateResps: make(chan struct {
 			*proto.TruncateResponse
@@ -69,8 +69,8 @@ func newMockRpcClient() *mockRpcClient {
 type mockRpcClient struct {
 	mockBase
 	sendSnapshotStream *mockSendSnapshotClientStream
-	addEntryReqs       chan *proto.AddEntryRequest
-	addEntryResps      chan *proto.AddEntryResponse
+	appendReqs         chan *proto.Append
+	ackResps           chan *proto.Ack
 	truncateReqs       chan *proto.TruncateRequest
 	truncateResps      chan struct {
 		*proto.TruncateResponse
@@ -82,13 +82,13 @@ func (m *mockRpcClient) Close() error {
 	return nil
 }
 
-func (m *mockRpcClient) Send(request *proto.AddEntryRequest) error {
-	m.addEntryReqs <- request
+func (m *mockRpcClient) Send(request *proto.Append) error {
+	m.appendReqs <- request
 	return nil
 }
 
-func (m *mockRpcClient) Recv() (*proto.AddEntryResponse, error) {
-	res := <-m.addEntryResps
+func (m *mockRpcClient) Recv() (*proto.Ack, error) {
+	res := <-m.ackResps
 	return res, nil
 }
 
@@ -96,7 +96,7 @@ func (m *mockRpcClient) CloseSend() error {
 	return nil
 }
 
-func (m *mockRpcClient) GetAddEntriesStream(ctx context.Context, follower string, shard uint32) (proto.OxiaLogReplication_AddEntriesClient, error) {
+func (m *mockRpcClient) GetReplicateStream(ctx context.Context, follower string, shard uint32) (proto.OxiaLogReplication_ReplicateClient, error) {
 	return m, nil
 }
 

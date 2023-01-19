@@ -39,13 +39,13 @@ type maelstromGrpcProvider struct {
 	sync.Mutex
 	services map[string]any
 
-	addEntriesStreams map[string]*maelstromAddEntriesServerStream
+	replicateStreams map[string]*maelstromReplicateServerStream
 }
 
 func newMaelstromGrpcProvider() *maelstromGrpcProvider {
 	return &maelstromGrpcProvider{
-		services:          make(map[string]any),
-		addEntriesStreams: make(map[string]*maelstromAddEntriesServerStream),
+		services:         make(map[string]any),
+		replicateStreams: make(map[string]*maelstromReplicateServerStream),
 	}
 }
 
@@ -103,25 +103,25 @@ func (m *maelstromGrpcProvider) HandleOxiaRequest(msgType MsgType, msg *Message[
 func (m *maelstromGrpcProvider) HandleOxiaStreamRequest(msgType MsgType, msg *Message[OxiaStreamMessage], message pb.Message) {
 	log.Info().Interface("msg-type", msgType).Msg("HandleOxiaStreamRequest")
 	switch msgType {
-	case MsgTypeAddEntryRequest:
+	case MsgTypeAppend:
 		key := fmt.Sprintf("%s-%d", msg.Src, msg.Body.StreamId)
 
 		m.Lock()
-		stream, alreadyCreated := m.addEntriesStreams[key]
+		stream, alreadyCreated := m.replicateStreams[key]
 		if !alreadyCreated {
-			stream = newMaelstromAddEntriesServerStream(msg)
-			m.addEntriesStreams[key] = stream
+			stream = newMaelstromReplicateServerStream(msg)
+			m.replicateStreams[key] = stream
 
 			go func() {
-				err := m.getService(oxiaLogReplication).(proto.OxiaLogReplicationServer).AddEntries(stream)
+				err := m.getService(oxiaLogReplication).(proto.OxiaLogReplicationServer).Replicate(stream)
 				if err != nil {
-					log.Warn().Err(err).Msg("failed to call addEntries")
+					log.Warn().Err(err).Msg("failed to call replicate")
 				}
 			}()
 		}
 		m.Unlock()
 
-		stream.requests <- message.(*proto.AddEntryRequest)
+		stream.requests <- message.(*proto.Append)
 	}
 }
 
@@ -289,25 +289,25 @@ func (m *maelstromGrpcServer) Port() int {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-type maelstromAddEntriesServerStream struct {
+type maelstromReplicateServerStream struct {
 	BaseStream
 
-	requests chan *proto.AddEntryRequest
+	requests chan *proto.Append
 	streamId int64
 	client   string
 }
 
-func (m *maelstromAddEntriesServerStream) SetHeader(md metadata.MD) error {
+func (m *maelstromReplicateServerStream) SetHeader(md metadata.MD) error {
 	panic("implement me")
 }
 
-func (m *maelstromAddEntriesServerStream) Send(response *proto.AddEntryResponse) error {
+func (m *maelstromReplicateServerStream) Send(response *proto.Ack) error {
 	b, _ := json.Marshal(&Message[OxiaStreamMessage]{
 		Src:  thisNode,
 		Dest: m.client,
 		Body: OxiaStreamMessage{
 			BaseMessageBody: BaseMessageBody{
-				Type:  MsgTypeAddEntryResponse,
+				Type:  MsgTypeAck,
 				MsgId: msgIdGenerator.Add(1),
 			},
 			OxiaMsg:  toJson(response),
@@ -319,19 +319,19 @@ func (m *maelstromAddEntriesServerStream) Send(response *proto.AddEntryResponse)
 	return nil
 }
 
-func (m *maelstromAddEntriesServerStream) Recv() (*proto.AddEntryRequest, error) {
+func (m *maelstromReplicateServerStream) Recv() (*proto.Append, error) {
 	return <-m.requests, nil
 }
 
-func (m *maelstromAddEntriesServerStream) Context() context.Context {
+func (m *maelstromReplicateServerStream) Context() context.Context {
 	md := metadata.New(map[string]string{"shard-id": "0"})
 	return metadata.NewIncomingContext(context.Background(), md)
 }
 
-func newMaelstromAddEntriesServerStream(msg *Message[OxiaStreamMessage]) *maelstromAddEntriesServerStream {
-	return &maelstromAddEntriesServerStream{
+func newMaelstromReplicateServerStream(msg *Message[OxiaStreamMessage]) *maelstromReplicateServerStream {
+	return &maelstromReplicateServerStream{
 		client:   msg.Src,
 		streamId: msg.Body.StreamId,
-		requests: make(chan *proto.AddEntryRequest),
+		requests: make(chan *proto.Append),
 	}
 }

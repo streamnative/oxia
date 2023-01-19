@@ -91,13 +91,13 @@ func (d *dispatcher) ReceivedMessage(msgType MsgType, m any, message pb.Message)
 			log.Info().Str("leader", d.currentLeader).
 				Msg("Received notification of new leader")
 
-		case MsgTypeAddEntryRequest:
+		case MsgTypeAppend:
 			msg := m.(*Message[OxiaStreamMessage])
 			go d.grpcProvider.HandleOxiaStreamRequest(msgType, msg, message)
 
-		case MsgTypeAddEntryResponse:
+		case MsgTypeAck:
 			streamId := m.(*Message[OxiaStreamMessage]).Body.StreamId
-			go d.replicationProvider.HandleAddEntryResponse(streamId, message.(*proto.AddEntryResponse))
+			go d.replicationProvider.HandleAck(streamId, message.(*proto.Ack))
 		}
 
 	} else {
