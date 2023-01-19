@@ -14,14 +14,14 @@
 
 syntax = "proto3";
 
-package coordination;
+package replication;
 
 option go_package = "github.com/streamnative/oxia/proto";
 
 import "proto/client.proto";
 
-// controller -> node
-service OxiaControl {
+// coordinator -> node
+service OxiaCoordination {
   rpc ShardAssignment(stream io.streamnative.oxia.proto.ShardAssignmentsResponse) returns (CoordinationShardAssignmentsResponse);
 
   rpc Fence(FenceRequest) returns (FenceResponse);

@@ -36,7 +36,7 @@ type ClientPool interface {
 	io.Closer
 	GetClientRpc(target string) (proto.OxiaClientClient, error)
 	GetHealthRpc(target string) (grpc_health_v1.HealthClient, error)
-	GetControlRpc(target string) (proto.OxiaControlClient, error)
+	GetCoordinationRpc(target string) (proto.OxiaCoordinationClient, error)
 	GetReplicationRpc(target string) (proto.OxiaLogReplicationClient, error)
 }
 
@@ -90,12 +90,12 @@ func (cp *clientPool) GetClientRpc(target string) (proto.OxiaClientClient, error
 	}
 }
 
-func (cp *clientPool) GetControlRpc(target string) (proto.OxiaControlClient, error) {
+func (cp *clientPool) GetCoordinationRpc(target string) (proto.OxiaCoordinationClient, error) {
 	cnx, err := cp.getConnection(target)
 	if err != nil {
 		return nil, err
 	} else {
-		return proto.NewOxiaControlClient(cnx), nil
+		return proto.NewOxiaCoordinationClient(cnx), nil
 	}
 }
 
