@@ -67,11 +67,11 @@ func (m *maelstromGrpcProvider) RegisterService(desc *grpc.ServiceDesc, impl any
 
 func (m *maelstromGrpcProvider) HandleOxiaRequest(msgType MsgType, msg *Message[OxiaMessage], message pb.Message) {
 	switch msgType {
-	case MsgTypeFenceRequest:
-		if fr, err := m.getService(oxiaCoordination).(proto.OxiaCoordinationServer).Fence(context.Background(), message.(*proto.FenceRequest)); err != nil {
+	case MsgTypeNewTermRequest:
+		if fr, err := m.getService(oxiaCoordination).(proto.OxiaCoordinationServer).NewTerm(context.Background(), message.(*proto.NewTermRequest)); err != nil {
 			sendError(msg.Body.MsgId, msg.Src, err)
 		} else {
-			m.sendResponse(msg, MsgTypeFenceResponse, fr)
+			m.sendResponse(msg, MsgTypeNewTermResponse, fr)
 		}
 
 	case MsgTypeBecomeLeaderRequest:

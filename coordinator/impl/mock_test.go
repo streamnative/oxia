@@ -89,9 +89,9 @@ func (nal *mockNodeAvailabilityListener) NodeBecameUnavailable(node model.Server
 /////////////////////////////////////////////////////////////////
 
 type mockPerNodeChannels struct {
-	fenceRequests  chan *proto.FenceRequest
-	fenceResponses chan struct {
-		*proto.FenceResponse
+	newTermRequests  chan *proto.NewTermRequest
+	newTermResponses chan struct {
+		*proto.NewTermResponse
 		error
 	}
 
@@ -126,8 +126,8 @@ func (m *mockPerNodeChannels) expectBecomeLeaderRequest(t *testing.T, shard uint
 	assert.Equal(t, replicationFactor, r.ReplicationFactor)
 }
 
-func (m *mockPerNodeChannels) expectFenceRequest(t *testing.T, shard uint32, term int64) {
-	r := <-m.fenceRequests
+func (m *mockPerNodeChannels) expectNewTermRequest(t *testing.T, shard uint32, term int64) {
+	r := <-m.newTermRequests
 
 	assert.Equal(t, shard, r.ShardId)
 	assert.Equal(t, term, r.Term)
@@ -140,11 +140,11 @@ func (m *mockPerNodeChannels) expectAddFollowerRequest(t *testing.T, shard uint3
 	assert.Equal(t, term, r.Term)
 }
 
-func (m *mockPerNodeChannels) FenceResponse(term int64, offset int64, err error) {
-	m.fenceResponses <- struct {
-		*proto.FenceResponse
+func (m *mockPerNodeChannels) NewTermResponse(term int64, offset int64, err error) {
+	m.newTermResponses <- struct {
+		*proto.NewTermResponse
 		error
-	}{&proto.FenceResponse{
+	}{&proto.NewTermResponse{
 		HeadEntryId: &proto.EntryId{
 			Term:   term,
 			Offset: offset,
@@ -168,9 +168,9 @@ func (m *mockPerNodeChannels) AddFollowerResponse(err error) {
 
 func newMockPerNodeChannels() *mockPerNodeChannels {
 	return &mockPerNodeChannels{
-		fenceRequests: make(chan *proto.FenceRequest, 100),
-		fenceResponses: make(chan struct {
-			*proto.FenceResponse
+		newTermRequests: make(chan *proto.NewTermRequest, 100),
+		newTermResponses: make(chan struct {
+			*proto.NewTermResponse
 			error
 		}, 100),
 		becomeLeaderRequests: make(chan *proto.BecomeLeaderRequest, 100),
@@ -249,11 +249,11 @@ func (r *mockRpcProvider) PushShardAssignments(ctx context.Context, node model.S
 	return n.shardAssignmentsStream, nil
 }
 
-func (r *mockRpcProvider) Fence(ctx context.Context, node model.ServerAddress, req *proto.FenceRequest) (*proto.FenceResponse, error) {
+func (r *mockRpcProvider) NewTerm(ctx context.Context, node model.ServerAddress, req *proto.NewTermRequest) (*proto.NewTermResponse, error) {
 	r.Lock()
 
 	s := r.getNode(node)
-	s.fenceRequests <- req
+	s.newTermRequests <- req
 
 	if s.err != nil {
 		r.Unlock()
@@ -263,8 +263,8 @@ func (r *mockRpcProvider) Fence(ctx context.Context, node model.ServerAddress, r
 	r.Unlock()
 
 	select {
-	case response := <-s.fenceResponses:
-		return response.FenceResponse, response.error
+	case response := <-s.newTermResponses:
+		return response.NewTermResponse, response.error
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-time.After(3 * time.Second):

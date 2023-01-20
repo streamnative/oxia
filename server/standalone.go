@@ -121,7 +121,7 @@ func (s *Standalone) initializeShards(numShards uint32) error {
 
 		newTerm := lc.Term() + 1
 
-		if _, err := lc.Fence(&proto.FenceRequest{
+		if _, err := lc.NewTerm(&proto.NewTermRequest{
 			ShardId: i,
 			Term:    newTerm,
 		}); err != nil {

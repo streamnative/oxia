@@ -38,8 +38,8 @@ type LeaderController interface {
 	Write(write *proto.WriteRequest) (*proto.WriteResponse, error)
 	Read(read *proto.ReadRequest) (*proto.ReadResponse, error)
 
-	// Fence Handle fence request
-	Fence(req *proto.FenceRequest) (*proto.FenceResponse, error)
+	// NewTerm Handle new term requests
+	NewTerm(req *proto.NewTermRequest) (*proto.NewTermResponse, error)
 
 	// BecomeLeader Handles BecomeLeaderRequest from coordinator and prepares to be leader for the shard
 	BecomeLeader(*proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error)
@@ -169,11 +169,11 @@ func (lc *leaderController) Term() int64 {
 	return lc.term
 }
 
-// Fence
+// NewTerm
 //
-// # Node handles a fence request
+// # Node handles a new term request
 //
-// A node receives a fencing request, fences itself and responds
+// A node receives a new term request, fences itself and responds
 // with its head offset.
 //
 // When a node is fenced it cannot:
@@ -183,7 +183,7 @@ func (lc *leaderController) Term() int64 {
 //
 // Any existing follow cursors are destroyed as is any state
 // regarding reconfigurations.
-func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse, error) {
+func (lc *leaderController) NewTerm(req *proto.NewTermRequest) (*proto.NewTermResponse, error) {
 	lc.Lock()
 	defer lc.Unlock()
 
@@ -198,9 +198,9 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 		// out of the Fenced state for that term
 		lc.log.Warn().
 			Int64("follower-term", lc.term).
-			Int64("fence-term", req.Term).
+			Int64("new-term", req.Term).
 			Interface("status", lc.status).
-			Msg("Failed to fence with same term in invalid state")
+			Msg("Failed to apply duplicate NewTerm in invalid state")
 		return nil, common.ErrorInvalidStatus
 	}
 
@@ -246,9 +246,9 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 
 	lc.log.Info().
 		Interface("last-entry", headEntryId).
-		Msg("Fenced leader")
+		Msg("Leader successfully initialized in new term")
 
-	return &proto.FenceResponse{
+	return &proto.NewTermResponse{
 		HeadEntryId: headEntryId,
 	}, nil
 }
