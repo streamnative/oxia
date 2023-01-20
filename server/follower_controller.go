@@ -32,7 +32,6 @@ import (
 	"oxia/server/wal"
 	"sync"
 	"sync/atomic"
-	"time"
 )
 
 // FollowerController handles all the operations of a given shard's follower
@@ -314,8 +313,6 @@ func (fc *followerController) Replicate(stream proto.OxiaLogReplication_Replicat
 		"oxia":  "add-entries-sync",
 		"shard": fmt.Sprintf("%d", fc.shardId),
 	}, func() { fc.handleReplicateSync(stream) })
-
-	time.Sleep(1 * time.Second)
 
 	return closeStreamWg.Wait(fc.ctx)
 }

@@ -15,6 +15,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
@@ -72,7 +73,13 @@ func TestFollower(t *testing.T) {
 
 	stream := newMockServerReplicateStream()
 
-	go func() { assert.NoError(t, fc.Replicate(stream)) }()
+	wg := common.NewWaitGroup(1)
+
+	go func() {
+		err := fc.Replicate(stream)
+		assert.ErrorIs(t, err, context.Canceled)
+		wg.Done()
+	}()
 
 	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, wal.InvalidOffset))
 
@@ -110,6 +117,8 @@ func TestFollower(t *testing.T) {
 	assert.NoError(t, fc.Close())
 	assert.NoError(t, kvFactory.Close())
 	assert.NoError(t, walFactory.Close())
+
+	wg.Wait(context.Background())
 }
 
 func TestReadingUpToCommitOffset(t *testing.T) {
