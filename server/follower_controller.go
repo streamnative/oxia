@@ -111,7 +111,7 @@ func NewFollowerController(config Config, shardId uint32, wf wal.WalFactory, kvF
 		shardId:       shardId,
 		kvFactory:     kvFactory,
 		status:        proto.ServingStatus_NOT_MEMBER,
-		closeStreamCh: nil,
+		closeStreamWg: nil,
 		log: log.With().
 			Str("component", "follower-controller").
 			Uint32("shard", shardId).
@@ -252,7 +252,7 @@ func (fc *followerController) Fence(req *proto.FenceRequest) (*proto.FenceRespon
 	fc.term = req.Term
 	fc.log = fc.log.With().Int64("term", fc.term).Logger()
 	fc.status = proto.ServingStatus_FENCED
-	fc.closeChannelNoMutex(nil)
+	fc.closeStreamNoMutex(nil)
 
 	lastEntryId, err := getLastEntryIdInWal(fc.wal)
 	if err != nil {
