@@ -567,16 +567,20 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 	assert.NoError(t, err)
 
 	for i := int64(0); i < 10; i++ {
+		wr := &proto.WriteRequest{Puts: []*proto.PutRequest{{
+			Key:     "my-key",
+			Payload: []byte(""),
+		}}}
+		value, err := pb.Marshal(wrapInLogEntryValue(wr))
+		assert.NoError(t, err)
+
 		assert.NoError(t, wal.Append(&proto.LogEntry{
 			Term:   5,
 			Offset: i,
-			Value:  []byte(""), // Log content entries are not important for this test
+			Value:  value,
 		}))
 
-		_, err := db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
-			Key:     "my-key",
-			Payload: []byte(""),
-		}}}, i-1, 0, kv.NoOpCallback)
+		_, err = db.ProcessWrite(wr, i-1, 0, kv.NoOpCallback)
 		assert.NoError(t, err)
 	}
 
