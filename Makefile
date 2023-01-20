@@ -40,7 +40,12 @@ docker_multi_arch:
 
 .PHONY: proto
 proto:
-	protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative proto/*.proto
+	protoc --proto_path ./proto \
+		--go_out ./proto \
+		--go_opt paths=source_relative \
+		--go-grpc_out ./proto \
+		--go-grpc_opt paths=source_relative \
+		proto/*.proto
 
 proto_clean:
 	rm -f */*.pb.go
@@ -51,7 +56,11 @@ proto_format:
 
 proto_lint:
 	#go install github.com/yoheimuta/protolint/cmd/protoc-gen-protolint
-	protoc --protolint_out=. --protolint_opt=config_dir_path=. proto/*.proto
+	protoc --proto_path ./proto \
+		--protolint_out . \
+		--protolint_opt config_dir_path=. \
+		--protolint_opt proto_root=./proto \
+		proto/*.proto
 
 proto_doc:
 	#go install github.com/pseudomuto/protoc-gen-doc/cmd/protoc-gen-doc
