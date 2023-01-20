@@ -725,7 +725,7 @@ func TestFollowerController_Closed(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, wal.InvalidTerm, fc.Term())
-	assert.Equal(t, proto.ServingStatus_NotMember, fc.Status())
+	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, fc.Status())
 
 	assert.NoError(t, fc.Close())
 
