@@ -14,10 +14,7 @@
 
 FROM golang:1.19-alpine as build
 
-RUN apk add --no-cache protobuf make git build-base bash
-
-RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28
-RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2
+RUN apk add --no-cache make git build-base bash
 
 ENV PATH=$PATH:/go/bin
 ADD . /src/oxia
