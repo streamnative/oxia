@@ -24,10 +24,9 @@ import (
 
 func TestNewServer(t *testing.T) {
 	config := Config{
-		BindHost:            "localhost",
-		InternalServicePort: 0,
-		PublicServicePort:   0,
-		MetricsPort:         0,
+		InternalServiceAddr: "localhost:0",
+		PublicServiceAddr:   "localhost:0",
+		MetricsServiceAddr:  "localhost:0",
 	}
 
 	server, err := New(config)

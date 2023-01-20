@@ -34,8 +34,8 @@ var (
 )
 
 func init() {
-	flag.InternalPort(Cmd, &conf.InternalServicePort)
-	flag.MetricsPort(Cmd, &conf.MetricsPort)
+	flag.InternalAddr(Cmd, &conf.InternalServiceAddr)
+	flag.MetricsAddr(Cmd, &conf.MetricsServiceAddr)
 }
 
 func exec(*cobra.Command, []string) {

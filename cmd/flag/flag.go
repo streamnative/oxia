@@ -15,18 +15,19 @@
 package flag
 
 import (
+	"fmt"
 	"github.com/spf13/cobra"
 	"oxia/kubernetes"
 )
 
-func PublicPort(cmd *cobra.Command, conf *int) {
-	cmd.Flags().IntVarP(conf, "public-port", "p", kubernetes.PublicPort.Port, "Public service port")
+func PublicAddr(cmd *cobra.Command, conf *string) {
+	cmd.Flags().StringVarP(conf, "public-addr", "p", fmt.Sprintf("0.0.0.0:%d", kubernetes.PublicPort.Port), "Public service bind address")
 }
 
-func InternalPort(cmd *cobra.Command, conf *int) {
-	cmd.Flags().IntVarP(conf, "internal-port", "i", kubernetes.InternalPort.Port, "Internal service port")
+func InternalAddr(cmd *cobra.Command, conf *string) {
+	cmd.Flags().StringVarP(conf, "internal-addr", "i", fmt.Sprintf("0.0.0.0:%d", kubernetes.InternalPort.Port), "Internal service bind address")
 }
 
-func MetricsPort(cmd *cobra.Command, conf *int) {
-	cmd.Flags().IntVarP(conf, "metrics-port", "m", kubernetes.MetricsPort.Port, "Metrics port")
+func MetricsAddr(cmd *cobra.Command, conf *string) {
+	cmd.Flags().StringVarP(conf, "metrics-addr", "m", fmt.Sprintf("0.0.0.0:%d", kubernetes.MetricsPort.Port), "Metrics service bind address")
 }
