@@ -15,6 +15,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
@@ -72,7 +73,13 @@ func TestFollower(t *testing.T) {
 
 	stream := newMockServerReplicateStream()
 
-	go func() { assert.NoError(t, fc.Replicate(stream)) }()
+	wg := common.NewWaitGroup(1)
+
+	go func() {
+		err := fc.Replicate(stream)
+		assert.ErrorIs(t, err, context.Canceled)
+		wg.Done()
+	}()
 
 	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, wal.InvalidOffset))
 
@@ -110,6 +117,8 @@ func TestFollower(t *testing.T) {
 	assert.NoError(t, fc.Close())
 	assert.NoError(t, kvFactory.Close())
 	assert.NoError(t, walFactory.Close())
+
+	_ = wg.Wait(context.Background())
 }
 
 func TestReadingUpToCommitOffset(t *testing.T) {
@@ -448,6 +457,7 @@ func TestFollowerController_RejectEntriesWithDifferentTerm(t *testing.T) {
 
 	// Follower will reject the entry because it's from an earlier term
 	err = fc.Replicate(stream)
+	assert.Error(t, err)
 	assert.Equal(t, common.CodeInvalidTerm, status.Code(err))
 	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
 	assert.EqualValues(t, 5, fc.Term())
@@ -667,7 +677,7 @@ func TestFollower_DisconnectLeader(t *testing.T) {
 	_, err = fc.Fence(&proto.FenceRequest{Term: 2})
 	assert.NoError(t, err)
 
-	assert.Nil(t, fc.(*followerController).closeStreamCh)
+	assert.Nil(t, fc.(*followerController).closeStreamWg)
 
 	go func() { assert.NoError(t, fc.Replicate(stream)) }()
 
@@ -758,7 +768,7 @@ func closeChanIsNotNil(fc FollowerController) func() bool {
 		_fc := fc.(*followerController)
 		_fc.Lock()
 		defer _fc.Unlock()
-		return _fc.closeStreamCh != nil
+		return _fc.closeStreamWg != nil
 	}
 }
 

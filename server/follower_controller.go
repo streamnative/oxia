@@ -98,7 +98,7 @@ type followerController struct {
 	cancel           context.CancelFunc
 	syncCond         common.ConditionContext
 	applyEntriesCond common.ConditionContext
-	closeStreamCh    chan error
+	closeStreamWg    common.WaitGroup
 	log              zerolog.Logger
 	config           Config
 
@@ -111,7 +111,7 @@ func NewFollowerController(config Config, shardId uint32, wf wal.WalFactory, kvF
 		shardId:       shardId,
 		kvFactory:     kvFactory,
 		status:        proto.ServingStatus_NOT_MEMBER,
-		closeStreamCh: nil,
+		closeStreamWg: nil,
 		log: log.With().
 			Str("component", "follower-controller").
 			Uint32("shard", shardId).
@@ -185,27 +185,22 @@ func (fc *followerController) Close() error {
 	return err
 }
 
-func (fc *followerController) closeChannel(err error) {
+func (fc *followerController) closeStream(err error) {
 	fc.Lock()
 	defer fc.Unlock()
 
-	fc.closeChannelNoMutex(err)
+	fc.closeStreamNoMutex(err)
 }
 
-func (fc *followerController) closeChannelNoMutex(err error) {
+func (fc *followerController) closeStreamNoMutex(err error) {
 	if err != nil && err != io.EOF && status.Code(err) != codes.Canceled {
 		fc.log.Warn().Err(err).
 			Msg("Error in handle Replicate stream")
 	}
 
-	if fc.closeStreamCh != nil {
-		select {
-		case fc.closeStreamCh <- err:
-		default:
-			// Only write if there's a listener
-		}
-		close(fc.closeStreamCh)
-		fc.closeStreamCh = nil
+	if fc.closeStreamWg != nil {
+		fc.closeStreamWg.Fail(err)
+		fc.closeStreamWg = nil
 	}
 }
 
@@ -257,7 +252,7 @@ func (fc *followerController) Fence(req *proto.FenceRequest) (*proto.FenceRespon
 	fc.term = req.Term
 	fc.log = fc.log.With().Int64("term", fc.term).Logger()
 	fc.status = proto.ServingStatus_FENCED
-	fc.closeChannelNoMutex(nil)
+	fc.closeStreamNoMutex(nil)
 
 	lastEntryId, err := getLastEntryIdInWal(fc.wal)
 	if err != nil {
@@ -312,13 +307,13 @@ func (fc *followerController) Replicate(stream proto.OxiaLogReplication_Replicat
 		return common.ErrorInvalidStatus
 	}
 
-	if fc.closeStreamCh != nil {
+	if fc.closeStreamWg != nil {
 		fc.Unlock()
 		return common.ErrorLeaderAlreadyConnected
 	}
 
-	closeStreamCh := make(chan error)
-	fc.closeStreamCh = closeStreamCh
+	closeStreamWg := common.NewWaitGroup(1)
+	fc.closeStreamWg = closeStreamWg
 	fc.Unlock()
 
 	go common.DoWithLabels(map[string]string{
@@ -331,24 +326,19 @@ func (fc *followerController) Replicate(stream proto.OxiaLogReplication_Replicat
 		"shard": fmt.Sprintf("%d", fc.shardId),
 	}, func() { fc.handleReplicateSync(stream) })
 
-	select {
-	case err := <-closeStreamCh:
-		return err
-	case <-fc.ctx.Done():
-		return fc.ctx.Err()
-	}
+	return closeStreamWg.Wait(fc.ctx)
 }
 
 func (fc *followerController) handleServerStream(stream proto.OxiaLogReplication_ReplicateServer) {
 	for {
 		if req, err := stream.Recv(); err != nil {
-			fc.closeChannel(err)
+			fc.closeStream(err)
 			return
 		} else if req == nil {
-			fc.closeChannel(nil)
+			fc.closeStream(nil)
 			return
 		} else if err := fc.append(req, stream); err != nil {
-			fc.closeChannel(err)
+			fc.closeStream(err)
 			return
 		}
 	}
@@ -384,7 +374,7 @@ func (fc *followerController) append(req *proto.Append, stream proto.OxiaLogRepl
 			Int64("offset", req.Entry.Offset).
 			Msg("Ignoring duplicated entry")
 		if err := stream.Send(&proto.Ack{Offset: req.Entry.Offset}); err != nil {
-			fc.closeChannelNoMutex(err)
+			fc.closeStreamNoMutex(err)
 		}
 		return nil
 	}
@@ -408,7 +398,7 @@ func (fc *followerController) handleReplicateSync(stream proto.OxiaLogReplicatio
 		fc.Lock()
 		if err := fc.syncCond.Wait(stream.Context()); err != nil {
 			fc.Unlock()
-			fc.closeChannel(err)
+			fc.closeStream(err)
 			return
 		}
 		fc.Unlock()
@@ -416,7 +406,7 @@ func (fc *followerController) handleReplicateSync(stream proto.OxiaLogReplicatio
 		oldHeadOffset := fc.wal.LastOffset()
 
 		if err := fc.wal.Sync(stream.Context()); err != nil {
-			fc.closeChannel(err)
+			fc.closeStream(err)
 			return
 		}
 
@@ -424,7 +414,7 @@ func (fc *followerController) handleReplicateSync(stream proto.OxiaLogReplicatio
 		newHeadOffset := fc.wal.LastOffset()
 		for offset := oldHeadOffset + 1; offset <= newHeadOffset; offset++ {
 			if err := stream.Send(&proto.Ack{Offset: offset}); err != nil {
-				fc.closeChannel(err)
+				fc.closeStream(err)
 				return
 			}
 		}
@@ -444,7 +434,7 @@ func (fc *followerController) applyAllCommittedEntries() {
 
 		maxInclusive := fc.advertisedCommitOffset.Load()
 		if err := fc.processCommittedEntries(maxInclusive); err != nil {
-			fc.closeChannel(err)
+			fc.closeStream(err)
 			return
 		}
 	}
@@ -550,18 +540,13 @@ func checkStatus(expected, actual proto.ServingStatus) error {
 func (fc *followerController) SendSnapshot(stream proto.OxiaLogReplication_SendSnapshotServer) error {
 	fc.Lock()
 
-	if fc.isClosed() {
-		fc.Unlock()
-		return common.ErrorAlreadyClosed
-	}
-
-	if fc.closeStreamCh != nil {
+	if fc.closeStreamWg != nil {
 		fc.Unlock()
 		return common.ErrorLeaderAlreadyConnected
 	}
 
-	closeStreamCh := make(chan error)
-	fc.closeStreamCh = closeStreamCh
+	closeStreamWg := common.NewWaitGroup(1)
+	fc.closeStreamWg = closeStreamWg
 	fc.Unlock()
 
 	go common.DoWithLabels(map[string]string{
@@ -569,12 +554,7 @@ func (fc *followerController) SendSnapshot(stream proto.OxiaLogReplication_SendS
 		"shard": fmt.Sprintf("%d", fc.shardId),
 	}, func() { fc.handleSnapshot(stream) })
 
-	select {
-	case err := <-closeStreamCh:
-		return err
-	case <-fc.ctx.Done():
-		return fc.ctx.Err()
-	}
+	return closeStreamWg.Wait(fc.ctx)
 }
 
 func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_SendSnapshotServer) {
@@ -584,14 +564,14 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 	// Wipe out both WAL and DB contents
 	err := fc.wal.Clear()
 	if err != nil {
-		fc.closeChannelNoMutex(err)
+		fc.closeStreamNoMutex(err)
 		return
 	}
 
 	if fc.db != nil {
 		err = fc.db.Close()
 		if err != nil {
-			fc.closeChannelNoMutex(err)
+			fc.closeStreamNoMutex(err)
 			return
 		}
 
@@ -600,7 +580,7 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 
 	loader, err := fc.kvFactory.NewSnapshotLoader(fc.shardId)
 	if err != nil {
-		fc.closeChannelNoMutex(err)
+		fc.closeStreamNoMutex(err)
 		return
 	}
 
@@ -614,14 +594,14 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 			if errors.Is(err, io.EOF) {
 				break
 			}
-			fc.closeChannelNoMutex(err)
+			fc.closeStreamNoMutex(err)
 			return
 		} else if snapChunk == nil {
 			break
 		} else if fc.term != wal.InvalidTerm && snapChunk.Term != fc.term {
 			// The follower could be left with term=-1 by a previous failed
 			// attempt at sending the snapshot. It's ok to proceed in that case.
-			fc.closeChannelNoMutex(common.ErrorInvalidTerm)
+			fc.closeStreamNoMutex(common.ErrorInvalidTerm)
 			return
 		}
 
@@ -634,7 +614,7 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 			Int64("term", fc.term).
 			Msg("Applying snapshot chunk")
 		if err = loader.AddChunk(snapChunk.Name, snapChunk.ChunkIndex, snapChunk.ChunkCount, snapChunk.Content); err != nil {
-			fc.closeChannel(err)
+			fc.closeStream(err)
 			return
 		}
 
@@ -646,31 +626,31 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 
 	newDb, err := kv.NewDB(fc.shardId, fc.kvFactory, fc.config.NotificationsRetentionTime, common.SystemClock)
 	if err != nil {
-		fc.closeChannelNoMutex(errors.Wrap(err, "failed to open database after loading snapshot"))
+		fc.closeStreamNoMutex(errors.Wrap(err, "failed to open database after loading snapshot"))
 		return
 	}
 
 	// The new term must be persisted, to avoid rolling it back
 	if err = newDb.UpdateTerm(fc.term); err != nil {
-		fc.closeChannelNoMutex(errors.Wrap(err, "Failed to update term in db"))
+		fc.closeStreamNoMutex(errors.Wrap(err, "Failed to update term in db"))
 	}
 
 	commitOffset, err := newDb.ReadCommitOffset()
 	if err != nil {
-		fc.closeChannelNoMutex(errors.Wrap(err, "Failed to read committed offset in the new snapshot"))
+		fc.closeStreamNoMutex(errors.Wrap(err, "Failed to read committed offset in the new snapshot"))
 		return
 	}
 
 	if err = stream.SendAndClose(&proto.SnapshotResponse{
 		AckOffset: commitOffset,
 	}); err != nil {
-		fc.closeChannelNoMutex(errors.Wrap(err, "Failed to send response after processing snapshot"))
+		fc.closeStreamNoMutex(errors.Wrap(err, "Failed to send response after processing snapshot"))
 		return
 	}
 
 	fc.db = newDb
 	fc.commitOffset.Store(commitOffset)
-	fc.closeChannelNoMutex(nil)
+	fc.closeStreamNoMutex(nil)
 
 	fc.log.Info().
 		Int64("term", fc.term).
