@@ -215,11 +215,11 @@ func (snm *shardNotificationsManager) getNotifications() error {
 
 func convertNotificationType(t proto.NotificationType) NotificationType {
 	switch t {
-	case proto.NotificationType_KeyCreated:
+	case proto.NotificationType_KEY_CREATED:
 		return KeyCreated
-	case proto.NotificationType_KeyModified:
+	case proto.NotificationType_KEY_MODIFIED:
 		return KeyModified
-	case proto.NotificationType_KeyDeleted:
+	case proto.NotificationType_KEY_DELETED:
 		return KeyDeleted
 	default:
 		panic("Invalid notification type")

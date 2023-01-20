@@ -24,7 +24,7 @@ message StorageEntry {
   int64 modifications_count = 3;
   fixed64 creation_timestamp = 4;
   fixed64 modification_timestamp = 5;
-  optional int64 sessionId = 6;
+  optional int64 session_id = 6;
 }
 
 message SessionMetadata {
