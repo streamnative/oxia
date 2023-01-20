@@ -94,7 +94,7 @@ type leaderController struct {
 func NewLeaderController(config Config, shardId uint32, rpcClient ReplicationRpcProvider, walFactory wal.WalFactory, kvFactory kv.KVFactory) (LeaderController, error) {
 	labels := metrics.LabelsForShard(shardId)
 	lc := &leaderController{
-		status:           proto.ServingStatus_NotMember,
+		status:           proto.ServingStatus_NOT_MEMBER,
 		shardId:          shardId,
 		quorumAckTracker: nil,
 		rpcClient:        rpcClient,
@@ -148,7 +148,7 @@ func NewLeaderController(config Config, shardId uint32, rpcClient ReplicationRpc
 	}
 
 	if lc.term != wal.InvalidTerm {
-		lc.status = proto.ServingStatus_Fenced
+		lc.status = proto.ServingStatus_FENCED
 	}
 
 	lc.log = lc.log.With().Int64("term", lc.term).Logger()
@@ -187,9 +187,13 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 	lc.Lock()
 	defer lc.Unlock()
 
+	if lc.isClosed() {
+		return nil, common.ErrorAlreadyClosed
+	}
+
 	if req.Term < lc.term {
 		return nil, common.ErrorInvalidTerm
-	} else if req.Term == lc.term && lc.status != proto.ServingStatus_Fenced {
+	} else if req.Term == lc.term && lc.status != proto.ServingStatus_FENCED {
 		// It's OK to receive a duplicate Fence request, for the same term, as long as we haven't moved
 		// out of the Fenced state for that term
 		lc.log.Warn().
@@ -206,7 +210,7 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 
 	lc.term = req.Term
 	lc.log = lc.log.With().Int64("term", lc.term).Logger()
-	lc.status = proto.ServingStatus_Fenced
+	lc.status = proto.ServingStatus_FENCED
 	lc.replicationFactor = 0
 
 	lc.headOffsetGauge.Unregister()
@@ -278,7 +282,11 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 	lc.Lock()
 	defer lc.Unlock()
 
-	if lc.status != proto.ServingStatus_Fenced {
+	if lc.isClosed() {
+		return nil, common.ErrorAlreadyClosed
+	}
+
+	if lc.status != proto.ServingStatus_FENCED {
 		return nil, common.ErrorInvalidStatus
 	}
 
@@ -286,7 +294,7 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 		return nil, common.ErrorInvalidTerm
 	}
 
-	lc.status = proto.ServingStatus_Leader
+	lc.status = proto.ServingStatus_LEADER
 	lc.replicationFactor = req.GetReplicationFactor()
 	lc.followers = make(map[string]FollowerCursor)
 
@@ -336,7 +344,7 @@ func (lc *leaderController) AddFollower(req *proto.AddFollowerRequest) (*proto.A
 		return nil, common.ErrorInvalidTerm
 	}
 
-	if lc.status != proto.ServingStatus_Leader {
+	if lc.status != proto.ServingStatus_LEADER {
 		return nil, errors.Wrap(common.ErrorInvalidStatus, "Node is not leader")
 	}
 
@@ -496,7 +504,7 @@ func (lc *leaderController) Read(request *proto.ReadRequest) (*proto.ReadRespons
 		Msg("Received read request")
 
 	lc.Lock()
-	err := checkStatus(proto.ServingStatus_Leader, lc.status)
+	err := checkStatus(proto.ServingStatus_LEADER, lc.status)
 	lc.Unlock()
 	if err != nil {
 		return nil, err
@@ -541,7 +549,7 @@ func (lc *leaderController) write(request func(int64) *proto.WriteRequest) (int6
 func (lc *leaderController) appendToWal(request func(int64) *proto.WriteRequest, timestamp uint64) (actualRequest *proto.WriteRequest, offset int64, err error) {
 	lc.Lock()
 
-	if err := checkStatus(proto.ServingStatus_Leader, lc.status); err != nil {
+	if err := checkStatus(proto.ServingStatus_LEADER, lc.status); err != nil {
 		lc.Unlock()
 		return nil, wal.InvalidOffset, err
 	}
@@ -664,13 +672,17 @@ func (lc *leaderController) dispatchNotifications(ctx context.Context, req *prot
 	return ctx.Err()
 }
 
+func (lc *leaderController) isClosed() bool {
+	return lc.ctx.Err() != nil
+}
+
 func (lc *leaderController) Close() error {
 	lc.Lock()
 	defer lc.Unlock()
 
 	lc.log.Info().Msg("Closing leader controller")
 
-	lc.status = proto.ServingStatus_NotMember
+	lc.status = proto.ServingStatus_NOT_MEMBER
 	lc.cancel()
 
 	var err error

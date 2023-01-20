@@ -16,13 +16,14 @@ syntax = "proto3";
 
 package replication;
 
-option go_package = "github.com/streamnative/oxia/proto";
+import "client.proto";
 
-import "proto/client.proto";
+option go_package = "github.com/streamnative/oxia/proto";
 
 // coordinator -> node
 service OxiaCoordination {
-  rpc PushShardAssignments(stream io.streamnative.oxia.proto.ShardAssignments) returns (CoordinationShardAssignmentsResponse);
+  rpc PushShardAssignments(stream io.streamnative.oxia.proto.ShardAssignments)
+      returns (CoordinationShardAssignmentsResponse);
 
   rpc Fence(FenceRequest) returns (FenceResponse);
   rpc BecomeLeader(BecomeLeaderRequest) returns (BecomeLeaderResponse);
@@ -66,7 +67,7 @@ message FenceRequest {
 }
 
 message FenceResponse {
-  EntryId head_entry_id= 2;
+  EntryId head_entry_id = 2;
 }
 
 message BecomeLeaderRequest {
@@ -85,11 +86,9 @@ message AddFollowerRequest {
   EntryId follower_head_entry_id = 4;
 }
 
-message BecomeLeaderResponse {
-}
+message BecomeLeaderResponse {}
 
-message AddFollowerResponse {
-}
+message AddFollowerResponse {}
 
 message TruncateRequest {
   uint32 shard_id = 1;
@@ -123,10 +122,10 @@ message GetStatusRequest {
 }
 
 enum ServingStatus {
-  NotMember = 0;
-  Fenced    = 1;
-  Follower  = 2;
-  Leader    = 3;
+  NOT_MEMBER = 0;
+  FENCED = 1;
+  FOLLOWER = 2;
+  LEADER = 3;
 }
 
 message GetStatusResponse {

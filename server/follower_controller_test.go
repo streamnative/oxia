@@ -49,13 +49,13 @@ func TestFollower(t *testing.T) {
 	fc, err := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.Equal(t, proto.ServingStatus_NotMember, fc.Status())
+	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, fc.Status())
 
 	fenceRes, err := fc.Fence(&proto.FenceRequest{Term: 1})
 	assert.NoError(t, err)
 	assert.Equal(t, InvalidEntryId, fenceRes.HeadEntryId)
 
-	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
+	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
 	assert.EqualValues(t, 1, fc.Term())
 
 	truncateResp, err := fc.Truncate(&proto.TruncateRequest{
@@ -69,7 +69,7 @@ func TestFollower(t *testing.T) {
 	assert.EqualValues(t, 1, truncateResp.HeadEntryId.Term)
 	assert.Equal(t, wal.InvalidOffset, truncateResp.HeadEntryId.Offset)
 
-	assert.Equal(t, proto.ServingStatus_Follower, fc.Status())
+	assert.Equal(t, proto.ServingStatus_FOLLOWER, fc.Status())
 
 	stream := newMockServerReplicateStream()
 
@@ -86,7 +86,7 @@ func TestFollower(t *testing.T) {
 	// Wait for response
 	response := stream.GetResponse()
 
-	assert.Equal(t, proto.ServingStatus_Follower, fc.Status())
+	assert.Equal(t, proto.ServingStatus_FOLLOWER, fc.Status())
 
 	assert.EqualValues(t, 0, response.Offset)
 
@@ -97,7 +97,7 @@ func TestFollower(t *testing.T) {
 	response = stream.GetResponse()
 	assert.EqualValues(t, 1, response.Offset)
 
-	assert.Equal(t, proto.ServingStatus_Follower, fc.Status())
+	assert.Equal(t, proto.ServingStatus_FOLLOWER, fc.Status())
 	assert.EqualValues(t, 1, fc.Term())
 
 	// Double-check the values in the DB
@@ -132,7 +132,7 @@ func TestReadingUpToCommitOffset(t *testing.T) {
 
 	_, err = fc.Fence(&proto.FenceRequest{Term: 1})
 	assert.NoError(t, err)
-	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
+	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
 	assert.EqualValues(t, 1, fc.Term())
 
 	_, err = fc.Truncate(&proto.TruncateRequest{
@@ -143,7 +143,7 @@ func TestReadingUpToCommitOffset(t *testing.T) {
 		},
 	})
 	assert.NoError(t, err)
-	assert.Equal(t, proto.ServingStatus_Follower, fc.Status())
+	assert.Equal(t, proto.ServingStatus_FOLLOWER, fc.Status())
 
 	stream := newMockServerReplicateStream()
 	go func() { assert.NoError(t, fc.Replicate(stream)) }()
@@ -157,7 +157,7 @@ func TestReadingUpToCommitOffset(t *testing.T) {
 	// Wait for acks
 	r1 := stream.GetResponse()
 
-	assert.Equal(t, proto.ServingStatus_Follower, fc.Status())
+	assert.Equal(t, proto.ServingStatus_FOLLOWER, fc.Status())
 
 	assert.EqualValues(t, 0, r1.Offset)
 
@@ -209,7 +209,7 @@ func TestFollower_RestoreCommitOffset(t *testing.T) {
 	fc, err := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
+	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
 	assert.EqualValues(t, 6, fc.Term())
 	assert.EqualValues(t, 9, fc.CommitOffset())
 
@@ -260,27 +260,27 @@ func TestFollower_FenceTerm(t *testing.T) {
 
 	_, err = fc.Fence(&proto.FenceRequest{Term: 1})
 	assert.NoError(t, err)
-	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
+	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
 	assert.EqualValues(t, 1, fc.Term())
 
 	// We cannot fence with earlier term
 	fr, err := fc.Fence(&proto.FenceRequest{Term: 0})
 	assert.Nil(t, fr)
 	assert.Equal(t, common.CodeInvalidTerm, status.Code(err))
-	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
+	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
 	assert.EqualValues(t, 1, fc.Term())
 
 	// A fence with same term needs to be accepted
 	fr, err = fc.Fence(&proto.FenceRequest{Term: 1})
 	assert.NotNil(t, fr)
 	assert.NoError(t, err)
-	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
+	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
 	assert.EqualValues(t, 1, fc.Term())
 
 	// Higher term will work
 	_, err = fc.Fence(&proto.FenceRequest{Term: 3})
 	assert.NoError(t, err)
-	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
+	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
 	assert.EqualValues(t, 3, fc.Term())
 
 	assert.NoError(t, fc.Close())
@@ -312,7 +312,7 @@ func TestFollower_TruncateAfterRestart(t *testing.T) {
 
 	assert.Equal(t, common.CodeInvalidStatus, status.Code(err))
 	assert.Nil(t, tr)
-	assert.Equal(t, proto.ServingStatus_NotMember, fc.Status())
+	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, fc.Status())
 
 	_, err = fc.Fence(&proto.FenceRequest{
 		ShardId: shardId,
@@ -325,7 +325,7 @@ func TestFollower_TruncateAfterRestart(t *testing.T) {
 	fc, err = NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
+	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
 
 	tr, err = fc.Truncate(&proto.TruncateRequest{
 		Term: 2,
@@ -337,7 +337,7 @@ func TestFollower_TruncateAfterRestart(t *testing.T) {
 
 	assert.NoError(t, err)
 	AssertProtoEqual(t, &proto.EntryId{Term: 2, Offset: -1}, tr.HeadEntryId)
-	assert.Equal(t, proto.ServingStatus_Follower, fc.Status())
+	assert.Equal(t, proto.ServingStatus_FOLLOWER, fc.Status())
 
 	assert.NoError(t, fc.Close())
 	assert.NoError(t, kvFactory.Close())
@@ -358,14 +358,14 @@ func TestFollower_PersistentTerm(t *testing.T) {
 	fc, err := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.Equal(t, proto.ServingStatus_NotMember, fc.Status())
+	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, fc.Status())
 	assert.Equal(t, wal.InvalidTerm, fc.Term())
 
 	fenceRes, err := fc.Fence(&proto.FenceRequest{Term: 4})
 	assert.NoError(t, err)
 	assert.Equal(t, InvalidEntryId, fenceRes.HeadEntryId)
 
-	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
+	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
 	assert.EqualValues(t, 4, fc.Term())
 
 	assert.NoError(t, fc.Close())
@@ -374,7 +374,7 @@ func TestFollower_PersistentTerm(t *testing.T) {
 	fc, err = NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
+	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
 	assert.EqualValues(t, 4, fc.Term())
 
 	assert.NoError(t, kvFactory.Close())
@@ -392,7 +392,7 @@ func TestFollower_CommitOffsetLastEntry(t *testing.T) {
 
 	_, err = fc.Fence(&proto.FenceRequest{Term: 1})
 	assert.NoError(t, err)
-	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
+	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
 	assert.EqualValues(t, 1, fc.Term())
 
 	stream := newMockServerReplicateStream()
@@ -403,7 +403,7 @@ func TestFollower_CommitOffsetLastEntry(t *testing.T) {
 	// Wait for acks
 	r1 := stream.GetResponse()
 
-	assert.Equal(t, proto.ServingStatus_Follower, fc.Status())
+	assert.Equal(t, proto.ServingStatus_FOLLOWER, fc.Status())
 
 	assert.EqualValues(t, 0, r1.Offset)
 
@@ -449,7 +449,7 @@ func TestFollowerController_RejectEntriesWithDifferentTerm(t *testing.T) {
 	fc, err := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
+	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
 	assert.EqualValues(t, 5, fc.Term())
 
 	stream := newMockServerReplicateStream()
@@ -459,7 +459,7 @@ func TestFollowerController_RejectEntriesWithDifferentTerm(t *testing.T) {
 	err = fc.Replicate(stream)
 	assert.Error(t, err)
 	assert.Equal(t, common.CodeInvalidTerm, status.Code(err))
-	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
+	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
 	assert.EqualValues(t, 5, fc.Term())
 
 	// If we send an entry of same term, it will be accepted
@@ -470,7 +470,7 @@ func TestFollowerController_RejectEntriesWithDifferentTerm(t *testing.T) {
 	// Wait for acks
 	r1 := stream.GetResponse()
 
-	assert.Equal(t, proto.ServingStatus_Follower, fc.Status())
+	assert.Equal(t, proto.ServingStatus_FOLLOWER, fc.Status())
 	assert.EqualValues(t, 0, r1.Offset)
 	assert.NoError(t, fc.Close())
 	close(stream.requests)
@@ -482,8 +482,8 @@ func TestFollowerController_RejectEntriesWithDifferentTerm(t *testing.T) {
 	stream = newMockServerReplicateStream()
 	stream.AddRequest(createAddRequest(t, 6, 0, map[string]string{"a": "2", "b": "2"}, wal.InvalidOffset))
 	err = fc.Replicate(stream)
-	assert.Equal(t, common.CodeInvalidTerm, status.Code(err))
-	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
+	assert.Equal(t, common.CodeInvalidTerm, status.Code(err), "Unexpected error: %s", err)
+	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
 	assert.EqualValues(t, 5, fc.Term())
 
 	assert.NoError(t, fc.Close())
@@ -500,13 +500,13 @@ func TestFollower_RejectTruncateInvalidTerm(t *testing.T) {
 	fc, err := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.Equal(t, proto.ServingStatus_NotMember, fc.Status())
+	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, fc.Status())
 
 	fenceRes, err := fc.Fence(&proto.FenceRequest{Term: 5})
 	assert.NoError(t, err)
 	assert.Equal(t, InvalidEntryId, fenceRes.HeadEntryId)
 
-	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
+	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
 	assert.EqualValues(t, 5, fc.Term())
 
 	// Lower term should be rejected
@@ -519,7 +519,7 @@ func TestFollower_RejectTruncateInvalidTerm(t *testing.T) {
 	})
 	assert.Nil(t, truncateResp)
 	assert.Equal(t, common.CodeInvalidTerm, status.Code(err))
-	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
+	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
 	assert.EqualValues(t, 5, fc.Term())
 
 	// Truncate with higher term should also fail
@@ -532,7 +532,7 @@ func TestFollower_RejectTruncateInvalidTerm(t *testing.T) {
 	})
 	assert.Nil(t, truncateResp)
 	assert.Equal(t, common.CodeInvalidTerm, status.Code(err))
-	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
+	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
 	assert.EqualValues(t, 5, fc.Term())
 }
 
@@ -575,7 +575,7 @@ func TestFollower_HandleSnapshot(t *testing.T) {
 
 	_, err = fc.Fence(&proto.FenceRequest{Term: 1})
 	assert.NoError(t, err)
-	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
+	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
 	assert.EqualValues(t, 1, fc.Term())
 
 	stream := newMockServerReplicateStream()
@@ -585,7 +585,7 @@ func TestFollower_HandleSnapshot(t *testing.T) {
 
 	// Wait for acks
 	r1 := stream.GetResponse()
-	assert.Equal(t, proto.ServingStatus_Follower, fc.Status())
+	assert.Equal(t, proto.ServingStatus_FOLLOWER, fc.Status())
 	assert.EqualValues(t, 0, r1.Offset)
 	close(stream.requests)
 
@@ -720,6 +720,45 @@ func TestFollower_DupEntries(t *testing.T) {
 	assert.EqualValues(t, 0, r4.Offset)
 
 	assert.NoError(t, fc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
+func TestFollowerController_Closed(t *testing.T) {
+	var shard uint32 = 1
+
+	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
+	walFactory := wal.NewInMemoryWalFactory()
+
+	fc, err := NewFollowerController(Config{}, shard, walFactory, kvFactory)
+	assert.NoError(t, err)
+
+	assert.EqualValues(t, wal.InvalidTerm, fc.Term())
+	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, fc.Status())
+
+	assert.NoError(t, fc.Close())
+
+	res, err := fc.Fence(&proto.FenceRequest{
+		ShardId: shard,
+		Term:    2,
+	})
+
+	assert.Nil(t, res)
+	assert.Equal(t, common.CodeAlreadyClosed, status.Code(err))
+
+	res2, err := fc.Truncate(&proto.TruncateRequest{
+		ShardId: shard,
+		Term:    2,
+		HeadEntryId: &proto.EntryId{
+			Term:   2,
+			Offset: 1,
+		},
+	})
+
+	assert.Nil(t, res2)
+	assert.Equal(t, common.CodeAlreadyClosed, status.Code(err))
+
 	assert.NoError(t, kvFactory.Close())
 	assert.NoError(t, walFactory.Close())
 }

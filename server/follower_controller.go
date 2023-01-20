@@ -110,8 +110,8 @@ func NewFollowerController(config Config, shardId uint32, wf wal.WalFactory, kvF
 		config:        config,
 		shardId:       shardId,
 		kvFactory:     kvFactory,
-		status:        proto.ServingStatus_NotMember,
-		closeStreamWg: nil,
+		status:        proto.ServingStatus_NOT_MEMBER,
+		closeStreamCh: nil,
 		log: log.With().
 			Str("component", "follower-controller").
 			Uint32("shard", shardId).
@@ -140,7 +140,7 @@ func NewFollowerController(config Config, shardId uint32, wf wal.WalFactory, kvF
 	}
 
 	if fc.term != wal.InvalidTerm {
-		fc.status = proto.ServingStatus_Fenced
+		fc.status = proto.ServingStatus_FENCED
 	}
 
 	commitOffset, err := fc.db.ReadCommitOffset()
@@ -161,6 +161,10 @@ func NewFollowerController(config Config, shardId uint32, wf wal.WalFactory, kvF
 		Int64("commit-offset", commitOffset).
 		Msg("Created follower")
 	return fc, nil
+}
+
+func (fc *followerController) isClosed() bool {
+	return fc.ctx.Err() != nil
 }
 
 func (fc *followerController) Close() error {
@@ -220,13 +224,17 @@ func (fc *followerController) Fence(req *proto.FenceRequest) (*proto.FenceRespon
 	fc.Lock()
 	defer fc.Unlock()
 
+	if fc.isClosed() {
+		return nil, common.ErrorAlreadyClosed
+	}
+
 	if req.Term < fc.term {
 		fc.log.Warn().
 			Int64("follower-term", fc.term).
 			Int64("fence-term", req.Term).
 			Msg("Failed to fence with invalid term")
 		return nil, common.ErrorInvalidTerm
-	} else if req.Term == fc.term && fc.status != proto.ServingStatus_Fenced {
+	} else if req.Term == fc.term && fc.status != proto.ServingStatus_FENCED {
 		// It's OK to receive a duplicate Fence request, for the same term, as long as we haven't moved
 		// out of the Fenced state for that term
 		fc.log.Warn().
@@ -243,8 +251,8 @@ func (fc *followerController) Fence(req *proto.FenceRequest) (*proto.FenceRespon
 
 	fc.term = req.Term
 	fc.log = fc.log.With().Int64("term", fc.term).Logger()
-	fc.status = proto.ServingStatus_Fenced
-	fc.closeStreamNoMutex(nil)
+	fc.status = proto.ServingStatus_FENCED
+	fc.closeChannelNoMutex(nil)
 
 	lastEntryId, err := getLastEntryIdInWal(fc.wal)
 	if err != nil {
@@ -265,7 +273,11 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 	fc.Lock()
 	defer fc.Unlock()
 
-	if fc.status != proto.ServingStatus_Fenced {
+	if fc.isClosed() {
+		return nil, common.ErrorAlreadyClosed
+	}
+
+	if fc.status != proto.ServingStatus_FENCED {
 		return nil, common.ErrorInvalidStatus
 	}
 
@@ -273,7 +285,7 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 		return nil, common.ErrorInvalidTerm
 	}
 
-	fc.status = proto.ServingStatus_Follower
+	fc.status = proto.ServingStatus_FOLLOWER
 	headOffset, err := fc.wal.TruncateLog(req.HeadEntryId.Offset)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to truncate wal. truncate-offset: %d - wal-last-offset: %d",
@@ -290,7 +302,7 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 
 func (fc *followerController) Replicate(stream proto.OxiaLogReplication_ReplicateServer) error {
 	fc.Lock()
-	if fc.status != proto.ServingStatus_Fenced && fc.status != proto.ServingStatus_Follower {
+	if fc.status != proto.ServingStatus_FENCED && fc.status != proto.ServingStatus_FOLLOWER {
 		fc.Unlock()
 		return common.ErrorInvalidStatus
 	}
@@ -353,7 +365,7 @@ func (fc *followerController) append(req *proto.Append, stream proto.OxiaLogRepl
 	// The follower adds the entry to its log, sets the head offset
 	// and updates its commit offset with the commit offset of
 	// the request.
-	fc.status = proto.ServingStatus_Follower
+	fc.status = proto.ServingStatus_FOLLOWER
 
 	if req.Entry.Offset <= fc.lastAppendedOffset {
 		// This was a duplicated request. We already have this entry
