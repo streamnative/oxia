@@ -146,7 +146,10 @@ func TestReadingUpToCommitOffset(t *testing.T) {
 	assert.Equal(t, proto.ServingStatus_FOLLOWER, fc.Status())
 
 	stream := newMockServerReplicateStream()
-	go func() { assert.NoError(t, fc.Replicate(stream)) }()
+	go func() {
+		//cancelled due to fc.Close() below
+		assert.ErrorIs(t, fc.Replicate(stream), context.Canceled)
+	}()
 
 	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, wal.InvalidOffset))
 
@@ -231,7 +234,10 @@ func TestFollower_AdvanceCommitOffsetToHead(t *testing.T) {
 	_, _ = fc.NewTerm(&proto.NewTermRequest{Term: 1})
 
 	stream := newMockServerReplicateStream()
-	go func() { assert.NoError(t, fc.Replicate(stream)) }()
+	go func() {
+		//cancelled due to fc.Close() below
+		assert.ErrorIs(t, fc.Replicate(stream), context.Canceled)
+	}()
 
 	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, 10))
 
@@ -396,7 +402,10 @@ func TestFollower_CommitOffsetLastEntry(t *testing.T) {
 	assert.EqualValues(t, 1, fc.Term())
 
 	stream := newMockServerReplicateStream()
-	go func() { assert.NoError(t, fc.Replicate(stream)) }()
+	go func() {
+		//cancelled due to fc.Close() below
+		assert.ErrorIs(t, fc.Replicate(stream), context.Canceled)
+	}()
 
 	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, 0))
 
@@ -465,7 +474,10 @@ func TestFollowerController_RejectEntriesWithDifferentTerm(t *testing.T) {
 	// If we send an entry of same term, it will be accepted
 	stream.AddRequest(createAddRequest(t, 5, 0, map[string]string{"a": "2", "b": "2"}, wal.InvalidOffset))
 
-	go func() { assert.NoError(t, fc.Replicate(stream)) }()
+	go func() {
+		//cancelled due to fc.Close() below
+		assert.ErrorIs(t, fc.Replicate(stream), context.Canceled)
+	}()
 
 	// Wait for acks
 	r1 := stream.GetResponse()
@@ -679,7 +691,10 @@ func TestFollower_DisconnectLeader(t *testing.T) {
 
 	assert.Nil(t, fc.(*followerController).closeStreamWg)
 
-	go func() { assert.NoError(t, fc.Replicate(stream)) }()
+	go func() {
+		//cancelled due to fc.Close() below
+		assert.ErrorIs(t, fc.Replicate(stream), context.Canceled)
+	}()
 
 	assert.Eventually(t, closeChanIsNotNil(fc), 10*time.Second, 10*time.Millisecond)
 
@@ -697,7 +712,10 @@ func TestFollower_DupEntries(t *testing.T) {
 	_, _ = fc.NewTerm(&proto.NewTermRequest{Term: 1})
 
 	stream := newMockServerReplicateStream()
-	go func() { assert.NoError(t, fc.Replicate(stream)) }()
+	go func() {
+		//cancelled due to fc.Close() below
+		assert.ErrorIs(t, fc.Replicate(stream), context.Canceled)
+	}()
 
 	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, wal.InvalidOffset))
 	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, wal.InvalidOffset))
@@ -739,7 +757,7 @@ func TestFollowerController_Closed(t *testing.T) {
 
 	assert.NoError(t, fc.Close())
 
-	res, err := fc.Fence(&proto.FenceRequest{
+	res, err := fc.NewTerm(&proto.NewTermRequest{
 		ShardId: shard,
 		Term:    2,
 	})
