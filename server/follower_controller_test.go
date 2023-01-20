@@ -118,7 +118,7 @@ func TestFollower(t *testing.T) {
 	assert.NoError(t, kvFactory.Close())
 	assert.NoError(t, walFactory.Close())
 
-	wg.Wait(context.Background())
+	_ = wg.Wait(context.Background())
 }
 
 func TestReadingUpToCommitOffset(t *testing.T) {
