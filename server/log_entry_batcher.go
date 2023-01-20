@@ -108,6 +108,9 @@ func (l *walWriteBatch) Complete() {
 		Value:     marshalled,
 		Timestamp: timestamp,
 	}
+	if err != nil {
+		l.Fail(errors.Wrap(err, "oxia: failed to marshal log entry"))
+	}
 
 	if err = l.wal.AppendAsync(logEntry); err != nil {
 		l.Fail(errors.Wrap(err, "oxia: failed to append to wal"))
