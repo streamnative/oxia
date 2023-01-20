@@ -739,7 +739,7 @@ func TestFollowerController_Closed(t *testing.T) {
 
 	assert.NoError(t, fc.Close())
 
-	res, err := fc.Fence(&proto.FenceRequest{
+	res, err := fc.NewTerm(&proto.NewTermRequest{
 		ShardId: shard,
 		Term:    2,
 	})

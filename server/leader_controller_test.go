@@ -90,7 +90,7 @@ func TestLeaderController_Closed(t *testing.T) {
 
 	assert.NoError(t, lc.Close())
 
-	res, err := lc.Fence(&proto.FenceRequest{
+	res, err := lc.NewTerm(&proto.NewTermRequest{
 		ShardId: shard,
 		Term:    2,
 	})
