@@ -30,7 +30,7 @@ import (
 
 func TestMetricsDecorate(t *testing.T) {
 	putFunc := func(metrics *Metrics, err error) {
-		metrics.DecoratePut(model.PutCall{Callback: func(*proto.PutResponse, error) {}, Payload: []byte{0, 1, 2, 3, 4}}).
+		metrics.DecoratePut(model.PutCall{Callback: func(*proto.PutResponse, error) {}, Value: []byte{0, 1, 2, 3, 4}}).
 			Callback(&proto.PutResponse{}, err)
 	}
 	deleteFunc := func(metrics *Metrics, err error) {
@@ -43,7 +43,7 @@ func TestMetricsDecorate(t *testing.T) {
 	}
 	getFunc := func(metrics *Metrics, err error) {
 		metrics.DecorateGet(model.GetCall{Callback: func(*proto.GetResponse, error) {}}).
-			Callback(&proto.GetResponse{Payload: []byte{0, 1, 2, 3, 4}}, err)
+			Callback(&proto.GetResponse{Value: []byte{0, 1, 2, 3, 4}}, err)
 	}
 	listFunc := func(metrics *Metrics, err error) {
 		metrics.DecorateList(model.ListCall{Callback: func(*proto.ListResponse, error) {}}).
@@ -90,12 +90,12 @@ func TestMetricsDecorate(t *testing.T) {
 func TestMetricsCallback(t *testing.T) {
 	writeFunc := func(metrics *Metrics, err error) {
 		metrics.WriteCallback()(time.Now(), &proto.WriteRequest{
-			Puts: []*proto.PutRequest{{Payload: []byte{0, 1, 2, 3, 4}}},
+			Puts: []*proto.PutRequest{{Value: []byte{0, 1, 2, 3, 4}}},
 		}, &proto.WriteResponse{}, err)
 	}
 	readFunc := func(metrics *Metrics, err error) {
 		metrics.ReadCallback()(time.Now(), &proto.ReadRequest{}, &proto.ReadResponse{
-			Gets: []*proto.GetResponse{{Payload: []byte{0, 1, 2, 3, 4}}},
+			Gets: []*proto.GetResponse{{Value: []byte{0, 1, 2, 3, 4}}},
 		}, err)
 	}
 

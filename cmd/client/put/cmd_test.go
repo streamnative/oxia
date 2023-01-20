@@ -27,19 +27,19 @@ import (
 
 func TestCobraFlags(t *testing.T) {
 	for _, test := range []struct {
-		name                   string
-		args                   []string
-		expectedErr            error
-		expectedKeys           []string
-		expectedPayloads       []string
-		expectedVersions       []int64
-		expectedBinaryPayloads bool
+		name                 string
+		args                 []string
+		expectedErr          error
+		expectedKeys         []string
+		expectedValues       []string
+		expectedVersions     []int64
+		expectedBinaryValues bool
 	}{
-		{"entry", []string{"-k", "x", "-p", "y"}, nil, []string{"x"}, []string{"y"}, nil, false},
-		{"entry-binary", []string{"-k", "x", "-p", "aGVsbG8=", "-b"}, nil, []string{"x"}, []string{"aGVsbG8="}, nil, true},
-		{"entry-expected-version", []string{"-k", "x", "-p", "y", "-e", "1"}, nil, []string{"x"}, []string{"y"}, []int64{1}, false},
-		{"entries", []string{"-k", "x1", "-p", "y1", "-k", "x2", "-p", "y2"}, nil, []string{"x1", "x2"}, []string{"y1", "y2"}, nil, false},
-		{"entries-expected-version", []string{"-k", "x1", "-p", "y1", "-e", "1", "-k", "x2", "-p", "y2", "-e", "4"}, nil, []string{"x1", "x2"}, []string{"y1", "y2"}, []int64{1, 4}, false},
+		{"entry", []string{"-k", "x", "-v", "y"}, nil, []string{"x"}, []string{"y"}, nil, false},
+		{"entry-binary", []string{"-k", "x", "-v", "aGVsbG8=", "-b"}, nil, []string{"x"}, []string{"aGVsbG8="}, nil, true},
+		{"entry-expected-version", []string{"-k", "x", "-v", "y", "-e", "1"}, nil, []string{"x"}, []string{"y"}, []int64{1}, false},
+		{"entries", []string{"-k", "x1", "-v", "y1", "-k", "x2", "-v", "y2"}, nil, []string{"x1", "x2"}, []string{"y1", "y2"}, nil, false},
+		{"entries-expected-version", []string{"-k", "x1", "-v", "y1", "-e", "1", "-k", "x2", "-v", "y2", "-e", "4"}, nil, []string{"x1", "x2"}, []string{"y1", "y2"}, []int64{1, 4}, false},
 		{"stdin", []string{}, nil, nil, nil, nil, false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -50,8 +50,8 @@ func TestCobraFlags(t *testing.T) {
 				invoked = true
 				assert.Equal(t, test.expectedKeys, Config.keys)
 				assert.Equal(t, test.expectedVersions, Config.expectedVersions)
-				assert.Equal(t, test.expectedPayloads, Config.payloads)
-				assert.Equal(t, test.expectedBinaryPayloads, Config.binaryPayloads)
+				assert.Equal(t, test.expectedValues, Config.values)
+				assert.Equal(t, test.expectedBinaryValues, Config.binaryValues)
 				return nil
 			}
 			err := Cmd.Execute()
@@ -72,34 +72,34 @@ func Test_exec(t *testing.T) {
 		{"entry",
 			"",
 			flags{
-				keys:     []string{"x"},
-				payloads: []string{"y"},
+				keys:   []string{"x"},
+				values: []string{"y"},
 			},
 			nil,
 			[]common.Query{Query{
-				Key:     "x",
-				Payload: "y",
-				Binary:  common.PtrBool(false),
+				Key:    "x",
+				Value:  "y",
+				Binary: common.PtrBool(false),
 			}}},
 		{"entry-no-key",
 			"",
 			flags{
-				payloads: []string{"y"},
+				values: []string{"y"},
 			},
-			ErrorExpectedKeyPayloadInconsistent,
+			ErrorExpectedKeyValueInconsistent,
 			nil},
-		{"entry-no-payload",
+		{"entry-no-value",
 			"",
 			flags{
 				keys: []string{"x"},
 			},
-			ErrorExpectedKeyPayloadInconsistent,
+			ErrorExpectedKeyValueInconsistent,
 			nil},
 		{"entry-missing-version",
 			"",
 			flags{
 				keys:             []string{"x", "y"},
-				payloads:         []string{"a", "b"},
+				values:           []string{"a", "b"},
 				expectedVersions: []int64{1},
 			},
 			ErrorExpectedVersionInconsistent,
@@ -107,90 +107,90 @@ func Test_exec(t *testing.T) {
 		{"entry-binary",
 			"",
 			flags{
-				keys:           []string{"x"},
-				payloads:       []string{"aGVsbG8y"},
-				binaryPayloads: true,
+				keys:         []string{"x"},
+				values:       []string{"aGVsbG8y"},
+				binaryValues: true,
 			},
 			nil,
 			[]common.Query{Query{
-				Key:     "x",
-				Payload: "aGVsbG8y",
-				Binary:  common.PtrBool(true),
+				Key:    "x",
+				Value:  "aGVsbG8y",
+				Binary: common.PtrBool(true),
 			}}},
 		{"entry-expected-version",
 			"",
 			flags{
 				keys:             []string{"x"},
-				payloads:         []string{"y"},
+				values:           []string{"y"},
 				expectedVersions: []int64{1},
 			},
 			nil,
 			[]common.Query{Query{
 				Key:             "x",
-				Payload:         "y",
+				Value:           "y",
 				ExpectedVersion: common.PtrInt64(1),
 				Binary:          common.PtrBool(false),
 			}}},
 		{"entries",
 			"",
 			flags{
-				keys:           []string{"x", "y"},
-				payloads:       []string{"a", "b"},
-				binaryPayloads: true,
+				keys:         []string{"x", "y"},
+				values:       []string{"a", "b"},
+				binaryValues: true,
 			},
 			nil,
 			[]common.Query{Query{
-				Key:     "x",
-				Payload: "a",
-				Binary:  common.PtrBool(true),
+				Key:    "x",
+				Value:  "a",
+				Binary: common.PtrBool(true),
 			}, Query{
-				Key:     "y",
-				Payload: "b",
-				Binary:  common.PtrBool(true),
+				Key:    "y",
+				Value:  "b",
+				Binary: common.PtrBool(true),
 			}}},
 		{"entries-expected-version",
 			"",
 			flags{
 				keys:             []string{"x", "y"},
-				payloads:         []string{"a", "b"},
+				values:           []string{"a", "b"},
 				expectedVersions: []int64{1, 4},
 			},
 			nil,
 			[]common.Query{Query{
 				Key:             "x",
-				Payload:         "a",
+				Value:           "a",
 				ExpectedVersion: common.PtrInt64(1),
 				Binary:          common.PtrBool(false),
 			}, Query{
 				Key:             "y",
-				Payload:         "b",
+				Value:           "b",
 				ExpectedVersion: common.PtrInt64(4),
 				Binary:          common.PtrBool(false),
 			}}},
 		{"stdin",
-			"{\"key\":\"a\",\"payload\":\"b\"}\n{\"key\":\"x\",\"payload\":\"y\"}\n",
+			"{\"key\":\"a\",\"value\":\"b\"}\n{\"key\":\"x\",\"value\":\"y\"}\n",
 			flags{},
 			nil,
 			[]common.Query{Query{
-				Key:     "a",
-				Payload: "b",
+				Key:   "a",
+				Value: "b",
 			}, Query{
-				Key:     "x",
-				Payload: "y",
+				Key:   "x",
+				Value: "y",
 			}}},
 		{"stdin-binary",
-			"{\"key\":\"a\",\"payload\":\"aGVsbG8y\",\"binary\":true}",
+			"{\"key\":\"a\",\"value\":\"aGVsbG8y\",\"binary\":true}",
 			flags{},
 			nil,
 			[]common.Query{Query{
-				Key:     "a",
-				Payload: "aGVsbG8y",
-				Binary:  common.PtrBool(true),
+				Key:    "a",
+				Value:  "aGVsbG8y",
+				Binary: common.PtrBool(true),
 			}}},
 		{"stdin-binary-flag",
-			"{\"key\":\"a\",\"payload\":\"aGVsbG8y\"}",
+			"{\"key\":\"a\",\"value\":\"aGVsbG8y\"}",
 			flags{
-				binaryPayloads: true,
+				binaryValues: true,
 			},
 			ErrorIncorrectBinaryFlagUse,
 			nil},
@@ -212,32 +212,32 @@ func TestInputUnmarshal(t *testing.T) {
 		expected Query
 	}{
 		{"key-binary-expected-version",
-			"{\"key\":\"a\",\"payload\":\"b\",\"expected_version\":1,\"binary\":true}",
+			"{\"key\":\"a\",\"value\":\"b\",\"expected_version\":1,\"binary\":true}",
 			Query{
 				Key:             "a",
-				Payload:         "b",
+				Value:           "b",
 				ExpectedVersion: common.PtrInt64(1),
 				Binary:          common.PtrBool(true),
 			}},
 		{"key-binary",
-			"{\"key\":\"a\",\"payload\":\"b\",\"binary\":true}",
+			"{\"key\":\"a\",\"value\":\"b\",\"binary\":true}",
 			Query{
-				Key:     "a",
-				Payload: "b",
-				Binary:  common.PtrBool(true),
+				Key:    "a",
+				Value:  "b",
+				Binary: common.PtrBool(true),
 			}},
 		{"key-expected-version",
-			"{\"key\":\"a\",\"payload\":\"b\",\"expected_version\":1}",
+			"{\"key\":\"a\",\"value\":\"b\",\"expected_version\":1}",
 			Query{
 				Key:             "a",
-				Payload:         "b",
+				Value:           "b",
 				ExpectedVersion: common.PtrInt64(1),
 			}},
 		{"key",
-			"{\"key\":\"a\",\"payload\":\"b\"}",
+			"{\"key\":\"a\",\"value\":\"b\"}",
 			Query{
-				Key:     "a",
-				Payload: "b",
+				Key:   "a",
+				Value: "b",
 			}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -287,34 +287,34 @@ func TestOutputMarshal(t *testing.T) {
 	}
 }
 
-func TestConvertPayload(t *testing.T) {
+func TestConvertValue(t *testing.T) {
 	for _, test := range []struct {
 		name        string
 		binary      bool
-		payload     string
+		value       string
 		expectedErr error
 		expected    string
 	}{
 		{
 			name:     "text",
-			payload:  "hello",
+			value:    "hello",
 			expected: "hello",
 		},
 		{
 			name:     "binary",
-			payload:  "aGVsbG8y",
+			value:    "aGVsbG8y",
 			binary:   true,
 			expected: "hello2",
 		},
 		{
 			name:        "invalid-binary",
-			payload:     "hello",
+			value:       "hello",
 			binary:      true,
-			expectedErr: ErrorBase64PayloadInvalid,
+			expectedErr: ErrorBase64ValueInvalid,
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			result, err := convertPayload(test.binary, test.payload)
+			result, err := convertValue(test.binary, test.value)
 			assert.Equal(t, test.expected, string(result))
 			assert.ErrorIs(t, err, test.expectedErr)
 		})

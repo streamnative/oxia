@@ -55,7 +55,7 @@ func toGetResult(r *proto.GetResponse) GetResult {
 		}
 	}
 	return GetResult{
-		Payload: r.Payload,
+		Value:   r.Value,
 		Version: toVersion(r.Version),
 	}
 }

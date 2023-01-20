@@ -136,7 +136,7 @@ func TestWriteBatchComplete(t *testing.T) {
 				ShardId: &shardId,
 				Puts: []*proto.PutRequest{{
 					Key:               "/a",
-					Payload:           []byte{0},
+					Value:             []byte{0},
 					ExpectedVersionId: &one,
 				}},
 				Deletes: []*proto.DeleteRequest{{
@@ -185,7 +185,7 @@ func TestWriteBatchComplete(t *testing.T) {
 
 		batch.Add(model.PutCall{
 			Key:               "/a",
-			Payload:           []byte{0},
+			Value:             []byte{0},
 			ExpectedVersionId: &one,
 			Callback:          putCallback,
 		})

@@ -29,8 +29,8 @@ type Metrics struct {
 	timeFunc  func() time.Time
 	sinceFunc func(time.Time) time.Duration
 
-	opTime    Timer
-	opPayload syncint64.Histogram
+	opTime  Timer
+	opValue syncint64.Histogram
 
 	batchTotalTime Timer
 	batchExecTime  Timer
@@ -48,8 +48,8 @@ func newMetrics(provider metric.MeterProvider, timeFunc func() time.Time, sinceF
 		timeFunc:  timeFunc,
 		sinceFunc: sinceFunc,
 
-		opTime:    newTimer(meter, "oxia_client_op"),
-		opPayload: newHistogram(meter, "oxia_client_op_payload", unit.Bytes),
+		opTime:  newTimer(meter, "oxia_client_op"),
+		opValue: newHistogram(meter, "oxia_client_op_value", unit.Bytes),
 
 		batchTotalTime: newTimer(meter, "oxia_client_batch_total"),
 		batchExecTime:  newTimer(meter, "oxia_client_batch_exec"),
@@ -65,7 +65,7 @@ func (m *Metrics) DecoratePut(put model.PutCall) model.PutCall {
 		callback(response, err)
 		ctx, start, _attrs := metricContext(err)
 		m.opTime.Record(ctx, m.sinceFunc(start), _attrs...)
-		m.opPayload.Record(ctx, int64(len(put.Payload)), _attrs...)
+		m.opValue.Record(ctx, int64(len(put.Value)), _attrs...)
 	}
 	return put
 }
@@ -101,9 +101,9 @@ func (m *Metrics) DecorateGet(get model.GetCall) model.GetCall {
 		m.opTime.Record(ctx, m.sinceFunc(start), _attrs...)
 		var size int64 = 0
 		if response != nil {
-			size = int64(len(response.Payload))
+			size = int64(len(response.Value))
 		}
-		m.opPayload.Record(ctx, size, _attrs...)
+		m.opValue.Record(ctx, size, _attrs...)
 	}
 	return get
 }

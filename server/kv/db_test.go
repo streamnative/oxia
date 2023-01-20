@@ -33,27 +33,27 @@ func TestDBSimple(t *testing.T) {
 		Puts: []*proto.PutRequest{
 			{ // Should succeed: no version check
 				Key:               "a",
-				Payload:           []byte("0"),
+				Value:             []byte("0"),
 				ExpectedVersionId: nil,
 			},
 			{ // Should succeed: asserting that the key does not exist
 				Key:               "b",
-				Payload:           []byte("1"),
+				Value:             []byte("1"),
 				ExpectedVersionId: pb.Int64(-1),
 			},
 			{ // Should fail: the version would mean that the key exists
 				Key:               "c",
-				Payload:           []byte("2"),
+				Value:             []byte("2"),
 				ExpectedVersionId: pb.Int64(0),
 			},
 			{ // Should fail: the version would mean that the key exists
 				Key:               "d",
-				Payload:           []byte("3"),
+				Value:             []byte("3"),
 				ExpectedVersionId: pb.Int64(0),
 			},
 			{ // Should succeed: asserting that the key does not exist
 				Key:               "c",
-				Payload:           []byte("1"),
+				Value:             []byte("1"),
 				ExpectedVersionId: pb.Int64(-1),
 			},
 		},
@@ -123,23 +123,23 @@ func TestDBSimple(t *testing.T) {
 	//	Puts: []*proto.PutRequest{
 	//		{ // Should succeed: no version check
 	//			Key:             "a",
-	//			Payload:         []byte("00"),
+	//			Value:         []byte("00"),
 	//			ExpectedVersion: nil,
 	//		},
 	//		{ // Should succeed: The version currently in the store is 0, the update just above will change
 	//			// the version, though we do the verification before the batch is applied
 	//			Key:             "a",
-	//			Payload:         []byte("111"),
+	//			Value:         []byte("111"),
 	//			ExpectedVersion: pb.Int64(0),
 	//		},
 	//		{ // Should fail: the key already exists
 	//			Key:             "b",
-	//			Payload:         []byte("2"),
+	//			Value:         []byte("2"),
 	//			ExpectedVersion: pb.Int64(-1),
 	//		},
 	//		{ // Should succeed: the version is correct
 	//			Key:             "b",
-	//			Payload:         []byte("2"),
+	//			Value:         []byte("2"),
 	//			ExpectedVersion: pb.Int64(0),
 	//		},
 	//	},
@@ -173,7 +173,7 @@ func TestDBSameKeyMutations(t *testing.T) {
 		Puts: []*proto.PutRequest{
 			{ // Should succeed: no version check
 				Key:               "k1",
-				Payload:           []byte("v0"),
+				Value:             []byte("v0"),
 				ExpectedVersionId: nil,
 			},
 		},
@@ -196,12 +196,12 @@ func TestDBSameKeyMutations(t *testing.T) {
 		Puts: []*proto.PutRequest{
 			{ // Should succeed: version is correct
 				Key:               "k1",
-				Payload:           []byte("v1"),
+				Value:             []byte("v1"),
 				ExpectedVersionId: pb.Int64(0),
 			},
 			{ // Should fail: version has now changed to 1
 				Key:               "k1",
-				Payload:           []byte("v2"),
+				Value:             []byte("v2"),
 				ExpectedVersionId: pb.Int64(0),
 			},
 		},
@@ -235,16 +235,16 @@ func TestDBSameKeyMutations(t *testing.T) {
 	readReq := &proto.ReadRequest{
 		Gets: []*proto.GetRequest{
 			{ // Should return version v1
-				Key:            "k1",
-				IncludePayload: true,
+				Key:          "k1",
+				IncludeValue: true,
 			},
 			{ // Should return version v1, with no value
-				Key:            "k1",
-				IncludePayload: false,
+				Key:          "k1",
+				IncludeValue: false,
 			},
 			{ // Should fail since the key is not there
-				Key:            "non-existing",
-				IncludePayload: true,
+				Key:          "non-existing",
+				IncludeValue: true,
 			},
 		},
 	}
@@ -255,21 +255,21 @@ func TestDBSameKeyMutations(t *testing.T) {
 	r3 := readRes.Gets[0]
 	assert.Equal(t, proto.Status_OK, r3.Status)
 	assert.EqualValues(t, 1, r3.Version.VersionId)
-	assert.Equal(t, "v1", string(r3.Payload))
+	assert.Equal(t, "v1", string(r3.Value))
 	assert.Equal(t, t0, r3.Version.CreatedTimestamp)
 	assert.Equal(t, t1, r3.Version.ModifiedTimestamp)
 
 	r4 := readRes.Gets[1]
 	assert.Equal(t, proto.Status_OK, r4.Status)
 	assert.EqualValues(t, 1, r4.Version.VersionId)
-	assert.Nil(t, r4.Payload)
+	assert.Nil(t, r4.Value)
 	assert.Equal(t, t0, r4.Version.CreatedTimestamp)
 	assert.Equal(t, t1, r4.Version.ModifiedTimestamp)
 
 	r5 := readRes.Gets[2]
 	assert.Equal(t, proto.Status_KEY_NOT_FOUND, r5.Status)
 	assert.Nil(t, r5.Version)
-	assert.Nil(t, r5.Payload)
+	assert.Nil(t, r5.Value)
 
 	assert.NoError(t, db.Close())
 	assert.NoError(t, factory.Close())
@@ -283,20 +283,20 @@ func TestDBList(t *testing.T) {
 
 	writeReq := &proto.WriteRequest{
 		Puts: []*proto.PutRequest{{
-			Key:     "a",
-			Payload: []byte("a"),
+			Key:   "a",
+			Value: []byte("a"),
 		}, {
-			Key:     "b",
-			Payload: []byte("b"),
+			Key:   "b",
+			Value: []byte("b"),
 		}, {
-			Key:     "c",
-			Payload: []byte("c"),
+			Key:   "c",
+			Value: []byte("c"),
 		}, {
-			Key:     "d",
-			Payload: []byte("d"),
+			Key:   "d",
+			Value: []byte("d"),
 		}, {
-			Key:     "e",
-			Payload: []byte("e"),
+			Key:   "e",
+			Value: []byte("e"),
 		}},
 	}
 
@@ -352,20 +352,20 @@ func TestDBDeleteRange(t *testing.T) {
 
 	writeReq := &proto.WriteRequest{
 		Puts: []*proto.PutRequest{{
-			Key:     "a",
-			Payload: []byte("a"),
+			Key:   "a",
+			Value: []byte("a"),
 		}, {
-			Key:     "b",
-			Payload: []byte("b"),
+			Key:   "b",
+			Value: []byte("b"),
 		}, {
-			Key:     "c",
-			Payload: []byte("c"),
+			Key:   "c",
+			Value: []byte("c"),
 		}, {
-			Key:     "d",
-			Payload: []byte("d"),
+			Key:   "d",
+			Value: []byte("d"),
 		}, {
-			Key:     "e",
-			Payload: []byte("e"),
+			Key:   "e",
+			Value: []byte("e"),
 		}},
 	}
 
@@ -425,8 +425,8 @@ func TestDB_ReadCommitOffset(t *testing.T) {
 
 	writeReq := &proto.WriteRequest{
 		Puts: []*proto.PutRequest{{
-			Key:     "a",
-			Payload: []byte("a"),
+			Key:   "a",
+			Value: []byte("a"),
 		}},
 	}
 	_, err = db.ProcessWrite(writeReq, offset, 0, NoOpCallback)

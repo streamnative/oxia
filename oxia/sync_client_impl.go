@@ -48,9 +48,9 @@ func (c *syncClientImpl) Close() error {
 	return c.asyncClient.Close()
 }
 
-func (c *syncClientImpl) Put(ctx context.Context, key string, payload []byte, options ...PutOption) (Version, error) {
+func (c *syncClientImpl) Put(ctx context.Context, key string, value []byte, options ...PutOption) (Version, error) {
 	select {
-	case r := <-c.asyncClient.Put(key, payload, options...):
+	case r := <-c.asyncClient.Put(key, value, options...):
 		return r.Version, r.Err
 	case <-ctx.Done():
 		return Version{}, ctx.Err()
@@ -78,7 +78,7 @@ func (c *syncClientImpl) DeleteRange(ctx context.Context, minKeyInclusive string
 func (c *syncClientImpl) Get(ctx context.Context, key string) ([]byte, Version, error) {
 	select {
 	case r := <-c.asyncClient.Get(key):
-		return r.Payload, r.Version, r.Err
+		return r.Value, r.Version, r.Err
 	case <-ctx.Done():
 		return nil, Version{}, ctx.Err()
 	}

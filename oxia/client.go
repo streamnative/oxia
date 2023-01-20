@@ -33,7 +33,7 @@ var (
 type AsyncClient interface {
 	io.Closer
 
-	Put(key string, payload []byte, options ...PutOption) <-chan PutResult
+	Put(key string, value []byte, options ...PutOption) <-chan PutResult
 	Delete(key string, options ...DeleteOption) <-chan error
 	DeleteRange(minKeyInclusive string, maxKeyExclusive string) <-chan error
 	Get(key string) <-chan GetResult
@@ -45,7 +45,7 @@ type AsyncClient interface {
 type SyncClient interface {
 	io.Closer
 
-	Put(ctx context.Context, key string, payload []byte, options ...PutOption) (Version, error)
+	Put(ctx context.Context, key string, value []byte, options ...PutOption) (Version, error)
 	Delete(ctx context.Context, key string, options ...DeleteOption) error
 	DeleteRange(ctx context.Context, minKeyInclusive string, maxKeyExclusive string) error
 	Get(ctx context.Context, key string) ([]byte, Version, error)
@@ -67,7 +67,7 @@ type PutResult struct {
 }
 
 type GetResult struct {
-	Payload []byte
+	Value   []byte
 	Version Version
 	Err     error
 }

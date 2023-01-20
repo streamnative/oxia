@@ -64,20 +64,20 @@ func result(err error) string {
 	return "failure"
 }
 
-func writeMetrics(request *proto.WriteRequest) (payloadSize int64, requestCount int64) {
+func writeMetrics(request *proto.WriteRequest) (valueSize int64, requestCount int64) {
 	for _, put := range request.Puts {
-		payloadSize += int64(len(put.Payload))
+		valueSize += int64(len(put.Value))
 	}
 	requestCount = int64(len(request.Puts) + len(request.Deletes) + len(request.DeleteRanges))
 	return
 }
 
-func readMetrics(response *proto.ReadResponse) (payloadSize int64, requestCount int64) {
+func readMetrics(response *proto.ReadResponse) (valueSize int64, requestCount int64) {
 	if response == nil {
 		return
 	}
 	for _, get := range response.Gets {
-		payloadSize += int64(len(get.Payload))
+		valueSize += int64(len(get.Value))
 	}
 	requestCount = int64(len(response.Gets) + len(response.Lists))
 	return

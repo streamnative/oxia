@@ -31,24 +31,24 @@ var (
 )
 
 type flags struct {
-	keys           []string
-	binaryPayloads bool
+	keys         []string
+	binaryValues bool
 }
 
 func (flags *flags) Reset() {
 	flags.keys = nil
-	flags.binaryPayloads = false
+	flags.binaryValues = false
 }
 
 func init() {
 	Cmd.Flags().StringSliceVarP(&Config.keys, "key", "k", []string{}, "The target key")
-	Cmd.Flags().BoolVarP(&Config.binaryPayloads, "binary", "b", false, "Output payloads as a base64 encoded string, use when payloads are binary")
+	Cmd.Flags().BoolVarP(&Config.binaryValues, "binary", "b", false, "Output values as a base64 encoded string, use when values are binary")
 }
 
 var Cmd = &cobra.Command{
 	Use:   "get",
 	Short: "Get entries",
-	Long:  `Get the payloads of the entries associated with the given keys.`,
+	Long:  `Get the values of the entries associated with the given keys.`,
 	Args:  cobra.NoArgs,
 	RunE:  exec,
 }
@@ -64,10 +64,10 @@ func exec(cmd *cobra.Command, args []string) error {
 func _exec(flags flags, in io.Reader, queue common.QueryQueue) error {
 	if len(flags.keys) > 0 {
 		for _, k := range flags.keys {
-			if flags.binaryPayloads {
+			if flags.binaryValues {
 				queue.Add(Query{
 					Key:    k,
-					Binary: &flags.binaryPayloads,
+					Binary: &flags.binaryValues,
 				})
 			} else {
 				queue.Add(Query{
@@ -76,7 +76,7 @@ func _exec(flags flags, in io.Reader, queue common.QueryQueue) error {
 			}
 		}
 	} else {
-		if flags.binaryPayloads {
+		if flags.binaryValues {
 			return ErrorIncorrectBinaryFlagUse
 		}
 		common.ReadStdin(in, Query{}, queue)
@@ -118,16 +118,16 @@ func (call Call) Complete() any {
 			Err: result.Err.Error(),
 		}
 	} else {
-		rawPayload := result.Payload
-		var payload string
+		rawValue := result.Value
+		var value string
 		if call.binary {
-			payload = base64.StdEncoding.EncodeToString(rawPayload)
+			value = base64.StdEncoding.EncodeToString(rawValue)
 		} else {
-			payload = string(rawPayload)
+			value = string(rawValue)
 		}
 		output := Output{
-			Binary:  &call.binary,
-			Payload: payload,
+			Binary: &call.binary,
+			Value:  value,
 			Version: common.OutputVersion{
 				VersionId:          result.Version.VersionId,
 				CreatedTimestamp:   result.Version.CreatedTimestamp,
@@ -144,6 +144,6 @@ func (call Call) Complete() any {
 
 type Output struct {
 	Binary  *bool                `json:"binary,omitempty"`
-	Payload string               `json:"payload"`
+	Value   string               `json:"value"`
 	Version common.OutputVersion `json:"version"`
 }
