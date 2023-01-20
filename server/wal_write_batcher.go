@@ -150,8 +150,12 @@ func (l *walWriteBatch) Fail(err error) {
 }
 
 func NewWalWriteBatcher(locker sync.Locker, term int64, shardId uint32, wal wal.Wal, quorumAckTracker QuorumAckTracker, ctx context.Context) batch.Batcher {
+	return newWalWriteBatcher(locker, term, shardId, wal, quorumAckTracker, ctx, 2*time.Millisecond)
+}
+
+func newWalWriteBatcher(locker sync.Locker, term int64, shardId uint32, wal wal.Wal, quorumAckTracker QuorumAckTracker, ctx context.Context, linger time.Duration) batch.Batcher {
 	batcherFactory := batch.BatcherFactory{
-		Linger:              2,
+		Linger:              linger,
 		MaxRequestsPerBatch: 1,
 		BatcherBufferSize:   10,
 	}
