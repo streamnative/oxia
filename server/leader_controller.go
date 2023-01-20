@@ -24,12 +24,12 @@ import (
 	pb "google.golang.org/protobuf/proto"
 	"io"
 	"oxia/common"
+	"oxia/common/batch"
 	"oxia/common/metrics"
 	"oxia/proto"
 	"oxia/server/kv"
 	"oxia/server/wal"
 	"sync"
-	"time"
 )
 
 type LeaderController interface {
@@ -76,14 +76,15 @@ type leaderController struct {
 	// truncate the followers.
 	leaderElectionHeadEntryId *proto.EntryId
 
-	ctx            context.Context
-	cancel         context.CancelFunc
-	wal            wal.Wal
-	walTrimmer     wal.Trimmer
-	db             kv.DB
-	rpcClient      ReplicationRpcProvider
-	sessionManager SessionManager
-	log            zerolog.Logger
+	ctx             context.Context
+	cancel          context.CancelFunc
+	wal             wal.Wal
+	walTrimmer      wal.Trimmer
+	db              kv.DB
+	rpcClient       ReplicationRpcProvider
+	sessionManager  SessionManager
+	walWriteBatcher batch.Batcher
+	log             zerolog.Logger
 
 	writeLatencyHisto       metrics.LatencyHistogram
 	headOffsetGauge         metrics.Gauge
@@ -97,6 +98,7 @@ func NewLeaderController(config Config, shardId uint32, rpcClient ReplicationRpc
 		status:           proto.ServingStatus_NOT_MEMBER,
 		shardId:          shardId,
 		quorumAckTracker: nil,
+		walWriteBatcher:  nil,
 		rpcClient:        rpcClient,
 		followers:        make(map[string]FollowerCursor),
 
@@ -216,6 +218,13 @@ func (lc *leaderController) NewTerm(req *proto.NewTermRequest) (*proto.NewTermRe
 	lc.headOffsetGauge.Unregister()
 	lc.commitOffsetGauge.Unregister()
 
+	if lc.walWriteBatcher != nil {
+		if err := lc.walWriteBatcher.Close(); err != nil {
+			return nil, err
+		}
+		lc.walWriteBatcher = nil
+	}
+
 	if lc.quorumAckTracker != nil {
 		if err := lc.quorumAckTracker.Close(); err != nil {
 			return nil, err
@@ -310,6 +319,8 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 	}
 
 	lc.quorumAckTracker = NewQuorumAckTracker(req.GetReplicationFactor(), lc.leaderElectionHeadEntryId.Offset, leaderCommitOffset)
+
+	lc.walWriteBatcher = NewWalWriteBatcher(lc, lc.term, lc.shardId, lc.wal, lc.quorumAckTracker, lc.ctx)
 
 	for follower, followerHeadEntryId := range req.FollowerMaps {
 		if err := lc.addFollower(follower, followerHeadEntryId); err != nil {
@@ -522,20 +533,18 @@ func (lc *leaderController) Read(request *proto.ReadRequest) (*proto.ReadRespons
 func (lc *leaderController) Write(request *proto.WriteRequest) (*proto.WriteResponse, error) {
 	_, resp, err := lc.write(func(_ int64) *proto.WriteRequest {
 		return request
-	})
+	}, false)
 	return resp, err
 }
 
-func (lc *leaderController) write(request func(int64) *proto.WriteRequest) (int64, *proto.WriteResponse, error) {
+func (lc *leaderController) write(request func(int64) *proto.WriteRequest, flush bool) (int64, *proto.WriteResponse, error) {
 	timer := lc.writeLatencyHisto.Timer()
 	defer timer.Done()
 
 	lc.log.Debug().
 		Msg("Write operation")
 
-	timestamp := uint64(time.Now().UnixMilli())
-
-	actualRequest, newOffset, err := lc.appendToWal(request, timestamp)
+	actualRequest, newOffset, timestamp, err := lc.appendToWal(request, flush)
 	if err != nil {
 		return wal.InvalidOffset, nil, err
 	}
@@ -546,49 +555,21 @@ func (lc *leaderController) write(request func(int64) *proto.WriteRequest) (int6
 	return newOffset, resp, err
 }
 
-func (lc *leaderController) appendToWal(request func(int64) *proto.WriteRequest, timestamp uint64) (actualRequest *proto.WriteRequest, offset int64, err error) {
+func (lc *leaderController) appendToWal(request func(int64) *proto.WriteRequest, flush bool) (actualRequest *proto.WriteRequest, offset int64, timestamp uint64, err error) {
 	lc.Lock()
 
 	if err := checkStatus(proto.ServingStatus_LEADER, lc.status); err != nil {
 		lc.Unlock()
-		return nil, wal.InvalidOffset, err
+		return nil, wal.InvalidOffset, 0, err
 	}
 
-	newOffset := lc.quorumAckTracker.NextOffset()
-	actualRequest = request(newOffset)
-
-	lc.log.Debug().
-		Interface("req", actualRequest).
-		Msg("Append operation")
-
-	value, err := pb.Marshal(actualRequest)
-	if err != nil {
-		lc.Unlock()
-		return actualRequest, wal.InvalidOffset, err
-	}
-	logEntry := &proto.LogEntry{
-		Term:      lc.term,
-		Offset:    newOffset,
-		Value:     value,
-		Timestamp: timestamp,
-	}
-
-	if err = lc.wal.AppendAsync(logEntry); err != nil {
-		lc.Unlock()
-		return actualRequest, wal.InvalidOffset, errors.Wrap(err, "oxia: failed to append to wal")
-	}
+	task := NewWriteTask(request, flush)
+	lc.walWriteBatcher.Add(task)
 
 	lc.Unlock()
+	result := <-task.result
+	return result.actualRequest, result.offset, result.timestamp, result.err
 
-	// Sync the WAL outside the mutex, so that we can have multiple waiting
-	// sync requests
-	if err = lc.wal.Sync(context.TODO()); err != nil {
-		return actualRequest, wal.InvalidOffset, errors.Wrap(err, "oxia: failed to sync the wal")
-	}
-
-	lc.quorumAckTracker.AdvanceHeadOffset(newOffset)
-
-	return actualRequest, newOffset, nil
 }
 
 func (lc *leaderController) GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
@@ -686,6 +667,9 @@ func (lc *leaderController) Close() error {
 	lc.cancel()
 
 	var err error
+	if lc.walWriteBatcher != nil {
+		err = multierr.Append(err, lc.walWriteBatcher.Close())
+	}
 	if lc.quorumAckTracker != nil {
 		err = multierr.Append(err, lc.quorumAckTracker.Close())
 	}

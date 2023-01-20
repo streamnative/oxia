@@ -139,7 +139,7 @@ func (sm *sessionManager) createSession(request *proto.CreateSessionRequest, min
 				Payload: marshalledMetadata,
 			}},
 		}
-	})
+	}, true)
 	sessionId := SessionId(id)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to register session")
