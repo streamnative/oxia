@@ -23,7 +23,7 @@ const _ = grpc.SupportPackageIsVersion7
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type OxiaCoordinationClient interface {
 	PushShardAssignments(ctx context.Context, opts ...grpc.CallOption) (OxiaCoordination_PushShardAssignmentsClient, error)
-	Fence(ctx context.Context, in *FenceRequest, opts ...grpc.CallOption) (*FenceResponse, error)
+	NewTerm(ctx context.Context, in *NewTermRequest, opts ...grpc.CallOption) (*NewTermResponse, error)
 	BecomeLeader(ctx context.Context, in *BecomeLeaderRequest, opts ...grpc.CallOption) (*BecomeLeaderResponse, error)
 	AddFollower(ctx context.Context, in *AddFollowerRequest, opts ...grpc.CallOption) (*AddFollowerResponse, error)
 	GetStatus(ctx context.Context, in *GetStatusRequest, opts ...grpc.CallOption) (*GetStatusResponse, error)
@@ -71,9 +71,9 @@ func (x *oxiaCoordinationPushShardAssignmentsClient) CloseAndRecv() (*Coordinati
 	return m, nil
 }
 
-func (c *oxiaCoordinationClient) Fence(ctx context.Context, in *FenceRequest, opts ...grpc.CallOption) (*FenceResponse, error) {
-	out := new(FenceResponse)
-	err := c.cc.Invoke(ctx, "/replication.OxiaCoordination/Fence", in, out, opts...)
+func (c *oxiaCoordinationClient) NewTerm(ctx context.Context, in *NewTermRequest, opts ...grpc.CallOption) (*NewTermResponse, error) {
+	out := new(NewTermResponse)
+	err := c.cc.Invoke(ctx, "/replication.OxiaCoordination/NewTerm", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +112,7 @@ func (c *oxiaCoordinationClient) GetStatus(ctx context.Context, in *GetStatusReq
 // for forward compatibility
 type OxiaCoordinationServer interface {
 	PushShardAssignments(OxiaCoordination_PushShardAssignmentsServer) error
-	Fence(context.Context, *FenceRequest) (*FenceResponse, error)
+	NewTerm(context.Context, *NewTermRequest) (*NewTermResponse, error)
 	BecomeLeader(context.Context, *BecomeLeaderRequest) (*BecomeLeaderResponse, error)
 	AddFollower(context.Context, *AddFollowerRequest) (*AddFollowerResponse, error)
 	GetStatus(context.Context, *GetStatusRequest) (*GetStatusResponse, error)
@@ -126,8 +126,8 @@ type UnimplementedOxiaCoordinationServer struct {
 func (UnimplementedOxiaCoordinationServer) PushShardAssignments(OxiaCoordination_PushShardAssignmentsServer) error {
 	return status.Errorf(codes.Unimplemented, "method PushShardAssignments not implemented")
 }
-func (UnimplementedOxiaCoordinationServer) Fence(context.Context, *FenceRequest) (*FenceResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Fence not implemented")
+func (UnimplementedOxiaCoordinationServer) NewTerm(context.Context, *NewTermRequest) (*NewTermResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method NewTerm not implemented")
 }
 func (UnimplementedOxiaCoordinationServer) BecomeLeader(context.Context, *BecomeLeaderRequest) (*BecomeLeaderResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method BecomeLeader not implemented")
@@ -177,20 +177,20 @@ func (x *oxiaCoordinationPushShardAssignmentsServer) Recv() (*ShardAssignments, 
 	return m, nil
 }
 
-func _OxiaCoordination_Fence_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(FenceRequest)
+func _OxiaCoordination_NewTerm_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(NewTermRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(OxiaCoordinationServer).Fence(ctx, in)
+		return srv.(OxiaCoordinationServer).NewTerm(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/replication.OxiaCoordination/Fence",
+		FullMethod: "/replication.OxiaCoordination/NewTerm",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(OxiaCoordinationServer).Fence(ctx, req.(*FenceRequest))
+		return srv.(OxiaCoordinationServer).NewTerm(ctx, req.(*NewTermRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -257,8 +257,8 @@ var OxiaCoordination_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*OxiaCoordinationServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "Fence",
-			Handler:    _OxiaCoordination_Fence_Handler,
+			MethodName: "NewTerm",
+			Handler:    _OxiaCoordination_NewTerm_Handler,
 		},
 		{
 			MethodName: "BecomeLeader",

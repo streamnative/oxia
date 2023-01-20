@@ -85,31 +85,31 @@ func (s *internalRpcServer) PushShardAssignments(srv proto.OxiaCoordination_Push
 	return err
 }
 
-func (s *internalRpcServer) Fence(c context.Context, req *proto.FenceRequest) (*proto.FenceResponse, error) {
+func (s *internalRpcServer) NewTerm(c context.Context, req *proto.NewTermRequest) (*proto.NewTermResponse, error) {
 	s.log.Info().
 		Interface("req", req).
 		Str("peer", common.GetPeer(c)).
-		Msg("Received fence request")
+		Msg("Received NewTerm request")
 
-	// Fence applies to both followers and leaders
+	// NewTerm applies to both followers and leaders
 	// First check if we have already a follower controller running
 	if follower, err := s.shardsDirector.GetFollower(req.ShardId); err != nil {
 		if status.Code(err) != common.CodeNodeIsNotFollower {
 			s.log.Warn().Err(err).
 				Uint32("shard", req.ShardId).
 				Str("peer", common.GetPeer(c)).
-				Msg("Fence failed: could not get follower controller")
+				Msg("NewTerm failed: could not get follower controller")
 			return nil, err
 		}
 
 		// If we don't have a follower, fallback to checking the leader controller
 	} else {
-		res, err2 := follower.Fence(req)
+		res, err2 := follower.NewTerm(req)
 		if err2 != nil {
 			s.log.Warn().Err(err2).
 				Uint32("shard", req.ShardId).
 				Str("peer", common.GetPeer(c)).
-				Msg("Fence of follower failed")
+				Msg("NewTerm of follower failed")
 		}
 		return res, err
 	}
@@ -118,15 +118,15 @@ func (s *internalRpcServer) Fence(c context.Context, req *proto.FenceRequest) (*
 		s.log.Warn().Err(err).
 			Uint32("shard", req.ShardId).
 			Str("peer", common.GetPeer(c)).
-			Msg("Fence failed: could not get leader controller")
+			Msg("NewTerm failed: could not get leader controller")
 		return nil, err
 	} else {
-		res, err2 := leader.Fence(req)
+		res, err2 := leader.NewTerm(req)
 		if err2 != nil {
 			s.log.Warn().Err(err2).
 				Uint32("shard", req.ShardId).
 				Str("peer", common.GetPeer(c)).
-				Msg("Fence of leader failed")
+				Msg("New term processing of leader failed")
 		}
 
 		return res, err2

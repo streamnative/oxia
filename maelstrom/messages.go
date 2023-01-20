@@ -41,8 +41,8 @@ const (
 
 	/* Oxia specific messages */
 
-	MsgTypeFenceRequest         MsgType = "fence-req"
-	MsgTypeFenceResponse        MsgType = "fence-resp"
+	MsgTypeNewTermRequest       MsgType = "term-req"
+	MsgTypeNewTermResponse      MsgType = "term-resp"
 	MsgTypeTruncateRequest      MsgType = "truncate-req"
 	MsgTypeTruncateResponse     MsgType = "truncate-resp"
 	MsgTypeBecomeLeaderRequest  MsgType = "leader-req"
@@ -61,7 +61,7 @@ const (
 
 var (
 	oxiaRequests = map[MsgType]bool{
-		MsgTypeFenceRequest:        true,
+		MsgTypeNewTermRequest:      true,
 		MsgTypeTruncateRequest:     true,
 		MsgTypeBecomeLeaderRequest: true,
 		MsgTypeAddFollowerRequest:  true,
@@ -70,7 +70,7 @@ var (
 	}
 
 	oxiaResponses = map[MsgType]bool{
-		MsgTypeFenceResponse:        true,
+		MsgTypeNewTermResponse:      true,
 		MsgTypeTruncateResponse:     true,
 		MsgTypeBecomeLeaderResponse: true,
 		MsgTypeAddFollowerResponse:  true,
@@ -214,8 +214,8 @@ var jsonMsgMapping = map[MsgType]any{
 }
 
 var protoMsgMapping = map[MsgType]pb.Message{
-	MsgTypeFenceRequest:         &proto.FenceRequest{},
-	MsgTypeFenceResponse:        &proto.FenceResponse{},
+	MsgTypeNewTermRequest:       &proto.NewTermRequest{},
+	MsgTypeNewTermResponse:      &proto.NewTermResponse{},
 	MsgTypeTruncateRequest:      &proto.TruncateRequest{},
 	MsgTypeTruncateResponse:     &proto.TruncateResponse{},
 	MsgTypeBecomeLeaderRequest:  &proto.BecomeLeaderRequest{},

@@ -27,7 +27,7 @@ const rpcTimeout = 30 * time.Second
 
 type RpcProvider interface {
 	PushShardAssignments(ctx context.Context, node model.ServerAddress) (proto.OxiaCoordination_PushShardAssignmentsClient, error)
-	Fence(ctx context.Context, node model.ServerAddress, req *proto.FenceRequest) (*proto.FenceResponse, error)
+	NewTerm(ctx context.Context, node model.ServerAddress, req *proto.NewTermRequest) (*proto.NewTermResponse, error)
 	BecomeLeader(ctx context.Context, node model.ServerAddress, req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error)
 	AddFollower(ctx context.Context, node model.ServerAddress, req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error)
 	GetStatus(ctx context.Context, node model.ServerAddress, req *proto.GetStatusRequest) (*proto.GetStatusResponse, error)
@@ -52,7 +52,7 @@ func (r *rpcProvider) PushShardAssignments(ctx context.Context, node model.Serve
 	return rpc.PushShardAssignments(ctx)
 }
 
-func (r *rpcProvider) Fence(ctx context.Context, node model.ServerAddress, req *proto.FenceRequest) (*proto.FenceResponse, error) {
+func (r *rpcProvider) NewTerm(ctx context.Context, node model.ServerAddress, req *proto.NewTermRequest) (*proto.NewTermResponse, error) {
 	rpc, err := r.pool.GetCoordinationRpc(node.Internal)
 	if err != nil {
 		return nil, err
@@ -61,7 +61,7 @@ func (r *rpcProvider) Fence(ctx context.Context, node model.ServerAddress, req *
 	ctx, cancel := context.WithTimeout(ctx, rpcTimeout)
 	defer cancel()
 
-	return rpc.Fence(ctx, req)
+	return rpc.NewTerm(ctx, req)
 }
 
 func (r *rpcProvider) BecomeLeader(ctx context.Context, node model.ServerAddress, req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error) {
