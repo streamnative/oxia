@@ -28,7 +28,6 @@ type ClientConfig struct {
 	BatchLinger         time.Duration
 	MaxRequestsPerBatch int
 	RequestTimeout      time.Duration
-	BatcherBufferSize   int
 }
 
 func (config *ClientConfig) NewClient() (oxia.AsyncClient, error) {

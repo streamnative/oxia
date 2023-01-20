@@ -32,7 +32,6 @@ func NewBatcherFactory(
 	executor *internal.ExecutorImpl,
 	batchLinger time.Duration,
 	maxRequestsPerBatch int,
-	batcherBufferSize int,
 	metrics *metrics.Metrics,
 	requestTimeout time.Duration) *BatcherFactory {
 	return &BatcherFactory{
@@ -40,7 +39,6 @@ func NewBatcherFactory(
 		BatcherFactory: batch.BatcherFactory{
 			Linger:              batchLinger,
 			MaxRequestsPerBatch: maxRequestsPerBatch,
-			BatcherBufferSize:   batcherBufferSize,
 		},
 		Metrics:        metrics,
 		RequestTimeout: requestTimeout,

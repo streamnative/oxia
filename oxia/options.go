@@ -15,7 +15,6 @@
 package oxia
 
 import (
-	"runtime"
 	"time"
 
 	"github.com/pkg/errors"
@@ -35,10 +34,7 @@ var (
 	ErrorBatchLinger         = errors.New("BatchLinger must be greater than or equal to zero")
 	ErrorMaxRequestsPerBatch = errors.New("MaxRequestsPerBatch must be greater than zero")
 	ErrorRequestTimeout      = errors.New("RequestTimeout must be greater than zero")
-	ErrorBatcherBufferSize   = errors.New("BatcherBufferSize must be greater than or equal to zero")
 	ErrorSessionTimeout      = errors.New("SessionTimeout must be greater than zero")
-
-	DefaultBatcherBufferSize = runtime.GOMAXPROCS(-1)
 )
 
 // clientOptions contains options for the Oxia client.
@@ -48,7 +44,6 @@ type clientOptions struct {
 	maxRequestsPerBatch int
 	requestTimeout      time.Duration
 	meterProvider       metric.MeterProvider
-	batcherBufferSize   int
 	sessionTimeout      time.Duration
 }
 
@@ -62,10 +57,6 @@ func (o clientOptions) BatchLinger() time.Duration {
 
 func (o clientOptions) MaxRequestsPerBatch() int {
 	return o.maxRequestsPerBatch
-}
-
-func (o clientOptions) BatcherBufferSize() int {
-	return o.batcherBufferSize
 }
 
 func (o clientOptions) SessionTimeout() time.Duration {
@@ -91,7 +82,6 @@ func newClientOptions(serviceAddress string, opts ...ClientOption) (clientOption
 		maxRequestsPerBatch: DefaultMaxRequestsPerBatch,
 		requestTimeout:      DefaultRequestTimeout,
 		meterProvider:       metric.NewNoopMeterProvider(),
-		batcherBufferSize:   DefaultBatcherBufferSize,
 		sessionTimeout:      DefaultSessionTimeout,
 	}
 	var errs error
@@ -158,17 +148,6 @@ func WithMeterProvider(meterProvider metric.MeterProvider) ClientOption {
 
 func WithGlobalMeterProvider() ClientOption {
 	return WithMeterProvider(global.MeterProvider())
-}
-
-// WithBatcherBufferSize defines how many batch requests can be queued.
-func WithBatcherBufferSize(batcherBufferSize int) ClientOption {
-	return clientOptionFunc(func(options clientOptions) (clientOptions, error) {
-		if batcherBufferSize < 0 {
-			return options, ErrorBatcherBufferSize
-		}
-		options.batcherBufferSize = batcherBufferSize
-		return options, nil
-	})
 }
 
 func WithSessionTimeout(sessionTimeout time.Duration) ClientOption {
