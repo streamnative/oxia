@@ -50,7 +50,7 @@ func TestLeaderController_NotInitialized(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, wal.InvalidTerm, lc.Term())
-	assert.Equal(t, proto.ServingStatus_NotMember, lc.Status())
+	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, lc.Status())
 
 	res, err := lc.Write(&proto.WriteRequest{
 		ShardId: &shard,
@@ -86,7 +86,7 @@ func TestLeaderController_BecomeLeader_NoFencing(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, wal.InvalidTerm, lc.Term())
-	assert.Equal(t, proto.ServingStatus_NotMember, lc.Status())
+	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, lc.Status())
 	resp, err := lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
 		Term:              1,
@@ -112,7 +112,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, wal.InvalidTerm, lc.Term())
-	assert.Equal(t, proto.ServingStatus_NotMember, lc.Status())
+	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, lc.Status())
 
 	fr, err := lc.Fence(&proto.FenceRequest{
 		ShardId: shard,
@@ -130,7 +130,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 1, lc.Term())
-	assert.Equal(t, proto.ServingStatus_Leader, lc.Status())
+	assert.Equal(t, proto.ServingStatus_LEADER, lc.Status())
 
 	/// Write entry
 	res, err := lc.Write(&proto.WriteRequest{
@@ -167,7 +167,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	AssertProtoEqual(t, &proto.EntryId{Term: 1, Offset: 0}, fr2.HeadEntryId)
 
 	assert.EqualValues(t, 2, lc.Term())
-	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
+	assert.Equal(t, proto.ServingStatus_FENCED, lc.Status())
 
 	// Should not accept anymore writes & reads
 
@@ -207,7 +207,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, wal.InvalidTerm, lc.Term())
-	assert.Equal(t, proto.ServingStatus_NotMember, lc.Status())
+	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, lc.Status())
 
 	fr, err := lc.Fence(&proto.FenceRequest{
 		ShardId: shard,
@@ -227,7 +227,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 1, lc.Term())
-	assert.Equal(t, proto.ServingStatus_Leader, lc.Status())
+	assert.Equal(t, proto.ServingStatus_LEADER, lc.Status())
 
 	go func() {
 		req := <-rpc.appendReqs
@@ -272,7 +272,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	AssertProtoEqual(t, &proto.EntryId{Term: 1, Offset: 0}, fr2.HeadEntryId)
 
 	assert.EqualValues(t, 2, lc.Term())
-	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
+	assert.Equal(t, proto.ServingStatus_FENCED, lc.Status())
 
 	// Should not accept anymore writes & reads
 
@@ -316,7 +316,7 @@ func TestLeaderController_TermPersistent(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, wal.InvalidTerm, lc.Term())
-	assert.Equal(t, proto.ServingStatus_NotMember, lc.Status())
+	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, lc.Status())
 
 	/// Fence leader
 
@@ -328,7 +328,7 @@ func TestLeaderController_TermPersistent(t *testing.T) {
 	AssertProtoEqual(t, &proto.EntryId{Term: wal.InvalidTerm, Offset: wal.InvalidOffset}, fr2.HeadEntryId)
 
 	assert.EqualValues(t, 5, lc.Term())
-	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
+	assert.Equal(t, proto.ServingStatus_FENCED, lc.Status())
 
 	assert.NoError(t, lc.Close())
 
@@ -337,7 +337,7 @@ func TestLeaderController_TermPersistent(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 5, lc.Term())
-	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
+	assert.Equal(t, proto.ServingStatus_FENCED, lc.Status())
 	assert.NoError(t, lc.Close())
 
 	assert.NoError(t, kvFactory.Close())
@@ -366,7 +366,7 @@ func TestLeaderController_FenceTerm(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 5, lc.Term())
-	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
+	assert.Equal(t, proto.ServingStatus_FENCED, lc.Status())
 
 	// Smaller term will fail
 	fr, err := lc.Fence(&proto.FenceRequest{
@@ -375,7 +375,7 @@ func TestLeaderController_FenceTerm(t *testing.T) {
 	})
 	assert.Nil(t, fr)
 	assert.Equal(t, common.CodeInvalidTerm, status.Code(err))
-	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
+	assert.Equal(t, proto.ServingStatus_FENCED, lc.Status())
 
 	// Same term will succeed
 	fr, err = lc.Fence(&proto.FenceRequest{
@@ -413,7 +413,7 @@ func TestLeaderController_BecomeLeaderTerm(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 5, lc.Term())
-	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
+	assert.Equal(t, proto.ServingStatus_FENCED, lc.Status())
 
 	// Smaller term will fail
 	resp, err := lc.BecomeLeader(&proto.BecomeLeaderRequest{
@@ -466,7 +466,7 @@ func TestLeaderController_AddFollower(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 5, lc.Term())
-	assert.Equal(t, proto.ServingStatus_Fenced, lc.Status())
+	assert.Equal(t, proto.ServingStatus_FENCED, lc.Status())
 
 	_, err = lc.BecomeLeader(&proto.BecomeLeaderRequest{
 		ShardId:           shard,
@@ -786,7 +786,7 @@ func TestLeaderController_Notifications(t *testing.T) {
 	assert.EqualValues(t, 0, nb1.Offset)
 	assert.Equal(t, 1, len(nb1.Notifications))
 	n1 := nb1.Notifications["a"]
-	assert.Equal(t, proto.NotificationType_KeyCreated, n1.Type)
+	assert.Equal(t, proto.NotificationType_KEY_CREATED, n1.Type)
 	assert.EqualValues(t, 0, *n1.Version)
 
 	// The handler is still running waiting for more notifications
