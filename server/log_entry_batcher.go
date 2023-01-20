@@ -70,10 +70,10 @@ func (l *walWriteBatch) Add(a any) {
 }
 
 func (l *walWriteBatch) Size() int {
-	if l.flush {
+	if l.flush || len(l.tasks) >= 10 {
 		return 1
 	} else {
-		return len(l.tasks)
+		return 0
 	}
 }
 
