@@ -179,7 +179,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	assert.NoError(t, err)
 	assert.EqualValues(t, 1, len(res.Puts))
 	assert.Equal(t, proto.Status_OK, res.Puts[0].Status)
-	assert.EqualValues(t, 0, res.Puts[0].Stat.Version)
+	assert.EqualValues(t, 0, res.Puts[0].Version.VersionId)
 
 	/// Read entry
 	res2, err := lc.Read(&proto.ReadRequest{
@@ -191,7 +191,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	assert.EqualValues(t, 1, len(res2.Gets))
 	assert.Equal(t, proto.Status_OK, res2.Gets[0].Status)
 	assert.Equal(t, []byte("value-a"), res2.Gets[0].Payload)
-	assert.EqualValues(t, 0, res.Puts[0].Stat.Version)
+	assert.EqualValues(t, 0, res.Puts[0].Version.VersionId)
 
 	/// Set NewTerm to leader
 
@@ -284,7 +284,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	assert.NoError(t, err)
 	assert.EqualValues(t, 1, len(res.Puts))
 	assert.Equal(t, proto.Status_OK, res.Puts[0].Status)
-	assert.EqualValues(t, 0, res.Puts[0].Stat.Version)
+	assert.EqualValues(t, 0, res.Puts[0].Version.VersionId)
 
 	/// Read entry
 	res2, err := lc.Read(&proto.ReadRequest{
@@ -296,7 +296,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	assert.EqualValues(t, 1, len(res2.Gets))
 	assert.Equal(t, proto.Status_OK, res2.Gets[0].Status)
 	assert.Equal(t, []byte("value-a"), res2.Gets[0].Payload)
-	assert.EqualValues(t, 0, res.Puts[0].Stat.Version)
+	assert.EqualValues(t, 0, res.Puts[0].Version.VersionId)
 
 	/// Set NewTerm to leader
 
@@ -629,7 +629,7 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 		assert.NoError(t, err)
 		assert.EqualValues(t, 1, len(res.Puts))
 		assert.Equal(t, proto.Status_OK, res.Puts[0].Status)
-		assert.EqualValues(t, i, res.Puts[0].Stat.Version)
+		assert.EqualValues(t, i, res.Puts[0].Version.VersionId)
 	}
 
 	rpcClient.truncateResps <- struct {
@@ -777,7 +777,7 @@ func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
 	assert.EqualValues(t, 1, len(res.Gets))
 	assert.Equal(t, proto.Status_OK, res.Gets[0].Status)
 	assert.Equal(t, []byte("my-value"), res.Gets[0].Payload)
-	assert.EqualValues(t, 0, res.Gets[0].Stat.Version)
+	assert.EqualValues(t, 0, res.Gets[0].Version.VersionId)
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())
@@ -823,7 +823,7 @@ func TestLeaderController_Notifications(t *testing.T) {
 	assert.Equal(t, 1, len(nb1.Notifications))
 	n1 := nb1.Notifications["a"]
 	assert.Equal(t, proto.NotificationType_KEY_CREATED, n1.Type)
-	assert.EqualValues(t, 0, *n1.Version)
+	assert.EqualValues(t, 0, *n1.VersionId)
 
 	// The handler is still running waiting for more notifications
 	select {

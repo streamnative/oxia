@@ -19,17 +19,17 @@ import (
 )
 
 type PutCall struct {
-	Key             string
-	Payload         []byte
-	ExpectedVersion *int64
-	SessionId       *int64
-	Callback        func(*proto.PutResponse, error)
+	Key               string
+	Payload           []byte
+	ExpectedVersionId *int64
+	SessionId         *int64
+	Callback          func(*proto.PutResponse, error)
 }
 
 type DeleteCall struct {
-	Key             string
-	ExpectedVersion *int64
-	Callback        func(*proto.DeleteResponse, error)
+	Key               string
+	ExpectedVersionId *int64
+	Callback          func(*proto.DeleteResponse, error)
 }
 
 type DeleteRangeCall struct {
@@ -51,17 +51,17 @@ type ListCall struct {
 
 func (r PutCall) ToProto() *proto.PutRequest {
 	return &proto.PutRequest{
-		Key:             r.Key,
-		Payload:         r.Payload,
-		ExpectedVersion: r.ExpectedVersion,
-		SessionId:       r.SessionId,
+		Key:               r.Key,
+		Payload:           r.Payload,
+		ExpectedVersionId: r.ExpectedVersionId,
+		SessionId:         r.SessionId,
 	}
 }
 
 func (r DeleteCall) ToProto() *proto.DeleteRequest {
 	return &proto.DeleteRequest{
-		Key:             r.Key,
-		ExpectedVersion: r.ExpectedVersion,
+		Key:               r.Key,
+		ExpectedVersionId: r.ExpectedVersionId,
 	}
 }
 

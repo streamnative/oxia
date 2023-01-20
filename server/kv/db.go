@@ -31,7 +31,7 @@ import (
 	pb "google.golang.org/protobuf/proto"
 )
 
-var ErrorBadVersion = errors.New("oxia: bad version")
+var ErrorBadVersionId = errors.New("oxia: bad version id")
 
 const (
 	commitOffsetKey = common.InternalKeyPrefix + "commit-offset"
@@ -140,7 +140,7 @@ func (d *db) ProcessWrite(b *proto.WriteRequest, commitOffset int64, timestamp u
 
 	d.putCounter.Add(len(b.Puts))
 	for _, putReq := range b.Puts {
-		if pr, err := d.applyPut(batch, notifications, putReq, timestamp, updateOperationCallback); err != nil {
+		if pr, err := d.applyPut(commitOffset, batch, notifications, putReq, timestamp, updateOperationCallback); err != nil {
 			return nil, err
 		} else {
 			res.Puts = append(res.Puts, pr)
@@ -201,10 +201,10 @@ func (d *db) addNotifications(batch WriteBatch, notifications *notifications) er
 
 func (d *db) addCommitOffset(commitOffset int64, batch WriteBatch, timestamp uint64) error {
 	commitOffsetPayload := []byte(fmt.Sprintf("%d", commitOffset))
-	_, err := d.applyPut(batch, nil, &proto.PutRequest{
-		Key:             commitOffsetKey,
-		Payload:         commitOffsetPayload,
-		ExpectedVersion: nil,
+	_, err := d.applyPut(commitOffset, batch, nil, &proto.PutRequest{
+		Key:               commitOffsetKey,
+		Payload:           commitOffsetPayload,
+		ExpectedVersionId: nil,
 	}, timestamp, NoOpCallback)
 	return err
 }
@@ -261,7 +261,7 @@ func (d *db) ReadCommitOffset() (int64, error) {
 func (d *db) UpdateTerm(newTerm int64) error {
 	batch := d.kv.NewWriteBatch()
 
-	if _, err := d.applyPut(batch, nil, &proto.PutRequest{
+	if _, err := d.applyPut(wal.InvalidOffset, batch, nil, &proto.PutRequest{
 		Key:     termKey,
 		Payload: []byte(fmt.Sprintf("%d", newTerm)),
 	}, now(), NoOpCallback); err != nil {
@@ -300,11 +300,11 @@ func (d *db) ReadTerm() (term int64, err error) {
 	return term, nil
 }
 
-func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *proto.PutRequest, timestamp uint64, updateOperationCallback UpdateOperationCallback) (*proto.PutResponse, error) {
-	se, err := checkExpectedVersion(batch, putReq.Key, putReq.ExpectedVersion)
-	if errors.Is(err, ErrorBadVersion) {
+func (d *db) applyPut(commitOffset int64, batch WriteBatch, notifications *notifications, putReq *proto.PutRequest, timestamp uint64, updateOperationCallback UpdateOperationCallback) (*proto.PutResponse, error) {
+	se, err := checkExpectedVersionId(batch, putReq.Key, putReq.ExpectedVersionId)
+	if errors.Is(err, ErrorBadVersionId) {
 		return &proto.PutResponse{
-			Status: proto.Status_UNEXPECTED_VERSION,
+			Status: proto.Status_UNEXPECTED_VERSION_ID,
 		}, nil
 	} else if err != nil {
 		return nil, errors.Wrap(err, "oxia db: failed to apply batch")
@@ -322,14 +322,16 @@ func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *pr
 
 		if se == nil {
 			se = &proto.StorageEntry{
-				Version:               0,
+				VersionId:             commitOffset,
+				ModificationsCount:    0,
 				Payload:               putReq.Payload,
 				CreationTimestamp:     timestamp,
 				ModificationTimestamp: timestamp,
 				SessionId:             putReq.SessionId,
 			}
 		} else {
-			se.Version += 1
+			se.VersionId = commitOffset
+			se.ModificationsCount += 1
 			se.Payload = putReq.Payload
 			se.ModificationTimestamp = timestamp
 			se.SessionId = putReq.SessionId
@@ -345,29 +347,30 @@ func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *pr
 		}
 
 		if notifications != nil {
-			notifications.Modified(putReq.Key, se.Version)
+			notifications.Modified(putReq.Key, se.VersionId, se.ModificationsCount)
 		}
 
-		stat := &proto.Stat{
-			Version:           se.Version,
-			CreatedTimestamp:  se.CreationTimestamp,
-			ModifiedTimestamp: se.ModificationTimestamp,
+		version := &proto.Version{
+			VersionId:          se.VersionId,
+			ModificationsCount: se.ModificationsCount,
+			CreatedTimestamp:   se.CreationTimestamp,
+			ModifiedTimestamp:  se.ModificationTimestamp,
 		}
 
 		d.log.Debug().
 			Str("key", putReq.Key).
-			Interface("stat", stat).
+			Interface("version", version).
 			Msg("Applied put operation")
 
-		return &proto.PutResponse{Stat: stat}, nil
+		return &proto.PutResponse{Version: version}, nil
 	}
 }
 
 func (d *db) applyDelete(batch WriteBatch, notifications *notifications, delReq *proto.DeleteRequest, updateOperationCallback UpdateOperationCallback) (*proto.DeleteResponse, error) {
-	se, err := checkExpectedVersion(batch, delReq.Key, delReq.ExpectedVersion)
+	se, err := checkExpectedVersionId(batch, delReq.Key, delReq.ExpectedVersionId)
 
-	if errors.Is(err, ErrorBadVersion) {
-		return &proto.DeleteResponse{Status: proto.Status_UNEXPECTED_VERSION}, nil
+	if errors.Is(err, ErrorBadVersionId) {
+		return &proto.DeleteResponse{Status: proto.Status_UNEXPECTED_VERSION_ID}, nil
 	} else if err != nil {
 		return nil, errors.Wrap(err, "oxia db: failed to apply batch")
 	} else if se == nil {
@@ -442,10 +445,11 @@ func applyGet(kv KV, getReq *proto.GetRequest) (*proto.GetResponse, error) {
 
 	return &proto.GetResponse{
 		Payload: resPayload,
-		Stat: &proto.Stat{
-			Version:           se.Version,
-			CreatedTimestamp:  se.CreationTimestamp,
-			ModifiedTimestamp: se.ModificationTimestamp,
+		Version: &proto.Version{
+			VersionId:          se.VersionId,
+			ModificationsCount: se.ModificationsCount,
+			CreatedTimestamp:   se.CreationTimestamp,
+			ModifiedTimestamp:  se.ModificationTimestamp,
 		},
 	}, nil
 }
@@ -479,22 +483,22 @@ func GetStorageEntry(batch WriteBatch, key string) (*proto.StorageEntry, error) 
 	return se, nil
 }
 
-func checkExpectedVersion(batch WriteBatch, key string, expectedVersion *int64) (*proto.StorageEntry, error) {
+func checkExpectedVersionId(batch WriteBatch, key string, expectedVersionId *int64) (*proto.StorageEntry, error) {
 	se, err := GetStorageEntry(batch, key)
 	if err != nil {
 		if errors.Is(err, ErrorKeyNotFound) {
-			if expectedVersion == nil || *expectedVersion == -1 {
+			if expectedVersionId == nil || *expectedVersionId == -1 {
 				// OK, we were checking that the key was not there, and it's indeed not there
 				return nil, nil
 			} else {
-				return nil, ErrorBadVersion
+				return nil, ErrorBadVersionId
 			}
 		}
 		return nil, err
 	}
 
-	if expectedVersion != nil && se.Version != *expectedVersion {
-		return nil, ErrorBadVersion
+	if expectedVersionId != nil && se.VersionId != *expectedVersionId {
+		return nil, ErrorBadVersionId
 	}
 
 	return se, nil

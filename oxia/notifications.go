@@ -227,13 +227,13 @@ func convertNotificationType(t proto.NotificationType) NotificationType {
 }
 
 func convertNotification(key string, n *proto.Notification) *Notification {
-	version := int64(-1)
-	if n.Version != nil {
-		version = *n.Version
+	versionId := int64(-1)
+	if n.VersionId != nil {
+		versionId = *n.VersionId
 	}
 	return &Notification{
 		Type:    convertNotificationType(n.Type),
 		Key:     key,
-		Version: version,
+		Version: versionId,
 	}
 }

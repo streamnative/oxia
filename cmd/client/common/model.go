@@ -14,10 +14,11 @@
 
 package common
 
-type OutputStat struct {
-	Version           int64  `json:"version"`
-	CreatedTimestamp  uint64 `json:"created_timestamp"`
-	ModifiedTimestamp uint64 `json:"modified_timestamp"`
+type OutputVersion struct {
+	VersionId          int64  `json:"version_id"`
+	CreatedTimestamp   uint64 `json:"created_timestamp"`
+	ModifiedTimestamp  uint64 `json:"modified_timestamp"`
+	ModificationsCount int64  `json:"modifications_count"`
 }
 
 type OutputError struct {

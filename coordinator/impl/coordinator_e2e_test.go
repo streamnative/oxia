@@ -173,14 +173,14 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 
 	ctx := context.Background()
 
-	stat1, err := client.Put(ctx, "my-key", []byte("my-value"))
+	version1, err := client.Put(ctx, "my-key", []byte("my-value"))
 	assert.NoError(t, err)
-	assert.EqualValues(t, 0, stat1.Version)
+	assert.EqualValues(t, 0, version1.VersionId)
 
-	res, stat2, err := client.Get(ctx, "my-key")
+	res, version2, err := client.Get(ctx, "my-key")
 	assert.NoError(t, err)
 	assert.Equal(t, []byte("my-value"), res)
-	assert.Equal(t, stat1, stat2)
+	assert.Equal(t, version1, version2)
 	assert.NoError(t, client.Close())
 
 	// Stop the leader to cause a leader election
@@ -199,10 +199,10 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 		return err == nil
 	}, 10*time.Second, 10*time.Millisecond)
 
-	res, stat3, err := client.Get(ctx, "my-key")
+	res, version3, err := client.Get(ctx, "my-key")
 	assert.NoError(t, err)
 	assert.Equal(t, []byte("my-value"), res)
-	assert.Equal(t, stat1, stat3)
+	assert.Equal(t, version1, version3)
 	assert.NoError(t, client.Close())
 
 	assert.NoError(t, coordinator.Close())

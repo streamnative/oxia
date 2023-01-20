@@ -56,10 +56,11 @@ func TestReadBatchComplete(t *testing.T) {
 	getResponseOk := &proto.GetResponse{
 		Payload: []byte{0},
 		Status:  proto.Status_OK,
-		Stat: &proto.Stat{
-			Version:           1,
-			CreatedTimestamp:  2,
-			ModifiedTimestamp: 3,
+		Version: &proto.Version{
+			VersionId:          1,
+			CreatedTimestamp:   2,
+			ModifiedTimestamp:  3,
+			ModificationsCount: 1,
 		},
 	}
 	for _, item := range []struct {

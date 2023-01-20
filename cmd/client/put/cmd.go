@@ -120,7 +120,7 @@ func (query Query) Perform(client oxia.AsyncClient) common.Call {
 	} else {
 		var putOptions []oxia.PutOption
 		if query.ExpectedVersion != nil {
-			putOptions = append(putOptions, oxia.ExpectedVersion(*query.ExpectedVersion))
+			putOptions = append(putOptions, oxia.ExpectedVersionId(*query.ExpectedVersion))
 		}
 		call.clientCall = client.Put(query.Key, payload, putOptions...)
 	}
@@ -158,15 +158,16 @@ func (call Call) Complete() any {
 		}
 	} else {
 		return Output{
-			Stat: common.OutputStat{
-				Version:           result.Stat.Version,
-				CreatedTimestamp:  result.Stat.CreatedTimestamp,
-				ModifiedTimestamp: result.Stat.ModifiedTimestamp,
+			Version: common.OutputVersion{
+				VersionId:          result.Version.VersionId,
+				CreatedTimestamp:   result.Version.CreatedTimestamp,
+				ModifiedTimestamp:  result.Version.ModifiedTimestamp,
+				ModificationsCount: result.Version.ModificationsCount,
 			},
 		}
 	}
 }
 
 type Output struct {
-	Stat common.OutputStat `json:"stat"`
+	Version common.OutputVersion `json:"version"`
 }

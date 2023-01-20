@@ -58,14 +58,14 @@ func newNotifications(shardId uint32, offset int64, timestamp uint64) *notificat
 	}
 }
 
-func (n *notifications) Modified(key string, version int64) {
+func (n *notifications) Modified(key string, versionId, modificationsCount int64) {
 	nType := proto.NotificationType_KEY_CREATED
-	if version > 0 {
+	if modificationsCount > 0 {
 		nType = proto.NotificationType_KEY_MODIFIED
 	}
 	n.batch.Notifications[key] = &proto.Notification{
-		Type:    nType,
-		Version: &version,
+		Type:      nType,
+		VersionId: &versionId,
 	}
 }
 

@@ -109,17 +109,17 @@ func (m mockWriteBatch) Commit() error {
 
 func TestSessionUpdateOperationCallback_OnPut(t *testing.T) {
 	sessionId := int64(12345)
-	version := int64(2)
+	versionId := int64(2)
 
 	noSessionPutRequest := &proto.PutRequest{
 		Key:     "a/b/c",
 		Payload: []byte("b"),
 	}
 	sessionPutRequest := &proto.PutRequest{
-		Key:             "a/b/c",
-		Payload:         []byte("b"),
-		ExpectedVersion: &version,
-		SessionId:       &sessionId,
+		Key:               "a/b/c",
+		Payload:           []byte("b"),
+		ExpectedVersionId: &versionId,
+		SessionId:         &sessionId,
 	}
 
 	writeBatch := mockWriteBatch{}
@@ -136,7 +136,7 @@ func TestSessionUpdateOperationCallback_OnPut(t *testing.T) {
 
 	se := &proto.StorageEntry{
 		Payload:               []byte("payload"),
-		Version:               0,
+		VersionId:             0,
 		CreationTimestamp:     0,
 		ModificationTimestamp: 0,
 		SessionId:             &sessionId,
@@ -197,7 +197,7 @@ func TestSessionUpdateOperationCallback_OnPut(t *testing.T) {
 func storageEntry(t *testing.T, sessionId int64) []byte {
 	entry := &proto.StorageEntry{
 		Payload:               nil,
-		Version:               0,
+		VersionId:             0,
 		CreationTimestamp:     0,
 		ModificationTimestamp: 0,
 		SessionId:             &sessionId,

@@ -256,23 +256,25 @@ func TestOutputMarshal(t *testing.T) {
 	}{
 		{"non-binary",
 			Output{
-				Stat: common.OutputStat{
-					Version:           1,
-					CreatedTimestamp:  2,
-					ModifiedTimestamp: 3,
+				Version: common.OutputVersion{
+					VersionId:          1,
+					CreatedTimestamp:   2,
+					ModifiedTimestamp:  3,
+					ModificationsCount: 0,
 				},
 			},
-			"{\"stat\":{\"version\":1,\"created_timestamp\":2,\"modified_timestamp\":3}}",
+			"{\"version\":{\"version_id\":1,\"created_timestamp\":2,\"modified_timestamp\":3,\"modifications_count\":0}}",
 		},
 		{"binary",
 			Output{
-				Stat: common.OutputStat{
-					Version:           2,
-					CreatedTimestamp:  4,
-					ModifiedTimestamp: 6,
+				Version: common.OutputVersion{
+					VersionId:          2,
+					CreatedTimestamp:   4,
+					ModifiedTimestamp:  6,
+					ModificationsCount: 2,
 				},
 			},
-			"{\"stat\":{\"version\":2,\"created_timestamp\":4,\"modified_timestamp\":6}}",
+			"{\"version\":{\"version_id\":2,\"created_timestamp\":4,\"modified_timestamp\":6,\"modifications_count\":2}}",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -336,16 +338,18 @@ func TestCall_Complete(t *testing.T) {
 		{
 			"result",
 			oxia.PutResult{
-				Stat: oxia.Stat{
-					Version:           1,
-					CreatedTimestamp:  4,
-					ModifiedTimestamp: 8,
+				Version: oxia.Version{
+					VersionId:          1,
+					CreatedTimestamp:   4,
+					ModifiedTimestamp:  8,
+					ModificationsCount: 1,
 				},
 			}, Output{
-				Stat: common.OutputStat{
-					Version:           1,
-					CreatedTimestamp:  4,
-					ModifiedTimestamp: 8,
+				Version: common.OutputVersion{
+					VersionId:          1,
+					CreatedTimestamp:   4,
+					ModifiedTimestamp:  8,
+					ModificationsCount: 1,
 				},
 			},
 		},

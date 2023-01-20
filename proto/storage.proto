@@ -20,10 +20,11 @@ option go_package = "github.com/streamnative/oxia/proto";
 
 message StorageEntry {
   bytes payload = 1;
-  int64 version = 2;
-  fixed64 creation_timestamp = 3;
-  fixed64 modification_timestamp = 4;
-  optional int64 session_id = 5;
+  int64 version_id = 2;
+  int64 modifications_count = 3;
+  fixed64 creation_timestamp = 4;
+  fixed64 modification_timestamp = 5;
+  optional int64 session_id = 6;
 }
 
 message SessionMetadata {

@@ -55,10 +55,11 @@ func TestWriteBatchAdd(t *testing.T) {
 func TestWriteBatchComplete(t *testing.T) {
 	putResponseOk := &proto.PutResponse{
 		Status: proto.Status_OK,
-		Stat: &proto.Stat{
-			Version:           1,
-			CreatedTimestamp:  2,
-			ModifiedTimestamp: 3,
+		Version: &proto.Version{
+			VersionId:          1,
+			CreatedTimestamp:   2,
+			ModifiedTimestamp:  3,
+			ModificationsCount: 1,
 		},
 	}
 	for _, item := range []struct {
@@ -96,7 +97,7 @@ func TestWriteBatchComplete(t *testing.T) {
 		{
 			&proto.WriteResponse{
 				Puts: []*proto.PutResponse{{
-					Status: proto.Status_UNEXPECTED_VERSION,
+					Status: proto.Status_UNEXPECTED_VERSION_ID,
 				}},
 				Deletes: []*proto.DeleteResponse{{
 					Status: proto.Status_KEY_NOT_FOUND,
@@ -107,7 +108,7 @@ func TestWriteBatchComplete(t *testing.T) {
 			},
 			nil,
 			&proto.PutResponse{
-				Status: proto.Status_UNEXPECTED_VERSION,
+				Status: proto.Status_UNEXPECTED_VERSION_ID,
 			},
 			nil,
 			&proto.DeleteResponse{
@@ -134,13 +135,13 @@ func TestWriteBatchComplete(t *testing.T) {
 			assert.Equal(t, &proto.WriteRequest{
 				ShardId: &shardId,
 				Puts: []*proto.PutRequest{{
-					Key:             "/a",
-					Payload:         []byte{0},
-					ExpectedVersion: &one,
+					Key:               "/a",
+					Payload:           []byte{0},
+					ExpectedVersionId: &one,
 				}},
 				Deletes: []*proto.DeleteRequest{{
-					Key:             "/b",
-					ExpectedVersion: &two,
+					Key:               "/b",
+					ExpectedVersionId: &two,
 				}},
 				DeleteRanges: []*proto.DeleteRangeRequest{{
 					StartInclusive: "/callC",
@@ -183,15 +184,15 @@ func TestWriteBatchComplete(t *testing.T) {
 		}
 
 		batch.Add(model.PutCall{
-			Key:             "/a",
-			Payload:         []byte{0},
-			ExpectedVersion: &one,
-			Callback:        putCallback,
+			Key:               "/a",
+			Payload:           []byte{0},
+			ExpectedVersionId: &one,
+			Callback:          putCallback,
 		})
 		batch.Add(model.DeleteCall{
-			Key:             "/b",
-			ExpectedVersion: &two,
-			Callback:        deleteCallback,
+			Key:               "/b",
+			ExpectedVersionId: &two,
+			Callback:          deleteCallback,
 		})
 		batch.Add(model.DeleteRangeCall{
 			MinKeyInclusive: "/callC",
