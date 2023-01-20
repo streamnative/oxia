@@ -64,7 +64,8 @@ service OxiaClient {
   rpc GetNotifications(NotificationsRequest) returns (stream NotificationBatch);
 
   /*
-   * Creates a new client session. Sessions are kept alive by regularly sending heartbeats via the KeepAlive rpc.
+   * Creates a new client session. Sessions are kept alive by regularly sending
+   * heartbeats via the KeepAlive rpc.
    */
   rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
 
@@ -202,11 +203,12 @@ message PutRequest {
   string key = 1;
   // The payload
   bytes payload = 2;
-  // An optional expected version. The put will fail if the server's current version
-  // does not match
+  // An optional expected version. The put will fail if the server's current
+  // version does not match
   optional int64 expected_version = 3;
   // Optional. Associate the new value with the session (i.e. ephemeral value).
-  // When the session times out or is closed, the key-payload pair will be removed
+  // When the session times out or is closed, the key-payload pair will be
+  // removed
   optional int64 session_id = 4;
 }
 
@@ -226,8 +228,8 @@ message PutResponse {
 message DeleteRequest {
   // The key
   string key = 1;
-  // An optional expected version. The delete will fail if the server's current version
-  // does not match
+  // An optional expected version. The delete will fail if the server's current
+  // version does not match
   optional int64 expected_version = 2;
 }
 
@@ -352,9 +354,9 @@ message CloseSessionRequest {
 message CloseSessionResponse {}
 
 enum NotificationType {
-    KeyCreated = 0;
-    KeyModified = 1;
-    KeyDeleted = 2;
+  KEY_CREATED = 0;
+  KEY_MODIFIED = 1;
+  KEY_DELETED = 2;
 }
 
 message NotificationsRequest {
