@@ -21,73 +21,208 @@ import (
 )
 
 const (
-	VersionNotExists int64 = -1
+	// VersionIdNotExists represent the VersionId of a non-existing record
+	VersionIdNotExists int64 = -1
 )
 
 var (
-	ErrorKeyNotFound         = errors.New("key not found")
+	// ErrorKeyNotFound A record associated with the specified key was not found
+	ErrorKeyNotFound = errors.New("key not found")
+
+	// ErrorUnexpectedVersionId The expected version id passed as a condition does not match
+	// the current version id of the stored record
 	ErrorUnexpectedVersionId = errors.New("unexpected version id")
-	ErrorUnknownStatus       = errors.New("unknown status")
+
+	// ErrorUnknownStatus Unknown error
+	ErrorUnknownStatus = errors.New("unknown status")
 )
 
+// AsyncClient Oxia client with methods suitable for asynchronous operations.
+//
+// This interface expose the same functionality as [SyncClient], though it returns
+// a channel instead of an actual result for the performed operations.
+//
+// This allows to enqueue multiple operations which the client library will be
+// able to group and automatically batch.
+//
+// Batching of requests will ensure a larger throughput and more efficient handling.
+// Applications can control the batching by configuring the linger-time with
+// [WithBatchLinger] option in [NewAsyncClient].
 type AsyncClient interface {
 	io.Closer
 
+	// Put Associates a value with a key
+	//
+	// There are few options that can be passed to the Put operation:
+	//  - The Put operation can be made conditional on that the record hasn't changed from
+	//    a specific existing version by passing the [ExpectedVersionId] option.
+	//  - Client can assert that the record does not exist by passing [ExpectedRecordNotExists]
+	//  - Client can create an ephemeral record with [Ephemeral]
+	//
+	// Returns a [Version] object that contains information about the newly updated record
+	// Returns [ErrorUnexpectedVersionId] if the expected version id does not match the
+	// current version id of the record
 	Put(key string, value []byte, options ...PutOption) <-chan PutResult
+
+	// Delete removes the key and its associated value from the data store.
+	//
+	// The Delete operation can be made conditional on that the record hasn't changed from
+	// a specific existing version by passing the [ExpectedVersionId] option.
+	// Returns [ErrorUnexpectedVersionId] if the expected version id does not match the
+	// current version id of the record
 	Delete(key string, options ...DeleteOption) <-chan error
+
+	// DeleteRange deletes any records with keys within the specified range.
+	// Note: Oxia uses a custom sorting order that treats `/` characters in special way.
+	// Refer to this documentation for the specifics:
+	// https://github.com/streamnative/oxia/blob/main/docs/oxia-key-sorting.md
 	DeleteRange(minKeyInclusive string, maxKeyExclusive string) <-chan error
+
+	// Get returns the value associated with the specified key.
+	// In addition to the value, a version object is also returned, with information
+	// about the record state.
+	// Returns ErrorKeyNotFound if the record does not exist
 	Get(key string) <-chan GetResult
+
+	// List any existing keys within the specified range.
+	// Note: Oxia uses a custom sorting order that treats `/` characters in special way.
+	// Refer to this documentation for the specifics:
+	// https://github.com/streamnative/oxia/blob/main/docs/oxia-key-sorting.md
 	List(minKeyInclusive string, maxKeyExclusive string) <-chan ListResult
 
+	// GetNotifications creates a new subscription to receive the notifications
+	// from Oxia for any change that is applied to the database
 	GetNotifications() (Notifications, error)
 }
 
+// SyncClient is the main interface to perform operations with Oxia.
+//
+// Once a client instance is created, it will be valid until it gets explicitly
+// closed, and it can be shared across different go-routines.
+//
+// If any ephemeral records are created (using the [Ephemeral] PutOption), they
+// will all be automatically deleted when the client instance is closed, or
+// if the process crashed.
 type SyncClient interface {
 	io.Closer
 
+	// Put Associates a value with a key
+	//
+	// There are few options that can be passed to the Put operation:
+	//  - The Put operation can be made conditional on that the record hasn't changed from
+	//    a specific existing version by passing the [ExpectedVersionId] option.
+	//  - Client can assert that the record does not exist by passing [ExpectedRecordNotExists]
+	//  - Client can create an ephemeral record with [Ephemeral]
+	//
+	// Returns a [Version] object that contains information about the newly updated record
+	// Returns [ErrorUnexpectedVersionId] if the expected version id does not match the
+	// current version id of the record
 	Put(ctx context.Context, key string, value []byte, options ...PutOption) (Version, error)
-	Delete(ctx context.Context, key string, options ...DeleteOption) error
-	DeleteRange(ctx context.Context, minKeyInclusive string, maxKeyExclusive string) error
-	Get(ctx context.Context, key string) ([]byte, Version, error)
-	List(ctx context.Context, minKeyInclusive string, maxKeyExclusive string) ([]string, error)
 
+	// Delete removes the key and its associated value from the data store.
+	//
+	// The Delete operation can be made conditional on that the record hasn't changed from
+	// a specific existing version by passing the [ExpectedVersionId] option.
+	// Returns [ErrorUnexpectedVersionId] if the expected version id does not match the
+	// current version id of the record
+	Delete(ctx context.Context, key string, options ...DeleteOption) error
+
+	// DeleteRange deletes any records with keys within the specified range.
+	// Note: Oxia uses a custom sorting order that treats `/` characters in special way.
+	// Refer to this documentation for the specifics:
+	// https://github.com/streamnative/oxia/blob/main/docs/oxia-key-sorting.md
+	DeleteRange(ctx context.Context, minKeyInclusive string, maxKeyExclusive string) error
+
+	// Get returns the value associated with the specified key.
+	// In addition to the value, a version object is also returned, with information
+	// about the record state.
+	// Returns ErrorKeyNotFound if the record does not exist
+	Get(ctx context.Context, key string) (value []byte, version Version, err error)
+
+	// List any existing keys within the specified range.
+	// Note: Oxia uses a custom sorting order that treats `/` characters in special way.
+	// Refer to this documentation for the specifics:
+	// https://github.com/streamnative/oxia/blob/main/docs/oxia-key-sorting.md
+	List(ctx context.Context, minKeyInclusive string, maxKeyExclusive string) (keys []string, err error)
+
+	// GetNotifications creates a new subscription to receive the notifications
+	// from Oxia for any change that is applied to the database
 	GetNotifications() (Notifications, error)
 }
 
+// Version includes some information regarding the state of a record
 type Version struct {
-	VersionId          int64
-	CreatedTimestamp   uint64
-	ModifiedTimestamp  uint64
+	// VersionId represents an identifier that can be used to refer to a particular version
+	// of a record.
+	// Applications shouldn't make assumptions on the actual values of the VersionId. VersionIds
+	// are only meaningful for a given key and don't reflect the number of changes that were made
+	// on a given record.
+	// Applications can use the VersionId when making [SyncClient.Put] or [SyncClient.Delete]
+	// operations by passing an [ExpectedVersionId] option.
+	VersionId int64
+
+	// The time when the record was last created
+	// (If the record gets deleted and recreated, it will have a new CreatedTimestamp value)
+	CreatedTimestamp uint64
+
+	// The time when the record was last modified
+	ModifiedTimestamp uint64
+
+	// The number of modifications to the record since it was last created
+	// (If the record gets deleted and recreated, the ModificationsCount will restart at 0)
 	ModificationsCount int64
 }
 
+// PutResult structure is wrapping the version information for the result
+// of a `Put` operation and an eventual error in the [AsyncClient]
 type PutResult struct {
+	// The Version information
 	Version Version
-	Err     error
+
+	// The error if the `Put` operation failed
+	Err error
 }
 
+// GetResult structure is wrapping a Value, its version information and
+// an eventual error as results for a `Get` operation in the [AsyncClient]
 type GetResult struct {
-	Value   []byte
+	// Value is the value of the record
+	Value []byte
+
+	// The version information
 	Version Version
-	Err     error
+
+	// The error if the `Get` operation failed
+	Err error
 }
 
+// ListResult structure is wrapping a list of keys, and an eventual error as
+// results for a `List` operation in the [AsyncClient]
 type ListResult struct {
+	// The list of keys return by [List]
 	Keys []string
-	Err  error
+	// The eventual error in the [List] operation
+	Err error
 }
 
+// Notifications allows application to receive the feed of changes
+// that are happening in the Oxia database
 type Notifications interface {
 	io.Closer
 
+	// Ch exposes the channel where all the notification events are published
 	Ch() <-chan *Notification
 }
 
+// NotificationType represent the type of the notification event
 type NotificationType int
 
 const (
+	// KeyCreated A record that didn't exist was created
 	KeyCreated NotificationType = iota
+	// KeyModified An existing record was modified
 	KeyModified
+	// KeyDeleted A record was deleted
 	KeyDeleted
 )
 
@@ -104,8 +239,14 @@ func (n NotificationType) String() string {
 	return "Unknown"
 }
 
+// Notification represents one change in the Oxia database
 type Notification struct {
-	Type    NotificationType
-	Key     string
-	Version int64
+	// The type of the modification
+	Type NotificationType
+
+	// The Key of the record to which the notification is referring
+	Key string
+
+	// The current VersionId of the record, or -1 for a KeyDeleted event
+	VersionId int64
 }
