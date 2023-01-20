@@ -81,7 +81,7 @@ func TestMetricsDecorate(t *testing.T) {
 				assert.NoError(t, err)
 
 				assertTimer(t, rm, "oxia_client_op", item.expectedType, condition.expectedResult)
-				assertHistogram(t, rm, "oxia_client_op_payload", item.hasHistogram, float64(5), item.expectedType, condition.expectedResult)
+				assertHistogram(t, rm, "oxia_client_op_value", item.hasHistogram, float64(5), item.expectedType, condition.expectedResult)
 			})
 		}
 	}
