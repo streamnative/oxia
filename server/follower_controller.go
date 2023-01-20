@@ -163,6 +163,10 @@ func NewFollowerController(config Config, shardId uint32, wf wal.WalFactory, kvF
 	return fc, nil
 }
 
+func (fc *followerController) isClosed() bool {
+	return fc.ctx.Err() != nil
+}
+
 func (fc *followerController) Close() error {
 	fc.Lock()
 	defer fc.Unlock()
@@ -225,6 +229,10 @@ func (fc *followerController) Fence(req *proto.FenceRequest) (*proto.FenceRespon
 	fc.Lock()
 	defer fc.Unlock()
 
+	if fc.isClosed() {
+		return nil, common.ErrorAlreadyClosed
+	}
+
 	if req.Term < fc.term {
 		fc.log.Warn().
 			Int64("follower-term", fc.term).
@@ -270,6 +278,10 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 	fc.Lock()
 	defer fc.Unlock()
 
+	if fc.isClosed() {
+		return nil, common.ErrorAlreadyClosed
+	}
+
 	if fc.status != proto.ServingStatus_FENCED {
 		return nil, common.ErrorInvalidStatus
 	}
@@ -296,6 +308,7 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 func (fc *followerController) Replicate(stream proto.OxiaLogReplication_ReplicateServer) error {
 	fc.Lock()
 	if fc.status != proto.ServingStatus_FENCED && fc.status != proto.ServingStatus_FOLLOWER {
+		fc.Unlock()
 		return common.ErrorInvalidStatus
 	}
 
@@ -536,6 +549,11 @@ func checkStatus(expected, actual proto.ServingStatus) error {
 
 func (fc *followerController) SendSnapshot(stream proto.OxiaLogReplication_SendSnapshotServer) error {
 	fc.Lock()
+
+	if fc.isClosed() {
+		fc.Unlock()
+		return common.ErrorAlreadyClosed
+	}
 
 	if fc.closeStreamCh != nil {
 		fc.Unlock()

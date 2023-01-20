@@ -187,6 +187,10 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 	lc.Lock()
 	defer lc.Unlock()
 
+	if lc.isClosed() {
+		return nil, common.ErrorAlreadyClosed
+	}
+
 	if req.Term < lc.term {
 		return nil, common.ErrorInvalidTerm
 	} else if req.Term == lc.term && lc.status != proto.ServingStatus_FENCED {
@@ -277,6 +281,10 @@ func (lc *leaderController) Fence(req *proto.FenceRequest) (*proto.FenceResponse
 func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error) {
 	lc.Lock()
 	defer lc.Unlock()
+
+	if lc.isClosed() {
+		return nil, common.ErrorAlreadyClosed
+	}
 
 	if lc.status != proto.ServingStatus_FENCED {
 		return nil, common.ErrorInvalidStatus
@@ -662,6 +670,10 @@ func (lc *leaderController) dispatchNotifications(ctx context.Context, req *prot
 	}
 
 	return ctx.Err()
+}
+
+func (lc *leaderController) isClosed() bool {
+	return lc.ctx.Err() != nil
 }
 
 func (lc *leaderController) Close() error {

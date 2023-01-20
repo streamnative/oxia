@@ -75,6 +75,42 @@ func TestLeaderController_NotInitialized(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
+func TestLeaderController_Closed(t *testing.T) {
+	var shard uint32 = 1
+
+	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
+	walFactory := wal.NewInMemoryWalFactory()
+
+	lc, err := NewLeaderController(Config{}, shard, newMockRpcClient(), walFactory, kvFactory)
+	assert.NoError(t, err)
+
+	assert.EqualValues(t, wal.InvalidTerm, lc.Term())
+	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, lc.Status())
+
+	assert.NoError(t, lc.Close())
+
+	res, err := lc.Fence(&proto.FenceRequest{
+		ShardId: shard,
+		Term:    2,
+	})
+
+	assert.Nil(t, res)
+	assert.Equal(t, common.CodeAlreadyClosed, status.Code(err))
+
+	res2, err := lc.BecomeLeader(&proto.BecomeLeaderRequest{
+		ShardId:      shard,
+		Term:         2,
+		FollowerMaps: map[string]*proto.EntryId{},
+	})
+
+	assert.Nil(t, res2)
+	assert.Equal(t, common.CodeAlreadyClosed, status.Code(err))
+
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
 func TestLeaderController_BecomeLeader_NoFencing(t *testing.T) {
 	var shard uint32 = 1
 
