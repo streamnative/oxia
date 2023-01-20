@@ -725,13 +725,13 @@ func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
 
 	wal, err := walFactory.NewWal(shard)
 	assert.NoError(t, err)
-	v, err := pb.Marshal(&proto.WriteRequest{
+	v, err := pb.Marshal(wrapInLogEntryValue(&proto.WriteRequest{
 		ShardId: &shard,
 		Puts: []*proto.PutRequest{{
 			Key:     "my-key",
 			Payload: []byte("my-value"),
 		}},
-	})
+	}))
 	assert.NoError(t, err)
 	assert.NoError(t, wal.Append(&proto.LogEntry{
 		Term:   0,

@@ -132,7 +132,7 @@ func TestFollowerCursor_SendSnapshot(t *testing.T) {
 				Payload: []byte(fmt.Sprintf("value-%d", i)),
 			}},
 		}
-		e, _ := pb.Marshal(wr)
+		e, _ := pb.Marshal(wrapInLogEntryValue(wr))
 		assert.NoError(t, w.Append(&proto.LogEntry{
 			Term:      1,
 			Offset:    i,
@@ -163,4 +163,16 @@ func TestFollowerCursor_SendSnapshot(t *testing.T) {
 	}, 10*time.Second, 10*time.Millisecond)
 
 	assert.NoError(t, fc.Close())
+}
+
+func wrapInLogEntryValue(wr *proto.WriteRequest) *proto.LogEntryValue {
+	return &proto.LogEntryValue{
+		Value: &proto.LogEntryValue_Requests{
+			Requests: &proto.WriteRequests{
+				Writes: []*proto.WriteRequest{
+					wr,
+				},
+			},
+		},
+	}
 }

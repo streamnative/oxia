@@ -482,19 +482,18 @@ func (fc *followerController) processCommittedEntries(maxInclusive int64) error 
 			return nil
 		}
 
-		br := &proto.WriteRequest{}
-		br.Reset()
-		if err := pb.Unmarshal(entry.Value, br); err != nil {
+		value := &proto.LogEntryValue{}
+		if err := pb.Unmarshal(entry.Value, value); err != nil {
 			fc.log.Err(err).Msg("Error unmarshalling committed entry")
 			return err
 		}
-
-		_, err = fc.db.ProcessWrite(br, entry.Offset, entry.Timestamp, SessionUpdateOperationCallback)
-		if err != nil {
-			fc.log.Err(err).Msg("Error applying committed entry")
-			return err
+		for _, br := range value.GetRequests().Writes {
+			_, err = fc.db.ProcessWrite(br, entry.Offset, entry.Timestamp, SessionUpdateOperationCallback)
+			if err != nil {
+				fc.log.Err(err).Msg("Error applying committed entry")
+				return err
+			}
 		}
-
 		fc.commitOffset.Store(entry.Offset)
 	}
 

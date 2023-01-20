@@ -802,7 +802,7 @@ func createAddRequest(t *testing.T, term int64, offset int64,
 		})
 	}
 
-	entry, err := pb.Marshal(br)
+	entry, err := pb.Marshal(wrapInLogEntryValue(br))
 	assert.NoError(t, err)
 
 	le := &proto.LogEntry{

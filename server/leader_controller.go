@@ -441,13 +441,14 @@ func (lc *leaderController) applyAllEntriesIntoDB() error {
 			return err
 		}
 
-		writeRequest := &proto.WriteRequest{}
-		if err = pb.Unmarshal(entry.Value, writeRequest); err != nil {
+		logEntryValue := &proto.LogEntryValue{}
+		if err = pb.Unmarshal(entry.Value, logEntryValue); err != nil {
 			return err
 		}
-
-		if _, err = lc.db.ProcessWrite(writeRequest, entry.Offset, entry.Timestamp, SessionUpdateOperationCallback); err != nil {
-			return err
+		for _, writeRequest := range logEntryValue.GetRequests().Writes {
+			if _, err = lc.db.ProcessWrite(writeRequest, entry.Offset, entry.Timestamp, SessionUpdateOperationCallback); err != nil {
+				return err
+			}
 		}
 	}
 
