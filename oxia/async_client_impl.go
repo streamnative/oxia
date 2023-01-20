@@ -108,10 +108,10 @@ func (c *clientImpl) Put(key string, payload []byte, options ...PutOption) <-cha
 	}
 	opts := newPutOptions(options)
 	putCall := model.PutCall{
-		Key:             key,
-		Payload:         payload,
-		ExpectedVersion: opts.expectedVersion,
-		Callback:        callback,
+		Key:               key,
+		Payload:           payload,
+		ExpectedVersionId: opts.expectedVersion,
+		Callback:          callback,
 	}
 	if opts.ephemeral {
 		c.sessions.executeWithSessionId(shardId, func(sessionId int64, err error) {
@@ -141,9 +141,9 @@ func (c *clientImpl) Delete(key string, options ...DeleteOption) <-chan error {
 	}
 	opts := newDeleteOptions(options)
 	c.writeBatchManager.Get(shardId).Add(model.DeleteCall{
-		Key:             key,
-		ExpectedVersion: opts.expectedVersion,
-		Callback:        callback,
+		Key:               key,
+		ExpectedVersionId: opts.expectedVersion,
+		Callback:          callback,
 	})
 	return ch
 }

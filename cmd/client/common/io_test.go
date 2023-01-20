@@ -29,11 +29,12 @@ func TestWriteOutput(t *testing.T) {
 	}{
 		{"common.OutputError", OutputError{Err: "hello"}, "{\"error\":\"hello\"}\n"},
 		{"common.OutputErrorEmpty", OutputError{}, "{}\n"},
-		{"common.OutputStat", OutputStat{
-			Version:           1,
-			CreatedTimestamp:  2,
-			ModifiedTimestamp: 3,
-		}, "{\"version\":1,\"created_timestamp\":2,\"modified_timestamp\":3}\n"},
+		{"common.OutputVersion", OutputVersion{
+			VersionId:          1,
+			CreatedTimestamp:   2,
+			ModifiedTimestamp:  3,
+			ModificationsCount: 1,
+		}, "{\"version_id\":1,\"created_timestamp\":2,\"modified_timestamp\":3,\"modifications_count\":1}\n"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			b := bytes.NewBufferString("")

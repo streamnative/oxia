@@ -163,25 +163,27 @@ func TestOutputMarshal(t *testing.T) {
 			Output{
 				Binary:  common.PtrBool(false),
 				Payload: "hello",
-				Stat: common.OutputStat{
-					Version:           1,
-					CreatedTimestamp:  2,
-					ModifiedTimestamp: 3,
+				Version: common.OutputVersion{
+					VersionId:          1,
+					CreatedTimestamp:   2,
+					ModifiedTimestamp:  3,
+					ModificationsCount: 0,
 				},
 			},
-			"{\"binary\":false,\"payload\":\"hello\",\"stat\":{\"version\":1,\"created_timestamp\":2,\"modified_timestamp\":3}}",
+			"{\"binary\":false,\"payload\":\"hello\",\"version\":{\"version_id\":1,\"created_timestamp\":2,\"modified_timestamp\":3,\"modifications_count\":0}}",
 		},
 		{"binary",
 			Output{
 				Binary:  common.PtrBool(true),
 				Payload: "aGVsbG8y",
-				Stat: common.OutputStat{
-					Version:           2,
-					CreatedTimestamp:  4,
-					ModifiedTimestamp: 6,
+				Version: common.OutputVersion{
+					VersionId:          2,
+					CreatedTimestamp:   4,
+					ModifiedTimestamp:  6,
+					ModificationsCount: 0,
 				},
 			},
-			"{\"binary\":true,\"payload\":\"aGVsbG8y\",\"stat\":{\"version\":2,\"created_timestamp\":4,\"modified_timestamp\":6}}",
+			"{\"binary\":true,\"payload\":\"aGVsbG8y\",\"version\":{\"version_id\":2,\"created_timestamp\":4,\"modified_timestamp\":6,\"modifications_count\":0}}",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -215,20 +217,22 @@ func TestCall_Complete(t *testing.T) {
 			"result",
 			oxia.GetResult{
 				Payload: []byte("hello"),
-				Stat: oxia.Stat{
-					Version:           1,
-					CreatedTimestamp:  4,
-					ModifiedTimestamp: 8,
+				Version: oxia.Version{
+					VersionId:          1,
+					CreatedTimestamp:   4,
+					ModifiedTimestamp:  8,
+					ModificationsCount: 2,
 				},
 			},
 			false,
 			Output{
 				Payload: "hello",
 				Binary:  common.PtrBool(false),
-				Stat: common.OutputStat{
-					Version:           1,
-					CreatedTimestamp:  4,
-					ModifiedTimestamp: 8,
+				Version: common.OutputVersion{
+					VersionId:          1,
+					CreatedTimestamp:   4,
+					ModifiedTimestamp:  8,
+					ModificationsCount: 2,
 				},
 			},
 		},
@@ -236,20 +240,22 @@ func TestCall_Complete(t *testing.T) {
 			"result-binary",
 			oxia.GetResult{
 				Payload: []byte("hello2"),
-				Stat: oxia.Stat{
-					Version:           1,
-					CreatedTimestamp:  4,
-					ModifiedTimestamp: 8,
+				Version: oxia.Version{
+					VersionId:          1,
+					CreatedTimestamp:   4,
+					ModifiedTimestamp:  8,
+					ModificationsCount: 1,
 				},
 			},
 			true,
 			Output{
 				Payload: "aGVsbG8y",
 				Binary:  common.PtrBool(true),
-				Stat: common.OutputStat{
-					Version:           1,
-					CreatedTimestamp:  4,
-					ModifiedTimestamp: 8,
+				Version: common.OutputVersion{
+					VersionId:          1,
+					CreatedTimestamp:   4,
+					ModifiedTimestamp:  8,
+					ModificationsCount: 1,
 				},
 			},
 		},

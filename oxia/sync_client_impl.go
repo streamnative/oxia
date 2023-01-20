@@ -48,12 +48,12 @@ func (c *syncClientImpl) Close() error {
 	return c.asyncClient.Close()
 }
 
-func (c *syncClientImpl) Put(ctx context.Context, key string, payload []byte, options ...PutOption) (Stat, error) {
+func (c *syncClientImpl) Put(ctx context.Context, key string, payload []byte, options ...PutOption) (Version, error) {
 	select {
 	case r := <-c.asyncClient.Put(key, payload, options...):
-		return r.Stat, r.Err
+		return r.Version, r.Err
 	case <-ctx.Done():
-		return Stat{}, ctx.Err()
+		return Version{}, ctx.Err()
 	}
 }
 
@@ -75,12 +75,12 @@ func (c *syncClientImpl) DeleteRange(ctx context.Context, minKeyInclusive string
 	}
 }
 
-func (c *syncClientImpl) Get(ctx context.Context, key string) ([]byte, Stat, error) {
+func (c *syncClientImpl) Get(ctx context.Context, key string) ([]byte, Version, error) {
 	select {
 	case r := <-c.asyncClient.Get(key):
-		return r.Payload, r.Stat, r.Err
+		return r.Payload, r.Version, r.Err
 	case <-ctx.Done():
-		return nil, Stat{}, ctx.Err()
+		return nil, Version{}, ctx.Err()
 	}
 }
 

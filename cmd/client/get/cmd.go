@@ -128,10 +128,11 @@ func (call Call) Complete() any {
 		output := Output{
 			Binary:  &call.binary,
 			Payload: payload,
-			Stat: common.OutputStat{
-				Version:           result.Stat.Version,
-				CreatedTimestamp:  result.Stat.CreatedTimestamp,
-				ModifiedTimestamp: result.Stat.ModifiedTimestamp,
+			Version: common.OutputVersion{
+				VersionId:          result.Version.VersionId,
+				CreatedTimestamp:   result.Version.CreatedTimestamp,
+				ModifiedTimestamp:  result.Version.ModifiedTimestamp,
+				ModificationsCount: result.Version.ModificationsCount,
 			},
 		}
 		if call.binary {
@@ -142,7 +143,7 @@ func (call Call) Complete() any {
 }
 
 type Output struct {
-	Binary  *bool             `json:"binary,omitempty"`
-	Payload string            `json:"payload"`
-	Stat    common.OutputStat `json:"stat"`
+	Binary  *bool                `json:"binary,omitempty"`
+	Payload string               `json:"payload"`
+	Version common.OutputVersion `json:"version"`
 }

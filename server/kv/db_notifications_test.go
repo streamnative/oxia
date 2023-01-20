@@ -53,7 +53,7 @@ func TestDB_Notifications(t *testing.T) {
 	n, found := nb.Notifications["a"]
 	assert.True(t, found)
 	assert.Equal(t, proto.NotificationType_KeyCreated, n.Type)
-	assert.EqualValues(t, 0, *n.Version)
+	assert.EqualValues(t, 0, *n.VersionId)
 
 	t1 := now()
 	_, _ = db.ProcessWrite(&proto.WriteRequest{
@@ -83,7 +83,7 @@ func TestDB_Notifications(t *testing.T) {
 	n, found = nb.Notifications["a"]
 	assert.True(t, found)
 	assert.Equal(t, proto.NotificationType_KeyModified, n.Type)
-	assert.EqualValues(t, 1, *n.Version)
+	assert.EqualValues(t, 1, *n.VersionId)
 
 	nb = notifications[1]
 	assert.Equal(t, t2, nb.Timestamp)
@@ -93,7 +93,7 @@ func TestDB_Notifications(t *testing.T) {
 	n, found = nb.Notifications["b"]
 	assert.True(t, found)
 	assert.Equal(t, proto.NotificationType_KeyCreated, n.Type)
-	assert.EqualValues(t, 0, *n.Version)
+	assert.EqualValues(t, 2, *n.VersionId)
 
 	/// Write one batch
 	t3 := now()
@@ -122,15 +122,15 @@ func TestDB_Notifications(t *testing.T) {
 	n, found = nb.Notifications["c"]
 	assert.True(t, found)
 	assert.Equal(t, proto.NotificationType_KeyCreated, n.Type)
-	assert.EqualValues(t, 0, *n.Version)
+	assert.EqualValues(t, 3, *n.VersionId)
 	n, found = nb.Notifications["d"]
 	assert.True(t, found)
 	assert.Equal(t, proto.NotificationType_KeyCreated, n.Type)
-	assert.EqualValues(t, 0, *n.Version)
+	assert.EqualValues(t, 3, *n.VersionId)
 	n, found = nb.Notifications["a"]
 	assert.True(t, found)
 	assert.Equal(t, proto.NotificationType_KeyDeleted, n.Type)
-	assert.Nil(t, n.Version)
+	assert.Nil(t, n.VersionId)
 
 	// When there are multiple keys in one batch, only 1 notification
 	// is going to get triggered
@@ -157,7 +157,7 @@ func TestDB_Notifications(t *testing.T) {
 	n, found = nb.Notifications["x1"]
 	assert.True(t, found)
 	assert.Equal(t, proto.NotificationType_KeyModified, n.Type)
-	assert.EqualValues(t, 1, *n.Version)
+	assert.EqualValues(t, 4, *n.VersionId)
 
 	assert.NoError(t, db.Close())
 	assert.NoError(t, factory.Close())

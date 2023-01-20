@@ -20,13 +20,14 @@ import (
 	"io"
 )
 
-var (
-	//not easy to use as a pointer if a const
+const (
 	VersionNotExists int64 = -1
+)
 
-	ErrorKeyNotFound       = errors.New("key not found")
-	ErrorUnexpectedVersion = errors.New("unexpected version")
-	ErrorUnknownStatus     = errors.New("unknown status")
+var (
+	ErrorKeyNotFound         = errors.New("key not found")
+	ErrorUnexpectedVersionId = errors.New("unexpected version id")
+	ErrorUnknownStatus       = errors.New("unknown status")
 )
 
 type AsyncClient interface {
@@ -44,29 +45,30 @@ type AsyncClient interface {
 type SyncClient interface {
 	io.Closer
 
-	Put(ctx context.Context, key string, payload []byte, options ...PutOption) (Stat, error)
+	Put(ctx context.Context, key string, payload []byte, options ...PutOption) (Version, error)
 	Delete(ctx context.Context, key string, options ...DeleteOption) error
 	DeleteRange(ctx context.Context, minKeyInclusive string, maxKeyExclusive string) error
-	Get(ctx context.Context, key string) ([]byte, Stat, error)
+	Get(ctx context.Context, key string) ([]byte, Version, error)
 	List(ctx context.Context, minKeyInclusive string, maxKeyExclusive string) ([]string, error)
 
 	GetNotifications() (Notifications, error)
 }
 
-type Stat struct {
-	Version           int64
-	CreatedTimestamp  uint64
-	ModifiedTimestamp uint64
+type Version struct {
+	VersionId          int64
+	CreatedTimestamp   uint64
+	ModifiedTimestamp  uint64
+	ModificationsCount int64
 }
 
 type PutResult struct {
-	Stat Stat
-	Err  error
+	Version Version
+	Err     error
 }
 
 type GetResult struct {
 	Payload []byte
-	Stat    Stat
+	Version Version
 	Err     error
 }
 

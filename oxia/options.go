@@ -214,21 +214,21 @@ func newDeleteOptions(opts []DeleteOption) deleteOptions {
 	return deleteOpts
 }
 
-func ExpectedVersion(version int64) DeleteOption {
-	return &expectedVersion{version}
+func ExpectedVersionId(versionId int64) DeleteOption {
+	return &expectedVersionId{versionId}
 }
 
-type expectedVersion struct {
-	version int64
+type expectedVersionId struct {
+	versionId int64
 }
 
-func (e *expectedVersion) applyPut(opts putOptions) putOptions {
-	opts.expectedVersion = &e.version
+func (e *expectedVersionId) applyPut(opts putOptions) putOptions {
+	opts.expectedVersion = &e.versionId
 	return opts
 }
 
-func (e *expectedVersion) applyDelete(opts deleteOptions) deleteOptions {
-	opts.expectedVersion = &e.version
+func (e *expectedVersionId) applyDelete(opts deleteOptions) deleteOptions {
+	opts.expectedVersion = &e.versionId
 	return opts
 }
 

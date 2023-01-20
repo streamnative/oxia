@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"oxia/common"
 	"oxia/server"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -38,27 +39,30 @@ func TestAsyncClientImpl(t *testing.T) {
 	client, err := NewAsyncClient(serviceAddress, WithBatchLinger(0))
 	assert.NoError(t, err)
 
-	putResult := <-client.Put("/a", []byte{0}, ExpectedVersion(VersionNotExists))
-	assert.EqualValues(t, 0, putResult.Stat.Version)
+	putResultA := <-client.Put("/a", []byte{0}, ExpectedVersionId(VersionNotExists))
+	assert.EqualValues(t, 0, putResultA.Version.VersionId)
+	assert.EqualValues(t, 0, putResultA.Version.ModificationsCount)
 
 	getResult := <-client.Get("/a")
 	assert.Equal(t, GetResult{
 		Payload: []byte{0},
-		Stat:    putResult.Stat,
+		Version: putResultA.Version,
 	}, getResult)
 
-	putResult = <-client.Put("/c", []byte{0}, ExpectedVersion(VersionNotExists))
-	assert.EqualValues(t, 0, putResult.Stat.Version)
+	putResultC1 := <-client.Put("/c", []byte{0}, ExpectedVersionId(VersionNotExists))
+	assert.EqualValues(t, 1, putResultC1.Version.VersionId)
+	assert.EqualValues(t, 0, putResultC1.Version.ModificationsCount)
 
-	putResult = <-client.Put("/c", []byte{1}, ExpectedVersion(0))
-	assert.EqualValues(t, 1, putResult.Stat.Version)
+	putResultC2 := <-client.Put("/c", []byte{1}, ExpectedVersionId(putResultC1.Version.VersionId))
+	assert.EqualValues(t, 2, putResultC2.Version.VersionId)
+	assert.EqualValues(t, 1, putResultC2.Version.ModificationsCount)
 
 	getRangeResult := <-client.List("/a", "/d")
 	assert.Equal(t, ListResult{
 		Keys: []string{"/a", "/c"},
 	}, getRangeResult)
 
-	deleteErr := <-client.Delete("/a", ExpectedVersion(0))
+	deleteErr := <-client.Delete("/a", ExpectedVersionId(putResultA.Version.VersionId))
 	assert.NoError(t, deleteErr)
 
 	getResult = <-client.Get("/a")
@@ -99,14 +103,14 @@ func TestSyncClientImpl_Notifications(t *testing.T) {
 	n := <-notifications.Ch()
 	assert.Equal(t, KeyCreated, n.Type)
 	assert.Equal(t, "/a", n.Key)
-	assert.Equal(t, s1.Version, n.Version)
+	assert.Equal(t, s1.VersionId, n.Version)
 
 	s2, _ := client.Put(ctx, "/a", []byte("1"))
 
 	n = <-notifications.Ch()
 	assert.Equal(t, KeyModified, n.Type)
 	assert.Equal(t, "/a", n.Key)
-	assert.Equal(t, s2.Version, n.Version)
+	assert.Equal(t, s2.VersionId, n.Version)
 
 	s3, _ := client.Put(ctx, "/b", []byte("0"))
 	assert.NoError(t, client.Delete(ctx, "/a"))
@@ -114,7 +118,7 @@ func TestSyncClientImpl_Notifications(t *testing.T) {
 	n = <-notifications.Ch()
 	assert.Equal(t, KeyCreated, n.Type)
 	assert.Equal(t, "/b", n.Key)
-	assert.Equal(t, s3.Version, n.Version)
+	assert.Equal(t, s3.VersionId, n.Version)
 
 	n = <-notifications.Ch()
 	assert.Equal(t, KeyDeleted, n.Type)
@@ -138,12 +142,12 @@ func TestSyncClientImpl_Notifications(t *testing.T) {
 	n = <-notifications.Ch()
 	assert.Equal(t, KeyCreated, n.Type)
 	assert.Equal(t, "/x", n.Key)
-	assert.Equal(t, s4.Version, n.Version)
+	assert.Equal(t, s4.VersionId, n.Version)
 
 	n = <-notifications2.Ch()
 	assert.Equal(t, KeyCreated, n.Type)
 	assert.Equal(t, "/x", n.Key)
-	assert.Equal(t, s4.Version, n.Version)
+	assert.Equal(t, s4.VersionId, n.Version)
 
 	////
 
@@ -203,11 +207,14 @@ func TestAsyncClientImpl_Sessions(t *testing.T) {
 	assert.NoError(t, err)
 
 	putCh := client.Put("/x", []byte("x"), Ephemeral)
+	versionId := atomic.Int64{}
+
 	select {
 	case res := <-putCh:
 		assert.NotNil(t, res)
 		assert.NoError(t, res.Err)
-		assert.EqualValues(t, 0, res.Stat.Version)
+		assert.EqualValues(t, 0, res.Version.ModificationsCount)
+		versionId.Store(res.Version.VersionId)
 
 	case <-time.After(1 * time.Second):
 		assert.Fail(t, "Shouldn't have timed out")
@@ -217,7 +224,8 @@ func TestAsyncClientImpl_Sessions(t *testing.T) {
 	case res := <-getCh:
 		assert.NotNil(t, res)
 		assert.NoError(t, res.Err)
-		assert.EqualValues(t, 0, res.Stat.Version)
+		assert.EqualValues(t, 0, res.Version.ModificationsCount)
+		assert.Equal(t, versionId.Load(), res.Version.VersionId)
 
 	case <-time.After(1 * time.Second):
 		assert.Fail(t, "Shouldn't have timed out")

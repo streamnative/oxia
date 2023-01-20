@@ -18,7 +18,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+//	http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -36,7 +36,7 @@ func toPutResult(r *proto.PutResponse) PutResult {
 		}
 	}
 	return PutResult{
-		Stat: toStat(r.Stat),
+		Version: toVersion(r.Version),
 	}
 }
 
@@ -56,7 +56,7 @@ func toGetResult(r *proto.GetResponse) GetResult {
 	}
 	return GetResult{
 		Payload: r.Payload,
-		Stat:    toStat(r.Stat),
+		Version: toVersion(r.Version),
 	}
 }
 
@@ -66,11 +66,12 @@ func toListResult(r *proto.ListResponse) ListResult {
 	}
 }
 
-func toStat(stat *proto.Stat) Stat {
-	return Stat{
-		Version:           stat.Version,
-		CreatedTimestamp:  stat.CreatedTimestamp,
-		ModifiedTimestamp: stat.ModifiedTimestamp,
+func toVersion(version *proto.Version) Version {
+	return Version{
+		VersionId:          version.VersionId,
+		ModificationsCount: version.ModificationsCount,
+		CreatedTimestamp:   version.CreatedTimestamp,
+		ModifiedTimestamp:  version.ModifiedTimestamp,
 	}
 }
 
@@ -78,8 +79,8 @@ func toError(status proto.Status) error {
 	switch status {
 	case proto.Status_OK:
 		return nil
-	case proto.Status_UNEXPECTED_VERSION:
-		return ErrorUnexpectedVersion
+	case proto.Status_UNEXPECTED_VERSION_ID:
+		return ErrorUnexpectedVersionId
 	case proto.Status_KEY_NOT_FOUND:
 		return ErrorKeyNotFound
 	default:

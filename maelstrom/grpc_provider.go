@@ -132,9 +132,9 @@ func (m *maelstromGrpcProvider) HandleClientRequest(msgType MsgType, msg any) {
 		if res, err := m.getService(oxiaClient).(proto.OxiaClientServer).Write(context.Background(), &proto.WriteRequest{
 			ShardId: pb.Uint32(0),
 			Puts: []*proto.PutRequest{{
-				Key:             fmt.Sprintf("%d", w.Body.Key),
-				Payload:         []byte(fmt.Sprintf("%d", w.Body.Value)),
-				ExpectedVersion: nil,
+				Key:               fmt.Sprintf("%d", w.Body.Key),
+				Payload:           []byte(fmt.Sprintf("%d", w.Body.Value)),
+				ExpectedVersionId: nil,
 			}},
 		}); err != nil {
 			sendError(w.Body.MsgId, w.Src, err)
@@ -220,9 +220,9 @@ func (m *maelstromGrpcProvider) HandleClientRequest(msgType MsgType, msg any) {
 		if writeRes, err := m.getService(oxiaClient).(proto.OxiaClientServer).Write(context.Background(), &proto.WriteRequest{
 			ShardId: pb.Uint32(0),
 			Puts: []*proto.PutRequest{{
-				Key:             fmt.Sprintf("%d", c.Body.Key),
-				Payload:         []byte(fmt.Sprintf("%d", c.Body.To)),
-				ExpectedVersion: pb.Int64(res.Gets[0].Stat.Version),
+				Key:               fmt.Sprintf("%d", c.Body.Key),
+				Payload:           []byte(fmt.Sprintf("%d", c.Body.To)),
+				ExpectedVersionId: pb.Int64(res.Gets[0].Version.VersionId),
 			}},
 		}); err != nil {
 			sendError(c.Body.MsgId, c.Src, err)

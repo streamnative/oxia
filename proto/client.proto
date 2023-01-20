@@ -202,9 +202,9 @@ message PutRequest {
   string key = 1;
   // The payload
   bytes payload = 2;
-  // An optional expected version. The put will fail if the server's current version
+  // An optional expected version_id. The put will fail if the server's current version_id
   // does not match
-  optional int64 expected_version = 3;
+  optional int64 expected_version_id = 3;
   // Optional. Associate the new value with the session (i.e. ephemeral value).
   // When the session times out or is closed, the key-payload pair will be removed
   optional int64 session_id = 4;
@@ -216,8 +216,8 @@ message PutRequest {
 message PutResponse {
   // Includes the error or OK
   Status status = 1;
-  // The stat if the put was successful
-  Stat stat = 2;
+  // The version if the put was successful
+  Version version = 2;
 }
 
 /**
@@ -226,9 +226,9 @@ message PutResponse {
 message DeleteRequest {
   // The key
   string key = 1;
-  // An optional expected version. The delete will fail if the server's current version
+  // An optional expected version_id. The delete will fail if the server's current version_id
   // does not match
-  optional int64 expected_version = 2;
+  optional int64 expected_version_id = 2;
 }
 
 /**
@@ -258,8 +258,8 @@ message GetRequest {
 message GetResponse {
   // Includes the error or OK
   Status status = 1;
-  // The stat of the entry
-  Stat stat = 2;
+  // The version of the record
+  Version version = 2;
   // The payload, if it was requested and there was no error
   optional bytes payload = 3;
 }
@@ -301,17 +301,22 @@ message ListResponse {
 }
 
 /**
- * Stats about the current version of a key.
+ * Version contains info about the state of a record.
  */
-message Stat {
-  // The current version of the key
-  int64 version = 1;
-  // The creation timestamp of the first version of the key
-  fixed64 created_timestamp = 2;
-  // The modified timestamp of the current version of the key
-  fixed64 modified_timestamp = 3;
-  // Identifier of the session if this Stat object belongs to an ephemeral value
-  optional int64 session_id = 4;
+message Version {
+  // The version identifier of the record
+  int64 version_id = 1;
+
+  // The number of modifications made to the record since
+  // it was created
+  int64 modifications_count = 2;
+
+  // The creation timestamp of the first version of the record
+  fixed64 created_timestamp = 3;
+  // The modified timestamp of the current version of the record
+  fixed64 modified_timestamp = 4;
+  // Identifier of the session if the record is ephemeral
+  optional int64 session_id = 5;
 }
 
 /**
@@ -323,7 +328,7 @@ enum Status {
   // The key was not found
   KEY_NOT_FOUND = 1;
   // The existing version does not match the expected version
-  UNEXPECTED_VERSION = 2;
+  UNEXPECTED_VERSION_ID = 2;
   // The session that the put request referred to is not alive
   SESSION_DOES_NOT_EXIST = 3;
 }
@@ -373,5 +378,5 @@ message NotificationBatch {
 
 message Notification {
   NotificationType type = 1;
-  optional int64 version = 2;
+  optional int64 version_id = 2;
 }

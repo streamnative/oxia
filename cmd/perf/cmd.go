@@ -203,7 +203,7 @@ func generateWriteTraffic(closer *closer, client oxia.AsyncClient, latencyCh cha
 			} else {
 				log.Debug().
 					Str("key", key).
-					Interface("stat", r.Stat).
+					Interface("version", r.Version).
 					Msg("Operation has succeeded")
 
 				latencyCh <- time.Since(start).Microseconds()
@@ -235,7 +235,7 @@ func generateReadTraffic(closer *closer, client oxia.AsyncClient, latencyCh chan
 			} else {
 				log.Debug().
 					Str("key", key).
-					Interface("stat", r.Stat).
+					Interface("version", r.Version).
 					Msg("Operation has succeeded")
 
 				latencyCh <- time.Since(start).Microseconds()
