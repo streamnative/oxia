@@ -448,6 +448,7 @@ func TestFollowerController_RejectEntriesWithDifferentTerm(t *testing.T) {
 
 	// Follower will reject the entry because it's from an earlier term
 	err = fc.Replicate(stream)
+	assert.Error(t, err)
 	assert.Equal(t, common.CodeInvalidTerm, status.Code(err))
 	assert.Equal(t, proto.ServingStatus_Fenced, fc.Status())
 	assert.EqualValues(t, 5, fc.Term())
@@ -597,9 +598,9 @@ func TestFollower_HandleSnapshot(t *testing.T) {
 		assert.NoError(t, err)
 		content := chunk.Content()
 		snapshotStream.AddChunk(&proto.SnapshotChunk{
-			Term:    1,
-			Name:    chunk.Name(),
-			Content: content,
+			Term:       1,
+			Name:       chunk.Name(),
+			Content:    content,
 			ChunkIndex: chunk.Index(),
 			ChunkCount: chunk.TotalCount(),
 		})
@@ -667,7 +668,7 @@ func TestFollower_DisconnectLeader(t *testing.T) {
 	_, err = fc.Fence(&proto.FenceRequest{Term: 2})
 	assert.NoError(t, err)
 
-	assert.Nil(t, fc.(*followerController).closeStreamCh)
+	assert.Nil(t, fc.(*followerController).closeStreamWg)
 
 	go func() { assert.NoError(t, fc.Replicate(stream)) }()
 
@@ -719,7 +720,7 @@ func closeChanIsNotNil(fc FollowerController) func() bool {
 		_fc := fc.(*followerController)
 		_fc.Lock()
 		defer _fc.Unlock()
-		return _fc.closeStreamCh != nil
+		return _fc.closeStreamWg != nil
 	}
 }
 
