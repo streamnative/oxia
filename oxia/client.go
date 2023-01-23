@@ -205,7 +205,7 @@ type ListResult struct {
 	Err error
 }
 
-// Notifications allows application to receive the feed of changes
+// Notifications allow applications to receive the feed of changes
 // that are happening in the Oxia database
 type Notifications interface {
 	io.Closer
