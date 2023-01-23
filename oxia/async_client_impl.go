@@ -69,7 +69,6 @@ func NewAsyncClient(serviceAddress string, opts ...ClientOption) (AsyncClient, e
 		executor,
 		options.batchLinger,
 		options.maxRequestsPerBatch,
-		options.batcherBufferSize,
 		metrics.NewMetrics(options.meterProvider),
 		options.requestTimeout)
 	c := &clientImpl{

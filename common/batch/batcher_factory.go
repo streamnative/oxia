@@ -15,19 +15,21 @@
 package batch
 
 import (
+	"runtime"
 	"time"
 )
+
+var batcherChannelBufferSize = runtime.GOMAXPROCS(-1)
 
 type BatcherFactory struct {
 	Linger              time.Duration
 	MaxRequestsPerBatch int
-	BatcherBufferSize   int
 }
 
 func (b *BatcherFactory) NewBatcher(batchFactory func() Batch) Batcher {
 	batcher := &batcherImpl{
 		batchFactory:        batchFactory,
-		callC:               make(chan any, b.BatcherBufferSize),
+		callC:               make(chan any, batcherChannelBufferSize),
 		closeC:              make(chan bool),
 		linger:              b.Linger,
 		maxRequestsPerBatch: b.MaxRequestsPerBatch,
