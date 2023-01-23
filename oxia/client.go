@@ -214,7 +214,7 @@ type Notifications interface {
 	Ch() <-chan *Notification
 }
 
-// NotificationType represent the type of the notification event
+// NotificationType represents the type of the notification event
 type NotificationType int
 
 const (
