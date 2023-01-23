@@ -196,7 +196,7 @@ type GetResult struct {
 	Err error
 }
 
-// ListResult structure is wrapping a list of keys, and an eventual error as
+// ListResult structure is wrapping a list of keys, and a potential error as
 // results for a `List` operation in the [AsyncClient]
 type ListResult struct {
 	// The list of keys returned by [List]
