@@ -9,7 +9,7 @@ with parent-children relations.
 Having said that, Oxia assign some special meaning to the `/` character in keys. This is done in
 order to ensure efficient traversal of small portions of the key space.
 
-In the specific, Oxia ensure that keys with a common prefix and the same number of `/` segments
+Specifically, Oxia ensures that keys with a common prefix and the same number of `/` segments
 are sorted in such a way that they are stored close to each other in the database.
 
 For example, if we are considering the following keys and the order in which they will be stored:
