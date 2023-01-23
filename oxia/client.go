@@ -39,7 +39,7 @@ var (
 
 // AsyncClient Oxia client with methods suitable for asynchronous operations.
 //
-// This interface expose the same functionality as [SyncClient], though it returns
+// This interface exposes the same functionality as [SyncClient], though it returns
 // a channel instead of an actual result for the performed operations.
 //
 // This allows to enqueue multiple operations which the client library will be
