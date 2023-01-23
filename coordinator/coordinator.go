@@ -27,9 +27,8 @@ import (
 )
 
 type Config struct {
-	BindHost                 string
-	InternalServicePort      int
-	MetricsPort              int
+	InternalServiceAddr      string
+	MetricsServiceAddr       string
 	MetadataProviderImpl     MetadataProviderImpl
 	K8SMetadataNamespace     string
 	K8SMetadataConfigMapName string
@@ -65,8 +64,8 @@ var (
 
 func NewConfig() Config {
 	return Config{
-		InternalServicePort:  kubernetes.InternalPort.Port,
-		MetricsPort:          kubernetes.MetricsPort.Port,
+		InternalServiceAddr:  fmt.Sprintf("localhost:%d", kubernetes.InternalPort.Port),
+		MetricsServiceAddr:   fmt.Sprintf("localhost:%d", kubernetes.MetricsPort.Port),
 		MetadataProviderImpl: File,
 	}
 }
@@ -106,11 +105,11 @@ func New(config Config) (*Coordinator, error) {
 		return nil, err
 	}
 
-	if s.rpcServer, err = newRpcServer(fmt.Sprintf("%s:%d", config.BindHost, config.InternalServicePort)); err != nil {
+	if s.rpcServer, err = newRpcServer(config.InternalServiceAddr); err != nil {
 		return nil, err
 	}
 
-	if s.metrics, err = metrics.Start(fmt.Sprintf("%s:%d", config.BindHost, config.MetricsPort)); err != nil {
+	if s.metrics, err = metrics.Start(config.MetricsServiceAddr); err != nil {
 		return nil, err
 	}
 

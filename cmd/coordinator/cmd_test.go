@@ -55,8 +55,8 @@ func TestCmd(t *testing.T) {
 		isErr        bool
 	}{
 		{[]string{}, coordinator.Config{
-			InternalServicePort:  6649,
-			MetricsPort:          8080,
+			InternalServiceAddr:  "localhost:6649",
+			MetricsServiceAddr:   "localhost:8080",
 			MetadataProviderImpl: coordinator.File,
 			ClusterConfig: model.ClusterConfig{
 				ReplicationFactor: 1,
@@ -65,9 +65,9 @@ func TestCmd(t *testing.T) {
 					Public:   "public:1234",
 					Internal: "internal:5678",
 				}}}}, false},
-		{[]string{"-i=1234"}, coordinator.Config{
-			InternalServicePort:  1234,
-			MetricsPort:          8080,
+		{[]string{"-i=localhost:1234"}, coordinator.Config{
+			InternalServiceAddr:  "localhost:1234",
+			MetricsServiceAddr:   "localhost:8080",
 			MetadataProviderImpl: coordinator.File,
 			ClusterConfig: model.ClusterConfig{
 				ReplicationFactor: 1,
@@ -76,9 +76,20 @@ func TestCmd(t *testing.T) {
 					Public:   "public:1234",
 					Internal: "internal:5678",
 				}}}}, false},
-		{[]string{"-m=1234"}, coordinator.Config{
-			InternalServicePort:  6649,
-			MetricsPort:          1234,
+		{[]string{"-i=0.0.0.0:1234"}, coordinator.Config{
+			InternalServiceAddr:  "0.0.0.0:1234",
+			MetricsServiceAddr:   "localhost:8080",
+			MetadataProviderImpl: coordinator.File,
+			ClusterConfig: model.ClusterConfig{
+				ReplicationFactor: 1,
+				InitialShardCount: 2,
+				Servers: []model.ServerAddress{{
+					Public:   "public:1234",
+					Internal: "internal:5678",
+				}}}}, false},
+		{[]string{"-m=localhost:1234"}, coordinator.Config{
+			InternalServiceAddr:  "localhost:6649",
+			MetricsServiceAddr:   "localhost:1234",
 			MetadataProviderImpl: coordinator.File,
 			ClusterConfig: model.ClusterConfig{
 				ReplicationFactor: 1,
@@ -88,8 +99,8 @@ func TestCmd(t *testing.T) {
 					Internal: "internal:5678",
 				}}}}, false},
 		{[]string{"-f=" + name}, coordinator.Config{
-			InternalServicePort:  6649,
-			MetricsPort:          8080,
+			InternalServiceAddr:  "localhost:6649",
+			MetricsServiceAddr:   "localhost:8080",
 			MetadataProviderImpl: coordinator.File,
 			ClusterConfig: model.ClusterConfig{
 				ReplicationFactor: 1,
@@ -99,8 +110,8 @@ func TestCmd(t *testing.T) {
 					Internal: "internal:5678",
 				}}}}, false},
 		{[]string{"-f=invalid.yaml"}, coordinator.Config{
-			InternalServicePort: 6649,
-			MetricsPort:         8080,
+			InternalServiceAddr: "localhost:6649",
+			MetricsServiceAddr:  "localhost:8080",
 			ClusterConfig:       model.ClusterConfig{}}, true},
 	} {
 		t.Run(strings.Join(test.args, "_"), func(t *testing.T) {

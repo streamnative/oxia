@@ -35,8 +35,8 @@ var (
 )
 
 func init() {
-	flag.PublicPort(Cmd, &conf.PublicServicePort)
-	flag.MetricsPort(Cmd, &conf.MetricsPort)
+	flag.PublicAddr(Cmd, &conf.PublicServiceAddr)
+	flag.MetricsAddr(Cmd, &conf.MetricsServiceAddr)
 	Cmd.Flags().StringVarP(&conf.AdvertisedPublicAddress, "advertised-address", "a", "", "Advertised address")
 	Cmd.Flags().Uint32VarP(&conf.NumShards, "shards", "s", 1, "Number of shards")
 	Cmd.Flags().StringVar(&conf.DataDir, "data-dir", "./data/db", "Directory where to store data")
