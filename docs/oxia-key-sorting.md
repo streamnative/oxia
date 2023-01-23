@@ -6,7 +6,7 @@ Oxia uses a custom comparison operator for sorting the keys of the stored record
 In Oxia all the keys are independent of each other and there is no explicit tree-like structure
 with parent-children relations.
 
-Having said that, Oxia assign some special meaning to the `/` character in keys. This is done in
+Having said that, Oxia assigns a special meaning to the `/` character in keys. This is done in
 order to ensure efficient traversal of small portions of the key space.
 
 Specifically, Oxia ensures that keys with a common prefix and the same number of `/` segments
