@@ -5,16 +5,16 @@ digraph StateDiagram {
 
     Start [shape = "point"]
     Start -> NotMember
-    NotMember -> Fenced [label = "Fence"]
+    NotMember -> Fenced [label = "NewTerm"]
 
-    Fenced -> Fenced [label = "Fence"];
-    Fenced -> Follower [label = "AddEntries"]
+    Fenced -> Fenced [label = "NewTerm"];
+    Fenced -> Follower [label = "Replicate"]
     Fenced -> Follower [label = "Truncate"]
 
-    Follower -> Fenced [label = "Fence"]
-    Leader -> Fenced [label = "Fence"]
+    Follower -> Fenced [label = "NewTerm"]
+    Leader -> Fenced [label = "NewTerm"]
     Leader -> Leader [label = "AddFollower"]
-    Follower -> Follower [label = "AddEntries"]
+    Follower -> Follower [label = "Replicate"]
     Fenced -> Leader [label = "BecomeLeader"]
 
     Fenced -> Follower [label = "Snapshot"]
