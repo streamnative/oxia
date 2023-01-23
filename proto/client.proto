@@ -54,12 +54,19 @@ service OxiaClient {
   rpc Write(WriteRequest) returns (WriteResponse);
 
   /**
-   * Batches get and get_range requests.
+   * Batches get requests.
    *
    * Clients should send this request to the shard leader. In the future,
    * this may be handled server-side in a proxy layer.
    */
-  rpc Read(ReadRequest) returns (ReadResponse);
+  rpc Read(ReadRequest) returns (stream ReadResponse);
+
+  /**
+   * Requests all the keys between a range of keys.
+   *
+   * Clients should send an equivalent request to all respective shards.
+   */
+  rpc List(ListRequest) returns (stream ListResponse);
 
   rpc GetNotifications(NotificationsRequest) returns (stream NotificationBatch);
 
@@ -180,8 +187,6 @@ message ReadRequest {
   optional uint32 shard_id = 1;
   // The get requests
   repeated GetRequest gets = 2;
-  // The get range requests
-  repeated ListRequest lists = 3;
 }
 
 /**
@@ -191,8 +196,6 @@ message ReadRequest {
 message ReadResponse {
   // The get responses
   repeated GetResponse gets = 1;
-  // The get range responses
-  repeated ListResponse lists = 2;
 }
 
 /**
@@ -254,8 +257,7 @@ message GetRequest {
 }
 
 /**
- * The response to a get request or an item in a response to the get range
- * request.
+ * The response to a get request.
  */
 message GetResponse {
   // Includes the error or OK
@@ -288,17 +290,20 @@ message DeleteRangeResponse {
  * Input to a list request. Key ranges assume a UTF-8 byte sort order.
  */
 message ListRequest {
+  // The shard id. This is optional allow for support for server-side hashing
+  // and proxying in the future.
+  optional uint32 shard_id = 1;
   // The start of the range, inclusive
-  string start_inclusive = 1;
+  string start_inclusive = 2;
   // The end of the range, exclusive
-  string end_exclusive = 2;
+  string end_exclusive = 3;
 }
 
 /**
  * The response to a list request.
  */
 message ListResponse {
-  // All the keys found within the specified range
+  // A portion of the keys found within the specified range
   repeated string keys = 1;
 }
 
