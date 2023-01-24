@@ -232,8 +232,8 @@ func convertNotification(key string, n *proto.Notification) *Notification {
 		versionId = *n.VersionId
 	}
 	return &Notification{
-		Type:    convertNotificationType(n.Type),
-		Key:     key,
-		Version: versionId,
+		Type:      convertNotificationType(n.Type),
+		Key:       key,
+		VersionId: versionId,
 	}
 }

@@ -24,10 +24,10 @@ func TestNewClientConfig(t *testing.T) {
 	options, err := newClientOptions("serviceAddress")
 	assert.NoError(t, err)
 
-	assert.Equal(t, "serviceAddress", options.ServiceAddress())
-	assert.Equal(t, DefaultBatchLinger, options.BatchLinger())
-	assert.Equal(t, DefaultMaxRequestsPerBatch, options.MaxRequestsPerBatch())
-	assert.Equal(t, DefaultRequestTimeout, options.RequestTimeout())
+	assert.Equal(t, "serviceAddress", options.serviceAddress)
+	assert.Equal(t, DefaultBatchLinger, options.batchLinger)
+	assert.Equal(t, DefaultMaxRequestsPerBatch, options.maxRequestsPerBatch)
+	assert.Equal(t, DefaultRequestTimeout, options.requestTimeout)
 }
 
 func TestWithBatchLinger(t *testing.T) {
@@ -36,12 +36,12 @@ func TestWithBatchLinger(t *testing.T) {
 		expectedBatchLinger time.Duration
 		expectedErr         error
 	}{
-		{-1, DefaultBatchLinger, ErrorBatchLinger},
+		{-1, DefaultBatchLinger, ErrorInvalidOptionBatchLinger},
 		{0, 0, nil},
 		{1, 1, nil},
 	} {
 		options, err := newClientOptions("serviceAddress", WithBatchLinger(item.batchLinger))
-		assert.Equal(t, item.expectedBatchLinger, options.BatchLinger())
+		assert.Equal(t, item.expectedBatchLinger, options.batchLinger)
 		assert.ErrorIs(t, err, item.expectedErr)
 	}
 }
@@ -52,12 +52,12 @@ func TestWithMaxRequestsPerBatch(t *testing.T) {
 		expectedMaxRequestsPerBatch int
 		expectedErr                 error
 	}{
-		{-1, DefaultMaxRequestsPerBatch, ErrorMaxRequestsPerBatch},
-		{0, DefaultMaxRequestsPerBatch, ErrorMaxRequestsPerBatch},
+		{-1, DefaultMaxRequestsPerBatch, ErrorInvalidOptionMaxRequestsPerBatch},
+		{0, DefaultMaxRequestsPerBatch, ErrorInvalidOptionMaxRequestsPerBatch},
 		{1, 1, nil},
 	} {
 		options, err := newClientOptions("serviceAddress", WithMaxRequestsPerBatch(item.maxRequestsPerBatch))
-		assert.Equal(t, item.expectedMaxRequestsPerBatch, options.MaxRequestsPerBatch())
+		assert.Equal(t, item.expectedMaxRequestsPerBatch, options.maxRequestsPerBatch)
 		assert.ErrorIs(t, err, item.expectedErr)
 	}
 }
@@ -68,8 +68,8 @@ func TestWithRequestTimeout(t *testing.T) {
 		expectedRequestTimeout time.Duration
 		expectedErr            error
 	}{
-		{-1, DefaultRequestTimeout, ErrorRequestTimeout},
-		{0, DefaultRequestTimeout, ErrorRequestTimeout},
+		{-1, DefaultRequestTimeout, ErrorInvalidOptionRequestTimeout},
+		{0, DefaultRequestTimeout, ErrorInvalidOptionRequestTimeout},
 		{1, 1, nil},
 	} {
 		options, err := newClientOptions("serviceAddress", WithRequestTimeout(item.requestTimeout))

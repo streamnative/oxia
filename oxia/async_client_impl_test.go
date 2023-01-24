@@ -39,7 +39,7 @@ func TestAsyncClientImpl(t *testing.T) {
 	client, err := NewAsyncClient(serviceAddress, WithBatchLinger(0))
 	assert.NoError(t, err)
 
-	putResultA := <-client.Put("/a", []byte{0}, ExpectedVersionId(VersionNotExists))
+	putResultA := <-client.Put("/a", []byte{0}, ExpectedRecordNotExists())
 	assert.EqualValues(t, 0, putResultA.Version.VersionId)
 	assert.EqualValues(t, 0, putResultA.Version.ModificationsCount)
 
@@ -49,7 +49,7 @@ func TestAsyncClientImpl(t *testing.T) {
 		Version: putResultA.Version,
 	}, getResult)
 
-	putResultC1 := <-client.Put("/c", []byte{0}, ExpectedVersionId(VersionNotExists))
+	putResultC1 := <-client.Put("/c", []byte{0}, ExpectedRecordNotExists())
 	assert.EqualValues(t, 1, putResultC1.Version.VersionId)
 	assert.EqualValues(t, 0, putResultC1.Version.ModificationsCount)
 
@@ -103,14 +103,14 @@ func TestSyncClientImpl_Notifications(t *testing.T) {
 	n := <-notifications.Ch()
 	assert.Equal(t, KeyCreated, n.Type)
 	assert.Equal(t, "/a", n.Key)
-	assert.Equal(t, s1.VersionId, n.Version)
+	assert.Equal(t, s1.VersionId, n.VersionId)
 
 	s2, _ := client.Put(ctx, "/a", []byte("1"))
 
 	n = <-notifications.Ch()
 	assert.Equal(t, KeyModified, n.Type)
 	assert.Equal(t, "/a", n.Key)
-	assert.Equal(t, s2.VersionId, n.Version)
+	assert.Equal(t, s2.VersionId, n.VersionId)
 
 	s3, _ := client.Put(ctx, "/b", []byte("0"))
 	assert.NoError(t, client.Delete(ctx, "/a"))
@@ -118,12 +118,12 @@ func TestSyncClientImpl_Notifications(t *testing.T) {
 	n = <-notifications.Ch()
 	assert.Equal(t, KeyCreated, n.Type)
 	assert.Equal(t, "/b", n.Key)
-	assert.Equal(t, s3.VersionId, n.Version)
+	assert.Equal(t, s3.VersionId, n.VersionId)
 
 	n = <-notifications.Ch()
 	assert.Equal(t, KeyDeleted, n.Type)
 	assert.Equal(t, "/a", n.Key)
-	assert.EqualValues(t, -1, n.Version)
+	assert.EqualValues(t, -1, n.VersionId)
 
 	// Create a 2nd notifications channel
 	// This will only receive new updates
@@ -142,12 +142,12 @@ func TestSyncClientImpl_Notifications(t *testing.T) {
 	n = <-notifications.Ch()
 	assert.Equal(t, KeyCreated, n.Type)
 	assert.Equal(t, "/x", n.Key)
-	assert.Equal(t, s4.VersionId, n.Version)
+	assert.Equal(t, s4.VersionId, n.VersionId)
 
 	n = <-notifications2.Ch()
 	assert.Equal(t, KeyCreated, n.Type)
 	assert.Equal(t, "/x", n.Key)
-	assert.Equal(t, s4.VersionId, n.Version)
+	assert.Equal(t, s4.VersionId, n.VersionId)
 
 	////
 
@@ -206,7 +206,7 @@ func TestAsyncClientImpl_Sessions(t *testing.T) {
 	client, err := NewAsyncClient(serviceAddress, WithBatchLinger(0), WithSessionTimeout(5*time.Second))
 	assert.NoError(t, err)
 
-	putCh := client.Put("/x", []byte("x"), Ephemeral)
+	putCh := client.Put("/x", []byte("x"), Ephemeral())
 	versionId := atomic.Int64{}
 
 	select {

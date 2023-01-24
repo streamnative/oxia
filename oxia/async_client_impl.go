@@ -46,7 +46,10 @@ type clientImpl struct {
 // ServiceAddress is the target host:port of any Oxia server to bootstrap the client. It is used for establishing the
 // shard assignments. Ideally this should be a load-balanced endpoint.
 //
-// A list of ClientOption arguments can be passed to configure the Oxia client
+// A list of ClientOption arguments can be passed to configure the Oxia client.
+// Example:
+//
+//	client, err := oxia.NewAsyncClient("my-oxia-service:6648", oxia.WithBatchLinger(10*time.Milliseconds))
 func NewAsyncClient(serviceAddress string, opts ...ClientOption) (AsyncClient, error) {
 	clientPool := common.NewClientPool()
 

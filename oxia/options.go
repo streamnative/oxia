@@ -31,10 +31,10 @@ const (
 )
 
 var (
-	ErrorBatchLinger         = errors.New("BatchLinger must be greater than or equal to zero")
-	ErrorMaxRequestsPerBatch = errors.New("MaxRequestsPerBatch must be greater than zero")
-	ErrorRequestTimeout      = errors.New("RequestTimeout must be greater than zero")
-	ErrorSessionTimeout      = errors.New("SessionTimeout must be greater than zero")
+	ErrorInvalidOptionBatchLinger         = errors.New("BatchLinger must be greater than or equal to zero")
+	ErrorInvalidOptionMaxRequestsPerBatch = errors.New("MaxRequestsPerBatch must be greater than zero")
+	ErrorInvalidOptionRequestTimeout      = errors.New("RequestTimeout must be greater than zero")
+	ErrorInvalidOptionSessionTimeout      = errors.New("SessionTimeout must be greater than zero")
 )
 
 // clientOptions contains options for the Oxia client.
@@ -45,22 +45,6 @@ type clientOptions struct {
 	requestTimeout      time.Duration
 	meterProvider       metric.MeterProvider
 	sessionTimeout      time.Duration
-}
-
-func (o clientOptions) ServiceAddress() string {
-	return o.serviceAddress
-}
-
-func (o clientOptions) BatchLinger() time.Duration {
-	return o.batchLinger
-}
-
-func (o clientOptions) MaxRequestsPerBatch() int {
-	return o.maxRequestsPerBatch
-}
-
-func (o clientOptions) SessionTimeout() time.Duration {
-	return o.sessionTimeout
 }
 
 // RequestTimeout defines how long the client will wait for responses before cancelling the request and failing
@@ -106,7 +90,7 @@ func (f clientOptionFunc) apply(c clientOptions) (clientOptions, error) {
 func WithBatchLinger(batchLinger time.Duration) ClientOption {
 	return clientOptionFunc(func(options clientOptions) (clientOptions, error) {
 		if batchLinger < 0 {
-			return options, ErrorBatchLinger
+			return options, ErrorInvalidOptionBatchLinger
 		}
 		options.batchLinger = batchLinger
 		return options, nil
@@ -118,7 +102,7 @@ func WithBatchLinger(batchLinger time.Duration) ClientOption {
 func WithMaxRequestsPerBatch(maxRequestsPerBatch int) ClientOption {
 	return clientOptionFunc(func(options clientOptions) (clientOptions, error) {
 		if maxRequestsPerBatch <= 0 {
-			return options, ErrorMaxRequestsPerBatch
+			return options, ErrorInvalidOptionMaxRequestsPerBatch
 		}
 		options.maxRequestsPerBatch = maxRequestsPerBatch
 		return options, nil
@@ -128,7 +112,7 @@ func WithMaxRequestsPerBatch(maxRequestsPerBatch int) ClientOption {
 func WithRequestTimeout(requestTimeout time.Duration) ClientOption {
 	return clientOptionFunc(func(options clientOptions) (clientOptions, error) {
 		if requestTimeout <= 0 {
-			return options, ErrorRequestTimeout
+			return options, ErrorInvalidOptionRequestTimeout
 		}
 		options.requestTimeout = requestTimeout
 		return options, nil
@@ -146,14 +130,16 @@ func WithMeterProvider(meterProvider metric.MeterProvider) ClientOption {
 	})
 }
 
+// WithGlobalMeterProvider instructs the Oxia client to use the global OpenTelemetry MeterProvider.
 func WithGlobalMeterProvider() ClientOption {
 	return WithMeterProvider(global.MeterProvider())
 }
 
+// WithSessionTimeout specifies the session timeout to
 func WithSessionTimeout(sessionTimeout time.Duration) ClientOption {
 	return clientOptionFunc(func(options clientOptions) (clientOptions, error) {
 		if sessionTimeout <= 0 {
-			return options, ErrorSessionTimeout
+			return options, ErrorInvalidOptionSessionTimeout
 		}
 		options.sessionTimeout = sessionTimeout
 		return options, nil
@@ -165,6 +151,7 @@ type putOptions struct {
 	ephemeral       bool
 }
 
+// PutOption represents an option for the [SyncClient.Put] operation
 type PutOption interface {
 	applyPut(opts putOptions) putOptions
 }
@@ -177,9 +164,17 @@ func newPutOptions(opts []PutOption) putOptions {
 	return putOpts
 }
 
+// ExpectedRecordNotExists Marks that the put operation should only be successful
+// if the record does not exist yet.
+func ExpectedRecordNotExists() PutOption {
+	return &expectedVersionId{VersionIdNotExists}
+}
+
 type deleteOptions struct {
 	expectedVersion *int64
 }
+
+// DeleteOption represents an option for the [SyncClient.Delete] operation
 type DeleteOption interface {
 	PutOption
 	applyDelete(opts deleteOptions) deleteOptions
@@ -193,6 +188,8 @@ func newDeleteOptions(opts []DeleteOption) deleteOptions {
 	return deleteOpts
 }
 
+// ExpectedVersionId Marks that the operation should only be successful
+// if the versionId of the record stored in the server matches the expected one
 func ExpectedVersionId(versionId int64) DeleteOption {
 	return &expectedVersionId{versionId}
 }
@@ -213,9 +210,21 @@ func (e *expectedVersionId) applyDelete(opts deleteOptions) deleteOptions {
 
 type ephemeral struct{}
 
+var ephemeralFlag = &ephemeral{}
+
 func (e *ephemeral) applyPut(opts putOptions) putOptions {
 	opts.ephemeral = true
 	return opts
 }
 
-var Ephemeral PutOption = &ephemeral{}
+// Ephemeral marks the record to be created as an ephemeral record.
+// Ephemeral records have their lifecycle tied to a particular client instance, and they
+// are automatically deleted when the client instance is closed.
+// These records are also deleted if the client cannot communicate with the Oxia
+// service for some extended amount of time, and the session between the client and
+// the service "expires"
+// Application can control the session behavior by setting the session timeout
+// appropriately with [WithSessionTimeout] option when creating the client instance.
+func Ephemeral() PutOption {
+	return ephemeralFlag
+}
