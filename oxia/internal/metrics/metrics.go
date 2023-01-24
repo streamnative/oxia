@@ -34,7 +34,7 @@ type Metrics struct {
 
 	batchTotalTime Timer
 	batchExecTime  Timer
-	batchPayload   syncint64.Histogram
+	batchValue     syncint64.Histogram
 	batchRequests  syncint64.Histogram
 }
 
@@ -53,7 +53,7 @@ func newMetrics(provider metric.MeterProvider, timeFunc func() time.Time, sinceF
 
 		batchTotalTime: newTimer(meter, "oxia_client_batch_total"),
 		batchExecTime:  newTimer(meter, "oxia_client_batch_exec"),
-		batchPayload:   newHistogram(meter, "oxia_client_batch_payload", unit.Bytes),
+		batchValue:     newHistogram(meter, "oxia_client_batch_value", unit.Bytes),
 		batchRequests:  newHistogram(meter, "oxia_client_batch_request", ""),
 	}
 }
@@ -125,8 +125,8 @@ func (m *Metrics) WriteCallback() func(time.Time, *proto.WriteRequest, *proto.Wr
 		ctx, batchStart, _attrs := metricContext(err)
 		m.batchTotalTime.Record(ctx, m.sinceFunc(batchStart), _attrs...)
 		m.batchExecTime.Record(ctx, m.sinceFunc(executionStart), _attrs...)
-		payloadSize, requestCount := writeMetrics(request)
-		m.batchPayload.Record(ctx, payloadSize, _attrs...)
+		valueSize, requestCount := writeMetrics(request)
+		m.batchValue.Record(ctx, valueSize, _attrs...)
 		m.batchRequests.Record(ctx, requestCount, _attrs...)
 	}
 }
@@ -137,8 +137,8 @@ func (m *Metrics) ReadCallback() func(time.Time, *proto.ReadRequest, *proto.Read
 		ctx, batchStart, attrs := metricContext(err)
 		m.batchTotalTime.Record(ctx, m.sinceFunc(batchStart), attrs...)
 		m.batchExecTime.Record(ctx, m.sinceFunc(executionStart), attrs...)
-		payloadSize, requestCount := readMetrics(response)
-		m.batchPayload.Record(ctx, payloadSize, attrs...)
+		valueSize, requestCount := readMetrics(response)
+		m.batchValue.Record(ctx, valueSize, attrs...)
 		m.batchRequests.Record(ctx, requestCount, attrs...)
 	}
 }
