@@ -30,8 +30,6 @@ import (
 type StandaloneConfig struct {
 	Config
 
-	BindHost string
-
 	AdvertisedPublicAddress string
 	NumShards               uint32
 	InMemory                bool
@@ -49,8 +47,12 @@ type Standalone struct {
 
 func NewTestConfig() StandaloneConfig {
 	return StandaloneConfig{
+		Config: Config{
+			InternalServiceAddr: "localhost:0",
+			PublicServiceAddr:   "localhost:0",
+			MetricsServiceAddr:  "",
+		},
 		NumShards:               1,
-		BindHost:                "localhost",
 		AdvertisedPublicAddress: "localhost",
 		InMemory:                true,
 	}
@@ -91,8 +93,7 @@ func NewStandalone(config StandaloneConfig) (*Standalone, error) {
 		return nil, err
 	}
 
-	bindAddress := fmt.Sprintf("%s:%d", config.BindHost, config.PublicServicePort)
-	s.rpc, err = newPublicRpcServer(container.Default, bindAddress, s.shardsDirector, nil)
+	s.rpc, err = newPublicRpcServer(container.Default, config.PublicServiceAddr, s.shardsDirector, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +104,9 @@ func NewStandalone(config StandaloneConfig) (*Standalone, error) {
 
 	s.rpc.assignmentDispatcher = s.shardAssignmentDispatcher
 
-	s.metrics, err = metrics.Start(fmt.Sprintf("%s:%d", config.BindHost, config.MetricsPort))
+	if config.MetricsServiceAddr != "" {
+		s.metrics, err = metrics.Start(config.MetricsServiceAddr)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -146,12 +149,17 @@ func (s *Standalone) RpcPort() int {
 }
 
 func (s *Standalone) Close() error {
+	var err error
+	if s.metrics != nil {
+		err = s.metrics.Close()
+	}
+
 	return multierr.Combine(
+		err,
 		s.shardsDirector.Close(),
 		s.shardAssignmentDispatcher.Close(),
 		s.rpc.Close(),
 		s.kvFactory.Close(),
-		s.metrics.Close(),
 	)
 }
 

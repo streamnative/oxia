@@ -15,7 +15,6 @@
 package server
 
 import (
-	"fmt"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
 	"oxia/common/container"
@@ -26,10 +25,9 @@ import (
 )
 
 type Config struct {
-	BindHost            string
-	PublicServicePort   int
-	InternalServicePort int
-	MetricsPort         int
+	PublicServiceAddr   string
+	InternalServiceAddr string
+	MetricsServiceAddr  string
 	DataDir             string
 	WalDir              string
 
@@ -77,21 +75,20 @@ func NewWithGrpcProvider(config Config, provider container.GrpcProvider, replica
 	s.shardsDirector = NewShardsDirector(config, s.walFactory, s.kvFactory, replicationRpcProvider)
 	s.shardAssignmentDispatcher = NewShardAssignmentDispatcher()
 
-	s.internalRpcServer, err = newInternalRpcServer(provider,
-		fmt.Sprintf("%s:%d", config.BindHost, config.InternalServicePort),
+	s.internalRpcServer, err = newInternalRpcServer(provider, config.InternalServiceAddr,
 		s.shardsDirector, s.shardAssignmentDispatcher)
 	if err != nil {
 		return nil, err
 	}
 
-	s.publicRpcServer, err = newPublicRpcServer(provider,
-		fmt.Sprintf("%s:%d", config.BindHost, config.PublicServicePort), s.shardsDirector, s.shardAssignmentDispatcher)
+	s.publicRpcServer, err = newPublicRpcServer(provider, config.PublicServiceAddr, s.shardsDirector,
+		s.shardAssignmentDispatcher)
 	if err != nil {
 		return nil, err
 	}
 
-	if config.MetricsPort >= 0 {
-		s.metrics, err = metrics.Start(fmt.Sprintf("%s:%d", config.BindHost, config.MetricsPort))
+	if config.MetricsServiceAddr != "" {
+		s.metrics, err = metrics.Start(config.MetricsServiceAddr)
 		if err != nil {
 			return nil, err
 		}

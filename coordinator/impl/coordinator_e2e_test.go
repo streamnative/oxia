@@ -31,10 +31,9 @@ import (
 func newServer(t *testing.T) (s *server.Server, addr model.ServerAddress) {
 	var err error
 	s, err = server.New(server.Config{
-		BindHost:            "localhost",
-		PublicServicePort:   0,
-		InternalServicePort: 0,
-		MetricsPort:         -1, // Disable metrics to avoid conflict
+		PublicServiceAddr:   "localhost:0",
+		InternalServiceAddr: "localhost:0",
+		MetricsServiceAddr:  "", // Disable metrics to avoid conflict
 		DataDir:             t.TempDir(),
 		WalDir:              t.TempDir(),
 	})
