@@ -128,7 +128,7 @@ func TestMetricsCallback(t *testing.T) {
 
 				assertTimer(t, rm, "oxia_client_batch_total", item.expectedType, condition.expectedResult)
 				assertTimer(t, rm, "oxia_client_batch_exec", item.expectedType, condition.expectedResult)
-				assertHistogram(t, rm, "oxia_client_batch_payload", true, float64(5), item.expectedType, condition.expectedResult)
+				assertHistogram(t, rm, "oxia_client_batch_value", true, float64(5), item.expectedType, condition.expectedResult)
 				assertHistogram(t, rm, "oxia_client_batch_request", true, float64(1), item.expectedType, condition.expectedResult)
 			})
 		}
