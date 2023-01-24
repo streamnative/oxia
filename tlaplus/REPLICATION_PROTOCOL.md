@@ -230,7 +230,7 @@ Key points:
  - The operator can attempt the commit phase repeatedly until the leader responds with success.
 
 
-## Message reference
+## Message reference 
 
 For reference, also see the TLA+ specification which lists the messages, their fields and when they are sent and by
 who.
