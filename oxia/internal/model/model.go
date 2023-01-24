@@ -20,7 +20,7 @@ import (
 
 type PutCall struct {
 	Key               string
-	Payload           []byte
+	Value             []byte
 	ExpectedVersionId *int64
 	SessionId         *int64
 	Callback          func(*proto.PutResponse, error)
@@ -52,7 +52,7 @@ type ListCall struct {
 func (r PutCall) ToProto() *proto.PutRequest {
 	return &proto.PutRequest{
 		Key:               r.Key,
-		Payload:           r.Payload,
+		Value:             r.Value,
 		ExpectedVersionId: r.ExpectedVersionId,
 		SessionId:         r.SessionId,
 	}
@@ -74,8 +74,8 @@ func (r DeleteRangeCall) ToProto() *proto.DeleteRangeRequest {
 
 func (r GetCall) ToProto() *proto.GetRequest {
 	return &proto.GetRequest{
-		Key:            r.Key,
-		IncludePayload: true,
+		Key:          r.Key,
+		IncludeValue: true,
 	}
 }
 

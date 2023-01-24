@@ -29,12 +29,12 @@ type Metrics struct {
 	timeFunc  func() time.Time
 	sinceFunc func(time.Time) time.Duration
 
-	opTime    Timer
-	opPayload syncint64.Histogram
+	opTime  Timer
+	opValue syncint64.Histogram
 
 	batchTotalTime Timer
 	batchExecTime  Timer
-	batchPayload   syncint64.Histogram
+	batchValue     syncint64.Histogram
 	batchRequests  syncint64.Histogram
 }
 
@@ -48,12 +48,12 @@ func newMetrics(provider metric.MeterProvider, timeFunc func() time.Time, sinceF
 		timeFunc:  timeFunc,
 		sinceFunc: sinceFunc,
 
-		opTime:    newTimer(meter, "oxia_client_op"),
-		opPayload: newHistogram(meter, "oxia_client_op_payload", unit.Bytes),
+		opTime:  newTimer(meter, "oxia_client_op"),
+		opValue: newHistogram(meter, "oxia_client_op_value", unit.Bytes),
 
 		batchTotalTime: newTimer(meter, "oxia_client_batch_total"),
 		batchExecTime:  newTimer(meter, "oxia_client_batch_exec"),
-		batchPayload:   newHistogram(meter, "oxia_client_batch_payload", unit.Bytes),
+		batchValue:     newHistogram(meter, "oxia_client_batch_value", unit.Bytes),
 		batchRequests:  newHistogram(meter, "oxia_client_batch_request", ""),
 	}
 }
@@ -65,7 +65,7 @@ func (m *Metrics) DecoratePut(put model.PutCall) model.PutCall {
 		callback(response, err)
 		ctx, start, _attrs := metricContext(err)
 		m.opTime.Record(ctx, m.sinceFunc(start), _attrs...)
-		m.opPayload.Record(ctx, int64(len(put.Payload)), _attrs...)
+		m.opValue.Record(ctx, int64(len(put.Value)), _attrs...)
 	}
 	return put
 }
@@ -101,9 +101,9 @@ func (m *Metrics) DecorateGet(get model.GetCall) model.GetCall {
 		m.opTime.Record(ctx, m.sinceFunc(start), _attrs...)
 		var size int64 = 0
 		if response != nil {
-			size = int64(len(response.Payload))
+			size = int64(len(response.Value))
 		}
-		m.opPayload.Record(ctx, size, _attrs...)
+		m.opValue.Record(ctx, size, _attrs...)
 	}
 	return get
 }
@@ -125,8 +125,8 @@ func (m *Metrics) WriteCallback() func(time.Time, *proto.WriteRequest, *proto.Wr
 		ctx, batchStart, _attrs := metricContext(err)
 		m.batchTotalTime.Record(ctx, m.sinceFunc(batchStart), _attrs...)
 		m.batchExecTime.Record(ctx, m.sinceFunc(executionStart), _attrs...)
-		payloadSize, requestCount := writeMetrics(request)
-		m.batchPayload.Record(ctx, payloadSize, _attrs...)
+		valueSize, requestCount := writeMetrics(request)
+		m.batchValue.Record(ctx, valueSize, _attrs...)
 		m.batchRequests.Record(ctx, requestCount, _attrs...)
 	}
 }
@@ -137,8 +137,8 @@ func (m *Metrics) ReadCallback() func(time.Time, *proto.ReadRequest, *proto.Read
 		ctx, batchStart, attrs := metricContext(err)
 		m.batchTotalTime.Record(ctx, m.sinceFunc(batchStart), attrs...)
 		m.batchExecTime.Record(ctx, m.sinceFunc(executionStart), attrs...)
-		payloadSize, requestCount := readMetrics(response)
-		m.batchPayload.Record(ctx, payloadSize, attrs...)
+		valueSize, requestCount := readMetrics(response)
+		m.batchValue.Record(ctx, valueSize, attrs...)
 		m.batchRequests.Record(ctx, requestCount, attrs...)
 	}
 }

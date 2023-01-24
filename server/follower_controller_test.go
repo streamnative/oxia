@@ -102,10 +102,10 @@ func TestFollower(t *testing.T) {
 
 	// Double-check the values in the DB
 	dbRes, err := fc.(*followerController).db.ProcessRead(&proto.ReadRequest{Gets: []*proto.GetRequest{{
-		Key:            "a",
-		IncludePayload: true}, {
-		Key:            "b",
-		IncludePayload: true,
+		Key:          "a",
+		IncludeValue: true}, {
+		Key:          "b",
+		IncludeValue: true,
 	},
 	}})
 	assert.NoError(t, err)
@@ -173,19 +173,19 @@ func TestReadingUpToCommitOffset(t *testing.T) {
 	}, 10*time.Second, 10*time.Millisecond)
 
 	dbRes, err := fc.(*followerController).db.ProcessRead(&proto.ReadRequest{Gets: []*proto.GetRequest{{
-		Key:            "a",
-		IncludePayload: true}, {
-		Key:            "b",
-		IncludePayload: true,
+		Key:          "a",
+		IncludeValue: true}, {
+		Key:          "b",
+		IncludeValue: true,
 	},
 	}})
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(dbRes.Gets))
 	// Keys are not there because they were not part of the commit offset
 	assert.Equal(t, proto.Status_OK, dbRes.Gets[0].Status)
-	assert.Equal(t, []byte("0"), dbRes.Gets[0].Payload)
+	assert.Equal(t, []byte("0"), dbRes.Gets[0].Value)
 	assert.Equal(t, proto.Status_OK, dbRes.Gets[1].Status)
-	assert.Equal(t, []byte("1"), dbRes.Gets[1].Payload)
+	assert.Equal(t, []byte("1"), dbRes.Gets[1].Value)
 
 	assert.NoError(t, fc.Close())
 	assert.NoError(t, kvFactory.Close())
@@ -201,8 +201,8 @@ func TestFollower_RestoreCommitOffset(t *testing.T) {
 	db, err := kv.NewDB(shardId, kvFactory, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
 	_, err = db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
-		Key:     "xx",
-		Payload: []byte(""),
+		Key:   "xx",
+		Value: []byte(""),
 	}}}, 9, 0, kv.NoOpCallback)
 	assert.NoError(t, err)
 
@@ -421,18 +421,18 @@ func TestFollower_CommitOffsetLastEntry(t *testing.T) {
 	}, 10*time.Second, 10*time.Millisecond)
 
 	dbRes, err := fc.(*followerController).db.ProcessRead(&proto.ReadRequest{Gets: []*proto.GetRequest{{
-		Key:            "a",
-		IncludePayload: true}, {
-		Key:            "b",
-		IncludePayload: true,
+		Key:          "a",
+		IncludeValue: true}, {
+		Key:          "b",
+		IncludeValue: true,
 	},
 	}})
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(dbRes.Gets))
 	assert.Equal(t, proto.Status_OK, dbRes.Gets[0].Status)
-	assert.Equal(t, []byte("0"), dbRes.Gets[0].Payload)
+	assert.Equal(t, []byte("0"), dbRes.Gets[0].Value)
 	assert.Equal(t, proto.Status_OK, dbRes.Gets[1].Status)
-	assert.Equal(t, []byte("1"), dbRes.Gets[1].Payload)
+	assert.Equal(t, []byte("1"), dbRes.Gets[1].Value)
 
 	assert.NoError(t, fc.Close())
 	assert.NoError(t, kvFactory.Close())
@@ -559,8 +559,8 @@ func prepareTestDb(t *testing.T) kv.Snapshot {
 	for i := 0; i < 100; i++ {
 		_, err := db.ProcessWrite(&proto.WriteRequest{
 			Puts: []*proto.PutRequest{{
-				Key:     fmt.Sprintf("key-%d", i),
-				Payload: []byte(fmt.Sprintf("value-%d", i)),
+				Key:   fmt.Sprintf("key-%d", i),
+				Value: []byte(fmt.Sprintf("value-%d", i)),
 			}},
 		}, int64(i), 0, kv.NoOpCallback)
 		assert.NoError(t, err)
@@ -636,28 +636,28 @@ func TestFollower_HandleSnapshot(t *testing.T) {
 	// data from the snapshot and any existing data should be gone
 
 	dbRes, err := fc.(*followerController).db.ProcessRead(&proto.ReadRequest{Gets: []*proto.GetRequest{{
-		Key:            "a",
-		IncludePayload: true}, {
-		Key:            "b",
-		IncludePayload: true,
+		Key:          "a",
+		IncludeValue: true}, {
+		Key:          "b",
+		IncludeValue: true,
 	}}})
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(dbRes.Gets))
 	assert.Equal(t, proto.Status_KEY_NOT_FOUND, dbRes.Gets[0].Status)
-	assert.Nil(t, dbRes.Gets[0].Payload)
+	assert.Nil(t, dbRes.Gets[0].Value)
 	assert.Equal(t, proto.Status_KEY_NOT_FOUND, dbRes.Gets[1].Status)
-	assert.Nil(t, dbRes.Gets[1].Payload)
+	assert.Nil(t, dbRes.Gets[1].Value)
 
 	for i := 0; i < 100; i++ {
 		dbRes, err := fc.(*followerController).db.ProcessRead(&proto.ReadRequest{Gets: []*proto.GetRequest{{
-			Key:            fmt.Sprintf("key-%d", i),
-			IncludePayload: true,
+			Key:          fmt.Sprintf("key-%d", i),
+			IncludeValue: true,
 		},
 		}})
 		assert.NoError(t, err)
 		assert.Equal(t, 1, len(dbRes.Gets))
 		assert.Equal(t, proto.Status_OK, dbRes.Gets[0].Status)
-		assert.Equal(t, []byte(fmt.Sprintf("value-%d", i)), dbRes.Gets[0].Payload)
+		assert.Equal(t, []byte(fmt.Sprintf("value-%d", i)), dbRes.Gets[0].Value)
 	}
 
 	assert.Equal(t, wal.InvalidOffset, fc.(*followerController).wal.LastOffset())
@@ -797,8 +797,8 @@ func createAddRequest(t *testing.T, term int64, offset int64,
 
 	for k, v := range kvs {
 		br.Puts = append(br.Puts, &proto.PutRequest{
-			Key:     k,
-			Payload: []byte(v),
+			Key:   k,
+			Value: []byte(v),
 		})
 	}
 

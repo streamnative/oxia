@@ -94,7 +94,7 @@ func (c *clientImpl) Close() error {
 	)
 }
 
-func (c *clientImpl) Put(key string, payload []byte, options ...PutOption) <-chan PutResult {
+func (c *clientImpl) Put(key string, value []byte, options ...PutOption) <-chan PutResult {
 	ch := make(chan PutResult, 1)
 	shardId := c.shardManager.Get(key)
 	callback := func(response *proto.PutResponse, err error) {
@@ -108,7 +108,7 @@ func (c *clientImpl) Put(key string, payload []byte, options ...PutOption) <-cha
 	opts := newPutOptions(options)
 	putCall := model.PutCall{
 		Key:               key,
-		Payload:           payload,
+		Value:             value,
 		ExpectedVersionId: opts.expectedVersion,
 		Callback:          callback,
 	}

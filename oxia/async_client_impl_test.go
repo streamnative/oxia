@@ -45,7 +45,7 @@ func TestAsyncClientImpl(t *testing.T) {
 
 	getResult := <-client.Get("/a")
 	assert.Equal(t, GetResult{
-		Payload: []byte{0},
+		Value:   []byte{0},
 		Version: putResultA.Version,
 	}, getResult)
 

@@ -402,8 +402,8 @@ func (b *PebbleBatch) Close() error {
 	return b.b.Close()
 }
 
-func (b *PebbleBatch) Put(key string, payload []byte) error {
-	err := b.b.Set([]byte(key), payload, pebble.NoSync)
+func (b *PebbleBatch) Put(key string, value []byte) error {
+	err := b.b.Set([]byte(key), value, pebble.NoSync)
 	if err != nil {
 		b.p.writeErrors.Inc()
 	}

@@ -36,8 +36,8 @@ func TestNotificationsTrimmer(t *testing.T) {
 	for i := int64(0); i < 100; i++ {
 		_, err = dbx.ProcessWrite(&proto.WriteRequest{
 			Puts: []*proto.PutRequest{{
-				Key:     fmt.Sprintf("key-%d", i),
-				Payload: []byte("0"),
+				Key:   fmt.Sprintf("key-%d", i),
+				Value: []byte("0"),
 			}},
 		}, i, uint64(i), NoOpCallback)
 		assert.NoError(t, err)

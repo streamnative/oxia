@@ -36,8 +36,8 @@ func TestDB_Notifications(t *testing.T) {
 	t0 := now()
 	_, _ = db.ProcessWrite(&proto.WriteRequest{
 		Puts: []*proto.PutRequest{{
-			Key:     "a",
-			Payload: []byte("0"),
+			Key:   "a",
+			Value: []byte("0"),
 		}},
 	}, 0, t0, NoOpCallback)
 
@@ -58,16 +58,16 @@ func TestDB_Notifications(t *testing.T) {
 	t1 := now()
 	_, _ = db.ProcessWrite(&proto.WriteRequest{
 		Puts: []*proto.PutRequest{{
-			Key:     "a",
-			Payload: []byte("1"),
+			Key:   "a",
+			Value: []byte("1"),
 		}},
 	}, 1, t1, NoOpCallback)
 
 	t2 := now()
 	_, _ = db.ProcessWrite(&proto.WriteRequest{
 		Puts: []*proto.PutRequest{{
-			Key:     "b",
-			Payload: []byte("0"),
+			Key:   "b",
+			Value: []byte("0"),
 		}},
 	}, 2, t2, NoOpCallback)
 
@@ -99,11 +99,11 @@ func TestDB_Notifications(t *testing.T) {
 	t3 := now()
 	_, _ = db.ProcessWrite(&proto.WriteRequest{
 		Puts: []*proto.PutRequest{{
-			Key:     "c",
-			Payload: []byte("0"),
+			Key:   "c",
+			Value: []byte("0"),
 		}, {
-			Key:     "d",
-			Payload: []byte("0"),
+			Key:   "d",
+			Value: []byte("0"),
 		}},
 		Deletes: []*proto.DeleteRequest{{
 			Key: "a",
@@ -137,11 +137,11 @@ func TestDB_Notifications(t *testing.T) {
 	t4 := now()
 	_, _ = db.ProcessWrite(&proto.WriteRequest{
 		Puts: []*proto.PutRequest{{
-			Key:     "x1",
-			Payload: []byte("0"),
+			Key:   "x1",
+			Value: []byte("0"),
 		}, {
-			Key:     "x1",
-			Payload: []byte("1"),
+			Key:   "x1",
+			Value: []byte("1"),
 		}},
 	}, 4, t4, NoOpCallback)
 
@@ -172,8 +172,8 @@ func TestDB_NotificationsCancelWait(t *testing.T) {
 	t0 := now()
 	_, _ = db.ProcessWrite(&proto.WriteRequest{
 		Puts: []*proto.PutRequest{{
-			Key:     "a",
-			Payload: []byte("0"),
+			Key:   "a",
+			Value: []byte("0"),
 		}},
 	}, 0, t0, NoOpCallback)
 
