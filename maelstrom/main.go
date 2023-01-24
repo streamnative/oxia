@@ -146,9 +146,9 @@ func main() {
 	} else {
 		// Any other node will be a storage node
 		_, err := server.NewWithGrpcProvider(server.Config{
-			MetricsPort: -1,
-			DataDir:     filepath.Join(dataDir, thisNode, "db"),
-			WalDir:      filepath.Join(dataDir, thisNode, "wal"),
+			MetricsServiceAddr: "",
+			DataDir:            filepath.Join(dataDir, thisNode, "db"),
+			WalDir:             filepath.Join(dataDir, thisNode, "wal"),
 		}, grpcProvider, replicationGrpcProvider)
 		if err != nil {
 			return

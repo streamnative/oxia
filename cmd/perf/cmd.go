@@ -41,7 +41,6 @@ type Config struct {
 	BatchLinger         time.Duration
 	MaxRequestsPerBatch int
 	RequestTimeout      time.Duration
-	BatcherBufferSize   int
 }
 
 var (
@@ -69,7 +68,6 @@ func init() {
 	Cmd.Flags().DurationVar(&config.BatchLinger, "batch-linger", oxia.DefaultBatchLinger, "Batch linger time")
 	Cmd.Flags().IntVar(&config.MaxRequestsPerBatch, "max-requests-per-batch", oxia.DefaultMaxRequestsPerBatch, "Maximum requests per batch")
 	Cmd.Flags().DurationVar(&config.RequestTimeout, "request-timeout", oxia.DefaultRequestTimeout, "Request timeout")
-	Cmd.Flags().IntVar(&config.BatcherBufferSize, "batcher-buffer-size", oxia.DefaultBatcherBufferSize, "Batcher buffer size")
 }
 
 func exec(*cobra.Command, []string) {
@@ -114,7 +112,6 @@ func perfMain(closer *closer) {
 		oxia.WithBatchLinger(config.BatchLinger),
 		oxia.WithMaxRequestsPerBatch(config.MaxRequestsPerBatch),
 		oxia.WithRequestTimeout(config.RequestTimeout),
-		oxia.WithBatcherBufferSize(config.BatcherBufferSize),
 	)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create Oxia client")
