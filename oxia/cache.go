@@ -182,7 +182,7 @@ func (cm *cacheManager) Close() error {
 
 	var err error
 	for _, c := range cm.caches {
-		multierr.Append(err, c.Close())
+		err = multierr.Append(err, c.Close())
 	}
 
 	return multierr.Append(err, cm.notifications.Close())

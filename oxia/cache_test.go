@@ -54,6 +54,7 @@ func TestCache_Empty(t *testing.T) {
 	assert.NoError(t, err)
 
 	cache, err := NewCache[testStruct](client, json.Marshal, json.Unmarshal)
+	assert.NoError(t, err)
 
 	value, version, err := cache.Get(context.Background(), "/non-existing-key")
 	assert.ErrorIs(t, ErrorKeyNotFound, err)
@@ -192,7 +193,7 @@ func TestCache_ConcurrentUpdate(t *testing.T) {
 		err = cache.ReadModifyUpdate(context.Background(), k1, func(existingValue Optional[testStruct]) (testStruct, error) {
 			if isFirstTime.Load() {
 				wg.Done()
-				wg1.Wait(context.Background())
+				_ = wg1.Wait(context.Background())
 			}
 			ev := existingValue.MustGet()
 			return testStruct{ev.A, ev.B + 1}, nil
@@ -205,7 +206,7 @@ func TestCache_ConcurrentUpdate(t *testing.T) {
 		err = cache.ReadModifyUpdate(context.Background(), k1, func(existingValue Optional[testStruct]) (testStruct, error) {
 			if isFirstTime.Load() {
 				wg.Done()
-				wg2.Wait(context.Background())
+				_ = wg2.Wait(context.Background())
 			}
 			ev := existingValue.MustGet()
 			return testStruct{ev.A, ev.B + 1}, nil
@@ -216,7 +217,7 @@ func TestCache_ConcurrentUpdate(t *testing.T) {
 	}()
 
 	// Wait for both go-routines to read the existing version
-	wg.Wait(context.Background())
+	_ = wg.Wait(context.Background())
 
 	// Unblock both of them to and cause the conflict
 	isFirstTime.Store(false)
@@ -224,7 +225,7 @@ func TestCache_ConcurrentUpdate(t *testing.T) {
 	wg2.Done()
 
 	// Wait for both operations to complete
-	wgResult.Wait(context.Background())
+	_ = wgResult.Wait(context.Background())
 
 	value, version, err := cache.Get(context.Background(), k1)
 	assert.NoError(t, err)
