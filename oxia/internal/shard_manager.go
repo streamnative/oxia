@@ -64,7 +64,7 @@ func NewShardManager(shardStrategy ShardStrategy, clientPool common.ClientPool, 
 	sm.ctx, sm.cancel = context.WithCancel(context.Background())
 
 	if err := sm.start(); err != nil {
-		return nil, errors.Wrap(err, "oxia: failed retrieve the initial list of shard assignments")
+		return nil, errors.Wrap(err, "oxia: failed to retrieve the initial list of shard assignments")
 	}
 
 	return sm, nil
