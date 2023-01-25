@@ -37,7 +37,6 @@ var (
 func init() {
 	flag.PublicAddr(Cmd, &conf.PublicServiceAddr)
 	flag.MetricsAddr(Cmd, &conf.MetricsServiceAddr)
-	Cmd.Flags().StringVarP(&conf.AdvertisedPublicAddress, "advertised-address", "a", "", "Advertised address")
 	Cmd.Flags().Uint32VarP(&conf.NumShards, "shards", "s", 1, "Number of shards")
 	Cmd.Flags().StringVar(&conf.DataDir, "data-dir", "./data/db", "Directory where to store data")
 	Cmd.Flags().StringVar(&conf.WalDir, "wal-dir", "./data/wal", "Directory for write-ahead-logs")

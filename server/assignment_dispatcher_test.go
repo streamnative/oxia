@@ -160,7 +160,7 @@ func newShardAssignment(id uint32, leader string, min uint32, max uint32) *proto
 }
 
 func TestShardGenerator(t *testing.T) {
-	assignments := generateShards("localhost", 4)
+	assignments := generateShards(4)
 	assertNext(t, assignments[0], 0, 0, 1073741823)
 	assertNext(t, assignments[1], 1, 1073741824, 2147483647)
 	assertNext(t, assignments[2], 2, 2147483648, 3221225471)
