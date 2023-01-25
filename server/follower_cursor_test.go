@@ -128,8 +128,8 @@ func TestFollowerCursor_SendSnapshot(t *testing.T) {
 		wr := &proto.WriteRequest{
 			ShardId: &shard,
 			Puts: []*proto.PutRequest{{
-				Key:     fmt.Sprintf("key-%d", i),
-				Payload: []byte(fmt.Sprintf("value-%d", i)),
+				Key:   fmt.Sprintf("key-%d", i),
+				Value: []byte(fmt.Sprintf("value-%d", i)),
 			}},
 		}
 		e, _ := pb.Marshal(wrapInLogEntryValue(wr))

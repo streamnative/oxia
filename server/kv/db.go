@@ -200,10 +200,10 @@ func (d *db) addNotifications(batch WriteBatch, notifications *notifications) er
 }
 
 func (d *db) addCommitOffset(commitOffset int64, batch WriteBatch, timestamp uint64) error {
-	commitOffsetPayload := []byte(fmt.Sprintf("%d", commitOffset))
+	commitOffsetValue := []byte(fmt.Sprintf("%d", commitOffset))
 	_, err := d.applyPut(commitOffset, batch, nil, &proto.PutRequest{
 		Key:               commitOffsetKey,
-		Payload:           commitOffsetPayload,
+		Value:             commitOffsetValue,
 		ExpectedVersionId: nil,
 	}, timestamp, NoOpCallback)
 	return err
@@ -240,8 +240,8 @@ func (d *db) ReadCommitOffset() (int64, error) {
 	kv := d.kv
 
 	getReq := &proto.GetRequest{
-		Key:            commitOffsetKey,
-		IncludePayload: true,
+		Key:          commitOffsetKey,
+		IncludeValue: true,
 	}
 	gr, err := applyGet(kv, getReq)
 	if err != nil {
@@ -252,7 +252,7 @@ func (d *db) ReadCommitOffset() (int64, error) {
 	}
 
 	var commitOffset int64
-	if _, err = fmt.Sscanf(string(gr.Payload), "%d", &commitOffset); err != nil {
+	if _, err = fmt.Sscanf(string(gr.Value), "%d", &commitOffset); err != nil {
 		return wal.InvalidOffset, err
 	}
 	return commitOffset, nil
@@ -262,8 +262,8 @@ func (d *db) UpdateTerm(newTerm int64) error {
 	batch := d.kv.NewWriteBatch()
 
 	if _, err := d.applyPut(wal.InvalidOffset, batch, nil, &proto.PutRequest{
-		Key:     termKey,
-		Payload: []byte(fmt.Sprintf("%d", newTerm)),
+		Key:   termKey,
+		Value: []byte(fmt.Sprintf("%d", newTerm)),
 	}, now(), NoOpCallback); err != nil {
 		return err
 	}
@@ -283,8 +283,8 @@ func (d *db) UpdateTerm(newTerm int64) error {
 
 func (d *db) ReadTerm() (term int64, err error) {
 	getReq := &proto.GetRequest{
-		Key:            termKey,
-		IncludePayload: true,
+		Key:          termKey,
+		IncludeValue: true,
 	}
 	gr, err := applyGet(d.kv, getReq)
 	if err != nil {
@@ -294,7 +294,7 @@ func (d *db) ReadTerm() (term int64, err error) {
 		return wal.InvalidTerm, nil
 	}
 
-	if _, err = fmt.Sscanf(string(gr.Payload), "%d", &term); err != nil {
+	if _, err = fmt.Sscanf(string(gr.Value), "%d", &term); err != nil {
 		return wal.InvalidTerm, err
 	}
 	return term, nil
@@ -324,7 +324,7 @@ func (d *db) applyPut(commitOffset int64, batch WriteBatch, notifications *notif
 			se = &proto.StorageEntry{
 				VersionId:             commitOffset,
 				ModificationsCount:    0,
-				Payload:               putReq.Payload,
+				Value:                 putReq.Value,
 				CreationTimestamp:     timestamp,
 				ModificationTimestamp: timestamp,
 				SessionId:             putReq.SessionId,
@@ -332,7 +332,7 @@ func (d *db) applyPut(commitOffset int64, batch WriteBatch, notifications *notif
 		} else {
 			se.VersionId = commitOffset
 			se.ModificationsCount += 1
-			se.Payload = putReq.Payload
+			se.Value = putReq.Value
 			se.ModificationTimestamp = timestamp
 			se.SessionId = putReq.SessionId
 		}
@@ -426,25 +426,25 @@ func (d *db) applyDeleteRange(batch WriteBatch, notifications *notifications, de
 }
 
 func applyGet(kv KV, getReq *proto.GetRequest) (*proto.GetResponse, error) {
-	payload, closer, err := kv.Get(getReq.Key)
+	value, closer, err := kv.Get(getReq.Key)
 	if errors.Is(err, ErrorKeyNotFound) {
 		return &proto.GetResponse{Status: proto.Status_KEY_NOT_FOUND}, nil
 	} else if err != nil {
 		return nil, errors.Wrap(err, "oxia db: failed to apply batch")
 	}
 
-	se, err := deserialize(payload, closer)
+	se, err := deserialize(value, closer)
 	if err != nil {
 		return nil, err
 	}
 
-	resPayload := se.Payload
-	if !getReq.IncludePayload {
-		resPayload = nil
+	resValue := se.Value
+	if !getReq.IncludeValue {
+		resValue = nil
 	}
 
 	return &proto.GetResponse{
-		Payload: resPayload,
+		Value: resValue,
 		Version: &proto.Version{
 			VersionId:          se.VersionId,
 			ModificationsCount: se.ModificationsCount,
@@ -471,12 +471,12 @@ func applyList(kv KV, listReq *proto.ListRequest) (*proto.ListResponse, error) {
 }
 
 func GetStorageEntry(batch WriteBatch, key string) (*proto.StorageEntry, error) {
-	payload, closer, err := batch.Get(key)
+	value, closer, err := batch.Get(key)
 	if err != nil {
 		return nil, err
 	}
 
-	se, err := deserialize(payload, closer)
+	se, err := deserialize(value, closer)
 	if err != nil {
 		return nil, err
 	}
@@ -504,9 +504,9 @@ func checkExpectedVersionId(batch WriteBatch, key string, expectedVersionId *int
 	return se, nil
 }
 
-func deserialize(payload []byte, closer io.Closer) (*proto.StorageEntry, error) {
+func deserialize(value []byte, closer io.Closer) (*proto.StorageEntry, error) {
 	se := &proto.StorageEntry{}
-	if err := pb.Unmarshal(payload, se); err != nil {
+	if err := pb.Unmarshal(value, se); err != nil {
 		return nil, errors.Wrap(err, "failed to deserialize storage entry")
 	}
 

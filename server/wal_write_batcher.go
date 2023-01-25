@@ -157,7 +157,6 @@ func newWalWriteBatcher(locker sync.Locker, term int64, shardId uint32, wal wal.
 	batcherFactory := batch.BatcherFactory{
 		Linger:              linger,
 		MaxRequestsPerBatch: 1,
-		BatcherBufferSize:   10,
 	}
 	return batcherFactory.NewBatcher(
 		func() batch.Batch {

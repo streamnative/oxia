@@ -133,7 +133,7 @@ func (m *maelstromGrpcProvider) HandleClientRequest(msgType MsgType, msg any) {
 			ShardId: pb.Uint32(0),
 			Puts: []*proto.PutRequest{{
 				Key:               fmt.Sprintf("%d", w.Body.Key),
-				Payload:           []byte(fmt.Sprintf("%d", w.Body.Value)),
+				Value:             []byte(fmt.Sprintf("%d", w.Body.Value)),
 				ExpectedVersionId: nil,
 			}},
 		}); err != nil {
@@ -159,8 +159,8 @@ func (m *maelstromGrpcProvider) HandleClientRequest(msgType MsgType, msg any) {
 		if res, err := m.getService(oxiaClient).(proto.OxiaClientServer).Read(context.Background(), &proto.ReadRequest{
 			ShardId: pb.Uint32(0),
 			Gets: []*proto.GetRequest{{
-				Key:            fmt.Sprintf("%d", r.Body.Key),
-				IncludePayload: true,
+				Key:          fmt.Sprintf("%d", r.Body.Key),
+				IncludeValue: true,
 			}},
 		}); err != nil {
 			sendError(r.Body.MsgId, r.Src, err)
@@ -171,7 +171,7 @@ func (m *maelstromGrpcProvider) HandleClientRequest(msgType MsgType, msg any) {
 		} else {
 			// Ok
 			var value int64
-			_, _ = fmt.Sscanf(string(res.Gets[0].Payload), "%d", &value)
+			_, _ = fmt.Sscanf(string(res.Gets[0].Value), "%d", &value)
 			b, _ := json.Marshal(&Message[ReadResponse]{
 				Src:  thisNode,
 				Dest: r.Src,
@@ -193,8 +193,8 @@ func (m *maelstromGrpcProvider) HandleClientRequest(msgType MsgType, msg any) {
 		res, err := m.getService(oxiaClient).(proto.OxiaClientServer).Read(context.Background(), &proto.ReadRequest{
 			ShardId: pb.Uint32(0),
 			Gets: []*proto.GetRequest{{
-				Key:            fmt.Sprintf("%d", c.Body.Key),
-				IncludePayload: true,
+				Key:          fmt.Sprintf("%d", c.Body.Key),
+				IncludeValue: true,
 			}},
 		})
 		if err != nil {
@@ -210,7 +210,7 @@ func (m *maelstromGrpcProvider) HandleClientRequest(msgType MsgType, msg any) {
 
 		// Check the existing value
 		var existingValue int64
-		_, _ = fmt.Sscanf(string(res.Gets[0].Payload), "%d", &existingValue)
+		_, _ = fmt.Sscanf(string(res.Gets[0].Value), "%d", &existingValue)
 		if existingValue != c.Body.From {
 			sendErrorWithCode(c.Body.MsgId, c.Src, 22, "precondition-failed")
 			return
@@ -221,7 +221,7 @@ func (m *maelstromGrpcProvider) HandleClientRequest(msgType MsgType, msg any) {
 			ShardId: pb.Uint32(0),
 			Puts: []*proto.PutRequest{{
 				Key:               fmt.Sprintf("%d", c.Body.Key),
-				Payload:           []byte(fmt.Sprintf("%d", c.Body.To)),
+				Value:             []byte(fmt.Sprintf("%d", c.Body.To)),
 				ExpectedVersionId: pb.Int64(res.Gets[0].Version.VersionId),
 			}},
 		}); err != nil {

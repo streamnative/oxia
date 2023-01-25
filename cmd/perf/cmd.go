@@ -36,12 +36,11 @@ type Config struct {
 	RequestRate     float64
 	ReadPercentage  float64
 	KeysCardinality uint32
-	PayloadSize     uint32
+	ValueSize       uint32
 
 	BatchLinger         time.Duration
 	MaxRequestsPerBatch int
 	RequestTimeout      time.Duration
-	BatcherBufferSize   int
 }
 
 var (
@@ -64,12 +63,11 @@ func init() {
 	Cmd.Flags().Float64VarP(&config.RequestRate, "rate", "r", 100.0, "Request rate, ops/s")
 	Cmd.Flags().Float64VarP(&config.ReadPercentage, "read-write-percent", "p", 80.0, "Percentage of read requests, compared to total requests")
 	Cmd.Flags().Uint32Var(&config.KeysCardinality, "keys-cardinality", 1000, "Batch linger in milliseconds")
-	Cmd.Flags().Uint32VarP(&config.PayloadSize, "payload-size", "s", 128, "Size of the payload to write")
+	Cmd.Flags().Uint32VarP(&config.ValueSize, "value-size", "s", 128, "Size of the values to write")
 
 	Cmd.Flags().DurationVar(&config.BatchLinger, "batch-linger", oxia.DefaultBatchLinger, "Batch linger time")
 	Cmd.Flags().IntVar(&config.MaxRequestsPerBatch, "max-requests-per-batch", oxia.DefaultMaxRequestsPerBatch, "Maximum requests per batch")
 	Cmd.Flags().DurationVar(&config.RequestTimeout, "request-timeout", oxia.DefaultRequestTimeout, "Request timeout")
-	Cmd.Flags().IntVar(&config.BatcherBufferSize, "batcher-buffer-size", oxia.DefaultBatcherBufferSize, "Batcher buffer size")
 }
 
 func exec(*cobra.Command, []string) {
@@ -114,7 +112,6 @@ func perfMain(closer *closer) {
 		oxia.WithBatchLinger(config.BatchLinger),
 		oxia.WithMaxRequestsPerBatch(config.MaxRequestsPerBatch),
 		oxia.WithRequestTimeout(config.RequestTimeout),
-		oxia.WithBatcherBufferSize(config.BatcherBufferSize),
 	)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create Oxia client")
@@ -182,7 +179,7 @@ func generateWriteTraffic(closer *closer, client oxia.AsyncClient, latencyCh cha
 	writeRate := config.RequestRate * (100.0 - config.ReadPercentage) / 100
 	limiter := rate.NewLimiter(rate.Limit(writeRate), int(writeRate))
 
-	payload := make([]byte, config.PayloadSize)
+	value := make([]byte, config.ValueSize)
 
 	for {
 		if err := limiter.Wait(closer.ctx); err != nil {
@@ -192,7 +189,7 @@ func generateWriteTraffic(closer *closer, client oxia.AsyncClient, latencyCh cha
 		key := keys[rand.Intn(int(config.KeysCardinality))]
 
 		start := time.Now()
-		ch := client.Put(key, payload)
+		ch := client.Put(key, value)
 		go func() {
 			r := <-ch
 			if r.Err != nil {

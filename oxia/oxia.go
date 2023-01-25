@@ -12,34 +12,5 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package controller
-
-import (
-	"github.com/spf13/cobra"
-	"io"
-	"oxia/cmd/flag"
-	"oxia/common"
-	"oxia/controller"
-)
-
-var (
-	conf = controller.Config{}
-
-	Cmd = &cobra.Command{
-		Use:   "controller",
-		Short: "Start a controller",
-		Long:  `Start a controller`,
-		Run:   exec,
-	}
-)
-
-func init() {
-	flag.InternalAddr(Cmd, &conf.InternalServiceAddr)
-	flag.MetricsAddr(Cmd, &conf.MetricsServiceAddr)
-}
-
-func exec(*cobra.Command, []string) {
-	common.RunProcess(func() (io.Closer, error) {
-		return controller.New(conf)
-	})
-}
+// Package oxia provides a Go client library for interacting with Oxia service.
+package oxia // import "github.com/streamnative/oxia/oxia"

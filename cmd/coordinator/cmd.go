@@ -38,8 +38,8 @@ var (
 )
 
 func init() {
-	flag.InternalPort(Cmd, &conf.InternalServicePort)
-	flag.MetricsPort(Cmd, &conf.MetricsPort)
+	flag.InternalAddr(Cmd, &conf.InternalServiceAddr)
+	flag.MetricsAddr(Cmd, &conf.MetricsServiceAddr)
 	Cmd.Flags().Var(&conf.MetadataProviderImpl, "metadata", "Metadata provider implementation: file, configmap or memory")
 	Cmd.Flags().StringVar(&conf.K8SMetadataNamespace, "k8s-namespace", conf.K8SMetadataNamespace, "Kubernetes namespace for metadata configmap")
 	Cmd.Flags().StringVar(&conf.K8SMetadataConfigMapName, "k8s-configmap-name", conf.K8SMetadataConfigMapName, "ConfigMap name for metadata configmap")

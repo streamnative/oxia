@@ -196,18 +196,18 @@ message ReadResponse {
 }
 
 /**
- * A put request. Persists the specified key and payload
+ * A put request. Persists the specified key and value
  */
 message PutRequest {
   // The key
   string key = 1;
-  // The payload
-  bytes payload = 2;
+  // The value
+  bytes value = 2;
   // An optional expected version_id. The put will fail if the server's current version_id
   // does not match
   optional int64 expected_version_id = 3;
   // Optional. Associate the new value with the session (i.e. ephemeral value).
-  // When the session times out or is closed, the key-payload pair will be
+  // When the session times out or is closed, the record will be automatically
   // removed
   optional int64 session_id = 4;
 }
@@ -243,14 +243,14 @@ message DeleteResponse {
 }
 
 /**
- * A get request. Gets the stat and optionally the payload for the specified
+ * A get request. Gets the stat and optionally the value for the specified
  * key.
  */
 message GetRequest {
   // The key
   string key = 1;
-  // Specifies whether the response should include the payload
-  bool include_payload = 2;
+  // Specifies whether the response should include the value
+  bool include_value = 2;
 }
 
 /**
@@ -262,8 +262,8 @@ message GetResponse {
   Status status = 1;
   // The version of the record
   Version version = 2;
-  // The payload, if it was requested and there was no error
-  optional bytes payload = 3;
+  // The value, if it was requested and there was no error
+  optional bytes value = 3;
 }
 
 /**

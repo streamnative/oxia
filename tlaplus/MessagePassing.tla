@@ -2,13 +2,13 @@
 EXTENDS FiniteSets, FiniteSetsExt, Sequences, SequencesExt, Integers, TLC
 
 \* message types
-CONSTANTS FENCE_REQUEST,
-          FENCE_RESPONSE,
+CONSTANTS NEW_TERM_REQUEST,
+          NEW_TERM_RESPONSE,
           BECOME_LEADER_REQUEST,
           BECOME_LEADER_RESPONSE,
           ADD_FOLLOWER_REQUEST,
-          ADD_ENTRY_REQUEST,
-          ADD_ENTRY_RESPONSE,
+          APPEND,
+          ACK,
           TRUNCATE_REQUEST,
           TRUNCATE_RESPONSE
 
@@ -70,9 +70,9 @@ IsEarliestReceivableEntryMessage(msgs, msg, type) ==
     /\ ~\E msg2 \in DOMAIN messages :
         /\ ReceivableMessageOfType(msgs, msg2, type)
         /\ msg2 # msg
-        /\ \/ /\ msg.type = ADD_ENTRY_REQUEST
+        /\ \/ /\ msg.type = APPEND
               /\ IsLower(msg2.entry.entry_id, msg.entry.entry_id)
-           \/ /\ msg.type = ADD_ENTRY_RESPONSE
+           \/ /\ msg.type = ACK
               /\ IsLower(msg2.entry_id, msg.entry_id)
         /\ msg2.dest_node = msg.dest_node
         /\ msg2.source_node = msg.source_node

@@ -28,7 +28,7 @@ var (
 type WriteBatch interface {
 	io.Closer
 
-	Put(key string, payload []byte) error
+	Put(key string, value []byte) error
 	Delete(key string) error
 	Get(key string) ([]byte, io.Closer, error)
 

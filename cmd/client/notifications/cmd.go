@@ -47,7 +47,7 @@ func exec(cmd *cobra.Command, args []string) error {
 		log.Info().
 			Stringer("type", notification.Type).
 			Str("key", notification.Key).
-			Int64("version", notification.Version).
+			Int64("version-id", notification.VersionId).
 			Msg("")
 	}
 

@@ -66,14 +66,14 @@ func (m mockWriteBatch) Close() error {
 	return nil
 }
 
-func (m mockWriteBatch) Put(key string, payload []byte) error {
+func (m mockWriteBatch) Put(key string, value []byte) error {
 	val, found := m[key]
 	if found {
 		if valAsError, wasError := val.(error); wasError {
 			return valAsError
 		}
 	}
-	m[key] = payload
+	m[key] = value
 	return nil
 }
 
@@ -112,12 +112,12 @@ func TestSessionUpdateOperationCallback_OnPut(t *testing.T) {
 	versionId := int64(2)
 
 	noSessionPutRequest := &proto.PutRequest{
-		Key:     "a/b/c",
-		Payload: []byte("b"),
+		Key:   "a/b/c",
+		Value: []byte("b"),
 	}
 	sessionPutRequest := &proto.PutRequest{
 		Key:               "a/b/c",
-		Payload:           []byte("b"),
+		Value:             []byte("b"),
 		ExpectedVersionId: &versionId,
 		SessionId:         &sessionId,
 	}
@@ -135,7 +135,7 @@ func TestSessionUpdateOperationCallback_OnPut(t *testing.T) {
 	}
 
 	se := &proto.StorageEntry{
-		Payload:               []byte("payload"),
+		Value:                 []byte("value"),
 		VersionId:             0,
 		CreationTimestamp:     0,
 		ModificationTimestamp: 0,
@@ -196,7 +196,7 @@ func TestSessionUpdateOperationCallback_OnPut(t *testing.T) {
 
 func storageEntry(t *testing.T, sessionId int64) []byte {
 	entry := &proto.StorageEntry{
-		Payload:               nil,
+		Value:                 nil,
 		VersionId:             0,
 		CreationTimestamp:     0,
 		ModificationTimestamp: 0,
@@ -303,7 +303,7 @@ func TestSessionManager(t *testing.T) {
 		ShardId: &shardId,
 		Puts: []*proto.PutRequest{{
 			Key:       "a/b",
-			Payload:   []byte("a/b"),
+			Value:     []byte("a/b"),
 			SessionId: &sessionId,
 		}},
 	})
@@ -324,14 +324,14 @@ func getData(t *testing.T, lc *leaderController, key string) string {
 	resp, err := lc.db.ProcessRead(&proto.ReadRequest{
 		ShardId: &shard,
 		Gets: []*proto.GetRequest{{
-			Key:            key,
-			IncludePayload: true,
+			Key:          key,
+			IncludeValue: true,
 		}},
 		Lists: nil,
 	})
 	assert.NoError(t, err)
 	if resp.Gets[0].Status != proto.Status_KEY_NOT_FOUND {
-		return string(resp.Gets[0].Payload)
+		return string(resp.Gets[0].Value)
 	}
 	return ""
 }
@@ -353,8 +353,8 @@ func getSessionMetadata(t *testing.T, lc *leaderController, sessionId int64) *pr
 	resp, err := lc.db.ProcessRead(&proto.ReadRequest{
 		ShardId: &shard,
 		Gets: []*proto.GetRequest{{
-			Key:            SessionKey(SessionId(sessionId)),
-			IncludePayload: true,
+			Key:          SessionKey(SessionId(sessionId)),
+			IncludeValue: true,
 		}},
 		Lists: nil,
 	})
@@ -365,7 +365,7 @@ func getSessionMetadata(t *testing.T, lc *leaderController, sessionId int64) *pr
 		return nil
 	}
 	meta := proto.SessionMetadata{}
-	err = pb.Unmarshal(resp.Gets[0].Payload, &meta)
+	err = pb.Unmarshal(resp.Gets[0].Value, &meta)
 	assert.NoError(t, err)
 	return &meta
 }

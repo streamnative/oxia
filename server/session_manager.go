@@ -135,8 +135,8 @@ func (sm *sessionManager) createSession(request *proto.CreateSessionRequest, min
 		return &proto.WriteRequest{
 			ShardId: &request.ShardId,
 			Puts: []*proto.PutRequest{{
-				Key:     SessionKey(SessionId(id)),
-				Payload: marshalledMetadata,
+				Key:   SessionKey(SessionId(id)),
+				Value: marshalledMetadata,
 			}},
 		}
 	}, true)
@@ -231,8 +231,8 @@ func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, 
 	var gets []*proto.GetRequest
 	for _, key := range listResp.Lists[0].Keys {
 		gets = append(gets, &proto.GetRequest{
-			Key:            key,
-			IncludePayload: true,
+			Key:          key,
+			IncludeValue: true,
 		})
 	}
 	getResp, err := sm.leaderController.db.ProcessRead(&proto.ReadRequest{
@@ -263,9 +263,9 @@ func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, 
 				Msgf("error parsing session key")
 			continue
 		}
-		payload := metaEntry.Payload
+		value := metaEntry.Value
 		metadata := proto.SessionMetadata{}
-		err = pb.Unmarshal(payload, &metadata)
+		err = pb.Unmarshal(value, &metadata)
 		if err != nil {
 			sm.log.Warn().
 				Err(err).

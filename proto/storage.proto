@@ -21,7 +21,7 @@ option go_package = "github.com/streamnative/oxia/proto";
 import "client.proto";
 
 message StorageEntry {
-  bytes payload = 1;
+  bytes value = 1;
   int64 version_id = 2;
   int64 modifications_count = 3;
   fixed64 creation_timestamp = 4;

@@ -55,8 +55,8 @@ func TestLeaderController_NotInitialized(t *testing.T) {
 	res, err := lc.Write(&proto.WriteRequest{
 		ShardId: &shard,
 		Puts: []*proto.PutRequest{{
-			Key:     "a",
-			Payload: []byte("value-a")}},
+			Key:   "a",
+			Value: []byte("value-a")}},
 	})
 
 	assert.Nil(t, res)
@@ -172,8 +172,8 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	res, err := lc.Write(&proto.WriteRequest{
 		ShardId: &shard,
 		Puts: []*proto.PutRequest{{
-			Key:     "a",
-			Payload: []byte("value-a")}},
+			Key:   "a",
+			Value: []byte("value-a")}},
 	})
 
 	assert.NoError(t, err)
@@ -184,13 +184,13 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	/// Read entry
 	res2, err := lc.Read(&proto.ReadRequest{
 		ShardId: &shard,
-		Gets:    []*proto.GetRequest{{Key: "a", IncludePayload: true}},
+		Gets:    []*proto.GetRequest{{Key: "a", IncludeValue: true}},
 	})
 
 	assert.NoError(t, err)
 	assert.EqualValues(t, 1, len(res2.Gets))
 	assert.Equal(t, proto.Status_OK, res2.Gets[0].Status)
-	assert.Equal(t, []byte("value-a"), res2.Gets[0].Payload)
+	assert.Equal(t, []byte("value-a"), res2.Gets[0].Value)
 	assert.EqualValues(t, 0, res.Puts[0].Version.VersionId)
 
 	/// Set NewTerm to leader
@@ -210,8 +210,8 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	res3, err := lc.Write(&proto.WriteRequest{
 		ShardId: &shard,
 		Puts: []*proto.PutRequest{{
-			Key:     "a",
-			Payload: []byte("value-a")}},
+			Key:   "a",
+			Value: []byte("value-a")}},
 	})
 
 	assert.Nil(t, res3)
@@ -277,8 +277,8 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	res, err := lc.Write(&proto.WriteRequest{
 		ShardId: &shard,
 		Puts: []*proto.PutRequest{{
-			Key:     "a",
-			Payload: []byte("value-a")}},
+			Key:   "a",
+			Value: []byte("value-a")}},
 	})
 
 	assert.NoError(t, err)
@@ -289,13 +289,13 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	/// Read entry
 	res2, err := lc.Read(&proto.ReadRequest{
 		ShardId: &shard,
-		Gets:    []*proto.GetRequest{{Key: "a", IncludePayload: true}},
+		Gets:    []*proto.GetRequest{{Key: "a", IncludeValue: true}},
 	})
 
 	assert.NoError(t, err)
 	assert.EqualValues(t, 1, len(res2.Gets))
 	assert.Equal(t, proto.Status_OK, res2.Gets[0].Status)
-	assert.Equal(t, []byte("value-a"), res2.Gets[0].Payload)
+	assert.Equal(t, []byte("value-a"), res2.Gets[0].Value)
 	assert.EqualValues(t, 0, res.Puts[0].Version.VersionId)
 
 	/// Set NewTerm to leader
@@ -315,8 +315,8 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	res3, err := lc.Write(&proto.WriteRequest{
 		ShardId: &shard,
 		Puts: []*proto.PutRequest{{
-			Key:     "a",
-			Payload: []byte("value-a")}},
+			Key:   "a",
+			Value: []byte("value-a")}},
 	})
 
 	assert.Nil(t, res3)
@@ -568,8 +568,8 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 
 	for i := int64(0); i < 10; i++ {
 		wr := &proto.WriteRequest{Puts: []*proto.PutRequest{{
-			Key:     "my-key",
-			Payload: []byte(""),
+			Key:   "my-key",
+			Value: []byte(""),
 		}}}
 		value, err := pb.Marshal(wrapInLogEntryValue(wr))
 		assert.NoError(t, err)
@@ -626,8 +626,8 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 		res, err := lc.Write(&proto.WriteRequest{
 			ShardId: &shard,
 			Puts: []*proto.PutRequest{{
-				Key:     "my-key",
-				Payload: []byte("")}},
+				Key:   "my-key",
+				Value: []byte("")}},
 		})
 
 		assert.NoError(t, err)
@@ -732,8 +732,8 @@ func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
 	v, err := pb.Marshal(wrapInLogEntryValue(&proto.WriteRequest{
 		ShardId: &shard,
 		Puts: []*proto.PutRequest{{
-			Key:     "my-key",
-			Payload: []byte("my-value"),
+			Key:   "my-key",
+			Value: []byte("my-value"),
 		}},
 	}))
 	assert.NoError(t, err)
@@ -774,13 +774,13 @@ func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
 	/// We should be able to read the entry, even if it was not fully committed before the leader started
 	res, err := lc.Read(&proto.ReadRequest{
 		ShardId: &shard,
-		Gets:    []*proto.GetRequest{{Key: "my-key", IncludePayload: true}},
+		Gets:    []*proto.GetRequest{{Key: "my-key", IncludeValue: true}},
 	})
 
 	assert.NoError(t, err)
 	assert.EqualValues(t, 1, len(res.Gets))
 	assert.Equal(t, proto.Status_OK, res.Gets[0].Status)
-	assert.Equal(t, []byte("my-value"), res.Gets[0].Payload)
+	assert.Equal(t, []byte("my-value"), res.Gets[0].Value)
 	assert.EqualValues(t, 0, res.Gets[0].Version.VersionId)
 
 	assert.NoError(t, lc.Close())
@@ -818,8 +818,8 @@ func TestLeaderController_Notifications(t *testing.T) {
 	_, _ = lc.Write(&proto.WriteRequest{
 		ShardId: &shard,
 		Puts: []*proto.PutRequest{{
-			Key:     "a",
-			Payload: []byte("value-a")}},
+			Key:   "a",
+			Value: []byte("value-a")}},
 	})
 
 	nb1 := <-stream.ch

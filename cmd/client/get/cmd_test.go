@@ -75,8 +75,8 @@ func Test_exec(t *testing.T) {
 		{"key-binary",
 			"",
 			flags{
-				keys:           []string{"x"},
-				binaryPayloads: true,
+				keys:         []string{"x"},
+				binaryValues: true,
 			},
 			nil,
 			[]common.Query{Query{
@@ -97,8 +97,8 @@ func Test_exec(t *testing.T) {
 		{"keys-binary",
 			"",
 			flags{
-				keys:           []string{"x", "y"},
-				binaryPayloads: true,
+				keys:         []string{"x", "y"},
+				binaryValues: true,
 			},
 			nil,
 			[]common.Query{Query{
@@ -161,8 +161,8 @@ func TestOutputMarshal(t *testing.T) {
 	}{
 		{"non-binary",
 			Output{
-				Binary:  common.PtrBool(false),
-				Payload: "hello",
+				Binary: common.PtrBool(false),
+				Value:  "hello",
 				Version: common.OutputVersion{
 					VersionId:          1,
 					CreatedTimestamp:   2,
@@ -170,12 +170,12 @@ func TestOutputMarshal(t *testing.T) {
 					ModificationsCount: 0,
 				},
 			},
-			"{\"binary\":false,\"payload\":\"hello\",\"version\":{\"version_id\":1,\"created_timestamp\":2,\"modified_timestamp\":3,\"modifications_count\":0}}",
+			"{\"binary\":false,\"value\":\"hello\",\"version\":{\"version_id\":1,\"created_timestamp\":2,\"modified_timestamp\":3,\"modifications_count\":0}}",
 		},
 		{"binary",
 			Output{
-				Binary:  common.PtrBool(true),
-				Payload: "aGVsbG8y",
+				Binary: common.PtrBool(true),
+				Value:  "aGVsbG8y",
 				Version: common.OutputVersion{
 					VersionId:          2,
 					CreatedTimestamp:   4,
@@ -183,7 +183,7 @@ func TestOutputMarshal(t *testing.T) {
 					ModificationsCount: 0,
 				},
 			},
-			"{\"binary\":true,\"payload\":\"aGVsbG8y\",\"version\":{\"version_id\":2,\"created_timestamp\":4,\"modified_timestamp\":6,\"modifications_count\":0}}",
+			"{\"binary\":true,\"value\":\"aGVsbG8y\",\"version\":{\"version_id\":2,\"created_timestamp\":4,\"modified_timestamp\":6,\"modifications_count\":0}}",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -216,7 +216,7 @@ func TestCall_Complete(t *testing.T) {
 		{
 			"result",
 			oxia.GetResult{
-				Payload: []byte("hello"),
+				Value: []byte("hello"),
 				Version: oxia.Version{
 					VersionId:          1,
 					CreatedTimestamp:   4,
@@ -226,8 +226,8 @@ func TestCall_Complete(t *testing.T) {
 			},
 			false,
 			Output{
-				Payload: "hello",
-				Binary:  common.PtrBool(false),
+				Value:  "hello",
+				Binary: common.PtrBool(false),
 				Version: common.OutputVersion{
 					VersionId:          1,
 					CreatedTimestamp:   4,
@@ -239,7 +239,7 @@ func TestCall_Complete(t *testing.T) {
 		{
 			"result-binary",
 			oxia.GetResult{
-				Payload: []byte("hello2"),
+				Value: []byte("hello2"),
 				Version: oxia.Version{
 					VersionId:          1,
 					CreatedTimestamp:   4,
@@ -249,8 +249,8 @@ func TestCall_Complete(t *testing.T) {
 			},
 			true,
 			Output{
-				Payload: "aGVsbG8y",
-				Binary:  common.PtrBool(true),
+				Value:  "aGVsbG8y",
+				Binary: common.PtrBool(true),
 				Version: common.OutputVersion{
 					VersionId:          1,
 					CreatedTimestamp:   4,

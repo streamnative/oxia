@@ -304,14 +304,14 @@ func TestPebbbleGetWithinBatch(t *testing.T) {
 	assert.NoError(t, wb.Put("b", []byte("1")))
 	assert.NoError(t, wb.Put("c", []byte("2")))
 
-	payload, closer, err := wb.Get("a")
+	value, closer, err := wb.Get("a")
 	assert.NoError(t, err)
-	assert.Equal(t, "0", string(payload))
+	assert.Equal(t, "0", string(value))
 	assert.NoError(t, closer.Close())
 
-	payload, closer, err = wb.Get("non-existent")
+	value, closer, err = wb.Get("non-existent")
 	assert.ErrorIs(t, err, ErrorKeyNotFound)
-	assert.Nil(t, payload)
+	assert.Nil(t, value)
 	assert.Nil(t, closer)
 
 	assert.NoError(t, wb.Commit())
@@ -320,23 +320,23 @@ func TestPebbbleGetWithinBatch(t *testing.T) {
 	// Second batch
 
 	wb = kv.NewWriteBatch()
-	payload, closer, err = wb.Get("a")
+	value, closer, err = wb.Get("a")
 	assert.NoError(t, err)
-	assert.Equal(t, "0", string(payload))
+	assert.Equal(t, "0", string(value))
 	assert.NoError(t, closer.Close())
 
 	assert.NoError(t, wb.Put("a", []byte("00")))
 
-	payload, closer, err = wb.Get("a")
+	value, closer, err = wb.Get("a")
 	assert.NoError(t, err)
-	assert.Equal(t, "00", string(payload))
+	assert.Equal(t, "00", string(value))
 	assert.NoError(t, closer.Close())
 
 	assert.NoError(t, wb.Delete("a"))
 
-	payload, closer, err = wb.Get("a")
+	value, closer, err = wb.Get("a")
 	assert.ErrorIs(t, err, ErrorKeyNotFound)
-	assert.Nil(t, payload)
+	assert.Nil(t, value)
 	assert.Nil(t, closer)
 
 	assert.NoError(t, kv.Close())
