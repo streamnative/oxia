@@ -291,6 +291,28 @@ func (m *mockKeepAliveServer) sendHeartbeat(heartbeat *proto.SessionHeartbeat) {
 	m.requests <- heartbeat
 }
 
+//////
+
+func newMockListServer() *mockListServer {
+	return &mockListServer{
+		keys: make([]string, 0),
+	}
+}
+
+type mockListServer struct {
+	mockBase
+	keys []string
+}
+
+func (m *mockListServer) Send(response *proto.ListResponse) error {
+	m.keys = append(m.keys, response.Keys...)
+	return nil
+}
+
+func (m *mockListServer) reset() {
+	m.keys = make([]string, 0)
+}
+
 ////////////////////// Common boilerplate
 
 type mockBase struct {

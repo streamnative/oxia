@@ -268,7 +268,7 @@ func TestCall_Complete(t *testing.T) {
 				binary:     test.binary,
 				clientCall: results,
 			}
-			assert.Equalf(t, test.expected, call.Complete(), "Error")
+			assert.Equalf(t, test.expected, <-call.Complete(), "Error")
 		})
 	}
 }

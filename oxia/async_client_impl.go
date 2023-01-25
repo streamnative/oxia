@@ -19,6 +19,7 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"golang.org/x/sync/errgroup"
+	"io"
 	"oxia/common"
 	"oxia/oxia/internal"
 	"oxia/oxia/internal/batch"
@@ -34,6 +35,7 @@ type clientImpl struct {
 	shardManager      internal.ShardManager
 	writeBatchManager *batch.Manager
 	readBatchManager  *batch.Manager
+	executor          internal.Executor
 	sessions          *sessions
 
 	clientPool common.ClientPool
@@ -80,6 +82,7 @@ func NewAsyncClient(serviceAddress string, opts ...ClientOption) (AsyncClient, e
 		shardManager:      shardManager,
 		writeBatchManager: batch.NewManager(batcherFactory.NewWriteBatcher),
 		readBatchManager:  batch.NewManager(batcherFactory.NewReadBatcher),
+		executor:          executor,
 	}
 
 	c.ctx, c.cancel = context.WithCancel(context.Background())
@@ -197,39 +200,47 @@ func (c *clientImpl) Get(key string) <-chan GetResult {
 	return ch
 }
 
-func (c *clientImpl) List(minKeyInclusive string, maxKeyExclusive string) <-chan ListResult {
+func (c *clientImpl) List(ctx context.Context, minKeyInclusive string, maxKeyExclusive string) <-chan ListResult {
 	shardIds := c.shardManager.GetAll()
-	ch := make(chan ListResult, 1)
-	var wg sync.WaitGroup
-	wg.Add(len(shardIds))
-	keys := make([]string, 0)
+	ch := make(chan ListResult)
+	wg := common.NewWaitGroup(len(shardIds))
 	for _, shardId := range shardIds {
-		cInner := make(chan ListResult, 1)
-		callback := func(response *proto.ListResponse, err error) {
-			if err != nil {
-				cInner <- ListResult{Err: err}
-			} else {
-				cInner <- toListResult(response)
-			}
-		}
-		c.readBatchManager.Get(shardId).Add(model.ListCall{
-			MinKeyInclusive: minKeyInclusive,
-			MaxKeyExclusive: maxKeyExclusive,
-			Callback:        callback,
-		})
+		shardIdPtr := &shardId
 		go func() {
-			x := <-cInner
-			keys = append(keys, x.Keys...)
+			request := &proto.ListRequest{
+				ShardId:        shardIdPtr,
+				StartInclusive: minKeyInclusive,
+				EndExclusive:   maxKeyExclusive,
+			}
+
+			client, err := c.executor.ExecuteList(ctx, request)
+			if err != nil {
+				ch <- ListResult{Err: err}
+				wg.Done()
+				return
+			}
+
+			for {
+				response, err := client.Recv()
+				if err == io.EOF {
+					break
+				} else if err != nil {
+					ch <- ListResult{Err: err}
+					break
+				}
+				ch <- ListResult{Keys: response.Keys}
+			}
+
 			wg.Done()
 		}()
+
 	}
+
 	go func() {
-		wg.Wait()
-		ch <- ListResult{
-			Keys: keys,
-		}
+		_ = wg.Wait(ctx)
 		close(ch)
 	}()
+
 	return ch
 }
 

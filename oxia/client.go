@@ -88,7 +88,7 @@ type AsyncClient interface {
 	// Note: Oxia uses a custom sorting order that treats `/` characters in special way.
 	// Refer to this documentation for the specifics:
 	// https://github.com/streamnative/oxia/blob/main/docs/oxia-key-sorting.md
-	List(minKeyInclusive string, maxKeyExclusive string) <-chan ListResult
+	List(ctx context.Context, minKeyInclusive string, maxKeyExclusive string) <-chan ListResult
 
 	// GetNotifications creates a new subscription to receive the notifications
 	// from Oxia for any change that is applied to the database
@@ -143,7 +143,7 @@ type SyncClient interface {
 	// Note: Oxia uses a custom sorting order that treats `/` characters in special way.
 	// Refer to this documentation for the specifics:
 	// https://github.com/streamnative/oxia/blob/main/docs/oxia-key-sorting.md
-	List(ctx context.Context, minKeyInclusive string, maxKeyExclusive string) (keys []string, err error)
+	List(ctx context.Context, minKeyInclusive string, maxKeyExclusive string) <-chan ListResult
 
 	// GetNotifications creates a new subscription to receive the notifications
 	// from Oxia for any change that is applied to the database

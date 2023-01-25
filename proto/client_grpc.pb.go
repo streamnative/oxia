@@ -44,6 +44,11 @@ type OxiaClientClient interface {
 	// Clients should send this request to the shard leader. In the future,
 	// this may be handled server-side in a proxy layer.
 	Read(ctx context.Context, in *ReadRequest, opts ...grpc.CallOption) (*ReadResponse, error)
+	// *
+	// Requests all the keys between a range of keys.
+	//
+	// Clients should send an equivalent request to all respective shards.
+	List(ctx context.Context, in *ListRequest, opts ...grpc.CallOption) (OxiaClient_ListClient, error)
 	GetNotifications(ctx context.Context, in *NotificationsRequest, opts ...grpc.CallOption) (OxiaClient_GetNotificationsClient, error)
 	// Creates a new client session. Sessions are kept alive by regularly sending
 	// heartbeats via the KeepAlive rpc.
@@ -112,8 +117,40 @@ func (c *oxiaClientClient) Read(ctx context.Context, in *ReadRequest, opts ...gr
 	return out, nil
 }
 
+func (c *oxiaClientClient) List(ctx context.Context, in *ListRequest, opts ...grpc.CallOption) (OxiaClient_ListClient, error) {
+	stream, err := c.cc.NewStream(ctx, &OxiaClient_ServiceDesc.Streams[1], "/io.streamnative.oxia.proto.OxiaClient/List", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &oxiaClientListClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type OxiaClient_ListClient interface {
+	Recv() (*ListResponse, error)
+	grpc.ClientStream
+}
+
+type oxiaClientListClient struct {
+	grpc.ClientStream
+}
+
+func (x *oxiaClientListClient) Recv() (*ListResponse, error) {
+	m := new(ListResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 func (c *oxiaClientClient) GetNotifications(ctx context.Context, in *NotificationsRequest, opts ...grpc.CallOption) (OxiaClient_GetNotificationsClient, error) {
-	stream, err := c.cc.NewStream(ctx, &OxiaClient_ServiceDesc.Streams[1], "/io.streamnative.oxia.proto.OxiaClient/GetNotifications", opts...)
+	stream, err := c.cc.NewStream(ctx, &OxiaClient_ServiceDesc.Streams[2], "/io.streamnative.oxia.proto.OxiaClient/GetNotifications", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -154,7 +191,7 @@ func (c *oxiaClientClient) CreateSession(ctx context.Context, in *CreateSessionR
 }
 
 func (c *oxiaClientClient) KeepAlive(ctx context.Context, opts ...grpc.CallOption) (OxiaClient_KeepAliveClient, error) {
-	stream, err := c.cc.NewStream(ctx, &OxiaClient_ServiceDesc.Streams[2], "/io.streamnative.oxia.proto.OxiaClient/KeepAlive", opts...)
+	stream, err := c.cc.NewStream(ctx, &OxiaClient_ServiceDesc.Streams[3], "/io.streamnative.oxia.proto.OxiaClient/KeepAlive", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -222,6 +259,11 @@ type OxiaClientServer interface {
 	// Clients should send this request to the shard leader. In the future,
 	// this may be handled server-side in a proxy layer.
 	Read(context.Context, *ReadRequest) (*ReadResponse, error)
+	// *
+	// Requests all the keys between a range of keys.
+	//
+	// Clients should send an equivalent request to all respective shards.
+	List(*ListRequest, OxiaClient_ListServer) error
 	GetNotifications(*NotificationsRequest, OxiaClient_GetNotificationsServer) error
 	// Creates a new client session. Sessions are kept alive by regularly sending
 	// heartbeats via the KeepAlive rpc.
@@ -245,6 +287,9 @@ func (UnimplementedOxiaClientServer) Write(context.Context, *WriteRequest) (*Wri
 }
 func (UnimplementedOxiaClientServer) Read(context.Context, *ReadRequest) (*ReadResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Read not implemented")
+}
+func (UnimplementedOxiaClientServer) List(*ListRequest, OxiaClient_ListServer) error {
+	return status.Errorf(codes.Unimplemented, "method List not implemented")
 }
 func (UnimplementedOxiaClientServer) GetNotifications(*NotificationsRequest, OxiaClient_GetNotificationsServer) error {
 	return status.Errorf(codes.Unimplemented, "method GetNotifications not implemented")
@@ -326,6 +371,27 @@ func _OxiaClient_Read_Handler(srv interface{}, ctx context.Context, dec func(int
 		return srv.(OxiaClientServer).Read(ctx, req.(*ReadRequest))
 	}
 	return interceptor(ctx, in, info, handler)
+}
+
+func _OxiaClient_List_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ListRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(OxiaClientServer).List(m, &oxiaClientListServer{stream})
+}
+
+type OxiaClient_ListServer interface {
+	Send(*ListResponse) error
+	grpc.ServerStream
+}
+
+type oxiaClientListServer struct {
+	grpc.ServerStream
+}
+
+func (x *oxiaClientListServer) Send(m *ListResponse) error {
+	return x.ServerStream.SendMsg(m)
 }
 
 func _OxiaClient_GetNotifications_Handler(srv interface{}, stream grpc.ServerStream) error {
@@ -439,6 +505,11 @@ var OxiaClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "GetShardAssignments",
 			Handler:       _OxiaClient_GetShardAssignments_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "List",
+			Handler:       _OxiaClient_List_Handler,
 			ServerStreams: true,
 		},
 		{

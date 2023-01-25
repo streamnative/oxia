@@ -150,11 +150,14 @@ type Call struct {
 	clientCall <-chan error
 }
 
-func (call Call) Complete() any {
+func (call Call) Complete() <-chan any {
+	ch := make(chan any, 1)
 	result := <-call.clientCall
 	output := common.OutputError{}
 	if result != nil {
 		output.Err = result.Error()
 	}
-	return output
+	ch <- output
+	close(ch)
+	return ch
 }

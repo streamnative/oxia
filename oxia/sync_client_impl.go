@@ -87,13 +87,8 @@ func (c *syncClientImpl) Get(ctx context.Context, key string) ([]byte, Version, 
 	}
 }
 
-func (c *syncClientImpl) List(ctx context.Context, minKeyInclusive string, maxKeyExclusive string) ([]string, error) {
-	select {
-	case r := <-c.asyncClient.List(minKeyInclusive, maxKeyExclusive):
-		return r.Keys, r.Err
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
+func (c *syncClientImpl) List(ctx context.Context, minKeyInclusive string, maxKeyExclusive string) <-chan ListResult {
+	return c.asyncClient.List(ctx, minKeyInclusive, maxKeyExclusive)
 }
 
 func (c *syncClientImpl) GetNotifications() (Notifications, error) {

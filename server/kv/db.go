@@ -48,6 +48,7 @@ type DB interface {
 
 	ProcessWrite(b *proto.WriteRequest, commitOffset int64, timestamp uint64, updateOperationCallback UpdateOperationCallback) (*proto.WriteResponse, error)
 	ProcessRead(b *proto.ReadRequest) (*proto.ReadResponse, error)
+	List(request *proto.ListRequest) KeyIterator
 	ReadCommitOffset() (int64, error)
 
 	ReadNextNotifications(ctx context.Context, startOffset int64) ([]*proto.NotificationBatch, error)
@@ -77,6 +78,8 @@ func NewDB(shardId uint32, factory KVFactory, notificationRetentionTime time.Dur
 			"The time it takes to write a batch in the db", labels),
 		batchReadLatencyHisto: metrics.NewLatencyHistogram("oxia_server_db_batch_read_latency",
 			"The time it takes to read a batch from the db", labels),
+		listLatencyHisto: metrics.NewLatencyHistogram("oxia_server_db_list_latency",
+			"The time it takes to read a list from the db", labels),
 		putCounter: metrics.NewCounter("oxia_server_db_puts",
 			"The total number of put operations", "count", labels),
 		deleteCounter: metrics.NewCounter("oxia_server_db_deletes",
@@ -112,6 +115,7 @@ type db struct {
 
 	batchWriteLatencyHisto metrics.LatencyHistogram
 	batchReadLatencyHisto  metrics.LatencyHistogram
+	listLatencyHisto       metrics.LatencyHistogram
 }
 
 func (d *db) Snapshot() (Snapshot, error) {
@@ -234,6 +238,24 @@ func (d *db) ProcessRead(b *proto.ReadRequest) (*proto.ReadResponse, error) {
 	}
 
 	return res, nil
+}
+
+type listIterator struct {
+	KeyIterator
+	timer metrics.Timer
+}
+
+func (it *listIterator) Close() error {
+	it.timer.Done()
+	return it.KeyIterator.Close()
+}
+
+func (d *db) List(request *proto.ListRequest) KeyIterator {
+	d.listCounter.Add(1)
+	return &listIterator{
+		KeyIterator: d.kv.KeyRangeScan(request.StartInclusive, request.EndExclusive),
+		timer:       d.listLatencyHisto.Timer(),
+	}
 }
 
 func (d *db) ReadCommitOffset() (int64, error) {

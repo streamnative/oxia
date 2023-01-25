@@ -37,7 +37,7 @@ type Query interface {
 	Perform(client oxia.AsyncClient) Call
 }
 type Call interface {
-	Complete() any
+	Complete() <-chan any
 }
 
 func NewCommandLoop(out io.Writer) (*CommandLoop, error) {
@@ -65,7 +65,7 @@ func (loop *CommandLoop) start() {
 		if !ok {
 			break
 		}
-		writeOutput(loop.out, query.Perform(loop.client).Complete())
+		writeOutputCh(loop.out, query.Perform(loop.client).Complete())
 	}
 	loop.done <- true
 }

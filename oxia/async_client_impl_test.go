@@ -57,10 +57,13 @@ func TestAsyncClientImpl(t *testing.T) {
 	assert.EqualValues(t, 2, putResultC2.Version.VersionId)
 	assert.EqualValues(t, 1, putResultC2.Version.ModificationsCount)
 
-	getRangeResult := <-client.List("/a", "/d")
+	listResult := <-client.List(context.Background(), "/y", "/z")
+	assert.Len(t, listResult.Keys, 0)
+
+	listResult = <-client.List(context.Background(), "/a", "/d")
 	assert.Equal(t, ListResult{
 		Keys: []string{"/a", "/c"},
-	}, getRangeResult)
+	}, listResult)
 
 	deleteErr := <-client.Delete("/a", ExpectedVersionId(putResultA.Version.VersionId))
 	assert.NoError(t, deleteErr)
