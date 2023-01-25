@@ -567,16 +567,20 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 	assert.NoError(t, err)
 
 	for i := int64(0); i < 10; i++ {
+		wr := &proto.WriteRequest{Puts: []*proto.PutRequest{{
+			Key:   "my-key",
+			Value: []byte(""),
+		}}}
+		value, err := pb.Marshal(wrapInLogEntryValue(wr))
+		assert.NoError(t, err)
+
 		assert.NoError(t, wal.Append(&proto.LogEntry{
 			Term:   5,
 			Offset: i,
-			Value:  []byte(""), // Log content entries are not important for this test
+			Value:  value,
 		}))
 
-		_, err := db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
-			Key:   "my-key",
-			Value: []byte(""),
-		}}}, i-1, 0, kv.NoOpCallback)
+		_, err = db.ProcessWrite(wr, i-1, 0, kv.NoOpCallback)
 		assert.NoError(t, err)
 	}
 
@@ -725,13 +729,13 @@ func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
 
 	wal, err := walFactory.NewWal(shard)
 	assert.NoError(t, err)
-	v, err := pb.Marshal(&proto.WriteRequest{
+	v, err := pb.Marshal(wrapInLogEntryValue(&proto.WriteRequest{
 		ShardId: &shard,
 		Puts: []*proto.PutRequest{{
 			Key:   "my-key",
 			Value: []byte("my-value"),
 		}},
-	})
+	}))
 	assert.NoError(t, err)
 	assert.NoError(t, wal.Append(&proto.LogEntry{
 		Term:   0,

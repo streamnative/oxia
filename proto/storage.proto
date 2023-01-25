@@ -18,6 +18,8 @@ package proto;
 
 option go_package = "github.com/streamnative/oxia/proto";
 
+import "client.proto";
+
 message StorageEntry {
   bytes value = 1;
   int64 version_id = 2;
@@ -29,4 +31,14 @@ message StorageEntry {
 
 message SessionMetadata {
   uint32 timeout_ms = 1;
+}
+
+message LogEntryValue {
+  oneof value {
+    WriteRequests requests = 1;
+  }
+}
+
+message WriteRequests {
+    repeated io.streamnative.oxia.proto.WriteRequest writes = 1;
 }
