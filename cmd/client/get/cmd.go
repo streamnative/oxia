@@ -54,7 +54,10 @@ var Cmd = &cobra.Command{
 }
 
 func exec(cmd *cobra.Command, args []string) error {
-	loop, _ := common.NewCommandLoop(cmd.OutOrStdout())
+	loop, err := common.NewCommandLoop(cmd.OutOrStdout())
+	if err != nil {
+		return err
+	}
 	defer func() {
 		loop.Complete()
 	}()
