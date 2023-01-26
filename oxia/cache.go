@@ -29,7 +29,7 @@ import (
 
 // Cache provides a view of the data stored in Oxia that is locally cached.
 //
-// The cached values are automatically updated when new there are updates or
+// The cached values are automatically updated when there are updates or
 // deletions.
 // The cache is storing de-serialized object
 type Cache[Value any] interface {
