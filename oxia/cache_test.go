@@ -170,15 +170,21 @@ func TestCache_DeserializationFailure(t *testing.T) {
 }
 
 func TestCache_ConcurrentUpdate(t *testing.T) {
-	client, err := NewSyncClient(serviceAddress)
+	client1, err := NewSyncClient(serviceAddress)
 	assert.NoError(t, err)
 
-	cache, err := NewCache[testStruct](client, json.Marshal, json.Unmarshal)
+	client2, err := NewSyncClient(serviceAddress)
+	assert.NoError(t, err)
+
+	cache1, err := NewCache[testStruct](client1, json.Marshal, json.Unmarshal)
+	assert.NoError(t, err)
+
+	cache2, err := NewCache[testStruct](client2, json.Marshal, json.Unmarshal)
 	assert.NoError(t, err)
 
 	k1 := newKey()
 	v1 := testStruct{"hello", 1}
-	version1, err := cache.Put(context.Background(), k1, v1, ExpectedRecordNotExists())
+	version1, err := cache1.Put(context.Background(), k1, v1, ExpectedRecordNotExists())
 	assert.NoError(t, err)
 	assert.EqualValues(t, 0, version1.ModificationsCount)
 
@@ -190,7 +196,7 @@ func TestCache_ConcurrentUpdate(t *testing.T) {
 	isFirstTime.Store(true)
 
 	go func() {
-		err = cache.ReadModifyUpdate(context.Background(), k1, func(existingValue Optional[testStruct]) (testStruct, error) {
+		err := cache1.ReadModifyUpdate(context.Background(), k1, func(existingValue Optional[testStruct]) (testStruct, error) {
 			if isFirstTime.Load() {
 				wg.Done()
 				_ = wg1.Wait(context.Background())
@@ -203,7 +209,7 @@ func TestCache_ConcurrentUpdate(t *testing.T) {
 	}()
 
 	go func() {
-		err = cache.ReadModifyUpdate(context.Background(), k1, func(existingValue Optional[testStruct]) (testStruct, error) {
+		err := cache2.ReadModifyUpdate(context.Background(), k1, func(existingValue Optional[testStruct]) (testStruct, error) {
 			if isFirstTime.Load() {
 				wg.Done()
 				_ = wg2.Wait(context.Background())
@@ -227,11 +233,19 @@ func TestCache_ConcurrentUpdate(t *testing.T) {
 	// Wait for both operations to complete
 	_ = wgResult.Wait(context.Background())
 
-	value, version, err := cache.Get(context.Background(), k1)
+	value, version, err := cache1.Get(context.Background(), k1)
 	assert.NoError(t, err)
 	assert.EqualValues(t, 2, version.ModificationsCount)
 	assert.Equal(t, testStruct{"hello", 3}, value)
 
-	assert.NoError(t, cache.Close())
-	assert.NoError(t, client.Close())
+	value, version, err = cache2.Get(context.Background(), k1)
+	assert.NoError(t, err)
+	assert.EqualValues(t, 2, version.ModificationsCount)
+	assert.Equal(t, testStruct{"hello", 3}, value)
+
+	assert.NoError(t, cache1.Close())
+	assert.NoError(t, client1.Close())
+
+	assert.NoError(t, cache2.Close())
+	assert.NoError(t, client2.Close())
 }
