@@ -30,34 +30,40 @@ func NewManager(batcherFactory func(*uint32) batch.Batcher) *Manager {
 //////////
 
 type Manager struct {
-	sync.Mutex
+	sync.RWMutex
 	batcherFactory func(*uint32) batch.Batcher
 	batchers       map[uint32]batch.Batcher
 }
 
 func (m *Manager) Get(shardId uint32) batch.Batcher {
-	//double-check lock
+	m.RLock()
 	batcher, ok := m.batchers[shardId]
-	if !ok {
-		m.Lock()
-		if batcher, ok = m.batchers[shardId]; !ok {
-			batcher = m.batcherFactory(&shardId)
-			m.batchers[shardId] = batcher
-		}
-		m.Unlock()
+	m.RUnlock()
+
+	if ok {
+		return batcher
+	}
+
+	// Fallback on write-lock
+	m.Lock()
+	defer m.Unlock()
+
+	if batcher, ok = m.batchers[shardId]; !ok {
+		batcher = m.batcherFactory(&shardId)
+		m.batchers[shardId] = batcher
 	}
 	return batcher
 }
 
 func (m *Manager) Close() error {
-	var errs error
 	m.Lock()
+	defer m.Unlock()
+
+	var err error
 	for id, batcher := range m.batchers {
 		delete(m.batchers, id)
-		if err := batcher.Close(); err != nil {
-			errs = multierr.Append(errs, err)
-		}
+		err = multierr.Append(err, batcher.Close())
 	}
-	m.Unlock()
-	return errs
+
+	return err
 }
