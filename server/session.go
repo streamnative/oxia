@@ -31,23 +31,25 @@ import (
 
 type session struct {
 	sync.Mutex
-	id          SessionId
-	shardId     uint32
-	timeout     time.Duration
-	sm          *sessionManager
-	attached    bool
-	heartbeatCh chan *proto.SessionHeartbeat
-	cancel      context.CancelFunc
-	ctx         context.Context
-	log         zerolog.Logger
+	id             SessionId
+	clientIdentity string
+	shardId        uint32
+	timeout        time.Duration
+	sm             *sessionManager
+	attached       bool
+	heartbeatCh    chan *proto.SessionHeartbeat
+	cancel         context.CancelFunc
+	ctx            context.Context
+	log            zerolog.Logger
 }
 
 func startSession(sessionId SessionId, sessionMetadata *proto.SessionMetadata, sm *sessionManager) *session {
 	s := &session{
-		id:          sessionId,
-		timeout:     time.Duration(sessionMetadata.TimeoutMs) * time.Millisecond,
-		sm:          sm,
-		heartbeatCh: make(chan *proto.SessionHeartbeat, 1),
+		id:             sessionId,
+		clientIdentity: sessionMetadata.Identity,
+		timeout:        time.Duration(sessionMetadata.TimeoutMs) * time.Millisecond,
+		sm:             sm,
+		heartbeatCh:    make(chan *proto.SessionHeartbeat, 1),
 
 		log: sm.log.With().
 			Str("component", "session").

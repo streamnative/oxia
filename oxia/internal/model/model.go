@@ -23,6 +23,7 @@ type PutCall struct {
 	Value             []byte
 	ExpectedVersionId *int64
 	SessionId         *int64
+	ClientIdentity    *string
 	Callback          func(*proto.PutResponse, error)
 }
 
@@ -55,6 +56,7 @@ func (r PutCall) ToProto() *proto.PutRequest {
 		Value:             r.Value,
 		ExpectedVersionId: r.ExpectedVersionId,
 		SessionId:         r.SessionId,
+		ClientIdentity:    r.ClientIdentity,
 	}
 }
 

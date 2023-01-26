@@ -26,11 +26,14 @@ message StorageEntry {
   int64 modifications_count = 3;
   fixed64 creation_timestamp = 4;
   fixed64 modification_timestamp = 5;
+
   optional int64 session_id = 6;
+  optional string client_identity = 7;
 }
 
 message SessionMetadata {
   uint32 timeout_ms = 1;
+  string identity = 2;
 }
 
 message LogEntryValue {
