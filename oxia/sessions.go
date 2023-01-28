@@ -32,6 +32,7 @@ import (
 
 func newSessions(ctx context.Context, shardManager internal.ShardManager, pool common.ClientPool, options clientOptions) *sessions {
 	s := &sessions{
+		clientIdentity:  options.identity,
 		ctx:             ctx,
 		shardManager:    shardManager,
 		pool:            pool,
@@ -44,6 +45,7 @@ func newSessions(ctx context.Context, shardManager internal.ShardManager, pool c
 
 type sessions struct {
 	sync.Mutex
+	clientIdentity  string
 	ctx             context.Context
 	shardManager    internal.ShardManager
 	pool            common.ClientPool
@@ -141,6 +143,7 @@ func (cs *clientSession) createSession() error {
 	defer cancel()
 	createSessionResponse, err := rpc.CreateSession(ctx, &proto.CreateSessionRequest{
 		ShardId:          cs.shardId,
+		ClientIdentity:   cs.sessions.clientIdentity,
 		SessionTimeoutMs: uint32(cs.sessions.clientOpts.sessionTimeout.Milliseconds()),
 	})
 	if err != nil {

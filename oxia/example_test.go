@@ -74,13 +74,13 @@ func ExampleAsyncClient() {
 
 	// Wait for the async operations to complete
 	r1 := <-c1
-	fmt.Printf("First operation complete: version: %d - error: %#v\n", r1.Version, r1.Err)
+	fmt.Printf("First operation complete: version: %#v - error: %#v\n", r1.Version, r1.Err)
 
 	r2 := <-c2
-	fmt.Printf("First operation complete: version: %d - error: %#v\n", r2.Version, r2.Err)
+	fmt.Printf("First operation complete: version: %#v - error: %#v\n", r2.Version, r2.Err)
 
 	r3 := <-c3
-	fmt.Printf("First operation complete: version: %d - error: %#v\n", r3.Version, r3.Err)
+	fmt.Printf("First operation complete: version: %#v - error: %#v\n", r3.Version, r3.Err)
 }
 
 func ExampleNotifications() {
