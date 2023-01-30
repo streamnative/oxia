@@ -213,10 +213,14 @@ message PutRequest {
   // An optional expected version_id. The put will fail if the server's current version_id
   // does not match
   optional int64 expected_version_id = 3;
-  // Optional. Associate the new value with the session (i.e. ephemeral value).
-  // When the session times out or is closed, the record will be automatically
+  // Optional. Associate the new record with the session (i.e. ephemeral record).
+  // When the session expires or is explicitly closed, the record will be automatically
   // removed
   optional int64 session_id = 4;
+
+  // Client identifier used to track the client that last modified an
+  // ephemeral record.
+  optional string client_identity = 5;
 }
 
 /**
@@ -327,8 +331,11 @@ message Version {
   fixed64 created_timestamp = 3;
   // The modified timestamp of the current version of the record
   fixed64 modified_timestamp = 4;
+
   // Identifier of the session if the record is ephemeral
   optional int64 session_id = 5;
+
+  optional string client_identity = 6;
 }
 
 /**
@@ -348,6 +355,7 @@ enum Status {
 message CreateSessionRequest {
   uint32 shard_id = 1;
   uint32 session_timeout_ms = 2;
+  string client_identity = 3;
 }
 
 message CreateSessionResponse {

@@ -16,10 +16,15 @@ package oxia
 
 import (
 	"context"
+	"go.uber.org/multierr"
+	"sync"
 )
 
 type syncClientImpl struct {
-	asyncClient AsyncClient
+	sync.Mutex
+
+	asyncClient  AsyncClient
+	cacheManager *cacheManager
 }
 
 // NewSyncClient creates a new Oxia client with the sync interface
@@ -43,12 +48,33 @@ func NewSyncClient(serviceAddress string, opts ...ClientOption) (SyncClient, err
 
 func newSyncClient(asyncClient AsyncClient) SyncClient {
 	return &syncClientImpl{
-		asyncClient: asyncClient,
+		asyncClient:  asyncClient,
+		cacheManager: nil,
 	}
 }
 
+func (c *syncClientImpl) getCacheManager() (*cacheManager, error) {
+	c.Lock()
+	defer c.Unlock()
+
+	if c.cacheManager != nil {
+		return c.cacheManager, nil
+	}
+
+	var err error
+	c.cacheManager, err = newCacheManager(c)
+	return c.cacheManager, err
+}
+
 func (c *syncClientImpl) Close() error {
-	return c.asyncClient.Close()
+	c.Lock()
+	defer c.Unlock()
+
+	var err error
+	if c.cacheManager != nil {
+		err = c.cacheManager.Close()
+	}
+	return multierr.Combine(err, c.asyncClient.Close())
 }
 
 func (c *syncClientImpl) Put(ctx context.Context, key string, value []byte, options ...PutOption) (Version, error) {

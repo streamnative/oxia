@@ -119,6 +119,7 @@ func (c *clientImpl) Put(key string, value []byte, options ...PutOption) <-chan 
 		Callback:          callback,
 	}
 	if opts.ephemeral {
+		putCall.ClientIdentity = &c.options.identity
 		c.sessions.executeWithSessionId(shardId, func(sessionId int64, err error) {
 			if err != nil {
 				callback(nil, err)

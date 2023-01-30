@@ -257,3 +257,75 @@ func TestAsyncClientImpl_Sessions(t *testing.T) {
 	assert.NoError(t, server.Close())
 
 }
+
+func TestAsyncClientImpl_OverrideEphemeral(t *testing.T) {
+	client, err := NewSyncClient(serviceAddress,
+		WithSessionTimeout(5*time.Second),
+	)
+	assert.NoError(t, err)
+
+	k := newKey()
+	version, err := client.Put(context.Background(), k, []byte("v1"), Ephemeral())
+	assert.NoError(t, err)
+
+	assert.True(t, version.Ephemeral)
+
+	// Override with non-ephemeral value
+	version, err = client.Put(context.Background(), k, []byte("v2"))
+	assert.NoError(t, err)
+
+	assert.False(t, version.Ephemeral)
+	assert.Equal(t, "", version.ClientIdentity)
+
+	assert.NoError(t, client.Close())
+
+	// Reopen
+	client, err = NewSyncClient(serviceAddress)
+	assert.NoError(t, err)
+
+	var res []byte
+	res, version, err = client.Get(context.Background(), k)
+	assert.NoError(t, err)
+	assert.EqualValues(t, 1, version.ModificationsCount)
+	assert.Equal(t, "v2", string(res))
+	assert.False(t, version.Ephemeral)
+	assert.Equal(t, "", version.ClientIdentity)
+	assert.NoError(t, client.Close())
+}
+
+func TestAsyncClientImpl_ClientIdentity(t *testing.T) {
+	identity1 := newKey()
+	client1, err := NewSyncClient(serviceAddress,
+		WithIdentity(identity1),
+	)
+	assert.NoError(t, err)
+
+	k := newKey()
+	version, err := client1.Put(context.Background(), k, []byte("v1"), Ephemeral())
+	assert.NoError(t, err)
+
+	assert.True(t, version.Ephemeral)
+	assert.Equal(t, identity1, version.ClientIdentity)
+
+	client2, err := NewSyncClient(serviceAddress,
+		WithSessionTimeout(2*time.Second),
+	)
+	assert.NoError(t, err)
+
+	var res []byte
+	res, version, err = client2.Get(context.Background(), k)
+	assert.NoError(t, err)
+	assert.EqualValues(t, 0, version.ModificationsCount)
+	assert.Equal(t, "v1", string(res))
+	assert.True(t, version.Ephemeral)
+	assert.Equal(t, identity1, version.ClientIdentity)
+
+	version, err = client2.Put(context.Background(), k, []byte("v2"), Ephemeral())
+	assert.NoError(t, err)
+
+	assert.True(t, version.Ephemeral)
+	assert.NotSame(t, "", version.ClientIdentity)
+
+	assert.NoError(t, client1.Close())
+	assert.NoError(t, client2.Close())
+}

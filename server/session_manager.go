@@ -295,6 +295,8 @@ func (sm *sessionManager) Close() error {
 	return nil
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 type updateCallback struct{}
 
 var SessionUpdateOperationCallback kv.UpdateOperationCallback = &updateCallback{}

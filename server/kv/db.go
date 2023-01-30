@@ -350,6 +350,7 @@ func (d *db) applyPut(commitOffset int64, batch WriteBatch, notifications *notif
 				CreationTimestamp:     timestamp,
 				ModificationTimestamp: timestamp,
 				SessionId:             putReq.SessionId,
+				ClientIdentity:        putReq.ClientIdentity,
 			}
 		} else {
 			se.VersionId = commitOffset
@@ -357,6 +358,7 @@ func (d *db) applyPut(commitOffset int64, batch WriteBatch, notifications *notif
 			se.Value = putReq.Value
 			se.ModificationTimestamp = timestamp
 			se.SessionId = putReq.SessionId
+			se.ClientIdentity = putReq.ClientIdentity
 		}
 
 		ser, err := pb.Marshal(se)
@@ -377,6 +379,8 @@ func (d *db) applyPut(commitOffset int64, batch WriteBatch, notifications *notif
 			ModificationsCount: se.ModificationsCount,
 			CreatedTimestamp:   se.CreationTimestamp,
 			ModifiedTimestamp:  se.ModificationTimestamp,
+			SessionId:          se.SessionId,
+			ClientIdentity:     se.ClientIdentity,
 		}
 
 		d.log.Debug().
@@ -472,6 +476,8 @@ func applyGet(kv KV, getReq *proto.GetRequest) (*proto.GetResponse, error) {
 			ModificationsCount: se.ModificationsCount,
 			CreatedTimestamp:   se.CreationTimestamp,
 			ModifiedTimestamp:  se.ModificationTimestamp,
+			SessionId:          se.SessionId,
+			ClientIdentity:     se.ClientIdentity,
 		},
 	}, nil
 }

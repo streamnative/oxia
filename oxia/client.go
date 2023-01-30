@@ -171,6 +171,13 @@ type Version struct {
 	// The number of modifications to the record since it was last created
 	// (If the record gets deleted and recreated, the ModificationsCount will restart at 0)
 	ModificationsCount int64
+
+	// Whether the record is ephemeral. See [Ephemeral]
+	Ephemeral bool
+
+	// For ephemeral records, the unique identity of the Oxia client that did last modify it.
+	// It will be empty for all non-ephemeral records.
+	ClientIdentity string
 }
 
 // PutResult structure is wrapping the version information for the result

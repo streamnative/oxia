@@ -48,12 +48,18 @@ func toGetResult(r *proto.GetResponse) GetResult {
 }
 
 func toVersion(version *proto.Version) Version {
-	return Version{
+	v := Version{
 		VersionId:          version.VersionId,
 		ModificationsCount: version.ModificationsCount,
 		CreatedTimestamp:   version.CreatedTimestamp,
 		ModifiedTimestamp:  version.ModifiedTimestamp,
+		Ephemeral:          version.SessionId != nil,
 	}
+	if version.ClientIdentity != nil {
+		v.ClientIdentity = *version.ClientIdentity
+	}
+
+	return v
 }
 
 func toError(status proto.Status) error {

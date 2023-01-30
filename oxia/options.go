@@ -17,6 +17,7 @@ package oxia
 import (
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/global"
@@ -35,6 +36,7 @@ var (
 	ErrorInvalidOptionMaxRequestsPerBatch = errors.New("MaxRequestsPerBatch must be greater than zero")
 	ErrorInvalidOptionRequestTimeout      = errors.New("RequestTimeout must be greater than zero")
 	ErrorInvalidOptionSessionTimeout      = errors.New("SessionTimeout must be greater than zero")
+	ErrorInvalidOptionIdentity            = errors.New("Identity must be non-empty")
 )
 
 // clientOptions contains options for the Oxia client.
@@ -45,6 +47,11 @@ type clientOptions struct {
 	requestTimeout      time.Duration
 	meterProvider       metric.MeterProvider
 	sessionTimeout      time.Duration
+	identity            string
+}
+
+func defaultIdentity() string {
+	return uuid.NewString()
 }
 
 // RequestTimeout defines how long the client will wait for responses before cancelling the request and failing
@@ -67,6 +74,7 @@ func newClientOptions(serviceAddress string, opts ...ClientOption) (clientOption
 		requestTimeout:      DefaultRequestTimeout,
 		meterProvider:       metric.NewNoopMeterProvider(),
 		sessionTimeout:      DefaultSessionTimeout,
+		identity:            defaultIdentity(),
 	}
 	var errs error
 	var err error
@@ -145,6 +153,18 @@ func WithSessionTimeout(sessionTimeout time.Duration) ClientOption {
 		return options, nil
 	})
 }
+
+func WithIdentity(identity string) ClientOption {
+	return clientOptionFunc(func(options clientOptions) (clientOptions, error) {
+		if identity == "" {
+			return options, ErrorInvalidOptionIdentity
+		}
+		options.identity = identity
+		return options, nil
+	})
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 type putOptions struct {
 	expectedVersion *int64
