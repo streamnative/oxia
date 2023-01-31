@@ -389,27 +389,25 @@ func TestDBDeleteRange(t *testing.T) {
 	writeRes, err := db.ProcessWrite(writeReq, wal.InvalidOffset, 0, NoOpCallback)
 	assert.NoError(t, err)
 
-	readReq := &proto.ReadRequest{
-		Lists: []*proto.ListRequest{{
-			StartInclusive: "a",
-			EndExclusive:   "z",
-		}},
+	keys := make([]string, 0)
+	listIt := db.List(&proto.ListRequest{
+		StartInclusive: "a",
+		EndExclusive:   "z",
+	})
+	for ; listIt.Valid(); listIt.Next() {
+		keys = append(keys, listIt.Key())
 	}
-
-	readRes, err := db.ProcessRead(readReq)
+	err = listIt.Close()
 	assert.NoError(t, err)
 
 	assert.Equal(t, 2, len(writeRes.DeleteRanges))
 	assert.Equal(t, proto.Status_OK, writeRes.DeleteRanges[0].Status)
 	assert.Equal(t, proto.Status_OK, writeRes.DeleteRanges[1].Status)
 
-	assert.Equal(t, 1, len(readRes.Lists))
-
 	// ["a", "z")
-	r1 := readRes.Lists[0]
-	assert.Equal(t, 2, len(r1.Keys))
-	assert.Equal(t, "a", r1.Keys[0])
-	assert.Equal(t, "e", r1.Keys[1])
+	assert.Equal(t, 2, len(keys))
+	assert.Equal(t, "a", keys[0])
+	assert.Equal(t, "e", keys[1])
 
 	assert.NoError(t, db.Close())
 	assert.NoError(t, factory.Close())

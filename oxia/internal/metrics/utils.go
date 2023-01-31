@@ -79,6 +79,6 @@ func readMetrics(response *proto.ReadResponse) (valueSize int64, requestCount in
 	for _, get := range response.Gets {
 		valueSize += int64(len(get.Value))
 	}
-	requestCount = int64(len(response.Gets) + len(response.Lists))
+	requestCount = int64(len(response.Gets))
 	return
 }

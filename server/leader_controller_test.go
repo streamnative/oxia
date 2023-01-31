@@ -929,22 +929,19 @@ func TestLeaderController_List(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	stream := newMockListServer()
-
-	err = lc.List(&proto.ListRequest{
+	list, err := lc.ListSliceNoMutex(context.Background(), &proto.ListRequest{
 		ShardId:        &shard,
 		StartInclusive: "/a",
 		EndExclusive:   "/c",
-	}, stream)
+	})
 	assert.NoError(t, err)
-	assert.Equal(t, []string{"/a", "/b"}, stream.keys)
+	assert.Equal(t, []string{"/a", "/b"}, list)
 
-	stream.reset()
-	err = lc.List(&proto.ListRequest{
+	list, err = lc.ListSliceNoMutex(context.Background(), &proto.ListRequest{
 		ShardId:        &shard,
 		StartInclusive: "/y",
 		EndExclusive:   "/z",
-	}, stream)
+	})
 	assert.NoError(t, err)
-	assert.Len(t, stream.keys, 0)
+	assert.Len(t, list, 0)
 }

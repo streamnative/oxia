@@ -37,7 +37,6 @@ func TestWriteBatchAdd(t *testing.T) {
 		{model.DeleteCall{}, false, 1},
 		{model.DeleteRangeCall{}, false, 1},
 		{model.GetCall{}, true, 0},
-		{model.ListCall{}, true, 0},
 	} {
 		factory := &writeBatchFactory{
 			metrics: metrics.NewMetrics(metric.NewNoopMeterProvider()),

@@ -77,20 +77,18 @@ func (s *session) delete() error {
 	// Delete ephemeral data associated with this session
 	sessionKey := SessionKey(s.id)
 	// Read "index"
-	list, err := s.sm.leaderController.Read(&proto.ReadRequest{
-		ShardId: &s.shardId,
-		Lists: []*proto.ListRequest{{
-			StartInclusive: sessionKey,
-			EndExclusive:   sessionKey + "/",
-		}},
+	list, err := s.sm.leaderController.ListSliceNoMutex(context.Background(), &proto.ListRequest{
+		ShardId:        &s.shardId,
+		StartInclusive: sessionKey,
+		EndExclusive:   sessionKey + "/",
 	})
 	if err != nil {
 		return err
 	}
 	// Delete ephemerals
 	var deletes []*proto.DeleteRequest
-	s.log.Debug().Strs("keys", list.Lists[0].Keys).Msg("Keys to delete")
-	for _, key := range list.Lists[0].Keys {
+	s.log.Debug().Strs("keys", list).Msg("Keys to delete")
+	for _, key := range list {
 		unescapedKey, err := url.PathUnescape(key[len(sessionKey):])
 		if err != nil {
 			s.log.Error().Err(err).Str("key", sessionKey).Msg("Invalid session key")
