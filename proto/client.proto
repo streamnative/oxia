@@ -61,6 +61,13 @@ service OxiaClient {
    */
   rpc Read(ReadRequest) returns (ReadResponse);
 
+  /**
+   * Requests all the keys between a range of keys.
+   *
+   * Clients should send an equivalent request to all respective shards.
+   */
+  rpc List(ListRequest) returns (stream ListResponse);
+
   rpc GetNotifications(NotificationsRequest) returns (stream NotificationBatch);
 
   /*
@@ -292,17 +299,20 @@ message DeleteRangeResponse {
  * Input to a list request. Key ranges assume a UTF-8 byte sort order.
  */
 message ListRequest {
+  // The shard id. This is optional allow for support for server-side hashing
+  // and proxying in the future.
+  optional uint32 shard_id = 1;
   // The start of the range, inclusive
-  string start_inclusive = 1;
+  string start_inclusive = 2;
   // The end of the range, exclusive
-  string end_exclusive = 2;
+  string end_exclusive = 3;
 }
 
 /**
  * The response to a list request.
  */
 message ListResponse {
-  // All the keys found within the specified range
+  // A portion of the keys found within the specified range
   repeated string keys = 1;
 }
 

@@ -153,14 +153,15 @@ type Call struct {
 	clientCall <-chan oxia.PutResult
 }
 
-func (call Call) Complete() any {
+func (call Call) Complete() <-chan any {
+	ch := make(chan any, 1)
 	result := <-call.clientCall
 	if result.Err != nil {
-		return common.OutputError{
+		ch <- common.OutputError{
 			Err: result.Err.Error(),
 		}
 	} else {
-		return Output{
+		ch <- Output{
 			Version: common.OutputVersion{
 				VersionId:          result.Version.VersionId,
 				CreatedTimestamp:   result.Version.CreatedTimestamp,
@@ -169,6 +170,8 @@ func (call Call) Complete() any {
 			},
 		}
 	}
+	close(ch)
+	return ch
 }
 
 type Output struct {

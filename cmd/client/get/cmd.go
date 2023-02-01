@@ -114,10 +114,11 @@ type Call struct {
 	clientCall <-chan oxia.GetResult
 }
 
-func (call Call) Complete() any {
+func (call Call) Complete() <-chan any {
+	ch := make(chan any, 1)
 	result := <-call.clientCall
 	if result.Err != nil {
-		return common.OutputError{
+		ch <- common.OutputError{
 			Err: result.Err.Error(),
 		}
 	} else {
@@ -141,8 +142,10 @@ func (call Call) Complete() any {
 		if call.binary {
 			output.Binary = &call.binary
 		}
-		return output
+		ch <- output
 	}
+	close(ch)
+	return ch
 }
 
 type Output struct {

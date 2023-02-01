@@ -37,6 +37,16 @@ func ReadStdin(stdin io.Reader, input Input, queue QueryQueue) {
 	}
 }
 
+func writeOutputCh(out io.Writer, valuesCh <-chan any) {
+	for {
+		if value, ok := <-valuesCh; ok {
+			writeOutput(out, value)
+		} else {
+			break
+		}
+	}
+}
+
 func writeOutput(out io.Writer, value any) {
 	b, err := json.Marshal(value)
 	if err != nil {

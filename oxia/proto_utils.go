@@ -47,12 +47,6 @@ func toGetResult(r *proto.GetResponse) GetResult {
 	}
 }
 
-func toListResult(r *proto.ListResponse) ListResult {
-	return ListResult{
-		Keys: r.Keys,
-	}
-}
-
 func toVersion(version *proto.Version) Version {
 	v := Version{
 		VersionId:          version.VersionId,

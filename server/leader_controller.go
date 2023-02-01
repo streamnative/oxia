@@ -21,6 +21,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
+	"google.golang.org/protobuf/encoding/protowire"
 	pb "google.golang.org/protobuf/proto"
 	"io"
 	"oxia/common"
@@ -32,11 +33,14 @@ import (
 	"sync"
 )
 
+const maxTotalListKeySize = 4 << (10 * 2) //4Mi
+
 type LeaderController interface {
 	io.Closer
 
 	Write(write *proto.WriteRequest) (*proto.WriteResponse, error)
 	Read(read *proto.ReadRequest) (*proto.ReadResponse, error)
+	List(request *proto.ListRequest, stream proto.OxiaClient_ListServer) error
 
 	// NewTerm Handle new term requests
 	NewTerm(req *proto.NewTermRequest) (*proto.NewTermResponse, error)
@@ -523,6 +527,73 @@ func (lc *leaderController) Read(request *proto.ReadRequest) (*proto.ReadRespons
 	}
 
 	return lc.db.ProcessRead(request)
+}
+
+func (lc *leaderController) List(request *proto.ListRequest, stream proto.OxiaClient_ListServer) error {
+	ch := make(chan error)
+
+	go common.DoWithLabels(map[string]string{
+		"oxia":  "list",
+		"shard": fmt.Sprintf("%d", lc.shardId),
+		"peer":  common.GetPeer(stream.Context()),
+	}, func() {
+		err := lc.list(request, stream)
+		if err != nil && !errors.Is(err, context.Canceled) {
+			lc.log.Warn().Err(err).
+				Str("peer", common.GetPeer(stream.Context())).
+				Msg("Failed to list")
+		}
+		ch <- err
+	})
+
+	return <-ch
+}
+
+func (lc *leaderController) list(request *proto.ListRequest, stream proto.OxiaClient_ListServer) error {
+	lc.log.Debug().
+		Msg("Received list request")
+
+	lc.Lock()
+	err := checkStatus(proto.ServingStatus_LEADER, lc.status)
+	lc.Unlock()
+	if err != nil {
+		return err
+	}
+
+	it := lc.db.List(request)
+	defer func() {
+		_ = it.Close()
+	}()
+
+	return processList(it, stream)
+}
+
+func processList(it kv.KeyIterator, stream proto.OxiaClient_ListServer) error {
+	response := &proto.ListResponse{}
+	var totalSize int
+
+	for ; it.Valid(); it.Next() {
+		key := it.Key()
+		if stream.Context().Err() != nil {
+			return stream.Context().Err()
+		}
+		size := protowire.SizeBytes(len(key))
+		if len(response.Keys) > 0 && totalSize+size > maxTotalListKeySize {
+			if err := stream.Send(response); err != nil {
+				return err
+			}
+			response = &proto.ListResponse{}
+			totalSize = 0
+		}
+		response.Keys = append(response.Keys, key)
+		totalSize += size
+	}
+	if len(response.Keys) > 0 {
+		if err := stream.Send(response); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Write

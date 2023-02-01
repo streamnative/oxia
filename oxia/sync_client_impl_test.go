@@ -41,8 +41,8 @@ func (c *neverCompleteAsyncClient) Get(key string) <-chan GetResult {
 	return make(chan GetResult)
 }
 
-func (c *neverCompleteAsyncClient) List(minKeyInclusive string, maxKeyExclusive string) <-chan ListResult {
-	return make(chan ListResult)
+func (c *neverCompleteAsyncClient) List(ctx context.Context, minKeyInclusive string, maxKeyExclusive string) <-chan ListResult {
+	panic("not implemented")
 }
 
 func (c *neverCompleteAsyncClient) GetNotifications() (Notifications, error) {
@@ -65,10 +65,6 @@ func TestCancelContext(t *testing.T) {
 	})
 	assertCancellable(t, func(ctx context.Context) error {
 		_, _, err := syncClient.Get(ctx, "/a")
-		return err
-	})
-	assertCancellable(t, func(ctx context.Context) error {
-		_, err := syncClient.List(ctx, "/a", "/b")
 		return err
 	})
 

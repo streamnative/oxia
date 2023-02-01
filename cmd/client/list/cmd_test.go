@@ -212,7 +212,7 @@ func TestCall_Complete(t *testing.T) {
 			call := Call{
 				clientCall: results,
 			}
-			assert.Equalf(t, test.expected, call.Complete(), "Error")
+			assert.Equalf(t, test.expected, <-call.Complete(), "Error")
 		})
 	}
 }

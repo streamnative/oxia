@@ -902,3 +902,49 @@ func TestLeaderController_NotificationsCloseLeader(t *testing.T) {
 	assert.NoError(t, kvFactory.Close())
 	assert.NoError(t, walFactory.Close())
 }
+
+func TestLeaderController_List(t *testing.T) {
+	var shard uint32 = 1
+
+	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
+	walFactory := wal.NewInMemoryWalFactory()
+
+	lc, _ := NewLeaderController(Config{}, shard, newMockRpcClient(), walFactory, kvFactory)
+	_, _ = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})
+	_, _ = lc.BecomeLeader(&proto.BecomeLeaderRequest{
+		ShardId:           shard,
+		Term:              1,
+		ReplicationFactor: 1,
+		FollowerMaps:      nil,
+	})
+
+	_, err := lc.Write(&proto.WriteRequest{
+		ShardId: &shard,
+		Puts: []*proto.PutRequest{
+			{Key: "/a", Value: []byte{0}},
+			{Key: "/b", Value: []byte{0}},
+			{Key: "/c", Value: []byte{0}},
+			{Key: "/d", Value: []byte{0}},
+		},
+	})
+	assert.NoError(t, err)
+
+	stream := newMockListServer()
+
+	err = lc.List(&proto.ListRequest{
+		ShardId:        &shard,
+		StartInclusive: "/a",
+		EndExclusive:   "/c",
+	}, stream)
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"/a", "/b"}, stream.keys)
+
+	stream.reset()
+	err = lc.List(&proto.ListRequest{
+		ShardId:        &shard,
+		StartInclusive: "/y",
+		EndExclusive:   "/z",
+	}, stream)
+	assert.NoError(t, err)
+	assert.Len(t, stream.keys, 0)
+}

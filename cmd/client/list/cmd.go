@@ -15,6 +15,7 @@
 package list
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"github.com/spf13/cobra"
@@ -85,7 +86,7 @@ type Query struct {
 
 func (query Query) Perform(client oxia.AsyncClient) common.Call {
 	return Call{
-		clientCall: client.List(query.KeyMinimum, query.KeyMaximum),
+		clientCall: client.List(context.Background(), query.KeyMinimum, query.KeyMaximum),
 	}
 }
 
@@ -99,17 +100,33 @@ type Call struct {
 	clientCall <-chan oxia.ListResult
 }
 
-func (call Call) Complete() any {
-	result := <-call.clientCall
-	if result.Err != nil {
-		return common.OutputError{
-			Err: result.Err.Error(),
+func (call Call) Complete() <-chan any {
+	ch := make(chan any)
+	go func() {
+		emptyOutput := true
+		for {
+			result, ok := <-call.clientCall
+			if ok {
+				emptyOutput = false
+				if result.Err != nil {
+					ch <- common.OutputError{
+						Err: result.Err.Error(),
+					}
+				} else {
+					ch <- Output{
+						Keys: result.Keys,
+					}
+				}
+			} else {
+				break
+			}
 		}
-	} else {
-		return Output{
-			Keys: result.Keys,
+		if emptyOutput {
+			ch <- Output{Keys: make([]string, 0)}
 		}
-	}
+		close(ch)
+	}()
+	return ch
 }
 
 type Output struct {

@@ -110,6 +110,26 @@ func (s *publicRpcServer) Read(ctx context.Context, read *proto.ReadRequest) (*p
 	return rr, err
 }
 
+func (s *publicRpcServer) List(request *proto.ListRequest, stream proto.OxiaClient_ListServer) error {
+	s.log.Debug().
+		Str("peer", common.GetPeer(stream.Context())).
+		Interface("req", request).
+		Msg("List request")
+
+	lc, err := s.getLeader(*request.ShardId)
+	if err != nil {
+		return err
+	}
+
+	err = lc.List(request, stream)
+	if err != nil {
+		s.log.Warn().Err(err).
+			Msg("Failed to perform list operation")
+	}
+
+	return err
+}
+
 func (s *publicRpcServer) GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
 	s.log.Debug().
 		Str("peer", common.GetPeer(stream.Context())).

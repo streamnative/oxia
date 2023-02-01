@@ -303,45 +303,49 @@ func TestDBList(t *testing.T) {
 	writeRes, err := db.ProcessWrite(writeReq, wal.InvalidOffset, now(), NoOpCallback)
 	assert.NoError(t, err)
 
-	readReq := &proto.ReadRequest{
-		Lists: []*proto.ListRequest{{
-			StartInclusive: "a",
-			EndExclusive:   "c",
-		}, {
-			StartInclusive: "a",
-			EndExclusive:   "d",
-		}, {
-			StartInclusive: "xyz",
-			EndExclusive:   "zzz",
-		}},
-	}
-
-	readRes, err := db.ProcessRead(readReq)
-	assert.NoError(t, err)
-
 	assert.Equal(t, 5, len(writeRes.Puts))
 
-	assert.Equal(t, 3, len(readRes.Lists))
+	listReq1 := &proto.ListRequest{
+		StartInclusive: "a",
+		EndExclusive:   "c",
+	}
+	listReq2 := &proto.ListRequest{
+		StartInclusive: "a",
+		EndExclusive:   "d",
+	}
+	listReq3 := &proto.ListRequest{
+		StartInclusive: "xyz",
+		EndExclusive:   "zzz",
+	}
 
 	// ["a", "c")
-	r0 := readRes.Lists[0]
-	assert.Equal(t, 2, len(r0.Keys))
-	assert.Equal(t, "a", r0.Keys[0])
-	assert.Equal(t, "b", r0.Keys[1])
+	keys1 := keyIteratorToSlice(db.List(listReq1))
+	assert.Len(t, keys1, 2)
+	assert.Equal(t, "a", keys1[0])
+	assert.Equal(t, "b", keys1[1])
 
 	// ["a", "d")
-	r1 := readRes.Lists[1]
-	assert.Equal(t, 3, len(r1.Keys))
-	assert.Equal(t, "a", r1.Keys[0])
-	assert.Equal(t, "b", r1.Keys[1])
-	assert.Equal(t, "c", r1.Keys[2])
+	keys2 := keyIteratorToSlice(db.List(listReq2))
+	assert.Len(t, keys2, 3)
+	assert.Equal(t, "a", keys2[0])
+	assert.Equal(t, "b", keys2[1])
+	assert.Equal(t, "c", keys2[2])
 
 	// ["xyz", "zzz")
-	r2 := readRes.Lists[2]
-	assert.Equal(t, 0, len(r2.Keys))
+	keys3 := keyIteratorToSlice(db.List(listReq3))
+	assert.Len(t, keys3, 0)
 
 	assert.NoError(t, db.Close())
 	assert.NoError(t, factory.Close())
+}
+
+func keyIteratorToSlice(it KeyIterator) []string {
+	var keys []string
+	for ; it.Valid(); it.Next() {
+		keys = append(keys, it.Key())
+	}
+	_ = it.Close()
+	return keys
 }
 
 func TestDBDeleteRange(t *testing.T) {
