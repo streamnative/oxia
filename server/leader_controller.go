@@ -21,7 +21,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
-	"google.golang.org/protobuf/encoding/protowire"
 	pb "google.golang.org/protobuf/proto"
 	"io"
 	"oxia/common"
@@ -32,8 +31,6 @@ import (
 	"oxia/server/wal"
 	"sync"
 )
-
-const maxTotalListKeySize = 4 << (10 * 2) //4Mi
 
 type LeaderController interface {
 	io.Closer
