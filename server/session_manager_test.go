@@ -327,7 +327,6 @@ func getData(t *testing.T, lc *leaderController, key string) string {
 			Key:          key,
 			IncludeValue: true,
 		}},
-		Lists: nil,
 	})
 	assert.NoError(t, err)
 	if resp.Gets[0].Status != proto.Status_KEY_NOT_FOUND {
@@ -356,7 +355,6 @@ func getSessionMetadata(t *testing.T, lc *leaderController, sessionId int64) *pr
 			Key:          SessionKey(SessionId(sessionId)),
 			IncludeValue: true,
 		}},
-		Lists: nil,
 	})
 	assert.NoError(t, err)
 

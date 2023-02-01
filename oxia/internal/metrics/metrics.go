@@ -108,17 +108,6 @@ func (m *Metrics) DecorateGet(get model.GetCall) model.GetCall {
 	return get
 }
 
-func (m *Metrics) DecorateList(getRange model.ListCall) model.ListCall {
-	callback := getRange.Callback
-	metricContext := m.metricContextFunc("list")
-	getRange.Callback = func(response *proto.ListResponse, err error) {
-		callback(response, err)
-		ctx, start, _attrs := metricContext(err)
-		m.opTime.Record(ctx, m.sinceFunc(start), _attrs...)
-	}
-	return getRange
-}
-
 func (m *Metrics) WriteCallback() func(time.Time, *proto.WriteRequest, *proto.WriteResponse, error) {
 	metricContext := m.metricContextFunc("write")
 	return func(executionStart time.Time, request *proto.WriteRequest, response *proto.WriteResponse, err error) {

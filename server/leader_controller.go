@@ -21,7 +21,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
-	"google.golang.org/protobuf/encoding/protowire"
 	pb "google.golang.org/protobuf/proto"
 	"io"
 	"oxia/common"
@@ -33,14 +32,13 @@ import (
 	"sync"
 )
 
-const maxTotalListKeySize = 4 << (10 * 2) //4Mi
-
 type LeaderController interface {
 	io.Closer
 
 	Write(write *proto.WriteRequest) (*proto.WriteResponse, error)
 	Read(read *proto.ReadRequest) (*proto.ReadResponse, error)
-	List(request *proto.ListRequest, stream proto.OxiaClient_ListServer) error
+	List(ctx context.Context, request *proto.ListRequest) (<-chan string, error)
+	ListSliceNoMutex(ctx context.Context, request *proto.ListRequest) ([]string, error)
 
 	// NewTerm Handle new term requests
 	NewTerm(req *proto.NewTermRequest) (*proto.NewTermResponse, error)
@@ -66,7 +64,7 @@ type LeaderController interface {
 }
 
 type leaderController struct {
-	sync.Mutex
+	sync.RWMutex
 
 	shardId           uint32
 	status            proto.ServingStatus
@@ -116,8 +114,8 @@ func NewLeaderController(config Config, shardId uint32, rpcClient ReplicationRpc
 	}
 
 	lc.headOffsetGauge = metrics.NewGauge("oxia_server_leader_head_offset", "The current head offset", "offset", labels, func() int64 {
-		lc.Lock()
-		defer lc.Unlock()
+		lc.RLock()
+		defer lc.RUnlock()
 		if lc.quorumAckTracker != nil {
 			return lc.quorumAckTracker.HeadOffset()
 		}
@@ -125,8 +123,8 @@ func NewLeaderController(config Config, shardId uint32, rpcClient ReplicationRpc
 		return -1
 	})
 	lc.commitOffsetGauge = metrics.NewGauge("oxia_server_leader_commit_offset", "The current commit offset", "offset", labels, func() int64 {
-		lc.Lock()
-		defer lc.Unlock()
+		lc.RLock()
+		defer lc.RUnlock()
 		if lc.quorumAckTracker != nil {
 			return lc.quorumAckTracker.CommitOffset()
 		}
@@ -164,14 +162,14 @@ func NewLeaderController(config Config, shardId uint32, rpcClient ReplicationRpc
 }
 
 func (lc *leaderController) Status() proto.ServingStatus {
-	lc.Lock()
-	defer lc.Unlock()
+	lc.RLock()
+	defer lc.RUnlock()
 	return lc.status
 }
 
 func (lc *leaderController) Term() int64 {
-	lc.Lock()
-	defer lc.Unlock()
+	lc.RLock()
+	defer lc.RUnlock()
 	return lc.term
 }
 
@@ -519,9 +517,9 @@ func (lc *leaderController) Read(request *proto.ReadRequest) (*proto.ReadRespons
 		Interface("req", request).
 		Msg("Received read request")
 
-	lc.Lock()
+	lc.RLock()
 	err := checkStatus(proto.ServingStatus_LEADER, lc.status)
-	lc.Unlock()
+	lc.RUnlock()
 	if err != nil {
 		return nil, err
 	}
@@ -529,71 +527,60 @@ func (lc *leaderController) Read(request *proto.ReadRequest) (*proto.ReadRespons
 	return lc.db.ProcessRead(request)
 }
 
-func (lc *leaderController) List(request *proto.ListRequest, stream proto.OxiaClient_ListServer) error {
-	ch := make(chan error)
+func (lc *leaderController) List(ctx context.Context, request *proto.ListRequest) (<-chan string, error) {
+	ch := make(chan string)
 
-	go common.DoWithLabels(map[string]string{
+	lc.RLock()
+	err := checkStatus(proto.ServingStatus_LEADER, lc.status)
+	lc.RUnlock()
+	if err != nil {
+		return nil, err
+	}
+
+	go lc.list(ctx, request, ch)
+
+	return ch, nil
+}
+
+func (lc *leaderController) list(ctx context.Context, request *proto.ListRequest, ch chan<- string) {
+	common.DoWithLabels(map[string]string{
 		"oxia":  "list",
 		"shard": fmt.Sprintf("%d", lc.shardId),
-		"peer":  common.GetPeer(stream.Context()),
+		"peer":  common.GetPeer(ctx),
 	}, func() {
-		err := lc.list(request, stream)
-		if err != nil && !errors.Is(err, context.Canceled) {
-			lc.log.Warn().Err(err).
-				Str("peer", common.GetPeer(stream.Context())).
-				Msg("Failed to list")
-		}
-		ch <- err
-	})
+		lc.log.Debug().
+			Msg("Received list request")
 
-	return <-ch
-}
+		it := lc.db.List(request)
+		defer func() {
+			_ = it.Close()
+		}()
 
-func (lc *leaderController) list(request *proto.ListRequest, stream proto.OxiaClient_ListServer) error {
-	lc.log.Debug().
-		Msg("Received list request")
-
-	lc.Lock()
-	err := checkStatus(proto.ServingStatus_LEADER, lc.status)
-	lc.Unlock()
-	if err != nil {
-		return err
-	}
-
-	it := lc.db.List(request)
-	defer func() {
-		_ = it.Close()
-	}()
-
-	return processList(it, stream)
-}
-
-func processList(it kv.KeyIterator, stream proto.OxiaClient_ListServer) error {
-	response := &proto.ListResponse{}
-	var totalSize int
-
-	for ; it.Valid(); it.Next() {
-		key := it.Key()
-		if stream.Context().Err() != nil {
-			return stream.Context().Err()
-		}
-		size := protowire.SizeBytes(len(key))
-		if len(response.Keys) > 0 && totalSize+size > maxTotalListKeySize {
-			if err := stream.Send(response); err != nil {
-				return err
+		for ; it.Valid(); it.Next() {
+			ch <- it.Key()
+			if ctx.Err() != nil {
+				break
 			}
-			response = &proto.ListResponse{}
-			totalSize = 0
 		}
-		response.Keys = append(response.Keys, key)
-		totalSize += size
-	}
-	if len(response.Keys) > 0 {
-		if err := stream.Send(response); err != nil {
-			return err
+		close(ch)
+	})
+}
+
+func (lc *leaderController) ListSliceNoMutex(ctx context.Context, request *proto.ListRequest) ([]string, error) {
+	ch := make(chan string)
+	go lc.list(ctx, request, ch)
+	keys := make([]string, 0)
+	for {
+		select {
+		case key, more := <-ch:
+			if !more {
+				return keys, nil
+			}
+			keys = append(keys, key)
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		}
 	}
-	return nil
 }
 
 // Write
@@ -781,8 +768,8 @@ func getLastEntryIdInWal(wal wal.Wal) (*proto.EntryId, error) {
 }
 
 func (lc *leaderController) GetStatus(request *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
-	lc.Lock()
-	defer lc.Unlock()
+	lc.RLock()
+	defer lc.RUnlock()
 
 	return &proto.GetStatusResponse{
 		Term:   lc.term,

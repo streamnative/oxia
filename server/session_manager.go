@@ -15,6 +15,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
@@ -215,21 +216,16 @@ func (sm *sessionManager) Initialize() error {
 }
 
 func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, error) {
-	listResp, err := sm.leaderController.db.ProcessRead(&proto.ReadRequest{
-		ShardId: &sm.shardId,
-		Gets:    nil,
-		Lists: []*proto.ListRequest{
-			{
-				StartInclusive: KeyPrefix,
-				EndExclusive:   KeyPrefix + "/",
-			},
-		},
+	list, err := sm.leaderController.ListSliceNoMutex(context.Background(), &proto.ListRequest{
+		ShardId:        &sm.shardId,
+		StartInclusive: KeyPrefix,
+		EndExclusive:   KeyPrefix + "/",
 	})
 	if err != nil {
 		return nil, err
 	}
 	var gets []*proto.GetRequest
-	for _, key := range listResp.Lists[0].Keys {
+	for _, key := range list {
 		gets = append(gets, &proto.GetRequest{
 			Key:          key,
 			IncludeValue: true,
@@ -238,7 +234,6 @@ func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, 
 	getResp, err := sm.leaderController.db.ProcessRead(&proto.ReadRequest{
 		ShardId: &sm.shardId,
 		Gets:    gets,
-		Lists:   nil,
 	})
 	if err != nil {
 		return nil, err

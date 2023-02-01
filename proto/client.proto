@@ -54,7 +54,7 @@ service OxiaClient {
   rpc Write(WriteRequest) returns (WriteResponse);
 
   /**
-   * Batches get and get_range requests.
+   * Batches get requests.
    *
    * Clients should send this request to the shard leader. In the future,
    * this may be handled server-side in a proxy layer.
@@ -187,8 +187,6 @@ message ReadRequest {
   optional uint32 shard_id = 1;
   // The get requests
   repeated GetRequest gets = 2;
-  // The get range requests
-  repeated ListRequest lists = 3;
 }
 
 /**
@@ -198,8 +196,6 @@ message ReadRequest {
 message ReadResponse {
   // The get responses
   repeated GetResponse gets = 1;
-  // The get range responses
-  repeated ListResponse lists = 2;
 }
 
 /**
@@ -265,8 +261,7 @@ message GetRequest {
 }
 
 /**
- * The response to a get request or an item in a response to the get range
- * request.
+ * The response to a get request.
  */
 message GetResponse {
   // Includes the error or OK

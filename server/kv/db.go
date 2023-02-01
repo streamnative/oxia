@@ -228,15 +228,6 @@ func (d *db) ProcessRead(b *proto.ReadRequest) (*proto.ReadResponse, error) {
 		}
 	}
 
-	d.listCounter.Add(len(b.Lists))
-	for _, listReq := range b.Lists {
-		if gr, err := applyList(d.kv, listReq); err != nil {
-			return nil, err
-		} else {
-			res.Lists = append(res.Lists, gr)
-		}
-	}
-
 	return res, nil
 }
 
@@ -480,22 +471,6 @@ func applyGet(kv KV, getReq *proto.GetRequest) (*proto.GetResponse, error) {
 			ClientIdentity:     se.ClientIdentity,
 		},
 	}, nil
-}
-
-func applyList(kv KV, listReq *proto.ListRequest) (*proto.ListResponse, error) {
-	it := kv.KeyRangeScan(listReq.StartInclusive, listReq.EndExclusive)
-
-	res := &proto.ListResponse{}
-
-	for ; it.Valid(); it.Next() {
-		res.Keys = append(res.Keys, it.Key())
-	}
-
-	if err := it.Close(); err != nil {
-		return nil, err
-	}
-
-	return res, nil
 }
 
 func GetStorageEntry(batch WriteBatch, key string) (*proto.StorageEntry, error) {

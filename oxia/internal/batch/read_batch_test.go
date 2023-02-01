@@ -37,7 +37,6 @@ func TestReadBatchAdd(t *testing.T) {
 		{model.DeleteCall{}, true, 0},
 		{model.DeleteRangeCall{}, true, 0},
 		{model.GetCall{}, false, 1},
-		{model.ListCall{}, false, 1},
 	} {
 		factory := &readBatchFactory{
 			metrics: metrics.NewMetrics(metric.NewNoopMeterProvider()),
@@ -64,26 +63,17 @@ func TestReadBatchComplete(t *testing.T) {
 		},
 	}
 	for _, item := range []struct {
-		response                 *proto.ReadResponse
-		err                      error
-		expectedGetResponse      *proto.GetResponse
-		expectedGetErr           error
-		expectedGetRangeResponse *proto.ListResponse
-		expectedGetRangeErr      error
+		response            *proto.ReadResponse
+		err                 error
+		expectedGetResponse *proto.GetResponse
+		expectedGetErr      error
 	}{
 		{
 			&proto.ReadResponse{
 				Gets: []*proto.GetResponse{getResponseOk},
-				Lists: []*proto.ListResponse{{
-					Keys: []string{"/a"},
-				}},
 			},
 			nil,
 			getResponseOk,
-			nil,
-			&proto.ListResponse{
-				Keys: []string{"/a"},
-			},
 			nil,
 		},
 		{
@@ -91,23 +81,14 @@ func TestReadBatchComplete(t *testing.T) {
 				Gets: []*proto.GetResponse{{
 					Status: proto.Status_KEY_NOT_FOUND,
 				}},
-				Lists: []*proto.ListResponse{{
-					Keys: []string{"/a"},
-				}},
 			},
 			nil,
 			&proto.GetResponse{
 				Status: proto.Status_KEY_NOT_FOUND,
 			},
 			nil,
-			&proto.ListResponse{
-				Keys: []string{"/a"},
-			},
-			nil,
 		},
 		{
-			nil,
-			io.EOF,
 			nil,
 			io.EOF,
 			nil,
@@ -120,10 +101,6 @@ func TestReadBatchComplete(t *testing.T) {
 				Gets: []*proto.GetRequest{{
 					Key:          "/a",
 					IncludeValue: true,
-				}},
-				Lists: []*proto.ListRequest{{
-					StartInclusive: "/b",
-					EndExclusive:   "/callC",
 				}},
 			}, request)
 			return item.response, item.err
@@ -140,17 +117,10 @@ func TestReadBatchComplete(t *testing.T) {
 
 		var getResponse *proto.GetResponse
 		var getErr error
-		var getRangeResponse *proto.ListResponse
-		var getRangeErr error
 
 		getCallback := func(response *proto.GetResponse, err error) {
 			getResponse = response
 			getErr = err
-			wg.Done()
-		}
-		getRangeCallback := func(response *proto.ListResponse, err error) {
-			getRangeResponse = response
-			getRangeErr = err
 			wg.Done()
 		}
 
@@ -158,19 +128,11 @@ func TestReadBatchComplete(t *testing.T) {
 			Key:      "/a",
 			Callback: getCallback,
 		})
-		batch.Add(model.ListCall{
-			MinKeyInclusive: "/b",
-			MaxKeyExclusive: "/callC",
-			Callback:        getRangeCallback,
-		})
-		assert.Equal(t, 2, batch.Size())
+		assert.Equal(t, 1, batch.Size())
 
 		batch.Complete()
 
 		assert.Equal(t, item.expectedGetResponse, getResponse)
 		assert.ErrorIs(t, getErr, item.expectedGetErr)
-
-		assert.Equal(t, item.expectedGetRangeResponse, getRangeResponse)
-		assert.ErrorIs(t, getRangeErr, item.expectedGetRangeErr)
 	}
 }

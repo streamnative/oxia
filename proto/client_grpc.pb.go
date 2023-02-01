@@ -39,7 +39,7 @@ type OxiaClientClient interface {
 	// this may be handled server-side in a proxy layer.
 	Write(ctx context.Context, in *WriteRequest, opts ...grpc.CallOption) (*WriteResponse, error)
 	// *
-	// Batches get and get_range requests.
+	// Batches get requests.
 	//
 	// Clients should send this request to the shard leader. In the future,
 	// this may be handled server-side in a proxy layer.
@@ -254,7 +254,7 @@ type OxiaClientServer interface {
 	// this may be handled server-side in a proxy layer.
 	Write(context.Context, *WriteRequest) (*WriteResponse, error)
 	// *
-	// Batches get and get_range requests.
+	// Batches get requests.
 	//
 	// Clients should send this request to the shard leader. In the future,
 	// this may be handled server-side in a proxy layer.

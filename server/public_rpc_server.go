@@ -22,10 +22,13 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protowire"
 	"oxia/common"
 	"oxia/common/container"
 	"oxia/proto"
 )
+
+const maxTotalListKeySize = 4 << (10 * 2) //4Mi
 
 type publicRpcServer struct {
 	proto.UnimplementedOxiaClientServer
@@ -121,13 +124,40 @@ func (s *publicRpcServer) List(request *proto.ListRequest, stream proto.OxiaClie
 		return err
 	}
 
-	err = lc.List(request, stream)
+	ch, err := lc.List(stream.Context(), request)
 	if err != nil {
 		s.log.Warn().Err(err).
 			Msg("Failed to perform list operation")
 	}
 
-	return err
+	response := &proto.ListResponse{}
+	var totalSize int
+
+	for {
+		select {
+		case key, more := <-ch:
+			if !more {
+				if len(response.Keys) > 0 {
+					if err := stream.Send(response); err != nil {
+						return err
+					}
+				}
+				return nil
+			}
+			size := protowire.SizeBytes(len(key))
+			if len(response.Keys) > 0 && totalSize+size > maxTotalListKeySize {
+				if err := stream.Send(response); err != nil {
+					return err
+				}
+				response = &proto.ListResponse{}
+				totalSize = 0
+			}
+			response.Keys = append(response.Keys, key)
+			totalSize += size
+		case <-stream.Context().Done():
+			return stream.Context().Err()
+		}
+	}
 }
 
 func (s *publicRpcServer) GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
