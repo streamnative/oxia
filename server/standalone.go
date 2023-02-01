@@ -16,10 +16,8 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
-	"os"
 	"oxia/common/container"
 	"oxia/common/metrics"
 	"oxia/proto"
@@ -30,9 +28,8 @@ import (
 type StandaloneConfig struct {
 	Config
 
-	AdvertisedPublicAddress string
-	NumShards               uint32
-	InMemory                bool
+	NumShards uint32
+	InMemory  bool
 }
 
 type Standalone struct {
@@ -52,9 +49,8 @@ func NewTestConfig() StandaloneConfig {
 			PublicServiceAddr:   "localhost:0",
 			MetricsServiceAddr:  "",
 		},
-		NumShards:               1,
-		AdvertisedPublicAddress: "localhost",
-		InMemory:                true,
+		NumShards: 1,
+		InMemory:  true,
 	}
 }
 
@@ -64,15 +60,6 @@ func NewStandalone(config StandaloneConfig) (*Standalone, error) {
 		Msg("Starting Oxia standalone")
 
 	s := &Standalone{}
-
-	advertisedPublicAddress := config.AdvertisedPublicAddress
-	if advertisedPublicAddress == "" {
-		hostname, err := os.Hostname()
-		if err != nil {
-			return nil, err
-		}
-		advertisedPublicAddress = hostname
-	}
 
 	var kvOptions kv.KVFactoryOptions
 	if config.InMemory {
@@ -98,9 +85,7 @@ func NewStandalone(config StandaloneConfig) (*Standalone, error) {
 		return nil, err
 	}
 
-	s.shardAssignmentDispatcher = NewStandaloneShardAssignmentDispatcher(
-		fmt.Sprintf("%s:%d", advertisedPublicAddress, s.rpc.Port()),
-		config.NumShards)
+	s.shardAssignmentDispatcher = NewStandaloneShardAssignmentDispatcher(config.NumShards)
 
 	s.rpc.assignmentDispatcher = s.shardAssignmentDispatcher
 

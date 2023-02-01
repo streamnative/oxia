@@ -19,8 +19,10 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
+	pb "google.golang.org/protobuf/proto"
 	"io"
 	"math"
 	"oxia/common"
@@ -48,6 +50,7 @@ type shardAssignmentDispatcher struct {
 	assignments  *proto.ShardAssignments
 	clients      map[int64]chan *proto.ShardAssignments
 	nextClientId int64
+	standalone   bool
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -70,10 +73,15 @@ func (s *shardAssignmentDispatcher) RegisterForUpdates(clientStream Client) erro
 	s.nextClientId++
 
 	s.clients[clientId] = clientCh
+
+	assignmentsInterceptorFunc, err := s.assignmentsInterceptorFunc(clientStream)
+	if err != nil {
+		return err
+	}
 	s.Unlock()
 
 	// Send initial assignments
-	err := clientStream.Send(initialAssignments)
+	err = clientStream.Send(assignmentsInterceptorFunc(initialAssignments))
 	if err != nil {
 		s.Lock()
 		delete(s.clients, clientId)
@@ -88,7 +96,7 @@ func (s *shardAssignmentDispatcher) RegisterForUpdates(clientStream Client) erro
 				return common.ErrorCancelled
 			}
 
-			err := clientStream.Send(assignments)
+			err := clientStream.Send(assignmentsInterceptorFunc(assignments))
 			if err != nil {
 				if status.Code(err) != codes.Canceled {
 					peer, _ := peer.FromContext(clientStream.Context())
@@ -114,6 +122,36 @@ func (s *shardAssignmentDispatcher) RegisterForUpdates(clientStream Client) erro
 			return nil
 		}
 	}
+}
+
+func (s *shardAssignmentDispatcher) assignmentsInterceptorFunc(clientStream Client) (func(assignments *proto.ShardAssignments) *proto.ShardAssignments, error) {
+	if s.standalone {
+		authority, err := authority(clientStream.Context())
+		if err != nil {
+			return nil, err
+		}
+		return func(assignments *proto.ShardAssignments) *proto.ShardAssignments {
+			assignments = pb.Clone(assignments).(*proto.ShardAssignments)
+			for _, assignment := range assignments.Assignments {
+				assignment.Leader = authority
+			}
+			return assignments
+		}, nil
+	}
+	return func(assignments *proto.ShardAssignments) *proto.ShardAssignments {
+		return assignments
+	}, nil
+}
+
+func authority(ctx context.Context) (string, error) {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if ok {
+		authority := md[":authority"]
+		if len(authority) > 0 {
+			return authority[0], nil
+		}
+	}
+	return "", status.Errorf(codes.Internal, "oxia: authority not identified")
 }
 
 func (s *shardAssignmentDispatcher) Close() error {
@@ -187,11 +225,12 @@ func NewShardAssignmentDispatcher() ShardAssignmentsDispatcher {
 	return s
 }
 
-func NewStandaloneShardAssignmentDispatcher(address string, numShards uint32) ShardAssignmentsDispatcher {
+func NewStandaloneShardAssignmentDispatcher(numShards uint32) ShardAssignmentsDispatcher {
 	assignmentDispatcher := NewShardAssignmentDispatcher().(*shardAssignmentDispatcher)
+	assignmentDispatcher.standalone = true
 	res := &proto.ShardAssignments{
 		ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
-		Assignments:    generateShards(address, numShards),
+		Assignments:    generateShards(numShards),
 	}
 
 	err := assignmentDispatcher.updateShardAssignment(res)
@@ -201,7 +240,7 @@ func NewStandaloneShardAssignmentDispatcher(address string, numShards uint32) Sh
 	return assignmentDispatcher
 }
 
-func generateShards(address string, numShards uint32) []*proto.ShardAssignment {
+func generateShards(numShards uint32) []*proto.ShardAssignment {
 	bucketSize := (math.MaxUint32 / numShards) + 1
 	assignments := make([]*proto.ShardAssignment, numShards)
 	for i := uint32(0); i < numShards; i++ {
@@ -212,7 +251,7 @@ func generateShards(address string, numShards uint32) []*proto.ShardAssignment {
 		}
 		assignments[i] = &proto.ShardAssignment{
 			ShardId: i,
-			Leader:  address,
+			//Leader: defer to send time
 			ShardBoundaries: &proto.ShardAssignment_Int32HashRange{
 				Int32HashRange: &proto.Int32HashRange{
 					MinHashInclusive: lowerBound,
