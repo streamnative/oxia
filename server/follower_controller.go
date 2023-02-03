@@ -193,7 +193,7 @@ func (fc *followerController) closeStream(err error) {
 }
 
 func (fc *followerController) closeStreamNoMutex(err error) {
-	if err != nil && err != io.EOF && status.Code(err) != codes.Canceled {
+	if err != nil && err != io.EOF && err != context.Canceled && status.Code(err) != codes.Canceled {
 		fc.log.Warn().Err(err).
 			Msg("Error in handle Replicate stream")
 	}
