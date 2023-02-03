@@ -211,11 +211,23 @@ func (s *shardController) electLeader() error {
 
 	newLeader, followers := s.selectNewLeader(fr)
 
-	s.log.Info().
-		Int64("term", s.shardMetadata.Term).
-		Interface("new-leader", newLeader).
-		Interface("followers", followers).
-		Msg("Successfully moved ensemble to a new term")
+	if s.log.Info().Enabled() {
+		f := make([]struct {
+			ServerAddress model.ServerAddress `json:"server-address"`
+			EntryId       *proto.EntryId      `json:"entry-id"`
+		}, 0)
+		for sa, entryId := range followers {
+			f = append(f, struct {
+				ServerAddress model.ServerAddress `json:"server-address"`
+				EntryId       *proto.EntryId      `json:"entry-id"`
+			}{ServerAddress: sa, EntryId: entryId})
+		}
+		s.log.Info().
+			Int64("term", s.shardMetadata.Term).
+			Interface("new-leader", newLeader).
+			Interface("followers", f).
+			Msg("Successfully moved ensemble to a new term")
+	}
 
 	if err = s.becomeLeader(newLeader, followers); err != nil {
 		return err
