@@ -265,7 +265,7 @@ func (fc *followerCursor) sendSnapshot() error {
 			Msg("Sending snapshot chunk")
 
 		if err := stream.Send(&proto.SnapshotChunk{
-			Term:    fc.term,
+			Term:       fc.term,
 			Name:       chunk.Name(),
 			ChunkIndex: chunk.Index(),
 			ChunkCount: chunk.TotalCount(),
@@ -376,6 +376,10 @@ func (fc *followerCursor) streamEntries() error {
 func (fc *followerCursor) receiveAcks(cancel context.CancelFunc, stream proto.OxiaLogReplication_ReplicateClient) {
 	for {
 		res, err := stream.Recv()
+		if err == io.EOF {
+			fc.log.Info().Msg("Ack stream finished")
+			return
+		}
 		if err != nil {
 			if status.Code(err) != codes.Canceled && status.Code(err) != codes.Unavailable {
 				fc.log.Warn().Err(err).
