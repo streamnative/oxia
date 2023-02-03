@@ -435,6 +435,10 @@ func (lc *leaderController) applyAllEntriesIntoDB() error {
 
 	r, err := lc.wal.NewReader(dbCommitOffset)
 	if err != nil {
+		lc.log.Error().Err(err).
+			Int64("commit-offset", dbCommitOffset).
+			Int64("first-offset", lc.wal.FirstOffset()).
+			Msg("Unable to create WAL reader")
 		return err
 	}
 	for r.HasNext() {
