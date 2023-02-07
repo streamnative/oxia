@@ -140,8 +140,6 @@ func (s *publicRpcServer) Read(request *proto.ReadRequest, stream proto.OxiaClie
 			return stream.Context().Err()
 		}
 	}
-
-	return err
 }
 
 func (s *publicRpcServer) List(request *proto.ListRequest, stream proto.OxiaClient_ListServer) error {
