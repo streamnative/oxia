@@ -22,7 +22,7 @@ import (
 
 type Executor interface {
 	ExecuteWrite(ctx context.Context, request *proto.WriteRequest) (*proto.WriteResponse, error)
-	ExecuteRead(ctx context.Context, request *proto.ReadRequest) (*proto.ReadResponse, error)
+	ExecuteRead(ctx context.Context, request *proto.ReadRequest) (proto.OxiaClient_ReadClient, error)
 	ExecuteList(ctx context.Context, request *proto.ListRequest) (proto.OxiaClient_ListClient, error)
 }
 
@@ -41,7 +41,7 @@ func (e *ExecutorImpl) ExecuteWrite(ctx context.Context, request *proto.WriteReq
 	return rpc.Write(ctx, request)
 }
 
-func (e *ExecutorImpl) ExecuteRead(ctx context.Context, request *proto.ReadRequest) (*proto.ReadResponse, error) {
+func (e *ExecutorImpl) ExecuteRead(ctx context.Context, request *proto.ReadRequest) (proto.OxiaClient_ReadClient, error) {
 	rpc, err := e.rpc(request.ShardId)
 	if err != nil {
 		return nil, err

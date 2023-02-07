@@ -101,18 +101,20 @@ func TestFollower(t *testing.T) {
 	assert.EqualValues(t, 1, fc.Term())
 
 	// Double-check the values in the DB
-	dbRes, err := fc.(*followerController).db.ProcessRead(&proto.ReadRequest{Gets: []*proto.GetRequest{{
+	// Keys are not there because they were not part of the commit offset
+	dbRes, err := fc.(*followerController).db.Get(&proto.GetRequest{
 		Key:          "a",
-		IncludeValue: true}, {
+		IncludeValue: true,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, proto.Status_KEY_NOT_FOUND, dbRes.Status)
+
+	dbRes, err = fc.(*followerController).db.Get(&proto.GetRequest{
 		Key:          "b",
 		IncludeValue: true,
-	},
-	}})
+	})
 	assert.NoError(t, err)
-	assert.Equal(t, 2, len(dbRes.Gets))
-	// Keys are not there because they were not part of the commit offset
-	assert.Equal(t, proto.Status_KEY_NOT_FOUND, dbRes.Gets[0].Status)
-	assert.Equal(t, proto.Status_KEY_NOT_FOUND, dbRes.Gets[1].Status)
+	assert.Equal(t, proto.Status_KEY_NOT_FOUND, dbRes.Status)
 
 	assert.NoError(t, fc.Close())
 	assert.NoError(t, kvFactory.Close())
@@ -172,20 +174,21 @@ func TestReadingUpToCommitOffset(t *testing.T) {
 		return fc.CommitOffset() == 0
 	}, 10*time.Second, 10*time.Millisecond)
 
-	dbRes, err := fc.(*followerController).db.ProcessRead(&proto.ReadRequest{Gets: []*proto.GetRequest{{
+	dbRes, err := fc.(*followerController).db.Get(&proto.GetRequest{
 		Key:          "a",
-		IncludeValue: true}, {
+		IncludeValue: true,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, proto.Status_OK, dbRes.Status)
+	assert.Equal(t, []byte("0"), dbRes.Value)
+
+	dbRes, err = fc.(*followerController).db.Get(&proto.GetRequest{
 		Key:          "b",
 		IncludeValue: true,
-	},
-	}})
+	})
 	assert.NoError(t, err)
-	assert.Equal(t, 2, len(dbRes.Gets))
-	// Keys are not there because they were not part of the commit offset
-	assert.Equal(t, proto.Status_OK, dbRes.Gets[0].Status)
-	assert.Equal(t, []byte("0"), dbRes.Gets[0].Value)
-	assert.Equal(t, proto.Status_OK, dbRes.Gets[1].Status)
-	assert.Equal(t, []byte("1"), dbRes.Gets[1].Value)
+	assert.Equal(t, proto.Status_OK, dbRes.Status)
+	assert.Equal(t, []byte("1"), dbRes.Value)
 
 	assert.NoError(t, fc.Close())
 	assert.NoError(t, kvFactory.Close())
@@ -420,19 +423,21 @@ func TestFollower_CommitOffsetLastEntry(t *testing.T) {
 		return fc.CommitOffset() == 0
 	}, 10*time.Second, 10*time.Millisecond)
 
-	dbRes, err := fc.(*followerController).db.ProcessRead(&proto.ReadRequest{Gets: []*proto.GetRequest{{
+	dbRes, err := fc.(*followerController).db.Get(&proto.GetRequest{
 		Key:          "a",
-		IncludeValue: true}, {
+		IncludeValue: true,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, proto.Status_OK, dbRes.Status)
+	assert.Equal(t, []byte("0"), dbRes.Value)
+
+	dbRes, err = fc.(*followerController).db.Get(&proto.GetRequest{
 		Key:          "b",
 		IncludeValue: true,
-	},
-	}})
+	})
 	assert.NoError(t, err)
-	assert.Equal(t, 2, len(dbRes.Gets))
-	assert.Equal(t, proto.Status_OK, dbRes.Gets[0].Status)
-	assert.Equal(t, []byte("0"), dbRes.Gets[0].Value)
-	assert.Equal(t, proto.Status_OK, dbRes.Gets[1].Status)
-	assert.Equal(t, []byte("1"), dbRes.Gets[1].Value)
+	assert.Equal(t, proto.Status_OK, dbRes.Status)
+	assert.Equal(t, []byte("1"), dbRes.Value)
 
 	assert.NoError(t, fc.Close())
 	assert.NoError(t, kvFactory.Close())
@@ -635,29 +640,30 @@ func TestFollower_HandleSnapshot(t *testing.T) {
 	// At this point the content of the follower should only include the
 	// data from the snapshot and any existing data should be gone
 
-	dbRes, err := fc.(*followerController).db.ProcessRead(&proto.ReadRequest{Gets: []*proto.GetRequest{{
+	dbRes, err := fc.(*followerController).db.Get(&proto.GetRequest{
 		Key:          "a",
-		IncludeValue: true}, {
+		IncludeValue: true,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, proto.Status_KEY_NOT_FOUND, dbRes.Status)
+	assert.Nil(t, dbRes.Value)
+
+	dbRes, err = fc.(*followerController).db.Get(&proto.GetRequest{
 		Key:          "b",
 		IncludeValue: true,
-	}}})
+	})
 	assert.NoError(t, err)
-	assert.Equal(t, 2, len(dbRes.Gets))
-	assert.Equal(t, proto.Status_KEY_NOT_FOUND, dbRes.Gets[0].Status)
-	assert.Nil(t, dbRes.Gets[0].Value)
-	assert.Equal(t, proto.Status_KEY_NOT_FOUND, dbRes.Gets[1].Status)
-	assert.Nil(t, dbRes.Gets[1].Value)
+	assert.Equal(t, proto.Status_KEY_NOT_FOUND, dbRes.Status)
+	assert.Nil(t, dbRes.Value)
 
 	for i := 0; i < 100; i++ {
-		dbRes, err := fc.(*followerController).db.ProcessRead(&proto.ReadRequest{Gets: []*proto.GetRequest{{
+		dbRes, err := fc.(*followerController).db.Get(&proto.GetRequest{
 			Key:          fmt.Sprintf("key-%d", i),
 			IncludeValue: true,
-		},
-		}})
+		})
 		assert.NoError(t, err)
-		assert.Equal(t, 1, len(dbRes.Gets))
-		assert.Equal(t, proto.Status_OK, dbRes.Gets[0].Status)
-		assert.Equal(t, []byte(fmt.Sprintf("value-%d", i)), dbRes.Gets[0].Value)
+		assert.Equal(t, proto.Status_OK, dbRes.Status)
+		assert.Equal(t, []byte(fmt.Sprintf("value-%d", i)), dbRes.Value)
 	}
 
 	assert.Equal(t, wal.InvalidOffset, fc.(*followerController).wal.LastOffset())

@@ -32,11 +32,16 @@ import (
 	"sync"
 )
 
+type GetResult struct {
+	Response *proto.GetResponse
+	Err      error
+}
+
 type LeaderController interface {
 	io.Closer
 
 	Write(write *proto.WriteRequest) (*proto.WriteResponse, error)
-	Read(read *proto.ReadRequest) (*proto.ReadResponse, error)
+	Read(ctx context.Context, request *proto.ReadRequest) <-chan GetResult
 	List(ctx context.Context, request *proto.ListRequest) (<-chan string, error)
 	ListSliceNoMutex(ctx context.Context, request *proto.ListRequest) ([]string, error)
 
@@ -516,19 +521,46 @@ func (lc *leaderController) truncateFollowerIfNeeded(follower string, followerHe
 	}
 }
 
-func (lc *leaderController) Read(request *proto.ReadRequest) (*proto.ReadResponse, error) {
-	lc.log.Debug().
-		Interface("req", request).
-		Msg("Received read request")
+func (lc *leaderController) Read(ctx context.Context, request *proto.ReadRequest) <-chan GetResult {
+	ch := make(chan GetResult)
 
 	lc.RLock()
 	err := checkStatus(proto.ServingStatus_LEADER, lc.status)
 	lc.RUnlock()
 	if err != nil {
-		return nil, err
+		go func() {
+			ch <- GetResult{Err: err}
+		}()
+		return ch
 	}
 
-	return lc.db.ProcessRead(request)
+	go lc.read(ctx, request, ch)
+
+	return ch
+}
+
+func (lc *leaderController) read(ctx context.Context, request *proto.ReadRequest, ch chan<- GetResult) {
+	common.DoWithLabels(map[string]string{
+		"oxia":  "read",
+		"shard": fmt.Sprintf("%d", lc.shardId),
+		"peer":  common.GetPeer(ctx),
+	}, func() {
+		lc.log.Debug().
+			Msg("Received read request")
+
+		for _, get := range request.Gets {
+			response, err := lc.db.Get(get)
+			if err != nil {
+				return
+			}
+			ch <- GetResult{Response: response}
+			if ctx.Err() != nil {
+				ch <- GetResult{Err: ctx.Err()}
+				break
+			}
+		}
+		close(ch)
+	})
 }
 
 func (lc *leaderController) List(ctx context.Context, request *proto.ListRequest) (<-chan string, error) {

@@ -232,44 +232,42 @@ func TestDBSameKeyMutations(t *testing.T) {
 	r2 := writeRes.Deletes[0]
 	assert.Equal(t, proto.Status_UNEXPECTED_VERSION_ID, r2.Status)
 
-	readReq := &proto.ReadRequest{
-		Gets: []*proto.GetRequest{
-			{ // Should return version v1
-				Key:          "k1",
-				IncludeValue: true,
-			},
-			{ // Should return version v1, with no value
-				Key:          "k1",
-				IncludeValue: false,
-			},
-			{ // Should fail since the key is not there
-				Key:          "non-existing",
-				IncludeValue: true,
-			},
-		},
-	}
-
-	readRes, err := db.ProcessRead(readReq)
+	getRes, err := db.Get(&proto.GetRequest{
+		// Should return version v1
+		Key:          "k1",
+		IncludeValue: true,
+	})
 	assert.NoError(t, err)
 
-	r3 := readRes.Gets[0]
-	assert.Equal(t, proto.Status_OK, r3.Status)
-	assert.EqualValues(t, 1, r3.Version.VersionId)
-	assert.Equal(t, "v1", string(r3.Value))
-	assert.Equal(t, t0, r3.Version.CreatedTimestamp)
-	assert.Equal(t, t1, r3.Version.ModifiedTimestamp)
+	assert.Equal(t, proto.Status_OK, getRes.Status)
+	assert.EqualValues(t, 1, getRes.Version.VersionId)
+	assert.Equal(t, "v1", string(getRes.Value))
+	assert.Equal(t, t0, getRes.Version.CreatedTimestamp)
+	assert.Equal(t, t1, getRes.Version.ModifiedTimestamp)
 
-	r4 := readRes.Gets[1]
-	assert.Equal(t, proto.Status_OK, r4.Status)
-	assert.EqualValues(t, 1, r4.Version.VersionId)
-	assert.Nil(t, r4.Value)
-	assert.Equal(t, t0, r4.Version.CreatedTimestamp)
-	assert.Equal(t, t1, r4.Version.ModifiedTimestamp)
+	getRes, err = db.Get(&proto.GetRequest{
+		// Should return version v1, with no value
+		Key:          "k1",
+		IncludeValue: false,
+	})
+	assert.NoError(t, err)
 
-	r5 := readRes.Gets[2]
-	assert.Equal(t, proto.Status_KEY_NOT_FOUND, r5.Status)
-	assert.Nil(t, r5.Version)
-	assert.Nil(t, r5.Value)
+	assert.Equal(t, proto.Status_OK, getRes.Status)
+	assert.EqualValues(t, 1, getRes.Version.VersionId)
+	assert.Nil(t, getRes.Value)
+	assert.Equal(t, t0, getRes.Version.CreatedTimestamp)
+	assert.Equal(t, t1, getRes.Version.ModifiedTimestamp)
+
+	getRes, err = db.Get(&proto.GetRequest{
+		// Should fail since the key is not there
+		Key:          "non-existing",
+		IncludeValue: true,
+	})
+	assert.NoError(t, err)
+
+	assert.Equal(t, proto.Status_KEY_NOT_FOUND, getRes.Status)
+	assert.Nil(t, getRes.Version)
+	assert.Nil(t, getRes.Value)
 
 	assert.NoError(t, db.Close())
 	assert.NoError(t, factory.Close())

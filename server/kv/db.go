@@ -47,7 +47,7 @@ type DB interface {
 	io.Closer
 
 	ProcessWrite(b *proto.WriteRequest, commitOffset int64, timestamp uint64, updateOperationCallback UpdateOperationCallback) (*proto.WriteResponse, error)
-	ProcessRead(b *proto.ReadRequest) (*proto.ReadResponse, error)
+	Get(request *proto.GetRequest) (*proto.GetResponse, error)
 	List(request *proto.ListRequest) KeyIterator
 	ReadCommitOffset() (int64, error)
 
@@ -76,8 +76,8 @@ func NewDB(shardId uint32, factory KVFactory, notificationRetentionTime time.Dur
 
 		batchWriteLatencyHisto: metrics.NewLatencyHistogram("oxia_server_db_batch_write_latency",
 			"The time it takes to write a batch in the db", labels),
-		batchReadLatencyHisto: metrics.NewLatencyHistogram("oxia_server_db_batch_read_latency",
-			"The time it takes to read a batch from the db", labels),
+		getLatencyHisto: metrics.NewLatencyHistogram("oxia_server_db_get_latency",
+			"The time it takes to get from the db", labels),
 		listLatencyHisto: metrics.NewLatencyHistogram("oxia_server_db_list_latency",
 			"The time it takes to read a list from the db", labels),
 		putCounter: metrics.NewCounter("oxia_server_db_puts",
@@ -114,7 +114,7 @@ type db struct {
 	listCounter         metrics.Counter
 
 	batchWriteLatencyHisto metrics.LatencyHistogram
-	batchReadLatencyHisto  metrics.LatencyHistogram
+	getLatencyHisto        metrics.LatencyHistogram
 	listLatencyHisto       metrics.LatencyHistogram
 }
 
@@ -213,22 +213,12 @@ func (d *db) addCommitOffset(commitOffset int64, batch WriteBatch, timestamp uin
 	return err
 }
 
-func (d *db) ProcessRead(b *proto.ReadRequest) (*proto.ReadResponse, error) {
-	timer := d.batchReadLatencyHisto.Timer()
+func (d *db) Get(request *proto.GetRequest) (*proto.GetResponse, error) {
+	timer := d.getLatencyHisto.Timer()
 	defer timer.Done()
 
-	res := &proto.ReadResponse{}
-
-	d.getCounter.Add(len(b.Gets))
-	for _, getReq := range b.Gets {
-		if gr, err := applyGet(d.kv, getReq); err != nil {
-			return nil, err
-		} else {
-			res.Gets = append(res.Gets, gr)
-		}
-	}
-
-	return res, nil
+	d.getCounter.Add(1)
+	return applyGet(d.kv, request)
 }
 
 type listIterator struct {

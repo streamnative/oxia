@@ -156,15 +156,20 @@ func (m *maelstromGrpcProvider) HandleClientRequest(msgType MsgType, msg any) {
 
 	case MsgTypeRead:
 		r := msg.(*Message[Read])
-		if res, err := m.getService(oxiaClient).(proto.OxiaClientServer).Read(context.Background(), &proto.ReadRequest{
+		stream := newMaelstromReadServerStream()
+		err := m.getService(oxiaClient).(proto.OxiaClientServer).Read(&proto.ReadRequest{
 			ShardId: pb.Uint32(0),
 			Gets: []*proto.GetRequest{{
 				Key:          fmt.Sprintf("%d", r.Body.Key),
 				IncludeValue: true,
 			}},
-		}); err != nil {
+		}, stream)
+		if err != nil {
 			sendError(r.Body.MsgId, r.Src, err)
-		} else if res.Gets[0].Status == proto.Status_KEY_NOT_FOUND {
+			return
+		}
+		res := <-stream.ch
+		if res.Gets[0].Status == proto.Status_KEY_NOT_FOUND {
 			sendErrorWithCode(r.Body.MsgId, r.Src, 20, "key-does-not-exist")
 		} else if res.Gets[0].Status != proto.Status_OK {
 			sendError(r.Body.MsgId, r.Src, errors.Errorf("Failed to perform write op: %#v", res.Gets[0].Status))
@@ -189,18 +194,20 @@ func (m *maelstromGrpcProvider) HandleClientRequest(msgType MsgType, msg any) {
 
 	case MsgTypeCas:
 		c := msg.(*Message[Cas])
-
-		res, err := m.getService(oxiaClient).(proto.OxiaClientServer).Read(context.Background(), &proto.ReadRequest{
+		stream := newMaelstromReadServerStream()
+		err := m.getService(oxiaClient).(proto.OxiaClientServer).Read(&proto.ReadRequest{
 			ShardId: pb.Uint32(0),
 			Gets: []*proto.GetRequest{{
 				Key:          fmt.Sprintf("%d", c.Body.Key),
 				IncludeValue: true,
 			}},
-		})
+		}, stream)
 		if err != nil {
 			sendError(c.Body.MsgId, c.Src, err)
 			return
-		} else if res.Gets[0].Status == proto.Status_KEY_NOT_FOUND {
+		}
+		res := <-stream.ch
+		if res.Gets[0].Status == proto.Status_KEY_NOT_FOUND {
 			sendErrorWithCode(c.Body.MsgId, c.Src, 20, "key-does-not-exist")
 			return
 		} else if res.Gets[0].Status != proto.Status_OK {
@@ -275,6 +282,38 @@ func (m *maelstromGrpcProvider) getService(name string) any {
 
 	return r
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+func newMaelstromReadServerStream() *maelstromReadServerStream {
+	return &maelstromReadServerStream{
+		ch: make(chan *proto.ReadResponse, 1),
+	}
+}
+
+type maelstromReadServerStream struct {
+	BaseStream
+	ch chan *proto.ReadResponse
+}
+
+func (m *maelstromReadServerStream) Send(response *proto.ReadResponse) error {
+	m.ch <- response
+	return nil
+}
+
+func (m *maelstromReadServerStream) SetHeader(metadata.MD) error {
+	panic("not implemented")
+}
+
+func (m *maelstromReadServerStream) SendHeader(metadata.MD) error {
+	panic("not implemented")
+}
+
+func (m *maelstromReadServerStream) SetTrailer(metadata.MD) {
+	panic("not implemented")
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 type maelstromGrpcServer struct {
 }

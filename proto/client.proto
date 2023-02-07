@@ -59,7 +59,7 @@ service OxiaClient {
    * Clients should send this request to the shard leader. In the future,
    * this may be handled server-side in a proxy layer.
    */
-  rpc Read(ReadRequest) returns (ReadResponse);
+  rpc Read(ReadRequest) returns (stream ReadResponse);
 
   /**
    * Requests all the keys between a range of keys.

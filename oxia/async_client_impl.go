@@ -184,7 +184,7 @@ func (c *clientImpl) DeleteRange(minKeyInclusive string, maxKeyExclusive string)
 }
 
 func (c *clientImpl) Get(key string) <-chan GetResult {
-	ch := make(chan GetResult, 1)
+	ch := make(chan GetResult)
 	shardId := c.shardManager.Get(key)
 	callback := func(response *proto.GetResponse, err error) {
 		if err != nil {

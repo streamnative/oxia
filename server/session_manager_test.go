@@ -320,17 +320,13 @@ func TestSessionManager(t *testing.T) {
 }
 
 func getData(t *testing.T, lc *leaderController, key string) string {
-	shard := uint32(1)
-	resp, err := lc.db.ProcessRead(&proto.ReadRequest{
-		ShardId: &shard,
-		Gets: []*proto.GetRequest{{
-			Key:          key,
-			IncludeValue: true,
-		}},
+	resp, err := lc.db.Get(&proto.GetRequest{
+		Key:          key,
+		IncludeValue: true,
 	})
 	assert.NoError(t, err)
-	if resp.Gets[0].Status != proto.Status_KEY_NOT_FOUND {
-		return string(resp.Gets[0].Value)
+	if resp.Status != proto.Status_KEY_NOT_FOUND {
+		return string(resp.Value)
 	}
 	return ""
 }
@@ -348,22 +344,18 @@ func keepAlive(t *testing.T, sManager *sessionManager, sessionId int64, err erro
 }
 
 func getSessionMetadata(t *testing.T, lc *leaderController, sessionId int64) *proto.SessionMetadata {
-	shard := uint32(1)
-	resp, err := lc.db.ProcessRead(&proto.ReadRequest{
-		ShardId: &shard,
-		Gets: []*proto.GetRequest{{
-			Key:          SessionKey(SessionId(sessionId)),
-			IncludeValue: true,
-		}},
+	resp, err := lc.db.Get(&proto.GetRequest{
+		Key:          SessionKey(SessionId(sessionId)),
+		IncludeValue: true,
 	})
 	assert.NoError(t, err)
 
-	found := resp.Gets[0].Status == proto.Status_OK
+	found := resp.Status == proto.Status_OK
 	if !found {
 		return nil
 	}
 	meta := proto.SessionMetadata{}
-	err = pb.Unmarshal(resp.Gets[0].Value, &meta)
+	err = pb.Unmarshal(resp.Value, &meta)
 	assert.NoError(t, err)
 	return &meta
 }
