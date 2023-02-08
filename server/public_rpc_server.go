@@ -28,7 +28,10 @@ import (
 	"oxia/proto"
 )
 
-const maxTotalListKeySize = 4 << (10 * 2) //4Mi
+const (
+	maxTotalReadValueSize = 4 << (10 * 2) //4Mi
+	maxTotalListKeySize   = 4 << (10 * 2) //4Mi
+)
 
 type publicRpcServer struct {
 	proto.UnimplementedOxiaClientServer
@@ -93,24 +96,50 @@ func (s *publicRpcServer) Write(ctx context.Context, write *proto.WriteRequest) 
 	return wr, err
 }
 
-func (s *publicRpcServer) Read(ctx context.Context, read *proto.ReadRequest) (*proto.ReadResponse, error) {
+func (s *publicRpcServer) Read(request *proto.ReadRequest, stream proto.OxiaClient_ReadServer) error {
 	s.log.Debug().
-		Str("peer", common.GetPeer(ctx)).
-		Interface("req", read).
-		Msg("Write request")
+		Str("peer", common.GetPeer(stream.Context())).
+		Interface("req", request).
+		Msg("Read request")
 
-	lc, err := s.getLeader(*read.ShardId)
+	lc, err := s.getLeader(*request.ShardId)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	rr, err := lc.Read(read)
-	if err != nil {
-		s.log.Warn().Err(err).
-			Msg("Failed to perform read operation")
-	}
+	ch := lc.Read(stream.Context(), request)
 
-	return rr, err
+	response := &proto.ReadResponse{}
+	var totalSize int
+
+	for {
+		select {
+		case result, more := <-ch:
+			if !more {
+				if len(response.Gets) > 0 {
+					if err := stream.Send(response); err != nil {
+						return err
+					}
+				}
+				return nil
+			}
+			if result.Err != nil {
+				return result.Err
+			}
+			size := protowire.SizeBytes(len(result.Response.Value))
+			if len(response.Gets) > 0 && totalSize+size > maxTotalReadValueSize {
+				if err := stream.Send(response); err != nil {
+					return err
+				}
+				response = &proto.ReadResponse{}
+				totalSize = 0
+			}
+			response.Gets = append(response.Gets, result.Response)
+			totalSize += size
+		case <-stream.Context().Done():
+			return stream.Context().Err()
+		}
+	}
 }
 
 func (s *publicRpcServer) List(request *proto.ListRequest, stream proto.OxiaClient_ListServer) error {

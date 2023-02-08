@@ -18,6 +18,7 @@ import (
 	"context"
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/otel/metric"
+	"google.golang.org/grpc/metadata"
 	"io"
 	"oxia/oxia/internal/metrics"
 	"oxia/oxia/internal/model"
@@ -88,14 +89,8 @@ func TestReadBatchComplete(t *testing.T) {
 			},
 			nil,
 		},
-		{
-			nil,
-			io.EOF,
-			nil,
-			io.EOF,
-		},
 	} {
-		execute := func(ctx context.Context, request *proto.ReadRequest) (*proto.ReadResponse, error) {
+		execute := func(ctx context.Context, request *proto.ReadRequest) (proto.OxiaClient_ReadClient, error) {
 			assert.Equal(t, &proto.ReadRequest{
 				ShardId: &shardId,
 				Gets: []*proto.GetRequest{{
@@ -103,7 +98,7 @@ func TestReadBatchComplete(t *testing.T) {
 					IncludeValue: true,
 				}},
 			}, request)
-			return item.response, item.err
+			return readClient([]*proto.ReadResponse{item.response}), item.err
 		}
 
 		factory := &readBatchFactory{
@@ -135,4 +130,51 @@ func TestReadBatchComplete(t *testing.T) {
 		assert.Equal(t, item.expectedGetResponse, getResponse)
 		assert.ErrorIs(t, getErr, item.expectedGetErr)
 	}
+}
+
+type readResult struct {
+	response *proto.ReadResponse
+	err      error
+}
+
+type testOxiaClientReadClient struct {
+	ch <-chan readResult
+}
+
+func readClient(responses []*proto.ReadResponse) proto.OxiaClient_ReadClient {
+	ch := make(chan readResult, len(responses)+1)
+	for _, response := range responses {
+		ch <- readResult{response: response}
+	}
+	ch <- readResult{err: io.EOF}
+	return &testOxiaClientReadClient{ch: ch}
+}
+
+func (t *testOxiaClientReadClient) Recv() (*proto.ReadResponse, error) {
+	r := <-t.ch
+	return r.response, r.err
+}
+
+func (t *testOxiaClientReadClient) Header() (metadata.MD, error) {
+	panic("not implemented")
+}
+
+func (t *testOxiaClientReadClient) Trailer() metadata.MD {
+	panic("not implemented")
+}
+
+func (t *testOxiaClientReadClient) CloseSend() error {
+	panic("not implemented")
+}
+
+func (t *testOxiaClientReadClient) Context() context.Context {
+	panic("not implemented")
+}
+
+func (t *testOxiaClientReadClient) SendMsg(m interface{}) error {
+	panic("not implemented")
+}
+
+func (t *testOxiaClientReadClient) RecvMsg(m interface{}) error {
+	panic("not implemented")
 }

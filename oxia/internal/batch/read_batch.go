@@ -18,6 +18,7 @@ import (
 	"context"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/rs/zerolog/log"
+	"io"
 	"oxia/common"
 	"oxia/common/batch"
 	"oxia/oxia/internal/metrics"
@@ -27,7 +28,7 @@ import (
 )
 
 type readBatchFactory struct {
-	execute        func(context.Context, *proto.ReadRequest) (*proto.ReadResponse, error)
+	execute        func(context.Context, *proto.ReadRequest) (proto.OxiaClient_ReadClient, error)
 	metrics        *metrics.Metrics
 	requestTimeout time.Duration
 }
@@ -48,7 +49,7 @@ func (b readBatchFactory) newBatch(shardId *uint32) batch.Batch {
 
 type readBatch struct {
 	shardId        *uint32
-	execute        func(context.Context, *proto.ReadRequest) (*proto.ReadResponse, error)
+	execute        func(context.Context, *proto.ReadRequest) (proto.OxiaClient_ReadClient, error)
 	gets           []model.GetCall
 	start          time.Time
 	requestTimeout time.Duration
@@ -88,7 +89,7 @@ func (b *readBatch) doRequestWithRetries(request *proto.ReadRequest) (response *
 	backOff := common.NewBackOff(ctx)
 
 	err = backoff.RetryNotify(func() error {
-		response, err = b.execute(ctx, request)
+		response, err = b.doRequest(ctx, request)
 		if !isRetriable(err) {
 			return backoff.Permanent(err)
 		}
@@ -100,6 +101,26 @@ func (b *readBatch) doRequestWithRetries(request *proto.ReadRequest) (response *
 	})
 
 	return response, err
+}
+
+func (b *readBatch) doRequest(ctx context.Context, request *proto.ReadRequest) (*proto.ReadResponse, error) {
+	stream, err := b.execute(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	response := &proto.ReadResponse{}
+
+	for {
+		recv, err := stream.Recv()
+		if err == io.EOF {
+			return response, nil
+		}
+		if err != nil {
+			return response, err
+		}
+		response.Gets = append(response.Gets, recv.Gets...)
+	}
 }
 
 func (b *readBatch) Fail(err error) {

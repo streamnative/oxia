@@ -224,25 +224,18 @@ func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, 
 	if err != nil {
 		return nil, err
 	}
-	var gets []*proto.GetRequest
-	for _, key := range list {
-		gets = append(gets, &proto.GetRequest{
-			Key:          key,
-			IncludeValue: true,
-		})
-	}
-	getResp, err := sm.leaderController.db.ProcessRead(&proto.ReadRequest{
-		ShardId: &sm.shardId,
-		Gets:    gets,
-	})
-	if err != nil {
-		return nil, err
-	}
 
 	result := map[SessionId]*proto.SessionMetadata{}
 
-	for i, metaEntry := range getResp.Gets {
-		key := gets[i].Key
+	for _, key := range list {
+		metaEntry, err := sm.leaderController.db.Get(&proto.GetRequest{
+			Key:          key,
+			IncludeValue: true,
+		})
+		if err != nil {
+			return nil, err
+		}
+
 		if metaEntry.Status != proto.Status_OK {
 			sm.log.Warn().
 				Str("key", key).

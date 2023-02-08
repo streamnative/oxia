@@ -62,13 +62,13 @@ func TestLeaderController_NotInitialized(t *testing.T) {
 	assert.Nil(t, res)
 	assert.Equal(t, common.CodeInvalidStatus, status.Code(err))
 
-	res2, err := lc.Read(&proto.ReadRequest{
+	r := <-lc.Read(context.Background(), &proto.ReadRequest{
 		ShardId: &shard,
 		Gets:    []*proto.GetRequest{{Key: "a"}},
 	})
 
-	assert.Nil(t, res2)
-	assert.Equal(t, common.CodeInvalidStatus, status.Code(err))
+	assert.Nil(t, r.Response)
+	assert.Equal(t, common.CodeInvalidStatus, status.Code(r.Err))
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())
@@ -182,15 +182,14 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	assert.EqualValues(t, 0, res.Puts[0].Version.VersionId)
 
 	/// Read entry
-	res2, err := lc.Read(&proto.ReadRequest{
+	r := <-lc.Read(context.Background(), &proto.ReadRequest{
 		ShardId: &shard,
 		Gets:    []*proto.GetRequest{{Key: "a", IncludeValue: true}},
 	})
 
-	assert.NoError(t, err)
-	assert.EqualValues(t, 1, len(res2.Gets))
-	assert.Equal(t, proto.Status_OK, res2.Gets[0].Status)
-	assert.Equal(t, []byte("value-a"), res2.Gets[0].Value)
+	assert.NoError(t, r.Err)
+	assert.Equal(t, proto.Status_OK, r.Response.Status)
+	assert.Equal(t, []byte("value-a"), r.Response.Value)
 	assert.EqualValues(t, 0, res.Puts[0].Version.VersionId)
 
 	/// Set NewTerm to leader
@@ -217,13 +216,13 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	assert.Nil(t, res3)
 	assert.Equal(t, common.CodeInvalidStatus, status.Code(err))
 
-	res4, err := lc.Read(&proto.ReadRequest{
+	r = <-lc.Read(context.Background(), &proto.ReadRequest{
 		ShardId: &shard,
 		Gets:    []*proto.GetRequest{{Key: "a"}},
 	})
 
-	assert.Nil(t, res4)
-	assert.Equal(t, common.CodeInvalidStatus, status.Code(err))
+	assert.Nil(t, r.Response)
+	assert.Equal(t, common.CodeInvalidStatus, status.Code(r.Err))
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())
@@ -287,15 +286,14 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	assert.EqualValues(t, 0, res.Puts[0].Version.VersionId)
 
 	/// Read entry
-	res2, err := lc.Read(&proto.ReadRequest{
+	r := <-lc.Read(context.Background(), &proto.ReadRequest{
 		ShardId: &shard,
 		Gets:    []*proto.GetRequest{{Key: "a", IncludeValue: true}},
 	})
 
-	assert.NoError(t, err)
-	assert.EqualValues(t, 1, len(res2.Gets))
-	assert.Equal(t, proto.Status_OK, res2.Gets[0].Status)
-	assert.Equal(t, []byte("value-a"), res2.Gets[0].Value)
+	assert.NoError(t, r.Err)
+	assert.Equal(t, proto.Status_OK, r.Response.Status)
+	assert.Equal(t, []byte("value-a"), r.Response.Value)
 	assert.EqualValues(t, 0, res.Puts[0].Version.VersionId)
 
 	/// Set NewTerm to leader
@@ -322,13 +320,13 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	assert.Nil(t, res3)
 	assert.Equal(t, common.CodeInvalidStatus, status.Code(err))
 
-	res4, err := lc.Read(&proto.ReadRequest{
+	r = <-lc.Read(context.Background(), &proto.ReadRequest{
 		ShardId: &shard,
 		Gets:    []*proto.GetRequest{{Key: "a"}},
 	})
 
-	assert.Nil(t, res4)
-	assert.Equal(t, common.CodeInvalidStatus, status.Code(err))
+	assert.Nil(t, r.Response)
+	assert.Equal(t, common.CodeInvalidStatus, status.Code(r.Err))
 
 	close(rpc.ackResps)
 	assert.NoError(t, lc.Close())
@@ -772,16 +770,15 @@ func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
 	})
 
 	/// We should be able to read the entry, even if it was not fully committed before the leader started
-	res, err := lc.Read(&proto.ReadRequest{
+	r := <-lc.Read(context.Background(), &proto.ReadRequest{
 		ShardId: &shard,
 		Gets:    []*proto.GetRequest{{Key: "my-key", IncludeValue: true}},
 	})
 
-	assert.NoError(t, err)
-	assert.EqualValues(t, 1, len(res.Gets))
-	assert.Equal(t, proto.Status_OK, res.Gets[0].Status)
-	assert.Equal(t, []byte("my-value"), res.Gets[0].Value)
-	assert.EqualValues(t, 0, res.Gets[0].Version.VersionId)
+	assert.NoError(t, r.Err)
+	assert.Equal(t, proto.Status_OK, r.Response.Status)
+	assert.Equal(t, []byte("my-value"), r.Response.Value)
+	assert.EqualValues(t, 0, r.Response.Version.VersionId)
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())
