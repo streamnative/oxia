@@ -404,10 +404,12 @@ func (d *db) applyDelete(batch WriteBatch, notifications *notifications, delReq 
 }
 
 func (d *db) applyDeleteRange(batch WriteBatch, notifications *notifications, delReq *proto.DeleteRangeRequest, updateOperationCallback UpdateOperationCallback) (*proto.DeleteRangeResponse, error) {
-	if notifications != nil {
+	if notifications != nil || updateOperationCallback != NoOpCallback {
 		it := batch.KeyRangeScan(delReq.StartInclusive, delReq.EndExclusive)
 		for it.Next() {
-			notifications.Deleted(it.Key())
+			if notifications != nil {
+				notifications.Deleted(it.Key())
+			}
 			err := updateOperationCallback.OnDelete(batch, it.Key())
 			if err != nil {
 				return nil,

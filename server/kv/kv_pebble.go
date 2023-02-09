@@ -422,7 +422,7 @@ func (b *PebbleBatch) Get(key string) ([]byte, io.Closer, error) {
 	value, closer, err := b.b.Get([]byte(key))
 	if errors.Is(err, pebble.ErrNotFound) {
 		err = ErrorKeyNotFound
-	} else {
+	} else if err != nil {
 		b.p.readErrors.Inc()
 	}
 	return value, closer, err
