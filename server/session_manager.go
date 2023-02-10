@@ -323,7 +323,7 @@ func (_ *updateCallback) OnPut(batch kv.WriteBatch, request *proto.PutRequest, e
 func deleteShadow(batch kv.WriteBatch, key string, existingEntry *proto.StorageEntry) (proto.Status, error) {
 	existingSessionId := SessionId(*existingEntry.SessionId)
 	err := batch.Delete(SessionKey(existingSessionId) + url.PathEscape(key))
-	if err != nil {
+	if err != nil && !errors.Is(err, kv.ErrorKeyNotFound) {
 		return proto.Status_SESSION_DOES_NOT_EXIST, err
 	}
 	return proto.Status_OK, nil
@@ -331,6 +331,9 @@ func deleteShadow(batch kv.WriteBatch, key string, existingEntry *proto.StorageE
 
 func (_ *updateCallback) OnDelete(batch kv.WriteBatch, key string) error {
 	se, err := kv.GetStorageEntry(batch, key)
+	if errors.Is(err, kv.ErrorKeyNotFound) {
+		return nil
+	}
 	if err == nil && se.SessionId != nil {
 		_, err = deleteShadow(batch, key, se)
 	}
