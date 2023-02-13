@@ -163,3 +163,24 @@ helm upgrade --install oxia-cluster \
   --set serviceMonitor=true \
   deploy/charts/oxia-cluster
 ```
+
+### In [KinD](https://kind.sigs.k8s.io/)
+
+```shell
+kind create cluster
+kubectl create namespace oxia
+
+helm upgrade --install oxia \
+  --namespace oxia \
+  deploy/charts/oxia-cluster
+```
+
+## Run perf
+
+```shell
+kubectl run perf --image=streamnative:main --command -- tail -f /dev/null
+kubectl exec -ti perf -- bash
+
+  oxia perf --service-address=oxia:6648
+```
+
