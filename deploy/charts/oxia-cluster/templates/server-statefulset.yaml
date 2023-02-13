@@ -24,6 +24,7 @@ spec:
     matchLabels:
       {{- include "oxia-cluster.server.selectorLabels" . | nindent 6 }}
   serviceName: {{ .Release.Name }}
+  podManagementPolicy: Parallel
   template:
     metadata:
       labels:
