@@ -23,7 +23,7 @@ image:
   repository: streamnative/oxia
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: ""
+  tag: main
 
 initialShardCount: 3
 replicationFactor: 3
