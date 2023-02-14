@@ -27,8 +27,8 @@ import (
 
 var (
 	Cmd = &cobra.Command{
-		Use:   "runPerf",
-		Short: "Oxia runPerf client",
+		Use:   "perf",
+		Short: "Oxia perf client",
 		Long:  `Oxia tool for basic performance tests`,
 		Run:   exec,
 	}
