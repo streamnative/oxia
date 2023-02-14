@@ -1,0 +1,4 @@
+image:
+  repository: oxia
+  tag: latest
+  pullPolicy: Never

@@ -65,8 +65,8 @@ jobs:
       - name: Test
         run: make test
 
-  build-docker:
-    name: Build Docker image
+  chaos-mesh:
+    name: Run chaos-mesh
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -78,3 +78,33 @@ jobs:
           tags: oxia:latest
           cache-from: type=registry,ref=oxia:latest
           cache-to: type=inline
+      - uses: helm/kind-action@v1.5.0
+        with:
+          cluster_name: kind
+          kubectl_version: v1.25.5
+      - name: Deploy oxia
+        run: |
+          kubectl create namespace oxia
+          kind load docker-image oxia:latest
+          helm -n oxia install oxia \
+            -f deploy/chaos-mesh/oxia-cluster.yaml \
+            deploy/charts/oxia-cluster
+          sleep 30
+          kubectl -n oxia run perf \
+            --image=oxia:latest --image-pull-policy=Never \
+            --command -- oxia perf -a oxia:6648
+      - name: Encode chaos-mesh config
+        run: echo "CFG_BASE64=$(base64 -w0 deploy/chaos-mesh/chaos-mesh.yaml)" >> $GITHUB_ENV
+      - name: Run chaos-mesh
+        uses: chaos-mesh/chaos-mesh-action@master # v0.5 is broken
+        env:
+          CHAOS_MESH_VERSION: v2.5.1
+          # CFG_BASE64: set by previous step
+      - name: Wait for workflow completion
+        run: sleep 120
+      - name: Print pods
+        run: kubectl -n oxia get pods
+      - name: Print coordinator logs
+        run: kubectl -n oxia logs -l app.kubernetes.io/component=coordinator
+      - name: Print perf logs
+        run: kubectl -n oxia logs perf
