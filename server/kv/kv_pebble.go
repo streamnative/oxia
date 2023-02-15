@@ -164,9 +164,6 @@ func newKVPebble(factory *PebbleFactory, shardId uint32) (KV, error) {
 			"The number of operations in a given batch", labels),
 	}
 
-	levels := make([]pebble.LevelOptions, 1)
-	levels[0].Compression = pebble.ZstdCompression
-
 	pbOptions := &pebble.Options{
 		Cache: factory.cache,
 		Comparer: &pebble.Comparer{
@@ -181,7 +178,6 @@ func newKVPebble(factory *PebbleFactory, shardId uint32) (KV, error) {
 			ImmediateSuccessor: pebble.DefaultComparer.ImmediateSuccessor,
 			Name:               "oxia-slash-spans",
 		},
-		Levels:     levels,
 		FS:         vfs.Default,
 		DisableWAL: true,
 		Logger: &PebbleLogger{
