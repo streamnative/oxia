@@ -1,0 +1,23 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Workflow
+metadata:
+  name: oxia
+spec:
+  entry: entry
+  templates:
+    - name: entry
+      templateType: Parallel
+      deadline: 2m
+      children:
+        - pod-kill-server
+    - name: pod-kill-server
+      templateType: PodChaos
+      deadline: 2m
+      podChaos:
+        selector:
+          namespaces:
+            - oxia
+          labelSelectors:
+            app.kubernetes.io/component: server
+        mode: one
+        action: pod-kill
