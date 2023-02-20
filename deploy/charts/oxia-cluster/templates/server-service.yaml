@@ -21,6 +21,7 @@ metadata:
   name: {{ .Release.Name }}
 spec:
   clusterIP: None
+  publishNotReadyAddresses: true
   ports:
     {{- range $key, $value := .Values.server.ports }}
     - name: {{ $key }}
