@@ -121,17 +121,18 @@ func roleBinding(cluster v1alpha1.OxiaCluster) *rbacV1.RoleBinding {
 
 func service(component Component, cluster v1alpha1.OxiaCluster, ports []NamedPort) *coreV1.Service {
 	var clusterIp string
+	var publishNotReadyAddresses bool
 	if component == Server {
 		clusterIp = coreV1.ClusterIPNone
-	} else {
-		clusterIp = ""
+		publishNotReadyAddresses = true
 	}
 	service := &coreV1.Service{
 		ObjectMeta: objectMeta(component, cluster.Name),
 		Spec: coreV1.ServiceSpec{
-			Selector:  selectorLabels(component, cluster.Name),
-			Ports:     transform(ports, servicePort),
-			ClusterIP: clusterIp,
+			Selector:                 selectorLabels(component, cluster.Name),
+			Ports:                    transform(ports, servicePort),
+			ClusterIP:                clusterIp,
+			PublishNotReadyAddresses: publishNotReadyAddresses,
 		},
 	}
 	service.Labels["oxia_cluster"] = cluster.Name
