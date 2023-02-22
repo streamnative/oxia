@@ -1,3 +1,5 @@
+# https://chaos-mesh.dev/reference/release-2.1/
+# https://chaos-mesh.org/docs/
 apiVersion: chaos-mesh.org/v1alpha1
 kind: Workflow
 metadata:
@@ -6,18 +8,142 @@ spec:
   entry: entry
   templates:
     - name: entry
-      templateType: Parallel
-      deadline: 2m
+      templateType: Serial
       children:
-        - pod-kill-server
-    - name: pod-kill-server
+        - pod-kill
+        - pod-failure
+        - network-delay
+        - network-partition
+        - network-bandwidth
+        - stress-cpu
+        - stress-memory
+        - time
+    - name: pod-kill
+      deadline: 30s
       templateType: PodChaos
-      deadline: 2m
       podChaos:
+        action: pod-kill
+        gracePeriod: 0
+        mode: one
         selector:
           namespaces:
             - oxia
           labelSelectors:
+            app.kubernetes.io/name: oxia-cluster
             app.kubernetes.io/component: server
+    - name: pod-failure
+      deadline: 30s
+      templateType: PodChaos
+      podChaos:
+        action: pod-failure
         mode: one
-        action: pod-kill
+        selector:
+          namespaces:
+            - oxia
+          labelSelectors:
+            app.kubernetes.io/name: oxia-cluster
+            app.kubernetes.io/component: server
+    - name: network-delay
+      deadline: 30s
+      templateType: NetworkChaos
+      networkChaos:
+        action: delay
+        direction: both
+        target:
+          mode: all
+          selector:
+            namespaces:
+              - oxia
+        delay:
+          latency: 10ms
+          correlation: '100'
+          jitter: 0ms
+        mode: one
+        selector:
+          namespaces:
+            - oxia
+          labelSelectors:
+            app.kubernetes.io/name: oxia-cluster
+            app.kubernetes.io/component: server
+    - name: network-partition
+      deadline: 30s
+      templateType: NetworkChaos
+      networkChaos:
+        action: partition
+        direction: both
+        target:
+          mode: all
+          selector:
+            namespaces:
+              - oxia
+        mode: one
+        selector:
+          namespaces:
+            - oxia
+          labelSelectors:
+            app.kubernetes.io/name: oxia-cluster
+            app.kubernetes.io/component: server
+    - name: network-bandwidth
+      deadline: 30s
+      templateType: NetworkChaos
+      networkChaos:
+        action: bandwidth
+        direction: both
+        target:
+          mode: all
+          selector:
+            namespaces:
+              - oxia
+        bandwidth:
+          rate: 1mbps
+          limit: 20971520
+          buffer: 10000
+        mode: all
+        selector:
+          namespaces:
+            - oxia
+          labelSelectors:
+            app.kubernetes.io/name: oxia-cluster
+            app.kubernetes.io/component: server
+    - name: stress-cpu
+      deadline: 30s
+      templateType: StressChaos
+      stressChaos:
+        stressors:
+          cpu:
+            workers: 1
+            load: 100
+        mode: one
+        selector:
+          namespaces:
+            - oxia
+          labelSelectors:
+            app.kubernetes.io/name: oxia-cluster
+            app.kubernetes.io/component: server
+    - name: stress-memory
+      deadline: 30s
+      templateType: StressChaos
+      stressChaos:
+        stressors:
+          memory:
+            workers: 1
+            size: 100%
+        mode: one
+        selector:
+          namespaces:
+            - oxia
+          labelSelectors:
+            app.kubernetes.io/name: oxia-cluster
+            app.kubernetes.io/component: server
+    - name: time
+      deadline: 30s
+      templateType: TimeChaos
+      timeChaos:
+        timeOffset: 10s
+        mode: one
+        selector:
+          namespaces:
+            - oxia
+          labelSelectors:
+            app.kubernetes.io/name: oxia-cluster
+            app.kubernetes.io/component: server
