@@ -77,9 +77,9 @@ service OxiaClient {
   rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
 
   /*
-   * Sends heartbeats to prevent the session from timing out.
+   * Sends a heartbeat to prevent the session from timing out.
    */
-  rpc KeepAlive(stream SessionHeartbeat) returns (KeepAliveResponse);
+  rpc KeepAlive(SessionHeartbeat) returns (KeepAliveResponse);
 
   /*
    * Closes a session and removes all ephemeral values associated with it.

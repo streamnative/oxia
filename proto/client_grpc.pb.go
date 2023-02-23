@@ -53,8 +53,8 @@ type OxiaClientClient interface {
 	// Creates a new client session. Sessions are kept alive by regularly sending
 	// heartbeats via the KeepAlive rpc.
 	CreateSession(ctx context.Context, in *CreateSessionRequest, opts ...grpc.CallOption) (*CreateSessionResponse, error)
-	// Sends heartbeats to prevent the session from timing out.
-	KeepAlive(ctx context.Context, opts ...grpc.CallOption) (OxiaClient_KeepAliveClient, error)
+	// Sends a heartbeat to prevent the session from timing out.
+	KeepAlive(ctx context.Context, in *SessionHeartbeat, opts ...grpc.CallOption) (*KeepAliveResponse, error)
 	// Closes a session and removes all ephemeral values associated with it.
 	CloseSession(ctx context.Context, in *CloseSessionRequest, opts ...grpc.CallOption) (*CloseSessionResponse, error)
 }
@@ -213,38 +213,13 @@ func (c *oxiaClientClient) CreateSession(ctx context.Context, in *CreateSessionR
 	return out, nil
 }
 
-func (c *oxiaClientClient) KeepAlive(ctx context.Context, opts ...grpc.CallOption) (OxiaClient_KeepAliveClient, error) {
-	stream, err := c.cc.NewStream(ctx, &OxiaClient_ServiceDesc.Streams[4], "/io.streamnative.oxia.proto.OxiaClient/KeepAlive", opts...)
+func (c *oxiaClientClient) KeepAlive(ctx context.Context, in *SessionHeartbeat, opts ...grpc.CallOption) (*KeepAliveResponse, error) {
+	out := new(KeepAliveResponse)
+	err := c.cc.Invoke(ctx, "/io.streamnative.oxia.proto.OxiaClient/KeepAlive", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &oxiaClientKeepAliveClient{stream}
-	return x, nil
-}
-
-type OxiaClient_KeepAliveClient interface {
-	Send(*SessionHeartbeat) error
-	CloseAndRecv() (*KeepAliveResponse, error)
-	grpc.ClientStream
-}
-
-type oxiaClientKeepAliveClient struct {
-	grpc.ClientStream
-}
-
-func (x *oxiaClientKeepAliveClient) Send(m *SessionHeartbeat) error {
-	return x.ClientStream.SendMsg(m)
-}
-
-func (x *oxiaClientKeepAliveClient) CloseAndRecv() (*KeepAliveResponse, error) {
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	m := new(KeepAliveResponse)
-	if err := x.ClientStream.RecvMsg(m); err != nil {
-		return nil, err
-	}
-	return m, nil
+	return out, nil
 }
 
 func (c *oxiaClientClient) CloseSession(ctx context.Context, in *CloseSessionRequest, opts ...grpc.CallOption) (*CloseSessionResponse, error) {
@@ -291,8 +266,8 @@ type OxiaClientServer interface {
 	// Creates a new client session. Sessions are kept alive by regularly sending
 	// heartbeats via the KeepAlive rpc.
 	CreateSession(context.Context, *CreateSessionRequest) (*CreateSessionResponse, error)
-	// Sends heartbeats to prevent the session from timing out.
-	KeepAlive(OxiaClient_KeepAliveServer) error
+	// Sends a heartbeat to prevent the session from timing out.
+	KeepAlive(context.Context, *SessionHeartbeat) (*KeepAliveResponse, error)
 	// Closes a session and removes all ephemeral values associated with it.
 	CloseSession(context.Context, *CloseSessionRequest) (*CloseSessionResponse, error)
 	mustEmbedUnimplementedOxiaClientServer()
@@ -320,8 +295,8 @@ func (UnimplementedOxiaClientServer) GetNotifications(*NotificationsRequest, Oxi
 func (UnimplementedOxiaClientServer) CreateSession(context.Context, *CreateSessionRequest) (*CreateSessionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateSession not implemented")
 }
-func (UnimplementedOxiaClientServer) KeepAlive(OxiaClient_KeepAliveServer) error {
-	return status.Errorf(codes.Unimplemented, "method KeepAlive not implemented")
+func (UnimplementedOxiaClientServer) KeepAlive(context.Context, *SessionHeartbeat) (*KeepAliveResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method KeepAlive not implemented")
 }
 func (UnimplementedOxiaClientServer) CloseSession(context.Context, *CloseSessionRequest) (*CloseSessionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CloseSession not implemented")
@@ -459,30 +434,22 @@ func _OxiaClient_CreateSession_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
-func _OxiaClient_KeepAlive_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(OxiaClientServer).KeepAlive(&oxiaClientKeepAliveServer{stream})
-}
-
-type OxiaClient_KeepAliveServer interface {
-	SendAndClose(*KeepAliveResponse) error
-	Recv() (*SessionHeartbeat, error)
-	grpc.ServerStream
-}
-
-type oxiaClientKeepAliveServer struct {
-	grpc.ServerStream
-}
-
-func (x *oxiaClientKeepAliveServer) SendAndClose(m *KeepAliveResponse) error {
-	return x.ServerStream.SendMsg(m)
-}
-
-func (x *oxiaClientKeepAliveServer) Recv() (*SessionHeartbeat, error) {
-	m := new(SessionHeartbeat)
-	if err := x.ServerStream.RecvMsg(m); err != nil {
+func _OxiaClient_KeepAlive_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SessionHeartbeat)
+	if err := dec(in); err != nil {
 		return nil, err
 	}
-	return m, nil
+	if interceptor == nil {
+		return srv.(OxiaClientServer).KeepAlive(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/io.streamnative.oxia.proto.OxiaClient/KeepAlive",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OxiaClientServer).KeepAlive(ctx, req.(*SessionHeartbeat))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _OxiaClient_CloseSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -519,6 +486,10 @@ var OxiaClient_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _OxiaClient_CreateSession_Handler,
 		},
 		{
+			MethodName: "KeepAlive",
+			Handler:    _OxiaClient_KeepAlive_Handler,
+		},
+		{
 			MethodName: "CloseSession",
 			Handler:    _OxiaClient_CloseSession_Handler,
 		},
@@ -543,11 +514,6 @@ var OxiaClient_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "GetNotifications",
 			Handler:       _OxiaClient_GetNotifications_Handler,
 			ServerStreams: true,
-		},
-		{
-			StreamName:    "KeepAlive",
-			Handler:       _OxiaClient_KeepAlive_Handler,
-			ClientStreams: true,
 		},
 	},
 	Metadata: "client.proto",

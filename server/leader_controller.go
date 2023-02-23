@@ -64,7 +64,7 @@ type LeaderController interface {
 	Status() proto.ServingStatus
 
 	CreateSession(*proto.CreateSessionRequest) (*proto.CreateSessionResponse, error)
-	KeepAlive(sessionId int64, stream proto.OxiaClient_KeepAliveServer) error
+	KeepAlive(sessionId int64) error
 	CloseSession(*proto.CloseSessionRequest) (*proto.CloseSessionResponse, error)
 }
 
@@ -817,8 +817,8 @@ func (lc *leaderController) CreateSession(request *proto.CreateSessionRequest) (
 	return lc.sessionManager.CreateSession(request)
 }
 
-func (lc *leaderController) KeepAlive(sessionId int64, stream proto.OxiaClient_KeepAliveServer) error {
-	return lc.sessionManager.KeepAlive(sessionId, stream)
+func (lc *leaderController) KeepAlive(sessionId int64) error {
+	return lc.sessionManager.KeepAlive(sessionId)
 }
 
 func (lc *leaderController) CloseSession(request *proto.CloseSessionRequest) (*proto.CloseSessionResponse, error) {

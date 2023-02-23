@@ -332,13 +332,11 @@ func getData(t *testing.T, lc *leaderController, key string) string {
 }
 
 func keepAlive(t *testing.T, sManager *sessionManager, sessionId int64, err error, sleepTime time.Duration, heartbeatCount int) {
-	stream := newMockKeepAliveServer()
 	go func() {
-		go func() { assert.NoError(t, sManager.KeepAlive(sessionId, stream)) }()
 		assert.NoError(t, err)
 		for i := 0; i < heartbeatCount; i++ {
 			time.Sleep(sleepTime)
-			stream.sendHeartbeat(&proto.SessionHeartbeat{})
+			assert.NoError(t, sManager.KeepAlive(sessionId))
 		}
 	}()
 }

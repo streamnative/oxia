@@ -21,7 +21,6 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"oxia/common"
 	"oxia/oxia/internal"
@@ -218,27 +217,14 @@ func (cs *clientSession) keepAlive() error {
 		return err
 	}
 
-	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataShardId, fmt.Sprintf("%d", shardId))
-	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataSessionId, fmt.Sprintf("%d", sessionId))
-	client, err := rpc.KeepAlive(ctx)
-	if err != nil {
-		return err
-	}
 	for {
 		select {
 		case <-ticker.C:
-			err = client.Send(&proto.SessionHeartbeat{
-				ShardId:   shardId,
-				SessionId: sessionId,
-			})
+			_, err = rpc.KeepAlive(ctx, &proto.SessionHeartbeat{ShardId: shardId, SessionId: sessionId})
 			if err != nil {
 				return err
 			}
 		case <-ctx.Done():
-			err = client.CloseSend()
-			if err != nil {
-				cs.log.Error().Err(err).Msg("Failed to close heartbeat stream.")
-			}
 			ctx, cancel := context.WithTimeout(context.Background(), cs.sessions.clientOpts.requestTimeout)
 			rpc, err = cs.getRpc()
 			if err != nil {
