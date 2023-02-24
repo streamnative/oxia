@@ -64,7 +64,7 @@ func KeyToId(key string) (SessionId, error) {
 type SessionManager interface {
 	io.Closer
 	CreateSession(request *proto.CreateSessionRequest) (*proto.CreateSessionResponse, error)
-	KeepAlive(sessionId int64, stream proto.OxiaClient_KeepAliveServer) error
+	KeepAlive(sessionId int64) error
 	CloseSession(request *proto.CloseSessionRequest) (*proto.CloseSessionResponse, error)
 	Initialize() error
 }
@@ -169,16 +169,15 @@ func (sm *sessionManager) getSession(sessionId int64) (*session, error) {
 	return s, nil
 }
 
-func (sm *sessionManager) KeepAlive(sessionId int64, server proto.OxiaClient_KeepAliveServer) error {
+func (sm *sessionManager) KeepAlive(sessionId int64) error {
 	sm.RLock()
 	s, err := sm.getSession(sessionId)
 	sm.RUnlock()
 	if err != nil {
 		return err
 	}
-	err = s.attach(server)
-	return err
-
+	s.heartbeat()
+	return nil
 }
 
 func (sm *sessionManager) CloseSession(request *proto.CloseSessionRequest) (*proto.CloseSessionResponse, error) {
