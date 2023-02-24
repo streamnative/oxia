@@ -17,6 +17,7 @@ package batch
 import (
 	"errors"
 	"io"
+	"sync/atomic"
 	"time"
 )
 
@@ -32,17 +33,29 @@ type batcherImpl struct {
 	batchFactory        func() Batch
 	callC               chan any
 	closeC              chan bool
+	closed              atomic.Bool
 	linger              time.Duration
 	maxRequestsPerBatch int
 }
 
 func (b *batcherImpl) Close() error {
+	b.closed.Store(true)
 	close(b.closeC)
 	return nil
 }
 
 func (b *batcherImpl) Add(call any) {
-	b.callC <- call
+	if b.closed.Load() {
+		b.failCall(call)
+	} else {
+		b.callC <- call
+	}
+}
+
+func (b *batcherImpl) failCall(call any) {
+	batch := b.batchFactory()
+	batch.Add(call)
+	batch.Fail(ErrorShuttingDown)
 }
 
 func (b *batcherImpl) Run() {
@@ -79,7 +92,14 @@ func (b *batcherImpl) Run() {
 				batch.Fail(ErrorShuttingDown)
 				batch = nil
 			}
-			return
+			for {
+				select {
+				case call := <-b.callC:
+					b.failCall(call)
+				default:
+					return
+				}
+			}
 		}
 	}
 }
