@@ -16,13 +16,9 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"github.com/rs/zerolog"
-	"io"
 	"net/url"
-	"oxia/common"
 	"oxia/proto"
-	"oxia/server/util"
 	"sync"
 	"time"
 )
@@ -36,8 +32,7 @@ type session struct {
 	shardId        uint32
 	timeout        time.Duration
 	sm             *sessionManager
-	attached       bool
-	heartbeatCh    chan *proto.SessionHeartbeat
+	heartbeatCh    chan bool
 	cancel         context.CancelFunc
 	ctx            context.Context
 	log            zerolog.Logger
@@ -49,7 +44,7 @@ func startSession(sessionId SessionId, sessionMetadata *proto.SessionMetadata, s
 		clientIdentity: sessionMetadata.Identity,
 		timeout:        time.Duration(sessionMetadata.TimeoutMs) * time.Millisecond,
 		sm:             sm,
-		heartbeatCh:    make(chan *proto.SessionHeartbeat, 1),
+		heartbeatCh:    make(chan bool, 1),
 
 		log: sm.log.With().
 			Str("component", "session").
@@ -114,28 +109,14 @@ func (s *session) delete() error {
 	})
 	s.log.Debug().Msg("Session deleted")
 	return err
-
 }
 
-func (s *session) attach(server proto.OxiaClient_KeepAliveServer) error {
-	s.Lock()
-	if s.attached {
-		s.log.Error().Msg("Session already attached")
-		s.Unlock()
-		return common.ErrorInvalidSession
-	}
-	s.attached = true
-	s.Unlock()
-	return s.receiveHeartbeats(server)
-}
-
-func (s *session) heartbeat(heartbeat *proto.SessionHeartbeat) error {
+func (s *session) heartbeat() {
 	s.Lock()
 	defer s.Unlock()
 	if s.heartbeatCh != nil {
-		s.heartbeatCh <- heartbeat
+		s.heartbeatCh <- true
 	}
-	return nil
 }
 
 func (s *session) waitForHeartbeats() {
@@ -149,7 +130,7 @@ func (s *session) waitForHeartbeats() {
 		select {
 
 		case heartbeat := <-heartbeatChannel:
-			if heartbeat == nil {
+			if !heartbeat {
 				// The channel is closed, so the session must be closing
 				return
 			}
@@ -170,23 +151,4 @@ func (s *session) waitForHeartbeats() {
 			s.Unlock()
 		}
 	}
-}
-
-func (s *session) receiveHeartbeats(stream proto.OxiaClient_KeepAliveServer) error {
-	s.Lock()
-	reader := util.ReadStream[proto.SessionHeartbeat](
-		stream,
-		s.heartbeat,
-		map[string]string{
-			"oxia":    "receive-session-heartbeats",
-			"session": fmt.Sprintf("%d", s.id),
-			"shard":   fmt.Sprintf("%d", s.shardId),
-		}, s.ctx, s.log)
-	s.Unlock()
-	err := reader.Run()
-	if err == io.EOF {
-		s.log.Debug().Msg("Session heartbeat stream closed by peer")
-		return nil
-	}
-	return err
 }

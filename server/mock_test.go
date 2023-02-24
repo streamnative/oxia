@@ -260,37 +260,6 @@ func (m *mockSendSnapshotClientStream) CloseSend() error {
 	return nil
 }
 
-//////
-
-func newMockKeepAliveServer() *mockKeepAliveServer {
-	r := &mockKeepAliveServer{
-		requests: make(chan *proto.SessionHeartbeat, 100),
-		response: make(chan *proto.KeepAliveResponse, 1),
-	}
-
-	return r
-}
-
-type mockKeepAliveServer struct {
-	mockBase
-	requests chan *proto.SessionHeartbeat
-	response chan *proto.KeepAliveResponse
-}
-
-func (m *mockKeepAliveServer) SendAndClose(empty *proto.KeepAliveResponse) error {
-	m.response <- empty
-	close(m.response)
-	return nil
-}
-
-func (m *mockKeepAliveServer) Recv() (*proto.SessionHeartbeat, error) {
-	return <-m.requests, nil
-}
-
-func (m *mockKeepAliveServer) sendHeartbeat(heartbeat *proto.SessionHeartbeat) {
-	m.requests <- heartbeat
-}
-
 ////////////////////// Common boilerplate
 
 type mockBase struct {

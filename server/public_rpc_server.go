@@ -20,7 +20,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protowire"
 	"oxia/common"
@@ -230,39 +229,23 @@ func (s *publicRpcServer) CreateSession(ctx context.Context, req *proto.CreateSe
 	return res, nil
 }
 
-func (s *publicRpcServer) KeepAlive(stream proto.OxiaClient_KeepAliveServer) error {
-	// KeepAlive receives an incoming stream of request, the shard_id needs to be encoded
-	// as a property in the metadata
-	md, ok := metadata.FromIncomingContext(stream.Context())
-	if !ok {
-		return errors.New("shard id is not set in the request metadata")
-	}
-
-	shardId, err := ReadHeaderUint32(md, common.MetadataShardId)
-	if err != nil {
-		return err
-	}
-	sessionId, err := ReadHeaderInt64(md, common.MetadataSessionId)
-	if err != nil {
-		return err
-	}
-
+func (s *publicRpcServer) KeepAlive(ctx context.Context, req *proto.SessionHeartbeat) (*proto.KeepAliveResponse, error) {
 	s.log.Debug().
-		Uint32("shard", shardId).
-		Int64("session", sessionId).
-		Str("peer", common.GetPeer(stream.Context())).
+		Uint32("shard", req.ShardId).
+		Int64("session", req.SessionId).
+		Str("peer", common.GetPeer(ctx)).
 		Msg("Session keep alive")
-	lc, err := s.getLeader(shardId)
+	lc, err := s.getLeader(req.ShardId)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	err = lc.KeepAlive(sessionId, stream)
+	err = lc.KeepAlive(req.SessionId)
 	if err != nil {
 		s.log.Warn().Err(err).
 			Msg("Failed to listen to heartbeats")
-		return err
+		return nil, err
 	}
-	return nil
+	return &proto.KeepAliveResponse{}, nil
 }
 
 func (s *publicRpcServer) CloseSession(ctx context.Context, req *proto.CloseSessionRequest) (*proto.CloseSessionResponse, error) {

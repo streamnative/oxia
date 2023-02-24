@@ -17,8 +17,7 @@ package common
 import "time"
 
 const (
-	MetadataShardId   = "shard-id"
-	MetadataSessionId = "session-id"
+	MetadataShardId = "shard-id"
 
 	MaxSessionTimeout = 5 * time.Minute
 	MinSessionTimeout = 2 * time.Second
