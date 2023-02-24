@@ -178,7 +178,7 @@ helm upgrade --install oxia \
 ## Run perf
 
 ```shell
-kubectl run perf --image=streamnative:main --command -- tail -f /dev/null
+kubectl run perf --image=streamnative/oxia:main --command -- tail -f /dev/null
 kubectl exec -ti perf -- bash
 
   oxia perf --service-address=oxia:6648
