@@ -16,6 +16,7 @@ package batch
 
 import (
 	"context"
+	"errors"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/rs/zerolog/log"
 	"oxia/common"
@@ -26,10 +27,13 @@ import (
 	"time"
 )
 
+var ErrorRequestTooLarge = errors.New("put request is too large")
+
 type writeBatchFactory struct {
 	execute        func(context.Context, *proto.WriteRequest) (*proto.WriteResponse, error)
 	metrics        *metrics.Metrics
 	requestTimeout time.Duration
+	maxByteSize    int
 }
 
 func (b writeBatchFactory) newBatch(shardId *uint32) batch.Batch {
@@ -42,6 +46,8 @@ func (b writeBatchFactory) newBatch(shardId *uint32) batch.Batch {
 		requestTimeout: b.requestTimeout,
 		metrics:        b.metrics,
 		callback:       b.metrics.WriteCallback(),
+		maxByteSize:    b.maxByteSize,
+		byteSize:       0,
 	}
 }
 
@@ -56,6 +62,17 @@ type writeBatch struct {
 	metrics        *metrics.Metrics
 	requestTimeout time.Duration
 	callback       func(time.Time, *proto.WriteRequest, *proto.WriteResponse, error)
+	maxByteSize    int
+	byteSize       int
+}
+
+func (b *writeBatch) CanAdd(call any) (bool, error) {
+	size := getByteSize(call)
+
+	if size > b.maxByteSize {
+		return false, ErrorRequestTooLarge
+	}
+	return b.byteSize+size <= b.maxByteSize, nil
 }
 
 func (b *writeBatch) Add(call any) {
@@ -69,6 +86,7 @@ func (b *writeBatch) Add(call any) {
 	default:
 		panic("invalid call")
 	}
+	b.byteSize += getByteSize(call)
 }
 
 func (b *writeBatch) Size() int {
@@ -76,6 +94,9 @@ func (b *writeBatch) Size() int {
 }
 
 func (b *writeBatch) Complete() {
+	if b.Size() == 0 {
+		return
+	}
 	executionStart := time.Now()
 	request := b.toProto()
 
@@ -141,5 +162,18 @@ func (b *writeBatch) toProto() *proto.WriteRequest {
 		Puts:         model.Convert[model.PutCall, *proto.PutRequest](b.puts, model.PutCall.ToProto),
 		Deletes:      model.Convert[model.DeleteCall, *proto.DeleteRequest](b.deletes, model.DeleteCall.ToProto),
 		DeleteRanges: model.Convert[model.DeleteRangeCall, *proto.DeleteRangeRequest](b.deleteRanges, model.DeleteRangeCall.ToProto),
+	}
+}
+
+func getByteSize(call any) int {
+	switch c := call.(type) {
+	case model.PutCall:
+		return len(c.Key) + len(c.Value)
+	case model.DeleteCall:
+		return len(c.Key)
+	case model.DeleteRangeCall:
+		return len(c.MinKeyInclusive) + len(c.MaxKeyExclusive)
+	default:
+		panic("invalid call")
 	}
 }

@@ -46,39 +46,56 @@ func (b *batcherImpl) Close() error {
 
 func (b *batcherImpl) Add(call any) {
 	if b.closed.Load() {
-		b.failCall(call)
+		b.failCall(call, ErrorShuttingDown)
 	} else {
 		b.callC <- call
 	}
 }
 
-func (b *batcherImpl) failCall(call any) {
+func (b *batcherImpl) failCall(call any, err error) {
 	batch := b.batchFactory()
 	batch.Add(call)
-	batch.Fail(ErrorShuttingDown)
+	batch.Fail(err)
 }
 
 func (b *batcherImpl) Run() {
 	var batch Batch
 	var timer *time.Timer = nil
 	var timeout <-chan time.Time = nil
+
+	newBatch := func() {
+		batch = b.batchFactory()
+		if b.linger > 0 {
+			timer = time.NewTimer(b.linger)
+			timeout = timer.C
+		}
+	}
+	completeBatch := func() {
+		if b.linger > 0 {
+			timer.Stop()
+		}
+		batch.Complete()
+		batch = nil
+	}
+
 	for {
 		select {
 		case call := <-b.callC:
 			if batch == nil {
-				batch = b.batchFactory()
-				if b.linger > 0 {
-					timer = time.NewTimer(b.linger)
-					timeout = timer.C
-				}
+				newBatch()
 			}
-			batch.Add(call)
-			if batch.Size() == b.maxRequestsPerBatch || b.linger == 0 {
-				if b.linger > 0 {
-					timer.Stop()
+			canAdd, err := batch.CanAdd(call)
+			if err != nil {
+				b.failCall(call, err)
+			} else {
+				if !canAdd {
+					completeBatch()
+					newBatch()
 				}
-				batch.Complete()
-				batch = nil
+				batch.Add(call)
+				if batch.Size() == b.maxRequestsPerBatch || b.linger == 0 {
+					completeBatch()
+				}
 			}
 		case <-timeout:
 			if batch != nil {
@@ -95,7 +112,7 @@ func (b *batcherImpl) Run() {
 			for {
 				select {
 				case call := <-b.callC:
-					b.failCall(call)
+					b.failCall(call, ErrorShuttingDown)
 				default:
 					return
 				}

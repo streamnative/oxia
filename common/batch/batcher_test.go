@@ -34,6 +34,10 @@ func newTestBatch() *testBatch {
 	}
 }
 
+func (b *testBatch) CanAdd(call any) (bool, error) {
+	return true, nil
+}
+
 func (b *testBatch) Add(call any) {
 	b.count++
 }

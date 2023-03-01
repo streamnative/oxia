@@ -45,11 +45,12 @@ func NewBatcherFactory(
 	}
 }
 
-func (b *BatcherFactory) NewWriteBatcher(shardId *uint32) batch.Batcher {
+func (b *BatcherFactory) NewWriteBatcher(shardId *uint32, maxWriteBatchSize int) batch.Batcher {
 	return b.newBatcher(shardId, writeBatchFactory{
 		execute:        b.Executor.ExecuteWrite,
 		metrics:        b.Metrics,
 		requestTimeout: b.RequestTimeout,
+		maxByteSize:    maxWriteBatchSize,
 	}.newBatch)
 }
 
