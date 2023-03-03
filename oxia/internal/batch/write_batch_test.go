@@ -219,14 +219,13 @@ func TestWriteBatchComplete(t *testing.T) {
 
 func TestWriteBatchCanAdd(t *testing.T) {
 	for _, item := range []struct {
-		name          string
-		dataSize      int
-		expectCanAdd  bool
-		expectedError error
+		name         string
+		dataSize     int
+		expectCanAdd bool
 	}{
-		{"too large", 100, false, ErrorRequestTooLarge},
-		{"add to next", 50, false, nil},
-		{"add to current", 1, true, nil},
+		{"larger than maxBatchSize", 128, false},
+		{"add to next", 50, false},
+		{"add to current", 1, true},
 	} {
 		t.Run(item.name, func(t *testing.T) {
 
@@ -240,13 +239,12 @@ func TestWriteBatchCanAdd(t *testing.T) {
 				Value: make([]byte, 50),
 			})
 
-			canAdd, err := batch.CanAdd(model.PutCall{
+			canAdd := batch.CanAdd(model.PutCall{
 				Key:   "b",
 				Value: make([]byte, item.dataSize),
 			})
 
 			assert.Equal(t, item.expectCanAdd, canAdd)
-			assert.ErrorIs(t, err, item.expectedError)
 		})
 	}
 }

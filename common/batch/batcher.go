@@ -84,19 +84,16 @@ func (b *batcherImpl) Run() {
 			if batch == nil {
 				newBatch()
 			}
-			canAdd, err := batch.CanAdd(call)
-			if err != nil {
-				b.failCall(call, err)
-			} else {
-				if !canAdd {
-					completeBatch()
-					newBatch()
-				}
-				batch.Add(call)
-				if batch.Size() == b.maxRequestsPerBatch || b.linger == 0 {
-					completeBatch()
-				}
+			canAdd := batch.CanAdd(call)
+			if !canAdd {
+				completeBatch()
+				newBatch()
 			}
+			batch.Add(call)
+			if batch.Size() == b.maxRequestsPerBatch || b.linger == 0 {
+				completeBatch()
+			}
+
 		case <-timeout:
 			if batch != nil {
 				timer.Stop()

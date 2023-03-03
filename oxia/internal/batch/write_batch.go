@@ -66,13 +66,9 @@ type writeBatch struct {
 	byteSize       int
 }
 
-func (b *writeBatch) CanAdd(call any) (bool, error) {
+func (b *writeBatch) CanAdd(call any) bool {
 	size := getByteSize(call)
-
-	if size > b.maxByteSize {
-		return false, ErrorRequestTooLarge
-	}
-	return b.byteSize+size <= b.maxByteSize, nil
+	return b.byteSize+size <= b.maxByteSize
 }
 
 func (b *writeBatch) Add(call any) {

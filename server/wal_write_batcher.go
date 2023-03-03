@@ -63,8 +63,8 @@ type walWriteBatch struct {
 
 var _ batch.Batch = (*walWriteBatch)(nil)
 
-func (l *walWriteBatch) CanAdd(a any) (bool, error) {
-	return true, nil
+func (l *walWriteBatch) CanAdd(a any) bool {
+	return true
 }
 
 func (l *walWriteBatch) Add(a any) {

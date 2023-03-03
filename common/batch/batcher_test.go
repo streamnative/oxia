@@ -34,8 +34,8 @@ func newTestBatch() *testBatch {
 	}
 }
 
-func (b *testBatch) CanAdd(call any) (bool, error) {
-	return true, nil
+func (b *testBatch) CanAdd(call any) bool {
+	return true
 }
 
 func (b *testBatch) Add(call any) {
