@@ -86,120 +86,104 @@ func (s *internalRpcServer) PushShardAssignments(srv proto.OxiaCoordination_Push
 }
 
 func (s *internalRpcServer) NewTerm(c context.Context, req *proto.NewTermRequest) (*proto.NewTermResponse, error) {
-	s.log.Info().
+	log := s.log.With().
 		Interface("req", req).
 		Str("peer", common.GetPeer(c)).
-		Msg("Received NewTerm request")
+		Logger()
+
+	log.Info().Msg("Received NewTerm request")
 
 	// NewTerm applies to both followers and leaders
 	// First check if we have already a follower controller running
 	if follower, err := s.shardsDirector.GetFollower(req.ShardId); err != nil {
 		if status.Code(err) != common.CodeNodeIsNotFollower {
-			s.log.Warn().Err(err).
-				Uint32("shard", req.ShardId).
-				Str("peer", common.GetPeer(c)).
-				Msg("NewTerm failed: could not get follower controller")
+			log.Warn().Err(err).Msg("NewTerm failed: could not get follower controller")
 			return nil, err
 		}
+		log.Warn().Err(err).Msg("Node is not follower, getting leader")
 
 		// If we don't have a follower, fallback to checking the leader controller
 	} else {
+		log.Info().
+			Int64("followerTerm", follower.Term()).
+			Msg("Found follower, initiating new term")
 		res, err2 := follower.NewTerm(req)
 		if err2 != nil {
-			s.log.Warn().Err(err2).
-				Uint32("shard", req.ShardId).
-				Str("peer", common.GetPeer(c)).
-				Msg("NewTerm of follower failed")
+			log.Warn().Err(err2).Msg("NewTerm of follower failed")
 		}
 		return res, err
 	}
 
 	if leader, err := s.shardsDirector.GetOrCreateLeader(req.ShardId); err != nil {
-		s.log.Warn().Err(err).
-			Uint32("shard", req.ShardId).
-			Str("peer", common.GetPeer(c)).
-			Msg("NewTerm failed: could not get leader controller")
+		log.Warn().Err(err).Msg("NewTerm failed: could not get leader controller")
 		return nil, err
 	} else {
 		res, err2 := leader.NewTerm(req)
 		if err2 != nil {
-			s.log.Warn().Err(err2).
-				Uint32("shard", req.ShardId).
-				Str("peer", common.GetPeer(c)).
-				Msg("New term processing of leader failed")
+			log.Warn().Err(err2).Msg("New term processing of leader failed")
 		}
-
+		log.Info().
+			Interface("response", res).
+			Msg("New term processing completed")
 		return res, err2
 	}
 }
 
 func (s *internalRpcServer) BecomeLeader(c context.Context, req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error) {
-	s.log.Info().
-		Interface("req", req).
+	log := s.log.With().
+		Interface("request", req).
 		Str("peer", common.GetPeer(c)).
-		Msg("Received BecomeLeader request")
+		Logger()
+
+	log.Info().Msg("Received BecomeLeader request")
 
 	if leader, err := s.shardsDirector.GetOrCreateLeader(req.ShardId); err != nil {
-		s.log.Warn().Err(err).
-			Uint32("shard", req.ShardId).
-			Str("peer", common.GetPeer(c)).
-			Msg("BecomeLeader failed: could not get leader controller")
+		log.Warn().Err(err).Msg("BecomeLeader failed: could not get leader controller")
 		return nil, err
 	} else {
 		res, err2 := leader.BecomeLeader(req)
 		if err2 != nil {
-			s.log.Warn().Err(err2).
-				Uint32("shard", req.ShardId).
-				Str("peer", common.GetPeer(c)).
-				Msg("BecomeLeader failed")
+			log.Warn().Err(err2).Msg("BecomeLeader failed")
 		}
 		return res, err2
 	}
 }
 
 func (s *internalRpcServer) AddFollower(c context.Context, req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error) {
-	s.log.Info().
-		Interface("req", req).
+	log := s.log.With().
+		Interface("request", req).
 		Str("peer", common.GetPeer(c)).
-		Msg("Received AddFollower request")
+		Logger()
+
+	log.Info().Msg("Received AddFollower request")
 
 	if leader, err := s.shardsDirector.GetLeader(req.ShardId); err != nil {
-		s.log.Warn().Err(err).
-			Uint32("shard", req.ShardId).
-			Str("peer", common.GetPeer(c)).
-			Msg("AddFollower failed: could not get leader controller")
+		log.Warn().Err(err).Msg("AddFollower failed: could not get leader controller")
 		return nil, err
 	} else {
 		res, err2 := leader.AddFollower(req)
 		if err2 != nil {
-			s.log.Warn().Err(err2).
-				Uint32("shard", req.ShardId).
-				Str("peer", common.GetPeer(c)).
-				Msg("AddFollower failed")
+			log.Warn().Err(err2).Msg("AddFollower failed")
 		}
 		return res, err2
 	}
 }
 
 func (s *internalRpcServer) Truncate(c context.Context, req *proto.TruncateRequest) (*proto.TruncateResponse, error) {
-	s.log.Info().
-		Interface("req", req).
+	log := s.log.With().
+		Interface("request", req).
 		Str("peer", common.GetPeer(c)).
-		Msg("Received Truncate request")
+		Logger()
+
+	log.Info().Msg("Received Truncate request")
 
 	if follower, err := s.shardsDirector.GetOrCreateFollower(req.ShardId); err != nil {
-		s.log.Warn().Err(err).
-			Uint32("shard", req.ShardId).
-			Str("peer", common.GetPeer(c)).
-			Msg("Truncate failed: could not get follower controller")
+		log.Warn().Err(err).Msg("Truncate failed: could not get follower controller")
 		return nil, err
 	} else {
 		res, err2 := follower.Truncate(req)
 
-		s.log.Warn().Err(err2).
-			Uint32("shard", req.ShardId).
-			Str("peer", common.GetPeer(c)).
-			Msg("Truncate failed")
+		log.Warn().Err(err2).Msg("Truncate failed")
 		return res, err2
 	}
 }
@@ -217,24 +201,20 @@ func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServ
 		return err
 	}
 
-	s.log.Info().
+	log := s.log.With().
 		Uint32("shard", shardId).
 		Str("peer", common.GetPeer(srv.Context())).
-		Msg("Received Replicate request")
+		Logger()
+
+	log.Info().Msg("Received Replicate request")
 
 	if follower, err := s.shardsDirector.GetOrCreateFollower(shardId); err != nil {
-		s.log.Warn().Err(err).
-			Uint32("shard", shardId).
-			Str("peer", common.GetPeer(srv.Context())).
-			Msg("Replicate failed: could not get follower controller")
+		log.Warn().Err(err).Msg("Replicate failed: could not get follower controller")
 		return err
 	} else {
 		err2 := follower.Replicate(srv)
 		if err2 != nil && !errors.Is(err2, io.EOF) {
-			s.log.Warn().Err(err2).
-				Uint32("shard", shardId).
-				Str("peer", common.GetPeer(srv.Context())).
-				Msg("Replicate failed")
+			log.Warn().Err(err2).Msg("Replicate failed")
 		}
 		return err2
 	}
