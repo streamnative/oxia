@@ -21,6 +21,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"io"
 	"oxia/common"
+	commonBatch "oxia/common/batch"
 	"oxia/oxia/internal"
 	"oxia/oxia/internal/batch"
 	"oxia/oxia/internal/metrics"
@@ -77,12 +78,14 @@ func NewAsyncClient(serviceAddress string, opts ...ClientOption) (AsyncClient, e
 		metrics.NewMetrics(options.meterProvider),
 		options.requestTimeout)
 	c := &clientImpl{
-		options:           options,
-		clientPool:        clientPool,
-		shardManager:      shardManager,
-		writeBatchManager: batch.NewManager(batcherFactory.NewWriteBatcher),
-		readBatchManager:  batch.NewManager(batcherFactory.NewReadBatcher),
-		executor:          executor,
+		options:      options,
+		clientPool:   clientPool,
+		shardManager: shardManager,
+		writeBatchManager: batch.NewManager(func(shard *uint32) commonBatch.Batcher {
+			return batcherFactory.NewWriteBatcher(shard, options.maxBatchSize)
+		}),
+		readBatchManager: batch.NewManager(batcherFactory.NewReadBatcher),
+		executor:         executor,
 	}
 
 	c.ctx, c.cancel = context.WithCancel(context.Background())

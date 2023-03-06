@@ -39,7 +39,8 @@ func TestWriteBatchAdd(t *testing.T) {
 		{model.GetCall{}, true, 0},
 	} {
 		factory := &writeBatchFactory{
-			metrics: metrics.NewMetrics(metric.NewNoopMeterProvider()),
+			metrics:     metrics.NewMetrics(metric.NewNoopMeterProvider()),
+			maxByteSize: 1024,
 		}
 		batch := factory.newBatch(&shardId)
 
@@ -151,8 +152,9 @@ func TestWriteBatchComplete(t *testing.T) {
 		}
 
 		factory := &writeBatchFactory{
-			execute: execute,
-			metrics: metrics.NewMetrics(metric.NewNoopMeterProvider()),
+			execute:     execute,
+			metrics:     metrics.NewMetrics(metric.NewNoopMeterProvider()),
+			maxByteSize: 1024,
 		}
 		batch := factory.newBatch(&shardId)
 
@@ -212,5 +214,37 @@ func TestWriteBatchComplete(t *testing.T) {
 
 		assert.Equal(t, item.expectedDeleteRangeResponse, deleteRangeResponse)
 		assert.ErrorIs(t, deleteRangeErr, item.expectedDeleteRangeErr)
+	}
+}
+
+func TestWriteBatchCanAdd(t *testing.T) {
+	for _, item := range []struct {
+		name         string
+		dataSize     int
+		expectCanAdd bool
+	}{
+		{"larger than maxBatchSize", 128, false},
+		{"add to next", 50, false},
+		{"add to current", 1, true},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+
+			factory := &writeBatchFactory{
+				metrics:     metrics.NewMetrics(metric.NewNoopMeterProvider()),
+				maxByteSize: 100,
+			}
+			batch := factory.newBatch(&shardId)
+			batch.Add(model.PutCall{
+				Key:   "a",
+				Value: make([]byte, 50),
+			})
+
+			canAdd := batch.CanAdd(model.PutCall{
+				Key:   "b",
+				Value: make([]byte, item.dataSize),
+			})
+
+			assert.Equal(t, item.expectCanAdd, canAdd)
+		})
 	}
 }

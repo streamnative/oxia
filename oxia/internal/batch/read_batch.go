@@ -57,6 +57,10 @@ type readBatch struct {
 	callback       func(time.Time, *proto.ReadRequest, *proto.ReadResponse, error)
 }
 
+func (b *readBatch) CanAdd(call any) bool {
+	return true
+}
+
 func (b *readBatch) Add(call any) {
 	switch c := call.(type) {
 	case model.GetCall:

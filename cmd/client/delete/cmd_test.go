@@ -23,7 +23,7 @@ import (
 	"testing"
 )
 
-func TestCorba(t *testing.T) {
+func TestCobra(t *testing.T) {
 	for _, test := range []struct {
 		name                string
 		args                []string

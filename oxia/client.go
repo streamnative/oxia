@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"oxia/oxia/internal/batch"
 )
 
 const (
@@ -32,6 +33,9 @@ var (
 	// ErrorUnexpectedVersionId The expected version id passed as a condition does not match
 	// the current version id of the stored record
 	ErrorUnexpectedVersionId = errors.New("unexpected version id")
+
+	// ErrorRequestTooLarge is returned when a request is larger than the maximum batch size
+	ErrorRequestTooLarge = batch.ErrorRequestTooLarge
 
 	// ErrorUnknownStatus Unknown error
 	ErrorUnknownStatus = errors.New("unknown status")

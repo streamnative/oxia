@@ -15,6 +15,7 @@
 package batch
 
 type Batch interface {
+	CanAdd(any) bool
 	Add(any)
 	Size() int
 	Complete()

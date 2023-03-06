@@ -63,6 +63,10 @@ type walWriteBatch struct {
 
 var _ batch.Batch = (*walWriteBatch)(nil)
 
+func (l *walWriteBatch) CanAdd(a any) bool {
+	return true
+}
+
 func (l *walWriteBatch) Add(a any) {
 	task := a.(*writeTask)
 	l.tasks = append(l.tasks, task)

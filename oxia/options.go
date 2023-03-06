@@ -27,6 +27,7 @@ import (
 const (
 	DefaultBatchLinger         = 5 * time.Millisecond
 	DefaultMaxRequestsPerBatch = 1000
+	DefaultMaxBatchSize        = 128 * 1024
 	DefaultRequestTimeout      = 30 * time.Second
 	DefaultSessionTimeout      = 15 * time.Second
 )
@@ -34,6 +35,7 @@ const (
 var (
 	ErrorInvalidOptionBatchLinger         = errors.New("BatchLinger must be greater than or equal to zero")
 	ErrorInvalidOptionMaxRequestsPerBatch = errors.New("MaxRequestsPerBatch must be greater than zero")
+	ErrorInvalidOptionMaxBatchSize        = errors.New("MaxBatchSize must be greater than zero")
 	ErrorInvalidOptionRequestTimeout      = errors.New("RequestTimeout must be greater than zero")
 	ErrorInvalidOptionSessionTimeout      = errors.New("SessionTimeout must be greater than zero")
 	ErrorInvalidOptionIdentity            = errors.New("Identity must be non-empty")
@@ -44,6 +46,7 @@ type clientOptions struct {
 	serviceAddress      string
 	batchLinger         time.Duration
 	maxRequestsPerBatch int
+	maxBatchSize        int
 	requestTimeout      time.Duration
 	meterProvider       metric.MeterProvider
 	sessionTimeout      time.Duration
@@ -71,6 +74,7 @@ func newClientOptions(serviceAddress string, opts ...ClientOption) (clientOption
 		serviceAddress:      serviceAddress,
 		batchLinger:         DefaultBatchLinger,
 		maxRequestsPerBatch: DefaultMaxRequestsPerBatch,
+		maxBatchSize:        DefaultMaxBatchSize,
 		requestTimeout:      DefaultRequestTimeout,
 		meterProvider:       metric.NewNoopMeterProvider(),
 		sessionTimeout:      DefaultSessionTimeout,
