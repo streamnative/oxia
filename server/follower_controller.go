@@ -112,10 +112,6 @@ func NewFollowerController(config Config, shardId uint32, wf wal.WalFactory, kvF
 		kvFactory:     kvFactory,
 		status:        proto.ServingStatus_NOT_MEMBER,
 		closeStreamWg: nil,
-		log: log.With().
-			Str("component", "follower-controller").
-			Uint32("shard", shardId).
-			Logger(),
 		writeLatencyHisto: metrics.NewLatencyHistogram("oxia_server_follower_write_latency",
 			"Latency for write operations in the follower", metrics.LabelsForShard(shardId)),
 	}
@@ -149,7 +145,7 @@ func NewFollowerController(config Config, shardId uint32, wf wal.WalFactory, kvF
 	}
 	fc.commitOffset.Store(commitOffset)
 
-	fc.log = fc.log.With().Int64("term", fc.term).Logger()
+	fc.setLogger()
 
 	go common.DoWithLabels(map[string]string{
 		"oxia":  "follower-apply-committed-entries",
@@ -161,6 +157,14 @@ func NewFollowerController(config Config, shardId uint32, wf wal.WalFactory, kvF
 		Int64("commit-offset", commitOffset).
 		Msg("Created follower")
 	return fc, nil
+}
+
+func (fc *followerController) setLogger() {
+	fc.log = log.With().
+		Str("component", "follower-controller").
+		Uint32("shard", fc.shardId).
+		Int64("term", fc.term).
+		Logger()
 }
 
 func (fc *followerController) isClosed() bool {
@@ -250,7 +254,7 @@ func (fc *followerController) NewTerm(req *proto.NewTermRequest) (*proto.NewTerm
 	}
 
 	fc.term = req.Term
-	fc.log = fc.log.With().Int64("term", fc.term).Logger()
+	fc.setLogger()
 	fc.status = proto.ServingStatus_FENCED
 	fc.closeStreamNoMutex(nil)
 

@@ -109,10 +109,6 @@ func NewLeaderController(config Config, shardId uint32, rpcClient ReplicationRpc
 		rpcClient:        rpcClient,
 		followers:        make(map[string]FollowerCursor),
 
-		log: log.With().
-			Str("component", "leader-controller").
-			Uint32("shard", shardId).
-			Logger(),
 		writeLatencyHisto: metrics.NewLatencyHistogram("oxia_server_leader_write_latency",
 			"Latency for write operations in the leader", labels),
 		followerAckOffsetGauges: map[string]metrics.Gauge{},
@@ -160,10 +156,17 @@ func NewLeaderController(config Config, shardId uint32, rpcClient ReplicationRpc
 		lc.status = proto.ServingStatus_FENCED
 	}
 
-	lc.log = lc.log.With().Int64("term", lc.term).Logger()
-	lc.log.Info().
-		Msg("Created leader controller")
+	lc.setLogger()
+	lc.log.Info().Msg("Created leader controller")
 	return lc, nil
+}
+
+func (lc *leaderController) setLogger() {
+	lc.log = log.With().
+		Str("component", "leader-controller").
+		Uint32("shard", lc.shardId).
+		Int64("term", lc.term).
+		Logger()
 }
 
 func (lc *leaderController) Status() proto.ServingStatus {
@@ -218,7 +221,7 @@ func (lc *leaderController) NewTerm(req *proto.NewTermRequest) (*proto.NewTermRe
 	}
 
 	lc.term = req.Term
-	lc.log = lc.log.With().Int64("term", lc.term).Logger()
+	lc.setLogger()
 	lc.status = proto.ServingStatus_FENCED
 	lc.replicationFactor = 0
 
