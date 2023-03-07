@@ -22,7 +22,6 @@ import (
 	"go.uber.org/multierr"
 	pb "google.golang.org/protobuf/proto"
 	"io"
-	"math"
 	"oxia/common"
 	"oxia/coordinator/model"
 	"oxia/proto"
@@ -152,31 +151,24 @@ func (c *coordinator) initialAssignment() error {
 		Shards:            make(map[uint32]model.ShardMetadata),
 	}
 
-	bucketSize := math.MaxUint32 / cc.InitialShardCount
+	shards := common.GenerateShards(cc.InitialShardCount)
 
 	// Do round-robin assignment of shards to storage servers
 	serverIdx := uint32(0)
 
-	for i := uint32(0); i < cc.InitialShardCount; i++ {
-		shard := model.ShardMetadata{
+	for i, shard := range shards {
+		shardMetadata := model.ShardMetadata{
 			Status:   model.ShardStatusUnknown,
 			Term:     -1,
 			Leader:   nil,
 			Ensemble: getServers(cc.Servers, serverIdx, cc.ReplicationFactor),
 			Int32HashRange: model.Int32HashRange{
-				Min: bucketSize * i,
-				Max: bucketSize*(i+1) - 1,
+				Min: shard.Min,
+				Max: shard.Max,
 			},
 		}
 
-		if i == cc.InitialShardCount-1 {
-			// Last shard should always be set at the max of 32bit. Depending on the
-			// shard count, the division might fell few numbers earlier. It's OK in
-			// this case to have a (tinily) bigger last-shard range.
-			shard.Int32HashRange.Max = math.MaxUint32
-		}
-
-		cs.Shards[i] = shard
+		cs.Shards[uint32(i)] = shardMetadata
 		serverIdx += cc.ReplicationFactor
 	}
 

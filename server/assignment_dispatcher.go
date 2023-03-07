@@ -24,7 +24,6 @@ import (
 	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
 	"io"
-	"math"
 	"oxia/common"
 	"oxia/common/metrics"
 	"oxia/proto"
@@ -241,21 +240,16 @@ func NewStandaloneShardAssignmentDispatcher(numShards uint32) ShardAssignmentsDi
 }
 
 func generateShards(numShards uint32) []*proto.ShardAssignment {
-	bucketSize := (math.MaxUint32 / numShards) + 1
+	shards := common.GenerateShards(numShards)
 	assignments := make([]*proto.ShardAssignment, numShards)
-	for i := uint32(0); i < numShards; i++ {
-		lowerBound := i * bucketSize
-		upperBound := lowerBound + bucketSize - 1
-		if i == numShards-1 {
-			upperBound = math.MaxUint32
-		}
+	for i, shard := range shards {
 		assignments[i] = &proto.ShardAssignment{
-			ShardId: i,
+			ShardId: shard.Id,
 			//Leader: defer to send time
 			ShardBoundaries: &proto.ShardAssignment_Int32HashRange{
 				Int32HashRange: &proto.Int32HashRange{
-					MinHashInclusive: lowerBound,
-					MaxHashInclusive: upperBound,
+					MinHashInclusive: shard.Min,
+					MaxHashInclusive: shard.Max,
 				},
 			},
 		}
