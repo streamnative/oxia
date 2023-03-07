@@ -170,6 +170,17 @@ func serviceAddress(namespace, name string, ordinal, port int) string {
 
 func coordinatorDeployment(cluster v1alpha1.OxiaCluster) *appsV1.Deployment {
 	_resourceName := resourceName(Coordinator, cluster.Name)
+	command := []string{
+		"oxia",
+		"coordinator",
+		"--log-json",
+		"--metadata=configmap",
+		fmt.Sprintf("--k8s-namespace=%s", cluster.Namespace),
+		fmt.Sprintf("--k8s-configmap-name=%s-status", cluster.Name),
+	}
+	if cluster.Spec.PprofEnabled {
+		command = append(command, "--profile")
+	}
 	deployment := &appsV1.Deployment{
 		ObjectMeta: objectMeta(Coordinator, cluster.Name),
 		Spec: appsV1.DeploymentSpec{
@@ -180,17 +191,10 @@ func coordinatorDeployment(cluster v1alpha1.OxiaCluster) *appsV1.Deployment {
 				Spec: coreV1.PodSpec{
 					ServiceAccountName: _resourceName,
 					Containers: []coreV1.Container{{
-						Name: "coordinator",
-						Command: []string{
-							"oxia",
-							"coordinator",
-							"--log-json",
-							"--metadata=configmap",
-							fmt.Sprintf("--k8s-namespace=%s", cluster.Namespace),
-							fmt.Sprintf("--k8s-configmap-name=%s-status", cluster.Name),
-						},
-						Image: cluster.Spec.Image.Name,
-						Ports: transform(CoordinatorPorts, containerPort),
+						Name:    "coordinator",
+						Command: command,
+						Image:   image(cluster.Spec.Image),
+						Ports:   transform(CoordinatorPorts, containerPort),
 						Resources: coreV1.ResourceRequirements{Limits: coreV1.ResourceList{
 							coreV1.ResourceCPU:    cluster.Spec.Coordinator.Cpu,
 							coreV1.ResourceMemory: cluster.Spec.Coordinator.Memory,
@@ -219,6 +223,16 @@ func coordinatorDeployment(cluster v1alpha1.OxiaCluster) *appsV1.Deployment {
 
 func serverStatefulSet(cluster v1alpha1.OxiaCluster) *appsV1.StatefulSet {
 	_resourceName := resourceName(Server, cluster.Name)
+	command := []string{
+		"oxia",
+		"server",
+		"--log-json",
+		"--data-dir=/data/db",
+		"--wal-dir=/data/wal",
+	}
+	if cluster.Spec.PprofEnabled {
+		command = append(command, "--profile")
+	}
 	statefulSet := &appsV1.StatefulSet{
 		ObjectMeta: objectMeta(Server, cluster.Name),
 		Spec: appsV1.StatefulSetSpec{
@@ -231,8 +245,8 @@ func serverStatefulSet(cluster v1alpha1.OxiaCluster) *appsV1.StatefulSet {
 					ServiceAccountName: _resourceName,
 					Containers: []coreV1.Container{{
 						Name:    "server",
-						Command: []string{"oxia", "server", "--log-json", "--data-dir=/data/db", "--wal-dir=/data/wal"},
-						Image:   cluster.Spec.Image.Name,
+						Command: command,
+						Image:   image(cluster.Spec.Image),
 						Ports:   transform(ServerPorts, containerPort),
 						Resources: coreV1.ResourceRequirements{Limits: coreV1.ResourceList{
 							coreV1.ResourceCPU:    cluster.Spec.Server.Cpu,
@@ -262,6 +276,10 @@ func serverStatefulSet(cluster v1alpha1.OxiaCluster) *appsV1.StatefulSet {
 		statefulSet.Spec.Template.Spec.Containers[0].ImagePullPolicy = *cluster.Spec.Image.PullPolicy
 	}
 	return statefulSet
+}
+
+func image(image v1alpha1.Image) string {
+	return fmt.Sprintf("%s:%s", image.Repository, image.Tag)
 }
 
 func probe() *coreV1.Probe {

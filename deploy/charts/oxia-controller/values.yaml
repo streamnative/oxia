@@ -18,18 +18,17 @@
 
 #imagePullSecrets: oxia
 
-image:
-  repository: streamnative/oxia
-  pullPolicy: IfNotPresent
-  # Overrides the image tag whose default is the chart appVersion.
-  tag: ""
-
-resources:
-  cpu: 100m
-  memory: 128Mi
+cpu: 100m
+memory: 128Mi
 
 ports:
   internal: 6649
   metrics: 8080
 
-serviceMonitor: false
+image:
+  repository: streamnative/oxia
+  tag: main
+  pullPolicy: Always
+  #pullSecrets: xxx
+
+monitoringEnabled: false
