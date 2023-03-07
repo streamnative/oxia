@@ -27,8 +27,8 @@ spec:
             {{- end}}
           resources:
             limits:
-              cpu: {{ .Values.resources.cpu }}
-              memory: {{ .Values.resources.memory }}
+              cpu: {{ .Values.cpu }}
+              memory: {{ .Values.memory }}
           livenessProbe:
             {{- include "oxia-controller.probe" .Values.ports.internal | nindent 12 }}
           readinessProbe:
