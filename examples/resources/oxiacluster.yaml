@@ -30,12 +30,14 @@ spec:
     memory: 128Mi
   server:
     replicas: 3
-    cpu: 100m
-    memory: 128Mi
-    storage: 1Gi
-  #    storageClassName: gp2
+    cpu: 1m
+    memory: 1Gi
+    storage: 8Gi
+    #storageClassName: xxx
   image:
-    name: streamnative/oxia:main
+    repository: streamnative/oxia
+    tag: main
     pullPolicy: Always
-  #    pullSecrets: my-docker-secret
+    #pullSecrets: xxx
+  pprofEnabled: false
   monitoringEnabled: true

@@ -33,7 +33,15 @@ spec:
     spec:
       serviceAccountName: {{ .Release.Name }}
       containers:
-        - command: [ "oxia", "server", "--log-json", "--data-dir=/data/db", "--wal-dir=/data/wal" ]
+        - command:
+            - "oxia"
+            - "server"
+            - "--log-json"
+            - "--data-dir=/data/db"
+            - "--wal-dir=/data/wal"
+            {{- if .Values.pprofEnabled }}
+            - "--profile"
+            {{- end}}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           name: server
@@ -44,8 +52,8 @@ spec:
             {{- end}}
           resources:
             limits:
-              cpu: {{ .Values.server.resources.cpu }}
-              memory: {{ .Values.server.resources.memory }}
+              cpu: {{ .Values.server.cpu }}
+              memory: {{ .Values.server.memory }}
           volumeMounts:
             - name: data
               mountPath: /data
@@ -58,9 +66,9 @@ spec:
         name: data
       spec:
         accessModes: [ "ReadWriteOnce" ]
-        {{- if .Values.storageClassName }}
-        storageClassName: {{ .Values.storageClassName }}
+        {{- if .Values.server.storageClassName }}
+        storageClassName: {{ .Values.server.storageClassName }}
         {{- end}}
         resources:
           requests:
-            storage: {{ .Values.server.volume }}
+            storage: {{ .Values.server.storage }}

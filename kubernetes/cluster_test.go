@@ -53,7 +53,8 @@ func TestCluster(t *testing.T) {
 				Storage:  k8sResource.MustParse("1Gi"),
 			},
 			Image: v1alpha1.Image{
-				Name:       "streamnative/oxia:latest",
+				Repository: "streamnative/oxia",
+				Tag:        "latest",
 				PullPolicy: &pullAlways,
 			},
 			MonitoringEnabled: true,
