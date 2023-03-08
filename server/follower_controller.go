@@ -504,27 +504,6 @@ func (fc *followerController) processCommittedEntries(maxInclusive int64) error 
 	return err
 }
 
-func GetHighestEntryOfTerm(w wal.Wal, term int64) (*proto.EntryId, error) {
-	r, err := w.NewReverseReader()
-	if err != nil {
-		return InvalidEntryId, err
-	}
-	defer r.Close()
-	for r.HasNext() {
-		e, err := r.ReadNext()
-		if err != nil {
-			return InvalidEntryId, err
-		}
-		if e.Term <= term {
-			return &proto.EntryId{
-				Term:   e.Term,
-				Offset: e.Offset,
-			}, nil
-		}
-	}
-	return InvalidEntryId, nil
-}
-
 type MessageWithTerm interface {
 	GetTerm() int64
 }
