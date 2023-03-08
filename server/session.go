@@ -63,9 +63,6 @@ func (s *session) closeChannels() {
 		s.heartbeatCh = nil
 	}
 	s.log.Debug().Msg("Session channels closed")
-	s.sm.Lock()
-	delete(s.sm.sessions, s.id)
-	s.sm.Unlock()
 }
 
 func (s *session) delete() error {
