@@ -488,7 +488,7 @@ func (lc *leaderController) truncateFollowerIfNeeded(follower string, followerHe
 		return nil, common.ErrorInvalidStatus
 	}
 
-	lastEntryInFollowerTerm, err := GetHighestEntryOfTerm(lc.wal, followerHeadEntryId.Term)
+	lastEntryInFollowerTerm, err := getHighestEntryOfTerm(lc.wal, followerHeadEntryId.Term)
 	if err != nil {
 		return nil, err
 	}
@@ -522,6 +522,27 @@ func (lc *leaderController) truncateFollowerIfNeeded(follower string, followerHe
 
 		return tr.HeadEntryId, nil
 	}
+}
+
+func getHighestEntryOfTerm(w wal.Wal, term int64) (*proto.EntryId, error) {
+	r, err := w.NewReverseReader()
+	if err != nil {
+		return InvalidEntryId, err
+	}
+	defer r.Close()
+	for r.HasNext() {
+		e, err := r.ReadNext()
+		if err != nil {
+			return InvalidEntryId, err
+		}
+		if e.Term <= term {
+			return &proto.EntryId{
+				Term:   e.Term,
+				Offset: e.Offset,
+			}, nil
+		}
+	}
+	return InvalidEntryId, nil
 }
 
 func (lc *leaderController) Read(ctx context.Context, request *proto.ReadRequest) <-chan GetResult {
