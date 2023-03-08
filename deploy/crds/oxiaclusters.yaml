@@ -88,12 +88,6 @@ spec:
                   description: Image contains configuration specific to the image being
                     used
                   properties:
-                    name:
-                      description: Image is the container image name
-                      type: string
-                      x-kubernetes-validations:
-                        - message: Name is immutable
-                          rule: self == oldSelf
                     pullPolicy:
                       description: PullPolicy is one of Always, Never, IfNotPresent
                       enum:
@@ -111,15 +105,29 @@ spec:
                       x-kubernetes-validations:
                         - message: PullSecrets is immutable
                           rule: self == oldSelf
+                    repository:
+                      description: Repository is the container image repository, e.g.
+                        'streamnative/oxia'
+                      type: string
+                      x-kubernetes-validations:
+                        - message: Repository is immutable
+                          rule: self == oldSelf
+                    tag:
+                      description: Tag is the container image tag, e.g. 'latest'
+                      type: string
+                      x-kubernetes-validations:
+                        - message: Tag is immutable
+                          rule: self == oldSelf
                   required:
-                    - name
+                    - repository
+                    - tag
                   type: object
                   x-kubernetes-validations:
                     - message: Image is immutable
                       rule: self == oldSelf
                 initialShardCount:
-                  description: InitialShardCount is the initial number of shard to bootstrap
-                    a new cluster with
+                  description: InitialShardCount is the initial number of shards to
+                    bootstrap a new cluster with
                   format: int32
                   minimum: 1
                   type: integer
@@ -132,6 +140,13 @@ spec:
                   type: boolean
                   x-kubernetes-validations:
                     - message: MonitoringEnabled is immutable
+                      rule: self == oldSelf
+                pprofEnabled:
+                  description: PprofEnabled determines whether the pprof HTTP service
+                    will be enabled
+                  type: boolean
+                  x-kubernetes-validations:
+                    - message: PprofEnabled is immutable
                       rule: self == oldSelf
                 replicationFactor:
                   description: ReplicationFactor is the number of copies the cluster
@@ -210,12 +225,15 @@ spec:
                 - image
                 - initialShardCount
                 - monitoringEnabled
+                - pprofEnabled
                 - replicationFactor
                 - server
               type: object
             status:
               description: OxiaClusterStatus defines the observed state of OxiaCluster
               type: object
+          required:
+            - spec
           type: object
       served: true
       storage: true

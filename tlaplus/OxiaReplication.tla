@@ -260,8 +260,6 @@ Init ==
                              md_version                |-> 0,
                              md                        |-> NIL,
                              election_phase            |-> NIL,
-                             election_fencing_ensemble |-> {},
-                             election_final_ensemble   |-> {},
                              election_leader           |-> NIL,
                              election_fence_responses  |-> {}]]
         /\ confirmed = <<>>
@@ -328,8 +326,6 @@ CoordinatorStarts ==
              md_version                |-> metadata_version,
              md                        |-> metadata,
              election_phase            |-> NIL,
-             election_fencing_ensemble |-> {},
-             election_final_ensemble   |-> {},
              election_leader           |-> NIL,
              election_fence_responses  |-> {}]]
         /\ UNCHANGED << confirmed, metadata, metadata_version, node_state, messages, coordinator_stop_ctr >>
@@ -350,8 +346,6 @@ CoordinatorStops ==
                                                     ![o].md_version                = 0,
                                                     ![o].md                        = NIL,
                                                     ![o].election_phase            = NIL,
-                                                    ![o].election_fencing_ensemble = {},
-                                                    ![o].election_final_ensemble   = {},
                                                     ![o].election_leader           = NIL,
                                                     ![o].election_fence_responses  = {}]
         /\ coordinator_stop_ctr' = coordinator_stop_ctr + 1
@@ -423,7 +417,6 @@ CoordinatorStartsElection ==
                                                                    ![o].md_version                = new_md_version,
                                                                    ![o].md                        = new_metadata,
                                                                    ![o].election_phase            = FENCING,
-                                                                   ![o].election_final_ensemble   = {},
                                                                    ![o].election_leader           = NIL,
                                                                    ![o].election_fence_responses  = {}]
                        /\ SendMessages(GetNewTermRequests(o, new_term, ostate.md.ensemble))
@@ -486,7 +479,7 @@ CoordinatorHandlesPreQuorumFencingResponse ==
                 /\ msg.coordinator = o
                 /\ ostate.md.term = msg.term
                 /\ LET fenced_res    == ostate.election_fence_responses \union { msg }
-                   IN /\ ~IsQuorum(fenced_res, ostate.election_fencing_ensemble)
+                   IN /\ ~IsQuorum(fenced_res, ostate.md.ensemble)
                       \* state changes
                       /\ coordinator_state' = [coordinator_state EXCEPT ![o].election_fence_responses = fenced_res]
                       /\ MessageProcessed(msg)

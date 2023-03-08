@@ -49,6 +49,9 @@ type OxiaClusterSpec struct {
 	// Image contains configuration specific to the image being used
 	Image Image `json:"image"`
 
+	// PprofEnabled determines whether the pprof HTTP service will be enabled
+	PprofEnabled bool `json:"pprofEnabled"`
+
 	// MonitoringEnabled determines whether a Prometheus ServiceMonitor should be created
 	MonitoringEnabled bool `json:"monitoringEnabled"`
 }
@@ -79,8 +82,11 @@ type Server struct {
 }
 
 type Image struct {
-	// Image is the container image name
-	Name string `json:"name"`
+	// Repository is the container image repository, e.g. 'streamnative/oxia'
+	Repository string `json:"repository"`
+
+	// Tag is the container image tag, e.g. 'latest'
+	Tag string `json:"tag"`
 
 	// PullPolicy is one of Always, Never, IfNotPresent
 	PullPolicy *corev1.PullPolicy `json:"pullPolicy,omitempty"`
