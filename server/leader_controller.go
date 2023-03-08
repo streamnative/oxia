@@ -488,7 +488,7 @@ func (lc *leaderController) truncateFollowerIfNeeded(follower string, followerHe
 		return nil, common.ErrorInvalidStatus
 	}
 
-	lastEntryInFollowerTerm, err := GetHighestEntryOfTerm(lc.wal, followerHeadEntryId.Term)
+	lastEntryInFollowerTerm, err := getHighestEntryOfTerm(lc.wal, followerHeadEntryId.Term)
 	if err != nil {
 		return nil, err
 	}
@@ -524,7 +524,7 @@ func (lc *leaderController) truncateFollowerIfNeeded(follower string, followerHe
 	}
 }
 
-func GetHighestEntryOfTerm(w wal.Wal, term int64) (*proto.EntryId, error) {
+func getHighestEntryOfTerm(w wal.Wal, term int64) (*proto.EntryId, error) {
 	r, err := w.NewReverseReader()
 	if err != nil {
 		return InvalidEntryId, err
