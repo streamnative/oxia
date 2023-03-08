@@ -138,7 +138,6 @@ func (s *session) waitForHeartbeats() {
 
 			s.Lock()
 			s.closeChannels()
-			s.sm.expiredSessions.Inc()
 			err := s.delete()
 
 			if err != nil {
@@ -146,6 +145,11 @@ func (s *session) waitForHeartbeats() {
 					Msg("Failed to delete session")
 			}
 			s.Unlock()
+
+			s.sm.Lock()
+			delete(s.sm.sessions, s.id)
+			s.sm.expiredSessions.Inc()
+			s.sm.Unlock()
 		}
 	}
 }
