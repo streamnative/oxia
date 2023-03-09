@@ -131,13 +131,20 @@ func (l *walWriteBatch) Complete() {
 		l.quorumAckTracker.AdvanceHeadOffset(newOffset)
 
 		for _, task := range l.tasks {
-			task.result <- &writeResult{
+			select {
+
+			case <-l.ctx.Done():
+				// The leader controller is getting closed
+				return
+
+			case task.result <- &writeResult{
 				actualRequest: task.actualRequest,
 				offset:        newOffset,
 				err:           nil,
 				timestamp:     timestamp,
+			}:
+				close(task.result)
 			}
-			close(task.result)
 		}
 	}()
 
