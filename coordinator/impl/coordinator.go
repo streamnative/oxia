@@ -95,13 +95,13 @@ func NewCoordinator(metadataProvider MetadataProvider, clusterConfig model.Clust
 		c.nodeControllers[sa.Internal] = NewNodeController(sa, c, c, c.rpc)
 	}
 
-	if c.clusterStatus == nil {
-		// Before initializing the cluster, it's better to make sure we
-		// have all the nodes available, otherwise the coordinator might be
-		// the first component in getting started and will print out a lot
-		// of error logs regarding failed leader elections
-		c.waitForAllNodesToBeAvailable()
+	// Before initializing the cluster, it's better to make sure we
+	// have all the nodes available, otherwise the coordinator might be
+	// the first component in getting started and will print out a lot
+	// of error logs regarding failed leader elections
+	c.waitForAllNodesToBeAvailable()
 
+	if c.clusterStatus == nil {
 		if err = c.initialAssignment(); err != nil {
 			return nil, err
 		}
