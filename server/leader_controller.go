@@ -507,6 +507,7 @@ func (lc *leaderController) truncateFollowerIfNeeded(follower string, followerHe
 	}
 
 	tr, err := lc.rpcClient.Truncate(follower, &proto.TruncateRequest{
+		ShardId:     lc.shardId,
 		Term:        lc.term,
 		HeadEntryId: lastEntryInFollowerTerm,
 	})
