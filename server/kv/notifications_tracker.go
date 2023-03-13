@@ -20,7 +20,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"go.opentelemetry.io/otel/metric/unit"
 	pb "google.golang.org/protobuf/proto"
 	"math"
 	"oxia/common"
@@ -118,7 +117,7 @@ func newNotificationsTracker(shard uint32, lastOffset int64, kv KV, notification
 		readBatchCounter: metrics.NewCounter("oxia_server_notifications_read_batches",
 			"The total number of notification batches", "count", metrics.LabelsForShard(shard)),
 		readBytesCounter: metrics.NewCounter("oxia_server_notifications_read",
-			"The total size in bytes of notifications reads", unit.Bytes, metrics.LabelsForShard(shard)),
+			"The total size in bytes of notifications reads", metrics.Bytes, metrics.LabelsForShard(shard)),
 	}
 	nt.lastOffset.Store(lastOffset)
 	nt.cond = common.NewConditionContext(nt)

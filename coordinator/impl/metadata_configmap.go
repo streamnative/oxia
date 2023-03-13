@@ -16,7 +16,6 @@ package impl
 
 import (
 	"github.com/rs/zerolog/log"
-	"go.opentelemetry.io/otel/metric/unit"
 	"gopkg.in/yaml.v2"
 	coreV1 "k8s.io/api/core/v1"
 	k8sError "k8s.io/apimachinery/pkg/api/errors"
@@ -53,7 +52,7 @@ func NewMetadataProviderConfigMap(k8s k8s.Interface, namespace, name string) Met
 	}
 
 	m.metadataSizeGauge = metrics.NewGauge("oxia_coordinator_metadata_size",
-		"The size of the coordinator metadata", unit.Bytes, nil, func() int64 {
+		"The size of the coordinator metadata", metrics.Bytes, nil, func() int64 {
 			return m.metadataSize.Load()
 		})
 

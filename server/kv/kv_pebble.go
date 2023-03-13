@@ -22,7 +22,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"go.opentelemetry.io/otel/metric/unit"
 	"go.uber.org/multierr"
 	"io"
 	"os"
@@ -66,7 +65,7 @@ func NewPebbleKVFactory(options *KVFactoryOptions) (KVFactory, error) {
 
 		gaugeCacheSize: metrics.NewGauge("oxia_server_kv_pebble_max_cache_size",
 			"The max size configured for the Pebble block cache in bytes",
-			unit.Bytes, map[string]any{}, func() int64 {
+			metrics.Bytes, map[string]any{}, func() int64 {
 				return options.CacheSize
 			}),
 	}
@@ -146,11 +145,11 @@ func newKVPebble(factory *PebbleFactory, shardId uint32) (KV, error) {
 		readLatency: metrics.NewLatencyHistogram("oxia_server_kv_read_latency",
 			"The latency for reading a value from the database", labels),
 		writeBytes: metrics.NewCounter("oxia_server_kv_write",
-			"The amount of bytes written into the database", unit.Bytes, labels),
+			"The amount of bytes written into the database", metrics.Bytes, labels),
 		writeCount: metrics.NewCounter("oxia_server_kv_write_ops",
 			"The amount of write operations", "count", labels),
 		readBytes: metrics.NewCounter("oxia_server_kv_read",
-			"The amount of bytes read from the database", unit.Bytes, labels),
+			"The amount of bytes read from the database", metrics.Bytes, labels),
 		readCount: metrics.NewCounter("oxia_server_kv_write_ops",
 			"The amount of write operations", "count", labels),
 		writeErrors: metrics.NewCounter("oxia_server_kv_write_errors",
@@ -208,7 +207,7 @@ func newKVPebble(factory *PebbleFactory, shardId uint32) (KV, error) {
 	pb.gauges = []metrics.Gauge{
 		metrics.NewGauge("oxia_server_kv_pebble_block_cache_used",
 			"The size of the block cache used by a given db shard",
-			unit.Bytes, labels, func() int64 {
+			metrics.Bytes, labels, func() int64 {
 				return pb.dbMetrics().BlockCache.Size
 			}),
 		metrics.NewGauge("oxia_server_kv_pebble_block_cache_hits",
@@ -234,7 +233,7 @@ func newKVPebble(factory *PebbleFactory, shardId uint32) (KV, error) {
 			}),
 		metrics.NewGauge("oxia_server_kv_pebble_compaction_debt",
 			"The estimated number of bytes that need to be compacted",
-			unit.Bytes, labels, func() int64 {
+			metrics.Bytes, labels, func() int64 {
 				return int64(pb.dbMetrics().Compact.EstimatedDebt)
 			}),
 		metrics.NewGauge("oxia_server_kv_pebble_flush_total",
@@ -244,18 +243,18 @@ func newKVPebble(factory *PebbleFactory, shardId uint32) (KV, error) {
 			}),
 		metrics.NewGauge("oxia_server_kv_pebble_flush",
 			"The total amount of bytes flushed into the db",
-			unit.Bytes, labels, func() int64 {
+			metrics.Bytes, labels, func() int64 {
 				return pb.dbMetrics().Flush.WriteThroughput.Bytes
 			}),
 		metrics.NewGauge("oxia_server_kv_pebble_memtable_size",
 			"The size of the memtable",
-			unit.Bytes, labels, func() int64 {
+			metrics.Bytes, labels, func() int64 {
 				return int64(pb.dbMetrics().MemTable.Size)
 			}),
 
 		metrics.NewGauge("oxia_server_kv_pebble_disk_space",
 			"The total size of all the db files",
-			unit.Bytes, labels, func() int64 {
+			metrics.Bytes, labels, func() int64 {
 				return int64(pb.dbMetrics().DiskSpaceUsage())
 			}),
 		metrics.NewGauge("oxia_server_kv_pebble_num_files_total",
@@ -265,7 +264,7 @@ func newKVPebble(factory *PebbleFactory, shardId uint32) (KV, error) {
 			}),
 		metrics.NewGauge("oxia_server_kv_pebble_read",
 			"The total amount of bytes read at this db level",
-			unit.Bytes, labels, func() int64 {
+			metrics.Bytes, labels, func() int64 {
 				return int64(pb.dbMetrics().Total().BytesRead)
 			}),
 		metrics.NewGauge("oxia_server_kv_pebble_write_amplification_percent",
@@ -292,12 +291,12 @@ func newKVPebble(factory *PebbleFactory, shardId uint32) (KV, error) {
 				}),
 			metrics.NewGauge("oxia_server_kv_pebble_per_level_size",
 				"The total size in bytes of the files at this db level",
-				unit.Bytes, labels, func() int64 {
+				metrics.Bytes, labels, func() int64 {
 					return pb.dbMetrics().Levels[level].Size
 				}),
 			metrics.NewGauge("oxia_server_kv_pebble_per_level_read",
 				"The total amount of bytes read at this db level",
-				unit.Bytes, labels, func() int64 {
+				metrics.Bytes, labels, func() int64 {
 					return int64(pb.dbMetrics().Levels[level].BytesRead)
 				}),
 		)

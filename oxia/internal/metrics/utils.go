@@ -19,26 +19,24 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/instrument"
-	"go.opentelemetry.io/otel/metric/instrument/syncfloat64"
-	"go.opentelemetry.io/otel/metric/instrument/syncint64"
-	"go.opentelemetry.io/otel/metric/unit"
+	"oxia/common/metrics"
 	"oxia/proto"
 )
 
-func newHistogram(meter metric.Meter, name string, unit unit.Unit) syncint64.Histogram {
-	histogram, err := meter.SyncInt64().Histogram(name, instrument.WithUnit(unit))
+func newHistogram(meter metric.Meter, name string, unit metrics.Unit) instrument.Int64Histogram {
+	histogram, err := meter.Int64Histogram(name, instrument.WithUnit(string(unit)))
 	fatalOnErr(err, name)
 	return histogram
 }
 
-func newMillisCounter(meter metric.Meter, name string) syncfloat64.Counter {
-	counter, err := meter.SyncFloat64().Counter(name, instrument.WithUnit(unit.Milliseconds))
+func newMillisCounter(meter metric.Meter, name string) instrument.Float64Counter {
+	counter, err := meter.Float64Counter(name, instrument.WithUnit(string(metrics.Milliseconds)))
 	fatalOnErr(err, name)
 	return counter
 }
 
-func newCounter(meter metric.Meter, name string, unit unit.Unit) syncint64.Counter {
-	counter, err := meter.SyncInt64().Counter(name, instrument.WithUnit(unit))
+func newCounter(meter metric.Meter, name string, unit metrics.Unit) instrument.Int64Counter {
+	counter, err := meter.Int64Counter(name, instrument.WithUnit(string(unit)))
 	fatalOnErr(err, name)
 	return counter
 }

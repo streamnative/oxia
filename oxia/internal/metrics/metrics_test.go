@@ -72,7 +72,8 @@ func TestMetricsDecorate(t *testing.T) {
 
 				item.testFunc(metrics, condition.err)
 
-				rm, err := reader.Collect(context.Background())
+				rm := metricdata.ResourceMetrics{}
+				err := reader.Collect(context.Background(), &rm)
 				assert.NoError(t, err)
 
 				assertTimer(t, rm, "oxia_client_op", item.expectedType, condition.expectedResult)
@@ -118,7 +119,8 @@ func TestMetricsCallback(t *testing.T) {
 
 				item.testFunc(metrics, condition.err)
 
-				rm, err := reader.Collect(context.Background())
+				rm := metricdata.ResourceMetrics{}
+				err := reader.Collect(context.Background(), &rm)
 				assert.NoError(t, err)
 
 				assertTimer(t, rm, "oxia_client_batch_total", item.expectedType, condition.expectedResult)

@@ -18,7 +18,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/pkg/errors"
-	"go.opentelemetry.io/otel/metric/unit"
 	pb "google.golang.org/protobuf/proto"
 	"oxia/common"
 	"oxia/common/metrics"
@@ -107,11 +106,11 @@ func newPersistentWal(shard uint32, options *WalFactoryOptions) (Wal, error) {
 		appendLatency: metrics.NewLatencyHistogram("oxia_server_wal_append_latency",
 			"The time it takes to append entries to the WAL", labels),
 		appendBytes: metrics.NewCounter("oxia_server_wal_append",
-			"Bytes appended to the WAL", unit.Bytes, labels),
+			"Bytes appended to the WAL", metrics.Bytes, labels),
 		readLatency: metrics.NewLatencyHistogram("oxia_server_wal_read_latency",
 			"The time it takes to read an entry from the WAL", labels),
 		readBytes: metrics.NewCounter("oxia_server_wal_read",
-			"Bytes read from the WAL", unit.Bytes, labels),
+			"Bytes read from the WAL", metrics.Bytes, labels),
 		trimOps: metrics.NewCounter("oxia_server_wal_trim",
 			"The number of trim operations happening on the WAL", "count", labels),
 		readErrors: metrics.NewCounter("oxia_server_wal_read_errors",

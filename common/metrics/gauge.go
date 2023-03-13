@@ -18,9 +18,8 @@ import (
 	"context"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/instrument"
-	"go.opentelemetry.io/otel/metric/instrument/asyncint64"
-	"go.opentelemetry.io/otel/metric/unit"
 	"sync"
 )
 
@@ -30,7 +29,7 @@ type Gauge interface {
 
 type gauge struct {
 	id       int64
-	gauge    asyncint64.Gauge
+	gauge    instrument.Int64ObservableGauge
 	attrs    []attribute.KeyValue
 	callback func() int64
 }
@@ -39,9 +38,9 @@ func (g *gauge) Unregister() {
 	registry.remove(g.id)
 }
 
-func NewGauge(name string, description string, unit unit.Unit, labels map[string]any, callback func() int64) Gauge {
-	g, err := meter.AsyncInt64().Gauge(name,
-		instrument.WithUnit(unit),
+func NewGauge(name string, description string, unit Unit, labels map[string]any, callback func() int64) Gauge {
+	g, err := meter.Int64ObservableGauge(name,
+		instrument.WithUnit(string(unit)),
 		instrument.WithDescription(description),
 	)
 	fatalOnErr(err, name)
@@ -64,20 +63,23 @@ type gaugesRegistry struct {
 }
 
 func (r *gaugesRegistry) register() {
-	err := meter.RegisterCallback([]instrument.Asynchronous{nil}, r.callback)
+	_, err := meter.RegisterCallback(r.callback)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to register gauges registry")
 	}
 }
 
-func (r *gaugesRegistry) callback(ctx context.Context) {
+func (r *gaugesRegistry) callback(ctx context.Context, obs metric.Observer) error {
 	r.Lock()
 	defer r.Unlock()
 
 	for _, g := range r.gauges {
-		value := g.callback()
-		g.gauge.Observe(ctx, value, g.attrs...)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		obs.ObserveInt64(g.gauge, g.callback(), g.attrs...)
 	}
+	return nil
 }
 
 func (r *gaugesRegistry) add(g *gauge) int64 {

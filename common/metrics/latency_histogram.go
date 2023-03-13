@@ -18,8 +18,6 @@ import (
 	"context"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric/instrument"
-	"go.opentelemetry.io/otel/metric/instrument/syncfloat64"
-	"go.opentelemetry.io/otel/metric/unit"
 	"time"
 )
 
@@ -41,7 +39,7 @@ type LatencyHistogram interface {
 }
 
 type latencyHistogram struct {
-	syncfloat64.Histogram
+	instrument.Float64Histogram
 	attrs []attribute.KeyValue
 }
 
@@ -50,9 +48,9 @@ func (t *latencyHistogram) Timer() Timer {
 }
 
 func NewLatencyHistogram(name string, description string, labels map[string]any) LatencyHistogram {
-	h, err := meter.SyncFloat64().Histogram(
+	h, err := meter.Float64Histogram(
 		name,
-		instrument.WithUnit(unit.Milliseconds),
+		instrument.WithUnit(string(Milliseconds)),
 		instrument.WithDescription(description),
 	)
 	fatalOnErr(err, name)

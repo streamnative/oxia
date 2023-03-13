@@ -18,8 +18,7 @@ import (
 	"context"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/metric/instrument/syncfloat64"
-	"go.opentelemetry.io/otel/metric/instrument/syncint64"
+	"go.opentelemetry.io/otel/metric/instrument"
 	"time"
 )
 
@@ -28,8 +27,8 @@ type Timer interface {
 }
 
 type timerImpl struct {
-	sum   syncfloat64.Counter
-	count syncint64.Counter
+	sum   instrument.Float64Counter
+	count instrument.Int64Counter
 }
 
 func newTimer(meter metric.Meter, name string) Timer {

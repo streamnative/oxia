@@ -19,7 +19,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel/exporters/prometheus"
-	"go.opentelemetry.io/otel/metric/unit"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/aggregation"
 	"io"
@@ -37,8 +36,8 @@ func init() {
 	// Use a specific list of buckets for different types of histograms
 	latencyHistogramView := metric.NewView(
 		metric.Instrument{
-			Kind: metric.InstrumentKindSyncHistogram,
-			Unit: unit.Milliseconds,
+			Kind: metric.InstrumentKindHistogram,
+			Unit: string(Milliseconds),
 		},
 		metric.Stream{
 			Aggregation: aggregation.ExplicitBucketHistogram{
@@ -48,8 +47,8 @@ func init() {
 	)
 	sizeHistogramView := metric.NewView(
 		metric.Instrument{
-			Kind: metric.InstrumentKindSyncHistogram,
-			Unit: unit.Bytes,
+			Kind: metric.InstrumentKindHistogram,
+			Unit: string(Bytes),
 		},
 		metric.Stream{
 			Aggregation: aggregation.ExplicitBucketHistogram{
@@ -59,8 +58,8 @@ func init() {
 	)
 	countHistogramView := metric.NewView(
 		metric.Instrument{
-			Kind: metric.InstrumentKindSyncHistogram,
-			Unit: "count",
+			Kind: metric.InstrumentKindHistogram,
+			Unit: string(Dimensionless),
 		},
 		metric.Stream{
 			Aggregation: aggregation.ExplicitBucketHistogram{
