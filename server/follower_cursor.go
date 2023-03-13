@@ -21,7 +21,6 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"go.opentelemetry.io/otel/metric/unit"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"io"
@@ -128,7 +127,7 @@ func NewFollowerCursor(
 		snapshotsFailedCounter: metrics.NewCounter("oxia_server_snapshots_failed",
 			"The number of DB snapshots failed", "count", labels),
 		snapshotsBytesSent: metrics.NewCounter("oxia_server_snapshots_sent",
-			"The amount of data sent as snapshot", unit.Bytes, labels),
+			"The amount of data sent as snapshot", metrics.Bytes, labels),
 	}
 
 	fc.ctx, fc.cancel = context.WithCancel(context.Background())

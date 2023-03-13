@@ -18,8 +18,6 @@ import (
 	"context"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric/instrument"
-	"go.opentelemetry.io/otel/metric/instrument/syncint64"
-	"go.opentelemetry.io/otel/metric/unit"
 )
 
 // Counter is a monotonically increasing counter
@@ -29,7 +27,7 @@ type Counter interface {
 }
 
 type counter struct {
-	sc    syncint64.Counter
+	sc    instrument.Int64Counter
 	attrs []attribute.KeyValue
 }
 
@@ -41,9 +39,9 @@ func (c *counter) Add(incr int) {
 	c.sc.Add(context.Background(), int64(incr), c.attrs...)
 }
 
-func NewCounter(name string, description string, unit unit.Unit, labels map[string]any) Counter {
-	sc, err := meter.SyncInt64().Counter(name,
-		instrument.WithUnit(unit),
+func NewCounter(name string, description string, unit Unit, labels map[string]any) Counter {
+	sc, err := meter.Int64Counter(name,
+		instrument.WithUnit(string(unit)),
 		instrument.WithDescription(description))
 	fatalOnErr(err, name)
 	return &counter{
@@ -61,7 +59,7 @@ type UpDownCounter interface {
 }
 
 type upDownCounter struct {
-	sc    syncint64.UpDownCounter
+	sc    instrument.Int64UpDownCounter
 	attrs []attribute.KeyValue
 }
 
@@ -81,9 +79,9 @@ func (c *upDownCounter) Sub(diff int) {
 	c.Add(-diff)
 }
 
-func NewUpDownCounter(name string, description string, unit unit.Unit, labels map[string]any) Counter {
-	sc, err := meter.SyncInt64().UpDownCounter(name,
-		instrument.WithUnit(unit),
+func NewUpDownCounter(name string, description string, unit Unit, labels map[string]any) Counter {
+	sc, err := meter.Int64UpDownCounter(name,
+		instrument.WithUnit(string(unit)),
 		instrument.WithDescription(description))
 	fatalOnErr(err, name)
 	return &upDownCounter{

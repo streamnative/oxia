@@ -18,8 +18,8 @@ import (
 	"context"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/metric/instrument/syncint64"
-	"go.opentelemetry.io/otel/metric/unit"
+	"go.opentelemetry.io/otel/metric/instrument"
+	"oxia/common/metrics"
 	"oxia/oxia/internal/model"
 	"oxia/proto"
 	"time"
@@ -30,12 +30,12 @@ type Metrics struct {
 	sinceFunc func(time.Time) time.Duration
 
 	opTime  Timer
-	opValue syncint64.Histogram
+	opValue instrument.Int64Histogram
 
 	batchTotalTime Timer
 	batchExecTime  Timer
-	batchValue     syncint64.Histogram
-	batchRequests  syncint64.Histogram
+	batchValue     instrument.Int64Histogram
+	batchRequests  instrument.Int64Histogram
 }
 
 func NewMetrics(provider metric.MeterProvider) *Metrics {
@@ -49,11 +49,11 @@ func newMetrics(provider metric.MeterProvider, timeFunc func() time.Time, sinceF
 		sinceFunc: sinceFunc,
 
 		opTime:  newTimer(meter, "oxia_client_op"),
-		opValue: newHistogram(meter, "oxia_client_op_value", unit.Bytes),
+		opValue: newHistogram(meter, "oxia_client_op_value", metrics.Bytes),
 
 		batchTotalTime: newTimer(meter, "oxia_client_batch_total"),
 		batchExecTime:  newTimer(meter, "oxia_client_batch_exec"),
-		batchValue:     newHistogram(meter, "oxia_client_batch_value", unit.Bytes),
+		batchValue:     newHistogram(meter, "oxia_client_batch_value", metrics.Bytes),
 		batchRequests:  newHistogram(meter, "oxia_client_batch_request", ""),
 	}
 }
