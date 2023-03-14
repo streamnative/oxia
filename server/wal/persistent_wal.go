@@ -325,7 +325,9 @@ func (t *persistentWal) Clear() error {
 
 func (t *persistentWal) TruncateLog(lastSafeOffset int64) (int64, error) {
 	if lastSafeOffset == InvalidOffset {
-		t.Clear()
+		if err := t.Clear(); err != nil {
+			return InvalidOffset, err
+		}
 		return t.LastOffset(), nil
 	}
 
