@@ -70,6 +70,7 @@ func TestWal(t *testing.T) {
 		t.Run(f.Name()+"Append", Append)
 		t.Run(f.Name()+"AppendAsync", AppendAsync)
 		t.Run(f.Name()+"Truncate", Truncate)
+		t.Run(f.Name()+"TruncateClear", TruncateClear)
 		t.Run(f.Name()+"Clear", Clear)
 		t.Run(f.Name()+"Trim", Trim)
 		if f.Persistent() {
@@ -264,6 +265,34 @@ func Truncate(t *testing.T) {
 	assert.NoError(t, err)
 	assertReaderReads(t, fr, input[:3])
 	assert.NoError(t, fr.Close())
+
+	err = w.Close()
+	assert.NoError(t, err)
+	err = f.Close()
+	assert.NoError(t, err)
+}
+
+func TruncateClear(t *testing.T) {
+	f, w := createWal(t)
+
+	assert.Equal(t, InvalidOffset, w.FirstOffset())
+	assert.Equal(t, InvalidOffset, w.LastOffset())
+
+	err := w.Append(&proto.LogEntry{Term: 2, Offset: 3})
+	assert.NoError(t, err)
+	err = w.Append(&proto.LogEntry{Term: 2, Offset: 4})
+	assert.NoError(t, err)
+
+	assert.Equal(t, int64(3), w.FirstOffset())
+	assert.Equal(t, int64(4), w.LastOffset())
+
+	lastOffset, err := w.TruncateLog(InvalidOffset)
+
+	assert.Equal(t, InvalidOffset, lastOffset)
+	assert.NoError(t, err)
+
+	assert.Equal(t, InvalidOffset, w.FirstOffset())
+	assert.Equal(t, InvalidOffset, w.LastOffset())
 
 	err = w.Close()
 	assert.NoError(t, err)
