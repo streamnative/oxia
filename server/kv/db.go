@@ -436,13 +436,17 @@ func (d *db) applyDeleteRange(batch WriteBatch, notifications *notifications, de
 
 func applyGet(kv KV, getReq *proto.GetRequest) (*proto.GetResponse, error) {
 	value, closer, err := kv.Get(getReq.Key)
+
 	if errors.Is(err, ErrorKeyNotFound) {
 		return &proto.GetResponse{Status: proto.Status_KEY_NOT_FOUND}, nil
 	} else if err != nil {
 		return nil, errors.Wrap(err, "oxia db: failed to apply batch")
 	}
 
-	se, err := deserialize(value, closer)
+	se, err := deserialize(value)
+
+	err = multierr.Append(err, closer.Close())
+
 	if err != nil {
 		return nil, err
 	}
@@ -471,7 +475,9 @@ func GetStorageEntry(batch WriteBatch, key string) (*proto.StorageEntry, error) 
 		return nil, err
 	}
 
-	se, err := deserialize(value, closer)
+	se, err := deserialize(value)
+
+	err = multierr.Append(err, closer.Close())
 	if err != nil {
 		return nil, err
 	}
@@ -499,15 +505,12 @@ func checkExpectedVersionId(batch WriteBatch, key string, expectedVersionId *int
 	return se, nil
 }
 
-func deserialize(value []byte, closer io.Closer) (*proto.StorageEntry, error) {
+func deserialize(value []byte) (*proto.StorageEntry, error) {
 	se := &proto.StorageEntry{}
 	if err := pb.Unmarshal(value, se); err != nil {
 		return nil, errors.Wrap(err, "failed to deserialize storage entry")
 	}
 
-	if err := closer.Close(); err != nil {
-		return nil, err
-	}
 	return se, nil
 }
 
