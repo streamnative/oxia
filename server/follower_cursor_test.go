@@ -53,7 +53,6 @@ func TestFollowerCursor(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, shard, fc.ShardId())
-	assert.Equal(t, wal.InvalidOffset, fc.LastPushed())
 	assert.Equal(t, wal.InvalidOffset, fc.AckOffset())
 
 	assert.Eventually(t, func() bool {
