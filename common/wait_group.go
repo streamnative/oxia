@@ -14,7 +14,10 @@
 
 package common
 
-import "context"
+import (
+	"context"
+	"sync"
+)
 
 // WaitGroup is similar to sync.WaitGroup but adds 2 capabilities:
 //  1. Returning an error if any operation fails
@@ -25,6 +28,9 @@ type WaitGroup interface {
 	// You should only call wait once
 	Wait(ctx context.Context) error
 
+	// Add adds delta, which may be negative, to the WaitGroup counter.
+	Add(delta int)
+
 	// Done Signals that one party in the group is done
 	Done()
 
@@ -33,38 +39,37 @@ type WaitGroup interface {
 }
 
 type waitGroup struct {
-	parties   int
-	responses chan error
+	sync.WaitGroup
+	errCh chan error
 }
 
-func NewWaitGroup(parties int) WaitGroup {
-	return &waitGroup{
-		parties:   parties,
-		responses: make(chan error, parties),
+func NewWaitGroup(initial int) WaitGroup {
+	wg := waitGroup{
+		errCh: make(chan error, 1),
 	}
+	wg.Add(initial)
+	return &wg
 }
 
 func (g *waitGroup) Wait(ctx context.Context) error {
-	for i := 0; i < g.parties; i++ {
-		select {
-		case err := <-g.responses:
-			if err != nil {
-				return err
-			}
-
-		case <-ctx.Done():
-			return ctx.Err()
+	waitCh := make(chan any)
+	go func() {
+		defer close(waitCh)
+		g.WaitGroup.Wait()
+	}()
+	select {
+	case <-waitCh:
+		return nil
+	case err := <-g.errCh:
+		if err != nil {
+			return err
 		}
+	case <-ctx.Done():
+		return ctx.Err()
 	}
-
-	// Everyone has completed successfully
 	return nil
 }
 
-func (g *waitGroup) Done() {
-	g.responses <- nil
-}
-
 func (g *waitGroup) Fail(err error) {
-	g.responses <- err
+	g.errCh <- err
 }

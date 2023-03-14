@@ -16,6 +16,7 @@ package kv
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/vfs"
@@ -28,7 +29,6 @@ import (
 	"oxia/common"
 	"oxia/common/metrics"
 	"path/filepath"
-	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -134,7 +134,7 @@ type Pebble struct {
 	batchSizeHisto  metrics.Histogram
 	batchCountHisto metrics.Histogram
 
-	wg sync.WaitGroup
+	wg common.WaitGroup
 }
 
 func newKVPebble(factory *PebbleFactory, shardId uint32) (KV, error) {
@@ -164,6 +164,8 @@ func newKVPebble(factory *PebbleFactory, shardId uint32) (KV, error) {
 			"The size in bytes for a given batch", labels),
 		batchCountHisto: metrics.NewCountHistogram("oxia_server_kv_batch_count",
 			"The number of operations in a given batch", labels),
+
+		wg: common.NewWaitGroup(0),
 	}
 
 	pbOptions := &pebble.Options{
@@ -317,8 +319,13 @@ func (p *Pebble) Close() error {
 		return err
 	}
 
-	p.wg.Wait()
-	return p.db.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	return multierr.Combine(
+		p.wg.Wait(ctx),
+		p.db.Close(),
+	)
 }
 
 func (p *Pebble) Flush() error {
