@@ -30,21 +30,27 @@ const (
 	DefaultCheckInterval = 10 * time.Minute
 )
 
+type CommitOffsetProvider interface {
+	CommitOffset() int64
+}
+
 type Trimmer interface {
 	io.Closer
 }
 
-func NewTrimmer(shard uint32, wal Wal, retention time.Duration, checkInterval time.Duration, clock common.Clock) Trimmer {
+func NewTrimmer(shard uint32, wal Wal, retention time.Duration, checkInterval time.Duration, clock common.Clock,
+	commitOffsetProvider CommitOffsetProvider) Trimmer {
 	if retention.Nanoseconds() == 0 {
 		retention = DefaultRetention
 	}
 
 	t := &trimmer{
-		wal:       wal,
-		retention: retention,
-		clock:     clock,
-		ticker:    time.NewTicker(checkInterval),
-		waitClose: make(chan any),
+		wal:                  wal,
+		retention:            retention,
+		clock:                clock,
+		ticker:               time.NewTicker(checkInterval),
+		commitOffsetProvider: commitOffsetProvider,
+		waitClose:            make(chan any),
 		log: log.With().
 			Str("component", "wal-trimmer").
 			Uint32("shard", shard).
@@ -61,13 +67,14 @@ func NewTrimmer(shard uint32, wal Wal, retention time.Duration, checkInterval ti
 }
 
 type trimmer struct {
-	wal       Wal
-	retention time.Duration
-	clock     common.Clock
-	ticker    *time.Ticker
-	ctx       context.Context
-	cancel    context.CancelFunc
-	log       zerolog.Logger
+	wal                  Wal
+	retention            time.Duration
+	clock                common.Clock
+	ticker               *time.Ticker
+	commitOffsetProvider CommitOffsetProvider
+	ctx                  context.Context
+	cancel               context.CancelFunc
+	log                  zerolog.Logger
 
 	waitClose chan any
 }
@@ -127,6 +134,12 @@ func (t *trimmer) doTrim() error {
 	trimOffset, err := t.binarySearch(t.wal.FirstOffset(), t.wal.LastOffset(), cutoffTime)
 	if err != nil {
 		return errors.Wrap(err, "failed to perform binary search")
+	}
+
+	// We cannot trim past the commit offset, or we won't be able to replicate those entries
+	commitOffset := t.commitOffsetProvider.CommitOffset()
+	if commitOffset < trimOffset {
+		trimOffset = commitOffset
 	}
 
 	err = t.wal.Trim(trimOffset)
