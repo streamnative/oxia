@@ -28,6 +28,7 @@ import (
 	"oxia/common"
 	"oxia/common/metrics"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -132,6 +133,8 @@ type Pebble struct {
 
 	batchSizeHisto  metrics.Histogram
 	batchCountHisto metrics.Histogram
+
+	wg sync.WaitGroup
 }
 
 func newKVPebble(factory *PebbleFactory, shardId uint32) (KV, error) {
@@ -313,6 +316,8 @@ func (p *Pebble) Close() error {
 	if err := p.db.Flush(); err != nil {
 		return err
 	}
+
+	p.wg.Wait()
 	return p.db.Close()
 }
 
@@ -335,6 +340,7 @@ func (p *Pebble) Get(key string) ([]byte, io.Closer, error) {
 }
 
 func (p *Pebble) KeyRangeScan(lowerBound, upperBound string) KeyIterator {
+	p.wg.Add(1)
 	pbit := p.db.NewIter(&pebble.IterOptions{
 		LowerBound: []byte(lowerBound),
 		UpperBound: []byte(upperBound),
@@ -344,6 +350,7 @@ func (p *Pebble) KeyRangeScan(lowerBound, upperBound string) KeyIterator {
 }
 
 func (p *Pebble) KeyRangeScanReverse(lowerBound, upperBound string) ReverseKeyIterator {
+	p.wg.Add(1)
 	pbit := p.db.NewIter(&pebble.IterOptions{
 		LowerBound: []byte(lowerBound),
 		UpperBound: []byte(upperBound),
@@ -353,6 +360,7 @@ func (p *Pebble) KeyRangeScanReverse(lowerBound, upperBound string) ReverseKeyIt
 }
 
 func (p *Pebble) RangeScan(lowerBound, upperBound string) KeyValueIterator {
+	p.wg.Add(1)
 	pbit := p.db.NewIter(&pebble.IterOptions{
 		LowerBound: []byte(lowerBound),
 		UpperBound: []byte(upperBound),
@@ -385,6 +393,7 @@ func (b *PebbleBatch) DeleteRange(lowerBound, upperBound string) error {
 }
 
 func (b *PebbleBatch) KeyRangeScan(lowerBound, upperBound string) KeyIterator {
+	b.p.wg.Add(1)
 	pbit := b.b.NewIter(&pebble.IterOptions{
 		LowerBound: []byte(lowerBound),
 		UpperBound: []byte(upperBound),
@@ -447,7 +456,9 @@ type PebbleIterator struct {
 }
 
 func (p *PebbleIterator) Close() error {
-	return p.pi.Close()
+	err := p.pi.Close()
+	p.p.wg.Done()
+	return err
 }
 
 func (p *PebbleIterator) Valid() bool {
@@ -478,7 +489,9 @@ type PebbleReverseIterator struct {
 }
 
 func (p *PebbleReverseIterator) Close() error {
-	return p.pi.Close()
+	err := p.pi.Close()
+	p.p.wg.Done()
+	return err
 }
 
 func (p *PebbleReverseIterator) Valid() bool {

@@ -28,7 +28,7 @@ var testKVOptions = &KVFactoryOptions{
 	CacheSize: 10 * 1024,
 }
 
-func TestPebbbleSimple(t *testing.T) {
+func TestPebbleSimple(t *testing.T) {
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
 	kv, err := factory.NewKV(1)
@@ -655,4 +655,33 @@ func TestPebbleSnapshot_Loader(t *testing.T) {
 
 	assert.NoError(t, kv2.Close())
 	assert.NoError(t, factory2.Close())
+}
+
+func TestPebbleClose(t *testing.T) {
+	dataDir := t.TempDir()
+
+	factory, err := NewPebbleKVFactory(&KVFactoryOptions{
+		DataDir:   dataDir,
+		CacheSize: 1024,
+		InMemory:  false,
+	})
+	assert.NoError(t, err)
+
+	kv, err := factory.NewKV(1)
+	if err != nil {
+		return
+	}
+
+	it := kv.KeyRangeScan("", "")
+
+	errCh := make(chan error, 1)
+
+	go func() {
+		errCh <- kv.Close()
+	}()
+
+	err = it.Close()
+	assert.NoError(t, err)
+
+	assert.NoError(t, <-errCh)
 }
