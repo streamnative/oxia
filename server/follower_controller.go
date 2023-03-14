@@ -125,7 +125,8 @@ func NewFollowerController(config Config, shardId uint32, wf wal.WalFactory, kvF
 	}
 
 	fc.lastAppendedOffset = fc.wal.LastOffset()
-	fc.walTrimmer = wal.NewTrimmer(shardId, fc.wal, config.WalRetentionTime, wal.DefaultCheckInterval, common.SystemClock)
+	fc.walTrimmer = wal.NewTrimmer(shardId, fc.wal, config.WalRetentionTime, wal.DefaultCheckInterval,
+		common.SystemClock, fc)
 
 	if fc.db, err = kv.NewDB(shardId, kvFactory, config.NotificationsRetentionTime, common.SystemClock); err != nil {
 		return nil, err
