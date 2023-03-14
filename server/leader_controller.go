@@ -142,7 +142,8 @@ func NewLeaderController(config Config, shardId uint32, rpcClient ReplicationRpc
 		return nil, err
 	}
 
-	lc.walTrimmer = wal.NewTrimmer(shardId, lc.wal, config.WalRetentionTime, wal.DefaultCheckInterval, common.SystemClock)
+	lc.walTrimmer = wal.NewTrimmer(shardId, lc.wal, config.WalRetentionTime, wal.DefaultCheckInterval,
+		common.SystemClock, lc)
 
 	if lc.db, err = kv.NewDB(shardId, kvFactory, config.NotificationsRetentionTime, common.SystemClock); err != nil {
 		return nil, err
@@ -826,6 +827,10 @@ func getLastEntryIdInWal(wal wal.Wal) (*proto.EntryId, error) {
 		return nil, err
 	}
 	return &proto.EntryId{Term: entry.Term, Offset: entry.Offset}, nil
+}
+
+func (lc *leaderController) CommitOffset() int64 {
+	return lc.quorumAckTracker.CommitOffset()
 }
 
 func (lc *leaderController) GetStatus(request *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
