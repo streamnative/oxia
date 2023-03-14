@@ -136,7 +136,7 @@ func (t *trimmer) doTrim() error {
 		return errors.Wrap(err, "failed to perform binary search")
 	}
 
-	// We cannot trim past the commit offset, or we won't be able to
+	// We cannot trim past the commit offset, or we won't be able to replicate those entries
 	commitOffset := t.commitOffsetProvider.CommitOffset()
 	if commitOffset < trimOffset {
 		trimOffset = commitOffset
