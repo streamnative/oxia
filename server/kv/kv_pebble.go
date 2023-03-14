@@ -337,6 +337,9 @@ func (p *Pebble) NewWriteBatch() WriteBatch {
 }
 
 func (p *Pebble) Get(key string) ([]byte, io.Closer, error) {
+	p.wg.Add(1)
+	defer p.wg.Done()
+
 	value, closer, err := p.db.Get([]byte(key))
 	if errors.Is(err, pebble.ErrNotFound) {
 		err = ErrorKeyNotFound
