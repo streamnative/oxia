@@ -309,6 +309,9 @@ func (t *persistentWal) checkNextOffset(nextOffset int64) error {
 }
 
 func (t *persistentWal) Clear() error {
+	t.Lock()
+	defer t.Unlock()
+
 	if err := t.log.Clear(); err != nil {
 		t.writeErrors.Inc()
 		return err
@@ -321,6 +324,11 @@ func (t *persistentWal) Clear() error {
 }
 
 func (t *persistentWal) TruncateLog(lastSafeOffset int64) (int64, error) {
+	if lastSafeOffset == InvalidOffset {
+		t.Clear()
+		return t.LastOffset(), nil
+	}
+
 	t.Lock()
 	defer t.Unlock()
 
