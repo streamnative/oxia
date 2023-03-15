@@ -36,6 +36,9 @@ type notifications struct {
 	initWaitGroup common.WaitGroup
 	ctx           context.Context
 	cancel        context.CancelFunc
+
+	ctxMultiplexChanClosed    context.Context
+	cancelMultiplexChanClosed context.CancelFunc
 }
 
 func newNotifications(options clientOptions, ctx context.Context, clientPool common.ClientPool, shardManager internal.ShardManager) (*notifications, error) {
@@ -47,6 +50,7 @@ func newNotifications(options clientOptions, ctx context.Context, clientPool com
 	}
 
 	nm.ctx, nm.cancel = context.WithCancel(ctx)
+	nm.ctxMultiplexChanClosed, nm.cancelMultiplexChanClosed = context.WithCancel(context.Background())
 
 	// Create a notification manager for each shard
 	shards := shardManager.GetAll()
@@ -66,6 +70,7 @@ func newNotifications(options clientOptions, ctx context.Context, clientPool com
 		}
 
 		close(nm.multiplexCh)
+		nm.cancelMultiplexChanClosed()
 	})
 
 	// Wait for the notifications on all the shards to be initialized
@@ -84,8 +89,22 @@ func (nm *notifications) Ch() <-chan *Notification {
 }
 
 func (nm *notifications) Close() error {
+	// Interrupt the go-routines receiving notifications on all the shards
 	nm.cancel()
-	return nil
+
+	// Wait until the all the go-routines are stopped and the user-facing channel
+	// is closed
+	<-nm.ctxMultiplexChanClosed.Done()
+
+	// Ensure the channel is empty, so that the user will not see any notifications
+	// after the close
+	for {
+		select {
+		case <-nm.multiplexCh:
+		default:
+			return nil
+		}
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

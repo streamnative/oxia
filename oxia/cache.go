@@ -180,12 +180,13 @@ func (cm *cacheManager) Close() error {
 	cm.Lock()
 	defer cm.Unlock()
 
-	var err error
+	err := cm.notifications.Close()
+
 	for _, c := range cm.caches {
 		err = multierr.Append(err, c.Close())
 	}
 
-	return multierr.Append(err, cm.notifications.Close())
+	return err
 }
 
 ////////////////////////////////
