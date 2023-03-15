@@ -44,11 +44,11 @@ func (m *MetadataProviderImpl) String() string {
 
 func (m *MetadataProviderImpl) Set(s string) error {
 	switch s {
-	case "memory", "configmap":
+	case "memory", "configmap", "file":
 		*m = MetadataProviderImpl(s)
 		return nil
 	default:
-		return errors.New(`must be one of "memory" or "configmap"`)
+		return errors.New(`must be one of "memory", "configmap" or "file"`)
 	}
 }
 
