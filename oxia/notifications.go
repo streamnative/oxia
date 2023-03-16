@@ -98,13 +98,10 @@ func (nm *notifications) Close() error {
 
 	// Ensure the channel is empty, so that the user will not see any notifications
 	// after the close
-	for {
-		select {
-		case <-nm.multiplexCh:
-		default:
-			return nil
-		}
+	for n := <-nm.multiplexCh; n != nil; {
 	}
+
+	return nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
