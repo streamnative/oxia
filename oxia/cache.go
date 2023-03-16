@@ -197,6 +197,8 @@ type internalCache interface {
 }
 
 type cacheImpl[Value any] struct {
+	sync.RWMutex
+
 	client          SyncClient
 	serializeFunc   SerializeFunc
 	deserializeFunc DeserializeFunc
@@ -223,6 +225,9 @@ func newCacheImpl[Value any](client SyncClient, serializeFunc SerializeFunc, des
 }
 
 func (c *cacheImpl[Value]) handleNotification(n *Notification) {
+	c.RLock()
+	defer c.RUnlock()
+
 	c.valueCache.Del(n.Key)
 }
 
@@ -319,6 +324,9 @@ func (c *cacheImpl[Value]) ReadModifyUpdate(ctx context.Context, key string, mod
 }
 
 func (c *cacheImpl[Value]) Close() error {
+	c.Lock()
+	defer c.Unlock()
+
 	c.valueCache.Close()
 	return nil
 }
