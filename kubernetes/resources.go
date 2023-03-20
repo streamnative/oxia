@@ -26,6 +26,7 @@ import (
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
+	"oxia/common"
 	"oxia/coordinator/model"
 	"oxia/pkg/apis/oxia/v1alpha1"
 )
@@ -148,9 +149,13 @@ func configMap(cluster v1alpha1.OxiaCluster) *coreV1.ConfigMap {
 		}
 	}
 	config := model.ClusterConfig{
-		InitialShardCount: cluster.Spec.InitialShardCount,
-		ReplicationFactor: cluster.Spec.ReplicationFactor,
-		Servers:           servers,
+		Namespaces: map[string]model.NamespaceConfig{
+			common.DefaultNamespace: {
+				InitialShardCount: cluster.Spec.InitialShardCount,
+				ReplicationFactor: cluster.Spec.ReplicationFactor,
+			},
+		},
+		Servers: servers,
 	}
 	bytes, err := yaml.Marshal(config)
 	if err != nil {

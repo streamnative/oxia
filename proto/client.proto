@@ -96,7 +96,7 @@ service OxiaClient {
  * shard assignment.
  */
 message ShardAssignmentsRequest {
-  // Placeholder empty message. `namespace` may be added in the future.
+  string namespace = 1;
 }
 
 /**

@@ -31,16 +31,17 @@ type Int32HashRange struct {
 }
 
 type ShardMetadata struct {
-	Status         ShardStatus     `json:"status" yaml:"status"`
-	Term           int64           `json:"term" yaml:"term"`
-	Leader         *ServerAddress  `json:"leader" yaml:"leader"`
-	Ensemble       []ServerAddress `json:"ensemble" yaml:"ensemble"`
-	Int32HashRange Int32HashRange  `json:"int32HashRange" yaml:"int32HashRange"`
+	Namespace         string          `json:"namespace" yaml:"namespace"`
+	ReplicationFactor uint32          `json:"replicationFactor" yaml:"replicationFactor"`
+	Status            ShardStatus     `json:"status" yaml:"status"`
+	Term              int64           `json:"term" yaml:"term"`
+	Leader            *ServerAddress  `json:"leader" yaml:"leader"`
+	Ensemble          []ServerAddress `json:"ensemble" yaml:"ensemble"`
+	Int32HashRange    Int32HashRange  `json:"int32HashRange" yaml:"int32HashRange"`
 }
 
 type ClusterStatus struct {
-	ReplicationFactor uint32                   `json:"replicationFactor" yaml:"replicationFactor"`
-	Shards            map[uint32]ShardMetadata `json:"shards" yaml:"shards"`
+	Shards map[uint32]ShardMetadata `json:"shards" yaml:"shards"`
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -54,11 +55,13 @@ func (sm Int32HashRange) Clone() Int32HashRange {
 
 func (sm ShardMetadata) Clone() ShardMetadata {
 	r := ShardMetadata{
-		Status:         sm.Status,
-		Term:           sm.Term,
-		Leader:         sm.Leader,
-		Ensemble:       make([]ServerAddress, len(sm.Ensemble)),
-		Int32HashRange: sm.Int32HashRange.Clone(),
+		ReplicationFactor: sm.ReplicationFactor,
+		Namespace:         sm.Namespace,
+		Status:            sm.Status,
+		Term:              sm.Term,
+		Leader:            sm.Leader,
+		Ensemble:          make([]ServerAddress, len(sm.Ensemble)),
+		Int32HashRange:    sm.Int32HashRange.Clone(),
 	}
 
 	copy(r.Ensemble, sm.Ensemble)
@@ -68,8 +71,7 @@ func (sm ShardMetadata) Clone() ShardMetadata {
 
 func (c ClusterStatus) Clone() *ClusterStatus {
 	r := &ClusterStatus{
-		ReplicationFactor: c.ReplicationFactor,
-		Shards:            make(map[uint32]ShardMetadata),
+		Shards: make(map[uint32]ShardMetadata),
 	}
 
 	for shard, sm := range c.Shards {
