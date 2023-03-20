@@ -147,21 +147,27 @@ func (c *coordinator) initialAssignment() error {
 
 	cc := c.ClusterConfig
 	cs := &model.ClusterStatus{
-		ReplicationFactor: cc.ReplicationFactor,
-		Shards:            make(map[uint32]model.ShardMetadata),
+		Shards: make(map[uint32]model.ShardMetadata),
 	}
 
-	shards := common.GenerateShards(cc.InitialShardCount)
+	baseShardId := uint32(0)
+	shards := make([]common.Shard, 0)
+	for ns, nc := range cc.Namespaces {
+		shards = common.GenerateShards(shards, baseShardId, ns, nc.InitialShardCount, nc.ReplicationFactor)
+		baseShardId += nc.InitialShardCount
+	}
 
 	// Do round-robin assignment of shards to storage servers
 	serverIdx := uint32(0)
 
 	for i, shard := range shards {
 		shardMetadata := model.ShardMetadata{
-			Status:   model.ShardStatusUnknown,
-			Term:     -1,
-			Leader:   nil,
-			Ensemble: getServers(cc.Servers, serverIdx, cc.ReplicationFactor),
+			Namespace:         shard.Namespace,
+			ReplicationFactor: shard.ReplicationFactor,
+			Status:            model.ShardStatusUnknown,
+			Term:              -1,
+			Leader:            nil,
+			Ensemble:          getServers(cc.Servers, serverIdx, shard.ReplicationFactor),
 			Int32HashRange: model.Int32HashRange{
 				Min: shard.Min,
 				Max: shard.Max,
@@ -169,7 +175,7 @@ func (c *coordinator) initialAssignment() error {
 		}
 
 		cs.Shards[uint32(i)] = shardMetadata
-		serverIdx += cc.ReplicationFactor
+		serverIdx += shard.ReplicationFactor
 	}
 
 	c.log.Info().

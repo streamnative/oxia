@@ -21,11 +21,13 @@ import (
 
 func TestClusterStatus_Clone(t *testing.T) {
 	cs1 := &ClusterStatus{
-		ReplicationFactor: 3,
+
 		Shards: map[uint32]ShardMetadata{
 			0: {
-				Status: ShardStatusSteadyState,
-				Term:   1,
+				Status:            ShardStatusSteadyState,
+				Namespace:         "test-ns",
+				ReplicationFactor: 3,
+				Term:              1,
 				Leader: &ServerAddress{
 					Public:   "l1",
 					Internal: "l1",

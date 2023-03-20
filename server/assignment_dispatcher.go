@@ -229,7 +229,7 @@ func NewStandaloneShardAssignmentDispatcher(numShards uint32) ShardAssignmentsDi
 	assignmentDispatcher.standalone = true
 	res := &proto.ShardAssignments{
 		ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
-		Assignments:    generateShards(numShards),
+		Assignments:    generateStandaloneShards(numShards),
 	}
 
 	err := assignmentDispatcher.updateShardAssignment(res)
@@ -239,8 +239,8 @@ func NewStandaloneShardAssignmentDispatcher(numShards uint32) ShardAssignmentsDi
 	return assignmentDispatcher
 }
 
-func generateShards(numShards uint32) []*proto.ShardAssignment {
-	shards := common.GenerateShards(numShards)
+func generateStandaloneShards(numShards uint32) []*proto.ShardAssignment {
+	shards := common.GenerateShards(nil, 0, common.DefaultNamespace, numShards, 1)
 	assignments := make([]*proto.ShardAssignment, numShards)
 	for i, shard := range shards {
 		assignments[i] = &proto.ShardAssignment{

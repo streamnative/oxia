@@ -55,16 +55,21 @@ func TestCoordinatorE2E(t *testing.T) {
 
 	metadataProvider := NewMetadataProviderMemory()
 	clusterConfig := model.ClusterConfig{
-		ReplicationFactor: 3,
-		InitialShardCount: 1,
-		Servers:           []model.ServerAddress{sa1, sa2, sa3},
+		Namespaces: map[string]model.NamespaceConfig{
+			common.DefaultNamespace: {
+				ReplicationFactor: 3,
+				InitialShardCount: 1,
+			},
+		},
+		Servers: []model.ServerAddress{sa1, sa2, sa3},
 	}
 	clientPool := common.NewClientPool()
 
 	coordinator, err := NewCoordinator(metadataProvider, clusterConfig, NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, 3, coordinator.ClusterStatus().ReplicationFactor)
+	assert.EqualValues(t, 1, len(coordinator.ClusterStatus().Shards))
+	assert.EqualValues(t, 3, coordinator.ClusterStatus().Shards[0].ReplicationFactor)
 	assert.EqualValues(t, 1, len(coordinator.ClusterStatus().Shards))
 
 	assert.Eventually(t, func() bool {
@@ -87,9 +92,13 @@ func TestCoordinatorE2E_ShardsRanges(t *testing.T) {
 
 	metadataProvider := NewMetadataProviderMemory()
 	clusterConfig := model.ClusterConfig{
-		ReplicationFactor: 3,
-		InitialShardCount: 4,
-		Servers:           []model.ServerAddress{sa1, sa2, sa3},
+		Namespaces: map[string]model.NamespaceConfig{
+			common.DefaultNamespace: {
+				ReplicationFactor: 3,
+				InitialShardCount: 4,
+			},
+		},
+		Servers: []model.ServerAddress{sa1, sa2, sa3},
 	}
 	clientPool := common.NewClientPool()
 
@@ -97,8 +106,10 @@ func TestCoordinatorE2E_ShardsRanges(t *testing.T) {
 	assert.NoError(t, err)
 
 	cs := coordinator.ClusterStatus()
-	assert.EqualValues(t, 3, cs.ReplicationFactor)
 	assert.EqualValues(t, 4, len(cs.Shards))
+	for _, s := range cs.Shards {
+		assert.EqualValues(t, 3, s.ReplicationFactor)
+	}
 
 	// Check that the entire hash range is covered
 	assert.EqualValues(t, 0, cs.Shards[0].Int32HashRange.Min)
@@ -135,17 +146,23 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 
 	metadataProvider := NewMetadataProviderMemory()
 	clusterConfig := model.ClusterConfig{
-		ReplicationFactor: 3,
-		InitialShardCount: 1,
-		Servers:           []model.ServerAddress{sa1, sa2, sa3},
+		Namespaces: map[string]model.NamespaceConfig{
+			common.DefaultNamespace: {
+				ReplicationFactor: 3,
+				InitialShardCount: 1,
+			},
+		},
+		Servers: []model.ServerAddress{sa1, sa2, sa3},
 	}
 	clientPool := common.NewClientPool()
 
 	coordinator, err := NewCoordinator(metadataProvider, clusterConfig, NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, 3, coordinator.ClusterStatus().ReplicationFactor)
 	assert.EqualValues(t, 1, len(coordinator.ClusterStatus().Shards))
+	for _, s := range coordinator.ClusterStatus().Shards {
+		assert.EqualValues(t, 3, s.ReplicationFactor)
+	}
 
 	assert.Eventually(t, func() bool {
 		shard := coordinator.ClusterStatus().Shards[0]

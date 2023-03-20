@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v3"
 	"os"
+	"oxia/common"
 	"oxia/coordinator"
 	"oxia/coordinator/model"
 	"strings"
@@ -28,8 +29,12 @@ import (
 
 func TestCmd(t *testing.T) {
 	clusterConfig := model.ClusterConfig{
-		ReplicationFactor: 1,
-		InitialShardCount: 2,
+		Namespaces: map[string]model.NamespaceConfig{
+			common.DefaultNamespace: {
+				ReplicationFactor: 1,
+				InitialShardCount: 2,
+			},
+		},
 		Servers: []model.ServerAddress{{
 			Public:   "public:1234",
 			Internal: "internal:5678",
@@ -59,8 +64,12 @@ func TestCmd(t *testing.T) {
 			MetricsServiceAddr:   "localhost:8080",
 			MetadataProviderImpl: coordinator.File,
 			ClusterConfig: model.ClusterConfig{
-				ReplicationFactor: 1,
-				InitialShardCount: 2,
+				Namespaces: map[string]model.NamespaceConfig{
+					common.DefaultNamespace: {
+						ReplicationFactor: 1,
+						InitialShardCount: 2,
+					},
+				},
 				Servers: []model.ServerAddress{{
 					Public:   "public:1234",
 					Internal: "internal:5678",
@@ -70,8 +79,12 @@ func TestCmd(t *testing.T) {
 			MetricsServiceAddr:   "localhost:8080",
 			MetadataProviderImpl: coordinator.File,
 			ClusterConfig: model.ClusterConfig{
-				ReplicationFactor: 1,
-				InitialShardCount: 2,
+				Namespaces: map[string]model.NamespaceConfig{
+					common.DefaultNamespace: {
+						ReplicationFactor: 1,
+						InitialShardCount: 2,
+					},
+				},
 				Servers: []model.ServerAddress{{
 					Public:   "public:1234",
 					Internal: "internal:5678",
@@ -81,8 +94,12 @@ func TestCmd(t *testing.T) {
 			MetricsServiceAddr:   "localhost:8080",
 			MetadataProviderImpl: coordinator.File,
 			ClusterConfig: model.ClusterConfig{
-				ReplicationFactor: 1,
-				InitialShardCount: 2,
+				Namespaces: map[string]model.NamespaceConfig{
+					common.DefaultNamespace: {
+						ReplicationFactor: 1,
+						InitialShardCount: 2,
+					},
+				},
 				Servers: []model.ServerAddress{{
 					Public:   "public:1234",
 					Internal: "internal:5678",
@@ -92,8 +109,12 @@ func TestCmd(t *testing.T) {
 			MetricsServiceAddr:   "localhost:1234",
 			MetadataProviderImpl: coordinator.File,
 			ClusterConfig: model.ClusterConfig{
-				ReplicationFactor: 1,
-				InitialShardCount: 2,
+				Namespaces: map[string]model.NamespaceConfig{
+					common.DefaultNamespace: {
+						ReplicationFactor: 1,
+						InitialShardCount: 2,
+					},
+				},
 				Servers: []model.ServerAddress{{
 					Public:   "public:1234",
 					Internal: "internal:5678",
@@ -103,8 +124,12 @@ func TestCmd(t *testing.T) {
 			MetricsServiceAddr:   "localhost:8080",
 			MetadataProviderImpl: coordinator.File,
 			ClusterConfig: model.ClusterConfig{
-				ReplicationFactor: 1,
-				InitialShardCount: 2,
+				Namespaces: map[string]model.NamespaceConfig{
+					common.DefaultNamespace: {
+						ReplicationFactor: 1,
+						InitialShardCount: 2,
+					},
+				},
 				Servers: []model.ServerAddress{{
 					Public:   "public:1234",
 					Internal: "internal:5678",

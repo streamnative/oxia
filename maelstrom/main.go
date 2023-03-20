@@ -136,9 +136,13 @@ func main() {
 		_, err := impl.NewCoordinator(
 			impl.NewMetadataProviderFile(filepath.Join(dataDir, "cluster-status.json")),
 			model.ClusterConfig{
-				ReplicationFactor: 3,
-				InitialShardCount: 1,
-				Servers:           servers,
+				Namespaces: map[string]model.NamespaceConfig{
+					common.DefaultNamespace: {
+						ReplicationFactor: 3,
+						InitialShardCount: 1,
+					},
+				},
+				Servers: servers,
 			}, newRpcProvider(dispatcher))
 		if err != nil {
 			log.Fatal().Err(err).Msg("failed to create coordinator")

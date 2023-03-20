@@ -37,8 +37,10 @@ func TestConfigMap(t *testing.T) {
 	}
 	configMap := configMap(cluster)
 
-	assert.Equal(t, `initialShardCount: 1
-replicationFactor: 2
+	assert.Equal(t, `namespaces:
+  default:
+    initialShardCount: 1
+    replicationFactor: 2
 servers:
 - public: oxia-0.oxia.nyns.svc.cluster.local:6648
   internal: oxia-0.oxia:6649
