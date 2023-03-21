@@ -26,7 +26,6 @@ import (
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
-	"oxia/common"
 	"oxia/coordinator/model"
 	"oxia/pkg/apis/oxia/v1alpha1"
 )
@@ -141,6 +140,9 @@ func service(component Component, cluster v1alpha1.OxiaCluster, ports []NamedPor
 }
 
 func configMap(cluster v1alpha1.OxiaCluster) *coreV1.ConfigMap {
+	log.Info().Interface("cluster-spec", cluster).
+		Msg("Applying cluster spec")
+
 	servers := make([]model.ServerAddress, cluster.Spec.Server.Replicas)
 	for i := 0; i < int(cluster.Spec.Server.Replicas); i++ {
 		servers[i] = model.ServerAddress{
@@ -149,14 +151,19 @@ func configMap(cluster v1alpha1.OxiaCluster) *coreV1.ConfigMap {
 		}
 	}
 	config := model.ClusterConfig{
-		Namespaces: map[string]model.NamespaceConfig{
-			common.DefaultNamespace: {
-				InitialShardCount: cluster.Spec.InitialShardCount,
-				ReplicationFactor: cluster.Spec.ReplicationFactor,
-			},
-		},
-		Servers: servers,
+		Namespaces: []model.NamespaceConfig{},
+		Servers:    servers,
 	}
+
+	for _, ns := range cluster.Spec.Namespaces {
+		config.Namespaces = append(config.Namespaces,
+			model.NamespaceConfig{
+				Name:              ns.Name,
+				InitialShardCount: ns.InitialShardCount,
+				ReplicationFactor: ns.ReplicationFactor,
+			})
+	}
+
 	bytes, err := yaml.Marshal(config)
 	if err != nil {
 		log.Fatal().Err(err).Msg("unable to marshal cluster config to yaml")

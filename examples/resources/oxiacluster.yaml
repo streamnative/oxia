@@ -23,8 +23,11 @@ metadata:
     app.kubernetes.io/created-by: oxia-operator
   name: oxiacluster-sample
 spec:
-  initialShardCount: 3
-  replicationFactor: 3
+  namespaces:
+    - name: default
+      initialShardCount: 3
+      replicationFactor: 3
+
   coordinator:
     cpu: 100m
     memory: 128Mi

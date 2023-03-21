@@ -136,12 +136,11 @@ func main() {
 		_, err := impl.NewCoordinator(
 			impl.NewMetadataProviderFile(filepath.Join(dataDir, "cluster-status.json")),
 			model.ClusterConfig{
-				Namespaces: map[string]model.NamespaceConfig{
-					common.DefaultNamespace: {
-						ReplicationFactor: 3,
-						InitialShardCount: 1,
-					},
-				},
+				Namespaces: []model.NamespaceConfig{{
+					Name:              common.DefaultNamespace,
+					ReplicationFactor: 3,
+					InitialShardCount: 1,
+				}},
 				Servers: servers,
 			}, newRpcProvider(dispatcher))
 		if err != nil {

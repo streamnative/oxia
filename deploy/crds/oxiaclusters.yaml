@@ -51,6 +51,30 @@ spec:
             spec:
               description: OxiaClusterSpec defines the desired state of OxiaCluster
               properties:
+                namespaces:
+                  description: The configured namespaces for the oxia cluster
+                  type: array
+                  items:
+                    type: object
+                    xml:
+                      name: 'item'
+                    properties:
+                      name:
+                        description: The namespace name
+                        type: string
+                      initialShardCount:
+                        description: InitialShardCount is the initial number of shards to
+                          bootstrap a new cluster with
+                        format: int32
+                        minimum: 1
+                        type: integer
+                      replicationFactor:
+                        description: ReplicationFactor is the number of copies the cluster
+                          will maintain for each shard. leader + followers
+                        format: int32
+                        maximum: 15
+                        minimum: 1
+                        type: integer
                 coordinator:
                   description: Coordinator contains configuration specific to the coordinator
                     component
@@ -125,15 +149,6 @@ spec:
                   x-kubernetes-validations:
                     - message: Image is immutable
                       rule: self == oldSelf
-                initialShardCount:
-                  description: InitialShardCount is the initial number of shards to
-                    bootstrap a new cluster with
-                  format: int32
-                  minimum: 1
-                  type: integer
-                  x-kubernetes-validations:
-                    - message: InitialShardCount is immutable
-                      rule: self == oldSelf
                 monitoringEnabled:
                   description: MonitoringEnabled determines whether a Prometheus ServiceMonitor
                     should be created
@@ -147,16 +162,6 @@ spec:
                   type: boolean
                   x-kubernetes-validations:
                     - message: PprofEnabled is immutable
-                      rule: self == oldSelf
-                replicationFactor:
-                  description: ReplicationFactor is the number of copies the cluster
-                    will maintain for each shard. leader + followers
-                  format: int32
-                  maximum: 15
-                  minimum: 1
-                  type: integer
-                  x-kubernetes-validations:
-                    - message: ReplicationFactor is immutable
                       rule: self == oldSelf
                 server:
                   description: Server contains configuration specific to the server
@@ -223,11 +228,10 @@ spec:
               required:
                 - coordinator
                 - image
-                - initialShardCount
                 - monitoringEnabled
                 - pprofEnabled
-                - replicationFactor
                 - server
+                - namespaces
               type: object
             status:
               description: OxiaClusterStatus defines the observed state of OxiaCluster

@@ -25,6 +25,7 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	fakeKubernetes "k8s.io/client-go/kubernetes/fake"
+	"oxia/common"
 	"oxia/pkg/apis/oxia/v1alpha1"
 	"testing"
 )
@@ -40,8 +41,11 @@ func TestCluster(t *testing.T) {
 			Name:      "oxia",
 		},
 		Spec: v1alpha1.OxiaClusterSpec{
-			InitialShardCount: 1,
-			ReplicationFactor: 2,
+			Namespaces: []v1alpha1.NamespaceConfig{{
+				Name:              common.DefaultNamespace,
+				InitialShardCount: 1,
+				ReplicationFactor: 2,
+			}},
 			Coordinator: v1alpha1.Coordinator{
 				Cpu:    k8sResource.MustParse("100m"),
 				Memory: k8sResource.MustParse("128Mi"),
