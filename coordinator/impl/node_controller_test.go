@@ -18,6 +18,7 @@ import (
 	"errors"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"oxia/common"
 	"oxia/coordinator/model"
 	"oxia/proto"
 	"testing"
@@ -75,14 +76,18 @@ func TestNodeController_ShardsAssignments(t *testing.T) {
 	node := rpc.GetNode(addr)
 
 	resp := &proto.ShardAssignments{
-		Assignments: []*proto.ShardAssignment{{
-			ShardId: 0,
-			Leader:  "leader-0",
-		}, {
-			ShardId: 1,
-			Leader:  "leader-1",
-		}},
-		ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
+		Namespaces: map[string]*proto.NamespaceShardsAssignment{
+			common.DefaultNamespace: {
+				Assignments: []*proto.ShardAssignment{{
+					ShardId: 0,
+					Leader:  "leader-0",
+				}, {
+					ShardId: 1,
+					Leader:  "leader-1",
+				}},
+				ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
+			},
+		},
 	}
 
 	sap.set(resp)
@@ -94,14 +99,18 @@ func TestNodeController_ShardsAssignments(t *testing.T) {
 	node.shardAssignmentsStream.SetError(errors.New("failed to send"))
 
 	resp2 := &proto.ShardAssignments{
-		Assignments: []*proto.ShardAssignment{{
-			ShardId: 0,
-			Leader:  "leader-1",
-		}, {
-			ShardId: 1,
-			Leader:  "leader-2",
-		}},
-		ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
+		Namespaces: map[string]*proto.NamespaceShardsAssignment{
+			common.DefaultNamespace: {
+				Assignments: []*proto.ShardAssignment{{
+					ShardId: 0,
+					Leader:  "leader-1",
+				}, {
+					ShardId: 1,
+					Leader:  "leader-2",
+				}},
+				ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
+			},
+		},
 	}
 
 	sap.set(resp2)

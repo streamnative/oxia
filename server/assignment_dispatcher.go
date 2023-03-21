@@ -41,7 +41,7 @@ type ShardAssignmentsDispatcher interface {
 	io.Closer
 	Initialized() bool
 	PushShardAssignments(stream proto.OxiaCoordination_PushShardAssignmentsServer) error
-	RegisterForUpdates(client Client) error
+	RegisterForUpdates(req *proto.ShardAssignmentsRequest, client Client) error
 }
 
 type shardAssignmentDispatcher struct {
@@ -59,13 +59,24 @@ type shardAssignmentDispatcher struct {
 	activeClientsGauge metrics.Gauge
 }
 
-func (s *shardAssignmentDispatcher) RegisterForUpdates(clientStream Client) error {
+func (s *shardAssignmentDispatcher) RegisterForUpdates(req *proto.ShardAssignmentsRequest, clientStream Client) error {
 	s.Lock()
-	initialAssignments := s.assignments
-	if initialAssignments == nil {
+
+	if s.assignments == nil {
 		s.Unlock()
 		return common.ErrorNotInitialized
 	}
+
+	namespace := req.Namespace
+	if namespace == "" {
+		namespace = common.DefaultNamespace
+	}
+
+	if _, ok := s.assignments.Namespaces[namespace]; !ok {
+		return common.ErrorNamespaceNotFound
+	}
+
+	initialAssignments := filterByNamespace(s.assignments, namespace)
 
 	clientCh := make(chan *proto.ShardAssignments)
 	clientId := s.nextClientId
@@ -95,6 +106,7 @@ func (s *shardAssignmentDispatcher) RegisterForUpdates(clientStream Client) erro
 				return common.ErrorCancelled
 			}
 
+			assignments = filterByNamespace(assignments, namespace)
 			err := clientStream.Send(assignmentsInterceptorFunc(assignments))
 			if err != nil {
 				if status.Code(err) != codes.Canceled {
@@ -123,6 +135,20 @@ func (s *shardAssignmentDispatcher) RegisterForUpdates(clientStream Client) erro
 	}
 }
 
+func filterByNamespace(assignments *proto.ShardAssignments, namespace string) *proto.ShardAssignments {
+	filtered := &proto.ShardAssignments{
+		Namespaces: map[string]*proto.NamespaceShardsAssignment{},
+	}
+
+	for ns, nsa := range assignments.Namespaces {
+		if ns == namespace {
+			filtered.Namespaces[ns] = nsa
+		}
+	}
+
+	return filtered
+}
+
 func (s *shardAssignmentDispatcher) assignmentsInterceptorFunc(clientStream Client) (func(assignments *proto.ShardAssignments) *proto.ShardAssignments, error) {
 	if s.standalone {
 		authority, err := authority(clientStream.Context())
@@ -131,8 +157,10 @@ func (s *shardAssignmentDispatcher) assignmentsInterceptorFunc(clientStream Clie
 		}
 		return func(assignments *proto.ShardAssignments) *proto.ShardAssignments {
 			assignments = pb.Clone(assignments).(*proto.ShardAssignments)
-			for _, assignment := range assignments.Assignments {
-				assignment.Leader = authority
+			for _, nsa := range assignments.Namespaces {
+				for _, assignment := range nsa.Assignments {
+					assignment.Leader = authority
+				}
 			}
 			return assignments
 		}, nil
@@ -228,8 +256,12 @@ func NewStandaloneShardAssignmentDispatcher(numShards uint32) ShardAssignmentsDi
 	assignmentDispatcher := NewShardAssignmentDispatcher().(*shardAssignmentDispatcher)
 	assignmentDispatcher.standalone = true
 	res := &proto.ShardAssignments{
-		ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
-		Assignments:    generateStandaloneShards(numShards),
+		Namespaces: map[string]*proto.NamespaceShardsAssignment{
+			common.DefaultNamespace: {
+				ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
+				Assignments:    generateStandaloneShards(numShards),
+			},
+		},
 	}
 
 	err := assignmentDispatcher.updateShardAssignment(res)
@@ -240,7 +272,7 @@ func NewStandaloneShardAssignmentDispatcher(numShards uint32) ShardAssignmentsDi
 }
 
 func generateStandaloneShards(numShards uint32) []*proto.ShardAssignment {
-	shards := common.GenerateShards(nil, 0, common.DefaultNamespace, numShards, 1)
+	shards := common.GenerateShards(0, numShards)
 	assignments := make([]*proto.ShardAssignment, numShards)
 	for i, shard := range shards {
 		assignments[i] = &proto.ShardAssignment{

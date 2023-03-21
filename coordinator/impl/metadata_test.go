@@ -53,13 +53,13 @@ func TestMetadataProvider(t *testing.T) {
 			assert.Nil(t, res)
 
 			newVersion, err := m.Store(&model.ClusterStatus{
-				Shards: make(map[uint32]model.ShardMetadata),
+				Namespaces: map[string]model.NamespaceStatus{},
 			}, "")
 			assert.ErrorIs(t, err, ErrorMetadataBadVersion)
 			assert.Equal(t, MetadataNotExists, newVersion)
 
 			newVersion, err = m.Store(&model.ClusterStatus{
-				Shards: make(map[uint32]model.ShardMetadata),
+				Namespaces: map[string]model.NamespaceStatus{},
 			}, MetadataNotExists)
 			assert.NoError(t, err)
 			assert.EqualValues(t, Version("0"), newVersion)
@@ -68,7 +68,7 @@ func TestMetadataProvider(t *testing.T) {
 			assert.NoError(t, err)
 			assert.EqualValues(t, Version("0"), version)
 			assert.Equal(t, &model.ClusterStatus{
-				Shards: make(map[uint32]model.ShardMetadata),
+				Namespaces: map[string]model.NamespaceStatus{},
 			}, res)
 
 			assert.NoError(t, m.Close())

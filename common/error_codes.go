@@ -30,6 +30,7 @@ const (
 	CodeNodeIsNotFollower      codes.Code = 107
 	CodeInvalidSession         codes.Code = 108
 	CodeInvalidSessionTimeout  codes.Code = 109
+	CodeNamespaceNotFound      codes.Code = 110
 )
 
 var (
@@ -43,4 +44,5 @@ var (
 	ErrorNodeIsNotFollower      = status.Error(CodeNodeIsNotFollower, "oxia: node is not follower for shard")
 	ErrorInvalidSession         = status.Error(CodeInvalidSession, "oxia: session not found")
 	ErrorInvalidSessionTimeout  = status.Error(CodeInvalidSessionTimeout, "oxia: invalid session timeout")
+	ErrorNamespaceNotFound      = status.Error(CodeNamespaceNotFound, "oxia: namespace not found")
 )

@@ -103,6 +103,13 @@ message ShardAssignmentsRequest {
  * The response to a shard assignments request.
  */
 message ShardAssignments {
+  map<string, NamespaceShardsAssignment> namespaces = 1;
+}
+
+/**
+ * The shards assignments for a given namespace
+ */
+message NamespaceShardsAssignment {
   // All assignments in the response stream will contain all the
   // assignments to bring the client up to date. For example, if a shard is
   // split, the stream will return a single response containing all the new

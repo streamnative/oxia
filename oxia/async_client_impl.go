@@ -61,7 +61,8 @@ func NewAsyncClient(serviceAddress string, opts ...ClientOption) (AsyncClient, e
 		return nil, err
 	}
 
-	shardManager, err := internal.NewShardManager(internal.NewShardStrategy(), clientPool, serviceAddress, options.requestTimeout)
+	shardManager, err := internal.NewShardManager(internal.NewShardStrategy(), clientPool, serviceAddress,
+		options.namespace, options.requestTimeout)
 	if err != nil {
 		return nil, err
 	}

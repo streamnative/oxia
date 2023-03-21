@@ -29,6 +29,10 @@ import (
 	"time"
 )
 
+var (
+	ErrorNamespaceNotFound = errors.New("namespace not found")
+)
+
 type ShardAssignmentsProvider interface {
 	WaitForNextUpdate(ctx context.Context, currentValue *proto.ShardAssignments) (*proto.ShardAssignments, error)
 }
@@ -42,8 +46,8 @@ type Coordinator interface {
 
 	ShardAssignmentsProvider
 
-	InitiateLeaderElection(shard uint32, metadata model.ShardMetadata) error
-	ElectedLeader(shard uint32, metadata model.ShardMetadata) error
+	InitiateLeaderElection(namespace string, shard uint32, metadata model.ShardMetadata) error
+	ElectedLeader(namespace string, shard uint32, metadata model.ShardMetadata) error
 
 	NodeAvailabilityListener
 
@@ -107,8 +111,10 @@ func NewCoordinator(metadataProvider MetadataProvider, clusterConfig model.Clust
 		}
 	}
 
-	for shard, shardMetadata := range c.clusterStatus.Shards {
-		c.shardControllers[shard] = NewShardController(shard, shardMetadata, c.rpc, c)
+	for ns, shards := range c.clusterStatus.Namespaces {
+		for shard, shardMetadata := range shards.Shards {
+			c.shardControllers[shard] = NewShardController(ns, shard, shardMetadata, c.rpc, c)
+		}
 	}
 
 	return c, nil
@@ -147,35 +153,35 @@ func (c *coordinator) initialAssignment() error {
 
 	cc := c.ClusterConfig
 	cs := &model.ClusterStatus{
-		Shards: make(map[uint32]model.ShardMetadata),
+		Namespaces: map[string]model.NamespaceStatus{},
 	}
 
 	baseShardId := uint32(0)
-	shards := make([]common.Shard, 0)
-	for _, nc := range cc.Namespaces {
-		shards = common.GenerateShards(shards, baseShardId, nc.Name, nc.InitialShardCount, nc.ReplicationFactor)
-		baseShardId += nc.InitialShardCount
-	}
-
 	// Do round-robin assignment of shards to storage servers
 	serverIdx := uint32(0)
 
-	for i, shard := range shards {
-		shardMetadata := model.ShardMetadata{
-			Namespace:         shard.Namespace,
-			ReplicationFactor: shard.ReplicationFactor,
-			Status:            model.ShardStatusUnknown,
-			Term:              -1,
-			Leader:            nil,
-			Ensemble:          getServers(cc.Servers, serverIdx, shard.ReplicationFactor),
-			Int32HashRange: model.Int32HashRange{
-				Min: shard.Min,
-				Max: shard.Max,
-			},
-		}
+	for _, nc := range cc.Namespaces {
+		ns := model.NamespaceStatus{Shards: map[uint32]model.ShardMetadata{}}
 
-		cs.Shards[uint32(i)] = shardMetadata
-		serverIdx += shard.ReplicationFactor
+		for i, shard := range common.GenerateShards(baseShardId, nc.InitialShardCount) {
+			shardMetadata := model.ShardMetadata{
+				Status:   model.ShardStatusUnknown,
+				Term:     -1,
+				Leader:   nil,
+				Ensemble: getServers(cc.Servers, serverIdx, nc.ReplicationFactor),
+				Int32HashRange: model.Int32HashRange{
+					Min: shard.Min,
+					Max: shard.Max,
+				},
+			}
+
+			ns.ReplicationFactor = nc.ReplicationFactor
+			ns.Shards[uint32(i)] = shardMetadata
+			serverIdx += nc.ReplicationFactor
+		}
+		cs.Namespaces[nc.Name] = ns
+
+		baseShardId += nc.InitialShardCount
 	}
 
 	c.log.Info().
@@ -237,12 +243,17 @@ func (c *coordinator) WaitForNextUpdate(ctx context.Context, currentValue *proto
 	return c.assignments, nil
 }
 
-func (c *coordinator) InitiateLeaderElection(shard uint32, metadata model.ShardMetadata) error {
+func (c *coordinator) InitiateLeaderElection(namespace string, shard uint32, metadata model.ShardMetadata) error {
 	c.Lock()
 	defer c.Unlock()
 
 	cs := c.clusterStatus.Clone()
-	cs.Shards[shard] = metadata
+	ns, ok := cs.Namespaces[namespace]
+	if !ok {
+		return ErrorNamespaceNotFound
+	}
+
+	ns.Shards[shard] = metadata
 
 	newMetadataVersion, err := c.MetadataProvider.Store(cs, c.metadataVersion)
 	if err != nil {
@@ -253,12 +264,17 @@ func (c *coordinator) InitiateLeaderElection(shard uint32, metadata model.ShardM
 	return nil
 }
 
-func (c *coordinator) ElectedLeader(shard uint32, metadata model.ShardMetadata) error {
+func (c *coordinator) ElectedLeader(namespace string, shard uint32, metadata model.ShardMetadata) error {
 	c.Lock()
 	defer c.Unlock()
 
 	cs := c.clusterStatus.Clone()
-	cs.Shards[shard] = metadata
+	ns, ok := cs.Namespaces[namespace]
+	if !ok {
+		return ErrorNamespaceNotFound
+	}
+
+	ns.Shards[shard] = metadata
 
 	newMetadataVersion, err := c.MetadataProvider.Store(cs, c.metadataVersion)
 	if err != nil {
@@ -275,28 +291,36 @@ func (c *coordinator) ElectedLeader(shard uint32, metadata model.ShardMetadata) 
 // This is called while already holding the lock on the coordinator
 func (c *coordinator) computeNewAssignments() {
 	c.assignments = &proto.ShardAssignments{
-		Assignments:    make([]*proto.ShardAssignment, 0),
-		ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
+		Namespaces: map[string]*proto.NamespaceShardsAssignment{},
 	}
 
-	// Update the leader for the shards
-	for shard, a := range c.clusterStatus.Shards {
-		var leader string
-		if a.Leader != nil {
-			leader = a.Leader.Public
+	// Update the leader for the shards on all the namespaces
+	for name, ns := range c.clusterStatus.Namespaces {
+		nsAssignments := &proto.NamespaceShardsAssignment{
+			Assignments:    make([]*proto.ShardAssignment, 0),
+			ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
 		}
-		c.assignments.Assignments = append(c.assignments.Assignments,
-			&proto.ShardAssignment{
-				ShardId: shard,
-				Leader:  leader,
-				ShardBoundaries: &proto.ShardAssignment_Int32HashRange{
-					Int32HashRange: &proto.Int32HashRange{
-						MinHashInclusive: a.Int32HashRange.Min,
-						MaxHashInclusive: a.Int32HashRange.Max,
+
+		for shard, a := range ns.Shards {
+			var leader string
+			if a.Leader != nil {
+				leader = a.Leader.Public
+			}
+			nsAssignments.Assignments = append(nsAssignments.Assignments,
+				&proto.ShardAssignment{
+					ShardId: shard,
+					Leader:  leader,
+					ShardBoundaries: &proto.ShardAssignment_Int32HashRange{
+						Int32HashRange: &proto.Int32HashRange{
+							MinHashInclusive: a.Int32HashRange.Min,
+							MaxHashInclusive: a.Int32HashRange.Max,
+						},
 					},
 				},
-			},
-		)
+			)
+		}
+
+		c.assignments.Namespaces[name] = nsAssignments
 	}
 
 	c.assignmentsChanged.Broadcast()

@@ -67,12 +67,13 @@ func TestCoordinatorE2E(t *testing.T) {
 	coordinator, err := NewCoordinator(metadataProvider, clusterConfig, NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, 1, len(coordinator.ClusterStatus().Shards))
-	assert.EqualValues(t, 3, coordinator.ClusterStatus().Shards[0].ReplicationFactor)
-	assert.EqualValues(t, 1, len(coordinator.ClusterStatus().Shards))
+	assert.EqualValues(t, 1, len(coordinator.ClusterStatus().Namespaces))
+	nsStatus := coordinator.ClusterStatus().Namespaces[common.DefaultNamespace]
+	assert.EqualValues(t, 1, len(nsStatus.Shards))
+	assert.EqualValues(t, 3, nsStatus.ReplicationFactor)
 
 	assert.Eventually(t, func() bool {
-		shard := coordinator.ClusterStatus().Shards[0]
+		shard := coordinator.ClusterStatus().Namespaces[common.DefaultNamespace].Shards[0]
 		return shard.Status == model.ShardStatusSteadyState
 	}, 10*time.Second, 10*time.Millisecond)
 
@@ -104,25 +105,24 @@ func TestCoordinatorE2E_ShardsRanges(t *testing.T) {
 	assert.NoError(t, err)
 
 	cs := coordinator.ClusterStatus()
-	assert.EqualValues(t, 4, len(cs.Shards))
-	for _, s := range cs.Shards {
-		assert.EqualValues(t, 3, s.ReplicationFactor)
-	}
+	nsStatus := cs.Namespaces[common.DefaultNamespace]
+	assert.EqualValues(t, 4, len(nsStatus.Shards))
+	assert.EqualValues(t, 3, nsStatus.ReplicationFactor)
 
 	// Check that the entire hash range is covered
-	assert.EqualValues(t, 0, cs.Shards[0].Int32HashRange.Min)
+	assert.EqualValues(t, 0, nsStatus.Shards[0].Int32HashRange.Min)
 
 	for i := uint32(1); i < 4; i++ {
 		log.Info().
-			Interface("range", cs.Shards[i].Int32HashRange).
+			Interface("range", nsStatus.Shards[i].Int32HashRange).
 			Uint32("shard", i).
 			Msg("Checking shard")
 
 		// The hash ranges should be exclusive & consecutive
-		assert.Equal(t, cs.Shards[i-1].Int32HashRange.Max+1, cs.Shards[i].Int32HashRange.Min)
+		assert.Equal(t, nsStatus.Shards[i-1].Int32HashRange.Max+1, nsStatus.Shards[i].Int32HashRange.Min)
 	}
 
-	assert.EqualValues(t, math.MaxUint32, cs.Shards[3].Int32HashRange.Max)
+	assert.EqualValues(t, math.MaxUint32, nsStatus.Shards[3].Int32HashRange.Max)
 
 	assert.NoError(t, coordinator.Close())
 	assert.NoError(t, clientPool.Close())
@@ -156,19 +156,19 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 	coordinator, err := NewCoordinator(metadataProvider, clusterConfig, NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, 1, len(coordinator.ClusterStatus().Shards))
-	for _, s := range coordinator.ClusterStatus().Shards {
-		assert.EqualValues(t, 3, s.ReplicationFactor)
-	}
+	nsStatus := coordinator.ClusterStatus().Namespaces[common.DefaultNamespace]
+	assert.EqualValues(t, 1, len(nsStatus.Shards))
+	assert.EqualValues(t, 3, nsStatus.ReplicationFactor)
 
 	assert.Eventually(t, func() bool {
-		shard := coordinator.ClusterStatus().Shards[0]
+		shard := coordinator.ClusterStatus().Namespaces[common.DefaultNamespace].Shards[0]
 		return shard.Status == model.ShardStatusSteadyState
 	}, 10*time.Second, 10*time.Millisecond)
 
 	cs := coordinator.ClusterStatus()
+	nsStatus = cs.Namespaces[common.DefaultNamespace]
 
-	leader := *cs.Shards[0].Leader
+	leader := *nsStatus.Shards[0].Leader
 	var follower model.ServerAddress
 	for server := range servers {
 		if server != leader {
@@ -201,7 +201,7 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 	delete(servers, leader)
 
 	assert.Eventually(t, func() bool {
-		shard := coordinator.ClusterStatus().Shards[0]
+		shard := coordinator.ClusterStatus().Namespaces[common.DefaultNamespace].Shards[0]
 		return shard.Status == model.ShardStatusSteadyState
 	}, 10*time.Second, 10*time.Millisecond)
 

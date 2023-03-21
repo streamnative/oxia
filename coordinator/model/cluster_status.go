@@ -31,17 +31,20 @@ type Int32HashRange struct {
 }
 
 type ShardMetadata struct {
-	Namespace         string          `json:"namespace" yaml:"namespace"`
-	ReplicationFactor uint32          `json:"replicationFactor" yaml:"replicationFactor"`
-	Status            ShardStatus     `json:"status" yaml:"status"`
-	Term              int64           `json:"term" yaml:"term"`
-	Leader            *ServerAddress  `json:"leader" yaml:"leader"`
-	Ensemble          []ServerAddress `json:"ensemble" yaml:"ensemble"`
-	Int32HashRange    Int32HashRange  `json:"int32HashRange" yaml:"int32HashRange"`
+	Status         ShardStatus     `json:"status" yaml:"status"`
+	Term           int64           `json:"term" yaml:"term"`
+	Leader         *ServerAddress  `json:"leader" yaml:"leader"`
+	Ensemble       []ServerAddress `json:"ensemble" yaml:"ensemble"`
+	Int32HashRange Int32HashRange  `json:"int32HashRange" yaml:"int32HashRange"`
+}
+
+type NamespaceStatus struct {
+	ReplicationFactor uint32                   `json:"replicationFactor" yaml:"replicationFactor"`
+	Shards            map[uint32]ShardMetadata `json:"shards" yaml:"shards"`
 }
 
 type ClusterStatus struct {
-	Shards map[uint32]ShardMetadata `json:"shards" yaml:"shards"`
+	Namespaces map[string]NamespaceStatus `json:"namespaces" yaml:"namespaces"`
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -55,13 +58,11 @@ func (sm Int32HashRange) Clone() Int32HashRange {
 
 func (sm ShardMetadata) Clone() ShardMetadata {
 	r := ShardMetadata{
-		ReplicationFactor: sm.ReplicationFactor,
-		Namespace:         sm.Namespace,
-		Status:            sm.Status,
-		Term:              sm.Term,
-		Leader:            sm.Leader,
-		Ensemble:          make([]ServerAddress, len(sm.Ensemble)),
-		Int32HashRange:    sm.Int32HashRange.Clone(),
+		Status:         sm.Status,
+		Term:           sm.Term,
+		Leader:         sm.Leader,
+		Ensemble:       make([]ServerAddress, len(sm.Ensemble)),
+		Int32HashRange: sm.Int32HashRange.Clone(),
 	}
 
 	copy(r.Ensemble, sm.Ensemble)
@@ -69,13 +70,26 @@ func (sm ShardMetadata) Clone() ShardMetadata {
 	return r
 }
 
-func (c ClusterStatus) Clone() *ClusterStatus {
-	r := &ClusterStatus{
-		Shards: make(map[uint32]ShardMetadata),
+func (n NamespaceStatus) Clone() NamespaceStatus {
+	r := NamespaceStatus{
+		Shards:            make(map[uint32]ShardMetadata),
+		ReplicationFactor: n.ReplicationFactor,
 	}
 
-	for shard, sm := range c.Shards {
+	for shard, sm := range n.Shards {
 		r.Shards[shard] = sm.Clone()
+	}
+
+	return r
+}
+
+func (c ClusterStatus) Clone() *ClusterStatus {
+	r := &ClusterStatus{
+		Namespaces: make(map[string]NamespaceStatus),
+	}
+
+	for name, n := range c.Namespaces {
+		r.Namespaces[name] = n.Clone()
 	}
 
 	return r
