@@ -15,6 +15,7 @@
 package oxia
 
 import (
+	"oxia/common"
 	"time"
 
 	"github.com/google/uuid"
@@ -39,11 +40,13 @@ var (
 	ErrorInvalidOptionRequestTimeout      = errors.New("RequestTimeout must be greater than zero")
 	ErrorInvalidOptionSessionTimeout      = errors.New("SessionTimeout must be greater than zero")
 	ErrorInvalidOptionIdentity            = errors.New("Identity must be non-empty")
+	ErrorInvalidOptionNamespace           = errors.New("Namespace cannot be empty")
 )
 
 // clientOptions contains options for the Oxia client.
 type clientOptions struct {
 	serviceAddress      string
+	namespace           string
 	batchLinger         time.Duration
 	maxRequestsPerBatch int
 	maxBatchSize        int
@@ -72,6 +75,7 @@ type ClientOption interface {
 func newClientOptions(serviceAddress string, opts ...ClientOption) (clientOptions, error) {
 	options := clientOptions{
 		serviceAddress:      serviceAddress,
+		namespace:           common.DefaultNamespace,
 		batchLinger:         DefaultBatchLinger,
 		maxRequestsPerBatch: DefaultMaxRequestsPerBatch,
 		maxBatchSize:        DefaultMaxBatchSize,
@@ -95,6 +99,18 @@ type clientOptionFunc func(clientOptions) (clientOptions, error)
 
 func (f clientOptionFunc) apply(c clientOptions) (clientOptions, error) {
 	return f(c)
+}
+
+// WithNamespace set the Oxia namespace to be used for this client.
+// If not set, the client will be using the `default` namespace
+func WithNamespace(namespace string) ClientOption {
+	return clientOptionFunc(func(options clientOptions) (clientOptions, error) {
+		if namespace == "" {
+			return options, ErrorInvalidOptionNamespace
+		}
+		options.namespace = namespace
+		return options, nil
+	})
 }
 
 // WithBatchLinger defines how long the batcher will wait before sending a batched request. The value must be greater

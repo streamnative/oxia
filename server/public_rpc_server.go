@@ -61,11 +61,11 @@ func newPublicRpcServer(provider container.GrpcProvider, bindAddress string, sha
 	return server, nil
 }
 
-func (s *publicRpcServer) GetShardAssignments(_ *proto.ShardAssignmentsRequest, srv proto.OxiaClient_GetShardAssignmentsServer) error {
+func (s *publicRpcServer) GetShardAssignments(req *proto.ShardAssignmentsRequest, srv proto.OxiaClient_GetShardAssignmentsServer) error {
 	s.log.Debug().
 		Str("peer", common.GetPeer(srv.Context())).
 		Msg("Shard assignments requests")
-	err := s.assignmentDispatcher.RegisterForUpdates(srv)
+	err := s.assignmentDispatcher.RegisterForUpdates(req, srv)
 	if err != nil {
 		s.log.Warn().Err(err).
 			Str("peer", common.GetPeer(srv.Context())).

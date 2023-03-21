@@ -54,6 +54,7 @@ type ShardController interface {
 type shardController struct {
 	sync.Mutex
 
+	namespace     string
 	shard         uint32
 	shardMetadata model.ShardMetadata
 	rpc           RpcProvider
@@ -73,15 +74,17 @@ type shardController struct {
 	termGauge             metrics.Gauge
 }
 
-func NewShardController(shard uint32, shardMetadata model.ShardMetadata, rpc RpcProvider, coordinator Coordinator) ShardController {
+func NewShardController(namespace string, shard uint32, shardMetadata model.ShardMetadata, rpc RpcProvider, coordinator Coordinator) ShardController {
 	labels := metrics.LabelsForShard(shard)
 	s := &shardController{
+		namespace:     namespace,
 		shard:         shard,
 		shardMetadata: shardMetadata,
 		rpc:           rpc,
 		coordinator:   coordinator,
 		log: log.With().
 			Str("component", "shard-controller").
+			Str("namespace", namespace).
 			Uint32("shard", shard).
 			Logger(),
 
@@ -199,7 +202,7 @@ func (s *shardController) electLeader() error {
 		Int64("term", s.shardMetadata.Term).
 		Msg("Starting leader election")
 
-	if err := s.coordinator.InitiateLeaderElection(s.shard, s.shardMetadata); err != nil {
+	if err := s.coordinator.InitiateLeaderElection(s.namespace, s.shard, s.shardMetadata); err != nil {
 		return err
 	}
 
@@ -237,7 +240,7 @@ func (s *shardController) electLeader() error {
 	metadata.Status = model.ShardStatusSteadyState
 	metadata.Leader = &newLeader
 
-	if err = s.coordinator.ElectedLeader(s.shard, metadata); err != nil {
+	if err = s.coordinator.ElectedLeader(s.namespace, s.shard, metadata); err != nil {
 		return err
 	}
 

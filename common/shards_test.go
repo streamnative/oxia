@@ -22,10 +22,8 @@ import (
 
 func TestGenerateShards(t *testing.T) {
 	type args struct {
-		baseId            uint32
-		namespace         string
-		numShards         uint32
-		replicationFactor uint32
+		baseId    uint32
+		numShards uint32
 	}
 	tests := []struct {
 		name string
@@ -33,48 +31,42 @@ func TestGenerateShards(t *testing.T) {
 		want []Shard
 	}{
 		{"1-shard",
-			args{0, DefaultNamespace, 1, 1},
+			args{0, 1},
 			[]Shard{
-				{DefaultNamespace, 0, 1, 0, math.MaxUint32},
+				{0, 0, math.MaxUint32},
 			}},
 		{"2-shards",
-			args{0, DefaultNamespace, 2, 1},
+			args{0, 2},
 			[]Shard{
-				{DefaultNamespace, 0, 1, 0, 2147483647},
-				{DefaultNamespace, 1, 1, 2147483648, math.MaxUint32},
+				{0, 0, 2147483647},
+				{1, 2147483648, math.MaxUint32},
 			}},
 		{"3-shards",
-			args{0, DefaultNamespace, 3, 1},
+			args{0, 3},
 			[]Shard{
-				{DefaultNamespace, 0, 1, 0, 1431655765},
-				{DefaultNamespace, 1, 1, 1431655766, 2863311531},
-				{DefaultNamespace, 2, 1, 2863311532, math.MaxUint32},
+				{0, 0, 1431655765},
+				{1, 1431655766, 2863311531},
+				{2, 2863311532, math.MaxUint32},
 			}},
 		{"4-shards",
-			args{0, DefaultNamespace, 4, 1},
+			args{0, 4},
 			[]Shard{
-				{DefaultNamespace, 0, 1, 0, 1073741823},
-				{DefaultNamespace, 1, 1, 1073741824, 2147483647},
-				{DefaultNamespace, 2, 1, 2147483648, 3221225471},
-				{DefaultNamespace, 3, 1, 3221225472, math.MaxUint32},
+				{0, 0, 1073741823},
+				{1, 1073741824, 2147483647},
+				{2, 2147483648, 3221225471},
+				{3, 3221225472, math.MaxUint32},
 			}},
 		{"2-shards-different-base-id",
-			args{5, DefaultNamespace, 2, 1},
+			args{5, 2},
 			[]Shard{
-				{DefaultNamespace, 5, 1, 0, 2147483647},
-				{DefaultNamespace, 6, 1, 2147483648, math.MaxUint32},
-			}},
-		{"2-shards-different-namespace",
-			args{5, "my-ns", 2, 3},
-			[]Shard{
-				{"my-ns", 5, 3, 0, 2147483647},
-				{"my-ns", 6, 3, 2147483648, math.MaxUint32},
+				{5, 0, 2147483647},
+				{6, 2147483648, math.MaxUint32},
 			}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equalf(t, tt.want,
-				GenerateShards(nil, tt.args.baseId, tt.args.namespace, tt.args.numShards, tt.args.replicationFactor),
+				GenerateShards(tt.args.baseId, tt.args.numShards),
 				"GenerateShards(%v)", tt.args.numShards)
 		})
 	}

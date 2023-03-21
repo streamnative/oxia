@@ -18,6 +18,7 @@ import (
 	"context"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
+	"oxia/common"
 	"oxia/coordinator/model"
 	"oxia/proto"
 	"sync"
@@ -34,7 +35,7 @@ func TestShardController(t *testing.T) {
 	s2 := model.ServerAddress{Public: "s2:9091", Internal: "s2:8191"}
 	s3 := model.ServerAddress{Public: "s3:9091", Internal: "s3:8191"}
 
-	sc := NewShardController(shard, model.ShardMetadata{
+	sc := NewShardController(common.DefaultNamespace, shard, model.ShardMetadata{
 		Status:   model.ShardStatusUnknown,
 		Term:     1,
 		Leader:   nil,
@@ -108,7 +109,7 @@ func TestShardController_StartingWithLeaderAlreadyPresent(t *testing.T) {
 	s2 := model.ServerAddress{Public: "s2:9091", Internal: "s2:8191"}
 	s3 := model.ServerAddress{Public: "s3:9091", Internal: "s3:8191"}
 
-	sc := NewShardController(shard, model.ShardMetadata{
+	sc := NewShardController(common.DefaultNamespace, shard, model.ShardMetadata{
 		Status:   model.ShardStatusSteadyState,
 		Term:     1,
 		Leader:   &s1,
@@ -139,7 +140,7 @@ func TestShardController_NewTermWithNonRespondingServer(t *testing.T) {
 	s2 := model.ServerAddress{Public: "s2:9091", Internal: "s2:8191"}
 	s3 := model.ServerAddress{Public: "s3:9091", Internal: "s3:8191"}
 
-	sc := NewShardController(shard, model.ShardMetadata{
+	sc := NewShardController(common.DefaultNamespace, shard, model.ShardMetadata{
 		Status:   model.ShardStatusUnknown,
 		Term:     1,
 		Leader:   nil,
@@ -180,7 +181,7 @@ func TestShardController_NewTermFollowerUntilItRecovers(t *testing.T) {
 	s2 := model.ServerAddress{Public: "s2:9091", Internal: "s2:8191"}
 	s3 := model.ServerAddress{Public: "s3:9091", Internal: "s3:8191"}
 
-	sc := NewShardController(shard, model.ShardMetadata{
+	sc := NewShardController(common.DefaultNamespace, shard, model.ShardMetadata{
 		Status:   model.ShardStatusUnknown,
 		Term:     1,
 		Leader:   nil,
@@ -255,7 +256,7 @@ func (m *mockCoordinator) WaitForNextUpdate(ctx context.Context, currentValue *p
 	panic("not implemented")
 }
 
-func (m *mockCoordinator) InitiateLeaderElection(shard uint32, metadata model.ShardMetadata) error {
+func (m *mockCoordinator) InitiateLeaderElection(namespace string, shard uint32, metadata model.ShardMetadata) error {
 	m.Lock()
 	defer m.Unlock()
 	if m.err != nil {
@@ -271,7 +272,7 @@ func (m *mockCoordinator) InitiateLeaderElection(shard uint32, metadata model.Sh
 	return nil
 }
 
-func (m *mockCoordinator) ElectedLeader(shard uint32, metadata model.ShardMetadata) error {
+func (m *mockCoordinator) ElectedLeader(namespace string, shard uint32, metadata model.ShardMetadata) error {
 	m.Lock()
 	defer m.Unlock()
 	if m.err != nil {

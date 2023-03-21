@@ -43,6 +43,7 @@ type shardManagerImpl struct {
 	shardStrategy  ShardStrategy
 	clientPool     common.ClientPool
 	serviceAddress string
+	namespace      string
 	shards         map[uint32]Shard
 	ctx            context.Context
 	cancel         context.CancelFunc
@@ -50,8 +51,10 @@ type shardManagerImpl struct {
 	requestTimeout time.Duration
 }
 
-func NewShardManager(shardStrategy ShardStrategy, clientPool common.ClientPool, serviceAddress string, requestTimeout time.Duration) (ShardManager, error) {
+func NewShardManager(shardStrategy ShardStrategy, clientPool common.ClientPool,
+	serviceAddress string, namespace string, requestTimeout time.Duration) (ShardManager, error) {
 	sm := &shardManagerImpl{
+		namespace:      namespace,
 		shardStrategy:  shardStrategy,
 		clientPool:     clientPool,
 		serviceAddress: serviceAddress,
@@ -159,7 +162,7 @@ func (s *shardManagerImpl) receive(backOff backoff.BackOff) error {
 		return err
 	}
 
-	request := proto.ShardAssignmentsRequest{}
+	request := proto.ShardAssignmentsRequest{Namespace: s.namespace}
 
 	stream, err := rpc.GetShardAssignments(s.ctx, &request)
 	if err != nil {
@@ -170,8 +173,13 @@ func (s *shardManagerImpl) receive(backOff backoff.BackOff) error {
 		if response, err := stream.Recv(); err != nil {
 			return err
 		} else {
-			shards := make([]Shard, len(response.Assignments))
-			for i, assignment := range response.Assignments {
+			assignments, ok := response.Namespaces[s.namespace]
+			if !ok {
+				return errors.New("namespace not found in shards assignments")
+			}
+
+			shards := make([]Shard, len(assignments.Assignments))
+			for i, assignment := range assignments.Assignments {
 				shards[i] = toShard(assignment)
 			}
 			s.update(shards)

@@ -38,7 +38,7 @@ func TestWithStandalone(t *testing.T) {
 
 	clientPool := common.NewClientPool()
 	serviceAddress := fmt.Sprintf("localhost:%d", server.RpcPort())
-	shardManager, err := NewShardManager(&testShardStrategy{}, clientPool, serviceAddress, 30*time.Second)
+	shardManager, err := NewShardManager(&testShardStrategy{}, clientPool, serviceAddress, common.DefaultNamespace, 30*time.Second)
 	assert.NoError(t, err)
 
 	defer func() {

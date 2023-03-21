@@ -19,15 +19,13 @@ import (
 )
 
 type Shard struct {
-	Namespace         string
-	Id                uint32
-	ReplicationFactor uint32
-	Min               uint32
-	Max               uint32
+	Id  uint32
+	Min uint32
+	Max uint32
 }
 
-func GenerateShards(shards []Shard, baseId uint32, namespace string,
-	numShards uint32, replicationFactor uint32) []Shard {
+func GenerateShards(baseId uint32, numShards uint32) []Shard {
+	shards := make([]Shard, 0)
 	bucketSize := (math.MaxUint32 / numShards) + 1
 	for i := uint32(0); i < numShards; i++ {
 		lowerBound := i * bucketSize
@@ -36,11 +34,9 @@ func GenerateShards(shards []Shard, baseId uint32, namespace string,
 			upperBound = math.MaxUint32
 		}
 		shards = append(shards, Shard{
-			Namespace:         namespace,
-			Id:                baseId + i,
-			ReplicationFactor: replicationFactor,
-			Min:               lowerBound,
-			Max:               upperBound,
+			Id:  baseId + i,
+			Min: lowerBound,
+			Max: upperBound,
 		})
 	}
 	return shards

@@ -23,6 +23,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	pb "google.golang.org/protobuf/proto"
 	"os"
+	"oxia/common"
 	"oxia/proto"
 	"sync"
 	"sync/atomic"
@@ -87,7 +88,7 @@ func (d *dispatcher) ReceivedMessage(msgType MsgType, m any, message pb.Message)
 		switch msgType {
 		case MsgTypeShardAssignmentsResponse:
 			r := message.(*proto.ShardAssignments)
-			d.currentLeader = r.Assignments[0].Leader
+			d.currentLeader = r.Namespaces[common.DefaultNamespace].Assignments[0].Leader
 			log.Info().Str("leader", d.currentLeader).
 				Msg("Received notification of new leader")
 

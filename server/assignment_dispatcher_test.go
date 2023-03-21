@@ -28,7 +28,8 @@ func TestUninitializedAssignmentDispatcher(t *testing.T) {
 	dispatcher := NewShardAssignmentDispatcher()
 	mockClient := newMockShardAssignmentClientStream()
 	assert.False(t, dispatcher.Initialized())
-	err := dispatcher.RegisterForUpdates(mockClient)
+	req := &proto.ShardAssignmentsRequest{Namespace: common.DefaultNamespace}
+	err := dispatcher.RegisterForUpdates(req, mockClient)
 	assert.ErrorIs(t, err, common.ErrorNotInitialized)
 	assert.NoError(t, dispatcher.Close())
 }
@@ -43,11 +44,15 @@ func TestShardAssignmentDispatcher_Initialized(t *testing.T) {
 
 	assert.False(t, dispatcher.Initialized())
 	coordinatorStream.AddRequest(&proto.ShardAssignments{
-		Assignments: []*proto.ShardAssignment{
-			newShardAssignment(0, "server1", 0, 100),
-			newShardAssignment(1, "server2", 100, math.MaxUint32),
+		Namespaces: map[string]*proto.NamespaceShardsAssignment{
+			common.DefaultNamespace: {
+				Assignments: []*proto.ShardAssignment{
+					newShardAssignment(0, "server1", 0, 100),
+					newShardAssignment(1, "server2", 100, math.MaxUint32),
+				},
+				ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
+			},
 		},
-		ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
 	})
 	assert.Eventually(t, func() bool {
 		return dispatcher.Initialized()
@@ -58,7 +63,8 @@ func TestShardAssignmentDispatcher_Initialized(t *testing.T) {
 	wg.Add(1)
 
 	go func() {
-		err := dispatcher.RegisterForUpdates(mockClient)
+		req := &proto.ShardAssignmentsRequest{Namespace: common.DefaultNamespace}
+		err := dispatcher.RegisterForUpdates(req, mockClient)
 		assert.NoError(t, err)
 		wg.Done()
 	}()
@@ -84,11 +90,15 @@ func TestShardAssignmentDispatcher_AddClient(t *testing.T) {
 	}()
 
 	request := &proto.ShardAssignments{
-		Assignments: []*proto.ShardAssignment{
-			shard0InitialAssignment,
-			shard1InitialAssignment,
+		Namespaces: map[string]*proto.NamespaceShardsAssignment{
+			common.DefaultNamespace: {
+				Assignments: []*proto.ShardAssignment{
+					shard0InitialAssignment,
+					shard1InitialAssignment,
+				},
+				ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
+			},
 		},
-		ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
 	}
 	coordinatorStream.AddRequest(request)
 	// Wait for the dispatcher to process the initializing request
@@ -102,7 +112,8 @@ func TestShardAssignmentDispatcher_AddClient(t *testing.T) {
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
-		err := dispatcher.RegisterForUpdates(mockClient)
+		req := &proto.ShardAssignmentsRequest{Namespace: common.DefaultNamespace}
+		err := dispatcher.RegisterForUpdates(req, mockClient)
 		assert.NoError(t, err)
 		wg.Done()
 	}()
@@ -111,11 +122,15 @@ func TestShardAssignmentDispatcher_AddClient(t *testing.T) {
 	assert.Equal(t, request, response)
 
 	request = &proto.ShardAssignments{
-		Assignments: []*proto.ShardAssignment{
-			shard0InitialAssignment,
-			shard1UpdatedAssignment,
+		Namespaces: map[string]*proto.NamespaceShardsAssignment{
+			common.DefaultNamespace: {
+				Assignments: []*proto.ShardAssignment{
+					shard0InitialAssignment,
+					shard1UpdatedAssignment,
+				},
+				ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
+			},
 		},
-		ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
 	}
 	coordinatorStream.AddRequest(request)
 
@@ -132,13 +147,126 @@ func TestShardAssignmentDispatcher_AddClient(t *testing.T) {
 	wg2.Add(1)
 
 	go func() {
-		err := dispatcher.RegisterForUpdates(mockClient)
+		req := &proto.ShardAssignmentsRequest{Namespace: common.DefaultNamespace}
+		err := dispatcher.RegisterForUpdates(req, mockClient)
 		assert.NoError(t, err)
 		wg2.Done()
 	}()
 
 	response = mockClient.GetResponse()
 	assert.Equal(t, request, response)
+
+	mockClient.cancel()
+	wg.Wait()
+
+	assert.NoError(t, dispatcher.Close())
+}
+
+func TestShardAssignmentDispatcher_MultipleNamespaces(t *testing.T) {
+	dispatcher := NewShardAssignmentDispatcher()
+
+	coordinatorStream := newMockShardAssignmentControllerStream()
+	go func() {
+		err := dispatcher.PushShardAssignments(coordinatorStream)
+		assert.NoError(t, err)
+	}()
+
+	request := &proto.ShardAssignments{
+		Namespaces: map[string]*proto.NamespaceShardsAssignment{
+			"default": {
+				Assignments: []*proto.ShardAssignment{
+					newShardAssignment(0, "server0", 0, 100),
+					newShardAssignment(1, "server1", 100, math.MaxUint32),
+				},
+				ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
+			},
+			"test-ns-1": {
+				Assignments: []*proto.ShardAssignment{
+					newShardAssignment(2, "server1", 0, 100),
+					newShardAssignment(3, "server2", 100, math.MaxUint32),
+				},
+				ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
+			},
+			"test-ns-2": {
+				Assignments: []*proto.ShardAssignment{
+					newShardAssignment(4, "server3", 0, 100),
+					newShardAssignment(5, "server4", 100, math.MaxUint32),
+				},
+				ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
+			},
+		},
+	}
+	coordinatorStream.AddRequest(request)
+	// Wait for the dispatcher to process the initializing request
+	assert.Eventually(t, func() bool {
+		return dispatcher.Initialized()
+	}, 10*time.Second, 10*time.Millisecond)
+
+	// Should get the whole assignment as they arrived from controller
+	mockClient := newMockShardAssignmentClientStream()
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		req := &proto.ShardAssignmentsRequest{Namespace: "test-ns-1"}
+		err := dispatcher.RegisterForUpdates(req, mockClient)
+		assert.NoError(t, err)
+		wg.Done()
+	}()
+
+	mockClient.cancel()
+	wg.Wait()
+
+	response := mockClient.GetResponse()
+	assert.Equal(t, &proto.ShardAssignments{
+		Namespaces: map[string]*proto.NamespaceShardsAssignment{
+			"test-ns-1": {
+				Assignments: []*proto.ShardAssignment{
+					newShardAssignment(2, "server1", 0, 100),
+					newShardAssignment(3, "server2", 100, math.MaxUint32),
+				},
+				ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
+			},
+		},
+	}, response)
+
+	// If namespace is not passed, it will use "default"
+	mockClient = newMockShardAssignmentClientStream()
+	wg = sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		req := &proto.ShardAssignmentsRequest{Namespace: ""}
+		err := dispatcher.RegisterForUpdates(req, mockClient)
+		assert.NoError(t, err)
+		wg.Done()
+	}()
+
+	mockClient.cancel()
+	wg.Wait()
+
+	response = mockClient.GetResponse()
+	assert.Equal(t, &proto.ShardAssignments{
+		Namespaces: map[string]*proto.NamespaceShardsAssignment{
+			"default": {
+				Assignments: []*proto.ShardAssignment{
+					newShardAssignment(0, "server0", 0, 100),
+					newShardAssignment(1, "server1", 100, math.MaxUint32),
+				},
+				ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
+			},
+		},
+	}, response)
+
+	// If the namespace is not valid, we'll get an error
+	mockClient = newMockShardAssignmentClientStream()
+	wg = sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		req := &proto.ShardAssignmentsRequest{Namespace: "non-valid-namespace"}
+		err := dispatcher.RegisterForUpdates(req, mockClient)
+		assert.ErrorIs(t, err, common.ErrorNamespaceNotFound)
+		wg.Done()
+	}()
 
 	mockClient.cancel()
 	wg.Wait()

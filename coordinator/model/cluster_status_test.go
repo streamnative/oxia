@@ -21,25 +21,27 @@ import (
 
 func TestClusterStatus_Clone(t *testing.T) {
 	cs1 := &ClusterStatus{
-
-		Shards: map[uint32]ShardMetadata{
-			0: {
-				Status:            ShardStatusSteadyState,
-				Namespace:         "test-ns",
+		Namespaces: map[string]NamespaceStatus{
+			"test-ns": {
 				ReplicationFactor: 3,
-				Term:              1,
-				Leader: &ServerAddress{
-					Public:   "l1",
-					Internal: "l1",
+				Shards: map[uint32]ShardMetadata{
+					0: {
+						Status: ShardStatusSteadyState,
+						Term:   1,
+						Leader: &ServerAddress{
+							Public:   "l1",
+							Internal: "l1",
+						},
+						Ensemble: []ServerAddress{{
+							Public:   "f1",
+							Internal: "f1",
+						}, {
+							Public:   "f2",
+							Internal: "f2",
+						}},
+						Int32HashRange: Int32HashRange{},
+					},
 				},
-				Ensemble: []ServerAddress{{
-					Public:   "f1",
-					Internal: "f1",
-				}, {
-					Public:   "f2",
-					Internal: "f2",
-				}},
-				Int32HashRange: Int32HashRange{},
 			},
 		},
 	}
@@ -48,8 +50,10 @@ func TestClusterStatus_Clone(t *testing.T) {
 
 	assert.Equal(t, cs1, cs2)
 	assert.NotSame(t, cs1, cs2)
-	assert.Equal(t, cs1.Shards, cs2.Shards)
-	assert.NotSame(t, cs1.Shards, cs2.Shards)
-	assert.Equal(t, cs1.Shards[0], cs2.Shards[0])
-	assert.NotSame(t, cs1.Shards[0], cs2.Shards[0])
+	assert.Equal(t, cs1.Namespaces, cs2.Namespaces)
+	assert.NotSame(t, cs1.Namespaces, cs2.Namespaces)
+	assert.Equal(t, cs1.Namespaces["test-ns"].Shards, cs2.Namespaces["test-ns"].Shards)
+	assert.NotSame(t, cs1.Namespaces["test-ns"].Shards, cs2.Namespaces["test-ns"].Shards)
+	assert.Equal(t, cs1.Namespaces["test-ns"].Shards[0], cs2.Namespaces["test-ns"].Shards[0])
+	assert.NotSame(t, cs1.Namespaces["test-ns"].Shards[0], cs2.Namespaces["test-ns"].Shards[0])
 }
