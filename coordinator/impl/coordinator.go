@@ -152,8 +152,8 @@ func (c *coordinator) initialAssignment() error {
 
 	baseShardId := uint32(0)
 	shards := make([]common.Shard, 0)
-	for ns, nc := range cc.Namespaces {
-		shards = common.GenerateShards(shards, baseShardId, ns, nc.InitialShardCount, nc.ReplicationFactor)
+	for _, nc := range cc.Namespaces {
+		shards = common.GenerateShards(shards, baseShardId, nc.Name, nc.InitialShardCount, nc.ReplicationFactor)
 		baseShardId += nc.InitialShardCount
 	}
 

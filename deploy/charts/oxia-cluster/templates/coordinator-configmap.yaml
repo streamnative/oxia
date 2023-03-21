@@ -21,7 +21,7 @@ metadata:
 data:
   config.yaml: |
     namespaces:
-      default:
+      - name: default
         initialShardCount: {{ .Values.initialShardCount }}
         replicationFactor: {{ .Values.replicationFactor }}
     servers:

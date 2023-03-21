@@ -34,11 +34,7 @@ type OxiaCluster struct {
 
 // OxiaClusterSpec is the spec for an OxiaCluster resource
 type OxiaClusterSpec struct {
-	// InitialShardCount is the initial number of shard to bootstrap a new cluster with
-	InitialShardCount uint32 `json:"initialShardCount"`
-
-	// ReplicationFactor is the number of copies the cluster will maintain for each shard. leader + followers
-	ReplicationFactor uint32 `json:"replicationFactor"`
+	Namespaces []NamespaceConfig `json:"namespaces"`
 
 	// Coordinator contains configuration specific to the coordinator component
 	Coordinator Coordinator `json:"coordinator"`
@@ -106,4 +102,10 @@ type OxiaClusterList struct {
 	metav1.ListMeta `json:"metadata"`
 
 	Items []OxiaCluster `json:"items"`
+}
+
+type NamespaceConfig struct {
+	Name              string `json:"name" yaml:"name"`
+	InitialShardCount uint32 `json:"initialShardCount" yaml:"initialShardCount"`
+	ReplicationFactor uint32 `json:"replicationFactor" yaml:"replicationFactor"`
 }

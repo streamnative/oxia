@@ -55,12 +55,11 @@ func TestCoordinatorE2E(t *testing.T) {
 
 	metadataProvider := NewMetadataProviderMemory()
 	clusterConfig := model.ClusterConfig{
-		Namespaces: map[string]model.NamespaceConfig{
-			common.DefaultNamespace: {
-				ReplicationFactor: 3,
-				InitialShardCount: 1,
-			},
-		},
+		Namespaces: []model.NamespaceConfig{{
+			Name:              common.DefaultNamespace,
+			ReplicationFactor: 3,
+			InitialShardCount: 1,
+		}},
 		Servers: []model.ServerAddress{sa1, sa2, sa3},
 	}
 	clientPool := common.NewClientPool()
@@ -92,12 +91,11 @@ func TestCoordinatorE2E_ShardsRanges(t *testing.T) {
 
 	metadataProvider := NewMetadataProviderMemory()
 	clusterConfig := model.ClusterConfig{
-		Namespaces: map[string]model.NamespaceConfig{
-			common.DefaultNamespace: {
-				ReplicationFactor: 3,
-				InitialShardCount: 4,
-			},
-		},
+		Namespaces: []model.NamespaceConfig{{
+			Name:              common.DefaultNamespace,
+			ReplicationFactor: 3,
+			InitialShardCount: 4,
+		}},
 		Servers: []model.ServerAddress{sa1, sa2, sa3},
 	}
 	clientPool := common.NewClientPool()
@@ -146,12 +144,11 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 
 	metadataProvider := NewMetadataProviderMemory()
 	clusterConfig := model.ClusterConfig{
-		Namespaces: map[string]model.NamespaceConfig{
-			common.DefaultNamespace: {
-				ReplicationFactor: 3,
-				InitialShardCount: 1,
-			},
-		},
+		Namespaces: []model.NamespaceConfig{{
+			Name:              common.DefaultNamespace,
+			ReplicationFactor: 3,
+			InitialShardCount: 1,
+		}},
 		Servers: []model.ServerAddress{sa1, sa2, sa3},
 	}
 	clientPool := common.NewClientPool()

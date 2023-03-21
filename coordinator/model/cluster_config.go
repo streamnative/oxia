@@ -15,11 +15,12 @@
 package model
 
 type ClusterConfig struct {
-	Namespaces map[string]NamespaceConfig `json:"namespaces" yaml:"namespaces"`
-	Servers    []ServerAddress            `json:"servers" yaml:"servers"`
+	Namespaces []NamespaceConfig `json:"namespaces" yaml:"namespaces"`
+	Servers    []ServerAddress   `json:"servers" yaml:"servers"`
 }
 
 type NamespaceConfig struct {
+	Name              string `json:"name" yaml:"name"`
 	InitialShardCount uint32 `json:"initialShardCount" yaml:"initialShardCount"`
 	ReplicationFactor uint32 `json:"replicationFactor" yaml:"replicationFactor"`
 }
