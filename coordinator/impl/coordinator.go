@@ -163,7 +163,7 @@ func (c *coordinator) initialAssignment() error {
 	for _, nc := range cc.Namespaces {
 		ns := model.NamespaceStatus{Shards: map[uint32]model.ShardMetadata{}}
 
-		for i, shard := range common.GenerateShards(baseShardId, nc.InitialShardCount) {
+		for _, shard := range common.GenerateShards(baseShardId, nc.InitialShardCount) {
 			shardMetadata := model.ShardMetadata{
 				Status:   model.ShardStatusUnknown,
 				Term:     -1,
@@ -176,7 +176,7 @@ func (c *coordinator) initialAssignment() error {
 			}
 
 			ns.ReplicationFactor = nc.ReplicationFactor
-			ns.Shards[uint32(i)] = shardMetadata
+			ns.Shards[shard.Id] = shardMetadata
 			serverIdx += nc.ReplicationFactor
 		}
 		cs.Namespaces[nc.Name] = ns

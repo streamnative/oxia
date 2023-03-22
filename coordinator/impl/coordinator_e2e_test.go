@@ -31,11 +31,12 @@ import (
 func newServer(t *testing.T) (s *server.Server, addr model.ServerAddress) {
 	var err error
 	s, err = server.New(server.Config{
-		PublicServiceAddr:   "localhost:0",
-		InternalServiceAddr: "localhost:0",
-		MetricsServiceAddr:  "", // Disable metrics to avoid conflict
-		DataDir:             t.TempDir(),
-		WalDir:              t.TempDir(),
+		PublicServiceAddr:          "localhost:0",
+		InternalServiceAddr:        "localhost:0",
+		MetricsServiceAddr:         "", // Disable metrics to avoid conflict
+		DataDir:                    t.TempDir(),
+		WalDir:                     t.TempDir(),
+		NotificationsRetentionTime: 1 * time.Minute,
 	})
 
 	assert.NoError(t, err)
@@ -217,6 +218,101 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 	assert.Equal(t, []byte("my-value"), res)
 	assert.Equal(t, version1, version3)
 	assert.NoError(t, client.Close())
+
+	assert.NoError(t, coordinator.Close())
+	assert.NoError(t, clientPool.Close())
+
+	for _, server := range servers {
+		assert.NoError(t, server.Close())
+	}
+}
+
+func TestCoordinator_MultipleNamespaces(t *testing.T) {
+	s1, sa1 := newServer(t)
+	s2, sa2 := newServer(t)
+	s3, sa3 := newServer(t)
+	servers := map[model.ServerAddress]*server.Server{
+		sa1: s1,
+		sa2: s2,
+		sa3: s3,
+	}
+
+	metadataProvider := NewMetadataProviderMemory()
+	clusterConfig := model.ClusterConfig{
+		Namespaces: []model.NamespaceConfig{{
+			Name:              common.DefaultNamespace,
+			ReplicationFactor: 3,
+			InitialShardCount: 1,
+		}, {
+			Name:              "my-ns-1",
+			ReplicationFactor: 1,
+			InitialShardCount: 2,
+		}, {
+			Name:              "my-ns-2",
+			ReplicationFactor: 2,
+			InitialShardCount: 3,
+		}},
+		Servers: []model.ServerAddress{sa1, sa2, sa3},
+	}
+	clientPool := common.NewClientPool()
+
+	coordinator, err := NewCoordinator(metadataProvider, clusterConfig, NewRpcProvider(clientPool))
+	assert.NoError(t, err)
+
+	nsDefaultStatus := coordinator.ClusterStatus().Namespaces[common.DefaultNamespace]
+	assert.EqualValues(t, 1, len(nsDefaultStatus.Shards))
+	assert.EqualValues(t, 3, nsDefaultStatus.ReplicationFactor)
+
+	ns1Status := coordinator.ClusterStatus().Namespaces["my-ns-1"]
+	assert.EqualValues(t, 2, len(ns1Status.Shards))
+	assert.EqualValues(t, 1, ns1Status.ReplicationFactor)
+
+	ns2Status := coordinator.ClusterStatus().Namespaces["my-ns-2"]
+	assert.EqualValues(t, 3, len(ns2Status.Shards))
+	assert.EqualValues(t, 2, ns2Status.ReplicationFactor)
+
+	// Wait for all shards to be ready
+	assert.Eventually(t, func() bool {
+		for _, ns := range coordinator.ClusterStatus().Namespaces {
+			for _, shard := range ns.Shards {
+				if shard.Status != model.ShardStatusSteadyState {
+					return false
+				}
+			}
+		}
+		return true
+	}, 10*time.Second, 10*time.Millisecond)
+
+	log.Logger.Info().Msg("Cluster is ready")
+
+	clientDefault, err := oxia.NewSyncClient(sa1.Public)
+	assert.NoError(t, err)
+	defer clientDefault.Close()
+
+	clientNs1, err := oxia.NewSyncClient(sa1.Public, oxia.WithNamespace("my-ns-1"))
+	assert.NoError(t, err)
+	defer clientNs1.Close()
+
+	ctx := context.Background()
+
+	// Write in default ns
+	version1, err := clientDefault.Put(ctx, "my-key", []byte("my-value"))
+	assert.NoError(t, err)
+	assert.EqualValues(t, 0, version1.ModificationsCount)
+
+	// Key will not be visible in other namespace
+	res, _, err := clientNs1.Get(ctx, "my-key")
+	assert.ErrorIs(t, err, oxia.ErrorKeyNotFound)
+	assert.Nil(t, res)
+
+	version2, err := clientNs1.Put(ctx, "my-key", []byte("my-value-2"))
+	assert.NoError(t, err)
+	assert.EqualValues(t, 0, version2.ModificationsCount)
+
+	res, version3, err := clientDefault.Get(ctx, "my-key")
+	assert.NoError(t, err)
+	assert.EqualValues(t, []byte("my-value"), res)
+	assert.EqualValues(t, 0, version3.ModificationsCount)
 
 	assert.NoError(t, coordinator.Close())
 	assert.NoError(t, clientPool.Close())
