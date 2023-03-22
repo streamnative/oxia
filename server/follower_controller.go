@@ -76,8 +76,9 @@ type FollowerController interface {
 type followerController struct {
 	sync.Mutex
 
-	shardId uint32
-	term    int64
+	namespace string
+	shardId   uint32
+	term      int64
 
 	// The highest commit offset advertised by the leader
 	advertisedCommitOffset atomic.Int64
@@ -105,30 +106,31 @@ type followerController struct {
 	writeLatencyHisto metrics.LatencyHistogram
 }
 
-func NewFollowerController(config Config, shardId uint32, wf wal.WalFactory, kvFactory kv.KVFactory) (FollowerController, error) {
+func NewFollowerController(config Config, namespace string, shardId uint32, wf wal.WalFactory, kvFactory kv.KVFactory) (FollowerController, error) {
 	fc := &followerController{
 		config:        config,
+		namespace:     namespace,
 		shardId:       shardId,
 		kvFactory:     kvFactory,
 		status:        proto.ServingStatus_NOT_MEMBER,
 		closeStreamWg: nil,
 		writeLatencyHisto: metrics.NewLatencyHistogram("oxia_server_follower_write_latency",
-			"Latency for write operations in the follower", metrics.LabelsForShard(shardId)),
+			"Latency for write operations in the follower", metrics.LabelsForShard(namespace, shardId)),
 	}
 	fc.ctx, fc.cancel = context.WithCancel(context.Background())
 	fc.syncCond = common.NewConditionContext(fc)
 	fc.applyEntriesCond = common.NewConditionContext(fc)
 
 	var err error
-	if fc.wal, err = wf.NewWal(shardId); err != nil {
+	if fc.wal, err = wf.NewWal(namespace, shardId); err != nil {
 		return nil, err
 	}
 
 	fc.lastAppendedOffset = fc.wal.LastOffset()
-	fc.walTrimmer = wal.NewTrimmer(shardId, fc.wal, config.WalRetentionTime, wal.DefaultCheckInterval,
+	fc.walTrimmer = wal.NewTrimmer(namespace, shardId, fc.wal, config.WalRetentionTime, wal.DefaultCheckInterval,
 		common.SystemClock, fc)
 
-	if fc.db, err = kv.NewDB(shardId, kvFactory, config.NotificationsRetentionTime, common.SystemClock); err != nil {
+	if fc.db, err = kv.NewDB(namespace, shardId, kvFactory, config.NotificationsRetentionTime, common.SystemClock); err != nil {
 		return nil, err
 	}
 
@@ -163,6 +165,7 @@ func NewFollowerController(config Config, shardId uint32, wf wal.WalFactory, kvF
 func (fc *followerController) setLogger() {
 	fc.log = log.With().
 		Str("component", "follower-controller").
+		Str("namespace", fc.namespace).
 		Uint32("shard", fc.shardId).
 		Int64("term", fc.term).
 		Logger()
@@ -561,7 +564,7 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 		fc.db = nil
 	}
 
-	loader, err := fc.kvFactory.NewSnapshotLoader(fc.shardId)
+	loader, err := fc.kvFactory.NewSnapshotLoader(fc.namespace, fc.shardId)
 	if err != nil {
 		fc.closeStreamNoMutex(err)
 		return
@@ -607,7 +610,7 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 	// We have received all the files for the database
 	loader.Complete()
 
-	newDb, err := kv.NewDB(fc.shardId, fc.kvFactory, fc.config.NotificationsRetentionTime, common.SystemClock)
+	newDb, err := kv.NewDB(fc.namespace, fc.shardId, fc.kvFactory, fc.config.NotificationsRetentionTime, common.SystemClock)
 	if err != nil {
 		fc.closeStreamNoMutex(errors.Wrap(err, "failed to open database after loading snapshot"))
 		return

@@ -42,7 +42,7 @@ var DefaultWalFactoryOptions = &WalFactoryOptions{
 
 type WalFactory interface {
 	io.Closer
-	NewWal(shard uint32) (Wal, error)
+	NewWal(namespace string, shard uint32) (Wal, error)
 }
 
 // WalReader reads the Wal sequentially. It is not synchronized itself.

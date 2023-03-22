@@ -26,7 +26,7 @@ import (
 func TestDBSimple(t *testing.T) {
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := NewDB(1, factory, 0, common.SystemClock)
+	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
 	assert.NoError(t, err)
 
 	req := &proto.WriteRequest{
@@ -166,7 +166,7 @@ func TestDBSimple(t *testing.T) {
 func TestDBSameKeyMutations(t *testing.T) {
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := NewDB(1, factory, 0, common.SystemClock)
+	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
 	assert.NoError(t, err)
 
 	writeReq := &proto.WriteRequest{
@@ -276,7 +276,7 @@ func TestDBSameKeyMutations(t *testing.T) {
 func TestDBList(t *testing.T) {
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := NewDB(1, factory, 0, common.SystemClock)
+	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
 	assert.NoError(t, err)
 
 	writeReq := &proto.WriteRequest{
@@ -349,7 +349,7 @@ func keyIteratorToSlice(it KeyIterator) []string {
 func TestDBDeleteRange(t *testing.T) {
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := NewDB(1, factory, 0, common.SystemClock)
+	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
 	assert.NoError(t, err)
 
 	writeReq := &proto.WriteRequest{
@@ -416,7 +416,7 @@ func TestDB_ReadCommitOffset(t *testing.T) {
 
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := NewDB(1, factory, 0, common.SystemClock)
+	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
 	assert.NoError(t, err)
 
 	commitOffset, err := db.ReadCommitOffset()
@@ -443,7 +443,7 @@ func TestDB_ReadCommitOffset(t *testing.T) {
 func TestDb_UpdateTerm(t *testing.T) {
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := NewDB(1, factory, 0, common.SystemClock)
+	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
 	assert.NoError(t, err)
 
 	term, err := db.ReadTerm()
@@ -460,7 +460,7 @@ func TestDb_UpdateTerm(t *testing.T) {
 	assert.NoError(t, db.Close())
 
 	// Reopen and verify the term is maintained
-	db, err = NewDB(1, factory, 0, common.SystemClock)
+	db, err = NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
 	assert.NoError(t, err)
 
 	term, err = db.ReadTerm()

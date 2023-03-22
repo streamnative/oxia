@@ -59,18 +59,19 @@ type DB interface {
 	Snapshot() (Snapshot, error)
 }
 
-func NewDB(shardId uint32, factory KVFactory, notificationRetentionTime time.Duration, clock common.Clock) (DB, error) {
-	kv, err := factory.NewKV(shardId)
+func NewDB(namespace string, shardId uint32, factory KVFactory, notificationRetentionTime time.Duration, clock common.Clock) (DB, error) {
+	kv, err := factory.NewKV(namespace, shardId)
 	if err != nil {
 		return nil, err
 	}
 
-	labels := metrics.LabelsForShard(shardId)
+	labels := metrics.LabelsForShard(namespace, shardId)
 	db := &db{
 		kv:      kv,
 		shardId: shardId,
 		log: log.Logger.With().
 			Str("component", "db").
+			Str("namespace", namespace).
 			Uint32("shard", shardId).
 			Logger(),
 
@@ -97,7 +98,7 @@ func NewDB(shardId uint32, factory KVFactory, notificationRetentionTime time.Dur
 		return nil, err
 	}
 
-	db.notificationsTracker = newNotificationsTracker(shardId, commitOffset, kv, notificationRetentionTime, clock)
+	db.notificationsTracker = newNotificationsTracker(namespace, shardId, commitOffset, kv, notificationRetentionTime, clock)
 	return db, nil
 }
 

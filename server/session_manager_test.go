@@ -364,7 +364,7 @@ func createSessionManager(t *testing.T) (*sessionManager, *leaderController) {
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
-	lc, err := NewLeaderController(Config{}, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 	_, err = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})
 	assert.NoError(t, err)

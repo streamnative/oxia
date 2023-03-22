@@ -98,12 +98,12 @@ func (p *PebbleFactory) Close() error {
 	return nil
 }
 
-func (p *PebbleFactory) NewKV(shardId uint32) (KV, error) {
-	return newKVPebble(p, shardId)
+func (p *PebbleFactory) NewKV(namespace string, shardId uint32) (KV, error) {
+	return newKVPebble(p, namespace, shardId)
 }
 
-func (p *PebbleFactory) NewSnapshotLoader(shardId uint32) (SnapshotLoader, error) {
-	return newPebbleSnapshotLoader(p, shardId)
+func (p *PebbleFactory) NewSnapshotLoader(namespace string, shardId uint32) (SnapshotLoader, error) {
+	return newPebbleSnapshotLoader(p, namespace, shardId)
 }
 
 func (p *PebbleFactory) getKVPath(shard uint32) string {
@@ -134,8 +134,8 @@ type Pebble struct {
 	batchCountHisto metrics.Histogram
 }
 
-func newKVPebble(factory *PebbleFactory, shardId uint32) (KV, error) {
-	labels := metrics.LabelsForShard(shardId)
+func newKVPebble(factory *PebbleFactory, namespace string, shardId uint32) (KV, error) {
+	labels := metrics.LabelsForShard(namespace, shardId)
 	pb := &Pebble{
 		shardId: shardId,
 		dataDir: factory.dataDir,
@@ -698,18 +698,20 @@ func (ps *pebbleSnapshot) NextChunkContent() ([]byte, error) {
 }
 
 type pebbleSnapshotLoader struct {
-	pf       *PebbleFactory
-	shard    uint32
-	dbPath   string
-	complete bool
-	file     *os.File
+	pf        *PebbleFactory
+	namespace string
+	shard     uint32
+	dbPath    string
+	complete  bool
+	file      *os.File
 }
 
-func newPebbleSnapshotLoader(pf *PebbleFactory, shard uint32) (SnapshotLoader, error) {
+func newPebbleSnapshotLoader(pf *PebbleFactory, namespace string, shard uint32) (SnapshotLoader, error) {
 	sl := &pebbleSnapshotLoader{
-		pf:     pf,
-		shard:  shard,
-		dbPath: pf.getKVPath(shard),
+		pf:        pf,
+		namespace: namespace,
+		shard:     shard,
+		dbPath:    pf.getKVPath(shard),
 	}
 
 	if err := os.RemoveAll(sl.dbPath); err != nil {
@@ -762,7 +764,7 @@ func (sl *pebbleSnapshotLoader) AddChunk(fileName string, chunkIndex int32, chun
 }
 
 func (sl *pebbleSnapshotLoader) Load() (KV, error) {
-	return newKVPebble(sl.pf, sl.shard)
+	return newKVPebble(sl.pf, sl.namespace, sl.shard)
 }
 
 func (sl *pebbleSnapshotLoader) Complete() {

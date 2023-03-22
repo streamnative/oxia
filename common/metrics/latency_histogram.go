@@ -18,6 +18,7 @@ import (
 	"context"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric/instrument"
+	"sync"
 	"time"
 )
 
@@ -31,7 +32,9 @@ type Timer struct {
 }
 
 func (tm Timer) Done() {
-	tm.histo.Record(context.Background(), float64(time.Since(tm.start).Microseconds())/1000.0, tm.histo.attrs...)
+	tm.histo.Lock()
+	defer tm.histo.Unlock()
+	tm.histo.histo.Record(context.Background(), float64(time.Since(tm.start).Microseconds())/1000.0, tm.histo.attrs...)
 }
 
 type LatencyHistogram interface {
@@ -39,7 +42,8 @@ type LatencyHistogram interface {
 }
 
 type latencyHistogram struct {
-	instrument.Float64Histogram
+	sync.Mutex
+	histo instrument.Float64Histogram
 	attrs []attribute.KeyValue
 }
 
@@ -55,5 +59,5 @@ func NewLatencyHistogram(name string, description string, labels map[string]any)
 	)
 	fatalOnErr(err, name)
 
-	return &latencyHistogram{h, getAttrs(labels)}
+	return &latencyHistogram{histo: h, attrs: getAttrs(labels)}
 }

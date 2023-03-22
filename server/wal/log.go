@@ -45,6 +45,7 @@ import (
 	"github.com/spf13/afero"
 	"github.com/tidwall/tinylru"
 	"os"
+	"oxia/common"
 	"oxia/common/metrics"
 	"path/filepath"
 	"strconv"
@@ -103,7 +104,7 @@ type Options struct {
 	InMemory bool
 }
 
-// DefaultOptions for Open().
+// DefaultOptions for open().
 func DefaultOptions() *Options {
 	return &Options{
 		NoSync:           false,    // Fsync after every write
@@ -147,12 +148,12 @@ type bpos struct {
 	end int // one byte past pos
 }
 
-// Open a new write-ahead log
-func Open(path string, opts *Options) (*Log, error) {
-	return OpenWithShard(path, 0, opts)
+func open(path string, opts *Options) (*Log, error) {
+	return OpenWithShard(path, common.DefaultNamespace, 0, opts)
 }
 
-func OpenWithShard(path string, shard uint32, opts *Options) (*Log, error) {
+// OpenWithShard a new write-ahead log
+func OpenWithShard(path string, namespace string, shard uint32, opts *Options) (*Log, error) {
 	defaultOptions := DefaultOptions()
 	if opts == nil {
 		opts = defaultOptions
@@ -184,7 +185,7 @@ func OpenWithShard(path string, shard uint32, opts *Options) (*Log, error) {
 		fs:   fs,
 		syncLatency: metrics.NewLatencyHistogram("oxia_server_wal_sync_latency",
 			"The time it takes to fsync the wal data on disk",
-			metrics.LabelsForShard(shard)),
+			metrics.LabelsForShard(namespace, shard)),
 	}
 	l.scache.Resize(l.opts.SegmentCacheSize)
 	if err := l.fs.MkdirAll(path, l.opts.DirPerms); err != nil {
@@ -259,7 +260,7 @@ func (l *Log) load() error {
 	if (startIdx != -1 && endIdx != -1) || (startIdx != -1 && truncateIdx != -1) || (truncateIdx != -1 && endIdx != -1) {
 		return ErrCorrupt
 	}
-	// Open existing log. Clean up log if START or END segments exists.
+	// open existing log. Clean up log if START or END segments exists.
 	if startIdx != -1 {
 		// Delete all files leading up to START
 		for i := 0; i < startIdx; i++ {
@@ -322,7 +323,7 @@ func (l *Log) load() error {
 		l.segments[0].path = finalPath
 	}
 	l.firstOffset = l.segments[0].offset
-	// Open the last segment for appending
+	// open the last segment for appending
 	lseg := l.segments[len(l.segments)-1]
 	l.sfile, err = l.openFile(lseg.path)
 	if err != nil {
@@ -754,7 +755,7 @@ func (l *Log) truncateFront(index int64) (err error) {
 	// following this message will not cause an on-disk data corruption, but
 	// may cause an inconsistency with the current program, so we'll return
 	// ErrCorrupt so the user can attempt a recovery by calling Close()
-	// followed by Open().
+	// followed by open().
 	defer func() {
 		if v := recover(); v != nil {
 			err = ErrCorrupt
@@ -885,7 +886,7 @@ func (l *Log) truncateBack(index int64) (err error) {
 	// following this message will not cause an on-disk data corruption, but
 	// may cause an inconsistency with the current program, so we'll return
 	// ErrCorrupt so the user can attempt a recover by calling Close()
-	// followed by Open().
+	// followed by open().
 	defer func() {
 		if v := recover(); v != nil {
 			err = ErrCorrupt
@@ -952,7 +953,7 @@ func (l *Log) truncateBackAll(newFirstIndex int64) (err error) {
 	// following this message will not cause an on-disk data corruption, but
 	// may cause an inconsistency with the current program, so we'll return
 	// ErrCorrupt so the user can attempt a recover by calling Close()
-	// followed by Open().
+	// followed by open().
 	defer func() {
 		if v := recover(); v != nil {
 			err = ErrCorrupt

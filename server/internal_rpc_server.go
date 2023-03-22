@@ -114,7 +114,7 @@ func (s *internalRpcServer) NewTerm(c context.Context, req *proto.NewTermRequest
 		return res, err
 	}
 
-	if leader, err := s.shardsDirector.GetOrCreateLeader(req.ShardId); err != nil {
+	if leader, err := s.shardsDirector.GetOrCreateLeader(req.Namespace, req.ShardId); err != nil {
 		log.Warn().Err(err).Msg("NewTerm failed: could not get leader controller")
 		return nil, err
 	} else {
@@ -137,7 +137,7 @@ func (s *internalRpcServer) BecomeLeader(c context.Context, req *proto.BecomeLea
 
 	log.Info().Msg("Received BecomeLeader request")
 
-	if leader, err := s.shardsDirector.GetOrCreateLeader(req.ShardId); err != nil {
+	if leader, err := s.shardsDirector.GetOrCreateLeader(req.Namespace, req.ShardId); err != nil {
 		log.Warn().Err(err).Msg("BecomeLeader failed: could not get leader controller")
 		return nil, err
 	} else {
@@ -177,7 +177,7 @@ func (s *internalRpcServer) Truncate(c context.Context, req *proto.TruncateReque
 
 	log.Info().Msg("Received Truncate request")
 
-	if follower, err := s.shardsDirector.GetOrCreateFollower(req.ShardId); err != nil {
+	if follower, err := s.shardsDirector.GetOrCreateFollower(req.Namespace, req.ShardId); err != nil {
 		log.Warn().Err(err).Msg("Truncate failed: could not get follower controller")
 		return nil, err
 	} else {
@@ -201,6 +201,11 @@ func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServ
 		return err
 	}
 
+	namespace, err := readHeader(md, common.MetadataNamespace)
+	if err != nil {
+		return err
+	}
+
 	log := s.log.With().
 		Uint32("shard", shardId).
 		Str("peer", common.GetPeer(srv.Context())).
@@ -208,7 +213,7 @@ func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServ
 
 	log.Info().Msg("Received Replicate request")
 
-	if follower, err := s.shardsDirector.GetOrCreateFollower(shardId); err != nil {
+	if follower, err := s.shardsDirector.GetOrCreateFollower(namespace, shardId); err != nil {
 		log.Warn().Err(err).Msg("Replicate failed: could not get follower controller")
 		return err
 	} else {
@@ -233,12 +238,17 @@ func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapsh
 		return err
 	}
 
+	namespace, err := readHeader(md, common.MetadataNamespace)
+	if err != nil {
+		return err
+	}
+
 	s.log.Info().
 		Uint32("shard", shardId).
 		Str("peer", common.GetPeer(srv.Context())).
 		Msg("Received SendSnapshot request")
 
-	if follower, err := s.shardsDirector.GetOrCreateFollower(shardId); err != nil {
+	if follower, err := s.shardsDirector.GetOrCreateFollower(namespace, shardId); err != nil {
 		s.log.Warn().Err(err).
 			Uint32("shard", shardId).
 			Str("peer", common.GetPeer(srv.Context())).

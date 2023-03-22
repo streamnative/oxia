@@ -46,7 +46,7 @@ func TestFollower(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
 
-	fc, err := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, fc.Status())
@@ -129,7 +129,7 @@ func TestReadingUpToCommitOffset(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 
-	fc, err := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	_, err = fc.NewTerm(&proto.NewTermRequest{Term: 1})
@@ -201,7 +201,7 @@ func TestFollower_RestoreCommitOffset(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 
-	db, err := kv.NewDB(shardId, kvFactory, 1*time.Hour, common.SystemClock)
+	db, err := kv.NewDB(common.DefaultNamespace, shardId, kvFactory, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
 	_, err = db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
 		Key:   "xx",
@@ -212,7 +212,7 @@ func TestFollower_RestoreCommitOffset(t *testing.T) {
 	assert.NoError(t, db.UpdateTerm(6))
 	assert.NoError(t, db.Close())
 
-	fc, err := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
@@ -233,7 +233,7 @@ func TestFollower_AdvanceCommitOffsetToHead(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 
-	fc, _ := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
+	fc, _ := NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
 	_, _ = fc.NewTerm(&proto.NewTermRequest{Term: 1})
 
 	stream := newMockServerReplicateStream()
@@ -264,7 +264,7 @@ func TestFollower_NewTerm(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 
-	fc, err := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	_, err = fc.NewTerm(&proto.NewTermRequest{Term: 1})
@@ -307,7 +307,7 @@ func TestFollower_TruncateAfterRestart(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 
-	fc, err := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	// Follower needs to be in "Fenced" state to receive a Truncate request
@@ -331,7 +331,7 @@ func TestFollower_TruncateAfterRestart(t *testing.T) {
 	fc.Close()
 
 	// Restart
-	fc, err = NewFollowerController(Config{}, shardId, walFactory, kvFactory)
+	fc, err = NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
@@ -364,7 +364,7 @@ func TestFollower_PersistentTerm(t *testing.T) {
 		LogDir: t.TempDir(),
 	})
 
-	fc, err := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, fc.Status())
@@ -380,7 +380,7 @@ func TestFollower_PersistentTerm(t *testing.T) {
 	assert.NoError(t, fc.Close())
 
 	/// Reopen and verify term
-	fc, err = NewFollowerController(Config{}, shardId, walFactory, kvFactory)
+	fc, err = NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
@@ -396,7 +396,7 @@ func TestFollower_CommitOffsetLastEntry(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 
-	fc, err := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	_, err = fc.NewTerm(&proto.NewTermRequest{Term: 1})
@@ -452,7 +452,7 @@ func TestFollowerController_RejectEntriesWithDifferentTerm(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	db, err := kv.NewDB(shardId, kvFactory, 1*time.Hour, common.SystemClock)
+	db, err := kv.NewDB(common.DefaultNamespace, shardId, kvFactory, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
 	// Force a new term in the DB before opening
 	assert.NoError(t, db.UpdateTerm(5))
@@ -460,7 +460,7 @@ func TestFollowerController_RejectEntriesWithDifferentTerm(t *testing.T) {
 
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 
-	fc, err := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
@@ -493,7 +493,7 @@ func TestFollowerController_RejectEntriesWithDifferentTerm(t *testing.T) {
 	close(stream.requests)
 
 	//// A higher term will also be rejected
-	fc, err = NewFollowerController(Config{}, shardId, walFactory, kvFactory)
+	fc, err = NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	stream = newMockServerReplicateStream()
@@ -514,7 +514,7 @@ func TestFollower_RejectTruncateInvalidTerm(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
 
-	fc, err := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, fc.Status())
@@ -558,7 +558,7 @@ func prepareTestDb(t *testing.T) kv.Snapshot {
 		DataDir: t.TempDir(),
 	})
 	assert.NoError(t, err)
-	db, err := kv.NewDB(0, kvFactory, 1*time.Hour, common.SystemClock)
+	db, err := kv.NewDB(common.DefaultNamespace, 0, kvFactory, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
 
 	for i := 0; i < 100; i++ {
@@ -587,7 +587,7 @@ func TestFollower_HandleSnapshot(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
 
-	fc, err := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	_, err = fc.NewTerm(&proto.NewTermRequest{Term: 1})
@@ -679,7 +679,7 @@ func TestFollower_DisconnectLeader(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
 
-	fc, _ := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
+	fc, _ := NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
 	_, _ = fc.NewTerm(&proto.NewTermRequest{Term: 1})
 
 	stream := newMockServerReplicateStream()
@@ -714,7 +714,7 @@ func TestFollower_DupEntries(t *testing.T) {
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := wal.NewInMemoryWalFactory()
 
-	fc, _ := NewFollowerController(Config{}, shardId, walFactory, kvFactory)
+	fc, _ := NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
 	_, _ = fc.NewTerm(&proto.NewTermRequest{Term: 1})
 
 	stream := newMockServerReplicateStream()
@@ -755,7 +755,7 @@ func TestFollowerController_Closed(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
 
-	fc, err := NewFollowerController(Config{}, shard, walFactory, kvFactory)
+	fc, err := NewFollowerController(Config{}, common.DefaultNamespace, shard, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, wal.InvalidTerm, fc.Term())

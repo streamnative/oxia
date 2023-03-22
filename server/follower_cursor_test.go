@@ -35,10 +35,10 @@ func TestFollowerCursor(t *testing.T) {
 	ackTracker := NewQuorumAckTracker(3, wal.InvalidOffset, wal.InvalidOffset)
 	kvf, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := kv.NewDB(shard, kvf, 1*time.Hour, common.SystemClock)
+	db, err := kv.NewDB(common.DefaultNamespace, shard, kvf, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
 	wf := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
-	w, err := wf.NewWal(shard)
+	w, err := wf.NewWal(common.DefaultNamespace, shard)
 	assert.NoError(t, err)
 
 	err = w.Append(&proto.LogEntry{
@@ -49,7 +49,7 @@ func TestFollowerCursor(t *testing.T) {
 	assert.NoError(t, err)
 	log.Logger.Info().Msg("Appended entry 0 to the log")
 
-	fc, err := NewFollowerCursor("f1", term, shard, stream, ackTracker, w, db, wal.InvalidOffset)
+	fc, err := NewFollowerCursor("f1", term, common.DefaultNamespace, shard, stream, ackTracker, w, db, wal.InvalidOffset)
 	assert.NoError(t, err)
 
 	assert.Equal(t, shard, fc.ShardId())
@@ -117,10 +117,10 @@ func TestFollowerCursor_SendSnapshot(t *testing.T) {
 	stream := newMockRpcClient()
 	kvf, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{DataDir: t.TempDir()})
 	assert.NoError(t, err)
-	db, err := kv.NewDB(shard, kvf, 1*time.Hour, common.SystemClock)
+	db, err := kv.NewDB(common.DefaultNamespace, shard, kvf, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
 	wf := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
-	w, err := wf.NewWal(shard)
+	w, err := wf.NewWal(common.DefaultNamespace, shard)
 	assert.NoError(t, err)
 
 	// Load some entries into the db & wal
@@ -146,7 +146,7 @@ func TestFollowerCursor_SendSnapshot(t *testing.T) {
 
 	ackTracker := NewQuorumAckTracker(3, N-1, N-1)
 
-	fc, err := NewFollowerCursor("f1", term, shard, stream, ackTracker, w, db, wal.InvalidOffset)
+	fc, err := NewFollowerCursor("f1", term, common.DefaultNamespace, shard, stream, ackTracker, w, db, wal.InvalidOffset)
 	assert.NoError(t, err)
 
 	s := stream.sendSnapshotStream

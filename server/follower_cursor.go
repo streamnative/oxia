@@ -38,8 +38,8 @@ import (
 // This is a provider for the ReplicateStream Grpc handler
 // It's used to allow passing in a mocked version of the Grpc service
 type ReplicateStreamProvider interface {
-	GetReplicateStream(ctx context.Context, follower string, shard uint32) (proto.OxiaLogReplication_ReplicateClient, error)
-	SendSnapshot(ctx context.Context, follower string, shard uint32) (proto.OxiaLogReplication_SendSnapshotClient, error)
+	GetReplicateStream(ctx context.Context, follower string, namespace string, shard uint32) (proto.OxiaLogReplication_ReplicateClient, error)
+	SendSnapshot(ctx context.Context, follower string, namespace string, shard uint32) (proto.OxiaLogReplication_SendSnapshotClient, error)
 }
 
 // FollowerCursor
@@ -72,6 +72,7 @@ type followerCursor struct {
 	db          kv.DB
 	lastPushed  atomic.Int64
 	ackOffset   atomic.Int64
+	namespace   string
 	shardId     uint32
 
 	backoff backoff.BackOff
@@ -90,6 +91,7 @@ type followerCursor struct {
 func NewFollowerCursor(
 	follower string,
 	term int64,
+	namespace string,
 	shardId uint32,
 	replicateStreamProvider ReplicateStreamProvider,
 	ackTracker QuorumAckTracker,
@@ -98,8 +100,9 @@ func NewFollowerCursor(
 	ackOffset int64) (FollowerCursor, error) {
 
 	labels := map[string]any{
-		"shard":    shardId,
-		"follower": follower,
+		"namespace": namespace,
+		"shard":     shardId,
+		"follower":  follower,
 	}
 
 	fc := &followerCursor{
@@ -109,10 +112,12 @@ func NewFollowerCursor(
 		replicateStreamProvider: replicateStreamProvider,
 		wal:                     wal,
 		db:                      db,
+		namespace:               namespace,
 		shardId:                 shardId,
 
 		log: log.With().
 			Str("component", "follower-cursor").
+			Str("namespace", namespace).
 			Uint32("shard", shardId).
 			Int64("term", term).
 			Str("follower", follower).
@@ -142,8 +147,9 @@ func NewFollowerCursor(
 	}
 
 	go common.DoWithLabels(map[string]string{
-		"oxia":  "follower-cursor-send",
-		"shard": fmt.Sprintf("%d", fc.shardId),
+		"oxia":      "follower-cursor-send",
+		"namespace": namespace,
+		"shard":     fmt.Sprintf("%d", fc.shardId),
 	}, func() {
 		fc.run()
 	})
@@ -236,7 +242,7 @@ func (fc *followerCursor) sendSnapshot() error {
 	ctx, cancel := context.WithCancel(fc.ctx)
 	defer cancel()
 
-	stream, err := fc.replicateStreamProvider.SendSnapshot(ctx, fc.follower, fc.shardId)
+	stream, err := fc.replicateStreamProvider.SendSnapshot(ctx, fc.follower, fc.namespace, fc.shardId)
 	if err != nil {
 		return err
 	}
@@ -309,7 +315,7 @@ func (fc *followerCursor) streamEntries() error {
 
 	fc.Lock()
 	var err error
-	if fc.stream, err = fc.replicateStreamProvider.GetReplicateStream(ctx, fc.follower, fc.shardId); err != nil {
+	if fc.stream, err = fc.replicateStreamProvider.GetReplicateStream(ctx, fc.follower, fc.namespace, fc.shardId); err != nil {
 		fc.Unlock()
 		return err
 	}

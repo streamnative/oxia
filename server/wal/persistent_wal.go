@@ -46,8 +46,8 @@ func NewInMemoryWalFactory() WalFactory {
 	}
 }
 
-func (f *factory) NewWal(shard uint32) (Wal, error) {
-	impl, err := newPersistentWal(shard, f.options)
+func (f *factory) NewWal(namespace string, shard uint32) (Wal, error) {
+	impl, err := newPersistentWal(namespace, shard, f.options)
 	return impl, err
 }
 
@@ -83,13 +83,13 @@ type persistentWal struct {
 	activeEntries metrics.Gauge
 }
 
-func newPersistentWal(shard uint32, options *WalFactoryOptions) (Wal, error) {
+func newPersistentWal(namespace string, shard uint32, options *WalFactoryOptions) (Wal, error) {
 	opts := DefaultOptions()
 	opts.InMemory = options.InMemory
 	opts.NoSync = true // We always sync explicitly
 
 	walPath := filepath.Join(options.LogDir, fmt.Sprint("shard-", shard))
-	log, err := OpenWithShard(walPath, shard, opts)
+	log, err := OpenWithShard(walPath, namespace, shard, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +98,7 @@ func newPersistentWal(shard uint32, options *WalFactoryOptions) (Wal, error) {
 		return nil, err
 	}
 
-	labels := metrics.LabelsForShard(shard)
+	labels := metrics.LabelsForShard(namespace, shard)
 	w := &persistentWal{
 		shard: shard,
 		log:   log,
@@ -144,8 +144,9 @@ func newPersistentWal(shard uint32, options *WalFactoryOptions) (Wal, error) {
 	}
 
 	go common.DoWithLabels(map[string]string{
-		"oxia":  "wal-sync",
-		"shard": fmt.Sprintf("%d", shard),
+		"oxia":      "wal-sync",
+		"namespace": namespace,
+		"shard":     fmt.Sprintf("%d", shard),
 	}, w.runSync)
 
 	return w, nil
