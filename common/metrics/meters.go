@@ -24,9 +24,10 @@ import (
 
 var meter metric.Meter
 
-func LabelsForShard(shard uint32) map[string]any {
+func LabelsForShard(namespace string, shard uint32) map[string]any {
 	return map[string]any{
-		"shard": shard,
+		"shard":     shard,
+		"namespace": namespace,
 	}
 }
 

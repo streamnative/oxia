@@ -84,27 +84,29 @@ type sessionManager struct {
 	activeSessions  metrics.Gauge
 }
 
-func NewSessionManager(shardId uint32, controller *leaderController) SessionManager {
+func NewSessionManager(namespace string, shardId uint32, controller *leaderController) SessionManager {
+	labels := metrics.LabelsForShard(namespace, shardId)
 	sm := &sessionManager{
 		sessions:         make(map[SessionId]*session),
 		shardId:          shardId,
 		leaderController: controller,
 		log: log.With().
 			Str("component", "session-manager").
+			Str("namespace", namespace).
 			Uint32("shard", shardId).
 			Int64("term", controller.term).
 			Logger(),
 
 		createdSessions: metrics.NewCounter("oxia_server_sessions_created",
-			"The total number of sessions created", "count", metrics.LabelsForShard(shardId)),
+			"The total number of sessions created", "count", labels),
 		closedSessions: metrics.NewCounter("oxia_server_sessions_closed",
-			"The total number of sessions closed", "count", metrics.LabelsForShard(shardId)),
+			"The total number of sessions closed", "count", labels),
 		expiredSessions: metrics.NewCounter("oxia_server_sessions_expired",
-			"The total number of sessions expired", "count", metrics.LabelsForShard(shardId)),
+			"The total number of sessions expired", "count", labels),
 	}
 
 	sm.activeSessions = metrics.NewGauge("oxia_server_session_active",
-		"The number of sessions currently active", "count", metrics.LabelsForShard(shardId), func() int64 {
+		"The number of sessions currently active", "count", labels, func() int64 {
 			sm.RLock()
 			defer sm.RUnlock()
 			return int64(len(sm.sessions))

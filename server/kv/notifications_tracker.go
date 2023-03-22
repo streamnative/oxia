@@ -103,26 +103,28 @@ type notificationsTracker struct {
 	readBytesCounter metrics.Counter
 }
 
-func newNotificationsTracker(shard uint32, lastOffset int64, kv KV, notificationRetentionTime time.Duration, clock common.Clock) *notificationsTracker {
+func newNotificationsTracker(namespace string, shard uint32, lastOffset int64, kv KV, notificationRetentionTime time.Duration, clock common.Clock) *notificationsTracker {
+	labels := metrics.LabelsForShard(namespace, shard)
 	nt := &notificationsTracker{
 		shard:     shard,
 		kv:        kv,
 		waitClose: common.NewWaitGroup(1),
 		log: log.Logger.With().
 			Str("component", "notifications-tracker").
+			Str("namespace", namespace).
 			Uint32("shard", shard).
 			Logger(),
 		readCounter: metrics.NewCounter("oxia_server_notifications_read",
-			"The total number of notifications", "count", metrics.LabelsForShard(shard)),
+			"The total number of notifications", "count", labels),
 		readBatchCounter: metrics.NewCounter("oxia_server_notifications_read_batches",
-			"The total number of notification batches", "count", metrics.LabelsForShard(shard)),
+			"The total number of notification batches", "count", labels),
 		readBytesCounter: metrics.NewCounter("oxia_server_notifications_read",
-			"The total size in bytes of notifications reads", metrics.Bytes, metrics.LabelsForShard(shard)),
+			"The total size in bytes of notifications reads", metrics.Bytes, labels),
 	}
 	nt.lastOffset.Store(lastOffset)
 	nt.cond = common.NewConditionContext(nt)
 	nt.ctx, nt.cancel = context.WithCancel(context.Background())
-	newNotificationsTrimmer(nt.ctx, shard, kv, notificationRetentionTime, nt.waitClose, clock)
+	newNotificationsTrimmer(nt.ctx, namespace, shard, kv, notificationRetentionTime, nt.waitClose, clock)
 	return nt
 }
 

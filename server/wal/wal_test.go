@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
+	"oxia/common"
 	"oxia/proto"
 	"testing"
 	"time"
@@ -81,7 +82,7 @@ func TestWal(t *testing.T) {
 
 func createWal(t *testing.T) (WalFactory, Wal) {
 	f := walFF.NewWalFactory(t)
-	w, err := f.NewWal(shard)
+	w, err := f.NewWal(common.DefaultNamespace, shard)
 	assert.NoError(t, err)
 
 	return f, w
@@ -317,7 +318,7 @@ func Reopen(t *testing.T) {
 	err := w.Close()
 	assert.NoError(t, err)
 
-	w, err = f.NewWal(shard)
+	w, err = f.NewWal(common.DefaultNamespace, shard)
 	assert.NoError(t, err)
 
 	// Read with forward reader from beginning

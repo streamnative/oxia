@@ -41,7 +41,7 @@ type notificationsTrimmer struct {
 	log                        zerolog.Logger
 }
 
-func newNotificationsTrimmer(ctx context.Context, shardId uint32, kv KV, notificationRetentionTime time.Duration, waitClose common.WaitGroup, clock common.Clock) *notificationsTrimmer {
+func newNotificationsTrimmer(ctx context.Context, namespace string, shardId uint32, kv KV, notificationRetentionTime time.Duration, waitClose common.WaitGroup, clock common.Clock) *notificationsTrimmer {
 	interval := notificationRetentionTime / 10
 	if interval < minNotificationTrimmingInterval {
 		interval = minNotificationTrimmingInterval
@@ -59,13 +59,15 @@ func newNotificationsTrimmer(ctx context.Context, shardId uint32, kv KV, notific
 		clock:                      clock,
 		log: log.With().
 			Str("component", "db-notifications-trimmer").
+			Str("namespace", namespace).
 			Uint32("shard", shardId).
 			Logger(),
 	}
 
 	go common.DoWithLabels(map[string]string{
-		"oxia":  "notifications-trimmer",
-		"shard": fmt.Sprintf("%d", shardId),
+		"oxia":      "notifications-trimmer",
+		"namespace": namespace,
+		"shard":     fmt.Sprintf("%d", shardId),
 	}, t.run)
 
 	return t

@@ -60,7 +60,7 @@ func dataStr(index int64) string {
 
 func testLog(t *testing.T, path string, opts *Options, N int64) {
 	logPath := path + strings.Join(strings.Split(t.Name(), "/")[1:], "/")
-	l, err := Open(logPath, opts)
+	l, err := open(logPath, opts)
 	assert.NoError(t, err)
 	defer l.Close()
 
@@ -152,8 +152,8 @@ func testLog(t *testing.T, path string, opts *Options, N int64) {
 	err = l.TruncateBack(0)
 	assert.ErrorIs(t, err, ErrClosed)
 
-	// Open -- reopen log
-	l, err = Open(logPath, opts)
+	// open -- reopen log
+	l, err = open(logPath, opts)
 	assert.NoError(t, err)
 
 	defer l.Close()
@@ -288,8 +288,8 @@ func testLog(t *testing.T, path string, opts *Options, N int64) {
 	// Close -- close log after truncating
 	assert.NoError(t, l.Close())
 
-	// Open -- open log after truncating
-	l, err = Open(logPath, opts)
+	// open -- open log after truncating
+	l, err = open(logPath, opts)
 	assert.NoError(t, err)
 	defer l.Close()
 
@@ -378,7 +378,7 @@ func TestOutliers(t *testing.T) {
 			t.Fatal(err)
 		} else if err := f.Close(); err != nil {
 			t.Fatal(err)
-		} else if l, err := Open(path+"/file", nil); err == nil {
+		} else if l, err := open(path+"/file", nil); err == nil {
 			l.Close()
 			t.Fatal("expected error")
 		}
@@ -396,7 +396,7 @@ func TestOutliers(t *testing.T) {
 		assert.NoError(t, err)
 
 		assert.NoError(t, f.Close())
-		l, err := Open(path+"/junk", nil)
+		l, err := open(path+"/junk", nil)
 		assert.NoError(t, err)
 
 		assert.NoError(t, l.Close())
@@ -405,7 +405,7 @@ func TestOutliers(t *testing.T) {
 	t.Run("start-marker-file", func(t *testing.T) {
 		lpath := t.TempDir() + "/start-marker"
 		opts := makeOpts(512, true)
-		l := must(Open(lpath, opts)).(*Log)
+		l := must(open(lpath, opts)).(*Log)
 		defer l.Close()
 		for i := int64(0); i < 100; i++ {
 			must(nil, l.Write(i, []byte(dataStr(i))))
@@ -415,7 +415,7 @@ func TestOutliers(t *testing.T) {
 		must(nil, l.Close())
 		data := must(os.ReadFile(path)).([]byte)
 		must(nil, os.WriteFile(path+".START", data, 0666))
-		l = must(Open(lpath, opts)).(*Log)
+		l = must(open(lpath, opts)).(*Log)
 		defer l.Close()
 		testFirstLast(t, l, firstOffset, 99, nil)
 
@@ -435,7 +435,7 @@ func TestIssue1(t *testing.T) {
 	in := []byte{0, 0, 0, 0, 0, 0, 0, 1, 37, 108, 131, 178, 151, 17, 77, 32,
 		27, 48, 23, 159, 63, 14, 240, 202, 206, 151, 131, 98, 45, 165, 151, 67,
 		38, 180, 54, 23, 138, 238, 246, 16, 0, 0, 0, 0}
-	l, err := Open(t.TempDir(), DefaultOptions())
+	l, err := open(t.TempDir(), DefaultOptions())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -481,7 +481,7 @@ func TestSimpleTruncateFront(t *testing.T) {
 	}
 	path := t.TempDir()
 
-	l, err := Open(path, opts)
+	l, err := open(path, opts)
 	assert.NoError(t, err)
 	defer func() {
 		assert.NoError(t, l.Close())
@@ -491,7 +491,7 @@ func TestSimpleTruncateFront(t *testing.T) {
 		t.Helper()
 		valid(t, l, first, last)
 		assert.NoError(t, l.Close())
-		l, err = Open(path, opts)
+		l, err = open(path, opts)
 		assert.NoError(t, err)
 		valid(t, l, first, last)
 	}
@@ -539,7 +539,7 @@ func TestSimpleTruncateBack(t *testing.T) {
 		SegmentSize: 100,
 	}
 	path := t.TempDir()
-	l, err := Open(path, opts)
+	l, err := open(path, opts)
 	assert.NoError(t, err)
 
 	defer func() {
@@ -550,7 +550,7 @@ func TestSimpleTruncateBack(t *testing.T) {
 		t.Helper()
 		valid(t, l, first, last)
 		assert.NoError(t, l.Close())
-		l, err = Open(path, opts)
+		l, err = open(path, opts)
 		assert.NoError(t, err)
 		valid(t, l, first, last)
 	}
@@ -594,7 +594,7 @@ func TestSimpleTruncateBack(t *testing.T) {
 func TestConcurrency(t *testing.T) {
 
 	path := t.TempDir()
-	l, err := Open(path, &Options{
+	l, err := open(path, &Options{
 		NoSync: true,
 		NoCopy: true,
 	})

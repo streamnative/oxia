@@ -126,7 +126,7 @@ var DefaultKVFactoryOptions = &KVFactoryOptions{
 type KVFactory interface {
 	io.Closer
 
-	NewKV(shardId uint32) (KV, error)
+	NewKV(namespace string, shardId uint32) (KV, error)
 
-	NewSnapshotLoader(shardId uint32) (SnapshotLoader, error)
+	NewSnapshotLoader(namespace string, shardId uint32) (SnapshotLoader, error)
 }

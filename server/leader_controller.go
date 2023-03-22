@@ -71,6 +71,7 @@ type LeaderController interface {
 type leaderController struct {
 	sync.RWMutex
 
+	namespace         string
 	shardId           uint32
 	status            proto.ServingStatus
 	term              int64
@@ -99,10 +100,11 @@ type leaderController struct {
 	followerAckOffsetGauges map[string]metrics.Gauge
 }
 
-func NewLeaderController(config Config, shardId uint32, rpcClient ReplicationRpcProvider, walFactory wal.WalFactory, kvFactory kv.KVFactory) (LeaderController, error) {
-	labels := metrics.LabelsForShard(shardId)
+func NewLeaderController(config Config, namespace string, shardId uint32, rpcClient ReplicationRpcProvider, walFactory wal.WalFactory, kvFactory kv.KVFactory) (LeaderController, error) {
+	labels := metrics.LabelsForShard(namespace, shardId)
 	lc := &leaderController{
 		status:           proto.ServingStatus_NOT_MEMBER,
+		namespace:        namespace,
 		shardId:          shardId,
 		quorumAckTracker: nil,
 		walWriteBatcher:  nil,
@@ -114,38 +116,40 @@ func NewLeaderController(config Config, shardId uint32, rpcClient ReplicationRpc
 		followerAckOffsetGauges: map[string]metrics.Gauge{},
 	}
 
-	lc.headOffsetGauge = metrics.NewGauge("oxia_server_leader_head_offset", "The current head offset", "offset", labels, func() int64 {
-		lc.RLock()
-		defer lc.RUnlock()
-		if lc.quorumAckTracker != nil {
-			return lc.quorumAckTracker.HeadOffset()
-		}
+	lc.headOffsetGauge = metrics.NewGauge("oxia_server_leader_head_offset",
+		"The current head offset", "offset", labels, func() int64 {
+			lc.RLock()
+			defer lc.RUnlock()
+			if lc.quorumAckTracker != nil {
+				return lc.quorumAckTracker.HeadOffset()
+			}
 
-		return -1
-	})
-	lc.commitOffsetGauge = metrics.NewGauge("oxia_server_leader_commit_offset", "The current commit offset", "offset", labels, func() int64 {
-		lc.RLock()
-		defer lc.RUnlock()
-		if lc.quorumAckTracker != nil {
-			return lc.quorumAckTracker.CommitOffset()
-		}
+			return -1
+		})
+	lc.commitOffsetGauge = metrics.NewGauge("oxia_server_leader_commit_offset",
+		"The current commit offset", "offset", labels, func() int64 {
+			lc.RLock()
+			defer lc.RUnlock()
+			if lc.quorumAckTracker != nil {
+				return lc.quorumAckTracker.CommitOffset()
+			}
 
-		return -1
-	})
+			return -1
+		})
 
-	lc.sessionManager = NewSessionManager(shardId, lc)
+	lc.sessionManager = NewSessionManager(namespace, shardId, lc)
 
 	lc.ctx, lc.cancel = context.WithCancel(context.Background())
 
 	var err error
-	if lc.wal, err = walFactory.NewWal(shardId); err != nil {
+	if lc.wal, err = walFactory.NewWal(common.DefaultNamespace, shardId); err != nil {
 		return nil, err
 	}
 
-	lc.walTrimmer = wal.NewTrimmer(shardId, lc.wal, config.WalRetentionTime, wal.DefaultCheckInterval,
+	lc.walTrimmer = wal.NewTrimmer(common.DefaultNamespace, shardId, lc.wal, config.WalRetentionTime, wal.DefaultCheckInterval,
 		common.SystemClock, lc)
 
-	if lc.db, err = kv.NewDB(shardId, kvFactory, config.NotificationsRetentionTime, common.SystemClock); err != nil {
+	if lc.db, err = kv.NewDB(common.DefaultNamespace, shardId, kvFactory, config.NotificationsRetentionTime, common.SystemClock); err != nil {
 		return nil, err
 	}
 
@@ -165,6 +169,7 @@ func NewLeaderController(config Config, shardId uint32, rpcClient ReplicationRpc
 func (lc *leaderController) setLogger() {
 	lc.log = log.With().
 		Str("component", "leader-controller").
+		Str("namespace", lc.namespace).
 		Uint32("shard", lc.shardId).
 		Int64("term", lc.term).
 		Logger()
@@ -396,7 +401,7 @@ func (lc *leaderController) addFollower(follower string, followerHeadEntryId *pr
 		return err
 	}
 
-	cursor, err := NewFollowerCursor(follower, lc.term, lc.shardId, lc.rpcClient, lc.quorumAckTracker, lc.wal, lc.db,
+	cursor, err := NewFollowerCursor(follower, lc.term, lc.namespace, lc.shardId, lc.rpcClient, lc.quorumAckTracker, lc.wal, lc.db,
 		followerHeadEntryId.Offset)
 	if err != nil {
 		lc.log.Error().Err(err).

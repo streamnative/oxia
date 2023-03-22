@@ -75,7 +75,7 @@ type shardController struct {
 }
 
 func NewShardController(namespace string, shard uint32, shardMetadata model.ShardMetadata, rpc RpcProvider, coordinator Coordinator) ShardController {
-	labels := metrics.LabelsForShard(shard)
+	labels := metrics.LabelsForShard(namespace, shard)
 	s := &shardController{
 		namespace:     namespace,
 		shard:         shard,
@@ -436,8 +436,9 @@ func (s *shardController) newTermQuorum() (map[model.ServerAddress]*proto.EntryI
 
 func (s *shardController) newTerm(ctx context.Context, node model.ServerAddress) (*proto.EntryId, error) {
 	res, err := s.rpc.NewTerm(ctx, node, &proto.NewTermRequest{
-		ShardId: s.shard,
-		Term:    s.shardMetadata.Term,
+		Namespace: s.namespace,
+		ShardId:   s.shard,
+		Term:      s.shardMetadata.Term,
 	})
 	if err != nil {
 		return nil, err
@@ -484,6 +485,7 @@ func (s *shardController) becomeLeader(leader model.ServerAddress, followers map
 	}
 
 	if _, err := s.rpc.BecomeLeader(s.ctx, leader, &proto.BecomeLeaderRequest{
+		Namespace:         s.namespace,
 		ShardId:           s.shard,
 		Term:              s.shardMetadata.Term,
 		ReplicationFactor: uint32(len(s.shardMetadata.Ensemble)),
@@ -498,6 +500,7 @@ func (s *shardController) becomeLeader(leader model.ServerAddress, followers map
 
 func (s *shardController) addFollower(leader model.ServerAddress, follower string, followerHeadEntryId *proto.EntryId) error {
 	if _, err := s.rpc.AddFollower(s.ctx, leader, &proto.AddFollowerRequest{
+		Namespace:           s.namespace,
 		ShardId:             s.shard,
 		Term:                s.shardMetadata.Term,
 		FollowerName:        follower,

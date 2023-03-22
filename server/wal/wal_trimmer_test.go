@@ -39,7 +39,7 @@ func (p *mockedCommitOffsetProvider) CommitOffset() int64 {
 
 func TestWalTrimmer(t *testing.T) {
 	wf := NewInMemoryWalFactory()
-	w, err := wf.NewWal(1)
+	w, err := wf.NewWal(common.DefaultNamespace, 1)
 	assert.NoError(t, err)
 
 	clock := &common.MockedClock{}
@@ -55,7 +55,7 @@ func TestWalTrimmer(t *testing.T) {
 		}))
 	}
 
-	trimmer := NewTrimmer(1, w, 2*time.Millisecond, 10*time.Millisecond, clock, commitOffsetProvider)
+	trimmer := NewTrimmer(common.DefaultNamespace, 1, w, 2*time.Millisecond, 10*time.Millisecond, clock, commitOffsetProvider)
 
 	clock.Set(2)
 
@@ -90,7 +90,7 @@ func TestWalTrimmer(t *testing.T) {
 
 func TestWalTrimUpToCommitOffset(t *testing.T) {
 	wf := NewInMemoryWalFactory()
-	w, err := wf.NewWal(1)
+	w, err := wf.NewWal(common.DefaultNamespace, 1)
 	assert.NoError(t, err)
 
 	clock := &common.MockedClock{}
@@ -106,7 +106,7 @@ func TestWalTrimUpToCommitOffset(t *testing.T) {
 		}))
 	}
 
-	trimmer := NewTrimmer(1, w, 2*time.Millisecond, 10*time.Millisecond, clock, commitOffsetProvider)
+	trimmer := NewTrimmer(common.DefaultNamespace, 1, w, 2*time.Millisecond, 10*time.Millisecond, clock, commitOffsetProvider)
 
 	clock.Set(5)
 	time.Sleep(100 * time.Microsecond)

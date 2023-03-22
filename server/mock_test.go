@@ -96,11 +96,11 @@ func (m *mockRpcClient) CloseSend() error {
 	return nil
 }
 
-func (m *mockRpcClient) GetReplicateStream(ctx context.Context, follower string, shard uint32) (proto.OxiaLogReplication_ReplicateClient, error) {
+func (m *mockRpcClient) GetReplicateStream(ctx context.Context, follower string, namespace string, shard uint32) (proto.OxiaLogReplication_ReplicateClient, error) {
 	return m, nil
 }
 
-func (m *mockRpcClient) SendSnapshot(ctx context.Context, follower string, shard uint32) (proto.OxiaLogReplication_SendSnapshotClient, error) {
+func (m *mockRpcClient) SendSnapshot(ctx context.Context, follower string, namespace string, shard uint32) (proto.OxiaLogReplication_SendSnapshotClient, error) {
 	return m.sendSnapshotStream, nil
 }
 

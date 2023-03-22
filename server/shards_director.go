@@ -33,8 +33,8 @@ type ShardsDirector interface {
 	GetLeader(shardId uint32) (LeaderController, error)
 	GetFollower(shardId uint32) (FollowerController, error)
 
-	GetOrCreateLeader(shardId uint32) (LeaderController, error)
-	GetOrCreateFollower(shardId uint32) (FollowerController, error)
+	GetOrCreateLeader(namespace string, shardId uint32) (LeaderController, error)
+	GetOrCreateFollower(namespace string, shardId uint32) (FollowerController, error)
 }
 
 type shardsDirector struct {
@@ -116,7 +116,7 @@ func (s *shardsDirector) GetFollower(shardId uint32) (FollowerController, error)
 	return nil, status.Errorf(common.CodeNodeIsNotFollower, "node is not follower for shard %d", shardId)
 }
 
-func (s *shardsDirector) GetOrCreateLeader(shardId uint32) (LeaderController, error) {
+func (s *shardsDirector) GetOrCreateLeader(namespace string, shardId uint32) (LeaderController, error) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -139,7 +139,7 @@ func (s *shardsDirector) GetOrCreateLeader(shardId uint32) (LeaderController, er
 	}
 
 	// Create new leader controller
-	if lc, err := NewLeaderController(s.config, shardId, s.replicationRpcProvider, s.walFactory, s.kvFactory); err != nil {
+	if lc, err := NewLeaderController(s.config, namespace, shardId, s.replicationRpcProvider, s.walFactory, s.kvFactory); err != nil {
 		return nil, err
 	} else {
 		s.leaders[shardId] = lc
@@ -147,7 +147,7 @@ func (s *shardsDirector) GetOrCreateLeader(shardId uint32) (LeaderController, er
 	}
 }
 
-func (s *shardsDirector) GetOrCreateFollower(shardId uint32) (FollowerController, error) {
+func (s *shardsDirector) GetOrCreateFollower(namespace string, shardId uint32) (FollowerController, error) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -170,7 +170,7 @@ func (s *shardsDirector) GetOrCreateFollower(shardId uint32) (FollowerController
 	}
 
 	// Create new follower controller
-	if fc, err := NewFollowerController(s.config, shardId, s.walFactory, s.kvFactory); err != nil {
+	if fc, err := NewFollowerController(s.config, namespace, shardId, s.walFactory, s.kvFactory); err != nil {
 		return nil, err
 	} else {
 		s.followers[shardId] = fc

@@ -30,7 +30,7 @@ func init() {
 func TestDB_Notifications(t *testing.T) {
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := NewDB(1, factory, 1*time.Hour, common.SystemClock)
+	db, err := NewDB(common.DefaultNamespace, 1, factory, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
 
 	t0 := now()
@@ -166,7 +166,7 @@ func TestDB_Notifications(t *testing.T) {
 func TestDB_NotificationsCancelWait(t *testing.T) {
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := NewDB(1, factory, 1*time.Hour, common.SystemClock)
+	db, err := NewDB(common.DefaultNamespace, 1, factory, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
 
 	t0 := now()

@@ -18,6 +18,7 @@ import (
 	"context"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
+	"oxia/common"
 	"oxia/common/container"
 	"oxia/common/metrics"
 	"oxia/proto"
@@ -103,7 +104,7 @@ func (s *Standalone) initializeShards(numShards uint32) error {
 	var err error
 	for i := uint32(0); i < numShards; i++ {
 		var lc LeaderController
-		if lc, err = s.shardsDirector.GetOrCreateLeader(i); err != nil {
+		if lc, err = s.shardsDirector.GetOrCreateLeader(common.DefaultNamespace, i); err != nil {
 			return err
 		}
 
@@ -157,11 +158,11 @@ func (n noOpReplicationRpcProvider) Close() error {
 	return nil
 }
 
-func (n noOpReplicationRpcProvider) GetReplicateStream(ctx context.Context, follower string, shard uint32) (proto.OxiaLogReplication_ReplicateClient, error) {
+func (n noOpReplicationRpcProvider) GetReplicateStream(ctx context.Context, follower string, namespace string, shard uint32) (proto.OxiaLogReplication_ReplicateClient, error) {
 	panic("not implemented")
 }
 
-func (n noOpReplicationRpcProvider) SendSnapshot(ctx context.Context, follower string, shard uint32) (proto.OxiaLogReplication_SendSnapshotClient, error) {
+func (n noOpReplicationRpcProvider) SendSnapshot(ctx context.Context, follower string, namespace string, shard uint32) (proto.OxiaLogReplication_SendSnapshotClient, error) {
 	panic("not implemented")
 }
 

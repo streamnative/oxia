@@ -62,8 +62,9 @@ message SnapshotChunk {
 }
 
 message NewTermRequest {
-  uint32 shard_id = 1;
-  int64 term = 2;
+  string namespace = 1;
+  uint32 shard_id = 2;
+  int64 term = 3;
 }
 
 message NewTermResponse {
@@ -71,19 +72,21 @@ message NewTermResponse {
 }
 
 message BecomeLeaderRequest {
-  uint32 shard_id = 1;
+  string namespace = 1;
+  uint32 shard_id = 2;
 
-  int64 term = 2;
-  uint32 replication_factor = 3;
-  map<string, EntryId> follower_maps = 4;
+  int64 term = 3;
+  uint32 replication_factor = 4;
+  map<string, EntryId> follower_maps = 5;
 }
 
 message AddFollowerRequest {
-  uint32 shard_id = 1;
+  string namespace = 1;
+  uint32 shard_id = 2;
 
-  int64 term = 2;
-  string follower_name = 3;
-  EntryId follower_head_entry_id = 4;
+  int64 term = 3;
+  string follower_name = 4;
+  EntryId follower_head_entry_id = 5;
 }
 
 message BecomeLeaderResponse {}
@@ -91,10 +94,11 @@ message BecomeLeaderResponse {}
 message AddFollowerResponse {}
 
 message TruncateRequest {
-  uint32 shard_id = 1;
+  string namespace = 1;
+  uint32 shard_id = 2;
 
-  int64 term = 2;
-  EntryId head_entry_id = 3;
+  int64 term = 3;
+  EntryId head_entry_id = 4;
 }
 
 message TruncateResponse {

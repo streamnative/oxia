@@ -18,6 +18,7 @@ import (
 	"context"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric/instrument"
+	"sync"
 )
 
 var sizeBucketsBytes = []float64{
@@ -35,11 +36,14 @@ type Histogram interface {
 }
 
 type histogram struct {
+	sync.Mutex
 	h     instrument.Int64Histogram
 	attrs []attribute.KeyValue
 }
 
 func (t *histogram) Record(size int) {
+	t.Lock()
+	defer t.Unlock()
 	t.h.Record(context.Background(), int64(size), t.attrs...)
 }
 
@@ -59,5 +63,5 @@ func newHistogram(name string, unit Unit, description string, labels map[string]
 	)
 	fatalOnErr(err, name)
 
-	return &histogram{h, getAttrs(labels)}
+	return &histogram{h: h, attrs: getAttrs(labels)}
 }

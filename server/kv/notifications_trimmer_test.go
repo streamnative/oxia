@@ -29,7 +29,7 @@ func TestNotificationsTrimmer(t *testing.T) {
 
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	dbx, err := NewDB(1, factory, 10*time.Millisecond, clock)
+	dbx, err := NewDB(common.DefaultNamespace, 1, factory, 10*time.Millisecond, clock)
 	assert.NoError(t, err)
 	defer dbx.Close()
 

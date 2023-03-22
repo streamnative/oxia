@@ -43,7 +43,7 @@ func (r *maelstromReplicationRpcProvider) Close() error {
 	return nil
 }
 
-func (r *maelstromReplicationRpcProvider) GetReplicateStream(ctx context.Context, follower string, shard uint32) (
+func (r *maelstromReplicationRpcProvider) GetReplicateStream(ctx context.Context, follower string, namespace string, shard uint32) (
 	proto.OxiaLogReplication_ReplicateClient, error) {
 	s := &maelstromReplicateClient{
 		ctx:       ctx,
@@ -78,7 +78,7 @@ func (r *maelstromReplicationRpcProvider) Truncate(follower string, req *proto.T
 	}
 }
 
-func (r *maelstromReplicationRpcProvider) SendSnapshot(ctx context.Context, follower string, shard uint32) (proto.OxiaLogReplication_SendSnapshotClient, error) {
+func (r *maelstromReplicationRpcProvider) SendSnapshot(ctx context.Context, follower string, namespace string, shard uint32) (proto.OxiaLogReplication_SendSnapshotClient, error) {
 	panic("not implemented")
 }
 
