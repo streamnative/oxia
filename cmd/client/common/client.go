@@ -25,6 +25,7 @@ var (
 
 type ClientConfig struct {
 	ServiceAddr         string
+	Namespace           string
 	BatchLinger         time.Duration
 	MaxRequestsPerBatch int
 	RequestTimeout      time.Duration
@@ -35,5 +36,6 @@ func (config *ClientConfig) NewClient() (oxia.AsyncClient, error) {
 		oxia.WithBatchLinger(Config.BatchLinger),
 		oxia.WithRequestTimeout(Config.RequestTimeout),
 		oxia.WithMaxRequestsPerBatch(Config.MaxRequestsPerBatch),
+		oxia.WithNamespace(Config.Namespace),
 	)
 }
