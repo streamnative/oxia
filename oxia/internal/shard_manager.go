@@ -38,7 +38,7 @@ type ShardManager interface {
 
 type shardManagerImpl struct {
 	sync.RWMutex
-	updatedCondition common.ConditionContext
+	updatedWg common.WaitGroup
 
 	shardStrategy  ShardStrategy
 	clientPool     common.ClientPool
@@ -63,7 +63,7 @@ func NewShardManager(shardStrategy ShardStrategy, clientPool common.ClientPool,
 		logger:         log.With().Str("component", "shardManager").Logger(),
 	}
 
-	sm.updatedCondition = common.NewConditionContext(sm)
+	sm.updatedWg = common.NewWaitGroup(1)
 	sm.ctx, sm.cancel = context.WithCancel(context.Background())
 
 	if err := sm.start(); err != nil {
@@ -80,7 +80,6 @@ func (s *shardManagerImpl) Close() error {
 
 func (s *shardManagerImpl) start() error {
 	s.Lock()
-	defer s.Unlock()
 
 	go common.DoWithLabels(map[string]string{
 		"oxia": "receive-shard-updates",
@@ -89,7 +88,8 @@ func (s *shardManagerImpl) start() error {
 	ctx, cancel := context.WithTimeout(s.ctx, s.requestTimeout)
 	defer cancel()
 
-	return s.updatedCondition.Wait(ctx)
+	s.Unlock()
+	return s.updatedWg.Wait(ctx)
 }
 
 func (s *shardManagerImpl) Get(key string) uint32 {
@@ -140,6 +140,10 @@ func (s *shardManagerImpl) receiveWithRecovery() {
 				s.logger.Debug().Err(err).Msg("Closed")
 				return nil
 			}
+
+			if !isErrorRetryable(err) {
+				return backoff.Permanent(err)
+			}
 			return err
 		},
 		backOff,
@@ -153,6 +157,7 @@ func (s *shardManagerImpl) receiveWithRecovery() {
 	)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed receiving shard assignments")
+		s.updatedWg.Fail(err)
 	}
 }
 
@@ -205,9 +210,19 @@ func (s *shardManagerImpl) update(updates []Shard) {
 		s.shards[update.Id] = update
 	}
 
-	s.updatedCondition.Signal()
+	s.updatedWg.Done()
 }
 
 func overlap(a HashRange, b HashRange) bool {
 	return !(a.MinInclusive > b.MaxInclusive || a.MaxInclusive < b.MinInclusive)
+}
+
+func isErrorRetryable(err error) bool {
+	switch status.Code(err) {
+	case common.CodeNamespaceNotFound:
+		return false
+
+	default:
+		return true
+	}
 }

@@ -73,6 +73,7 @@ func (s *shardAssignmentDispatcher) RegisterForUpdates(req *proto.ShardAssignmen
 	}
 
 	if _, ok := s.assignments.Namespaces[namespace]; !ok {
+		s.Unlock()
 		return common.ErrorNamespaceNotFound
 	}
 
