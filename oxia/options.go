@@ -31,6 +31,7 @@ const (
 	DefaultMaxBatchSize        = 128 * 1024
 	DefaultRequestTimeout      = 30 * time.Second
 	DefaultSessionTimeout      = 15 * time.Second
+	DefaultNamespace           = common.DefaultNamespace
 )
 
 var (

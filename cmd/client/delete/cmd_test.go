@@ -37,8 +37,8 @@ func TestCobra(t *testing.T) {
 		{"key-expected-version", []string{"-k", "x", "-e", "1"}, nil, []string{"x"}, []int64{1}, nil, nil},
 		{"keys", []string{"-k", "x", "-k", "y"}, nil, []string{"x", "y"}, nil, nil, nil},
 		{"keys-expected-version", []string{"-k", "x", "-e", "1", "-k", "y", "-e", "4"}, nil, []string{"x", "y"}, []int64{1, 4}, nil, nil},
-		{"range", []string{"-n", "x", "-x", "y"}, nil, nil, nil, []string{"x"}, []string{"y"}},
-		{"ranges", []string{"-n", "x1", "-x", "y1", "-n", "x2", "-x", "y2"}, nil, nil, nil, []string{"x1", "x2"}, []string{"y1", "y2"}},
+		{"range", []string{"--key-min", "x", "--key-max", "y"}, nil, nil, nil, []string{"x"}, []string{"y"}},
+		{"ranges", []string{"--key-min", "x1", "--key-max", "y1", "--key-min", "x2", "--key-max", "y2"}, nil, nil, nil, []string{"x1", "x2"}, []string{"y1", "y2"}},
 		{"stdin", []string{}, nil, nil, nil, nil, nil},
 	} {
 		t.Run(test.name, func(t *testing.T) {

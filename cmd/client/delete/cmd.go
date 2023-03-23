@@ -47,8 +47,8 @@ func (flags *flags) Reset() {
 func init() {
 	Cmd.Flags().StringSliceVarP(&Config.keys, "key", "k", []string{}, "The target key")
 	Cmd.Flags().Int64SliceVarP(&Config.expectedVersions, "expected-version", "e", []int64{}, "Version of entry expected to be on the server")
-	Cmd.Flags().StringSliceVarP(&Config.keyMinimums, "key-min", "n", []string{}, "Key range minimum (inclusive)")
-	Cmd.Flags().StringSliceVarP(&Config.keyMaximums, "key-max", "x", []string{}, "Key range maximum (exclusive)")
+	Cmd.Flags().StringSliceVar(&Config.keyMinimums, "key-min", []string{}, "Key range minimum (inclusive)")
+	Cmd.Flags().StringSliceVar(&Config.keyMaximums, "key-max", []string{}, "Key range maximum (exclusive)")
 	Cmd.MarkFlagsRequiredTogether("key-min", "key-max")
 }
 

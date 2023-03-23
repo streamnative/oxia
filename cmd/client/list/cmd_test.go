@@ -33,8 +33,8 @@ func TestCobra(t *testing.T) {
 		expectedKeyMinimums []string
 		expectedKeyMaximums []string
 	}{
-		{"range", []string{"-n", "x", "-x", "y"}, nil, []string{"x"}, []string{"y"}},
-		{"ranges", []string{"-n", "x1", "-x", "y1", "-n", "x2", "-x", "y2"}, nil, []string{"x1", "x2"}, []string{"y1", "y2"}},
+		{"range", []string{"--key-min", "x", "--key-max", "y"}, nil, []string{"x"}, []string{"y"}},
+		{"ranges", []string{"--key-min", "x1", "--key-max", "y1", "--key-min", "x2", "--key-max", "y2"}, nil, []string{"x1", "x2"}, []string{"y1", "y2"}},
 		{"stdin", []string{}, nil, nil, nil},
 	} {
 		t.Run(test.name, func(t *testing.T) {
