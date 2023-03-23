@@ -19,7 +19,7 @@ type ShardStrategy interface {
 }
 
 type Shard struct {
-	Id        uint32
+	Id        int64
 	Leader    string
 	HashRange HashRange
 }

@@ -113,10 +113,10 @@ func TestCoordinatorE2E_ShardsRanges(t *testing.T) {
 	// Check that the entire hash range is covered
 	assert.EqualValues(t, 0, nsStatus.Shards[0].Int32HashRange.Min)
 
-	for i := uint32(1); i < 4; i++ {
+	for i := int64(1); i < 4; i++ {
 		log.Info().
 			Interface("range", nsStatus.Shards[i].Int32HashRange).
-			Uint32("shard", i).
+			Int64("shard", i).
 			Msg("Checking shard")
 
 		// The hash ranges should be exclusive & consecutive

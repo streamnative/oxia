@@ -40,7 +40,7 @@ func AssertProtoEqual(t *testing.T, expected, actual pb.Message) {
 }
 
 func TestLeaderController_NotInitialized(t *testing.T) {
-	var shard uint32 = 1
+	var shard int64 = 1
 
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
@@ -76,7 +76,7 @@ func TestLeaderController_NotInitialized(t *testing.T) {
 }
 
 func TestLeaderController_Closed(t *testing.T) {
-	var shard uint32 = 1
+	var shard int64 = 1
 
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
@@ -112,7 +112,7 @@ func TestLeaderController_Closed(t *testing.T) {
 }
 
 func TestLeaderController_BecomeLeader_NoFencing(t *testing.T) {
-	var shard uint32 = 1
+	var shard int64 = 1
 
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
@@ -138,7 +138,7 @@ func TestLeaderController_BecomeLeader_NoFencing(t *testing.T) {
 }
 
 func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
-	var shard uint32 = 1
+	var shard int64 = 1
 
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
@@ -230,7 +230,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 }
 
 func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
-	var shard uint32 = 1
+	var shard int64 = 1
 
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
@@ -335,7 +335,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 }
 
 func TestLeaderController_TermPersistent(t *testing.T) {
-	var shard uint32 = 1
+	var shard int64 = 1
 
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
 		DataDir:   t.TempDir(),
@@ -379,7 +379,7 @@ func TestLeaderController_TermPersistent(t *testing.T) {
 }
 
 func TestLeaderController_FenceTerm(t *testing.T) {
-	var shard uint32 = 1
+	var shard int64 = 1
 
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
 		DataDir:   t.TempDir(),
@@ -426,7 +426,7 @@ func TestLeaderController_FenceTerm(t *testing.T) {
 }
 
 func TestLeaderController_BecomeLeaderTerm(t *testing.T) {
-	var shard uint32 = 1
+	var shard int64 = 1
 
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
 		DataDir:   t.TempDir(),
@@ -484,7 +484,7 @@ func TestLeaderController_BecomeLeaderTerm(t *testing.T) {
 }
 
 func TestLeaderController_AddFollower(t *testing.T) {
-	var shard uint32 = 1
+	var shard int64 = 1
 
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
@@ -552,7 +552,7 @@ func TestLeaderController_AddFollower(t *testing.T) {
 // Also, it should never ask to truncate to an offset higher
 // than what the follower has.
 func TestLeaderController_AddFollower_Truncate(t *testing.T) {
-	var shard uint32 = 1
+	var shard int64 = 1
 
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{DataDir: t.TempDir()})
 	assert.NoError(t, err)
@@ -662,7 +662,7 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 }
 
 func TestLeaderController_AddFollowerCheckTerm(t *testing.T) {
-	var shard uint32 = 1
+	var shard int64 = 1
 
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
@@ -715,7 +715,7 @@ func TestLeaderController_AddFollowerCheckTerm(t *testing.T) {
 // Otherwise, we could have the scenario where entries were already acked to a client though
 // are not appearing when doing a subsequent read if the leader has changed.
 func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
-	var shard uint32 = 1
+	var shard int64 = 1
 
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
 		DataDir:   t.TempDir(),
@@ -787,7 +787,7 @@ func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
 }
 
 func TestLeaderController_Notifications(t *testing.T) {
-	var shard uint32 = 1
+	var shard int64 = 1
 
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := wal.NewInMemoryWalFactory()
@@ -853,7 +853,7 @@ func TestLeaderController_Notifications(t *testing.T) {
 }
 
 func TestLeaderController_NotificationsCloseLeader(t *testing.T) {
-	var shard uint32 = 1
+	var shard int64 = 1
 
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := wal.NewInMemoryWalFactory()
@@ -902,7 +902,7 @@ func TestLeaderController_NotificationsCloseLeader(t *testing.T) {
 }
 
 func TestLeaderController_List(t *testing.T) {
-	var shard uint32 = 1
+	var shard int64 = 1
 
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := wal.NewInMemoryWalFactory()

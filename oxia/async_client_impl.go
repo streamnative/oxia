@@ -82,7 +82,7 @@ func NewAsyncClient(serviceAddress string, opts ...ClientOption) (AsyncClient, e
 		options:      options,
 		clientPool:   clientPool,
 		shardManager: shardManager,
-		writeBatchManager: batch.NewManager(func(shard *uint32) commonBatch.Batcher {
+		writeBatchManager: batch.NewManager(func(shard *int64) commonBatch.Batcher {
 			return batcherFactory.NewWriteBatcher(shard, options.maxBatchSize)
 		}),
 		readBatchManager: batch.NewManager(batcherFactory.NewReadBatcher),

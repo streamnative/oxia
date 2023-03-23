@@ -17,7 +17,7 @@ package batch
 import "oxia/common/batch"
 
 var (
-	shardId = uint32(1)
+	shardId = int64(1)
 	one     = int64(1)
 	two     = int64(2)
 )

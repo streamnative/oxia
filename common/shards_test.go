@@ -22,7 +22,7 @@ import (
 
 func TestGenerateShards(t *testing.T) {
 	type args struct {
-		baseId    uint32
+		baseId    int64
 		numShards uint32
 	}
 	tests := []struct {

@@ -102,7 +102,7 @@ func NewStandalone(config StandaloneConfig) (*Standalone, error) {
 
 func (s *Standalone) initializeShards(numShards uint32) error {
 	var err error
-	for i := uint32(0); i < numShards; i++ {
+	for i := int64(0); i < int64(numShards); i++ {
 		var lc LeaderController
 		if lc, err = s.shardsDirector.GetOrCreateLeader(common.DefaultNamespace, i); err != nil {
 			return err
@@ -158,11 +158,11 @@ func (n noOpReplicationRpcProvider) Close() error {
 	return nil
 }
 
-func (n noOpReplicationRpcProvider) GetReplicateStream(ctx context.Context, follower string, namespace string, shard uint32) (proto.OxiaLogReplication_ReplicateClient, error) {
+func (n noOpReplicationRpcProvider) GetReplicateStream(ctx context.Context, follower string, namespace string, shard int64) (proto.OxiaLogReplication_ReplicateClient, error) {
 	panic("not implemented")
 }
 
-func (n noOpReplicationRpcProvider) SendSnapshot(ctx context.Context, follower string, namespace string, shard uint32) (proto.OxiaLogReplication_SendSnapshotClient, error) {
+func (n noOpReplicationRpcProvider) SendSnapshot(ctx context.Context, follower string, namespace string, shard int64) (proto.OxiaLogReplication_SendSnapshotClient, error) {
 	panic("not implemented")
 }
 

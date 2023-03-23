@@ -20,10 +20,10 @@ import (
 	"sync"
 )
 
-func NewManager(batcherFactory func(*uint32) batch.Batcher) *Manager {
+func NewManager(batcherFactory func(*int64) batch.Batcher) *Manager {
 	return &Manager{
 		batcherFactory: batcherFactory,
-		batchers:       make(map[uint32]batch.Batcher),
+		batchers:       make(map[int64]batch.Batcher),
 	}
 }
 
@@ -31,11 +31,11 @@ func NewManager(batcherFactory func(*uint32) batch.Batcher) *Manager {
 
 type Manager struct {
 	sync.RWMutex
-	batcherFactory func(*uint32) batch.Batcher
-	batchers       map[uint32]batch.Batcher
+	batcherFactory func(*int64) batch.Batcher
+	batchers       map[int64]batch.Batcher
 }
 
-func (m *Manager) Get(shardId uint32) batch.Batcher {
+func (m *Manager) Get(shardId int64) batch.Batcher {
 	m.RLock()
 	batcher, ok := m.batchers[shardId]
 	m.RUnlock()

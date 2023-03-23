@@ -25,7 +25,7 @@ import (
 	"time"
 )
 
-const shard = uint32(100)
+const shard = int64(100)
 
 type walFactoryFactory interface {
 	NewWalFactory(t *testing.T) WalFactory

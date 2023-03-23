@@ -59,7 +59,7 @@ type DB interface {
 	Snapshot() (Snapshot, error)
 }
 
-func NewDB(namespace string, shardId uint32, factory KVFactory, notificationRetentionTime time.Duration, clock common.Clock) (DB, error) {
+func NewDB(namespace string, shardId int64, factory KVFactory, notificationRetentionTime time.Duration, clock common.Clock) (DB, error) {
 	kv, err := factory.NewKV(namespace, shardId)
 	if err != nil {
 		return nil, err
@@ -72,7 +72,7 @@ func NewDB(namespace string, shardId uint32, factory KVFactory, notificationRete
 		log: log.Logger.With().
 			Str("component", "db").
 			Str("namespace", namespace).
-			Uint32("shard", shardId).
+			Int64("shard", shardId).
 			Logger(),
 
 		batchWriteLatencyHisto: metrics.NewLatencyHistogram("oxia_server_db_batch_write_latency",
@@ -104,7 +104,7 @@ func NewDB(namespace string, shardId uint32, factory KVFactory, notificationRete
 
 type db struct {
 	kv                   KV
-	shardId              uint32
+	shardId              int64
 	notificationsTracker *notificationsTracker
 	log                  zerolog.Logger
 

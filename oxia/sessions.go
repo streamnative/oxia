@@ -35,7 +35,7 @@ func newSessions(ctx context.Context, shardManager internal.ShardManager, pool c
 		ctx:             ctx,
 		shardManager:    shardManager,
 		pool:            pool,
-		sessionsByShard: map[uint32]*clientSession{},
+		sessionsByShard: map[int64]*clientSession{},
 		clientOpts:      options,
 		log:             log.With().Str("component", "oxia-session-manager").Logger(),
 	}
@@ -48,12 +48,12 @@ type sessions struct {
 	ctx             context.Context
 	shardManager    internal.ShardManager
 	pool            common.ClientPool
-	sessionsByShard map[uint32]*clientSession
+	sessionsByShard map[int64]*clientSession
 	log             zerolog.Logger
 	clientOpts      clientOptions
 }
 
-func (s *sessions) executeWithSessionId(shardId uint32, callback func(int64, error)) {
+func (s *sessions) executeWithSessionId(shardId int64, callback func(int64, error)) {
 	s.Lock()
 	defer s.Unlock()
 	session, found := s.sessionsByShard[shardId]
@@ -64,7 +64,7 @@ func (s *sessions) executeWithSessionId(shardId uint32, callback func(int64, err
 	session.executeWithId(callback)
 }
 
-func (s *sessions) startSession(shardId uint32) *clientSession {
+func (s *sessions) startSession(shardId int64) *clientSession {
 	cs := &clientSession{
 		shardId:  shardId,
 		sessions: s,
@@ -72,7 +72,7 @@ func (s *sessions) startSession(shardId uint32) *clientSession {
 		started:  make(chan error),
 		log: log.With().
 			Str("component", "session").
-			Uint32("shard", shardId).Logger(),
+			Int64("shard", shardId).Logger(),
 	}
 	cs.log.Debug().Msg("Creating session")
 	go common.DoWithLabels(map[string]string{
@@ -85,7 +85,7 @@ func (s *sessions) startSession(shardId uint32) *clientSession {
 type clientSession struct {
 	sync.Mutex
 	started   chan error
-	shardId   uint32
+	shardId   int64
 	sessionId int64
 	log       zerolog.Logger
 	sessions  *sessions

@@ -196,7 +196,7 @@ func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServ
 		return errors.New("shard id is not set in the request metadata")
 	}
 
-	shardId, err := ReadHeaderUint32(md, common.MetadataShardId)
+	shardId, err := ReadHeaderInt64(md, common.MetadataShardId)
 	if err != nil {
 		return err
 	}
@@ -207,7 +207,7 @@ func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServ
 	}
 
 	log := s.log.With().
-		Uint32("shard", shardId).
+		Int64("shard", shardId).
 		Str("peer", common.GetPeer(srv.Context())).
 		Logger()
 
@@ -233,7 +233,7 @@ func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapsh
 		return errors.New("shard id is not set in the request metadata")
 	}
 
-	shardId, err := ReadHeaderUint32(md, common.MetadataShardId)
+	shardId, err := ReadHeaderInt64(md, common.MetadataShardId)
 	if err != nil {
 		return err
 	}
@@ -244,13 +244,13 @@ func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapsh
 	}
 
 	s.log.Info().
-		Uint32("shard", shardId).
+		Int64("shard", shardId).
 		Str("peer", common.GetPeer(srv.Context())).
 		Msg("Received SendSnapshot request")
 
 	if follower, err := s.shardsDirector.GetOrCreateFollower(namespace, shardId); err != nil {
 		s.log.Warn().Err(err).
-			Uint32("shard", shardId).
+			Int64("shard", shardId).
 			Str("peer", common.GetPeer(srv.Context())).
 			Msg("SendSnapshot failed: could not get follower controller")
 		return err
@@ -258,7 +258,7 @@ func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapsh
 		err2 := follower.SendSnapshot(srv)
 		if err2 != nil {
 			s.log.Warn().Err(err2).
-				Uint32("shard", shardId).
+				Int64("shard", shardId).
 				Str("peer", common.GetPeer(srv.Context())).
 				Msg("SendSnapshot failed")
 		}
@@ -296,13 +296,13 @@ func readHeader(md metadata.MD, key string) (value string, err error) {
 	return arr[0], nil
 }
 
-func ReadHeaderUint32(md metadata.MD, key string) (v uint32, err error) {
+func ReadHeaderInt64(md metadata.MD, key string) (v int64, err error) {
 	s, err := readHeader(md, key)
 	if err != nil {
 		return 0, err
 	}
 
-	var r uint32
+	var r int64
 	_, err = fmt.Sscan(s, &r)
 	return r, err
 }

@@ -47,7 +47,7 @@ func TestWithStandalone(t *testing.T) {
 
 	shardId := shardManager.Get("foo")
 
-	assert.Equal(t, uint32(0), shardId)
+	assert.EqualValues(t, 0, shardId)
 }
 
 func TestOverlap(t *testing.T) {

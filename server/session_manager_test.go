@@ -223,7 +223,7 @@ func TestSessionUpdateOperationCallback_OnDelete(t *testing.T) {
 }
 
 func TestSessionManager(t *testing.T) {
-	shardId := uint32(1)
+	shardId := int64(1)
 	// Invalid session timeout
 	sManager, lc := createSessionManager(t)
 	_, err := sManager.CreateSession(&proto.CreateSessionRequest{
@@ -359,7 +359,7 @@ func getSessionMetadata(t *testing.T, lc *leaderController, sessionId int64) *pr
 }
 
 func createSessionManager(t *testing.T) (*sessionManager, *leaderController) {
-	var shard uint32 = 1
+	var shard int64 = 1
 
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)

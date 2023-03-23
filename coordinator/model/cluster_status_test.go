@@ -24,7 +24,7 @@ func TestClusterStatus_Clone(t *testing.T) {
 		Namespaces: map[string]NamespaceStatus{
 			"test-ns": {
 				ReplicationFactor: 3,
-				Shards: map[uint32]ShardMetadata{
+				Shards: map[int64]ShardMetadata{
 					0: {
 						Status: ShardStatusSteadyState,
 						Term:   1,

@@ -74,7 +74,7 @@ var _ SessionManager = (*sessionManager)(nil)
 type sessionManager struct {
 	sync.RWMutex
 	leaderController *leaderController
-	shardId          uint32
+	shardId          int64
 	sessions         map[SessionId]*session
 	log              zerolog.Logger
 
@@ -84,7 +84,7 @@ type sessionManager struct {
 	activeSessions  metrics.Gauge
 }
 
-func NewSessionManager(namespace string, shardId uint32, controller *leaderController) SessionManager {
+func NewSessionManager(namespace string, shardId int64, controller *leaderController) SessionManager {
 	labels := metrics.LabelsForShard(namespace, shardId)
 	sm := &sessionManager{
 		sessions:         make(map[SessionId]*session),
@@ -93,7 +93,7 @@ func NewSessionManager(namespace string, shardId uint32, controller *leaderContr
 		log: log.With().
 			Str("component", "session-manager").
 			Str("namespace", namespace).
-			Uint32("shard", shardId).
+			Int64("shard", shardId).
 			Int64("term", controller.term).
 			Logger(),
 
