@@ -62,7 +62,10 @@ func (g *waitGroup) Wait(ctx context.Context) error {
 }
 
 func (g *waitGroup) Done() {
-	g.responses <- nil
+	select {
+	case g.responses <- nil:
+	default:
+	}
 }
 
 func (g *waitGroup) Fail(err error) {

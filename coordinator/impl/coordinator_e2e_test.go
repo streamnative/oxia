@@ -293,6 +293,10 @@ func TestCoordinator_MultipleNamespaces(t *testing.T) {
 	assert.NoError(t, err)
 	defer clientNs1.Close()
 
+	clientNs3, err := oxia.NewSyncClient(sa1.Public, oxia.WithNamespace("my-ns-does-not-exist"))
+	assert.ErrorIs(t, err, common.ErrorNamespaceNotFound)
+	assert.Nil(t, clientNs3)
+
 	ctx := context.Background()
 
 	// Write in default ns
