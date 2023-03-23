@@ -43,7 +43,7 @@ func NewReplicationRpcProvider() ReplicationRpcProvider {
 	}
 }
 
-func (r *replicationRpcProvider) GetReplicateStream(ctx context.Context, follower string, namespace string, shard uint32) (
+func (r *replicationRpcProvider) GetReplicateStream(ctx context.Context, follower string, namespace string, shard int64) (
 	proto.OxiaLogReplication_ReplicateClient, error) {
 	rpc, err := r.pool.GetReplicationRpc(follower)
 	if err != nil {
@@ -57,7 +57,7 @@ func (r *replicationRpcProvider) GetReplicateStream(ctx context.Context, followe
 	return stream, err
 }
 
-func (r *replicationRpcProvider) SendSnapshot(ctx context.Context, follower string, namespace string, shard uint32) (
+func (r *replicationRpcProvider) SendSnapshot(ctx context.Context, follower string, namespace string, shard int64) (
 	proto.OxiaLogReplication_SendSnapshotClient, error) {
 	rpc, err := r.pool.GetReplicationRpc(follower)
 	if err != nil {

@@ -41,7 +41,7 @@ func init() {
 }
 
 func TestFollower(t *testing.T) {
-	var shardId uint32
+	var shardId int64
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
@@ -124,7 +124,7 @@ func TestFollower(t *testing.T) {
 }
 
 func TestReadingUpToCommitOffset(t *testing.T) {
-	var shardId uint32
+	var shardId int64
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
@@ -196,7 +196,7 @@ func TestReadingUpToCommitOffset(t *testing.T) {
 }
 
 func TestFollower_RestoreCommitOffset(t *testing.T) {
-	var shardId uint32
+	var shardId int64
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{DataDir: t.TempDir()})
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
@@ -228,7 +228,7 @@ func TestFollower_RestoreCommitOffset(t *testing.T) {
 // of the current follower head offset, it needs to advance the commit
 // offset only up to the current head.
 func TestFollower_AdvanceCommitOffsetToHead(t *testing.T) {
-	var shardId uint32
+	var shardId int64
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{DataDir: t.TempDir()})
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
@@ -259,7 +259,7 @@ func TestFollower_AdvanceCommitOffsetToHead(t *testing.T) {
 }
 
 func TestFollower_NewTerm(t *testing.T) {
-	var shardId uint32
+	var shardId int64
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
@@ -302,7 +302,7 @@ func TestFollower_NewTerm(t *testing.T) {
 // the request comes in the same term that the follower
 // currently has
 func TestFollower_TruncateAfterRestart(t *testing.T) {
-	var shardId uint32
+	var shardId int64
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{DataDir: t.TempDir()})
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
@@ -354,7 +354,7 @@ func TestFollower_TruncateAfterRestart(t *testing.T) {
 }
 
 func TestFollower_PersistentTerm(t *testing.T) {
-	var shardId uint32
+	var shardId int64
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
 		DataDir:   t.TempDir(),
 		CacheSize: 10 * 1024,
@@ -391,7 +391,7 @@ func TestFollower_PersistentTerm(t *testing.T) {
 }
 
 func TestFollower_CommitOffsetLastEntry(t *testing.T) {
-	var shardId uint32
+	var shardId int64
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
@@ -445,7 +445,7 @@ func TestFollower_CommitOffsetLastEntry(t *testing.T) {
 }
 
 func TestFollowerController_RejectEntriesWithDifferentTerm(t *testing.T) {
-	var shardId uint32
+	var shardId int64
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
 		DataDir:   t.TempDir(),
 		CacheSize: 10 * 1024,
@@ -509,7 +509,7 @@ func TestFollowerController_RejectEntriesWithDifferentTerm(t *testing.T) {
 }
 
 func TestFollower_RejectTruncateInvalidTerm(t *testing.T) {
-	var shardId uint32
+	var shardId int64
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
@@ -580,7 +580,7 @@ func prepareTestDb(t *testing.T) kv.Snapshot {
 }
 
 func TestFollower_HandleSnapshot(t *testing.T) {
-	var shardId uint32
+	var shardId int64
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
 		DataDir: t.TempDir(),
 	})
@@ -674,7 +674,7 @@ func TestFollower_HandleSnapshot(t *testing.T) {
 }
 
 func TestFollower_DisconnectLeader(t *testing.T) {
-	var shardId uint32
+	var shardId int64
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
 	walFactory := wal.NewInMemoryWalFactory()
@@ -710,7 +710,7 @@ func TestFollower_DisconnectLeader(t *testing.T) {
 }
 
 func TestFollower_DupEntries(t *testing.T) {
-	var shardId uint32
+	var shardId int64
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := wal.NewInMemoryWalFactory()
 
@@ -749,7 +749,7 @@ func TestFollower_DupEntries(t *testing.T) {
 }
 
 func TestFollowerController_Closed(t *testing.T) {
-	var shard uint32 = 1
+	var shard int64 = 1
 
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)

@@ -36,7 +36,7 @@ type writeBatchFactory struct {
 	maxByteSize    int
 }
 
-func (b writeBatchFactory) newBatch(shardId *uint32) batch.Batch {
+func (b writeBatchFactory) newBatch(shardId *int64) batch.Batch {
 	return &writeBatch{
 		shardId:        shardId,
 		execute:        b.execute,
@@ -54,7 +54,7 @@ func (b writeBatchFactory) newBatch(shardId *uint32) batch.Batch {
 //////////
 
 type writeBatch struct {
-	shardId        *uint32
+	shardId        *int64
 	execute        func(context.Context, *proto.WriteRequest) (*proto.WriteResponse, error)
 	puts           []model.PutCall
 	deletes        []model.DeleteCall

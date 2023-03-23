@@ -33,7 +33,7 @@ type readBatchFactory struct {
 	requestTimeout time.Duration
 }
 
-func (b readBatchFactory) newBatch(shardId *uint32) batch.Batch {
+func (b readBatchFactory) newBatch(shardId *int64) batch.Batch {
 	return &readBatch{
 		shardId:        shardId,
 		execute:        b.execute,
@@ -48,7 +48,7 @@ func (b readBatchFactory) newBatch(shardId *uint32) batch.Batch {
 //////////
 
 type readBatch struct {
-	shardId        *uint32
+	shardId        *int64
 	execute        func(context.Context, *proto.ReadRequest) (proto.OxiaClient_ReadClient, error)
 	gets           []model.GetCall
 	start          time.Time

@@ -59,7 +59,7 @@ func (e *ExecutorImpl) ExecuteList(ctx context.Context, request *proto.ListReque
 	return rpc.List(ctx, request)
 }
 
-func (e *ExecutorImpl) rpc(shardId *uint32) (proto.OxiaClientClient, error) {
+func (e *ExecutorImpl) rpc(shardId *int64) (proto.OxiaClientClient, error) {
 	var target string
 	if shardId != nil {
 		target = e.ShardManager.Leader(*shardId)

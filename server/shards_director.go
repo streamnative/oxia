@@ -30,19 +30,19 @@ import (
 type ShardsDirector interface {
 	io.Closer
 
-	GetLeader(shardId uint32) (LeaderController, error)
-	GetFollower(shardId uint32) (FollowerController, error)
+	GetLeader(shardId int64) (LeaderController, error)
+	GetFollower(shardId int64) (FollowerController, error)
 
-	GetOrCreateLeader(namespace string, shardId uint32) (LeaderController, error)
-	GetOrCreateFollower(namespace string, shardId uint32) (FollowerController, error)
+	GetOrCreateLeader(namespace string, shardId int64) (LeaderController, error)
+	GetOrCreateFollower(namespace string, shardId int64) (FollowerController, error)
 }
 
 type shardsDirector struct {
 	sync.RWMutex
 
 	config    Config
-	leaders   map[uint32]LeaderController
-	followers map[uint32]FollowerController
+	leaders   map[int64]LeaderController
+	followers map[int64]FollowerController
 
 	kvFactory              kv.KVFactory
 	walFactory             wal.WalFactory
@@ -56,8 +56,8 @@ func NewShardsDirector(config Config, walFactory wal.WalFactory, kvFactory kv.KV
 		config:                 config,
 		walFactory:             walFactory,
 		kvFactory:              kvFactory,
-		leaders:                make(map[uint32]LeaderController),
-		followers:              make(map[uint32]FollowerController),
+		leaders:                make(map[int64]LeaderController),
+		followers:              make(map[int64]FollowerController),
 		replicationRpcProvider: provider,
 		log: log.With().
 			Str("component", "shards-director").
@@ -78,7 +78,7 @@ func NewShardsDirector(config Config, walFactory wal.WalFactory, kvFactory kv.KV
 	return sd
 }
 
-func (s *shardsDirector) GetLeader(shardId uint32) (LeaderController, error) {
+func (s *shardsDirector) GetLeader(shardId int64) (LeaderController, error) {
 	s.RLock()
 	defer s.RUnlock()
 
@@ -92,12 +92,12 @@ func (s *shardsDirector) GetLeader(shardId uint32) (LeaderController, error) {
 	}
 
 	s.log.Debug().
-		Uint32("shard", shardId).
+		Int64("shard", shardId).
 		Msg("This node is not hosting shard")
 	return nil, status.Errorf(common.CodeNodeIsNotLeader, "node is not leader for shard %d", shardId)
 }
 
-func (s *shardsDirector) GetFollower(shardId uint32) (FollowerController, error) {
+func (s *shardsDirector) GetFollower(shardId int64) (FollowerController, error) {
 	s.RLock()
 	defer s.RUnlock()
 
@@ -111,12 +111,12 @@ func (s *shardsDirector) GetFollower(shardId uint32) (FollowerController, error)
 	}
 
 	s.log.Debug().
-		Uint32("shard", shardId).
+		Int64("shard", shardId).
 		Msg("This node is not hosting shard")
 	return nil, status.Errorf(common.CodeNodeIsNotFollower, "node is not follower for shard %d", shardId)
 }
 
-func (s *shardsDirector) GetOrCreateLeader(namespace string, shardId uint32) (LeaderController, error) {
+func (s *shardsDirector) GetOrCreateLeader(namespace string, shardId int64) (LeaderController, error) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -147,7 +147,7 @@ func (s *shardsDirector) GetOrCreateLeader(namespace string, shardId uint32) (Le
 	}
 }
 
-func (s *shardsDirector) GetOrCreateFollower(namespace string, shardId uint32) (FollowerController, error) {
+func (s *shardsDirector) GetOrCreateFollower(namespace string, shardId int64) (FollowerController, error) {
 	s.Lock()
 	defer s.Unlock()
 

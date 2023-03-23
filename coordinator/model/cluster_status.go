@@ -39,8 +39,8 @@ type ShardMetadata struct {
 }
 
 type NamespaceStatus struct {
-	ReplicationFactor uint32                   `json:"replicationFactor" yaml:"replicationFactor"`
-	Shards            map[uint32]ShardMetadata `json:"shards" yaml:"shards"`
+	ReplicationFactor uint32                  `json:"replicationFactor" yaml:"replicationFactor"`
+	Shards            map[int64]ShardMetadata `json:"shards" yaml:"shards"`
 }
 
 type ClusterStatus struct {
@@ -72,7 +72,7 @@ func (sm ShardMetadata) Clone() ShardMetadata {
 
 func (n NamespaceStatus) Clone() NamespaceStatus {
 	r := NamespaceStatus{
-		Shards:            make(map[uint32]ShardMetadata),
+		Shards:            make(map[int64]ShardMetadata),
 		ReplicationFactor: n.ReplicationFactor,
 	}
 

@@ -46,7 +46,7 @@ func NewInMemoryWalFactory() WalFactory {
 	}
 }
 
-func (f *factory) NewWal(namespace string, shard uint32) (Wal, error) {
+func (f *factory) NewWal(namespace string, shard int64) (Wal, error) {
 	impl, err := newPersistentWal(namespace, shard, f.options)
 	return impl, err
 }
@@ -57,7 +57,7 @@ func (f *factory) Close() error {
 
 type persistentWal struct {
 	sync.RWMutex
-	shard       uint32
+	shard       int64
 	log         *Log
 	firstOffset atomic.Int64
 
@@ -83,7 +83,7 @@ type persistentWal struct {
 	activeEntries metrics.Gauge
 }
 
-func newPersistentWal(namespace string, shard uint32, options *WalFactoryOptions) (Wal, error) {
+func newPersistentWal(namespace string, shard int64, options *WalFactoryOptions) (Wal, error) {
 	opts := DefaultOptions()
 	opts.InMemory = options.InMemory
 	opts.NoSync = true // We always sync explicitly

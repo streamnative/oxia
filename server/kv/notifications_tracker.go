@@ -46,7 +46,7 @@ type notifications struct {
 	batch proto.NotificationBatch
 }
 
-func newNotifications(shardId uint32, offset int64, timestamp uint64) *notifications {
+func newNotifications(shardId int64, offset int64, timestamp uint64) *notifications {
 	return &notifications{
 		proto.NotificationBatch{
 			ShardId:       shardId,
@@ -88,7 +88,7 @@ func parseNotificationKey(key string) (offset int64, err error) {
 type notificationsTracker struct {
 	sync.Mutex
 	cond       common.ConditionContext
-	shard      uint32
+	shard      int64
 	lastOffset atomic.Int64
 	closed     atomic.Bool
 	kv         KV
@@ -103,7 +103,7 @@ type notificationsTracker struct {
 	readBytesCounter metrics.Counter
 }
 
-func newNotificationsTracker(namespace string, shard uint32, lastOffset int64, kv KV, notificationRetentionTime time.Duration, clock common.Clock) *notificationsTracker {
+func newNotificationsTracker(namespace string, shard int64, lastOffset int64, kv KV, notificationRetentionTime time.Duration, clock common.Clock) *notificationsTracker {
 	labels := metrics.LabelsForShard(namespace, shard)
 	nt := &notificationsTracker{
 		shard:     shard,
@@ -112,7 +112,7 @@ func newNotificationsTracker(namespace string, shard uint32, lastOffset int64, k
 		log: log.Logger.With().
 			Str("component", "notifications-tracker").
 			Str("namespace", namespace).
-			Uint32("shard", shard).
+			Int64("shard", shard).
 			Logger(),
 		readCounter: metrics.NewCounter("oxia_server_notifications_read",
 			"The total number of notifications", "count", labels),

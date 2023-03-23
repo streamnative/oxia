@@ -98,22 +98,22 @@ func (p *PebbleFactory) Close() error {
 	return nil
 }
 
-func (p *PebbleFactory) NewKV(namespace string, shardId uint32) (KV, error) {
+func (p *PebbleFactory) NewKV(namespace string, shardId int64) (KV, error) {
 	return newKVPebble(p, namespace, shardId)
 }
 
-func (p *PebbleFactory) NewSnapshotLoader(namespace string, shardId uint32) (SnapshotLoader, error) {
+func (p *PebbleFactory) NewSnapshotLoader(namespace string, shardId int64) (SnapshotLoader, error) {
 	return newPebbleSnapshotLoader(p, namespace, shardId)
 }
 
-func (p *PebbleFactory) getKVPath(shard uint32) string {
+func (p *PebbleFactory) getKVPath(shard int64) string {
 	return filepath.Join(p.dataDir, fmt.Sprint("shard-", shard))
 }
 
 ////////////////////
 
 type Pebble struct {
-	shardId         uint32
+	shardId         int64
 	dataDir         string
 	db              *pebble.DB
 	snapshotCounter atomic.Int64
@@ -134,7 +134,7 @@ type Pebble struct {
 	batchCountHisto metrics.Histogram
 }
 
-func newKVPebble(factory *PebbleFactory, namespace string, shardId uint32) (KV, error) {
+func newKVPebble(factory *PebbleFactory, namespace string, shardId int64) (KV, error) {
 	labels := metrics.LabelsForShard(namespace, shardId)
 	pb := &Pebble{
 		shardId: shardId,
@@ -182,7 +182,7 @@ func newKVPebble(factory *PebbleFactory, namespace string, shardId uint32) (KV, 
 		Logger: &PebbleLogger{
 			log.With().
 				Str("component", "pebble").
-				Uint32("shard", shardId).
+				Int64("shard", shardId).
 				Logger(),
 		},
 	}
@@ -700,13 +700,13 @@ func (ps *pebbleSnapshot) NextChunkContent() ([]byte, error) {
 type pebbleSnapshotLoader struct {
 	pf        *PebbleFactory
 	namespace string
-	shard     uint32
+	shard     int64
 	dbPath    string
 	complete  bool
 	file      *os.File
 }
 
-func newPebbleSnapshotLoader(pf *PebbleFactory, namespace string, shard uint32) (SnapshotLoader, error) {
+func newPebbleSnapshotLoader(pf *PebbleFactory, namespace string, shard int64) (SnapshotLoader, error) {
 	sl := &pebbleSnapshotLoader{
 		pf:        pf,
 		namespace: namespace,

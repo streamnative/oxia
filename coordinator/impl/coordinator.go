@@ -46,8 +46,8 @@ type Coordinator interface {
 
 	ShardAssignmentsProvider
 
-	InitiateLeaderElection(namespace string, shard uint32, metadata model.ShardMetadata) error
-	ElectedLeader(namespace string, shard uint32, metadata model.ShardMetadata) error
+	InitiateLeaderElection(namespace string, shard int64, metadata model.ShardMetadata) error
+	ElectedLeader(namespace string, shard int64, metadata model.ShardMetadata) error
 
 	NodeAvailabilityListener
 
@@ -61,7 +61,7 @@ type coordinator struct {
 	MetadataProvider
 	model.ClusterConfig
 
-	shardControllers map[uint32]ShardController
+	shardControllers map[int64]ShardController
 	nodeControllers  map[string]NodeController
 	clusterStatus    *model.ClusterStatus
 	assignments      *proto.ShardAssignments
@@ -77,7 +77,7 @@ func NewCoordinator(metadataProvider MetadataProvider, clusterConfig model.Clust
 	c := &coordinator{
 		MetadataProvider: metadataProvider,
 		ClusterConfig:    clusterConfig,
-		shardControllers: make(map[uint32]ShardController),
+		shardControllers: make(map[int64]ShardController),
 		nodeControllers:  make(map[string]NodeController),
 		rpc:              rpc,
 		log: log.With().
@@ -156,12 +156,12 @@ func (c *coordinator) initialAssignment() error {
 		Namespaces: map[string]model.NamespaceStatus{},
 	}
 
-	baseShardId := uint32(0)
+	baseShardId := int64(0)
 	// Do round-robin assignment of shards to storage servers
 	serverIdx := uint32(0)
 
 	for _, nc := range cc.Namespaces {
-		ns := model.NamespaceStatus{Shards: map[uint32]model.ShardMetadata{}}
+		ns := model.NamespaceStatus{Shards: map[int64]model.ShardMetadata{}}
 
 		for _, shard := range common.GenerateShards(baseShardId, nc.InitialShardCount) {
 			shardMetadata := model.ShardMetadata{
@@ -181,7 +181,7 @@ func (c *coordinator) initialAssignment() error {
 		}
 		cs.Namespaces[nc.Name] = ns
 
-		baseShardId += nc.InitialShardCount
+		baseShardId += int64(nc.InitialShardCount)
 	}
 
 	c.log.Info().
@@ -243,7 +243,7 @@ func (c *coordinator) WaitForNextUpdate(ctx context.Context, currentValue *proto
 	return c.assignments, nil
 }
 
-func (c *coordinator) InitiateLeaderElection(namespace string, shard uint32, metadata model.ShardMetadata) error {
+func (c *coordinator) InitiateLeaderElection(namespace string, shard int64, metadata model.ShardMetadata) error {
 	c.Lock()
 	defer c.Unlock()
 
@@ -264,7 +264,7 @@ func (c *coordinator) InitiateLeaderElection(namespace string, shard uint32, met
 	return nil
 }
 
-func (c *coordinator) ElectedLeader(namespace string, shard uint32, metadata model.ShardMetadata) error {
+func (c *coordinator) ElectedLeader(namespace string, shard int64, metadata model.ShardMetadata) error {
 	c.Lock()
 	defer c.Unlock()
 

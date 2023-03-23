@@ -29,7 +29,7 @@ import (
 
 func TestFollowerCursor(t *testing.T) {
 	var term int64 = 1
-	var shard uint32 = 2
+	var shard int64 = 2
 
 	stream := newMockRpcClient()
 	ackTracker := NewQuorumAckTracker(3, wal.InvalidOffset, wal.InvalidOffset)
@@ -111,7 +111,7 @@ func TestFollowerCursor(t *testing.T) {
 
 func TestFollowerCursor_SendSnapshot(t *testing.T) {
 	var term int64 = 1
-	var shard uint32 = 2
+	var shard int64 = 2
 
 	N := int64(10)
 	stream := newMockRpcClient()

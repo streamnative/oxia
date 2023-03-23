@@ -29,7 +29,7 @@ type session struct {
 	sync.Mutex
 	id             SessionId
 	clientIdentity string
-	shardId        uint32
+	shardId        int64
 	timeout        time.Duration
 	sm             *sessionManager
 	heartbeatCh    chan bool

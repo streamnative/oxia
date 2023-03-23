@@ -40,7 +40,7 @@ func TestManager(t *testing.T) {
 	testBatcher := &testBatcher{}
 
 	newBatcherInvocations := 0
-	batcherFactory := func(*uint32) batch.Batcher {
+	batcherFactory := func(*int64) batch.Batcher {
 		newBatcherInvocations++
 		return testBatcher
 	}

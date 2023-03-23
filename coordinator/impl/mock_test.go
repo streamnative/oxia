@@ -118,7 +118,7 @@ type mockPerNodeChannels struct {
 	err                    error
 }
 
-func (m *mockPerNodeChannels) expectBecomeLeaderRequest(t *testing.T, shard uint32, term int64, replicationFactor uint32) {
+func (m *mockPerNodeChannels) expectBecomeLeaderRequest(t *testing.T, shard int64, term int64, replicationFactor uint32) {
 	r := <-m.becomeLeaderRequests
 
 	assert.Equal(t, shard, r.ShardId)
@@ -126,14 +126,14 @@ func (m *mockPerNodeChannels) expectBecomeLeaderRequest(t *testing.T, shard uint
 	assert.Equal(t, replicationFactor, r.ReplicationFactor)
 }
 
-func (m *mockPerNodeChannels) expectNewTermRequest(t *testing.T, shard uint32, term int64) {
+func (m *mockPerNodeChannels) expectNewTermRequest(t *testing.T, shard int64, term int64) {
 	r := <-m.newTermRequests
 
 	assert.Equal(t, shard, r.ShardId)
 	assert.Equal(t, term, r.Term)
 }
 
-func (m *mockPerNodeChannels) expectAddFollowerRequest(t *testing.T, shard uint32, term int64) {
+func (m *mockPerNodeChannels) expectAddFollowerRequest(t *testing.T, shard int64, term int64) {
 	r := <-m.addFollowerRequests
 
 	assert.Equal(t, shard, r.ShardId)

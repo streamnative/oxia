@@ -27,7 +27,7 @@ import (
 )
 
 func TestShardController(t *testing.T) {
-	var shard uint32 = 5
+	var shard int64 = 5
 	rpc := newMockRpcProvider()
 	coordinator := newMockCoordinator()
 
@@ -101,7 +101,7 @@ func TestShardController(t *testing.T) {
 }
 
 func TestShardController_StartingWithLeaderAlreadyPresent(t *testing.T) {
-	var shard uint32 = 5
+	var shard int64 = 5
 	rpc := newMockRpcProvider()
 	coordinator := newMockCoordinator()
 
@@ -132,7 +132,7 @@ func TestShardController_StartingWithLeaderAlreadyPresent(t *testing.T) {
 }
 
 func TestShardController_NewTermWithNonRespondingServer(t *testing.T) {
-	var shard uint32 = 5
+	var shard int64 = 5
 	rpc := newMockRpcProvider()
 	coordinator := newMockCoordinator()
 
@@ -173,7 +173,7 @@ func TestShardController_NewTermWithNonRespondingServer(t *testing.T) {
 }
 
 func TestShardController_NewTermFollowerUntilItRecovers(t *testing.T) {
-	var shard uint32 = 5
+	var shard int64 = 5
 	rpc := newMockRpcProvider()
 	coordinator := newMockCoordinator()
 
@@ -226,7 +226,7 @@ func TestShardController_NewTermFollowerUntilItRecovers(t *testing.T) {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 type sCoordinatorEvents struct {
-	shard    uint32
+	shard    int64
 	metadata model.ShardMetadata
 }
 
@@ -256,7 +256,7 @@ func (m *mockCoordinator) WaitForNextUpdate(ctx context.Context, currentValue *p
 	panic("not implemented")
 }
 
-func (m *mockCoordinator) InitiateLeaderElection(namespace string, shard uint32, metadata model.ShardMetadata) error {
+func (m *mockCoordinator) InitiateLeaderElection(namespace string, shard int64, metadata model.ShardMetadata) error {
 	m.Lock()
 	defer m.Unlock()
 	if m.err != nil {
@@ -272,7 +272,7 @@ func (m *mockCoordinator) InitiateLeaderElection(namespace string, shard uint32,
 	return nil
 }
 
-func (m *mockCoordinator) ElectedLeader(namespace string, shard uint32, metadata model.ShardMetadata) error {
+func (m *mockCoordinator) ElectedLeader(namespace string, shard int64, metadata model.ShardMetadata) error {
 	m.Lock()
 	defer m.Unlock()
 	if m.err != nil {

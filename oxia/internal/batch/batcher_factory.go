@@ -45,7 +45,7 @@ func NewBatcherFactory(
 	}
 }
 
-func (b *BatcherFactory) NewWriteBatcher(shardId *uint32, maxWriteBatchSize int) batch.Batcher {
+func (b *BatcherFactory) NewWriteBatcher(shardId *int64, maxWriteBatchSize int) batch.Batcher {
 	return b.newBatcher(shardId, writeBatchFactory{
 		execute:        b.Executor.ExecuteWrite,
 		metrics:        b.Metrics,
@@ -54,7 +54,7 @@ func (b *BatcherFactory) NewWriteBatcher(shardId *uint32, maxWriteBatchSize int)
 	}.newBatch)
 }
 
-func (b *BatcherFactory) NewReadBatcher(shardId *uint32) batch.Batcher {
+func (b *BatcherFactory) NewReadBatcher(shardId *int64) batch.Batcher {
 	return b.newBatcher(shardId, readBatchFactory{
 		execute:        b.Executor.ExecuteRead,
 		metrics:        b.Metrics,
@@ -62,7 +62,7 @@ func (b *BatcherFactory) NewReadBatcher(shardId *uint32) batch.Batcher {
 	}.newBatch)
 }
 
-func (b *BatcherFactory) newBatcher(shardId *uint32, batchFactory func(shardId *uint32) batch.Batch) batch.Batcher {
+func (b *BatcherFactory) newBatcher(shardId *int64, batchFactory func(shardId *int64) batch.Batch) batch.Batcher {
 	return b.NewBatcher(func() batch.Batch {
 		return batchFactory(shardId)
 	})

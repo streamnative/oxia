@@ -77,7 +77,7 @@ type followerController struct {
 	sync.Mutex
 
 	namespace string
-	shardId   uint32
+	shardId   int64
 	term      int64
 
 	// The highest commit offset advertised by the leader
@@ -106,7 +106,7 @@ type followerController struct {
 	writeLatencyHisto metrics.LatencyHistogram
 }
 
-func NewFollowerController(config Config, namespace string, shardId uint32, wf wal.WalFactory, kvFactory kv.KVFactory) (FollowerController, error) {
+func NewFollowerController(config Config, namespace string, shardId int64, wf wal.WalFactory, kvFactory kv.KVFactory) (FollowerController, error) {
 	fc := &followerController{
 		config:        config,
 		namespace:     namespace,
@@ -166,7 +166,7 @@ func (fc *followerController) setLogger() {
 	fc.log = log.With().
 		Str("component", "follower-controller").
 		Str("namespace", fc.namespace).
-		Uint32("shard", fc.shardId).
+		Int64("shard", fc.shardId).
 		Int64("term", fc.term).
 		Logger()
 }

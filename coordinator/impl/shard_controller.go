@@ -55,7 +55,7 @@ type shardController struct {
 	sync.Mutex
 
 	namespace     string
-	shard         uint32
+	shard         int64
 	shardMetadata model.ShardMetadata
 	rpc           RpcProvider
 	coordinator   Coordinator
@@ -74,7 +74,7 @@ type shardController struct {
 	termGauge             metrics.Gauge
 }
 
-func NewShardController(namespace string, shard uint32, shardMetadata model.ShardMetadata, rpc RpcProvider, coordinator Coordinator) ShardController {
+func NewShardController(namespace string, shard int64, shardMetadata model.ShardMetadata, rpc RpcProvider, coordinator Coordinator) ShardController {
 	labels := metrics.LabelsForShard(namespace, shard)
 	s := &shardController{
 		namespace:     namespace,
@@ -85,7 +85,7 @@ func NewShardController(namespace string, shard uint32, shardMetadata model.Shar
 		log: log.With().
 			Str("component", "shard-controller").
 			Str("namespace", namespace).
-			Uint32("shard", shard).
+			Int64("shard", shard).
 			Logger(),
 
 		leaderElectionLatency: metrics.NewLatencyHistogram("oxia_coordinator_leader_election_latency",

@@ -38,8 +38,8 @@ import (
 // This is a provider for the ReplicateStream Grpc handler
 // It's used to allow passing in a mocked version of the Grpc service
 type ReplicateStreamProvider interface {
-	GetReplicateStream(ctx context.Context, follower string, namespace string, shard uint32) (proto.OxiaLogReplication_ReplicateClient, error)
-	SendSnapshot(ctx context.Context, follower string, namespace string, shard uint32) (proto.OxiaLogReplication_SendSnapshotClient, error)
+	GetReplicateStream(ctx context.Context, follower string, namespace string, shard int64) (proto.OxiaLogReplication_ReplicateClient, error)
+	SendSnapshot(ctx context.Context, follower string, namespace string, shard int64) (proto.OxiaLogReplication_SendSnapshotClient, error)
 }
 
 // FollowerCursor
@@ -48,7 +48,7 @@ type ReplicateStreamProvider interface {
 type FollowerCursor interface {
 	io.Closer
 
-	ShardId() uint32
+	ShardId() int64
 
 	// LastPushed
 	// The last entry that was sent to this follower
@@ -73,7 +73,7 @@ type followerCursor struct {
 	lastPushed  atomic.Int64
 	ackOffset   atomic.Int64
 	namespace   string
-	shardId     uint32
+	shardId     int64
 
 	backoff backoff.BackOff
 	closed  atomic.Bool
@@ -92,7 +92,7 @@ func NewFollowerCursor(
 	follower string,
 	term int64,
 	namespace string,
-	shardId uint32,
+	shardId int64,
 	replicateStreamProvider ReplicateStreamProvider,
 	ackTracker QuorumAckTracker,
 	wal wal.Wal,
@@ -118,7 +118,7 @@ func NewFollowerCursor(
 		log: log.With().
 			Str("component", "follower-cursor").
 			Str("namespace", namespace).
-			Uint32("shard", shardId).
+			Int64("shard", shardId).
 			Int64("term", term).
 			Str("follower", follower).
 			Logger(),
@@ -197,7 +197,7 @@ func (fc *followerCursor) Close() error {
 	return nil
 }
 
-func (fc *followerCursor) ShardId() uint32 {
+func (fc *followerCursor) ShardId() int64 {
 	return fc.shardId
 }
 

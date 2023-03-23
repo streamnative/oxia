@@ -31,9 +31,9 @@ import (
 
 type ShardManager interface {
 	io.Closer
-	Get(key string) uint32
-	GetAll() []uint32
-	Leader(shardId uint32) string
+	Get(key string) int64
+	GetAll() []int64
+	Leader(shardId int64) string
 }
 
 type shardManagerImpl struct {
@@ -44,7 +44,7 @@ type shardManagerImpl struct {
 	clientPool     common.ClientPool
 	serviceAddress string
 	namespace      string
-	shards         map[uint32]Shard
+	shards         map[int64]Shard
 	ctx            context.Context
 	cancel         context.CancelFunc
 	logger         zerolog.Logger
@@ -58,7 +58,7 @@ func NewShardManager(shardStrategy ShardStrategy, clientPool common.ClientPool,
 		shardStrategy:  shardStrategy,
 		clientPool:     clientPool,
 		serviceAddress: serviceAddress,
-		shards:         make(map[uint32]Shard),
+		shards:         make(map[int64]Shard),
 		requestTimeout: requestTimeout,
 		logger:         log.With().Str("component", "shardManager").Logger(),
 	}
@@ -92,7 +92,7 @@ func (s *shardManagerImpl) start() error {
 	return s.updatedWg.Wait(ctx)
 }
 
-func (s *shardManagerImpl) Get(key string) uint32 {
+func (s *shardManagerImpl) Get(key string) int64 {
 	s.RLock()
 	defer s.RUnlock()
 
@@ -106,18 +106,18 @@ func (s *shardManagerImpl) Get(key string) uint32 {
 	panic("shard not found")
 }
 
-func (s *shardManagerImpl) GetAll() []uint32 {
+func (s *shardManagerImpl) GetAll() []int64 {
 	s.RLock()
 	defer s.RUnlock()
 
-	shardIds := make([]uint32, 0, len(s.shards))
+	shardIds := make([]int64, 0, len(s.shards))
 	for shardId := range s.shards {
 		shardIds = append(shardIds, shardId)
 	}
 	return shardIds
 }
 
-func (s *shardManagerImpl) Leader(shardId uint32) string {
+func (s *shardManagerImpl) Leader(shardId int64) string {
 	s.RLock()
 	defer s.RUnlock()
 

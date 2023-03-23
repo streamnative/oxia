@@ -108,7 +108,7 @@ func (nm *notifications) Close() error {
 
 // Manages the notifications for a specific shard
 type shardNotificationsManager struct {
-	shard              uint32
+	shard              int64
 	ctx                context.Context
 	nm                 *notifications
 	backoff            backoff.BackOff
@@ -117,7 +117,7 @@ type shardNotificationsManager struct {
 	log                zerolog.Logger
 }
 
-func newShardNotificationsManager(shard uint32, nm *notifications) *shardNotificationsManager {
+func newShardNotificationsManager(shard int64, nm *notifications) *shardNotificationsManager {
 	snm := &shardNotificationsManager{
 		shard:              shard,
 		ctx:                nm.ctx,
@@ -126,7 +126,7 @@ func newShardNotificationsManager(shard uint32, nm *notifications) *shardNotific
 		backoff:            common.NewBackOffWithInitialInterval(nm.ctx, 1*time.Second),
 		log: log.Logger.With().
 			Str("component", "oxia-notifications-manager").
-			Uint32("shard", shard).
+			Int64("shard", shard).
 			Logger(),
 	}
 

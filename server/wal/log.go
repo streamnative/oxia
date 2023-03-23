@@ -153,7 +153,7 @@ func open(path string, opts *Options) (*Log, error) {
 }
 
 // OpenWithShard a new write-ahead log
-func OpenWithShard(path string, namespace string, shard uint32, opts *Options) (*Log, error) {
+func OpenWithShard(path string, namespace string, shard int64, opts *Options) (*Log, error) {
 	defaultOptions := DefaultOptions()
 	if opts == nil {
 		opts = defaultOptions

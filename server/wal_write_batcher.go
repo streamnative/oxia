@@ -160,11 +160,11 @@ func (l *walWriteBatch) Fail(err error) {
 	}
 }
 
-func NewWalWriteBatcher(locker sync.Locker, term int64, shardId uint32, wal wal.Wal, quorumAckTracker QuorumAckTracker, ctx context.Context) batch.Batcher {
+func NewWalWriteBatcher(locker sync.Locker, term int64, shardId int64, wal wal.Wal, quorumAckTracker QuorumAckTracker, ctx context.Context) batch.Batcher {
 	return newWalWriteBatcher(locker, term, shardId, wal, quorumAckTracker, ctx, 2*time.Millisecond)
 }
 
-func newWalWriteBatcher(locker sync.Locker, term int64, shardId uint32, wal wal.Wal, quorumAckTracker QuorumAckTracker, ctx context.Context, linger time.Duration) batch.Batcher {
+func newWalWriteBatcher(locker sync.Locker, term int64, shardId int64, wal wal.Wal, quorumAckTracker QuorumAckTracker, ctx context.Context, linger time.Duration) batch.Batcher {
 	batcherFactory := batch.BatcherFactory{
 		Linger:              linger,
 		MaxRequestsPerBatch: 1,
@@ -179,7 +179,7 @@ func newWalWriteBatcher(locker sync.Locker, term int64, shardId uint32, wal wal.
 				ctx:              ctx,
 				log: log.With().
 					Str("component", "wal-write-batcher").
-					Uint32("shard", shardId).
+					Int64("shard", shardId).
 					Logger(),
 			}
 		})

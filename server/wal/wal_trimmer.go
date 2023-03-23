@@ -38,7 +38,7 @@ type Trimmer interface {
 	io.Closer
 }
 
-func NewTrimmer(namespace string, shard uint32, wal Wal, retention time.Duration, checkInterval time.Duration, clock common.Clock,
+func NewTrimmer(namespace string, shard int64, wal Wal, retention time.Duration, checkInterval time.Duration, clock common.Clock,
 	commitOffsetProvider CommitOffsetProvider) Trimmer {
 	if retention.Nanoseconds() == 0 {
 		retention = DefaultRetention
@@ -54,7 +54,7 @@ func NewTrimmer(namespace string, shard uint32, wal Wal, retention time.Duration
 		log: log.With().
 			Str("component", "wal-trimmer").
 			Str("namespace", namespace).
-			Uint32("shard", shard).
+			Int64("shard", shard).
 			Logger(),
 	}
 	t.ctx, t.cancel = context.WithCancel(context.Background())

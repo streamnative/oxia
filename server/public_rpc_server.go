@@ -231,7 +231,7 @@ func (s *publicRpcServer) CreateSession(ctx context.Context, req *proto.CreateSe
 
 func (s *publicRpcServer) KeepAlive(ctx context.Context, req *proto.SessionHeartbeat) (*proto.KeepAliveResponse, error) {
 	s.log.Debug().
-		Uint32("shard", req.ShardId).
+		Int64("shard", req.ShardId).
 		Int64("session", req.SessionId).
 		Str("peer", common.GetPeer(ctx)).
 		Msg("Session keep alive")
@@ -266,7 +266,7 @@ func (s *publicRpcServer) CloseSession(ctx context.Context, req *proto.CloseSess
 	return res, nil
 }
 
-func (s *publicRpcServer) getLeader(shardId uint32) (LeaderController, error) {
+func (s *publicRpcServer) getLeader(shardId int64) (LeaderController, error) {
 	lc, err := s.shardsDirector.GetLeader(shardId)
 	if err != nil {
 		if status.Code(err) != common.CodeNodeIsNotLeader {

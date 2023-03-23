@@ -41,7 +41,7 @@ type notificationsTrimmer struct {
 	log                        zerolog.Logger
 }
 
-func newNotificationsTrimmer(ctx context.Context, namespace string, shardId uint32, kv KV, notificationRetentionTime time.Duration, waitClose common.WaitGroup, clock common.Clock) *notificationsTrimmer {
+func newNotificationsTrimmer(ctx context.Context, namespace string, shardId int64, kv KV, notificationRetentionTime time.Duration, waitClose common.WaitGroup, clock common.Clock) *notificationsTrimmer {
 	interval := notificationRetentionTime / 10
 	if interval < minNotificationTrimmingInterval {
 		interval = minNotificationTrimmingInterval
@@ -60,7 +60,7 @@ func newNotificationsTrimmer(ctx context.Context, namespace string, shardId uint
 		log: log.With().
 			Str("component", "db-notifications-trimmer").
 			Str("namespace", namespace).
-			Uint32("shard", shardId).
+			Int64("shard", shardId).
 			Logger(),
 	}
 

@@ -72,7 +72,7 @@ type leaderController struct {
 	sync.RWMutex
 
 	namespace         string
-	shardId           uint32
+	shardId           int64
 	status            proto.ServingStatus
 	term              int64
 	replicationFactor uint32
@@ -100,7 +100,7 @@ type leaderController struct {
 	followerAckOffsetGauges map[string]metrics.Gauge
 }
 
-func NewLeaderController(config Config, namespace string, shardId uint32, rpcClient ReplicationRpcProvider, walFactory wal.WalFactory, kvFactory kv.KVFactory) (LeaderController, error) {
+func NewLeaderController(config Config, namespace string, shardId int64, rpcClient ReplicationRpcProvider, walFactory wal.WalFactory, kvFactory kv.KVFactory) (LeaderController, error) {
 	labels := metrics.LabelsForShard(namespace, shardId)
 	lc := &leaderController{
 		status:           proto.ServingStatus_NOT_MEMBER,
@@ -170,7 +170,7 @@ func (lc *leaderController) setLogger() {
 	lc.log = log.With().
 		Str("component", "leader-controller").
 		Str("namespace", lc.namespace).
-		Uint32("shard", lc.shardId).
+		Int64("shard", lc.shardId).
 		Int64("term", lc.term).
 		Logger()
 }

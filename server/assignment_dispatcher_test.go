@@ -274,7 +274,7 @@ func TestShardAssignmentDispatcher_MultipleNamespaces(t *testing.T) {
 	assert.NoError(t, dispatcher.Close())
 }
 
-func newShardAssignment(id uint32, leader string, min uint32, max uint32) *proto.ShardAssignment {
+func newShardAssignment(id int64, leader string, min uint32, max uint32) *proto.ShardAssignment {
 	return &proto.ShardAssignment{
 		ShardId: id,
 		Leader:  leader,
