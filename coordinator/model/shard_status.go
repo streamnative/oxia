@@ -25,6 +25,7 @@ const (
 	ShardStatusUnknown ShardStatus = iota
 	ShardStatusSteadyState
 	ShardStatusElection
+	ShardStatusDeleting
 )
 
 func (s ShardStatus) String() string {
@@ -35,12 +36,14 @@ var toString = map[ShardStatus]string{
 	ShardStatusUnknown:     "Unknown",
 	ShardStatusSteadyState: "SteadyState",
 	ShardStatusElection:    "Election",
+	ShardStatusDeleting:    "Deleting",
 }
 
 var toShardStatus = map[string]ShardStatus{
 	"Unknown":     ShardStatusUnknown,
 	"SteadyState": ShardStatusSteadyState,
 	"Election":    ShardStatusElection,
+	"Deleting":    ShardStatusDeleting,
 }
 
 // MarshalJSON marshals the enum as a quoted json string
