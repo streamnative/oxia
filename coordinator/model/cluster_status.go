@@ -44,7 +44,17 @@ type NamespaceStatus struct {
 }
 
 type ClusterStatus struct {
-	Namespaces map[string]NamespaceStatus `json:"namespaces" yaml:"namespaces"`
+	Namespaces       map[string]NamespaceStatus `json:"namespaces" yaml:"namespaces"`
+	ShardIdGenerator int64                      `json:"shardIdGenerator" yaml:"shardIdGenerator"`
+	ServerIdx        uint32                     `json:"serverIdx" yaml:"serverIdx"`
+}
+
+func NewClusterStatus() *ClusterStatus {
+	return &ClusterStatus{
+		Namespaces:       map[string]NamespaceStatus{},
+		ShardIdGenerator: 0,
+		ServerIdx:        0,
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////

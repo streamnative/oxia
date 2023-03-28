@@ -151,60 +151,15 @@ func (c *coordinator) initialAssignment() error {
 		Interface("clusterConfig", c.ClusterConfig).
 		Msg("Performing initial assignment")
 
-	cc := c.ClusterConfig
-	cs := &model.ClusterStatus{
-		Namespaces: map[string]model.NamespaceStatus{},
-	}
-
-	baseShardId := int64(0)
-	// Do round-robin assignment of shards to storage servers
-	serverIdx := uint32(0)
-
-	for _, nc := range cc.Namespaces {
-		ns := model.NamespaceStatus{Shards: map[int64]model.ShardMetadata{}}
-
-		for _, shard := range common.GenerateShards(baseShardId, nc.InitialShardCount) {
-			shardMetadata := model.ShardMetadata{
-				Status:   model.ShardStatusUnknown,
-				Term:     -1,
-				Leader:   nil,
-				Ensemble: getServers(cc.Servers, serverIdx, nc.ReplicationFactor),
-				Int32HashRange: model.Int32HashRange{
-					Min: shard.Min,
-					Max: shard.Max,
-				},
-			}
-
-			ns.ReplicationFactor = nc.ReplicationFactor
-			ns.Shards[shard.Id] = shardMetadata
-			serverIdx += nc.ReplicationFactor
-		}
-		cs.Namespaces[nc.Name] = ns
-
-		baseShardId += int64(nc.InitialShardCount)
-	}
-
-	c.log.Info().
-		Interface("cluster-status", cs).
-		Msg("Initializing cluster status")
+	clusterStatus, _, _ := applyClusterChanges(&c.ClusterConfig, model.NewClusterStatus())
 
 	var err error
-	if c.metadataVersion, err = c.MetadataProvider.Store(cs, MetadataNotExists); err != nil {
+	if c.metadataVersion, err = c.MetadataProvider.Store(clusterStatus, MetadataNotExists); err != nil {
 		return err
 	}
 
-	c.clusterStatus = cs
-
+	c.clusterStatus = clusterStatus
 	return nil
-}
-
-func getServers(servers []model.ServerAddress, startIdx uint32, count uint32) []model.ServerAddress {
-	n := len(servers)
-	res := make([]model.ServerAddress, count)
-	for i := uint32(0); i < count; i++ {
-		res[i] = servers[int(startIdx+i)%n]
-	}
-	return res
 }
 
 func (c *coordinator) Close() error {
