@@ -107,6 +107,8 @@ type KV interface {
 	Snapshot() (Snapshot, error)
 
 	Flush() error
+
+	Delete() error
 }
 
 type KVFactoryOptions struct {

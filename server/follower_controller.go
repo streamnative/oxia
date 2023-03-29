@@ -67,6 +67,7 @@ type FollowerController interface {
 	SendSnapshot(stream proto.OxiaLogReplication_SendSnapshotServer) error
 
 	GetStatus(request *proto.GetStatusRequest) (*proto.GetStatusResponse, error)
+	DeleteShard(request *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error)
 
 	Term() int64
 	CommitOffset() int64
@@ -178,17 +179,22 @@ func (fc *followerController) isClosed() bool {
 func (fc *followerController) Close() error {
 	fc.Lock()
 	defer fc.Unlock()
+	return fc.close()
+}
 
+func (fc *followerController) close() error {
 	fc.log.Debug().Msg("Closing follower controller")
 	fc.cancel()
 
-	err := multierr.Combine(
-		fc.walTrimmer.Close(),
-		fc.wal.Close(),
-	)
+	err := fc.walTrimmer.Close()
+
+	if fc.wal != nil {
+		err = multierr.Combine(err, fc.wal.Close())
+	}
 
 	if fc.db != nil {
 		err = multierr.Append(err, fc.db.Close())
+		fc.db = nil
 	}
 	return err
 }
@@ -653,4 +659,25 @@ func (fc *followerController) GetStatus(request *proto.GetStatusRequest) (*proto
 		Term:   fc.term,
 		Status: fc.status,
 	}, nil
+}
+
+func (fc *followerController) DeleteShard(request *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error) {
+	fc.Lock()
+	defer fc.Unlock()
+
+	// Wipe out both WAL and DB contents
+	if err := multierr.Combine(
+		fc.wal.Delete(),
+		fc.db.Delete(),
+	); err != nil {
+		return nil, err
+	}
+
+	fc.db = nil
+	fc.wal = nil
+	if err := fc.close(); err != nil {
+		return nil, err
+	}
+
+	return &proto.DeleteShardResponse{}, nil
 }

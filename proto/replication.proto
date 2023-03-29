@@ -30,6 +30,7 @@ service OxiaCoordination {
   rpc AddFollower(AddFollowerRequest) returns (AddFollowerResponse);
 
   rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+  rpc DeleteShard(DeleteShardRequest) returns (DeleteShardResponse);
 }
 
 // node (leader) -> node (follower)
@@ -118,6 +119,14 @@ message Ack {
 message SnapshotResponse {
   int64 ack_offset = 1;
 }
+
+message DeleteShardRequest {
+  string namespace = 1;
+  int64 shard_id = 2;
+  int64 term = 3;
+}
+
+message DeleteShardResponse {}
 
 //// Status RPC
 

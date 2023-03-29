@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	pb "google.golang.org/protobuf/proto"
+	"os"
 	"oxia/common"
 	"oxia/common/metrics"
 	"oxia/proto"
@@ -60,6 +61,7 @@ type persistentWal struct {
 	shard       int64
 	log         *Log
 	firstOffset atomic.Int64
+	options     *WalFactoryOptions
 
 	// The last offset appended to the Wal. It might not yet be synced
 	lastAppendedOffset atomic.Int64
@@ -83,13 +85,16 @@ type persistentWal struct {
 	activeEntries metrics.Gauge
 }
 
+func walPath(logDir string, shard int64) string {
+	return filepath.Join(logDir, fmt.Sprint("shard-", shard))
+}
+
 func newPersistentWal(namespace string, shard int64, options *WalFactoryOptions) (Wal, error) {
 	opts := DefaultOptions()
 	opts.InMemory = options.InMemory
 	opts.NoSync = true // We always sync explicitly
 
-	walPath := filepath.Join(options.LogDir, fmt.Sprint("shard-", shard))
-	log, err := OpenWithShard(walPath, namespace, shard, opts)
+	log, err := OpenWithShard(walPath(options.LogDir, shard), namespace, shard, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -100,8 +105,9 @@ func newPersistentWal(namespace string, shard int64, options *WalFactoryOptions)
 
 	labels := metrics.LabelsForShard(namespace, shard)
 	w := &persistentWal{
-		shard: shard,
-		log:   log,
+		shard:   shard,
+		log:     log,
+		options: options,
 
 		appendLatency: metrics.NewLatencyHistogram("oxia_server_wal_append_latency",
 			"The time it takes to append entries to the WAL", labels),
@@ -197,6 +203,10 @@ func (t *persistentWal) Close() error {
 	t.Lock()
 	defer t.Unlock()
 
+	return t.close()
+}
+
+func (t *persistentWal) close() error {
 	t.cancel()
 	t.activeEntries.Unregister()
 	return t.log.Close()
@@ -322,6 +332,14 @@ func (t *persistentWal) Clear() error {
 	t.lastSyncedOffset.Store(InvalidOffset)
 	t.firstOffset.Store(InvalidOffset)
 	return nil
+}
+
+func (t *persistentWal) Delete() error {
+	t.Lock()
+	defer t.Unlock()
+
+	t.close()
+	return os.RemoveAll(walPath(t.options.LogDir, t.shard))
 }
 
 func (t *persistentWal) TruncateLog(lastSafeOffset int64) (int64, error) {

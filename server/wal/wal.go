@@ -89,4 +89,7 @@ type Wal interface {
 
 	// Clear removes all the entries in the WAL
 	Clear() error
+
+	// Delete all the files and directories of the wal
+	Delete() error
 }

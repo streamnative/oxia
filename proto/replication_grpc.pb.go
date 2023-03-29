@@ -27,6 +27,7 @@ type OxiaCoordinationClient interface {
 	BecomeLeader(ctx context.Context, in *BecomeLeaderRequest, opts ...grpc.CallOption) (*BecomeLeaderResponse, error)
 	AddFollower(ctx context.Context, in *AddFollowerRequest, opts ...grpc.CallOption) (*AddFollowerResponse, error)
 	GetStatus(ctx context.Context, in *GetStatusRequest, opts ...grpc.CallOption) (*GetStatusResponse, error)
+	DeleteShard(ctx context.Context, in *DeleteShardRequest, opts ...grpc.CallOption) (*DeleteShardResponse, error)
 }
 
 type oxiaCoordinationClient struct {
@@ -107,6 +108,15 @@ func (c *oxiaCoordinationClient) GetStatus(ctx context.Context, in *GetStatusReq
 	return out, nil
 }
 
+func (c *oxiaCoordinationClient) DeleteShard(ctx context.Context, in *DeleteShardRequest, opts ...grpc.CallOption) (*DeleteShardResponse, error) {
+	out := new(DeleteShardResponse)
+	err := c.cc.Invoke(ctx, "/replication.OxiaCoordination/DeleteShard", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // OxiaCoordinationServer is the server API for OxiaCoordination service.
 // All implementations must embed UnimplementedOxiaCoordinationServer
 // for forward compatibility
@@ -116,6 +126,7 @@ type OxiaCoordinationServer interface {
 	BecomeLeader(context.Context, *BecomeLeaderRequest) (*BecomeLeaderResponse, error)
 	AddFollower(context.Context, *AddFollowerRequest) (*AddFollowerResponse, error)
 	GetStatus(context.Context, *GetStatusRequest) (*GetStatusResponse, error)
+	DeleteShard(context.Context, *DeleteShardRequest) (*DeleteShardResponse, error)
 	mustEmbedUnimplementedOxiaCoordinationServer()
 }
 
@@ -137,6 +148,9 @@ func (UnimplementedOxiaCoordinationServer) AddFollower(context.Context, *AddFoll
 }
 func (UnimplementedOxiaCoordinationServer) GetStatus(context.Context, *GetStatusRequest) (*GetStatusResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetStatus not implemented")
+}
+func (UnimplementedOxiaCoordinationServer) DeleteShard(context.Context, *DeleteShardRequest) (*DeleteShardResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteShard not implemented")
 }
 func (UnimplementedOxiaCoordinationServer) mustEmbedUnimplementedOxiaCoordinationServer() {}
 
@@ -249,6 +263,24 @@ func _OxiaCoordination_GetStatus_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _OxiaCoordination_DeleteShard_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteShardRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OxiaCoordinationServer).DeleteShard(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/replication.OxiaCoordination/DeleteShard",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OxiaCoordinationServer).DeleteShard(ctx, req.(*DeleteShardRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // OxiaCoordination_ServiceDesc is the grpc.ServiceDesc for OxiaCoordination service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -271,6 +303,10 @@ var OxiaCoordination_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetStatus",
 			Handler:    _OxiaCoordination_GetStatus_Handler,
+		},
+		{
+			MethodName: "DeleteShard",
+			Handler:    _OxiaCoordination_DeleteShard_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

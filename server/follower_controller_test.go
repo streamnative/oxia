@@ -748,6 +748,37 @@ func TestFollower_DupEntries(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
+func TestFollowerController_DeleteShard(t *testing.T) {
+	var shardId int64
+	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
+	walFactory := wal.NewInMemoryWalFactory()
+
+	fc, _ := NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
+	_, _ = fc.NewTerm(&proto.NewTermRequest{Term: 1})
+
+	stream := newMockServerReplicateStream()
+	go func() {
+		//cancelled due to fc.Close() below
+		assert.ErrorIs(t, fc.Replicate(stream), context.Canceled)
+	}()
+
+	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, wal.InvalidOffset))
+
+	// Wait for responses
+	r1 := stream.GetResponse()
+	assert.EqualValues(t, 0, r1.Offset)
+
+	fc.DeleteShard(&proto.DeleteShardRequest{
+		Namespace: common.DefaultNamespace,
+		ShardId:   shardId,
+		Term:      1,
+	})
+
+	assert.NoError(t, fc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
 func TestFollowerController_Closed(t *testing.T) {
 	var shard int64 = 1
 
