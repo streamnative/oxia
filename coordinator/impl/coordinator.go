@@ -48,6 +48,7 @@ type Coordinator interface {
 
 	InitiateLeaderElection(namespace string, shard int64, metadata model.ShardMetadata) error
 	ElectedLeader(namespace string, shard int64, metadata model.ShardMetadata) error
+	ShardDeleted(namespace string, shard int64) error
 
 	NodeAvailabilityListener
 
@@ -109,6 +110,10 @@ func NewCoordinator(metadataProvider MetadataProvider, clusterConfig model.Clust
 		if err = c.initialAssignment(); err != nil {
 			return nil, err
 		}
+	} else {
+		if err = c.applyNewClusterConfig(); err != nil {
+			return nil, err
+		}
 	}
 
 	for ns, shards := range c.clusterStatus.Namespaces {
@@ -156,6 +161,26 @@ func (c *coordinator) initialAssignment() error {
 	var err error
 	if c.metadataVersion, err = c.MetadataProvider.Store(clusterStatus, MetadataNotExists); err != nil {
 		return err
+	}
+
+	c.clusterStatus = clusterStatus
+	return nil
+}
+
+func (c *coordinator) applyNewClusterConfig() error {
+	c.log.Info().
+		Interface("clusterConfig", c.ClusterConfig).
+		Interface("metadataVersion", c.metadataVersion).
+		Msg("Checking cluster config")
+
+	clusterStatus, shardsToAdd, shardsToDelete := applyClusterChanges(&c.ClusterConfig, c.clusterStatus)
+
+	if len(shardsToAdd) > 0 || len(shardsToDelete) > 0 {
+		var err error
+
+		if c.metadataVersion, err = c.MetadataProvider.Store(clusterStatus, c.metadataVersion); err != nil {
+			return err
+		}
 	}
 
 	c.clusterStatus = clusterStatus
@@ -243,6 +268,33 @@ func (c *coordinator) ElectedLeader(namespace string, shard int64, metadata mode
 	return nil
 }
 
+func (c *coordinator) ShardDeleted(namespace string, shard int64) error {
+	c.Lock()
+	defer c.Unlock()
+
+	cs := c.clusterStatus.Clone()
+	ns, ok := cs.Namespaces[namespace]
+	if !ok {
+		return ErrorNamespaceNotFound
+	}
+
+	delete(ns.Shards, shard)
+	if len(ns.Shards) == 0 {
+		delete(cs.Namespaces, namespace)
+	}
+
+	newMetadataVersion, err := c.MetadataProvider.Store(cs, c.metadataVersion)
+	if err != nil {
+		return err
+	}
+
+	c.metadataVersion = newMetadataVersion
+	c.clusterStatus = cs
+
+	c.computeNewAssignments()
+	return nil
+}
+
 // This is called while already holding the lock on the coordinator
 func (c *coordinator) computeNewAssignments() {
 	c.assignments = &proto.ShardAssignments{
@@ -261,18 +313,20 @@ func (c *coordinator) computeNewAssignments() {
 			if a.Leader != nil {
 				leader = a.Leader.Public
 			}
-			nsAssignments.Assignments = append(nsAssignments.Assignments,
-				&proto.ShardAssignment{
-					ShardId: shard,
-					Leader:  leader,
-					ShardBoundaries: &proto.ShardAssignment_Int32HashRange{
-						Int32HashRange: &proto.Int32HashRange{
-							MinHashInclusive: a.Int32HashRange.Min,
-							MaxHashInclusive: a.Int32HashRange.Max,
+			if a.Status != model.ShardStatusDeleting {
+				nsAssignments.Assignments = append(nsAssignments.Assignments,
+					&proto.ShardAssignment{
+						ShardId: shard,
+						Leader:  leader,
+						ShardBoundaries: &proto.ShardAssignment_Int32HashRange{
+							Int32HashRange: &proto.Int32HashRange{
+								MinHashInclusive: a.Int32HashRange.Min,
+								MaxHashInclusive: a.Int32HashRange.Max,
+							},
 						},
 					},
-				},
-			)
+				)
+			}
 		}
 
 		c.assignments.Namespaces[name] = nsAssignments

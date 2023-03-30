@@ -107,6 +107,12 @@ type mockPerNodeChannels struct {
 		error
 	}
 
+	deleteShardRequests  chan *proto.DeleteShardRequest
+	deleteShardResponses chan struct {
+		*proto.DeleteShardResponse
+		error
+	}
+
 	addFollowerRequests  chan *proto.AddFollowerRequest
 	addFollowerResponses chan struct {
 		*proto.AddFollowerResponse
@@ -311,6 +317,29 @@ func (r *mockRpcProvider) GetStatus(ctx context.Context, node model.ServerAddres
 	select {
 	case response := <-s.getStatusResponses:
 		return response.GetStatusResponse, response.error
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-time.After(3 * time.Second):
+		return nil, errors.New("timeout")
+	}
+}
+
+func (r *mockRpcProvider) DeleteShard(ctx context.Context, node model.ServerAddress, req *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error) {
+	r.Lock()
+
+	s := r.getNode(node)
+	s.deleteShardRequests <- req
+
+	if s.err != nil {
+		r.Unlock()
+		return nil, s.err
+	}
+
+	r.Unlock()
+
+	select {
+	case response := <-s.deleteShardResponses:
+		return response.DeleteShardResponse, response.error
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-time.After(3 * time.Second):

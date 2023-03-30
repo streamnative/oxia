@@ -79,6 +79,14 @@ func (m *maelstromCoordinatorRpcProvider) GetStatus(ctx context.Context, node mo
 	}
 }
 
+func (m *maelstromCoordinatorRpcProvider) DeleteShard(ctx context.Context, node model.ServerAddress, req *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error) {
+	if res, err := m.dispatcher.RpcRequest(ctx, node.Internal, MsgTypeDeleteShardRequest, req); err != nil {
+		return nil, err
+	} else {
+		return res.(*proto.DeleteShardResponse), nil
+	}
+}
+
 func (m *maelstromCoordinatorRpcProvider) GetHealthClient(node model.ServerAddress) (grpc_health_v1.HealthClient, error) {
 	return &maelstromHealthCheckClient{
 		provider: m,

@@ -285,6 +285,10 @@ func (m *mockCoordinator) ElectedLeader(namespace string, shard int64, metadata 
 	return nil
 }
 
+func (m *mockCoordinator) ShardDeleted(namespace string, shard int64) error {
+	return nil
+}
+
 func (m *mockCoordinator) NodeBecameUnavailable(node model.ServerAddress) {
 	panic("not implemented")
 }
