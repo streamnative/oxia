@@ -100,6 +100,7 @@ type followerController struct {
 	cancel           context.CancelFunc
 	syncCond         common.ConditionContext
 	applyEntriesCond common.ConditionContext
+	applyEntriesDone chan any
 	closeStreamWg    common.WaitGroup
 	log              zerolog.Logger
 	config           Config
@@ -109,12 +110,13 @@ type followerController struct {
 
 func NewFollowerController(config Config, namespace string, shardId int64, wf wal.WalFactory, kvFactory kv.KVFactory) (FollowerController, error) {
 	fc := &followerController{
-		config:        config,
-		namespace:     namespace,
-		shardId:       shardId,
-		kvFactory:     kvFactory,
-		status:        proto.ServingStatus_NOT_MEMBER,
-		closeStreamWg: nil,
+		config:           config,
+		namespace:        namespace,
+		shardId:          shardId,
+		kvFactory:        kvFactory,
+		status:           proto.ServingStatus_NOT_MEMBER,
+		closeStreamWg:    nil,
+		applyEntriesDone: make(chan any, 0),
 		writeLatencyHisto: metrics.NewLatencyHistogram("oxia_server_follower_write_latency",
 			"Latency for write operations in the follower", metrics.LabelsForShard(namespace, shardId)),
 	}
@@ -177,19 +179,21 @@ func (fc *followerController) isClosed() bool {
 }
 
 func (fc *followerController) Close() error {
+	fc.log.Debug().Msg("Closing follower controller")
+	fc.cancel()
+
+	<-fc.applyEntriesDone
+
 	fc.Lock()
 	defer fc.Unlock()
 	return fc.close()
 }
 
 func (fc *followerController) close() error {
-	fc.log.Debug().Msg("Closing follower controller")
-	fc.cancel()
-
 	err := fc.walTrimmer.Close()
 
 	if fc.wal != nil {
-		err = multierr.Combine(err, fc.wal.Close())
+		err = multierr.Append(err, fc.wal.Close())
 	}
 
 	if fc.db != nil {
@@ -441,6 +445,7 @@ func (fc *followerController) applyAllCommittedEntries() {
 	for {
 		fc.Lock()
 		if err := fc.applyEntriesCond.Wait(fc.ctx); err != nil {
+			close(fc.applyEntriesDone)
 			fc.Unlock()
 			return
 		}
@@ -449,6 +454,7 @@ func (fc *followerController) applyAllCommittedEntries() {
 		maxInclusive := fc.advertisedCommitOffset.Load()
 		if err := fc.processCommittedEntries(maxInclusive); err != nil {
 			fc.closeStream(err)
+			close(fc.applyEntriesDone)
 			return
 		}
 	}
@@ -662,6 +668,9 @@ func (fc *followerController) GetStatus(request *proto.GetStatusRequest) (*proto
 }
 
 func (fc *followerController) DeleteShard(request *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error) {
+	fc.cancel()
+	<-fc.applyEntriesDone
+
 	fc.Lock()
 	defer fc.Unlock()
 
