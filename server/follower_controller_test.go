@@ -768,11 +768,13 @@ func TestFollowerController_DeleteShard(t *testing.T) {
 	r1 := stream.GetResponse()
 	assert.EqualValues(t, 0, r1.Offset)
 
-	fc.DeleteShard(&proto.DeleteShardRequest{
+	_, err := fc.DeleteShard(&proto.DeleteShardRequest{
 		Namespace: common.DefaultNamespace,
 		ShardId:   shardId,
 		Term:      1,
 	})
+
+	assert.NoError(t, err)
 
 	assert.NoError(t, fc.Close())
 	assert.NoError(t, kvFactory.Close())
