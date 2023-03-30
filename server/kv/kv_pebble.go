@@ -106,14 +106,15 @@ func (p *PebbleFactory) NewSnapshotLoader(namespace string, shardId int64) (Snap
 	return newPebbleSnapshotLoader(p, namespace, shardId)
 }
 
-func (p *PebbleFactory) getKVPath(shard int64) string {
-	return filepath.Join(p.dataDir, fmt.Sprint("shard-", shard))
+func (p *PebbleFactory) getKVPath(namespace string, shard int64) string {
+	return filepath.Join(p.dataDir, namespace, fmt.Sprint("shard-", shard))
 }
 
 ////////////////////
 
 type Pebble struct {
 	factory         *PebbleFactory
+	namespace       string
 	shardId         int64
 	dataDir         string
 	db              *pebble.DB
@@ -138,9 +139,10 @@ type Pebble struct {
 func newKVPebble(factory *PebbleFactory, namespace string, shardId int64) (KV, error) {
 	labels := metrics.LabelsForShard(namespace, shardId)
 	pb := &Pebble{
-		factory: factory,
-		shardId: shardId,
-		dataDir: factory.dataDir,
+		factory:   factory,
+		namespace: namespace,
+		shardId:   shardId,
+		dataDir:   factory.dataDir,
 
 		batchCommitLatency: metrics.NewLatencyHistogram("oxia_server_kv_batch_commit_latency",
 			"The latency for committing a batch into the database", labels),
@@ -193,7 +195,7 @@ func newKVPebble(factory *PebbleFactory, namespace string, shardId int64) (KV, e
 		pbOptions.FS = vfs.NewMem()
 	}
 
-	dbPath := factory.getKVPath(shardId)
+	dbPath := factory.getKVPath(namespace, shardId)
 	db, err := pebble.Open(dbPath, pbOptions)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to open database at %s", dbPath)
@@ -321,7 +323,7 @@ func (p *Pebble) Close() error {
 func (p *Pebble) Delete() error {
 	return multierr.Combine(
 		p.Close(),
-		os.RemoveAll(p.factory.getKVPath(p.shardId)),
+		os.RemoveAll(p.factory.getKVPath(p.namespace, p.shardId)),
 	)
 }
 
@@ -720,7 +722,7 @@ func newPebbleSnapshotLoader(pf *PebbleFactory, namespace string, shard int64) (
 		pf:        pf,
 		namespace: namespace,
 		shard:     shard,
-		dbPath:    pf.getKVPath(shard),
+		dbPath:    pf.getKVPath(namespace, shard),
 	}
 
 	if err := os.RemoveAll(sl.dbPath); err != nil {
