@@ -325,3 +325,69 @@ func TestCoordinator_MultipleNamespaces(t *testing.T) {
 		assert.NoError(t, server.Close())
 	}
 }
+
+func TestCoordinator_DeleteNamespace(t *testing.T) {
+	s1, sa1 := newServer(t)
+	s2, sa2 := newServer(t)
+	s3, sa3 := newServer(t)
+	servers := map[model.ServerAddress]*server.Server{
+		sa1: s1,
+		sa2: s2,
+		sa3: s3,
+	}
+
+	metadataProvider := NewMetadataProviderMemory()
+	clusterConfig := model.ClusterConfig{
+		Namespaces: []model.NamespaceConfig{{
+			Name:              "my-ns-1",
+			ReplicationFactor: 1,
+			InitialShardCount: 2,
+		}},
+		Servers: []model.ServerAddress{sa1, sa2, sa3},
+	}
+	clientPool := common.NewClientPool()
+
+	coordinator, err := NewCoordinator(metadataProvider, clusterConfig, NewRpcProvider(clientPool))
+	assert.NoError(t, err)
+
+	ns1Status := coordinator.ClusterStatus().Namespaces["my-ns-1"]
+	assert.EqualValues(t, 2, len(ns1Status.Shards))
+	assert.EqualValues(t, 1, ns1Status.ReplicationFactor)
+
+	// Wait for all shards to be ready
+	assert.Eventually(t, func() bool {
+		for _, ns := range coordinator.ClusterStatus().Namespaces {
+			for _, shard := range ns.Shards {
+				if shard.Status != model.ShardStatusSteadyState {
+					return false
+				}
+			}
+		}
+		return true
+	}, 10*time.Second, 10*time.Millisecond)
+
+	log.Logger.Info().Msg("Cluster is ready")
+
+	// Restart the coordinator and remove the namespace
+	assert.NoError(t, coordinator.Close())
+
+	newClusterConfig := model.ClusterConfig{
+		Namespaces: []model.NamespaceConfig{},
+		Servers:    []model.ServerAddress{sa1, sa2, sa3},
+	}
+
+	coordinator, err = NewCoordinator(metadataProvider, newClusterConfig, NewRpcProvider(clientPool))
+	assert.NoError(t, err)
+
+	// Wait for all shards to be deleted
+	assert.Eventually(t, func() bool {
+		return len(coordinator.ClusterStatus().Namespaces) == 0
+	}, 10*time.Second, 10*time.Millisecond)
+
+	assert.NoError(t, coordinator.Close())
+	assert.NoError(t, clientPool.Close())
+
+	for _, server := range servers {
+		assert.NoError(t, server.Close())
+	}
+}

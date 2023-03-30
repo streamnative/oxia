@@ -52,6 +52,8 @@ const (
 	MsgTypeAddFollowerRequest   MsgType = "add-follower-req"
 	MsgTypeAddFollowerResponse  MsgType = "add-follower-resp"
 	MsgTypeGetStatusRequest     MsgType = "get-status"
+	MsgTypeDeleteShardRequest   MsgType = "delete-shard-req"
+	MsgTypeDeleteShardResponse  MsgType = "delete-shard-resp"
 	MsgTypeGetStatusResponse    MsgType = "status"
 	MsgTypeHealthCheck          MsgType = "health"
 	MsgTypeHealthCheckOk        MsgType = "health-ok"
@@ -67,6 +69,7 @@ var (
 		MsgTypeAddFollowerRequest:  true,
 		MsgTypeHealthCheck:         true,
 		MsgTypeGetStatusRequest:    true,
+		MsgTypeDeleteShardRequest:  true,
 	}
 
 	oxiaResponses = map[MsgType]bool{
@@ -76,6 +79,7 @@ var (
 		MsgTypeAddFollowerResponse:  true,
 		MsgTypeHealthCheckOk:        true,
 		MsgTypeGetStatusResponse:    true,
+		MsgTypeDeleteShardResponse:  true,
 	}
 
 	oxiaStreamRequests = map[MsgType]bool{

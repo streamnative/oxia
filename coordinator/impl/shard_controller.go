@@ -109,7 +109,9 @@ func NewShardController(namespace string, shard int64, shardMetadata model.Shard
 		Interface("shard-metadata", s.shardMetadata).
 		Msg("Started shard controller")
 
-	if shardMetadata.Leader == nil || shardMetadata.Status != model.ShardStatusSteadyState {
+	if shardMetadata.Status == model.ShardStatusDeleting {
+		s.deleteShardWithRetries()
+	} else if shardMetadata.Leader == nil || shardMetadata.Status != model.ShardStatusSteadyState {
 		s.electLeaderWithRetries()
 	} else {
 		s.log.Info().
@@ -171,8 +173,9 @@ func (s *shardController) verifyCurrentLeader(leader model.ServerAddress) {
 
 func (s *shardController) electLeaderWithRetries() {
 	go common.DoWithLabels(map[string]string{
-		"oxia":  "shard-controller-leader-election",
-		"shard": fmt.Sprintf("%d", s.shard),
+		"oxia":      "shard-controller-leader-election",
+		"namespace": s.namespace,
+		"shard":     fmt.Sprintf("%d", s.shard),
 	}, func() {
 		_ = backoff.RetryNotify(s.electLeader, common.NewBackOff(s.ctx),
 			func(err error, duration time.Duration) {
@@ -447,6 +450,15 @@ func (s *shardController) newTerm(ctx context.Context, node model.ServerAddress)
 	return res.HeadEntryId, nil
 }
 
+func (s *shardController) deleteShardRpc(ctx context.Context, node model.ServerAddress) error {
+	_, err := s.rpc.DeleteShard(ctx, node, &proto.DeleteShardRequest{
+		Namespace: s.namespace,
+		ShardId:   s.shard,
+	})
+
+	return err
+}
+
 func (s *shardController) selectNewLeader(newTermResponses map[model.ServerAddress]*proto.EntryId) (
 	leader model.ServerAddress, followers map[model.ServerAddress]*proto.EntryId) {
 	// Select all the nodes that have the highest entry in the wal
@@ -510,6 +522,44 @@ func (s *shardController) addFollower(leader model.ServerAddress, follower strin
 	}
 
 	return nil
+}
+
+func (s *shardController) deleteShardWithRetries() {
+	go common.DoWithLabels(map[string]string{
+		"oxia":      "shard-controller-delete-shard",
+		"namespace": s.namespace,
+		"shard":     fmt.Sprintf("%d", s.shard),
+	}, func() {
+		_ = backoff.RetryNotify(s.deleteShard, common.NewBackOff(s.ctx),
+			func(err error, duration time.Duration) {
+				s.log.Warn().Err(err).
+					Dur("retry-after", duration).
+					Msg("Delete shard failed, retrying later")
+			})
+	})
+}
+
+func (s *shardController) deleteShard() error {
+	for _, sa := range s.shardMetadata.Ensemble {
+		// We need to save the address because it gets modified in the loop
+		if err := s.deleteShardRpc(s.ctx, sa); err != nil {
+			s.log.Warn().Err(err).
+				Str("node", sa.Internal).
+				Msg("Failed to delete shard")
+			return err
+		} else {
+			s.log.Info().
+				Interface("server-address", sa).
+				Msg("Successfully deleted shard from node")
+		}
+	}
+
+	s.log.Info().
+		Msg("Successfully deleted shard from all the nodes")
+	return multierr.Combine(
+		s.coordinator.ShardDeleted(s.namespace, s.shard),
+		s.Close(),
+	)
 }
 
 func (s *shardController) Term() int64 {

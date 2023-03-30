@@ -31,6 +31,7 @@ type RpcProvider interface {
 	BecomeLeader(ctx context.Context, node model.ServerAddress, req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error)
 	AddFollower(ctx context.Context, node model.ServerAddress, req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error)
 	GetStatus(ctx context.Context, node model.ServerAddress, req *proto.GetStatusRequest) (*proto.GetStatusResponse, error)
+	DeleteShard(ctx context.Context, node model.ServerAddress, req *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error)
 
 	GetHealthClient(node model.ServerAddress) (grpc_health_v1.HealthClient, error)
 }
@@ -98,6 +99,18 @@ func (r *rpcProvider) GetStatus(ctx context.Context, node model.ServerAddress, r
 	defer cancel()
 
 	return rpc.GetStatus(ctx, req)
+}
+
+func (r *rpcProvider) DeleteShard(ctx context.Context, node model.ServerAddress, req *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error) {
+	rpc, err := r.pool.GetCoordinationRpc(node.Internal)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, rpcTimeout)
+	defer cancel()
+
+	return rpc.DeleteShard(ctx, req)
 }
 
 func (r *rpcProvider) GetHealthClient(node model.ServerAddress) (grpc_health_v1.HealthClient, error) {
