@@ -113,6 +113,7 @@ func (p *PebbleFactory) getKVPath(shard int64) string {
 ////////////////////
 
 type Pebble struct {
+	factory         *PebbleFactory
 	shardId         int64
 	dataDir         string
 	db              *pebble.DB
@@ -137,6 +138,7 @@ type Pebble struct {
 func newKVPebble(factory *PebbleFactory, namespace string, shardId int64) (KV, error) {
 	labels := metrics.LabelsForShard(namespace, shardId)
 	pb := &Pebble{
+		factory: factory,
 		shardId: shardId,
 		dataDir: factory.dataDir,
 
@@ -314,6 +316,13 @@ func (p *Pebble) Close() error {
 		return err
 	}
 	return p.db.Close()
+}
+
+func (p *Pebble) Delete() error {
+	return multierr.Combine(
+		p.Close(),
+		os.RemoveAll(p.factory.getKVPath(p.shardId)),
+	)
 }
 
 func (p *Pebble) Flush() error {

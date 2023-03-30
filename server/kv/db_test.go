@@ -469,3 +469,36 @@ func TestDb_UpdateTerm(t *testing.T) {
 
 	assert.NoError(t, factory.Close())
 }
+
+func TestDB_Delete(t *testing.T) {
+	offset := int64(13)
+
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
+	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	assert.NoError(t, err)
+
+	writeReq := &proto.WriteRequest{
+		Puts: []*proto.PutRequest{{
+			Key:   "a",
+			Value: []byte("a"),
+		}},
+	}
+	_, err = db.ProcessWrite(writeReq, offset, 0, NoOpCallback)
+	assert.NoError(t, err)
+
+	assert.NoError(t, db.Delete())
+
+	// Reopen and verify the db is empty
+	db, err = NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	assert.NoError(t, err)
+
+	getRes, err := db.Get(&proto.GetRequest{
+		Key:          "a",
+		IncludeValue: true,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, proto.Status_KEY_NOT_FOUND, getRes.Status)
+
+	assert.NoError(t, factory.Close())
+}

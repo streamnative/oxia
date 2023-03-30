@@ -56,6 +56,7 @@ type LeaderController interface {
 	GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error
 
 	GetStatus(request *proto.GetStatusRequest) (*proto.GetStatusResponse, error)
+	DeleteShard(request *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error)
 
 	// Term The current term of the leader
 	Term() int64
@@ -786,7 +787,10 @@ func (lc *leaderController) isClosed() bool {
 func (lc *leaderController) Close() error {
 	lc.Lock()
 	defer lc.Unlock()
+	return lc.close()
+}
 
+func (lc *leaderController) close() error {
 	lc.log.Info().Msg("Closing leader controller")
 
 	lc.status = proto.ServingStatus_NOT_MEMBER
@@ -795,25 +799,37 @@ func (lc *leaderController) Close() error {
 	var err error
 	if lc.walWriteBatcher != nil {
 		err = multierr.Append(err, lc.walWriteBatcher.Close())
+		lc.walWriteBatcher = nil
 	}
 	if lc.quorumAckTracker != nil {
 		err = multierr.Append(err, lc.quorumAckTracker.Close())
+		lc.quorumAckTracker = nil
 	}
 
 	for _, follower := range lc.followers {
 		err = multierr.Append(err, follower.Close())
 	}
+	lc.followers = nil
 
 	for _, g := range lc.followerAckOffsetGauges {
 		g.Unregister()
 	}
+	lc.followerAckOffsetGauges = map[string]metrics.Gauge{}
 
 	err = multierr.Combine(err,
 		lc.sessionManager.Close(),
 		lc.walTrimmer.Close(),
-		lc.wal.Close(),
-		lc.db.Close(),
 	)
+
+	if lc.wal != nil {
+		err = multierr.Append(err, lc.wal.Close())
+		lc.wal = nil
+	}
+
+	if lc.db != nil {
+		err = multierr.Append(err, lc.db.Close())
+		lc.db = nil
+	}
 	return err
 }
 
@@ -846,6 +862,27 @@ func (lc *leaderController) GetStatus(request *proto.GetStatusRequest) (*proto.G
 		Term:   lc.term,
 		Status: lc.status,
 	}, nil
+}
+
+func (lc *leaderController) DeleteShard(request *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error) {
+	lc.Lock()
+	defer lc.Unlock()
+
+	// Wipe out both WAL and DB contents
+	if err := multierr.Combine(
+		lc.wal.Delete(),
+		lc.db.Delete(),
+	); err != nil {
+		return nil, err
+	}
+
+	lc.db = nil
+	lc.wal = nil
+	if err := lc.close(); err != nil {
+		return nil, err
+	}
+
+	return &proto.DeleteShardResponse{}, nil
 }
 
 func (lc *leaderController) CreateSession(request *proto.CreateSessionRequest) (*proto.CreateSessionResponse, error) {

@@ -57,6 +57,9 @@ type DB interface {
 	ReadTerm() (term int64, err error)
 
 	Snapshot() (Snapshot, error)
+
+	// Delete and close the database and all its files
+	Delete() error
 }
 
 func NewDB(namespace string, shardId int64, factory KVFactory, notificationRetentionTime time.Duration, clock common.Clock) (DB, error) {
@@ -127,6 +130,13 @@ func (d *db) Close() error {
 	return multierr.Combine(
 		d.notificationsTracker.Close(),
 		d.kv.Close(),
+	)
+}
+
+func (d *db) Delete() error {
+	return multierr.Combine(
+		d.notificationsTracker.Close(),
+		d.kv.Delete(),
 	)
 }
 

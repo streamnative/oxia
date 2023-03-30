@@ -73,6 +73,7 @@ func TestWal(t *testing.T) {
 		t.Run(f.Name()+"Truncate", Truncate)
 		t.Run(f.Name()+"TruncateClear", TruncateClear)
 		t.Run(f.Name()+"Clear", Clear)
+		t.Run(f.Name()+"Delete", Delete)
 		t.Run(f.Name()+"Trim", Trim)
 		if f.Persistent() {
 			t.Run(f.Name()+"Reopen", Reopen)
@@ -460,6 +461,32 @@ func Trim(t *testing.T) {
 	r, err = w.NewReader(48)
 	assert.ErrorIs(t, err, ErrorEntryNotFound)
 	assert.Nil(t, r)
+
+	assert.NoError(t, w.Close())
+	assert.NoError(t, f.Close())
+}
+
+func Delete(t *testing.T) {
+	f, w := createWal(t)
+
+	for i := 0; i < 100; i++ {
+		assert.NoError(t, w.Append(&proto.LogEntry{
+			Term:   1,
+			Offset: int64(i),
+			Value:  []byte(fmt.Sprintf("entry-%d", i)),
+		}))
+	}
+
+	assert.EqualValues(t, 0, w.FirstOffset())
+	assert.EqualValues(t, 99, w.LastOffset())
+
+	assert.NoError(t, w.Delete())
+
+	w, err := f.NewWal(common.DefaultNamespace, 1)
+	assert.NoError(t, err)
+
+	assert.EqualValues(t, InvalidOffset, w.FirstOffset())
+	assert.EqualValues(t, InvalidOffset, w.LastOffset())
 
 	assert.NoError(t, w.Close())
 	assert.NoError(t, f.Close())

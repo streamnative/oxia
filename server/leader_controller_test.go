@@ -943,3 +943,56 @@ func TestLeaderController_List(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Len(t, list, 0)
 }
+
+func TestLeaderController_DeleteShard(t *testing.T) {
+	var shard int64 = 1
+
+	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
+	walFactory := wal.NewInMemoryWalFactory()
+
+	lc, _ := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	_, _ = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})
+	_, _ = lc.BecomeLeader(&proto.BecomeLeaderRequest{
+		ShardId:           shard,
+		Term:              1,
+		ReplicationFactor: 1,
+		FollowerMaps:      nil,
+	})
+
+	_, err := lc.Write(&proto.WriteRequest{
+		ShardId: &shard,
+		Puts:    []*proto.PutRequest{{Key: "k1", Value: []byte("hello")}},
+	})
+	assert.NoError(t, err)
+
+	_, err = lc.DeleteShard(&proto.DeleteShardRequest{
+		Namespace: common.DefaultNamespace,
+		ShardId:   shard,
+		Term:      1,
+	})
+	assert.NoError(t, err)
+
+	assert.NoError(t, lc.Close())
+
+	lc, _ = NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	_, _ = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 2})
+	_, _ = lc.BecomeLeader(&proto.BecomeLeaderRequest{
+		ShardId:           shard,
+		Term:              2,
+		ReplicationFactor: 1,
+		FollowerMaps:      nil,
+	})
+
+	/// Read entry
+	r := <-lc.Read(context.Background(), &proto.ReadRequest{
+		ShardId: &shard,
+		Gets:    []*proto.GetRequest{{Key: "a", IncludeValue: true}},
+	})
+
+	assert.NoError(t, r.Err)
+	assert.Equal(t, proto.Status_KEY_NOT_FOUND, r.Response.Status)
+	assert.Nil(t, r.Response.Value)
+
+	assert.NoError(t, lc.Close())
+	assert.NoError(t, walFactory.Close())
+}
