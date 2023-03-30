@@ -116,7 +116,7 @@ func NewFollowerController(config Config, namespace string, shardId int64, wf wa
 		kvFactory:        kvFactory,
 		status:           proto.ServingStatus_NOT_MEMBER,
 		closeStreamWg:    nil,
-		applyEntriesDone: make(chan any, 0),
+		applyEntriesDone: make(chan any),
 		writeLatencyHisto: metrics.NewLatencyHistogram("oxia_server_follower_write_latency",
 			"Latency for write operations in the follower", metrics.LabelsForShard(namespace, shardId)),
 	}
