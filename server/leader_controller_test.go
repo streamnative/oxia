@@ -994,6 +994,5 @@ func TestLeaderController_DeleteShard(t *testing.T) {
 	assert.Nil(t, r.Response.Value)
 
 	assert.NoError(t, lc.Close())
-	assert.NoError(t, kvFactory.Close())
 	assert.NoError(t, walFactory.Close())
 }
