@@ -498,7 +498,7 @@ func TestPebbbleDoubleOpen(t *testing.T) {
 func TestPebbleSnapshot(t *testing.T) {
 	originalLocation := t.TempDir()
 	copiedLocation := t.TempDir()
-	copiedLocationDbPath := filepath.Join(copiedLocation, "shard-1")
+	copiedLocationDbPath := filepath.Join(copiedLocation, common.DefaultNamespace, "shard-1")
 
 	{
 		factory, err := NewPebbleKVFactory(&KVFactoryOptions{
