@@ -33,7 +33,7 @@ spec:
     memory: 128Mi
   server:
     replicas: 3
-    cpu: 1m
+    cpu: 1
     memory: 1Gi
     storage: 8Gi
     #storageClassName: xxx
