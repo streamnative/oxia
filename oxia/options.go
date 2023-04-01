@@ -263,7 +263,7 @@ func (e *ephemeral) applyPut(opts putOptions) putOptions {
 // are automatically deleted when the client instance is closed.
 // These records are also deleted if the client cannot communicate with the Oxia
 // service for some extended amount of time, and the session between the client and
-// the service "expires"
+// the service "expires".
 // Application can control the session behavior by setting the session timeout
 // appropriately with [WithSessionTimeout] option when creating the client instance.
 func Ephemeral() PutOption {
