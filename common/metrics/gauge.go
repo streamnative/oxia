@@ -34,7 +34,9 @@ type gauge struct {
 }
 
 func (g *gauge) Unregister() {
-	g.registration.Unregister()
+	if err := g.registration.Unregister(); err != nil {
+		log.Fatal().Err(err).Msg("Failed to unregister gauge")
+	}
 }
 
 func NewGauge(name string, description string, unit Unit, labels map[string]any, callback func() int64) Gauge {
