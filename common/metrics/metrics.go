@@ -74,8 +74,6 @@ func init() {
 	provider := metric.NewMeterProvider(metric.WithReader(exporter),
 		metric.WithView(latencyHistogramView, sizeHistogramView, countHistogramView, defaultView))
 	meter = provider.Meter("oxia")
-
-	registry.register()
 }
 
 type PrometheusMetrics struct {
