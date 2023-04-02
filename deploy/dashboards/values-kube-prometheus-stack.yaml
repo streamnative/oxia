@@ -33,6 +33,8 @@ grafana:
 
   dashboards:
     oxia:
+      oxia-overview:
+        file: dashboards/oxia-overview.json
       oxia-containers:
         file: dashboards/oxia-containers.json
       oxia-coordinator:

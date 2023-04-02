@@ -26,8 +26,8 @@ var meter metric.Meter
 
 func LabelsForShard(namespace string, shard int64) map[string]any {
 	return map[string]any{
-		"shard":     shard,
-		"namespace": namespace,
+		"shard":          shard,
+		"oxia_namespace": namespace,
 	}
 }
 
