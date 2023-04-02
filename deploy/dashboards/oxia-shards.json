@@ -113,9 +113,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(\n      rate(oxia_server_db_puts_total{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}[1m])\n    + rate(oxia_server_db_gets_total{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}[1m])\n    + rate(oxia_server_db_lists_total{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}[1m])\n    + rate(oxia_server_db_deletes_total{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}[1m])\n    + rate(oxia_server_db_delete_ranges_total{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}[1m])\n) by (shard, pod)",
+          "expr": "sum(\n      rate(oxia_server_db_puts_total{oxia_cluster=~\"$cluster\",  oxia_namespace=~\"$namespace\", shard=~\"$shard\", pod=~\"$pod\"}[1m])\n    + rate(oxia_server_db_gets_total{oxia_cluster=~\"$cluster\", oxia_namespace=~\"$namespace\", shard=~\"$shard\", pod=~\"$pod\"}[1m])\n    + rate(oxia_server_db_lists_total{oxia_cluster=~\"$cluster\", oxia_namespace=~\"$namespace\", shard=~\"$shard\", pod=~\"$pod\"}[1m])\n    + rate(oxia_server_db_deletes_total{oxia_cluster=~\"$cluster\", oxia_namespace=~\"$namespace\", shard=~\"$shard\", pod=~\"$pod\"}[1m])\n    + rate(oxia_server_db_delete_ranges_total{oxia_cluster=~\"$cluster\", oxia_namespace=~\"$namespace\", shard=~\"$shard\", pod=~\"$pod\"}[1m])\n) by (oxia_namespace, shard, pod)",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -149,7 +149,7 @@
             },
             "lineInterpolation": "linear",
             "lineWidth": 1,
-            "pointSize": 3,
+            "pointSize": 1,
             "scaleDistribution": {
               "type": "linear"
             },
@@ -209,9 +209,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(rate(oxia_server_leader_write_latency_milliseconds_count{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (shard, pod)",
+          "expr": "sum(rate(oxia_server_leader_write_latency_milliseconds_count{oxia_cluster=~\"$cluster\", oxia_namespace=~\"$namespace\", shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (oxia_namespace, shard, pod)",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -318,9 +318,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(rate(oxia_server_db_puts_total{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (shard, pod)",
+          "expr": "sum(rate(oxia_server_db_puts_total{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n    shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (oxia_namespace, shard, pod)",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -414,9 +414,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(rate(oxia_server_db_gets_total{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (shard, pod)",
+          "expr": "sum(rate(oxia_server_db_gets_total{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n    shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (oxia_namespace, shard, pod)",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -510,9 +510,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(rate(oxia_server_db_deletes_total{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (shard, pod)",
+          "expr": "sum(rate(oxia_server_db_deletes_total{oxia_cluster=~\"$cluster\",   oxia_namespace=~\"$namespace\",\n    shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (oxia_namespace, shard, pod)",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -606,9 +606,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(rate(oxia_server_db_lists_total{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (shard, pod)",
+          "expr": "sum(rate(oxia_server_db_lists_total{oxia_cluster=~\"$cluster\", oxia_namespace=~\"$namespace\", shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (oxia_namespace, shard, pod)",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -702,9 +702,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(rate(oxia_server_db_delete_ranges_total{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (shard, pod)",
+          "expr": "sum(rate(oxia_server_db_delete_ranges_total{oxia_cluster=~\"$cluster\", oxia_namespace=~\"$namespace\", shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (oxia_namespace, shard, pod)",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -811,9 +811,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.50, sum by (le, shard, pod) \n(oxia_server_leader_write_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}))",
+          "expr": "histogram_quantile(0.50, sum by (le, oxia_namespace, shard, pod) \n(oxia_server_leader_write_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", oxia_namespace=~\"$namespace\", shard=~\"$shard\", pod=~\"$pod\"}))",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -907,9 +907,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.95, sum by (le, shard, pod) \n(oxia_server_leader_write_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}))",
+          "expr": "histogram_quantile(0.95, sum by (le, oxia_namespace, shard, pod) \n(oxia_server_leader_write_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", oxia_namespace=~\"$namespace\", shard=~\"$shard\", pod=~\"$pod\"}))",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -1003,11 +1003,11 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.99, sum by (le, shard, pod) \n(oxia_server_leader_write_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}))",
+          "expr": "histogram_quantile(0.99, sum by (le, shard, pod) \n(oxia_server_leader_write_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", oxia_namespace=~\"$namespace\", shard=~\"$shard\", pod=~\"$pod\"}))",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
-          "range": true,
-          "refId": "A"
+          ""legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",": "{{shard}} - {{pod}}",
+        "range": true,
+        "refId": "A"
         }
       ],
       "title": "Write Batch Latency 99pct",
@@ -1099,9 +1099,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.999, sum by (le, shard, pod) \n(oxia_server_leader_write_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}))",
+          "expr": "histogram_quantile(0.999, sum by (le, shard, pod) \n(oxia_server_leader_write_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", oxia_namespace=~\"$namespace\", shard=~\"$shard\", pod=~\"$pod\"}))",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -1208,9 +1208,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(rate(oxia_server_wal_append_latency_milliseconds_count{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (shard, pod)",
+          "expr": "sum(rate(oxia_server_wal_append_latency_milliseconds_count{oxia_cluster=~\"$cluster\", oxia_namespace=~\"$namespace\", shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (shard, pod)",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -1304,9 +1304,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(rate(oxia_server_wal_append_bytes_total{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (shard, pod)",
+          "expr": "sum(rate(oxia_server_wal_append_bytes_total{oxia_cluster=~\"$cluster\", oxia_namespace=~\"$namespace\", shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (shard, pod)",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -1400,9 +1400,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(rate(oxia_server_wal_read_latency_milliseconds_count{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (shard, pod)",
+          "expr": "sum(rate(oxia_server_wal_read_latency_milliseconds_count{oxia_cluster=~\"$cluster\", oxia_namespace=~\"$namespace\", shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (shard, pod)",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -1496,9 +1496,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(rate(oxia_server_wal_read_bytes_total{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (shard, pod)",
+          "expr": "sum(rate(oxia_server_wal_read_bytes_total{oxia_cluster=~\"$cluster\", oxia_namespace=~\"$namespace\", shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (shard, pod)",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -1592,9 +1592,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.50, sum by (le, shard, pod) \n(oxia_server_wal_append_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}))",
+          "expr": "histogram_quantile(0.50, sum by (le, shard, pod) \n(oxia_server_wal_append_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", oxia_namespace=~\"$namespace\", shard=~\"$shard\", pod=~\"$pod\"}))",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -1688,9 +1688,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.95, sum by (le, shard, pod) \n(oxia_server_wal_append_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}))",
+          "expr": "histogram_quantile(0.95, sum by (le, shard, pod) \n(oxia_server_wal_append_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", oxia_namespace=~\"$namespace\", shard=~\"$shard\", pod=~\"$pod\"}))",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -1784,9 +1784,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.99, sum by (le, shard, pod) \n(oxia_server_wal_append_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}))",
+          "expr": "histogram_quantile(0.99, sum by (le, shard, pod) \n(oxia_server_wal_append_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\"   oxia_namespace=~\"$namespace\",\n   , shard=~\"$shard\", pod=~\"$pod\"}))",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -1880,9 +1880,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.999, sum by (le, shard, pod) \n(oxia_server_wal_append_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}))",
+          "expr": "histogram_quantile(0.999, sum by (le, shard, pod) \n(oxia_server_wal_append_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\",   oxia_namespace=~\"$namespace\",\n    shard=~\"$shard\", pod=~\"$pod\"}))",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -1976,9 +1976,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.50, sum by (le, shard, pod) \n(oxia_server_wal_sync_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}))",
+          "expr": "histogram_quantile(0.50, sum by (le, shard, pod) \n(oxia_server_wal_sync_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}))",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -2072,9 +2072,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.95, sum by (le, shard, pod) \n(oxia_server_wal_sync_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}))",
+          "expr": "histogram_quantile(0.95, sum by (le, shard, pod) \n(oxia_server_wal_sync_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}))",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -2168,9 +2168,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.99, sum by (le, shard, pod) \n(oxia_server_wal_sync_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}))",
+          "expr": "histogram_quantile(0.99, sum by (le, shard, pod) \n(oxia_server_wal_sync_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}))",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -2264,9 +2264,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.999, sum by (le, shard, pod) \n(oxia_server_wal_sync_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}))",
+          "expr": "histogram_quantile(0.999, sum by (le, shard, pod) \n(oxia_server_wal_sync_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\",   oxia_namespace=~\"$namespace\",\n    shard=~\"$shard\", pod=~\"$pod\"}))",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -2385,9 +2385,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.50, sum by (le, shard, pod) \n(oxia_server_wal_read_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}))",
+          "expr": "histogram_quantile(0.50, sum by (le, shard, pod) \n(oxia_server_wal_read_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}))",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -2506,9 +2506,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.95, sum by (le, shard, pod) \n(oxia_server_wal_read_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}))",
+          "expr": "histogram_quantile(0.95, sum by (le, shard, pod) \n(oxia_server_wal_read_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\",   oxia_namespace=~\"$namespace\",\n    shard=~\"$shard\", pod=~\"$pod\"}))",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -2627,9 +2627,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.99, sum by (le, shard, pod) \n(oxia_server_wal_read_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}))",
+          "expr": "histogram_quantile(0.99, sum by (le, shard, pod) \n(oxia_server_wal_read_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}))",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -2748,9 +2748,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.999, sum by (le, shard, pod) \n(oxia_server_wal_read_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}))",
+          "expr": "histogram_quantile(0.999, sum by (le, shard, pod) \n(oxia_server_wal_read_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}))",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -2844,9 +2844,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(oxia_server_wal_entries{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}) by (shard, pod)",
+          "expr": "sum(oxia_server_wal_entries{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}) by (shard, pod)",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -2953,9 +2953,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(rate(oxia_server_kv_write_ops_total{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (shard, pod)",
+          "expr": "sum(rate(oxia_server_kv_write_ops_total{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (shard, pod)",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -3049,9 +3049,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(rate(oxia_server_kv_write_bytes_total{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (shard, pod)",
+          "expr": "sum(rate(oxia_server_kv_write_bytes_total{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (shard, pod)",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -3145,9 +3145,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.50, sum by (le, shard, pod) \n(oxia_server_kv_batch_commit_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}))",
+          "expr": "histogram_quantile(0.50, sum by (le, shard, pod) \n(oxia_server_kv_batch_commit_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}))",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -3241,9 +3241,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.95, sum by (le, shard, pod) \n(oxia_server_kv_batch_commit_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}))",
+          "expr": "histogram_quantile(0.95, sum by (le, shard, pod) \n(oxia_server_kv_batch_commit_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}))",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -3337,9 +3337,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.99, sum by (le, shard, pod) \n(oxia_server_kv_batch_commit_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}))",
+          "expr": "histogram_quantile(0.99, sum by (le, shard, pod) \n(oxia_server_kv_batch_commit_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}))",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -3433,9 +3433,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.999, sum by (le, shard, pod) \n(oxia_server_kv_batch_commit_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}))",
+          "expr": "histogram_quantile(0.999, sum by (le, shard, pod) \n(oxia_server_kv_batch_commit_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}))",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -3529,9 +3529,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.50, sum by (le, shard, pod) \n(oxia_server_kv_batch_count_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}))",
+          "expr": "histogram_quantile(0.50, sum by (le, shard, pod) \n(oxia_server_kv_batch_count_bucket{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}))",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -3625,9 +3625,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.95, sum by (le, shard, pod) \n(oxia_server_kv_batch_count_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}))",
+          "expr": "histogram_quantile(0.95, sum by (le, shard, pod) \n(oxia_server_kv_batch_count_bucket{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}))",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -3721,9 +3721,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.99, sum by (le, shard, pod) \n(oxia_server_kv_batch_count_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}))",
+          "expr": "histogram_quantile(0.99, sum by (le, shard, pod) \n(oxia_server_kv_batch_count_bucket{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}))",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -3817,9 +3817,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.999, sum by (le, shard, pod) \n(oxia_server_kv_batch_count_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}))",
+          "expr": "histogram_quantile(0.999, sum by (le, shard, pod) \n(oxia_server_kv_batch_count_bucket{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}))",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -3913,9 +3913,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.50, sum by (le, shard, pod) \n(oxia_server_kv_batch_size_bytes_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}))",
+          "expr": "histogram_quantile(0.50, sum by (le, shard, pod) \n(oxia_server_kv_batch_size_bytes_bucket{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}))",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -4009,9 +4009,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.95, sum by (le, shard, pod) \n(oxia_server_kv_batch_size_bytes_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}))",
+          "expr": "histogram_quantile(0.95, sum by (le, shard, pod) \n(oxia_server_kv_batch_size_bytes_bucket{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}))",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -4105,9 +4105,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.99, sum by (le, shard, pod) \n(oxia_server_kv_batch_size_bytes_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}))",
+          "expr": "histogram_quantile(0.99, sum by (le, shard, pod) \n(oxia_server_kv_batch_size_bytes_bucket{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}))",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -4201,9 +4201,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.999, sum by (le, shard, pod) \n(oxia_server_kv_batch_size_bytes_bucket{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}))",
+          "expr": "histogram_quantile(0.999, sum by (le, shard, pod) \n(oxia_server_kv_batch_size_bytes_bucket{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}))",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -4310,9 +4310,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(rate(oxia_server_kv_pebble_block_cache_hits{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (shard, pod)",
+          "expr": "sum(rate(oxia_server_kv_pebble_block_cache_hits{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (shard, pod)",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -4406,9 +4406,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(rate(oxia_server_kv_pebble_block_cache_hits{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (shard, pod)",
+          "expr": "sum(rate(oxia_server_kv_pebble_block_cache_hits{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (shard, pod)",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -4502,9 +4502,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(\n    increase(oxia_server_kv_pebble_block_cache_hits{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}[1m])\n    / \n    ( increase(oxia_server_kv_pebble_block_cache_hits{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}[1m])\n     +\n      increase(oxia_server_kv_pebble_block_cache_misses{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}[1m])\n    )\n    \n) \nby (shard, pod)",
+          "expr": "sum(\n    increase(oxia_server_kv_pebble_block_cache_hits{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}[1m])\n    / \n    ( increase(oxia_server_kv_pebble_block_cache_hits{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}[1m])\n     +\n      increase(oxia_server_kv_pebble_block_cache_misses{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}[1m])\n    )\n    \n) \nby (shard, pod)",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -4598,9 +4598,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(oxia_server_kv_pebble_block_cache_used_bytes{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}) by (shard, pod)",
+          "expr": "sum(oxia_server_kv_pebble_block_cache_used_bytes{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}) by (shard, pod)",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -4694,9 +4694,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(oxia_server_kv_pebble_disk_space_bytes{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}) by (shard, pod)",
+          "expr": "sum(oxia_server_kv_pebble_disk_space_bytes{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}) by (shard, pod)",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -4790,9 +4790,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(oxia_server_kv_pebble_num_files_total{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}) by (shard, pod)",
+          "expr": "sum(oxia_server_kv_pebble_num_files_total{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}) by (shard, pod)",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -4886,9 +4886,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(oxia_server_kv_pebble_num_files_total{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}) by (shard, pod)",
+          "expr": "sum(oxia_server_kv_pebble_num_files_total{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}) by (shard, pod)",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -4983,9 +4983,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(rate(oxia_server_kv_pebble_flush_bytes{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (shard, pod)",
+          "expr": "sum(rate(oxia_server_kv_pebble_flush_bytes{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (shard, pod)",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -5079,9 +5079,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(oxia_server_kv_pebble_memtable_size_bytes{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}) by (shard, pod)",
+          "expr": "sum(oxia_server_kv_pebble_memtable_size_bytes{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}) by (shard, pod)",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -5175,9 +5175,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(increase(oxia_server_kv_pebble_compactions_total{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (shard, pod)",
+          "expr": "sum(increase(oxia_server_kv_pebble_compactions_total{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (shard, pod)",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -5272,9 +5272,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(oxia_server_kv_pebble_compaction_debt_bytes{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}) by (shard, pod)",
+          "expr": "sum(oxia_server_kv_pebble_compaction_debt_bytes{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}) by (shard, pod)",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -5368,9 +5368,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(rate(oxia_server_kv_pebble_read_bytes{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (shard, pod)",
+          "expr": "sum(rate(oxia_server_kv_pebble_read_bytes{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (shard, pod)",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -5464,9 +5464,9 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(oxia_server_kv_pebble_read_iterators{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}) by (shard, pod)",
+          "expr": "sum(oxia_server_kv_pebble_read_iterators{oxia_cluster=~\"$cluster\",    oxia_namespace=~\"$namespace\",\n   shard=~\"$shard\", pod=~\"$pod\"}) by (shard, pod)",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -5562,7 +5562,7 @@
           "exemplar": false,
           "expr": "sum(rate(oxia_server_kv_read_errors_total{oxia_cluster=~\"$cluster\", shard=~\"$shard\", pod=~\"$pod\"}[1m])) by (shard, pod)",
           "interval": "",
-          "legendFormat": "{{shard}} - {{pod}}",
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
           "range": true,
           "refId": "A"
         }
@@ -5596,10 +5596,9 @@
       },
       {
         "current": {
-          "isNone": true,
-          "selected": false,
-          "text": "None",
-          "value": ""
+          "selected": true,
+          "text": "my-oxia-cluster",
+          "value": "my-oxia-cluster"
         },
         "datasource": {
           "type": "prometheus",
@@ -5624,9 +5623,13 @@
       },
       {
         "current": {
-          "selected": false,
-          "text": "All",
-          "value": "$__all"
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
         },
         "datasource": {
           "type": "prometheus",
@@ -5635,12 +5638,43 @@
         "definition": "oxia_server_wal_entries{oxia_cluster=~\"$cluster\"}",
         "hide": 0,
         "includeAll": true,
+        "label": "Namespace",
+        "multi": true,
+        "name": "namespace",
+        "options": [],
+        "query": {
+          "query": "oxia_server_wal_entries{oxia_cluster=~\"$cluster\"}",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 2,
+        "regex": "/.*oxia_namespace=\"([^\"]*).*/",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DataSource}"
+        },
+        "definition": "oxia_server_wal_entries{oxia_cluster=~\"$cluster\", oxia_namespace=~\"$namespace\"}",
+        "hide": 0,
+        "includeAll": true,
         "label": "Shard",
         "multi": true,
         "name": "shard",
         "options": [],
         "query": {
-          "query": "oxia_server_wal_entries{oxia_cluster=~\"$cluster\"}",
+          "query": "oxia_server_wal_entries{oxia_cluster=~\"$cluster\", oxia_namespace=~\"$namespace\"}",
           "refId": "StandardVariableQuery"
         },
         "refresh": 2,
@@ -5651,15 +5685,19 @@
       },
       {
         "current": {
-          "selected": false,
-          "text": "All",
-          "value": "$__all"
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
         },
         "datasource": {
           "type": "prometheus",
           "uid": "${DataSource}"
         },
-        "definition": "oxia_server_wal_entries{oxia_cluster=~\"$cluster\"}",
+        "definition": "oxia_server_wal_entries{\n    oxia_cluster=~\"$cluster\", \n    oxia_namespace=~\"$namespace\",\n    shard=~\"$shard\"}",
         "hide": 0,
         "includeAll": true,
         "label": "Pod",
@@ -5667,7 +5705,7 @@
         "name": "pod",
         "options": [],
         "query": {
-          "query": "oxia_server_wal_entries{oxia_cluster=~\"$cluster\"}",
+          "query": "oxia_server_wal_entries{\n    oxia_cluster=~\"$cluster\", \n    oxia_namespace=~\"$namespace\",\n    shard=~\"$shard\"}",
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
@@ -5679,7 +5717,7 @@
     ]
   },
   "time": {
-    "from": "now-1h",
+    "from": "now-30m",
     "to": "now"
   },
   "timepicker": {},
