@@ -9,13 +9,13 @@
 Oxia is available in form of a Docker image
 
 ```shell
-$ docker pull streamnative/oxia:main
+docker pull streamnative/oxia:main
 ```
 
 ## Building from source
 
 ```shell
-$ make
+make
 ```
 
 This will create the binary file on `bin/oxia`.
@@ -27,7 +27,7 @@ It provides a full-fledged Oxia service with a `default` namespace. Being a sing
 getting replicated.
 
 ```shell
-$ oxia standalone
+oxia standalone
 ```
 
 Output will be something like:
@@ -47,7 +47,7 @@ The service is now ready at `localhost:6648` address.
 Using docker this can be done with:
 
 ```shell
-$ docker run -p 6648:6648 streamnative/oxia:main oxia standalone 
+docker run -p 6648:6648 streamnative/oxia:main oxia standalone 
 ```
 
 
@@ -57,12 +57,12 @@ There is a convenient CLI tool that allows you to interact with the records stor
 
 ```shell
 # Write or update a record
-$ bin/oxia client put -k /my-key -v my-value
+bin/oxia client put -k /my-key -v my-value
 {"version":{"version_id":0,"created_timestamp":1680220430128,"modified_timestamp":1680220430128,"modifications_count":0}}
 
 
 # Read the value of a key
-$ oxia client get -k /my-key
+oxia client get -k /my-key
 {"binary":false,"value":"my-value","version":{"version_id":0,"created_timestamp":1680220430128,"modified_timestamp":1680220430128,"modifications_count":0}}
 ```
 
@@ -73,7 +73,7 @@ generates some amount of traffic, based on the desired rate and read/write ratio
 
 
 ```shell
-$ oxia perf --rate 10000
+oxia perf --rate 10000
 Mar 30 16:57:25.507167 INF Starting Oxia perf client config={"BatchLinger":5000000,"KeysCardinality":1000,"MaxRequestsPerBatch":1000,"ReadPercentage":80,"RequestRate":10000,"RequestTimeout":30000000000,"ServiceAddr":"localhost:6648","ValueSize":128}
 Mar 30 16:57:35.510046 INF Stats - Total ops: 10994.5 ops/s - Failed ops:    0.0 ops/s
 			Write ops 2198.4 w/s  Latency ms: 50%   6.4 - 95%  10.9 - 99%  18.9 - 99.9%  18.9 - max   18.9
