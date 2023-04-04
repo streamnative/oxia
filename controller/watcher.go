@@ -47,7 +47,9 @@ func newWatcher(client oxia.Interface, reconciler Reconciler) (Watcher, error) {
 	go w.runWithRetries(client, reconciler)
 
 	// Wait until fully initialized
-	w.initWg.Wait(w.ctx)
+	if err := w.initWg.Wait(w.ctx); err != nil {
+		return nil, err
+	}
 	return w, nil
 }
 
