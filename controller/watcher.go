@@ -19,6 +19,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"io"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	"oxia/common"
 	oxia "oxia/pkg/generated/clientset/versioned"
 	"time"
 )
@@ -28,6 +29,8 @@ type Watcher io.Closer
 type watcher struct {
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	initWg common.WaitGroup
 }
 
 func (w *watcher) Close() error {
@@ -36,15 +39,20 @@ func (w *watcher) Close() error {
 }
 
 func newWatcher(client oxia.Interface, reconciler Reconciler) (Watcher, error) {
-	w := &watcher{}
+	w := &watcher{
+		initWg: common.NewWaitGroup(1),
+	}
 
 	w.ctx, w.cancel = context.WithCancel(context.Background())
 	go w.runWithRetries(client, reconciler)
+
+	// Wait until fully initialized
+	w.initWg.Wait(w.ctx)
 	return w, nil
 }
 
 func (w *watcher) runWithRetries(client oxia.Interface, reconciler Reconciler) {
-	for w.ctx.Err() != nil {
+	for w.ctx.Err() == nil {
 		w.run(client, reconciler)
 		time.Sleep(5 * time.Second)
 	}
@@ -59,11 +67,17 @@ func (w *watcher) run(client oxia.Interface, reconciler Reconciler) {
 		return
 	}
 
+	w.initWg.Done()
+
 	defer watch.Stop()
 
 	for {
 		select {
-		case event := <-watch.ResultChan():
+		case event, ok := <-watch.ResultChan():
+			if !ok {
+				// Watcher was already close, reopen it
+				return
+			}
 			reconciler.Reconcile(event)
 		case <-w.ctx.Done():
 			return
