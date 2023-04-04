@@ -16,46 +16,73 @@ package controller
 
 import (
 	"context"
+	"github.com/rs/zerolog/log"
 	"io"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/watch"
+	"oxia/common"
 	oxia "oxia/pkg/generated/clientset/versioned"
+	"time"
 )
 
 type Watcher io.Closer
 
 type watcher struct {
-	watch   watch.Interface
-	closeCh chan bool
+	ctx    context.Context
+	cancel context.CancelFunc
+
+	initWg common.WaitGroup
 }
 
 func (w *watcher) Close() error {
-	w.watch.Stop()
-	close(w.closeCh)
+	w.cancel()
 	return nil
 }
 
 func newWatcher(client oxia.Interface, reconciler Reconciler) (Watcher, error) {
-	ctx := context.Background()
-	_watch, err := client.OxiaV1alpha1().OxiaClusters("").Watch(ctx, v1.ListOptions{})
-	if err != nil {
+	w := &watcher{
+		initWg: common.NewWaitGroup(1),
+	}
+
+	w.ctx, w.cancel = context.WithCancel(context.Background())
+	go w.runWithRetries(client, reconciler)
+
+	// Wait until fully initialized
+	if err := w.initWg.Wait(w.ctx); err != nil {
 		return nil, err
 	}
-	w := &watcher{
-		watch:   _watch,
-		closeCh: make(chan bool),
-	}
-	go w.run(reconciler)
 	return w, nil
 }
 
-func (w *watcher) run(reconciler Reconciler) {
+func (w *watcher) runWithRetries(client oxia.Interface, reconciler Reconciler) {
+	for w.ctx.Err() == nil {
+		w.run(client, reconciler)
+		time.Sleep(5 * time.Second)
+	}
+}
+
+func (w *watcher) run(client oxia.Interface, reconciler Reconciler) {
+	watch, err := client.OxiaV1alpha1().
+		OxiaClusters("").
+		Watch(w.ctx, v1.ListOptions{})
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to create watcher")
+		return
+	}
+
+	w.initWg.Done()
+
+	defer watch.Stop()
+
 	for {
 		select {
-		case event := <-w.watch.ResultChan():
+		case event, ok := <-watch.ResultChan():
+			if !ok {
+				// Watcher was already close, reopen it
+				return
+			}
 			reconciler.Reconcile(event)
-		case <-w.closeCh:
-			break
+		case <-w.ctx.Done():
+			return
 		}
 	}
 }
