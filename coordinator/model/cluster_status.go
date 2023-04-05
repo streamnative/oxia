@@ -95,7 +95,9 @@ func (n NamespaceStatus) Clone() NamespaceStatus {
 
 func (c ClusterStatus) Clone() *ClusterStatus {
 	r := &ClusterStatus{
-		Namespaces: make(map[string]NamespaceStatus),
+		Namespaces:       make(map[string]NamespaceStatus),
+		ShardIdGenerator: c.ShardIdGenerator,
+		ServerIdx:        c.ServerIdx,
 	}
 
 	for name, n := range c.Namespaces {
