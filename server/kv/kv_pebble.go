@@ -339,7 +339,7 @@ func (p *Pebble) Get(key string) ([]byte, io.Closer, error) {
 	value, closer, err := p.db.Get([]byte(key))
 	if errors.Is(err, pebble.ErrNotFound) {
 		err = ErrorKeyNotFound
-	} else {
+	} else if err != nil {
 		p.readErrors.Inc()
 	}
 	return value, closer, err
