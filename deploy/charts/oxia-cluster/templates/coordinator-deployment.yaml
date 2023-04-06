@@ -26,8 +26,8 @@ spec:
   template:
     metadata:
       annotations:
-        prometheus.io/port: {{ .Values.coordinator.ports.metrics }}
-        prometheus.io/scrape: {{ .Values.monitoringEnabled }}
+        prometheus.io/port: "{{ .Values.coordinator.ports.metrics }}"
+        prometheus.io/scrape: "{{ .Values.monitoringEnabled }}"
       labels:
         {{- include "oxia-cluster.coordinator.labels" . | nindent 8 }}
       name: {{ .Release.Name }}-coordinator
