@@ -48,12 +48,15 @@ func TestWatcher(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Eventually(t, func() bool {
-		get, err := _kubernetes.AppsV1().StatefulSets(namespace).
+		_, err := _kubernetes.AppsV1().StatefulSets(namespace).
 			Get(context.Background(), name, v1.GetOptions{})
-		assert.NoError(t, err)
-		assert.Equal(t, int32(3), *get.Spec.Replicas)
-		return true
+		return err == nil
 	}, 10*time.Second, 100*time.Millisecond)
+
+	get, err := _kubernetes.AppsV1().StatefulSets(namespace).
+		Get(context.Background(), name, v1.GetOptions{})
+	assert.NoError(t, err)
+	assert.Equal(t, int32(3), *get.Spec.Replicas)
 
 	err = _oxia.OxiaV1alpha1().OxiaClusters(namespace).
 		Delete(context.Background(), name, v1.DeleteOptions{})
