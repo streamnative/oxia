@@ -143,14 +143,14 @@ func NewLeaderController(config Config, namespace string, shardId int64, rpcClie
 	lc.ctx, lc.cancel = context.WithCancel(context.Background())
 
 	var err error
-	if lc.wal, err = walFactory.NewWal(common.DefaultNamespace, shardId); err != nil {
+	if lc.wal, err = walFactory.NewWal(namespace, shardId); err != nil {
 		return nil, err
 	}
 
-	lc.walTrimmer = wal.NewTrimmer(common.DefaultNamespace, shardId, lc.wal, config.WalRetentionTime, wal.DefaultCheckInterval,
+	lc.walTrimmer = wal.NewTrimmer(namespace, shardId, lc.wal, config.WalRetentionTime, wal.DefaultCheckInterval,
 		common.SystemClock, lc)
 
-	if lc.db, err = kv.NewDB(common.DefaultNamespace, shardId, kvFactory, config.NotificationsRetentionTime, common.SystemClock); err != nil {
+	if lc.db, err = kv.NewDB(namespace, shardId, kvFactory, config.NotificationsRetentionTime, common.SystemClock); err != nil {
 		return nil, err
 	}
 

@@ -49,7 +49,7 @@ func newInternalRpcServer(grpcProvider container.GrpcProvider, bindAddress strin
 		assignmentDispatcher: assignmentDispatcher,
 		healthServer:         health.NewServer(),
 		log: log.With().
-			Str("component", "coordination-rpc-server").
+			Str("component", "internal-rpc-server").
 			Logger(),
 	}
 
@@ -100,7 +100,7 @@ func (s *internalRpcServer) NewTerm(c context.Context, req *proto.NewTermRequest
 			log.Warn().Err(err).Msg("NewTerm failed: could not get follower controller")
 			return nil, err
 		}
-		log.Warn().Err(err).Msg("Node is not follower, getting leader")
+		log.Debug().Err(err).Msg("Node is not follower, getting leader")
 
 		// If we don't have a follower, fallback to checking the leader controller
 	} else {
@@ -208,6 +208,7 @@ func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServ
 
 	log := s.log.With().
 		Int64("shard", shardId).
+		Str("namespace", namespace).
 		Str("peer", common.GetPeer(srv.Context())).
 		Logger()
 
@@ -245,11 +246,13 @@ func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapsh
 
 	s.log.Info().
 		Int64("shard", shardId).
+		Str("namespace", namespace).
 		Str("peer", common.GetPeer(srv.Context())).
 		Msg("Received SendSnapshot request")
 
 	if follower, err := s.shardsDirector.GetOrCreateFollower(namespace, shardId); err != nil {
 		s.log.Warn().Err(err).
+			Str("namespace", namespace).
 			Int64("shard", shardId).
 			Str("peer", common.GetPeer(srv.Context())).
 			Msg("SendSnapshot failed: could not get follower controller")
@@ -258,6 +261,7 @@ func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapsh
 		err2 := follower.SendSnapshot(srv)
 		if err2 != nil {
 			s.log.Warn().Err(err2).
+				Str("namespace", namespace).
 				Int64("shard", shardId).
 				Str("peer", common.GetPeer(srv.Context())).
 				Msg("SendSnapshot failed")
