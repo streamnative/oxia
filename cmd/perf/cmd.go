@@ -39,6 +39,7 @@ var (
 func init() {
 	defaultServiceAddress := fmt.Sprintf("localhost:%d", kubernetes.PublicPort.Port)
 	Cmd.Flags().StringVarP(&config.ServiceAddr, "service-address", "a", defaultServiceAddress, "Service address")
+	Cmd.PersistentFlags().StringVarP(&config.Namespace, "namespace", "n", oxia.DefaultNamespace, "The Oxia namespace to use")
 
 	Cmd.Flags().Float64VarP(&config.RequestRate, "rate", "r", 100.0, "Request rate, ops/s")
 	Cmd.Flags().Float64VarP(&config.ReadPercentage, "read-write-percent", "p", 80.0, "Percentage of read requests, compared to total requests")

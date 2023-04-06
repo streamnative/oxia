@@ -29,6 +29,7 @@ import (
 
 type Config struct {
 	ServiceAddr     string
+	Namespace       string
 	RequestRate     float64
 	ReadPercentage  float64
 	KeysCardinality uint32
@@ -66,6 +67,7 @@ func (p *perf) Run(ctx context.Context) {
 	}
 
 	client, err := oxia.NewAsyncClient(p.config.ServiceAddr,
+		oxia.WithNamespace(p.config.Namespace),
 		oxia.WithBatchLinger(p.config.BatchLinger),
 		oxia.WithMaxRequestsPerBatch(p.config.MaxRequestsPerBatch),
 		oxia.WithRequestTimeout(p.config.RequestTimeout),
