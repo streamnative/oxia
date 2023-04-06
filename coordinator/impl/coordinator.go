@@ -25,6 +25,7 @@ import (
 	"oxia/common"
 	"oxia/coordinator/model"
 	"oxia/proto"
+	"reflect"
 	"sync"
 	"time"
 )
@@ -60,7 +61,9 @@ type coordinator struct {
 	assignmentsChanged common.ConditionContext
 
 	MetadataProvider
+	clusterConfigProvider func() (model.ClusterConfig, error)
 	model.ClusterConfig
+	clusterConfigRefreshTime time.Duration
 
 	shardControllers map[int64]ShardController
 	nodeControllers  map[string]NodeController
@@ -74,13 +77,28 @@ type coordinator struct {
 	cancel context.CancelFunc
 }
 
-func NewCoordinator(metadataProvider MetadataProvider, clusterConfig model.ClusterConfig, rpc RpcProvider) (Coordinator, error) {
+func NewCoordinator(metadataProvider MetadataProvider,
+	clusterConfigProvider func() (model.ClusterConfig, error),
+	clusterConfigRefreshTime time.Duration,
+	rpc RpcProvider) (Coordinator, error) {
+
+	initialClusterConf, err := clusterConfigProvider()
+	if err != nil {
+		return nil, err
+	}
+
+	if clusterConfigRefreshTime == 0 {
+		clusterConfigRefreshTime = 1 * time.Minute
+	}
+
 	c := &coordinator{
-		MetadataProvider: metadataProvider,
-		ClusterConfig:    clusterConfig,
-		shardControllers: make(map[int64]ShardController),
-		nodeControllers:  make(map[string]NodeController),
-		rpc:              rpc,
+		MetadataProvider:         metadataProvider,
+		clusterConfigProvider:    clusterConfigProvider,
+		ClusterConfig:            initialClusterConf,
+		clusterConfigRefreshTime: clusterConfigRefreshTime,
+		shardControllers:         make(map[int64]ShardController),
+		nodeControllers:          make(map[string]NodeController),
+		rpc:                      rpc,
 		log: log.With().
 			Str("component", "coordinator").
 			Logger(),
@@ -90,13 +108,12 @@ func NewCoordinator(metadataProvider MetadataProvider, clusterConfig model.Clust
 
 	c.assignmentsChanged = common.NewConditionContext(c)
 
-	var err error
 	c.clusterStatus, c.metadataVersion, err = metadataProvider.Get()
 	if err != nil && !errors.Is(err, ErrorMetadataNotInitialized) {
 		return nil, err
 	}
 
-	for _, sa := range clusterConfig.Servers {
+	for _, sa := range c.ClusterConfig.Servers {
 		c.nodeControllers[sa.Internal] = NewNodeController(sa, c, c, c.rpc)
 	}
 
@@ -121,6 +138,10 @@ func NewCoordinator(metadataProvider MetadataProvider, clusterConfig model.Clust
 			c.shardControllers[shard] = NewShardController(ns, shard, shardMetadata, c.rpc, c)
 		}
 	}
+
+	go common.DoWithLabels(map[string]string{
+		"oxia": "coordinator-wait-for-events",
+	}, c.waitForExternalEvents)
 
 	return c, nil
 }
@@ -339,4 +360,68 @@ func (c *coordinator) ClusterStatus() model.ClusterStatus {
 	c.Lock()
 	defer c.Unlock()
 	return *c.clusterStatus.Clone()
+}
+
+func (c *coordinator) waitForExternalEvents() {
+	refreshTimer := time.NewTicker(c.clusterConfigRefreshTime)
+	defer refreshTimer.Stop()
+
+	for {
+		select {
+		case <-c.ctx.Done():
+			return
+
+		case <-refreshTimer.C:
+			if err := c.handleClusterConfigUpdated(); err != nil {
+				c.log.Warn().Err(err).
+					Msg("Failed to update cluster config")
+			}
+		}
+	}
+}
+
+func (c *coordinator) handleClusterConfigUpdated() error {
+	c.Lock()
+	defer c.Unlock()
+
+	newClusterConfig, err := c.clusterConfigProvider()
+	if err != nil {
+		return errors.Wrap(err, "failed to read cluster configuration")
+	}
+
+	if reflect.DeepEqual(newClusterConfig, c.ClusterConfig) {
+		c.log.Debug().
+			Msg("Cluster config has not changed since last time")
+		return nil
+	}
+
+	c.log.Info().
+		Interface("clusterConfig", c.ClusterConfig).
+		Interface("metadataVersion", c.metadataVersion).
+		Msg("Detected change in cluster config")
+
+	clusterStatus, shardsToAdd, shardsToDelete := applyClusterChanges(&newClusterConfig, c.clusterStatus)
+
+	for shard, namespace := range shardsToAdd {
+		shardMetadata := clusterStatus.Namespaces[namespace].Shards[shard]
+		c.shardControllers[shard] = NewShardController(namespace, shard, shardMetadata, c.rpc, c)
+		log.Info().
+			Int64("shard", shard).
+			Str("namespace", namespace).
+			Interface("shard-metadata", shardMetadata).
+			Msg("Added new shard")
+	}
+
+	for _, shard := range shardsToDelete {
+		s, ok := c.shardControllers[shard]
+		if ok {
+			s.DeleteShard()
+		}
+	}
+
+	c.ClusterConfig = newClusterConfig
+	c.clusterStatus = clusterStatus
+
+	c.computeNewAssignments()
+	return nil
 }

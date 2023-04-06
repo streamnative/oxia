@@ -91,7 +91,10 @@ func TestClientUpdates_ClusterInit(t *testing.T) {
 	}, newStatus)
 
 	assert.Equal(t, []int64{}, shardsToRemove)
-	assert.Equal(t, []int64{0, 1, 2}, shardsAdded)
+	assert.Equal(t, map[int64]string{
+		0: "ns-1",
+		1: "ns-2",
+		2: "ns-2"}, shardsAdded)
 }
 
 func TestClientUpdates_NamespaceAdded(t *testing.T) {
@@ -173,7 +176,9 @@ func TestClientUpdates_NamespaceAdded(t *testing.T) {
 	}, newStatus)
 
 	assert.Equal(t, []int64{}, shardsToRemove)
-	assert.Equal(t, []int64{1, 2}, shardsAdded)
+	assert.Equal(t, map[int64]string{
+		1: "ns-2",
+		2: "ns-2"}, shardsAdded)
 }
 
 func TestClientUpdates_NamespaceRemoved(t *testing.T) {
@@ -279,5 +284,5 @@ func TestClientUpdates_NamespaceRemoved(t *testing.T) {
 
 	sort.Slice(shardsToRemove, func(i, j int) bool { return shardsToRemove[i] < shardsToRemove[j] })
 	assert.Equal(t, []int64{1, 2}, shardsToRemove)
-	assert.Equal(t, []int64{}, shardsAdded)
+	assert.Equal(t, map[int64]string{}, shardsAdded)
 }

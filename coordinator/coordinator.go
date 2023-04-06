@@ -24,6 +24,7 @@ import (
 	"oxia/coordinator/impl"
 	"oxia/coordinator/model"
 	"oxia/kubernetes"
+	"time"
 )
 
 type Config struct {
@@ -33,7 +34,8 @@ type Config struct {
 	K8SMetadataNamespace     string
 	K8SMetadataConfigMapName string
 	FileMetadataPath         string
-	ClusterConfig            model.ClusterConfig
+	ClusterConfigProvider    func() (model.ClusterConfig, error)
+	ClusterConfigRefreshTime time.Duration
 }
 
 type MetadataProviderImpl string
@@ -101,7 +103,7 @@ func New(config Config) (*Coordinator, error) {
 	rpcClient := impl.NewRpcProvider(s.clientPool)
 
 	var err error
-	if s.coordinator, err = impl.NewCoordinator(metadataProvider, config.ClusterConfig, rpcClient); err != nil {
+	if s.coordinator, err = impl.NewCoordinator(metadataProvider, config.ClusterConfigProvider, config.ClusterConfigRefreshTime, rpcClient); err != nil {
 		return nil, err
 	}
 

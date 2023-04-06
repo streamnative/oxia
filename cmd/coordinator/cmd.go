@@ -22,6 +22,8 @@ import (
 	"oxia/cmd/flag"
 	"oxia/common"
 	"oxia/coordinator"
+	"oxia/coordinator/model"
+	"time"
 )
 
 var (
@@ -45,6 +47,7 @@ func init() {
 	Cmd.Flags().StringVar(&conf.K8SMetadataConfigMapName, "k8s-configmap-name", conf.K8SMetadataConfigMapName, "ConfigMap name for metadata configmap")
 	Cmd.Flags().StringVar(&conf.FileMetadataPath, "file-clusters-status-path", "data/cluster-status.json", "The path where the cluster status is stored when using 'file' provider")
 	Cmd.Flags().StringVarP(&configFile, "conf", "f", "", "Cluster config file")
+	Cmd.Flags().DurationVar(&conf.ClusterConfigRefreshTime, "conf-file-refresh-time", 1*time.Minute, "How frequently to check for updates for cluster configuration file")
 }
 
 func validate(*cobra.Command, []string) error {
@@ -56,13 +59,13 @@ func validate(*cobra.Command, []string) error {
 			return errors.New("k8s-configmap-name must be set with metadata=configmap")
 		}
 	}
-	if err := loadClusterConfig(); err != nil {
+	if _, err := loadClusterConfig(); err != nil {
 		return err
 	}
 	return nil
 }
 
-func loadClusterConfig() error {
+func loadClusterConfig() (model.ClusterConfig, error) {
 	if configFile == "" {
 		viper.AddConfigPath("/oxia/conf")
 		viper.AddConfigPath(".")
@@ -70,14 +73,22 @@ func loadClusterConfig() error {
 		viper.SetConfigFile(configFile)
 	}
 
+	cc := model.ClusterConfig{}
+
 	if err := viper.ReadInConfig(); err != nil {
-		return err
+		return cc, err
 	}
 
-	return viper.Unmarshal(&conf.ClusterConfig)
+	if err := viper.Unmarshal(&cc); err != nil {
+		return cc, err
+	}
+
+	return cc, nil
 }
 
 func exec(*cobra.Command, []string) {
+	conf.ClusterConfigProvider = loadClusterConfig
+
 	common.RunProcess(func() (io.Closer, error) {
 		return coordinator.New(conf)
 	})
