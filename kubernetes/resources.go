@@ -44,11 +44,26 @@ func resourceName(component Component, name string) string {
 	return name
 }
 
-func objectMeta(component Component, name string) metaV1.ObjectMeta {
+func objectMeta(component Component, name string, cluster *v1alpha1.OxiaCluster) metaV1.ObjectMeta {
 	_resourceName := resourceName(component, name)
-	return metaV1.ObjectMeta{
+	_objectMeta := metaV1.ObjectMeta{
 		Name:   _resourceName,
 		Labels: allLabels(component, name),
+	}
+	if cluster != nil {
+		_objectMeta.OwnerReferences = []metaV1.OwnerReference{*controllerOwnerReference(cluster)}
+	}
+	return _objectMeta
+}
+
+func controllerOwnerReference(cluster *v1alpha1.OxiaCluster) *metaV1.OwnerReference {
+	isController := true
+	return &metaV1.OwnerReference{
+		Name:       cluster.Name,
+		APIVersion: cluster.APIVersion,
+		UID:        cluster.GetUID(),
+		Kind:       cluster.GetObjectKind().GroupVersionKind().Kind,
+		Controller: &isController,
 	}
 }
 
@@ -78,7 +93,7 @@ func additionalLabels(version string) map[string]string {
 
 func serviceAccount(component Component, cluster v1alpha1.OxiaCluster) *coreV1.ServiceAccount {
 	_serviceAccount := &coreV1.ServiceAccount{
-		ObjectMeta: objectMeta(component, cluster.Name),
+		ObjectMeta: objectMeta(component, cluster.Name, &cluster),
 	}
 	if cluster.Spec.Image.PullSecrets != nil {
 		_serviceAccount.ImagePullSecrets = []coreV1.LocalObjectReference{{Name: *cluster.Spec.Image.PullSecrets}}
@@ -88,7 +103,7 @@ func serviceAccount(component Component, cluster v1alpha1.OxiaCluster) *coreV1.S
 
 func role(cluster v1alpha1.OxiaCluster) *rbacV1.Role {
 	return &rbacV1.Role{
-		ObjectMeta: objectMeta(Coordinator, cluster.Name),
+		ObjectMeta: objectMeta(Coordinator, cluster.Name, &cluster),
 		Rules:      policyRules(),
 	}
 }
@@ -105,7 +120,7 @@ func policyRules() []rbacV1.PolicyRule {
 func roleBinding(cluster v1alpha1.OxiaCluster) *rbacV1.RoleBinding {
 	_resourceName := resourceName(Coordinator, cluster.Name)
 	return &rbacV1.RoleBinding{
-		ObjectMeta: objectMeta(Coordinator, cluster.Name),
+		ObjectMeta: objectMeta(Coordinator, cluster.Name, &cluster),
 		Subjects: []rbacV1.Subject{{
 			Kind:      "ServiceAccount",
 			Name:      _resourceName,
@@ -127,7 +142,7 @@ func service(component Component, cluster v1alpha1.OxiaCluster, ports []NamedPor
 		publishNotReadyAddresses = true
 	}
 	service := &coreV1.Service{
-		ObjectMeta: objectMeta(component, cluster.Name),
+		ObjectMeta: objectMeta(component, cluster.Name, &cluster),
 		Spec: coreV1.ServiceSpec{
 			Selector:                 selectorLabels(component, cluster.Name),
 			Ports:                    transform(ports, servicePort),
@@ -169,7 +184,7 @@ func configMap(cluster v1alpha1.OxiaCluster) *coreV1.ConfigMap {
 		log.Fatal().Err(err).Msg("unable to marshal cluster config to yaml")
 	}
 	return &coreV1.ConfigMap{
-		ObjectMeta: objectMeta(Coordinator, cluster.Name),
+		ObjectMeta: objectMeta(Coordinator, cluster.Name, &cluster),
 		Data: map[string]string{
 			"config.yaml": string(bytes),
 		},
@@ -194,12 +209,12 @@ func coordinatorDeployment(cluster v1alpha1.OxiaCluster) *appsV1.Deployment {
 		command = append(command, "--profile")
 	}
 	deployment := &appsV1.Deployment{
-		ObjectMeta: objectMeta(Coordinator, cluster.Name),
+		ObjectMeta: objectMeta(Coordinator, cluster.Name, &cluster),
 		Spec: appsV1.DeploymentSpec{
 			Replicas: pointer.Int32(1),
 			Selector: &metaV1.LabelSelector{MatchLabels: selectorLabels(Coordinator, cluster.Name)},
 			Template: coreV1.PodTemplateSpec{
-				ObjectMeta: objectMeta(Coordinator, cluster.Name),
+				ObjectMeta: objectMeta(Coordinator, cluster.Name, nil),
 				Spec: coreV1.PodSpec{
 					ServiceAccountName: _resourceName,
 					Containers: []coreV1.Container{{
@@ -246,13 +261,13 @@ func serverStatefulSet(cluster v1alpha1.OxiaCluster) *appsV1.StatefulSet {
 		command = append(command, "--profile")
 	}
 	statefulSet := &appsV1.StatefulSet{
-		ObjectMeta: objectMeta(Server, cluster.Name),
+		ObjectMeta: objectMeta(Server, cluster.Name, &cluster),
 		Spec: appsV1.StatefulSetSpec{
 			Replicas:    pointer.Int32(int32(cluster.Spec.Server.Replicas)),
 			Selector:    &metaV1.LabelSelector{MatchLabels: selectorLabels(Server, cluster.Name)},
 			ServiceName: _resourceName,
 			Template: coreV1.PodTemplateSpec{
-				ObjectMeta: objectMeta(Server, cluster.Name),
+				ObjectMeta: objectMeta(Server, cluster.Name, nil),
 				Spec: coreV1.PodSpec{
 					ServiceAccountName: _resourceName,
 					Containers: []coreV1.Container{{
@@ -310,7 +325,7 @@ func probe() *coreV1.Probe {
 
 func serviceMonitor(component Component, cluster v1alpha1.OxiaCluster) *monitoringV1.ServiceMonitor {
 	return &monitoringV1.ServiceMonitor{
-		ObjectMeta: objectMeta(component, cluster.Name),
+		ObjectMeta: objectMeta(component, cluster.Name, &cluster),
 		Spec: monitoringV1.ServiceMonitorSpec{
 			Selector:     metaV1.LabelSelector{MatchLabels: selectorLabels(component, cluster.Name)},
 			Endpoints:    []monitoringV1.Endpoint{{Port: MetricsPort.Name}},
