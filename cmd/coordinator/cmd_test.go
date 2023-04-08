@@ -54,84 +54,96 @@ func TestCmd(t *testing.T) {
 	}()
 
 	for _, test := range []struct {
-		args         []string
-		expectedConf coordinator.Config
-		isErr        bool
+		args                []string
+		expectedConf        coordinator.Config
+		expectedClusterConf model.ClusterConfig
+		isErr               bool
 	}{
 		{[]string{}, coordinator.Config{
-			InternalServiceAddr:  "localhost:6649",
-			MetricsServiceAddr:   "localhost:8080",
-			MetadataProviderImpl: coordinator.File,
-			ClusterConfig: model.ClusterConfig{
-				Namespaces: []model.NamespaceConfig{{
-					Name:              common.DefaultNamespace,
-					ReplicationFactor: 1,
-					InitialShardCount: 2,
-				}},
-				Servers: []model.ServerAddress{{
-					Public:   "public:1234",
-					Internal: "internal:5678",
-				}}}}, false},
+			InternalServiceAddr:      "localhost:6649",
+			MetricsServiceAddr:       "localhost:8080",
+			MetadataProviderImpl:     coordinator.File,
+			ClusterConfigRefreshTime: 0,
+		}, model.ClusterConfig{
+			Namespaces: []model.NamespaceConfig{{
+				Name:              common.DefaultNamespace,
+				ReplicationFactor: 1,
+				InitialShardCount: 2,
+			}},
+			Servers: []model.ServerAddress{{
+				Public:   "public:1234",
+				Internal: "internal:5678",
+			},
+			},
+		}, false},
 		{[]string{"-i=localhost:1234"}, coordinator.Config{
 			InternalServiceAddr:  "localhost:1234",
 			MetricsServiceAddr:   "localhost:8080",
 			MetadataProviderImpl: coordinator.File,
-			ClusterConfig: model.ClusterConfig{
-				Namespaces: []model.NamespaceConfig{{
-					Name:              common.DefaultNamespace,
-					ReplicationFactor: 1,
-					InitialShardCount: 2,
-				}},
-				Servers: []model.ServerAddress{{
-					Public:   "public:1234",
-					Internal: "internal:5678",
-				}}}}, false},
+		}, model.ClusterConfig{
+			Namespaces: []model.NamespaceConfig{{
+				Name:              common.DefaultNamespace,
+				ReplicationFactor: 1,
+				InitialShardCount: 2,
+			}},
+			Servers: []model.ServerAddress{{
+				Public:   "public:1234",
+				Internal: "internal:5678",
+			},
+			},
+		}, false},
 		{[]string{"-i=0.0.0.0:1234"}, coordinator.Config{
 			InternalServiceAddr:  "0.0.0.0:1234",
 			MetricsServiceAddr:   "localhost:8080",
 			MetadataProviderImpl: coordinator.File,
-			ClusterConfig: model.ClusterConfig{
-				Namespaces: []model.NamespaceConfig{{
-					Name:              common.DefaultNamespace,
-					ReplicationFactor: 1,
-					InitialShardCount: 2,
-				}},
-				Servers: []model.ServerAddress{{
-					Public:   "public:1234",
-					Internal: "internal:5678",
-				}}}}, false},
+		}, model.ClusterConfig{
+			Namespaces: []model.NamespaceConfig{{
+				Name:              common.DefaultNamespace,
+				ReplicationFactor: 1,
+				InitialShardCount: 2,
+			}},
+			Servers: []model.ServerAddress{{
+				Public:   "public:1234",
+				Internal: "internal:5678",
+			},
+			},
+		}, false},
 		{[]string{"-m=localhost:1234"}, coordinator.Config{
 			InternalServiceAddr:  "localhost:6649",
 			MetricsServiceAddr:   "localhost:1234",
 			MetadataProviderImpl: coordinator.File,
-			ClusterConfig: model.ClusterConfig{
-				Namespaces: []model.NamespaceConfig{{
-					Name:              common.DefaultNamespace,
-					ReplicationFactor: 1,
-					InitialShardCount: 2,
-				}},
-				Servers: []model.ServerAddress{{
-					Public:   "public:1234",
-					Internal: "internal:5678",
-				}}}}, false},
+		}, model.ClusterConfig{
+			Namespaces: []model.NamespaceConfig{{
+				Name:              common.DefaultNamespace,
+				ReplicationFactor: 1,
+				InitialShardCount: 2,
+			}},
+			Servers: []model.ServerAddress{{
+				Public:   "public:1234",
+				Internal: "internal:5678",
+			},
+			},
+		}, false},
 		{[]string{"-f=" + name}, coordinator.Config{
 			InternalServiceAddr:  "localhost:6649",
 			MetricsServiceAddr:   "localhost:8080",
 			MetadataProviderImpl: coordinator.File,
-			ClusterConfig: model.ClusterConfig{
-				Namespaces: []model.NamespaceConfig{{
-					Name:              common.DefaultNamespace,
-					ReplicationFactor: 1,
-					InitialShardCount: 2,
-				}},
-				Servers: []model.ServerAddress{{
-					Public:   "public:1234",
-					Internal: "internal:5678",
-				}}}}, false},
+		}, model.ClusterConfig{
+			Namespaces: []model.NamespaceConfig{{
+				Name:              common.DefaultNamespace,
+				ReplicationFactor: 1,
+				InitialShardCount: 2,
+			}},
+			Servers: []model.ServerAddress{{
+				Public:   "public:1234",
+				Internal: "internal:5678",
+			},
+			},
+		}, false},
 		{[]string{"-f=invalid.yaml"}, coordinator.Config{
 			InternalServiceAddr: "localhost:6649",
 			MetricsServiceAddr:  "localhost:8080",
-			ClusterConfig:       model.ClusterConfig{}}, true},
+		}, model.ClusterConfig{}, true},
 	} {
 		t.Run(strings.Join(test.args, "_"), func(t *testing.T) {
 			conf = coordinator.NewConfig()
@@ -140,6 +152,11 @@ func TestCmd(t *testing.T) {
 			Cmd.SetArgs(test.args)
 			Cmd.Run = func(cmd *cobra.Command, args []string) {
 				assert.Equal(t, test.expectedConf, conf)
+
+				conf.ClusterConfigProvider = loadClusterConfig
+				clusterConf, err := conf.ClusterConfigProvider()
+				assert.NoError(t, err)
+				assert.Equal(t, test.expectedClusterConf, clusterConf)
 			}
 			err = Cmd.Execute()
 			assert.Equal(t, test.isErr, err != nil)

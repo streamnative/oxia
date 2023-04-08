@@ -30,11 +30,11 @@ func getServers(servers []model.ServerAddress, startIdx uint32, count uint32) []
 
 func applyClusterChanges(config *model.ClusterConfig, currentStatus *model.ClusterStatus) (
 	newStatus *model.ClusterStatus,
-	shardsToAdd []int64,
+	shardsToAdd map[int64]string,
 	shardsToDelete []int64) {
 
-	shardsToAdd = make([]int64, 0)
-	shardsToDelete = make([]int64, 0)
+	shardsToAdd = map[int64]string{}
+	shardsToDelete = []int64{}
 
 	newStatus = &model.ClusterStatus{
 		Namespaces:       map[string]model.NamespaceStatus{},
@@ -65,7 +65,7 @@ func applyClusterChanges(config *model.ClusterConfig, currentStatus *model.Clust
 
 				nss.Shards[shard.Id] = shardMetadata
 				newStatus.ServerIdx = (newStatus.ServerIdx + nc.ReplicationFactor) % uint32(len(config.Servers))
-				shardsToAdd = append(shardsToAdd, shard.Id)
+				shardsToAdd[shard.Id] = nc.Name
 			}
 			newStatus.Namespaces[nc.Name] = nss
 

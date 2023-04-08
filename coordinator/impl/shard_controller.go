@@ -46,6 +46,8 @@ type ShardController interface {
 
 	HandleNodeFailure(failedNode model.ServerAddress)
 
+	DeleteShard()
+
 	Term() int64
 	Leader() *model.ServerAddress
 	Status() model.ShardStatus
@@ -110,7 +112,7 @@ func NewShardController(namespace string, shard int64, shardMetadata model.Shard
 		Msg("Started shard controller")
 
 	if shardMetadata.Status == model.ShardStatusDeleting {
-		s.deleteShardWithRetries()
+		s.DeleteShard()
 	} else if shardMetadata.Leader == nil || shardMetadata.Status != model.ShardStatusSteadyState {
 		s.electLeaderWithRetries()
 	} else {
@@ -524,18 +526,26 @@ func (s *shardController) addFollower(leader model.ServerAddress, follower strin
 	return nil
 }
 
-func (s *shardController) deleteShardWithRetries() {
+func (s *shardController) DeleteShard() {
 	go common.DoWithLabels(map[string]string{
 		"oxia":      "shard-controller-delete-shard",
 		"namespace": s.namespace,
 		"shard":     fmt.Sprintf("%d", s.shard),
 	}, func() {
+		s.Lock()
+		defer s.Unlock()
+
+		s.log.Info().
+			Msg("Deleting shard")
+
 		_ = backoff.RetryNotify(s.deleteShard, common.NewBackOff(s.ctx),
 			func(err error, duration time.Duration) {
 				s.log.Warn().Err(err).
 					Dur("retry-after", duration).
 					Msg("Delete shard failed, retrying later")
 			})
+
+		s.cancel()
 	})
 }
 

@@ -65,7 +65,8 @@ func TestCoordinatorE2E(t *testing.T) {
 	}
 	clientPool := common.NewClientPool()
 
-	coordinator, err := NewCoordinator(metadataProvider, clusterConfig, NewRpcProvider(clientPool))
+	coordinator, err := NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, 0, NewRpcProvider(clientPool))
+
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 1, len(coordinator.ClusterStatus().Namespaces))
@@ -102,7 +103,7 @@ func TestCoordinatorE2E_ShardsRanges(t *testing.T) {
 	}
 	clientPool := common.NewClientPool()
 
-	coordinator, err := NewCoordinator(metadataProvider, clusterConfig, NewRpcProvider(clientPool))
+	coordinator, err := NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, 0, NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 
 	cs := coordinator.ClusterStatus()
@@ -154,7 +155,7 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 	}
 	clientPool := common.NewClientPool()
 
-	coordinator, err := NewCoordinator(metadataProvider, clusterConfig, NewRpcProvider(clientPool))
+	coordinator, err := NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, 0, NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 
 	nsStatus := coordinator.ClusterStatus().Namespaces[common.DefaultNamespace]
@@ -256,7 +257,7 @@ func TestCoordinator_MultipleNamespaces(t *testing.T) {
 	}
 	clientPool := common.NewClientPool()
 
-	coordinator, err := NewCoordinator(metadataProvider, clusterConfig, NewRpcProvider(clientPool))
+	coordinator, err := NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, 0, NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 
 	nsDefaultStatus := coordinator.ClusterStatus().Namespaces[common.DefaultNamespace]
@@ -347,7 +348,7 @@ func TestCoordinator_DeleteNamespace(t *testing.T) {
 	}
 	clientPool := common.NewClientPool()
 
-	coordinator, err := NewCoordinator(metadataProvider, clusterConfig, NewRpcProvider(clientPool))
+	coordinator, err := NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, 0, NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 
 	ns1Status := coordinator.ClusterStatus().Namespaces["my-ns-1"]
@@ -376,13 +377,97 @@ func TestCoordinator_DeleteNamespace(t *testing.T) {
 		Servers:    []model.ServerAddress{sa1, sa2, sa3},
 	}
 
-	coordinator, err = NewCoordinator(metadataProvider, newClusterConfig, NewRpcProvider(clientPool))
+	coordinator, err = NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return newClusterConfig, nil }, 0, NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 
 	// Wait for all shards to be deleted
 	assert.Eventually(t, func() bool {
 		return len(coordinator.ClusterStatus().Namespaces) == 0
 	}, 10*time.Second, 10*time.Millisecond)
+
+	assert.NoError(t, coordinator.Close())
+	assert.NoError(t, clientPool.Close())
+
+	for _, server := range servers {
+		assert.NoError(t, server.Close())
+	}
+}
+
+func TestCoordinator_DynamicallAddNamespace(t *testing.T) {
+	s1, sa1 := newServer(t)
+	s2, sa2 := newServer(t)
+	s3, sa3 := newServer(t)
+	servers := map[model.ServerAddress]*server.Server{
+		sa1: s1,
+		sa2: s2,
+		sa3: s3,
+	}
+
+	metadataProvider := NewMetadataProviderMemory()
+	clusterConfig := model.ClusterConfig{
+		Namespaces: []model.NamespaceConfig{{
+			Name:              "my-ns-1",
+			ReplicationFactor: 1,
+			InitialShardCount: 2,
+		}},
+		Servers: []model.ServerAddress{sa1, sa2, sa3},
+	}
+	clientPool := common.NewClientPool()
+
+	configProvider := func() (model.ClusterConfig, error) {
+		return clusterConfig, nil
+	}
+
+	coordinator, err := NewCoordinator(metadataProvider, configProvider, 1*time.Second, NewRpcProvider(clientPool))
+	assert.NoError(t, err)
+
+	ns1Status := coordinator.ClusterStatus().Namespaces["my-ns-1"]
+	assert.EqualValues(t, 2, len(ns1Status.Shards))
+	assert.EqualValues(t, 1, ns1Status.ReplicationFactor)
+
+	// Wait for all shards to be ready
+	assert.Eventually(t, func() bool {
+		for _, ns := range coordinator.ClusterStatus().Namespaces {
+			for _, shard := range ns.Shards {
+				if shard.Status != model.ShardStatusSteadyState {
+					return false
+				}
+			}
+		}
+		return true
+	}, 10*time.Second, 10*time.Millisecond)
+
+	log.Logger.Info().Msg("Cluster is ready")
+
+	clusterConfig.Namespaces = append(clusterConfig.Namespaces, model.NamespaceConfig{
+		Name:              "my-ns-2",
+		InitialShardCount: 2,
+		ReplicationFactor: 1,
+	})
+
+	// Wait for all shards to be ready
+	assert.Eventually(t, func() bool {
+		foundNS2 := false
+		for name, ns := range coordinator.ClusterStatus().Namespaces {
+			if name == "my-ns-2" {
+				foundNS2 = true
+			}
+			for _, shard := range ns.Shards {
+				if shard.Status != model.ShardStatusSteadyState {
+					return false
+				}
+			}
+		}
+		return foundNS2
+	}, 10*time.Second, 10*time.Millisecond)
+
+	ns1Status = coordinator.ClusterStatus().Namespaces["my-ns-1"]
+	assert.EqualValues(t, 2, len(ns1Status.Shards))
+	assert.EqualValues(t, 1, ns1Status.ReplicationFactor)
+
+	ns2Status := coordinator.ClusterStatus().Namespaces["my-ns-2"]
+	assert.EqualValues(t, 2, len(ns2Status.Shards))
+	assert.EqualValues(t, 1, ns1Status.ReplicationFactor)
 
 	assert.NoError(t, coordinator.Close())
 	assert.NoError(t, clientPool.Close())
