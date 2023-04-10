@@ -1,6 +1,4 @@
-
-# Deploying in Kubernetes with Oxia operator 
-
+# Deploying in Kubernetes with Oxia operator
 
 ## Monitoring Oxia
 
@@ -12,8 +10,8 @@ The Helm chart for the controller and the Oxia operator both use a `monitoringEn
 install the service monitor. If you don't have Prometheus installed and don't want to install it, you can set
 `monitoringEnabled: false` to skip this part.
 
-Grafana's dashboards are available at [../deploy/dashboards](). These can just be imported in your existing Grafana
-instance.
+Grafana's dashboards are available at [deploy/dashboards](/deploy/dashboards).
+These can just be imported in your existing Grafana instance.
 
 ### Deploying Prometheus Stack
 
@@ -32,7 +30,6 @@ $ helm repo update
 
 This installs the stock Prometheus & Grafana, without the Oxia dashboards, which you will be able to manually 
 import later.
-
 
 ```shell
 $ helm install monitoring prometheus-community/kube-prometheus-stack \
@@ -82,9 +79,9 @@ $ helm upgrade --install oxia-controller \
 
 Now that the Oxia controller is running, we can create K8S resources of type `OxiaCluster`, by submitting a CRD.
 
-An example of CRD can be found at [example-oxia-cluster.yaml](../deploy/examples/example-oxia-cluster.yaml).
+An example of CRD can be found at [example-oxia-cluster.yaml](/deploy/examples/example-oxia-cluster.yaml).
 
-The full specification of the CRD is at [oxiaclusters.yaml](../deploy/crds/oxiaclusters.yaml).
+The full specification of the CRD is at [oxiaclusters.yaml](/deploy/crds/oxiaclusters.yaml).
 
 A minimal example of CRD is: 
 
