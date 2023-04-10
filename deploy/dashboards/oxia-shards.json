@@ -1005,9 +1005,9 @@
           "exemplar": false,
           "expr": "histogram_quantile(0.99, sum by (le, shard, pod) \n(oxia_server_leader_write_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", oxia_namespace=~\"$namespace\", shard=~\"$shard\", pod=~\"$pod\"}))",
           "interval": "",
-          ""legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",": "{{shard}} - {{pod}}",
-        "range": true,
-        "refId": "A"
+          "legendFormat": "{{oxia_namespace}} - {{shard}} - {{pod}}",
+          "range": true,
+          "refId": "A"
         }
       ],
       "title": "Write Batch Latency 99pct",
