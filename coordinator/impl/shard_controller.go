@@ -119,7 +119,12 @@ func NewShardController(namespace string, shard int64, shardMetadata model.Shard
 		s.log.Info().
 			Interface("current-leader", s.shardMetadata.Leader).
 			Msg("There is already a node marked as leader on the shard, verifying")
-		go s.verifyCurrentLeader(*shardMetadata.Leader)
+
+		go func() {
+			if !s.verifyCurrentEnsemble() {
+				s.electLeaderWithRetries()
+			}
+		}()
 	}
 	return s
 }
@@ -142,35 +147,52 @@ func (s *shardController) HandleNodeFailure(failedNode model.ServerAddress) {
 	}
 }
 
-func (s *shardController) verifyCurrentLeader(leader model.ServerAddress) {
+func (s *shardController) verifyCurrentEnsemble() bool {
 	s.Lock()
 	defer s.Unlock()
 
-	status, err := s.rpc.GetStatus(s.ctx, leader, &proto.GetStatusRequest{ShardId: s.shard})
+	// Ideally, we shouldn't need to trigger a new leader election if a follower
+	// is out of sync. We should just go back into the retry-to-fence follower
+	// loop. In practice, the current approach is easier for now.
+	for _, node := range s.shardMetadata.Ensemble {
+		status, err := s.rpc.GetStatus(s.ctx, node, &proto.GetStatusRequest{ShardId: s.shard})
 
-	if err != nil {
-		s.log.Warn().Err(err).
-			Interface("leader", leader).
-			Msg("Failed to verify leader for shard. Start a new election")
-	} else if status.Status != proto.ServingStatus_LEADER {
-		s.log.Warn().
-			Interface("leader", leader).
-			Interface("status", status.Status).
-			Msg("Node is not in leader status")
-	} else if status.Term != s.shardMetadata.Term {
-		s.log.Warn().
-			Interface("leader", leader).
-			Interface("node-term", status.Term).
-			Interface("coordinator-term", s.shardMetadata.Term).
-			Msg("Node has a wrong term")
-	} else {
-		s.log.Info().
-			Interface("leader", leader).
-			Msg("Leader looks ok. Do not trigger a new election for now")
-		return
+		if err != nil {
+			s.log.Warn().Err(err).
+				Interface("node", node).
+				Msg("Failed to verify status for shard. Start a new election")
+			return false
+		} else if node.Internal == s.shardMetadata.Leader.Internal &&
+			status.Status != proto.ServingStatus_LEADER {
+			s.log.Warn().
+				Interface("node", node).
+				Interface("status", status.Status).
+				Msg("Expected leader is not in leader status. Start a new election")
+			return false
+		} else if node.Internal != s.shardMetadata.Leader.Internal &&
+			status.Status != proto.ServingStatus_FOLLOWER {
+			s.log.Warn().
+				Interface("node", node).
+				Interface("status", status.Status).
+				Msg("Expected follower is not in follower status. Start a new election")
+			return false
+		} else if status.Term != s.shardMetadata.Term {
+			s.log.Warn().
+				Interface("node", node).
+				Interface("node-term", status.Term).
+				Interface("coordinator-term", s.shardMetadata.Term).
+				Msg("Node has a wrong term. Start a new election")
+			return false
+		} else {
+			s.log.Info().
+				Interface("node", node).
+				Msg("Node looks ok")
+		}
 	}
 
-	s.electLeaderWithRetries()
+	s.log.Info().
+		Msg("All nodes look good. No need to trigger new leader election")
+	return true
 }
 
 func (s *shardController) electLeaderWithRetries() {
