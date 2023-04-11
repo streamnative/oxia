@@ -223,9 +223,13 @@ func (c *coordinator) Close() error {
 
 func (c *coordinator) NodeBecameUnavailable(node model.ServerAddress) {
 	c.Lock()
-	defer c.Unlock()
+	ctrls := make(map[int64]ShardController)
+	for k, sc := range c.shardControllers {
+		ctrls[k] = sc
+	}
+	c.Unlock()
 
-	for _, sc := range c.shardControllers {
+	for _, sc := range ctrls {
 		sc.HandleNodeFailure(node)
 	}
 }
