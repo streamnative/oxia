@@ -27,6 +27,8 @@ var (
 	s2 = model.ServerAddress{Public: "s2:6648", Internal: "s2:6649"}
 	s3 = model.ServerAddress{Public: "s3:6648", Internal: "s3:6649"}
 	s4 = model.ServerAddress{Public: "s4:6648", Internal: "s4:6649"}
+	s5 = model.ServerAddress{Public: "s5:6648", Internal: "s5:6649"}
+	s6 = model.ServerAddress{Public: "s6:6648", Internal: "s6:6649"}
 )
 
 func TestClientUpdates_ClusterInit(t *testing.T) {
