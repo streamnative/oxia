@@ -223,6 +223,70 @@ func TestShardController_NewTermFollowerUntilItRecovers(t *testing.T) {
 	assert.NoError(t, sc.Close())
 }
 
+func TestShardController_VerifyFollowersWereAllFenced(t *testing.T) {
+	var shard int64 = 5
+	rpc := newMockRpcProvider()
+	coordinator := newMockCoordinator()
+
+	s1 := model.ServerAddress{Public: "s1:9091", Internal: "s1:8191"}
+	s2 := model.ServerAddress{Public: "s2:9091", Internal: "s2:8191"}
+	s3 := model.ServerAddress{Public: "s3:9091", Internal: "s3:8191"}
+	n1 := rpc.GetNode(s1)
+	n2 := rpc.GetNode(s2)
+	n3 := rpc.GetNode(s3)
+
+	sc := NewShardController(common.DefaultNamespace, shard, model.ShardMetadata{
+		Status:   model.ShardStatusSteadyState,
+		Term:     4,
+		Leader:   &s1,
+		Ensemble: []model.ServerAddress{s1, s2, s3},
+	}, rpc, coordinator)
+
+	r1 := <-n1.getStatusRequests
+	assert.EqualValues(t, 5, r1.ShardId)
+	n1.getStatusResponses <- struct {
+		*proto.GetStatusResponse
+		error
+	}{&proto.GetStatusResponse{
+		Term:   4,
+		Status: proto.ServingStatus_LEADER,
+	}, nil}
+
+	r2 := <-n2.getStatusRequests
+	assert.EqualValues(t, 5, r2.ShardId)
+	n2.getStatusResponses <- struct {
+		*proto.GetStatusResponse
+		error
+	}{&proto.GetStatusResponse{
+		Term:   4,
+		Status: proto.ServingStatus_FOLLOWER,
+	}, nil}
+
+	// The `s3` server was not properly fenced and it's stuck term 3
+	// It needs to be fenced again
+	r3 := <-n3.getStatusRequests
+	assert.EqualValues(t, 5, r3.ShardId)
+	n3.getStatusResponses <- struct {
+		*proto.GetStatusResponse
+		error
+	}{&proto.GetStatusResponse{
+		Term:   3,
+		Status: proto.ServingStatus_FOLLOWER,
+	}, nil}
+
+	// This should have triggered a new election, since s3 was in the wrong term
+	nt1 := <-n1.newTermRequests
+	assert.EqualValues(t, 5, nt1.Term)
+
+	nt2 := <-n2.newTermRequests
+	assert.EqualValues(t, 5, nt2.Term)
+
+	nt3 := <-n3.newTermRequests
+	assert.EqualValues(t, 5, nt3.Term)
+
+	assert.NoError(t, sc.Close())
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 type sCoordinatorEvents struct {
