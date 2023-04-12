@@ -820,6 +820,53 @@ func TestFollowerController_Closed(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
+func TestFollower_GetStatus(t *testing.T) {
+	var shardId int64
+	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
+	walFactory := wal.NewInMemoryWalFactory()
+
+	fc, _ := NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
+	_, _ = fc.NewTerm(&proto.NewTermRequest{Term: 2})
+
+	stream := newMockServerReplicateStream()
+	go func() {
+		//cancelled due to fc.Close() below
+		assert.ErrorIs(t, fc.Replicate(stream), context.Canceled)
+	}()
+
+	stream.AddRequest(createAddRequest(t, 2, 0, map[string]string{"a": "0", "b": "1"}, wal.InvalidOffset))
+	stream.AddRequest(createAddRequest(t, 2, 1, map[string]string{"a": "0", "b": "1"}, 0))
+	stream.AddRequest(createAddRequest(t, 2, 2, map[string]string{"a": "0", "b": "1"}, 1))
+
+	// Wait for responses
+	r1 := stream.GetResponse()
+	assert.EqualValues(t, 0, r1.Offset)
+
+	r2 := stream.GetResponse()
+	assert.EqualValues(t, 1, r2.Offset)
+
+	r3 := stream.GetResponse()
+	assert.EqualValues(t, 2, r3.Offset)
+
+	assert.Eventually(t, func() bool {
+		res, _ := fc.GetStatus(&proto.GetStatusRequest{ShardId: shardId})
+		return res.CommitOffset == 1
+	}, 10*time.Second, 100*time.Millisecond)
+
+	res, err := fc.GetStatus(&proto.GetStatusRequest{ShardId: shardId})
+	assert.NoError(t, err)
+	assert.Equal(t, &proto.GetStatusResponse{
+		Term:         2,
+		Status:       proto.ServingStatus_FOLLOWER,
+		HeadOffset:   2,
+		CommitOffset: 1,
+	}, res)
+
+	assert.NoError(t, fc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
 func closeChanIsNotNil(fc FollowerController) func() bool {
 	return func() bool {
 		_fc := fc.(*followerController)
