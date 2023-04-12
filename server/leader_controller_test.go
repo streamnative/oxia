@@ -996,3 +996,46 @@ func TestLeaderController_DeleteShard(t *testing.T) {
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, walFactory.Close())
 }
+
+func TestLeaderController_GetStatus(t *testing.T) {
+	var shard int64 = 1
+
+	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
+	walFactory := wal.NewInMemoryWalFactory()
+
+	lc, _ := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	_, _ = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 2})
+	_, _ = lc.BecomeLeader(&proto.BecomeLeaderRequest{
+		ShardId:           shard,
+		Term:              2,
+		ReplicationFactor: 1,
+		FollowerMaps:      nil,
+	})
+
+	/// Write entry
+	_, _ = lc.Write(&proto.WriteRequest{
+		ShardId: &shard,
+		Puts: []*proto.PutRequest{{
+			Key:   "a",
+			Value: []byte("value-a")}},
+	})
+	_, _ = lc.Write(&proto.WriteRequest{
+		ShardId: &shard,
+		Puts: []*proto.PutRequest{{
+			Key:   "b",
+			Value: []byte("value-b")}},
+	})
+
+	res, err := lc.GetStatus(&proto.GetStatusRequest{ShardId: shard})
+	assert.NoError(t, err)
+	assert.Equal(t, &proto.GetStatusResponse{
+		Term:         2,
+		Status:       proto.ServingStatus_LEADER,
+		HeadOffset:   1,
+		CommitOffset: 1,
+	}, res)
+
+	assert.NoError(t, lc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}

@@ -145,6 +145,6 @@ message GetStatusResponse {
   int64 term = 1;
   ServingStatus status = 2;
 
-  // More info to add for leaders
-  // ensemble, lag for each follower, etc...
+  int64 head_offset = 3;
+  int64 commit_offset = 4;
 }

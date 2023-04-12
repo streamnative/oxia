@@ -662,8 +662,10 @@ func (fc *followerController) GetStatus(request *proto.GetStatusRequest) (*proto
 	defer fc.Unlock()
 
 	return &proto.GetStatusResponse{
-		Term:   fc.term,
-		Status: fc.status,
+		Term:         fc.term,
+		Status:       fc.status,
+		HeadOffset:   fc.wal.LastOffset(),
+		CommitOffset: fc.CommitOffset(),
 	}, nil
 }
 

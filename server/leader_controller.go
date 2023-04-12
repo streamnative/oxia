@@ -859,8 +859,10 @@ func (lc *leaderController) GetStatus(request *proto.GetStatusRequest) (*proto.G
 	defer lc.RUnlock()
 
 	return &proto.GetStatusResponse{
-		Term:   lc.term,
-		Status: lc.status,
+		Term:         lc.term,
+		Status:       lc.status,
+		HeadOffset:   lc.quorumAckTracker.HeadOffset(),
+		CommitOffset: lc.quorumAckTracker.CommitOffset(),
 	}, nil
 }
 
