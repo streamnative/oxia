@@ -189,7 +189,7 @@ func getServerRanking(shardsPerServer map[model.ServerAddress]common.Set[int64])
 
 func getFirstEntry(m map[model.ServerAddress]common.Set[int64]) (model.ServerAddress, common.Set[int64]) {
 	var keys []model.ServerAddress
-	for k, _ := range m {
+	for k := range m {
 		keys = append(keys, k)
 	}
 

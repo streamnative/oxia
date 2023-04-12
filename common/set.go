@@ -72,7 +72,7 @@ func (s *set[T]) IsEmpty() bool {
 // eg: `res = current - other`
 func (s *set[T]) Complement(other Set[T]) Set[T] {
 	res := NewSet[T]()
-	for k, _ := range s.Items {
+	for k := range s.Items {
 		if !other.Contains(k) {
 			res.Add(k)
 		}
@@ -82,7 +82,7 @@ func (s *set[T]) Complement(other Set[T]) Set[T] {
 
 func (s *set[T]) GetSorted() []T {
 	r := make([]T, 0)
-	for k, _ := range s.Items {
+	for k := range s.Items {
 		r = append(r, k)
 	}
 
