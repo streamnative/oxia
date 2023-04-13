@@ -1,10 +1,8 @@
-
 # Getting started with Oxia
-
 
 ## Obtaining Oxia
 
-## Docker image
+### Docker image
 
 Oxia is available in form of a Docker image
 
@@ -12,7 +10,7 @@ Oxia is available in form of a Docker image
 $ docker pull streamnative/oxia:main
 ```
 
-## Building from source
+### Building from source
 
 ```shell
 $ make
@@ -47,11 +45,10 @@ The service is now ready at `localhost:6648` address.
 Using docker this can be done with:
 
 ```shell
-$ docker run -p 6648:6648 streamnative/oxia:main oxia standalone 
+$ docker run -p 6648:6648 streamnative/oxia:main oxia standalone
 ```
 
-
-## Using Oxia CLI client
+## Interacting by CLI
 
 There is a convenient CLI tool that allows you to interact with the records stored in Oxia.
 
@@ -66,9 +63,13 @@ $ oxia client get -k /my-key
 {"binary":false,"value":"my-value","version":{"version_id":0,"created_timestamp":1680220430128,"modified_timestamp":1680220430128,"modifications_count":0}}
 ```
 
+## Interacting by Go client
+
+Instead, you can write a Go application with [Oxia Go API](go-api.md).
+
 ## Using perf client
 
-If you want to do a quick assessment of the capacity of an Oxia cluster, you can use the provided `perf` tool, which 
+If you want to do a quick assessment of the capacity of an Oxia cluster, you can use the provided `perf` tool, which
 generates some amount of traffic, based on the desired rate and read/write ratio.
 
 
