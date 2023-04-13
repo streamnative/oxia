@@ -48,7 +48,7 @@ Using docker this can be done with:
 $ docker run -p 6648:6648 streamnative/oxia:main oxia standalone
 ```
 
-## Interact with Oxia by CLI client
+## Interacting by CLI
 
 There is a convenient CLI tool that allows you to interact with the records stored in Oxia.
 
@@ -63,7 +63,7 @@ $ oxia client get -k /my-key
 {"binary":false,"value":"my-value","version":{"version_id":0,"created_timestamp":1680220430128,"modified_timestamp":1680220430128,"modifications_count":0}}
 ```
 
-## Interact with Oxia by Go client
+## Interacting by Go client
 
 Instead, you can write a Go application with [Oxia Go API](go-api.md).
 
