@@ -1,12 +1,11 @@
 # Oxia Go client API
 
-The full GoDoc reference for the Oxia Go Client can be found at https://pkg.go.dev/github.com/streamnative/oxia/oxia
+The full GoDoc reference for the Oxia Go client can be found at: https://pkg.go.dev/github.com/streamnative/oxia/oxia.
 
 A simple example on how to write and read records:
 
 ```go
 // import "github.com/streamnative/oxia/oxia"
-
 
 client, err := oxia.NewSyncClient("localhost:6648")
 if err != nil {
@@ -36,7 +35,6 @@ Oxia also provides an "async" client API that makes use of channels to track the
 With the async client API, a single go-routine can submit many concurrent requests. In addition, the Oxia client library
 will automatically batch the request for better performance.
 
-
 ```go
 client, err := oxia.NewAsyncClient("localhost:6648",
 	                    oxia.WithBatchLinger(10*time.Millisecond))
@@ -56,7 +54,6 @@ if res := <-c3; res.Err != nil {
 }
 ```
 
-
 ## Namespaces
 
 A client can use a particular Oxia namespace, other than `default`, by specifying an option in the client instantiation:
@@ -74,7 +71,6 @@ Client can subscribe to receive a feed of notification with all the events happe
 Notifications can be used to replicate exactly the state of an oxia namespace or to invalidate a cache.
 
 ```go
-
 client, err := oxia.NewSyncClient("localhost:6648")
 notifications, err := client.GetNotifications()
 if err != nil {
@@ -114,7 +110,7 @@ appropriately with `oxia.WithSessionTimeout()` option when creating the client i
 
 Oxia client provides a built-in optional cache that will store the deserialized values.
 
-Example: 
+Example:
 
 ```go
 type myStruct struct {
@@ -134,9 +130,9 @@ value, version, err := cache.Get(context.Background(), "/my-key")
 fmt.Printf("A: %s - B: %d\n", value.A, value.B)
 
 // We can also do atomic read-modify-updates through the cache
-// This will not incur in a read from the server if the value is already 
+// This will not incur in a read from the server if the value is already
 // in cache and up to the latest version
-err = cache.ReadModifyUpdate(context.Background(), "/my-key", 
+err = cache.ReadModifyUpdate(context.Background(), "/my-key",
     func(existingValue Optional[myStruct]) (myStruct, error) {
         return myStruct{
             A: existingValue.MustGet().A,
@@ -149,6 +145,5 @@ err = cache.ReadModifyUpdate(context.Background(), "/my-key",
 
 The cache is kept up to date using Oxia notification, to invalidate whenever a record is updated.
 
-Change don through the cache are also immediately reflected in the cache. For updates done outside the cache instance, 
+Change don through the cache are also immediately reflected in the cache. For updates done outside the cache instance,
 the cache will be eventually consistent, meaning that a cache read could return a stale value for a short amount of time.
-
