@@ -997,6 +997,38 @@ func TestLeaderController_DeleteShard(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
+func TestLeaderController_DeleteShard_WrongTerm(t *testing.T) {
+	var shard int64 = 1
+
+	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
+	walFactory := wal.NewInMemoryWalFactory()
+
+	lc, _ := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	_, _ = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})
+	_, _ = lc.BecomeLeader(&proto.BecomeLeaderRequest{
+		ShardId:           shard,
+		Term:              1,
+		ReplicationFactor: 1,
+		FollowerMaps:      nil,
+	})
+
+	_, err := lc.Write(&proto.WriteRequest{
+		ShardId: &shard,
+		Puts:    []*proto.PutRequest{{Key: "k1", Value: []byte("hello")}},
+	})
+	assert.NoError(t, err)
+
+	_, err = lc.DeleteShard(&proto.DeleteShardRequest{
+		Namespace: common.DefaultNamespace,
+		ShardId:   shard,
+		Term:      0,
+	})
+	assert.ErrorIs(t, err, common.ErrorInvalidTerm)
+
+	assert.NoError(t, lc.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
 func TestLeaderController_GetStatus(t *testing.T) {
 	var shard int64 = 1
 

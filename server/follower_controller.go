@@ -676,6 +676,13 @@ func (fc *followerController) DeleteShard(request *proto.DeleteShardRequest) (*p
 	fc.Lock()
 	defer fc.Unlock()
 
+	if request.Term != fc.term {
+		return nil, common.ErrorInvalidTerm
+	}
+
+	fc.log.Info().
+		Msg("Deleting shard")
+
 	// Wipe out both WAL and DB contents
 	if err := multierr.Combine(
 		fc.wal.Delete(),

@@ -781,6 +781,27 @@ func TestFollowerController_DeleteShard(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
+func TestFollowerController_DeleteShard_WrongTerm(t *testing.T) {
+	var shardId int64
+	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
+	walFactory := wal.NewInMemoryWalFactory()
+
+	fc, _ := NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
+	_, _ = fc.NewTerm(&proto.NewTermRequest{Term: 1})
+
+	_, err := fc.DeleteShard(&proto.DeleteShardRequest{
+		Namespace: common.DefaultNamespace,
+		ShardId:   shardId,
+		Term:      2,
+	})
+
+	assert.ErrorIs(t, err, common.ErrorInvalidTerm)
+
+	assert.NoError(t, fc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
 func TestFollowerController_Closed(t *testing.T) {
 	var shard int64 = 1
 

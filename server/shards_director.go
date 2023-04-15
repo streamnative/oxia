@@ -22,6 +22,7 @@ import (
 	"io"
 	"oxia/common"
 	"oxia/common/metrics"
+	"oxia/proto"
 	"oxia/server/kv"
 	"oxia/server/wal"
 	"sync"
@@ -35,6 +36,8 @@ type ShardsDirector interface {
 
 	GetOrCreateLeader(namespace string, shardId int64) (LeaderController, error)
 	GetOrCreateFollower(namespace string, shardId int64) (FollowerController, error)
+
+	DeleteShard(req *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error)
 }
 
 type shardsDirector struct {
@@ -175,6 +178,35 @@ func (s *shardsDirector) GetOrCreateFollower(namespace string, shardId int64) (F
 	} else {
 		s.followers[shardId] = fc
 		return fc, nil
+	}
+}
+
+func (s *shardsDirector) DeleteShard(req *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error) {
+	s.Lock()
+	defer s.Unlock()
+
+	if leader, ok := s.leaders[req.ShardId]; ok {
+		resp, err := leader.DeleteShard(req)
+		if err != nil {
+			return nil, err
+		}
+
+		delete(s.leaders, req.ShardId)
+		return resp, nil
+	}
+
+	if follower, ok := s.followers[req.ShardId]; ok {
+		resp, err := follower.DeleteShard(req)
+		if err != nil {
+			return nil, err
+		}
+
+		delete(s.followers, req.ShardId)
+		return resp, nil
+	} else if fc, err := NewFollowerController(s.config, req.Namespace, req.ShardId, s.walFactory, s.kvFactory); err != nil {
+		return nil, err
+	} else {
+		return fc.DeleteShard(req)
 	}
 }
 
