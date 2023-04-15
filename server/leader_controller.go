@@ -858,17 +858,32 @@ func (lc *leaderController) GetStatus(request *proto.GetStatusRequest) (*proto.G
 	lc.RLock()
 	defer lc.RUnlock()
 
+	var (
+		headOffset   = wal.InvalidOffset
+		commitOffset = wal.InvalidOffset
+	)
+	if lc.quorumAckTracker != nil {
+		headOffset = lc.quorumAckTracker.HeadOffset()
+		commitOffset = lc.quorumAckTracker.CommitOffset()
+	}
+
 	return &proto.GetStatusResponse{
 		Term:         lc.term,
 		Status:       lc.status,
-		HeadOffset:   lc.quorumAckTracker.HeadOffset(),
-		CommitOffset: lc.quorumAckTracker.CommitOffset(),
+		HeadOffset:   headOffset,
+		CommitOffset: commitOffset,
 	}, nil
 }
 
 func (lc *leaderController) DeleteShard(request *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error) {
 	lc.Lock()
 	defer lc.Unlock()
+
+	if request.Term != lc.term {
+		return nil, common.ErrorInvalidTerm
+	}
+
+	lc.log.Info().Msg("Deleting shard")
 
 	// Wipe out both WAL and DB contents
 	if err := multierr.Combine(

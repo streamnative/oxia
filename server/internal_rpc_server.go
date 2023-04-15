@@ -289,20 +289,7 @@ func (s *internalRpcServer) GetStatus(c context.Context, req *proto.GetStatusReq
 }
 
 func (s *internalRpcServer) DeleteShard(c context.Context, req *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error) {
-	if follower, err := s.shardsDirector.GetFollower(req.ShardId); err != nil {
-		if status.Code(err) != common.CodeNodeIsNotFollower {
-			return nil, err
-		}
-
-		// If we don't have a follower, fallback to checking the leader controller
-		if leader, err := s.shardsDirector.GetLeader(req.ShardId); err != nil {
-			return nil, err
-		} else {
-			return leader.DeleteShard(req)
-		}
-	} else {
-		return follower.DeleteShard(req)
-	}
+	return s.shardsDirector.DeleteShard(req)
 }
 
 func readHeader(md metadata.MD, key string) (value string, err error) {
