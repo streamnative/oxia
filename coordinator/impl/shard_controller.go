@@ -752,9 +752,7 @@ func listContains(list []model.ServerAddress, sa model.ServerAddress) bool {
 func mergeLists[T any](lists ...[]T) []T {
 	var res []T
 	for _, list := range lists {
-		for _, item := range list {
-			res = append(res, item)
-		}
+		res = append(res, list...)
 	}
 	return res
 }
