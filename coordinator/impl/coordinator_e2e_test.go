@@ -24,6 +24,7 @@ import (
 	"oxia/coordinator/model"
 	"oxia/oxia"
 	"oxia/server"
+	"sync"
 	"testing"
 	"time"
 )
@@ -499,8 +500,11 @@ func TestCoordinator_RebalanceCluster(t *testing.T) {
 		Servers: []model.ServerAddress{sa1, sa2, sa3},
 	}
 	clientPool := common.NewClientPool()
+	mutex := &sync.Mutex{}
 
 	configProvider := func() (model.ClusterConfig, error) {
+		mutex.Lock()
+		defer mutex.Unlock()
 		return clusterConfig, nil
 	}
 
@@ -534,8 +538,9 @@ func TestCoordinator_RebalanceCluster(t *testing.T) {
 	checkServerLists(t, []model.ServerAddress{sa1, sa2, sa3}, ns1Status.Shards[1].Ensemble)
 
 	// Add `s4` and remove `s1` from the cluster config
-
+	mutex.Lock()
 	clusterConfig.Servers = []model.ServerAddress{sa2, sa3, sa4}
+	mutex.Unlock()
 
 	time.Sleep(2 * time.Second)
 
