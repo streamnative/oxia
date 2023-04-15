@@ -40,6 +40,10 @@ func TestClusterStatus_Clone(t *testing.T) {
 							Internal: "f2",
 						}},
 						Int32HashRange: Int32HashRange{},
+						RemovedNodes: []ServerAddress{{
+							Public:   "r1",
+							Internal: "r1",
+						}},
 					},
 				},
 			},

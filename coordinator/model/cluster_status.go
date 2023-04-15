@@ -35,6 +35,7 @@ type ShardMetadata struct {
 	Term           int64           `json:"term" yaml:"term"`
 	Leader         *ServerAddress  `json:"leader" yaml:"leader"`
 	Ensemble       []ServerAddress `json:"ensemble" yaml:"ensemble"`
+	RemovedNodes   []ServerAddress `json:"removedNodes" yaml:"removedNodes"`
 	Int32HashRange Int32HashRange  `json:"int32HashRange" yaml:"int32HashRange"`
 }
 
@@ -72,10 +73,12 @@ func (sm ShardMetadata) Clone() ShardMetadata {
 		Term:           sm.Term,
 		Leader:         sm.Leader,
 		Ensemble:       make([]ServerAddress, len(sm.Ensemble)),
+		RemovedNodes:   make([]ServerAddress, len(sm.RemovedNodes)),
 		Int32HashRange: sm.Int32HashRange.Clone(),
 	}
 
 	copy(r.Ensemble, sm.Ensemble)
+	copy(r.RemovedNodes, sm.RemovedNodes)
 
 	return r
 }
