@@ -24,6 +24,7 @@ import (
 	"oxia/coordinator/model"
 	"oxia/oxia"
 	"oxia/server"
+	"sync"
 	"testing"
 	"time"
 )
@@ -474,5 +475,116 @@ func TestCoordinator_DynamicallAddNamespace(t *testing.T) {
 
 	for _, server := range servers {
 		assert.NoError(t, server.Close())
+	}
+}
+
+func TestCoordinator_RebalanceCluster(t *testing.T) {
+	s1, sa1 := newServer(t)
+	s2, sa2 := newServer(t)
+	s3, sa3 := newServer(t)
+	s4, sa4 := newServer(t)
+	servers := map[model.ServerAddress]*server.Server{
+		sa1: s1,
+		sa2: s2,
+		sa3: s3,
+		sa4: s4,
+	}
+
+	metadataProvider := NewMetadataProviderMemory()
+	clusterConfig := model.ClusterConfig{
+		Namespaces: []model.NamespaceConfig{{
+			Name:              "my-ns-1",
+			ReplicationFactor: 3,
+			InitialShardCount: 2,
+		}},
+		Servers: []model.ServerAddress{sa1, sa2, sa3},
+	}
+	clientPool := common.NewClientPool()
+	mutex := &sync.Mutex{}
+
+	configProvider := func() (model.ClusterConfig, error) {
+		mutex.Lock()
+		defer mutex.Unlock()
+		return clusterConfig, nil
+	}
+
+	coordinator, err := NewCoordinator(metadataProvider, configProvider, 1*time.Second, NewRpcProvider(clientPool))
+	assert.NoError(t, err)
+
+	ns1Status := coordinator.ClusterStatus().Namespaces["my-ns-1"]
+	assert.EqualValues(t, 2, len(ns1Status.Shards))
+	assert.EqualValues(t, 3, ns1Status.ReplicationFactor)
+
+	// Wait for all shards to be ready
+	assert.Eventually(t, func() bool {
+		for _, ns := range coordinator.ClusterStatus().Namespaces {
+			for _, shard := range ns.Shards {
+				if shard.Status != model.ShardStatusSteadyState {
+					return false
+				}
+			}
+		}
+		return true
+	}, 10*time.Second, 10*time.Millisecond)
+
+	log.Info().
+		Interface("cluster-status", coordinator.ClusterStatus()).
+		Msg("Cluster is ready")
+
+	ns1Status = coordinator.ClusterStatus().Namespaces["my-ns-1"]
+	assert.EqualValues(t, 2, len(ns1Status.Shards))
+	assert.EqualValues(t, 3, ns1Status.ReplicationFactor)
+	checkServerLists(t, []model.ServerAddress{sa1, sa2, sa3}, ns1Status.Shards[0].Ensemble)
+	checkServerLists(t, []model.ServerAddress{sa1, sa2, sa3}, ns1Status.Shards[1].Ensemble)
+
+	// Add `s4` and remove `s1` from the cluster config
+	mutex.Lock()
+	clusterConfig.Servers = []model.ServerAddress{sa2, sa3, sa4}
+	mutex.Unlock()
+
+	time.Sleep(2 * time.Second)
+
+	// Wait for all shards to be ready
+	assert.Eventually(t, func() bool {
+		for _, ns := range coordinator.ClusterStatus().Namespaces {
+			for _, shard := range ns.Shards {
+				if shard.Status != model.ShardStatusSteadyState {
+					return false
+				}
+			}
+		}
+		return true
+	}, 10*time.Second, 10*time.Millisecond)
+
+	ns1Status = coordinator.ClusterStatus().Namespaces["my-ns-1"]
+	assert.EqualValues(t, 2, len(ns1Status.Shards))
+	assert.EqualValues(t, 3, ns1Status.ReplicationFactor)
+	checkServerLists(t, []model.ServerAddress{sa2, sa3, sa4}, ns1Status.Shards[0].Ensemble)
+	checkServerLists(t, []model.ServerAddress{sa2, sa3, sa4}, ns1Status.Shards[1].Ensemble)
+
+	assert.NoError(t, coordinator.Close())
+	assert.NoError(t, clientPool.Close())
+
+	for _, server := range servers {
+		assert.NoError(t, server.Close())
+	}
+}
+
+func checkServerLists(t *testing.T, expected, actual []model.ServerAddress) {
+	assert.Equal(t, len(expected), len(actual))
+	mExpected := map[string]bool{}
+	for _, x := range expected {
+		mExpected[x.Public] = true
+	}
+
+	for _, x := range actual {
+		_, ok := mExpected[x.Public]
+		if !ok {
+			log.Warn().
+				Interface("expected-servers", expected).
+				Interface("found-server", x).
+				Msg("Got unexpected server")
+		}
+		assert.True(t, ok)
 	}
 }

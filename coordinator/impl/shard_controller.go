@@ -37,6 +37,9 @@ const (
 	// When fencing quorum of servers, after we reach the majority, wait a bit more
 	// to include responses from all healthy servers
 	quorumFencingGracePeriod = 100 * time.Millisecond
+
+	// Timeout when waiting for followers to catchup with leader
+	catchupTimeout = 5 * time.Minute
 )
 
 // The ShardController is responsible to handle all the state transition for a given a shard
@@ -46,6 +49,7 @@ type ShardController interface {
 
 	HandleNodeFailure(failedNode model.ServerAddress)
 
+	SwapNode(from model.ServerAddress, to model.ServerAddress) error
 	DeleteShard()
 
 	Term() int64
@@ -201,7 +205,11 @@ func (s *shardController) electLeaderWithRetries() {
 		"namespace": s.namespace,
 		"shard":     fmt.Sprintf("%d", s.shard),
 	}, func() {
-		_ = backoff.RetryNotify(s.electLeader, common.NewBackOff(s.ctx),
+		_ = backoff.RetryNotify(func() error {
+			s.Lock()
+			defer s.Unlock()
+			return s.electLeader()
+		}, common.NewBackOff(s.ctx),
 			func(err error, duration time.Duration) {
 				s.leaderElectionsFailed.Inc()
 				s.log.Warn().Err(err).
@@ -214,14 +222,12 @@ func (s *shardController) electLeaderWithRetries() {
 func (s *shardController) electLeader() error {
 	timer := s.leaderElectionLatency.Timer()
 
-	s.Lock()
-	defer s.Unlock()
-
 	if s.currentElectionCancel != nil {
 		// Cancel any pending activity from the previous election
 		s.currentElectionCancel()
 	}
 
+	s.currentElectionCtx, s.currentElectionCancel = context.WithCancel(s.ctx)
 	s.shardMetadata.Status = model.ShardStatusElection
 	s.shardMetadata.Leader = nil
 	s.shardMetadata.Term++
@@ -267,6 +273,14 @@ func (s *shardController) electLeader() error {
 	metadata.Status = model.ShardStatusSteadyState
 	metadata.Leader = &newLeader
 
+	if len(metadata.RemovedNodes) > 0 {
+		if err = s.deletingRemovedNodes(); err != nil {
+			return err
+		}
+
+		metadata.RemovedNodes = nil
+	}
+
 	if err = s.coordinator.ElectedLeader(s.namespace, s.shard, metadata); err != nil {
 		return err
 	}
@@ -278,8 +292,27 @@ func (s *shardController) electLeader() error {
 		Interface("leader", s.shardMetadata.Leader).
 		Msg("Elected new leader")
 
-	defer timer.Done()
+	timer.Done()
+
 	s.keepFencingFailedFollowers(followers)
+	return nil
+}
+
+func (s *shardController) deletingRemovedNodes() error {
+	for _, ds := range s.shardMetadata.RemovedNodes {
+		if _, err := s.rpc.DeleteShard(s.ctx, ds, &proto.DeleteShardRequest{
+			Namespace: s.namespace,
+			ShardId:   s.shard,
+			Term:      s.shardMetadata.Term,
+		}); err != nil {
+			return err
+		} else {
+			s.log.Info().
+				Interface("server", ds).
+				Msg("Successfully deleted shard")
+		}
+	}
+
 	return nil
 }
 
@@ -290,8 +323,6 @@ func (s *shardController) keepFencingFailedFollowers(successfulFollowers map[mod
 			Msg("All the member of the ensemble were successfully added")
 		return
 	}
-
-	s.currentElectionCtx, s.currentElectionCancel = context.WithCancel(s.ctx)
 
 	// Identify failed followers
 	for _, sa := range s.shardMetadata.Ensemble {
@@ -374,8 +405,9 @@ func (s *shardController) newTermAndAddFollower(ctx context.Context, node model.
 func (s *shardController) newTermQuorum() (map[model.ServerAddress]*proto.EntryId, error) {
 	timer := s.newTermQuorumLatency.Timer()
 
-	ensembleSize := len(s.shardMetadata.Ensemble)
-	majority := ensembleSize/2 + 1
+	fencingQuorum := mergeLists(s.shardMetadata.Ensemble, s.shardMetadata.RemovedNodes)
+	fencingQuorumSize := len(fencingQuorum)
+	majority := fencingQuorumSize/2 + 1
 
 	// Use a new context, so we can cancel the pending requests
 	ctx, cancel := context.WithCancel(s.ctx)
@@ -388,7 +420,7 @@ func (s *shardController) newTermQuorum() (map[model.ServerAddress]*proto.EntryI
 		error
 	})
 
-	for _, sa := range s.shardMetadata.Ensemble {
+	for _, sa := range fencingQuorum {
 		// We need to save the address because it gets modified in the loop
 		serverAddress := sa
 		go common.DoWithLabels(map[string]string{
@@ -423,13 +455,17 @@ func (s *shardController) newTermQuorum() (map[model.ServerAddress]*proto.EntryI
 	var err error
 
 	// Wait for a majority to respond
-	for successResponses < majority && totalResponses < ensembleSize {
+	for successResponses < majority && totalResponses < fencingQuorumSize {
 		r := <-ch
 
 		totalResponses++
 		if r.error == nil {
 			successResponses++
-			res[r.ServerAddress] = r.EntryId
+
+			// We don't consider the removed nodes as candidates for leader/followers
+			if listContains(s.shardMetadata.Ensemble, r.ServerAddress) {
+				res[r.ServerAddress] = r.EntryId
+			}
 		} else {
 			err = multierr.Append(err, r.error)
 		}
@@ -441,7 +477,7 @@ func (s *shardController) newTermQuorum() (map[model.ServerAddress]*proto.EntryI
 
 	// If we have already reached a quorum of successful responses, we can wait a
 	// tiny bit more, to allow time for all the "healthy" nodes to respond.
-	for err == nil && totalResponses < ensembleSize {
+	for err == nil && totalResponses < fencingQuorumSize {
 		select {
 		case r := <-ch:
 			totalResponses++
@@ -616,4 +652,119 @@ func (s *shardController) Close() error {
 	s.cancel()
 	s.termGauge.Unregister()
 	return nil
+}
+
+func (s *shardController) SwapNode(from model.ServerAddress, to model.ServerAddress) error {
+	s.Lock()
+
+	s.shardMetadata.RemovedNodes = append(s.shardMetadata.RemovedNodes, from)
+	s.shardMetadata.Ensemble = replaceInList(s.shardMetadata.Ensemble, from, to)
+	s.log.Info().
+		Interface("removed-nodes", s.shardMetadata.RemovedNodes).
+		Interface("new-ensemble", s.shardMetadata.Ensemble).
+		Interface("from", from).
+		Interface("to", to).
+		Msg("Swapping node")
+	if err := s.electLeader(); err != nil {
+		s.Unlock()
+		return err
+	}
+
+	leader := s.shardMetadata.Leader
+	ensemble := s.shardMetadata.Ensemble
+	ctx := s.currentElectionCtx
+	s.Unlock()
+
+	// Wait until all followers are caught up.
+	// This is done to avoid doing multiple node-swap concurrently, since it would create
+	// additional load in the system, while transferring multiple DB snapshots.
+	if err := s.waitForFollowersToCatchUp(ctx, *leader, ensemble); err != nil {
+		s.log.Error().Err(err).
+			Msg("Failed to wait for followers to catch up")
+		return err
+	}
+
+	s.log.Info().
+		Interface("from", from).
+		Interface("to", to).
+		Msg("Successfully swapped node")
+	return nil
+}
+
+// Check that all the followers in the ensemble are catching up with the leader
+func (s *shardController) waitForFollowersToCatchUp(ctx context.Context, leader model.ServerAddress, ensemble []model.ServerAddress) error {
+	ctx, cancel := context.WithTimeout(ctx, catchupTimeout)
+	defer cancel()
+
+	// Get current head offset for leader
+	ls, err := s.rpc.GetStatus(ctx, leader, &proto.GetStatusRequest{ShardId: s.shard})
+	if err != nil {
+		return errors.Wrap(err, "failed to get leader status")
+	}
+
+	leaderHeadOffset := ls.HeadOffset
+
+	for _, server := range ensemble {
+		if server.Internal == leader.Internal {
+			continue
+		}
+
+		err = backoff.Retry(func() error {
+			if fs, err := s.rpc.GetStatus(ctx, server, &proto.GetStatusRequest{ShardId: s.shard}); err != nil {
+				return err
+			} else {
+				followerHeadOffset := fs.HeadOffset
+				if followerHeadOffset >= leaderHeadOffset {
+					s.log.Info().
+						Interface("server", server).
+						Msg("Follower is caught-up with the leader after node-swap")
+					return nil
+				} else {
+					s.log.Info().
+						Interface("server", server).
+						Int64("leader-head-offset", leaderHeadOffset).
+						Int64("follower-head-offset", followerHeadOffset).
+						Msg("Follower is *not* caught-up yet with the leader")
+					return errors.New("follower not caught up yet")
+				}
+			}
+		}, common.NewBackOff(ctx))
+
+		if err != nil {
+			return errors.Wrap(err, "failed to get the follower status")
+		}
+	}
+
+	s.log.Info().Msg("All the followers are caught up after node-swap")
+	return nil
+}
+
+func listContains(list []model.ServerAddress, sa model.ServerAddress) bool {
+	for _, item := range list {
+		if item.Public == sa.Public && item.Internal == sa.Internal {
+			return true
+		}
+	}
+
+	return false
+}
+
+func mergeLists[T any](lists ...[]T) []T {
+	var res []T
+	for _, list := range lists {
+		res = append(res, list...)
+	}
+	return res
+}
+
+func replaceInList(list []model.ServerAddress, old, new model.ServerAddress) []model.ServerAddress {
+	var res []model.ServerAddress
+	for _, item := range list {
+		if item.Public != old.Public && item.Internal != old.Internal {
+			res = append(res, item)
+		}
+	}
+
+	res = append(res, new)
+	return res
 }

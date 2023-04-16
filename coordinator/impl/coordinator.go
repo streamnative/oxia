@@ -380,6 +380,11 @@ func (c *coordinator) waitForExternalEvents() {
 				c.log.Warn().Err(err).
 					Msg("Failed to update cluster config")
 			}
+
+			if err := c.rebalanceCluster(); err != nil {
+				c.log.Warn().Err(err).
+					Msg("Failed to rebalance cluster")
+			}
 		}
 	}
 }
@@ -427,5 +432,35 @@ func (c *coordinator) handleClusterConfigUpdated() error {
 	c.clusterStatus = clusterStatus
 
 	c.computeNewAssignments()
+	return nil
+}
+
+func (c *coordinator) rebalanceCluster() error {
+	c.Lock()
+	actions := rebalanceCluster(c.ClusterConfig.Servers, c.clusterStatus)
+	c.Unlock()
+
+	for _, swapAction := range actions {
+		c.log.Info().
+			Interface("swap-action", swapAction).
+			Msg("Applying swap action")
+
+		c.Lock()
+		sc, ok := c.shardControllers[swapAction.Shard]
+		c.Unlock()
+		if !ok {
+			c.log.Warn().
+				Int64("shard", swapAction.Shard).
+				Msg("Shard controller not found")
+			continue
+		}
+
+		if err := sc.SwapNode(swapAction.From, swapAction.To); err != nil {
+			c.log.Warn().Err(err).
+				Interface("swap-action", swapAction).
+				Msg("Failed to swap node")
+		}
+	}
+
 	return nil
 }
