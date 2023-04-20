@@ -77,7 +77,14 @@ $ helm upgrade --install oxia-controller \
 
 ## Deploying an Oxia cluster with the CRD
 
-Now that the Oxia controller is running, we can create K8S resources of type `OxiaCluster`, by submitting a CRD.
+Create the CRD with
+
+```shell
+k apply -f deploy/crds/oxiaclusters.yaml
+
+```
+
+Now that the Oxia controller is running and the CRD is defined, we can create K8S resources of type `OxiaCluster`, by submitting a CRD.
 
 An example of CRD can be found at [example-oxia-cluster.yaml](/deploy/examples/example-oxia-cluster.yaml).
 
