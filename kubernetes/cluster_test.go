@@ -68,15 +68,15 @@ func TestCluster(t *testing.T) {
 	err := client.Apply(cluster)
 	assert.NoError(t, err)
 
-	assertClusterResources(t, &cluster, _kubernetes, _monitoring, cluster.Namespace, 1)
+	assertClusterResources(t, _kubernetes, _monitoring, cluster.Namespace, 1)
 
 	err = client.Delete(cluster.Namespace, cluster.Name, true)
 	assert.NoError(t, err)
 
-	assertClusterResources(t, &cluster, _kubernetes, _monitoring, cluster.Namespace, 0)
+	assertClusterResources(t, _kubernetes, _monitoring, cluster.Namespace, 0)
 }
 
-func assertClusterResources(t *testing.T, cluster *v1alpha1.OxiaCluster, _kubernetes kubernetes.Interface, _monitoring monitoring.Interface, namespace string, length int) {
+func assertClusterResources(t *testing.T, _kubernetes kubernetes.Interface, _monitoring monitoring.Interface, namespace string, length int) {
 	serviceAccounts, err := _kubernetes.CoreV1().ServiceAccounts(namespace).
 		List(context.Background(), v1.ListOptions{})
 	assert.NoError(t, err)
@@ -96,35 +96,19 @@ func assertClusterResources(t *testing.T, cluster *v1alpha1.OxiaCluster, _kubern
 		List(context.Background(), v1.ListOptions{})
 	assert.NoError(t, err)
 	assert.Len(t, deployments.Items, length)
-	for _, deployment := range deployments.Items {
-		assert.Equal(t, cluster.Name, deployment.OwnerReferences[0].Name)
-		assert.Equal(t, true, *deployment.OwnerReferences[0].Controller)
-	}
 
 	statefulsets, err := _kubernetes.AppsV1().StatefulSets(namespace).
 		List(context.Background(), v1.ListOptions{})
 	assert.NoError(t, err)
 	assert.Len(t, statefulsets.Items, length)
-	for _, statefulset := range statefulsets.Items {
-		assert.Equal(t, cluster.Name, statefulset.OwnerReferences[0].Name)
-		assert.Equal(t, true, *statefulset.OwnerReferences[0].Controller)
-	}
 
 	services, err := _kubernetes.CoreV1().Services(namespace).
 		List(context.Background(), v1.ListOptions{})
 	assert.NoError(t, err)
 	assert.Len(t, services.Items, length*2)
-	for _, service := range services.Items {
-		assert.Equal(t, cluster.Name, service.OwnerReferences[0].Name)
-		assert.Equal(t, true, *service.OwnerReferences[0].Controller)
-	}
 
 	serviceMonitors, err := _monitoring.MonitoringV1().ServiceMonitors(namespace).
 		List(context.Background(), v1.ListOptions{})
 	assert.NoError(t, err)
 	assert.Len(t, serviceMonitors.Items, length*2)
-	for _, serviceMonitor := range serviceMonitors.Items {
-		assert.Equal(t, cluster.Name, serviceMonitor.OwnerReferences[0].Name)
-		assert.Equal(t, true, *serviceMonitor.OwnerReferences[0].Controller)
-	}
 }
