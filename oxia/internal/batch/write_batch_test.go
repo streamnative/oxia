@@ -17,7 +17,7 @@ package batch
 import (
 	"context"
 	"github.com/stretchr/testify/assert"
-	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/noop"
 	"io"
 	"oxia/oxia/internal/metrics"
 	"oxia/oxia/internal/model"
@@ -39,7 +39,7 @@ func TestWriteBatchAdd(t *testing.T) {
 		{model.GetCall{}, true, 0},
 	} {
 		factory := &writeBatchFactory{
-			metrics:     metrics.NewMetrics(metric.NewNoopMeterProvider()),
+			metrics:     metrics.NewMetrics(noop.NewMeterProvider()),
 			maxByteSize: 1024,
 		}
 		batch := factory.newBatch(&shardId)
@@ -153,7 +153,7 @@ func TestWriteBatchComplete(t *testing.T) {
 
 		factory := &writeBatchFactory{
 			execute:     execute,
-			metrics:     metrics.NewMetrics(metric.NewNoopMeterProvider()),
+			metrics:     metrics.NewMetrics(noop.NewMeterProvider()),
 			maxByteSize: 1024,
 		}
 		batch := factory.newBatch(&shardId)
@@ -230,7 +230,7 @@ func TestWriteBatchCanAdd(t *testing.T) {
 		t.Run(item.name, func(t *testing.T) {
 
 			factory := &writeBatchFactory{
-				metrics:     metrics.NewMetrics(metric.NewNoopMeterProvider()),
+				metrics:     metrics.NewMetrics(noop.NewMeterProvider()),
 				maxByteSize: 100,
 			}
 			batch := factory.newBatch(&shardId)

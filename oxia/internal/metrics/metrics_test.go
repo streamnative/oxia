@@ -177,11 +177,11 @@ func counter[N int64 | float64](rm metricdata.ResourceMetrics, name string) ([]m
 	return nil, errors.New("not found")
 }
 
-func histogram(rm metricdata.ResourceMetrics, name string) ([]metricdata.HistogramDataPoint, error) {
+func histogram(rm metricdata.ResourceMetrics, name string) ([]metricdata.HistogramDataPoint[int64], error) {
 	for _, m := range rm.ScopeMetrics[0].Metrics {
 		if m.Name == name {
 			switch d := m.Data.(type) {
-			case metricdata.Histogram:
+			case metricdata.Histogram[int64]:
 				return d.DataPoints, nil
 			}
 		}
