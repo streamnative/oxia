@@ -48,11 +48,11 @@ func fatalOnErr(err error, name string) {
 	}
 }
 
-func attrs(requestType string, err error) []attribute.KeyValue {
-	return []attribute.KeyValue{
+func attrs(requestType string, err error) instrument.MeasurementOption {
+	return instrument.WithAttributes(
 		attribute.Key("type").String(requestType),
 		attribute.Key("result").String(result(err)),
-	}
+	)
 }
 
 func result(err error) string {

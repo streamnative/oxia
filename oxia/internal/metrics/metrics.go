@@ -16,7 +16,6 @@ package metrics
 
 import (
 	"context"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/instrument"
 	"oxia/common/metrics"
@@ -64,8 +63,8 @@ func (m *Metrics) DecoratePut(put model.PutCall) model.PutCall {
 	put.Callback = func(response *proto.PutResponse, err error) {
 		callback(response, err)
 		ctx, start, _attrs := metricContext(err)
-		m.opTime.Record(ctx, m.sinceFunc(start), _attrs...)
-		m.opValue.Record(ctx, int64(len(put.Value)), _attrs...)
+		m.opTime.Record(ctx, m.sinceFunc(start), _attrs)
+		m.opValue.Record(ctx, int64(len(put.Value)), _attrs)
 	}
 	return put
 }
@@ -76,7 +75,7 @@ func (m *Metrics) DecorateDelete(delete model.DeleteCall) model.DeleteCall {
 	delete.Callback = func(response *proto.DeleteResponse, err error) {
 		callback(response, err)
 		ctx, start, _attrs := metricContext(err)
-		m.opTime.Record(ctx, m.sinceFunc(start), _attrs...)
+		m.opTime.Record(ctx, m.sinceFunc(start), _attrs)
 	}
 	return delete
 }
@@ -87,7 +86,7 @@ func (m *Metrics) DecorateDeleteRange(deleteRange model.DeleteRangeCall) model.D
 	deleteRange.Callback = func(response *proto.DeleteRangeResponse, err error) {
 		callback(response, err)
 		ctx, start, _attrs := metricContext(err)
-		m.opTime.Record(ctx, m.sinceFunc(start), _attrs...)
+		m.opTime.Record(ctx, m.sinceFunc(start), _attrs)
 	}
 	return deleteRange
 }
@@ -98,12 +97,12 @@ func (m *Metrics) DecorateGet(get model.GetCall) model.GetCall {
 	get.Callback = func(response *proto.GetResponse, err error) {
 		callback(response, err)
 		ctx, start, _attrs := metricContext(err)
-		m.opTime.Record(ctx, m.sinceFunc(start), _attrs...)
+		m.opTime.Record(ctx, m.sinceFunc(start), _attrs)
 		var size int64 = 0
 		if response != nil {
 			size = int64(len(response.Value))
 		}
-		m.opValue.Record(ctx, size, _attrs...)
+		m.opValue.Record(ctx, size, _attrs)
 	}
 	return get
 }
@@ -112,11 +111,11 @@ func (m *Metrics) WriteCallback() func(time.Time, *proto.WriteRequest, *proto.Wr
 	metricContext := m.metricContextFunc("write")
 	return func(executionStart time.Time, request *proto.WriteRequest, response *proto.WriteResponse, err error) {
 		ctx, batchStart, _attrs := metricContext(err)
-		m.batchTotalTime.Record(ctx, m.sinceFunc(batchStart), _attrs...)
-		m.batchExecTime.Record(ctx, m.sinceFunc(executionStart), _attrs...)
+		m.batchTotalTime.Record(ctx, m.sinceFunc(batchStart), _attrs)
+		m.batchExecTime.Record(ctx, m.sinceFunc(executionStart), _attrs)
 		valueSize, requestCount := writeMetrics(request)
-		m.batchValue.Record(ctx, valueSize, _attrs...)
-		m.batchRequests.Record(ctx, requestCount, _attrs...)
+		m.batchValue.Record(ctx, valueSize, _attrs)
+		m.batchRequests.Record(ctx, requestCount, _attrs)
 	}
 }
 
@@ -124,17 +123,17 @@ func (m *Metrics) ReadCallback() func(time.Time, *proto.ReadRequest, *proto.Read
 	metricContext := m.metricContextFunc("read")
 	return func(executionStart time.Time, request *proto.ReadRequest, response *proto.ReadResponse, err error) {
 		ctx, batchStart, attrs := metricContext(err)
-		m.batchTotalTime.Record(ctx, m.sinceFunc(batchStart), attrs...)
-		m.batchExecTime.Record(ctx, m.sinceFunc(executionStart), attrs...)
+		m.batchTotalTime.Record(ctx, m.sinceFunc(batchStart), attrs)
+		m.batchExecTime.Record(ctx, m.sinceFunc(executionStart), attrs)
 		valueSize, requestCount := readMetrics(response)
-		m.batchValue.Record(ctx, valueSize, attrs...)
-		m.batchRequests.Record(ctx, requestCount, attrs...)
+		m.batchValue.Record(ctx, valueSize, attrs)
+		m.batchRequests.Record(ctx, requestCount, attrs)
 	}
 }
 
-func (m *Metrics) metricContextFunc(requestType string) func(error) (context.Context, time.Time, []attribute.KeyValue) {
+func (m *Metrics) metricContextFunc(requestType string) func(error) (context.Context, time.Time, instrument.MeasurementOption) {
 	start := m.timeFunc()
-	return func(err error) (context.Context, time.Time, []attribute.KeyValue) {
+	return func(err error) (context.Context, time.Time, instrument.MeasurementOption) {
 		return context.TODO(), start, attrs(requestType, err)
 	}
 }
