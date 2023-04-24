@@ -28,7 +28,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.64.0
 	github.com/prometheus-operator/prometheus-operator/pkg/client v0.64.0
-	github.com/prometheus/client_golang v1.14.0
+	github.com/prometheus/client_golang v1.15.0
 	github.com/rs/zerolog v1.29.0
 	github.com/spf13/afero v1.9.5
 	github.com/spf13/cobra v1.7.0
@@ -36,10 +36,10 @@ require (
 	github.com/stretchr/testify v1.8.2
 	github.com/tidwall/tinylru v1.1.0
 	github.com/zeebo/xxh3 v1.0.2
-	go.opentelemetry.io/otel v1.14.0
-	go.opentelemetry.io/otel/exporters/prometheus v0.37.0
-	go.opentelemetry.io/otel/metric v0.37.0
-	go.opentelemetry.io/otel/sdk/metric v0.37.0
+	go.opentelemetry.io/otel v1.15.0-rc.2.0.20230420231439-002444a2e743
+	go.opentelemetry.io/otel/exporters/prometheus v0.38.0-rc.2.0.20230420231439-002444a2e743
+	go.opentelemetry.io/otel/metric v1.15.0-rc.2.0.20230420231439-002444a2e743
+	go.opentelemetry.io/otel/sdk/metric v0.38.0-rc.2.0.20230420231439-002444a2e743
 	go.uber.org/automaxprocs v1.5.2
 	go.uber.org/multierr v1.11.0
 	golang.org/x/exp v0.0.0-20230321023759-10a507213a29
@@ -110,8 +110,8 @@ require (
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/subosito/gotenv v1.4.2 // indirect
-	go.opentelemetry.io/otel/sdk v1.14.0 // indirect
-	go.opentelemetry.io/otel/trace v1.14.0 // indirect
+	go.opentelemetry.io/otel/sdk v1.15.0-rc.2 // indirect
+	go.opentelemetry.io/otel/trace v1.15.0-rc.2 // indirect
 	golang.org/x/mod v0.9.0 // indirect
 	golang.org/x/oauth2 v0.7.0 // indirect
 	golang.org/x/term v0.7.0 // indirect

@@ -17,7 +17,6 @@ package metrics
 import (
 	"context"
 	"github.com/rs/zerolog/log"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/instrument"
 )
@@ -28,7 +27,7 @@ type Gauge interface {
 
 type gauge struct {
 	gauge        instrument.Int64ObservableGauge
-	attrs        []attribute.KeyValue
+	attrs        instrument.MeasurementOption
 	callback     func() int64
 	registration metric.Registration
 }
@@ -56,7 +55,7 @@ func NewGauge(name string, description string, unit Unit, labels map[string]any,
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		obs.ObserveInt64(res.gauge, res.callback(), res.attrs...)
+		obs.ObserveInt64(res.gauge, res.callback(), res.attrs)
 		return nil
 	}, g)
 

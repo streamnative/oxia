@@ -15,6 +15,7 @@
 package oxia
 
 import (
+	"go.opentelemetry.io/otel/metric/noop"
 	"oxia/common"
 	"time"
 
@@ -81,7 +82,7 @@ func newClientOptions(serviceAddress string, opts ...ClientOption) (clientOption
 		maxRequestsPerBatch: DefaultMaxRequestsPerBatch,
 		maxBatchSize:        DefaultMaxBatchSize,
 		requestTimeout:      DefaultRequestTimeout,
-		meterProvider:       metric.NewNoopMeterProvider(),
+		meterProvider:       noop.NewMeterProvider(),
 		sessionTimeout:      DefaultSessionTimeout,
 		identity:            defaultIdentity(),
 	}
@@ -151,7 +152,7 @@ func WithRequestTimeout(requestTimeout time.Duration) ClientOption {
 func WithMeterProvider(meterProvider metric.MeterProvider) ClientOption {
 	return clientOptionFunc(func(options clientOptions) (clientOptions, error) {
 		if meterProvider == nil {
-			options.meterProvider = metric.NewNoopMeterProvider()
+			options.meterProvider = noop.NewMeterProvider()
 		} else {
 			options.meterProvider = meterProvider
 		}

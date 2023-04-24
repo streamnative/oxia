@@ -17,7 +17,7 @@ package batch
 import (
 	"context"
 	"github.com/stretchr/testify/assert"
-	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/noop"
 	"google.golang.org/grpc/metadata"
 	"io"
 	"oxia/oxia/internal/metrics"
@@ -40,7 +40,7 @@ func TestReadBatchAdd(t *testing.T) {
 		{model.GetCall{}, false, 1},
 	} {
 		factory := &readBatchFactory{
-			metrics: metrics.NewMetrics(metric.NewNoopMeterProvider()),
+			metrics: metrics.NewMetrics(noop.NewMeterProvider()),
 		}
 		batch := factory.newBatch(&shardId)
 
@@ -103,7 +103,7 @@ func TestReadBatchComplete(t *testing.T) {
 
 		factory := &readBatchFactory{
 			execute: execute,
-			metrics: metrics.NewMetrics(metric.NewNoopMeterProvider()),
+			metrics: metrics.NewMetrics(noop.NewMeterProvider()),
 		}
 		batch := factory.newBatch(&shardId)
 

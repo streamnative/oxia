@@ -16,14 +16,13 @@ package metrics
 
 import (
 	"context"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/instrument"
 	"time"
 )
 
 type Timer interface {
-	Record(ctx context.Context, incr time.Duration, attrs ...attribute.KeyValue)
+	Record(ctx context.Context, incr time.Duration, attrs instrument.MeasurementOption)
 }
 
 type timerImpl struct {
@@ -38,8 +37,8 @@ func newTimer(meter metric.Meter, name string) Timer {
 	}
 }
 
-func (t *timerImpl) Record(ctx context.Context, incr time.Duration, attrs ...attribute.KeyValue) {
+func (t *timerImpl) Record(ctx context.Context, incr time.Duration, attrs instrument.MeasurementOption) {
 	millis := float64(incr) / float64(time.Millisecond)
-	t.sum.Add(ctx, millis, attrs...)
-	t.count.Add(ctx, 1, attrs...)
+	t.sum.Add(ctx, millis, attrs)
+	t.count.Add(ctx, 1, attrs)
 }
