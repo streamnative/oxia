@@ -77,7 +77,7 @@ func TestMetricsDecorate(t *testing.T) {
 				assert.NoError(t, err)
 
 				assertTimer(t, rm, "oxia_client_op", item.expectedType, condition.expectedResult)
-				assertHistogram(t, rm, "oxia_client_op_value", item.hasHistogram, float64(5), item.expectedType, condition.expectedResult)
+				assertHistogram(t, rm, "oxia_client_op_value", item.hasHistogram, 5, item.expectedType, condition.expectedResult)
 			})
 		}
 	}
@@ -125,8 +125,8 @@ func TestMetricsCallback(t *testing.T) {
 
 				assertTimer(t, rm, "oxia_client_batch_total", item.expectedType, condition.expectedResult)
 				assertTimer(t, rm, "oxia_client_batch_exec", item.expectedType, condition.expectedResult)
-				assertHistogram(t, rm, "oxia_client_batch_value", true, float64(5), item.expectedType, condition.expectedResult)
-				assertHistogram(t, rm, "oxia_client_batch_request", true, float64(1), item.expectedType, condition.expectedResult)
+				assertHistogram(t, rm, "oxia_client_batch_value", true, 5, item.expectedType, condition.expectedResult)
+				assertHistogram(t, rm, "oxia_client_batch_request", true, 1, item.expectedType, condition.expectedResult)
 			})
 		}
 	}
@@ -149,7 +149,7 @@ func assertTimer(t *testing.T, rm metricdata.ResourceMetrics, name string, expec
 	assertDataPoints(t, counts, int64(1), expectedType, expectedResult)
 
 }
-func assertHistogram(t *testing.T, rm metricdata.ResourceMetrics, name string, hasHistogram bool, expectedSum float64, expectedType string, expectedResult string) {
+func assertHistogram(t *testing.T, rm metricdata.ResourceMetrics, name string, hasHistogram bool, expectedSum int64, expectedType string, expectedResult string) {
 	datapoints, err := histogram(rm, name)
 
 	if hasHistogram {
