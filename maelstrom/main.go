@@ -17,6 +17,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -64,6 +65,16 @@ var thisNode string
 var allNodes []string
 
 func handleInit(scanner *bufio.Scanner) {
+	for {
+		if err := receiveInit(scanner); err != nil {
+			continue
+		}
+
+		return
+	}
+}
+
+func receiveInit(scanner *bufio.Scanner) error {
 	if !scanner.Scan() {
 		log.Fatal().Msg("no init received")
 	}
@@ -72,7 +83,9 @@ func handleInit(scanner *bufio.Scanner) {
 	log.Info().RawJSON("line", []byte(line)).Msg("Got line")
 	reqType, req, _ := parseRequest(line)
 	if reqType != MsgTypeInit {
-		log.Fatal().Msg("unexpected request")
+		log.Error().Interface("req", req).
+			Msg("Unexpected request while waiting for init")
+		return errors.New("invalid message type")
 	}
 
 	init := req.(*Message[Init])
