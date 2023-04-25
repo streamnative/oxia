@@ -129,6 +129,10 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      - name: Install Gnuplot
+        run: |
+          sudo apt-get install -y gnuplot
+
       - run: make
       - run: make maelstrom
 
