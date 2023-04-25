@@ -363,7 +363,10 @@ func (m *maelstromReplicateServerStream) Recv() (*proto.Append, error) {
 }
 
 func (m *maelstromReplicateServerStream) Context() context.Context {
-	md := metadata.New(map[string]string{"shard-id": "0"})
+	md := metadata.New(map[string]string{
+		"shard-id":  "0",
+		"namespace": "default",
+	})
 	return metadata.NewIncomingContext(context.Background(), md)
 }
 
