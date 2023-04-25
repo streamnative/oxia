@@ -107,6 +107,8 @@ func receiveInit(scanner *bufio.Scanner) error {
 			InReplyTo: &init.Body.MsgId,
 		}},
 	})
+
+	return nil
 }
 
 func main() {
