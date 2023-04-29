@@ -145,5 +145,5 @@ err = cache.ReadModifyUpdate(context.Background(), "/my-key",
 
 The cache is kept up to date using Oxia notification, to invalidate whenever a record is updated.
 
-Change don through the cache are also immediately reflected in the cache. For updates done outside the cache instance,
+Changes done through the cache are also immediately reflected in the cache. For updates done outside the cache instance,
 the cache will be eventually consistent, meaning that a cache read could return a stale value for a short amount of time.
