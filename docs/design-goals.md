@@ -26,7 +26,7 @@ roadmap.
 ### Storage Scalability
 
 Systems like ZooKeeper and Etcd have limitation around ~2GB (See
-[Etcd docs](https://etcd.io/docs/v3.5/dev-guide/limit/#storage-size-limit)), mainly because they are taking
+[Etcd docs](https://etcd.io/docs/v3.5/dev-guide/limit/#storage-size-limit)), mainly because they are taking periodic snapshots of the entire data set.
 
 Oxia is designed to efficiently store amount of metadata larger than the available RAM, in the order of 100s of GB, 
 across multiple shards. The primary reason is that there is no complete full snapshot that has to be taken periodically.
