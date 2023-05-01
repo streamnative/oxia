@@ -68,10 +68,14 @@ To deploy the controller with Helm:
 ```shell
 $ kubectl create namespace oxia
 
+$ git clone https://github.com/streamnative/oxia.git
+
+$ cd oxia
+
 $ helm upgrade --install oxia-controller \
   --namespace oxia \
   --set monitoringEnabled=true \
-  https://github.com/streamnative/oxia/tree/main/deploy/charts/oxia-controller
+  deploy/charts/oxia-controller
 ```
 
 
@@ -80,7 +84,7 @@ $ helm upgrade --install oxia-controller \
 Create the CRD with
 
 ```shell
-k apply -f deploy/crds/oxiaclusters.yaml
+$ kubectl apply -f deploy/crds/oxiaclusters.yaml
 
 ```
 
