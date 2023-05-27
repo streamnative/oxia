@@ -1,6 +1,6 @@
 # StreamNative Oxia
 
-![Oxia Logo](docs/oxia-logo.png)
+<img align="right" width="350" height="350" src="docs/oxia-logo.png">
 
 [![Build](https://github.com/streamnative/oxia/actions/workflows/pr_build_and_test.yaml/badge.svg)](https://github.com/streamnative/oxia/actions/workflows/pr_build_and_test.yaml)
 
