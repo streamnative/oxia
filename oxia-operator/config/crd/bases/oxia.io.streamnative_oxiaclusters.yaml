@@ -1,0 +1,167 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.11.1
+  creationTimestamp: null
+  name: oxiaclusters.oxia.io.streamnative
+spec:
+  group: oxia.io.streamnative
+  names:
+    kind: OxiaCluster
+    listKind: OxiaClusterList
+    plural: oxiaclusters
+    singular: oxiacluster
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: OxiaCluster is the Schema for the oxiaclusters API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: OxiaClusterSpec defines the desired state of OxiaCluster
+            properties:
+              coordinator:
+                description: Coordinator contains configuration specific to the coordinator
+                  component
+                properties:
+                  cpu:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: Cpu describes the requests and limits of CPU cores
+                      allocated to the pod
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                  memory:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: Memory describes the requests and limits of Memory
+                      allocated to the pod
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                required:
+                - cpu
+                - memory
+                type: object
+              image:
+                description: Image contains configuration specific to the image being
+                  used
+                properties:
+                  pullPolicy:
+                    description: PullPolicy is one of Always, Never, IfNotPresent
+                    type: string
+                  pullSecrets:
+                    description: PullSecrets is the optional name of a secret in the
+                      same namespace to use for pulling the image
+                    type: string
+                  repository:
+                    description: Repository is the container image repository, e.g.
+                      'streamnative/oxia'
+                    type: string
+                  tag:
+                    description: Tag is the container image tag, e.g. 'latest'
+                    type: string
+                required:
+                - repository
+                - tag
+                type: object
+              monitoringEnabled:
+                description: MonitoringEnabled determines whether a Prometheus ServiceMonitor
+                  should be created
+                type: boolean
+              namespaces:
+                items:
+                  properties:
+                    initialShardCount:
+                      format: int32
+                      type: integer
+                    name:
+                      type: string
+                    replicationFactor:
+                      format: int32
+                      type: integer
+                  required:
+                  - initialShardCount
+                  - name
+                  - replicationFactor
+                  type: object
+                type: array
+              pprofEnabled:
+                description: PprofEnabled determines whether the pprof HTTP service
+                  will be enabled
+                type: boolean
+              server:
+                description: Server contains configuration specific to the server
+                  component
+                properties:
+                  cpu:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: Cpu describes the requests and limits of CPU cores
+                      allocated to each pod
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                  memory:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: Memory describes the requests and limits of memory
+                      allocated to each pod
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                  replicas:
+                    description: Replicas is the number of server pods that should
+                      be running
+                    format: int32
+                    type: integer
+                  storage:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: Storage describes the size of the persistent volume
+                      allocated to each pod
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                  storageClassName:
+                    description: StorageClassName is the name of StorageClass to which
+                      the persistent volume belongs
+                    type: string
+                required:
+                - cpu
+                - memory
+                - replicas
+                - storage
+                type: object
+            required:
+            - coordinator
+            - image
+            - monitoringEnabled
+            - namespaces
+            - pprofEnabled
+            - server
+            type: object
+          status:
+            description: OxiaClusterStatus defines the observed state of OxiaCluster
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
