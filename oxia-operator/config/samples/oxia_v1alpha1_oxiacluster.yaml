@@ -1,0 +1,32 @@
+apiVersion: oxia.io.streamnative/v1alpha1
+kind: OxiaCluster
+metadata:
+  labels:
+    app.kubernetes.io/name: oxiacluster
+    app.kubernetes.io/instance: oxiacluster-sample
+    app.kubernetes.io/part-of: oxia-operator
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: oxia-operator
+  name: oxiacluster-sample
+  namespace: oxia
+spec:
+  namespaces:
+    - name: default
+      initialShardCount: 3
+      replicationFactor: 3
+  coordinator:
+    cpu: 100m
+    memory: 128Mi
+  server:
+    replicas: 3
+    cpu: 1
+    memory: 1Gi
+    storage: 8Gi
+    #storageClassName: xxx
+  image:
+    repository: streamnative/oxia
+    tag: main
+    pullPolicy: Always
+    #pullSecrets: xxx
+  pprofEnabled: false
+  monitoringEnabled: true
