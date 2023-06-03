@@ -16,20 +16,23 @@ package controllers
 
 import (
 	"context"
+	"github.com/go-logr/logr"
+	"k8s.io/apimachinery/pkg/api/errors"
 
+	oxiav1alpha1 "github.com/streamnative/oxia/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	oxiav1alpha1 "github.com/streamnative/oxia/api/v1alpha1"
 )
 
 // OxiaClusterReconciler reconciles a OxiaCluster object
 type OxiaClusterReconciler struct {
 	client.Client
+	Log    logr.Logger
 	Scheme *runtime.Scheme
 }
+
+type reconciler func(ctx context.Context, oxia *oxiav1alpha1.OxiaCluster) (ctrl.Result, error)
 
 //+kubebuilder:rbac:groups=oxia.io.streamnative,resources=oxiaclusters,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=oxia.io.streamnative,resources=oxiaclusters/status,verbs=get;update;patch
@@ -37,7 +40,6 @@ type OxiaClusterReconciler struct {
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
 // the OxiaCluster object against the actual cluster state, and then
 // perform operations to make the cluster state reflect the state specified by
 // the user.
@@ -45,8 +47,37 @@ type OxiaClusterReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.14.1/pkg/reconcile
 func (r *OxiaClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	r.Log.Info("Reconciling OxiaCluster", "Request.Namespace", req.Namespace, "Request.Name", req.Name)
+	oxiaCluster := &oxiav1alpha1.OxiaCluster{}
+	err := r.Get(ctx, req.NamespacedName, oxiaCluster)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			r.Log.Info("OxiaCluster ", req.NamespacedName, " not found. Ignoring since object must be deleted")
+			return ctrl.Result{}, nil
+		}
+		r.Log.Error(err, "Failed to get OxiaCluster resource: ", req.NamespacedName)
+		return ctrl.Result{}, err
+	}
 
+	// Register reconcilers
+	reconcilers := []reconciler{
+		r.reconcileCoordinator,
+		r.reconcileServer,
+	}
+
+	// Chain call reconcilers
+	for _, r := range reconcilers {
+		result, err := r(ctx, oxiaCluster)
+		if result.Requeue {
+			return result, err
+		}
+		break
+	}
+
+	if err != nil {
+		r.Log.Error(err, "Failed to reconcile OxiaCluster resource: ", req.NamespacedName)
+		return ctrl.Result{}, err
+	}
 	return ctrl.Result{}, nil
 }
 

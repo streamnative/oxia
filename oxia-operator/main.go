@@ -16,6 +16,7 @@ package main
 
 import (
 	"flag"
+	monitoringV1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -41,8 +42,8 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-
 	utilruntime.Must(oxiav1alpha1.AddToScheme(scheme))
+	utilruntime.Must(monitoringV1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
@@ -89,6 +90,7 @@ func main() {
 
 	if err = (&controllers.OxiaClusterReconciler{
 		Client: mgr.GetClient(),
+		Log:    setupLog.WithName("controllers").WithName("OxiaCluster"),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "OxiaCluster")
