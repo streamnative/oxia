@@ -29,6 +29,7 @@ spec:
         prometheus.io/port: "{{ .Values.coordinator.ports.metrics }}"
         prometheus.io/scrape: "{{ .Values.monitoringEnabled }}"
       labels:
+        oxia_cluster: {{ .Release.Name }}
         {{- include "oxia-cluster.coordinator.labels" . | nindent 8 }}
       name: {{ .Release.Name }}-coordinator
     spec:
