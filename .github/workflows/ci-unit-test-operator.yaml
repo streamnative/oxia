@@ -31,12 +31,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-        with:
-          path: oxia-operator
       - name: Set up Go
         uses: actions/setup-go@v3
         with:
           go-version: 1.19
+      - name: Jump in oxia operator
+        run: cd ./oxia-operator
       - name: Build
         run: make build
       - name: Test
