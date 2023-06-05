@@ -16,7 +16,6 @@ package controllers
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -56,7 +55,7 @@ func TestAPIs(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
-	Expect(os.Setenv("KUBEBUILDER_ASSETS", "../bin/k8s/1.26.0-darwin-amd64")).To(Succeed())
+	//Expect(os.Setenv("KUBEBUILDER_ASSETS", "../bin/k8s/1.26.0-darwin-amd64")).To(Succeed())
 
 	ctx, cancel = context.WithCancel(context.TODO())
 
@@ -104,7 +103,7 @@ var _ = BeforeSuite(func() {
 var _ = AfterSuite(func() {
 	By("tearing down the test environment")
 	cancel()
-	Expect(os.Unsetenv("KUBEBUILDER_ASSETS")).To(Succeed())
+	//Expect(os.Unsetenv("KUBEBUILDER_ASSETS")).To(Succeed())
 	err := testEnv.Stop()
 	Expect(err).NotTo(HaveOccurred())
 })
