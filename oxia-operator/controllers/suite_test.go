@@ -16,15 +16,16 @@ package controllers
 
 import (
 	"context"
-	monitoringV1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"os"
 	"path/filepath"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"testing"
+
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	ctrl "sigs.k8s.io/controller-runtime"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	monitoringV1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -70,10 +71,6 @@ var _ = BeforeSuite(func() {
 	cfg, err = testEnv.Start()
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
-	utilruntime.Must(monitoringV1.AddToScheme(scheme.Scheme))
-	//+kubebuilder:scaffold:scheme
-	utilruntime.Must(oxiav1alpha1.AddToScheme(scheme.Scheme))
-	//+kubebuilder:scaffold:scheme
 
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	Expect(err).NotTo(HaveOccurred())
@@ -83,6 +80,11 @@ var _ = BeforeSuite(func() {
 		Scheme: scheme.Scheme,
 	})
 	Expect(err).ToNot(HaveOccurred())
+
+	//+kubebuilder:scaffold:scheme
+	utilruntime.Must(monitoringV1.AddToScheme(k8sManager.GetScheme()))
+	//+kubebuilder:scaffold:scheme
+	utilruntime.Must(oxiav1alpha1.AddToScheme(k8sManager.GetScheme()))
 
 	err = (&OxiaClusterReconciler{
 		Client: k8sManager.GetClient(),

@@ -7,7 +7,8 @@ import (
 	appsV1 "k8s.io/api/apps/v1"
 	coreV1 "k8s.io/api/core/v1"
 	rbacV1 "k8s.io/api/rbac/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apiErrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
@@ -38,7 +39,7 @@ func (r *OxiaClusterReconciler) reconcileCoordinator(ctx context.Context, oxia *
 	nsName := types.NamespacedName{Name: resourceName(Coordinator, oxia.Name), Namespace: oxia.Namespace}
 	err := r.Client.Get(ctx, nsName, _serviceAccount)
 	if err != nil {
-		if !errors.IsNotFound(err) {
+		if !apiErrors.IsNotFound(err) {
 			r.Log.Error(err, "Failed to get service account.")
 			return ctrl.Result{}, err
 		}
@@ -61,7 +62,7 @@ func (r *OxiaClusterReconciler) reconcileCoordinator(ctx context.Context, oxia *
 	nsName = types.NamespacedName{Name: resourceName(Coordinator, oxia.Name), Namespace: oxia.Namespace}
 	err = r.Client.Get(ctx, nsName, _role)
 	if err != nil {
-		if !errors.IsNotFound(err) {
+		if !apiErrors.IsNotFound(err) {
 			r.Log.Error(err, "Failed to get role: ", "NamespaceName", nsName)
 			return ctrl.Result{}, err
 		}
@@ -84,7 +85,7 @@ func (r *OxiaClusterReconciler) reconcileCoordinator(ctx context.Context, oxia *
 	nsName = types.NamespacedName{Name: resourceName(Coordinator, oxia.Name), Namespace: oxia.Namespace}
 	err = r.Client.Get(ctx, nsName, _roleBinding)
 	if err != nil {
-		if !errors.IsNotFound(err) {
+		if !apiErrors.IsNotFound(err) {
 			r.Log.Error(err, "Failed to get role binding: ", "NamespaceName", nsName)
 			return ctrl.Result{}, err
 		}
@@ -107,7 +108,7 @@ func (r *OxiaClusterReconciler) reconcileCoordinator(ctx context.Context, oxia *
 	nsName = types.NamespacedName{Name: resourceName(Coordinator, oxia.Name), Namespace: oxia.Namespace}
 	err = r.Client.Get(ctx, nsName, _configMap)
 	if err != nil {
-		if !errors.IsNotFound(err) {
+		if !apiErrors.IsNotFound(err) {
 			r.Log.Error(err, "Failed to get configmap: ", "NamespaceName", nsName)
 			return ctrl.Result{}, err
 		}
@@ -135,7 +136,7 @@ func (r *OxiaClusterReconciler) reconcileCoordinator(ctx context.Context, oxia *
 	nsName = types.NamespacedName{Name: resourceName(Coordinator, oxia.Name), Namespace: oxia.Namespace}
 	err = r.Client.Get(ctx, nsName, _deployment)
 	if err != nil {
-		if !errors.IsNotFound(err) {
+		if !apiErrors.IsNotFound(err) {
 			r.Log.Error(err, "Failed to get deployment: ", "NamespaceName", nsName)
 			return ctrl.Result{}, err
 		}
@@ -158,7 +159,7 @@ func (r *OxiaClusterReconciler) reconcileCoordinator(ctx context.Context, oxia *
 	nsName = types.NamespacedName{Name: resourceName(Coordinator, oxia.Name), Namespace: oxia.Namespace}
 	err = r.Client.Get(ctx, nsName, _service)
 	if err != nil {
-		if !errors.IsNotFound(err) {
+		if !apiErrors.IsNotFound(err) {
 			r.Log.Error(err, "Failed to get service: ", "NamespaceName", nsName)
 			return ctrl.Result{}, err
 		}
@@ -181,7 +182,11 @@ func (r *OxiaClusterReconciler) reconcileCoordinator(ctx context.Context, oxia *
 		nsName = types.NamespacedName{Name: resourceName(Coordinator, oxia.Name), Namespace: oxia.Namespace}
 		err = r.Client.Get(ctx, nsName, _serviceMonitor)
 		if err != nil {
-			if !errors.IsNotFound(err) {
+			if meta.IsNoMatchError(err) {
+				r.Log.Info("No Service Monitor Kind, Please confirm you have already deployed prometheus operator")
+				return ctrl.Result{}, nil
+			}
+			if !apiErrors.IsNotFound(err) {
 				r.Log.Error(err, "Failed to get service monitor: ", "NamespaceName", nsName)
 				return ctrl.Result{}, err
 			}

@@ -4,7 +4,6 @@ import (
 	"context"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	monitoringV1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	oxiav1alpha1 "github.com/streamnative/oxia/api/v1alpha1"
 	appsV1 "k8s.io/api/apps/v1"
 	coreV1 "k8s.io/api/core/v1"
@@ -112,13 +111,6 @@ var _ = Describe("Oxiacluster controller", func() {
 				return k8sClient.Get(context.Background(), _namespaceName, _service)
 			}, Timeout, Interval).Should(Succeed())
 			Expect(_service).ShouldNot(BeNil())
-			// Test monitor service
-			_serviceMonitor := &monitoringV1.ServiceMonitor{}
-			Eventually(func() error {
-				_namespaceName := types.NamespacedName{Namespace: cluster.Namespace, Name: resourceName(Coordinator, cluster.Name)}
-				return k8sClient.Get(context.Background(), _namespaceName, _serviceMonitor)
-			}, Timeout, Interval).Should(Succeed())
-			Expect(_serviceMonitor).ShouldNot(BeNil())
 		})
 	})
 

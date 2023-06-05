@@ -11,6 +11,5 @@ var ServerPorts = []NamedPort{PublicPort, InternalPort, MetricsPort}
 // Reconciler
 
 func (r *OxiaClusterReconciler) reconcileServer(ctx context.Context, oxia *oxiav1alpha1.OxiaCluster) (ctrl.Result, error) {
-
 	return ctrl.Result{}, nil
 }
