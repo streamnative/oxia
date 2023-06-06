@@ -17,6 +17,9 @@ package controllers
 import (
 	"context"
 	"github.com/go-logr/logr"
+	. "github.com/streamnative/oxia/controllers/common"
+	"github.com/streamnative/oxia/controllers/coordinator"
+	"github.com/streamnative/oxia/controllers/server"
 	"k8s.io/apimachinery/pkg/api/errors"
 
 	oxiav1alpha1 "github.com/streamnative/oxia/api/v1alpha1"
@@ -32,7 +35,11 @@ type OxiaClusterReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-type reconciler func(ctx context.Context, oxia *oxiav1alpha1.OxiaCluster) (ctrl.Result, error)
+// Register sub concilers
+var reconcilers = []Reconcile{
+	coordinator.ReconcileCoordinator,
+	server.ReconcileaServer,
+}
 
 //+kubebuilder:rbac:groups=oxia.io.streamnative,resources=oxiaclusters,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=oxia.io.streamnative,resources=oxiaclusters/status,verbs=get;update;patch
@@ -59,24 +66,22 @@ func (r *OxiaClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	// Register reconcilers
-	reconcilers := []reconciler{
-		r.reconcileCoordinator,
-		r.reconcileServer,
+	if !oxiaCluster.DeletionTimestamp.IsZero() {
+		r.Log.Info("OxiaCluster has been deleted.")
+		return ctrl.Result{}, nil
 	}
 
+	subCtx := &SubReconcilerContext{
+		Client:   r.Client,
+		Log:      r.Log,
+		InnerCtx: ctx,
+	}
 	// Chain call reconcilers
-	for _, r := range reconcilers {
-		result, err := r(ctx, oxiaCluster)
-		if result.Requeue {
-			return result, err
+	for _, fn := range reconcilers {
+		err := fn(subCtx, oxiaCluster)
+		if err != nil {
+			return ctrl.Result{}, err
 		}
-		break
-	}
-
-	if err != nil {
-		r.Log.Error(err, "Failed to reconcile OxiaCluster resource: ", req.NamespacedName)
-		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, nil
 }

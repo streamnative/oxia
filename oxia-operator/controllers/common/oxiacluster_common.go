@@ -12,7 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package controllers
+package common
+
+import (
+	"context"
+	"github.com/go-logr/logr"
+	oxiav1alpha1 "github.com/streamnative/oxia/api/v1alpha1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+)
 
 type NamedPort struct {
 	Name string
@@ -31,3 +38,13 @@ var (
 	Coordinator Component = "coordinator"
 	Server      Component = "server"
 )
+
+var FieldOwner = "oxia-controller"
+
+type SubReconcilerContext struct {
+	client.Client
+	Log      logr.Logger
+	InnerCtx context.Context
+}
+
+type Reconcile func(ctx *SubReconcilerContext, oxia *oxiav1alpha1.OxiaCluster) error

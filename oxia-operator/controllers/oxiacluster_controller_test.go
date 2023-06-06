@@ -19,6 +19,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	oxiav1alpha1 "github.com/streamnative/oxia/api/v1alpha1"
+	. "github.com/streamnative/oxia/controllers/common"
 	appsV1 "k8s.io/api/apps/v1"
 	coreV1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
@@ -36,7 +37,6 @@ var _ = Describe("Oxiacluster controller", func() {
 		OxiaClusterName       = "oxia-test"
 		OxiaImage             = "sn/oxia:v1.0"
 		Timeout               = time.Second * 10
-		Duration              = time.Second * 10
 		Interval              = time.Millisecond * 250
 	)
 	Context("When create Oxia cluster", func() {
@@ -80,31 +80,31 @@ var _ = Describe("Oxiacluster controller", func() {
 			// Test Service Account
 			_serviceAccount := &v1.ServiceAccount{}
 			Eventually(func() error {
-				_namespaceName := types.NamespacedName{Namespace: cluster.Namespace, Name: resourceName(Coordinator, cluster.Name)}
+				_namespaceName := types.NamespacedName{Namespace: cluster.Namespace, Name: MakeResourceName(Coordinator, cluster.Name)}
 				return k8sClient.Get(context.Background(), _namespaceName, _serviceAccount)
 			}, Timeout, Interval).Should(Succeed())
 			Expect(_serviceAccount).ShouldNot(BeNil())
-			// Test Role
+			// Test MakeRole
 			_role := &rbacV1.Role{}
 			Eventually(func() error {
-				_namespaceName := types.NamespacedName{Namespace: cluster.Namespace, Name: resourceName(Coordinator, cluster.Name)}
+				_namespaceName := types.NamespacedName{Namespace: cluster.Namespace, Name: MakeResourceName(Coordinator, cluster.Name)}
 				return k8sClient.Get(context.Background(), _namespaceName, _role)
 			}, Timeout, Interval).Should(Succeed())
 			Expect(_role).ShouldNot(BeNil())
-			// Test Role Binding
+			// Test MakeRole Binding
 			_roleBinding := &rbacV1.RoleBinding{}
 			Eventually(func() error {
-				_namespaceName := types.NamespacedName{Namespace: cluster.Namespace, Name: resourceName(Coordinator, cluster.Name)}
+				_namespaceName := types.NamespacedName{Namespace: cluster.Namespace, Name: MakeResourceName(Coordinator, cluster.Name)}
 				return k8sClient.Get(context.Background(), _namespaceName, _roleBinding)
 			}, Timeout, Interval).Should(Succeed())
 			Expect(_roleBinding).ShouldNot(BeNil())
 			Expect(len(_roleBinding.Subjects)).Should(Equal(1))
-			Expect(_roleBinding.Subjects[0].Name).Should(Equal(resourceName(Coordinator, cluster.Name)))
-			Expect(_roleBinding.RoleRef.Name).Should(Equal(resourceName(Coordinator, cluster.Name)))
+			Expect(_roleBinding.Subjects[0].Name).Should(Equal(MakeResourceName(Coordinator, cluster.Name)))
+			Expect(_roleBinding.RoleRef.Name).Should(Equal(MakeResourceName(Coordinator, cluster.Name)))
 			// Test configmap
 			_configMap := &coreV1.ConfigMap{}
 			Eventually(func() error {
-				_namespaceName := types.NamespacedName{Namespace: cluster.Namespace, Name: resourceName(Coordinator, cluster.Name)}
+				_namespaceName := types.NamespacedName{Namespace: cluster.Namespace, Name: MakeResourceName(Coordinator, cluster.Name)}
 				return k8sClient.Get(context.Background(), _namespaceName, _configMap)
 			}, Timeout, Interval).Should(Succeed())
 			Expect(_configMap).ShouldNot(BeNil())
@@ -113,7 +113,7 @@ var _ = Describe("Oxiacluster controller", func() {
 			// Test deployment
 			_deployment := &appsV1.Deployment{}
 			Eventually(func() error {
-				_namespaceName := types.NamespacedName{Namespace: cluster.Namespace, Name: resourceName(Coordinator, cluster.Name)}
+				_namespaceName := types.NamespacedName{Namespace: cluster.Namespace, Name: MakeResourceName(Coordinator, cluster.Name)}
 				return k8sClient.Get(context.Background(), _namespaceName, _deployment)
 			}, Timeout, Interval).Should(Succeed())
 			Expect(_deployment).ShouldNot(BeNil())
@@ -121,7 +121,7 @@ var _ = Describe("Oxiacluster controller", func() {
 			// Test coordinator service
 			_service := &coreV1.Service{}
 			Eventually(func() error {
-				_namespaceName := types.NamespacedName{Namespace: cluster.Namespace, Name: resourceName(Coordinator, cluster.Name)}
+				_namespaceName := types.NamespacedName{Namespace: cluster.Namespace, Name: MakeResourceName(Coordinator, cluster.Name)}
 				return k8sClient.Get(context.Background(), _namespaceName, _service)
 			}, Timeout, Interval).Should(Succeed())
 			Expect(_service).ShouldNot(BeNil())

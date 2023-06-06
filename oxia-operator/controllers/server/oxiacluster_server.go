@@ -12,18 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package controllers
+package server
 
 import (
-	"context"
-	oxiav1alpha1 "github.com/streamnative/oxia/api/v1alpha1"
-	ctrl "sigs.k8s.io/controller-runtime"
+	"github.com/streamnative/oxia/controllers/common"
 )
 
-var ServerPorts = []NamedPort{PublicPort, InternalPort, MetricsPort}
-
-// Reconciler
-
-func (r *OxiaClusterReconciler) reconcileServer(ctx context.Context, oxia *oxiav1alpha1.OxiaCluster) (ctrl.Result, error) {
-	return ctrl.Result{}, nil
-}
+var Ports = []common.NamedPort{common.PublicPort, common.InternalPort, common.MetricsPort}
