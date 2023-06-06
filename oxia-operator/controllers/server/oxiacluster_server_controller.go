@@ -21,10 +21,6 @@ var reconcilers = []common.Reconcile{
 }
 
 func ReconcileaServer(subCtx *common.SubReconcilerContext, oxia *oxiav1alpha1.OxiaCluster) error {
-	// Register reconcilers
-	reconcilers := []common.Reconcile{
-		reconcileServiceAccount,
-	}
 	// Chain call reconcilers
 	for _, fn := range reconcilers {
 		err := fn(subCtx, oxia)
@@ -38,14 +34,14 @@ func ReconcileaServer(subCtx *common.SubReconcilerContext, oxia *oxiav1alpha1.Ox
 }
 
 func reconcileServiceAccount(subCtx *common.SubReconcilerContext, oxia *oxiav1alpha1.OxiaCluster) error {
-	nsName := types.NamespacedName{Name: common.MakeResourceName(common.Coordinator, oxia.Name), Namespace: oxia.Namespace}
+	nsName := types.NamespacedName{Name: common.MakeResourceName(common.Server, oxia.Name), Namespace: oxia.Namespace}
 	_serviceAccount := &corev1.ServiceAccount{}
 	if err := subCtx.Get(subCtx.InnerCtx, nsName, _serviceAccount); err != nil {
 		if !apiErrors.IsNotFound(err) {
 			return err
 		}
 	}
-	patch := common.MakeServiceAccount(common.Coordinator, oxia)
+	patch := common.MakeServiceAccount(common.Server, oxia)
 	if err := subCtx.Patch(subCtx.InnerCtx, patch,
 		client.Apply, client.FieldOwner(common.FieldOwner), client.ForceOwnership); err != nil {
 		return err
@@ -61,7 +57,7 @@ func reconcileServiceAccount(subCtx *common.SubReconcilerContext, oxia *oxiav1al
 }
 
 func reconcileStatefulSet(subCtx *common.SubReconcilerContext, oxia *oxiav1alpha1.OxiaCluster) error {
-	nsName := types.NamespacedName{Name: common.MakeResourceName(common.Coordinator, oxia.Name), Namespace: oxia.Namespace}
+	nsName := types.NamespacedName{Name: common.MakeResourceName(common.Server, oxia.Name), Namespace: oxia.Namespace}
 	_statefulSet := &appsV1.StatefulSet{}
 	if err := subCtx.Get(subCtx.InnerCtx, nsName, _statefulSet); err != nil {
 		if !apiErrors.IsNotFound(err) {
@@ -84,7 +80,7 @@ func reconcileStatefulSet(subCtx *common.SubReconcilerContext, oxia *oxiav1alpha
 }
 
 func reconcileServices(subCtx *common.SubReconcilerContext, oxia *oxiav1alpha1.OxiaCluster) error {
-	nsName := types.NamespacedName{Name: common.MakeResourceName(common.Coordinator, oxia.Name), Namespace: oxia.Namespace}
+	nsName := types.NamespacedName{Name: common.MakeResourceName(common.Server, oxia.Name), Namespace: oxia.Namespace}
 	_service := &corev1.Service{}
 	if err := subCtx.Get(subCtx.InnerCtx, nsName, _service); err != nil {
 		if !apiErrors.IsNotFound(err) {
@@ -97,10 +93,10 @@ func reconcileServices(subCtx *common.SubReconcilerContext, oxia *oxiav1alpha1.O
 		return err
 	}
 	if common.IsResourceFirstCreated(_service, patch) {
-		subCtx.Log.Info("Created coordinator service.", "NamespaceName", nsName)
+		subCtx.Log.Info("Created server service.", "NamespaceName", nsName)
 	} else {
 		if common.IsResourceUpdated(_service, patch) {
-			subCtx.Log.Info("Updated coordinator service.", "NamespaceName", nsName)
+			subCtx.Log.Info("Updated server service.", "NamespaceName", nsName)
 		}
 	}
 	return nil
@@ -110,7 +106,7 @@ func reconcileServiceMonitor(subCtx *common.SubReconcilerContext, oxia *oxiav1al
 	if !oxia.Spec.MonitoringEnabled {
 		return nil
 	}
-	nsName := types.NamespacedName{Name: common.MakeResourceName(common.Coordinator, oxia.Name), Namespace: oxia.Namespace}
+	nsName := types.NamespacedName{Name: common.MakeResourceName(common.Server, oxia.Name), Namespace: oxia.Namespace}
 	_serviceMonitor := &monitoringV1.ServiceMonitor{}
 	if err := subCtx.Get(subCtx.InnerCtx, nsName, _serviceMonitor); err != nil {
 		if !apiErrors.IsNotFound(err) {
@@ -121,16 +117,16 @@ func reconcileServiceMonitor(subCtx *common.SubReconcilerContext, oxia *oxiav1al
 			return err
 		}
 	}
-	patch := common.MakeServiceMonitor(common.Coordinator, oxia)
+	patch := common.MakeServiceMonitor(common.Server, oxia)
 	if err := subCtx.Patch(subCtx.InnerCtx, patch,
 		client.Apply, client.FieldOwner(common.FieldOwner), client.ForceOwnership); err != nil {
 		return err
 	}
 	if common.IsResourceFirstCreated(_serviceMonitor, patch) {
-		subCtx.Log.Info("Created coordinator service monitor.", "NamespaceName", nsName)
+		subCtx.Log.Info("Created server service monitor.", "NamespaceName", nsName)
 	} else {
 		if common.IsResourceUpdated(_serviceMonitor, patch) {
-			subCtx.Log.Info("Updated coordinator service monitor.", "NamespaceName", nsName)
+			subCtx.Log.Info("Updated server service monitor.", "NamespaceName", nsName)
 		}
 	}
 	return nil

@@ -125,6 +125,27 @@ var _ = Describe("Oxiacluster controller", func() {
 				return k8sClient.Get(context.Background(), _namespaceName, _service)
 			}, Timeout, Interval).Should(Succeed())
 			Expect(_service).ShouldNot(BeNil())
+			// Test server service account
+			_serverServiceAccount := &v1.ServiceAccount{}
+			Eventually(func() error {
+				_namespaceName := types.NamespacedName{Namespace: cluster.Namespace, Name: MakeResourceName(Server, cluster.Name)}
+				return k8sClient.Get(context.Background(), _namespaceName, _serverServiceAccount)
+			}, Timeout, Interval).Should(Succeed())
+			Expect(_serverServiceAccount).ShouldNot(BeNil())
+			// Test server stateful set
+			_statefulSet := &appsV1.StatefulSet{}
+			Eventually(func() error {
+				_namespaceName := types.NamespacedName{Namespace: cluster.Namespace, Name: MakeResourceName(Server, cluster.Name)}
+				return k8sClient.Get(context.Background(), _namespaceName, _statefulSet)
+			}, Timeout, Interval).Should(Succeed())
+			Expect(_statefulSet).ShouldNot(BeNil())
+			// Test server service
+			_serverService := &coreV1.Service{}
+			Eventually(func() error {
+				_namespaceName := types.NamespacedName{Namespace: cluster.Namespace, Name: MakeResourceName(Server, cluster.Name)}
+				return k8sClient.Get(context.Background(), _namespaceName, _serverService)
+			}, Timeout, Interval).Should(Succeed())
+			Expect(_serverService).ShouldNot(BeNil())
 		})
 	})
 
