@@ -24,6 +24,7 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
+  "id": 151,
   "links": [],
   "liveNow": false,
   "panels": [
@@ -128,7 +129,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(\n    rate(grpc_server_handled_total{\n        oxia_cluster=~\"$cluster\", pod=~\"$pod\", grpc_service=~\"$grpc_service\", grpc_method=~\"$grpc_method\"\n    }[1m])) \n\nby (grpc_service, grpc_method)\n\n\n",
+          "expr": "sum(\n    rate(grpc_server_handled_total{\n        oxia_cluster=~\"$cluster\", app_kubernetes_io_component=~\"$component\", kubernetes_pod_name=~\"$pod\", grpc_service=~\"$grpc_service\", grpc_method=~\"$grpc_method\"\n    }[1m])) \n\nby (grpc_service, grpc_method)\n\n\n",
           "interval": "",
           "legendFormat": "{{grpc_service}} - {{grpc_method}}",
           "range": true,
@@ -224,7 +225,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(\n    rate(grpc_server_handled_total{\n        oxia_cluster=~\"$cluster\", pod=~\"$pod\", grpc_service=~\"$grpc_service\", grpc_method=~\"$grpc_method\", grpc_code!=\"OK\"\n    }[1m])) \n\nby (grpc_service, grpc_method, grpc_code) > 0\n\n\n",
+          "expr": "sum(\n    rate(grpc_server_handled_total{\n        oxia_cluster=~\"$cluster\", app_kubernetes_io_component=~\"$component\", kubernetes_pod_name=~\"$pod\", grpc_service=~\"$grpc_service\", grpc_method=~\"$grpc_method\", grpc_code!=\"OK\"\n    }[1m])) \n\nby (grpc_service, grpc_method, grpc_code) > 0\n\n\n",
           "interval": "",
           "legendFormat": "{{grpc_method}} - {{ grpc_code }}",
           "range": true,
@@ -320,7 +321,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(\n    rate(grpc_server_msg_sent_total{\n        oxia_cluster=~\"$cluster\", pod=~\"$pod\", grpc_service=~\"$grpc_service\", grpc_method=~\"$grpc_method\"\n    }[1m])\n) \nby (grpc_service, grpc_method)\n\n\n",
+          "expr": "sum(\n    rate(grpc_server_msg_sent_total{\n        oxia_cluster=~\"$cluster\", app_kubernetes_io_component=~\"$component\", kubernetes_pod_name=~\"$pod\", grpc_service=~\"$grpc_service\", grpc_method=~\"$grpc_method\"\n    }[1m])\n) \nby (grpc_service, grpc_method)\n\n\n",
           "interval": "",
           "legendFormat": "{{grpc_service}} - {{grpc_method}}",
           "range": true,
@@ -416,7 +417,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(\n    rate(grpc_server_msg_received_total{\n        oxia_cluster=~\"$cluster\", pod=~\"$pod\", grpc_service=~\"$grpc_service\", grpc_method=~\"$grpc_method\"\n    }[1m])) \n\nby (grpc_service, grpc_method)\n\n\n",
+          "expr": "sum(\n    rate(grpc_server_msg_received_total{\n        oxia_cluster=~\"$cluster\", app_kubernetes_io_component=~\"$component\", kubernetes_pod_name=~\"$pod\", grpc_service=~\"$grpc_service\", grpc_method=~\"$grpc_method\"\n    }[1m])) \n\nby (grpc_service, grpc_method)\n\n\n",
           "interval": "",
           "legendFormat": "{{grpc_service}} - {{grpc_method}}",
           "range": true,
@@ -512,7 +513,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(\n    rate(grpc_client_handled_total{\n        oxia_cluster=~\"$cluster\", pod=~\"$pod\", grpc_service=~\"$grpc_service\", grpc_method=~\"$grpc_method\", grpc_code=\"OK\"\n    }[1m])) \n\nby (grpc_service, grpc_method)\n\n\n",
+          "expr": "sum(\n    rate(grpc_client_handled_total{\n        oxia_cluster=~\"$cluster\", app_kubernetes_io_component=~\"$component\", kubernetes_pod_name=~\"$pod\", grpc_service=~\"$grpc_service\", grpc_method=~\"$grpc_method\", grpc_code=\"OK\"\n    }[1m])) \n\nby (grpc_service, grpc_method)\n\n\n",
           "interval": "",
           "legendFormat": "{{grpc_service}} - {{grpc_method}}",
           "range": true,
@@ -608,7 +609,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(\n    rate(grpc_server_client_total{\n        oxia_cluster=~\"$cluster\", pod=~\"$pod\", grpc_service=~\"$grpc_service\", grpc_method=~\"$grpc_method\", grpc_code!=\"OK\"\n    }[1m])) \n\nby (grpc_service, grpc_method, grpc_code) > 0\n\n\n",
+          "expr": "sum(\n    rate(grpc_server_client_total{\n        oxia_cluster=~\"$cluster\", app_kubernetes_io_component=~\"$component\", kubernetes_pod_name=~\"$pod\", grpc_service=~\"$grpc_service\", grpc_method=~\"$grpc_method\", grpc_code!=\"OK\"\n    }[1m])) \n\nby (grpc_service, grpc_method, grpc_code) > 0\n\n\n",
           "interval": "",
           "legendFormat": "{{grpc_method}} - {{ grpc_code }}",
           "range": true,
@@ -705,7 +706,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(\n    rate(grpc_client_msg_sent_total{\n        oxia_cluster=~\"$cluster\", pod=~\"$pod\", grpc_service=~\"$grpc_service\", grpc_method=~\"$grpc_method\"\n    }[1m])\n) \nby (grpc_service, grpc_method)\n\n\n",
+          "expr": "sum(\n    rate(grpc_client_msg_sent_total{\n        oxia_cluster=~\"$cluster\", app_kubernetes_io_component=~\"$component\", kubernetes_pod_name=~\"$pod\", grpc_service=~\"$grpc_service\", grpc_method=~\"$grpc_method\"\n    }[1m])\n) \nby (grpc_service, grpc_method)\n\n\n",
           "interval": "",
           "legendFormat": "{{grpc_service}} - {{grpc_method}}",
           "range": true,
@@ -801,7 +802,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(\n    rate(grpc_client_msg_received_total{\n        oxia_cluster=~\"$cluster\", pod=~\"$pod\", grpc_service=~\"$grpc_service\", grpc_method=~\"$grpc_method\"\n    }[1m])) \n\nby (grpc_service, grpc_method)\n\n\n",
+          "expr": "sum(\n    rate(grpc_client_msg_received_total{\n        oxia_cluster=~\"$cluster\", app_kubernetes_io_component=~\"$component\", kubernetes_pod_name=~\"$pod\", grpc_service=~\"$grpc_service\", grpc_method=~\"$grpc_method\"\n    }[1m])) \n\nby (grpc_service, grpc_method)\n\n\n",
           "interval": "",
           "legendFormat": "{{grpc_service}} - {{grpc_method}}",
           "range": true,
@@ -821,8 +822,8 @@
       {
         "current": {
           "selected": false,
-          "text": "Prometheus",
-          "value": "Prometheus"
+          "text": "snc-test-cilium-gcp-use1",
+          "value": "snc-test-cilium-gcp-use1"
         },
         "hide": 0,
         "includeAll": false,
@@ -830,6 +831,7 @@
         "name": "DataSource",
         "options": [],
         "query": "prometheus",
+        "queryValue": "cili",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
@@ -837,10 +839,9 @@
       },
       {
         "current": {
-          "isNone": true,
           "selected": false,
-          "text": "None",
-          "value": ""
+          "text": "oxia",
+          "value": "oxia"
         },
         "datasource": {
           "type": "prometheus",
@@ -865,7 +866,7 @@
       },
       {
         "current": {
-          "selected": true,
+          "selected": false,
           "text": [
             "All"
           ],
@@ -889,14 +890,14 @@
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
-        "regex": "/.*job=\"([^\"]*).*/",
+        "regex": "/.*app_kubernetes_io_component=\"([^\"]*).*/",
         "skipUrlSync": false,
         "sort": 0,
         "type": "query"
       },
       {
         "current": {
-          "selected": true,
+          "selected": false,
           "text": [
             "All"
           ],
@@ -908,7 +909,7 @@
           "type": "prometheus",
           "uid": "${DataSource}"
         },
-        "definition": "grpc_server_handled_total{oxia_cluster=~\"$cluster\", job=~\"$component\"}",
+        "definition": "grpc_server_handled_total{oxia_cluster=~\"$cluster\", app_kubernetes_io_component=~\"$component\"}",
         "hide": 0,
         "includeAll": true,
         "label": "Pod",
@@ -916,18 +917,18 @@
         "name": "pod",
         "options": [],
         "query": {
-          "query": "grpc_server_handled_total{oxia_cluster=~\"$cluster\", job=~\"$component\"}",
+          "query": "grpc_server_handled_total{oxia_cluster=~\"$cluster\", app_kubernetes_io_component=~\"$component\"}",
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
-        "regex": "/.*pod=\"([^\"]*).*/",
+        "regex": "/.*kubernetes_pod_name=\"([^\"]*).*/",
         "skipUrlSync": false,
         "sort": 1,
         "type": "query"
       },
       {
         "current": {
-          "selected": true,
+          "selected": false,
           "text": [
             "All"
           ],
@@ -939,7 +940,7 @@
           "type": "prometheus",
           "uid": "${DataSource}"
         },
-        "definition": "grpc_server_handled_total{oxia_cluster=~\"$cluster\", job=~\"$component\"}",
+        "definition": "grpc_server_handled_total{oxia_cluster=~\"$cluster\", app_kubernetes_io_component=~\"$component\"}",
         "hide": 0,
         "includeAll": true,
         "label": "gRPC Service",
@@ -947,7 +948,7 @@
         "name": "grpc_service",
         "options": [],
         "query": {
-          "query": "grpc_server_handled_total{oxia_cluster=~\"$cluster\", job=~\"$component\"}",
+          "query": "grpc_server_handled_total{oxia_cluster=~\"$cluster\", app_kubernetes_io_component=~\"$component\"}",
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
@@ -958,7 +959,7 @@
       },
       {
         "current": {
-          "selected": true,
+          "selected": false,
           "text": [
             "All"
           ],
@@ -970,7 +971,7 @@
           "type": "prometheus",
           "uid": "${DataSource}"
         },
-        "definition": "grpc_server_handled_total{oxia_cluster=~\"$cluster\", job=~\"$component\", grpc_service=~\"$grpc_service\"}",
+        "definition": "grpc_server_handled_total{oxia_cluster=~\"$cluster\", app_kubernetes_io_component=~\"$component\", grpc_service=~\"$grpc_service\"}",
         "hide": 0,
         "includeAll": true,
         "label": "gRPC Method",
@@ -978,7 +979,7 @@
         "name": "grpc_method",
         "options": [],
         "query": {
-          "query": "grpc_server_handled_total{oxia_cluster=~\"$cluster\", job=~\"$component\", grpc_service=~\"$grpc_service\"}",
+          "query": "grpc_server_handled_total{oxia_cluster=~\"$cluster\", app_kubernetes_io_component=~\"$component\", grpc_service=~\"$grpc_service\"}",
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
@@ -997,6 +998,6 @@
   "timezone": "",
   "title": "Oxia - gRPC",
   "uid": "-cnjuJh4k",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

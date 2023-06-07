@@ -24,6 +24,7 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
+  "id": 149,
   "links": [],
   "liveNow": false,
   "panels": [
@@ -195,8 +196,8 @@
             "uid": "${DataSource}"
           },
           "editorMode": "code",
-          "expr": "sum by(shard) (rate(oxia_coordinator_leader_election_latency_milliseconds_count{oxia_cluster=~\"$cluster\", oxia_namespace=~\"$namespace\", shard=~\"$shard\"}[1m])) * 60",
-          "legendFormat": "{{namespace}}-{{shard}}",
+          "expr": "sum by(oxia_namespace, shard) (rate(oxia_coordinator_leader_election_latency_milliseconds_count{oxia_cluster=~\"$cluster\", oxia_namespace=~\"$namespace\", shard=~\"$shard\"}[1m])) * 60",
+          "legendFormat": "{{oxia_namespace}}-{{shard}}",
           "range": true,
           "refId": "A"
         }
@@ -288,8 +289,8 @@
             "uid": "${DataSource}"
           },
           "editorMode": "code",
-          "expr": "sum by (shard) (rate(oxia_coordinator_leader_election_failed_total_total{oxia_cluster=~\"$cluster\",oxia_namespace=~\"$namespace\",  shard=~\"$shard\"}[1m]) * 60)",
-          "legendFormat": "{{shard}}",
+          "expr": "sum by (oxia_namespace, shard) (rate(oxia_coordinator_leader_election_failed_total{oxia_cluster=~\"$cluster\",oxia_namespace=~\"$namespace\",  shard=~\"$shard\"}[1m]) * 60)",
+          "legendFormat": "{{oxia_namespace}} - {{shard}}",
           "range": true,
           "refId": "A"
         }
@@ -383,7 +384,7 @@
             "uid": "${DataSource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum(oxia_coordinator_leader_election_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", oxia_namespace=~\"$namespace\", shard=~\"$shard\"}) by (le, shard))",
+          "expr": "histogram_quantile(0.50, sum(oxia_coordinator_leader_election_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", oxia_namespace=~\"$namespace\", shard=~\"$shard\"}) by (le, shard, oxia_namespace))",
           "legendFormat": "{{oxia_namespace}}-{{shard}}",
           "range": true,
           "refId": "A"
@@ -478,8 +479,8 @@
             "uid": "${DataSource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum(oxia_coordinator_leader_election_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", oxia_namespace=~\"$namespace\", shard=~\"$shard\"}) by (le, shard))",
-          "legendFormat": "{{shard}}",
+          "expr": "histogram_quantile(0.99, sum(oxia_coordinator_leader_election_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", oxia_namespace=~\"$namespace\", shard=~\"$shard\"}) by (le, shard, oxia_namespace))",
+          "legendFormat": "{{oxia_namespace}} - {{shard}}",
           "range": true,
           "refId": "A"
         }
@@ -573,8 +574,8 @@
             "uid": "${DataSource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.999, sum(oxia_coordinator_leader_election_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", oxia_namespace=~\"$namespace\", shard=~\"$shard\"}) by (le, shard))",
-          "legendFormat": "{{shard}}",
+          "expr": "histogram_quantile(0.999, sum(oxia_coordinator_leader_election_latency_milliseconds_bucket{oxia_cluster=~\"$cluster\", oxia_namespace=~\"$namespace\", shard=~\"$shard\"}) by (le, shard, oxia_namespace))",
+          "legendFormat": "{{oxia_namespace}} - {{shard}}",
           "range": true,
           "refId": "A"
         }
@@ -830,8 +831,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               },
               {
                 "color": "red",
@@ -925,8 +925,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               },
               {
                 "color": "red",
@@ -1019,8 +1018,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               },
               {
                 "color": "red",
@@ -1094,8 +1092,8 @@
       {
         "current": {
           "selected": false,
-          "text": "my-oxia-cluster",
-          "value": "my-oxia-cluster"
+          "text": "oxia",
+          "value": "oxia"
         },
         "datasource": {
           "type": "prometheus",
@@ -1120,12 +1118,12 @@
       },
       {
         "current": {
-          "selected": true,
+          "selected": false,
           "text": [
-            "All"
+            "matteo"
           ],
           "value": [
-            "$__all"
+            "matteo"
           ]
         },
         "datasource": {
@@ -1151,7 +1149,7 @@
       },
       {
         "current": {
-          "selected": true,
+          "selected": false,
           "text": [
             "All"
           ],
@@ -1190,6 +1188,6 @@
   "timezone": "",
   "title": "Oxia - Coordinator",
   "uid": "tfvR1o24k",
-  "version": 1,
+  "version": 3,
   "weekStart": ""
 }

@@ -26,6 +26,7 @@
   "fiscalYearStartMonth": 0,
   "gnetId": 6671,
   "graphTooltip": 0,
+  "id": 150,
   "links": [],
   "liveNow": false,
   "panels": [
@@ -128,10 +129,10 @@
             "uid": "${DataSource}"
           },
           "editorMode": "code",
-          "expr": "process_resident_memory_bytes{oxia_cluster=~\"$cluster\", job=~\"$component\", pod=~\"$pod\"}",
+          "expr": "process_resident_memory_bytes{oxia_cluster=~\"$cluster\", app_kubernetes_io_component=~\"$component\", kubernetes_pod_name=~\"$pod\"}",
           "format": "time_series",
           "intervalFactor": 2,
-          "legendFormat": "{{pod}}",
+          "legendFormat": "{{kubernetes_pod_name}}",
           "metric": "process_resident_memory_bytes",
           "range": true,
           "refId": "A",
@@ -240,11 +241,11 @@
             "uid": "${DataSource}"
           },
           "editorMode": "code",
-          "expr": "process_virtual_memory_bytes{oxia_cluster=~\"$cluster\", job=~\"$component\", pod=~\"$pod\"}",
+          "expr": "process_virtual_memory_bytes{oxia_cluster=~\"$cluster\", app_kubernetes_io_component=~\"$component\", kubernetes_pod_name=~\"$pod\"}",
           "format": "time_series",
           "hide": false,
           "intervalFactor": 2,
-          "legendFormat": "{{pod}} - virtual",
+          "legendFormat": "{{kubernetes_pod_name}} ",
           "metric": "process_virtual_memory_bytes",
           "range": true,
           "refId": "B",
@@ -353,10 +354,10 @@
             "uid": "${DataSource}"
           },
           "editorMode": "code",
-          "expr": "rate(go_memstats_alloc_bytes_total{oxia_cluster=~\"$cluster\", job=~\"$component\", pod=~\"$pod\"}[1m])",
+          "expr": "rate(go_memstats_alloc_bytes_total{oxia_cluster=~\"$cluster\", app_kubernetes_io_component=~\"$component\", kubernetes_pod_name=~\"$pod\"}[1m])",
           "format": "time_series",
           "intervalFactor": 2,
-          "legendFormat": "{{pod}}",
+          "legendFormat": "{{kubernetes_pod_name}}",
           "metric": "go_memstats_alloc_bytes",
           "range": true,
           "refId": "A",
@@ -465,10 +466,10 @@
             "uid": "${DataSource}"
           },
           "editorMode": "code",
-          "expr": "go_memstats_heap_alloc_bytes{oxia_cluster=~\"$cluster\", job=~\"$component\", pod=~\"$pod\"}",
+          "expr": "go_memstats_heap_alloc_bytes{oxia_cluster=~\"$cluster\", app_kubernetes_io_component=~\"$component\", kubernetes_pod_name=~\"$pod\"}",
           "format": "time_series",
           "intervalFactor": 2,
-          "legendFormat": "{{pod}}",
+          "legendFormat": "{{kubernetes_pod_name}}",
           "metric": "go_memstats_alloc_bytes",
           "range": true,
           "refId": "A",
@@ -564,10 +565,10 @@
             "uid": "${DataSource}"
           },
           "editorMode": "code",
-          "expr": "go_gc_duration_seconds{oxia_cluster=~\"$cluster\", job=~\"$component\", pod=~\"$pod\", quantile=\"0.5\"}",
+          "expr": "go_gc_duration_seconds{oxia_cluster=~\"$cluster\", app_kubernetes_io_component=~\"$component\", kubernetes_pod_name=~\"$pod\", quantile=\"0.5\"}",
           "format": "time_series",
           "intervalFactor": 2,
-          "legendFormat": "{{pod}}",
+          "legendFormat": "{{kubernetes_pod_name}}",
           "metric": "go_gc_duration_seconds",
           "range": true,
           "refId": "A",
@@ -663,10 +664,10 @@
             "uid": "${DataSource}"
           },
           "editorMode": "code",
-          "expr": "go_gc_duration_seconds{oxia_cluster=~\"$cluster\", job=~\"$component\", pod=~\"$pod\", quantile=\"0.75\"}",
+          "expr": "go_gc_duration_seconds{oxia_cluster=~\"$cluster\", app_kubernetes_io_component=~\"$component\", kubernetes_pod_name=~\"$pod\", quantile=\"0.75\"}",
           "format": "time_series",
           "intervalFactor": 2,
-          "legendFormat": "{{pod}}",
+          "legendFormat": "{{kubernetes_pod_name}}",
           "metric": "go_gc_duration_seconds",
           "range": true,
           "refId": "A",
@@ -762,10 +763,10 @@
             "uid": "${DataSource}"
           },
           "editorMode": "code",
-          "expr": "go_gc_duration_seconds{oxia_cluster=~\"$cluster\", job=~\"$component\", pod=~\"$pod\", quantile=\"1\"}",
+          "expr": "go_gc_duration_seconds{oxia_cluster=~\"$cluster\", app_kubernetes_io_component=~\"$component\", kubernetes_pod_name=~\"$pod\", quantile=\"1\"}",
           "format": "time_series",
           "intervalFactor": 2,
-          "legendFormat": "{{pod}}",
+          "legendFormat": "{{kubernetes_pod_name}}",
           "metric": "go_gc_duration_seconds",
           "range": true,
           "refId": "A",
@@ -861,10 +862,10 @@
             "uid": "${DataSource}"
           },
           "editorMode": "code",
-          "expr": "process_open_fds{oxia_cluster=~\"$cluster\", job=~\"$component\", pod=~\"$pod\"}",
+          "expr": "process_open_fds{oxia_cluster=~\"$cluster\", app_kubernetes_io_component=~\"$component\", kubernetes_pod_name=~\"$pod\"}",
           "format": "time_series",
           "intervalFactor": 2,
-          "legendFormat": "{{pod}}",
+          "legendFormat": "{{kubernetes_pod_name}}",
           "metric": "process_open_fds",
           "range": true,
           "refId": "A",
@@ -960,10 +961,10 @@
             "uid": "${DataSource}"
           },
           "editorMode": "code",
-          "expr": "go_goroutines{oxia_cluster=~\"$cluster\", job=~\"$component\", pod=~\"$pod\"}",
+          "expr": "go_goroutines{oxia_cluster=~\"$cluster\", app_kubernetes_io_component=~\"$component\", kubernetes_pod_name=~\"$pod\"}",
           "format": "time_series",
           "intervalFactor": 2,
-          "legendFormat": "{{pod}}",
+          "legendFormat": "{{kubernetes_pod_name}}",
           "metric": "go_goroutines",
           "range": true,
           "refId": "A",
@@ -983,8 +984,8 @@
       {
         "current": {
           "selected": false,
-          "text": "Prometheus",
-          "value": "Prometheus"
+          "text": "default",
+          "value": "default"
         },
         "hide": 0,
         "includeAll": false,
@@ -992,6 +993,7 @@
         "name": "DataSource",
         "options": [],
         "query": "prometheus",
+        "queryValue": "cili",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
@@ -999,9 +1001,9 @@
       },
       {
         "current": {
-          "selected": true,
-          "text": "my-oxia-cluster",
-          "value": "my-oxia-cluster"
+          "selected": false,
+          "text": "oxia",
+          "value": "oxia"
         },
         "datasource": {
           "type": "prometheus",
@@ -1026,12 +1028,12 @@
       },
       {
         "current": {
-          "selected": true,
+          "selected": false,
           "text": [
-            "All"
+            "server"
           ],
           "value": [
-            "$__all"
+            "server"
           ]
         },
         "datasource": {
@@ -1050,7 +1052,7 @@
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
-        "regex": "/.*job=\"([^\"]*).*/",
+        "regex": "/.*app_kubernetes_io_component=\"([^\"]*).*/",
         "skipUrlSync": false,
         "sort": 0,
         "type": "query"
@@ -1070,18 +1072,18 @@
           "type": "prometheus",
           "uid": "${DataSource}"
         },
-        "definition": "process_resident_memory_bytes{oxia_cluster=~\"$cluster\"}",
+        "definition": "process_resident_memory_bytes{oxia_cluster=~\"$cluster\", \napp_kubernetes_io_component=~\"$component\"}",
         "hide": 0,
         "includeAll": true,
         "multi": true,
         "name": "pod",
         "options": [],
         "query": {
-          "query": "process_resident_memory_bytes{oxia_cluster=~\"$cluster\"}",
+          "query": "process_resident_memory_bytes{oxia_cluster=~\"$cluster\", \napp_kubernetes_io_component=~\"$component\"}",
           "refId": "StandardVariableQuery"
         },
         "refresh": 2,
-        "regex": "/.*pod=\"([^\"]*).*/",
+        "regex": "/.*kubernetes_pod_name=\"([^\"]*).*/",
         "skipUrlSync": false,
         "sort": 1,
         "tagValuesQuery": "",
@@ -1092,7 +1094,7 @@
     ]
   },
   "time": {
-    "from": "now-1h",
+    "from": "now-3h",
     "to": "now"
   },
   "timepicker": {
@@ -1123,6 +1125,6 @@
   "timezone": "browser",
   "title": "Oxia - Go Processes",
   "uid": "ypFZFgvmz",
-  "version": 1,
+  "version": 8,
   "weekStart": ""
 }
