@@ -66,6 +66,7 @@ func selectorLabels(component Component, name string) map[string]string {
 		"app.kubernetes.io/name":      "oxia-cluster",
 		"app.kubernetes.io/Component": string(component),
 		"app.kubernetes.io/instance":  _resourceName,
+		"oxia_cluster":                name,
 	}
 }
 func additionalLabels(version string) map[string]string {
