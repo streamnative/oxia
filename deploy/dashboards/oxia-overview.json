@@ -24,6 +24,7 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
+  "id": 153,
   "links": [],
   "liveNow": true,
   "panels": [
@@ -93,7 +94,7 @@
         "showThresholdLabels": false,
         "showThresholdMarkers": true
       },
-      "pluginVersion": "9.3.8",
+      "pluginVersion": "9.3.14",
       "targets": [
         {
           "datasource": {
@@ -807,8 +808,8 @@
       {
         "current": {
           "selected": false,
-          "text": "Prometheus",
-          "value": "Prometheus"
+          "text": "default",
+          "value": "default"
         },
         "hide": 0,
         "includeAll": false,
@@ -823,9 +824,9 @@
       },
       {
         "current": {
-          "selected": true,
-          "text": "my-oxia-cluster",
-          "value": "my-oxia-cluster"
+          "selected": false,
+          "text": "oxia",
+          "value": "oxia"
         },
         "datasource": {
           "type": "prometheus",
@@ -882,13 +883,13 @@
     ]
   },
   "time": {
-    "from": "now-30m",
+    "from": "now-3h",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "",
   "title": "Oxia - Cluster Overview",
   "uid": "ahA3KiLVk",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }
