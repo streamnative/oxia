@@ -15,6 +15,7 @@
 package wal
 
 import (
+	"fmt"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"math"
@@ -85,58 +86,62 @@ func TestWalTrimmer(t *testing.T) {
 }
 
 func TestWalTrimUpToCommitOffset(t *testing.T) {
-	options := &WalFactoryOptions{
-		BaseWalDir:  t.TempDir(),
-		Retention:   2 * time.Millisecond,
-		SegmentSize: 128 * 1024,
+	for i := 0; i < 100; i++ {
+		t.Run(fmt.Sprintf("test-%d", i), func(t *testing.T) {
+			options := &WalFactoryOptions{
+				BaseWalDir:  t.TempDir(),
+				Retention:   2 * time.Millisecond,
+				SegmentSize: 128 * 1024,
+			}
+
+			clock := &common.MockedClock{}
+			commitOffsetProvider := &mockedCommitOffsetProvider{}
+			commitOffsetProvider.commitOffset.Store(math.MaxInt64)
+
+			w, err := newWal(common.DefaultNamespace, 1, options, commitOffsetProvider, clock, 10*time.Millisecond)
+			assert.NoError(t, err)
+
+			commitOffsetProvider.commitOffset.Store(-1)
+
+			for i := int64(0); i < 100; i++ {
+				assert.NoError(t, w.Append(&proto.LogEntry{
+					Term:      0,
+					Offset:    i,
+					Value:     []byte(""),
+					Timestamp: uint64(i),
+				}))
+			}
+
+			clock.Set(5)
+			time.Sleep(100 * time.Microsecond)
+
+			// No trimming should happen yet, because of commit offset
+			assert.EqualValues(t, 0, w.FirstOffset())
+			assert.EqualValues(t, 99, w.LastOffset())
+
+			commitOffsetProvider.commitOffset.Store(2)
+
+			assert.Eventually(t, func() bool {
+				log.Info().Int64("first-offset", w.FirstOffset()).Msg("checking...")
+				return w.FirstOffset() == 2
+			}, 10*time.Second, 10*time.Millisecond)
+
+			clock.Set(89)
+
+			time.Sleep(100 * time.Microsecond)
+
+			// No trimming should happen yet, because of commit offset
+			assert.EqualValues(t, 2, w.FirstOffset())
+			assert.EqualValues(t, 99, w.LastOffset())
+
+			commitOffsetProvider.commitOffset.Store(100)
+
+			assert.Eventually(t, func() bool {
+				log.Info().Int64("first-offset", w.FirstOffset()).Msg("checking...")
+				return w.FirstOffset() == 87
+			}, 10*time.Second, 10*time.Millisecond)
+
+			assert.NoError(t, w.Close())
+		})
 	}
-
-	clock := &common.MockedClock{}
-	commitOffsetProvider := &mockedCommitOffsetProvider{}
-	commitOffsetProvider.commitOffset.Store(math.MaxInt64)
-
-	w, err := newWal(common.DefaultNamespace, 1, options, commitOffsetProvider, clock, 10*time.Millisecond)
-	assert.NoError(t, err)
-
-	commitOffsetProvider.commitOffset.Store(-1)
-
-	for i := int64(0); i < 100; i++ {
-		assert.NoError(t, w.Append(&proto.LogEntry{
-			Term:      0,
-			Offset:    i,
-			Value:     []byte(""),
-			Timestamp: uint64(i),
-		}))
-	}
-
-	clock.Set(5)
-	time.Sleep(100 * time.Microsecond)
-
-	// No trimming should happen yet, because of commit offset
-	assert.EqualValues(t, 0, w.FirstOffset())
-	assert.EqualValues(t, 99, w.LastOffset())
-
-	commitOffsetProvider.commitOffset.Store(2)
-
-	assert.Eventually(t, func() bool {
-		log.Info().Int64("first-offset", w.FirstOffset()).Msg("checking...")
-		return w.FirstOffset() == 2
-	}, 10*time.Second, 10*time.Millisecond)
-
-	clock.Set(89)
-
-	time.Sleep(100 * time.Microsecond)
-
-	// No trimming should happen yet, because of commit offset
-	assert.EqualValues(t, 2, w.FirstOffset())
-	assert.EqualValues(t, 99, w.LastOffset())
-
-	commitOffsetProvider.commitOffset.Store(100)
-
-	assert.Eventually(t, func() bool {
-		log.Info().Int64("first-offset", w.FirstOffset()).Msg("checking...")
-		return w.FirstOffset() == 87
-	}, 10*time.Second, 10*time.Millisecond)
-
-	assert.NoError(t, w.Close())
 }

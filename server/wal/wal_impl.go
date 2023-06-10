@@ -193,6 +193,10 @@ func (t *wal) trim(firstOffset int64) error {
 	t.Lock()
 	defer t.Unlock()
 
+	if firstOffset <= t.firstOffset.Load() {
+		return nil
+	}
+
 	if err := t.readOnlySegments.TrimSegments(firstOffset); err != nil {
 		return err
 	}

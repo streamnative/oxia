@@ -108,8 +108,8 @@ func (ms *readWriteSegment) LastOffset() int64 {
 }
 
 func (ms *readWriteSegment) Read(offset int64) ([]byte, error) {
-	ms.RLock()
-	defer ms.RUnlock()
+	ms.Lock()
+	defer ms.Unlock()
 
 	fileOffset := fileOffset(ms.writingIdx, ms.baseOffset, offset)
 	entryLen := readInt(ms.txnMappedFile, fileOffset)
@@ -124,8 +124,8 @@ func (ms *readWriteSegment) HasSpace(len int) bool {
 }
 
 func (ms *readWriteSegment) Append(offset int64, data []byte) error {
-	ms.RLock()
-	defer ms.RUnlock()
+	ms.Lock()
+	defer ms.Unlock()
 
 	if offset != ms.lastOffset+1 {
 		return ErrorInvalidNextOffset
