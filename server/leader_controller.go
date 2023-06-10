@@ -88,7 +88,6 @@ type leaderController struct {
 	ctx             context.Context
 	cancel          context.CancelFunc
 	wal             wal.Wal
-	walTrimmer      wal.Trimmer
 	db              kv.DB
 	rpcClient       ReplicationRpcProvider
 	sessionManager  SessionManager
@@ -143,12 +142,9 @@ func NewLeaderController(config Config, namespace string, shardId int64, rpcClie
 	lc.ctx, lc.cancel = context.WithCancel(context.Background())
 
 	var err error
-	if lc.wal, err = walFactory.NewWal(namespace, shardId); err != nil {
+	if lc.wal, err = walFactory.NewWal(namespace, shardId, lc); err != nil {
 		return nil, err
 	}
-
-	lc.walTrimmer = wal.NewTrimmer(namespace, shardId, lc.wal, config.WalRetentionTime, wal.DefaultCheckInterval,
-		common.SystemClock, lc)
 
 	if lc.db, err = kv.NewDB(namespace, shardId, kvFactory, config.NotificationsRetentionTime, common.SystemClock); err != nil {
 		return nil, err
@@ -816,10 +812,7 @@ func (lc *leaderController) close() error {
 	}
 	lc.followerAckOffsetGauges = map[string]metrics.Gauge{}
 
-	err = multierr.Combine(err,
-		lc.sessionManager.Close(),
-		lc.walTrimmer.Close(),
-	)
+	err = lc.sessionManager.Close()
 
 	if lc.wal != nil {
 		err = multierr.Append(err, lc.wal.Close())

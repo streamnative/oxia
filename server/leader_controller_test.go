@@ -44,7 +44,7 @@ func TestLeaderController_NotInitialized(t *testing.T) {
 
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	walFactory := wal.NewInMemoryWalFactory()
+	walFactory := newTestWalFactory(t)
 
 	lc, err := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
@@ -80,7 +80,7 @@ func TestLeaderController_Closed(t *testing.T) {
 
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	walFactory := wal.NewInMemoryWalFactory()
+	walFactory := newTestWalFactory(t)
 
 	lc, err := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
@@ -116,7 +116,7 @@ func TestLeaderController_BecomeLeader_NoFencing(t *testing.T) {
 
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	walFactory := wal.NewInMemoryWalFactory()
+	walFactory := newTestWalFactory(t)
 
 	lc, err := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
@@ -142,7 +142,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	walFactory := wal.NewInMemoryWalFactory()
+	walFactory := newTestWalFactory(t)
 
 	lc, err := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
@@ -234,7 +234,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	walFactory := wal.NewInMemoryWalFactory()
+	walFactory := newTestWalFactory(t)
 
 	rpc := newMockRpcClient()
 
@@ -343,7 +343,7 @@ func TestLeaderController_TermPersistent(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{
-		LogDir: t.TempDir(),
+		BaseWalDir: t.TempDir(),
 	})
 
 	lc, err := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
@@ -387,7 +387,7 @@ func TestLeaderController_FenceTerm(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{
-		LogDir: t.TempDir(),
+		BaseWalDir: t.TempDir(),
 	})
 
 	db, err := kv.NewDB(common.DefaultNamespace, shard, kvFactory, 1*time.Hour, common.SystemClock)
@@ -434,7 +434,7 @@ func TestLeaderController_BecomeLeaderTerm(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{
-		LogDir: t.TempDir(),
+		BaseWalDir: t.TempDir(),
 	})
 
 	db, err := kv.NewDB(common.DefaultNamespace, shard, kvFactory, 1*time.Hour, common.SystemClock)
@@ -488,7 +488,7 @@ func TestLeaderController_AddFollower(t *testing.T) {
 
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	walFactory := wal.NewInMemoryWalFactory()
+	walFactory := newTestWalFactory(t)
 
 	lc, err := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
@@ -556,10 +556,10 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{DataDir: t.TempDir()})
 	assert.NoError(t, err)
-	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
+	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{BaseWalDir: t.TempDir()})
 
 	// Prepare some data in the leader log & db
-	wal, err := walFactory.NewWal(common.DefaultNamespace, shard)
+	wal, err := walFactory.NewWal(common.DefaultNamespace, shard, nil)
 	assert.NoError(t, err)
 	db, err := kv.NewDB(common.DefaultNamespace, shard, kvFactory, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
@@ -666,7 +666,7 @@ func TestLeaderController_AddFollowerCheckTerm(t *testing.T) {
 
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	walFactory := wal.NewInMemoryWalFactory()
+	walFactory := newTestWalFactory(t)
 
 	lc, err := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
@@ -723,10 +723,10 @@ func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{
-		LogDir: t.TempDir(),
+		BaseWalDir: t.TempDir(),
 	})
 
-	wal, err := walFactory.NewWal(common.DefaultNamespace, shard)
+	wal, err := walFactory.NewWal(common.DefaultNamespace, shard, nil)
 	assert.NoError(t, err)
 	v, err := pb.Marshal(wrapInLogEntryValue(&proto.WriteRequest{
 		ShardId: &shard,
@@ -790,7 +790,7 @@ func TestLeaderController_Notifications(t *testing.T) {
 	var shard int64 = 1
 
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
-	walFactory := wal.NewInMemoryWalFactory()
+	walFactory := newTestWalFactory(t)
 
 	lc, _ := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	_, _ = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})
@@ -856,7 +856,7 @@ func TestLeaderController_NotificationsCloseLeader(t *testing.T) {
 	var shard int64 = 1
 
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
-	walFactory := wal.NewInMemoryWalFactory()
+	walFactory := newTestWalFactory(t)
 
 	lc, _ := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	_, _ = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})
@@ -905,7 +905,7 @@ func TestLeaderController_List(t *testing.T) {
 	var shard int64 = 1
 
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
-	walFactory := wal.NewInMemoryWalFactory()
+	walFactory := newTestWalFactory(t)
 
 	lc, _ := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	_, _ = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})
@@ -948,7 +948,7 @@ func TestLeaderController_DeleteShard(t *testing.T) {
 	var shard int64 = 1
 
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
-	walFactory := wal.NewInMemoryWalFactory()
+	walFactory := newTestWalFactory(t)
 
 	lc, _ := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	_, _ = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})
@@ -1001,7 +1001,7 @@ func TestLeaderController_DeleteShard_WrongTerm(t *testing.T) {
 	var shard int64 = 1
 
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
-	walFactory := wal.NewInMemoryWalFactory()
+	walFactory := newTestWalFactory(t)
 
 	lc, _ := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	_, _ = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})
@@ -1033,7 +1033,7 @@ func TestLeaderController_GetStatus(t *testing.T) {
 	var shard int64 = 1
 
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
-	walFactory := wal.NewInMemoryWalFactory()
+	walFactory := newTestWalFactory(t)
 
 	lc, _ := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	_, _ = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 2})

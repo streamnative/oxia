@@ -15,9 +15,11 @@
 package wal
 
 import (
+	"github.com/edsrzf/mmap-go"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/sys/unix"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -27,8 +29,7 @@ const (
 )
 
 func BenchmarkFSync_stdlib(b *testing.B) {
-	_ = os.Remove(testFile)
-	f, err := os.Create(testFile)
+	f, err := os.Create(filepath.Join(b.TempDir(), testFile))
 	assert.NoError(b, err)
 	data := make([]byte, writeSize)
 	b.ResetTimer()
@@ -42,12 +43,10 @@ func BenchmarkFSync_stdlib(b *testing.B) {
 	}
 
 	b.StopTimer()
-	_ = os.Remove(testFile)
 }
 
 func BenchmarkFSync_x_sys(b *testing.B) {
-	_ = os.Remove(testFile)
-	f, err := os.Create(testFile)
+	f, err := os.Create(filepath.Join(b.TempDir(), testFile))
 	assert.NoError(b, err)
 	data := make([]byte, writeSize)
 	b.ResetTimer()
@@ -61,5 +60,38 @@ func BenchmarkFSync_x_sys(b *testing.B) {
 	}
 
 	b.StopTimer()
-	_ = os.Remove(testFile)
+}
+
+func BenchmarkMSync(b *testing.B) {
+	f, err := os.Create(filepath.Join(b.TempDir(), testFile))
+	assert.NoError(b, err)
+
+	data := make([]byte, writeSize)
+
+	for i := 0; i < b.N; i++ {
+		_, err = f.Write(data)
+		assert.NoError(b, err)
+	}
+
+	assert.NoError(b, f.Sync())
+
+	mappedFile, err := mmap.MapRegion(f, writeSize*b.N, mmap.RDWR, 0, 0)
+	assert.NoError(b, err)
+
+	b.ResetTimer()
+
+	offset := 0
+	for i := 0; i < b.N; i++ {
+		copy(mappedFile[offset:], data)
+
+		err = mappedFile.Flush()
+		assert.NoError(b, err)
+
+		offset += writeSize
+	}
+
+	b.StopTimer()
+
+	assert.NoError(b, mappedFile.Unmap())
+	assert.NoError(b, f.Close())
 }

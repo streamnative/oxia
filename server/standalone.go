@@ -18,19 +18,21 @@ import (
 	"context"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
+	"os"
 	"oxia/common"
 	"oxia/common/container"
 	"oxia/common/metrics"
 	"oxia/proto"
 	"oxia/server/kv"
 	"oxia/server/wal"
+	"path/filepath"
+	"testing"
 )
 
 type StandaloneConfig struct {
 	Config
 
 	NumShards uint32
-	InMemory  bool
 }
 
 type Standalone struct {
@@ -43,15 +45,23 @@ type Standalone struct {
 	metrics *metrics.PrometheusMetrics
 }
 
-func NewTestConfig() StandaloneConfig {
+func NewTestConfig(t *testing.T) StandaloneConfig {
+	var dir string
+	if t == nil {
+		dir, _ = os.MkdirTemp(os.TempDir(), "oxia-test-*")
+	} else {
+		dir = t.TempDir()
+	}
+
 	return StandaloneConfig{
 		Config: Config{
+			DataDir:             filepath.Join(dir, "db"),
+			WalDir:              filepath.Join(dir, "wal"),
 			InternalServiceAddr: "localhost:0",
 			PublicServiceAddr:   "localhost:0",
 			MetricsServiceAddr:  "",
 		},
 		NumShards: 1,
-		InMemory:  true,
 	}
 }
 
@@ -62,14 +72,11 @@ func NewStandalone(config StandaloneConfig) (*Standalone, error) {
 
 	s := &Standalone{}
 
-	var kvOptions kv.KVFactoryOptions
-	if config.InMemory {
-		kvOptions = kv.KVFactoryOptions{InMemory: true}
-		s.walFactory = wal.NewInMemoryWalFactory()
-	} else {
-		kvOptions = kv.KVFactoryOptions{DataDir: config.DataDir}
-		s.walFactory = wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: config.WalDir})
-	}
+	kvOptions := kv.KVFactoryOptions{DataDir: config.DataDir}
+	s.walFactory = wal.NewWalFactory(&wal.WalFactoryOptions{
+		BaseWalDir: config.WalDir,
+		Retention:  config.WalRetentionTime,
+	})
 	var err error
 	if s.kvFactory, err = kv.NewPebbleKVFactory(&kvOptions); err != nil {
 		return nil, err
