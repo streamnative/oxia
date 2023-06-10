@@ -219,7 +219,7 @@ func (r *readOnlySegmentsGroup) Get(offset int64) (ReadOnlySegment, error) {
 		}
 
 		r.openSegments.Put(segment.BaseOffset(), segment)
-		return segment.(ReadOnlySegment), nil
+		return segment, nil
 	}
 
 	return nil, ErrorOffsetOutOfBounds

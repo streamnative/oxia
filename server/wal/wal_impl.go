@@ -447,7 +447,9 @@ func (t *wal) TruncateLog(lastSafeOffset int64) (int64, error) {
 					return InvalidOffset, err
 				}
 
-				t.currentSegment, err = newReadWriteSegment(t.walPath, segment.BaseOffset(), t.segmentSize)
+				if t.currentSegment, err = newReadWriteSegment(t.walPath, segment.BaseOffset(), t.segmentSize); err != nil {
+					return InvalidOffset, err
+				}
 				if err := t.currentSegment.Truncate(lastSafeOffset); err != nil {
 					return InvalidOffset, err
 				}

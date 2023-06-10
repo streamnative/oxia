@@ -102,7 +102,7 @@ func TestReadWriteSegment_HasSpace(t *testing.T) {
 	assert.True(t, rw.HasSpace(1020))
 	assert.False(t, rw.HasSpace(1021))
 
-	rw.Append(0, make([]byte, 100))
+	assert.NoError(t, rw.Append(0, make([]byte, 100)))
 	assert.True(t, rw.HasSpace(10))
 	assert.False(t, rw.HasSpace(1020))
 	assert.False(t, rw.HasSpace(1020-100))
