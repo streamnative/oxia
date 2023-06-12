@@ -25,8 +25,8 @@ import (
 import "github.com/stretchr/testify/assert"
 
 var testKVOptions = &KVFactoryOptions{
-	InMemory:  true,
-	CacheSize: 10 * 1024,
+	InMemory:    true,
+	CacheSizeMB: 1,
 }
 
 func TestPebbbleSimple(t *testing.T) {
@@ -346,9 +346,9 @@ func TestPebbbleGetWithinBatch(t *testing.T) {
 
 func TestPebbbleDurability(t *testing.T) {
 	options := &KVFactoryOptions{
-		DataDir:   t.TempDir(),
-		CacheSize: 10 * 1024,
-		InMemory:  false,
+		DataDir:     t.TempDir(),
+		CacheSizeMB: 1,
+		InMemory:    false,
 	}
 
 	// Open and write a key
@@ -480,9 +480,9 @@ func TestPebbbleDeleteRangeInBatch(t *testing.T) {
 
 func TestPebbbleDoubleOpen(t *testing.T) {
 	factory, err := NewPebbleKVFactory(&KVFactoryOptions{
-		DataDir:   t.TempDir(),
-		CacheSize: 1024,
-		InMemory:  false,
+		DataDir:     t.TempDir(),
+		CacheSizeMB: 1,
+		InMemory:    false,
 	})
 	assert.NoError(t, err)
 	kv, err := factory.NewKV(common.DefaultNamespace, 1)
@@ -502,9 +502,9 @@ func TestPebbleSnapshot(t *testing.T) {
 
 	{
 		factory, err := NewPebbleKVFactory(&KVFactoryOptions{
-			DataDir:   originalLocation,
-			CacheSize: 1024,
-			InMemory:  false,
+			DataDir:     originalLocation,
+			CacheSizeMB: 1,
+			InMemory:    false,
 		})
 		assert.NoError(t, err)
 		kv, err := factory.NewKV(common.DefaultNamespace, 1)
@@ -557,9 +557,9 @@ func TestPebbleSnapshot(t *testing.T) {
 	{
 		// Open the database from the copied location
 		factory2, err := NewPebbleKVFactory(&KVFactoryOptions{
-			DataDir:   copiedLocation,
-			CacheSize: 1024,
-			InMemory:  false,
+			DataDir:     copiedLocation,
+			CacheSizeMB: 1,
+			InMemory:    false,
 		})
 		assert.NoError(t, err)
 		kv2, err := factory2.NewKV(common.DefaultNamespace, 1)
@@ -584,9 +584,9 @@ func TestPebbleSnapshot_Loader(t *testing.T) {
 	newLocation := t.TempDir()
 
 	factory, err := NewPebbleKVFactory(&KVFactoryOptions{
-		DataDir:   originalLocation,
-		CacheSize: 1024,
-		InMemory:  false,
+		DataDir:     originalLocation,
+		CacheSizeMB: 1,
+		InMemory:    false,
 	})
 	assert.NoError(t, err)
 	kv, err := factory.NewKV(common.DefaultNamespace, 1)
@@ -608,9 +608,9 @@ func TestPebbleSnapshot_Loader(t *testing.T) {
 
 	// Use the snapshot to load a new DB
 	factory2, err := NewPebbleKVFactory(&KVFactoryOptions{
-		DataDir:   newLocation,
-		CacheSize: 1024,
-		InMemory:  false,
+		DataDir:     newLocation,
+		CacheSizeMB: 1,
+		InMemory:    false,
 	})
 	assert.NoError(t, err)
 
