@@ -315,10 +315,10 @@ func (t *wal) runSync() {
 
 		timer := t.syncLatency.Timer()
 		if err := segment.Flush(); err != nil {
-			timer.Done()
 			t.lastSyncErr.Store(&err)
 			t.writeErrors.Inc()
 		} else {
+			timer.Done()
 			t.lastSyncedOffset.Store(lastAppendedOffset)
 			t.lastSyncErr.Store(nil)
 		}
