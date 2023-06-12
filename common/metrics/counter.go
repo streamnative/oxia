@@ -78,7 +78,7 @@ func (c *upDownCounter) Sub(diff int) {
 	c.Add(-diff)
 }
 
-func NewUpDownCounter(name string, description string, unit Unit, labels map[string]any) Counter {
+func NewUpDownCounter(name string, description string, unit Unit, labels map[string]any) UpDownCounter {
 	sc, err := meter.Int64UpDownCounter(name,
 		instrument.WithUnit(string(unit)),
 		instrument.WithDescription(description))
