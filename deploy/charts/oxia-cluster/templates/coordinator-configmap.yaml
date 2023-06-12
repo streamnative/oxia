@@ -27,6 +27,6 @@ data:
     servers:
       {{- $vars := dict "name" .Release.Name "namespace" .Release.Namespace "public" .Values.server.ports.public "internal" .Values.server.ports.internal }}
       {{- range until (int .Values.server.replicas) }}
-      - public: {{ $vars.name }}-{{ . }}.{{ $vars.name }}.{{ $vars.namespace }}.svc.cluster.local:{{ $vars.public }}
-        internal: {{ $vars.name }}-{{ . }}.{{ $vars.name }}:{{ $vars.internal }}
+      - public: {{ $vars.name }}-{{ . }}.{{ $vars.name }}-svc.{{ $vars.namespace }}.svc.cluster.local:{{ $vars.public }}
+        internal: {{ $vars.name }}-{{ . }}.{{ $vars.name }}-svc:{{ $vars.internal }}
       {{- end }}
