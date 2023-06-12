@@ -20,6 +20,7 @@ import (
 	"oxia/cmd/flag"
 	"oxia/common"
 	"oxia/server"
+	"oxia/server/kv"
 	"time"
 )
 
@@ -41,7 +42,8 @@ func init() {
 	Cmd.Flags().StringVar(&conf.DataDir, "data-dir", "./data/db", "Directory where to store data")
 	Cmd.Flags().StringVar(&conf.WalDir, "wal-dir", "./data/wal", "Directory for write-ahead-logs")
 	Cmd.Flags().DurationVar(&conf.WalRetentionTime, "wal-retention-time", 1*time.Hour, "Retention time for the entries in the write-ahead-log")
-	Cmd.Flags().DurationVar(&conf.NotificationsRetentionTime, "notifications-retention-time", 1*time.Hour, "Retention time for the db notifications to clients")
+	Cmd.Flags().Int64Var(&conf.DbBlockCacheMB, "db-cache-size-mb", kv.DefaultKVFactoryOptions.CacheSizeMB,
+		"Max size of the shared DB cache")
 }
 
 func exec(*cobra.Command, []string) {
