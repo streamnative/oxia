@@ -17,6 +17,7 @@ package server
 import (
 	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
+	"google.golang.org/grpc/health"
 	"oxia/common/container"
 	"oxia/common/metrics"
 	"oxia/server/kv"
@@ -45,6 +46,8 @@ type Server struct {
 	metrics                   *metrics.PrometheusMetrics
 	walFactory                wal.WalFactory
 	kvFactory                 kv.KVFactory
+
+	healthServer *health.Server
 }
 
 func New(config Config) (*Server, error) {
@@ -69,14 +72,15 @@ func NewWithGrpcProvider(config Config, provider container.GrpcProvider, replica
 		walFactory: wal.NewWalFactory(&wal.WalFactoryOptions{
 			LogDir: config.WalDir,
 		}),
-		kvFactory: kvFactory,
+		kvFactory:    kvFactory,
+		healthServer: health.NewServer(),
 	}
 
 	s.shardsDirector = NewShardsDirector(config, s.walFactory, s.kvFactory, replicationRpcProvider)
-	s.shardAssignmentDispatcher = NewShardAssignmentDispatcher()
+	s.shardAssignmentDispatcher = NewShardAssignmentDispatcher(s.healthServer)
 
 	s.internalRpcServer, err = newInternalRpcServer(provider, config.InternalServiceAddr,
-		s.shardsDirector, s.shardAssignmentDispatcher)
+		s.shardsDirector, s.shardAssignmentDispatcher, s.healthServer)
 	if err != nil {
 		return nil, err
 	}
@@ -105,6 +109,8 @@ func (s *Server) InternalPort() int {
 }
 
 func (s *Server) Close() error {
+	s.healthServer.Shutdown()
+
 	err := multierr.Combine(
 		s.shardAssignmentDispatcher.Close(),
 		s.shardsDirector.Close(),
