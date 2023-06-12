@@ -19,12 +19,15 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
 	"io"
 	"oxia/common"
+	"oxia/common/container"
 	"oxia/common/metrics"
 	"oxia/proto"
 	"oxia/server/util"
@@ -50,6 +53,7 @@ type shardAssignmentDispatcher struct {
 	clients      map[int64]chan *proto.ShardAssignments
 	nextClientId int64
 	standalone   bool
+	healthServer *health.Server
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -209,6 +213,10 @@ func (s *shardAssignmentDispatcher) PushShardAssignments(stream proto.OxiaCoordi
 }
 
 func (s *shardAssignmentDispatcher) updateShardAssignment(assignments *proto.ShardAssignments) error {
+	// Once we receive the first update of the shards mapping, this service can be
+	// considered "ready" and it will be able to respond to service discovery requests
+	s.healthServer.SetServingStatus(container.ReadinessProbeService, grpc_health_v1.HealthCheckResponse_SERVING)
+
 	s.Lock()
 	defer s.Unlock()
 
@@ -230,10 +238,11 @@ func (s *shardAssignmentDispatcher) updateShardAssignment(assignments *proto.Sha
 	return nil
 }
 
-func NewShardAssignmentDispatcher() ShardAssignmentsDispatcher {
+func NewShardAssignmentDispatcher(healthServer *health.Server) ShardAssignmentsDispatcher {
 	s := &shardAssignmentDispatcher{
-		assignments: nil,
-		clients:     make(map[int64]chan *proto.ShardAssignments),
+		assignments:  nil,
+		healthServer: healthServer,
+		clients:      make(map[int64]chan *proto.ShardAssignments),
 		log: log.With().
 			Str("component", "shard-assignment-dispatcher").
 			Logger(),
@@ -254,7 +263,7 @@ func NewShardAssignmentDispatcher() ShardAssignmentsDispatcher {
 }
 
 func NewStandaloneShardAssignmentDispatcher(numShards uint32) ShardAssignmentsDispatcher {
-	assignmentDispatcher := NewShardAssignmentDispatcher().(*shardAssignmentDispatcher)
+	assignmentDispatcher := NewShardAssignmentDispatcher(health.NewServer()).(*shardAssignmentDispatcher)
 	assignmentDispatcher.standalone = true
 	res := &proto.ShardAssignments{
 		Namespaces: map[string]*proto.NamespaceShardsAssignment{
