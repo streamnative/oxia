@@ -153,6 +153,9 @@ func newWal(namespace string, shard int64, options *WalFactoryOptions, commitOff
 }
 
 func (t *wal) readAtIndex(index int64) (*proto.LogEntry, error) {
+	t.RLock()
+	defer t.RUnlock()
+
 	timer := t.readLatency.Timer()
 	defer timer.Done()
 

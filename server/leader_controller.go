@@ -797,10 +797,6 @@ func (lc *leaderController) close() error {
 		err = multierr.Append(err, lc.walWriteBatcher.Close())
 		lc.walWriteBatcher = nil
 	}
-	if lc.quorumAckTracker != nil {
-		err = multierr.Append(err, lc.quorumAckTracker.Close())
-		lc.quorumAckTracker = nil
-	}
 
 	for _, follower := range lc.followers {
 		err = multierr.Append(err, follower.Close())
@@ -823,6 +819,12 @@ func (lc *leaderController) close() error {
 		err = multierr.Append(err, lc.db.Close())
 		lc.db = nil
 	}
+
+	if lc.quorumAckTracker != nil {
+		err = multierr.Append(err, lc.quorumAckTracker.Close())
+		lc.quorumAckTracker = nil
+	}
+
 	return err
 }
 
@@ -844,7 +846,11 @@ func getLastEntryIdInWal(wal wal.Wal) (*proto.EntryId, error) {
 }
 
 func (lc *leaderController) CommitOffset() int64 {
-	return lc.quorumAckTracker.CommitOffset()
+	qat := lc.quorumAckTracker
+	if qat != nil {
+		return qat.CommitOffset()
+	}
+	return wal.InvalidOffset
 }
 
 func (lc *leaderController) GetStatus(request *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
