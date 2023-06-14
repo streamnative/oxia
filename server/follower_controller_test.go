@@ -901,7 +901,7 @@ func TestFollower_HandleSnapshotWithWrongTerm(t *testing.T) {
 		DataDir: t.TempDir(),
 	})
 	assert.NoError(t, err)
-	walFactory := wal.NewInMemoryWalFactory()
+	walFactory := newTestWalFactory(t)
 
 	fc, err := NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
