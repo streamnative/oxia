@@ -26,6 +26,8 @@ import (
 
 const (
 	maxGrpcFrameSize = 256 * 1024 * 1024
+
+	ReadinessProbeService = "oxia-readiness"
 )
 
 type GrpcServer interface {

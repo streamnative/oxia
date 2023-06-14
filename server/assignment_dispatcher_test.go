@@ -15,9 +15,15 @@
 package server
 
 import (
+	"context"
 	"github.com/stretchr/testify/assert"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/status"
 	"math"
 	"oxia/common"
+	"oxia/common/container"
 	"oxia/proto"
 	"sync"
 	"testing"
@@ -25,7 +31,7 @@ import (
 )
 
 func TestUninitializedAssignmentDispatcher(t *testing.T) {
-	dispatcher := NewShardAssignmentDispatcher()
+	dispatcher := NewShardAssignmentDispatcher(health.NewServer())
 	mockClient := newMockShardAssignmentClientStream()
 	assert.False(t, dispatcher.Initialized())
 	req := &proto.ShardAssignmentsRequest{Namespace: common.DefaultNamespace}
@@ -35,7 +41,7 @@ func TestUninitializedAssignmentDispatcher(t *testing.T) {
 }
 
 func TestShardAssignmentDispatcher_Initialized(t *testing.T) {
-	dispatcher := NewShardAssignmentDispatcher()
+	dispatcher := NewShardAssignmentDispatcher(health.NewServer())
 	coordinatorStream := newMockShardAssignmentControllerStream()
 	go func() {
 		err := dispatcher.PushShardAssignments(coordinatorStream)
@@ -76,12 +82,56 @@ func TestShardAssignmentDispatcher_Initialized(t *testing.T) {
 
 }
 
+func TestShardAssignmentDispatcher_ReadinessProbe(t *testing.T) {
+	healthServer := health.NewServer()
+	dispatcher := NewShardAssignmentDispatcher(healthServer)
+	coordinatorStream := newMockShardAssignmentControllerStream()
+	go func() {
+		err := dispatcher.PushShardAssignments(coordinatorStream)
+		assert.NoError(t, err)
+	}()
+
+	assert.False(t, dispatcher.Initialized())
+
+	// Readiness probe should fail while not initialized
+	resp, err := healthServer.Check(context.Background(), &grpc_health_v1.HealthCheckRequest{
+		Service: container.ReadinessProbeService,
+	})
+
+	assert.Equal(t, codes.NotFound, status.Code(err))
+	assert.Nil(t, resp)
+
+	coordinatorStream.AddRequest(&proto.ShardAssignments{
+		Namespaces: map[string]*proto.NamespaceShardsAssignment{
+			common.DefaultNamespace: {
+				Assignments: []*proto.ShardAssignment{
+					newShardAssignment(0, "server1", 0, 100),
+					newShardAssignment(1, "server2", 100, math.MaxUint32),
+				},
+				ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
+			},
+		},
+	})
+	assert.Eventually(t, func() bool {
+		return dispatcher.Initialized()
+	}, 10*time.Second, 10*time.Millisecond)
+
+	resp, err = healthServer.Check(context.Background(), &grpc_health_v1.HealthCheckRequest{
+		Service: container.ReadinessProbeService,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, grpc_health_v1.HealthCheckResponse_SERVING, resp.Status)
+
+	assert.NoError(t, dispatcher.Close())
+
+}
+
 func TestShardAssignmentDispatcher_AddClient(t *testing.T) {
 	shard0InitialAssignment := newShardAssignment(0, "server1", 0, 100)
 	shard1InitialAssignment := newShardAssignment(1, "server2", 100, math.MaxUint32)
 	shard1UpdatedAssignment := newShardAssignment(1, "server3", 100, math.MaxUint32)
 
-	dispatcher := NewShardAssignmentDispatcher()
+	dispatcher := NewShardAssignmentDispatcher(health.NewServer())
 
 	coordinatorStream := newMockShardAssignmentControllerStream()
 	go func() {
@@ -163,7 +213,7 @@ func TestShardAssignmentDispatcher_AddClient(t *testing.T) {
 }
 
 func TestShardAssignmentDispatcher_MultipleNamespaces(t *testing.T) {
-	dispatcher := NewShardAssignmentDispatcher()
+	dispatcher := NewShardAssignmentDispatcher(health.NewServer())
 
 	coordinatorStream := newMockShardAssignmentControllerStream()
 	go func() {

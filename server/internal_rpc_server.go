@@ -43,11 +43,12 @@ type internalRpcServer struct {
 	log                  zerolog.Logger
 }
 
-func newInternalRpcServer(grpcProvider container.GrpcProvider, bindAddress string, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher) (*internalRpcServer, error) {
+func newInternalRpcServer(grpcProvider container.GrpcProvider, bindAddress string, shardsDirector ShardsDirector,
+	assignmentDispatcher ShardAssignmentsDispatcher, healthServer *health.Server) (*internalRpcServer, error) {
 	server := &internalRpcServer{
 		shardsDirector:       shardsDirector,
 		assignmentDispatcher: assignmentDispatcher,
-		healthServer:         health.NewServer(),
+		healthServer:         healthServer,
 		log: log.With().
 			Str("component", "internal-rpc-server").
 			Logger(),
@@ -67,7 +68,6 @@ func newInternalRpcServer(grpcProvider container.GrpcProvider, bindAddress strin
 }
 
 func (s *internalRpcServer) Close() error {
-	s.healthServer.Shutdown()
 	return s.grpcServer.Close()
 }
 
@@ -82,6 +82,7 @@ func (s *internalRpcServer) PushShardAssignments(srv proto.OxiaCoordination_Push
 			Str("peer", common.GetPeer(srv.Context())).
 			Msg("Failed to provide shards assignments updates")
 	}
+
 	return err
 }
 

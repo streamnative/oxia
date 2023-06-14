@@ -895,6 +895,77 @@ func TestFollower_GetStatus(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
+func TestFollower_HandleSnapshotWithWrongTerm(t *testing.T) {
+	var shardId int64
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+		DataDir: t.TempDir(),
+	})
+	assert.NoError(t, err)
+	walFactory := wal.NewInMemoryWalFactory()
+
+	fc, err := NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
+	assert.NoError(t, err)
+
+	_, err = fc.NewTerm(&proto.NewTermRequest{Term: 1})
+	assert.NoError(t, err)
+	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
+	assert.EqualValues(t, 1, fc.Term())
+
+	stream := newMockServerReplicateStream()
+	go func() { assert.NoError(t, fc.Replicate(stream)) }()
+
+	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, 0))
+
+	// Wait for acks
+	r1 := stream.GetResponse()
+	assert.Equal(t, proto.ServingStatus_FOLLOWER, fc.Status())
+	assert.EqualValues(t, 0, r1.Offset)
+	close(stream.requests)
+
+	// Load snapshot into follower
+	snapshot := prepareTestDb(t)
+
+	snapshotStream := newMockServerSendSnapshotStream()
+
+	wg := common.NewWaitGroup(1)
+
+	go func() {
+		err := fc.SendSnapshot(snapshotStream)
+		if err != nil {
+			wg.Fail(err)
+		} else {
+			wg.Done()
+		}
+	}()
+
+	for ; snapshot.Valid(); snapshot.Next() {
+		chunk, err := snapshot.Chunk()
+		assert.NoError(t, err)
+		content := chunk.Content()
+		snapshotStream.AddChunk(&proto.SnapshotChunk{
+			Term:       2,
+			Name:       chunk.Name(),
+			Content:    content,
+			ChunkIndex: chunk.Index(),
+			ChunkCount: chunk.TotalCount(),
+		})
+	}
+
+	close(snapshotStream.chunks)
+
+	// The snapshot sending should fail because the term is invalid
+	assert.ErrorIs(t, common.ErrorInvalidTerm, wg.Wait(context.Background()))
+
+	_, err = fc.NewTerm(&proto.NewTermRequest{Term: 5})
+	assert.NoError(t, err)
+	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
+	assert.EqualValues(t, 5, fc.Term())
+
+	assert.NoError(t, fc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
 func closeChanIsNotNil(fc FollowerController) func() bool {
 	return func() bool {
 		_fc := fc.(*followerController)

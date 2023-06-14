@@ -260,6 +260,13 @@ func (fc *followerController) NewTerm(req *proto.NewTermRequest) (*proto.NewTerm
 		return nil, common.ErrorInvalidStatus
 	}
 
+	if fc.db == nil {
+		var err error
+		if fc.db, err = kv.NewDB(fc.namespace, fc.shardId, fc.kvFactory, fc.config.NotificationsRetentionTime, common.SystemClock); err != nil {
+			return nil, errors.Wrapf(err, "failed to reopen database")
+		}
+	}
+
 	if err := fc.db.UpdateTerm(req.Term); err != nil {
 		return nil, err
 	}
