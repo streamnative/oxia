@@ -31,8 +31,8 @@ import (
 )
 
 var testKVOptions = &kv.KVFactoryOptions{
-	InMemory:  true,
-	CacheSize: 10 * 1024,
+	InMemory:    true,
+	CacheSizeMB: 1,
 }
 
 func init() {
@@ -356,8 +356,8 @@ func TestFollower_TruncateAfterRestart(t *testing.T) {
 func TestFollower_PersistentTerm(t *testing.T) {
 	var shardId int64
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
-		DataDir:   t.TempDir(),
-		CacheSize: 10 * 1024,
+		DataDir:     t.TempDir(),
+		CacheSizeMB: 1,
 	})
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{
@@ -447,8 +447,8 @@ func TestFollower_CommitOffsetLastEntry(t *testing.T) {
 func TestFollowerController_RejectEntriesWithDifferentTerm(t *testing.T) {
 	var shardId int64
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
-		DataDir:   t.TempDir(),
-		CacheSize: 10 * 1024,
+		DataDir:     t.TempDir(),
+		CacheSizeMB: 1,
 	})
 	assert.NoError(t, err)
 

@@ -38,8 +38,6 @@ type Config struct {
 	DbBlockCacheMB int64
 }
 
-const defaultDbCacheSizeMB = 100 * 1024 * 1024
-
 type Server struct {
 	*internalRpcServer
 	*publicRpcServer
