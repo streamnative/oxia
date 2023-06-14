@@ -86,7 +86,7 @@ func (s *publicRpcServer) Write(ctx context.Context, write *proto.WriteRequest) 
 		return nil, err
 	}
 
-	wr, err := lc.Write(write)
+	wr, err := lc.Write(ctx, write)
 	if err != nil {
 		s.log.Warn().Err(err).
 			Msg("Failed to perform write operation")

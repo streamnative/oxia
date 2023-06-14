@@ -78,6 +78,9 @@ type sessionManager struct {
 	sessions         map[SessionId]*session
 	log              zerolog.Logger
 
+	ctx    context.Context
+	cancel context.CancelFunc
+
 	createdSessions metrics.Counter
 	closedSessions  metrics.Counter
 	expiredSessions metrics.Counter
@@ -104,6 +107,8 @@ func NewSessionManager(namespace string, shardId int64, controller *leaderContro
 		expiredSessions: metrics.NewCounter("oxia_server_sessions_expired",
 			"The total number of sessions expired", "count", labels),
 	}
+
+	sm.ctx, sm.cancel = context.WithCancel(context.Background())
 
 	sm.activeSessions = metrics.NewGauge("oxia_server_session_active",
 		"The number of sessions currently active", "count", labels, func() int64 {
@@ -134,7 +139,7 @@ func (sm *sessionManager) createSession(request *proto.CreateSessionRequest, min
 	if err != nil {
 		return nil, errors.Wrap(err, "could not marshal session metadata")
 	}
-	id, resp, err := sm.leaderController.write(func(id int64) *proto.WriteRequest {
+	id, resp, err := sm.leaderController.write(sm.ctx, func(id int64) *proto.WriteRequest {
 		return &proto.WriteRequest{
 			ShardId: &request.ShardId,
 			Puts: []*proto.PutRequest{{
@@ -273,6 +278,7 @@ func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, 
 func (sm *sessionManager) Close() error {
 	sm.Lock()
 	defer sm.Unlock()
+	sm.cancel()
 	for _, s := range sm.sessions {
 		delete(sm.sessions, s.id)
 		s.Lock()

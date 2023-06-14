@@ -124,7 +124,7 @@ func (s *Standalone) initializeShards(numShards uint32) error {
 			return err
 		}
 
-		if _, err := lc.BecomeLeader(&proto.BecomeLeaderRequest{
+		if _, err := lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
 			ShardId:           i,
 			Term:              newTerm,
 			ReplicationFactor: 1,

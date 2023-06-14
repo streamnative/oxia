@@ -15,6 +15,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"io"
 	"oxia/common"
@@ -44,7 +45,7 @@ type QuorumAckTracker interface {
 	// WaitForCommitOffset
 	// Waits for the specific entry id to be fully committed.
 	// After that, invokes the function f
-	WaitForCommitOffset(offset int64, f func() (*proto.WriteResponse, error)) (*proto.WriteResponse, error)
+	WaitForCommitOffset(ctx context.Context, offset int64, f func() (*proto.WriteResponse, error)) (*proto.WriteResponse, error)
 
 	// NextOffset returns the offset for the next entry to write
 	// Note this can go ahead of the head-offset as there can be multiple operations in flight.
@@ -56,7 +57,7 @@ type QuorumAckTracker interface {
 
 	// WaitForHeadOffset
 	// Waits until the specified entry is written on the wal
-	WaitForHeadOffset(offset int64)
+	WaitForHeadOffset(ctx context.Context, offset int64) error
 
 	// NewCursorAcker creates a tracker for a new cursor
 	// The `ackOffset` is the previous last-acked position for the cursor
@@ -65,8 +66,8 @@ type QuorumAckTracker interface {
 
 type quorumAckTracker struct {
 	sync.Mutex
-	waitForHeadOffset   *sync.Cond
-	waitForCommitOffset *sync.Cond
+	waitForHeadOffset   common.ConditionContext
+	waitForCommitOffset common.ConditionContext
 
 	replicationFactor uint32
 	requiredAcks      uint32
@@ -109,8 +110,8 @@ func NewQuorumAckTracker(replicationFactor uint32, headOffset int64, commitOffse
 		q.tracker[offset] = &util.BitSet{}
 	}
 
-	q.waitForHeadOffset = sync.NewCond(q)
-	q.waitForCommitOffset = sync.NewCond(q)
+	q.waitForHeadOffset = common.NewConditionContext(q)
+	q.waitForCommitOffset = common.NewConditionContext(q)
 	return q
 }
 
@@ -145,21 +146,27 @@ func (q *quorumAckTracker) HeadOffset() int64 {
 	return q.headOffset.Load()
 }
 
-func (q *quorumAckTracker) WaitForHeadOffset(offset int64) {
+func (q *quorumAckTracker) WaitForHeadOffset(ctx context.Context, offset int64) error {
 	q.Lock()
 	defer q.Unlock()
 
 	for !q.closed && q.headOffset.Load() < offset {
-		q.waitForHeadOffset.Wait()
+		if err := q.waitForHeadOffset.Wait(ctx); err != nil {
+			return err
+		}
 	}
+
+	return nil
 }
 
-func (q *quorumAckTracker) WaitForCommitOffset(offset int64, f func() (*proto.WriteResponse, error)) (*proto.WriteResponse, error) {
+func (q *quorumAckTracker) WaitForCommitOffset(ctx context.Context, offset int64, f func() (*proto.WriteResponse, error)) (*proto.WriteResponse, error) {
 	q.Lock()
 	defer q.Unlock()
 
 	for !q.closed && q.requiredAcks > 0 && q.commitOffset.Load() < offset {
-		q.waitForCommitOffset.Wait()
+		if err := q.waitForCommitOffset.Wait(ctx); err != nil {
+			return nil, err
+		}
 	}
 
 	if q.closed {

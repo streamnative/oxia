@@ -15,6 +15,7 @@
 package server
 
 import (
+	"context"
 	"github.com/stretchr/testify/assert"
 	"oxia/proto"
 	"oxia/server/wal"
@@ -148,7 +149,7 @@ func TestQuorumAckTracker_WaitForHeadOffset(t *testing.T) {
 	ch := make(chan bool)
 
 	go func() {
-		at.WaitForHeadOffset(4)
+		assert.NoError(t, at.WaitForHeadOffset(context.Background(), 4))
 		ch <- true
 	}()
 
@@ -186,7 +187,7 @@ func TestQuorumAckTracker_WaitForCommitOffset(t *testing.T) {
 	ch := make(chan error)
 
 	go func() {
-		_, err := at.WaitForCommitOffset(2, func() (*proto.WriteResponse, error) {
+		_, err := at.WaitForCommitOffset(context.Background(), 2, func() (*proto.WriteResponse, error) {
 			return nil, nil
 		})
 		ch <- err

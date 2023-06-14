@@ -348,7 +348,9 @@ func (fc *followerCursor) streamEntries() error {
 		if !reader.HasNext() {
 			// We have reached the head of the wal
 			// Wait for more entries to be written
-			fc.ackTracker.WaitForHeadOffset(currentOffset + 1)
+			if err = fc.ackTracker.WaitForHeadOffset(ctx, currentOffset+1); err != nil {
+				return err
+			}
 
 			continue
 		}
