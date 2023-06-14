@@ -44,9 +44,9 @@ func NewPebbleKVFactory(options *KVFactoryOptions) (KVFactory, error) {
 	if options == nil {
 		options = DefaultKVFactoryOptions
 	}
-	cacheSize := options.CacheSize
-	if cacheSize == 0 {
-		cacheSize = DefaultKVFactoryOptions.CacheSize
+	cacheSizeMB := options.CacheSizeMB
+	if cacheSizeMB == 0 {
+		cacheSizeMB = DefaultKVFactoryOptions.CacheSizeMB
 	}
 
 	dataDir := options.DataDir
@@ -54,7 +54,7 @@ func NewPebbleKVFactory(options *KVFactoryOptions) (KVFactory, error) {
 		dataDir = DefaultKVFactoryOptions.DataDir
 	}
 
-	cache := pebble.NewCache(cacheSize)
+	cache := pebble.NewCache(cacheSizeMB * 1024 * 1024)
 
 	pf := &PebbleFactory{
 		dataDir: dataDir,
@@ -66,7 +66,7 @@ func NewPebbleKVFactory(options *KVFactoryOptions) (KVFactory, error) {
 		gaugeCacheSize: metrics.NewGauge("oxia_server_kv_pebble_max_cache_size",
 			"The max size configured for the Pebble block cache in bytes",
 			metrics.Bytes, map[string]any{}, func() int64 {
-				return options.CacheSize
+				return options.CacheSizeMB * 1024 * 1024
 			}),
 	}
 
@@ -180,6 +180,18 @@ func newKVPebble(factory *PebbleFactory, namespace string, shardId int64) (KV, e
 			Successor:          pebble.DefaultComparer.Successor,
 			ImmediateSuccessor: pebble.DefaultComparer.ImmediateSuccessor,
 			Name:               "oxia-slash-spans",
+		},
+		MemTableSize: 32 * 1024 * 1024,
+		Levels: []pebble.LevelOptions{
+			{
+				BlockSize:      64 * 1024,
+				Compression:    pebble.NoCompression,
+				TargetFileSize: 32 * 1024 * 1024,
+			}, {
+				BlockSize:      64 * 1024,
+				Compression:    pebble.ZstdCompression,
+				TargetFileSize: 64 * 1024 * 1024,
+			},
 		},
 		FS:         vfs.Default,
 		DisableWAL: true,

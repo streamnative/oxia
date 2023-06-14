@@ -112,17 +112,17 @@ type KV interface {
 }
 
 type KVFactoryOptions struct {
-	DataDir   string
-	CacheSize int64
+	DataDir     string
+	CacheSizeMB int64
 
 	// Create a pure in-memory database. Used for unit-tests
 	InMemory bool
 }
 
 var DefaultKVFactoryOptions = &KVFactoryOptions{
-	DataDir:   "data",
-	CacheSize: 100 * 1024 * 1024,
-	InMemory:  false,
+	DataDir:     "data",
+	CacheSizeMB: 100,
+	InMemory:    false,
 }
 
 type KVFactory interface {

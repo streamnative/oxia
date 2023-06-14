@@ -34,6 +34,8 @@ type Config struct {
 
 	WalRetentionTime           time.Duration
 	NotificationsRetentionTime time.Duration
+
+	DbBlockCacheMB int64
 }
 
 type Server struct {
@@ -60,8 +62,8 @@ func NewWithGrpcProvider(config Config, provider container.GrpcProvider, replica
 		Msg("Starting Oxia server")
 
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
-		DataDir:   config.DataDir,
-		CacheSize: 100 * 1024 * 1024,
+		DataDir:     config.DataDir,
+		CacheSizeMB: config.DbBlockCacheMB,
 	})
 	if err != nil {
 		return nil, err

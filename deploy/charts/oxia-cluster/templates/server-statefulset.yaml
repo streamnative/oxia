@@ -43,6 +43,7 @@ spec:
             - "--log-json"
             - "--data-dir=/data/db"
             - "--wal-dir=/data/wal"
+            - "--db-cache-size-mb=512"
             {{- if .Values.pprofEnabled }}
             - "--profile"
             {{- end}}
