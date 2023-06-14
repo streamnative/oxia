@@ -36,12 +36,15 @@ var standalone *server.Standalone
 var serviceAddress string
 
 func TestMain(m *testing.M) {
-	standalone, _ = server.NewStandalone(server.NewTestConfig())
+	config := server.NewTestConfig(nil)
+	standalone, _ = server.NewStandalone(config)
 	defer standalone.Close()
 	serviceAddress = fmt.Sprintf("localhost:%d", standalone.RpcPort())
 
 	code := m.Run()
 
+	_ = os.RemoveAll(config.DataDir)
+	_ = os.RemoveAll(config.WalDir)
 	os.Exit(code)
 }
 

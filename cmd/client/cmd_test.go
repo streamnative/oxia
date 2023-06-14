@@ -29,7 +29,7 @@ import (
 
 func TestClientCmd(t *testing.T) {
 	zerolog.SetGlobalLevel(zerolog.Disabled)
-	server, err := server.NewStandalone(server.NewTestConfig())
+	server, err := server.NewStandalone(server.NewTestConfig(t))
 	assert.NoError(t, err)
 
 	serviceAddress := fmt.Sprintf("localhost:%d", server.RpcPort())

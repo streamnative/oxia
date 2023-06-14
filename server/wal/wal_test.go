@@ -27,67 +27,21 @@ import (
 
 const shard = int64(100)
 
-type walFactoryFactory interface {
-	NewWalFactory(t *testing.T) WalFactory
-	Name() string
-	Persistent() bool
-}
-
-type inMemoryWalFactoryFactory struct{}
-type persistentWalFactoryFactory struct{}
-
-func (_ *inMemoryWalFactoryFactory) NewWalFactory(_ *testing.T) WalFactory {
-	return NewInMemoryWalFactory()
-}
-
-func (_ *inMemoryWalFactoryFactory) Name() string {
-	return "InMemory/"
-}
-
-func (_ *inMemoryWalFactoryFactory) Persistent() bool {
-	return false
-}
-
-func (_ *persistentWalFactoryFactory) NewWalFactory(t *testing.T) WalFactory {
+func NewTestWalFactory(t *testing.T) WalFactory {
 	dir := t.TempDir()
-	f := NewWalFactory(&WalFactoryOptions{dir, false})
-	return f
-}
-
-func (_ *persistentWalFactoryFactory) Name() string {
-	return "Persistent/"
-}
-
-func (_ *persistentWalFactoryFactory) Persistent() bool {
-	return true
-}
-
-var walFF walFactoryFactory = &inMemoryWalFactoryFactory{}
-
-func TestWal(t *testing.T) {
-	for _, f := range []walFactoryFactory{&inMemoryWalFactoryFactory{}, &persistentWalFactoryFactory{}} {
-		walFF = f
-		t.Run(f.Name()+"FactoryNewWal", FactoryNewWal)
-		t.Run(f.Name()+"Append", Append)
-		t.Run(f.Name()+"AppendAsync", AppendAsync)
-		t.Run(f.Name()+"Truncate", Truncate)
-		t.Run(f.Name()+"TruncateClear", TruncateClear)
-		t.Run(f.Name()+"Clear", Clear)
-		t.Run(f.Name()+"Delete", Delete)
-		t.Run(f.Name()+"Trim", Trim)
-		if f.Persistent() {
-			t.Run(f.Name()+"Reopen", Reopen)
-		}
-	}
+	return NewWalFactory(&WalFactoryOptions{
+		BaseWalDir:  dir,
+		Retention:   1 * time.Hour,
+		SegmentSize: 128 * 1024,
+	})
 }
 
 func createWal(t *testing.T) (WalFactory, Wal) {
-	f := walFF.NewWalFactory(t)
-	w, err := f.NewWal(common.DefaultNamespace, shard)
+	f := NewTestWalFactory(t)
+	w, err := f.NewWal(common.DefaultNamespace, shard, nil)
 	assert.NoError(t, err)
 
 	return f, w
-
 }
 
 func assertReaderReads(t *testing.T, r WalReader, entries []string) {
@@ -122,7 +76,7 @@ func assertReaderReadsEventually(t *testing.T, r WalReader, entries []string) ch
 	return ch
 }
 
-func FactoryNewWal(t *testing.T) {
+func TestFactoryNewWal(t *testing.T) {
 	f, w := createWal(t)
 	rr, err := w.NewReverseReader()
 	assert.NoError(t, err)
@@ -139,7 +93,7 @@ func FactoryNewWal(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func Append(t *testing.T) {
+func TestAppend(t *testing.T) {
 	f, w := createWal(t)
 
 	// Append entries
@@ -200,7 +154,7 @@ func Append(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func AppendAsync(t *testing.T) {
+func TestAppendAsync(t *testing.T) {
 	f, w := createWal(t)
 
 	// Append entries
@@ -243,7 +197,58 @@ func AppendAsync(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func Truncate(t *testing.T) {
+func TestRollover(t *testing.T) {
+	f, w := createWal(t)
+
+	// Append entries
+	for i := 0; i < 300; i++ {
+		value := make([]byte, 1024)
+		copy(value, fmt.Sprintf("entry-%d", i))
+
+		err := w.Append(&proto.LogEntry{
+			Term:   1,
+			Offset: int64(i),
+			Value:  value,
+		})
+		assert.NoError(t, err)
+	}
+
+	// Read entries backwards
+	rr, err := w.NewReverseReader()
+	assert.NoError(t, err)
+	for i := 299; i >= 0; i-- {
+		assert.True(t, rr.HasNext())
+		entry, err := rr.ReadNext()
+		assert.NoError(t, err)
+
+		value := make([]byte, 1024)
+		copy(value, fmt.Sprintf("entry-%d", i))
+		assert.Equal(t, value, entry.Value)
+	}
+	assert.NoError(t, rr.Close())
+
+	// Read with forward reader from beginning
+	fr, err := w.NewReader(InvalidOffset)
+	assert.NoError(t, err)
+	for i := 0; i < 300; i++ {
+		assert.True(t, fr.HasNext())
+		entry, err := fr.ReadNext()
+		assert.NoError(t, err)
+
+		value := make([]byte, 1024)
+		copy(value, fmt.Sprintf("entry-%d", i))
+		assert.Equal(t, value, entry.Value)
+	}
+
+	assert.NoError(t, fr.Close())
+
+	err = w.Close()
+	assert.NoError(t, err)
+	err = f.Close()
+	assert.NoError(t, err)
+}
+
+func TestTruncate(t *testing.T) {
 	f, w := createWal(t)
 
 	// Append entries
@@ -274,7 +279,7 @@ func Truncate(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TruncateClear(t *testing.T) {
+func TestTruncateClear(t *testing.T) {
 	f, w := createWal(t)
 
 	assert.Equal(t, InvalidOffset, w.FirstOffset())
@@ -302,7 +307,7 @@ func TruncateClear(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func Reopen(t *testing.T) {
+func TestReopen(t *testing.T) {
 	f, w := createWal(t)
 
 	// Append entries
@@ -319,7 +324,7 @@ func Reopen(t *testing.T) {
 	err := w.Close()
 	assert.NoError(t, err)
 
-	w, err = f.NewWal(common.DefaultNamespace, shard)
+	w, err = f.NewWal(common.DefaultNamespace, shard, nil)
 	assert.NoError(t, err)
 
 	// Read with forward reader from beginning
@@ -334,7 +339,7 @@ func Reopen(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func Clear(t *testing.T) {
+func TestClear(t *testing.T) {
 	f, w := createWal(t)
 
 	assert.EqualValues(t, InvalidOffset, w.FirstOffset())
@@ -403,7 +408,7 @@ func Clear(t *testing.T) {
 	assert.NoError(t, f.Close())
 }
 
-func Trim(t *testing.T) {
+func TestTrim(t *testing.T) {
 	f, w := createWal(t)
 
 	assert.EqualValues(t, InvalidOffset, w.FirstOffset())
@@ -420,7 +425,7 @@ func Trim(t *testing.T) {
 	assert.EqualValues(t, 0, w.FirstOffset())
 	assert.EqualValues(t, 99, w.LastOffset())
 
-	assert.NoError(t, w.Trim(50))
+	assert.NoError(t, w.(*wal).trim(50))
 
 	assert.EqualValues(t, 50, w.FirstOffset())
 	assert.EqualValues(t, 99, w.LastOffset())
@@ -466,7 +471,7 @@ func Trim(t *testing.T) {
 	assert.NoError(t, f.Close())
 }
 
-func Delete(t *testing.T) {
+func TestDelete(t *testing.T) {
 	f, w := createWal(t)
 
 	for i := 0; i < 100; i++ {
@@ -482,7 +487,7 @@ func Delete(t *testing.T) {
 
 	assert.NoError(t, w.Delete())
 
-	w, err := f.NewWal(common.DefaultNamespace, 1)
+	w, err := f.NewWal(common.DefaultNamespace, 1, nil)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, InvalidOffset, w.FirstOffset())

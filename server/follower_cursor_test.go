@@ -37,8 +37,8 @@ func TestFollowerCursor(t *testing.T) {
 	assert.NoError(t, err)
 	db, err := kv.NewDB(common.DefaultNamespace, shard, kvf, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
-	wf := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
-	w, err := wf.NewWal(common.DefaultNamespace, shard)
+	wf := wal.NewWalFactory(&wal.WalFactoryOptions{BaseWalDir: t.TempDir()})
+	w, err := wf.NewWal(common.DefaultNamespace, shard, nil)
 	assert.NoError(t, err)
 
 	err = w.Append(&proto.LogEntry{
@@ -119,8 +119,8 @@ func TestFollowerCursor_SendSnapshot(t *testing.T) {
 	assert.NoError(t, err)
 	db, err := kv.NewDB(common.DefaultNamespace, shard, kvf, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
-	wf := wal.NewWalFactory(&wal.WalFactoryOptions{LogDir: t.TempDir()})
-	w, err := wf.NewWal(common.DefaultNamespace, shard)
+	wf := wal.NewWalFactory(&wal.WalFactoryOptions{BaseWalDir: t.TempDir()})
+	w, err := wf.NewWal(common.DefaultNamespace, shard, nil)
 	assert.NoError(t, err)
 
 	// Load some entries into the db & wal

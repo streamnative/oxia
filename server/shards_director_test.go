@@ -19,7 +19,6 @@ import (
 	"oxia/common"
 	"oxia/proto"
 	"oxia/server/kv"
-	"oxia/server/wal"
 	"testing"
 )
 
@@ -27,7 +26,7 @@ func TestShardsDirector_DeleteShardLeader(t *testing.T) {
 	var shard int64 = 1
 
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
-	walFactory := wal.NewInMemoryWalFactory()
+	walFactory := newTestWalFactory(t)
 
 	sd := NewShardsDirector(Config{}, walFactory, kvFactory, newMockRpcClient())
 

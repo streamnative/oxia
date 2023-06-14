@@ -22,6 +22,8 @@ require (
 	github.com/cockroachdb/pebble v0.0.0-20230612185438-6f12cd7fc7e8
 	github.com/dgraph-io/ristretto v0.1.1
 	github.com/dustin/go-humanize v1.0.1
+	github.com/edsrzf/mmap-go v1.1.0
+	github.com/emirpasic/gods v1.18.1
 	github.com/google/uuid v1.3.0
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
 	github.com/juju/fslock v0.0.0-20160525022230-4d5c94c67b4b
@@ -30,11 +32,9 @@ require (
 	github.com/prometheus-operator/prometheus-operator/pkg/client v0.64.0
 	github.com/prometheus/client_golang v1.15.1
 	github.com/rs/zerolog v1.29.0
-	github.com/spf13/afero v1.9.5
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/viper v1.15.0
 	github.com/stretchr/testify v1.8.2
-	github.com/tidwall/tinylru v1.2.1
 	github.com/zeebo/xxh3 v1.0.2
 	go.opentelemetry.io/otel v1.15.0-rc.2.0.20230420231439-002444a2e743
 	go.opentelemetry.io/otel/exporters/prometheus v0.38.0-rc.2.0.20230420231439-002444a2e743
@@ -106,6 +106,7 @@ require (
 	github.com/prometheus/common v0.44.0 // indirect
 	github.com/prometheus/procfs v0.10.1 // indirect
 	github.com/rogpeppe/go-internal v1.10.0 // indirect
+	github.com/spf13/afero v1.9.5 // indirect
 	github.com/spf13/cast v1.5.0 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect

@@ -19,10 +19,12 @@ import (
 	"github.com/pkg/errors"
 	"io"
 	"oxia/proto"
+	"time"
 )
 
 var (
 	ErrorEntryNotFound     = errors.New("oxia: entry not found")
+	ErrorOffsetOutOfBounds = errors.New("oxia: offset out of bounds")
 	ErrorReaderClosed      = errors.New("oxia: reader already closed")
 	ErrorInvalidNextOffset = errors.New("oxia: invalid next offset in wal")
 
@@ -31,18 +33,20 @@ var (
 )
 
 type WalFactoryOptions struct {
-	LogDir   string
-	InMemory bool
+	BaseWalDir  string
+	Retention   time.Duration
+	SegmentSize int32
 }
 
 var DefaultWalFactoryOptions = &WalFactoryOptions{
-	LogDir:   "data/wal",
-	InMemory: false,
+	BaseWalDir:  "data/wal",
+	Retention:   1 * time.Hour,
+	SegmentSize: 64 * 1024 * 1024,
 }
 
 type WalFactory interface {
 	io.Closer
-	NewWal(namespace string, shard int64) (Wal, error)
+	NewWal(namespace string, shard int64, provider CommitOffsetProvider) (Wal, error)
 }
 
 // WalReader reads the Wal sequentially. It is not synchronized itself.
@@ -67,9 +71,6 @@ type Wal interface {
 
 	// Sync flushes all the entries in the wal to disk
 	Sync(ctx context.Context) error
-
-	// Trim removes all the entries that are before firstOffset
-	Trim(firstOffset int64) error
 
 	// TruncateLog removes entries from the end of the log that have an ID greater than lastSafeEntry.
 	TruncateLog(lastSafeEntry int64) (int64, error)

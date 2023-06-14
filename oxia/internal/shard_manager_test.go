@@ -33,7 +33,7 @@ func (s *testShardStrategy) Get(key string) func(Shard) bool {
 }
 
 func TestWithStandalone(t *testing.T) {
-	server, err := server.NewStandalone(server.NewTestConfig())
+	server, err := server.NewStandalone(server.NewTestConfig(t))
 	assert.NoError(t, err)
 
 	clientPool := common.NewClientPool()

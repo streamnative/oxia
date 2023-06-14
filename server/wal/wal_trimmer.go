@@ -38,7 +38,7 @@ type Trimmer interface {
 	io.Closer
 }
 
-func NewTrimmer(namespace string, shard int64, wal Wal, retention time.Duration, checkInterval time.Duration, clock common.Clock,
+func newTrimmer(namespace string, shard int64, wal *wal, retention time.Duration, checkInterval time.Duration, clock common.Clock,
 	commitOffsetProvider CommitOffsetProvider) Trimmer {
 	if retention.Nanoseconds() == 0 {
 		retention = DefaultRetention
@@ -68,7 +68,7 @@ func NewTrimmer(namespace string, shard int64, wal Wal, retention time.Duration,
 }
 
 type trimmer struct {
-	wal                  Wal
+	wal                  *wal
 	retention            time.Duration
 	clock                common.Clock
 	ticker               *time.Ticker
@@ -143,7 +143,7 @@ func (t *trimmer) doTrim() error {
 		trimOffset = commitOffset
 	}
 
-	err = t.wal.Trim(trimOffset)
+	err = t.wal.trim(trimOffset)
 	if err != nil {
 		return errors.Wrap(err, "failed to trim wal")
 	}
@@ -189,7 +189,8 @@ func (t *trimmer) readAtOffset(offset int64) (timestamp time.Time, err error) {
 
 	fe, err := reader.ReadNext()
 	if err != nil {
-		return time.Time{}, errors.Wrap(err, "failed to read from wal")
+		return time.Time{}, errors.Wrapf(err, "failed to read from wal at offset %d first=%d last=%d", offset,
+			t.wal.FirstOffset(), t.wal.LastOffset())
 	}
 
 	return time.UnixMilli(int64(fe.Timestamp)), nil

@@ -22,7 +22,6 @@ import (
 	"oxia/common"
 	"oxia/proto"
 	"oxia/server/kv"
-	"oxia/server/wal"
 	"testing"
 	"time"
 )
@@ -363,7 +362,7 @@ func createSessionManager(t *testing.T) (*sessionManager, *leaderController) {
 
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	walFactory := wal.NewInMemoryWalFactory()
+	walFactory := newTestWalFactory(t)
 	lc, err := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 	_, err = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})

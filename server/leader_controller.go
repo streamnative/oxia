@@ -88,7 +88,6 @@ type leaderController struct {
 	ctx             context.Context
 	cancel          context.CancelFunc
 	wal             wal.Wal
-	walTrimmer      wal.Trimmer
 	db              kv.DB
 	rpcClient       ReplicationRpcProvider
 	sessionManager  SessionManager
@@ -143,12 +142,9 @@ func NewLeaderController(config Config, namespace string, shardId int64, rpcClie
 	lc.ctx, lc.cancel = context.WithCancel(context.Background())
 
 	var err error
-	if lc.wal, err = walFactory.NewWal(namespace, shardId); err != nil {
+	if lc.wal, err = walFactory.NewWal(namespace, shardId, lc); err != nil {
 		return nil, err
 	}
-
-	lc.walTrimmer = wal.NewTrimmer(namespace, shardId, lc.wal, config.WalRetentionTime, wal.DefaultCheckInterval,
-		common.SystemClock, lc)
 
 	if lc.db, err = kv.NewDB(namespace, shardId, kvFactory, config.NotificationsRetentionTime, common.SystemClock); err != nil {
 		return nil, err
@@ -801,10 +797,6 @@ func (lc *leaderController) close() error {
 		err = multierr.Append(err, lc.walWriteBatcher.Close())
 		lc.walWriteBatcher = nil
 	}
-	if lc.quorumAckTracker != nil {
-		err = multierr.Append(err, lc.quorumAckTracker.Close())
-		lc.quorumAckTracker = nil
-	}
 
 	for _, follower := range lc.followers {
 		err = multierr.Append(err, follower.Close())
@@ -816,10 +808,7 @@ func (lc *leaderController) close() error {
 	}
 	lc.followerAckOffsetGauges = map[string]metrics.Gauge{}
 
-	err = multierr.Combine(err,
-		lc.sessionManager.Close(),
-		lc.walTrimmer.Close(),
-	)
+	err = lc.sessionManager.Close()
 
 	if lc.wal != nil {
 		err = multierr.Append(err, lc.wal.Close())
@@ -830,6 +819,12 @@ func (lc *leaderController) close() error {
 		err = multierr.Append(err, lc.db.Close())
 		lc.db = nil
 	}
+
+	if lc.quorumAckTracker != nil {
+		err = multierr.Append(err, lc.quorumAckTracker.Close())
+		lc.quorumAckTracker = nil
+	}
+
 	return err
 }
 
@@ -851,7 +846,11 @@ func getLastEntryIdInWal(wal wal.Wal) (*proto.EntryId, error) {
 }
 
 func (lc *leaderController) CommitOffset() int64 {
-	return lc.quorumAckTracker.CommitOffset()
+	qat := lc.quorumAckTracker
+	if qat != nil {
+		return qat.CommitOffset()
+	}
+	return wal.InvalidOffset
 }
 
 func (lc *leaderController) GetStatus(request *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {

@@ -90,11 +90,10 @@ type followerController struct {
 	// Offset of the last entry appended and not fully synced yet on the wal
 	lastAppendedOffset int64
 
-	status     proto.ServingStatus
-	wal        wal.Wal
-	walTrimmer wal.Trimmer
-	kvFactory  kv.KVFactory
-	db         kv.DB
+	status    proto.ServingStatus
+	wal       wal.Wal
+	kvFactory kv.KVFactory
+	db        kv.DB
 
 	ctx              context.Context
 	cancel           context.CancelFunc
@@ -125,13 +124,11 @@ func NewFollowerController(config Config, namespace string, shardId int64, wf wa
 	fc.applyEntriesCond = common.NewConditionContext(fc)
 
 	var err error
-	if fc.wal, err = wf.NewWal(namespace, shardId); err != nil {
+	if fc.wal, err = wf.NewWal(namespace, shardId, fc); err != nil {
 		return nil, err
 	}
 
 	fc.lastAppendedOffset = fc.wal.LastOffset()
-	fc.walTrimmer = wal.NewTrimmer(namespace, shardId, fc.wal, config.WalRetentionTime, wal.DefaultCheckInterval,
-		common.SystemClock, fc)
 
 	if fc.db, err = kv.NewDB(namespace, shardId, kvFactory, config.NotificationsRetentionTime, common.SystemClock); err != nil {
 		return nil, err
@@ -190,7 +187,7 @@ func (fc *followerController) Close() error {
 }
 
 func (fc *followerController) close() error {
-	err := fc.walTrimmer.Close()
+	var err error
 
 	if fc.wal != nil {
 		err = multierr.Append(err, fc.wal.Close())
