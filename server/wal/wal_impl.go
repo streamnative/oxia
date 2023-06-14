@@ -207,6 +207,10 @@ func (t *wal) trim(firstOffset int64) error {
 }
 
 func (t *wal) Close() error {
+	if err := t.trimmer.Close(); err != nil {
+		return err
+	}
+
 	t.Lock()
 	defer t.Unlock()
 
