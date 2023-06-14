@@ -338,8 +338,8 @@ func TestLeaderController_TermPersistent(t *testing.T) {
 	var shard int64 = 1
 
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
-		DataDir:   t.TempDir(),
-		CacheSize: 10 * 1024,
+		DataDir:     t.TempDir(),
+		CacheSizeMB: 1,
 	})
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{
@@ -382,8 +382,8 @@ func TestLeaderController_FenceTerm(t *testing.T) {
 	var shard int64 = 1
 
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
-		DataDir:   t.TempDir(),
-		CacheSize: 10 * 1024,
+		DataDir:     t.TempDir(),
+		CacheSizeMB: 1,
 	})
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{
@@ -429,8 +429,8 @@ func TestLeaderController_BecomeLeaderTerm(t *testing.T) {
 	var shard int64 = 1
 
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
-		DataDir:   t.TempDir(),
-		CacheSize: 10 * 1024,
+		DataDir:     t.TempDir(),
+		CacheSizeMB: 1,
 	})
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{
@@ -718,8 +718,8 @@ func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
 	var shard int64 = 1
 
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
-		DataDir:   t.TempDir(),
-		CacheSize: 10 * 1024,
+		DataDir:     t.TempDir(),
+		CacheSizeMB: 1,
 	})
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{
