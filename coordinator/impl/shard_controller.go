@@ -418,7 +418,7 @@ func (s *shardController) newTermQuorum() (map[model.ServerAddress]*proto.EntryI
 		model.ServerAddress
 		*proto.EntryId
 		error
-	})
+	}, fencingQuorumSize)
 
 	for _, sa := range fencingQuorum {
 		// We need to save the address because it gets modified in the loop
