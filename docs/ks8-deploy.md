@@ -1,4 +1,4 @@
-# Deploying in Kubernetes with Oxia operator
+# Deploying in Kubernetes with Oxia cluster Helm chart
 
 ## Monitoring Oxia
 
@@ -6,7 +6,7 @@ Oxia support monitoring through exposing a `ServiceMonitor` profile. If you have
 int your Kubernetes cluster, you won't need any extra steps. It would directly start collecting monitoring data
 from Oxia clusters.
 
-The Helm chart for the controller and the Oxia operator both use a `monitoringEnabled` flag to decide whether to 
+The Helm chart for the Oxia cluster uses a `monitoringEnabled` flag to decide whether to 
 install the service monitor. If you don't have Prometheus installed and don't want to install it, you can set
 `monitoringEnabled: false` to skip this part.
 
@@ -58,12 +58,9 @@ $ rm -rf kube-prometheus-stack*
 
 > ***Note***:  The default login credentials for grafana are admin/prom-operator.
 
-## Deploying the Oxia Operator controller
+## Deploying the Oxia cluster
 
-The Oxia Controller is the operator instance and, once deployed, it will be responsible for creating Oxia clusters
-based on the CRDs (Custom Resource Definitions).
-
-To deploy the controller with Helm: 
+To deploy the Oxia cluster with Helm: 
 
 ```shell
 $ kubectl create namespace oxia
@@ -72,60 +69,10 @@ $ git clone https://github.com/streamnative/oxia.git
 
 $ cd oxia
 
-$ helm upgrade --install oxia-controller \
+$ helm upgrade --install oxia \
   --namespace oxia \
-  --set monitoringEnabled=true \
-  deploy/charts/oxia-controller
-```
-
-
-## Deploying an Oxia cluster with the CRD
-
-Create the CRD with
-
-```shell
-$ kubectl apply -f deploy/crds/oxiaclusters.yaml
-
-```
-
-Now that the Oxia controller is running and the CRD is defined, we can create K8S resources of type `OxiaCluster`, by submitting a CRD.
-
-An example of CRD can be found at [example-oxia-cluster.yaml](/deploy/examples/example-oxia-cluster.yaml).
-
-The full specification of the CRD is at [oxiaclusters.yaml](/deploy/crds/oxiaclusters.yaml).
-
-A minimal example of CRD is: 
-
-```yaml
-apiVersion: oxia.streamnative.io/v1alpha1
-kind: OxiaCluster
-metadata:
-  namespace: oxia
-  name: my-oxia-cluster
-spec:
-  namespaces:
-    - name: default
-      initialShardCount: 3
-      replicationFactor: 3
-
-  coordinator:
-    cpu: 100m
-    memory: 128Mi
-  server:
-    replicas: 3
-    cpu: 1
-    memory: 1Gi
-    storage: 8Gi
-  image:
-    repository: streamnative/oxia
-    tag: main
-    pullPolicy: Always
-  monitoringEnabled: true
-  pprofEnabled: false
-```
-
-You can save it into a file `oxia-cluster.yaml` and then deploy to Kubernetes:
-
-```shell
-$ kubectl apply -f oxia-cluster.yaml
+  --set image.repository=oxia \
+  --set image.tag=latest \
+  --set image.pullPolicy=Never \
+  deploy/charts/oxia-cluster
 ```

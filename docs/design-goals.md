@@ -36,14 +36,10 @@ a consistent snapshot of the data, without requiring to dump the full data set e
 
 ## Operational tooling
 
-### Kubernetes Operator
+### Oxia Cluster Helm chart
 
-Oxia is designed to work natively in a Kubernetes environment. There is an [Oxia Operator](ks8-operator.md) provided
+Oxia is designed to work natively in a Kubernetes environment. There is an [Oxia Helm Chart](ks8-deploy.md) provided
 by default as the canonical way to deploy.
-
-With the Oxia Operator, one can update the CRD for an Oxia cluster an control all of the config aspects: 
- * Increasing the number of storage pods
- * Creating / deleting Oxia namespaces
 
 ### Namespaces
 
