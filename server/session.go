@@ -92,7 +92,7 @@ func (s *session) delete() error {
 			})
 		}
 	}
-	_, err = s.sm.leaderController.Write(&proto.WriteRequest{
+	_, err = s.sm.leaderController.Write(s.ctx, &proto.WriteRequest{
 		ShardId: &s.shardId,
 		Puts:    nil,
 		Deletes: deletes,

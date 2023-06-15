@@ -40,7 +40,7 @@ type GetResult struct {
 type LeaderController interface {
 	io.Closer
 
-	Write(write *proto.WriteRequest) (*proto.WriteResponse, error)
+	Write(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error)
 	Read(ctx context.Context, request *proto.ReadRequest) <-chan GetResult
 	List(ctx context.Context, request *proto.ListRequest) (<-chan string, error)
 	ListSliceNoMutex(ctx context.Context, request *proto.ListRequest) ([]string, error)
@@ -49,7 +49,7 @@ type LeaderController interface {
 	NewTerm(req *proto.NewTermRequest) (*proto.NewTermResponse, error)
 
 	// BecomeLeader Handles BecomeLeaderRequest from coordinator and prepares to be leader for the shard
-	BecomeLeader(*proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error)
+	BecomeLeader(ctx context.Context, req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error)
 
 	AddFollower(request *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error)
 
@@ -298,7 +298,7 @@ func (lc *leaderController) NewTerm(req *proto.NewTermRequest) (*proto.NewTermRe
 //     the new leader will be informed of these followers, and it is
 //     possible that their head entry id is higher than the leader and
 //     therefore need truncating.
-func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error) {
+func (lc *leaderController) BecomeLeader(ctx context.Context, req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error) {
 	lc.Lock()
 	defer lc.Unlock()
 
@@ -343,7 +343,7 @@ func (lc *leaderController) BecomeLeader(req *proto.BecomeLeaderRequest) (*proto
 	// committed in the quorum, to avoid missing any entries in the DB
 	// by the moment we make the leader controller accepting new write/read
 	// requests
-	if _, err = lc.quorumAckTracker.WaitForCommitOffset(lc.leaderElectionHeadEntryId.Offset, nil); err != nil {
+	if _, err = lc.quorumAckTracker.WaitForCommitOffset(ctx, lc.leaderElectionHeadEntryId.Offset, nil); err != nil {
 		return nil, err
 	}
 
@@ -651,14 +651,14 @@ func (lc *leaderController) ListSliceNoMutex(ctx context.Context, request *proto
 // A client writes a value from Values to a leader node
 // if that value has not previously been written. The leader adds
 // the entry to its log, updates its head offset.
-func (lc *leaderController) Write(request *proto.WriteRequest) (*proto.WriteResponse, error) {
-	_, resp, err := lc.write(func(_ int64) *proto.WriteRequest {
+func (lc *leaderController) Write(ctx context.Context, request *proto.WriteRequest) (*proto.WriteResponse, error) {
+	_, resp, err := lc.write(ctx, func(_ int64) *proto.WriteRequest {
 		return request
 	}, false)
 	return resp, err
 }
 
-func (lc *leaderController) write(request func(int64) *proto.WriteRequest, flush bool) (int64, *proto.WriteResponse, error) {
+func (lc *leaderController) write(ctx context.Context, request func(int64) *proto.WriteRequest, flush bool) (int64, *proto.WriteResponse, error) {
 	timer := lc.writeLatencyHisto.Timer()
 	defer timer.Done()
 
@@ -670,7 +670,7 @@ func (lc *leaderController) write(request func(int64) *proto.WriteRequest, flush
 		return wal.InvalidOffset, nil, err
 	}
 
-	resp, err := lc.quorumAckTracker.WaitForCommitOffset(newOffset, func() (*proto.WriteResponse, error) {
+	resp, err := lc.quorumAckTracker.WaitForCommitOffset(ctx, newOffset, func() (*proto.WriteResponse, error) {
 		return lc.db.ProcessWrite(actualRequest, newOffset, timestamp, SessionUpdateOperationCallback)
 	})
 	return newOffset, resp, err

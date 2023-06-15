@@ -15,6 +15,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"github.com/stretchr/testify/assert"
 	pb "google.golang.org/protobuf/proto"
@@ -298,7 +299,7 @@ func TestSessionManager(t *testing.T) {
 	assert.NotNil(t, meta)
 	keepAlive(t, sManager, sessionId, err, 30*time.Millisecond, 6)
 
-	_, err = lc.Write(&proto.WriteRequest{
+	_, err = lc.Write(context.Background(), &proto.WriteRequest{
 		ShardId: &shardId,
 		Puts: []*proto.PutRequest{{
 			Key:       "a/b",
@@ -367,7 +368,7 @@ func createSessionManager(t *testing.T) (*sessionManager, *leaderController) {
 	assert.NoError(t, err)
 	_, err = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})
 	assert.NoError(t, err)
-	_, err = lc.BecomeLeader(&proto.BecomeLeaderRequest{
+	_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
 		ShardId:           shard,
 		Term:              1,
 		ReplicationFactor: 1,

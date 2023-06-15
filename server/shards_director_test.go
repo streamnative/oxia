@@ -15,6 +15,7 @@
 package server
 
 import (
+	"context"
 	"github.com/stretchr/testify/assert"
 	"oxia/common"
 	"oxia/proto"
@@ -32,14 +33,14 @@ func TestShardsDirector_DeleteShardLeader(t *testing.T) {
 
 	lc, _ := sd.GetOrCreateLeader(common.DefaultNamespace, shard)
 	_, _ = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})
-	_, _ = lc.BecomeLeader(&proto.BecomeLeaderRequest{
+	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
 		ShardId:           shard,
 		Term:              1,
 		ReplicationFactor: 1,
 		FollowerMaps:      nil,
 	})
 
-	_, err := lc.Write(&proto.WriteRequest{
+	_, err := lc.Write(context.Background(), &proto.WriteRequest{
 		ShardId: &shard,
 		Puts:    []*proto.PutRequest{{Key: "k1", Value: []byte("hello")}},
 	})

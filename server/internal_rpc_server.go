@@ -142,7 +142,7 @@ func (s *internalRpcServer) BecomeLeader(c context.Context, req *proto.BecomeLea
 		log.Warn().Err(err).Msg("BecomeLeader failed: could not get leader controller")
 		return nil, err
 	} else {
-		res, err2 := leader.BecomeLeader(req)
+		res, err2 := leader.BecomeLeader(c, req)
 		if err2 != nil {
 			log.Warn().Err(err2).Msg("BecomeLeader failed")
 		}
