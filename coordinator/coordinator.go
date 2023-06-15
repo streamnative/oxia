@@ -23,7 +23,6 @@ import (
 	"oxia/common/metrics"
 	"oxia/coordinator/impl"
 	"oxia/coordinator/model"
-	"oxia/kubernetes"
 	"time"
 )
 
@@ -66,8 +65,8 @@ var (
 
 func NewConfig() Config {
 	return Config{
-		InternalServiceAddr:  fmt.Sprintf("localhost:%d", kubernetes.InternalPort.Port),
-		MetricsServiceAddr:   fmt.Sprintf("localhost:%d", kubernetes.MetricsPort.Port),
+		InternalServiceAddr:  fmt.Sprintf("localhost:%d", common.DefaultInternalPort),
+		MetricsServiceAddr:   fmt.Sprintf("localhost:%d", common.DefaultMetricsPort),
 		MetadataProviderImpl: File,
 	}
 }
@@ -95,8 +94,8 @@ func New(config Config) (*Coordinator, error) {
 	case File:
 		metadataProvider = impl.NewMetadataProviderFile(config.FileMetadataPath)
 	case Configmap:
-		k8sConfig := kubernetes.NewClientConfig()
-		metadataProvider = impl.NewMetadataProviderConfigMap(kubernetes.NewKubernetesClientset(k8sConfig),
+		k8sConfig := impl.NewK8SClientConfig()
+		metadataProvider = impl.NewMetadataProviderConfigMap(impl.NewK8SClientset(k8sConfig),
 			config.K8SMetadataNamespace, config.K8SMetadataConfigMapName)
 	}
 

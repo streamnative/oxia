@@ -20,7 +20,6 @@ import (
 	"github.com/spf13/cobra"
 	"io"
 	"oxia/common"
-	"oxia/kubernetes"
 	"oxia/oxia"
 	"oxia/perf"
 )
@@ -37,7 +36,7 @@ var (
 )
 
 func init() {
-	defaultServiceAddress := fmt.Sprintf("localhost:%d", kubernetes.PublicPort.Port)
+	defaultServiceAddress := fmt.Sprintf("localhost:%d", common.DefaultPublicPort)
 	Cmd.Flags().StringVarP(&config.ServiceAddr, "service-address", "a", defaultServiceAddress, "Service address")
 	Cmd.PersistentFlags().StringVarP(&config.Namespace, "namespace", "n", oxia.DefaultNamespace, "The Oxia namespace to use")
 

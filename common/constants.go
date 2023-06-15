@@ -21,6 +21,10 @@ const (
 	MetadataShardId   = "shard-id"
 	DefaultNamespace  = "default"
 
+	DefaultPublicPort   = 6648
+	DefaultInternalPort = 6649
+	DefaultMetricsPort  = 8080
+
 	MaxSessionTimeout = 5 * time.Minute
 	MinSessionTimeout = 2 * time.Second
 )

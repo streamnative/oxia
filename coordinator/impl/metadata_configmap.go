@@ -23,7 +23,6 @@ import (
 	k8s "k8s.io/client-go/kubernetes"
 	"oxia/common/metrics"
 	"oxia/coordinator/model"
-	"oxia/kubernetes"
 	"sync"
 	"sync/atomic"
 )
@@ -69,7 +68,7 @@ func (m *metadataProviderConfigMap) Get() (status *model.ClusterStatus, version 
 }
 
 func (m *metadataProviderConfigMap) getWithoutLock() (status *model.ClusterStatus, version Version, err error) {
-	cm, err := kubernetes.ConfigMaps(m.kubernetes).Get(m.namespace, m.name)
+	cm, err := K8SConfigMaps(m.kubernetes).Get(m.namespace, m.name)
 	if err != nil {
 		if k8sError.IsNotFound(err) {
 			err = nil
@@ -106,7 +105,7 @@ func (m *metadataProviderConfigMap) Store(status *model.ClusterStatus, expectedV
 	}
 
 	data := configMap(m.name, status, expectedVersion)
-	cm, err := kubernetes.ConfigMaps(m.kubernetes).Upsert(m.namespace, data)
+	cm, err := K8SConfigMaps(m.kubernetes).Upsert(m.namespace, data)
 	if k8sError.IsConflict(err) {
 		err = ErrorMetadataBadVersion
 	}

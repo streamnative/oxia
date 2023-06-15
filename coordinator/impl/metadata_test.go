@@ -18,7 +18,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"k8s.io/client-go/kubernetes/fake"
 	"oxia/coordinator/model"
-	k8sTesting "oxia/kubernetes/testing"
 	"path/filepath"
 	"testing"
 )
@@ -26,7 +25,7 @@ import (
 var (
 	_fake = func() *fake.Clientset {
 		f := fake.NewSimpleClientset()
-		f.PrependReactor("*", "*", k8sTesting.ResourceVersionSupport(f.Tracker()))
+		f.PrependReactor("*", "*", K8SResourceVersionSupport(f.Tracker()))
 		return f
 	}()
 	metadataProviders = map[string]func(t *testing.T) MetadataProvider{

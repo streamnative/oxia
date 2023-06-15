@@ -23,7 +23,7 @@ import (
 	"oxia/cmd/client/list"
 	"oxia/cmd/client/notifications"
 	"oxia/cmd/client/put"
-	"oxia/kubernetes"
+	oxia_common "oxia/common"
 	"oxia/oxia"
 )
 
@@ -36,7 +36,7 @@ var (
 )
 
 func init() {
-	defaultServiceAddress := fmt.Sprintf("localhost:%d", kubernetes.PublicPort.Port)
+	defaultServiceAddress := fmt.Sprintf("localhost:%d", oxia_common.DefaultPublicPort)
 	Cmd.PersistentFlags().StringVarP(&common.Config.ServiceAddr, "service-address", "a", defaultServiceAddress, "Service address")
 	Cmd.PersistentFlags().StringVarP(&common.Config.Namespace, "namespace", "n", oxia.DefaultNamespace, "The Oxia namespace to use")
 	Cmd.PersistentFlags().DurationVar(&common.Config.BatchLinger, "batch-linger", oxia.DefaultBatchLinger, "Max time requests will be staged to be included in a batch")

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 .PHONY: build
-build: crd
+build:
 	go build -v -o bin/oxia ./cmd
 
 .PHONY: maelstrom
@@ -80,13 +80,6 @@ tla:
 		java -XX:+UseParallelGC -DTLA-Library=.tools/CommunityModules-deps.jar -jar .tools/tla2tools.jar \
 			-deadlock -workers auto\
 			OxiaReplication.tla
-
-crd:
-	go mod vendor
-	hack/update-codegen.sh
-	rm -rf vendor
-
-
 
 license-check:
 	# go install github.com/palantir/go-license@latest

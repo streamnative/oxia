@@ -21,7 +21,6 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"oxia/common"
-	"oxia/kubernetes"
 	"time"
 )
 
@@ -35,7 +34,7 @@ type Config struct {
 func NewConfig() Config {
 	return Config{
 		Host:    "",
-		Port:    kubernetes.InternalPort.Port,
+		Port:    common.DefaultInternalPort,
 		Timeout: 10 * time.Second,
 		Service: "",
 	}
