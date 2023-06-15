@@ -28,7 +28,7 @@ large scale distributed systems.
 * [Architecture](docs/architecture.md)
 * [Getting started with Oxia](docs/getting-started.md)
 * [Go client API](docs/go-api.md)
-* [Deploy using Helm chart](docs/ks8-deploy.md)
+* [Deploy using Helm Chart](docs/ks8-deploy.md)
 * Developer docs 
   * [Replication protocol](docs/replication-protocol.md)
     * [Coordinator](docs/replication-coordinator.md)

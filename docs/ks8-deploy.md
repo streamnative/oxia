@@ -6,7 +6,7 @@ Oxia support monitoring through exposing a `ServiceMonitor` profile. If you have
 int your Kubernetes cluster, you won't need any extra steps. It would directly start collecting monitoring data
 from Oxia clusters.
 
-The Helm chart for the Oxia cluster uses a `monitoringEnabled` flag to decide whether to 
+The Helm Chart for the Oxia cluster uses a `monitoringEnabled` flag to decide whether to 
 install the service monitor. If you don't have Prometheus installed and don't want to install it, you can set
 `monitoringEnabled: false` to skip this part.
 
