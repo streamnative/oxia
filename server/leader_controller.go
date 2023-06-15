@@ -118,20 +118,18 @@ func NewLeaderController(config Config, namespace string, shardId int64, rpcClie
 
 	lc.headOffsetGauge = metrics.NewGauge("oxia_server_leader_head_offset",
 		"The current head offset", "offset", labels, func() int64 {
-			lc.RLock()
-			defer lc.RUnlock()
-			if lc.quorumAckTracker != nil {
-				return lc.quorumAckTracker.HeadOffset()
+			qat := lc.quorumAckTracker
+			if qat != nil {
+				return qat.HeadOffset()
 			}
 
 			return -1
 		})
 	lc.commitOffsetGauge = metrics.NewGauge("oxia_server_leader_commit_offset",
 		"The current commit offset", "offset", labels, func() int64 {
-			lc.RLock()
-			defer lc.RUnlock()
-			if lc.quorumAckTracker != nil {
-				return lc.quorumAckTracker.CommitOffset()
+			qat := lc.quorumAckTracker
+			if qat != nil {
+				return qat.CommitOffset()
 			}
 
 			return -1
