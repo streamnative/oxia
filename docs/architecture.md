@@ -5,51 +5,6 @@ An Oxia cluster, running in a Kubernetes environment has a few components.
 
 ![architecture diagram](./oxia-architecture.png)
 
-### Administrator
-
-The administrator is the user that creates and manages the Oxia cluster. 
-
-The interactions are by adding or updating an `OxiaCluster` CRD.
-
-### OxiaCluster CRD
-
-The `OxiaCluster` CRD is a K8S Custom Resource Definition. It specifies a new resource type, `OxiaCluster` that can
-be managed in the K8S env.
-
-Refer to the [Oxia operator docs](ks8-operator.md) for examples and details.
-
-### K8S Oxia operator
-
-Once the Oxia controller is installed in the K8s environment, it will monitor the status of `OxiaCluster` CRDs. 
-
-A single operator, will potentially be managing multiple `OxiaCluster` CRDs.
-
-
-### Cluster config
-
-This configuration is created and updated by the operator, based on the CRD. It is stored in a ConfigMap and read by the
-Oxia coordinator to know which servers are available and which namespaces exist.
-
-An example of cluster config would be:
-
-```yaml
-namespaces:
-  - name: default
-    initialShardCount: 1
-    replicationFactor: 3
-  - name: my-namespace
-    initialShardCount: 8
-    replicationFactor: 3
-
-servers:
-  - public: oxia-1:6001
-    internal: oxia-1:7001
-  - public: oxia-2:6002
-    internal: oxia-2:7002
-  - public: oxia-3:6003
-    internal: oxia-3:7003
-```
-
 ### Oxia Coordinator
 
 The Oxia Coordinator is in charge of 2 main tasks:
