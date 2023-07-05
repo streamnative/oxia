@@ -319,7 +319,7 @@ func (r *readOnlySegmentsGroup) cleanSegmentsCache() error {
 	it := r.openSegments.Iterator()
 	for it.Next() {
 		ts := it.Value().(common.RefCount[ReadOnlySegment]).Get().OpenTimestamp()
-		if time.Now().Sub(ts) > maxReadOnlySegmentsInCacheTime {
+		if time.Since(ts) > maxReadOnlySegmentsInCacheTime {
 			err = multierr.Append(err, it.Value().(common.RefCount[ReadOnlySegment]).Close())
 			r.openSegments.Remove(it.Key())
 		}
