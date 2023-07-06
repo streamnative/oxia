@@ -33,6 +33,7 @@ type Config struct {
 	WalDir              string
 
 	WalRetentionTime           time.Duration
+	WalSyncData                bool
 	NotificationsRetentionTime time.Duration
 
 	DbBlockCacheMB int64
@@ -72,7 +73,10 @@ func NewWithGrpcProvider(config Config, provider container.GrpcProvider, replica
 	s := &Server{
 		replicationRpcProvider: replicationRpcProvider,
 		walFactory: wal.NewWalFactory(&wal.WalFactoryOptions{
-			BaseWalDir: config.WalDir,
+			BaseWalDir:  config.WalDir,
+			Retention:   config.WalRetentionTime,
+			SegmentSize: wal.DefaultWalFactoryOptions.SegmentSize,
+			SyncData:    true,
 		}),
 		kvFactory:    kvFactory,
 		healthServer: health.NewServer(),
