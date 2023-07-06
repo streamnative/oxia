@@ -21,6 +21,7 @@ import (
 	"go.uber.org/multierr"
 	"os"
 	"sync"
+	"time"
 )
 
 type ReadWriteSegment interface {
@@ -164,6 +165,10 @@ func (ms *readWriteSegment) rebuildIdx() error {
 
 	ms.lastOffset = entryOffset - 1
 	return nil
+}
+
+func (ms *readWriteSegment) OpenTimestamp() time.Time {
+	return time.Now()
 }
 
 func (ms *readWriteSegment) Close() error {

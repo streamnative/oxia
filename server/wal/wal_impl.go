@@ -160,13 +160,20 @@ func (t *wal) readAtIndex(index int64) (*proto.LogEntry, error) {
 	defer timer.Done()
 
 	var err error
+	var rc common.RefCount[ReadOnlySegment]
 	var segment ReadOnlySegment
 	if index >= t.currentSegment.BaseOffset() {
 		segment = t.currentSegment
 	} else {
-		if segment, err = t.readOnlySegments.Get(index); err != nil {
+		rc, err = t.readOnlySegments.Get(index)
+		if err != nil {
 			return nil, err
 		}
+
+		defer func(rc common.RefCount[ReadOnlySegment]) {
+			err = multierr.Append(err, rc.Close())
+		}(rc)
+		segment = rc.Get()
 	}
 
 	var val []byte
@@ -181,7 +188,7 @@ func (t *wal) readAtIndex(index int64) (*proto.LogEntry, error) {
 		return nil, err
 	}
 	t.readBytes.Add(len(val))
-	return entry, nil
+	return entry, err
 }
 
 func (t *wal) LastOffset() int64 {
@@ -448,24 +455,30 @@ func (t *wal) TruncateLog(lastSafeOffset int64) (int64, error) {
 					return InvalidOffset, err
 				}
 				return t.LastOffset(), nil
-			} else if lastSafeOffset >= segment.BaseOffset() {
+			} else if lastSafeOffset >= segment.Get().BaseOffset() {
 				// The truncation will happen in the middle of this segment,
 				// and this will also become the new current segment
 				if err = segment.Close(); err != nil {
 					return InvalidOffset, err
 				}
 
-				if t.currentSegment, err = newReadWriteSegment(t.walPath, segment.BaseOffset(), t.segmentSize); err != nil {
+				if t.currentSegment, err = newReadWriteSegment(t.walPath, segment.Get().BaseOffset(), t.segmentSize); err != nil {
+					err = multierr.Append(err, segment.Close())
 					return InvalidOffset, err
 				}
 				if err := t.currentSegment.Truncate(lastSafeOffset); err != nil {
+					err = multierr.Append(err, segment.Close())
 					return InvalidOffset, err
 				}
 
-				return lastSafeOffset, nil
+				err = segment.Close()
+				return lastSafeOffset, err
 			} else {
 				// The entire segment can be discarded
-				if err := segment.Delete(); err != nil {
+				if err := segment.Get().Delete(); err != nil {
+					err = multierr.Append(err, segment.Close())
+					return InvalidOffset, err
+				} else if err := segment.Close(); err != nil {
 					return InvalidOffset, err
 				}
 			}
