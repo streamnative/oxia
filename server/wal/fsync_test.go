@@ -68,10 +68,12 @@ func BenchmarkMSync(b *testing.B) {
 
 	data := make([]byte, writeSize)
 
-	for i := 0; i < b.N; i++ {
-		_, err = f.Write(data)
-		assert.NoError(b, err)
-	}
+	_, err = f.Seek(int64(writeSize*b.N), 0)
+	assert.NoError(b, err)
+	_, err = f.Write([]byte{0x00})
+	assert.NoError(b, err)
+	err = f.Sync()
+	assert.NoError(b, err)
 
 	assert.NoError(b, f.Sync())
 

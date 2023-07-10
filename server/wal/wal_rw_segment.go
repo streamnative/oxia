@@ -230,26 +230,13 @@ func (ms *readWriteSegment) Truncate(lastSafeOffset int64) error {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-var (
-	zeroedBuf    = make([]byte, 4096)
-	zeroedBufLen = uint32(len(zeroedBuf))
-)
-
 func initFileWithZeroes(f *os.File, size uint32) error {
-	toWrite := size
-	for toWrite > 0 {
-		if toWrite > zeroedBufLen {
-			if _, err := f.Write(zeroedBuf); err != nil {
-				return errors.Wrap(err, "error creating transaction file")
-			}
-			toWrite -= zeroedBufLen
-		} else {
-			if _, err := f.Write(zeroedBuf[:toWrite]); err != nil {
-				return errors.Wrap(err, "error creating transaction file")
-			}
+	if _, err := f.Seek(int64(size), 0); err != nil {
+		return err
+	}
 
-			toWrite = 0
-		}
+	if _, err := f.Write([]byte{0x00}); err != nil {
+		return err
 	}
 
 	return f.Sync()
