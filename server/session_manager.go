@@ -20,7 +20,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	pb "google.golang.org/protobuf/proto"
 	"io"
 	"net/url"
 	"oxia/common"
@@ -133,9 +132,11 @@ func (sm *sessionManager) createSession(request *proto.CreateSessionRequest, min
 	sm.Lock()
 	defer sm.Unlock()
 
-	metadata := &proto.SessionMetadata{TimeoutMs: uint32(timeout.Milliseconds())}
+	metadata := proto.SessionMetadataFromVTPool()
+	metadata.TimeoutMs = uint32(timeout.Milliseconds())
+	defer metadata.ReturnToVTPool()
 
-	marshalledMetadata, err := pb.Marshal(metadata)
+	marshalledMetadata, err := metadata.MarshalVT()
 	if err != nil {
 		return nil, errors.Wrap(err, "could not marshal session metadata")
 	}
@@ -259,7 +260,7 @@ func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, 
 		}
 		value := metaEntry.Value
 		metadata := proto.SessionMetadata{}
-		err = pb.Unmarshal(value, &metadata)
+		err = metadata.UnmarshalVT(value)
 		if err != nil {
 			sm.log.Warn().
 				Err(err).
@@ -338,6 +339,8 @@ func deleteShadow(batch kv.WriteBatch, key string, existingEntry *proto.StorageE
 
 func (_ *updateCallback) OnDelete(batch kv.WriteBatch, key string) error {
 	se, err := kv.GetStorageEntry(batch, key)
+	defer se.ReturnToVTPool()
+
 	if errors.Is(err, kv.ErrorKeyNotFound) {
 		return nil
 	}

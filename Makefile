@@ -40,12 +40,19 @@ docker_multi_arch:
 
 .PHONY: proto
 proto:
-	protoc --proto_path ./proto \
-		--go_out ./proto \
+	cd proto && \
+	protoc \
+		--go_out=. \
 		--go_opt paths=source_relative \
-		--go-grpc_out ./proto \
-		--go-grpc_opt paths=source_relative \
-		proto/*.proto
+		--plugin protoc-gen-go="${GOPATH}/bin/protoc-gen-go" \
+    	--go-grpc_out=. \
+    	--go-grpc_opt paths=source_relative \
+    	--plugin protoc-gen-go-grpc="${GOPATH}/bin/protoc-gen-go-grpc" \
+      	--go-vtproto_out=. \
+      	--go-vtproto_opt paths=source_relative \
+      	--plugin protoc-gen-go-vtproto="${GOPATH}/bin/protoc-gen-go-vtproto" \
+  	 	--go-vtproto_opt=features=marshal+unmarshal+size+pool+equal+clone \
+	    *.proto
 
 proto_clean:
 	rm -f */*.pb.go

@@ -681,14 +681,15 @@ func (lc *leaderController) appendToWal(ctx context.Context, request func(int64)
 		Interface("req", actualRequest).
 		Msg("Append operation")
 
-	value, err := pb.Marshal(
-		&proto.LogEntryValue{
-			Value: &proto.LogEntryValue_Requests{
-				Requests: &proto.WriteRequests{
-					Writes: []*proto.WriteRequest{actualRequest},
-				},
-			},
-		})
+	logEntryValue := proto.LogEntryValueFromVTPool()
+	defer logEntryValue.ReturnToVTPool()
+
+	logEntryValue.Value = &proto.LogEntryValue_Requests{
+		Requests: &proto.WriteRequests{
+			Writes: []*proto.WriteRequest{actualRequest},
+		},
+	}
+	value, err := logEntryValue.MarshalVT()
 	if err != nil {
 		lc.Unlock()
 		return actualRequest, wal.InvalidOffset, timestamp, err
