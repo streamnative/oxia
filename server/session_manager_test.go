@@ -375,5 +375,8 @@ func createSessionManager(t *testing.T) (*sessionManager, *leaderController) {
 		FollowerMaps:      nil,
 	})
 	assert.NoError(t, err)
-	return lc.(*leaderController).sessionManager.(*sessionManager), lc.(*leaderController)
+
+	sessionManager := lc.(*leaderController).sessionManager.(*sessionManager)
+	assert.NoError(t, sessionManager.ctx.Err())
+	return sessionManager, lc.(*leaderController)
 }
