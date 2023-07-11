@@ -87,7 +87,7 @@ type sessionManager struct {
 	activeSessions  metrics.Gauge
 }
 
-func NewSessionManager(namespace string, shardId int64, controller *leaderController) SessionManager {
+func NewSessionManager(ctx context.Context, namespace string, shardId int64, controller *leaderController) SessionManager {
 	labels := metrics.LabelsForShard(namespace, shardId)
 	sm := &sessionManager{
 		sessions:         make(map[SessionId]*session),
@@ -108,7 +108,7 @@ func NewSessionManager(namespace string, shardId int64, controller *leaderContro
 			"The total number of sessions expired", "count", labels),
 	}
 
-	sm.ctx, sm.cancel = context.WithCancel(context.Background())
+	sm.ctx, sm.cancel = context.WithCancel(ctx)
 
 	sm.activeSessions = metrics.NewGauge("oxia_server_session_active",
 		"The number of sessions currently active", "count", labels, func() int64 {

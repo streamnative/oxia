@@ -135,9 +135,9 @@ func NewLeaderController(config Config, namespace string, shardId int64, rpcClie
 			return -1
 		})
 
-	lc.sessionManager = NewSessionManager(namespace, shardId, lc)
-
 	lc.ctx, lc.cancel = context.WithCancel(context.Background())
+
+	lc.sessionManager = NewSessionManager(lc.ctx, namespace, shardId, lc)
 
 	var err error
 	if lc.wal, err = walFactory.NewWal(namespace, shardId, lc); err != nil {
@@ -332,6 +332,8 @@ func (lc *leaderController) BecomeLeader(ctx context.Context, req *proto.BecomeL
 	lc.quorumAckTracker = NewQuorumAckTracker(req.GetReplicationFactor(), lc.leaderElectionHeadEntryId.Offset, leaderCommitOffset)
 
 	lc.walWriteBatcher = NewWalWriteBatcher(lc, lc.term, lc.shardId, lc.wal, lc.quorumAckTracker, lc.ctx)
+
+	lc.sessionManager = NewSessionManager(lc.ctx, lc.namespace, lc.shardId, lc)
 
 	for follower, followerHeadEntryId := range req.FollowerMaps {
 		if err := lc.addFollower(follower, followerHeadEntryId); err != nil {
