@@ -27,7 +27,6 @@ import (
 	"oxia/coordinator/model"
 	"oxia/proto"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -60,10 +59,12 @@ type nodeController struct {
 	nodeAvailabilityListener NodeAvailabilityListener
 	rpc                      RpcProvider
 	log                      zerolog.Logger
-	closed                   atomic.Bool
 	ctx                      context.Context
 	cancel                   context.CancelFunc
 	initialRetryBackoff      time.Duration
+
+	sendAssignmentsCtx    context.Context
+	sendAssignmentsCancel context.CancelFunc
 
 	nodeIsRunningGauge metrics.Gauge
 	failedHealthChecks metrics.Counter
@@ -142,6 +143,10 @@ func (n *nodeController) healthCheckWithRetries() {
 			n.failedHealthChecks.Inc()
 			n.nodeAvailabilityListener.NodeBecameUnavailable(n.addr)
 		}
+
+		// To avoid the send assignments stream to miss the notification about the current
+		// node went down, we interrupt the current stream when the ping on the node fails
+		n.sendAssignmentsCancel()
 	})
 }
 
@@ -231,41 +236,56 @@ func (n *nodeController) sendAssignmentsUpdatesWithRetries() {
 }
 
 func (n *nodeController) sendAssignmentsUpdates(backoff backoff.BackOff) error {
-	stream, err := n.rpc.PushShardAssignments(n.ctx, n.addr)
+	n.Lock()
+	n.sendAssignmentsCtx, n.sendAssignmentsCancel = context.WithCancel(n.ctx)
+	n.Unlock()
+	defer n.sendAssignmentsCancel()
+
+	stream, err := n.rpc.PushShardAssignments(n.sendAssignmentsCtx, n.addr)
 	if err != nil {
 		return err
 	}
 
 	var assignments *proto.ShardAssignments
-	for !n.closed.Load() {
 
-		assignments, err = n.shardAssignmentsProvider.WaitForNextUpdate(stream.Context(), assignments)
-		if err != nil {
-			return err
+	for {
+		select {
+		case <-n.ctx.Done():
+			return nil
+
+		default:
+			n.log.Debug().
+				Interface("current-assignments", assignments).
+				Msg("Waiting for next assignments update")
+			assignments, err = n.shardAssignmentsProvider.WaitForNextUpdate(stream.Context(), assignments)
+			if err != nil {
+				return err
+			}
+
+			if assignments == nil {
+				n.log.Debug().
+					Msg("Assignments are nil")
+				continue
+			}
+
+			n.log.Debug().
+				Interface("assignments", assignments).
+				Msg("Sending assignments")
+
+			if err := stream.Send(assignments); err != nil {
+				n.log.Debug().Err(err).
+					Msg("Failed to send assignments")
+				return err
+			}
+
+			n.log.Debug().
+				Msg("Send assignments completed successfully")
+			backoff.Reset()
 		}
-
-		if assignments == nil {
-			continue
-		}
-
-		n.log.Debug().
-			Interface("assignments", assignments).
-			Msg("Sending assignments")
-
-		if err := stream.Send(assignments); err != nil {
-			n.log.Debug().Err(err).
-				Msg("Failed to send assignments")
-			return err
-		}
-
-		backoff.Reset()
 	}
-
-	return nil
 }
 
 func (n *nodeController) Close() error {
-	n.closed.Store(true)
 	n.nodeIsRunningGauge.Unregister()
 	n.cancel()
 	return nil
