@@ -17,7 +17,6 @@ package metrics
 import (
 	"context"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/metric/instrument"
 	"oxia/common/metrics"
 	"oxia/oxia/internal/model"
 	"oxia/proto"
@@ -29,12 +28,12 @@ type Metrics struct {
 	sinceFunc func(time.Time) time.Duration
 
 	opTime  Timer
-	opValue instrument.Int64Histogram
+	opValue metric.Int64Histogram
 
 	batchTotalTime Timer
 	batchExecTime  Timer
-	batchValue     instrument.Int64Histogram
-	batchRequests  instrument.Int64Histogram
+	batchValue     metric.Int64Histogram
+	batchRequests  metric.Int64Histogram
 }
 
 func NewMetrics(provider metric.MeterProvider) *Metrics {
@@ -131,9 +130,9 @@ func (m *Metrics) ReadCallback() func(time.Time, *proto.ReadRequest, *proto.Read
 	}
 }
 
-func (m *Metrics) metricContextFunc(requestType string) func(error) (context.Context, time.Time, instrument.MeasurementOption) {
+func (m *Metrics) metricContextFunc(requestType string) func(error) (context.Context, time.Time, metric.MeasurementOption) {
 	start := m.timeFunc()
-	return func(err error) (context.Context, time.Time, instrument.MeasurementOption) {
+	return func(err error) (context.Context, time.Time, metric.MeasurementOption) {
 		return context.TODO(), start, attrs(requestType, err)
 	}
 }

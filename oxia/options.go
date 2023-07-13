@@ -15,6 +15,7 @@
 package oxia
 
 import (
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric/noop"
 	"oxia/common"
 	"time"
@@ -22,7 +23,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/metric/global"
 	"go.uber.org/multierr"
 )
 
@@ -162,7 +162,7 @@ func WithMeterProvider(meterProvider metric.MeterProvider) ClientOption {
 
 // WithGlobalMeterProvider instructs the Oxia client to use the global OpenTelemetry MeterProvider.
 func WithGlobalMeterProvider() ClientOption {
-	return WithMeterProvider(global.MeterProvider())
+	return WithMeterProvider(otel.GetMeterProvider())
 }
 
 // WithSessionTimeout specifies the session timeout to

@@ -16,7 +16,7 @@ package metrics
 
 import (
 	"context"
-	"go.opentelemetry.io/otel/metric/instrument"
+	"go.opentelemetry.io/otel/metric"
 	"time"
 )
 
@@ -38,8 +38,8 @@ type LatencyHistogram interface {
 }
 
 type latencyHistogram struct {
-	histo instrument.Float64Histogram
-	attrs instrument.MeasurementOption
+	histo metric.Float64Histogram
+	attrs metric.MeasurementOption
 }
 
 func (t *latencyHistogram) Timer() Timer {
@@ -49,8 +49,8 @@ func (t *latencyHistogram) Timer() Timer {
 func NewLatencyHistogram(name string, description string, labels map[string]any) LatencyHistogram {
 	h, err := meter.Float64Histogram(
 		name,
-		instrument.WithUnit(string(Milliseconds)),
-		instrument.WithDescription(description),
+		metric.WithUnit(string(Milliseconds)),
+		metric.WithDescription(description),
 	)
 	fatalOnErr(err, name)
 
