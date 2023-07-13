@@ -652,6 +652,7 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 	assert.NoError(t, err)
 
 	trReq := <-rpcClient.truncateReqs
+	assert.Equal(t, common.DefaultNamespace, trReq.Namespace)
 	assert.EqualValues(t, 6, trReq.Term)
 	AssertProtoEqual(t, &proto.EntryId{Term: 5, Offset: 9}, trReq.HeadEntryId)
 	assert.Equal(t, shard, trReq.ShardId)
