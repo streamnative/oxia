@@ -107,6 +107,9 @@ func (p *PebbleFactory) NewSnapshotLoader(namespace string, shardId int64) (Snap
 }
 
 func (p *PebbleFactory) getKVPath(namespace string, shard int64) string {
+	if namespace == "" {
+		log.Fatal().Int64("shard", shard).Msg("Missing namespace when getting KV path")
+	}
 	return filepath.Join(p.dataDir, namespace, fmt.Sprint("shard-", shard))
 }
 
