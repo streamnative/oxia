@@ -19,8 +19,15 @@ package proto;
 option go_package = "github.com/streamnative/oxia/proto";
 
 import "client.proto";
+import "google/protobuf/descriptor.proto";
+
+extend google.protobuf.MessageOptions {
+  optional bool mempool = 64101;
+}
 
 message StorageEntry {
+  option (mempool) = true;
+
   bytes value = 1;
   int64 version_id = 2;
   int64 modifications_count = 3;
@@ -32,16 +39,19 @@ message StorageEntry {
 }
 
 message SessionMetadata {
+  option (mempool) = true;
+
   uint32 timeout_ms = 1;
   string identity = 2;
 }
 
 message LogEntryValue {
+  option (mempool) = true;
   oneof value {
     WriteRequests requests = 1;
   }
 }
 
 message WriteRequests {
-    repeated io.streamnative.oxia.proto.WriteRequest writes = 1;
+  repeated io.streamnative.oxia.proto.WriteRequest writes = 1;
 }

@@ -23,7 +23,6 @@ import (
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	pb "google.golang.org/protobuf/proto"
 	"io"
 	"oxia/common"
 	"oxia/common/metrics"
@@ -486,6 +485,9 @@ func (fc *followerController) processCommittedEntries(maxInclusive int64) error 
 		}
 	}()
 
+	logEntryValue := proto.LogEntryValueFromVTPool()
+	defer logEntryValue.ReturnToVTPool()
+
 	for reader.HasNext() {
 		entry, err := reader.ReadNext()
 
@@ -506,12 +508,12 @@ func (fc *followerController) processCommittedEntries(maxInclusive int64) error 
 			return nil
 		}
 
-		value := &proto.LogEntryValue{}
-		if err := pb.Unmarshal(entry.Value, value); err != nil {
+		logEntryValue.ResetVT()
+		if err := logEntryValue.UnmarshalVT(entry.Value); err != nil {
 			fc.log.Err(err).Msg("Error unmarshalling committed entry")
 			return err
 		}
-		for _, br := range value.GetRequests().Writes {
+		for _, br := range logEntryValue.GetRequests().Writes {
 			_, err = fc.db.ProcessWrite(br, entry.Offset, entry.Timestamp, SessionUpdateOperationCallback)
 			if err != nil {
 				fc.log.Err(err).Msg("Error applying committed entry")
