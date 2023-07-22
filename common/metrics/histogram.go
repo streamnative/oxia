@@ -16,7 +16,7 @@ package metrics
 
 import (
 	"context"
-	"go.opentelemetry.io/otel/metric/instrument"
+	"go.opentelemetry.io/otel/metric"
 )
 
 var sizeBucketsBytes = []float64{
@@ -34,8 +34,8 @@ type Histogram interface {
 }
 
 type histogram struct {
-	h     instrument.Int64Histogram
-	attrs instrument.MeasurementOption
+	h     metric.Int64Histogram
+	attrs metric.MeasurementOption
 }
 
 func (t *histogram) Record(size int) {
@@ -53,8 +53,8 @@ func NewBytesHistogram(name string, description string, labels map[string]any) H
 func newHistogram(name string, unit Unit, description string, labels map[string]any) Histogram {
 	h, err := meter.Int64Histogram(
 		name,
-		instrument.WithUnit(string(unit)),
-		instrument.WithDescription(description),
+		metric.WithUnit(string(unit)),
+		metric.WithDescription(description),
 	)
 	fatalOnErr(err, name)
 
