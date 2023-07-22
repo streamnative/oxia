@@ -19,7 +19,7 @@ go 1.19
 require (
 	github.com/bmizerany/perks v0.0.0-20230307044200-03f9df79da1e
 	github.com/cenkalti/backoff/v4 v4.2.0
-	github.com/cockroachdb/pebble v0.0.0-20230612185438-6f12cd7fc7e8
+	github.com/cockroachdb/pebble v0.0.0-20230721221451-fcaeb47a50e0
 	github.com/dgraph-io/ristretto v0.1.1
 	github.com/dustin/go-humanize v1.0.1
 	github.com/edsrzf/mmap-go v1.1.0
@@ -62,6 +62,7 @@ require (
 	github.com/cockroachdb/errors v1.10.0 // indirect
 	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect
 	github.com/cockroachdb/redact v1.1.5 // indirect
+	github.com/cockroachdb/tokenbucket v0.0.0-20230613231145-182959a1fad6 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/emicklei/go-restful/v3 v3.10.2 // indirect
 	github.com/evanphx/json-patch v5.6.0+incompatible // indirect
