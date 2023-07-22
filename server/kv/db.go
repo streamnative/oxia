@@ -27,8 +27,6 @@ import (
 	"oxia/proto"
 	"oxia/server/wal"
 	"time"
-
-	pb "google.golang.org/protobuf/proto"
 )
 
 var ErrorBadVersionId = errors.New("oxia: bad version id")
@@ -202,7 +200,7 @@ func (d *db) ProcessWrite(b *proto.WriteRequest, commitOffset int64, timestamp u
 }
 
 func (d *db) addNotifications(batch WriteBatch, notifications *notifications) error {
-	value, err := pb.Marshal(&notifications.batch)
+	value, err := notifications.batch.MarshalVT()
 	if err != nil {
 		return err
 	}
@@ -335,15 +333,14 @@ func (d *db) applyPut(commitOffset int64, batch WriteBatch, notifications *notif
 		}
 
 		if se == nil {
-			se = &proto.StorageEntry{
-				VersionId:             commitOffset,
-				ModificationsCount:    0,
-				Value:                 putReq.Value,
-				CreationTimestamp:     timestamp,
-				ModificationTimestamp: timestamp,
-				SessionId:             putReq.SessionId,
-				ClientIdentity:        putReq.ClientIdentity,
-			}
+			se = proto.StorageEntryFromVTPool()
+			se.VersionId = commitOffset
+			se.ModificationsCount = 0
+			se.Value = putReq.Value
+			se.CreationTimestamp = timestamp
+			se.ModificationTimestamp = timestamp
+			se.SessionId = putReq.SessionId
+			se.ClientIdentity = putReq.ClientIdentity
 		} else {
 			se.VersionId = commitOffset
 			se.ModificationsCount += 1
@@ -353,7 +350,9 @@ func (d *db) applyPut(commitOffset int64, batch WriteBatch, notifications *notif
 			se.ClientIdentity = putReq.ClientIdentity
 		}
 
-		ser, err := pb.Marshal(se)
+		defer se.ReturnToVTPool()
+
+		ser, err := se.MarshalVT()
 		if err != nil {
 			return nil, err
 		}
@@ -386,6 +385,9 @@ func (d *db) applyPut(commitOffset int64, batch WriteBatch, notifications *notif
 
 func (d *db) applyDelete(batch WriteBatch, notifications *notifications, delReq *proto.DeleteRequest, updateOperationCallback UpdateOperationCallback) (*proto.DeleteResponse, error) {
 	se, err := checkExpectedVersionId(batch, delReq.Key, delReq.ExpectedVersionId)
+	if se != nil {
+		defer se.ReturnToVTPool()
+	}
 
 	if errors.Is(err, ErrorBadVersionId) {
 		return &proto.DeleteResponse{Status: proto.Status_UNEXPECTED_VERSION_ID}, nil
@@ -454,11 +456,20 @@ func applyGet(kv KV, getReq *proto.GetRequest) (*proto.GetResponse, error) {
 		return nil, errors.Wrap(err, "oxia db: failed to apply batch")
 	}
 
-	se, err := deserialize(value)
+	var se *proto.StorageEntry
+	if getReq.IncludeValue {
+		// If we need to return the value we cannot pool the objects, because
+		// the Value slice would be returned to pool
+		se = &proto.StorageEntry{}
+	} else {
+		se = proto.StorageEntryFromVTPool()
+		defer se.ReturnToVTPool()
+	}
 
-	err = multierr.Append(err, closer.Close())
-
-	if err != nil {
+	if err = multierr.Append(
+		deserialize(value, se),
+		closer.Close(),
+	); err != nil {
 		return nil, err
 	}
 
@@ -486,10 +497,12 @@ func GetStorageEntry(batch WriteBatch, key string) (*proto.StorageEntry, error) 
 		return nil, err
 	}
 
-	se, err := deserialize(value)
+	se := proto.StorageEntryFromVTPool()
 
-	err = multierr.Append(err, closer.Close())
-	if err != nil {
+	if err = multierr.Append(
+		deserialize(value, se),
+		closer.Close(),
+	); err != nil {
 		return nil, err
 	}
 	return se, nil
@@ -510,19 +523,19 @@ func checkExpectedVersionId(batch WriteBatch, key string, expectedVersionId *int
 	}
 
 	if expectedVersionId != nil && se.VersionId != *expectedVersionId {
+		se.ReturnToVTPool()
 		return nil, ErrorBadVersionId
 	}
 
 	return se, nil
 }
 
-func deserialize(value []byte) (*proto.StorageEntry, error) {
-	se := &proto.StorageEntry{}
-	if err := pb.Unmarshal(value, se); err != nil {
-		return nil, errors.Wrap(err, "failed to deserialize storage entry")
+func deserialize(value []byte, se *proto.StorageEntry) error {
+	if err := se.UnmarshalVT(value); err != nil {
+		return errors.Wrap(err, "failed to deserialize storage entry")
 	}
 
-	return se, nil
+	return nil
 }
 
 func (d *db) ReadNextNotifications(ctx context.Context, startOffset int64) ([]*proto.NotificationBatch, error) {

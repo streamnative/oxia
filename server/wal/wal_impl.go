@@ -187,7 +187,7 @@ func (t *wal) readAtIndex(index int64) (*proto.LogEntry, error) {
 	}
 
 	entry := &proto.LogEntry{}
-	if err = pb.Unmarshal(val, entry); err != nil {
+	if err = entry.UnmarshalVT(val); err != nil {
 		t.readErrors.Inc()
 		return nil, err
 	}

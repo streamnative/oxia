@@ -20,7 +20,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	pb "google.golang.org/protobuf/proto"
 	"math"
 	"oxia/common"
 	"oxia/common/metrics"
@@ -174,7 +173,7 @@ func (nt *notificationsTracker) ReadNextNotifications(ctx context.Context, start
 		}
 
 		nb := &proto.NotificationBatch{}
-		if err := pb.Unmarshal(value, nb); err != nil {
+		if err := nb.UnmarshalVT(value); err != nil {
 			return nil, errors.Wrap(err, "failed to deserialize notification batch")
 		}
 		res = append(res, nb)
