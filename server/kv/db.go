@@ -456,12 +456,20 @@ func applyGet(kv KV, getReq *proto.GetRequest) (*proto.GetResponse, error) {
 		return nil, errors.Wrap(err, "oxia db: failed to apply batch")
 	}
 
-	se, err := deserialize(value)
-	defer se.ReturnToVTPool()
+	var se *proto.StorageEntry
+	if getReq.IncludeValue {
+		// If we need to return the value we cannot pool the objects, because
+		// the Value slice would be returned to pool
+		se = &proto.StorageEntry{}
+	} else {
+		se = proto.StorageEntryFromVTPool()
+		defer se.ReturnToVTPool()
+	}
 
-	err = multierr.Append(err, closer.Close())
-
-	if err != nil {
+	if err = multierr.Append(
+		deserialize(value, se),
+		closer.Close(),
+	); err != nil {
 		return nil, err
 	}
 
@@ -489,10 +497,12 @@ func GetStorageEntry(batch WriteBatch, key string) (*proto.StorageEntry, error) 
 		return nil, err
 	}
 
-	se, err := deserialize(value)
+	se := proto.StorageEntryFromVTPool()
 
-	err = multierr.Append(err, closer.Close())
-	if err != nil {
+	if err = multierr.Append(
+		deserialize(value, se),
+		closer.Close(),
+	); err != nil {
 		return nil, err
 	}
 	return se, nil
@@ -513,19 +523,19 @@ func checkExpectedVersionId(batch WriteBatch, key string, expectedVersionId *int
 	}
 
 	if expectedVersionId != nil && se.VersionId != *expectedVersionId {
+		se.ReturnToVTPool()
 		return nil, ErrorBadVersionId
 	}
 
 	return se, nil
 }
 
-func deserialize(value []byte) (*proto.StorageEntry, error) {
-	se := proto.StorageEntryFromVTPool()
+func deserialize(value []byte, se *proto.StorageEntry) error {
 	if err := se.UnmarshalVT(value); err != nil {
-		return nil, errors.Wrap(err, "failed to deserialize storage entry")
+		return errors.Wrap(err, "failed to deserialize storage entry")
 	}
 
-	return se, nil
+	return nil
 }
 
 func (d *db) ReadNextNotifications(ctx context.Context, startOffset int64) ([]*proto.NotificationBatch, error) {
