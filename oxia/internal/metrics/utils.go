@@ -18,25 +18,24 @@ import (
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/metric/instrument"
 	"oxia/common/metrics"
 	"oxia/proto"
 )
 
-func newHistogram(meter metric.Meter, name string, unit metrics.Unit) instrument.Int64Histogram {
-	histogram, err := meter.Int64Histogram(name, instrument.WithUnit(string(unit)))
+func newHistogram(meter metric.Meter, name string, unit metrics.Unit) metric.Int64Histogram {
+	histogram, err := meter.Int64Histogram(name, metric.WithUnit(string(unit)))
 	fatalOnErr(err, name)
 	return histogram
 }
 
-func newMillisCounter(meter metric.Meter, name string) instrument.Float64Counter {
-	counter, err := meter.Float64Counter(name, instrument.WithUnit(string(metrics.Milliseconds)))
+func newMillisCounter(meter metric.Meter, name string) metric.Float64Counter {
+	counter, err := meter.Float64Counter(name, metric.WithUnit(string(metrics.Milliseconds)))
 	fatalOnErr(err, name)
 	return counter
 }
 
-func newCounter(meter metric.Meter, name string, unit metrics.Unit) instrument.Int64Counter {
-	counter, err := meter.Int64Counter(name, instrument.WithUnit(string(unit)))
+func newCounter(meter metric.Meter, name string, unit metrics.Unit) metric.Int64Counter {
+	counter, err := meter.Int64Counter(name, metric.WithUnit(string(unit)))
 	fatalOnErr(err, name)
 	return counter
 }
@@ -48,8 +47,8 @@ func fatalOnErr(err error, name string) {
 	}
 }
 
-func attrs(requestType string, err error) instrument.MeasurementOption {
-	return instrument.WithAttributes(
+func attrs(requestType string, err error) metric.MeasurementOption {
+	return metric.WithAttributes(
 		attribute.Key("type").String(requestType),
 		attribute.Key("result").String(result(err)),
 	)

@@ -16,7 +16,7 @@ package metrics
 
 import (
 	"context"
-	"go.opentelemetry.io/otel/metric/instrument"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // Counter is a monotonically increasing counter
@@ -26,8 +26,8 @@ type Counter interface {
 }
 
 type counter struct {
-	sc    instrument.Int64Counter
-	attrs instrument.MeasurementOption
+	sc    metric.Int64Counter
+	attrs metric.MeasurementOption
 }
 
 func (c *counter) Inc() {
@@ -40,8 +40,8 @@ func (c *counter) Add(incr int) {
 
 func NewCounter(name string, description string, unit Unit, labels map[string]any) Counter {
 	sc, err := meter.Int64Counter(name,
-		instrument.WithUnit(string(unit)),
-		instrument.WithDescription(description))
+		metric.WithUnit(string(unit)),
+		metric.WithDescription(description))
 	fatalOnErr(err, name)
 	return &counter{
 		sc:    sc,
@@ -58,8 +58,8 @@ type UpDownCounter interface {
 }
 
 type upDownCounter struct {
-	sc    instrument.Int64UpDownCounter
-	attrs instrument.MeasurementOption
+	sc    metric.Int64UpDownCounter
+	attrs metric.MeasurementOption
 }
 
 func (c *upDownCounter) Inc() {
@@ -80,8 +80,8 @@ func (c *upDownCounter) Sub(diff int) {
 
 func NewUpDownCounter(name string, description string, unit Unit, labels map[string]any) UpDownCounter {
 	sc, err := meter.Int64UpDownCounter(name,
-		instrument.WithUnit(string(unit)),
-		instrument.WithDescription(description))
+		metric.WithUnit(string(unit)),
+		metric.WithDescription(description))
 	fatalOnErr(err, name)
 	return &upDownCounter{
 		sc:    sc,

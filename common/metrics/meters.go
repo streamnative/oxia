@@ -18,7 +18,6 @@ import (
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/metric/instrument"
 )
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -40,7 +39,7 @@ func fatalOnErr(err error, name string) {
 	}
 }
 
-func getAttrs(labels map[string]any) (options instrument.MeasurementOption) {
+func getAttrs(labels map[string]any) (options metric.MeasurementOption) {
 	attrs := make([]attribute.KeyValue, 0)
 	for k, v := range labels {
 		key := attribute.Key(k)
@@ -66,5 +65,5 @@ func getAttrs(labels map[string]any) (options instrument.MeasurementOption) {
 		attrs = append(attrs, attr)
 	}
 
-	return instrument.WithAttributes(attrs...)
+	return metric.WithAttributes(attrs...)
 }
