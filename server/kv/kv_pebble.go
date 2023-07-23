@@ -32,6 +32,21 @@ import (
 	"time"
 )
 
+var (
+	OxiaSlashSpanComparer = &pebble.Comparer{
+		Compare:            CompareWithSlash,
+		Equal:              pebble.DefaultComparer.Equal,
+		AbbreviatedKey:     pebble.DefaultComparer.AbbreviatedKey,
+		FormatKey:          pebble.DefaultComparer.FormatKey,
+		FormatValue:        pebble.DefaultComparer.FormatValue,
+		Separator:          pebble.DefaultComparer.Separator,
+		Split:              pebble.DefaultComparer.Split,
+		Successor:          pebble.DefaultComparer.Successor,
+		ImmediateSuccessor: pebble.DefaultComparer.ImmediateSuccessor,
+		Name:               "oxia-slash-spans",
+	}
+)
+
 type PebbleFactory struct {
 	dataDir string
 	cache   *pebble.Cache
@@ -171,19 +186,8 @@ func newKVPebble(factory *PebbleFactory, namespace string, shardId int64) (KV, e
 	}
 
 	pbOptions := &pebble.Options{
-		Cache: factory.cache,
-		Comparer: &pebble.Comparer{
-			Compare:            CompareWithSlash,
-			Equal:              pebble.DefaultComparer.Equal,
-			AbbreviatedKey:     pebble.DefaultComparer.AbbreviatedKey,
-			FormatKey:          pebble.DefaultComparer.FormatKey,
-			FormatValue:        pebble.DefaultComparer.FormatValue,
-			Separator:          pebble.DefaultComparer.Separator,
-			Split:              pebble.DefaultComparer.Split,
-			Successor:          pebble.DefaultComparer.Successor,
-			ImmediateSuccessor: pebble.DefaultComparer.ImmediateSuccessor,
-			Name:               "oxia-slash-spans",
-		},
+		Cache:        factory.cache,
+		Comparer:     OxiaSlashSpanComparer,
 		MemTableSize: 32 * 1024 * 1024,
 		Levels: []pebble.LevelOptions{
 			{

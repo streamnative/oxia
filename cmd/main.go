@@ -23,6 +23,7 @@ import (
 	"oxia/cmd/client"
 	"oxia/cmd/coordinator"
 	"oxia/cmd/health"
+	"oxia/cmd/pebble"
 	"oxia/cmd/perf"
 	"oxia/cmd/server"
 	"oxia/cmd/standalone"
@@ -57,6 +58,7 @@ func init() {
 	rootCmd.AddCommand(perf.Cmd)
 	rootCmd.AddCommand(server.Cmd)
 	rootCmd.AddCommand(standalone.Cmd)
+	rootCmd.AddCommand(pebble.Cmd)
 }
 
 func configureLogLevel(cmd *cobra.Command, args []string) error {
