@@ -59,6 +59,7 @@ type wal struct {
 	shard       int64
 	firstOffset atomic.Int64
 	segmentSize uint32
+	syncData    bool
 
 	currentSegment   ReadWriteSegment
 	readOnlySegments ReadOnlySegmentsGroup
@@ -104,6 +105,7 @@ func newWal(namespace string, shard int64, options *WalFactoryOptions, commitOff
 		namespace:   namespace,
 		shard:       shard,
 		segmentSize: uint32(options.SegmentSize),
+		syncData:    options.SyncData,
 
 		appendLatency: metrics.NewLatencyHistogram("oxia_server_wal_append_latency",
 			"The time it takes to append entries to the WAL", labels),
@@ -143,11 +145,13 @@ func newWal(namespace string, shard int64, options *WalFactoryOptions, commitOff
 
 	w.trimmer = newTrimmer(namespace, shard, w, options.Retention, trimmerCheckInterval, clock, commitOffsetProvider)
 
-	go common.DoWithLabels(map[string]string{
-		"oxia":      "wal-sync",
-		"namespace": namespace,
-		"shard":     fmt.Sprintf("%d", shard),
-	}, w.runSync)
+	if options.SyncData {
+		go common.DoWithLabels(map[string]string{
+			"oxia":      "wal-sync",
+			"namespace": namespace,
+			"shard":     fmt.Sprintf("%d", shard),
+		}, w.runSync)
+	}
 
 	return w, nil
 }
@@ -342,6 +346,11 @@ func (t *wal) runSync() {
 }
 
 func (t *wal) Sync(ctx context.Context) error {
+	if !t.syncData {
+		t.lastSyncedOffset.Store(t.lastAppendedOffset.Load())
+		return nil
+	}
+
 	t.Lock()
 	defer t.Unlock()
 

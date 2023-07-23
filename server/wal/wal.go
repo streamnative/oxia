@@ -36,12 +36,14 @@ type WalFactoryOptions struct {
 	BaseWalDir  string
 	Retention   time.Duration
 	SegmentSize int32
+	SyncData    bool
 }
 
 var DefaultWalFactoryOptions = &WalFactoryOptions{
 	BaseWalDir:  "data/wal",
 	Retention:   1 * time.Hour,
 	SegmentSize: 64 * 1024 * 1024,
+	SyncData:    true,
 }
 
 type WalFactory interface {

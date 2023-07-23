@@ -74,8 +74,10 @@ func NewStandalone(config StandaloneConfig) (*Standalone, error) {
 
 	kvOptions := kv.KVFactoryOptions{DataDir: config.DataDir}
 	s.walFactory = wal.NewWalFactory(&wal.WalFactoryOptions{
-		BaseWalDir: config.WalDir,
-		Retention:  config.WalRetentionTime,
+		BaseWalDir:  config.WalDir,
+		Retention:   config.WalRetentionTime,
+		SegmentSize: wal.DefaultWalFactoryOptions.SegmentSize,
+		SyncData:    config.WalSyncData,
 	})
 	var err error
 	if s.kvFactory, err = kv.NewPebbleKVFactory(&kvOptions); err != nil {
