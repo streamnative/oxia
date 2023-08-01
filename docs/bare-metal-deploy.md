@@ -1,0 +1,1 @@
+# Deploying in the bare metal 
