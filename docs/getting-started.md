@@ -7,13 +7,13 @@
 Oxia is available in form of a Docker image
 
 ```shell
-$ docker pull streamnative/oxia:main
+docker pull streamnative/oxia:main
 ```
 
 ### Building from source
 
 ```shell
-$ make
+make
 ```
 
 This will create the binary file on `bin/oxia`.
@@ -25,7 +25,7 @@ It provides a full-fledged Oxia service with a `default` namespace. Being a sing
 getting replicated.
 
 ```shell
-$ oxia standalone
+oxia standalone
 ```
 
 Output will be something like:
@@ -45,7 +45,7 @@ The service is now ready at `localhost:6648` address.
 Using docker this can be done with:
 
 ```shell
-$ docker run -p 6648:6648 streamnative/oxia:main oxia standalone
+docker run -p 6648:6648 streamnative/oxia:main oxia standalone
 ```
 
 ## Interacting by CLI
