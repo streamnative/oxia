@@ -46,7 +46,7 @@ require (
 	golang.org/x/sync v0.2.0
 	golang.org/x/sys v0.13.0
 	golang.org/x/time v0.3.0
-	google.golang.org/grpc v1.54.0
+	google.golang.org/grpc v1.56.3
 	google.golang.org/protobuf v1.30.0
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
