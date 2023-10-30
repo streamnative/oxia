@@ -22,7 +22,7 @@ ADD . /src/oxia
 RUN cd /src/oxia \
     && make
 
-FROM alpine:3.17.3
+FROM alpine:3.18.4
 
 RUN apk add --no-cache bash bash-completion
 
