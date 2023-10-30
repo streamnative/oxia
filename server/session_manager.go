@@ -51,7 +51,7 @@ func KeyToId(key string) (SessionId, error) {
 	}
 	s := key[len(KeyPrefix):]
 	s = s[:len(s)-1]
-	longInt, err := strconv.ParseUint(s, 16, 64)
+	longInt, err := strconv.ParseInt(s, 16, 64)
 	if err != nil {
 		return 0, err
 	}
