@@ -20,7 +20,6 @@ import (
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/sdk/metric"
-	"go.opentelemetry.io/otel/sdk/metric/aggregation"
 	"io"
 	"net"
 	"net/http"
@@ -40,7 +39,7 @@ func init() {
 			Unit: string(Milliseconds),
 		},
 		metric.Stream{
-			Aggregation: aggregation.ExplicitBucketHistogram{
+			Aggregation: metric.AggregationExplicitBucketHistogram{
 				Boundaries: latencyBucketsMillis,
 			},
 		},
@@ -51,7 +50,7 @@ func init() {
 			Unit: string(Bytes),
 		},
 		metric.Stream{
-			Aggregation: aggregation.ExplicitBucketHistogram{
+			Aggregation: metric.AggregationExplicitBucketHistogram{
 				Boundaries: sizeBucketsBytes,
 			},
 		},
@@ -62,7 +61,7 @@ func init() {
 			Unit: string(Dimensionless),
 		},
 		metric.Stream{
-			Aggregation: aggregation.ExplicitBucketHistogram{
+			Aggregation: metric.AggregationExplicitBucketHistogram{
 				Boundaries: sizeBucketsCount,
 			},
 		},
