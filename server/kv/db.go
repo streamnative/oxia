@@ -46,7 +46,7 @@ type DB interface {
 
 	ProcessWrite(b *proto.WriteRequest, commitOffset int64, timestamp uint64, updateOperationCallback UpdateOperationCallback) (*proto.WriteResponse, error)
 	Get(request *proto.GetRequest) (*proto.GetResponse, error)
-	List(request *proto.ListRequest) KeyIterator
+	List(request *proto.ListRequest) (KeyIterator, error)
 	ReadCommitOffset() (int64, error)
 
 	ReadNextNotifications(ctx context.Context, startOffset int64) ([]*proto.NotificationBatch, error)
@@ -240,11 +240,15 @@ func (it *listIterator) Close() error {
 	return it.KeyIterator.Close()
 }
 
-func (d *db) List(request *proto.ListRequest) KeyIterator {
+func (d *db) List(request *proto.ListRequest) (KeyIterator, error) {
 	d.listCounter.Add(1)
-	return &listIterator{
-		KeyIterator: d.kv.KeyRangeScan(request.StartInclusive, request.EndExclusive),
-		timer:       d.listLatencyHisto.Timer(),
+	if it, err := d.kv.KeyRangeScan(request.StartInclusive, request.EndExclusive); err != nil {
+		return nil, err
+	} else {
+		return &listIterator{
+			KeyIterator: it,
+			timer:       d.listLatencyHisto.Timer(),
+		}, nil
 	}
 }
 
@@ -418,7 +422,11 @@ func (d *db) applyDelete(batch WriteBatch, notifications *notifications, delReq 
 
 func (d *db) applyDeleteRange(batch WriteBatch, notifications *notifications, delReq *proto.DeleteRangeRequest, updateOperationCallback UpdateOperationCallback) (*proto.DeleteRangeResponse, error) {
 	if notifications != nil || updateOperationCallback != NoOpCallback {
-		it := batch.KeyRangeScan(delReq.StartInclusive, delReq.EndExclusive)
+		it, err := batch.KeyRangeScan(delReq.StartInclusive, delReq.EndExclusive)
+		if err != nil {
+			return nil, err
+		}
+
 		for it.Next() {
 			if notifications != nil {
 				notifications.Deleted(it.Key())

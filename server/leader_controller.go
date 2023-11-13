@@ -603,7 +603,14 @@ func (lc *leaderController) list(ctx context.Context, request *proto.ListRequest
 		lc.log.Debug().
 			Msg("Received list request")
 
-		it := lc.db.List(request)
+		it, err := lc.db.List(request)
+		if err != nil {
+			lc.log.Warn().Err(err).
+				Msg("Failed to process list request")
+			close(ch)
+			return
+		}
+
 		defer func() {
 			_ = it.Close()
 		}()
