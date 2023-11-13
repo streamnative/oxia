@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM golang:1.19-alpine as build
+FROM golang:1.21-alpine as build
 
 RUN apk add --no-cache make git build-base bash
 

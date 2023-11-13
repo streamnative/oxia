@@ -14,7 +14,7 @@
 
 module oxia
 
-go 1.19
+go 1.21
 
 require (
 	github.com/bmizerany/perks v0.0.0-20230307044200-03f9df79da1e
