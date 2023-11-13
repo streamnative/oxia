@@ -99,8 +99,8 @@ func (m mockWriteBatch) DeleteRange(_, _ string) error {
 	return nil
 }
 
-func (m mockWriteBatch) KeyRangeScan(_, _ string) kv.KeyIterator {
-	return nil
+func (m mockWriteBatch) KeyRangeScan(_, _ string) (kv.KeyIterator, error) {
+	return nil, nil
 }
 
 func (m mockWriteBatch) Commit() error {

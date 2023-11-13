@@ -366,31 +366,40 @@ func (p *Pebble) Get(key string) ([]byte, io.Closer, error) {
 	return value, closer, err
 }
 
-func (p *Pebble) KeyRangeScan(lowerBound, upperBound string) KeyIterator {
-	pbit := p.db.NewIter(&pebble.IterOptions{
+func (p *Pebble) KeyRangeScan(lowerBound, upperBound string) (KeyIterator, error) {
+	pbit, err := p.db.NewIter(&pebble.IterOptions{
 		LowerBound: []byte(lowerBound),
 		UpperBound: []byte(upperBound),
 	})
+	if err != nil {
+		return nil, err
+	}
 	pbit.SeekGE([]byte(lowerBound))
-	return &PebbleIterator{p, pbit}
+	return &PebbleIterator{p, pbit}, nil
 }
 
-func (p *Pebble) KeyRangeScanReverse(lowerBound, upperBound string) ReverseKeyIterator {
-	pbit := p.db.NewIter(&pebble.IterOptions{
+func (p *Pebble) KeyRangeScanReverse(lowerBound, upperBound string) (ReverseKeyIterator, error) {
+	pbit, err := p.db.NewIter(&pebble.IterOptions{
 		LowerBound: []byte(lowerBound),
 		UpperBound: []byte(upperBound),
 	})
+	if err != nil {
+		return nil, err
+	}
 	pbit.Last()
-	return &PebbleReverseIterator{p, pbit}
+	return &PebbleReverseIterator{p, pbit}, nil
 }
 
-func (p *Pebble) RangeScan(lowerBound, upperBound string) KeyValueIterator {
-	pbit := p.db.NewIter(&pebble.IterOptions{
+func (p *Pebble) RangeScan(lowerBound, upperBound string) (KeyValueIterator, error) {
+	pbit, err := p.db.NewIter(&pebble.IterOptions{
 		LowerBound: []byte(lowerBound),
 		UpperBound: []byte(upperBound),
 	})
+	if err != nil {
+		return nil, err
+	}
 	pbit.SeekGE([]byte(lowerBound))
-	return &PebbleIterator{p, pbit}
+	return &PebbleIterator{p, pbit}, nil
 }
 
 func (p *Pebble) Snapshot() (Snapshot, error) {
@@ -416,13 +425,16 @@ func (b *PebbleBatch) DeleteRange(lowerBound, upperBound string) error {
 	return b.b.DeleteRange([]byte(lowerBound), []byte(upperBound), pebble.NoSync)
 }
 
-func (b *PebbleBatch) KeyRangeScan(lowerBound, upperBound string) KeyIterator {
-	pbit := b.b.NewIter(&pebble.IterOptions{
+func (b *PebbleBatch) KeyRangeScan(lowerBound, upperBound string) (KeyIterator, error) {
+	pbit, err := b.b.NewIter(&pebble.IterOptions{
 		LowerBound: []byte(lowerBound),
 		UpperBound: []byte(upperBound),
 	})
+	if err != nil {
+		return nil, err
+	}
 	pbit.SeekGE([]byte(lowerBound))
-	return &PebbleIterator{b.p, pbit}
+	return &PebbleIterator{b.p, pbit}, nil
 }
 
 func (b *PebbleBatch) Close() error {
@@ -541,6 +553,10 @@ type PebbleLogger struct {
 
 func (pl *PebbleLogger) Infof(format string, args ...interface{}) {
 	pl.zl.Info().Msgf(format, args...)
+}
+
+func (pl *PebbleLogger) Errorf(format string, args ...interface{}) {
+	pl.zl.Error().Msgf(format, args...)
 }
 
 func (pl *PebbleLogger) Fatalf(format string, args ...interface{}) {

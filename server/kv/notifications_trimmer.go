@@ -154,7 +154,10 @@ func (t *notificationsTrimmer) trimNotifications() error {
 }
 
 func (t *notificationsTrimmer) getFirstLast() (first, last int64, err error) {
-	it1 := t.kv.KeyRangeScan(firstNotificationKey, lastNotificationKey)
+	it1, err := t.kv.KeyRangeScan(firstNotificationKey, lastNotificationKey)
+	if err != nil {
+		return -1, -1, err
+	}
 	defer it1.Close()
 	if !it1.Valid() {
 		// There are no entries in DB
@@ -165,7 +168,10 @@ func (t *notificationsTrimmer) getFirstLast() (first, last int64, err error) {
 		return first, last, err
 	}
 
-	it2 := t.kv.KeyRangeScanReverse(firstNotificationKey, lastNotificationKey)
+	it2, err := t.kv.KeyRangeScanReverse(firstNotificationKey, lastNotificationKey)
+	if err != nil {
+		return -1, -1, err
+	}
 	defer it2.Close()
 	if !it2.Valid() {
 		// There are no entries in DB

@@ -33,7 +33,7 @@ type WriteBatch interface {
 	Get(key string) ([]byte, io.Closer, error)
 
 	DeleteRange(lowerBound, upperBound string) error
-	KeyRangeScan(lowerBound, upperBound string) KeyIterator
+	KeyRangeScan(lowerBound, upperBound string) (KeyIterator, error)
 
 	// Count is the number of transactions that are currently in the batch
 	Count() int
@@ -99,10 +99,10 @@ type KV interface {
 
 	Get(key string) ([]byte, io.Closer, error)
 
-	KeyRangeScan(lowerBound, upperBound string) KeyIterator
-	KeyRangeScanReverse(lowerBound, upperBound string) ReverseKeyIterator
+	KeyRangeScan(lowerBound, upperBound string) (KeyIterator, error)
+	KeyRangeScanReverse(lowerBound, upperBound string) (ReverseKeyIterator, error)
 
-	RangeScan(lowerBound, upperBound string) KeyValueIterator
+	RangeScan(lowerBound, upperBound string) (KeyValueIterator, error)
 
 	Snapshot() (Snapshot, error)
 

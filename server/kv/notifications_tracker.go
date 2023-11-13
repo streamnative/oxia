@@ -158,7 +158,10 @@ func (nt *notificationsTracker) ReadNextNotifications(ctx context.Context, start
 		return nil, err
 	}
 
-	it := nt.kv.RangeScan(notificationKey(startOffset), lastNotificationKey)
+	it, err := nt.kv.RangeScan(notificationKey(startOffset), lastNotificationKey)
+	if err != nil {
+		return nil, err
+	}
 	defer it.Close()
 
 	var res []*proto.NotificationBatch

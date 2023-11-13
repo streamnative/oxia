@@ -337,7 +337,8 @@ func TestDBList(t *testing.T) {
 	assert.NoError(t, factory.Close())
 }
 
-func keyIteratorToSlice(it KeyIterator) []string {
+func keyIteratorToSlice(it KeyIterator, err error) []string {
+	assert.NoError(nil, err)
 	var keys []string
 	for ; it.Valid(); it.Next() {
 		keys = append(keys, it.Key())
@@ -388,10 +389,12 @@ func TestDBDeleteRange(t *testing.T) {
 	assert.NoError(t, err)
 
 	keys := make([]string, 0)
-	listIt := db.List(&proto.ListRequest{
+	listIt, err := db.List(&proto.ListRequest{
 		StartInclusive: "a",
 		EndExclusive:   "z",
 	})
+
+	assert.NoError(t, err)
 	for ; listIt.Valid(); listIt.Next() {
 		keys = append(keys, listIt.Key())
 	}
