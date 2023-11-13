@@ -605,7 +605,10 @@ func (lc *leaderController) list(ctx context.Context, request *proto.ListRequest
 
 		it, err := lc.db.List(request)
 		if err != nil {
-
+			lc.log.Warn().Err(err).
+				Msg("Failed to process list request")
+			close(ch)
+			return
 		}
 
 		defer func() {
