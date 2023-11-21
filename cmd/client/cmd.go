@@ -16,15 +16,16 @@ package client
 
 import (
 	"fmt"
+
 	"github.com/spf13/cobra"
-	"oxia/cmd/client/common"
-	"oxia/cmd/client/delete"
-	"oxia/cmd/client/get"
-	"oxia/cmd/client/list"
-	"oxia/cmd/client/notifications"
-	"oxia/cmd/client/put"
-	oxia_common "oxia/common"
-	"oxia/oxia"
+	"github.com/streamnative/oxia/cmd/client/common"
+	"github.com/streamnative/oxia/cmd/client/delete"
+	"github.com/streamnative/oxia/cmd/client/get"
+	"github.com/streamnative/oxia/cmd/client/list"
+	"github.com/streamnative/oxia/cmd/client/notifications"
+	"github.com/streamnative/oxia/cmd/client/put"
+	oxia_common "github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/oxia"
 )
 
 var (

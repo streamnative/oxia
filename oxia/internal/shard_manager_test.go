@@ -16,9 +16,9 @@ package internal
 
 import (
 	"fmt"
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/server"
 	"github.com/stretchr/testify/assert"
-	"oxia/common"
-	"oxia/server"
 	"testing"
 	"time"
 )

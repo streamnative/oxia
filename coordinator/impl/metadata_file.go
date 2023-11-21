@@ -19,8 +19,8 @@ import (
 	"github.com/juju/fslock"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+	"github.com/streamnative/oxia/coordinator/model"
 	"os"
-	"oxia/coordinator/model"
 	"path/filepath"
 )
 

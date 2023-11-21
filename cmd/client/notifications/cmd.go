@@ -17,7 +17,7 @@ package notifications
 import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"oxia/cmd/client/common"
+	"github.com/streamnative/oxia/cmd/client/common"
 )
 
 var Cmd = &cobra.Command{

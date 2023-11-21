@@ -17,10 +17,10 @@ package wal
 import (
 	"fmt"
 	"github.com/rs/zerolog/log"
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/proto"
 	"github.com/stretchr/testify/assert"
 	"math"
-	"oxia/common"
-	"oxia/proto"
 	"sync/atomic"
 	"testing"
 	"time"

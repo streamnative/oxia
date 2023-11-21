@@ -15,8 +15,8 @@
 package impl
 
 import (
-	"oxia/common"
-	"oxia/coordinator/model"
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/coordinator/model"
 )
 
 func getServers(servers []model.ServerAddress, startIdx uint32, count uint32) []model.ServerAddress {

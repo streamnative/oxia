@@ -18,12 +18,12 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog/log"
+	"github.com/streamnative/oxia/common"
 	"go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"io"
 	"net"
 	"net/http"
-	"oxia/common"
 )
 
 func init() {

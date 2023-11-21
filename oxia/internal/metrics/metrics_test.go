@@ -17,13 +17,13 @@ package metrics
 import (
 	"context"
 	"github.com/pkg/errors"
+	"github.com/streamnative/oxia/oxia/internal/model"
+	"github.com/streamnative/oxia/proto"
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"io"
-	"oxia/oxia/internal/model"
-	"oxia/proto"
 	"testing"
 	"time"
 )

@@ -17,7 +17,7 @@ package pebble
 import (
 	"github.com/cockroachdb/pebble/tool"
 	"github.com/spf13/cobra"
-	"oxia/server/kv"
+	"github.com/streamnative/oxia/server/kv"
 )
 
 var (

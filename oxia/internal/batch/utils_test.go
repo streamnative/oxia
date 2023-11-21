@@ -14,7 +14,7 @@
 
 package batch
 
-import "oxia/common/batch"
+import "github.com/streamnative/oxia/common/batch"
 
 var (
 	shardId = int64(1)

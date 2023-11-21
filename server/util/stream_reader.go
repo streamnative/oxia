@@ -16,11 +16,11 @@ package util
 
 import (
 	"github.com/rs/zerolog"
+	"github.com/streamnative/oxia/common"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"io"
-	"oxia/common"
 )
 
 type Stream[T any] interface {

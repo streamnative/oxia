@@ -18,9 +18,9 @@ import (
 	"context"
 	"fmt"
 	"github.com/pkg/errors"
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/proto"
 	"github.com/stretchr/testify/assert"
-	"oxia/common"
-	"oxia/proto"
 	"testing"
 	"time"
 )

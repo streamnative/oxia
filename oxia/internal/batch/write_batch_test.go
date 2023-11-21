@@ -16,12 +16,12 @@ package batch
 
 import (
 	"context"
+	"github.com/streamnative/oxia/oxia/internal/metrics"
+	"github.com/streamnative/oxia/oxia/internal/model"
+	"github.com/streamnative/oxia/proto"
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/otel/metric/noop"
 	"io"
-	"oxia/oxia/internal/metrics"
-	"oxia/oxia/internal/model"
-	"oxia/proto"
 	"reflect"
 	"sync"
 	"testing"

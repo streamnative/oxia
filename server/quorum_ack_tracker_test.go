@@ -16,9 +16,9 @@ package server
 
 import (
 	"context"
+	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/wal"
 	"github.com/stretchr/testify/assert"
-	"oxia/proto"
-	"oxia/server/wal"
 	"testing"
 	"time"
 )

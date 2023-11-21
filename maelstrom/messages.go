@@ -18,10 +18,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/rs/zerolog/log"
+	"github.com/streamnative/oxia/proto"
 	"google.golang.org/protobuf/encoding/protojson"
 	pb "google.golang.org/protobuf/proto"
 	"os"
-	"oxia/proto"
 )
 
 type MsgType string

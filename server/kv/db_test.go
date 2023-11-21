@@ -15,11 +15,11 @@
 package kv
 
 import (
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/wal"
 	"github.com/stretchr/testify/assert"
 	pb "google.golang.org/protobuf/proto"
-	"oxia/common"
-	"oxia/proto"
-	"oxia/server/wal"
 	"testing"
 )
 

@@ -15,7 +15,7 @@
 package common
 
 import (
-	"oxia/oxia"
+	"github.com/streamnative/oxia/oxia"
 	"time"
 )
 

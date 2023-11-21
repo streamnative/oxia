@@ -15,7 +15,7 @@
 package internal
 
 import (
-	"oxia/common"
+	"github.com/streamnative/oxia/common"
 )
 
 type shardStrategyImpl struct {

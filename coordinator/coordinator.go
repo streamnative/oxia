@@ -18,11 +18,11 @@ import (
 	"errors"
 	"fmt"
 	"github.com/rs/zerolog/log"
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/metrics"
+	"github.com/streamnative/oxia/coordinator/impl"
+	"github.com/streamnative/oxia/coordinator/model"
 	"go.uber.org/multierr"
-	"oxia/common"
-	"oxia/common/metrics"
-	"oxia/coordinator/impl"
-	"oxia/coordinator/model"
 	"time"
 )
 

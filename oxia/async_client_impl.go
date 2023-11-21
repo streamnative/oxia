@@ -17,16 +17,16 @@ package oxia
 import (
 	"context"
 	"github.com/pkg/errors"
+	"github.com/streamnative/oxia/common"
+	commonBatch "github.com/streamnative/oxia/common/batch"
+	"github.com/streamnative/oxia/oxia/internal"
+	"github.com/streamnative/oxia/oxia/internal/batch"
+	"github.com/streamnative/oxia/oxia/internal/metrics"
+	"github.com/streamnative/oxia/oxia/internal/model"
+	"github.com/streamnative/oxia/proto"
 	"go.uber.org/multierr"
 	"golang.org/x/sync/errgroup"
 	"io"
-	"oxia/common"
-	commonBatch "oxia/common/batch"
-	"oxia/oxia/internal"
-	"oxia/oxia/internal/batch"
-	"oxia/oxia/internal/metrics"
-	"oxia/oxia/internal/model"
-	"oxia/proto"
 	"sync"
 )
 

@@ -19,11 +19,11 @@ import (
 	"errors"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/rs/zerolog/log"
-	"oxia/common"
-	"oxia/common/batch"
-	"oxia/oxia/internal/metrics"
-	"oxia/oxia/internal/model"
-	"oxia/proto"
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/batch"
+	"github.com/streamnative/oxia/oxia/internal/metrics"
+	"github.com/streamnative/oxia/oxia/internal/model"
+	"github.com/streamnative/oxia/proto"
 	"time"
 )
 

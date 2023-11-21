@@ -16,10 +16,10 @@ package metrics
 
 import (
 	"context"
+	"github.com/streamnative/oxia/common/metrics"
+	"github.com/streamnative/oxia/oxia/internal/model"
+	"github.com/streamnative/oxia/proto"
 	"go.opentelemetry.io/otel/metric"
-	"oxia/common/metrics"
-	"oxia/oxia/internal/model"
-	"oxia/proto"
 	"time"
 )
 

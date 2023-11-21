@@ -19,12 +19,12 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/container"
+	"github.com/streamnative/oxia/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protowire"
-	"oxia/common"
-	"oxia/common/container"
-	"oxia/proto"
 )
 
 const (

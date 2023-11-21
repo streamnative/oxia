@@ -18,12 +18,12 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/rs/zerolog"
+	"github.com/streamnative/oxia/cmd/client/delete"
+	"github.com/streamnative/oxia/cmd/client/get"
+	"github.com/streamnative/oxia/cmd/client/list"
+	"github.com/streamnative/oxia/cmd/client/put"
+	"github.com/streamnative/oxia/server"
 	"github.com/stretchr/testify/assert"
-	"oxia/cmd/client/delete"
-	"oxia/cmd/client/get"
-	"oxia/cmd/client/list"
-	"oxia/cmd/client/put"
-	"oxia/server"
 	"testing"
 )
 

@@ -18,8 +18,8 @@ import (
 	"bytes"
 	"errors"
 	"github.com/spf13/cobra"
+	"github.com/streamnative/oxia/cmd/client/common"
 	"github.com/stretchr/testify/assert"
-	"oxia/cmd/client/common"
 	"testing"
 )
 

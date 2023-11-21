@@ -18,11 +18,11 @@ import (
 	"errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/streamnative/oxia/cmd/flag"
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/coordinator"
+	"github.com/streamnative/oxia/coordinator/model"
 	"io"
-	"oxia/cmd/flag"
-	"oxia/common"
-	"oxia/coordinator"
-	"oxia/coordinator/model"
 	"time"
 )
 

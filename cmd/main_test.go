@@ -17,8 +17,8 @@ package main
 import (
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
+	"github.com/streamnative/oxia/common"
 	"github.com/stretchr/testify/assert"
-	"oxia/common"
 	"testing"
 )
 

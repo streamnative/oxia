@@ -16,8 +16,8 @@ package common
 
 import (
 	"bytes"
+	"github.com/streamnative/oxia/oxia"
 	"github.com/stretchr/testify/assert"
-	"oxia/oxia"
 	"testing"
 )
 

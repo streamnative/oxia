@@ -15,7 +15,7 @@
 package impl
 
 import (
-	"oxia/coordinator/model"
+	"github.com/streamnative/oxia/coordinator/model"
 	"strconv"
 	"sync"
 )

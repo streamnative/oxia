@@ -19,9 +19,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/rs/zerolog/log"
+	"github.com/streamnative/oxia/proto"
 	"google.golang.org/grpc/metadata"
 	"os"
-	"oxia/proto"
 	"sync"
 )
 

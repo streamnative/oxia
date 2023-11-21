@@ -16,8 +16,8 @@ package batch
 
 import (
 	"errors"
+	"github.com/streamnative/oxia/common/batch"
 	"github.com/stretchr/testify/assert"
-	"oxia/common/batch"
 	"testing"
 )
 
