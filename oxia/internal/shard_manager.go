@@ -20,11 +20,11 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/proto"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"io"
-	"oxia/common"
-	"oxia/proto"
 	"sync"
 	"time"
 )

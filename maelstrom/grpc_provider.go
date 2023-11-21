@@ -20,12 +20,12 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+	"github.com/streamnative/oxia/common/container"
+	"github.com/streamnative/oxia/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	pb "google.golang.org/protobuf/proto"
 	"os"
-	"oxia/common/container"
-	"oxia/proto"
 	"sync"
 )
 

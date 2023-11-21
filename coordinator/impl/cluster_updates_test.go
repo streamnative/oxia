@@ -15,9 +15,9 @@
 package impl
 
 import (
+	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/stretchr/testify/assert"
 	"math"
-	"oxia/coordinator/model"
 	"sort"
 	"testing"
 )

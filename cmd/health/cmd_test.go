@@ -17,13 +17,13 @@ package health
 import (
 	"fmt"
 	"github.com/rs/zerolog"
+	"github.com/streamnative/oxia/common/container"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
-	"oxia/common/container"
 	"testing"
 )
 

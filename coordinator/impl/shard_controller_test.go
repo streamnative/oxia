@@ -17,10 +17,10 @@ package impl
 import (
 	"context"
 	"github.com/pkg/errors"
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/coordinator/model"
+	"github.com/streamnative/oxia/proto"
 	"github.com/stretchr/testify/assert"
-	"oxia/common"
-	"oxia/coordinator/model"
-	"oxia/proto"
 	"sync"
 	"testing"
 	"time"

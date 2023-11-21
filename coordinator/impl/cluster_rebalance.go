@@ -16,8 +16,8 @@ package impl
 
 import (
 	"github.com/rs/zerolog/log"
-	"oxia/common"
-	"oxia/coordinator/model"
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/coordinator/model"
 	"sort"
 )
 

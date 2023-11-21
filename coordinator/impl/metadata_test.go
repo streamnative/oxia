@@ -15,9 +15,9 @@
 package impl
 
 import (
+	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/stretchr/testify/assert"
 	"k8s.io/client-go/kubernetes/fake"
-	"oxia/coordinator/model"
 	"path/filepath"
 	"testing"
 )

@@ -15,9 +15,9 @@
 package oxia
 
 import (
+	"github.com/streamnative/oxia/common"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric/noop"
-	"oxia/common"
 	"time"
 
 	"github.com/google/uuid"

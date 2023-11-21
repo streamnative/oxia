@@ -20,9 +20,9 @@ import (
 	"fmt"
 	"github.com/bmizerany/perks/quantile"
 	"github.com/rs/zerolog/log"
+	"github.com/streamnative/oxia/oxia"
 	"golang.org/x/time/rate"
 	"math/rand"
-	"oxia/oxia"
 	"sync/atomic"
 	"time"
 )

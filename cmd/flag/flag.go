@@ -17,7 +17,7 @@ package flag
 import (
 	"fmt"
 	"github.com/spf13/cobra"
-	"oxia/common"
+	"github.com/streamnative/oxia/common"
 )
 
 func PublicAddr(cmd *cobra.Command, conf *string) {

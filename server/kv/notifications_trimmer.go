@@ -20,9 +20,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/proto"
 	pb "google.golang.org/protobuf/proto"
-	"oxia/common"
-	"oxia/proto"
 	"time"
 )
 

@@ -16,11 +16,11 @@ package standalone
 
 import (
 	"github.com/spf13/cobra"
+	"github.com/streamnative/oxia/cmd/flag"
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/server"
+	"github.com/streamnative/oxia/server/kv"
 	"io"
-	"oxia/cmd/flag"
-	"oxia/common"
-	"oxia/server"
-	"oxia/server/kv"
 	"time"
 )
 

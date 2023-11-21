@@ -16,10 +16,10 @@ package impl
 
 import (
 	"context"
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/coordinator/model"
+	"github.com/streamnative/oxia/proto"
 	"google.golang.org/grpc/health/grpc_health_v1"
-	"oxia/common"
-	"oxia/coordinator/model"
-	"oxia/proto"
 	"time"
 )
 

@@ -17,8 +17,8 @@ package oxia
 import (
 	"context"
 	"errors"
+	"github.com/streamnative/oxia/oxia/internal/batch"
 	"io"
-	"oxia/oxia/internal/batch"
 )
 
 const (

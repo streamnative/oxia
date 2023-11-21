@@ -17,12 +17,12 @@ package server
 import (
 	"fmt"
 	"github.com/rs/zerolog/log"
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/kv"
+	"github.com/streamnative/oxia/server/wal"
 	"github.com/stretchr/testify/assert"
 	pb "google.golang.org/protobuf/proto"
-	"oxia/common"
-	"oxia/proto"
-	"oxia/server/kv"
-	"oxia/server/wal"
 	"testing"
 	"time"
 )

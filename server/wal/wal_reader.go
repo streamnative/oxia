@@ -15,7 +15,7 @@
 package wal
 
 import (
-	"oxia/proto"
+	"github.com/streamnative/oxia/proto"
 	"sync"
 )
 

@@ -20,10 +20,10 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/oxia/internal"
+	"github.com/streamnative/oxia/proto"
 	"io"
-	"oxia/common"
-	"oxia/oxia/internal"
-	"oxia/proto"
 	"time"
 )
 

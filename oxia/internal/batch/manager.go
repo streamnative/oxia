@@ -15,8 +15,8 @@
 package batch
 
 import (
+	"github.com/streamnative/oxia/common/batch"
 	"go.uber.org/multierr"
-	"oxia/common/batch"
 	"sync"
 )
 

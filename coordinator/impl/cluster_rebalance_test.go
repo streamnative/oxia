@@ -16,10 +16,10 @@ package impl
 
 import (
 	"github.com/rs/zerolog/log"
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/stretchr/testify/assert"
 	"math"
-	"oxia/common"
-	"oxia/coordinator/model"
 	"testing"
 )
 

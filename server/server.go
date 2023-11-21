@@ -16,12 +16,12 @@ package server
 
 import (
 	"github.com/rs/zerolog/log"
+	"github.com/streamnative/oxia/common/container"
+	"github.com/streamnative/oxia/common/metrics"
+	"github.com/streamnative/oxia/server/kv"
+	"github.com/streamnative/oxia/server/wal"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/health"
-	"oxia/common/container"
-	"oxia/common/metrics"
-	"oxia/server/kv"
-	"oxia/server/wal"
 	"time"
 )
 

@@ -17,10 +17,10 @@ package server
 import (
 	"context"
 	"fmt"
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/proto"
 	"google.golang.org/grpc/metadata"
 	"io"
-	"oxia/common"
-	"oxia/proto"
 	"time"
 )
 

@@ -19,8 +19,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/spf13/cobra"
+	"github.com/streamnative/oxia/common"
 	"google.golang.org/grpc/health/grpc_health_v1"
-	"oxia/common"
 	"time"
 )
 

@@ -16,9 +16,9 @@ package kv
 
 import (
 	"context"
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/proto"
 	"github.com/stretchr/testify/assert"
-	"oxia/common"
-	"oxia/proto"
 	"testing"
 	"time"
 )

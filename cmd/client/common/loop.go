@@ -15,8 +15,8 @@
 package common
 
 import (
+	"github.com/streamnative/oxia/oxia"
 	"io"
-	"oxia/oxia"
 )
 
 type CommandLoop struct {

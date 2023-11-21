@@ -16,8 +16,8 @@ package server
 
 import (
 	"context"
+	"github.com/streamnative/oxia/proto"
 	"google.golang.org/grpc/metadata"
-	"oxia/proto"
 )
 
 func newMockServerReplicateStream() *mockServerReplicateStream {

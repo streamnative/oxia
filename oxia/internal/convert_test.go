@@ -15,8 +15,8 @@
 package internal
 
 import (
+	"github.com/streamnative/oxia/proto"
 	"github.com/stretchr/testify/assert"
-	"oxia/proto"
 	"testing"
 )
 

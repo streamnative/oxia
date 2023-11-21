@@ -18,10 +18,10 @@ import (
 	"context"
 	"fmt"
 	"github.com/spf13/cobra"
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/oxia"
+	"github.com/streamnative/oxia/perf"
 	"io"
-	"oxia/common"
-	"oxia/oxia"
-	"oxia/perf"
 )
 
 var (

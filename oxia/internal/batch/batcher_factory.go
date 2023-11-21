@@ -15,9 +15,9 @@
 package batch
 
 import (
-	"oxia/common/batch"
-	"oxia/oxia/internal"
-	"oxia/oxia/internal/metrics"
+	"github.com/streamnative/oxia/common/batch"
+	"github.com/streamnative/oxia/oxia/internal"
+	"github.com/streamnative/oxia/oxia/internal/metrics"
 	"time"
 )
 

@@ -16,8 +16,8 @@ package internal
 
 import (
 	"context"
-	"oxia/common"
-	"oxia/proto"
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/proto"
 )
 
 type Executor interface {
