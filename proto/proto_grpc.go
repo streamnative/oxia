@@ -16,6 +16,7 @@ package proto
 
 import (
 	"fmt"
+
 	"github.com/planetscale/vtprotobuf/codec/grpc"
 	"google.golang.org/grpc/encoding"
 

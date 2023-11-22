@@ -17,12 +17,14 @@ package put
 import (
 	"bytes"
 	"encoding/json"
+	"testing"
+
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
+
 	"github.com/streamnative/oxia/cmd/client/common"
 	"github.com/streamnative/oxia/oxia"
-	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestCobraFlags(t *testing.T) {

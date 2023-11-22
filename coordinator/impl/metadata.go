@@ -15,9 +15,11 @@
 package impl
 
 import (
-	"github.com/pkg/errors"
-	"github.com/streamnative/oxia/coordinator/model"
 	"io"
+
+	"github.com/pkg/errors"
+
+	"github.com/streamnative/oxia/coordinator/model"
 )
 
 type Version string

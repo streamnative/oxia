@@ -15,3 +15,14 @@
 run:
   skip-dirs:
     - pkg/generated
+
+linters:
+  enable:
+    - goimports
+
+linters-settings:
+  goimports:
+    local-prefixes: github.com/streamnative/oxia
+
+issues:
+  fix: true

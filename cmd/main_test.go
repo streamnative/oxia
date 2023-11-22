@@ -15,11 +15,13 @@
 package main
 
 import (
+	"testing"
+
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
-	"github.com/streamnative/oxia/common"
 	"github.com/stretchr/testify/assert"
-	"testing"
+
+	"github.com/streamnative/oxia/common"
 )
 
 func TestCall_LogLevel_Default(t *testing.T) {

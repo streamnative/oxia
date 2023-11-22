@@ -17,16 +17,18 @@ package kv
 import (
 	"context"
 	"fmt"
+	"io"
+	"time"
+
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"go.uber.org/multierr"
+
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/metrics"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/wal"
-	"go.uber.org/multierr"
-	"io"
-	"time"
 )
 
 var ErrorBadVersionId = errors.New("oxia: bad version id")

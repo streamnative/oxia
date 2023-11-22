@@ -16,11 +16,12 @@ package common
 
 import (
 	"context"
-	"github.com/stretchr/testify/assert"
 	"runtime"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestCondCancelContext(t *testing.T) {

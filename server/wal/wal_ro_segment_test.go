@@ -16,8 +16,9 @@ package wal
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestReadOnlySegment(t *testing.T) {

@@ -16,16 +16,18 @@ package metrics
 
 import (
 	"context"
+	"io"
+	"testing"
+	"time"
+
 	"github.com/pkg/errors"
-	"github.com/streamnative/oxia/oxia/internal/model"
-	"github.com/streamnative/oxia/proto"
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
-	"io"
-	"testing"
-	"time"
+
+	"github.com/streamnative/oxia/oxia/internal/model"
+	"github.com/streamnative/oxia/proto"
 )
 
 func TestMetricsDecorate(t *testing.T) {

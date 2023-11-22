@@ -17,17 +17,19 @@ package server
 import (
 	"context"
 	"fmt"
+	"sync"
+	"testing"
+	"time"
+
 	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/assert"
+	"google.golang.org/grpc/status"
+	pb "google.golang.org/protobuf/proto"
+
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/kv"
 	"github.com/streamnative/oxia/server/wal"
-	"github.com/stretchr/testify/assert"
-	"google.golang.org/grpc/status"
-	pb "google.golang.org/protobuf/proto"
-	"sync"
-	"testing"
-	"time"
 )
 
 var testKVOptions = &kv.KVFactoryOptions{

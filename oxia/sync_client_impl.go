@@ -16,8 +16,9 @@ package oxia
 
 import (
 	"context"
-	"go.uber.org/multierr"
 	"sync"
+
+	"go.uber.org/multierr"
 )
 
 type syncClientImpl struct {

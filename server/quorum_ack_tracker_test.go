@@ -16,11 +16,13 @@ package server
 
 import (
 	"context"
-	"github.com/streamnative/oxia/proto"
-	"github.com/streamnative/oxia/server/wal"
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/wal"
 )
 
 func TestQuorumAckTrackerNoFollower(t *testing.T) {

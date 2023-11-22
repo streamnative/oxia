@@ -18,15 +18,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
+	"time"
+
 	"github.com/cenkalti/backoff/v4"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"google.golang.org/grpc/status"
+
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/oxia/internal"
 	"github.com/streamnative/oxia/proto"
-	"google.golang.org/grpc/status"
-	"sync"
-	"time"
 )
 
 func newSessions(ctx context.Context, shardManager internal.ShardManager, pool common.ClientPool, options clientOptions) *sessions {

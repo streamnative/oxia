@@ -16,11 +16,13 @@ package metrics
 
 import (
 	"context"
+	"time"
+
+	"go.opentelemetry.io/otel/metric"
+
 	"github.com/streamnative/oxia/common/metrics"
 	"github.com/streamnative/oxia/oxia/internal/model"
 	"github.com/streamnative/oxia/proto"
-	"go.opentelemetry.io/otel/metric"
-	"time"
 )
 
 type Metrics struct {

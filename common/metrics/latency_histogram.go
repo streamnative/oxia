@@ -16,8 +16,9 @@ package metrics
 
 import (
 	"context"
-	"go.opentelemetry.io/otel/metric"
 	"time"
+
+	"go.opentelemetry.io/otel/metric"
 )
 
 var latencyBucketsMillis = []float64{

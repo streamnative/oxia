@@ -16,10 +16,11 @@ package common
 
 import (
 	"context"
-	"github.com/stretchr/testify/assert"
 	"io"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func assertNotReady(t *testing.T, wg WaitGroup) {

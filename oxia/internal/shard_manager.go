@@ -16,17 +16,19 @@ package internal
 
 import (
 	"context"
+	"io"
+	"sync"
+	"time"
+
 	"github.com/cenkalti/backoff/v4"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/proto"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"io"
-	"sync"
-	"time"
+
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/proto"
 )
 
 type ShardManager interface {

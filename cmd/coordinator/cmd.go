@@ -16,14 +16,16 @@ package coordinator
 
 import (
 	"errors"
+	"io"
+	"time"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
 	"github.com/streamnative/oxia/cmd/flag"
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/coordinator"
 	"github.com/streamnative/oxia/coordinator/model"
-	"io"
-	"time"
 )
 
 var (

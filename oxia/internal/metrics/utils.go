@@ -16,10 +16,11 @@ package metrics
 
 import (
 	"github.com/rs/zerolog/log"
-	"github.com/streamnative/oxia/common/metrics"
-	"github.com/streamnative/oxia/proto"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+
+	"github.com/streamnative/oxia/common/metrics"
+	"github.com/streamnative/oxia/proto"
 )
 
 func newHistogram(meter metric.Meter, name string, unit metrics.Unit) metric.Int64Histogram {

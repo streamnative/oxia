@@ -15,11 +15,13 @@
 package impl
 
 import (
-	"github.com/streamnative/oxia/coordinator/model"
-	"github.com/stretchr/testify/assert"
 	"math"
 	"sort"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/coordinator/model"
 )
 
 var (

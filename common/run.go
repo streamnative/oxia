@@ -15,8 +15,9 @@
 package common
 
 import (
-	"github.com/rs/zerolog/log"
 	"io"
+
+	"github.com/rs/zerolog/log"
 )
 
 func RunProcess(startProcess func() (io.Closer, error)) {

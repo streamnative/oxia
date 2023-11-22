@@ -17,14 +17,16 @@ package server
 import (
 	"context"
 	"errors"
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/proto"
-	"github.com/streamnative/oxia/server/kv"
-	"github.com/stretchr/testify/assert"
-	pb "google.golang.org/protobuf/proto"
 	"io"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	pb "google.golang.org/protobuf/proto"
+
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/kv"
 )
 
 func TestSessionKey(t *testing.T) {

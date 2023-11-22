@@ -16,13 +16,14 @@ package common
 
 import (
 	"encoding/json"
+	"os"
+	"time"
+
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/rs/zerolog/pkgerrors"
 	"google.golang.org/protobuf/encoding/protojson"
 	pb "google.golang.org/protobuf/proto"
-	"os"
-	"time"
 )
 
 const DefaultLogLevel = zerolog.InfoLevel

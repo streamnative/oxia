@@ -17,14 +17,16 @@ package client
 import (
 	"bytes"
 	"fmt"
+	"testing"
+
 	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/assert"
+
 	"github.com/streamnative/oxia/cmd/client/delete"
 	"github.com/streamnative/oxia/cmd/client/get"
 	"github.com/streamnative/oxia/cmd/client/list"
 	"github.com/streamnative/oxia/cmd/client/put"
 	"github.com/streamnative/oxia/server"
-	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestClientCmd(t *testing.T) {

@@ -17,18 +17,20 @@ package wal
 import (
 	"context"
 	"fmt"
-	"github.com/pkg/errors"
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/common/metrics"
-	"github.com/streamnative/oxia/proto"
-	"go.uber.org/multierr"
-	"golang.org/x/exp/slices"
-	pb "google.golang.org/protobuf/proto"
 	"os"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/pkg/errors"
+	"go.uber.org/multierr"
+	"golang.org/x/exp/slices"
+	pb "google.golang.org/protobuf/proto"
+
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/metrics"
+	"github.com/streamnative/oxia/proto"
 )
 
 type walFactory struct {

@@ -16,16 +16,18 @@ package server
 
 import (
 	"context"
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/proto"
-	"github.com/streamnative/oxia/server/kv"
-	"github.com/streamnative/oxia/server/wal"
+	"testing"
+	"time"
+
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 	pb "google.golang.org/protobuf/proto"
-	"testing"
-	"time"
+
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/kv"
+	"github.com/streamnative/oxia/server/wal"
 )
 
 func AssertProtoEqual(t *testing.T, expected, actual pb.Message) {

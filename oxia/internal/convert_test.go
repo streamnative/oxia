@@ -15,9 +15,11 @@
 package internal
 
 import (
-	"github.com/streamnative/oxia/proto"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/proto"
 )
 
 func TestToShard(t *testing.T) {

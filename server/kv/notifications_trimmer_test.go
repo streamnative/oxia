@@ -17,11 +17,13 @@ package kv
 import (
 	"context"
 	"fmt"
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/proto"
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/proto"
 )
 
 func TestNotificationsTrimmer(t *testing.T) {

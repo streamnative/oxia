@@ -18,10 +18,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/spf13/cobra"
-	"github.com/streamnative/oxia/common"
-	"google.golang.org/grpc/health/grpc_health_v1"
 	"time"
+
+	"github.com/spf13/cobra"
+	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"github.com/streamnative/oxia/common"
 )
 
 type Config struct {

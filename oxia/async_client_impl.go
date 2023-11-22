@@ -16,7 +16,13 @@ package oxia
 
 import (
 	"context"
+	"io"
+	"sync"
+
 	"github.com/pkg/errors"
+	"go.uber.org/multierr"
+	"golang.org/x/sync/errgroup"
+
 	"github.com/streamnative/oxia/common"
 	commonBatch "github.com/streamnative/oxia/common/batch"
 	"github.com/streamnative/oxia/oxia/internal"
@@ -24,10 +30,6 @@ import (
 	"github.com/streamnative/oxia/oxia/internal/metrics"
 	"github.com/streamnative/oxia/oxia/internal/model"
 	"github.com/streamnative/oxia/proto"
-	"go.uber.org/multierr"
-	"golang.org/x/sync/errgroup"
-	"io"
-	"sync"
 )
 
 type clientImpl struct {

@@ -15,11 +15,13 @@
 package impl
 
 import (
-	"github.com/streamnative/oxia/coordinator/model"
-	"github.com/stretchr/testify/assert"
-	"k8s.io/client-go/kubernetes/fake"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"k8s.io/client-go/kubernetes/fake"
+
+	"github.com/streamnative/oxia/coordinator/model"
 )
 
 var (

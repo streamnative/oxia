@@ -16,13 +16,11 @@ package server
 
 import (
 	"context"
+	"io"
+	"sync"
+
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/common/container"
-	"github.com/streamnative/oxia/common/metrics"
-	"github.com/streamnative/oxia/proto"
-	"github.com/streamnative/oxia/server/util"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -30,8 +28,12 @@ import (
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
-	"io"
-	"sync"
+
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/container"
+	"github.com/streamnative/oxia/common/metrics"
+	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/util"
 )
 
 type Client interface {

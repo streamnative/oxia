@@ -17,14 +17,16 @@ package batch
 import (
 	"context"
 	"errors"
+	"time"
+
 	"github.com/cenkalti/backoff/v4"
 	"github.com/rs/zerolog/log"
+
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/batch"
 	"github.com/streamnative/oxia/oxia/internal/metrics"
 	"github.com/streamnative/oxia/oxia/internal/model"
 	"github.com/streamnative/oxia/proto"
-	"time"
 )
 
 var ErrorRequestTooLarge = errors.New("put request is too large")

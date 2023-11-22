@@ -15,9 +15,11 @@
 package impl
 
 import (
-	"github.com/streamnative/oxia/coordinator/model"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/coordinator/model"
 )
 
 func TestShardStatus_String(t *testing.T) {

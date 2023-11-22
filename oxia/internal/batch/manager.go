@@ -15,9 +15,11 @@
 package batch
 
 import (
-	"github.com/streamnative/oxia/common/batch"
-	"go.uber.org/multierr"
 	"sync"
+
+	"go.uber.org/multierr"
+
+	"github.com/streamnative/oxia/common/batch"
 )
 
 func NewManager(batcherFactory func(*int64) batch.Batcher) *Manager {

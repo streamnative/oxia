@@ -15,16 +15,18 @@
 package coordinator
 
 import (
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/coordinator"
-	"github.com/streamnative/oxia/coordinator/model"
-	"github.com/stretchr/testify/assert"
-	"gopkg.in/yaml.v3"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+	"github.com/stretchr/testify/assert"
+	"gopkg.in/yaml.v3"
+
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/coordinator"
+	"github.com/streamnative/oxia/coordinator/model"
 )
 
 func TestCmd(t *testing.T) {

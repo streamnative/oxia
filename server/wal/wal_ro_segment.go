@@ -17,17 +17,19 @@ package wal
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/edsrzf/mmap-go"
-	"github.com/emirpasic/gods/maps/treemap"
-	"github.com/emirpasic/gods/utils"
-	"github.com/pkg/errors"
-	"github.com/streamnative/oxia/common"
-	"go.uber.org/multierr"
 	"io"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/edsrzf/mmap-go"
+	"github.com/emirpasic/gods/maps/treemap"
+	"github.com/emirpasic/gods/utils"
+	"github.com/pkg/errors"
+	"go.uber.org/multierr"
+
+	"github.com/streamnative/oxia/common"
 )
 
 const (

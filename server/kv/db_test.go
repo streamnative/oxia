@@ -15,12 +15,14 @@
 package kv
 
 import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	pb "google.golang.org/protobuf/proto"
+
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/wal"
-	"github.com/stretchr/testify/assert"
-	pb "google.golang.org/protobuf/proto"
-	"testing"
 )
 
 func TestDBSimple(t *testing.T) {

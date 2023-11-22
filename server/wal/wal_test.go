@@ -17,12 +17,14 @@ package wal
 import (
 	"context"
 	"fmt"
-	"github.com/pkg/errors"
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/proto"
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
+
+	"github.com/pkg/errors"
+	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/proto"
 )
 
 const shard = int64(100)

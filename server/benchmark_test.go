@@ -17,15 +17,17 @@ package server
 import (
 	"context"
 	"fmt"
-	"github.com/rs/zerolog"
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/oxia"
-	"github.com/streamnative/oxia/perf"
 	"os"
 	"os/exec"
 	"runtime/pprof"
 	"testing"
 	"time"
+
+	"github.com/rs/zerolog"
+
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/oxia"
+	"github.com/streamnative/oxia/perf"
 )
 
 func BenchmarkServer(b *testing.B) {

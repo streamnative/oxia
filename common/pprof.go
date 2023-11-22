@@ -16,11 +16,12 @@ package common
 
 import (
 	"context"
-	"github.com/rs/zerolog/log"
 	"io"
 	"net/http"
 	_ "net/http/pprof"
 	"runtime/pprof"
+
+	"github.com/rs/zerolog/log"
 )
 
 var (

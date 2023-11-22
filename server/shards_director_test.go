@@ -16,11 +16,13 @@ package server
 
 import (
 	"context"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/kv"
-	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestShardsDirector_DeleteShardLeader(t *testing.T) {

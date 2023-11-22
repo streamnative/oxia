@@ -16,12 +16,13 @@ package impl
 
 import (
 	"errors"
+	"strconv"
+
 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/testing"
-	"strconv"
 )
 
 func K8SResourceVersionSupport(tracker testing.ObjectTracker) testing.ReactionFunc {
