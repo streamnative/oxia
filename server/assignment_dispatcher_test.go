@@ -16,18 +16,20 @@ package server
 
 import (
 	"context"
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/common/container"
-	"github.com/streamnative/oxia/proto"
+	"math"
+	"sync"
+	"testing"
+	"time"
+
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
-	"math"
-	"sync"
-	"testing"
-	"time"
+
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/container"
+	"github.com/streamnative/oxia/proto"
 )
 
 func TestUninitializedAssignmentDispatcher(t *testing.T) {

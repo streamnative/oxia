@@ -17,11 +17,13 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+
 	"github.com/rs/zerolog/log"
-	"github.com/streamnative/oxia/proto"
 	"google.golang.org/protobuf/encoding/protojson"
 	pb "google.golang.org/protobuf/proto"
-	"os"
+
+	"github.com/streamnative/oxia/proto"
 )
 
 type MsgType string

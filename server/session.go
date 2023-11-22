@@ -16,11 +16,13 @@ package server
 
 import (
 	"context"
-	"github.com/rs/zerolog"
-	"github.com/streamnative/oxia/proto"
 	"net/url"
 	"sync"
 	"time"
+
+	"github.com/rs/zerolog"
+
+	"github.com/streamnative/oxia/proto"
 )
 
 // --- Session

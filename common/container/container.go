@@ -15,13 +15,15 @@
 package container
 
 import (
-	"github.com/grpc-ecosystem/go-grpc-prometheus"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
-	"github.com/streamnative/oxia/common"
-	"google.golang.org/grpc"
 	"io"
 	"net"
+
+	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+	"google.golang.org/grpc"
+
+	"github.com/streamnative/oxia/common"
 )
 
 const (

@@ -16,12 +16,13 @@ package wal
 
 import (
 	"encoding/binary"
-	"github.com/edsrzf/mmap-go"
-	"github.com/pkg/errors"
-	"go.uber.org/multierr"
 	"os"
 	"sync"
 	"time"
+
+	"github.com/edsrzf/mmap-go"
+	"github.com/pkg/errors"
+	"go.uber.org/multierr"
 )
 
 type ReadWriteSegment interface {

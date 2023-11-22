@@ -17,18 +17,20 @@ package server
 import (
 	"context"
 	"fmt"
+	"io"
+	"sync"
+
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"go.uber.org/multierr"
+	pb "google.golang.org/protobuf/proto"
+
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/metrics"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/kv"
 	"github.com/streamnative/oxia/server/wal"
-	"go.uber.org/multierr"
-	pb "google.golang.org/protobuf/proto"
-	"io"
-	"sync"
 )
 
 type GetResult struct {

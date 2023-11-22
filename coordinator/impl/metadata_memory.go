@@ -15,9 +15,10 @@
 package impl
 
 import (
-	"github.com/streamnative/oxia/coordinator/model"
 	"strconv"
 	"sync"
+
+	"github.com/streamnative/oxia/coordinator/model"
 )
 
 // MetadataProviderMemory is a provider that just keeps the cluster status in memory

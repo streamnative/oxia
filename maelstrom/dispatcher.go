@@ -18,16 +18,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/pkg/errors"
-	"github.com/rs/zerolog/log"
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/proto"
-	"google.golang.org/protobuf/encoding/protojson"
-	pb "google.golang.org/protobuf/proto"
 	"os"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
+	"google.golang.org/protobuf/encoding/protojson"
+	pb "google.golang.org/protobuf/proto"
+
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/proto"
 )
 
 type Dispatcher interface {

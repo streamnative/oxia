@@ -18,6 +18,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+
 	"github.com/streamnative/oxia/cmd/client/common"
 	"github.com/streamnative/oxia/cmd/client/delete"
 	"github.com/streamnative/oxia/cmd/client/get"

@@ -17,17 +17,19 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/coordinator/impl"
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/server"
-	"os"
-	"path/filepath"
-	"time"
 )
 
 var (

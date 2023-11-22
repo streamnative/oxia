@@ -16,9 +16,11 @@ package batch
 
 import (
 	"errors"
-	"github.com/streamnative/oxia/common/batch"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/common/batch"
 )
 
 var closeErr = errors.New("closed")

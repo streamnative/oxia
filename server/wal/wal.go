@@ -16,10 +16,12 @@ package wal
 
 import (
 	"context"
-	"github.com/pkg/errors"
-	"github.com/streamnative/oxia/proto"
 	"io"
 	"time"
+
+	"github.com/pkg/errors"
+
+	"github.com/streamnative/oxia/proto"
 )
 
 var (

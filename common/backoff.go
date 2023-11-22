@@ -16,8 +16,9 @@ package common
 
 import (
 	"context"
-	"github.com/cenkalti/backoff/v4"
 	"time"
+
+	"github.com/cenkalti/backoff/v4"
 )
 
 func NewBackOff(ctx context.Context) backoff.BackOff {

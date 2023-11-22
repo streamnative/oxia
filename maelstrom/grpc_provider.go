@@ -18,15 +18,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"sync"
+
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
-	"github.com/streamnative/oxia/common/container"
-	"github.com/streamnative/oxia/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	pb "google.golang.org/protobuf/proto"
-	"os"
-	"sync"
+
+	"github.com/streamnative/oxia/common/container"
+	"github.com/streamnative/oxia/proto"
 )
 
 const (

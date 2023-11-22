@@ -17,20 +17,22 @@ package impl
 import (
 	"context"
 	"fmt"
-	"github.com/cenkalti/backoff/v4"
-	"github.com/pkg/errors"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/common/metrics"
-	"github.com/streamnative/oxia/coordinator/model"
-	"github.com/streamnative/oxia/proto"
-	"go.uber.org/multierr"
-	"google.golang.org/grpc/status"
 	"io"
 	"math/rand"
 	"sync"
 	"time"
+
+	"github.com/cenkalti/backoff/v4"
+	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+	"go.uber.org/multierr"
+	"google.golang.org/grpc/status"
+
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/metrics"
+	"github.com/streamnative/oxia/coordinator/model"
+	"github.com/streamnative/oxia/proto"
 )
 
 const (

@@ -16,18 +16,20 @@ package common
 
 import (
 	"context"
-	"github.com/grpc-ecosystem/go-grpc-prometheus"
+	"io"
+	"sync"
+	"time"
+
+	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/streamnative/oxia/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/peer"
-	"io"
-	"sync"
-	"time"
+
+	"github.com/streamnative/oxia/proto"
 )
 
 const DefaultRpcTimeout = 30 * time.Second

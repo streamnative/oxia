@@ -16,10 +16,11 @@ package metrics
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"io"
 	"net/http"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestPrometheusMetrics(t *testing.T) {

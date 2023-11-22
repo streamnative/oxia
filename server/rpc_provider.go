@@ -17,11 +17,13 @@ package server
 import (
 	"context"
 	"fmt"
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/proto"
-	"google.golang.org/grpc/metadata"
 	"io"
 	"time"
+
+	"google.golang.org/grpc/metadata"
+
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/proto"
 )
 
 const rpcTimeout = 30 * time.Second

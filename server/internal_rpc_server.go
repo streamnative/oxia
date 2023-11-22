@@ -17,19 +17,21 @@ package server
 import (
 	"context"
 	"fmt"
+	"io"
+
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/common/container"
-	"github.com/streamnative/oxia/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
-	"io"
+
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/container"
+	"github.com/streamnative/oxia/proto"
 )
 
 type internalRpcServer struct {

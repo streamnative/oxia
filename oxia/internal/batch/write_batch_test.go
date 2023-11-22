@@ -16,15 +16,17 @@ package batch
 
 import (
 	"context"
-	"github.com/streamnative/oxia/oxia/internal/metrics"
-	"github.com/streamnative/oxia/oxia/internal/model"
-	"github.com/streamnative/oxia/proto"
-	"github.com/stretchr/testify/assert"
-	"go.opentelemetry.io/otel/metric/noop"
 	"io"
 	"reflect"
 	"sync"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"go.opentelemetry.io/otel/metric/noop"
+
+	"github.com/streamnative/oxia/oxia/internal/metrics"
+	"github.com/streamnative/oxia/oxia/internal/model"
+	"github.com/streamnative/oxia/proto"
 )
 
 func TestWriteBatchAdd(t *testing.T) {

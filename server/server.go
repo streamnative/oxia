@@ -15,14 +15,16 @@
 package server
 
 import (
+	"time"
+
 	"github.com/rs/zerolog/log"
+	"go.uber.org/multierr"
+	"google.golang.org/grpc/health"
+
 	"github.com/streamnative/oxia/common/container"
 	"github.com/streamnative/oxia/common/metrics"
 	"github.com/streamnative/oxia/server/kv"
 	"github.com/streamnative/oxia/server/wal"
-	"go.uber.org/multierr"
-	"google.golang.org/grpc/health"
-	"time"
 )
 
 type Config struct {

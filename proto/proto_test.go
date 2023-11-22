@@ -15,10 +15,11 @@
 package proto
 
 import (
-	"github.com/stretchr/testify/assert"
-	"google.golang.org/protobuf/proto"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"google.golang.org/protobuf/proto"
 )
 
 var appendRequest = &Append{

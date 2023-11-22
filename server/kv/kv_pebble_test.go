@@ -17,12 +17,14 @@ package kv
 import (
 	"bytes"
 	"fmt"
-	"github.com/streamnative/oxia/common"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/common"
 )
-import "github.com/stretchr/testify/assert"
 
 var testKVOptions = &KVFactoryOptions{
 	InMemory:    true,

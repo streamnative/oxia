@@ -16,9 +16,11 @@ package common
 
 import (
 	"bytes"
-	"github.com/streamnative/oxia/oxia"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/oxia"
 )
 
 func TestWriteOutput(t *testing.T) {

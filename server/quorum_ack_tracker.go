@@ -17,12 +17,13 @@ package server
 import (
 	"context"
 	"errors"
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/proto"
-	"github.com/streamnative/oxia/server/util"
 	"io"
 	"sync"
 	"sync/atomic"
+
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/util"
 )
 
 var (

@@ -16,18 +16,20 @@ package impl
 
 import (
 	"context"
+	"io"
+	"sync"
+	"time"
+
 	"github.com/cenkalti/backoff/v4"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"google.golang.org/grpc/health/grpc_health_v1"
+
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/metrics"
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/proto"
-	"google.golang.org/grpc/health/grpc_health_v1"
-	"io"
-	"sync"
-	"time"
 )
 
 type NodeStatus uint32

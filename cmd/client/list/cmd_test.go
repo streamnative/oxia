@@ -18,11 +18,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"testing"
+
 	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
+
 	"github.com/streamnative/oxia/cmd/client/common"
 	"github.com/streamnative/oxia/oxia"
-	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestCobra(t *testing.T) {

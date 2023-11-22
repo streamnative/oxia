@@ -15,13 +15,15 @@
 package standalone
 
 import (
+	"io"
+	"time"
+
 	"github.com/spf13/cobra"
+
 	"github.com/streamnative/oxia/cmd/flag"
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/server"
 	"github.com/streamnative/oxia/server/kv"
-	"io"
-	"time"
 )
 
 var (

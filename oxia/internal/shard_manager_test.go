@@ -16,11 +16,13 @@ package internal
 
 import (
 	"fmt"
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/server"
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/server"
 )
 
 type testShardStrategy struct {

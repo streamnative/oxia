@@ -17,14 +17,16 @@ package oxia
 import (
 	"context"
 	"fmt"
-	"github.com/pkg/errors"
-	"github.com/rs/zerolog/log"
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/server"
-	"github.com/stretchr/testify/assert"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
+	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/server"
 )
 
 func init() {

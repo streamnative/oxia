@@ -15,12 +15,13 @@
 package wal
 
 import (
-	"github.com/edsrzf/mmap-go"
-	"github.com/stretchr/testify/assert"
-	"golang.org/x/sys/unix"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/edsrzf/mmap-go"
+	"github.com/stretchr/testify/assert"
+	"golang.org/x/sys/unix"
 )
 
 const (

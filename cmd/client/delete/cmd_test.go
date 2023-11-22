@@ -17,10 +17,12 @@ package delete
 import (
 	"bytes"
 	"errors"
-	"github.com/spf13/cobra"
-	"github.com/streamnative/oxia/cmd/client/common"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/cmd/client/common"
 )
 
 func TestCobra(t *testing.T) {

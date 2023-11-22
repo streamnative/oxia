@@ -16,6 +16,7 @@ package metrics
 
 import (
 	"context"
+
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel/metric"
 )

@@ -16,14 +16,16 @@ package wal
 
 import (
 	"fmt"
-	"github.com/rs/zerolog/log"
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/proto"
-	"github.com/stretchr/testify/assert"
 	"math"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/rs/zerolog/log"
+	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/proto"
 )
 
 func init() {

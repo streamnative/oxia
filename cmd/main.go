@@ -16,8 +16,12 @@ package main
 
 import (
 	"fmt"
+	"os"
+
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
+	"go.uber.org/automaxprocs/maxprocs"
+
 	"github.com/streamnative/oxia/cmd/client"
 	"github.com/streamnative/oxia/cmd/coordinator"
 	"github.com/streamnative/oxia/cmd/health"
@@ -26,8 +30,6 @@ import (
 	"github.com/streamnative/oxia/cmd/server"
 	"github.com/streamnative/oxia/cmd/standalone"
 	"github.com/streamnative/oxia/common"
-	"go.uber.org/automaxprocs/maxprocs"
-	"os"
 )
 
 var (

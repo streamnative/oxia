@@ -16,18 +16,20 @@ package impl
 
 import (
 	"context"
-	"github.com/pkg/errors"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/coordinator/model"
-	"github.com/streamnative/oxia/proto"
-	"go.uber.org/multierr"
-	pb "google.golang.org/protobuf/proto"
 	"io"
 	"reflect"
 	"sync"
 	"time"
+
+	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+	"go.uber.org/multierr"
+	pb "google.golang.org/protobuf/proto"
+
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/coordinator/model"
+	"github.com/streamnative/oxia/proto"
 )
 
 var (

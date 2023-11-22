@@ -15,17 +15,19 @@
 package server
 
 import (
+	"io"
+	"sync"
+
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"go.uber.org/multierr"
+	"google.golang.org/grpc/status"
+
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/metrics"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/kv"
 	"github.com/streamnative/oxia/server/wal"
-	"go.uber.org/multierr"
-	"google.golang.org/grpc/status"
-	"io"
-	"sync"
 )
 
 type ShardsDirector interface {

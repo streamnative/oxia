@@ -18,13 +18,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/server"
-	"github.com/stretchr/testify/assert"
 	"os"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/server"
 )
 
 type testStruct struct {

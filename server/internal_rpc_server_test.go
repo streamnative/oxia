@@ -17,13 +17,15 @@ package server
 import (
 	"context"
 	"fmt"
-	"github.com/streamnative/oxia/common/container"
+	"testing"
+
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
-	"testing"
+
+	"github.com/streamnative/oxia/common/container"
 )
 
 func TestInternalHealthCheck(t *testing.T) {

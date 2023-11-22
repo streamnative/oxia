@@ -17,13 +17,15 @@ package coordinator
 import (
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/rs/zerolog/log"
+	"go.uber.org/multierr"
+
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/metrics"
 	"github.com/streamnative/oxia/coordinator/impl"
 	"github.com/streamnative/oxia/coordinator/model"
-	"go.uber.org/multierr"
-	"time"
 )
 
 type Config struct {

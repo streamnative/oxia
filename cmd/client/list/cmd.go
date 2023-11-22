@@ -18,10 +18,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+
 	"github.com/spf13/cobra"
+
 	"github.com/streamnative/oxia/cmd/client/common"
 	"github.com/streamnative/oxia/oxia"
-	"io"
 )
 
 var (

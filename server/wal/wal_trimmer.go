@@ -17,12 +17,14 @@ package wal
 import (
 	"context"
 	"fmt"
+	"io"
+	"time"
+
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+
 	"github.com/streamnative/oxia/common"
-	"io"
-	"time"
 )
 
 const (

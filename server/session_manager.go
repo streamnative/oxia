@@ -17,18 +17,20 @@ package server
 import (
 	"context"
 	"fmt"
-	"github.com/pkg/errors"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/common/metrics"
-	"github.com/streamnative/oxia/proto"
-	"github.com/streamnative/oxia/server/kv"
 	"io"
 	"net/url"
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/metrics"
+	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/kv"
 )
 
 const (

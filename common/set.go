@@ -15,8 +15,9 @@
 package common
 
 import (
-	"golang.org/x/exp/constraints"
 	"sort"
+
+	"golang.org/x/exp/constraints"
 )
 
 type Set[T constraints.Ordered] interface {

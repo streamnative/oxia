@@ -16,12 +16,14 @@ package impl
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
+
 	"github.com/juju/fslock"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+
 	"github.com/streamnative/oxia/coordinator/model"
-	"os"
-	"path/filepath"
 )
 
 // MetadataProviderMemory is a provider that just keeps the cluster status in a local file,

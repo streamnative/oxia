@@ -18,13 +18,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/bmizerany/perks/quantile"
-	"github.com/rs/zerolog/log"
-	"github.com/streamnative/oxia/oxia"
-	"golang.org/x/time/rate"
 	"math/rand"
 	"sync/atomic"
 	"time"
+
+	"github.com/bmizerany/perks/quantile"
+	"github.com/rs/zerolog/log"
+	"golang.org/x/time/rate"
+
+	"github.com/streamnative/oxia/oxia"
 )
 
 type Config struct {

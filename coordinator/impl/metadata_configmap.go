@@ -15,16 +15,18 @@
 package impl
 
 import (
+	"sync"
+	"sync/atomic"
+
 	"github.com/rs/zerolog/log"
-	"github.com/streamnative/oxia/common/metrics"
-	"github.com/streamnative/oxia/coordinator/model"
 	"gopkg.in/yaml.v2"
 	coreV1 "k8s.io/api/core/v1"
 	k8sError "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8s "k8s.io/client-go/kubernetes"
-	"sync"
-	"sync/atomic"
+
+	"github.com/streamnative/oxia/common/metrics"
+	"github.com/streamnative/oxia/coordinator/model"
 )
 
 type metadataProviderConfigMap struct {

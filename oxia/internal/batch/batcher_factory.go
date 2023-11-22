@@ -15,10 +15,11 @@
 package batch
 
 import (
+	"time"
+
 	"github.com/streamnative/oxia/common/batch"
 	"github.com/streamnative/oxia/oxia/internal"
 	"github.com/streamnative/oxia/oxia/internal/metrics"
-	"time"
 )
 
 type BatcherFactory struct {

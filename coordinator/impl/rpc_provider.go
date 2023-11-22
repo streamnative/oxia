@@ -16,11 +16,13 @@ package impl
 
 import (
 	"context"
+	"time"
+
+	"google.golang.org/grpc/health/grpc_health_v1"
+
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/proto"
-	"google.golang.org/grpc/health/grpc_health_v1"
-	"time"
 )
 
 const rpcTimeout = 30 * time.Second

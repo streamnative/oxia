@@ -18,11 +18,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/rs/zerolog/log"
-	"github.com/streamnative/oxia/proto"
-	"google.golang.org/grpc/metadata"
 	"os"
 	"sync"
+
+	"github.com/rs/zerolog/log"
+	"google.golang.org/grpc/metadata"
+
+	"github.com/streamnative/oxia/proto"
 )
 
 type maelstromReplicationRpcProvider struct {

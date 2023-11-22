@@ -16,15 +16,17 @@ package oxia
 
 import (
 	"context"
+	"io"
+	"sync"
+	"time"
+
 	"github.com/cenkalti/backoff/v4"
 	"github.com/dgraph-io/ristretto"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
-	"github.com/streamnative/oxia/common"
 	"go.uber.org/multierr"
-	"io"
-	"sync"
-	"time"
+
+	"github.com/streamnative/oxia/common"
 )
 
 // Cache provides a view of the data stored in Oxia that is locally cached.

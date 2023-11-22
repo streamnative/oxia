@@ -16,13 +16,15 @@ package impl
 
 import (
 	"errors"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"google.golang.org/grpc/health/grpc_health_v1"
+
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/proto"
-	"github.com/stretchr/testify/assert"
-	"google.golang.org/grpc/health/grpc_health_v1"
-	"testing"
-	"time"
 )
 
 func TestNodeController_HealthCheck(t *testing.T) {

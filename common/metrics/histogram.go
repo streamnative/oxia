@@ -16,6 +16,7 @@ package metrics
 
 import (
 	"context"
+
 	"go.opentelemetry.io/otel/metric"
 )
 

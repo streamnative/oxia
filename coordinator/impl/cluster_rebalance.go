@@ -15,10 +15,12 @@
 package impl
 
 import (
+	"sort"
+
 	"github.com/rs/zerolog/log"
+
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/coordinator/model"
-	"sort"
 )
 
 type SwapNodeAction struct {

@@ -15,8 +15,9 @@
 package common
 
 import (
-	"github.com/streamnative/oxia/oxia"
 	"time"
+
+	"github.com/streamnative/oxia/oxia"
 )
 
 var (
