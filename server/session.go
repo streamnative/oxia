@@ -16,11 +16,10 @@ package server
 
 import (
 	"context"
+	"log/slog"
 	"net/url"
 	"sync"
 	"time"
-
-	"github.com/rs/zerolog"
 
 	"github.com/streamnative/oxia/proto"
 )
@@ -37,7 +36,7 @@ type session struct {
 	heartbeatCh    chan bool
 	cancel         context.CancelFunc
 	ctx            context.Context
-	log            zerolog.Logger
+	log            *slog.Logger
 }
 
 func startSession(sessionId SessionId, sessionMetadata *proto.SessionMetadata, sm *sessionManager) *session {
@@ -48,13 +47,14 @@ func startSession(sessionId SessionId, sessionMetadata *proto.SessionMetadata, s
 		sm:             sm,
 		heartbeatCh:    make(chan bool, 1),
 
-		log: sm.log.With().
-			Str("component", "session").
-			Int64("session-id", int64(sessionId)).Logger(),
+		log: slog.With(
+			slog.String("component", "session"),
+			slog.Int64("session-id", int64(sessionId)),
+		),
 	}
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	go s.waitForHeartbeats()
-	s.log.Debug().Msg("Session started")
+	s.log.Debug("Session started")
 	return s
 }
 
@@ -64,7 +64,7 @@ func (s *session) closeChannels() {
 		close(s.heartbeatCh)
 		s.heartbeatCh = nil
 	}
-	s.log.Debug().Msg("Session channels closed")
+	s.log.Debug("Session channels closed")
 }
 
 func (s *session) delete() error {
@@ -81,11 +81,18 @@ func (s *session) delete() error {
 	}
 	// Delete ephemerals
 	var deletes []*proto.DeleteRequest
-	s.log.Debug().Strs("keys", list).Msg("Keys to delete")
+	s.log.Debug(
+		"Keys to delete",
+		slog.Any("keys", list),
+	)
 	for _, key := range list {
 		unescapedKey, err := url.PathUnescape(key[len(sessionKey):])
 		if err != nil {
-			s.log.Error().Err(err).Str("key", sessionKey).Msg("Invalid session key")
+			s.log.Error(
+				"Invalid session key",
+				slog.Any("Error", err),
+				slog.String("key", sessionKey),
+			)
 			continue
 		}
 		if unescapedKey != "" {
@@ -106,7 +113,7 @@ func (s *session) delete() error {
 			},
 		},
 	})
-	s.log.Debug().Msg("Session deleted")
+	s.log.Debug("Session deleted")
 	return err
 }
 
@@ -122,7 +129,7 @@ func (s *session) waitForHeartbeats() {
 	s.Lock()
 	heartbeatChannel := s.heartbeatCh
 	s.Unlock()
-	s.log.Debug().Msg("Waiting for heartbeats")
+	s.log.Debug("Waiting for heartbeats")
 	for {
 		var timer = time.NewTimer(s.timeout)
 		var timeoutCh = timer.C
@@ -135,16 +142,17 @@ func (s *session) waitForHeartbeats() {
 			}
 			timer.Reset(s.timeout)
 		case <-timeoutCh:
-			s.log.Info().
-				Msg("Session expired")
+			s.log.Info("Session expired")
 
 			s.Lock()
 			s.closeChannels()
 			err := s.delete()
 
 			if err != nil {
-				s.log.Error().Err(err).
-					Msg("Failed to delete session")
+				s.log.Error(
+					"Failed to delete session",
+					slog.Any("Error", err),
+				)
 			}
 			s.Unlock()
 

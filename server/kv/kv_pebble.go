@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -26,8 +27,6 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
 
 	"github.com/streamnative/oxia/common"
@@ -125,8 +124,13 @@ func (p *PebbleFactory) NewSnapshotLoader(namespace string, shardId int64) (Snap
 
 func (p *PebbleFactory) getKVPath(namespace string, shard int64) string {
 	if namespace == "" {
-		log.Fatal().Int64("shard", shard).Msg("Missing namespace when getting KV path")
+		slog.Warn(
+			"Missing namespace when getting KV path",
+			slog.Int64("shard", shard),
+		)
+		os.Exit(1)
 	}
+
 	return filepath.Join(p.dataDir, namespace, fmt.Sprint("shard-", shard))
 }
 
@@ -205,10 +209,10 @@ func newKVPebble(factory *PebbleFactory, namespace string, shardId int64) (KV, e
 		FS:         vfs.Default,
 		DisableWAL: true,
 		Logger: &PebbleLogger{
-			log.With().
-				Str("component", "pebble").
-				Int64("shard", shardId).
-				Logger(),
+			slog.With(
+				slog.String("component", "pebble"),
+				slog.Int64("shard", shardId),
+			),
 		},
 
 		FormatMajorVersion: pebble.FormatNewest,
@@ -550,19 +554,26 @@ func (p *PebbleReverseIterator) Value() ([]byte, error) {
 /// Pebble logger wrapper
 
 type PebbleLogger struct {
-	zl zerolog.Logger
+	zl *slog.Logger
 }
 
 func (pl *PebbleLogger) Infof(format string, args ...interface{}) {
-	pl.zl.Info().Msgf(format, args...)
+	pl.zl.Info(
+		fmt.Sprintf(format, args...),
+	)
 }
 
 func (pl *PebbleLogger) Errorf(format string, args ...interface{}) {
-	pl.zl.Error().Msgf(format, args...)
+	pl.zl.Error(
+		fmt.Sprintf(format, args...),
+	)
 }
 
 func (pl *PebbleLogger) Fatalf(format string, args ...interface{}) {
-	pl.zl.Fatal().Msgf(format, args...)
+	pl.zl.Warn(
+		fmt.Sprintf(format, args...),
+	)
+	os.Exit(1)
 }
 
 /// Custom comparator function

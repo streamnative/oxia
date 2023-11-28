@@ -18,10 +18,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"sync"
 
-	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/metadata"
 
 	"github.com/streamnative/oxia/proto"
@@ -65,7 +65,10 @@ func (r *maelstromReplicationRpcProvider) GetReplicateStream(ctx context.Context
 func (r *maelstromReplicationRpcProvider) HandleAck(streamId int64, res *proto.Ack) {
 	s, ok := r.replicateStreams[streamId]
 	if !ok {
-		log.Warn().Int64("stream-id", streamId).Msg("Stream not found")
+		slog.Warn(
+			"Stream not found",
+			slog.Int64("stream-id", streamId),
+		)
 		return
 	}
 

@@ -16,12 +16,12 @@ package wal
 
 import (
 	"fmt"
+	"log/slog"
 	"math"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/streamnative/oxia/common"
@@ -73,14 +73,20 @@ func TestWalTrimmer(t *testing.T) {
 	clock.Set(5)
 
 	assert.Eventually(t, func() bool {
-		log.Info().Int64("first-offset", w.FirstOffset()).Msg("checking...")
+		slog.Info(
+			"checking...",
+			slog.Int64("first-offset", w.FirstOffset()),
+		)
 		return w.FirstOffset() == 3
 	}, 10*time.Second, 10*time.Millisecond)
 
 	clock.Set(89)
 
 	assert.Eventually(t, func() bool {
-		log.Info().Int64("first-offset", w.FirstOffset()).Msg("checking...")
+		slog.Info(
+			"checking...",
+			slog.Int64("first-offset", w.FirstOffset()),
+		)
 		return w.FirstOffset() == 87
 	}, 10*time.Second, 10*time.Millisecond)
 
@@ -124,7 +130,10 @@ func TestWalTrimUpToCommitOffset(t *testing.T) {
 			commitOffsetProvider.commitOffset.Store(2)
 
 			assert.Eventually(t, func() bool {
-				log.Info().Int64("first-offset", w.FirstOffset()).Msg("checking...")
+				slog.Info(
+					"checking...",
+					slog.Int64("first-offset", w.FirstOffset()),
+				)
 				return w.FirstOffset() == 2
 			}, 10*time.Second, 10*time.Millisecond)
 
@@ -139,7 +148,10 @@ func TestWalTrimUpToCommitOffset(t *testing.T) {
 			commitOffsetProvider.commitOffset.Store(100)
 
 			assert.Eventually(t, func() bool {
-				log.Info().Int64("first-offset", w.FirstOffset()).Msg("checking...")
+				slog.Info(
+					"checking...",
+					slog.Int64("first-offset", w.FirstOffset()),
+				)
 				return w.FirstOffset() == 87
 			}, 10*time.Second, 10*time.Millisecond)
 

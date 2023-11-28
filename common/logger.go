@@ -16,24 +16,44 @@ package common
 
 import (
 	"encoding/json"
+	"fmt"
+	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/rs/zerolog/pkgerrors"
+	slogzerolog "github.com/samber/slog-zerolog/v2"
 	"google.golang.org/protobuf/encoding/protojson"
 	pb "google.golang.org/protobuf/proto"
 )
 
-const DefaultLogLevel = zerolog.InfoLevel
+const DefaultLogLevel = slog.LevelInfo
 
 var (
 	// LogLevel Used for flags
-	LogLevel zerolog.Level
+	LogLevel slog.Level
 	// LogJson Used for flags
 	LogJson bool
 )
+
+// ParseLogLevel will convert the slog level configuration to slog.Level values
+func ParseLogLevel(levelStr string) (slog.Level, error) {
+	switch {
+	case strings.EqualFold(levelStr, slog.LevelDebug.String()):
+		return slog.LevelDebug, nil
+	case strings.EqualFold(levelStr, slog.LevelInfo.String()):
+		return slog.LevelInfo, nil
+	case strings.EqualFold(levelStr, slog.LevelWarn.String()):
+		return slog.LevelWarn, nil
+	case strings.EqualFold(levelStr, slog.LevelError.String()):
+		return slog.LevelError, nil
+	}
+
+	return slog.LevelInfo, fmt.Errorf("Unknown Level String: '%s', defaulting to LevelInfo", levelStr)
+}
 
 func ConfigureLogger() {
 	zerolog.TimeFieldFormat = time.RFC3339Nano
@@ -49,17 +69,24 @@ func ConfigureLogger() {
 		return json.Marshal(i)
 	}
 
-	log.Logger = zerolog.New(os.Stdout).
+	zerologLogger := zerolog.New(os.Stdout).
 		With().
 		Timestamp().
 		Stack().
 		Logger()
 
 	if !LogJson {
-		log.Logger = log.Output(zerolog.ConsoleWriter{
+		zerologLogger = log.Output(zerolog.ConsoleWriter{
 			Out:        os.Stdout,
 			TimeFormat: time.StampMicro,
 		})
 	}
-	zerolog.SetGlobalLevel(LogLevel)
+
+	slogLogger := slog.New(
+		slogzerolog.Option{
+			Level:  LogLevel,
+			Logger: &zerologLogger,
+		}.NewZerologHandler(),
+	)
+	slog.SetDefault(slogLogger)
 }

@@ -15,7 +15,8 @@
 package notifications
 
 import (
-	"github.com/rs/zerolog/log"
+	"log/slog"
+
 	"github.com/spf13/cobra"
 
 	"github.com/streamnative/oxia/cmd/client/common"
@@ -45,11 +46,12 @@ func exec(cmd *cobra.Command, args []string) error {
 	defer notifications.Close()
 
 	for notification := range notifications.Ch() {
-		log.Info().
-			Stringer("type", notification.Type).
-			Str("key", notification.Key).
-			Int64("version-id", notification.VersionId).
-			Msg("")
+		slog.Info(
+			"",
+			slog.Any("type", notification.Type),
+			slog.String("key", notification.Key),
+			slog.Int64("version-id", notification.VersionId),
+		)
 	}
 
 	return nil

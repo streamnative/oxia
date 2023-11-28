@@ -18,12 +18,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -102,7 +101,7 @@ type followerController struct {
 	applyEntriesCond common.ConditionContext
 	applyEntriesDone chan any
 	closeStreamWg    common.WaitGroup
-	log              zerolog.Logger
+	log              *slog.Logger
 	config           Config
 
 	writeLatencyHisto metrics.LatencyHistogram
@@ -156,20 +155,21 @@ func NewFollowerController(config Config, namespace string, shardId int64, wf wa
 		"shard": fmt.Sprintf("%d", fc.shardId),
 	}, fc.applyAllCommittedEntries)
 
-	fc.log.Info().
-		Int64("head-offset", fc.wal.LastOffset()).
-		Int64("commit-offset", commitOffset).
-		Msg("Created follower")
+	fc.log.Info(
+		"Created follower",
+		slog.Int64("head-offset", fc.wal.LastOffset()),
+		slog.Int64("commit-offset", commitOffset),
+	)
 	return fc, nil
 }
 
 func (fc *followerController) setLogger() {
-	fc.log = log.With().
-		Str("component", "follower-controller").
-		Str("namespace", fc.namespace).
-		Int64("shard", fc.shardId).
-		Int64("term", fc.term).
-		Logger()
+	fc.log = slog.With(
+		slog.String("component", "follower-controller"),
+		slog.String("namespace", fc.namespace),
+		slog.Int64("shard", fc.shardId),
+		slog.Int64("term", fc.term),
+	)
 }
 
 func (fc *followerController) isClosed() bool {
@@ -177,7 +177,7 @@ func (fc *followerController) isClosed() bool {
 }
 
 func (fc *followerController) Close() error {
-	fc.log.Debug().Msg("Closing follower controller")
+	fc.log.Debug("Closing follower controller")
 	fc.cancel()
 
 	<-fc.applyEntriesDone
@@ -210,8 +210,10 @@ func (fc *followerController) closeStream(err error) {
 
 func (fc *followerController) closeStreamNoMutex(err error) {
 	if err != nil && err != io.EOF && err != context.Canceled && status.Code(err) != codes.Canceled {
-		fc.log.Warn().Err(err).
-			Msg("Error in handle Replicate stream")
+		fc.log.Warn(
+			"Error in handle Replicate stream",
+			slog.Any("Error", err),
+		)
 	}
 
 	if fc.closeStreamWg != nil {
@@ -245,19 +247,21 @@ func (fc *followerController) NewTerm(req *proto.NewTermRequest) (*proto.NewTerm
 	}
 
 	if req.Term < fc.term {
-		fc.log.Warn().
-			Int64("follower-term", fc.term).
-			Int64("new-term", req.Term).
-			Msg("Failed to fence with invalid term")
+		fc.log.Warn(
+			"Failed to fence with invalid term",
+			slog.Int64("follower-term", fc.term),
+			slog.Int64("new-term", req.Term),
+		)
 		return nil, common.ErrorInvalidTerm
 	} else if req.Term == fc.term && fc.status != proto.ServingStatus_FENCED {
 		// It's OK to receive a duplicate Fence request, for the same term, as long as we haven't moved
 		// out of the Fenced state for that term
-		fc.log.Warn().
-			Int64("follower-term", fc.term).
-			Int64("new-term", req.Term).
-			Interface("status", fc.status).
-			Msg("Failed to fence with same term in invalid state")
+		fc.log.Warn(
+			"Failed to fence with same term in invalid state",
+			slog.Int64("follower-term", fc.term),
+			slog.Int64("new-term", req.Term),
+			slog.Any("status", fc.status),
+		)
 		return nil, common.ErrorInvalidStatus
 	}
 
@@ -279,16 +283,19 @@ func (fc *followerController) NewTerm(req *proto.NewTermRequest) (*proto.NewTerm
 
 	lastEntryId, err := getLastEntryIdInWal(fc.wal)
 	if err != nil {
-		fc.log.Warn().Err(err).
-			Int64("follower-term", fc.term).
-			Int64("new-term", req.Term).
-			Msg("Failed to get last")
+		fc.log.Warn(
+			"Failed to get last",
+			slog.Any("Error", err),
+			slog.Int64("follower-term", fc.term),
+			slog.Int64("new-term", req.Term),
+		)
 		return nil, err
 	}
 
-	fc.log.Info().
-		Interface("last-entry", lastEntryId).
-		Msg("Follower successfully initialized in new term")
+	fc.log.Info(
+		"Follower successfully initialized in new term",
+		slog.Any("last-entry", lastEntryId),
+	)
 	return &proto.NewTermResponse{HeadEntryId: lastEntryId}, nil
 }
 
@@ -378,10 +385,11 @@ func (fc *followerController) append(req *proto.Append, stream proto.OxiaLogRepl
 		return common.ErrorInvalidTerm
 	}
 
-	fc.log.Debug().
-		Int64("commit-offset", req.CommitOffset).
-		Int64("offset", req.Entry.Offset).
-		Msg("Add entry")
+	fc.log.Debug(
+		"Add entry",
+		slog.Int64("commit-offset", req.CommitOffset),
+		slog.Int64("offset", req.Entry.Offset),
+	)
 
 	// A follower node confirms an entry to the leader
 	//
@@ -392,10 +400,11 @@ func (fc *followerController) append(req *proto.Append, stream proto.OxiaLogRepl
 
 	if req.Entry.Offset <= fc.lastAppendedOffset {
 		// This was a duplicated request. We already have this entry
-		fc.log.Debug().
-			Int64("commit-offset", req.CommitOffset).
-			Int64("offset", req.Entry.Offset).
-			Msg("Ignoring duplicated entry")
+		fc.log.Debug(
+			"Ignoring duplicated entry",
+			slog.Int64("commit-offset", req.CommitOffset),
+			slog.Int64("offset", req.Entry.Offset),
+		)
 		if err := stream.Send(&proto.Ack{Offset: req.Entry.Offset}); err != nil {
 			fc.closeStreamNoMutex(err)
 		}
@@ -466,24 +475,31 @@ func (fc *followerController) applyAllCommittedEntries() {
 }
 
 func (fc *followerController) processCommittedEntries(maxInclusive int64) error {
-	fc.log.Debug().
-		Int64("min-exclusive", fc.commitOffset.Load()).
-		Int64("max-inclusive", maxInclusive).
-		Int64("head-offset", fc.wal.LastOffset()).
-		Msg("Process committed entries")
+	fc.log.Debug(
+		"Process committed entries",
+		slog.Int64("min-exclusive", fc.commitOffset.Load()),
+		slog.Int64("max-inclusive", maxInclusive),
+		slog.Int64("head-offset", fc.wal.LastOffset()),
+	)
 	if maxInclusive <= fc.commitOffset.Load() {
 		return nil
 	}
 
 	reader, err := fc.wal.NewReader(fc.commitOffset.Load())
 	if err != nil {
-		fc.log.Err(err).Msg("Error opening reader used for applying committed entries")
+		fc.log.Error(
+			"Error opening reader used for applying committed entries",
+			slog.Any("Error", err),
+		)
 		return err
 	}
 	defer func() {
 		err := reader.Close()
 		if err != nil {
-			fc.log.Err(err).Msg("Error closing reader used for applying committed entries")
+			fc.log.Error(
+				"Error closing reader used for applying committed entries",
+				slog.Any("Error", err),
+			)
 		}
 	}()
 
@@ -494,16 +510,17 @@ func (fc *followerController) processCommittedEntries(maxInclusive int64) error 
 		entry, err := reader.ReadNext()
 
 		if err == wal.ErrorReaderClosed {
-			fc.log.Info().Msg("Stopped reading committed entries")
+			fc.log.Info("Stopped reading committed entries")
 			return err
 		} else if err != nil {
-			fc.log.Err(err).Msg("Error reading committed entry")
+			fc.log.Error("Error reading committed entry", slog.Any("Error", err))
 			return err
 		}
 
-		fc.log.Debug().
-			Int64("offset", entry.Offset).
-			Msg("Reading entry")
+		fc.log.Debug(
+			"Reading entry",
+			slog.Int64("offset", entry.Offset),
+		)
 
 		if entry.Offset > maxInclusive {
 			// We read up to the max point
@@ -512,13 +529,19 @@ func (fc *followerController) processCommittedEntries(maxInclusive int64) error 
 
 		logEntryValue.ResetVT()
 		if err := logEntryValue.UnmarshalVT(entry.Value); err != nil {
-			fc.log.Err(err).Msg("Error unmarshalling committed entry")
+			fc.log.Error(
+				"Error unmarshalling committed entry",
+				slog.Any("Error", err),
+			)
 			return err
 		}
 		for _, br := range logEntryValue.GetRequests().Writes {
 			_, err = fc.db.ProcessWrite(br, entry.Offset, entry.Timestamp, SessionUpdateOperationCallback)
 			if err != nil {
-				fc.log.Err(err).Msg("Error applying committed entry")
+				fc.log.Error(
+					"Error applying committed entry",
+					slog.Any("Error", err),
+				)
 				return err
 			}
 		}
@@ -613,12 +636,13 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 
 		fc.term = snapChunk.Term
 
-		fc.log.Debug().
-			Str("chunk-name", snapChunk.Name).
-			Int("chunk-size", len(snapChunk.Content)).
-			Str("chunk-progress", fmt.Sprintf("%d/%d", snapChunk.ChunkIndex, snapChunk.ChunkCount)).
-			Int64("term", fc.term).
-			Msg("Applying snapshot chunk")
+		fc.log.Debug(
+			"Applying snapshot chunk",
+			slog.String("chunk-name", snapChunk.Name),
+			slog.Int("chunk-size", len(snapChunk.Content)),
+			slog.String("chunk-progress", fmt.Sprintf("%d/%d", snapChunk.ChunkIndex, snapChunk.ChunkCount)),
+			slog.Int64("term", fc.term),
+		)
 		if err = loader.AddChunk(snapChunk.Name, snapChunk.ChunkIndex, snapChunk.ChunkCount, snapChunk.Content); err != nil {
 			fc.closeStream(err)
 			return
@@ -658,11 +682,12 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 	fc.commitOffset.Store(commitOffset)
 	fc.closeStreamNoMutex(nil)
 
-	fc.log.Info().
-		Int64("term", fc.term).
-		Int64("snapshot-size", totalSize).
-		Int64("commit-offset", commitOffset).
-		Msg("Successfully applied snapshot")
+	fc.log.Info(
+		"Successfully applied snapshot",
+		slog.Int64("term", fc.term),
+		slog.Int64("snapshot-size", totalSize),
+		slog.Int64("commit-offset", commitOffset),
+	)
 }
 
 func (fc *followerController) GetStatus(request *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
@@ -688,8 +713,7 @@ func (fc *followerController) DeleteShard(request *proto.DeleteShardRequest) (*p
 		return nil, common.ErrorInvalidTerm
 	}
 
-	fc.log.Info().
-		Msg("Deleting shard")
+	fc.log.Info("Deleting shard")
 
 	// Wipe out both WAL and DB contents
 	if err := multierr.Combine(

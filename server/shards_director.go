@@ -16,10 +16,9 @@ package server
 
 import (
 	"io"
+	"log/slog"
 	"sync"
 
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/status"
 
@@ -53,7 +52,7 @@ type shardsDirector struct {
 	walFactory             wal.WalFactory
 	replicationRpcProvider ReplicationRpcProvider
 	closed                 bool
-	log                    zerolog.Logger
+	log                    *slog.Logger
 
 	leadersCounter   metrics.UpDownCounter
 	followersCounter metrics.UpDownCounter
@@ -67,9 +66,9 @@ func NewShardsDirector(config Config, walFactory wal.WalFactory, kvFactory kv.KV
 		leaders:                make(map[int64]LeaderController),
 		followers:              make(map[int64]FollowerController),
 		replicationRpcProvider: provider,
-		log: log.With().
-			Str("component", "shards-director").
-			Logger(),
+		log: slog.With(
+			slog.String("component", "shards-director"),
+		),
 
 		leadersCounter: metrics.NewUpDownCounter("oxia_server_leaders_count",
 			"The number of leader controllers in a server", "count", map[string]any{}),
@@ -93,9 +92,10 @@ func (s *shardsDirector) GetLeader(shardId int64) (LeaderController, error) {
 		return leader, nil
 	}
 
-	s.log.Debug().
-		Int64("shard", shardId).
-		Msg("This node is not hosting shard")
+	s.log.Debug(
+		"This node is not hosting shard",
+		slog.Int64("shard", shardId),
+	)
 	return nil, status.Errorf(common.CodeNodeIsNotLeader, "node is not leader for shard %d", shardId)
 }
 
@@ -112,9 +112,10 @@ func (s *shardsDirector) GetFollower(shardId int64) (FollowerController, error) 
 		return follower, nil
 	}
 
-	s.log.Debug().
-		Int64("shard", shardId).
-		Msg("This node is not hosting shard")
+	s.log.Debug(
+		"This node is not hosting shard",
+		slog.Int64("shard", shardId),
+	)
 	return nil, status.Errorf(common.CodeNodeIsNotFollower, "node is not follower for shard %d", shardId)
 }
 

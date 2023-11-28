@@ -18,14 +18,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/url"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/metrics"
@@ -77,7 +76,7 @@ type sessionManager struct {
 	leaderController *leaderController
 	shardId          int64
 	sessions         map[SessionId]*session
-	log              zerolog.Logger
+	log              *slog.Logger
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -94,12 +93,12 @@ func NewSessionManager(ctx context.Context, namespace string, shardId int64, con
 		sessions:         make(map[SessionId]*session),
 		shardId:          shardId,
 		leaderController: controller,
-		log: log.With().
-			Str("component", "session-manager").
-			Str("namespace", namespace).
-			Int64("shard", shardId).
-			Int64("term", controller.term).
-			Logger(),
+		log: slog.With(
+			slog.String("component", "session-manager"),
+			slog.String("namespace", namespace),
+			slog.Int64("shard", shardId),
+			slog.Int64("term", controller.term),
+		),
 
 		createdSessions: metrics.NewCounter("oxia_server_sessions_created",
 			"The total number of sessions created", "count", labels),
@@ -171,9 +170,10 @@ func (sm *sessionManager) createSession(request *proto.CreateSessionRequest, min
 func (sm *sessionManager) getSession(sessionId int64) (*session, error) {
 	s, found := sm.sessions[SessionId(sessionId)]
 	if !found {
-		sm.log.Warn().
-			Int64("session-id", sessionId).
-			Msg("Session not found")
+		sm.log.Warn(
+			"Session not found",
+			slog.Int64("session-id", sessionId),
+		)
 		return nil, common.ErrorInvalidSession
 	}
 	return s, nil
@@ -246,29 +246,32 @@ func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, 
 		}
 
 		if metaEntry.Status != proto.Status_OK {
-			sm.log.Warn().
-				Str("key", key).
-				Stringer("status", metaEntry.Status).
-				Msgf("error reading session metadata")
+			sm.log.Warn(
+				"error reading session metadata",
+				slog.String("key", key),
+				slog.Any("status", metaEntry.Status),
+			)
 			continue
 		}
 		sessionId, err := KeyToId(key)
 		if err != nil {
-			sm.log.Warn().
-				Err(err).
-				Str("key", key).
-				Msgf("error parsing session key")
+			sm.log.Warn(
+				"error parsing session key",
+				slog.Any("Error", err),
+				slog.String("key", key),
+			)
 			continue
 		}
 		value := metaEntry.Value
 		metadata := proto.SessionMetadata{}
 		err = metadata.UnmarshalVT(value)
 		if err != nil {
-			sm.log.Warn().
-				Err(err).
-				Int64("session-id", int64(sessionId)).
-				Str("key", key).
-				Msgf("error unmarshalling session metadata")
+			sm.log.Warn(
+				"error unmarshalling session metadata",
+				slog.Any("Error", err),
+				slog.Int64("session-id", int64(sessionId)),
+				slog.String("key", key),
+			)
 			continue
 		}
 

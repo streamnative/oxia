@@ -17,12 +17,12 @@ package impl
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/streamnative/oxia/common"
@@ -118,10 +118,11 @@ func TestCoordinatorE2E_ShardsRanges(t *testing.T) {
 	assert.EqualValues(t, 0, nsStatus.Shards[0].Int32HashRange.Min)
 
 	for i := int64(1); i < 4; i++ {
-		log.Info().
-			Interface("range", nsStatus.Shards[i].Int32HashRange).
-			Int64("shard", i).
-			Msg("Checking shard")
+		slog.Info(
+			"Checking shard",
+			slog.Any("range", nsStatus.Shards[i].Int32HashRange),
+			slog.Int64("shard", i),
+		)
 
 		// The hash ranges should be exclusive & consecutive
 		assert.Equal(t, nsStatus.Shards[i-1].Int32HashRange.Max+1, nsStatus.Shards[i].Int32HashRange.Min)
@@ -181,10 +182,11 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 			break
 		}
 	}
-	log.Logger.Info().
-		Interface("leader", leader).
-		Interface("follower", follower).
-		Msg("Cluster is ready")
+	slog.Info(
+		"Cluster is ready",
+		slog.Any("leader", leader),
+		slog.Any("follower", follower),
+	)
 
 	client, err := oxia.NewSyncClient(follower.Public)
 	assert.NoError(t, err)
@@ -287,7 +289,7 @@ func TestCoordinator_MultipleNamespaces(t *testing.T) {
 		return true
 	}, 10*time.Second, 10*time.Millisecond)
 
-	log.Logger.Info().Msg("Cluster is ready")
+	slog.Info("Cluster is ready")
 
 	clientDefault, err := oxia.NewSyncClient(sa1.Public)
 	assert.NoError(t, err)
@@ -370,7 +372,7 @@ func TestCoordinator_DeleteNamespace(t *testing.T) {
 		return true
 	}, 10*time.Second, 10*time.Millisecond)
 
-	log.Logger.Info().Msg("Cluster is ready")
+	slog.Info("Cluster is ready")
 
 	// Restart the coordinator and remove the namespace
 	assert.NoError(t, coordinator.Close())
@@ -440,7 +442,7 @@ func TestCoordinator_DynamicallAddNamespace(t *testing.T) {
 		return true
 	}, 10*time.Second, 10*time.Millisecond)
 
-	log.Logger.Info().Msg("Cluster is ready")
+	slog.Info("Cluster is ready")
 
 	clusterConfig.Namespaces = append(clusterConfig.Namespaces, model.NamespaceConfig{
 		Name:              "my-ns-2",
@@ -529,9 +531,10 @@ func TestCoordinator_RebalanceCluster(t *testing.T) {
 		return true
 	}, 10*time.Second, 10*time.Millisecond)
 
-	log.Info().
-		Interface("cluster-status", coordinator.ClusterStatus()).
-		Msg("Cluster is ready")
+	slog.Info(
+		"Cluster is ready",
+		slog.Any("cluster-status", coordinator.ClusterStatus()),
+	)
 
 	ns1Status = coordinator.ClusterStatus().Namespaces["my-ns-1"]
 	assert.EqualValues(t, 2, len(ns1Status.Shards))
@@ -582,10 +585,11 @@ func checkServerLists(t *testing.T, expected, actual []model.ServerAddress) {
 	for _, x := range actual {
 		_, ok := mExpected[x.Public]
 		if !ok {
-			log.Warn().
-				Interface("expected-servers", expected).
-				Interface("found-server", x).
-				Msg("Got unexpected server")
+			slog.Warn(
+				"Got unexpected server",
+				slog.Any("expected-servers", expected),
+				slog.Any("found-server", x),
+			)
 		}
 		assert.True(t, ok)
 	}

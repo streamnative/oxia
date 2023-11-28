@@ -15,10 +15,10 @@
 package impl
 
 import (
+	"log/slog"
 	"math"
 	"testing"
 
-	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/streamnative/oxia/common"
@@ -155,7 +155,10 @@ func TestClusterRebalance_Multiple(t *testing.T) {
 	}
 
 	actions := rebalanceCluster([]model.ServerAddress{s1, s2, s3, s4, s5}, cs)
-	log.Info().Interface("actions", actions).Msg("actions")
+	slog.Info(
+		"actions",
+		slog.Any("actions", actions),
+	)
 	assert.Equal(t, []SwapNodeAction{{
 		Shard: 0,
 		From:  s2,
@@ -188,7 +191,10 @@ func TestClusterRebalance_DoubleSize(t *testing.T) {
 	}
 
 	actions := rebalanceCluster([]model.ServerAddress{s1, s2, s3, s4, s5, s6}, cs)
-	log.Info().Interface("actions", actions).Msg("actions")
+	slog.Info(
+		"actions",
+		slog.Any("actions", actions),
+	)
 	assert.Equal(t, []SwapNodeAction{{
 		Shard: 0,
 		From:  s1,
@@ -245,7 +251,10 @@ func TestClusterRebalance_ShrinkOne(t *testing.T) {
 	}
 
 	actions := rebalanceCluster([]model.ServerAddress{s1, s2, s3, s4, s5}, cs)
-	log.Info().Interface("actions", actions).Msg("actions")
+	slog.Info(
+		"actions",
+		slog.Any("actions", actions),
+	)
 	assert.Equal(t, []SwapNodeAction{{
 		Shard: 1,
 		From:  s6,
@@ -278,7 +287,10 @@ func TestClusterRebalance_ShrinkToHalf(t *testing.T) {
 	}
 
 	actions := rebalanceCluster([]model.ServerAddress{s1, s2, s3}, cs)
-	log.Info().Interface("actions", actions).Msg("actions")
+	slog.Info(
+		"actions",
+		slog.Any("actions", actions),
+	)
 	assert.Equal(t, []SwapNodeAction{{
 		Shard: 1,
 		From:  s4,

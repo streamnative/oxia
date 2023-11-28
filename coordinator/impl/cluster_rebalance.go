@@ -15,9 +15,8 @@
 package impl
 
 import (
+	"log/slog"
 	"sort"
-
-	"github.com/rs/zerolog/log"
 
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/coordinator/model"
@@ -40,23 +39,25 @@ func rebalanceCluster(servers []model.ServerAddress, currentStatus *model.Cluste
 outer:
 	for {
 		rankings := getServerRanking(shardsPerServer)
-		log.Debug().Msg("Computed rankings: ")
+		slog.Debug("Computed rankings: ")
 		for _, r := range rankings {
-			log.Debug().
-				Str("server", r.Addr.Internal).
-				Int("count", r.Shards.Count()).
-				Send()
+			slog.Debug(
+				"",
+				slog.String("server", r.Addr.Internal),
+				slog.Int("count", r.Shards.Count()),
+			)
 		}
 		if len(deletedServers) > 0 {
-			log.Debug().Msg("Deleted servers: ")
+			slog.Debug("Deleted servers: ")
 			for ds, shards := range deletedServers {
-				log.Debug().
-					Str("server", ds.Internal).
-					Int("count", shards.Count()).
-					Send()
+				slog.Debug(
+					"",
+					slog.String("server", ds.Internal),
+					slog.Int("count", shards.Count()),
+				)
 			}
 		}
-		log.Debug().Msg("------------------------------")
+		slog.Debug("------------------------------")
 
 		// First try to reassign shards from the removed servers.
 		// We do it one by one, by placing in the lead loaded server
@@ -82,16 +83,17 @@ outer:
 					}
 					shardsPerServer[a.To].Add(a.Shard)
 
-					log.Debug().
-						Interface("swap-action", a).
-						Msg("Transfer from removed node")
+					slog.Debug(
+						"Transfer from removed node",
+						slog.Any("swap-action", a),
+					)
 
 					res = append(res, a)
 					continue outer
 				}
 			}
 
-			log.Warn().Msg("It wasn't possible to reassign any shard from deleted servers")
+			slog.Warn("It wasn't possible to reassign any shard from deleted servers")
 			break
 		}
 
@@ -115,9 +117,10 @@ outer:
 			shardsPerServer[a.From].Remove(a.Shard)
 			shardsPerServer[a.To].Add(a.Shard)
 
-			log.Debug().
-				Interface("swap-action", a).
-				Msg("Swapping nodes")
+			slog.Debug(
+				"Swapping nodes",
+				slog.Any("swap-action", a),
+			)
 
 			res = append(res, a)
 		} else {

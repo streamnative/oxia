@@ -17,11 +17,10 @@ package kv
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	pb "google.golang.org/protobuf/proto"
 
 	"github.com/streamnative/oxia/common"
@@ -40,7 +39,7 @@ type notificationsTrimmer struct {
 	interval                   time.Duration
 	notificationsRetentionTime time.Duration
 	clock                      common.Clock
-	log                        zerolog.Logger
+	log                        *slog.Logger
 }
 
 func newNotificationsTrimmer(ctx context.Context, namespace string, shardId int64, kv KV, notificationRetentionTime time.Duration, waitClose common.WaitGroup, clock common.Clock) *notificationsTrimmer {
@@ -59,11 +58,11 @@ func newNotificationsTrimmer(ctx context.Context, namespace string, shardId int6
 		interval:                   interval,
 		notificationsRetentionTime: notificationRetentionTime,
 		clock:                      clock,
-		log: log.With().
-			Str("component", "db-notifications-trimmer").
-			Str("namespace", namespace).
-			Int64("shard", shardId).
-			Logger(),
+		log: slog.With(
+			slog.String("component", "db-notifications-trimmer"),
+			slog.String("namespace", namespace),
+			slog.Int64("shard", shardId),
+		),
 	}
 
 	go common.DoWithLabels(map[string]string{
@@ -83,8 +82,7 @@ func (t *notificationsTrimmer) run() {
 		select {
 		case <-ticker.C:
 			if err := t.trimNotifications(); err != nil {
-				t.log.Warn().Err(err).
-					Msg("Failed to trim notifications")
+				t.log.Warn("Failed to trim notifications", slog.Any("Error", err))
 			}
 
 		case <-t.ctx.Done():
@@ -100,12 +98,13 @@ func (t *notificationsTrimmer) trimNotifications() error {
 		return err
 	}
 
-	t.log.Debug().
-		Int64("first-offset", first).
-		Int64("last-offset", last).
-		Time("current-time", t.clock.Now()).
-		Dur("retention-time", t.notificationsRetentionTime).
-		Msg("Starting notifications trimming")
+	t.log.Debug(
+		"Starting notifications trimming",
+		slog.Int64("first-offset", first),
+		slog.Int64("last-offset", last),
+		slog.Time("current-time", t.clock.Now()),
+		slog.Duration("retention-time", t.notificationsRetentionTime),
+	)
 
 	if last == -1 {
 		return nil
@@ -119,10 +118,11 @@ func (t *notificationsTrimmer) trimNotifications() error {
 		return err
 	}
 
-	t.log.Debug().
-		Time("timestamp-first-entry", tsFirst).
-		Time("cutoff-time", cutoffTime).
-		Msg("Starting notifications trimming")
+	t.log.Debug(
+		"Starting notifications trimming",
+		slog.Time("timestamp-first-entry", tsFirst),
+		slog.Time("cutoff-time", cutoffTime),
+	)
 
 	if cutoffTime.Before(tsFirst) {
 		// First entry has not expired. We don't need to check more
@@ -147,11 +147,12 @@ func (t *notificationsTrimmer) trimNotifications() error {
 		return err
 	}
 
-	t.log.Debug().
-		Int64("trimmed-offset", trimOffset).
-		Int64("first-offset", first).
-		Int64("last-offset", last).
-		Msg("Successfully trimmed the notification")
+	t.log.Debug(
+		"Successfully trimmed the notification",
+		slog.Int64("trimmed-offset", trimOffset),
+		slog.Int64("first-offset", first),
+		slog.Int64("last-offset", last),
+	)
 	return nil
 }
 

@@ -16,11 +16,11 @@ package server
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
 
 	"github.com/streamnative/oxia/common"
@@ -68,9 +68,10 @@ func NewTestConfig(t *testing.T) StandaloneConfig {
 }
 
 func NewStandalone(config StandaloneConfig) (*Standalone, error) {
-	log.Info().
-		Interface("config", config).
-		Msg("Starting Oxia standalone")
+	slog.Info(
+		"Starting Oxia standalone",
+		slog.Any("config", config),
+	)
 
 	s := &Standalone{}
 

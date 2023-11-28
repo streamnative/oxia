@@ -15,10 +15,11 @@
 package impl
 
 import (
+	"log/slog"
+	"os"
 	"sync"
 	"sync/atomic"
 
-	"github.com/rs/zerolog/log"
 	"gopkg.in/yaml.v2"
 	coreV1 "k8s.io/api/core/v1"
 	k8sError "k8s.io/apimachinery/pkg/api/errors"
@@ -123,7 +124,11 @@ func (m *metadataProviderConfigMap) Close() error {
 func configMap(name string, status *model.ClusterStatus, version Version) *coreV1.ConfigMap {
 	bytes, err := yaml.Marshal(status)
 	if err != nil {
-		log.Fatal().Err(err).Msg("unable to marshal cluster status")
+		slog.Error(
+			"unable to marshal cluster status",
+			slog.Any("Error", err),
+		)
+		os.Exit(1)
 	}
 
 	cm := &coreV1.ConfigMap{

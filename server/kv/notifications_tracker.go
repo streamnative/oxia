@@ -17,14 +17,13 @@ package kv
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/metrics"
@@ -93,7 +92,7 @@ type notificationsTracker struct {
 	lastOffset atomic.Int64
 	closed     atomic.Bool
 	kv         KV
-	log        zerolog.Logger
+	log        *slog.Logger
 
 	ctx       context.Context
 	cancel    context.CancelFunc
@@ -110,11 +109,11 @@ func newNotificationsTracker(namespace string, shard int64, lastOffset int64, kv
 		shard:     shard,
 		kv:        kv,
 		waitClose: common.NewWaitGroup(1),
-		log: log.Logger.With().
-			Str("component", "notifications-tracker").
-			Str("namespace", namespace).
-			Int64("shard", shard).
-			Logger(),
+		log: slog.With(
+			slog.String("component", "notifications-tracker"),
+			slog.String("namespace", namespace),
+			slog.Int64("shard", shard),
+		),
 		readCounter: metrics.NewCounter("oxia_server_notifications_read",
 			"The total number of notifications", "count", labels),
 		readBatchCounter: metrics.NewCounter("oxia_server_notifications_read_batches",
@@ -139,10 +138,12 @@ func (nt *notificationsTracker) waitForNotifications(ctx context.Context, startO
 	defer nt.Unlock()
 
 	for startOffset > nt.lastOffset.Load() && !nt.closed.Load() {
-		nt.log.Debug().
-			Int64("start-offset", startOffset).
-			Int64("last-committed-offset", nt.lastOffset.Load()).
-			Msg("Waiting for notification to be available")
+		nt.log.Debug(
+			"Waiting for notification to be available",
+			slog.Int64("start-offset", startOffset),
+			slog.Int64("last-committed-offset", nt.lastOffset.Load()),
+		)
+
 		if err := nt.cond.Wait(ctx); err != nil {
 			return err
 		}

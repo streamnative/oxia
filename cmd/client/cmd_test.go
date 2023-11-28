@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/streamnative/oxia/cmd/client/delete"
@@ -30,7 +29,6 @@ import (
 )
 
 func TestClientCmd(t *testing.T) {
-	zerolog.SetGlobalLevel(zerolog.Disabled)
 	server, err := server.NewStandalone(server.NewTestConfig(t))
 	assert.NoError(t, err)
 

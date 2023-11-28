@@ -18,12 +18,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/rand"
+	"os"
 	"sync/atomic"
 	"time"
 
 	"github.com/bmizerany/perks/quantile"
-	"github.com/rs/zerolog/log"
 	"golang.org/x/time/rate"
 
 	"github.com/streamnative/oxia/oxia"
@@ -59,9 +60,10 @@ type perf struct {
 }
 
 func (p *perf) Run(ctx context.Context) {
-	log.Info().
-		Interface("config", p.config).
-		Msg("Starting Oxia perf client")
+	slog.Info(
+		"Starting Oxia perf client",
+		slog.Any("config", p.config),
+	)
 
 	p.keys = make([]string, p.config.KeysCardinality)
 	for i := uint32(0); i < p.config.KeysCardinality; i++ {
@@ -75,7 +77,11 @@ func (p *perf) Run(ctx context.Context) {
 		oxia.WithRequestTimeout(p.config.RequestTimeout),
 	)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to create Oxia client")
+		slog.Error(
+			"Failed to create Oxia client",
+			slog.Any("Error", err),
+		)
+		os.Exit(1)
 	}
 
 	writeLatencyCh := make(chan int64)
@@ -98,7 +104,7 @@ func (p *perf) Run(ctx context.Context) {
 			writeRate := float64(writeOps) / float64(10)
 			readRate := float64(readOps) / float64(10)
 			failedOpsRate := float64(p.failedOps.Swap(0)) / float64(10)
-			log.Info().Msgf(`Stats - Total ops: %6.1f ops/s - Failed ops: %6.1f ops/s
+			slog.Info(fmt.Sprintf(`Stats - Total ops: %6.1f ops/s - Failed ops: %6.1f ops/s
 			Write ops %6.1f w/s  Latency ms: 50%% %5.1f - 95%% %5.1f - 99%% %5.1f - 99.9%% %5.1f - max %6.1f
 			Read  ops %6.1f r/s  Latency ms: 50%% %5.1f - 95%% %5.1f - 99%% %5.1f - 99.9%% %5.1f - max %6.1f`,
 				writeRate+readRate,
@@ -115,7 +121,7 @@ func (p *perf) Run(ctx context.Context) {
 				rq.Query(0.99),
 				rq.Query(0.999),
 				rq.Query(1.0),
-			)
+			))
 
 			wq.Reset()
 			rq.Reset()
@@ -154,15 +160,18 @@ func (p *perf) generateWriteTraffic(ctx context.Context, client oxia.AsyncClient
 		go func() {
 			r := <-ch
 			if r.Err != nil {
-				log.Warn().Err(r.Err).
-					Str("key", key).
-					Msg("Operation has failed")
+				slog.Warn(
+					"Operation has failed",
+					slog.Any("Error", r.Err),
+					slog.String("key", key),
+				)
 				p.failedOps.Add(1)
 			} else {
-				log.Debug().
-					Str("key", key).
-					Interface("version", r.Version).
-					Msg("Operation has succeeded")
+				slog.Debug(
+					"Operation has succeeded",
+					slog.String("key", key),
+					slog.Any("version", r.Version),
+				)
 
 				latencyCh <- time.Since(start).Microseconds()
 			}
@@ -186,15 +195,18 @@ func (p *perf) generateReadTraffic(ctx context.Context, client oxia.AsyncClient,
 		go func() {
 			r := <-ch
 			if r.Err != nil && !errors.Is(r.Err, oxia.ErrorKeyNotFound) {
-				log.Warn().Err(r.Err).
-					Str("key", key).
-					Msg("Operation has failed")
+				slog.Warn(
+					"Operation has failed",
+					slog.Any("Error", r.Err),
+					slog.String("key", key),
+				)
 				p.failedOps.Add(1)
 			} else {
-				log.Debug().
-					Str("key", key).
-					Interface("version", r.Version).
-					Msg("Operation has succeeded")
+				slog.Debug(
+					"Operation has succeeded",
+					slog.String("key", key),
+					slog.Any("version", r.Version),
+				)
 
 				latencyCh <- time.Since(start).Microseconds()
 			}

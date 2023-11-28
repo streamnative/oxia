@@ -16,12 +16,12 @@ package impl
 
 import (
 	"encoding/json"
+	"log/slog"
 	"os"
 	"path/filepath"
 
 	"github.com/juju/fslock"
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog/log"
 
 	"github.com/streamnative/oxia/coordinator/model"
 )
@@ -88,7 +88,10 @@ func (m *metadataProviderFile) Store(cs *model.ClusterStatus, expectedVersion Ve
 	}
 	defer func() {
 		if err := m.fileLock.Unlock(); err != nil {
-			log.Warn().Err(err).Msg("Failed to release file lock on metadata")
+			slog.Warn(
+				"Failed to release file lock on metadata",
+				slog.Any("Error", err),
+			)
 		}
 	}()
 

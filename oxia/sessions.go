@@ -18,12 +18,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/status"
 
 	"github.com/streamnative/oxia/common"
@@ -39,7 +38,9 @@ func newSessions(ctx context.Context, shardManager internal.ShardManager, pool c
 		pool:            pool,
 		sessionsByShard: map[int64]*clientSession{},
 		clientOpts:      options,
-		log:             log.With().Str("component", "oxia-session-manager").Logger(),
+		log: slog.With(
+			slog.String("component", "oxia-session-manager"),
+		),
 	}
 	return s
 }
@@ -51,7 +52,7 @@ type sessions struct {
 	shardManager    internal.ShardManager
 	pool            common.ClientPool
 	sessionsByShard map[int64]*clientSession
-	log             zerolog.Logger
+	log             *slog.Logger
 	clientOpts      clientOptions
 }
 
@@ -72,11 +73,12 @@ func (s *sessions) startSession(shardId int64) *clientSession {
 		sessions: s,
 		ctx:      s.ctx,
 		started:  make(chan error),
-		log: log.With().
-			Str("component", "session").
-			Int64("shard", shardId).Logger(),
+		log: slog.With(
+			slog.String("component", "session"),
+			slog.Int64("shard", shardId),
+		),
 	}
-	cs.log.Debug().Msg("Creating session")
+	cs.log.Debug("Creating session")
 	go common.DoWithLabels(map[string]string{
 		"oxia":  "session-start",
 		"shard": fmt.Sprintf("%d", cs.shardId),
@@ -89,7 +91,7 @@ type clientSession struct {
 	started   chan error
 	shardId   int64
 	sessionId int64
-	log       zerolog.Logger
+	log       *slog.Logger
 	sessions  *sessions
 	ctx       context.Context
 }
@@ -121,9 +123,11 @@ func (cs *clientSession) createSessionWithRetries() {
 	err := backoff.RetryNotify(cs.createSession,
 		backOff, func(err error, duration time.Duration) {
 			if err != context.Canceled {
-				cs.log.Error().Err(err).
-					Dur("retry-after", duration).
-					Msg("Error while creating session")
+				cs.log.Error(
+					"Error while creating session",
+					slog.Any("Error", err),
+					slog.Duration("retry-after", duration),
+				)
 			}
 
 		})
@@ -154,9 +158,11 @@ func (cs *clientSession) createSession() error {
 	cs.Lock()
 	defer cs.Unlock()
 	cs.sessionId = sessionId
-	cs.log = cs.log.With().Int64("session-id", sessionId).Logger()
+	cs.log = cs.log.With(
+		slog.Int64("session-id", sessionId),
+	)
 	close(cs.started)
-	cs.log.Debug().Msg("Successfully created session")
+	cs.log.Debug("Successfully created session")
 
 	go common.DoWithLabels(map[string]string{
 		"oxia":    "session-keep-alive",
@@ -168,7 +174,10 @@ func (cs *clientSession) createSession() error {
 		err := backoff.RetryNotify(func() error {
 			err := cs.keepAlive()
 			if status.Code(err) == common.CodeInvalidSession {
-				cs.log.Error().Err(err).Msg("Session is no longer valid")
+				cs.log.Error(
+					"Session is no longer valid",
+					slog.Any("Error", err),
+				)
 
 				cs.sessions.Lock()
 				defer cs.sessions.Unlock()
@@ -179,12 +188,18 @@ func (cs *clientSession) createSession() error {
 			}
 			return err
 		}, backOff, func(err error, duration time.Duration) {
-			log.Logger.Debug().Err(err).
-				Dur("retry-after", duration).
-				Msg("Failed to send session heartbeat, retrying later")
+			slog.Debug(
+				"Failed to send session heartbeat, retrying later",
+				slog.Any("Error", err),
+				slog.Duration("retry-after", duration),
+			)
+
 		})
 		if !errors.Is(err, context.Canceled) {
-			cs.log.Error().Err(err).Msg("Failed to keep alive session.")
+			cs.log.Error(
+				"Failed to keep alive session.",
+				slog.Any("Error", err),
+			)
 		}
 	})
 

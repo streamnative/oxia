@@ -18,11 +18,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/oxia/internal"
@@ -116,7 +115,7 @@ type shardNotificationsManager struct {
 	backoff            backoff.BackOff
 	lastOffsetReceived int64
 	initialized        bool
-	log                zerolog.Logger
+	log                *slog.Logger
 }
 
 func newShardNotificationsManager(shard int64, nm *notifications) *shardNotificationsManager {
@@ -126,10 +125,10 @@ func newShardNotificationsManager(shard int64, nm *notifications) *shardNotifica
 		nm:                 nm,
 		lastOffsetReceived: -1,
 		backoff:            common.NewBackOffWithInitialInterval(nm.ctx, 1*time.Second),
-		log: log.Logger.With().
-			Str("component", "oxia-notifications-manager").
-			Int64("shard", shard).
-			Logger(),
+		log: slog.With(
+			slog.String("component", "oxia-notifications-manager"),
+			slog.Int64("shard", shard),
+		),
 	}
 
 	go common.DoWithLabels(map[string]string{
@@ -144,9 +143,11 @@ func (snm *shardNotificationsManager) getNotificationsWithRetries() {
 	_ = backoff.RetryNotify(snm.getNotifications,
 		snm.backoff, func(err error, duration time.Duration) {
 			if err != context.Canceled {
-				snm.log.Error().Err(err).
-					Dur("retry-after", duration).
-					Msg("Error while getting notifications")
+				snm.log.Error(
+					"Error while getting notifications",
+					slog.Any("Error", err),
+					slog.Duration("retry-after", duration),
+				)
 			}
 
 			if !snm.initialized {
@@ -199,13 +200,14 @@ func (snm *shardNotificationsManager) getNotifications() error {
 			return io.EOF
 		}
 
-		snm.log.Debug().
-			Int64("offset", nb.Offset).
-			Int("count", len(nb.Notifications)).
-			Msg("Received batch notification")
+		snm.log.Debug(
+			"Received batch notification",
+			slog.Int64("offset", nb.Offset),
+			slog.Int("count", len(nb.Notifications)),
+		)
 
 		if !snm.initialized {
-			snm.log.Debug().Msg("Initialized the notification manager")
+			snm.log.Debug("Initialized the notification manager")
 
 			// We need to discard the very first notification, because it's only
 			// needed to ensure that the notification cursor is created on the

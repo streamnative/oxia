@@ -16,10 +16,10 @@ package server
 
 import (
 	"fmt"
+	"log/slog"
 	"testing"
 	"time"
 
-	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	pb "google.golang.org/protobuf/proto"
 
@@ -49,7 +49,7 @@ func TestFollowerCursor(t *testing.T) {
 		Value:  []byte("v1"),
 	})
 	assert.NoError(t, err)
-	log.Logger.Info().Msg("Appended entry 0 to the log")
+	slog.Info("Appended entry 0 to the log")
 
 	fc, err := NewFollowerCursor("f1", term, common.DefaultNamespace, shard, stream, ackTracker, w, db, wal.InvalidOffset)
 	assert.NoError(t, err)
@@ -156,7 +156,7 @@ func TestFollowerCursor_SendSnapshot(t *testing.T) {
 		assert.EqualValues(t, 1, req.Term)
 	}
 
-	log.Info().Msg("Snapshot complete")
+	slog.Info("Snapshot complete")
 
 	s.response <- &proto.SnapshotResponse{AckOffset: N - 1}
 

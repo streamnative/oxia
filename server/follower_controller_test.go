@@ -17,11 +17,11 @@ package server
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
@@ -38,7 +38,7 @@ var testKVOptions = &kv.KVFactoryOptions{
 }
 
 func init() {
-	common.LogLevel = zerolog.DebugLevel
+	common.LogLevel = slog.LevelDebug
 	common.ConfigureLogger()
 }
 

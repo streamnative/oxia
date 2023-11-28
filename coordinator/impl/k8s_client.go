@@ -16,8 +16,9 @@ package impl
 
 import (
 	"context"
+	"log/slog"
+	"os"
 
-	"github.com/rs/zerolog/log"
 	coreV1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -30,7 +31,11 @@ func NewK8SClientConfig() *rest.Config {
 	kubeconfigGetter := clientcmd.NewDefaultClientConfigLoadingRules().Load
 	config, err := clientcmd.BuildConfigFromKubeconfigGetter("", kubeconfigGetter)
 	if err != nil {
-		log.Fatal().Err(err).Msg("failed to load kubeconfig")
+		slog.Error(
+			"failed to load kubeconfig",
+			slog.Any("Error", err),
+		)
+		os.Exit(1)
 	}
 	return config
 }
@@ -47,7 +52,11 @@ func NewK8SClientConfig() *rest.Config {
 func NewK8SClientset(config *rest.Config) kubernetes.Interface {
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		log.Fatal().Err(err).Msg("failed to create client")
+		slog.Error(
+			"failed to create client",
+			slog.Any("Error", err),
+		)
+		os.Exit(1)
 	}
 	return clientset
 }
