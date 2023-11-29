@@ -26,6 +26,10 @@ FROM alpine:3.18.4
 
 RUN apk add --no-cache bash bash-completion
 
+# Fix CVE-2023-5363 by upgrading to OpenSSL 3.1.4-r1
+# We can remove once new Alpine image is released
+RUN apk upgrade --no-cache libssl3 libcrypto3
+
 RUN mkdir /oxia
 WORKDIR /oxia
 
