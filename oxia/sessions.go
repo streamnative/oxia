@@ -125,7 +125,7 @@ func (cs *clientSession) createSessionWithRetries() {
 			if err != context.Canceled {
 				cs.log.Error(
 					"Error while creating session",
-					slog.Any("Error", err),
+					slog.Any("error", err),
 					slog.Duration("retry-after", duration),
 				)
 			}
@@ -176,7 +176,7 @@ func (cs *clientSession) createSession() error {
 			if status.Code(err) == common.CodeInvalidSession {
 				cs.log.Error(
 					"Session is no longer valid",
-					slog.Any("Error", err),
+					slog.Any("error", err),
 				)
 
 				cs.sessions.Lock()
@@ -190,7 +190,7 @@ func (cs *clientSession) createSession() error {
 		}, backOff, func(err error, duration time.Duration) {
 			slog.Debug(
 				"Failed to send session heartbeat, retrying later",
-				slog.Any("Error", err),
+				slog.Any("error", err),
 				slog.Duration("retry-after", duration),
 			)
 
@@ -198,7 +198,7 @@ func (cs *clientSession) createSession() error {
 		if !errors.Is(err, context.Canceled) {
 			cs.log.Error(
 				"Failed to keep alive session.",
-				slog.Any("Error", err),
+				slog.Any("error", err),
 			)
 		}
 	})

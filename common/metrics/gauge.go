@@ -37,7 +37,7 @@ func (g *gauge) Unregister() {
 	if err := g.registration.Unregister(); err != nil {
 		slog.Error(
 			"Failed to unregister gauge",
-			slog.Any("Error", err),
+			slog.Any("error", err),
 		)
 		os.Exit(1)
 	}
@@ -67,7 +67,7 @@ func NewGauge(name string, description string, unit Unit, labels map[string]any,
 	if err != nil {
 		slog.Error(
 			"Failed to register gauge",
-			slog.Any("Error", err),
+			slog.Any("error", err),
 		)
 		os.Exit(1)
 	}

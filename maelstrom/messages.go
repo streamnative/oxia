@@ -243,7 +243,7 @@ func parseRequest(line string) (msgType MsgType, msg any, protoMsg pb.Message) {
 		slog.Error(
 			"failed to unmarshal",
 			slog.String("line", line),
-			slog.Any("Error", err),
+			slog.Any("error", err),
 		)
 		os.Exit(1)
 	}
@@ -257,7 +257,7 @@ func parseRequest(line string) (msgType MsgType, msg any, protoMsg pb.Message) {
 		if err := json.Unmarshal([]byte(line), sm); err != nil {
 			slog.Error(
 				"failed to unmarshal the proper struct",
-				slog.Any("Error", err),
+				slog.Any("error", err),
 			)
 			os.Exit(1)
 		}
@@ -272,7 +272,7 @@ func parseRequest(line string) (msgType MsgType, msg any, protoMsg pb.Message) {
 			if err := json.Unmarshal([]byte(line), om); err != nil {
 				slog.Error(
 					"failed to unmarshal the proper struct",
-					slog.Any("Error", err),
+					slog.Any("error", err),
 				)
 				os.Exit(1)
 			}
@@ -281,7 +281,7 @@ func parseRequest(line string) (msgType MsgType, msg any, protoMsg pb.Message) {
 			if err := protojson.Unmarshal(om.Body.OxiaMsg, protoMsg); err != nil {
 				slog.Error(
 					"failed to unmarshal proto json",
-					slog.Any("Error", err),
+					slog.Any("error", err),
 				)
 				os.Exit(1)
 			}
@@ -290,7 +290,7 @@ func parseRequest(line string) (msgType MsgType, msg any, protoMsg pb.Message) {
 			if err := json.Unmarshal([]byte(line), om); err != nil {
 				slog.Error(
 					"failed to unmarshal the proper struct",
-					slog.Any("Error", err),
+					slog.Any("error", err),
 				)
 				os.Exit(1)
 			}
@@ -299,7 +299,7 @@ func parseRequest(line string) (msgType MsgType, msg any, protoMsg pb.Message) {
 			if err := protojson.Unmarshal(om.Body.OxiaMsg, protoMsg); err != nil {
 				slog.Error(
 					"failed to unmarshal proto json",
-					slog.Any("Error", err),
+					slog.Any("error", err),
 				)
 				os.Exit(1)
 			}

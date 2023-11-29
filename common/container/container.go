@@ -88,7 +88,7 @@ func newDefaultGrpcProvider(name, bindAddress string, registerFunc func(grpc.Ser
 		if err := c.server.Serve(listener); err != nil {
 			c.log.Error(
 				"Failed to start serving",
-				slog.Any("Error", err),
+				slog.Any("error", err),
 			)
 			os.Exit(1)
 		}

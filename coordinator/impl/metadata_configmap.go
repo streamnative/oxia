@@ -126,7 +126,7 @@ func configMap(name string, status *model.ClusterStatus, version Version) *coreV
 	if err != nil {
 		slog.Error(
 			"unable to marshal cluster status",
-			slog.Any("Error", err),
+			slog.Any("error", err),
 		)
 		os.Exit(1)
 	}

@@ -383,7 +383,7 @@ func (lc *leaderController) addFollower(follower string, followerHeadEntryId *pr
 	if err != nil {
 		lc.log.Error(
 			"Failed to truncate follower",
-			slog.Any("Error", err),
+			slog.Any("error", err),
 			slog.String("follower", follower),
 			slog.Any("follower-head-entry", followerHeadEntryId),
 			slog.Int64("term", lc.term),
@@ -396,7 +396,7 @@ func (lc *leaderController) addFollower(follower string, followerHeadEntryId *pr
 	if err != nil {
 		lc.log.Error(
 			"Failed to create follower cursor",
-			slog.Any("Error", err),
+			slog.Any("error", err),
 			slog.String("follower", follower),
 			slog.Int64("term", lc.term),
 		)
@@ -432,7 +432,7 @@ func (lc *leaderController) applyAllEntriesIntoDB() error {
 	if err != nil {
 		lc.log.Error(
 			"Failed to initialize session manager",
-			slog.Any("Error", err),
+			slog.Any("error", err),
 		)
 		return err
 	}
@@ -447,7 +447,7 @@ func (lc *leaderController) applyAllEntriesIntoDB() error {
 	if err != nil {
 		lc.log.Error(
 			"Unable to create WAL reader",
-			slog.Any("Error", err),
+			slog.Any("error", err),
 			slog.Int64("commit-offset", dbCommitOffset),
 			slog.Int64("first-offset", lc.wal.FirstOffset()),
 		)
@@ -622,7 +622,7 @@ func (lc *leaderController) list(ctx context.Context, request *proto.ListRequest
 		if err != nil {
 			lc.log.Warn(
 				"Failed to process list request",
-				slog.Any("Error", err),
+				slog.Any("error", err),
 			)
 			close(ch)
 			return
@@ -754,7 +754,7 @@ func (lc *leaderController) GetNotifications(req *proto.NotificationsRequest, st
 		if err := lc.dispatchNotifications(ctx, req, stream); err != nil && !errors.Is(err, context.Canceled) {
 			lc.log.Warn(
 				"Failed to dispatch notifications",
-				slog.Any("Error", err),
+				slog.Any("error", err),
 				slog.String("peer", common.GetPeer(stream.Context())),
 			)
 			cancel()

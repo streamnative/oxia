@@ -142,7 +142,7 @@ func (s *shardManagerImpl) receiveWithRecovery() {
 			if s.isClosed() {
 				s.logger.Debug(
 					"Closed",
-					slog.Any("Error", err),
+					slog.Any("error", err),
 				)
 				return nil
 			}
@@ -157,7 +157,7 @@ func (s *shardManagerImpl) receiveWithRecovery() {
 			if status.Code(err) != codes.Canceled {
 				s.logger.Warn(
 					"Failed receiving shard assignments, retrying later",
-					slog.Any("Error", err),
+					slog.Any("error", err),
 					slog.Duration("retry-after", duration),
 				)
 			}
@@ -166,7 +166,7 @@ func (s *shardManagerImpl) receiveWithRecovery() {
 	if err != nil {
 		s.logger.Error(
 			"Failed receiving shard assignments",
-			slog.Any("Error", err),
+			slog.Any("error", err),
 		)
 		s.updatedWg.Fail(err)
 	}

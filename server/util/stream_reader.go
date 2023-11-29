@@ -84,7 +84,7 @@ func (s *streamReader[T, U]) close(err error) {
 	if err != nil && err != io.EOF && status.Code(err) != codes.Canceled {
 		s.log.Warn(
 			"error while handling stream",
-			slog.Any("Error", err),
+			slog.Any("error", err),
 		)
 	}
 

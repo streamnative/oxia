@@ -35,7 +35,7 @@ func init() {
 	if err != nil {
 		slog.Error(
 			"Failed to initialize Prometheus metrics exporter",
-			slog.Any("Error", err),
+			slog.Any("error", err),
 		)
 		os.Exit(1)
 	}
@@ -112,7 +112,7 @@ func Start(bindAddress string) (*PrometheusMetrics, error) {
 		if err = p.server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error(
 				"Failed to serve metrics",
-				slog.Any("Error", err),
+				slog.Any("error", err),
 			)
 			os.Exit(1)
 		}

@@ -71,7 +71,7 @@ func (s *publicRpcServer) GetShardAssignments(req *proto.ShardAssignmentsRequest
 	if err != nil {
 		s.log.Warn(
 			"Failed to add client for shards assignments notifications",
-			slog.Any("Error", err),
+			slog.Any("error", err),
 			slog.String("peer", common.GetPeer(srv.Context())),
 		)
 	}
@@ -95,7 +95,7 @@ func (s *publicRpcServer) Write(ctx context.Context, write *proto.WriteRequest) 
 	if err != nil {
 		s.log.Warn(
 			"Failed to perform write operation",
-			slog.Any("Error", err),
+			slog.Any("error", err),
 		)
 	}
 
@@ -165,7 +165,7 @@ func (s *publicRpcServer) List(request *proto.ListRequest, stream proto.OxiaClie
 	if err != nil {
 		s.log.Warn(
 			"Failed to perform list operation",
-			slog.Any("Error", err),
+			slog.Any("error", err),
 		)
 	}
 
@@ -214,7 +214,7 @@ func (s *publicRpcServer) GetNotifications(req *proto.NotificationsRequest, stre
 	if err = lc.GetNotifications(req, stream); err != nil && !errors.Is(err, context.Canceled) {
 		s.log.Warn(
 			"Failed to handle notifications request",
-			slog.Any("Error", err),
+			slog.Any("error", err),
 		)
 	}
 
@@ -239,7 +239,7 @@ func (s *publicRpcServer) CreateSession(ctx context.Context, req *proto.CreateSe
 	if err != nil {
 		s.log.Warn(
 			"Failed to create session",
-			slog.Any("Error", err),
+			slog.Any("error", err),
 		)
 		return nil, err
 	}
@@ -261,7 +261,7 @@ func (s *publicRpcServer) KeepAlive(ctx context.Context, req *proto.SessionHeart
 	if err != nil {
 		s.log.Warn(
 			"Failed to listen to heartbeats",
-			slog.Any("Error", err),
+			slog.Any("error", err),
 		)
 		return nil, err
 	}
@@ -282,7 +282,7 @@ func (s *publicRpcServer) CloseSession(ctx context.Context, req *proto.CloseSess
 	if err != nil {
 		s.log.Warn(
 			"Failed to close session",
-			slog.Any("Error", err),
+			slog.Any("error", err),
 		)
 		return nil, err
 	}
@@ -295,7 +295,7 @@ func (s *publicRpcServer) getLeader(shardId int64) (LeaderController, error) {
 		if status.Code(err) != common.CodeNodeIsNotLeader {
 			s.log.Warn(
 				"Failed to get the leader controller",
-				slog.Any("Error", err),
+				slog.Any("error", err),
 			)
 		}
 		return nil, err

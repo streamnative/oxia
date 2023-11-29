@@ -79,7 +79,7 @@ func (p *perf) Run(ctx context.Context) {
 	if err != nil {
 		slog.Error(
 			"Failed to create Oxia client",
-			slog.Any("Error", err),
+			slog.Any("error", err),
 		)
 		os.Exit(1)
 	}
@@ -162,7 +162,7 @@ func (p *perf) generateWriteTraffic(ctx context.Context, client oxia.AsyncClient
 			if r.Err != nil {
 				slog.Warn(
 					"Operation has failed",
-					slog.Any("Error", r.Err),
+					slog.Any("error", r.Err),
 					slog.String("key", key),
 				)
 				p.failedOps.Add(1)
@@ -197,7 +197,7 @@ func (p *perf) generateReadTraffic(ctx context.Context, client oxia.AsyncClient,
 			if r.Err != nil && !errors.Is(r.Err, oxia.ErrorKeyNotFound) {
 				slog.Warn(
 					"Operation has failed",
-					slog.Any("Error", r.Err),
+					slog.Any("error", r.Err),
 					slog.String("key", key),
 				)
 				p.failedOps.Add(1)

@@ -67,7 +67,7 @@ func (cp *clientPool) Close() error {
 			cp.log.Warn(
 				"Failed to close GRPC connection",
 				slog.String("server_address", target),
-				slog.Any("Error", err),
+				slog.Any("error", err),
 			)
 		}
 	}

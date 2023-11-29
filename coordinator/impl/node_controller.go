@@ -136,7 +136,7 @@ func (n *nodeController) healthCheckWithRetries() {
 	}, backOff, func(err error, duration time.Duration) {
 		n.log.Warn(
 			"Storage node health check failed",
-			slog.Any("Error", err),
+			slog.Any("error", err),
 			slog.Duration("retry-after", duration),
 		)
 
@@ -234,7 +234,7 @@ func (n *nodeController) sendAssignmentsUpdatesWithRetries() {
 		n.log.Warn(
 			"Failed to send assignments updates to storage node",
 			slog.Duration("retry-after", duration),
-			slog.Any("Error", err),
+			slog.Any("error", err),
 		)
 	})
 }
@@ -280,7 +280,7 @@ func (n *nodeController) sendAssignmentsUpdates(backoff backoff.BackOff) error {
 			if err := stream.Send(assignments); err != nil {
 				n.log.Debug(
 					"Failed to send assignments",
-					slog.Any("Error", err),
+					slog.Any("error", err),
 				)
 				return err
 			}

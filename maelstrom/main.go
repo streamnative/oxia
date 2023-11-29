@@ -155,7 +155,7 @@ func main() {
 	if err != nil {
 		slog.Error(
 			"failed to create data dir",
-			slog.Any("Error", err),
+			slog.Any("error", err),
 		)
 		os.Exit(1)
 	}
@@ -178,7 +178,7 @@ func main() {
 		if err != nil {
 			slog.Error(
 				"failed to create coordinator",
-				slog.Any("Error", err),
+				slog.Any("error", err),
 			)
 			os.Exit(1)
 		}

@@ -96,7 +96,7 @@ func (t *trimmer) run() {
 			if err := t.doTrim(); err != nil {
 				t.log.Error(
 					"Failed to trim the wal",
-					slog.Any("Error", err),
+					slog.Any("error", err),
 				)
 			}
 

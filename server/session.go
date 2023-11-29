@@ -90,7 +90,7 @@ func (s *session) delete() error {
 		if err != nil {
 			s.log.Error(
 				"Invalid session key",
-				slog.Any("Error", err),
+				slog.Any("error", err),
 				slog.String("key", sessionKey),
 			)
 			continue
@@ -151,7 +151,7 @@ func (s *session) waitForHeartbeats() {
 			if err != nil {
 				s.log.Error(
 					"Failed to delete session",
-					slog.Any("Error", err),
+					slog.Any("error", err),
 				)
 			}
 			s.Unlock()
