@@ -18,11 +18,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"sync"
 
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
 	pb "google.golang.org/protobuf/proto"
 
@@ -92,7 +91,7 @@ type leaderController struct {
 	db             kv.DB
 	rpcClient      ReplicationRpcProvider
 	sessionManager SessionManager
-	log            zerolog.Logger
+	log            *slog.Logger
 
 	writeLatencyHisto       metrics.LatencyHistogram
 	headOffsetGauge         metrics.Gauge
@@ -156,17 +155,17 @@ func NewLeaderController(config Config, namespace string, shardId int64, rpcClie
 	}
 
 	lc.setLogger()
-	lc.log.Info().Msg("Created leader controller")
+	lc.log.Info("Created leader controller")
 	return lc, nil
 }
 
 func (lc *leaderController) setLogger() {
-	lc.log = log.With().
-		Str("component", "leader-controller").
-		Str("namespace", lc.namespace).
-		Int64("shard", lc.shardId).
-		Int64("term", lc.term).
-		Logger()
+	lc.log = slog.With(
+		slog.String("component", "leader-controller"),
+		slog.String("namespace", lc.namespace),
+		slog.Int64("shard", lc.shardId),
+		slog.Int64("term", lc.term),
+	)
 }
 
 func (lc *leaderController) Status() proto.ServingStatus {
@@ -208,11 +207,12 @@ func (lc *leaderController) NewTerm(req *proto.NewTermRequest) (*proto.NewTermRe
 	} else if req.Term == lc.term && lc.status != proto.ServingStatus_FENCED {
 		// It's OK to receive a duplicate Fence request, for the same term, as long as we haven't moved
 		// out of the Fenced state for that term
-		lc.log.Warn().
-			Int64("follower-term", lc.term).
-			Int64("new-term", req.Term).
-			Interface("status", lc.status).
-			Msg("Failed to apply duplicate NewTerm in invalid state")
+		lc.log.Warn(
+			"Failed to apply duplicate NewTerm in invalid state",
+			slog.Int64("follower-term", lc.term),
+			slog.Int64("new-term", req.Term),
+			slog.Any("status", lc.status),
+		)
 		return nil, common.ErrorInvalidStatus
 	}
 
@@ -256,9 +256,10 @@ func (lc *leaderController) NewTerm(req *proto.NewTermRequest) (*proto.NewTermRe
 		return nil, err
 	}
 
-	lc.log.Info().
-		Interface("last-entry", headEntryId).
-		Msg("Leader successfully initialized in new term")
+	lc.log.Info(
+		"Leader successfully initialized in new term",
+		slog.Any("last-entry", headEntryId),
+	)
 
 	return &proto.NewTermResponse{
 		HeadEntryId: headEntryId,
@@ -342,10 +343,11 @@ func (lc *leaderController) BecomeLeader(ctx context.Context, req *proto.BecomeL
 		return nil, err
 	}
 
-	lc.log.Info().
-		Int64("term", lc.term).
-		Int64("head-offset", lc.leaderElectionHeadEntryId.Offset).
-		Msg("Started leading the shard")
+	lc.log.Info(
+		"Started leading the shard",
+		slog.Int64("term", lc.term),
+		slog.Int64("head-offset", lc.leaderElectionHeadEntryId.Offset),
+	)
 	return &proto.BecomeLeaderResponse{}, nil
 }
 
@@ -379,31 +381,36 @@ func (lc *leaderController) AddFollower(req *proto.AddFollowerRequest) (*proto.A
 func (lc *leaderController) addFollower(follower string, followerHeadEntryId *proto.EntryId) error {
 	followerHeadEntryId, err := lc.truncateFollowerIfNeeded(follower, followerHeadEntryId)
 	if err != nil {
-		lc.log.Error().Err(err).
-			Str("follower", follower).
-			Interface("follower-head-entry", followerHeadEntryId).
-			Int64("term", lc.term).
-			Msg("Failed to truncate follower")
+		lc.log.Error(
+			"Failed to truncate follower",
+			slog.Any("Error", err),
+			slog.String("follower", follower),
+			slog.Any("follower-head-entry", followerHeadEntryId),
+			slog.Int64("term", lc.term),
+		)
 		return err
 	}
 
 	cursor, err := NewFollowerCursor(follower, lc.term, lc.namespace, lc.shardId, lc.rpcClient, lc.quorumAckTracker, lc.wal, lc.db,
 		followerHeadEntryId.Offset)
 	if err != nil {
-		lc.log.Error().Err(err).
-			Str("follower", follower).
-			Int64("term", lc.term).
-			Msg("Failed to create follower cursor")
+		lc.log.Error(
+			"Failed to create follower cursor",
+			slog.Any("Error", err),
+			slog.String("follower", follower),
+			slog.Int64("term", lc.term),
+		)
 		return err
 	}
 
-	lc.log.Info().
-		Int64("term", lc.term).
-		Interface("leader-election-head-entry", lc.leaderElectionHeadEntryId).
-		Str("follower", follower).
-		Interface("follower-head-entry", followerHeadEntryId).
-		Int64("head-offset", lc.wal.LastOffset()).
-		Msg("Added follower")
+	lc.log.Info(
+		"Added follower",
+		slog.Int64("term", lc.term),
+		slog.Any("leader-election-head-entry", lc.leaderElectionHeadEntryId),
+		slog.String("follower", follower),
+		slog.Any("follower-head-entry", followerHeadEntryId),
+		slog.Int64("head-offset", lc.wal.LastOffset()),
+	)
 	lc.followers[follower] = cursor
 	lc.followerAckOffsetGauges[follower] = metrics.NewGauge("oxia_server_follower_ack_offset", "", "count",
 		map[string]any{
@@ -423,22 +430,27 @@ func (lc *leaderController) applyAllEntriesIntoDB() error {
 
 	err = lc.sessionManager.Initialize()
 	if err != nil {
-		lc.log.Error().Err(err).
-			Msg("Failed to initialize session manager")
+		lc.log.Error(
+			"Failed to initialize session manager",
+			slog.Any("Error", err),
+		)
 		return err
 	}
 
-	lc.log.Info().
-		Int64("commit-offset", dbCommitOffset).
-		Int64("head-offset", lc.quorumAckTracker.HeadOffset()).
-		Msg("Applying all pending entries to database")
+	lc.log.Info(
+		"Applying all pending entries to database",
+		slog.Int64("commit-offset", dbCommitOffset),
+		slog.Int64("head-offset", lc.quorumAckTracker.HeadOffset()),
+	)
 
 	r, err := lc.wal.NewReader(dbCommitOffset)
 	if err != nil {
-		lc.log.Error().Err(err).
-			Int64("commit-offset", dbCommitOffset).
-			Int64("first-offset", lc.wal.FirstOffset()).
-			Msg("Unable to create WAL reader")
+		lc.log.Error(
+			"Unable to create WAL reader",
+			slog.Any("Error", err),
+			slog.Int64("commit-offset", dbCommitOffset),
+			slog.Int64("first-offset", lc.wal.FirstOffset()),
+		)
 		return err
 	}
 	for r.HasNext() {
@@ -462,12 +474,13 @@ func (lc *leaderController) applyAllEntriesIntoDB() error {
 }
 
 func (lc *leaderController) truncateFollowerIfNeeded(follower string, followerHeadEntryId *proto.EntryId) (*proto.EntryId, error) {
-	lc.log.Debug().
-		Int64("term", lc.term).
-		Str("follower", follower).
-		Interface("leader-head-entry", lc.leaderElectionHeadEntryId).
-		Interface("follower-head-entry", followerHeadEntryId).
-		Msg("Needs truncation?")
+	lc.log.Debug(
+		"Needs truncation?",
+		slog.Int64("term", lc.term),
+		slog.String("follower", follower),
+		slog.Any("leader-head-entry", lc.leaderElectionHeadEntryId),
+		slog.Any("follower-head-entry", followerHeadEntryId),
+	)
 	if followerHeadEntryId.Term == lc.leaderElectionHeadEntryId.Term &&
 		followerHeadEntryId.Offset <= lc.leaderElectionHeadEntryId.Offset {
 		// No need for truncation
@@ -489,12 +502,13 @@ func (lc *leaderController) truncateFollowerIfNeeded(follower string, followerHe
 		followerHeadEntryId.Offset <= lastEntryInFollowerTerm.Offset {
 		// If the follower is on a previous term, but we have the same entry,
 		// we don't need to truncate
-		lc.log.Debug().
-			Int64("term", lc.term).
-			Str("follower", follower).
-			Interface("last-entry-in-follower-term", lastEntryInFollowerTerm).
-			Interface("follower-head-entry", followerHeadEntryId).
-			Msg("No need to truncate follower")
+		lc.log.Debug(
+			"No need to truncate follower",
+			slog.Int64("term", lc.term),
+			slog.String("follower", follower),
+			slog.Any("last-entry-in-follower-term", lastEntryInFollowerTerm),
+			slog.Any("follower-head-entry", followerHeadEntryId),
+		)
 		return followerHeadEntryId, nil
 	}
 
@@ -508,11 +522,12 @@ func (lc *leaderController) truncateFollowerIfNeeded(follower string, followerHe
 	if err != nil {
 		return nil, err
 	} else {
-		lc.log.Info().
-			Int64("term", lc.term).
-			Str("follower", follower).
-			Interface("follower-head-entry", tr.HeadEntryId).
-			Msg("Truncated follower")
+		lc.log.Info(
+			"Truncated follower",
+			slog.Int64("term", lc.term),
+			slog.String("follower", follower),
+			slog.Any("follower-head-entry", tr.HeadEntryId),
+		)
 
 		return tr.HeadEntryId, nil
 	}
@@ -563,8 +578,7 @@ func (lc *leaderController) read(ctx context.Context, request *proto.ReadRequest
 		"shard": fmt.Sprintf("%d", lc.shardId),
 		"peer":  common.GetPeer(ctx),
 	}, func() {
-		lc.log.Debug().
-			Msg("Received read request")
+		lc.log.Debug("Received read request")
 
 		for _, get := range request.Gets {
 			response, err := lc.db.Get(get)
@@ -602,13 +616,14 @@ func (lc *leaderController) list(ctx context.Context, request *proto.ListRequest
 		"shard": fmt.Sprintf("%d", lc.shardId),
 		"peer":  common.GetPeer(ctx),
 	}, func() {
-		lc.log.Debug().
-			Msg("Received list request")
+		lc.log.Debug("Received list request")
 
 		it, err := lc.db.List(request)
 		if err != nil {
-			lc.log.Warn().Err(err).
-				Msg("Failed to process list request")
+			lc.log.Warn(
+				"Failed to process list request",
+				slog.Any("Error", err),
+			)
 			close(ch)
 			return
 		}
@@ -661,8 +676,7 @@ func (lc *leaderController) write(ctx context.Context, request func(int64) *prot
 	timer := lc.writeLatencyHisto.Timer()
 	defer timer.Done()
 
-	lc.log.Debug().
-		Msg("Write operation")
+	lc.log.Debug("Write operation")
 
 	actualRequest, newOffset, timestamp, err := lc.appendToWal(ctx, request)
 	if err != nil {
@@ -686,9 +700,10 @@ func (lc *leaderController) appendToWal(ctx context.Context, request func(int64)
 	newOffset := lc.quorumAckTracker.NextOffset()
 	actualRequest = request(newOffset)
 
-	lc.log.Debug().
-		Interface("req", actualRequest).
-		Msg("Append operation")
+	lc.log.Debug(
+		"Append operation",
+		slog.Any("req", actualRequest),
+	)
 
 	logEntryValue := proto.LogEntryValueFromVTPool()
 	defer logEntryValue.ReturnToVTPool()
@@ -737,9 +752,11 @@ func (lc *leaderController) GetNotifications(req *proto.NotificationsRequest, st
 		"peer":  common.GetPeer(stream.Context()),
 	}, func() {
 		if err := lc.dispatchNotifications(ctx, req, stream); err != nil && !errors.Is(err, context.Canceled) {
-			lc.log.Warn().Err(err).
-				Str("peer", common.GetPeer(stream.Context())).
-				Msg("Failed to dispatch notifications")
+			lc.log.Warn(
+				"Failed to dispatch notifications",
+				slog.Any("Error", err),
+				slog.String("peer", common.GetPeer(stream.Context())),
+			)
 			cancel()
 		}
 	})
@@ -758,9 +775,10 @@ func (lc *leaderController) GetNotifications(req *proto.NotificationsRequest, st
 }
 
 func (lc *leaderController) dispatchNotifications(ctx context.Context, req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
-	lc.log.Debug().
-		Interface("start-offset-exclusive", req.StartOffsetExclusive).
-		Msg("Dispatch notifications")
+	lc.log.Debug(
+		"Dispatch notifications",
+		slog.Any("start-offset-exclusive", req.StartOffsetExclusive),
+	)
 
 	var offsetInclusive int64
 	if req.StartOffsetExclusive != nil {
@@ -773,7 +791,10 @@ func (lc *leaderController) dispatchNotifications(ctx context.Context, req *prot
 		// In order to ensure the client will positioned on a given offset, we need to send a first "dummy"
 		// notification. The client will wait for this first notification before making the notification
 		// channel available to the application
-		lc.log.Debug().Int64("commit-offset", commitOffset).Msg("Sending first dummy notification")
+		lc.log.Debug(
+			"Sending first dummy notification",
+			slog.Int64("commit-offset", commitOffset),
+		)
 		if err := stream.Send(&proto.NotificationBatch{
 			ShardId:       lc.shardId,
 			Offset:        commitOffset,
@@ -792,9 +813,10 @@ func (lc *leaderController) dispatchNotifications(ctx context.Context, req *prot
 			return err
 		}
 
-		lc.log.Debug().
-			Int("list-size", len(notifications)).
-			Msg("Got a new list of notification batches")
+		lc.log.Debug(
+			"Got a new list of notification batches",
+			slog.Int("list-size", len(notifications)),
+		)
 
 		for _, n := range notifications {
 			if err := stream.Send(n); err != nil {
@@ -819,7 +841,7 @@ func (lc *leaderController) Close() error {
 }
 
 func (lc *leaderController) close() error {
-	lc.log.Info().Msg("Closing leader controller")
+	lc.log.Info("Closing leader controller")
 
 	lc.status = proto.ServingStatus_NOT_MEMBER
 	lc.cancel()
@@ -909,7 +931,7 @@ func (lc *leaderController) DeleteShard(request *proto.DeleteShardRequest) (*pro
 		return nil, common.ErrorInvalidTerm
 	}
 
-	lc.log.Info().Msg("Deleting shard")
+	lc.log.Info("Deleting shard")
 
 	// Wipe out both WAL and DB contents
 	if err := multierr.Combine(

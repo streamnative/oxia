@@ -17,9 +17,9 @@ package coordinator
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
-	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
 
 	"github.com/streamnative/oxia/common"
@@ -81,9 +81,10 @@ type Coordinator struct {
 }
 
 func New(config Config) (*Coordinator, error) {
-	log.Info().
-		Interface("config", config).
-		Msg("Starting Oxia coordinator")
+	slog.Info(
+		"Starting Oxia coordinator",
+		slog.Any("config", config),
+	)
 
 	s := &Coordinator{
 		clientPool: common.NewClientPool(),

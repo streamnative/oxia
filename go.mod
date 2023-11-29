@@ -30,7 +30,8 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/planetscale/vtprotobuf v0.4.0
 	github.com/prometheus/client_golang v1.17.0
-	github.com/rs/zerolog v1.29.0
+	github.com/rs/zerolog v1.30.0
+	github.com/samber/slog-zerolog/v2 v2.1.0
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/viper v1.15.0
 	github.com/stretchr/testify v1.8.4
@@ -104,6 +105,8 @@ require (
 	github.com/prometheus/common v0.44.0 // indirect
 	github.com/prometheus/procfs v0.11.1 // indirect
 	github.com/rogpeppe/go-internal v1.10.0 // indirect
+	github.com/samber/lo v1.38.1 // indirect
+	github.com/samber/slog-common v0.11.0 // indirect
 	github.com/spf13/afero v1.9.5 // indirect
 	github.com/spf13/cast v1.5.0 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
@@ -125,3 +128,5 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.3 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
+
+replace github.com/samber/slog-common => github.com/samber/slog-common v0.0.0-20231101033217-02b05d46529f

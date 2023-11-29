@@ -16,15 +16,18 @@ package common
 
 import (
 	"io"
-
-	"github.com/rs/zerolog/log"
+	"log/slog"
+	"os"
 )
 
 func RunProcess(startProcess func() (io.Closer, error)) {
 	process, err := startProcess()
 	if err != nil {
-		log.Fatal().Err(err).
-			Msg("Failed to start the process")
+		slog.Error(
+			"Failed to start the process",
+			slog.Any("Error", err),
+		)
+		os.Exit(1)
 	}
 
 	profiler := RunProfiling()

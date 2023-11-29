@@ -16,11 +16,10 @@ package common
 
 import (
 	"io"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
-
-	"github.com/rs/zerolog/log"
 )
 
 func WaitUntilSignal(closers ...io.Closer) {
@@ -28,22 +27,24 @@ func WaitUntilSignal(closers ...io.Closer) {
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 
 	sig := <-c
-	log.Info().
-		Str("signal", sig.String()).
-		Msg("Received signal, exiting")
+	slog.Info(
+		"Received signal, exiting",
+		slog.String("signal", sig.String()),
+	)
 
 	code := 0
 	for _, closer := range closers {
 		if err := closer.Close(); err != nil {
-			log.Error().
-				Err(err).
-				Msg("Failed when shutting down server")
+			slog.Error(
+				"Failed when shutting down server",
+				slog.Any("Error", err),
+			)
 			os.Exit(1)
 		}
 	}
 
 	if code == 0 {
-		log.Info().Msg("Shutdown Completed")
+		slog.Info("Shutdown Completed")
 	}
 	os.Exit(code)
 }

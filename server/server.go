@@ -15,9 +15,9 @@
 package server
 
 import (
+	"log/slog"
 	"time"
 
-	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/health"
 
@@ -60,9 +60,10 @@ func New(config Config) (*Server, error) {
 }
 
 func NewWithGrpcProvider(config Config, provider container.GrpcProvider, replicationRpcProvider ReplicationRpcProvider) (*Server, error) {
-	log.Info().
-		Interface("config", config).
-		Msg("Starting Oxia server")
+	slog.Info(
+		"Starting Oxia server",
+		slog.Any("config", config),
+	)
 
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
 		DataDir:     config.DataDir,

@@ -17,9 +17,9 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 
-	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/encoding/protojson"
 	pb "google.golang.org/protobuf/proto"
 
@@ -240,9 +240,12 @@ func parseRequest(line string) (msgType MsgType, msg any, protoMsg pb.Message) {
 	frame := &Message[BaseMessageBody]{}
 
 	if err := json.Unmarshal([]byte(line), frame); err != nil {
-		log.Fatal().Err(err).
-			Str("line", line).
-			Msg("failed to unmarshal")
+		slog.Error(
+			"failed to unmarshal",
+			slog.String("line", line),
+			slog.Any("Error", err),
+		)
+		os.Exit(1)
 	}
 
 	msg = frame
@@ -252,8 +255,11 @@ func parseRequest(line string) (msgType MsgType, msg any, protoMsg pb.Message) {
 		// Deserialize json again with specific type
 		// Deserialize again with the proper struct
 		if err := json.Unmarshal([]byte(line), sm); err != nil {
-			log.Fatal().Err(err).
-				Msg("failed to unmarshal the proper struct")
+			slog.Error(
+				"failed to unmarshal the proper struct",
+				slog.Any("Error", err),
+			)
+			os.Exit(1)
 		}
 
 		msg = sm
@@ -264,33 +270,46 @@ func parseRequest(line string) (msgType MsgType, msg any, protoMsg pb.Message) {
 		if msgType.isOxiaStreamRequest() {
 			om := &Message[OxiaStreamMessage]{}
 			if err := json.Unmarshal([]byte(line), om); err != nil {
-				log.Fatal().Err(err).
-					Msg("failed to unmarshal the proper struct")
+				slog.Error(
+					"failed to unmarshal the proper struct",
+					slog.Any("Error", err),
+				)
+				os.Exit(1)
 			}
 
 			msg = om
 			if err := protojson.Unmarshal(om.Body.OxiaMsg, protoMsg); err != nil {
-				log.Fatal().Err(err).
-					Msg("failed to unmarshal proto json")
+				slog.Error(
+					"failed to unmarshal proto json",
+					slog.Any("Error", err),
+				)
+				os.Exit(1)
 			}
 		} else {
 			om := &Message[OxiaMessage]{}
 			if err := json.Unmarshal([]byte(line), om); err != nil {
-				log.Fatal().Err(err).
-					Msg("failed to unmarshal the proper struct")
+				slog.Error(
+					"failed to unmarshal the proper struct",
+					slog.Any("Error", err),
+				)
+				os.Exit(1)
 			}
 
 			msg = om
 			if err := protojson.Unmarshal(om.Body.OxiaMsg, protoMsg); err != nil {
-				log.Fatal().Err(err).
-					Msg("failed to unmarshal proto json")
+				slog.Error(
+					"failed to unmarshal proto json",
+					slog.Any("Error", err),
+				)
+				os.Exit(1)
 			}
 		}
 	}
 
-	log.Info().
-		Interface("type", msgType).
-		Interface("proto-msg", protoMsg).
-		Msg("received message")
+	slog.Info(
+		"received message",
+		slog.Any("type", msgType),
+		slog.Any("proto-msg", protoMsg),
+	)
 	return msgType, msg, protoMsg
 }

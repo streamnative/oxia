@@ -18,11 +18,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"sync"
 
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	pb "google.golang.org/protobuf/proto"
@@ -52,18 +52,20 @@ func newMaelstromGrpcProvider() *maelstromGrpcProvider {
 }
 
 func (m *maelstromGrpcProvider) StartGrpcServer(name, bindAddress string, registerFunc func(grpc.ServiceRegistrar)) (container.GrpcServer, error) {
-	log.Info().
-		Str("name", name).
-		Msg("Start Grpc server")
+	slog.Info(
+		"Start Grpc server",
+		slog.String("name", name),
+	)
 
 	registerFunc(m)
 	return &maelstromGrpcServer{}, nil
 }
 
 func (m *maelstromGrpcProvider) RegisterService(desc *grpc.ServiceDesc, impl any) {
-	log.Info().
-		Str("service-name", desc.ServiceName).
-		Msg("RegisterService")
+	slog.Info(
+		"RegisterService",
+		slog.String("service-name", desc.ServiceName),
+	)
 	m.services[desc.ServiceName] = impl
 }
 
@@ -103,7 +105,10 @@ func (m *maelstromGrpcProvider) HandleOxiaRequest(msgType MsgType, msg *Message[
 }
 
 func (m *maelstromGrpcProvider) HandleOxiaStreamRequest(msgType MsgType, msg *Message[OxiaStreamMessage], message pb.Message) {
-	log.Info().Interface("msg-type", msgType).Msg("HandleOxiaStreamRequest")
+	slog.Info(
+		"HandleOxiaStreamRequest",
+		slog.Any("msg-type", msgType),
+	)
 	switch msgType {
 	case MsgTypeAppend:
 		key := fmt.Sprintf("%s-%d", msg.Src, msg.Body.StreamId)
@@ -117,7 +122,10 @@ func (m *maelstromGrpcProvider) HandleOxiaStreamRequest(msgType MsgType, msg *Me
 			go func() {
 				err := m.getService(oxiaLogReplication).(proto.OxiaLogReplicationServer).Replicate(stream)
 				if err != nil {
-					log.Warn().Err(err).Msg("failed to call replicate")
+					slog.Warn(
+						"failed to call replicate",
+						slog.Any("Error", err),
+					)
 				}
 			}()
 		}
@@ -252,7 +260,11 @@ func (m *maelstromGrpcProvider) HandleClientRequest(msgType MsgType, msg any) {
 		}
 
 	default:
-		log.Fatal().Interface("msg-type", msgType).Msg("Unexpected request")
+		slog.Error(
+			"Unexpected request",
+			slog.Any("msg-type", msgType),
+		)
+		os.Exit(1)
 	}
 }
 
@@ -279,7 +291,10 @@ func (m *maelstromGrpcProvider) sendResponse(req *Message[OxiaMessage], msgType 
 func (m *maelstromGrpcProvider) getService(name string) any {
 	r, ok := m.services[name]
 	if !ok {
-		log.Fatal().Str("service", name).Msg("Service not found")
+		slog.Error(
+			"Service not found",
+			slog.String("service", name),
+		)
 	}
 
 	return r

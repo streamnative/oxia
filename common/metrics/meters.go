@@ -15,7 +15,10 @@
 package metrics
 
 import (
-	"github.com/rs/zerolog/log"
+	"fmt"
+	"log/slog"
+	"os"
+
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
@@ -33,9 +36,11 @@ func LabelsForShard(namespace string, shard int64) map[string]any {
 
 func fatalOnErr(err error, name string) {
 	if err != nil {
-		log.Fatal().Err(err).
-			Str("metric-name", name).
-			Msg("Failed to create metric")
+		slog.Error(
+			"Failed to create metric",
+			slog.String("metric-name", name),
+		)
+		os.Exit(1)
 	}
 }
 
@@ -59,7 +64,8 @@ func getAttrs(labels map[string]any) (options metric.MeasurementOption) {
 			attr = key.String(t)
 
 		default:
-			log.Fatal().Msgf("Invalid label type %#v", v)
+			slog.Error(fmt.Sprintf("Invalid label type %#v", v))
+			os.Exit(1)
 		}
 
 		attrs = append(attrs, attr)

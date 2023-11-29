@@ -17,13 +17,11 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 
 	"github.com/streamnative/oxia/common"
@@ -49,12 +47,12 @@ func (l LogLevelError) Error() string {
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVarP(&logLevelStr, "log-level", "l", common.DefaultLogLevel.String(), "Set logging level [disabled|trace|debug|info|warn|error|fatal|panic]")
+	rootCmd.PersistentFlags().StringVarP(&logLevelStr, "log-level", "l", common.DefaultLogLevel.String(), "Set logging level [debug|info|warn|error]")
 	rootCmd.PersistentFlags().BoolVarP(&common.LogJson, "log-json", "j", false, "Print logs in JSON format")
 }
 
 func configureLogLevel(cmd *cobra.Command, args []string) error {
-	logLevel, err := zerolog.ParseLevel(logLevelStr)
+	logLevel, err := common.ParseLogLevel(logLevelStr)
 	if err != nil {
 		return LogLevelError(logLevelStr)
 	}
@@ -78,15 +76,21 @@ func handleInit(scanner *bufio.Scanner) {
 
 func receiveInit(scanner *bufio.Scanner) error {
 	if !scanner.Scan() {
-		log.Fatal().Msg("no init received")
+		slog.Error("no init received")
+		os.Exit(1)
 	}
 
 	line := scanner.Text()
-	log.Info().RawJSON("line", []byte(line)).Msg("Got line")
+	slog.Info(
+		"Got line",
+		slog.Any("line", []byte(line)),
+	)
 	reqType, req, _ := parseRequest(line)
 	if reqType != MsgTypeInit {
-		log.Error().Interface("req", req).
-			Msg("Unexpected request while waiting for init")
+		slog.Error(
+			"Unexpected request while waiting for init",
+			slog.Any("req", req),
+		)
 		return errors.New("invalid message type")
 	}
 
@@ -95,10 +99,11 @@ func receiveInit(scanner *bufio.Scanner) error {
 	thisNode = init.Body.NodeId
 	allNodes = init.Body.NodesIds
 
-	log.Info().
-		Str("this-node", thisNode).
-		Interface("all-nodes", allNodes).
-		Msg("Received init request")
+	slog.Info(
+		"Received init request",
+		slog.String("this-node", thisNode),
+		slog.Any("all-nodes", allNodes),
+	)
 
 	sendResponse(Message[EmptyResponse]{
 		Src:  thisNode,
@@ -115,16 +120,19 @@ func receiveInit(scanner *bufio.Scanner) error {
 
 func main() {
 	common.ConfigureLogger()
-	log.Logger = log.Output(zerolog.ConsoleWriter{
-		Out:        os.Stderr,
-		TimeFormat: time.StampMicro,
-		NoColor:    true,
-	})
+	// NOTE: we must change the default logger to use Stderr for output,
+	// because stdout is used as communication channel, see `sendErrorWithCode` for
+	// more details.
+	slog.SetDefault(slog.New(slog.NewJSONHandler(
+		os.Stderr,
+		&slog.HandlerOptions{},
+	)))
 
 	path, _ := os.Getwd()
-	log.Info().Str("PWD", path).
-		Msg("Starting Oxia in Maelstrom mode")
-
+	slog.Info(
+		"Starting Oxia in Maelstrom mode",
+		slog.String("PWD", path),
+	)
 	scanner := bufio.NewScanner(os.Stdin)
 	handleInit(scanner)
 
@@ -145,7 +153,11 @@ func main() {
 
 	dataDir, err := os.MkdirTemp("", "oxia-maelstrom")
 	if err != nil {
-		log.Fatal().Err(err).Msg("failed to create data dir")
+		slog.Error(
+			"failed to create data dir",
+			slog.Any("Error", err),
+		)
+		os.Exit(1)
 	}
 
 	if thisNode == "n1" {
@@ -164,7 +176,11 @@ func main() {
 			func() (model.ClusterConfig, error) { return clusterConfig, nil },
 			0, newRpcProvider(dispatcher))
 		if err != nil {
-			log.Fatal().Err(err).Msg("failed to create coordinator")
+			slog.Error(
+				"failed to create coordinator",
+				slog.Any("Error", err),
+			)
+			os.Exit(1)
 		}
 	} else {
 		// Any other node will be a storage node

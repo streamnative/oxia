@@ -18,14 +18,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"math/rand"
 	"sync"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/status"
 
@@ -73,7 +72,7 @@ type shardController struct {
 
 	currentElectionCtx    context.Context
 	currentElectionCancel context.CancelFunc
-	log                   zerolog.Logger
+	log                   *slog.Logger
 
 	leaderElectionLatency metrics.LatencyHistogram
 	newTermQuorumLatency  metrics.LatencyHistogram
@@ -90,11 +89,11 @@ func NewShardController(namespace string, shard int64, shardMetadata model.Shard
 		shardMetadata: shardMetadata,
 		rpc:           rpc,
 		coordinator:   coordinator,
-		log: log.With().
-			Str("component", "shard-controller").
-			Str("namespace", namespace).
-			Int64("shard", shard).
-			Logger(),
+		log: slog.With(
+			slog.String("component", "shard-controller"),
+			slog.String("namespace", namespace),
+			slog.Int64("shard", shard),
+		),
 
 		leaderElectionLatency: metrics.NewLatencyHistogram("oxia_coordinator_leader_election_latency",
 			"The time it takes to elect a leader for the shard", labels),
@@ -113,18 +112,20 @@ func NewShardController(namespace string, shard int64, shardMetadata model.Shard
 
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 
-	s.log.Info().
-		Interface("shard-metadata", s.shardMetadata).
-		Msg("Started shard controller")
+	s.log.Info(
+		"Started shard controller",
+		slog.Any("shard-metadata", s.shardMetadata),
+	)
 
 	if shardMetadata.Status == model.ShardStatusDeleting {
 		s.DeleteShard()
 	} else if shardMetadata.Leader == nil || shardMetadata.Status != model.ShardStatusSteadyState {
 		s.electLeaderWithRetries()
 	} else {
-		s.log.Info().
-			Interface("current-leader", s.shardMetadata.Leader).
-			Msg("There is already a node marked as leader on the shard, verifying")
+		s.log.Info(
+			"There is already a node marked as leader on the shard, verifying",
+			slog.Any("current-leader", s.shardMetadata.Leader),
+		)
 
 		go func() {
 			if !s.verifyCurrentEnsemble() {
@@ -139,16 +140,18 @@ func (s *shardController) HandleNodeFailure(failedNode model.ServerAddress) {
 	s.Lock()
 	defer s.Unlock()
 
-	s.log.Debug().
-		Interface("failed-node", failedNode).
-		Interface("current-leader", s.shardMetadata.Leader).
-		Msg("Received notification of failed node")
+	s.log.Debug(
+		"Received notification of failed node",
+		slog.Any("failed-node", failedNode),
+		slog.Any("current-leader", s.shardMetadata.Leader),
+	)
 
 	if s.shardMetadata.Leader != nil &&
 		*s.shardMetadata.Leader == failedNode {
-		s.log.Info().
-			Interface("leader", failedNode).
-			Msg("Detected failure on shard leader")
+		s.log.Info(
+			"Detected failure on shard leader",
+			slog.Any("leader", failedNode),
+		)
 		s.electLeaderWithRetries()
 	}
 }
@@ -164,40 +167,45 @@ func (s *shardController) verifyCurrentEnsemble() bool {
 		status, err := s.rpc.GetStatus(s.ctx, node, &proto.GetStatusRequest{ShardId: s.shard})
 
 		if err != nil {
-			s.log.Warn().Err(err).
-				Interface("node", node).
-				Msg("Failed to verify status for shard. Start a new election")
+			s.log.Warn(
+				"Failed to verify status for shard. Start a new election",
+				slog.Any("Error", err),
+				slog.Any("node", node),
+			)
 			return false
 		} else if node.Internal == s.shardMetadata.Leader.Internal &&
 			status.Status != proto.ServingStatus_LEADER {
-			s.log.Warn().
-				Interface("node", node).
-				Interface("status", status.Status).
-				Msg("Expected leader is not in leader status. Start a new election")
+			s.log.Warn(
+				"Expected leader is not in leader status. Start a new election",
+				slog.Any("node", node),
+				slog.Any("status", status.Status),
+			)
 			return false
 		} else if node.Internal != s.shardMetadata.Leader.Internal &&
 			status.Status != proto.ServingStatus_FOLLOWER {
-			s.log.Warn().
-				Interface("node", node).
-				Interface("status", status.Status).
-				Msg("Expected follower is not in follower status. Start a new election")
+			s.log.Warn(
+				"Expected follower is not in follower status. Start a new election",
+				slog.Any("node", node),
+				slog.Any("status", status.Status),
+			)
 			return false
 		} else if status.Term != s.shardMetadata.Term {
-			s.log.Warn().
-				Interface("node", node).
-				Interface("node-term", status.Term).
-				Interface("coordinator-term", s.shardMetadata.Term).
-				Msg("Node has a wrong term. Start a new election")
+			s.log.Warn(
+				"Node has a wrong term. Start a new election",
+				slog.Any("node", node),
+				slog.Any("node-term", status.Term),
+				slog.Any("coordinator-term", s.shardMetadata.Term),
+			)
 			return false
 		} else {
-			s.log.Info().
-				Interface("node", node).
-				Msg("Node looks ok")
+			s.log.Info(
+				"Node looks ok",
+				slog.Any("node", node),
+			)
 		}
 	}
 
-	s.log.Info().
-		Msg("All nodes look good. No need to trigger new leader election")
+	s.log.Info("All nodes look good. No need to trigger new leader election")
 	return true
 }
 
@@ -214,9 +222,11 @@ func (s *shardController) electLeaderWithRetries() {
 		}, common.NewBackOff(s.ctx),
 			func(err error, duration time.Duration) {
 				s.leaderElectionsFailed.Inc()
-				s.log.Warn().Err(err).
-					Dur("retry-after", duration).
-					Msg("Leader election has failed, retrying later")
+				s.log.Warn(
+					"Leader election has failed, retrying later",
+					slog.Any("Error", err),
+					slog.Duration("retry-after", duration),
+				)
 			})
 	})
 }
@@ -233,9 +243,10 @@ func (s *shardController) electLeader() error {
 	s.shardMetadata.Status = model.ShardStatusElection
 	s.shardMetadata.Leader = nil
 	s.shardMetadata.Term++
-	s.log.Info().
-		Int64("term", s.shardMetadata.Term).
-		Msg("Starting leader election")
+	s.log.Info(
+		"Starting leader election",
+		slog.Int64("term", s.shardMetadata.Term),
+	)
 
 	if err := s.coordinator.InitiateLeaderElection(s.namespace, s.shard, s.shardMetadata); err != nil {
 		return err
@@ -249,7 +260,7 @@ func (s *shardController) electLeader() error {
 
 	newLeader, followers := s.selectNewLeader(fr)
 
-	if s.log.Info().Enabled() {
+	if s.log.Enabled(context.Background(), slog.LevelInfo) {
 		f := make([]struct {
 			ServerAddress model.ServerAddress `json:"server-address"`
 			EntryId       *proto.EntryId      `json:"entry-id"`
@@ -260,11 +271,12 @@ func (s *shardController) electLeader() error {
 				EntryId       *proto.EntryId      `json:"entry-id"`
 			}{ServerAddress: sa, EntryId: entryId})
 		}
-		s.log.Info().
-			Int64("term", s.shardMetadata.Term).
-			Interface("new-leader", newLeader).
-			Interface("followers", f).
-			Msg("Successfully moved ensemble to a new term")
+		s.log.Info(
+			"Successfully moved ensemble to a new term",
+			slog.Int64("term", s.shardMetadata.Term),
+			slog.Any("new-leader", newLeader),
+			slog.Any("followers", f),
+		)
 	}
 
 	if err = s.becomeLeader(newLeader, followers); err != nil {
@@ -289,10 +301,11 @@ func (s *shardController) electLeader() error {
 
 	s.shardMetadata = metadata
 
-	s.log.Info().
-		Int64("term", s.shardMetadata.Term).
-		Interface("leader", s.shardMetadata.Leader).
-		Msg("Elected new leader")
+	s.log.Info(
+		"Elected new leader",
+		slog.Int64("term", s.shardMetadata.Term),
+		slog.Any("leader", s.shardMetadata.Leader),
+	)
 
 	timer.Done()
 
@@ -309,9 +322,10 @@ func (s *shardController) deletingRemovedNodes() error {
 		}); err != nil {
 			return err
 		} else {
-			s.log.Info().
-				Interface("server", ds).
-				Msg("Successfully deleted shard")
+			s.log.Info(
+				"Successfully deleted shard",
+				slog.Any("server", ds),
+			)
 		}
 	}
 
@@ -320,9 +334,10 @@ func (s *shardController) deletingRemovedNodes() error {
 
 func (s *shardController) keepFencingFailedFollowers(successfulFollowers map[model.ServerAddress]*proto.EntryId) {
 	if len(successfulFollowers) == len(s.shardMetadata.Ensemble)-1 {
-		s.log.Debug().
-			Int64("term", s.shardMetadata.Term).
-			Msg("All the member of the ensemble were successfully added")
+		s.log.Debug(
+			"All the member of the ensemble were successfully added",
+			slog.Int64("term", s.shardMetadata.Term),
+		)
 		return
 	}
 
@@ -341,9 +356,10 @@ func (s *shardController) keepFencingFailedFollowers(successfulFollowers map[mod
 }
 
 func (s *shardController) keepFencingFollower(ctx context.Context, node model.ServerAddress) {
-	s.log.Info().
-		Interface("follower", node).
-		Msg("Node has failed in leader election, retrying")
+	s.log.Info(
+		"Node has failed in leader election, retrying",
+		slog.Any("follower", node),
+	)
 
 	go common.DoWithLabels(map[string]string{
 		"oxia":     "shard-controller-retry-failed-follower",
@@ -358,19 +374,22 @@ func (s *shardController) keepFencingFollower(ctx context.Context, node model.Se
 				// If we're receiving invalid term error, it would mean
 				// there's already a new term generated, and we don't have
 				// to keep trying with this old term
-				s.log.Warn().Err(err).
-					Interface("follower", node).
-					Int64("term", s.Term()).
-					Msg("Failed to newTerm, invalid term. Stop trying")
+				s.log.Warn(
+					"Failed to newTerm, invalid term. Stop trying",
+					slog.Any("follower", node),
+					slog.Int64("term", s.Term()),
+				)
 				return nil
 			}
 			return err
 		}, backOff, func(err error, duration time.Duration) {
-			s.log.Warn().Err(err).
-				Interface("follower", node).
-				Int64("term", s.Term()).
-				Dur("retry-after", duration).
-				Msg("Failed to newTerm, retrying later")
+			s.log.Warn(
+				"Failed to newTerm, retrying later",
+				slog.Any("Error", err),
+				slog.Any("follower", node),
+				slog.Int64("term", s.Term()),
+				slog.Duration("retry-after", duration),
+			)
 		})
 	})
 }
@@ -395,10 +414,11 @@ func (s *shardController) newTermAndAddFollower(ctx context.Context, node model.
 		return err
 	}
 
-	s.log.Info().
-		Interface("follower", node).
-		Int64("term", fr.Term).
-		Msg("Successfully rejoined the quorum")
+	s.log.Info(
+		"Successfully rejoined the quorum",
+		slog.Any("follower", node),
+		slog.Int64("term", fr.Term),
+	)
 	return nil
 }
 
@@ -432,14 +452,17 @@ func (s *shardController) newTermQuorum() (map[model.ServerAddress]*proto.EntryI
 		}, func() {
 			entryId, err := s.newTerm(ctx, serverAddress)
 			if err != nil {
-				s.log.Warn().Err(err).
-					Str("node", serverAddress.Internal).
-					Msg("Failed to newTerm node")
+				s.log.Warn(
+					"Failed to newTerm node",
+					slog.Any("Error", err),
+					slog.String("node", serverAddress.Internal),
+				)
 			} else {
-				s.log.Info().
-					Interface("server-address", serverAddress).
-					Interface("entry-id", entryId).
-					Msg("Processed newTerm response")
+				s.log.Info(
+					"Processed newTerm response",
+					slog.Any("server-address", serverAddress),
+					slog.Any("entry-id", entryId),
+				)
 			}
 
 			ch <- struct {
@@ -595,14 +618,15 @@ func (s *shardController) DeleteShard() {
 		s.Lock()
 		defer s.Unlock()
 
-		s.log.Info().
-			Msg("Deleting shard")
+		s.log.Info("Deleting shard")
 
 		_ = backoff.RetryNotify(s.deleteShard, common.NewBackOff(s.ctx),
 			func(err error, duration time.Duration) {
-				s.log.Warn().Err(err).
-					Dur("retry-after", duration).
-					Msg("Delete shard failed, retrying later")
+				s.log.Warn(
+					"Delete shard failed, retrying later",
+					slog.Duration("retry-after", duration),
+					slog.Any("Error", err),
+				)
 			})
 
 		s.cancel()
@@ -613,19 +637,21 @@ func (s *shardController) deleteShard() error {
 	for _, sa := range s.shardMetadata.Ensemble {
 		// We need to save the address because it gets modified in the loop
 		if err := s.deleteShardRpc(s.ctx, sa); err != nil {
-			s.log.Warn().Err(err).
-				Str("node", sa.Internal).
-				Msg("Failed to delete shard")
+			s.log.Warn(
+				"Failed to delete shard",
+				slog.Any("Error", err),
+				slog.String("node", sa.Internal),
+			)
 			return err
 		} else {
-			s.log.Info().
-				Interface("server-address", sa).
-				Msg("Successfully deleted shard from node")
+			s.log.Info(
+				"Successfully deleted shard from node",
+				slog.Any("server-address", sa),
+			)
 		}
 	}
 
-	s.log.Info().
-		Msg("Successfully deleted shard from all the nodes")
+	s.log.Info("Successfully deleted shard from all the nodes")
 	return multierr.Combine(
 		s.coordinator.ShardDeleted(s.namespace, s.shard),
 		s.Close(),
@@ -661,12 +687,13 @@ func (s *shardController) SwapNode(from model.ServerAddress, to model.ServerAddr
 
 	s.shardMetadata.RemovedNodes = append(s.shardMetadata.RemovedNodes, from)
 	s.shardMetadata.Ensemble = replaceInList(s.shardMetadata.Ensemble, from, to)
-	s.log.Info().
-		Interface("removed-nodes", s.shardMetadata.RemovedNodes).
-		Interface("new-ensemble", s.shardMetadata.Ensemble).
-		Interface("from", from).
-		Interface("to", to).
-		Msg("Swapping node")
+	s.log.Info(
+		"Swapping node",
+		slog.Any("removed-nodes", s.shardMetadata.RemovedNodes),
+		slog.Any("new-ensemble", s.shardMetadata.Ensemble),
+		slog.Any("from", from),
+		slog.Any("to", to),
+	)
 	if err := s.electLeader(); err != nil {
 		s.Unlock()
 		return err
@@ -681,15 +708,18 @@ func (s *shardController) SwapNode(from model.ServerAddress, to model.ServerAddr
 	// This is done to avoid doing multiple node-swap concurrently, since it would create
 	// additional load in the system, while transferring multiple DB snapshots.
 	if err := s.waitForFollowersToCatchUp(ctx, *leader, ensemble); err != nil {
-		s.log.Error().Err(err).
-			Msg("Failed to wait for followers to catch up")
+		s.log.Error(
+			"Failed to wait for followers to catch up",
+			slog.Any("Error", err),
+		)
 		return err
 	}
 
-	s.log.Info().
-		Interface("from", from).
-		Interface("to", to).
-		Msg("Successfully swapped node")
+	s.log.Info(
+		"Successfully swapped node",
+		slog.Any("from", from),
+		slog.Any("to", to),
+	)
 	return nil
 }
 
@@ -717,16 +747,18 @@ func (s *shardController) waitForFollowersToCatchUp(ctx context.Context, leader 
 			} else {
 				followerHeadOffset := fs.HeadOffset
 				if followerHeadOffset >= leaderHeadOffset {
-					s.log.Info().
-						Interface("server", server).
-						Msg("Follower is caught-up with the leader after node-swap")
+					s.log.Info(
+						"Follower is caught-up with the leader after node-swap",
+						slog.Any("server", server),
+					)
 					return nil
 				} else {
-					s.log.Info().
-						Interface("server", server).
-						Int64("leader-head-offset", leaderHeadOffset).
-						Int64("follower-head-offset", followerHeadOffset).
-						Msg("Follower is *not* caught-up yet with the leader")
+					s.log.Info(
+						"Follower is *not* caught-up yet with the leader",
+						slog.Any("server", server),
+						slog.Int64("leader-head-offset", leaderHeadOffset),
+						slog.Int64("follower-head-offset", followerHeadOffset),
+					)
 					return errors.New("follower not caught up yet")
 				}
 			}
@@ -737,7 +769,7 @@ func (s *shardController) waitForFollowersToCatchUp(ctx context.Context, leader 
 		}
 	}
 
-	s.log.Info().Msg("All the followers are caught up after node-swap")
+	s.log.Info("All the followers are caught up after node-swap")
 	return nil
 }
 

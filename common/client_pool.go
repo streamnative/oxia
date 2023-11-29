@@ -17,13 +17,12 @@ package common
 import (
 	"context"
 	"io"
+	"log/slog"
 	"sync"
 	"time"
 
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -46,15 +45,15 @@ type clientPool struct {
 	sync.RWMutex
 	connections map[string]grpc.ClientConnInterface
 
-	log zerolog.Logger
+	log *slog.Logger
 }
 
 func NewClientPool() ClientPool {
 	return &clientPool{
 		connections: make(map[string]grpc.ClientConnInterface),
-		log: log.With().
-			Str("component", "client-pool").
-			Logger(),
+		log: slog.With(
+			slog.String("component", "client-pool"),
+		),
 	}
 }
 
@@ -65,10 +64,11 @@ func (cp *clientPool) Close() error {
 	for target, cnx := range cp.connections {
 		err := cnx.(*grpc.ClientConn).Close()
 		if err != nil {
-			cp.log.Warn().
-				Str("server_address", target).
-				Err(err).
-				Msg("Failed to close GRPC connection")
+			cp.log.Warn(
+				"Failed to close GRPC connection",
+				slog.String("server_address", target),
+				slog.Any("Error", err),
+			)
 		}
 	}
 	return nil
@@ -126,9 +126,10 @@ func (cp *clientPool) getConnection(target string) (grpc.ClientConnInterface, er
 		return cnx, nil
 	}
 
-	cp.log.Debug().
-		Str("server_address", target).
-		Msg("Creating new GRPC connection")
+	cp.log.Debug(
+		"Creating new GRPC connection",
+		slog.String("server_address", target),
+	)
 
 	cnx, err := grpc.Dial(target,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),

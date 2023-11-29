@@ -15,9 +15,9 @@
 package main
 
 import (
+	"log/slog"
 	"testing"
 
-	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 
@@ -25,7 +25,7 @@ import (
 )
 
 func TestCall_LogLevel_Default(t *testing.T) {
-	var captured zerolog.Level
+	var captured slog.Level
 	rootCmd.SetArgs([]string{})
 	rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		captured = common.LogLevel
@@ -41,17 +41,13 @@ func TestCall_LogLevel(t *testing.T) {
 		name          string
 		level         string
 		expectedErr   error
-		expectedLevel zerolog.Level
+		expectedLevel slog.Level
 	}{
-		{"disabled", "disabled", nil, zerolog.Disabled},
-		{"trace", "trace", nil, zerolog.TraceLevel},
-		{"debug", "debug", nil, zerolog.DebugLevel},
-		{"info", "info", nil, zerolog.InfoLevel},
-		{"warn", "warn", nil, zerolog.WarnLevel},
-		{"error", "error", nil, zerolog.ErrorLevel},
-		{"fatal", "fatal", nil, zerolog.FatalLevel},
-		{"panic", "panic", nil, zerolog.PanicLevel},
-		{"junk", "junk", LogLevelError("junk"), zerolog.InfoLevel},
+		{"debug", "debug", nil, slog.LevelDebug},
+		{"info", "info", nil, slog.LevelInfo},
+		{"warn", "warn", nil, slog.LevelWarn},
+		{"error", "error", nil, slog.LevelError},
+		{"junk", "junk", LogLevelError("junk"), slog.LevelInfo},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

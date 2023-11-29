@@ -16,8 +16,9 @@ package metrics
 
 import (
 	"context"
+	"log/slog"
+	"os"
 
-	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel/metric"
 )
 
@@ -34,7 +35,11 @@ type gauge struct {
 
 func (g *gauge) Unregister() {
 	if err := g.registration.Unregister(); err != nil {
-		log.Fatal().Err(err).Msg("Failed to unregister gauge")
+		slog.Error(
+			"Failed to unregister gauge",
+			slog.Any("Error", err),
+		)
+		os.Exit(1)
 	}
 }
 
@@ -60,7 +65,11 @@ func NewGauge(name string, description string, unit Unit, labels map[string]any,
 	}, g)
 
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to register gauge")
+		slog.Error(
+			"Failed to register gauge",
+			slog.Any("Error", err),
+		)
+		os.Exit(1)
 	}
 	return res
 }

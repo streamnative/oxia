@@ -17,13 +17,12 @@ package impl
 import (
 	"context"
 	"io"
+	"log/slog"
 	"reflect"
 	"sync"
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
 	pb "google.golang.org/protobuf/proto"
 
@@ -73,7 +72,7 @@ type coordinator struct {
 	assignments      *proto.ShardAssignments
 	metadataVersion  Version
 	rpc              RpcProvider
-	log              zerolog.Logger
+	log              *slog.Logger
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -101,9 +100,9 @@ func NewCoordinator(metadataProvider MetadataProvider,
 		shardControllers:         make(map[int64]ShardController),
 		nodeControllers:          make(map[string]NodeController),
 		rpc:                      rpc,
-		log: log.With().
-			Str("component", "coordinator").
-			Logger(),
+		log: slog.With(
+			slog.String("component", "coordinator"),
+		),
 	}
 
 	c.ctx, c.cancel = context.WithCancel(context.Background())
@@ -149,7 +148,7 @@ func NewCoordinator(metadataProvider MetadataProvider,
 }
 
 func (c *coordinator) waitForAllNodesToBeAvailable() {
-	c.log.Info().Msg("Waiting for all the nodes to be available")
+	c.log.Info("Waiting for all the nodes to be available")
 	for {
 
 		select {
@@ -162,7 +161,7 @@ func (c *coordinator) waitForAllNodesToBeAvailable() {
 				}
 			}
 			if allNodesAvailable {
-				c.log.Info().Msg("All nodes are now available")
+				c.log.Info("All nodes are now available")
 				return
 			}
 
@@ -175,9 +174,10 @@ func (c *coordinator) waitForAllNodesToBeAvailable() {
 
 // Assign the shards to the available servers
 func (c *coordinator) initialAssignment() error {
-	c.log.Info().
-		Interface("clusterConfig", c.ClusterConfig).
-		Msg("Performing initial assignment")
+	c.log.Info(
+		"Performing initial assignment",
+		slog.Any("clusterConfig", c.ClusterConfig),
+	)
 
 	clusterStatus, _, _ := applyClusterChanges(&c.ClusterConfig, model.NewClusterStatus())
 
@@ -191,10 +191,11 @@ func (c *coordinator) initialAssignment() error {
 }
 
 func (c *coordinator) applyNewClusterConfig() error {
-	c.log.Info().
-		Interface("clusterConfig", c.ClusterConfig).
-		Interface("metadataVersion", c.metadataVersion).
-		Msg("Checking cluster config")
+	c.log.Info(
+		"Checking cluster config",
+		slog.Any("clusterConfig", c.ClusterConfig),
+		slog.Any("metadataVersion", c.metadataVersion),
+	)
 
 	clusterStatus, shardsToAdd, shardsToDelete := applyClusterChanges(&c.ClusterConfig, c.clusterStatus)
 
@@ -379,13 +380,17 @@ func (c *coordinator) waitForExternalEvents() {
 
 		case <-refreshTimer.C:
 			if err := c.handleClusterConfigUpdated(); err != nil {
-				c.log.Warn().Err(err).
-					Msg("Failed to update cluster config")
+				c.log.Warn(
+					"Failed to update cluster config",
+					slog.Any("Error", err),
+				)
 			}
 
 			if err := c.rebalanceCluster(); err != nil {
-				c.log.Warn().Err(err).
-					Msg("Failed to rebalance cluster")
+				c.log.Warn(
+					"Failed to rebalance cluster",
+					slog.Any("Error", err),
+				)
 			}
 		}
 	}
@@ -401,26 +406,27 @@ func (c *coordinator) handleClusterConfigUpdated() error {
 	}
 
 	if reflect.DeepEqual(newClusterConfig, c.ClusterConfig) {
-		c.log.Debug().
-			Msg("Cluster config has not changed since last time")
+		c.log.Debug("Cluster config has not changed since last time")
 		return nil
 	}
 
-	c.log.Info().
-		Interface("clusterConfig", c.ClusterConfig).
-		Interface("metadataVersion", c.metadataVersion).
-		Msg("Detected change in cluster config")
+	c.log.Info(
+		"Detected change in cluster config",
+		slog.Any("clusterConfig", c.ClusterConfig),
+		slog.Any("metadataVersion", c.metadataVersion),
+	)
 
 	clusterStatus, shardsToAdd, shardsToDelete := applyClusterChanges(&newClusterConfig, c.clusterStatus)
 
 	for shard, namespace := range shardsToAdd {
 		shardMetadata := clusterStatus.Namespaces[namespace].Shards[shard]
 		c.shardControllers[shard] = NewShardController(namespace, shard, shardMetadata, c.rpc, c)
-		log.Info().
-			Int64("shard", shard).
-			Str("namespace", namespace).
-			Interface("shard-metadata", shardMetadata).
-			Msg("Added new shard")
+		slog.Info(
+			"Added new shard",
+			slog.Int64("shard", shard),
+			slog.String("namespace", namespace),
+			slog.Any("shard-metadata", shardMetadata),
+		)
 	}
 
 	for _, shard := range shardsToDelete {
@@ -443,24 +449,28 @@ func (c *coordinator) rebalanceCluster() error {
 	c.Unlock()
 
 	for _, swapAction := range actions {
-		c.log.Info().
-			Interface("swap-action", swapAction).
-			Msg("Applying swap action")
+		c.log.Info(
+			"Applying swap action",
+			slog.Any("swap-action", swapAction),
+		)
 
 		c.Lock()
 		sc, ok := c.shardControllers[swapAction.Shard]
 		c.Unlock()
 		if !ok {
-			c.log.Warn().
-				Int64("shard", swapAction.Shard).
-				Msg("Shard controller not found")
+			c.log.Warn(
+				"Shard controller not found",
+				slog.Int64("shard", swapAction.Shard),
+			)
 			continue
 		}
 
 		if err := sc.SwapNode(swapAction.From, swapAction.To); err != nil {
-			c.log.Warn().Err(err).
-				Interface("swap-action", swapAction).
-				Msg("Failed to swap node")
+			c.log.Warn(
+				"Failed to swap node",
+				slog.Any("Error", err),
+				slog.Any("swap-action", swapAction),
+			)
 		}
 	}
 

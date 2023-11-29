@@ -17,10 +17,9 @@ package server
 import (
 	"context"
 	"io"
+	"log/slog"
 	"sync"
 
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -60,7 +59,7 @@ type shardAssignmentDispatcher struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	log zerolog.Logger
+	log *slog.Logger
 
 	activeClientsGauge metrics.Gauge
 }
@@ -118,9 +117,11 @@ func (s *shardAssignmentDispatcher) RegisterForUpdates(req *proto.ShardAssignmen
 			if err != nil {
 				if status.Code(err) != codes.Canceled {
 					peer, _ := peer.FromContext(clientStream.Context())
-					s.log.Warn().Err(err).
-						Str("client", peer.Addr.String()).
-						Msg("Failed to send shard assignment update to client")
+					s.log.Warn(
+						"Failed to send shard assignment update to client",
+						slog.Any("Error", err),
+						slog.String("client", peer.Addr.String()),
+					)
 				}
 				s.Lock()
 				delete(s.clients, clientId)
@@ -209,7 +210,9 @@ func (s *shardAssignmentDispatcher) PushShardAssignments(stream proto.OxiaCoordi
 			"oxia": "receive-shards-assignments",
 		},
 		s.ctx,
-		s.log.With().Str("stream", "receive-shards-assignments").Logger(),
+		s.log.With(
+			slog.String("stream", "receive-shards-assignments"),
+		),
 	)
 	return streamReader.Run()
 }
@@ -245,9 +248,9 @@ func NewShardAssignmentDispatcher(healthServer *health.Server) ShardAssignmentsD
 		assignments:  nil,
 		healthServer: healthServer,
 		clients:      make(map[int64]chan *proto.ShardAssignments),
-		log: log.With().
-			Str("component", "shard-assignment-dispatcher").
-			Logger(),
+		log: slog.With(
+			slog.String("component", "shard-assignment-dispatcher"),
+		),
 	}
 
 	s.ctx, s.cancel = context.WithCancel(context.Background())

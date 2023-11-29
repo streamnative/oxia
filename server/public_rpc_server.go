@@ -16,10 +16,9 @@ package server
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protowire"
@@ -40,16 +39,16 @@ type publicRpcServer struct {
 	shardsDirector       ShardsDirector
 	assignmentDispatcher ShardAssignmentsDispatcher
 	grpcServer           container.GrpcServer
-	log                  zerolog.Logger
+	log                  *slog.Logger
 }
 
 func newPublicRpcServer(provider container.GrpcProvider, bindAddress string, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher) (*publicRpcServer, error) {
 	server := &publicRpcServer{
 		shardsDirector:       shardsDirector,
 		assignmentDispatcher: assignmentDispatcher,
-		log: log.With().
-			Str("component", "public-rpc-server").
-			Logger(),
+		log: slog.With(
+			slog.String("component", "public-rpc-server"),
+		),
 	}
 
 	var err error
@@ -64,24 +63,28 @@ func newPublicRpcServer(provider container.GrpcProvider, bindAddress string, sha
 }
 
 func (s *publicRpcServer) GetShardAssignments(req *proto.ShardAssignmentsRequest, srv proto.OxiaClient_GetShardAssignmentsServer) error {
-	s.log.Debug().
-		Str("peer", common.GetPeer(srv.Context())).
-		Msg("Shard assignments requests")
+	s.log.Debug(
+		"Shard assignments requests",
+		slog.String("peer", common.GetPeer(srv.Context())),
+	)
 	err := s.assignmentDispatcher.RegisterForUpdates(req, srv)
 	if err != nil {
-		s.log.Warn().Err(err).
-			Str("peer", common.GetPeer(srv.Context())).
-			Msg("Failed to add client for shards assignments notifications")
+		s.log.Warn(
+			"Failed to add client for shards assignments notifications",
+			slog.Any("Error", err),
+			slog.String("peer", common.GetPeer(srv.Context())),
+		)
 	}
 
 	return err
 }
 
 func (s *publicRpcServer) Write(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error) {
-	s.log.Debug().
-		Str("peer", common.GetPeer(ctx)).
-		Interface("req", write).
-		Msg("Write request")
+	s.log.Debug(
+		"Write request",
+		slog.String("peer", common.GetPeer(ctx)),
+		slog.Any("req", write),
+	)
 
 	lc, err := s.getLeader(*write.ShardId)
 	if err != nil {
@@ -90,18 +93,21 @@ func (s *publicRpcServer) Write(ctx context.Context, write *proto.WriteRequest) 
 
 	wr, err := lc.Write(ctx, write)
 	if err != nil {
-		s.log.Warn().Err(err).
-			Msg("Failed to perform write operation")
+		s.log.Warn(
+			"Failed to perform write operation",
+			slog.Any("Error", err),
+		)
 	}
 
 	return wr, err
 }
 
 func (s *publicRpcServer) Read(request *proto.ReadRequest, stream proto.OxiaClient_ReadServer) error {
-	s.log.Debug().
-		Str("peer", common.GetPeer(stream.Context())).
-		Interface("req", request).
-		Msg("Read request")
+	s.log.Debug(
+		"Read request",
+		slog.String("peer", common.GetPeer(stream.Context())),
+		slog.Any("req", request),
+	)
 
 	lc, err := s.getLeader(*request.ShardId)
 	if err != nil {
@@ -144,10 +150,11 @@ func (s *publicRpcServer) Read(request *proto.ReadRequest, stream proto.OxiaClie
 }
 
 func (s *publicRpcServer) List(request *proto.ListRequest, stream proto.OxiaClient_ListServer) error {
-	s.log.Debug().
-		Str("peer", common.GetPeer(stream.Context())).
-		Interface("req", request).
-		Msg("List request")
+	s.log.Debug(
+		"List request",
+		slog.String("peer", common.GetPeer(stream.Context())),
+		slog.Any("req", request),
+	)
 
 	lc, err := s.getLeader(*request.ShardId)
 	if err != nil {
@@ -156,8 +163,10 @@ func (s *publicRpcServer) List(request *proto.ListRequest, stream proto.OxiaClie
 
 	ch, err := lc.List(stream.Context(), request)
 	if err != nil {
-		s.log.Warn().Err(err).
-			Msg("Failed to perform list operation")
+		s.log.Warn(
+			"Failed to perform list operation",
+			slog.Any("Error", err),
+		)
 	}
 
 	response := &proto.ListResponse{}
@@ -191,10 +200,11 @@ func (s *publicRpcServer) List(request *proto.ListRequest, stream proto.OxiaClie
 }
 
 func (s *publicRpcServer) GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
-	s.log.Debug().
-		Str("peer", common.GetPeer(stream.Context())).
-		Interface("req", req).
-		Msg("Get notifications")
+	s.log.Debug(
+		"Get notifications",
+		slog.String("peer", common.GetPeer(stream.Context())),
+		slog.Any("req", req),
+	)
 
 	lc, err := s.getLeader(req.ShardId)
 	if err != nil {
@@ -202,8 +212,10 @@ func (s *publicRpcServer) GetNotifications(req *proto.NotificationsRequest, stre
 	}
 
 	if err = lc.GetNotifications(req, stream); err != nil && !errors.Is(err, context.Canceled) {
-		s.log.Warn().Err(err).
-			Msg("Failed to handle notifications request")
+		s.log.Warn(
+			"Failed to handle notifications request",
+			slog.Any("Error", err),
+		)
 	}
 
 	return err
@@ -214,55 +226,64 @@ func (s *publicRpcServer) Port() int {
 }
 
 func (s *publicRpcServer) CreateSession(ctx context.Context, req *proto.CreateSessionRequest) (*proto.CreateSessionResponse, error) {
-	s.log.Debug().
-		Str("peer", common.GetPeer(ctx)).
-		Interface("req", req).
-		Msg("Create session request")
+	s.log.Debug(
+		"Create session request",
+		slog.String("peer", common.GetPeer(ctx)),
+		slog.Any("req", req),
+	)
 	lc, err := s.getLeader(req.ShardId)
 	if err != nil {
 		return nil, err
 	}
 	res, err := lc.CreateSession(req)
 	if err != nil {
-		s.log.Warn().Err(err).
-			Msg("Failed to create session")
+		s.log.Warn(
+			"Failed to create session",
+			slog.Any("Error", err),
+		)
 		return nil, err
 	}
 	return res, nil
 }
 
 func (s *publicRpcServer) KeepAlive(ctx context.Context, req *proto.SessionHeartbeat) (*proto.KeepAliveResponse, error) {
-	s.log.Debug().
-		Int64("shard", req.ShardId).
-		Int64("session", req.SessionId).
-		Str("peer", common.GetPeer(ctx)).
-		Msg("Session keep alive")
+	s.log.Debug(
+		"Session keep alive",
+		slog.Int64("shard", req.ShardId),
+		slog.Int64("session", req.SessionId),
+		slog.String("peer", common.GetPeer(ctx)),
+	)
 	lc, err := s.getLeader(req.ShardId)
 	if err != nil {
 		return nil, err
 	}
 	err = lc.KeepAlive(req.SessionId)
 	if err != nil {
-		s.log.Warn().Err(err).
-			Msg("Failed to listen to heartbeats")
+		s.log.Warn(
+			"Failed to listen to heartbeats",
+			slog.Any("Error", err),
+		)
 		return nil, err
 	}
 	return &proto.KeepAliveResponse{}, nil
 }
 
 func (s *publicRpcServer) CloseSession(ctx context.Context, req *proto.CloseSessionRequest) (*proto.CloseSessionResponse, error) {
-	s.log.Debug().
-		Str("peer", common.GetPeer(ctx)).
-		Interface("req", req).
-		Msg("Close session request")
+	s.log.Debug(
+		"Close session request",
+		slog.String("peer", common.GetPeer(ctx)),
+		slog.Any("req", req),
+	)
 	lc, err := s.getLeader(req.ShardId)
 	if err != nil {
 		return nil, err
 	}
 	res, err := lc.CloseSession(req)
 	if err != nil {
-		s.log.Warn().Err(err).
-			Msg("Failed to close session")
+		s.log.Warn(
+			"Failed to close session",
+			slog.Any("Error", err),
+		)
 		return nil, err
 	}
 	return res, nil
@@ -272,8 +293,10 @@ func (s *publicRpcServer) getLeader(shardId int64) (LeaderController, error) {
 	lc, err := s.shardsDirector.GetLeader(shardId)
 	if err != nil {
 		if status.Code(err) != common.CodeNodeIsNotLeader {
-			s.log.Warn().Err(err).
-				Msg("Failed to get the leader controller")
+			s.log.Warn(
+				"Failed to get the leader controller",
+				slog.Any("Error", err),
+			)
 		}
 		return nil, err
 	}

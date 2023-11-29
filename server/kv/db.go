@@ -18,11 +18,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
 
 	"github.com/streamnative/oxia/common"
@@ -72,11 +71,11 @@ func NewDB(namespace string, shardId int64, factory KVFactory, notificationReten
 	db := &db{
 		kv:      kv,
 		shardId: shardId,
-		log: log.Logger.With().
-			Str("component", "db").
-			Str("namespace", namespace).
-			Int64("shard", shardId).
-			Logger(),
+		log: slog.With(
+			slog.String("component", "db"),
+			slog.String("namespace", namespace),
+			slog.Int64("shard", shardId),
+		),
 
 		batchWriteLatencyHisto: metrics.NewLatencyHistogram("oxia_server_db_batch_write_latency",
 			"The time it takes to write a batch in the db", labels),
@@ -109,7 +108,7 @@ type db struct {
 	kv                   KV
 	shardId              int64
 	notificationsTracker *notificationsTracker
-	log                  zerolog.Logger
+	log                  *slog.Logger
 
 	putCounter          metrics.Counter
 	deleteCounter       metrics.Counter
@@ -380,10 +379,11 @@ func (d *db) applyPut(commitOffset int64, batch WriteBatch, notifications *notif
 			ClientIdentity:     se.ClientIdentity,
 		}
 
-		d.log.Debug().
-			Str("key", putReq.Key).
-			Interface("version", version).
-			Msg("Applied put operation")
+		d.log.Debug(
+			"Applied put operation",
+			slog.String("key", putReq.Key),
+			slog.Any("version", version),
+		)
 
 		return &proto.PutResponse{Version: version}, nil
 	}
@@ -415,9 +415,10 @@ func (d *db) applyDelete(batch WriteBatch, notifications *notifications, delReq 
 			notifications.Deleted(delReq.Key)
 		}
 
-		d.log.Debug().
-			Str("key", delReq.Key).
-			Msg("Applied delete operation")
+		d.log.Debug(
+			"Applied delete operation",
+			slog.String("key", delReq.Key),
+		)
 		return &proto.DeleteResponse{Status: proto.Status_OK}, nil
 	}
 }
@@ -450,10 +451,11 @@ func (d *db) applyDeleteRange(batch WriteBatch, notifications *notifications, de
 		return nil, errors.Wrap(err, "oxia db: failed to delete range")
 	}
 
-	d.log.Debug().
-		Str("key-start", delReq.StartInclusive).
-		Str("key-end", delReq.EndExclusive).
-		Msg("Applied delete range operation")
+	d.log.Debug(
+		"Applied delete range operation",
+		slog.String("key-start", delReq.StartInclusive),
+		slog.String("key-end", delReq.EndExclusive),
+	)
 	return &proto.DeleteRangeResponse{Status: proto.Status_OK}, nil
 }
 

@@ -17,13 +17,12 @@ package server
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"runtime/pprof"
 	"testing"
 	"time"
-
-	"github.com/rs/zerolog"
 
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/oxia"
@@ -31,7 +30,7 @@ import (
 )
 
 func BenchmarkServer(b *testing.B) {
-	common.LogLevel = zerolog.InfoLevel
+	common.LogLevel = slog.LevelInfo
 	common.ConfigureLogger()
 
 	tmp := b.TempDir()

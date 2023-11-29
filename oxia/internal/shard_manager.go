@@ -17,13 +17,12 @@ package internal
 import (
 	"context"
 	"io"
+	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -49,7 +48,7 @@ type shardManagerImpl struct {
 	shards         map[int64]Shard
 	ctx            context.Context
 	cancel         context.CancelFunc
-	logger         zerolog.Logger
+	logger         *slog.Logger
 	requestTimeout time.Duration
 }
 
@@ -62,7 +61,9 @@ func NewShardManager(shardStrategy ShardStrategy, clientPool common.ClientPool,
 		serviceAddress: serviceAddress,
 		shards:         make(map[int64]Shard),
 		requestTimeout: requestTimeout,
-		logger:         log.With().Str("component", "shardManager").Logger(),
+		logger: slog.With(
+			slog.String("component", "shardManager"),
+		),
 	}
 
 	sm.updatedWg = common.NewWaitGroup(1)
@@ -139,7 +140,10 @@ func (s *shardManagerImpl) receiveWithRecovery() {
 		func() error {
 			err := s.receive(backOff)
 			if s.isClosed() {
-				s.logger.Debug().Err(err).Msg("Closed")
+				s.logger.Debug(
+					"Closed",
+					slog.Any("Error", err),
+				)
 				return nil
 			}
 
@@ -151,14 +155,19 @@ func (s *shardManagerImpl) receiveWithRecovery() {
 		backOff,
 		func(err error, duration time.Duration) {
 			if status.Code(err) != codes.Canceled {
-				s.logger.Warn().Err(err).
-					Dur("retry-after", duration).
-					Msg("Failed receiving shard assignments, retrying later")
+				s.logger.Warn(
+					"Failed receiving shard assignments, retrying later",
+					slog.Any("Error", err),
+					slog.Duration("retry-after", duration),
+				)
 			}
 		},
 	)
 	if err != nil {
-		s.logger.Error().Err(err).Msg("Failed receiving shard assignments")
+		s.logger.Error(
+			"Failed receiving shard assignments",
+			slog.Any("Error", err),
+		)
 		s.updatedWg.Fail(err)
 	}
 }
@@ -204,7 +213,11 @@ func (s *shardManagerImpl) update(updates []Shard) {
 			//delete overlaps
 			for shardId, existing := range s.shards {
 				if overlap(update.HashRange, existing.HashRange) {
-					s.logger.Info().Msgf("Deleting shard %+v as it overlaps with %+v", existing, update)
+					s.logger.Info(
+						"Deleting shard as it overlaps",
+						slog.Any("Existing", existing),
+						slog.Any("Update", update),
+					)
 					delete(s.shards, shardId)
 				}
 			}

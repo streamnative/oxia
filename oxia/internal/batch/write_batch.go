@@ -17,10 +17,10 @@ package batch
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	"github.com/rs/zerolog/log"
 
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/batch"
@@ -122,9 +122,11 @@ func (b *writeBatch) doRequestWithRetries(request *proto.WriteRequest) (response
 		}
 		return err
 	}, backOff, func(err error, duration time.Duration) {
-		log.Logger.Debug().Err(err).
-			Dur("retry-after", duration).
-			Msg("Failed to perform request, retrying later")
+		slog.Debug(
+			"Failed to perform request, retrying later",
+			slog.Any("Error", err),
+			slog.Duration("retry-after", duration),
+		)
 	})
 
 	return response, err

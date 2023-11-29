@@ -16,8 +16,8 @@ package util
 
 import (
 	"io"
+	"log/slog"
 
-	"github.com/rs/zerolog"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -44,7 +44,7 @@ type streamReader[T any, U any] struct {
 	labels        map[string]string
 	ctx           context.Context
 	handleMessage func(*T) (*U, error)
-	log           zerolog.Logger
+	log           *slog.Logger
 }
 
 func (s *streamReader[T, U]) Run() error {
@@ -82,8 +82,10 @@ func (s *streamReader[T, U]) handleServerStream() {
 
 func (s *streamReader[T, U]) close(err error) {
 	if err != nil && err != io.EOF && status.Code(err) != codes.Canceled {
-		s.log.Warn().Err(err).
-			Msg("error while handling stream")
+		s.log.Warn(
+			"error while handling stream",
+			slog.Any("Error", err),
+		)
 	}
 
 	if s.closeCh != nil {
@@ -98,7 +100,7 @@ func ReadStream[T any](
 	handleMessage func(*T) error,
 	labels map[string]string,
 	ctx context.Context,
-	log zerolog.Logger) StreamReader {
+	log *slog.Logger) StreamReader {
 	return ProcessStream[T, any](
 		stream,
 		nil,
@@ -117,7 +119,7 @@ func ProcessStream[T any, U any](
 	handleMessage func(*T) (*U, error),
 	labels map[string]string,
 	ctx context.Context,
-	log zerolog.Logger) StreamReader {
+	log *slog.Logger) StreamReader {
 	reader := &streamReader[T, U]{
 		closeCh:       make(chan error),
 		stream:        stream,
@@ -125,7 +127,7 @@ func ProcessStream[T any, U any](
 		handleMessage: handleMessage,
 		labels:        labels,
 		ctx:           ctx,
-		log:           log,
+		log:           slog.With(),
 	}
 
 	return reader

@@ -16,12 +16,13 @@ package common
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	_ "net/http/pprof"
+	"os"
 	"runtime/pprof"
-
-	"github.com/rs/zerolog/log"
 )
 
 var (
@@ -56,20 +57,25 @@ func RunProfiling() io.Closer {
 		return s
 	}
 
-	log.Info().Str("address", s.Addr).Msg("Starting pprof server")
-	log.Info().Msgf("  use http://%s/debug/pprof to access the browser", s.Addr)
-	log.Info().Msgf("  use `go tool pprof http://%s/debug/pprof/profile` to get pprof file(cpu info)", s.Addr)
-	log.Info().Msgf("  use `go tool pprof http://%s/debug/pprof/heap` to get inuse_space file", s.Addr)
-	log.Info().Msg("")
+	slog.Info(
+		"Starting pprof server",
+		slog.String("address", s.Addr),
+	)
+	slog.Info(fmt.Sprintf("  use http://%s/debug/pprof to access the browser", s.Addr))
+	slog.Info(fmt.Sprintf("  use `go tool pprof http://%s/debug/pprof/profile` to get pprof file(cpu info)", s.Addr))
+	slog.Info(fmt.Sprintf("  use `go tool pprof http://%s/debug/pprof/heap` to get inuse_space file", s.Addr))
+	slog.Info("")
 
 	go DoWithLabels(map[string]string{
 		"oxia": "pprof",
 	}, func() {
 		if err := s.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatal().
-				Err(err).
-				Str("component", "pprof").
-				Msg("Unable to start debug profiling server")
+			slog.Error(
+				"Unable to start debug profiling server",
+				slog.Any("Error", err),
+				slog.String("component", "pprof"),
+			)
+			os.Exit(1)
 		}
 	})
 

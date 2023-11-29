@@ -18,13 +18,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/encoding/protojson"
 	pb "google.golang.org/protobuf/proto"
 
@@ -75,14 +75,19 @@ func (d *dispatcher) ReceivedMessage(msgType MsgType, m any, message pb.Message)
 	d.Lock()
 	defer d.Unlock()
 
-	log.Info().Interface("msg", m).Interface("msg-type", msgType).Msg("RECEIVED MESSAGE")
+	slog.Info(
+		"RECEIVED MESSAGE",
+		slog.Any("msg", m),
+		slog.Any("msg-type", msgType),
+	)
 
 	if msgType.isOxiaRequest() {
 		go d.grpcProvider.HandleOxiaRequest(msgType, m.(*Message[OxiaMessage]), message)
 	} else if msgType.isOxiaResponse() {
 		res := m.(*Message[OxiaMessage])
 		if ch, ok := d.requests[*res.Body.InReplyTo]; !ok {
-			log.Fatal().Msg("Invalid response id")
+			slog.Error("Invalid response id")
+			os.Exit(1)
 		} else {
 			ch <- ResponseError{msg: message}
 		}
@@ -91,8 +96,10 @@ func (d *dispatcher) ReceivedMessage(msgType MsgType, m any, message pb.Message)
 		case MsgTypeShardAssignmentsResponse:
 			r := message.(*proto.ShardAssignments)
 			d.currentLeader = r.Namespaces[common.DefaultNamespace].Assignments[0].Leader
-			log.Info().Str("leader", d.currentLeader).
-				Msg("Received notification of new leader")
+			slog.Info(
+				"Received notification of new leader",
+				slog.String("leader", d.currentLeader),
+			)
 
 		case MsgTypeAppend:
 			msg := m.(*Message[OxiaStreamMessage])
@@ -106,16 +113,18 @@ func (d *dispatcher) ReceivedMessage(msgType MsgType, m any, message pb.Message)
 	} else {
 		proxiedMsgId, inReplyTo, _ := getOrigin(msgType, m)
 
-		log.Info().
-			Int64("proxied-msg-id", proxiedMsgId).
-			Int64("in-reply-to", inReplyTo).
-			Msg("Received response for proxied message")
+		slog.Info(
+			"Received response for proxied message",
+			slog.Int64("proxied-msg-id", proxiedMsgId),
+			slog.Int64("in-reply-to", inReplyTo),
+		)
 
 		switch msgType {
 		case MsgTypeHealthCheckOk:
 			res := m.(*Message[BaseMessageBody])
 			if ch, ok := d.requests[*res.Body.InReplyTo]; !ok {
-				log.Fatal().Msg("Invalid response id")
+				slog.Error("Invalid response id")
+				os.Exit(1)
 			} else {
 				ch <- ResponseError{msg: nil, err: nil}
 			}
@@ -253,7 +262,11 @@ func sendErrorNotInitialized(msgType MsgType, m any) {
 func (d *dispatcher) proxyToLeader(msgType MsgType, m any) {
 	proxyMsgId := msgIdGenerator.Add(1)
 
-	log.Info().Int64("proxied-msg-id", proxyMsgId).Interface("msg-type", msgType).Msg("Added new proxy msg id")
+	slog.Info(
+		"Added new proxy msg id",
+		slog.Int64("proxied-msg-id", proxyMsgId),
+		slog.Any("msg-type", msgType),
+	)
 	d.proxiedRequests[proxyMsgId] = ProxiedRequest{
 		msgType: msgType,
 		msg:     m,
@@ -331,12 +344,17 @@ func (d *dispatcher) RpcRequest(ctx context.Context, dest string, msgType MsgTyp
 
 	b, err := json.Marshal(req)
 	if err != nil {
-		log.Fatal().Err(err).Msg("failed to serialize json")
+		slog.Error(
+			"failed to serialize json",
+			slog.Any("Error", err),
+		)
+		os.Exit(1)
 	}
 
-	log.Info().
-		RawJSON("msg", b).
-		Msg("Sending message")
+	slog.Info(
+		"Sending message",
+		slog.Any("msg", b),
+	)
 
 	fmt.Fprintln(os.Stdout, string(b))
 
@@ -357,7 +375,11 @@ var protoMarshal = protojson.MarshalOptions{
 func toJson(message pb.Message) []byte {
 	r, err := protoMarshal.Marshal(message)
 	if err != nil {
-		log.Fatal().Err(err).Msg("failed to serialize proto to json")
+		slog.Error(
+			"failed to serialize proto to json",
+			slog.Any("Error", err),
+		)
+		os.Exit(1)
 	}
 	return r
 }

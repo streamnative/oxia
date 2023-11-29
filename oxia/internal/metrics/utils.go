@@ -15,7 +15,9 @@
 package metrics
 
 import (
-	"github.com/rs/zerolog/log"
+	"log/slog"
+	"os"
+
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
@@ -43,8 +45,13 @@ func newCounter(meter metric.Meter, name string, unit metrics.Unit) metric.Int64
 
 func fatalOnErr(err error, name string) {
 	if err != nil {
-		logger := log.With().Str("component", "oxia-client").Logger()
-		logger.Fatal().Err(err).Msgf("Failed to create metric: %s", name)
+		slog.Error(
+			"Failed to create metric",
+			slog.Any("Error", err),
+			slog.String("component", "oxia-client"),
+			slog.String("MetricName", name),
+		)
+		os.Exit(1)
 	}
 }
 

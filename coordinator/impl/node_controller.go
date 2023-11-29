@@ -17,13 +17,12 @@ package impl
 import (
 	"context"
 	"io"
+	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/streamnative/oxia/common"
@@ -60,7 +59,7 @@ type nodeController struct {
 	shardAssignmentsProvider ShardAssignmentsProvider
 	nodeAvailabilityListener NodeAvailabilityListener
 	rpc                      RpcProvider
-	log                      zerolog.Logger
+	log                      *slog.Logger
 	ctx                      context.Context
 	cancel                   context.CancelFunc
 	initialRetryBackoff      time.Duration
@@ -92,10 +91,10 @@ func newNodeController(addr model.ServerAddress,
 		nodeAvailabilityListener: nodeAvailabilityListener,
 		rpc:                      rpc,
 		status:                   Running,
-		log: log.With().
-			Str("component", "node-controller").
-			Interface("addr", addr).
-			Logger(),
+		log: slog.With(
+			slog.String("component", "node-controller"),
+			slog.Any("addr", addr),
+		),
 		initialRetryBackoff: initialRetryBackoff,
 
 		failedHealthChecks: metrics.NewCounter("oxia_coordinator_node_health_checks_failed",
@@ -135,9 +134,12 @@ func (n *nodeController) healthCheckWithRetries() {
 	_ = backoff.RetryNotify(func() error {
 		return n.healthCheck(backOff)
 	}, backOff, func(err error, duration time.Duration) {
-		n.log.Warn().Err(err).
-			Dur("retry-after", duration).
-			Msg("Storage node health check failed")
+		n.log.Warn(
+			"Storage node health check failed",
+			slog.Any("Error", err),
+			slog.Duration("retry-after", duration),
+		)
+
 		n.Lock()
 		defer n.Unlock()
 		if n.status == Running {
@@ -175,8 +177,7 @@ func (n *nodeController) healthCheck(backoff backoff.BackOff) error {
 				res, err := health.Check(pingCtx, &grpc_health_v1.HealthCheckRequest{Service: ""})
 				pingCancel()
 				if err2 := n.processHealthCheckResponse(res, err); err2 != nil {
-					n.log.Warn().
-						Msg("Node stopped responding to ping")
+					n.log.Warn("Node stopped responding to ping")
 					cancel()
 					return
 				}
@@ -216,8 +217,7 @@ func (n *nodeController) processHealthCheckResponse(res *grpc_health_v1.HealthCh
 
 	n.Lock()
 	if n.status == NotRunning {
-		n.log.Info().
-			Msg("Storage node is back online")
+		n.log.Info("Storage node is back online")
 	}
 	n.status = Running
 	n.Unlock()
@@ -231,9 +231,11 @@ func (n *nodeController) sendAssignmentsUpdatesWithRetries() {
 	_ = backoff.RetryNotify(func() error {
 		return n.sendAssignmentsUpdates(backOff)
 	}, backOff, func(err error, duration time.Duration) {
-		n.log.Warn().Err(err).
-			Dur("retry-after", duration).
-			Msg("Failed to send assignments updates to storage node")
+		n.log.Warn(
+			"Failed to send assignments updates to storage node",
+			slog.Duration("retry-after", duration),
+			slog.Any("Error", err),
+		)
 	})
 }
 
@@ -256,32 +258,34 @@ func (n *nodeController) sendAssignmentsUpdates(backoff backoff.BackOff) error {
 			return nil
 
 		default:
-			n.log.Debug().
-				Interface("current-assignments", assignments).
-				Msg("Waiting for next assignments update")
+			n.log.Debug(
+				"Waiting for next assignments update",
+				slog.Any("current-assignments", assignments),
+			)
 			assignments, err = n.shardAssignmentsProvider.WaitForNextUpdate(stream.Context(), assignments)
 			if err != nil {
 				return err
 			}
 
 			if assignments == nil {
-				n.log.Debug().
-					Msg("Assignments are nil")
+				n.log.Debug("Assignments are nil")
 				continue
 			}
 
-			n.log.Debug().
-				Interface("assignments", assignments).
-				Msg("Sending assignments")
+			n.log.Debug(
+				"Sending assignments",
+				slog.Any("assignments", assignments),
+			)
 
 			if err := stream.Send(assignments); err != nil {
-				n.log.Debug().Err(err).
-					Msg("Failed to send assignments")
+				n.log.Debug(
+					"Failed to send assignments",
+					slog.Any("Error", err),
+				)
 				return err
 			}
 
-			n.log.Debug().
-				Msg("Send assignments completed successfully")
+			n.log.Debug("Send assignments completed successfully")
 			backoff.Reset()
 		}
 	}

@@ -18,14 +18,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/dustin/go-humanize"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -81,7 +80,7 @@ type followerCursor struct {
 	closed  atomic.Bool
 	ctx     context.Context
 	cancel  context.CancelFunc
-	log     zerolog.Logger
+	log     *slog.Logger
 
 	snapshotsTransferTime     metrics.LatencyHistogram
 	snapshotsStartedCounter   metrics.Counter
@@ -117,13 +116,13 @@ func NewFollowerCursor(
 		namespace:               namespace,
 		shardId:                 shardId,
 
-		log: log.With().
-			Str("component", "follower-cursor").
-			Str("namespace", namespace).
-			Int64("shard", shardId).
-			Int64("term", term).
-			Str("follower", follower).
-			Logger(),
+		log: slog.With(
+			slog.String("component", "follower-cursor"),
+			slog.String("namespace", namespace),
+			slog.Int64("shard", shardId),
+			slog.Int64("term", term),
+			slog.String("follower", follower),
+		),
 
 		snapshotsTransferTime: metrics.NewLatencyHistogram("oxia_server_snapshots_transfer_time",
 			"The time taken to transfer a full snapshot", labels),
@@ -167,17 +166,19 @@ func (fc *followerCursor) shouldSendSnapshot() bool {
 	walFirstOffset := fc.wal.FirstOffset()
 
 	if ackOffset == wal.InvalidOffset && fc.ackTracker.CommitOffset() >= 0 {
-		fc.log.Info().
-			Int64("follower-ack-offset", ackOffset).
-			Int64("leader-commit-offset", fc.ackTracker.CommitOffset()).
-			Msg("Sending snapshot to empty follower")
+		fc.log.Info(
+			"Sending snapshot to empty follower",
+			slog.Int64("follower-ack-offset", ackOffset),
+			slog.Int64("leader-commit-offset", fc.ackTracker.CommitOffset()),
+		)
 		return true
 	} else if walFirstOffset > 0 && ackOffset < walFirstOffset {
-		fc.log.Info().
-			Int64("follower-ack-offset", ackOffset).
-			Int64("wal-first-offset", fc.wal.FirstOffset()).
-			Int64("wal-last-offset", fc.wal.LastOffset()).
-			Msg("The follower is behind the first available entry in the leader WAL")
+		fc.log.Info(
+			"The follower is behind the first available entry in the leader WAL",
+			slog.Int64("follower-ack-offset", ackOffset),
+			slog.Int64("wal-first-offset", fc.wal.FirstOffset()),
+			slog.Int64("wal-last-offset", fc.wal.LastOffset()),
+		)
 		return true
 	}
 
@@ -214,9 +215,11 @@ func (fc *followerCursor) AckOffset() int64 {
 func (fc *followerCursor) run() {
 	_ = backoff.RetryNotify(fc.runOnce, fc.backoff,
 		func(err error, duration time.Duration) {
-			fc.log.Error().Err(err).
-				Dur("retry-after", duration).
-				Msg("Error while pushing entries to follower")
+			fc.log.Error(
+				"Error while pushing entries to follower",
+				slog.Any("Error", err),
+				slog.Duration("retry-after", duration),
+			)
 		})
 }
 
@@ -266,10 +269,11 @@ func (fc *followerCursor) sendSnapshot() error {
 		}
 		content := chunk.Content()
 
-		fc.log.Debug().
-			Str("chunk-name", chunk.Name()).
-			Int("chunk-size", len(content)).
-			Msg("Sending snapshot chunk")
+		fc.log.Debug(
+			"Sending snapshot chunk",
+			slog.String("chunk-name", chunk.Name()),
+			slog.Int("chunk-size", len(content)),
+		)
 
 		if err := stream.Send(&proto.SnapshotChunk{
 			Term:       fc.term,
@@ -287,8 +291,7 @@ func (fc *followerCursor) sendSnapshot() error {
 		fc.snapshotsBytesSent.Add(size)
 	}
 
-	fc.log.Debug().
-		Msg("Sent the complete snapshot, waiting for response")
+	fc.log.Debug("Sent the complete snapshot, waiting for response")
 
 	// Sent all the chunks. Wait for the follower ack
 	response, err := stream.CloseAndRecv()
@@ -299,13 +302,14 @@ func (fc *followerCursor) sendSnapshot() error {
 	elapsedTime := time.Since(startTime)
 	throughput := float64(totalSize) / elapsedTime.Seconds()
 
-	fc.log.Info().
-		Int64("chunks-count", chunksCount).
-		Str("total-size", humanize.IBytes(uint64(totalSize))).
-		Stringer("elapsed-time", elapsedTime).
-		Str("throughput", fmt.Sprintf("%s/s", humanize.IBytes(uint64(throughput)))).
-		Int64("follower-ack-offset", response.AckOffset).
-		Msg("Successfully sent snapshot to follower")
+	fc.log.Info(
+		"Successfully sent snapshot to follower",
+		slog.Int64("chunks-count", chunksCount),
+		slog.String("total-size", humanize.IBytes(uint64(totalSize))),
+		slog.Any("elapsed-time", elapsedTime),
+		slog.String("throughput", fmt.Sprintf("%s/s", humanize.IBytes(uint64(throughput)))),
+		slog.Int64("follower-ack-offset", response.AckOffset),
+	)
 	fc.ackOffset.Store(response.AckOffset)
 	fc.snapshotsCompletedCounter.Inc()
 	return nil
@@ -338,9 +342,10 @@ func (fc *followerCursor) streamEntries() error {
 		fc.receiveAcks(cancel, fc.stream)
 	})
 
-	fc.log.Info().
-		Int64("ack-offset", currentOffset).
-		Msg("Successfully attached cursor follower")
+	fc.log.Info(
+		"Successfully attached cursor follower",
+		slog.Int64("ack-offset", currentOffset),
+	)
 
 	for {
 		if fc.closed.Load() {
@@ -362,9 +367,10 @@ func (fc *followerCursor) streamEntries() error {
 			return err
 		}
 
-		fc.log.Debug().
-			Int64("offset", le.Offset).
-			Msg("Sending entries to follower")
+		fc.log.Debug(
+			"Sending entries to follower",
+			slog.Int64("offset", le.Offset),
+		)
 
 		if err = fc.stream.Send(&proto.Append{
 			Term:         fc.term,
@@ -386,13 +392,15 @@ func (fc *followerCursor) receiveAcks(cancel context.CancelFunc, stream proto.Ox
 	for {
 		res, err := stream.Recv()
 		if err == io.EOF {
-			fc.log.Info().Msg("Ack stream finished")
+			fc.log.Info("Ack stream finished")
 			return
 		}
 		if err != nil {
 			if status.Code(err) != codes.Canceled && status.Code(err) != codes.Unavailable {
-				fc.log.Warn().Err(err).
-					Msg("Error while receiving acks")
+				fc.log.Warn(
+					"Error while receiving acks",
+					slog.Any("Error", err),
+				)
 			}
 
 			cancel()
@@ -404,9 +412,10 @@ func (fc *followerCursor) receiveAcks(cancel context.CancelFunc, stream proto.Ox
 			return
 		}
 
-		fc.log.Debug().
-			Int64("offset", res.Offset).
-			Msg("Received ack")
+		fc.log.Debug(
+			"Received ack",
+			slog.Int64("offset", res.Offset),
+		)
 		fc.cursorAcker.Ack(res.Offset)
 
 		fc.ackOffset.Store(res.Offset)

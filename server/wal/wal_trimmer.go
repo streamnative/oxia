@@ -18,11 +18,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 
 	"github.com/streamnative/oxia/common"
 )
@@ -53,11 +52,11 @@ func newTrimmer(namespace string, shard int64, wal *wal, retention time.Duration
 		ticker:               time.NewTicker(checkInterval),
 		commitOffsetProvider: commitOffsetProvider,
 		waitClose:            make(chan any),
-		log: log.With().
-			Str("component", "wal-trimmer").
-			Str("namespace", namespace).
-			Int64("shard", shard).
-			Logger(),
+		log: slog.With(
+			slog.String("component", "wal-trimmer"),
+			slog.String("namespace", namespace),
+			slog.Int64("shard", shard),
+		),
 	}
 	t.ctx, t.cancel = context.WithCancel(context.Background())
 
@@ -77,7 +76,7 @@ type trimmer struct {
 	commitOffsetProvider CommitOffsetProvider
 	ctx                  context.Context
 	cancel               context.CancelFunc
-	log                  zerolog.Logger
+	log                  *slog.Logger
 
 	waitClose chan any
 }
@@ -95,8 +94,10 @@ func (t *trimmer) run() {
 		select {
 		case <-t.ticker.C:
 			if err := t.doTrim(); err != nil {
-				t.log.Error().Err(err).
-					Msg("Failed to trim the wal")
+				t.log.Error(
+					"Failed to trim the wal",
+					slog.Any("Error", err),
+				)
 			}
 
 		case <-t.ctx.Done():
@@ -107,10 +108,11 @@ func (t *trimmer) run() {
 }
 
 func (t *trimmer) doTrim() error {
-	t.log.Debug().
-		Int64("first-offset", t.wal.FirstOffset()).
-		Int64("last-offset", t.wal.LastOffset()).
-		Msg("Starting wal trimming")
+	t.log.Debug(
+		"Starting wal trimming",
+		slog.Int64("first-offset", t.wal.FirstOffset()),
+		slog.Int64("last-offset", t.wal.LastOffset()),
+	)
 
 	if t.wal.LastOffset() == InvalidOffset {
 		return nil
@@ -124,10 +126,11 @@ func (t *trimmer) doTrim() error {
 		return err
 	}
 
-	t.log.Debug().
-		Time("timestamp-first-entry", tsFirst).
-		Time("cutoff-time", cutoffTime).
-		Msg("Starting wal trimming")
+	t.log.Debug(
+		"Starting wal trimming",
+		slog.Time("timestamp-first-entry", tsFirst),
+		slog.Time("cutoff-time", cutoffTime),
+	)
 
 	if cutoffTime.Before(tsFirst) {
 		// First entry has not expired. We don't need to check more
@@ -150,11 +153,12 @@ func (t *trimmer) doTrim() error {
 		return errors.Wrap(err, "failed to trim wal")
 	}
 
-	t.log.Debug().
-		Int64("trimmed-offset", trimOffset).
-		Int64("first-offset", t.wal.FirstOffset()).
-		Int64("last-offset", t.wal.LastOffset()).
-		Msg("Successfully trimmed the wal")
+	t.log.Debug(
+		"Successfully trimmed the wal",
+		slog.Int64("trimmed-offset", trimOffset),
+		slog.Int64("first-offset", t.wal.FirstOffset()),
+		slog.Int64("last-offset", t.wal.LastOffset()),
+	)
 	return nil
 }
 

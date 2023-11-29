@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 	"go.uber.org/automaxprocs/maxprocs"
 
@@ -49,7 +48,7 @@ func (l LogLevelError) Error() string {
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVarP(&logLevelStr, "log-level", "l", common.DefaultLogLevel.String(), "Set logging level [disabled|trace|debug|info|warn|error|fatal|panic]")
+	rootCmd.PersistentFlags().StringVarP(&logLevelStr, "log-level", "l", common.DefaultLogLevel.String(), "Set logging level [debug|info|warn|error]")
 	rootCmd.PersistentFlags().BoolVarP(&common.LogJson, "log-json", "j", false, "Print logs in JSON format")
 	rootCmd.PersistentFlags().BoolVar(&common.PprofEnable, "profile", false, "Enable pprof profiler")
 	rootCmd.PersistentFlags().StringVar(&common.PprofBindAddress, "profile-bind-address", "127.0.0.1:6060", "Bind address for pprof")
@@ -64,7 +63,7 @@ func init() {
 }
 
 func configureLogLevel(cmd *cobra.Command, args []string) error {
-	logLevel, err := zerolog.ParseLevel(logLevelStr)
+	logLevel, err := common.ParseLogLevel(logLevelStr)
 	if err != nil {
 		return LogLevelError(logLevelStr)
 	}

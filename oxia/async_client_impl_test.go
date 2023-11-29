@@ -17,12 +17,12 @@ package oxia
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/streamnative/oxia/common"
@@ -236,7 +236,7 @@ func TestAsyncClientImpl_Sessions(t *testing.T) {
 		assert.Fail(t, "Shouldn't have timed out")
 	}
 	assert.NoError(t, client.Close())
-	log.Debug().Msg("First client closed")
+	slog.Debug("First client closed")
 
 	client, err = NewAsyncClient(serviceAddress, WithBatchLinger(0))
 	assert.NoError(t, err)
@@ -245,7 +245,10 @@ func TestAsyncClientImpl_Sessions(t *testing.T) {
 		select {
 		case res := <-getCh:
 			assert.NotNil(t, res)
-			log.Debug().Interface("res", res).Msg("Get resulted in")
+			slog.Debug(
+				"Get resulted in",
+				slog.Any("res", res),
+			)
 			return errors.Is(res.Err, ErrorKeyNotFound)
 
 		case <-time.After(1 * time.Second):

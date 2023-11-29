@@ -17,13 +17,13 @@ package oxia
 import (
 	"context"
 	"io"
+	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/dgraph-io/ristretto"
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
 
 	"github.com/streamnative/oxia/common"
@@ -153,11 +153,12 @@ func (cm *cacheManager) handleNotification(n *Notification) {
 	cm.Lock()
 	defer cm.Unlock()
 
-	log.Debug().
-		Str("key", n.Key).
-		Interface("type", n.Type).
-		Int64("version-id", n.VersionId).
-		Msg("Received notification")
+	slog.Debug(
+		"Received notification",
+		slog.String("key", n.Key),
+		slog.Any("type", n.Type),
+		slog.Int64("version-id", n.VersionId),
+	)
 
 	for _, c := range cm.caches {
 		c.handleNotification(n)

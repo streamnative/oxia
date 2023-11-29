@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -30,8 +29,6 @@ import (
 )
 
 func TestHealthCmd(t *testing.T) {
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-
 	_health := health.NewServer()
 	server, err := container.Default.StartGrpcServer("health", "localhost:0", func(registrar grpc.ServiceRegistrar) {
 		grpc_health_v1.RegisterHealthServer(registrar, _health)
