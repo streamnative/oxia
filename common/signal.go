@@ -37,7 +37,7 @@ func WaitUntilSignal(closers ...io.Closer) {
 		if err := closer.Close(); err != nil {
 			slog.Error(
 				"Failed when shutting down server",
-				slog.Any("Error", err),
+				slog.Any("error", err),
 			)
 			os.Exit(1)
 		}

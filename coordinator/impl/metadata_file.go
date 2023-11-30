@@ -90,7 +90,7 @@ func (m *metadataProviderFile) Store(cs *model.ClusterStatus, expectedVersion Ve
 		if err := m.fileLock.Unlock(); err != nil {
 			slog.Warn(
 				"Failed to release file lock on metadata",
-				slog.Any("Error", err),
+				slog.Any("error", err),
 			)
 		}
 	}()

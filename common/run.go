@@ -25,7 +25,7 @@ func RunProcess(startProcess func() (io.Closer, error)) {
 	if err != nil {
 		slog.Error(
 			"Failed to start the process",
-			slog.Any("Error", err),
+			slog.Any("error", err),
 		)
 		os.Exit(1)
 	}

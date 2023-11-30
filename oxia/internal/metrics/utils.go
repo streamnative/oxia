@@ -47,7 +47,7 @@ func fatalOnErr(err error, name string) {
 	if err != nil {
 		slog.Error(
 			"Failed to create metric",
-			slog.Any("Error", err),
+			slog.Any("error", err),
 			slog.String("component", "oxia-client"),
 			slog.String("MetricName", name),
 		)

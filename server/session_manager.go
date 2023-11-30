@@ -257,7 +257,7 @@ func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, 
 		if err != nil {
 			sm.log.Warn(
 				"error parsing session key",
-				slog.Any("Error", err),
+				slog.Any("error", err),
 				slog.String("key", key),
 			)
 			continue
@@ -268,7 +268,7 @@ func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, 
 		if err != nil {
 			sm.log.Warn(
 				"error unmarshalling session metadata",
-				slog.Any("Error", err),
+				slog.Any("error", err),
 				slog.Int64("session-id", int64(sessionId)),
 				slog.String("key", key),
 			)

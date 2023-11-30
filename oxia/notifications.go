@@ -145,7 +145,7 @@ func (snm *shardNotificationsManager) getNotificationsWithRetries() {
 			if err != context.Canceled {
 				snm.log.Error(
 					"Error while getting notifications",
-					slog.Any("Error", err),
+					slog.Any("error", err),
 					slog.Duration("retry-after", duration),
 				)
 			}

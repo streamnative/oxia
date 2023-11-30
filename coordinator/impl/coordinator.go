@@ -382,14 +382,14 @@ func (c *coordinator) waitForExternalEvents() {
 			if err := c.handleClusterConfigUpdated(); err != nil {
 				c.log.Warn(
 					"Failed to update cluster config",
-					slog.Any("Error", err),
+					slog.Any("error", err),
 				)
 			}
 
 			if err := c.rebalanceCluster(); err != nil {
 				c.log.Warn(
 					"Failed to rebalance cluster",
-					slog.Any("Error", err),
+					slog.Any("error", err),
 				)
 			}
 		}
@@ -468,7 +468,7 @@ func (c *coordinator) rebalanceCluster() error {
 		if err := sc.SwapNode(swapAction.From, swapAction.To); err != nil {
 			c.log.Warn(
 				"Failed to swap node",
-				slog.Any("Error", err),
+				slog.Any("error", err),
 				slog.Any("swap-action", swapAction),
 			)
 		}

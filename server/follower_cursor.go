@@ -217,7 +217,7 @@ func (fc *followerCursor) run() {
 		func(err error, duration time.Duration) {
 			fc.log.Error(
 				"Error while pushing entries to follower",
-				slog.Any("Error", err),
+				slog.Any("error", err),
 				slog.Duration("retry-after", duration),
 			)
 		})
@@ -399,7 +399,7 @@ func (fc *followerCursor) receiveAcks(cancel context.CancelFunc, stream proto.Ox
 			if status.Code(err) != codes.Canceled && status.Code(err) != codes.Unavailable {
 				fc.log.Warn(
 					"Error while receiving acks",
-					slog.Any("Error", err),
+					slog.Any("error", err),
 				)
 			}
 

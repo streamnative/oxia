@@ -346,7 +346,7 @@ func (d *dispatcher) RpcRequest(ctx context.Context, dest string, msgType MsgTyp
 	if err != nil {
 		slog.Error(
 			"failed to serialize json",
-			slog.Any("Error", err),
+			slog.Any("error", err),
 		)
 		os.Exit(1)
 	}
@@ -377,7 +377,7 @@ func toJson(message pb.Message) []byte {
 	if err != nil {
 		slog.Error(
 			"failed to serialize proto to json",
-			slog.Any("Error", err),
+			slog.Any("error", err),
 		)
 		os.Exit(1)
 	}

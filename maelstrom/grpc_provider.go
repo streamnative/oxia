@@ -124,7 +124,7 @@ func (m *maelstromGrpcProvider) HandleOxiaStreamRequest(msgType MsgType, msg *Me
 				if err != nil {
 					slog.Warn(
 						"failed to call replicate",
-						slog.Any("Error", err),
+						slog.Any("error", err),
 					)
 				}
 			}()

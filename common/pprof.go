@@ -72,7 +72,7 @@ func RunProfiling() io.Closer {
 		if err := s.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error(
 				"Unable to start debug profiling server",
-				slog.Any("Error", err),
+				slog.Any("error", err),
 				slog.String("component", "pprof"),
 			)
 			os.Exit(1)

@@ -82,7 +82,7 @@ func (t *notificationsTrimmer) run() {
 		select {
 		case <-ticker.C:
 			if err := t.trimNotifications(); err != nil {
-				t.log.Warn("Failed to trim notifications", slog.Any("Error", err))
+				t.log.Warn("Failed to trim notifications", slog.Any("error", err))
 			}
 
 		case <-t.ctx.Done():

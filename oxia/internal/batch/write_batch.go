@@ -124,7 +124,7 @@ func (b *writeBatch) doRequestWithRetries(request *proto.WriteRequest) (response
 	}, backOff, func(err error, duration time.Duration) {
 		slog.Debug(
 			"Failed to perform request, retrying later",
-			slog.Any("Error", err),
+			slog.Any("error", err),
 			slog.Duration("retry-after", duration),
 		)
 	})

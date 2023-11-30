@@ -169,7 +169,7 @@ func (s *shardController) verifyCurrentEnsemble() bool {
 		if err != nil {
 			s.log.Warn(
 				"Failed to verify status for shard. Start a new election",
-				slog.Any("Error", err),
+				slog.Any("error", err),
 				slog.Any("node", node),
 			)
 			return false
@@ -224,7 +224,7 @@ func (s *shardController) electLeaderWithRetries() {
 				s.leaderElectionsFailed.Inc()
 				s.log.Warn(
 					"Leader election has failed, retrying later",
-					slog.Any("Error", err),
+					slog.Any("error", err),
 					slog.Duration("retry-after", duration),
 				)
 			})
@@ -385,7 +385,7 @@ func (s *shardController) keepFencingFollower(ctx context.Context, node model.Se
 		}, backOff, func(err error, duration time.Duration) {
 			s.log.Warn(
 				"Failed to newTerm, retrying later",
-				slog.Any("Error", err),
+				slog.Any("error", err),
 				slog.Any("follower", node),
 				slog.Int64("term", s.Term()),
 				slog.Duration("retry-after", duration),
@@ -454,7 +454,7 @@ func (s *shardController) newTermQuorum() (map[model.ServerAddress]*proto.EntryI
 			if err != nil {
 				s.log.Warn(
 					"Failed to newTerm node",
-					slog.Any("Error", err),
+					slog.Any("error", err),
 					slog.String("node", serverAddress.Internal),
 				)
 			} else {
@@ -625,7 +625,7 @@ func (s *shardController) DeleteShard() {
 				s.log.Warn(
 					"Delete shard failed, retrying later",
 					slog.Duration("retry-after", duration),
-					slog.Any("Error", err),
+					slog.Any("error", err),
 				)
 			})
 
@@ -639,7 +639,7 @@ func (s *shardController) deleteShard() error {
 		if err := s.deleteShardRpc(s.ctx, sa); err != nil {
 			s.log.Warn(
 				"Failed to delete shard",
-				slog.Any("Error", err),
+				slog.Any("error", err),
 				slog.String("node", sa.Internal),
 			)
 			return err
@@ -710,7 +710,7 @@ func (s *shardController) SwapNode(from model.ServerAddress, to model.ServerAddr
 	if err := s.waitForFollowersToCatchUp(ctx, *leader, ensemble); err != nil {
 		s.log.Error(
 			"Failed to wait for followers to catch up",
-			slog.Any("Error", err),
+			slog.Any("error", err),
 		)
 		return err
 	}

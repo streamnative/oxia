@@ -119,7 +119,7 @@ func (s *shardAssignmentDispatcher) RegisterForUpdates(req *proto.ShardAssignmen
 					peer, _ := peer.FromContext(clientStream.Context())
 					s.log.Warn(
 						"Failed to send shard assignment update to client",
-						slog.Any("Error", err),
+						slog.Any("error", err),
 						slog.String("client", peer.Addr.String()),
 					)
 				}

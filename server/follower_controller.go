@@ -212,7 +212,7 @@ func (fc *followerController) closeStreamNoMutex(err error) {
 	if err != nil && err != io.EOF && err != context.Canceled && status.Code(err) != codes.Canceled {
 		fc.log.Warn(
 			"Error in handle Replicate stream",
-			slog.Any("Error", err),
+			slog.Any("error", err),
 		)
 	}
 
@@ -285,7 +285,7 @@ func (fc *followerController) NewTerm(req *proto.NewTermRequest) (*proto.NewTerm
 	if err != nil {
 		fc.log.Warn(
 			"Failed to get last",
-			slog.Any("Error", err),
+			slog.Any("error", err),
 			slog.Int64("follower-term", fc.term),
 			slog.Int64("new-term", req.Term),
 		)
@@ -489,7 +489,7 @@ func (fc *followerController) processCommittedEntries(maxInclusive int64) error 
 	if err != nil {
 		fc.log.Error(
 			"Error opening reader used for applying committed entries",
-			slog.Any("Error", err),
+			slog.Any("error", err),
 		)
 		return err
 	}
@@ -498,7 +498,7 @@ func (fc *followerController) processCommittedEntries(maxInclusive int64) error 
 		if err != nil {
 			fc.log.Error(
 				"Error closing reader used for applying committed entries",
-				slog.Any("Error", err),
+				slog.Any("error", err),
 			)
 		}
 	}()
@@ -513,7 +513,7 @@ func (fc *followerController) processCommittedEntries(maxInclusive int64) error 
 			fc.log.Info("Stopped reading committed entries")
 			return err
 		} else if err != nil {
-			fc.log.Error("Error reading committed entry", slog.Any("Error", err))
+			fc.log.Error("Error reading committed entry", slog.Any("error", err))
 			return err
 		}
 
@@ -531,7 +531,7 @@ func (fc *followerController) processCommittedEntries(maxInclusive int64) error 
 		if err := logEntryValue.UnmarshalVT(entry.Value); err != nil {
 			fc.log.Error(
 				"Error unmarshalling committed entry",
-				slog.Any("Error", err),
+				slog.Any("error", err),
 			)
 			return err
 		}
@@ -540,7 +540,7 @@ func (fc *followerController) processCommittedEntries(maxInclusive int64) error 
 			if err != nil {
 				fc.log.Error(
 					"Error applying committed entry",
-					slog.Any("Error", err),
+					slog.Any("error", err),
 				)
 				return err
 			}
