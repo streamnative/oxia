@@ -630,6 +630,11 @@ func (lc *leaderController) list(ctx context.Context, request *proto.ListRequest
 
 		defer func() {
 			_ = it.Close()
+			// NOTE:
+			// we must close the channel after iterator is closed, to avoid the
+			// iterator keep open when caller is trying to process the next step (for example db.Close)
+			// because this is execute in another goroutine.
+			close(ch)
 		}()
 
 		for ; it.Valid(); it.Next() {
@@ -638,7 +643,6 @@ func (lc *leaderController) list(ctx context.Context, request *proto.ListRequest
 				break
 			}
 		}
-		close(ch)
 	})
 }
 
