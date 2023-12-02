@@ -229,7 +229,7 @@ func (c *clientImpl) List(ctx context.Context, minKeyInclusive string, maxKeyExc
 
 			for {
 				response, err := client.Recv()
-				if err == io.EOF {
+				if errors.Is(err, io.EOF) {
 					break
 				} else if err != nil {
 					ch <- ListResult{Err: err}

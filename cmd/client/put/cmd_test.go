@@ -88,14 +88,14 @@ func Test_exec(t *testing.T) {
 			flags{
 				values: []string{"y"},
 			},
-			ErrorExpectedKeyValueInconsistent,
+			ErrExpectedKeyValueInconsistent,
 			nil},
 		{"entry-no-value",
 			"",
 			flags{
 				keys: []string{"x"},
 			},
-			ErrorExpectedKeyValueInconsistent,
+			ErrExpectedKeyValueInconsistent,
 			nil},
 		{"entry-missing-version",
 			"",
@@ -104,7 +104,7 @@ func Test_exec(t *testing.T) {
 				values:           []string{"a", "b"},
 				expectedVersions: []int64{1},
 			},
-			ErrorExpectedVersionInconsistent,
+			ErrExpectedVersionInconsistent,
 			nil},
 		{"entry-binary",
 			"",
@@ -194,7 +194,7 @@ func Test_exec(t *testing.T) {
 			flags{
 				binaryValues: true,
 			},
-			ErrorIncorrectBinaryFlagUse,
+			ErrIncorrectBinaryFlagUse,
 			nil},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -312,7 +312,7 @@ func TestConvertValue(t *testing.T) {
 			name:        "invalid-binary",
 			value:       "hello",
 			binary:      true,
-			expectedErr: ErrorBase64ValueInvalid,
+			expectedErr: ErrBase64ValueInvalid,
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

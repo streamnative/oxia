@@ -25,8 +25,8 @@ import (
 type Version string
 
 var (
-	ErrorMetadataNotInitialized = errors.New("metadata not initialized")
-	ErrorMetadataBadVersion     = errors.New("metadata bad version")
+	ErrMetadataNotInitialized = errors.New("metadata not initialized")
+	ErrMetadataBadVersion     = errors.New("metadata bad version")
 )
 
 const MetadataNotExists Version = "-1"

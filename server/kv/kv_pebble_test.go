@@ -60,7 +60,7 @@ func TestPebbbleSimple(t *testing.T) {
 	assert.NoError(t, closer.Close())
 
 	res, closer, err = kv.Get("non-existing")
-	assert.ErrorIs(t, err, ErrorKeyNotFound)
+	assert.ErrorIs(t, err, ErrKeyNotFound)
 	assert.Nil(t, res)
 	assert.Nil(t, closer)
 
@@ -84,7 +84,7 @@ func TestPebbbleSimple(t *testing.T) {
 	assert.NoError(t, closer.Close())
 
 	res, closer, err = kv.Get("c")
-	assert.ErrorIs(t, err, ErrorKeyNotFound)
+	assert.ErrorIs(t, err, ErrKeyNotFound)
 	assert.Nil(t, res)
 	assert.Nil(t, closer)
 
@@ -320,7 +320,7 @@ func TestPebbbleGetWithinBatch(t *testing.T) {
 	assert.NoError(t, closer.Close())
 
 	value, closer, err = wb.Get("non-existent")
-	assert.ErrorIs(t, err, ErrorKeyNotFound)
+	assert.ErrorIs(t, err, ErrKeyNotFound)
 	assert.Nil(t, value)
 	assert.Nil(t, closer)
 
@@ -345,7 +345,7 @@ func TestPebbbleGetWithinBatch(t *testing.T) {
 	assert.NoError(t, wb.Delete("a"))
 
 	value, closer, err = wb.Get("a")
-	assert.ErrorIs(t, err, ErrorKeyNotFound)
+	assert.ErrorIs(t, err, ErrKeyNotFound)
 	assert.Nil(t, value)
 	assert.Nil(t, closer)
 
@@ -479,7 +479,7 @@ func TestPebbbleDeleteRangeInBatch(t *testing.T) {
 	res, closer, err := kv.Get("/a/b/a/a")
 	assert.Nil(t, res)
 	assert.Nil(t, closer)
-	assert.ErrorIs(t, err, ErrorKeyNotFound)
+	assert.ErrorIs(t, err, ErrKeyNotFound)
 
 	res, closer, err = kv.Get("/a/a/a/zzzzzz")
 	assert.Equal(t, "/a/a/a/zzzzzz", string(res))
@@ -662,7 +662,7 @@ func TestPebbleSnapshot_Loader(t *testing.T) {
 	}
 
 	r, closer, err := kv2.Get("my-key")
-	assert.ErrorIs(t, err, ErrorKeyNotFound)
+	assert.ErrorIs(t, err, ErrKeyNotFound)
 	assert.Nil(t, r)
 	assert.Nil(t, closer)
 

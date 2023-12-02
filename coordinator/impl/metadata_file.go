@@ -27,7 +27,7 @@ import (
 )
 
 // MetadataProviderMemory is a provider that just keeps the cluster status in a local file,
-// using a lock mechanism to prevent missing updates
+// using a lock mechanism to prevent missing updates.
 type metadataProviderFile struct {
 	path     string
 	fileLock *fslock.Lock
@@ -101,7 +101,7 @@ func (m *metadataProviderFile) Store(cs *model.ClusterStatus, expectedVersion Ve
 	}
 
 	if expectedVersion != existingVersion {
-		return MetadataNotExists, ErrorMetadataBadVersion
+		return MetadataNotExists, ErrMetadataBadVersion
 	}
 
 	newVersion = incrVersion(existingVersion)

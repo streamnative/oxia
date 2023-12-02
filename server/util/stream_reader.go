@@ -15,6 +15,7 @@
 package util
 
 import (
+	"errors"
 	"io"
 	"log/slog"
 
@@ -81,7 +82,7 @@ func (s *streamReader[T, U]) handleServerStream() {
 }
 
 func (s *streamReader[T, U]) close(err error) {
-	if err != nil && err != io.EOF && status.Code(err) != codes.Canceled {
+	if err != nil && !errors.Is(err, io.EOF) && status.Code(err) != codes.Canceled {
 		s.log.Warn(
 			"error while handling stream",
 			slog.Any("error", err),

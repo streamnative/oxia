@@ -23,23 +23,23 @@ import (
 )
 
 const (
-	// VersionIdNotExists represent the VersionId of a non-existing record
+	// VersionIdNotExists represent the VersionId of a non-existing record.
 	VersionIdNotExists int64 = -1
 )
 
 var (
-	// ErrorKeyNotFound A record associated with the specified key was not found
-	ErrorKeyNotFound = errors.New("key not found")
+	// ErrKeyNotFound A record associated with the specified key was not found.
+	ErrKeyNotFound = errors.New("key not found")
 
-	// ErrorUnexpectedVersionId The expected version id passed as a condition does not match
-	// the current version id of the stored record
-	ErrorUnexpectedVersionId = errors.New("unexpected version id")
+	// ErrUnexpectedVersionId The expected version id passed as a condition does not match
+	// the current version id of the stored record.
+	ErrUnexpectedVersionId = errors.New("unexpected version id")
 
-	// ErrorRequestTooLarge is returned when a request is larger than the maximum batch size
-	ErrorRequestTooLarge = batch.ErrorRequestTooLarge
+	// ErrRequestTooLarge is returned when a request is larger than the maximum batch size.
+	ErrRequestTooLarge = batch.ErrRequestTooLarge
 
-	// ErrorUnknownStatus Unknown error
-	ErrorUnknownStatus = errors.New("unknown status")
+	// ErrUnknownStatus Unknown error.
+	ErrUnknownStatus = errors.New("unknown status")
 )
 
 // AsyncClient Oxia client with methods suitable for asynchronous operations.
@@ -155,7 +155,7 @@ type SyncClient interface {
 	GetNotifications() (Notifications, error)
 }
 
-// Version includes some information regarding the state of a record
+// Version includes some information regarding the state of a record.
 type Version struct {
 	// VersionId represents an identifier that can be used to refer to a particular version
 	// of a record.
@@ -186,7 +186,7 @@ type Version struct {
 }
 
 // PutResult structure is wrapping the version information for the result
-// of a `Put` operation and an eventual error in the [AsyncClient]
+// of a `Put` operation and an eventual error in the [AsyncClient].
 type PutResult struct {
 	// The Version information
 	Version Version
@@ -196,7 +196,7 @@ type PutResult struct {
 }
 
 // GetResult structure is wrapping a Value, its version information and
-// an eventual error as results for a `Get` operation in the [AsyncClient]
+// an eventual error as results for a `Get` operation in the [AsyncClient].
 type GetResult struct {
 	// Value is the value of the record
 	Value []byte
@@ -209,7 +209,7 @@ type GetResult struct {
 }
 
 // ListResult structure is wrapping a list of keys, and a potential error as
-// results for a `List` operation in the [AsyncClient]
+// results for a `List` operation in the [AsyncClient].
 type ListResult struct {
 	// The list of keys returned by [List]
 	Keys []string
@@ -218,7 +218,7 @@ type ListResult struct {
 }
 
 // Notifications allow applications to receive the feed of changes
-// that are happening in the Oxia database
+// that are happening in the Oxia database.
 type Notifications interface {
 	io.Closer
 
@@ -226,15 +226,15 @@ type Notifications interface {
 	Ch() <-chan *Notification
 }
 
-// NotificationType represents the type of the notification event
+// NotificationType represents the type of the notification event.
 type NotificationType int
 
 const (
-	// KeyCreated A record that didn't exist was created
+	// KeyCreated A record that didn't exist was created.
 	KeyCreated NotificationType = iota
-	// KeyModified An existing record was modified
+	// KeyModified An existing record was modified.
 	KeyModified
-	// KeyDeleted A record was deleted
+	// KeyDeleted A record was deleted.
 	KeyDeleted
 )
 
@@ -251,7 +251,7 @@ func (n NotificationType) String() string {
 	return "Unknown"
 }
 
-// Notification represents one change in the Oxia database
+// Notification represents one change in the Oxia database.
 type Notification struct {
 	// The type of the modification
 	Type NotificationType

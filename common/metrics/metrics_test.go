@@ -30,6 +30,9 @@ func TestPrometheusMetrics(t *testing.T) {
 	url := fmt.Sprintf("http://localhost:%d/metrics", metrics.Port())
 	response, err := http.Get(url)
 	assert.NoError(t, err)
+	if response != nil && response.Body != nil {
+		defer response.Body.Close()
+	}
 
 	assert.Equal(t, 200, response.StatusCode)
 
@@ -42,7 +45,11 @@ func TestPrometheusMetrics(t *testing.T) {
 	err = metrics.Close()
 	assert.NoError(t, err)
 
-	response, err = http.Get(url)
+	response2, err := http.Get(url)
 	assert.ErrorContains(t, err, "connection refused")
-	assert.Nil(t, response)
+	assert.Nil(t, response2)
+
+	if response2 != nil && response2.Body != nil {
+		defer response2.Body.Close()
+	}
 }

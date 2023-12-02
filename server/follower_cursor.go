@@ -16,6 +16,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -37,7 +38,7 @@ import (
 
 // ReplicateStreamProvider
 // This is a provider for the ReplicateStream Grpc handler
-// It's used to allow passing in a mocked version of the Grpc service
+// It's used to allow passing in a mocked version of the Grpc service.
 type ReplicateStreamProvider interface {
 	GetReplicateStream(ctx context.Context, follower string, namespace string, shard int64) (proto.OxiaLogReplication_ReplicateClient, error)
 	SendSnapshot(ctx context.Context, follower string, namespace string, shard int64) (proto.OxiaLogReplication_SendSnapshotClient, error)
@@ -391,7 +392,7 @@ func (fc *followerCursor) streamEntries() error {
 func (fc *followerCursor) receiveAcks(cancel context.CancelFunc, stream proto.OxiaLogReplication_ReplicateClient) {
 	for {
 		res, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			fc.log.Info("Ack stream finished")
 			return
 		}

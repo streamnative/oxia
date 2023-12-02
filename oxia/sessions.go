@@ -112,7 +112,7 @@ func (cs *clientSession) executeWithId(callback func(int64, error)) {
 			cs.Unlock()
 		}
 	case <-cs.ctx.Done():
-		if cs.ctx.Err() != nil && cs.ctx.Err() != context.Canceled {
+		if cs.ctx.Err() != nil && !errors.Is(cs.ctx.Err(), context.Canceled) {
 			callback(-1, cs.ctx.Err())
 		}
 	}
@@ -122,7 +122,7 @@ func (cs *clientSession) createSessionWithRetries() {
 	backOff := common.NewBackOff(cs.ctx)
 	err := backoff.RetryNotify(cs.createSession,
 		backOff, func(err error, duration time.Duration) {
-			if err != context.Canceled {
+			if !errors.Is(err, context.Canceled) {
 				cs.log.Error(
 					"Error while creating session",
 					slog.Any("error", err),
@@ -131,7 +131,7 @@ func (cs *clientSession) createSessionWithRetries() {
 			}
 
 		})
-	if err != nil && err != context.Canceled {
+	if err != nil && !errors.Is(err, context.Canceled) {
 		cs.Lock()
 		cs.started <- err
 		close(cs.started)

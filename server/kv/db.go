@@ -30,7 +30,7 @@ import (
 	"github.com/streamnative/oxia/server/wal"
 )
 
-var ErrorBadVersionId = errors.New("oxia: bad version id")
+var ErrBadVersionId = errors.New("oxia: bad version id")
 
 const (
 	commitOffsetKey = common.InternalKeyPrefix + "commit-offset"
@@ -319,7 +319,7 @@ func (d *db) ReadTerm() (term int64, err error) {
 
 func (d *db) applyPut(commitOffset int64, batch WriteBatch, notifications *notifications, putReq *proto.PutRequest, timestamp uint64, updateOperationCallback UpdateOperationCallback) (*proto.PutResponse, error) {
 	se, err := checkExpectedVersionId(batch, putReq.Key, putReq.ExpectedVersionId)
-	if errors.Is(err, ErrorBadVersionId) {
+	if errors.Is(err, ErrBadVersionId) {
 		return &proto.PutResponse{
 			Status: proto.Status_UNEXPECTED_VERSION_ID,
 		}, nil
@@ -395,7 +395,7 @@ func (d *db) applyDelete(batch WriteBatch, notifications *notifications, delReq 
 		defer se.ReturnToVTPool()
 	}
 
-	if errors.Is(err, ErrorBadVersionId) {
+	if errors.Is(err, ErrBadVersionId) {
 		return &proto.DeleteResponse{Status: proto.Status_UNEXPECTED_VERSION_ID}, nil
 	} else if err != nil {
 		return nil, errors.Wrap(err, "oxia db: failed to apply batch")
@@ -462,7 +462,7 @@ func (d *db) applyDeleteRange(batch WriteBatch, notifications *notifications, de
 func applyGet(kv KV, getReq *proto.GetRequest) (*proto.GetResponse, error) {
 	value, closer, err := kv.Get(getReq.Key)
 
-	if errors.Is(err, ErrorKeyNotFound) {
+	if errors.Is(err, ErrKeyNotFound) {
 		return &proto.GetResponse{Status: proto.Status_KEY_NOT_FOUND}, nil
 	} else if err != nil {
 		return nil, errors.Wrap(err, "oxia db: failed to apply batch")
@@ -523,12 +523,12 @@ func GetStorageEntry(batch WriteBatch, key string) (*proto.StorageEntry, error) 
 func checkExpectedVersionId(batch WriteBatch, key string, expectedVersionId *int64) (*proto.StorageEntry, error) {
 	se, err := GetStorageEntry(batch, key)
 	if err != nil {
-		if errors.Is(err, ErrorKeyNotFound) {
+		if errors.Is(err, ErrKeyNotFound) {
 			if expectedVersionId == nil || *expectedVersionId == -1 {
 				// OK, we were checking that the key was not there, and it's indeed not there
 				return nil, nil
 			} else {
-				return nil, ErrorBadVersionId
+				return nil, ErrBadVersionId
 			}
 		}
 		return nil, err
@@ -536,7 +536,7 @@ func checkExpectedVersionId(batch WriteBatch, key string, expectedVersionId *int
 
 	if expectedVersionId != nil && se.VersionId != *expectedVersionId {
 		se.ReturnToVTPool()
-		return nil, ErrorBadVersionId
+		return nil, ErrBadVersionId
 	}
 
 	return se, nil

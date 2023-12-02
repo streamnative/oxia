@@ -45,7 +45,7 @@ const (
 )
 
 // The NodeController takes care of checking the health-status of each node
-// and to push all the service discovery updates
+// and to push all the service discovery updates.
 type NodeController interface {
 	io.Closer
 

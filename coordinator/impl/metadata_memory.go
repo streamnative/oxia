@@ -22,7 +22,7 @@ import (
 )
 
 // MetadataProviderMemory is a provider that just keeps the cluster status in memory
-// Used for unit tests
+// Used for unit tests.
 type metadataProviderMemory struct {
 	sync.Mutex
 
@@ -52,7 +52,7 @@ func (m *metadataProviderMemory) Store(cs *model.ClusterStatus, expectedVersion 
 	defer m.Unlock()
 
 	if expectedVersion != m.version {
-		return MetadataNotExists, ErrorMetadataBadVersion
+		return MetadataNotExists, ErrMetadataBadVersion
 	}
 
 	m.cs = cs.Clone()

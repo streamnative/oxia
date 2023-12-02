@@ -16,6 +16,7 @@ package batch
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"time"
@@ -121,7 +122,7 @@ func (b *readBatch) doRequest(ctx context.Context, request *proto.ReadRequest) (
 
 	for {
 		recv, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			return response, nil
 		}
 		if err != nil {

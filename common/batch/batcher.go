@@ -21,7 +21,7 @@ import (
 	"time"
 )
 
-var ErrorShuttingDown = errors.New("shutting down")
+var ErrShuttingDown = errors.New("shutting down")
 
 type Batcher interface {
 	io.Closer
@@ -46,7 +46,7 @@ func (b *batcherImpl) Close() error {
 
 func (b *batcherImpl) Add(call any) {
 	if b.closed.Load() {
-		b.failCall(call, ErrorShuttingDown)
+		b.failCall(call, ErrShuttingDown)
 	} else {
 		b.callC <- call
 	}
@@ -103,13 +103,13 @@ func (b *batcherImpl) Run() {
 		case <-b.closeC:
 			if batch != nil {
 				timer.Stop()
-				batch.Fail(ErrorShuttingDown)
+				batch.Fail(ErrShuttingDown)
 				batch = nil
 			}
 			for {
 				select {
 				case call := <-b.callC:
-					b.failCall(call, ErrorShuttingDown)
+					b.failCall(call, ErrShuttingDown)
 				default:
 					return
 				}

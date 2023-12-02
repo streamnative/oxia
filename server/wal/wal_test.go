@@ -148,7 +148,7 @@ func TestAppend(t *testing.T) {
 		Offset: int64(88),
 		Value:  []byte("E"),
 	})
-	assert.ErrorIs(t, err, ErrorInvalidNextOffset)
+	assert.ErrorIs(t, err, ErrInvalidNextOffset)
 
 	err = w.Close()
 	assert.NoError(t, err)
@@ -466,7 +466,7 @@ func TestTrim(t *testing.T) {
 
 	// Test reading a trimmed offset
 	r, err = w.NewReader(48)
-	assert.ErrorIs(t, err, ErrorEntryNotFound)
+	assert.ErrorIs(t, err, ErrEntryNotFound)
 	assert.Nil(t, r)
 
 	assert.NoError(t, w.Close())

@@ -36,15 +36,15 @@ import (
 
 const (
 	// When fencing quorum of servers, after we reach the majority, wait a bit more
-	// to include responses from all healthy servers
+	// to include responses from all healthy servers.
 	quorumFencingGracePeriod = 100 * time.Millisecond
 
-	// Timeout when waiting for followers to catchup with leader
+	// Timeout when waiting for followers to catchup with leader.
 	catchupTimeout = 5 * time.Minute
 )
 
 // The ShardController is responsible to handle all the state transition for a given a shard
-// e.g. electing a new leader
+// e.g. electing a new leader.
 type ShardController interface {
 	io.Closer
 
@@ -423,7 +423,7 @@ func (s *shardController) newTermAndAddFollower(ctx context.Context, node model.
 }
 
 // Send NewTerm to all the ensemble members in parallel and wait for
-// a majority of them to reply successfully
+// a majority of them to reply successfully.
 func (s *shardController) newTermQuorum() (map[model.ServerAddress]*proto.EntryId, error) {
 	timer := s.newTermQuorumLatency.Timer()
 
@@ -723,7 +723,7 @@ func (s *shardController) SwapNode(from model.ServerAddress, to model.ServerAddr
 	return nil
 }
 
-// Check that all the followers in the ensemble are catching up with the leader
+// Check that all the followers in the ensemble are catching up with the leader.
 func (s *shardController) waitForFollowersToCatchUp(ctx context.Context, leader model.ServerAddress, ensemble []model.ServerAddress) error {
 	ctx, cancel := context.WithTimeout(ctx, catchupTimeout)
 	defer cancel()

@@ -16,6 +16,7 @@ package oxia
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -107,7 +108,7 @@ func (nm *notifications) Close() error {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// Manages the notifications for a specific shard
+// Manages the notifications for a specific shard.
 type shardNotificationsManager struct {
 	shard              int64
 	ctx                context.Context
@@ -142,7 +143,7 @@ func newShardNotificationsManager(shard int64, nm *notifications) *shardNotifica
 func (snm *shardNotificationsManager) getNotificationsWithRetries() {
 	_ = backoff.RetryNotify(snm.getNotifications,
 		snm.backoff, func(err error, duration time.Duration) {
-			if err != context.Canceled {
+			if !errors.Is(err, context.Canceled) {
 				snm.log.Error(
 					"Error while getting notifications",
 					slog.Any("error", err),

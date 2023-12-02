@@ -19,10 +19,51 @@ run:
 linters:
   enable:
     - goimports
+    - goconst
+    - misspell
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    # - revive
+    - asasalint
+    - asciicheck
+    - bodyclose
+    # - contextcheck
+    - errname
+    - errorlint
+    - exportloopref
+    # - gocritic
+    # - godot
+    # - gomoddirectives
+    # - gosec
+    - nakedret
+    # - nilerr
+    # - nilnil
+    # - noctx
+    - nolintlint
+    # - prealloc
+    # - predeclared
+    - promlinter
+    # - reassign
+    - rowserrcheck
+    - sqlclosecheck
+    - tenv
+    # - testableexamples
+    # - thelper
+    - tparallel
+    - unconvert
+    # - unparam
+    - usestdlibvars
+    - wastedassign
 
 linters-settings:
   goimports:
     local-prefixes: github.com/streamnative/oxia
+  goconst:
+    ignore-tests: true
 
 issues:
   fix: true

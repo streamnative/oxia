@@ -29,7 +29,7 @@ type memoize[T any] struct {
 }
 
 // Memoize is used to cache the result of the invocation of a function
-// for a certain amount of time
+// for a certain amount of time.
 func Memoize[T any](provider func() T, cacheTime time.Duration) func() T {
 	m := memoize[T]{
 		provider:  provider,

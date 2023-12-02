@@ -72,7 +72,7 @@ func TestAsyncClientImpl(t *testing.T) {
 
 	getResult = <-client.Get("/a")
 	assert.Equal(t, GetResult{
-		Err: ErrorKeyNotFound,
+		Err: ErrKeyNotFound,
 	}, getResult)
 
 	deleteRangeResult := <-client.DeleteRange("/c", "/d")
@@ -80,7 +80,7 @@ func TestAsyncClientImpl(t *testing.T) {
 
 	getResult = <-client.Get("/d")
 	assert.Equal(t, GetResult{
-		Err: ErrorKeyNotFound,
+		Err: ErrKeyNotFound,
 	}, getResult)
 
 	err = client.Close()
@@ -249,7 +249,7 @@ func TestAsyncClientImpl_Sessions(t *testing.T) {
 				"Get resulted in",
 				slog.Any("res", res),
 			)
-			return errors.Is(res.Err, ErrorKeyNotFound)
+			return errors.Is(res.Err, ErrKeyNotFound)
 
 		case <-time.After(1 * time.Second):
 			assert.Fail(t, "Shouldn't have timed out")

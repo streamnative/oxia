@@ -52,7 +52,7 @@ func (b *testBatch) Complete() {
 
 func (b *testBatch) Fail(err error) {
 	b.result <- err
-	//closeC(b.result)
+	// closeC(b.result)
 }
 
 func TestBatcher(t *testing.T) {
@@ -65,7 +65,7 @@ func TestBatcher(t *testing.T) {
 	}{
 		{"complete on maxRequestsPerBatch", 1 * time.Second, 1, false, nil},
 		{"complete on linger", 1 * time.Millisecond, 2, false, nil},
-		{"fail on close", 1 * time.Second, 2, true, ErrorShuttingDown},
+		{"fail on close", 1 * time.Second, 2, true, ErrShuttingDown},
 	} {
 		t.Run(item.name, func(t *testing.T) {
 			testBatch := newTestBatch()

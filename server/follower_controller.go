@@ -34,7 +34,7 @@ import (
 	"github.com/streamnative/oxia/server/wal"
 )
 
-// FollowerController handles all the operations of a given shard's follower
+// FollowerController handles all the operations of a given shard's follower.
 type FollowerController interface {
 	io.Closer
 
@@ -51,7 +51,7 @@ type FollowerController interface {
 	// - send any entries to followers if it was a leader.
 	//
 	// Any existing follow cursors are destroyed as is any state
-	//regarding reconfigurations.
+	// regarding reconfigurations.
 	NewTerm(req *proto.NewTermRequest) (*proto.NewTermResponse, error)
 
 	// Truncate
@@ -209,7 +209,7 @@ func (fc *followerController) closeStream(err error) {
 }
 
 func (fc *followerController) closeStreamNoMutex(err error) {
-	if err != nil && err != io.EOF && err != context.Canceled && status.Code(err) != codes.Canceled {
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, context.Canceled) && status.Code(err) != codes.Canceled {
 		fc.log.Warn(
 			"Error in handle Replicate stream",
 			slog.Any("error", err),
@@ -509,7 +509,7 @@ func (fc *followerController) processCommittedEntries(maxInclusive int64) error 
 	for reader.HasNext() {
 		entry, err := reader.ReadNext()
 
-		if err == wal.ErrorReaderClosed {
+		if errors.Is(err, wal.ErrReaderClosed) {
 			fc.log.Info("Stopped reading committed entries")
 			return err
 		} else if err != nil {

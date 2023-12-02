@@ -121,7 +121,7 @@ func TestDBSimple(t *testing.T) {
 
 	// TODO: Add the request call and the verification
 	/// Second batch
-	//req = &proto.WriteRequest{
+	// req = &proto.WriteRequest{
 	//	Puts: []*proto.PutRequest{
 	//		{ // Should succeed: no version check
 	//			Key:             "a",

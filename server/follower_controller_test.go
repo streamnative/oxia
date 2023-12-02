@@ -158,7 +158,7 @@ func TestReadingUpToCommitOffset(t *testing.T) {
 
 	stream := newMockServerReplicateStream()
 	go func() {
-		//cancelled due to fc.Close() below
+		// cancelled due to fc.Close() below
 		assert.ErrorIs(t, fc.Replicate(stream), context.Canceled)
 	}()
 
@@ -247,7 +247,7 @@ func TestFollower_AdvanceCommitOffsetToHead(t *testing.T) {
 
 	stream := newMockServerReplicateStream()
 	go func() {
-		//cancelled due to fc.Close() below
+		// cancelled due to fc.Close() below
 		assert.ErrorIs(t, fc.Replicate(stream), context.Canceled)
 	}()
 
@@ -309,7 +309,7 @@ func TestFollower_NewTerm(t *testing.T) {
 // If a node is restarted, it might get the truncate request
 // when it's in the `NotMember` state. That is ok, provided
 // the request comes in the same term that the follower
-// currently has
+// currently has.
 func TestFollower_TruncateAfterRestart(t *testing.T) {
 	var shardId int64
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{DataDir: t.TempDir()})
@@ -415,7 +415,7 @@ func TestFollower_CommitOffsetLastEntry(t *testing.T) {
 
 	stream := newMockServerReplicateStream()
 	go func() {
-		//cancelled due to fc.Close() below
+		// cancelled due to fc.Close() below
 		assert.ErrorIs(t, fc.Replicate(stream), context.Canceled)
 	}()
 
@@ -489,7 +489,7 @@ func TestFollowerController_RejectEntriesWithDifferentTerm(t *testing.T) {
 	stream.AddRequest(createAddRequest(t, 5, 0, map[string]string{"a": "2", "b": "2"}, wal.InvalidOffset))
 
 	go func() {
-		//cancelled due to fc.Close() below
+		// cancelled due to fc.Close() below
 		assert.ErrorIs(t, fc.Replicate(stream), context.Canceled)
 	}()
 
@@ -707,7 +707,7 @@ func TestFollower_DisconnectLeader(t *testing.T) {
 	assert.Nil(t, fc.(*followerController).closeStreamWg)
 
 	go func() {
-		//cancelled due to fc.Close() below
+		// cancelled due to fc.Close() below
 		assert.ErrorIs(t, fc.Replicate(stream), context.Canceled)
 	}()
 
@@ -728,7 +728,7 @@ func TestFollower_DupEntries(t *testing.T) {
 
 	stream := newMockServerReplicateStream()
 	go func() {
-		//cancelled due to fc.Close() below
+		// cancelled due to fc.Close() below
 		assert.ErrorIs(t, fc.Replicate(stream), context.Canceled)
 	}()
 
@@ -767,7 +767,7 @@ func TestFollowerController_DeleteShard(t *testing.T) {
 
 	stream := newMockServerReplicateStream()
 	go func() {
-		//cancelled due to fc.Close() below
+		// cancelled due to fc.Close() below
 		assert.ErrorIs(t, fc.Replicate(stream), context.Canceled)
 	}()
 
@@ -860,7 +860,7 @@ func TestFollower_GetStatus(t *testing.T) {
 
 	stream := newMockServerReplicateStream()
 	go func() {
-		//cancelled due to fc.Close() below
+		// cancelled due to fc.Close() below
 		assert.ErrorIs(t, fc.Replicate(stream), context.Canceled)
 	}()
 

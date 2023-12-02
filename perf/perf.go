@@ -194,7 +194,7 @@ func (p *perf) generateReadTraffic(ctx context.Context, client oxia.AsyncClient,
 		ch := client.Get(key)
 		go func() {
 			r := <-ch
-			if r.Err != nil && !errors.Is(r.Err, oxia.ErrorKeyNotFound) {
+			if r.Err != nil && !errors.Is(r.Err, oxia.ErrKeyNotFound) {
 				slog.Warn(
 					"Operation has failed",
 					slog.Any("error", r.Err),

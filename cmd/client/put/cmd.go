@@ -29,10 +29,10 @@ import (
 var (
 	Config = flags{}
 
-	ErrorExpectedKeyValueInconsistent = errors.New("inconsistent flags; key and value flags must be in pairs")
-	ErrorExpectedVersionInconsistent  = errors.New("inconsistent flags; zero or all keys must have an expected version")
-	ErrorBase64ValueInvalid           = errors.New("binary flag was set but value is not valid base64")
-	ErrorIncorrectBinaryFlagUse       = errors.New("binary flag was set when config is being sourced from stdin")
+	ErrExpectedKeyValueInconsistent = errors.New("inconsistent flags; key and value flags must be in pairs")
+	ErrExpectedVersionInconsistent  = errors.New("inconsistent flags; zero or all keys must have an expected version")
+	ErrBase64ValueInvalid           = errors.New("binary flag was set but value is not valid base64")
+	ErrIncorrectBinaryFlagUse       = errors.New("binary flag was set when config is being sourced from stdin")
 )
 
 type flags struct {
@@ -78,10 +78,10 @@ func exec(cmd *cobra.Command, args []string) error {
 
 func _exec(flags flags, in io.Reader, queue common.QueryQueue) error {
 	if len(flags.keys) != len(flags.values) && (len(flags.values) > 0 || len(flags.keys) > 0) {
-		return ErrorExpectedKeyValueInconsistent
+		return ErrExpectedKeyValueInconsistent
 	}
 	if (len(flags.expectedVersions) > 0) && len(flags.keys) != len(flags.expectedVersions) {
-		return ErrorExpectedVersionInconsistent
+		return ErrExpectedVersionInconsistent
 	}
 	if len(flags.keys) > 0 {
 		for i, k := range flags.keys {
@@ -97,7 +97,7 @@ func _exec(flags flags, in io.Reader, queue common.QueryQueue) error {
 		}
 	} else {
 		if flags.binaryValues {
-			return ErrorIncorrectBinaryFlagUse
+			return ErrIncorrectBinaryFlagUse
 		}
 		common.ReadStdin(in, Query{}, queue)
 	}
@@ -143,7 +143,7 @@ func convertValue(binary bool, value string) ([]byte, error) {
 		decoded := make([]byte, int64(float64(len(value))*0.8))
 		_, err := base64.StdEncoding.Decode(decoded, []byte(value))
 		if err != nil {
-			return nil, ErrorBase64ValueInvalid
+			return nil, ErrBase64ValueInvalid
 		}
 		return decoded, nil
 	} else {

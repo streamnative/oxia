@@ -383,7 +383,7 @@ func (t *wal) checkNextOffset(nextOffset int64) error {
 	expectedOffset := lastAppendedOffset + 1
 
 	if lastAppendedOffset != InvalidOffset && nextOffset != expectedOffset {
-		return errors.Wrapf(ErrorInvalidNextOffset,
+		return errors.Wrapf(ErrInvalidNextOffset,
 			"%d can not immediately follow %d", nextOffset, lastAppendedOffset)
 	}
 	return nil

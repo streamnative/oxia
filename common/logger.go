@@ -33,13 +33,13 @@ import (
 const DefaultLogLevel = slog.LevelInfo
 
 var (
-	// LogLevel Used for flags
+	// LogLevel Used for flags.
 	LogLevel slog.Level
-	// LogJson Used for flags
+	// LogJson Used for flags.
 	LogJson bool
 )
 
-// ParseLogLevel will convert the slog level configuration to slog.Level values
+// ParseLogLevel will convert the slog level configuration to slog.Level values.
 func ParseLogLevel(levelStr string) (slog.Level, error) {
 	switch {
 	case strings.EqualFold(levelStr, slog.LevelDebug.String()):

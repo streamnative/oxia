@@ -67,10 +67,10 @@ func toError(status proto.Status) error {
 	case proto.Status_OK:
 		return nil
 	case proto.Status_UNEXPECTED_VERSION_ID:
-		return ErrorUnexpectedVersionId
+		return ErrUnexpectedVersionId
 	case proto.Status_KEY_NOT_FOUND:
-		return ErrorKeyNotFound
+		return ErrKeyNotFound
 	default:
-		return ErrorUnknownStatus
+		return ErrUnknownStatus
 	}
 }

@@ -316,7 +316,7 @@ func (_ *updateCallback) OnPut(batch kv.WriteBatch, request *proto.PutRequest, e
 		// We are adding an ephemeral value, let's check if the session exists
 		var _, closer, err = batch.Get(SessionKey(SessionId(*sessionId)))
 		if err != nil {
-			if errors.Is(err, kv.ErrorKeyNotFound) {
+			if errors.Is(err, kv.ErrKeyNotFound) {
 				return proto.Status_SESSION_DOES_NOT_EXIST, nil
 			}
 			return proto.Status_SESSION_DOES_NOT_EXIST, err
@@ -336,7 +336,7 @@ func (_ *updateCallback) OnPut(batch kv.WriteBatch, request *proto.PutRequest, e
 func deleteShadow(batch kv.WriteBatch, key string, existingEntry *proto.StorageEntry) (proto.Status, error) {
 	existingSessionId := SessionId(*existingEntry.SessionId)
 	err := batch.Delete(SessionKey(existingSessionId) + url.PathEscape(key))
-	if err != nil && !errors.Is(err, kv.ErrorKeyNotFound) {
+	if err != nil && !errors.Is(err, kv.ErrKeyNotFound) {
 		return proto.Status_SESSION_DOES_NOT_EXIST, err
 	}
 	return proto.Status_OK, nil
@@ -346,7 +346,7 @@ func (_ *updateCallback) OnDelete(batch kv.WriteBatch, key string) error {
 	se, err := kv.GetStorageEntry(batch, key)
 	defer se.ReturnToVTPool()
 
-	if errors.Is(err, kv.ErrorKeyNotFound) {
+	if errors.Is(err, kv.ErrKeyNotFound) {
 		return nil
 	}
 	if err == nil && se.SessionId != nil {

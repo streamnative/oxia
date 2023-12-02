@@ -41,7 +41,7 @@ func NewK8SClientConfig() *rest.Config {
 }
 
 //
-//func NewOxiaClientset(config *rest.Config) oxia.Interface {
+// func NewOxiaClientset(config *rest.Config) oxia.Interface {
 //	clientset, err := oxia.NewForConfig(config)
 //	if err != nil {
 //		log.Fatal().Err(err).Msg("failed to create client")

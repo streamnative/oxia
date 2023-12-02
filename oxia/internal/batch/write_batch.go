@@ -29,7 +29,7 @@ import (
 	"github.com/streamnative/oxia/proto"
 )
 
-var ErrorRequestTooLarge = errors.New("put request is too large")
+var ErrRequestTooLarge = errors.New("put request is too large")
 
 type writeBatchFactory struct {
 	execute        func(context.Context, *proto.WriteRequest) (*proto.WriteResponse, error)

@@ -162,7 +162,7 @@ func (t *trimmer) doTrim() error {
 	return nil
 }
 
-// Perform binary search to find the highest entry that falls within the cutoff time
+// Perform binary search to find the highest entry that falls within the cutoff time.
 func (t *trimmer) binarySearch(firstOffset, lastOffset int64, cutoffTime time.Time) (int64, error) {
 	for firstOffset < lastOffset {
 		med := (firstOffset + lastOffset) / 2

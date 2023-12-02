@@ -29,7 +29,7 @@ import (
 var (
 	Config = flags{}
 
-	ErrorIncorrectBinaryFlagUse = errors.New("binary flag was set when config is being sourced from stdin")
+	ErrIncorrectBinaryFlagUse = errors.New("binary flag was set when config is being sourced from stdin")
 )
 
 type flags struct {
@@ -82,7 +82,7 @@ func _exec(flags flags, in io.Reader, queue common.QueryQueue) error {
 		}
 	} else {
 		if flags.binaryValues {
-			return ErrorIncorrectBinaryFlagUse
+			return ErrIncorrectBinaryFlagUse
 		}
 		common.ReadStdin(in, Query{}, queue)
 	}

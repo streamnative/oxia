@@ -32,7 +32,7 @@ import (
 )
 
 var (
-	ErrorNamespaceNotFound = errors.New("namespace not found")
+	ErrNamespaceNotFound = errors.New("namespace not found")
 )
 
 type ShardAssignmentsProvider interface {
@@ -110,7 +110,7 @@ func NewCoordinator(metadataProvider MetadataProvider,
 	c.assignmentsChanged = common.NewConditionContext(c)
 
 	c.clusterStatus, c.metadataVersion, err = metadataProvider.Get()
-	if err != nil && !errors.Is(err, ErrorMetadataNotInitialized) {
+	if err != nil && !errors.Is(err, ErrMetadataNotInitialized) {
 		return nil, err
 	}
 
@@ -172,7 +172,7 @@ func (c *coordinator) waitForAllNodesToBeAvailable() {
 	}
 }
 
-// Assign the shards to the available servers
+// Assign the shards to the available servers.
 func (c *coordinator) initialAssignment() error {
 	c.log.Info(
 		"Performing initial assignment",
@@ -258,7 +258,7 @@ func (c *coordinator) InitiateLeaderElection(namespace string, shard int64, meta
 	cs := c.clusterStatus.Clone()
 	ns, ok := cs.Namespaces[namespace]
 	if !ok {
-		return ErrorNamespaceNotFound
+		return ErrNamespaceNotFound
 	}
 
 	ns.Shards[shard] = metadata
@@ -279,7 +279,7 @@ func (c *coordinator) ElectedLeader(namespace string, shard int64, metadata mode
 	cs := c.clusterStatus.Clone()
 	ns, ok := cs.Namespaces[namespace]
 	if !ok {
-		return ErrorNamespaceNotFound
+		return ErrNamespaceNotFound
 	}
 
 	ns.Shards[shard] = metadata
@@ -303,7 +303,7 @@ func (c *coordinator) ShardDeleted(namespace string, shard int64) error {
 	cs := c.clusterStatus.Clone()
 	ns, ok := cs.Namespaces[namespace]
 	if !ok {
-		return ErrorNamespaceNotFound
+		return ErrNamespaceNotFound
 	}
 
 	delete(ns.Shards, shard)
@@ -323,7 +323,7 @@ func (c *coordinator) ShardDeleted(namespace string, shard int64) error {
 	return nil
 }
 
-// This is called while already holding the lock on the coordinator
+// This is called while already holding the lock on the coordinator.
 func (c *coordinator) computeNewAssignments() {
 	c.assignments = &proto.ShardAssignments{
 		Namespaces: map[string]*proto.NamespaceShardsAssignment{},
