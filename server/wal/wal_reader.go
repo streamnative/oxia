@@ -24,7 +24,7 @@ func (t *wal) NewReader(after int64) (WalReader, error) {
 	firstOffset := after + 1
 
 	if firstOffset < t.FirstOffset() {
-		return nil, ErrorEntryNotFound
+		return nil, ErrEntryNotFound
 	}
 
 	r := &forwardReader{
@@ -87,7 +87,7 @@ func (r *forwardReader) ReadNext() (*proto.LogEntry, error) {
 	defer r.Unlock()
 
 	if r.closed {
-		return nil, ErrorReaderClosed
+		return nil, ErrReaderClosed
 	}
 
 	index := r.nextOffset
@@ -113,7 +113,7 @@ func (r *forwardReader) HasNext() bool {
 
 func (r *reverseReader) ReadNext() (*proto.LogEntry, error) {
 	if r.closed {
-		return nil, ErrorReaderClosed
+		return nil, ErrReaderClosed
 	}
 
 	entry, err := r.wal.readAtIndex(r.nextOffset)

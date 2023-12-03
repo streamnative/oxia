@@ -46,7 +46,7 @@ var toShardStatus = map[string]ShardStatus{
 	"Deleting":    ShardStatusDeleting,
 }
 
-// MarshalJSON marshals the enum as a quoted json string
+// MarshalJSON marshals the enum as a quoted json string.
 func (s ShardStatus) MarshalJSON() ([]byte, error) {
 	buffer := bytes.NewBufferString(`"`)
 	buffer.WriteString(toString[s])
@@ -54,7 +54,7 @@ func (s ShardStatus) MarshalJSON() ([]byte, error) {
 	return buffer.Bytes(), nil
 }
 
-// UnmarshalJSON unmarshals a quoted json string to the enum value
+// UnmarshalJSON unmarshals a quoted json string to the enum value.
 func (s *ShardStatus) UnmarshalJSON(b []byte) error {
 	var j string
 	if err := json.Unmarshal(b, &j); err != nil {

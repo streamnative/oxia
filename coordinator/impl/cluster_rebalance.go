@@ -29,7 +29,7 @@ type SwapNodeAction struct {
 }
 
 // Make sure every server is assigned a similar number of shards
-// Output a list of actions to be taken to rebalance the cluster
+// Output a list of actions to be taken to rebalance the cluster.
 func rebalanceCluster(servers []model.ServerAddress, currentStatus *model.ClusterStatus) []SwapNodeAction {
 	res := make([]SwapNodeAction, 0)
 

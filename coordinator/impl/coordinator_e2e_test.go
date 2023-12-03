@@ -312,7 +312,7 @@ func TestCoordinator_MultipleNamespaces(t *testing.T) {
 
 	// Key will not be visible in other namespace
 	res, _, err := clientNs1.Get(ctx, "my-key")
-	assert.ErrorIs(t, err, oxia.ErrorKeyNotFound)
+	assert.ErrorIs(t, err, oxia.ErrKeyNotFound)
 	assert.Nil(t, res)
 
 	version2, err := clientNs1.Put(ctx, "my-key", []byte("my-value-2"))

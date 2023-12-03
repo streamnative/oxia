@@ -33,7 +33,7 @@ import (
 //
 // The cached values are automatically updated when there are updates or
 // deletions.
-// The cache is storing de-serialized object
+// The cache is storing de-serialized object.
 type Cache[Value any] interface {
 	io.Closer
 
@@ -70,19 +70,19 @@ type Cache[Value any] interface {
 	Get(ctx context.Context, key string) (Value, Version, error)
 }
 
-// ModifyFunc is the transformation function to apply on ReadModifyUpdate
+// ModifyFunc is the transformation function to apply on ReadModifyUpdate.
 type ModifyFunc[Value any] func(v Optional[Value]) (Value, error)
 
-// SerializeFunc is the serialization function. eg: [json.Marshall]
+// SerializeFunc is the serialization function. eg: [json.Marshall].
 type SerializeFunc func(value any) ([]byte, error)
 
-// DeserializeFunc is the deserialization function. eg: [json.Unmarshall]
+// DeserializeFunc is the deserialization function. eg: [json.Unmarshall].
 type DeserializeFunc func(data []byte, value any) error
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // NewCache creates a new cache object for a specific type
-// Uses the `serializeFunc` and `deserializeFunc` for SerDe
+// Uses the `serializeFunc` and `deserializeFunc` for SerDe.
 func NewCache[T any](client SyncClient, serializeFunc SerializeFunc, deserializeFunc DeserializeFunc) (Cache[T], error) {
 	c, ok := client.(*syncClientImpl)
 	if !ok {
@@ -241,7 +241,7 @@ func (c *cacheImpl[Value]) Put(ctx context.Context, key string, value Value, opt
 	}
 
 	version, err := c.client.Put(ctx, key, data, options...)
-	if !errors.Is(err, ErrorUnexpectedVersionId) {
+	if !errors.Is(err, ErrUnexpectedVersionId) {
 		c.valueCache.Del(key)
 	}
 
@@ -259,7 +259,7 @@ func (c *cacheImpl[Value]) Get(ctx context.Context, key string) (value Value, ve
 		if cv, present := cachedValue.(cachedResult[Value]).Get(); present {
 			return cv.value, cv.version, nil
 		} else {
-			return value, version, ErrorKeyNotFound
+			return value, version, ErrKeyNotFound
 		}
 	}
 
@@ -268,7 +268,7 @@ func (c *cacheImpl[Value]) Get(ctx context.Context, key string) (value Value, ve
 
 func (c *cacheImpl[Value]) load(ctx context.Context, key string) (value Value, version Version, err error) {
 	data, existingVersion, err := c.client.Get(ctx, key)
-	if err == ErrorKeyNotFound {
+	if errors.Is(err, ErrKeyNotFound) {
 		cr := empty[cachedResult[Value]]()
 		c.valueCache.Set(key, cr, 0)
 		return value, version, err
@@ -297,7 +297,7 @@ func (c *cacheImpl[Value]) ReadModifyUpdate(ctx context.Context, key string, mod
 		var versionId int64
 		existingValue, version, err := c.Get(ctx, key)
 
-		if err == ErrorKeyNotFound {
+		if errors.Is(err, ErrKeyNotFound) {
 			optValue = empty[Value]()
 			versionId = VersionIdNotExists
 		} else if err != nil {
@@ -314,7 +314,7 @@ func (c *cacheImpl[Value]) ReadModifyUpdate(ctx context.Context, key string, mod
 
 		_, err = c.Put(ctx, key, newValue, ExpectedVersionId(versionId))
 		if err != nil {
-			if err == ErrorUnexpectedVersionId {
+			if errors.Is(err, ErrUnexpectedVersionId) {
 				// Retry on conflict
 				return err
 			} else {

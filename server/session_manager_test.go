@@ -87,7 +87,7 @@ func (m mockWriteBatch) Delete(key string) error {
 func (m mockWriteBatch) Get(key string) ([]byte, io.Closer, error) {
 	val, found := m[key]
 	if !found {
-		return nil, nil, kv.ErrorKeyNotFound
+		return nil, nil, kv.ErrKeyNotFound
 	}
 	err, wasError := val.(error)
 	if wasError {

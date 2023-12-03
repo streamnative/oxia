@@ -106,14 +106,14 @@ func Test_exec(t *testing.T) {
 			flags{
 				keyMaximums: []string{"b"},
 			},
-			ErrorExpectedRangeInconsistent,
+			ErrExpectedRangeInconsistent,
 			nil},
 		{"range-no-max",
 			"",
 			flags{
 				keyMaximums: []string{"b"},
 			},
-			ErrorExpectedRangeInconsistent,
+			ErrExpectedRangeInconsistent,
 			nil},
 	} {
 		t.Run(test.name, func(t *testing.T) {

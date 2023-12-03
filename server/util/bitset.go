@@ -22,7 +22,7 @@ import (
 const MaxBitSetSize = 16
 
 // BitSet
-// Simplified and compact bitset
+// Simplified and compact bitset.
 type BitSet struct {
 	bits uint16
 }

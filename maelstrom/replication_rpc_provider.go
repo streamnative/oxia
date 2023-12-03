@@ -87,7 +87,7 @@ func (r *maelstromReplicationRpcProvider) SendSnapshot(ctx context.Context, foll
 	panic("not implemented")
 }
 
-// //////// ReplicateClient
+// //////// ReplicateClient.
 type maelstromReplicateClient struct {
 	BaseStream
 

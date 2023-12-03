@@ -32,7 +32,7 @@ const (
 	MsgTypeInit  MsgType = "init"
 	MsgTypeError MsgType = "error"
 
-	// Maelstrom "lin-kv" workload messages
+	// Maelstrom "lin-kv" workload messages.
 
 	MsgTypeWrite   MsgType = "write"
 	MsgTypeWriteOk MsgType = "write_ok"
@@ -41,7 +41,7 @@ const (
 	MsgTypeCas     MsgType = "cas"
 	MsgTypeCasOk   MsgType = "cas_ok"
 
-	/* Oxia specific messages */
+	/* Oxia specific messages. */
 
 	MsgTypeNewTermRequest       MsgType = "term-req"
 	MsgTypeNewTermResponse      MsgType = "term-resp"

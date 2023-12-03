@@ -23,7 +23,7 @@ import (
 	"github.com/streamnative/oxia/common/batch"
 )
 
-var closeErr = errors.New("closed")
+var errClose = errors.New("closed")
 
 type testBatcher struct {
 	closed bool
@@ -31,7 +31,7 @@ type testBatcher struct {
 
 func (b *testBatcher) Close() error {
 	b.closed = true
-	return closeErr
+	return errClose
 }
 
 func (b *testBatcher) Add(any) {}
@@ -58,12 +58,12 @@ func TestManager(t *testing.T) {
 	assert.Equal(t, 1, newBatcherInvocations)
 
 	err := manager.Close()
-	assert.ErrorIs(t, err, closeErr)
+	assert.ErrorIs(t, err, errClose)
 
 	assert.True(t, testBatcher.closed)
 
 	_ = manager.Get(shardId)
-	//proves that the batcher was removed on Close
-	//as it had to recreate it on Get
+	// proves that the batcher was removed on Close
+	// as it had to recreate it on Get
 	assert.Equal(t, 2, newBatcherInvocations)
 }

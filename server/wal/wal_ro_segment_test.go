@@ -45,11 +45,11 @@ func TestReadOnlySegment(t *testing.T) {
 
 	data, err := ro.Read(100)
 	assert.Nil(t, data)
-	assert.ErrorIs(t, err, ErrorOffsetOutOfBounds)
+	assert.ErrorIs(t, err, ErrOffsetOutOfBounds)
 
 	data, err = ro.Read(-1)
 	assert.Nil(t, data)
-	assert.ErrorIs(t, err, ErrorOffsetOutOfBounds)
+	assert.ErrorIs(t, err, ErrOffsetOutOfBounds)
 
 	assert.NoError(t, ro.Close())
 }

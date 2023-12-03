@@ -29,8 +29,8 @@ import (
 )
 
 const (
-	maxTotalReadValueSize = 4 << (10 * 2) //4Mi
-	maxTotalListKeySize   = 4 << (10 * 2) //4Mi
+	maxTotalReadValueSize = 4 << (10 * 2) // 4Mi
+	maxTotalListKeySize   = 4 << (10 * 2) // 4Mi
 )
 
 type publicRpcServer struct {

@@ -27,8 +27,8 @@ import (
 )
 
 var (
-	ErrorTooManyCursors    = errors.New("too many cursors")
-	ErrorInvalidHeadOffset = errors.New("invalid head offset")
+	ErrTooManyCursors    = errors.New("too many cursors")
+	ErrInvalidHeadOffset = errors.New("invalid head offset")
 )
 
 // QuorumAckTracker
@@ -37,7 +37,7 @@ var (
 //   - Commit offset: the oldest entry that is considered "fully committed", as it has received the requested amount
 //     of acks from the followers
 //
-// The quorum ack tracker is also used to block until the head offset or commit offset are advanced
+// The quorum ack tracker is also used to block until the head offset or commit offset are advanced.
 type QuorumAckTracker interface {
 	io.Closer
 
@@ -196,11 +196,11 @@ func (q *quorumAckTracker) NewCursorAcker(ackOffset int64) (CursorAcker, error) 
 	defer q.Unlock()
 
 	if uint32(q.cursorIdxGenerator) >= q.replicationFactor-1 {
-		return nil, ErrorTooManyCursors
+		return nil, ErrTooManyCursors
 	}
 
 	if ackOffset > q.headOffset.Load() {
-		return nil, ErrorInvalidHeadOffset
+		return nil, ErrInvalidHeadOffset
 	}
 
 	qa := &cursorAcker{

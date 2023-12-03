@@ -21,7 +21,7 @@ import (
 )
 
 var (
-	ErrorKeyNotFound           = errors.New("oxia: key not found")
+	ErrKeyNotFound             = errors.New("oxia: key not found")
 	MaxSnapshotChunkSize int64 = 1024 * 1024 // bytes
 
 )

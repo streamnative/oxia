@@ -365,7 +365,7 @@ func (p *Pebble) NewWriteBatch() WriteBatch {
 func (p *Pebble) Get(key string) ([]byte, io.Closer, error) {
 	value, closer, err := p.db.Get([]byte(key))
 	if errors.Is(err, pebble.ErrNotFound) {
-		err = ErrorKeyNotFound
+		err = ErrKeyNotFound
 	} else if err != nil {
 		p.readErrors.Inc()
 	}
@@ -466,7 +466,7 @@ func (b *PebbleBatch) Delete(key string) error {
 func (b *PebbleBatch) Get(key string) ([]byte, io.Closer, error) {
 	value, closer, err := b.b.Get([]byte(key))
 	if errors.Is(err, pebble.ErrNotFound) {
-		err = ErrorKeyNotFound
+		err = ErrKeyNotFound
 	} else if err != nil {
 		b.p.readErrors.Inc()
 	}
@@ -691,8 +691,8 @@ func (ps *pebbleSnapshot) Chunk() (SnapshotChunk, error) {
 	}
 	return &pebbleSnapshotChunk{
 		ps.files[0],
-		int32(ps.chunkIndex),
-		int32(ps.chunkCount),
+		ps.chunkIndex,
+		ps.chunkCount,
 		content}, nil
 }
 
@@ -743,7 +743,7 @@ func (ps *pebbleSnapshot) NextChunkContent() ([]byte, error) {
 	}
 	content := make([]byte, MaxSnapshotChunkSize)
 	byteCount, err := io.ReadFull(ps.file, content)
-	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
 		return nil, err
 	}
 	if int64(byteCount) < MaxSnapshotChunkSize {

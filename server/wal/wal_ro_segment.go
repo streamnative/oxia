@@ -117,7 +117,7 @@ func (ms *readonlySegment) LastOffset() int64 {
 
 func (ms *readonlySegment) Read(offset int64) ([]byte, error) {
 	if offset < ms.baseOffset || offset > ms.lastOffset {
-		return nil, ErrorOffsetOutOfBounds
+		return nil, ErrOffsetOutOfBounds
 	}
 
 	fileOffset := fileOffset(ms.idxMappedFile, ms.baseOffset, offset)
@@ -251,7 +251,7 @@ func (r *readOnlySegmentsGroup) Get(offset int64) (common.RefCount[ReadOnlySegme
 		return res, nil
 	}
 
-	return nil, ErrorOffsetOutOfBounds
+	return nil, ErrOffsetOutOfBounds
 }
 
 func (r *readOnlySegmentsGroup) TrimSegments(offset int64) error {

@@ -37,7 +37,7 @@ func TestWithBatchLinger(t *testing.T) {
 		expectedBatchLinger time.Duration
 		expectedErr         error
 	}{
-		{-1, DefaultBatchLinger, ErrorInvalidOptionBatchLinger},
+		{-1, DefaultBatchLinger, ErrInvalidOptionBatchLinger},
 		{0, 0, nil},
 		{1, 1, nil},
 	} {
@@ -53,8 +53,8 @@ func TestWithMaxRequestsPerBatch(t *testing.T) {
 		expectedMaxRequestsPerBatch int
 		expectedErr                 error
 	}{
-		{-1, DefaultMaxRequestsPerBatch, ErrorInvalidOptionMaxRequestsPerBatch},
-		{0, DefaultMaxRequestsPerBatch, ErrorInvalidOptionMaxRequestsPerBatch},
+		{-1, DefaultMaxRequestsPerBatch, ErrInvalidOptionMaxRequestsPerBatch},
+		{0, DefaultMaxRequestsPerBatch, ErrInvalidOptionMaxRequestsPerBatch},
 		{1, 1, nil},
 	} {
 		options, err := newClientOptions("serviceAddress", WithMaxRequestsPerBatch(item.maxRequestsPerBatch))
@@ -69,8 +69,8 @@ func TestWithRequestTimeout(t *testing.T) {
 		expectedRequestTimeout time.Duration
 		expectedErr            error
 	}{
-		{-1, DefaultRequestTimeout, ErrorInvalidOptionRequestTimeout},
-		{0, DefaultRequestTimeout, ErrorInvalidOptionRequestTimeout},
+		{-1, DefaultRequestTimeout, ErrInvalidOptionRequestTimeout},
+		{0, DefaultRequestTimeout, ErrInvalidOptionRequestTimeout},
 		{1, 1, nil},
 	} {
 		options, err := newClientOptions("serviceAddress", WithRequestTimeout(item.requestTimeout))

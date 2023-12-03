@@ -36,6 +36,9 @@ func TestNewServer(t *testing.T) {
 	url := fmt.Sprintf("http://localhost:%d/metrics", server.metrics.Port())
 	response, err := http.Get(url)
 	assert.NoError(t, err)
+	if response != nil && response.Body != nil {
+		defer response.Body.Close()
+	}
 
 	assert.Equal(t, 200, response.StatusCode)
 

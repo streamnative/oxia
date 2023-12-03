@@ -62,20 +62,20 @@ func TestCache_Empty(t *testing.T) {
 	assert.NoError(t, err)
 
 	value, version, err := cache.Get(context.Background(), "/non-existing-key")
-	assert.ErrorIs(t, ErrorKeyNotFound, err)
+	assert.ErrorIs(t, ErrKeyNotFound, err)
 	assert.Equal(t, Version{}, version)
 	assert.Equal(t, testStruct{}, value)
 
 	value, version, err = cache.Get(context.Background(), "/non-existing-key/child")
-	assert.ErrorIs(t, ErrorKeyNotFound, err)
+	assert.ErrorIs(t, ErrKeyNotFound, err)
 	assert.Equal(t, Version{}, version)
 	assert.Equal(t, testStruct{}, value)
 
 	err = cache.Delete(context.Background(), "/non-existing-key")
-	assert.ErrorIs(t, ErrorKeyNotFound, err)
+	assert.ErrorIs(t, ErrKeyNotFound, err)
 
 	err = cache.Delete(context.Background(), "/non-existing-key/child")
-	assert.ErrorIs(t, ErrorKeyNotFound, err)
+	assert.ErrorIs(t, ErrKeyNotFound, err)
 
 	assert.NoError(t, cache.Close())
 	assert.NoError(t, client.Close())
@@ -96,7 +96,7 @@ func TestCache_InsertionDeletion(t *testing.T) {
 
 	v2 := testStruct{"hello", 2}
 	version2, err := cache.Put(context.Background(), k1, v2, ExpectedRecordNotExists())
-	assert.ErrorIs(t, err, ErrorUnexpectedVersionId)
+	assert.ErrorIs(t, err, ErrUnexpectedVersionId)
 	assert.Equal(t, Version{}, version2)
 
 	value, version, err := cache.Get(context.Background(), k1)

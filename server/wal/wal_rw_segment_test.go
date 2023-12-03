@@ -77,11 +77,11 @@ func TestReadWriteSegment_NonZero(t *testing.T) {
 	assert.EqualValues(t, 5, rw.BaseOffset())
 	assert.EqualValues(t, 6, rw.LastOffset())
 
-	assert.ErrorIs(t, rw.Append(4, []byte("entry-4")), ErrorInvalidNextOffset)
+	assert.ErrorIs(t, rw.Append(4, []byte("entry-4")), ErrInvalidNextOffset)
 	assert.EqualValues(t, 5, rw.BaseOffset())
 	assert.EqualValues(t, 6, rw.LastOffset())
 
-	assert.ErrorIs(t, rw.Append(8, []byte("entry-8")), ErrorInvalidNextOffset)
+	assert.ErrorIs(t, rw.Append(8, []byte("entry-8")), ErrInvalidNextOffset)
 	assert.EqualValues(t, 5, rw.BaseOffset())
 	assert.EqualValues(t, 6, rw.LastOffset())
 

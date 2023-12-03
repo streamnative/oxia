@@ -29,7 +29,7 @@ import (
 var (
 	Config = flags{}
 
-	ErrorExpectedRangeInconsistent = errors.New("inconsistent flags; min and max flags must be in pairs")
+	ErrExpectedRangeInconsistent = errors.New("inconsistent flags; min and max flags must be in pairs")
 )
 
 type flags struct {
@@ -66,7 +66,7 @@ func exec(cmd *cobra.Command, args []string) error {
 
 func _exec(flags flags, in io.Reader, queue common.QueryQueue) error {
 	if len(flags.keyMinimums) != len(flags.keyMaximums) {
-		return ErrorExpectedRangeInconsistent
+		return ErrExpectedRangeInconsistent
 	}
 	if len(flags.keyMinimums) > 0 {
 		for i, n := range flags.keyMinimums {

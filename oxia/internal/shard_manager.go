@@ -210,7 +210,7 @@ func (s *shardManagerImpl) update(updates []Shard) {
 
 	for _, update := range updates {
 		if _, ok := s.shards[update.Id]; !ok {
-			//delete overlaps
+			// delete overlaps
 			for shardId, existing := range s.shards {
 				if overlap(update.HashRange, existing.HashRange) {
 					s.logger.Info(

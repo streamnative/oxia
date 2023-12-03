@@ -38,13 +38,13 @@ const (
 )
 
 var (
-	ErrorInvalidOptionBatchLinger         = errors.New("BatchLinger must be greater than or equal to zero")
-	ErrorInvalidOptionMaxRequestsPerBatch = errors.New("MaxRequestsPerBatch must be greater than zero")
-	ErrorInvalidOptionMaxBatchSize        = errors.New("MaxBatchSize must be greater than zero")
-	ErrorInvalidOptionRequestTimeout      = errors.New("RequestTimeout must be greater than zero")
-	ErrorInvalidOptionSessionTimeout      = errors.New("SessionTimeout must be greater than zero")
-	ErrorInvalidOptionIdentity            = errors.New("Identity must be non-empty")
-	ErrorInvalidOptionNamespace           = errors.New("Namespace cannot be empty")
+	ErrInvalidOptionBatchLinger         = errors.New("BatchLinger must be greater than or equal to zero")
+	ErrInvalidOptionMaxRequestsPerBatch = errors.New("MaxRequestsPerBatch must be greater than zero")
+	ErrInvalidOptionMaxBatchSize        = errors.New("MaxBatchSize must be greater than zero")
+	ErrInvalidOptionRequestTimeout      = errors.New("RequestTimeout must be greater than zero")
+	ErrInvalidOptionSessionTimeout      = errors.New("SessionTimeout must be greater than zero")
+	ErrInvalidOptionIdentity            = errors.New("Identity must be non-empty")
+	ErrInvalidOptionNamespace           = errors.New("Namespace cannot be empty")
 )
 
 // clientOptions contains options for the Oxia client.
@@ -106,11 +106,11 @@ func (f clientOptionFunc) apply(c clientOptions) (clientOptions, error) {
 }
 
 // WithNamespace set the Oxia namespace to be used for this client.
-// If not set, the client will be using the `default` namespace
+// If not set, the client will be using the `default` namespace.
 func WithNamespace(namespace string) ClientOption {
 	return clientOptionFunc(func(options clientOptions) (clientOptions, error) {
 		if namespace == "" {
-			return options, ErrorInvalidOptionNamespace
+			return options, ErrInvalidOptionNamespace
 		}
 		options.namespace = namespace
 		return options, nil
@@ -122,7 +122,7 @@ func WithNamespace(namespace string) ClientOption {
 func WithBatchLinger(batchLinger time.Duration) ClientOption {
 	return clientOptionFunc(func(options clientOptions) (clientOptions, error) {
 		if batchLinger < 0 {
-			return options, ErrorInvalidOptionBatchLinger
+			return options, ErrInvalidOptionBatchLinger
 		}
 		options.batchLinger = batchLinger
 		return options, nil
@@ -134,7 +134,7 @@ func WithBatchLinger(batchLinger time.Duration) ClientOption {
 func WithMaxRequestsPerBatch(maxRequestsPerBatch int) ClientOption {
 	return clientOptionFunc(func(options clientOptions) (clientOptions, error) {
 		if maxRequestsPerBatch <= 0 {
-			return options, ErrorInvalidOptionMaxRequestsPerBatch
+			return options, ErrInvalidOptionMaxRequestsPerBatch
 		}
 		options.maxRequestsPerBatch = maxRequestsPerBatch
 		return options, nil
@@ -144,7 +144,7 @@ func WithMaxRequestsPerBatch(maxRequestsPerBatch int) ClientOption {
 func WithRequestTimeout(requestTimeout time.Duration) ClientOption {
 	return clientOptionFunc(func(options clientOptions) (clientOptions, error) {
 		if requestTimeout <= 0 {
-			return options, ErrorInvalidOptionRequestTimeout
+			return options, ErrInvalidOptionRequestTimeout
 		}
 		options.requestTimeout = requestTimeout
 		return options, nil
@@ -167,11 +167,11 @@ func WithGlobalMeterProvider() ClientOption {
 	return WithMeterProvider(otel.GetMeterProvider())
 }
 
-// WithSessionTimeout specifies the session timeout to
+// WithSessionTimeout specifies the session timeout to.
 func WithSessionTimeout(sessionTimeout time.Duration) ClientOption {
 	return clientOptionFunc(func(options clientOptions) (clientOptions, error) {
 		if sessionTimeout <= 0 {
-			return options, ErrorInvalidOptionSessionTimeout
+			return options, ErrInvalidOptionSessionTimeout
 		}
 		options.sessionTimeout = sessionTimeout
 		return options, nil
@@ -181,7 +181,7 @@ func WithSessionTimeout(sessionTimeout time.Duration) ClientOption {
 func WithIdentity(identity string) ClientOption {
 	return clientOptionFunc(func(options clientOptions) (clientOptions, error) {
 		if identity == "" {
-			return options, ErrorInvalidOptionIdentity
+			return options, ErrInvalidOptionIdentity
 		}
 		options.identity = identity
 		return options, nil
@@ -195,7 +195,7 @@ type putOptions struct {
 	ephemeral       bool
 }
 
-// PutOption represents an option for the [SyncClient.Put] operation
+// PutOption represents an option for the [SyncClient.Put] operation.
 type PutOption interface {
 	applyPut(opts putOptions) putOptions
 }
@@ -218,7 +218,7 @@ type deleteOptions struct {
 	expectedVersion *int64
 }
 
-// DeleteOption represents an option for the [SyncClient.Delete] operation
+// DeleteOption represents an option for the [SyncClient.Delete] operation.
 type DeleteOption interface {
 	PutOption
 	applyDelete(opts deleteOptions) deleteOptions
@@ -233,7 +233,7 @@ func newDeleteOptions(opts []DeleteOption) deleteOptions {
 }
 
 // ExpectedVersionId Marks that the operation should only be successful
-// if the versionId of the record stored in the server matches the expected one
+// if the versionId of the record stored in the server matches the expected one.
 func ExpectedVersionId(versionId int64) DeleteOption {
 	return &expectedVersionId{versionId}
 }

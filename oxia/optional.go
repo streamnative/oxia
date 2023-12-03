@@ -14,7 +14,7 @@
 
 package oxia
 
-// Optional represents a wrapper for some value that can be present or not
+// Optional represents a wrapper for some value that can be present or not.
 type Optional[T any] interface {
 	// Present is true if the optional value is set
 	Present() bool

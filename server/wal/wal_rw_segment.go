@@ -130,7 +130,7 @@ func (ms *readWriteSegment) Append(offset int64, data []byte) error {
 	defer ms.Unlock()
 
 	if offset != ms.lastOffset+1 {
-		return ErrorInvalidNextOffset
+		return ErrInvalidNextOffset
 	}
 
 	entryOffset := ms.currentFileOffset
@@ -210,7 +210,7 @@ func (ms *readWriteSegment) writeIndex() error {
 
 func (ms *readWriteSegment) Truncate(lastSafeOffset int64) error {
 	if lastSafeOffset < ms.baseOffset || lastSafeOffset > ms.lastOffset {
-		return ErrorOffsetOutOfBounds
+		return ErrOffsetOutOfBounds
 	}
 
 	// Write zeroes in the section to clear

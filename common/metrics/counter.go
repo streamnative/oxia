@@ -20,7 +20,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-// Counter is a monotonically increasing counter
+// Counter is a monotonically increasing counter.
 type Counter interface {
 	Inc()
 	Add(incr int)
@@ -51,7 +51,7 @@ func NewCounter(name string, description string, unit Unit, labels map[string]an
 }
 
 // UpDownCounter is a counter that is incremented and decremented
-// to report the current state
+// to report the current state.
 type UpDownCounter interface {
 	Counter
 	Dec()
