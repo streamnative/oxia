@@ -148,6 +148,7 @@ func (ms *readWriteSegment) Flush() error {
 	return ms.txnMappedFile.Flush()
 }
 
+//nolint:unparam
 func (ms *readWriteSegment) rebuildIdx() error {
 	// Scan the mapped file and rebuild the index
 

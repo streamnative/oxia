@@ -443,6 +443,7 @@ func (c *coordinator) handleClusterConfigUpdated() error {
 	return nil
 }
 
+//nolint:unparam
 func (c *coordinator) rebalanceCluster() error {
 	c.Lock()
 	actions := rebalanceCluster(c.ClusterConfig.Servers, c.clusterStatus)

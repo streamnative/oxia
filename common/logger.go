@@ -57,6 +57,7 @@ func ParseLogLevel(levelStr string) (slog.Level, error) {
 
 func ConfigureLogger() {
 	zerolog.TimeFieldFormat = time.RFC3339Nano
+	//nolint
 	zerolog.ErrorStackMarshaler = pkgerrors.MarshalStack
 
 	protoMarshal := protojson.MarshalOptions{
