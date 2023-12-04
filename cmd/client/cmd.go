@@ -20,7 +20,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/streamnative/oxia/cmd/client/common"
-	"github.com/streamnative/oxia/cmd/client/delete"
+	"github.com/streamnative/oxia/cmd/client/del"
 	"github.com/streamnative/oxia/cmd/client/get"
 	"github.com/streamnative/oxia/cmd/client/list"
 	"github.com/streamnative/oxia/cmd/client/notifications"
@@ -46,7 +46,7 @@ func init() {
 	Cmd.PersistentFlags().DurationVar(&common.Config.RequestTimeout, "request-timeout", oxia.DefaultRequestTimeout, "Requests timeout")
 
 	Cmd.AddCommand(put.Cmd)
-	Cmd.AddCommand(delete.Cmd)
+	Cmd.AddCommand(del.Cmd)
 	Cmd.AddCommand(get.Cmd)
 	Cmd.AddCommand(list.Cmd)
 	Cmd.AddCommand(notifications.Cmd)

@@ -21,7 +21,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/cmd/client/delete"
+	"github.com/streamnative/oxia/cmd/client/del"
 	"github.com/streamnative/oxia/cmd/client/get"
 	"github.com/streamnative/oxia/cmd/client/list"
 	"github.com/streamnative/oxia/cmd/client/put"
@@ -169,7 +169,7 @@ func TestClientCmd(t *testing.T) {
 			"\\{\\}",
 			"^$",
 		},
-		{"delete-range-with-expected", []string{"delete", "--key-min", "q", "--key-max", "s", "-e", "0"}, "", delete.ErrExpectedVersionInconsistent,
+		{"delete-range-with-expected", []string{"delete", "--key-min", "q", "--key-max", "s", "-e", "0"}, "", del.ErrExpectedVersionInconsistent,
 			".*",
 			"Error: inconsistent flags; zero or all keys must have an expected version",
 		},
@@ -182,7 +182,7 @@ func TestClientCmd(t *testing.T) {
 			put.Config.Reset()
 			get.Config.Reset()
 			list.Config.Reset()
-			delete.Config.Reset()
+			del.Config.Reset()
 
 			stdin.WriteString(test.stdin)
 			Cmd.SetArgs(append([]string{"-a", serviceAddress}, test.args...))

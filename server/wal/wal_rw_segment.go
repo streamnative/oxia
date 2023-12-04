@@ -32,7 +32,7 @@ type ReadWriteSegment interface {
 
 	Truncate(lastSafeOffset int64) error
 
-	HasSpace(len int) bool
+	HasSpace(l int) bool
 
 	Flush() error
 }
@@ -121,8 +121,8 @@ func (ms *readWriteSegment) Read(offset int64) ([]byte, error) {
 	return entry, nil
 }
 
-func (ms *readWriteSegment) HasSpace(len int) bool {
-	return ms.currentFileOffset+4+uint32(len) <= ms.segmentSize
+func (ms *readWriteSegment) HasSpace(l int) bool {
+	return ms.currentFileOffset+4+uint32(l) <= ms.segmentSize
 }
 
 func (ms *readWriteSegment) Append(offset int64, data []byte) error {
