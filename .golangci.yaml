@@ -44,8 +44,8 @@ linters:
     # - nilnil
     # - noctx
     - nolintlint
-    # - prealloc
-    # - predeclared
+    - prealloc
+    - predeclared
     - promlinter
     # - reassign
     - rowserrcheck

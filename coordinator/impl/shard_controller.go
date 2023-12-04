@@ -791,14 +791,14 @@ func mergeLists[T any](lists ...[]T) []T {
 	return res
 }
 
-func replaceInList(list []model.ServerAddress, old, new model.ServerAddress) []model.ServerAddress {
+func replaceInList(list []model.ServerAddress, oldServerAddress, newServerAddress model.ServerAddress) []model.ServerAddress {
 	var res []model.ServerAddress
 	for _, item := range list {
-		if item.Public != old.Public && item.Internal != old.Internal {
+		if item.Public != oldServerAddress.Public && item.Internal != oldServerAddress.Internal {
 			res = append(res, item)
 		}
 	}
 
-	res = append(res, new)
+	res = append(res, newServerAddress)
 	return res
 }

@@ -33,7 +33,7 @@ var (
 // DoWithLabels attaches the labels to the current go-routine Pprof context,
 // for the duration of the call to f.
 func DoWithLabels(labels map[string]string, f func()) {
-	var l []string
+	l := make([]string, 0, len(labels)*2)
 	for k, v := range labels {
 		l = append(l, k, v)
 	}

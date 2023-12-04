@@ -70,15 +70,15 @@ func (m *Metrics) DecoratePut(put model.PutCall) model.PutCall {
 	return put
 }
 
-func (m *Metrics) DecorateDelete(delete model.DeleteCall) model.DeleteCall {
-	callback := delete.Callback
+func (m *Metrics) DecorateDelete(deleteCall model.DeleteCall) model.DeleteCall {
+	callback := deleteCall.Callback
 	metricContext := m.metricContextFunc("delete")
-	delete.Callback = func(response *proto.DeleteResponse, err error) {
+	deleteCall.Callback = func(response *proto.DeleteResponse, err error) {
 		callback(response, err)
 		ctx, start, _attrs := metricContext(err)
 		m.opTime.Record(ctx, m.sinceFunc(start), _attrs)
 	}
-	return delete
+	return deleteCall
 }
 
 func (m *Metrics) DecorateDeleteRange(deleteRange model.DeleteRangeCall) model.DeleteRangeCall {
