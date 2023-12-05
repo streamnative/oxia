@@ -48,7 +48,7 @@ func (l LogLevelError) Error() string {
 
 func init() {
 	rootCmd.PersistentFlags().StringVarP(&logLevelStr, "log-level", "l", common.DefaultLogLevel.String(), "Set logging level [debug|info|warn|error]")
-	rootCmd.PersistentFlags().BoolVarP(&common.LogJson, "log-json", "j", false, "Print logs in JSON format")
+	rootCmd.PersistentFlags().BoolVarP(&common.LogJSON, "log-json", "j", false, "Print logs in JSON format")
 }
 
 func configureLogLevel(cmd *cobra.Command, args []string) error {

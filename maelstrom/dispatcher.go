@@ -338,7 +338,7 @@ func (d *dispatcher) RpcRequest(ctx context.Context, dest string, msgType MsgTyp
 				Type:  msgType,
 				MsgId: msgId,
 			},
-			OxiaMsg: toJson(message),
+			OxiaMsg: toJSON(message),
 		},
 	}
 
@@ -372,7 +372,7 @@ var protoMarshal = protojson.MarshalOptions{
 	EmitUnpopulated: true,
 }
 
-func toJson(message pb.Message) []byte {
+func toJSON(message pb.Message) []byte {
 	r, err := protoMarshal.Marshal(message)
 	if err != nil {
 		slog.Error(

@@ -135,7 +135,7 @@ func (m *maelstromShardAssignmentClient) Send(response *proto.ShardAssignments) 
 				Type:  MsgTypeShardAssignmentsResponse,
 				MsgId: msgIdGenerator.Add(1),
 			},
-			OxiaMsg:  toJson(response),
+			OxiaMsg:  toJSON(response),
 			StreamId: m.streamId,
 		},
 	}

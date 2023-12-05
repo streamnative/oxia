@@ -278,7 +278,7 @@ func (m *maelstromGrpcProvider) sendResponse(req *Message[OxiaMessage], msgType 
 				MsgId:     msgIdGenerator.Add(1),
 				InReplyTo: &req.Body.MsgId,
 			},
-			OxiaMsg: toJson(response),
+			OxiaMsg: toJSON(response),
 		},
 	})
 	if err != nil {
@@ -366,7 +366,7 @@ func (m *maelstromReplicateServerStream) Send(response *proto.Ack) error {
 				Type:  MsgTypeAck,
 				MsgId: msgIdGenerator.Add(1),
 			},
-			OxiaMsg:  toJson(response),
+			OxiaMsg:  toJSON(response),
 			StreamId: m.streamId,
 		},
 	})
