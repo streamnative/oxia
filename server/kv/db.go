@@ -526,7 +526,7 @@ func checkExpectedVersionId(batch WriteBatch, key string, expectedVersionId *int
 		if errors.Is(err, ErrKeyNotFound) {
 			if expectedVersionId == nil || *expectedVersionId == -1 {
 				// OK, we were checking that the key was not there, and it's indeed not there
-				return nil, nil
+				return nil, nil //nolint:nilnil
 			} else {
 				return nil, ErrBadVersionId
 			}

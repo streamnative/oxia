@@ -178,7 +178,7 @@ func (q *quorumAckTracker) WaitForCommitOffset(ctx context.Context, offset int64
 		return f()
 	}
 
-	return nil, nil
+	return nil, nil //nolint:nilnil
 }
 
 func (q *quorumAckTracker) Close() error {

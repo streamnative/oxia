@@ -41,7 +41,7 @@ linters:
     # - gosec
     - nakedret
     - nilerr
-    # - nilnil
+    - nilnil
     # - noctx
     - nolintlint
     - prealloc
