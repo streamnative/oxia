@@ -329,6 +329,8 @@ func BenchmarkCond32(b *testing.B) {
 }
 
 func benchmarkCond(b *testing.B, waiters int) {
+	b.Helper()
+
 	m := &sync.Mutex{}
 	c := NewConditionContext(m)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

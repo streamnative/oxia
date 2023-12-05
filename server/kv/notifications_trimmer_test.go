@@ -76,6 +76,8 @@ func TestNotificationsTrimmer(t *testing.T) {
 }
 
 func firstNotification(t *testing.T, db DB) int64 {
+	t.Helper()
+
 	nextNotifications, err := db.ReadNextNotifications(context.Background(), 0)
 	assert.NoError(t, err)
 

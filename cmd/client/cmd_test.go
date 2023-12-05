@@ -29,7 +29,7 @@ import (
 )
 
 func TestClientCmd(t *testing.T) {
-	server, err := server.NewStandalone(server.NewTestConfig(t))
+	server, err := server.NewStandalone(server.NewTestConfig(t.TempDir()))
 	assert.NoError(t, err)
 
 	serviceAddress := fmt.Sprintf("localhost:%d", server.RpcPort())

@@ -31,6 +31,8 @@ import (
 )
 
 func AssertProtoEqual(t *testing.T, expected, actual pb.Message) {
+	t.Helper()
+
 	if !pb.Equal(expected, actual) {
 		protoMarshal := protojson.MarshalOptions{
 			EmitUnpopulated: true,

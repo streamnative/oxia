@@ -43,6 +43,8 @@ func init() {
 }
 
 func newTestWalFactory(t *testing.T) wal.WalFactory {
+	t.Helper()
+
 	return wal.NewWalFactory(&wal.WalFactoryOptions{
 		BaseWalDir:  t.TempDir(),
 		SegmentSize: 128 * 1024,
@@ -563,6 +565,8 @@ func TestFollower_RejectTruncateInvalidTerm(t *testing.T) {
 }
 
 func prepareTestDb(t *testing.T) kv.Snapshot {
+	t.Helper()
+
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
 		DataDir: t.TempDir(),
 	})
@@ -980,6 +984,8 @@ func closeChanIsNotNil(fc FollowerController) func() bool {
 func createAddRequest(t *testing.T, term int64, offset int64,
 	kvs map[string]string,
 	commitOffset int64) *proto.Append {
+	t.Helper()
+
 	br := &proto.WriteRequest{}
 
 	for k, v := range kvs {

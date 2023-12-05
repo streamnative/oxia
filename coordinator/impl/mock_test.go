@@ -127,6 +127,8 @@ type mockPerNodeChannels struct {
 }
 
 func (m *mockPerNodeChannels) expectBecomeLeaderRequest(t *testing.T, shard int64, term int64, replicationFactor uint32) {
+	t.Helper()
+
 	r := <-m.becomeLeaderRequests
 
 	assert.Equal(t, shard, r.ShardId)
@@ -135,6 +137,8 @@ func (m *mockPerNodeChannels) expectBecomeLeaderRequest(t *testing.T, shard int6
 }
 
 func (m *mockPerNodeChannels) expectNewTermRequest(t *testing.T, shard int64, term int64) {
+	t.Helper()
+
 	r := <-m.newTermRequests
 
 	assert.Equal(t, shard, r.ShardId)
@@ -142,6 +146,8 @@ func (m *mockPerNodeChannels) expectNewTermRequest(t *testing.T, shard int64, te
 }
 
 func (m *mockPerNodeChannels) expectAddFollowerRequest(t *testing.T, shard int64, term int64) {
+	t.Helper()
+
 	r := <-m.addFollowerRequests
 
 	assert.Equal(t, shard, r.ShardId)

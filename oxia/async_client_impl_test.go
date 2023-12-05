@@ -34,7 +34,7 @@ func init() {
 }
 
 func TestAsyncClientImpl(t *testing.T) {
-	server, err := server.NewStandalone(server.NewTestConfig(t))
+	server, err := server.NewStandalone(server.NewTestConfig(t.TempDir()))
 	assert.NoError(t, err)
 
 	serviceAddress := fmt.Sprintf("localhost:%d", server.RpcPort())
@@ -91,7 +91,7 @@ func TestAsyncClientImpl(t *testing.T) {
 }
 
 func TestSyncClientImpl_Notifications(t *testing.T) {
-	server, err := server.NewStandalone(server.NewTestConfig(t))
+	server, err := server.NewStandalone(server.NewTestConfig(t.TempDir()))
 	assert.NoError(t, err)
 
 	serviceAddress := fmt.Sprintf("localhost:%d", server.RpcPort())
@@ -179,7 +179,7 @@ func TestSyncClientImpl_Notifications(t *testing.T) {
 }
 
 func TestAsyncClientImpl_NotificationsClose(t *testing.T) {
-	server, err := server.NewStandalone(server.NewTestConfig(t))
+	server, err := server.NewStandalone(server.NewTestConfig(t.TempDir()))
 	assert.NoError(t, err)
 
 	serviceAddress := fmt.Sprintf("localhost:%d", server.RpcPort())
@@ -204,7 +204,7 @@ func TestAsyncClientImpl_NotificationsClose(t *testing.T) {
 }
 
 func TestAsyncClientImpl_Sessions(t *testing.T) {
-	server, err := server.NewStandalone(server.NewTestConfig(t))
+	server, err := server.NewStandalone(server.NewTestConfig(t.TempDir()))
 	assert.NoError(t, err)
 
 	serviceAddress := fmt.Sprintf("localhost:%d", server.RpcPort())

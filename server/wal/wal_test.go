@@ -30,6 +30,8 @@ import (
 const shard = int64(100)
 
 func NewTestWalFactory(t *testing.T) WalFactory {
+	t.Helper()
+
 	dir := t.TempDir()
 	return NewWalFactory(&WalFactoryOptions{
 		BaseWalDir:  dir,
@@ -39,6 +41,8 @@ func NewTestWalFactory(t *testing.T) WalFactory {
 }
 
 func createWal(t *testing.T) (WalFactory, Wal) {
+	t.Helper()
+
 	f := NewTestWalFactory(t)
 	w, err := f.NewWal(common.DefaultNamespace, shard, nil)
 	assert.NoError(t, err)
@@ -47,6 +51,8 @@ func createWal(t *testing.T) (WalFactory, Wal) {
 }
 
 func assertReaderReads(t *testing.T, r WalReader, entries []string) {
+	t.Helper()
+
 	for i := 0; i < len(entries); i++ {
 		assert.True(t, r.HasNext())
 		e, err := r.ReadNext()
@@ -57,6 +63,8 @@ func assertReaderReads(t *testing.T, r WalReader, entries []string) {
 }
 
 func assertReaderReadsEventually(t *testing.T, r WalReader, entries []string) chan error {
+	t.Helper()
+
 	ch := make(chan error)
 	go func() {
 		for i := 0; i < len(entries); i++ {

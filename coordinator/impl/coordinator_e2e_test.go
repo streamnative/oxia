@@ -32,6 +32,8 @@ import (
 )
 
 func newServer(t *testing.T) (s *server.Server, addr model.ServerAddress) {
+	t.Helper()
+
 	var err error
 	s, err = server.New(server.Config{
 		PublicServiceAddr:          "localhost:0",
@@ -578,6 +580,8 @@ func TestCoordinator_RebalanceCluster(t *testing.T) {
 }
 
 func checkServerLists(t *testing.T, expected, actual []model.ServerAddress) {
+	t.Helper()
+
 	assert.Equal(t, len(expected), len(actual))
 	mExpected := map[string]bool{}
 	for _, x := range expected {
