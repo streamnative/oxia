@@ -553,7 +553,9 @@ func TestCoordinator_RebalanceCluster(t *testing.T) {
 	assert.Eventually(t, func() bool {
 		for _, ns := range coordinator.ClusterStatus().Namespaces {
 			for _, shard := range ns.Shards {
-				if shard.Status != model.ShardStatusSteadyState {
+				// Use Term to detect for EnsembleChange have done, we cann't use status
+				// because it always be Steady when EnsembleChange.
+				if shard.Term != 1 {
 					return false
 				}
 			}
