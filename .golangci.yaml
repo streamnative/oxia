@@ -27,7 +27,7 @@ linters:
     - ineffassign
     - staticcheck
     - unused
-    # - revive
+    - revive
     - asasalint
     - asciicheck
     - bodyclose
@@ -64,6 +64,15 @@ linters-settings:
     local-prefixes: github.com/streamnative/oxia
   goconst:
     ignore-tests: true
+  revive:
+    rules:
+      - name: var-naming
+        severity: warning
+        disabled: false
+        arguments:
+          - ["ID", "RPC"]
+          - [""]
+          - - upperCaseConst: false
 
 issues:
   fix: true

@@ -108,7 +108,7 @@ func (m *maelstromReplicateClient) Send(request *proto.Append) error {
 				Type:  MsgTypeAppend,
 				MsgId: msgIdGenerator.Add(1),
 			},
-			OxiaMsg:  toJson(request),
+			OxiaMsg:  toJSON(request),
 			StreamId: m.streamId,
 		},
 	})

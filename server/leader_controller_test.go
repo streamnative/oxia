@@ -35,9 +35,9 @@ func AssertProtoEqual(t *testing.T, expected, actual pb.Message) {
 		protoMarshal := protojson.MarshalOptions{
 			EmitUnpopulated: true,
 		}
-		expectedJson, _ := protoMarshal.Marshal(expected)
-		actualJson, _ := protoMarshal.Marshal(actual)
-		assert.Equal(t, string(expectedJson), string(actualJson))
+		expectedJSON, _ := protoMarshal.Marshal(expected)
+		actualJSON, _ := protoMarshal.Marshal(actual)
+		assert.Equal(t, string(expectedJSON), string(actualJSON))
 	}
 }
 

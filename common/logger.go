@@ -35,8 +35,8 @@ const DefaultLogLevel = slog.LevelInfo
 var (
 	// LogLevel Used for flags.
 	LogLevel slog.Level
-	// LogJson Used for flags.
-	LogJson bool
+	// LogJSON Used for flags.
+	LogJSON bool
 )
 
 // ParseLogLevel will convert the slog level configuration to slog.Level values.
@@ -76,7 +76,7 @@ func ConfigureLogger() {
 		Stack().
 		Logger()
 
-	if !LogJson {
+	if !LogJSON {
 		zerologLogger = log.Output(zerolog.ConsoleWriter{
 			Out:        os.Stdout,
 			TimeFormat: time.StampMicro,
