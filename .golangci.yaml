@@ -40,14 +40,14 @@ linters:
     # - gomoddirectives
     # - gosec
     - nakedret
-    # - nilerr
+    - nilerr
     # - nilnil
     # - noctx
     - nolintlint
     - prealloc
     - predeclared
     - promlinter
-    # - reassign
+    - reassign
     - rowserrcheck
     - sqlclosecheck
     - tenv
@@ -55,7 +55,7 @@ linters:
     # - thelper
     - tparallel
     - unconvert
-    # - unparam
+    - unparam
     - usestdlibvars
     - wastedassign
 
@@ -67,3 +67,7 @@ linters-settings:
 
 issues:
   fix: true
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - unparam

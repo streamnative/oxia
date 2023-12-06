@@ -38,6 +38,7 @@ func K8SResourceVersionSupport(tracker testing.ObjectTracker) testing.ReactionFu
 			objMeta := accessor(action.GetObject())
 			existing, err := tracker.Get(gvr, ns, objMeta.GetName())
 			if err != nil {
+				//nolint:nilerr
 				return false, action.GetObject(), nil
 			}
 			existingObjMeta := accessor(existing)
