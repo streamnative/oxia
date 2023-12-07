@@ -153,7 +153,7 @@ func (p *perf) generateWriteTraffic(ctx context.Context, client oxia.AsyncClient
 			return
 		}
 
-		key := p.keys[rand.Intn(int(p.config.KeysCardinality))]
+		key := p.keys[rand.Intn(int(p.config.KeysCardinality))] //nolint:gosec
 
 		start := time.Now()
 		ch := client.Put(key, value)
@@ -188,7 +188,7 @@ func (p *perf) generateReadTraffic(ctx context.Context, client oxia.AsyncClient,
 			return
 		}
 
-		key := p.keys[rand.Intn(int(p.config.KeysCardinality))]
+		key := p.keys[rand.Intn(int(p.config.KeysCardinality))] //nolint:gosec
 
 		start := time.Now()
 		ch := client.Get(key)

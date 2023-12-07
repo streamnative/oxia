@@ -113,7 +113,7 @@ func (m *metadataProviderFile) Store(cs *model.ClusterStatus, expectedVersion Ve
 		return "", err
 	}
 
-	if err := os.WriteFile(m.path, newContent, 0640); err != nil {
+	if err := os.WriteFile(m.path, newContent, 0600); err != nil {
 		return MetadataNotExists, err
 	}
 

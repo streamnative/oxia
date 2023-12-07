@@ -20,9 +20,10 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	_ "net/http/pprof"
+	_ "net/http/pprof" //nolint:gosec
 	"os"
 	"runtime/pprof"
+	"time"
 )
 
 var (
@@ -48,8 +49,9 @@ func DoWithLabels(labels map[string]string, f func()) {
 
 func RunProfiling() io.Closer {
 	s := &http.Server{
-		Addr:    PprofBindAddress,
-		Handler: http.DefaultServeMux,
+		Addr:              PprofBindAddress,
+		Handler:           http.DefaultServeMux,
+		ReadHeaderTimeout: time.Second,
 	}
 
 	if !PprofEnable {
