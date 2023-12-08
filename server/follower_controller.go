@@ -150,10 +150,14 @@ func NewFollowerController(config Config, namespace string, shardId int64, wf wa
 
 	fc.setLogger()
 
-	go common.DoWithLabels(map[string]string{
-		"oxia":  "follower-apply-committed-entries",
-		"shard": fmt.Sprintf("%d", fc.shardId),
-	}, fc.applyAllCommittedEntries)
+	go common.DoWithLabels(
+		fc.ctx,
+		map[string]string{
+			"oxia":  "follower-apply-committed-entries",
+			"shard": fmt.Sprintf("%d", fc.shardId),
+		},
+		fc.applyAllCommittedEntries,
+	)
 
 	fc.log.Info(
 		"Created follower",
@@ -346,15 +350,23 @@ func (fc *followerController) Replicate(stream proto.OxiaLogReplication_Replicat
 	fc.closeStreamWg = closeStreamWg
 	fc.Unlock()
 
-	go common.DoWithLabels(map[string]string{
-		"oxia":  "add-entries",
-		"shard": fmt.Sprintf("%d", fc.shardId),
-	}, func() { fc.handleServerStream(stream) })
+	go common.DoWithLabels(
+		stream.Context(),
+		map[string]string{
+			"oxia":  "add-entries",
+			"shard": fmt.Sprintf("%d", fc.shardId),
+		},
+		func() { fc.handleServerStream(stream) },
+	)
 
-	go common.DoWithLabels(map[string]string{
-		"oxia":  "add-entries-sync",
-		"shard": fmt.Sprintf("%d", fc.shardId),
-	}, func() { fc.handleReplicateSync(stream) })
+	go common.DoWithLabels(
+		stream.Context(),
+		map[string]string{
+			"oxia":  "add-entries-sync",
+			"shard": fmt.Sprintf("%d", fc.shardId),
+		},
+		func() { fc.handleReplicateSync(stream) },
+	)
 
 	return closeStreamWg.Wait(fc.ctx)
 }
@@ -578,10 +590,14 @@ func (fc *followerController) SendSnapshot(stream proto.OxiaLogReplication_SendS
 	fc.closeStreamWg = closeStreamWg
 	fc.Unlock()
 
-	go common.DoWithLabels(map[string]string{
-		"oxia":  "receive-snapshot",
-		"shard": fmt.Sprintf("%d", fc.shardId),
-	}, func() { fc.handleSnapshot(stream) })
+	go common.DoWithLabels(
+		stream.Context(),
+		map[string]string{
+			"oxia":  "receive-snapshot",
+			"shard": fmt.Sprintf("%d", fc.shardId),
+		},
+		func() { fc.handleSnapshot(stream) },
+	)
 
 	return closeStreamWg.Wait(fc.ctx)
 }

@@ -15,6 +15,7 @@
 package metrics
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -110,17 +111,21 @@ func Start(bindAddress string) (*PrometheusMetrics, error) {
 
 	slog.Info(fmt.Sprintf("Serving Prometheus metrics at http://localhost:%d/metrics", p.port))
 
-	go common.DoWithLabels(map[string]string{
-		"oxia": "metrics",
-	}, func() {
-		if err = p.server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			slog.Error(
-				"Failed to serve metrics",
-				slog.Any("error", err),
-			)
-			os.Exit(1)
-		}
-	})
+	go common.DoWithLabels(
+		context.Background(),
+		map[string]string{
+			"oxia": "metrics",
+		},
+		func() {
+			if err = p.server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				slog.Error(
+					"Failed to serve metrics",
+					slog.Any("error", err),
+				)
+				os.Exit(1)
+			}
+		},
+	)
 
 	return p, nil
 }

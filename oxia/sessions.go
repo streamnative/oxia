@@ -79,10 +79,14 @@ func (s *sessions) startSession(shardId int64) *clientSession {
 		),
 	}
 	cs.log.Debug("Creating session")
-	go common.DoWithLabels(map[string]string{
-		"oxia":  "session-start",
-		"shard": fmt.Sprintf("%d", cs.shardId),
-	}, func() { cs.createSessionWithRetries() })
+	go common.DoWithLabels(
+		cs.ctx,
+		map[string]string{
+			"oxia":  "session-start",
+			"shard": fmt.Sprintf("%d", cs.shardId),
+		},
+		func() { cs.createSessionWithRetries() },
+	)
 	return cs
 }
 
@@ -164,44 +168,48 @@ func (cs *clientSession) createSession() error {
 	close(cs.started)
 	cs.log.Debug("Successfully created session")
 
-	go common.DoWithLabels(map[string]string{
-		"oxia":    "session-keep-alive",
-		"shard":   fmt.Sprintf("%d", cs.shardId),
-		"session": fmt.Sprintf("%x016", cs.sessionId),
-	}, func() {
+	go common.DoWithLabels(
+		cs.ctx,
+		map[string]string{
+			"oxia":    "session-keep-alive",
+			"shard":   fmt.Sprintf("%d", cs.shardId),
+			"session": fmt.Sprintf("%x016", cs.sessionId),
+		},
+		func() {
 
-		backOff := common.NewBackOff(cs.sessions.ctx)
-		err := backoff.RetryNotify(func() error {
-			err := cs.keepAlive()
-			if status.Code(err) == common.CodeInvalidSession {
-				cs.log.Error(
-					"Session is no longer valid",
+			backOff := common.NewBackOff(cs.sessions.ctx)
+			err := backoff.RetryNotify(func() error {
+				err := cs.keepAlive()
+				if status.Code(err) == common.CodeInvalidSession {
+					cs.log.Error(
+						"Session is no longer valid",
+						slog.Any("error", err),
+					)
+
+					cs.sessions.Lock()
+					defer cs.sessions.Unlock()
+					cs.Lock()
+					defer cs.Unlock()
+					delete(cs.sessions.sessionsByShard, cs.shardId)
+					return backoff.Permanent(err)
+				}
+				return err
+			}, backOff, func(err error, duration time.Duration) {
+				slog.Debug(
+					"Failed to send session heartbeat, retrying later",
 					slog.Any("error", err),
+					slog.Duration("retry-after", duration),
 				)
 
-				cs.sessions.Lock()
-				defer cs.sessions.Unlock()
-				cs.Lock()
-				defer cs.Unlock()
-				delete(cs.sessions.sessionsByShard, cs.shardId)
-				return backoff.Permanent(err)
+			})
+			if !errors.Is(err, context.Canceled) {
+				cs.log.Error(
+					"Failed to keep alive session.",
+					slog.Any("error", err),
+				)
 			}
-			return err
-		}, backOff, func(err error, duration time.Duration) {
-			slog.Debug(
-				"Failed to send session heartbeat, retrying later",
-				slog.Any("error", err),
-				slog.Duration("retry-after", duration),
-			)
-
-		})
-		if !errors.Is(err, context.Canceled) {
-			cs.log.Error(
-				"Failed to keep alive session.",
-				slog.Any("error", err),
-			)
-		}
-	})
+		},
+	)
 
 	return nil
 }

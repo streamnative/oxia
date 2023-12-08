@@ -326,7 +326,7 @@ func (lc *leaderController) BecomeLeader(ctx context.Context, req *proto.BecomeL
 	lc.sessionManager = NewSessionManager(lc.ctx, lc.namespace, lc.shardId, lc)
 
 	for follower, followerHeadEntryId := range req.FollowerMaps {
-		if err := lc.addFollower(follower, followerHeadEntryId); err != nil {
+		if err := lc.addFollower(follower, followerHeadEntryId); err != nil { //nolint:contextcheck
 			return nil, err
 		}
 	}
@@ -573,26 +573,30 @@ func (lc *leaderController) Read(ctx context.Context, request *proto.ReadRequest
 }
 
 func (lc *leaderController) read(ctx context.Context, request *proto.ReadRequest, ch chan<- GetResult) {
-	common.DoWithLabels(map[string]string{
-		"oxia":  "read",
-		"shard": fmt.Sprintf("%d", lc.shardId),
-		"peer":  common.GetPeer(ctx),
-	}, func() {
-		lc.log.Debug("Received read request")
+	common.DoWithLabels(
+		ctx,
+		map[string]string{
+			"oxia":  "read",
+			"shard": fmt.Sprintf("%d", lc.shardId),
+			"peer":  common.GetPeer(ctx),
+		},
+		func() {
+			lc.log.Debug("Received read request")
 
-		for _, get := range request.Gets {
-			response, err := lc.db.Get(get)
-			if err != nil {
-				return
+			for _, get := range request.Gets {
+				response, err := lc.db.Get(get)
+				if err != nil {
+					return
+				}
+				ch <- GetResult{Response: response}
+				if ctx.Err() != nil {
+					ch <- GetResult{Err: ctx.Err()}
+					break
+				}
 			}
-			ch <- GetResult{Response: response}
-			if ctx.Err() != nil {
-				ch <- GetResult{Err: ctx.Err()}
-				break
-			}
-		}
-		close(ch)
-	})
+			close(ch)
+		},
+	)
 }
 
 func (lc *leaderController) List(ctx context.Context, request *proto.ListRequest) (<-chan string, error) {
@@ -611,39 +615,43 @@ func (lc *leaderController) List(ctx context.Context, request *proto.ListRequest
 }
 
 func (lc *leaderController) list(ctx context.Context, request *proto.ListRequest, ch chan<- string) {
-	common.DoWithLabels(map[string]string{
-		"oxia":  "list",
-		"shard": fmt.Sprintf("%d", lc.shardId),
-		"peer":  common.GetPeer(ctx),
-	}, func() {
-		lc.log.Debug("Received list request")
+	common.DoWithLabels(
+		ctx,
+		map[string]string{
+			"oxia":  "list",
+			"shard": fmt.Sprintf("%d", lc.shardId),
+			"peer":  common.GetPeer(ctx),
+		},
+		func() {
+			lc.log.Debug("Received list request")
 
-		it, err := lc.db.List(request)
-		if err != nil {
-			lc.log.Warn(
-				"Failed to process list request",
-				slog.Any("error", err),
-			)
-			close(ch)
-			return
-		}
-
-		defer func() {
-			_ = it.Close()
-			// NOTE:
-			// we must close the channel after iterator is closed, to avoid the
-			// iterator keep open when caller is trying to process the next step (for example db.Close)
-			// because this is execute in another goroutine.
-			close(ch)
-		}()
-
-		for ; it.Valid(); it.Next() {
-			ch <- it.Key()
-			if ctx.Err() != nil {
-				break
+			it, err := lc.db.List(request)
+			if err != nil {
+				lc.log.Warn(
+					"Failed to process list request",
+					slog.Any("error", err),
+				)
+				close(ch)
+				return
 			}
-		}
-	})
+
+			defer func() {
+				_ = it.Close()
+				// NOTE:
+				// we must close the channel after iterator is closed, to avoid the
+				// iterator keep open when caller is trying to process the next step (for example db.Close)
+				// because this is execute in another goroutine.
+				close(ch)
+			}()
+
+			for ; it.Valid(); it.Next() {
+				ch <- it.Key()
+				if ctx.Err() != nil {
+					break
+				}
+			}
+		},
+	)
 }
 
 func (lc *leaderController) ListSliceNoMutex(ctx context.Context, request *proto.ListRequest) ([]string, error) {
@@ -678,7 +686,7 @@ func (lc *leaderController) Write(ctx context.Context, request *proto.WriteReque
 
 func (lc *leaderController) write(ctx context.Context, request func(int64) *proto.WriteRequest) (int64, *proto.WriteResponse, error) {
 	timer := lc.writeLatencyHisto.Timer()
-	defer timer.Done()
+	defer timer.Done() //nolint:contextcheck
 
 	lc.log.Debug("Write operation")
 
@@ -750,20 +758,24 @@ func (lc *leaderController) GetNotifications(req *proto.NotificationsRequest, st
 	// Create a context for handling this stream
 	ctx, cancel := context.WithCancel(stream.Context())
 
-	go common.DoWithLabels(map[string]string{
-		"oxia":  "dispatch-notifications",
-		"shard": fmt.Sprintf("%d", lc.shardId),
-		"peer":  common.GetPeer(stream.Context()),
-	}, func() {
-		if err := lc.dispatchNotifications(ctx, req, stream); err != nil && !errors.Is(err, context.Canceled) {
-			lc.log.Warn(
-				"Failed to dispatch notifications",
-				slog.Any("error", err),
-				slog.String("peer", common.GetPeer(stream.Context())),
-			)
-			cancel()
-		}
-	})
+	go common.DoWithLabels(
+		ctx,
+		map[string]string{
+			"oxia":  "dispatch-notifications",
+			"shard": fmt.Sprintf("%d", lc.shardId),
+			"peer":  common.GetPeer(stream.Context()),
+		},
+		func() {
+			if err := lc.dispatchNotifications(ctx, req, stream); err != nil && !errors.Is(err, context.Canceled) {
+				lc.log.Warn(
+					"Failed to dispatch notifications",
+					slog.Any("error", err),
+					slog.String("peer", common.GetPeer(stream.Context())),
+				)
+				cancel()
+			}
+		},
+	)
 
 	select {
 	case <-lc.ctx.Done():

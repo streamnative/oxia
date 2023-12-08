@@ -31,7 +31,7 @@ linters:
     - asasalint
     - asciicheck
     - bodyclose
-    # - contextcheck
+    - contextcheck
     - errname
     - errorlint
     - exportloopref
@@ -81,3 +81,8 @@ issues:
       linters:
         - unparam
         - gosec
+        - contextcheck
+    - path: \.go
+      linters:
+        - contextcheck
+      text: "Non-inherited new context"

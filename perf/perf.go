@@ -70,7 +70,7 @@ func (p *perf) Run(ctx context.Context) {
 		p.keys[i] = fmt.Sprintf("key-%d", i)
 	}
 
-	client, err := oxia.NewAsyncClient(p.config.ServiceAddr,
+	client, err := oxia.NewAsyncClient(p.config.ServiceAddr, //nolint:contextcheck
 		oxia.WithNamespace(p.config.Namespace),
 		oxia.WithBatchLinger(p.config.BatchLinger),
 		oxia.WithMaxRequestsPerBatch(p.config.MaxRequestsPerBatch),

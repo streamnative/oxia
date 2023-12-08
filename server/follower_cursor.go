@@ -148,13 +148,17 @@ func NewFollowerCursor(
 		return nil, err
 	}
 
-	go common.DoWithLabels(map[string]string{
-		"oxia":      "follower-cursor-send",
-		"namespace": namespace,
-		"shard":     fmt.Sprintf("%d", fc.shardId),
-	}, func() {
-		fc.run()
-	})
+	go common.DoWithLabels(
+		context.Background(),
+		map[string]string{
+			"oxia":      "follower-cursor-send",
+			"namespace": namespace,
+			"shard":     fmt.Sprintf("%d", fc.shardId),
+		},
+		func() {
+			fc.run()
+		},
+	)
 
 	return fc, nil
 }
@@ -336,12 +340,15 @@ func (fc *followerCursor) streamEntries() error {
 	}
 	defer reader.Close()
 
-	go common.DoWithLabels(map[string]string{
-		"oxia":  "follower-cursor-receive",
-		"shard": fmt.Sprintf("%d", fc.shardId),
-	}, func() {
-		fc.receiveAcks(cancel, fc.stream)
-	})
+	go common.DoWithLabels(
+		ctx,
+		map[string]string{
+			"oxia":  "follower-cursor-receive",
+			"shard": fmt.Sprintf("%d", fc.shardId),
+		}, func() {
+			fc.receiveAcks(cancel, fc.stream)
+		},
+	)
 
 	fc.log.Info(
 		"Successfully attached cursor follower",

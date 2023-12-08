@@ -84,9 +84,13 @@ func (s *shardManagerImpl) Close() error {
 func (s *shardManagerImpl) start() error {
 	s.Lock()
 
-	go common.DoWithLabels(map[string]string{
-		"oxia": "receive-shard-updates",
-	}, s.receiveWithRecovery)
+	go common.DoWithLabels(
+		s.ctx,
+		map[string]string{
+			"oxia": "receive-shard-updates",
+		},
+		s.receiveWithRecovery,
+	)
 
 	ctx, cancel := context.WithTimeout(s.ctx, s.requestTimeout)
 	defer cancel()

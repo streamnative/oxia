@@ -210,25 +210,29 @@ func (s *shardController) verifyCurrentEnsemble() bool {
 }
 
 func (s *shardController) electLeaderWithRetries() {
-	go common.DoWithLabels(map[string]string{
-		"oxia":      "shard-controller-leader-election",
-		"namespace": s.namespace,
-		"shard":     fmt.Sprintf("%d", s.shard),
-	}, func() {
-		_ = backoff.RetryNotify(func() error {
-			s.Lock()
-			defer s.Unlock()
-			return s.electLeader()
-		}, common.NewBackOff(s.ctx),
-			func(err error, duration time.Duration) {
-				s.leaderElectionsFailed.Inc()
-				s.log.Warn(
-					"Leader election has failed, retrying later",
-					slog.Any("error", err),
-					slog.Duration("retry-after", duration),
-				)
-			})
-	})
+	go common.DoWithLabels(
+		s.ctx,
+		map[string]string{
+			"oxia":      "shard-controller-leader-election",
+			"namespace": s.namespace,
+			"shard":     fmt.Sprintf("%d", s.shard),
+		},
+		func() {
+			_ = backoff.RetryNotify(func() error {
+				s.Lock()
+				defer s.Unlock()
+				return s.electLeader()
+			}, common.NewBackOff(s.ctx),
+				func(err error, duration time.Duration) {
+					s.leaderElectionsFailed.Inc()
+					s.log.Warn(
+						"Leader election has failed, retrying later",
+						slog.Any("error", err),
+						slog.Duration("retry-after", duration),
+					)
+				})
+		},
+	)
 }
 
 func (s *shardController) electLeader() error {
@@ -361,37 +365,41 @@ func (s *shardController) keepFencingFollower(ctx context.Context, node model.Se
 		slog.Any("follower", node),
 	)
 
-	go common.DoWithLabels(map[string]string{
-		"oxia":     "shard-controller-retry-failed-follower",
-		"shard":    fmt.Sprintf("%d", s.shard),
-		"follower": node.Internal,
-	}, func() {
-		backOff := common.NewBackOffWithInitialInterval(ctx, 1*time.Second)
+	go common.DoWithLabels(
+		s.ctx,
+		map[string]string{
+			"oxia":     "shard-controller-retry-failed-follower",
+			"shard":    fmt.Sprintf("%d", s.shard),
+			"follower": node.Internal,
+		},
+		func() {
+			backOff := common.NewBackOffWithInitialInterval(ctx, 1*time.Second)
 
-		_ = backoff.RetryNotify(func() error {
-			err := s.newTermAndAddFollower(ctx, node)
-			if status.Code(err) == common.CodeInvalidTerm {
-				// If we're receiving invalid term error, it would mean
-				// there's already a new term generated, and we don't have
-				// to keep trying with this old term
+			_ = backoff.RetryNotify(func() error {
+				err := s.newTermAndAddFollower(ctx, node)
+				if status.Code(err) == common.CodeInvalidTerm {
+					// If we're receiving invalid term error, it would mean
+					// there's already a new term generated, and we don't have
+					// to keep trying with this old term
+					s.log.Warn(
+						"Failed to newTerm, invalid term. Stop trying",
+						slog.Any("follower", node),
+						slog.Int64("term", s.Term()),
+					)
+					return nil
+				}
+				return err
+			}, backOff, func(err error, duration time.Duration) {
 				s.log.Warn(
-					"Failed to newTerm, invalid term. Stop trying",
+					"Failed to newTerm, retrying later",
+					slog.Any("error", err),
 					slog.Any("follower", node),
 					slog.Int64("term", s.Term()),
+					slog.Duration("retry-after", duration),
 				)
-				return nil
-			}
-			return err
-		}, backOff, func(err error, duration time.Duration) {
-			s.log.Warn(
-				"Failed to newTerm, retrying later",
-				slog.Any("error", err),
-				slog.Any("follower", node),
-				slog.Int64("term", s.Term()),
-				slog.Duration("retry-after", duration),
-			)
-		})
-	})
+			})
+		},
+	)
 }
 
 func (s *shardController) newTermAndAddFollower(ctx context.Context, node model.ServerAddress) error {
@@ -445,32 +453,35 @@ func (s *shardController) newTermQuorum() (map[model.ServerAddress]*proto.EntryI
 	for _, sa := range fencingQuorum {
 		// We need to save the address because it gets modified in the loop
 		serverAddress := sa
-		go common.DoWithLabels(map[string]string{
-			"oxia":  "shard-controller-leader-election",
-			"shard": fmt.Sprintf("%d", s.shard),
-			"node":  sa.Internal,
-		}, func() {
-			entryId, err := s.newTerm(ctx, serverAddress)
-			if err != nil {
-				s.log.Warn(
-					"Failed to newTerm node",
-					slog.Any("error", err),
-					slog.String("node", serverAddress.Internal),
-				)
-			} else {
-				s.log.Info(
-					"Processed newTerm response",
-					slog.Any("server-address", serverAddress),
-					slog.Any("entry-id", entryId),
-				)
-			}
+		go common.DoWithLabels(
+			s.ctx,
+			map[string]string{
+				"oxia":  "shard-controller-leader-election",
+				"shard": fmt.Sprintf("%d", s.shard),
+				"node":  sa.Internal,
+			}, func() {
+				entryId, err := s.newTerm(ctx, serverAddress)
+				if err != nil {
+					s.log.Warn(
+						"Failed to newTerm node",
+						slog.Any("error", err),
+						slog.String("node", serverAddress.Internal),
+					)
+				} else {
+					s.log.Info(
+						"Processed newTerm response",
+						slog.Any("server-address", serverAddress),
+						slog.Any("entry-id", entryId),
+					)
+				}
 
-			ch <- struct {
-				model.ServerAddress
-				*proto.EntryId
-				error
-			}{serverAddress, entryId, err}
-		})
+				ch <- struct {
+					model.ServerAddress
+					*proto.EntryId
+					error
+				}{serverAddress, entryId, err}
+			},
+		)
 	}
 
 	successResponses := 0
@@ -610,27 +621,31 @@ func (s *shardController) addFollower(leader model.ServerAddress, follower strin
 }
 
 func (s *shardController) DeleteShard() {
-	go common.DoWithLabels(map[string]string{
-		"oxia":      "shard-controller-delete-shard",
-		"namespace": s.namespace,
-		"shard":     fmt.Sprintf("%d", s.shard),
-	}, func() {
-		s.Lock()
-		defer s.Unlock()
+	go common.DoWithLabels(
+		s.ctx,
+		map[string]string{
+			"oxia":      "shard-controller-delete-shard",
+			"namespace": s.namespace,
+			"shard":     fmt.Sprintf("%d", s.shard),
+		},
+		func() {
+			s.Lock()
+			defer s.Unlock()
 
-		s.log.Info("Deleting shard")
+			s.log.Info("Deleting shard")
 
-		_ = backoff.RetryNotify(s.deleteShard, common.NewBackOff(s.ctx),
-			func(err error, duration time.Duration) {
-				s.log.Warn(
-					"Delete shard failed, retrying later",
-					slog.Duration("retry-after", duration),
-					slog.Any("error", err),
-				)
-			})
+			_ = backoff.RetryNotify(s.deleteShard, common.NewBackOff(s.ctx),
+				func(err error, duration time.Duration) {
+					s.log.Warn(
+						"Delete shard failed, retrying later",
+						slog.Duration("retry-after", duration),
+						slog.Any("error", err),
+					)
+				})
 
-		s.cancel()
-	})
+			s.cancel()
+		},
+	)
 }
 
 func (s *shardController) deleteShard() error {

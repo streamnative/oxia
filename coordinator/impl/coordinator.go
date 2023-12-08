@@ -140,9 +140,13 @@ func NewCoordinator(metadataProvider MetadataProvider,
 		}
 	}
 
-	go common.DoWithLabels(map[string]string{
-		"oxia": "coordinator-wait-for-events",
-	}, c.waitForExternalEvents)
+	go common.DoWithLabels(
+		c.ctx,
+		map[string]string{
+			"oxia": "coordinator-wait-for-events",
+		},
+		c.waitForExternalEvents,
+	)
 
 	return c, nil
 }

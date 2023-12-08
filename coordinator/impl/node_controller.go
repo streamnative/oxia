@@ -111,15 +111,23 @@ func newNodeController(addr model.ServerAddress,
 			return 0
 		})
 
-	go common.DoWithLabels(map[string]string{
-		"oxia": "node-controller",
-		"addr": nc.addr.Internal,
-	}, nc.healthCheckWithRetries)
+	go common.DoWithLabels(
+		nc.ctx,
+		map[string]string{
+			"oxia": "node-controller",
+			"addr": nc.addr.Internal,
+		},
+		nc.healthCheckWithRetries,
+	)
 
-	go common.DoWithLabels(map[string]string{
-		"oxia": "node-controller-send-updates",
-		"addr": nc.addr.Internal,
-	}, nc.sendAssignmentsUpdatesWithRetries)
+	go common.DoWithLabels(
+		nc.ctx,
+		map[string]string{
+			"oxia": "node-controller-send-updates",
+			"addr": nc.addr.Internal,
+		},
+		nc.sendAssignmentsUpdatesWithRetries,
+	)
 	return nc
 }
 
@@ -163,30 +171,34 @@ func (n *nodeController) healthCheck(backoff backoff.BackOff) error {
 	ctx, cancel := context.WithCancel(n.ctx)
 	defer cancel()
 
-	go common.DoWithLabels(map[string]string{
-		"oxia": "node-controller-health-check-ping",
-		"addr": n.addr.Internal,
-	}, func() {
-		ticker := time.NewTicker(healthCheckProbeInterval)
+	go common.DoWithLabels(
+		n.ctx,
+		map[string]string{
+			"oxia": "node-controller-health-check-ping",
+			"addr": n.addr.Internal,
+		},
+		func() {
+			ticker := time.NewTicker(healthCheckProbeInterval)
 
-		for {
-			select {
-			case <-ticker.C:
-				pingCtx, pingCancel := context.WithTimeout(ctx, healthCheckProbeTimeout)
+			for {
+				select {
+				case <-ticker.C:
+					pingCtx, pingCancel := context.WithTimeout(ctx, healthCheckProbeTimeout)
 
-				res, err := health.Check(pingCtx, &grpc_health_v1.HealthCheckRequest{Service: ""})
-				pingCancel()
-				if err2 := n.processHealthCheckResponse(res, err); err2 != nil {
-					n.log.Warn("Node stopped responding to ping")
-					cancel()
+					res, err := health.Check(pingCtx, &grpc_health_v1.HealthCheckRequest{Service: ""})
+					pingCancel()
+					if err2 := n.processHealthCheckResponse(res, err); err2 != nil {
+						n.log.Warn("Node stopped responding to ping")
+						cancel()
+						return
+					}
+
+				case <-ctx.Done():
 					return
 				}
-
-			case <-ctx.Done():
-				return
 			}
-		}
-	})
+		},
+	)
 
 	watch, err := health.Watch(ctx, &grpc_health_v1.HealthCheckRequest{Service: ""})
 	if err != nil {

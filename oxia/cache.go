@@ -126,9 +126,13 @@ func newCacheManager(client SyncClient) (*cacheManager, error) {
 		return nil, errors.Wrap(err, "failed to create notifications client")
 	}
 
-	go common.DoWithLabels(map[string]string{
-		"oxia": "cache-manager",
-	}, cm.run)
+	go common.DoWithLabels(
+		cm.ctx,
+		map[string]string{
+			"oxia": "cache-manager",
+		},
+		cm.run,
+	)
 
 	return cm, nil
 }

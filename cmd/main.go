@@ -15,6 +15,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -73,16 +74,20 @@ func configureLogLevel(cmd *cobra.Command, args []string) error {
 }
 
 func main() {
-	common.DoWithLabels(map[string]string{
-		"oxia": "main",
-	}, func() {
-		if _, err := maxprocs.Set(); err != nil {
-			_, _ = fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-		if err := rootCmd.Execute(); err != nil {
-			_, _ = fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-	})
+	common.DoWithLabels(
+		context.Background(),
+		map[string]string{
+			"oxia": "main",
+		},
+		func() {
+			if _, err := maxprocs.Set(); err != nil {
+				_, _ = fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			if err := rootCmd.Execute(); err != nil {
+				_, _ = fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+		},
+	)
 }

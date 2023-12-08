@@ -62,18 +62,22 @@ func newNotifications(options clientOptions, ctx context.Context, clientPool com
 		newShardNotificationsManager(shard, nm)
 	}
 
-	go common.DoWithLabels(map[string]string{
-		"oxia": "notifications-manager-close",
-	}, func() {
-		// Wait until all the shards managers are done before
-		// closing the user-facing channel
-		for i := 0; i < len(shards); i++ {
-			<-nm.closeCh
-		}
+	go common.DoWithLabels(
+		nm.ctx,
+		map[string]string{
+			"oxia": "notifications-manager-close",
+		},
+		func() {
+			// Wait until all the shards managers are done before
+			// closing the user-facing channel
+			for i := 0; i < len(shards); i++ {
+				<-nm.closeCh
+			}
 
-		close(nm.multiplexCh)
-		nm.cancelMultiplexChanClosed()
-	})
+			close(nm.multiplexCh)
+			nm.cancelMultiplexChanClosed()
+		},
+	)
 
 	// Wait for the notifications on all the shards to be initialized
 	timeoutCtx, cancel := context.WithTimeout(nm.ctx, options.requestTimeout)
@@ -132,10 +136,14 @@ func newShardNotificationsManager(shard int64, nm *notifications) *shardNotifica
 		),
 	}
 
-	go common.DoWithLabels(map[string]string{
-		"oxia":  "notifications-manager",
-		"shard": fmt.Sprintf("%d", shard),
-	}, snm.getNotificationsWithRetries)
+	go common.DoWithLabels(
+		snm.ctx,
+		map[string]string{
+			"oxia":  "notifications-manager",
+			"shard": fmt.Sprintf("%d", shard),
+		},
+		snm.getNotificationsWithRetries,
+	)
 
 	return snm
 }
