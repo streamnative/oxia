@@ -190,7 +190,7 @@ func TestQuorumAckTracker_WaitForCommitOffset(t *testing.T) {
 
 	go func() {
 		_, err := at.WaitForCommitOffset(context.Background(), 2, func() (*proto.WriteResponse, error) {
-			return nil, nil
+			return nil, nil //nolint:nilnil
 		})
 		ch <- err
 	}()
