@@ -31,13 +31,19 @@ var (
 		return f
 	}()
 	metadataProviders = map[string]func(t *testing.T) MetadataProvider{
-		"memory": func(_ *testing.T) MetadataProvider {
+		"memory": func(t *testing.T) MetadataProvider {
+			t.Helper()
+
 			return NewMetadataProviderMemory()
 		},
 		"file": func(t *testing.T) MetadataProvider {
+			t.Helper()
+
 			return NewMetadataProviderFile(filepath.Join(t.TempDir(), "metadata"))
 		},
-		"configmap": func(_ *testing.T) MetadataProvider {
+		"configmap": func(t *testing.T) MetadataProvider {
+			t.Helper()
+
 			return NewMetadataProviderConfigMap(_fake, "ns", "n")
 		},
 	}

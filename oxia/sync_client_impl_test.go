@@ -74,6 +74,8 @@ func TestCancelContext(t *testing.T) {
 }
 
 func assertCancellable(t *testing.T, operationFunc func(context.Context) error) {
+	t.Helper()
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	errCh := make(chan error)

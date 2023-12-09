@@ -52,7 +52,7 @@ linters:
     - sqlclosecheck
     - tenv
     # - testableexamples
-    # - thelper
+    - thelper
     - tparallel
     - unconvert
     - unparam

@@ -38,7 +38,8 @@ var standalone *server.Standalone
 var serviceAddress string
 
 func TestMain(m *testing.M) {
-	config := server.NewTestConfig(nil)
+	dir, _ := os.MkdirTemp(os.TempDir(), "oxia-test-*")
+	config := server.NewTestConfig(dir)
 	standalone, _ = server.NewStandalone(config)
 	defer standalone.Close()
 	serviceAddress = fmt.Sprintf("localhost:%d", standalone.RpcPort())

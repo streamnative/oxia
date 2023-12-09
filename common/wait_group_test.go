@@ -24,6 +24,8 @@ import (
 )
 
 func assertNotReady(t *testing.T, wg WaitGroup) {
+	t.Helper()
+
 	done := make(chan bool, 1)
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()

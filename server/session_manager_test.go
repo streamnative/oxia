@@ -197,6 +197,8 @@ func TestSessionUpdateOperationCallback_OnPut(t *testing.T) {
 }
 
 func storageEntry(t *testing.T, sessionId int64) []byte {
+	t.Helper()
+
 	entry := &proto.StorageEntry{
 		Value:                 nil,
 		VersionId:             0,
@@ -318,10 +320,11 @@ func TestSessionManager(t *testing.T) {
 	}, 10*time.Second, 30*time.Millisecond)
 
 	assert.NoError(t, lc.Close())
-
 }
 
 func getData(t *testing.T, lc *leaderController, key string) string {
+	t.Helper()
+
 	resp, err := lc.db.Get(&proto.GetRequest{
 		Key:          key,
 		IncludeValue: true,
@@ -334,6 +337,8 @@ func getData(t *testing.T, lc *leaderController, key string) string {
 }
 
 func keepAlive(t *testing.T, sManager *sessionManager, sessionId int64, err error, sleepTime time.Duration, heartbeatCount int) {
+	t.Helper()
+
 	go func() {
 		assert.NoError(t, err)
 		for i := 0; i < heartbeatCount; i++ {
@@ -344,6 +349,8 @@ func keepAlive(t *testing.T, sManager *sessionManager, sessionId int64, err erro
 }
 
 func getSessionMetadata(t *testing.T, lc *leaderController, sessionId int64) *proto.SessionMetadata {
+	t.Helper()
+
 	resp, err := lc.db.Get(&proto.GetRequest{
 		Key:          SessionKey(SessionId(sessionId)),
 		IncludeValue: true,
@@ -361,6 +368,8 @@ func getSessionMetadata(t *testing.T, lc *leaderController, sessionId int64) *pr
 }
 
 func createSessionManager(t *testing.T) (*sessionManager, *leaderController) {
+	t.Helper()
+
 	var shard int64 = 1
 
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)

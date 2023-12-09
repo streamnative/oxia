@@ -142,6 +142,8 @@ func setup(sinceFunc func(time.Time) time.Duration) (*Metrics, metric.Reader) {
 }
 
 func assertTimer(t *testing.T, rm metricdata.ResourceMetrics, name string, expectedType string, expectedResult string) {
+	t.Helper()
+
 	sums, err := counter[float64](rm, name)
 	assert.NoError(t, err)
 	assertDataPoints(t, sums, float64(1), expectedType, expectedResult)
@@ -152,6 +154,8 @@ func assertTimer(t *testing.T, rm metricdata.ResourceMetrics, name string, expec
 
 }
 func assertHistogram(t *testing.T, rm metricdata.ResourceMetrics, name string, hasHistogram bool, expectedSum int64, expectedType string, expectedResult string) {
+	t.Helper()
+
 	datapoints, err := histogram(rm, name)
 
 	if hasHistogram {
@@ -192,17 +196,23 @@ func histogram(rm metricdata.ResourceMetrics, name string) ([]metricdata.Histogr
 }
 
 func assertDataPoints[N int64 | float64](t *testing.T, datapoints []metricdata.DataPoint[N], expectedValue N, expectedType string, expectedResult string) {
+	t.Helper()
+
 	assert.Equal(t, 1, len(datapoints))
 	assert.Equal(t, expectedValue, datapoints[0].Value)
 	assertAttributes(t, datapoints[0].Attributes, expectedType, expectedResult)
 }
 
 func assertAttributes(t *testing.T, attrs attribute.Set, expectedType string, expectedResult string) {
+	t.Helper()
+
 	assert.Equal(t, 2, attrs.Len())
 	assertAttribute(t, attrs, "type", expectedType)
 	assertAttribute(t, attrs, "result", expectedResult)
 }
 func assertAttribute(t *testing.T, attrs attribute.Set, key attribute.Key, expected string) {
+	t.Helper()
+
 	value, ok := attrs.Value(key)
 	assert.True(t, ok)
 	assert.Equal(t, expected, value.AsString())

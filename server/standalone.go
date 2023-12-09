@@ -17,9 +17,7 @@ package server
 import (
 	"context"
 	"log/slog"
-	"os"
 	"path/filepath"
-	"testing"
 
 	"go.uber.org/multierr"
 
@@ -47,14 +45,7 @@ type Standalone struct {
 	metrics *metrics.PrometheusMetrics
 }
 
-func NewTestConfig(t *testing.T) StandaloneConfig {
-	var dir string
-	if t == nil {
-		dir, _ = os.MkdirTemp(os.TempDir(), "oxia-test-*")
-	} else {
-		dir = t.TempDir()
-	}
-
+func NewTestConfig(dir string) StandaloneConfig {
 	return StandaloneConfig{
 		Config: Config{
 			DataDir:             filepath.Join(dir, "db"),
