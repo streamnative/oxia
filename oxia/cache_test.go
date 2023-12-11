@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"sync/atomic"
 	"testing"
@@ -38,6 +39,9 @@ var standalone *server.Standalone
 var serviceAddress string
 
 func TestMain(m *testing.M) {
+	// Disable zerolog ConsoleWriter to avoid DATA RACE at os.Stdout
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{})))
+
 	dir, _ := os.MkdirTemp(os.TempDir(), "oxia-test-*")
 	config := server.NewTestConfig(dir)
 	standalone, _ = server.NewStandalone(config)
