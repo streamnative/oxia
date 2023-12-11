@@ -37,12 +37,12 @@ linters:
     - exportloopref
     # - gocritic
     - godot
-    # - gomoddirectives
+    - gomoddirectives
     - gosec
     - nakedret
     - nilerr
     - nilnil
-    # - noctx
+    - noctx
     - nolintlint
     - prealloc
     - predeclared
@@ -82,7 +82,11 @@ issues:
         - unparam
         - gosec
         - contextcheck
+        - noctx
     - path: \.go
       linters:
         - contextcheck
       text: "Non-inherited new context"
+    - linters:
+        - gomoddirectives
+      text: "github.com/samber/slog-common"
