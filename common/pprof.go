@@ -33,14 +33,14 @@ var (
 
 // DoWithLabels attaches the labels to the current go-routine Pprof context,
 // for the duration of the call to f.
-func DoWithLabels(labels map[string]string, f func()) {
+func DoWithLabels(ctx context.Context, labels map[string]string, f func()) {
 	l := make([]string, 0, len(labels)*2)
 	for k, v := range labels {
 		l = append(l, k, v)
 	}
 
 	pprof.Do(
-		context.Background(),
+		ctx,
 		pprof.Labels(l...),
 		func(_ context.Context) {
 			f()
@@ -68,18 +68,21 @@ func RunProfiling() io.Closer {
 	slog.Info(fmt.Sprintf("  use `go tool pprof http://%s/debug/pprof/heap` to get inuse_space file", s.Addr))
 	slog.Info("")
 
-	go DoWithLabels(map[string]string{
-		"oxia": "pprof",
-	}, func() {
-		if err := s.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error(
-				"Unable to start debug profiling server",
-				slog.Any("error", err),
-				slog.String("component", "pprof"),
-			)
-			os.Exit(1)
-		}
-	})
+	go DoWithLabels(
+		context.Background(),
+		map[string]string{
+			"oxia": "pprof",
+		},
+		func() {
+			if err := s.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				slog.Error(
+					"Unable to start debug profiling server",
+					slog.Any("error", err),
+					slog.String("component", "pprof"),
+				)
+				os.Exit(1)
+			}
+		})
 
 	return s
 }

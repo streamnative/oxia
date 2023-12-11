@@ -49,7 +49,11 @@ type streamReader[T any, U any] struct {
 }
 
 func (s *streamReader[T, U]) Run() error {
-	go common.DoWithLabels(s.labels, func() { s.handleServerStream() })
+	go common.DoWithLabels(
+		s.ctx,
+		s.labels,
+		func() { s.handleServerStream() },
+	)
 
 	select {
 	case err := <-s.closeCh:

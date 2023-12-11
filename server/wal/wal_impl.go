@@ -148,11 +148,15 @@ func newWal(namespace string, shard int64, options *WalFactoryOptions, commitOff
 	w.trimmer = newTrimmer(namespace, shard, w, options.Retention, trimmerCheckInterval, clock, commitOffsetProvider)
 
 	if options.SyncData {
-		go common.DoWithLabels(map[string]string{
-			"oxia":      "wal-sync",
-			"namespace": namespace,
-			"shard":     fmt.Sprintf("%d", shard),
-		}, w.runSync)
+		go common.DoWithLabels(
+			w.ctx,
+			map[string]string{
+				"oxia":      "wal-sync",
+				"namespace": namespace,
+				"shard":     fmt.Sprintf("%d", shard),
+			},
+			w.runSync,
+		)
 	}
 
 	return w, nil

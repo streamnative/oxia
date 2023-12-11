@@ -60,10 +60,14 @@ func newTrimmer(namespace string, shard int64, wal *wal, retention time.Duration
 	}
 	t.ctx, t.cancel = context.WithCancel(context.Background())
 
-	go common.DoWithLabels(map[string]string{
-		"oxia":  "wal-trimmer",
-		"shard": fmt.Sprintf("%d", shard),
-	}, t.run)
+	go common.DoWithLabels(
+		t.ctx,
+		map[string]string{
+			"oxia":  "wal-trimmer",
+			"shard": fmt.Sprintf("%d", shard),
+		},
+		t.run,
+	)
 
 	return t
 }

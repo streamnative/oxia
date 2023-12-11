@@ -65,11 +65,15 @@ func newNotificationsTrimmer(ctx context.Context, namespace string, shardId int6
 		),
 	}
 
-	go common.DoWithLabels(map[string]string{
-		"oxia":      "notifications-trimmer",
-		"namespace": namespace,
-		"shard":     fmt.Sprintf("%d", shardId),
-	}, t.run)
+	go common.DoWithLabels(
+		t.ctx,
+		map[string]string{
+			"oxia":      "notifications-trimmer",
+			"namespace": namespace,
+			"shard":     fmt.Sprintf("%d", shardId),
+		},
+		t.run,
+	)
 
 	return t
 }

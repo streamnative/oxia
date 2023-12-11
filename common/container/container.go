@@ -15,6 +15,7 @@
 package container
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"net"
@@ -81,18 +82,22 @@ func newDefaultGrpcProvider(name, bindAddress string, registerFunc func(grpc.Ser
 		slog.String("bindAddress", listener.Addr().String()),
 	)
 
-	go common.DoWithLabels(map[string]string{
-		"oxia": name,
-		"bind": listener.Addr().String(),
-	}, func() {
-		if err := c.server.Serve(listener); err != nil {
-			c.log.Error(
-				"Failed to start serving",
-				slog.Any("error", err),
-			)
-			os.Exit(1)
-		}
-	})
+	go common.DoWithLabels(
+		context.Background(),
+		map[string]string{
+			"oxia": name,
+			"bind": listener.Addr().String(),
+		},
+		func() {
+			if err := c.server.Serve(listener); err != nil {
+				c.log.Error(
+					"Failed to start serving",
+					slog.Any("error", err),
+				)
+				os.Exit(1)
+			}
+		},
+	)
 
 	c.log.Info("Started Grpc server")
 
