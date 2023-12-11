@@ -21,6 +21,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -100,8 +101,11 @@ func Start(bindAddress string) (*PrometheusMetrics, error) {
 	}
 
 	p := &PrometheusMetrics{
-		server: &http.Server{Handler: mux},
-		port:   listener.Addr().(*net.TCPAddr).Port,
+		server: &http.Server{
+			Handler:           mux,
+			ReadHeaderTimeout: time.Second,
+		},
+		port: listener.Addr().(*net.TCPAddr).Port,
 	}
 
 	slog.Info(fmt.Sprintf("Serving Prometheus metrics at http://localhost:%d/metrics", p.port))

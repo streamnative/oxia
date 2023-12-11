@@ -563,7 +563,7 @@ func (s *shardController) selectNewLeader(newTermResponses map[model.ServerAddre
 	}
 
 	// Select a random leader among the nodes with the highest entry in the wal
-	leader = candidates[rand.Intn(len(candidates))]
+	leader = candidates[rand.Intn(len(candidates))] //nolint:gosec
 	followers = make(map[model.ServerAddress]*proto.EntryId)
 	for a, e := range newTermResponses {
 		if a != leader {

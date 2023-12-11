@@ -212,10 +212,10 @@ func (c *clientImpl) List(ctx context.Context, minKeyInclusive string, maxKeyExc
 	ch := make(chan ListResult)
 	wg := common.NewWaitGroup(len(shardIds))
 	for _, shardId := range shardIds {
-		shardIdPtr := &shardId
+		shardIdPtr := shardId
 		go func() {
 			request := &proto.ListRequest{
-				ShardId:        shardIdPtr,
+				ShardId:        &shardIdPtr,
 				StartInclusive: minKeyInclusive,
 				EndExclusive:   maxKeyExclusive,
 			}

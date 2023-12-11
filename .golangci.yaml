@@ -36,9 +36,9 @@ linters:
     - errorlint
     - exportloopref
     # - gocritic
-    # - godot
+    - godot
     # - gomoddirectives
-    # - gosec
+    - gosec
     - nakedret
     - nilerr
     - nilnil
@@ -80,3 +80,4 @@ issues:
     - path: _test\.go
       linters:
         - unparam
+        - gosec
