@@ -18,14 +18,37 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"sync"
 	"time"
+
+	"github.com/streamnative/oxia/server"
 )
 
+var (
+	exampleServerAddr = "localhost:6648"
+)
+
+func initExampleServer(serviceAddr string) *server.Standalone {
+	dir, _ := os.MkdirTemp(os.TempDir(), "oxia-test-*")
+	config := server.NewTestConfig(dir)
+	config.PublicServiceAddr = serviceAddr
+	server, err := server.NewStandalone(config)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return server
+}
+
 func Example() {
+	server := initExampleServer(exampleServerAddr)
+	defer server.Close()
+
 	// Creates a client instance
 	// Once created, a client instance will be valid until it's explicitly closed, and it can
 	// be used from different go-routines.
-	client, err := NewSyncClient("localhost:6648", WithRequestTimeout(10*time.Second))
+	client, err := NewSyncClient(exampleServerAddr, WithRequestTimeout(10*time.Second))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -50,19 +73,25 @@ func Example() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	_ = client.Close()
+	// Sleep to avoid DATA RACE on zerolog read at os.Stdout，and runExamples write at os.Stdout
+	time.Sleep(2 * time.Second)
 
 	fmt.Printf("Result: %s - %#v\n", string(value), version)
+	// Output: Result: value-2 - oxia.Version{VersionId:1, CreatedTimestamp:0x0, ModifiedTimestamp:0x0, ModificationsCount:1, Ephemeral:false, ClientIdentity:""}
 }
 
 func ExampleAsyncClient() {
+	server := initExampleServer(exampleServerAddr)
+	defer server.Close()
+
 	// Creates a client instance
 	// Once created, a client instance will be valid until it's explicitly closed, and it can
 	// be used from different go-routines.
-	client, err := NewAsyncClient("localhost:6648", WithRequestTimeout(10*time.Second))
+	client, err := NewAsyncClient(exampleServerAddr, WithRequestTimeout(10*time.Second))
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer client.Close()
 
 	// Write a record to Oxia with the specified key and value, and with the expectation
 	// that the record does not already exist.
@@ -81,21 +110,43 @@ func ExampleAsyncClient() {
 
 	r3 := <-c3
 	fmt.Printf("First operation complete: version: %#v - error: %#v\n", r3.Version, r3.Err)
+
+	_ = client.Close()
+	// Sleep to avoid DATA RACE on zerolog read at os.Stdout，and runExamples write at os.Stdout
+	time.Sleep(2 * time.Second)
+
+	// Output:
+	// First operation complete: version: oxia.Version{VersionId:0, CreatedTimestamp:0x0, ModifiedTimestamp:0x0, ModificationsCount:0, Ephemeral:false, ClientIdentity:""} - error: <nil>
+	// First operation complete: version: oxia.Version{VersionId:0, CreatedTimestamp:0x0, ModifiedTimestamp:0x0, ModificationsCount:0, Ephemeral:false, ClientIdentity:""} - error: <nil>
+	// First operation complete: version: oxia.Version{VersionId:0, CreatedTimestamp:0x0, ModifiedTimestamp:0x0, ModificationsCount:0, Ephemeral:false, ClientIdentity:""} - error: <nil>
 }
 
 func ExampleNotifications() {
-	client, err := NewSyncClient("localhost:6648")
+	server := initExampleServer(exampleServerAddr)
+	defer server.Close()
+
+	client, err := NewSyncClient(exampleServerAddr)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer client.Close()
 
 	notifications, err := client.GetNotifications()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	defer notifications.Close()
+	_, err = client.Put(context.Background(), "/my-key", []byte("value-1"), ExpectedRecordNotExists())
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		time.Sleep(1 * time.Second)
+		_ = notifications.Close()
+	}()
 
 	// Receive all the notification from the server
 	for notification := range notifications.Ch() {
@@ -103,4 +154,11 @@ func ExampleNotifications() {
 			notification.Type, notification.Key, notification.VersionId)
 	}
 
+	_ = client.Close()
+	// Sleep to avoid DATA RACE on zerolog read at os.Stdout，and runExamples write at os.Stdout
+	time.Sleep(2 * time.Second)
+	wg.Wait()
+
+	// Output:
+	// Type 0 - Key: /my-key - VersionId: 0
 }

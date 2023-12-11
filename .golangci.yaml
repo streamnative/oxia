@@ -51,7 +51,7 @@ linters:
     - rowserrcheck
     - sqlclosecheck
     - tenv
-    # - testableexamples
+    - testableexamples
     - thelper
     - tparallel
     - unconvert
