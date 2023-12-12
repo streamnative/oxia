@@ -132,6 +132,11 @@ func (m *maelstromGrpcProvider) HandleOxiaStreamRequest(msgType MsgType, msg *Me
 		m.Unlock()
 
 		stream.requests <- message.(*proto.Append)
+	default:
+		slog.Info(
+			"HandleOxiaStreamRequest with unsupported message",
+			slog.Any("msg-type", msgType),
+		)
 	}
 }
 
@@ -179,11 +184,12 @@ func (m *maelstromGrpcProvider) HandleClientRequest(msgType MsgType, msg any) {
 			return
 		}
 		res := <-stream.ch
-		if res.Gets[0].Status == proto.Status_KEY_NOT_FOUND {
+		switch {
+		case res.Gets[0].Status == proto.Status_KEY_NOT_FOUND:
 			sendErrorWithCode(r.Body.MsgId, r.Src, 20, "key-does-not-exist")
-		} else if res.Gets[0].Status != proto.Status_OK {
+		case res.Gets[0].Status != proto.Status_OK:
 			sendError(r.Body.MsgId, r.Src, errors.Errorf("Failed to perform write op: %#v", res.Gets[0].Status))
-		} else {
+		default:
 			// Ok
 			var value int64
 			_, _ = fmt.Sscanf(string(res.Gets[0].Value), "%d", &value)

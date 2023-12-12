@@ -35,7 +35,7 @@ linters:
     - errname
     - errorlint
     - exportloopref
-    # - gocritic
+    - gocritic
     - godot
     - gomoddirectives
     - gosec
@@ -90,3 +90,7 @@ issues:
     - linters:
         - gomoddirectives
       text: "github.com/samber/slog-common"
+    - path: _test\.go
+      linters:
+        - gocritic
+      text: "exitAfterDefer|singleCaseSwitch"

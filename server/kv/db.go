@@ -319,13 +319,15 @@ func (d *db) ReadTerm() (term int64, err error) {
 
 func (d *db) applyPut(commitOffset int64, batch WriteBatch, notifications *notifications, putReq *proto.PutRequest, timestamp uint64, updateOperationCallback UpdateOperationCallback) (*proto.PutResponse, error) {
 	se, err := checkExpectedVersionId(batch, putReq.Key, putReq.ExpectedVersionId)
-	if errors.Is(err, ErrBadVersionId) {
+
+	switch {
+	case errors.Is(err, ErrBadVersionId):
 		return &proto.PutResponse{
 			Status: proto.Status_UNEXPECTED_VERSION_ID,
 		}, nil
-	} else if err != nil {
+	case err != nil:
 		return nil, errors.Wrap(err, "oxia db: failed to apply batch")
-	} else {
+	default:
 		// No version conflict
 		status, err := updateOperationCallback.OnPut(batch, putReq, se)
 		if err != nil {
@@ -395,13 +397,14 @@ func (d *db) applyDelete(batch WriteBatch, notifications *notifications, delReq 
 		defer se.ReturnToVTPool()
 	}
 
-	if errors.Is(err, ErrBadVersionId) {
+	switch {
+	case errors.Is(err, ErrBadVersionId):
 		return &proto.DeleteResponse{Status: proto.Status_UNEXPECTED_VERSION_ID}, nil
-	} else if err != nil {
+	case err != nil:
 		return nil, errors.Wrap(err, "oxia db: failed to apply batch")
-	} else if se == nil {
+	case se == nil:
 		return &proto.DeleteResponse{Status: proto.Status_KEY_NOT_FOUND}, nil
-	} else {
+	default:
 		err = updateOperationCallback.OnDelete(batch, delReq.Key)
 		if err != nil {
 			return nil, err

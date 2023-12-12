@@ -38,7 +38,7 @@ type syncClientImpl struct {
 //
 //	client, err := oxia.NewSyncClient("my-oxia-service:6648", oxia.WithRequestTimeout(30*time.Second))
 func NewSyncClient(serviceAddress string, opts ...ClientOption) (SyncClient, error) {
-	options := append(opts, WithBatchLinger(0))
+	options := append([]ClientOption{WithBatchLinger(0)}, opts...)
 
 	asyncClient, err := NewAsyncClient(serviceAddress, options...)
 	if err != nil {

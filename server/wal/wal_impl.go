@@ -462,15 +462,17 @@ func (t *wal) TruncateLog(lastSafeOffset int64) (int64, error) {
 
 		// Delete any intermediate segment and truncate to the right position
 		for {
-			if segment, err := t.readOnlySegments.PollHighestSegment(); err != nil {
+			segment, err := t.readOnlySegments.PollHighestSegment()
+			switch {
+			case err != nil:
 				return InvalidOffset, err
-			} else if segment == nil {
+			case segment == nil:
 				// There are no segments left
 				if err := t.Clear(); err != nil {
 					return InvalidOffset, err
 				}
 				return t.LastOffset(), nil
-			} else if lastSafeOffset >= segment.Get().BaseOffset() {
+			case lastSafeOffset >= segment.Get().BaseOffset():
 				// The truncation will happen in the middle of this segment,
 				// and this will also become the new current segment
 				if err = segment.Close(); err != nil {
@@ -488,7 +490,7 @@ func (t *wal) TruncateLog(lastSafeOffset int64) (int64, error) {
 
 				err = segment.Close()
 				return lastSafeOffset, err
-			} else {
+			default:
 				// The entire segment can be discarded
 				if err := segment.Get().Delete(); err != nil {
 					err = multierr.Append(err, segment.Close())
