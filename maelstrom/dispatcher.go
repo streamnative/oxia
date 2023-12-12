@@ -71,6 +71,128 @@ func newDispatcher(provider *maelstromGrpcProvider, replicationProvider *maelstr
 	return d
 }
 
+func (d *dispatcher) onOxiaRequestMessage(msgType MsgType, m *Message[OxiaMessage], message pb.Message) {
+	go d.grpcProvider.HandleOxiaRequest(msgType, m, message)
+}
+
+func (d *dispatcher) onOxiaResponseMessage(_ MsgType, res *Message[OxiaMessage], message pb.Message) {
+	if ch, ok := d.requests[*res.Body.InReplyTo]; !ok {
+		slog.Error("Invalid response id")
+		os.Exit(1)
+	} else {
+		ch <- ResponseError{msg: message}
+	}
+}
+
+func (d *dispatcher) onOxiaStreamRequestMessage(msgType MsgType, m any, message pb.Message) {
+	switch msgType {
+	case MsgTypeShardAssignmentsResponse:
+		r := message.(*proto.ShardAssignments)
+		d.currentLeader = r.Namespaces[common.DefaultNamespace].Assignments[0].Leader
+		slog.Info(
+			"Received notification of new leader",
+			slog.String("leader", d.currentLeader),
+		)
+
+	case MsgTypeAppend:
+		msg := m.(*Message[OxiaStreamMessage])
+		go d.grpcProvider.HandleOxiaStreamRequest(msgType, msg, message)
+
+	case MsgTypeAck:
+		streamId := m.(*Message[OxiaStreamMessage]).Body.StreamId
+		go d.replicationProvider.HandleAck(streamId, message.(*proto.Ack))
+	}
+}
+
+func (d *dispatcher) onOxiaProxiedMessage(msgType MsgType, m any, _ pb.Message) {
+	proxiedMsgId, inReplyTo, _ := getOrigin(msgType, m)
+
+	slog.Info(
+		"Received response for proxied message",
+		slog.Int64("proxied-msg-id", proxiedMsgId),
+		slog.Int64("in-reply-to", inReplyTo),
+	)
+
+	switch msgType {
+	case MsgTypeHealthCheckOk:
+		res := m.(*Message[BaseMessageBody])
+		if ch, ok := d.requests[*res.Body.InReplyTo]; !ok {
+			slog.Error("Invalid response id")
+			os.Exit(1)
+		} else {
+			ch <- ResponseError{msg: nil, err: nil}
+		}
+	case MsgTypeWrite:
+		fallthrough
+	case MsgTypeRead:
+		fallthrough
+	case MsgTypeCas:
+		switch {
+		case d.currentLeader == "":
+			sendErrorNotInitialized(msgType, m)
+		case d.currentLeader == thisNode:
+			// We should answer
+			go d.grpcProvider.HandleClientRequest(msgType, m)
+		default:
+			d.proxyToLeader(msgType, m)
+		}
+
+		// Responses for proxied requests
+	case MsgTypeWriteOk:
+		fallthrough
+	case MsgTypeCasOk:
+		if pr, ok := d.proxiedRequests[inReplyTo]; ok {
+			msgId, _, origin := getOrigin(pr.msgType, pr.msg)
+			pm := &Message[BaseMessageBody]{
+				Src:  thisNode,
+				Dest: origin,
+				Body: BaseMessageBody{
+					Type:      msgType,
+					InReplyTo: &msgId,
+				},
+			}
+			b, _ := json.Marshal(pm)
+			fmt.Fprintln(os.Stdout, string(b))
+			delete(d.proxiedRequests, msgId)
+		}
+
+	case MsgTypeReadOk:
+		if pr, ok := d.proxiedRequests[inReplyTo]; ok {
+			msgId, _, origin := getOrigin(pr.msgType, pr.msg)
+			pm := &Message[ReadResponse]{
+				Src:  thisNode,
+				Dest: origin,
+				Body: ReadResponse{
+					BaseMessageBody: BaseMessageBody{
+						Type:      MsgTypeReadOk,
+						InReplyTo: &msgId,
+					},
+					Value: m.(*Message[ReadResponse]).Body.Value,
+				},
+			}
+			b, _ := json.Marshal(pm)
+			fmt.Fprintln(os.Stdout, string(b))
+			delete(d.proxiedRequests, msgId)
+		}
+
+	case MsgTypeError:
+		e := m.(*Message[ErrorResponse])
+		if ch, ok := d.requests[inReplyTo]; ok {
+			ch <- ResponseError{
+				msg: nil,
+				err: errors.New(e.Body.Text),
+			}
+
+			delete(d.requests, inReplyTo)
+		} else if pr, ok := d.proxiedRequests[inReplyTo]; ok {
+			// Got error for a proxied request
+			msgId, _, origin := getOrigin(pr.msgType, pr.msg)
+			sendErrorWithCode(msgId, origin, e.Body.Code, e.Body.Text)
+			delete(d.proxiedRequests, inReplyTo)
+		}
+	}
+}
+
 func (d *dispatcher) ReceivedMessage(msgType MsgType, m any, message pb.Message) {
 	d.Lock()
 	defer d.Unlock()
@@ -81,121 +203,15 @@ func (d *dispatcher) ReceivedMessage(msgType MsgType, m any, message pb.Message)
 		slog.Any("msg-type", msgType),
 	)
 
-	if msgType.isOxiaRequest() {
-		go d.grpcProvider.HandleOxiaRequest(msgType, m.(*Message[OxiaMessage]), message)
-	} else if msgType.isOxiaResponse() {
-		res := m.(*Message[OxiaMessage])
-		if ch, ok := d.requests[*res.Body.InReplyTo]; !ok {
-			slog.Error("Invalid response id")
-			os.Exit(1)
-		} else {
-			ch <- ResponseError{msg: message}
-		}
-	} else if msgType.isOxiaStreamRequest() {
-		switch msgType {
-		case MsgTypeShardAssignmentsResponse:
-			r := message.(*proto.ShardAssignments)
-			d.currentLeader = r.Namespaces[common.DefaultNamespace].Assignments[0].Leader
-			slog.Info(
-				"Received notification of new leader",
-				slog.String("leader", d.currentLeader),
-			)
-
-		case MsgTypeAppend:
-			msg := m.(*Message[OxiaStreamMessage])
-			go d.grpcProvider.HandleOxiaStreamRequest(msgType, msg, message)
-
-		case MsgTypeAck:
-			streamId := m.(*Message[OxiaStreamMessage]).Body.StreamId
-			go d.replicationProvider.HandleAck(streamId, message.(*proto.Ack))
-		}
-
-	} else {
-		proxiedMsgId, inReplyTo, _ := getOrigin(msgType, m)
-
-		slog.Info(
-			"Received response for proxied message",
-			slog.Int64("proxied-msg-id", proxiedMsgId),
-			slog.Int64("in-reply-to", inReplyTo),
-		)
-
-		switch msgType {
-		case MsgTypeHealthCheckOk:
-			res := m.(*Message[BaseMessageBody])
-			if ch, ok := d.requests[*res.Body.InReplyTo]; !ok {
-				slog.Error("Invalid response id")
-				os.Exit(1)
-			} else {
-				ch <- ResponseError{msg: nil, err: nil}
-			}
-		case MsgTypeWrite:
-			fallthrough
-		case MsgTypeRead:
-			fallthrough
-		case MsgTypeCas:
-			if d.currentLeader == "" {
-				sendErrorNotInitialized(msgType, m)
-			} else if d.currentLeader == thisNode {
-				// We should answer
-				go d.grpcProvider.HandleClientRequest(msgType, m)
-			} else {
-				d.proxyToLeader(msgType, m)
-			}
-
-			// Responses for proxied requests
-		case MsgTypeWriteOk:
-			fallthrough
-		case MsgTypeCasOk:
-			if pr, ok := d.proxiedRequests[inReplyTo]; ok {
-				msgId, _, origin := getOrigin(pr.msgType, pr.msg)
-				pm := &Message[BaseMessageBody]{
-					Src:  thisNode,
-					Dest: origin,
-					Body: BaseMessageBody{
-						Type:      msgType,
-						InReplyTo: &msgId,
-					},
-				}
-				b, _ := json.Marshal(pm)
-				fmt.Fprintln(os.Stdout, string(b))
-				delete(d.proxiedRequests, msgId)
-			}
-
-		case MsgTypeReadOk:
-			if pr, ok := d.proxiedRequests[inReplyTo]; ok {
-				msgId, _, origin := getOrigin(pr.msgType, pr.msg)
-				pm := &Message[ReadResponse]{
-					Src:  thisNode,
-					Dest: origin,
-					Body: ReadResponse{
-						BaseMessageBody: BaseMessageBody{
-							Type:      MsgTypeReadOk,
-							InReplyTo: &msgId,
-						},
-						Value: m.(*Message[ReadResponse]).Body.Value,
-					},
-				}
-				b, _ := json.Marshal(pm)
-				fmt.Fprintln(os.Stdout, string(b))
-				delete(d.proxiedRequests, msgId)
-			}
-
-		case MsgTypeError:
-			e := m.(*Message[ErrorResponse])
-			if ch, ok := d.requests[inReplyTo]; ok {
-				ch <- ResponseError{
-					msg: nil,
-					err: errors.New(e.Body.Text),
-				}
-
-				delete(d.requests, inReplyTo)
-			} else if pr, ok := d.proxiedRequests[inReplyTo]; ok {
-				// Got error for a proxied request
-				msgId, _, origin := getOrigin(pr.msgType, pr.msg)
-				sendErrorWithCode(msgId, origin, e.Body.Code, e.Body.Text)
-				delete(d.proxiedRequests, inReplyTo)
-			}
-		}
+	switch {
+	case msgType.isOxiaRequest():
+		d.onOxiaRequestMessage(msgType, m.(*Message[OxiaMessage]), message)
+	case msgType.isOxiaResponse():
+		d.onOxiaResponseMessage(msgType, m.(*Message[OxiaMessage]), message)
+	case msgType.isOxiaStreamRequest():
+		d.onOxiaStreamRequestMessage(msgType, m, message)
+	default:
+		d.onOxiaProxiedMessage(msgType, m, message)
 	}
 }
 

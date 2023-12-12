@@ -581,11 +581,12 @@ func (pl *PebbleLogger) Fatalf(format string, args ...interface{}) {
 func CompareWithSlash(a, b []byte) int {
 	for len(a) > 0 && len(b) > 0 {
 		idxA, idxB := bytes.IndexByte(a, '/'), bytes.IndexByte(b, '/')
-		if idxA < 0 && idxB < 0 {
+		switch {
+		case idxA < 0 && idxB < 0:
 			return bytes.Compare(a, b)
-		} else if idxA < 0 && idxB >= 0 {
+		case idxA < 0 && idxB >= 0:
 			return -1
-		} else if idxA >= 0 && idxB < 0 {
+		case idxA >= 0 && idxB < 0:
 			return +1
 		}
 
@@ -600,13 +601,14 @@ func CompareWithSlash(a, b []byte) int {
 		a, b = a[idxA+1:], b[idxB+1:]
 	}
 
-	if len(a) < len(b) {
+	switch {
+	case len(a) < len(b):
 		return -1
-	} else if len(a) > len(b) {
+	case len(a) > len(b):
 		return +1
-	} else {
-		return 0
 	}
+
+	return 0
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

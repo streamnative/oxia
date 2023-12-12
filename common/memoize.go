@@ -36,9 +36,7 @@ func Memoize[T any](provider func() T, cacheTime time.Duration) func() T {
 		cacheTime: cacheTime,
 	}
 
-	return func() T {
-		return m.Get()
-	}
+	return m.Get
 }
 
 func (m *memoize[T]) Get() T {

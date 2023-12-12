@@ -117,11 +117,12 @@ func NewShardController(namespace string, shard int64, shardMetadata model.Shard
 		slog.Any("shard-metadata", s.shardMetadata),
 	)
 
-	if shardMetadata.Status == model.ShardStatusDeleting {
+	switch {
+	case shardMetadata.Status == model.ShardStatusDeleting:
 		s.DeleteShard()
-	} else if shardMetadata.Leader == nil || shardMetadata.Status != model.ShardStatusSteadyState {
+	case shardMetadata.Leader == nil || shardMetadata.Status != model.ShardStatusSteadyState:
 		s.electLeaderWithRetries()
-	} else {
+	default:
 		s.log.Info(
 			"There is already a node marked as leader on the shard, verifying",
 			slog.Any("current-leader", s.shardMetadata.Leader),
@@ -166,30 +167,31 @@ func (s *shardController) verifyCurrentEnsemble() bool {
 	for _, node := range s.shardMetadata.Ensemble {
 		status, err := s.rpc.GetStatus(s.ctx, node, &proto.GetStatusRequest{ShardId: s.shard})
 
-		if err != nil {
+		switch {
+		case err != nil:
 			s.log.Warn(
 				"Failed to verify status for shard. Start a new election",
 				slog.Any("error", err),
 				slog.Any("node", node),
 			)
 			return false
-		} else if node.Internal == s.shardMetadata.Leader.Internal &&
-			status.Status != proto.ServingStatus_LEADER {
+		case node.Internal == s.shardMetadata.Leader.Internal &&
+			status.Status != proto.ServingStatus_LEADER:
 			s.log.Warn(
 				"Expected leader is not in leader status. Start a new election",
 				slog.Any("node", node),
 				slog.Any("status", status.Status),
 			)
 			return false
-		} else if node.Internal != s.shardMetadata.Leader.Internal &&
-			status.Status != proto.ServingStatus_FOLLOWER {
+		case node.Internal != s.shardMetadata.Leader.Internal &&
+			status.Status != proto.ServingStatus_FOLLOWER:
 			s.log.Warn(
 				"Expected follower is not in follower status. Start a new election",
 				slog.Any("node", node),
 				slog.Any("status", status.Status),
 			)
 			return false
-		} else if status.Term != s.shardMetadata.Term {
+		case status.Term != s.shardMetadata.Term:
 			s.log.Warn(
 				"Node has a wrong term. Start a new election",
 				slog.Any("node", node),
@@ -197,7 +199,7 @@ func (s *shardController) verifyCurrentEnsemble() bool {
 				slog.Any("coordinator-term", s.shardMetadata.Term),
 			)
 			return false
-		} else {
+		default:
 			s.log.Info(
 				"Node looks ok",
 				slog.Any("node", node),
@@ -562,11 +564,12 @@ func (s *shardController) selectNewLeader(newTermResponses map[model.ServerAddre
 	var candidates []model.ServerAddress
 
 	for addr, headEntryId := range newTermResponses {
-		if headEntryId.Offset < currentMax {
+		switch {
+		case headEntryId.Offset < currentMax:
 			continue
-		} else if headEntryId.Offset == currentMax {
+		case headEntryId.Offset == currentMax:
 			candidates = append(candidates, addr)
-		} else {
+		default:
 			// Found a new max
 			currentMax = headEntryId.Offset
 			candidates = []model.ServerAddress{addr}

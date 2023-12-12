@@ -301,12 +301,13 @@ func (c *cacheImpl[Value]) ReadModifyUpdate(ctx context.Context, key string, mod
 		var versionId int64
 		existingValue, version, err := c.Get(ctx, key)
 
-		if errors.Is(err, ErrKeyNotFound) {
+		switch {
+		case errors.Is(err, ErrKeyNotFound):
 			optValue = empty[Value]()
 			versionId = VersionIdNotExists
-		} else if err != nil {
+		case err != nil:
 			return backoff.Permanent(err)
-		} else {
+		default:
 			optValue = optionalOf(existingValue)
 			versionId = version.VersionId
 		}

@@ -602,6 +602,46 @@ func (fc *followerController) SendSnapshot(stream proto.OxiaLogReplication_SendS
 	return closeStreamWg.Wait(fc.ctx)
 }
 
+func (fc *followerController) readSnapshotStream(stream proto.OxiaLogReplication_SendSnapshotServer, loader kv.SnapshotLoader) (int64, error) {
+	var totalSize int64
+
+	for {
+		snapChunk, err := stream.Recv()
+		switch {
+		case err != nil:
+			if errors.Is(err, io.EOF) {
+				return totalSize, nil
+			}
+
+			fc.closeStreamNoMutex(err)
+			return totalSize, err
+		case snapChunk == nil:
+			return totalSize, nil
+		case fc.term != wal.InvalidTerm && snapChunk.Term != fc.term:
+			// The follower could be left with term=-1 by a previous failed
+			// attempt at sending the snapshot. It's ok to proceed in that case.
+			fc.closeStreamNoMutex(common.ErrorInvalidTerm)
+			return totalSize, common.ErrorInvalidTerm
+		}
+
+		fc.term = snapChunk.Term
+
+		fc.log.Debug(
+			"Applying snapshot chunk",
+			slog.String("chunk-name", snapChunk.Name),
+			slog.Int("chunk-size", len(snapChunk.Content)),
+			slog.String("chunk-progress", fmt.Sprintf("%d/%d", snapChunk.ChunkIndex, snapChunk.ChunkCount)),
+			slog.Int64("term", fc.term),
+		)
+		if err = loader.AddChunk(snapChunk.Name, snapChunk.ChunkIndex, snapChunk.ChunkCount, snapChunk.Content); err != nil {
+			fc.closeStream(err)
+			return totalSize, err
+		}
+
+		totalSize += int64(len(snapChunk.Content))
+	}
+}
+
 func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_SendSnapshotServer) {
 	fc.Lock()
 	defer fc.Unlock()
@@ -631,40 +671,9 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 
 	defer loader.Close()
 
-	var totalSize int64
-
-	for {
-		snapChunk, err := stream.Recv()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			fc.closeStreamNoMutex(err)
-			return
-		} else if snapChunk == nil {
-			break
-		} else if fc.term != wal.InvalidTerm && snapChunk.Term != fc.term {
-			// The follower could be left with term=-1 by a previous failed
-			// attempt at sending the snapshot. It's ok to proceed in that case.
-			fc.closeStreamNoMutex(common.ErrorInvalidTerm)
-			return
-		}
-
-		fc.term = snapChunk.Term
-
-		fc.log.Debug(
-			"Applying snapshot chunk",
-			slog.String("chunk-name", snapChunk.Name),
-			slog.Int("chunk-size", len(snapChunk.Content)),
-			slog.String("chunk-progress", fmt.Sprintf("%d/%d", snapChunk.ChunkIndex, snapChunk.ChunkCount)),
-			slog.Int64("term", fc.term),
-		)
-		if err = loader.AddChunk(snapChunk.Name, snapChunk.ChunkIndex, snapChunk.ChunkCount, snapChunk.Content); err != nil {
-			fc.closeStream(err)
-			return
-		}
-
-		totalSize += int64(len(snapChunk.Content))
+	totalSize, err := fc.readSnapshotStream(stream, loader)
+	if err != nil {
+		return
 	}
 
 	// We have received all the files for the database
