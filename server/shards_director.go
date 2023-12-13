@@ -145,13 +145,14 @@ func (s *shardsDirector) GetOrCreateLeader(namespace string, shardId int64) (Lea
 	}
 
 	// Create new leader controller
-	if lc, err := NewLeaderController(s.config, namespace, shardId, s.replicationRpcProvider, s.walFactory, s.kvFactory); err != nil {
+	lc, err := NewLeaderController(s.config, namespace, shardId, s.replicationRpcProvider, s.walFactory, s.kvFactory)
+	if err != nil {
 		return nil, err
-	} else {
-		s.leaders[shardId] = lc
-		s.leadersCounter.Inc()
-		return lc, nil
 	}
+
+	s.leaders[shardId] = lc
+	s.leadersCounter.Inc()
+	return lc, nil
 }
 
 func (s *shardsDirector) GetOrCreateFollower(namespace string, shardId int64) (FollowerController, error) {
@@ -180,13 +181,14 @@ func (s *shardsDirector) GetOrCreateFollower(namespace string, shardId int64) (F
 	}
 
 	// Create new follower controller
-	if fc, err := NewFollowerController(s.config, namespace, shardId, s.walFactory, s.kvFactory); err != nil {
+	fc, err := NewFollowerController(s.config, namespace, shardId, s.walFactory, s.kvFactory)
+	if err != nil {
 		return nil, err
-	} else {
-		s.followers[shardId] = fc
-		s.followersCounter.Inc()
-		return fc, nil
 	}
+
+	s.followers[shardId] = fc
+	s.followersCounter.Inc()
+	return fc, nil
 }
 
 func (s *shardsDirector) DeleteShard(req *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error) {
@@ -213,11 +215,13 @@ func (s *shardsDirector) DeleteShard(req *proto.DeleteShardRequest) (*proto.Dele
 		delete(s.followers, req.ShardId)
 		s.followersCounter.Dec()
 		return resp, nil
-	} else if fc, err := NewFollowerController(s.config, req.Namespace, req.ShardId, s.walFactory, s.kvFactory); err != nil {
-		return nil, err
-	} else {
-		return fc.DeleteShard(req)
 	}
+
+	fc, err := NewFollowerController(s.config, req.Namespace, req.ShardId, s.walFactory, s.kvFactory)
+	if err != nil {
+		return nil, err
+	}
+	return fc.DeleteShard(req)
 }
 
 func (s *shardsDirector) Close() error {

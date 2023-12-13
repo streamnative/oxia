@@ -41,7 +41,6 @@ func TestSessionKey(t *testing.T) {
 		_, err = KeyToId(key)
 		assert.Error(t, err)
 	}
-
 }
 
 type mockWriteBatch map[string]any
@@ -94,7 +93,6 @@ func (m mockWriteBatch) Get(key string) ([]byte, io.Closer, error) {
 		return nil, nil, err
 	}
 	return val.([]byte), &mockCloser{}, nil
-
 }
 
 func (m mockWriteBatch) DeleteRange(_, _ string) error {
@@ -223,7 +221,6 @@ func TestSessionUpdateOperationCallback_OnDelete(t *testing.T) {
 	assert.NoError(t, err)
 	_, found := writeBatch[SessionKey(SessionId(sessionId))+"a%2Fb%2Fc"]
 	assert.False(t, found)
-
 }
 
 func TestSessionManager(t *testing.T) {
@@ -316,7 +313,6 @@ func TestSessionManager(t *testing.T) {
 	assert.Eventually(t, func() bool {
 		return getSessionMetadata(t, lc, sessionId) == nil &&
 			getData(t, lc, "a/b") == ""
-
 	}, 10*time.Second, 30*time.Millisecond)
 
 	assert.NoError(t, lc.Close())

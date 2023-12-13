@@ -162,14 +162,14 @@ func (ms *readWriteSegment) rebuildIdx() error {
 
 		ms.writingIdx = binary.BigEndian.AppendUint32(ms.writingIdx, ms.currentFileOffset)
 		ms.currentFileOffset += 4 + size
-		entryOffset += 1
+		entryOffset++
 	}
 
 	ms.lastOffset = entryOffset - 1
 	return nil
 }
 
-func (ms *readWriteSegment) OpenTimestamp() time.Time {
+func (*readWriteSegment) OpenTimestamp() time.Time {
 	return time.Now()
 }
 
@@ -229,8 +229,6 @@ func (ms *readWriteSegment) Truncate(lastSafeOffset int64) error {
 	ms.lastOffset = lastSafeOffset
 	return ms.Flush()
 }
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 func initFileWithZeroes(f *os.File, size uint32) error {
 	if _, err := f.Seek(int64(size), 0); err != nil {

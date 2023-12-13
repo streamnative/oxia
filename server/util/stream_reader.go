@@ -101,29 +101,29 @@ func (s *streamReader[T, U]) close(err error) {
 }
 
 func ReadStream[T any](
+	ctx context.Context,
 	stream Stream[T],
 	handleMessage func(*T) error,
 	labels map[string]string,
-	ctx context.Context,
 	log *slog.Logger) StreamReader {
 	return ProcessStream[T, any](
+		ctx,
 		stream,
 		nil,
 		func(message *T) (*any, error) {
 			return nil, handleMessage(message)
 		},
 		labels,
-		ctx,
 		log,
 	)
 }
 
 func ProcessStream[T any, U any](
+	ctx context.Context,
 	stream Stream[T],
 	sender Sender[U],
 	handleMessage func(*T) (*U, error),
 	labels map[string]string,
-	ctx context.Context,
 	log *slog.Logger) StreamReader {
 	reader := &streamReader[T, U]{
 		closeCh:       make(chan error),

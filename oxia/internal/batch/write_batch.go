@@ -53,8 +53,6 @@ func (b writeBatchFactory) newBatch(shardId *int64) batch.Batch {
 	}
 }
 
-//////////
-
 type writeBatch struct {
 	shardId        *int64
 	execute        func(context.Context, *proto.WriteRequest) (*proto.WriteResponse, error)

@@ -172,7 +172,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	assert.EqualValues(t, 1, lc.Term())
 	assert.Equal(t, proto.ServingStatus_LEADER, lc.Status())
 
-	/// Write entry
+	// Write entry
 	res, err := lc.Write(context.Background(), &proto.WriteRequest{
 		ShardId: &shard,
 		Puts: []*proto.PutRequest{{
@@ -185,7 +185,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	assert.Equal(t, proto.Status_OK, res.Puts[0].Status)
 	assert.EqualValues(t, 0, res.Puts[0].Version.VersionId)
 
-	/// Read entry
+	// Read entry
 	r := <-lc.Read(context.Background(), &proto.ReadRequest{
 		ShardId: &shard,
 		Gets:    []*proto.GetRequest{{Key: "a", IncludeValue: true}},
@@ -196,7 +196,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	assert.Equal(t, []byte("value-a"), r.Response.Value)
 	assert.EqualValues(t, 0, res.Puts[0].Version.VersionId)
 
-	/// Set NewTerm to leader
+	// Set NewTerm to leader
 
 	fr2, err := lc.NewTerm(&proto.NewTermRequest{
 		ShardId: shard,
@@ -276,7 +276,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 		}
 	}()
 
-	/// Write entry
+	// Write entry
 	res, err := lc.Write(context.Background(), &proto.WriteRequest{
 		ShardId: &shard,
 		Puts: []*proto.PutRequest{{
@@ -289,7 +289,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	assert.Equal(t, proto.Status_OK, res.Puts[0].Status)
 	assert.EqualValues(t, 0, res.Puts[0].Version.VersionId)
 
-	/// Read entry
+	// Read entry
 	r := <-lc.Read(context.Background(), &proto.ReadRequest{
 		ShardId: &shard,
 		Gets:    []*proto.GetRequest{{Key: "a", IncludeValue: true}},
@@ -300,7 +300,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	assert.Equal(t, []byte("value-a"), r.Response.Value)
 	assert.EqualValues(t, 0, res.Puts[0].Version.VersionId)
 
-	/// Set NewTerm to leader
+	// Set NewTerm to leader
 
 	fr2, err := lc.NewTerm(&proto.NewTermRequest{
 		ShardId: shard,
@@ -356,7 +356,7 @@ func TestLeaderController_TermPersistent(t *testing.T) {
 	assert.EqualValues(t, wal.InvalidTerm, lc.Term())
 	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, lc.Status())
 
-	/// Set NewTerm to leader
+	// Set NewTerm to leader
 
 	fr2, err := lc.NewTerm(&proto.NewTermRequest{
 		ShardId: shard,
@@ -370,7 +370,7 @@ func TestLeaderController_TermPersistent(t *testing.T) {
 
 	assert.NoError(t, lc.Close())
 
-	/// Re-open lead controller
+	// Re-open lead controller
 	lc, err = NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
@@ -563,7 +563,7 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{BaseWalDir: t.TempDir()})
 
 	// Prepare some data in the leader log & db
-	wal, err := walFactory.NewWal(common.DefaultNamespace, shard, nil)
+	walObject, err := walFactory.NewWal(common.DefaultNamespace, shard, nil)
 	assert.NoError(t, err)
 	db, err := kv.NewDB(common.DefaultNamespace, shard, kvFactory, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
@@ -576,7 +576,7 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 		value, err := pb.Marshal(wrapInLogEntryValue(wr))
 		assert.NoError(t, err)
 
-		assert.NoError(t, wal.Append(&proto.LogEntry{
+		assert.NoError(t, walObject.Append(&proto.LogEntry{
 			Term:   5,
 			Offset: i,
 			Value:  value,
@@ -588,7 +588,7 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 
 	assert.NoError(t, db.UpdateTerm(5))
 	assert.NoError(t, db.Close())
-	assert.NoError(t, wal.Close())
+	assert.NoError(t, walObject.Close())
 
 	rpcClient := newMockRpcClient()
 
@@ -611,8 +611,8 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	/// Add some entries in term 6 that will be only in the
-	/// leader and f1
+	// Add some entries in term 6 that will be only in the
+	// leader and f1
 	go func() {
 		for i := 0; i < 10; i++ {
 			req := <-rpcClient.appendReqs
@@ -623,7 +623,7 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 		}
 	}()
 
-	/// Write entries
+	// Write entries
 	for i := 10; i < 20; i++ {
 		res, err := lc.Write(context.Background(), &proto.WriteRequest{
 			ShardId: &shard,
@@ -731,7 +731,7 @@ func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
 		BaseWalDir: t.TempDir(),
 	})
 
-	wal, err := walFactory.NewWal(common.DefaultNamespace, shard, nil)
+	walObject, err := walFactory.NewWal(common.DefaultNamespace, shard, nil)
 	assert.NoError(t, err)
 	v, err := pb.Marshal(wrapInLogEntryValue(&proto.WriteRequest{
 		ShardId: &shard,
@@ -741,7 +741,7 @@ func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
 		}},
 	}))
 	assert.NoError(t, err)
-	assert.NoError(t, wal.Append(&proto.LogEntry{
+	assert.NoError(t, walObject.Append(&proto.LogEntry{
 		Term:   0,
 		Offset: 0,
 		Value:  v,
@@ -775,7 +775,7 @@ func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
 		},
 	})
 
-	/// We should be able to read the entry, even if it was not fully committed before the leader started
+	// We should be able to read the entry, even if it was not fully committed before the leader started
 	r := <-lc.Read(context.Background(), &proto.ReadRequest{
 		ShardId: &shard,
 		Gets:    []*proto.GetRequest{{Key: "my-key", IncludeValue: true}},
@@ -817,7 +817,7 @@ func TestLeaderController_Notifications(t *testing.T) {
 		close(closeCh)
 	}()
 
-	/// Write entry
+	// Write entry
 	_, _ = lc.Write(context.Background(), &proto.WriteRequest{
 		ShardId: &shard,
 		Puts: []*proto.PutRequest{{
@@ -988,7 +988,7 @@ func TestLeaderController_DeleteShard(t *testing.T) {
 		FollowerMaps:      nil,
 	})
 
-	/// Read entry
+	// Read entry
 	r := <-lc.Read(context.Background(), &proto.ReadRequest{
 		ShardId: &shard,
 		Gets:    []*proto.GetRequest{{Key: "a", IncludeValue: true}},
@@ -1049,7 +1049,7 @@ func TestLeaderController_GetStatus(t *testing.T) {
 		FollowerMaps:      nil,
 	})
 
-	/// Write entry
+	// Write entry
 	_, _ = lc.Write(context.Background(), &proto.WriteRequest{
 		ShardId: &shard,
 		Puts: []*proto.PutRequest{{

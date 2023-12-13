@@ -165,7 +165,7 @@ func (s *shardController) verifyCurrentEnsemble() bool {
 	// is out of sync. We should just go back into the retry-to-fence follower
 	// loop. In practice, the current approach is easier for now.
 	for _, node := range s.shardMetadata.Ensemble {
-		status, err := s.rpc.GetStatus(s.ctx, node, &proto.GetStatusRequest{ShardId: s.shard})
+		nodeStatus, err := s.rpc.GetStatus(s.ctx, node, &proto.GetStatusRequest{ShardId: s.shard})
 
 		switch {
 		case err != nil:
@@ -176,26 +176,26 @@ func (s *shardController) verifyCurrentEnsemble() bool {
 			)
 			return false
 		case node.Internal == s.shardMetadata.Leader.Internal &&
-			status.Status != proto.ServingStatus_LEADER:
+			nodeStatus.Status != proto.ServingStatus_LEADER:
 			s.log.Warn(
 				"Expected leader is not in leader status. Start a new election",
 				slog.Any("node", node),
-				slog.Any("status", status.Status),
+				slog.Any("status", nodeStatus.Status),
 			)
 			return false
 		case node.Internal != s.shardMetadata.Leader.Internal &&
-			status.Status != proto.ServingStatus_FOLLOWER:
+			nodeStatus.Status != proto.ServingStatus_FOLLOWER:
 			s.log.Warn(
 				"Expected follower is not in follower status. Start a new election",
 				slog.Any("node", node),
-				slog.Any("status", status.Status),
+				slog.Any("status", nodeStatus.Status),
 			)
 			return false
-		case status.Term != s.shardMetadata.Term:
+		case nodeStatus.Term != s.shardMetadata.Term:
 			s.log.Warn(
 				"Node has a wrong term. Start a new election",
 				slog.Any("node", node),
-				slog.Any("node-term", status.Term),
+				slog.Any("node-term", nodeStatus.Term),
 				slog.Any("coordinator-term", s.shardMetadata.Term),
 			)
 			return false
@@ -327,12 +327,12 @@ func (s *shardController) deletingRemovedNodes() error {
 			Term:      s.shardMetadata.Term,
 		}); err != nil {
 			return err
-		} else {
-			s.log.Info(
-				"Successfully deleted shard",
-				slog.Any("server", ds),
-			)
 		}
+
+		s.log.Info(
+			"Successfully deleted shard",
+			slog.Any("server", ds),
+		)
 	}
 
 	return nil
@@ -557,7 +557,7 @@ func (s *shardController) deleteShardRpc(ctx context.Context, node model.ServerA
 	return err
 }
 
-func (s *shardController) selectNewLeader(newTermResponses map[model.ServerAddress]*proto.EntryId) (
+func (*shardController) selectNewLeader(newTermResponses map[model.ServerAddress]*proto.EntryId) (
 	leader model.ServerAddress, followers map[model.ServerAddress]*proto.EntryId) {
 	// Select all the nodes that have the highest entry in the wal
 	var currentMax int64 = -1
@@ -661,12 +661,12 @@ func (s *shardController) deleteShard() error {
 				slog.String("node", sa.Internal),
 			)
 			return err
-		} else {
-			s.log.Info(
-				"Successfully deleted shard from node",
-				slog.Any("server-address", sa),
-			)
 		}
+
+		s.log.Info(
+			"Successfully deleted shard from node",
+			slog.Any("server-address", sa),
+		)
 	}
 
 	s.log.Info("Successfully deleted shard from all the nodes")
@@ -760,26 +760,27 @@ func (s *shardController) waitForFollowersToCatchUp(ctx context.Context, leader 
 		}
 
 		err = backoff.Retry(func() error {
-			if fs, err := s.rpc.GetStatus(ctx, server, &proto.GetStatusRequest{ShardId: s.shard}); err != nil {
+			fs, err := s.rpc.GetStatus(ctx, server, &proto.GetStatusRequest{ShardId: s.shard})
+			if err != nil {
 				return err
-			} else {
-				followerHeadOffset := fs.HeadOffset
-				if followerHeadOffset >= leaderHeadOffset {
-					s.log.Info(
-						"Follower is caught-up with the leader after node-swap",
-						slog.Any("server", server),
-					)
-					return nil
-				} else {
-					s.log.Info(
-						"Follower is *not* caught-up yet with the leader",
-						slog.Any("server", server),
-						slog.Int64("leader-head-offset", leaderHeadOffset),
-						slog.Int64("follower-head-offset", followerHeadOffset),
-					)
-					return errors.New("follower not caught up yet")
-				}
 			}
+
+			followerHeadOffset := fs.HeadOffset
+			if followerHeadOffset >= leaderHeadOffset {
+				s.log.Info(
+					"Follower is caught-up with the leader after node-swap",
+					slog.Any("server", server),
+				)
+				return nil
+			}
+
+			s.log.Info(
+				"Follower is *not* caught-up yet with the leader",
+				slog.Any("server", server),
+				slog.Int64("leader-head-offset", leaderHeadOffset),
+				slog.Int64("follower-head-offset", followerHeadOffset),
+			)
+			return errors.New("follower not caught up yet")
 		}, common.NewBackOff(ctx))
 
 		if err != nil {

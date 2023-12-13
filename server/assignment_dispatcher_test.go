@@ -81,7 +81,6 @@ func TestShardAssignmentDispatcher_Initialized(t *testing.T) {
 	wg.Wait()
 
 	assert.NoError(t, dispatcher.Close())
-
 }
 
 func TestShardAssignmentDispatcher_ReadinessProbe(t *testing.T) {
@@ -125,7 +124,6 @@ func TestShardAssignmentDispatcher_ReadinessProbe(t *testing.T) {
 	assert.Equal(t, grpc_health_v1.HealthCheckResponse_SERVING, resp.Status)
 
 	assert.NoError(t, dispatcher.Close())
-
 }
 
 func TestShardAssignmentDispatcher_AddClient(t *testing.T) {

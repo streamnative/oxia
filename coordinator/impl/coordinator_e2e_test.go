@@ -178,9 +178,9 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 
 	leader := *nsStatus.Shards[0].Leader
 	var follower model.ServerAddress
-	for server := range servers {
-		if server != leader {
-			follower = server
+	for serverObj := range servers {
+		if serverObj != leader {
+			follower = serverObj
 			break
 		}
 	}
@@ -230,8 +230,8 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 	assert.NoError(t, coordinator.Close())
 	assert.NoError(t, clientPool.Close())
 
-	for _, server := range servers {
-		assert.NoError(t, server.Close())
+	for _, serverObj := range servers {
+		assert.NoError(t, serverObj.Close())
 	}
 }
 
@@ -329,8 +329,8 @@ func TestCoordinator_MultipleNamespaces(t *testing.T) {
 	assert.NoError(t, coordinator.Close())
 	assert.NoError(t, clientPool.Close())
 
-	for _, server := range servers {
-		assert.NoError(t, server.Close())
+	for _, serverObj := range servers {
+		assert.NoError(t, serverObj.Close())
 	}
 }
 
@@ -395,8 +395,8 @@ func TestCoordinator_DeleteNamespace(t *testing.T) {
 	assert.NoError(t, coordinator.Close())
 	assert.NoError(t, clientPool.Close())
 
-	for _, server := range servers {
-		assert.NoError(t, server.Close())
+	for _, serverObj := range servers {
+		assert.NoError(t, serverObj.Close())
 	}
 }
 
@@ -479,8 +479,8 @@ func TestCoordinator_DynamicallAddNamespace(t *testing.T) {
 	assert.NoError(t, coordinator.Close())
 	assert.NoError(t, clientPool.Close())
 
-	for _, server := range servers {
-		assert.NoError(t, server.Close())
+	for _, serverObj := range servers {
+		assert.NoError(t, serverObj.Close())
 	}
 }
 
@@ -574,8 +574,8 @@ func TestCoordinator_RebalanceCluster(t *testing.T) {
 	assert.NoError(t, coordinator.Close())
 	assert.NoError(t, clientPool.Close())
 
-	for _, server := range servers {
-		assert.NoError(t, server.Close())
+	for _, serverObj := range servers {
+		assert.NoError(t, serverObj.Close())
 	}
 }
 

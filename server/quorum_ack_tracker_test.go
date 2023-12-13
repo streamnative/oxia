@@ -174,7 +174,6 @@ func TestQuorumAckTracker_WaitForHeadOffset(t *testing.T) {
 			return false
 		}
 	}, 10*time.Second, 100*time.Millisecond)
-
 }
 
 func TestQuorumAckTracker_WaitForCommitOffset(t *testing.T) {

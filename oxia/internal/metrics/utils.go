@@ -74,16 +74,17 @@ func writeMetrics(request *proto.WriteRequest) (valueSize int64, requestCount in
 		valueSize += int64(len(put.Value))
 	}
 	requestCount = int64(len(request.Puts) + len(request.Deletes) + len(request.DeleteRanges))
-	return
+	return valueSize, requestCount
 }
 
 func readMetrics(response *proto.ReadResponse) (valueSize int64, requestCount int64) {
 	if response == nil {
-		return
+		return 0, 0
 	}
+
 	for _, get := range response.Gets {
 		valueSize += int64(len(get.Value))
 	}
 	requestCount = int64(len(response.Gets))
-	return
+	return valueSize, requestCount
 }

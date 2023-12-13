@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
+	grpcprometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -78,36 +78,36 @@ func (cp *clientPool) GetHealthRpc(target string) (grpc_health_v1.HealthClient, 
 	cnx, err := cp.getConnection(target)
 	if err != nil {
 		return nil, err
-	} else {
-		return grpc_health_v1.NewHealthClient(cnx), nil
 	}
+
+	return grpc_health_v1.NewHealthClient(cnx), nil
 }
 
 func (cp *clientPool) GetClientRpc(target string) (proto.OxiaClientClient, error) {
 	cnx, err := cp.getConnection(target)
 	if err != nil {
 		return nil, err
-	} else {
-		return proto.NewOxiaClientClient(cnx), nil
 	}
+
+	return proto.NewOxiaClientClient(cnx), nil
 }
 
 func (cp *clientPool) GetCoordinationRpc(target string) (proto.OxiaCoordinationClient, error) {
 	cnx, err := cp.getConnection(target)
 	if err != nil {
 		return nil, err
-	} else {
-		return proto.NewOxiaCoordinationClient(cnx), nil
 	}
+
+	return proto.NewOxiaCoordinationClient(cnx), nil
 }
 
 func (cp *clientPool) GetReplicationRpc(target string) (proto.OxiaLogReplicationClient, error) {
 	cnx, err := cp.getConnection(target)
 	if err != nil {
 		return nil, err
-	} else {
-		return proto.NewOxiaLogReplicationClient(cnx), nil
 	}
+
+	return proto.NewOxiaLogReplicationClient(cnx), nil
 }
 
 func (cp *clientPool) getConnection(target string) (grpc.ClientConnInterface, error) {
@@ -133,8 +133,8 @@ func (cp *clientPool) getConnection(target string) (grpc.ClientConnInterface, er
 
 	cnx, err := grpc.Dial(target,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithStreamInterceptor(grpc_prometheus.StreamClientInterceptor),
-		grpc.WithUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor),
+		grpc.WithStreamInterceptor(grpcprometheus.StreamClientInterceptor),
+		grpc.WithUnaryInterceptor(grpcprometheus.UnaryClientInterceptor),
 	)
 	if err != nil {
 		return nil, errors.Wrapf(err, "error connecting to %s", target)

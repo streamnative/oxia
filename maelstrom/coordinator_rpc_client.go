@@ -31,6 +31,10 @@ import (
 	"github.com/streamnative/oxia/proto"
 )
 
+var (
+	ErrNotImplement = fmt.Errorf("not implement")
+)
+
 type maelstromCoordinatorRpcProvider struct {
 	sync.Mutex
 
@@ -50,43 +54,48 @@ func (m *maelstromCoordinatorRpcProvider) PushShardAssignments(ctx context.Conte
 }
 
 func (m *maelstromCoordinatorRpcProvider) NewTerm(ctx context.Context, node model.ServerAddress, req *proto.NewTermRequest) (*proto.NewTermResponse, error) {
-	if res, err := m.dispatcher.RpcRequest(ctx, node.Internal, MsgTypeNewTermRequest, req); err != nil {
+	res, err := m.dispatcher.RpcRequest(ctx, node.Internal, MsgTypeNewTermRequest, req)
+	if err != nil {
 		return nil, err
-	} else {
-		return res.(*proto.NewTermResponse), nil
 	}
+
+	return res.(*proto.NewTermResponse), nil
 }
 
 func (m *maelstromCoordinatorRpcProvider) BecomeLeader(ctx context.Context, node model.ServerAddress, req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error) {
-	if res, err := m.dispatcher.RpcRequest(ctx, node.Internal, MsgTypeBecomeLeaderRequest, req); err != nil {
+	res, err := m.dispatcher.RpcRequest(ctx, node.Internal, MsgTypeBecomeLeaderRequest, req)
+	if err != nil {
 		return nil, err
-	} else {
-		return res.(*proto.BecomeLeaderResponse), nil
 	}
+
+	return res.(*proto.BecomeLeaderResponse), nil
 }
 
 func (m *maelstromCoordinatorRpcProvider) AddFollower(ctx context.Context, node model.ServerAddress, req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error) {
-	if res, err := m.dispatcher.RpcRequest(ctx, node.Internal, MsgTypeAddFollowerRequest, req); err != nil {
+	res, err := m.dispatcher.RpcRequest(ctx, node.Internal, MsgTypeAddFollowerRequest, req)
+	if err != nil {
 		return nil, err
-	} else {
-		return res.(*proto.AddFollowerResponse), nil
 	}
+
+	return res.(*proto.AddFollowerResponse), nil
 }
 
 func (m *maelstromCoordinatorRpcProvider) GetStatus(ctx context.Context, node model.ServerAddress, req *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
-	if res, err := m.dispatcher.RpcRequest(ctx, node.Internal, MsgTypeGetStatusRequest, req); err != nil {
+	res, err := m.dispatcher.RpcRequest(ctx, node.Internal, MsgTypeGetStatusRequest, req)
+	if err != nil {
 		return nil, err
-	} else {
-		return res.(*proto.GetStatusResponse), nil
 	}
+
+	return res.(*proto.GetStatusResponse), nil
 }
 
 func (m *maelstromCoordinatorRpcProvider) DeleteShard(ctx context.Context, node model.ServerAddress, req *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error) {
-	if res, err := m.dispatcher.RpcRequest(ctx, node.Internal, MsgTypeDeleteShardRequest, req); err != nil {
+	res, err := m.dispatcher.RpcRequest(ctx, node.Internal, MsgTypeDeleteShardRequest, req)
+	if err != nil {
 		return nil, err
-	} else {
-		return res.(*proto.DeleteShardResponse), nil
 	}
+
+	return res.(*proto.DeleteShardResponse), nil
 }
 
 func (m *maelstromCoordinatorRpcProvider) GetHealthClient(node model.ServerAddress) (grpc_health_v1.HealthClient, error) {
@@ -95,8 +104,6 @@ func (m *maelstromCoordinatorRpcProvider) GetHealthClient(node model.ServerAddre
 		node:     node.Internal,
 	}, nil
 }
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 type maelstromShardAssignmentClient struct {
 	BaseStream
@@ -149,46 +156,44 @@ func (m *maelstromShardAssignmentClient) Context() context.Context {
 	return m.ctx
 }
 
-func (m *maelstromShardAssignmentClient) CloseAndRecv() (*proto.CoordinationShardAssignmentsResponse, error) {
+func (*maelstromShardAssignmentClient) CloseAndRecv() (*proto.CoordinationShardAssignmentsResponse, error) {
 	return &proto.CoordinationShardAssignmentsResponse{}, nil
 }
 
 type BaseStream struct {
 }
 
-func (m *BaseStream) Header() (metadata.MD, error) {
-	panic("not implemented")
+func (*BaseStream) Header() (metadata.MD, error) {
+	panic(ErrNotImplement)
 }
 
-func (m *BaseStream) Trailer() metadata.MD {
-	panic("not implemented")
+func (*BaseStream) Trailer() metadata.MD {
+	panic(ErrNotImplement)
 }
 
-func (m *BaseStream) CloseSend() error {
+func (*BaseStream) CloseSend() error {
 	return nil
 }
 
-func (m *BaseStream) Context() context.Context {
+func (*BaseStream) Context() context.Context {
 	return context.Background()
 }
 
-func (m *BaseStream) SendMsg(msg interface{}) error {
-	panic("not implemented")
+func (*BaseStream) SendMsg(any) error {
+	panic(ErrNotImplement)
 }
 
-func (m *BaseStream) RecvMsg(msg interface{}) error {
-	panic("not implemented")
+func (*BaseStream) RecvMsg(any) error {
+	panic(ErrNotImplement)
 }
 
-func (m *maelstromReplicateServerStream) SendHeader(md metadata.MD) error {
-	panic("not implemented")
+func (*maelstromReplicateServerStream) SendHeader(metadata.MD) error {
+	panic(ErrNotImplement)
 }
 
-func (m *maelstromReplicateServerStream) SetTrailer(md metadata.MD) {
-	panic("not implemented")
+func (*maelstromReplicateServerStream) SetTrailer(metadata.MD) {
+	panic(ErrNotImplement)
 }
-
-/// Client health check
 
 type maelstromHealthCheckClient struct {
 	node     string
@@ -201,7 +206,7 @@ type maelstromHealthCheckClientStream struct {
 	ctx       context.Context
 }
 
-func (m *maelstromHealthCheckClient) Check(ctx context.Context, in *grpc_health_v1.HealthCheckRequest, opts ...grpc.CallOption) (*grpc_health_v1.HealthCheckResponse, error) {
+func (m *maelstromHealthCheckClient) Check(ctx context.Context, _ *grpc_health_v1.HealthCheckRequest, _ ...grpc.CallOption) (*grpc_health_v1.HealthCheckResponse, error) {
 	if _, err := m.provider.dispatcher.RpcRequest(ctx, m.node, MsgTypeHealthCheck, &proto.GetStatusRequest{}); err != nil {
 		// If we're failing the health-check, also close the assignments stream
 		m.provider.Lock()

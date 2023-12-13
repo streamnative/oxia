@@ -45,7 +45,7 @@ func NewMetadataProviderFile(path string) MetadataProvider {
 	}
 }
 
-func (m *metadataProviderFile) Close() error {
+func (*metadataProviderFile) Close() error {
 	return nil
 }
 
@@ -74,11 +74,11 @@ func (m *metadataProviderFile) Store(cs *model.ClusterStatus, expectedVersion Ve
 	// Ensure directory exists
 	parentDir := filepath.Dir(m.path)
 	if _, err := os.Stat(parentDir); err != nil {
-		if os.IsNotExist(err) {
-			if err := os.MkdirAll(parentDir, 0755); err != nil {
-				return MetadataNotExists, err
-			}
-		} else {
+		if !os.IsNotExist(err) {
+			return MetadataNotExists, err
+		}
+
+		if err := os.MkdirAll(parentDir, 0755); err != nil {
 			return MetadataNotExists, err
 		}
 	}

@@ -102,31 +102,30 @@ outer:
 		// the same shard should not be assigned to one server
 		mostLoaded := rankings[0]
 		leastLoaded := rankings[serversCount-1]
-		if mostLoaded.Shards.Count() > leastLoaded.Shards.Count()+1 {
-			eligibleShards := mostLoaded.Shards.Complement(leastLoaded.Shards)
-			if eligibleShards.IsEmpty() {
-				break
-			}
-
-			a := SwapNodeAction{
-				Shard: eligibleShards.GetSorted()[0],
-				From:  mostLoaded.Addr,
-				To:    leastLoaded.Addr,
-			}
-
-			shardsPerServer[a.From].Remove(a.Shard)
-			shardsPerServer[a.To].Add(a.Shard)
-
-			slog.Debug(
-				"Swapping nodes",
-				slog.Any("swap-action", a),
-			)
-
-			res = append(res, a)
-		} else {
-			// There is no more imbalance
+		if mostLoaded.Shards.Count() <= leastLoaded.Shards.Count()+1 {
 			break
 		}
+
+		eligibleShards := mostLoaded.Shards.Complement(leastLoaded.Shards)
+		if eligibleShards.IsEmpty() {
+			break
+		}
+
+		a := SwapNodeAction{
+			Shard: eligibleShards.GetSorted()[0],
+			From:  mostLoaded.Addr,
+			To:    leastLoaded.Addr,
+		}
+
+		shardsPerServer[a.From].Remove(a.Shard)
+		shardsPerServer[a.To].Add(a.Shard)
+
+		slog.Debug(
+			"Swapping nodes",
+			slog.Any("swap-action", a),
+		)
+
+		res = append(res, a)
 	}
 
 	return res
@@ -135,7 +134,6 @@ outer:
 func getShardsPerServer(servers []model.ServerAddress, currentStatus *model.ClusterStatus) (
 	existingServers map[model.ServerAddress]common.Set[int64],
 	deletedServers map[model.ServerAddress]common.Set[int64]) {
-
 	existingServers = map[model.ServerAddress]common.Set[int64]{}
 	deletedServers = map[model.ServerAddress]common.Set[int64]{}
 
@@ -184,10 +182,10 @@ func getServerRanking(shardsPerServer map[model.ServerAddress]common.Set[int64])
 		c2 := res[j].Shards.Count()
 		if c1 != c2 {
 			return c1 >= c2
-		} else {
-			// Ensure predictable sorting
-			return res[i].Addr.Internal < res[j].Addr.Internal
 		}
+
+		// Ensure predictable sorting
+		return res[i].Addr.Internal < res[j].Addr.Internal
 	})
 	return res
 }

@@ -521,16 +521,16 @@ func (lc *leaderController) truncateFollowerIfNeeded(follower string, followerHe
 
 	if err != nil {
 		return nil, err
-	} else {
-		lc.log.Info(
-			"Truncated follower",
-			slog.Int64("term", lc.term),
-			slog.String("follower", follower),
-			slog.Any("follower-head-entry", tr.HeadEntryId),
-		)
-
-		return tr.HeadEntryId, nil
 	}
+
+	lc.log.Info(
+		"Truncated follower",
+		slog.Int64("term", lc.term),
+		slog.String("follower", follower),
+		slog.Any("follower-head-entry", tr.HeadEntryId),
+	)
+
+	return tr.HeadEntryId, nil
 }
 
 func getHighestEntryOfTerm(w wal.Wal, term int64) (*proto.EntryId, error) {
@@ -751,7 +751,6 @@ func (lc *leaderController) appendToWal(ctx context.Context, request func(int64)
 	}
 	lc.quorumAckTracker.AdvanceHeadOffset(newOffset)
 	return actualRequest, newOffset, timestamp, nil
-
 }
 
 func (lc *leaderController) GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
@@ -893,8 +892,8 @@ func (lc *leaderController) close() error {
 	return err
 }
 
-func getLastEntryIdInWal(wal wal.Wal) (*proto.EntryId, error) {
-	reader, err := wal.NewReverseReader()
+func getLastEntryIdInWal(walObject wal.Wal) (*proto.EntryId, error) {
+	reader, err := walObject.NewReverseReader()
 	if err != nil {
 		return nil, err
 	}
@@ -918,7 +917,7 @@ func (lc *leaderController) CommitOffset() int64 {
 	return wal.InvalidOffset
 }
 
-func (lc *leaderController) GetStatus(request *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
+func (lc *leaderController) GetStatus(_ *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
 	lc.RLock()
 	defer lc.RUnlock()
 

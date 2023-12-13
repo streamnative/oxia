@@ -100,7 +100,7 @@ func (s *internalRpcServer) NewTerm(c context.Context, req *proto.NewTermRequest
 
 	// NewTerm applies to both followers and leaders
 	// First check if we have already a follower controller running
-	if follower, err := s.shardsDirector.GetFollower(req.ShardId); err != nil {
+	if follower, err := s.shardsDirector.GetFollower(req.ShardId); err != nil { //nolint:revive
 		if status.Code(err) != common.CodeNodeIsNotFollower {
 			log.Warn(
 				"NewTerm failed: could not get follower controller",
@@ -129,26 +129,26 @@ func (s *internalRpcServer) NewTerm(c context.Context, req *proto.NewTermRequest
 		return res, err
 	}
 
-	if leader, err := s.shardsDirector.GetOrCreateLeader(req.Namespace, req.ShardId); err != nil {
+	leader, err := s.shardsDirector.GetOrCreateLeader(req.Namespace, req.ShardId)
+	if err != nil {
 		log.Warn(
 			"NewTerm failed: could not get leader controller",
 			slog.Any("error", err),
 		)
 		return nil, err
-	} else {
-		res, err2 := leader.NewTerm(req)
-		if err2 != nil {
-			log.Warn(
-				"New term processing of leader failed",
-				slog.Any("error", err),
-			)
-		}
-		log.Info(
-			"New term processing completed",
-			slog.Any("response", res),
-		)
-		return res, err2
 	}
+	res, err2 := leader.NewTerm(req)
+	if err2 != nil {
+		log.Warn(
+			"New term processing of leader failed",
+			slog.Any("error", err),
+		)
+	}
+	log.Info(
+		"New term processing completed",
+		slog.Any("response", res),
+	)
+	return res, err2
 }
 
 func (s *internalRpcServer) BecomeLeader(c context.Context, req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error) {
@@ -159,22 +159,23 @@ func (s *internalRpcServer) BecomeLeader(c context.Context, req *proto.BecomeLea
 
 	log.Info("Received BecomeLeader request")
 
-	if leader, err := s.shardsDirector.GetOrCreateLeader(req.Namespace, req.ShardId); err != nil {
+	leader, err := s.shardsDirector.GetOrCreateLeader(req.Namespace, req.ShardId)
+	if err != nil {
 		log.Warn(
 			"BecomeLeader failed: could not get leader controller",
 			slog.Any("error", err),
 		)
 		return nil, err
-	} else {
-		res, err2 := leader.BecomeLeader(c, req)
-		if err2 != nil {
-			log.Warn(
-				"BecomeLeader failed",
-				slog.Any("error", err),
-			)
-		}
-		return res, err2
 	}
+
+	res, err2 := leader.BecomeLeader(c, req)
+	if err2 != nil {
+		log.Warn(
+			"BecomeLeader failed",
+			slog.Any("error", err),
+		)
+	}
+	return res, err2
 }
 
 func (s *internalRpcServer) AddFollower(c context.Context, req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error) {
@@ -185,22 +186,23 @@ func (s *internalRpcServer) AddFollower(c context.Context, req *proto.AddFollowe
 
 	log.Info("Received AddFollower request")
 
-	if leader, err := s.shardsDirector.GetLeader(req.ShardId); err != nil {
+	leader, err := s.shardsDirector.GetLeader(req.ShardId)
+	if err != nil {
 		log.Warn(
 			"AddFollower failed: could not get leader controller",
 			slog.Any("error", err),
 		)
 		return nil, err
-	} else {
-		res, err2 := leader.AddFollower(req)
-		if err2 != nil {
-			log.Warn(
-				"AddFollower failed",
-				slog.Any("error", err),
-			)
-		}
-		return res, err2
 	}
+
+	res, err2 := leader.AddFollower(req)
+	if err2 != nil {
+		log.Warn(
+			"AddFollower failed",
+			slog.Any("error", err),
+		)
+	}
+	return res, err2
 }
 
 func (s *internalRpcServer) Truncate(c context.Context, req *proto.TruncateRequest) (*proto.TruncateResponse, error) {
@@ -211,21 +213,21 @@ func (s *internalRpcServer) Truncate(c context.Context, req *proto.TruncateReque
 
 	log.Info("Received Truncate request")
 
-	if follower, err := s.shardsDirector.GetOrCreateFollower(req.Namespace, req.ShardId); err != nil {
+	follower, err := s.shardsDirector.GetOrCreateFollower(req.Namespace, req.ShardId)
+	if err != nil {
 		log.Warn(
 			"Truncate failed: could not get follower controller",
 			slog.Any("error", err),
 		)
 		return nil, err
-	} else {
-		res, err2 := follower.Truncate(req)
-
-		log.Warn(
-			"Truncate failed",
-			slog.Any("error", err),
-		)
-		return res, err2
 	}
+
+	res, err2 := follower.Truncate(req)
+	log.Warn(
+		"Truncate failed",
+		slog.Any("error", err),
+	)
+	return res, err2
 }
 
 func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServer) error {
@@ -254,22 +256,23 @@ func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServ
 
 	log.Info("Received Replicate request")
 
-	if follower, err := s.shardsDirector.GetOrCreateFollower(namespace, shardId); err != nil {
+	follower, err := s.shardsDirector.GetOrCreateFollower(namespace, shardId)
+	if err != nil {
 		log.Warn(
 			"Replicate failed: could not get follower controller",
 			slog.Any("error", err),
 		)
 		return err
-	} else {
-		err2 := follower.Replicate(srv)
-		if err2 != nil && !errors.Is(err2, io.EOF) {
-			log.Warn(
-				"Replicate failed",
-				slog.Any("error", err),
-			)
-		}
-		return err2
 	}
+
+	err2 := follower.Replicate(srv)
+	if err2 != nil && !errors.Is(err2, io.EOF) {
+		log.Warn(
+			"Replicate failed",
+			slog.Any("error", err),
+		)
+	}
+	return err2
 }
 
 func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapshotServer) error {
@@ -297,7 +300,8 @@ func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapsh
 		slog.String("peer", common.GetPeer(srv.Context())),
 	)
 
-	if follower, err := s.shardsDirector.GetOrCreateFollower(namespace, shardId); err != nil {
+	follower, err := s.shardsDirector.GetOrCreateFollower(namespace, shardId)
+	if err != nil {
 		s.log.Warn(
 			"SendSnapshot failed: could not get follower controller",
 			slog.Any("error", err),
@@ -306,40 +310,41 @@ func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapsh
 			slog.String("peer", common.GetPeer(srv.Context())),
 		)
 		return err
-	} else {
-		err2 := follower.SendSnapshot(srv)
-		if err2 != nil {
-			s.log.Warn(
-				"SendSnapshot failed",
-				slog.Any("error", err),
-				slog.String("namespace", namespace),
-				slog.Int64("shard", shardId),
-				slog.String("peer", common.GetPeer(srv.Context())),
-			)
-		}
-		return err2
 	}
+
+	err2 := follower.SendSnapshot(srv)
+	if err2 != nil {
+		s.log.Warn(
+			"SendSnapshot failed",
+			slog.Any("error", err),
+			slog.String("namespace", namespace),
+			slog.Int64("shard", shardId),
+			slog.String("peer", common.GetPeer(srv.Context())),
+		)
+	}
+	return err2
 }
 
-func (s *internalRpcServer) GetStatus(c context.Context, req *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
-	if follower, err := s.shardsDirector.GetFollower(req.ShardId); err != nil {
-		if status.Code(err) != common.CodeNodeIsNotFollower {
-			return nil, err
-		}
-
-		// If we don't have a follower, fallback to checking the leader controller
-		if leader, err := s.shardsDirector.GetLeader(req.ShardId); err != nil {
-			return nil, err
-		} else {
-			return leader.GetStatus(req)
-		}
-
-	} else {
+func (s *internalRpcServer) GetStatus(_ context.Context, req *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
+	follower, err := s.shardsDirector.GetFollower(req.ShardId)
+	if err == nil {
 		return follower.GetStatus(req)
 	}
+
+	if status.Code(err) != common.CodeNodeIsNotFollower {
+		return nil, err
+	}
+
+	// If we don't have a follower, fallback to checking the leader controller
+	leader, err := s.shardsDirector.GetLeader(req.ShardId)
+	if err != nil {
+		return nil, err
+	}
+
+	return leader.GetStatus(req)
 }
 
-func (s *internalRpcServer) DeleteShard(c context.Context, req *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error) {
+func (s *internalRpcServer) DeleteShard(_ context.Context, req *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error) {
 	return s.shardsDirector.DeleteShard(req)
 }
 

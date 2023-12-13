@@ -230,7 +230,6 @@ func TestWriteBatchCanAdd(t *testing.T) {
 		{"add to current", 1, true},
 	} {
 		t.Run(item.name, func(t *testing.T) {
-
 			factory := &writeBatchFactory{
 				metrics:     metrics.NewMetrics(noop.NewMeterProvider()),
 				maxByteSize: 100,

@@ -43,7 +43,7 @@ type notifications struct {
 	cancelMultiplexChanClosed context.CancelFunc
 }
 
-func newNotifications(options clientOptions, ctx context.Context, clientPool common.ClientPool, shardManager internal.ShardManager) (*notifications, error) {
+func newNotifications(ctx context.Context, options clientOptions, clientPool common.ClientPool, shardManager internal.ShardManager) (*notifications, error) {
 	nm := &notifications{
 		multiplexCh:  make(chan *Notification, 100),
 		closeCh:      make(chan any),
@@ -104,13 +104,11 @@ func (nm *notifications) Close() error {
 
 	// Ensure the channel is empty, so that the user will not see any notifications
 	// after the close
-	for range nm.multiplexCh {
+	for range nm.multiplexCh { //nolint:revive
 	}
 
 	return nil
 }
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // Manages the notifications for a specific shard.
 type shardNotificationsManager struct {
@@ -148,7 +146,7 @@ func newShardNotificationsManager(shard int64, nm *notifications) *shardNotifica
 	return snm
 }
 
-func (snm *shardNotificationsManager) getNotificationsWithRetries() {
+func (snm *shardNotificationsManager) getNotificationsWithRetries() { //nolint:revive
 	_ = backoff.RetryNotify(snm.getNotifications,
 		snm.backoff, func(err error, duration time.Duration) {
 			if !errors.Is(err, context.Canceled) {

@@ -35,11 +35,11 @@ func (s *testShardStrategy) Get(key string) func(Shard) bool {
 }
 
 func TestWithStandalone(t *testing.T) {
-	server, err := server.NewStandalone(server.NewTestConfig(t.TempDir()))
+	standaloneServer, err := server.NewStandalone(server.NewTestConfig(t.TempDir()))
 	assert.NoError(t, err)
 
 	clientPool := common.NewClientPool()
-	serviceAddress := fmt.Sprintf("localhost:%d", server.RpcPort())
+	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())
 	shardManager, err := NewShardManager(&testShardStrategy{}, clientPool, serviceAddress, common.DefaultNamespace, 30*time.Second)
 	assert.NoError(t, err)
 

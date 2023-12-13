@@ -33,17 +33,17 @@ func initExampleServer(serviceAddr string) *server.Standalone {
 	dir, _ := os.MkdirTemp(os.TempDir(), "oxia-test-*")
 	config := server.NewTestConfig(dir)
 	config.PublicServiceAddr = serviceAddr
-	server, err := server.NewStandalone(config)
+	standaloneServer, err := server.NewStandalone(config)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	return server
+	return standaloneServer
 }
 
 func Example() {
-	server := initExampleServer(exampleServerAddr)
-	defer server.Close()
+	standaloneServer := initExampleServer(exampleServerAddr)
+	defer standaloneServer.Close()
 
 	// Creates a client instance
 	// Once created, a client instance will be valid until it's explicitly closed, and it can
@@ -82,8 +82,8 @@ func Example() {
 }
 
 func ExampleAsyncClient() {
-	server := initExampleServer(exampleServerAddr)
-	defer server.Close()
+	standaloneServer := initExampleServer(exampleServerAddr)
+	defer standaloneServer.Close()
 
 	// Creates a client instance
 	// Once created, a client instance will be valid until it's explicitly closed, and it can
@@ -122,8 +122,8 @@ func ExampleAsyncClient() {
 }
 
 func ExampleNotifications() {
-	server := initExampleServer(exampleServerAddr)
-	defer server.Close()
+	standaloneServer := initExampleServer(exampleServerAddr)
+	defer standaloneServer.Close()
 
 	client, err := NewSyncClient(exampleServerAddr)
 	if err != nil {

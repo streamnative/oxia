@@ -151,8 +151,8 @@ func assertTimer(t *testing.T, rm metricdata.ResourceMetrics, name string, expec
 	counts, err := counter[int64](rm, name)
 	assert.NoError(t, err)
 	assertDataPoints(t, counts, int64(1), expectedType, expectedResult)
-
 }
+
 func assertHistogram(t *testing.T, rm metricdata.ResourceMetrics, name string, hasHistogram bool, expectedSum int64, expectedType string, expectedResult string) {
 	t.Helper()
 
@@ -174,8 +174,7 @@ func assertHistogram(t *testing.T, rm metricdata.ResourceMetrics, name string, h
 func counter[N int64 | float64](rm metricdata.ResourceMetrics, name string) ([]metricdata.DataPoint[N], error) {
 	for _, m := range rm.ScopeMetrics[0].Metrics {
 		if m.Name == name {
-			switch d := m.Data.(type) {
-			case metricdata.Sum[N]:
+			if d, ok := m.Data.(metricdata.Sum[N]); ok {
 				return d.DataPoints, nil
 			}
 		}
@@ -186,8 +185,7 @@ func counter[N int64 | float64](rm metricdata.ResourceMetrics, name string) ([]m
 func histogram(rm metricdata.ResourceMetrics, name string) ([]metricdata.HistogramDataPoint[int64], error) {
 	for _, m := range rm.ScopeMetrics[0].Metrics {
 		if m.Name == name {
-			switch d := m.Data.(type) {
-			case metricdata.Histogram[int64]:
+			if d, ok := m.Data.(metricdata.Histogram[int64]); ok {
 				return d.DataPoints, nil
 			}
 		}
@@ -195,7 +193,11 @@ func histogram(rm metricdata.ResourceMetrics, name string) ([]metricdata.Histogr
 	return nil, errors.New("not found")
 }
 
-func assertDataPoints[N int64 | float64](t *testing.T, datapoints []metricdata.DataPoint[N], expectedValue N, expectedType string, expectedResult string) {
+func assertDataPoints[N int64 | float64](
+	t *testing.T,
+	datapoints []metricdata.DataPoint[N],
+	expectedValue N,
+	expectedType string, expectedResult string) {
 	t.Helper()
 
 	assert.Equal(t, 1, len(datapoints))

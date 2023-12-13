@@ -21,7 +21,7 @@ import (
 	"net"
 	"os"
 
-	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
+	grpcprometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"google.golang.org/grpc"
 
 	"github.com/streamnative/oxia/common"
@@ -48,7 +48,7 @@ var Default = &defaultProvider{}
 type defaultProvider struct {
 }
 
-func (d *defaultProvider) StartGrpcServer(name, bindAddress string, registerFunc func(grpc.ServiceRegistrar)) (GrpcServer, error) {
+func (*defaultProvider) StartGrpcServer(name, bindAddress string, registerFunc func(grpc.ServiceRegistrar)) (GrpcServer, error) {
 	return newDefaultGrpcProvider(name, bindAddress, registerFunc)
 }
 
@@ -62,13 +62,13 @@ type defaultGrpcServer struct {
 func newDefaultGrpcProvider(name, bindAddress string, registerFunc func(grpc.ServiceRegistrar)) (GrpcServer, error) {
 	c := &defaultGrpcServer{
 		server: grpc.NewServer(
-			grpc.ChainStreamInterceptor(grpc_prometheus.StreamServerInterceptor),
-			grpc.ChainUnaryInterceptor(grpc_prometheus.UnaryServerInterceptor),
+			grpc.ChainStreamInterceptor(grpcprometheus.StreamServerInterceptor),
+			grpc.ChainUnaryInterceptor(grpcprometheus.UnaryServerInterceptor),
 			grpc.MaxRecvMsgSize(maxGrpcFrameSize),
 		),
 	}
 	registerFunc(c.server)
-	grpc_prometheus.Register(c.server)
+	grpcprometheus.Register(c.server)
 
 	listener, err := net.Listen("tcp", bindAddress)
 	if err != nil {

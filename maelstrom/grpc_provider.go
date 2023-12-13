@@ -51,7 +51,7 @@ func newMaelstromGrpcProvider() *maelstromGrpcProvider {
 	}
 }
 
-func (m *maelstromGrpcProvider) StartGrpcServer(name, bindAddress string, registerFunc func(grpc.ServiceRegistrar)) (container.GrpcServer, error) {
+func (m *maelstromGrpcProvider) StartGrpcServer(name, _ string, registerFunc func(grpc.ServiceRegistrar)) (container.GrpcServer, error) {
 	slog.Info(
 		"Start Grpc server",
 		slog.String("name", name),
@@ -306,8 +306,6 @@ func (m *maelstromGrpcProvider) getService(name string) any {
 	return r
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 func newMaelstromReadServerStream() *maelstromReadServerStream {
 	return &maelstromReadServerStream{
 		ch: make(chan *proto.ReadResponse, 1),
@@ -336,8 +334,6 @@ func (m *maelstromReadServerStream) SetTrailer(metadata.MD) {
 	panic("not implemented")
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 type maelstromGrpcServer struct {
 }
 
@@ -349,8 +345,6 @@ func (m *maelstromGrpcServer) Port() int {
 	return 0
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 type maelstromReplicateServerStream struct {
 	BaseStream
 
@@ -359,7 +353,7 @@ type maelstromReplicateServerStream struct {
 	client   string
 }
 
-func (m *maelstromReplicateServerStream) SetHeader(md metadata.MD) error {
+func (m *maelstromReplicateServerStream) SetHeader(metadata.MD) error {
 	panic("implement me")
 }
 

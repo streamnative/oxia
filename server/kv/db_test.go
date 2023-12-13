@@ -120,7 +120,7 @@ func TestDBSimple(t *testing.T) {
 	assert.Equal(t, proto.Status_KEY_NOT_FOUND, r8.Status)
 
 	// TODO: Add the request call and the verification
-	/// Second batch
+	// Second batch
 	// req = &proto.WriteRequest{
 	//	Puts: []*proto.PutRequest{
 	//		{ // Should succeed: no version check
@@ -159,7 +159,7 @@ func TestDBSimple(t *testing.T) {
 	//			ExpectedVersion: pb.Int64(0),
 	//		},
 	//	},
-	//}
+	// }
 
 	assert.NoError(t, db.Close())
 	assert.NoError(t, factory.Close())
@@ -191,8 +191,6 @@ func TestDBSameKeyMutations(t *testing.T) {
 	assert.EqualValues(t, 0, r0.Version.VersionId)
 	assert.Equal(t, t0, r0.Version.CreatedTimestamp)
 	assert.Equal(t, t0, r0.Version.ModifiedTimestamp)
-
-	/// Second batch
 
 	writeReq = &proto.WriteRequest{
 		Puts: []*proto.PutRequest{

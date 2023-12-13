@@ -34,10 +34,10 @@ func init() {
 }
 
 func TestAsyncClientImpl(t *testing.T) {
-	server, err := server.NewStandalone(server.NewTestConfig(t.TempDir()))
+	standaloneServer, err := server.NewStandalone(server.NewTestConfig(t.TempDir()))
 	assert.NoError(t, err)
 
-	serviceAddress := fmt.Sprintf("localhost:%d", server.RpcPort())
+	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())
 	client, err := NewAsyncClient(serviceAddress, WithBatchLinger(0))
 	assert.NoError(t, err)
 
@@ -86,15 +86,15 @@ func TestAsyncClientImpl(t *testing.T) {
 	err = client.Close()
 	assert.NoError(t, err)
 
-	err = server.Close()
+	err = standaloneServer.Close()
 	assert.NoError(t, err)
 }
 
 func TestSyncClientImpl_Notifications(t *testing.T) {
-	server, err := server.NewStandalone(server.NewTestConfig(t.TempDir()))
+	standaloneServer, err := server.NewStandalone(server.NewTestConfig(t.TempDir()))
 	assert.NoError(t, err)
 
-	serviceAddress := fmt.Sprintf("localhost:%d", server.RpcPort())
+	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())
 	client, err := NewSyncClient(serviceAddress, WithBatchLinger(0))
 	assert.NoError(t, err)
 
@@ -154,8 +154,6 @@ func TestSyncClientImpl_Notifications(t *testing.T) {
 	assert.Equal(t, "/x", n.Key)
 	assert.Equal(t, s4.VersionId, n.VersionId)
 
-	////
-
 	assert.NoError(t, client.Close())
 
 	// Channels should be closed after the client is closed
@@ -175,14 +173,14 @@ func TestSyncClientImpl_Notifications(t *testing.T) {
 		assert.Fail(t, "should have been closed")
 	}
 
-	assert.NoError(t, server.Close())
+	assert.NoError(t, standaloneServer.Close())
 }
 
 func TestAsyncClientImpl_NotificationsClose(t *testing.T) {
-	server, err := server.NewStandalone(server.NewTestConfig(t.TempDir()))
+	standaloneServer, err := server.NewStandalone(server.NewTestConfig(t.TempDir()))
 	assert.NoError(t, err)
 
-	serviceAddress := fmt.Sprintf("localhost:%d", server.RpcPort())
+	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())
 	client, err := NewSyncClient(serviceAddress, WithBatchLinger(0))
 	assert.NoError(t, err)
 
@@ -200,14 +198,14 @@ func TestAsyncClientImpl_NotificationsClose(t *testing.T) {
 	}
 
 	assert.NoError(t, client.Close())
-	assert.NoError(t, server.Close())
+	assert.NoError(t, standaloneServer.Close())
 }
 
 func TestAsyncClientImpl_Sessions(t *testing.T) {
-	server, err := server.NewStandalone(server.NewTestConfig(t.TempDir()))
+	standaloneServer, err := server.NewStandalone(server.NewTestConfig(t.TempDir()))
 	assert.NoError(t, err)
 
-	serviceAddress := fmt.Sprintf("localhost:%d", server.RpcPort())
+	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())
 	client, err := NewAsyncClient(serviceAddress, WithBatchLinger(0), WithSessionTimeout(5*time.Second))
 	assert.NoError(t, err)
 
@@ -255,12 +253,10 @@ func TestAsyncClientImpl_Sessions(t *testing.T) {
 			assert.Fail(t, "Shouldn't have timed out")
 			return false
 		}
-
 	}, 8*time.Second, 500*time.Millisecond)
 
 	assert.NoError(t, client.Close())
-	assert.NoError(t, server.Close())
-
+	assert.NoError(t, standaloneServer.Close())
 }
 
 func TestAsyncClientImpl_OverrideEphemeral(t *testing.T) {

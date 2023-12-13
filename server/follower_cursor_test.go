@@ -115,7 +115,7 @@ func TestFollowerCursor_SendSnapshot(t *testing.T) {
 	var term int64 = 1
 	var shard int64 = 2
 
-	N := int64(10)
+	n := int64(10)
 	stream := newMockRpcClient()
 	kvf, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{DataDir: t.TempDir()})
 	assert.NoError(t, err)
@@ -126,7 +126,7 @@ func TestFollowerCursor_SendSnapshot(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Load some entries into the db & wal
-	for i := int64(0); i < N; i++ {
+	for i := int64(0); i < n; i++ {
 		wr := &proto.WriteRequest{
 			ShardId: &shard,
 			Puts: []*proto.PutRequest{{
@@ -146,7 +146,7 @@ func TestFollowerCursor_SendSnapshot(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	ackTracker := NewQuorumAckTracker(3, N-1, N-1)
+	ackTracker := NewQuorumAckTracker(3, n-1, n-1)
 
 	fc, err := NewFollowerCursor("f1", term, common.DefaultNamespace, shard, stream, ackTracker, w, db, wal.InvalidOffset)
 	assert.NoError(t, err)
@@ -158,10 +158,10 @@ func TestFollowerCursor_SendSnapshot(t *testing.T) {
 
 	slog.Info("Snapshot complete")
 
-	s.response <- &proto.SnapshotResponse{AckOffset: N - 1}
+	s.response <- &proto.SnapshotResponse{AckOffset: n - 1}
 
 	assert.Eventually(t, func() bool {
-		return fc.AckOffset() == N-1
+		return fc.AckOffset() == n-1
 	}, 10*time.Second, 10*time.Millisecond)
 
 	assert.NoError(t, fc.Close())

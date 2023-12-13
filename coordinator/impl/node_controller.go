@@ -83,7 +83,6 @@ func newNodeController(addr model.ServerAddress,
 	nodeAvailabilityListener NodeAvailabilityListener,
 	rpc RpcProvider,
 	initialRetryBackoff time.Duration) NodeController {
-
 	labels := map[string]any{"node": addr.Internal}
 	nc := &nodeController{
 		addr:                     addr,

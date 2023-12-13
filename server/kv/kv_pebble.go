@@ -134,8 +134,6 @@ func (p *PebbleFactory) getKVPath(namespace string, shard int64) string {
 	return filepath.Join(p.dataDir, namespace, fmt.Sprint("shard-", shard))
 }
 
-////////////////////
-
 type Pebble struct {
 	factory         *PebbleFactory
 	namespace       string
@@ -412,7 +410,7 @@ func (p *Pebble) Snapshot() (Snapshot, error) {
 	return newPebbleSnapshot(p)
 }
 
-/// Batch wrapper methods
+// Batch wrapper methods
 
 type PebbleBatch struct {
 	p *Pebble
@@ -489,7 +487,7 @@ func (b *PebbleBatch) Commit() error {
 	return err
 }
 
-/// Iterator wrapper methods
+// Iterator wrapper methods
 
 type PebbleIterator struct {
 	p  *Pebble
@@ -520,7 +518,7 @@ func (p *PebbleIterator) Value() ([]byte, error) {
 	return res, err
 }
 
-/// Iterator wrapper methods
+// Iterator wrapper methods
 
 type PebbleReverseIterator struct {
 	p  *Pebble
@@ -551,32 +549,30 @@ func (p *PebbleReverseIterator) Value() ([]byte, error) {
 	return res, err
 }
 
-/// Pebble logger wrapper
+// Pebble logger wrapper
 
 type PebbleLogger struct {
 	zl *slog.Logger
 }
 
-func (pl *PebbleLogger) Infof(format string, args ...interface{}) {
+func (pl *PebbleLogger) Infof(format string, args ...any) {
 	pl.zl.Info(
 		fmt.Sprintf(format, args...),
 	)
 }
 
-func (pl *PebbleLogger) Errorf(format string, args ...interface{}) {
+func (pl *PebbleLogger) Errorf(format string, args ...any) {
 	pl.zl.Error(
 		fmt.Sprintf(format, args...),
 	)
 }
 
-func (pl *PebbleLogger) Fatalf(format string, args ...interface{}) {
+func (pl *PebbleLogger) Fatalf(format string, args ...any) {
 	pl.zl.Warn(
 		fmt.Sprintf(format, args...),
 	)
 	os.Exit(1)
 }
-
-/// Custom comparator function
 
 func CompareWithSlash(a, b []byte) int {
 	for len(a) > 0 && len(b) > 0 {
@@ -610,10 +606,6 @@ func CompareWithSlash(a, b []byte) int {
 
 	return 0
 }
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///// Snapshots
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 type pebbleSnapshot struct {
 	path       string
@@ -678,7 +670,7 @@ func (ps *pebbleSnapshot) Valid() bool {
 }
 
 func (ps *pebbleSnapshot) Next() bool {
-	ps.chunkIndex += 1
+	ps.chunkIndex++
 	if ps.chunkIndex == ps.chunkCount {
 		ps.chunkIndex = 0
 		ps.files = ps.files[1:]
@@ -725,7 +717,7 @@ func (ps *pebbleSnapshot) NextChunkContent() ([]byte, error) {
 		fileSize := stat.Size()
 		ps.chunkCount = int32(fileSize / MaxSnapshotChunkSize)
 		if fileSize%MaxSnapshotChunkSize != 0 {
-			ps.chunkCount += 1
+			ps.chunkCount++
 		}
 		if ps.chunkCount == 0 {
 			// empty file
@@ -736,7 +728,6 @@ func (ps *pebbleSnapshot) NextChunkContent() ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-
 	}
 
 	_, err := ps.file.Seek(int64(ps.chunkIndex)*MaxSnapshotChunkSize, io.SeekStart)

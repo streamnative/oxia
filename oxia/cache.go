@@ -79,8 +79,6 @@ type SerializeFunc func(value any) ([]byte, error)
 // DeserializeFunc is the deserialization function. eg: [json.Unmarshall].
 type DeserializeFunc func(data []byte, value any) error
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 // NewCache creates a new cache object for a specific type
 // Uses the `serializeFunc` and `deserializeFunc` for SerDe.
 func NewCache[T any](client SyncClient, serializeFunc SerializeFunc, deserializeFunc DeserializeFunc) (Cache[T], error) {
@@ -96,8 +94,6 @@ func NewCache[T any](client SyncClient, serializeFunc SerializeFunc, deserialize
 
 	return newCache[T](cm, serializeFunc, deserializeFunc)
 }
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 const (
 	defaultCacheTTL = 5 * time.Minute
@@ -196,8 +192,6 @@ func (cm *cacheManager) Close() error {
 	return err
 }
 
-////////////////////////////////
-
 type internalCache interface {
 	io.Closer
 	handleNotification(n *Notification)
@@ -262,9 +256,9 @@ func (c *cacheImpl[Value]) Get(ctx context.Context, key string) (value Value, ve
 	if cachedValue, cached := c.valueCache.Get(key); cached {
 		if cv, present := cachedValue.(cachedResult[Value]).Get(); present {
 			return cv.value, cv.version, nil
-		} else {
-			return value, version, ErrKeyNotFound
 		}
+
+		return value, version, ErrKeyNotFound
 	}
 
 	return c.load(ctx, key)
@@ -322,9 +316,9 @@ func (c *cacheImpl[Value]) ReadModifyUpdate(ctx context.Context, key string, mod
 			if errors.Is(err, ErrUnexpectedVersionId) {
 				// Retry on conflict
 				return err
-			} else {
-				return backoff.Permanent(err)
 			}
+
+			return backoff.Permanent(err)
 		}
 
 		return nil
@@ -338,8 +332,6 @@ func (c *cacheImpl[Value]) Close() error {
 	c.valueCache.Close()
 	return nil
 }
-
-////////////////////////////////
 
 type cachedResult[Value any] Optional[valueVersion[Value]]
 

@@ -90,17 +90,16 @@ type followerCursor struct {
 	snapshotsBytesSent        metrics.Counter
 }
 
-func NewFollowerCursor(
+func NewFollowerCursor( //nolint:revive
 	follower string,
 	term int64,
 	namespace string,
 	shardId int64,
 	replicateStreamProvider ReplicateStreamProvider,
 	ackTracker QuorumAckTracker,
-	wal wal.Wal,
+	walObject wal.Wal,
 	db kv.DB,
 	ackOffset int64) (FollowerCursor, error) {
-
 	labels := map[string]any{
 		"namespace": namespace,
 		"shard":     shardId,
@@ -112,7 +111,7 @@ func NewFollowerCursor(
 		follower:                follower,
 		ackTracker:              ackTracker,
 		replicateStreamProvider: replicateStreamProvider,
-		wal:                     wal,
+		wal:                     walObject,
 		db:                      db,
 		namespace:               namespace,
 		shardId:                 shardId,

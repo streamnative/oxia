@@ -25,25 +25,21 @@ func ReadStdin(stdin io.Reader, input Input, queue QueryQueue) {
 	for {
 		scanner.Scan()
 		b := scanner.Bytes()
-		if len(b) != 0 {
-			query, err := input.Unmarshal(b)
-			if err != nil {
-				panic(err)
-			}
-			queue.Add(query)
-		} else {
+		if len(b) == 0 {
 			break
 		}
+
+		query, err := input.Unmarshal(b)
+		if err != nil {
+			panic(err)
+		}
+		queue.Add(query)
 	}
 }
 
 func writeOutputCh(out io.Writer, valuesCh <-chan any) {
-	for {
-		if value, ok := <-valuesCh; ok {
-			writeOutput(out, value)
-		} else {
-			break
-		}
+	for value := range valuesCh {
+		writeOutput(out, value)
 	}
 }
 

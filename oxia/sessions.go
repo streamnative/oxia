@@ -133,7 +133,6 @@ func (cs *clientSession) createSessionWithRetries() {
 					slog.Duration("retry-after", duration),
 				)
 			}
-
 		})
 	if err != nil && !errors.Is(err, context.Canceled) {
 		cs.Lock()
@@ -176,7 +175,6 @@ func (cs *clientSession) createSession() error {
 			"session": fmt.Sprintf("%x016", cs.sessionId),
 		},
 		func() {
-
 			backOff := common.NewBackOff(cs.sessions.ctx)
 			err := backoff.RetryNotify(func() error {
 				err := cs.keepAlive()
@@ -200,11 +198,11 @@ func (cs *clientSession) createSession() error {
 					slog.Any("error", err),
 					slog.Duration("retry-after", duration),
 				)
-
 			})
+
 			if !errors.Is(err, context.Canceled) {
 				cs.log.Error(
-					"Failed to keep alive session.",
+					"Failed to keep alive session",
 					slog.Any("error", err),
 				)
 			}
@@ -265,5 +263,4 @@ func (cs *clientSession) keepAlive() error {
 			return err
 		}
 	}
-
 }

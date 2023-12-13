@@ -289,8 +289,6 @@ func TestShardController_VerifyFollowersWereAllFenced(t *testing.T) {
 	assert.NoError(t, sc.Close())
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 type sCoordinatorEvents struct {
 	shard    int64
 	metadata model.ShardMetadata

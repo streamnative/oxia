@@ -62,7 +62,7 @@ var Cmd = &cobra.Command{
 	RunE:  exec,
 }
 
-func exec(cmd *cobra.Command, args []string) error {
+func exec(cmd *cobra.Command, _ []string) error {
 	loop, _ := common.NewCommandLoop(cmd.OutOrStdout())
 	defer func() {
 		loop.Complete()
@@ -106,7 +106,7 @@ type QueryInput struct {
 	KeyMaximum      *string `json:"key_maximum,omitempty"`
 }
 
-func (query QueryInput) Unmarshal(b []byte) (common.Query, error) {
+func (QueryInput) Unmarshal(b []byte) (common.Query, error) {
 	q := QueryInput{}
 	err := json.Unmarshal(b, &q)
 	if q.Key == nil {
@@ -114,12 +114,12 @@ func (query QueryInput) Unmarshal(b []byte) (common.Query, error) {
 			KeyMinimum: *q.KeyMinimum,
 			KeyMaximum: *q.KeyMaximum,
 		}, err
-	} else {
-		return QueryByKey{
-			Key:             *q.Key,
-			ExpectedVersion: q.ExpectedVersion,
-		}, err
 	}
+
+	return QueryByKey{
+		Key:             *q.Key,
+		ExpectedVersion: q.ExpectedVersion,
+	}, err
 }
 
 type QueryByKey struct {

@@ -134,7 +134,6 @@ func (s *session) waitForHeartbeats() {
 		var timer = time.NewTimer(s.timeout)
 		var timeoutCh = timer.C
 		select {
-
 		case heartbeat := <-heartbeatChannel:
 			if !heartbeat {
 				// The channel is closed, so the session must be closing

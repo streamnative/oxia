@@ -32,8 +32,6 @@ func (systemClock) Now() time.Time {
 	return time.Now()
 }
 
-///// Mocked clock
-
 type MockedClock struct {
 	currentTime atomic.Int64
 }

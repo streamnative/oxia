@@ -25,7 +25,7 @@ import (
 	"github.com/streamnative/oxia/cmd/client/list"
 	"github.com/streamnative/oxia/cmd/client/notifications"
 	"github.com/streamnative/oxia/cmd/client/put"
-	oxia_common "github.com/streamnative/oxia/common"
+	oxiacommon "github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/oxia"
 )
 
@@ -38,7 +38,7 @@ var (
 )
 
 func init() {
-	defaultServiceAddress := fmt.Sprintf("localhost:%d", oxia_common.DefaultPublicPort)
+	defaultServiceAddress := fmt.Sprintf("localhost:%d", oxiacommon.DefaultPublicPort)
 	Cmd.PersistentFlags().StringVarP(&common.Config.ServiceAddr, "service-address", "a", defaultServiceAddress, "Service address")
 	Cmd.PersistentFlags().StringVarP(&common.Config.Namespace, "namespace", "n", oxia.DefaultNamespace, "The Oxia namespace to use")
 	Cmd.PersistentFlags().DurationVar(&common.Config.BatchLinger, "batch-linger", oxia.DefaultBatchLinger, "Max time requests will be staged to be included in a batch")

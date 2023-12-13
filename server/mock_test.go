@@ -53,7 +53,7 @@ func (m *mockServerReplicateStream) Recv() (*proto.Append, error) {
 	return request, nil
 }
 
-/// Mock of the client side handler
+// Mock of the client side handler
 
 func newMockRpcClient() *mockRpcClient {
 	return &mockRpcClient{
@@ -171,8 +171,6 @@ func (m *mockShardAssignmentControllerStream) Recv() (*proto.ShardAssignments, e
 	return request, nil
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 func newMockServerSendSnapshotStream() *mockServerSendSnapshotStream {
 	return &mockServerSendSnapshotStream{
 		chunks:    make(chan *proto.SnapshotChunk, 1000),
@@ -203,8 +201,6 @@ func (m *mockServerSendSnapshotStream) Recv() (*proto.SnapshotChunk, error) {
 	return <-m.chunks, nil
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 type mockGetNotificationsServer struct {
 	mockBase
 	ch chan *proto.NotificationBatch
@@ -222,8 +218,6 @@ func (m *mockGetNotificationsServer) Send(batch *proto.NotificationBatch) error 
 	m.ch <- batch
 	return nil
 }
-
-//////
 
 func newMockSendSnapshotClientStream(ctx context.Context) *mockSendSnapshotClientStream {
 	r := &mockSendSnapshotClientStream{
@@ -262,8 +256,6 @@ func (m *mockSendSnapshotClientStream) CloseSend() error {
 	return nil
 }
 
-////////////////////// Common boilerplate
-
 type mockBase struct {
 	md  metadata.MD
 	ctx context.Context
@@ -273,11 +265,11 @@ func (m *mockBase) SendHeader(_ metadata.MD) error {
 	panic("not implemented")
 }
 
-func (m *mockBase) RecvMsg(msg interface{}) error {
+func (m *mockBase) RecvMsg(msg any) error {
 	panic("not implemented")
 }
 
-func (m *mockBase) SendMsg(msg interface{}) error {
+func (m *mockBase) SendMsg(msg any) error {
 	panic("not implemented")
 }
 

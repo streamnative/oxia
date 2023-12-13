@@ -99,7 +99,7 @@ func (m *Metrics) DecorateGet(get model.GetCall) model.GetCall {
 		callback(response, err)
 		ctx, start, _attrs := metricContext(err)
 		m.opTime.Record(ctx, m.sinceFunc(start), _attrs)
-		var size int64 = 0
+		var size int64
 		if response != nil {
 			size = int64(len(response.Value))
 		}

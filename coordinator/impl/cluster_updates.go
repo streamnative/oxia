@@ -32,7 +32,6 @@ func applyClusterChanges(config *model.ClusterConfig, currentStatus *model.Clust
 	newStatus *model.ClusterStatus,
 	shardsToAdd map[int64]string,
 	shardsToDelete []int64) {
-
 	shardsToAdd = map[int64]string{}
 	shardsToDelete = []int64{}
 

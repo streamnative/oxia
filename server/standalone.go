@@ -152,24 +152,22 @@ func (s *Standalone) Close() error {
 	)
 }
 
-///////////////////////////////////
-
 type noOpReplicationRpcProvider struct {
 }
 
-func (n noOpReplicationRpcProvider) Close() error {
+func (noOpReplicationRpcProvider) Close() error {
 	return nil
 }
 
-func (n noOpReplicationRpcProvider) GetReplicateStream(ctx context.Context, follower string, namespace string, shard int64) (proto.OxiaLogReplication_ReplicateClient, error) {
+func (noOpReplicationRpcProvider) GetReplicateStream(context.Context, string, string, int64) (proto.OxiaLogReplication_ReplicateClient, error) {
 	panic("not implemented")
 }
 
-func (n noOpReplicationRpcProvider) SendSnapshot(ctx context.Context, follower string, namespace string, shard int64) (proto.OxiaLogReplication_SendSnapshotClient, error) {
+func (noOpReplicationRpcProvider) SendSnapshot(context.Context, string, string, int64) (proto.OxiaLogReplication_SendSnapshotClient, error) {
 	panic("not implemented")
 }
 
-func (n noOpReplicationRpcProvider) Truncate(follower string, req *proto.TruncateRequest) (*proto.TruncateResponse, error) {
+func (noOpReplicationRpcProvider) Truncate(string, *proto.TruncateRequest) (*proto.TruncateResponse, error) {
 	panic("not implemented")
 }
 

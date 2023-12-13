@@ -65,7 +65,7 @@ var Cmd = &cobra.Command{
 	RunE:  exec,
 }
 
-func exec(cmd *cobra.Command, args []string) error {
+func exec(cmd *cobra.Command, _ []string) error {
 	loop, err := common.NewCommandLoop(cmd.OutOrStdout())
 	if err != nil {
 		return err
@@ -132,7 +132,7 @@ func (query Query) Perform(client oxia.AsyncClient) common.Call {
 	return call
 }
 
-func (query Query) Unmarshal(b []byte) (common.Query, error) {
+func (Query) Unmarshal(b []byte) (common.Query, error) {
 	q := Query{}
 	err := json.Unmarshal(b, &q)
 	return q, err
@@ -146,9 +146,9 @@ func convertValue(binary bool, value string) ([]byte, error) {
 			return nil, ErrBase64ValueInvalid
 		}
 		return decoded, nil
-	} else {
-		return []byte(value), nil
 	}
+
+	return []byte(value), nil
 }
 
 type Call struct {

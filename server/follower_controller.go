@@ -574,10 +574,6 @@ func checkStatus(expected, actual proto.ServingStatus) error {
 	return nil
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-//////// Handling of snapshots
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 func (fc *followerController) SendSnapshot(stream proto.OxiaLogReplication_SendSnapshotServer) error {
 	fc.Lock()
 
@@ -715,7 +711,7 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 	)
 }
 
-func (fc *followerController) GetStatus(request *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
+func (fc *followerController) GetStatus(_ *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
 	fc.Lock()
 	defer fc.Unlock()
 
