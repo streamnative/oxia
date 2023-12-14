@@ -32,7 +32,7 @@ type ClientConfig struct {
 	RequestTimeout      time.Duration
 }
 
-func (config *ClientConfig) NewClient() (oxia.AsyncClient, error) {
+func (*ClientConfig) NewClient() (oxia.AsyncClient, error) {
 	return oxia.NewAsyncClient(Config.ServiceAddr,
 		oxia.WithBatchLinger(Config.BatchLinger),
 		oxia.WithRequestTimeout(Config.RequestTimeout),

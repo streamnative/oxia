@@ -76,12 +76,13 @@ func (d *dispatcher) onOxiaRequestMessage(msgType MsgType, m *Message[OxiaMessag
 }
 
 func (d *dispatcher) onOxiaResponseMessage(_ MsgType, res *Message[OxiaMessage], message pb.Message) {
-	if ch, ok := d.requests[*res.Body.InReplyTo]; !ok {
+	ch, ok := d.requests[*res.Body.InReplyTo]
+	if !ok {
 		slog.Error("Invalid response id")
 		os.Exit(1)
-	} else {
-		ch <- ResponseError{msg: message}
 	}
+
+	ch <- ResponseError{msg: message}
 }
 
 func (d *dispatcher) onOxiaStreamRequestMessage(msgType MsgType, m any, message pb.Message) {

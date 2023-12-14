@@ -51,7 +51,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&common.LogJSON, "log-json", "j", false, "Print logs in JSON format")
 }
 
-func configureLogLevel(cmd *cobra.Command, args []string) error {
+func configureLogLevel(_ *cobra.Command, _ []string) error {
 	logLevel, err := common.ParseLogLevel(logLevelStr)
 	if err != nil {
 		return LogLevelError(logLevelStr)

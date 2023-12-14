@@ -30,7 +30,7 @@ var Cmd = &cobra.Command{
 	RunE:  exec,
 }
 
-func exec(cmd *cobra.Command, args []string) error {
+func exec(_ *cobra.Command, _ []string) error {
 	client, err := common.Config.NewClient()
 	if err != nil {
 		return err

@@ -116,11 +116,11 @@ func (s *shardAssignmentDispatcher) RegisterForUpdates(req *proto.ShardAssignmen
 			err := clientStream.Send(assignmentsInterceptorFunc(assignments))
 			if err != nil {
 				if status.Code(err) != codes.Canceled {
-					peer, _ := peer.FromContext(clientStream.Context())
+					peerObject, _ := peer.FromContext(clientStream.Context())
 					s.log.Warn(
 						"Failed to send shard assignment update to client",
 						slog.Any("error", err),
-						slog.String("client", peer.Addr.String()),
+						slog.String("client", peerObject.Addr.String()),
 					)
 				}
 				s.Lock()
@@ -164,7 +164,7 @@ func (s *shardAssignmentDispatcher) assignmentsInterceptorFunc(clientStream Clie
 			return nil, err
 		}
 		return func(assignments *proto.ShardAssignments) *proto.ShardAssignments {
-			assignments = pb.Clone(assignments).(*proto.ShardAssignments)
+			assignments = pb.Clone(assignments).(*proto.ShardAssignments) //nolint:revive
 			for _, nsa := range assignments.Namespaces {
 				for _, assignment := range nsa.Assignments {
 					assignment.Leader = authority
@@ -202,14 +202,13 @@ func (s *shardAssignmentDispatcher) Initialized() bool {
 }
 
 func (s *shardAssignmentDispatcher) PushShardAssignments(stream proto.OxiaCoordination_PushShardAssignmentsServer) error {
-
 	streamReader := util.ReadStream[proto.ShardAssignments](
+		s.ctx,
 		stream,
 		s.updateShardAssignment,
 		map[string]string{
 			"oxia": "receive-shards-assignments",
 		},
-		s.ctx,
 		s.log.With(
 			slog.String("stream", "receive-shards-assignments"),
 		),
@@ -268,7 +267,7 @@ func NewShardAssignmentDispatcher(healthServer *health.Server) ShardAssignmentsD
 }
 
 func NewStandaloneShardAssignmentDispatcher(numShards uint32) ShardAssignmentsDispatcher {
-	assignmentDispatcher := NewShardAssignmentDispatcher(health.NewServer()).(*shardAssignmentDispatcher)
+	assignmentDispatcher := NewShardAssignmentDispatcher(health.NewServer()).(*shardAssignmentDispatcher) //nolint:revive
 	assignmentDispatcher.standalone = true
 	res := &proto.ShardAssignments{
 		Namespaces: map[string]*proto.NamespaceShardsAssignment{
@@ -292,7 +291,7 @@ func generateStandaloneShards(numShards uint32) []*proto.ShardAssignment {
 	for i, shard := range shards {
 		assignments[i] = &proto.ShardAssignment{
 			ShardId: shard.Id,
-			//Leader: defer to send time
+			// Leader: defer to send time
 			ShardBoundaries: &proto.ShardAssignment_Int32HashRange{
 				Int32HashRange: &proto.Int32HashRange{
 					MinHashInclusive: shard.Min,

@@ -17,6 +17,7 @@ package impl
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -35,6 +36,10 @@ import (
 func init() {
 	common.ConfigureLogger()
 }
+
+var (
+	ErrNotImplement = fmt.Errorf("not implement")
+)
 
 type mockShardAssignmentsProvider struct {
 	sync.Mutex
@@ -72,8 +77,6 @@ func (sap *mockShardAssignmentsProvider) WaitForNextUpdate(ctx context.Context, 
 	return sap.current, nil
 }
 
-/////////////////////////////////////////////////////////////////
-
 type mockNodeAvailabilityListener struct {
 	events chan model.ServerAddress
 }
@@ -87,8 +90,6 @@ func newMockNodeAvailabilityListener() *mockNodeAvailabilityListener {
 func (nal *mockNodeAvailabilityListener) NodeBecameUnavailable(node model.ServerAddress) {
 	nal.events <- node
 }
-
-/////////////////////////////////////////////////////////////////
 
 type mockPerNodeChannels struct {
 	newTermRequests  chan *proto.NewTermRequest
@@ -382,8 +383,6 @@ func (r *mockRpcProvider) GetHealthClient(node model.ServerAddress) (grpc_health
 	return r.GetNode(node).healthClient, nil
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 type mockShardAssignmentClient struct {
 	sync.Mutex
 
@@ -419,34 +418,32 @@ func (m *mockShardAssignmentClient) Send(response *proto.ShardAssignments) error
 }
 
 func (m *mockShardAssignmentClient) CloseAndRecv() (*proto.CoordinationShardAssignmentsResponse, error) {
-	panic("not implemented")
+	panic(ErrNotImplement)
 }
 
 func (m *mockShardAssignmentClient) Header() (metadata.MD, error) {
-	panic("not implemented")
+	panic(ErrNotImplement)
 }
 
 func (m *mockShardAssignmentClient) Trailer() metadata.MD {
-	panic("not implemented")
+	panic(ErrNotImplement)
 }
 
 func (m *mockShardAssignmentClient) CloseSend() error {
-	panic("not implemented")
+	panic(ErrNotImplement)
 }
 
 func (m *mockShardAssignmentClient) Context() context.Context {
 	return context.Background()
 }
 
-func (m *mockShardAssignmentClient) SendMsg(msg interface{}) error {
-	panic("not implemented")
+func (m *mockShardAssignmentClient) SendMsg(any) error {
+	panic(ErrNotImplement)
 }
 
-func (m *mockShardAssignmentClient) RecvMsg(msg interface{}) error {
-	panic("not implemented")
+func (m *mockShardAssignmentClient) RecvMsg(any) error {
+	panic(ErrNotImplement)
 }
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 type mockHealthClient struct {
 	sync.Mutex
@@ -512,8 +509,6 @@ func (m *mockHealthClient) sendWatchResponse(w *mockHealthWatchClient) {
 	}, m.err}
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 type mockHealthWatchClient struct {
 	ctx       context.Context
 	responses chan struct {
@@ -557,10 +552,10 @@ func (m *mockHealthWatchClient) Context() context.Context {
 	panic("not implemented")
 }
 
-func (m *mockHealthWatchClient) SendMsg(msg interface{}) error {
+func (m *mockHealthWatchClient) SendMsg(msg any) error {
 	panic("not implemented")
 }
 
-func (m *mockHealthWatchClient) RecvMsg(msg interface{}) error {
+func (m *mockHealthWatchClient) RecvMsg(msg any) error {
 	panic("not implemented")
 }

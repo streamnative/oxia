@@ -55,7 +55,7 @@ func (m *MetadataProviderImpl) Set(s string) error {
 	}
 }
 
-func (m *MetadataProviderImpl) Type() string {
+func (*MetadataProviderImpl) Type() string {
 	return "MetadataProviderImpl"
 }
 

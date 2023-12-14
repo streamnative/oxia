@@ -173,10 +173,10 @@ func (t *testOxiaClientReadClient) Context() context.Context {
 	panic("not implemented")
 }
 
-func (t *testOxiaClientReadClient) SendMsg(m interface{}) error {
+func (t *testOxiaClientReadClient) SendMsg(m any) error {
 	panic("not implemented")
 }
 
-func (t *testOxiaClientReadClient) RecvMsg(m interface{}) error {
+func (t *testOxiaClientReadClient) RecvMsg(m any) error {
 	panic("not implemented")
 }

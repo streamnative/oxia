@@ -48,8 +48,6 @@ func (b readBatchFactory) newBatch(shardId *int64) batch.Batch {
 	}
 }
 
-//////////
-
 type readBatch struct {
 	shardId        *int64
 	execute        func(context.Context, *proto.ReadRequest) (proto.OxiaClient_ReadClient, error)
@@ -60,7 +58,7 @@ type readBatch struct {
 	callback       func(time.Time, *proto.ReadRequest, *proto.ReadResponse, error)
 }
 
-func (b *readBatch) CanAdd(call any) bool {
+func (*readBatch) CanAdd(_ any) bool {
 	return true
 }
 

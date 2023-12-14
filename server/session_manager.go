@@ -125,7 +125,6 @@ func (sm *sessionManager) CreateSession(request *proto.CreateSessionRequest) (*p
 }
 
 func (sm *sessionManager) createSession(request *proto.CreateSessionRequest, minTimeout time.Duration) (*proto.CreateSessionResponse, error) {
-
 	timeout := time.Duration(request.SessionTimeoutMs) * time.Millisecond
 	if timeout > common.MaxSessionTimeout || timeout < minTimeout {
 		return nil, errors.Wrap(common.ErrorInvalidSessionTimeout, fmt.Sprintf("timeoutMs=%d", request.SessionTimeoutMs))
@@ -164,7 +163,6 @@ func (sm *sessionManager) createSession(request *proto.CreateSessionRequest, min
 
 	sm.createdSessions.Inc()
 	return &proto.CreateSessionResponse{SessionId: int64(s.id)}, nil
-
 }
 
 func (sm *sessionManager) getSession(sessionId int64) (*session, error) {
@@ -296,13 +294,11 @@ func (sm *sessionManager) Close() error {
 	return nil
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 type updateCallback struct{}
 
 var SessionUpdateOperationCallback kv.UpdateOperationCallback = &updateCallback{}
 
-func (_ *updateCallback) OnPut(batch kv.WriteBatch, request *proto.PutRequest, existingEntry *proto.StorageEntry) (proto.Status, error) {
+func (*updateCallback) OnPut(batch kv.WriteBatch, request *proto.PutRequest, existingEntry *proto.StorageEntry) (proto.Status, error) {
 	if existingEntry != nil && existingEntry.SessionId != nil {
 		// We are overwriting an ephemeral value, let's delete its shadow
 		if status, err := deleteShadow(batch, request.Key, existingEntry); err != nil {
@@ -312,7 +308,6 @@ func (_ *updateCallback) OnPut(batch kv.WriteBatch, request *proto.PutRequest, e
 
 	sessionId := request.SessionId
 	if sessionId != nil {
-
 		// We are adding an ephemeral value, let's check if the session exists
 		var _, closer, err = batch.Get(SessionKey(SessionId(*sessionId)))
 		if err != nil {
@@ -342,7 +337,7 @@ func deleteShadow(batch kv.WriteBatch, key string, existingEntry *proto.StorageE
 	return proto.Status_OK, nil
 }
 
-func (_ *updateCallback) OnDelete(batch kv.WriteBatch, key string) error {
+func (*updateCallback) OnDelete(batch kv.WriteBatch, key string) error {
 	se, err := kv.GetStorageEntry(batch, key)
 	defer se.ReturnToVTPool()
 

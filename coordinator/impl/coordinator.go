@@ -82,7 +82,6 @@ func NewCoordinator(metadataProvider MetadataProvider,
 	clusterConfigProvider func() (model.ClusterConfig, error),
 	clusterConfigRefreshTime time.Duration,
 	rpc RpcProvider) (Coordinator, error) {
-
 	initialClusterConf, err := clusterConfigProvider()
 	if err != nil {
 		return nil, err
@@ -154,9 +153,7 @@ func NewCoordinator(metadataProvider MetadataProvider,
 func (c *coordinator) waitForAllNodesToBeAvailable() {
 	c.log.Info("Waiting for all the nodes to be available")
 	for {
-
 		select {
-
 		case <-time.After(1 * time.Second):
 			allNodesAvailable := true
 			for _, n := range c.nodeControllers {

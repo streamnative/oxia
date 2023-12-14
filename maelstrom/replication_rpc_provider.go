@@ -76,11 +76,11 @@ func (r *maelstromReplicationRpcProvider) HandleAck(streamId int64, res *proto.A
 }
 
 func (r *maelstromReplicationRpcProvider) Truncate(follower string, req *proto.TruncateRequest) (*proto.TruncateResponse, error) {
-	if res, err := r.dispatcher.RpcRequest(context.Background(), follower, MsgTypeTruncateRequest, req); err != nil {
+	res, err := r.dispatcher.RpcRequest(context.Background(), follower, MsgTypeTruncateRequest, req)
+	if err != nil {
 		return nil, err
-	} else {
-		return res.(*proto.TruncateResponse), nil
 	}
+	return res.(*proto.TruncateResponse), nil
 }
 
 func (r *maelstromReplicationRpcProvider) SendSnapshot(ctx context.Context, follower string, namespace string, shard int64) (proto.OxiaLogReplication_SendSnapshotClient, error) {

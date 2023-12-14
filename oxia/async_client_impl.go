@@ -24,7 +24,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/streamnative/oxia/common"
-	commonBatch "github.com/streamnative/oxia/common/batch"
+	commonbatch "github.com/streamnative/oxia/common/batch"
 	"github.com/streamnative/oxia/oxia/internal"
 	"github.com/streamnative/oxia/oxia/internal/batch"
 	"github.com/streamnative/oxia/oxia/internal/metrics"
@@ -84,7 +84,7 @@ func NewAsyncClient(serviceAddress string, opts ...ClientOption) (AsyncClient, e
 		options:      options,
 		clientPool:   clientPool,
 		shardManager: shardManager,
-		writeBatchManager: batch.NewManager(func(shard *int64) commonBatch.Batcher {
+		writeBatchManager: batch.NewManager(func(shard *int64) commonbatch.Batcher {
 			return batcherFactory.NewWriteBatcher(shard, options.maxBatchSize)
 		}),
 		readBatchManager: batch.NewManager(batcherFactory.NewReadBatcher),
@@ -240,7 +240,6 @@ func (c *clientImpl) List(ctx context.Context, minKeyInclusive string, maxKeyExc
 
 			wg.Done()
 		}()
-
 	}
 
 	go func() {
@@ -252,7 +251,7 @@ func (c *clientImpl) List(ctx context.Context, minKeyInclusive string, maxKeyExc
 }
 
 func (c *clientImpl) GetNotifications() (Notifications, error) {
-	nm, err := newNotifications(c.options, c.ctx, c.clientPool, c.shardManager)
+	nm, err := newNotifications(c.ctx, c.options, c.clientPool, c.shardManager)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to create notification stream")
 	}

@@ -390,7 +390,7 @@ func TestFollower_PersistentTerm(t *testing.T) {
 
 	assert.NoError(t, fc.Close())
 
-	/// Reopen and verify term
+	// Reopen and verify term
 	fc, err = NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
@@ -503,7 +503,7 @@ func TestFollowerController_RejectEntriesWithDifferentTerm(t *testing.T) {
 	assert.NoError(t, fc.Close())
 	close(stream.requests)
 
-	//// A higher term will also be rejected
+	// A higher term will also be rejected
 	fc, err = NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 

@@ -60,8 +60,8 @@ func (b *batcherImpl) failCall(call any, err error) {
 
 func (b *batcherImpl) Run() {
 	var batch Batch
-	var timer *time.Timer = nil
-	var timeout <-chan time.Time = nil
+	var timer *time.Timer
+	var timeout <-chan time.Time
 
 	newBatch := func() {
 		batch = b.batchFactory()

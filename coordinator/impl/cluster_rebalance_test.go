@@ -136,7 +136,6 @@ func TestClusterRebalance_Single(t *testing.T) {
 		From:  s1,
 		To:    s5,
 	}}, actions)
-
 }
 
 func TestClusterRebalance_Multiple(t *testing.T) {

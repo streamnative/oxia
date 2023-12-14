@@ -65,6 +65,7 @@ linters-settings:
   goconst:
     ignore-tests: true
   revive:
+    enable-all-rules: true
     rules:
       - name: var-naming
         severity: warning
@@ -73,9 +74,62 @@ linters-settings:
           - ["ID", "RPC"]
           - [""]
           - - upperCaseConst: false
+      - name: line-length-limit
+        severity: warning
+        disabled: false
+        arguments:
+          - 120
+      - name: add-constant
+        severity: warning
+        disabled: false
+        arguments:
+          - maxLitCount: "3"
+            allowStrs: '""'
+            allowInts: '0,1,2,3,4,5,6,7,8,9,10,11,16,17,20,22,32,64,100,128,1000,1024,0644,0755,0600'
+            allowFloats: "0.0,0.,0.5,0.50,0.95,0.99,0.999,1.0,1.,2.0,2.,80.0,100.0"
+            ignoreFuncs: 'slog\.*,metrics\.*'
+      - name: cognitive-complexity
+        severity: warning
+        disabled: true
+        arguments:
+          - 8
+      - name: cyclomatic
+        severity: warning
+        disabled: true
+        arguments:
+          - 3
+      - name: function-length
+        severity: warning
+        disabled: true
+        arguments: [10, 0]
+      - name: line-length-limit
+        severity: warning
+        disabled: true
+        arguments: [80]
+      - name: function-result-limit
+        severity: warning
+        disabled: false
+        arguments:
+          - 4
+      - name: flag-parameter
+        severity: warning
+        disabled: true
+      - name: deep-exit
+        severity: warning
+        disabled: true
+      - name: max-public-structs
+        severity: warning
+        disabled: true
+        arguments:
+          - 3
+      - name: bare-return
+        severity: warning
+        disabled: true
 
 issues:
   fix: true
+  max-same-issues: 0
+  max-issues-per-linter: 0
   exclude-rules:
     - path: _test\.go
       linters:
@@ -94,3 +148,27 @@ issues:
       linters:
         - gocritic
       text: "exitAfterDefer|singleCaseSwitch"
+    - path: _test\.go
+      linters:
+        - revive
+      text: "add-constant|cognitive-complexity|unused-parameter|unused-receiver|function-length|line-length-limit|unhandled-error|deep-exit|unchecked-type-assertion"
+    - path: \.go
+      linters:
+        - revive
+      text: "confusing-naming.*only by capitalization.*"
+    - path: maelstrom/
+      linters:
+        - revive
+      text: "unchecked-type-assertion|unhandled-error|unused-receiver|unused-parameter|add-constant"
+    - path: _grpc\.go
+      linters:
+        - revive
+      text: "blank-imports"
+    - path: server/kv/
+      linters:
+        - revive
+      text: "exported"
+    - path: server/wal/
+      linters:
+        - revive
+      text: "exported|unchecked-type-assertion"

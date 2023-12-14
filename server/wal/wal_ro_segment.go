@@ -154,8 +154,6 @@ func (ms *readonlySegment) OpenTimestamp() time.Time {
 	return ms.openTimestamp
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 const (
 	maxReadOnlySegmentsInCacheCount = 5
 	maxReadOnlySegmentsInCacheTime  = 5 * time.Minute

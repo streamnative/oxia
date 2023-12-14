@@ -29,8 +29,6 @@ func NewManager(batcherFactory func(*int64) batch.Batcher) *Manager {
 	}
 }
 
-//////////
-
 type Manager struct {
 	sync.RWMutex
 	batcherFactory func(*int64) batch.Batcher

@@ -97,7 +97,7 @@ func TestDB_Notifications(t *testing.T) {
 	assert.Equal(t, proto.NotificationType_KEY_CREATED, n.Type)
 	assert.EqualValues(t, 2, *n.VersionId)
 
-	/// Write one batch
+	// Write one batch
 	t3 := now()
 	_, _ = db.ProcessWrite(&proto.WriteRequest{
 		Puts: []*proto.PutRequest{{

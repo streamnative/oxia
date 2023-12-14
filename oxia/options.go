@@ -188,8 +188,6 @@ func WithIdentity(identity string) ClientOption {
 	})
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 type putOptions struct {
 	expectedVersion *int64
 	ephemeral       bool
@@ -256,7 +254,7 @@ type ephemeral struct{}
 
 var ephemeralFlag = &ephemeral{}
 
-func (e *ephemeral) applyPut(opts putOptions) putOptions {
+func (*ephemeral) applyPut(opts putOptions) putOptions {
 	opts.ephemeral = true
 	return opts
 }

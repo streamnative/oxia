@@ -63,7 +63,7 @@ func init() {
 	rootCmd.AddCommand(pebble.Cmd)
 }
 
-func configureLogLevel(cmd *cobra.Command, args []string) error {
+func configureLogLevel(_ *cobra.Command, _ []string) error {
 	logLevel, err := common.ParseLogLevel(logLevelStr)
 	if err != nil {
 		return LogLevelError(logLevelStr)

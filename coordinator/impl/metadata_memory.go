@@ -37,7 +37,7 @@ func NewMetadataProviderMemory() MetadataProvider {
 	}
 }
 
-func (m *metadataProviderMemory) Close() error {
+func (*metadataProviderMemory) Close() error {
 	return nil
 }
 

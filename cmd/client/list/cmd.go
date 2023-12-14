@@ -56,7 +56,7 @@ var Cmd = &cobra.Command{
 	RunE:  exec,
 }
 
-func exec(cmd *cobra.Command, args []string) error {
+func exec(cmd *cobra.Command, _ []string) error {
 	loop, _ := common.NewCommandLoop(cmd.OutOrStdout())
 	defer func() {
 		loop.Complete()
@@ -92,7 +92,7 @@ func (query Query) Perform(client oxia.AsyncClient) common.Call {
 	}
 }
 
-func (query Query) Unmarshal(b []byte) (common.Query, error) {
+func (Query) Unmarshal(b []byte) (common.Query, error) {
 	q := Query{}
 	err := json.Unmarshal(b, &q)
 	return q, err
@@ -108,19 +108,19 @@ func (call Call) Complete() <-chan any {
 		emptyOutput := true
 		for {
 			result, ok := <-call.clientCall
-			if ok {
-				emptyOutput = false
-				if result.Err != nil {
-					ch <- common.OutputError{
-						Err: result.Err.Error(),
-					}
-				} else {
-					ch <- Output{
-						Keys: result.Keys,
-					}
+			if !ok {
+				break
+			}
+
+			emptyOutput = false
+			if result.Err != nil {
+				ch <- common.OutputError{
+					Err: result.Err.Error(),
 				}
 			} else {
-				break
+				ch <- Output{
+					Keys: result.Keys,
+				}
 			}
 		}
 		if emptyOutput {

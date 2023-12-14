@@ -190,21 +190,22 @@ func (s *shardManagerImpl) receive(backOff backoff.BackOff) error {
 	}
 
 	for {
-		if response, err := stream.Recv(); err != nil {
+		response, err := stream.Recv()
+		if err != nil {
 			return err
-		} else {
-			assignments, ok := response.Namespaces[s.namespace]
-			if !ok {
-				return errors.New("namespace not found in shards assignments")
-			}
-
-			shards := make([]Shard, len(assignments.Assignments))
-			for i, assignment := range assignments.Assignments {
-				shards[i] = toShard(assignment)
-			}
-			s.update(shards)
-			backOff.Reset()
 		}
+
+		assignments, ok := response.Namespaces[s.namespace]
+		if !ok {
+			return errors.New("namespace not found in shards assignments")
+		}
+
+		shards := make([]Shard, len(assignments.Assignments))
+		for i, assignment := range assignments.Assignments {
+			shards[i] = toShard(assignment)
+		}
+		s.update(shards)
+		backOff.Reset()
 	}
 }
 

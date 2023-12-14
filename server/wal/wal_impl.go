@@ -48,11 +48,9 @@ func (f *walFactory) NewWal(namespace string, shard int64, commitOffsetProvider 
 	return impl, err
 }
 
-func (f *walFactory) Close() error {
+func (*walFactory) Close() error {
 	return nil
 }
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 type wal struct {
 	sync.RWMutex
@@ -380,7 +378,7 @@ func (t *wal) Sync(ctx context.Context) error {
 
 func (t *wal) checkNextOffset(nextOffset int64) error {
 	if nextOffset < 0 {
-		return errors.New(fmt.Sprintf("Invalid next offset. %d should be > 0", nextOffset))
+		return fmt.Errorf("Invalid next offset. %d should be > 0", nextOffset)
 	}
 
 	lastAppendedOffset := t.lastAppendedOffset.Load()
@@ -454,7 +452,6 @@ func (t *wal) TruncateLog(lastSafeOffset int64) (int64, error) {
 		if err := t.currentSegment.Truncate(lastSafeOffset); err != nil {
 			return InvalidOffset, err
 		}
-
 	} else {
 		if err := t.currentSegment.Delete(); err != nil {
 			return InvalidOffset, err

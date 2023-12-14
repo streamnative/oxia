@@ -29,10 +29,10 @@ import (
 )
 
 func TestClientCmd(t *testing.T) {
-	server, err := server.NewStandalone(server.NewTestConfig(t.TempDir()))
+	standaloneServer, err := server.NewStandalone(server.NewTestConfig(t.TempDir()))
 	assert.NoError(t, err)
 
-	serviceAddress := fmt.Sprintf("localhost:%d", server.RpcPort())
+	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())
 
 	stdin := bytes.NewBufferString("")
 	stdout := bytes.NewBufferString("")
@@ -197,5 +197,5 @@ func TestClientCmd(t *testing.T) {
 			stderr.Reset()
 		})
 	}
-	_ = server.Close()
+	_ = standaloneServer.Close()
 }

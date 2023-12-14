@@ -21,8 +21,8 @@ import (
 	"sync/atomic"
 
 	"gopkg.in/yaml.v2"
-	coreV1 "k8s.io/api/core/v1"
-	k8sError "k8s.io/apimachinery/pkg/api/errors"
+	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8s "k8s.io/client-go/kubernetes"
 
@@ -41,9 +41,9 @@ type metadataProviderConfigMap struct {
 	metadataSizeGauge metrics.Gauge
 }
 
-func NewMetadataProviderConfigMap(k8s k8s.Interface, namespace, name string) MetadataProvider {
+func NewMetadataProviderConfigMap(kc k8s.Interface, namespace, name string) MetadataProvider {
 	m := &metadataProviderConfigMap{
-		kubernetes: k8s,
+		kubernetes: kc,
 		namespace:  namespace,
 		name:       name,
 
@@ -73,7 +73,7 @@ func (m *metadataProviderConfigMap) Get() (status *model.ClusterStatus, version 
 func (m *metadataProviderConfigMap) getWithoutLock() (status *model.ClusterStatus, version Version, err error) {
 	cm, err := K8SConfigMaps(m.kubernetes).Get(m.namespace, m.name)
 	if err != nil {
-		if k8sError.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			err = nil
 			version = MetadataNotExists
 		}
@@ -109,7 +109,7 @@ func (m *metadataProviderConfigMap) Store(status *model.ClusterStatus, expectedV
 
 	data := configMap(m.name, status, expectedVersion)
 	cm, err := K8SConfigMaps(m.kubernetes).Upsert(m.namespace, data)
-	if k8sError.IsConflict(err) {
+	if k8serrors.IsConflict(err) {
 		err = ErrMetadataBadVersion
 	}
 	version = Version(cm.ResourceVersion)
@@ -117,11 +117,11 @@ func (m *metadataProviderConfigMap) Store(status *model.ClusterStatus, expectedV
 	return
 }
 
-func (m *metadataProviderConfigMap) Close() error {
+func (*metadataProviderConfigMap) Close() error {
 	return nil
 }
 
-func configMap(name string, status *model.ClusterStatus, version Version) *coreV1.ConfigMap {
+func configMap(name string, status *model.ClusterStatus, version Version) *corev1.ConfigMap {
 	bytes, err := yaml.Marshal(status)
 	if err != nil {
 		slog.Error(
@@ -131,7 +131,7 @@ func configMap(name string, status *model.ClusterStatus, version Version) *coreV
 		os.Exit(1)
 	}
 
-	cm := &coreV1.ConfigMap{
+	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Data: map[string]string{
 			"status": string(bytes),

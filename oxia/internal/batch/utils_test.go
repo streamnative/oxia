@@ -22,12 +22,13 @@ var (
 	two     = int64(2)
 )
 
-func add(batch batch.Batch, call any) (panicked bool) {
+func add(b batch.Batch, call any) (panicked bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			panicked = true
 		}
 	}()
-	batch.Add(call)
-	return
+	b.Add(call)
+
+	return false
 }

@@ -58,8 +58,6 @@ func NewClusterStatus() *ClusterStatus {
 	}
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////
-
 func (sm Int32HashRange) Clone() Int32HashRange {
 	return Int32HashRange{
 		Min: sm.Min,
