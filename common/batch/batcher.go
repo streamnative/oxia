@@ -58,7 +58,7 @@ func (b *batcherImpl) failCall(call any, err error) {
 	batch.Fail(err)
 }
 
-func (b *batcherImpl) Run() {
+func (b *batcherImpl) Run() { //nolint:revive
 	var batch Batch
 	var timer *time.Timer
 	var timeout <-chan time.Time

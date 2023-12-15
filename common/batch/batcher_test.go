@@ -79,9 +79,6 @@ func TestBatcher(t *testing.T) {
 				MaxRequestsPerBatch: item.maxSize,
 			}
 			batcher := factory.NewBatcher(batchFactory)
-
-			go batcher.Run()
-
 			batcher.Add(1)
 
 			if item.closeImmediately {

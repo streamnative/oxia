@@ -15,7 +15,6 @@
 package kv
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"log/slog"
@@ -35,7 +34,7 @@ import (
 
 var (
 	OxiaSlashSpanComparer = &pebble.Comparer{
-		Compare:            CompareWithSlash,
+		Compare:            compareWithSlash,
 		Equal:              pebble.DefaultComparer.Equal,
 		AbbreviatedKey:     pebble.DefaultComparer.AbbreviatedKey,
 		FormatKey:          pebble.DefaultComparer.FormatKey,
@@ -206,7 +205,7 @@ func newKVPebble(factory *PebbleFactory, namespace string, shardId int64) (KV, e
 		},
 		FS:         vfs.Default,
 		DisableWAL: true,
-		Logger: &PebbleLogger{
+		Logger: &pebbleLogger{
 			slog.With(
 				slog.String("component", "pebble"),
 				slog.Int64("shard", shardId),
@@ -547,64 +546,6 @@ func (p *PebbleReverseIterator) Value() ([]byte, error) {
 		p.p.readErrors.Inc()
 	}
 	return res, err
-}
-
-// Pebble logger wrapper
-
-type PebbleLogger struct {
-	zl *slog.Logger
-}
-
-func (pl *PebbleLogger) Infof(format string, args ...any) {
-	pl.zl.Info(
-		fmt.Sprintf(format, args...),
-	)
-}
-
-func (pl *PebbleLogger) Errorf(format string, args ...any) {
-	pl.zl.Error(
-		fmt.Sprintf(format, args...),
-	)
-}
-
-func (pl *PebbleLogger) Fatalf(format string, args ...any) {
-	pl.zl.Warn(
-		fmt.Sprintf(format, args...),
-	)
-	os.Exit(1)
-}
-
-func CompareWithSlash(a, b []byte) int {
-	for len(a) > 0 && len(b) > 0 {
-		idxA, idxB := bytes.IndexByte(a, '/'), bytes.IndexByte(b, '/')
-		switch {
-		case idxA < 0 && idxB < 0:
-			return bytes.Compare(a, b)
-		case idxA < 0 && idxB >= 0:
-			return -1
-		case idxA >= 0 && idxB < 0:
-			return +1
-		}
-
-		// At this point, both slices have '/'
-		spanA, spanB := a[:idxA], b[:idxB]
-
-		spanRes := bytes.Compare(spanA, spanB)
-		if spanRes != 0 {
-			return spanRes
-		}
-
-		a, b = a[idxA+1:], b[idxB+1:]
-	}
-
-	switch {
-	case len(a) < len(b):
-		return -1
-	case len(a) > len(b):
-		return +1
-	}
-
-	return 0
 }
 
 type pebbleSnapshot struct {

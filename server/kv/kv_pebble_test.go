@@ -15,7 +15,6 @@
 package kv
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -218,45 +217,6 @@ func TestPebbleRangeScan(t *testing.T) {
 
 	assert.NoError(t, kv.Close())
 	assert.NoError(t, factory.Close())
-}
-
-var benchKeyA = []byte("/test/aaaaaaaaaaa/bbbbbbbbbbb/cccccccccccc/dddddddddddddd")
-var benchKeyB = []byte("/test/aaaaaaaaaaa/bbbbbbbbbbb/ccccccccccccddddddddddddddd")
-
-func BenchmarkStandardCompare(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		bytes.Compare(benchKeyA, benchKeyB)
-	}
-}
-
-func BenchmarkCompareWithSlash(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		CompareWithSlash(benchKeyA, benchKeyB)
-	}
-}
-
-func TestCompareWithSlash(t *testing.T) {
-	assert.Equal(t, 0, CompareWithSlash([]byte("aaaaa"), []byte("aaaaa")))
-	assert.Equal(t, -1, CompareWithSlash([]byte("aaaaa"), []byte("zzzzz")))
-	assert.Equal(t, +1, CompareWithSlash([]byte("bbbbb"), []byte("aaaaa")))
-
-	assert.Equal(t, +1, CompareWithSlash([]byte("aaaaa"), []byte("")))
-	assert.Equal(t, -1, CompareWithSlash([]byte(""), []byte("aaaaaa")))
-	assert.Equal(t, 0, CompareWithSlash([]byte(""), []byte("")))
-
-	assert.Equal(t, -1, CompareWithSlash([]byte("aaaaa"), []byte("aaaaaaaaaaa")))
-	assert.Equal(t, +1, CompareWithSlash([]byte("aaaaaaaaaaa"), []byte("aaa")))
-
-	assert.Equal(t, -1, CompareWithSlash([]byte("a"), []byte("/")))
-	assert.Equal(t, +1, CompareWithSlash([]byte("/"), []byte("a")))
-
-	assert.Equal(t, -1, CompareWithSlash([]byte("/aaaa"), []byte("/bbbbb")))
-	assert.Equal(t, -1, CompareWithSlash([]byte("/aaaa"), []byte("/aa/a")))
-	assert.Equal(t, -1, CompareWithSlash([]byte("/aaaa/a"), []byte("/aaaa/b")))
-	assert.Equal(t, +1, CompareWithSlash([]byte("/aaaa/a/a"), []byte("/bbbbbbbbbb")))
-	assert.Equal(t, +1, CompareWithSlash([]byte("/aaaa/a/a"), []byte("/aaaa/bbbbbbbbbb")))
-
-	assert.Equal(t, +1, CompareWithSlash([]byte("/a/b/a/a/a"), []byte("/a/b/a/b")))
 }
 
 func TestPebbleRangeScanWithSlashOrder(t *testing.T) {
