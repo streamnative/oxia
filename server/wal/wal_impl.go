@@ -430,7 +430,7 @@ func (t *wal) Delete() error {
 	)
 }
 
-func (t *wal) TruncateLog(lastSafeOffset int64) (int64, error) {
+func (t *wal) TruncateLog(lastSafeOffset int64) (int64, error) { //nolint:revive
 	if lastSafeOffset == InvalidOffset {
 		if err := t.Clear(); err != nil {
 			return InvalidOffset, err

@@ -95,9 +95,9 @@ linters-settings:
           - 8
       - name: cyclomatic
         severity: warning
-        disabled: true
+        disabled: false
         arguments:
-          - 3
+          - 15
       - name: function-length
         severity: warning
         disabled: true
@@ -128,8 +128,11 @@ linters-settings:
 
 issues:
   fix: true
-  max-same-issues: 0
-  max-issues-per-linter: 0
+  max-same-issues: 3
+  max-issues-per-linter: 50
+  # include:
+  #   - "EXC0012"
+  #   - "EXC0014"
   exclude-rules:
     - path: _test\.go
       linters:
@@ -151,7 +154,7 @@ issues:
     - path: _test\.go
       linters:
         - revive
-      text: "add-constant|cognitive-complexity|unused-parameter|unused-receiver|function-length|line-length-limit|unhandled-error|deep-exit|unchecked-type-assertion"
+      text: "add-constant|cognitive-complexity|unused-parameter|unused-receiver|function-length|line-length-limit|unhandled-error|deep-exit|unchecked-type-assertion|cyclomatic"
     - path: \.go
       linters:
         - revive
@@ -159,7 +162,7 @@ issues:
     - path: maelstrom/
       linters:
         - revive
-      text: "unchecked-type-assertion|unhandled-error|unused-receiver|unused-parameter|add-constant"
+      text: "unchecked-type-assertion|unhandled-error|unused-receiver|unused-parameter|add-constant|cyclomatic"
     - path: _grpc\.go
       linters:
         - revive
