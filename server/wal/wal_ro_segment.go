@@ -24,8 +24,6 @@ import (
 	"time"
 
 	"github.com/edsrzf/mmap-go"
-	"github.com/emirpasic/gods/maps/treemap"
-	"github.com/emirpasic/gods/utils"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 
@@ -175,15 +173,15 @@ type readOnlySegmentsGroup struct {
 	sync.Mutex
 
 	basePath     string
-	allSegments  *treemap.Map
-	openSegments *treemap.Map
+	allSegments  *treeMap[int64, bool]
+	openSegments *treeMap[int64, common.RefCount[ReadOnlySegment]]
 }
 
 func newReadOnlySegmentsGroup(basePath string) (ReadOnlySegmentsGroup, error) {
 	g := &readOnlySegmentsGroup{
 		basePath:     basePath,
-		allSegments:  treemap.NewWith(utils.Int64Comparator),
-		openSegments: treemap.NewWith(utils.Int64Comparator),
+		allSegments:  newInt64TreeMap[bool](),
+		openSegments: newInt64TreeMap[common.RefCount[ReadOnlySegment]](),
 	}
 
 	segments, err := listAllSegments(basePath)
@@ -213,8 +211,9 @@ func (r *readOnlySegmentsGroup) Close() error {
 	defer r.Unlock()
 
 	var err error
-	r.openSegments.Each(func(id any, segment any) {
+	r.openSegments.Each(func(id int64, segment common.RefCount[ReadOnlySegment]) bool {
 		err = multierr.Append(err, segment.(io.Closer).Close())
+		return true
 	})
 
 	r.openSegments.Clear()
@@ -227,29 +226,29 @@ func (r *readOnlySegmentsGroup) Get(offset int64) (common.RefCount[ReadOnlySegme
 	defer r.Unlock()
 
 	_, segment := r.openSegments.Floor(offset)
-	if segment != nil && offset <= segment.(common.RefCount[ReadOnlySegment]).Get().LastOffset() {
-		return segment.(common.RefCount[ReadOnlySegment]).Acquire(), nil
+	if segment != nil && offset <= segment.Get().LastOffset() {
+		return segment.Acquire(), nil
 	}
 
 	// Check if we have a segment file on disk
-	baseOffset, _ := r.allSegments.Floor(offset)
-	if baseOffset != nil {
-		segment, err := newReadOnlySegment(r.basePath, baseOffset.(int64))
-		if err != nil {
-			return nil, err
-		}
-
-		rc := common.NewRefCount(segment)
-		res := rc.Acquire()
-
-		r.openSegments.Put(segment.BaseOffset(), rc)
-		if err := r.cleanSegmentsCache(); err != nil {
-			return nil, err
-		}
-		return res, nil
+	baseOffset, found := r.allSegments.Floor(offset)
+	if !found {
+		return nil, ErrOffsetOutOfBounds
 	}
 
-	return nil, ErrOffsetOutOfBounds
+	rosegment, err := newReadOnlySegment(r.basePath, baseOffset)
+	if err != nil {
+		return nil, err
+	}
+
+	rc := common.NewRefCount(rosegment)
+	res := rc.Acquire()
+
+	r.openSegments.Put(rosegment.BaseOffset(), rc)
+	if err := r.cleanSegmentsCache(); err != nil {
+		return nil, err
+	}
+	return res, nil
 }
 
 func (r *readOnlySegmentsGroup) TrimSegments(offset int64) error {
@@ -257,28 +256,28 @@ func (r *readOnlySegmentsGroup) TrimSegments(offset int64) error {
 	defer r.Unlock()
 
 	// Find the segment that ends before the trim offset
-	segmentToKeep, _ := r.allSegments.Floor(offset)
-	if segmentToKeep == nil {
+	segmentToKeep, found := r.allSegments.Floor(offset)
+	if !found {
 		segmentToKeep = offset
 	}
 
-	cutoffSegment, _ := r.allSegments.Floor(segmentToKeep.(int64) - 1)
-	if cutoffSegment == nil {
+	cutoffSegment, found := r.allSegments.Floor(segmentToKeep - 1)
+	if !found {
 		return nil
 	}
 
 	var err error
 	for _, s := range r.allSegments.Keys() {
-		if s.(int64) > cutoffSegment.(int64) {
+		if s > cutoffSegment {
 			break
 		}
 
 		r.allSegments.Remove(s)
 		if segment, ok := r.openSegments.Get(s); ok {
-			err = multierr.Append(err, segment.(common.RefCount[ReadOnlySegment]).Get().Delete())
+			err = multierr.Append(err, segment.Get().Delete())
 			r.openSegments.Remove(s)
 		} else {
-			if segment, err2 := newReadOnlySegment(r.basePath, s.(int64)); err != nil {
+			if segment, err2 := newReadOnlySegment(r.basePath, s); err != nil {
 				err = multierr.Append(err, err2)
 			} else {
 				err = multierr.Append(err, segment.Delete())
@@ -301,10 +300,10 @@ func (r *readOnlySegmentsGroup) PollHighestSegment() (common.RefCount[ReadOnlySe
 	r.allSegments.Remove(offset)
 	segment, found := r.openSegments.Get(offset)
 	if found {
-		return segment.(common.RefCount[ReadOnlySegment]).Acquire(), nil
+		return segment.Acquire(), nil
 	}
 
-	roSegment, err := newReadOnlySegment(r.basePath, offset.(int64))
+	roSegment, err := newReadOnlySegment(r.basePath, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -316,21 +315,26 @@ func (r *readOnlySegmentsGroup) cleanSegmentsCache() error {
 	var err error
 
 	// Delete based on open-timestamp
-	it := r.openSegments.Iterator()
-	for it.Next() {
-		ts := it.Value().(common.RefCount[ReadOnlySegment]).Get().OpenTimestamp()
+	r.openSegments.Each(func(k int64, v common.RefCount[ReadOnlySegment]) bool {
+		ts := v.Get().OpenTimestamp()
 		if time.Since(ts) > maxReadOnlySegmentsInCacheTime {
-			err = multierr.Append(err, it.Value().(common.RefCount[ReadOnlySegment]).Close())
-			r.openSegments.Remove(it.Key())
+			err = multierr.Append(err, v.Close())
+			r.openSegments.Remove(k)
 		}
-	}
+
+		return true
+	})
 
 	// Delete based on max-count
-	it = r.openSegments.Iterator()
-	for it.Next() && r.openSegments.Size() > maxReadOnlySegmentsInCacheCount {
-		err = multierr.Append(err, it.Value().(common.RefCount[ReadOnlySegment]).Close())
-		r.openSegments.Remove(it.Key())
-	}
+	r.openSegments.Each(func(k int64, v common.RefCount[ReadOnlySegment]) bool {
+		if r.openSegments.Size() > maxReadOnlySegmentsInCacheCount {
+			err = multierr.Append(err, v.Close())
+			r.openSegments.Remove(k)
+			return true
+		}
+
+		return false
+	})
 
 	return err
 }
