@@ -92,7 +92,7 @@ type followerController struct {
 
 	status    proto.ServingStatus
 	wal       wal.Wal
-	kvFactory kv.KVFactory
+	kvFactory kv.Factory
 	db        kv.DB
 
 	ctx              context.Context
@@ -107,7 +107,7 @@ type followerController struct {
 	writeLatencyHisto metrics.LatencyHistogram
 }
 
-func NewFollowerController(config Config, namespace string, shardId int64, wf wal.WalFactory, kvFactory kv.KVFactory) (FollowerController, error) {
+func NewFollowerController(config Config, namespace string, shardId int64, wf wal.Factory, kvFactory kv.Factory) (FollowerController, error) {
 	fc := &followerController{
 		config:           config,
 		namespace:        namespace,

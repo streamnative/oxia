@@ -34,10 +34,10 @@ import (
 )
 
 type walFactory struct {
-	options *WalFactoryOptions
+	options *FactoryOptions
 }
 
-func NewWalFactory(options *WalFactoryOptions) WalFactory {
+func NewWalFactory(options *FactoryOptions) Factory {
 	return &walFactory{
 		options: options,
 	}
@@ -93,10 +93,10 @@ func walPath(logDir string, namespace string, shard int64) string {
 	return filepath.Join(logDir, namespace, fmt.Sprint("shard-", shard))
 }
 
-func newWal(namespace string, shard int64, options *WalFactoryOptions, commitOffsetProvider CommitOffsetProvider,
+func newWal(namespace string, shard int64, options *FactoryOptions, commitOffsetProvider CommitOffsetProvider,
 	clock common.Clock, trimmerCheckInterval time.Duration) (Wal, error) {
 	if options.SegmentSize == 0 {
-		options.SegmentSize = DefaultWalFactoryOptions.SegmentSize
+		options.SegmentSize = DefaultFactoryOptions.SegmentSize
 	}
 
 	labels := metrics.LabelsForShard(namespace, shard)

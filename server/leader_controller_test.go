@@ -341,12 +341,12 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 func TestLeaderController_TermPersistent(t *testing.T) {
 	var shard int64 = 1
 
-	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.FactoryOptions{
 		DataDir:     t.TempDir(),
 		CacheSizeMB: 1,
 	})
 	assert.NoError(t, err)
-	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{
+	walFactory := wal.NewWalFactory(&wal.FactoryOptions{
 		BaseWalDir: t.TempDir(),
 	})
 
@@ -385,12 +385,12 @@ func TestLeaderController_TermPersistent(t *testing.T) {
 func TestLeaderController_FenceTerm(t *testing.T) {
 	var shard int64 = 1
 
-	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.FactoryOptions{
 		DataDir:     t.TempDir(),
 		CacheSizeMB: 1,
 	})
 	assert.NoError(t, err)
-	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{
+	walFactory := wal.NewWalFactory(&wal.FactoryOptions{
 		BaseWalDir: t.TempDir(),
 	})
 
@@ -432,12 +432,12 @@ func TestLeaderController_FenceTerm(t *testing.T) {
 func TestLeaderController_BecomeLeaderTerm(t *testing.T) {
 	var shard int64 = 1
 
-	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.FactoryOptions{
 		DataDir:     t.TempDir(),
 		CacheSizeMB: 1,
 	})
 	assert.NoError(t, err)
-	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{
+	walFactory := wal.NewWalFactory(&wal.FactoryOptions{
 		BaseWalDir: t.TempDir(),
 	})
 
@@ -558,9 +558,9 @@ func TestLeaderController_AddFollower(t *testing.T) {
 func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 	var shard int64 = 1
 
-	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{DataDir: t.TempDir()})
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.FactoryOptions{DataDir: t.TempDir()})
 	assert.NoError(t, err)
-	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{BaseWalDir: t.TempDir()})
+	walFactory := wal.NewWalFactory(&wal.FactoryOptions{BaseWalDir: t.TempDir()})
 
 	// Prepare some data in the leader log & db
 	walObject, err := walFactory.NewWal(common.DefaultNamespace, shard, nil)
@@ -722,12 +722,12 @@ func TestLeaderController_AddFollowerCheckTerm(t *testing.T) {
 func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
 	var shard int64 = 1
 
-	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.FactoryOptions{
 		DataDir:     t.TempDir(),
 		CacheSizeMB: 1,
 	})
 	assert.NoError(t, err)
-	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{
+	walFactory := wal.NewWalFactory(&wal.FactoryOptions{
 		BaseWalDir: t.TempDir(),
 	})
 

@@ -50,23 +50,23 @@ var (
 type PebbleFactory struct {
 	dataDir string
 	cache   *pebble.Cache
-	options *KVFactoryOptions
+	options *FactoryOptions
 
 	gaugeCacheSize metrics.Gauge
 }
 
-func NewPebbleKVFactory(options *KVFactoryOptions) (KVFactory, error) {
+func NewPebbleKVFactory(options *FactoryOptions) (Factory, error) {
 	if options == nil {
-		options = DefaultKVFactoryOptions
+		options = DefaultFactoryOptions
 	}
 	cacheSizeMB := options.CacheSizeMB
 	if cacheSizeMB == 0 {
-		cacheSizeMB = DefaultKVFactoryOptions.CacheSizeMB
+		cacheSizeMB = DefaultFactoryOptions.CacheSizeMB
 	}
 
 	dataDir := options.DataDir
 	if dataDir == "" {
-		dataDir = DefaultKVFactoryOptions.DataDir
+		dataDir = DefaultFactoryOptions.DataDir
 	}
 
 	cache := pebble.NewCache(cacheSizeMB * 1024 * 1024)

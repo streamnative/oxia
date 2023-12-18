@@ -49,8 +49,8 @@ type Server struct {
 	shardAssignmentDispatcher ShardAssignmentsDispatcher
 	shardsDirector            ShardsDirector
 	metrics                   *metrics.PrometheusMetrics
-	walFactory                wal.WalFactory
-	kvFactory                 kv.KVFactory
+	walFactory                wal.Factory
+	kvFactory                 kv.Factory
 
 	healthServer *health.Server
 }
@@ -65,7 +65,7 @@ func NewWithGrpcProvider(config Config, provider container.GrpcProvider, replica
 		slog.Any("config", config),
 	)
 
-	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.FactoryOptions{
 		DataDir:     config.DataDir,
 		CacheSizeMB: config.DbBlockCacheMB,
 	})
@@ -75,10 +75,10 @@ func NewWithGrpcProvider(config Config, provider container.GrpcProvider, replica
 
 	s := &Server{
 		replicationRpcProvider: replicationRpcProvider,
-		walFactory: wal.NewWalFactory(&wal.WalFactoryOptions{
+		walFactory: wal.NewWalFactory(&wal.FactoryOptions{
 			BaseWalDir:  config.WalDir,
 			Retention:   config.WalRetentionTime,
-			SegmentSize: wal.DefaultWalFactoryOptions.SegmentSize,
+			SegmentSize: wal.DefaultFactoryOptions.SegmentSize,
 			SyncData:    true,
 		}),
 		kvFactory:    kvFactory,

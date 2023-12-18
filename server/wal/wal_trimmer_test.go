@@ -41,7 +41,7 @@ func (p *mockedCommitOffsetProvider) CommitOffset() int64 {
 }
 
 func TestWalTrimmer(t *testing.T) {
-	options := &WalFactoryOptions{
+	options := &FactoryOptions{
 		BaseWalDir:  t.TempDir(),
 		Retention:   2 * time.Millisecond,
 		SegmentSize: 10 * 1024,
@@ -96,7 +96,7 @@ func TestWalTrimmer(t *testing.T) {
 func TestWalTrimUpToCommitOffset(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		t.Run(fmt.Sprintf("test-%d", i), func(t *testing.T) {
-			options := &WalFactoryOptions{
+			options := &FactoryOptions{
 				BaseWalDir:  t.TempDir(),
 				Retention:   2 * time.Millisecond,
 				SegmentSize: 128 * 1024,

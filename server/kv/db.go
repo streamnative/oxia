@@ -61,7 +61,7 @@ type DB interface {
 	Delete() error
 }
 
-func NewDB(namespace string, shardId int64, factory KVFactory, notificationRetentionTime time.Duration, clock common.Clock) (DB, error) {
+func NewDB(namespace string, shardId int64, factory Factory, notificationRetentionTime time.Duration, clock common.Clock) (DB, error) {
 	kv, err := factory.NewKV(namespace, shardId)
 	if err != nil {
 		return nil, err

@@ -167,11 +167,3 @@ issues:
       linters:
         - revive
       text: "blank-imports"
-    - path: server/kv/
-      linters:
-        - revive
-      text: "exported"
-    - path: server/wal/
-      linters:
-        - revive
-      text: "exported"

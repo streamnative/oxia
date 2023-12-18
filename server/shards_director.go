@@ -48,8 +48,8 @@ type shardsDirector struct {
 	leaders   map[int64]LeaderController
 	followers map[int64]FollowerController
 
-	kvFactory              kv.KVFactory
-	walFactory             wal.WalFactory
+	kvFactory              kv.Factory
+	walFactory             wal.Factory
 	replicationRpcProvider ReplicationRpcProvider
 	closed                 bool
 	log                    *slog.Logger
@@ -58,7 +58,7 @@ type shardsDirector struct {
 	followersCounter metrics.UpDownCounter
 }
 
-func NewShardsDirector(config Config, walFactory wal.WalFactory, kvFactory kv.KVFactory, provider ReplicationRpcProvider) ShardsDirector {
+func NewShardsDirector(config Config, walFactory wal.Factory, kvFactory kv.Factory, provider ReplicationRpcProvider) ShardsDirector {
 	sd := &shardsDirector{
 		config:                 config,
 		walFactory:             walFactory,
