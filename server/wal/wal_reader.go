@@ -20,7 +20,7 @@ import (
 	"github.com/streamnative/oxia/proto"
 )
 
-func (t *wal) NewReader(after int64) (WalReader, error) {
+func (t *wal) NewReader(after int64) (Reader, error) {
 	firstOffset := after + 1
 
 	if firstOffset < t.FirstOffset() {
@@ -38,7 +38,7 @@ func (t *wal) NewReader(after int64) (WalReader, error) {
 	return r, nil
 }
 
-func (t *wal) NewReverseReader() (WalReader, error) {
+func (t *wal) NewReverseReader() (Reader, error) {
 	r := &reverseReader{reader{
 		wal:        t,
 		nextOffset: t.LastOffset(),

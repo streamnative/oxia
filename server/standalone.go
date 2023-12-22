@@ -37,8 +37,8 @@ type StandaloneConfig struct {
 
 type Standalone struct {
 	rpc                       *publicRpcServer
-	kvFactory                 kv.KVFactory
-	walFactory                wal.WalFactory
+	kvFactory                 kv.Factory
+	walFactory                wal.Factory
 	shardsDirector            ShardsDirector
 	shardAssignmentDispatcher ShardAssignmentsDispatcher
 
@@ -66,11 +66,11 @@ func NewStandalone(config StandaloneConfig) (*Standalone, error) {
 
 	s := &Standalone{}
 
-	kvOptions := kv.KVFactoryOptions{DataDir: config.DataDir}
-	s.walFactory = wal.NewWalFactory(&wal.WalFactoryOptions{
+	kvOptions := kv.FactoryOptions{DataDir: config.DataDir}
+	s.walFactory = wal.NewWalFactory(&wal.FactoryOptions{
 		BaseWalDir:  config.WalDir,
 		Retention:   config.WalRetentionTime,
-		SegmentSize: wal.DefaultWalFactoryOptions.SegmentSize,
+		SegmentSize: wal.DefaultFactoryOptions.SegmentSize,
 		SyncData:    config.WalSyncData,
 	})
 	var err error

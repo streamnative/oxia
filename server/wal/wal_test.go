@@ -29,18 +29,18 @@ import (
 
 const shard = int64(100)
 
-func NewTestWalFactory(t *testing.T) WalFactory {
+func NewTestWalFactory(t *testing.T) Factory {
 	t.Helper()
 
 	dir := t.TempDir()
-	return NewWalFactory(&WalFactoryOptions{
+	return NewWalFactory(&FactoryOptions{
 		BaseWalDir:  dir,
 		Retention:   1 * time.Hour,
 		SegmentSize: 128 * 1024,
 	})
 }
 
-func createWal(t *testing.T) (WalFactory, Wal) {
+func createWal(t *testing.T) (Factory, Wal) {
 	t.Helper()
 
 	f := NewTestWalFactory(t)
@@ -50,7 +50,7 @@ func createWal(t *testing.T) (WalFactory, Wal) {
 	return f, w
 }
 
-func assertReaderReads(t *testing.T, r WalReader, entries []string) {
+func assertReaderReads(t *testing.T, r Reader, entries []string) {
 	t.Helper()
 
 	for i := 0; i < len(entries); i++ {
@@ -62,7 +62,7 @@ func assertReaderReads(t *testing.T, r WalReader, entries []string) {
 	assert.False(t, r.HasNext())
 }
 
-func assertReaderReadsEventually(t *testing.T, r WalReader, entries []string) chan error {
+func assertReaderReadsEventually(t *testing.T, r Reader, entries []string) chan error {
 	t.Helper()
 
 	ch := make(chan error)

@@ -112,7 +112,7 @@ type KV interface {
 	Delete() error
 }
 
-type KVFactoryOptions struct {
+type FactoryOptions struct {
 	DataDir     string
 	CacheSizeMB int64
 
@@ -120,13 +120,13 @@ type KVFactoryOptions struct {
 	InMemory bool
 }
 
-var DefaultKVFactoryOptions = &KVFactoryOptions{
+var DefaultFactoryOptions = &FactoryOptions{
 	DataDir:     "data",
 	CacheSizeMB: 100,
 	InMemory:    false,
 }
 
-type KVFactory interface {
+type Factory interface {
 	io.Closer
 
 	NewKV(namespace string, shardId int64) (KV, error)

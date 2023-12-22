@@ -39,7 +39,7 @@ func TestFollowerCursor(t *testing.T) {
 	assert.NoError(t, err)
 	db, err := kv.NewDB(common.DefaultNamespace, shard, kvf, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
-	wf := wal.NewWalFactory(&wal.WalFactoryOptions{BaseWalDir: t.TempDir()})
+	wf := wal.NewWalFactory(&wal.FactoryOptions{BaseWalDir: t.TempDir()})
 	w, err := wf.NewWal(common.DefaultNamespace, shard, nil)
 	assert.NoError(t, err)
 
@@ -117,11 +117,11 @@ func TestFollowerCursor_SendSnapshot(t *testing.T) {
 
 	n := int64(10)
 	stream := newMockRpcClient()
-	kvf, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{DataDir: t.TempDir()})
+	kvf, err := kv.NewPebbleKVFactory(&kv.FactoryOptions{DataDir: t.TempDir()})
 	assert.NoError(t, err)
 	db, err := kv.NewDB(common.DefaultNamespace, shard, kvf, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
-	wf := wal.NewWalFactory(&wal.WalFactoryOptions{BaseWalDir: t.TempDir()})
+	wf := wal.NewWalFactory(&wal.FactoryOptions{BaseWalDir: t.TempDir()})
 	w, err := wf.NewWal(common.DefaultNamespace, shard, nil)
 	assert.NoError(t, err)
 

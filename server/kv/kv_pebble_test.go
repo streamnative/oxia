@@ -25,7 +25,7 @@ import (
 	"github.com/streamnative/oxia/common"
 )
 
-var testKVOptions = &KVFactoryOptions{
+var testKVOptions = &FactoryOptions{
 	InMemory:    true,
 	CacheSizeMB: 1,
 }
@@ -314,7 +314,7 @@ func TestPebbbleGetWithinBatch(t *testing.T) {
 }
 
 func TestPebbbleDurability(t *testing.T) {
-	options := &KVFactoryOptions{
+	options := &FactoryOptions{
 		DataDir:     t.TempDir(),
 		CacheSizeMB: 1,
 		InMemory:    false,
@@ -451,7 +451,7 @@ func TestPebbbleDeleteRangeInBatch(t *testing.T) {
 }
 
 func TestPebbbleDoubleOpen(t *testing.T) {
-	factory, err := NewPebbleKVFactory(&KVFactoryOptions{
+	factory, err := NewPebbleKVFactory(&FactoryOptions{
 		DataDir:     t.TempDir(),
 		CacheSizeMB: 1,
 		InMemory:    false,
@@ -473,7 +473,7 @@ func TestPebbleSnapshot(t *testing.T) {
 	copiedLocationDbPath := filepath.Join(copiedLocation, common.DefaultNamespace, "shard-1")
 
 	{
-		factory, err := NewPebbleKVFactory(&KVFactoryOptions{
+		factory, err := NewPebbleKVFactory(&FactoryOptions{
 			DataDir:     originalLocation,
 			CacheSizeMB: 1,
 			InMemory:    false,
@@ -528,7 +528,7 @@ func TestPebbleSnapshot(t *testing.T) {
 
 	{
 		// Open the database from the copied location
-		factory2, err := NewPebbleKVFactory(&KVFactoryOptions{
+		factory2, err := NewPebbleKVFactory(&FactoryOptions{
 			DataDir:     copiedLocation,
 			CacheSizeMB: 1,
 			InMemory:    false,
@@ -555,7 +555,7 @@ func TestPebbleSnapshot_Loader(t *testing.T) {
 	originalLocation := t.TempDir()
 	newLocation := t.TempDir()
 
-	factory, err := NewPebbleKVFactory(&KVFactoryOptions{
+	factory, err := NewPebbleKVFactory(&FactoryOptions{
 		DataDir:     originalLocation,
 		CacheSizeMB: 1,
 		InMemory:    false,
@@ -579,7 +579,7 @@ func TestPebbleSnapshot_Loader(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Use the snapshot to load a new DB
-	factory2, err := NewPebbleKVFactory(&KVFactoryOptions{
+	factory2, err := NewPebbleKVFactory(&FactoryOptions{
 		DataDir:     newLocation,
 		CacheSizeMB: 1,
 		InMemory:    false,

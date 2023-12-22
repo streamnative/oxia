@@ -32,7 +32,7 @@ import (
 	"github.com/streamnative/oxia/server/wal"
 )
 
-var testKVOptions = &kv.KVFactoryOptions{
+var testKVOptions = &kv.FactoryOptions{
 	InMemory:    true,
 	CacheSizeMB: 1,
 }
@@ -42,10 +42,10 @@ func init() {
 	common.ConfigureLogger()
 }
 
-func newTestWalFactory(t *testing.T) wal.WalFactory {
+func newTestWalFactory(t *testing.T) wal.Factory {
 	t.Helper()
 
-	return wal.NewWalFactory(&wal.WalFactoryOptions{
+	return wal.NewWalFactory(&wal.FactoryOptions{
 		BaseWalDir:  t.TempDir(),
 		SegmentSize: 128 * 1024,
 	})
@@ -138,7 +138,7 @@ func TestReadingUpToCommitOffset(t *testing.T) {
 	var shardId int64
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{BaseWalDir: t.TempDir()})
+	walFactory := wal.NewWalFactory(&wal.FactoryOptions{BaseWalDir: t.TempDir()})
 
 	fc, err := NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
@@ -208,9 +208,9 @@ func TestReadingUpToCommitOffset(t *testing.T) {
 
 func TestFollower_RestoreCommitOffset(t *testing.T) {
 	var shardId int64
-	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{DataDir: t.TempDir()})
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.FactoryOptions{DataDir: t.TempDir()})
 	assert.NoError(t, err)
-	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{BaseWalDir: t.TempDir()})
+	walFactory := wal.NewWalFactory(&wal.FactoryOptions{BaseWalDir: t.TempDir()})
 
 	db, err := kv.NewDB(common.DefaultNamespace, shardId, kvFactory, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
@@ -240,9 +240,9 @@ func TestFollower_RestoreCommitOffset(t *testing.T) {
 // offset only up to the current head.
 func TestFollower_AdvanceCommitOffsetToHead(t *testing.T) {
 	var shardId int64
-	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{DataDir: t.TempDir()})
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.FactoryOptions{DataDir: t.TempDir()})
 	assert.NoError(t, err)
-	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{BaseWalDir: t.TempDir()})
+	walFactory := wal.NewWalFactory(&wal.FactoryOptions{BaseWalDir: t.TempDir()})
 
 	fc, _ := NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
 	_, _ = fc.NewTerm(&proto.NewTermRequest{Term: 1})
@@ -273,7 +273,7 @@ func TestFollower_NewTerm(t *testing.T) {
 	var shardId int64
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{BaseWalDir: t.TempDir()})
+	walFactory := wal.NewWalFactory(&wal.FactoryOptions{BaseWalDir: t.TempDir()})
 
 	fc, err := NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
@@ -314,7 +314,7 @@ func TestFollower_NewTerm(t *testing.T) {
 // currently has.
 func TestFollower_TruncateAfterRestart(t *testing.T) {
 	var shardId int64
-	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{DataDir: t.TempDir()})
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.FactoryOptions{DataDir: t.TempDir()})
 	assert.NoError(t, err)
 	walFactory := newTestWalFactory(t)
 
@@ -366,12 +366,12 @@ func TestFollower_TruncateAfterRestart(t *testing.T) {
 
 func TestFollower_PersistentTerm(t *testing.T) {
 	var shardId int64
-	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.FactoryOptions{
 		DataDir:     t.TempDir(),
 		CacheSizeMB: 1,
 	})
 	assert.NoError(t, err)
-	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{
+	walFactory := wal.NewWalFactory(&wal.FactoryOptions{
 		BaseWalDir: t.TempDir(),
 	})
 
@@ -405,7 +405,7 @@ func TestFollower_CommitOffsetLastEntry(t *testing.T) {
 	var shardId int64
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{BaseWalDir: t.TempDir()})
+	walFactory := wal.NewWalFactory(&wal.FactoryOptions{BaseWalDir: t.TempDir()})
 
 	fc, err := NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
@@ -457,7 +457,7 @@ func TestFollower_CommitOffsetLastEntry(t *testing.T) {
 
 func TestFollowerController_RejectEntriesWithDifferentTerm(t *testing.T) {
 	var shardId int64
-	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.FactoryOptions{
 		DataDir:     t.TempDir(),
 		CacheSizeMB: 1,
 	})
@@ -469,7 +469,7 @@ func TestFollowerController_RejectEntriesWithDifferentTerm(t *testing.T) {
 	assert.NoError(t, db.UpdateTerm(5))
 	assert.NoError(t, db.Close())
 
-	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{BaseWalDir: t.TempDir()})
+	walFactory := wal.NewWalFactory(&wal.FactoryOptions{BaseWalDir: t.TempDir()})
 
 	fc, err := NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
@@ -567,7 +567,7 @@ func TestFollower_RejectTruncateInvalidTerm(t *testing.T) {
 func prepareTestDb(t *testing.T) kv.Snapshot {
 	t.Helper()
 
-	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.FactoryOptions{
 		DataDir: t.TempDir(),
 	})
 	assert.NoError(t, err)
@@ -594,11 +594,11 @@ func prepareTestDb(t *testing.T) kv.Snapshot {
 
 func TestFollower_HandleSnapshot(t *testing.T) {
 	var shardId int64
-	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.FactoryOptions{
 		DataDir: t.TempDir(),
 	})
 	assert.NoError(t, err)
-	walFactory := wal.NewWalFactory(&wal.WalFactoryOptions{BaseWalDir: t.TempDir()})
+	walFactory := wal.NewWalFactory(&wal.FactoryOptions{BaseWalDir: t.TempDir()})
 
 	fc, err := NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
@@ -903,7 +903,7 @@ func TestFollower_GetStatus(t *testing.T) {
 
 func TestFollower_HandleSnapshotWithWrongTerm(t *testing.T) {
 	var shardId int64
-	kvFactory, err := kv.NewPebbleKVFactory(&kv.KVFactoryOptions{
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.FactoryOptions{
 		DataDir: t.TempDir(),
 	})
 	assert.NoError(t, err)

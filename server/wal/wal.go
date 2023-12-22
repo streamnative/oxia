@@ -34,27 +34,27 @@ var (
 	InvalidOffset int64 = -1
 )
 
-type WalFactoryOptions struct {
+type FactoryOptions struct {
 	BaseWalDir  string
 	Retention   time.Duration
 	SegmentSize int32
 	SyncData    bool
 }
 
-var DefaultWalFactoryOptions = &WalFactoryOptions{
+var DefaultFactoryOptions = &FactoryOptions{
 	BaseWalDir:  "data/wal",
 	Retention:   1 * time.Hour,
 	SegmentSize: 64 * 1024 * 1024,
 	SyncData:    true,
 }
 
-type WalFactory interface {
+type Factory interface {
 	io.Closer
 	NewWal(namespace string, shard int64, provider CommitOffsetProvider) (Wal, error)
 }
 
-// WalReader reads the Wal sequentially. It is not synchronized itself.
-type WalReader interface {
+// Reader reads the Wal sequentially. It is not synchronized itself.
+type Reader interface {
 	io.Closer
 	// ReadNext returns the next entry in the log according to the Reader's direction.
 	// If a forward/reverse WalReader has passed the end/beginning of the log, it returns [ErrorEntryNotFound].
@@ -81,9 +81,9 @@ type Wal interface {
 	TruncateLog(lastSafeEntry int64) (int64, error)
 
 	// NewReader returns a new WalReader to traverse the log from the entry after `after` towards the log end
-	NewReader(after int64) (WalReader, error)
+	NewReader(after int64) (Reader, error)
 	// NewReverseReader returns a new WalReader to traverse the log from the last entry towards the beginning
-	NewReverseReader() (WalReader, error)
+	NewReverseReader() (Reader, error)
 
 	// LastOffset Return the offset of the last entry committed to the WAL
 	// Return InvalidOffset if the WAL is empty

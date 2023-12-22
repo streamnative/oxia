@@ -99,7 +99,7 @@ type leaderController struct {
 	followerAckOffsetGauges map[string]metrics.Gauge
 }
 
-func NewLeaderController(config Config, namespace string, shardId int64, rpcClient ReplicationRpcProvider, walFactory wal.WalFactory, kvFactory kv.KVFactory) (LeaderController, error) {
+func NewLeaderController(config Config, namespace string, shardId int64, rpcClient ReplicationRpcProvider, walFactory wal.Factory, kvFactory kv.Factory) (LeaderController, error) {
 	labels := metrics.LabelsForShard(namespace, shardId)
 	lc := &leaderController{
 		status:           proto.ServingStatus_NOT_MEMBER,
