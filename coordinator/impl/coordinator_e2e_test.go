@@ -611,7 +611,7 @@ func TestCoordinator_AddRemoveNodes(t *testing.T) {
 	c, err := NewCoordinator(metadataProvider, configProvider, 1*time.Second, NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 
-	assert.Equal(t, 3, len(c.(*coordinator).nodeControllers))
+	assert.Equal(t, 3, len(c.(*coordinator).getNodeControllers()))
 
 	// Add s4, s5
 	clusterConfig.Servers = append(clusterConfig.Servers, sa4, sa5)
@@ -620,16 +620,16 @@ func TestCoordinator_AddRemoveNodes(t *testing.T) {
 
 	// Wait for all shards to be ready
 	assert.Eventually(t, func() bool {
-		return len(c.(*coordinator).nodeControllers) == 4
+		return len(c.(*coordinator).getNodeControllers()) == 4
 	}, 10*time.Second, 10*time.Millisecond)
 
-	_, ok := c.(*coordinator).nodeControllers[sa1.Internal]
+	_, ok := c.(*coordinator).getNodeControllers()[sa1.Internal]
 	assert.False(t, ok)
 
-	_, ok = c.(*coordinator).nodeControllers[sa4.Internal]
+	_, ok = c.(*coordinator).getNodeControllers()[sa4.Internal]
 	assert.True(t, ok)
 
-	_, ok = c.(*coordinator).nodeControllers[sa5.Internal]
+	_, ok = c.(*coordinator).getNodeControllers()[sa5.Internal]
 	assert.True(t, ok)
 
 	assert.NoError(t, c.Close())

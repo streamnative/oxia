@@ -515,3 +515,13 @@ func (c *coordinator) checkClusterNodeChanges(newClusterConfig model.ClusterConf
 
 	return err
 }
+
+func (c *coordinator) getNodeControllers() map[string]NodeController {
+	c.Lock()
+	defer c.Unlock()
+	nc := make(map[string]NodeController)
+	for k, v := range c.nodeControllers {
+		nc[k] = v
+	}
+	return nc
+}
