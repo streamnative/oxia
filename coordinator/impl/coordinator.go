@@ -487,9 +487,7 @@ func (c *coordinator) rebalanceCluster() error {
 func (c *coordinator) checkClusterNodeChanges(newClusterConfig model.ClusterConfig) (err error) {
 	// Check for nodes to add
 	for _, sa := range newClusterConfig.Servers {
-		if _, ok := c.nodeControllers[sa.Internal]; ok {
-			// The node was present before and after, nothing to do
-		} else {
+		if _, ok := c.nodeControllers[sa.Internal]; !ok {
 			// The node is present in the config, though we don't know it yet,
 			// therefore it must be a newly added node
 			c.log.Info("Detected new node", slog.Any("addr", sa))
