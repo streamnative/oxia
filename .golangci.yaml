@@ -124,7 +124,7 @@ linters-settings:
           - 3
       - name: bare-return
         severity: warning
-        disabled: true
+        disabled: false
 
 issues:
   fix: true

@@ -70,51 +70,50 @@ func (m *metadataProviderConfigMap) Get() (status *model.ClusterStatus, version 
 	return m.getWithoutLock()
 }
 
-func (m *metadataProviderConfigMap) getWithoutLock() (status *model.ClusterStatus, version Version, err error) {
+func (m *metadataProviderConfigMap) getWithoutLock() (*model.ClusterStatus, Version, error) {
 	cm, err := K8SConfigMaps(m.kubernetes).Get(m.namespace, m.name)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			err = nil
-			version = MetadataNotExists
+			return nil, MetadataNotExists, nil
 		}
-		return
+		return nil, "", err
 	}
 
-	status = &model.ClusterStatus{}
+	status := &model.ClusterStatus{}
 	data := []byte(cm.Data["status"])
 	if err = yaml.Unmarshal(data, status); err != nil {
-		return
+		return nil, "", err
 	}
-	version = Version(cm.ResourceVersion)
+
+	version := Version(cm.ResourceVersion)
 	m.metadataSize.Store(int64(len(data)))
-	return
+	return status, version, nil
 }
 
-func (m *metadataProviderConfigMap) Store(status *model.ClusterStatus, expectedVersion Version) (version Version, err error) {
+func (m *metadataProviderConfigMap) Store(status *model.ClusterStatus, expectedVersion Version) (Version, error) {
 	timer := m.storeLatencyHisto.Timer()
 	defer timer.Done()
 
 	m.Lock()
 	defer m.Unlock()
 
-	_, version, err = m.getWithoutLock()
+	_, version, err := m.getWithoutLock()
 	if err != nil {
-		return
+		return version, err
 	}
 
 	if version != expectedVersion {
-		err = ErrMetadataBadVersion
-		return
+		return version, ErrMetadataBadVersion
 	}
 
 	data := configMap(m.name, status, expectedVersion)
 	cm, err := K8SConfigMaps(m.kubernetes).Upsert(m.namespace, data)
 	if k8serrors.IsConflict(err) {
-		err = ErrMetadataBadVersion
+		return version, ErrMetadataBadVersion
 	}
 	version = Version(cm.ResourceVersion)
 	m.metadataSize.Store(int64(len(data.Data["status"])))
-	return
+	return version, nil
 }
 
 func (*metadataProviderConfigMap) Close() error {
