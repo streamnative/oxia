@@ -127,6 +127,8 @@ func newNodeController(addr model.ServerAddress,
 		},
 		nc.sendAssignmentsUpdatesWithRetries,
 	)
+
+	nc.log.Info("Started node controller")
 	return nc
 }
 
@@ -305,5 +307,7 @@ func (n *nodeController) sendAssignmentsUpdates(backoff backoff.BackOff) error {
 func (n *nodeController) Close() error {
 	n.nodeIsRunningGauge.Unregister()
 	n.cancel()
+
+	n.log.Info("Closed node controller")
 	return nil
 }
