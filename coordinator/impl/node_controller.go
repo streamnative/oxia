@@ -36,6 +36,7 @@ type NodeStatus uint32
 const (
 	Running NodeStatus = iota
 	NotRunning
+	Draining //
 )
 
 const (
@@ -50,6 +51,8 @@ type NodeController interface {
 	io.Closer
 
 	Status() NodeStatus
+
+	SetStatus(status NodeStatus)
 }
 
 type nodeController struct {
@@ -138,11 +141,25 @@ func (n *nodeController) Status() NodeStatus {
 	return n.status
 }
 
+func (n *nodeController) SetStatus(status NodeStatus) {
+	n.Lock()
+	defer n.Unlock()
+	n.status = status
+	n.log.Info("Changed status", slog.Any("status", status))
+}
+
 func (n *nodeController) healthCheckWithRetries() {
 	backOff := common.NewBackOffWithInitialInterval(n.ctx, n.initialRetryBackoff)
 	_ = backoff.RetryNotify(func() error {
 		return n.healthCheck(backOff)
 	}, backOff, func(err error, duration time.Duration) {
+		if n.Status() == Draining {
+			// Stop the health check and close
+			_ = n.Close()
+			n.nodeAvailabilityListener.NodeBecameUnavailable(n.addr)
+			return
+		}
+
 		n.log.Warn(
 			"Storage node health check failed",
 			slog.Any("error", err),
@@ -244,6 +261,13 @@ func (n *nodeController) sendAssignmentsUpdatesWithRetries() {
 	_ = backoff.RetryNotify(func() error {
 		return n.sendAssignmentsUpdates(backOff)
 	}, backOff, func(err error, duration time.Duration) {
+		if n.Status() == Draining {
+			// Stop the health check and close
+			_ = n.Close()
+			n.nodeAvailabilityListener.NodeBecameUnavailable(n.addr)
+			return
+		}
+
 		n.log.Warn(
 			"Failed to send assignments updates to storage node",
 			slog.Duration("retry-after", duration),

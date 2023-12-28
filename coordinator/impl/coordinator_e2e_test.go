@@ -640,6 +640,89 @@ func TestCoordinator_AddRemoveNodes(t *testing.T) {
 	}
 }
 
+func TestCoordinator_ShrinkCluster(t *testing.T) {
+	s1, sa1 := newServer(t)
+	s2, sa2 := newServer(t)
+	s3, sa3 := newServer(t)
+	s4, sa4 := newServer(t)
+	servers := map[model.ServerAddress]*server.Server{
+		sa1: s1,
+		sa2: s2,
+		sa3: s3,
+		sa4: s4,
+	}
+
+	metadataProvider := NewMetadataProviderMemory()
+	clusterConfig := model.ClusterConfig{
+		Namespaces: []model.NamespaceConfig{{
+			Name:              "my-ns-1",
+			ReplicationFactor: 1,
+			InitialShardCount: 1,
+		}},
+		Servers: []model.ServerAddress{sa1, sa2, sa3, sa4},
+	}
+	clientPool := common.NewClientPool()
+
+	configProvider := func() (model.ClusterConfig, error) {
+		return clusterConfig, nil
+	}
+
+	c, err := NewCoordinator(metadataProvider, configProvider, 1*time.Second, NewRpcProvider(clientPool))
+	assert.NoError(t, err)
+
+	// Wait for all shards to be ready
+	assert.Eventually(t, func() bool {
+		for _, ns := range c.ClusterStatus().Namespaces {
+			for _, shard := range ns.Shards {
+				if shard.Status != model.ShardStatusSteadyState {
+					return false
+				}
+			}
+		}
+		return true
+	}, 10*time.Second, 10*time.Millisecond)
+
+	assert.Equal(t, 4, len(c.(*coordinator).getNodeControllers()))
+
+	shard0 := c.ClusterStatus().Namespaces["my-ns-1"].Shards[0]
+	assert.Equal(t, sa1.Public, shard0.Leader.Public)
+
+	// Remove s1
+	clusterConfig.Servers = clusterConfig.Servers[1:]
+
+	assert.Eventually(t, func() bool {
+		return len(c.(*coordinator).getNodeControllers()) == 3
+	}, 10*time.Second, 10*time.Millisecond)
+
+	// Wait for all shards to be ready
+	assert.Eventually(t, func() bool {
+		for _, ns := range c.ClusterStatus().Namespaces {
+			for _, shard := range ns.Shards {
+				return shard.Term > 0
+			}
+		}
+		return true
+	}, 10*time.Second, 10*time.Millisecond)
+
+	// S1 should receive the updated leader info
+	shard0 = c.ClusterStatus().Namespaces["my-ns-1"].Shards[0]
+	assert.NotEqual(t, sa1.Public, shard0.Leader.Public)
+
+	client, err := oxia.NewSyncClient(sa1.Public, oxia.WithNamespace("my-ns-1"))
+	assert.NoError(t, err)
+
+	_, err = client.Put(context.Background(), "test", []byte("value"))
+	assert.NoError(t, err)
+
+	assert.NoError(t, client.Close())
+	assert.NoError(t, c.Close())
+	assert.NoError(t, clientPool.Close())
+
+	for _, serverObj := range servers {
+		assert.NoError(t, serverObj.Close())
+	}
+}
+
 func checkServerLists(t *testing.T, expected, actual []model.ServerAddress) {
 	t.Helper()
 

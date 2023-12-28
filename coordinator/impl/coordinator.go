@@ -68,11 +68,16 @@ type coordinator struct {
 
 	shardControllers map[int64]ShardController
 	nodeControllers  map[string]NodeController
-	clusterStatus    *model.ClusterStatus
-	assignments      *proto.ShardAssignments
-	metadataVersion  Version
-	rpc              RpcProvider
-	log              *slog.Logger
+
+	// Draining nodes are nodes that were removed from the
+	// nodes list. We keep sending them assignments updates
+	// because they might be still reachable to clients.
+	drainingNodes   map[string]NodeController
+	clusterStatus   *model.ClusterStatus
+	assignments     *proto.ShardAssignments
+	metadataVersion Version
+	rpc             RpcProvider
+	log             *slog.Logger
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -98,6 +103,7 @@ func NewCoordinator(metadataProvider MetadataProvider,
 		clusterConfigRefreshTime: clusterConfigRefreshTime,
 		shardControllers:         make(map[int64]ShardController),
 		nodeControllers:          make(map[string]NodeController),
+		drainingNodes:            make(map[string]NodeController),
 		rpc:                      rpc,
 		log: slog.With(
 			slog.String("component", "coordinator"),
@@ -222,11 +228,22 @@ func (c *coordinator) Close() error {
 	for _, nc := range c.nodeControllers {
 		err = multierr.Append(err, nc.Close())
 	}
+
+	for _, nc := range c.drainingNodes {
+		err = multierr.Append(err, nc.Close())
+	}
 	return err
 }
 
 func (c *coordinator) NodeBecameUnavailable(node model.ServerAddress) {
 	c.Lock()
+
+	if nc, ok := c.drainingNodes[node.Internal]; ok {
+		// The draining node became unavailable. Let's remove it
+		delete(c.drainingNodes, node.Internal)
+		_ = nc.Close()
+	}
+
 	ctrls := make(map[int64]ShardController)
 	for k, sc := range c.shardControllers {
 		ctrls[k] = sc
@@ -418,9 +435,7 @@ func (c *coordinator) handleClusterConfigUpdated() error {
 		slog.Any("metadataVersion", c.metadataVersion),
 	)
 
-	if err = c.checkClusterNodeChanges(newClusterConfig); err != nil {
-		return err
-	}
+	c.checkClusterNodeChanges(newClusterConfig)
 
 	clusterStatus, shardsToAdd, shardsToDelete := applyClusterChanges(&newClusterConfig, c.clusterStatus)
 
@@ -484,13 +499,19 @@ func (c *coordinator) rebalanceCluster() error {
 	return nil
 }
 
-func (c *coordinator) checkClusterNodeChanges(newClusterConfig model.ClusterConfig) (err error) {
+func (c *coordinator) checkClusterNodeChanges(newClusterConfig model.ClusterConfig) {
 	// Check for nodes to add
 	for _, sa := range newClusterConfig.Servers {
 		if _, ok := c.nodeControllers[sa.Internal]; !ok {
 			// The node is present in the config, though we don't know it yet,
 			// therefore it must be a newly added node
 			c.log.Info("Detected new node", slog.Any("addr", sa))
+			if nc, ok := c.drainingNodes[sa.Internal]; ok {
+				// If there were any controller for a draining node, close it
+				// and recreate it as a new node
+				_ = nc.Close()
+				delete(c.drainingNodes, sa.Internal)
+			}
 			c.nodeControllers[sa.Internal] = NewNodeController(sa, c, c, c.rpc)
 		}
 	}
@@ -508,12 +529,12 @@ func (c *coordinator) checkClusterNodeChanges(newClusterConfig model.ClusterConf
 
 		if !found {
 			c.log.Info("Detected a removed node", slog.Any("addr", ia))
-			err = multierr.Append(err, nc.Close())
+			// Moved the node
 			delete(c.nodeControllers, ia)
+			nc.SetStatus(Draining)
+			c.drainingNodes[ia] = nc
 		}
 	}
-
-	return err
 }
 
 func (c *coordinator) getNodeControllers() map[string]NodeController {
