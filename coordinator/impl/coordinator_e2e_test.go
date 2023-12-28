@@ -579,6 +579,67 @@ func TestCoordinator_RebalanceCluster(t *testing.T) {
 	}
 }
 
+func TestCoordinator_AddRemoveNodes(t *testing.T) {
+	s1, sa1 := newServer(t)
+	s2, sa2 := newServer(t)
+	s3, sa3 := newServer(t)
+	s4, sa4 := newServer(t)
+	s5, sa5 := newServer(t)
+	servers := map[model.ServerAddress]*server.Server{
+		sa1: s1,
+		sa2: s2,
+		sa3: s3,
+		sa4: s4,
+		sa5: s5,
+	}
+
+	metadataProvider := NewMetadataProviderMemory()
+	clusterConfig := model.ClusterConfig{
+		Namespaces: []model.NamespaceConfig{{
+			Name:              "my-ns-1",
+			ReplicationFactor: 1,
+			InitialShardCount: 2,
+		}},
+		Servers: []model.ServerAddress{sa1, sa2, sa3},
+	}
+	clientPool := common.NewClientPool()
+
+	configProvider := func() (model.ClusterConfig, error) {
+		return clusterConfig, nil
+	}
+
+	c, err := NewCoordinator(metadataProvider, configProvider, 1*time.Second, NewRpcProvider(clientPool))
+	assert.NoError(t, err)
+
+	assert.Equal(t, 3, len(c.(*coordinator).getNodeControllers()))
+
+	// Add s4, s5
+	clusterConfig.Servers = append(clusterConfig.Servers, sa4, sa5)
+	// Remove s1
+	clusterConfig.Servers = clusterConfig.Servers[1:]
+
+	// Wait for all shards to be ready
+	assert.Eventually(t, func() bool {
+		return len(c.(*coordinator).getNodeControllers()) == 4
+	}, 10*time.Second, 10*time.Millisecond)
+
+	_, ok := c.(*coordinator).getNodeControllers()[sa1.Internal]
+	assert.False(t, ok)
+
+	_, ok = c.(*coordinator).getNodeControllers()[sa4.Internal]
+	assert.True(t, ok)
+
+	_, ok = c.(*coordinator).getNodeControllers()[sa5.Internal]
+	assert.True(t, ok)
+
+	assert.NoError(t, c.Close())
+	assert.NoError(t, clientPool.Close())
+
+	for _, serverObj := range servers {
+		assert.NoError(t, serverObj.Close())
+	}
+}
+
 func checkServerLists(t *testing.T, expected, actual []model.ServerAddress) {
 	t.Helper()
 

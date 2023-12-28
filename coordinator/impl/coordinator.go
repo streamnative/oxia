@@ -414,8 +414,13 @@ func (c *coordinator) handleClusterConfigUpdated() error {
 	c.log.Info(
 		"Detected change in cluster config",
 		slog.Any("clusterConfig", c.ClusterConfig),
+		slog.Any("newClusterConfig", newClusterConfig),
 		slog.Any("metadataVersion", c.metadataVersion),
 	)
+
+	if err = c.checkClusterNodeChanges(newClusterConfig); err != nil {
+		return err
+	}
 
 	clusterStatus, shardsToAdd, shardsToDelete := applyClusterChanges(&newClusterConfig, c.clusterStatus)
 
@@ -477,4 +482,46 @@ func (c *coordinator) rebalanceCluster() error {
 	}
 
 	return nil
+}
+
+func (c *coordinator) checkClusterNodeChanges(newClusterConfig model.ClusterConfig) (err error) {
+	// Check for nodes to add
+	for _, sa := range newClusterConfig.Servers {
+		if _, ok := c.nodeControllers[sa.Internal]; !ok {
+			// The node is present in the config, though we don't know it yet,
+			// therefore it must be a newly added node
+			c.log.Info("Detected new node", slog.Any("addr", sa))
+			c.nodeControllers[sa.Internal] = NewNodeController(sa, c, c, c.rpc)
+		}
+	}
+
+	// Check for nodes to remove
+	for ia, nc := range c.nodeControllers {
+		found := false
+
+		for _, s := range newClusterConfig.Servers {
+			if ia == s.Internal {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			c.log.Info("Detected a removed node", slog.Any("addr", ia))
+			err = multierr.Append(err, nc.Close())
+			delete(c.nodeControllers, ia)
+		}
+	}
+
+	return err
+}
+
+func (c *coordinator) getNodeControllers() map[string]NodeController {
+	c.Lock()
+	defer c.Unlock()
+	nc := make(map[string]NodeController)
+	for k, v := range c.nodeControllers {
+		nc[k] = v
+	}
+	return nc
 }
