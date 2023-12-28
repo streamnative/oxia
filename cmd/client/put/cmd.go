@@ -112,12 +112,13 @@ type Query struct {
 }
 
 func (query Query) Perform(client oxia.AsyncClient) common.Call {
-	binary := false
-	if query.Binary != nil {
-		binary = *query.Binary
+	value := []byte(query.Value)
+	var err error
+	if query.Binary != nil && *query.Binary {
+		value, err = convertFromBinaryValue(query.Value)
 	}
-	value, err := convertValue(binary, query.Value)
 	call := Call{}
+
 	if err != nil {
 		errChan := make(chan oxia.PutResult, 1)
 		errChan <- oxia.PutResult{Err: err}
@@ -138,17 +139,13 @@ func (Query) Unmarshal(b []byte) (common.Query, error) {
 	return q, err
 }
 
-func convertValue(binary bool, value string) ([]byte, error) {
-	if binary {
-		decoded := make([]byte, int64(float64(len(value))*0.8))
-		_, err := base64.StdEncoding.Decode(decoded, []byte(value))
-		if err != nil {
-			return nil, ErrBase64ValueInvalid
-		}
-		return decoded, nil
+func convertFromBinaryValue(value string) ([]byte, error) {
+	decoded := make([]byte, int64(float64(len(value))*0.8))
+	_, err := base64.StdEncoding.Decode(decoded, []byte(value))
+	if err != nil {
+		return nil, ErrBase64ValueInvalid
 	}
-
-	return []byte(value), nil
+	return decoded, nil
 }
 
 type Call struct {
