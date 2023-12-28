@@ -31,6 +31,7 @@ import (
 )
 
 type readBatchFactory struct {
+	namespace      string
 	execute        func(context.Context, *proto.ReadRequest) (proto.OxiaClient_ReadClient, error)
 	metrics        *metrics.Metrics
 	requestTimeout time.Duration
@@ -38,6 +39,7 @@ type readBatchFactory struct {
 
 func (b readBatchFactory) newBatch(shardId *int64) batch.Batch {
 	return &readBatch{
+		namespace:      b.namespace,
 		shardId:        shardId,
 		execute:        b.execute,
 		gets:           make([]model.GetCall, 0),
@@ -49,6 +51,7 @@ func (b readBatchFactory) newBatch(shardId *int64) batch.Batch {
 }
 
 type readBatch struct {
+	namespace      string
 	shardId        *int64
 	execute        func(context.Context, *proto.ReadRequest) (proto.OxiaClient_ReadClient, error)
 	gets           []model.GetCall
@@ -103,6 +106,8 @@ func (b *readBatch) doRequestWithRetries(request *proto.ReadRequest) (response *
 		slog.Debug(
 			"Failed to perform request, retrying later",
 			slog.Any("error", err),
+			slog.String("namespace", b.namespace),
+			slog.Int64("shard", *b.shardId),
 			slog.Duration("retry-after", duration),
 		)
 	})

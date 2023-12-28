@@ -24,6 +24,7 @@ import (
 
 type BatcherFactory struct {
 	batch.BatcherFactory
+	Namespace      string
 	Executor       internal.Executor
 	RequestTimeout time.Duration
 	Metrics        *metrics.Metrics
@@ -31,12 +32,14 @@ type BatcherFactory struct {
 
 func NewBatcherFactory(
 	executor *internal.ExecutorImpl,
+	namespace string,
 	batchLinger time.Duration,
 	maxRequestsPerBatch int,
 	metric *metrics.Metrics,
 	requestTimeout time.Duration) *BatcherFactory {
 	return &BatcherFactory{
-		Executor: executor,
+		Namespace: namespace,
+		Executor:  executor,
 		BatcherFactory: batch.BatcherFactory{
 			Linger:              batchLinger,
 			MaxRequestsPerBatch: maxRequestsPerBatch,
