@@ -113,7 +113,7 @@ linters-settings:
           - 4
       - name: flag-parameter
         severity: warning
-        disabled: true
+        disabled: false
       - name: deep-exit
         severity: warning
         disabled: true

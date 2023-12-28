@@ -650,6 +650,15 @@ func TestFollower_HandleSnapshot(t *testing.T) {
 	// Wait for follower to fully load the snapshot
 	wg.Wait()
 
+	statusRes, err := fc.(*followerController).GetStatus(&proto.GetStatusRequest{
+		ShardId: shardId,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, proto.ServingStatus_FOLLOWER, statusRes.Status)
+	assert.EqualValues(t, 1, statusRes.Term)
+	assert.EqualValues(t, 99, statusRes.HeadOffset)
+	assert.EqualValues(t, 99, statusRes.CommitOffset)
+
 	// At this point the content of the follower should only include the
 	// data from the snapshot and any existing data should be gone
 
@@ -680,6 +689,21 @@ func TestFollower_HandleSnapshot(t *testing.T) {
 	}
 
 	assert.Equal(t, wal.InvalidOffset, fc.(*followerController).wal.LastOffset())
+
+	assert.NoError(t, fc.Close())
+
+	// Re-Open the follower controller
+	fc, err = NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
+	assert.NoError(t, err)
+
+	statusRes, err = fc.(*followerController).GetStatus(&proto.GetStatusRequest{
+		ShardId: shardId,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, proto.ServingStatus_FENCED, statusRes.Status)
+	assert.EqualValues(t, 1, statusRes.Term)
+	assert.EqualValues(t, 99, statusRes.HeadOffset)
+	assert.EqualValues(t, 99, statusRes.CommitOffset)
 
 	assert.NoError(t, fc.Close())
 	assert.NoError(t, kvFactory.Close())

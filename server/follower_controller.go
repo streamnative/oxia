@@ -148,6 +148,11 @@ func NewFollowerController(config Config, namespace string, shardId int64, wf wa
 	}
 	fc.commitOffset.Store(commitOffset)
 
+	if fc.lastAppendedOffset == wal.InvalidOffset {
+		// The wal is empty, though we have restored from snapshot
+		fc.lastAppendedOffset = commitOffset
+	}
+
 	fc.setLogger()
 
 	go common.DoWithLabels(
@@ -161,7 +166,7 @@ func NewFollowerController(config Config, namespace string, shardId int64, wf wa
 
 	fc.log.Info(
 		"Created follower",
-		slog.Int64("head-offset", fc.wal.LastOffset()),
+		slog.Int64("head-offset", fc.lastAppendedOffset),
 		slog.Int64("commit-offset", commitOffset),
 	)
 	return fc, nil
@@ -701,6 +706,7 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 
 	fc.db = newDb
 	fc.commitOffset.Store(commitOffset)
+	fc.lastAppendedOffset = commitOffset
 	fc.closeStreamNoMutex(nil)
 
 	fc.log.Info(
@@ -718,7 +724,7 @@ func (fc *followerController) GetStatus(_ *proto.GetStatusRequest) (*proto.GetSt
 	return &proto.GetStatusResponse{
 		Term:         fc.term,
 		Status:       fc.status,
-		HeadOffset:   fc.wal.LastOffset(),
+		HeadOffset:   fc.lastAppendedOffset,
 		CommitOffset: fc.CommitOffset(),
 	}, nil
 }
