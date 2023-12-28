@@ -289,34 +289,26 @@ func TestOutputMarshal(t *testing.T) {
 	}
 }
 
-func TestConvertValue(t *testing.T) {
+func TestConvertBinaryValue(t *testing.T) {
 	for _, test := range []struct {
 		name        string
-		binary      bool
 		value       string
 		expectedErr error
 		expected    string
 	}{
 		{
-			name:     "text",
-			value:    "hello",
-			expected: "hello",
-		},
-		{
 			name:     "binary",
 			value:    "aGVsbG8y",
-			binary:   true,
 			expected: "hello2",
 		},
 		{
 			name:        "invalid-binary",
 			value:       "hello",
-			binary:      true,
 			expectedErr: ErrBase64ValueInvalid,
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			result, err := convertValue(test.binary, test.value)
+			result, err := convertFromBinaryValue(test.value)
 			assert.Equal(t, test.expected, string(result))
 			assert.ErrorIs(t, err, test.expectedErr)
 		})

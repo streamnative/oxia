@@ -79,7 +79,11 @@ func TestMetricsDecorate(t *testing.T) {
 				assert.NoError(t, err)
 
 				assertTimer(t, rm, "oxia_client_op", item.expectedType, condition.expectedResult)
-				assertHistogram(t, rm, "oxia_client_op_value", item.hasHistogram, 5, item.expectedType, condition.expectedResult)
+				if item.hasHistogram {
+					assertWithHistogram(t, rm, "oxia_client_op_value", 5, item.expectedType, condition.expectedResult)
+				} else {
+					assertWithoutHistogram(t, rm, "oxia_client_op_value")
+				}
 			})
 		}
 	}
@@ -127,8 +131,8 @@ func TestMetricsCallback(t *testing.T) {
 
 				assertTimer(t, rm, "oxia_client_batch_total", item.expectedType, condition.expectedResult)
 				assertTimer(t, rm, "oxia_client_batch_exec", item.expectedType, condition.expectedResult)
-				assertHistogram(t, rm, "oxia_client_batch_value", true, 5, item.expectedType, condition.expectedResult)
-				assertHistogram(t, rm, "oxia_client_batch_request", true, 1, item.expectedType, condition.expectedResult)
+				assertWithHistogram(t, rm, "oxia_client_batch_value", 5, item.expectedType, condition.expectedResult)
+				assertWithHistogram(t, rm, "oxia_client_batch_request", 1, item.expectedType, condition.expectedResult)
 			})
 		}
 	}
@@ -153,22 +157,25 @@ func assertTimer(t *testing.T, rm metricdata.ResourceMetrics, name string, expec
 	assertDataPoints(t, counts, int64(1), expectedType, expectedResult)
 }
 
-func assertHistogram(t *testing.T, rm metricdata.ResourceMetrics, name string, hasHistogram bool, expectedSum int64, expectedType string, expectedResult string) {
+func assertWithHistogram(t *testing.T, rm metricdata.ResourceMetrics, name string, expectedSum int64, expectedType string, expectedResult string) {
 	t.Helper()
 
 	datapoints, err := histogram(rm, name)
 
-	if hasHistogram {
-		assert.NoError(t, err)
-		assert.Equal(t, 1, len(datapoints))
-		histogram := datapoints[0]
-		assert.Equal(t, expectedSum, histogram.Sum)
-		assert.Equal(t, uint64(1), histogram.Count)
-		assertAttributes(t, histogram.Attributes, expectedType, expectedResult)
-	} else {
-		assert.Error(t, err)
-		assert.Equal(t, 0, len(datapoints))
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(datapoints))
+	histogram := datapoints[0]
+	assert.Equal(t, expectedSum, histogram.Sum)
+	assert.Equal(t, uint64(1), histogram.Count)
+	assertAttributes(t, histogram.Attributes, expectedType, expectedResult)
+}
+
+func assertWithoutHistogram(t *testing.T, rm metricdata.ResourceMetrics, name string) {
+	t.Helper()
+
+	datapoints, err := histogram(rm, name)
+	assert.Error(t, err)
+	assert.Equal(t, 0, len(datapoints))
 }
 
 func counter[N int64 | float64](rm metricdata.ResourceMetrics, name string) ([]metricdata.DataPoint[N], error) {
