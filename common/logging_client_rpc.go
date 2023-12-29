@@ -16,9 +16,11 @@ package common
 
 import (
 	"context"
-	"github.com/streamnative/oxia/proto"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
+
+	"github.com/streamnative/oxia/proto"
 )
 
 type loggingClientRpc struct {
