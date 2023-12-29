@@ -54,8 +54,15 @@ func TestFollowerCursor(t *testing.T) {
 	fc, err := NewFollowerCursor("f1", term, common.DefaultNamespace, shard, stream, ackTracker, w, db, wal.InvalidOffset)
 	assert.NoError(t, err)
 
+	time.Sleep(10 * time.Millisecond)
+
 	assert.Equal(t, shard, fc.ShardId())
-	assert.Equal(t, wal.InvalidOffset, fc.LastPushed())
+	// NOTE: lastPushed will be -1 or 0, because when FollowerCursor is initialized,
+	// it will start to `streamEntries` and maybe make it advanced to 0.
+	assert.True(t, func() bool {
+		lastPushed := fc.LastPushed()
+		return lastPushed == wal.InvalidOffset || lastPushed == 0
+	}())
 	assert.Equal(t, wal.InvalidOffset, fc.AckOffset())
 
 	assert.Eventually(t, func() bool {
