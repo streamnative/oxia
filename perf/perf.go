@@ -161,14 +161,14 @@ func (p *perf) generateWriteTraffic(ctx context.Context, client oxia.AsyncClient
 			r := <-ch
 			if r.Err != nil {
 				slog.Warn(
-					"Operation has failed",
+					"Write operation has failed",
 					slog.Any("error", r.Err),
 					slog.String("key", key),
 				)
 				p.failedOps.Add(1)
 			} else {
 				slog.Debug(
-					"Operation has succeeded",
+					"Write operation has succeeded",
 					slog.String("key", key),
 					slog.Any("version", r.Version),
 				)
@@ -196,14 +196,14 @@ func (p *perf) generateReadTraffic(ctx context.Context, client oxia.AsyncClient,
 			r := <-ch
 			if r.Err != nil && !errors.Is(r.Err, oxia.ErrKeyNotFound) {
 				slog.Warn(
-					"Operation has failed",
+					"Read operation has failed",
 					slog.Any("error", r.Err),
 					slog.String("key", key),
 				)
 				p.failedOps.Add(1)
 			} else {
 				slog.Debug(
-					"Operation has succeeded",
+					"Read operation has succeeded",
 					slog.String("key", key),
 					slog.Any("version", r.Version),
 				)

@@ -27,6 +27,9 @@ func isRetriable(err error) bool {
 	case codes.Unavailable:
 		// Failure to connect is ok to re-attempt
 		return true
+	case common.CodeInvalidStatus:
+		// Leader has fenced the shard, though we expect a new leader to be elected
+		return true
 	case common.CodeAlreadyClosed:
 		// Leader is closing, though we expect a new leader to be elected
 		return true
