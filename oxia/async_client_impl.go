@@ -76,6 +76,7 @@ func NewAsyncClient(serviceAddress string, opts ...ClientOption) (AsyncClient, e
 	}
 	batcherFactory := batch.NewBatcherFactory(
 		executor,
+		options.namespace,
 		options.batchLinger,
 		options.maxRequestsPerBatch,
 		metrics.NewMetrics(options.meterProvider),

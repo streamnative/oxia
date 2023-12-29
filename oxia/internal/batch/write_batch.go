@@ -32,6 +32,7 @@ import (
 var ErrRequestTooLarge = errors.New("put request is too large")
 
 type writeBatchFactory struct {
+	namespace      string
 	execute        func(context.Context, *proto.WriteRequest) (*proto.WriteResponse, error)
 	metrics        *metrics.Metrics
 	requestTimeout time.Duration
@@ -40,6 +41,7 @@ type writeBatchFactory struct {
 
 func (b writeBatchFactory) newBatch(shardId *int64) batch.Batch {
 	return &writeBatch{
+		namespace:      b.namespace,
 		shardId:        shardId,
 		execute:        b.execute,
 		puts:           make([]model.PutCall, 0),
@@ -54,6 +56,7 @@ func (b writeBatchFactory) newBatch(shardId *int64) batch.Batch {
 }
 
 type writeBatch struct {
+	namespace      string
 	shardId        *int64
 	execute        func(context.Context, *proto.WriteRequest) (*proto.WriteResponse, error)
 	puts           []model.PutCall
@@ -123,6 +126,8 @@ func (b *writeBatch) doRequestWithRetries(request *proto.WriteRequest) (response
 		slog.Debug(
 			"Failed to perform request, retrying later",
 			slog.Any("error", err),
+			slog.String("namespace", b.namespace),
+			slog.Int64("shard", *b.shardId),
 			slog.Duration("retry-after", duration),
 		)
 	})
