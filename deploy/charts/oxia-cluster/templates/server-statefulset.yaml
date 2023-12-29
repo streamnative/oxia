@@ -66,6 +66,8 @@ spec:
             {{- include "oxia-cluster.probe" .Values.server.ports.internal | nindent 12 }}
           readinessProbe:
             {{- include "oxia-cluster.readiness-probe" .Values.server.ports.internal | nindent 12 }}
+          startupProbe:
+            {{- include "oxia-cluster.startup-probe" .Values.server.ports.internal | nindent 12 }}
   volumeClaimTemplates:
     - metadata:
         name: data
