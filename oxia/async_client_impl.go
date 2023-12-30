@@ -208,6 +208,34 @@ func (c *clientImpl) Get(key string) <-chan GetResult {
 	return ch
 }
 
+func (c *clientImpl) listFromShard(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, shardId int64, ch chan<- ListResult) {
+	request := &proto.ListRequest{
+		ShardId:        &shardId,
+		StartInclusive: minKeyInclusive,
+		EndExclusive:   maxKeyExclusive,
+	}
+
+	client, err := c.executor.ExecuteList(ctx, request)
+	if err != nil {
+		ch <- ListResult{Err: err}
+		return
+	}
+
+	for {
+		response, err := client.Recv()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return
+			}
+
+			ch <- ListResult{Err: err}
+			return
+		}
+
+		ch <- ListResult{Keys: response.Keys}
+	}
+}
+
 func (c *clientImpl) List(ctx context.Context, minKeyInclusive string, maxKeyExclusive string) <-chan ListResult {
 	shardIds := c.shardManager.GetAll()
 	ch := make(chan ListResult)
@@ -215,31 +243,9 @@ func (c *clientImpl) List(ctx context.Context, minKeyInclusive string, maxKeyExc
 	for _, shardId := range shardIds {
 		shardIdPtr := shardId
 		go func() {
-			request := &proto.ListRequest{
-				ShardId:        &shardIdPtr,
-				StartInclusive: minKeyInclusive,
-				EndExclusive:   maxKeyExclusive,
-			}
+			defer wg.Done()
 
-			client, err := c.executor.ExecuteList(ctx, request)
-			if err != nil {
-				ch <- ListResult{Err: err}
-				wg.Done()
-				return
-			}
-
-			for {
-				response, err := client.Recv()
-				if errors.Is(err, io.EOF) {
-					break
-				} else if err != nil {
-					ch <- ListResult{Err: err}
-					break
-				}
-				ch <- ListResult{Keys: response.Keys}
-			}
-
-			wg.Done()
+			c.listFromShard(ctx, minKeyInclusive, maxKeyExclusive, shardIdPtr, ch)
 		}()
 	}
 

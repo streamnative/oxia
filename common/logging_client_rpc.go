@@ -16,9 +16,11 @@ package common
 
 import (
 	"context"
-	"github.com/streamnative/oxia/proto"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
+
+	"github.com/streamnative/oxia/proto"
 )
 
 type loggingClientRpc struct {
@@ -69,6 +71,7 @@ func (l *loggingClientRpc) List(ctx context.Context, in *proto.ListRequest, opts
 
 	return res, err
 }
+
 func (l *loggingClientRpc) GetNotifications(ctx context.Context, in *proto.NotificationsRequest, opts ...grpc.CallOption) (
 	res proto.OxiaClient_GetNotificationsClient, err error) {
 	if res, err = l.client.GetNotifications(ctx, in, opts...); err != nil {

@@ -165,6 +165,71 @@ func (snm *shardNotificationsManager) getNotificationsWithRetries() { //nolint:r
 		})
 }
 
+func (snm *shardNotificationsManager) multiplexNotificationBatch(nb *proto.NotificationBatch) error {
+	if !snm.initialized {
+		snm.log.Debug("Initialized the notification manager")
+
+		// We need to discard the very first notification, because it's only
+		// needed to ensure that the notification cursor is created on the
+		// server side.
+		snm.initialized = true
+		snm.nm.initWaitGroup.Done()
+		snm.lastOffsetReceived = nb.Offset
+		return nil
+	}
+
+	for key, n := range nb.Notifications {
+		select {
+		case snm.nm.multiplexCh <- convertNotification(key, n):
+
+		// Unblock from channel write when we're closing down
+		case <-snm.ctx.Done():
+			snm.nm.closeCh <- nil
+			return snm.ctx.Err()
+		}
+	}
+	return nil
+}
+
+func (snm *shardNotificationsManager) multiplexNotificationBatchOnce(notifications proto.OxiaClient_GetNotificationsClient) error {
+	nb, err := notifications.Recv()
+	if err != nil {
+		if snm.ctx.Err() != nil {
+			snm.nm.closeCh <- nil
+		}
+		return err
+	} else if nb == nil {
+		if snm.ctx.Err() != nil {
+			snm.nm.closeCh <- nil
+			return snm.ctx.Err()
+		}
+		return io.EOF
+	}
+
+	snm.log.Debug(
+		"Received batch notification",
+		slog.Int64("offset", nb.Offset),
+		slog.Int("count", len(nb.Notifications)),
+	)
+
+	err = snm.multiplexNotificationBatch(nb)
+	if err != nil {
+		return err
+	}
+
+	snm.lastOffsetReceived = nb.Offset
+	return nil
+}
+
+func (snm *shardNotificationsManager) multiplexNotifications(notifications proto.OxiaClient_GetNotificationsClient) error {
+	for {
+		err := snm.multiplexNotificationBatchOnce(notifications)
+		if err != nil {
+			return err
+		}
+	}
+}
+
 func (snm *shardNotificationsManager) getNotifications() error {
 	leader := snm.nm.shardManager.Leader(snm.shard)
 
@@ -192,52 +257,7 @@ func (snm *shardNotificationsManager) getNotifications() error {
 
 	snm.backoff.Reset()
 
-	for {
-		nb, err := notifications.Recv()
-		if err != nil {
-			if snm.ctx.Err() != nil {
-				snm.nm.closeCh <- nil
-			}
-			return err
-		} else if nb == nil {
-			if snm.ctx.Err() != nil {
-				snm.nm.closeCh <- nil
-				return snm.ctx.Err()
-			}
-			return io.EOF
-		}
-
-		snm.log.Debug(
-			"Received batch notification",
-			slog.Int64("offset", nb.Offset),
-			slog.Int("count", len(nb.Notifications)),
-		)
-
-		if !snm.initialized {
-			snm.log.Debug("Initialized the notification manager")
-
-			// We need to discard the very first notification, because it's only
-			// needed to ensure that the notification cursor is created on the
-			// server side.
-			snm.initialized = true
-			snm.nm.initWaitGroup.Done()
-			snm.lastOffsetReceived = nb.Offset
-			continue
-		}
-
-		for key, n := range nb.Notifications {
-			select {
-			case snm.nm.multiplexCh <- convertNotification(key, n):
-
-			// Unblock from channel write when we're closing down
-			case <-snm.ctx.Done():
-				snm.nm.closeCh <- nil
-				return snm.ctx.Err()
-			}
-		}
-
-		snm.lastOffsetReceived = nb.Offset
-	}
+	return snm.multiplexNotifications(notifications)
 }
 
 func convertNotificationType(t proto.NotificationType) NotificationType {

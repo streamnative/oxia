@@ -180,6 +180,27 @@ func (n *nodeController) healthCheckWithRetries() {
 	})
 }
 
+func (n *nodeController) healthCheckLoop(ctx context.Context, health grpc_health_v1.HealthClient) {
+	ticker := time.NewTicker(healthCheckProbeInterval)
+
+	for {
+		select {
+		case <-ticker.C:
+			pingCtx, pingCancel := context.WithTimeout(ctx, healthCheckProbeTimeout)
+
+			res, err := health.Check(pingCtx, &grpc_health_v1.HealthCheckRequest{Service: ""})
+			pingCancel()
+			if err2 := n.processHealthCheckResponse(res, err); err2 != nil {
+				n.log.Warn("Node stopped responding to ping")
+				return
+			}
+
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
 func (n *nodeController) healthCheck(backoff backoff.BackOff) error {
 	health, err := n.rpc.GetHealthClient(n.addr)
 	if err != nil {
@@ -196,25 +217,8 @@ func (n *nodeController) healthCheck(backoff backoff.BackOff) error {
 			"addr": n.addr.Internal,
 		},
 		func() {
-			ticker := time.NewTicker(healthCheckProbeInterval)
-
-			for {
-				select {
-				case <-ticker.C:
-					pingCtx, pingCancel := context.WithTimeout(ctx, healthCheckProbeTimeout)
-
-					res, err := health.Check(pingCtx, &grpc_health_v1.HealthCheckRequest{Service: ""})
-					pingCancel()
-					if err2 := n.processHealthCheckResponse(res, err); err2 != nil {
-						n.log.Warn("Node stopped responding to ping")
-						cancel()
-						return
-					}
-
-				case <-ctx.Done():
-					return
-				}
-			}
+			defer cancel()
+			n.healthCheckLoop(ctx, health)
 		},
 	)
 
@@ -276,6 +280,41 @@ func (n *nodeController) sendAssignmentsUpdatesWithRetries() {
 	})
 }
 
+func (n *nodeController) sendAssignmentsUpdateOnce(
+	stream proto.OxiaCoordination_PushShardAssignmentsClient,
+	assignments *proto.ShardAssignments,
+) (*proto.ShardAssignments, error) {
+	n.log.Debug(
+		"Waiting for next assignments update",
+		slog.Any("current-assignments", assignments),
+	)
+	assignments, err := n.shardAssignmentsProvider.WaitForNextUpdate(stream.Context(), assignments)
+	if err != nil {
+		return nil, err
+	}
+
+	if assignments == nil {
+		n.log.Debug("Assignments are nil")
+		return assignments, nil
+	}
+
+	n.log.Debug(
+		"Sending assignments",
+		slog.Any("assignments", assignments),
+	)
+
+	if err := stream.Send(assignments); err != nil {
+		n.log.Debug(
+			"Failed to send assignments",
+			slog.Any("error", err),
+		)
+		return nil, err
+	}
+
+	n.log.Debug("Send assignments completed successfully")
+	return assignments, nil
+}
+
 func (n *nodeController) sendAssignmentsUpdates(backoff backoff.BackOff) error {
 	n.Lock()
 	n.sendAssignmentsCtx, n.sendAssignmentsCancel = context.WithCancel(n.ctx)
@@ -295,34 +334,11 @@ func (n *nodeController) sendAssignmentsUpdates(backoff backoff.BackOff) error {
 			return nil
 
 		default:
-			n.log.Debug(
-				"Waiting for next assignments update",
-				slog.Any("current-assignments", assignments),
-			)
-			assignments, err = n.shardAssignmentsProvider.WaitForNextUpdate(stream.Context(), assignments)
+			assignments, err = n.sendAssignmentsUpdateOnce(stream, assignments)
 			if err != nil {
 				return err
 			}
 
-			if assignments == nil {
-				n.log.Debug("Assignments are nil")
-				continue
-			}
-
-			n.log.Debug(
-				"Sending assignments",
-				slog.Any("assignments", assignments),
-			)
-
-			if err := stream.Send(assignments); err != nil {
-				n.log.Debug(
-					"Failed to send assignments",
-					slog.Any("error", err),
-				)
-				return err
-			}
-
-			n.log.Debug("Send assignments completed successfully")
 			backoff.Reset()
 		}
 	}

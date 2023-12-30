@@ -143,20 +143,15 @@ func now() uint64 {
 	return uint64(time.Now().UnixMilli())
 }
 
-func (d *db) ProcessWrite(b *proto.WriteRequest, commitOffset int64, timestamp uint64, updateOperationCallback UpdateOperationCallback) (*proto.WriteResponse, error) {
-	timer := d.batchWriteLatencyHisto.Timer()
-	defer timer.Done()
-
+func (d *db) applyWriteRequest(b *proto.WriteRequest, batch WriteBatch, commitOffset int64, timestamp uint64, updateOperationCallback UpdateOperationCallback) (*notifications, *proto.WriteResponse, error) {
 	res := &proto.WriteResponse{}
-
-	batch := d.kv.NewWriteBatch()
 	notifications := newNotifications(d.shardId, commitOffset, timestamp)
 
 	d.putCounter.Add(len(b.Puts))
 	for _, putReq := range b.Puts {
 		pr, err := d.applyPut(commitOffset, batch, notifications, putReq, timestamp, updateOperationCallback)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		res.Puts = append(res.Puts, pr)
 	}
@@ -165,7 +160,7 @@ func (d *db) ProcessWrite(b *proto.WriteRequest, commitOffset int64, timestamp u
 	for _, delReq := range b.Deletes {
 		dr, err := d.applyDelete(batch, notifications, delReq, updateOperationCallback)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		res.Deletes = append(res.Deletes, dr)
@@ -175,11 +170,25 @@ func (d *db) ProcessWrite(b *proto.WriteRequest, commitOffset int64, timestamp u
 	for _, delRangeReq := range b.DeleteRanges {
 		dr, err := d.applyDeleteRange(batch, notifications, delRangeReq, updateOperationCallback)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		res.DeleteRanges = append(res.DeleteRanges, dr)
 	}
+
+	return notifications, res, nil
+}
+
+func (d *db) ProcessWrite(b *proto.WriteRequest, commitOffset int64, timestamp uint64, updateOperationCallback UpdateOperationCallback) (*proto.WriteResponse, error) {
+	timer := d.batchWriteLatencyHisto.Timer()
+	defer timer.Done()
+
+	batch := d.kv.NewWriteBatch()
+	notifications, res, err := d.applyWriteRequest(b, batch, commitOffset, timestamp, updateOperationCallback)
+	if err != nil {
+		return nil, err
+	}
+
 	if err := d.addCommitOffset(commitOffset, batch, timestamp); err != nil {
 		return nil, err
 	}
@@ -327,68 +336,68 @@ func (d *db) applyPut(commitOffset int64, batch WriteBatch, notifications *notif
 		}, nil
 	case err != nil:
 		return nil, errors.Wrap(err, "oxia db: failed to apply batch")
-	default:
-		// No version conflict
-		status, err := updateOperationCallback.OnPut(batch, putReq, se)
-		if err != nil {
-			return nil, err
-		}
-		if status != proto.Status_OK {
-			return &proto.PutResponse{
-				Status: status,
-			}, nil
-		}
-
-		if se == nil {
-			se = proto.StorageEntryFromVTPool()
-			se.VersionId = commitOffset
-			se.ModificationsCount = 0
-			se.Value = putReq.Value
-			se.CreationTimestamp = timestamp
-			se.ModificationTimestamp = timestamp
-			se.SessionId = putReq.SessionId
-			se.ClientIdentity = putReq.ClientIdentity
-		} else {
-			se.VersionId = commitOffset
-			se.ModificationsCount++
-			se.Value = putReq.Value
-			se.ModificationTimestamp = timestamp
-			se.SessionId = putReq.SessionId
-			se.ClientIdentity = putReq.ClientIdentity
-		}
-
-		defer se.ReturnToVTPool()
-
-		ser, err := se.MarshalVT()
-		if err != nil {
-			return nil, err
-		}
-
-		if err = batch.Put(putReq.Key, ser); err != nil {
-			return nil, err
-		}
-
-		if notifications != nil {
-			notifications.Modified(putReq.Key, se.VersionId, se.ModificationsCount)
-		}
-
-		version := &proto.Version{
-			VersionId:          se.VersionId,
-			ModificationsCount: se.ModificationsCount,
-			CreatedTimestamp:   se.CreationTimestamp,
-			ModifiedTimestamp:  se.ModificationTimestamp,
-			SessionId:          se.SessionId,
-			ClientIdentity:     se.ClientIdentity,
-		}
-
-		d.log.Debug(
-			"Applied put operation",
-			slog.String("key", putReq.Key),
-			slog.Any("version", version),
-		)
-
-		return &proto.PutResponse{Version: version}, nil
 	}
+
+	// No version conflict
+	status, err := updateOperationCallback.OnPut(batch, putReq, se)
+	if err != nil {
+		return nil, err
+	}
+	if status != proto.Status_OK {
+		return &proto.PutResponse{
+			Status: status,
+		}, nil
+	}
+
+	if se == nil {
+		se = proto.StorageEntryFromVTPool()
+		se.VersionId = commitOffset
+		se.ModificationsCount = 0
+		se.Value = putReq.Value
+		se.CreationTimestamp = timestamp
+		se.ModificationTimestamp = timestamp
+		se.SessionId = putReq.SessionId
+		se.ClientIdentity = putReq.ClientIdentity
+	} else {
+		se.VersionId = commitOffset
+		se.ModificationsCount++
+		se.Value = putReq.Value
+		se.ModificationTimestamp = timestamp
+		se.SessionId = putReq.SessionId
+		se.ClientIdentity = putReq.ClientIdentity
+	}
+
+	defer se.ReturnToVTPool()
+
+	ser, err := se.MarshalVT()
+	if err != nil {
+		return nil, err
+	}
+
+	if err = batch.Put(putReq.Key, ser); err != nil {
+		return nil, err
+	}
+
+	if notifications != nil {
+		notifications.Modified(putReq.Key, se.VersionId, se.ModificationsCount)
+	}
+
+	version := &proto.Version{
+		VersionId:          se.VersionId,
+		ModificationsCount: se.ModificationsCount,
+		CreatedTimestamp:   se.CreationTimestamp,
+		ModifiedTimestamp:  se.ModificationTimestamp,
+		SessionId:          se.SessionId,
+		ClientIdentity:     se.ClientIdentity,
+	}
+
+	d.log.Debug(
+		"Applied put operation",
+		slog.String("key", putReq.Key),
+		slog.Any("version", version),
+	)
+
+	return &proto.PutResponse{Version: version}, nil
 }
 
 func (d *db) applyDelete(batch WriteBatch, notifications *notifications, delReq *proto.DeleteRequest, updateOperationCallback UpdateOperationCallback) (*proto.DeleteResponse, error) {
@@ -426,27 +435,36 @@ func (d *db) applyDelete(batch WriteBatch, notifications *notifications, delReq 
 	}
 }
 
-func (d *db) applyDeleteRange(batch WriteBatch, notifications *notifications, delReq *proto.DeleteRangeRequest, updateOperationCallback UpdateOperationCallback) (*proto.DeleteRangeResponse, error) {
-	if notifications != nil || updateOperationCallback != NoOpCallback {
-		it, err := batch.KeyRangeScan(delReq.StartInclusive, delReq.EndExclusive)
+func (*db) applyDeleteRangeNotifications(batch WriteBatch, notifications *notifications, delReq *proto.DeleteRangeRequest, updateOperationCallback UpdateOperationCallback) error {
+	if notifications == nil && updateOperationCallback == NoOpCallback {
+		return nil
+	}
+
+	it, err := batch.KeyRangeScan(delReq.StartInclusive, delReq.EndExclusive)
+	if err != nil {
+		return err
+	}
+
+	for it.Next() {
+		if notifications != nil {
+			notifications.Deleted(it.Key())
+		}
+		err := updateOperationCallback.OnDelete(batch, it.Key())
 		if err != nil {
-			return nil, err
+			return errors.Wrap(multierr.Combine(err, it.Close()), "oxia db: failed to delete range")
 		}
+	}
 
-		for it.Next() {
-			if notifications != nil {
-				notifications.Deleted(it.Key())
-			}
-			err := updateOperationCallback.OnDelete(batch, it.Key())
-			if err != nil {
-				return nil,
-					errors.Wrap(multierr.Combine(err, it.Close()), "oxia db: failed to delete range")
-			}
-		}
+	if err := it.Close(); err != nil {
+		return errors.Wrap(err, "oxia db: failed to delete range")
+	}
 
-		if err := it.Close(); err != nil {
-			return nil, errors.Wrap(err, "oxia db: failed to delete range")
-		}
+	return nil
+}
+
+func (d *db) applyDeleteRange(batch WriteBatch, notifications *notifications, delReq *proto.DeleteRangeRequest, updateOperationCallback UpdateOperationCallback) (*proto.DeleteRangeResponse, error) {
+	if err := d.applyDeleteRangeNotifications(batch, notifications, delReq, updateOperationCallback); err != nil {
+		return nil, err
 	}
 
 	if err := batch.DeleteRange(delReq.StartInclusive, delReq.EndExclusive); err != nil {

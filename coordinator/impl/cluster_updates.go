@@ -28,6 +28,16 @@ func getServers(servers []model.ServerAddress, startIdx uint32, count uint32) []
 	return res
 }
 
+func findNamespaceConfig(config *model.ClusterConfig, ns string) *model.NamespaceConfig {
+	for _, cns := range config.Namespaces {
+		if cns.Name == ns {
+			return &cns
+		}
+	}
+
+	return nil
+}
+
 func applyClusterChanges(config *model.ClusterConfig, currentStatus *model.ClusterStatus) (
 	newStatus *model.ClusterStatus,
 	shardsToAdd map[int64]string,
@@ -40,62 +50,59 @@ func applyClusterChanges(config *model.ClusterConfig, currentStatus *model.Clust
 		ShardIdGenerator: currentStatus.ShardIdGenerator,
 		ServerIdx:        currentStatus.ServerIdx,
 	}
+	for k, v := range currentStatus.Namespaces {
+		newStatus.Namespaces[k] = v.Clone()
+	}
 
 	// Check for new namespaces
 	for _, nc := range config.Namespaces {
 		nss, existing := currentStatus.Namespaces[nc.Name]
-		if !existing {
-			// This is a new namespace
-			nss = model.NamespaceStatus{
-				Shards:            map[int64]model.ShardMetadata{},
-				ReplicationFactor: nc.ReplicationFactor,
-			}
-			for _, shard := range common.GenerateShards(newStatus.ShardIdGenerator, nc.InitialShardCount) {
-				shardMetadata := model.ShardMetadata{
-					Status:   model.ShardStatusUnknown,
-					Term:     -1,
-					Leader:   nil,
-					Ensemble: getServers(config.Servers, newStatus.ServerIdx, nc.ReplicationFactor),
-					Int32HashRange: model.Int32HashRange{
-						Min: shard.Min,
-						Max: shard.Max,
-					},
-				}
-
-				nss.Shards[shard.Id] = shardMetadata
-				newStatus.ServerIdx = (newStatus.ServerIdx + nc.ReplicationFactor) % uint32(len(config.Servers))
-				shardsToAdd[shard.Id] = nc.Name
-			}
-			newStatus.Namespaces[nc.Name] = nss
-
-			newStatus.ShardIdGenerator += int64(nc.InitialShardCount)
-		} else {
-			// The namespace was already existing, nothing special to do
-			newStatus.Namespaces[nc.Name] = nss.Clone()
+		if existing {
+			continue
 		}
+
+		// This is a new namespace
+		nss = model.NamespaceStatus{
+			Shards:            map[int64]model.ShardMetadata{},
+			ReplicationFactor: nc.ReplicationFactor,
+		}
+		for _, shard := range common.GenerateShards(newStatus.ShardIdGenerator, nc.InitialShardCount) {
+			shardMetadata := model.ShardMetadata{
+				Status:   model.ShardStatusUnknown,
+				Term:     -1,
+				Leader:   nil,
+				Ensemble: getServers(config.Servers, newStatus.ServerIdx, nc.ReplicationFactor),
+				Int32HashRange: model.Int32HashRange{
+					Min: shard.Min,
+					Max: shard.Max,
+				},
+			}
+
+			nss.Shards[shard.Id] = shardMetadata
+			newStatus.ServerIdx = (newStatus.ServerIdx + nc.ReplicationFactor) % uint32(len(config.Servers))
+			shardsToAdd[shard.Id] = nc.Name
+		}
+		newStatus.Namespaces[nc.Name] = nss
+
+		newStatus.ShardIdGenerator += int64(nc.InitialShardCount)
 	}
 
 	// Check for any namespace that was removed
 	for name, ns := range currentStatus.Namespaces {
-		namespaceStillExists := false
-		for _, cns := range config.Namespaces {
-			if name == cns.Name {
-				namespaceStillExists = true
-				break
-			}
+		namespaceConfig := findNamespaceConfig(config, name)
+		if namespaceConfig != nil {
+			continue
 		}
 
-		if !namespaceStillExists {
-			// Keep the shards in the status and mark them as being deleted
-			nss := ns.Clone()
-			for shardId, shard := range nss.Shards {
-				shard.Status = model.ShardStatusDeleting
-				nss.Shards[shardId] = shard
-				shardsToDelete = append(shardsToDelete, shardId)
-			}
-
-			newStatus.Namespaces[name] = nss
+		// Keep the shards in the status and mark them as being deleted
+		nss := ns.Clone()
+		for shardId, shard := range nss.Shards {
+			shard.Status = model.ShardStatusDeleting
+			nss.Shards[shardId] = shard
+			shardsToDelete = append(shardsToDelete, shardId)
 		}
+
+		newStatus.Namespaces[name] = nss
 	}
 
 	return newStatus, shardsToAdd, shardsToDelete

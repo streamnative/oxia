@@ -491,35 +491,22 @@ func (fc *followerController) applyAllCommittedEntries() {
 	}
 }
 
-func (fc *followerController) processCommittedEntries(maxInclusive int64) error {
-	fc.log.Debug(
-		"Process committed entries",
-		slog.Int64("min-exclusive", fc.commitOffset.Load()),
-		slog.Int64("max-inclusive", maxInclusive),
-		slog.Int64("head-offset", fc.wal.LastOffset()),
-	)
-	if maxInclusive <= fc.commitOffset.Load() {
-		return nil
-	}
-
-	reader, err := fc.wal.NewReader(fc.commitOffset.Load())
-	if err != nil {
-		fc.log.Error(
-			"Error opening reader used for applying committed entries",
-			slog.Any("error", err),
-		)
-		return err
-	}
-	defer func() {
-		err := reader.Close()
+func (fc *followerController) processCommitRequest(entry *proto.LogEntry, logEntryValue *proto.LogEntryValue) error {
+	for _, br := range logEntryValue.GetRequests().Writes {
+		_, err := fc.db.ProcessWrite(br, entry.Offset, entry.Timestamp, SessionUpdateOperationCallback)
 		if err != nil {
 			fc.log.Error(
-				"Error closing reader used for applying committed entries",
+				"Error applying committed entry",
 				slog.Any("error", err),
 			)
+			return err
 		}
-	}()
+	}
 
+	return nil
+}
+
+func (fc *followerController) processCommittedEntriesLoop(reader wal.Reader, maxInclusive int64) error {
 	logEntryValue := proto.LogEntryValueFromVTPool()
 	defer logEntryValue.ReturnToVTPool()
 
@@ -552,20 +539,46 @@ func (fc *followerController) processCommittedEntries(maxInclusive int64) error 
 			)
 			return err
 		}
-		for _, br := range logEntryValue.GetRequests().Writes {
-			_, err = fc.db.ProcessWrite(br, entry.Offset, entry.Timestamp, SessionUpdateOperationCallback)
-			if err != nil {
-				fc.log.Error(
-					"Error applying committed entry",
-					slog.Any("error", err),
-				)
-				return err
-			}
+		if err := fc.processCommitRequest(entry, logEntryValue); err != nil {
+			return err
 		}
+
 		fc.commitOffset.Store(entry.Offset)
 	}
 
-	return err
+	return nil
+}
+
+func (fc *followerController) processCommittedEntries(maxInclusive int64) error {
+	fc.log.Debug(
+		"Process committed entries",
+		slog.Int64("min-exclusive", fc.commitOffset.Load()),
+		slog.Int64("max-inclusive", maxInclusive),
+		slog.Int64("head-offset", fc.wal.LastOffset()),
+	)
+	if maxInclusive <= fc.commitOffset.Load() {
+		return nil
+	}
+
+	reader, err := fc.wal.NewReader(fc.commitOffset.Load())
+	if err != nil {
+		fc.log.Error(
+			"Error opening reader used for applying committed entries",
+			slog.Any("error", err),
+		)
+		return err
+	}
+	defer func() {
+		err := reader.Close()
+		if err != nil {
+			fc.log.Error(
+				"Error closing reader used for applying committed entries",
+				slog.Any("error", err),
+			)
+		}
+	}()
+
+	return fc.processCommittedEntriesLoop(reader, maxInclusive)
 }
 
 type MessageWithTerm interface {

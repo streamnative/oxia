@@ -319,6 +319,48 @@ func (fc *followerCursor) sendSnapshot() error {
 	return nil
 }
 
+func (fc *followerCursor) streamEntriesLoop(ctx context.Context, reader wal.Reader, currentOffset int64) error {
+	for {
+		if fc.closed.Load() {
+			return nil
+		}
+
+		if !reader.HasNext() {
+			// We have reached the head of the wal
+			// Wait for more entries to be written
+			if err := fc.ackTracker.WaitForHeadOffset(ctx, currentOffset+1); err != nil {
+				return err
+			}
+
+			continue
+		}
+
+		le, err := reader.ReadNext()
+		if err != nil {
+			return err
+		}
+
+		fc.log.Debug(
+			"Sending entries to follower",
+			slog.Int64("offset", le.Offset),
+		)
+
+		if err = fc.stream.Send(&proto.Append{
+			Term:         fc.term,
+			Entry:        le,
+			CommitOffset: fc.ackTracker.CommitOffset(),
+		}); err != nil {
+			return err
+		}
+
+		fc.lastPushed.Store(le.Offset)
+		currentOffset = le.Offset
+
+		// Since we've made progress, we can reset the backoff to initial setting
+		fc.backoff.Reset()
+	}
+}
+
 func (fc *followerCursor) streamEntries() error {
 	ctx, cancel := context.WithCancel(fc.ctx)
 	defer cancel()
@@ -354,45 +396,7 @@ func (fc *followerCursor) streamEntries() error {
 		slog.Int64("ack-offset", currentOffset),
 	)
 
-	for {
-		if fc.closed.Load() {
-			return nil
-		}
-
-		if !reader.HasNext() {
-			// We have reached the head of the wal
-			// Wait for more entries to be written
-			if err = fc.ackTracker.WaitForHeadOffset(ctx, currentOffset+1); err != nil {
-				return err
-			}
-
-			continue
-		}
-
-		le, err := reader.ReadNext()
-		if err != nil {
-			return err
-		}
-
-		fc.log.Debug(
-			"Sending entries to follower",
-			slog.Int64("offset", le.Offset),
-		)
-
-		if err = fc.stream.Send(&proto.Append{
-			Term:         fc.term,
-			Entry:        le,
-			CommitOffset: fc.ackTracker.CommitOffset(),
-		}); err != nil {
-			return err
-		}
-
-		fc.lastPushed.Store(le.Offset)
-		currentOffset = le.Offset
-
-		// Since we've made progress, we can reset the backoff to initial setting
-		fc.backoff.Reset()
-	}
+	return fc.streamEntriesLoop(ctx, reader, currentOffset)
 }
 
 func (fc *followerCursor) receiveAcks(cancel context.CancelFunc, stream proto.OxiaLogReplication_ReplicateClient) {
