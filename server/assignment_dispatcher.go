@@ -64,6 +64,7 @@ type shardAssignmentDispatcher struct {
 	activeClientsGauge metrics.Gauge
 }
 
+//nolint:revive
 func (s *shardAssignmentDispatcher) RegisterForUpdates(req *proto.ShardAssignmentsRequest, clientStream Client) error {
 	s.Lock()
 

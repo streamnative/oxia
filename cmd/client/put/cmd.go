@@ -83,23 +83,26 @@ func _exec(flags flags, in io.Reader, queue common.QueryQueue) error {
 	if (len(flags.expectedVersions) > 0) && len(flags.keys) != len(flags.expectedVersions) {
 		return ErrExpectedVersionInconsistent
 	}
-	if len(flags.keys) > 0 {
-		for i, k := range flags.keys {
-			query := Query{
-				Key:    k,
-				Value:  flags.values[i],
-				Binary: &flags.binaryValues,
-			}
-			if len(flags.expectedVersions) > 0 {
-				query.ExpectedVersion = &flags.expectedVersions[i]
-			}
-			queue.Add(query)
-		}
-	} else {
+
+	if len(flags.keys) == 0 {
 		if flags.binaryValues {
 			return ErrIncorrectBinaryFlagUse
 		}
 		common.ReadStdin(in, Query{}, queue)
+
+		return nil
+	}
+
+	for i, k := range flags.keys {
+		query := Query{
+			Key:    k,
+			Value:  flags.values[i],
+			Binary: &flags.binaryValues,
+		}
+		if len(flags.expectedVersions) > 0 {
+			query.ExpectedVersion = &flags.expectedVersions[i]
+		}
+		queue.Add(query)
 	}
 	return nil
 }

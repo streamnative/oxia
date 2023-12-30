@@ -139,11 +139,7 @@ func NewCoordinator(metadataProvider MetadataProvider,
 		}
 	}
 
-	for ns, shards := range c.clusterStatus.Namespaces {
-		for shard, shardMetadata := range shards.Shards {
-			c.shardControllers[shard] = NewShardController(ns, shard, shardMetadata, c.rpc, c)
-		}
-	}
+	c.initialShardController()
 
 	go common.DoWithLabels(
 		c.ctx,
@@ -156,22 +152,42 @@ func NewCoordinator(metadataProvider MetadataProvider,
 	return c, nil
 }
 
+func (c *coordinator) allUnavailableNodes() []string {
+	nodes := []string{}
+	for nodeName, nc := range c.nodeControllers {
+		if nc.Status() != Running {
+			nodes = append(nodes, nodeName)
+		}
+	}
+
+	return nodes
+}
+
+func (c *coordinator) initialShardController() {
+	for ns, shards := range c.clusterStatus.Namespaces {
+		for shard, shardMetadata := range shards.Shards {
+			c.shardControllers[shard] = NewShardController(ns, shard, shardMetadata, c.rpc, c)
+		}
+	}
+}
+
 func (c *coordinator) waitForAllNodesToBeAvailable() {
 	c.log.Info("Waiting for all the nodes to be available")
 	for {
 		select {
 		case <-time.After(1 * time.Second):
-			allNodesAvailable := true
-			for _, n := range c.nodeControllers {
-				if n.Status() != Running {
-					allNodesAvailable = false
-				}
-			}
-			if allNodesAvailable {
+			c.log.Info("Start to check unavailable nodes")
+
+			unavailableNodes := c.allUnavailableNodes()
+			if len(unavailableNodes) == 0 {
 				c.log.Info("All nodes are now available")
 				return
 			}
 
+			c.log.Info(
+				"A part of nodes is not available",
+				slog.Any("UnavailableNodeNames", unavailableNodes),
+			)
 		case <-c.ctx.Done():
 			// Give up if we're closing the coordinator
 			return
@@ -499,41 +515,46 @@ func (c *coordinator) rebalanceCluster() error {
 	return nil
 }
 
+func (*coordinator) findServerByInternalAddress(newClusterConfig model.ClusterConfig, server string) *model.ServerAddress {
+	for _, s := range newClusterConfig.Servers {
+		if server == s.Internal {
+			return &s
+		}
+	}
+
+	return nil
+}
+
 func (c *coordinator) checkClusterNodeChanges(newClusterConfig model.ClusterConfig) {
 	// Check for nodes to add
 	for _, sa := range newClusterConfig.Servers {
-		if _, ok := c.nodeControllers[sa.Internal]; !ok {
-			// The node is present in the config, though we don't know it yet,
-			// therefore it must be a newly added node
-			c.log.Info("Detected new node", slog.Any("addr", sa))
-			if nc, ok := c.drainingNodes[sa.Internal]; ok {
-				// If there were any controller for a draining node, close it
-				// and recreate it as a new node
-				_ = nc.Close()
-				delete(c.drainingNodes, sa.Internal)
-			}
-			c.nodeControllers[sa.Internal] = NewNodeController(sa, c, c, c.rpc)
+		if _, ok := c.nodeControllers[sa.Internal]; ok {
+			continue
 		}
+
+		// The node is present in the config, though we don't know it yet,
+		// therefore it must be a newly added node
+		c.log.Info("Detected new node", slog.Any("addr", sa))
+		if nc, ok := c.drainingNodes[sa.Internal]; ok {
+			// If there were any controller for a draining node, close it
+			// and recreate it as a new node
+			_ = nc.Close()
+			delete(c.drainingNodes, sa.Internal)
+		}
+		c.nodeControllers[sa.Internal] = NewNodeController(sa, c, c, c.rpc)
 	}
 
 	// Check for nodes to remove
 	for ia, nc := range c.nodeControllers {
-		found := false
-
-		for _, s := range newClusterConfig.Servers {
-			if ia == s.Internal {
-				found = true
-				break
-			}
+		if c.findServerByInternalAddress(newClusterConfig, ia) != nil {
+			continue
 		}
 
-		if !found {
-			c.log.Info("Detected a removed node", slog.Any("addr", ia))
-			// Moved the node
-			delete(c.nodeControllers, ia)
-			nc.SetStatus(Draining)
-			c.drainingNodes[ia] = nc
-		}
+		c.log.Info("Detected a removed node", slog.Any("addr", ia))
+		// Moved the node
+		delete(c.nodeControllers, ia)
+		nc.SetStatus(Draining)
+		c.drainingNodes[ia] = nc
 	}
 }
 

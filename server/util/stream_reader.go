@@ -65,23 +65,45 @@ func (s *streamReader[T, U]) Run() error {
 	}
 }
 
+func (s *streamReader[T, U]) handleServerMessageOnce() error {
+	message, err := s.stream.Recv()
+	if err != nil {
+		return err
+	}
+
+	if message == nil {
+		return io.EOF
+	}
+
+	res, err := s.handleMessage(message)
+	if err != nil {
+		return err
+	}
+
+	if s.sender != nil {
+		err := s.sender.Send(res)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (s *streamReader[T, U]) handleServerStream() {
 	for {
-		if message, err := s.stream.Recv(); err != nil {
-			s.close(err)
-			return
-		} else if message == nil {
+		err := s.handleServerMessageOnce()
+		if err == nil {
+			continue
+		}
+
+		if errors.Is(err, io.EOF) {
 			s.close(nil)
 			return
-		} else if res, err := s.handleMessage(message); err != nil {
-			s.close(err)
-			return
-		} else if s.sender == nil {
-			continue
-		} else if err = s.sender.Send(res); err != nil {
-			s.close(err)
-			return
 		}
+
+		s.close(err)
+		return
 	}
 }
 

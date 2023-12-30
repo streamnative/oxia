@@ -434,7 +434,7 @@ func (s *shardController) newTermAndAddFollower(ctx context.Context, node model.
 
 // Send NewTerm to all the ensemble members in parallel and wait for
 // a majority of them to reply successfully.
-func (s *shardController) newTermQuorum() (map[model.ServerAddress]*proto.EntryId, error) {
+func (s *shardController) newTermQuorum() (map[model.ServerAddress]*proto.EntryId, error) { //nolint:revive
 	timer := s.newTermQuorumLatency.Timer()
 
 	fencingQuorum := mergeLists(s.shardMetadata.Ensemble, s.shardMetadata.RemovedNodes)
@@ -741,6 +741,30 @@ func (s *shardController) SwapNode(from model.ServerAddress, to model.ServerAddr
 	return nil
 }
 
+func (s *shardController) isFollowerCatchUp(ctx context.Context, server model.ServerAddress, leaderHeadOffset int64) error {
+	fs, err := s.rpc.GetStatus(ctx, server, &proto.GetStatusRequest{ShardId: s.shard})
+	if err != nil {
+		return err
+	}
+
+	followerHeadOffset := fs.HeadOffset
+	if followerHeadOffset >= leaderHeadOffset {
+		s.log.Info(
+			"Follower is caught-up with the leader after node-swap",
+			slog.Any("server", server),
+		)
+		return nil
+	}
+
+	s.log.Info(
+		"Follower is *not* caught-up yet with the leader",
+		slog.Any("server", server),
+		slog.Int64("leader-head-offset", leaderHeadOffset),
+		slog.Int64("follower-head-offset", followerHeadOffset),
+	)
+	return errors.New("follower not caught up yet")
+}
+
 // Check that all the followers in the ensemble are catching up with the leader.
 func (s *shardController) waitForFollowersToCatchUp(ctx context.Context, leader model.ServerAddress, ensemble []model.ServerAddress) error {
 	ctx, cancel := context.WithTimeout(ctx, catchupTimeout)
@@ -760,27 +784,7 @@ func (s *shardController) waitForFollowersToCatchUp(ctx context.Context, leader 
 		}
 
 		err = backoff.Retry(func() error {
-			fs, err := s.rpc.GetStatus(ctx, server, &proto.GetStatusRequest{ShardId: s.shard})
-			if err != nil {
-				return err
-			}
-
-			followerHeadOffset := fs.HeadOffset
-			if followerHeadOffset >= leaderHeadOffset {
-				s.log.Info(
-					"Follower is caught-up with the leader after node-swap",
-					slog.Any("server", server),
-				)
-				return nil
-			}
-
-			s.log.Info(
-				"Follower is *not* caught-up yet with the leader",
-				slog.Any("server", server),
-				slog.Int64("leader-head-offset", leaderHeadOffset),
-				slog.Int64("follower-head-offset", followerHeadOffset),
-			)
-			return errors.New("follower not caught up yet")
+			return s.isFollowerCatchUp(ctx, server, leaderHeadOffset)
 		}, common.NewBackOff(ctx))
 
 		if err != nil {

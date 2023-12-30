@@ -194,7 +194,7 @@ func (lc *leaderController) Term() int64 {
 //
 // Any existing follow cursors are destroyed as is any state
 // regarding reconfigurations.
-func (lc *leaderController) NewTerm(req *proto.NewTermRequest) (*proto.NewTermResponse, error) {
+func (lc *leaderController) NewTerm(req *proto.NewTermRequest) (*proto.NewTermResponse, error) { //nolint:revive
 	lc.Lock()
 	defer lc.Unlock()
 
@@ -422,6 +422,27 @@ func (lc *leaderController) addFollower(follower string, followerHeadEntryId *pr
 	return nil
 }
 
+func (lc *leaderController) applyAllEntriesIntoDBLoop(r wal.Reader) error {
+	for r.HasNext() {
+		entry, err := r.ReadNext()
+		if err != nil {
+			return err
+		}
+
+		logEntryValue := &proto.LogEntryValue{}
+		if err = pb.Unmarshal(entry.Value, logEntryValue); err != nil {
+			return err
+		}
+		for _, writeRequest := range logEntryValue.GetRequests().Writes {
+			if _, err = lc.db.ProcessWrite(writeRequest, entry.Offset, entry.Timestamp, SessionUpdateOperationCallback); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 func (lc *leaderController) applyAllEntriesIntoDB() error {
 	dbCommitOffset, err := lc.db.ReadCommitOffset()
 	if err != nil {
@@ -453,24 +474,8 @@ func (lc *leaderController) applyAllEntriesIntoDB() error {
 		)
 		return err
 	}
-	for r.HasNext() {
-		entry, err := r.ReadNext()
-		if err != nil {
-			return err
-		}
 
-		logEntryValue := &proto.LogEntryValue{}
-		if err = pb.Unmarshal(entry.Value, logEntryValue); err != nil {
-			return err
-		}
-		for _, writeRequest := range logEntryValue.GetRequests().Writes {
-			if _, err = lc.db.ProcessWrite(writeRequest, entry.Offset, entry.Timestamp, SessionUpdateOperationCallback); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
+	return lc.applyAllEntriesIntoDBLoop(r)
 }
 
 func (lc *leaderController) truncateFollowerIfNeeded(follower string, followerHeadEntryId *proto.EntryId) (*proto.EntryId, error) {

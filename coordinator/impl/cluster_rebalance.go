@@ -30,7 +30,7 @@ type SwapNodeAction struct {
 
 // Make sure every server is assigned a similar number of shards
 // Output a list of actions to be taken to rebalance the cluster.
-func rebalanceCluster(servers []model.ServerAddress, currentStatus *model.ClusterStatus) []SwapNodeAction {
+func rebalanceCluster(servers []model.ServerAddress, currentStatus *model.ClusterStatus) []SwapNodeAction { //nolint:revive
 	res := make([]SwapNodeAction, 0)
 
 	serversCount := len(servers)
@@ -131,7 +131,7 @@ outer:
 	return res
 }
 
-func getShardsPerServer(servers []model.ServerAddress, currentStatus *model.ClusterStatus) (
+func getShardsPerServer(servers []model.ServerAddress, currentStatus *model.ClusterStatus) ( //nolint:revive
 	existingServers map[model.ServerAddress]common.Set[int64],
 	deletedServers map[model.ServerAddress]common.Set[int64]) {
 	existingServers = map[model.ServerAddress]common.Set[int64]{}
@@ -146,14 +146,15 @@ func getShardsPerServer(servers []model.ServerAddress, currentStatus *model.Clus
 			for _, addr := range shard.Ensemble {
 				if _, ok := existingServers[addr]; ok {
 					existingServers[addr].Add(shardId)
-				} else {
-					// This server is getting removed
-					if _, ok := deletedServers[addr]; !ok {
-						deletedServers[addr] = common.NewSet[int64]()
-					}
-
-					deletedServers[addr].Add(shardId)
+					continue
 				}
+
+				// This server is getting removed
+				if _, ok := deletedServers[addr]; !ok {
+					deletedServers[addr] = common.NewSet[int64]()
+				}
+
+				deletedServers[addr].Add(shardId)
 			}
 		}
 	}

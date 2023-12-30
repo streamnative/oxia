@@ -17,15 +17,14 @@ package oxia
 import (
 	"time"
 
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/metric/noop"
-
-	"github.com/streamnative/oxia/common"
-
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/multierr"
+
+	"github.com/streamnative/oxia/common"
 )
 
 const (

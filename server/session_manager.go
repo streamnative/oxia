@@ -298,7 +298,27 @@ type updateCallback struct{}
 
 var SessionUpdateOperationCallback kv.UpdateOperationCallback = &updateCallback{}
 
-func (*updateCallback) OnPut(batch kv.WriteBatch, request *proto.PutRequest, existingEntry *proto.StorageEntry) (proto.Status, error) {
+func (*updateCallback) OnPutWithinSession(batch kv.WriteBatch, request *proto.PutRequest, _ *proto.StorageEntry) (proto.Status, error) {
+	var _, closer, err = batch.Get(SessionKey(SessionId(*request.SessionId)))
+	if err != nil {
+		if errors.Is(err, kv.ErrKeyNotFound) {
+			return proto.Status_SESSION_DOES_NOT_EXIST, nil
+		}
+		return proto.Status_SESSION_DOES_NOT_EXIST, err
+	}
+	if err = closer.Close(); err != nil {
+		return proto.Status_SESSION_DOES_NOT_EXIST, err
+	}
+	// Create the session shadow entry
+	err = batch.Put(SessionKey(SessionId(*request.SessionId))+url.PathEscape(request.Key), []byte{})
+	if err != nil {
+		return proto.Status_SESSION_DOES_NOT_EXIST, err
+	}
+
+	return proto.Status_OK, nil
+}
+
+func (c *updateCallback) OnPut(batch kv.WriteBatch, request *proto.PutRequest, existingEntry *proto.StorageEntry) (proto.Status, error) {
 	if existingEntry != nil && existingEntry.SessionId != nil {
 		// We are overwriting an ephemeral value, let's delete its shadow
 		if status, err := deleteShadow(batch, request.Key, existingEntry); err != nil {
@@ -309,21 +329,7 @@ func (*updateCallback) OnPut(batch kv.WriteBatch, request *proto.PutRequest, exi
 	sessionId := request.SessionId
 	if sessionId != nil {
 		// We are adding an ephemeral value, let's check if the session exists
-		var _, closer, err = batch.Get(SessionKey(SessionId(*sessionId)))
-		if err != nil {
-			if errors.Is(err, kv.ErrKeyNotFound) {
-				return proto.Status_SESSION_DOES_NOT_EXIST, nil
-			}
-			return proto.Status_SESSION_DOES_NOT_EXIST, err
-		}
-		if err = closer.Close(); err != nil {
-			return proto.Status_SESSION_DOES_NOT_EXIST, err
-		}
-		// Create the session shadow entry
-		err = batch.Put(SessionKey(SessionId(*sessionId))+url.PathEscape(request.Key), []byte{})
-		if err != nil {
-			return proto.Status_SESSION_DOES_NOT_EXIST, err
-		}
+		return c.OnPutWithinSession(batch, request, existingEntry)
 	}
 	return proto.Status_OK, nil
 }

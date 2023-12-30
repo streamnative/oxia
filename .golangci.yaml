@@ -90,9 +90,9 @@ linters-settings:
             ignoreFuncs: 'slog\.*,metrics\.*,fmt\.*'
       - name: cognitive-complexity
         severity: warning
-        disabled: true
+        disabled: false
         arguments:
-          - 8
+          - 12
       - name: cyclomatic
         severity: warning
         disabled: false
@@ -162,7 +162,7 @@ issues:
     - path: maelstrom/
       linters:
         - revive
-      text: "unchecked-type-assertion|unhandled-error|unused-receiver|unused-parameter|add-constant|cyclomatic"
+      text: "unchecked-type-assertion|unhandled-error|unused-receiver|unused-parameter|add-constant|cyclomatic|cognitive-complexity"
     - path: _grpc\.go
       linters:
         - revive
