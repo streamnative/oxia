@@ -123,10 +123,10 @@ func (s *internalRpcServer) NewTerm(c context.Context, req *proto.NewTermRequest
 		if err2 != nil {
 			log.Warn(
 				"NewTerm of follower failed",
-				slog.Any("error", err),
+				slog.Any("error", err2),
 			)
 		}
-		return res, err
+		return res, err2
 	}
 
 	leader, err := s.shardsDirector.GetOrCreateLeader(req.Namespace, req.ShardId)
@@ -143,11 +143,12 @@ func (s *internalRpcServer) NewTerm(c context.Context, req *proto.NewTermRequest
 			"New term processing of leader failed",
 			slog.Any("error", err),
 		)
+	} else {
+		log.Info(
+			"New term processing completed",
+			slog.Any("response", res),
+		)
 	}
-	log.Info(
-		"New term processing completed",
-		slog.Any("response", res),
-	)
 	return res, err2
 }
 
