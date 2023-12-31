@@ -69,3 +69,14 @@ exec:
 initialDelaySeconds: 10
 timeoutSeconds: 10
 {{- end }}
+
+{{/*
+Probe
+*/}}
+{{- define "oxia-cluster.startup-probe" -}}
+exec:
+  command: ["oxia", "health", "--port={{ . }}"]
+initialDelaySeconds: 60
+timeoutSeconds: 10
+{{- end }}
+
