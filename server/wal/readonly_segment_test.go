@@ -24,7 +24,7 @@ import (
 func TestReadOnlySegment(t *testing.T) {
 	path := t.TempDir()
 
-	rw, err := newReadWriteSegment(path, 0, 128*1024)
+	rw, err := newReadWriteSegment(path, 0, 128*1024, newEncoder(0))
 	assert.NoError(t, err)
 	for i := int64(0); i < 10; i++ {
 		assert.NoError(t, rw.Append(i, []byte(fmt.Sprintf("entry-%d", i))))

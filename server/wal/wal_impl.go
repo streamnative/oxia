@@ -33,6 +33,11 @@ import (
 	"github.com/streamnative/oxia/proto"
 )
 
+const (
+	CrcType uint64 = iota + 1
+	LogType
+)
+
 type walFactory struct {
 	options *FactoryOptions
 }
@@ -87,6 +92,8 @@ type wal struct {
 	writeErrors   metrics.Counter
 	activeEntries metrics.Gauge
 	syncLatency   metrics.LatencyHistogram
+
+	e *encoder
 }
 
 func walPath(logDir string, namespace string, shard int64) string {
@@ -138,6 +145,8 @@ func newWal(namespace string, shard int64, options *FactoryOptions, commitOffset
 		"The number of active entries in the wal", "count", labels, func() int64 {
 			return w.lastSyncedOffset.Load() - w.firstOffset.Load()
 		})
+
+	w.e = newEncoder(0)
 
 	if err := w.recoverWal(); err != nil {
 		return nil, errors.Wrapf(err, "failed to recover wal for shard %s / %d", namespace, shard)
@@ -276,7 +285,7 @@ func (t *wal) AppendAsync(entry *proto.LogEntry) error {
 			return err
 		}
 
-		if t.currentSegment, err = newReadWriteSegment(t.walPath, entry.Offset, t.segmentSize); err != nil {
+		if t.currentSegment, err = newReadWriteSegment(t.walPath, entry.Offset, t.segmentSize, t.e); err != nil {
 			t.writeErrors.Inc()
 			return err
 		}
@@ -308,7 +317,7 @@ func (t *wal) rolloverSegment() error {
 
 	t.readOnlySegments.AddedNewSegment(t.currentSegment.BaseOffset())
 
-	if t.currentSegment, err = newReadWriteSegment(t.walPath, t.lastAppendedOffset.Load()+1, t.segmentSize); err != nil {
+	if t.currentSegment, err = newReadWriteSegment(t.walPath, t.lastAppendedOffset.Load()+1, t.segmentSize, t.e); err != nil {
 		return err
 	}
 
@@ -406,7 +415,7 @@ func (t *wal) Clear() error {
 		return errors.Wrap(err, "failed to clear wal")
 	}
 
-	if t.currentSegment, err = newReadWriteSegment(t.walPath, 0, t.segmentSize); err != nil {
+	if t.currentSegment, err = newReadWriteSegment(t.walPath, 0, t.segmentSize, t.e); err != nil {
 		return err
 	}
 
@@ -476,7 +485,7 @@ func (t *wal) TruncateLog(lastSafeOffset int64) (int64, error) { //nolint:revive
 					return InvalidOffset, err
 				}
 
-				if t.currentSegment, err = newReadWriteSegment(t.walPath, segment.Get().BaseOffset(), t.segmentSize); err != nil {
+				if t.currentSegment, err = newReadWriteSegment(t.walPath, segment.Get().BaseOffset(), t.segmentSize, t.e); err != nil {
 					err = multierr.Append(err, segment.Close())
 					return InvalidOffset, err
 				}
@@ -519,7 +528,7 @@ func (t *wal) recoverWal() error {
 		lastSegment = 0
 	}
 
-	if t.currentSegment, err = newReadWriteSegment(t.walPath, lastSegment, t.segmentSize); err != nil {
+	if t.currentSegment, err = newReadWriteSegment(t.walPath, lastSegment, t.segmentSize, t.e); err != nil {
 		return err
 	}
 
