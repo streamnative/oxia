@@ -277,6 +277,13 @@ func TestTruncate(t *testing.T) {
 
 	assert.EqualValues(t, 2, headIndex)
 
+	// Close and Reopen the wal to ensure truncate is persistent
+	err = w.Close()
+	assert.NoError(t, err)
+
+	w, err = f.NewWal(common.DefaultNamespace, shard, nil)
+	assert.NoError(t, err)
+
 	// Read with forward reader from beginning
 	fr, err := w.NewReader(InvalidOffset)
 	assert.NoError(t, err)

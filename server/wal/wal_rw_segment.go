@@ -218,12 +218,12 @@ func (ms *readWriteSegment) Truncate(lastSafeOffset int64) error {
 	fileLastSafeOffset := fileOffset(ms.writingIdx, ms.baseOffset, lastSafeOffset)
 	entryLen := readInt(ms.txnMappedFile, fileLastSafeOffset)
 	fileEndOffset := fileLastSafeOffset + 4 + entryLen
-	for i := ms.currentFileOffset; i < fileEndOffset; i++ {
+	for i := fileEndOffset; i < ms.currentFileOffset; i++ {
 		ms.txnMappedFile[i] = 0
 	}
 
 	// Truncate the index
-	ms.writingIdx = ms.writingIdx[:4*(lastSafeOffset-ms.baseOffset)]
+	ms.writingIdx = ms.writingIdx[:4*(lastSafeOffset-ms.baseOffset+1)]
 
 	ms.currentFileOffset = fileEndOffset
 	ms.lastOffset = lastSafeOffset
