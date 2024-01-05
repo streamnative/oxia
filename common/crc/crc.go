@@ -34,7 +34,7 @@ func (d *digest) Reset() {
 }
 
 func (*digest) Size() int {
-	return 8
+	return crc64.Size
 }
 
 func (*digest) BlockSize() int {
