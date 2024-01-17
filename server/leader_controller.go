@@ -17,13 +17,13 @@ package server
 import (
 	"context"
 	"fmt"
-	"io"
-	"log/slog"
-	"sync"
-
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	pb "google.golang.org/protobuf/proto"
+	"io"
+	"log/slog"
+	"sync"
+	"time"
 
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/metrics"
@@ -715,6 +715,7 @@ func (lc *leaderController) appendToWal(ctx context.Context, request func(int64)
 	}
 
 	newOffset := lc.quorumAckTracker.NextOffset()
+	timestamp = uint64(time.Now().UnixMilli())
 	actualRequest = request(newOffset)
 
 	lc.log.Debug(
