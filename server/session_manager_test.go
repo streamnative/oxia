@@ -17,6 +17,7 @@ package server
 import (
 	"context"
 	"errors"
+	"github.com/streamnative/oxia/server/wal"
 	"io"
 	"testing"
 	"time"
@@ -226,7 +227,7 @@ func TestSessionUpdateOperationCallback_OnDelete(t *testing.T) {
 func TestSessionManager(t *testing.T) {
 	shardId := int64(1)
 	// Invalid session timeout
-	sManager, lc := createSessionManager(t)
+	kvf, walf, sManager, lc := createSessionManager(t)
 	_, err := sManager.CreateSession(&proto.CreateSessionRequest{
 		ShardId:          shardId,
 		SessionTimeoutMs: uint32((1 * time.Hour).Milliseconds()),
@@ -316,6 +317,61 @@ func TestSessionManager(t *testing.T) {
 	}, 10*time.Second, 30*time.Millisecond)
 
 	assert.NoError(t, lc.Close())
+	assert.NoError(t, kvf.Close())
+	assert.NoError(t, walf.Close())
+}
+
+func TestSessionManagerReopening(t *testing.T) {
+	shardId := int64(1)
+	// Invalid session timeout
+	walf, kvf, sManager, lc := createSessionManager(t)
+
+	_, err := lc.Write(context.Background(), &proto.WriteRequest{
+		ShardId: &shardId,
+		Puts: []*proto.PutRequest{{
+			Key:   "/ledgers",
+			Value: []byte("a"),
+		}, {
+			Key:   "/admin",
+			Value: []byte("a"),
+		}, {
+			Key:   "/test",
+			Value: []byte("a"),
+		}},
+	})
+	assert.NoError(t, err)
+
+	// Create session and reopen the session manager
+	createResp, err := sManager.CreateSession(&proto.CreateSessionRequest{
+		ShardId:          shardId,
+		SessionTimeoutMs: 5 * 1000,
+	})
+	assert.NoError(t, err)
+	sessionId := createResp.SessionId
+	meta := getSessionMetadata(t, lc, sessionId)
+	assert.NotNil(t, meta)
+	assert.Equal(t, uint32(5000), meta.TimeoutMs)
+
+	_, err = lc.Write(context.Background(), &proto.WriteRequest{
+		ShardId: &shardId,
+		Puts: []*proto.PutRequest{{
+			Key:       "/a/b",
+			Value:     []byte("/a/b"),
+			SessionId: &sessionId,
+		}},
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, "/a/b", getData(t, lc, "/a/b"))
+
+	sManager, lc = reopenSessionManager(t, walf, kvf, lc)
+
+	meta = getSessionMetadata(t, lc, sessionId)
+	assert.NotNil(t, meta)
+	assert.Equal(t, uint32(5000), meta.TimeoutMs)
+
+	assert.NoError(t, lc.Close())
+	assert.NoError(t, kvf.Close())
+	assert.NoError(t, walf.Close())
 }
 
 func getData(t *testing.T, lc *leaderController, key string) string {
@@ -363,7 +419,7 @@ func getSessionMetadata(t *testing.T, lc *leaderController, sessionId int64) *pr
 	return &meta
 }
 
-func createSessionManager(t *testing.T) (*sessionManager, *leaderController) {
+func createSessionManager(t *testing.T) (kv.Factory, wal.Factory, *sessionManager, *leaderController) {
 	t.Helper()
 
 	var shard int64 = 1
@@ -371,6 +427,31 @@ func createSessionManager(t *testing.T) (*sessionManager, *leaderController) {
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
 	walFactory := newTestWalFactory(t)
+	lc, err := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	assert.NoError(t, err)
+	_, err = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})
+	assert.NoError(t, err)
+	_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
+		ShardId:           shard,
+		Term:              1,
+		ReplicationFactor: 1,
+		FollowerMaps:      nil,
+	})
+	assert.NoError(t, err)
+
+	sessionManager := lc.(*leaderController).sessionManager.(*sessionManager)
+	assert.NoError(t, sessionManager.ctx.Err())
+	return kvFactory, walFactory, sessionManager, lc.(*leaderController)
+}
+
+func reopenSessionManager(t *testing.T, kvFactory kv.Factory, walFactory wal.Factory, oldlc *leaderController) (*sessionManager, *leaderController) {
+	t.Helper()
+
+	var shard int64 = 1
+
+	assert.NoError(t, oldlc.Close())
+
+	var err error
 	lc, err := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 	_, err = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})

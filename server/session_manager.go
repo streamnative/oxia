@@ -20,7 +20,6 @@ import (
 	"io"
 	"log/slog"
 	"net/url"
-	"strconv"
 	"sync"
 	"time"
 
@@ -33,30 +32,31 @@ import (
 )
 
 const (
-	KeyPrefix = common.InternalKeyPrefix + "session/"
+	sessionKeyPrefix = common.InternalKeyPrefix + "session"
 )
 
 type SessionId int64
 
-func hexId(sessionId SessionId) string {
-	return fmt.Sprintf("%016x", sessionId)
+func SessionKey(sessionId SessionId) string {
+	return fmt.Sprintf("%s/%016x", sessionKeyPrefix, sessionId)
 }
 
-func SessionKey(sessionId SessionId) string {
-	return fmt.Sprintf("%s%s/", KeyPrefix, hexId(sessionId))
+func ShadowKey(sessionId SessionId, key string) string {
+	return fmt.Sprintf("%s/%016x/%s", sessionKeyPrefix, sessionId, url.PathEscape(key))
 }
 
 func KeyToId(key string) (SessionId, error) {
-	if len(key) != len(KeyPrefix)+17 || KeyPrefix != key[:len(KeyPrefix)] || "/" != key[len(key)-1:] {
-		return 0, errors.New("invalid sessionId key " + key)
-	}
-	s := key[len(KeyPrefix):]
-	s = s[:len(s)-1]
-	longInt, err := strconv.ParseInt(s, 16, 64)
+	var id int64
+	items, err := fmt.Sscanf(key, sessionKeyPrefix+"/%016x", &id)
 	if err != nil {
 		return 0, err
 	}
-	return SessionId(longInt), nil
+
+	if items != 1 {
+		return 0, errors.New("failed to parse session key: " + key)
+	}
+
+	return SessionId(id), nil
 }
 
 // --- SessionManager
@@ -74,6 +74,7 @@ var _ SessionManager = (*sessionManager)(nil)
 type sessionManager struct {
 	sync.RWMutex
 	leaderController *leaderController
+	namespace        string
 	shardId          int64
 	sessions         map[SessionId]*session
 	log              *slog.Logger
@@ -91,6 +92,7 @@ func NewSessionManager(ctx context.Context, namespace string, shardId int64, con
 	labels := metrics.LabelsForShard(namespace, shardId)
 	sm := &sessionManager{
 		sessions:         make(map[SessionId]*session),
+		namespace:        namespace,
 		shardId:          shardId,
 		leaderController: controller,
 		log: slog.With(
@@ -149,6 +151,7 @@ func (sm *sessionManager) createSession(request *proto.CreateSessionRequest, min
 			}},
 		}
 	})
+
 	sessionId := SessionId(id)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to register session")
@@ -159,7 +162,6 @@ func (sm *sessionManager) createSession(request *proto.CreateSessionRequest, min
 	}
 
 	s := startSession(sessionId, metadata, sm)
-	sm.sessions[sessionId] = s
 
 	sm.createdSessions.Inc()
 	return &proto.CreateSessionResponse{SessionId: int64(s.id)}, nil
@@ -200,7 +202,7 @@ func (sm *sessionManager) CloseSession(request *proto.CloseSessionRequest) (*pro
 	s.Lock()
 	defer s.Unlock()
 	s.closeChannels()
-	err = s.delete()
+	err = s.close()
 	if err != nil {
 		return nil, err
 	}
@@ -225,12 +227,17 @@ func (sm *sessionManager) Initialize() error {
 func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, error) {
 	list, err := sm.leaderController.ListSliceNoMutex(context.Background(), &proto.ListRequest{
 		ShardId:        &sm.shardId,
-		StartInclusive: KeyPrefix,
-		EndExclusive:   KeyPrefix + "/",
+		StartInclusive: sessionKeyPrefix + "/",
+		EndExclusive:   sessionKeyPrefix + "//",
 	})
+	sm.log.Debug("All sessions",
+		slog.Int("count", len(list)))
+
 	if err != nil {
 		return nil, err
 	}
+
+	sm.log.Info("All sessions", slog.Int("count", len(list)))
 
 	result := map[SessionId]*proto.SessionMetadata{}
 
@@ -310,7 +317,7 @@ func (*updateCallback) OnPutWithinSession(batch kv.WriteBatch, request *proto.Pu
 		return proto.Status_SESSION_DOES_NOT_EXIST, err
 	}
 	// Create the session shadow entry
-	err = batch.Put(SessionKey(SessionId(*request.SessionId))+url.PathEscape(request.Key), []byte{})
+	err = batch.Put(ShadowKey(SessionId(*request.SessionId), request.Key), []byte{})
 	if err != nil {
 		return proto.Status_SESSION_DOES_NOT_EXIST, err
 	}
@@ -336,7 +343,7 @@ func (c *updateCallback) OnPut(batch kv.WriteBatch, request *proto.PutRequest, e
 
 func deleteShadow(batch kv.WriteBatch, key string, existingEntry *proto.StorageEntry) (proto.Status, error) {
 	existingSessionId := SessionId(*existingEntry.SessionId)
-	err := batch.Delete(SessionKey(existingSessionId) + url.PathEscape(key))
+	err := batch.Delete(ShadowKey(existingSessionId, key))
 	if err != nil && !errors.Is(err, kv.ErrKeyNotFound) {
 		return proto.Status_SESSION_DOES_NOT_EXIST, err
 	}
