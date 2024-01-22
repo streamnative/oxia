@@ -184,6 +184,9 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	assert.EqualValues(t, 1, len(res.Puts))
 	assert.Equal(t, proto.Status_OK, res.Puts[0].Status)
 	assert.EqualValues(t, 0, res.Puts[0].Version.VersionId)
+	assert.NotEqualValues(t, 0, res.Puts[0].Version.CreatedTimestamp)
+	assert.NotEqualValues(t, 0, res.Puts[0].Version.ModifiedTimestamp)
+	assert.EqualValues(t, res.Puts[0].Version.CreatedTimestamp, res.Puts[0].Version.ModifiedTimestamp)
 
 	// Read entry
 	r := <-lc.Read(context.Background(), &proto.ReadRequest{
