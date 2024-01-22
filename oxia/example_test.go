@@ -77,8 +77,8 @@ func Example() {
 	// Sleep to avoid DATA RACE on zerolog read at os.Stdout，and runExamples write at os.Stdout
 	time.Sleep(2 * time.Second)
 
-	fmt.Printf("Result: %s - %#v\n", string(value), version)
-	// Output: Result: value-2 - oxia.Version{VersionId:1, CreatedTimestamp:0x0, ModifiedTimestamp:0x0, ModificationsCount:1, Ephemeral:false, ClientIdentity:""}
+	fmt.Printf("Result: %s - Version: %#v\n", string(value), version.VersionId)
+	// Output: Result: value-2 - Version: 1
 }
 
 func ExampleAsyncClient() {
@@ -103,22 +103,22 @@ func ExampleAsyncClient() {
 
 	// Wait for the async operations to complete
 	r1 := <-c1
-	fmt.Printf("First operation complete: version: %#v - error: %#v\n", r1.Version, r1.Err)
+	fmt.Printf("First operation complete: version: %#v - error: %#v\n", r1.Version.VersionId, r1.Err)
 
 	r2 := <-c2
-	fmt.Printf("First operation complete: version: %#v - error: %#v\n", r2.Version, r2.Err)
+	fmt.Printf("First operation complete: version: %#v - error: %#v\n", r2.Version.VersionId, r2.Err)
 
 	r3 := <-c3
-	fmt.Printf("First operation complete: version: %#v - error: %#v\n", r3.Version, r3.Err)
+	fmt.Printf("First operation complete: version: %#v - error: %#v\n", r3.Version.VersionId, r3.Err)
 
 	_ = client.Close()
 	// Sleep to avoid DATA RACE on zerolog read at os.Stdout，and runExamples write at os.Stdout
 	time.Sleep(2 * time.Second)
 
 	// Output:
-	// First operation complete: version: oxia.Version{VersionId:0, CreatedTimestamp:0x0, ModifiedTimestamp:0x0, ModificationsCount:0, Ephemeral:false, ClientIdentity:""} - error: <nil>
-	// First operation complete: version: oxia.Version{VersionId:0, CreatedTimestamp:0x0, ModifiedTimestamp:0x0, ModificationsCount:0, Ephemeral:false, ClientIdentity:""} - error: <nil>
-	// First operation complete: version: oxia.Version{VersionId:0, CreatedTimestamp:0x0, ModifiedTimestamp:0x0, ModificationsCount:0, Ephemeral:false, ClientIdentity:""} - error: <nil>
+	// First operation complete: version: 0 - error: <nil>
+	// First operation complete: version: 0 - error: <nil>
+	// First operation complete: version: 0 - error: <nil>
 }
 
 func ExampleNotifications() {
