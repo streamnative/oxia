@@ -33,6 +33,7 @@ import (
 
 const (
 	sessionKeyPrefix = common.InternalKeyPrefix + "session"
+	sessionKeyFormat = sessionKeyPrefix + "/%016x"
 )
 
 type SessionId int64
@@ -47,7 +48,7 @@ func ShadowKey(sessionId SessionId, key string) string {
 
 func KeyToId(key string) (SessionId, error) {
 	var id int64
-	items, err := fmt.Sscanf(key, sessionKeyPrefix+"/%016x", &id)
+	items, err := fmt.Sscanf(key, sessionKeyFormat, &id)
 	if err != nil {
 		return 0, err
 	}

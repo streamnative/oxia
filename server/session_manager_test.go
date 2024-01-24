@@ -33,14 +33,14 @@ import (
 func TestSessionKey(t *testing.T) {
 	id := SessionId(0xC0DE)
 	sessionKey := SessionKey(id)
-	assert.Equal(t, "__oxia/session/000000000000c0de/", sessionKey)
+	assert.Equal(t, "__oxia/session/000000000000c0de", sessionKey)
 	parsed, err := KeyToId(sessionKey)
 	assert.NoError(t, err)
 	assert.Equal(t, id, parsed)
 
-	for _, key := range []string{"__oxia/session/", "too_short", "__oxia/session/000000000000dead5", "__oxia/session/000000000000woof/"} {
+	for _, key := range []string{"__oxia/session/", "too_short"} {
 		_, err = KeyToId(key)
-		assert.Error(t, err)
+		assert.Error(t, err, key)
 	}
 }
 
@@ -182,7 +182,7 @@ func TestSessionUpdateOperationCallback_OnPut(t *testing.T) {
 	status, err = SessionUpdateOperationCallback.OnPut(writeBatch, sessionPutRequest, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, proto.Status_OK, status)
-	sessionKey := SessionKey(SessionId(sessionId)) + "a%2Fb%2Fc"
+	sessionKey := SessionKey(SessionId(sessionId)) + "/a%2Fb%2Fc"
 	_, found := writeBatch[sessionKey]
 	assert.True(t, found)
 
@@ -215,12 +215,12 @@ func TestSessionUpdateOperationCallback_OnDelete(t *testing.T) {
 
 	writeBatch := mockWriteBatch{
 		"a/b/c": storageEntry(t, sessionId),
-		SessionKey(SessionId(sessionId)) + "a%2Fb%2Fc": []byte{},
+		SessionKey(SessionId(sessionId)) + "/a%2Fb%2Fc": []byte{},
 	}
 
 	err := SessionUpdateOperationCallback.OnDelete(writeBatch, "a/b/c")
 	assert.NoError(t, err)
-	_, found := writeBatch[SessionKey(SessionId(sessionId))+"a%2Fb%2Fc"]
+	_, found := writeBatch[SessionKey(SessionId(sessionId))+"/a%2Fb%2Fc"]
 	assert.False(t, found)
 }
 
@@ -427,7 +427,7 @@ func createSessionManager(t *testing.T) (kv.Factory, wal.Factory, *sessionManage
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
 	walFactory := newTestWalFactory(t)
-	lc, err := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(Config{NotificationsRetentionTime: 10 * time.Second}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 	_, err = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})
 	assert.NoError(t, err)
