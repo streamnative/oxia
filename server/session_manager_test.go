@@ -363,7 +363,7 @@ func TestSessionManagerReopening(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "/a/b", getData(t, lc, "/a/b"))
 
-	sManager, lc = reopenSessionManager(t, walf, kvf, lc)
+	lc = reopenLeaderController(t, walf, kvf, lc)
 
 	meta = getSessionMetadata(t, lc, sessionId)
 	assert.NotNil(t, meta)
@@ -444,7 +444,7 @@ func createSessionManager(t *testing.T) (kv.Factory, wal.Factory, *sessionManage
 	return kvFactory, walFactory, sessionManager, lc.(*leaderController)
 }
 
-func reopenSessionManager(t *testing.T, kvFactory kv.Factory, walFactory wal.Factory, oldlc *leaderController) (*sessionManager, *leaderController) {
+func reopenLeaderController(t *testing.T, kvFactory kv.Factory, walFactory wal.Factory, oldlc *leaderController) *leaderController {
 	t.Helper()
 
 	var shard int64 = 1
@@ -464,7 +464,5 @@ func reopenSessionManager(t *testing.T, kvFactory kv.Factory, walFactory wal.Fac
 	})
 	assert.NoError(t, err)
 
-	sessionManager := lc.(*leaderController).sessionManager.(*sessionManager)
-	assert.NoError(t, sessionManager.ctx.Err())
-	return sessionManager, lc.(*leaderController)
+	return lc.(*leaderController)
 }
