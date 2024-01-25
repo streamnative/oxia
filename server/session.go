@@ -97,7 +97,7 @@ func (s *session) delete() error {
 		slog.Any("keys", list),
 	)
 	for _, key := range list {
-		unescapedKey, err := url.PathUnescape(key[len(sessionKey):])
+		unescapedKey, err := url.PathUnescape(key[len(sessionKey)+1:])
 		if err != nil {
 			s.log.Error(
 				"Invalid session key",
