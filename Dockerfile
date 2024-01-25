@@ -22,11 +22,11 @@ ADD . /src/oxia
 RUN cd /src/oxia \
     && make
 
-FROM alpine:3.18.4
+FROM alpine:3.19
 
 RUN apk add --no-cache bash bash-completion
 
-# Fix CVE-2023-5363 by upgrading to OpenSSL 3.1.4-r1
+# Fix CVE-2023-5363 by upgrading to OpenSSL 3.1.4-r4
 # We can remove once new Alpine image is released
 RUN apk upgrade --no-cache libssl3 libcrypto3
 

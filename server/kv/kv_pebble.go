@@ -370,22 +370,18 @@ func (p *Pebble) Get(key string) ([]byte, io.Closer, error) {
 }
 
 func (p *Pebble) KeyRangeScan(lowerBound, upperBound string) (KeyIterator, error) {
-	pbit, err := p.db.NewIter(&pebble.IterOptions{
-		LowerBound: []byte(lowerBound),
-		UpperBound: []byte(upperBound),
-	})
-	if err != nil {
-		return nil, err
-	}
-	pbit.SeekGE([]byte(lowerBound))
-	return &PebbleIterator{p, pbit}, nil
+	return p.RangeScan(lowerBound, upperBound)
 }
 
 func (p *Pebble) KeyRangeScanReverse(lowerBound, upperBound string) (ReverseKeyIterator, error) {
-	pbit, err := p.db.NewIter(&pebble.IterOptions{
-		LowerBound: []byte(lowerBound),
-		UpperBound: []byte(upperBound),
-	})
+	opts := &pebble.IterOptions{}
+	if lowerBound != "" {
+		opts.LowerBound = []byte(lowerBound)
+	}
+	if upperBound != "" {
+		opts.UpperBound = []byte(upperBound)
+	}
+	pbit, err := p.db.NewIter(opts)
 	if err != nil {
 		return nil, err
 	}
@@ -394,14 +390,19 @@ func (p *Pebble) KeyRangeScanReverse(lowerBound, upperBound string) (ReverseKeyI
 }
 
 func (p *Pebble) RangeScan(lowerBound, upperBound string) (KeyValueIterator, error) {
-	pbit, err := p.db.NewIter(&pebble.IterOptions{
-		LowerBound: []byte(lowerBound),
-		UpperBound: []byte(upperBound),
-	})
+	opts := &pebble.IterOptions{}
+	if lowerBound != "" {
+		opts.LowerBound = []byte(lowerBound)
+	}
+	if upperBound != "" {
+		opts.UpperBound = []byte(upperBound)
+	}
+	pbit, err := p.db.NewIter(opts)
 	if err != nil {
 		return nil, err
 	}
-	pbit.SeekGE([]byte(lowerBound))
+
+	pbit.First()
 	return &PebbleIterator{p, pbit}, nil
 }
 

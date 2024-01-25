@@ -15,8 +15,6 @@
 package list
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
 	"testing"
 
@@ -29,15 +27,13 @@ import (
 
 func TestCobra(t *testing.T) {
 	for _, test := range []struct {
-		name                string
-		args                []string
-		expectedErr         error
-		expectedKeyMinimums []string
-		expectedKeyMaximums []string
+		name           string
+		args           []string
+		expectedErr    error
+		expectedKeyMin string
+		expectedKeyMax string
 	}{
-		{"range", []string{"--key-min", "x", "--key-max", "y"}, nil, []string{"x"}, []string{"y"}},
-		{"ranges", []string{"--key-min", "x1", "--key-max", "y1", "--key-min", "x2", "--key-max", "y2"}, nil, []string{"x1", "x2"}, []string{"y1", "y2"}},
-		{"stdin", []string{}, nil, nil, nil},
+		{"range", []string{"--key-min", "x", "--key-max", "y"}, nil, "x", "y"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			Config = flags{}
@@ -45,8 +41,8 @@ func TestCobra(t *testing.T) {
 			invoked := false
 			Cmd.RunE = func(cmd *cobra.Command, args []string) error {
 				invoked = true
-				assert.Equal(t, test.expectedKeyMinimums, Config.keyMinimums)
-				assert.Equal(t, test.expectedKeyMaximums, Config.keyMaximums)
+				assert.Equal(t, test.expectedKeyMin, Config.keyMin)
+				assert.Equal(t, test.expectedKeyMax, Config.keyMax)
 				assert.True(t, invoked)
 				return nil
 			}
@@ -68,58 +64,46 @@ func Test_exec(t *testing.T) {
 		{"range",
 			"",
 			flags{
-				keyMinimums: []string{"a"},
-				keyMaximums: []string{"b"},
+				keyMin: "a",
+				keyMax: "b",
 			},
 			nil,
 			[]common.Query{Query{
 				KeyMinimum: "a",
 				KeyMaximum: "b",
-			}}},
-		{"ranges",
-			"",
-			flags{
-				keyMinimums: []string{"a", "x"},
-				keyMaximums: []string{"b", "y"},
-			},
-			nil,
-			[]common.Query{Query{
-				KeyMinimum: "a",
-				KeyMaximum: "b",
-			}, Query{
-				KeyMinimum: "x",
-				KeyMaximum: "y",
-			}}},
-		{"stdin",
-			"{\"key_minimum\":\"a\",\"key_maximum\":\"b\"}\n{\"key_minimum\":\"x\",\"key_maximum\":\"y\"}\n",
-			flags{},
-			nil,
-			[]common.Query{Query{
-				KeyMinimum: "a",
-				KeyMaximum: "b",
-			}, Query{
-				KeyMinimum: "x",
-				KeyMaximum: "y",
 			}}},
 		{"range-no-min",
 			"",
 			flags{
-				keyMaximums: []string{"b"},
+				keyMax: "b",
 			},
-			ErrExpectedRangeInconsistent,
-			nil},
+			nil,
+			[]common.Query{Query{
+				KeyMinimum: "",
+				KeyMaximum: "b",
+			}}},
 		{"range-no-max",
 			"",
 			flags{
-				keyMaximums: []string{"b"},
+				keyMin: "a",
 			},
-			ErrExpectedRangeInconsistent,
-			nil},
+			nil,
+			[]common.Query{Query{
+				KeyMinimum: "a",
+				KeyMaximum: "",
+			}}},
+		{"range-no-limit",
+			"",
+			flags{},
+			nil,
+			[]common.Query{Query{
+				KeyMinimum: "",
+				KeyMaximum: "",
+			}}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			in := bytes.NewBufferString(test.stdin)
 			queue := fakeQueryQueue{}
-			err := _exec(test.flags, in, &queue)
+			err := _exec(test.flags, &queue)
 			assert.Equal(t, test.expectedQueries, queue.queries)
 			assert.ErrorIs(t, err, test.expectedErr)
 		})
@@ -147,35 +131,6 @@ func TestInputUnmarshal(t *testing.T) {
 	}
 }
 
-func TestOutputMarshal(t *testing.T) {
-	for _, test := range []struct {
-		name     string
-		output   Output
-		expected string
-	}{
-		{"some",
-			Output{
-				Keys: []string{"a", "b"},
-			},
-			"{\"keys\":[\"a\",\"b\"]}",
-		},
-		{"none",
-			Output{
-				Keys: []string{},
-			},
-			"{\"keys\":[]}",
-		},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			result, err := json.Marshal(test.output)
-			if err != nil {
-				panic(err)
-			}
-			assert.Equal(t, test.expected, string(result))
-		})
-	}
-}
-
 func TestCall_Complete(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -186,17 +141,13 @@ func TestCall_Complete(t *testing.T) {
 			"keys",
 			oxia.ListResult{
 				Keys: []string{"a", "b"},
-			}, Output{
-				Keys: []string{"a", "b"},
-			},
+			}, []string{"a", "b"},
 		},
 		{
 			"empty",
 			oxia.ListResult{
 				Keys: []string{},
-			}, Output{
-				Keys: []string{},
-			},
+			}, []string{},
 		},
 		{
 			"error",

@@ -17,13 +17,14 @@ package server
 import (
 	"context"
 	"fmt"
-	"github.com/pkg/errors"
-	"go.uber.org/multierr"
-	pb "google.golang.org/protobuf/proto"
 	"io"
 	"log/slog"
 	"sync"
 	"time"
+
+	"github.com/pkg/errors"
+	"go.uber.org/multierr"
+	pb "google.golang.org/protobuf/proto"
 
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/metrics"

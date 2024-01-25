@@ -17,8 +17,6 @@ package list
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"io"
 
 	"github.com/spf13/cobra"
 
@@ -28,30 +26,27 @@ import (
 
 var (
 	Config = flags{}
-
-	ErrExpectedRangeInconsistent = errors.New("inconsistent flags; min and max flags must be in pairs")
 )
 
 type flags struct {
-	keyMinimums []string
-	keyMaximums []string
+	keyMin string
+	keyMax string
 }
 
 func (flags *flags) Reset() {
-	flags.keyMinimums = nil
-	flags.keyMaximums = nil
+	flags.keyMin = ""
+	flags.keyMin = ""
 }
 
 func init() {
-	Cmd.Flags().StringSliceVar(&Config.keyMinimums, "key-min", []string{}, "Key range minimum (inclusive)")
-	Cmd.Flags().StringSliceVar(&Config.keyMaximums, "key-max", []string{}, "Key range maximum (exclusive)")
-	Cmd.MarkFlagsRequiredTogether("key-min", "key-max")
+	Cmd.Flags().StringVar(&Config.keyMin, "key-min", "", "Key range minimum (inclusive)")
+	Cmd.Flags().StringVar(&Config.keyMax, "key-max", "", "Key range maximum (exclusive)")
 }
 
 var Cmd = &cobra.Command{
 	Use:   "list",
 	Short: "List keys",
-	Long:  `List keys that fall within the given key ranges.`,
+	Long:  `List keys that fall within the given key range.`,
 	Args:  cobra.NoArgs,
 	RunE:  exec,
 }
@@ -61,23 +56,14 @@ func exec(cmd *cobra.Command, _ []string) error {
 	defer func() {
 		loop.Complete()
 	}()
-	return _exec(Config, cmd.InOrStdin(), loop)
+	return _exec(Config, loop)
 }
 
-func _exec(flags flags, in io.Reader, queue common.QueryQueue) error {
-	if len(flags.keyMinimums) != len(flags.keyMaximums) {
-		return ErrExpectedRangeInconsistent
-	}
-	if len(flags.keyMinimums) > 0 {
-		for i, n := range flags.keyMinimums {
-			queue.Add(Query{
-				KeyMinimum: n,
-				KeyMaximum: flags.keyMaximums[i],
-			})
-		}
-	} else {
-		common.ReadStdin(in, Query{}, queue)
-	}
+func _exec(flags flags, queue common.QueryQueue) error {
+	queue.Add(Query{
+		KeyMinimum: flags.keyMin,
+		KeyMaximum: flags.keyMax,
+	})
 	return nil
 }
 
@@ -118,19 +104,13 @@ func (call Call) Complete() <-chan any {
 					Err: result.Err.Error(),
 				}
 			} else {
-				ch <- Output{
-					Keys: result.Keys,
-				}
+				ch <- result.Keys
 			}
 		}
 		if emptyOutput {
-			ch <- Output{Keys: make([]string, 0)}
+			ch <- []string{}
 		}
 		close(ch)
 	}()
 	return ch
-}
-
-type Output struct {
-	Keys []string `json:"keys"`
 }
