@@ -17,13 +17,14 @@ package server
 import (
 	"context"
 	"fmt"
-	"github.com/pkg/errors"
-	"go.uber.org/multierr"
-	pb "google.golang.org/protobuf/proto"
 	"io"
 	"log/slog"
 	"sync"
 	"time"
+
+	"github.com/pkg/errors"
+	"go.uber.org/multierr"
+	pb "google.golang.org/protobuf/proto"
 
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/metrics"
@@ -691,7 +692,7 @@ func (lc *leaderController) Write(ctx context.Context, request *proto.WriteReque
 
 func (lc *leaderController) write(ctx context.Context, request func(int64) *proto.WriteRequest) (int64, *proto.WriteResponse, error) {
 	timer := lc.writeLatencyHisto.Timer()
-	defer timer.Done() //nolint:contextcheck
+	defer timer.Done() 
 
 	lc.log.Debug("Write operation")
 

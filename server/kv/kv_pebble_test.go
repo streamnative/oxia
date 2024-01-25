@@ -629,3 +629,186 @@ func TestPebbleSnapshot_Loader(t *testing.T) {
 	assert.NoError(t, kv2.Close())
 	assert.NoError(t, factory2.Close())
 }
+
+func TestPebbleRangeScanNoLimits(t *testing.T) {
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
+	kv, err := factory.NewKV(common.DefaultNamespace, 1)
+	assert.NoError(t, err)
+
+	wb := kv.NewWriteBatch()
+	assert.NoError(t, wb.Put("/root/a", []byte("a")))
+	assert.NoError(t, wb.Put("/root/b", []byte("b")))
+	assert.NoError(t, wb.Put("/root/c", []byte("c")))
+	assert.NoError(t, wb.Put("/root/d", []byte("d")))
+	assert.NoError(t, wb.Commit())
+	assert.NoError(t, wb.Close())
+
+	// No max
+	it, err := kv.RangeScan("/root/b", "")
+	assert.NoError(t, err)
+
+	assert.True(t, it.Valid())
+	assert.Equal(t, "/root/b", it.Key())
+	value, err := it.Value()
+	assert.NoError(t, err)
+	assert.Equal(t, "b", string(value))
+	assert.True(t, it.Next())
+
+	assert.True(t, it.Valid())
+	assert.Equal(t, "/root/c", it.Key())
+	value, err = it.Value()
+	assert.NoError(t, err)
+	assert.Equal(t, "c", string(value))
+	assert.True(t, it.Next())
+
+	assert.True(t, it.Valid())
+	assert.Equal(t, "/root/d", it.Key())
+	value, err = it.Value()
+	assert.NoError(t, err)
+	assert.Equal(t, "d", string(value))
+	assert.False(t, it.Next())
+
+	assert.False(t, it.Valid())
+
+	assert.NoError(t, it.Close())
+
+	// No min
+	it, err = kv.RangeScan("", "/root/c")
+	assert.NoError(t, err)
+
+	assert.True(t, it.Valid())
+	assert.Equal(t, "/root/a", it.Key())
+	value, err = it.Value()
+	assert.NoError(t, err)
+	assert.Equal(t, "a", string(value))
+	assert.True(t, it.Next())
+
+	assert.True(t, it.Valid())
+	assert.Equal(t, "/root/b", it.Key())
+	value, err = it.Value()
+	assert.NoError(t, err)
+	assert.Equal(t, "b", string(value))
+	assert.False(t, it.Next())
+
+	assert.False(t, it.Valid())
+
+	assert.NoError(t, it.Close())
+
+	// No min and max
+	it, err = kv.RangeScan("", "")
+	assert.NoError(t, err)
+
+	assert.True(t, it.Valid())
+	assert.Equal(t, "/root/a", it.Key())
+	value, err = it.Value()
+	assert.NoError(t, err)
+	assert.Equal(t, "a", string(value))
+	assert.True(t, it.Next())
+
+	assert.True(t, it.Valid())
+	assert.Equal(t, "/root/b", it.Key())
+	value, err = it.Value()
+	assert.NoError(t, err)
+	assert.Equal(t, "b", string(value))
+	assert.True(t, it.Next())
+
+	assert.True(t, it.Valid())
+	assert.Equal(t, "/root/c", it.Key())
+	value, err = it.Value()
+	assert.NoError(t, err)
+	assert.Equal(t, "c", string(value))
+	assert.True(t, it.Next())
+
+	assert.True(t, it.Valid())
+	assert.Equal(t, "/root/d", it.Key())
+	value, err = it.Value()
+	assert.NoError(t, err)
+	assert.Equal(t, "d", string(value))
+	assert.False(t, it.Next())
+
+	assert.False(t, it.Valid())
+
+	assert.NoError(t, it.Close())
+
+	assert.NoError(t, kv.Close())
+	assert.NoError(t, factory.Close())
+}
+
+func TestPebbleReverseRangeScanNoLimits(t *testing.T) {
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
+	kv, err := factory.NewKV(common.DefaultNamespace, 1)
+	assert.NoError(t, err)
+
+	wb := kv.NewWriteBatch()
+	assert.NoError(t, wb.Put("/root/a", []byte("a")))
+	assert.NoError(t, wb.Put("/root/b", []byte("b")))
+	assert.NoError(t, wb.Put("/root/c", []byte("c")))
+	assert.NoError(t, wb.Put("/root/d", []byte("d")))
+	assert.NoError(t, wb.Commit())
+	assert.NoError(t, wb.Close())
+
+	// No max
+	it, err := kv.KeyRangeScanReverse("/root/b", "")
+	assert.NoError(t, err)
+
+	assert.True(t, it.Valid())
+	assert.Equal(t, "/root/d", it.Key())
+	assert.True(t, it.Prev())
+
+	assert.True(t, it.Valid())
+	assert.Equal(t, "/root/c", it.Key())
+	assert.True(t, it.Prev())
+
+	assert.True(t, it.Valid())
+	assert.Equal(t, "/root/b", it.Key())
+	assert.False(t, it.Prev())
+
+	assert.False(t, it.Valid())
+
+	assert.NoError(t, it.Close())
+
+	// No min
+	it, err = kv.KeyRangeScanReverse("", "/root/c")
+	assert.NoError(t, err)
+
+	assert.True(t, it.Valid())
+	assert.Equal(t, "/root/b", it.Key())
+	assert.True(t, it.Prev())
+
+	assert.True(t, it.Valid())
+	assert.Equal(t, "/root/a", it.Key())
+	assert.False(t, it.Prev())
+
+	assert.False(t, it.Valid())
+
+	assert.NoError(t, it.Close())
+
+	// No min and max
+	it, err = kv.KeyRangeScanReverse("", "")
+	assert.NoError(t, err)
+
+	assert.True(t, it.Valid())
+	assert.Equal(t, "/root/d", it.Key())
+	assert.True(t, it.Prev())
+
+	assert.True(t, it.Valid())
+	assert.Equal(t, "/root/c", it.Key())
+	assert.True(t, it.Prev())
+
+	assert.True(t, it.Valid())
+	assert.Equal(t, "/root/b", it.Key())
+	assert.True(t, it.Prev())
+
+	assert.True(t, it.Valid())
+	assert.Equal(t, "/root/a", it.Key())
+	assert.False(t, it.Prev())
+
+	assert.False(t, it.Valid())
+
+	assert.NoError(t, it.Close())
+
+	assert.NoError(t, kv.Close())
+	assert.NoError(t, factory.Close())
+}
