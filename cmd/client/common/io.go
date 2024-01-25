@@ -44,6 +44,14 @@ func writeOutputCh(out io.Writer, valuesCh <-chan any) {
 }
 
 func writeOutput(out io.Writer, value any) {
+	if sl, ok := value.([]string); ok {
+		for _, s := range sl {
+			_, _ = out.Write([]byte(s))
+			_, _ = out.Write([]byte("\n"))
+		}
+		return
+	}
+
 	b, err := json.Marshal(value)
 	if err != nil {
 		panic(err)
