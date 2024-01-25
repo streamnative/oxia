@@ -692,7 +692,7 @@ func (lc *leaderController) Write(ctx context.Context, request *proto.WriteReque
 
 func (lc *leaderController) write(ctx context.Context, request func(int64) *proto.WriteRequest) (int64, *proto.WriteResponse, error) {
 	timer := lc.writeLatencyHisto.Timer()
-	defer timer.Done() 
+	defer timer.Done() //nolint:contextcheck
 
 	lc.log.Debug("Write operation")
 
