@@ -450,15 +450,6 @@ func (lc *leaderController) applyAllEntriesIntoDB() error {
 		return err
 	}
 
-	err = lc.sessionManager.Initialize()
-	if err != nil {
-		lc.log.Error(
-			"Failed to initialize session manager",
-			slog.Any("error", err),
-		)
-		return err
-	}
-
 	lc.log.Info(
 		"Applying all pending entries to database",
 		slog.Int64("commit-offset", dbCommitOffset),
@@ -476,7 +467,20 @@ func (lc *leaderController) applyAllEntriesIntoDB() error {
 		return err
 	}
 
-	return lc.applyAllEntriesIntoDBLoop(r)
+	if err = lc.applyAllEntriesIntoDBLoop(r); err != nil {
+		return errors.Wrap(err, "failed to applies wal entries to db")
+	}
+
+	err = lc.sessionManager.Initialize()
+	if err != nil {
+		lc.log.Error(
+			"Failed to initialize session manager",
+			slog.Any("error", err),
+		)
+		return err
+	}
+
+	return nil
 }
 
 func (lc *leaderController) truncateFollowerIfNeeded(follower string, followerHeadEntryId *proto.EntryId) (*proto.EntryId, error) {
@@ -629,7 +633,7 @@ func (lc *leaderController) list(ctx context.Context, request *proto.ListRequest
 			"peer":  common.GetPeer(ctx),
 		},
 		func() {
-			lc.log.Debug("Received list request")
+			lc.log.Debug("Received list request", slog.Any("request", request))
 
 			it, err := lc.db.List(request)
 			if err != nil {

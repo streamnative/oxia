@@ -48,13 +48,19 @@ func startSession(sessionId SessionId, sessionMetadata *proto.SessionMetadata, s
 		heartbeatCh:    make(chan bool, 1),
 
 		log: slog.With(
+			slog.String("client-identity", sessionMetadata.Identity),
 			slog.String("component", "session"),
 			slog.Int64("session-id", int64(sessionId)),
+			slog.String("namespace", sm.namespace),
+			slog.Int64("shard", sm.shardId),
 		),
 	}
+	sm.sessions[sessionId] = s
+
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	go s.waitForHeartbeats()
-	s.log.Debug("Session started")
+	s.log.Info("Session started",
+		slog.Duration("session-timeout", s.timeout))
 	return s
 }
 
@@ -67,14 +73,19 @@ func (s *session) closeChannels() {
 	s.log.Debug("Session channels closed")
 }
 
+func (s *session) close() error {
+	s.log.Info("Session closing")
+	return s.delete()
+}
+
 func (s *session) delete() error {
 	// Delete ephemeral data associated with this session
 	sessionKey := SessionKey(s.id)
 	// Read "index"
 	list, err := s.sm.leaderController.ListSliceNoMutex(context.Background(), &proto.ListRequest{
 		ShardId:        &s.shardId,
-		StartInclusive: sessionKey,
-		EndExclusive:   sessionKey + "/",
+		StartInclusive: sessionKey + "/",
+		EndExclusive:   sessionKey + "//",
 	})
 	if err != nil {
 		return err
@@ -86,7 +97,7 @@ func (s *session) delete() error {
 		slog.Any("keys", list),
 	)
 	for _, key := range list {
-		unescapedKey, err := url.PathUnescape(key[len(sessionKey):])
+		unescapedKey, err := url.PathUnescape(key[len(sessionKey)+1:])
 		if err != nil {
 			s.log.Error(
 				"Invalid session key",
@@ -109,11 +120,12 @@ func (s *session) delete() error {
 		DeleteRanges: []*proto.DeleteRangeRequest{
 			{
 				StartInclusive: sessionKey,
-				EndExclusive:   sessionKey + "/",
+				EndExclusive:   sessionKey + "//",
 			},
 		},
 	})
-	s.log.Debug("Session deleted")
+	s.log.Info("Session cleanup complete",
+		slog.Int("keys-deleted", len(deletes)))
 	return err
 }
 
@@ -141,7 +153,7 @@ func (s *session) waitForHeartbeats() {
 			}
 			timer.Reset(s.timeout)
 		case <-timeoutCh:
-			s.log.Info("Session expired")
+			s.log.Warn("Session expired")
 
 			s.Lock()
 			s.closeChannels()
