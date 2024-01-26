@@ -30,6 +30,7 @@ import (
 )
 
 func init() {
+	common.LogJSON = false
 	common.ConfigureLogger()
 }
 
@@ -295,9 +296,8 @@ func TestAsyncClientImpl_OverrideEphemeral(t *testing.T) {
 }
 
 func TestAsyncClientImpl_ClientIdentity(t *testing.T) {
-	identity1 := newKey()
 	client1, err := NewSyncClient(serviceAddress,
-		WithIdentity(identity1),
+		WithIdentity("client-1"),
 	)
 	assert.NoError(t, err)
 
@@ -306,10 +306,11 @@ func TestAsyncClientImpl_ClientIdentity(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.True(t, version.Ephemeral)
-	assert.Equal(t, identity1, version.ClientIdentity)
+	assert.Equal(t, "client-1", version.ClientIdentity)
 
 	client2, err := NewSyncClient(serviceAddress,
 		WithSessionTimeout(2*time.Second),
+		WithIdentity("client-2"),
 	)
 	assert.NoError(t, err)
 
@@ -319,14 +320,52 @@ func TestAsyncClientImpl_ClientIdentity(t *testing.T) {
 	assert.EqualValues(t, 0, version.ModificationsCount)
 	assert.Equal(t, "v1", string(res))
 	assert.True(t, version.Ephemeral)
-	assert.Equal(t, identity1, version.ClientIdentity)
+	assert.Equal(t, "client-1", version.ClientIdentity)
 
 	version, err = client2.Put(context.Background(), k, []byte("v2"), Ephemeral())
 	assert.NoError(t, err)
 
 	assert.True(t, version.Ephemeral)
-	assert.NotSame(t, "", version.ClientIdentity)
+	assert.Equal(t, "client-2", version.ClientIdentity)
 
 	assert.NoError(t, client1.Close())
 	assert.NoError(t, client2.Close())
+}
+
+func TestSyncClientImpl_SessionNotifications(t *testing.T) {
+	standaloneServer, err := server.NewStandalone(server.NewTestConfig(t.TempDir()))
+	assert.NoError(t, err)
+
+	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())
+	client1, err := NewSyncClient(serviceAddress, WithIdentity("client-1"))
+	assert.NoError(t, err)
+
+	client2, err := NewSyncClient(serviceAddress, WithIdentity("client-1"))
+	assert.NoError(t, err)
+
+	notifications, err := client2.GetNotifications()
+	assert.NoError(t, err)
+
+	ctx := context.Background()
+
+	s1, _ := client1.Put(ctx, "/a", []byte("0"), Ephemeral())
+
+	n := <-notifications.Ch()
+	assert.Equal(t, KeyCreated, n.Type)
+	assert.Equal(t, "/a", n.Key)
+	assert.Equal(t, s1.VersionId, n.VersionId)
+
+	err = client1.Close()
+	assert.NoError(t, err)
+
+	select {
+	case n = <-notifications.Ch():
+		assert.Equal(t, KeyDeleted, n.Type)
+		assert.Equal(t, "/a", n.Key)
+	case <-time.After(3 * time.Second):
+		assert.Fail(t, "read from channel timed out")
+	}
+
+	assert.NoError(t, client2.Close())
+	assert.NoError(t, standaloneServer.Close())
 }

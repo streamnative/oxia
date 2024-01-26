@@ -22,6 +22,8 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/multierr"
+
 	"github.com/cenkalti/backoff/v4"
 	"google.golang.org/grpc/status"
 
@@ -40,6 +42,7 @@ func newSessions(ctx context.Context, shardManager internal.ShardManager, pool c
 		clientOpts:      options,
 		log: slog.With(
 			slog.String("component", "oxia-session-manager"),
+			slog.String("client-identity", options.identity),
 		),
 	}
 	return s
@@ -71,13 +74,15 @@ func (s *sessions) startSession(shardId int64) *clientSession {
 	cs := &clientSession{
 		shardId:  shardId,
 		sessions: s,
-		ctx:      s.ctx,
 		started:  make(chan error),
 		log: slog.With(
 			slog.String("component", "session"),
 			slog.Int64("shard", shardId),
 		),
 	}
+
+	cs.ctx, cs.cancel = context.WithCancel(s.ctx)
+
 	cs.log.Debug("Creating session")
 	go common.DoWithLabels(
 		cs.ctx,
@@ -90,6 +95,15 @@ func (s *sessions) startSession(shardId int64) *clientSession {
 	return cs
 }
 
+func (s *sessions) Close() error {
+	var err error
+	for _, cs := range s.sessionsByShard {
+		err = multierr.Append(err, cs.Close())
+	}
+
+	return err
+}
+
 type clientSession struct {
 	sync.Mutex
 	started   chan error
@@ -98,6 +112,7 @@ type clientSession struct {
 	log       *slog.Logger
 	sessions  *sessions
 	ctx       context.Context
+	cancel    context.CancelFunc
 }
 
 func (cs *clientSession) executeWithId(callback func(int64, error)) {
@@ -163,6 +178,7 @@ func (cs *clientSession) createSession() error {
 	cs.sessionId = sessionId
 	cs.log = cs.log.With(
 		slog.Int64("session-id", sessionId),
+		slog.String("client-identity", cs.sessions.clientIdentity),
 	)
 	close(cs.started)
 	cs.log.Debug("Successfully created session")
@@ -200,7 +216,7 @@ func (cs *clientSession) createSession() error {
 				)
 			})
 
-			if !errors.Is(err, context.Canceled) {
+			if err != nil && !errors.Is(err, context.Canceled) {
 				cs.log.Error(
 					"Failed to keep alive session",
 					slog.Any("error", err),
@@ -217,11 +233,30 @@ func (cs *clientSession) getRpc() (proto.OxiaClientClient, error) {
 	return cs.sessions.pool.GetClientRpc(leader)
 }
 
+func (cs *clientSession) Close() error {
+	cs.cancel()
+
+	rpc, err := cs.getRpc()
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(cs.sessions.ctx, cs.sessions.clientOpts.requestTimeout)
+	defer cancel()
+
+	if _, err = rpc.CloseSession(ctx, &proto.CloseSessionRequest{
+		ShardId:   cs.shardId,
+		SessionId: cs.sessionId,
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (cs *clientSession) keepAlive() error {
 	cs.sessions.Lock()
 	cs.Lock()
 	timeout := cs.sessions.clientOpts.sessionTimeout
-	ctx := cs.sessions.ctx
+	ctx := cs.ctx
 	shardId := cs.shardId
 	sessionId := cs.sessionId
 	cs.Unlock()
@@ -248,19 +283,7 @@ func (cs *clientSession) keepAlive() error {
 				return err
 			}
 		case <-ctx.Done():
-			ctx, cancel := context.WithTimeout(context.Background(), cs.sessions.clientOpts.requestTimeout)
-			rpc, err = cs.getRpc()
-			if err != nil {
-				cancel()
-				return err
-			}
-			_, err = rpc.CloseSession(ctx, &proto.CloseSessionRequest{
-				ShardId:   shardId,
-				SessionId: sessionId,
-			})
-
-			cancel()
-			return err
+			return nil
 		}
 	}
 }

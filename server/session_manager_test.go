@@ -17,10 +17,11 @@ package server
 import (
 	"context"
 	"errors"
-	"github.com/streamnative/oxia/server/wal"
 	"io"
 	"testing"
 	"time"
+
+	"github.com/streamnative/oxia/server/wal"
 
 	"github.com/stretchr/testify/assert"
 	pb "google.golang.org/protobuf/proto"
