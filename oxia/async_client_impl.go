@@ -98,13 +98,14 @@ func NewAsyncClient(serviceAddress string, opts ...ClientOption) (AsyncClient, e
 }
 
 func (c *clientImpl) Close() error {
-	c.cancel()
-
-	return multierr.Combine(
+	err := multierr.Combine(
+		c.sessions.Close(),
 		c.writeBatchManager.Close(),
 		c.readBatchManager.Close(),
 		c.clientPool.Close(),
 	)
+	c.cancel()
+	return err
 }
 
 func (c *clientImpl) Put(key string, value []byte, options ...PutOption) <-chan PutResult {

@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -58,6 +59,9 @@ func newNotifications(shardId int64, offset int64, timestamp uint64) *notificati
 }
 
 func (n *notifications) Modified(key string, versionId, modificationsCount int64) {
+	if strings.HasPrefix(key, common.InternalKeyPrefix) {
+		return
+	}
 	nType := proto.NotificationType_KEY_CREATED
 	if modificationsCount > 0 {
 		nType = proto.NotificationType_KEY_MODIFIED
@@ -69,6 +73,9 @@ func (n *notifications) Modified(key string, versionId, modificationsCount int64
 }
 
 func (n *notifications) Deleted(key string) {
+	if strings.HasPrefix(key, common.InternalKeyPrefix) {
+		return
+	}
 	n.batch.Notifications[key] = &proto.Notification{
 		Type: proto.NotificationType_KEY_DELETED,
 	}

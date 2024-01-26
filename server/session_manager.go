@@ -137,6 +137,7 @@ func (sm *sessionManager) createSession(request *proto.CreateSessionRequest, min
 
 	metadata := proto.SessionMetadataFromVTPool()
 	metadata.TimeoutMs = uint32(timeout.Milliseconds())
+	metadata.Identity = request.ClientIdentity
 	defer metadata.ReturnToVTPool()
 
 	marshalledMetadata, err := metadata.MarshalVT()
