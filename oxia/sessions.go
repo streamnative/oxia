@@ -18,10 +18,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"go.uber.org/multierr"
 	"log/slog"
 	"sync"
 	"time"
+
+	"go.uber.org/multierr"
 
 	"github.com/cenkalti/backoff/v4"
 	"google.golang.org/grpc/status"

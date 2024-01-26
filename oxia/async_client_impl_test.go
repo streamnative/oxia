@@ -364,7 +364,6 @@ func TestSyncClientImpl_SessionNotifications(t *testing.T) {
 		assert.Equal(t, "/a", n.Key)
 	case <-time.After(3 * time.Second):
 		assert.Fail(t, "read from channel timed out")
-
 	}
 
 	assert.NoError(t, client2.Close())
