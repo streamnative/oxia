@@ -843,6 +843,11 @@ func (lc *leaderController) dispatchNotifications(ctx context.Context, req *prot
 		offsetInclusive = commitOffset + 1
 	}
 
+	return lc.iterateOverNotifications(ctx, stream, offsetInclusive)
+}
+
+func (lc *leaderController) iterateOverNotifications(ctx context.Context, stream proto.OxiaClient_GetNotificationsServer, startOffsetInclusive int64) error {
+	offsetInclusive := startOffsetInclusive
 	for ctx.Err() == nil {
 		notifications, err := lc.db.ReadNextNotifications(ctx, offsetInclusive)
 		if err != nil {
