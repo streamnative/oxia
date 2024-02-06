@@ -909,6 +909,28 @@ func TestLeaderController_NotificationsCloseLeader(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
+func TestLeaderController_NotificationsWhenNotReady(t *testing.T) {
+	var shard int64 = 1
+
+	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
+	walFactory := newTestWalFactory(t)
+
+	lc, _ := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	_, _ = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stream := newMockGetNotificationsServer(ctx)
+
+	// Get notification should fail if the leader controller is not fully initialized
+	err := lc.GetNotifications(&proto.NotificationsRequest{ShardId: shard}, stream)
+	assert.ErrorIs(t, err, context.Canceled)
+
+	assert.NoError(t, lc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
 func TestLeaderController_List(t *testing.T) {
 	var shard int64 = 1
 

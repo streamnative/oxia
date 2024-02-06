@@ -793,6 +793,9 @@ func (lc *leaderController) GetNotifications(req *proto.NotificationsRequest, st
 		cancel()
 		return lc.ctx.Err()
 
+	case <-ctx.Done():
+		return ctx.Err()
+
 	case <-stream.Context().Done():
 		// The stream is getting closed
 		cancel()
@@ -810,7 +813,14 @@ func (lc *leaderController) dispatchNotifications(ctx context.Context, req *prot
 	if req.StartOffsetExclusive != nil {
 		offsetInclusive = *req.StartOffsetExclusive + 1
 	} else {
-		commitOffset := lc.quorumAckTracker.CommitOffset()
+		lc.Lock()
+		qat := lc.quorumAckTracker
+		lc.Unlock()
+
+		if qat == nil {
+			return errors.New("leader is not yet ready")
+		}
+		commitOffset := qat.CommitOffset()
 
 		// The client is creating a new notification stream and wants to receive the notification from the next
 		// entry that will be written.
