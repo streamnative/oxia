@@ -1,5 +1,24 @@
 # Deploying in Kubernetes with Oxia cluster Helm chart
 
+## Deploying the Oxia cluster
+
+To deploy the Oxia cluster with Helm:
+
+```shell
+$ kubectl create namespace oxia
+
+$ git clone https://github.com/streamnative/oxia.git
+
+$ cd oxia
+
+$ helm upgrade --install oxia \
+  --namespace oxia \
+  --set image.repository=streamnative/oxia \
+  --set image.tag=main \
+  --set image.pullPolicy=IfNotPresent \
+  deploy/charts/oxia-cluster
+```
+
 ## Monitoring Oxia
 
 Oxia support monitoring through exposing a `ServiceMonitor` profile. If you have already a Prometheus deployment 
@@ -57,22 +76,3 @@ $ rm -rf kube-prometheus-stack*
 ```
 
 > ***Note***:  The default login credentials for grafana are admin/prom-operator.
-
-## Deploying the Oxia cluster
-
-To deploy the Oxia cluster with Helm: 
-
-```shell
-$ kubectl create namespace oxia
-
-$ git clone https://github.com/streamnative/oxia.git
-
-$ cd oxia
-
-$ helm upgrade --install oxia \
-  --namespace oxia \
-  --set image.repository=oxia \
-  --set image.tag=latest \
-  --set image.pullPolicy=Never \
-  deploy/charts/oxia-cluster
-```
