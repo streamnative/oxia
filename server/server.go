@@ -31,8 +31,8 @@ import (
 type Config struct {
 	PublicServiceAddr   string
 	InternalServiceAddr string
-	PeerTls             *tls.Config
-	ServerTls           *tls.Config
+	PeerTLS             *tls.Config
+	ServerTLS           *tls.Config
 	MetricsServiceAddr  string
 	DataDir             string
 	WalDir              string
@@ -59,7 +59,7 @@ type Server struct {
 }
 
 func New(config Config) (*Server, error) {
-	return NewWithGrpcProvider(config, container.Default, NewReplicationRpcProvider(config.PeerTls))
+	return NewWithGrpcProvider(config, container.Default, NewReplicationRpcProvider(config.PeerTLS))
 }
 
 func NewWithGrpcProvider(config Config, provider container.GrpcProvider, replicationRpcProvider ReplicationRpcProvider) (*Server, error) {
@@ -92,13 +92,13 @@ func NewWithGrpcProvider(config Config, provider container.GrpcProvider, replica
 	s.shardAssignmentDispatcher = NewShardAssignmentDispatcher(s.healthServer)
 
 	s.internalRpcServer, err = newInternalRpcServer(provider, config.InternalServiceAddr,
-		s.shardsDirector, s.shardAssignmentDispatcher, s.healthServer, config.ServerTls)
+		s.shardsDirector, s.shardAssignmentDispatcher, s.healthServer, config.ServerTLS)
 	if err != nil {
 		return nil, err
 	}
 
 	s.publicRpcServer, err = newPublicRpcServer(provider, config.PublicServiceAddr, s.shardsDirector,
-		s.shardAssignmentDispatcher, config.ServerTls)
+		s.shardAssignmentDispatcher, config.ServerTLS)
 	if err != nil {
 		return nil, err
 	}

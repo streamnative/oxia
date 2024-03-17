@@ -16,20 +16,22 @@ package tls
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/security"
 	"github.com/streamnative/oxia/coordinator/impl"
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/oxia"
 	"github.com/streamnative/oxia/server"
-	"github.com/stretchr/testify/assert"
-	"os"
-	"path/filepath"
-	"testing"
-	"time"
 )
 
-func getPeerTlsOption() (*security.TlsOption, error) {
+func getPeerTLSOption() (*security.TLSOption, error) {
 	pwd, err := os.Getwd()
 	if err != nil {
 		return nil, err
@@ -39,7 +41,7 @@ func getPeerTlsOption() (*security.TlsOption, error) {
 	peerCertPath := filepath.Join(parentDir, "certs", "peer.crt")
 	peerKeyPath := filepath.Join(parentDir, "certs", "peer.key")
 
-	peerOption := security.TlsOption{
+	peerOption := security.TLSOption{
 		CertFile:      peerCertPath,
 		KeyFile:       peerKeyPath,
 		TrustedCaFile: caCertPath,
@@ -47,7 +49,7 @@ func getPeerTlsOption() (*security.TlsOption, error) {
 	return &peerOption, nil
 }
 
-func getClientTlsOption() (*security.TlsOption, error) {
+func getClientTLSOption() (*security.TLSOption, error) {
 	pwd, err := os.Getwd()
 	if err != nil {
 		return nil, err
@@ -57,7 +59,7 @@ func getClientTlsOption() (*security.TlsOption, error) {
 	peerCertPath := filepath.Join(parentDir, "certs", "client.crt")
 	peerKeyPath := filepath.Join(parentDir, "certs", "client.key")
 
-	clientOption := security.TlsOption{
+	clientOption := security.TLSOption{
 		CertFile:      peerCertPath,
 		KeyFile:       peerKeyPath,
 		TrustedCaFile: caCertPath,
@@ -65,13 +67,13 @@ func getClientTlsOption() (*security.TlsOption, error) {
 	return &clientOption, nil
 }
 
-func newTlsServer(t *testing.T) (s *server.Server, addr model.ServerAddress) {
+func newTLSServer(t *testing.T) (s *server.Server, addr model.ServerAddress) {
 	t.Helper()
-	option, err := getPeerTlsOption()
+	option, err := getPeerTLSOption()
 	assert.NoError(t, err)
-	serverTlsConf, err := option.MakeServerTlsConf()
+	serverTLSConf, err := option.MakeServerTLSConf()
 	assert.NoError(t, err)
-	peerTlsConf, err := option.MakeClientTlsConf()
+	peerTLSConf, err := option.MakeClientTLSConf()
 	assert.NoError(t, err)
 
 	s, err = server.New(server.Config{
@@ -81,8 +83,8 @@ func newTlsServer(t *testing.T) (s *server.Server, addr model.ServerAddress) {
 		DataDir:                    t.TempDir(),
 		WalDir:                     t.TempDir(),
 		NotificationsRetentionTime: 1 * time.Minute,
-		PeerTls:                    peerTlsConf,
-		ServerTls:                  serverTlsConf,
+		PeerTLS:                    peerTLSConf,
+		ServerTLS:                  serverTLSConf,
 	})
 
 	assert.NoError(t, err)
@@ -96,11 +98,11 @@ func newTlsServer(t *testing.T) (s *server.Server, addr model.ServerAddress) {
 }
 
 func TestClusterHandshakeSuccess(t *testing.T) {
-	s1, sa1 := newTlsServer(t)
+	s1, sa1 := newTLSServer(t)
 	defer s1.Close()
-	s2, sa2 := newTlsServer(t)
+	s2, sa2 := newTLSServer(t)
 	defer s2.Close()
-	s3, sa3 := newTlsServer(t)
+	s3, sa3 := newTLSServer(t)
 	defer s3.Close()
 
 	metadataProvider := impl.NewMetadataProviderMemory()
@@ -112,9 +114,9 @@ func TestClusterHandshakeSuccess(t *testing.T) {
 		}},
 		Servers: []model.ServerAddress{sa1, sa2, sa3},
 	}
-	option, err := getPeerTlsOption()
+	option, err := getPeerTLSOption()
 	assert.NoError(t, err)
-	tlsConf, err := option.MakeClientTlsConf()
+	tlsConf, err := option.MakeClientTLSConf()
 	assert.NoError(t, err)
 
 	clientPool := common.NewClientPool(tlsConf)
@@ -126,11 +128,11 @@ func TestClusterHandshakeSuccess(t *testing.T) {
 }
 
 func TestClientHandshakeFailByNoTlsConfig(t *testing.T) {
-	s1, sa1 := newTlsServer(t)
+	s1, sa1 := newTLSServer(t)
 	defer s1.Close()
-	s2, sa2 := newTlsServer(t)
+	s2, sa2 := newTLSServer(t)
 	defer s2.Close()
-	s3, sa3 := newTlsServer(t)
+	s3, sa3 := newTLSServer(t)
 	defer s3.Close()
 
 	metadataProvider := impl.NewMetadataProviderMemory()
@@ -142,9 +144,9 @@ func TestClientHandshakeFailByNoTlsConfig(t *testing.T) {
 		}},
 		Servers: []model.ServerAddress{sa1, sa2, sa3},
 	}
-	option, err := getPeerTlsOption()
+	option, err := getPeerTLSOption()
 	assert.NoError(t, err)
-	tlsConf, err := option.MakeClientTlsConf()
+	tlsConf, err := option.MakeClientTLSConf()
 	assert.NoError(t, err)
 
 	clientPool := common.NewClientPool(tlsConf)
@@ -154,16 +156,16 @@ func TestClientHandshakeFailByNoTlsConfig(t *testing.T) {
 	assert.NoError(t, err)
 	defer coordinator.Close()
 
-	client, err := oxia.NewSyncClient(sa1.Public)
+	client, _ := oxia.NewSyncClient(sa1.Public)
 	assert.Nil(t, client)
 }
 
 func TestClientHandshakeByAuthFail(t *testing.T) {
-	s1, sa1 := newTlsServer(t)
+	s1, sa1 := newTLSServer(t)
 	defer s1.Close()
-	s2, sa2 := newTlsServer(t)
+	s2, sa2 := newTLSServer(t)
 	defer s2.Close()
-	s3, sa3 := newTlsServer(t)
+	s3, sa3 := newTLSServer(t)
 	defer s3.Close()
 
 	metadataProvider := impl.NewMetadataProviderMemory()
@@ -175,9 +177,9 @@ func TestClientHandshakeByAuthFail(t *testing.T) {
 		}},
 		Servers: []model.ServerAddress{sa1, sa2, sa3},
 	}
-	option, err := getPeerTlsOption()
+	option, err := getPeerTLSOption()
 	assert.NoError(t, err)
-	tlsConf, err := option.MakeClientTlsConf()
+	tlsConf, err := option.MakeClientTLSConf()
 	assert.NoError(t, err)
 
 	clientPool := common.NewClientPool(tlsConf)
@@ -187,22 +189,22 @@ func TestClientHandshakeByAuthFail(t *testing.T) {
 	assert.NoError(t, err)
 	defer coordinator.Close()
 
-	tlsOption, err := getClientTlsOption()
+	tlsOption, err := getClientTLSOption()
 	// clear the CA file
 	tlsOption.TrustedCaFile = ""
 	assert.NoError(t, err)
-	tlsConf, err = tlsOption.MakeClientTlsConf()
+	tlsConf, err = tlsOption.MakeClientTLSConf()
 	assert.NoError(t, err)
-	client, err := oxia.NewSyncClient(sa1.Public, oxia.WithTls(tlsConf))
+	client, _ := oxia.NewSyncClient(sa1.Public, oxia.WithTLS(tlsConf))
 	assert.Nil(t, client)
 }
 
 func TestClientHandshakeWithInsecure(t *testing.T) {
-	s1, sa1 := newTlsServer(t)
+	s1, sa1 := newTLSServer(t)
 	defer s1.Close()
-	s2, sa2 := newTlsServer(t)
+	s2, sa2 := newTLSServer(t)
 	defer s2.Close()
-	s3, sa3 := newTlsServer(t)
+	s3, sa3 := newTLSServer(t)
 	defer s3.Close()
 
 	metadataProvider := impl.NewMetadataProviderMemory()
@@ -214,9 +216,9 @@ func TestClientHandshakeWithInsecure(t *testing.T) {
 		}},
 		Servers: []model.ServerAddress{sa1, sa2, sa3},
 	}
-	option, err := getPeerTlsOption()
+	option, err := getPeerTLSOption()
 	assert.NoError(t, err)
-	tlsConf, err := option.MakeClientTlsConf()
+	tlsConf, err := option.MakeClientTLSConf()
 	assert.NoError(t, err)
 
 	clientPool := common.NewClientPool(tlsConf)
@@ -226,24 +228,24 @@ func TestClientHandshakeWithInsecure(t *testing.T) {
 	assert.NoError(t, err)
 	defer coordinator.Close()
 
-	tlsOption, err := getClientTlsOption()
+	tlsOption, err := getClientTLSOption()
 	// clear the CA file
 	tlsOption.TrustedCaFile = ""
 	tlsOption.InsecureSkipVerify = true
 	assert.NoError(t, err)
-	tlsConf, err = tlsOption.MakeClientTlsConf()
+	tlsConf, err = tlsOption.MakeClientTLSConf()
 	assert.NoError(t, err)
-	client, err := oxia.NewSyncClient(sa1.Public, oxia.WithTls(tlsConf))
+	client, err := oxia.NewSyncClient(sa1.Public, oxia.WithTLS(tlsConf))
 	assert.NoError(t, err)
 	client.Close()
 }
 
 func TestClientHandshakeSuccess(t *testing.T) {
-	s1, sa1 := newTlsServer(t)
+	s1, sa1 := newTLSServer(t)
 	defer s1.Close()
-	s2, sa2 := newTlsServer(t)
+	s2, sa2 := newTLSServer(t)
 	defer s2.Close()
-	s3, sa3 := newTlsServer(t)
+	s3, sa3 := newTLSServer(t)
 	defer s3.Close()
 
 	metadataProvider := impl.NewMetadataProviderMemory()
@@ -255,9 +257,9 @@ func TestClientHandshakeSuccess(t *testing.T) {
 		}},
 		Servers: []model.ServerAddress{sa1, sa2, sa3},
 	}
-	option, err := getPeerTlsOption()
+	option, err := getPeerTLSOption()
 	assert.NoError(t, err)
-	tlsConf, err := option.MakeClientTlsConf()
+	tlsConf, err := option.MakeClientTLSConf()
 	assert.NoError(t, err)
 
 	clientPool := common.NewClientPool(tlsConf)
@@ -267,11 +269,11 @@ func TestClientHandshakeSuccess(t *testing.T) {
 	assert.NoError(t, err)
 	defer coordinator.Close()
 
-	tlsOption, err := getClientTlsOption()
+	tlsOption, err := getClientTLSOption()
 	assert.NoError(t, err)
-	tlsConf, err = tlsOption.MakeClientTlsConf()
+	tlsConf, err = tlsOption.MakeClientTLSConf()
 	assert.NoError(t, err)
-	client, err := oxia.NewSyncClient(sa1.Public, oxia.WithTls(tlsConf))
+	client, err := oxia.NewSyncClient(sa1.Public, oxia.WithTLS(tlsConf))
 	assert.NoError(t, err)
 	client.Close()
 }

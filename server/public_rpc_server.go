@@ -44,7 +44,7 @@ type publicRpcServer struct {
 }
 
 func newPublicRpcServer(provider container.GrpcProvider, bindAddress string, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher,
-	tls *tls.Config) (*publicRpcServer, error) {
+	tlsConf *tls.Config) (*publicRpcServer, error) {
 	server := &publicRpcServer{
 		shardsDirector:       shardsDirector,
 		assignmentDispatcher: assignmentDispatcher,
@@ -56,7 +56,7 @@ func newPublicRpcServer(provider container.GrpcProvider, bindAddress string, sha
 	var err error
 	server.grpcServer, err = provider.StartGrpcServer("public", bindAddress, func(registrar grpc.ServiceRegistrar) {
 		proto.RegisterOxiaClientServer(registrar, server)
-	}, tls)
+	}, tlsConf)
 	if err != nil {
 		return nil, err
 	}

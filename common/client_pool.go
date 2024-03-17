@@ -17,12 +17,13 @@ package common
 import (
 	"context"
 	"crypto/tls"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
 	"io"
 	"log/slog"
 	"sync"
 	"time"
+
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 
 	grpcprometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/pkg/errors"
@@ -51,10 +52,10 @@ type clientPool struct {
 	log *slog.Logger
 }
 
-func NewClientPool(tls *tls.Config) ClientPool {
+func NewClientPool(tlsConf *tls.Config) ClientPool {
 	return &clientPool{
 		connections: make(map[string]grpc.ClientConnInterface),
-		tls:         tls,
+		tls:         tlsConf,
 		log: slog.With(
 			slog.String("component", "client-pool"),
 		),

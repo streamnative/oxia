@@ -40,9 +40,9 @@ type replicationRpcProvider struct {
 	pool common.ClientPool
 }
 
-func NewReplicationRpcProvider(tls *tls.Config) ReplicationRpcProvider {
+func NewReplicationRpcProvider(tlsConf *tls.Config) ReplicationRpcProvider {
 	return &replicationRpcProvider{
-		pool: common.NewClientPool(tls),
+		pool: common.NewClientPool(tlsConf),
 	}
 }
 

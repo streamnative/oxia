@@ -45,7 +45,7 @@ var (
 	ErrInvalidOptionSessionTimeout      = errors.New("SessionTimeout must be greater than zero")
 	ErrInvalidOptionIdentity            = errors.New("Identity must be non-empty")
 	ErrInvalidOptionNamespace           = errors.New("Namespace cannot be empty")
-	ErrInvalidOptionTls                 = errors.New("Tls cannot be empty")
+	ErrInvalidOptionTLS                 = errors.New("Tls cannot be empty")
 )
 
 // clientOptions contains options for the Oxia client.
@@ -190,12 +190,12 @@ func WithIdentity(identity string) ClientOption {
 	})
 }
 
-func WithTls(tls *tls.Config) ClientOption {
+func WithTLS(tlsConf *tls.Config) ClientOption {
 	return clientOptionFunc(func(options clientOptions) (clientOptions, error) {
-		if tls == nil {
-			return options, ErrInvalidOptionTls
+		if tlsConf == nil {
+			return options, ErrInvalidOptionTLS
 		}
-		options.tls = tls
+		options.tls = tlsConf
 		return options, nil
 	})
 }

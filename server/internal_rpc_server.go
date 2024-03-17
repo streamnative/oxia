@@ -46,7 +46,7 @@ type internalRpcServer struct {
 }
 
 func newInternalRpcServer(grpcProvider container.GrpcProvider, bindAddress string, shardsDirector ShardsDirector,
-	assignmentDispatcher ShardAssignmentsDispatcher, healthServer *health.Server, tls *tls.Config) (*internalRpcServer, error) {
+	assignmentDispatcher ShardAssignmentsDispatcher, healthServer *health.Server, tlsConf *tls.Config) (*internalRpcServer, error) {
 	server := &internalRpcServer{
 		shardsDirector:       shardsDirector,
 		assignmentDispatcher: assignmentDispatcher,
@@ -61,7 +61,7 @@ func newInternalRpcServer(grpcProvider container.GrpcProvider, bindAddress strin
 		proto.RegisterOxiaCoordinationServer(registrar, server)
 		proto.RegisterOxiaLogReplicationServer(registrar, server)
 		grpc_health_v1.RegisterHealthServer(registrar, server.healthServer)
-	}, tls)
+	}, tlsConf)
 	if err != nil {
 		return nil, err
 	}

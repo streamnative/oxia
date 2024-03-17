@@ -32,8 +32,8 @@ import (
 type Config struct {
 	InternalServiceAddr       string
 	InternalSecureServiceAddr string
-	PeerTls                   *tls.Config
-	ServerTls                 *tls.Config
+	PeerTLS                   *tls.Config
+	ServerTLS                 *tls.Config
 	MetricsServiceAddr        string
 	MetadataProviderImpl      MetadataProviderImpl
 	K8SMetadataNamespace      string
@@ -91,7 +91,7 @@ func New(config Config) (*Coordinator, error) {
 	)
 
 	s := &Coordinator{
-		clientPool: common.NewClientPool(config.PeerTls),
+		clientPool: common.NewClientPool(config.PeerTLS),
 	}
 
 	var metadataProvider impl.MetadataProvider
@@ -113,7 +113,7 @@ func New(config Config) (*Coordinator, error) {
 		return nil, err
 	}
 
-	if s.rpcServer, err = newRpcServer(config.InternalServiceAddr, config.ServerTls); err != nil {
+	if s.rpcServer, err = newRpcServer(config.InternalServiceAddr, config.ServerTLS); err != nil {
 		return nil, err
 	}
 

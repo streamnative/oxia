@@ -18,11 +18,12 @@ import (
 	libtls "crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
-	"github.com/pkg/errors"
 	"os"
+
+	"github.com/pkg/errors"
 )
 
-type TlsOption struct {
+type TLSOption struct {
 	// CertFile is the path to the server certificate file.
 	CertFile string
 	// KeyFile is the path to the private key file.
@@ -44,20 +45,20 @@ type TlsOption struct {
 }
 
 var (
-	InvalidTlsCertFile = errors.New("Tls cert file path can not be empty.")
-	InvalidTlsKeyFile  = errors.New("Tls key file path can not be empty.")
+	ErrInvalidTLSCertFile = errors.New("tls cert file path can not be empty")
+	ErrInvalidTLSKeyFile  = errors.New("tls key file path can not be empty")
 )
 
-func (tls *TlsOption) IsConfigured() bool {
+func (tls *TLSOption) IsConfigured() bool {
 	return tls.CertFile != ""
 }
 
-func (tls *TlsOption) makeCommonConfig() (*libtls.Config, error) {
+func (tls *TLSOption) makeCommonConfig() (*libtls.Config, error) {
 	if tls.CertFile == "" {
-		return nil, InvalidTlsCertFile
+		return nil, ErrInvalidTLSCertFile
 	}
 	if tls.KeyFile == "" {
-		return nil, InvalidTlsKeyFile
+		return nil, ErrInvalidTLSKeyFile
 	}
 
 	// validate it first
@@ -72,9 +73,10 @@ func (tls *TlsOption) makeCommonConfig() (*libtls.Config, error) {
 	}
 
 	tlsConf := libtls.Config{
-		MinVersion:         minVersion,
-		MaxVersion:         tls.MaxVersion,
-		ServerName:         tls.ServerName,
+		MinVersion: minVersion,
+		MaxVersion: tls.MaxVersion,
+		ServerName: tls.ServerName,
+		// #nosec G402
 		InsecureSkipVerify: tls.InsecureSkipVerify,
 	}
 
@@ -84,14 +86,14 @@ func (tls *TlsOption) makeCommonConfig() (*libtls.Config, error) {
 	return &tlsConf, nil
 }
 
-func (tls *TlsOption) trustedCertPool() (*x509.CertPool, error) {
+func (tls *TLSOption) trustedCertPool() (*x509.CertPool, error) {
 	certPool := x509.NewCertPool()
 	bPem, err := os.ReadFile(tls.TrustedCaFile)
 	if err != nil {
 		return nil, err
 	}
 	var block *pem.Block
-	block, bPem = pem.Decode(bPem)
+	block, _ = pem.Decode(bPem)
 	if block != nil {
 		cert, err := x509.ParseCertificate(block.Bytes)
 		if err != nil {
@@ -102,7 +104,7 @@ func (tls *TlsOption) trustedCertPool() (*x509.CertPool, error) {
 	return certPool, nil
 }
 
-func (tls *TlsOption) MakeClientTlsConf() (*libtls.Config, error) {
+func (tls *TLSOption) MakeClientTLSConf() (*libtls.Config, error) {
 	tlsConf, err := tls.makeCommonConfig()
 	if err != nil {
 		return nil, err
@@ -123,7 +125,7 @@ func (tls *TlsOption) MakeClientTlsConf() (*libtls.Config, error) {
 	return tlsConf, nil
 }
 
-func (tls *TlsOption) MakeServerTlsConf() (*libtls.Config, error) {
+func (tls *TLSOption) MakeServerTLSConf() (*libtls.Config, error) {
 	tlsConf, err := tls.makeCommonConfig()
 	if err != nil {
 		return nil, err
