@@ -16,6 +16,9 @@ package common
 
 import (
 	"context"
+	"crypto/tls"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	"io"
 	"log/slog"
 	"sync"
@@ -24,7 +27,6 @@ import (
 	grpcprometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/peer"
 
@@ -45,12 +47,14 @@ type clientPool struct {
 	sync.RWMutex
 	connections map[string]grpc.ClientConnInterface
 
+	tls *tls.Config
 	log *slog.Logger
 }
 
-func NewClientPool() ClientPool {
+func NewClientPool(tls *tls.Config) ClientPool {
 	return &clientPool{
 		connections: make(map[string]grpc.ClientConnInterface),
+		tls:         tls,
 		log: slog.With(
 			slog.String("component", "client-pool"),
 		),
@@ -131,8 +135,14 @@ func (cp *clientPool) getConnection(target string) (grpc.ClientConnInterface, er
 		slog.String("server_address", target),
 	)
 
+	// tls configure
+	tcs := insecure.NewCredentials()
+	if cp.tls != nil {
+		tcs = credentials.NewTLS(cp.tls)
+	}
+
 	cnx, err := grpc.Dial(target,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(tcs),
 		grpc.WithStreamInterceptor(grpcprometheus.StreamClientInterceptor),
 		grpc.WithUnaryInterceptor(grpcprometheus.UnaryClientInterceptor),
 	)

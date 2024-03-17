@@ -15,6 +15,7 @@
 package oxia
 
 import (
+	"crypto/tls"
 	"time"
 
 	"github.com/google/uuid"
@@ -44,6 +45,7 @@ var (
 	ErrInvalidOptionSessionTimeout      = errors.New("SessionTimeout must be greater than zero")
 	ErrInvalidOptionIdentity            = errors.New("Identity must be non-empty")
 	ErrInvalidOptionNamespace           = errors.New("Namespace cannot be empty")
+	ErrInvalidOptionTls                 = errors.New("Tls cannot be empty")
 )
 
 // clientOptions contains options for the Oxia client.
@@ -57,6 +59,7 @@ type clientOptions struct {
 	meterProvider       metric.MeterProvider
 	sessionTimeout      time.Duration
 	identity            string
+	tls                 *tls.Config
 }
 
 func defaultIdentity() string {
@@ -183,6 +186,16 @@ func WithIdentity(identity string) ClientOption {
 			return options, ErrInvalidOptionIdentity
 		}
 		options.identity = identity
+		return options, nil
+	})
+}
+
+func WithTls(tls *tls.Config) ClientOption {
+	return clientOptionFunc(func(options clientOptions) (clientOptions, error) {
+		if tls == nil {
+			return options, ErrInvalidOptionTls
+		}
+		options.tls = tls
 		return options, nil
 	})
 }

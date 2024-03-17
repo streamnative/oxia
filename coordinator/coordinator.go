@@ -15,6 +15,7 @@
 package coordinator
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -29,14 +30,17 @@ import (
 )
 
 type Config struct {
-	InternalServiceAddr      string
-	MetricsServiceAddr       string
-	MetadataProviderImpl     MetadataProviderImpl
-	K8SMetadataNamespace     string
-	K8SMetadataConfigMapName string
-	FileMetadataPath         string
-	ClusterConfigProvider    func() (model.ClusterConfig, error)
-	ClusterConfigRefreshTime time.Duration
+	InternalServiceAddr       string
+	InternalSecureServiceAddr string
+	PeerTls                   *tls.Config
+	ServerTls                 *tls.Config
+	MetricsServiceAddr        string
+	MetadataProviderImpl      MetadataProviderImpl
+	K8SMetadataNamespace      string
+	K8SMetadataConfigMapName  string
+	FileMetadataPath          string
+	ClusterConfigProvider     func() (model.ClusterConfig, error)
+	ClusterConfigRefreshTime  time.Duration
 }
 
 type MetadataProviderImpl string
@@ -87,7 +91,7 @@ func New(config Config) (*Coordinator, error) {
 	)
 
 	s := &Coordinator{
-		clientPool: common.NewClientPool(),
+		clientPool: common.NewClientPool(config.PeerTls),
 	}
 
 	var metadataProvider impl.MetadataProvider
@@ -109,7 +113,7 @@ func New(config Config) (*Coordinator, error) {
 		return nil, err
 	}
 
-	if s.rpcServer, err = newRpcServer(config.InternalServiceAddr); err != nil {
+	if s.rpcServer, err = newRpcServer(config.InternalServiceAddr, config.ServerTls); err != nil {
 		return nil, err
 	}
 

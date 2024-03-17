@@ -16,6 +16,7 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
 	"log/slog"
 
 	"github.com/pkg/errors"
@@ -42,7 +43,8 @@ type publicRpcServer struct {
 	log                  *slog.Logger
 }
 
-func newPublicRpcServer(provider container.GrpcProvider, bindAddress string, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher) (*publicRpcServer, error) {
+func newPublicRpcServer(provider container.GrpcProvider, bindAddress string, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher,
+	tls *tls.Config) (*publicRpcServer, error) {
 	server := &publicRpcServer{
 		shardsDirector:       shardsDirector,
 		assignmentDispatcher: assignmentDispatcher,
@@ -54,7 +56,7 @@ func newPublicRpcServer(provider container.GrpcProvider, bindAddress string, sha
 	var err error
 	server.grpcServer, err = provider.StartGrpcServer("public", bindAddress, func(registrar grpc.ServiceRegistrar) {
 		proto.RegisterOxiaClientServer(registrar, server)
-	})
+	}, tls)
 	if err != nil {
 		return nil, err
 	}
