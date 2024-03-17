@@ -31,7 +31,7 @@ import (
 func TestInternalHealthCheck(t *testing.T) {
 	healthServer := health.NewServer()
 	server, err := newInternalRpcServer(container.Default, "localhost:0", nil,
-		NewShardAssignmentDispatcher(healthServer), healthServer)
+		NewShardAssignmentDispatcher(healthServer), healthServer, nil)
 	assert.NoError(t, err)
 
 	target := fmt.Sprintf("localhost:%d", server.grpcServer.Port())
