@@ -84,7 +84,8 @@ func NewStandalone(config StandaloneConfig) (*Standalone, error) {
 		return nil, err
 	}
 
-	s.rpc, err = newPublicRpcServer(container.Default, config.PublicServiceAddr, s.shardsDirector, nil)
+	s.rpc, err = newPublicRpcServer(container.Default, config.PublicServiceAddr, s.shardsDirector,
+		nil, config.ServerTLS)
 	if err != nil {
 		return nil, err
 	}

@@ -1,0 +1,13 @@
+# CA
+openssl genrsa -out ca.key 2048
+openssl req -x509 -new -nodes -key ca.key -subj "/CN=oxia-ca" -days 3650 -out ca.crt
+
+# client
+openssl genrsa -out client.key 2048
+openssl req -new -key client.key -subj "/CN=oxia-client" -out client.csr -config openssl.conf
+openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out client.crt -days 3650 -extensions oxia_req  -extfile openssl.conf
+
+# peer & server
+openssl genrsa -out peer.key 2048
+openssl req -new -key peer.key -subj "/CN=oxia-peer" -out peer.csr -config openssl.conf
+openssl x509 -req -in peer.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out peer.crt -days 3650 -extensions oxia_req  -extfile openssl.conf

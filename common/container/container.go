@@ -16,10 +16,14 @@ package container
 
 import (
 	"context"
+	"crypto/tls"
 	"io"
 	"log/slog"
 	"net"
 	"os"
+
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 
 	grpcprometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"google.golang.org/grpc"
@@ -40,7 +44,7 @@ type GrpcServer interface {
 }
 
 type GrpcProvider interface {
-	StartGrpcServer(name, bindAddress string, registerFunc func(grpc.ServiceRegistrar)) (GrpcServer, error)
+	StartGrpcServer(name, bindAddress string, registerFunc func(grpc.ServiceRegistrar), tlsConf *tls.Config) (GrpcServer, error)
 }
 
 var Default = &defaultProvider{}
@@ -48,8 +52,8 @@ var Default = &defaultProvider{}
 type defaultProvider struct {
 }
 
-func (*defaultProvider) StartGrpcServer(name, bindAddress string, registerFunc func(grpc.ServiceRegistrar)) (GrpcServer, error) {
-	return newDefaultGrpcProvider(name, bindAddress, registerFunc)
+func (*defaultProvider) StartGrpcServer(name, bindAddress string, registerFunc func(grpc.ServiceRegistrar), tlsConf *tls.Config) (GrpcServer, error) {
+	return newDefaultGrpcProvider(name, bindAddress, registerFunc, tlsConf)
 }
 
 type defaultGrpcServer struct {
@@ -59,9 +63,15 @@ type defaultGrpcServer struct {
 	log    *slog.Logger
 }
 
-func newDefaultGrpcProvider(name, bindAddress string, registerFunc func(grpc.ServiceRegistrar)) (GrpcServer, error) {
+func newDefaultGrpcProvider(name, bindAddress string, registerFunc func(grpc.ServiceRegistrar),
+	tlsConf *tls.Config) (GrpcServer, error) {
+	tcs := insecure.NewCredentials()
+	if tlsConf != nil {
+		tcs = credentials.NewTLS(tlsConf)
+	}
 	c := &defaultGrpcServer{
 		server: grpc.NewServer(
+			grpc.Creds(tcs),
 			grpc.ChainStreamInterceptor(grpcprometheus.StreamServerInterceptor),
 			grpc.ChainUnaryInterceptor(grpcprometheus.UnaryServerInterceptor),
 			grpc.MaxRecvMsgSize(maxGrpcFrameSize),

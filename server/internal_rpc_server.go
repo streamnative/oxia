@@ -16,6 +16,7 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log/slog"
@@ -45,7 +46,7 @@ type internalRpcServer struct {
 }
 
 func newInternalRpcServer(grpcProvider container.GrpcProvider, bindAddress string, shardsDirector ShardsDirector,
-	assignmentDispatcher ShardAssignmentsDispatcher, healthServer *health.Server) (*internalRpcServer, error) {
+	assignmentDispatcher ShardAssignmentsDispatcher, healthServer *health.Server, tlsConf *tls.Config) (*internalRpcServer, error) {
 	server := &internalRpcServer{
 		shardsDirector:       shardsDirector,
 		assignmentDispatcher: assignmentDispatcher,
@@ -60,7 +61,7 @@ func newInternalRpcServer(grpcProvider container.GrpcProvider, bindAddress strin
 		proto.RegisterOxiaCoordinationServer(registrar, server)
 		proto.RegisterOxiaLogReplicationServer(registrar, server)
 		grpc_health_v1.RegisterHealthServer(registrar, server.healthServer)
-	})
+	}, tlsConf)
 	if err != nil {
 		return nil, err
 	}

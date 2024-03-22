@@ -16,6 +16,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -51,7 +52,8 @@ func newMaelstromGrpcProvider() *maelstromGrpcProvider {
 	}
 }
 
-func (m *maelstromGrpcProvider) StartGrpcServer(name, _ string, registerFunc func(grpc.ServiceRegistrar)) (container.GrpcServer, error) {
+func (m *maelstromGrpcProvider) StartGrpcServer(name, _ string, registerFunc func(grpc.ServiceRegistrar),
+	_ *tls.Config) (container.GrpcServer, error) {
 	slog.Info(
 		"Start Grpc server",
 		slog.String("name", name),

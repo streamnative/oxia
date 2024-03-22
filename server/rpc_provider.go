@@ -16,6 +16,7 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"time"
@@ -39,9 +40,9 @@ type replicationRpcProvider struct {
 	pool common.ClientPool
 }
 
-func NewReplicationRpcProvider() ReplicationRpcProvider {
+func NewReplicationRpcProvider(tlsConf *tls.Config) ReplicationRpcProvider {
 	return &replicationRpcProvider{
-		pool: common.NewClientPool(),
+		pool: common.NewClientPool(tlsConf),
 	}
 }
 

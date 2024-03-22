@@ -56,12 +56,12 @@ type clientImpl struct {
 //
 //	client, err := oxia.NewAsyncClient("my-oxia-service:6648", oxia.WithBatchLinger(10*time.Milliseconds))
 func NewAsyncClient(serviceAddress string, opts ...ClientOption) (AsyncClient, error) {
-	clientPool := common.NewClientPool()
-
 	options, err := newClientOptions(serviceAddress, opts...)
 	if err != nil {
 		return nil, err
 	}
+
+	clientPool := common.NewClientPool(options.tls)
 
 	shardManager, err := internal.NewShardManager(internal.NewShardStrategy(), clientPool, serviceAddress,
 		options.namespace, options.requestTimeout)
