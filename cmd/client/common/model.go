@@ -14,11 +14,15 @@
 
 package common
 
+import "time"
+
 type OutputVersion struct {
-	VersionId          int64  `json:"version_id"`
-	CreatedTimestamp   uint64 `json:"created_timestamp"`
-	ModifiedTimestamp  uint64 `json:"modified_timestamp"`
-	ModificationsCount int64  `json:"modifications_count"`
+	VersionId          int64     `json:"version_id"`
+	CreatedTimestamp   time.Time `json:"created_timestamp"`
+	ModifiedTimestamp  time.Time `json:"modified_timestamp"`
+	ModificationsCount int64     `json:"modifications_count"`
+	Ephemeral          bool      `json:"ephemeral"`
+	ClientIdentity     string    `json:"client_identity"`
 }
 
 type OutputError struct {

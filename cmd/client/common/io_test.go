@@ -17,6 +17,7 @@ package common
 import (
 	"bytes"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
@@ -33,10 +34,10 @@ func TestWriteOutput(t *testing.T) {
 		{"common.OutputErrorEmpty", OutputError{}, "{}\n"},
 		{"common.OutputVersion", OutputVersion{
 			VersionId:          1,
-			CreatedTimestamp:   2,
-			ModifiedTimestamp:  3,
+			CreatedTimestamp:   time.UnixMilli(2),
+			ModifiedTimestamp:  time.UnixMilli(3),
 			ModificationsCount: 1,
-		}, "{\"version_id\":1,\"created_timestamp\":2,\"modified_timestamp\":3,\"modifications_count\":1}\n"},
+		}, "{\"version_id\":1,\"created_timestamp\":\"1969-12-31T16:00:00.002-08:00\",\"modified_timestamp\":\"1969-12-31T16:00:00.003-08:00\",\"modifications_count\":1,\"ephemeral\":false,\"client_identity\":\"\"}\n"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			b := bytes.NewBufferString("")
