@@ -753,7 +753,7 @@ func (fc *followerController) DeleteShard(request *proto.DeleteShardRequest) (*p
 		fc.log.Warn("Invalid term when deleting shard",
 			slog.Int64("follower-term", fc.term),
 			slog.Int64("new-term", request.Term))
-		_ = fc.Close()
+		_ = fc.close()
 		return nil, common.ErrorInvalidTerm
 	}
 
