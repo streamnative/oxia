@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -136,9 +137,11 @@ func (call Call) Complete() <-chan any {
 			Value:  value,
 			Version: common.OutputVersion{
 				VersionId:          result.Version.VersionId,
-				CreatedTimestamp:   result.Version.CreatedTimestamp,
-				ModifiedTimestamp:  result.Version.ModifiedTimestamp,
+				CreatedTimestamp:   time.UnixMilli(int64(result.Version.CreatedTimestamp)),
+				ModifiedTimestamp:  time.UnixMilli(int64(result.Version.ModifiedTimestamp)),
 				ModificationsCount: result.Version.ModificationsCount,
+				Ephemeral:          result.Version.Ephemeral,
+				ClientIdentity:     result.Version.ClientIdentity,
 			},
 		}
 		if call.binary {

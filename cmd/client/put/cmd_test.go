@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -260,23 +261,25 @@ func TestOutputMarshal(t *testing.T) {
 			Output{
 				Version: common.OutputVersion{
 					VersionId:          1,
-					CreatedTimestamp:   2,
-					ModifiedTimestamp:  3,
+					CreatedTimestamp:   time.UnixMilli(2),
+					ModifiedTimestamp:  time.UnixMilli(3),
 					ModificationsCount: 0,
 				},
 			},
-			"{\"version\":{\"version_id\":1,\"created_timestamp\":2,\"modified_timestamp\":3,\"modifications_count\":0}}",
+			"{\"version\":{\"version_id\":1,\"created_timestamp\":\"" + time.UnixMilli(2).Format(time.RFC3339Nano) +
+				"\",\"modified_timestamp\":\"" + time.UnixMilli(3).Format(time.RFC3339Nano) + "\",\"modifications_count\":0,\"ephemeral\":false,\"client_identity\":\"\"}}",
 		},
 		{"binary",
 			Output{
 				Version: common.OutputVersion{
 					VersionId:          2,
-					CreatedTimestamp:   4,
-					ModifiedTimestamp:  6,
+					CreatedTimestamp:   time.UnixMilli(4),
+					ModifiedTimestamp:  time.UnixMilli(6),
 					ModificationsCount: 2,
 				},
 			},
-			"{\"version\":{\"version_id\":2,\"created_timestamp\":4,\"modified_timestamp\":6,\"modifications_count\":2}}",
+			"{\"version\":{\"version_id\":2,\"created_timestamp\":\"" + time.UnixMilli(4).Format(time.RFC3339Nano) +
+				"\",\"modified_timestamp\":\"" + time.UnixMilli(6).Format(time.RFC3339Nano) + "\",\"modifications_count\":2,\"ephemeral\":false,\"client_identity\":\"\"}}",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -341,8 +344,8 @@ func TestCall_Complete(t *testing.T) {
 			}, Output{
 				Version: common.OutputVersion{
 					VersionId:          1,
-					CreatedTimestamp:   4,
-					ModifiedTimestamp:  8,
+					CreatedTimestamp:   time.UnixMilli(4),
+					ModifiedTimestamp:  time.UnixMilli(8),
 					ModificationsCount: 1,
 				},
 			},
