@@ -173,7 +173,8 @@ func TestOutputMarshal(t *testing.T) {
 					ModificationsCount: 0,
 				},
 			},
-			"{\"binary\":false,\"value\":\"hello\",\"version\":{\"version_id\":1,\"created_timestamp\":\"1969-12-31T16:00:00.002-08:00\",\"modified_timestamp\":\"1969-12-31T16:00:00.003-08:00\",\"modifications_count\":0,\"ephemeral\":false,\"client_identity\":\"\"}}",
+			"{\"binary\":false,\"value\":\"hello\",\"version\":{\"version_id\":1,\"created_timestamp\":\"" + time.UnixMilli(2).Format(time.RFC3339Nano) +
+				"\",\"modified_timestamp\":\"" + time.UnixMilli(3).Format(time.RFC3339Nano) + "\",\"modifications_count\":0,\"ephemeral\":false,\"client_identity\":\"\"}}",
 		},
 		{"binary",
 			Output{
@@ -186,7 +187,8 @@ func TestOutputMarshal(t *testing.T) {
 					ModificationsCount: 0,
 				},
 			},
-			"{\"binary\":true,\"value\":\"aGVsbG8y\",\"version\":{\"version_id\":2,\"created_timestamp\":\"1969-12-31T16:00:00.004-08:00\",\"modified_timestamp\":\"1969-12-31T16:00:00.006-08:00\",\"modifications_count\":0,\"ephemeral\":false,\"client_identity\":\"\"}}",
+			"{\"binary\":true,\"value\":\"aGVsbG8y\",\"version\":{\"version_id\":2,\"created_timestamp\":\"" + time.UnixMilli(4).Format(time.RFC3339Nano) +
+				"\",\"modified_timestamp\":\"" + time.UnixMilli(6).Format(time.RFC3339Nano) + "\",\"modifications_count\":0,\"ephemeral\":false,\"client_identity\":\"\"}}",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
