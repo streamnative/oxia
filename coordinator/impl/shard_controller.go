@@ -41,7 +41,21 @@ const (
 
 	// Timeout when waiting for followers to catchup with leader.
 	catchupTimeout = 5 * time.Minute
+
+	chanBufferSize = 100
 )
+
+type swapNodeRequest struct {
+	from model.ServerAddress
+	to   model.ServerAddress
+	res  chan error
+}
+
+type newTermAndAddFollowerRequest struct {
+	ctx  context.Context
+	node model.ServerAddress
+	res  chan error
+}
 
 // The ShardController is responsible to handle all the state transition for a given a shard
 // e.g. electing a new leader.
@@ -59,13 +73,17 @@ type ShardController interface {
 }
 
 type shardController struct {
-	sync.Mutex
+	namespace          string
+	shard              int64
+	shardMetadata      model.ShardMetadata
+	shardMetadataMutex sync.Mutex
+	rpc                RpcProvider
+	coordinator        Coordinator
 
-	namespace     string
-	shard         int64
-	shardMetadata model.ShardMetadata
-	rpc           RpcProvider
-	coordinator   Coordinator
+	deleteOp                chan any
+	nodeFailureOp           chan model.ServerAddress
+	swapNodeOp              chan swapNodeRequest
+	newTermAndAddFollowerOp chan newTermAndAddFollowerRequest
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -84,11 +102,15 @@ type shardController struct {
 func NewShardController(namespace string, shard int64, shardMetadata model.ShardMetadata, rpc RpcProvider, coordinator Coordinator) ShardController {
 	labels := metrics.LabelsForShard(namespace, shard)
 	s := &shardController{
-		namespace:     namespace,
-		shard:         shard,
-		shardMetadata: shardMetadata,
-		rpc:           rpc,
-		coordinator:   coordinator,
+		namespace:               namespace,
+		shard:                   shard,
+		shardMetadata:           shardMetadata,
+		rpc:                     rpc,
+		coordinator:             coordinator,
+		deleteOp:                make(chan any, chanBufferSize),
+		nodeFailureOp:           make(chan model.ServerAddress, chanBufferSize),
+		swapNodeOp:              make(chan swapNodeRequest, chanBufferSize),
+		newTermAndAddFollowerOp: make(chan newTermAndAddFollowerRequest, chanBufferSize),
 		log: slog.With(
 			slog.String("component", "shard-controller"),
 			slog.String("namespace", namespace),
@@ -117,10 +139,24 @@ func NewShardController(namespace string, shard int64, shardMetadata model.Shard
 		slog.Any("shard-metadata", s.shardMetadata),
 	)
 
+	go common.DoWithLabels(
+		s.ctx,
+		map[string]string{
+			"oxia":      "shard-controller",
+			"namespace": s.namespace,
+			"shard":     fmt.Sprintf("%d", s.shard),
+		}, s.run,
+	)
+
+	return s
+}
+
+func (s *shardController) run() {
+	// Do initial check or leader election
 	switch {
-	case shardMetadata.Status == model.ShardStatusDeleting:
+	case s.shardMetadata.Status == model.ShardStatusDeleting:
 		s.DeleteShard()
-	case shardMetadata.Leader == nil || shardMetadata.Status != model.ShardStatusSteadyState:
+	case s.shardMetadata.Leader == nil || s.shardMetadata.Status != model.ShardStatusSteadyState:
 		s.electLeaderWithRetries()
 	default:
 		s.log.Info(
@@ -128,19 +164,41 @@ func NewShardController(namespace string, shard int64, shardMetadata model.Shard
 			slog.Any("current-leader", s.shardMetadata.Leader),
 		)
 
-		go func() {
-			if !s.verifyCurrentEnsemble() {
-				s.electLeaderWithRetries()
-			}
-		}()
+		if !s.verifyCurrentEnsemble() {
+			s.electLeaderWithRetries()
+		}
 	}
-	return s
+
+	s.log.Info(
+		"Shard is ready",
+		slog.Any("leader", s.shardMetadata.Leader),
+	)
+
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+
+		case <-s.deleteOp:
+			s.deleteShardWithRetries()
+
+		case n := <-s.nodeFailureOp:
+			s.handleNodeFailure(n)
+
+		case sw := <-s.swapNodeOp:
+			s.swapNode(sw.from, sw.to, sw.res)
+
+		case a := <-s.newTermAndAddFollowerOp:
+			s.internalNewTermAndAddFollower(a.ctx, a.node, a.res)
+		}
+	}
 }
 
 func (s *shardController) HandleNodeFailure(failedNode model.ServerAddress) {
-	s.Lock()
-	defer s.Unlock()
+	s.nodeFailureOp <- failedNode
+}
 
+func (s *shardController) handleNodeFailure(failedNode model.ServerAddress) {
 	s.log.Debug(
 		"Received notification of failed node",
 		slog.Any("failed-node", failedNode),
@@ -158,9 +216,6 @@ func (s *shardController) HandleNodeFailure(failedNode model.ServerAddress) {
 }
 
 func (s *shardController) verifyCurrentEnsemble() bool {
-	s.Lock()
-	defer s.Unlock()
-
 	// Ideally, we shouldn't need to trigger a new leader election if a follower
 	// is out of sync. We should just go back into the retry-to-fence follower
 	// loop. In practice, the current approach is easier for now.
@@ -212,29 +267,15 @@ func (s *shardController) verifyCurrentEnsemble() bool {
 }
 
 func (s *shardController) electLeaderWithRetries() {
-	go common.DoWithLabels(
-		s.ctx,
-		map[string]string{
-			"oxia":      "shard-controller-leader-election",
-			"namespace": s.namespace,
-			"shard":     fmt.Sprintf("%d", s.shard),
-		},
-		func() {
-			_ = backoff.RetryNotify(func() error {
-				s.Lock()
-				defer s.Unlock()
-				return s.electLeader()
-			}, common.NewBackOff(s.ctx),
-				func(err error, duration time.Duration) {
-					s.leaderElectionsFailed.Inc()
-					s.log.Warn(
-						"Leader election has failed, retrying later",
-						slog.Any("error", err),
-						slog.Duration("retry-after", duration),
-					)
-				})
-		},
-	)
+	_ = backoff.RetryNotify(s.electLeader, common.NewBackOff(s.ctx),
+		func(err error, duration time.Duration) {
+			s.leaderElectionsFailed.Inc()
+			s.log.Warn(
+				"Leader election has failed, retrying later",
+				slog.Any("error", err),
+				slog.Duration("retry-after", duration),
+			)
+		})
 }
 
 func (s *shardController) electLeader() error {
@@ -246,9 +287,13 @@ func (s *shardController) electLeader() error {
 	}
 
 	s.currentElectionCtx, s.currentElectionCancel = context.WithCancel(s.ctx)
+
+	s.shardMetadataMutex.Lock()
 	s.shardMetadata.Status = model.ShardStatusElection
 	s.shardMetadata.Leader = nil
 	s.shardMetadata.Term++
+	s.shardMetadataMutex.Unlock()
+
 	s.log.Info(
 		"Starting leader election",
 		slog.Int64("term", s.shardMetadata.Term),
@@ -305,7 +350,9 @@ func (s *shardController) electLeader() error {
 		return err
 	}
 
+	s.shardMetadataMutex.Lock()
 	s.shardMetadata = metadata
+	s.shardMetadataMutex.Unlock()
 
 	s.log.Info(
 		"Elected new leader",
@@ -405,23 +452,35 @@ func (s *shardController) keepFencingFollower(ctx context.Context, node model.Se
 }
 
 func (s *shardController) newTermAndAddFollower(ctx context.Context, node model.ServerAddress) error {
-	fr, err := s.newTerm(ctx, node)
-	if err != nil {
-		return err
+	res := make(chan error)
+	s.newTermAndAddFollowerOp <- newTermAndAddFollowerRequest{
+		ctx:  ctx,
+		node: node,
+		res:  res,
 	}
 
-	s.Lock()
+	return <-res
+}
+
+func (s *shardController) internalNewTermAndAddFollower(ctx context.Context, node model.ServerAddress, res chan error) {
+	fr, err := s.newTerm(ctx, node)
+	if err != nil {
+		res <- err
+		return
+	}
+
 	leader := s.shardMetadata.Leader
-	s.Unlock()
 	if leader == nil {
-		return errors.New("not leader is active on the shard")
+		res <- errors.New("not leader is active on the shard")
+		return
 	}
 
 	if err = s.addFollower(*s.shardMetadata.Leader, node.Internal, &proto.EntryId{
 		Term:   fr.Term,
 		Offset: fr.Offset,
 	}); err != nil {
-		return err
+		res <- err
+		return
 	}
 
 	s.log.Info(
@@ -429,7 +488,8 @@ func (s *shardController) newTermAndAddFollower(ctx context.Context, node model.
 		slog.Any("follower", node),
 		slog.Int64("term", fr.Term),
 	)
-	return nil
+
+	res <- nil
 }
 
 // Send NewTerm to all the ensemble members in parallel and wait for
@@ -624,31 +684,22 @@ func (s *shardController) addFollower(leader model.ServerAddress, follower strin
 }
 
 func (s *shardController) DeleteShard() {
-	go common.DoWithLabels(
-		s.ctx,
-		map[string]string{
-			"oxia":      "shard-controller-delete-shard",
-			"namespace": s.namespace,
-			"shard":     fmt.Sprintf("%d", s.shard),
-		},
-		func() {
-			s.Lock()
-			defer s.Unlock()
+	s.deleteOp <- nil
+}
 
-			s.log.Info("Deleting shard")
+func (s *shardController) deleteShardWithRetries() {
+	s.log.Info("Deleting shard")
 
-			_ = backoff.RetryNotify(s.deleteShard, common.NewBackOff(s.ctx),
-				func(err error, duration time.Duration) {
-					s.log.Warn(
-						"Delete shard failed, retrying later",
-						slog.Duration("retry-after", duration),
-						slog.Any("error", err),
-					)
-				})
+	_ = backoff.RetryNotify(s.deleteShard, common.NewBackOff(s.ctx),
+		func(err error, duration time.Duration) {
+			s.log.Warn(
+				"Delete shard failed, retrying later",
+				slog.Duration("retry-after", duration),
+				slog.Any("error", err),
+			)
+		})
 
-			s.cancel()
-		},
-	)
+	s.cancel()
 }
 
 func (s *shardController) deleteShard() error {
@@ -677,20 +728,20 @@ func (s *shardController) deleteShard() error {
 }
 
 func (s *shardController) Term() int64 {
-	s.Lock()
-	defer s.Unlock()
+	s.shardMetadataMutex.Lock()
+	defer s.shardMetadataMutex.Unlock()
 	return s.shardMetadata.Term
 }
 
 func (s *shardController) Leader() *model.ServerAddress {
-	s.Lock()
-	defer s.Unlock()
+	s.shardMetadataMutex.Lock()
+	defer s.shardMetadataMutex.Unlock()
 	return s.shardMetadata.Leader
 }
 
 func (s *shardController) Status() model.ShardStatus {
-	s.Lock()
-	defer s.Unlock()
+	s.shardMetadataMutex.Lock()
+	defer s.shardMetadataMutex.Unlock()
 	return s.shardMetadata.Status
 }
 
@@ -701,10 +752,22 @@ func (s *shardController) Close() error {
 }
 
 func (s *shardController) SwapNode(from model.ServerAddress, to model.ServerAddress) error {
-	s.Lock()
+	res := make(chan error)
+	s.swapNodeOp <- swapNodeRequest{
+		from: from,
+		to:   to,
+		res:  res,
+	}
 
+	return <-res
+}
+
+func (s *shardController) swapNode(from model.ServerAddress, to model.ServerAddress, res chan error) {
+	s.shardMetadataMutex.Lock()
 	s.shardMetadata.RemovedNodes = append(s.shardMetadata.RemovedNodes, from)
 	s.shardMetadata.Ensemble = replaceInList(s.shardMetadata.Ensemble, from, to)
+	s.shardMetadataMutex.Unlock()
+
 	s.log.Info(
 		"Swapping node",
 		slog.Any("removed-nodes", s.shardMetadata.RemovedNodes),
@@ -713,14 +776,13 @@ func (s *shardController) SwapNode(from model.ServerAddress, to model.ServerAddr
 		slog.Any("to", to),
 	)
 	if err := s.electLeader(); err != nil {
-		s.Unlock()
-		return err
+		res <- err
+		return
 	}
 
 	leader := s.shardMetadata.Leader
 	ensemble := s.shardMetadata.Ensemble
 	ctx := s.currentElectionCtx
-	s.Unlock()
 
 	// Wait until all followers are caught up.
 	// This is done to avoid doing multiple node-swap concurrently, since it would create
@@ -730,7 +792,8 @@ func (s *shardController) SwapNode(from model.ServerAddress, to model.ServerAddr
 			"Failed to wait for followers to catch up",
 			slog.Any("error", err),
 		)
-		return err
+		res <- err
+		return
 	}
 
 	s.log.Info(
@@ -738,7 +801,7 @@ func (s *shardController) SwapNode(from model.ServerAddress, to model.ServerAddr
 		slog.Any("from", from),
 		slog.Any("to", to),
 	)
-	return nil
+	res <- nil
 }
 
 func (s *shardController) isFollowerCatchUp(ctx context.Context, server model.ServerAddress, leaderHeadOffset int64) error {
