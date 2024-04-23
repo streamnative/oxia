@@ -374,6 +374,22 @@ func TestCoordinator_DeleteNamespace(t *testing.T) {
 		return true
 	}, 10*time.Second, 10*time.Millisecond)
 
+	// Trigger new leader election in order to have a new term
+	ns1Status = coordinator.ClusterStatus().Namespaces["my-ns-1"]
+	coordinator.NodeBecameUnavailable(*ns1Status.Shards[0].Leader)
+
+	// Wait (again) for all shards to be ready
+	assert.Eventually(t, func() bool {
+		for _, ns := range coordinator.ClusterStatus().Namespaces {
+			for _, shard := range ns.Shards {
+				if shard.Status != model.ShardStatusSteadyState {
+					return false
+				}
+			}
+		}
+		return true
+	}, 10*time.Second, 10*time.Millisecond)
+
 	slog.Info("Cluster is ready")
 
 	// Restart the coordinator and remove the namespace
