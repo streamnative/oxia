@@ -552,6 +552,7 @@ func (s *shardController) deleteShardRpc(ctx context.Context, node model.ServerA
 	_, err := s.rpc.DeleteShard(ctx, node, &proto.DeleteShardRequest{
 		Namespace: s.namespace,
 		ShardId:   s.shard,
+		Term:      s.shardMetadata.Term,
 	})
 
 	return err
