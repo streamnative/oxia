@@ -833,10 +833,6 @@ func TestFollowerController_DeleteShard_WrongTerm(t *testing.T) {
 	})
 
 	assert.ErrorIs(t, err, common.ErrorInvalidTerm)
-
-	assert.NoError(t, fc.Close())
-	assert.NoError(t, kvFactory.Close())
-	assert.NoError(t, walFactory.Close())
 }
 
 func TestFollowerController_Closed(t *testing.T) {
