@@ -19,7 +19,7 @@ go 1.21
 require (
 	github.com/bmizerany/perks v0.0.0-20230307044200-03f9df79da1e
 	github.com/cenkalti/backoff/v4 v4.2.0
-	github.com/cockroachdb/pebble v0.0.0-20231110205751-b224e8b90a87
+	github.com/cockroachdb/pebble v1.1.0
 	github.com/dgraph-io/ristretto v0.1.1
 	github.com/dustin/go-humanize v1.0.1
 	github.com/edsrzf/mmap-go v1.1.0
