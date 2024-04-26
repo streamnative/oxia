@@ -24,7 +24,7 @@ RUN cd /src/oxia \
 
 FROM alpine:3.19
 
-RUN apk add --no-cache bash bash-completion
+RUN apk add --no-cache bash bash-completion jq
 
 # Fix CVE-2023-5363 by upgrading to OpenSSL 3.1.4-r4
 # We can remove once new Alpine image is released
