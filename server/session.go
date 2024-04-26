@@ -17,11 +17,12 @@ package server
 import (
 	"context"
 	"fmt"
-	"github.com/streamnative/oxia/common"
 	"log/slog"
 	"net/url"
 	"sync"
 	"time"
+
+	"github.com/streamnative/oxia/common"
 
 	"github.com/streamnative/oxia/proto"
 )

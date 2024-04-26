@@ -352,6 +352,7 @@ func TestMultipleSessionsExpiry(t *testing.T) {
 			SessionId: &sessionId1,
 		}},
 	})
+	assert.NoError(t, err)
 
 	_, err = lc.Write(context.Background(), &proto.WriteRequest{
 		ShardId: &shardId,
@@ -361,6 +362,7 @@ func TestMultipleSessionsExpiry(t *testing.T) {
 			SessionId: &sessionId2,
 		}},
 	})
+	assert.NoError(t, err)
 
 	// Let session-2 expire and verify its key was deleted
 	assert.Eventually(t, func() bool {
