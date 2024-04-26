@@ -322,6 +322,107 @@ func TestSessionManager(t *testing.T) {
 	assert.NoError(t, walf.Close())
 }
 
+func TestMultipleSessionsExpiry(t *testing.T) {
+	shardId := int64(1)
+	// Invalid session timeout
+	kvf, walf, sManager, lc := createSessionManager(t)
+
+	// Create 2 sessions
+	createResp1, err := sManager.createSession(&proto.CreateSessionRequest{
+		ShardId:          shardId,
+		SessionTimeoutMs: uint32(3000),
+		ClientIdentity:   "session-1",
+	}, 0)
+	assert.NoError(t, err)
+	sessionId1 := createResp1.SessionId
+
+	createResp2, err := sManager.createSession(&proto.CreateSessionRequest{
+		ShardId:          shardId,
+		SessionTimeoutMs: uint32(50),
+		ClientIdentity:   "session-2",
+	}, 0)
+	assert.NoError(t, err)
+	sessionId2 := createResp2.SessionId
+
+	_, err = lc.Write(context.Background(), &proto.WriteRequest{
+		ShardId: &shardId,
+		Puts: []*proto.PutRequest{{
+			Key:       "/ephemeral-1",
+			Value:     []byte("hello"),
+			SessionId: &sessionId1,
+		}},
+	})
+
+	_, err = lc.Write(context.Background(), &proto.WriteRequest{
+		ShardId: &shardId,
+		Puts: []*proto.PutRequest{{
+			Key:       "/ephemeral-2",
+			Value:     []byte("hello"),
+			SessionId: &sessionId2,
+		}},
+	})
+
+	// Let session-2 expire and verify its key was deleted
+	assert.Eventually(t, func() bool {
+		return getSessionMetadata(t, lc, sessionId2) == nil
+	}, 10*time.Second, 30*time.Millisecond)
+
+	readCh := lc.Read(context.Background(), &proto.ReadRequest{
+		ShardId: &shardId,
+		Gets: []*proto.GetRequest{{
+			Key:          "/ephemeral-1",
+			IncludeValue: true,
+		}, {
+			Key:          "/ephemeral-2",
+			IncludeValue: true,
+		}},
+	})
+
+	// ephemeral-1
+	rr, ok := <-readCh
+	assert.True(t, ok)
+	assert.NoError(t, rr.Err)
+	assert.Equal(t, proto.Status_OK, rr.Response.Status)
+
+	// ephemeral-2
+	rr, ok = <-readCh
+	assert.True(t, ok)
+	assert.NoError(t, rr.Err)
+	assert.Equal(t, proto.Status_KEY_NOT_FOUND, rr.Response.Status)
+
+	// Now Let session-1 expire and verify its key was deleted
+	assert.Eventually(t, func() bool {
+		return getSessionMetadata(t, lc, sessionId1) == nil
+	}, 10*time.Second, 30*time.Millisecond)
+
+	readCh = lc.Read(context.Background(), &proto.ReadRequest{
+		ShardId: &shardId,
+		Gets: []*proto.GetRequest{{
+			Key:          "/ephemeral-1",
+			IncludeValue: true,
+		}, {
+			Key:          "/ephemeral-2",
+			IncludeValue: true,
+		}},
+	})
+
+	// ephemeral-1
+	rr, ok = <-readCh
+	assert.True(t, ok)
+	assert.NoError(t, rr.Err)
+	assert.Equal(t, proto.Status_KEY_NOT_FOUND, rr.Response.Status)
+
+	// ephemeral-2
+	rr, ok = <-readCh
+	assert.True(t, ok)
+	assert.NoError(t, rr.Err)
+	assert.Equal(t, proto.Status_KEY_NOT_FOUND, rr.Response.Status)
+
+	assert.NoError(t, lc.Close())
+	assert.NoError(t, kvf.Close())
+	assert.NoError(t, walf.Close())
+}
+
 func TestSessionManagerReopening(t *testing.T) {
 	shardId := int64(1)
 	// Invalid session timeout

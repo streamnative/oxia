@@ -16,6 +16,8 @@ package server
 
 import (
 	"context"
+	"fmt"
+	"github.com/streamnative/oxia/common"
 	"log/slog"
 	"net/url"
 	"sync"
@@ -58,7 +60,15 @@ func startSession(sessionId SessionId, sessionMetadata *proto.SessionMetadata, s
 	sm.sessions[sessionId] = s
 
 	s.ctx, s.cancel = context.WithCancel(context.Background())
-	go s.waitForHeartbeats()
+
+	go common.DoWithLabels(s.ctx, map[string]string{
+		"oxia":            "session",
+		"client-identity": sessionMetadata.Identity,
+		"session-id":      fmt.Sprintf("%d", sessionId),
+		"namespace":       sm.namespace,
+		"shard":           fmt.Sprintf("%d", sm.shardId),
+	}, s.waitForHeartbeats)
+
 	s.log.Info("Session started",
 		slog.Duration("session-timeout", s.timeout))
 	return s
@@ -112,14 +122,19 @@ func (s *session) delete() error {
 			})
 		}
 	}
+
+	// Delete the base session metadata
+	deletes = append(deletes, &proto.DeleteRequest{
+		Key: sessionKey,
+	})
 	_, err = s.sm.leaderController.Write(context.Background(), &proto.WriteRequest{
 		ShardId: &s.shardId,
 		Puts:    nil,
 		Deletes: deletes,
-		// Delete the index and the session keys
+		// Delete the whole index of ephemeral keys for the session
 		DeleteRanges: []*proto.DeleteRangeRequest{
 			{
-				StartInclusive: sessionKey,
+				StartInclusive: sessionKey + "/",
 				EndExclusive:   sessionKey + "//",
 			},
 		},
