@@ -112,13 +112,9 @@ func (c *clientImpl[Resource]) Upsert(namespace, name string, resource *Resource
 		return nil, err
 	}
 
-	result, err = client.Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{
+	return client.Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{
 		FieldManager: "oxia-coordinator",
 	})
-	if errors.IsConflict(err) {
-		return result, err
-	}
-	return result, err
 }
 
 func (c *clientImpl[Resource]) Delete(namespace, name string) error {
