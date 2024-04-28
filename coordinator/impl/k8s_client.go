@@ -16,12 +16,15 @@ package impl
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"os"
 
+	jsonpatch "github.com/evanphx/json-patch"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -65,10 +68,12 @@ func newNamespaceClient[Resource resource](clientFunc func(string) ResourceInter
 }
 
 type ResourceInterface[Resource resource] interface {
-	Create(ctx context.Context, Resource *Resource, opts metav1.CreateOptions) (*Resource, error)
-	Update(ctx context.Context, Resource *Resource, opts metav1.UpdateOptions) (*Resource, error)
+	Create(ctx context.Context, resource *Resource, opts metav1.CreateOptions) (*Resource, error)
+	Update(ctx context.Context, resource *Resource, opts metav1.UpdateOptions) (*Resource, error)
 	Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error
 	Get(ctx context.Context, name string, opts metav1.GetOptions) (*Resource, error)
+	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions,
+		subresources ...string) (*Resource, error)
 }
 
 type resource interface {
@@ -76,7 +81,7 @@ type resource interface {
 }
 
 type Client[Resource resource] interface {
-	Upsert(namespace string, resource *Resource) (*Resource, error)
+	Upsert(namespace, name string, resource *Resource) (*Resource, error)
 	Delete(namespace, name string) error
 	Get(namespace, name string) (*Resource, error)
 }
@@ -85,15 +90,33 @@ type clientImpl[Resource resource] struct {
 	clientFunc func(string) ResourceInterface[Resource]
 }
 
-func (c *clientImpl[Resource]) Upsert(namespace string, resource *Resource) (result *Resource, err error) {
+func (c *clientImpl[Resource]) Upsert(namespace, name string, resource *Resource) (*Resource, error) {
+	ctx := context.Background()
 	client := c.clientFunc(namespace)
-	result, err = client.Update(context.Background(), resource, metav1.UpdateOptions{})
-	if errors.IsConflict(err) {
-		return result, err
+	result, err := client.Get(ctx, name, metav1.GetOptions{})
+	if errors.IsNotFound(err) {
+		return client.Create(ctx, resource, metav1.CreateOptions{})
 	}
 
-	if errors.IsNotFound(err) {
-		result, err = client.Create(context.Background(), resource, metav1.CreateOptions{})
+	oldBytes, err := json.Marshal(result)
+	if err != nil {
+		return nil, err
+	}
+	desiredBytes, err := json.Marshal(resource)
+	if err != nil {
+		return nil, err
+	}
+
+	patch, err := jsonpatch.CreateMergePatch(oldBytes, desiredBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err = client.Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{
+		FieldManager: "oxia-coordinator",
+	})
+	if errors.IsConflict(err) {
+		return result, err
 	}
 	return result, err
 }
