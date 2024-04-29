@@ -131,6 +131,10 @@ func configMap(name string, status *model.ClusterStatus, version Version) *corev
 	}
 
 	cm := &corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ConfigMap",
+			APIVersion: "v1",
+		},
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Data: map[string]string{
 			"status": string(bytes),

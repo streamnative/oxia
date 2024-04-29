@@ -20,7 +20,6 @@ import (
 	"log/slog"
 	"os"
 
-	jsonpatch "github.com/evanphx/json-patch"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -29,6 +28,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
+
+const fieldManager = "oxia-coordinator"
 
 func NewK8SClientConfig() *rest.Config {
 	kubeconfigGetter := clientcmd.NewDefaultClientConfigLoadingRules().Load
@@ -93,28 +94,21 @@ type clientImpl[Resource resource] struct {
 func (c *clientImpl[Resource]) Upsert(namespace, name string, resource *Resource) (*Resource, error) {
 	ctx := context.Background()
 	client := c.clientFunc(namespace)
-	result, err := client.Get(ctx, name, metav1.GetOptions{})
-	if errors.IsNotFound(err) {
-		return client.Create(ctx, resource, metav1.CreateOptions{})
-	}
 
-	oldBytes, err := json.Marshal(result)
-	if err != nil {
-		return nil, err
-	}
 	desiredBytes, err := json.Marshal(resource)
 	if err != nil {
 		return nil, err
 	}
 
-	patch, err := jsonpatch.CreateMergePatch(oldBytes, desiredBytes)
-	if err != nil {
-		return nil, err
+	result, err := client.Patch(ctx, name, types.ApplyPatchType, desiredBytes, metav1.PatchOptions{
+		FieldManager: fieldManager,
+	})
+
+	if errors.IsNotFound(err) {
+		return client.Create(ctx, resource, metav1.CreateOptions{})
 	}
 
-	return client.Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{
-		FieldManager: "oxia-coordinator",
-	})
+	return result, err
 }
 
 func (c *clientImpl[Resource]) Delete(namespace, name string) error {
