@@ -122,7 +122,7 @@ func TestClusterHandshakeSuccess(t *testing.T) {
 	clientPool := common.NewClientPool(tlsConf)
 	defer clientPool.Close()
 
-	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, 0, impl.NewRpcProvider(clientPool))
+	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, chan struct{}, error) { return clusterConfig, nil, nil }, 0, impl.NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 	defer coordinator.Close()
 }
@@ -152,7 +152,7 @@ func TestClientHandshakeFailByNoTlsConfig(t *testing.T) {
 	clientPool := common.NewClientPool(tlsConf)
 	defer clientPool.Close()
 
-	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, 0, impl.NewRpcProvider(clientPool))
+	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, chan struct{}, error) { return clusterConfig, nil, nil }, 0, impl.NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 	defer coordinator.Close()
 
@@ -185,7 +185,7 @@ func TestClientHandshakeByAuthFail(t *testing.T) {
 	clientPool := common.NewClientPool(tlsConf)
 	defer clientPool.Close()
 
-	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, 0, impl.NewRpcProvider(clientPool))
+	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, chan struct{}, error) { return clusterConfig, nil, nil }, 0, impl.NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 	defer coordinator.Close()
 
@@ -224,7 +224,7 @@ func TestClientHandshakeWithInsecure(t *testing.T) {
 	clientPool := common.NewClientPool(tlsConf)
 	defer clientPool.Close()
 
-	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, 0, impl.NewRpcProvider(clientPool))
+	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, chan struct{}, error) { return clusterConfig, nil, nil }, 0, impl.NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 	defer coordinator.Close()
 
@@ -265,7 +265,7 @@ func TestClientHandshakeSuccess(t *testing.T) {
 	clientPool := common.NewClientPool(tlsConf)
 	defer clientPool.Close()
 
-	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, 0, impl.NewRpcProvider(clientPool))
+	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, chan struct{}, error) { return clusterConfig, nil, nil }, 0, impl.NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 	defer coordinator.Close()
 
