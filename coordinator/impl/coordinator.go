@@ -62,9 +62,10 @@ type coordinator struct {
 	assignmentsChanged common.ConditionContext
 
 	MetadataProvider
-	clusterConfigProvider func() (model.ClusterConfig, error)
+	clusterConfigProvider func() (model.ClusterConfig, chan struct{}, error)
 	model.ClusterConfig
 	clusterConfigRefreshTime time.Duration
+	clusterConfigChangeCh    chan struct{}
 
 	shardControllers map[int64]ShardController
 	nodeControllers  map[string]NodeController
@@ -84,10 +85,9 @@ type coordinator struct {
 }
 
 func NewCoordinator(metadataProvider MetadataProvider,
-	clusterConfigProvider func() (model.ClusterConfig, error),
-	clusterConfigRefreshTime time.Duration,
-	rpc RpcProvider) (Coordinator, error) {
-	initialClusterConf, err := clusterConfigProvider()
+	clusterConfigProvider func() (model.ClusterConfig, chan struct{}, error),
+	clusterConfigRefreshTime time.Duration, rpc RpcProvider) (Coordinator, error) {
+	initialClusterConf, clusterConfigChangeCh, err := clusterConfigProvider()
 	if err != nil {
 		return nil, err
 	}
@@ -99,6 +99,7 @@ func NewCoordinator(metadataProvider MetadataProvider,
 	c := &coordinator{
 		MetadataProvider:         metadataProvider,
 		clusterConfigProvider:    clusterConfigProvider,
+		clusterConfigChangeCh:    clusterConfigChangeCh,
 		ClusterConfig:            initialClusterConf,
 		clusterConfigRefreshTime: clusterConfigRefreshTime,
 		shardControllers:         make(map[int64]ShardController),
@@ -407,25 +408,32 @@ func (c *coordinator) waitForExternalEvents() {
 	refreshTimer := time.NewTicker(c.clusterConfigRefreshTime)
 	defer refreshTimer.Stop()
 
+	var handleEvent = func() {
+		if err := c.handleClusterConfigUpdated(); err != nil {
+			c.log.Warn(
+				"Failed to update cluster config",
+				slog.Any("error", err),
+			)
+		}
+
+		if err := c.rebalanceCluster(); err != nil {
+			c.log.Warn(
+				"Failed to rebalance cluster",
+				slog.Any("error", err),
+			)
+		}
+	}
+
 	for {
 		select {
 		case <-c.ctx.Done():
 			return
 
 		case <-refreshTimer.C:
-			if err := c.handleClusterConfigUpdated(); err != nil {
-				c.log.Warn(
-					"Failed to update cluster config",
-					slog.Any("error", err),
-				)
-			}
-
-			if err := c.rebalanceCluster(); err != nil {
-				c.log.Warn(
-					"Failed to rebalance cluster",
-					slog.Any("error", err),
-				)
-			}
+			handleEvent()
+		case <-c.clusterConfigChangeCh:
+			c.log.Info("Received cluster config change event")
+			handleEvent()
 		}
 	}
 }
@@ -434,7 +442,7 @@ func (c *coordinator) handleClusterConfigUpdated() error {
 	c.Lock()
 	defer c.Unlock()
 
-	newClusterConfig, err := c.clusterConfigProvider()
+	newClusterConfig, _, err := c.clusterConfigProvider()
 	if err != nil {
 		return errors.Wrap(err, "failed to read cluster configuration")
 	}

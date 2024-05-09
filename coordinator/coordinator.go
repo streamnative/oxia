@@ -39,7 +39,7 @@ type Config struct {
 	K8SMetadataNamespace      string
 	K8SMetadataConfigMapName  string
 	FileMetadataPath          string
-	ClusterConfigProvider     func() (model.ClusterConfig, error)
+	ClusterConfigProvider     func() (model.ClusterConfig, chan struct{}, error)
 	ClusterConfigRefreshTime  time.Duration
 }
 
