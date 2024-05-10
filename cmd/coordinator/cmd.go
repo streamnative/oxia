@@ -19,6 +19,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -29,8 +30,9 @@ import (
 )
 
 var (
-	conf       = coordinator.NewConfig()
-	configFile string
+	conf           = coordinator.NewConfig()
+	configFile     string
+	configChangeCh chan struct{}
 
 	Cmd = &cobra.Command{
 		Use:     "coordinator",
@@ -50,6 +52,12 @@ func init() {
 	Cmd.Flags().StringVar(&conf.FileMetadataPath, "file-clusters-status-path", "data/cluster-status.json", "The path where the cluster status is stored when using 'file' provider")
 	Cmd.Flags().StringVarP(&configFile, "conf", "f", "", "Cluster config file")
 	Cmd.Flags().DurationVar(&conf.ClusterConfigRefreshTime, "conf-file-refresh-time", 1*time.Minute, "How frequently to check for updates for cluster configuration file")
+
+	setConfigPath()
+	viper.OnConfigChange(func(_ fsnotify.Event) {
+		configChangeCh <- struct{}{}
+	})
+	viper.WatchConfig()
 }
 
 func validate(*cobra.Command, []string) error {
@@ -61,31 +69,34 @@ func validate(*cobra.Command, []string) error {
 			return errors.New("k8s-configmap-name must be set with metadata=configmap")
 		}
 	}
-	if _, err := loadClusterConfig(); err != nil {
+	if _, _, err := loadClusterConfig(); err != nil {
 		return err
 	}
 	return nil
 }
 
-func loadClusterConfig() (model.ClusterConfig, error) {
+func setConfigPath() {
 	if configFile == "" {
 		viper.AddConfigPath("/oxia/conf")
 		viper.AddConfigPath(".")
 	} else {
 		viper.SetConfigFile(configFile)
 	}
+}
 
+func loadClusterConfig() (model.ClusterConfig, chan struct{}, error) {
+	setConfigPath()
 	cc := model.ClusterConfig{}
 
 	if err := viper.ReadInConfig(); err != nil {
-		return cc, err
+		return cc, configChangeCh, err
 	}
 
 	if err := viper.Unmarshal(&cc); err != nil {
-		return cc, err
+		return cc, configChangeCh, err
 	}
 
-	return cc, nil
+	return cc, configChangeCh, nil
 }
 
 func exec(*cobra.Command, []string) {

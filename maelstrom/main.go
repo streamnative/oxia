@@ -173,7 +173,7 @@ func main() {
 
 		_, err := impl.NewCoordinator(
 			impl.NewMetadataProviderFile(filepath.Join(dataDir, "cluster-status.json")),
-			func() (model.ClusterConfig, error) { return clusterConfig, nil },
+			func() (model.ClusterConfig, chan struct{}, error) { return clusterConfig, nil, nil },
 			0, newRpcProvider(dispatcher))
 		if err != nil {
 			slog.Error(

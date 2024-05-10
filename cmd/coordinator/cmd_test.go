@@ -156,7 +156,7 @@ func TestCmd(t *testing.T) {
 				assert.Equal(t, test.expectedConf, conf)
 
 				conf.ClusterConfigProvider = loadClusterConfig
-				clusterConf, err := conf.ClusterConfigProvider()
+				clusterConf, _, err := conf.ClusterConfigProvider()
 				assert.NoError(t, err)
 				assert.Equal(t, test.expectedClusterConf, clusterConf)
 			}
