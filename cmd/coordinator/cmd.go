@@ -53,13 +53,7 @@ func init() {
 	Cmd.Flags().StringVarP(&configFile, "conf", "f", "", "Cluster config file")
 	Cmd.Flags().DurationVar(&conf.ClusterConfigRefreshTime, "conf-file-refresh-time", 1*time.Minute, "How frequently to check for updates for cluster configuration file")
 
-	if configFile == "" {
-		viper.AddConfigPath("/oxia/conf")
-		viper.AddConfigPath(".")
-	} else {
-		viper.SetConfigFile(configFile)
-	}
-
+	setConfigPath()
 	viper.OnConfigChange(func(_ fsnotify.Event) {
 		configChangeCh <- struct{}{}
 	})
@@ -81,7 +75,17 @@ func validate(*cobra.Command, []string) error {
 	return nil
 }
 
+func setConfigPath() {
+	if configFile == "" {
+		viper.AddConfigPath("/oxia/conf")
+		viper.AddConfigPath(".")
+	} else {
+		viper.SetConfigFile(configFile)
+	}
+}
+
 func loadClusterConfig() (model.ClusterConfig, chan struct{}, error) {
+	setConfigPath()
 	cc := model.ClusterConfig{}
 
 	if err := viper.ReadInConfig(); err != nil {
