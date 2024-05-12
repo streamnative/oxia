@@ -40,6 +40,7 @@ docker_multi_arch:
 
 .PHONY: proto
 proto:
+	# go install github.com/planetscale/vtprotobuf/cmd/protoc-gen-go-vtproto@latest
 	cd proto && \
 	protoc \
 		--go_out=. \
@@ -51,7 +52,7 @@ proto:
       	--go-vtproto_out=. \
       	--go-vtproto_opt paths=source_relative \
       	--plugin protoc-gen-go-vtproto="${GOPATH}/bin/protoc-gen-go-vtproto" \
-  	 	--go-vtproto_opt=features=marshal+unmarshal+size+pool+equal+clone \
+      	--go-vtproto_opt=features=marshal+unmarshal+unmarshal_unsafe+size+pool+equal+clone \
 	    *.proto
 
 proto_clean:
