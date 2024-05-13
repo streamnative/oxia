@@ -360,6 +360,7 @@ func (m *GetRequest) CloneVT() *GetRequest {
 	r := new(GetRequest)
 	r.Key = m.Key
 	r.IncludeValue = m.IncludeValue
+	r.ComparisonType = m.ComparisonType
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -382,6 +383,10 @@ func (m *GetResponse) CloneVT() *GetResponse {
 		tmpBytes := make([]byte, len(rhs))
 		copy(tmpBytes, rhs)
 		r.Value = tmpBytes
+	}
+	if rhs := m.Key; rhs != nil {
+		tmpVal := *rhs
+		r.Key = &tmpVal
 	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -1156,6 +1161,9 @@ func (this *GetRequest) EqualVT(that *GetRequest) bool {
 	if this.IncludeValue != that.IncludeValue {
 		return false
 	}
+	if this.ComparisonType != that.ComparisonType {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -1179,6 +1187,9 @@ func (this *GetResponse) EqualVT(that *GetResponse) bool {
 		return false
 	}
 	if p, q := this.Value, that.Value; (p == nil && q != nil) || (p != nil && q == nil) || string(p) != string(q) {
+		return false
+	}
+	if p, q := this.Key, that.Key; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -2251,6 +2262,11 @@ func (m *GetRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.ComparisonType != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ComparisonType))
+		i--
+		dAtA[i] = 0x18
+	}
 	if m.IncludeValue {
 		i--
 		if m.IncludeValue {
@@ -2300,6 +2316,13 @@ func (m *GetResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Key != nil {
+		i -= len(*m.Key)
+		copy(dAtA[i:], *m.Key)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Key)))
+		i--
+		dAtA[i] = 0x22
 	}
 	if m.Value != nil {
 		i -= len(m.Value)
@@ -3255,6 +3278,9 @@ func (m *GetRequest) SizeVT() (n int) {
 	if m.IncludeValue {
 		n += 2
 	}
+	if m.ComparisonType != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.ComparisonType))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -3274,6 +3300,10 @@ func (m *GetResponse) SizeVT() (n int) {
 	}
 	if m.Value != nil {
 		l = len(m.Value)
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.Key != nil {
+		l = len(*m.Key)
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -5173,6 +5203,25 @@ func (m *GetRequest) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.IncludeValue = bool(v != 0)
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ComparisonType", wireType)
+			}
+			m.ComparisonType = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ComparisonType |= KeyComparisonType(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -5312,6 +5361,39 @@ func (m *GetResponse) UnmarshalVT(dAtA []byte) error {
 			if m.Value == nil {
 				m.Value = []byte{}
 			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			s := string(dAtA[iNdEx:postIndex])
+			m.Key = &s
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -8451,6 +8533,25 @@ func (m *GetRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 				}
 			}
 			m.IncludeValue = bool(v != 0)
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ComparisonType", wireType)
+			}
+			m.ComparisonType = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ComparisonType |= KeyComparisonType(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -8587,6 +8688,43 @@ func (m *GetResponse) UnmarshalVTUnsafe(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.Value = dAtA[iNdEx:postIndex]
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			var stringValue string
+			if intStringLen > 0 {
+				stringValue = unsafe.String(&dAtA[iNdEx], intStringLen)
+			}
+			s := stringValue
+			m.Key = &s
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

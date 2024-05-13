@@ -480,7 +480,7 @@ func (d *db) applyDeleteRange(batch WriteBatch, notifications *notifications, de
 }
 
 func applyGet(kv KV, getReq *proto.GetRequest) (*proto.GetResponse, error) {
-	_, value, closer, err := kv.Get(getReq.Key, ComparisonEqual)
+	key, value, closer, err := kv.Get(getReq.Key, ComparisonType(getReq.GetComparisonType()))
 
 	if errors.Is(err, ErrKeyNotFound) {
 		return &proto.GetResponse{Status: proto.Status_KEY_NOT_FOUND}, nil
@@ -510,7 +510,7 @@ func applyGet(kv KV, getReq *proto.GetRequest) (*proto.GetResponse, error) {
 		resValue = nil
 	}
 
-	return &proto.GetResponse{
+	res := &proto.GetResponse{
 		Value: resValue,
 		Version: &proto.Version{
 			VersionId:          se.VersionId,
@@ -520,7 +520,13 @@ func applyGet(kv KV, getReq *proto.GetRequest) (*proto.GetResponse, error) {
 			SessionId:          se.SessionId,
 			ClientIdentity:     se.ClientIdentity,
 		},
-	}, nil
+	}
+
+	if getReq.ComparisonType != proto.KeyComparisonType_EQUAL {
+		res.Key = &key
+	}
+
+	return res, nil
 }
 
 func GetStorageEntry(batch WriteBatch, key string) (*proto.StorageEntry, error) {
