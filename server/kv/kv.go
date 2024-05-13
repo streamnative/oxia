@@ -93,12 +93,22 @@ type SnapshotLoader interface {
 	Complete()
 }
 
+type ComparisonType int
+
+const (
+	ComparisonEqual ComparisonType = iota
+	ComparisonFloor
+	ComparisonCeiling
+	ComparisonLower
+	ComparisonHigher
+)
+
 type KV interface {
 	io.Closer
 
 	NewWriteBatch() WriteBatch
 
-	Get(key string) ([]byte, io.Closer, error)
+	Get(key string, comparisonType ComparisonType) (storedKey string, value []byte, closer io.Closer, err error)
 
 	KeyRangeScan(lowerBound, upperBound string) (KeyIterator, error)
 	KeyRangeScanReverse(lowerBound, upperBound string) (ReverseKeyIterator, error)
@@ -111,7 +121,6 @@ type KV interface {
 
 	Delete() error
 }
-
 type FactoryOptions struct {
 	DataDir     string
 	CacheSizeMB int64

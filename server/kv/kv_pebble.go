@@ -359,14 +359,108 @@ func (p *Pebble) NewWriteBatch() WriteBatch {
 	return &PebbleBatch{p: p, b: p.db.NewIndexedBatch()}
 }
 
-func (p *Pebble) Get(key string) ([]byte, io.Closer, error) {
-	value, closer, err := p.db.Get([]byte(key))
+func (p *Pebble) getFloor(key string) (returnedKey string, value []byte, closer io.Closer, err error) {
+	// There is no <= comparison in Pebble
+	// We have to first check for == and then for <
+	value, closer, err = p.db.Get([]byte(key))
+	if err != nil && !errors.Is(err, pebble.ErrNotFound) {
+		return "", nil, nil, err
+	}
+
+	if err == nil {
+		// We found record with key ==
+		return key, value, closer, nil
+	}
+
+	// Do < search
+	return p.getLower(key)
+}
+
+func (p *Pebble) getCeiling(key string) (returnedKey string, value []byte, closer io.Closer, err error) {
+	it, err := p.db.NewIter(&pebble.IterOptions{
+		LowerBound: []byte(key),
+	})
+	if err != nil {
+		return "", nil, nil, err
+	}
+
+	if !it.First() {
+		return "", nil, nil, multierr.Combine(it.Close(), pebble.ErrNotFound)
+	}
+
+	returnedKey = string(it.Key())
+	value, err = it.ValueAndErr()
+	return returnedKey, value, it, err
+}
+
+func (p *Pebble) getLower(key string) (returnedKey string, value []byte, closer io.Closer, err error) {
+	it, err := p.db.NewIter(&pebble.IterOptions{
+		UpperBound: []byte(key),
+	})
+	if err != nil {
+		return "", nil, nil, err
+	}
+
+	if !it.Last() {
+		return "", nil, nil, multierr.Combine(it.Close(), pebble.ErrNotFound)
+	}
+
+	returnedKey = string(it.Key())
+	value, err = it.ValueAndErr()
+	return returnedKey, value, it, err
+}
+
+func (p *Pebble) getHigher(key string) (returnedKey string, value []byte, closer io.Closer, err error) {
+	it, err := p.db.NewIter(&pebble.IterOptions{
+		LowerBound: []byte(key),
+	})
+	if err != nil {
+		return "", nil, nil, err
+	}
+
+	// The iterator might be positioned exactly on the key. Since we're looking for strict `x > y` comparison,
+	// we will have to skip to the next record
+	it.First()
+	if !it.First() {
+		return "", nil, nil, multierr.Combine(it.Close(), pebble.ErrNotFound)
+	}
+
+	returnedKey = string(it.Key())
+	if returnedKey == key {
+		// We found the same key, skip it
+		if !it.Next() {
+			return "", nil, nil, multierr.Combine(it.Close(), pebble.ErrNotFound)
+		}
+		returnedKey = string(it.Key())
+	}
+
+	value, err = it.ValueAndErr()
+	return returnedKey, value, it, err
+}
+
+func (p *Pebble) Get(key string, comparisonType ComparisonType) (returnedKey string, value []byte, closer io.Closer, err error) {
+	switch comparisonType {
+	case ComparisonEqual:
+		value, closer, err = p.db.Get([]byte(key))
+		if err == nil {
+			returnedKey = key
+		}
+	case ComparisonFloor:
+		returnedKey, value, closer, err = p.getFloor(key)
+	case ComparisonCeiling:
+		returnedKey, value, closer, err = p.getCeiling(key)
+	case ComparisonLower:
+		returnedKey, value, closer, err = p.getLower(key)
+	case ComparisonHigher:
+		returnedKey, value, closer, err = p.getHigher(key)
+	}
+
 	if errors.Is(err, pebble.ErrNotFound) {
 		err = ErrKeyNotFound
 	} else if err != nil {
 		p.readErrors.Inc()
 	}
-	return value, closer, err
+	return returnedKey, value, closer, err
 }
 
 func (p *Pebble) KeyRangeScan(lowerBound, upperBound string) (KeyIterator, error) {

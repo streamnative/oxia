@@ -218,7 +218,7 @@ func (t *notificationsTrimmer) binarySearch(firstOffset, lastOffset int64, cutof
 }
 
 func (t *notificationsTrimmer) readAt(offset int64) (time.Time, error) {
-	res, closer, err := t.kv.Get(notificationKey(offset))
+	_, res, closer, err := t.kv.Get(notificationKey(offset), ComparisonEqual)
 	if err != nil {
 		return time.Time{}, err
 	}
