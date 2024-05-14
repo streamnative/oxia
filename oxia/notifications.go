@@ -163,6 +163,9 @@ func (snm *shardNotificationsManager) getNotificationsWithRetries() { //nolint:r
 				snm.nm.cancel()
 			}
 		})
+
+	// Signal that this shard notification manager is now closed
+	snm.nm.closeCh <- nil
 }
 
 func (snm *shardNotificationsManager) multiplexNotificationBatch(nb *proto.NotificationBatch) error {
@@ -184,7 +187,6 @@ func (snm *shardNotificationsManager) multiplexNotificationBatch(nb *proto.Notif
 
 		// Unblock from channel write when we're closing down
 		case <-snm.ctx.Done():
-			snm.nm.closeCh <- nil
 			return snm.ctx.Err()
 		}
 	}
@@ -194,13 +196,9 @@ func (snm *shardNotificationsManager) multiplexNotificationBatch(nb *proto.Notif
 func (snm *shardNotificationsManager) multiplexNotificationBatchOnce(notifications proto.OxiaClient_GetNotificationsClient) error {
 	nb, err := notifications.Recv()
 	if err != nil {
-		if snm.ctx.Err() != nil {
-			snm.nm.closeCh <- nil
-		}
 		return err
 	} else if nb == nil {
 		if snm.ctx.Err() != nil {
-			snm.nm.closeCh <- nil
 			return snm.ctx.Err()
 		}
 		return io.EOF
@@ -249,7 +247,6 @@ func (snm *shardNotificationsManager) getNotifications() error {
 	})
 	if err != nil {
 		if snm.ctx.Err() != nil {
-			snm.nm.closeCh <- nil
 			return snm.ctx.Err()
 		}
 		return err
