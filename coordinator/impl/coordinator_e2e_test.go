@@ -199,8 +199,9 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 	assert.NoError(t, err)
 	assert.EqualValues(t, 0, version1.VersionId)
 
-	res, version2, err := client.Get(ctx, "my-key")
+	key, res, version2, err := client.Get(ctx, "my-key")
 	assert.NoError(t, err)
+	assert.Equal(t, "my-key", key)
 	assert.Equal(t, []byte("my-value"), res)
 	assert.Equal(t, version1, version2)
 	assert.NoError(t, client.Close())
@@ -217,11 +218,11 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 	// Wait for the client to receive the updated assignment list
 	assert.Eventually(t, func() bool {
 		client, _ = oxia.NewSyncClient(follower.Public)
-		_, _, err := client.Get(ctx, "my-key")
+		_, _, _, err := client.Get(ctx, "my-key")
 		return err == nil
 	}, 10*time.Second, 10*time.Millisecond)
 
-	res, version3, err := client.Get(ctx, "my-key")
+	_, res, version3, err := client.Get(ctx, "my-key")
 	assert.NoError(t, err)
 	assert.Equal(t, []byte("my-value"), res)
 	assert.Equal(t, version1, version3)
@@ -313,7 +314,7 @@ func TestCoordinator_MultipleNamespaces(t *testing.T) {
 	assert.EqualValues(t, 0, version1.ModificationsCount)
 
 	// Key will not be visible in other namespace
-	res, _, err := clientNs1.Get(ctx, "my-key")
+	_, res, _, err := clientNs1.Get(ctx, "my-key")
 	assert.ErrorIs(t, err, oxia.ErrKeyNotFound)
 	assert.Nil(t, res)
 
@@ -321,7 +322,7 @@ func TestCoordinator_MultipleNamespaces(t *testing.T) {
 	assert.NoError(t, err)
 	assert.EqualValues(t, 0, version2.ModificationsCount)
 
-	res, version3, err := clientDefault.Get(ctx, "my-key")
+	_, res, version3, err := clientDefault.Get(ctx, "my-key")
 	assert.NoError(t, err)
 	assert.EqualValues(t, []byte("my-value"), res)
 	assert.EqualValues(t, 0, version3.ModificationsCount)

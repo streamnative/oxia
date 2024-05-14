@@ -78,7 +78,7 @@ func Example() {
 	time.Sleep(2 * time.Second)
 
 	fmt.Printf("Result: key: %s - Value: %s - Version: %#v\n", key, string(value), version.VersionId)
-	// Output: Result: value-2 - Version: 1
+	// Output: Result: key: /my-key - Value: value-2 - Version: 1
 }
 
 func ExampleAsyncClient() {
