@@ -285,7 +285,7 @@ func TestAsyncClientImpl_OverrideEphemeral(t *testing.T) {
 	assert.NoError(t, err)
 
 	var res []byte
-	res, version, err = client.Get(context.Background(), k)
+	_, res, version, err = client.Get(context.Background(), k)
 	assert.NoError(t, err)
 	assert.EqualValues(t, 1, version.ModificationsCount)
 	assert.Equal(t, "v2", string(res))
@@ -314,7 +314,7 @@ func TestAsyncClientImpl_ClientIdentity(t *testing.T) {
 	assert.NoError(t, err)
 
 	var res []byte
-	res, version, err = client2.Get(context.Background(), k)
+	_, res, version, err = client2.Get(context.Background(), k)
 	assert.NoError(t, err)
 	assert.EqualValues(t, 0, version.ModificationsCount)
 	assert.Equal(t, "v1", string(res))
@@ -366,5 +366,209 @@ func TestSyncClientImpl_SessionNotifications(t *testing.T) {
 	}
 
 	assert.NoError(t, client2.Close())
+	assert.NoError(t, standaloneServer.Close())
+}
+
+func TestSyncClientImpl_FloorCeilingGet(t *testing.T) {
+	config := server.NewTestConfig(t.TempDir())
+	// Test with multiple shards to ensure correctness across shards
+	config.NumShards = 10
+	standaloneServer, err := server.NewStandalone(config)
+	assert.NoError(t, err)
+
+	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())
+	client, err := NewSyncClient(serviceAddress)
+	assert.NoError(t, err)
+
+	ctx := context.Background()
+	_, _ = client.Put(ctx, "a", []byte("0"))
+	// _, _ = client.Put(ctx, "b", []byte("1")) // Skipped intentionally
+	_, _ = client.Put(ctx, "c", []byte("2"))
+	_, _ = client.Put(ctx, "d", []byte("3"))
+	_, _ = client.Put(ctx, "e", []byte("4"))
+	//_, _ = client.Put(ctx, "f", []byte("5")) // Skipped intentionally
+	_, _ = client.Put(ctx, "g", []byte("6"))
+
+	key, value, _, err := client.Get(ctx, "a")
+	assert.NoError(t, err)
+	assert.Equal(t, "a", key)
+	assert.Equal(t, "0", string(value))
+
+	key, value, _, err = client.Get(ctx, "a", ComparisonEqual())
+	assert.NoError(t, err)
+	assert.Equal(t, "a", key)
+	assert.Equal(t, "0", string(value))
+
+	key, value, _, err = client.Get(ctx, "a", ComparisonFloor())
+	assert.NoError(t, err)
+	assert.Equal(t, "a", key)
+	assert.Equal(t, "0", string(value))
+
+	key, value, _, err = client.Get(ctx, "a", ComparisonCeiling())
+	assert.NoError(t, err)
+	assert.Equal(t, "a", key)
+	assert.Equal(t, "0", string(value))
+
+	key, value, _, err = client.Get(ctx, "a", ComparisonLower())
+	assert.ErrorIs(t, ErrKeyNotFound, err)
+
+	key, value, _, err = client.Get(ctx, "a", ComparisonHigher())
+	assert.NoError(t, err)
+	assert.Equal(t, "c", key)
+	assert.Equal(t, "2", string(value))
+
+	//// ---------------------------------------------------------------
+
+	key, value, _, err = client.Get(ctx, "b")
+	assert.ErrorIs(t, ErrKeyNotFound, err)
+
+	key, value, _, err = client.Get(ctx, "b", ComparisonEqual())
+	assert.ErrorIs(t, ErrKeyNotFound, err)
+
+	key, value, _, err = client.Get(ctx, "b", ComparisonFloor())
+	assert.NoError(t, err)
+	assert.Equal(t, "a", key)
+	assert.Equal(t, "0", string(value))
+
+	key, value, _, err = client.Get(ctx, "b", ComparisonCeiling())
+	assert.NoError(t, err)
+	assert.Equal(t, "c", key)
+	assert.Equal(t, "2", string(value))
+
+	key, value, _, err = client.Get(ctx, "b", ComparisonLower())
+	assert.NoError(t, err)
+	assert.Equal(t, "a", key)
+	assert.Equal(t, "0", string(value))
+
+	key, value, _, err = client.Get(ctx, "b", ComparisonHigher())
+	assert.NoError(t, err)
+	assert.Equal(t, "c", key)
+	assert.Equal(t, "2", string(value))
+
+	//// ---------------------------------------------------------------
+
+	key, value, _, err = client.Get(ctx, "c")
+	assert.NoError(t, err)
+	assert.Equal(t, "c", key)
+	assert.Equal(t, "2", string(value))
+
+	key, value, _, err = client.Get(ctx, "c", ComparisonEqual())
+	assert.NoError(t, err)
+	assert.Equal(t, "c", key)
+	assert.Equal(t, "2", string(value))
+
+	key, value, _, err = client.Get(ctx, "c", ComparisonFloor())
+	assert.NoError(t, err)
+	assert.Equal(t, "c", key)
+	assert.Equal(t, "2", string(value))
+
+	key, value, _, err = client.Get(ctx, "c", ComparisonCeiling())
+	assert.NoError(t, err)
+	assert.Equal(t, "c", key)
+	assert.Equal(t, "2", string(value))
+
+	key, value, _, err = client.Get(ctx, "c", ComparisonLower())
+	assert.NoError(t, err)
+	assert.Equal(t, "a", key)
+	assert.Equal(t, "0", string(value))
+
+	key, value, _, err = client.Get(ctx, "c", ComparisonHigher())
+	assert.NoError(t, err)
+	assert.Equal(t, "d", key)
+	assert.Equal(t, "3", string(value))
+
+	//// ---------------------------------------------------------------
+
+	key, value, _, err = client.Get(ctx, "d")
+	assert.NoError(t, err)
+	assert.Equal(t, "d", key)
+	assert.Equal(t, "3", string(value))
+
+	key, value, _, err = client.Get(ctx, "d", ComparisonEqual())
+	assert.NoError(t, err)
+	assert.Equal(t, "d", key)
+	assert.Equal(t, "3", string(value))
+
+	key, value, _, err = client.Get(ctx, "d", ComparisonFloor())
+	assert.NoError(t, err)
+	assert.Equal(t, "d", key)
+	assert.Equal(t, "3", string(value))
+
+	key, value, _, err = client.Get(ctx, "d", ComparisonCeiling())
+	assert.NoError(t, err)
+	assert.Equal(t, "d", key)
+	assert.Equal(t, "3", string(value))
+
+	key, value, _, err = client.Get(ctx, "d", ComparisonLower())
+	assert.NoError(t, err)
+	assert.Equal(t, "c", key)
+	assert.Equal(t, "2", string(value))
+
+	key, value, _, err = client.Get(ctx, "d", ComparisonHigher())
+	assert.NoError(t, err)
+	assert.Equal(t, "e", key)
+	assert.Equal(t, "4", string(value))
+
+	//// ---------------------------------------------------------------
+
+	key, value, _, err = client.Get(ctx, "e")
+	assert.NoError(t, err)
+	assert.Equal(t, "e", key)
+	assert.Equal(t, "4", string(value))
+
+	key, value, _, err = client.Get(ctx, "e", ComparisonEqual())
+	assert.NoError(t, err)
+	assert.Equal(t, "e", key)
+	assert.Equal(t, "4", string(value))
+
+	key, value, _, err = client.Get(ctx, "e", ComparisonFloor())
+	assert.NoError(t, err)
+	assert.Equal(t, "e", key)
+	assert.Equal(t, "4", string(value))
+
+	key, value, _, err = client.Get(ctx, "e", ComparisonCeiling())
+	assert.NoError(t, err)
+	assert.Equal(t, "e", key)
+	assert.Equal(t, "4", string(value))
+
+	key, value, _, err = client.Get(ctx, "e", ComparisonLower())
+	assert.NoError(t, err)
+	assert.Equal(t, "d", key)
+	assert.Equal(t, "3", string(value))
+
+	key, value, _, err = client.Get(ctx, "e", ComparisonHigher())
+	assert.NoError(t, err)
+	assert.Equal(t, "g", key)
+	assert.Equal(t, "6", string(value))
+
+	//// ---------------------------------------------------------------
+
+	key, value, _, err = client.Get(ctx, "f")
+	assert.ErrorIs(t, ErrKeyNotFound, err)
+
+	key, value, _, err = client.Get(ctx, "f", ComparisonEqual())
+	assert.ErrorIs(t, ErrKeyNotFound, err)
+
+	key, value, _, err = client.Get(ctx, "f", ComparisonFloor())
+	assert.NoError(t, err)
+	assert.Equal(t, "e", key)
+	assert.Equal(t, "4", string(value))
+
+	key, value, _, err = client.Get(ctx, "f", ComparisonCeiling())
+	assert.NoError(t, err)
+	assert.Equal(t, "g", key)
+	assert.Equal(t, "6", string(value))
+
+	key, value, _, err = client.Get(ctx, "f", ComparisonLower())
+	assert.NoError(t, err)
+	assert.Equal(t, "e", key)
+	assert.Equal(t, "4", string(value))
+
+	key, value, _, err = client.Get(ctx, "f", ComparisonHigher())
+	assert.NoError(t, err)
+	assert.Equal(t, "g", key)
+	assert.Equal(t, "6", string(value))
+
+	assert.NoError(t, client.Close())
 	assert.NoError(t, standaloneServer.Close())
 }

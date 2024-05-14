@@ -38,7 +38,7 @@ func (c *neverCompleteAsyncClient) DeleteRange(minKeyInclusive string, maxKeyExc
 	return make(chan error)
 }
 
-func (c *neverCompleteAsyncClient) Get(key string) <-chan GetResult {
+func (c *neverCompleteAsyncClient) Get(key string, options ...GetOption) <-chan GetResult {
 	return make(chan GetResult)
 }
 
@@ -65,7 +65,7 @@ func TestCancelContext(t *testing.T) {
 		return syncClient.DeleteRange(ctx, "/a", "/b")
 	})
 	assertCancellable(t, func(ctx context.Context) error {
-		_, _, err := syncClient.Get(ctx, "/a")
+		_, _, _, err := syncClient.Get(ctx, "/a")
 		return err
 	})
 

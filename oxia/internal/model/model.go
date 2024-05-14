@@ -40,8 +40,9 @@ type DeleteRangeCall struct {
 }
 
 type GetCall struct {
-	Key      string
-	Callback func(*proto.GetResponse, error)
+	Key            string
+	ComparisonType proto.KeyComparisonType
+	Callback       func(*proto.GetResponse, error)
 }
 
 func (r PutCall) ToProto() *proto.PutRequest {
@@ -70,8 +71,9 @@ func (r DeleteRangeCall) ToProto() *proto.DeleteRangeRequest {
 
 func (r GetCall) ToProto() *proto.GetRequest {
 	return &proto.GetRequest{
-		Key:          r.Key,
-		IncludeValue: true,
+		Key:            r.Key,
+		ComparisonType: r.ComparisonType,
+		IncludeValue:   true,
 	}
 }
 

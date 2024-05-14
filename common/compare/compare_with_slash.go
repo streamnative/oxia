@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package kv
+package compare
 
 import (
 	"bytes"
 )
 
-func compareWithSlash(a, b []byte) int {
+func CompareWithSlash(a, b []byte) int {
 	for len(a) > 0 && len(b) > 0 {
 		idxA, idxB := bytes.IndexByte(a, '/'), bytes.IndexByte(b, '/')
 		switch {

@@ -16,6 +16,7 @@ package kv
 
 import (
 	"fmt"
+	"github.com/streamnative/oxia/common/compare"
 	"io"
 	"log/slog"
 	"os"
@@ -34,7 +35,7 @@ import (
 
 var (
 	OxiaSlashSpanComparer = &pebble.Comparer{
-		Compare:            compareWithSlash,
+		Compare:            compare.CompareWithSlash,
 		Equal:              pebble.DefaultComparer.Equal,
 		AbbreviatedKey:     pebble.DefaultComparer.AbbreviatedKey,
 		FormatKey:          pebble.DefaultComparer.FormatKey,

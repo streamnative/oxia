@@ -105,12 +105,12 @@ func (c *syncClientImpl) DeleteRange(ctx context.Context, minKeyInclusive string
 	}
 }
 
-func (c *syncClientImpl) Get(ctx context.Context, key string) ([]byte, Version, error) {
+func (c *syncClientImpl) Get(ctx context.Context, key string, options ...GetOption) (string, []byte, Version, error) {
 	select {
-	case r := <-c.asyncClient.Get(key):
-		return r.Value, r.Version, r.Err
+	case r := <-c.asyncClient.Get(key, options...):
+		return r.Key, r.Value, r.Version, r.Err
 	case <-ctx.Done():
-		return nil, Version{}, ctx.Err()
+		return "", nil, Version{}, ctx.Err()
 	}
 }
 

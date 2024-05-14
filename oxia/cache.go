@@ -265,7 +265,7 @@ func (c *cacheImpl[Value]) Get(ctx context.Context, key string) (value Value, ve
 }
 
 func (c *cacheImpl[Value]) load(ctx context.Context, key string) (value Value, version Version, err error) {
-	data, existingVersion, err := c.client.Get(ctx, key)
+	_, data, existingVersion, err := c.client.Get(ctx, key)
 	if errors.Is(err, ErrKeyNotFound) {
 		cr := empty[cachedResult[Value]]()
 		c.valueCache.Set(key, cr, 0)
