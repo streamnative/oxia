@@ -70,7 +70,7 @@ Global Flags:
 
 Since the coordinator is brain-like in the oxia cluster, it should have some configurations to help it to make decisions.
 
-We can create it in the specific path you need. the configuration template is as follows. 
+We can create it in the specific path you need. the configuration template `oxia_conf.yaml` is as follows. 
 
 ```yaml
 namespaces:
