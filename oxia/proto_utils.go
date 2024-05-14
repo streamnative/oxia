@@ -35,16 +35,28 @@ func toDeleteRangeResult(r *proto.DeleteRangeResponse) error {
 	return toError(r.Status)
 }
 
-func toGetResult(r *proto.GetResponse) GetResult {
+func toGetResult(r *proto.GetResponse, originalKey string, err error) GetResult {
+	if err != nil {
+		return GetResult{Err: err}
+	}
+
 	if err := toError(r.Status); err != nil {
 		return GetResult{
 			Err: err,
 		}
 	}
-	return GetResult{
+	gr := GetResult{
 		Value:   r.Value,
 		Version: toVersion(r.Version),
 	}
+
+	if r.Key != nil {
+		gr.Key = r.GetKey()
+	} else {
+		gr.Key = originalKey
+	}
+
+	return gr
 }
 
 func toVersion(version *proto.Version) Version {

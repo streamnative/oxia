@@ -23,6 +23,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/streamnative/oxia/common/compare"
+
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/pkg/errors"
@@ -34,7 +36,7 @@ import (
 
 var (
 	OxiaSlashSpanComparer = &pebble.Comparer{
-		Compare:            compareWithSlash,
+		Compare:            compare.CompareWithSlash,
 		Equal:              pebble.DefaultComparer.Equal,
 		AbbreviatedKey:     pebble.DefaultComparer.AbbreviatedKey,
 		FormatKey:          pebble.DefaultComparer.FormatKey,

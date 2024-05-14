@@ -87,7 +87,7 @@ type AsyncClient interface {
 	// In addition to the value, a version object is also returned, with information
 	// about the record state.
 	// Returns ErrorKeyNotFound if the record does not exist
-	Get(key string) <-chan GetResult
+	Get(key string, options ...GetOption) <-chan GetResult
 
 	// List any existing keys within the specified range.
 	// Note: Oxia uses a custom sorting order that treats `/` characters in special way.
@@ -142,7 +142,7 @@ type SyncClient interface {
 	// In addition to the value, a version object is also returned, with information
 	// about the record state.
 	// Returns ErrorKeyNotFound if the record does not exist
-	Get(ctx context.Context, key string) (value []byte, version Version, err error)
+	Get(ctx context.Context, key string, options ...GetOption) (storedKey string, value []byte, version Version, err error)
 
 	// List any existing keys within the specified range.
 	// Note: Oxia uses a custom sorting order that treats `/` characters in special way.
@@ -195,9 +195,12 @@ type PutResult struct {
 	Err error
 }
 
-// GetResult structure is wrapping a Value, its version information and
+// GetResult structure is wrapping a record, with its Key and Value, its version information and
 // an eventual error as results for a `Get` operation in the [AsyncClient].
 type GetResult struct {
+	// Key is the key of the record
+	Key string
+
 	// Value is the value of the record
 	Value []byte
 

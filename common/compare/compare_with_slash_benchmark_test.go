@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package kv
+package compare
 
 import (
 	"bytes"
@@ -30,6 +30,6 @@ func Benchmark_StandardCompare(b *testing.B) {
 
 func Benchmark_CompareWithSlash(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		compareWithSlash(benchKeyA, benchKeyB)
+		CompareWithSlash(benchKeyA, benchKeyB)
 	}
 }

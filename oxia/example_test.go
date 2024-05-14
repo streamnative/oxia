@@ -69,7 +69,7 @@ func Example() {
 	}
 
 	// Read the value of a record
-	value, version, err := client.Get(context.Background(), "/my-key")
+	key, value, version, err := client.Get(context.Background(), "/my-key")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -77,8 +77,8 @@ func Example() {
 	// Sleep to avoid DATA RACE on zerolog read at os.Stdout，and runExamples write at os.Stdout
 	time.Sleep(2 * time.Second)
 
-	fmt.Printf("Result: %s - Version: %#v\n", string(value), version.VersionId)
-	// Output: Result: value-2 - Version: 1
+	fmt.Printf("Result: key: %s - Value: %s - Version: %#v\n", key, string(value), version.VersionId)
+	// Output: Result: key: /my-key - Value: value-2 - Version: 1
 }
 
 func ExampleAsyncClient() {
