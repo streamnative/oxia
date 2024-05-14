@@ -161,8 +161,7 @@ func TestSyncClientImpl_Notifications(t *testing.T) {
 	select {
 	case <-notifications.Ch():
 		// Ok
-
-	case <-time.After(1 * time.Second):
+	default:
 		assert.Fail(t, "should have been closed")
 	}
 
@@ -170,7 +169,7 @@ func TestSyncClientImpl_Notifications(t *testing.T) {
 	case <-notifications2.Ch():
 		// Ok
 
-	case <-time.After(1 * time.Second):
+	default:
 		assert.Fail(t, "should have been closed")
 	}
 
