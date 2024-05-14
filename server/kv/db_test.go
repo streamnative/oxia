@@ -505,3 +505,168 @@ func TestDB_Delete(t *testing.T) {
 
 	assert.NoError(t, factory.Close())
 }
+
+func TestDB_FloorCeiling(t *testing.T) {
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
+	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	assert.NoError(t, err)
+
+	writeReq := &proto.WriteRequest{
+		Puts: []*proto.PutRequest{{
+			Key:   "a",
+			Value: []byte("0"),
+			// }, { // Intentionally skipped
+			//	Key:   "b",
+			//	Value: []byte("1"),
+		}, {
+			Key:   "c",
+			Value: []byte("2"),
+		}, {
+			Key:   "d",
+			Value: []byte("3"),
+		}, {
+			Key:   "e",
+			Value: []byte("4"),
+		}},
+	}
+	_, err = db.ProcessWrite(writeReq, 0, 0, NoOpCallback)
+	assert.NoError(t, err)
+
+	// ---------------------------------------------------------------
+
+	getRes, err := db.Get(&proto.GetRequest{Key: "a", IncludeValue: true})
+	assert.NoError(t, err)
+	assert.Equal(t, "", getRes.GetKey())
+	assert.Equal(t, "0", string(getRes.GetValue()))
+
+	getRes, err = db.Get(&proto.GetRequest{Key: "a", IncludeValue: true, ComparisonType: proto.KeyComparisonType_EQUAL})
+	assert.NoError(t, err)
+	assert.Equal(t, "", getRes.GetKey())
+	assert.Equal(t, "0", string(getRes.GetValue()))
+
+	getRes, err = db.Get(&proto.GetRequest{Key: "a", ComparisonType: proto.KeyComparisonType_FLOOR})
+	assert.NoError(t, err)
+	assert.Equal(t, "a", getRes.GetKey())
+
+	getRes, err = db.Get(&proto.GetRequest{Key: "a", ComparisonType: proto.KeyComparisonType_CEILING})
+	assert.NoError(t, err)
+	assert.Equal(t, "a", getRes.GetKey())
+
+	getRes, err = db.Get(&proto.GetRequest{Key: "a", ComparisonType: proto.KeyComparisonType_LOWER})
+	assert.NoError(t, err)
+	assert.Equal(t, proto.Status_KEY_NOT_FOUND, getRes.Status)
+
+	getRes, err = db.Get(&proto.GetRequest{Key: "a", ComparisonType: proto.KeyComparisonType_HIGHER})
+	assert.NoError(t, err)
+	assert.Equal(t, "c", getRes.GetKey())
+
+	// ---------------------------------------------------------------
+
+	getRes, err = db.Get(&proto.GetRequest{Key: "b"})
+	assert.NoError(t, err)
+	assert.Equal(t, proto.Status_KEY_NOT_FOUND, getRes.Status)
+
+	getRes, err = db.Get(&proto.GetRequest{Key: "b", ComparisonType: proto.KeyComparisonType_EQUAL})
+	assert.NoError(t, err)
+	assert.Equal(t, proto.Status_KEY_NOT_FOUND, getRes.Status)
+
+	getRes, err = db.Get(&proto.GetRequest{Key: "b", ComparisonType: proto.KeyComparisonType_FLOOR})
+	assert.NoError(t, err)
+	assert.Equal(t, "a", getRes.GetKey())
+
+	getRes, err = db.Get(&proto.GetRequest{Key: "b", ComparisonType: proto.KeyComparisonType_CEILING})
+	assert.NoError(t, err)
+	assert.Equal(t, "c", getRes.GetKey())
+
+	getRes, err = db.Get(&proto.GetRequest{Key: "b", ComparisonType: proto.KeyComparisonType_LOWER})
+	assert.NoError(t, err)
+	assert.Equal(t, "a", getRes.GetKey())
+
+	getRes, err = db.Get(&proto.GetRequest{Key: "b", ComparisonType: proto.KeyComparisonType_HIGHER})
+	assert.NoError(t, err)
+	assert.Equal(t, "c", getRes.GetKey())
+
+	// ---------------------------------------------------------------
+
+	getRes, err = db.Get(&proto.GetRequest{Key: "c", IncludeValue: true})
+	assert.NoError(t, err)
+	assert.Equal(t, "", getRes.GetKey())
+	assert.Equal(t, "2", string(getRes.GetValue()))
+
+	getRes, err = db.Get(&proto.GetRequest{Key: "c", IncludeValue: true, ComparisonType: proto.KeyComparisonType_EQUAL})
+	assert.NoError(t, err)
+	assert.Equal(t, "", getRes.GetKey())
+	assert.Equal(t, "2", string(getRes.GetValue()))
+
+	getRes, err = db.Get(&proto.GetRequest{Key: "c", ComparisonType: proto.KeyComparisonType_FLOOR})
+	assert.NoError(t, err)
+	assert.Equal(t, "c", getRes.GetKey())
+
+	getRes, err = db.Get(&proto.GetRequest{Key: "c", ComparisonType: proto.KeyComparisonType_CEILING})
+	assert.NoError(t, err)
+	assert.Equal(t, "c", getRes.GetKey())
+
+	getRes, err = db.Get(&proto.GetRequest{Key: "c", ComparisonType: proto.KeyComparisonType_LOWER})
+	assert.NoError(t, err)
+	assert.Equal(t, "a", getRes.GetKey())
+
+	getRes, err = db.Get(&proto.GetRequest{Key: "c", ComparisonType: proto.KeyComparisonType_HIGHER})
+	assert.NoError(t, err)
+	assert.Equal(t, "d", getRes.GetKey())
+
+	// ---------------------------------------------------------------
+
+	getRes, err = db.Get(&proto.GetRequest{Key: "d", IncludeValue: true})
+	assert.NoError(t, err)
+	assert.Equal(t, "", getRes.GetKey())
+	assert.Equal(t, "3", string(getRes.GetValue()))
+
+	getRes, err = db.Get(&proto.GetRequest{Key: "d", IncludeValue: true, ComparisonType: proto.KeyComparisonType_EQUAL})
+	assert.NoError(t, err)
+	assert.Equal(t, "", getRes.GetKey())
+	assert.Equal(t, "3", string(getRes.GetValue()))
+
+	getRes, err = db.Get(&proto.GetRequest{Key: "d", ComparisonType: proto.KeyComparisonType_FLOOR})
+	assert.NoError(t, err)
+	assert.Equal(t, "d", getRes.GetKey())
+
+	getRes, err = db.Get(&proto.GetRequest{Key: "d", ComparisonType: proto.KeyComparisonType_CEILING})
+	assert.NoError(t, err)
+	assert.Equal(t, "d", getRes.GetKey())
+
+	getRes, err = db.Get(&proto.GetRequest{Key: "d", ComparisonType: proto.KeyComparisonType_LOWER})
+	assert.NoError(t, err)
+	assert.Equal(t, "c", getRes.GetKey())
+
+	getRes, err = db.Get(&proto.GetRequest{Key: "d", ComparisonType: proto.KeyComparisonType_HIGHER})
+	assert.NoError(t, err)
+	assert.Equal(t, "e", getRes.GetKey())
+
+	// ---------------------------------------------------------------
+
+	getRes, err = db.Get(&proto.GetRequest{Key: "e", IncludeValue: true})
+	assert.NoError(t, err)
+	assert.Equal(t, "", getRes.GetKey())
+	assert.Equal(t, "4", string(getRes.GetValue()))
+
+	getRes, err = db.Get(&proto.GetRequest{Key: "e", IncludeValue: true, ComparisonType: proto.KeyComparisonType_EQUAL})
+	assert.NoError(t, err)
+	assert.Equal(t, "", getRes.GetKey())
+	assert.Equal(t, "4", string(getRes.GetValue()))
+
+	getRes, err = db.Get(&proto.GetRequest{Key: "e", ComparisonType: proto.KeyComparisonType_FLOOR})
+	assert.NoError(t, err)
+	assert.Equal(t, "e", getRes.GetKey())
+
+	getRes, err = db.Get(&proto.GetRequest{Key: "e", ComparisonType: proto.KeyComparisonType_CEILING})
+	assert.NoError(t, err)
+	assert.Equal(t, "e", getRes.GetKey())
+
+	getRes, err = db.Get(&proto.GetRequest{Key: "e", ComparisonType: proto.KeyComparisonType_LOWER})
+	assert.NoError(t, err)
+	assert.Equal(t, "d", getRes.GetKey())
+
+	assert.NoError(t, db.Close())
+	assert.NoError(t, factory.Close())
+}

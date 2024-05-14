@@ -17,6 +17,8 @@ package kv
 import (
 	"io"
 
+	"github.com/streamnative/oxia/proto"
+
 	"github.com/pkg/errors"
 )
 
@@ -93,7 +95,7 @@ type SnapshotLoader interface {
 	Complete()
 }
 
-type ComparisonType int
+type ComparisonType proto.KeyComparisonType
 
 const (
 	ComparisonEqual ComparisonType = iota
