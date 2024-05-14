@@ -46,6 +46,6 @@ func TestNotificationsClose(t *testing.T) {
 	assert.Equal(t, 1, count)
 
 	n, ok := <-nm.multiplexCh
-	assert.Equal(t, ok, false)
+	assert.Equal(t, false, ok)
 	assert.Nil(t, n)
 }

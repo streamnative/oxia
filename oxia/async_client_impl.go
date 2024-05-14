@@ -40,6 +40,7 @@ type clientImpl struct {
 	readBatchManager  *batch.Manager
 	executor          internal.Executor
 	sessions          *sessions
+	notifications     []*notifications
 
 	clientPool common.ClientPool
 	ctx        context.Context
@@ -105,6 +106,8 @@ func (c *clientImpl) Close() error {
 		c.clientPool.Close(),
 	)
 	c.cancel()
+
+	err = multierr.Append(err, c.closeNotifications())
 	return err
 }
 
@@ -258,11 +261,27 @@ func (c *clientImpl) List(ctx context.Context, minKeyInclusive string, maxKeyExc
 	return ch
 }
 
+func (c *clientImpl) closeNotifications() error {
+	c.Lock()
+	defer c.Unlock()
+
+	var err error
+	for _, n := range c.notifications {
+		err = multierr.Append(err, n.Close())
+	}
+
+	return err
+}
+
 func (c *clientImpl) GetNotifications() (Notifications, error) {
 	nm, err := newNotifications(c.ctx, c.options, c.clientPool, c.shardManager)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to create notification stream")
 	}
+
+	c.Lock()
+	defer c.Unlock()
+	c.notifications = append(c.notifications, nm)
 
 	return nm, nil
 }
