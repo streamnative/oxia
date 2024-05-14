@@ -43,23 +43,27 @@ func TestPebbbleSimple(t *testing.T) {
 	assert.NoError(t, wb.Commit())
 	assert.NoError(t, wb.Close())
 
-	res, closer, err := kv.Get("a")
+	key, res, closer, err := kv.Get("a", ComparisonEqual)
 	assert.NoError(t, err)
+	assert.Equal(t, "a", key)
 	assert.Equal(t, "0", string(res))
 	assert.NoError(t, closer.Close())
 
-	res, closer, err = kv.Get("b")
+	key, res, closer, err = kv.Get("b", ComparisonEqual)
 	assert.NoError(t, err)
+	assert.Equal(t, "b", key)
 	assert.Equal(t, "1", string(res))
 	assert.NoError(t, closer.Close())
 
-	res, closer, err = kv.Get("c")
+	key, res, closer, err = kv.Get("c", ComparisonEqual)
 	assert.NoError(t, err)
+	assert.Equal(t, "c", key)
 	assert.Equal(t, "2", string(res))
 	assert.NoError(t, closer.Close())
 
-	res, closer, err = kv.Get("non-existing")
+	key, res, closer, err = kv.Get("non-existing", ComparisonEqual)
 	assert.ErrorIs(t, err, ErrKeyNotFound)
+	assert.Equal(t, "", key)
 	assert.Nil(t, res)
 	assert.Nil(t, closer)
 
@@ -72,23 +76,27 @@ func TestPebbbleSimple(t *testing.T) {
 	assert.NoError(t, wb.Commit())
 	assert.NoError(t, wb.Close())
 
-	res, closer, err = kv.Get("a")
+	key, res, closer, err = kv.Get("a", ComparisonEqual)
 	assert.NoError(t, err)
+	assert.Equal(t, "a", key)
 	assert.Equal(t, "00", string(res))
 	assert.NoError(t, closer.Close())
 
-	res, closer, err = kv.Get("b")
+	key, res, closer, err = kv.Get("b", ComparisonEqual)
 	assert.NoError(t, err)
+	assert.Equal(t, "b", key)
 	assert.Equal(t, "11", string(res))
 	assert.NoError(t, closer.Close())
 
-	res, closer, err = kv.Get("c")
+	key, res, closer, err = kv.Get("c", ComparisonEqual)
 	assert.ErrorIs(t, err, ErrKeyNotFound)
+	assert.Equal(t, "", key)
 	assert.Nil(t, res)
 	assert.Nil(t, closer)
 
-	res, closer, err = kv.Get("d")
+	key, res, closer, err = kv.Get("d", ComparisonEqual)
 	assert.NoError(t, err)
+	assert.Equal(t, "d", key)
 	assert.Equal(t, "22", string(res))
 	assert.NoError(t, closer.Close())
 
@@ -343,8 +351,9 @@ func TestPebbbleDurability(t *testing.T) {
 		kv, err := factory.NewKV(common.DefaultNamespace, 1)
 		assert.NoError(t, err)
 
-		res, closer, err := kv.Get("a")
+		key, res, closer, err := kv.Get("a", ComparisonEqual)
 		assert.NoError(t, err)
+		assert.Equal(t, "a", key)
 		assert.Equal(t, "0", string(res))
 		assert.NoError(t, closer.Close())
 
@@ -436,15 +445,17 @@ func TestPebbbleDeleteRangeInBatch(t *testing.T) {
 	assert.NoError(t, wb.Commit())
 	assert.NoError(t, wb.Close())
 
-	res, closer, err := kv.Get("/a/b/a/a")
+	key, res, closer, err := kv.Get("/a/b/a/a", ComparisonEqual)
 	assert.Nil(t, res)
 	assert.Nil(t, closer)
+	assert.Equal(t, "", key)
 	assert.ErrorIs(t, err, ErrKeyNotFound)
 
-	res, closer, err = kv.Get("/a/a/a/zzzzzz")
+	key, res, closer, err = kv.Get("/a/a/a/zzzzzz", ComparisonEqual)
+	assert.Nil(t, err)
+	assert.Equal(t, "/a/a/a/zzzzzz", key)
 	assert.Equal(t, "/a/a/a/zzzzzz", string(res))
 	assert.NoError(t, closer.Close())
-	assert.Nil(t, err)
 
 	assert.NoError(t, kv.Close())
 	assert.NoError(t, factory.Close())
@@ -539,8 +550,10 @@ func TestPebbleSnapshot(t *testing.T) {
 
 		for i := 0; i < 100; i++ {
 			for j := 0; j < 100; j++ {
-				r, closer, err := kv2.Get(fmt.Sprintf("key-%d-%d", i, j))
+				k := fmt.Sprintf("key-%d-%d", i, j)
+				key, r, closer, err := kv2.Get(k, ComparisonEqual)
 				assert.NoError(t, err)
+				assert.Equal(t, k, key)
 				assert.Equal(t, fmt.Sprintf("value-%d-%d", i, j), string(r))
 				assert.NoError(t, closer.Close())
 			}
@@ -614,15 +627,18 @@ func TestPebbleSnapshot_Loader(t *testing.T) {
 
 	for i := 0; i < 100; i++ {
 		for j := 0; j < 100; j++ {
-			r, closer, err := kv2.Get(fmt.Sprintf("key-%d-%d", i, j))
+			k := fmt.Sprintf("key-%d-%d", i, j)
+			key, r, closer, err := kv2.Get(k, ComparisonEqual)
 			assert.NoError(t, err)
+			assert.Equal(t, k, key)
 			assert.Equal(t, fmt.Sprintf("value-%d-%d", i, j), string(r))
 			assert.NoError(t, closer.Close())
 		}
 	}
 
-	r, closer, err := kv2.Get("my-key")
+	key, r, closer, err := kv2.Get("my-key", ComparisonEqual)
 	assert.ErrorIs(t, err, ErrKeyNotFound)
+	assert.Equal(t, "", key)
 	assert.Nil(t, r)
 	assert.Nil(t, closer)
 
@@ -808,6 +824,190 @@ func TestPebbleReverseRangeScanNoLimits(t *testing.T) {
 	assert.False(t, it.Valid())
 
 	assert.NoError(t, it.Close())
+
+	assert.NoError(t, kv.Close())
+	assert.NoError(t, factory.Close())
+}
+
+func TestPebbbleFloorCeiling(t *testing.T) {
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
+	kv, err := factory.NewKV(common.DefaultNamespace, 1)
+	assert.NoError(t, err)
+
+	key, res, closer, err := kv.Get("e", ComparisonFloor)
+	assert.ErrorIs(t, err, ErrKeyNotFound)
+	assert.Equal(t, "", key)
+	assert.Nil(t, res)
+	assert.Nil(t, closer)
+
+	key, res, closer, err = kv.Get("e", ComparisonCeiling)
+	assert.ErrorIs(t, err, ErrKeyNotFound)
+	assert.Equal(t, "", key)
+	assert.Nil(t, res)
+	assert.Nil(t, closer)
+
+	key, res, closer, err = kv.Get("e", ComparisonLower)
+	assert.ErrorIs(t, err, ErrKeyNotFound)
+	assert.Equal(t, "", key)
+	assert.Nil(t, res)
+	assert.Nil(t, closer)
+
+	key, res, closer, err = kv.Get("e", ComparisonHigher)
+	assert.ErrorIs(t, err, ErrKeyNotFound)
+	assert.Equal(t, "", key)
+	assert.Nil(t, res)
+	assert.Nil(t, closer)
+
+	// ---------------------------------------------------------------
+
+	wb := kv.NewWriteBatch()
+	assert.NoError(t, wb.Put("a", []byte("0")))
+	// assert.NoError(t, wb.Put("b", []byte("1"))) // Intentionally skipped
+	assert.NoError(t, wb.Put("c", []byte("2")))
+	assert.NoError(t, wb.Put("d", []byte("3")))
+	assert.NoError(t, wb.Put("e", []byte("4")))
+	assert.NoError(t, wb.Commit())
+	assert.NoError(t, wb.Close())
+
+	key, res, closer, err = kv.Get("a", ComparisonEqual)
+	assert.NoError(t, err)
+	assert.Equal(t, "a", key)
+	assert.Equal(t, "0", string(res))
+	assert.NoError(t, closer.Close())
+
+	key, res, closer, err = kv.Get("a", ComparisonFloor)
+	assert.NoError(t, err)
+	assert.Equal(t, "a", key)
+	assert.Equal(t, "0", string(res))
+	assert.NoError(t, closer.Close())
+
+	key, res, closer, err = kv.Get("a", ComparisonCeiling)
+	assert.NoError(t, err)
+	assert.Equal(t, "a", key)
+	assert.Equal(t, "0", string(res))
+	assert.NoError(t, closer.Close())
+
+	key, res, closer, err = kv.Get("a", ComparisonLower)
+	assert.ErrorIs(t, err, ErrKeyNotFound)
+	assert.Equal(t, "", key)
+	assert.Nil(t, res)
+	assert.Nil(t, closer)
+
+	key, res, closer, err = kv.Get("a", ComparisonHigher)
+	assert.NoError(t, err)
+	assert.Equal(t, "c", key)
+	assert.Equal(t, "2", string(res))
+	assert.NoError(t, closer.Close())
+
+	// ---------------------------------------------------------------
+	key, res, closer, err = kv.Get("b", ComparisonEqual)
+	assert.ErrorIs(t, err, ErrKeyNotFound)
+	assert.Equal(t, "", key)
+	assert.Nil(t, res)
+	assert.Nil(t, closer)
+
+	key, res, closer, err = kv.Get("b", ComparisonFloor)
+	assert.NoError(t, err)
+	assert.Equal(t, "a", key)
+	assert.Equal(t, "0", string(res))
+	assert.NoError(t, closer.Close())
+
+	key, res, closer, err = kv.Get("b", ComparisonCeiling)
+	assert.NoError(t, err)
+	assert.Equal(t, "c", key)
+	assert.Equal(t, "2", string(res))
+	assert.NoError(t, closer.Close())
+
+	key, res, closer, err = kv.Get("b", ComparisonLower)
+	assert.NoError(t, err)
+	assert.Equal(t, "a", key)
+	assert.Equal(t, "0", string(res))
+	assert.NoError(t, closer.Close())
+
+	key, res, closer, err = kv.Get("b", ComparisonHigher)
+	assert.NoError(t, err)
+	assert.Equal(t, "c", key)
+	assert.Equal(t, "2", string(res))
+	assert.NoError(t, closer.Close())
+
+	// ---------------------------------------------------------------
+
+	key, res, closer, err = kv.Get("c", ComparisonFloor)
+	assert.NoError(t, err)
+	assert.Equal(t, "c", key)
+	assert.Equal(t, "2", string(res))
+	assert.NoError(t, closer.Close())
+
+	key, res, closer, err = kv.Get("c", ComparisonCeiling)
+	assert.NoError(t, err)
+	assert.Equal(t, "c", key)
+	assert.Equal(t, "2", string(res))
+	assert.NoError(t, closer.Close())
+
+	key, res, closer, err = kv.Get("c", ComparisonLower)
+	assert.NoError(t, err)
+	assert.Equal(t, "a", key)
+	assert.Equal(t, "0", string(res))
+	assert.NoError(t, closer.Close())
+
+	key, res, closer, err = kv.Get("c", ComparisonHigher)
+	assert.NoError(t, err)
+	assert.Equal(t, "d", key)
+	assert.Equal(t, "3", string(res))
+	assert.NoError(t, closer.Close())
+
+	// ---------------------------------------------------------------
+
+	key, res, closer, err = kv.Get("d", ComparisonFloor)
+	assert.NoError(t, err)
+	assert.Equal(t, "d", key)
+	assert.Equal(t, "3", string(res))
+	assert.NoError(t, closer.Close())
+
+	key, res, closer, err = kv.Get("d", ComparisonCeiling)
+	assert.NoError(t, err)
+	assert.Equal(t, "d", key)
+	assert.Equal(t, "3", string(res))
+	assert.NoError(t, closer.Close())
+
+	key, res, closer, err = kv.Get("d", ComparisonLower)
+	assert.NoError(t, err)
+	assert.Equal(t, "c", key)
+	assert.Equal(t, "2", string(res))
+	assert.NoError(t, closer.Close())
+
+	key, res, closer, err = kv.Get("d", ComparisonHigher)
+	assert.NoError(t, err)
+	assert.Equal(t, "e", key)
+	assert.Equal(t, "4", string(res))
+	assert.NoError(t, closer.Close())
+
+	// ---------------------------------------------------------------
+
+	key, res, closer, err = kv.Get("e", ComparisonFloor)
+	assert.NoError(t, err)
+	assert.Equal(t, "e", key)
+	assert.Equal(t, "4", string(res))
+	assert.NoError(t, closer.Close())
+
+	key, res, closer, err = kv.Get("e", ComparisonCeiling)
+	assert.NoError(t, err)
+	assert.Equal(t, "e", key)
+	assert.Equal(t, "4", string(res))
+	assert.NoError(t, closer.Close())
+
+	key, res, closer, err = kv.Get("e", ComparisonLower)
+	assert.NoError(t, err)
+	assert.Equal(t, "d", key)
+	assert.Equal(t, "3", string(res))
+	assert.NoError(t, closer.Close())
+
+	key, res, closer, err = kv.Get("e", ComparisonHigher)
+	assert.ErrorIs(t, err, ErrKeyNotFound)
+	assert.Equal(t, "", key)
+	assert.Nil(t, res)
+	assert.Nil(t, closer)
 
 	assert.NoError(t, kv.Close())
 	assert.NoError(t, factory.Close())

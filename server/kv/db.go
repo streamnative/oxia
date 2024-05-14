@@ -480,7 +480,7 @@ func (d *db) applyDeleteRange(batch WriteBatch, notifications *notifications, de
 }
 
 func applyGet(kv KV, getReq *proto.GetRequest) (*proto.GetResponse, error) {
-	value, closer, err := kv.Get(getReq.Key)
+	_, value, closer, err := kv.Get(getReq.Key, ComparisonEqual)
 
 	if errors.Is(err, ErrKeyNotFound) {
 		return &proto.GetResponse{Status: proto.Status_KEY_NOT_FOUND}, nil
