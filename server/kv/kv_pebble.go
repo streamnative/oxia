@@ -16,13 +16,14 @@ package kv
 
 import (
 	"fmt"
-	"github.com/streamnative/oxia/common/compare"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"sync/atomic"
 	"time"
+
+	"github.com/streamnative/oxia/common/compare"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/vfs"

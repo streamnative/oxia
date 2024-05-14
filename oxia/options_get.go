@@ -42,31 +42,31 @@ func (t *getComparisonType) applyGet(opts getOptions) getOptions {
 	return opts
 }
 
-// ComparisonEqual sets the Get() operation to compare the stored key for equality
+// ComparisonEqual sets the Get() operation to compare the stored key for equality.
 func ComparisonEqual() GetOption {
 	return &getComparisonType{proto.KeyComparisonType_EQUAL}
 }
 
 // ComparisonFloor option will make the get operation to search for the record whose
-// key is the highest key <= to the supplied key
+// key is the highest key <= to the supplied key.
 func ComparisonFloor() GetOption {
 	return &getComparisonType{proto.KeyComparisonType_FLOOR}
 }
 
 // ComparisonCeiling option will make the get operation to search for the record whose
-// key is the lowest key >= to the supplied key
+// key is the lowest key >= to the supplied key.
 func ComparisonCeiling() GetOption {
 	return &getComparisonType{proto.KeyComparisonType_CEILING}
 }
 
 // ComparisonLower option will make the get operation to search for the record whose
-// key is strictly < to the supplied key
+// key is strictly < to the supplied key.
 func ComparisonLower() GetOption {
 	return &getComparisonType{proto.KeyComparisonType_LOWER}
 }
 
 // ComparisonHigher option will make the get operation to search for the record whose
-// key is strictly > to the supplied key
+// key is strictly > to the supplied key.
 func ComparisonHigher() GetOption {
 	return &getComparisonType{proto.KeyComparisonType_HIGHER}
 }

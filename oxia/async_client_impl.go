@@ -16,13 +16,15 @@ package oxia
 
 import (
 	"context"
+	"io"
+	"sync"
+
 	"github.com/pkg/errors"
-	"github.com/streamnative/oxia/common/compare"
 	"go.uber.org/multierr"
 	"golang.org/x/exp/slices"
 	"golang.org/x/sync/errgroup"
-	"io"
-	"sync"
+
+	"github.com/streamnative/oxia/common/compare"
 
 	"github.com/streamnative/oxia/common"
 	commonbatch "github.com/streamnative/oxia/common/batch"
@@ -219,7 +221,7 @@ func (c *clientImpl) doExactGet(key string, ch chan GetResult) {
 	})
 }
 
-// The keys might get hashed to multiple shards, so we have to check on all shards and then compare the results
+// The keys might get hashed to multiple shards, so we have to check on all shards and then compare the results.
 func (c *clientImpl) doFloorCeilingGet(key string, comparisonType proto.KeyComparisonType, ch chan GetResult) {
 	m := sync.Mutex{}
 	var results []*proto.GetResponse
@@ -244,39 +246,43 @@ func (c *clientImpl) doFloorCeilingGet(key string, comparisonType proto.KeyCompa
 					results = append(results, response)
 				}
 
-				counter -= 1
+				counter--
 				if counter == 0 {
 					// We have responses from all the shards
-					var selected *proto.GetResponse
-
-					if len(results) == 0 {
-						// We haven't found the key on any shard
-						selected = &proto.GetResponse{
-							Status: proto.Status_KEY_NOT_FOUND,
-						}
-					} else {
-						slices.SortFunc(results, func(a, b *proto.GetResponse) bool {
-							return compare.CompareWithSlash([]byte(a.GetKey()), []byte(b.GetKey())) < 0
-						})
-
-						switch comparisonType {
-						case proto.KeyComparisonType_FLOOR:
-							selected = results[len(results)-1]
-						case proto.KeyComparisonType_LOWER:
-							selected = results[len(results)-1]
-						case proto.KeyComparisonType_CEILING:
-							selected = results[0]
-						case proto.KeyComparisonType_HIGHER:
-							selected = results[0]
-						}
-					}
-
-					ch <- toGetResult(selected, key, err)
-					close(ch)
+					processAllGetResponses(key, results, comparisonType, ch)
 				}
 			},
 		})
 	}
+}
+
+func processAllGetResponses(key string, results []*proto.GetResponse, comparisonType proto.KeyComparisonType, ch chan GetResult) {
+	var selected *proto.GetResponse
+
+	if len(results) == 0 {
+		// We haven't found the key on any shard
+		selected = &proto.GetResponse{
+			Status: proto.Status_KEY_NOT_FOUND,
+		}
+	} else {
+		slices.SortFunc(results, func(a, b *proto.GetResponse) bool {
+			return compare.CompareWithSlash([]byte(a.GetKey()), []byte(b.GetKey())) < 0
+		})
+
+		switch comparisonType {
+		case proto.KeyComparisonType_FLOOR:
+			selected = results[len(results)-1]
+		case proto.KeyComparisonType_LOWER:
+			selected = results[len(results)-1]
+		case proto.KeyComparisonType_CEILING:
+			selected = results[0]
+		case proto.KeyComparisonType_HIGHER:
+			selected = results[0]
+		}
+	}
+
+	ch <- toGetResult(selected, key, nil)
+	close(ch)
 }
 
 func (c *clientImpl) listFromShard(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, shardId int64, ch chan<- ListResult) {

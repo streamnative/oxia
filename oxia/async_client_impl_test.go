@@ -387,7 +387,7 @@ func TestSyncClientImpl_FloorCeilingGet(t *testing.T) {
 	_, _ = client.Put(ctx, "c", []byte("2"))
 	_, _ = client.Put(ctx, "d", []byte("3"))
 	_, _ = client.Put(ctx, "e", []byte("4"))
-	//_, _ = client.Put(ctx, "f", []byte("5")) // Skipped intentionally
+	// _, _ = client.Put(ctx, "f", []byte("5")) // Skipped intentionally
 	_, _ = client.Put(ctx, "g", []byte("6"))
 
 	key, value, _, err := client.Get(ctx, "a")
@@ -410,7 +410,7 @@ func TestSyncClientImpl_FloorCeilingGet(t *testing.T) {
 	assert.Equal(t, "a", key)
 	assert.Equal(t, "0", string(value))
 
-	key, value, _, err = client.Get(ctx, "a", ComparisonLower())
+	_, _, _, err = client.Get(ctx, "a", ComparisonLower())
 	assert.ErrorIs(t, ErrKeyNotFound, err)
 
 	key, value, _, err = client.Get(ctx, "a", ComparisonHigher())
@@ -418,12 +418,12 @@ func TestSyncClientImpl_FloorCeilingGet(t *testing.T) {
 	assert.Equal(t, "c", key)
 	assert.Equal(t, "2", string(value))
 
-	//// ---------------------------------------------------------------
+	// ---------------------------------------------------------------
 
-	key, value, _, err = client.Get(ctx, "b")
+	_, _, _, err = client.Get(ctx, "b")
 	assert.ErrorIs(t, ErrKeyNotFound, err)
 
-	key, value, _, err = client.Get(ctx, "b", ComparisonEqual())
+	_, _, _, err = client.Get(ctx, "b", ComparisonEqual())
 	assert.ErrorIs(t, ErrKeyNotFound, err)
 
 	key, value, _, err = client.Get(ctx, "b", ComparisonFloor())
@@ -446,7 +446,7 @@ func TestSyncClientImpl_FloorCeilingGet(t *testing.T) {
 	assert.Equal(t, "c", key)
 	assert.Equal(t, "2", string(value))
 
-	//// ---------------------------------------------------------------
+	// ---------------------------------------------------------------
 
 	key, value, _, err = client.Get(ctx, "c")
 	assert.NoError(t, err)
@@ -478,7 +478,7 @@ func TestSyncClientImpl_FloorCeilingGet(t *testing.T) {
 	assert.Equal(t, "d", key)
 	assert.Equal(t, "3", string(value))
 
-	//// ---------------------------------------------------------------
+	// ---------------------------------------------------------------
 
 	key, value, _, err = client.Get(ctx, "d")
 	assert.NoError(t, err)
@@ -510,7 +510,7 @@ func TestSyncClientImpl_FloorCeilingGet(t *testing.T) {
 	assert.Equal(t, "e", key)
 	assert.Equal(t, "4", string(value))
 
-	//// ---------------------------------------------------------------
+	// ---------------------------------------------------------------
 
 	key, value, _, err = client.Get(ctx, "e")
 	assert.NoError(t, err)
@@ -542,12 +542,12 @@ func TestSyncClientImpl_FloorCeilingGet(t *testing.T) {
 	assert.Equal(t, "g", key)
 	assert.Equal(t, "6", string(value))
 
-	//// ---------------------------------------------------------------
+	// ---------------------------------------------------------------
 
-	key, value, _, err = client.Get(ctx, "f")
+	_, _, _, err = client.Get(ctx, "f")
 	assert.ErrorIs(t, ErrKeyNotFound, err)
 
-	key, value, _, err = client.Get(ctx, "f", ComparisonEqual())
+	_, _, _, err = client.Get(ctx, "f", ComparisonEqual())
 	assert.ErrorIs(t, ErrKeyNotFound, err)
 
 	key, value, _, err = client.Get(ctx, "f", ComparisonFloor())
