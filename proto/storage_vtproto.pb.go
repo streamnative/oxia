@@ -44,6 +44,10 @@ func (m *StorageEntry) CloneVT() *StorageEntry {
 		tmpVal := *rhs
 		r.ClientIdentity = &tmpVal
 	}
+	if rhs := m.PartitionKey; rhs != nil {
+		tmpVal := *rhs
+		r.PartitionKey = &tmpVal
+	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -149,6 +153,9 @@ func (this *StorageEntry) EqualVT(that *StorageEntry) bool {
 		return false
 	}
 	if p, q := this.ClientIdentity, that.ClientIdentity; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+		return false
+	}
+	if p, q := this.PartitionKey, that.PartitionKey; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -298,6 +305,13 @@ func (m *StorageEntry) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.PartitionKey != nil {
+		i -= len(*m.PartitionKey)
+		copy(dAtA[i:], *m.PartitionKey)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.PartitionKey)))
+		i--
+		dAtA[i] = 0x42
 	}
 	if m.ClientIdentity != nil {
 		i -= len(*m.ClientIdentity)
@@ -587,6 +601,10 @@ func (m *StorageEntry) SizeVT() (n int) {
 		l = len(*m.ClientIdentity)
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	if m.PartitionKey != nil {
+		l = len(*m.PartitionKey)
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -822,6 +840,39 @@ func (m *StorageEntry) UnmarshalVT(dAtA []byte) error {
 			}
 			s := string(dAtA[iNdEx:postIndex])
 			m.ClientIdentity = &s
+			iNdEx = postIndex
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PartitionKey", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			s := string(dAtA[iNdEx:postIndex])
+			m.PartitionKey = &s
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -1298,6 +1349,43 @@ func (m *StorageEntry) UnmarshalVTUnsafe(dAtA []byte) error {
 			}
 			s := stringValue
 			m.ClientIdentity = &s
+			iNdEx = postIndex
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PartitionKey", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			var stringValue string
+			if intStringLen > 0 {
+				stringValue = unsafe.String(&dAtA[iNdEx], intStringLen)
+			}
+			s := stringValue
+			m.PartitionKey = &s
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

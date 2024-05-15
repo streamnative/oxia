@@ -358,6 +358,7 @@ func (d *db) applyPut(commitOffset int64, batch WriteBatch, notifications *notif
 		se.ModificationTimestamp = timestamp
 		se.SessionId = putReq.SessionId
 		se.ClientIdentity = putReq.ClientIdentity
+		se.PartitionKey = putReq.PartitionKey
 	} else {
 		se.VersionId = commitOffset
 		se.ModificationsCount++
@@ -365,6 +366,7 @@ func (d *db) applyPut(commitOffset int64, batch WriteBatch, notifications *notif
 		se.ModificationTimestamp = timestamp
 		se.SessionId = putReq.SessionId
 		se.ClientIdentity = putReq.ClientIdentity
+		se.PartitionKey = putReq.PartitionKey
 	}
 
 	defer se.ReturnToVTPool()

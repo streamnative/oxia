@@ -19,6 +19,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/streamnative/oxia/oxia"
+
 	"github.com/streamnative/oxia/cmd/client/common"
 	"github.com/streamnative/oxia/cmd/client/del"
 	"github.com/streamnative/oxia/cmd/client/get"
@@ -26,7 +28,6 @@ import (
 	"github.com/streamnative/oxia/cmd/client/notifications"
 	"github.com/streamnative/oxia/cmd/client/put"
 	oxiacommon "github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/oxia"
 )
 
 var (

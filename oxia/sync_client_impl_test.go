@@ -34,7 +34,7 @@ func (c *neverCompleteAsyncClient) Delete(key string, options ...DeleteOption) <
 	return make(chan error)
 }
 
-func (c *neverCompleteAsyncClient) DeleteRange(minKeyInclusive string, maxKeyExclusive string) <-chan error {
+func (c *neverCompleteAsyncClient) DeleteRange(minKeyInclusive string, maxKeyExclusive string, options ...DeleteRangeOption) <-chan error {
 	return make(chan error)
 }
 
@@ -42,7 +42,7 @@ func (c *neverCompleteAsyncClient) Get(key string, options ...GetOption) <-chan 
 	return make(chan GetResult)
 }
 
-func (c *neverCompleteAsyncClient) List(ctx context.Context, minKeyInclusive string, maxKeyExclusive string) <-chan ListResult {
+func (c *neverCompleteAsyncClient) List(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, options ...ListOption) <-chan ListResult {
 	panic("not implemented")
 }
 

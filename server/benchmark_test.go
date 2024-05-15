@@ -24,8 +24,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/oxia"
+
+	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/perf"
 )
 
