@@ -96,9 +96,9 @@ func (c *syncClientImpl) Delete(ctx context.Context, key string, options ...Dele
 	}
 }
 
-func (c *syncClientImpl) DeleteRange(ctx context.Context, minKeyInclusive string, maxKeyExclusive string) error {
+func (c *syncClientImpl) DeleteRange(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, options ...DeleteRangeOption) error {
 	select {
-	case err := <-c.asyncClient.DeleteRange(minKeyInclusive, maxKeyExclusive):
+	case err := <-c.asyncClient.DeleteRange(minKeyInclusive, maxKeyExclusive, options...):
 		return err
 	case <-ctx.Done():
 		return ctx.Err()
@@ -114,8 +114,19 @@ func (c *syncClientImpl) Get(ctx context.Context, key string, options ...GetOpti
 	}
 }
 
-func (c *syncClientImpl) List(ctx context.Context, minKeyInclusive string, maxKeyExclusive string) <-chan ListResult {
-	return c.asyncClient.List(ctx, minKeyInclusive, maxKeyExclusive)
+func (c *syncClientImpl) List(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, options ...ListOption) ([]string, error) {
+	ch := c.asyncClient.List(ctx, minKeyInclusive, maxKeyExclusive, options...)
+
+	keys := make([]string, 0)
+	for r := range ch {
+		if r.Err != nil {
+			return nil, r.Err
+		}
+
+		keys = append(keys, r.Keys...)
+	}
+
+	return keys, nil
 }
 
 func (c *syncClientImpl) GetNotifications() (Notifications, error) {

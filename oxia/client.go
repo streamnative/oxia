@@ -81,7 +81,7 @@ type AsyncClient interface {
 	// Note: Oxia uses a custom sorting order that treats `/` characters in special way.
 	// Refer to this documentation for the specifics:
 	// https://github.com/streamnative/oxia/blob/main/docs/oxia-key-sorting.md
-	DeleteRange(minKeyInclusive string, maxKeyExclusive string) <-chan error
+	DeleteRange(minKeyInclusive string, maxKeyExclusive string, options ...DeleteRangeOption) <-chan error
 
 	// Get returns the value associated with the specified key.
 	// In addition to the value, a version object is also returned, with information
@@ -93,7 +93,7 @@ type AsyncClient interface {
 	// Note: Oxia uses a custom sorting order that treats `/` characters in special way.
 	// Refer to this documentation for the specifics:
 	// https://github.com/streamnative/oxia/blob/main/docs/oxia-key-sorting.md
-	List(ctx context.Context, minKeyInclusive string, maxKeyExclusive string) <-chan ListResult
+	List(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, options ...ListOption) <-chan ListResult
 
 	// GetNotifications creates a new subscription to receive the notifications
 	// from Oxia for any change that is applied to the database
@@ -136,7 +136,7 @@ type SyncClient interface {
 	// Note: Oxia uses a custom sorting order that treats `/` characters in special way.
 	// Refer to this documentation for the specifics:
 	// https://github.com/streamnative/oxia/blob/main/docs/oxia-key-sorting.md
-	DeleteRange(ctx context.Context, minKeyInclusive string, maxKeyExclusive string) error
+	DeleteRange(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, options ...DeleteRangeOption) error
 
 	// Get returns the value associated with the specified key.
 	// In addition to the value, a version object is also returned, with information
@@ -148,7 +148,7 @@ type SyncClient interface {
 	// Note: Oxia uses a custom sorting order that treats `/` characters in special way.
 	// Refer to this documentation for the specifics:
 	// https://github.com/streamnative/oxia/blob/main/docs/oxia-key-sorting.md
-	List(ctx context.Context, minKeyInclusive string, maxKeyExclusive string) <-chan ListResult
+	List(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, options ...ListOption) (keys []string, err error)
 
 	// GetNotifications creates a new subscription to receive the notifications
 	// from Oxia for any change that is applied to the database

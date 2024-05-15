@@ -22,7 +22,6 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"golang.org/x/exp/slices"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/streamnative/oxia/common/compare"
 
@@ -116,7 +115,7 @@ func (c *clientImpl) Close() error {
 
 func (c *clientImpl) Put(key string, value []byte, options ...PutOption) <-chan PutResult {
 	ch := make(chan PutResult, 1)
-	shardId := c.shardManager.Get(key)
+
 	callback := func(response *proto.PutResponse, err error) {
 		if err != nil {
 			ch <- PutResult{Err: err}
@@ -125,7 +124,9 @@ func (c *clientImpl) Put(key string, value []byte, options ...PutOption) <-chan 
 		}
 		close(ch)
 	}
+
 	opts := newPutOptions(options)
+	shardId := c.getShardForKey(key, opts)
 	putCall := model.PutCall{
 		Key:               key,
 		Value:             value,
@@ -150,7 +151,6 @@ func (c *clientImpl) Put(key string, value []byte, options ...PutOption) <-chan 
 
 func (c *clientImpl) Delete(key string, options ...DeleteOption) <-chan error {
 	ch := make(chan error, 1)
-	shardId := c.shardManager.Get(key)
 	callback := func(response *proto.DeleteResponse, err error) {
 		if err != nil {
 			ch <- err
@@ -160,6 +160,7 @@ func (c *clientImpl) Delete(key string, options ...DeleteOption) <-chan error {
 		close(ch)
 	}
 	opts := newDeleteOptions(options)
+	shardId := c.getShardForKey(key, opts)
 	c.writeBatchManager.Get(shardId).Add(model.DeleteCall{
 		Key:               key,
 		ExpectedVersionId: opts.expectedVersion,
@@ -168,41 +169,68 @@ func (c *clientImpl) Delete(key string, options ...DeleteOption) <-chan error {
 	return ch
 }
 
-func (c *clientImpl) DeleteRange(minKeyInclusive string, maxKeyExclusive string) <-chan error {
-	shardIds := c.shardManager.GetAll()
+func (c *clientImpl) DeleteRange(minKeyInclusive string, maxKeyExclusive string, options ...DeleteRangeOption) <-chan error {
 	ch := make(chan error, 1)
-	var eg errgroup.Group
+	opts := newDeleteRangeOptions(options)
+	if opts.partitionKey != "" {
+		shardId := c.getShardForKey("", opts)
+		c.doSingleShardDeleteRange(shardId, minKeyInclusive, maxKeyExclusive, ch)
+		return ch
+	}
+
+	// If there is no partition key, we will make the request to delete-range on all the shards
+	shardIds := c.shardManager.GetAll()
+	wg := common.NewWaitGroup(len(shardIds))
+
 	for _, shardId := range shardIds {
-		chInner := make(chan error, 1)
-		callback := func(response *proto.DeleteRangeResponse, err error) {
-			if err != nil {
-				chInner <- err
-			} else {
-				chInner <- toDeleteRangeResult(response)
-			}
-		}
+		// chInner := make(chan error, 1)
 		c.writeBatchManager.Get(shardId).Add(model.DeleteRangeCall{
 			MinKeyInclusive: minKeyInclusive,
 			MaxKeyExclusive: maxKeyExclusive,
-			Callback:        callback,
-		})
-		eg.Go(func() error {
-			return <-chInner
+			Callback: func(response *proto.DeleteRangeResponse, err error) {
+				if err != nil {
+					wg.Fail(err)
+					return
+				}
+
+				switch response.Status {
+				case proto.Status_OK:
+					wg.Done()
+				default:
+					wg.Fail(toError(response.Status))
+				}
+			},
 		})
 	}
 	go func() {
-		ch <- eg.Wait()
+		ch <- wg.Wait(c.ctx)
 		close(ch)
 	}()
 	return ch
+}
+
+func (c *clientImpl) doSingleShardDeleteRange(shardId int64, minKeyInclusive string, maxKeyExclusive string, ch chan error) {
+	c.writeBatchManager.Get(shardId).Add(model.DeleteRangeCall{
+		MinKeyInclusive: minKeyInclusive,
+		MaxKeyExclusive: maxKeyExclusive,
+		Callback: func(response *proto.DeleteRangeResponse, err error) {
+			if err != nil {
+				ch <- err
+			} else {
+				ch <- toDeleteRangeResult(response)
+			}
+
+			close(ch)
+		},
+	})
 }
 
 func (c *clientImpl) Get(key string, options ...GetOption) <-chan GetResult {
 	ch := make(chan GetResult)
 
 	opts := newGetOptions(options)
-	if opts.comparisonType == proto.KeyComparisonType_EQUAL {
-		c.doExactGet(key, ch)
+	if opts.comparisonType == proto.KeyComparisonType_EQUAL || opts.partitionKey != "" {
+		c.doSingleShardGet(key, opts, ch)
 	} else {
 		c.doFloorCeilingGet(key, opts.comparisonType, ch)
 	}
@@ -210,10 +238,11 @@ func (c *clientImpl) Get(key string, options ...GetOption) <-chan GetResult {
 	return ch
 }
 
-func (c *clientImpl) doExactGet(key string, ch chan GetResult) {
-	shardId := c.shardManager.Get(key)
+func (c *clientImpl) doSingleShardGet(key string, opts *getOptions, ch chan GetResult) {
+	shardId := c.getShardForKey(key, opts)
 	c.readBatchManager.Get(shardId).Add(model.GetCall{
-		Key: key,
+		Key:            key,
+		ComparisonType: opts.comparisonType,
 		Callback: func(response *proto.GetResponse, err error) {
 			ch <- toGetResult(response, key, err)
 			close(ch)
@@ -313,23 +342,36 @@ func (c *clientImpl) listFromShard(ctx context.Context, minKeyInclusive string, 
 	}
 }
 
-func (c *clientImpl) List(ctx context.Context, minKeyInclusive string, maxKeyExclusive string) <-chan ListResult {
-	shardIds := c.shardManager.GetAll()
+func (c *clientImpl) List(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, options ...ListOption) <-chan ListResult {
 	ch := make(chan ListResult)
-	wg := common.NewWaitGroup(len(shardIds))
-	for _, shardId := range shardIds {
-		shardIdPtr := shardId
-		go func() {
-			defer wg.Done()
 
-			c.listFromShard(ctx, minKeyInclusive, maxKeyExclusive, shardIdPtr, ch)
+	opts := newListOptions(options)
+	if opts.partitionKey != "" {
+		// If the partition key is specified, we only need to make the request to one shard
+		shardId := c.getShardForKey("", opts)
+		go func() {
+			c.listFromShard(ctx, minKeyInclusive, maxKeyExclusive, shardId, ch)
+			close(ch)
+		}()
+	} else {
+		// Do the list on all shards and aggregate the responses
+		shardIds := c.shardManager.GetAll()
+
+		wg := common.NewWaitGroup(len(shardIds))
+		for _, shardId := range shardIds {
+			shardIdPtr := shardId
+			go func() {
+				defer wg.Done()
+
+				c.listFromShard(ctx, minKeyInclusive, maxKeyExclusive, shardIdPtr, ch)
+			}()
+		}
+
+		go func() {
+			_ = wg.Wait(ctx)
+			close(ch)
 		}()
 	}
-
-	go func() {
-		_ = wg.Wait(ctx)
-		close(ch)
-	}()
 
 	return ch
 }
@@ -344,6 +386,14 @@ func (c *clientImpl) closeNotifications() error {
 	}
 
 	return err
+}
+
+func (c *clientImpl) getShardForKey(key string, options baseOptionsIf) int64 {
+	if options.PartitionKey() != "" {
+		return c.shardManager.Get(options.PartitionKey())
+	}
+
+	return c.shardManager.Get(key)
 }
 
 func (c *clientImpl) GetNotifications() (Notifications, error) {

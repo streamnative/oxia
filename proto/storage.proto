@@ -36,6 +36,8 @@ message StorageEntry {
 
   optional int64 session_id = 6;
   optional string client_identity = 7;
+
+  optional string partition_key = 8;
 }
 
 message SessionMetadata {

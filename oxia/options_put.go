@@ -1,0 +1,60 @@
+// Copyright 2023 StreamNative, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package oxia
+
+type putOptions struct {
+	baseOptions
+	expectedVersion *int64
+	ephemeral       bool
+}
+
+// PutOption represents an option for the [SyncClient.Put] operation.
+type PutOption interface {
+	applyPut(opts *putOptions)
+}
+
+func newPutOptions(opts []PutOption) *putOptions {
+	putOpts := &putOptions{}
+	for _, opt := range opts {
+		opt.applyPut(putOpts)
+	}
+	return putOpts
+}
+
+// ExpectedRecordNotExists Marks that the put operation should only be successful
+// if the record does not exist yet.
+func ExpectedRecordNotExists() PutOption {
+	return &expectedVersionId{VersionIdNotExists}
+}
+
+type ephemeral struct{}
+
+var ephemeralFlag = &ephemeral{}
+
+func (*ephemeral) applyPut(opts *putOptions) {
+	opts.ephemeral = true
+}
+
+// Ephemeral marks the record to be created as an ephemeral record.
+// Ephemeral records have their lifecycle tied to a particular client instance, and they
+// are automatically deleted when the client instance is closed.
+// These records are also deleted if the client cannot communicate with the Oxia
+// service for some extended amount of time, and the session between the client and
+// the service "expires".
+// Application can control the session behavior by setting the session timeout
+// appropriately with [WithSessionTimeout] option when creating the client instance.
+func Ephemeral() PutOption {
+	return ephemeralFlag
+}

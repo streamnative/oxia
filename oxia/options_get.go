@@ -17,18 +17,19 @@ package oxia
 import "github.com/streamnative/oxia/proto"
 
 type getOptions struct {
+	baseOptions
 	comparisonType proto.KeyComparisonType
 }
 
 // GetOption represents an option for the [SyncClient.Get] operation.
 type GetOption interface {
-	applyGet(opts getOptions) getOptions
+	applyGet(opts *getOptions)
 }
 
-func newGetOptions(opts []GetOption) getOptions {
-	getOpts := getOptions{}
+func newGetOptions(opts []GetOption) *getOptions {
+	getOpts := &getOptions{}
 	for _, opt := range opts {
-		getOpts = opt.applyGet(getOpts)
+		opt.applyGet(getOpts)
 	}
 	return getOpts
 }
@@ -37,9 +38,8 @@ type getComparisonType struct {
 	comparisonType proto.KeyComparisonType
 }
 
-func (t *getComparisonType) applyGet(opts getOptions) getOptions {
+func (t *getComparisonType) applyGet(opts *getOptions) {
 	opts.comparisonType = t.comparisonType
-	return opts
 }
 
 // ComparisonEqual sets the Get() operation to compare the stored key for equality.

@@ -573,3 +573,89 @@ func TestSyncClientImpl_FloorCeilingGet(t *testing.T) {
 	assert.NoError(t, client.Close())
 	assert.NoError(t, standaloneServer.Close())
 }
+
+func TestSyncClientImpl_PartitionRouting(t *testing.T) {
+	config := server.NewTestConfig(t.TempDir())
+	// Test with multiple shards to ensure correctness across shards
+	config.NumShards = 10
+	standaloneServer, err := server.NewStandalone(config)
+	assert.NoError(t, err)
+
+	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())
+	client, err := NewSyncClient(serviceAddress)
+	assert.NoError(t, err)
+
+	ctx := context.Background()
+
+	_, _ = client.Put(ctx, "a", []byte("0"), PartitionKey("x"))
+	_, _, _, err = client.Get(ctx, "a")
+	assert.ErrorIs(t, ErrKeyNotFound, err)
+
+	key, value, _, err := client.Get(ctx, "a", PartitionKey("x"))
+	assert.NoError(t, err)
+	assert.Equal(t, "a", key)
+	assert.Equal(t, "0", string(value))
+
+	_, _ = client.Put(ctx, "a", []byte("0"), PartitionKey("x"))
+	_, _ = client.Put(ctx, "b", []byte("1"), PartitionKey("x"))
+	_, _ = client.Put(ctx, "c", []byte("2"), PartitionKey("x"))
+	_, _ = client.Put(ctx, "d", []byte("3"), PartitionKey("x"))
+	_, _ = client.Put(ctx, "e", []byte("4"), PartitionKey("x"))
+	_, _ = client.Put(ctx, "f", []byte("5"), PartitionKey("x"))
+	_, _ = client.Put(ctx, "g", []byte("6"), PartitionKey("x"))
+
+	// Listing must yield the same results
+	keys, err := client.List(ctx, "a", "d")
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"a", "b", "c"}, keys)
+
+	keys, err = client.List(ctx, "a", "d", PartitionKey("x"))
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"a", "b", "c"}, keys)
+
+	// Searching with wrong partition-key will return empty list
+	keys, err = client.List(ctx, "a", "d", PartitionKey("wrong-partition-key"))
+	assert.NoError(t, err)
+	assert.Equal(t, []string{}, keys)
+
+	// Delete with wrong partition key would fail
+	err = client.Delete(ctx, "g", PartitionKey("wrong-partition-key"))
+	assert.ErrorIs(t, err, ErrKeyNotFound)
+
+	err = client.Delete(ctx, "g", PartitionKey("x"))
+	assert.NoError(t, err)
+
+	// Get tests
+	key, value, _, err = client.Get(ctx, "a", ComparisonHigher())
+	assert.NoError(t, err)
+	assert.Equal(t, "b", key)
+	assert.Equal(t, "1", string(value))
+
+	key, value, _, err = client.Get(ctx, "a", ComparisonHigher(), PartitionKey("x"))
+	assert.NoError(t, err)
+	assert.Equal(t, "b", key)
+	assert.Equal(t, "1", string(value))
+
+	key, value, _, err = client.Get(ctx, "a", ComparisonHigher(), PartitionKey("wrong-partition-key"))
+	assert.NoError(t, err)
+	assert.NotEqual(t, "b", key)
+	assert.NotEqual(t, "1", string(value))
+
+	// Delete with wrong partition key would fail to delete all keys
+	err = client.DeleteRange(ctx, "c", "e", PartitionKey("wrong-partition-key"))
+	assert.NoError(t, err)
+
+	keys, err = client.List(ctx, "c", "f")
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"c", "d", "e"}, keys)
+
+	err = client.DeleteRange(ctx, "c", "e", PartitionKey("x"))
+	assert.NoError(t, err)
+
+	keys, err = client.List(ctx, "c", "f")
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"e"}, keys)
+
+	assert.NoError(t, client.Close())
+	assert.NoError(t, standaloneServer.Close())
+}
