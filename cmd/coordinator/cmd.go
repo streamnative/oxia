@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -57,7 +58,6 @@ func init() {
 	viper.OnConfigChange(func(_ fsnotify.Event) {
 		configChangeCh <- struct{}{}
 	})
-	viper.WatchConfig()
 }
 
 func validate(*cobra.Command, []string) error {
@@ -100,6 +100,7 @@ func loadClusterConfig() (model.ClusterConfig, chan struct{}, error) {
 }
 
 func exec(*cobra.Command, []string) {
+	viper.WatchConfig()
 	conf.ClusterConfigProvider = loadClusterConfig
 
 	common.RunProcess(func() (io.Closer, error) {
