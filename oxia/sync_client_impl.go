@@ -78,12 +78,12 @@ func (c *syncClientImpl) Close() error {
 	return multierr.Combine(err, c.asyncClient.Close())
 }
 
-func (c *syncClientImpl) Put(ctx context.Context, key string, value []byte, options ...PutOption) (Version, error) {
+func (c *syncClientImpl) Put(ctx context.Context, key string, value []byte, options ...PutOption) (string, Version, error) {
 	select {
 	case r := <-c.asyncClient.Put(key, value, options...):
-		return r.Version, r.Err
+		return r.Key, r.Version, r.Err
 	case <-ctx.Done():
-		return Version{}, ctx.Err()
+		return "", Version{}, ctx.Err()
 	}
 }
 

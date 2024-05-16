@@ -16,15 +16,23 @@ package oxia
 
 import "github.com/streamnative/oxia/proto"
 
-func toPutResult(r *proto.PutResponse) PutResult {
+func toPutResult(originalKey string, r *proto.PutResponse) PutResult {
 	if err := toError(r.Status); err != nil {
 		return PutResult{
 			Err: err,
 		}
 	}
-	return PutResult{
+	pr := PutResult{
 		Version: toVersion(r.Version),
 	}
+
+	if r.Key != nil {
+		pr.Key = r.GetKey()
+	} else {
+		pr.Key = originalKey
+	}
+
+	return pr
 }
 
 func toDeleteResult(r *proto.DeleteResponse) error {

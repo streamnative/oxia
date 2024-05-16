@@ -105,21 +105,21 @@ func TestSyncClientImpl_Notifications(t *testing.T) {
 
 	ctx := context.Background()
 
-	s1, _ := client.Put(ctx, "/a", []byte("0"))
+	_, s1, _ := client.Put(ctx, "/a", []byte("0"))
 
 	n := <-notifications.Ch()
 	assert.Equal(t, KeyCreated, n.Type)
 	assert.Equal(t, "/a", n.Key)
 	assert.Equal(t, s1.VersionId, n.VersionId)
 
-	s2, _ := client.Put(ctx, "/a", []byte("1"))
+	_, s2, _ := client.Put(ctx, "/a", []byte("1"))
 
 	n = <-notifications.Ch()
 	assert.Equal(t, KeyModified, n.Type)
 	assert.Equal(t, "/a", n.Key)
 	assert.Equal(t, s2.VersionId, n.VersionId)
 
-	s3, _ := client.Put(ctx, "/b", []byte("0"))
+	_, s3, _ := client.Put(ctx, "/b", []byte("0"))
 	assert.NoError(t, client.Delete(ctx, "/a"))
 
 	n = <-notifications.Ch()
@@ -144,7 +144,7 @@ func TestSyncClientImpl_Notifications(t *testing.T) {
 		// Ok, we expect it to time out
 	}
 
-	s4, _ := client.Put(ctx, "/x", []byte("1"))
+	_, s4, _ := client.Put(ctx, "/x", []byte("1"))
 
 	n = <-notifications.Ch()
 	assert.Equal(t, KeyCreated, n.Type)
@@ -267,13 +267,13 @@ func TestAsyncClientImpl_OverrideEphemeral(t *testing.T) {
 	assert.NoError(t, err)
 
 	k := newKey()
-	version, err := client.Put(context.Background(), k, []byte("v1"), Ephemeral())
+	_, version, err := client.Put(context.Background(), k, []byte("v1"), Ephemeral())
 	assert.NoError(t, err)
 
 	assert.True(t, version.Ephemeral)
 
 	// Override with non-ephemeral value
-	version, err = client.Put(context.Background(), k, []byte("v2"))
+	_, version, err = client.Put(context.Background(), k, []byte("v2"))
 	assert.NoError(t, err)
 
 	assert.False(t, version.Ephemeral)
@@ -302,7 +302,7 @@ func TestAsyncClientImpl_ClientIdentity(t *testing.T) {
 	assert.NoError(t, err)
 
 	k := newKey()
-	version, err := client1.Put(context.Background(), k, []byte("v1"), Ephemeral())
+	_, version, err := client1.Put(context.Background(), k, []byte("v1"), Ephemeral())
 	assert.NoError(t, err)
 
 	assert.True(t, version.Ephemeral)
@@ -322,7 +322,7 @@ func TestAsyncClientImpl_ClientIdentity(t *testing.T) {
 	assert.True(t, version.Ephemeral)
 	assert.Equal(t, "client-1", version.ClientIdentity)
 
-	version, err = client2.Put(context.Background(), k, []byte("v2"), Ephemeral())
+	_, version, err = client2.Put(context.Background(), k, []byte("v2"), Ephemeral())
 	assert.NoError(t, err)
 
 	assert.True(t, version.Ephemeral)
@@ -348,7 +348,7 @@ func TestSyncClientImpl_SessionNotifications(t *testing.T) {
 
 	ctx := context.Background()
 
-	s1, _ := client1.Put(ctx, "/a", []byte("0"), Ephemeral())
+	_, s1, _ := client1.Put(ctx, "/a", []byte("0"), Ephemeral())
 
 	n := <-notifications.Ch()
 	assert.Equal(t, KeyCreated, n.Type)
@@ -382,13 +382,13 @@ func TestSyncClientImpl_FloorCeilingGet(t *testing.T) {
 	assert.NoError(t, err)
 
 	ctx := context.Background()
-	_, _ = client.Put(ctx, "a", []byte("0"))
-	// _, _ = client.Put(ctx, "b", []byte("1")) // Skipped intentionally
-	_, _ = client.Put(ctx, "c", []byte("2"))
-	_, _ = client.Put(ctx, "d", []byte("3"))
-	_, _ = client.Put(ctx, "e", []byte("4"))
-	// _, _ = client.Put(ctx, "f", []byte("5")) // Skipped intentionally
-	_, _ = client.Put(ctx, "g", []byte("6"))
+	_, _, _ = client.Put(ctx, "a", []byte("0"))
+	// _, _, _ = client.Put(ctx, "b", []byte("1")) // Skipped intentionally
+	_, _, _ = client.Put(ctx, "c", []byte("2"))
+	_, _, _ = client.Put(ctx, "d", []byte("3"))
+	_, _, _ = client.Put(ctx, "e", []byte("4"))
+	// _, _, _ = client.Put(ctx, "f", []byte("5")) // Skipped intentionally
+	_, _, _ = client.Put(ctx, "g", []byte("6"))
 
 	key, value, _, err := client.Get(ctx, "a")
 	assert.NoError(t, err)
@@ -587,7 +587,7 @@ func TestSyncClientImpl_PartitionRouting(t *testing.T) {
 
 	ctx := context.Background()
 
-	_, _ = client.Put(ctx, "a", []byte("0"), PartitionKey("x"))
+	_, _, _ = client.Put(ctx, "a", []byte("0"), PartitionKey("x"))
 	_, _, _, err = client.Get(ctx, "a")
 	assert.ErrorIs(t, ErrKeyNotFound, err)
 
@@ -596,13 +596,13 @@ func TestSyncClientImpl_PartitionRouting(t *testing.T) {
 	assert.Equal(t, "a", key)
 	assert.Equal(t, "0", string(value))
 
-	_, _ = client.Put(ctx, "a", []byte("0"), PartitionKey("x"))
-	_, _ = client.Put(ctx, "b", []byte("1"), PartitionKey("x"))
-	_, _ = client.Put(ctx, "c", []byte("2"), PartitionKey("x"))
-	_, _ = client.Put(ctx, "d", []byte("3"), PartitionKey("x"))
-	_, _ = client.Put(ctx, "e", []byte("4"), PartitionKey("x"))
-	_, _ = client.Put(ctx, "f", []byte("5"), PartitionKey("x"))
-	_, _ = client.Put(ctx, "g", []byte("6"), PartitionKey("x"))
+	_, _, _ = client.Put(ctx, "a", []byte("0"), PartitionKey("x"))
+	_, _, _ = client.Put(ctx, "b", []byte("1"), PartitionKey("x"))
+	_, _, _ = client.Put(ctx, "c", []byte("2"), PartitionKey("x"))
+	_, _, _ = client.Put(ctx, "d", []byte("3"), PartitionKey("x"))
+	_, _, _ = client.Put(ctx, "e", []byte("4"), PartitionKey("x"))
+	_, _, _ = client.Put(ctx, "f", []byte("5"), PartitionKey("x"))
+	_, _, _ = client.Put(ctx, "g", []byte("6"), PartitionKey("x"))
 
 	// Listing must yield the same results
 	keys, err := client.List(ctx, "a", "d")
@@ -655,6 +655,69 @@ func TestSyncClientImpl_PartitionRouting(t *testing.T) {
 	keys, err = client.List(ctx, "c", "f")
 	assert.NoError(t, err)
 	assert.Equal(t, []string{"e"}, keys)
+
+	assert.NoError(t, client.Close())
+	assert.NoError(t, standaloneServer.Close())
+}
+
+func TestSyncClientImpl_SequentialKeys(t *testing.T) {
+	config := server.NewTestConfig(t.TempDir())
+	// Test with multiple shards to ensure correctness across shards
+	config.NumShards = 10
+	standaloneServer, err := server.NewStandalone(config)
+	assert.NoError(t, err)
+
+	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())
+	client, err := NewSyncClient(serviceAddress)
+	assert.NoError(t, err)
+
+	ctx := context.Background()
+
+	_, _, err = client.Put(ctx, "a", []byte("0"), SequenceKeysDeltas(1))
+	assert.ErrorIs(t, err, ErrInvalidOptions)
+
+	_, _, err = client.Put(ctx, "a", []byte("0"),
+		SequenceKeysDeltas(1),
+		PartitionKey("x"),
+		ExpectedVersionId(1),
+	)
+	assert.ErrorIs(t, err, ErrInvalidOptions)
+
+	key, _, err := client.Put(ctx, "a", []byte("0"),
+		SequenceKeysDeltas(1),
+		PartitionKey("x"),
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, fmt.Sprintf("a-%020d", 1), key)
+
+	key, _, err = client.Put(ctx, "a", []byte("1"),
+		SequenceKeysDeltas(3),
+		PartitionKey("x"),
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, fmt.Sprintf("a-%020d", 4), key)
+
+	key, _, err = client.Put(ctx, "a", []byte("2"),
+		SequenceKeysDeltas(1, 6),
+		PartitionKey("x"),
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, fmt.Sprintf("a-%020d-%020d", 5, 6), key)
+
+	_, _, _, err = client.Get(ctx, "a")
+	assert.ErrorIs(t, err, ErrKeyNotFound)
+
+	_, value, _, err := client.Get(ctx, fmt.Sprintf("a-%020d", 1), PartitionKey("x"))
+	assert.NoError(t, err)
+	assert.Equal(t, []byte("0"), value)
+
+	_, value, _, err = client.Get(ctx, fmt.Sprintf("a-%020d", 4), PartitionKey("x"))
+	assert.NoError(t, err)
+	assert.Equal(t, []byte("1"), value)
+
+	_, value, _, err = client.Get(ctx, fmt.Sprintf("a-%020d-%020d", 5, 6), PartitionKey("x"))
+	assert.NoError(t, err)
+	assert.Equal(t, []byte("2"), value)
 
 	assert.NoError(t, client.Close())
 	assert.NoError(t, standaloneServer.Close())

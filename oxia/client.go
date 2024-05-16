@@ -35,6 +35,8 @@ var (
 	// the current version id of the stored record.
 	ErrUnexpectedVersionId = errors.New("unexpected version id")
 
+	ErrInvalidOptions = errors.New("invalid options")
+
 	// ErrRequestTooLarge is returned when a request is larger than the maximum batch size.
 	ErrRequestTooLarge = batch.ErrRequestTooLarge
 
@@ -119,10 +121,11 @@ type SyncClient interface {
 	//  - Client can assert that the record does not exist by passing [ExpectedRecordNotExists]
 	//  - Client can create an ephemeral record with [Ephemeral]
 	//
+	// Returns the actual key of the inserted record
 	// Returns a [Version] object that contains information about the newly updated record
 	// Returns [ErrorUnexpectedVersionId] if the expected version id does not match the
 	// current version id of the record
-	Put(ctx context.Context, key string, value []byte, options ...PutOption) (Version, error)
+	Put(ctx context.Context, key string, value []byte, options ...PutOption) (insertedKey string, version Version, err error)
 
 	// Delete removes the key and its associated value from the data store.
 	//
@@ -188,6 +191,9 @@ type Version struct {
 // PutResult structure is wrapping the version information for the result
 // of a `Put` operation and an eventual error in the [AsyncClient].
 type PutResult struct {
+	// The Key of the inserted record
+	Key string
+
 	// The Version information
 	Version Version
 
