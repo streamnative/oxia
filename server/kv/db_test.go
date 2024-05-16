@@ -15,6 +15,7 @@
 package kv
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -669,4 +670,122 @@ func TestDB_FloorCeiling(t *testing.T) {
 
 	assert.NoError(t, db.Close())
 	assert.NoError(t, factory.Close())
+}
+
+func TestDB_SequentialKeys(t *testing.T) {
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
+	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	assert.NoError(t, err)
+
+	_, err = db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
+		Key:              "a",
+		Value:            []byte("0"),
+		SequenceKeyDelta: []uint64{3},
+	}}}, 0, 0, NoOpCallback)
+	assert.ErrorIs(t, err, ErrMissingPartitionKey)
+
+	_, err = db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
+		Key:              "a",
+		Value:            []byte("0"),
+		PartitionKey:     pb.String("x"),
+		SequenceKeyDelta: []uint64{0},
+	}}}, 0, 0, NoOpCallback)
+	assert.ErrorIs(t, err, ErrSequenceDeltaIsZero)
+
+	resp, err := db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
+		Key:               "a",
+		Value:             []byte("0"),
+		PartitionKey:      pb.String("x"),
+		ExpectedVersionId: pb.Int64(1),
+		SequenceKeyDelta:  []uint64{5},
+	}}}, 0, 0, NoOpCallback)
+	assert.NoError(t, err)
+	assert.Equal(t, proto.Status_UNEXPECTED_VERSION_ID, resp.GetPuts()[0].Status)
+
+	resp, err = db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
+		Key:              "a",
+		Value:            []byte("0"),
+		PartitionKey:     pb.String("x"),
+		SequenceKeyDelta: []uint64{5},
+	}}}, 0, 0, NoOpCallback)
+	assert.NoError(t, err)
+	assert.Equal(t, proto.Status_OK, resp.GetPuts()[0].Status)
+	assert.Equal(t, fmt.Sprintf("a-%020d", 5), resp.GetPuts()[0].GetKey())
+
+	resp, err = db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
+		Key:              "a",
+		Value:            []byte("0"),
+		PartitionKey:     pb.String("x"),
+		SequenceKeyDelta: []uint64{3},
+	}}}, 0, 0, NoOpCallback)
+	assert.NoError(t, err)
+	assert.Equal(t, proto.Status_OK, resp.GetPuts()[0].Status)
+	assert.Equal(t, fmt.Sprintf("a-%020d", 8), resp.GetPuts()[0].GetKey())
+
+	// Add an extra sequence
+	resp, err = db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
+		Key:              "a",
+		Value:            []byte("0"),
+		PartitionKey:     pb.String("x"),
+		SequenceKeyDelta: []uint64{6, 9},
+	}}}, 0, 0, NoOpCallback)
+	assert.NoError(t, err)
+	assert.Equal(t, proto.Status_OK, resp.GetPuts()[0].Status)
+	assert.Equal(t, fmt.Sprintf("a-%020d-%020d", 14, 9), resp.GetPuts()[0].GetKey())
+
+	// We cannot pass less sequence keys than what already present
+	_, err = db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
+		Key:              "a",
+		Value:            []byte("0"),
+		PartitionKey:     pb.String("x"),
+		SequenceKeyDelta: []uint64{2},
+	}}}, 0, 0, NoOpCallback)
+	assert.ErrorIs(t, err, ErrMissingSequenceDeltas)
+
+	// Put bad existing suffix
+	_, err = db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
+		Key:          "b+xxxx",
+		Value:        []byte("0"),
+		PartitionKey: pb.String("x"),
+	}}}, 0, 0, NoOpCallback)
+	assert.NoError(t, err)
+
+	resp, err = db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
+		Key:              "b",
+		Value:            []byte("0"),
+		PartitionKey:     pb.String("x"),
+		SequenceKeyDelta: []uint64{2},
+	}}}, 0, 0, NoOpCallback)
+	assert.NoError(t, err)
+	assert.Equal(t, proto.Status_OK, resp.GetPuts()[0].Status)
+	assert.Equal(t, fmt.Sprintf("b-%020d", 2), resp.GetPuts()[0].GetKey())
+
+	_, err = db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
+		Key:          "c+.....",
+		Value:        []byte("0"),
+		PartitionKey: pb.String("x"),
+	}}}, 0, 0, NoOpCallback)
+	assert.NoError(t, err)
+
+	resp, err = db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
+		Key:              "c",
+		Value:            []byte("0"),
+		PartitionKey:     pb.String("x"),
+		SequenceKeyDelta: []uint64{2},
+	}}}, 0, 0, NoOpCallback)
+	assert.NoError(t, err)
+	assert.Equal(t, proto.Status_OK, resp.GetPuts()[0].Status)
+	assert.Equal(t, fmt.Sprintf("c-%020d", 2), resp.GetPuts()[0].GetKey())
+
+	// With 3 sequences
+	resp, err = db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
+		Key:              "a",
+		Value:            []byte("0"),
+		PartitionKey:     pb.String("x"),
+		SequenceKeyDelta: []uint64{6, 9, 15},
+	}}}, 0, 0, NoOpCallback)
+	assert.NoError(t, err)
+	assert.Equal(t, proto.Status_OK, resp.GetPuts()[0].Status)
+	assert.Equal(t, fmt.Sprintf("a-%020d-%020d-%020d", 20, 18, 15), resp.GetPuts()[0].GetKey())
 }

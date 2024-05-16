@@ -30,7 +30,12 @@ import (
 	"github.com/streamnative/oxia/server/wal"
 )
 
-var ErrBadVersionId = errors.New("oxia: bad version id")
+var (
+	ErrBadVersionId          = errors.New("oxia: bad version id")
+	ErrMissingPartitionKey   = errors.New("oxia: sequential key operation requires partition key")
+	ErrMissingSequenceDeltas = errors.New("oxia: sequential key operation missing some sequence deltas")
+	ErrSequenceDeltaIsZero   = errors.New("oxia: sequential key operation requires first delta do be > 0")
+)
 
 const (
 	commitOffsetKey = common.InternalKeyPrefix + "commit-offset"
@@ -327,7 +332,15 @@ func (d *db) ReadTerm() (term int64, err error) {
 }
 
 func (d *db) applyPut(commitOffset int64, batch WriteBatch, notifications *notifications, putReq *proto.PutRequest, timestamp uint64, updateOperationCallback UpdateOperationCallback) (*proto.PutResponse, error) {
-	se, err := checkExpectedVersionId(batch, putReq.Key, putReq.ExpectedVersionId)
+	var se *proto.StorageEntry
+	var err error
+	var newKey string
+	if len(putReq.GetSequenceKeyDelta()) > 0 {
+		newKey, err = generateUniqueKeyFromSequences(batch, putReq)
+		putReq.Key = newKey
+	} else {
+		se, err = checkExpectedVersionId(batch, putReq.Key, putReq.ExpectedVersionId)
+	}
 
 	switch {
 	case errors.Is(err, ErrBadVersionId):
@@ -399,7 +412,11 @@ func (d *db) applyPut(commitOffset int64, batch WriteBatch, notifications *notif
 		slog.Any("version", version),
 	)
 
-	return &proto.PutResponse{Version: version}, nil
+	pr := &proto.PutResponse{Version: version}
+	if newKey != "" {
+		pr.Key = &newKey
+	}
+	return pr, nil
 }
 
 func (d *db) applyDelete(batch WriteBatch, notifications *notifications, delReq *proto.DeleteRequest, updateOperationCallback UpdateOperationCallback) (*proto.DeleteResponse, error) {

@@ -97,6 +97,10 @@ func (m mockWriteBatch) Get(key string) ([]byte, io.Closer, error) {
 	return val.([]byte), &mockCloser{}, nil
 }
 
+func (m mockWriteBatch) FindLower(key string) (string, error) {
+	return "", errors.New("not implemented")
+}
+
 func (m mockWriteBatch) DeleteRange(_, _ string) error {
 	return nil
 }

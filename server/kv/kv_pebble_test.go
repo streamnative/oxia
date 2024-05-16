@@ -1012,3 +1012,42 @@ func TestPebbbleFloorCeiling(t *testing.T) {
 	assert.NoError(t, kv.Close())
 	assert.NoError(t, factory.Close())
 }
+
+func TestPebbleFindLowerInBatch(t *testing.T) {
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
+	kv, err := factory.NewKV(common.DefaultNamespace, 1)
+	assert.NoError(t, err)
+
+	wb := kv.NewWriteBatch()
+	assert.NoError(t, wb.Put("a", []byte("a")))
+	assert.NoError(t, wb.Commit())
+	assert.NoError(t, wb.Close())
+
+	wb = kv.NewWriteBatch()
+	assert.NoError(t, wb.Put("b", []byte("b")))
+	assert.NoError(t, wb.Put("c", []byte("c")))
+
+	key, err := wb.FindLower("a")
+	assert.ErrorIs(t, err, ErrKeyNotFound)
+	assert.Equal(t, "", key)
+
+	key, err = wb.FindLower("b")
+	assert.NoError(t, err)
+	assert.Equal(t, "a", key)
+
+	key, err = wb.FindLower("c")
+	assert.NoError(t, err)
+	assert.Equal(t, "b", key)
+
+	key, err = wb.FindLower("d")
+	assert.NoError(t, err)
+	assert.Equal(t, "c", key)
+
+	key, err = wb.FindLower("z")
+	assert.NoError(t, err)
+	assert.Equal(t, "c", key)
+
+	assert.NoError(t, kv.Close())
+	assert.NoError(t, factory.Close())
+}

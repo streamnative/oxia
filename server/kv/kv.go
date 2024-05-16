@@ -34,6 +34,7 @@ type WriteBatch interface {
 	Put(key string, value []byte) error
 	Delete(key string) error
 	Get(key string) ([]byte, io.Closer, error)
+	FindLower(key string) (lowerKey string, err error)
 
 	DeleteRange(lowerBound, upperBound string) error
 	KeyRangeScan(lowerBound, upperBound string) (KeyIterator, error)
