@@ -567,6 +567,22 @@ func (b *PebbleBatch) Get(key string) ([]byte, io.Closer, error) {
 	return value, closer, err
 }
 
+func (b *PebbleBatch) FindLower(key string) (lowerKey string, err error) {
+	it, err := b.b.NewIter(&pebble.IterOptions{
+		UpperBound: []byte(key),
+	})
+	if err != nil {
+		return "", err
+	}
+
+	if !it.Last() {
+		return "", multierr.Combine(it.Close(), ErrKeyNotFound)
+	}
+
+	lowerKey = string(it.Key())
+	return lowerKey, it.Close()
+}
+
 func (b *PebbleBatch) Commit() error {
 	b.p.writeCount.Add(b.Count())
 	b.p.writeBytes.Add(b.Size())
