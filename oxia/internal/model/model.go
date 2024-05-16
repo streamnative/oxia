@@ -19,13 +19,14 @@ import (
 )
 
 type PutCall struct {
-	Key               string
-	Value             []byte
-	ExpectedVersionId *int64
-	SessionId         *int64
-	ClientIdentity    *string
-	PartitionKey      *string
-	Callback          func(*proto.PutResponse, error)
+	Key                string
+	Value              []byte
+	ExpectedVersionId  *int64
+	SequenceKeysDeltas []uint64
+	SessionId          *int64
+	ClientIdentity     *string
+	PartitionKey       *string
+	Callback           func(*proto.PutResponse, error)
 }
 
 type DeleteCall struct {
@@ -54,6 +55,7 @@ func (r PutCall) ToProto() *proto.PutRequest {
 		SessionId:         r.SessionId,
 		ClientIdentity:    r.ClientIdentity,
 		PartitionKey:      r.PartitionKey,
+		SequenceKeyDelta:  r.SequenceKeysDeltas,
 	}
 }
 

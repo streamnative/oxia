@@ -14,10 +14,13 @@
 
 package oxia
 
+import "github.com/pkg/errors"
+
 type putOptions struct {
 	baseOptions
-	expectedVersion *int64
-	ephemeral       bool
+	expectedVersion    *int64
+	ephemeral          bool
+	sequenceKeysDeltas []uint64
 }
 
 // PutOption represents an option for the [SyncClient.Put] operation.
@@ -25,12 +28,27 @@ type PutOption interface {
 	applyPut(opts *putOptions)
 }
 
-func newPutOptions(opts []PutOption) *putOptions {
+func newPutOptions(opts []PutOption) (*putOptions, error) {
 	putOpts := &putOptions{}
 	for _, opt := range opts {
 		opt.applyPut(putOpts)
 	}
-	return putOpts
+
+	if len(putOpts.sequenceKeysDeltas) > 0 {
+		if putOpts.partitionKey == nil {
+			return nil, errors.Wrap(ErrInvalidOptions, "usage of sequential keys requires PartitionKey() to be set")
+		}
+
+		if putOpts.expectedVersion != nil {
+			return nil, errors.Wrap(ErrInvalidOptions, "usage of sequential keys does not allow to specify an ExpectedVersionId")
+		}
+
+		if putOpts.sequenceKeysDeltas[0] == 0 {
+			return nil, errors.Wrap(ErrInvalidOptions, "first delta in sequence keys delta must always be > 0")
+		}
+	}
+
+	return putOpts, nil
 }
 
 // ExpectedRecordNotExists Marks that the put operation should only be successful
@@ -57,4 +75,23 @@ func (*ephemeral) applyPut(opts *putOptions) {
 // appropriately with [WithSessionTimeout] option when creating the client instance.
 func Ephemeral() PutOption {
 	return ephemeralFlag
+}
+
+type sequenceKeysDeltas struct {
+	sequenceKeysDeltas []uint64
+}
+
+func (s *sequenceKeysDeltas) applyPut(opts *putOptions) {
+	opts.sequenceKeysDeltas = s.sequenceKeysDeltas
+}
+
+// SequenceKeysDeltas will request that the final record key to be
+// assigned by the server, based on the prefix record key and
+// appending one or more sequences.
+// The sequence numbers will be atomically added based on the deltas.
+// Deltas must be >= 0 and the first one strictly > 0.
+// SequenceKeysDeltas also requires that a [PartitionKey] option is
+// provided.
+func SequenceKeysDeltas(delta ...uint64) PutOption {
+	return &sequenceKeysDeltas{delta}
 }

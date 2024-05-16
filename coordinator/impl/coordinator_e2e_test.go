@@ -195,7 +195,7 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 
 	ctx := context.Background()
 
-	version1, err := client.Put(ctx, "my-key", []byte("my-value"))
+	_, version1, err := client.Put(ctx, "my-key", []byte("my-value"))
 	assert.NoError(t, err)
 	assert.EqualValues(t, 0, version1.VersionId)
 
@@ -309,7 +309,7 @@ func TestCoordinator_MultipleNamespaces(t *testing.T) {
 	ctx := context.Background()
 
 	// Write in default ns
-	version1, err := clientDefault.Put(ctx, "my-key", []byte("my-value"))
+	_, version1, err := clientDefault.Put(ctx, "my-key", []byte("my-value"))
 	assert.NoError(t, err)
 	assert.EqualValues(t, 0, version1.ModificationsCount)
 
@@ -318,7 +318,7 @@ func TestCoordinator_MultipleNamespaces(t *testing.T) {
 	assert.ErrorIs(t, err, oxia.ErrKeyNotFound)
 	assert.Nil(t, res)
 
-	version2, err := clientNs1.Put(ctx, "my-key", []byte("my-value-2"))
+	_, version2, err := clientNs1.Put(ctx, "my-key", []byte("my-value-2"))
 	assert.NoError(t, err)
 	assert.EqualValues(t, 0, version2.ModificationsCount)
 
@@ -728,7 +728,7 @@ func TestCoordinator_ShrinkCluster(t *testing.T) {
 	client, err := oxia.NewSyncClient(sa1.Public, oxia.WithNamespace("my-ns-1"))
 	assert.NoError(t, err)
 
-	_, err = client.Put(context.Background(), "test", []byte("value"))
+	_, _, err = client.Put(context.Background(), "test", []byte("value"))
 	assert.NoError(t, err)
 
 	assert.NoError(t, client.Close())

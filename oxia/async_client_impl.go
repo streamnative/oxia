@@ -120,18 +120,25 @@ func (c *clientImpl) Put(key string, value []byte, options ...PutOption) <-chan 
 		if err != nil {
 			ch <- PutResult{Err: err}
 		} else {
-			ch <- toPutResult(response)
+			ch <- toPutResult(key, response)
 		}
 		close(ch)
 	}
 
-	opts := newPutOptions(options)
+	opts, err := newPutOptions(options)
+	if err != nil {
+		callback(nil, err)
+		return ch
+	}
+
 	shardId := c.getShardForKey(key, opts)
 	putCall := model.PutCall{
-		Key:               key,
-		Value:             value,
-		ExpectedVersionId: opts.expectedVersion,
-		Callback:          callback,
+		Key:                key,
+		Value:              value,
+		ExpectedVersionId:  opts.expectedVersion,
+		SequenceKeysDeltas: opts.sequenceKeysDeltas,
+		PartitionKey:       opts.partitionKey,
+		Callback:           callback,
 	}
 	if opts.ephemeral {
 		putCall.ClientIdentity = &c.options.identity
@@ -172,7 +179,7 @@ func (c *clientImpl) Delete(key string, options ...DeleteOption) <-chan error {
 func (c *clientImpl) DeleteRange(minKeyInclusive string, maxKeyExclusive string, options ...DeleteRangeOption) <-chan error {
 	ch := make(chan error, 1)
 	opts := newDeleteRangeOptions(options)
-	if opts.partitionKey != "" {
+	if opts.partitionKey != nil {
 		shardId := c.getShardForKey("", opts)
 		c.doSingleShardDeleteRange(shardId, minKeyInclusive, maxKeyExclusive, ch)
 		return ch
@@ -229,7 +236,7 @@ func (c *clientImpl) Get(key string, options ...GetOption) <-chan GetResult {
 	ch := make(chan GetResult)
 
 	opts := newGetOptions(options)
-	if opts.comparisonType == proto.KeyComparisonType_EQUAL || opts.partitionKey != "" {
+	if opts.comparisonType == proto.KeyComparisonType_EQUAL || opts.partitionKey != nil {
 		c.doSingleShardGet(key, opts, ch)
 	} else {
 		c.doFloorCeilingGet(key, opts.comparisonType, ch)
@@ -346,7 +353,7 @@ func (c *clientImpl) List(ctx context.Context, minKeyInclusive string, maxKeyExc
 	ch := make(chan ListResult)
 
 	opts := newListOptions(options)
-	if opts.partitionKey != "" {
+	if opts.partitionKey != nil {
 		// If the partition key is specified, we only need to make the request to one shard
 		shardId := c.getShardForKey("", opts)
 		go func() {
@@ -389,8 +396,8 @@ func (c *clientImpl) closeNotifications() error {
 }
 
 func (c *clientImpl) getShardForKey(key string, options baseOptionsIf) int64 {
-	if options.PartitionKey() != "" {
-		return c.shardManager.Get(options.PartitionKey())
+	if options.PartitionKey() != nil {
+		return c.shardManager.Get(*options.PartitionKey())
 	}
 
 	return c.shardManager.Get(key)

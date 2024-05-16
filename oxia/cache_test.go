@@ -95,12 +95,12 @@ func TestCache_InsertionDeletion(t *testing.T) {
 
 	k1 := newKey()
 	v1 := testStruct{"hello", 1}
-	version1, err := cache.Put(context.Background(), k1, v1, ExpectedRecordNotExists())
+	_, version1, err := cache.Put(context.Background(), k1, v1, ExpectedRecordNotExists())
 	assert.NoError(t, err)
 	assert.EqualValues(t, 0, version1.ModificationsCount)
 
 	v2 := testStruct{"hello", 2}
-	version2, err := cache.Put(context.Background(), k1, v2, ExpectedRecordNotExists())
+	_, version2, err := cache.Put(context.Background(), k1, v2, ExpectedRecordNotExists())
 	assert.ErrorIs(t, err, ErrUnexpectedVersionId)
 	assert.Equal(t, Version{}, version2)
 
@@ -152,7 +152,7 @@ func TestCache_PutOutSideTheCache(t *testing.T) {
 	v1 := testStruct{"hello", 1}
 	data, err := json.Marshal(v1)
 	assert.NoError(t, err)
-	version1, err := client.Put(context.Background(), k1, data, ExpectedRecordNotExists())
+	_, version1, err := client.Put(context.Background(), k1, data, ExpectedRecordNotExists())
 	assert.NoError(t, err)
 	assert.EqualValues(t, 0, version1.ModificationsCount)
 
@@ -170,7 +170,7 @@ func TestCache_DeserializationFailure(t *testing.T) {
 	assert.NoError(t, err)
 
 	k1 := newKey()
-	_, err = client.Put(context.Background(), k1, []byte("invalid json"))
+	_, _, err = client.Put(context.Background(), k1, []byte("invalid json"))
 	assert.NoError(t, err)
 
 	value, version, err := cache.Get(context.Background(), k1)
@@ -194,7 +194,7 @@ func TestCache_ConcurrentUpdate(t *testing.T) {
 
 	k1 := newKey()
 	v1 := testStruct{"hello", 1}
-	version1, err := cache1.Put(context.Background(), k1, v1, ExpectedRecordNotExists())
+	_, version1, err := cache1.Put(context.Background(), k1, v1, ExpectedRecordNotExists())
 	assert.NoError(t, err)
 	assert.EqualValues(t, 0, version1.ModificationsCount)
 

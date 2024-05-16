@@ -56,14 +56,14 @@ func Example() {
 
 	// Write a record to Oxia with the specified key and value, and with the expectation
 	// that the record does not already exist.
-	res1, err := client.Put(context.Background(), "/my-key", []byte("value-1"), ExpectedRecordNotExists())
+	_, res1, err := client.Put(context.Background(), "/my-key", []byte("value-1"), ExpectedRecordNotExists())
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// Write a record with the expectation that it has not changed since the previous write.
 	// If there was any change, the operation will fail
-	_, err = client.Put(context.Background(), "/my-key", []byte("value-2"), ExpectedVersionId(res1.VersionId))
+	_, _, err = client.Put(context.Background(), "/my-key", []byte("value-2"), ExpectedVersionId(res1.VersionId))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func ExampleNotifications() {
 		log.Fatal(err)
 	}
 
-	_, err = client.Put(context.Background(), "/my-key", []byte("value-1"), ExpectedRecordNotExists())
+	_, _, err = client.Put(context.Background(), "/my-key", []byte("value-1"), ExpectedRecordNotExists())
 	if err != nil {
 		log.Fatal(err)
 	}

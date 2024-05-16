@@ -24,21 +24,21 @@ type BaseOption interface {
 }
 
 type baseOptions struct {
-	partitionKey string
+	partitionKey *string
 }
 
 type baseOptionsIf interface {
-	PartitionKey() string
+	PartitionKey() *string
 }
 
-func (o *baseOptions) PartitionKey() string {
+func (o *baseOptions) PartitionKey() *string {
 	return o.partitionKey
 }
 
 // --------------------------------------------------------------------------------------------
 
 type partitionKeyOpt struct {
-	partitionKey string
+	partitionKey *string
 }
 
 func (o *partitionKeyOpt) applyPut(opts *putOptions) {
@@ -67,6 +67,6 @@ func (o *partitionKeyOpt) applyList(opts *listOptions) {
 // same Oxia shard.
 func PartitionKey(partitionKey string) BaseOption {
 	return &partitionKeyOpt{
-		partitionKey: partitionKey,
+		partitionKey: &partitionKey,
 	}
 }

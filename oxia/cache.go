@@ -48,7 +48,7 @@ type Cache[Value any] interface {
 	// Returns a [Version] object that contains information about the newly updated record
 	// Returns [ErrorUnexpectedVersionId] if the expected version id does not match the
 	// current version id of the record
-	Put(ctx context.Context, key string, value Value, options ...PutOption) (Version, error)
+	Put(ctx context.Context, key string, value Value, options ...PutOption) (string, Version, error)
 
 	// ReadModifyUpdate applies atomically the result of the `modifyFunc` argument into
 	// the database.
@@ -232,18 +232,18 @@ func (c *cacheImpl[Value]) handleNotification(n *Notification) {
 	c.valueCache.Del(n.Key)
 }
 
-func (c *cacheImpl[Value]) Put(ctx context.Context, key string, value Value, options ...PutOption) (Version, error) {
+func (c *cacheImpl[Value]) Put(ctx context.Context, key string, value Value, options ...PutOption) (string, Version, error) {
 	data, err := c.serializeFunc(value)
 	if err != nil {
-		return Version{}, errors.Wrap(err, "failed to serialize value")
+		return "", Version{}, errors.Wrap(err, "failed to serialize value")
 	}
 
-	version, err := c.client.Put(ctx, key, data, options...)
+	insertedKey, version, err := c.client.Put(ctx, key, data, options...)
 	if !errors.Is(err, ErrUnexpectedVersionId) {
 		c.valueCache.Del(key)
 	}
 
-	return version, err
+	return insertedKey, version, err
 }
 
 func (c *cacheImpl[Value]) Delete(ctx context.Context, key string, options ...DeleteOption) error {
@@ -311,7 +311,7 @@ func (c *cacheImpl[Value]) ReadModifyUpdate(ctx context.Context, key string, mod
 			return backoff.Permanent(err)
 		}
 
-		_, err = c.Put(ctx, key, newValue, ExpectedVersionId(versionId))
+		_, _, err = c.Put(ctx, key, newValue, ExpectedVersionId(versionId))
 		if err != nil {
 			if errors.Is(err, ErrUnexpectedVersionId) {
 				// Retry on conflict
