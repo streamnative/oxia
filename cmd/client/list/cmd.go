@@ -60,10 +60,15 @@ func exec(cmd *cobra.Command, _ []string) error {
 }
 
 func _exec(flags flags, queue common.QueryQueue) error {
-	queue.Add(Query{
+	query := Query{
 		KeyMinimum: flags.keyMin,
 		KeyMaximum: flags.keyMax,
-	})
+	}
+	if flags.keyMax == "" {
+		// By default, do not list internal keys
+		query.KeyMaximum = "__oxia/"
+	}
+	queue.Add(query)
 	return nil
 }
 
