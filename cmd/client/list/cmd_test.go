@@ -90,7 +90,7 @@ func Test_exec(t *testing.T) {
 			nil,
 			[]common.Query{Query{
 				KeyMinimum: "a",
-				KeyMaximum: "",
+				KeyMaximum: "__oxia/",
 			}}},
 		{"range-no-limit",
 			"",
@@ -98,7 +98,7 @@ func Test_exec(t *testing.T) {
 			nil,
 			[]common.Query{Query{
 				KeyMinimum: "",
-				KeyMaximum: "",
+				KeyMaximum: "__oxia/",
 			}}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
