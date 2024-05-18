@@ -64,9 +64,18 @@ service OxiaClient {
   /**
    * Requests all the keys between a range of keys.
    *
-   * Clients should send an equivalent request to all respective shards.
+   * Clients should send an equivalent request to all respective shards,
+   * unless a particular partition key was specified.
    */
   rpc List(ListRequest) returns (stream ListResponse);
+
+  /**
+   * Requests all the records between a range of keys.
+   *
+   * Clients should send an equivalent request to all respective shards,
+   * unless a particular partition key was specified.
+   */
+  rpc RangeScan(RangeScanRequest) returns (stream RangeScanResponse);
 
   rpc GetNotifications(NotificationsRequest) returns (stream NotificationBatch);
 
@@ -350,6 +359,27 @@ message ListRequest {
 message ListResponse {
   // A portion of the keys found within the specified range
   repeated string keys = 1;
+}
+
+/**
+ * Input to a range-scan request
+ */
+message RangeScanRequest {
+  // The shard id. This is optional allow for support for server-side hashing
+  // and proxying in the future.
+  optional int64 shard_id = 1;
+  // The start of the range, inclusive
+  string start_inclusive = 2;
+  // The end of the range, exclusive
+  string end_exclusive = 3;
+}
+
+/**
+ * The response to a range-scan request.
+ */
+message RangeScanResponse {
+  // A portion of the records found within the specified range
+  repeated GetResponse records = 1;
 }
 
 /**
