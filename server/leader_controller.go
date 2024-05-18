@@ -22,6 +22,8 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/grpc/status"
+
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	pb "google.golang.org/protobuf/proto"
@@ -45,6 +47,7 @@ type LeaderController interface {
 	Read(ctx context.Context, request *proto.ReadRequest) <-chan GetResult
 	List(ctx context.Context, request *proto.ListRequest) (<-chan string, error)
 	ListSliceNoMutex(ctx context.Context, request *proto.ListRequest) ([]string, error)
+	RangeScan(ctx context.Context, request *proto.RangeScanRequest) (<-chan *proto.GetResponse, <-chan error, error)
 
 	// NewTerm Handle new term requests
 	NewTerm(req *proto.NewTermRequest) (*proto.NewTermResponse, error)
@@ -568,7 +571,7 @@ func (lc *leaderController) Read(ctx context.Context, request *proto.ReadRequest
 	ch := make(chan GetResult)
 
 	lc.RLock()
-	err := checkStatus(proto.ServingStatus_LEADER, lc.status)
+	err := checkStatusIsLeader(lc.status)
 	lc.RUnlock()
 	if err != nil {
 		go func() {
@@ -613,7 +616,7 @@ func (lc *leaderController) List(ctx context.Context, request *proto.ListRequest
 	ch := make(chan string)
 
 	lc.RLock()
-	err := checkStatus(proto.ServingStatus_LEADER, lc.status)
+	err := checkStatusIsLeader(lc.status)
 	lc.RUnlock()
 	if err != nil {
 		return nil, err
@@ -681,6 +684,71 @@ func (lc *leaderController) ListSliceNoMutex(ctx context.Context, request *proto
 	}
 }
 
+func (lc *leaderController) RangeScan(ctx context.Context, request *proto.RangeScanRequest) (<-chan *proto.GetResponse, <-chan error, error) {
+	ch := make(chan *proto.GetResponse)
+	errCh := make(chan error)
+
+	lc.RLock()
+	err := checkStatusIsLeader(lc.status)
+	lc.RUnlock()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	go lc.rangeScan(ctx, request, ch, errCh)
+
+	return ch, errCh, nil
+}
+
+func (lc *leaderController) rangeScan(ctx context.Context, request *proto.RangeScanRequest, ch chan<- *proto.GetResponse, errCh chan<- error) {
+	common.DoWithLabels(
+		ctx,
+		map[string]string{
+			"oxia":  "range-scan",
+			"shard": fmt.Sprintf("%d", lc.shardId),
+			"peer":  common.GetPeer(ctx),
+		},
+		func() {
+			lc.log.Debug("Received list request", slog.Any("request", request))
+
+			it, err := lc.db.RangeScan(request)
+			if err != nil {
+				lc.log.Warn(
+					"Failed to process range-scan request",
+					slog.Any("error", err),
+				)
+				errCh <- err
+				close(ch)
+				close(errCh)
+				return
+			}
+
+			defer func() {
+				_ = it.Close()
+				// NOTE:
+				// we must close the channel after iterator is closed, to avoid the
+				// iterator keep open when caller is trying to process the next step (for example db.Close)
+				// because this is execute in another goroutine.
+				close(ch)
+				close(errCh)
+			}()
+
+			for ; it.Valid(); it.Next() {
+				gr, err := it.Value()
+				if err != nil {
+					errCh <- err
+					return
+				}
+
+				ch <- gr
+				if ctx.Err() != nil {
+					break
+				}
+			}
+		},
+	)
+}
+
 // Write
 // A client sends a batch of entries to the leader
 //
@@ -714,7 +782,7 @@ func (lc *leaderController) write(ctx context.Context, request func(int64) *prot
 func (lc *leaderController) appendToWal(ctx context.Context, request func(int64) *proto.WriteRequest) (actualRequest *proto.WriteRequest, offset int64, timestamp uint64, err error) {
 	lc.Lock()
 
-	if err := checkStatus(proto.ServingStatus_LEADER, lc.status); err != nil {
+	if err := checkStatusIsLeader(lc.status); err != nil {
 		lc.Unlock()
 		return nil, wal.InvalidOffset, 0, err
 	}
@@ -1005,4 +1073,11 @@ func (lc *leaderController) KeepAlive(sessionId int64) error {
 
 func (lc *leaderController) CloseSession(request *proto.CloseSessionRequest) (*proto.CloseSessionResponse, error) {
 	return lc.sessionManager.CloseSession(request)
+}
+
+func checkStatusIsLeader(actual proto.ServingStatus) error {
+	if actual != proto.ServingStatus_LEADER {
+		return status.Errorf(common.CodeInvalidStatus, "Received message in the wrong state. In %+v, should be %+v.", actual, proto.ServingStatus_LEADER)
+	}
+	return nil
 }

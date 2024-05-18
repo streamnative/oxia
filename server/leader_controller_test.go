@@ -974,6 +974,61 @@ func TestLeaderController_List(t *testing.T) {
 	assert.Len(t, list, 0)
 }
 
+func TestLeaderController_RangeScan(t *testing.T) {
+	var shard int64 = 1
+
+	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
+	walFactory := newTestWalFactory(t)
+
+	lc, _ := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	_, _ = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})
+	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
+		ShardId:           shard,
+		Term:              1,
+		ReplicationFactor: 1,
+		FollowerMaps:      nil,
+	})
+
+	_, err := lc.Write(context.Background(), &proto.WriteRequest{
+		ShardId: &shard,
+		Puts: []*proto.PutRequest{
+			{Key: "/a", Value: []byte{0}},
+			{Key: "/b", Value: []byte{0}},
+			{Key: "/c", Value: []byte{0}},
+			{Key: "/d", Value: []byte{0}},
+		},
+	})
+	assert.NoError(t, err)
+
+	ch, _, err := lc.RangeScan(context.Background(), &proto.RangeScanRequest{
+		ShardId:        &shard,
+		StartInclusive: "/a",
+		EndExclusive:   "/c",
+	})
+	assert.NoError(t, err)
+
+	gr, more := <-ch
+	assert.Equal(t, "/a", *gr.Key)
+	assert.True(t, more)
+	gr, more = <-ch
+	assert.Equal(t, "/b", *gr.Key)
+	assert.True(t, more)
+	gr, more = <-ch
+	assert.Nil(t, gr)
+	assert.False(t, more)
+
+	ch, _, err = lc.RangeScan(context.Background(), &proto.RangeScanRequest{
+		ShardId:        &shard,
+		StartInclusive: "/y",
+		EndExclusive:   "/z",
+	})
+	assert.NoError(t, err)
+
+	gr, more = <-ch
+	assert.Nil(t, gr)
+	assert.False(t, more)
+}
+
 func TestLeaderController_DeleteShard(t *testing.T) {
 	var shard int64 = 1
 

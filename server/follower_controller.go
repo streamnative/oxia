@@ -585,13 +585,6 @@ type MessageWithTerm interface {
 	GetTerm() int64
 }
 
-func checkStatus(expected, actual proto.ServingStatus) error {
-	if actual != expected {
-		return status.Errorf(common.CodeInvalidStatus, "Received message in the wrong state. In %+v, should be %+v.", actual, expected)
-	}
-	return nil
-}
-
 func (fc *followerController) SendSnapshot(stream proto.OxiaLogReplication_SendSnapshotServer) error {
 	fc.Lock()
 
