@@ -20,8 +20,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/streamnative/oxia/oxia"
 )
 
 func TestWriteOutput(t *testing.T) {
@@ -33,71 +31,19 @@ func TestWriteOutput(t *testing.T) {
 		{"common.OutputError", OutputError{Err: "hello"}, "{\"error\":\"hello\"}\n"},
 		{"common.OutputErrorEmpty", OutputError{}, "{}\n"},
 		{"common.OutputVersion", OutputVersion{
+			Key:                "my-key",
 			VersionId:          1,
 			CreatedTimestamp:   time.UnixMilli(2),
 			ModifiedTimestamp:  time.UnixMilli(3),
 			ModificationsCount: 1,
-		}, "{\"version_id\":1,\"created_timestamp\":\"" + time.UnixMilli(2).Format(time.RFC3339Nano) +
+		}, "{\"key\":\"my-key\",\"version_id\":1,\"created_timestamp\":\"" + time.UnixMilli(2).Format(time.RFC3339Nano) +
 			"\",\"modified_timestamp\":\"" + time.UnixMilli(3).Format(time.RFC3339Nano) +
 			"\",\"modifications_count\":1,\"ephemeral\":false,\"client_identity\":\"\"}\n"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			b := bytes.NewBufferString("")
-			writeOutput(b, test.result)
+			WriteOutput(b, test.result)
 			assert.Equal(t, test.expected, b.String())
 		})
 	}
-}
-
-func TestReadStdin(t *testing.T) {
-	for _, test := range []struct {
-		name     string
-		stdin    string
-		inputs   []string
-		expected []Query
-	}{
-		{"one", "a", []string{"a"}, []Query{&fakeQuery{"a"}}},
-		{"two", "a\nb\n", []string{"a", "b"}, []Query{&fakeQuery{"a"}, &fakeQuery{"b"}}},
-		{"two-no-cr", "a\nb", []string{"a", "b"}, []Query{&fakeQuery{"a"}, &fakeQuery{"b"}}},
-		{"none", "", []string{}, []Query{}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			queue := fakeQueryQueue{[]Query{}}
-			in := bytes.NewBufferString(test.stdin)
-			m := make(map[string]Query, len(test.inputs))
-			for i, k := range test.inputs {
-				m[k] = test.expected[i]
-			}
-			input := fakeInput{m}
-			ReadStdin(in, &input, &queue)
-			assert.Equal(t, test.expected, queue.queries)
-		})
-	}
-}
-
-type fakeInput struct {
-	pairs map[string]Query
-}
-
-func (i *fakeInput) Unmarshal(b []byte) (Query, error) {
-	return i.pairs[string(b)], nil
-}
-
-type fakeQuery struct {
-	id string
-}
-
-func (i *fakeQuery) Perform(client oxia.AsyncClient) Call {
-	return nil
-}
-
-type fakeQueryQueue struct {
-	queries []Query
-}
-
-func (q *fakeQueryQueue) Add(query Query) {
-	if q.queries == nil {
-		q.queries = []Query{}
-	}
-	q.queries = append(q.queries, query)
 }

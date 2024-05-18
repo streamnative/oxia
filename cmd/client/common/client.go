@@ -21,22 +21,23 @@ import (
 )
 
 var (
-	Config = ClientConfig{}
+	Config       = ClientConfig{}
+	MockedClient *MockClient
 )
 
 type ClientConfig struct {
-	ServiceAddr         string
-	Namespace           string
-	BatchLinger         time.Duration
-	MaxRequestsPerBatch int
-	RequestTimeout      time.Duration
+	ServiceAddr    string
+	Namespace      string
+	RequestTimeout time.Duration
 }
 
-func (*ClientConfig) NewClient() (oxia.AsyncClient, error) {
-	return oxia.NewAsyncClient(Config.ServiceAddr,
-		oxia.WithBatchLinger(Config.BatchLinger),
+func (ClientConfig) NewClient() (oxia.SyncClient, error) {
+	if MockedClient != nil {
+		return MockedClient, nil
+	}
+
+	return oxia.NewSyncClient(Config.ServiceAddr,
 		oxia.WithRequestTimeout(Config.RequestTimeout),
-		oxia.WithMaxRequestsPerBatch(Config.MaxRequestsPerBatch),
 		oxia.WithNamespace(Config.Namespace),
 	)
 }

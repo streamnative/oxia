@@ -15,168 +15,86 @@
 package put
 
 import (
-	"encoding/base64"
-	"encoding/json"
+	"context"
 	"errors"
 	"io"
 	"time"
 
 	"github.com/spf13/cobra"
 
-	"github.com/streamnative/oxia/cmd/client/common"
 	"github.com/streamnative/oxia/oxia"
+
+	"github.com/streamnative/oxia/cmd/client/common"
 )
 
 var (
 	Config = flags{}
-
-	ErrExpectedKeyValueInconsistent = errors.New("inconsistent flags; key and value flags must be in pairs")
-	ErrExpectedVersionInconsistent  = errors.New("inconsistent flags; zero or all keys must have an expected version")
-	ErrBase64ValueInvalid           = errors.New("binary flag was set but value is not valid base64")
-	ErrIncorrectBinaryFlagUse       = errors.New("binary flag was set when config is being sourced from stdin")
 )
 
 type flags struct {
-	keys             []string
-	values           []string
-	expectedVersions []int64
-	binaryValues     bool
+	expectedVersion    int64
+	readValueFromStdIn bool
 }
 
 func (flags *flags) Reset() {
-	flags.keys = nil
-	flags.values = nil
-	flags.expectedVersions = nil
-	flags.binaryValues = false
+	flags.expectedVersion = -1
+	flags.readValueFromStdIn = false
 }
 
 func init() {
-	Cmd.Flags().StringSliceVarP(&Config.keys, "key", "k", []string{}, "The target key")
-	Cmd.Flags().StringSliceVarP(&Config.values, "value", "v", []string{}, "Associated value, assumed to be encoded with local charset unless -b is used")
-	Cmd.Flags().Int64SliceVarP(&Config.expectedVersions, "expected-version", "e", []int64{}, "Version of entry expected to be on the server")
-	Cmd.Flags().BoolVarP(&Config.binaryValues, "binary", "b", false, "Base64 decode the input values (required for binary values)")
-	Cmd.MarkFlagsRequiredTogether("key", "value")
+	Cmd.Flags().Int64VarP(&Config.expectedVersion, "expected-version", "e", -1, "Version of entry expected to be on the server")
+	Cmd.Flags().BoolVarP(&Config.readValueFromStdIn, "std-in", "c", false, "Read value from stdin")
 }
 
 var Cmd = &cobra.Command{
-	Use:   "put",
-	Short: "Put values",
-	Long:  `Put a values and associated them with the given keys, either inserting a new entries or updating existing ones. If an expected version is provided, the put will only take place if it matches the version of the current record on the server`,
-	Args:  cobra.NoArgs,
-	RunE:  exec,
+	Use:          "put [flags] KEY [VALUE]",
+	Short:        "Put value",
+	Long:         `Put a value and associated it with the given key, either inserting a new entry or updating the existing one. If an expected version is provided, the put will only take place if it matches the version of the current record on the server`,
+	Args:         cobra.RangeArgs(1, 2),
+	RunE:         exec,
+	SilenceUsage: true,
 }
 
-func exec(cmd *cobra.Command, _ []string) error {
-	loop, err := common.NewCommandLoop(cmd.OutOrStdout())
+func exec(cmd *cobra.Command, args []string) error {
+	client, err := common.Config.NewClient()
 	if err != nil {
 		return err
 	}
-	defer func() {
-		loop.Complete()
-	}()
-	return _exec(Config, cmd.InOrStdin(), loop)
-}
 
-func _exec(flags flags, in io.Reader, queue common.QueryQueue) error {
-	if len(flags.keys) != len(flags.values) && (len(flags.values) > 0 || len(flags.keys) > 0) {
-		return ErrExpectedKeyValueInconsistent
-	}
-	if (len(flags.expectedVersions) > 0) && len(flags.keys) != len(flags.expectedVersions) {
-		return ErrExpectedVersionInconsistent
-	}
-
-	if len(flags.keys) == 0 {
-		if flags.binaryValues {
-			return ErrIncorrectBinaryFlagUse
+	key := args[0]
+	var value []byte
+	if len(args) == 2 { //nolint:gocritic
+		// We have a value specified as argument
+		if Config.readValueFromStdIn {
+			return errors.New("the value can either be provided as argument or read from std-in")
 		}
-		common.ReadStdin(in, Query{}, queue)
-
-		return nil
+		value = []byte(args[1])
+	} else if len(args) == 1 && !Config.readValueFromStdIn {
+		return errors.New("no value provided for the record")
+	} else {
+		if value, err = io.ReadAll(cmd.InOrStdin()); err != nil {
+			return err
+		}
 	}
 
-	for i, k := range flags.keys {
-		query := Query{
-			Key:    k,
-			Value:  flags.values[i],
-			Binary: &flags.binaryValues,
-		}
-		if len(flags.expectedVersions) > 0 {
-			query.ExpectedVersion = &flags.expectedVersions[i]
-		}
-		queue.Add(query)
+	var options []oxia.PutOption
+	if Config.expectedVersion != -1 {
+		options = append(options, oxia.ExpectedVersionId(Config.expectedVersion))
 	}
+
+	key, version, err := client.Put(context.Background(), key, value, options...)
+	if err != nil {
+		return err
+	}
+
+	common.WriteOutput(cmd.OutOrStdout(), common.OutputVersion{
+		Key:                key,
+		VersionId:          version.VersionId,
+		CreatedTimestamp:   time.UnixMilli(int64(version.CreatedTimestamp)),
+		ModifiedTimestamp:  time.UnixMilli(int64(version.ModifiedTimestamp)),
+		ModificationsCount: version.ModificationsCount,
+		Ephemeral:          version.Ephemeral,
+		ClientIdentity:     version.ClientIdentity,
+	})
 	return nil
-}
-
-type Query struct {
-	Key             string `json:"key"`
-	Value           string `json:"value"`
-	ExpectedVersion *int64 `json:"expected_version,omitempty"`
-	Binary          *bool  `json:"binary,omitempty"`
-}
-
-func (query Query) Perform(client oxia.AsyncClient) common.Call {
-	value := []byte(query.Value)
-	var err error
-	if query.Binary != nil && *query.Binary {
-		value, err = convertFromBinaryValue(query.Value)
-	}
-	call := Call{}
-
-	if err != nil {
-		errChan := make(chan oxia.PutResult, 1)
-		errChan <- oxia.PutResult{Err: err}
-		call.clientCall = errChan
-	} else {
-		var putOptions []oxia.PutOption
-		if query.ExpectedVersion != nil {
-			putOptions = append(putOptions, oxia.ExpectedVersionId(*query.ExpectedVersion))
-		}
-		call.clientCall = client.Put(query.Key, value, putOptions...)
-	}
-	return call
-}
-
-func (Query) Unmarshal(b []byte) (common.Query, error) {
-	q := Query{}
-	err := json.Unmarshal(b, &q)
-	return q, err
-}
-
-func convertFromBinaryValue(value string) ([]byte, error) {
-	decoded := make([]byte, int64(float64(len(value))*0.8))
-	_, err := base64.StdEncoding.Decode(decoded, []byte(value))
-	if err != nil {
-		return nil, ErrBase64ValueInvalid
-	}
-	return decoded, nil
-}
-
-type Call struct {
-	clientCall <-chan oxia.PutResult
-}
-
-func (call Call) Complete() <-chan any {
-	ch := make(chan any, 1)
-	result := <-call.clientCall
-	if result.Err != nil {
-		ch <- common.OutputError{
-			Err: result.Err.Error(),
-		}
-	} else {
-		ch <- Output{
-			Version: common.OutputVersion{
-				VersionId:          result.Version.VersionId,
-				CreatedTimestamp:   time.UnixMilli(int64(result.Version.CreatedTimestamp)),
-				ModifiedTimestamp:  time.UnixMilli(int64(result.Version.ModifiedTimestamp)),
-				ModificationsCount: result.Version.ModificationsCount,
-			},
-		}
-	}
-	close(ch)
-	return ch
-}
-
-type Output struct {
-	Version common.OutputVersion `json:"version"`
 }

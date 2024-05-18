@@ -16,275 +16,49 @@ package get
 
 import (
 	"bytes"
-	"encoding/json"
-	"errors"
+	"strings"
 	"testing"
-	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/cmd/client/common"
 	"github.com/streamnative/oxia/oxia"
+
+	"github.com/streamnative/oxia/cmd/client/common"
 )
 
-func TestCobra(t *testing.T) {
-	for _, test := range []struct {
-		name           string
-		args           []string
-		expectedErr    error
-		expectedKeys   []string
-		expectedBinary bool
-	}{
-		{"key", []string{"-k", "x"}, nil, []string{"x"}, false},
-		{"key-binary", []string{"-k", "x", "-b"}, nil, []string{"x"}, true},
-		{"keys", []string{"-k", "x", "-k", "y"}, nil, []string{"x", "y"}, false},
-		{"keys-binary", []string{"-k", "x", "-k", "y", "-b"}, nil, []string{"x", "y"}, true},
-		{"stdin", []string{}, nil, nil, false},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			Config = flags{}
-			Cmd.SetArgs(test.args)
-			invoked := false
-			Cmd.RunE = func(cmd *cobra.Command, args []string) error {
-				invoked = true
-				assert.Equal(t, test.expectedKeys, Config.keys)
-				return nil
-			}
-			err := Cmd.Execute()
-			assert.ErrorIs(t, err, test.expectedErr)
-			assert.True(t, invoked)
-		})
-	}
+func runCmd(cmd *cobra.Command, args string, stdin string) (string, error) {
+	actual := new(bytes.Buffer)
+	cmd.SetIn(bytes.NewBufferString(stdin))
+	cmd.SetOut(actual)
+	cmd.SetErr(actual)
+	cmd.SetArgs(strings.Split(args, " "))
+	err := cmd.Execute()
+	Config.Reset()
+	return strings.TrimSpace(actual.String()), err
 }
 
 func Test_exec(t *testing.T) {
+	var emptyOptions []oxia.GetOption
 	for _, test := range []struct {
-		name            string
-		stdin           string
-		flags           flags
-		expectedErr     error
-		expectedQueries []common.Query
+		name               string
+		args               string
+		expectedParameters []any
+		out                string
 	}{
-		{"key",
-			"",
-			flags{
-				keys: []string{"x"},
-			},
-			nil,
-			[]common.Query{Query{
-				Key: "x",
-			}}},
-		{"key-binary",
-			"",
-			flags{
-				keys:         []string{"x"},
-				binaryValues: true,
-			},
-			nil,
-			[]common.Query{Query{
-				Key:    "x",
-				Binary: common.PtrBool(true),
-			}}},
-		{"keys",
-			"",
-			flags{
-				keys: []string{"x", "y"},
-			},
-			nil,
-			[]common.Query{Query{
-				Key: "x",
-			}, Query{
-				Key: "y",
-			}}},
-		{"keys-binary",
-			"",
-			flags{
-				keys:         []string{"x", "y"},
-				binaryValues: true,
-			},
-			nil,
-			[]common.Query{Query{
-				Key:    "x",
-				Binary: common.PtrBool(true),
-			}, Query{
-				Key:    "y",
-				Binary: common.PtrBool(true),
-			}}},
-		{"stdin",
-			"{\"key\":\"a\",\"binary\":true}",
-			flags{},
-			nil,
-			[]common.Query{Query{
-				Key:    "a",
-				Binary: common.PtrBool(true),
-			}}},
+		{"key", "x", []any{"x", emptyOptions}, "value-x"},
+		{"other-key", "y", []any{"y", emptyOptions}, "value-y"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			in := bytes.NewBufferString(test.stdin)
-			queue := fakeQueryQueue{}
-			err := _exec(test.flags, in, &queue)
-			assert.Equal(t, test.expectedQueries, queue.queries)
-			assert.ErrorIs(t, err, test.expectedErr)
+			common.MockedClient = common.NewMockClient()
+
+			common.MockedClient.On("Get", test.expectedParameters...).
+				Return(test.expectedParameters[0], []byte(test.out), oxia.Version{}, nil)
+			out, err := runCmd(Cmd, test.args, "")
+			assert.NoError(t, err)
+			assert.Equal(t, test.out, out)
+
+			common.MockedClient.AssertExpectations(t)
 		})
 	}
-}
-
-func TestInputUnmarshal(t *testing.T) {
-	for _, test := range []struct {
-		name     string
-		input    string
-		expected Query
-	}{
-		{"key",
-			"{\"key\":\"a\"}",
-			Query{
-				Key: "a",
-			}},
-		{"key-binary",
-			"{\"key\":\"a\",\"binary\":true}",
-			Query{
-				Key:    "a",
-				Binary: common.PtrBool(true),
-			}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			result, err := Query{}.Unmarshal([]byte(test.input))
-			assert.Equal(t, test.expected, result)
-			assert.Equal(t, err, nil)
-		})
-	}
-}
-
-func TestOutputMarshal(t *testing.T) {
-	for _, test := range []struct {
-		name     string
-		output   Output
-		expected string
-	}{
-		{"non-binary",
-			Output{
-				Binary: common.PtrBool(false),
-				Value:  "hello",
-				Version: common.OutputVersion{
-					VersionId:          1,
-					CreatedTimestamp:   time.UnixMilli(2),
-					ModifiedTimestamp:  time.UnixMilli(3),
-					ModificationsCount: 0,
-				},
-			},
-			"{\"binary\":false,\"value\":\"hello\",\"version\":{\"version_id\":1,\"created_timestamp\":\"" + time.UnixMilli(2).Format(time.RFC3339Nano) +
-				"\",\"modified_timestamp\":\"" + time.UnixMilli(3).Format(time.RFC3339Nano) + "\",\"modifications_count\":0,\"ephemeral\":false,\"client_identity\":\"\"}}",
-		},
-		{"binary",
-			Output{
-				Binary: common.PtrBool(true),
-				Value:  "aGVsbG8y",
-				Version: common.OutputVersion{
-					VersionId:          2,
-					CreatedTimestamp:   time.UnixMilli(4),
-					ModifiedTimestamp:  time.UnixMilli(6),
-					ModificationsCount: 0,
-				},
-			},
-			"{\"binary\":true,\"value\":\"aGVsbG8y\",\"version\":{\"version_id\":2,\"created_timestamp\":\"" + time.UnixMilli(4).Format(time.RFC3339Nano) +
-				"\",\"modified_timestamp\":\"" + time.UnixMilli(6).Format(time.RFC3339Nano) + "\",\"modifications_count\":0,\"ephemeral\":false,\"client_identity\":\"\"}}",
-		},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			result, err := json.Marshal(test.output)
-			if err != nil {
-				panic(err)
-			}
-			assert.Equal(t, test.expected, string(result))
-		})
-	}
-}
-
-func TestCall_Complete(t *testing.T) {
-	tests := []struct {
-		name         string
-		clientResult oxia.GetResult
-		binary       bool
-		expected     any
-	}{
-		{
-			"error",
-			oxia.GetResult{
-				Err: errors.New("error"),
-			},
-			false,
-			common.OutputError{
-				Err: "error",
-			},
-		},
-		{
-			"result",
-			oxia.GetResult{
-				Value: []byte("hello"),
-				Version: oxia.Version{
-					VersionId:          1,
-					CreatedTimestamp:   4,
-					ModifiedTimestamp:  8,
-					ModificationsCount: 2,
-				},
-			},
-			false,
-			Output{
-				Value:  "hello",
-				Binary: common.PtrBool(false),
-				Version: common.OutputVersion{
-					VersionId:          1,
-					CreatedTimestamp:   time.UnixMilli(4),
-					ModifiedTimestamp:  time.UnixMilli(8),
-					ModificationsCount: 2,
-				},
-			},
-		},
-		{
-			"result-binary",
-			oxia.GetResult{
-				Value: []byte("hello2"),
-				Version: oxia.Version{
-					VersionId:          1,
-					CreatedTimestamp:   4,
-					ModifiedTimestamp:  8,
-					ModificationsCount: 1,
-				},
-			},
-			true,
-			Output{
-				Value:  "aGVsbG8y",
-				Binary: common.PtrBool(true),
-				Version: common.OutputVersion{
-					VersionId:          1,
-					CreatedTimestamp:   time.UnixMilli(4),
-					ModifiedTimestamp:  time.UnixMilli(8),
-					ModificationsCount: 1,
-				},
-			},
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			results := make(chan oxia.GetResult, 1)
-			results <- test.clientResult
-			call := Call{
-				binary:     test.binary,
-				clientCall: results,
-			}
-			assert.Equalf(t, test.expected, <-call.Complete(), "Error")
-		})
-	}
-}
-
-type fakeQueryQueue struct {
-	queries []common.Query
-}
-
-func (q *fakeQueryQueue) Add(query common.Query) {
-	if q.queries == nil {
-		q.queries = []common.Query{}
-	}
-	q.queries = append(q.queries, query)
 }
