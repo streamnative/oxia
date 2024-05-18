@@ -22,6 +22,8 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/grpc/status"
+
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	pb "google.golang.org/protobuf/proto"
@@ -569,7 +571,7 @@ func (lc *leaderController) Read(ctx context.Context, request *proto.ReadRequest
 	ch := make(chan GetResult)
 
 	lc.RLock()
-	err := checkStatus(proto.ServingStatus_LEADER, lc.status)
+	err := checkStatusIsLeader(lc.status)
 	lc.RUnlock()
 	if err != nil {
 		go func() {
@@ -614,7 +616,7 @@ func (lc *leaderController) List(ctx context.Context, request *proto.ListRequest
 	ch := make(chan string)
 
 	lc.RLock()
-	err := checkStatus(proto.ServingStatus_LEADER, lc.status)
+	err := checkStatusIsLeader(lc.status)
 	lc.RUnlock()
 	if err != nil {
 		return nil, err
@@ -687,7 +689,7 @@ func (lc *leaderController) RangeScan(ctx context.Context, request *proto.RangeS
 	errCh := make(chan error)
 
 	lc.RLock()
-	err := checkStatus(proto.ServingStatus_LEADER, lc.status)
+	err := checkStatusIsLeader(lc.status)
 	lc.RUnlock()
 	if err != nil {
 		return nil, nil, err
@@ -780,7 +782,7 @@ func (lc *leaderController) write(ctx context.Context, request func(int64) *prot
 func (lc *leaderController) appendToWal(ctx context.Context, request func(int64) *proto.WriteRequest) (actualRequest *proto.WriteRequest, offset int64, timestamp uint64, err error) {
 	lc.Lock()
 
-	if err := checkStatus(proto.ServingStatus_LEADER, lc.status); err != nil {
+	if err := checkStatusIsLeader(lc.status); err != nil {
 		lc.Unlock()
 		return nil, wal.InvalidOffset, 0, err
 	}
@@ -1071,4 +1073,11 @@ func (lc *leaderController) KeepAlive(sessionId int64) error {
 
 func (lc *leaderController) CloseSession(request *proto.CloseSessionRequest) (*proto.CloseSessionResponse, error) {
 	return lc.sessionManager.CloseSession(request)
+}
+
+func checkStatusIsLeader(actual proto.ServingStatus) error {
+	if actual != proto.ServingStatus_LEADER {
+		return status.Errorf(common.CodeInvalidStatus, "Received message in the wrong state. In %+v, should be %+v.", actual, proto.ServingStatus_LEADER)
+	}
+	return nil
 }
