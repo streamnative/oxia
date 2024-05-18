@@ -29,6 +29,7 @@ var (
 
 type flags struct {
 	expectedVersion int64
+	partitionKey    string
 }
 
 func (flags *flags) Reset() {
@@ -37,6 +38,7 @@ func (flags *flags) Reset() {
 
 func init() {
 	Cmd.Flags().Int64VarP(&Config.expectedVersion, "expected-version", "e", -1, "Version of entry expected to be on the server")
+	Cmd.Flags().StringVarP(&Config.partitionKey, "partition-key", "p", "", "Partition Key to be used in override the shard routing")
 }
 
 var Cmd = &cobra.Command{
@@ -59,6 +61,9 @@ func exec(_ *cobra.Command, args []string) error {
 	var options []oxia.DeleteOption
 	if Config.expectedVersion >= 0 {
 		options = append(options, oxia.ExpectedVersionId(Config.expectedVersion))
+	}
+	if Config.partitionKey != "" {
+		options = append(options, oxia.PartitionKey(Config.partitionKey))
 	}
 
 	return client.Delete(context.Background(), key, options...)

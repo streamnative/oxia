@@ -50,6 +50,7 @@ func TestList_exec(t *testing.T) {
 		{"short", "-s a -e c", []any{"a", "c", emptyOptions}},
 		{"range-no-min", "--key-max c", []any{"", "c", emptyOptions}},
 		{"range-no-max", "--key-min a", []any{"a", "__oxia/", emptyOptions}},
+		{"partition-key", "-s a -e c -p xyz", []any{"a", "c", []oxia.ListOption{oxia.PartitionKey("xyz")}}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			common.MockedClient = common.NewMockClient()

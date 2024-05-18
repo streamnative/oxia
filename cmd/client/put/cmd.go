@@ -34,16 +34,22 @@ var (
 type flags struct {
 	expectedVersion    int64
 	readValueFromStdIn bool
+	partitionKey       string
+	sequenceKeysDeltas []int64
 }
 
 func (flags *flags) Reset() {
 	flags.expectedVersion = -1
 	flags.readValueFromStdIn = false
+	flags.partitionKey = ""
+	flags.sequenceKeysDeltas = nil
 }
 
 func init() {
 	Cmd.Flags().Int64VarP(&Config.expectedVersion, "expected-version", "e", -1, "Version of entry expected to be on the server")
 	Cmd.Flags().BoolVarP(&Config.readValueFromStdIn, "std-in", "c", false, "Read value from stdin")
+	Cmd.Flags().StringVarP(&Config.partitionKey, "partition-key", "p", "", "Partition Key to be used in override the shard routing")
+	Cmd.Flags().Int64SliceVarP(&Config.sequenceKeysDeltas, "sequence-keys-deltas", "d", nil, "Specify one or more sequence keys deltas to be added to the inserted key")
 }
 
 var Cmd = &cobra.Command{
@@ -80,6 +86,16 @@ func exec(cmd *cobra.Command, args []string) error {
 	var options []oxia.PutOption
 	if Config.expectedVersion != -1 {
 		options = append(options, oxia.ExpectedVersionId(Config.expectedVersion))
+	}
+	if Config.partitionKey != "" {
+		options = append(options, oxia.PartitionKey(Config.partitionKey))
+	}
+	if len(Config.sequenceKeysDeltas) > 0 {
+		deltas := make([]uint64, len(Config.sequenceKeysDeltas))
+		for i := range Config.sequenceKeysDeltas {
+			deltas[i] = uint64(Config.sequenceKeysDeltas[i])
+		}
+		options = append(options, oxia.SequenceKeysDeltas(deltas...))
 	}
 
 	key, version, err := client.Put(context.Background(), key, value, options...)
