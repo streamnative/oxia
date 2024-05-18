@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package list
+package deleterange
 
 import (
 	"context"
@@ -44,37 +44,34 @@ func init() {
 	Cmd.Flags().StringVarP(&Config.keyMin, "key-min", "s", "", "Key range minimum (inclusive)")
 	Cmd.Flags().StringVarP(&Config.keyMax, "key-max", "e", "", "Key range maximum (exclusive)")
 	Cmd.Flags().StringVarP(&Config.partitionKey, "partition-key", "p", "", "Partition Key to be used in override the shard routing")
+	err := Cmd.MarkFlagRequired("key-min")
+	if err != nil {
+		panic(err)
+	}
+	err = Cmd.MarkFlagRequired("key-max")
+	if err != nil {
+		panic(err)
+	}
 }
 
 var Cmd = &cobra.Command{
-	Use:   "list",
-	Short: "List keys",
-	Long:  `List keys that fall within the given key range.`,
+	Use:   "delete-range",
+	Short: "Delete a range of records",
+	Long:  `Delete a set of records based on a range of keys`,
 	Args:  cobra.NoArgs,
 	RunE:  exec,
 }
 
-func exec(cmd *cobra.Command, _ []string) error {
+func exec(_ *cobra.Command, _ []string) error {
 	client, err := common.Config.NewClient()
 	if err != nil {
 		return err
 	}
 
-	var options []oxia.ListOption
-	if Config.keyMax == "" {
-		// By default, do not list internal keys
-		Config.keyMax = "__oxia/"
-	}
-
+	var options []oxia.DeleteRangeOption
 	if Config.partitionKey != "" {
 		options = append(options, oxia.PartitionKey(Config.partitionKey))
 	}
 
-	list, err := client.List(context.Background(), Config.keyMin, Config.keyMax, options...)
-	if err != nil {
-		return err
-	}
-
-	common.WriteOutput(cmd.OutOrStdout(), list)
-	return nil
+	return client.DeleteRange(context.Background(), Config.keyMin, Config.keyMax, options...)
 }
