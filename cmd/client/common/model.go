@@ -17,6 +17,7 @@ package common
 import "time"
 
 type OutputVersion struct {
+	Key                string    `json:"key"`
 	VersionId          int64     `json:"version_id"`
 	CreatedTimestamp   time.Time `json:"created_timestamp"`
 	ModifiedTimestamp  time.Time `json:"modified_timestamp"`

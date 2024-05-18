@@ -17,6 +17,7 @@ package client
 import (
 	"bytes"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -42,129 +43,28 @@ func TestClientCmd(t *testing.T) {
 	Cmd.SetErr(stderr)
 
 	for _, test := range []struct {
-		name             string
-		args             []string
-		stdin            string
-		expectedErr      error
-		expectedStdOutRe string
-		expectedStdErrRe string
+		name   string
+		args   string
+		stdin  string
+		stdout string
+		stderr string
+		error  bool
 	}{
-		{"put", []string{"put", "-k", "k-put", "-v", "a"}, "", nil,
-			"\\{\"version\":\\{\"version_id\":0,\"created_timestamp\":\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+(Z|-\\d{2}:\\d{2})\",\"modified_timestamp\":\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+(Z|-\\d{2}:\\d{2})\",\"modifications_count\":0,\"ephemeral\":false,\"client_identity\":\"\"}\\}",
-			"^$",
-		},
-		{"put-expected", []string{"put", "-k", "k-put", "-v", "c", "-e", "0"}, "", nil,
-			"\\{\"version\":\\{\"version_id\":1,\"created_timestamp\":\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+(Z|-\\d{2}:\\d{2})\",\"modified_timestamp\":\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+(Z|-\\d{2}:\\d{2})\",\"modifications_count\":1,\"ephemeral\":false,\"client_identity\":\"\"}\\}",
-			"^$",
-		},
-		{"put-unexpected-present", []string{"put", "-k", "k-put", "-v", "c", "-e", "0"}, "", nil,
-			"\\{\"error\":\"unexpected version id\"\\}",
-			"^$",
-		},
-		{"put-unexpected-not-present", []string{"put", "-k", "k-put-unp", "-v", "c", "-e", "9999"}, "", nil,
-			"\\{\"error\":\"unexpected version id\"\\}",
-			"^$",
-		},
-		{"put-multi", []string{"put", "--max-requests-per-batch", "1", "-k", "2a", "-v", "c", "-k", "2x", "-v", "y"}, "", nil,
-			"\\{\"version\":\\{\"version_id\":4,\"created_timestamp\":\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+(Z|-\\d{2}:\\d{2})\",\"modified_timestamp\":\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+(Z|-\\d{2}:\\d{2})\",\"modifications_count\":0,\"ephemeral\":false,\"client_identity\":\"\"\\}}\\n{\"version\":\\{\"version_id\":5,\"created_timestamp\":\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+(Z|-\\d{2}:\\d{2})\",\"modified_timestamp\":\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+(Z|-\\d{2}:\\d{2})\",\"modifications_count\":0,\"ephemeral\":false,\"client_identity\":\"\"}\\}",
-			"^$",
-		},
-		{"put-binary", []string{"put", "-k", "k-put-binary-ok", "-v", "aGVsbG8y", "-b"}, "", nil,
-			"\\{\"version\":\\{\"version_id\":6,\"created_timestamp\":\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+(Z|-\\d{2}:\\d{2})\",\"modified_timestamp\":\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+(Z|-\\d{2}:\\d{2})\",\"modifications_count\":0,\"ephemeral\":false,\"client_identity\":\"\"}\\}",
-			"^$",
-		},
-		{"put-binary-fail", []string{"put", "-k", "k-put-binary-fail", "-v", "not-binary", "-b"}, "", nil,
-			"\\{\"error\":\"binary flag was set but value is not valid base64\"\\}",
-			"^$",
-		},
-		{"put-no-value", []string{"put", "-k", "k-put-np"}, "", put.ErrExpectedKeyValueInconsistent,
-			".*",
-			"Error: inconsistent flags; key and value flags must be in pairs",
-		},
-		{"put-no-key", []string{"put", "-v", "k-put-np"}, "", put.ErrExpectedKeyValueInconsistent,
-			".*",
-			"Error: inconsistent flags; key and value flags must be in pairs",
-		},
-		{"put-stdin", []string{"put"}, "{\"key\":\"3a\",\"value\":\"aGVsbG8y\",\"binary\":true}\n{\"key\":\"3x\",\"value\":\"aGVsbG8y\"}", nil,
-			"\\{\"version\":\\{\"version_id\":7,\"created_timestamp\":\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+(Z|-\\d{2}:\\d{2})\",\"modified_timestamp\":\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+(Z|-\\d{2}:\\d{2})\",\"modifications_count\":0,\"ephemeral\":false,\"client_identity\":\"\"}}\\n{\"version\":\\{\"version_id\":8,\"created_timestamp\":\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+(Z|-\\d{2}:\\d{2})\",\"modified_timestamp\":\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+(Z|-\\d{2}:\\d{2})\",\"modifications_count\":0,\"ephemeral\":false,\"client_identity\":\"\"}\\}",
-			"^$",
-		},
-		{"put-bad-binary-use", []string{"put", "-b"}, "", put.ErrIncorrectBinaryFlagUse,
-			".*",
-			"Error: binary flag was set when config is being sourced from stdin",
-		},
-		{"get", []string{"get", "-k", "k-put-binary-ok"}, "", nil,
-			"\\{\"binary\":false,\"value\":\"hello2\",\"version\":\\{\"version_id\":6,\"created_timestamp\":\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+(Z|-\\d{2}:\\d{2})\",\"modified_timestamp\":\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+(Z|-\\d{2}:\\d{2})\",\"modifications_count\":0,\"ephemeral\":false,\"client_identity\":\"\"}\\}",
-			"^$",
-		},
-		{"get-binary", []string{"get", "-k", "k-put-binary-ok", "-b"}, "", nil,
-			"\\{\"binary\":true,\"value\":\"aGVsbG8y\",\"version\":\\{\"version_id\":6,\"created_timestamp\":\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+(Z|-\\d{2}:\\d{2})\",\"modified_timestamp\":\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+(Z|-\\d{2}:\\d{2})\",\"modifications_count\":0,\"ephemeral\":false,\"client_identity\":\"\"}}",
-			"^$",
-		},
-		{"get-not-exist", []string{"get", "-k", "does-not-exist"}, "", nil,
-			"\\{\"error\":\"key not found\"\\}",
-			"^$",
-		},
-		{"get-multi", []string{"get", "-k", "2a", "-k", "2x"}, "", nil,
-			"\\{\"binary\":false,\"value\":\"c\",\"version\":\\{\"version_id\":4,\"created_timestamp\":\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+(Z|-\\d{2}:\\d{2})\",\"modified_timestamp\":\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+(Z|-\\d{2}:\\d{2})\",\"modifications_count\":0,\"ephemeral\":false,\"client_identity\":\"\"}\\}\\n{\"binary\":false,\"value\":\"y\",\"version\":\\{\"version_id\":5,\"created_timestamp\":\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+(Z|-\\d{2}:\\d{2})\",\"modified_timestamp\":\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+(Z|-\\d{2}:\\d{2})\",\"modifications_count\":0,\"ephemeral\":false,\"client_identity\":\"\"}\\}",
-			"^$",
-		},
-		{"get-stdin", []string{"get"}, "{\"key\":\"k-put-binary-ok\",\"binary\":true}\n{\"key\":\"2a\"}\n", nil,
-			"\\{\"binary\":true,\"value\":\"aGVsbG8y\",\"version\":\\{\"version_id\":6,\"created_timestamp\":\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+(Z|-\\d{2}:\\d{2})\",\"modified_timestamp\":\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+(Z|-\\d{2}:\\d{2})\",\"modifications_count\":0,\"ephemeral\":false,\"client_identity\":\"\"}\\}\\n{\"binary\":false,\"value\":\"c\",\"version\":\\{\"version_id\":4,\"created_timestamp\":\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+(Z|-\\d{2}:\\d{2})\",\"modified_timestamp\":\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+(Z|-\\d{2}:\\d{2})\",\"modifications_count\":0,\"ephemeral\":false,\"client_identity\":\"\"}\\}",
-			"^$",
-		},
-		{"get-bad-binary-use", []string{"get", "-b"}, "", get.ErrIncorrectBinaryFlagUse,
-			".*",
-			"Error: binary flag was set when config is being sourced from stdin",
-		},
-		{"list-none", []string{"list", "--key-min", "XXX", "--key-max", "XXY"}, "", nil,
-			"^$",
-			"^$",
-		},
-		{"list-all", []string{"list", "--key-min", "a", "--key-max", "z"}, "", nil,
-			"k-put\nk-put-binary-ok\n",
-			"^$",
-		},
-		{"delete", []string{"delete", "-k", "k-put-binary-ok"}, "", nil,
-			"\\{\\}",
-			"^$",
-		},
-		{"delete-not-exist", []string{"delete", "-k", "does-not-exist"}, "", nil,
-			"\\{\"error\":\"key not found\"\\}",
-			"^$",
-		},
-		{"delete-unexpected-version", []string{"delete", "-k", "k-put", "-e", "9"}, "", nil,
-			"\\{\"error\":\"unexpected version id\"\\}",
-			"^$",
-		},
-		{"delete-expected-version", []string{"delete", "-k", "k-put", "-e", "1"}, "", nil,
-			"\\{\\}",
-			"^$",
-		},
-		{"delete-multi", []string{"delete", "-k", "2a", "-k", "2x"}, "", nil,
-			"\\{\\}",
-			"^$",
-		},
-		{"delete-multi-not-exist", []string{"delete", "-k", "2a", "-k", "2x"}, "", nil,
-			"\\{\"error\":\"key not found\"\\}",
-			"^$",
-		},
-		{"delete-multi-with-expected", []string{"delete", "-k", "2a", "-e", "0", "-k", "2x", "-e", "0"}, "", nil,
-			"\\{\"error\":\"unexpected version id\"\\}\n\\{\"error\":\"unexpected version id\"\\}\n",
-			"^$",
-		},
-		{"delete-range", []string{"delete", "--key-min", "q", "--key-max", "s"}, "", nil,
-			"\\{\\}",
-			"^$",
-		},
-		{"delete-range-with-expected", []string{"delete", "--key-min", "q", "--key-max", "s", "-e", "0"}, "", del.ErrExpectedVersionInconsistent,
-			".*",
-			"Error: inconsistent flags; zero or all keys must have an expected version",
-		},
-		{"delete-stdin", []string{"delete"}, "{\"key_minimum\":\"j\",\"key_maximum\":\"l\"}\n{\"key\":\"a\"}\n\n{\"key\":\"a\",\"expected_version\":0}\n", nil,
-			"\\{\\}",
-			"^$",
-		},
+		{"put", "put k-put a", "", "", "", false},
+		{"put-expected", "put k-put c -e 0", "", "", "", false},
+		{"put-unexpected-present", "put k-put c -e 0", "", "", "Error: unexpected version id", true},
+		{"put-unexpected-not-present", "put k-put-unp c -e 9999", "", "", "Error: unexpected version id", true},
+		{"put-stdin-not-present", "put k-put-stdin", "test-3a", "", "Error: no value provided for the record", true},
+		{"put-stdin", "put k-put-stdin -c", "test-3b", "", "", false},
+		{"get", "get k-put-stdin", "", "test-3b\n", "", false},
+		{"get-not-exist", "get does-not-exist", "", "", "Error: key not found", true},
+		{"list-none", "list --key-min XXX --key-max XXY", "", "", "", false},
+		{"list-all", "list --key-min a --key-max z", "", "k-put\nk-put-stdin\n", "", false},
+		{"list-all-short", "list -s a -e z", "", "k-put\nk-put-stdin\n", "", false},
+		{"delete", "delete k-put-stdin", "", "", "", false},
+		{"delete-not-exist", "delete does-not-exist", "", "", "Error: key not found", true},
+		{"delete-unexpected-version", "delete k-put -e 9", "", "", "Error: unexpected version id", true},
+		{"delete-expected-version", "delete k-put -e 1", "", "", "", false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			put.Config.Reset()
@@ -173,12 +73,18 @@ func TestClientCmd(t *testing.T) {
 			del.Config.Reset()
 
 			stdin.WriteString(test.stdin)
-			Cmd.SetArgs(append([]string{"-a", serviceAddress}, test.args...))
+			Cmd.SetArgs(append([]string{"-a", serviceAddress}, strings.Split(test.args, " ")...))
 			err := Cmd.Execute()
+			if test.error {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
 
-			assert.Regexp(t, test.expectedStdOutRe, stdout.String())
-			assert.Regexp(t, test.expectedStdErrRe, stderr.String())
-			assert.ErrorIs(t, err, test.expectedErr)
+			if test.stdout != "" {
+				assert.Equal(t, test.stdout, stdout.String())
+			}
+			assert.Equal(t, test.stderr, strings.TrimSpace(stderr.String()))
 
 			stdin.Reset()
 			stdout.Reset()

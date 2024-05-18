@@ -39,6 +39,7 @@ var (
 		Short:             "Oxia root command",
 		Long:              `Oxia root command`,
 		PersistentPreRunE: configureLogLevel,
+		SilenceUsage:      true,
 	}
 )
 
@@ -85,7 +86,6 @@ func main() {
 				os.Exit(1)
 			}
 			if err := rootCmd.Execute(); err != nil {
-				_, _ = fmt.Fprintln(os.Stderr, err)
 				os.Exit(1)
 			}
 		},

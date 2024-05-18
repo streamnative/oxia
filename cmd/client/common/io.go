@@ -15,40 +15,17 @@
 package common
 
 import (
-	"bufio"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 )
 
-func ReadStdin(stdin io.Reader, input Input, queue QueryQueue) {
-	scanner := bufio.NewScanner(stdin)
-	for {
-		scanner.Scan()
-		b := scanner.Bytes()
-		if len(b) == 0 {
-			break
-		}
-
-		query, err := input.Unmarshal(b)
-		if err != nil {
-			panic(err)
-		}
-		queue.Add(query)
-	}
-}
-
-func writeOutputCh(out io.Writer, valuesCh <-chan any) {
-	for value := range valuesCh {
-		writeOutput(out, value)
-	}
-}
-
-func writeOutput(out io.Writer, value any) {
+func WriteOutput(out io.Writer, value any) {
 	if sl, ok := value.([]string); ok {
-		for _, s := range sl {
-			_, _ = out.Write([]byte(s))
-			_, _ = out.Write([]byte("\n"))
-		}
+		writeStringSlice(out, sl)
+		return
+	} else if b, ok := value.([]byte); ok {
+		writeByteSlice(out, b)
 		return
 	}
 
@@ -58,6 +35,36 @@ func writeOutput(out io.Writer, value any) {
 	}
 	_, err = out.Write(append(b, "\n"...))
 	if err != nil {
+		panic(err)
+	}
+}
+
+func writeStringSlice(out io.Writer, sl []string) {
+	for _, s := range sl {
+		if _, err := out.Write([]byte(s)); err != nil {
+			panic(err)
+		}
+		if _, err := out.Write([]byte("\n")); err != nil {
+			panic(err)
+		}
+	}
+}
+
+func writeByteSlice(out io.Writer, sl []byte) {
+	if _, err := out.Write(sl); err != nil {
+		panic(err)
+	}
+	if _, err := out.Write([]byte("\n")); err != nil {
+		panic(err)
+	}
+}
+
+func WriteHexDump(out io.Writer, buffer []byte) {
+	dump := hex.Dumper(out)
+	if _, err := dump.Write(buffer); err != nil {
+		panic(err)
+	}
+	if err := dump.Close(); err != nil {
 		panic(err)
 	}
 }

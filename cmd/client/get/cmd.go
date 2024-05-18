@@ -15,146 +15,72 @@
 package get
 
 import (
-	"encoding/base64"
-	"encoding/json"
-	"errors"
-	"io"
+	"context"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/streamnative/oxia/cmd/client/common"
-	"github.com/streamnative/oxia/oxia"
 )
 
 var (
 	Config = flags{}
-
-	ErrIncorrectBinaryFlagUse = errors.New("binary flag was set when config is being sourced from stdin")
 )
 
 type flags struct {
-	keys         []string
-	binaryValues bool
+	key            string
+	hexDump        bool
+	includeVersion bool
 }
 
 func (flags *flags) Reset() {
-	flags.keys = nil
-	flags.binaryValues = false
+	flags.key = ""
+	flags.hexDump = false
+	flags.includeVersion = false
 }
 
 func init() {
-	Cmd.Flags().StringSliceVarP(&Config.keys, "key", "k", []string{}, "The target key")
-	Cmd.Flags().BoolVarP(&Config.binaryValues, "binary", "b", false, "Output values as a base64 encoded string, use when values are binary")
+	Cmd.Flags().BoolVarP(&Config.includeVersion, "include-version", "v", false, "Include the record version object")
+	Cmd.Flags().BoolVar(&Config.hexDump, "hex", false, "Print the value in HexDump format")
 }
 
 var Cmd = &cobra.Command{
-	Use:   "get",
-	Short: "Get entries",
-	Long:  `Get the values of the entries associated with the given keys.`,
-	Args:  cobra.NoArgs,
+	Use:   "get [flags] KEY",
+	Short: "Get one record",
+	Long:  `Get the values of the recover associated with the given key.`,
+	Args:  cobra.ExactArgs(1),
 	RunE:  exec,
 }
 
-func exec(cmd *cobra.Command, _ []string) error {
-	loop, err := common.NewCommandLoop(cmd.OutOrStdout())
+func exec(cmd *cobra.Command, args []string) error {
+	client, err := common.Config.NewClient()
 	if err != nil {
 		return err
 	}
-	defer func() {
-		loop.Complete()
-	}()
-	return _exec(Config, cmd.InOrStdin(), loop)
-}
 
-func _exec(flags flags, in io.Reader, queue common.QueryQueue) error {
-	if len(flags.keys) > 0 {
-		for _, k := range flags.keys {
-			if flags.binaryValues {
-				queue.Add(Query{
-					Key:    k,
-					Binary: &flags.binaryValues,
-				})
-			} else {
-				queue.Add(Query{
-					Key: k,
-				})
-			}
-		}
+	queryKey := args[0]
+	key, value, version, err := client.Get(context.Background(), queryKey)
+	if err != nil {
+		return err
+	}
+
+	if Config.hexDump {
+		common.WriteHexDump(cmd.OutOrStdout(), value)
 	} else {
-		if flags.binaryValues {
-			return ErrIncorrectBinaryFlagUse
-		}
-		common.ReadStdin(in, Query{}, queue)
+		common.WriteOutput(cmd.OutOrStdout(), value)
+	}
+
+	if Config.includeVersion {
+		_, _ = cmd.OutOrStdout().Write([]byte("---\n"))
+		common.WriteOutput(cmd.OutOrStdout(), common.OutputVersion{
+			Key:                key,
+			VersionId:          version.VersionId,
+			CreatedTimestamp:   time.UnixMilli(int64(version.CreatedTimestamp)),
+			ModifiedTimestamp:  time.UnixMilli(int64(version.ModifiedTimestamp)),
+			ModificationsCount: version.ModificationsCount,
+			Ephemeral:          version.Ephemeral,
+			ClientIdentity:     version.ClientIdentity,
+		})
 	}
 	return nil
-}
-
-type Query struct {
-	Key    string `json:"key"`
-	Binary *bool  `json:"binary,omitempty"`
-}
-
-func (query Query) Perform(client oxia.AsyncClient) common.Call {
-	call := Call{
-		clientCall: client.Get(query.Key),
-		binary:     false,
-	}
-	if query.Binary != nil {
-		call.binary = *query.Binary
-	}
-	return call
-}
-
-func (Query) Unmarshal(b []byte) (common.Query, error) {
-	q := Query{}
-	err := json.Unmarshal(b, &q)
-	return q, err
-}
-
-type Call struct {
-	binary     bool
-	clientCall <-chan oxia.GetResult
-}
-
-func (call Call) Complete() <-chan any {
-	ch := make(chan any, 1)
-	result := <-call.clientCall
-	if result.Err != nil {
-		ch <- common.OutputError{
-			Err: result.Err.Error(),
-		}
-	} else {
-		rawValue := result.Value
-		var value string
-		if call.binary {
-			value = base64.StdEncoding.EncodeToString(rawValue)
-		} else {
-			value = string(rawValue)
-		}
-		output := Output{
-			Binary: &call.binary,
-			Value:  value,
-			Version: common.OutputVersion{
-				VersionId:          result.Version.VersionId,
-				CreatedTimestamp:   time.UnixMilli(int64(result.Version.CreatedTimestamp)),
-				ModifiedTimestamp:  time.UnixMilli(int64(result.Version.ModifiedTimestamp)),
-				ModificationsCount: result.Version.ModificationsCount,
-				Ephemeral:          result.Version.Ephemeral,
-				ClientIdentity:     result.Version.ClientIdentity,
-			},
-		}
-		if call.binary {
-			output.Binary = &call.binary
-		}
-		ch <- output
-	}
-	close(ch)
-	return ch
-}
-
-type Output struct {
-	Binary  *bool                `json:"binary,omitempty"`
-	Value   string               `json:"value"`
-	Version common.OutputVersion `json:"version"`
 }

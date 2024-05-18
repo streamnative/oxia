@@ -42,8 +42,6 @@ func init() {
 	defaultServiceAddress := fmt.Sprintf("localhost:%d", oxiacommon.DefaultPublicPort)
 	Cmd.PersistentFlags().StringVarP(&common.Config.ServiceAddr, "service-address", "a", defaultServiceAddress, "Service address")
 	Cmd.PersistentFlags().StringVarP(&common.Config.Namespace, "namespace", "n", oxia.DefaultNamespace, "The Oxia namespace to use")
-	Cmd.PersistentFlags().DurationVar(&common.Config.BatchLinger, "batch-linger", oxia.DefaultBatchLinger, "Max time requests will be staged to be included in a batch")
-	Cmd.PersistentFlags().IntVar(&common.Config.MaxRequestsPerBatch, "max-requests-per-batch", oxia.DefaultMaxRequestsPerBatch, "Maximum requests per batch")
 	Cmd.PersistentFlags().DurationVar(&common.Config.RequestTimeout, "request-timeout", oxia.DefaultRequestTimeout, "Requests timeout")
 
 	Cmd.AddCommand(put.Cmd)

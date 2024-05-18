@@ -16,12 +16,12 @@ package list
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/spf13/cobra"
 
-	"github.com/streamnative/oxia/cmd/client/common"
 	"github.com/streamnative/oxia/oxia"
+
+	"github.com/streamnative/oxia/cmd/client/common"
 )
 
 var (
@@ -35,12 +35,12 @@ type flags struct {
 
 func (flags *flags) Reset() {
 	flags.keyMin = ""
-	flags.keyMin = ""
+	flags.keyMax = ""
 }
 
 func init() {
-	Cmd.Flags().StringVar(&Config.keyMin, "key-min", "", "Key range minimum (inclusive)")
-	Cmd.Flags().StringVar(&Config.keyMax, "key-max", "", "Key range maximum (exclusive)")
+	Cmd.Flags().StringVarP(&Config.keyMin, "key-min", "s", "", "Key range minimum (inclusive)")
+	Cmd.Flags().StringVarP(&Config.keyMax, "key-max", "e", "", "Key range maximum (exclusive)")
 }
 
 var Cmd = &cobra.Command{
@@ -52,70 +52,21 @@ var Cmd = &cobra.Command{
 }
 
 func exec(cmd *cobra.Command, _ []string) error {
-	loop, _ := common.NewCommandLoop(cmd.OutOrStdout())
-	defer func() {
-		loop.Complete()
-	}()
-	return _exec(Config, loop)
-}
-
-func _exec(flags flags, queue common.QueryQueue) error {
-	query := Query{
-		KeyMinimum: flags.keyMin,
-		KeyMaximum: flags.keyMax,
+	client, err := common.Config.NewClient()
+	if err != nil {
+		return err
 	}
-	if flags.keyMax == "" {
+
+	var options []oxia.ListOption
+	if Config.keyMax == "" {
 		// By default, do not list internal keys
-		query.KeyMaximum = "__oxia/"
+		Config.keyMax = "__oxia/"
 	}
-	queue.Add(query)
+	list, err := client.List(context.Background(), Config.keyMin, Config.keyMax, options...)
+	if err != nil {
+		return err
+	}
+
+	common.WriteOutput(cmd.OutOrStdout(), list)
 	return nil
-}
-
-type Query struct {
-	KeyMinimum string `json:"key_minimum"`
-	KeyMaximum string `json:"key_maximum"`
-}
-
-func (query Query) Perform(client oxia.AsyncClient) common.Call {
-	return Call{
-		clientCall: client.List(context.Background(), query.KeyMinimum, query.KeyMaximum),
-	}
-}
-
-func (Query) Unmarshal(b []byte) (common.Query, error) {
-	q := Query{}
-	err := json.Unmarshal(b, &q)
-	return q, err
-}
-
-type Call struct {
-	clientCall <-chan oxia.ListResult
-}
-
-func (call Call) Complete() <-chan any {
-	ch := make(chan any)
-	go func() {
-		emptyOutput := true
-		for {
-			result, ok := <-call.clientCall
-			if !ok {
-				break
-			}
-
-			emptyOutput = false
-			if result.Err != nil {
-				ch <- common.OutputError{
-					Err: result.Err.Error(),
-				}
-			} else {
-				ch <- result.Keys
-			}
-		}
-		if emptyOutput {
-			ch <- []string{}
-		}
-		close(ch)
-	}()
-	return ch
 }
