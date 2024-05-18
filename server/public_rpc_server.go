@@ -30,8 +30,9 @@ import (
 )
 
 const (
-	maxTotalReadValueSize = 4 << (10 * 2) // 4Mi
-	maxTotalListKeySize   = 4 << (10 * 2) // 4Mi
+	maxTotalScanBatchCount = 1000
+	maxTotalReadValueSize  = 4 << (10 * 2) // 4Mi
+	maxTotalListKeySize    = 4 << (10 * 2) // 4Mi
 )
 
 type publicRpcServer struct {
@@ -197,6 +198,62 @@ func (s *publicRpcServer) List(request *proto.ListRequest, stream proto.OxiaClie
 			}
 			response.Keys = append(response.Keys, key)
 			totalSize += size
+		case <-stream.Context().Done():
+			return stream.Context().Err()
+		}
+	}
+}
+
+//nolint:revive
+func (s *publicRpcServer) RangeScan(request *proto.RangeScanRequest, stream proto.OxiaClient_RangeScanServer) error {
+	s.log.Debug(
+		"RangeScan request",
+		slog.String("peer", common.GetPeer(stream.Context())),
+		slog.Any("req", request),
+	)
+
+	lc, err := s.getLeader(*request.ShardId)
+	if err != nil {
+		return err
+	}
+
+	ch, errCh, err := lc.RangeScan(stream.Context(), request)
+	if err != nil {
+		s.log.Warn(
+			"Failed to perform range-scan operation",
+			slog.Any("error", err),
+		)
+	}
+
+	response := &proto.RangeScanResponse{}
+	var totalSize int
+
+	for {
+		select {
+		case err := <-errCh:
+			return err
+
+		case gr, more := <-ch:
+			if !more {
+				if len(response.Records) > 0 {
+					if err := stream.Send(response); err != nil {
+						return err
+					}
+				}
+				return nil
+			}
+
+			size := len(gr.Value)
+			if len(response.Records) >= maxTotalScanBatchCount || totalSize+size > maxTotalReadValueSize {
+				if err := stream.Send(response); err != nil {
+					return err
+				}
+				response = &proto.RangeScanResponse{}
+				totalSize = 0
+			}
+			response.Records = append(response.Records, gr)
+			totalSize += size
+
 		case <-stream.Context().Done():
 			return stream.Context().Err()
 		}

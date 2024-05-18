@@ -298,8 +298,9 @@ func (it *rangeScanIterator) Value() (*proto.GetResponse, error) {
 	}
 
 	res := &proto.GetResponse{
-		Key:   pb.String(it.Key()),
-		Value: se.Value,
+		Key:    pb.String(it.Key()),
+		Value:  se.Value,
+		Status: proto.Status_OK,
 		Version: &proto.Version{
 			VersionId:          se.VersionId,
 			ModificationsCount: se.ModificationsCount,

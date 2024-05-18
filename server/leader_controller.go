@@ -45,6 +45,7 @@ type LeaderController interface {
 	Read(ctx context.Context, request *proto.ReadRequest) <-chan GetResult
 	List(ctx context.Context, request *proto.ListRequest) (<-chan string, error)
 	ListSliceNoMutex(ctx context.Context, request *proto.ListRequest) ([]string, error)
+	RangeScan(ctx context.Context, request *proto.RangeScanRequest) (<-chan *proto.GetResponse, <-chan error, error)
 
 	// NewTerm Handle new term requests
 	NewTerm(req *proto.NewTermRequest) (*proto.NewTermResponse, error)
@@ -679,6 +680,71 @@ func (lc *leaderController) ListSliceNoMutex(ctx context.Context, request *proto
 			return nil, ctx.Err()
 		}
 	}
+}
+
+func (lc *leaderController) RangeScan(ctx context.Context, request *proto.RangeScanRequest) (<-chan *proto.GetResponse, <-chan error, error) {
+	ch := make(chan *proto.GetResponse)
+	errCh := make(chan error)
+
+	lc.RLock()
+	err := checkStatus(proto.ServingStatus_LEADER, lc.status)
+	lc.RUnlock()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	go lc.rangeScan(ctx, request, ch, errCh)
+
+	return ch, errCh, nil
+}
+
+func (lc *leaderController) rangeScan(ctx context.Context, request *proto.RangeScanRequest, ch chan<- *proto.GetResponse, errCh chan<- error) {
+	common.DoWithLabels(
+		ctx,
+		map[string]string{
+			"oxia":  "range-scan",
+			"shard": fmt.Sprintf("%d", lc.shardId),
+			"peer":  common.GetPeer(ctx),
+		},
+		func() {
+			lc.log.Debug("Received list request", slog.Any("request", request))
+
+			it, err := lc.db.RangeScan(request)
+			if err != nil {
+				lc.log.Warn(
+					"Failed to process range-scan request",
+					slog.Any("error", err),
+				)
+				errCh <- err
+				close(ch)
+				close(errCh)
+				return
+			}
+
+			defer func() {
+				_ = it.Close()
+				// NOTE:
+				// we must close the channel after iterator is closed, to avoid the
+				// iterator keep open when caller is trying to process the next step (for example db.Close)
+				// because this is execute in another goroutine.
+				close(ch)
+				close(errCh)
+			}()
+
+			for ; it.Valid(); it.Next() {
+				gr, err := it.Value()
+				if err != nil {
+					errCh <- err
+					return
+				}
+
+				ch <- gr
+				if ctx.Err() != nil {
+					break
+				}
+			}
+		},
+	)
 }
 
 // Write
