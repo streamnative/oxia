@@ -16,6 +16,7 @@ package client
 
 import (
 	"fmt"
+	"github.com/streamnative/oxia/cmd/client/deleterange"
 
 	"github.com/spf13/cobra"
 
@@ -48,5 +49,6 @@ func init() {
 	Cmd.AddCommand(del.Cmd)
 	Cmd.AddCommand(get.Cmd)
 	Cmd.AddCommand(list.Cmd)
+	Cmd.AddCommand(deleterange.Cmd)
 	Cmd.AddCommand(notifications.Cmd)
 }
