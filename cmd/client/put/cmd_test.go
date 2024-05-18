@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+
 	"github.com/streamnative/oxia/cmd/client/common"
 	"github.com/streamnative/oxia/oxia"
 )
@@ -46,6 +47,9 @@ func TestPut_exec(t *testing.T) {
 		{"entry", "x y", "", []any{"x", []byte("y"), emptyOptions}},
 		{"entry-expected-version", "x y -e 5", "", []any{"x", []byte("y"), []oxia.PutOption{oxia.ExpectedVersionId(5)}}},
 		{"stdin", "x -c -e 5", "my-value", []any{"x", []byte("my-value"), []oxia.PutOption{oxia.ExpectedVersionId(5)}}},
+		{"partition-key", "x y -p abc", "", []any{"x", []byte("y"), []oxia.PutOption{oxia.PartitionKey("abc")}}},
+		{"sequence-keys", "x y -p abc -d 1,2,3", "", []any{"x", []byte("y"),
+			[]oxia.PutOption{oxia.PartitionKey("abc"), oxia.SequenceKeysDeltas(1, 2, 3)}}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			common.MockedClient = common.NewMockClient()

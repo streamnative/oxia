@@ -18,6 +18,10 @@ import (
 	"context"
 	"time"
 
+	"github.com/pkg/errors"
+
+	"github.com/streamnative/oxia/oxia"
+
 	"github.com/spf13/cobra"
 
 	"github.com/streamnative/oxia/cmd/client/common"
@@ -31,17 +35,25 @@ type flags struct {
 	key            string
 	hexDump        bool
 	includeVersion bool
+	partitionKey   string
+	comparisonType string
 }
 
 func (flags *flags) Reset() {
 	flags.key = ""
 	flags.hexDump = false
 	flags.includeVersion = false
+	flags.partitionKey = ""
+	flags.comparisonType = "equal"
 }
 
 func init() {
 	Cmd.Flags().BoolVarP(&Config.includeVersion, "include-version", "v", false, "Include the record version object")
 	Cmd.Flags().BoolVar(&Config.hexDump, "hex", false, "Print the value in HexDump format")
+	Cmd.Flags().StringVarP(&Config.partitionKey, "partition-key", "p", "", "Partition Key to be used in override the shard routing")
+
+	Cmd.Flags().StringVarP(&Config.comparisonType, "comparison-type", "t", "equal",
+		"The type of get comparison. Allowed value: equal, floor, ceiling, lower, higher")
 }
 
 var Cmd = &cobra.Command{
@@ -58,8 +70,28 @@ func exec(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	var options []oxia.GetOption
+	if Config.partitionKey != "" {
+		options = append(options, oxia.PartitionKey(Config.partitionKey))
+	}
+
+	switch Config.comparisonType {
+	case "equal":
+		// Nothing to do, this is default
+	case "floor":
+		options = append(options, oxia.ComparisonFloor())
+	case "ceiling":
+		options = append(options, oxia.ComparisonCeiling())
+	case "lower":
+		options = append(options, oxia.ComparisonLower())
+	case "higher":
+		options = append(options, oxia.ComparisonHigher())
+	default:
+		return errors.Errorf("invalid comparison type: %s", Config.comparisonType)
+	}
+
 	queryKey := args[0]
-	key, value, version, err := client.Get(context.Background(), queryKey)
+	key, value, version, err := client.Get(context.Background(), queryKey, options...)
 	if err != nil {
 		return err
 	}

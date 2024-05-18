@@ -48,6 +48,12 @@ func Test_exec(t *testing.T) {
 	}{
 		{"key", "x", []any{"x", emptyOptions}, "value-x"},
 		{"other-key", "y", []any{"y", emptyOptions}, "value-y"},
+		{"partition-key", "y -p xyz", []any{"y", []oxia.GetOption{oxia.PartitionKey("xyz")}}, "value-y"},
+		{"equal", "y -t equal", []any{"y", emptyOptions}, "value-y"},
+		{"floor", "y -t floor", []any{"y", []oxia.GetOption{oxia.ComparisonFloor()}}, "value-y"},
+		{"ceiling", "y -t ceiling", []any{"y", []oxia.GetOption{oxia.ComparisonCeiling()}}, "value-y"},
+		{"lower", "y -t lower", []any{"y", []oxia.GetOption{oxia.ComparisonLower()}}, "value-y"},
+		{"higher", "y -t higher", []any{"y", []oxia.GetOption{oxia.ComparisonHigher()}}, "value-y"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			common.MockedClient = common.NewMockClient()

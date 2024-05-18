@@ -57,5 +57,16 @@ func TestDelete_exec(t *testing.T) {
 	assert.Error(t, err)
 	assert.Equal(t, "Error: failed to delete", out)
 
+	common.MockedClient.On("Delete", "my-key", []oxia.DeleteOption{oxia.PartitionKey("xyz")}).Return(nil)
+	out, err = runCmd(Cmd, "my-key -p xyz")
+	assert.NoError(t, err)
+	assert.Empty(t, out)
+
+	common.MockedClient.On("Delete", "my-key",
+		[]oxia.DeleteOption{oxia.ExpectedVersionId(4), oxia.PartitionKey("xyz")}).Return(nil)
+	out, err = runCmd(Cmd, "my-key -e 4 -p xyz")
+	assert.NoError(t, err)
+	assert.Empty(t, out)
+
 	common.MockedClient.AssertExpectations(t)
 }
