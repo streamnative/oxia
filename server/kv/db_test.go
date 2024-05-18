@@ -789,3 +789,79 @@ func TestDB_SequentialKeys(t *testing.T) {
 	assert.Equal(t, proto.Status_OK, resp.GetPuts()[0].Status)
 	assert.Equal(t, fmt.Sprintf("a-%020d-%020d-%020d", 20, 18, 15), resp.GetPuts()[0].GetKey())
 }
+
+func rangeScanIteratorToSlice(it RangeScanIterator, err error) []string {
+	assert.NoError(nil, err)
+	var keys []string
+	for ; it.Valid(); it.Next() {
+		v, err := it.Value()
+		assert.NoError(nil, err)
+		keys = append(keys, v.GetKey())
+	}
+	_ = it.Close()
+	return keys
+}
+
+func TestDBRangeScan(t *testing.T) {
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
+	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	assert.NoError(t, err)
+
+	writeReq := &proto.WriteRequest{
+		Puts: []*proto.PutRequest{{
+			Key:   "a",
+			Value: []byte("a"),
+		}, {
+			Key:   "b",
+			Value: []byte("b"),
+		}, {
+			Key:   "c",
+			Value: []byte("c"),
+		}, {
+			Key:   "d",
+			Value: []byte("d"),
+		}, {
+			Key:   "e",
+			Value: []byte("e"),
+		}},
+	}
+
+	writeRes, err := db.ProcessWrite(writeReq, wal.InvalidOffset, now(), NoOpCallback)
+	assert.NoError(t, err)
+
+	assert.Equal(t, 5, len(writeRes.Puts))
+
+	rangeScanReq1 := &proto.RangeScanRequest{
+		StartInclusive: "a",
+		EndExclusive:   "c",
+	}
+	rangeScanReq2 := &proto.RangeScanRequest{
+		StartInclusive: "a",
+		EndExclusive:   "d",
+	}
+	rangeScanReq3 := &proto.RangeScanRequest{
+		StartInclusive: "xyz",
+		EndExclusive:   "zzz",
+	}
+
+	// ["a", "c")
+	keys1 := rangeScanIteratorToSlice(db.RangeScan(rangeScanReq1))
+	assert.Len(t, keys1, 2)
+	assert.Equal(t, "a", keys1[0])
+	assert.Equal(t, "b", keys1[1])
+
+	// ["a", "d")
+	keys2 := rangeScanIteratorToSlice(db.RangeScan(rangeScanReq2))
+	assert.Len(t, keys2, 3)
+	assert.Equal(t, "a", keys2[0])
+	assert.Equal(t, "b", keys2[1])
+	assert.Equal(t, "c", keys2[2])
+
+	// ["xyz", "zzz")
+	keys3 := rangeScanIteratorToSlice(db.RangeScan(rangeScanReq3))
+	assert.Len(t, keys3, 0)
+
+	assert.NoError(t, db.Close())
+	assert.NoError(t, factory.Close())
+}

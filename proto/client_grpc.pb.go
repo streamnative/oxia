@@ -47,8 +47,15 @@ type OxiaClientClient interface {
 	// *
 	// Requests all the keys between a range of keys.
 	//
-	// Clients should send an equivalent request to all respective shards.
+	// Clients should send an equivalent request to all respective shards,
+	// unless a particular partition key was specified.
 	List(ctx context.Context, in *ListRequest, opts ...grpc.CallOption) (OxiaClient_ListClient, error)
+	// *
+	// Requests all the records between a range of keys.
+	//
+	// Clients should send an equivalent request to all respective shards,
+	// unless a particular partition key was specified.
+	RangeScan(ctx context.Context, in *RangeScanRequest, opts ...grpc.CallOption) (OxiaClient_RangeScanClient, error)
 	GetNotifications(ctx context.Context, in *NotificationsRequest, opts ...grpc.CallOption) (OxiaClient_GetNotificationsClient, error)
 	// Creates a new client session. Sessions are kept alive by regularly sending
 	// heartbeats via the KeepAlive rpc.
@@ -172,8 +179,40 @@ func (x *oxiaClientListClient) Recv() (*ListResponse, error) {
 	return m, nil
 }
 
+func (c *oxiaClientClient) RangeScan(ctx context.Context, in *RangeScanRequest, opts ...grpc.CallOption) (OxiaClient_RangeScanClient, error) {
+	stream, err := c.cc.NewStream(ctx, &OxiaClient_ServiceDesc.Streams[3], "/io.streamnative.oxia.proto.OxiaClient/RangeScan", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &oxiaClientRangeScanClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type OxiaClient_RangeScanClient interface {
+	Recv() (*RangeScanResponse, error)
+	grpc.ClientStream
+}
+
+type oxiaClientRangeScanClient struct {
+	grpc.ClientStream
+}
+
+func (x *oxiaClientRangeScanClient) Recv() (*RangeScanResponse, error) {
+	m := new(RangeScanResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 func (c *oxiaClientClient) GetNotifications(ctx context.Context, in *NotificationsRequest, opts ...grpc.CallOption) (OxiaClient_GetNotificationsClient, error) {
-	stream, err := c.cc.NewStream(ctx, &OxiaClient_ServiceDesc.Streams[3], "/io.streamnative.oxia.proto.OxiaClient/GetNotifications", opts...)
+	stream, err := c.cc.NewStream(ctx, &OxiaClient_ServiceDesc.Streams[4], "/io.streamnative.oxia.proto.OxiaClient/GetNotifications", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -260,8 +299,15 @@ type OxiaClientServer interface {
 	// *
 	// Requests all the keys between a range of keys.
 	//
-	// Clients should send an equivalent request to all respective shards.
+	// Clients should send an equivalent request to all respective shards,
+	// unless a particular partition key was specified.
 	List(*ListRequest, OxiaClient_ListServer) error
+	// *
+	// Requests all the records between a range of keys.
+	//
+	// Clients should send an equivalent request to all respective shards,
+	// unless a particular partition key was specified.
+	RangeScan(*RangeScanRequest, OxiaClient_RangeScanServer) error
 	GetNotifications(*NotificationsRequest, OxiaClient_GetNotificationsServer) error
 	// Creates a new client session. Sessions are kept alive by regularly sending
 	// heartbeats via the KeepAlive rpc.
@@ -288,6 +334,9 @@ func (UnimplementedOxiaClientServer) Read(*ReadRequest, OxiaClient_ReadServer) e
 }
 func (UnimplementedOxiaClientServer) List(*ListRequest, OxiaClient_ListServer) error {
 	return status.Errorf(codes.Unimplemented, "method List not implemented")
+}
+func (UnimplementedOxiaClientServer) RangeScan(*RangeScanRequest, OxiaClient_RangeScanServer) error {
+	return status.Errorf(codes.Unimplemented, "method RangeScan not implemented")
 }
 func (UnimplementedOxiaClientServer) GetNotifications(*NotificationsRequest, OxiaClient_GetNotificationsServer) error {
 	return status.Errorf(codes.Unimplemented, "method GetNotifications not implemented")
@@ -392,6 +441,27 @@ type oxiaClientListServer struct {
 }
 
 func (x *oxiaClientListServer) Send(m *ListResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func _OxiaClient_RangeScan_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(RangeScanRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(OxiaClientServer).RangeScan(m, &oxiaClientRangeScanServer{stream})
+}
+
+type OxiaClient_RangeScanServer interface {
+	Send(*RangeScanResponse) error
+	grpc.ServerStream
+}
+
+type oxiaClientRangeScanServer struct {
+	grpc.ServerStream
+}
+
+func (x *oxiaClientRangeScanServer) Send(m *RangeScanResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
@@ -508,6 +578,11 @@ var OxiaClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "List",
 			Handler:       _OxiaClient_List_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "RangeScan",
+			Handler:       _OxiaClient_RangeScan_Handler,
 			ServerStreams: true,
 		},
 		{

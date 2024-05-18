@@ -72,6 +72,15 @@ func (l *loggingClientRpc) List(ctx context.Context, in *proto.ListRequest, opts
 	return res, err
 }
 
+func (l *loggingClientRpc) RangeScan(ctx context.Context, in *proto.RangeScanRequest, opts ...grpc.CallOption) (
+	res proto.OxiaClient_RangeScanClient, err error) {
+	if res, err = l.client.RangeScan(ctx, in, opts...); err != nil {
+		return nil, l.decorateErr(err)
+	}
+
+	return res, err
+}
+
 func (l *loggingClientRpc) GetNotifications(ctx context.Context, in *proto.NotificationsRequest, opts ...grpc.CallOption) (
 	res proto.OxiaClient_GetNotificationsClient, err error) {
 	if res, err = l.client.GetNotifications(ctx, in, opts...); err != nil {

@@ -21,6 +21,8 @@ import (
 	"log/slog"
 	"time"
 
+	pb "google.golang.org/protobuf/proto"
+
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 
@@ -47,12 +49,21 @@ type UpdateOperationCallback interface {
 	OnDelete(WriteBatch, string) error
 }
 
+type RangeScanIterator interface {
+	io.Closer
+
+	Valid() bool
+	Value() (*proto.GetResponse, error)
+	Next() bool
+}
+
 type DB interface {
 	io.Closer
 
 	ProcessWrite(b *proto.WriteRequest, commitOffset int64, timestamp uint64, updateOperationCallback UpdateOperationCallback) (*proto.WriteResponse, error)
 	Get(request *proto.GetRequest) (*proto.GetResponse, error)
 	List(request *proto.ListRequest) (KeyIterator, error)
+	RangeScan(request *proto.RangeScanRequest) (RangeScanIterator, error)
 	ReadCommitOffset() (int64, error)
 
 	ReadNextNotifications(ctx context.Context, startOffset int64) ([]*proto.NotificationBatch, error)
@@ -98,6 +109,8 @@ func NewDB(namespace string, shardId int64, factory Factory, notificationRetenti
 			"The total number of get operations", "count", labels),
 		listCounter: metrics.NewCounter("oxia_server_db_lists",
 			"The total number of list operations", "count", labels),
+		rangeScanCounter: metrics.NewCounter("oxia_server_db_range_scans",
+			"The total number of range-scan operations", "count", labels),
 	}
 
 	commitOffset, err := db.ReadCommitOffset()
@@ -120,6 +133,7 @@ type db struct {
 	deleteRangesCounter metrics.Counter
 	getCounter          metrics.Counter
 	listCounter         metrics.Counter
+	rangeScanCounter    metrics.Counter
 
 	batchWriteLatencyHisto metrics.LatencyHistogram
 	getLatencyHisto        metrics.LatencyHistogram
@@ -264,6 +278,57 @@ func (d *db) List(request *proto.ListRequest) (KeyIterator, error) {
 	return &listIterator{
 		KeyIterator: it,
 		timer:       d.listLatencyHisto.Timer(),
+	}, nil
+}
+
+type rangeScanIterator struct {
+	KeyValueIterator
+	timer metrics.Timer
+}
+
+func (it *rangeScanIterator) Value() (*proto.GetResponse, error) {
+	value, err := it.KeyValueIterator.Value()
+	if err != nil {
+		return nil, err
+	}
+
+	se := &proto.StorageEntry{}
+	if err = deserialize(value, se); err != nil {
+		return nil, err
+	}
+
+	res := &proto.GetResponse{
+		Key:   pb.String(it.Key()),
+		Value: se.Value,
+		Version: &proto.Version{
+			VersionId:          se.VersionId,
+			ModificationsCount: se.ModificationsCount,
+			CreatedTimestamp:   se.CreationTimestamp,
+			ModifiedTimestamp:  se.ModificationTimestamp,
+			SessionId:          se.SessionId,
+			ClientIdentity:     se.ClientIdentity,
+		},
+	}
+
+	return res, nil
+}
+
+func (it *rangeScanIterator) Close() error {
+	it.timer.Done()
+	return it.KeyValueIterator.Close()
+}
+
+func (d *db) RangeScan(request *proto.RangeScanRequest) (RangeScanIterator, error) {
+	d.rangeScanCounter.Add(1)
+
+	it, err := d.kv.RangeScan(request.StartInclusive, request.EndExclusive)
+	if err != nil {
+		return nil, err
+	}
+
+	return &rangeScanIterator{
+		KeyValueIterator: it,
+		timer:            d.listLatencyHisto.Timer(),
 	}, nil
 }
 
