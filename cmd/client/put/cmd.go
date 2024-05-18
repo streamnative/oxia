@@ -83,6 +83,24 @@ func exec(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	key, version, err := client.Put(context.Background(), key, value, getOptions()...)
+	if err != nil {
+		return err
+	}
+
+	common.WriteOutput(cmd.OutOrStdout(), common.OutputVersion{
+		Key:                key,
+		VersionId:          version.VersionId,
+		CreatedTimestamp:   time.UnixMilli(int64(version.CreatedTimestamp)),
+		ModifiedTimestamp:  time.UnixMilli(int64(version.ModifiedTimestamp)),
+		ModificationsCount: version.ModificationsCount,
+		Ephemeral:          version.Ephemeral,
+		ClientIdentity:     version.ClientIdentity,
+	})
+	return nil
+}
+
+func getOptions() []oxia.PutOption {
 	var options []oxia.PutOption
 	if Config.expectedVersion != -1 {
 		options = append(options, oxia.ExpectedVersionId(Config.expectedVersion))
@@ -98,19 +116,5 @@ func exec(cmd *cobra.Command, args []string) error {
 		options = append(options, oxia.SequenceKeysDeltas(deltas...))
 	}
 
-	key, version, err := client.Put(context.Background(), key, value, options...)
-	if err != nil {
-		return err
-	}
-
-	common.WriteOutput(cmd.OutOrStdout(), common.OutputVersion{
-		Key:                key,
-		VersionId:          version.VersionId,
-		CreatedTimestamp:   time.UnixMilli(int64(version.CreatedTimestamp)),
-		ModifiedTimestamp:  time.UnixMilli(int64(version.ModifiedTimestamp)),
-		ModificationsCount: version.ModificationsCount,
-		Ephemeral:          version.Ephemeral,
-		ClientIdentity:     version.ClientIdentity,
-	})
-	return nil
+	return options
 }

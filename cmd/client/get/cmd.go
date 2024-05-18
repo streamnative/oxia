@@ -16,9 +16,11 @@ package get
 
 import (
 	"context"
-	"github.com/pkg/errors"
-	"github.com/streamnative/oxia/oxia"
 	"time"
+
+	"github.com/pkg/errors"
+
+	"github.com/streamnative/oxia/oxia"
 
 	"github.com/spf13/cobra"
 
