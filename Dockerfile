@@ -30,6 +30,9 @@ RUN apk add --no-cache bash bash-completion jq
 # We can remove once new Alpine image is released
 RUN apk upgrade --no-cache libssl3 libcrypto3
 
+# Fix CVE-2023-42366
+RUN apk upgrade --no-cache busybox
+
 RUN mkdir /oxia
 WORKDIR /oxia
 
