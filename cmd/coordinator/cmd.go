@@ -17,30 +17,30 @@ package coordinator
 import (
 	"errors"
 	"io"
-	"time"
+	"log/slog"
+	"strings"
 
 	"github.com/fsnotify/fsnotify"
-
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"github.com/streamnative/oxia/cmd/flag"
 	"github.com/streamnative/oxia/common"
+
+	"github.com/streamnative/oxia/cmd/flag"
 	"github.com/streamnative/oxia/coordinator"
 	"github.com/streamnative/oxia/coordinator/model"
 )
 
 var (
-	conf           = coordinator.NewConfig()
-	configFile     string
-	configChangeCh chan struct{}
+	conf       = coordinator.NewConfig()
+	configFile string
 
 	Cmd = &cobra.Command{
 		Use:     "coordinator",
 		Short:   "Start a coordinator",
 		Long:    `Start a coordinator`,
 		PreRunE: validate,
-		Run:     exec,
+		RunE:    exec,
 	}
 )
 
@@ -48,16 +48,10 @@ func init() {
 	flag.InternalAddr(Cmd, &conf.InternalServiceAddr)
 	flag.MetricsAddr(Cmd, &conf.MetricsServiceAddr)
 	Cmd.Flags().Var(&conf.MetadataProviderImpl, "metadata", "Metadata provider implementation: file, configmap or memory")
-	Cmd.Flags().StringVar(&conf.K8SMetadataNamespace, "k8s-namespace", conf.K8SMetadataNamespace, "Kubernetes namespace for metadata configmap")
-	Cmd.Flags().StringVar(&conf.K8SMetadataConfigMapName, "k8s-configmap-name", conf.K8SMetadataConfigMapName, "ConfigMap name for metadata configmap")
+	Cmd.Flags().StringVar(&conf.K8SMetadataNamespace, "k8s-namespace", conf.K8SMetadataNamespace, "Kubernetes namespace for oxia config maps")
+	Cmd.Flags().StringVar(&conf.K8SMetadataConfigMapName, "k8s-configmap-name", conf.K8SMetadataConfigMapName, "ConfigMap name for cluster status configmap")
 	Cmd.Flags().StringVar(&conf.FileMetadataPath, "file-clusters-status-path", "data/cluster-status.json", "The path where the cluster status is stored when using 'file' provider")
 	Cmd.Flags().StringVarP(&configFile, "conf", "f", "", "Cluster config file")
-	Cmd.Flags().DurationVar(&conf.ClusterConfigRefreshTime, "conf-file-refresh-time", 1*time.Minute, "How frequently to check for updates for cluster configuration file")
-
-	setConfigPath()
-	viper.OnConfigChange(func(_ fsnotify.Event) {
-		configChangeCh <- struct{}{}
-	})
 }
 
 func validate(*cobra.Command, []string) error {
@@ -69,41 +63,79 @@ func validate(*cobra.Command, []string) error {
 			return errors.New("k8s-configmap-name must be set with metadata=configmap")
 		}
 	}
-	if _, _, err := loadClusterConfig(); err != nil {
-		return err
-	}
 	return nil
 }
 
-func setConfigPath() {
-	if configFile == "" {
-		viper.AddConfigPath("/oxia/conf")
-		viper.AddConfigPath(".")
-	} else {
-		viper.SetConfigFile(configFile)
-	}
+func configIsRemote() bool {
+	return strings.HasPrefix(configFile, "configmap:")
 }
 
-func loadClusterConfig() (model.ClusterConfig, chan struct{}, error) {
-	setConfigPath()
+func setConfigPath(v *viper.Viper) error {
+	v.SetConfigType("yaml")
+
+	if configFile == "" {
+		v.AddConfigPath("/oxia/conf")
+		v.AddConfigPath(".")
+		v.WatchConfig()
+		return nil
+	} else if configIsRemote() {
+		err := v.AddRemoteProvider("configmap", "endpoint", configFile)
+		if err != nil {
+			slog.Error("Failed to add remote provider", slog.Any("error", err))
+			return err
+		}
+
+		return v.WatchRemoteConfigOnChannel()
+	}
+
+	v.SetConfigFile(configFile)
+	v.WatchConfig()
+	return nil
+}
+
+func loadClusterConfig(v *viper.Viper) (model.ClusterConfig, error) {
 	cc := model.ClusterConfig{}
 
-	if err := viper.ReadInConfig(); err != nil {
-		return cc, configChangeCh, err
+	var err error
+
+	if configIsRemote() {
+		err = v.ReadRemoteConfig()
+	} else {
+		err = v.ReadInConfig()
 	}
 
-	if err := viper.Unmarshal(&cc); err != nil {
-		return cc, configChangeCh, err
+	if err != nil {
+		return cc, err
 	}
 
-	return cc, configChangeCh, nil
+	if err := v.Unmarshal(&cc); err != nil {
+		return cc, err
+	}
+
+	return cc, nil
 }
 
-func exec(*cobra.Command, []string) {
-	viper.WatchConfig()
-	conf.ClusterConfigProvider = loadClusterConfig
+func exec(*cobra.Command, []string) error {
+	v := viper.New()
+
+	conf.ClusterConfigProvider = func() (model.ClusterConfig, error) {
+		return loadClusterConfig(v)
+	}
+
+	v.OnConfigChange(func(e fsnotify.Event) {
+		conf.ClusterConfigChangeNotifications <- nil
+	})
+
+	if err := setConfigPath(v); err != nil {
+		return err
+	}
+
+	if _, err := loadClusterConfig(v); err != nil {
+		return err
+	}
 
 	common.RunProcess(func() (io.Closer, error) {
 		return coordinator.New(conf)
 	})
+	return nil
 }

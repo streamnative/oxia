@@ -19,7 +19,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"go.uber.org/multierr"
 
@@ -30,17 +29,17 @@ import (
 )
 
 type Config struct {
-	InternalServiceAddr       string
-	InternalSecureServiceAddr string
-	PeerTLS                   *tls.Config
-	ServerTLS                 *tls.Config
-	MetricsServiceAddr        string
-	MetadataProviderImpl      MetadataProviderImpl
-	K8SMetadataNamespace      string
-	K8SMetadataConfigMapName  string
-	FileMetadataPath          string
-	ClusterConfigProvider     func() (model.ClusterConfig, chan struct{}, error)
-	ClusterConfigRefreshTime  time.Duration
+	InternalServiceAddr              string
+	InternalSecureServiceAddr        string
+	PeerTLS                          *tls.Config
+	ServerTLS                        *tls.Config
+	MetricsServiceAddr               string
+	MetadataProviderImpl             MetadataProviderImpl
+	K8SMetadataNamespace             string
+	K8SMetadataConfigMapName         string
+	FileMetadataPath                 string
+	ClusterConfigProvider            func() (model.ClusterConfig, error)
+	ClusterConfigChangeNotifications chan any
 }
 
 type MetadataProviderImpl string
@@ -71,9 +70,10 @@ var (
 
 func NewConfig() Config {
 	return Config{
-		InternalServiceAddr:  fmt.Sprintf("localhost:%d", common.DefaultInternalPort),
-		MetricsServiceAddr:   fmt.Sprintf("localhost:%d", common.DefaultMetricsPort),
-		MetadataProviderImpl: File,
+		InternalServiceAddr:              fmt.Sprintf("localhost:%d", common.DefaultInternalPort),
+		MetricsServiceAddr:               fmt.Sprintf("localhost:%d", common.DefaultMetricsPort),
+		MetadataProviderImpl:             File,
+		ClusterConfigChangeNotifications: make(chan any),
 	}
 }
 
@@ -109,7 +109,7 @@ func New(config Config) (*Coordinator, error) {
 	rpcClient := impl.NewRpcProvider(s.clientPool)
 
 	var err error
-	if s.coordinator, err = impl.NewCoordinator(metadataProvider, config.ClusterConfigProvider, config.ClusterConfigRefreshTime, rpcClient); err != nil {
+	if s.coordinator, err = impl.NewCoordinator(metadataProvider, config.ClusterConfigProvider, config.ClusterConfigChangeNotifications, rpcClient); err != nil {
 		return nil, err
 	}
 

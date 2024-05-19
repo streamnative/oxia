@@ -62,10 +62,9 @@ func TestCmd(t *testing.T) {
 		isErr               bool
 	}{
 		{[]string{}, coordinator.Config{
-			InternalServiceAddr:      "localhost:6649",
-			MetricsServiceAddr:       "localhost:8080",
-			MetadataProviderImpl:     coordinator.File,
-			ClusterConfigRefreshTime: 0,
+			InternalServiceAddr:  "localhost:6649",
+			MetricsServiceAddr:   "localhost:8080",
+			MetadataProviderImpl: coordinator.File,
 		}, model.ClusterConfig{
 			Namespaces: []model.NamespaceConfig{{
 				Name:              common.DefaultNamespace,
@@ -154,9 +153,11 @@ func TestCmd(t *testing.T) {
 			Cmd.SetArgs(test.args)
 			Cmd.Run = func(cmd *cobra.Command, args []string) {
 				assert.Equal(t, test.expectedConf, conf)
-
-				conf.ClusterConfigProvider = loadClusterConfig
-				clusterConf, _, err := conf.ClusterConfigProvider()
+				v := viper.New()
+				conf.ClusterConfigProvider = func() (model.ClusterConfig, error) {
+					return loadClusterConfig(v)
+				}
+				clusterConf, err := conf.ClusterConfigProvider()
 				assert.NoError(t, err)
 				assert.Equal(t, test.expectedClusterConf, clusterConf)
 			}
