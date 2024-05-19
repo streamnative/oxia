@@ -63,7 +63,7 @@ var Cmd = &cobra.Command{
 
 const lineSeparator = "-------------------------------------------------------------------------------\n"
 
-func exec(cmd *cobra.Command, args []string) error {
+func exec(cmd *cobra.Command, _ []string) error {
 	client, err := common.Config.NewClient()
 	if err != nil {
 		return err
