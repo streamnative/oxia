@@ -29,6 +29,7 @@ import (
 	"github.com/streamnative/oxia/cmd/client/list"
 	"github.com/streamnative/oxia/cmd/client/notifications"
 	"github.com/streamnative/oxia/cmd/client/put"
+	"github.com/streamnative/oxia/cmd/client/rangescan"
 	oxiacommon "github.com/streamnative/oxia/common"
 )
 
@@ -50,6 +51,7 @@ func init() {
 	Cmd.AddCommand(del.Cmd)
 	Cmd.AddCommand(get.Cmd)
 	Cmd.AddCommand(list.Cmd)
+	Cmd.AddCommand(rangescan.Cmd)
 	Cmd.AddCommand(deleterange.Cmd)
 	Cmd.AddCommand(notifications.Cmd)
 }

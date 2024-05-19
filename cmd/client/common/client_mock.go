@@ -71,7 +71,7 @@ func (m *MockClient) List(_ context.Context, minKeyInclusive string, maxKeyExclu
 
 func (m *MockClient) RangeScan(_ context.Context, minKeyInclusive string, maxKeyExclusive string, options ...oxia.RangeScanOption) <-chan oxia.GetResult {
 	args := m.MethodCalled("RangeScan", minKeyInclusive, maxKeyExclusive, options)
-	arg0, ok := args.Get(0).(<-chan oxia.GetResult)
+	arg0, ok := args.Get(0).(chan oxia.GetResult)
 	if !ok {
 		panic("cast failed")
 	}
