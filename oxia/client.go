@@ -97,6 +97,12 @@ type AsyncClient interface {
 	// https://github.com/streamnative/oxia/blob/main/docs/oxia-key-sorting.md
 	List(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, options ...ListOption) <-chan ListResult
 
+	// RangeScan perform a scan for existing records with any keys within the specified range.
+	// Note: Oxia uses a custom sorting order that treats `/` characters in special way.
+	// Refer to this documentation for the specifics:
+	// https://github.com/streamnative/oxia/blob/main/docs/oxia-key-sorting.md
+	RangeScan(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, options ...RangeScanOption) <-chan GetResult
+
 	// GetNotifications creates a new subscription to receive the notifications
 	// from Oxia for any change that is applied to the database
 	GetNotifications() (Notifications, error)
@@ -152,6 +158,11 @@ type SyncClient interface {
 	// Refer to this documentation for the specifics:
 	// https://github.com/streamnative/oxia/blob/main/docs/oxia-key-sorting.md
 	List(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, options ...ListOption) (keys []string, err error)
+
+	// RangeScan perform a scan for existing records with any keys within the specified range.
+	// Ordering in results channel is respected only if a [PartitionKey] option is passed (and the keys were
+	// inserted with that partition key).
+	RangeScan(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, options ...RangeScanOption) <-chan GetResult
 
 	// GetNotifications creates a new subscription to receive the notifications
 	// from Oxia for any change that is applied to the database

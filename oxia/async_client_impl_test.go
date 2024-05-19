@@ -722,3 +722,103 @@ func TestSyncClientImpl_SequentialKeys(t *testing.T) {
 	assert.NoError(t, client.Close())
 	assert.NoError(t, standaloneServer.Close())
 }
+
+func TestSyncClientImpl_RangeScan(t *testing.T) {
+	config := server.NewTestConfig(t.TempDir())
+	// Test with multiple shards to ensure correctness across shards
+	config.NumShards = 10
+	standaloneServer, err := server.NewStandalone(config)
+	assert.NoError(t, err)
+
+	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())
+	client, err := NewSyncClient(serviceAddress)
+	assert.NoError(t, err)
+
+	ctx := context.Background()
+
+	_, _, _ = client.Put(ctx, "a", []byte("0"))
+	_, _, _ = client.Put(ctx, "b", []byte("1"))
+	_, _, _ = client.Put(ctx, "c", []byte("2"))
+	_, _, _ = client.Put(ctx, "d", []byte("3"))
+	_, _, _ = client.Put(ctx, "e", []byte("4"))
+	_, _, _ = client.Put(ctx, "f", []byte("5"))
+	_, _, _ = client.Put(ctx, "g", []byte("6"))
+
+	ch := client.RangeScan(ctx, "b", "f")
+
+	gr := <-ch
+	assert.NoError(t, gr.Err)
+	assert.Equal(t, "b", gr.Key)
+	assert.Equal(t, []byte("1"), gr.Value)
+
+	gr = <-ch
+	assert.NoError(t, gr.Err)
+	assert.Equal(t, "c", gr.Key)
+	assert.Equal(t, []byte("2"), gr.Value)
+
+	gr = <-ch
+	assert.NoError(t, gr.Err)
+	assert.Equal(t, "d", gr.Key)
+	assert.Equal(t, []byte("3"), gr.Value)
+
+	gr = <-ch
+	assert.NoError(t, gr.Err)
+	assert.Equal(t, "e", gr.Key)
+	assert.Equal(t, []byte("4"), gr.Value)
+
+	_, more := <-ch
+	assert.False(t, more)
+
+	assert.NoError(t, client.Close())
+	assert.NoError(t, standaloneServer.Close())
+}
+
+func TestSyncClientImpl_RangeScanOnPartition(t *testing.T) {
+	config := server.NewTestConfig(t.TempDir())
+	// Test with multiple shards to ensure correctness across shards
+	config.NumShards = 10
+	standaloneServer, err := server.NewStandalone(config)
+	assert.NoError(t, err)
+
+	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())
+	client, err := NewSyncClient(serviceAddress)
+	assert.NoError(t, err)
+
+	ctx := context.Background()
+
+	_, _, _ = client.Put(ctx, "a", []byte("0"), PartitionKey("x"))
+	_, _, _ = client.Put(ctx, "b", []byte("1"), PartitionKey("x"))
+	_, _, _ = client.Put(ctx, "c", []byte("2"), PartitionKey("x"))
+	_, _, _ = client.Put(ctx, "d", []byte("3"), PartitionKey("x"))
+	_, _, _ = client.Put(ctx, "e", []byte("4"), PartitionKey("x"))
+	_, _, _ = client.Put(ctx, "f", []byte("5"), PartitionKey("x"))
+	_, _, _ = client.Put(ctx, "g", []byte("6"), PartitionKey("x"))
+
+	ch := client.RangeScan(ctx, "b", "f", PartitionKey("x"))
+
+	gr := <-ch
+	assert.NoError(t, gr.Err)
+	assert.Equal(t, "b", gr.Key)
+	assert.Equal(t, []byte("1"), gr.Value)
+
+	gr = <-ch
+	assert.NoError(t, gr.Err)
+	assert.Equal(t, "c", gr.Key)
+	assert.Equal(t, []byte("2"), gr.Value)
+
+	gr = <-ch
+	assert.NoError(t, gr.Err)
+	assert.Equal(t, "d", gr.Key)
+	assert.Equal(t, []byte("3"), gr.Value)
+
+	gr = <-ch
+	assert.NoError(t, gr.Err)
+	assert.Equal(t, "e", gr.Key)
+	assert.Equal(t, []byte("4"), gr.Value)
+
+	_, more := <-ch
+	assert.False(t, more)
+
+	assert.NoError(t, client.Close())
+	assert.NoError(t, standaloneServer.Close())
+}

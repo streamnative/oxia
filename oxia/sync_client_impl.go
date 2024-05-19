@@ -129,6 +129,10 @@ func (c *syncClientImpl) List(ctx context.Context, minKeyInclusive string, maxKe
 	return keys, nil
 }
 
+func (c *syncClientImpl) RangeScan(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, options ...RangeScanOption) <-chan GetResult {
+	return c.asyncClient.RangeScan(ctx, minKeyInclusive, maxKeyExclusive, options...)
+}
+
 func (c *syncClientImpl) GetNotifications() (Notifications, error) {
 	return c.asyncClient.GetNotifications()
 }
