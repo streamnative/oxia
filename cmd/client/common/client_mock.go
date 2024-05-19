@@ -69,6 +69,15 @@ func (m *MockClient) List(_ context.Context, minKeyInclusive string, maxKeyExclu
 	return arg0, args.Error(1)
 }
 
+func (m *MockClient) RangeScan(_ context.Context, minKeyInclusive string, maxKeyExclusive string, options ...oxia.RangeScanOption) <-chan oxia.GetResult {
+	args := m.MethodCalled("RangeScan", minKeyInclusive, maxKeyExclusive, options)
+	arg0, ok := args.Get(0).(<-chan oxia.GetResult)
+	if !ok {
+		panic("cast failed")
+	}
+	return arg0
+}
+
 func (*MockClient) GetNotifications() (oxia.Notifications, error) {
 	return nil, errors.New("not implemented in mock")
 }

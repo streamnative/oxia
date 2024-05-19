@@ -231,7 +231,9 @@ func (s *publicRpcServer) RangeScan(request *proto.RangeScanRequest, stream prot
 	for {
 		select {
 		case err := <-errCh:
-			return err
+			if err != nil {
+				return err
+			}
 
 		case gr, more := <-ch:
 			if !more {

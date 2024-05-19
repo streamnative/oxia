@@ -25,6 +25,7 @@ type Executor interface {
 	ExecuteWrite(ctx context.Context, request *proto.WriteRequest) (*proto.WriteResponse, error)
 	ExecuteRead(ctx context.Context, request *proto.ReadRequest) (proto.OxiaClient_ReadClient, error)
 	ExecuteList(ctx context.Context, request *proto.ListRequest) (proto.OxiaClient_ListClient, error)
+	ExecuteRangeScan(ctx context.Context, request *proto.RangeScanRequest) (proto.OxiaClient_RangeScanClient, error)
 }
 
 type ExecutorImpl struct {
@@ -58,6 +59,15 @@ func (e *ExecutorImpl) ExecuteList(ctx context.Context, request *proto.ListReque
 	}
 
 	return rpc.List(ctx, request)
+}
+
+func (e *ExecutorImpl) ExecuteRangeScan(ctx context.Context, request *proto.RangeScanRequest) (proto.OxiaClient_RangeScanClient, error) {
+	rpc, err := e.rpc(request.ShardId)
+	if err != nil {
+		return nil, err
+	}
+
+	return rpc.RangeScan(ctx, request)
 }
 
 func (e *ExecutorImpl) rpc(shardId *int64) (proto.OxiaClientClient, error) {

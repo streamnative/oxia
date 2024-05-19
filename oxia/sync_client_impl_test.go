@@ -46,6 +46,10 @@ func (c *neverCompleteAsyncClient) List(ctx context.Context, minKeyInclusive str
 	panic("not implemented")
 }
 
+func (c *neverCompleteAsyncClient) RangeScan(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, options ...RangeScanOption) <-chan GetResult {
+	panic("not implemented")
+}
+
 func (c *neverCompleteAsyncClient) GetNotifications() (Notifications, error) {
 	panic("not implemented")
 }

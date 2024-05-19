@@ -15,6 +15,7 @@
 package oxia
 
 import (
+	"container/heap"
 	"context"
 	"io"
 	"sync"
@@ -381,6 +382,106 @@ func (c *clientImpl) List(ctx context.Context, minKeyInclusive string, maxKeyExc
 	}
 
 	return ch
+}
+
+func (c *clientImpl) rangeScanFromShard(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, shardId int64, ch chan<- GetResult) {
+	request := &proto.RangeScanRequest{
+		ShardId:        &shardId,
+		StartInclusive: minKeyInclusive,
+		EndExclusive:   maxKeyExclusive,
+	}
+
+	client, err := c.executor.ExecuteRangeScan(ctx, request)
+	if err != nil {
+		ch <- GetResult{Err: err}
+		return
+	}
+
+	defer close(ch)
+
+	for {
+		response, err := client.Recv()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return
+			}
+
+			ch <- GetResult{Err: err}
+			return
+		}
+
+		for _, record := range response.Records {
+			ch <- toGetResult(record, "", nil)
+		}
+	}
+}
+
+func (c *clientImpl) RangeScan(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, options ...RangeScanOption) <-chan GetResult {
+	outCh := make(chan GetResult, 100)
+
+	opts := newRangeScanOptions(options)
+	if opts.partitionKey != nil {
+		// If the partition key is specified, we only need to make the request to one shard
+		shardId := c.getShardForKey("", opts)
+		go func() {
+			c.rangeScanFromShard(ctx, minKeyInclusive, maxKeyExclusive, shardId, outCh)
+		}()
+	} else {
+		// Do the list on all shards and aggregate the responses
+		shardIds := c.shardManager.GetAll()
+		channels := make([]chan GetResult, len(shardIds))
+
+		for i, shardId := range shardIds {
+			shardIdPtr := shardId
+			ch := make(chan GetResult)
+			channels[i] = ch
+			go func() {
+				c.rangeScanFromShard(ctx, minKeyInclusive, maxKeyExclusive, shardIdPtr, ch)
+			}()
+		}
+
+		go aggregateAndSortRangeScanAcrossShards(channels, outCh)
+	}
+
+	return outCh
+}
+
+// We do range scan on all the shards, and we need to always pick the lowest key
+// across all the shards.
+func aggregateAndSortRangeScanAcrossShards(channels []chan GetResult, outCh chan GetResult) {
+	h := &ResultHeap{}
+	heap.Init(h)
+
+	// First make sure we have 1 key from each channel
+	for _, ch := range channels {
+		if gr, ok := <-ch; ok {
+			heap.Push(h, &ResultAndChannel{gr, ch})
+		}
+	}
+
+	// Now that we have something from each channel, iterate by picking the
+	// result with the lowest key and then reading again from that same
+	// channel
+	for h.Len() > 0 {
+		r, ok := heap.Pop(h).(*ResultAndChannel)
+		if !ok {
+			panic("failed to cast")
+		}
+
+		outCh <- r.gr
+
+		if r.gr.Err != nil {
+			close(outCh)
+			return
+		}
+
+		// read again from same channel
+		if gr, ok := <-r.ch; ok {
+			heap.Push(h, &ResultAndChannel{gr, r.ch})
+		}
+	}
+
+	close(outCh)
 }
 
 func (c *clientImpl) closeNotifications() error {

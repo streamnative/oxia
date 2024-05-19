@@ -21,6 +21,7 @@ type BaseOption interface {
 	DeleteOption
 	DeleteRangeOption
 	ListOption
+	RangeScanOption
 }
 
 type baseOptions struct {
@@ -58,6 +59,10 @@ func (o *partitionKeyOpt) applyGet(opts *getOptions) {
 }
 
 func (o *partitionKeyOpt) applyList(opts *listOptions) {
+	opts.partitionKey = o.partitionKey
+}
+
+func (o *partitionKeyOpt) applyRangeScan(opts *rangeScanOptions) {
 	opts.partitionKey = o.partitionKey
 }
 
