@@ -42,7 +42,7 @@ spec:
             - "server"
             - "--log-json"
             - "--data-dir=/data/db"
-            - "--wal-dir=/data/wal"
+            - "--wal-dir=/wal/wal"
             - "--db-cache-size-mb=512"
             {{- if .Values.pprofEnabled }}
             - "--profile"
@@ -62,6 +62,8 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /data
+            - name: wal
+              mountPath: /wal
           livenessProbe:
             {{- include "oxia-cluster.probe" .Values.server.ports.internal | nindent 12 }}
           readinessProbe:
@@ -71,6 +73,16 @@ spec:
   volumeClaimTemplates:
     - metadata:
         name: data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        {{- if .Values.server.storageClassName }}
+        storageClassName: {{ .Values.server.storageClassName }}
+        {{- end}}
+        resources:
+          requests:
+            storage: {{ .Values.server.storage }}
+    - metadata:
+        name: wal
       spec:
         accessModes: [ "ReadWriteOnce" ]
         {{- if .Values.server.storageClassName }}

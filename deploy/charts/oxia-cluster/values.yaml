@@ -30,7 +30,7 @@ server:
   replicas: 3
   cpu: 1
   memory: 1Gi
-  storage: 8Gi
+  storage: 5Gi
   #storageClassName: xxx
   ports:
     public: 6648
@@ -39,9 +39,9 @@ server:
 
 image:
   repository: streamnative/oxia
-  tag: main
+  tag: 0.4
   pullPolicy: Always
   #pullSecrets: xxx
 
-pprofEnabled: false
-monitoringEnabled: false
+pprofEnabled: true
+monitoringEnabled: true

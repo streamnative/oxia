@@ -24,6 +24,51 @@ data:
       - name: default
         initialShardCount: {{ .Values.initialShardCount }}
         replicationFactor: {{ .Values.replicationFactor }}
+      - name: bookkeeper
+        initialShardCount: {{ .Values.initialShardCount }}
+        replicationFactor: {{ .Values.replicationFactor }}
+      - name: configuration-store
+        initialShardCount: {{ .Values.initialShardCount }}
+        replicationFactor: {{ .Values.replicationFactor }}
+      - name: shared-bk
+        initialShardCount: {{ .Values.initialShardCount }}
+        replicationFactor: {{ .Values.replicationFactor }}
+      - name: shared2-bk
+        initialShardCount: {{ .Values.initialShardCount }}
+        replicationFactor: {{ .Values.replicationFactor }}
+      - name: shared3-bk
+        initialShardCount: {{ .Values.initialShardCount }}
+        replicationFactor: {{ .Values.replicationFactor }}
+      - name: shared4-bk
+        initialShardCount: {{ .Values.initialShardCount }}
+        replicationFactor: {{ .Values.replicationFactor }}
+      - name: shared5-bk
+        initialShardCount: {{ .Values.initialShardCount }}
+        replicationFactor: {{ .Values.replicationFactor }}
+      - name: pulsar
+        initialShardCount: {{ .Values.initialShardCount }}
+        replicationFactor: {{ .Values.replicationFactor }}
+      - name: test-pulsar1
+        initialShardCount: {{ .Values.initialShardCount }}
+        replicationFactor: {{ .Values.replicationFactor }}
+      - name: test-pulsar2
+        initialShardCount: {{ .Values.initialShardCount }}
+        replicationFactor: {{ .Values.replicationFactor }}
+      - name: test-pulsar3
+        initialShardCount: {{ .Values.initialShardCount }}
+        replicationFactor: {{ .Values.replicationFactor }}
+      - name: test-pulsar4
+        initialShardCount: {{ .Values.initialShardCount }}
+        replicationFactor: {{ .Values.replicationFactor }}
+      - name: test-pulsar5
+        initialShardCount: {{ .Values.initialShardCount }}
+        replicationFactor: {{ .Values.replicationFactor }}
+      - name: test-pulsar6
+        initialShardCount: {{ .Values.initialShardCount }}
+        replicationFactor: {{ .Values.replicationFactor }}
+      - name: test-pulsar7
+        initialShardCount: {{ .Values.initialShardCount }}
+        replicationFactor: {{ .Values.replicationFactor }}
     servers:
       {{- $vars := dict "name" .Release.Name "namespace" .Release.Namespace "public" .Values.server.ports.public "internal" .Values.server.ports.internal }}
       {{- range until (int .Values.server.replicas) }}
