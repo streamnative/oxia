@@ -70,10 +70,9 @@ var (
 
 func NewConfig() Config {
 	return Config{
-		InternalServiceAddr:              fmt.Sprintf("localhost:%d", common.DefaultInternalPort),
-		MetricsServiceAddr:               fmt.Sprintf("localhost:%d", common.DefaultMetricsPort),
-		MetadataProviderImpl:             File,
-		ClusterConfigChangeNotifications: make(chan any),
+		InternalServiceAddr:  fmt.Sprintf("localhost:%d", common.DefaultInternalPort),
+		MetricsServiceAddr:   fmt.Sprintf("localhost:%d", common.DefaultMetricsPort),
+		MetadataProviderImpl: File,
 	}
 }
 

@@ -73,12 +73,7 @@ func configIsRemote() bool {
 func setConfigPath(v *viper.Viper) error {
 	v.SetConfigType("yaml")
 
-	if configFile == "" {
-		v.AddConfigPath("/oxia/conf")
-		v.AddConfigPath(".")
-		v.WatchConfig()
-		return nil
-	} else if configIsRemote() {
+	if configIsRemote() {
 		err := v.AddRemoteProvider("configmap", "endpoint", configFile)
 		if err != nil {
 			slog.Error("Failed to add remote provider", slog.Any("error", err))
@@ -86,6 +81,11 @@ func setConfigPath(v *viper.Viper) error {
 		}
 
 		return v.WatchRemoteConfigOnChannel()
+	}
+
+	if configFile == "" {
+		v.AddConfigPath("/oxia/conf")
+		v.AddConfigPath(".")
 	}
 
 	v.SetConfigFile(configFile)
@@ -118,6 +118,7 @@ func loadClusterConfig(v *viper.Viper) (model.ClusterConfig, error) {
 func exec(*cobra.Command, []string) error {
 	v := viper.New()
 
+	conf.ClusterConfigChangeNotifications = make(chan any)
 	conf.ClusterConfigProvider = func() (model.ClusterConfig, error) {
 		return loadClusterConfig(v)
 	}
