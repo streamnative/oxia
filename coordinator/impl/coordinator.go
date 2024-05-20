@@ -62,10 +62,9 @@ type coordinator struct {
 	assignmentsChanged common.ConditionContext
 
 	MetadataProvider
-	clusterConfigProvider func() (model.ClusterConfig, chan struct{}, error)
+	clusterConfigProvider func() (model.ClusterConfig, error)
 	model.ClusterConfig
-	clusterConfigRefreshTime time.Duration
-	clusterConfigChangeCh    chan struct{}
+	clusterConfigChangeCh chan any
 
 	shardControllers map[int64]ShardController
 	nodeControllers  map[string]NodeController
@@ -85,27 +84,23 @@ type coordinator struct {
 }
 
 func NewCoordinator(metadataProvider MetadataProvider,
-	clusterConfigProvider func() (model.ClusterConfig, chan struct{}, error),
-	clusterConfigRefreshTime time.Duration, rpc RpcProvider) (Coordinator, error) {
-	initialClusterConf, clusterConfigChangeCh, err := clusterConfigProvider()
+	clusterConfigProvider func() (model.ClusterConfig, error),
+	clusterConfigNotificationsCh chan any,
+	rpc RpcProvider) (Coordinator, error) {
+	initialClusterConf, err := clusterConfigProvider()
 	if err != nil {
 		return nil, err
 	}
 
-	if clusterConfigRefreshTime == 0 {
-		clusterConfigRefreshTime = 1 * time.Minute
-	}
-
 	c := &coordinator{
-		MetadataProvider:         metadataProvider,
-		clusterConfigProvider:    clusterConfigProvider,
-		clusterConfigChangeCh:    clusterConfigChangeCh,
-		ClusterConfig:            initialClusterConf,
-		clusterConfigRefreshTime: clusterConfigRefreshTime,
-		shardControllers:         make(map[int64]ShardController),
-		nodeControllers:          make(map[string]NodeController),
-		drainingNodes:            make(map[string]NodeController),
-		rpc:                      rpc,
+		MetadataProvider:      metadataProvider,
+		clusterConfigProvider: clusterConfigProvider,
+		clusterConfigChangeCh: clusterConfigNotificationsCh,
+		ClusterConfig:         initialClusterConf,
+		shardControllers:      make(map[int64]ShardController),
+		nodeControllers:       make(map[string]NodeController),
+		drainingNodes:         make(map[string]NodeController),
+		rpc:                   rpc,
 		log: slog.With(
 			slog.String("component", "coordinator"),
 		),
@@ -405,35 +400,26 @@ func (c *coordinator) ClusterStatus() model.ClusterStatus {
 }
 
 func (c *coordinator) waitForExternalEvents() {
-	refreshTimer := time.NewTicker(c.clusterConfigRefreshTime)
-	defer refreshTimer.Stop()
-
-	var handleEvent = func() {
-		if err := c.handleClusterConfigUpdated(); err != nil {
-			c.log.Warn(
-				"Failed to update cluster config",
-				slog.Any("error", err),
-			)
-		}
-
-		if err := c.rebalanceCluster(); err != nil {
-			c.log.Warn(
-				"Failed to rebalance cluster",
-				slog.Any("error", err),
-			)
-		}
-	}
-
 	for {
 		select {
 		case <-c.ctx.Done():
 			return
 
-		case <-refreshTimer.C:
-			handleEvent()
 		case <-c.clusterConfigChangeCh:
 			c.log.Info("Received cluster config change event")
-			handleEvent()
+			if err := c.handleClusterConfigUpdated(); err != nil {
+				c.log.Warn(
+					"Failed to update cluster config",
+					slog.Any("error", err),
+				)
+			}
+
+			if err := c.rebalanceCluster(); err != nil {
+				c.log.Warn(
+					"Failed to rebalance cluster",
+					slog.Any("error", err),
+				)
+			}
 		}
 	}
 }
@@ -442,13 +428,13 @@ func (c *coordinator) handleClusterConfigUpdated() error {
 	c.Lock()
 	defer c.Unlock()
 
-	newClusterConfig, _, err := c.clusterConfigProvider()
+	newClusterConfig, err := c.clusterConfigProvider()
 	if err != nil {
 		return errors.Wrap(err, "failed to read cluster configuration")
 	}
 
 	if reflect.DeepEqual(newClusterConfig, c.ClusterConfig) {
-		c.log.Debug("Cluster config has not changed since last time")
+		c.log.Info("No cluster config changes detected")
 		return nil
 	}
 

@@ -122,7 +122,7 @@ func TestClusterHandshakeSuccess(t *testing.T) {
 	clientPool := common.NewClientPool(tlsConf)
 	defer clientPool.Close()
 
-	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, chan struct{}, error) { return clusterConfig, nil, nil }, 0, impl.NewRpcProvider(clientPool))
+	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, impl.NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 	defer coordinator.Close()
 }
@@ -152,11 +152,12 @@ func TestClientHandshakeFailByNoTlsConfig(t *testing.T) {
 	clientPool := common.NewClientPool(tlsConf)
 	defer clientPool.Close()
 
-	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, chan struct{}, error) { return clusterConfig, nil, nil }, 0, impl.NewRpcProvider(clientPool))
+	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, impl.NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 	defer coordinator.Close()
 
-	client, _ := oxia.NewSyncClient(sa1.Public)
+	client, err := oxia.NewSyncClient(sa1.Public, oxia.WithRequestTimeout(1*time.Second))
+	assert.Error(t, err)
 	assert.Nil(t, client)
 }
 
@@ -185,7 +186,7 @@ func TestClientHandshakeByAuthFail(t *testing.T) {
 	clientPool := common.NewClientPool(tlsConf)
 	defer clientPool.Close()
 
-	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, chan struct{}, error) { return clusterConfig, nil, nil }, 0, impl.NewRpcProvider(clientPool))
+	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, impl.NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 	defer coordinator.Close()
 
@@ -195,7 +196,8 @@ func TestClientHandshakeByAuthFail(t *testing.T) {
 	assert.NoError(t, err)
 	tlsConf, err = tlsOption.MakeClientTLSConf()
 	assert.NoError(t, err)
-	client, _ := oxia.NewSyncClient(sa1.Public, oxia.WithTLS(tlsConf))
+	client, err := oxia.NewSyncClient(sa1.Public, oxia.WithTLS(tlsConf), oxia.WithRequestTimeout(1*time.Second))
+	assert.Error(t, err)
 	assert.Nil(t, client)
 }
 
@@ -224,7 +226,7 @@ func TestClientHandshakeWithInsecure(t *testing.T) {
 	clientPool := common.NewClientPool(tlsConf)
 	defer clientPool.Close()
 
-	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, chan struct{}, error) { return clusterConfig, nil, nil }, 0, impl.NewRpcProvider(clientPool))
+	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, impl.NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 	defer coordinator.Close()
 
@@ -265,7 +267,7 @@ func TestClientHandshakeSuccess(t *testing.T) {
 	clientPool := common.NewClientPool(tlsConf)
 	defer clientPool.Close()
 
-	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, chan struct{}, error) { return clusterConfig, nil, nil }, 0, impl.NewRpcProvider(clientPool))
+	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, impl.NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 	defer coordinator.Close()
 

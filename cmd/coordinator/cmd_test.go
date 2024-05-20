@@ -19,8 +19,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v3"
 
@@ -62,10 +63,9 @@ func TestCmd(t *testing.T) {
 		isErr               bool
 	}{
 		{[]string{}, coordinator.Config{
-			InternalServiceAddr:      "localhost:6649",
-			MetricsServiceAddr:       "localhost:8080",
-			MetadataProviderImpl:     coordinator.File,
-			ClusterConfigRefreshTime: 0,
+			InternalServiceAddr:  "localhost:6649",
+			MetricsServiceAddr:   "localhost:8080",
+			MetadataProviderImpl: coordinator.File,
 		}, model.ClusterConfig{
 			Namespaces: []model.NamespaceConfig{{
 				Name:              common.DefaultNamespace,
@@ -143,22 +143,27 @@ func TestCmd(t *testing.T) {
 			},
 		}, false},
 		{[]string{"-f=invalid.yaml"}, coordinator.Config{
-			InternalServiceAddr: "localhost:6649",
-			MetricsServiceAddr:  "localhost:8080",
+			InternalServiceAddr:  "localhost:6649",
+			MetricsServiceAddr:   "localhost:8080",
+			MetadataProviderImpl: coordinator.File,
 		}, model.ClusterConfig{}, true},
 	} {
 		t.Run(strings.Join(test.args, "_"), func(t *testing.T) {
 			conf = coordinator.NewConfig()
 			configFile = ""
-			viper.Reset()
 			Cmd.SetArgs(test.args)
-			Cmd.Run = func(cmd *cobra.Command, args []string) {
-				assert.Equal(t, test.expectedConf, conf)
+			Cmd.RunE = func(cmd *cobra.Command, args []string) error {
+				v := viper.New()
+				assert.NoError(t, setConfigPath(v))
 
-				conf.ClusterConfigProvider = loadClusterConfig
-				clusterConf, _, err := conf.ClusterConfigProvider()
-				assert.NoError(t, err)
+				assert.Equal(t, test.expectedConf, conf)
+				conf.ClusterConfigProvider = func() (model.ClusterConfig, error) {
+					return loadClusterConfig(v)
+				}
+				clusterConf, err := conf.ClusterConfigProvider()
+				assert.Equal(t, test.isErr, err != nil)
 				assert.Equal(t, test.expectedClusterConf, clusterConf)
+				return err
 			}
 			err = Cmd.Execute()
 			assert.Equal(t, test.isErr, err != nil)
@@ -182,7 +187,7 @@ func TestCmd(t *testing.T) {
 			configFile = ""
 			viper.Reset()
 			Cmd.SetArgs(test.args)
-			Cmd.Run = func(cmd *cobra.Command, args []string) {}
+			Cmd.RunE = func(cmd *cobra.Command, args []string) error { return nil }
 			err = Cmd.Execute()
 			assert.Equal(t, test.isErr, err != nil)
 		})

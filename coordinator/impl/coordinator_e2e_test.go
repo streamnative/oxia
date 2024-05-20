@@ -70,7 +70,7 @@ func TestCoordinatorE2E(t *testing.T) {
 	}
 	clientPool := common.NewClientPool(nil)
 
-	coordinator, err := NewCoordinator(metadataProvider, func() (model.ClusterConfig, chan struct{}, error) { return clusterConfig, nil, nil }, 0, NewRpcProvider(clientPool))
+	coordinator, err := NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, NewRpcProvider(clientPool))
 
 	assert.NoError(t, err)
 
@@ -108,7 +108,7 @@ func TestCoordinatorE2E_ShardsRanges(t *testing.T) {
 	}
 	clientPool := common.NewClientPool(nil)
 
-	coordinator, err := NewCoordinator(metadataProvider, func() (model.ClusterConfig, chan struct{}, error) { return clusterConfig, nil, nil }, 0, NewRpcProvider(clientPool))
+	coordinator, err := NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 
 	cs := coordinator.ClusterStatus()
@@ -161,7 +161,7 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 	}
 	clientPool := common.NewClientPool(nil)
 
-	coordinator, err := NewCoordinator(metadataProvider, func() (model.ClusterConfig, chan struct{}, error) { return clusterConfig, nil, nil }, 0, NewRpcProvider(clientPool))
+	coordinator, err := NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 
 	nsStatus := coordinator.ClusterStatus().Namespaces[common.DefaultNamespace]
@@ -265,7 +265,7 @@ func TestCoordinator_MultipleNamespaces(t *testing.T) {
 	}
 	clientPool := common.NewClientPool(nil)
 
-	coordinator, err := NewCoordinator(metadataProvider, func() (model.ClusterConfig, chan struct{}, error) { return clusterConfig, nil, nil }, 0, NewRpcProvider(clientPool))
+	coordinator, err := NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 
 	nsDefaultStatus := coordinator.ClusterStatus().Namespaces[common.DefaultNamespace]
@@ -356,7 +356,7 @@ func TestCoordinator_DeleteNamespace(t *testing.T) {
 	}
 	clientPool := common.NewClientPool(nil)
 
-	coordinator, err := NewCoordinator(metadataProvider, func() (model.ClusterConfig, chan struct{}, error) { return clusterConfig, nil, nil }, 0, NewRpcProvider(clientPool))
+	coordinator, err := NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 
 	ns1Status := coordinator.ClusterStatus().Namespaces["my-ns-1"]
@@ -401,7 +401,7 @@ func TestCoordinator_DeleteNamespace(t *testing.T) {
 		Servers:    []model.ServerAddress{sa1, sa2, sa3},
 	}
 
-	coordinator, err = NewCoordinator(metadataProvider, func() (model.ClusterConfig, chan struct{}, error) { return newClusterConfig, nil, nil }, 0, NewRpcProvider(clientPool))
+	coordinator, err = NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return newClusterConfig, nil }, nil, NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 
 	// Wait for all shards to be deleted
@@ -438,11 +438,12 @@ func TestCoordinator_DynamicallAddNamespace(t *testing.T) {
 	}
 	clientPool := common.NewClientPool(nil)
 
-	configProvider := func() (model.ClusterConfig, chan struct{}, error) {
-		return clusterConfig, nil, nil
+	configChangesCh := make(chan any)
+	configProvider := func() (model.ClusterConfig, error) {
+		return clusterConfig, nil
 	}
 
-	coordinator, err := NewCoordinator(metadataProvider, configProvider, 1*time.Second, NewRpcProvider(clientPool))
+	coordinator, err := NewCoordinator(metadataProvider, configProvider, configChangesCh, NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 
 	ns1Status := coordinator.ClusterStatus().Namespaces["my-ns-1"]
@@ -468,6 +469,7 @@ func TestCoordinator_DynamicallAddNamespace(t *testing.T) {
 		InitialShardCount: 2,
 		ReplicationFactor: 1,
 	})
+	configChangesCh <- nil
 
 	// Wait for all shards to be ready
 	assert.Eventually(t, func() bool {
@@ -525,13 +527,14 @@ func TestCoordinator_RebalanceCluster(t *testing.T) {
 	clientPool := common.NewClientPool(nil)
 	mutex := &sync.Mutex{}
 
-	configProvider := func() (model.ClusterConfig, chan struct{}, error) {
+	configProvider := func() (model.ClusterConfig, error) {
 		mutex.Lock()
 		defer mutex.Unlock()
-		return clusterConfig, nil, nil
+		return clusterConfig, nil
 	}
 
-	coordinator, err := NewCoordinator(metadataProvider, configProvider, 1*time.Second, NewRpcProvider(clientPool))
+	configChangesCh := make(chan any)
+	coordinator, err := NewCoordinator(metadataProvider, configProvider, configChangesCh, NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 
 	ns1Status := coordinator.ClusterStatus().Namespaces["my-ns-1"]
@@ -566,7 +569,7 @@ func TestCoordinator_RebalanceCluster(t *testing.T) {
 	clusterConfig.Servers = []model.ServerAddress{sa2, sa3, sa4}
 	mutex.Unlock()
 
-	time.Sleep(2 * time.Second)
+	configChangesCh <- nil
 
 	// Wait for all shards to be ready
 	assert.Eventually(t, func() bool {
@@ -621,11 +624,12 @@ func TestCoordinator_AddRemoveNodes(t *testing.T) {
 	}
 	clientPool := common.NewClientPool(nil)
 
-	configProvider := func() (model.ClusterConfig, chan struct{}, error) {
-		return clusterConfig, nil, nil
+	configProvider := func() (model.ClusterConfig, error) {
+		return clusterConfig, nil
 	}
 
-	c, err := NewCoordinator(metadataProvider, configProvider, 1*time.Second, NewRpcProvider(clientPool))
+	configChangesCh := make(chan any)
+	c, err := NewCoordinator(metadataProvider, configProvider, configChangesCh, NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 
 	assert.Equal(t, 3, len(c.(*coordinator).getNodeControllers()))
@@ -634,6 +638,8 @@ func TestCoordinator_AddRemoveNodes(t *testing.T) {
 	clusterConfig.Servers = append(clusterConfig.Servers, sa4, sa5)
 	// Remove s1
 	clusterConfig.Servers = clusterConfig.Servers[1:]
+
+	configChangesCh <- nil
 
 	// Wait for all shards to be ready
 	assert.Eventually(t, func() bool {
@@ -680,11 +686,12 @@ func TestCoordinator_ShrinkCluster(t *testing.T) {
 	}
 	clientPool := common.NewClientPool(nil)
 
-	configProvider := func() (model.ClusterConfig, chan struct{}, error) {
-		return clusterConfig, nil, nil
+	configProvider := func() (model.ClusterConfig, error) {
+		return clusterConfig, nil
 	}
 
-	c, err := NewCoordinator(metadataProvider, configProvider, 1*time.Second, NewRpcProvider(clientPool))
+	configChangesCh := make(chan any)
+	c, err := NewCoordinator(metadataProvider, configProvider, configChangesCh, NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 
 	// Wait for all shards to be ready
@@ -707,6 +714,7 @@ func TestCoordinator_ShrinkCluster(t *testing.T) {
 	// Remove s1
 	clusterConfig.Servers = clusterConfig.Servers[1:]
 
+	configChangesCh <- nil
 	assert.Eventually(t, func() bool {
 		return len(c.(*coordinator).getNodeControllers()) == 3
 	}, 10*time.Second, 10*time.Millisecond)
