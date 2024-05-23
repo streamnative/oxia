@@ -361,7 +361,7 @@ func (p *Pebble) NewWriteBatch() WriteBatch {
 	return &PebbleBatch{p: p, b: p.db.NewIndexedBatch()}
 }
 
-func (p *Pebble) getFloor(key string) (returnedKey string, value []byte, closer io.Closer, err error) {
+func (p *Pebble) getFloor(key string, filter Filter) (returnedKey string, value []byte, closer io.Closer, err error) {
 	// There is no <= comparison in Pebble
 	// We have to first check for == and then for <
 	value, closer, err = p.db.Get([]byte(key))
@@ -369,16 +369,16 @@ func (p *Pebble) getFloor(key string) (returnedKey string, value []byte, closer 
 		return "", nil, nil, err
 	}
 
-	if err == nil {
+	if err == nil && !filter(key) {
 		// We found record with key ==
 		return key, value, closer, nil
 	}
 
 	// Do < search
-	return p.getLower(key)
+	return p.getLower(key, filter)
 }
 
-func (p *Pebble) getCeiling(key string) (returnedKey string, value []byte, closer io.Closer, err error) {
+func (p *Pebble) getCeiling(key string, filter Filter) (returnedKey string, value []byte, closer io.Closer, err error) {
 	it, err := p.db.NewIter(&pebble.IterOptions{
 		LowerBound: []byte(key),
 	})
@@ -390,21 +390,36 @@ func (p *Pebble) getCeiling(key string) (returnedKey string, value []byte, close
 		return "", nil, nil, multierr.Combine(it.Close(), pebble.ErrNotFound)
 	}
 
+	for {
+		if !filter(key) {
+			break
+		} else if !it.Next() {
+			return "", nil, nil, multierr.Combine(it.Close(), pebble.ErrNotFound)
+		}
+	}
+
 	returnedKey = string(it.Key())
 	value, err = it.ValueAndErr()
 	return returnedKey, value, it, err
 }
 
-func (p *Pebble) getLower(key string) (returnedKey string, value []byte, closer io.Closer, err error) {
+func (p *Pebble) getLower(key string, filter Filter) (returnedKey string, value []byte, closer io.Closer, err error) {
 	it, err := p.db.NewIter(&pebble.IterOptions{
 		UpperBound: []byte(key),
 	})
 	if err != nil {
 		return "", nil, nil, err
 	}
-
 	if !it.Last() {
 		return "", nil, nil, multierr.Combine(it.Close(), pebble.ErrNotFound)
+	}
+
+	for {
+		if !filter(key) {
+			break
+		} else if !it.Prev() {
+			return "", nil, nil, multierr.Combine(it.Close(), pebble.ErrNotFound)
+		}
 	}
 
 	returnedKey = string(it.Key())
@@ -412,7 +427,7 @@ func (p *Pebble) getLower(key string) (returnedKey string, value []byte, closer 
 	return returnedKey, value, it, err
 }
 
-func (p *Pebble) getHigher(key string) (returnedKey string, value []byte, closer io.Closer, err error) {
+func (p *Pebble) getHigher(key string, filter Filter) (returnedKey string, value []byte, closer io.Closer, err error) {
 	it, err := p.db.NewIter(&pebble.IterOptions{
 		LowerBound: []byte(key),
 	})
@@ -436,25 +451,38 @@ func (p *Pebble) getHigher(key string) (returnedKey string, value []byte, closer
 		returnedKey = string(it.Key())
 	}
 
+	for {
+		if !filter(key) {
+			returnedKey = string(it.Key())
+			break
+		} else if !it.Next() {
+			return "", nil, nil, multierr.Combine(it.Close(), pebble.ErrNotFound)
+		}
+	}
+
 	value, err = it.ValueAndErr()
 	return returnedKey, value, it, err
 }
 
-func (p *Pebble) Get(key string, comparisonType ComparisonType) (returnedKey string, value []byte, closer io.Closer, err error) {
+func (p *Pebble) Get(key string, comparisonType ComparisonType, filter Filter) (returnedKey string, value []byte, closer io.Closer, err error) {
 	switch comparisonType {
 	case ComparisonEqual:
-		value, closer, err = p.db.Get([]byte(key))
-		if err == nil {
-			returnedKey = key
+		if filter(key) {
+			err = ErrKeyNotFound
+		} else {
+			value, closer, err = p.db.Get([]byte(key))
+			if err == nil {
+				returnedKey = key
+			}
 		}
 	case ComparisonFloor:
-		returnedKey, value, closer, err = p.getFloor(key)
+		returnedKey, value, closer, err = p.getFloor(key, filter)
 	case ComparisonCeiling:
-		returnedKey, value, closer, err = p.getCeiling(key)
+		returnedKey, value, closer, err = p.getCeiling(key, filter)
 	case ComparisonLower:
-		returnedKey, value, closer, err = p.getLower(key)
+		returnedKey, value, closer, err = p.getLower(key, filter)
 	case ComparisonHigher:
-		returnedKey, value, closer, err = p.getHigher(key)
+		returnedKey, value, closer, err = p.getHigher(key, filter)
 	}
 
 	if errors.Is(err, pebble.ErrNotFound) {
@@ -465,11 +493,11 @@ func (p *Pebble) Get(key string, comparisonType ComparisonType) (returnedKey str
 	return returnedKey, value, closer, err
 }
 
-func (p *Pebble) KeyRangeScan(lowerBound, upperBound string) (KeyIterator, error) {
-	return p.RangeScan(lowerBound, upperBound)
+func (p *Pebble) KeyRangeScan(lowerBound, upperBound string, filter Filter) (KeyIterator, error) {
+	return p.RangeScan(lowerBound, upperBound, filter)
 }
 
-func (p *Pebble) KeyRangeScanReverse(lowerBound, upperBound string) (ReverseKeyIterator, error) {
+func (p *Pebble) KeyRangeScanReverse(lowerBound, upperBound string, filter Filter) (ReverseKeyIterator, error) {
 	opts := &pebble.IterOptions{}
 	if lowerBound != "" {
 		opts.LowerBound = []byte(lowerBound)
@@ -485,7 +513,7 @@ func (p *Pebble) KeyRangeScanReverse(lowerBound, upperBound string) (ReverseKeyI
 	return &PebbleReverseIterator{p, pbit}, nil
 }
 
-func (p *Pebble) RangeScan(lowerBound, upperBound string) (KeyValueIterator, error) {
+func (p *Pebble) RangeScan(lowerBound, upperBound string, filter Filter) (KeyValueIterator, error) {
 	opts := &pebble.IterOptions{}
 	if lowerBound != "" {
 		opts.LowerBound = []byte(lowerBound)

@@ -43,25 +43,25 @@ func TestPebbbleSimple(t *testing.T) {
 	assert.NoError(t, wb.Commit())
 	assert.NoError(t, wb.Close())
 
-	key, res, closer, err := kv.Get("a", ComparisonEqual)
+	key, res, closer, err := kv.Get("a", ComparisonEqual, DisableFilter)
 	assert.NoError(t, err)
 	assert.Equal(t, "a", key)
 	assert.Equal(t, "0", string(res))
 	assert.NoError(t, closer.Close())
 
-	key, res, closer, err = kv.Get("b", ComparisonEqual)
+	key, res, closer, err = kv.Get("b", ComparisonEqual, DisableFilter)
 	assert.NoError(t, err)
 	assert.Equal(t, "b", key)
 	assert.Equal(t, "1", string(res))
 	assert.NoError(t, closer.Close())
 
-	key, res, closer, err = kv.Get("c", ComparisonEqual)
+	key, res, closer, err = kv.Get("c", ComparisonEqual, DisableFilter)
 	assert.NoError(t, err)
 	assert.Equal(t, "c", key)
 	assert.Equal(t, "2", string(res))
 	assert.NoError(t, closer.Close())
 
-	key, res, closer, err = kv.Get("non-existing", ComparisonEqual)
+	key, res, closer, err = kv.Get("non-existing", ComparisonEqual, DisableFilter)
 	assert.ErrorIs(t, err, ErrKeyNotFound)
 	assert.Equal(t, "", key)
 	assert.Nil(t, res)
@@ -76,25 +76,25 @@ func TestPebbbleSimple(t *testing.T) {
 	assert.NoError(t, wb.Commit())
 	assert.NoError(t, wb.Close())
 
-	key, res, closer, err = kv.Get("a", ComparisonEqual)
+	key, res, closer, err = kv.Get("a", ComparisonEqual, DisableFilter)
 	assert.NoError(t, err)
 	assert.Equal(t, "a", key)
 	assert.Equal(t, "00", string(res))
 	assert.NoError(t, closer.Close())
 
-	key, res, closer, err = kv.Get("b", ComparisonEqual)
+	key, res, closer, err = kv.Get("b", ComparisonEqual, DisableFilter)
 	assert.NoError(t, err)
 	assert.Equal(t, "b", key)
 	assert.Equal(t, "11", string(res))
 	assert.NoError(t, closer.Close())
 
-	key, res, closer, err = kv.Get("c", ComparisonEqual)
+	key, res, closer, err = kv.Get("c", ComparisonEqual, DisableFilter)
 	assert.ErrorIs(t, err, ErrKeyNotFound)
 	assert.Equal(t, "", key)
 	assert.Nil(t, res)
 	assert.Nil(t, closer)
 
-	key, res, closer, err = kv.Get("d", ComparisonEqual)
+	key, res, closer, err = kv.Get("d", ComparisonEqual, DisableFilter)
 	assert.NoError(t, err)
 	assert.Equal(t, "d", key)
 	assert.Equal(t, "22", string(res))
@@ -118,7 +118,7 @@ func TestPebbbleKeyRangeScan(t *testing.T) {
 	assert.NoError(t, wb.Commit())
 	assert.NoError(t, wb.Close())
 
-	it, err := kv.KeyRangeScan("/root/a", "/root/c")
+	it, err := kv.KeyRangeScan("/root/a", "/root/c", DisableFilter)
 	assert.NoError(t, err)
 
 	assert.True(t, it.Valid())
@@ -134,7 +134,7 @@ func TestPebbbleKeyRangeScan(t *testing.T) {
 	assert.NoError(t, it.Close())
 
 	// Scan with empty result
-	it, err = kv.KeyRangeScan("/xyz/a", "/xyz/c")
+	it, err = kv.KeyRangeScan("/xyz/a", "/xyz/c", DisableFilter)
 	assert.NoError(t, err)
 	assert.False(t, it.Valid())
 	assert.NoError(t, it.Close())
@@ -157,7 +157,7 @@ func TestPebbbleKeyRangeScanReverse(t *testing.T) {
 	assert.NoError(t, wb.Commit())
 	assert.NoError(t, wb.Close())
 
-	it, err := kv.KeyRangeScanReverse("/root/a", "/root/c")
+	it, err := kv.KeyRangeScanReverse("/root/a", "/root/c", DisableFilter)
 	assert.NoError(t, err)
 
 	assert.True(t, it.Valid())
@@ -173,7 +173,7 @@ func TestPebbbleKeyRangeScanReverse(t *testing.T) {
 	assert.NoError(t, it.Close())
 
 	// Scan with empty result
-	it, err = kv.KeyRangeScanReverse("/xyz/a", "/xyz/c")
+	it, err = kv.KeyRangeScanReverse("/xyz/a", "/xyz/c", DisableFilter)
 	assert.NoError(t, err)
 	assert.False(t, it.Valid())
 	assert.NoError(t, it.Close())
@@ -196,7 +196,7 @@ func TestPebbleRangeScan(t *testing.T) {
 	assert.NoError(t, wb.Commit())
 	assert.NoError(t, wb.Close())
 
-	it, err := kv.RangeScan("/root/a", "/root/c")
+	it, err := kv.RangeScan("/root/a", "/root/c", DisableFilter)
 	assert.NoError(t, err)
 
 	assert.True(t, it.Valid())
@@ -218,7 +218,7 @@ func TestPebbleRangeScan(t *testing.T) {
 	assert.NoError(t, it.Close())
 
 	// Scan with empty result
-	it, err = kv.RangeScan("/xyz/a", "/xyz/c")
+	it, err = kv.RangeScan("/xyz/a", "/xyz/c", DisableFilter)
 	assert.NoError(t, err)
 	assert.False(t, it.Valid())
 	assert.NoError(t, it.Close())
@@ -251,7 +251,7 @@ func TestPebbleRangeScanWithSlashOrder(t *testing.T) {
 	assert.NoError(t, wb.Commit())
 	assert.NoError(t, wb.Close())
 
-	it, err := kv.KeyRangeScan("/a/b/a/", "/a/b/a//")
+	it, err := kv.KeyRangeScan("/a/b/a/", "/a/b/a//", DisableFilter)
 	assert.NoError(t, err)
 
 	assert.True(t, it.Valid())
@@ -351,7 +351,7 @@ func TestPebbbleDurability(t *testing.T) {
 		kv, err := factory.NewKV(common.DefaultNamespace, 1)
 		assert.NoError(t, err)
 
-		key, res, closer, err := kv.Get("a", ComparisonEqual)
+		key, res, closer, err := kv.Get("a", ComparisonEqual, DisableFilter)
 		assert.NoError(t, err)
 		assert.Equal(t, "a", key)
 		assert.Equal(t, "0", string(res))
@@ -409,7 +409,7 @@ func TestPebbbleRangeScanInBatch(t *testing.T) {
 	assert.NoError(t, wb.Close())
 
 	// Scan with empty result
-	it, err = kv.KeyRangeScan("/xyz/a", "/xyz/c")
+	it, err = kv.KeyRangeScan("/xyz/a", "/xyz/c", DisableFilter)
 	assert.NoError(t, err)
 	assert.False(t, it.Valid())
 	assert.NoError(t, it.Close())
@@ -445,13 +445,13 @@ func TestPebbbleDeleteRangeInBatch(t *testing.T) {
 	assert.NoError(t, wb.Commit())
 	assert.NoError(t, wb.Close())
 
-	key, res, closer, err := kv.Get("/a/b/a/a", ComparisonEqual)
+	key, res, closer, err := kv.Get("/a/b/a/a", ComparisonEqual, DisableFilter)
 	assert.Nil(t, res)
 	assert.Nil(t, closer)
 	assert.Equal(t, "", key)
 	assert.ErrorIs(t, err, ErrKeyNotFound)
 
-	key, res, closer, err = kv.Get("/a/a/a/zzzzzz", ComparisonEqual)
+	key, res, closer, err = kv.Get("/a/a/a/zzzzzz", ComparisonEqual, DisableFilter)
 	assert.Nil(t, err)
 	assert.Equal(t, "/a/a/a/zzzzzz", key)
 	assert.Equal(t, "/a/a/a/zzzzzz", string(res))
@@ -551,7 +551,7 @@ func TestPebbleSnapshot(t *testing.T) {
 		for i := 0; i < 100; i++ {
 			for j := 0; j < 100; j++ {
 				k := fmt.Sprintf("key-%d-%d", i, j)
-				key, r, closer, err := kv2.Get(k, ComparisonEqual)
+				key, r, closer, err := kv2.Get(k, ComparisonEqual, DisableFilter)
 				assert.NoError(t, err)
 				assert.Equal(t, k, key)
 				assert.Equal(t, fmt.Sprintf("value-%d-%d", i, j), string(r))
@@ -628,7 +628,7 @@ func TestPebbleSnapshot_Loader(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		for j := 0; j < 100; j++ {
 			k := fmt.Sprintf("key-%d-%d", i, j)
-			key, r, closer, err := kv2.Get(k, ComparisonEqual)
+			key, r, closer, err := kv2.Get(k, ComparisonEqual, DisableFilter)
 			assert.NoError(t, err)
 			assert.Equal(t, k, key)
 			assert.Equal(t, fmt.Sprintf("value-%d-%d", i, j), string(r))
@@ -636,7 +636,7 @@ func TestPebbleSnapshot_Loader(t *testing.T) {
 		}
 	}
 
-	key, r, closer, err := kv2.Get("my-key", ComparisonEqual)
+	key, r, closer, err := kv2.Get("my-key", ComparisonEqual, DisableFilter)
 	assert.ErrorIs(t, err, ErrKeyNotFound)
 	assert.Equal(t, "", key)
 	assert.Nil(t, r)
@@ -661,7 +661,7 @@ func TestPebbleRangeScanNoLimits(t *testing.T) {
 	assert.NoError(t, wb.Close())
 
 	// No max
-	it, err := kv.RangeScan("/root/b", "")
+	it, err := kv.RangeScan("/root/b", "", DisableFilter)
 	assert.NoError(t, err)
 
 	assert.True(t, it.Valid())
@@ -690,7 +690,7 @@ func TestPebbleRangeScanNoLimits(t *testing.T) {
 	assert.NoError(t, it.Close())
 
 	// No min
-	it, err = kv.RangeScan("", "/root/c")
+	it, err = kv.RangeScan("", "/root/c", DisableFilter)
 	assert.NoError(t, err)
 
 	assert.True(t, it.Valid())
@@ -712,7 +712,7 @@ func TestPebbleRangeScanNoLimits(t *testing.T) {
 	assert.NoError(t, it.Close())
 
 	// No min and max
-	it, err = kv.RangeScan("", "")
+	it, err = kv.RangeScan("", "", DisableFilter)
 	assert.NoError(t, err)
 
 	assert.True(t, it.Valid())
@@ -766,7 +766,7 @@ func TestPebbleReverseRangeScanNoLimits(t *testing.T) {
 	assert.NoError(t, wb.Close())
 
 	// No max
-	it, err := kv.KeyRangeScanReverse("/root/b", "")
+	it, err := kv.KeyRangeScanReverse("/root/b", "", DisableFilter)
 	assert.NoError(t, err)
 
 	assert.True(t, it.Valid())
@@ -786,7 +786,7 @@ func TestPebbleReverseRangeScanNoLimits(t *testing.T) {
 	assert.NoError(t, it.Close())
 
 	// No min
-	it, err = kv.KeyRangeScanReverse("", "/root/c")
+	it, err = kv.KeyRangeScanReverse("", "/root/c", DisableFilter)
 	assert.NoError(t, err)
 
 	assert.True(t, it.Valid())
@@ -802,7 +802,7 @@ func TestPebbleReverseRangeScanNoLimits(t *testing.T) {
 	assert.NoError(t, it.Close())
 
 	// No min and max
-	it, err = kv.KeyRangeScanReverse("", "")
+	it, err = kv.KeyRangeScanReverse("", "", DisableFilter)
 	assert.NoError(t, err)
 
 	assert.True(t, it.Valid())
@@ -835,25 +835,25 @@ func TestPebbbleFloorCeiling(t *testing.T) {
 	kv, err := factory.NewKV(common.DefaultNamespace, 1)
 	assert.NoError(t, err)
 
-	key, res, closer, err := kv.Get("e", ComparisonFloor)
+	key, res, closer, err := kv.Get("e", ComparisonFloor, DisableFilter)
 	assert.ErrorIs(t, err, ErrKeyNotFound)
 	assert.Equal(t, "", key)
 	assert.Nil(t, res)
 	assert.Nil(t, closer)
 
-	key, res, closer, err = kv.Get("e", ComparisonCeiling)
+	key, res, closer, err = kv.Get("e", ComparisonCeiling, DisableFilter)
 	assert.ErrorIs(t, err, ErrKeyNotFound)
 	assert.Equal(t, "", key)
 	assert.Nil(t, res)
 	assert.Nil(t, closer)
 
-	key, res, closer, err = kv.Get("e", ComparisonLower)
+	key, res, closer, err = kv.Get("e", ComparisonLower, DisableFilter)
 	assert.ErrorIs(t, err, ErrKeyNotFound)
 	assert.Equal(t, "", key)
 	assert.Nil(t, res)
 	assert.Nil(t, closer)
 
-	key, res, closer, err = kv.Get("e", ComparisonHigher)
+	key, res, closer, err = kv.Get("e", ComparisonHigher, DisableFilter)
 	assert.ErrorIs(t, err, ErrKeyNotFound)
 	assert.Equal(t, "", key)
 	assert.Nil(t, res)
@@ -870,62 +870,62 @@ func TestPebbbleFloorCeiling(t *testing.T) {
 	assert.NoError(t, wb.Commit())
 	assert.NoError(t, wb.Close())
 
-	key, res, closer, err = kv.Get("a", ComparisonEqual)
+	key, res, closer, err = kv.Get("a", ComparisonEqual, DisableFilter)
 	assert.NoError(t, err)
 	assert.Equal(t, "a", key)
 	assert.Equal(t, "0", string(res))
 	assert.NoError(t, closer.Close())
 
-	key, res, closer, err = kv.Get("a", ComparisonFloor)
+	key, res, closer, err = kv.Get("a", ComparisonFloor, DisableFilter)
 	assert.NoError(t, err)
 	assert.Equal(t, "a", key)
 	assert.Equal(t, "0", string(res))
 	assert.NoError(t, closer.Close())
 
-	key, res, closer, err = kv.Get("a", ComparisonCeiling)
+	key, res, closer, err = kv.Get("a", ComparisonCeiling, DisableFilter)
 	assert.NoError(t, err)
 	assert.Equal(t, "a", key)
 	assert.Equal(t, "0", string(res))
 	assert.NoError(t, closer.Close())
 
-	key, res, closer, err = kv.Get("a", ComparisonLower)
+	key, res, closer, err = kv.Get("a", ComparisonLower, DisableFilter)
 	assert.ErrorIs(t, err, ErrKeyNotFound)
 	assert.Equal(t, "", key)
 	assert.Nil(t, res)
 	assert.Nil(t, closer)
 
-	key, res, closer, err = kv.Get("a", ComparisonHigher)
+	key, res, closer, err = kv.Get("a", ComparisonHigher, DisableFilter)
 	assert.NoError(t, err)
 	assert.Equal(t, "c", key)
 	assert.Equal(t, "2", string(res))
 	assert.NoError(t, closer.Close())
 
 	// ---------------------------------------------------------------
-	key, res, closer, err = kv.Get("b", ComparisonEqual)
+	key, res, closer, err = kv.Get("b", ComparisonEqual, DisableFilter)
 	assert.ErrorIs(t, err, ErrKeyNotFound)
 	assert.Equal(t, "", key)
 	assert.Nil(t, res)
 	assert.Nil(t, closer)
 
-	key, res, closer, err = kv.Get("b", ComparisonFloor)
+	key, res, closer, err = kv.Get("b", ComparisonFloor, DisableFilter)
 	assert.NoError(t, err)
 	assert.Equal(t, "a", key)
 	assert.Equal(t, "0", string(res))
 	assert.NoError(t, closer.Close())
 
-	key, res, closer, err = kv.Get("b", ComparisonCeiling)
+	key, res, closer, err = kv.Get("b", ComparisonCeiling, DisableFilter)
 	assert.NoError(t, err)
 	assert.Equal(t, "c", key)
 	assert.Equal(t, "2", string(res))
 	assert.NoError(t, closer.Close())
 
-	key, res, closer, err = kv.Get("b", ComparisonLower)
+	key, res, closer, err = kv.Get("b", ComparisonLower, DisableFilter)
 	assert.NoError(t, err)
 	assert.Equal(t, "a", key)
 	assert.Equal(t, "0", string(res))
 	assert.NoError(t, closer.Close())
 
-	key, res, closer, err = kv.Get("b", ComparisonHigher)
+	key, res, closer, err = kv.Get("b", ComparisonHigher, DisableFilter)
 	assert.NoError(t, err)
 	assert.Equal(t, "c", key)
 	assert.Equal(t, "2", string(res))
@@ -933,25 +933,25 @@ func TestPebbbleFloorCeiling(t *testing.T) {
 
 	// ---------------------------------------------------------------
 
-	key, res, closer, err = kv.Get("c", ComparisonFloor)
+	key, res, closer, err = kv.Get("c", ComparisonFloor, DisableFilter)
 	assert.NoError(t, err)
 	assert.Equal(t, "c", key)
 	assert.Equal(t, "2", string(res))
 	assert.NoError(t, closer.Close())
 
-	key, res, closer, err = kv.Get("c", ComparisonCeiling)
+	key, res, closer, err = kv.Get("c", ComparisonCeiling, DisableFilter)
 	assert.NoError(t, err)
 	assert.Equal(t, "c", key)
 	assert.Equal(t, "2", string(res))
 	assert.NoError(t, closer.Close())
 
-	key, res, closer, err = kv.Get("c", ComparisonLower)
+	key, res, closer, err = kv.Get("c", ComparisonLower, DisableFilter)
 	assert.NoError(t, err)
 	assert.Equal(t, "a", key)
 	assert.Equal(t, "0", string(res))
 	assert.NoError(t, closer.Close())
 
-	key, res, closer, err = kv.Get("c", ComparisonHigher)
+	key, res, closer, err = kv.Get("c", ComparisonHigher, DisableFilter)
 	assert.NoError(t, err)
 	assert.Equal(t, "d", key)
 	assert.Equal(t, "3", string(res))
@@ -959,25 +959,25 @@ func TestPebbbleFloorCeiling(t *testing.T) {
 
 	// ---------------------------------------------------------------
 
-	key, res, closer, err = kv.Get("d", ComparisonFloor)
+	key, res, closer, err = kv.Get("d", ComparisonFloor, DisableFilter)
 	assert.NoError(t, err)
 	assert.Equal(t, "d", key)
 	assert.Equal(t, "3", string(res))
 	assert.NoError(t, closer.Close())
 
-	key, res, closer, err = kv.Get("d", ComparisonCeiling)
+	key, res, closer, err = kv.Get("d", ComparisonCeiling, DisableFilter)
 	assert.NoError(t, err)
 	assert.Equal(t, "d", key)
 	assert.Equal(t, "3", string(res))
 	assert.NoError(t, closer.Close())
 
-	key, res, closer, err = kv.Get("d", ComparisonLower)
+	key, res, closer, err = kv.Get("d", ComparisonLower, DisableFilter)
 	assert.NoError(t, err)
 	assert.Equal(t, "c", key)
 	assert.Equal(t, "2", string(res))
 	assert.NoError(t, closer.Close())
 
-	key, res, closer, err = kv.Get("d", ComparisonHigher)
+	key, res, closer, err = kv.Get("d", ComparisonHigher, DisableFilter)
 	assert.NoError(t, err)
 	assert.Equal(t, "e", key)
 	assert.Equal(t, "4", string(res))
@@ -985,25 +985,25 @@ func TestPebbbleFloorCeiling(t *testing.T) {
 
 	// ---------------------------------------------------------------
 
-	key, res, closer, err = kv.Get("e", ComparisonFloor)
+	key, res, closer, err = kv.Get("e", ComparisonFloor, DisableFilter)
 	assert.NoError(t, err)
 	assert.Equal(t, "e", key)
 	assert.Equal(t, "4", string(res))
 	assert.NoError(t, closer.Close())
 
-	key, res, closer, err = kv.Get("e", ComparisonCeiling)
+	key, res, closer, err = kv.Get("e", ComparisonCeiling, DisableFilter)
 	assert.NoError(t, err)
 	assert.Equal(t, "e", key)
 	assert.Equal(t, "4", string(res))
 	assert.NoError(t, closer.Close())
 
-	key, res, closer, err = kv.Get("e", ComparisonLower)
+	key, res, closer, err = kv.Get("e", ComparisonLower, DisableFilter)
 	assert.NoError(t, err)
 	assert.Equal(t, "d", key)
 	assert.Equal(t, "3", string(res))
 	assert.NoError(t, closer.Close())
 
-	key, res, closer, err = kv.Get("e", ComparisonHigher)
+	key, res, closer, err = kv.Get("e", ComparisonHigher, DisableFilter)
 	assert.ErrorIs(t, err, ErrKeyNotFound)
 	assert.Equal(t, "", key)
 	assert.Nil(t, res)

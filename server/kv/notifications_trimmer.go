@@ -161,7 +161,7 @@ func (t *notificationsTrimmer) trimNotifications() error {
 }
 
 func (t *notificationsTrimmer) getFirstLast() (first, last int64, err error) {
-	it1, err := t.kv.KeyRangeScan(firstNotificationKey, lastNotificationKey)
+	it1, err := t.kv.KeyRangeScan(firstNotificationKey, lastNotificationKey, DisableFilter)
 	if err != nil {
 		return -1, -1, err
 	}
@@ -175,7 +175,7 @@ func (t *notificationsTrimmer) getFirstLast() (first, last int64, err error) {
 		return first, last, err
 	}
 
-	it2, err := t.kv.KeyRangeScanReverse(firstNotificationKey, lastNotificationKey)
+	it2, err := t.kv.KeyRangeScanReverse(firstNotificationKey, lastNotificationKey, DisableFilter)
 	if err != nil {
 		return -1, -1, err
 	}
@@ -218,7 +218,7 @@ func (t *notificationsTrimmer) binarySearch(firstOffset, lastOffset int64, cutof
 }
 
 func (t *notificationsTrimmer) readAt(offset int64) (time.Time, error) {
-	_, res, closer, err := t.kv.Get(notificationKey(offset), ComparisonEqual)
+	_, res, closer, err := t.kv.Get(notificationKey(offset), ComparisonEqual, DisableFilter)
 	if err != nil {
 		return time.Time{}, err
 	}

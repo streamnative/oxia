@@ -254,7 +254,7 @@ func (d *db) Get(request *proto.GetRequest) (*proto.GetResponse, error) {
 	defer timer.Done()
 
 	d.getCounter.Add(1)
-	return applyGet(d.kv, request)
+	return applyGet(d.kv, request, InternalKeyFilter)
 }
 
 type listIterator struct {
@@ -270,7 +270,7 @@ func (it *listIterator) Close() error {
 func (d *db) List(request *proto.ListRequest) (KeyIterator, error) {
 	d.listCounter.Add(1)
 
-	it, err := d.kv.KeyRangeScan(request.StartInclusive, request.EndExclusive)
+	it, err := d.kv.KeyRangeScan(request.StartInclusive, request.EndExclusive, InternalKeyFilter)
 	if err != nil {
 		return nil, err
 	}
@@ -322,7 +322,7 @@ func (it *rangeScanIterator) Close() error {
 func (d *db) RangeScan(request *proto.RangeScanRequest) (RangeScanIterator, error) {
 	d.rangeScanCounter.Add(1)
 
-	it, err := d.kv.RangeScan(request.StartInclusive, request.EndExclusive)
+	it, err := d.kv.RangeScan(request.StartInclusive, request.EndExclusive, InternalKeyFilter)
 	if err != nil {
 		return nil, err
 	}
@@ -340,7 +340,7 @@ func (d *db) ReadCommitOffset() (int64, error) {
 		Key:          commitOffsetKey,
 		IncludeValue: true,
 	}
-	gr, err := applyGet(kv, getReq)
+	gr, err := applyGet(kv, getReq, DisableFilter)
 	if err != nil {
 		return wal.InvalidOffset, err
 	}
@@ -383,7 +383,7 @@ func (d *db) ReadTerm() (term int64, err error) {
 		Key:          termKey,
 		IncludeValue: true,
 	}
-	gr, err := applyGet(d.kv, getReq)
+	gr, err := applyGet(d.kv, getReq, DisableFilter)
 	if err != nil {
 		return wal.InvalidTerm, err
 	}
@@ -564,8 +564,8 @@ func (d *db) applyDeleteRange(batch WriteBatch, notifications *notifications, de
 	return &proto.DeleteRangeResponse{Status: proto.Status_OK}, nil
 }
 
-func applyGet(kv KV, getReq *proto.GetRequest) (*proto.GetResponse, error) {
-	key, value, closer, err := kv.Get(getReq.Key, ComparisonType(getReq.GetComparisonType()))
+func applyGet(kv KV, getReq *proto.GetRequest, filter Filter) (*proto.GetResponse, error) {
+	key, value, closer, err := kv.Get(getReq.Key, ComparisonType(getReq.GetComparisonType()), filter)
 
 	if errors.Is(err, ErrKeyNotFound) {
 		return &proto.GetResponse{Status: proto.Status_KEY_NOT_FOUND}, nil
