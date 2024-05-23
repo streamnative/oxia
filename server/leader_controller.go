@@ -597,7 +597,7 @@ func (lc *leaderController) read(ctx context.Context, request *proto.ReadRequest
 			lc.log.Debug("Received read request")
 
 			for _, get := range request.Gets {
-				response, err := lc.db.Get(get)
+				response, err := lc.db.GetWithFilter(get, kv.InternalKeyFilter)
 				if err != nil {
 					return
 				}

@@ -64,6 +64,7 @@ type DB interface {
 	Get(request *proto.GetRequest) (*proto.GetResponse, error)
 	List(request *proto.ListRequest) (KeyIterator, error)
 	RangeScan(request *proto.RangeScanRequest) (RangeScanIterator, error)
+
 	ReadCommitOffset() (int64, error)
 
 	ReadNextNotifications(ctx context.Context, startOffset int64) ([]*proto.NotificationBatch, error)
@@ -75,6 +76,8 @@ type DB interface {
 
 	// Delete and close the database and all its files
 	Delete() error
+
+	GetWithFilter(request *proto.GetRequest, filter Filter) (*proto.GetResponse, error)
 }
 
 func NewDB(namespace string, shardId int64, factory Factory, notificationRetentionTime time.Duration, clock common.Clock) (DB, error) {
@@ -250,11 +253,15 @@ func (d *db) addCommitOffset(commitOffset int64, batch WriteBatch, timestamp uin
 }
 
 func (d *db) Get(request *proto.GetRequest) (*proto.GetResponse, error) {
+	return d.GetWithFilter(request, DisableFilter)
+}
+
+func (d *db) GetWithFilter(request *proto.GetRequest, filter Filter) (*proto.GetResponse, error) {
 	timer := d.getLatencyHisto.Timer()
 	defer timer.Done()
 
 	d.getCounter.Add(1)
-	return applyGet(d.kv, request, InternalKeyFilter)
+	return applyGet(d.kv, request, filter)
 }
 
 type listIterator struct {
