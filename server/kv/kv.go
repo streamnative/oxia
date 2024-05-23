@@ -114,7 +114,6 @@ type KV interface {
 	Get(key string, comparisonType ComparisonType, filter Filter) (storedKey string, value []byte, closer io.Closer, err error)
 
 	KeyRangeScan(lowerBound, upperBound string) (KeyIterator, error)
-
 	KeyRangeScanReverse(lowerBound, upperBound string) (ReverseKeyIterator, error)
 
 	RangeScan(lowerBound, upperBound string) (KeyValueIterator, error)
