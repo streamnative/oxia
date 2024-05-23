@@ -399,7 +399,6 @@ func (p *Pebble) getCeiling(key string, filter Filter) (returnedKey string, valu
 		}
 	}
 
-	returnedKey = string(it.Key())
 	value, err = it.ValueAndErr()
 	return returnedKey, value, it, err
 }
@@ -424,7 +423,6 @@ func (p *Pebble) getLower(key string, filter Filter) (returnedKey string, value 
 		}
 	}
 
-	returnedKey = string(it.Key())
 	value, err = it.ValueAndErr()
 	return returnedKey, value, it, err
 }
