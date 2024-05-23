@@ -270,7 +270,7 @@ func (it *listIterator) Close() error {
 func (d *db) List(request *proto.ListRequest) (KeyIterator, error) {
 	d.listCounter.Add(1)
 
-	it, err := d.kv.KeyRangeScan(request.StartInclusive, request.EndExclusive, InternalKeyFilter)
+	it, err := d.kv.KeyRangeScan(request.StartInclusive, request.EndExclusive)
 	if err != nil {
 		return nil, err
 	}
@@ -322,7 +322,7 @@ func (it *rangeScanIterator) Close() error {
 func (d *db) RangeScan(request *proto.RangeScanRequest) (RangeScanIterator, error) {
 	d.rangeScanCounter.Add(1)
 
-	it, err := d.kv.RangeScan(request.StartInclusive, request.EndExclusive, InternalKeyFilter)
+	it, err := d.kv.RangeScan(request.StartInclusive, request.EndExclusive)
 	if err != nil {
 		return nil, err
 	}

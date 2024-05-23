@@ -448,7 +448,6 @@ func (p *Pebble) getHigher(key string, filter Filter) (returnedKey string, value
 		if !it.Next() {
 			return "", nil, nil, multierr.Combine(it.Close(), pebble.ErrNotFound)
 		}
-		returnedKey = string(it.Key())
 	}
 
 	for {
@@ -493,11 +492,11 @@ func (p *Pebble) Get(key string, comparisonType ComparisonType, filter Filter) (
 	return returnedKey, value, closer, err
 }
 
-func (p *Pebble) KeyRangeScan(lowerBound, upperBound string, filter Filter) (KeyIterator, error) {
-	return p.RangeScan(lowerBound, upperBound, filter)
+func (p *Pebble) KeyRangeScan(lowerBound, upperBound string) (KeyIterator, error) {
+	return p.RangeScan(lowerBound, upperBound)
 }
 
-func (p *Pebble) KeyRangeScanReverse(lowerBound, upperBound string, filter Filter) (ReverseKeyIterator, error) {
+func (p *Pebble) KeyRangeScanReverse(lowerBound, upperBound string) (ReverseKeyIterator, error) {
 	opts := &pebble.IterOptions{}
 	if lowerBound != "" {
 		opts.LowerBound = []byte(lowerBound)
@@ -513,7 +512,7 @@ func (p *Pebble) KeyRangeScanReverse(lowerBound, upperBound string, filter Filte
 	return &PebbleReverseIterator{p, pbit}, nil
 }
 
-func (p *Pebble) RangeScan(lowerBound, upperBound string, filter Filter) (KeyValueIterator, error) {
+func (p *Pebble) RangeScan(lowerBound, upperBound string) (KeyValueIterator, error) {
 	opts := &pebble.IterOptions{}
 	if lowerBound != "" {
 		opts.LowerBound = []byte(lowerBound)

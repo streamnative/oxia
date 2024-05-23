@@ -168,7 +168,7 @@ func (nt *notificationsTracker) ReadNextNotifications(ctx context.Context, start
 		return nil, err
 	}
 
-	it, err := nt.kv.RangeScan(notificationKey(startOffset), lastNotificationKey, DisableFilter)
+	it, err := nt.kv.RangeScan(notificationKey(startOffset), lastNotificationKey)
 	if err != nil {
 		return nil, err
 	}

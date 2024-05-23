@@ -118,7 +118,7 @@ func TestPebbbleKeyRangeScan(t *testing.T) {
 	assert.NoError(t, wb.Commit())
 	assert.NoError(t, wb.Close())
 
-	it, err := kv.KeyRangeScan("/root/a", "/root/c", DisableFilter)
+	it, err := kv.KeyRangeScan("/root/a", "/root/c")
 	assert.NoError(t, err)
 
 	assert.True(t, it.Valid())
@@ -134,7 +134,7 @@ func TestPebbbleKeyRangeScan(t *testing.T) {
 	assert.NoError(t, it.Close())
 
 	// Scan with empty result
-	it, err = kv.KeyRangeScan("/xyz/a", "/xyz/c", DisableFilter)
+	it, err = kv.KeyRangeScan("/xyz/a", "/xyz/c")
 	assert.NoError(t, err)
 	assert.False(t, it.Valid())
 	assert.NoError(t, it.Close())
@@ -157,7 +157,7 @@ func TestPebbbleKeyRangeScanReverse(t *testing.T) {
 	assert.NoError(t, wb.Commit())
 	assert.NoError(t, wb.Close())
 
-	it, err := kv.KeyRangeScanReverse("/root/a", "/root/c", DisableFilter)
+	it, err := kv.KeyRangeScanReverse("/root/a", "/root/c")
 	assert.NoError(t, err)
 
 	assert.True(t, it.Valid())
@@ -173,7 +173,7 @@ func TestPebbbleKeyRangeScanReverse(t *testing.T) {
 	assert.NoError(t, it.Close())
 
 	// Scan with empty result
-	it, err = kv.KeyRangeScanReverse("/xyz/a", "/xyz/c", DisableFilter)
+	it, err = kv.KeyRangeScanReverse("/xyz/a", "/xyz/c")
 	assert.NoError(t, err)
 	assert.False(t, it.Valid())
 	assert.NoError(t, it.Close())
@@ -196,7 +196,7 @@ func TestPebbleRangeScan(t *testing.T) {
 	assert.NoError(t, wb.Commit())
 	assert.NoError(t, wb.Close())
 
-	it, err := kv.RangeScan("/root/a", "/root/c", DisableFilter)
+	it, err := kv.RangeScan("/root/a", "/root/c")
 	assert.NoError(t, err)
 
 	assert.True(t, it.Valid())
@@ -218,7 +218,7 @@ func TestPebbleRangeScan(t *testing.T) {
 	assert.NoError(t, it.Close())
 
 	// Scan with empty result
-	it, err = kv.RangeScan("/xyz/a", "/xyz/c", DisableFilter)
+	it, err = kv.RangeScan("/xyz/a", "/xyz/c")
 	assert.NoError(t, err)
 	assert.False(t, it.Valid())
 	assert.NoError(t, it.Close())
@@ -251,7 +251,7 @@ func TestPebbleRangeScanWithSlashOrder(t *testing.T) {
 	assert.NoError(t, wb.Commit())
 	assert.NoError(t, wb.Close())
 
-	it, err := kv.KeyRangeScan("/a/b/a/", "/a/b/a//", DisableFilter)
+	it, err := kv.KeyRangeScan("/a/b/a/", "/a/b/a//")
 	assert.NoError(t, err)
 
 	assert.True(t, it.Valid())
@@ -409,7 +409,7 @@ func TestPebbbleRangeScanInBatch(t *testing.T) {
 	assert.NoError(t, wb.Close())
 
 	// Scan with empty result
-	it, err = kv.KeyRangeScan("/xyz/a", "/xyz/c", DisableFilter)
+	it, err = kv.KeyRangeScan("/xyz/a", "/xyz/c")
 	assert.NoError(t, err)
 	assert.False(t, it.Valid())
 	assert.NoError(t, it.Close())
@@ -661,7 +661,7 @@ func TestPebbleRangeScanNoLimits(t *testing.T) {
 	assert.NoError(t, wb.Close())
 
 	// No max
-	it, err := kv.RangeScan("/root/b", "", DisableFilter)
+	it, err := kv.RangeScan("/root/b", "")
 	assert.NoError(t, err)
 
 	assert.True(t, it.Valid())
@@ -690,7 +690,7 @@ func TestPebbleRangeScanNoLimits(t *testing.T) {
 	assert.NoError(t, it.Close())
 
 	// No min
-	it, err = kv.RangeScan("", "/root/c", DisableFilter)
+	it, err = kv.RangeScan("", "/root/c")
 	assert.NoError(t, err)
 
 	assert.True(t, it.Valid())
@@ -712,7 +712,7 @@ func TestPebbleRangeScanNoLimits(t *testing.T) {
 	assert.NoError(t, it.Close())
 
 	// No min and max
-	it, err = kv.RangeScan("", "", DisableFilter)
+	it, err = kv.RangeScan("", "")
 	assert.NoError(t, err)
 
 	assert.True(t, it.Valid())
@@ -766,7 +766,7 @@ func TestPebbleReverseRangeScanNoLimits(t *testing.T) {
 	assert.NoError(t, wb.Close())
 
 	// No max
-	it, err := kv.KeyRangeScanReverse("/root/b", "", DisableFilter)
+	it, err := kv.KeyRangeScanReverse("/root/b", "")
 	assert.NoError(t, err)
 
 	assert.True(t, it.Valid())
@@ -786,7 +786,7 @@ func TestPebbleReverseRangeScanNoLimits(t *testing.T) {
 	assert.NoError(t, it.Close())
 
 	// No min
-	it, err = kv.KeyRangeScanReverse("", "/root/c", DisableFilter)
+	it, err = kv.KeyRangeScanReverse("", "/root/c")
 	assert.NoError(t, err)
 
 	assert.True(t, it.Valid())
@@ -802,7 +802,7 @@ func TestPebbleReverseRangeScanNoLimits(t *testing.T) {
 	assert.NoError(t, it.Close())
 
 	// No min and max
-	it, err = kv.KeyRangeScanReverse("", "", DisableFilter)
+	it, err = kv.KeyRangeScanReverse("", "")
 	assert.NoError(t, err)
 
 	assert.True(t, it.Valid())

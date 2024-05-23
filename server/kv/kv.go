@@ -15,8 +15,9 @@
 package kv
 
 import (
-	"github.com/streamnative/oxia/proto"
 	"io"
+
+	"github.com/streamnative/oxia/proto"
 
 	"github.com/pkg/errors"
 )
@@ -112,11 +113,11 @@ type KV interface {
 
 	Get(key string, comparisonType ComparisonType, filter Filter) (storedKey string, value []byte, closer io.Closer, err error)
 
-	KeyRangeScan(lowerBound, upperBound string, filter Filter) (KeyIterator, error)
+	KeyRangeScan(lowerBound, upperBound string) (KeyIterator, error)
 
-	KeyRangeScanReverse(lowerBound, upperBound string, filter Filter) (ReverseKeyIterator, error)
+	KeyRangeScanReverse(lowerBound, upperBound string) (ReverseKeyIterator, error)
 
-	RangeScan(lowerBound, upperBound string, filter Filter) (KeyValueIterator, error)
+	RangeScan(lowerBound, upperBound string) (KeyValueIterator, error)
 
 	Snapshot() (Snapshot, error)
 

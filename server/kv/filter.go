@@ -15,13 +15,14 @@
 package kv
 
 import (
-	"github.com/streamnative/oxia/common"
 	"strings"
+
+	"github.com/streamnative/oxia/common"
 )
 
 type Filter func(key string) bool
 
-func DisableFilter(key string) bool {
+func DisableFilter(_ string) bool {
 	return false
 }
 
