@@ -392,7 +392,7 @@ func (p *Pebble) getCeiling(key string, filter Filter) (returnedKey string, valu
 
 	for {
 		returnedKey = string(it.Key())
-		if !filter(key) {
+		if !filter(returnedKey) {
 			break
 		} else if !it.Next() {
 			return "", nil, nil, multierr.Combine(it.Close(), pebble.ErrNotFound)
@@ -416,7 +416,7 @@ func (p *Pebble) getLower(key string, filter Filter) (returnedKey string, value 
 
 	for {
 		returnedKey = string(it.Key())
-		if !filter(key) {
+		if !filter(returnedKey) {
 			break
 		} else if !it.Prev() {
 			return "", nil, nil, multierr.Combine(it.Close(), pebble.ErrNotFound)
