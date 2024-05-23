@@ -53,6 +53,7 @@ func BenchmarkServer(b *testing.B) {
 	}
 
 	perfConf := perf.Config{
+		Namespace:           "default",
 		ServiceAddr:         fmt.Sprintf("localhost:%d", standalone.RpcPort()),
 		RequestRate:         200_000,
 		ReadPercentage:      80,
