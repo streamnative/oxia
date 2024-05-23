@@ -448,10 +448,11 @@ func (p *Pebble) getHigher(key string, filter Filter) (returnedKey string, value
 		if !it.Next() {
 			return "", nil, nil, multierr.Combine(it.Close(), pebble.ErrNotFound)
 		}
+		returnedKey = string(it.Key())
 	}
 
 	for {
-		if !filter(key) {
+		if !filter(returnedKey) {
 			returnedKey = string(it.Key())
 			break
 		} else if !it.Next() {

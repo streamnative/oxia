@@ -20,6 +20,7 @@ import (
 	"github.com/streamnative/oxia/common"
 )
 
+// Filter used for key filtering
 type Filter func(key string) bool
 
 func DisableFilter(_ string) bool {

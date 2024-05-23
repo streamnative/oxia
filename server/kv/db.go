@@ -77,6 +77,7 @@ type DB interface {
 	// Delete and close the database and all its files
 	Delete() error
 
+	// GetWithFilter Get with the specific key Filter
 	GetWithFilter(request *proto.GetRequest, filter Filter) (*proto.GetResponse, error)
 }
 

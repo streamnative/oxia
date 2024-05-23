@@ -865,3 +865,88 @@ func TestDBRangeScan(t *testing.T) {
 	assert.NoError(t, db.Close())
 	assert.NoError(t, factory.Close())
 }
+
+func TestGetWithFilter(t *testing.T) {
+	largerThanInternalKey := "xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+	largestKey := "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
+	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	assert.NoError(t, err)
+	defer db.Close()
+
+	writeReq := &proto.WriteRequest{
+		Puts: []*proto.PutRequest{{
+			Key:   "a",
+			Value: []byte("a"),
+		}, {
+			Key:   "b",
+			Value: []byte("b"),
+		}, {
+			Key:   "c",
+			Value: []byte("c"),
+		}, {
+			Key:   "d",
+			Value: []byte("d"),
+		}, {
+			Key:   "e",
+			Value: []byte("e"),
+		}, {
+			Key:   "f",
+			Value: []byte("f"),
+		}, {
+			Key:   common.InternalKeyPrefix + "term",
+			Value: []byte("term"),
+		}, {
+			Key:   common.InternalKeyPrefix + "commit-offset",
+			Value: []byte("commit-offset"),
+		}, {
+			Key:   largestKey,
+			Value: []byte("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"),
+		}},
+	}
+
+	writeRes, err := db.ProcessWrite(writeReq, wal.InvalidOffset, now(), NoOpCallback)
+	assert.NoError(t, err)
+
+	assert.Equal(t, 9, len(writeRes.Puts))
+
+	res, err := db.GetWithFilter(&proto.GetRequest{
+		Key:            "f",
+		ComparisonType: proto.KeyComparisonType_HIGHER,
+	}, InternalKeyFilter)
+	assert.NoError(t, err)
+	assert.EqualValues(t, proto.Status_OK, res.Status)
+	assert.EqualValues(t, largestKey, *res.Key)
+
+	res, err = db.GetWithFilter(&proto.GetRequest{
+		Key:            "f",
+		ComparisonType: proto.KeyComparisonType_LOWER,
+	}, InternalKeyFilter)
+	assert.NoError(t, err)
+	assert.EqualValues(t, proto.Status_OK, res.Status)
+	assert.EqualValues(t, "e", *res.Key)
+
+	res, err = db.GetWithFilter(&proto.GetRequest{
+		Key:            largerThanInternalKey,
+		ComparisonType: proto.KeyComparisonType_FLOOR,
+	}, InternalKeyFilter)
+	assert.NoError(t, err)
+	assert.EqualValues(t, proto.Status_OK, res.Status)
+	assert.EqualValues(t, "f", *res.Key)
+
+	res, err = db.GetWithFilter(&proto.GetRequest{
+		Key:            "g",
+		ComparisonType: proto.KeyComparisonType_CEILING,
+	}, InternalKeyFilter)
+	assert.NoError(t, err)
+	assert.EqualValues(t, proto.Status_OK, res.Status)
+	assert.EqualValues(t, largestKey, *res.Key)
+
+	res, err = db.GetWithFilter(&proto.GetRequest{
+		Key:            common.InternalKeyPrefix + "term",
+		ComparisonType: proto.KeyComparisonType_EQUAL,
+	}, InternalKeyFilter)
+	assert.NoError(t, err)
+	assert.EqualValues(t, proto.Status_KEY_NOT_FOUND, res.Status)
+}
