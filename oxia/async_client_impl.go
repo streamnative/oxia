@@ -302,8 +302,8 @@ func processAllGetResponses(key string, results []*proto.GetResponse, comparison
 			Status: proto.Status_KEY_NOT_FOUND,
 		}
 	} else {
-		slices.SortFunc(results, func(a, b *proto.GetResponse) bool {
-			return compare.CompareWithSlash([]byte(a.GetKey()), []byte(b.GetKey())) < 0
+		slices.SortFunc(results, func(a, b *proto.GetResponse) int {
+			return compare.CompareWithSlash([]byte(a.GetKey()), []byte(b.GetKey()))
 		})
 
 		switch comparisonType {

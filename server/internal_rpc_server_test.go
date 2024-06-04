@@ -35,7 +35,7 @@ func TestInternalHealthCheck(t *testing.T) {
 	assert.NoError(t, err)
 
 	target := fmt.Sprintf("localhost:%d", server.grpcServer.Port())
-	cnx, err := grpc.Dial(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	cnx, err := grpc.NewClient(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	assert.NoError(t, err)
 
 	client := grpc_health_v1.NewHealthClient(cnx)

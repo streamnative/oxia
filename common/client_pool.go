@@ -142,7 +142,7 @@ func (cp *clientPool) getConnection(target string) (grpc.ClientConnInterface, er
 		tcs = credentials.NewTLS(cp.tls)
 	}
 
-	cnx, err := grpc.Dial(target,
+	cnx, err := grpc.NewClient(target,
 		grpc.WithTransportCredentials(tcs),
 		grpc.WithStreamInterceptor(grpcprometheus.StreamClientInterceptor),
 		grpc.WithUnaryInterceptor(grpcprometheus.UnaryClientInterceptor),
