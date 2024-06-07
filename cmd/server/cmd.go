@@ -15,9 +15,10 @@
 package server
 
 import (
-	"github.com/streamnative/oxia/common/security"
 	"io"
 	"time"
+
+	"github.com/streamnative/oxia/common/security"
 
 	"github.com/spf13/cobra"
 
@@ -30,8 +31,8 @@ import (
 var (
 	conf = server.Config{}
 
-	peerTls   = security.TLSOption{}
-	serverTls = security.TLSOption{}
+	peerTLS   = security.TLSOption{}
+	serverTLS = security.TLSOption{}
 
 	Cmd = &cobra.Command{
 		Use:   "server",
@@ -53,34 +54,34 @@ func init() {
 		"Max size of the shared DB cache")
 
 	// server TLS section
-	Cmd.Flags().StringVar(&serverTls.CertFile, "tls-cert-file", "", "Tls certificate file")
-	Cmd.Flags().StringVar(&serverTls.KeyFile, "tls-key-file", "", "Tls key file")
-	Cmd.Flags().Uint16Var(&serverTls.MinVersion, "tls-min-version", 0, "Tls minimum version")
-	Cmd.Flags().Uint16Var(&serverTls.MaxVersion, "tls-max-version", 0, "Tls maximum version")
-	Cmd.Flags().StringVar(&serverTls.TrustedCaFile, "tls-trusted-ca-file", "", "Tls trusted ca file")
-	Cmd.Flags().BoolVar(&serverTls.InsecureSkipVerify, "tls-insecure-skip-verify", false, "Tls insecure skip verify")
-	Cmd.Flags().BoolVar(&serverTls.ClientAuth, "tls-client-auth", false, "Tls client auth")
+	Cmd.Flags().StringVar(&serverTLS.CertFile, "tls-cert-file", "", "Tls certificate file")
+	Cmd.Flags().StringVar(&serverTLS.KeyFile, "tls-key-file", "", "Tls key file")
+	Cmd.Flags().Uint16Var(&serverTLS.MinVersion, "tls-min-version", 0, "Tls minimum version")
+	Cmd.Flags().Uint16Var(&serverTLS.MaxVersion, "tls-max-version", 0, "Tls maximum version")
+	Cmd.Flags().StringVar(&serverTLS.TrustedCaFile, "tls-trusted-ca-file", "", "Tls trusted ca file")
+	Cmd.Flags().BoolVar(&serverTLS.InsecureSkipVerify, "tls-insecure-skip-verify", false, "Tls insecure skip verify")
+	Cmd.Flags().BoolVar(&serverTLS.ClientAuth, "tls-client-auth", false, "Tls client auth")
 
 	// peer client TLS section
-	Cmd.Flags().StringVar(&peerTls.CertFile, "peer-tls-cert-file", "", "Peer tls certificate file")
-	Cmd.Flags().StringVar(&peerTls.KeyFile, "peer-tls-key-file", "", "Peer tls key file")
-	Cmd.Flags().Uint16Var(&peerTls.MinVersion, "peer-tls-min-version", 0, "Peer tls minimum version")
-	Cmd.Flags().Uint16Var(&peerTls.MaxVersion, "peer-tls-max-version", 0, "Peer tls maximum version")
-	Cmd.Flags().StringVar(&peerTls.TrustedCaFile, "peer-tls-trusted-ca-file", "", "Peer tls trusted ca file")
-	Cmd.Flags().BoolVar(&peerTls.InsecureSkipVerify, "peer-tls-insecure-skip-verify", false, "Peer tls insecure skip verify")
-	Cmd.Flags().StringVar(&peerTls.ServerName, "peer-tls-server-name", "", "Peer tls server name")
+	Cmd.Flags().StringVar(&peerTLS.CertFile, "peer-tls-cert-file", "", "Peer tls certificate file")
+	Cmd.Flags().StringVar(&peerTLS.KeyFile, "peer-tls-key-file", "", "Peer tls key file")
+	Cmd.Flags().Uint16Var(&peerTLS.MinVersion, "peer-tls-min-version", 0, "Peer tls minimum version")
+	Cmd.Flags().Uint16Var(&peerTLS.MaxVersion, "peer-tls-max-version", 0, "Peer tls maximum version")
+	Cmd.Flags().StringVar(&peerTLS.TrustedCaFile, "peer-tls-trusted-ca-file", "", "Peer tls trusted ca file")
+	Cmd.Flags().BoolVar(&peerTLS.InsecureSkipVerify, "peer-tls-insecure-skip-verify", false, "Peer tls insecure skip verify")
+	Cmd.Flags().StringVar(&peerTLS.ServerName, "peer-tls-server-name", "", "Peer tls server name")
 }
 
 func exec(*cobra.Command, []string) {
 	common.RunProcess(func() (io.Closer, error) {
 		var err error
-		if serverTls.IsConfigured() {
-			if conf.ServerTLS, err = serverTls.MakeServerTLSConf(); err != nil {
+		if serverTLS.IsConfigured() {
+			if conf.ServerTLS, err = serverTLS.MakeServerTLSConf(); err != nil {
 				return nil, err
 			}
 		}
-		if peerTls.IsConfigured() {
-			if conf.PeerTLS, err = peerTls.MakeClientTLSConf(); err != nil {
+		if peerTLS.IsConfigured() {
+			if conf.PeerTLS, err = peerTLS.MakeClientTLSConf(); err != nil {
 				return nil, err
 			}
 		}
