@@ -15,6 +15,7 @@
 package server
 
 import (
+	"github.com/streamnative/oxia/common/security"
 	"io"
 	"time"
 
@@ -28,6 +29,9 @@ import (
 
 var (
 	conf = server.Config{}
+
+	peerTls   = security.TLSOption{}
+	serverTls = security.TLSOption{}
 
 	Cmd = &cobra.Command{
 		Use:   "server",
@@ -47,10 +51,39 @@ func init() {
 	Cmd.Flags().BoolVar(&conf.WalSyncData, "wal-sync-data", true, "Whether to sync data in write-ahead-log")
 	Cmd.Flags().Int64Var(&conf.DbBlockCacheMB, "db-cache-size-mb", kv.DefaultFactoryOptions.CacheSizeMB,
 		"Max size of the shared DB cache")
+
+	// server TLS section
+	Cmd.Flags().StringVar(&serverTls.CertFile, "tls-cert-file", "", "Tls certificate file")
+	Cmd.Flags().StringVar(&serverTls.KeyFile, "tls-key-file", "", "Tls key file")
+	Cmd.Flags().Uint16Var(&serverTls.MinVersion, "tls-min-version", 0, "Tls minimum version")
+	Cmd.Flags().Uint16Var(&serverTls.MaxVersion, "tls-max-version", 0, "Tls maximum version")
+	Cmd.Flags().StringVar(&serverTls.TrustedCaFile, "tls-trusted-ca-file", "", "Tls trusted ca file")
+	Cmd.Flags().BoolVar(&serverTls.InsecureSkipVerify, "tls-insecure-skip-verify", false, "Tls insecure skip verify")
+	Cmd.Flags().BoolVar(&serverTls.ClientAuth, "tls-client-auth", false, "Tls client auth")
+
+	// peer client TLS section
+	Cmd.Flags().StringVar(&peerTls.CertFile, "peer-tls-cert-file", "", "Peer tls certificate file")
+	Cmd.Flags().StringVar(&peerTls.KeyFile, "peer-tls-key-file", "", "Peer tls key file")
+	Cmd.Flags().Uint16Var(&peerTls.MinVersion, "peer-tls-min-version", 0, "Peer tls minimum version")
+	Cmd.Flags().Uint16Var(&peerTls.MaxVersion, "peer-tls-max-version", 0, "Peer tls maximum version")
+	Cmd.Flags().StringVar(&peerTls.TrustedCaFile, "peer-tls-trusted-ca-file", "", "Peer tls trusted ca file")
+	Cmd.Flags().BoolVar(&peerTls.InsecureSkipVerify, "peer-tls-insecure-skip-verify", false, "Peer tls insecure skip verify")
+	Cmd.Flags().StringVar(&peerTls.ServerName, "peer-tls-server-name", "", "Peer tls server name")
 }
 
 func exec(*cobra.Command, []string) {
 	common.RunProcess(func() (io.Closer, error) {
+		var err error
+		if serverTls.IsConfigured() {
+			if conf.ServerTLS, err = serverTls.MakeServerTLSConf(); err != nil {
+				return nil, err
+			}
+		}
+		if peerTls.IsConfigured() {
+			if conf.PeerTLS, err = peerTls.MakeClientTLSConf(); err != nil {
+				return nil, err
+			}
+		}
 		return server.New(conf)
 	})
 }
