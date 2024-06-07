@@ -118,7 +118,7 @@ func (tls *TLSOption) MakeClientTLSConf() (*libtls.Config, error) {
 		tlsConf.RootCAs = certPool
 	}
 
-	tlsConf.GetClientCertificate = func(_ *libtls.CertificateRequestInfo) (cert *libtls.Certificate, err error) {
+	tlsConf.GetClientCertificate = func(unused *libtls.CertificateRequestInfo) (cert *libtls.Certificate, err error) {
 		c, err := libtls.LoadX509KeyPair(tls.CertFile, tls.KeyFile)
 		return &c, err
 	}
@@ -130,7 +130,7 @@ func (tls *TLSOption) MakeServerTLSConf() (*libtls.Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	tlsConf.GetCertificate = func(_ *libtls.ClientHelloInfo) (cert *libtls.Certificate, err error) {
+	tlsConf.GetCertificate = func(clientHello *libtls.ClientHelloInfo) (cert *libtls.Certificate, err error) {
 		c, err := libtls.LoadX509KeyPair(tls.CertFile, tls.KeyFile)
 		return &c, err
 	}
