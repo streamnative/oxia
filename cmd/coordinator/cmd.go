@@ -16,7 +16,6 @@ package coordinator
 
 import (
 	"errors"
-	"github.com/streamnative/oxia/common/security"
 	"io"
 	"log/slog"
 	"strings"
@@ -25,9 +24,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"github.com/streamnative/oxia/common"
-
 	"github.com/streamnative/oxia/cmd/flag"
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/security"
 	"github.com/streamnative/oxia/coordinator"
 	"github.com/streamnative/oxia/coordinator/model"
 )
