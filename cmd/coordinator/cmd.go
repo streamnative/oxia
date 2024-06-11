@@ -24,9 +24,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"github.com/streamnative/oxia/common"
-
 	"github.com/streamnative/oxia/cmd/flag"
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/security"
 	"github.com/streamnative/oxia/coordinator"
 	"github.com/streamnative/oxia/coordinator/model"
 )
@@ -34,6 +34,8 @@ import (
 var (
 	conf       = coordinator.NewConfig()
 	configFile string
+	peerTLS    security.TLSOption
+	serverTLS  security.TLSOption
 
 	Cmd = &cobra.Command{
 		Use:     "coordinator",
@@ -52,6 +54,24 @@ func init() {
 	Cmd.Flags().StringVar(&conf.K8SMetadataConfigMapName, "k8s-configmap-name", conf.K8SMetadataConfigMapName, "ConfigMap name for cluster status configmap")
 	Cmd.Flags().StringVar(&conf.FileMetadataPath, "file-clusters-status-path", "data/cluster-status.json", "The path where the cluster status is stored when using 'file' provider")
 	Cmd.Flags().StringVarP(&configFile, "conf", "f", "", "Cluster config file")
+
+	// server TLS section
+	Cmd.Flags().StringVar(&serverTLS.CertFile, "tls-cert-file", "", "Tls certificate file")
+	Cmd.Flags().StringVar(&serverTLS.KeyFile, "tls-key-file", "", "Tls key file")
+	Cmd.Flags().Uint16Var(&serverTLS.MinVersion, "tls-min-version", 0, "Tls minimum version")
+	Cmd.Flags().Uint16Var(&serverTLS.MaxVersion, "tls-max-version", 0, "Tls maximum version")
+	Cmd.Flags().StringVar(&serverTLS.TrustedCaFile, "tls-trusted-ca-file", "", "Tls trusted ca file")
+	Cmd.Flags().BoolVar(&serverTLS.InsecureSkipVerify, "tls-insecure-skip-verify", false, "Tls insecure skip verify")
+	Cmd.Flags().BoolVar(&serverTLS.ClientAuth, "tls-client-auth", false, "Tls client auth")
+
+	// peer client TLS section
+	Cmd.Flags().StringVar(&peerTLS.CertFile, "peer-tls-cert-file", "", "Peer tls certificate file")
+	Cmd.Flags().StringVar(&peerTLS.KeyFile, "peer-tls-key-file", "", "Peer tls key file")
+	Cmd.Flags().Uint16Var(&peerTLS.MinVersion, "peer-tls-min-version", 0, "Peer tls minimum version")
+	Cmd.Flags().Uint16Var(&peerTLS.MaxVersion, "peer-tls-max-version", 0, "Peer tls maximum version")
+	Cmd.Flags().StringVar(&peerTLS.TrustedCaFile, "peer-tls-trusted-ca-file", "", "Peer tls trusted ca file")
+	Cmd.Flags().BoolVar(&peerTLS.InsecureSkipVerify, "peer-tls-insecure-skip-verify", false, "Peer tls insecure skip verify")
+	Cmd.Flags().StringVar(&peerTLS.ServerName, "peer-tls-server-name", "", "Peer tls server name")
 }
 
 func validate(*cobra.Command, []string) error {
@@ -136,6 +156,17 @@ func exec(*cobra.Command, []string) error {
 	}
 
 	common.RunProcess(func() (io.Closer, error) {
+		var err error
+		if serverTLS.IsConfigured() {
+			if conf.ServerTLS, err = serverTLS.MakeServerTLSConf(); err != nil {
+				return nil, err
+			}
+		}
+		if peerTLS.IsConfigured() {
+			if conf.PeerTLS, err = peerTLS.MakeClientTLSConf(); err != nil {
+				return nil, err
+			}
+		}
 		return coordinator.New(conf)
 	})
 	return nil
