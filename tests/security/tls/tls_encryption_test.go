@@ -69,14 +69,22 @@ func getClientTLSOption() (*security.TLSOption, error) {
 
 func newTLSServer(t *testing.T) (s *server.Server, addr model.ServerAddress) {
 	t.Helper()
+	return newTLSServerWithInterceptor(t, func(config *server.Config) {
+
+	})
+}
+
+func newTLSServerWithInterceptor(t *testing.T, interceptor func(config *server.Config)) (s *server.Server, addr model.ServerAddress) {
+	t.Helper()
 	option, err := getPeerTLSOption()
 	assert.NoError(t, err)
 	serverTLSConf, err := option.MakeServerTLSConf()
 	assert.NoError(t, err)
+
 	peerTLSConf, err := option.MakeClientTLSConf()
 	assert.NoError(t, err)
 
-	s, err = server.New(server.Config{
+	config := server.Config{
 		PublicServiceAddr:          "localhost:0",
 		InternalServiceAddr:        "localhost:0",
 		MetricsServiceAddr:         "", // Disable metrics to avoid conflict
@@ -85,7 +93,12 @@ func newTLSServer(t *testing.T) (s *server.Server, addr model.ServerAddress) {
 		NotificationsRetentionTime: 1 * time.Minute,
 		PeerTLS:                    peerTLSConf,
 		ServerTLS:                  serverTLSConf,
-	})
+		InternalServerTLS:          serverTLSConf,
+	}
+
+	interceptor(&config)
+
+	s, err = server.New(config)
 
 	assert.NoError(t, err)
 
@@ -276,6 +289,50 @@ func TestClientHandshakeSuccess(t *testing.T) {
 	tlsConf, err = tlsOption.MakeClientTLSConf()
 	assert.NoError(t, err)
 	client, err := oxia.NewSyncClient(sa1.Public, oxia.WithTLS(tlsConf))
+	assert.NoError(t, err)
+	client.Close()
+}
+
+func TestOnlyEnablePublicTls(t *testing.T) {
+	disableInternalTLS := func(config *server.Config) {
+		config.InternalServerTLS = nil
+		config.PeerTLS = nil
+	}
+	s1, sa1 := newTLSServerWithInterceptor(t, disableInternalTLS)
+	defer s1.Close()
+	s2, sa2 := newTLSServerWithInterceptor(t, disableInternalTLS)
+	defer s2.Close()
+	s3, sa3 := newTLSServerWithInterceptor(t, disableInternalTLS)
+	defer s3.Close()
+
+	metadataProvider := impl.NewMetadataProviderMemory()
+	clusterConfig := model.ClusterConfig{
+		Namespaces: []model.NamespaceConfig{{
+			Name:              common.DefaultNamespace,
+			ReplicationFactor: 3,
+			InitialShardCount: 1,
+		}},
+		Servers: []model.ServerAddress{sa1, sa2, sa3},
+	}
+	clientPool := common.NewClientPool(nil)
+	defer clientPool.Close()
+
+	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, impl.NewRpcProvider(clientPool))
+	assert.NoError(t, err)
+	defer coordinator.Close()
+
+	// failed without cert
+
+	client, err := oxia.NewSyncClient(sa1.Public, oxia.WithRequestTimeout(1*time.Second))
+	assert.Error(t, err)
+	assert.Nil(t, client)
+
+	// success with cert
+	tlsOption, err := getClientTLSOption()
+	assert.NoError(t, err)
+	tlsConf, err := tlsOption.MakeClientTLSConf()
+	assert.NoError(t, err)
+	client, err = oxia.NewSyncClient(sa1.Public, oxia.WithTLS(tlsConf))
 	assert.NoError(t, err)
 	client.Close()
 }

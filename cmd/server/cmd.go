@@ -30,8 +30,9 @@ import (
 var (
 	conf = server.Config{}
 
-	peerTLS   = security.TLSOption{}
-	serverTLS = security.TLSOption{}
+	peerTLS           = security.TLSOption{}
+	serverTLS         = security.TLSOption{}
+	internalServerTLS = security.TLSOption{}
 
 	Cmd = &cobra.Command{
 		Use:   "server",
@@ -61,6 +62,15 @@ func init() {
 	Cmd.Flags().BoolVar(&serverTLS.InsecureSkipVerify, "tls-insecure-skip-verify", false, "Tls insecure skip verify")
 	Cmd.Flags().BoolVar(&serverTLS.ClientAuth, "tls-client-auth", false, "Tls client auth")
 
+	// internal server TLS section
+	Cmd.Flags().StringVar(&internalServerTLS.CertFile, "internal-tls-cert-file", "", "Internal server tls certificate file")
+	Cmd.Flags().StringVar(&internalServerTLS.KeyFile, "internal-tls-key-file", "", "Internal server tls key file")
+	Cmd.Flags().Uint16Var(&internalServerTLS.MinVersion, "internal-tls-min-version", 0, "Internal server tls minimum version")
+	Cmd.Flags().Uint16Var(&internalServerTLS.MaxVersion, "internal-tls-max-version", 0, "Internal server tls maximum version")
+	Cmd.Flags().StringVar(&internalServerTLS.TrustedCaFile, "internal-tls-trusted-ca-file", "", "Internal server tls trusted ca file")
+	Cmd.Flags().BoolVar(&internalServerTLS.InsecureSkipVerify, "internal-tls-insecure-skip-verify", false, "Internal server tls insecure skip verify")
+	Cmd.Flags().BoolVar(&internalServerTLS.ClientAuth, "internal-tls-client-auth", false, "Internal server tls client auth")
+
 	// peer client TLS section
 	Cmd.Flags().StringVar(&peerTLS.CertFile, "peer-tls-cert-file", "", "Peer tls certificate file")
 	Cmd.Flags().StringVar(&peerTLS.KeyFile, "peer-tls-key-file", "", "Peer tls key file")
@@ -73,17 +83,29 @@ func init() {
 
 func exec(*cobra.Command, []string) {
 	common.RunProcess(func() (io.Closer, error) {
-		var err error
-		if serverTLS.IsConfigured() {
-			if conf.ServerTLS, err = serverTLS.MakeServerTLSConf(); err != nil {
-				return nil, err
-			}
-		}
-		if peerTLS.IsConfigured() {
-			if conf.PeerTLS, err = peerTLS.MakeClientTLSConf(); err != nil {
-				return nil, err
-			}
+		if err := configureTLS(); err != nil {
+			return nil, err
 		}
 		return server.New(conf)
 	})
+}
+
+func configureTLS() error {
+	var err error
+	if serverTLS.IsConfigured() {
+		if conf.ServerTLS, err = serverTLS.MakeServerTLSConf(); err != nil {
+			return err
+		}
+	}
+	if peerTLS.IsConfigured() {
+		if conf.PeerTLS, err = peerTLS.MakeClientTLSConf(); err != nil {
+			return err
+		}
+	}
+	if internalServerTLS.IsConfigured() {
+		if conf.InternalServerTLS, err = internalServerTLS.MakeServerTLSConf(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
