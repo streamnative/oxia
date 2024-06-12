@@ -33,7 +33,7 @@ type Config struct {
 	InternalServiceAddr string
 	PeerTLS             *tls.Config
 	ServerTLS           *tls.Config
-	InternalServerTls   *tls.Config
+	InternalServerTLS   *tls.Config
 	MetricsServiceAddr  string
 	DataDir             string
 	WalDir              string
@@ -93,7 +93,7 @@ func NewWithGrpcProvider(config Config, provider container.GrpcProvider, replica
 	s.shardAssignmentDispatcher = NewShardAssignmentDispatcher(s.healthServer)
 
 	s.internalRpcServer, err = newInternalRpcServer(provider, config.InternalServiceAddr,
-		s.shardsDirector, s.shardAssignmentDispatcher, s.healthServer, config.InternalServerTls)
+		s.shardsDirector, s.shardAssignmentDispatcher, s.healthServer, config.InternalServerTLS)
 	if err != nil {
 		return nil, err
 	}

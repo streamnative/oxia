@@ -68,6 +68,7 @@ func getClientTLSOption() (*security.TLSOption, error) {
 }
 
 func newTLSServer(t *testing.T) (s *server.Server, addr model.ServerAddress) {
+	t.Helper()
 	return newTLSServerWithInterceptor(t, func(config *server.Config) {
 
 	})
@@ -92,7 +93,7 @@ func newTLSServerWithInterceptor(t *testing.T, interceptor func(config *server.C
 		NotificationsRetentionTime: 1 * time.Minute,
 		PeerTLS:                    peerTLSConf,
 		ServerTLS:                  serverTLSConf,
-		InternalServerTls:          serverTLSConf,
+		InternalServerTLS:          serverTLSConf,
 	}
 
 	interceptor(&config)
@@ -294,7 +295,7 @@ func TestClientHandshakeSuccess(t *testing.T) {
 
 func TestOnlyEnablePublicTls(t *testing.T) {
 	disableInternalTLS := func(config *server.Config) {
-		config.InternalServerTls = nil
+		config.InternalServerTLS = nil
 		config.PeerTLS = nil
 	}
 	s1, sa1 := newTLSServerWithInterceptor(t, disableInternalTLS)

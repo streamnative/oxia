@@ -83,22 +83,29 @@ func init() {
 
 func exec(*cobra.Command, []string) {
 	common.RunProcess(func() (io.Closer, error) {
-		var err error
-		if serverTLS.IsConfigured() {
-			if conf.ServerTLS, err = serverTLS.MakeServerTLSConf(); err != nil {
-				return nil, err
-			}
-		}
-		if peerTLS.IsConfigured() {
-			if conf.PeerTLS, err = peerTLS.MakeClientTLSConf(); err != nil {
-				return nil, err
-			}
-		}
-		if internalServerTLS.IsConfigured() {
-			if conf.InternalServerTls, err = internalServerTLS.MakeServerTLSConf(); err != nil {
-				return nil, err
-			}
+		if err := configureTLS(); err != nil {
+			return nil, err
 		}
 		return server.New(conf)
 	})
+}
+
+func configureTLS() error {
+	var err error
+	if serverTLS.IsConfigured() {
+		if conf.ServerTLS, err = serverTLS.MakeServerTLSConf(); err != nil {
+			return err
+		}
+	}
+	if peerTLS.IsConfigured() {
+		if conf.PeerTLS, err = peerTLS.MakeClientTLSConf(); err != nil {
+			return err
+		}
+	}
+	if internalServerTLS.IsConfigured() {
+		if conf.InternalServerTLS, err = internalServerTLS.MakeServerTLSConf(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
