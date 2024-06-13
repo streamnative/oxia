@@ -39,12 +39,12 @@ func segmentPath(basePath string, firstOffset int64) string {
 	return filepath.Join(basePath, fmt.Sprintf("%d", firstOffset))
 }
 
-func readInt(b []byte, offset uint32) uint32 {
-	return binary.BigEndian.Uint32(b[offset : offset+4])
+func readInt(b []byte, offset uint32) uint64 {
+	return binary.BigEndian.Uint64(b[offset : offset+8])
 }
 
-func fileOffset(idx []byte, firstOffset, offset int64) uint32 {
-	return readInt(idx, uint32((offset-firstOffset)*4))
+func fileOffset(idx []byte, firstOffset, offset int64) uint64 {
+	return readInt(idx, uint32((offset-firstOffset)*8))
 }
 
 type ReadOnlySegment interface {
@@ -101,7 +101,7 @@ func newReadOnlySegment(basePath string, baseOffset int64) (ReadOnlySegment, err
 		return nil, errors.Wrapf(err, "failed to map segment index file %s", ms.idxPath)
 	}
 
-	ms.lastOffset = ms.baseOffset + int64(len(ms.idxMappedFile)/4-1)
+	ms.lastOffset = ms.baseOffset + int64(len(ms.idxMappedFile)/8-1)
 	return ms, nil
 }
 
@@ -119,9 +119,9 @@ func (ms *readonlySegment) Read(offset int64) ([]byte, error) {
 	}
 
 	fileOffset := fileOffset(ms.idxMappedFile, ms.baseOffset, offset)
-	entryLen := readInt(ms.txnMappedFile, fileOffset)
-	entry := make([]byte, entryLen)
-	copy(entry, ms.txnMappedFile[fileOffset+4:fileOffset+4+entryLen])
+	entryLen := readInt(ms.txnMappedFile, uint32(fileOffset))
+	entry := make([]byte, uint32(entryLen))
+	copy(entry, ms.txnMappedFile[fileOffset+8:uint32(fileOffset)+8+uint32(entryLen)])
 
 	return entry, nil
 }
