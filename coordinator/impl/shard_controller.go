@@ -502,8 +502,8 @@ func (s *shardController) newTermQuorum() (map[model.ServerAddress]*proto.EntryI
 	timer := s.newTermQuorumLatency.Timer()
 
 	ensembleQuorum := s.shardMetadata.Ensemble
-	fencingQuorumSize := len(ensembleQuorum)
-	majority := fencingQuorumSize/2 + 1
+	ensembleQuorumSize := len(ensembleQuorum)
+	majority := ensembleQuorumSize/2 + 1
 
 	// Use a new context, so we can cancel the pending requests
 	ctx, cancel := context.WithCancel(s.ctx)
@@ -514,7 +514,7 @@ func (s *shardController) newTermQuorum() (map[model.ServerAddress]*proto.EntryI
 		model.ServerAddress
 		*proto.EntryId
 		error
-	}, fencingQuorumSize)
+	}, ensembleQuorumSize)
 
 	for _, sa := range ensembleQuorum {
 		// We need to save the address because it gets modified in the loop
@@ -557,7 +557,7 @@ func (s *shardController) newTermQuorum() (map[model.ServerAddress]*proto.EntryI
 	var err error
 
 	// Wait for a majority to respond
-	for successResponses < majority && totalResponses < fencingQuorumSize {
+	for successResponses < majority && totalResponses < ensembleQuorumSize {
 		r := <-ch
 
 		totalResponses++
@@ -576,7 +576,7 @@ func (s *shardController) newTermQuorum() (map[model.ServerAddress]*proto.EntryI
 
 	// If we have already reached a quorum of successful responses, we can wait a
 	// tiny bit more, to allow time for all the "healthy" nodes to respond.
-	for err == nil && totalResponses < fencingQuorumSize {
+	for err == nil && totalResponses < ensembleQuorumSize {
 		select {
 		case r := <-ch:
 			totalResponses++
