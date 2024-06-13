@@ -368,6 +368,7 @@ func (s *shardController) electLeader() error {
 
 func (s *shardController) deletingRemovedNodes() error {
 	for _, ds := range s.shardMetadata.RemovedNodes {
+		// todo: merge to single request
 		if _, err := s.newTerm(s.ctx, ds); err != nil {
 			return err
 		}
