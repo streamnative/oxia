@@ -860,24 +860,6 @@ func (s *shardController) waitForFollowersToCatchUp(ctx context.Context, leader 
 	return nil
 }
 
-func listContains(list []model.ServerAddress, sa model.ServerAddress) bool {
-	for _, item := range list {
-		if item.Public == sa.Public && item.Internal == sa.Internal {
-			return true
-		}
-	}
-
-	return false
-}
-
-func mergeLists[T any](lists ...[]T) []T {
-	var res []T
-	for _, list := range lists {
-		res = append(res, list...)
-	}
-	return res
-}
-
 func replaceInList(list []model.ServerAddress, oldServerAddress, newServerAddress model.ServerAddress) []model.ServerAddress {
 	var res []model.ServerAddress
 	for _, item := range list {
