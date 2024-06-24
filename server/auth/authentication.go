@@ -41,7 +41,7 @@ type Options struct {
 }
 
 func (op *Options) IsEnabled() bool {
-	return op.ProviderName != ""
+	return op != nil && op.ProviderName != ""
 }
 
 // todo: add metrics

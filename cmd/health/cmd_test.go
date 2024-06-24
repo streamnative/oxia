@@ -16,6 +16,7 @@ package health
 
 import (
 	"fmt"
+	"github.com/streamnative/oxia/server/auth"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -32,7 +33,7 @@ func TestHealthCmd(t *testing.T) {
 	_health := health.NewServer()
 	server, err := container.Default.StartGrpcServer("health", "localhost:0", func(registrar grpc.ServiceRegistrar) {
 		grpc_health_v1.RegisterHealthServer(registrar, _health)
-	}, nil, nil)
+	}, nil, &auth.Options{})
 	assert.NoError(t, err)
 	defer func() {
 		_ = server.Close()
