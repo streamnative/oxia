@@ -16,6 +16,7 @@ package server
 
 import (
 	"context"
+	"github.com/streamnative/oxia/server/auth"
 	"log/slog"
 	"path/filepath"
 
@@ -85,7 +86,7 @@ func NewStandalone(config StandaloneConfig) (*Standalone, error) {
 	}
 
 	s.rpc, err = newPublicRpcServer(container.Default, config.PublicServiceAddr, s.shardsDirector,
-		nil, config.ServerTLS)
+		nil, config.ServerTLS, &auth.Disabled)
 	if err != nil {
 		return nil, err
 	}

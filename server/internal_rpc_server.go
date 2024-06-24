@@ -18,6 +18,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"github.com/streamnative/oxia/server/auth"
 	"io"
 	"log/slog"
 
@@ -61,7 +62,7 @@ func newInternalRpcServer(grpcProvider container.GrpcProvider, bindAddress strin
 		proto.RegisterOxiaCoordinationServer(registrar, server)
 		proto.RegisterOxiaLogReplicationServer(registrar, server)
 		grpc_health_v1.RegisterHealthServer(registrar, server.healthServer)
-	}, tlsConf)
+	}, tlsConf, &auth.Disabled)
 	if err != nil {
 		return nil, err
 	}

@@ -17,6 +17,7 @@ package container
 import (
 	"context"
 	"crypto/tls"
+	"github.com/streamnative/oxia/server/auth"
 	"io"
 	"log/slog"
 	"net"
@@ -44,7 +45,7 @@ type GrpcServer interface {
 }
 
 type GrpcProvider interface {
-	StartGrpcServer(name, bindAddress string, registerFunc func(grpc.ServiceRegistrar), tlsConf *tls.Config) (GrpcServer, error)
+	StartGrpcServer(name, bindAddress string, registerFunc func(grpc.ServiceRegistrar), tlsConf *tls.Config, options *auth.Options) (GrpcServer, error)
 }
 
 var Default = &defaultProvider{}
@@ -52,8 +53,8 @@ var Default = &defaultProvider{}
 type defaultProvider struct {
 }
 
-func (*defaultProvider) StartGrpcServer(name, bindAddress string, registerFunc func(grpc.ServiceRegistrar), tlsConf *tls.Config) (GrpcServer, error) {
-	return newDefaultGrpcProvider(name, bindAddress, registerFunc, tlsConf)
+func (*defaultProvider) StartGrpcServer(name, bindAddress string, registerFunc func(grpc.ServiceRegistrar), tlsConf *tls.Config, options *auth.Options) (GrpcServer, error) {
+	return newDefaultGrpcProvider(name, bindAddress, registerFunc, tlsConf, options)
 }
 
 type defaultGrpcServer struct {
@@ -64,16 +65,41 @@ type defaultGrpcServer struct {
 }
 
 func newDefaultGrpcProvider(name, bindAddress string, registerFunc func(grpc.ServiceRegistrar),
-	tlsConf *tls.Config) (GrpcServer, error) {
+	tlsConf *tls.Config, authOptions *auth.Options) (GrpcServer, error) {
 	tcs := insecure.NewCredentials()
 	if tlsConf != nil {
 		tcs = credentials.NewTLS(tlsConf)
 	}
+	streamInterceptors := []grpc.StreamServerInterceptor{
+		grpcprometheus.StreamServerInterceptor,
+	}
+	unaryInterceptors := []grpc.UnaryServerInterceptor{
+		grpcprometheus.UnaryServerInterceptor,
+	}
+	if authOptions.IsEnabled() {
+		provider, err := auth.NewAuthenticationProvider(context.Background(), *authOptions)
+		if err != nil {
+			slog.Error("Failed to init authentication provider",
+				slog.Any("authOptions", *authOptions),
+				slog.Any("error", err))
+			return nil, err
+		}
+		delegator, err := auth.NewGrpcAuthenticationDelegator(provider)
+		if err != nil {
+			slog.Error("Failed to init grpc authentication delegator",
+				slog.Any("authOptions", *authOptions),
+				slog.Any("error", err))
+			return nil, err
+		}
+		unaryInterceptors = append(unaryInterceptors, delegator.GetUnaryInterceptor())
+		streamInterceptors = append(streamInterceptors, delegator.GetStreamInterceptor())
+	}
+
 	c := &defaultGrpcServer{
 		server: grpc.NewServer(
 			grpc.Creds(tcs),
-			grpc.ChainStreamInterceptor(grpcprometheus.StreamServerInterceptor),
-			grpc.ChainUnaryInterceptor(grpcprometheus.UnaryServerInterceptor),
+			grpc.ChainStreamInterceptor(streamInterceptors...),
+			grpc.ChainUnaryInterceptor(unaryInterceptors...),
 			grpc.MaxRecvMsgSize(maxGrpcFrameSize),
 		),
 	}
