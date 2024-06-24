@@ -16,9 +16,10 @@ package server
 
 import (
 	"crypto/tls"
-	"github.com/streamnative/oxia/server/auth"
 	"log/slog"
 	"time"
+
+	"github.com/streamnative/oxia/server/auth"
 
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/health"

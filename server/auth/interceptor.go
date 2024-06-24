@@ -3,13 +3,14 @@ package auth
 import (
 	"context"
 	"errors"
+	"log/slog"
+	"strings"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
-	"log/slog"
-	"strings"
 )
 
 const (

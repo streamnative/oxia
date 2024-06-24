@@ -18,9 +18,10 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"github.com/streamnative/oxia/server/auth"
 	"io"
 	"log/slog"
+
+	"github.com/streamnative/oxia/server/auth"
 
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"

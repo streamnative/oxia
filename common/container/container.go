@@ -17,11 +17,12 @@ package container
 import (
 	"context"
 	"crypto/tls"
-	"github.com/streamnative/oxia/server/auth"
 	"io"
 	"log/slog"
 	"net"
 	"os"
+
+	"github.com/streamnative/oxia/server/auth"
 
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"

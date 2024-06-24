@@ -22,6 +22,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/streamnative/oxia/oxia/auth"
+
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -48,14 +50,16 @@ type clientPool struct {
 	sync.RWMutex
 	connections map[string]grpc.ClientConnInterface
 
-	tls *tls.Config
-	log *slog.Logger
+	tls            *tls.Config
+	authentication auth.Authentication
+	log            *slog.Logger
 }
 
-func NewClientPool(tlsConf *tls.Config) ClientPool {
+func NewClientPool(tlsConf *tls.Config, authentication auth.Authentication) ClientPool {
 	return &clientPool{
-		connections: make(map[string]grpc.ClientConnInterface),
-		tls:         tlsConf,
+		connections:    make(map[string]grpc.ClientConnInterface),
+		tls:            tlsConf,
+		authentication: authentication,
 		log: slog.With(
 			slog.String("component", "client-pool"),
 		),
@@ -142,11 +146,15 @@ func (cp *clientPool) getConnection(target string) (grpc.ClientConnInterface, er
 		tcs = credentials.NewTLS(cp.tls)
 	}
 
-	cnx, err := grpc.NewClient(target,
+	options := []grpc.DialOption{
 		grpc.WithTransportCredentials(tcs),
 		grpc.WithStreamInterceptor(grpcprometheus.StreamClientInterceptor),
 		grpc.WithUnaryInterceptor(grpcprometheus.UnaryClientInterceptor),
-	)
+	}
+	if cp.authentication != nil {
+		options = append(options, grpc.WithPerRPCCredentials(cp.authentication))
+	}
+	cnx, err := grpc.NewClient(target, options...)
 	if err != nil {
 		return nil, errors.Wrapf(err, "error connecting to %s", target)
 	}

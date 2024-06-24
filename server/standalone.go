@@ -16,9 +16,10 @@ package server
 
 import (
 	"context"
-	"github.com/streamnative/oxia/server/auth"
 	"log/slog"
 	"path/filepath"
+
+	"github.com/streamnative/oxia/server/auth"
 
 	"go.uber.org/multierr"
 

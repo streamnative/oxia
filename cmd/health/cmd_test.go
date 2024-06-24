@@ -32,7 +32,7 @@ func TestHealthCmd(t *testing.T) {
 	_health := health.NewServer()
 	server, err := container.Default.StartGrpcServer("health", "localhost:0", func(registrar grpc.ServiceRegistrar) {
 		grpc_health_v1.RegisterHealthServer(registrar, _health)
-	}, nil)
+	}, nil, nil)
 	assert.NoError(t, err)
 	defer func() {
 		_ = server.Close()

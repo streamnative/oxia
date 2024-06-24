@@ -23,6 +23,8 @@ import (
 	"os"
 	"sync"
 
+	"github.com/streamnative/oxia/server/auth"
+
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
@@ -53,7 +55,7 @@ func newMaelstromGrpcProvider() *maelstromGrpcProvider {
 }
 
 func (m *maelstromGrpcProvider) StartGrpcServer(name, _ string, registerFunc func(grpc.ServiceRegistrar),
-	_ *tls.Config) (container.GrpcServer, error) {
+	_ *tls.Config, _ *auth.Options) (container.GrpcServer, error) {
 	slog.Info(
 		"Start Grpc server",
 		slog.String("name", name),

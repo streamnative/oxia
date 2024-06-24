@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"github.com/coreos/go-oidc/v3/oidc"
-	"github.com/pkg/errors"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -58,11 +59,11 @@ type OIDCProvider struct {
 	providers map[string]*ProviderWithVerifier
 }
 
-func (p *OIDCProvider) AcceptParamType() string {
+func (*OIDCProvider) AcceptParamType() string {
 	return ProviderParamTypeToken
 }
 
-func (p *OIDCProvider) Authenticate(ctx context.Context, param interface{}) (string, error) {
+func (p *OIDCProvider) Authenticate(ctx context.Context, param any) (string, error) {
 	token, ok := param.(string)
 	if !ok {
 		return "", ErrUnMatchedAuthenticationParamType

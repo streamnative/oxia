@@ -16,6 +16,7 @@ package coordinator
 
 import (
 	"crypto/tls"
+
 	"github.com/streamnative/oxia/server/auth"
 
 	"google.golang.org/grpc"

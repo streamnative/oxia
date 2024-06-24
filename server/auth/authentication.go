@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+
 	"github.com/pkg/errors"
 )
 
@@ -12,10 +13,10 @@ const (
 )
 
 var (
-	ErrUnsupportedProvider              = errors.New("Unsupported authentication provider.")
-	ErrUnMatchedAuthenticationParamType = errors.New("Unmatched authentication parameter type.")
-	ErrEmptyToken                       = errors.New("Empty token")
-	ErrMalformedToken                   = errors.New("Malformed token")
+	ErrUnsupportedProvider              = errors.New("unsupported authentication provider")
+	ErrUnMatchedAuthenticationParamType = errors.New("unmatched authentication parameter type")
+	ErrEmptyToken                       = errors.New("empty token")
+	ErrMalformedToken                   = errors.New("malformed token")
 )
 
 var Disabled = Options{}
@@ -32,7 +33,7 @@ func (op *Options) IsEnabled() bool {
 // todo: add metrics
 type AuthenticationProvider interface {
 	AcceptParamType() string
-	Authenticate(ctx context.Context, param interface{}) (string, error)
+	Authenticate(ctx context.Context, param any) (string, error)
 }
 
 func NewAuthenticationProvider(ctx context.Context, options Options) (AuthenticationProvider, error) {
