@@ -111,6 +111,10 @@ func newOxiaClusterWithAuth(t *testing.T, issueURL string, audiences string) (ad
 	assert.NoError(t, err)
 
 	return s1Addr.Public, func() {
+		s1.Close()
+		s1.Close()
+		s3.Close()
+
 		clientPool.Close()
 		coordinator.Close()
 	}
