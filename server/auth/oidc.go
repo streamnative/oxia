@@ -136,6 +136,7 @@ func NewOIDCProvider(ctx context.Context, jsonParam string) (AuthenticationProvi
 	oidcProvider := &OIDCProvider{
 		userNameClaim:    oidcParams.UserNameClaim,
 		allowedAudiences: allowedAudienceMap,
+		providers:        make(map[string]*ProviderWithVerifier),
 	}
 
 	ctx = oidc.ClientContext(ctx, &http.Client{Timeout: 30 * time.Second})
