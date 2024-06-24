@@ -131,7 +131,7 @@ outer:
 	return res
 }
 
-func getShardsPerServer(servers []model.ServerAddress, currentStatus *model.ClusterStatus) ( 
+func getShardsPerServer(servers []model.ServerAddress, currentStatus *model.ClusterStatus) (
 	existingServers map[model.ServerAddress]common.Set[int64],
 	deletedServers map[model.ServerAddress]common.Set[int64]) {
 	existingServers = map[model.ServerAddress]common.Set[int64]{}

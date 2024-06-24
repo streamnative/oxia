@@ -198,7 +198,7 @@ func (lc *leaderController) Term() int64 {
 //
 // Any existing follow cursors are destroyed as is any state
 // regarding reconfigurations.
-func (lc *leaderController) NewTerm(req *proto.NewTermRequest) (*proto.NewTermResponse, error) { 
+func (lc *leaderController) NewTerm(req *proto.NewTermRequest) (*proto.NewTermResponse, error) {
 	lc.Lock()
 	defer lc.Unlock()
 

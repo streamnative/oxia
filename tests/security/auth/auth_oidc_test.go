@@ -3,23 +3,25 @@ package auth
 import (
 	"context"
 	"fmt"
+	"testing"
+	"time"
+
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/oauth2-proxy/mockoidc"
 	"github.com/pkg/errors"
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/coordinator/impl"
-	"github.com/streamnative/oxia/coordinator/model"
-	"github.com/streamnative/oxia/oxia"
-	clientAuth "github.com/streamnative/oxia/oxia/auth"
-	"github.com/streamnative/oxia/server"
-	"github.com/streamnative/oxia/server/auth"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/util/json"
-	"testing"
-	"time"
+
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/coordinator/impl"
+	"github.com/streamnative/oxia/coordinator/model"
+	"github.com/streamnative/oxia/oxia"
+	clientauth "github.com/streamnative/oxia/oxia/auth"
+	"github.com/streamnative/oxia/server"
+	"github.com/streamnative/oxia/server/auth"
 )
 
 func newOxiaClusterWithAuth(t *testing.T, issueURL string, audiences string) (address string, closeFunc func()) {
@@ -103,7 +105,9 @@ func newOxiaClusterWithAuth(t *testing.T, issueURL string, audiences string) (ad
 func TestOIDCWithStaticToken(t *testing.T) {
 	mockOIDC, err := mockoidc.Run()
 	assert.NoError(t, err)
-	defer mockOIDC.Shutdown()
+	defer func(mockOIDC *mockoidc.MockOIDC) {
+		_ = mockOIDC.Shutdown()
+	}(mockOIDC)
 
 	audience := generateRandomStr(t)
 	audience2 := generateRandomStr(t)
@@ -125,22 +129,22 @@ func TestOIDCWithStaticToken(t *testing.T) {
 	defer clusterCloseFunc()
 
 	// assert connection failed with empty token
-	client, err := oxia.NewSyncClient(addr)
+	_, err = oxia.NewSyncClient(addr)
 	assert.Equal(t, codes.Unauthenticated, status.Code(errors.Unwrap(err)))
 
 	// assert connection failed with malformed token
-	client, err = oxia.NewSyncClient(addr,
-		oxia.WithAuthentication(clientAuth.NewTokenAuthenticationWithToken("wrongToken", false)))
+	_, err = oxia.NewSyncClient(addr,
+		oxia.WithAuthentication(clientauth.NewTokenAuthenticationWithToken("wrongToken", false)))
 	assert.Equal(t, codes.Unauthenticated, status.Code(errors.Unwrap(err)))
 
 	// assert connection failed with unknown issue
-	client, err = oxia.NewSyncClient(addr,
-		oxia.WithAuthentication(clientAuth.NewTokenAuthenticationWithToken(illegalToken, false)))
+	_, err = oxia.NewSyncClient(addr,
+		oxia.WithAuthentication(clientauth.NewTokenAuthenticationWithToken(illegalToken, false)))
 	assert.Equal(t, codes.Unauthenticated, status.Code(errors.Unwrap(err)))
 
 	cutToken := signedToken[5:]
-	client, err = oxia.NewSyncClient(addr,
-		oxia.WithAuthentication(clientAuth.NewTokenAuthenticationWithToken(cutToken, false)))
+	_, err = oxia.NewSyncClient(addr,
+		oxia.WithAuthentication(clientauth.NewTokenAuthenticationWithToken(cutToken, false)))
 	assert.Equal(t, codes.Unauthenticated, status.Code(errors.Unwrap(err)))
 
 	// assert connection failed with expired token
@@ -155,20 +159,21 @@ func TestOIDCWithStaticToken(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	time.Sleep(3 * time.Second)
-	client, err = oxia.NewSyncClient(addr,
-		oxia.WithAuthentication(clientAuth.NewTokenAuthenticationWithToken(expiredToken, false)))
+	_, err = oxia.NewSyncClient(addr,
+		oxia.WithAuthentication(clientauth.NewTokenAuthenticationWithToken(expiredToken, false)))
 	assert.Equal(t, codes.Unauthenticated, status.Code(errors.Unwrap(err)))
 
 	// assert connection success with correct token
-	client, err = oxia.NewSyncClient(addr,
-		oxia.WithAuthentication(clientAuth.NewTokenAuthenticationWithToken(signedToken, false)))
+	client, err := oxia.NewSyncClient(addr,
+		oxia.WithAuthentication(clientauth.NewTokenAuthenticationWithToken(signedToken, false)))
 	assert.NoError(t, err)
 	ctx := context.Background()
 	key := "hi"
 	payload := []byte("matt")
 	_, pVersion, err := client.Put(ctx, key, payload)
 	assert.NoError(t, err)
-	key, gValue, gVersion, err := client.Get(ctx, key)
+	_, gValue, gVersion, err := client.Get(ctx, key)
+	assert.NoError(t, err)
 	assert.Equal(t, pVersion, gVersion)
 	assert.Equal(t, gValue, payload)
 	client.Close()
