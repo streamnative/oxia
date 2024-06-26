@@ -241,7 +241,8 @@ func isErrorRetryable(err error) bool {
 	switch status.Code(err) {
 	case common.CodeNamespaceNotFound:
 		return false
-
+	case codes.Unauthenticated:
+		return false
 	default:
 		return true
 	}

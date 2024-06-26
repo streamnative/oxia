@@ -19,6 +19,8 @@ import (
 	"log/slog"
 	"path/filepath"
 
+	"github.com/streamnative/oxia/server/auth"
+
 	"go.uber.org/multierr"
 
 	"github.com/streamnative/oxia/common"
@@ -85,7 +87,7 @@ func NewStandalone(config StandaloneConfig) (*Standalone, error) {
 	}
 
 	s.rpc, err = newPublicRpcServer(container.Default, config.PublicServiceAddr, s.shardsDirector,
-		nil, config.ServerTLS)
+		nil, config.ServerTLS, &auth.Disabled)
 	if err != nil {
 		return nil, err
 	}

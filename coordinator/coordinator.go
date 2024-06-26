@@ -90,7 +90,7 @@ func New(config Config) (*Coordinator, error) {
 	)
 
 	s := &Coordinator{
-		clientPool: common.NewClientPool(config.PeerTLS),
+		clientPool: common.NewClientPool(config.PeerTLS, nil),
 	}
 
 	var metadataProvider impl.MetadataProvider

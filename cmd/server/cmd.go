@@ -43,6 +43,8 @@ var (
 )
 
 func init() {
+	Cmd.Flags().SortFlags = false
+
 	flag.PublicAddr(Cmd, &conf.PublicServiceAddr)
 	flag.InternalAddr(Cmd, &conf.InternalServiceAddr)
 	flag.MetricsAddr(Cmd, &conf.MetricsServiceAddr)
@@ -52,6 +54,8 @@ func init() {
 	Cmd.Flags().BoolVar(&conf.WalSyncData, "wal-sync-data", true, "Whether to sync data in write-ahead-log")
 	Cmd.Flags().Int64Var(&conf.DbBlockCacheMB, "db-cache-size-mb", kv.DefaultFactoryOptions.CacheSizeMB,
 		"Max size of the shared DB cache")
+	Cmd.Flags().StringVar(&conf.AuthOptions.ProviderName, "auth-provider-name", "", "Authentication provider name. supported: oidc")
+	Cmd.Flags().StringVar(&conf.AuthOptions.ProviderParams, "auth-provider-params", "", "Authentication provider params. \n oidc: "+"{\"allowedIssueURLs\":\"required1,required2\",\"allowedAudiences\":\"required1,required2\",\"userNameClaim\":\"optional(default:sub)\"}")
 
 	// server TLS section
 	Cmd.Flags().StringVar(&serverTLS.CertFile, "tls-cert-file", "", "Tls certificate file")

@@ -18,6 +18,8 @@ import (
 	"crypto/tls"
 	"time"
 
+	"github.com/streamnative/oxia/oxia/auth"
+
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel"
@@ -46,6 +48,7 @@ var (
 	ErrInvalidOptionIdentity            = errors.New("Identity must be non-empty")
 	ErrInvalidOptionNamespace           = errors.New("Namespace cannot be empty")
 	ErrInvalidOptionTLS                 = errors.New("Tls cannot be empty")
+	ErrInvalidOptionAuthentication      = errors.New("Authentication cannot be empty")
 )
 
 // clientOptions contains options for the Oxia client.
@@ -60,6 +63,7 @@ type clientOptions struct {
 	sessionTimeout      time.Duration
 	identity            string
 	tls                 *tls.Config
+	authentication      auth.Authentication
 }
 
 func defaultIdentity() string {
@@ -196,6 +200,16 @@ func WithTLS(tlsConf *tls.Config) ClientOption {
 			return options, ErrInvalidOptionTLS
 		}
 		options.tls = tlsConf
+		return options, nil
+	})
+}
+
+func WithAuthentication(authentication auth.Authentication) ClientOption {
+	return clientOptionFunc(func(options clientOptions) (clientOptions, error) {
+		if authentication == nil {
+			return options, ErrInvalidOptionAuthentication
+		}
+		options.authentication = authentication
 		return options, nil
 	})
 }

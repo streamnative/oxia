@@ -63,7 +63,7 @@ func init() {
 }
 
 func exec(*cobra.Command, []string) error {
-	clientPool := common.NewClientPool(nil)
+	clientPool := common.NewClientPool(nil, nil)
 
 	serverAddress := fmt.Sprintf("%s:%d", config.Host, config.Port)
 

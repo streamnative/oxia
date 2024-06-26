@@ -68,7 +68,7 @@ func TestCoordinatorE2E(t *testing.T) {
 		}},
 		Servers: []model.ServerAddress{sa1, sa2, sa3},
 	}
-	clientPool := common.NewClientPool(nil)
+	clientPool := common.NewClientPool(nil, nil)
 
 	coordinator, err := NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, NewRpcProvider(clientPool))
 
@@ -106,7 +106,7 @@ func TestCoordinatorE2E_ShardsRanges(t *testing.T) {
 		}},
 		Servers: []model.ServerAddress{sa1, sa2, sa3},
 	}
-	clientPool := common.NewClientPool(nil)
+	clientPool := common.NewClientPool(nil, nil)
 
 	coordinator, err := NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, NewRpcProvider(clientPool))
 	assert.NoError(t, err)
@@ -159,7 +159,7 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 		}},
 		Servers: []model.ServerAddress{sa1, sa2, sa3},
 	}
-	clientPool := common.NewClientPool(nil)
+	clientPool := common.NewClientPool(nil, nil)
 
 	coordinator, err := NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, NewRpcProvider(clientPool))
 	assert.NoError(t, err)
@@ -263,7 +263,7 @@ func TestCoordinator_MultipleNamespaces(t *testing.T) {
 		}},
 		Servers: []model.ServerAddress{sa1, sa2, sa3},
 	}
-	clientPool := common.NewClientPool(nil)
+	clientPool := common.NewClientPool(nil, nil)
 
 	coordinator, err := NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, NewRpcProvider(clientPool))
 	assert.NoError(t, err)
@@ -354,7 +354,7 @@ func TestCoordinator_DeleteNamespace(t *testing.T) {
 		}},
 		Servers: []model.ServerAddress{sa1, sa2, sa3},
 	}
-	clientPool := common.NewClientPool(nil)
+	clientPool := common.NewClientPool(nil, nil)
 
 	coordinator, err := NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, NewRpcProvider(clientPool))
 	assert.NoError(t, err)
@@ -436,7 +436,7 @@ func TestCoordinator_DynamicallAddNamespace(t *testing.T) {
 		}},
 		Servers: []model.ServerAddress{sa1, sa2, sa3},
 	}
-	clientPool := common.NewClientPool(nil)
+	clientPool := common.NewClientPool(nil, nil)
 
 	configChangesCh := make(chan any)
 	configProvider := func() (model.ClusterConfig, error) {
@@ -524,7 +524,7 @@ func TestCoordinator_RebalanceCluster(t *testing.T) {
 		}},
 		Servers: []model.ServerAddress{sa1, sa2, sa3},
 	}
-	clientPool := common.NewClientPool(nil)
+	clientPool := common.NewClientPool(nil, nil)
 	mutex := &sync.Mutex{}
 
 	configProvider := func() (model.ClusterConfig, error) {
@@ -622,7 +622,7 @@ func TestCoordinator_AddRemoveNodes(t *testing.T) {
 		}},
 		Servers: []model.ServerAddress{sa1, sa2, sa3},
 	}
-	clientPool := common.NewClientPool(nil)
+	clientPool := common.NewClientPool(nil, nil)
 
 	configProvider := func() (model.ClusterConfig, error) {
 		return clusterConfig, nil
@@ -684,7 +684,7 @@ func TestCoordinator_ShrinkCluster(t *testing.T) {
 		}},
 		Servers: []model.ServerAddress{sa1, sa2, sa3, sa4},
 	}
-	clientPool := common.NewClientPool(nil)
+	clientPool := common.NewClientPool(nil, nil)
 
 	configProvider := func() (model.ClusterConfig, error) {
 		return clusterConfig, nil

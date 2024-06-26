@@ -42,7 +42,7 @@ type replicationRpcProvider struct {
 
 func NewReplicationRpcProvider(tlsConf *tls.Config) ReplicationRpcProvider {
 	return &replicationRpcProvider{
-		pool: common.NewClientPool(tlsConf),
+		pool: common.NewClientPool(tlsConf, nil),
 	}
 }
 

@@ -132,7 +132,7 @@ func TestClusterHandshakeSuccess(t *testing.T) {
 	tlsConf, err := option.MakeClientTLSConf()
 	assert.NoError(t, err)
 
-	clientPool := common.NewClientPool(tlsConf)
+	clientPool := common.NewClientPool(tlsConf, nil)
 	defer clientPool.Close()
 
 	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, impl.NewRpcProvider(clientPool))
@@ -162,7 +162,7 @@ func TestClientHandshakeFailByNoTlsConfig(t *testing.T) {
 	tlsConf, err := option.MakeClientTLSConf()
 	assert.NoError(t, err)
 
-	clientPool := common.NewClientPool(tlsConf)
+	clientPool := common.NewClientPool(tlsConf, nil)
 	defer clientPool.Close()
 
 	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, impl.NewRpcProvider(clientPool))
@@ -196,7 +196,7 @@ func TestClientHandshakeByAuthFail(t *testing.T) {
 	tlsConf, err := option.MakeClientTLSConf()
 	assert.NoError(t, err)
 
-	clientPool := common.NewClientPool(tlsConf)
+	clientPool := common.NewClientPool(tlsConf, nil)
 	defer clientPool.Close()
 
 	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, impl.NewRpcProvider(clientPool))
@@ -236,7 +236,7 @@ func TestClientHandshakeWithInsecure(t *testing.T) {
 	tlsConf, err := option.MakeClientTLSConf()
 	assert.NoError(t, err)
 
-	clientPool := common.NewClientPool(tlsConf)
+	clientPool := common.NewClientPool(tlsConf, nil)
 	defer clientPool.Close()
 
 	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, impl.NewRpcProvider(clientPool))
@@ -277,7 +277,7 @@ func TestClientHandshakeSuccess(t *testing.T) {
 	tlsConf, err := option.MakeClientTLSConf()
 	assert.NoError(t, err)
 
-	clientPool := common.NewClientPool(tlsConf)
+	clientPool := common.NewClientPool(tlsConf, nil)
 	defer clientPool.Close()
 
 	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, impl.NewRpcProvider(clientPool))
@@ -314,7 +314,7 @@ func TestOnlyEnablePublicTls(t *testing.T) {
 		}},
 		Servers: []model.ServerAddress{sa1, sa2, sa3},
 	}
-	clientPool := common.NewClientPool(nil)
+	clientPool := common.NewClientPool(nil, nil)
 	defer clientPool.Close()
 
 	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, impl.NewRpcProvider(clientPool))

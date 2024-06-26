@@ -21,6 +21,8 @@ import (
 	"io"
 	"log/slog"
 
+	"github.com/streamnative/oxia/server/auth"
+
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -61,7 +63,7 @@ func newInternalRpcServer(grpcProvider container.GrpcProvider, bindAddress strin
 		proto.RegisterOxiaCoordinationServer(registrar, server)
 		proto.RegisterOxiaLogReplicationServer(registrar, server)
 		grpc_health_v1.RegisterHealthServer(registrar, server.healthServer)
-	}, tlsConf)
+	}, tlsConf, &auth.Disabled)
 	if err != nil {
 		return nil, err
 	}

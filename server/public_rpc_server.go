@@ -19,6 +19,8 @@ import (
 	"crypto/tls"
 	"log/slog"
 
+	"github.com/streamnative/oxia/server/auth"
+
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
@@ -45,7 +47,7 @@ type publicRpcServer struct {
 }
 
 func newPublicRpcServer(provider container.GrpcProvider, bindAddress string, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher,
-	tlsConf *tls.Config) (*publicRpcServer, error) {
+	tlsConf *tls.Config, options *auth.Options) (*publicRpcServer, error) {
 	server := &publicRpcServer{
 		shardsDirector:       shardsDirector,
 		assignmentDispatcher: assignmentDispatcher,
@@ -57,7 +59,7 @@ func newPublicRpcServer(provider container.GrpcProvider, bindAddress string, sha
 	var err error
 	server.grpcServer, err = provider.StartGrpcServer("public", bindAddress, func(registrar grpc.ServiceRegistrar) {
 		proto.RegisterOxiaClientServer(registrar, server)
-	}, tlsConf)
+	}, tlsConf, options)
 	if err != nil {
 		return nil, err
 	}

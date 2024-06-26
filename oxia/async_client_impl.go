@@ -65,7 +65,7 @@ func NewAsyncClient(serviceAddress string, opts ...ClientOption) (AsyncClient, e
 		return nil, err
 	}
 
-	clientPool := common.NewClientPool(options.tls)
+	clientPool := common.NewClientPool(options.tls, options.authentication)
 
 	shardManager, err := internal.NewShardManager(internal.NewShardStrategy(), clientPool, serviceAddress,
 		options.namespace, options.requestTimeout)

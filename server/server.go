@@ -19,6 +19,8 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/streamnative/oxia/server/auth"
+
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/health"
 
@@ -35,8 +37,11 @@ type Config struct {
 	ServerTLS           *tls.Config
 	InternalServerTLS   *tls.Config
 	MetricsServiceAddr  string
-	DataDir             string
-	WalDir              string
+
+	AuthOptions auth.Options
+
+	DataDir string
+	WalDir  string
 
 	WalRetentionTime           time.Duration
 	WalSyncData                bool
@@ -99,7 +104,7 @@ func NewWithGrpcProvider(config Config, provider container.GrpcProvider, replica
 	}
 
 	s.publicRpcServer, err = newPublicRpcServer(provider, config.PublicServiceAddr, s.shardsDirector,
-		s.shardAssignmentDispatcher, config.ServerTLS)
+		s.shardAssignmentDispatcher, config.ServerTLS, &config.AuthOptions)
 	if err != nil {
 		return nil, err
 	}
