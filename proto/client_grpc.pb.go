@@ -37,7 +37,15 @@ type OxiaClientClient interface {
 	//
 	// Clients should send this request to the shard leader. In the future,
 	// this may be handled server-side in a proxy layer.
+	//
+	// Deprecated
 	Write(ctx context.Context, in *WriteRequest, opts ...grpc.CallOption) (*WriteResponse, error)
+	// *
+	// Batches put, delete and delete_range requests.
+	//
+	// Clients should send this request to the shard leader. In the future,
+	// this may be handled server-side in a proxy layer.
+	WriteStream(ctx context.Context, opts ...grpc.CallOption) (OxiaClient_WriteStreamClient, error)
 	// *
 	// Batches get requests.
 	//
@@ -115,8 +123,39 @@ func (c *oxiaClientClient) Write(ctx context.Context, in *WriteRequest, opts ...
 	return out, nil
 }
 
+func (c *oxiaClientClient) WriteStream(ctx context.Context, opts ...grpc.CallOption) (OxiaClient_WriteStreamClient, error) {
+	stream, err := c.cc.NewStream(ctx, &OxiaClient_ServiceDesc.Streams[1], "/io.streamnative.oxia.proto.OxiaClient/WriteStream", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &oxiaClientWriteStreamClient{stream}
+	return x, nil
+}
+
+type OxiaClient_WriteStreamClient interface {
+	Send(*WriteRequest) error
+	Recv() (*WriteResponse, error)
+	grpc.ClientStream
+}
+
+type oxiaClientWriteStreamClient struct {
+	grpc.ClientStream
+}
+
+func (x *oxiaClientWriteStreamClient) Send(m *WriteRequest) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *oxiaClientWriteStreamClient) Recv() (*WriteResponse, error) {
+	m := new(WriteResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 func (c *oxiaClientClient) Read(ctx context.Context, in *ReadRequest, opts ...grpc.CallOption) (OxiaClient_ReadClient, error) {
-	stream, err := c.cc.NewStream(ctx, &OxiaClient_ServiceDesc.Streams[1], "/io.streamnative.oxia.proto.OxiaClient/Read", opts...)
+	stream, err := c.cc.NewStream(ctx, &OxiaClient_ServiceDesc.Streams[2], "/io.streamnative.oxia.proto.OxiaClient/Read", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +187,7 @@ func (x *oxiaClientReadClient) Recv() (*ReadResponse, error) {
 }
 
 func (c *oxiaClientClient) List(ctx context.Context, in *ListRequest, opts ...grpc.CallOption) (OxiaClient_ListClient, error) {
-	stream, err := c.cc.NewStream(ctx, &OxiaClient_ServiceDesc.Streams[2], "/io.streamnative.oxia.proto.OxiaClient/List", opts...)
+	stream, err := c.cc.NewStream(ctx, &OxiaClient_ServiceDesc.Streams[3], "/io.streamnative.oxia.proto.OxiaClient/List", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +219,7 @@ func (x *oxiaClientListClient) Recv() (*ListResponse, error) {
 }
 
 func (c *oxiaClientClient) RangeScan(ctx context.Context, in *RangeScanRequest, opts ...grpc.CallOption) (OxiaClient_RangeScanClient, error) {
-	stream, err := c.cc.NewStream(ctx, &OxiaClient_ServiceDesc.Streams[3], "/io.streamnative.oxia.proto.OxiaClient/RangeScan", opts...)
+	stream, err := c.cc.NewStream(ctx, &OxiaClient_ServiceDesc.Streams[4], "/io.streamnative.oxia.proto.OxiaClient/RangeScan", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -212,7 +251,7 @@ func (x *oxiaClientRangeScanClient) Recv() (*RangeScanResponse, error) {
 }
 
 func (c *oxiaClientClient) GetNotifications(ctx context.Context, in *NotificationsRequest, opts ...grpc.CallOption) (OxiaClient_GetNotificationsClient, error) {
-	stream, err := c.cc.NewStream(ctx, &OxiaClient_ServiceDesc.Streams[4], "/io.streamnative.oxia.proto.OxiaClient/GetNotifications", opts...)
+	stream, err := c.cc.NewStream(ctx, &OxiaClient_ServiceDesc.Streams[5], "/io.streamnative.oxia.proto.OxiaClient/GetNotifications", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -289,7 +328,15 @@ type OxiaClientServer interface {
 	//
 	// Clients should send this request to the shard leader. In the future,
 	// this may be handled server-side in a proxy layer.
+	//
+	// Deprecated
 	Write(context.Context, *WriteRequest) (*WriteResponse, error)
+	// *
+	// Batches put, delete and delete_range requests.
+	//
+	// Clients should send this request to the shard leader. In the future,
+	// this may be handled server-side in a proxy layer.
+	WriteStream(OxiaClient_WriteStreamServer) error
 	// *
 	// Batches get requests.
 	//
@@ -328,6 +375,9 @@ func (UnimplementedOxiaClientServer) GetShardAssignments(*ShardAssignmentsReques
 }
 func (UnimplementedOxiaClientServer) Write(context.Context, *WriteRequest) (*WriteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Write not implemented")
+}
+func (UnimplementedOxiaClientServer) WriteStream(OxiaClient_WriteStreamServer) error {
+	return status.Errorf(codes.Unimplemented, "method WriteStream not implemented")
 }
 func (UnimplementedOxiaClientServer) Read(*ReadRequest, OxiaClient_ReadServer) error {
 	return status.Errorf(codes.Unimplemented, "method Read not implemented")
@@ -400,6 +450,32 @@ func _OxiaClient_Write_Handler(srv interface{}, ctx context.Context, dec func(in
 		return srv.(OxiaClientServer).Write(ctx, req.(*WriteRequest))
 	}
 	return interceptor(ctx, in, info, handler)
+}
+
+func _OxiaClient_WriteStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(OxiaClientServer).WriteStream(&oxiaClientWriteStreamServer{stream})
+}
+
+type OxiaClient_WriteStreamServer interface {
+	Send(*WriteResponse) error
+	Recv() (*WriteRequest, error)
+	grpc.ServerStream
+}
+
+type oxiaClientWriteStreamServer struct {
+	grpc.ServerStream
+}
+
+func (x *oxiaClientWriteStreamServer) Send(m *WriteResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *oxiaClientWriteStreamServer) Recv() (*WriteRequest, error) {
+	m := new(WriteRequest)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 func _OxiaClient_Read_Handler(srv interface{}, stream grpc.ServerStream) error {
@@ -569,6 +645,12 @@ var OxiaClient_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "GetShardAssignments",
 			Handler:       _OxiaClient_GetShardAssignments_Handler,
 			ServerStreams: true,
+		},
+		{
+			StreamName:    "WriteStream",
+			Handler:       _OxiaClient_WriteStream_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
 		},
 		{
 			StreamName:    "Read",

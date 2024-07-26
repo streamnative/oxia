@@ -296,3 +296,40 @@ func (m *mockBase) Context() context.Context {
 	}
 	return context.Background()
 }
+
+///////////////////////////////////
+
+func newMockWriteStream(ctx context.Context) *mockWriteStream {
+	r := &mockWriteStream{
+		requests: make(chan *proto.WriteRequest, 100),
+		response: make(chan *proto.WriteResponse, 100),
+	}
+
+	r.ctx, r.cancel = context.WithCancel(ctx)
+	return r
+}
+
+type mockWriteStream struct {
+	mockBase
+	requests chan *proto.WriteRequest
+	response chan *proto.WriteResponse
+	cancel   context.CancelFunc
+}
+
+func (m *mockWriteStream) Send(res *proto.WriteResponse) error {
+	select {
+	case <-m.ctx.Done():
+		return m.ctx.Err()
+	case m.response <- res:
+		return nil
+	}
+}
+
+func (m *mockWriteStream) Recv() (*proto.WriteRequest, error) {
+	return <-m.requests, nil
+}
+
+func (m *mockWriteStream) CloseSend() error {
+	m.cancel()
+	return nil
+}

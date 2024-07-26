@@ -45,6 +45,14 @@ func (l *loggingClientRpc) GetShardAssignments(ctx context.Context, in *proto.Sh
 	return res, err
 }
 
+func (l *loggingClientRpc) WriteStream(ctx context.Context, opts ...grpc.CallOption) (res proto.OxiaClient_WriteStreamClient, err error) {
+	if res, err = l.client.WriteStream(ctx, opts...); err != nil {
+		return nil, l.decorateErr(err)
+	}
+
+	return res, err
+}
+
 func (l *loggingClientRpc) Write(ctx context.Context, in *proto.WriteRequest, opts ...grpc.CallOption) (
 	res *proto.WriteResponse, err error) {
 	if res, err = l.client.Write(ctx, in, opts...); err != nil {
