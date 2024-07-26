@@ -856,34 +856,36 @@ func (lc *leaderController) WriteStream(stream proto.OxiaClient_WriteStreamServe
 func (lc *leaderController) handleWriteStream(stream proto.OxiaClient_WriteStreamServer,
 	wg common.WaitGroup) {
 	for {
-		if req, err := stream.Recv(); err != nil {
+		req, err := stream.Recv()
+
+		if err != nil {
 			wg.Fail(err)
 			return
 		} else if req == nil {
 			wg.Fail(errors.New("stream closed"))
 			return
-		} else {
-			slog.Debug("Got request in stream",
-				slog.Any("req", req))
+		}
 
-			offset, timestamp, err1 := lc.appendToWalStreamRequest(stream.Context(), req)
-			if err1 != nil {
-				wg.Fail(err1)
-				return
-			}
+		slog.Debug("Got request in stream",
+			slog.Any("req", req))
 
-			resp, err2 := lc.quorumAckTracker.WaitForCommitOffset(stream.Context(), offset, func() (*proto.WriteResponse, error) {
-				return lc.db.ProcessWrite(req, offset, timestamp, SessionUpdateOperationCallback)
-			})
-			if err2 != nil {
-				wg.Fail(err2)
-				return
-			}
+		offset, timestamp, err1 := lc.appendToWalStreamRequest(stream.Context(), req)
+		if err1 != nil {
+			wg.Fail(err1)
+			return
+		}
 
-			if err3 := stream.Send(resp); err3 != nil {
-				wg.Fail(err3)
-				return
-			}
+		resp, err2 := lc.quorumAckTracker.WaitForCommitOffset(stream.Context(), offset, func() (*proto.WriteResponse, error) {
+			return lc.db.ProcessWrite(req, offset, timestamp, SessionUpdateOperationCallback)
+		})
+		if err2 != nil {
+			wg.Fail(err2)
+			return
+		}
+
+		if err3 := stream.Send(resp); err3 != nil {
+			wg.Fail(err3)
+			return
 		}
 	}
 }
@@ -941,7 +943,7 @@ func (lc *leaderController) appendToWalStreamRequest(ctx context.Context, reques
 	return newOffset, timestamp, nil
 }
 
-//////
+// ////
 
 func (lc *leaderController) GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
 	// Create a context for handling this stream

@@ -17,9 +17,10 @@ package server
 import (
 	"context"
 	"crypto/tls"
-	"google.golang.org/grpc/metadata"
 	"io"
 	"log/slog"
+
+	"google.golang.org/grpc/metadata"
 
 	"github.com/streamnative/oxia/server/auth"
 

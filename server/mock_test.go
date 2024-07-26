@@ -297,7 +297,7 @@ func (m *mockBase) Context() context.Context {
 	return context.Background()
 }
 
-///////////////////////////////////
+// /////////////////////////////////
 
 func newMockWriteStream(ctx context.Context) *mockWriteStream {
 	r := &mockWriteStream{
