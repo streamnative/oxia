@@ -17,7 +17,10 @@ package server
 import (
 	"context"
 	"crypto/tls"
+	"io"
 	"log/slog"
+
+	"google.golang.org/grpc/metadata"
 
 	"github.com/streamnative/oxia/server/auth"
 
@@ -105,6 +108,47 @@ func (s *publicRpcServer) Write(ctx context.Context, write *proto.WriteRequest) 
 	}
 
 	return wr, err
+}
+
+func (s *publicRpcServer) WriteStream(stream proto.OxiaClient_WriteStreamServer) error {
+	// Add entries receives an incoming stream of request, the shard_id needs to be encoded
+	// as a property in the metadata
+	md, ok := metadata.FromIncomingContext(stream.Context())
+	if !ok {
+		return errors.New("shard id is not set in the request metadata")
+	}
+
+	shardId, err := ReadHeaderInt64(md, common.MetadataShardId)
+	if err != nil {
+		return err
+	}
+
+	namespace, err := readHeader(md, common.MetadataNamespace)
+	if err != nil {
+		return err
+	}
+
+	log := s.log.With(
+		slog.Int64("shard", shardId),
+		slog.String("namespace", namespace),
+		slog.String("peer", common.GetPeer(stream.Context())),
+	)
+
+	log.Debug("Write Stream request")
+
+	lc, err := s.getLeader(shardId)
+	if err != nil {
+		return err
+	}
+
+	err = lc.WriteStream(stream)
+	if err != nil && !errors.Is(err, io.EOF) {
+		log.Warn(
+			"Write stream failed",
+			slog.Any("error", err),
+		)
+	}
+	return err
 }
 
 //nolint:revive

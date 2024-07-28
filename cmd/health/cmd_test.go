@@ -16,8 +16,9 @@ package health
 
 import (
 	"fmt"
-	"github.com/streamnative/oxia/server/auth"
 	"testing"
+
+	"github.com/streamnative/oxia/server/auth"
 
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc"

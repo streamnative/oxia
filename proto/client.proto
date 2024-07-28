@@ -50,8 +50,18 @@ service OxiaClient {
    *
    * Clients should send this request to the shard leader. In the future,
    * this may be handled server-side in a proxy layer.
+   *
+   * Deprecated
    */
   rpc Write(WriteRequest) returns (WriteResponse);
+
+  /**
+   * Batches put, delete and delete_range requests.
+   *
+   * Clients should send this request to the shard leader. In the future,
+   * this may be handled server-side in a proxy layer.
+   */
+  rpc WriteStream(stream WriteRequest) returns (stream WriteResponse);
 
   /**
    * Batches get requests.

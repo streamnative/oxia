@@ -1156,3 +1156,110 @@ func TestLeaderController_GetStatus(t *testing.T) {
 	assert.NoError(t, kvFactory.Close())
 	assert.NoError(t, walFactory.Close())
 }
+
+func TestLeaderController_WriteStream(t *testing.T) {
+	var shard int64 = 1
+
+	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
+	walFactory := newTestWalFactory(t)
+
+	lc, err := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	assert.NoError(t, err)
+
+	_, err = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})
+	assert.NoError(t, err)
+
+	_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
+		ShardId:           shard,
+		Term:              1,
+		ReplicationFactor: 1,
+		FollowerMaps:      nil,
+	})
+	assert.NoError(t, err)
+
+	// Write entry
+	ctx, cancel := context.WithCancel(context.Background())
+	stream := newMockWriteStream(ctx)
+
+	stream.requests <- &proto.WriteRequest{
+		ShardId: &shard,
+		Puts: []*proto.PutRequest{{
+			Key:   "a",
+			Value: []byte("value-a")}},
+	}
+
+	stream.requests <- &proto.WriteRequest{
+		ShardId: &shard,
+		Puts: []*proto.PutRequest{{
+			Key:   "b",
+			Value: []byte("value-b")}},
+	}
+
+	go func() {
+		err1 := lc.WriteStream(stream)
+		assert.ErrorIs(t, err1, context.Canceled)
+	}()
+
+	res1 := <-stream.response
+	assert.EqualValues(t, 1, len(res1.Puts))
+	assert.Equal(t, proto.Status_OK, res1.Puts[0].Status)
+	assert.EqualValues(t, 0, res1.Puts[0].Version.VersionId)
+	assert.NotEqualValues(t, 0, res1.Puts[0].Version.CreatedTimestamp)
+	assert.NotEqualValues(t, 0, res1.Puts[0].Version.ModifiedTimestamp)
+	assert.EqualValues(t, res1.Puts[0].Version.CreatedTimestamp, res1.Puts[0].Version.ModifiedTimestamp)
+
+	res2 := <-stream.response
+	assert.EqualValues(t, 1, len(res2.Puts))
+	assert.Equal(t, proto.Status_OK, res2.Puts[0].Status)
+	assert.EqualValues(t, 1, res2.Puts[0].Version.VersionId)
+	assert.NotEqualValues(t, 0, res2.Puts[0].Version.CreatedTimestamp)
+	assert.NotEqualValues(t, 0, res2.Puts[0].Version.ModifiedTimestamp)
+	assert.EqualValues(t, res2.Puts[0].Version.CreatedTimestamp, res2.Puts[0].Version.ModifiedTimestamp)
+
+	cancel()
+
+	// Read entry a
+	r := <-lc.Read(context.Background(), &proto.ReadRequest{
+		ShardId: &shard,
+		Gets:    []*proto.GetRequest{{Key: "a", IncludeValue: true}},
+	})
+
+	assert.NoError(t, r.Err)
+	assert.Equal(t, proto.Status_OK, r.Response.Status)
+	assert.Equal(t, []byte("value-a"), r.Response.Value)
+	assert.EqualValues(t, 0, res1.Puts[0].Version.VersionId)
+
+	// Read entry b
+	r = <-lc.Read(context.Background(), &proto.ReadRequest{
+		ShardId: &shard,
+		Gets:    []*proto.GetRequest{{Key: "b", IncludeValue: true}},
+	})
+
+	assert.NoError(t, r.Err)
+	assert.Equal(t, proto.Status_OK, r.Response.Status)
+	assert.Equal(t, []byte("value-b"), r.Response.Value)
+	assert.EqualValues(t, 0, res1.Puts[0].Version.VersionId)
+
+	// Set NewTerm to leader
+
+	fr2, err := lc.NewTerm(&proto.NewTermRequest{
+		ShardId: shard,
+		Term:    2,
+	})
+	assert.NoError(t, err)
+	AssertProtoEqual(t, &proto.EntryId{Term: 1, Offset: 1}, fr2.HeadEntryId)
+
+	assert.EqualValues(t, 2, lc.Term())
+	assert.Equal(t, proto.ServingStatus_FENCED, lc.Status())
+
+	// Should not accept anymore writes & reads
+	stream = newMockWriteStream(context.Background())
+	err = lc.WriteStream(stream)
+	assert.Error(t, err)
+	assert.Equal(t, common.CodeInvalidStatus, status.Code(err))
+
+	assert.NoError(t, lc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
