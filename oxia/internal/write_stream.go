@@ -2,11 +2,12 @@ package internal
 
 import (
 	"context"
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/proto"
 	"io"
 	"log/slog"
 	"sync"
+
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/proto"
 )
 
 type streamWrapper struct {
@@ -43,16 +44,15 @@ func (sw *streamWrapper) Send(ctx context.Context, req *proto.WriteRequest) (*pr
 }
 
 func (sw *streamWrapper) handleStreamClosed() {
-	select {
-	case <-sw.stream.Context().Done():
-		// Fail all pending requests
-		sw.Lock()
-		for _, f := range sw.pendingRequests {
-			f.Fail(io.EOF)
-		}
-		sw.pendingRequests = nil
-		sw.Unlock()
+	<-sw.stream.Context().Done()
+
+	// Fail all pending requests
+	sw.Lock()
+	for _, f := range sw.pendingRequests {
+		f.Fail(io.EOF)
 	}
+	sw.pendingRequests = nil
+	sw.Unlock()
 }
 
 func (sw *streamWrapper) handleResponses() {

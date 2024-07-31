@@ -17,10 +17,12 @@ package internal
 import (
 	"context"
 	"fmt"
+	"sync"
+
+	"google.golang.org/grpc/metadata"
+
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/proto"
-	"google.golang.org/grpc/metadata"
-	"sync"
 )
 
 type Executor interface {
@@ -57,7 +59,7 @@ func NewExecutor(ctx context.Context, namespace string, pool common.ClientPool, 
 }
 
 func (e *executorImpl) ExecuteWrite(ctx context.Context, request *proto.WriteRequest) (*proto.WriteResponse, error) {
-	sw, err := e.writeStream(request.ShardId)
+	sw, err := e.writeStream(request.ShardId) //nolint:contextcheck
 	if err != nil {
 		return nil, err
 	}
