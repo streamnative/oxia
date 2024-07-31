@@ -31,7 +31,7 @@ type BatcherFactory struct {
 }
 
 func NewBatcherFactory(
-	executor *internal.ExecutorImpl,
+	executor internal.Executor,
 	namespace string,
 	batchLinger time.Duration,
 	maxRequestsPerBatch int,

@@ -822,3 +822,29 @@ func TestSyncClientImpl_RangeScanOnPartition(t *testing.T) {
 	assert.NoError(t, client.Close())
 	assert.NoError(t, standaloneServer.Close())
 }
+
+func TestAsyncClientImpl_SequenceOrdering(t *testing.T) {
+	config := server.NewTestConfig(t.TempDir())
+	standaloneServer, err := server.NewStandalone(config)
+	assert.NoError(t, err)
+
+	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())
+	client, err := NewAsyncClient(serviceAddress, WithMaxRequestsPerBatch(1))
+	assert.NoError(t, err)
+
+	var responses []<-chan PutResult
+
+	for i := 0; i < 100; i++ {
+		r := client.Put("a", []byte("0"), PartitionKey("x"), SequenceKeysDeltas(1))
+		responses = append(responses, r)
+	}
+
+	for i := 0; i < 100; i++ {
+		r := <-responses[i]
+
+		assert.Equal(t, fmt.Sprintf("a-%020d", i+1), r.Key)
+	}
+
+	assert.NoError(t, client.Close())
+	assert.NoError(t, standaloneServer.Close())
+}
