@@ -36,6 +36,9 @@ type WriteBatch interface {
 	Get(key string) ([]byte, io.Closer, error)
 	FindLower(key string) (lowerKey string, err error)
 
+	PutWithPrefix(key string, value []byte, keyPrefix string) error
+	FindPrevKeyWithPrefix(keyPrefix string, key string) (prevKey string, err error)
+
 	DeleteRange(lowerBound, upperBound string) error
 	KeyRangeScan(lowerBound, upperBound string) (KeyIterator, error)
 

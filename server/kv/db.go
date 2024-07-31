@@ -401,9 +401,13 @@ func (d *db) applyPut(commitOffset int64, batch WriteBatch, notifications *notif
 	var se *proto.StorageEntry
 	var err error
 	var newKey string
+	var sequenceKeyPrefix string
+	var cacheLastSequence = false
 	if len(putReq.GetSequenceKeyDelta()) > 0 {
 		newKey, err = generateUniqueKeyFromSequences(batch, putReq)
+		sequenceKeyPrefix = putReq.Key
 		putReq.Key = newKey
+		cacheLastSequence = true
 	} else {
 		se, err = checkExpectedVersionId(batch, putReq.Key, putReq.ExpectedVersionId)
 	}
@@ -455,8 +459,14 @@ func (d *db) applyPut(commitOffset int64, batch WriteBatch, notifications *notif
 		return nil, err
 	}
 
-	if err = batch.Put(putReq.Key, ser); err != nil {
-		return nil, err
+	if cacheLastSequence {
+		if err = batch.PutWithPrefix(putReq.Key, ser, sequenceKeyPrefix); err != nil {
+			return nil, err
+		}
+	} else {
+		if err = batch.Put(putReq.Key, ser); err != nil {
+			return nil, err
+		}
 	}
 
 	if notifications != nil {

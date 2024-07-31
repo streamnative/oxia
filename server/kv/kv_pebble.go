@@ -17,10 +17,12 @@ package kv
 import (
 	"fmt"
 	"github.com/cockroachdb/pebble/bloom"
+	"github.com/karlseguin/ccache/v3"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -51,9 +53,10 @@ var (
 )
 
 type PebbleFactory struct {
-	dataDir string
-	cache   *pebble.Cache
-	options *FactoryOptions
+	dataDir             string
+	cache               *pebble.Cache
+	options             *FactoryOptions
+	shardsSequenceCache *ccache.LayeredCache[string]
 
 	gaugeCacheSize metrics.Gauge
 }
@@ -73,14 +76,14 @@ func NewPebbleKVFactory(options *FactoryOptions) (Factory, error) {
 	}
 
 	cache := pebble.NewCache(cacheSizeMB * 1024 * 1024)
+	shardsSequenceCache := ccache.Layered(ccache.Configure[string]().MaxSize(500000)) // todo: configurable max size
 
 	pf := &PebbleFactory{
 		dataDir: dataDir,
 		options: options,
-
 		// Share a single cache instance across the databases for all the shards
-		cache: cache,
-
+		cache:               cache,
+		shardsSequenceCache: shardsSequenceCache,
 		gaugeCacheSize: metrics.NewGauge("oxia_server_kv_pebble_max_cache_size",
 			"The max size configured for the Pebble block cache in bytes",
 			metrics.Bytes, map[string]any{}, func() int64 {
@@ -138,6 +141,7 @@ func (p *PebbleFactory) getKVPath(namespace string, shard int64) string {
 
 type Pebble struct {
 	factory         *PebbleFactory
+	sequenceCache   *ccache.SecondaryCache[string]
 	namespace       string
 	shardId         int64
 	dataDir         string
@@ -162,11 +166,14 @@ type Pebble struct {
 
 func newKVPebble(factory *PebbleFactory, namespace string, shardId int64) (KV, error) {
 	labels := metrics.LabelsForShard(namespace, shardId)
+	sequenceCache := factory.shardsSequenceCache.GetOrCreateSecondaryCache(strconv.FormatInt(shardId, 10))
+
 	pb := &Pebble{
-		factory:   factory,
-		namespace: namespace,
-		shardId:   shardId,
-		dataDir:   factory.dataDir,
+		factory:       factory,
+		namespace:     namespace,
+		sequenceCache: sequenceCache,
+		shardId:       shardId,
+		dataDir:       factory.dataDir,
 
 		batchCommitLatency: metrics.NewLatencyHistogram("oxia_server_kv_batch_commit_latency",
 			"The latency for committing a batch into the database", labels),
@@ -560,6 +567,22 @@ func (b *PebbleBatch) Delete(key string) error {
 		b.p.writeErrors.Inc()
 	}
 	return err
+}
+
+func (b *PebbleBatch) PutWithPrefix(key string, value []byte, keyPrefix string) error {
+	if err := b.Put(key, value); err != nil {
+		return err
+	}
+	b.p.sequenceCache.Set(keyPrefix, key, 1<<63-1) // max duration
+	return nil
+}
+
+func (b *PebbleBatch) FindPrevKeyWithPrefix(keyPrefix string, key string) (prevKey string, err error) {
+	optionPrevKey := b.p.sequenceCache.Get(keyPrefix)
+	if optionPrevKey == nil {
+		return b.FindLower(key)
+	}
+	return optionPrevKey.Value(), nil
 }
 
 func (b *PebbleBatch) Get(key string) ([]byte, io.Closer, error) {

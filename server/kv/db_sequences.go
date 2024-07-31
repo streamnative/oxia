@@ -70,7 +70,7 @@ func generateUniqueKeyFromSequences(batch WriteBatch, req *proto.PutRequest) (st
 func findCurrentLastKeyInSequence(wb WriteBatch, req *proto.PutRequest) ([]string, error) {
 	prefixKey := req.Key
 	maxKey := fmt.Sprintf("%s-%020d", prefixKey, maxSequence)
-	lastKeyInSequence, err := wb.FindLower(maxKey)
+	lastKeyInSequence, err := wb.FindPrevKeyWithPrefix(prefixKey, maxKey)
 	if err != nil && !errors.Is(err, ErrKeyNotFound) {
 		return nil, err
 	}
