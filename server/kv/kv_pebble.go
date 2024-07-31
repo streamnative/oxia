@@ -16,6 +16,7 @@ package kv
 
 import (
 	"fmt"
+	"github.com/cockroachdb/pebble/bloom"
 	"io"
 	"log/slog"
 	"os"
@@ -199,10 +200,14 @@ func newKVPebble(factory *PebbleFactory, namespace string, shardId int64) (KV, e
 				BlockSize:      64 * 1024,
 				Compression:    pebble.NoCompression,
 				TargetFileSize: 32 * 1024 * 1024,
+				FilterPolicy:   bloom.FilterPolicy(10),
+				FilterType:     pebble.TableFilter,
 			}, {
 				BlockSize:      64 * 1024,
 				Compression:    pebble.ZstdCompression,
 				TargetFileSize: 64 * 1024 * 1024,
+				FilterPolicy:   bloom.FilterPolicy(10),
+				FilterType:     pebble.TableFilter,
 			},
 		},
 		FS:         vfs.Default,
