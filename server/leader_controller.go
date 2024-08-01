@@ -838,7 +838,7 @@ func (lc *leaderController) WriteStream(stream proto.OxiaClient_WriteStreamServe
 		return err
 	}
 
-	closeStreamWg := common.NewWaitGroup(1)
+	closeStreamCh := make(chan error, 1)
 
 	go common.DoWithLabels(
 		stream.Context(),
@@ -847,22 +847,29 @@ func (lc *leaderController) WriteStream(stream proto.OxiaClient_WriteStreamServe
 			"namespace": lc.namespace,
 			"shard":     fmt.Sprintf("%d", lc.shardId),
 		},
-		func() { lc.handleWriteStream(stream, closeStreamWg) },
+		func() { lc.handleWriteStream(stream, closeStreamCh) },
 	)
 
-	return closeStreamWg.Wait(stream.Context())
+	select {
+	case err := <-closeStreamCh:
+		return err
+	case <-stream.Context().Done():
+		return context.Canceled
+	case <-lc.ctx.Done():
+		return context.Canceled
+	}
 }
 
 func (lc *leaderController) handleWriteStream(stream proto.OxiaClient_WriteStreamServer,
-	wg common.WaitGroup) {
+	closeCh chan error) {
 	for {
 		req, err := stream.Recv()
 
 		if err != nil {
-			wg.Fail(err)
+			closeCh <- err
 			return
 		} else if req == nil {
-			wg.Fail(errors.New("stream closed"))
+			closeCh <- errors.New("stream closed")
 			return
 		}
 
@@ -871,7 +878,7 @@ func (lc *leaderController) handleWriteStream(stream proto.OxiaClient_WriteStrea
 
 		offset, timestamp, err1 := lc.appendToWalStreamRequest(stream.Context(), req)
 		if err1 != nil {
-			wg.Fail(err1)
+			closeCh <- err1
 			return
 		}
 
@@ -879,12 +886,12 @@ func (lc *leaderController) handleWriteStream(stream proto.OxiaClient_WriteStrea
 			return lc.db.ProcessWrite(req, offset, timestamp, SessionUpdateOperationCallback)
 		})
 		if err2 != nil {
-			wg.Fail(err2)
+			closeCh <- err2
 			return
 		}
 
 		if err3 := stream.Send(resp); err3 != nil {
-			wg.Fail(err3)
+			closeCh <- err3
 			return
 		}
 	}
