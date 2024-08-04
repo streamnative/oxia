@@ -73,11 +73,8 @@ func NewAsyncClient(serviceAddress string, opts ...ClientOption) (AsyncClient, e
 		return nil, err
 	}
 
-	executor := &internal.ExecutorImpl{
-		ClientPool:     clientPool,
-		ShardManager:   shardManager,
-		ServiceAddress: options.serviceAddress,
-	}
+	ctx, cancel := context.WithCancel(context.Background())
+	executor := internal.NewExecutor(ctx, options.namespace, clientPool, shardManager, options.serviceAddress)
 	batcherFactory := batch.NewBatcherFactory(
 		executor,
 		options.namespace,
@@ -96,7 +93,7 @@ func NewAsyncClient(serviceAddress string, opts ...ClientOption) (AsyncClient, e
 		executor:         executor,
 	}
 
-	c.ctx, c.cancel = context.WithCancel(context.Background())
+	c.ctx, c.cancel = ctx, cancel
 	c.sessions = newSessions(c.ctx, c.shardManager, c.clientPool, c.options)
 	return c, nil
 }
