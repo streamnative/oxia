@@ -35,6 +35,8 @@ oxia/
 
 We should deploy the oxia storage node first. We can start three storage nodes for primary usage. the command is as follows.
 
+Make sure to pass differet wal and data dir paths for each storage node if running a local test.
+
 ```shell
 # storage-node-0
 ./bin/oxia server -i 0.0.0.0:6649 -p 0.0.0.0:6648 -m 0.0.0.0:8080 --wal-dir "<wal-dir-path>" --data-dir "<data-dir-path>"
