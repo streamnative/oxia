@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	pb "google.golang.org/protobuf/proto"
@@ -40,8 +41,9 @@ var (
 )
 
 const (
-	commitOffsetKey = common.InternalKeyPrefix + "commit-offset"
-	termKey         = common.InternalKeyPrefix + "term"
+	commitOffsetKey        = common.InternalKeyPrefix + "commit-offset"
+	commitLastVersionIdKey = common.InternalKeyPrefix + "last-version-id"
+	termKey                = common.InternalKeyPrefix + "term"
 )
 
 type UpdateOperationCallback interface {
@@ -118,6 +120,12 @@ func NewDB(namespace string, shardId int64, factory Factory, notificationRetenti
 		return nil, err
 	}
 
+	lastVersionId, err := db.readLastVersionId()
+	if err != nil {
+		return nil, err
+	}
+	db.versionIdTracker.Store(lastVersionId)
+
 	db.notificationsTracker = newNotificationsTracker(namespace, shardId, commitOffset, kv, notificationRetentionTime, clock)
 	return db, nil
 }
@@ -125,6 +133,7 @@ func NewDB(namespace string, shardId int64, factory Factory, notificationRetenti
 type db struct {
 	kv                   KV
 	shardId              int64
+	versionIdTracker     atomic.Int64
 	notificationsTracker *notificationsTracker
 	log                  *slog.Logger
 
@@ -168,7 +177,7 @@ func (d *db) applyWriteRequest(b *proto.WriteRequest, batch WriteBatch, commitOf
 
 	d.putCounter.Add(len(b.Puts))
 	for _, putReq := range b.Puts {
-		pr, err := d.applyPut(commitOffset, batch, notifications, putReq, timestamp, updateOperationCallback)
+		pr, err := d.applyPut(false, batch, notifications, putReq, timestamp, updateOperationCallback)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -208,7 +217,11 @@ func (d *db) ProcessWrite(b *proto.WriteRequest, commitOffset int64, timestamp u
 		return nil, err
 	}
 
-	if err := d.addCommitOffset(commitOffset, batch, timestamp); err != nil {
+	if err := d.addAsciiLong(commitOffsetKey, commitOffset, batch, timestamp); err != nil {
+		return nil, err
+	}
+
+	if err := d.addAsciiLong(commitLastVersionIdKey, d.versionIdTracker.Load(), batch, timestamp); err != nil {
 		return nil, err
 	}
 
@@ -239,11 +252,11 @@ func (*db) addNotifications(batch WriteBatch, notifications *notifications) erro
 	return batch.Put(notificationKey(notifications.batch.Offset), value)
 }
 
-func (d *db) addCommitOffset(commitOffset int64, batch WriteBatch, timestamp uint64) error {
-	commitOffsetValue := []byte(fmt.Sprintf("%d", commitOffset))
-	_, err := d.applyPut(commitOffset, batch, nil, &proto.PutRequest{
-		Key:               commitOffsetKey,
-		Value:             commitOffsetValue,
+func (d *db) addAsciiLong(key string, value int64, batch WriteBatch, timestamp uint64) error {
+	asciiValue := []byte(fmt.Sprintf("%d", value))
+	_, err := d.applyPut(true, batch, nil, &proto.PutRequest{
+		Key:               key,
+		Value:             asciiValue,
 		ExpectedVersionId: nil,
 	}, timestamp, NoOpCallback)
 	return err
@@ -334,10 +347,18 @@ func (d *db) RangeScan(request *proto.RangeScanRequest) (RangeScanIterator, erro
 }
 
 func (d *db) ReadCommitOffset() (int64, error) {
+	return d.readAsciiLong(commitOffsetKey)
+}
+
+func (d *db) readLastVersionId() (int64, error) {
+	return d.readAsciiLong(commitLastVersionIdKey)
+}
+
+func (d *db) readAsciiLong(key string) (int64, error) {
 	kv := d.kv
 
 	getReq := &proto.GetRequest{
-		Key:          commitOffsetKey,
+		Key:          key,
 		IncludeValue: true,
 	}
 	gr, err := applyGet(kv, getReq)
@@ -348,17 +369,17 @@ func (d *db) ReadCommitOffset() (int64, error) {
 		return wal.InvalidOffset, nil
 	}
 
-	var commitOffset int64
-	if _, err = fmt.Sscanf(string(gr.Value), "%d", &commitOffset); err != nil {
+	var res int64
+	if _, err = fmt.Sscanf(string(gr.Value), "%d", &res); err != nil {
 		return wal.InvalidOffset, err
 	}
-	return commitOffset, nil
+	return res, nil
 }
 
 func (d *db) UpdateTerm(newTerm int64) error {
 	batch := d.kv.NewWriteBatch()
 
-	if _, err := d.applyPut(wal.InvalidOffset, batch, nil, &proto.PutRequest{
+	if _, err := d.applyPut(true, batch, nil, &proto.PutRequest{
 		Key:   termKey,
 		Value: []byte(fmt.Sprintf("%d", newTerm)),
 	}, now(), NoOpCallback); err != nil {
@@ -397,7 +418,7 @@ func (d *db) ReadTerm() (term int64, err error) {
 	return term, nil
 }
 
-func (d *db) applyPut(commitOffset int64, batch WriteBatch, notifications *notifications, putReq *proto.PutRequest, timestamp uint64, updateOperationCallback UpdateOperationCallback) (*proto.PutResponse, error) {
+func (d *db) applyPut(internal bool, batch WriteBatch, notifications *notifications, putReq *proto.PutRequest, timestamp uint64, updateOperationCallback UpdateOperationCallback) (*proto.PutResponse, error) {
 	var se *proto.StorageEntry
 	var err error
 	var newKey string
@@ -428,9 +449,16 @@ func (d *db) applyPut(commitOffset int64, batch WriteBatch, notifications *notif
 		}, nil
 	}
 
+	var versionId int64
+	if internal {
+		versionId = wal.InvalidOffset
+	} else {
+		versionId = d.versionIdTracker.Add(1)
+	}
+
 	if se == nil {
 		se = proto.StorageEntryFromVTPool()
-		se.VersionId = commitOffset
+		se.VersionId = versionId
 		se.ModificationsCount = 0
 		se.Value = putReq.Value
 		se.CreationTimestamp = timestamp
@@ -439,7 +467,7 @@ func (d *db) applyPut(commitOffset int64, batch WriteBatch, notifications *notif
 		se.ClientIdentity = putReq.ClientIdentity
 		se.PartitionKey = putReq.PartitionKey
 	} else {
-		se.VersionId = commitOffset
+		se.VersionId = versionId
 		se.ModificationsCount++
 		se.Value = putReq.Value
 		se.ModificationTimestamp = timestamp
