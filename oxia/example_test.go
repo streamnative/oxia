@@ -117,8 +117,8 @@ func ExampleAsyncClient() {
 
 	// Output:
 	// First operation complete: version: 0 - error: <nil>
-	// First operation complete: version: 0 - error: <nil>
-	// First operation complete: version: 0 - error: <nil>
+	// First operation complete: version: 1 - error: <nil>
+	// First operation complete: version: 2 - error: <nil>
 }
 
 func ExampleNotifications() {

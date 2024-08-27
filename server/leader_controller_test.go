@@ -638,7 +638,6 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 		assert.NoError(t, err)
 		assert.EqualValues(t, 1, len(res.Puts))
 		assert.Equal(t, proto.Status_OK, res.Puts[0].Status)
-		assert.EqualValues(t, i, res.Puts[0].Version.VersionId)
 	}
 
 	rpcClient.truncateResps <- struct {

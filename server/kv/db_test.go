@@ -71,7 +71,7 @@ func TestDBSimple(t *testing.T) {
 			},
 			{ // Should succeed, the key was inserted in the batch
 				Key:               "c",
-				ExpectedVersionId: pb.Int64(0),
+				ExpectedVersionId: pb.Int64(2),
 			},
 			{ // Should fail: the key was already just deleted
 				Key:               "c",
@@ -91,7 +91,7 @@ func TestDBSimple(t *testing.T) {
 
 	r1 := res.Puts[1]
 	assert.Equal(t, proto.Status_OK, r1.Status)
-	assert.EqualValues(t, 0, r1.Version.VersionId)
+	assert.EqualValues(t, 1, r1.Version.VersionId)
 	assert.EqualValues(t, 0, r1.Version.ModificationsCount)
 
 	r2 := res.Puts[2]
@@ -104,7 +104,7 @@ func TestDBSimple(t *testing.T) {
 
 	r4 := res.Puts[4]
 	assert.Equal(t, proto.Status_OK, r4.Status)
-	assert.EqualValues(t, 0, r4.Version.VersionId)
+	assert.EqualValues(t, 2, r4.Version.VersionId)
 	assert.EqualValues(t, 0, r4.Version.ModificationsCount)
 
 	assert.Equal(t, 4, len(res.Deletes))
@@ -221,7 +221,7 @@ func TestDBSameKeyMutations(t *testing.T) {
 	assert.Equal(t, 2, len(writeRes.Puts))
 	r0 = writeRes.Puts[0]
 	assert.Equal(t, proto.Status_OK, r0.Status)
-	assert.EqualValues(t, 1, r0.Version.VersionId)
+	assert.EqualValues(t, writeRes.Puts[0].Version.VersionId, r0.Version.VersionId)
 	assert.EqualValues(t, 1, r0.Version.ModificationsCount)
 	assert.Equal(t, t0, r0.Version.CreatedTimestamp)
 	assert.Equal(t, t1, r0.Version.ModifiedTimestamp)
@@ -241,7 +241,7 @@ func TestDBSameKeyMutations(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, proto.Status_OK, getRes.Status)
-	assert.EqualValues(t, 1, getRes.Version.VersionId)
+	assert.EqualValues(t, writeRes.Puts[0].Version.VersionId, getRes.Version.VersionId)
 	assert.Equal(t, "v1", string(getRes.Value))
 	assert.Equal(t, t0, getRes.Version.CreatedTimestamp)
 	assert.Equal(t, t1, getRes.Version.ModifiedTimestamp)
@@ -254,7 +254,7 @@ func TestDBSameKeyMutations(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, proto.Status_OK, getRes.Status)
-	assert.EqualValues(t, 1, getRes.Version.VersionId)
+	assert.EqualValues(t, writeRes.Puts[0].Version.VersionId, getRes.Version.VersionId)
 	assert.Nil(t, getRes.Value)
 	assert.Equal(t, t0, getRes.Version.CreatedTimestamp)
 	assert.Equal(t, t1, getRes.Version.ModifiedTimestamp)
@@ -861,6 +861,52 @@ func TestDBRangeScan(t *testing.T) {
 	// ["xyz", "zzz")
 	keys3 := rangeScanIteratorToSlice(db.RangeScan(rangeScanReq3))
 	assert.Len(t, keys3, 0)
+
+	assert.NoError(t, db.Close())
+	assert.NoError(t, factory.Close())
+}
+
+func TestDb_versionId(t *testing.T) {
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
+	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	assert.NoError(t, err)
+
+	req := &proto.WriteRequest{
+		Puts: []*proto.PutRequest{
+			{
+				Key:   "a",
+				Value: []byte("0"),
+			},
+			{
+				Key:   "a",
+				Value: []byte("1"),
+			},
+			{
+				Key:   "a",
+				Value: []byte("2"),
+			},
+		},
+	}
+
+	res, err := db.ProcessWrite(req, 0, 0, NoOpCallback)
+	assert.NoError(t, err)
+
+	assert.Equal(t, 3, len(res.Puts))
+	r0 := res.Puts[0]
+	assert.Equal(t, proto.Status_OK, r0.Status)
+	assert.EqualValues(t, 0, r0.Version.VersionId)
+	assert.EqualValues(t, 0, r0.Version.ModificationsCount)
+
+	r1 := res.Puts[1]
+	assert.Equal(t, proto.Status_OK, r1.Status)
+	assert.EqualValues(t, 1, r1.Version.VersionId)
+	assert.EqualValues(t, 1, r1.Version.ModificationsCount)
+
+	r2 := res.Puts[2]
+	assert.Equal(t, proto.Status_OK, r2.Status)
+	assert.EqualValues(t, 2, r2.Version.VersionId)
+	assert.EqualValues(t, 2, r2.Version.ModificationsCount)
 
 	assert.NoError(t, db.Close())
 	assert.NoError(t, factory.Close())

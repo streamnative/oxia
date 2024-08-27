@@ -848,3 +848,39 @@ func TestAsyncClientImpl_SequenceOrdering(t *testing.T) {
 	assert.NoError(t, client.Close())
 	assert.NoError(t, standaloneServer.Close())
 }
+
+func TestAsyncClientImpl_versionId(t *testing.T) {
+	standaloneServer, err := server.NewStandalone(server.NewTestConfig(t.TempDir()))
+	assert.NoError(t, err)
+
+	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())
+	client, err := NewAsyncClient(serviceAddress)
+	assert.NoError(t, err)
+
+	ch0 := client.Put("/a", []byte("0"))
+	ch1 := client.Put("/a", []byte("1"))
+	ch2 := client.Put("/a", []byte("2"))
+
+	chb0 := client.Put("/b", []byte("0"))
+
+	r0 := <-ch0
+	r1 := <-ch1
+	r2 := <-ch2
+	rb0 := <-chb0
+
+	assert.NoError(t, r0.Err)
+	assert.NoError(t, r1.Err)
+	assert.NoError(t, r2.Err)
+	assert.NoError(t, rb0.Err)
+
+	assert.EqualValues(t, 0, r0.Version.VersionId)
+	assert.EqualValues(t, 1, r1.Version.VersionId)
+	assert.EqualValues(t, 2, r2.Version.VersionId)
+	assert.EqualValues(t, 3, rb0.Version.VersionId)
+
+	ch3 := client.Put("/a", []byte("3"))
+	r3 := <-ch3
+	assert.EqualValues(t, 4, r3.Version.VersionId)
+
+	assert.NoError(t, standaloneServer.Close())
+}
