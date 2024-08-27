@@ -177,7 +177,7 @@ func (d *db) applyWriteRequest(b *proto.WriteRequest, batch WriteBatch, commitOf
 
 	d.putCounter.Add(len(b.Puts))
 	for _, putReq := range b.Puts {
-		pr, err := d.applyPut(false, batch, notifications, putReq, timestamp, updateOperationCallback)
+		pr, err := d.applyPut(batch, notifications, putReq, timestamp, updateOperationCallback, false)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -217,11 +217,11 @@ func (d *db) ProcessWrite(b *proto.WriteRequest, commitOffset int64, timestamp u
 		return nil, err
 	}
 
-	if err := d.addAsciiLong(commitOffsetKey, commitOffset, batch, timestamp); err != nil {
+	if err := d.addASCIILong(commitOffsetKey, commitOffset, batch, timestamp); err != nil {
 		return nil, err
 	}
 
-	if err := d.addAsciiLong(commitLastVersionIdKey, d.versionIdTracker.Load(), batch, timestamp); err != nil {
+	if err := d.addASCIILong(commitLastVersionIdKey, d.versionIdTracker.Load(), batch, timestamp); err != nil {
 		return nil, err
 	}
 
@@ -252,13 +252,13 @@ func (*db) addNotifications(batch WriteBatch, notifications *notifications) erro
 	return batch.Put(notificationKey(notifications.batch.Offset), value)
 }
 
-func (d *db) addAsciiLong(key string, value int64, batch WriteBatch, timestamp uint64) error {
+func (d *db) addASCIILong(key string, value int64, batch WriteBatch, timestamp uint64) error {
 	asciiValue := []byte(fmt.Sprintf("%d", value))
-	_, err := d.applyPut(true, batch, nil, &proto.PutRequest{
+	_, err := d.applyPut(batch, nil, &proto.PutRequest{
 		Key:               key,
 		Value:             asciiValue,
 		ExpectedVersionId: nil,
-	}, timestamp, NoOpCallback)
+	}, timestamp, NoOpCallback, true)
 	return err
 }
 
@@ -347,14 +347,14 @@ func (d *db) RangeScan(request *proto.RangeScanRequest) (RangeScanIterator, erro
 }
 
 func (d *db) ReadCommitOffset() (int64, error) {
-	return d.readAsciiLong(commitOffsetKey)
+	return d.readASCIILong(commitOffsetKey)
 }
 
 func (d *db) readLastVersionId() (int64, error) {
-	return d.readAsciiLong(commitLastVersionIdKey)
+	return d.readASCIILong(commitLastVersionIdKey)
 }
 
-func (d *db) readAsciiLong(key string) (int64, error) {
+func (d *db) readASCIILong(key string) (int64, error) {
 	kv := d.kv
 
 	getReq := &proto.GetRequest{
@@ -379,10 +379,10 @@ func (d *db) readAsciiLong(key string) (int64, error) {
 func (d *db) UpdateTerm(newTerm int64) error {
 	batch := d.kv.NewWriteBatch()
 
-	if _, err := d.applyPut(true, batch, nil, &proto.PutRequest{
+	if _, err := d.applyPut(batch, nil, &proto.PutRequest{
 		Key:   termKey,
 		Value: []byte(fmt.Sprintf("%d", newTerm)),
-	}, now(), NoOpCallback); err != nil {
+	}, now(), NoOpCallback, true); err != nil {
 		return err
 	}
 
@@ -418,7 +418,7 @@ func (d *db) ReadTerm() (term int64, err error) {
 	return term, nil
 }
 
-func (d *db) applyPut(internal bool, batch WriteBatch, notifications *notifications, putReq *proto.PutRequest, timestamp uint64, updateOperationCallback UpdateOperationCallback) (*proto.PutResponse, error) {
+func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *proto.PutRequest, timestamp uint64, updateOperationCallback UpdateOperationCallback, internal bool) (*proto.PutResponse, error) {
 	var se *proto.StorageEntry
 	var err error
 	var newKey string
