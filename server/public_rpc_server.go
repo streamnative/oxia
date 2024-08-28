@@ -36,8 +36,8 @@ import (
 
 const (
 	maxTotalScanBatchCount = 1000
-	maxTotalReadValueSize  = 4 << (10 * 2) // 4Mi
-	maxTotalListKeySize    = 4 << (10 * 2) // 4Mi
+	maxTotalReadValueSize  = 2 << (10 * 2) // 2Mi
+	maxTotalListKeySize    = 2 << (10 * 2) // 2Mi
 )
 
 type publicRpcServer struct {
