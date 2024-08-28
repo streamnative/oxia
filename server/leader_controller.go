@@ -873,6 +873,9 @@ func (lc *leaderController) handleWriteStream(stream proto.OxiaClient_WriteStrea
 			return
 		}
 
+		timer := lc.writeLatencyHisto.Timer()
+		defer timer.Done() //nolint:contextcheck
+
 		slog.Debug("Got request in stream",
 			slog.Any("req", req))
 
