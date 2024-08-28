@@ -874,13 +874,12 @@ func (lc *leaderController) handleWriteStream(stream proto.OxiaClient_WriteStrea
 		}
 
 		timer := lc.writeLatencyHisto.Timer()
-		defer timer.Done() //nolint:contextcheck
-
 		slog.Debug("Got request in stream",
 			slog.Any("req", req))
 
 		offset, timestamp, err1 := lc.appendToWalStreamRequest(stream.Context(), req)
 		if err1 != nil {
+			timer.Done()
 			closeCh <- err1
 			return
 		}
@@ -889,14 +888,17 @@ func (lc *leaderController) handleWriteStream(stream proto.OxiaClient_WriteStrea
 			return lc.db.ProcessWrite(req, offset, timestamp, SessionUpdateOperationCallback)
 		})
 		if err2 != nil {
+			timer.Done()
 			closeCh <- err2
 			return
 		}
 
 		if err3 := stream.Send(resp); err3 != nil {
+			timer.Done()
 			closeCh <- err3
 			return
 		}
+		timer.Done()
 	}
 }
 
