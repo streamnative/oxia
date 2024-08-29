@@ -877,33 +877,39 @@ func (lc *leaderController) handleWriteStream(stream proto.OxiaClient_WriteStrea
 		slog.Debug("Got request in stream",
 			slog.Any("req", req))
 
-		lc.appendToWalStreamRequest(stream.Context(), req, func(offset int64, timestamp uint64, err error) {
-			if err != nil {
-				timer.Done()
-				closeCh <- err
-				return
-			}
-
-			resp, err2 := lc.quorumAckTracker.WaitForCommitOffset(stream.Context(), offset, func() (*proto.WriteResponse, error) {
-				return lc.db.ProcessWrite(req, offset, timestamp, SessionUpdateOperationCallback)
-			})
-			if err2 != nil {
-				timer.Done()
-				closeCh <- err2
-				return
-			}
-
-			if err3 := stream.Send(resp); err3 != nil {
-				timer.Done()
-				closeCh <- err3
-				return
-			}
-			timer.Done()
+		lc.appendToWalStreamRequest(req, func(offset int64, timestamp uint64, err error) {
+			lc.handleWalSynced(stream, req, closeCh, offset, timestamp, err, timer)
 		})
 	}
 }
 
-func (lc *leaderController) appendToWalStreamRequest(ctx context.Context, request *proto.WriteRequest,
+func (lc *leaderController) handleWalSynced(stream proto.OxiaClient_WriteStreamServer,
+	req *proto.WriteRequest, closeCh chan error,
+	offset int64, timestamp uint64, err error, timer metrics.Timer) {
+	if err != nil {
+		timer.Done()
+		closeCh <- err
+		return
+	}
+
+	resp, err2 := lc.quorumAckTracker.WaitForCommitOffset(stream.Context(), offset, func() (*proto.WriteResponse, error) {
+		return lc.db.ProcessWrite(req, offset, timestamp, SessionUpdateOperationCallback)
+	})
+	if err2 != nil {
+		timer.Done()
+		closeCh <- err2
+		return
+	}
+
+	if err3 := stream.Send(resp); err3 != nil {
+		timer.Done()
+		closeCh <- err3
+		return
+	}
+	timer.Done()
+}
+
+func (lc *leaderController) appendToWalStreamRequest(request *proto.WriteRequest,
 	callback func(offset int64, timestamp uint64, err error)) {
 	lc.Lock()
 
