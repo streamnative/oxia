@@ -37,6 +37,7 @@ func NewTestWalFactory(t *testing.T) Factory {
 		BaseWalDir:  dir,
 		Retention:   1 * time.Hour,
 		SegmentSize: 128 * 1024,
+		SyncData:    true,
 	})
 }
 

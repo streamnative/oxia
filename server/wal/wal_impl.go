@@ -70,11 +70,9 @@ type wal struct {
 	// The last offset synced in the Wal.
 	lastSyncedOffset atomic.Int64
 
-	ctx         context.Context
-	cancel      context.CancelFunc
-	syncRequest common.ConditionContext
-	syncDone    common.ConditionContext
-	lastSyncErr atomic.Pointer[error] // The error from the last sync operation, if any
+	ctx          context.Context
+	cancel       context.CancelFunc
+	syncRequests chan func(error)
 
 	trimmer Trimmer
 
@@ -131,8 +129,7 @@ func newWal(namespace string, shard int64, options *FactoryOptions, commitOffset
 	}
 
 	w.ctx, w.cancel = context.WithCancel(context.Background())
-	w.syncRequest = common.NewConditionContext(w)
-	w.syncDone = common.NewConditionContext(w)
+	w.syncRequests = make(chan func(error), 1000)
 
 	w.activeEntries = metrics.NewGauge("oxia_server_wal_entries",
 		"The number of active entries in the wal", "count", labels, func() int64 {
@@ -300,6 +297,15 @@ func (t *wal) AppendAsync(entry *proto.LogEntry) error {
 	return nil
 }
 
+func (t *wal) AppendAndSync(entry *proto.LogEntry, callback func(err error)) {
+	if err := t.AppendAsync(entry); err != nil {
+		callback(err)
+		return
+	}
+
+	t.doSync(callback)
+}
+
 func (t *wal) rolloverSegment() error {
 	var err error
 	if err = t.currentSegment.Close(); err != nil {
@@ -315,65 +321,76 @@ func (t *wal) rolloverSegment() error {
 	return nil
 }
 
+func (t *wal) drainSyncRequestsChannel(callbacks []func(error)) []func(error) {
+	for {
+		select {
+		case callback := <-t.syncRequests:
+			callbacks = append(callbacks, callback)
+		default:
+			return callbacks
+		}
+	}
+}
+
 func (t *wal) runSync() {
 	for {
-		t.Lock()
-
-		if err := t.syncRequest.Wait(t.ctx); err != nil {
+		var callbacks []func(error)
+		select {
+		case <-t.ctx.Done():
 			// Wal is closing, exit the go routine
-			t.Unlock()
 			return
+
+		case callback := <-t.syncRequests:
+			// Wait for the first request
+			callbacks = append(callbacks, callback)
 		}
 
+		// Clear all the other requests in the channel
+		callbacks = t.drainSyncRequestsChannel(callbacks)
+
+		t.Lock()
 		segment := t.currentSegment
 		lastAppendedOffset := t.lastAppendedOffset.Load()
 		t.Unlock()
 
-		if t.lastSyncedOffset.Load() == lastAppendedOffset {
-			// We are already at the end, no need to sync
-			t.syncDone.Broadcast()
-			continue
+		var err error
+		if t.lastSyncedOffset.Load() != lastAppendedOffset {
+			timer := t.syncLatency.Timer()
+			if err = segment.Flush(); err != nil {
+				t.writeErrors.Inc()
+			} else {
+				timer.Done()
+				t.lastSyncedOffset.Store(lastAppendedOffset)
+			}
 		}
 
-		timer := t.syncLatency.Timer()
-		if err := segment.Flush(); err != nil {
-			t.lastSyncErr.Store(&err)
-			t.writeErrors.Inc()
-		} else {
-			timer.Done()
-			t.lastSyncedOffset.Store(lastAppendedOffset)
-			t.lastSyncErr.Store(nil)
+		for _, callback := range callbacks {
+			callback(err)
 		}
-
-		t.syncDone.Broadcast()
 	}
 }
 
-func (t *wal) Sync(ctx context.Context) error {
+func (t *wal) doSync(callback func(error)) {
 	if !t.syncData {
 		t.lastSyncedOffset.Store(t.lastAppendedOffset.Load())
-		return nil
+		callback(nil)
+		return
 	}
 
-	t.Lock()
-	defer t.Unlock()
+	t.syncRequests <- callback
+}
 
-	// Wait until the currently last appended offset is synced
-	lastOffset := t.lastAppendedOffset.Load()
-
-	for lastOffset > t.lastSyncedOffset.Load() {
-		t.syncRequest.Signal()
-
-		if err := t.syncDone.Wait(ctx); err != nil {
-			return err
+func (t *wal) Sync(ctx context.Context) error {
+	wg := common.NewWaitGroup(1)
+	t.doSync(func(err error) {
+		if err != nil {
+			wg.Fail(err)
+		} else {
+			wg.Done()
 		}
-	}
+	})
 
-	if lastErr := t.lastSyncErr.Load(); lastErr != nil {
-		return *lastErr
-	}
-
-	return nil
+	return wg.Wait(ctx)
 }
 
 func (t *wal) checkNextOffset(nextOffset int64) error {
