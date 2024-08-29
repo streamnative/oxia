@@ -74,6 +74,11 @@ type Wal interface {
 	// Caller should use Sync to make the entry visible
 	AppendAsync(entry *proto.LogEntry) error
 
+	// AppendAndSync an entry and forces the sync on the WAL
+	// The operation is perfomed in background and the callback is
+	// triggered when it's completed
+	AppendAndSync(entry *proto.LogEntry, callback func(err error))
+
 	// Sync flushes all the entries in the wal to disk
 	Sync(ctx context.Context) error
 
