@@ -218,16 +218,16 @@ func (q *quorumAckTracker) WaitForCommitOffsetAsync(offset int64, f func() (*pro
 	}})
 }
 
-func (c *quorumAckTracker) notifyCommitOffsetAdvanced(commitOffset int64) {
-	c.commitOffset.Store(commitOffset)
+func (q *quorumAckTracker) notifyCommitOffsetAdvanced(commitOffset int64) {
+	q.commitOffset.Store(commitOffset)
 
-	for _, r := range c.waitingRequests {
-		if r.minOffset <= commitOffset {
-			c.waitingRequests = c.waitingRequests[1:]
-			r.callback()
-		} else {
+	for _, r := range q.waitingRequests {
+		if r.minOffset > commitOffset {
 			return
 		}
+
+		q.waitingRequests = q.waitingRequests[1:]
+		r.callback()
 	}
 }
 
