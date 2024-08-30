@@ -892,21 +892,22 @@ func (lc *leaderController) handleWalSynced(stream proto.OxiaClient_WriteStreamS
 		return
 	}
 
-	resp, err2 := lc.quorumAckTracker.WaitForCommitOffset(stream.Context(), offset, func() (*proto.WriteResponse, error) {
+	lc.quorumAckTracker.WaitForCommitOffsetAsync(offset, func() (*proto.WriteResponse, error) {
 		return lc.db.ProcessWrite(req, offset, timestamp, SessionUpdateOperationCallback)
-	})
-	if err2 != nil {
-		timer.Done()
-		closeCh <- err2
-		return
-	}
+	}, func(response *proto.WriteResponse, err error) {
+		if err != nil {
+			timer.Done()
+			closeCh <- err
+			return
+		}
 
-	if err3 := stream.Send(resp); err3 != nil {
+		if err = stream.Send(response); err != nil {
+			timer.Done()
+			closeCh <- err
+			return
+		}
 		timer.Done()
-		closeCh <- err3
-		return
-	}
-	timer.Done()
+	})
 }
 
 func (lc *leaderController) appendToWalStreamRequest(request *proto.WriteRequest,

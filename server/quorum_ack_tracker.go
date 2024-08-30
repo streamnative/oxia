@@ -48,6 +48,8 @@ type QuorumAckTracker interface {
 	// After that, invokes the function f
 	WaitForCommitOffset(ctx context.Context, offset int64, f func() (*proto.WriteResponse, error)) (*proto.WriteResponse, error)
 
+	WaitForCommitOffsetAsync(offset int64, f func() (*proto.WriteResponse, error), callback func(*proto.WriteResponse, error))
+
 	// NextOffset returns the offset for the next entry to write
 	// Note this can go ahead of the head-offset as there can be multiple operations in flight.
 	NextOffset() int64
@@ -67,8 +69,8 @@ type QuorumAckTracker interface {
 
 type quorumAckTracker struct {
 	sync.Mutex
-	waitForHeadOffset   common.ConditionContext
-	waitForCommitOffset common.ConditionContext
+	waitingRequests   []waitingRequest
+	waitForHeadOffset common.ConditionContext
 
 	replicationFactor uint32
 	requiredAcks      uint32
@@ -93,6 +95,11 @@ type cursorAcker struct {
 	cursorIdx     int
 }
 
+type waitingRequest struct {
+	minOffset int64
+	callback  func()
+}
+
 func NewQuorumAckTracker(replicationFactor uint32, headOffset int64, commitOffset int64) QuorumAckTracker {
 	q := &quorumAckTracker{
 		// Ack quorum is number of follower acks that are required to consider the entry fully committed
@@ -100,6 +107,7 @@ func NewQuorumAckTracker(replicationFactor uint32, headOffset int64, commitOffse
 		requiredAcks:      replicationFactor / 2,
 		replicationFactor: replicationFactor,
 		tracker:           make(map[int64]*util.BitSet),
+		waitingRequests:   make([]waitingRequest, 0),
 	}
 
 	q.nextOffset.Store(headOffset)
@@ -112,7 +120,6 @@ func NewQuorumAckTracker(replicationFactor uint32, headOffset int64, commitOffse
 	}
 
 	q.waitForHeadOffset = common.NewConditionContext(q)
-	q.waitForCommitOffset = common.NewConditionContext(q)
 	return q
 }
 
@@ -128,8 +135,7 @@ func (q *quorumAckTracker) AdvanceHeadOffset(headOffset int64) {
 	q.waitForHeadOffset.Broadcast()
 
 	if q.requiredAcks == 0 {
-		q.commitOffset.Store(headOffset)
-		q.waitForCommitOffset.Broadcast()
+		q.notifyCommitOffsetAdvanced(headOffset)
 	} else {
 		q.tracker[headOffset] = &util.BitSet{}
 	}
@@ -161,24 +167,68 @@ func (q *quorumAckTracker) WaitForHeadOffset(ctx context.Context, offset int64) 
 }
 
 func (q *quorumAckTracker) WaitForCommitOffset(ctx context.Context, offset int64, f func() (*proto.WriteResponse, error)) (*proto.WriteResponse, error) {
+	ch := make(chan struct {
+		*proto.WriteResponse
+		error
+	}, 1)
+	q.WaitForCommitOffsetAsync(offset, f, func(response *proto.WriteResponse, err error) {
+		ch <- struct {
+			*proto.WriteResponse
+			error
+		}{response, err}
+	})
+
+	select {
+	case s := <-ch:
+		return s.WriteResponse, s.error
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (q *quorumAckTracker) WaitForCommitOffsetAsync(offset int64, f func() (*proto.WriteResponse, error),
+	callback func(*proto.WriteResponse, error)) {
 	q.Lock()
 	defer q.Unlock()
 
-	for !q.closed && q.requiredAcks > 0 && q.commitOffset.Load() < offset {
-		if err := q.waitForCommitOffset.Wait(ctx); err != nil {
-			return nil, err
-		}
-	}
-
 	if q.closed {
-		return nil, common.ErrorAlreadyClosed
+		callback(nil, common.ErrorAlreadyClosed)
+		return
 	}
 
-	if f != nil {
-		return f()
+	if q.requiredAcks == 0 || q.commitOffset.Load() >= offset {
+		var res *proto.WriteResponse
+		var err error
+		if f != nil {
+			res, err = f()
+		}
+
+		callback(res, err)
+		return
 	}
 
-	return nil, nil //nolint:nilnil
+	q.waitingRequests = append(q.waitingRequests, waitingRequest{offset, func() {
+		var res *proto.WriteResponse
+		var err error
+		if f != nil {
+			res, err = f()
+		}
+
+		callback(res, err)
+	}})
+}
+
+func (q *quorumAckTracker) notifyCommitOffsetAdvanced(commitOffset int64) {
+	q.commitOffset.Store(commitOffset)
+
+	for _, r := range q.waitingRequests {
+		if r.minOffset > commitOffset {
+			return
+		}
+
+		q.waitingRequests = q.waitingRequests[1:]
+		r.callback()
+	}
 }
 
 func (q *quorumAckTracker) Close() error {
@@ -186,7 +236,6 @@ func (q *quorumAckTracker) Close() error {
 	defer q.Unlock()
 
 	q.closed = true
-	q.waitForCommitOffset.Broadcast()
 	q.waitForHeadOffset.Broadcast()
 	return nil
 }
@@ -241,7 +290,6 @@ func (c *cursorAcker) ack(offset int64) {
 		delete(q.tracker, offset)
 
 		// Advance the commit offset
-		q.commitOffset.Store(offset)
-		q.waitForCommitOffset.Broadcast()
+		q.notifyCommitOffsetAdvanced(offset)
 	}
 }
