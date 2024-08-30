@@ -333,8 +333,12 @@ func (t *wal) drainSyncRequestsChannel(callbacks []func(error)) []func(error) {
 }
 
 func (t *wal) runSync() {
+	var callbacks []func(error)
+
 	for {
-		var callbacks []func(error)
+		// Clear the slice
+		callbacks = callbacks[:0]
+
 		select {
 		case <-t.ctx.Done():
 			// Wal is closing, exit the go routine
