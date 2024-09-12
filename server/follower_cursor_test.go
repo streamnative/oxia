@@ -135,7 +135,7 @@ func TestFollowerCursor_SendSnapshot(t *testing.T) {
 	// Load some entries into the db & wal
 	for i := int64(0); i < n; i++ {
 		wr := &proto.WriteRequest{
-			ShardId: &shard,
+			Shard: &shard,
 			Puts: []*proto.PutRequest{{
 				Key:   fmt.Sprintf("key-%d", i),
 				Value: []byte(fmt.Sprintf("value-%d", i)),

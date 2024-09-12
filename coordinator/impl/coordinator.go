@@ -374,8 +374,8 @@ func (c *coordinator) computeNewAssignments() {
 			if a.Status != model.ShardStatusDeleting {
 				nsAssignments.Assignments = append(nsAssignments.Assignments,
 					&proto.ShardAssignment{
-						ShardId: shard,
-						Leader:  leader,
+						Shard:  shard,
+						Leader: leader,
 						ShardBoundaries: &proto.ShardAssignment_Int32HashRange{
 							Int32HashRange: &proto.Int32HashRange{
 								MinHashInclusive: a.Int32HashRange.Min,

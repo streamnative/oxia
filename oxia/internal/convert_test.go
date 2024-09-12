@@ -30,8 +30,8 @@ func TestToShard(t *testing.T) {
 	}{
 		{
 			&proto.ShardAssignment{
-				ShardId: 1,
-				Leader:  "leader:1234",
+				Shard:  1,
+				Leader: "leader:1234",
 				ShardBoundaries: &proto.ShardAssignment_Int32HashRange{
 					Int32HashRange: &proto.Int32HashRange{
 						MinHashInclusive: 1,

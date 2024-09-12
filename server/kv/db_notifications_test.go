@@ -50,7 +50,7 @@ func TestDB_Notifications(t *testing.T) {
 	nb := notifications[0]
 	assert.Equal(t, t0, nb.Timestamp)
 	assert.EqualValues(t, 0, nb.Offset)
-	assert.EqualValues(t, 1, nb.ShardId)
+	assert.EqualValues(t, 1, nb.Shard)
 	assert.Equal(t, 1, len(nb.Notifications))
 	n, found := nb.Notifications["a"]
 	assert.True(t, found)
@@ -80,7 +80,7 @@ func TestDB_Notifications(t *testing.T) {
 	nb = notifications[0]
 	assert.Equal(t, t1, nb.Timestamp)
 	assert.EqualValues(t, 1, nb.Offset)
-	assert.EqualValues(t, 1, nb.ShardId)
+	assert.EqualValues(t, 1, nb.Shard)
 	assert.Equal(t, 1, len(nb.Notifications))
 	n, found = nb.Notifications["a"]
 	assert.True(t, found)
@@ -90,7 +90,7 @@ func TestDB_Notifications(t *testing.T) {
 	nb = notifications[1]
 	assert.Equal(t, t2, nb.Timestamp)
 	assert.EqualValues(t, 2, nb.Offset)
-	assert.EqualValues(t, 1, nb.ShardId)
+	assert.EqualValues(t, 1, nb.Shard)
 	assert.Equal(t, 1, len(nb.Notifications))
 	n, found = nb.Notifications["b"]
 	assert.True(t, found)
@@ -119,7 +119,7 @@ func TestDB_Notifications(t *testing.T) {
 	nb = notifications[0]
 	assert.Equal(t, t3, nb.Timestamp)
 	assert.EqualValues(t, 3, nb.Offset)
-	assert.EqualValues(t, 1, nb.ShardId)
+	assert.EqualValues(t, 1, nb.Shard)
 	assert.Equal(t, 3, len(nb.Notifications))
 	n, found = nb.Notifications["c"]
 	assert.True(t, found)
@@ -154,7 +154,7 @@ func TestDB_Notifications(t *testing.T) {
 	nb = notifications[0]
 	assert.Equal(t, t4, nb.Timestamp)
 	assert.EqualValues(t, 4, nb.Offset)
-	assert.EqualValues(t, 1, nb.ShardId)
+	assert.EqualValues(t, 1, nb.Shard)
 	assert.Equal(t, 1, len(nb.Notifications))
 	n, found = nb.Notifications["x1"]
 	assert.True(t, found)

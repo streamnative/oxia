@@ -195,29 +195,29 @@ func (s *shardsDirector) DeleteShard(req *proto.DeleteShardRequest) (*proto.Dele
 	s.Lock()
 	defer s.Unlock()
 
-	if leader, ok := s.leaders[req.ShardId]; ok {
+	if leader, ok := s.leaders[req.Shard]; ok {
 		resp, err := leader.DeleteShard(req)
 		if err != nil {
 			return nil, err
 		}
 
-		delete(s.leaders, req.ShardId)
+		delete(s.leaders, req.Shard)
 		s.leadersCounter.Dec()
 		return resp, nil
 	}
 
-	if follower, ok := s.followers[req.ShardId]; ok {
+	if follower, ok := s.followers[req.Shard]; ok {
 		resp, err := follower.DeleteShard(req)
 		if err != nil {
 			return nil, err
 		}
 
-		delete(s.followers, req.ShardId)
+		delete(s.followers, req.Shard)
 		s.followersCounter.Dec()
 		return resp, nil
 	}
 
-	fc, err := NewFollowerController(s.config, req.Namespace, req.ShardId, s.walFactory, s.kvFactory)
+	fc, err := NewFollowerController(s.config, req.Namespace, req.Shard, s.walFactory, s.kvFactory)
 	if err != nil {
 		return nil, err
 	}

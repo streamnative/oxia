@@ -34,23 +34,23 @@ func TestShardsDirector_DeleteShardLeader(t *testing.T) {
 	sd := NewShardsDirector(Config{}, walFactory, kvFactory, newMockRpcClient())
 
 	lc, _ := sd.GetOrCreateLeader(common.DefaultNamespace, shard)
-	_, _ = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})
+	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
 	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
-		ShardId:           shard,
+		Shard:             shard,
 		Term:              1,
 		ReplicationFactor: 1,
 		FollowerMaps:      nil,
 	})
 
 	_, err := lc.Write(context.Background(), &proto.WriteRequest{
-		ShardId: &shard,
-		Puts:    []*proto.PutRequest{{Key: "k1", Value: []byte("hello")}},
+		Shard: &shard,
+		Puts:  []*proto.PutRequest{{Key: "k1", Value: []byte("hello")}},
 	})
 	assert.NoError(t, err)
 
 	_, err = lc.DeleteShard(&proto.DeleteShardRequest{
 		Namespace: common.DefaultNamespace,
-		ShardId:   shard,
+		Shard:     shard,
 		Term:      1,
 	})
 	assert.NoError(t, err)

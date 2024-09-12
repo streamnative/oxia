@@ -234,19 +234,19 @@ func TestSessionManager(t *testing.T) {
 	// Invalid session timeout
 	kvf, walf, sManager, lc := createSessionManager(t)
 	_, err := sManager.CreateSession(&proto.CreateSessionRequest{
-		ShardId:          shardId,
+		Shard:            shardId,
 		SessionTimeoutMs: uint32((1 * time.Hour).Milliseconds()),
 	})
 	assert.ErrorIs(t, err, common.ErrorInvalidSessionTimeout)
 	_, err = sManager.CreateSession(&proto.CreateSessionRequest{
-		ShardId:          shardId,
+		Shard:            shardId,
 		SessionTimeoutMs: uint32((1 * time.Second).Milliseconds()),
 	})
 	assert.ErrorIs(t, err, common.ErrorInvalidSessionTimeout)
 
 	// Create and close a session, check if its persisted
 	createResp, err := sManager.CreateSession(&proto.CreateSessionRequest{
-		ShardId:          shardId,
+		Shard:            shardId,
 		SessionTimeoutMs: 5 * 1000,
 	})
 	assert.NoError(t, err)
@@ -256,7 +256,7 @@ func TestSessionManager(t *testing.T) {
 	assert.Equal(t, uint32(5000), meta.TimeoutMs)
 
 	_, err = sManager.CloseSession(&proto.CloseSessionRequest{
-		ShardId:   shardId,
+		Shard:     shardId,
 		SessionId: sessionId,
 	})
 	assert.NoError(t, err)
@@ -264,7 +264,7 @@ func TestSessionManager(t *testing.T) {
 
 	// Create a session, watch it time out
 	createResp, err = sManager.createSession(&proto.CreateSessionRequest{
-		ShardId:          shardId,
+		Shard:            shardId,
 		SessionTimeoutMs: uint32(50),
 	}, 0)
 	assert.NoError(t, err)
@@ -280,7 +280,7 @@ func TestSessionManager(t *testing.T) {
 
 	// Create a session, keep it alive
 	createResp, err = sManager.createSession(&proto.CreateSessionRequest{
-		ShardId:          shardId,
+		Shard:            shardId,
 		SessionTimeoutMs: uint32(50),
 	}, 0)
 	assert.NoError(t, err)
@@ -297,7 +297,7 @@ func TestSessionManager(t *testing.T) {
 
 	// Create a session, put an ephemeral value
 	createResp, err = sManager.createSession(&proto.CreateSessionRequest{
-		ShardId:          shardId,
+		Shard:            shardId,
 		SessionTimeoutMs: uint32(50),
 	}, 0)
 	assert.NoError(t, err)
@@ -307,7 +307,7 @@ func TestSessionManager(t *testing.T) {
 	keepAlive(t, sManager, sessionId, err, 30*time.Millisecond, 6)
 
 	_, err = lc.Write(context.Background(), &proto.WriteRequest{
-		ShardId: &shardId,
+		Shard: &shardId,
 		Puts: []*proto.PutRequest{{
 			Key:       "a/b",
 			Value:     []byte("a/b"),
@@ -333,7 +333,7 @@ func TestMultipleSessionsExpiry(t *testing.T) {
 
 	// Create 2 sessions
 	createResp1, err := sManager.createSession(&proto.CreateSessionRequest{
-		ShardId:          shardId,
+		Shard:            shardId,
 		SessionTimeoutMs: uint32(3000),
 		ClientIdentity:   "session-1",
 	}, 0)
@@ -341,7 +341,7 @@ func TestMultipleSessionsExpiry(t *testing.T) {
 	sessionId1 := createResp1.SessionId
 
 	createResp2, err := sManager.createSession(&proto.CreateSessionRequest{
-		ShardId:          shardId,
+		Shard:            shardId,
 		SessionTimeoutMs: uint32(50),
 		ClientIdentity:   "session-2",
 	}, 0)
@@ -349,7 +349,7 @@ func TestMultipleSessionsExpiry(t *testing.T) {
 	sessionId2 := createResp2.SessionId
 
 	_, err = lc.Write(context.Background(), &proto.WriteRequest{
-		ShardId: &shardId,
+		Shard: &shardId,
 		Puts: []*proto.PutRequest{{
 			Key:       "/ephemeral-1",
 			Value:     []byte("hello"),
@@ -359,7 +359,7 @@ func TestMultipleSessionsExpiry(t *testing.T) {
 	assert.NoError(t, err)
 
 	_, err = lc.Write(context.Background(), &proto.WriteRequest{
-		ShardId: &shardId,
+		Shard: &shardId,
 		Puts: []*proto.PutRequest{{
 			Key:       "/ephemeral-2",
 			Value:     []byte("hello"),
@@ -374,7 +374,7 @@ func TestMultipleSessionsExpiry(t *testing.T) {
 	}, 10*time.Second, 30*time.Millisecond)
 
 	readCh := lc.Read(context.Background(), &proto.ReadRequest{
-		ShardId: &shardId,
+		Shard: &shardId,
 		Gets: []*proto.GetRequest{{
 			Key:          "/ephemeral-1",
 			IncludeValue: true,
@@ -402,7 +402,7 @@ func TestMultipleSessionsExpiry(t *testing.T) {
 	}, 10*time.Second, 30*time.Millisecond)
 
 	readCh = lc.Read(context.Background(), &proto.ReadRequest{
-		ShardId: &shardId,
+		Shard: &shardId,
 		Gets: []*proto.GetRequest{{
 			Key:          "/ephemeral-1",
 			IncludeValue: true,
@@ -435,7 +435,7 @@ func TestSessionManagerReopening(t *testing.T) {
 	walf, kvf, sManager, lc := createSessionManager(t)
 
 	_, err := lc.Write(context.Background(), &proto.WriteRequest{
-		ShardId: &shardId,
+		Shard: &shardId,
 		Puts: []*proto.PutRequest{{
 			Key:   "/ledgers",
 			Value: []byte("a"),
@@ -451,7 +451,7 @@ func TestSessionManagerReopening(t *testing.T) {
 
 	// Create session and reopen the session manager
 	createResp, err := sManager.CreateSession(&proto.CreateSessionRequest{
-		ShardId:          shardId,
+		Shard:            shardId,
 		SessionTimeoutMs: 5 * 1000,
 	})
 	assert.NoError(t, err)
@@ -461,7 +461,7 @@ func TestSessionManagerReopening(t *testing.T) {
 	assert.Equal(t, uint32(5000), meta.TimeoutMs)
 
 	_, err = lc.Write(context.Background(), &proto.WriteRequest{
-		ShardId: &shardId,
+		Shard: &shardId,
 		Puts: []*proto.PutRequest{{
 			Key:       "/a/b",
 			Value:     []byte("/a/b"),
@@ -537,10 +537,10 @@ func createSessionManager(t *testing.T) (kv.Factory, wal.Factory, *sessionManage
 	walFactory := newTestWalFactory(t)
 	lc, err := NewLeaderController(Config{NotificationsRetentionTime: 10 * time.Second}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
-	_, err = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})
+	_, err = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
 	assert.NoError(t, err)
 	_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
-		ShardId:           shard,
+		Shard:             shard,
 		Term:              1,
 		ReplicationFactor: 1,
 		FollowerMaps:      nil,
@@ -562,10 +562,10 @@ func reopenLeaderController(t *testing.T, kvFactory kv.Factory, walFactory wal.F
 	var err error
 	lc, err := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
-	_, err = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})
+	_, err = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
 	assert.NoError(t, err)
 	_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
-		ShardId:           shard,
+		Shard:             shard,
 		Term:              1,
 		ReplicationFactor: 1,
 		FollowerMaps:      nil,

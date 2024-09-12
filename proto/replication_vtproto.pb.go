@@ -110,7 +110,7 @@ func (m *NewTermRequest) CloneVT() *NewTermRequest {
 	}
 	r := new(NewTermRequest)
 	r.Namespace = m.Namespace
-	r.ShardId = m.ShardId
+	r.Shard = m.Shard
 	r.Term = m.Term
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -146,7 +146,7 @@ func (m *BecomeLeaderRequest) CloneVT() *BecomeLeaderRequest {
 	}
 	r := new(BecomeLeaderRequest)
 	r.Namespace = m.Namespace
-	r.ShardId = m.ShardId
+	r.Shard = m.Shard
 	r.Term = m.Term
 	r.ReplicationFactor = m.ReplicationFactor
 	if rhs := m.FollowerMaps; rhs != nil {
@@ -173,7 +173,7 @@ func (m *AddFollowerRequest) CloneVT() *AddFollowerRequest {
 	}
 	r := new(AddFollowerRequest)
 	r.Namespace = m.Namespace
-	r.ShardId = m.ShardId
+	r.Shard = m.Shard
 	r.Term = m.Term
 	r.FollowerName = m.FollowerName
 	r.FollowerHeadEntryId = m.FollowerHeadEntryId.CloneVT()
@@ -226,7 +226,7 @@ func (m *TruncateRequest) CloneVT() *TruncateRequest {
 	}
 	r := new(TruncateRequest)
 	r.Namespace = m.Namespace
-	r.ShardId = m.ShardId
+	r.Shard = m.Shard
 	r.Term = m.Term
 	r.HeadEntryId = m.HeadEntryId.CloneVT()
 	if len(m.unknownFields) > 0 {
@@ -316,7 +316,7 @@ func (m *DeleteShardRequest) CloneVT() *DeleteShardRequest {
 	}
 	r := new(DeleteShardRequest)
 	r.Namespace = m.Namespace
-	r.ShardId = m.ShardId
+	r.Shard = m.Shard
 	r.Term = m.Term
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -350,7 +350,7 @@ func (m *GetStatusRequest) CloneVT() *GetStatusRequest {
 		return (*GetStatusRequest)(nil)
 	}
 	r := new(GetStatusRequest)
-	r.ShardId = m.ShardId
+	r.Shard = m.Shard
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -488,7 +488,7 @@ func (this *NewTermRequest) EqualVT(that *NewTermRequest) bool {
 	if this.Namespace != that.Namespace {
 		return false
 	}
-	if this.ShardId != that.ShardId {
+	if this.Shard != that.Shard {
 		return false
 	}
 	if this.Term != that.Term {
@@ -532,7 +532,7 @@ func (this *BecomeLeaderRequest) EqualVT(that *BecomeLeaderRequest) bool {
 	if this.Namespace != that.Namespace {
 		return false
 	}
-	if this.ShardId != that.ShardId {
+	if this.Shard != that.Shard {
 		return false
 	}
 	if this.Term != that.Term {
@@ -580,7 +580,7 @@ func (this *AddFollowerRequest) EqualVT(that *AddFollowerRequest) bool {
 	if this.Namespace != that.Namespace {
 		return false
 	}
-	if this.ShardId != that.ShardId {
+	if this.Shard != that.Shard {
 		return false
 	}
 	if this.Term != that.Term {
@@ -643,7 +643,7 @@ func (this *TruncateRequest) EqualVT(that *TruncateRequest) bool {
 	if this.Namespace != that.Namespace {
 		return false
 	}
-	if this.ShardId != that.ShardId {
+	if this.Shard != that.Shard {
 		return false
 	}
 	if this.Term != that.Term {
@@ -753,7 +753,7 @@ func (this *DeleteShardRequest) EqualVT(that *DeleteShardRequest) bool {
 	if this.Namespace != that.Namespace {
 		return false
 	}
-	if this.ShardId != that.ShardId {
+	if this.Shard != that.Shard {
 		return false
 	}
 	if this.Term != that.Term {
@@ -791,7 +791,7 @@ func (this *GetStatusRequest) EqualVT(that *GetStatusRequest) bool {
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.ShardId != that.ShardId {
+	if this.Shard != that.Shard {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -1061,8 +1061,8 @@ func (m *NewTermRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x18
 	}
-	if m.ShardId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ShardId))
+	if m.Shard != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Shard))
 		i--
 		dAtA[i] = 0x10
 	}
@@ -1181,8 +1181,8 @@ func (m *BecomeLeaderRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x18
 	}
-	if m.ShardId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ShardId))
+	if m.Shard != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Shard))
 		i--
 		dAtA[i] = 0x10
 	}
@@ -1248,8 +1248,8 @@ func (m *AddFollowerRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x18
 	}
-	if m.ShardId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ShardId))
+	if m.Shard != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Shard))
 		i--
 		dAtA[i] = 0x10
 	}
@@ -1374,8 +1374,8 @@ func (m *TruncateRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x18
 	}
-	if m.ShardId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ShardId))
+	if m.Shard != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Shard))
 		i--
 		dAtA[i] = 0x10
 	}
@@ -1596,8 +1596,8 @@ func (m *DeleteShardRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x18
 	}
-	if m.ShardId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ShardId))
+	if m.Shard != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Shard))
 		i--
 		dAtA[i] = 0x10
 	}
@@ -1674,8 +1674,8 @@ func (m *GetStatusRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.ShardId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ShardId))
+	if m.Shard != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Shard))
 		i--
 		dAtA[i] = 0x8
 	}
@@ -1821,8 +1821,8 @@ func (m *NewTermRequest) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.ShardId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ShardId))
+	if m.Shard != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Shard))
 	}
 	if m.Term != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.Term))
@@ -1855,8 +1855,8 @@ func (m *BecomeLeaderRequest) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.ShardId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ShardId))
+	if m.Shard != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Shard))
 	}
 	if m.Term != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.Term))
@@ -1891,8 +1891,8 @@ func (m *AddFollowerRequest) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.ShardId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ShardId))
+	if m.Shard != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Shard))
 	}
 	if m.Term != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.Term))
@@ -1939,8 +1939,8 @@ func (m *TruncateRequest) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.ShardId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ShardId))
+	if m.Shard != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Shard))
 	}
 	if m.Term != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.Term))
@@ -2023,8 +2023,8 @@ func (m *DeleteShardRequest) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.ShardId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ShardId))
+	if m.Shard != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Shard))
 	}
 	if m.Term != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.Term))
@@ -2049,8 +2049,8 @@ func (m *GetStatusRequest) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.ShardId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ShardId))
+	if m.Shard != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Shard))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -2588,9 +2588,9 @@ func (m *NewTermRequest) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
-			m.ShardId = 0
+			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -2600,7 +2600,7 @@ func (m *NewTermRequest) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.ShardId |= int64(b&0x7F) << shift
+				m.Shard |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -2796,9 +2796,9 @@ func (m *BecomeLeaderRequest) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
-			m.ShardId = 0
+			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -2808,7 +2808,7 @@ func (m *BecomeLeaderRequest) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.ShardId |= int64(b&0x7F) << shift
+				m.Shard |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -3065,9 +3065,9 @@ func (m *AddFollowerRequest) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
-			m.ShardId = 0
+			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -3077,7 +3077,7 @@ func (m *AddFollowerRequest) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.ShardId |= int64(b&0x7F) << shift
+				m.Shard |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -3356,9 +3356,9 @@ func (m *TruncateRequest) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
-			m.ShardId = 0
+			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -3368,7 +3368,7 @@ func (m *TruncateRequest) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.ShardId |= int64(b&0x7F) << shift
+				m.Shard |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -3865,9 +3865,9 @@ func (m *DeleteShardRequest) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
-			m.ShardId = 0
+			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -3877,7 +3877,7 @@ func (m *DeleteShardRequest) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.ShardId |= int64(b&0x7F) << shift
+				m.Shard |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -4005,9 +4005,9 @@ func (m *GetStatusRequest) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
-			m.ShardId = 0
+			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -4017,7 +4017,7 @@ func (m *GetStatusRequest) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.ShardId |= int64(b&0x7F) << shift
+				m.Shard |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -4683,9 +4683,9 @@ func (m *NewTermRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
-			m.ShardId = 0
+			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -4695,7 +4695,7 @@ func (m *NewTermRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.ShardId |= int64(b&0x7F) << shift
+				m.Shard |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -4895,9 +4895,9 @@ func (m *BecomeLeaderRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
-			m.ShardId = 0
+			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -4907,7 +4907,7 @@ func (m *BecomeLeaderRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.ShardId |= int64(b&0x7F) << shift
+				m.Shard |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -5172,9 +5172,9 @@ func (m *AddFollowerRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
-			m.ShardId = 0
+			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -5184,7 +5184,7 @@ func (m *AddFollowerRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.ShardId |= int64(b&0x7F) << shift
+				m.Shard |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -5471,9 +5471,9 @@ func (m *TruncateRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
-			m.ShardId = 0
+			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -5483,7 +5483,7 @@ func (m *TruncateRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.ShardId |= int64(b&0x7F) << shift
+				m.Shard |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -5984,9 +5984,9 @@ func (m *DeleteShardRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
-			m.ShardId = 0
+			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -5996,7 +5996,7 @@ func (m *DeleteShardRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.ShardId |= int64(b&0x7F) << shift
+				m.Shard |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -6124,9 +6124,9 @@ func (m *GetStatusRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
-			m.ShardId = 0
+			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -6136,7 +6136,7 @@ func (m *GetStatusRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.ShardId |= int64(b&0x7F) << shift
+				m.Shard |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

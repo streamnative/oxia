@@ -528,7 +528,7 @@ func (lc *leaderController) truncateFollowerIfNeeded(follower string, followerHe
 
 	tr, err := lc.rpcClient.Truncate(follower, &proto.TruncateRequest{
 		Namespace:   lc.namespace,
-		ShardId:     lc.shardId,
+		Shard:       lc.shardId,
 		Term:        lc.term,
 		HeadEntryId: lastEntryInFollowerTerm,
 	})
@@ -1030,7 +1030,7 @@ func (lc *leaderController) dispatchNotifications(ctx context.Context, req *prot
 			slog.Int64("commit-offset", commitOffset),
 		)
 		if err := stream.Send(&proto.NotificationBatch{
-			ShardId:       lc.shardId,
+			Shard:         lc.shardId,
 			Offset:        commitOffset,
 			Timestamp:     0,
 			Notifications: nil,

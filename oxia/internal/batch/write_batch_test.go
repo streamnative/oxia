@@ -135,7 +135,7 @@ func TestWriteBatchComplete(t *testing.T) {
 	} {
 		execute := func(ctx context.Context, request *proto.WriteRequest) (*proto.WriteResponse, error) {
 			assert.Equal(t, &proto.WriteRequest{
-				ShardId: &shardId,
+				Shard: &shardId,
 				Puts: []*proto.PutRequest{{
 					Key:               "/a",
 					Value:             []byte{0},

@@ -94,7 +94,7 @@ func (s *publicRpcServer) Write(ctx context.Context, write *proto.WriteRequest) 
 		slog.Any("req", write),
 	)
 
-	lc, err := s.getLeader(*write.ShardId)
+	lc, err := s.getLeader(*write.Shard)
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +161,7 @@ func (s *publicRpcServer) Read(request *proto.ReadRequest, stream proto.OxiaClie
 		slog.Any("req", request),
 	)
 
-	lc, err := s.getLeader(*request.ShardId)
+	lc, err := s.getLeader(*request.Shard)
 	if err != nil {
 		return err
 	}
@@ -209,7 +209,7 @@ func (s *publicRpcServer) List(request *proto.ListRequest, stream proto.OxiaClie
 		slog.Any("req", request),
 	)
 
-	lc, err := s.getLeader(*request.ShardId)
+	lc, err := s.getLeader(*request.Shard)
 	if err != nil {
 		return err
 	}
@@ -260,7 +260,7 @@ func (s *publicRpcServer) RangeScan(request *proto.RangeScanRequest, stream prot
 		slog.Any("req", request),
 	)
 
-	lc, err := s.getLeader(*request.ShardId)
+	lc, err := s.getLeader(*request.Shard)
 	if err != nil {
 		return err
 	}
@@ -317,7 +317,7 @@ func (s *publicRpcServer) GetNotifications(req *proto.NotificationsRequest, stre
 		slog.Any("req", req),
 	)
 
-	lc, err := s.getLeader(req.ShardId)
+	lc, err := s.getLeader(req.Shard)
 	if err != nil {
 		return err
 	}
@@ -342,7 +342,7 @@ func (s *publicRpcServer) CreateSession(ctx context.Context, req *proto.CreateSe
 		slog.String("peer", common.GetPeer(ctx)),
 		slog.Any("req", req),
 	)
-	lc, err := s.getLeader(req.ShardId)
+	lc, err := s.getLeader(req.Shard)
 	if err != nil {
 		return nil, err
 	}
@@ -360,11 +360,11 @@ func (s *publicRpcServer) CreateSession(ctx context.Context, req *proto.CreateSe
 func (s *publicRpcServer) KeepAlive(ctx context.Context, req *proto.SessionHeartbeat) (*proto.KeepAliveResponse, error) {
 	s.log.Debug(
 		"Session keep alive",
-		slog.Int64("shard", req.ShardId),
+		slog.Int64("shard", req.Shard),
 		slog.Int64("session", req.SessionId),
 		slog.String("peer", common.GetPeer(ctx)),
 	)
-	lc, err := s.getLeader(req.ShardId)
+	lc, err := s.getLeader(req.Shard)
 	if err != nil {
 		return nil, err
 	}
@@ -385,7 +385,7 @@ func (s *publicRpcServer) CloseSession(ctx context.Context, req *proto.CloseSess
 		slog.String("peer", common.GetPeer(ctx)),
 		slog.Any("req", req),
 	)
-	lc, err := s.getLeader(req.ShardId)
+	lc, err := s.getLeader(req.Shard)
 	if err != nil {
 		return nil, err
 	}

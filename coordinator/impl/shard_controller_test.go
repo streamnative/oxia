@@ -245,7 +245,7 @@ func TestShardController_VerifyFollowersWereAllFenced(t *testing.T) {
 	}, rpc, coordinator)
 
 	r1 := <-n1.getStatusRequests
-	assert.EqualValues(t, 5, r1.ShardId)
+	assert.EqualValues(t, 5, r1.Shard)
 	n1.getStatusResponses <- struct {
 		*proto.GetStatusResponse
 		error
@@ -255,7 +255,7 @@ func TestShardController_VerifyFollowersWereAllFenced(t *testing.T) {
 	}, nil}
 
 	r2 := <-n2.getStatusRequests
-	assert.EqualValues(t, 5, r2.ShardId)
+	assert.EqualValues(t, 5, r2.Shard)
 	n2.getStatusResponses <- struct {
 		*proto.GetStatusResponse
 		error
@@ -267,7 +267,7 @@ func TestShardController_VerifyFollowersWereAllFenced(t *testing.T) {
 	// The `s3` server was not properly fenced and it's stuck term 3
 	// It needs to be fenced again
 	r3 := <-n3.getStatusRequests
-	assert.EqualValues(t, 5, r3.ShardId)
+	assert.EqualValues(t, 5, r3.Shard)
 	n3.getStatusResponses <- struct {
 		*proto.GetStatusResponse
 		error

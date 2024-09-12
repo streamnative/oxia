@@ -20,7 +20,7 @@ import (
 
 func toShard(assignment *proto.ShardAssignment) Shard {
 	return Shard{
-		Id:        assignment.ShardId,
+		Id:        assignment.Shard,
 		Leader:    assignment.Leader,
 		HashRange: toHashRange(assignment),
 	}

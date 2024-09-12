@@ -291,7 +291,7 @@ func generateStandaloneShards(numShards uint32) []*proto.ShardAssignment {
 	assignments := make([]*proto.ShardAssignment, numShards)
 	for i, shard := range shards {
 		assignments[i] = &proto.ShardAssignment{
-			ShardId: shard.Id,
+			Shard: shard.Id,
 			// Leader: defer to send time
 			ShardBoundaries: &proto.ShardAssignment_Int32HashRange{
 				Int32HashRange: &proto.Int32HashRange{

@@ -59,7 +59,7 @@ func NewExecutor(ctx context.Context, namespace string, pool common.ClientPool, 
 }
 
 func (e *executorImpl) ExecuteWrite(ctx context.Context, request *proto.WriteRequest) (*proto.WriteResponse, error) {
-	sw, err := e.writeStream(request.ShardId) //nolint:contextcheck
+	sw, err := e.writeStream(request.Shard) //nolint:contextcheck
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +68,7 @@ func (e *executorImpl) ExecuteWrite(ctx context.Context, request *proto.WriteReq
 }
 
 func (e *executorImpl) ExecuteRead(ctx context.Context, request *proto.ReadRequest) (proto.OxiaClient_ReadClient, error) {
-	rpc, err := e.rpc(request.ShardId)
+	rpc, err := e.rpc(request.Shard)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +77,7 @@ func (e *executorImpl) ExecuteRead(ctx context.Context, request *proto.ReadReque
 }
 
 func (e *executorImpl) ExecuteList(ctx context.Context, request *proto.ListRequest) (proto.OxiaClient_ListClient, error) {
-	rpc, err := e.rpc(request.ShardId)
+	rpc, err := e.rpc(request.Shard)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +86,7 @@ func (e *executorImpl) ExecuteList(ctx context.Context, request *proto.ListReque
 }
 
 func (e *executorImpl) ExecuteRangeScan(ctx context.Context, request *proto.RangeScanRequest) (proto.OxiaClient_RangeScanClient, error) {
-	rpc, err := e.rpc(request.ShardId)
+	rpc, err := e.rpc(request.Shard)
 	if err != nil {
 		return nil, err
 	}

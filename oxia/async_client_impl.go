@@ -321,7 +321,7 @@ func processAllGetResponses(key string, results []*proto.GetResponse, comparison
 
 func (c *clientImpl) listFromShard(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, shardId int64, ch chan<- ListResult) {
 	request := &proto.ListRequest{
-		ShardId:        &shardId,
+		Shard:          &shardId,
 		StartInclusive: minKeyInclusive,
 		EndExclusive:   maxKeyExclusive,
 	}
@@ -383,7 +383,7 @@ func (c *clientImpl) List(ctx context.Context, minKeyInclusive string, maxKeyExc
 
 func (c *clientImpl) rangeScanFromShard(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, shardId int64, ch chan<- GetResult) {
 	request := &proto.RangeScanRequest{
-		ShardId:        &shardId,
+		Shard:          &shardId,
 		StartInclusive: minKeyInclusive,
 		EndExclusive:   maxKeyExclusive,
 	}

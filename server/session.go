@@ -94,7 +94,7 @@ func (s *session) delete() error {
 	sessionKey := SessionKey(s.id)
 	// Read "index"
 	list, err := s.sm.leaderController.ListSliceNoMutex(context.Background(), &proto.ListRequest{
-		ShardId:        &s.shardId,
+		Shard:          &s.shardId,
 		StartInclusive: sessionKey + "/",
 		EndExclusive:   sessionKey + "//",
 	})
@@ -129,7 +129,7 @@ func (s *session) delete() error {
 		Key: sessionKey,
 	})
 	_, err = s.sm.leaderController.Write(context.Background(), &proto.WriteRequest{
-		ShardId: &s.shardId,
+		Shard:   &s.shardId,
 		Puts:    nil,
 		Deletes: deletes,
 		// Delete the whole index of ephemeral keys for the session

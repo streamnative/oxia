@@ -57,7 +57,7 @@ func TestLeaderController_NotInitialized(t *testing.T) {
 	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, lc.Status())
 
 	res, err := lc.Write(context.Background(), &proto.WriteRequest{
-		ShardId: &shard,
+		Shard: &shard,
 		Puts: []*proto.PutRequest{{
 			Key:   "a",
 			Value: []byte("value-a")}},
@@ -67,8 +67,8 @@ func TestLeaderController_NotInitialized(t *testing.T) {
 	assert.Equal(t, common.CodeInvalidStatus, status.Code(err))
 
 	r := <-lc.Read(context.Background(), &proto.ReadRequest{
-		ShardId: &shard,
-		Gets:    []*proto.GetRequest{{Key: "a"}},
+		Shard: &shard,
+		Gets:  []*proto.GetRequest{{Key: "a"}},
 	})
 
 	assert.Nil(t, r.Response)
@@ -95,15 +95,15 @@ func TestLeaderController_Closed(t *testing.T) {
 	assert.NoError(t, lc.Close())
 
 	res, err := lc.NewTerm(&proto.NewTermRequest{
-		ShardId: shard,
-		Term:    2,
+		Shard: shard,
+		Term:  2,
 	})
 
 	assert.Nil(t, res)
 	assert.Equal(t, common.CodeAlreadyClosed, status.Code(err))
 
 	res2, err := lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
-		ShardId:      shard,
+		Shard:        shard,
 		Term:         2,
 		FollowerMaps: map[string]*proto.EntryId{},
 	})
@@ -128,7 +128,7 @@ func TestLeaderController_BecomeLeader_NoFencing(t *testing.T) {
 	assert.EqualValues(t, wal.InvalidTerm, lc.Term())
 	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, lc.Status())
 	resp, err := lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
-		ShardId:           shard,
+		Shard:             shard,
 		Term:              1,
 		ReplicationFactor: 1,
 		FollowerMaps:      nil,
@@ -155,14 +155,14 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, lc.Status())
 
 	fr, err := lc.NewTerm(&proto.NewTermRequest{
-		ShardId: shard,
-		Term:    1,
+		Shard: shard,
+		Term:  1,
 	})
 	assert.NoError(t, err)
 	AssertProtoEqual(t, InvalidEntryId, fr.HeadEntryId)
 
 	_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
-		ShardId:           shard,
+		Shard:             shard,
 		Term:              1,
 		ReplicationFactor: 1,
 		FollowerMaps:      nil,
@@ -174,7 +174,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 
 	// Write entry
 	res, err := lc.Write(context.Background(), &proto.WriteRequest{
-		ShardId: &shard,
+		Shard: &shard,
 		Puts: []*proto.PutRequest{{
 			Key:   "a",
 			Value: []byte("value-a")}},
@@ -190,8 +190,8 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 
 	// Read entry
 	r := <-lc.Read(context.Background(), &proto.ReadRequest{
-		ShardId: &shard,
-		Gets:    []*proto.GetRequest{{Key: "a", IncludeValue: true}},
+		Shard: &shard,
+		Gets:  []*proto.GetRequest{{Key: "a", IncludeValue: true}},
 	})
 
 	assert.NoError(t, r.Err)
@@ -202,8 +202,8 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	// Set NewTerm to leader
 
 	fr2, err := lc.NewTerm(&proto.NewTermRequest{
-		ShardId: shard,
-		Term:    2,
+		Shard: shard,
+		Term:  2,
 	})
 	assert.NoError(t, err)
 	AssertProtoEqual(t, &proto.EntryId{Term: 1, Offset: 0}, fr2.HeadEntryId)
@@ -214,7 +214,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	// Should not accept anymore writes & reads
 
 	res3, err := lc.Write(context.Background(), &proto.WriteRequest{
-		ShardId: &shard,
+		Shard: &shard,
 		Puts: []*proto.PutRequest{{
 			Key:   "a",
 			Value: []byte("value-a")}},
@@ -224,8 +224,8 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	assert.Equal(t, common.CodeInvalidStatus, status.Code(err))
 
 	r = <-lc.Read(context.Background(), &proto.ReadRequest{
-		ShardId: &shard,
-		Gets:    []*proto.GetRequest{{Key: "a"}},
+		Shard: &shard,
+		Gets:  []*proto.GetRequest{{Key: "a"}},
 	})
 
 	assert.Nil(t, r.Response)
@@ -252,14 +252,14 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, lc.Status())
 
 	fr, err := lc.NewTerm(&proto.NewTermRequest{
-		ShardId: shard,
-		Term:    1,
+		Shard: shard,
+		Term:  1,
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, InvalidEntryId, fr.HeadEntryId)
 
 	_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
-		ShardId:           shard,
+		Shard:             shard,
 		Term:              1,
 		ReplicationFactor: 2,
 		FollowerMaps: map[string]*proto.EntryId{
@@ -281,7 +281,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 
 	// Write entry
 	res, err := lc.Write(context.Background(), &proto.WriteRequest{
-		ShardId: &shard,
+		Shard: &shard,
 		Puts: []*proto.PutRequest{{
 			Key:   "a",
 			Value: []byte("value-a")}},
@@ -294,8 +294,8 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 
 	// Read entry
 	r := <-lc.Read(context.Background(), &proto.ReadRequest{
-		ShardId: &shard,
-		Gets:    []*proto.GetRequest{{Key: "a", IncludeValue: true}},
+		Shard: &shard,
+		Gets:  []*proto.GetRequest{{Key: "a", IncludeValue: true}},
 	})
 
 	assert.NoError(t, r.Err)
@@ -306,8 +306,8 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	// Set NewTerm to leader
 
 	fr2, err := lc.NewTerm(&proto.NewTermRequest{
-		ShardId: shard,
-		Term:    2,
+		Shard: shard,
+		Term:  2,
 	})
 	assert.NoError(t, err)
 	AssertProtoEqual(t, &proto.EntryId{Term: 1, Offset: 0}, fr2.HeadEntryId)
@@ -318,7 +318,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	// Should not accept anymore writes & reads
 
 	res3, err := lc.Write(context.Background(), &proto.WriteRequest{
-		ShardId: &shard,
+		Shard: &shard,
 		Puts: []*proto.PutRequest{{
 			Key:   "a",
 			Value: []byte("value-a")}},
@@ -328,8 +328,8 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	assert.Equal(t, common.CodeInvalidStatus, status.Code(err))
 
 	r = <-lc.Read(context.Background(), &proto.ReadRequest{
-		ShardId: &shard,
-		Gets:    []*proto.GetRequest{{Key: "a"}},
+		Shard: &shard,
+		Gets:  []*proto.GetRequest{{Key: "a"}},
 	})
 
 	assert.Nil(t, r.Response)
@@ -362,8 +362,8 @@ func TestLeaderController_TermPersistent(t *testing.T) {
 	// Set NewTerm to leader
 
 	fr2, err := lc.NewTerm(&proto.NewTermRequest{
-		ShardId: shard,
-		Term:    5,
+		Shard: shard,
+		Term:  5,
 	})
 	assert.NoError(t, err)
 	AssertProtoEqual(t, &proto.EntryId{Term: wal.InvalidTerm, Offset: wal.InvalidOffset}, fr2.HeadEntryId)
@@ -411,8 +411,8 @@ func TestLeaderController_FenceTerm(t *testing.T) {
 
 	// Smaller term will fail
 	fr, err := lc.NewTerm(&proto.NewTermRequest{
-		ShardId: shard,
-		Term:    4,
+		Shard: shard,
+		Term:  4,
 	})
 	assert.Nil(t, fr)
 	assert.Equal(t, common.CodeInvalidTerm, status.Code(err))
@@ -420,8 +420,8 @@ func TestLeaderController_FenceTerm(t *testing.T) {
 
 	// Same term will succeed
 	fr, err = lc.NewTerm(&proto.NewTermRequest{
-		ShardId: shard,
-		Term:    5,
+		Shard: shard,
+		Term:  5,
 	})
 	assert.NoError(t, err)
 	assert.NotNil(t, fr)
@@ -458,7 +458,7 @@ func TestLeaderController_BecomeLeaderTerm(t *testing.T) {
 
 	// Smaller term will fail
 	resp, err := lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
-		ShardId:           shard,
+		Shard:             shard,
 		Term:              4,
 		ReplicationFactor: 1,
 		FollowerMaps:      nil,
@@ -468,7 +468,7 @@ func TestLeaderController_BecomeLeaderTerm(t *testing.T) {
 
 	// Higher term will fail
 	resp, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
-		ShardId:           shard,
+		Shard:             shard,
 		Term:              6,
 		ReplicationFactor: 1,
 		FollowerMaps:      nil,
@@ -478,7 +478,7 @@ func TestLeaderController_BecomeLeaderTerm(t *testing.T) {
 
 	// Same term will succeed
 	_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
-		ShardId:           shard,
+		Shard:             shard,
 		Term:              5,
 		ReplicationFactor: 1,
 		FollowerMaps:      nil,
@@ -501,8 +501,8 @@ func TestLeaderController_AddFollower(t *testing.T) {
 	assert.NoError(t, err)
 
 	_, err = lc.NewTerm(&proto.NewTermRequest{
-		Term:    5,
-		ShardId: shard,
+		Term:  5,
+		Shard: shard,
 	})
 	assert.NoError(t, err)
 
@@ -510,7 +510,7 @@ func TestLeaderController_AddFollower(t *testing.T) {
 	assert.Equal(t, proto.ServingStatus_FENCED, lc.Status())
 
 	_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
-		ShardId:           shard,
+		Shard:             shard,
 		Term:              5,
 		ReplicationFactor: 3,
 		FollowerMaps: map[string]*proto.EntryId{
@@ -521,7 +521,7 @@ func TestLeaderController_AddFollower(t *testing.T) {
 
 	// f1 is already connected
 	afRes, err := lc.AddFollower(&proto.AddFollowerRequest{
-		ShardId:             shard,
+		Shard:               shard,
 		Term:                5,
 		FollowerName:        "f1",
 		FollowerHeadEntryId: InvalidEntryId,
@@ -530,7 +530,7 @@ func TestLeaderController_AddFollower(t *testing.T) {
 	assert.Error(t, err)
 
 	_, err = lc.AddFollower(&proto.AddFollowerRequest{
-		ShardId:             shard,
+		Shard:               shard,
 		Term:                5,
 		FollowerName:        "f2",
 		FollowerHeadEntryId: InvalidEntryId,
@@ -540,7 +540,7 @@ func TestLeaderController_AddFollower(t *testing.T) {
 	// We have already 2 followers and with replication-factor=3
 	// it's not possible to add any more followers
 	afRes, err = lc.AddFollower(&proto.AddFollowerRequest{
-		ShardId:             shard,
+		Shard:               shard,
 		Term:                5,
 		FollowerName:        "f3",
 		FollowerHeadEntryId: InvalidEntryId,
@@ -599,13 +599,13 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 	assert.NoError(t, err)
 
 	_, err = lc.NewTerm(&proto.NewTermRequest{
-		Term:    6,
-		ShardId: shard,
+		Term:  6,
+		Shard: shard,
 	})
 	assert.NoError(t, err)
 
 	_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
-		ShardId:           shard,
+		Shard:             shard,
 		Term:              6,
 		ReplicationFactor: 3,
 		FollowerMaps: map[string]*proto.EntryId{
@@ -629,7 +629,7 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 	// Write entries
 	for i := 10; i < 20; i++ {
 		res, err := lc.Write(context.Background(), &proto.WriteRequest{
-			ShardId: &shard,
+			Shard: &shard,
 			Puts: []*proto.PutRequest{{
 				Key:   "my-key",
 				Value: []byte("")}},
@@ -647,7 +647,7 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 
 	// Adding a follower that needs to be truncated
 	_, err = lc.AddFollower(&proto.AddFollowerRequest{
-		ShardId:      shard,
+		Shard:        shard,
 		Term:         6,
 		FollowerName: "f2",
 		FollowerHeadEntryId: &proto.EntryId{
@@ -661,7 +661,7 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 	assert.Equal(t, common.DefaultNamespace, trReq.Namespace)
 	assert.EqualValues(t, 6, trReq.Term)
 	AssertProtoEqual(t, &proto.EntryId{Term: 5, Offset: 9}, trReq.HeadEntryId)
-	assert.Equal(t, shard, trReq.ShardId)
+	assert.Equal(t, shard, trReq.Shard)
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())
@@ -679,13 +679,13 @@ func TestLeaderController_AddFollowerCheckTerm(t *testing.T) {
 	assert.NoError(t, err)
 
 	_, err = lc.NewTerm(&proto.NewTermRequest{
-		Term:    5,
-		ShardId: shard,
+		Term:  5,
+		Shard: shard,
 	})
 	assert.NoError(t, err)
 
 	_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
-		ShardId:           shard,
+		Shard:             shard,
 		Term:              5,
 		ReplicationFactor: 3,
 		FollowerMaps: map[string]*proto.EntryId{
@@ -695,7 +695,7 @@ func TestLeaderController_AddFollowerCheckTerm(t *testing.T) {
 	assert.NoError(t, err)
 
 	afRes, err := lc.AddFollower(&proto.AddFollowerRequest{
-		ShardId:             shard,
+		Shard:               shard,
 		Term:                4,
 		FollowerName:        "f2",
 		FollowerHeadEntryId: InvalidEntryId,
@@ -704,7 +704,7 @@ func TestLeaderController_AddFollowerCheckTerm(t *testing.T) {
 	assert.Equal(t, common.CodeInvalidTerm, status.Code(err))
 
 	afRes, err = lc.AddFollower(&proto.AddFollowerRequest{
-		ShardId:             shard,
+		Shard:               shard,
 		Term:                6,
 		FollowerName:        "f2",
 		FollowerHeadEntryId: InvalidEntryId,
@@ -736,7 +736,7 @@ func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
 	walObject, err := walFactory.NewWal(common.DefaultNamespace, shard, nil)
 	assert.NoError(t, err)
 	v, err := pb.Marshal(wrapInLogEntryValue(&proto.WriteRequest{
-		ShardId: &shard,
+		Shard: &shard,
 		Puts: []*proto.PutRequest{{
 			Key:   "my-key",
 			Value: []byte("my-value"),
@@ -754,8 +754,8 @@ func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
 	lc, _ := NewLeaderController(Config{}, common.DefaultNamespace, shard, rpc, walFactory, kvFactory)
 
 	_, _ = lc.NewTerm(&proto.NewTermRequest{
-		ShardId: shard,
-		Term:    1,
+		Shard: shard,
+		Term:  1,
 	})
 
 	// Respond to replication flow to follower
@@ -768,7 +768,7 @@ func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
 	}()
 
 	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
-		ShardId:           shard,
+		Shard:             shard,
 		Term:              1,
 		ReplicationFactor: 2,
 		FollowerMaps: map[string]*proto.EntryId{
@@ -779,8 +779,8 @@ func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
 
 	// We should be able to read the entry, even if it was not fully committed before the leader started
 	r := <-lc.Read(context.Background(), &proto.ReadRequest{
-		ShardId: &shard,
-		Gets:    []*proto.GetRequest{{Key: "my-key", IncludeValue: true}},
+		Shard: &shard,
+		Gets:  []*proto.GetRequest{{Key: "my-key", IncludeValue: true}},
 	})
 
 	assert.NoError(t, r.Err)
@@ -800,9 +800,9 @@ func TestLeaderController_Notifications(t *testing.T) {
 	walFactory := newTestWalFactory(t)
 
 	lc, _ := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
-	_, _ = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})
+	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
 	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
-		ShardId:           shard,
+		Shard:             shard,
 		Term:              1,
 		ReplicationFactor: 1,
 		FollowerMaps:      nil,
@@ -814,14 +814,14 @@ func TestLeaderController_Notifications(t *testing.T) {
 	closeCh := make(chan any)
 
 	go func() {
-		err := lc.GetNotifications(&proto.NotificationsRequest{ShardId: shard, StartOffsetExclusive: &wal.InvalidOffset}, stream)
+		err := lc.GetNotifications(&proto.NotificationsRequest{Shard: shard, StartOffsetExclusive: &wal.InvalidOffset}, stream)
 		assert.ErrorIs(t, err, context.Canceled)
 		close(closeCh)
 	}()
 
 	// Write entry
 	_, _ = lc.Write(context.Background(), &proto.WriteRequest{
-		ShardId: &shard,
+		Shard: &shard,
 		Puts: []*proto.PutRequest{{
 			Key:   "a",
 			Value: []byte("value-a")}},
@@ -866,9 +866,9 @@ func TestLeaderController_NotificationsCloseLeader(t *testing.T) {
 	walFactory := newTestWalFactory(t)
 
 	lc, _ := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
-	_, _ = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})
+	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
 	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
-		ShardId:           shard,
+		Shard:             shard,
 		Term:              1,
 		ReplicationFactor: 1,
 		FollowerMaps:      nil,
@@ -879,7 +879,7 @@ func TestLeaderController_NotificationsCloseLeader(t *testing.T) {
 	closeCh := make(chan any)
 
 	go func() {
-		err := lc.GetNotifications(&proto.NotificationsRequest{ShardId: shard, StartOffsetExclusive: &wal.InvalidOffset}, stream)
+		err := lc.GetNotifications(&proto.NotificationsRequest{Shard: shard, StartOffsetExclusive: &wal.InvalidOffset}, stream)
 		assert.ErrorIs(t, err, context.Canceled)
 		close(closeCh)
 	}()
@@ -915,14 +915,14 @@ func TestLeaderController_NotificationsWhenNotReady(t *testing.T) {
 	walFactory := newTestWalFactory(t)
 
 	lc, _ := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
-	_, _ = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})
+	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	stream := newMockGetNotificationsServer(ctx)
 
 	// Get notification should fail if the leader controller is not fully initialized
-	err := lc.GetNotifications(&proto.NotificationsRequest{ShardId: shard}, stream)
+	err := lc.GetNotifications(&proto.NotificationsRequest{Shard: shard}, stream)
 	assert.ErrorIs(t, err, context.Canceled)
 
 	assert.NoError(t, lc.Close())
@@ -937,16 +937,16 @@ func TestLeaderController_List(t *testing.T) {
 	walFactory := newTestWalFactory(t)
 
 	lc, _ := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
-	_, _ = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})
+	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
 	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
-		ShardId:           shard,
+		Shard:             shard,
 		Term:              1,
 		ReplicationFactor: 1,
 		FollowerMaps:      nil,
 	})
 
 	_, err := lc.Write(context.Background(), &proto.WriteRequest{
-		ShardId: &shard,
+		Shard: &shard,
 		Puts: []*proto.PutRequest{
 			{Key: "/a", Value: []byte{0}},
 			{Key: "/b", Value: []byte{0}},
@@ -957,7 +957,7 @@ func TestLeaderController_List(t *testing.T) {
 	assert.NoError(t, err)
 
 	list, err := lc.ListSliceNoMutex(context.Background(), &proto.ListRequest{
-		ShardId:        &shard,
+		Shard:          &shard,
 		StartInclusive: "/a",
 		EndExclusive:   "/c",
 	})
@@ -965,7 +965,7 @@ func TestLeaderController_List(t *testing.T) {
 	assert.Equal(t, []string{"/a", "/b"}, list)
 
 	list, err = lc.ListSliceNoMutex(context.Background(), &proto.ListRequest{
-		ShardId:        &shard,
+		Shard:          &shard,
 		StartInclusive: "/y",
 		EndExclusive:   "/z",
 	})
@@ -980,16 +980,16 @@ func TestLeaderController_RangeScan(t *testing.T) {
 	walFactory := newTestWalFactory(t)
 
 	lc, _ := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
-	_, _ = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})
+	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
 	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
-		ShardId:           shard,
+		Shard:             shard,
 		Term:              1,
 		ReplicationFactor: 1,
 		FollowerMaps:      nil,
 	})
 
 	_, err := lc.Write(context.Background(), &proto.WriteRequest{
-		ShardId: &shard,
+		Shard: &shard,
 		Puts: []*proto.PutRequest{
 			{Key: "/a", Value: []byte{0}},
 			{Key: "/b", Value: []byte{0}},
@@ -1000,7 +1000,7 @@ func TestLeaderController_RangeScan(t *testing.T) {
 	assert.NoError(t, err)
 
 	ch, _, err := lc.RangeScan(context.Background(), &proto.RangeScanRequest{
-		ShardId:        &shard,
+		Shard:          &shard,
 		StartInclusive: "/a",
 		EndExclusive:   "/c",
 	})
@@ -1017,7 +1017,7 @@ func TestLeaderController_RangeScan(t *testing.T) {
 	assert.False(t, more)
 
 	ch, _, err = lc.RangeScan(context.Background(), &proto.RangeScanRequest{
-		ShardId:        &shard,
+		Shard:          &shard,
 		StartInclusive: "/y",
 		EndExclusive:   "/z",
 	})
@@ -1035,23 +1035,23 @@ func TestLeaderController_DeleteShard(t *testing.T) {
 	walFactory := newTestWalFactory(t)
 
 	lc, _ := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
-	_, _ = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})
+	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
 	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
-		ShardId:           shard,
+		Shard:             shard,
 		Term:              1,
 		ReplicationFactor: 1,
 		FollowerMaps:      nil,
 	})
 
 	_, err := lc.Write(context.Background(), &proto.WriteRequest{
-		ShardId: &shard,
-		Puts:    []*proto.PutRequest{{Key: "k1", Value: []byte("hello")}},
+		Shard: &shard,
+		Puts:  []*proto.PutRequest{{Key: "k1", Value: []byte("hello")}},
 	})
 	assert.NoError(t, err)
 
 	_, err = lc.DeleteShard(&proto.DeleteShardRequest{
 		Namespace: common.DefaultNamespace,
-		ShardId:   shard,
+		Shard:     shard,
 		Term:      1,
 	})
 	assert.NoError(t, err)
@@ -1059,9 +1059,9 @@ func TestLeaderController_DeleteShard(t *testing.T) {
 	assert.NoError(t, lc.Close())
 
 	lc, _ = NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
-	_, _ = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 2})
+	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 2})
 	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
-		ShardId:           shard,
+		Shard:             shard,
 		Term:              2,
 		ReplicationFactor: 1,
 		FollowerMaps:      nil,
@@ -1069,8 +1069,8 @@ func TestLeaderController_DeleteShard(t *testing.T) {
 
 	// Read entry
 	r := <-lc.Read(context.Background(), &proto.ReadRequest{
-		ShardId: &shard,
-		Gets:    []*proto.GetRequest{{Key: "a", IncludeValue: true}},
+		Shard: &shard,
+		Gets:  []*proto.GetRequest{{Key: "a", IncludeValue: true}},
 	})
 
 	assert.NoError(t, r.Err)
@@ -1088,23 +1088,23 @@ func TestLeaderController_DeleteShard_WrongTerm(t *testing.T) {
 	walFactory := newTestWalFactory(t)
 
 	lc, _ := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
-	_, _ = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})
+	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
 	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
-		ShardId:           shard,
+		Shard:             shard,
 		Term:              1,
 		ReplicationFactor: 1,
 		FollowerMaps:      nil,
 	})
 
 	_, err := lc.Write(context.Background(), &proto.WriteRequest{
-		ShardId: &shard,
-		Puts:    []*proto.PutRequest{{Key: "k1", Value: []byte("hello")}},
+		Shard: &shard,
+		Puts:  []*proto.PutRequest{{Key: "k1", Value: []byte("hello")}},
 	})
 	assert.NoError(t, err)
 
 	_, err = lc.DeleteShard(&proto.DeleteShardRequest{
 		Namespace: common.DefaultNamespace,
-		ShardId:   shard,
+		Shard:     shard,
 		Term:      0,
 	})
 	assert.ErrorIs(t, err, common.ErrorInvalidTerm)
@@ -1120,9 +1120,9 @@ func TestLeaderController_GetStatus(t *testing.T) {
 	walFactory := newTestWalFactory(t)
 
 	lc, _ := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
-	_, _ = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 2})
+	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 2})
 	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
-		ShardId:           shard,
+		Shard:             shard,
 		Term:              2,
 		ReplicationFactor: 1,
 		FollowerMaps:      nil,
@@ -1130,19 +1130,19 @@ func TestLeaderController_GetStatus(t *testing.T) {
 
 	// Write entry
 	_, _ = lc.Write(context.Background(), &proto.WriteRequest{
-		ShardId: &shard,
+		Shard: &shard,
 		Puts: []*proto.PutRequest{{
 			Key:   "a",
 			Value: []byte("value-a")}},
 	})
 	_, _ = lc.Write(context.Background(), &proto.WriteRequest{
-		ShardId: &shard,
+		Shard: &shard,
 		Puts: []*proto.PutRequest{{
 			Key:   "b",
 			Value: []byte("value-b")}},
 	})
 
-	res, err := lc.GetStatus(&proto.GetStatusRequest{ShardId: shard})
+	res, err := lc.GetStatus(&proto.GetStatusRequest{Shard: shard})
 	assert.NoError(t, err)
 	assert.Equal(t, &proto.GetStatusResponse{
 		Term:         2,
@@ -1166,11 +1166,11 @@ func TestLeaderController_WriteStream(t *testing.T) {
 	lc, err := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	_, err = lc.NewTerm(&proto.NewTermRequest{ShardId: shard, Term: 1})
+	_, err = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
 	assert.NoError(t, err)
 
 	_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
-		ShardId:           shard,
+		Shard:             shard,
 		Term:              1,
 		ReplicationFactor: 1,
 		FollowerMaps:      nil,
@@ -1182,14 +1182,14 @@ func TestLeaderController_WriteStream(t *testing.T) {
 	stream := newMockWriteStream(ctx)
 
 	stream.requests <- &proto.WriteRequest{
-		ShardId: &shard,
+		Shard: &shard,
 		Puts: []*proto.PutRequest{{
 			Key:   "a",
 			Value: []byte("value-a")}},
 	}
 
 	stream.requests <- &proto.WriteRequest{
-		ShardId: &shard,
+		Shard: &shard,
 		Puts: []*proto.PutRequest{{
 			Key:   "b",
 			Value: []byte("value-b")}},
@@ -1220,8 +1220,8 @@ func TestLeaderController_WriteStream(t *testing.T) {
 
 	// Read entry a
 	r := <-lc.Read(context.Background(), &proto.ReadRequest{
-		ShardId: &shard,
-		Gets:    []*proto.GetRequest{{Key: "a", IncludeValue: true}},
+		Shard: &shard,
+		Gets:  []*proto.GetRequest{{Key: "a", IncludeValue: true}},
 	})
 
 	assert.NoError(t, r.Err)
@@ -1231,8 +1231,8 @@ func TestLeaderController_WriteStream(t *testing.T) {
 
 	// Read entry b
 	r = <-lc.Read(context.Background(), &proto.ReadRequest{
-		ShardId: &shard,
-		Gets:    []*proto.GetRequest{{Key: "b", IncludeValue: true}},
+		Shard: &shard,
+		Gets:  []*proto.GetRequest{{Key: "b", IncludeValue: true}},
 	})
 
 	assert.NoError(t, r.Err)
@@ -1243,8 +1243,8 @@ func TestLeaderController_WriteStream(t *testing.T) {
 	// Set NewTerm to leader
 
 	fr2, err := lc.NewTerm(&proto.NewTermRequest{
-		ShardId: shard,
-		Term:    2,
+		Shard: shard,
+		Term:  2,
 	})
 	assert.NoError(t, err)
 	AssertProtoEqual(t, &proto.EntryId{Term: 1, Offset: 1}, fr2.HeadEntryId)

@@ -50,7 +50,7 @@ type notifications struct {
 func newNotifications(shardId int64, offset int64, timestamp uint64) *notifications {
 	return &notifications{
 		proto.NotificationBatch{
-			ShardId:       shardId,
+			Shard:         shardId,
 			Offset:        offset,
 			Timestamp:     timestamp,
 			Notifications: map[string]*proto.Notification{},

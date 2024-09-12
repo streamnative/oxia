@@ -220,7 +220,7 @@ func (s *shardController) verifyCurrentEnsemble() bool {
 	// is out of sync. We should just go back into the retry-to-fence follower
 	// loop. In practice, the current approach is easier for now.
 	for _, node := range s.shardMetadata.Ensemble {
-		nodeStatus, err := s.rpc.GetStatus(s.ctx, node, &proto.GetStatusRequest{ShardId: s.shard})
+		nodeStatus, err := s.rpc.GetStatus(s.ctx, node, &proto.GetStatusRequest{Shard: s.shard})
 
 		switch {
 		case err != nil:
@@ -370,7 +370,7 @@ func (s *shardController) deletingRemovedNodes() error {
 	for _, ds := range s.shardMetadata.RemovedNodes {
 		if _, err := s.rpc.DeleteShard(s.ctx, ds, &proto.DeleteShardRequest{
 			Namespace: s.namespace,
-			ShardId:   s.shard,
+			Shard:     s.shard,
 			Term:      s.shardMetadata.Term,
 		}); err != nil {
 			return err
@@ -598,7 +598,7 @@ func (s *shardController) newTermQuorum() (map[model.ServerAddress]*proto.EntryI
 func (s *shardController) newTerm(ctx context.Context, node model.ServerAddress) (*proto.EntryId, error) {
 	res, err := s.rpc.NewTerm(ctx, node, &proto.NewTermRequest{
 		Namespace: s.namespace,
-		ShardId:   s.shard,
+		Shard:     s.shard,
 		Term:      s.shardMetadata.Term,
 	})
 	if err != nil {
@@ -611,7 +611,7 @@ func (s *shardController) newTerm(ctx context.Context, node model.ServerAddress)
 func (s *shardController) deleteShardRpc(ctx context.Context, node model.ServerAddress) error {
 	_, err := s.rpc.DeleteShard(ctx, node, &proto.DeleteShardRequest{
 		Namespace: s.namespace,
-		ShardId:   s.shard,
+		Shard:     s.shard,
 		Term:      s.shardMetadata.Term,
 	})
 
@@ -658,7 +658,7 @@ func (s *shardController) becomeLeader(leader model.ServerAddress, followers map
 
 	if _, err := s.rpc.BecomeLeader(s.ctx, leader, &proto.BecomeLeaderRequest{
 		Namespace:         s.namespace,
-		ShardId:           s.shard,
+		Shard:             s.shard,
 		Term:              s.shardMetadata.Term,
 		ReplicationFactor: uint32(len(s.shardMetadata.Ensemble)),
 		FollowerMaps:      followersMap,
@@ -673,7 +673,7 @@ func (s *shardController) becomeLeader(leader model.ServerAddress, followers map
 func (s *shardController) addFollower(leader model.ServerAddress, follower string, followerHeadEntryId *proto.EntryId) error {
 	if _, err := s.rpc.AddFollower(s.ctx, leader, &proto.AddFollowerRequest{
 		Namespace:           s.namespace,
-		ShardId:             s.shard,
+		Shard:               s.shard,
 		Term:                s.shardMetadata.Term,
 		FollowerName:        follower,
 		FollowerHeadEntryId: followerHeadEntryId,
@@ -806,7 +806,7 @@ func (s *shardController) swapNode(from model.ServerAddress, to model.ServerAddr
 }
 
 func (s *shardController) isFollowerCatchUp(ctx context.Context, server model.ServerAddress, leaderHeadOffset int64) error {
-	fs, err := s.rpc.GetStatus(ctx, server, &proto.GetStatusRequest{ShardId: s.shard})
+	fs, err := s.rpc.GetStatus(ctx, server, &proto.GetStatusRequest{Shard: s.shard})
 	if err != nil {
 		return err
 	}
@@ -835,7 +835,7 @@ func (s *shardController) waitForFollowersToCatchUp(ctx context.Context, leader 
 	defer cancel()
 
 	// Get current head offset for leader
-	ls, err := s.rpc.GetStatus(ctx, leader, &proto.GetStatusRequest{ShardId: s.shard})
+	ls, err := s.rpc.GetStatus(ctx, leader, &proto.GetStatusRequest{Shard: s.shard})
 	if err != nil {
 		return errors.Wrap(err, "failed to get leader status")
 	}

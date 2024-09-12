@@ -146,7 +146,7 @@ func (sm *sessionManager) createSession(request *proto.CreateSessionRequest, min
 	}
 	id, resp, err := sm.leaderController.write(sm.ctx, func(id int64) *proto.WriteRequest {
 		return &proto.WriteRequest{
-			ShardId: &request.ShardId,
+			Shard: &request.Shard,
 			Puts: []*proto.PutRequest{{
 				Key:   SessionKey(SessionId(id)),
 				Value: marshalledMetadata,
@@ -228,7 +228,7 @@ func (sm *sessionManager) Initialize() error {
 
 func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, error) {
 	list, err := sm.leaderController.ListSliceNoMutex(context.Background(), &proto.ListRequest{
-		ShardId:        &sm.shardId,
+		Shard:          &sm.shardId,
 		StartInclusive: sessionKeyPrefix + "/",
 		EndExclusive:   sessionKeyPrefix + "//",
 	})
