@@ -46,7 +46,7 @@ func NewReplicationRpcProvider(tlsConf *tls.Config) ReplicationRpcProvider {
 	}
 }
 
-func (r *replicationRpcProvider) GetReplicateStream(ctx context.Context, follower string, namespace string, shard int64) (
+func (r *replicationRpcProvider) GetReplicateStream(ctx context.Context, follower string, namespace string, shard int64, term int64) (
 	proto.OxiaLogReplication_ReplicateClient, error) {
 	rpc, err := r.pool.GetReplicationRpc(follower)
 	if err != nil {
@@ -55,12 +55,13 @@ func (r *replicationRpcProvider) GetReplicateStream(ctx context.Context, followe
 
 	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataNamespace, namespace)
 	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataShardId, fmt.Sprintf("%d", shard))
+	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataTerm, fmt.Sprintf("%d", term))
 
 	stream, err := rpc.Replicate(ctx)
 	return stream, err
 }
 
-func (r *replicationRpcProvider) SendSnapshot(ctx context.Context, follower string, namespace string, shard int64) (
+func (r *replicationRpcProvider) SendSnapshot(ctx context.Context, follower string, namespace string, shard int64, term int64) (
 	proto.OxiaLogReplication_SendSnapshotClient, error) {
 	rpc, err := r.pool.GetReplicationRpc(follower)
 	if err != nil {
@@ -69,6 +70,7 @@ func (r *replicationRpcProvider) SendSnapshot(ctx context.Context, follower stri
 
 	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataNamespace, namespace)
 	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataShardId, fmt.Sprintf("%d", shard))
+	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataTerm, fmt.Sprintf("%d", term))
 
 	stream, err := rpc.SendSnapshot(ctx)
 	return stream, err

@@ -17,6 +17,7 @@ package common
 import "time"
 
 const (
+	MetadataTerm      = "term"
 	MetadataNamespace = "namespace"
 	MetadataShardId   = "shard-id"
 	DefaultNamespace  = "default"

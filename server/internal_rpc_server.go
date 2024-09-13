@@ -217,7 +217,7 @@ func (s *internalRpcServer) Truncate(c context.Context, req *proto.TruncateReque
 
 	log.Info("Received Truncate request")
 
-	follower, err := s.shardsDirector.GetOrCreateFollower(req.Namespace, req.Shard)
+	follower, err := s.shardsDirector.GetOrCreateFollower(req.Namespace, req.Shard, req.Term)
 	if err != nil {
 		log.Warn(
 			"Truncate failed: could not get follower controller",
@@ -252,6 +252,11 @@ func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServ
 		return err
 	}
 
+	term, err := readTerm(md)
+	if err != nil {
+		return err
+	}
+
 	log := s.log.With(
 		slog.Int64("shard", shardId),
 		slog.String("namespace", namespace),
@@ -260,7 +265,7 @@ func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServ
 
 	log.Info("Received Replicate request")
 
-	follower, err := s.shardsDirector.GetOrCreateFollower(namespace, shardId)
+	follower, err := s.shardsDirector.GetOrCreateFollower(namespace, shardId, term)
 	if err != nil {
 		log.Warn(
 			"Replicate failed: could not get follower controller",
@@ -297,6 +302,11 @@ func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapsh
 		return err
 	}
 
+	term, err := readTerm(md)
+	if err != nil {
+		return err
+	}
+
 	s.log.Info(
 		"Received SendSnapshot request",
 		slog.Int64("shard", shardId),
@@ -304,7 +314,7 @@ func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapsh
 		slog.String("peer", common.GetPeer(srv.Context())),
 	)
 
-	follower, err := s.shardsDirector.GetOrCreateFollower(namespace, shardId)
+	follower, err := s.shardsDirector.GetOrCreateFollower(namespace, shardId, term)
 	if err != nil {
 		s.log.Warn(
 			"SendSnapshot failed: could not get follower controller",
@@ -373,4 +383,16 @@ func ReadHeaderInt64(md metadata.MD, key string) (v int64, err error) {
 	var r int64
 	_, err = fmt.Sscan(s, &r)
 	return r, err
+}
+
+func readTerm(md metadata.MD) (v int64, err error) {
+	arr := md.Get(common.MetadataTerm)
+	if len(arr) == 0 {
+		// There was no term in the metadata for the stream.
+		// In order to retain compatibility in a rollout scenario, skip
+		// the term check
+		return -1, nil
+	}
+
+	return ReadHeaderInt64(md, common.MetadataTerm)
 }
