@@ -60,9 +60,10 @@ func TestMetadataProvider(t *testing.T) {
 			assert.Nil(t, res)
 
 			assert.PanicsWithError(t, ErrMetadataBadVersion.Error(), func() {
-				m.Store(&model.ClusterStatus{
+				_, err := m.Store(&model.ClusterStatus{
 					Namespaces: map[string]model.NamespaceStatus{},
 				}, "")
+				assert.NoError(t, err)
 			})
 
 			newVersion, err := m.Store(&model.ClusterStatus{
