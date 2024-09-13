@@ -143,7 +143,7 @@ func exec(*cobra.Command, []string) error {
 		return loadClusterConfig(v)
 	}
 
-	v.OnConfigChange(func(e fsnotify.Event) {
+	v.OnConfigChange(func(_ fsnotify.Event) {
 		conf.ClusterConfigChangeNotifications <- nil
 	})
 

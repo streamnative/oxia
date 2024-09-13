@@ -43,10 +43,10 @@ type GrpcAuthenticationDelegator struct {
 }
 
 func (delegator *GrpcAuthenticationDelegator) GetUnaryInterceptor() grpc.UnaryServerInterceptor {
-	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+	return func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		_, err := delegator.validate(ctx, delegator.provider)
 		if err != nil {
-			return nil, status.Errorf(codes.Unauthenticated, err.Error())
+			return nil, status.Error(codes.Unauthenticated, err.Error())
 		}
 		// todo: set username to metadata to support authorization
 		return handler(ctx, req)
@@ -54,10 +54,10 @@ func (delegator *GrpcAuthenticationDelegator) GetUnaryInterceptor() grpc.UnarySe
 }
 
 func (delegator *GrpcAuthenticationDelegator) GetStreamInterceptor() grpc.StreamServerInterceptor {
-	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	return func(srv any, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		_, err := delegator.validate(ss.Context(), delegator.provider)
 		if err != nil {
-			return status.Errorf(codes.Unauthenticated, err.Error())
+			return status.Error(codes.Unauthenticated, err.Error())
 		}
 		// todo: set username to metadata to support authorization
 		return handler(srv, ss)

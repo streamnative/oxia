@@ -122,7 +122,7 @@ type BaseMessageBody struct {
 type Init struct {
 	BaseMessageBody
 	NodeId   string   `json:"node_id"`
-	NodesIds []string `json:"node_ids"`
+	NodesIDs []string `json:"node_ids"`
 }
 
 type Read struct {

@@ -58,7 +58,7 @@ func (m *treeMap[K, V]) Size() int {
 
 func (m *treeMap[K, V]) Keys() []K {
 	keys := make([]K, 0, m.tree.Size())
-	m.Each(func(k K, v V) bool {
+	m.Each(func(k K, _ V) bool {
 		keys = append(keys, k)
 		return true
 	})

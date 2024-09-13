@@ -97,7 +97,7 @@ func receiveInit(scanner *bufio.Scanner) error {
 	init := req.(*Message[Init])
 
 	thisNode = init.Body.NodeId
-	allNodes = init.Body.NodesIds
+	allNodes = init.Body.NodesIDs
 
 	slog.Info(
 		"Received init request",
