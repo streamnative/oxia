@@ -52,7 +52,7 @@ func (m *metadataProviderMemory) Store(cs *model.ClusterStatus, expectedVersion 
 	defer m.Unlock()
 
 	if expectedVersion != m.version {
-		return MetadataNotExists, ErrMetadataBadVersion
+		panic(ErrMetadataBadVersion)
 	}
 
 	m.cs = cs.Clone()
