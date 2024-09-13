@@ -101,7 +101,7 @@ func (m *metadataProviderFile) Store(cs *model.ClusterStatus, expectedVersion Ve
 	}
 
 	if expectedVersion != existingVersion {
-		return MetadataNotExists, ErrMetadataBadVersion
+		panic(ErrMetadataBadVersion)
 	}
 
 	newVersion = incrVersion(existingVersion)
