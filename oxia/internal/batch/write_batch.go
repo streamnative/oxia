@@ -161,7 +161,7 @@ func (b *writeBatch) handle(response *proto.WriteResponse) {
 
 func (b *writeBatch) toProto() *proto.WriteRequest {
 	return &proto.WriteRequest{
-		ShardId:      b.shardId,
+		Shard:        b.shardId,
 		Puts:         model.Convert[model.PutCall, *proto.PutRequest](b.puts, model.PutCall.ToProto),
 		Deletes:      model.Convert[model.DeleteCall, *proto.DeleteRequest](b.deletes, model.DeleteCall.ToProto),
 		DeleteRanges: model.Convert[model.DeleteRangeCall, *proto.DeleteRangeRequest](b.deleteRanges, model.DeleteRangeCall.ToProto),

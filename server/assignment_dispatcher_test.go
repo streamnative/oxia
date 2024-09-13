@@ -326,8 +326,8 @@ func TestShardAssignmentDispatcher_MultipleNamespaces(t *testing.T) {
 
 func newShardAssignment(id int64, leader string, min uint32, max uint32) *proto.ShardAssignment {
 	return &proto.ShardAssignment{
-		ShardId: id,
-		Leader:  leader,
+		Shard:  id,
+		Leader: leader,
 		ShardBoundaries: &proto.ShardAssignment_Int32HashRange{
 			Int32HashRange: &proto.Int32HashRange{
 				MinHashInclusive: min,

@@ -117,14 +117,14 @@ func (s *Standalone) initializeShards(numShards uint32) error {
 		newTerm := lc.Term() + 1
 
 		if _, err := lc.NewTerm(&proto.NewTermRequest{
-			ShardId: i,
-			Term:    newTerm,
+			Shard: i,
+			Term:  newTerm,
 		}); err != nil {
 			return err
 		}
 
 		if _, err := lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
-			ShardId:           i,
+			Shard:             i,
 			Term:              newTerm,
 			ReplicationFactor: 1,
 			FollowerMaps:      make(map[string]*proto.EntryId),

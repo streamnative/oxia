@@ -64,7 +64,7 @@ message SnapshotChunk {
 
 message NewTermRequest {
   string namespace = 1;
-  int64 shard_id = 2;
+  int64 shard = 2;
   int64 term = 3;
 }
 
@@ -74,7 +74,7 @@ message NewTermResponse {
 
 message BecomeLeaderRequest {
   string namespace = 1;
-  int64 shard_id = 2;
+  int64 shard = 2;
 
   int64 term = 3;
   uint32 replication_factor = 4;
@@ -83,7 +83,7 @@ message BecomeLeaderRequest {
 
 message AddFollowerRequest {
   string namespace = 1;
-  int64 shard_id = 2;
+  int64 shard = 2;
 
   int64 term = 3;
   string follower_name = 4;
@@ -96,7 +96,7 @@ message AddFollowerResponse {}
 
 message TruncateRequest {
   string namespace = 1;
-  int64 shard_id = 2;
+  int64 shard = 2;
 
   int64 term = 3;
   EntryId head_entry_id = 4;
@@ -122,7 +122,7 @@ message SnapshotResponse {
 
 message DeleteShardRequest {
   string namespace = 1;
-  int64 shard_id = 2;
+  int64 shard = 2;
   int64 term = 3;
 }
 
@@ -131,7 +131,7 @@ message DeleteShardResponse {}
 //// Status RPC
 
 message GetStatusRequest {
-  int64 shard_id = 1;
+  int64 shard = 1;
 }
 
 enum ServingStatus {

@@ -149,7 +149,7 @@ func (b *readBatch) handle(response *proto.ReadResponse) {
 
 func (b *readBatch) toProto() *proto.ReadRequest {
 	return &proto.ReadRequest{
-		ShardId: b.shardId,
-		Gets:    model.Convert[model.GetCall, *proto.GetRequest](b.gets, model.GetCall.ToProto),
+		Shard: b.shardId,
+		Gets:  model.Convert[model.GetCall, *proto.GetRequest](b.gets, model.GetCall.ToProto),
 	}
 }

@@ -103,7 +103,7 @@ func (s *internalRpcServer) NewTerm(c context.Context, req *proto.NewTermRequest
 
 	// NewTerm applies to both followers and leaders
 	// First check if we have already a follower controller running
-	if follower, err := s.shardsDirector.GetFollower(req.ShardId); err != nil { //nolint:revive
+	if follower, err := s.shardsDirector.GetFollower(req.Shard); err != nil { //nolint:revive
 		if status.Code(err) != common.CodeNodeIsNotFollower {
 			log.Warn(
 				"NewTerm failed: could not get follower controller",
@@ -132,7 +132,7 @@ func (s *internalRpcServer) NewTerm(c context.Context, req *proto.NewTermRequest
 		return res, err2
 	}
 
-	leader, err := s.shardsDirector.GetOrCreateLeader(req.Namespace, req.ShardId)
+	leader, err := s.shardsDirector.GetOrCreateLeader(req.Namespace, req.Shard)
 	if err != nil {
 		log.Warn(
 			"NewTerm failed: could not get leader controller",
@@ -163,7 +163,7 @@ func (s *internalRpcServer) BecomeLeader(c context.Context, req *proto.BecomeLea
 
 	log.Info("Received BecomeLeader request")
 
-	leader, err := s.shardsDirector.GetOrCreateLeader(req.Namespace, req.ShardId)
+	leader, err := s.shardsDirector.GetOrCreateLeader(req.Namespace, req.Shard)
 	if err != nil {
 		log.Warn(
 			"BecomeLeader failed: could not get leader controller",
@@ -190,7 +190,7 @@ func (s *internalRpcServer) AddFollower(c context.Context, req *proto.AddFollowe
 
 	log.Info("Received AddFollower request")
 
-	leader, err := s.shardsDirector.GetLeader(req.ShardId)
+	leader, err := s.shardsDirector.GetLeader(req.Shard)
 	if err != nil {
 		log.Warn(
 			"AddFollower failed: could not get leader controller",
@@ -217,7 +217,7 @@ func (s *internalRpcServer) Truncate(c context.Context, req *proto.TruncateReque
 
 	log.Info("Received Truncate request")
 
-	follower, err := s.shardsDirector.GetOrCreateFollower(req.Namespace, req.ShardId)
+	follower, err := s.shardsDirector.GetOrCreateFollower(req.Namespace, req.Shard)
 	if err != nil {
 		log.Warn(
 			"Truncate failed: could not get follower controller",
@@ -330,7 +330,7 @@ func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapsh
 }
 
 func (s *internalRpcServer) GetStatus(_ context.Context, req *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
-	follower, err := s.shardsDirector.GetFollower(req.ShardId)
+	follower, err := s.shardsDirector.GetFollower(req.Shard)
 	if err == nil {
 		return follower.GetStatus(req)
 	}
@@ -340,7 +340,7 @@ func (s *internalRpcServer) GetStatus(_ context.Context, req *proto.GetStatusReq
 	}
 
 	// If we don't have a follower, fallback to checking the leader controller
-	leader, err := s.shardsDirector.GetLeader(req.ShardId)
+	leader, err := s.shardsDirector.GetLeader(req.Shard)
 	if err != nil {
 		return nil, err
 	}

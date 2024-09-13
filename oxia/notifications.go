@@ -242,7 +242,7 @@ func (snm *shardNotificationsManager) getNotifications() error {
 	}
 
 	notifications, err := rpc.GetNotifications(snm.ctx, &proto.NotificationsRequest{
-		ShardId:              snm.shard,
+		Shard:                snm.shard,
 		StartOffsetExclusive: startOffsetExclusive,
 	})
 	if err != nil {

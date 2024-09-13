@@ -81,11 +81,11 @@ func TestNodeController_ShardsAssignments(t *testing.T) {
 		Namespaces: map[string]*proto.NamespaceShardsAssignment{
 			common.DefaultNamespace: {
 				Assignments: []*proto.ShardAssignment{{
-					ShardId: 0,
-					Leader:  "leader-0",
+					Shard:  0,
+					Leader: "leader-0",
 				}, {
-					ShardId: 1,
-					Leader:  "leader-1",
+					Shard:  1,
+					Leader: "leader-1",
 				}},
 				ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
 			},
@@ -104,11 +104,11 @@ func TestNodeController_ShardsAssignments(t *testing.T) {
 		Namespaces: map[string]*proto.NamespaceShardsAssignment{
 			common.DefaultNamespace: {
 				Assignments: []*proto.ShardAssignment{{
-					ShardId: 0,
-					Leader:  "leader-1",
+					Shard:  0,
+					Leader: "leader-1",
 				}, {
-					ShardId: 1,
-					Leader:  "leader-2",
+					Shard:  1,
+					Leader: "leader-2",
 				}},
 				ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
 			},

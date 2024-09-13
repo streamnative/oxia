@@ -146,7 +146,7 @@ message NamespaceShardsAssignment {
  */
 message ShardAssignment {
   // The shard id
-  int64 shard_id = 1;
+  int64 shard = 1;
 
   // The shard leader, e.g. `host:port`
   string leader = 2;
@@ -182,7 +182,7 @@ message Int32HashRange {
 message WriteRequest {
   // The shard id. This is optional allow for support for server-side hashing
   // and proxying in the future.
-  optional int64 shard_id = 1;
+  optional int64 shard = 1;
   // The put requests
   repeated PutRequest puts = 2;
   // The delete requests
@@ -210,7 +210,7 @@ message WriteResponse {
 message ReadRequest {
   // The shard id. This is optional allow for support for server-side hashing
   // and proxying in the future.
-  optional int64 shard_id = 1;
+  optional int64 shard = 1;
   // The get requests
   repeated GetRequest gets = 2;
 }
@@ -356,7 +356,7 @@ message DeleteRangeResponse {
 message ListRequest {
   // The shard id. This is optional allow for support for server-side hashing
   // and proxying in the future.
-  optional int64 shard_id = 1;
+  optional int64 shard = 1;
   // The start of the range, inclusive
   string start_inclusive = 2;
   // The end of the range, exclusive
@@ -377,7 +377,7 @@ message ListResponse {
 message RangeScanRequest {
   // The shard id. This is optional allow for support for server-side hashing
   // and proxying in the future.
-  optional int64 shard_id = 1;
+  optional int64 shard = 1;
   // The start of the range, inclusive
   string start_inclusive = 2;
   // The end of the range, exclusive
@@ -429,7 +429,7 @@ enum Status {
 }
 
 message CreateSessionRequest {
-  int64 shard_id = 1;
+  int64 shard = 1;
   uint32 session_timeout_ms = 2;
   string client_identity = 3;
 }
@@ -439,14 +439,14 @@ message CreateSessionResponse {
 }
 
 message SessionHeartbeat {
-  int64 shard_id = 1;
+  int64 shard = 1;
   int64 session_id = 2;
 }
 
 message KeepAliveResponse {}
 
 message CloseSessionRequest {
-  int64 shard_id = 1;
+  int64 shard = 1;
   int64 session_id = 2;
 }
 
@@ -459,13 +459,13 @@ enum NotificationType {
 }
 
 message NotificationsRequest {
-  int64 shard_id = 1;
+  int64 shard = 1;
 
   optional int64 start_offset_exclusive = 2;
 }
 
 message NotificationBatch {
-  int64 shard_id = 1;
+  int64 shard = 1;
   int64 offset = 2;
   fixed64 timestamp = 3;
 

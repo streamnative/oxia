@@ -90,7 +90,7 @@ func (m *ShardAssignment) CloneVT() *ShardAssignment {
 		return (*ShardAssignment)(nil)
 	}
 	r := new(ShardAssignment)
-	r.ShardId = m.ShardId
+	r.Shard = m.Shard
 	r.Leader = m.Leader
 	if m.ShardBoundaries != nil {
 		r.ShardBoundaries = m.ShardBoundaries.(interface {
@@ -140,9 +140,9 @@ func (m *WriteRequest) CloneVT() *WriteRequest {
 		return (*WriteRequest)(nil)
 	}
 	r := new(WriteRequest)
-	if rhs := m.ShardId; rhs != nil {
+	if rhs := m.Shard; rhs != nil {
 		tmpVal := *rhs
-		r.ShardId = &tmpVal
+		r.Shard = &tmpVal
 	}
 	if rhs := m.Puts; rhs != nil {
 		tmpContainer := make([]*PutRequest, len(rhs))
@@ -218,9 +218,9 @@ func (m *ReadRequest) CloneVT() *ReadRequest {
 		return (*ReadRequest)(nil)
 	}
 	r := new(ReadRequest)
-	if rhs := m.ShardId; rhs != nil {
+	if rhs := m.Shard; rhs != nil {
 		tmpVal := *rhs
-		r.ShardId = &tmpVal
+		r.Shard = &tmpVal
 	}
 	if rhs := m.Gets; rhs != nil {
 		tmpContainer := make([]*GetRequest, len(rhs))
@@ -454,9 +454,9 @@ func (m *ListRequest) CloneVT() *ListRequest {
 	r := new(ListRequest)
 	r.StartInclusive = m.StartInclusive
 	r.EndExclusive = m.EndExclusive
-	if rhs := m.ShardId; rhs != nil {
+	if rhs := m.Shard; rhs != nil {
 		tmpVal := *rhs
-		r.ShardId = &tmpVal
+		r.Shard = &tmpVal
 	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -497,9 +497,9 @@ func (m *RangeScanRequest) CloneVT() *RangeScanRequest {
 	r := new(RangeScanRequest)
 	r.StartInclusive = m.StartInclusive
 	r.EndExclusive = m.EndExclusive
-	if rhs := m.ShardId; rhs != nil {
+	if rhs := m.Shard; rhs != nil {
 		tmpVal := *rhs
-		r.ShardId = &tmpVal
+		r.Shard = &tmpVal
 	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -568,7 +568,7 @@ func (m *CreateSessionRequest) CloneVT() *CreateSessionRequest {
 		return (*CreateSessionRequest)(nil)
 	}
 	r := new(CreateSessionRequest)
-	r.ShardId = m.ShardId
+	r.Shard = m.Shard
 	r.SessionTimeoutMs = m.SessionTimeoutMs
 	r.ClientIdentity = m.ClientIdentity
 	if len(m.unknownFields) > 0 {
@@ -604,7 +604,7 @@ func (m *SessionHeartbeat) CloneVT() *SessionHeartbeat {
 		return (*SessionHeartbeat)(nil)
 	}
 	r := new(SessionHeartbeat)
-	r.ShardId = m.ShardId
+	r.Shard = m.Shard
 	r.SessionId = m.SessionId
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -638,7 +638,7 @@ func (m *CloseSessionRequest) CloneVT() *CloseSessionRequest {
 		return (*CloseSessionRequest)(nil)
 	}
 	r := new(CloseSessionRequest)
-	r.ShardId = m.ShardId
+	r.Shard = m.Shard
 	r.SessionId = m.SessionId
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -672,7 +672,7 @@ func (m *NotificationsRequest) CloneVT() *NotificationsRequest {
 		return (*NotificationsRequest)(nil)
 	}
 	r := new(NotificationsRequest)
-	r.ShardId = m.ShardId
+	r.Shard = m.Shard
 	if rhs := m.StartOffsetExclusive; rhs != nil {
 		tmpVal := *rhs
 		r.StartOffsetExclusive = &tmpVal
@@ -693,7 +693,7 @@ func (m *NotificationBatch) CloneVT() *NotificationBatch {
 		return (*NotificationBatch)(nil)
 	}
 	r := new(NotificationBatch)
-	r.ShardId = m.ShardId
+	r.Shard = m.Shard
 	r.Offset = m.Offset
 	r.Timestamp = m.Timestamp
 	if rhs := m.Notifications; rhs != nil {
@@ -844,7 +844,7 @@ func (this *ShardAssignment) EqualVT(that *ShardAssignment) bool {
 			return false
 		}
 	}
-	if this.ShardId != that.ShardId {
+	if this.Shard != that.Shard {
 		return false
 	}
 	if this.Leader != that.Leader {
@@ -913,7 +913,7 @@ func (this *WriteRequest) EqualVT(that *WriteRequest) bool {
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.ShardId, that.ShardId; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+	if p, q := this.Shard, that.Shard; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	if len(this.Puts) != len(that.Puts) {
@@ -1050,7 +1050,7 @@ func (this *ReadRequest) EqualVT(that *ReadRequest) bool {
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.ShardId, that.ShardId; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+	if p, q := this.Shard, that.Shard; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	if len(this.Gets) != len(that.Gets) {
@@ -1322,7 +1322,7 @@ func (this *ListRequest) EqualVT(that *ListRequest) bool {
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.ShardId, that.ShardId; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+	if p, q := this.Shard, that.Shard; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	if this.StartInclusive != that.StartInclusive {
@@ -1372,7 +1372,7 @@ func (this *RangeScanRequest) EqualVT(that *RangeScanRequest) bool {
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.ShardId, that.ShardId; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+	if p, q := this.Shard, that.Shard; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	if this.StartInclusive != that.StartInclusive {
@@ -1464,7 +1464,7 @@ func (this *CreateSessionRequest) EqualVT(that *CreateSessionRequest) bool {
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.ShardId != that.ShardId {
+	if this.Shard != that.Shard {
 		return false
 	}
 	if this.SessionTimeoutMs != that.SessionTimeoutMs {
@@ -1508,7 +1508,7 @@ func (this *SessionHeartbeat) EqualVT(that *SessionHeartbeat) bool {
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.ShardId != that.ShardId {
+	if this.Shard != that.Shard {
 		return false
 	}
 	if this.SessionId != that.SessionId {
@@ -1546,7 +1546,7 @@ func (this *CloseSessionRequest) EqualVT(that *CloseSessionRequest) bool {
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.ShardId != that.ShardId {
+	if this.Shard != that.Shard {
 		return false
 	}
 	if this.SessionId != that.SessionId {
@@ -1584,7 +1584,7 @@ func (this *NotificationsRequest) EqualVT(that *NotificationsRequest) bool {
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.ShardId != that.ShardId {
+	if this.Shard != that.Shard {
 		return false
 	}
 	if p, q := this.StartOffsetExclusive, that.StartOffsetExclusive; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
@@ -1606,7 +1606,7 @@ func (this *NotificationBatch) EqualVT(that *NotificationBatch) bool {
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.ShardId != that.ShardId {
+	if this.Shard != that.Shard {
 		return false
 	}
 	if this.Offset != that.Offset {
@@ -1858,8 +1858,8 @@ func (m *ShardAssignment) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x12
 	}
-	if m.ShardId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ShardId))
+	if m.Shard != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Shard))
 		i--
 		dAtA[i] = 0x8
 	}
@@ -1996,8 +1996,8 @@ func (m *WriteRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			dAtA[i] = 0x12
 		}
 	}
-	if m.ShardId != nil {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.ShardId))
+	if m.Shard != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.Shard))
 		i--
 		dAtA[i] = 0x8
 	}
@@ -2115,8 +2115,8 @@ func (m *ReadRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			dAtA[i] = 0x12
 		}
 	}
-	if m.ShardId != nil {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.ShardId))
+	if m.Shard != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.Shard))
 		i--
 		dAtA[i] = 0x8
 	}
@@ -2643,8 +2643,8 @@ func (m *ListRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x12
 	}
-	if m.ShardId != nil {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.ShardId))
+	if m.Shard != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.Shard))
 		i--
 		dAtA[i] = 0x8
 	}
@@ -2737,8 +2737,8 @@ func (m *RangeScanRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x12
 	}
-	if m.ShardId != nil {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.ShardId))
+	if m.Shard != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.Shard))
 		i--
 		dAtA[i] = 0x8
 	}
@@ -2899,8 +2899,8 @@ func (m *CreateSessionRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 		i--
 		dAtA[i] = 0x10
 	}
-	if m.ShardId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ShardId))
+	if m.Shard != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Shard))
 		i--
 		dAtA[i] = 0x8
 	}
@@ -2980,8 +2980,8 @@ func (m *SessionHeartbeat) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x10
 	}
-	if m.ShardId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ShardId))
+	if m.Shard != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Shard))
 		i--
 		dAtA[i] = 0x8
 	}
@@ -3056,8 +3056,8 @@ func (m *CloseSessionRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x10
 	}
-	if m.ShardId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ShardId))
+	if m.Shard != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Shard))
 		i--
 		dAtA[i] = 0x8
 	}
@@ -3132,8 +3132,8 @@ func (m *NotificationsRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 		i--
 		dAtA[i] = 0x10
 	}
-	if m.ShardId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ShardId))
+	if m.Shard != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Shard))
 		i--
 		dAtA[i] = 0x8
 	}
@@ -3203,8 +3203,8 @@ func (m *NotificationBatch) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x10
 	}
-	if m.ShardId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ShardId))
+	if m.Shard != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Shard))
 		i--
 		dAtA[i] = 0x8
 	}
@@ -3316,8 +3316,8 @@ func (m *ShardAssignment) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.ShardId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ShardId))
+	if m.Shard != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Shard))
 	}
 	l = len(m.Leader)
 	if l > 0 {
@@ -3364,8 +3364,8 @@ func (m *WriteRequest) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.ShardId != nil {
-		n += 1 + protohelpers.SizeOfVarint(uint64(*m.ShardId))
+	if m.Shard != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.Shard))
 	}
 	if len(m.Puts) > 0 {
 		for _, e := range m.Puts {
@@ -3423,8 +3423,8 @@ func (m *ReadRequest) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.ShardId != nil {
-		n += 1 + protohelpers.SizeOfVarint(uint64(*m.ShardId))
+	if m.Shard != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.Shard))
 	}
 	if len(m.Gets) > 0 {
 		for _, e := range m.Gets {
@@ -3624,8 +3624,8 @@ func (m *ListRequest) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.ShardId != nil {
-		n += 1 + protohelpers.SizeOfVarint(uint64(*m.ShardId))
+	if m.Shard != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.Shard))
 	}
 	l = len(m.StartInclusive)
 	if l > 0 {
@@ -3661,8 +3661,8 @@ func (m *RangeScanRequest) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.ShardId != nil {
-		n += 1 + protohelpers.SizeOfVarint(uint64(*m.ShardId))
+	if m.Shard != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.Shard))
 	}
 	l = len(m.StartInclusive)
 	if l > 0 {
@@ -3727,8 +3727,8 @@ func (m *CreateSessionRequest) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.ShardId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ShardId))
+	if m.Shard != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Shard))
 	}
 	if m.SessionTimeoutMs != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.SessionTimeoutMs))
@@ -3760,8 +3760,8 @@ func (m *SessionHeartbeat) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.ShardId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ShardId))
+	if m.Shard != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Shard))
 	}
 	if m.SessionId != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.SessionId))
@@ -3786,8 +3786,8 @@ func (m *CloseSessionRequest) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.ShardId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ShardId))
+	if m.Shard != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Shard))
 	}
 	if m.SessionId != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.SessionId))
@@ -3812,8 +3812,8 @@ func (m *NotificationsRequest) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.ShardId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ShardId))
+	if m.Shard != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Shard))
 	}
 	if m.StartOffsetExclusive != nil {
 		n += 1 + protohelpers.SizeOfVarint(uint64(*m.StartOffsetExclusive))
@@ -3828,8 +3828,8 @@ func (m *NotificationBatch) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.ShardId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ShardId))
+	if m.Shard != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Shard))
 	}
 	if m.Offset != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.Offset))
@@ -4268,9 +4268,9 @@ func (m *ShardAssignment) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
-			m.ShardId = 0
+			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -4280,7 +4280,7 @@ func (m *ShardAssignment) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.ShardId |= int64(b&0x7F) << shift
+				m.Shard |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -4482,7 +4482,7 @@ func (m *WriteRequest) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
 			var v int64
 			for shift := uint(0); ; shift += 7 {
@@ -4499,7 +4499,7 @@ func (m *WriteRequest) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-			m.ShardId = &v
+			m.Shard = &v
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Puts", wireType)
@@ -4808,7 +4808,7 @@ func (m *ReadRequest) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
 			var v int64
 			for shift := uint(0); ; shift += 7 {
@@ -4825,7 +4825,7 @@ func (m *ReadRequest) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-			m.ShardId = &v
+			m.Shard = &v
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Gets", wireType)
@@ -6089,7 +6089,7 @@ func (m *ListRequest) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
 			var v int64
 			for shift := uint(0); ; shift += 7 {
@@ -6106,7 +6106,7 @@ func (m *ListRequest) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-			m.ShardId = &v
+			m.Shard = &v
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field StartInclusive", wireType)
@@ -6307,7 +6307,7 @@ func (m *RangeScanRequest) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
 			var v int64
 			for shift := uint(0); ; shift += 7 {
@@ -6324,7 +6324,7 @@ func (m *RangeScanRequest) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-			m.ShardId = &v
+			m.Shard = &v
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field StartInclusive", wireType)
@@ -6689,9 +6689,9 @@ func (m *CreateSessionRequest) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
-			m.ShardId = 0
+			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -6701,7 +6701,7 @@ func (m *CreateSessionRequest) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.ShardId |= int64(b&0x7F) << shift
+				m.Shard |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -6880,9 +6880,9 @@ func (m *SessionHeartbeat) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
-			m.ShardId = 0
+			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -6892,7 +6892,7 @@ func (m *SessionHeartbeat) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.ShardId |= int64(b&0x7F) << shift
+				m.Shard |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -7020,9 +7020,9 @@ func (m *CloseSessionRequest) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
-			m.ShardId = 0
+			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -7032,7 +7032,7 @@ func (m *CloseSessionRequest) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.ShardId |= int64(b&0x7F) << shift
+				m.Shard |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -7160,9 +7160,9 @@ func (m *NotificationsRequest) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
-			m.ShardId = 0
+			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -7172,7 +7172,7 @@ func (m *NotificationsRequest) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.ShardId |= int64(b&0x7F) << shift
+				m.Shard |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -7250,9 +7250,9 @@ func (m *NotificationBatch) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
-			m.ShardId = 0
+			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -7262,7 +7262,7 @@ func (m *NotificationBatch) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.ShardId |= int64(b&0x7F) << shift
+				m.Shard |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -7943,9 +7943,9 @@ func (m *ShardAssignment) UnmarshalVTUnsafe(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
-			m.ShardId = 0
+			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -7955,7 +7955,7 @@ func (m *ShardAssignment) UnmarshalVTUnsafe(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.ShardId |= int64(b&0x7F) << shift
+				m.Shard |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -8161,7 +8161,7 @@ func (m *WriteRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
 			var v int64
 			for shift := uint(0); ; shift += 7 {
@@ -8178,7 +8178,7 @@ func (m *WriteRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 					break
 				}
 			}
-			m.ShardId = &v
+			m.Shard = &v
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Puts", wireType)
@@ -8487,7 +8487,7 @@ func (m *ReadRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
 			var v int64
 			for shift := uint(0); ; shift += 7 {
@@ -8504,7 +8504,7 @@ func (m *ReadRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 					break
 				}
 			}
-			m.ShardId = &v
+			m.Shard = &v
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Gets", wireType)
@@ -9798,7 +9798,7 @@ func (m *ListRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
 			var v int64
 			for shift := uint(0); ; shift += 7 {
@@ -9815,7 +9815,7 @@ func (m *ListRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 					break
 				}
 			}
-			m.ShardId = &v
+			m.Shard = &v
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field StartInclusive", wireType)
@@ -10028,7 +10028,7 @@ func (m *RangeScanRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
 			var v int64
 			for shift := uint(0); ; shift += 7 {
@@ -10045,7 +10045,7 @@ func (m *RangeScanRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 					break
 				}
 			}
-			m.ShardId = &v
+			m.Shard = &v
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field StartInclusive", wireType)
@@ -10422,9 +10422,9 @@ func (m *CreateSessionRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
-			m.ShardId = 0
+			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -10434,7 +10434,7 @@ func (m *CreateSessionRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.ShardId |= int64(b&0x7F) << shift
+				m.Shard |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -10617,9 +10617,9 @@ func (m *SessionHeartbeat) UnmarshalVTUnsafe(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
-			m.ShardId = 0
+			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -10629,7 +10629,7 @@ func (m *SessionHeartbeat) UnmarshalVTUnsafe(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.ShardId |= int64(b&0x7F) << shift
+				m.Shard |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -10757,9 +10757,9 @@ func (m *CloseSessionRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
-			m.ShardId = 0
+			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -10769,7 +10769,7 @@ func (m *CloseSessionRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.ShardId |= int64(b&0x7F) << shift
+				m.Shard |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -10897,9 +10897,9 @@ func (m *NotificationsRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
-			m.ShardId = 0
+			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -10909,7 +10909,7 @@ func (m *NotificationsRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.ShardId |= int64(b&0x7F) << shift
+				m.Shard |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -10987,9 +10987,9 @@ func (m *NotificationBatch) UnmarshalVTUnsafe(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ShardId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
 			}
-			m.ShardId = 0
+			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -10999,7 +10999,7 @@ func (m *NotificationBatch) UnmarshalVTUnsafe(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.ShardId |= int64(b&0x7F) << shift
+				m.Shard |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

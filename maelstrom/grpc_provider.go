@@ -149,7 +149,7 @@ func (m *maelstromGrpcProvider) HandleClientRequest(msgType MsgType, msg any) {
 	case MsgTypeWrite:
 		w := msg.(*Message[Write])
 		if res, err := m.getService(oxiaClient).(proto.OxiaClientServer).Write(context.Background(), &proto.WriteRequest{
-			ShardId: pb.Int64(0),
+			Shard: pb.Int64(0),
 			Puts: []*proto.PutRequest{{
 				Key:               fmt.Sprintf("%d", w.Body.Key),
 				Value:             []byte(fmt.Sprintf("%d", w.Body.Value)),
@@ -177,7 +177,7 @@ func (m *maelstromGrpcProvider) HandleClientRequest(msgType MsgType, msg any) {
 		r := msg.(*Message[Read])
 		stream := newMaelstromReadServerStream()
 		err := m.getService(oxiaClient).(proto.OxiaClientServer).Read(&proto.ReadRequest{
-			ShardId: pb.Int64(0),
+			Shard: pb.Int64(0),
 			Gets: []*proto.GetRequest{{
 				Key:          fmt.Sprintf("%d", r.Body.Key),
 				IncludeValue: true,
@@ -216,7 +216,7 @@ func (m *maelstromGrpcProvider) HandleClientRequest(msgType MsgType, msg any) {
 		c := msg.(*Message[Cas])
 		stream := newMaelstromReadServerStream()
 		err := m.getService(oxiaClient).(proto.OxiaClientServer).Read(&proto.ReadRequest{
-			ShardId: pb.Int64(0),
+			Shard: pb.Int64(0),
 			Gets: []*proto.GetRequest{{
 				Key:          fmt.Sprintf("%d", c.Body.Key),
 				IncludeValue: true,
@@ -245,7 +245,7 @@ func (m *maelstromGrpcProvider) HandleClientRequest(msgType MsgType, msg any) {
 
 		// Write it back with conditional write
 		if writeRes, err := m.getService(oxiaClient).(proto.OxiaClientServer).Write(context.Background(), &proto.WriteRequest{
-			ShardId: pb.Int64(0),
+			Shard: pb.Int64(0),
 			Puts: []*proto.PutRequest{{
 				Key:               fmt.Sprintf("%d", c.Body.Key),
 				Value:             []byte(fmt.Sprintf("%d", c.Body.To)),

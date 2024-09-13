@@ -165,7 +165,7 @@ func (cs *clientSession) createSession() error {
 	ctx, cancel := context.WithTimeout(cs.ctx, cs.sessions.clientOpts.requestTimeout)
 	defer cancel()
 	createSessionResponse, err := rpc.CreateSession(ctx, &proto.CreateSessionRequest{
-		ShardId:          cs.shardId,
+		Shard:            cs.shardId,
 		ClientIdentity:   cs.sessions.clientIdentity,
 		SessionTimeoutMs: uint32(cs.sessions.clientOpts.sessionTimeout.Milliseconds()),
 	})
@@ -244,7 +244,7 @@ func (cs *clientSession) Close() error {
 	defer cancel()
 
 	if _, err = rpc.CloseSession(ctx, &proto.CloseSessionRequest{
-		ShardId:   cs.shardId,
+		Shard:     cs.shardId,
 		SessionId: cs.sessionId,
 	}); err != nil {
 		return err
@@ -278,7 +278,7 @@ func (cs *clientSession) keepAlive() error {
 	for {
 		select {
 		case <-ticker.C:
-			_, err = rpc.KeepAlive(ctx, &proto.SessionHeartbeat{ShardId: shardId, SessionId: sessionId})
+			_, err = rpc.KeepAlive(ctx, &proto.SessionHeartbeat{Shard: shardId, SessionId: sessionId})
 			if err != nil {
 				return err
 			}

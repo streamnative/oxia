@@ -132,7 +132,7 @@ func (m *mockPerNodeChannels) expectBecomeLeaderRequest(t *testing.T, shard int6
 
 	r := <-m.becomeLeaderRequests
 
-	assert.Equal(t, shard, r.ShardId)
+	assert.Equal(t, shard, r.Shard)
 	assert.Equal(t, term, r.Term)
 	assert.Equal(t, replicationFactor, r.ReplicationFactor)
 }
@@ -142,7 +142,7 @@ func (m *mockPerNodeChannels) expectNewTermRequest(t *testing.T, shard int64, te
 
 	r := <-m.newTermRequests
 
-	assert.Equal(t, shard, r.ShardId)
+	assert.Equal(t, shard, r.Shard)
 	assert.Equal(t, term, r.Term)
 }
 
@@ -151,7 +151,7 @@ func (m *mockPerNodeChannels) expectAddFollowerRequest(t *testing.T, shard int64
 
 	r := <-m.addFollowerRequests
 
-	assert.Equal(t, shard, r.ShardId)
+	assert.Equal(t, shard, r.Shard)
 	assert.Equal(t, term, r.Term)
 }
 

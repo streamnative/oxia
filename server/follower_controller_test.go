@@ -335,8 +335,8 @@ func TestFollower_TruncateAfterRestart(t *testing.T) {
 	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, fc.Status())
 
 	_, err = fc.NewTerm(&proto.NewTermRequest{
-		ShardId: shardId,
-		Term:    2,
+		Shard: shardId,
+		Term:  2,
 	})
 	assert.NoError(t, err)
 	fc.Close()
@@ -651,7 +651,7 @@ func TestFollower_HandleSnapshot(t *testing.T) {
 	wg.Wait()
 
 	statusRes, err := fc.(*followerController).GetStatus(&proto.GetStatusRequest{
-		ShardId: shardId,
+		Shard: shardId,
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, proto.ServingStatus_FOLLOWER, statusRes.Status)
@@ -697,7 +697,7 @@ func TestFollower_HandleSnapshot(t *testing.T) {
 	assert.NoError(t, err)
 
 	statusRes, err = fc.(*followerController).GetStatus(&proto.GetStatusRequest{
-		ShardId: shardId,
+		Shard: shardId,
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, proto.ServingStatus_FENCED, statusRes.Status)
@@ -807,7 +807,7 @@ func TestFollowerController_DeleteShard(t *testing.T) {
 
 	_, err := fc.DeleteShard(&proto.DeleteShardRequest{
 		Namespace: common.DefaultNamespace,
-		ShardId:   shardId,
+		Shard:     shardId,
 		Term:      1,
 	})
 
@@ -828,7 +828,7 @@ func TestFollowerController_DeleteShard_WrongTerm(t *testing.T) {
 
 	_, err := fc.DeleteShard(&proto.DeleteShardRequest{
 		Namespace: common.DefaultNamespace,
-		ShardId:   shardId,
+		Shard:     shardId,
 		Term:      2,
 	})
 
@@ -851,16 +851,16 @@ func TestFollowerController_Closed(t *testing.T) {
 	assert.NoError(t, fc.Close())
 
 	res, err := fc.NewTerm(&proto.NewTermRequest{
-		ShardId: shard,
-		Term:    2,
+		Shard: shard,
+		Term:  2,
 	})
 
 	assert.Nil(t, res)
 	assert.Equal(t, common.CodeAlreadyClosed, status.Code(err))
 
 	res2, err := fc.Truncate(&proto.TruncateRequest{
-		ShardId: shard,
-		Term:    2,
+		Shard: shard,
+		Term:  2,
 		HeadEntryId: &proto.EntryId{
 			Term:   2,
 			Offset: 1,
@@ -903,11 +903,11 @@ func TestFollower_GetStatus(t *testing.T) {
 	assert.EqualValues(t, 2, r3.Offset)
 
 	assert.Eventually(t, func() bool {
-		res, _ := fc.GetStatus(&proto.GetStatusRequest{ShardId: shardId})
+		res, _ := fc.GetStatus(&proto.GetStatusRequest{Shard: shardId})
 		return res.CommitOffset == 1
 	}, 10*time.Second, 100*time.Millisecond)
 
-	res, err := fc.GetStatus(&proto.GetStatusRequest{ShardId: shardId})
+	res, err := fc.GetStatus(&proto.GetStatusRequest{Shard: shardId})
 	assert.NoError(t, err)
 	assert.Equal(t, &proto.GetStatusResponse{
 		Term:         2,
