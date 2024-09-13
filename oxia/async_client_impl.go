@@ -184,10 +184,10 @@ func (c *clientImpl) DeleteRange(minKeyInclusive string, maxKeyExclusive string,
 	}
 
 	// If there is no partition key, we will make the request to delete-range on all the shards
-	shardIds := c.shardManager.GetAll()
-	wg := common.NewWaitGroup(len(shardIds))
+	shardIDs := c.shardManager.GetAll()
+	wg := common.NewWaitGroup(len(shardIDs))
 
-	for _, shardId := range shardIds {
+	for _, shardId := range shardIDs {
 		// chInner := make(chan error, 1)
 		c.writeBatchManager.Get(shardId).Add(model.DeleteRangeCall{
 			MinKeyInclusive: minKeyInclusive,
@@ -360,10 +360,10 @@ func (c *clientImpl) List(ctx context.Context, minKeyInclusive string, maxKeyExc
 		}()
 	} else {
 		// Do the list on all shards and aggregate the responses
-		shardIds := c.shardManager.GetAll()
+		shardIDs := c.shardManager.GetAll()
 
-		wg := common.NewWaitGroup(len(shardIds))
-		for _, shardId := range shardIds {
+		wg := common.NewWaitGroup(len(shardIDs))
+		for _, shardId := range shardIDs {
 			shardIdPtr := shardId
 			go func() {
 				defer wg.Done()
@@ -425,10 +425,10 @@ func (c *clientImpl) RangeScan(ctx context.Context, minKeyInclusive string, maxK
 		}()
 	} else {
 		// Do the list on all shards and aggregate the responses
-		shardIds := c.shardManager.GetAll()
-		channels := make([]chan GetResult, len(shardIds))
+		shardIDs := c.shardManager.GetAll()
+		channels := make([]chan GetResult, len(shardIDs))
 
-		for i, shardId := range shardIds {
+		for i, shardId := range shardIDs {
 			shardIdPtr := shardId
 			ch := make(chan GetResult)
 			channels[i] = ch

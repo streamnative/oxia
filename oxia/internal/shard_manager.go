@@ -117,11 +117,11 @@ func (s *shardManagerImpl) GetAll() []int64 {
 	s.RLock()
 	defer s.RUnlock()
 
-	shardIds := make([]int64, 0, len(s.shards))
+	shardIDs := make([]int64, 0, len(s.shards))
 	for shardId := range s.shards {
-		shardIds = append(shardIds, shardId)
+		shardIDs = append(shardIDs, shardId)
 	}
-	return shardIds
+	return shardIDs
 }
 
 func (s *shardManagerImpl) Leader(shardId int64) string {

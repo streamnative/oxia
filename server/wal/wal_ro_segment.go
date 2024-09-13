@@ -211,7 +211,7 @@ func (r *readOnlySegmentsGroup) Close() error {
 	defer r.Unlock()
 
 	var err error
-	r.openSegments.Each(func(id int64, segment common.RefCount[ReadOnlySegment]) bool {
+	r.openSegments.Each(func(_ int64, segment common.RefCount[ReadOnlySegment]) bool {
 		err = multierr.Append(err, segment.(io.Closer).Close())
 		return true
 	})
@@ -293,7 +293,7 @@ func (r *readOnlySegmentsGroup) PollHighestSegment() (common.RefCount[ReadOnlySe
 	defer r.Unlock()
 
 	if r.allSegments.Empty() {
-		return nil, nil
+		return nil, nil // nolint: nilnil
 	}
 
 	offset, _ := r.allSegments.Max()

@@ -110,7 +110,7 @@ func (m *Metrics) DecorateGet(get model.GetCall) model.GetCall {
 
 func (m *Metrics) WriteCallback() func(time.Time, *proto.WriteRequest, *proto.WriteResponse, error) {
 	metricContext := m.metricContextFunc("write")
-	return func(executionStart time.Time, request *proto.WriteRequest, response *proto.WriteResponse, err error) {
+	return func(executionStart time.Time, request *proto.WriteRequest, _ *proto.WriteResponse, err error) {
 		ctx, batchStart, _attrs := metricContext(err)
 		m.batchTotalTime.Record(ctx, m.sinceFunc(batchStart), _attrs)
 		m.batchExecTime.Record(ctx, m.sinceFunc(executionStart), _attrs)
@@ -122,7 +122,7 @@ func (m *Metrics) WriteCallback() func(time.Time, *proto.WriteRequest, *proto.Wr
 
 func (m *Metrics) ReadCallback() func(time.Time, *proto.ReadRequest, *proto.ReadResponse, error) {
 	metricContext := m.metricContextFunc("read")
-	return func(executionStart time.Time, request *proto.ReadRequest, response *proto.ReadResponse, err error) {
+	return func(executionStart time.Time, _ *proto.ReadRequest, response *proto.ReadResponse, err error) {
 		ctx, batchStart, attrs := metricContext(err)
 		m.batchTotalTime.Record(ctx, m.sinceFunc(batchStart), attrs)
 		m.batchExecTime.Record(ctx, m.sinceFunc(executionStart), attrs)

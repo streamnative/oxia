@@ -106,7 +106,7 @@ func (m mockWriteBatch) DeleteRange(_, _ string) error {
 }
 
 func (m mockWriteBatch) KeyRangeScan(_, _ string) (kv.KeyIterator, error) {
-	return nil, nil
+	return nil, kv.ErrKeyNotFound
 }
 
 func (m mockWriteBatch) Commit() error {
