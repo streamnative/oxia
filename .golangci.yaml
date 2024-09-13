@@ -125,6 +125,9 @@ linters-settings:
       - name: bare-return
         severity: warning
         disabled: false
+  gosec:
+    excludes:
+      - G115
 
 issues:
   fix: true
