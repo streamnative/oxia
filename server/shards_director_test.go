@@ -96,6 +96,7 @@ func TestShardsDirector_GetOrCreateFollower(t *testing.T) {
 
 	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, lc.Status())
 
+	assert.NoError(t, fc.Close())
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, walFactory.Close())
 }
