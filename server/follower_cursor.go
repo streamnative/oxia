@@ -40,8 +40,8 @@ import (
 // This is a provider for the ReplicateStream Grpc handler
 // It's used to allow passing in a mocked version of the Grpc service.
 type ReplicateStreamProvider interface {
-	GetReplicateStream(ctx context.Context, follower string, namespace string, shard int64) (proto.OxiaLogReplication_ReplicateClient, error)
-	SendSnapshot(ctx context.Context, follower string, namespace string, shard int64) (proto.OxiaLogReplication_SendSnapshotClient, error)
+	GetReplicateStream(ctx context.Context, follower string, namespace string, shard int64, term int64) (proto.OxiaLogReplication_ReplicateClient, error)
+	SendSnapshot(ctx context.Context, follower string, namespace string, shard int64, term int64) (proto.OxiaLogReplication_SendSnapshotClient, error)
 }
 
 // FollowerCursor
@@ -251,7 +251,7 @@ func (fc *followerCursor) sendSnapshot() error {
 	ctx, cancel := context.WithCancel(fc.ctx)
 	defer cancel()
 
-	stream, err := fc.replicateStreamProvider.SendSnapshot(ctx, fc.follower, fc.namespace, fc.shardId)
+	stream, err := fc.replicateStreamProvider.SendSnapshot(ctx, fc.follower, fc.namespace, fc.shardId, fc.term)
 	if err != nil {
 		return err
 	}
@@ -367,7 +367,7 @@ func (fc *followerCursor) streamEntries() error {
 
 	fc.Lock()
 	var err error
-	if fc.stream, err = fc.replicateStreamProvider.GetReplicateStream(ctx, fc.follower, fc.namespace, fc.shardId); err != nil {
+	if fc.stream, err = fc.replicateStreamProvider.GetReplicateStream(ctx, fc.follower, fc.namespace, fc.shardId, fc.term); err != nil {
 		fc.Unlock()
 		return err
 	}

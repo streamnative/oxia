@@ -62,3 +62,41 @@ func TestShardsDirector_DeleteShardLeader(t *testing.T) {
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, walFactory.Close())
 }
+
+func TestShardsDirector_GetOrCreateFollower(t *testing.T) {
+	var shard int64 = 1
+
+	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
+	walFactory := newTestWalFactory(t)
+
+	sd := NewShardsDirector(Config{}, walFactory, kvFactory, newMockRpcClient())
+
+	lc, _ := sd.GetOrCreateLeader(common.DefaultNamespace, shard)
+	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 2})
+	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
+		Shard:             shard,
+		Term:              2,
+		ReplicationFactor: 1,
+		FollowerMaps:      nil,
+	})
+
+	assert.Equal(t, proto.ServingStatus_LEADER, lc.Status())
+
+	assert.EqualValues(t, 2, lc.Term())
+
+	// Should fail to get closed if the term is wrong
+	fc, err := sd.GetOrCreateFollower(common.DefaultNamespace, shard, 1)
+	assert.ErrorIs(t, common.ErrorInvalidTerm, err)
+	assert.Nil(t, fc)
+	assert.Equal(t, proto.ServingStatus_LEADER, lc.Status())
+
+	// Will get closed if term is correct
+	fc, err = sd.GetOrCreateFollower(common.DefaultNamespace, shard, 2)
+	assert.NoError(t, err)
+
+	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, lc.Status())
+
+	assert.NoError(t, fc.Close())
+	assert.NoError(t, lc.Close())
+	assert.NoError(t, walFactory.Close())
+}
