@@ -15,12 +15,14 @@
 package server
 
 import (
-	"github.com/spf13/cobra"
-	"github.com/streamnative/oxia/server"
-	"github.com/stretchr/testify/assert"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/server"
 )
 
 func TestServerCmd(t *testing.T) {
