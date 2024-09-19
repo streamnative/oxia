@@ -176,7 +176,9 @@ func (n *nodeController) healthCheckWithRetries() {
 
 		// To avoid the send assignments stream to miss the notification about the current
 		// node went down, we interrupt the current stream when the ping on the node fails
-		n.sendAssignmentsCancel()
+		if n.sendAssignmentsCancel != nil {
+			n.sendAssignmentsCancel()
+		}
 	})
 }
 
