@@ -102,17 +102,20 @@ type leaderController struct {
 	headOffsetGauge         metrics.Gauge
 	commitOffsetGauge       metrics.Gauge
 	followerAckOffsetGauges map[string]metrics.Gauge
+
+	notificationDispatchers map[int64]*notificationDispatcher
 }
 
 func NewLeaderController(config Config, namespace string, shardId int64, rpcClient ReplicationRpcProvider, walFactory wal.Factory, kvFactory kv.Factory) (LeaderController, error) {
 	labels := metrics.LabelsForShard(namespace, shardId)
 	lc := &leaderController{
-		status:           proto.ServingStatus_NOT_MEMBER,
-		namespace:        namespace,
-		shardId:          shardId,
-		quorumAckTracker: nil,
-		rpcClient:        rpcClient,
-		followers:        make(map[string]FollowerCursor),
+		status:                  proto.ServingStatus_NOT_MEMBER,
+		namespace:               namespace,
+		shardId:                 shardId,
+		quorumAckTracker:        nil,
+		rpcClient:               rpcClient,
+		followers:               make(map[string]FollowerCursor),
+		notificationDispatchers: make(map[int64]*notificationDispatcher),
 
 		writeLatencyHisto: metrics.NewLatencyHistogram("oxia_server_leader_write_latency",
 			"Latency for write operations in the leader", labels),
@@ -963,110 +966,7 @@ func (lc *leaderController) appendToWalStreamRequest(request *proto.WriteRequest
 // ////
 
 func (lc *leaderController) GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
-	// Create a context for handling this stream
-	ctx, cancel := context.WithCancel(stream.Context())
-
-	go common.DoWithLabels(
-		ctx,
-		map[string]string{
-			"oxia":  "dispatch-notifications",
-			"shard": fmt.Sprintf("%d", lc.shardId),
-			"peer":  common.GetPeer(stream.Context()),
-		},
-		func() {
-			if err := lc.dispatchNotifications(ctx, req, stream); err != nil && !errors.Is(err, context.Canceled) {
-				lc.log.Warn(
-					"Failed to dispatch notifications",
-					slog.Any("error", err),
-					slog.String("peer", common.GetPeer(stream.Context())),
-				)
-				cancel()
-			}
-		},
-	)
-
-	select {
-	case <-lc.ctx.Done():
-		// Leader is getting closed
-		cancel()
-		return lc.ctx.Err()
-
-	case <-ctx.Done():
-		return ctx.Err()
-
-	case <-stream.Context().Done():
-		// The stream is getting closed
-		cancel()
-		return stream.Context().Err()
-	}
-}
-
-func (lc *leaderController) dispatchNotifications(ctx context.Context, req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
-	lc.log.Debug(
-		"Dispatch notifications",
-		slog.Any("start-offset-exclusive", req.StartOffsetExclusive),
-	)
-
-	var offsetInclusive int64
-	if req.StartOffsetExclusive != nil {
-		offsetInclusive = *req.StartOffsetExclusive + 1
-	} else {
-		lc.Lock()
-		qat := lc.quorumAckTracker
-		lc.Unlock()
-
-		if qat == nil {
-			return errors.New("leader is not yet ready")
-		}
-		commitOffset := qat.CommitOffset()
-
-		// The client is creating a new notification stream and wants to receive the notification from the next
-		// entry that will be written.
-		// In order to ensure the client will positioned on a given offset, we need to send a first "dummy"
-		// notification. The client will wait for this first notification before making the notification
-		// channel available to the application
-		lc.log.Debug(
-			"Sending first dummy notification",
-			slog.Int64("commit-offset", commitOffset),
-		)
-		if err := stream.Send(&proto.NotificationBatch{
-			Shard:         lc.shardId,
-			Offset:        commitOffset,
-			Timestamp:     0,
-			Notifications: nil,
-		}); err != nil {
-			return err
-		}
-
-		offsetInclusive = commitOffset + 1
-	}
-
-	return lc.iterateOverNotifications(ctx, stream, offsetInclusive)
-}
-
-func (lc *leaderController) iterateOverNotifications(ctx context.Context, stream proto.OxiaClient_GetNotificationsServer, startOffsetInclusive int64) error {
-	offsetInclusive := startOffsetInclusive
-	for ctx.Err() == nil {
-		notifications, err := lc.db.ReadNextNotifications(ctx, offsetInclusive)
-		if err != nil {
-			return err
-		}
-
-		lc.log.Debug(
-			"Got a new list of notification batches",
-			slog.Int("list-size", len(notifications)),
-		)
-
-		for _, n := range notifications {
-			if err := stream.Send(n); err != nil {
-				return err
-			}
-		}
-
-		offsetInclusive += int64(len(notifications))
-	}
-
-	return ctx.Err()
+	return startNotificationDispatcher(lc, req, stream)
 }
 
 func (lc *leaderController) isClosed() bool {
@@ -1097,6 +997,10 @@ func (lc *leaderController) close() error {
 	lc.followerAckOffsetGauges = map[string]metrics.Gauge{}
 
 	err = lc.sessionManager.Close()
+
+	for _, nd := range lc.notificationDispatchers {
+		nd.close()
+	}
 
 	if lc.wal != nil {
 		err = multierr.Append(err, lc.wal.Close())
