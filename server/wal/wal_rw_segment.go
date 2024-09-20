@@ -25,6 +25,10 @@ import (
 	"go.uber.org/multierr"
 )
 
+var bufferPool = sync.Pool{}
+
+const initialIndexBufferCapacity = 16 * 1024
+
 type ReadWriteSegment interface {
 	ReadOnlySegment
 
@@ -64,6 +68,13 @@ func newReadWriteSegment(basePath string, baseOffset int64, segmentSize uint32) 
 		path:        segmentPath(basePath, baseOffset),
 		baseOffset:  baseOffset,
 		segmentSize: segmentSize,
+	}
+
+	if pooledBuffer, ok := bufferPool.Get().([]byte); ok {
+		ms.writingIdx = pooledBuffer[:0]
+	} else {
+		// Start with empty slice, though with some initial capacity
+		ms.writingIdx = make([]byte, 0, initialIndexBufferCapacity)
 	}
 
 	txnPath := ms.path + txnExtension
@@ -177,13 +188,16 @@ func (ms *readWriteSegment) Close() error {
 	ms.Lock()
 	defer ms.Unlock()
 
-	return multierr.Combine(
+	err := multierr.Combine(
 		ms.txnMappedFile.Unmap(),
 		ms.txnFile.Close(),
 
 		// Write index file
 		ms.writeIndex(),
 	)
+
+	bufferPool.Put(ms.writingIdx)
+	return err
 }
 
 func (ms *readWriteSegment) Delete() error {
