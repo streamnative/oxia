@@ -113,7 +113,7 @@ func (e *executorImpl) writeStream(shardId *int64) (*streamWrapper, error) {
 	e.RLock()
 
 	sw, ok := e.writeStreams[*shardId]
-	if ok {
+	if ok && !sw.failed.Load() {
 		e.RUnlock()
 		return sw, nil
 	}
