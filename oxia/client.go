@@ -194,6 +194,10 @@ type Version struct {
 	// Whether the record is ephemeral. See [Ephemeral]
 	Ephemeral bool
 
+	// For ephemeral records, the identifier of the session to which this record lifecycle
+	// is attached to. Non-ephemeral records will always report 0.
+	SessionId int64
+
 	// For ephemeral records, the unique identity of the Oxia client that did last modify it.
 	// It will be empty for all non-ephemeral records.
 	ClientIdentity string
