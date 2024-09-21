@@ -14,13 +14,16 @@
 
 package model
 
+import "github.com/streamnative/oxia/common"
+
 type ClusterConfig struct {
 	Namespaces []NamespaceConfig `json:"namespaces" yaml:"namespaces"`
 	Servers    []ServerAddress   `json:"servers" yaml:"servers"`
 }
 
 type NamespaceConfig struct {
-	Name              string `json:"name" yaml:"name"`
-	InitialShardCount uint32 `json:"initialShardCount" yaml:"initialShardCount"`
-	ReplicationFactor uint32 `json:"replicationFactor" yaml:"replicationFactor"`
+	Name                 string                       `json:"name" yaml:"name"`
+	InitialShardCount    uint32                       `json:"initialShardCount" yaml:"initialShardCount"`
+	ReplicationFactor    uint32                       `json:"replicationFactor" yaml:"replicationFactor"`
+	NotificationsEnabled common.OptBooleanDefaultTrue `json:"notificationsEnabled" yaml:"notificationsEnabled"`
 }

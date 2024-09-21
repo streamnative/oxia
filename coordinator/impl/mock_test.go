@@ -137,13 +137,14 @@ func (m *mockPerNodeChannels) expectBecomeLeaderRequest(t *testing.T, shard int6
 	assert.Equal(t, replicationFactor, r.ReplicationFactor)
 }
 
-func (m *mockPerNodeChannels) expectNewTermRequest(t *testing.T, shard int64, term int64) {
+func (m *mockPerNodeChannels) expectNewTermRequest(t *testing.T, shard int64, term int64, notificationsEnabled bool) {
 	t.Helper()
 
 	r := <-m.newTermRequests
 
 	assert.Equal(t, shard, r.Shard)
 	assert.Equal(t, term, r.Term)
+	assert.Equal(t, notificationsEnabled, r.Options.EnableNotifications)
 }
 
 func (m *mockPerNodeChannels) expectAddFollowerRequest(t *testing.T, shard int64, term int64) {

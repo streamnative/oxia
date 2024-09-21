@@ -75,6 +75,7 @@ type ShardController interface {
 type shardController struct {
 	namespace          string
 	shard              int64
+	namespaceConfig    *model.NamespaceConfig
 	shardMetadata      model.ShardMetadata
 	shardMetadataMutex sync.Mutex
 	rpc                RpcProvider
@@ -99,11 +100,13 @@ type shardController struct {
 	termGauge             metrics.Gauge
 }
 
-func NewShardController(namespace string, shard int64, shardMetadata model.ShardMetadata, rpc RpcProvider, coordinator Coordinator) ShardController {
+func NewShardController(namespace string, shard int64, namespaceConfig *model.NamespaceConfig,
+	shardMetadata model.ShardMetadata, rpc RpcProvider, coordinator Coordinator) ShardController {
 	labels := metrics.LabelsForShard(namespace, shard)
 	s := &shardController{
 		namespace:               namespace,
 		shard:                   shard,
+		namespaceConfig:         namespaceConfig,
 		shardMetadata:           shardMetadata,
 		rpc:                     rpc,
 		coordinator:             coordinator,
@@ -600,6 +603,9 @@ func (s *shardController) newTerm(ctx context.Context, node model.ServerAddress)
 		Namespace: s.namespace,
 		Shard:     s.shard,
 		Term:      s.shardMetadata.Term,
+		Options: &proto.NewTermOptions{
+			EnableNotifications: s.namespaceConfig.NotificationsEnabled.Get(),
+		},
 	})
 	if err != nil {
 		return nil, err

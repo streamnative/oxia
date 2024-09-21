@@ -162,7 +162,8 @@ func (c *coordinator) allUnavailableNodes() []string {
 func (c *coordinator) initialShardController() {
 	for ns, shards := range c.clusterStatus.Namespaces {
 		for shard, shardMetadata := range shards.Shards {
-			c.shardControllers[shard] = NewShardController(ns, shard, shardMetadata, c.rpc, c)
+			namespaceConfig := GetNamespaceConfig(c.Namespaces, ns)
+			c.shardControllers[shard] = NewShardController(ns, shard, namespaceConfig, shardMetadata, c.rpc, c)
 		}
 	}
 }
@@ -451,7 +452,9 @@ func (c *coordinator) handleClusterConfigUpdated() error {
 
 	for shard, namespace := range shardsToAdd {
 		shardMetadata := clusterStatus.Namespaces[namespace].Shards[shard]
-		c.shardControllers[shard] = NewShardController(namespace, shard, shardMetadata, c.rpc, c)
+
+		namespaceConfig := GetNamespaceConfig(c.Namespaces, namespace)
+		c.shardControllers[shard] = NewShardController(namespace, shard, namespaceConfig, shardMetadata, c.rpc, c)
 		slog.Info(
 			"Added new shard",
 			slog.Int64("shard", shard),
@@ -560,4 +563,15 @@ func (c *coordinator) getNodeControllers() map[string]NodeController {
 		nc[k] = v
 	}
 	return nc
+}
+
+func GetNamespaceConfig(namespaces []model.NamespaceConfig, namespace string) *model.NamespaceConfig {
+	for _, nc := range namespaces {
+		if nc.Name == namespace {
+			return &nc
+		}
+	}
+
+	// This should never happen since we're going through the same list of namespaces that was already checked
+	panic("namespace not found")
 }
