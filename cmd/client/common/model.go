@@ -23,6 +23,7 @@ type OutputVersion struct {
 	ModifiedTimestamp  time.Time `json:"modified_timestamp"`
 	ModificationsCount int64     `json:"modifications_count"`
 	Ephemeral          bool      `json:"ephemeral"`
+	SessionId          int64     `json:"session_id"`
 	ClientIdentity     string    `json:"client_identity"`
 }
 

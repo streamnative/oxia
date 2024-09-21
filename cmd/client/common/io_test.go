@@ -36,9 +36,10 @@ func TestWriteOutput(t *testing.T) {
 			CreatedTimestamp:   time.UnixMilli(2),
 			ModifiedTimestamp:  time.UnixMilli(3),
 			ModificationsCount: 1,
+			SessionId:          5,
 		}, "{\"key\":\"my-key\",\"version_id\":1,\"created_timestamp\":\"" + time.UnixMilli(2).Format(time.RFC3339Nano) +
 			"\",\"modified_timestamp\":\"" + time.UnixMilli(3).Format(time.RFC3339Nano) +
-			"\",\"modifications_count\":1,\"ephemeral\":false,\"client_identity\":\"\"}\n"},
+			"\",\"modifications_count\":1,\"ephemeral\":false,\"session_id\":5,\"client_identity\":\"\"}\n"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			b := bytes.NewBufferString("")
