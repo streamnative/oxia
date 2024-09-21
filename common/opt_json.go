@@ -16,6 +16,7 @@ package common
 
 import (
 	"encoding/json"
+
 	"github.com/pkg/errors"
 )
 
@@ -52,10 +53,12 @@ func (o *OptBooleanDefaultTrue) UnmarshalJSON(data []byte) error {
 	if s == "true" {
 		o.val = &trueVal
 		return nil
-	} else if s == "false" {
+	}
+
+	if s == "false" {
 		o.val = &falseVal
 		return nil
-	} else {
-		return errors.New("invalid boolean value: " + s)
 	}
+
+	return errors.New("invalid boolean value: " + s)
 }
