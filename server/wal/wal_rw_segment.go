@@ -70,8 +70,8 @@ func newReadWriteSegment(basePath string, baseOffset int64, segmentSize uint32) 
 		segmentSize: segmentSize,
 	}
 
-	if pooledBuffer, ok := bufferPool.Get().([]byte); ok {
-		ms.writingIdx = pooledBuffer[:0]
+	if pooledBuffer, ok := bufferPool.Get().(*[]byte); ok {
+		ms.writingIdx = (*pooledBuffer)[:0]
 	} else {
 		// Start with empty slice, though with some initial capacity
 		ms.writingIdx = make([]byte, 0, initialIndexBufferCapacity)
@@ -196,7 +196,7 @@ func (ms *readWriteSegment) Close() error {
 		ms.writeIndex(),
 	)
 
-	bufferPool.Put(ms.writingIdx)
+	bufferPool.Put(&ms.writingIdx)
 	return err
 }
 

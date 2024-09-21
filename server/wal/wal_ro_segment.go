@@ -293,7 +293,7 @@ func (r *readOnlySegmentsGroup) PollHighestSegment() (common.RefCount[ReadOnlySe
 	defer r.Unlock()
 
 	if r.allSegments.Empty() {
-		return nil, nil // nolint: nilnil
+		return nil, nil //nolint: nilnil
 	}
 
 	offset, _ := r.allSegments.Max()
