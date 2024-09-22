@@ -135,7 +135,7 @@ func NewCoordinator(metadataProvider MetadataProvider,
 		}
 	}
 
-	c.initialShardController()
+	c.initialShardController(&initialClusterConf)
 
 	go common.DoWithLabels(
 		c.ctx,
@@ -159,10 +159,10 @@ func (c *coordinator) allUnavailableNodes() []string {
 	return nodes
 }
 
-func (c *coordinator) initialShardController() {
+func (c *coordinator) initialShardController(initialClusterConf *model.ClusterConfig) {
 	for ns, shards := range c.clusterStatus.Namespaces {
 		for shard, shardMetadata := range shards.Shards {
-			namespaceConfig := GetNamespaceConfig(c.Namespaces, ns)
+			namespaceConfig := GetNamespaceConfig(initialClusterConf.Namespaces, ns)
 			c.shardControllers[shard] = NewShardController(ns, shard, namespaceConfig, shardMetadata, c.rpc, c)
 		}
 	}
@@ -572,6 +572,5 @@ func GetNamespaceConfig(namespaces []model.NamespaceConfig, namespace string) *m
 		}
 	}
 
-	// This should never happen since we're going through the same list of namespaces that was already checked
-	panic("namespace not found")
+	return &model.NamespaceConfig{}
 }
