@@ -62,10 +62,16 @@ message SnapshotChunk {
   int32 chunk_count = 5;
 }
 
+message NewTermOptions {
+  bool enable_notifications = 1;
+}
+
 message NewTermRequest {
   string namespace = 1;
   int64 shard = 2;
   int64 term = 3;
+
+  NewTermOptions options = 4;
 }
 
 message NewTermResponse {

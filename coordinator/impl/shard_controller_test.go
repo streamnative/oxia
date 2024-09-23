@@ -28,6 +28,13 @@ import (
 	"github.com/streamnative/oxia/proto"
 )
 
+var namespaceConfig = &model.NamespaceConfig{
+	Name:                 "my-namespace",
+	InitialShardCount:    1,
+	ReplicationFactor:    3,
+	NotificationsEnabled: common.OptBooleanDefaultTrue{},
+}
+
 func TestShardController(t *testing.T) {
 	var shard int64 = 5
 	rpc := newMockRpcProvider()
@@ -37,7 +44,7 @@ func TestShardController(t *testing.T) {
 	s2 := model.ServerAddress{Public: "s2:9091", Internal: "s2:8191"}
 	s3 := model.ServerAddress{Public: "s3:9091", Internal: "s3:8191"}
 
-	sc := NewShardController(common.DefaultNamespace, shard, model.ShardMetadata{
+	sc := NewShardController(common.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
 		Status:   model.ShardStatusUnknown,
 		Term:     1,
 		Leader:   nil,
@@ -52,9 +59,9 @@ func TestShardController(t *testing.T) {
 
 	rpc.GetNode(s1).BecomeLeaderResponse(nil)
 
-	rpc.GetNode(s1).expectNewTermRequest(t, shard, 2)
-	rpc.GetNode(s2).expectNewTermRequest(t, shard, 2)
-	rpc.GetNode(s3).expectNewTermRequest(t, shard, 2)
+	rpc.GetNode(s1).expectNewTermRequest(t, shard, 2, true)
+	rpc.GetNode(s2).expectNewTermRequest(t, shard, 2, true)
+	rpc.GetNode(s3).expectNewTermRequest(t, shard, 2, true)
 
 	// s1 should be selected as new leader, because it has the highest offset
 	rpc.GetNode(s1).expectBecomeLeaderRequest(t, shard, 2, 3)
@@ -74,9 +81,9 @@ func TestShardController(t *testing.T) {
 	rpc.FailNode(s1, errors.New("failed to connect"))
 	sc.HandleNodeFailure(s1)
 
-	rpc.GetNode(s1).expectNewTermRequest(t, shard, 3)
-	rpc.GetNode(s2).expectNewTermRequest(t, shard, 3)
-	rpc.GetNode(s3).expectNewTermRequest(t, shard, 3)
+	rpc.GetNode(s1).expectNewTermRequest(t, shard, 3, true)
+	rpc.GetNode(s2).expectNewTermRequest(t, shard, 3, true)
+	rpc.GetNode(s3).expectNewTermRequest(t, shard, 3, true)
 
 	// s2 should be selected as new leader, because it has the highest offset
 	rpc.GetNode(s2).expectBecomeLeaderRequest(t, shard, 3, 3)
@@ -94,11 +101,11 @@ func TestShardController(t *testing.T) {
 	rpc.FailNode(s2, errors.New("failed to connect"))
 	rpc.GetNode(s3).NewTermResponse(2, -1, nil)
 
-	rpc.GetNode(s1).expectNewTermRequest(t, shard, 3)
-	rpc.GetNode(s2).expectNewTermRequest(t, shard, 4)
-	rpc.GetNode(s3).expectNewTermRequest(t, shard, 4)
+	rpc.GetNode(s1).expectNewTermRequest(t, shard, 3, true)
+	rpc.GetNode(s2).expectNewTermRequest(t, shard, 4, true)
+	rpc.GetNode(s3).expectNewTermRequest(t, shard, 4, true)
 
-	rpc.GetNode(s1).expectNewTermRequest(t, shard, 4)
+	rpc.GetNode(s1).expectNewTermRequest(t, shard, 4, true)
 	assert.NoError(t, sc.Close())
 }
 
@@ -111,7 +118,7 @@ func TestShardController_StartingWithLeaderAlreadyPresent(t *testing.T) {
 	s2 := model.ServerAddress{Public: "s2:9091", Internal: "s2:8191"}
 	s3 := model.ServerAddress{Public: "s3:9091", Internal: "s3:8191"}
 
-	sc := NewShardController(common.DefaultNamespace, shard, model.ShardMetadata{
+	sc := NewShardController(common.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
 		Status:   model.ShardStatusSteadyState,
 		Term:     1,
 		Leader:   &s1,
@@ -142,7 +149,7 @@ func TestShardController_NewTermWithNonRespondingServer(t *testing.T) {
 	s2 := model.ServerAddress{Public: "s2:9091", Internal: "s2:8191"}
 	s3 := model.ServerAddress{Public: "s3:9091", Internal: "s3:8191"}
 
-	sc := NewShardController(common.DefaultNamespace, shard, model.ShardMetadata{
+	sc := NewShardController(common.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
 		Status:   model.ShardStatusUnknown,
 		Term:     1,
 		Leader:   nil,
@@ -159,9 +166,9 @@ func TestShardController_NewTermWithNonRespondingServer(t *testing.T) {
 	rpc.GetNode(s2).NewTermResponse(1, -1, nil)
 	// s3 is not responding
 
-	rpc.GetNode(s1).expectNewTermRequest(t, shard, 2)
-	rpc.GetNode(s2).expectNewTermRequest(t, shard, 2)
-	rpc.GetNode(s3).expectNewTermRequest(t, shard, 2)
+	rpc.GetNode(s1).expectNewTermRequest(t, shard, 2, true)
+	rpc.GetNode(s2).expectNewTermRequest(t, shard, 2, true)
+	rpc.GetNode(s3).expectNewTermRequest(t, shard, 2, true)
 
 	// s1 should be selected as new leader, without waiting for s3 to timeout
 	rpc.GetNode(s1).expectBecomeLeaderRequest(t, shard, 2, 3)
@@ -183,7 +190,7 @@ func TestShardController_NewTermFollowerUntilItRecovers(t *testing.T) {
 	s2 := model.ServerAddress{Public: "s2:9091", Internal: "s2:8191"}
 	s3 := model.ServerAddress{Public: "s3:9091", Internal: "s3:8191"}
 
-	sc := NewShardController(common.DefaultNamespace, shard, model.ShardMetadata{
+	sc := NewShardController(common.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
 		Status:   model.ShardStatusUnknown,
 		Term:     1,
 		Leader:   nil,
@@ -195,9 +202,9 @@ func TestShardController_NewTermFollowerUntilItRecovers(t *testing.T) {
 	rpc.GetNode(s2).NewTermResponse(1, -1, nil)
 	rpc.GetNode(s3).NewTermResponse(1, -1, errors.New("fails"))
 
-	rpc.GetNode(s1).expectNewTermRequest(t, shard, 2)
-	rpc.GetNode(s2).expectNewTermRequest(t, shard, 2)
-	rpc.GetNode(s3).expectNewTermRequest(t, shard, 2)
+	rpc.GetNode(s1).expectNewTermRequest(t, shard, 2, true)
+	rpc.GetNode(s2).expectNewTermRequest(t, shard, 2, true)
+	rpc.GetNode(s3).expectNewTermRequest(t, shard, 2, true)
 
 	// s1 should be selected as new leader, without waiting for s3 to timeout
 	rpc.GetNode(s1).BecomeLeaderResponse(nil)
@@ -212,11 +219,11 @@ func TestShardController_NewTermFollowerUntilItRecovers(t *testing.T) {
 
 	// One more failure from s1
 	rpc.GetNode(s3).NewTermResponse(1, -1, errors.New("fails"))
-	rpc.GetNode(s3).expectNewTermRequest(t, shard, 2)
+	rpc.GetNode(s3).expectNewTermRequest(t, shard, 2, true)
 
 	// Now it succeeds
 	rpc.GetNode(s3).NewTermResponse(1, -1, nil)
-	rpc.GetNode(s3).expectNewTermRequest(t, shard, 2)
+	rpc.GetNode(s3).expectNewTermRequest(t, shard, 2, true)
 
 	// Leader should be notified
 	rpc.GetNode(s1).AddFollowerResponse(nil)
@@ -237,7 +244,7 @@ func TestShardController_VerifyFollowersWereAllFenced(t *testing.T) {
 	n2 := rpc.GetNode(s2)
 	n3 := rpc.GetNode(s3)
 
-	sc := NewShardController(common.DefaultNamespace, shard, model.ShardMetadata{
+	sc := NewShardController(common.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
 		Status:   model.ShardStatusSteadyState,
 		Term:     4,
 		Leader:   &s1,
@@ -285,6 +292,44 @@ func TestShardController_VerifyFollowersWereAllFenced(t *testing.T) {
 
 	nt3 := <-n3.newTermRequests
 	assert.EqualValues(t, 5, nt3.Term)
+
+	assert.NoError(t, sc.Close())
+}
+
+func TestShardController_NotificationsDisabled(t *testing.T) {
+	var shard int64 = 5
+	rpc := newMockRpcProvider()
+	coordinator := newMockCoordinator()
+
+	s1 := model.ServerAddress{Public: "s1:9091", Internal: "s1:8191"}
+	s2 := model.ServerAddress{Public: "s2:9091", Internal: "s2:8191"}
+	s3 := model.ServerAddress{Public: "s3:9091", Internal: "s3:8191"}
+
+	namespaceConfig := &model.NamespaceConfig{
+		Name:                 "my-ns-2",
+		InitialShardCount:    1,
+		ReplicationFactor:    1,
+		NotificationsEnabled: common.Bool(false),
+	}
+
+	sc := NewShardController(common.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
+		Status:   model.ShardStatusUnknown,
+		Term:     1,
+		Leader:   nil,
+		Ensemble: []model.ServerAddress{s1, s2, s3},
+	}, rpc, coordinator)
+
+	// Shard controller should initiate a leader election
+	// and newTerm each server
+	rpc.GetNode(s1).NewTermResponse(1, 0, nil)
+	rpc.GetNode(s2).NewTermResponse(1, -1, nil)
+	rpc.GetNode(s3).NewTermResponse(1, -1, nil)
+
+	rpc.GetNode(s1).BecomeLeaderResponse(nil)
+
+	rpc.GetNode(s1).expectNewTermRequest(t, shard, 2, false)
+	rpc.GetNode(s2).expectNewTermRequest(t, shard, 2, false)
+	rpc.GetNode(s3).expectNewTermRequest(t, shard, 2, false)
 
 	assert.NoError(t, sc.Close())
 }
