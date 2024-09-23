@@ -884,3 +884,39 @@ func TestAsyncClientImpl_versionId(t *testing.T) {
 
 	assert.NoError(t, standaloneServer.Close())
 }
+
+func TestGetValueWithSessionId(t *testing.T) {
+	standaloneServer, err := server.NewStandalone(server.NewTestConfig(t.TempDir()))
+	assert.NoError(t, err)
+
+	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())
+	client, err := NewAsyncClient(serviceAddress)
+	assert.NoError(t, err)
+
+	ch0 := client.Put("/TestGetValueWithSessionId", []byte("0"), Ephemeral())
+	r0 := <-ch0
+	assert.NoError(t, r0.Err)
+	assert.EqualValues(t, 1, r0.Version.VersionId)
+
+	ch1 := client.Get("/TestGetValueWithSessionId")
+	r1 := <-ch1
+	assert.NoError(t, r1.Err)
+	assert.EqualValues(t, r1.Version.SessionId, r0.Version.SessionId)
+
+	// cleanup
+	client.Close()
+
+	client, err = NewAsyncClient(serviceAddress)
+	assert.NoError(t, err)
+
+	ch0 = client.Put("/TestGetValueWithSessionId", []byte("0"), Ephemeral())
+	r0 = <-ch0
+	assert.NoError(t, r0.Err)
+	assert.EqualValues(t, 3, r0.Version.VersionId)
+
+	ch1 = client.Get("/TestGetValueWithSessionId")
+	r1 = <-ch1
+	assert.NoError(t, r1.Err)
+	assert.NotEqualValues(t, 0, r0.Version.SessionId)
+	assert.EqualValues(t, r1.Version.SessionId, r0.Version.SessionId)
+}

@@ -144,7 +144,7 @@ func (s *internalRpcServer) NewTerm(c context.Context, req *proto.NewTermRequest
 	if err2 != nil {
 		log.Warn(
 			"New term processing of leader failed",
-			slog.Any("error", err),
+			slog.Any("error", err2),
 		)
 	} else {
 		log.Info(
