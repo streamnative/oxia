@@ -78,6 +78,9 @@ func toVersion(version *proto.Version) Version {
 	if version.ClientIdentity != nil {
 		v.ClientIdentity = *version.ClientIdentity
 	}
+	if version.SessionId != nil {
+		v.SessionId = *version.SessionId
+	}
 
 	return v
 }
