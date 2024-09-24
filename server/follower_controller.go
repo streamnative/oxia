@@ -284,10 +284,7 @@ func (fc *followerController) NewTerm(req *proto.NewTermRequest) (*proto.NewTerm
 		}
 	}
 
-	fc.termOptions = kv.TermOptions{NotificationsEnabled: true}
-	if req.Options != nil {
-		fc.termOptions.NotificationsEnabled = req.Options.EnableNotifications
-	}
+	fc.termOptions = kv.ToDbOption(req.Options)
 	if err := fc.db.UpdateTerm(req.Term, fc.termOptions); err != nil {
 		return nil, err
 	}

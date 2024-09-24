@@ -469,7 +469,7 @@ func TestDb_UpdateTerm(t *testing.T) {
 	db, err = NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
 	assert.NoError(t, err)
 
-	term, options, err = db.ReadTerm()
+	term, _, err = db.ReadTerm()
 	assert.NoError(t, err)
 	assert.Equal(t, wal.InvalidOffset, term)
 

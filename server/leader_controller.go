@@ -226,11 +226,7 @@ func (lc *leaderController) NewTerm(req *proto.NewTermRequest) (*proto.NewTermRe
 		return nil, common.ErrorInvalidStatus
 	}
 
-	lc.termOptions = kv.TermOptions{NotificationsEnabled: true}
-	if req.Options != nil {
-		lc.termOptions.NotificationsEnabled = req.Options.EnableNotifications
-	}
-
+	lc.termOptions = kv.ToDbOption(req.Options)
 	if err := lc.db.UpdateTerm(req.Term, lc.termOptions); err != nil {
 		return nil, err
 	}

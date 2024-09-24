@@ -753,3 +753,12 @@ func (*noopCallback) OnDelete(WriteBatch, string) error {
 }
 
 var NoOpCallback UpdateOperationCallback = &noopCallback{}
+
+func ToDbOption(opt *proto.NewTermOptions) TermOptions {
+	to := TermOptions{NotificationsEnabled: true}
+	if opt != nil {
+		to.NotificationsEnabled = opt.EnableNotifications
+	}
+
+	return to
+}
