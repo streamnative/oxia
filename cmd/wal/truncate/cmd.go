@@ -35,7 +35,15 @@ func init() {
 	Cmd.Flags().BoolVar(&options.lastEntry, "last-entry", false, "if trim the last entry")
 
 	Cmd.MarkFlagsMutuallyExclusive("safe-point-entry", "last-entry")
-	Cmd.MarkFlagsRequiredTogether("wal-dir", "namespace", "shard")
+	if err := Cmd.MarkFlagRequired("wal-dir"); err != nil {
+		panic(err)
+	}
+	if err := Cmd.MarkFlagRequired("shard"); err != nil {
+		panic(err)
+	}
+	if err := Cmd.MarkFlagRequired("namespace"); err != nil {
+		panic(err)
+	}
 }
 
 func exec(*cobra.Command, []string) error {
@@ -52,7 +60,7 @@ func exec(*cobra.Command, []string) error {
 	defer writeAheadLog.Close()
 
 	if options.safePointEntry != math.MaxInt64 {
-		slog.Info("truncate the entries. ", slog.Int64("start", options.safePointEntry),
+		slog.Info("truncating the entries. ", slog.Int64("start", options.safePointEntry),
 			slog.Int64("end", writeAheadLog.LastOffset()))
 		newLastEntry, err := writeAheadLog.TruncateLog(options.safePointEntry)
 		if err != nil {
@@ -65,7 +73,9 @@ func exec(*cobra.Command, []string) error {
 	if options.lastEntry {
 		lastOffset := writeAheadLog.LastOffset()
 		safePoint := lastOffset - 1
-		slog.Info("truncate the last entry. ", slog.Int64("start", safePoint), slog.Int64("end", lastOffset))
+		slog.Info("truncating the last entry. ",
+			slog.Int64("start", safePoint),
+			slog.Int64("end", lastOffset))
 		newLastEntry, err := writeAheadLog.TruncateLog(safePoint)
 		if err != nil {
 			return err
