@@ -48,7 +48,7 @@ func exec(_ *cobra.Command, _ []string) error {
 
 	for notification := range notifications.Ch() {
 		args := []any{
-			slog.Any("type", notification.Type),
+			slog.String("type", notification.Type.String()),
 			slog.String("key", notification.Key),
 		}
 		if notification.Type == oxia.KeyCreated || notification.Type == oxia.KeyModified {
