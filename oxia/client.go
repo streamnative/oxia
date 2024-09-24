@@ -260,6 +260,8 @@ const (
 	KeyModified
 	// KeyDeleted A record was deleted.
 	KeyDeleted
+	// KeyRangeRangeDeleted A range of keys was deleted
+	KeyRangeRangeDeleted
 )
 
 func (n NotificationType) String() string {
@@ -270,6 +272,8 @@ func (n NotificationType) String() string {
 		return "KeyModified"
 	case KeyDeleted:
 		return "KeyDeleted"
+	case KeyRangeRangeDeleted:
+		return "KeyRangeRangeDeleted"
 	}
 
 	return "Unknown"
@@ -285,4 +289,8 @@ type Notification struct {
 
 	// The current VersionId of the record, or -1 for a KeyDeleted event
 	VersionId int64
+
+	// In case of a KeyRangeRangeDeleted notification, this would represent
+	// the end (excluded) of the range of keys
+	KeyRangeEnd string
 }

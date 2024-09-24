@@ -15,6 +15,7 @@
 package notifications
 
 import (
+	"github.com/streamnative/oxia/oxia"
 	"log/slog"
 
 	"github.com/spf13/cobra"
@@ -46,12 +47,17 @@ func exec(_ *cobra.Command, _ []string) error {
 	defer notifications.Close()
 
 	for notification := range notifications.Ch() {
-		slog.Info(
-			"",
+		args := []any{
 			slog.Any("type", notification.Type),
 			slog.String("key", notification.Key),
-			slog.Int64("version-id", notification.VersionId),
-		)
+		}
+		if notification.Type == oxia.KeyCreated || notification.Type == oxia.KeyModified {
+			args = append(args, slog.Int64("version-id", notification.VersionId))
+		}
+		if notification.Type == oxia.KeyRangeRangeDeleted {
+			args = append(args, slog.String("key-range-end", notification.KeyRangeEnd))
+		}
+		slog.Info("", args...)
 	}
 
 	return nil

@@ -227,7 +227,7 @@ func (t *notificationsTrimmer) readAt(offset int64) (time.Time, error) {
 
 	nb := &proto.NotificationBatch{}
 	if err := pb.Unmarshal(res, nb); err != nil {
-		return time.Time{}, errors.Wrap(err, "failed to deserialize notification batch")
+		return time.Time{}, errors.Wrap(err, "failed to Deserialize notification batch")
 	}
 
 	return time.UnixMilli(int64(nb.Timestamp)), nil
