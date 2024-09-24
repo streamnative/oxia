@@ -204,3 +204,26 @@ func TestDB_NotificationsCancelWait(t *testing.T) {
 	assert.NoError(t, db.Close())
 	assert.NoError(t, factory.Close())
 }
+
+func TestDB_NotificationsDisabled(t *testing.T) {
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
+	db, err := NewDB(common.DefaultNamespace, 1, factory, 1*time.Hour, common.SystemClock)
+	assert.NoError(t, err)
+
+	db.EnableNotifications(false)
+	t0 := now()
+	_, _ = db.ProcessWrite(&proto.WriteRequest{
+		Puts: []*proto.PutRequest{{
+			Key:   "a",
+			Value: []byte("0"),
+		}},
+	}, 0, t0, NoOpCallback)
+
+	notifications, err := db.ReadNextNotifications(context.Background(), 0)
+	assert.Error(t, ErrNotificationsDisabled, err)
+	assert.Nil(t, notifications)
+
+	assert.NoError(t, db.Close())
+	assert.NoError(t, factory.Close())
+}

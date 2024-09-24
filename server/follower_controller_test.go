@@ -220,7 +220,7 @@ func TestFollower_RestoreCommitOffset(t *testing.T) {
 	}}}, 9, 0, kv.NoOpCallback)
 	assert.NoError(t, err)
 
-	assert.NoError(t, db.UpdateTerm(6))
+	assert.NoError(t, db.UpdateTerm(6, kv.TermOptions{}))
 	assert.NoError(t, db.Close())
 
 	fc, err := NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
@@ -466,7 +466,7 @@ func TestFollowerController_RejectEntriesWithDifferentTerm(t *testing.T) {
 	db, err := kv.NewDB(common.DefaultNamespace, shardId, kvFactory, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
 	// Force a new term in the DB before opening
-	assert.NoError(t, db.UpdateTerm(5))
+	assert.NoError(t, db.UpdateTerm(5, kv.TermOptions{}))
 	assert.NoError(t, db.Close())
 
 	walFactory := wal.NewWalFactory(&wal.FactoryOptions{BaseWalDir: t.TempDir()})
