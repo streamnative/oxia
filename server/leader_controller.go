@@ -94,6 +94,7 @@ type leaderController struct {
 	cancel         context.CancelFunc
 	wal            wal.Wal
 	db             kv.DB
+	termOptions    kv.TermOptions
 	rpcClient      ReplicationRpcProvider
 	sessionManager SessionManager
 	log            *slog.Logger
@@ -154,7 +155,7 @@ func NewLeaderController(config Config, namespace string, shardId int64, rpcClie
 		return nil, err
 	}
 
-	if lc.term, err = lc.db.ReadTerm(); err != nil {
+	if lc.term, lc.termOptions, err = lc.db.ReadTerm(); err != nil {
 		return nil, err
 	}
 
@@ -162,6 +163,7 @@ func NewLeaderController(config Config, namespace string, shardId int64, rpcClie
 		lc.status = proto.ServingStatus_FENCED
 	}
 
+	lc.db.EnableNotifications(lc.termOptions.NotificationsEnabled)
 	lc.setLogger()
 	lc.log.Info("Created leader controller")
 	return lc, nil
@@ -224,10 +226,16 @@ func (lc *leaderController) NewTerm(req *proto.NewTermRequest) (*proto.NewTermRe
 		return nil, common.ErrorInvalidStatus
 	}
 
-	if err := lc.db.UpdateTerm(req.Term); err != nil {
+	lc.termOptions = kv.TermOptions{NotificationsEnabled: true}
+	if req.Options != nil {
+		lc.termOptions.NotificationsEnabled = req.Options.EnableNotifications
+	}
+
+	if err := lc.db.UpdateTerm(req.Term, lc.termOptions); err != nil {
 		return nil, err
 	}
 
+	lc.db.EnableNotifications(lc.termOptions.NotificationsEnabled)
 	lc.term = req.Term
 	lc.setLogger()
 	lc.status = proto.ServingStatus_FENCED
@@ -966,6 +974,9 @@ func (lc *leaderController) appendToWalStreamRequest(request *proto.WriteRequest
 // ////
 
 func (lc *leaderController) GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
+	if !lc.termOptions.NotificationsEnabled {
+		return common.ErrorNotificationsNotEnabled
+	}
 	return startNotificationDispatcher(lc, req, stream)
 }
 

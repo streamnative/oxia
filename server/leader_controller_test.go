@@ -400,7 +400,7 @@ func TestLeaderController_FenceTerm(t *testing.T) {
 	db, err := kv.NewDB(common.DefaultNamespace, shard, kvFactory, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
 	// Force a new term in the DB before opening
-	assert.NoError(t, db.UpdateTerm(5))
+	assert.NoError(t, db.UpdateTerm(5, kv.TermOptions{}))
 	assert.NoError(t, db.Close())
 
 	lc, err := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
@@ -447,7 +447,7 @@ func TestLeaderController_BecomeLeaderTerm(t *testing.T) {
 	db, err := kv.NewDB(common.DefaultNamespace, shard, kvFactory, 1*time.Hour, common.SystemClock)
 	assert.NoError(t, err)
 	// Force a new term in the DB before opening
-	assert.NoError(t, db.UpdateTerm(5))
+	assert.NoError(t, db.UpdateTerm(5, kv.TermOptions{}))
 	assert.NoError(t, db.Close())
 
 	lc, err := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
@@ -589,7 +589,7 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	assert.NoError(t, db.UpdateTerm(5))
+	assert.NoError(t, db.UpdateTerm(5, kv.TermOptions{}))
 	assert.NoError(t, db.Close())
 	assert.NoError(t, walObject.Close())
 
@@ -1257,6 +1257,33 @@ func TestLeaderController_WriteStream(t *testing.T) {
 	err = lc.WriteStream(stream)
 	assert.Error(t, err)
 	assert.Equal(t, common.CodeInvalidStatus, status.Code(err))
+
+	assert.NoError(t, lc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
+func TestLeaderController_NotificationsDisabled(t *testing.T) {
+	var shard int64 = 1
+
+	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
+	walFactory := newTestWalFactory(t)
+
+	lc, _ := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1, Options: &proto.NewTermOptions{EnableNotifications: false}})
+	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
+		Shard:             shard,
+		Term:              1,
+		ReplicationFactor: 1,
+		FollowerMaps:      nil,
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stream := newMockGetNotificationsServer(ctx)
+
+	err := lc.GetNotifications(&proto.NotificationsRequest{Shard: shard}, stream)
+	assert.ErrorIs(t, err, common.ErrorNotificationsNotEnabled)
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())

@@ -90,10 +90,11 @@ type followerController struct {
 	// Offset of the last entry appended and not fully synced yet on the wal
 	lastAppendedOffset int64
 
-	status    proto.ServingStatus
-	wal       wal.Wal
-	kvFactory kv.Factory
-	db        kv.DB
+	status      proto.ServingStatus
+	wal         wal.Wal
+	kvFactory   kv.Factory
+	db          kv.DB
+	termOptions kv.TermOptions
 
 	ctx              context.Context
 	cancel           context.CancelFunc
@@ -134,13 +135,15 @@ func NewFollowerController(config Config, namespace string, shardId int64, wf wa
 		return nil, err
 	}
 
-	if fc.term, err = fc.db.ReadTerm(); err != nil {
+	if fc.term, fc.termOptions, err = fc.db.ReadTerm(); err != nil {
 		return nil, err
 	}
 
 	if fc.term != wal.InvalidTerm {
 		fc.status = proto.ServingStatus_FENCED
 	}
+
+	fc.db.EnableNotifications(fc.termOptions.NotificationsEnabled)
 
 	commitOffset, err := fc.db.ReadCommitOffset()
 	if err != nil {
@@ -281,9 +284,15 @@ func (fc *followerController) NewTerm(req *proto.NewTermRequest) (*proto.NewTerm
 		}
 	}
 
-	if err := fc.db.UpdateTerm(req.Term); err != nil {
+	fc.termOptions = kv.TermOptions{NotificationsEnabled: true}
+	if req.Options != nil {
+		fc.termOptions.NotificationsEnabled = req.Options.EnableNotifications
+	}
+	if err := fc.db.UpdateTerm(req.Term, fc.termOptions); err != nil {
 		return nil, err
 	}
+
+	fc.db.EnableNotifications(fc.termOptions.NotificationsEnabled)
 
 	fc.term = req.Term
 	fc.setLogger()
@@ -693,7 +702,7 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 	}
 
 	// The new term must be persisted, to avoid rolling it back
-	if err = newDb.UpdateTerm(fc.term); err != nil {
+	if err = newDb.UpdateTerm(fc.term, fc.termOptions); err != nil {
 		fc.closeStreamNoMutex(errors.Wrap(err, "Failed to update term in db"))
 	}
 
