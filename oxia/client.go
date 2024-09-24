@@ -260,7 +260,7 @@ const (
 	KeyModified
 	// KeyDeleted A record was deleted.
 	KeyDeleted
-	// KeyRangeRangeDeleted A range of keys was deleted
+	// KeyRangeRangeDeleted A range of keys was deleted.
 	KeyRangeRangeDeleted
 )
 

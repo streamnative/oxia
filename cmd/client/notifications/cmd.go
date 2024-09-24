@@ -15,8 +15,9 @@
 package notifications
 
 import (
-	"github.com/streamnative/oxia/oxia"
 	"log/slog"
+
+	"github.com/streamnative/oxia/oxia"
 
 	"github.com/spf13/cobra"
 

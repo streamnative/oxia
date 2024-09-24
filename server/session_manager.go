@@ -17,12 +17,13 @@ package server
 import (
 	"context"
 	"fmt"
-	"go.uber.org/multierr"
 	"io"
 	"log/slog"
 	"net/url"
 	"sync"
 	"time"
+
+	"go.uber.org/multierr"
 
 	"github.com/pkg/errors"
 
@@ -374,6 +375,9 @@ func (*updateCallback) OnDeleteRange(batch kv.WriteBatch, keyStartInclusive stri
 
 	for it.Next() {
 		value, err := it.Value()
+		if err != nil {
+			return errors.Wrap(multierr.Combine(err, it.Close()), "oxia db: failed to delete range")
+		}
 		se := proto.StorageEntryFromVTPool()
 
 		err = kv.Deserialize(value, se)
