@@ -486,14 +486,12 @@ func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *pr
 	}
 
 	// No version conflict
-	status, err := updateOperationCallback.OnPut(batch, putReq, se)
-	if err != nil {
+	if status, err := updateOperationCallback.OnPut(batch, putReq, se); err != nil {
+		se.ReturnToVTPool()
 		return nil, err
-	}
-	if status != proto.Status_OK {
-		return &proto.PutResponse{
-			Status: status,
-		}, nil
+	} else if status != proto.Status_OK {
+		se.ReturnToVTPool()
+		return &proto.PutResponse{Status: status}, nil
 	}
 
 	var versionId int64
