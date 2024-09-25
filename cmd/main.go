@@ -17,8 +17,9 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/streamnative/oxia/cmd/wal"
 	"os"
+
+	"github.com/streamnative/oxia/cmd/wal"
 
 	"github.com/spf13/cobra"
 	"go.uber.org/automaxprocs/maxprocs"

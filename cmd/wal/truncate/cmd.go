@@ -15,11 +15,13 @@
 package truncate
 
 import (
-	"github.com/spf13/cobra"
-	"github.com/streamnative/oxia/cmd/wal/common"
-	"github.com/streamnative/oxia/server/wal"
 	"log/slog"
 	"math"
+
+	"github.com/spf13/cobra"
+
+	"github.com/streamnative/oxia/cmd/wal/common"
+	"github.com/streamnative/oxia/server/wal"
 )
 
 type truncateOptions struct {
