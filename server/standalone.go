@@ -34,10 +34,12 @@ import (
 type StandaloneConfig struct {
 	Config
 
-	NumShards uint32
+	NumShards            uint32
+	NotificationsEnabled bool
 }
 
 type Standalone struct {
+	config                    StandaloneConfig
 	rpc                       *publicRpcServer
 	kvFactory                 kv.Factory
 	walFactory                wal.Factory
@@ -56,7 +58,8 @@ func NewTestConfig(dir string) StandaloneConfig {
 			PublicServiceAddr:   "localhost:0",
 			MetricsServiceAddr:  "",
 		},
-		NumShards: 1,
+		NumShards:            1,
+		NotificationsEnabled: true,
 	}
 }
 
@@ -66,7 +69,7 @@ func NewStandalone(config StandaloneConfig) (*Standalone, error) {
 		slog.Any("config", config),
 	)
 
-	s := &Standalone{}
+	s := &Standalone{config: config}
 
 	kvOptions := kv.FactoryOptions{DataDir: config.DataDir}
 	s.walFactory = wal.NewWalFactory(&wal.FactoryOptions{
@@ -119,6 +122,9 @@ func (s *Standalone) initializeShards(numShards uint32) error {
 		if _, err := lc.NewTerm(&proto.NewTermRequest{
 			Shard: i,
 			Term:  newTerm,
+			Options: &proto.NewTermOptions{
+				EnableNotifications: s.config.NotificationsEnabled,
+			},
 		}); err != nil {
 			return err
 		}

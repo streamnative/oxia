@@ -189,14 +189,16 @@ func (q *quorumAckTracker) WaitForCommitOffset(ctx context.Context, offset int64
 func (q *quorumAckTracker) WaitForCommitOffsetAsync(offset int64, f func() (*proto.WriteResponse, error),
 	callback func(*proto.WriteResponse, error)) {
 	q.Lock()
-	defer q.Unlock()
 
 	if q.closed {
+		q.Unlock()
 		callback(nil, common.ErrorAlreadyClosed)
 		return
 	}
 
 	if q.requiredAcks == 0 || q.commitOffset.Load() >= offset {
+		q.Unlock()
+
 		var res *proto.WriteResponse
 		var err error
 		if f != nil {
@@ -216,6 +218,8 @@ func (q *quorumAckTracker) WaitForCommitOffsetAsync(offset int64, f func() (*pro
 
 		callback(res, err)
 	}})
+
+	q.Unlock()
 }
 
 func (q *quorumAckTracker) notifyCommitOffsetAdvanced(commitOffset int64) {

@@ -450,16 +450,18 @@ func TestDb_UpdateTerm(t *testing.T) {
 	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
 	assert.NoError(t, err)
 
-	term, err := db.ReadTerm()
+	term, options, err := db.ReadTerm()
 	assert.NoError(t, err)
 	assert.Equal(t, wal.InvalidOffset, term)
+	assert.Equal(t, TermOptions{}, options)
 
-	err = db.UpdateTerm(1)
+	err = db.UpdateTerm(1, TermOptions{NotificationsEnabled: true})
 	assert.NoError(t, err)
 
-	term, err = db.ReadTerm()
+	term, options, err = db.ReadTerm()
 	assert.NoError(t, err)
 	assert.EqualValues(t, 1, term)
+	assert.Equal(t, TermOptions{NotificationsEnabled: true}, options)
 
 	assert.NoError(t, db.Close())
 
@@ -467,7 +469,7 @@ func TestDb_UpdateTerm(t *testing.T) {
 	db, err = NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
 	assert.NoError(t, err)
 
-	term, err = db.ReadTerm()
+	term, _, err = db.ReadTerm()
 	assert.NoError(t, err)
 	assert.Equal(t, wal.InvalidOffset, term)
 

@@ -16,6 +16,7 @@ package kv
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -38,17 +39,20 @@ var (
 	ErrMissingPartitionKey   = errors.New("oxia: sequential key operation requires partition key")
 	ErrMissingSequenceDeltas = errors.New("oxia: sequential key operation missing some sequence deltas")
 	ErrSequenceDeltaIsZero   = errors.New("oxia: sequential key operation requires first delta do be > 0")
+	ErrNotificationsDisabled = errors.New("oxia: notifications disabled")
 )
 
 const (
 	commitOffsetKey        = common.InternalKeyPrefix + "commit-offset"
 	commitLastVersionIdKey = common.InternalKeyPrefix + "last-version-id"
 	termKey                = common.InternalKeyPrefix + "term"
+	termOptionsKey         = termKey + "-options"
 )
 
 type UpdateOperationCallback interface {
-	OnPut(WriteBatch, *proto.PutRequest, *proto.StorageEntry) (proto.Status, error)
-	OnDelete(WriteBatch, string) error
+	OnPut(batch WriteBatch, req *proto.PutRequest, se *proto.StorageEntry) (proto.Status, error)
+	OnDelete(batch WriteBatch, key string) error
+	OnDeleteRange(batch WriteBatch, keyStartInclusive string, keyEndExclusive string) error
 }
 
 type RangeScanIterator interface {
@@ -59,8 +63,14 @@ type RangeScanIterator interface {
 	Next() bool
 }
 
+type TermOptions struct {
+	NotificationsEnabled bool
+}
+
 type DB interface {
 	io.Closer
+
+	EnableNotifications(enable bool)
 
 	ProcessWrite(b *proto.WriteRequest, commitOffset int64, timestamp uint64, updateOperationCallback UpdateOperationCallback) (*proto.WriteResponse, error)
 	Get(request *proto.GetRequest) (*proto.GetResponse, error)
@@ -70,8 +80,8 @@ type DB interface {
 
 	ReadNextNotifications(ctx context.Context, startOffset int64) ([]*proto.NotificationBatch, error)
 
-	UpdateTerm(newTerm int64) error
-	ReadTerm() (term int64, err error)
+	UpdateTerm(newTerm int64, options TermOptions) error
+	ReadTerm() (term int64, options TermOptions, err error)
 
 	Snapshot() (Snapshot, error)
 
@@ -87,8 +97,9 @@ func NewDB(namespace string, shardId int64, factory Factory, notificationRetenti
 
 	labels := metrics.LabelsForShard(namespace, shardId)
 	db := &db{
-		kv:      kv,
-		shardId: shardId,
+		kv:                   kv,
+		shardId:              shardId,
+		notificationsEnabled: true,
 		log: slog.With(
 			slog.String("component", "db"),
 			slog.String("namespace", namespace),
@@ -136,6 +147,7 @@ type db struct {
 	versionIdTracker     atomic.Int64
 	notificationsTracker *notificationsTracker
 	log                  *slog.Logger
+	notificationsEnabled bool
 
 	putCounter          metrics.Counter
 	deleteCounter       metrics.Counter
@@ -151,6 +163,10 @@ type db struct {
 
 func (d *db) Snapshot() (Snapshot, error) {
 	return d.kv.Snapshot()
+}
+
+func (d *db) EnableNotifications(enabled bool) {
+	d.notificationsEnabled = enabled
 }
 
 func (d *db) Close() error {
@@ -173,7 +189,10 @@ func now() uint64 {
 
 func (d *db) applyWriteRequest(b *proto.WriteRequest, batch WriteBatch, commitOffset int64, timestamp uint64, updateOperationCallback UpdateOperationCallback) (*notifications, *proto.WriteResponse, error) {
 	res := &proto.WriteResponse{}
-	notifications := newNotifications(d.shardId, commitOffset, timestamp)
+	var notifications *notifications
+	if d.notificationsEnabled {
+		notifications = newNotifications(d.shardId, commitOffset, timestamp)
+	}
 
 	d.putCounter.Add(len(b.Puts))
 	for _, putReq := range b.Puts {
@@ -225,16 +244,20 @@ func (d *db) ProcessWrite(b *proto.WriteRequest, commitOffset int64, timestamp u
 		return nil, err
 	}
 
-	// Add the notifications to the batch as well
-	if err := d.addNotifications(batch, notifications); err != nil {
-		return nil, err
+	if notifications != nil {
+		// Add the notifications to the batch as well
+		if err := d.addNotifications(batch, notifications); err != nil {
+			return nil, err
+		}
 	}
 
 	if err := batch.Commit(); err != nil {
 		return nil, err
 	}
 
-	d.notificationsTracker.UpdatedCommitOffset(commitOffset)
+	if notifications != nil {
+		d.notificationsTracker.UpdatedCommitOffset(commitOffset)
+	}
 
 	if err := batch.Close(); err != nil {
 		return nil, err
@@ -306,7 +329,7 @@ func (it *rangeScanIterator) Value() (*proto.GetResponse, error) {
 	}
 
 	se := &proto.StorageEntry{}
-	if err = deserialize(value, se); err != nil {
+	if err = Deserialize(value, se); err != nil {
 		return nil, err
 	}
 
@@ -376,12 +399,23 @@ func (d *db) readASCIILong(key string) (int64, error) {
 	return res, nil
 }
 
-func (d *db) UpdateTerm(newTerm int64) error {
+func (d *db) UpdateTerm(newTerm int64, options TermOptions) error {
 	batch := d.kv.NewWriteBatch()
 
 	if _, err := d.applyPut(batch, nil, &proto.PutRequest{
 		Key:   termKey,
 		Value: []byte(fmt.Sprintf("%d", newTerm)),
+	}, now(), NoOpCallback, true); err != nil {
+		return err
+	}
+
+	serOptions, err := json.Marshal(options)
+	if err != nil {
+		return err
+	}
+	if _, err := d.applyPut(batch, nil, &proto.PutRequest{
+		Key:   termOptionsKey,
+		Value: serOptions,
 	}, now(), NoOpCallback, true); err != nil {
 		return err
 	}
@@ -399,23 +433,36 @@ func (d *db) UpdateTerm(newTerm int64) error {
 	return d.kv.Flush()
 }
 
-func (d *db) ReadTerm() (term int64, err error) {
+func (d *db) ReadTerm() (term int64, options TermOptions, err error) {
 	getReq := &proto.GetRequest{
 		Key:          termKey,
 		IncludeValue: true,
 	}
 	gr, err := applyGet(d.kv, getReq)
 	if err != nil {
-		return wal.InvalidTerm, err
+		return wal.InvalidTerm, TermOptions{}, err
 	}
 	if gr.Status == proto.Status_KEY_NOT_FOUND {
-		return wal.InvalidTerm, nil
+		return wal.InvalidTerm, TermOptions{}, nil
 	}
 
 	if _, err = fmt.Sscanf(string(gr.Value), "%d", &term); err != nil {
-		return wal.InvalidTerm, err
+		return wal.InvalidTerm, TermOptions{}, err
 	}
-	return term, nil
+
+	if gr, err = applyGet(d.kv, &proto.GetRequest{Key: termOptionsKey, IncludeValue: true}); err != nil {
+		return wal.InvalidTerm, TermOptions{}, err
+	}
+
+	if gr.Status == proto.Status_KEY_NOT_FOUND {
+		options = TermOptions{}
+	} else {
+		if err := json.Unmarshal(gr.Value, &options); err != nil {
+			return wal.InvalidTerm, TermOptions{}, err
+		}
+	}
+
+	return term, options, nil
 }
 
 func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *proto.PutRequest, timestamp uint64, updateOperationCallback UpdateOperationCallback, internal bool) (*proto.PutResponse, error) { //nolint:revive
@@ -439,14 +486,12 @@ func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *pr
 	}
 
 	// No version conflict
-	status, err := updateOperationCallback.OnPut(batch, putReq, se)
-	if err != nil {
+	if status, err := updateOperationCallback.OnPut(batch, putReq, se); err != nil {
+		se.ReturnToVTPool()
 		return nil, err
-	}
-	if status != proto.Status_OK {
-		return &proto.PutResponse{
-			Status: status,
-		}, nil
+	} else if status != proto.Status_OK {
+		se.ReturnToVTPool()
+		return &proto.PutResponse{Status: status}, nil
 	}
 
 	var versionId int64
@@ -549,27 +594,26 @@ func (d *db) applyDelete(batch WriteBatch, notifications *notifications, delReq 
 }
 
 func (*db) applyDeleteRangeNotifications(batch WriteBatch, notifications *notifications, delReq *proto.DeleteRangeRequest, updateOperationCallback UpdateOperationCallback) error {
-	if notifications == nil && updateOperationCallback == NoOpCallback {
-		return nil
+	if notifications != nil {
+		notifications.DeletedRange(delReq.StartInclusive, delReq.EndExclusive)
 	}
 
-	it, err := batch.KeyRangeScan(delReq.StartInclusive, delReq.EndExclusive)
-	if err != nil {
-		return err
-	}
-
-	for it.Next() {
-		if notifications != nil {
-			notifications.Deleted(it.Key())
-		}
-		err := updateOperationCallback.OnDelete(batch, it.Key())
+	if updateOperationCallback != NoOpCallback {
+		it, err := batch.KeyRangeScan(delReq.StartInclusive, delReq.EndExclusive)
 		if err != nil {
-			return errors.Wrap(multierr.Combine(err, it.Close()), "oxia db: failed to delete range")
+			return err
 		}
-	}
 
-	if err := it.Close(); err != nil {
-		return errors.Wrap(err, "oxia db: failed to delete range")
+		for it.Next() {
+			err := updateOperationCallback.OnDelete(batch, it.Key())
+			if err != nil {
+				return errors.Wrap(multierr.Combine(err, it.Close()), "oxia db: failed to delete range")
+			}
+		}
+
+		if err := it.Close(); err != nil {
+			return errors.Wrap(err, "oxia db: failed to delete range")
+		}
 	}
 
 	return nil
@@ -612,7 +656,7 @@ func applyGet(kv KV, getReq *proto.GetRequest) (*proto.GetResponse, error) {
 	}
 
 	if err = multierr.Append(
-		deserialize(value, se),
+		Deserialize(value, se),
 		closer.Close(),
 	); err != nil {
 		return nil, err
@@ -651,7 +695,7 @@ func GetStorageEntry(batch WriteBatch, key string) (*proto.StorageEntry, error) 
 	se := proto.StorageEntryFromVTPool()
 
 	if err = multierr.Append(
-		deserialize(value, se),
+		Deserialize(value, se),
 		closer.Close(),
 	); err != nil {
 		return nil, err
@@ -681,26 +725,42 @@ func checkExpectedVersionId(batch WriteBatch, key string, expectedVersionId *int
 	return se, nil
 }
 
-func deserialize(value []byte, se *proto.StorageEntry) error {
+func Deserialize(value []byte, se *proto.StorageEntry) error {
 	if err := se.UnmarshalVT(value); err != nil {
-		return errors.Wrap(err, "failed to deserialize storage entry")
+		return errors.Wrap(err, "failed to Deserialize storage entry")
 	}
 
 	return nil
 }
 
 func (d *db) ReadNextNotifications(ctx context.Context, startOffset int64) ([]*proto.NotificationBatch, error) {
+	if !d.notificationsEnabled {
+		return nil, ErrNotificationsDisabled
+	}
 	return d.notificationsTracker.ReadNextNotifications(ctx, startOffset)
 }
 
 type noopCallback struct{}
 
-func (*noopCallback) OnPut(WriteBatch, *proto.PutRequest, *proto.StorageEntry) (proto.Status, error) {
+func (*noopCallback) OnPut(_ WriteBatch, _ *proto.PutRequest, _ *proto.StorageEntry) (proto.Status, error) {
 	return proto.Status_OK, nil
 }
 
-func (*noopCallback) OnDelete(WriteBatch, string) error {
+func (*noopCallback) OnDelete(_ WriteBatch, _ string) error {
+	return nil
+}
+
+func (*noopCallback) OnDeleteRange(_ WriteBatch, _ string, _ string) error {
 	return nil
 }
 
 var NoOpCallback UpdateOperationCallback = &noopCallback{}
+
+func ToDbOption(opt *proto.NewTermOptions) TermOptions {
+	to := TermOptions{NotificationsEnabled: true}
+	if opt != nil {
+		to.NotificationsEnabled = opt.EnableNotifications
+	}
+
+	return to
+}

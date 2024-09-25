@@ -456,6 +456,7 @@ enum NotificationType {
   KEY_CREATED = 0;
   KEY_MODIFIED = 1;
   KEY_DELETED = 2;
+  KEY_RANGE_DELETED = 3;
 }
 
 message NotificationsRequest {
@@ -475,4 +476,6 @@ message NotificationBatch {
 message Notification {
   NotificationType type = 1;
   optional int64 version_id = 2;
+
+  optional string key_range_last = 3;
 }

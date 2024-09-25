@@ -23,6 +23,8 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/multierr"
+
 	"github.com/pkg/errors"
 
 	"github.com/streamnative/oxia/common"
@@ -367,5 +369,37 @@ func (*updateCallback) OnDelete(batch kv.WriteBatch, key string) error {
 	if err == nil && se.SessionId != nil {
 		_, err = deleteShadow(batch, key, se)
 	}
+	return err
+}
+
+func (*updateCallback) OnDeleteRange(batch kv.WriteBatch, keyStartInclusive string, keyEndExclusive string) error {
+	it, err := batch.RangeScan(keyStartInclusive, keyEndExclusive)
+	if err != nil {
+		return err
+	}
+
+	for it.Next() {
+		value, err := it.Value()
+		if err != nil {
+			return errors.Wrap(multierr.Combine(err, it.Close()), "oxia db: failed to delete range")
+		}
+		se := proto.StorageEntryFromVTPool()
+
+		err = kv.Deserialize(value, se)
+		if err == nil && se.SessionId != nil {
+			_, err = deleteShadow(batch, it.Key(), se)
+		}
+
+		se.ReturnToVTPool()
+
+		if err != nil {
+			return errors.Wrap(multierr.Combine(err, it.Close()), "oxia db: failed to delete range")
+		}
+	}
+
+	if err := it.Close(); err != nil {
+		return errors.Wrap(err, "oxia db: failed to delete range")
+	}
+
 	return err
 }

@@ -17,6 +17,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/streamnative/oxia/cmd/wal"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -62,6 +63,7 @@ func init() {
 	rootCmd.AddCommand(server.Cmd)
 	rootCmd.AddCommand(standalone.Cmd)
 	rootCmd.AddCommand(pebble.Cmd)
+	rootCmd.AddCommand(wal.Cmd)
 }
 
 func configureLogLevel(_ *cobra.Command, _ []string) error {

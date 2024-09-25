@@ -265,6 +265,8 @@ func convertNotificationType(t proto.NotificationType) NotificationType {
 		return KeyModified
 	case proto.NotificationType_KEY_DELETED:
 		return KeyDeleted
+	case proto.NotificationType_KEY_RANGE_DELETED:
+		return KeyRangeRangeDeleted
 	default:
 		panic("Invalid notification type")
 	}
@@ -276,8 +278,9 @@ func convertNotification(key string, n *proto.Notification) *Notification {
 		versionId = *n.VersionId
 	}
 	return &Notification{
-		Type:      convertNotificationType(n.Type),
-		Key:       key,
-		VersionId: versionId,
+		Type:        convertNotificationType(n.Type),
+		Key:         key,
+		VersionId:   versionId,
+		KeyRangeEnd: n.GetKeyRangeLast(),
 	}
 }

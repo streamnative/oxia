@@ -204,3 +204,68 @@ func TestDB_NotificationsCancelWait(t *testing.T) {
 	assert.NoError(t, db.Close())
 	assert.NoError(t, factory.Close())
 }
+
+func TestDB_NotificationsDisabled(t *testing.T) {
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
+	db, err := NewDB(common.DefaultNamespace, 1, factory, 1*time.Hour, common.SystemClock)
+	assert.NoError(t, err)
+
+	db.EnableNotifications(false)
+	t0 := now()
+	_, _ = db.ProcessWrite(&proto.WriteRequest{
+		Puts: []*proto.PutRequest{{
+			Key:   "a",
+			Value: []byte("0"),
+		}},
+	}, 0, t0, NoOpCallback)
+
+	notifications, err := db.ReadNextNotifications(context.Background(), 0)
+	assert.Error(t, ErrNotificationsDisabled, err)
+	assert.Nil(t, notifications)
+
+	assert.NoError(t, db.Close())
+	assert.NoError(t, factory.Close())
+}
+
+func TestDB_NotificationsDeleteRange(t *testing.T) {
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
+	db, err := NewDB(common.DefaultNamespace, 1, factory, 1*time.Hour, common.SystemClock)
+	assert.NoError(t, err)
+
+	t0 := now()
+	_, _ = db.ProcessWrite(&proto.WriteRequest{
+		Puts: []*proto.PutRequest{
+			{Key: "a", Value: []byte("0")},
+			{Key: "b", Value: []byte("1")},
+			{Key: "c", Value: []byte("2")},
+		},
+	}, 0, t0, NoOpCallback)
+
+	t1 := now()
+	_, _ = db.ProcessWrite(&proto.WriteRequest{
+		DeleteRanges: []*proto.DeleteRangeRequest{{
+			StartInclusive: "a",
+			EndExclusive:   "c",
+		}},
+	}, 1, t1, NoOpCallback)
+
+	notifications, err := db.ReadNextNotifications(context.Background(), 1)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(notifications))
+
+	nb := notifications[0]
+	assert.Equal(t, t1, nb.Timestamp)
+	assert.EqualValues(t, 1, nb.Offset)
+	assert.EqualValues(t, 1, nb.Shard)
+	assert.Equal(t, 1, len(nb.Notifications))
+	n, found := nb.Notifications["a"]
+	assert.True(t, found)
+	assert.Equal(t, proto.NotificationType_KEY_RANGE_DELETED, n.Type)
+	assert.Equal(t, "c", *n.KeyRangeLast)
+	assert.Nil(t, n.VersionId)
+
+	assert.NoError(t, db.Close())
+	assert.NoError(t, factory.Close())
+}
