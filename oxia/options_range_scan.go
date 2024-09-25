@@ -15,7 +15,7 @@
 package oxia
 
 type rangeScanOptions struct {
-	baseOptions
+	listOptions
 }
 
 // RangeScanOption represents an option for the [SyncClient.RangeScan] operation.

@@ -137,6 +137,7 @@ func (c *clientImpl) Put(key string, value []byte, options ...PutOption) <-chan 
 		SequenceKeysDeltas: opts.sequenceKeysDeltas,
 		PartitionKey:       opts.partitionKey,
 		Callback:           callback,
+		SecondaryIndexes:   opts.secondaryIndexes,
 	}
 	if opts.ephemeral {
 		putCall.ClientIdentity = &c.options.identity
@@ -319,11 +320,13 @@ func processAllGetResponses(key string, results []*proto.GetResponse, comparison
 	close(ch)
 }
 
-func (c *clientImpl) listFromShard(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, shardId int64, ch chan<- ListResult) {
+func (c *clientImpl) listFromShard(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, shardId int64, secondaryIndexName *string,
+	ch chan<- ListResult) {
 	request := &proto.ListRequest{
-		Shard:          &shardId,
-		StartInclusive: minKeyInclusive,
-		EndExclusive:   maxKeyExclusive,
+		Shard:              &shardId,
+		StartInclusive:     minKeyInclusive,
+		EndExclusive:       maxKeyExclusive,
+		SecondaryIndexName: secondaryIndexName,
 	}
 
 	client, err := c.executor.ExecuteList(ctx, request)
@@ -355,7 +358,7 @@ func (c *clientImpl) List(ctx context.Context, minKeyInclusive string, maxKeyExc
 		// If the partition key is specified, we only need to make the request to one shard
 		shardId := c.getShardForKey("", opts)
 		go func() {
-			c.listFromShard(ctx, minKeyInclusive, maxKeyExclusive, shardId, ch)
+			c.listFromShard(ctx, minKeyInclusive, maxKeyExclusive, shardId, opts.secondaryIndexName, ch)
 			close(ch)
 		}()
 	} else {
@@ -368,7 +371,7 @@ func (c *clientImpl) List(ctx context.Context, minKeyInclusive string, maxKeyExc
 			go func() {
 				defer wg.Done()
 
-				c.listFromShard(ctx, minKeyInclusive, maxKeyExclusive, shardIdPtr, ch)
+				c.listFromShard(ctx, minKeyInclusive, maxKeyExclusive, shardIdPtr, opts.secondaryIndexName, ch)
 			}()
 		}
 
@@ -381,11 +384,13 @@ func (c *clientImpl) List(ctx context.Context, minKeyInclusive string, maxKeyExc
 	return ch
 }
 
-func (c *clientImpl) rangeScanFromShard(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, shardId int64, ch chan<- GetResult) {
+func (c *clientImpl) rangeScanFromShard(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, shardId int64, secondaryIndexName *string,
+	ch chan<- GetResult) {
 	request := &proto.RangeScanRequest{
-		Shard:          &shardId,
-		StartInclusive: minKeyInclusive,
-		EndExclusive:   maxKeyExclusive,
+		Shard:              &shardId,
+		StartInclusive:     minKeyInclusive,
+		EndExclusive:       maxKeyExclusive,
+		SecondaryIndexName: secondaryIndexName,
 	}
 
 	client, err := c.executor.ExecuteRangeScan(ctx, request)
@@ -421,7 +426,7 @@ func (c *clientImpl) RangeScan(ctx context.Context, minKeyInclusive string, maxK
 		// If the partition key is specified, we only need to make the request to one shard
 		shardId := c.getShardForKey("", opts)
 		go func() {
-			c.rangeScanFromShard(ctx, minKeyInclusive, maxKeyExclusive, shardId, outCh)
+			c.rangeScanFromShard(ctx, minKeyInclusive, maxKeyExclusive, shardId, opts.secondaryIndexName, outCh)
 		}()
 	} else {
 		// Do the list on all shards and aggregate the responses
@@ -433,7 +438,7 @@ func (c *clientImpl) RangeScan(ctx context.Context, minKeyInclusive string, maxK
 			ch := make(chan GetResult)
 			channels[i] = ch
 			go func() {
-				c.rangeScanFromShard(ctx, minKeyInclusive, maxKeyExclusive, shardIdPtr, ch)
+				c.rangeScanFromShard(ctx, minKeyInclusive, maxKeyExclusive, shardIdPtr, opts.secondaryIndexName, ch)
 			}()
 		}
 

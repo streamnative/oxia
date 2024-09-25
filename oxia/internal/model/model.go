@@ -26,6 +26,7 @@ type PutCall struct {
 	SessionId          *int64
 	ClientIdentity     *string
 	PartitionKey       *string
+	SecondaryIndexes   map[string]string
 	Callback           func(*proto.PutResponse, error)
 }
 
@@ -56,6 +57,7 @@ func (r PutCall) ToProto() *proto.PutRequest {
 		ClientIdentity:    r.ClientIdentity,
 		PartitionKey:      r.PartitionKey,
 		SequenceKeyDelta:  r.SequenceKeysDeltas,
+		SecondaryIndexes:  r.SecondaryIndexes,
 	}
 }
 

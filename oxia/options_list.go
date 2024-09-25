@@ -16,11 +16,14 @@ package oxia
 
 type listOptions struct {
 	baseOptions
+
+	secondaryIndexName *string
 }
 
 // ListOption represents an option for the [SyncClient.List] operation.
 type ListOption interface {
 	applyList(opts *listOptions)
+	applyRangeScan(opts *rangeScanOptions)
 }
 
 func newListOptions(opts []ListOption) *listOptions {
@@ -29,4 +32,22 @@ func newListOptions(opts []ListOption) *listOptions {
 		opt.applyList(listOpts)
 	}
 	return listOpts
+}
+
+type useIndex struct {
+	indexName string
+}
+
+func (u *useIndex) applyList(opts *listOptions) {
+	opts.secondaryIndexName = &u.indexName
+}
+
+func (u *useIndex) applyRangeScan(opts *rangeScanOptions) {
+	opts.secondaryIndexName = &u.indexName
+}
+
+// UseIndex let the users specify a different index to follow for the
+// Note: The returned list will contain they primary keys of the records
+func UseIndex(indexName string) ListOption {
+	return &useIndex{indexName}
 }
