@@ -18,6 +18,8 @@ import (
 	"hash/crc32"
 )
 
+const MagicNumber uint32 = 0xa282ead8
+
 var table = crc32.MakeTable(crc32.Castagnoli)
 
 type Checksum uint32
@@ -29,5 +31,5 @@ func (c Checksum) Update(b []byte) Checksum {
 	return Checksum(crc32.Update(uint32(c), table, b))
 }
 func (c Checksum) Value() uint32 {
-	return uint32(c>>15|c<<17) + 0xa282ead8
+	return uint32(c>>15|c<<17) + MagicNumber
 }

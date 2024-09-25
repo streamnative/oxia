@@ -132,7 +132,7 @@ func (ms *readWriteSegment) Read(offset int64) ([]byte, error) {
 
 	fileOffset := fileOffset(ms.writingIdx, ms.baseOffset, offset)
 	var entryCrc *uint32
-	var headerOffset uint32 = 0
+	var headerOffset uint32
 	if ms.formatVersion == TxnFormatVersion2 {
 		v := readInt(ms.txnMappedFile, fileOffset)
 		entryCrc = &v
