@@ -18,7 +18,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"k8s.io/utils/pointer"
 	"testing"
 	"time"
 
@@ -182,12 +181,13 @@ func TestSessionUpdateOperationCallback_OnPut(t *testing.T) {
 	}
 
 	// session (sessionID -1) entry
+	tmpSessionId := sessionId - 1
 	se = &proto.StorageEntry{
 		Value:                 []byte("value"),
 		VersionId:             0,
 		CreationTimestamp:     0,
 		ModificationTimestamp: 0,
-		SessionId:             pointer.Int64(sessionId - 1),
+		SessionId:             &tmpSessionId,
 	}
 	// sessionID has expired
 	writeBatch = mockWriteBatch{
