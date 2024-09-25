@@ -174,6 +174,18 @@ func TestSessionUpdateOperationCallback_OnPut(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, proto.Status_SESSION_DOES_NOT_EXIST, status)
 
+	writeBatch = mockWriteBatch{
+		"a/b/c": []byte{},
+		SessionKey(SessionId(sessionId-1)) + "a%2Fb%2Fc": []byte{},
+		SessionKey(SessionId(sessionId - 1)):             []byte{},
+	}
+	status, err = SessionUpdateOperationCallback.OnPut(writeBatch, sessionPutRequest, se)
+	assert.NoError(t, err)
+	assert.Equal(t, proto.Status_SESSION_DOES_NOT_EXIST, status)
+	_, closer, err := writeBatch.Get(SessionKey(SessionId(sessionId-1)) + "a%2Fb%2Fc")
+	assert.NoError(t, err)
+	closer.Close()
+
 	expectedErr := errors.New("error coming from the DB on read")
 	writeBatch = mockWriteBatch{
 		SessionKey(SessionId(sessionId)): expectedErr,

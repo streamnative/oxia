@@ -307,7 +307,7 @@ type updateCallback struct{}
 
 var SessionUpdateOperationCallback kv.UpdateOperationCallback = &updateCallback{}
 
-func (*updateCallback) OnPutWithinSession(batch kv.WriteBatch, request *proto.PutRequest, _ *proto.StorageEntry) (proto.Status, error) {
+func (*updateCallback) OnPutWithinSession(batch kv.WriteBatch, request *proto.PutRequest, existingEntry *proto.StorageEntry) (proto.Status, error) {
 	var _, closer, err = batch.Get(SessionKey(SessionId(*request.SessionId)))
 	if err != nil {
 		if errors.Is(err, kv.ErrKeyNotFound) {
@@ -317,6 +317,10 @@ func (*updateCallback) OnPutWithinSession(batch kv.WriteBatch, request *proto.Pu
 	}
 	if err = closer.Close(); err != nil {
 		return proto.Status_SESSION_DOES_NOT_EXIST, err
+	}
+	// delete existing session shadow
+	if status, err := deleteShadow(batch, request.Key, existingEntry); err != nil {
+		return status, err
 	}
 	// Create the session shadow entry
 	err = batch.Put(ShadowKey(SessionId(*request.SessionId), request.Key), []byte{})
@@ -328,26 +332,27 @@ func (*updateCallback) OnPutWithinSession(batch kv.WriteBatch, request *proto.Pu
 }
 
 func (c *updateCallback) OnPut(batch kv.WriteBatch, request *proto.PutRequest, existingEntry *proto.StorageEntry) (proto.Status, error) {
-	if existingEntry != nil && existingEntry.SessionId != nil {
-		// We are overwriting an ephemeral value, let's delete its shadow
+	switch {
+	// override by normal operation
+	case request.SessionId == nil:
 		if status, err := deleteShadow(batch, request.Key, existingEntry); err != nil {
 			return status, err
 		}
-	}
-
-	sessionId := request.SessionId
-	if sessionId != nil {
-		// We are adding an ephemeral value, let's check if the session exists
+		// override by session operation
+	case request.SessionId != nil:
 		return c.OnPutWithinSession(batch, request, existingEntry)
 	}
 	return proto.Status_OK, nil
 }
 
 func deleteShadow(batch kv.WriteBatch, key string, existingEntry *proto.StorageEntry) (proto.Status, error) {
-	existingSessionId := SessionId(*existingEntry.SessionId)
-	err := batch.Delete(ShadowKey(existingSessionId, key))
-	if err != nil && !errors.Is(err, kv.ErrKeyNotFound) {
-		return proto.Status_SESSION_DOES_NOT_EXIST, err
+	// We are overwriting an ephemeral value, let's delete its shadow
+	if existingEntry != nil && existingEntry.SessionId != nil {
+		existingSessionId := SessionId(*existingEntry.SessionId)
+		err := batch.Delete(ShadowKey(existingSessionId, key))
+		if err != nil && !errors.Is(err, kv.ErrKeyNotFound) {
+			return proto.Status_SESSION_DOES_NOT_EXIST, err
+		}
 	}
 	return proto.Status_OK, nil
 }
