@@ -16,16 +16,13 @@ package truncate
 
 import (
 	"github.com/spf13/cobra"
+	common "github.com/streamnative/oxia/cmd/wal/common"
 	"github.com/streamnative/oxia/server/wal"
 	"log/slog"
 	"math"
 )
 
 type truncateOptions struct {
-	namespace string
-	shard     int64
-	walDir    string
-
 	lastEntry      bool
 	safePointEntry int64
 }
@@ -41,33 +38,22 @@ var (
 )
 
 func init() {
-	Cmd.Flags().Int64Var(&options.shard, "shard", 0, "shard id")
-	Cmd.Flags().StringVar(&options.namespace, "namespace", "default", "namespace name")
-	Cmd.Flags().StringVar(&options.walDir, "wal-dir", "", "directory path")
 	// operations
-	Cmd.Flags().Int64Var(&options.safePointEntry, "safe-point-entry", math.MaxInt64, "the last safe entry offset")
-	Cmd.Flags().BoolVar(&options.lastEntry, "last-entry", false, "if trim the last entry")
+	Cmd.Flags().Int64Var(&options.safePointEntry, "last-safe-entry", math.MaxInt64,
+		"removes entries from the end of the log that have an offset greater than last safe entry")
+	Cmd.Flags().BoolVar(&options.lastEntry, "truncate-last-entry", false, "removes the last entry of the log")
 
-	Cmd.MarkFlagsMutuallyExclusive("safe-point-entry", "last-entry")
-	if err := Cmd.MarkFlagRequired("wal-dir"); err != nil {
-		panic(err)
-	}
-	if err := Cmd.MarkFlagRequired("shard"); err != nil {
-		panic(err)
-	}
-	if err := Cmd.MarkFlagRequired("namespace"); err != nil {
-		panic(err)
-	}
+	Cmd.MarkFlagsMutuallyExclusive("last-safe-entry", "truncate-last-entry")
 }
 
 func exec(*cobra.Command, []string) error {
 	factory := wal.NewWalFactory(&wal.FactoryOptions{
-		BaseWalDir:  options.walDir,
+		BaseWalDir:  common.WalOption.WalDir,
 		Retention:   math.MaxInt64,
 		SegmentSize: wal.DefaultFactoryOptions.SegmentSize,
 		SyncData:    true,
 	})
-	writeAheadLog, err := factory.NewWal(options.namespace, options.shard, nil)
+	writeAheadLog, err := factory.NewWal(common.WalOption.Namespace, common.WalOption.Shard, nil)
 	if err != nil {
 		panic(err)
 	}
