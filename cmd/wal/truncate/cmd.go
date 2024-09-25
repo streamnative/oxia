@@ -16,7 +16,7 @@ package truncate
 
 import (
 	"github.com/spf13/cobra"
-	common "github.com/streamnative/oxia/cmd/wal/common"
+	"github.com/streamnative/oxia/cmd/wal/common"
 	"github.com/streamnative/oxia/server/wal"
 	"log/slog"
 	"math"
