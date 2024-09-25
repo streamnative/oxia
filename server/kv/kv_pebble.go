@@ -532,6 +532,10 @@ func (b *PebbleBatch) DeleteRange(lowerBound, upperBound string) error {
 }
 
 func (b *PebbleBatch) KeyRangeScan(lowerBound, upperBound string) (KeyIterator, error) {
+	return b.RangeScan(lowerBound, upperBound)
+}
+
+func (b *PebbleBatch) RangeScan(lowerBound, upperBound string) (KeyValueIterator, error) {
 	pbit, err := b.b.NewIter(&pebble.IterOptions{
 		LowerBound: []byte(lowerBound),
 		UpperBound: []byte(upperBound),

@@ -81,6 +81,16 @@ func (n *notifications) Deleted(key string) {
 	}
 }
 
+func (n *notifications) DeletedRange(keyStartInclusive, keyEndExclusive string) {
+	if strings.HasPrefix(keyStartInclusive, common.InternalKeyPrefix) {
+		return
+	}
+	n.batch.Notifications[keyStartInclusive] = &proto.Notification{
+		Type:         proto.NotificationType_KEY_RANGE_DELETED,
+		KeyRangeLast: &keyEndExclusive,
+	}
+}
+
 func notificationKey(offset int64) string {
 	return fmt.Sprintf("%s/%016x", notificationsPrefix, offset)
 }
@@ -187,7 +197,7 @@ func (nt *notificationsTracker) ReadNextNotifications(ctx context.Context, start
 
 		nb := &proto.NotificationBatch{}
 		if err := nb.UnmarshalVT(value); err != nil {
-			return nil, errors.Wrap(err, "failed to deserialize notification batch")
+			return nil, errors.Wrap(err, "failed to Deserialize notification batch")
 		}
 		res = append(res, nb)
 

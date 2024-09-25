@@ -724,6 +724,10 @@ func (m *Notification) CloneVT() *Notification {
 		tmpVal := *rhs
 		r.VersionId = &tmpVal
 	}
+	if rhs := m.KeyRangeLast; rhs != nil {
+		tmpVal := *rhs
+		r.KeyRangeLast = &tmpVal
+	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1655,6 +1659,9 @@ func (this *Notification) EqualVT(that *Notification) bool {
 		return false
 	}
 	if p, q := this.VersionId, that.VersionId; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+		return false
+	}
+	if p, q := this.KeyRangeLast, that.KeyRangeLast; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -3241,6 +3248,13 @@ func (m *Notification) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.KeyRangeLast != nil {
+		i -= len(*m.KeyRangeLast)
+		copy(dAtA[i:], *m.KeyRangeLast)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.KeyRangeLast)))
+		i--
+		dAtA[i] = 0x1a
+	}
 	if m.VersionId != nil {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.VersionId))
 		i--
@@ -3865,6 +3879,10 @@ func (m *Notification) SizeVT() (n int) {
 	}
 	if m.VersionId != nil {
 		n += 1 + protohelpers.SizeOfVarint(uint64(*m.VersionId))
+	}
+	if m.KeyRangeLast != nil {
+		l = len(*m.KeyRangeLast)
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -7515,6 +7533,39 @@ func (m *Notification) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.VersionId = &v
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field KeyRangeLast", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			s := string(dAtA[iNdEx:postIndex])
+			m.KeyRangeLast = &s
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -11256,6 +11307,43 @@ func (m *Notification) UnmarshalVTUnsafe(dAtA []byte) error {
 				}
 			}
 			m.VersionId = &v
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field KeyRangeLast", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			var stringValue string
+			if intStringLen > 0 {
+				stringValue = unsafe.String(&dAtA[iNdEx], intStringLen)
+			}
+			s := stringValue
+			m.KeyRangeLast = &s
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

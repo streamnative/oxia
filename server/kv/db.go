@@ -50,8 +50,9 @@ const (
 )
 
 type UpdateOperationCallback interface {
-	OnPut(WriteBatch, *proto.PutRequest, *proto.StorageEntry) (proto.Status, error)
-	OnDelete(WriteBatch, string) error
+	OnPut(batch WriteBatch, req *proto.PutRequest, se *proto.StorageEntry) (proto.Status, error)
+	OnDelete(batch WriteBatch, key string) error
+	OnDeleteRange(batch WriteBatch, keyStartInclusive string, keyEndExclusive string) error
 }
 
 type RangeScanIterator interface {
@@ -328,7 +329,7 @@ func (it *rangeScanIterator) Value() (*proto.GetResponse, error) {
 	}
 
 	se := &proto.StorageEntry{}
-	if err = deserialize(value, se); err != nil {
+	if err = Deserialize(value, se); err != nil {
 		return nil, err
 	}
 
@@ -595,27 +596,26 @@ func (d *db) applyDelete(batch WriteBatch, notifications *notifications, delReq 
 }
 
 func (*db) applyDeleteRangeNotifications(batch WriteBatch, notifications *notifications, delReq *proto.DeleteRangeRequest, updateOperationCallback UpdateOperationCallback) error {
-	if notifications == nil && updateOperationCallback == NoOpCallback {
-		return nil
+	if notifications != nil {
+		notifications.DeletedRange(delReq.StartInclusive, delReq.EndExclusive)
 	}
 
-	it, err := batch.KeyRangeScan(delReq.StartInclusive, delReq.EndExclusive)
-	if err != nil {
-		return err
-	}
-
-	for it.Next() {
-		if notifications != nil {
-			notifications.Deleted(it.Key())
-		}
-		err := updateOperationCallback.OnDelete(batch, it.Key())
+	if updateOperationCallback != NoOpCallback {
+		it, err := batch.KeyRangeScan(delReq.StartInclusive, delReq.EndExclusive)
 		if err != nil {
-			return errors.Wrap(multierr.Combine(err, it.Close()), "oxia db: failed to delete range")
+			return err
 		}
-	}
 
-	if err := it.Close(); err != nil {
-		return errors.Wrap(err, "oxia db: failed to delete range")
+		for it.Next() {
+			err := updateOperationCallback.OnDelete(batch, it.Key())
+			if err != nil {
+				return errors.Wrap(multierr.Combine(err, it.Close()), "oxia db: failed to delete range")
+			}
+		}
+
+		if err := it.Close(); err != nil {
+			return errors.Wrap(err, "oxia db: failed to delete range")
+		}
 	}
 
 	return nil
@@ -658,7 +658,7 @@ func applyGet(kv KV, getReq *proto.GetRequest) (*proto.GetResponse, error) {
 	}
 
 	if err = multierr.Append(
-		deserialize(value, se),
+		Deserialize(value, se),
 		closer.Close(),
 	); err != nil {
 		return nil, err
@@ -697,7 +697,7 @@ func GetStorageEntry(batch WriteBatch, key string) (*proto.StorageEntry, error) 
 	se := proto.StorageEntryFromVTPool()
 
 	if err = multierr.Append(
-		deserialize(value, se),
+		Deserialize(value, se),
 		closer.Close(),
 	); err != nil {
 		return nil, err
@@ -727,9 +727,9 @@ func checkExpectedVersionId(batch WriteBatch, key string, expectedVersionId *int
 	return se, nil
 }
 
-func deserialize(value []byte, se *proto.StorageEntry) error {
+func Deserialize(value []byte, se *proto.StorageEntry) error {
 	if err := se.UnmarshalVT(value); err != nil {
-		return errors.Wrap(err, "failed to deserialize storage entry")
+		return errors.Wrap(err, "failed to Deserialize storage entry")
 	}
 
 	return nil
@@ -744,11 +744,15 @@ func (d *db) ReadNextNotifications(ctx context.Context, startOffset int64) ([]*p
 
 type noopCallback struct{}
 
-func (*noopCallback) OnPut(WriteBatch, *proto.PutRequest, *proto.StorageEntry) (proto.Status, error) {
+func (*noopCallback) OnPut(_ WriteBatch, _ *proto.PutRequest, _ *proto.StorageEntry) (proto.Status, error) {
 	return proto.Status_OK, nil
 }
 
-func (*noopCallback) OnDelete(WriteBatch, string) error {
+func (*noopCallback) OnDelete(_ WriteBatch, _ string) error {
+	return nil
+}
+
+func (*noopCallback) OnDeleteRange(_ WriteBatch, _ string, _ string) error {
 	return nil
 }
 
