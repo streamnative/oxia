@@ -607,3 +607,36 @@ func reopenLeaderController(t *testing.T, kvFactory kv.Factory, walFactory wal.F
 
 	return lc.(*leaderController)
 }
+
+func TestSession_PutWithExpiredSession(t *testing.T) {
+	var oldSessionId int64 = 100
+	var newSessionId int64 = 101
+
+	se := &proto.StorageEntry{
+		Value:                 []byte("value"),
+		VersionId:             0,
+		CreationTimestamp:     0,
+		ModificationTimestamp: 0,
+		SessionId:             &oldSessionId,
+	}
+	// sessionID has expired
+	writeBatch := mockWriteBatch{
+		"a/b/c": []byte{}, // real data
+		ShadowKey(SessionId(oldSessionId), "a/b/c"): []byte{}, // shadow key
+		SessionKey(SessionId(oldSessionId)):         []byte{}, // session
+	}
+	// try to use current session override the (sessionID -1)
+	sessionPutRequest := &proto.PutRequest{
+		Key:       "a/b/c",
+		Value:     []byte("b"),
+		SessionId: &newSessionId,
+	}
+
+	status, err := SessionUpdateOperationCallback.OnPut(writeBatch, sessionPutRequest, se)
+	assert.NoError(t, err)
+	assert.Equal(t, proto.Status_SESSION_DOES_NOT_EXIST, status)
+
+	_, closer, err := writeBatch.Get(ShadowKey(SessionId(oldSessionId), "a/b/c"))
+	assert.NoError(t, err)
+	assert.NoError(t, closer.Close())
+}

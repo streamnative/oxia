@@ -16,6 +16,7 @@ package wal
 
 import (
 	"github.com/spf13/cobra"
+
 	"github.com/streamnative/oxia/cmd/wal/common"
 	"github.com/streamnative/oxia/cmd/wal/truncate"
 )
