@@ -17,6 +17,7 @@ package wal
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/streamnative/oxia/server/util/crc"
 	"io"
 	"os"
 	"path/filepath"
@@ -31,8 +32,9 @@ import (
 )
 
 const (
-	txnExtension = ".txn"
-	idxExtension = ".idx"
+	txnExtension  = ".txn"
+	txnExtension2 = ".txnx"
+	idxExtension  = ".idx"
 )
 
 func segmentPath(basePath string, firstOffset int64) string {
@@ -61,6 +63,8 @@ type ReadOnlySegment interface {
 }
 
 type readonlySegment struct {
+	formatVersion FormatVersion
+
 	txnPath    string
 	idxPath    string
 	baseOffset int64
@@ -78,10 +82,17 @@ type readonlySegment struct {
 
 func newReadOnlySegment(basePath string, baseOffset int64) (ReadOnlySegment, error) {
 	ms := &readonlySegment{
-		txnPath:       segmentPath(basePath, baseOffset) + txnExtension,
+		txnPath:       segmentPath(basePath, baseOffset) + txnExtension2,
+		formatVersion: TxnFormatVersion2,
 		idxPath:       segmentPath(basePath, baseOffset) + idxExtension,
 		baseOffset:    baseOffset,
 		openTimestamp: time.Now(),
+	}
+
+	if _, err := os.Stat(ms.txnPath); os.IsNotExist(err) {
+		// format 2 file not exist, fallback to format 1
+		ms.txnPath = segmentPath(basePath, baseOffset) + txnExtension
+		ms.formatVersion = TxnFormatVersion1
 	}
 
 	var err error
@@ -119,10 +130,26 @@ func (ms *readonlySegment) Read(offset int64) ([]byte, error) {
 	}
 
 	fileOffset := fileOffset(ms.idxMappedFile, ms.baseOffset, offset)
-	entryLen := readInt(ms.txnMappedFile, fileOffset)
-	entry := make([]byte, entryLen)
-	copy(entry, ms.txnMappedFile[fileOffset+4:fileOffset+4+entryLen])
 
+	var entryCrc *uint32
+	var headerOffset uint32 = 0
+	if ms.formatVersion == TxnFormatVersion2 {
+		v := readInt(ms.txnMappedFile, fileOffset)
+		entryCrc = &v
+		headerOffset += CrcLen
+	}
+
+	entryLen := readInt(ms.txnMappedFile, fileOffset+headerOffset)
+	headerOffset += PayloadSizeLen
+	entry := make([]byte, entryLen)
+	copy(entry, ms.txnMappedFile[fileOffset+headerOffset:fileOffset+headerOffset+entryLen])
+
+	if entryCrc != nil {
+		if crc.New(entry).Value() != *entryCrc {
+			// todo: introduce a new error
+			return nil, errors.New("data corrupted")
+		}
+	}
 	return entry, nil
 }
 
