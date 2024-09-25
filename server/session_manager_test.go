@@ -174,12 +174,6 @@ func TestSessionUpdateOperationCallback_OnPut(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, proto.Status_SESSION_DOES_NOT_EXIST, status)
 
-	writeBatch = mockWriteBatch{
-		"a/b/c": []byte{},
-		ShadowKey(SessionId(sessionId-1), "a/b/c"): []byte{},
-		SessionKey(SessionId(sessionId - 1)):       []byte{},
-	}
-
 	// session (sessionID -1) entry
 	tmpSessionId := sessionId - 1
 	se = &proto.StorageEntry{
