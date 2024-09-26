@@ -197,6 +197,7 @@ func TestModifiedWal(t *testing.T) {
 		lastFileOffset := fileOffset(actualSegment.idxMappedFile, actualSegment.baseOffset, actualSegment.lastOffset)
 		var txFile *os.File
 		txFile, err = os.OpenFile(actualSegment.txnPath, os.O_RDWR, 0644)
+		assert.NoError(t, err)
 		randomFileOffset := rand.Uint64() % uint64(lastFileOffset)
 		value, err := uuid.New().MarshalBinary()
 		assert.NoError(t, err)
@@ -342,19 +343,18 @@ func TestDeviatingWals(t *testing.T) {
 		cursor2++
 	}
 	assert.EqualValues(t, errIndex, deviatingEntry)
-
 }
 
-func getCrc(actualSegment any, offset int64) (uint32, uint32) {
+func getCrc(actualSegment any, offset int64) (previousCRC uint32, payloadCRC uint32) {
 	var position uint32
 	if segment, ok := actualSegment.(*readWriteSegment); ok {
 		position = fileOffset(segment.writingIdx, segment.baseOffset, offset)
 		cursor := position
 		_ = readInt(segment.txnMappedFile, cursor)
 		cursor += SizeLen
-		previousCRC := readInt(segment.txnMappedFile, cursor)
-		payloadCRC := readInt(segment.txnMappedFile, cursor)
-		cursor += CrcLen + CrcLen
+		previousCRC = readInt(segment.txnMappedFile, cursor)
+		cursor += CrcLen
+		payloadCRC = readInt(segment.txnMappedFile, cursor)
 		return previousCRC, payloadCRC
 	}
 	ro := actualSegment.(*readonlySegment)
@@ -362,8 +362,8 @@ func getCrc(actualSegment any, offset int64) (uint32, uint32) {
 	cursor := position
 	_ = readInt(ro.txnMappedFile, cursor)
 	cursor += SizeLen
-	previousCRC := readInt(ro.txnMappedFile, cursor)
-	payloadCRC := readInt(ro.txnMappedFile, cursor)
-	cursor += CrcLen + CrcLen
+	previousCRC = readInt(ro.txnMappedFile, cursor)
+	cursor += CrcLen
+	payloadCRC = readInt(ro.txnMappedFile, cursor)
 	return previousCRC, payloadCRC
 }

@@ -16,7 +16,6 @@ package wal
 
 import (
 	"encoding/binary"
-	"fmt"
 	"github.com/streamnative/oxia/server/util/crc"
 	"os"
 	"sync"
@@ -155,7 +154,7 @@ func (ms *readWriteSegment) Read(offset int64) ([]byte, error) {
 	expectEntrySize := payloadSize + HeaderSize
 	if expectEntrySize > ms.segmentSize-fileReadOffset {
 		return nil, errors.Wrapf(ErrWalDataCorrupted,
-			fmt.Sprintf("entryOffset: %d; overflow size: %d", offset, expectEntrySize))
+			"entryOffset: %d; overflow size: %d", offset, expectEntrySize)
 	}
 
 	var previousCrc uint32
@@ -173,9 +172,8 @@ func (ms *readWriteSegment) Read(offset int64) ([]byte, error) {
 		expectedCrc := crc.Checksum(previousCrc).
 			Update(ms.txnMappedFile[fileReadOffset+headerOffset : fileReadOffset+headerOffset+payloadSize]).Value()
 		if payloadCrc != expectedCrc {
-			return nil, errors.Wrapf(ErrWalDataCorrupted,
-				fmt.Sprintf("entryOffset: %d; expected crc: %d; actual crc: %d",
-					offset, expectedCrc, payloadCrc))
+			return nil, errors.Wrapf(ErrWalDataCorrupted, "entryOffset: %d; expected crc: %d; actual crc: %d",
+				offset, expectedCrc, payloadCrc)
 		}
 	}
 	return entry, nil
@@ -244,9 +242,8 @@ func (ms *readWriteSegment) rebuildIdx() error {
 			expectedCrc := crc.Checksum(previousCrc).
 				Update(ms.txnMappedFile[ms.currentFileOffset+headerOffset : ms.currentFileOffset+headerOffset+payloadSize]).Value()
 			if payloadCrc != expectedCrc {
-				return errors.Wrapf(ErrWalDataCorrupted,
-					fmt.Sprintf("entryOffset: %d; expected crc: %d; actual crc: %d",
-						entryOffset, expectedCrc, payloadCrc))
+				return errors.Wrapf(ErrWalDataCorrupted, "entryOffset: %d; expected crc: %d; actual crc: %d",
+					entryOffset, expectedCrc, payloadCrc)
 			}
 			ms.lastCrc = payloadCrc
 		}
@@ -275,7 +272,6 @@ func (ms *readWriteSegment) Close() error {
 		// Write index file
 		ms.writeIndex(),
 	)
-
 	bufferPool.Put(&ms.writingIdx)
 	return err
 }
@@ -289,7 +285,6 @@ func (ms *readWriteSegment) Delete() error {
 }
 
 func (ms *readWriteSegment) writeIndex() error {
-
 	idxFile, err := os.OpenFile(ms.idxPath, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		return errors.Wrapf(err, "failed to open index file %s", ms.idxPath)
