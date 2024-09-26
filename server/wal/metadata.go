@@ -39,9 +39,6 @@ const TxnExtension = ".txn"
 const TxnExtensionV2 = ".txnx"
 const TdxExtension = ".idx"
 
-const InitCrc = 0
-const InitOffset = 0
-
 var (
 	ErrWalDataCorrupted = errors.New("WAL data corrupted")
 )
