@@ -122,21 +122,21 @@ func TestModifiedSegment(t *testing.T) {
 	ro, err := newReadOnlySegment(path, 0)
 	assert.NoError(t, err)
 
-	RoDetectCorruption := false
-	var RoCorruptionOffset int64
+	roDetectCorruption := false
+	var roCorruptionOffset int64
 	for i := 0; i < entries; i++ {
 		_, err := ro.Read(int64(i))
 		if err != nil {
 			if errors.Is(err, ErrWalDataCorrupted) {
-				RoDetectCorruption = true
-				RoCorruptionOffset = int64(i)
+				roDetectCorruption = true
+				roCorruptionOffset = int64(i)
 			} else {
 				assert.Error(t, err, "unexpected err")
 			}
 		}
 	}
-	assert.EqualValues(t, detectCorruption, RoDetectCorruption)
-	assert.NotZero(t, corruptionOffset, RoCorruptionOffset)
+	assert.EqualValues(t, detectCorruption, roDetectCorruption)
+	assert.NotZero(t, corruptionOffset, roCorruptionOffset)
 }
 
 func TestWal(t *testing.T) {
@@ -155,7 +155,7 @@ func TestWal(t *testing.T) {
 	assert.NoError(t, err)
 	entryIndex := 0
 	for r.HasNext() {
-		entryIndex += 1
+		entryIndex++
 		value, err := r.ReadNext()
 		assert.NoError(t, err)
 		assert.EqualValues(t, value.Value, fmt.Sprintf("entry-%d", entryIndex))
@@ -195,7 +195,8 @@ func TestModifiedWal(t *testing.T) {
 		assert.NoError(t, err)
 		actualSegment := roSegment.Get().(*readonlySegment)
 		lastFileOffset := fileOffset(actualSegment.idxMappedFile, actualSegment.baseOffset, actualSegment.lastOffset)
-		txFile, err := os.OpenFile(actualSegment.txnPath, os.O_RDWR, 0644)
+		var txFile *os.File
+		txFile, err = os.OpenFile(actualSegment.txnPath, os.O_RDWR, 0644)
 		randomFileOffset := rand.Uint64() % uint64(lastFileOffset)
 		value, err := uuid.New().MarshalBinary()
 		assert.NoError(t, err)
@@ -210,26 +211,25 @@ func TestModifiedWal(t *testing.T) {
 	r, err := w.NewReader(0)
 	assert.NoError(t, err)
 	entryIndex := 0
-	RoDetectCorruption := false
-	var RoCorruptionOffset int64
+	roDetectCorruption := false
+	var roCorruptionOffset int64
 	for r.HasNext() {
-		entryIndex += 1
+		entryIndex++
 		value, err := r.ReadNext()
 		if err != nil {
 			if errors.Is(err, ErrWalDataCorrupted) {
-				RoDetectCorruption = true
-				RoCorruptionOffset = int64(entryIndex)
+				roDetectCorruption = true
+				roCorruptionOffset = int64(entryIndex)
 			} else {
 				assert.Error(t, err, "unexpected err")
 			}
 			break
-		} else {
-			assert.EqualValues(t, value.Value, fmt.Sprintf("entry-%d", entryIndex))
 		}
+		assert.EqualValues(t, value.Value, fmt.Sprintf("entry-%d", entryIndex))
 	}
 
-	assert.True(t, RoDetectCorruption)
-	assert.NotZero(t, RoCorruptionOffset)
+	assert.True(t, roDetectCorruption)
+	assert.NotZero(t, roCorruptionOffset)
 
 	assert.NoError(t, r.Close())
 	assert.NoError(t, w.Close())
@@ -345,7 +345,7 @@ func TestDeviatingWals(t *testing.T) {
 
 }
 
-func getCrc(actualSegment interface{}, offset int64) (uint32, uint32) {
+func getCrc(actualSegment any, offset int64) (uint32, uint32) {
 	var position uint32
 	if segment, ok := actualSegment.(*readWriteSegment); ok {
 		position = fileOffset(segment.writingIdx, segment.baseOffset, offset)
@@ -353,20 +353,17 @@ func getCrc(actualSegment interface{}, offset int64) (uint32, uint32) {
 		_ = readInt(segment.txnMappedFile, cursor)
 		cursor += SizeLen
 		previousCRC := readInt(segment.txnMappedFile, cursor)
-		cursor += CrcLen
 		payloadCRC := readInt(segment.txnMappedFile, cursor)
-		cursor += CrcLen
-		return previousCRC, payloadCRC
-	} else {
-		ro := actualSegment.(*readonlySegment)
-		position = fileOffset(ro.idxMappedFile, ro.baseOffset, offset)
-		cursor := position
-		_ = readInt(ro.txnMappedFile, cursor)
-		cursor += SizeLen
-		previousCRC := readInt(ro.txnMappedFile, cursor)
-		cursor += CrcLen
-		payloadCRC := readInt(ro.txnMappedFile, cursor)
-		cursor += CrcLen
+		cursor += CrcLen + CrcLen
 		return previousCRC, payloadCRC
 	}
+	ro := actualSegment.(*readonlySegment)
+	position = fileOffset(ro.idxMappedFile, ro.baseOffset, offset)
+	cursor := position
+	_ = readInt(ro.txnMappedFile, cursor)
+	cursor += SizeLen
+	previousCRC := readInt(ro.txnMappedFile, cursor)
+	payloadCRC := readInt(ro.txnMappedFile, cursor)
+	cursor += CrcLen + CrcLen
+	return previousCRC, payloadCRC
 }

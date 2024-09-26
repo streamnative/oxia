@@ -143,7 +143,7 @@ func (ms *readonlySegment) readWithCrc(offset int64) (uint32, []byte, error) {
 	expectSize := payloadSize + HeaderSize
 	if expectSize > uint32(len(ms.txnMappedFile))-fileReadOffset+headerOffset {
 		return 0, nil, errors.Wrapf(ErrWalDataCorrupted,
-			fmt.Sprintf("entryOffset: %d; overflow size: %d", offset, expectSize))
+			"entryOffset: %d; overflow size: %d", offset, expectSize)
 	}
 
 	var previousCrc uint32
@@ -163,8 +163,7 @@ func (ms *readonlySegment) readWithCrc(offset int64) (uint32, []byte, error) {
 			Update(ms.txnMappedFile[fileReadOffset+headerOffset : fileReadOffset+headerOffset+payloadSize]).Value()
 		if payloadCrc != expectedCrc {
 			return 0, nil, errors.Wrapf(ErrWalDataCorrupted,
-				fmt.Sprintf("entryOffset: %d; expected crc: %d; actual crc: %d",
-					offset, expectedCrc, payloadCrc))
+				"entryOffset: %d; expected crc: %d; actual crc: %d", offset, expectedCrc, payloadCrc)
 		}
 	}
 	return payloadCrc, entry, nil
