@@ -273,7 +273,7 @@ func (t *wal) AppendAsync(entry *proto.LogEntry) error {
 			return err
 		}
 
-		if t.currentSegment, err = newReadWriteSegment(t.walPath, entry.Offset, t.segmentSize); err != nil {
+		if t.currentSegment, err = newReadWriteSegment(t.walPath, entry.Offset, t.segmentSize, 0); err != nil {
 			t.writeErrors.Inc()
 			return err
 		}
@@ -311,10 +311,10 @@ func (t *wal) rolloverSegment() error {
 	if err = t.currentSegment.Close(); err != nil {
 		return err
 	}
-
+	lastCrc := t.currentSegment.LastCrc()
 	t.readOnlySegments.AddedNewSegment(t.currentSegment.BaseOffset())
 
-	if t.currentSegment, err = newReadWriteSegment(t.walPath, t.lastAppendedOffset.Load()+1, t.segmentSize); err != nil {
+	if t.currentSegment, err = newReadWriteSegment(t.walPath, t.lastAppendedOffset.Load()+1, t.segmentSize, lastCrc); err != nil {
 		return err
 	}
 
@@ -427,7 +427,7 @@ func (t *wal) Clear() error {
 		return errors.Wrap(err, "failed to clear wal")
 	}
 
-	if t.currentSegment, err = newReadWriteSegment(t.walPath, 0, t.segmentSize); err != nil {
+	if t.currentSegment, err = newReadWriteSegment(t.walPath, 0, t.segmentSize, 0); err != nil {
 		return err
 	}
 
@@ -496,8 +496,8 @@ func (t *wal) TruncateLog(lastSafeOffset int64) (int64, error) { //nolint:revive
 				if err = segment.Close(); err != nil {
 					return InvalidOffset, err
 				}
-
-				if t.currentSegment, err = newReadWriteSegment(t.walPath, segment.Get().BaseOffset(), t.segmentSize); err != nil {
+				if t.currentSegment, err = newReadWriteSegment(t.walPath, segment.Get().BaseOffset(),
+					t.segmentSize, segment.Get().LastCrc()); err != nil {
 					err = multierr.Append(err, segment.Close())
 					return InvalidOffset, err
 				}
@@ -532,15 +532,20 @@ func (t *wal) recoverWal() error {
 	}
 
 	var firstSegment, lastSegment int64
+	var lastCrc uint32
 	if len(segments) > 0 {
 		firstSegment = segments[0]
 		lastSegment = segments[len(segments)-1]
+		if lastCrc, err = t.readOnlySegments.GetLastCrc(lastSegment); err != nil {
+			return err
+		}
 	} else {
 		firstSegment = 0
 		lastSegment = 0
+		lastCrc = 0
 	}
 
-	if t.currentSegment, err = newReadWriteSegment(t.walPath, lastSegment, t.segmentSize); err != nil {
+	if t.currentSegment, err = newReadWriteSegment(t.walPath, lastSegment, t.segmentSize, lastCrc); err != nil {
 		return err
 	}
 

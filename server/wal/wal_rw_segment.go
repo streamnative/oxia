@@ -62,7 +62,7 @@ type readWriteSegment struct {
 	segmentSize uint32
 }
 
-func newReadWriteSegment(basePath string, baseOffset int64, segmentSize uint32) (ReadWriteSegment, error) {
+func newReadWriteSegment(basePath string, baseOffset int64, segmentSize uint32, baseCrc uint32) (ReadWriteSegment, error) {
 	var err error
 	if _, err = os.Stat(basePath); os.IsNotExist(err) {
 		if err = os.MkdirAll(basePath, 0755); err != nil {
@@ -76,7 +76,7 @@ func newReadWriteSegment(basePath string, baseOffset int64, segmentSize uint32) 
 		baseOffset:    baseOffset,
 		segmentSize:   segmentSize,
 		formatVersion: TxnFormatVersion2,
-		lastCrc:       0,
+		lastCrc:       baseCrc,
 	}
 
 	if pooledBuffer, ok := bufferPool.Get().(*[]byte); ok {
@@ -125,6 +125,12 @@ func newReadWriteSegment(basePath string, baseOffset int64, segmentSize uint32) 
 	return ms, nil
 }
 
+func (ms *readWriteSegment) LastCrc() uint32 {
+	ms.RLock()
+	defer ms.RUnlock()
+	return ms.lastCrc
+}
+
 func (ms *readWriteSegment) BaseOffset() int64 {
 	return ms.baseOffset
 }
@@ -145,6 +151,12 @@ func (ms *readWriteSegment) Read(offset int64) ([]byte, error) {
 	var headerOffset uint32
 	payloadSize := readInt(ms.txnMappedFile, fileReadOffset)
 	headerOffset += SizeLen
+
+	expectEntrySize := payloadSize + HeaderSize
+	if expectEntrySize > ms.segmentSize-fileReadOffset {
+		return nil, errors.Wrapf(ErrWalDataCorrupted,
+			fmt.Sprintf("entryOffset: %d; overflow size: %d", offset, expectEntrySize))
+	}
 
 	var previousCrc uint32
 	var payloadCrc uint32
@@ -170,7 +182,7 @@ func (ms *readWriteSegment) Read(offset int64) ([]byte, error) {
 }
 
 func (ms *readWriteSegment) HasSpace(l int) bool {
-	return ms.currentFileOffset+4+uint32(l) <= ms.segmentSize
+	return ms.currentFileOffset+HeaderSize+uint32(l) <= ms.segmentSize
 }
 
 func (ms *readWriteSegment) Append(offset int64, data []byte) error {
