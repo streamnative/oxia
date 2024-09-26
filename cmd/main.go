@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/streamnative/oxia/cmd/wal"
+
 	"github.com/spf13/cobra"
 	"go.uber.org/automaxprocs/maxprocs"
 
@@ -62,6 +64,7 @@ func init() {
 	rootCmd.AddCommand(server.Cmd)
 	rootCmd.AddCommand(standalone.Cmd)
 	rootCmd.AddCommand(pebble.Cmd)
+	rootCmd.AddCommand(wal.Cmd)
 }
 
 func configureLogLevel(_ *cobra.Command, _ []string) error {

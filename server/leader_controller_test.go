@@ -1289,3 +1289,79 @@ func TestLeaderController_NotificationsDisabled(t *testing.T) {
 	assert.NoError(t, kvFactory.Close())
 	assert.NoError(t, walFactory.Close())
 }
+
+func TestLeaderController_DuplicateNewTerm_WithSession(t *testing.T) {
+	var shard int64 = 2
+
+	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
+	walFactory := newTestWalFactory(t)
+
+	lc, err := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	assert.NoError(t, err)
+
+	_, err = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
+	assert.NoError(t, err)
+
+	_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
+		Shard:             shard,
+		Term:              1,
+		ReplicationFactor: 1,
+		FollowerMaps:      nil,
+	})
+	assert.NoError(t, err)
+
+	csResult, err := lc.CreateSession(&proto.CreateSessionRequest{
+		Shard:            shard,
+		SessionTimeoutMs: 5_000,
+		ClientIdentity:   "my-identity",
+	})
+	assert.NoError(t, err)
+
+	sessionId := csResult.SessionId
+	invalidSessionId := int64(5)
+
+	key := "/namespace/sn/system/0xe0000000_0xf0000000"
+
+	// Write entry
+	_, err = lc.Write(context.Background(), &proto.WriteRequest{
+		Shard: &shard,
+		Puts: []*proto.PutRequest{{
+			Key:       key,
+			Value:     []byte("value-a"),
+			SessionId: &invalidSessionId,
+		}},
+	})
+	assert.NoError(t, err)
+
+	// Start a new term on the same leader
+	_, err = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 2})
+	assert.NoError(t, err)
+
+	_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
+		Shard:             shard,
+		Term:              2,
+		ReplicationFactor: 1,
+		FollowerMaps:      nil,
+	})
+	assert.NoError(t, err)
+
+	_, err = lc.CloseSession(&proto.CloseSessionRequest{
+		Shard:     shard,
+		SessionId: sessionId,
+	})
+	assert.NoError(t, err)
+
+	// Read entry
+	r := <-lc.Read(context.Background(), &proto.ReadRequest{
+		Shard: &shard,
+		Gets:  []*proto.GetRequest{{Key: key}},
+	})
+
+	assert.NoError(t, r.Err)
+	assert.Equal(t, proto.Status_KEY_NOT_FOUND, r.Response.Status)
+
+	assert.NoError(t, lc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}

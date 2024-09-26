@@ -141,7 +141,7 @@ func TestSessionUpdateOperationCallback_OnPut(t *testing.T) {
 
 	writeBatch = mockWriteBatch{
 		"a/b/c": []byte{},
-		SessionKey(SessionId(sessionId-1)) + "a%2Fb%2Fc": []byte{},
+		ShadowKey(SessionId(sessionId-1), "a/b/c"): []byte{},
 	}
 
 	se := &proto.StorageEntry{
@@ -160,9 +160,9 @@ func TestSessionUpdateOperationCallback_OnPut(t *testing.T) {
 
 	writeBatch = mockWriteBatch{
 		"a/b/c": []byte{},
-		SessionKey(SessionId(sessionId-1)) + "a%2Fb%2Fc": []byte{},
-		SessionKey(SessionId(sessionId - 1)):             []byte{},
-		SessionKey(SessionId(sessionId)):                 []byte{},
+		ShadowKey(SessionId(sessionId-1), "a/b/c"): []byte{},
+		SessionKey(SessionId(sessionId - 1)):       []byte{},
+		SessionKey(SessionId(sessionId)):           []byte{},
 	}
 
 	status, err = SessionUpdateOperationCallback.OnPut(writeBatch, sessionPutRequest, se)
@@ -178,6 +178,35 @@ func TestSessionUpdateOperationCallback_OnPut(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, proto.Status_SESSION_DOES_NOT_EXIST, status)
 
+	// session (sessionID -1) entry
+	tmpSessionId := sessionId - 1
+	se = &proto.StorageEntry{
+		Value:                 []byte("value"),
+		VersionId:             0,
+		CreationTimestamp:     0,
+		ModificationTimestamp: 0,
+		SessionId:             &tmpSessionId,
+	}
+	// sessionID has expired
+	writeBatch = mockWriteBatch{
+		"a/b/c": []byte{}, // real data
+		ShadowKey(SessionId(sessionId-1), "a/b/c"): []byte{}, // shadow key
+		SessionKey(SessionId(sessionId - 1)):       []byte{}, // session
+	}
+	// try to use current session override the (sessionID -1)
+	sessionPutRequest = &proto.PutRequest{
+		Key:       "a/b/c",
+		Value:     []byte("b"),
+		SessionId: &sessionId,
+	}
+
+	status, err = SessionUpdateOperationCallback.OnPut(writeBatch, sessionPutRequest, se)
+	assert.NoError(t, err)
+	assert.Equal(t, proto.Status_SESSION_DOES_NOT_EXIST, status)
+	_, closer, err := writeBatch.Get(ShadowKey(SessionId(sessionId-1), "a/b/c"))
+	assert.NoError(t, err)
+	closer.Close()
+
 	expectedErr := errors.New("error coming from the DB on read")
 	writeBatch = mockWriteBatch{
 		SessionKey(SessionId(sessionId)): expectedErr,
@@ -191,14 +220,14 @@ func TestSessionUpdateOperationCallback_OnPut(t *testing.T) {
 	status, err = SessionUpdateOperationCallback.OnPut(writeBatch, sessionPutRequest, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, proto.Status_OK, status)
-	sessionKey := SessionKey(SessionId(sessionId)) + "/a%2Fb%2Fc"
-	_, found := writeBatch[sessionKey]
+	sessionShadowKey := ShadowKey(SessionId(sessionId), "a/b/c")
+	_, found := writeBatch[sessionShadowKey]
 	assert.True(t, found)
 
 	expectedErr = errors.New("error coming from the DB on write")
 	writeBatch = mockWriteBatch{
 		SessionKey(SessionId(sessionId)): []byte{},
-		sessionKey:                       expectedErr,
+		sessionShadowKey:                 expectedErr,
 	}
 	_, err = SessionUpdateOperationCallback.OnPut(writeBatch, sessionPutRequest, nil)
 	assert.ErrorIs(t, err, expectedErr)
@@ -577,4 +606,37 @@ func reopenLeaderController(t *testing.T, kvFactory kv.Factory, walFactory wal.F
 	assert.NoError(t, err)
 
 	return lc.(*leaderController)
+}
+
+func TestSession_PutWithExpiredSession(t *testing.T) {
+	var oldSessionId int64 = 100
+	var newSessionId int64 = 101
+
+	se := &proto.StorageEntry{
+		Value:                 []byte("value"),
+		VersionId:             0,
+		CreationTimestamp:     0,
+		ModificationTimestamp: 0,
+		SessionId:             &oldSessionId,
+	}
+	// sessionID has expired
+	writeBatch := mockWriteBatch{
+		"a/b/c": []byte{}, // real data
+		ShadowKey(SessionId(oldSessionId), "a/b/c"): []byte{}, // shadow key
+		SessionKey(SessionId(oldSessionId)):         []byte{}, // session
+	}
+	// try to use current session override the (sessionID -1)
+	sessionPutRequest := &proto.PutRequest{
+		Key:       "a/b/c",
+		Value:     []byte("b"),
+		SessionId: &newSessionId,
+	}
+
+	status, err := SessionUpdateOperationCallback.OnPut(writeBatch, sessionPutRequest, se)
+	assert.NoError(t, err)
+	assert.Equal(t, proto.Status_SESSION_DOES_NOT_EXIST, status)
+
+	_, closer, err := writeBatch.Get(ShadowKey(SessionId(oldSessionId), "a/b/c"))
+	assert.NoError(t, err)
+	assert.NoError(t, closer.Close())
 }
