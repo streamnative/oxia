@@ -536,8 +536,12 @@ func (t *wal) recoverWal() error {
 	if len(segments) > 0 {
 		firstSegment = segments[0]
 		lastSegment = segments[len(segments)-1]
-		if lastCrc, err = t.readOnlySegments.GetLastCrc(lastSegment); err != nil {
-			return err
+		if firstSegment != lastSegment {
+			if lastCrc, err = t.readOnlySegments.GetLastCrc(lastSegment); err != nil {
+				return err
+			}
+		} else {
+			lastCrc = 0
 		}
 	} else {
 		firstSegment = 0
