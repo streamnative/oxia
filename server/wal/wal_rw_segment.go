@@ -16,6 +16,7 @@ package wal
 
 import (
 	"encoding/binary"
+	"fmt"
 	"github.com/streamnative/oxia/server/util/crc"
 	"os"
 	"sync"
@@ -44,11 +45,14 @@ type ReadWriteSegment interface {
 
 type readWriteSegment struct {
 	sync.RWMutex
-	formatVersion FormatVersion
 
-	path          string
+	formatVersion FormatVersion
+	txnPath       string
+	idxPath       string
+
 	baseOffset    int64
 	lastOffset    int64
+	lastCrc       uint32
 	txnFile       *os.File
 	txnMappedFile mmap.MMap
 
@@ -67,10 +71,12 @@ func newReadWriteSegment(basePath string, baseOffset int64, segmentSize uint32) 
 	}
 
 	ms := &readWriteSegment{
-		path:          segmentPath(basePath, baseOffset),
+		txnPath:       segmentPath(basePath, baseOffset) + TxnExtensionV2,
+		idxPath:       segmentPath(basePath, baseOffset) + TdxExtension,
 		baseOffset:    baseOffset,
 		segmentSize:   segmentSize,
 		formatVersion: TxnFormatVersion2,
+		lastCrc:       0,
 	}
 
 	if pooledBuffer, ok := bufferPool.Get().(*[]byte); ok {
@@ -80,22 +86,26 @@ func newReadWriteSegment(basePath string, baseOffset int64, segmentSize uint32) 
 		ms.writingIdx = make([]byte, 0, initialIndexBufferCapacity)
 	}
 
-	txnPath := ms.path + txnExtension
-
 	var segmentExists bool
-
-	if _, err = os.Stat(txnPath); os.IsNotExist(err) {
-		// The segment file does not exist yet, create file and initialize it
-		segmentExists = false
-		// use extension 2 by default
-		txnPath = ms.path + txnExtension2
+	if _, err = os.Stat(ms.txnPath); os.IsNotExist(err) {
+		// fallback to v1 and check again.
+		ms.txnPath = segmentPath(basePath, baseOffset) + TxnExtension
+		ms.formatVersion = TxnFormatVersion1
+		// check the v1 file exist?
+		if _, err = os.Stat(ms.txnPath); os.IsNotExist(err) {
+			// go back to v2
+			segmentExists = false
+			ms.txnPath = segmentPath(basePath, baseOffset) + TxnExtensionV2
+			ms.formatVersion = TxnFormatVersion2
+		} else {
+			segmentExists = true
+		}
 	} else {
 		segmentExists = true
-		ms.formatVersion = TxnFormatVersion1
 	}
 
-	if ms.txnFile, err = os.OpenFile(txnPath, os.O_CREATE|os.O_RDWR, 0644); err != nil {
-		return nil, errors.Wrapf(err, "failed to open segment file %s", txnPath)
+	if ms.txnFile, err = os.OpenFile(ms.txnPath, os.O_CREATE|os.O_RDWR, 0644); err != nil {
+		return nil, errors.Wrapf(err, "failed to open segment file %s", ms.txnPath)
 	}
 
 	if !segmentExists {
@@ -105,11 +115,11 @@ func newReadWriteSegment(basePath string, baseOffset int64, segmentSize uint32) 
 	}
 
 	if ms.txnMappedFile, err = mmap.MapRegion(ms.txnFile, int(segmentSize), mmap.RDWR, 0, 0); err != nil {
-		return nil, errors.Wrapf(err, "failed to map segment file %s", txnPath)
+		return nil, errors.Wrapf(err, "failed to map segment file %s", ms.txnPath)
 	}
 
 	if err = ms.rebuildIdx(); err != nil {
-		return nil, errors.Wrapf(err, "failed to rebuild index for segment file %s", txnPath)
+		return nil, errors.Wrapf(err, "failed to rebuild index for segment file %s", ms.txnPath)
 	}
 
 	return ms, nil
@@ -129,23 +139,31 @@ func (ms *readWriteSegment) LastOffset() int64 {
 func (ms *readWriteSegment) Read(offset int64) ([]byte, error) {
 	ms.Lock()
 	defer ms.Unlock()
+	// todo: we might need validate if the offset less than base offset
 
-	fileOffset := fileOffset(ms.writingIdx, ms.baseOffset, offset)
-	var entryCrc *uint32
+	fileReadOffset := fileOffset(ms.writingIdx, ms.baseOffset, offset)
 	var headerOffset uint32
+	payloadSize := readInt(ms.txnMappedFile, fileReadOffset)
+	headerOffset += SizeLen
+
+	var previousCrc uint32
+	var payloadCrc uint32
 	if ms.formatVersion == TxnFormatVersion2 {
-		v := readInt(ms.txnMappedFile, fileOffset)
-		entryCrc = &v
+		previousCrc = readInt(ms.txnMappedFile, fileReadOffset+headerOffset)
+		headerOffset += CrcLen
+		payloadCrc = readInt(ms.txnMappedFile, fileReadOffset+headerOffset)
 		headerOffset += CrcLen
 	}
-	entryLen := readInt(ms.txnMappedFile, fileOffset+headerOffset)
-	headerOffset += PayloadSizeLen
-	entry := make([]byte, entryLen)
-	copy(entry, ms.txnMappedFile[fileOffset+headerOffset:fileOffset+headerOffset+entryLen])
-	if entryCrc != nil {
-		if crc.New(entry).Value() != *entryCrc {
-			// todo: introduce a new error
-			return nil, errors.New("data corrupted")
+	entry := make([]byte, payloadSize)
+	copy(entry, ms.txnMappedFile[fileReadOffset+headerOffset:fileReadOffset+headerOffset+payloadSize])
+
+	if ms.formatVersion == TxnFormatVersion2 {
+		expectedCrc := crc.Checksum(previousCrc).
+			Update(ms.txnMappedFile[fileReadOffset+headerOffset : fileReadOffset+headerOffset+payloadSize]).Value()
+		if payloadCrc != expectedCrc {
+			return nil, errors.Wrapf(ErrWalDataCorrupted,
+				fmt.Sprintf("entryOffset: %d; expected crc: %d; actual crc: %d",
+					offset, expectedCrc, payloadCrc))
 		}
 	}
 	return entry, nil
@@ -163,23 +181,27 @@ func (ms *readWriteSegment) Append(offset int64, data []byte) error {
 		return ErrInvalidNextOffset
 	}
 
-	fileOffset := ms.currentFileOffset
-	headerOffset := uint32(0)
-	entrySize := uint32(len(data))
+	payloadSize := uint32(len(data))
+	fOffset := ms.currentFileOffset
+
+	var headerOffset uint32
+	binary.BigEndian.PutUint32(ms.txnMappedFile[fOffset:], payloadSize)
+	headerOffset += SizeLen
+
 	if ms.formatVersion == TxnFormatVersion2 {
-		checksum := crc.New(data).Value()
-		binary.BigEndian.PutUint32(ms.txnMappedFile[ms.currentFileOffset:], checksum)
+		binary.BigEndian.PutUint32(ms.txnMappedFile[fOffset+headerOffset:], ms.lastCrc)
 		headerOffset += CrcLen
+		payloadCrc := crc.Checksum(ms.lastCrc).Update(data).Value()
+		binary.BigEndian.PutUint32(ms.txnMappedFile[fOffset+headerOffset:], payloadCrc)
+		headerOffset += CrcLen
+		ms.lastCrc = payloadCrc
 	}
 
-	binary.BigEndian.PutUint32(ms.txnMappedFile[ms.currentFileOffset+headerOffset:], entrySize)
-	headerOffset += PayloadSizeLen
-
-	copy(ms.txnMappedFile[ms.currentFileOffset+headerOffset:], data)
-	ms.currentFileOffset += headerOffset + entrySize
+	copy(ms.txnMappedFile[fOffset+headerOffset:], data)
+	ms.currentFileOffset += headerOffset + payloadSize
 	ms.lastOffset = offset
 
-	ms.writingIdx = binary.BigEndian.AppendUint32(ms.writingIdx, fileOffset)
+	ms.writingIdx = binary.BigEndian.AppendUint32(ms.writingIdx, fOffset)
 	return nil
 }
 
@@ -194,29 +216,31 @@ func (ms *readWriteSegment) rebuildIdx() error {
 	entryOffset := ms.baseOffset
 
 	for ms.currentFileOffset < ms.segmentSize {
-		headerOffset := uint32(0)
-		var entryCrc *uint32
-		if ms.formatVersion == TxnFormatVersion2 {
-			v := readInt(ms.txnMappedFile, ms.currentFileOffset)
-			entryCrc = &v
-			headerOffset += CrcLen
-		}
-		size := readInt(ms.txnMappedFile, ms.currentFileOffset+headerOffset)
-		headerOffset += PayloadSizeLen
-		if size == 0 || size > (ms.segmentSize-ms.currentFileOffset) {
+		var headerOffset uint32
+		payloadSize := readInt(ms.txnMappedFile, ms.currentFileOffset)
+		headerOffset += SizeLen
+		recordSize := payloadSize + CrcLen + CrcLen
+		if payloadSize == 0 || recordSize > (ms.segmentSize-ms.currentFileOffset) { // overflow
 			break
 		}
-		if entryCrc != nil {
-			checksum := crc.New(ms.txnMappedFile[ms.currentFileOffset+headerOffset : ms.currentFileOffset+headerOffset+size]).Value()
-			if *entryCrc != checksum {
-				// todo: introduce a new error
-				// todo: introduce auto-truncate logic
-				return errors.New("data corrupt")
+		if ms.formatVersion == TxnFormatVersion2 {
+			previousCrc := readInt(ms.txnMappedFile, ms.currentFileOffset+headerOffset)
+			headerOffset += CrcLen
+			payloadCrc := readInt(ms.txnMappedFile, ms.currentFileOffset+headerOffset)
+			headerOffset += CrcLen
+
+			expectedCrc := crc.Checksum(previousCrc).
+				Update(ms.txnMappedFile[ms.currentFileOffset+headerOffset : ms.currentFileOffset+headerOffset+payloadSize]).Value()
+			if payloadCrc != expectedCrc {
+				return errors.Wrapf(ErrWalDataCorrupted,
+					fmt.Sprintf("entryOffset: %d; expected crc: %d; actual crc: %d",
+						entryOffset, expectedCrc, payloadCrc))
 			}
+			ms.lastCrc = payloadCrc
 		}
 
 		ms.writingIdx = binary.BigEndian.AppendUint32(ms.writingIdx, ms.currentFileOffset)
-		ms.currentFileOffset += headerOffset + size
+		ms.currentFileOffset += headerOffset + payloadSize
 		entryOffset++
 	}
 
@@ -245,29 +269,22 @@ func (ms *readWriteSegment) Close() error {
 }
 
 func (ms *readWriteSegment) Delete() error {
-	var extension string
-	if ms.formatVersion == TxnFormatVersion2 {
-		extension = txnExtension2
-	} else {
-		extension = txnExtension
-	}
 	return multierr.Combine(
 		ms.Close(),
-		os.Remove(ms.path+extension),
-		os.Remove(ms.path+idxExtension),
+		os.Remove(ms.txnPath),
+		os.Remove(ms.idxPath),
 	)
 }
 
 func (ms *readWriteSegment) writeIndex() error {
-	idxPath := ms.path + idxExtension
 
-	idxFile, err := os.OpenFile(idxPath, os.O_CREATE|os.O_RDWR, 0644)
+	idxFile, err := os.OpenFile(ms.idxPath, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
-		return errors.Wrapf(err, "failed to open index file %s", idxPath)
+		return errors.Wrapf(err, "failed to open index file %s", ms.idxPath)
 	}
 
 	if _, err = idxFile.Write(ms.writingIdx); err != nil {
-		return errors.Wrapf(err, "failed write index file %s", idxPath)
+		return errors.Wrapf(err, "failed write index file %s", ms.idxPath)
 	}
 
 	return idxFile.Close()
@@ -280,13 +297,14 @@ func (ms *readWriteSegment) Truncate(lastSafeOffset int64) error {
 
 	// Write zeroes in the section to clear
 	fileLastSafeOffset := fileOffset(ms.writingIdx, ms.baseOffset, lastSafeOffset)
-	headerOffset := uint32(0)
+	var headerOffset uint32
+	payloadLen := readInt(ms.txnMappedFile, fileLastSafeOffset+headerOffset)
+	headerOffset += SizeLen
 	if ms.formatVersion == TxnFormatVersion2 {
-		headerOffset += CrcLen
+		headerOffset += CrcLen // previous crc
+		headerOffset += CrcLen // payload crc
 	}
-	entryLen := readInt(ms.txnMappedFile, fileLastSafeOffset+headerOffset)
-	headerOffset += PayloadSizeLen
-	fileEndOffset := fileLastSafeOffset + headerOffset + entryLen
+	fileEndOffset := fileLastSafeOffset + headerOffset + payloadLen
 	for i := fileEndOffset; i < ms.currentFileOffset; i++ {
 		ms.txnMappedFile[i] = 0
 	}

@@ -570,9 +570,17 @@ func listAllSegments(walPath string) (segments []int64, err error) {
 	}
 
 	for _, entry := range dir {
-		if matched, _ := filepath.Match("*"+txnExtension, entry.Name()); matched {
+		if matched, _ := filepath.Match("*"+TxnExtension, entry.Name()); matched {
 			var id int64
-			if _, err := fmt.Sscanf(entry.Name(), "%d"+txnExtension, &id); err != nil {
+			if _, err := fmt.Sscanf(entry.Name(), "%d"+TxnExtension, &id); err != nil {
+				return nil, err
+			}
+
+			segments = append(segments, id)
+		}
+		if matched, _ := filepath.Match("*"+TxnExtensionV2, entry.Name()); matched {
+			var id int64
+			if _, err := fmt.Sscanf(entry.Name(), "%d"+TxnExtensionV2, &id); err != nil {
 				return nil, err
 			}
 

@@ -14,13 +14,34 @@
 
 package wal
 
+import "github.com/pkg/errors"
+
+// +--------------+-------------------+-------------+--------------+
+// | Size(4Bytes) | PreviousCRC(4Bytes) | CRC(4Bytes) | Payload(...) |
+// +--------------+-------------------+-------------+--------------+
+// Size: 			Length of the payload data
+// PreviousCRC: 	32bit hash computed over the previous payload using CRC.
+// CRC:				32bit hash computed over the previous and the current payload using CRC. CRC(n) = CRC( DATAn, CRCn-1 )
+// Payload: 		Byte stream as long as specified by the payload size.
+
 const (
-	CrcLen         = 4
-	PayloadSizeLen = 4
-	HeaderLen      = 8
+	SizeLen    = 4
+	CrcLen     = 4
+	HeaderSize = SizeLen + CrcLen + CrcLen
 )
 
 type FormatVersion int
 
 const TxnFormatVersion1 FormatVersion = 1
 const TxnFormatVersion2 FormatVersion = 2
+
+const TxnExtension = ".txn"
+const TxnExtensionV2 = ".txnx"
+const TdxExtension = ".idx"
+
+const InitCrc = 0
+const InitOffset = 0
+
+var (
+	ErrWalDataCorrupted = errors.New("WAL data corrupted")
+)

@@ -31,12 +31,6 @@ import (
 	"github.com/streamnative/oxia/common"
 )
 
-const (
-	txnExtension  = ".txn"
-	txnExtension2 = ".txnx"
-	idxExtension  = ".idx"
-)
-
 func segmentPath(basePath string, firstOffset int64) string {
 	return filepath.Join(basePath, fmt.Sprintf("%d", firstOffset))
 }
@@ -82,16 +76,16 @@ type readonlySegment struct {
 
 func newReadOnlySegment(basePath string, baseOffset int64) (ReadOnlySegment, error) {
 	ms := &readonlySegment{
-		txnPath:       segmentPath(basePath, baseOffset) + txnExtension2,
+		txnPath:       segmentPath(basePath, baseOffset) + TxnExtensionV2,
 		formatVersion: TxnFormatVersion2,
-		idxPath:       segmentPath(basePath, baseOffset) + idxExtension,
+		idxPath:       segmentPath(basePath, baseOffset) + TdxExtension,
 		baseOffset:    baseOffset,
 		openTimestamp: time.Now(),
 	}
 
 	if _, err := os.Stat(ms.txnPath); os.IsNotExist(err) {
 		// format 2 file not exist, fallback to format 1
-		ms.txnPath = segmentPath(basePath, baseOffset) + txnExtension
+		ms.txnPath = segmentPath(basePath, baseOffset) + TxnExtension
 		ms.formatVersion = TxnFormatVersion1
 	}
 
@@ -129,25 +123,30 @@ func (ms *readonlySegment) Read(offset int64) ([]byte, error) {
 		return nil, ErrOffsetOutOfBounds
 	}
 
-	fileOffset := fileOffset(ms.idxMappedFile, ms.baseOffset, offset)
-
-	var entryCrc *uint32
+	fileReadOffset := fileOffset(ms.idxMappedFile, ms.baseOffset, offset)
 	var headerOffset uint32
+	payloadSize := readInt(ms.txnMappedFile, fileReadOffset)
+	headerOffset += SizeLen
+
+	var previousCrc uint32
+	var payloadCrc uint32
 	if ms.formatVersion == TxnFormatVersion2 {
-		v := readInt(ms.txnMappedFile, fileOffset)
-		entryCrc = &v
+		previousCrc = readInt(ms.txnMappedFile, fileReadOffset+headerOffset)
+		headerOffset += CrcLen
+		payloadCrc = readInt(ms.txnMappedFile, fileReadOffset+headerOffset)
 		headerOffset += CrcLen
 	}
 
-	entryLen := readInt(ms.txnMappedFile, fileOffset+headerOffset)
-	headerOffset += PayloadSizeLen
-	entry := make([]byte, entryLen)
-	copy(entry, ms.txnMappedFile[fileOffset+headerOffset:fileOffset+headerOffset+entryLen])
+	entry := make([]byte, payloadSize)
+	copy(entry, ms.txnMappedFile[fileReadOffset+headerOffset:fileReadOffset+headerOffset+payloadSize])
 
-	if entryCrc != nil {
-		if crc.New(entry).Value() != *entryCrc {
-			// todo: introduce a new error
-			return nil, errors.New("data corrupted")
+	if ms.formatVersion == TxnFormatVersion2 {
+		expectedCrc := crc.Checksum(previousCrc).
+			Update(ms.txnMappedFile[fileReadOffset+headerOffset : fileReadOffset+headerOffset+payloadSize]).Value()
+		if payloadCrc != expectedCrc {
+			return nil, errors.Wrapf(ErrWalDataCorrupted,
+				fmt.Sprintf("entryOffset: %d; expected crc: %d; actual crc: %d",
+					offset, expectedCrc, payloadCrc))
 		}
 	}
 	return entry, nil
