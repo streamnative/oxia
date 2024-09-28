@@ -17,6 +17,7 @@ package wal
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/streamnative/oxia/server/util/crc"
 	"io"
 	"os"
 	"path/filepath"
@@ -28,11 +29,6 @@ import (
 	"go.uber.org/multierr"
 
 	"github.com/streamnative/oxia/common"
-)
-
-const (
-	txnExtension = ".txn"
-	idxExtension = ".idx"
 )
 
 func segmentPath(basePath string, firstOffset int64) string {
@@ -53,6 +49,8 @@ type ReadOnlySegment interface {
 	BaseOffset() int64
 	LastOffset() int64
 
+	LastCrc() uint32
+
 	Read(offset int64) ([]byte, error)
 
 	Delete() error
@@ -61,10 +59,13 @@ type ReadOnlySegment interface {
 }
 
 type readonlySegment struct {
+	formatVersion FormatVersion
+
 	txnPath    string
 	idxPath    string
 	baseOffset int64
 	lastOffset int64
+	lastCrc    uint32
 	closed     bool
 
 	txnFile       *os.File
@@ -78,10 +79,17 @@ type readonlySegment struct {
 
 func newReadOnlySegment(basePath string, baseOffset int64) (ReadOnlySegment, error) {
 	ms := &readonlySegment{
-		txnPath:       segmentPath(basePath, baseOffset) + txnExtension,
-		idxPath:       segmentPath(basePath, baseOffset) + idxExtension,
+		txnPath:       segmentPath(basePath, baseOffset) + TxnExtensionV2,
+		formatVersion: TxnFormatVersion2,
+		idxPath:       segmentPath(basePath, baseOffset) + TdxExtension,
 		baseOffset:    baseOffset,
 		openTimestamp: time.Now(),
+	}
+
+	if _, err := os.Stat(ms.txnPath); os.IsNotExist(err) {
+		// format 2 file not exist, fallback to format 1
+		ms.txnPath = segmentPath(basePath, baseOffset) + TxnExtension
+		ms.formatVersion = TxnFormatVersion1
 	}
 
 	var err error
@@ -102,7 +110,16 @@ func newReadOnlySegment(basePath string, baseOffset int64) (ReadOnlySegment, err
 	}
 
 	ms.lastOffset = ms.baseOffset + int64(len(ms.idxMappedFile)/4-1)
+
+	// recover the last crc
+	if ms.lastCrc, _, err = ms.readWithCrc(ms.lastOffset); err != nil {
+		return nil, err
+	}
 	return ms, nil
+}
+
+func (ms *readonlySegment) LastCrc() uint32 {
+	return ms.lastCrc
 }
 
 func (ms *readonlySegment) BaseOffset() int64 {
@@ -113,17 +130,48 @@ func (ms *readonlySegment) LastOffset() int64 {
 	return ms.lastOffset
 }
 
-func (ms *readonlySegment) Read(offset int64) ([]byte, error) {
+func (ms *readonlySegment) readWithCrc(offset int64) (uint32, []byte, error) {
 	if offset < ms.baseOffset || offset > ms.lastOffset {
-		return nil, ErrOffsetOutOfBounds
+		return 0, nil, ErrOffsetOutOfBounds
 	}
 
-	fileOffset := fileOffset(ms.idxMappedFile, ms.baseOffset, offset)
-	entryLen := readInt(ms.txnMappedFile, fileOffset)
-	entry := make([]byte, entryLen)
-	copy(entry, ms.txnMappedFile[fileOffset+4:fileOffset+4+entryLen])
+	fileReadOffset := fileOffset(ms.idxMappedFile, ms.baseOffset, offset)
+	var headerOffset uint32
+	payloadSize := readInt(ms.txnMappedFile, fileReadOffset)
+	headerOffset += SizeLen
 
-	return entry, nil
+	expectSize := payloadSize + HeaderSize
+	if expectSize > uint32(len(ms.txnMappedFile))-fileReadOffset+headerOffset {
+		return 0, nil, errors.Wrapf(ErrWalDataCorrupted,
+			"entryOffset: %d; overflow size: %d", offset, expectSize)
+	}
+
+	var previousCrc uint32
+	var payloadCrc uint32
+	if ms.formatVersion == TxnFormatVersion2 {
+		previousCrc = readInt(ms.txnMappedFile, fileReadOffset+headerOffset)
+		headerOffset += CrcLen
+		payloadCrc = readInt(ms.txnMappedFile, fileReadOffset+headerOffset)
+		headerOffset += CrcLen
+	}
+
+	entry := make([]byte, payloadSize)
+	copy(entry, ms.txnMappedFile[fileReadOffset+headerOffset:fileReadOffset+headerOffset+payloadSize])
+
+	if ms.formatVersion == TxnFormatVersion2 {
+		expectedCrc := crc.Checksum(previousCrc).
+			Update(ms.txnMappedFile[fileReadOffset+headerOffset : fileReadOffset+headerOffset+payloadSize]).Value()
+		if payloadCrc != expectedCrc {
+			return 0, nil, errors.Wrapf(ErrWalDataCorrupted,
+				"entryOffset: %d; expected crc: %d; actual crc: %d", offset, expectedCrc, payloadCrc)
+		}
+	}
+	return payloadCrc, entry, nil
+}
+
+func (ms *readonlySegment) Read(offset int64) ([]byte, error) {
+	_, bytes, err := ms.readWithCrc(offset)
+	return bytes, err
 }
 
 func (ms *readonlySegment) Close() error {
@@ -163,6 +211,8 @@ type ReadOnlySegmentsGroup interface {
 	Get(offset int64) (common.RefCount[ReadOnlySegment], error)
 
 	TrimSegments(offset int64) error
+
+	GetLastCrc(baseOffset int64) (uint32, error)
 
 	AddedNewSegment(baseOffset int64)
 
@@ -219,6 +269,18 @@ func (r *readOnlySegmentsGroup) Close() error {
 	r.openSegments.Clear()
 	r.allSegments.Clear()
 	return err
+}
+
+func (r *readOnlySegmentsGroup) GetLastCrc(baseOffset int64) (uint32, error) {
+	roSegment, err := r.Get(baseOffset)
+	if err != nil {
+		return 0, err
+	}
+	lastCrc := roSegment.Get().LastCrc()
+	if err := roSegment.Close(); err != nil {
+		return 0, err
+	}
+	return lastCrc, nil
 }
 
 func (r *readOnlySegmentsGroup) Get(offset int64) (common.RefCount[ReadOnlySegment], error) {

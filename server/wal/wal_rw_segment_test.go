@@ -23,7 +23,7 @@ import (
 func TestReadWriteSegment(t *testing.T) {
 	path := t.TempDir()
 
-	rw, err := newReadWriteSegment(path, 0, 128*1024)
+	rw, err := newReadWriteSegment(path, 0, 128*1024, 0)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 0, rw.BaseOffset())
@@ -42,7 +42,7 @@ func TestReadWriteSegment(t *testing.T) {
 	assert.NoError(t, rw.Close())
 
 	// Re-open and recover the segment
-	rw, err = newReadWriteSegment(path, 0, 128*1024)
+	rw, err = newReadWriteSegment(path, 0, 128*1024, 0)
 	assert.NoError(t, err)
 	assert.EqualValues(t, 0, rw.BaseOffset())
 	assert.EqualValues(t, 1, rw.LastOffset())
@@ -61,7 +61,7 @@ func TestReadWriteSegment(t *testing.T) {
 func TestReadWriteSegment_NonZero(t *testing.T) {
 	path := t.TempDir()
 
-	rw, err := newReadWriteSegment(path, 5, 128*1024)
+	rw, err := newReadWriteSegment(path, 5, 128*1024, 0)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 5, rw.BaseOffset())
@@ -88,24 +88,24 @@ func TestReadWriteSegment_NonZero(t *testing.T) {
 	assert.NoError(t, rw.Close())
 
 	// Re-open and recover the segment
-	rw, err = newReadWriteSegment(path, 5, 128*1024)
+	rw, err = newReadWriteSegment(path, 5, 128*1024, 0)
 	assert.NoError(t, err)
 	assert.EqualValues(t, 5, rw.BaseOffset())
 	assert.EqualValues(t, 6, rw.LastOffset())
 }
 
 func TestReadWriteSegment_HasSpace(t *testing.T) {
-	rw, err := newReadWriteSegment(t.TempDir(), 0, 1024)
+	rw, err := newReadWriteSegment(t.TempDir(), 0, 1024, 0)
 	assert.NoError(t, err)
 
 	assert.True(t, rw.HasSpace(10))
 	assert.False(t, rw.HasSpace(1024))
-	assert.True(t, rw.HasSpace(1020))
+	assert.True(t, rw.HasSpace(1024-HeaderSize))
 	assert.False(t, rw.HasSpace(1021))
 
 	assert.NoError(t, rw.Append(0, make([]byte, 100)))
 	assert.True(t, rw.HasSpace(10))
 	assert.False(t, rw.HasSpace(1020))
 	assert.False(t, rw.HasSpace(1020-100))
-	assert.True(t, rw.HasSpace(1020-100-4))
+	assert.True(t, rw.HasSpace(1024-100-HeaderSize*2))
 }
