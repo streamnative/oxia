@@ -105,7 +105,7 @@ func TestModifiedSegment(t *testing.T) {
 	for i := 0; i < entries; i++ {
 		_, err := rw.Read(int64(i))
 		if err != nil {
-			if errors.Is(err, ErrWalDataCorrupted) {
+			if errors.Is(err, ErrDataCorrupted) {
 				detectCorruption = true
 				corruptionOffset = int64(i)
 			} else {
@@ -127,7 +127,7 @@ func TestModifiedSegment(t *testing.T) {
 	for i := 0; i < entries; i++ {
 		_, err := ro.Read(int64(i))
 		if err != nil {
-			if errors.Is(err, ErrWalDataCorrupted) {
+			if errors.Is(err, ErrDataCorrupted) {
 				roDetectCorruption = true
 				roCorruptionOffset = int64(i)
 			} else {
@@ -218,7 +218,7 @@ func TestModifiedWal(t *testing.T) {
 		entryIndex++
 		value, err := r.ReadNext()
 		if err != nil {
-			if errors.Is(err, ErrWalDataCorrupted) {
+			if errors.Is(err, ErrDataCorrupted) {
 				roDetectCorruption = true
 				roCorruptionOffset = int64(entryIndex)
 			} else {

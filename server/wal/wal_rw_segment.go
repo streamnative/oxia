@@ -16,7 +16,6 @@ package wal
 
 import (
 	"encoding/binary"
-	"github.com/streamnative/oxia/server/util/crc"
 	"os"
 	"sync"
 	"time"
@@ -61,7 +60,7 @@ type readWriteSegment struct {
 	segmentSize uint32
 }
 
-func newReadWriteSegment(basePath string, baseOffset int64, segmentSize uint32, baseCrc uint32) (ReadWriteSegment, error) {
+func newReadWriteSegment(basePath string, baseOffset int64, segmentSize uint32, lastCrc uint32) (ReadWriteSegment, error) {
 	var err error
 	if _, err = os.Stat(basePath); os.IsNotExist(err) {
 		if err = os.MkdirAll(basePath, 0755); err != nil {
@@ -75,7 +74,7 @@ func newReadWriteSegment(basePath string, baseOffset int64, segmentSize uint32, 
 		baseOffset:    baseOffset,
 		segmentSize:   segmentSize,
 		formatVersion: TxnFormatVersion2,
-		lastCrc:       baseCrc,
+		lastCrc:       lastCrc,
 	}
 
 	if pooledBuffer, ok := bufferPool.Get().(*[]byte); ok {
@@ -147,36 +146,15 @@ func (ms *readWriteSegment) Read(offset int64) ([]byte, error) {
 	// todo: we might need validate if the offset less than base offset
 
 	fileReadOffset := fileOffset(ms.writingIdx, ms.baseOffset, offset)
-	var headerOffset uint32
-	payloadSize := readInt(ms.txnMappedFile, fileReadOffset)
-	headerOffset += SizeLen
-
-	expectEntrySize := payloadSize + HeaderSize
-	if expectEntrySize > ms.segmentSize-fileReadOffset {
-		return nil, errors.Wrapf(ErrWalDataCorrupted,
-			"entryOffset: %d; overflow size: %d", offset, expectEntrySize)
-	}
-
-	var previousCrc uint32
-	var payloadCrc uint32
-	if ms.formatVersion == TxnFormatVersion2 {
-		previousCrc = readInt(ms.txnMappedFile, fileReadOffset+headerOffset)
-		headerOffset += CrcLen
-		payloadCrc = readInt(ms.txnMappedFile, fileReadOffset+headerOffset)
-		headerOffset += CrcLen
-	}
-	entry := make([]byte, payloadSize)
-	copy(entry, ms.txnMappedFile[fileReadOffset+headerOffset:fileReadOffset+headerOffset+payloadSize])
-
-	if ms.formatVersion == TxnFormatVersion2 {
-		expectedCrc := crc.Checksum(previousCrc).
-			Update(ms.txnMappedFile[fileReadOffset+headerOffset : fileReadOffset+headerOffset+payloadSize]).Value()
-		if payloadCrc != expectedCrc {
-			return nil, errors.Wrapf(ErrWalDataCorrupted, "entryOffset: %d; expected crc: %d; actual crc: %d",
-				offset, expectedCrc, payloadCrc)
+	var payload []byte
+	var err error
+	if payload, err = ReadRecordWithValidation(ms.txnMappedFile, fileReadOffset, ms.formatVersion); err != nil {
+		if errors.Is(err, ErrDataCorrupted) {
+			return nil, errors.Wrapf(err, "read record failed. entryOffset: %d", offset)
 		}
+		return nil, err
 	}
-	return entry, nil
+	return payload, nil
 }
 
 func (ms *readWriteSegment) HasSpace(l int) bool {
@@ -187,28 +165,16 @@ func (ms *readWriteSegment) Append(offset int64, data []byte) error {
 	ms.Lock()
 	defer ms.Unlock()
 
+	if len(data) == 0 {
+		return ErrEmptyPayload
+	}
 	if offset != ms.lastOffset+1 {
 		return ErrInvalidNextOffset
 	}
 
-	payloadSize := uint32(len(data))
 	fOffset := ms.currentFileOffset
 
-	var headerOffset uint32
-	binary.BigEndian.PutUint32(ms.txnMappedFile[fOffset:], payloadSize)
-	headerOffset += SizeLen
-
-	if ms.formatVersion == TxnFormatVersion2 {
-		binary.BigEndian.PutUint32(ms.txnMappedFile[fOffset+headerOffset:], ms.lastCrc)
-		headerOffset += CrcLen
-		payloadCrc := crc.Checksum(ms.lastCrc).Update(data).Value()
-		binary.BigEndian.PutUint32(ms.txnMappedFile[fOffset+headerOffset:], payloadCrc)
-		headerOffset += CrcLen
-		ms.lastCrc = payloadCrc
-	}
-
-	copy(ms.txnMappedFile[fOffset+headerOffset:], data)
-	ms.currentFileOffset += headerOffset + payloadSize
+	ms.currentFileOffset, ms.lastCrc = WriteRecord(ms.txnMappedFile, fOffset, ms.lastCrc, ms.formatVersion, data)
 	ms.lastOffset = offset
 
 	ms.writingIdx = binary.BigEndian.AppendUint32(ms.writingIdx, fOffset)
@@ -226,31 +192,20 @@ func (ms *readWriteSegment) rebuildIdx() error {
 	entryOffset := ms.baseOffset
 
 	for ms.currentFileOffset < ms.segmentSize {
-		var headerOffset uint32
-		payloadSize := readInt(ms.txnMappedFile, ms.currentFileOffset)
-		headerOffset += SizeLen
-		recordSize := payloadSize + CrcLen + CrcLen
-		if payloadSize == 0 || recordSize > (ms.segmentSize-ms.currentFileOffset) { // overflow
-			break
-		}
-		if ms.formatVersion == TxnFormatVersion2 {
-			previousCrc := readInt(ms.txnMappedFile, ms.currentFileOffset+headerOffset)
-			headerOffset += CrcLen
-			payloadCrc := readInt(ms.txnMappedFile, ms.currentFileOffset+headerOffset)
-			headerOffset += CrcLen
-
-			expectedCrc := crc.Checksum(previousCrc).
-				Update(ms.txnMappedFile[ms.currentFileOffset+headerOffset : ms.currentFileOffset+headerOffset+payloadSize]).Value()
-			if payloadCrc != expectedCrc {
-				return errors.Wrapf(ErrWalDataCorrupted, "entryOffset: %d; expected crc: %d; actual crc: %d",
-					entryOffset, expectedCrc, payloadCrc)
+		if payloadSize, _, payloadCrc, err := ReadHeaderWithValidation(ms.txnMappedFile, ms.currentFileOffset, ms.formatVersion); err != nil {
+			if errors.Is(err, ErrOffsetOutOfBounds) || errors.Is(err, ErrEmptyPayload) {
+				break
 			}
+			if errors.Is(err, ErrDataCorrupted) {
+				return errors.Wrapf(ErrDataCorrupted, "entryOffset: %d", entryOffset)
+			}
+			return err
+		} else {
 			ms.lastCrc = payloadCrc
+			ms.writingIdx = binary.BigEndian.AppendUint32(ms.writingIdx, ms.currentFileOffset)
+			ms.currentFileOffset += xxxx + payloadSize
+			entryOffset++
 		}
-
-		ms.writingIdx = binary.BigEndian.AppendUint32(ms.writingIdx, ms.currentFileOffset)
-		ms.currentFileOffset += headerOffset + payloadSize
-		entryOffset++
 	}
 
 	ms.lastOffset = entryOffset - 1

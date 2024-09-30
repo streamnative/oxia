@@ -15,9 +15,7 @@
 package wal
 
 import (
-	"encoding/binary"
 	"fmt"
-	"github.com/streamnative/oxia/server/util/crc"
 	"io"
 	"os"
 	"path/filepath"
@@ -33,10 +31,6 @@ import (
 
 func segmentPath(basePath string, firstOffset int64) string {
 	return filepath.Join(basePath, fmt.Sprintf("%d", firstOffset))
-}
-
-func readInt(b []byte, offset uint32) uint32 {
-	return binary.BigEndian.Uint32(b[offset : offset+4])
 }
 
 func fileOffset(idx []byte, firstOffset, offset int64) uint32 {
@@ -112,7 +106,8 @@ func newReadOnlySegment(basePath string, baseOffset int64) (ReadOnlySegment, err
 	ms.lastOffset = ms.baseOffset + int64(len(ms.idxMappedFile)/4-1)
 
 	// recover the last crc
-	if ms.lastCrc, _, err = ms.readWithCrc(ms.lastOffset); err != nil {
+	fo := fileOffset(ms.idxMappedFile, ms.baseOffset, ms.lastOffset)
+	if _, _, ms.lastCrc, err = ReadHeaderWithValidation(ms.txnMappedFile, fo, ms.formatVersion); err != nil {
 		return nil, err
 	}
 	return ms, nil
@@ -130,48 +125,20 @@ func (ms *readonlySegment) LastOffset() int64 {
 	return ms.lastOffset
 }
 
-func (ms *readonlySegment) readWithCrc(offset int64) (uint32, []byte, error) {
-	if offset < ms.baseOffset || offset > ms.lastOffset {
-		return 0, nil, ErrOffsetOutOfBounds
-	}
-
-	fileReadOffset := fileOffset(ms.idxMappedFile, ms.baseOffset, offset)
-	var headerOffset uint32
-	payloadSize := readInt(ms.txnMappedFile, fileReadOffset)
-	headerOffset += SizeLen
-
-	expectSize := payloadSize + HeaderSize
-	if expectSize > uint32(len(ms.txnMappedFile))-fileReadOffset+headerOffset {
-		return 0, nil, errors.Wrapf(ErrWalDataCorrupted,
-			"entryOffset: %d; overflow size: %d", offset, expectSize)
-	}
-
-	var previousCrc uint32
-	var payloadCrc uint32
-	if ms.formatVersion == TxnFormatVersion2 {
-		previousCrc = readInt(ms.txnMappedFile, fileReadOffset+headerOffset)
-		headerOffset += CrcLen
-		payloadCrc = readInt(ms.txnMappedFile, fileReadOffset+headerOffset)
-		headerOffset += CrcLen
-	}
-
-	entry := make([]byte, payloadSize)
-	copy(entry, ms.txnMappedFile[fileReadOffset+headerOffset:fileReadOffset+headerOffset+payloadSize])
-
-	if ms.formatVersion == TxnFormatVersion2 {
-		expectedCrc := crc.Checksum(previousCrc).
-			Update(ms.txnMappedFile[fileReadOffset+headerOffset : fileReadOffset+headerOffset+payloadSize]).Value()
-		if payloadCrc != expectedCrc {
-			return 0, nil, errors.Wrapf(ErrWalDataCorrupted,
-				"entryOffset: %d; expected crc: %d; actual crc: %d", offset, expectedCrc, payloadCrc)
-		}
-	}
-	return payloadCrc, entry, nil
-}
-
 func (ms *readonlySegment) Read(offset int64) ([]byte, error) {
-	_, bytes, err := ms.readWithCrc(offset)
-	return bytes, err
+	if offset < ms.baseOffset || offset > ms.lastOffset {
+		return nil, ErrOffsetOutOfBounds
+	}
+	fileReadOffset := fileOffset(ms.idxMappedFile, ms.baseOffset, offset)
+	var payload []byte
+	var err error
+	if payload, err = ReadRecordWithValidation(ms.txnMappedFile, fileReadOffset, ms.formatVersion); err != nil {
+		if errors.Is(err, ErrDataCorrupted) {
+			return nil, errors.Wrapf(err, "read record failed. entryOffset: %d", offset)
+		}
+		return nil, err
+	}
+	return payload, nil
 }
 
 func (ms *readonlySegment) Close() error {
