@@ -26,11 +26,8 @@ import (
 
 var (
 	ErrEntryNotFound     = errors.New("oxia: entry not found")
-	ErrOffsetOutOfBounds = errors.New("oxia: offset out of bounds")
 	ErrReaderClosed      = errors.New("oxia: reader already closed")
 	ErrInvalidNextOffset = errors.New("oxia: invalid next offset in wal")
-	ErrEmptyPayload  = errors.New("oxia: empty payload")
-	ErrDataCorrupted = errors.New("oxia: data corrupted")
 
 	InvalidTerm   int64 = -1
 	InvalidOffset int64 = -1

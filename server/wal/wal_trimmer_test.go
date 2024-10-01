@@ -58,7 +58,7 @@ func TestWalTrimmer(t *testing.T) {
 		assert.NoError(t, w.Append(&proto.LogEntry{
 			Term:      0,
 			Offset:    i,
-			Value:     []byte(""),
+			Value:     []byte(fmt.Sprintf("%d", i)),
 			Timestamp: uint64(i),
 		}))
 	}
@@ -115,7 +115,7 @@ func TestWalTrimUpToCommitOffset(t *testing.T) {
 				assert.NoError(t, w.Append(&proto.LogEntry{
 					Term:      0,
 					Offset:    i,
-					Value:     []byte(""),
+					Value:     []byte(fmt.Sprintf("%d", i)),
 					Timestamp: uint64(i),
 				}))
 			}

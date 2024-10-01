@@ -16,6 +16,7 @@ package wal
 
 import (
 	"fmt"
+	"github.com/streamnative/oxia/server/wal/codec"
 	"io"
 	"os"
 	"path/filepath"
@@ -34,7 +35,7 @@ func segmentPath(basePath string, firstOffset int64) string {
 }
 
 func fileOffset(idx []byte, firstOffset, offset int64) uint32 {
-	return readInt(idx, uint32((offset-firstOffset)*4))
+	return codec.ReadInt(idx, uint32((offset-firstOffset)*4))
 }
 
 type ReadOnlySegment interface {
@@ -53,8 +54,7 @@ type ReadOnlySegment interface {
 }
 
 type readonlySegment struct {
-	formatVersion FormatVersion
-
+	codec      codec.Codec
 	txnPath    string
 	idxPath    string
 	baseOffset int64
@@ -72,18 +72,15 @@ type readonlySegment struct {
 }
 
 func newReadOnlySegment(basePath string, baseOffset int64) (ReadOnlySegment, error) {
+
+	_codec, segmentTxnFullPath, _ := codec.GetSegmentContext(segmentPath(basePath, baseOffset))
+
 	ms := &readonlySegment{
-		txnPath:       segmentPath(basePath, baseOffset) + TxnExtensionV2,
-		formatVersion: TxnFormatVersion2,
-		idxPath:       segmentPath(basePath, baseOffset) + TdxExtension,
+		codec:         _codec,
+		txnPath:       segmentTxnFullPath,
+		idxPath:       segmentPath(basePath, baseOffset) + codec.IdxExtension,
 		baseOffset:    baseOffset,
 		openTimestamp: time.Now(),
-	}
-
-	if _, err := os.Stat(ms.txnPath); os.IsNotExist(err) {
-		// format 2 file not exist, fallback to format 1
-		ms.txnPath = segmentPath(basePath, baseOffset) + TxnExtension
-		ms.formatVersion = TxnFormatVersion1
 	}
 
 	var err error
@@ -107,7 +104,7 @@ func newReadOnlySegment(basePath string, baseOffset int64) (ReadOnlySegment, err
 
 	// recover the last crc
 	fo := fileOffset(ms.idxMappedFile, ms.baseOffset, ms.lastOffset)
-	if _, _, ms.lastCrc, err = ReadHeaderWithValidation(ms.txnMappedFile, fo, ms.formatVersion); err != nil {
+	if _, _, ms.lastCrc, err = ms.codec.ReadHeaderWithValidation(ms.txnMappedFile, fo); err != nil {
 		return nil, err
 	}
 	return ms, nil
@@ -127,18 +124,17 @@ func (ms *readonlySegment) LastOffset() int64 {
 
 func (ms *readonlySegment) Read(offset int64) ([]byte, error) {
 	if offset < ms.baseOffset || offset > ms.lastOffset {
-		return nil, ErrOffsetOutOfBounds
+		return nil, codec.ErrOffsetOutOfBounds
 	}
 	fileReadOffset := fileOffset(ms.idxMappedFile, ms.baseOffset, offset)
-	var payload []byte
-	var err error
-	if payload, err = ReadRecordWithValidation(ms.txnMappedFile, fileReadOffset, ms.formatVersion); err != nil {
-		if errors.Is(err, ErrDataCorrupted) {
+	if payload, err := ms.codec.ReadRecordWithValidation(ms.txnMappedFile, fileReadOffset); err != nil {
+		if errors.Is(err, codec.ErrDataCorrupted) {
 			return nil, errors.Wrapf(err, "read record failed. entryOffset: %d", offset)
 		}
 		return nil, err
+	} else {
+		return payload, nil
 	}
-	return payload, nil
 }
 
 func (ms *readonlySegment) Close() error {
@@ -201,7 +197,7 @@ func newReadOnlySegmentsGroup(basePath string) (ReadOnlySegmentsGroup, error) {
 		openSegments: newInt64TreeMap[common.RefCount[ReadOnlySegment]](),
 	}
 
-	segments, err := listAllSegments(basePath)
+	segments, err := codec.ListAllSegments(basePath)
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +258,7 @@ func (r *readOnlySegmentsGroup) Get(offset int64) (common.RefCount[ReadOnlySegme
 	// Check if we have a segment file on disk
 	baseOffset, found := r.allSegments.Floor(offset)
 	if !found {
-		return nil, ErrOffsetOutOfBounds
+		return nil, codec.ErrOffsetOutOfBounds
 	}
 
 	rosegment, err := newReadOnlySegment(r.basePath, baseOffset)

@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"github.com/pkg/errors"
 	"github.com/streamnative/oxia/server/util/crc"
-	"github.com/streamnative/oxia/server/wal"
 )
 
 // +--------------+-------------------+-------------+--------------+
@@ -28,6 +27,14 @@ func (v V2) GetHeaderSize() uint32 {
 	return v.HeaderSize
 }
 
+func (v V2) GetRecordSize(buf []byte, startFileOffset uint32) (uint32, error) {
+	if payloadSize, _, _, err := v.ReadHeaderWithValidation(buf, startFileOffset); err != nil {
+		return 0, err
+	} else {
+		return v.HeaderSize + payloadSize, nil
+	}
+}
+
 func (v V2) ReadRecordWithValidation(buf []byte, startFileOffset uint32) (payload []byte, err error) {
 	if payloadSize, _, _, err := v.ReadHeaderWithValidation(buf, startFileOffset); err != nil {
 		return nil, err
@@ -43,17 +50,17 @@ func (v V2) ReadHeaderWithValidation(buf []byte, startFileOffset uint32) (payloa
 	bufSize := uint32(len(buf))
 	if startFileOffset >= bufSize {
 		return payloadSize, previousCrc, payloadCrc,
-			errors.Wrapf(wal.ErrOffsetOutOfBounds, "expected payload size: %d. actual buf size: %d ",
+			errors.Wrapf(ErrOffsetOutOfBounds, "expected payload size: %d. actual buf size: %d ",
 				startFileOffset+v2PayloadSizeLen, bufSize)
 	}
 
 	var headerOffset uint32
-	payloadSize = readInt(buf, startFileOffset)
+	payloadSize = ReadInt(buf, startFileOffset)
 	headerOffset += v2PayloadSizeLen
 
 	// It shouldn't happen when normal reading
 	if payloadSize == 0 {
-		return payloadSize, previousCrc, payloadCrc, errors.Wrapf(wal.ErrEmptyPayload, "unexpected empty payload")
+		return payloadSize, previousCrc, payloadCrc, errors.Wrapf(ErrEmptyPayload, "unexpected empty payload")
 	}
 
 	expectSize := payloadSize + v.HeaderSize
@@ -61,19 +68,19 @@ func (v V2) ReadHeaderWithValidation(buf []byte, startFileOffset uint32) (payloa
 	actualBufSize := bufSize - (startFileOffset + headerOffset)
 	if expectSize > actualBufSize {
 		return payloadSize, previousCrc, payloadCrc,
-			errors.Wrapf(wal.ErrOffsetOutOfBounds, "expected payload size: %d. actual buf size: %d ", expectSize, bufSize)
+			errors.Wrapf(ErrOffsetOutOfBounds, "expected payload size: %d. actual buf size: %d ", expectSize, bufSize)
 	}
 
-	previousCrc = readInt(buf, startFileOffset+headerOffset)
+	previousCrc = ReadInt(buf, startFileOffset+headerOffset)
 	headerOffset += v2PreviousCrcLen
-	payloadCrc = readInt(buf, startFileOffset+headerOffset)
+	payloadCrc = ReadInt(buf, startFileOffset+headerOffset)
 	headerOffset += v2PayloadCrcLen
 
 	payloadStartFileOffset := startFileOffset + headerOffset
 	payloadSlice := buf[payloadStartFileOffset : payloadStartFileOffset+payloadSize]
 
 	if expectedCrc := crc.Checksum(previousCrc).Update(payloadSlice).Value(); expectedCrc != payloadCrc {
-		return payloadSize, previousCrc, payloadCrc, errors.Wrapf(wal.ErrDataCorrupted,
+		return payloadSize, previousCrc, payloadCrc, errors.Wrapf(ErrDataCorrupted,
 			" expected crc: %d; actual crc: %d", expectedCrc, payloadCrc)
 	}
 

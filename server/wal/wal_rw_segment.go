@@ -16,6 +16,7 @@ package wal
 
 import (
 	"encoding/binary"
+	"github.com/streamnative/oxia/server/wal/codec"
 	"os"
 	"sync"
 	"time"
@@ -44,9 +45,9 @@ type ReadWriteSegment interface {
 type readWriteSegment struct {
 	sync.RWMutex
 
-	formatVersion FormatVersion
-	txnPath       string
-	idxPath       string
+	codec   codec.Codec
+	txnPath string
+	idxPath string
 
 	baseOffset    int64
 	lastOffset    int64
@@ -68,13 +69,15 @@ func newReadWriteSegment(basePath string, baseOffset int64, segmentSize uint32, 
 		}
 	}
 
+	_codec, segmentTxnFullPath, segmentExists := codec.GetSegmentContext(segmentPath(basePath, baseOffset))
+
 	ms := &readWriteSegment{
-		txnPath:       segmentPath(basePath, baseOffset) + TxnExtensionV2,
-		idxPath:       segmentPath(basePath, baseOffset) + TdxExtension,
-		baseOffset:    baseOffset,
-		segmentSize:   segmentSize,
-		formatVersion: TxnFormatVersion2,
-		lastCrc:       lastCrc,
+		codec:       _codec,
+		txnPath:     segmentTxnFullPath,
+		idxPath:     segmentPath(basePath, baseOffset) + codec.IdxExtension,
+		baseOffset:  baseOffset,
+		segmentSize: segmentSize,
+		lastCrc:     lastCrc,
 	}
 
 	if pooledBuffer, ok := bufferPool.Get().(*[]byte); ok {
@@ -82,24 +85,6 @@ func newReadWriteSegment(basePath string, baseOffset int64, segmentSize uint32, 
 	} else {
 		// Start with empty slice, though with some initial capacity
 		ms.writingIdx = make([]byte, 0, initialIndexBufferCapacity)
-	}
-
-	var segmentExists bool
-	if _, err = os.Stat(ms.txnPath); os.IsNotExist(err) {
-		// fallback to v1 and check again.
-		ms.txnPath = segmentPath(basePath, baseOffset) + TxnExtension
-		ms.formatVersion = TxnFormatVersion1
-		// check the v1 file exist?
-		if _, err = os.Stat(ms.txnPath); os.IsNotExist(err) {
-			// go back to v2
-			segmentExists = false
-			ms.txnPath = segmentPath(basePath, baseOffset) + TxnExtensionV2
-			ms.formatVersion = TxnFormatVersion2
-		} else {
-			segmentExists = true
-		}
-	} else {
-		segmentExists = true
 	}
 
 	if ms.txnFile, err = os.OpenFile(ms.txnPath, os.O_CREATE|os.O_RDWR, 0644); err != nil {
@@ -146,19 +131,18 @@ func (ms *readWriteSegment) Read(offset int64) ([]byte, error) {
 	// todo: we might need validate if the offset less than base offset
 
 	fileReadOffset := fileOffset(ms.writingIdx, ms.baseOffset, offset)
-	var payload []byte
-	var err error
-	if payload, err = ReadRecordWithValidation(ms.txnMappedFile, fileReadOffset, ms.formatVersion); err != nil {
-		if errors.Is(err, ErrDataCorrupted) {
+	if payload, err := ms.codec.ReadRecordWithValidation(ms.txnMappedFile, fileReadOffset); err != nil {
+		if errors.Is(err, codec.ErrDataCorrupted) {
 			return nil, errors.Wrapf(err, "read record failed. entryOffset: %d", offset)
 		}
 		return nil, err
+	} else {
+		return payload, nil
 	}
-	return payload, nil
 }
 
 func (ms *readWriteSegment) HasSpace(l int) bool {
-	return ms.currentFileOffset+HeaderSize+uint32(l) <= ms.segmentSize
+	return ms.currentFileOffset+ms.codec.GetHeaderSize()+uint32(l) <= ms.segmentSize
 }
 
 func (ms *readWriteSegment) Append(offset int64, data []byte) error {
@@ -166,17 +150,17 @@ func (ms *readWriteSegment) Append(offset int64, data []byte) error {
 	defer ms.Unlock()
 
 	if len(data) == 0 {
-		return ErrEmptyPayload
+		return codec.ErrEmptyPayload
 	}
 	if offset != ms.lastOffset+1 {
 		return ErrInvalidNextOffset
 	}
 
 	fOffset := ms.currentFileOffset
-
-	ms.currentFileOffset, ms.lastCrc = WriteRecord(ms.txnMappedFile, fOffset, ms.lastCrc, ms.formatVersion, data)
+	var recordSize uint32
+	recordSize, ms.lastCrc = ms.codec.WriteRecord(ms.txnMappedFile, fOffset, ms.lastCrc, data)
+	ms.currentFileOffset += recordSize
 	ms.lastOffset = offset
-
 	ms.writingIdx = binary.BigEndian.AppendUint32(ms.writingIdx, fOffset)
 	return nil
 }
@@ -192,18 +176,18 @@ func (ms *readWriteSegment) rebuildIdx() error {
 	entryOffset := ms.baseOffset
 
 	for ms.currentFileOffset < ms.segmentSize {
-		if payloadSize, _, payloadCrc, err := ReadHeaderWithValidation(ms.txnMappedFile, ms.currentFileOffset, ms.formatVersion); err != nil {
-			if errors.Is(err, ErrOffsetOutOfBounds) || errors.Is(err, ErrEmptyPayload) {
+		if payloadSize, _, payloadCrc, err := ms.codec.ReadHeaderWithValidation(ms.txnMappedFile, ms.currentFileOffset); err != nil {
+			if errors.Is(err, codec.ErrOffsetOutOfBounds) || errors.Is(err, codec.ErrEmptyPayload) {
 				break
 			}
-			if errors.Is(err, ErrDataCorrupted) {
-				return errors.Wrapf(ErrDataCorrupted, "entryOffset: %d", entryOffset)
+			if errors.Is(err, codec.ErrDataCorrupted) {
+				return errors.Wrapf(codec.ErrDataCorrupted, "entryOffset: %d", entryOffset)
 			}
 			return err
 		} else {
 			ms.lastCrc = payloadCrc
 			ms.writingIdx = binary.BigEndian.AppendUint32(ms.writingIdx, ms.currentFileOffset)
-			ms.currentFileOffset += xxxx + payloadSize
+			ms.currentFileOffset += ms.codec.GetHeaderSize() + payloadSize
 			entryOffset++
 		}
 	}
@@ -254,26 +238,23 @@ func (ms *readWriteSegment) writeIndex() error {
 
 func (ms *readWriteSegment) Truncate(lastSafeOffset int64) error {
 	if lastSafeOffset < ms.baseOffset || lastSafeOffset > ms.lastOffset {
-		return ErrOffsetOutOfBounds
+		return codec.ErrOffsetOutOfBounds
 	}
 
 	// Write zeroes in the section to clear
 	fileLastSafeOffset := fileOffset(ms.writingIdx, ms.baseOffset, lastSafeOffset)
-	var headerOffset uint32
-	payloadLen := readInt(ms.txnMappedFile, fileLastSafeOffset+headerOffset)
-	headerOffset += SizeLen
-	if ms.formatVersion == TxnFormatVersion2 {
-		headerOffset += CrcLen // previous crc
-		headerOffset += CrcLen // payload crc
+	var recordSize uint32
+	var err error
+	if recordSize, err = ms.codec.GetRecordSize(ms.txnMappedFile, fileLastSafeOffset); err != nil {
+		return err
 	}
-	fileEndOffset := fileLastSafeOffset + headerOffset + payloadLen
+	fileEndOffset := fileLastSafeOffset + recordSize
 	for i := fileEndOffset; i < ms.currentFileOffset; i++ {
 		ms.txnMappedFile[i] = 0
 	}
 
 	// Truncate the index
 	ms.writingIdx = ms.writingIdx[:4*(lastSafeOffset-ms.baseOffset+1)]
-
 	ms.currentFileOffset = fileEndOffset
 	ms.lastOffset = lastSafeOffset
 	return ms.Flush()

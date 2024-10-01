@@ -17,6 +17,7 @@ package wal
 import (
 	"context"
 	"fmt"
+	"github.com/streamnative/oxia/server/wal/codec"
 	"os"
 	"path/filepath"
 	"sync"
@@ -25,7 +26,6 @@ import (
 
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
-	"golang.org/x/exp/slices"
 	pb "google.golang.org/protobuf/proto"
 
 	"github.com/streamnative/oxia/common"
@@ -526,7 +526,7 @@ func (t *wal) TruncateLog(lastSafeOffset int64) (int64, error) { //nolint:revive
 }
 
 func (t *wal) recoverWal() error {
-	segments, err := listAllSegments(t.walPath)
+	segments, err := codec.ListAllSegments(t.walPath)
 	if err != nil {
 		return err
 	}
@@ -567,36 +567,4 @@ func (t *wal) recoverWal() error {
 	}
 
 	return nil
-}
-
-func listAllSegments(walPath string) (segments []int64, err error) {
-	dir, err := os.ReadDir(walPath)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, nil
-		}
-		return nil, errors.Wrapf(err, "failed to list files in wal directory %s", walPath)
-	}
-
-	for _, entry := range dir {
-		if matched, _ := filepath.Match("*"+TxnExtension, entry.Name()); matched {
-			var id int64
-			if _, err := fmt.Sscanf(entry.Name(), "%d"+TxnExtension, &id); err != nil {
-				return nil, err
-			}
-
-			segments = append(segments, id)
-		}
-		if matched, _ := filepath.Match("*"+TxnExtensionV2, entry.Name()); matched {
-			var id int64
-			if _, err := fmt.Sscanf(entry.Name(), "%d"+TxnExtensionV2, &id); err != nil {
-				return nil, err
-			}
-
-			segments = append(segments, id)
-		}
-	}
-
-	slices.Sort(segments)
-	return segments, nil
 }

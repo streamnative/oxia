@@ -3,7 +3,6 @@ package codec
 import (
 	"encoding/binary"
 	"github.com/pkg/errors"
-	"github.com/streamnative/oxia/server/wal"
 )
 
 // +--------------+--------------+
@@ -34,26 +33,34 @@ func (v V1) ReadRecordWithValidation(buf []byte, startFileOffset uint32) (payloa
 	}
 }
 
+func (v V1) GetRecordSize(buf []byte, startFileOffset uint32) (uint32, error) {
+	if payloadSize, _, _, err := v.ReadHeaderWithValidation(buf, startFileOffset); err != nil {
+		return 0, err
+	} else {
+		return v.HeaderSize + payloadSize, nil
+	}
+}
+
 func (v V1) ReadHeaderWithValidation(buf []byte, startFileOffset uint32) (payloadSize uint32, previousCrc uint32, payloadCrc uint32, err error) {
 	bufSize := uint32(len(buf))
 	if startFileOffset >= bufSize {
-		return payloadSize, previousCrc, payloadCrc, errors.Wrapf(wal.ErrOffsetOutOfBounds,
+		return payloadSize, previousCrc, payloadCrc, errors.Wrapf(ErrOffsetOutOfBounds,
 			"expected payload size: %d. actual buf size: %d ", startFileOffset+v1PayloadSizeLen, bufSize)
 	}
 
 	var headerOffset uint32
-	payloadSize = readInt(buf, startFileOffset)
+	payloadSize = ReadInt(buf, startFileOffset)
 	headerOffset += v1PayloadSizeLen
 	// It shouldn't happen when normal reading
 	if payloadSize == 0 {
-		return payloadSize, previousCrc, payloadCrc, errors.Wrapf(wal.ErrEmptyPayload, "unexpected empty payload")
+		return payloadSize, previousCrc, payloadCrc, errors.Wrapf(ErrEmptyPayload, "unexpected empty payload")
 	}
 	expectSize := payloadSize + v.HeaderSize
 	// overflow checking
 	actualBufSize := bufSize - (startFileOffset + headerOffset)
 	if expectSize > actualBufSize {
 		return payloadSize, previousCrc, payloadCrc,
-			errors.Wrapf(wal.ErrOffsetOutOfBounds, "expected payload size: %d. actual buf size: %d ", expectSize, bufSize)
+			errors.Wrapf(ErrOffsetOutOfBounds, "expected payload size: %d. actual buf size: %d ", expectSize, bufSize)
 	}
 	return payloadSize, previousCrc, payloadCrc, nil
 }
