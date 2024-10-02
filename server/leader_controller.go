@@ -446,7 +446,7 @@ func (lc *leaderController) applyAllEntriesIntoDBLoop(r wal.Reader) error {
 			return err
 		}
 		for _, writeRequest := range logEntryValue.GetRequests().Writes {
-			if _, err = lc.db.ProcessWrite(writeRequest, entry.Offset, entry.Timestamp, SessionUpdateOperationCallback); err != nil {
+			if _, err = lc.db.ProcessWrite(writeRequest, entry.Offset, entry.Timestamp, WrapperUpdateOperationCallback); err != nil {
 				return err
 			}
 		}
@@ -646,7 +646,13 @@ func (lc *leaderController) list(ctx context.Context, request *proto.ListRequest
 		func() {
 			lc.log.Debug("Received list request", slog.Any("request", request))
 
-			it, err := lc.db.List(request)
+			var it kv.KeyIterator
+			var err error
+			if request.SecondaryIndexName != nil {
+				it, err = newSecondaryIndexListIterator(request, lc.db)
+			} else {
+				it, err = lc.db.List(request)
+			}
 			if err != nil {
 				lc.log.Warn(
 					"Failed to process list request",
@@ -719,7 +725,14 @@ func (lc *leaderController) rangeScan(ctx context.Context, request *proto.RangeS
 		func() {
 			lc.log.Debug("Received list request", slog.Any("request", request))
 
-			it, err := lc.db.RangeScan(request)
+			var it kv.RangeScanIterator
+			var err error
+			if request.SecondaryIndexName != nil {
+				it, err = newSecondaryIndexRangeScanIterator(request, lc.db)
+			} else {
+				it, err = lc.db.RangeScan(request)
+			}
+
 			if err != nil {
 				lc.log.Warn(
 					"Failed to process range-scan request",
@@ -782,7 +795,7 @@ func (lc *leaderController) write(ctx context.Context, request func(int64) *prot
 	}
 
 	resp, err := lc.quorumAckTracker.WaitForCommitOffset(ctx, newOffset, func() (*proto.WriteResponse, error) {
-		return lc.db.ProcessWrite(actualRequest, newOffset, timestamp, SessionUpdateOperationCallback)
+		return lc.db.ProcessWrite(actualRequest, newOffset, timestamp, WrapperUpdateOperationCallback)
 	})
 	return newOffset, resp, err
 }
@@ -900,7 +913,7 @@ func (lc *leaderController) handleWalSynced(stream proto.OxiaClient_WriteStreamS
 	}
 
 	lc.quorumAckTracker.WaitForCommitOffsetAsync(offset, func() (*proto.WriteResponse, error) {
-		return lc.db.ProcessWrite(req, offset, timestamp, SessionUpdateOperationCallback)
+		return lc.db.ProcessWrite(req, offset, timestamp, WrapperUpdateOperationCallback)
 	}, func(response *proto.WriteResponse, err error) {
 		if err != nil {
 			timer.Done()
