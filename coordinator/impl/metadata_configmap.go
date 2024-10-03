@@ -16,7 +16,6 @@ package impl
 
 import (
 	"log/slog"
-	"os"
 	"sync"
 	"sync/atomic"
 
@@ -86,6 +85,8 @@ func (m *metadataProviderConfigMap) getWithoutLock() (*model.ClusterStatus, Vers
 	}
 
 	version := Version(cm.ResourceVersion)
+	slog.Debug("Get metadata successful",
+		slog.String("version", cm.ResourceVersion))
 	m.metadataSize.Store(int64(len(data)))
 	return status, version, nil
 }
@@ -103,13 +104,16 @@ func (m *metadataProviderConfigMap) Store(status *model.ClusterStatus, expectedV
 	}
 
 	if version != expectedVersion {
+		slog.Error("Store metadata failed for version mismatch",
+			slog.Any("local-version", version),
+			slog.Any("expected-version", expectedVersion))
 		panic(ErrMetadataBadVersion)
 	}
 
 	data := configMap(m.name, status, expectedVersion)
 	cm, err := K8SConfigMaps(m.kubernetes).Upsert(m.namespace, m.name, data)
 	if k8serrors.IsConflict(err) {
-		panic(ErrMetadataBadVersion)
+		panic(err)
 	}
 	version = Version(cm.ResourceVersion)
 	m.metadataSize.Store(int64(len(data.Data["status"])))
@@ -127,7 +131,7 @@ func configMap(name string, status *model.ClusterStatus, version Version) *corev
 			"unable to marshal cluster status",
 			slog.Any("error", err),
 		)
-		os.Exit(1)
+		panic(err)
 	}
 
 	cm := &corev1.ConfigMap{
