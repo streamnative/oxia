@@ -38,6 +38,8 @@ message StorageEntry {
   optional string client_identity = 7;
 
   optional string partition_key = 8;
+
+  map<string, string> secondary_indexes = 9;
 }
 
 message SessionMetadata {

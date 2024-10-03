@@ -252,6 +252,8 @@ message PutRequest {
   // If one or more sequence key are specified. The key will get added suffixes
   // based on adding the delta to the current highest key with the same prefix
   repeated uint64 sequence_key_delta = 7;
+
+  map<string, string> secondary_indexes = 8;
 }
 
 /**
@@ -361,6 +363,8 @@ message ListRequest {
   string start_inclusive = 2;
   // The end of the range, exclusive
   string end_exclusive = 3;
+
+  optional string secondary_index_name = 4;
 }
 
 /**
@@ -382,6 +386,8 @@ message RangeScanRequest {
   string start_inclusive = 2;
   // The end of the range, exclusive
   string end_exclusive = 3;
+
+  optional string secondary_index_name = 4;
 }
 
 /**
