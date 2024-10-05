@@ -527,7 +527,7 @@ func (t *wal) TruncateLog(lastSafeOffset int64) (int64, error) { //nolint:revive
 }
 
 func (t *wal) recoverWal() error {
-	segments, err := ListAllSegments(t.walPath)
+	segments, err := listAllSegments(t.walPath)
 	if err != nil {
 		return err
 	}
@@ -570,7 +570,7 @@ func (t *wal) recoverWal() error {
 	return nil
 }
 
-func ListAllSegments(walPath string) (segments []int64, err error) {
+func listAllSegments(walPath string) (segments []int64, err error) {
 	dir, err := os.ReadDir(walPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {

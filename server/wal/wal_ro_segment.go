@@ -197,7 +197,7 @@ func newReadOnlySegmentsGroup(basePath string) (ReadOnlySegmentsGroup, error) {
 		openSegments: newInt64TreeMap[common.RefCount[ReadOnlySegment]](),
 	}
 
-	segments, err := ListAllSegments(basePath)
+	segments, err := listAllSegments(basePath)
 	if err != nil {
 		return nil, err
 	}
