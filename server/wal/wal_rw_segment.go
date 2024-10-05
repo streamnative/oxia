@@ -69,12 +69,12 @@ func newReadWriteSegment(basePath string, baseOffset int64, segmentSize uint32, 
 		}
 	}
 
-	_codec, segmentTxnFullPath, segmentExists := codec.GetSegmentContext(segmentPath(basePath, baseOffset))
+	_codec, segmentExists := codec.GetOrCreate(segmentPath(basePath, baseOffset))
 
 	ms := &readWriteSegment{
 		codec:       _codec,
-		txnPath:     segmentTxnFullPath,
-		idxPath:     segmentPath(basePath, baseOffset) + codec.IdxExtension,
+		txnPath:     segmentPath(basePath, baseOffset) + _codec.GetTxnExtension(),
+		idxPath:     segmentPath(basePath, baseOffset) + _codec.GetIdxExtension(),
 		baseOffset:  baseOffset,
 		segmentSize: segmentSize,
 		lastCrc:     lastCrc,

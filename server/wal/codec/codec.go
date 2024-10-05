@@ -2,11 +2,8 @@ package codec
 
 import (
 	"encoding/binary"
-	"fmt"
 	"github.com/pkg/errors"
 	"os"
-	"path/filepath"
-	"slices"
 )
 
 var (
@@ -15,25 +12,6 @@ var (
 	ErrDataCorrupted     = errors.New("oxia: data corrupted")
 )
 
-const TxnExtension = ".txn"
-const TxnExtensionV2 = ".txnx"
-const IdxExtension = ".idx"
-
-var v1 = V1{
-	Metadata{
-		TxnExtension: TxnExtension,
-		IdxExtension: IdxExtension,
-		HeaderSize:   v1PayloadSizeLen,
-	},
-}
-var v2 = V2{
-	Metadata{
-		TxnExtension: TxnExtensionV2,
-		IdxExtension: IdxExtension,
-		HeaderSize:   v2PayloadSizeLen + v2PreviousCrcLen + v2PayloadCrcLen,
-	},
-}
-
 type Metadata struct {
 	TxnExtension string
 	IdxExtension string
@@ -41,12 +19,20 @@ type Metadata struct {
 }
 
 type Codec interface {
-
 	// GetHeaderSize returns the fixed size of the header in bytes
 	// for each record. This value is used to understand where the
 	// payload starts after the header.
 	GetHeaderSize() uint32
 
+	// GetIdxExtension returns the index file extension. THis value is used to help compatible with
+	// multiple versions for index file.
+	GetIdxExtension() string
+
+	// GetTxnExtension returns the txn file extension. THis value is used to help compatible with
+	// multiple versions for txn file.
+	GetTxnExtension() string
+
+	// GetRecordSize returns the size of the record in bytes which includes the header.
 	GetRecordSize(buf []byte, startFileOffset uint32) (uint32, error)
 
 	// ReadRecordWithValidation reads a record starting at the specified
@@ -91,54 +77,33 @@ type Codec interface {
 	WriteRecord(buf []byte, startFileOffset uint32, previousCrc uint32, payload []byte) (recordSize uint32, payloadCrc uint32)
 }
 
-func GetSegmentContext(segmentTxnBasePath string) (codec Codec, segmentTxnFullPath string, segmentExist bool) {
-	segmentTxnFullPath = segmentTxnBasePath + TxnExtensionV2
-	if _, err := os.Stat(segmentTxnFullPath); os.IsNotExist(err) {
-		// fallback to v1 and check again.
-		segmentTxnFullPath = segmentTxnBasePath + TxnExtension
-		// check the v1 file exist?
-		if _, err = os.Stat(segmentTxnFullPath); os.IsNotExist(err) {
-			// go back to v2
-			segmentTxnFullPath = segmentTxnBasePath + TxnExtensionV2
-			return v2, segmentTxnFullPath, false
+// The latest codec
+var latestCodec = v2
+var SupportedCodecs = []Codec{latestCodec, v1} // the latest codec should be always first element
+
+func GetOrCreate(basePath string) (_codec Codec, exist bool) {
+	_codec = latestCodec
+	exist = false
+	fullPath := basePath + _codec.GetTxnExtension()
+	candidateCodecs := SupportedCodecs[1:] // pop the latest version
+	for {
+		if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+			if len(candidateCodecs) == 0 {
+				// complete recursive check, go back to the latest txn extension
+				return latestCodec, false
+			}
+			// fallback to previousVersion and check again.
+			_codec = candidateCodecs[0]
+			// pop
+			candidateCodecs = candidateCodecs[1:]
+			fullPath = basePath + _codec.GetTxnExtension()
+			exist = false
 		} else {
-			return v1, segmentTxnFullPath, true
-		}
-	} else {
-		return v2, segmentTxnFullPath, true
-	}
-}
-
-func ListAllSegments(walPath string) (segments []int64, err error) {
-	dir, err := os.ReadDir(walPath)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, nil
-		}
-		return nil, errors.Wrapf(err, "failed to list files in wal directory %s", walPath)
-	}
-
-	for _, entry := range dir {
-		if matched, _ := filepath.Match("*"+TxnExtension, entry.Name()); matched {
-			var id int64
-			if _, err := fmt.Sscanf(entry.Name(), "%d"+TxnExtension, &id); err != nil {
-				return nil, err
-			}
-
-			segments = append(segments, id)
-		}
-		if matched, _ := filepath.Match("*"+TxnExtensionV2, entry.Name()); matched {
-			var id int64
-			if _, err := fmt.Sscanf(entry.Name(), "%d"+TxnExtensionV2, &id); err != nil {
-				return nil, err
-			}
-
-			segments = append(segments, id)
+			exist = true
+			break
 		}
 	}
-
-	slices.Sort(segments)
-	return segments, nil
+	return _codec, exist
 }
 
 // ReadInt read unsigned int from buf with big endian.

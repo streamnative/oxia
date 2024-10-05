@@ -26,7 +26,7 @@ func TestV2_Codec(t *testing.T) {
 	assert.EqualValues(t, expectedPayloadCrc, payloadCrc)
 	assert.EqualValues(t, recordSize-(v2PayloadSizeLen+v2PreviousCrcLen+v2PayloadCrcLen), payloadSize)
 
-	getPayload, err := v1.ReadRecordWithValidation(buf, 0)
+	getPayload, err := v2.ReadRecordWithValidation(buf, 0)
 	assert.NoError(t, err)
 	assert.EqualValues(t, payload, getPayload)
 }

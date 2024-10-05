@@ -73,12 +73,12 @@ type readonlySegment struct {
 
 func newReadOnlySegment(basePath string, baseOffset int64) (ReadOnlySegment, error) {
 
-	_codec, segmentTxnFullPath, _ := codec.GetSegmentContext(segmentPath(basePath, baseOffset))
+	_codec, _ := codec.GetOrCreate(segmentPath(basePath, baseOffset))
 
 	ms := &readonlySegment{
 		codec:         _codec,
-		txnPath:       segmentTxnFullPath,
-		idxPath:       segmentPath(basePath, baseOffset) + codec.IdxExtension,
+		txnPath:       segmentPath(basePath, baseOffset) + _codec.GetTxnExtension(),
+		idxPath:       segmentPath(basePath, baseOffset) + _codec.GetIdxExtension(),
 		baseOffset:    baseOffset,
 		openTimestamp: time.Now(),
 	}
@@ -197,7 +197,7 @@ func newReadOnlySegmentsGroup(basePath string) (ReadOnlySegmentsGroup, error) {
 		openSegments: newInt64TreeMap[common.RefCount[ReadOnlySegment]](),
 	}
 
-	segments, err := codec.ListAllSegments(basePath)
+	segments, err := ListAllSegments(basePath)
 	if err != nil {
 		return nil, err
 	}

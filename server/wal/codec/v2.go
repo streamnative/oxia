@@ -18,9 +18,26 @@ var _ Codec = V2{}
 const v2PayloadSizeLen uint32 = 4
 const v2PreviousCrcLen uint32 = 4
 const v2PayloadCrcLen uint32 = 4
+const v2TxnExtension = ".txnx"
+
+var v2 = &V2{
+	Metadata{
+		TxnExtension: v2TxnExtension,
+		IdxExtension: v1IdxExtension,
+		HeaderSize:   v2PayloadSizeLen + v2PreviousCrcLen + v2PayloadCrcLen,
+	},
+}
 
 type V2 struct {
 	Metadata
+}
+
+func (v V2) GetIdxExtension() string {
+	return v.IdxExtension
+}
+
+func (v V2) GetTxnExtension() string {
+	return v.TxnExtension
 }
 
 func (v V2) GetHeaderSize() uint32 {

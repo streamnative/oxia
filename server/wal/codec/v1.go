@@ -13,9 +13,27 @@ import (
 var _ Codec = V1{}
 
 const v1PayloadSizeLen uint32 = 4
+const v1TxnExtension = ".txn"
+const v1IdxExtension = ".idx"
+
+var v1 = &V1{
+	Metadata{
+		TxnExtension: v1TxnExtension,
+		IdxExtension: v1IdxExtension,
+		HeaderSize:   v1PayloadSizeLen,
+	},
+}
 
 type V1 struct {
 	Metadata
+}
+
+func (v V1) GetIdxExtension() string {
+	return v.IdxExtension
+}
+
+func (v V1) GetTxnExtension() string {
+	return v.TxnExtension
 }
 
 func (v V1) GetHeaderSize() uint32 {
