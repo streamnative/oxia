@@ -81,6 +81,8 @@ type Codec interface {
 var latestCodec = v2
 var SupportedCodecs = []Codec{latestCodec, v1} // the latest codec should be always first element
 
+// GetOrCreate checks if a file with the specified extension exists at the basePath to support compatible with
+// the old codec versions.
 func GetOrCreate(basePath string) (_codec Codec, exist bool) {
 	_codec = latestCodec
 	exist = false
