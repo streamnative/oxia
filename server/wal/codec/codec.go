@@ -81,14 +81,14 @@ type Codec interface {
 	//
 	// Parameters:
 	// - buf: The buffer where the record will be written.
-	// - startOffset: The offset in the buffer where writing starts.
+	// - startFileOffset: The file offset to start reading from.
 	// - previousCrc: The CRC value of the previous record to maintain consistency.
 	// - payload: The actual data (payload) to write as part of the record.
 	//
 	// Returns:
 	// - recordSize: The total size of the written record, including the header.
 	// - payloadCrc: The CRC value of the written payload.
-	WriteRecord(buf []byte, startOffset uint32, previousCrc uint32, payload []byte) (recordSize uint32, payloadCrc uint32)
+	WriteRecord(buf []byte, startFileOffset uint32, previousCrc uint32, payload []byte) (recordSize uint32, payloadCrc uint32)
 }
 
 func GetSegmentContext(segmentTxnBasePath string) (codec Codec, segmentTxnFullPath string, segmentExist bool) {

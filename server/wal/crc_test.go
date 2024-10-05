@@ -14,6 +14,7 @@
 
 package wal
 
+//
 //func TestSegment(t *testing.T) {
 //	entries := 1000
 //	path := t.TempDir()
@@ -69,7 +70,7 @@ package wal
 //	err = ro.Close()
 //	assert.NoError(t, err)
 //}
-//
+
 //func TestModifiedSegment(t *testing.T) {
 //	entries := 1000
 //	path := t.TempDir()
