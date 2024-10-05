@@ -16,9 +16,11 @@ package codec
 
 import (
 	"encoding/binary"
-	"github.com/streamnative/oxia/server/util/crc"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/server/util/crc"
 )
 
 func TestV2_GetHeaderSize(t *testing.T) {

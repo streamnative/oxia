@@ -15,10 +15,11 @@
 package codec
 
 import (
-	"github.com/stretchr/testify/assert"
 	"os"
 	"path"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestCodec_GetOrCreate(t *testing.T) {
@@ -31,15 +32,18 @@ func TestCodec_GetOrCreate(t *testing.T) {
 	_, err = os.Create(path.Join(baseDir, v2FileName+v2.GetTxnExtension()))
 	assert.NoError(t, err)
 
-	codec, exist := GetOrCreate(path.Join(baseDir, nonExistFileName))
+	codec, exist, err := GetOrCreate(path.Join(baseDir, nonExistFileName))
+	assert.NoError(t, err)
 	assert.EqualValues(t, v2, codec)
 	assert.EqualValues(t, false, exist)
 
-	codec, exist = GetOrCreate(path.Join(baseDir, v1FileName))
+	codec, exist, err = GetOrCreate(path.Join(baseDir, v1FileName))
+	assert.NoError(t, err)
 	assert.EqualValues(t, v1, codec)
 	assert.EqualValues(t, true, exist)
 
-	codec, exist = GetOrCreate(path.Join(baseDir, v2FileName))
+	codec, exist, err = GetOrCreate(path.Join(baseDir, v2FileName))
+	assert.NoError(t, err)
 	assert.EqualValues(t, v2, codec)
 	assert.EqualValues(t, true, exist)
 }

@@ -16,7 +16,9 @@ package codec
 
 import (
 	"encoding/binary"
+
 	"github.com/pkg/errors"
+
 	"github.com/streamnative/oxia/server/util/crc"
 )
 
@@ -59,22 +61,23 @@ func (v V2) GetHeaderSize() uint32 {
 }
 
 func (v V2) GetRecordSize(buf []byte, startFileOffset uint32) (uint32, error) {
-	if payloadSize, _, _, err := v.ReadHeaderWithValidation(buf, startFileOffset); err != nil {
+	var payloadSize uint32
+	var err error
+	if payloadSize, _, _, err = v.ReadHeaderWithValidation(buf, startFileOffset); err != nil {
 		return 0, err
-	} else {
-		return v.HeaderSize + payloadSize, nil
 	}
+	return v.HeaderSize + payloadSize, nil
 }
 
 func (v V2) ReadRecordWithValidation(buf []byte, startFileOffset uint32) (payload []byte, err error) {
-	if payloadSize, _, _, err := v.ReadHeaderWithValidation(buf, startFileOffset); err != nil {
+	var payloadSize uint32
+	if payloadSize, _, _, err = v.ReadHeaderWithValidation(buf, startFileOffset); err != nil {
 		return nil, err
-	} else {
-		payload = make([]byte, payloadSize)
-		payloadStartFileOffset := startFileOffset + v.HeaderSize
-		copy(payload, buf[payloadStartFileOffset:payloadStartFileOffset+payloadSize])
-		return payload, nil
 	}
+	payload = make([]byte, payloadSize)
+	payloadStartFileOffset := startFileOffset + v.HeaderSize
+	copy(payload, buf[payloadStartFileOffset:payloadStartFileOffset+payloadSize])
+	return payload, nil
 }
 
 func (v V2) ReadHeaderWithValidation(buf []byte, startFileOffset uint32) (payloadSize uint32, previousCrc uint32, payloadCrc uint32, err error) {
@@ -118,7 +121,7 @@ func (v V2) ReadHeaderWithValidation(buf []byte, startFileOffset uint32) (payloa
 	return payloadSize, previousCrc, payloadCrc, nil
 }
 
-func (v V2) WriteRecord(buf []byte, startOffset uint32, previousCrc uint32, payload []byte) (recordSize uint32, payloadCrc uint32) {
+func (V2) WriteRecord(buf []byte, startOffset uint32, previousCrc uint32, payload []byte) (recordSize uint32, payloadCrc uint32) {
 	payloadSize := uint32(len(payload))
 
 	var headerOffset uint32

@@ -16,8 +16,9 @@ package codec
 
 import (
 	"encoding/binary"
-	"github.com/pkg/errors"
 	"os"
+
+	"github.com/pkg/errors"
 )
 
 var (
@@ -47,7 +48,7 @@ type Codec interface {
 	GetTxnExtension() string
 
 	// GetRecordSize returns the size of the record in bytes which includes the header.
-	GetRecordSize(buf []byte, startFileOffset uint32) (uint32, error)
+	GetRecordSize(buf []byte, startFileOffset uint32) (payloadSize uint32, err error)
 
 	// ReadRecordWithValidation reads a record starting at the specified
 	// file offset in the buffer. It also validates the record's integrity
@@ -91,35 +92,35 @@ type Codec interface {
 	WriteRecord(buf []byte, startFileOffset uint32, previousCrc uint32, payload []byte) (recordSize uint32, payloadCrc uint32)
 }
 
-// The latest codec
+// The latest codec.
 var latestCodec = v2
 var SupportedCodecs = []Codec{latestCodec, v1} // the latest codec should be always first element
 
 // GetOrCreate checks if a file with the specified extension exists at the basePath to support compatible with
 // the old codec versions.
-func GetOrCreate(basePath string) (_codec Codec, exist bool) {
+func GetOrCreate(basePath string) (_codec Codec, exist bool, err error) {
 	_codec = latestCodec
-	exist = false
 	fullPath := basePath + _codec.GetTxnExtension()
 	candidateCodecs := SupportedCodecs[1:] // pop the latest version
 	for {
-		if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		if _, err := os.Stat(fullPath); err != nil {
+			if !os.IsNotExist(err) {
+				// unexpected behaviour
+				return nil, false, nil
+			}
 			if len(candidateCodecs) == 0 {
 				// complete recursive check, go back to the latest txn extension
-				return latestCodec, false
+				return latestCodec, false, nil
 			}
 			// fallback to previousVersion and check again.
 			_codec = candidateCodecs[0]
 			// pop
 			candidateCodecs = candidateCodecs[1:]
 			fullPath = basePath + _codec.GetTxnExtension()
-			exist = false
-		} else {
-			exist = true
-			break
+			continue
 		}
+		return _codec, true, nil
 	}
-	return _codec, exist
 }
 
 // ReadInt read unsigned int from buf with big endian.

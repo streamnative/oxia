@@ -16,10 +16,11 @@ package wal
 
 import (
 	"encoding/binary"
-	"github.com/streamnative/oxia/server/wal/codec"
 	"os"
 	"sync"
 	"time"
+
+	"github.com/streamnative/oxia/server/wal/codec"
 
 	"github.com/edsrzf/mmap-go"
 	"github.com/pkg/errors"
@@ -69,7 +70,10 @@ func newReadWriteSegment(basePath string, baseOffset int64, segmentSize uint32, 
 		}
 	}
 
-	_codec, segmentExists := codec.GetOrCreate(segmentPath(basePath, baseOffset))
+	_codec, segmentExists, err := codec.GetOrCreate(segmentPath(basePath, baseOffset))
+	if err != nil {
+		return nil, err
+	}
 
 	ms := &readWriteSegment{
 		codec:       _codec,
@@ -131,14 +135,15 @@ func (ms *readWriteSegment) Read(offset int64) ([]byte, error) {
 	// todo: we might need validate if the offset less than base offset
 
 	fileReadOffset := fileOffset(ms.writingIdx, ms.baseOffset, offset)
-	if payload, err := ms.codec.ReadRecordWithValidation(ms.txnMappedFile, fileReadOffset); err != nil {
+	var payload []byte
+	var err error
+	if payload, err = ms.codec.ReadRecordWithValidation(ms.txnMappedFile, fileReadOffset); err != nil {
 		if errors.Is(err, codec.ErrDataCorrupted) {
 			return nil, errors.Wrapf(err, "read record failed. entryOffset: %d", offset)
 		}
 		return nil, err
-	} else {
-		return payload, nil
 	}
+	return payload, nil
 }
 
 func (ms *readWriteSegment) HasSpace(l int) bool {
@@ -169,14 +174,16 @@ func (ms *readWriteSegment) Flush() error {
 	return ms.txnMappedFile.Flush()
 }
 
-//nolint:unparam
 func (ms *readWriteSegment) rebuildIdx() error {
 	// Scan the mapped file and rebuild the index
 
 	entryOffset := ms.baseOffset
 
 	for ms.currentFileOffset < ms.segmentSize {
-		if payloadSize, _, payloadCrc, err := ms.codec.ReadHeaderWithValidation(ms.txnMappedFile, ms.currentFileOffset); err != nil {
+		var payloadSize uint32
+		var payloadCrc uint32
+		var err error
+		if payloadSize, _, payloadCrc, err = ms.codec.ReadHeaderWithValidation(ms.txnMappedFile, ms.currentFileOffset); err != nil {
 			if errors.Is(err, codec.ErrOffsetOutOfBounds) || errors.Is(err, codec.ErrEmptyPayload) {
 				break
 			}
@@ -184,12 +191,11 @@ func (ms *readWriteSegment) rebuildIdx() error {
 				return errors.Wrapf(codec.ErrDataCorrupted, "entryOffset: %d", entryOffset)
 			}
 			return err
-		} else {
-			ms.lastCrc = payloadCrc
-			ms.writingIdx = binary.BigEndian.AppendUint32(ms.writingIdx, ms.currentFileOffset)
-			ms.currentFileOffset += ms.codec.GetHeaderSize() + payloadSize
-			entryOffset++
 		}
+		ms.lastCrc = payloadCrc
+		ms.writingIdx = binary.BigEndian.AppendUint32(ms.writingIdx, ms.currentFileOffset)
+		ms.currentFileOffset += ms.codec.GetHeaderSize() + payloadSize
+		entryOffset++
 	}
 
 	ms.lastOffset = entryOffset - 1

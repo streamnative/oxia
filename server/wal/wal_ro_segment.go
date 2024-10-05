@@ -16,12 +16,13 @@ package wal
 
 import (
 	"fmt"
-	"github.com/streamnative/oxia/server/wal/codec"
 	"io"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/streamnative/oxia/server/wal/codec"
 
 	"github.com/edsrzf/mmap-go"
 	"github.com/pkg/errors"
@@ -72,8 +73,10 @@ type readonlySegment struct {
 }
 
 func newReadOnlySegment(basePath string, baseOffset int64) (ReadOnlySegment, error) {
-
-	_codec, _ := codec.GetOrCreate(segmentPath(basePath, baseOffset))
+	_codec, _, err := codec.GetOrCreate(segmentPath(basePath, baseOffset))
+	if err != nil {
+		return nil, err
+	}
 
 	ms := &readonlySegment{
 		codec:         _codec,
@@ -83,7 +86,6 @@ func newReadOnlySegment(basePath string, baseOffset int64) (ReadOnlySegment, err
 		openTimestamp: time.Now(),
 	}
 
-	var err error
 	if ms.txnFile, err = os.OpenFile(ms.txnPath, os.O_RDONLY, 0); err != nil {
 		return nil, errors.Wrapf(err, "failed to open segment txn file %s", ms.txnPath)
 	}
@@ -127,14 +129,15 @@ func (ms *readonlySegment) Read(offset int64) ([]byte, error) {
 		return nil, codec.ErrOffsetOutOfBounds
 	}
 	fileReadOffset := fileOffset(ms.idxMappedFile, ms.baseOffset, offset)
-	if payload, err := ms.codec.ReadRecordWithValidation(ms.txnMappedFile, fileReadOffset); err != nil {
+	var payload []byte
+	var err error
+	if payload, err = ms.codec.ReadRecordWithValidation(ms.txnMappedFile, fileReadOffset); err != nil {
 		if errors.Is(err, codec.ErrDataCorrupted) {
 			return nil, errors.Wrapf(err, "read record failed. entryOffset: %d", offset)
 		}
 		return nil, err
-	} else {
-		return payload, nil
 	}
+	return payload, nil
 }
 
 func (ms *readonlySegment) Close() error {
@@ -318,7 +321,7 @@ func (r *readOnlySegmentsGroup) PollHighestSegment() (common.RefCount[ReadOnlySe
 	defer r.Unlock()
 
 	if r.allSegments.Empty() {
-		return nil, nil // nolint: nilnil
+		return nil, nil //nolint: nilnil
 	}
 
 	offset, _ := r.allSegments.Max()

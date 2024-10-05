@@ -17,13 +17,15 @@ package wal
 import (
 	"context"
 	"fmt"
-	"github.com/streamnative/oxia/server/wal/codec"
-	"golang.org/x/exp/slices"
 	"os"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"golang.org/x/exp/slices"
+
+	"github.com/streamnative/oxia/server/wal/codec"
 
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
