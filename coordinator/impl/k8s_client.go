@@ -17,6 +17,7 @@ package impl
 import (
 	"context"
 	"encoding/json"
+	pb "google.golang.org/protobuf/proto"
 	"log/slog"
 	"os"
 
@@ -102,6 +103,7 @@ func (c *clientImpl[Resource]) Upsert(namespace, name string, resource *Resource
 
 	result, err := client.Patch(ctx, name, types.ApplyPatchType, desiredBytes, metav1.PatchOptions{
 		FieldManager: fieldManager,
+		Force:        pb.Bool(true),
 	})
 
 	if errors.IsNotFound(err) {
