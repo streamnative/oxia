@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/streamnative/oxia/server/wal/codec"
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -45,11 +47,11 @@ func TestReadOnlySegment(t *testing.T) {
 
 	data, err := ro.Read(100)
 	assert.Nil(t, data)
-	assert.ErrorIs(t, err, ErrOffsetOutOfBounds)
+	assert.ErrorIs(t, err, codec.ErrOffsetOutOfBounds)
 
 	data, err = ro.Read(-1)
 	assert.Nil(t, data)
-	assert.ErrorIs(t, err, ErrOffsetOutOfBounds)
+	assert.ErrorIs(t, err, codec.ErrOffsetOutOfBounds)
 
 	assert.NoError(t, ro.Close())
 }

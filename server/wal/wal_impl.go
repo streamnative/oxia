@@ -23,9 +23,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"golang.org/x/exp/slices"
+
+	"github.com/streamnative/oxia/server/wal/codec"
+
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
-	"golang.org/x/exp/slices"
 	pb "google.golang.org/protobuf/proto"
 
 	"github.com/streamnative/oxia/common"
@@ -579,21 +582,14 @@ func listAllSegments(walPath string) (segments []int64, err error) {
 	}
 
 	for _, entry := range dir {
-		if matched, _ := filepath.Match("*"+TxnExtension, entry.Name()); matched {
-			var id int64
-			if _, err := fmt.Sscanf(entry.Name(), "%d"+TxnExtension, &id); err != nil {
-				return nil, err
+		for _, _codec := range codec.SupportedCodecs {
+			if matched, _ := filepath.Match("*"+_codec.GetTxnExtension(), entry.Name()); matched {
+				var id int64
+				if _, err := fmt.Sscanf(entry.Name(), "%d"+_codec.GetTxnExtension(), &id); err != nil {
+					return nil, err
+				}
+				segments = append(segments, id)
 			}
-
-			segments = append(segments, id)
-		}
-		if matched, _ := filepath.Match("*"+TxnExtensionV2, entry.Name()); matched {
-			var id int64
-			if _, err := fmt.Sscanf(entry.Name(), "%d"+TxnExtensionV2, &id); err != nil {
-				return nil, err
-			}
-
-			segments = append(segments, id)
 		}
 	}
 
