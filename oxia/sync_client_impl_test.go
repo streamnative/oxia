@@ -144,7 +144,7 @@ func TestSyncClientImpl_SecondaryIndexes(t *testing.T) {
 		)
 		assert.Equal(t, primKey, res.Key)
 		assert.Equal(t, val, string(res.Value))
-		i = i + 1
+		i++
 	}
 
 	assert.Equal(t, 4, i)
