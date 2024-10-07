@@ -305,11 +305,11 @@ func (sm *sessionManager) Close() error {
 	return nil
 }
 
-type updateCallback struct{}
+type sessionManagerUpdateOperationCallbackS struct{}
 
-var SessionUpdateOperationCallback kv.UpdateOperationCallback = &updateCallback{}
+var sessionManagerUpdateOperationCallback kv.UpdateOperationCallback = &sessionManagerUpdateOperationCallbackS{}
 
-func (*updateCallback) OnPutWithinSession(batch kv.WriteBatch, request *proto.PutRequest, existingEntry *proto.StorageEntry) (proto.Status, error) {
+func (*sessionManagerUpdateOperationCallbackS) OnPutWithinSession(batch kv.WriteBatch, request *proto.PutRequest, existingEntry *proto.StorageEntry) (proto.Status, error) {
 	var _, closer, err = batch.Get(SessionKey(SessionId(*request.SessionId)))
 	if err != nil {
 		if errors.Is(err, kv.ErrKeyNotFound) {
@@ -333,7 +333,7 @@ func (*updateCallback) OnPutWithinSession(batch kv.WriteBatch, request *proto.Pu
 	return proto.Status_OK, nil
 }
 
-func (c *updateCallback) OnPut(batch kv.WriteBatch, request *proto.PutRequest, existingEntry *proto.StorageEntry) (proto.Status, error) {
+func (c *sessionManagerUpdateOperationCallbackS) OnPut(batch kv.WriteBatch, request *proto.PutRequest, existingEntry *proto.StorageEntry) (proto.Status, error) {
 	switch {
 	// override by normal operation
 	case request.SessionId == nil:
@@ -359,7 +359,7 @@ func deleteShadow(batch kv.WriteBatch, key string, existingEntry *proto.StorageE
 	return proto.Status_OK, nil
 }
 
-func (*updateCallback) OnDelete(batch kv.WriteBatch, key string) error {
+func (*sessionManagerUpdateOperationCallbackS) OnDelete(batch kv.WriteBatch, key string) error {
 	se, err := kv.GetStorageEntry(batch, key)
 	defer se.ReturnToVTPool()
 
@@ -372,13 +372,13 @@ func (*updateCallback) OnDelete(batch kv.WriteBatch, key string) error {
 	return err
 }
 
-func (*updateCallback) OnDeleteRange(batch kv.WriteBatch, keyStartInclusive string, keyEndExclusive string) error {
+func (*sessionManagerUpdateOperationCallbackS) OnDeleteRange(batch kv.WriteBatch, keyStartInclusive string, keyEndExclusive string) error {
 	it, err := batch.RangeScan(keyStartInclusive, keyEndExclusive)
 	if err != nil {
 		return err
 	}
 
-	for it.Next() {
+	for ; it.Valid(); it.Next() {
 		value, err := it.Value()
 		if err != nil {
 			return errors.Wrap(multierr.Combine(err, it.Close()), "oxia db: failed to delete range")

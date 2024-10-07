@@ -499,7 +499,7 @@ func (fc *followerController) applyAllCommittedEntries() {
 
 func (fc *followerController) processCommitRequest(entry *proto.LogEntry, logEntryValue *proto.LogEntryValue) error {
 	for _, br := range logEntryValue.GetRequests().Writes {
-		_, err := fc.db.ProcessWrite(br, entry.Offset, entry.Timestamp, SessionUpdateOperationCallback)
+		_, err := fc.db.ProcessWrite(br, entry.Offset, entry.Timestamp, WrapperUpdateOperationCallback)
 		if err != nil {
 			fc.log.Error(
 				"Error applying committed entry",

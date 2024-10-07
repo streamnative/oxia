@@ -486,12 +486,14 @@ func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *pr
 	}
 
 	// No version conflict
-	if status, err := updateOperationCallback.OnPut(batch, putReq, se); err != nil {
-		se.ReturnToVTPool()
+	status, err := updateOperationCallback.OnPut(batch, putReq, se)
+	if err != nil {
 		return nil, err
-	} else if status != proto.Status_OK {
-		se.ReturnToVTPool()
-		return &proto.PutResponse{Status: status}, nil
+	}
+	if status != proto.Status_OK {
+		return &proto.PutResponse{
+			Status: status,
+		}, nil
 	}
 
 	var versionId int64
@@ -520,6 +522,8 @@ func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *pr
 		se.ClientIdentity = putReq.ClientIdentity
 		se.PartitionKey = putReq.PartitionKey
 	}
+
+	se.SecondaryIndexes = putReq.SecondaryIndexes
 
 	defer se.ReturnToVTPool()
 
@@ -621,6 +625,10 @@ func (*db) applyDeleteRangeNotifications(batch WriteBatch, notifications *notifi
 
 func (d *db) applyDeleteRange(batch WriteBatch, notifications *notifications, delReq *proto.DeleteRangeRequest, updateOperationCallback UpdateOperationCallback) (*proto.DeleteRangeResponse, error) {
 	if err := d.applyDeleteRangeNotifications(batch, notifications, delReq, updateOperationCallback); err != nil {
+		return nil, err
+	}
+
+	if err := updateOperationCallback.OnDeleteRange(batch, delReq.StartInclusive, delReq.EndExclusive); err != nil {
 		return nil, err
 	}
 
