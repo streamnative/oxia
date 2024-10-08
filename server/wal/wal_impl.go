@@ -64,8 +64,9 @@ type wal struct {
 	segmentSize uint32
 	syncData    bool
 
-	currentSegment   ReadWriteSegment
-	readOnlySegments ReadOnlySegmentsGroup
+	currentSegment       ReadWriteSegment
+	readOnlySegments     ReadOnlySegmentsGroup
+	commitOffsetProvider CommitOffsetProvider
 
 	// The last offset appended to the Wal. It might not yet be synced
 	lastAppendedOffset atomic.Int64
@@ -102,11 +103,12 @@ func newWal(namespace string, shard int64, options *FactoryOptions, commitOffset
 
 	labels := metrics.LabelsForShard(namespace, shard)
 	w := &wal{
-		walPath:     walPath(options.BaseWalDir, namespace, shard),
-		namespace:   namespace,
-		shard:       shard,
-		segmentSize: uint32(options.SegmentSize),
-		syncData:    options.SyncData,
+		walPath:              walPath(options.BaseWalDir, namespace, shard),
+		namespace:            namespace,
+		shard:                shard,
+		segmentSize:          uint32(options.SegmentSize),
+		syncData:             options.SyncData,
+		commitOffsetProvider: commitOffsetProvider,
 
 		appendLatency: metrics.NewLatencyHistogram("oxia_server_wal_append_latency",
 			"The time it takes to append entries to the WAL", labels),
@@ -276,7 +278,8 @@ func (t *wal) AppendAsync(entry *proto.LogEntry) error {
 			return err
 		}
 
-		if t.currentSegment, err = newReadWriteSegment(t.walPath, entry.Offset, t.segmentSize, 0); err != nil {
+		if t.currentSegment, err = newReadWriteSegment(t.walPath, entry.Offset, t.segmentSize,
+			0, t.commitOffsetProvider); err != nil {
 			t.writeErrors.Inc()
 			return err
 		}
@@ -317,7 +320,8 @@ func (t *wal) rolloverSegment() error {
 	lastCrc := t.currentSegment.LastCrc()
 	t.readOnlySegments.AddedNewSegment(t.currentSegment.BaseOffset())
 
-	if t.currentSegment, err = newReadWriteSegment(t.walPath, t.lastAppendedOffset.Load()+1, t.segmentSize, lastCrc); err != nil {
+	if t.currentSegment, err = newReadWriteSegment(t.walPath, t.lastAppendedOffset.Load()+1, t.segmentSize,
+		lastCrc, t.commitOffsetProvider); err != nil {
 		return err
 	}
 
@@ -430,7 +434,8 @@ func (t *wal) Clear() error {
 		return errors.Wrap(err, "failed to clear wal")
 	}
 
-	if t.currentSegment, err = newReadWriteSegment(t.walPath, 0, t.segmentSize, 0); err != nil {
+	if t.currentSegment, err = newReadWriteSegment(t.walPath, 0, t.segmentSize,
+		0, t.commitOffsetProvider); err != nil {
 		return err
 	}
 
@@ -500,7 +505,7 @@ func (t *wal) TruncateLog(lastSafeOffset int64) (int64, error) { //nolint:revive
 					return InvalidOffset, err
 				}
 				if t.currentSegment, err = newReadWriteSegment(t.walPath, segment.Get().BaseOffset(),
-					t.segmentSize, segment.Get().LastCrc()); err != nil {
+					t.segmentSize, segment.Get().LastCrc(), t.commitOffsetProvider); err != nil {
 					err = multierr.Append(err, segment.Close())
 					return InvalidOffset, err
 				}
@@ -552,7 +557,8 @@ func (t *wal) recoverWal() error {
 		lastCrc = 0
 	}
 
-	if t.currentSegment, err = newReadWriteSegment(t.walPath, lastSegment, t.segmentSize, lastCrc); err != nil {
+	if t.currentSegment, err = newReadWriteSegment(t.walPath, lastSegment, t.segmentSize,
+		lastCrc, t.commitOffsetProvider); err != nil {
 		return err
 	}
 

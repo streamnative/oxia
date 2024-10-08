@@ -16,6 +16,7 @@ package wal
 
 import (
 	"encoding/binary"
+	"log/slog"
 	"os"
 	"sync"
 	"time"
@@ -62,7 +63,8 @@ type readWriteSegment struct {
 	segmentSize uint32
 }
 
-func newReadWriteSegment(basePath string, baseOffset int64, segmentSize uint32, lastCrc uint32) (ReadWriteSegment, error) {
+func newReadWriteSegment(basePath string, baseOffset int64, segmentSize uint32, lastCrc uint32,
+	commitOffsetProvider CommitOffsetProvider) (ReadWriteSegment, error) {
 	var err error
 	if _, err = os.Stat(basePath); os.IsNotExist(err) {
 		if err = os.MkdirAll(basePath, 0755); err != nil {
@@ -104,8 +106,7 @@ func newReadWriteSegment(basePath string, baseOffset int64, segmentSize uint32, 
 	if ms.txnMappedFile, err = mmap.MapRegion(ms.txnFile, int(segmentSize), mmap.RDWR, 0, 0); err != nil {
 		return nil, errors.Wrapf(err, "failed to map segment file %s", ms.txnPath)
 	}
-
-	if err = ms.rebuildIdx(); err != nil {
+	if err = ms.rebuildIdx(commitOffsetProvider); err != nil {
 		return nil, errors.Wrapf(err, "failed to rebuild index for segment file %s", ms.txnPath)
 	}
 
@@ -174,7 +175,7 @@ func (ms *readWriteSegment) Flush() error {
 	return ms.txnMappedFile.Flush()
 }
 
-func (ms *readWriteSegment) rebuildIdx() error {
+func (ms *readWriteSegment) rebuildIdx(commitOffsetProvider CommitOffsetProvider) error {
 	// Scan the mapped file and rebuild the index
 
 	entryOffset := ms.baseOffset
@@ -184,11 +185,19 @@ func (ms *readWriteSegment) rebuildIdx() error {
 		var payloadCrc uint32
 		var err error
 		if payloadSize, _, payloadCrc, err = ms.codec.ReadHeaderWithValidation(ms.txnMappedFile, ms.currentFileOffset); err != nil {
-			if errors.Is(err, codec.ErrOffsetOutOfBounds) || errors.Is(err, codec.ErrEmptyPayload) {
+			if errors.Is(err, codec.ErrEmptyPayload) {
+				// we might read the end of the segment.
 				break
 			}
-			if errors.Is(err, codec.ErrDataCorrupted) {
-				return errors.Wrapf(codec.ErrDataCorrupted, "entryOffset: %d", entryOffset)
+			// data corruption
+			if errors.Is(err, codec.ErrOffsetOutOfBounds) || errors.Is(err, codec.ErrDataCorrupted) {
+				if commitOffsetProvider != nil && entryOffset > commitOffsetProvider.CommitOffset() {
+					// uncommited data corruption, simply discard it
+					slog.Warn("discard the corrupted uncommited data.",
+						slog.Int64("entryId", entryOffset), slog.Any("error", err))
+					break
+				}
+				return errors.Wrapf(err, "entryOffset: %d", entryOffset)
 			}
 			return err
 		}
