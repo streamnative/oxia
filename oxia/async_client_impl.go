@@ -137,7 +137,7 @@ func (c *clientImpl) Put(key string, value []byte, options ...PutOption) <-chan 
 		SequenceKeysDeltas: opts.sequenceKeysDeltas,
 		PartitionKey:       opts.partitionKey,
 		Callback:           callback,
-		SecondaryIndexes:   opts.secondaryIndexes,
+		SecondaryIndexes:   toSecondaryIndexes(opts.secondaryIndexes),
 	}
 	if opts.ephemeral {
 		putCall.ClientIdentity = &c.options.identity

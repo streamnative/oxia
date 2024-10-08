@@ -97,3 +97,14 @@ func toError(status proto.Status) error {
 		return ErrUnknownStatus
 	}
 }
+
+func toSecondaryIndexes(secondaryIndexes []*secondaryIdxOption) (res []*proto.SecondaryIndex) {
+	for _, si := range secondaryIndexes {
+		res = append(res, &proto.SecondaryIndex{
+			IndexName:    si.indexName,
+			SecondaryKey: si.secondaryKey,
+		})
+	}
+
+	return res
+}

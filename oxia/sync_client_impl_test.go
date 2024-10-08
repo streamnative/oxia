@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"github.com/streamnative/oxia/server"
 	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -116,8 +117,7 @@ func TestSyncClientImpl_SecondaryIndexes(t *testing.T) {
 			slog.String("key", primKey),
 			slog.String("value", val),
 		)
-		_, _, _ = client.Put(ctx, primKey, []byte(val),
-			SecondaryIndexes(map[string]string{"val-idx": val}))
+		_, _, _ = client.Put(ctx, primKey, []byte(val), SecondaryIndex("val-idx", val))
 	}
 
 	// ////////////////////////////////////////////////////////////////////////
@@ -148,6 +148,47 @@ func TestSyncClientImpl_SecondaryIndexes(t *testing.T) {
 	}
 
 	assert.Equal(t, 4, i)
+
+	assert.NoError(t, client.Close())
+	assert.NoError(t, standaloneServer.Close())
+}
+
+func TestSyncClientImpl_SecondaryIndexesRepeated(t *testing.T) {
+	config := server.NewTestConfig(t.TempDir())
+	// Test with multiple shards to ensure correctness across shards
+	config.NumShards = 1
+	standaloneServer, err := server.NewStandalone(config)
+	assert.NoError(t, err)
+
+	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())
+	client, err := NewSyncClient(serviceAddress)
+	assert.NoError(t, err)
+
+	// ////////////////////////////////////////////////////////////////////////
+
+	ctx := context.Background()
+	for i := 0; i < 10; i++ {
+		primKey := fmt.Sprintf("/%c", 'a'+i)
+		val := fmt.Sprintf("%c", 'a'+i)
+		slog.Info("Adding record",
+			slog.String("key", primKey),
+			slog.String("value", val),
+		)
+		_, _, _ = client.Put(ctx, primKey, []byte(val),
+			SecondaryIndex("val-idx", val),
+			SecondaryIndex("val-idx", strings.ToUpper(val)),
+		)
+	}
+
+	// ////////////////////////////////////////////////////////////////////////
+
+	l, err := client.List(ctx, "b", "e", UseIndex("val-idx"))
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"/b", "/c", "/d"}, l)
+
+	l, err = client.List(ctx, "I", "d", UseIndex("val-idx"))
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"/i", "/j", "/a", "/b", "/c"}, l)
 
 	assert.NoError(t, client.Close())
 	assert.NoError(t, standaloneServer.Close())
