@@ -39,7 +39,7 @@ message StorageEntry {
 
   optional string partition_key = 8;
 
-  map<string, string> secondary_indexes = 9;
+  repeated io.streamnative.oxia.proto.SecondaryIndex secondary_indexes = 9;
 }
 
 message SessionMetadata {

@@ -133,8 +133,8 @@ const regex = "^" + secondaryIdxKeyPrefix + "/[^/]+/[^" + secondaryIdxSeparator 
 
 var secondaryIdxFormatRegex = regexp.MustCompile(regex)
 
-func secondaryIndexKey(primaryKey, indexName, secondaryKey string) string {
-	return fmt.Sprintf(secondaryIdxFormat, indexName, secondaryKey, url.PathEscape(primaryKey))
+func secondaryIndexKey(primaryKey string, si *proto.SecondaryIndex) string {
+	return fmt.Sprintf(secondaryIdxFormat, si.IndexName, si.SecondaryKey, url.PathEscape(primaryKey))
 }
 
 func secondaryIndexPrimaryKey(completeKey string) (string, error) {
@@ -148,8 +148,8 @@ func secondaryIndexPrimaryKey(completeKey string) (string, error) {
 
 func deleteSecondaryIndexes(batch kv.WriteBatch, primaryKey string, existingEntry *proto.StorageEntry) error {
 	if len(existingEntry.SecondaryIndexes) > 0 {
-		for idxName, secondaryKey := range existingEntry.SecondaryIndexes {
-			if err := batch.Delete(secondaryIndexKey(primaryKey, idxName, secondaryKey)); err != nil {
+		for _, si := range existingEntry.SecondaryIndexes {
+			if err := batch.Delete(secondaryIndexKey(primaryKey, si)); err != nil {
 				return err
 			}
 		}
@@ -159,10 +159,10 @@ func deleteSecondaryIndexes(batch kv.WriteBatch, primaryKey string, existingEntr
 
 var emptyValue []byte
 
-func writeSecondaryIndexes(batch kv.WriteBatch, primaryKey string, secondaryIndexes map[string]string) error {
+func writeSecondaryIndexes(batch kv.WriteBatch, primaryKey string, secondaryIndexes []*proto.SecondaryIndex) error {
 	if len(secondaryIndexes) > 0 {
-		for idxName, secondaryKey := range secondaryIndexes {
-			if err := batch.Put(secondaryIndexKey(primaryKey, idxName, secondaryKey), emptyValue); err != nil {
+		for _, si := range secondaryIndexes {
+			if err := batch.Put(secondaryIndexKey(primaryKey, si), emptyValue); err != nil {
 				return err
 			}
 		}

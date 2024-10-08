@@ -224,6 +224,11 @@ message ReadResponse {
   repeated GetResponse gets = 1;
 }
 
+message SecondaryIndex {
+  string index_name = 1;
+  string secondary_key = 2;
+}
+
 /**
  * A put request. Persists the specified key and value
  */
@@ -253,7 +258,7 @@ message PutRequest {
   // based on adding the delta to the current highest key with the same prefix
   repeated uint64 sequence_key_delta = 7;
 
-  map<string, string> secondary_indexes = 8;
+  repeated SecondaryIndex secondary_indexes = 8;
 }
 
 /**
