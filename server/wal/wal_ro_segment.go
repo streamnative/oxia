@@ -67,8 +67,7 @@ type readonlySegment struct {
 	txnMappedFile mmap.MMap
 
 	// Index file maps a logical "offset" to a physical file offset within the wal segment
-	idxFile       *os.File
-	idxMappedFile mmap.MMap
+	idx           []byte
 	openTimestamp time.Time
 }
 
@@ -94,18 +93,28 @@ func newReadOnlySegment(basePath string, baseOffset int64) (ReadOnlySegment, err
 		return nil, errors.Wrapf(err, "failed to map segment txn file %s", ms.txnPath)
 	}
 
-	if ms.idxFile, err = os.OpenFile(ms.idxPath, os.O_RDONLY, 0); err != nil {
+	var idFile *os.File
+	if idFile, err = os.OpenFile(ms.idxPath, os.O_RDONLY, 0); err != nil {
 		return nil, errors.Wrapf(err, "failed to open segment index file %s", ms.idxPath)
 	}
-
-	if ms.idxMappedFile, err = mmap.MapRegion(ms.idxFile, -1, mmap.RDONLY, 0, 0); err != nil {
-		return nil, errors.Wrapf(err, "failed to map segment index file %s", ms.idxPath)
+	var indexBuf []byte
+	if indexBuf, err = io.ReadAll(idFile); err != nil {
+		return nil, multierr.Combine(
+			errors.Wrapf(err, "failed to read segment index file %s", ms.idxPath),
+			idFile.Close())
+	}
+	if err = idFile.Close(); err != nil {
+		return nil, errors.Wrapf(err, "failed to close segment index file %s", ms.idxPath)
+	}
+	if ms.idx, err = ms.codec.ReadIndex(indexBuf); err != nil {
+		// todo: handle data corruption
+		return nil, errors.Wrapf(err, "failed to decode segment index file %s", ms.idxPath)
 	}
 
-	ms.lastOffset = ms.baseOffset + int64(len(ms.idxMappedFile)/4-1)
+	ms.lastOffset = ms.baseOffset + int64(len(ms.idx)/4-1)
 
 	// recover the last crc
-	fo := fileOffset(ms.idxMappedFile, ms.baseOffset, ms.lastOffset)
+	fo := fileOffset(ms.idx, ms.baseOffset, ms.lastOffset)
 	if _, _, ms.lastCrc, err = ms.codec.ReadHeaderWithValidation(ms.txnMappedFile, fo); err != nil {
 		return nil, err
 	}
@@ -128,7 +137,7 @@ func (ms *readonlySegment) Read(offset int64) ([]byte, error) {
 	if offset < ms.baseOffset || offset > ms.lastOffset {
 		return nil, codec.ErrOffsetOutOfBounds
 	}
-	fileReadOffset := fileOffset(ms.idxMappedFile, ms.baseOffset, offset)
+	fileReadOffset := fileOffset(ms.idx, ms.baseOffset, offset)
 	var payload []byte
 	var err error
 	if payload, err = ms.codec.ReadRecordWithValidation(ms.txnMappedFile, fileReadOffset); err != nil {
@@ -149,8 +158,6 @@ func (ms *readonlySegment) Close() error {
 	return multierr.Combine(
 		ms.txnMappedFile.Unmap(),
 		ms.txnFile.Close(),
-		ms.idxMappedFile.Unmap(),
-		ms.idxFile.Close(),
 	)
 }
 
