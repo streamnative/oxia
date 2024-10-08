@@ -196,9 +196,8 @@ func (ms *readWriteSegment) rebuildIdx(commitOffsetProvider CommitOffsetProvider
 					slog.Warn("discard the corrupted uncommited data.",
 						slog.Int64("entryId", entryOffset), slog.Any("error", err))
 					break
-				} else {
-					return errors.Wrapf(err, "entryOffset: %d", entryOffset)
 				}
+				return errors.Wrapf(err, "entryOffset: %d", entryOffset)
 			}
 			return err
 		}

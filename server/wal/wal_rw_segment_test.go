@@ -205,7 +205,7 @@ func TestReadWriteSegment_BrokenCommittedData_ErrOffsetOutOfBounds(t *testing.T)
 	rwSegment.Close()
 
 	// recover the rw segment
-	rw, err = newReadWriteSegment(dir, 0, 1024, 0, commitOffsetProvider)
+	_, err = newReadWriteSegment(dir, 0, 1024, 0, commitOffsetProvider)
 	assert.ErrorIs(t, err, codec.ErrOffsetOutOfBounds)
 }
 
@@ -292,6 +292,6 @@ func TestReadWriteSegment_BrokenCommittedData_ErrDataCorrupted(t *testing.T) {
 	rwSegment.Close()
 
 	// recover the rw segment
-	rw, err = newReadWriteSegment(dir, 0, 1024, 0, commitOffsetProvider)
+	_, err = newReadWriteSegment(dir, 0, 1024, 0, commitOffsetProvider)
 	assert.ErrorIs(t, err, codec.ErrDataCorrupted)
 }
