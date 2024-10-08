@@ -90,6 +90,10 @@ type Codec interface {
 	// - recordSize: The total size of the written record, including the header.
 	// - payloadCrc: The CRC value of the written payload.
 	WriteRecord(buf []byte, startFileOffset uint32, previousCrc uint32, payload []byte) (recordSize uint32, payloadCrc uint32)
+
+	ReadIndex(buf []byte) ([]byte, error)
+
+	WriteIndex(file *os.File, index []byte) error
 }
 
 // The latest codec.

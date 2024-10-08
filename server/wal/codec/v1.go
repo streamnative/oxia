@@ -16,8 +16,8 @@ package codec
 
 import (
 	"encoding/binary"
-
 	"github.com/pkg/errors"
+	"os"
 )
 
 // +--------------+--------------+
@@ -106,4 +106,13 @@ func (V1) WriteRecord(buf []byte, startOffset uint32, _ uint32, payload []byte) 
 
 	copy(buf[startOffset+headerOffset:], payload)
 	return headerOffset + payloadSize, payloadCrc
+}
+
+func (V1) WriteIndex(file *os.File, index []byte) error {
+	_, err := file.Write(index)
+	return err
+}
+
+func (V1) ReadIndex(buf []byte) ([]byte, error) {
+	return buf, nil
 }

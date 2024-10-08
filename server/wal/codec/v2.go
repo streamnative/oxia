@@ -16,6 +16,7 @@ package codec
 
 import (
 	"encoding/binary"
+	"os"
 
 	"github.com/pkg/errors"
 
@@ -34,12 +35,16 @@ var _ Codec = V2{}
 const v2PayloadSizeLen uint32 = 4
 const v2PreviousCrcLen uint32 = 4
 const v2PayloadCrcLen uint32 = 4
+
+const v2IndexCrcLen uint32 = 4
+
 const v2TxnExtension = ".txnx"
+const v2IdxExtension = ".idxx"
 
 var v2 = &V2{
 	Metadata{
 		TxnExtension: v2TxnExtension,
-		IdxExtension: v1IdxExtension,
+		IdxExtension: v2IdxExtension,
 		HeaderSize:   v2PayloadSizeLen + v2PreviousCrcLen + v2PayloadCrcLen,
 	},
 }
@@ -136,4 +141,25 @@ func (V2) WriteRecord(buf []byte, startOffset uint32, previousCrc uint32, payloa
 
 	copy(buf[startOffset+headerOffset:], payload)
 	return headerOffset + payloadSize, payloadCrc
+}
+
+func (V2) WriteIndex(file *os.File, index []byte) error {
+	buf := make([]byte, uint32(len(index))+v2IndexCrcLen)
+	indexCrc := crc.Checksum(0).Update(index).Value()
+	binary.BigEndian.PutUint32(buf[0:], indexCrc)
+	copy(buf[v2IndexCrcLen:], index)
+	_, err := file.Write(buf)
+	return err
+}
+
+func (V2) ReadIndex(buf []byte) ([]byte, error) {
+	expectedCrc := ReadInt(buf, 0)
+	actualCrc := crc.Checksum(0).Update(buf[v2IndexCrcLen:]).Value()
+	if expectedCrc != actualCrc {
+		return nil, errors.Wrapf(ErrDataCorrupted,
+			" expected crc: %d; actual crc: %d", expectedCrc, actualCrc)
+	}
+	index := make([]byte, uint32(len(buf))-v2IndexCrcLen)
+	copy(index, buf[v2IndexCrcLen:])
+	return index, nil
 }

@@ -244,7 +244,7 @@ func (ms *readWriteSegment) writeIndex() error {
 		return errors.Wrapf(err, "failed to open index file %s", ms.idxPath)
 	}
 
-	if _, err = idxFile.Write(ms.writingIdx); err != nil {
+	if err = ms.codec.WriteIndex(idxFile, ms.writingIdx); err != nil {
 		return errors.Wrapf(err, "failed write index file %s", ms.idxPath)
 	}
 
