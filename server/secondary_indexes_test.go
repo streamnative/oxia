@@ -44,11 +44,11 @@ func TestSecondaryIndices_List(t *testing.T) {
 	_, err := lc.Write(context.Background(), &proto.WriteRequest{
 		Shard: &shard,
 		Puts: []*proto.PutRequest{
-			{Key: "/a", Value: []byte("0"), SecondaryIndexes: map[string]string{"my-idx": "0"}},
-			{Key: "/b", Value: []byte("1"), SecondaryIndexes: map[string]string{"my-idx": "1"}},
-			{Key: "/c", Value: []byte("2"), SecondaryIndexes: map[string]string{"my-idx": "2"}},
-			{Key: "/d", Value: []byte("3"), SecondaryIndexes: map[string]string{"my-idx": "3"}},
-			{Key: "/e", Value: []byte("4"), SecondaryIndexes: map[string]string{"my-idx": "4"}},
+			{Key: "/a", Value: []byte("0"), SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "my-idx", SecondaryKey: "0"}}},
+			{Key: "/b", Value: []byte("1"), SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "my-idx", SecondaryKey: "1"}}},
+			{Key: "/c", Value: []byte("2"), SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "my-idx", SecondaryKey: "2"}}},
+			{Key: "/d", Value: []byte("3"), SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "my-idx", SecondaryKey: "3"}}},
+			{Key: "/e", Value: []byte("4"), SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "my-idx", SecondaryKey: "4"}}},
 		},
 	})
 	assert.NoError(t, err)
@@ -149,11 +149,11 @@ func TestSecondaryIndices_RangeScan(t *testing.T) {
 	_, err := lc.Write(context.Background(), &proto.WriteRequest{
 		Shard: &shard,
 		Puts: []*proto.PutRequest{
-			{Key: "/a", Value: []byte("0"), SecondaryIndexes: map[string]string{"my-idx": "0"}},
-			{Key: "/b", Value: []byte("1"), SecondaryIndexes: map[string]string{"my-idx": "1"}},
-			{Key: "/c", Value: []byte("2"), SecondaryIndexes: map[string]string{"my-idx": "2"}},
-			{Key: "/d", Value: []byte("3"), SecondaryIndexes: map[string]string{"my-idx": "3"}},
-			{Key: "/e", Value: []byte("4"), SecondaryIndexes: map[string]string{"my-idx": "4"}},
+			{Key: "/a", Value: []byte("0"), SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "my-idx", SecondaryKey: "0"}}},
+			{Key: "/b", Value: []byte("1"), SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "my-idx", SecondaryKey: "1"}}},
+			{Key: "/c", Value: []byte("2"), SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "my-idx", SecondaryKey: "2"}}},
+			{Key: "/d", Value: []byte("3"), SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "my-idx", SecondaryKey: "3"}}},
+			{Key: "/e", Value: []byte("4"), SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "my-idx", SecondaryKey: "4"}}},
 		},
 	})
 	assert.NoError(t, err)
@@ -243,6 +243,138 @@ func TestSecondaryIndices_RangeScan(t *testing.T) {
 	assert.NoError(t, <-errCh)
 
 	cancel()
+	assert.NoError(t, lc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
+func TestSecondaryIndices_MultipleKeysForSameIdx(t *testing.T) {
+	var shard int64 = 1
+
+	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
+	walFactory := newTestWalFactory(t)
+
+	lc, _ := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
+	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
+		Shard:             shard,
+		Term:              1,
+		ReplicationFactor: 1,
+		FollowerMaps:      nil,
+	})
+
+	_, err := lc.Write(context.Background(), &proto.WriteRequest{
+		Shard: &shard,
+		Puts: []*proto.PutRequest{
+			{Key: "/a", Value: []byte("0"), SecondaryIndexes: []*proto.SecondaryIndex{
+				{IndexName: "idx", SecondaryKey: "a"},
+				{IndexName: "idx", SecondaryKey: "A"},
+			}},
+			{Key: "/b", Value: []byte("0"), SecondaryIndexes: []*proto.SecondaryIndex{
+				{IndexName: "idx", SecondaryKey: "b"},
+				{IndexName: "idx", SecondaryKey: "B"},
+			}},
+			{Key: "/c", Value: []byte("0"), SecondaryIndexes: []*proto.SecondaryIndex{
+				{IndexName: "idx", SecondaryKey: "c"},
+				{IndexName: "idx", SecondaryKey: "C"},
+			}},
+			{Key: "/d", Value: []byte("0"), SecondaryIndexes: []*proto.SecondaryIndex{
+				{IndexName: "idx", SecondaryKey: "d"},
+				{IndexName: "idx", SecondaryKey: "D"},
+			}},
+			{Key: "/e", Value: []byte("0"), SecondaryIndexes: []*proto.SecondaryIndex{
+				{IndexName: "idx", SecondaryKey: "e"},
+				{IndexName: "idx", SecondaryKey: "E"},
+			}},
+		},
+	})
+	assert.NoError(t, err)
+
+	strCh, err := lc.List(context.Background(), &proto.ListRequest{
+		Shard:              &shard,
+		StartInclusive:     "b",
+		EndExclusive:       "d",
+		SecondaryIndexName: pb.String("idx"),
+	})
+	assert.NoError(t, err)
+
+	k := <-strCh
+	assert.Equal(t, "/b", k)
+	k = <-strCh
+	assert.Equal(t, "/c", k)
+	assert.Empty(t, strCh)
+
+	// using alternate values on same index
+	strCh, err = lc.List(context.Background(), &proto.ListRequest{
+		Shard:              &shard,
+		StartInclusive:     "B",
+		EndExclusive:       "D",
+		SecondaryIndexName: pb.String("idx"),
+	})
+	assert.NoError(t, err)
+
+	k = <-strCh
+	assert.Equal(t, "/b", k)
+	k = <-strCh
+	assert.Equal(t, "/c", k)
+	assert.Empty(t, strCh)
+
+	// Repeated primary keys when multiple indexes
+	strCh, err = lc.List(context.Background(), &proto.ListRequest{
+		Shard:              &shard,
+		StartInclusive:     "A",
+		EndExclusive:       "z",
+		SecondaryIndexName: pb.String("idx"),
+	})
+	assert.NoError(t, err)
+
+	k = <-strCh
+	assert.Equal(t, "/a", k)
+	k = <-strCh
+	assert.Equal(t, "/b", k)
+	k = <-strCh
+	assert.Equal(t, "/c", k)
+	k = <-strCh
+	assert.Equal(t, "/d", k)
+	k = <-strCh
+	assert.Equal(t, "/e", k)
+	k = <-strCh
+	assert.Equal(t, "/a", k)
+	k = <-strCh
+	assert.Equal(t, "/b", k)
+	k = <-strCh
+	assert.Equal(t, "/c", k)
+	k = <-strCh
+	assert.Equal(t, "/d", k)
+	k = <-strCh
+	assert.Equal(t, "/e", k)
+	assert.Empty(t, strCh)
+
+	// Delete
+	_, err = lc.Write(context.Background(), &proto.WriteRequest{
+		Shard:   &shard,
+		Deletes: []*proto.DeleteRequest{{Key: "/b"}},
+	})
+	assert.NoError(t, err)
+
+	strCh, err = lc.List(context.Background(), &proto.ListRequest{
+		Shard:              &shard,
+		StartInclusive:     "a",
+		EndExclusive:       "z",
+		SecondaryIndexName: pb.String("idx"),
+	})
+	assert.NoError(t, err)
+	k = <-strCh
+	assert.Equal(t, "/a", k)
+	k = <-strCh
+	assert.Equal(t, "/c", k)
+	k = <-strCh
+	assert.Equal(t, "/d", k)
+	k = <-strCh
+	assert.Equal(t, "/e", k)
+
+	assert.Empty(t, strCh)
+
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())
 	assert.NoError(t, walFactory.Close())
