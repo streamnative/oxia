@@ -16,6 +16,10 @@ package oxia
 
 import (
 	"context"
+	"fmt"
+	"github.com/streamnative/oxia/server"
+	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -90,4 +94,102 @@ func assertCancellable(t *testing.T, operationFunc func(context.Context) error) 
 	cancel()
 
 	assert.ErrorIs(t, <-errCh, context.Canceled)
+}
+
+func TestSyncClientImpl_SecondaryIndexes(t *testing.T) {
+	config := server.NewTestConfig(t.TempDir())
+	// Test with multiple shards to ensure correctness across shards
+	config.NumShards = 1
+	standaloneServer, err := server.NewStandalone(config)
+	assert.NoError(t, err)
+
+	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())
+	client, err := NewSyncClient(serviceAddress)
+	assert.NoError(t, err)
+
+	// ////////////////////////////////////////////////////////////////////////
+
+	ctx := context.Background()
+	for i := 0; i < 10; i++ {
+		primKey := fmt.Sprintf("%c", 'a'+i)
+		val := fmt.Sprintf("%d", i)
+		slog.Info("Adding record",
+			slog.String("key", primKey),
+			slog.String("value", val),
+		)
+		_, _, _ = client.Put(ctx, primKey, []byte(val), SecondaryIndex("val-idx", val))
+	}
+
+	// ////////////////////////////////////////////////////////////////////////
+
+	l, err := client.List(ctx, "1", "4", UseIndex("val-idx"))
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"b", "c", "d"}, l)
+
+	// ////////////////////////////////////////////////////////////////////////
+
+	resCh := client.RangeScan(ctx, "1", "4", UseIndex("val-idx"))
+	i := 1
+	for res := range resCh {
+		assert.NoError(t, res.Err)
+
+		primKey := fmt.Sprintf("%c", 'a'+i)
+		val := fmt.Sprintf("%d", i)
+
+		slog.Info("Expected record",
+			slog.String("expected-key", primKey),
+			slog.String("expected-value", val),
+			slog.String("received-key", res.Key),
+			slog.String("received-value", string(res.Value)),
+		)
+		assert.Equal(t, primKey, res.Key)
+		assert.Equal(t, val, string(res.Value))
+		i++
+	}
+
+	assert.Equal(t, 4, i)
+
+	assert.NoError(t, client.Close())
+	assert.NoError(t, standaloneServer.Close())
+}
+
+func TestSyncClientImpl_SecondaryIndexesRepeated(t *testing.T) {
+	config := server.NewTestConfig(t.TempDir())
+	// Test with multiple shards to ensure correctness across shards
+	config.NumShards = 1
+	standaloneServer, err := server.NewStandalone(config)
+	assert.NoError(t, err)
+
+	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())
+	client, err := NewSyncClient(serviceAddress)
+	assert.NoError(t, err)
+
+	// ////////////////////////////////////////////////////////////////////////
+
+	ctx := context.Background()
+	for i := 0; i < 10; i++ {
+		primKey := fmt.Sprintf("/%c", 'a'+i)
+		val := fmt.Sprintf("%c", 'a'+i)
+		slog.Info("Adding record",
+			slog.String("key", primKey),
+			slog.String("value", val),
+		)
+		_, _, _ = client.Put(ctx, primKey, []byte(val),
+			SecondaryIndex("val-idx", val),
+			SecondaryIndex("val-idx", strings.ToUpper(val)),
+		)
+	}
+
+	// ////////////////////////////////////////////////////////////////////////
+
+	l, err := client.List(ctx, "b", "e", UseIndex("val-idx"))
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"/b", "/c", "/d"}, l)
+
+	l, err = client.List(ctx, "I", "d", UseIndex("val-idx"))
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"/i", "/j", "/a", "/b", "/c"}, l)
+
+	assert.NoError(t, client.Close())
+	assert.NoError(t, standaloneServer.Close())
 }

@@ -21,6 +21,7 @@ type putOptions struct {
 	expectedVersion    *int64
 	ephemeral          bool
 	sequenceKeysDeltas []uint64
+	secondaryIndexes   []*secondaryIdxOption
 }
 
 // PutOption represents an option for the [SyncClient.Put] operation.
@@ -94,4 +95,23 @@ func (s *sequenceKeysDeltas) applyPut(opts *putOptions) {
 // provided.
 func SequenceKeysDeltas(delta ...uint64) PutOption {
 	return &sequenceKeysDeltas{delta}
+}
+
+type secondaryIdxOption struct {
+	indexName    string
+	secondaryKey string
+}
+
+func (s *secondaryIdxOption) applyPut(opts *putOptions) {
+	opts.secondaryIndexes = append(opts.secondaryIndexes, s)
+}
+
+// SecondaryIndex let the users specify additional keys to index the record
+// Index names are arbitrary strings and can be used in `List` and
+// `RangeScan` requests.
+// Secondary keys are not required to be unique.
+// Multiple secondary indexes can be passed on the same record, even
+// reusing multiple times the same indexName.
+func SecondaryIndex(indexName string, secondaryKey string) PutOption {
+	return &secondaryIdxOption{indexName, secondaryKey}
 }
