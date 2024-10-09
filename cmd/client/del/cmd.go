@@ -16,6 +16,7 @@ package del
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/spf13/cobra"
 
@@ -45,7 +46,6 @@ var Cmd = &cobra.Command{
 	Use:          "delete [flags] KEY",
 	Short:        "Delete one record",
 	Long:         `Delete the record with the given key, if they exists. If an expected version is provided, the delete will only take place if it matches the version of the current record on the server`,
-	Args:         cobra.ExactArgs(1),
 	RunE:         exec,
 	SilenceUsage: true,
 }
@@ -56,7 +56,7 @@ func exec(_ *cobra.Command, args []string) error {
 		return err
 	}
 
-	key := args[0]
+	keys := args
 
 	var options []oxia.DeleteOption
 	if Config.expectedVersion >= 0 {
@@ -66,5 +66,12 @@ func exec(_ *cobra.Command, args []string) error {
 		options = append(options, oxia.PartitionKey(Config.partitionKey))
 	}
 
-	return client.Delete(context.Background(), key, options...)
+	for _, key := range keys {
+		if err := client.Delete(context.Background(), key, options...); err != nil {
+			slog.Warn("delete key got an error", slog.String("key", key), slog.Any("error", err))
+			continue
+		}
+		slog.Info("deleted key", slog.String("key", key))
+	}
+	return nil
 }
