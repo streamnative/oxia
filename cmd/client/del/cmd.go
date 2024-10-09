@@ -68,6 +68,9 @@ func exec(_ *cobra.Command, args []string) error {
 
 	for _, key := range keys {
 		if err := client.Delete(context.Background(), key, options...); err != nil {
+			if len(keys) == 1 {
+				return err
+			}
 			slog.Warn("delete key got an error", slog.String("key", key), slog.Any("error", err))
 			continue
 		}
