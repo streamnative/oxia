@@ -17,6 +17,7 @@ package wal
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -107,8 +108,21 @@ func newReadOnlySegment(basePath string, baseOffset int64) (ReadOnlySegment, err
 		return nil, errors.Wrapf(err, "failed to close segment index file %s", ms.idxPath)
 	}
 	if ms.idx, err = ms.codec.ReadIndex(indexBuf); err != nil {
-		// todo: handle data corruption
-		return nil, errors.Wrapf(err, "failed to decode segment index file %s", ms.idxPath)
+		if !errors.Is(err, codec.ErrDataCorrupted) {
+			return nil, errors.Wrapf(err, "failed to decode segment index file %s", ms.idxPath)
+		}
+		slog.Warn("The segment index file is corrupted and the index is being rebuilt.", slog.String("path", ms.idxPath))
+		// recover from txn
+		if ms.idx, _, _, _, err = ms.codec.RecoverIndex(ms.txnMappedFile, 0,
+			ms.baseOffset, nil); err != nil {
+			slog.Error("The segment index file rebuild failed.", slog.String("path", ms.idxPath))
+			return nil, errors.Wrapf(err, "failed to rebuild segment index file %s", ms.idxPath)
+		}
+		slog.Info("The segment index file has been rebuilt.", slog.String("path", ms.idxPath))
+		if err := WriteIndex(ms.idxPath, ms.idx, ms.codec); err != nil {
+			slog.Warn("write recovered segment index failed. it can continue work but will retry writing after restart.",
+				slog.String("path", ms.idxPath))
+		}
 	}
 
 	ms.lastOffset = ms.baseOffset + int64(len(ms.idx)/4-1)

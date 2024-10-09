@@ -17,6 +17,7 @@ package codec
 import (
 	"encoding/binary"
 	"github.com/pkg/errors"
+	"github.com/streamnative/oxia/server/wal"
 	"os"
 )
 
@@ -115,4 +116,29 @@ func (V1) WriteIndex(file *os.File, index []byte) error {
 
 func (V1) ReadIndex(buf []byte) ([]byte, error) {
 	return buf, nil
+}
+
+func (v V1) RecoverIndex(buf []byte, startFileOffset uint32, baseEntryOffset int64,
+	_ wal.CommitOffsetProvider) (index []byte, lastCrc uint32, newFileOffset uint32, newEntryOffset int64, err error) {
+	maxSize := uint32(len(buf))
+	newFileOffset = startFileOffset
+	index = BorrowEmptyIndexBuf()
+	newEntryOffset = baseEntryOffset
+
+	for newFileOffset < maxSize {
+		var payloadSize uint32
+		var err error
+		if payloadSize, _, _, err = v.ReadHeaderWithValidation(buf, newFileOffset); err != nil {
+			if errors.Is(err, ErrEmptyPayload) || errors.Is(err, ErrOffsetOutOfBounds) {
+				// we might read the end of the segment.
+				break
+			}
+			return nil, 0, 0, 0, err
+		}
+		index = binary.BigEndian.AppendUint32(index, newFileOffset)
+		newFileOffset += v.GetHeaderSize() + payloadSize
+		newEntryOffset++
+	}
+
+	return index, lastCrc, newFileOffset, newEntryOffset, nil
 }

@@ -16,7 +16,6 @@ package wal
 
 import (
 	"encoding/binary"
-	"log/slog"
 	"os"
 	"sync"
 	"time"
@@ -27,10 +26,6 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 )
-
-var bufferPool = sync.Pool{}
-
-const initialIndexBufferCapacity = 16 * 1024
 
 type ReadWriteSegment interface {
 	ReadOnlySegment
@@ -86,13 +81,6 @@ func newReadWriteSegment(basePath string, baseOffset int64, segmentSize uint32, 
 		lastCrc:     lastCrc,
 	}
 
-	if pooledBuffer, ok := bufferPool.Get().(*[]byte); ok {
-		ms.writingIdx = (*pooledBuffer)[:0]
-	} else {
-		// Start with empty slice, though with some initial capacity
-		ms.writingIdx = make([]byte, 0, initialIndexBufferCapacity)
-	}
-
 	if ms.txnFile, err = os.OpenFile(ms.txnPath, os.O_CREATE|os.O_RDWR, 0644); err != nil {
 		return nil, errors.Wrapf(err, "failed to open segment file %s", ms.txnPath)
 	}
@@ -106,10 +94,11 @@ func newReadWriteSegment(basePath string, baseOffset int64, segmentSize uint32, 
 	if ms.txnMappedFile, err = mmap.MapRegion(ms.txnFile, int(segmentSize), mmap.RDWR, 0, 0); err != nil {
 		return nil, errors.Wrapf(err, "failed to map segment file %s", ms.txnPath)
 	}
-	if err = ms.rebuildIdx(commitOffsetProvider); err != nil {
+
+	if ms.writingIdx, ms.lastCrc, ms.currentFileOffset, ms.lastOffset, err = ms.codec.RecoverIndex(ms.txnMappedFile,
+		ms.currentFileOffset, ms.baseOffset, commitOffsetProvider); err != nil {
 		return nil, errors.Wrapf(err, "failed to rebuild index for segment file %s", ms.txnPath)
 	}
-
 	return ms, nil
 }
 
@@ -175,42 +164,6 @@ func (ms *readWriteSegment) Flush() error {
 	return ms.txnMappedFile.Flush()
 }
 
-func (ms *readWriteSegment) rebuildIdx(commitOffsetProvider CommitOffsetProvider) error {
-	// Scan the mapped file and rebuild the index
-
-	entryOffset := ms.baseOffset
-
-	for ms.currentFileOffset < ms.segmentSize {
-		var payloadSize uint32
-		var payloadCrc uint32
-		var err error
-		if payloadSize, _, payloadCrc, err = ms.codec.ReadHeaderWithValidation(ms.txnMappedFile, ms.currentFileOffset); err != nil {
-			if errors.Is(err, codec.ErrEmptyPayload) {
-				// we might read the end of the segment.
-				break
-			}
-			// data corruption
-			if errors.Is(err, codec.ErrOffsetOutOfBounds) || errors.Is(err, codec.ErrDataCorrupted) {
-				if commitOffsetProvider != nil && entryOffset > commitOffsetProvider.CommitOffset() {
-					// uncommited data corruption, simply discard it
-					slog.Warn("discard the corrupted uncommited data.",
-						slog.Int64("entryId", entryOffset), slog.Any("error", err))
-					break
-				}
-				return errors.Wrapf(err, "entryOffset: %d", entryOffset)
-			}
-			return err
-		}
-		ms.lastCrc = payloadCrc
-		ms.writingIdx = binary.BigEndian.AppendUint32(ms.writingIdx, ms.currentFileOffset)
-		ms.currentFileOffset += ms.codec.GetHeaderSize() + payloadSize
-		entryOffset++
-	}
-
-	ms.lastOffset = entryOffset - 1
-	return nil
-}
-
 func (*readWriteSegment) OpenTimestamp() time.Time {
 	return time.Now()
 }
@@ -222,11 +175,10 @@ func (ms *readWriteSegment) Close() error {
 	err := multierr.Combine(
 		ms.txnMappedFile.Unmap(),
 		ms.txnFile.Close(),
-
 		// Write index file
-		ms.writeIndex(),
+		WriteIndex(ms.idxPath, ms.writingIdx, ms.codec),
 	)
-	bufferPool.Put(&ms.writingIdx)
+	codec.ReturnIndexBuf(&ms.writingIdx)
 	return err
 }
 
@@ -236,19 +188,6 @@ func (ms *readWriteSegment) Delete() error {
 		os.Remove(ms.txnPath),
 		os.Remove(ms.idxPath),
 	)
-}
-
-func (ms *readWriteSegment) writeIndex() error {
-	idxFile, err := os.OpenFile(ms.idxPath, os.O_CREATE|os.O_RDWR, 0644)
-	if err != nil {
-		return errors.Wrapf(err, "failed to open index file %s", ms.idxPath)
-	}
-
-	if err = ms.codec.WriteIndex(idxFile, ms.writingIdx); err != nil {
-		return errors.Wrapf(err, "failed write index file %s", ms.idxPath)
-	}
-
-	return idxFile.Close()
 }
 
 func (ms *readWriteSegment) Truncate(lastSafeOffset int64) error {

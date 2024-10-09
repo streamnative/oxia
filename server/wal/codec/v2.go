@@ -16,6 +16,8 @@ package codec
 
 import (
 	"encoding/binary"
+	"github.com/streamnative/oxia/server/wal"
+	"log/slog"
 	"os"
 
 	"github.com/pkg/errors"
@@ -162,4 +164,42 @@ func (V2) ReadIndex(buf []byte) ([]byte, error) {
 	index := make([]byte, uint32(len(buf))-v2IndexCrcLen)
 	copy(index, buf[v2IndexCrcLen:])
 	return index, nil
+}
+
+func (v V2) RecoverIndex(buf []byte, startFileOffset uint32, baseEntryOffset int64,
+	commitOffsetProvider wal.CommitOffsetProvider) (index []byte, lastCrc uint32,
+	newFileOffset uint32, newEntryOffset int64, err error) {
+	maxSize := uint32(len(buf))
+	newFileOffset = startFileOffset
+	newEntryOffset = baseEntryOffset
+
+	index = BorrowEmptyIndexBuf()
+
+	for newFileOffset < maxSize {
+		var payloadSize uint32
+		var payloadCrc uint32
+		var err error
+		if payloadSize, _, payloadCrc, err = v.ReadHeaderWithValidation(buf, newFileOffset); err != nil {
+			if errors.Is(err, ErrEmptyPayload) {
+				// we might read the end of the segment.
+				break
+			}
+			// data corruption
+			if errors.Is(err, ErrOffsetOutOfBounds) || errors.Is(err, ErrDataCorrupted) {
+				if commitOffsetProvider != nil && newEntryOffset > commitOffsetProvider.CommitOffset() {
+					// uncommited data corruption, simply discard it
+					slog.Warn("discard the corrupted uncommited data.",
+						slog.Int64("entryId", newEntryOffset), slog.Any("error", err))
+					break
+				}
+				return nil, 0, 0, 0, errors.Wrapf(err, "entryOffset: %d", newEntryOffset)
+			}
+			return nil, 0, 0, 0, err
+		}
+		lastCrc = payloadCrc
+		index = binary.BigEndian.AppendUint32(index, newFileOffset)
+		newFileOffset += v.GetHeaderSize() + payloadSize
+		newEntryOffset++
+	}
+	return index, lastCrc, newFileOffset, newEntryOffset, nil
 }

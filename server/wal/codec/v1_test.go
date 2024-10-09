@@ -37,3 +37,15 @@ func TestV1_Codec(t *testing.T) {
 	assert.NoError(t, err)
 	assert.EqualValues(t, payload, getPayload)
 }
+
+func TestV1_WriteIndex(t *testing.T) {
+
+}
+
+func TestV1_ReadIndex(t *testing.T) {
+
+}
+
+func TestV1_RecoverIndex(t *testing.T) {
+
+}

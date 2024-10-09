@@ -232,3 +232,15 @@ func TestV2_BreakingPoint_Payload(t *testing.T) {
 	_, err = v2.ReadRecordWithValidation(buf, 0)
 	assert.ErrorIs(t, err, ErrDataCorrupted)
 }
+
+func TestV2_WriteIndex(t *testing.T) {
+
+}
+
+func TestV2_ReadIndex(t *testing.T) {
+
+}
+
+func TestV2_RecoverIndex(t *testing.T) {
+
+}

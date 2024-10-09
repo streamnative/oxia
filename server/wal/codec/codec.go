@@ -16,7 +16,9 @@ package codec
 
 import (
 	"encoding/binary"
+	"github.com/streamnative/oxia/server/wal"
 	"os"
+	"sync"
 
 	"github.com/pkg/errors"
 )
@@ -94,6 +96,10 @@ type Codec interface {
 	ReadIndex(buf []byte) ([]byte, error)
 
 	WriteIndex(file *os.File, index []byte) error
+
+	RecoverIndex(buf []byte, startFileOffset uint32, baseEntryOffset int64,
+		commitOffsetProvider wal.CommitOffsetProvider) (index []byte, lastCrc uint32, newFileOffset uint32,
+		newEntryOffset int64, err error)
 }
 
 // The latest codec.
@@ -130,4 +136,22 @@ func GetOrCreate(basePath string) (_codec Codec, exist bool, err error) {
 // ReadInt read unsigned int from buf with big endian.
 func ReadInt(b []byte, offset uint32) uint32 {
 	return binary.BigEndian.Uint32(b[offset : offset+4])
+}
+
+// Index buf
+var bufferPool = sync.Pool{}
+
+const initialIndexBufferCapacity = 16 * 1024
+
+func BorrowEmptyIndexBuf() []byte {
+	if pooledBuffer, ok := bufferPool.Get().(*[]byte); ok {
+		return (*pooledBuffer)[:0]
+	} else {
+		// Start with empty slice, though with some initial capacity
+		return make([]byte, 0, initialIndexBufferCapacity)
+	}
+}
+
+func ReturnIndexBuf(buf *[]byte) {
+	bufferPool.Put(buf)
 }
