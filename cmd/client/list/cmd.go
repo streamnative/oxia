@@ -45,7 +45,6 @@ func init() {
 	Cmd.Flags().StringVarP(&Config.keyMax, "key-max", "e", "", "Key range maximum (exclusive)")
 	Cmd.Flags().StringVarP(&Config.partitionKey, "partition-key", "p", "", "Partition Key to be used in override the shard routing")
 	Cmd.Flags().BoolVar(&Config.ephemeral, "ephemeral", false, "Whether only list ephemeral keys")
-
 }
 
 var Cmd = &cobra.Command{

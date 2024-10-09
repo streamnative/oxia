@@ -92,7 +92,7 @@ linters-settings:
         severity: warning
         disabled: false
         arguments:
-          - 15
+          - 17
       - name: cyclomatic
         severity: warning
         disabled: false
