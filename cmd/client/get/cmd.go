@@ -16,6 +16,8 @@ package get
 
 import (
 	"context"
+	"github.com/streamnative/oxia/server"
+	"log/slog"
 	"time"
 
 	"github.com/pkg/errors"
@@ -32,11 +34,12 @@ var (
 )
 
 type flags struct {
-	key            string
-	hexDump        bool
-	includeVersion bool
-	partitionKey   string
-	comparisonType string
+	key                string
+	hexDump            bool
+	includeVersion     bool
+	partitionKey       string
+	comparisonType     string
+	ephemeralShadowKey bool
 }
 
 func (flags *flags) Reset() {
@@ -45,11 +48,13 @@ func (flags *flags) Reset() {
 	flags.includeVersion = false
 	flags.partitionKey = ""
 	flags.comparisonType = "equal"
+	flags.ephemeralShadowKey = false
 }
 
 func init() {
 	Cmd.Flags().BoolVarP(&Config.includeVersion, "include-version", "v", false, "Include the record version object")
 	Cmd.Flags().BoolVar(&Config.hexDump, "hex", false, "Print the value in HexDump format")
+	Cmd.Flags().BoolVar(&Config.ephemeralShadowKey, "ephemeral-shadow-key", false, "Print the ephemeral shadow key")
 	Cmd.Flags().StringVarP(&Config.partitionKey, "partition-key", "p", "", "Partition Key to be used in override the shard routing")
 
 	Cmd.Flags().StringVarP(&Config.comparisonType, "comparison-type", "t", "equal",
@@ -60,7 +65,6 @@ var Cmd = &cobra.Command{
 	Use:   "get [flags] KEY",
 	Short: "Get one record",
 	Long:  `Get the values of the recover associated with the given key.`,
-	Args:  cobra.ExactArgs(1),
 	RunE:  exec,
 }
 
@@ -90,12 +94,29 @@ func exec(cmd *cobra.Command, args []string) error {
 		return errors.Errorf("invalid comparison type: %s", Config.comparisonType)
 	}
 
-	queryKey := args[0]
-	key, value, version, err := client.Get(context.Background(), queryKey, options...)
-	if err != nil {
-		return err
-	}
+	queryKeys := args
 
+	for _, key := range queryKeys {
+		key, value, version, err := client.Get(context.Background(), key, options...)
+		if err != nil {
+			return err
+		}
+		output(cmd, key, value, version)
+		if Config.ephemeralShadowKey && version.Ephemeral {
+			originKey := key
+			shadowKey := server.ShadowKey(server.SessionId(version.SessionId), originKey)
+			key, value, version, err := client.Get(context.Background(), shadowKey, options...)
+			if err != nil {
+				slog.Warn("Failed to get shadow key", slog.String("originKey", key),
+					slog.String("shadowKey", shadowKey))
+			}
+			output(cmd, key, value, version)
+		}
+	}
+	return nil
+}
+
+func output(cmd *cobra.Command, key string, value []byte, version oxia.Version) {
 	if Config.hexDump {
 		common.WriteHexDump(cmd.OutOrStdout(), value)
 	} else {
@@ -115,5 +136,4 @@ func exec(cmd *cobra.Command, args []string) error {
 			ClientIdentity:     version.ClientIdentity,
 		})
 	}
-	return nil
 }
