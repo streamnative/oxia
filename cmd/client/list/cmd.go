@@ -70,7 +70,11 @@ func exec(cmd *cobra.Command, _ []string) error {
 
 	var keys []string
 	if Config.ephemeral {
-		ch := client.RangeScan(context.Background(), Config.keyMin, Config.keyMax)
+		var options []oxia.RangeScanOption
+		if Config.partitionKey != "" {
+			options = append(options, oxia.PartitionKey(Config.partitionKey))
+		}
+		ch := client.RangeScan(context.Background(), Config.keyMin, Config.keyMax, options...)
 		for result := range ch {
 			if result.Err != nil {
 				return result.Err
