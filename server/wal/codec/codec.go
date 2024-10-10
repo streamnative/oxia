@@ -173,10 +173,9 @@ const initialIndexBufferCapacity = 16 * 1024
 func BorrowEmptyIndexBuf() []byte {
 	if pooledBuffer, ok := bufferPool.Get().(*[]byte); ok {
 		return (*pooledBuffer)[:0]
-	} else {
-		// Start with empty slice, though with some initial capacity
-		return make([]byte, 0, initialIndexBufferCapacity)
 	}
+	// Start with empty slice, though with some initial capacity
+	return make([]byte, 0, initialIndexBufferCapacity)
 }
 
 func ReturnIndexBuf(buf *[]byte) {
