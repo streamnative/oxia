@@ -107,7 +107,7 @@ func exec(cmd *cobra.Command, args []string) error {
 			shadowKey := server.ShadowKey(server.SessionId(version.SessionId), originKey)
 			key, value, version, err := client.Get(context.Background(), shadowKey, options...)
 			if err != nil {
-				slog.Warn("Failed to get shadow key", slog.String("originKey", key),
+				slog.Warn("Failed to get shadow key", slog.String("originKey", originKey),
 					slog.String("shadowKey", shadowKey))
 			}
 			output(cmd, key, value, version)
