@@ -95,8 +95,15 @@ func newReadWriteSegment(basePath string, baseOffset int64, segmentSize uint32, 
 		return nil, errors.Wrapf(err, "failed to map segment file %s", ms.txnPath)
 	}
 
+	var commitOffset *int64
+	if commitOffsetProvider != nil {
+		offset := commitOffsetProvider.CommitOffset()
+		commitOffset = &offset
+	} else {
+		commitOffset = nil
+	}
 	if ms.writingIdx, ms.lastCrc, ms.currentFileOffset, ms.lastOffset, err = ms.codec.RecoverIndex(ms.txnMappedFile,
-		ms.currentFileOffset, ms.baseOffset, commitOffsetProvider); err != nil {
+		ms.currentFileOffset, ms.baseOffset, commitOffset); err != nil {
 		return nil, errors.Wrapf(err, "failed to rebuild index for segment file %s", ms.txnPath)
 	}
 	return ms, nil
@@ -176,7 +183,7 @@ func (ms *readWriteSegment) Close() error {
 		ms.txnMappedFile.Unmap(),
 		ms.txnFile.Close(),
 		// Write index file
-		WriteIndex(ms.idxPath, ms.writingIdx, ms.codec),
+		ms.codec.WriteIndex(ms.idxPath, ms.writingIdx),
 	)
 	codec.ReturnIndexBuf(&ms.writingIdx)
 	return err

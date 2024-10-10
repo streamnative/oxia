@@ -16,7 +16,8 @@ package codec
 
 import (
 	"encoding/binary"
-	"github.com/streamnative/oxia/server/wal"
+	"go.uber.org/multierr"
+	"io"
 	"log/slog"
 	"os"
 
@@ -45,9 +46,10 @@ const v2IdxExtension = ".idxx"
 
 var v2 = &V2{
 	Metadata{
-		TxnExtension: v2TxnExtension,
-		IdxExtension: v2IdxExtension,
-		HeaderSize:   v2PayloadSizeLen + v2PreviousCrcLen + v2PayloadCrcLen,
+		TxnExtension:  v2TxnExtension,
+		IdxExtension:  v2IdxExtension,
+		HeaderSize:    v2PayloadSizeLen + v2PreviousCrcLen + v2PayloadCrcLen,
+		IdxHeaderSize: v2IndexCrcLen,
 	},
 }
 
@@ -145,33 +147,53 @@ func (V2) WriteRecord(buf []byte, startOffset uint32, previousCrc uint32, payloa
 	return headerOffset + payloadSize, payloadCrc
 }
 
-func (V2) WriteIndex(file *os.File, index []byte) error {
+func (V2) WriteIndex(path string, index []byte) error {
+	idxFile, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
+	if err != nil {
+		return errors.Wrapf(err, "failed to open index file %s", path)
+	}
 	buf := make([]byte, uint32(len(index))+v2IndexCrcLen)
 	indexCrc := crc.Checksum(0).Update(index).Value()
 	binary.BigEndian.PutUint32(buf[0:], indexCrc)
 	copy(buf[v2IndexCrcLen:], index)
-	_, err := file.Write(buf)
-	return err
+	if _, err = idxFile.Write(buf); err != nil {
+		return errors.Wrapf(err, "failed write index file %s", path)
+	}
+	return idxFile.Close()
 }
 
-func (V2) ReadIndex(buf []byte) ([]byte, error) {
-	expectedCrc := ReadInt(buf, 0)
-	actualCrc := crc.Checksum(0).Update(buf[v2IndexCrcLen:]).Value()
+func (V2) ReadIndex(path string) ([]byte, error) {
+	var idFile *os.File
+	var err error
+	if idFile, err = os.OpenFile(path, os.O_RDONLY, 0); err != nil {
+		return nil, errors.Wrapf(err, "failed to open segment index file %s", path)
+	}
+	var indexBuf []byte
+	if indexBuf, err = io.ReadAll(idFile); err != nil {
+		return nil, multierr.Combine(
+			errors.Wrapf(err, "failed to read segment index file %s", path),
+			idFile.Close())
+	}
+	if err = idFile.Close(); err != nil {
+		return nil, errors.Wrapf(err, "failed to close segment index file %s", path)
+	}
+	expectedCrc := ReadInt(indexBuf, 0)
+	actualCrc := crc.Checksum(0).Update(indexBuf[v2IndexCrcLen:]).Value()
 	if expectedCrc != actualCrc {
 		return nil, errors.Wrapf(ErrDataCorrupted,
 			" expected crc: %d; actual crc: %d", expectedCrc, actualCrc)
 	}
-	index := make([]byte, uint32(len(buf))-v2IndexCrcLen)
-	copy(index, buf[v2IndexCrcLen:])
+	index := make([]byte, uint32(len(indexBuf))-v2IndexCrcLen)
+	copy(index, indexBuf[v2IndexCrcLen:])
 	return index, nil
 }
 
 func (v V2) RecoverIndex(buf []byte, startFileOffset uint32, baseEntryOffset int64,
-	commitOffsetProvider wal.CommitOffsetProvider) (index []byte, lastCrc uint32,
-	newFileOffset uint32, newEntryOffset int64, err error) {
+	commitOffset *int64) (index []byte, lastCrc uint32,
+	newFileOffset uint32, lastEntryOffset int64, err error) {
 	maxSize := uint32(len(buf))
 	newFileOffset = startFileOffset
-	newEntryOffset = baseEntryOffset
+	currentEntryOffset := baseEntryOffset
 
 	index = BorrowEmptyIndexBuf()
 
@@ -186,20 +208,24 @@ func (v V2) RecoverIndex(buf []byte, startFileOffset uint32, baseEntryOffset int
 			}
 			// data corruption
 			if errors.Is(err, ErrOffsetOutOfBounds) || errors.Is(err, ErrDataCorrupted) {
-				if commitOffsetProvider != nil && newEntryOffset > commitOffsetProvider.CommitOffset() {
+				if commitOffset != nil && currentEntryOffset > *commitOffset {
 					// uncommited data corruption, simply discard it
 					slog.Warn("discard the corrupted uncommited data.",
-						slog.Int64("entryId", newEntryOffset), slog.Any("error", err))
+						slog.Int64("entryId", currentEntryOffset), slog.Any("error", err))
 					break
 				}
-				return nil, 0, 0, 0, errors.Wrapf(err, "entryOffset: %d", newEntryOffset)
+				return nil, 0, 0, 0, errors.Wrapf(err, "entryOffset: %d", currentEntryOffset)
 			}
 			return nil, 0, 0, 0, err
 		}
 		lastCrc = payloadCrc
 		index = binary.BigEndian.AppendUint32(index, newFileOffset)
 		newFileOffset += v.GetHeaderSize() + payloadSize
-		newEntryOffset++
+		currentEntryOffset++
 	}
-	return index, lastCrc, newFileOffset, newEntryOffset, nil
+	return index, lastCrc, newFileOffset, currentEntryOffset - 1, nil
+}
+
+func (v V2) GetIndexHeaderSize() uint32 {
+	return v.IdxHeaderSize
 }

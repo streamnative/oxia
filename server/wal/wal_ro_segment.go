@@ -94,20 +94,7 @@ func newReadOnlySegment(basePath string, baseOffset int64) (ReadOnlySegment, err
 		return nil, errors.Wrapf(err, "failed to map segment txn file %s", ms.txnPath)
 	}
 
-	var idFile *os.File
-	if idFile, err = os.OpenFile(ms.idxPath, os.O_RDONLY, 0); err != nil {
-		return nil, errors.Wrapf(err, "failed to open segment index file %s", ms.idxPath)
-	}
-	var indexBuf []byte
-	if indexBuf, err = io.ReadAll(idFile); err != nil {
-		return nil, multierr.Combine(
-			errors.Wrapf(err, "failed to read segment index file %s", ms.idxPath),
-			idFile.Close())
-	}
-	if err = idFile.Close(); err != nil {
-		return nil, errors.Wrapf(err, "failed to close segment index file %s", ms.idxPath)
-	}
-	if ms.idx, err = ms.codec.ReadIndex(indexBuf); err != nil {
+	if ms.idx, err = ms.codec.ReadIndex(ms.idxPath); err != nil {
 		if !errors.Is(err, codec.ErrDataCorrupted) {
 			return nil, errors.Wrapf(err, "failed to decode segment index file %s", ms.idxPath)
 		}
@@ -119,7 +106,7 @@ func newReadOnlySegment(basePath string, baseOffset int64) (ReadOnlySegment, err
 			return nil, errors.Wrapf(err, "failed to rebuild segment index file %s", ms.idxPath)
 		}
 		slog.Info("The segment index file has been rebuilt.", slog.String("path", ms.idxPath))
-		if err := WriteIndex(ms.idxPath, ms.idx, ms.codec); err != nil {
+		if err := ms.codec.WriteIndex(ms.idxPath, ms.idx); err != nil {
 			slog.Warn("write recovered segment index failed. it can continue work but will retry writing after restart.",
 				slog.String("path", ms.idxPath))
 		}

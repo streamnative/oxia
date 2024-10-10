@@ -15,6 +15,10 @@
 package codec
 
 import (
+	"encoding/binary"
+	"github.com/google/uuid"
+	"os"
+	"path"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -38,14 +42,50 @@ func TestV1_Codec(t *testing.T) {
 	assert.EqualValues(t, payload, getPayload)
 }
 
-func TestV1_WriteIndex(t *testing.T) {
-
-}
-
-func TestV1_ReadIndex(t *testing.T) {
-
+func TestV1_WriteReadIndex(t *testing.T) {
+	dir := os.TempDir()
+	fileName := "0"
+	elementsNum := 5
+	indexBuf := make([]byte, uint32(elementsNum*4)+v1.GetIndexHeaderSize())
+	for i := 0; i < elementsNum; i++ {
+		binary.BigEndian.PutUint32(indexBuf[i*4:], uint32(i))
+	}
+	p := path.Join(dir, fileName+v1.GetIdxExtension())
+	err := v1.WriteIndex(p, indexBuf)
+	assert.NoError(t, err)
+	index, err := v1.ReadIndex(p)
+	assert.NoError(t, err)
+	for i := 0; i < elementsNum; i++ {
+		idx := ReadInt(index, uint32(i*4))
+		assert.EqualValues(t, idx, i)
+	}
 }
 
 func TestV1_RecoverIndex(t *testing.T) {
+	elementsNum := 5
 
+	buf := make([]byte, 100)
+	var payloads [][]byte
+	for i := 0; i < elementsNum; i++ {
+		payload, err := uuid.New().MarshalBinary()
+		assert.NoError(t, err)
+		payloads = append(payloads, payload)
+	}
+
+	fOffset := uint32(0)
+	for i := 0; i < elementsNum; i++ {
+		recordSize, _ := v1.WriteRecord(buf, fOffset, 0, payloads[i])
+		fOffset += recordSize
+	}
+
+	index, _, newFileOffset, lastEntryOffset, err := v1.RecoverIndex(buf, 0, 0, nil)
+	assert.NoError(t, err)
+	assert.EqualValues(t, lastEntryOffset, 4)
+	assert.EqualValues(t, fOffset, newFileOffset)
+	for i := 0; i < elementsNum; i++ {
+		fOffset := ReadInt(index, uint32(i*4))
+		payload, err := v1.ReadRecordWithValidation(buf, fOffset)
+		assert.NoError(t, err)
+		assert.EqualValues(t, payloads[i], payload)
+	}
 }

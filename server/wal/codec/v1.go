@@ -17,7 +17,8 @@ package codec
 import (
 	"encoding/binary"
 	"github.com/pkg/errors"
-	"github.com/streamnative/oxia/server/wal"
+	"go.uber.org/multierr"
+	"io"
 	"os"
 )
 
@@ -34,9 +35,10 @@ const v1IdxExtension = ".idx"
 
 var v1 = &V1{
 	Metadata{
-		TxnExtension: v1TxnExtension,
-		IdxExtension: v1IdxExtension,
-		HeaderSize:   v1PayloadSizeLen,
+		TxnExtension:  v1TxnExtension,
+		IdxExtension:  v1IdxExtension,
+		HeaderSize:    v1PayloadSizeLen,
+		IdxHeaderSize: 0,
 	},
 }
 
@@ -90,7 +92,7 @@ func (v V1) ReadHeaderWithValidation(buf []byte, startFileOffset uint32) (payloa
 	}
 	expectSize := payloadSize + v.HeaderSize
 	// overflow checking
-	actualBufSize := bufSize - (startFileOffset + headerOffset)
+	actualBufSize := bufSize - startFileOffset
 	if expectSize > actualBufSize {
 		return payloadSize, previousCrc, payloadCrc,
 			errors.Wrapf(ErrOffsetOutOfBounds, "expected payload size: %d. actual buf size: %d ", expectSize, bufSize)
@@ -109,21 +111,46 @@ func (V1) WriteRecord(buf []byte, startOffset uint32, _ uint32, payload []byte) 
 	return headerOffset + payloadSize, payloadCrc
 }
 
-func (V1) WriteIndex(file *os.File, index []byte) error {
-	_, err := file.Write(index)
-	return err
+func (V1) WriteIndex(path string, index []byte) error {
+	idxFile, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
+	if err != nil {
+		return errors.Wrapf(err, "failed to open index file %s", path)
+	}
+
+	if _, err = idxFile.Write(index); err != nil {
+		return errors.Wrapf(err, "failed write index file %s", path)
+	}
+	return idxFile.Close()
 }
 
-func (V1) ReadIndex(buf []byte) ([]byte, error) {
-	return buf, nil
+func (V1) ReadIndex(path string) ([]byte, error) {
+	var idFile *os.File
+	var err error
+	if idFile, err = os.OpenFile(path, os.O_RDONLY, 0); err != nil {
+		return nil, errors.Wrapf(err, "failed to open segment index file %s", path)
+	}
+	var indexBuf []byte
+	if indexBuf, err = io.ReadAll(idFile); err != nil {
+		return nil, multierr.Combine(
+			errors.Wrapf(err, "failed to read segment index file %s", path),
+			idFile.Close())
+	}
+	if err = idFile.Close(); err != nil {
+		return nil, errors.Wrapf(err, "failed to close segment index file %s", path)
+	}
+	return indexBuf, nil
+}
+
+func (v V1) GetIndexHeaderSize() uint32 {
+	return v.IdxHeaderSize
 }
 
 func (v V1) RecoverIndex(buf []byte, startFileOffset uint32, baseEntryOffset int64,
-	_ wal.CommitOffsetProvider) (index []byte, lastCrc uint32, newFileOffset uint32, newEntryOffset int64, err error) {
+	_ *int64) (index []byte, lastCrc uint32, newFileOffset uint32, lastEntryOffset int64, err error) {
 	maxSize := uint32(len(buf))
 	newFileOffset = startFileOffset
 	index = BorrowEmptyIndexBuf()
-	newEntryOffset = baseEntryOffset
+	currentEntryOffset := baseEntryOffset
 
 	for newFileOffset < maxSize {
 		var payloadSize uint32
@@ -137,8 +164,8 @@ func (v V1) RecoverIndex(buf []byte, startFileOffset uint32, baseEntryOffset int
 		}
 		index = binary.BigEndian.AppendUint32(index, newFileOffset)
 		newFileOffset += v.GetHeaderSize() + payloadSize
-		newEntryOffset++
+		currentEntryOffset++
 	}
 
-	return index, lastCrc, newFileOffset, newEntryOffset, nil
+	return index, lastCrc, newFileOffset, currentEntryOffset - 1, nil
 }

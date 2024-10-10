@@ -16,7 +16,6 @@ package codec
 
 import (
 	"encoding/binary"
-	"github.com/streamnative/oxia/server/wal"
 	"os"
 	"sync"
 
@@ -30,9 +29,10 @@ var (
 )
 
 type Metadata struct {
-	TxnExtension string
-	IdxExtension string
-	HeaderSize   uint32
+	TxnExtension  string
+	IdxExtension  string
+	HeaderSize    uint32
+	IdxHeaderSize uint32
 }
 
 type Codec interface {
@@ -93,13 +93,14 @@ type Codec interface {
 	// - payloadCrc: The CRC value of the written payload.
 	WriteRecord(buf []byte, startFileOffset uint32, previousCrc uint32, payload []byte) (recordSize uint32, payloadCrc uint32)
 
-	ReadIndex(buf []byte) ([]byte, error)
+	GetIndexHeaderSize() uint32
 
-	WriteIndex(file *os.File, index []byte) error
+	WriteIndex(path string, index []byte) error
 
-	RecoverIndex(buf []byte, startFileOffset uint32, baseEntryOffset int64,
-		commitOffsetProvider wal.CommitOffsetProvider) (index []byte, lastCrc uint32, newFileOffset uint32,
-		newEntryOffset int64, err error)
+	ReadIndex(path string) ([]byte, error)
+
+	RecoverIndex(buf []byte, startFileOffset uint32, baseEntryOffset int64, commitOffset *int64) (index []byte,
+		lastCrc uint32, lastEntryOffset uint32, newEntryOffset int64, err error)
 }
 
 // The latest codec.
