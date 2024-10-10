@@ -110,7 +110,7 @@ linters-settings:
         severity: warning
         disabled: false
         arguments:
-          - 4
+          - 5
       - name: flag-parameter
         severity: warning
         disabled: false

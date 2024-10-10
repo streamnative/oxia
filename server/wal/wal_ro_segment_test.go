@@ -16,6 +16,8 @@ package wal
 
 import (
 	"fmt"
+	"github.com/google/uuid"
+	"os"
 	"testing"
 
 	"github.com/streamnative/oxia/server/wal/codec"
@@ -33,6 +35,49 @@ func TestReadOnlySegment(t *testing.T) {
 	}
 
 	assert.NoError(t, rw.Close())
+
+	ro, err := newReadOnlySegment(path, 0)
+	assert.NoError(t, err)
+	assert.EqualValues(t, 0, ro.BaseOffset())
+	assert.EqualValues(t, 9, ro.LastOffset())
+
+	for i := int64(0); i < 10; i++ {
+		data, err := ro.Read(i)
+		assert.NoError(t, err)
+		assert.Equal(t, fmt.Sprintf("entry-%d", i), string(data))
+	}
+
+	data, err := ro.Read(100)
+	assert.Nil(t, data)
+	assert.ErrorIs(t, err, codec.ErrOffsetOutOfBounds)
+
+	data, err = ro.Read(-1)
+	assert.Nil(t, data)
+	assert.ErrorIs(t, err, codec.ErrOffsetOutOfBounds)
+
+	assert.NoError(t, ro.Close())
+}
+
+func TestRO_auto_recover_broken_index(t *testing.T) {
+	path := t.TempDir()
+
+	rw, err := newReadWriteSegment(path, 0, 128*1024, 0, nil)
+	assert.NoError(t, err)
+	for i := int64(0); i < 10; i++ {
+		assert.NoError(t, rw.Append(i, []byte(fmt.Sprintf("entry-%d", i))))
+	}
+	rwSegment := rw.(*readWriteSegment)
+	assert.NoError(t, rw.Close())
+
+	idxPath := rwSegment.idxPath
+	// inject wrong data
+	file, err := os.OpenFile(idxPath, os.O_RDWR, 0644)
+	assert.NoError(t, err)
+	defer file.Close()
+	faultData, err := uuid.New().MarshalBinary()
+	assert.NoError(t, err)
+	_, err = file.WriteAt(faultData, 0)
+	assert.NoError(t, err)
 
 	ro, err := newReadOnlySegment(path, 0)
 	assert.NoError(t, err)
