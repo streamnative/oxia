@@ -26,6 +26,7 @@ import (
 	"github.com/streamnative/oxia/server/util/crc"
 )
 
+// Txn File:
 // +--------------+-------------------+-------------+--------------+
 // | Size(4Bytes) | PreviousCRC(4Bytes) | CRC(4Bytes) | Payload(...) |
 // +--------------+-------------------+-------------+--------------+
@@ -33,6 +34,13 @@ import (
 // PreviousCRC: 	32bit hash computed over the previous payload using CRC.
 // CRC:				32bit hash computed over the previous and the current payload using CRC. CRC(n) = CRC( DATAn, CRCn-1 )
 // Payload: 		Byte stream as long as specified by the payload size.
+
+// Idx File:
+// +--------------+-----------+-----------+-----+
+// | CRC(4Bytes)  | Index(4B) | Index(4B) | ... |
+// +--------------+-----------+-----------+-----+
+// CRC: 	 		32bit hash computed over the payload using CRC.
+// Index:    		The file offset index
 var _ Codec = &V2{}
 
 const v2PayloadSizeLen uint32 = 4

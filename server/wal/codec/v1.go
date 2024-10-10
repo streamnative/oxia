@@ -22,11 +22,18 @@ import (
 	"os"
 )
 
+// Txn File:
 // +--------------+--------------+
-// | Size(4Bytes) | Payload(...) |
+// | Size(4 Bytes) | Payload(...) |
 // +--------------+--------------+
 // Size: 			Length of the payload data
 // Payload: 		Byte stream as long as specified by the payload size.
+
+// Idx File:
+// +----------------+----------------+----------------+
+// | Index(4 Bytes) | Index(4 Bytes) | 	... 		  |
+// +----------------+----------------+----------------+
+// Index: 			The file offset index
 var _ Codec = &V1{}
 
 const v1PayloadSizeLen uint32 = 4
