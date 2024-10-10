@@ -93,14 +93,40 @@ type Codec interface {
 	// - payloadCrc: The CRC value of the written payload.
 	WriteRecord(buf []byte, startFileOffset uint32, previousCrc uint32, payload []byte) (recordSize uint32, payloadCrc uint32)
 
+	// GetIndexHeaderSize returns the size of the index header in bytes.
+	// The header size is typically a fixed value representing the metadata at the
+	// beginning of an index file.
 	GetIndexHeaderSize() uint32
 
+	// WriteIndex writes the provided index data to the specified file path.
+	// Parameters:
+	// - path: is the location where the index file will be written.
+	// - index: is the byte slice that contains the index data.
+	// Returns an error if the file cannot be written or if any I/O issues occur.
 	WriteIndex(path string, index []byte) error
 
+	// ReadIndex reads the index data from the specified file path.
+	// Parameters
+	// - path is the location of the index file to be read.
+	// Returns the index data as a byte slice and an error if any I/O issues occur.
 	ReadIndex(path string) ([]byte, error)
 
+	// RecoverIndex attempts to recover the index from a txn byte buffer.
+	//
+	// Parameters:
+	//   - buf: the byte slice containing the raw data.
+	//   - startFileOffset: the starting file offset from which recovery begins.
+	//   - baseEntryOffset: the base offset for the index entries, used to adjust entry offsets.
+	//   - commitOffset: a pointer to the commit offset, which is using for auto-discard uncommited corruption data
+	//
+	// Returns:
+	//   - index: the recovered index data as a byte slice.
+	//   - lastCrc: the CRC of the last valid entry in the index, used to verify data corruption.
+	//   - newFileOffset: the new file offset after recovery, indicating where the next data should be written.
+	//   - lastEntryOffset: the offset of the last valid entry in the recovered index.
+	//   - err: an error if the recovery process encounters issues, such as data corruption or invalid entries.
 	RecoverIndex(buf []byte, startFileOffset uint32, baseEntryOffset int64, commitOffset *int64) (index []byte,
-		lastCrc uint32, lastEntryOffset uint32, newEntryOffset int64, err error)
+		lastCrc uint32, newFileOffset uint32, lastEntryOffset int64, err error)
 }
 
 // The latest codec.
