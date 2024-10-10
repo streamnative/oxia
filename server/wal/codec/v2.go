@@ -155,22 +155,22 @@ func (*V2) WriteRecord(buf []byte, startOffset uint32, previousCrc uint32, paylo
 	return headerOffset + payloadSize, payloadCrc
 }
 
-func (*V2) WriteIndex(path string, index []byte) error {
+func (v *V2) WriteIndex(path string, index []byte) error {
 	idxFile, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		return errors.Wrapf(err, "failed to open index file %s", path)
 	}
-	buf := make([]byte, uint32(len(index))+v2IndexCrcLen)
+	buf := make([]byte, uint32(len(index))+v.GetIndexHeaderSize())
 	indexCrc := crc.Checksum(0).Update(index).Value()
 	binary.BigEndian.PutUint32(buf[0:], indexCrc)
-	copy(buf[v2IndexCrcLen:], index)
+	copy(buf[v.GetIndexHeaderSize():], index)
 	if _, err = idxFile.Write(buf); err != nil {
 		return errors.Wrapf(err, "failed write index file %s", path)
 	}
 	return idxFile.Close()
 }
 
-func (*V2) ReadIndex(path string) ([]byte, error) {
+func (v *V2) ReadIndex(path string) ([]byte, error) {
 	var idFile *os.File
 	var err error
 	if idFile, err = os.OpenFile(path, os.O_RDONLY, 0); err != nil {
@@ -186,13 +186,13 @@ func (*V2) ReadIndex(path string) ([]byte, error) {
 		return nil, errors.Wrapf(err, "failed to close segment index file %s", path)
 	}
 	expectedCrc := ReadInt(indexBuf, 0)
-	actualCrc := crc.Checksum(0).Update(indexBuf[v2IndexCrcLen:]).Value()
+	actualCrc := crc.Checksum(0).Update(indexBuf[v.GetIndexHeaderSize():]).Value()
 	if expectedCrc != actualCrc {
 		return nil, errors.Wrapf(ErrDataCorrupted,
 			" expected crc: %d; actual crc: %d", expectedCrc, actualCrc)
 	}
-	index := make([]byte, uint32(len(indexBuf))-v2IndexCrcLen)
-	copy(index, indexBuf[v2IndexCrcLen:])
+	index := make([]byte, uint32(len(indexBuf))-v.GetIndexHeaderSize())
+	copy(index, indexBuf[v.GetIndexHeaderSize():])
 	return index, nil
 }
 
