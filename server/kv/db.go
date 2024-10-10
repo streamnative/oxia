@@ -597,35 +597,9 @@ func (d *db) applyDelete(batch WriteBatch, notifications *notifications, delReq 
 	}
 }
 
-func (*db) applyDeleteRangeNotifications(batch WriteBatch, notifications *notifications, delReq *proto.DeleteRangeRequest, updateOperationCallback UpdateOperationCallback) error {
+func (d *db) applyDeleteRange(batch WriteBatch, notifications *notifications, delReq *proto.DeleteRangeRequest, updateOperationCallback UpdateOperationCallback) (*proto.DeleteRangeResponse, error) {
 	if notifications != nil {
 		notifications.DeletedRange(delReq.StartInclusive, delReq.EndExclusive)
-	}
-
-	if updateOperationCallback != NoOpCallback {
-		it, err := batch.KeyRangeScan(delReq.StartInclusive, delReq.EndExclusive)
-		if err != nil {
-			return err
-		}
-
-		for it.Next() {
-			err := updateOperationCallback.OnDelete(batch, it.Key())
-			if err != nil {
-				return errors.Wrap(multierr.Combine(err, it.Close()), "oxia db: failed to delete range")
-			}
-		}
-
-		if err := it.Close(); err != nil {
-			return errors.Wrap(err, "oxia db: failed to delete range")
-		}
-	}
-
-	return nil
-}
-
-func (d *db) applyDeleteRange(batch WriteBatch, notifications *notifications, delReq *proto.DeleteRangeRequest, updateOperationCallback UpdateOperationCallback) (*proto.DeleteRangeResponse, error) {
-	if err := d.applyDeleteRangeNotifications(batch, notifications, delReq, updateOperationCallback); err != nil {
-		return nil, err
 	}
 
 	if err := updateOperationCallback.OnDeleteRange(batch, delReq.StartInclusive, delReq.EndExclusive); err != nil {
