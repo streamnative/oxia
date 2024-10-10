@@ -108,7 +108,7 @@ func exec(cmd *cobra.Command, args []string) error {
 			key, value, version, err := client.Get(context.Background(), shadowKey, options...)
 			if err != nil {
 				slog.Warn("Failed to get shadow key", slog.String("originKey", originKey),
-					slog.String("shadowKey", shadowKey))
+					slog.String("shadowKey", shadowKey), slog.String("namespace", common.Config.Namespace))
 			}
 			output(cmd, key, value, version)
 		}
