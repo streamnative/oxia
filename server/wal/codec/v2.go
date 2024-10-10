@@ -33,7 +33,7 @@ import (
 // PreviousCRC: 	32bit hash computed over the previous payload using CRC.
 // CRC:				32bit hash computed over the previous and the current payload using CRC. CRC(n) = CRC( DATAn, CRCn-1 )
 // Payload: 		Byte stream as long as specified by the payload size.
-var _ Codec = V2{}
+var _ Codec = &V2{}
 
 const v2PayloadSizeLen uint32 = 4
 const v2PreviousCrcLen uint32 = 4
@@ -57,19 +57,19 @@ type V2 struct {
 	Metadata
 }
 
-func (v V2) GetIdxExtension() string {
+func (v *V2) GetIdxExtension() string {
 	return v.IdxExtension
 }
 
-func (v V2) GetTxnExtension() string {
+func (v *V2) GetTxnExtension() string {
 	return v.TxnExtension
 }
 
-func (v V2) GetHeaderSize() uint32 {
+func (v *V2) GetHeaderSize() uint32 {
 	return v.HeaderSize
 }
 
-func (v V2) GetRecordSize(buf []byte, startFileOffset uint32) (uint32, error) {
+func (v *V2) GetRecordSize(buf []byte, startFileOffset uint32) (uint32, error) {
 	var payloadSize uint32
 	var err error
 	if payloadSize, _, _, err = v.ReadHeaderWithValidation(buf, startFileOffset); err != nil {
@@ -78,7 +78,7 @@ func (v V2) GetRecordSize(buf []byte, startFileOffset uint32) (uint32, error) {
 	return v.HeaderSize + payloadSize, nil
 }
 
-func (v V2) ReadRecordWithValidation(buf []byte, startFileOffset uint32) (payload []byte, err error) {
+func (v *V2) ReadRecordWithValidation(buf []byte, startFileOffset uint32) (payload []byte, err error) {
 	var payloadSize uint32
 	if payloadSize, _, _, err = v.ReadHeaderWithValidation(buf, startFileOffset); err != nil {
 		return nil, err
@@ -89,7 +89,7 @@ func (v V2) ReadRecordWithValidation(buf []byte, startFileOffset uint32) (payloa
 	return payload, nil
 }
 
-func (v V2) ReadHeaderWithValidation(buf []byte, startFileOffset uint32) (payloadSize uint32, previousCrc uint32, payloadCrc uint32, err error) {
+func (v *V2) ReadHeaderWithValidation(buf []byte, startFileOffset uint32) (payloadSize uint32, previousCrc uint32, payloadCrc uint32, err error) {
 	bufSize := uint32(len(buf))
 	if startFileOffset >= bufSize {
 		return payloadSize, previousCrc, payloadCrc,
@@ -130,7 +130,7 @@ func (v V2) ReadHeaderWithValidation(buf []byte, startFileOffset uint32) (payloa
 	return payloadSize, previousCrc, payloadCrc, nil
 }
 
-func (V2) WriteRecord(buf []byte, startOffset uint32, previousCrc uint32, payload []byte) (recordSize uint32, payloadCrc uint32) {
+func (*V2) WriteRecord(buf []byte, startOffset uint32, previousCrc uint32, payload []byte) (recordSize uint32, payloadCrc uint32) {
 	payloadSize := uint32(len(payload))
 
 	var headerOffset uint32
@@ -147,7 +147,7 @@ func (V2) WriteRecord(buf []byte, startOffset uint32, previousCrc uint32, payloa
 	return headerOffset + payloadSize, payloadCrc
 }
 
-func (V2) WriteIndex(path string, index []byte) error {
+func (*V2) WriteIndex(path string, index []byte) error {
 	idxFile, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		return errors.Wrapf(err, "failed to open index file %s", path)
@@ -162,7 +162,7 @@ func (V2) WriteIndex(path string, index []byte) error {
 	return idxFile.Close()
 }
 
-func (V2) ReadIndex(path string) ([]byte, error) {
+func (*V2) ReadIndex(path string) ([]byte, error) {
 	var idFile *os.File
 	var err error
 	if idFile, err = os.OpenFile(path, os.O_RDONLY, 0); err != nil {
@@ -188,7 +188,7 @@ func (V2) ReadIndex(path string) ([]byte, error) {
 	return index, nil
 }
 
-func (v V2) RecoverIndex(buf []byte, startFileOffset uint32, baseEntryOffset int64,
+func (v *V2) RecoverIndex(buf []byte, startFileOffset uint32, baseEntryOffset int64,
 	commitOffset *int64) (index []byte, lastCrc uint32,
 	newFileOffset uint32, lastEntryOffset int64, err error) {
 	maxSize := uint32(len(buf))
@@ -226,6 +226,6 @@ func (v V2) RecoverIndex(buf []byte, startFileOffset uint32, baseEntryOffset int
 	return index, lastCrc, newFileOffset, currentEntryOffset - 1, nil
 }
 
-func (v V2) GetIndexHeaderSize() uint32 {
+func (v *V2) GetIndexHeaderSize() uint32 {
 	return v.IdxHeaderSize
 }
