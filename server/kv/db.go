@@ -628,7 +628,7 @@ func (d *db) applyDeleteRange(batch WriteBatch, notifications *notifications, de
 		return nil, errors.Wrap(err, "oxia db: failed to delete range")
 	}
 
-	d.log.Debug(
+	d.log.Info(
 		"Applied delete range operation",
 		slog.String("key-start", delReq.StartInclusive),
 		slog.String("key-end", delReq.EndExclusive),

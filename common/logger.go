@@ -30,7 +30,7 @@ import (
 	pb "google.golang.org/protobuf/proto"
 )
 
-const DefaultLogLevel = slog.LevelInfo
+const DefaultLogLevel = slog.LevelDebug
 
 var (
 	// LogLevel Used for flags.

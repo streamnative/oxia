@@ -325,10 +325,13 @@ func (*updateCallback) OnPutWithinSession(batch kv.WriteBatch, request *proto.Pu
 		return status, err
 	}
 	// Create the session shadow entry
-	err = batch.Put(ShadowKey(SessionId(*request.SessionId), request.Key), []byte{})
+	shadowKey := ShadowKey(SessionId(*request.SessionId), request.Key)
+	err = batch.Put(shadowKey, []byte{})
 	if err != nil {
+		slog.Info("create shadowKey failed", slog.String("key", request.Key), slog.String("shadowKey", shadowKey))
 		return proto.Status_SESSION_DOES_NOT_EXIST, err
 	}
+	slog.Info("create shadowKey success", slog.String("key", request.Key), slog.String("shadowKey", shadowKey))
 
 	return proto.Status_OK, nil
 }
@@ -351,10 +354,15 @@ func deleteShadow(batch kv.WriteBatch, key string, existingEntry *proto.StorageE
 	// We are overwriting an ephemeral value, let's delete its shadow
 	if existingEntry != nil && existingEntry.SessionId != nil {
 		existingSessionId := SessionId(*existingEntry.SessionId)
-		err := batch.Delete(ShadowKey(existingSessionId, key))
+		shadowKey := ShadowKey(existingSessionId, key)
+		err := batch.Delete(shadowKey)
 		if err != nil && !errors.Is(err, kv.ErrKeyNotFound) {
+			slog.Info("delete the shadow key failed", slog.String("key", key),
+				slog.String("shadowKey", shadowKey))
 			return proto.Status_SESSION_DOES_NOT_EXIST, err
 		}
+		slog.Info("delete the shadow key success", slog.String("key", key),
+			slog.String("shadowKey", shadowKey))
 	}
 	return proto.Status_OK, nil
 }
