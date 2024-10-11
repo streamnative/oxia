@@ -16,6 +16,9 @@ package codec
 
 import (
 	"encoding/binary"
+	"github.com/google/uuid"
+	"os"
+	"path"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -230,5 +233,78 @@ func TestV2_BreakingPoint_Payload(t *testing.T) {
 	assert.ErrorIs(t, err, ErrDataCorrupted)
 
 	_, err = v2.ReadRecordWithValidation(buf, 0)
+	assert.ErrorIs(t, err, ErrDataCorrupted)
+}
+
+func TestV2_WriteReadIndex(t *testing.T) {
+	dir := os.TempDir()
+	fileName := "0"
+	elementsNum := 5
+	indexBuf := make([]byte, uint32(elementsNum*4)+v2.GetIndexHeaderSize())
+	for i := 0; i < elementsNum; i++ {
+		binary.BigEndian.PutUint32(indexBuf[i*4:], uint32(i))
+	}
+	p := path.Join(dir, fileName+v2.GetIdxExtension())
+	err := v2.WriteIndex(p, indexBuf)
+	assert.NoError(t, err)
+	index, err := v2.ReadIndex(p)
+	assert.NoError(t, err)
+	for i := 0; i < elementsNum; i++ {
+		idx := ReadInt(index, uint32(i*4))
+		assert.EqualValues(t, idx, i)
+	}
+}
+
+func TestV2_RecoverIndex(t *testing.T) {
+	elementsNum := 5
+
+	buf := make([]byte, 200)
+	var payloads [][]byte
+	for i := 0; i < elementsNum; i++ {
+		payload, err := uuid.New().MarshalBinary()
+		assert.NoError(t, err)
+		payloads = append(payloads, payload)
+	}
+
+	fOffset := uint32(0)
+	for i := 0; i < elementsNum; i++ {
+		recordSize, _ := v2.WriteRecord(buf, fOffset, 0, payloads[i])
+		fOffset += recordSize
+	}
+
+	index, _, newFileOffset, lastEntryOffset, err := v2.RecoverIndex(buf, 0, 0, nil)
+	assert.NoError(t, err)
+	assert.EqualValues(t, lastEntryOffset, 4)
+	assert.EqualValues(t, fOffset, newFileOffset)
+	for i := 0; i < elementsNum; i++ {
+		fOffset := ReadInt(index, uint32(i*4))
+		payload, err := v2.ReadRecordWithValidation(buf, fOffset)
+		assert.NoError(t, err)
+		assert.EqualValues(t, payloads[i], payload)
+	}
+}
+
+func TestV2_IndexBroken(t *testing.T) {
+	dir := os.TempDir()
+	fileName := "0"
+	elementsNum := 5
+	indexBuf := make([]byte, uint32(elementsNum*4)+v2.GetIndexHeaderSize())
+	for i := 0; i < elementsNum; i++ {
+		binary.BigEndian.PutUint32(indexBuf[i*4:], uint32(i))
+	}
+	p := path.Join(dir, fileName+v2.GetIdxExtension())
+	err := v2.WriteIndex(p, indexBuf)
+	assert.NoError(t, err)
+
+	// inject wrong data
+	file, err := os.OpenFile(p, os.O_RDWR, 0644)
+	assert.NoError(t, err)
+	defer file.Close()
+	faultData, err := uuid.New().MarshalBinary()
+	assert.NoError(t, err)
+	_, err = file.WriteAt(faultData, 0)
+	assert.NoError(t, err)
+
+	_, err = v2.ReadIndex(p)
 	assert.ErrorIs(t, err, ErrDataCorrupted)
 }
