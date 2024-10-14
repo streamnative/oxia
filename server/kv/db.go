@@ -49,6 +49,14 @@ const (
 	termOptionsKey         = termKey + "-options"
 )
 
+// CommitContext is using for record some internal generated state.
+// user can use ReadCommitContext method to get the current state from DB
+// also, user can use NewDBWithCommitContext to create DB with some recovery operation.
+type CommitContext struct {
+	CommitOffset int64
+	LastVersion  int64
+}
+
 type UpdateOperationCallback interface {
 	OnPut(batch WriteBatch, req *proto.PutRequest, se *proto.StorageEntry) (proto.Status, error)
 	OnDelete(batch WriteBatch, key string) error
@@ -83,6 +91,9 @@ type DB interface {
 	UpdateTerm(newTerm int64, options TermOptions) error
 	ReadTerm() (term int64, options TermOptions, err error)
 
+	// ReadCommitContext fetch the current commit context
+	ReadCommitContext() *CommitContext
+
 	Snapshot() (Snapshot, error)
 
 	// Delete and close the database and all its files
@@ -90,6 +101,11 @@ type DB interface {
 }
 
 func NewDB(namespace string, shardId int64, factory Factory, notificationRetentionTime time.Duration, clock common.Clock) (DB, error) {
+	return NewDBWithCommitContext(namespace, shardId, factory, notificationRetentionTime, clock, nil)
+}
+
+func NewDBWithCommitContext(namespace string, shardId int64, factory Factory, notificationRetentionTime time.Duration, clock common.Clock,
+	commitContext *CommitContext) (DB, error) {
 	kv, err := factory.NewKV(namespace, shardId)
 	if err != nil {
 		return nil, err
@@ -135,7 +151,15 @@ func NewDB(namespace string, shardId int64, factory Factory, notificationRetenti
 	if err != nil {
 		return nil, err
 	}
+	if commitContext != nil {
+		db.immutableCommitContext = commitContext
+	}
+
 	db.versionIdTracker.Store(lastVersionId)
+	db.mutableCommitContext = &CommitContext{
+		CommitOffset: commitOffset,
+		LastVersion:  lastVersionId,
+	}
 
 	db.notificationsTracker = newNotificationsTracker(namespace, shardId, commitOffset, kv, notificationRetentionTime, clock)
 	return db, nil
@@ -148,6 +172,12 @@ type db struct {
 	notificationsTracker *notificationsTracker
 	log                  *slog.Logger
 	notificationsEnabled bool
+
+	// immutableCommitContext is using for validate if the context is correct at same offset.
+	immutableCommitContext *CommitContext
+	// mutableCommitContext is using for catch up the current commit context. we can read it by ReadCommitContext as
+	// atomic operation
+	mutableCommitContext *CommitContext
 
 	putCounter          metrics.Counter
 	deleteCounter       metrics.Counter
@@ -226,6 +256,10 @@ func (d *db) applyWriteRequest(b *proto.WriteRequest, batch WriteBatch, commitOf
 	return notifications, res, nil
 }
 
+func (d *db) ReadCommitContext() *CommitContext {
+	return d.mutableCommitContext
+}
+
 func (d *db) ProcessWrite(b *proto.WriteRequest, commitOffset int64, timestamp uint64, updateOperationCallback UpdateOperationCallback) (*proto.WriteResponse, error) {
 	timer := d.batchWriteLatencyHisto.Timer()
 	defer timer.Done()
@@ -240,7 +274,18 @@ func (d *db) ProcessWrite(b *proto.WriteRequest, commitOffset int64, timestamp u
 		return nil, err
 	}
 
-	if err := d.addASCIILong(commitLastVersionIdKey, d.versionIdTracker.Load(), batch, timestamp); err != nil {
+	versionId := d.versionIdTracker.Load()
+	if d.immutableCommitContext != nil &&
+		commitOffset == d.immutableCommitContext.CommitOffset &&
+		versionId != d.immutableCommitContext.LastVersion {
+		d.log.Warn("inconsistent version id, override it", slog.Int64("commitOffset", commitOffset),
+			slog.Int64("expectedVersionId", d.immutableCommitContext.LastVersion),
+			slog.Int64("actualVersionId", versionId))
+		versionId = d.immutableCommitContext.LastVersion
+		d.versionIdTracker.Store(versionId)
+	}
+
+	if err := d.addASCIILong(commitLastVersionIdKey, versionId, batch, timestamp); err != nil {
 		return nil, err
 	}
 
@@ -253,6 +298,11 @@ func (d *db) ProcessWrite(b *proto.WriteRequest, commitOffset int64, timestamp u
 
 	if err := batch.Commit(); err != nil {
 		return nil, err
+	}
+
+	d.mutableCommitContext = &CommitContext{
+		CommitOffset: commitOffset,
+		LastVersion:  versionId,
 	}
 
 	if notifications != nil {

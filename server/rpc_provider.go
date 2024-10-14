@@ -18,6 +18,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"github.com/streamnative/oxia/server/kv"
 	"io"
 	"time"
 
@@ -46,7 +47,8 @@ func NewReplicationRpcProvider(tlsConf *tls.Config) ReplicationRpcProvider {
 	}
 }
 
-func (r *replicationRpcProvider) GetReplicateStream(ctx context.Context, follower string, namespace string, shard int64, term int64) (
+func (r *replicationRpcProvider) GetReplicateStream(ctx context.Context, follower string, namespace string,
+	shard int64, term int64, commitContext *kv.CommitContext) (
 	proto.OxiaLogReplication_ReplicateClient, error) {
 	rpc, err := r.pool.GetReplicationRpc(follower)
 	if err != nil {
@@ -56,6 +58,8 @@ func (r *replicationRpcProvider) GetReplicateStream(ctx context.Context, followe
 	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataNamespace, namespace)
 	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataShardId, fmt.Sprintf("%d", shard))
 	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataTerm, fmt.Sprintf("%d", term))
+	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataCommitContextOffset, fmt.Sprintf("%d", commitContext.CommitOffset))
+	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataCommitContextLastVersion, fmt.Sprintf("%d", commitContext.LastVersion))
 
 	stream, err := rpc.Replicate(ctx)
 	return stream, err

@@ -108,7 +108,13 @@ type followerController struct {
 	writeLatencyHisto metrics.LatencyHistogram
 }
 
-func NewFollowerController(config Config, namespace string, shardId int64, wf wal.Factory, kvFactory kv.Factory) (FollowerController, error) {
+func NewFollowerController(config Config, namespace string, shardId int64, wf wal.Factory,
+	kvFactory kv.Factory) (FollowerController, error) {
+	return NewFollowerControllerWithContext(config, namespace, shardId, wf, kvFactory, nil)
+}
+
+func NewFollowerControllerWithContext(config Config, namespace string, shardId int64, wf wal.Factory,
+	kvFactory kv.Factory, commitContext *kv.CommitContext) (FollowerController, error) {
 	fc := &followerController{
 		config:           config,
 		namespace:        namespace,
@@ -131,8 +137,16 @@ func NewFollowerController(config Config, namespace string, shardId int64, wf wa
 
 	fc.lastAppendedOffset = fc.wal.LastOffset()
 
-	if fc.db, err = kv.NewDB(namespace, shardId, kvFactory, config.NotificationsRetentionTime, common.SystemClock); err != nil {
-		return nil, err
+	if commitContext != nil {
+		if fc.db, err = kv.NewDBWithCommitContext(namespace, shardId, kvFactory, config.NotificationsRetentionTime,
+			common.SystemClock, commitContext); err != nil {
+			return nil, err
+		}
+	} else {
+		if fc.db, err = kv.NewDB(namespace, shardId, kvFactory, config.NotificationsRetentionTime,
+			common.SystemClock); err != nil {
+			return nil, err
+		}
 	}
 
 	if fc.term, fc.termOptions, err = fc.db.ReadTerm(); err != nil {

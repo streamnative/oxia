@@ -18,6 +18,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"github.com/streamnative/oxia/server/kv"
 	"io"
 	"log/slog"
 
@@ -217,7 +218,7 @@ func (s *internalRpcServer) Truncate(c context.Context, req *proto.TruncateReque
 
 	log.Info("Received Truncate request")
 
-	follower, err := s.shardsDirector.GetOrCreateFollower(req.Namespace, req.Shard, req.Term)
+	follower, err := s.shardsDirector.GetOrCreateFollower(req.Namespace, req.Shard, req.Term, nil)
 	if err != nil {
 		log.Warn(
 			"Truncate failed: could not get follower controller",
@@ -252,6 +253,21 @@ func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServ
 		return err
 	}
 
+	commitContextOffset, err := ReadHeaderInt64(md, common.MetadataCommitContextOffset)
+	if err != nil {
+		return err
+	}
+
+	commitContextLastVersion, err := ReadHeaderInt64(md, common.MetadataCommitContextLastVersion)
+	if err != nil {
+		return err
+	}
+
+	commitContext := &kv.CommitContext{
+		CommitOffset: commitContextOffset,
+		LastVersion:  commitContextLastVersion,
+	}
+
 	term, err := readTerm(md)
 	if err != nil {
 		return err
@@ -265,7 +281,7 @@ func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServ
 
 	log.Info("Received Replicate request")
 
-	follower, err := s.shardsDirector.GetOrCreateFollower(namespace, shardId, term)
+	follower, err := s.shardsDirector.GetOrCreateFollower(namespace, shardId, term, commitContext)
 	if err != nil {
 		log.Warn(
 			"Replicate failed: could not get follower controller",
@@ -314,7 +330,7 @@ func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapsh
 		slog.String("peer", common.GetPeer(srv.Context())),
 	)
 
-	follower, err := s.shardsDirector.GetOrCreateFollower(namespace, shardId, term)
+	follower, err := s.shardsDirector.GetOrCreateFollower(namespace, shardId, term, nil)
 	if err != nil {
 		s.log.Warn(
 			"SendSnapshot failed: could not get follower controller",

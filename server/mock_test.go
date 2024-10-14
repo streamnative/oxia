@@ -16,6 +16,7 @@ package server
 
 import (
 	"context"
+	"github.com/streamnative/oxia/server/kv"
 
 	"google.golang.org/grpc/metadata"
 
@@ -98,7 +99,8 @@ func (m *mockRpcClient) CloseSend() error {
 	return nil
 }
 
-func (m *mockRpcClient) GetReplicateStream(ctx context.Context, follower string, namespace string, shard int64, term int64) (proto.OxiaLogReplication_ReplicateClient, error) {
+func (m *mockRpcClient) GetReplicateStream(ctx context.Context, follower string, namespace string, shard int64,
+	term int64, commitContext *kv.CommitContext) (proto.OxiaLogReplication_ReplicateClient, error) {
 	return m, nil
 }
 
