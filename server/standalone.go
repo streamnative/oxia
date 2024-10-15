@@ -168,7 +168,7 @@ func (noOpReplicationRpcProvider) Close() error {
 	return nil
 }
 
-func (noOpReplicationRpcProvider) GetReplicateStream(context.Context, string, string, int64, int64) (proto.OxiaLogReplication_ReplicateClient, error) {
+func (noOpReplicationRpcProvider) GetReplicateStream(context.Context, string, string, int64, int64, *kv.CommitContext) (proto.OxiaLogReplication_ReplicateClient, error) {
 	panic("not implemented")
 }
 
