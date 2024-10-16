@@ -87,7 +87,6 @@ type DB interface {
 
 	ReadCommitOffset() (int64, error)
 	ReadLastVersionId() (int64, error)
-	AddASIILong(key string, value int64, timestamp uint64) error
 
 	ReadNextNotifications(ctx context.Context, startOffset int64) ([]*proto.NotificationBatch, error)
 
@@ -101,8 +100,6 @@ type DB interface {
 
 	// Delete and close the database and all its files
 	Delete() error
-
-	GetKv() KV
 }
 
 func NewDB(namespace string, shardId int64, factory Factory, notificationRetentionTime time.Duration, clock common.Clock) (DB, error) {
@@ -156,17 +153,31 @@ func NewDBWithCommitContext(namespace string, shardId int64, factory Factory, no
 	if err != nil {
 		return nil, err
 	}
-	if commitContext != nil {
-		db.immutableCommitContext = commitContext
-	}
 
 	db.versionIdTracker.Store(lastVersionId)
-	db.mutableCommitContext = &CommitContext{
-		CommitOffset: commitOffset,
-		LastVersion:  lastVersionId,
-	}
 
 	db.notificationsTracker = newNotificationsTracker(namespace, shardId, commitOffset, kv, notificationRetentionTime, clock)
+
+	if commitContext != nil {
+		db.immutableCommitContext = commitContext
+		batch := db.kv.NewWriteBatch()
+		if _, err := db.persistOrOverrideLastVersionId(commitOffset, batch, uint64(time.Now().Unix())); err != nil {
+			return nil, multierr.Combine(err, batch.Close())
+		}
+		if batch.Count() > 0 {
+			if err := batch.Commit(); err != nil {
+				return nil, multierr.Combine(err, batch.Close())
+			}
+		}
+		if err = batch.Close(); err != nil {
+			return nil, err
+		}
+	}
+
+	db.mutableCommitContext = &CommitContext{
+		CommitOffset: commitOffset,
+		LastVersion:  db.versionIdTracker.Load(),
+	}
 	return db, nil
 }
 
@@ -279,18 +290,8 @@ func (d *db) ProcessWrite(b *proto.WriteRequest, commitOffset int64, timestamp u
 		return nil, err
 	}
 
-	versionId := d.versionIdTracker.Load()
-	if d.immutableCommitContext != nil &&
-		commitOffset == d.immutableCommitContext.CommitOffset &&
-		versionId != d.immutableCommitContext.LastVersion {
-		d.log.Warn("inconsistent version id, override it", slog.Int64("commitOffset", commitOffset),
-			slog.Int64("expectedVersionId", d.immutableCommitContext.LastVersion),
-			slog.Int64("actualVersionId", versionId))
-		versionId = d.immutableCommitContext.LastVersion
-		d.versionIdTracker.Store(versionId)
-	}
-
-	if err := d.addASCIILong(commitLastVersionIdKey, versionId, batch, timestamp); err != nil {
+	var versionId int64
+	if versionId, err = d.persistOrOverrideLastVersionId(commitOffset, batch, timestamp); err != nil {
 		return nil, err
 	}
 
@@ -321,6 +322,24 @@ func (d *db) ProcessWrite(b *proto.WriteRequest, commitOffset int64, timestamp u
 	return res, nil
 }
 
+func (d *db) persistOrOverrideLastVersionId(commitOffset int64, batch WriteBatch, timestamp uint64) (int64, error) {
+	versionId := d.versionIdTracker.Load()
+	if d.immutableCommitContext != nil &&
+		commitOffset == d.immutableCommitContext.CommitOffset &&
+		versionId != d.immutableCommitContext.LastVersion {
+		d.log.Warn("inconsistent version id, override it", slog.Int64("commitOffset", commitOffset),
+			slog.Int64("expectedVersionId", d.immutableCommitContext.LastVersion),
+			slog.Int64("actualVersionId", versionId))
+		versionId = d.immutableCommitContext.LastVersion
+		d.versionIdTracker.Store(versionId)
+	}
+
+	if err := d.addASCIILong(commitLastVersionIdKey, versionId, batch, timestamp); err != nil {
+		return 0, err
+	}
+	return versionId, nil
+}
+
 func (*db) addNotifications(batch WriteBatch, notifications *notifications) error {
 	value, err := notifications.batch.MarshalVT()
 	if err != nil {
@@ -329,15 +348,6 @@ func (*db) addNotifications(batch WriteBatch, notifications *notifications) erro
 
 	return batch.Put(notificationKey(notifications.batch.Offset), value)
 }
-
-func (d *db) AddASIILong(key string, value int64, timestamp uint64) error {
-	batch := d.kv.NewWriteBatch()
-	if err := d.addASCIILong(key, value, batch, timestamp); err != nil {
-		return err
-	}
-	return batch.Commit()
-}
-
 func (d *db) addASCIILong(key string, value int64, batch WriteBatch, timestamp uint64) error {
 	asciiValue := []byte(fmt.Sprintf("%d", value))
 	_, err := d.applyPut(batch, nil, &proto.PutRequest{

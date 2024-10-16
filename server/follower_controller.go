@@ -72,8 +72,6 @@ type FollowerController interface {
 	Term() int64
 	CommitOffset() int64
 	Status() proto.ServingStatus
-
-	GetDB() kv.DB
 }
 
 type followerController struct {
