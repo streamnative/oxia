@@ -253,22 +253,7 @@ func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServ
 		return err
 	}
 
-	// set the optional commit context
-	var commitContext *kv.CommitContext
-	if commitContextOffset, err := ReadHeaderInt64(md, common.MetadataCommitContextOffset); err != nil {
-		s.log.Warn("parsing commit context offset header failed.", slog.Any("error", err))
-	} else {
-		commitContext = &kv.CommitContext{
-			CommitOffset: commitContextOffset,
-			LastVersion:  common.InvalidVersion,
-		}
-
-		if commitContextLastVersion, err := ReadHeaderInt64(md, common.MetadataCommitContextLastVersion); err != nil {
-			s.log.Warn("parsing commit context last version header failed.", slog.Any("error", err))
-		} else {
-			commitContext.LastVersion = commitContextLastVersion
-		}
-	}
+	commitContext := s.ReadOptionalCommitContext(md)
 
 	term, err := readTerm(md)
 	if err != nil {
@@ -301,6 +286,27 @@ func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServ
 		)
 	}
 	return err2
+}
+
+func (s *internalRpcServer) ReadOptionalCommitContext(md metadata.MD) *kv.CommitContext {
+	// set the optional commit context
+	var commitContext *kv.CommitContext
+	commitContextOffset, err := ReadHeaderInt64(md, common.MetadataCommitContextOffset)
+	if err != nil {
+		s.log.Warn("parsing optional commit context offset header failed.", slog.Any("error", err))
+		return commitContext
+	}
+	commitContext = &kv.CommitContext{
+		CommitOffset: commitContextOffset,
+		LastVersion:  common.InvalidVersion,
+	}
+
+	if commitContextLastVersion, err := ReadHeaderInt64(md, common.MetadataCommitContextLastVersion); err != nil {
+		s.log.Warn("parsing optional commit context last version header failed.", slog.Any("error", err))
+	} else {
+		commitContext.LastVersion = commitContextLastVersion
+	}
+	return commitContext
 }
 
 func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapshotServer) error {
