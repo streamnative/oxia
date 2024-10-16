@@ -803,10 +803,6 @@ func (d *db) ReadNextNotifications(ctx context.Context, startOffset int64) ([]*p
 	return d.notificationsTracker.ReadNextNotifications(ctx, startOffset)
 }
 
-func (d *db) GetKv() KV {
-	return d.kv
-}
-
 type noopCallback struct{}
 
 func (*noopCallback) OnPut(_ WriteBatch, _ *proto.PutRequest, _ *proto.StorageEntry) (proto.Status, error) {
