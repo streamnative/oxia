@@ -160,6 +160,7 @@ func NewDBWithCommitContext(namespace string, shardId int64, factory Factory, no
 
 	db.notificationsTracker = newNotificationsTracker(namespace, shardId, commitOffset, kv, notificationRetentionTime, clock)
 
+	// commit context related logic
 	if commitContext != nil {
 		db.immutableCommitContext = commitContext
 		batch := db.kv.NewWriteBatch()
@@ -191,11 +192,8 @@ type db struct {
 	log                  *slog.Logger
 	notificationsEnabled bool
 
-	// immutableCommitContext is using for validate if the context is correct at same offset.
 	immutableCommitContext *CommitContext
-	// mutableCommitContext is using for catch up the current commit context. we can read it by ReadCommitContext as
-	// atomic operation
-	mutableCommitContext *CommitContext
+	mutableCommitContext   *CommitContext
 
 	putCounter          metrics.Counter
 	deleteCounter       metrics.Counter
