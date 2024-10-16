@@ -478,7 +478,7 @@ func TestDb_UpdateTerm(t *testing.T) {
 
 	term, _, err = db.ReadTerm()
 	assert.NoError(t, err)
-	assert.Equal(t, 1, term)
+	assert.EqualValues(t, 1, term)
 
 	assert.NoError(t, factory.Close())
 }
