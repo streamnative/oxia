@@ -93,6 +93,8 @@ type DB interface {
 	UpdateTerm(newTerm int64, options TermOptions) error
 	ReadTerm() (term int64, options TermOptions, err error)
 
+	// ReadImmutableCommitContext fetch the immutable commit context
+	ReadImmutableCommitContext() *CommitContext
 	// ReadCommitContext fetch the current commit context
 	ReadCommitContext() *CommitContext
 
@@ -272,6 +274,10 @@ func (d *db) applyWriteRequest(b *proto.WriteRequest, batch WriteBatch, commitOf
 	return notifications, res, nil
 }
 
+func (d *db) ReadImmutableCommitContext() *CommitContext {
+	return d.immutableCommitContext
+}
+
 func (d *db) ReadCommitContext() *CommitContext {
 	return d.mutableCommitContext
 }
@@ -324,9 +330,11 @@ func (d *db) ProcessWrite(b *proto.WriteRequest, commitOffset int64, timestamp u
 
 func (d *db) persistOrOverrideLastVersionId(commitOffset int64, batch WriteBatch, timestamp uint64) (int64, error) {
 	versionId := d.versionIdTracker.Load()
+
 	if d.immutableCommitContext != nil &&
 		commitOffset == d.immutableCommitContext.CommitOffset &&
-		versionId != d.immutableCommitContext.LastVersion {
+		versionId != d.immutableCommitContext.LastVersion &&
+		common.InvalidVersion != d.immutableCommitContext.LastVersion {
 		d.log.Warn("inconsistent version id, override it", slog.Int64("commitOffset", commitOffset),
 			slog.Int64("expectedVersionId", d.immutableCommitContext.LastVersion),
 			slog.Int64("actualVersionId", versionId))

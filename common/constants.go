@@ -30,4 +30,6 @@ const (
 
 	MaxSessionTimeout = 5 * time.Minute
 	MinSessionTimeout = 2 * time.Second
+
+	InvalidVersion = -1
 )

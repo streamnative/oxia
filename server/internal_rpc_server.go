@@ -253,19 +253,21 @@ func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServ
 		return err
 	}
 
-	commitContextOffset, err := ReadHeaderInt64(md, common.MetadataCommitContextOffset)
-	if err != nil {
-		return err
-	}
+	// set the optional commit context
+	var commitContext *kv.CommitContext
+	if commitContextOffset, err := ReadHeaderInt64(md, common.MetadataCommitContextOffset); err != nil {
+		s.log.Warn("parsing commit context offset header failed.", slog.Any("error", err))
+	} else {
+		commitContext = &kv.CommitContext{
+			CommitOffset: commitContextOffset,
+			LastVersion:  common.InvalidVersion,
+		}
 
-	commitContextLastVersion, err := ReadHeaderInt64(md, common.MetadataCommitContextLastVersion)
-	if err != nil {
-		return err
-	}
-
-	commitContext := &kv.CommitContext{
-		CommitOffset: commitContextOffset,
-		LastVersion:  commitContextLastVersion,
+		if commitContextLastVersion, err := ReadHeaderInt64(md, common.MetadataCommitContextLastVersion); err != nil {
+			s.log.Warn("parsing commit context last version header failed.", slog.Any("error", err))
+		} else {
+			commitContext.LastVersion = commitContextLastVersion
+		}
 	}
 
 	term, err := readTerm(md)
@@ -276,6 +278,7 @@ func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServ
 	log := s.log.With(
 		slog.Int64("shard", shardId),
 		slog.String("namespace", namespace),
+		slog.Any("commitContext", commitContext),
 		slog.String("peer", common.GetPeer(srv.Context())),
 	)
 

@@ -100,3 +100,43 @@ func TestShardsDirector_GetOrCreateFollower(t *testing.T) {
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, walFactory.Close())
 }
+
+func TestShardsDirector_GetOrCreateFollower_WithCommitContext(t *testing.T) {
+	var shard int64 = 1
+
+	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
+	walFactory := newTestWalFactory(t)
+
+	sd := NewShardsDirector(Config{}, walFactory, kvFactory, newMockRpcClient())
+	fc, err := sd.GetOrCreateFollower(common.DefaultNamespace, shard, 1, &kv.CommitContext{
+		CommitOffset: 1,
+		LastVersion:  15,
+	})
+	assert.NoError(t, err)
+	db := fc.(*followerController).db
+	commitContext := db.ReadImmutableCommitContext()
+	assert.EqualValues(t, 1, commitContext.CommitOffset)
+	assert.EqualValues(t, 15, commitContext.LastVersion)
+
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+	assert.NoError(t, sd.Close())
+}
+
+func TestShardsDirector_GetOrCreateFollower_WithoutCommitContext(t *testing.T) {
+	var shard int64 = 1
+
+	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
+	walFactory := newTestWalFactory(t)
+
+	sd := NewShardsDirector(Config{}, walFactory, kvFactory, newMockRpcClient())
+	fc, err := sd.GetOrCreateFollower(common.DefaultNamespace, shard, 1, nil)
+	assert.NoError(t, err)
+	db := fc.(*followerController).db
+	commitContext := db.ReadImmutableCommitContext()
+	assert.Nil(t, commitContext)
+
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+	assert.NoError(t, sd.Close())
+}
