@@ -619,6 +619,57 @@ func TestDb_NewWithCommitContext_LastVersionId_Writing(t *testing.T) {
 	assert.NoError(t, db.Close())
 }
 
+func TestDb_ReadCommitContext(t *testing.T) {
+	factory, err := NewPebbleKVFactory(&FactoryOptions{
+		InMemory:    false,
+		CacheSizeMB: 1,
+		DataDir:     path.Join(os.TempDir(), uuid.New().String()),
+	})
+	assert.NoError(t, err)
+	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	assert.NoError(t, err)
+
+	context := db.ReadCommitContext()
+	assert.EqualValues(t, -1, context.CommitOffset)
+	assert.EqualValues(t, -1, context.LastVersion)
+
+	_, err = db.ProcessWrite(&proto.WriteRequest{
+		Puts: []*proto.PutRequest{{
+			Key:   "a",
+			Value: []byte("a"),
+		}},
+	}, 0, 0, NoOpCallback)
+	assert.NoError(t, err)
+
+	context = db.ReadCommitContext()
+	assert.EqualValues(t, 0, context.CommitOffset)
+	assert.EqualValues(t, 0, context.LastVersion)
+
+	assert.NoError(t, db.Close())
+
+	db, err = NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	assert.NoError(t, err)
+
+	context = db.ReadCommitContext()
+	assert.EqualValues(t, 0, context.CommitOffset)
+	assert.EqualValues(t, 0, context.LastVersion)
+
+	_, err = db.ProcessWrite(&proto.WriteRequest{
+		Puts: []*proto.PutRequest{{
+			Key:   "a",
+			Value: []byte("a"),
+		}},
+	}, 1, 0, NoOpCallback)
+	assert.NoError(t, err)
+
+	context = db.ReadCommitContext()
+	assert.EqualValues(t, 1, context.CommitOffset)
+	assert.EqualValues(t, 1, context.LastVersion)
+
+	assert.NoError(t, db.Close())
+	assert.NoError(t, factory.Close())
+}
+
 func TestDb_UpdateTerm(t *testing.T) {
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
