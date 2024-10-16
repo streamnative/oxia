@@ -84,7 +84,10 @@ type DB interface {
 	Get(request *proto.GetRequest) (*proto.GetResponse, error)
 	List(request *proto.ListRequest) (KeyIterator, error)
 	RangeScan(request *proto.RangeScanRequest) (RangeScanIterator, error)
+
 	ReadCommitOffset() (int64, error)
+	ReadLastVersionId() (int64, error)
+	AddASIILong(key string, value int64, timestamp uint64) error
 
 	ReadNextNotifications(ctx context.Context, startOffset int64) ([]*proto.NotificationBatch, error)
 
@@ -98,6 +101,8 @@ type DB interface {
 
 	// Delete and close the database and all its files
 	Delete() error
+
+	GetKv() KV
 }
 
 func NewDB(namespace string, shardId int64, factory Factory, notificationRetentionTime time.Duration, clock common.Clock) (DB, error) {
@@ -147,7 +152,7 @@ func NewDBWithCommitContext(namespace string, shardId int64, factory Factory, no
 		return nil, err
 	}
 
-	lastVersionId, err := db.readLastVersionId()
+	lastVersionId, err := db.ReadLastVersionId()
 	if err != nil {
 		return nil, err
 	}
@@ -325,6 +330,14 @@ func (*db) addNotifications(batch WriteBatch, notifications *notifications) erro
 	return batch.Put(notificationKey(notifications.batch.Offset), value)
 }
 
+func (d *db) AddASIILong(key string, value int64, timestamp uint64) error {
+	batch := d.kv.NewWriteBatch()
+	if err := d.addASCIILong(key, value, batch, timestamp); err != nil {
+		return err
+	}
+	return batch.Commit()
+}
+
 func (d *db) addASCIILong(key string, value int64, batch WriteBatch, timestamp uint64) error {
 	asciiValue := []byte(fmt.Sprintf("%d", value))
 	_, err := d.applyPut(batch, nil, &proto.PutRequest{
@@ -423,7 +436,7 @@ func (d *db) ReadCommitOffset() (int64, error) {
 	return d.readASCIILong(commitOffsetKey)
 }
 
-func (d *db) readLastVersionId() (int64, error) {
+func (d *db) ReadLastVersionId() (int64, error) {
 	return d.readASCIILong(commitLastVersionIdKey)
 }
 
@@ -770,6 +783,10 @@ func (d *db) ReadNextNotifications(ctx context.Context, startOffset int64) ([]*p
 		return nil, ErrNotificationsDisabled
 	}
 	return d.notificationsTracker.ReadNextNotifications(ctx, startOffset)
+}
+
+func (d *db) GetKv() KV {
+	return d.kv
 }
 
 type noopCallback struct{}

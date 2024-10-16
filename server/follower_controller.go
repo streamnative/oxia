@@ -72,6 +72,8 @@ type FollowerController interface {
 	Term() int64
 	CommitOffset() int64
 	Status() proto.ServingStatus
+
+	GetDB() kv.DB
 }
 
 type followerController struct {
@@ -178,7 +180,7 @@ func NewFollowerControllerWithContext(config Config, namespace string, shardId i
 			"oxia":  "follower-apply-committed-entries",
 			"shard": fmt.Sprintf("%d", fc.shardId),
 		},
-		fc.applyAllCommittedEntries,
+		fc.ApplyAllCommittedEntries,
 	)
 
 	fc.log.Info(
@@ -492,7 +494,7 @@ func (fc *followerController) handleReplicateSync(stream proto.OxiaLogReplicatio
 	}
 }
 
-func (fc *followerController) applyAllCommittedEntries() {
+func (fc *followerController) ApplyAllCommittedEntries() {
 	for {
 		fc.Lock()
 		if err := fc.applyEntriesCond.Wait(fc.ctx); err != nil {
@@ -787,4 +789,8 @@ func (fc *followerController) DeleteShard(request *proto.DeleteShardRequest) (*p
 	}
 
 	return &proto.DeleteShardResponse{}, nil
+}
+
+func (fc *followerController) GetDB() kv.DB {
+	return fc.db
 }

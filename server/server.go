@@ -145,3 +145,8 @@ func (s *Server) Close() error {
 
 	return err
 }
+
+// GetShardDirector is using for testing
+func (s *Server) GetShardDirector() ShardsDirector {
+	return s.shardsDirector
+}
