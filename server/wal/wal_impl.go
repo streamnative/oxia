@@ -224,25 +224,26 @@ func (t *wal) trim(firstOffset int64) error {
 }
 
 func (t *wal) Close() error {
-	if err := t.trimmer.Close(); err != nil {
-		return err
-	}
-
 	t.Lock()
 	defer t.Unlock()
 
-	return t.close()
+	return t.closeWithoutLock()
 }
 
-func (t *wal) close() error {
-	t.cancel()
-	t.activeEntries.Unregister()
+func (t *wal) closeWithoutLock() error {
+	select {
+	case <-t.ctx.Done():
+		return nil
+	default:
+		t.cancel()
+		t.activeEntries.Unregister()
 
-	return multierr.Combine(
-		t.trimmer.Close(),
-		t.currentSegment.Close(),
-		t.readOnlySegments.Close(),
-	)
+		return multierr.Combine(
+			t.trimmer.Close(),
+			t.currentSegment.Close(),
+			t.readOnlySegments.Close(),
+		)
+	}
 }
 
 func (t *wal) Append(entry *proto.LogEntry) error {
@@ -454,7 +455,7 @@ func (t *wal) Delete() error {
 	defer t.Unlock()
 
 	return multierr.Combine(
-		t.close(),
+		t.closeWithoutLock(),
 		os.RemoveAll(t.walPath),
 	)
 }
