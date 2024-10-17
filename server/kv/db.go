@@ -49,6 +49,14 @@ const (
 	termOptionsKey         = termKey + "-options"
 )
 
+// CommitContext is using for record some internal generated state.
+// user can use ReadCommitContext method to get the current state from DB
+// also, user can use NewDBWithCommitContext to create DB with some recovery operation.
+type CommitContext struct {
+	CommitOffset int64
+	LastVersion  int64
+}
+
 type UpdateOperationCallback interface {
 	OnPut(batch WriteBatch, req *proto.PutRequest, se *proto.StorageEntry) (proto.Status, error)
 	OnDelete(batch WriteBatch, key string) error
@@ -76,12 +84,19 @@ type DB interface {
 	Get(request *proto.GetRequest) (*proto.GetResponse, error)
 	List(request *proto.ListRequest) (KeyIterator, error)
 	RangeScan(request *proto.RangeScanRequest) (RangeScanIterator, error)
+
 	ReadCommitOffset() (int64, error)
+	ReadLastVersionId() (int64, error)
 
 	ReadNextNotifications(ctx context.Context, startOffset int64) ([]*proto.NotificationBatch, error)
 
 	UpdateTerm(newTerm int64, options TermOptions) error
 	ReadTerm() (term int64, options TermOptions, err error)
+
+	// ReadImmutableCommitContext fetch the immutable commit context
+	ReadImmutableCommitContext() *CommitContext
+	// ReadCommitContext fetch the current commit context
+	ReadCommitContext() *CommitContext
 
 	Snapshot() (Snapshot, error)
 
@@ -90,6 +105,11 @@ type DB interface {
 }
 
 func NewDB(namespace string, shardId int64, factory Factory, notificationRetentionTime time.Duration, clock common.Clock) (DB, error) {
+	return NewDBWithCommitContext(namespace, shardId, factory, notificationRetentionTime, clock, nil)
+}
+
+func NewDBWithCommitContext(namespace string, shardId int64, factory Factory, notificationRetentionTime time.Duration, clock common.Clock,
+	commitContext *CommitContext) (DB, error) {
 	kv, err := factory.NewKV(namespace, shardId)
 	if err != nil {
 		return nil, err
@@ -131,13 +151,36 @@ func NewDB(namespace string, shardId int64, factory Factory, notificationRetenti
 		return nil, err
 	}
 
-	lastVersionId, err := db.readLastVersionId()
+	lastVersionId, err := db.ReadLastVersionId()
 	if err != nil {
 		return nil, err
 	}
+
 	db.versionIdTracker.Store(lastVersionId)
 
 	db.notificationsTracker = newNotificationsTracker(namespace, shardId, commitOffset, kv, notificationRetentionTime, clock)
+
+	// commit context related logic
+	if commitContext != nil {
+		db.immutableCommitContext = commitContext
+		batch := db.kv.NewWriteBatch()
+		if _, err := db.persistOrOverrideLastVersionId(commitOffset, batch, uint64(time.Now().Unix())); err != nil {
+			return nil, multierr.Combine(err, batch.Close())
+		}
+		if batch.Count() > 0 {
+			if err := batch.Commit(); err != nil {
+				return nil, multierr.Combine(err, batch.Close())
+			}
+		}
+		if err = batch.Close(); err != nil {
+			return nil, err
+		}
+	}
+
+	db.mutableCommitContext = &CommitContext{
+		CommitOffset: commitOffset,
+		LastVersion:  db.versionIdTracker.Load(),
+	}
 	return db, nil
 }
 
@@ -148,6 +191,9 @@ type db struct {
 	notificationsTracker *notificationsTracker
 	log                  *slog.Logger
 	notificationsEnabled bool
+
+	immutableCommitContext *CommitContext
+	mutableCommitContext   *CommitContext
 
 	putCounter          metrics.Counter
 	deleteCounter       metrics.Counter
@@ -226,6 +272,14 @@ func (d *db) applyWriteRequest(b *proto.WriteRequest, batch WriteBatch, commitOf
 	return notifications, res, nil
 }
 
+func (d *db) ReadImmutableCommitContext() *CommitContext {
+	return d.immutableCommitContext
+}
+
+func (d *db) ReadCommitContext() *CommitContext {
+	return d.mutableCommitContext
+}
+
 func (d *db) ProcessWrite(b *proto.WriteRequest, commitOffset int64, timestamp uint64, updateOperationCallback UpdateOperationCallback) (*proto.WriteResponse, error) {
 	timer := d.batchWriteLatencyHisto.Timer()
 	defer timer.Done()
@@ -240,7 +294,8 @@ func (d *db) ProcessWrite(b *proto.WriteRequest, commitOffset int64, timestamp u
 		return nil, err
 	}
 
-	if err := d.addASCIILong(commitLastVersionIdKey, d.versionIdTracker.Load(), batch, timestamp); err != nil {
+	var versionId int64
+	if versionId, err = d.persistOrOverrideLastVersionId(commitOffset, batch, timestamp); err != nil {
 		return nil, err
 	}
 
@@ -255,6 +310,11 @@ func (d *db) ProcessWrite(b *proto.WriteRequest, commitOffset int64, timestamp u
 		return nil, err
 	}
 
+	d.mutableCommitContext = &CommitContext{
+		CommitOffset: commitOffset,
+		LastVersion:  versionId,
+	}
+
 	if notifications != nil {
 		d.notificationsTracker.UpdatedCommitOffset(commitOffset)
 	}
@@ -266,6 +326,26 @@ func (d *db) ProcessWrite(b *proto.WriteRequest, commitOffset int64, timestamp u
 	return res, nil
 }
 
+func (d *db) persistOrOverrideLastVersionId(commitOffset int64, batch WriteBatch, timestamp uint64) (int64, error) {
+	versionId := d.versionIdTracker.Load()
+
+	if d.immutableCommitContext != nil &&
+		commitOffset == d.immutableCommitContext.CommitOffset &&
+		versionId != d.immutableCommitContext.LastVersion &&
+		common.InvalidVersion != d.immutableCommitContext.LastVersion {
+		d.log.Warn("inconsistent version id, override it", slog.Int64("commitOffset", commitOffset),
+			slog.Int64("expectedVersionId", d.immutableCommitContext.LastVersion),
+			slog.Int64("actualVersionId", versionId))
+		versionId = d.immutableCommitContext.LastVersion
+		d.versionIdTracker.Store(versionId)
+	}
+
+	if err := d.addASCIILong(commitLastVersionIdKey, versionId, batch, timestamp); err != nil {
+		return 0, err
+	}
+	return versionId, nil
+}
+
 func (*db) addNotifications(batch WriteBatch, notifications *notifications) error {
 	value, err := notifications.batch.MarshalVT()
 	if err != nil {
@@ -274,7 +354,6 @@ func (*db) addNotifications(batch WriteBatch, notifications *notifications) erro
 
 	return batch.Put(notificationKey(notifications.batch.Offset), value)
 }
-
 func (d *db) addASCIILong(key string, value int64, batch WriteBatch, timestamp uint64) error {
 	asciiValue := []byte(fmt.Sprintf("%d", value))
 	_, err := d.applyPut(batch, nil, &proto.PutRequest{
@@ -373,7 +452,7 @@ func (d *db) ReadCommitOffset() (int64, error) {
 	return d.readASCIILong(commitOffsetKey)
 }
 
-func (d *db) readLastVersionId() (int64, error) {
+func (d *db) ReadLastVersionId() (int64, error) {
 	return d.readASCIILong(commitLastVersionIdKey)
 }
 

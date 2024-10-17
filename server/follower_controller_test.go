@@ -455,6 +455,58 @@ func TestFollower_CommitOffsetLastEntry(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
+func TestFollowerController_LastVersion(t *testing.T) {
+	var shardId int64
+	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
+	walFactory := wal.NewWalFactory(&wal.FactoryOptions{BaseWalDir: t.TempDir()})
+
+	fc, err := NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
+	assert.NoError(t, err)
+
+	_, err = fc.NewTerm(&proto.NewTermRequest{Term: 1})
+	assert.NoError(t, err)
+	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
+	assert.EqualValues(t, 1, fc.Term())
+
+	stream := newMockServerReplicateStream()
+	go func() {
+		// cancelled due to fc.Close() below
+		assert.ErrorIs(t, fc.Replicate(stream), context.Canceled)
+	}()
+	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, 0))
+	// Wait for acks
+	r1 := stream.GetResponse()
+	assert.Equal(t, proto.ServingStatus_FOLLOWER, fc.Status())
+	assert.EqualValues(t, 0, r1.Offset)
+	assert.Eventually(t, func() bool {
+		return fc.CommitOffset() == 0
+	}, 10*time.Second, 10*time.Millisecond)
+	dbRes, err := fc.(*followerController).db.Get(&proto.GetRequest{
+		Key:          "a",
+		IncludeValue: true,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, proto.Status_OK, dbRes.Status)
+	assert.Equal(t, []byte("0"), dbRes.Value)
+
+	dbRes, err = fc.(*followerController).db.Get(&proto.GetRequest{
+		Key:          "b",
+		IncludeValue: true,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, proto.Status_OK, dbRes.Status)
+	assert.Equal(t, []byte("1"), dbRes.Value)
+
+	assert.NoError(t, fc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
+func TestFollowerController_CommitContext(t *testing.T) {
+
+}
+
 func TestFollowerController_RejectEntriesWithDifferentTerm(t *testing.T) {
 	var shardId int64
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.FactoryOptions{

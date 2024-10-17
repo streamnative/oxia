@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/streamnative/oxia/server/kv"
 	"log/slog"
 	"os"
 	"sync"
@@ -45,7 +46,8 @@ func (r *maelstromReplicationRpcProvider) Close() error {
 	return nil
 }
 
-func (r *maelstromReplicationRpcProvider) GetReplicateStream(ctx context.Context, follower string, namespace string, shard int64, term int64) (
+func (r *maelstromReplicationRpcProvider) GetReplicateStream(ctx context.Context, follower string, namespace string,
+	shard int64, term int64, commitContext *kv.CommitContext) (
 	proto.OxiaLogReplication_ReplicateClient, error) {
 	s := &maelstromReplicateClient{
 		ctx:       ctx,

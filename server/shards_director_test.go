@@ -85,13 +85,13 @@ func TestShardsDirector_GetOrCreateFollower(t *testing.T) {
 	assert.EqualValues(t, 2, lc.Term())
 
 	// Should fail to get closed if the term is wrong
-	fc, err := sd.GetOrCreateFollower(common.DefaultNamespace, shard, 1)
+	fc, err := sd.GetOrCreateFollower(common.DefaultNamespace, shard, 1, nil)
 	assert.ErrorIs(t, common.ErrorInvalidTerm, err)
 	assert.Nil(t, fc)
 	assert.Equal(t, proto.ServingStatus_LEADER, lc.Status())
 
 	// Will get closed if term is correct
-	fc, err = sd.GetOrCreateFollower(common.DefaultNamespace, shard, 2)
+	fc, err = sd.GetOrCreateFollower(common.DefaultNamespace, shard, 2, nil)
 	assert.NoError(t, err)
 
 	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, lc.Status())
@@ -99,4 +99,44 @@ func TestShardsDirector_GetOrCreateFollower(t *testing.T) {
 	assert.NoError(t, fc.Close())
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, walFactory.Close())
+}
+
+func TestShardsDirector_GetOrCreateFollower_WithCommitContext(t *testing.T) {
+	var shard int64 = 1
+
+	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
+	walFactory := newTestWalFactory(t)
+
+	sd := NewShardsDirector(Config{}, walFactory, kvFactory, newMockRpcClient())
+	fc, err := sd.GetOrCreateFollower(common.DefaultNamespace, shard, 1, &kv.CommitContext{
+		CommitOffset: 1,
+		LastVersion:  15,
+	})
+	assert.NoError(t, err)
+	db := fc.(*followerController).db
+	commitContext := db.ReadImmutableCommitContext()
+	assert.EqualValues(t, 1, commitContext.CommitOffset)
+	assert.EqualValues(t, 15, commitContext.LastVersion)
+
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+	assert.NoError(t, sd.Close())
+}
+
+func TestShardsDirector_GetOrCreateFollower_WithoutCommitContext(t *testing.T) {
+	var shard int64 = 1
+
+	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
+	walFactory := newTestWalFactory(t)
+
+	sd := NewShardsDirector(Config{}, walFactory, kvFactory, newMockRpcClient())
+	fc, err := sd.GetOrCreateFollower(common.DefaultNamespace, shard, 1, nil)
+	assert.NoError(t, err)
+	db := fc.(*followerController).db
+	commitContext := db.ReadImmutableCommitContext()
+	assert.Nil(t, commitContext)
+
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+	assert.NoError(t, sd.Close())
 }
