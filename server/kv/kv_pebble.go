@@ -16,6 +16,7 @@ package kv
 
 import (
 	"fmt"
+	"golang.org/x/net/context"
 	"io"
 	"log/slog"
 	"os"
@@ -138,6 +139,8 @@ func (p *PebbleFactory) getKVPath(namespace string, shard int64) string {
 }
 
 type Pebble struct {
+	ctx             context.Context
+	cancel          context.CancelFunc
 	factory         *PebbleFactory
 	namespace       string
 	shardId         int64
@@ -162,8 +165,11 @@ type Pebble struct {
 }
 
 func newKVPebble(factory *PebbleFactory, namespace string, shardId int64) (KV, error) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
 	labels := metrics.LabelsForShard(namespace, shardId)
 	pb := &Pebble{
+		ctx:       ctx,
+		cancel:    cancelFunc,
 		factory:   factory,
 		namespace: namespace,
 		shardId:   shardId,
@@ -342,14 +348,20 @@ func newKVPebble(factory *PebbleFactory, namespace string, shardId int64) (KV, e
 }
 
 func (p *Pebble) Close() error {
-	for _, g := range p.gauges {
-		g.Unregister()
-	}
+	select {
+	case <-p.ctx.Done():
+		return nil
+	default:
+		p.cancel()
+		for _, g := range p.gauges {
+			g.Unregister()
+		}
 
-	if err := p.db.Flush(); err != nil {
-		return err
+		if err := p.db.Flush(); err != nil {
+			return err
+		}
+		return p.db.Close()
 	}
-	return p.db.Close()
 }
 
 func (p *Pebble) Delete() error {

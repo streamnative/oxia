@@ -1099,16 +1099,19 @@ func (lc *leaderController) DeleteShard(request *proto.DeleteShardRequest) (*pro
 	}
 
 	lc.log.Info("Deleting shard")
+	deleteWal := lc.wal
+	deleteDb := lc.db
 
-	// Wipe out both WAL and DB contents
-	if err := multierr.Combine(
-		lc.wal.Delete(),
-		lc.db.Delete(),
-	); err != nil {
+	// close the leader controller first
+	if err := lc.close(); err != nil {
 		return nil, err
 	}
 
-	if err := lc.close(); err != nil {
+	// Wipe out both WAL and DB contents
+	if err := multierr.Combine(
+		deleteWal.Delete(),
+		deleteDb.Delete(),
+	); err != nil {
 		return nil, err
 	}
 
