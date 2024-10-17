@@ -1108,8 +1108,6 @@ func (lc *leaderController) DeleteShard(request *proto.DeleteShardRequest) (*pro
 		return nil, err
 	}
 
-	lc.db = nil
-	lc.wal = nil
 	if err := lc.close(); err != nil {
 		return nil, err
 	}
