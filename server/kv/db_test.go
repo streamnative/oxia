@@ -16,6 +16,9 @@ package kv
 
 import (
 	"fmt"
+	"github.com/google/uuid"
+	"os"
+	"path"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -445,7 +448,11 @@ func TestDB_ReadCommitOffset(t *testing.T) {
 }
 
 func TestDb_UpdateTerm(t *testing.T) {
-	factory, err := NewPebbleKVFactory(testKVOptions)
+	factory, err := NewPebbleKVFactory(&FactoryOptions{
+		InMemory:    false,
+		CacheSizeMB: 1,
+		DataDir:     path.Join(os.TempDir(), uuid.New().String()),
+	})
 	assert.NoError(t, err)
 	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
 	assert.NoError(t, err)
@@ -471,7 +478,7 @@ func TestDb_UpdateTerm(t *testing.T) {
 
 	term, _, err = db.ReadTerm()
 	assert.NoError(t, err)
-	assert.Equal(t, wal.InvalidOffset, term)
+	assert.EqualValues(t, 1, term)
 
 	assert.NoError(t, factory.Close())
 }
@@ -479,7 +486,11 @@ func TestDb_UpdateTerm(t *testing.T) {
 func TestDB_Delete(t *testing.T) {
 	offset := int64(13)
 
-	factory, err := NewPebbleKVFactory(testKVOptions)
+	factory, err := NewPebbleKVFactory(&FactoryOptions{
+		InMemory:    false,
+		CacheSizeMB: 1,
+		DataDir:     path.Join(os.TempDir(), uuid.New().String()),
+	})
 	assert.NoError(t, err)
 	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
 	assert.NoError(t, err)
