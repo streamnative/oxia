@@ -212,8 +212,13 @@ func (nt *notificationsTracker) ReadNextNotifications(ctx context.Context, start
 }
 
 func (nt *notificationsTracker) Close() error {
-	nt.cancel()
-	nt.closed.Store(true)
-	nt.cond.Broadcast()
-	return nt.waitClose.Wait(context.Background())
+	select {
+	case <-nt.ctx.Done():
+		return nil
+	default:
+		nt.cancel()
+		nt.closed.Store(true)
+		nt.cond.Broadcast()
+		return nt.waitClose.Wait(context.Background())
+	}
 }

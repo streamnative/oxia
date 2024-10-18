@@ -204,6 +204,7 @@ func (fc *followerController) close() error {
 
 	if fc.wal != nil {
 		err = multierr.Append(err, fc.wal.Close())
+		fc.wal = nil
 	}
 
 	if fc.db != nil {
@@ -758,17 +759,19 @@ func (fc *followerController) DeleteShard(request *proto.DeleteShardRequest) (*p
 
 	fc.log.Info("Deleting shard")
 
-	// Wipe out both WAL and DB contents
-	if err := multierr.Combine(
-		fc.wal.Delete(),
-		fc.db.Delete(),
-	); err != nil {
+	deleteWal := fc.wal
+	deleteDb := fc.db
+
+	// close the fc first
+	if err := fc.close(); err != nil {
 		return nil, err
 	}
 
-	fc.db = nil
-	fc.wal = nil
-	if err := fc.close(); err != nil {
+	// Wipe out both WAL and DB contents
+	if err := multierr.Combine(
+		deleteWal.Delete(),
+		deleteDb.Delete(),
+	); err != nil {
 		return nil, err
 	}
 

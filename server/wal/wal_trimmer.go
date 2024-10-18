@@ -86,11 +86,16 @@ type trimmer struct {
 }
 
 func (t *trimmer) Close() error {
-	t.cancel()
-	t.ticker.Stop()
+	select {
+	case <-t.ctx.Done():
+		return nil
+	default:
+		t.cancel()
+		t.ticker.Stop()
 
-	<-t.waitClose
-	return nil
+		<-t.waitClose
+		return nil
+	}
 }
 
 func (t *trimmer) run() {
