@@ -17,10 +17,12 @@ package common
 import "time"
 
 const (
-	MetadataTerm      = "term"
-	MetadataNamespace = "namespace"
-	MetadataShardId   = "shard-id"
-	DefaultNamespace  = "default"
+	MetadataTerm                     = "term"
+	MetadataNamespace                = "namespace"
+	MetadataShardId                  = "shard-id"
+	MetadataCommitContextOffset      = "commit-context-offset"
+	MetadataCommitContextLastVersion = "commit-context-last-version"
+	DefaultNamespace                 = "default"
 
 	DefaultPublicPort   = 6648
 	DefaultInternalPort = 6649
@@ -28,4 +30,6 @@ const (
 
 	MaxSessionTimeout = 5 * time.Minute
 	MinSessionTimeout = 2 * time.Second
+
+	InvalidVersion = -1
 )

@@ -447,6 +447,229 @@ func TestDB_ReadCommitOffset(t *testing.T) {
 	assert.NoError(t, factory.Close())
 }
 
+func TestDb_ReadLastVersionId(t *testing.T) {
+	factory, err := NewPebbleKVFactory(&FactoryOptions{
+		InMemory:    false,
+		CacheSizeMB: 1,
+		DataDir:     path.Join(os.TempDir(), uuid.New().String()),
+	})
+	assert.NoError(t, err)
+	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	assert.NoError(t, err)
+
+	lastVersionId, err := db.ReadLastVersionId()
+	assert.NoError(t, err)
+	assert.Equal(t, wal.InvalidOffset, lastVersionId)
+
+	writeReq := &proto.WriteRequest{
+		Puts: []*proto.PutRequest{{
+			Key:   "a",
+			Value: []byte("a"),
+		}},
+	}
+	_, err = db.ProcessWrite(writeReq, 0, 0, NoOpCallback)
+	assert.NoError(t, err)
+
+	lastVersionId, err = db.ReadLastVersionId()
+	assert.NoError(t, err)
+	assert.EqualValues(t, 0, lastVersionId)
+
+	_, err = db.ProcessWrite(writeReq, 0, 0, NoOpCallback)
+	assert.NoError(t, err)
+
+	lastVersionId, err = db.ReadLastVersionId()
+	assert.NoError(t, err)
+	assert.EqualValues(t, 1, lastVersionId)
+
+	assert.NoError(t, db.Close())
+
+	// reopen it
+	db, err = NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	assert.NoError(t, err)
+	lastVersionId, err = db.ReadLastVersionId()
+	assert.NoError(t, err)
+	assert.EqualValues(t, 1, lastVersionId)
+
+	assert.NoError(t, db.Close())
+	assert.NoError(t, factory.Close())
+}
+
+func TestDb_NewWithCommitContext_LastVersionId_SameCommitOffset(t *testing.T) {
+	factory, err := NewPebbleKVFactory(&FactoryOptions{
+		InMemory:    false,
+		CacheSizeMB: 1,
+		DataDir:     path.Join(os.TempDir(), uuid.New().String()),
+	})
+	assert.NoError(t, err)
+	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	assert.NoError(t, err)
+
+	_, err = db.ProcessWrite(&proto.WriteRequest{
+		Puts: []*proto.PutRequest{{
+			Key:   "a",
+			Value: []byte("a"),
+		}},
+	}, 15, 0, NoOpCallback)
+	assert.NoError(t, err)
+	offset, err := db.ReadCommitOffset()
+	assert.NoError(t, err)
+	assert.EqualValues(t, 15, offset)
+	lastVersionId, err := db.ReadLastVersionId()
+	assert.NoError(t, err)
+	assert.EqualValues(t, 0, lastVersionId)
+
+	err = db.Close()
+	assert.NoError(t, err)
+
+	// assume we are expecting commitContext
+	db, err = NewDBWithCommitContext(common.DefaultNamespace, 1, factory, 0, common.SystemClock, &CommitContext{
+		CommitOffset: 15,
+		LastVersion:  30,
+	})
+	assert.NoError(t, err)
+	lastVersionId, err = db.ReadLastVersionId()
+	assert.NoError(t, err)
+	assert.EqualValues(t, 30, lastVersionId)
+
+	_, err = db.ProcessWrite(&proto.WriteRequest{
+		Puts: []*proto.PutRequest{{
+			Key:   "a",
+			Value: []byte("a"),
+		}},
+	}, 16, 0, NoOpCallback)
+	assert.NoError(t, err)
+
+	lastVersionId, err = db.ReadLastVersionId()
+	assert.NoError(t, err)
+	assert.EqualValues(t, 31, lastVersionId)
+
+	assert.NoError(t, db.Close())
+
+	db, err = NewDBWithCommitContext(common.DefaultNamespace, 1, factory, 0, common.SystemClock, &CommitContext{
+		CommitOffset: 15,
+		LastVersion:  30,
+	})
+	assert.NoError(t, err)
+	lastVersionId, err = db.ReadLastVersionId()
+	assert.NoError(t, err)
+	assert.EqualValues(t, 31, lastVersionId)
+	assert.NoError(t, db.Close())
+}
+
+func TestDb_NewWithCommitContext_LastVersionId_Writing(t *testing.T) {
+	factory, err := NewPebbleKVFactory(&FactoryOptions{
+		InMemory:    false,
+		CacheSizeMB: 1,
+		DataDir:     path.Join(os.TempDir(), uuid.New().String()),
+	})
+	assert.NoError(t, err)
+	db, err := NewDBWithCommitContext(common.DefaultNamespace, 1, factory, 0, common.SystemClock, &CommitContext{
+		CommitOffset: 15,
+		LastVersion:  30,
+	})
+	assert.NoError(t, err)
+
+	_, err = db.ProcessWrite(&proto.WriteRequest{
+		Puts: []*proto.PutRequest{{
+			Key:   "a",
+			Value: []byte("a"),
+		}},
+	}, 14, 0, NoOpCallback)
+	assert.NoError(t, err)
+	lastVersionId, err := db.ReadLastVersionId()
+	assert.NoError(t, err)
+	assert.NotEqualValues(t, 30, lastVersionId)
+
+	_, err = db.ProcessWrite(&proto.WriteRequest{
+		Puts: []*proto.PutRequest{{
+			Key:   "a",
+			Value: []byte("a"),
+		}},
+	}, 15, 0, NoOpCallback)
+	assert.NoError(t, err)
+
+	lastVersionId, err = db.ReadLastVersionId()
+	assert.NoError(t, err)
+	assert.EqualValues(t, 30, lastVersionId)
+	assert.NoError(t, db.Close())
+
+	db, err = NewDBWithCommitContext(common.DefaultNamespace, 1, factory, 0, common.SystemClock, &CommitContext{
+		CommitOffset: 15,
+		LastVersion:  30,
+	})
+	assert.NoError(t, err)
+
+	lastVersionId, err = db.ReadLastVersionId()
+	assert.NoError(t, err)
+	assert.EqualValues(t, 30, lastVersionId)
+
+	// write again
+	_, err = db.ProcessWrite(&proto.WriteRequest{
+		Puts: []*proto.PutRequest{{
+			Key:   "a",
+			Value: []byte("a"),
+		}},
+	}, 16, 0, NoOpCallback)
+	assert.NoError(t, err)
+
+	lastVersionId, err = db.ReadLastVersionId()
+	assert.NoError(t, err)
+	assert.EqualValues(t, 31, lastVersionId)
+
+	assert.NoError(t, db.Close())
+}
+
+func TestDb_ReadCommitContext(t *testing.T) {
+	factory, err := NewPebbleKVFactory(&FactoryOptions{
+		InMemory:    false,
+		CacheSizeMB: 1,
+		DataDir:     path.Join(os.TempDir(), uuid.New().String()),
+	})
+	assert.NoError(t, err)
+	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	assert.NoError(t, err)
+
+	context := db.ReadCommitContext()
+	assert.EqualValues(t, -1, context.CommitOffset)
+	assert.EqualValues(t, -1, context.LastVersion)
+
+	_, err = db.ProcessWrite(&proto.WriteRequest{
+		Puts: []*proto.PutRequest{{
+			Key:   "a",
+			Value: []byte("a"),
+		}},
+	}, 0, 0, NoOpCallback)
+	assert.NoError(t, err)
+
+	context = db.ReadCommitContext()
+	assert.EqualValues(t, 0, context.CommitOffset)
+	assert.EqualValues(t, 0, context.LastVersion)
+
+	assert.NoError(t, db.Close())
+
+	db, err = NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	assert.NoError(t, err)
+
+	context = db.ReadCommitContext()
+	assert.EqualValues(t, 0, context.CommitOffset)
+	assert.EqualValues(t, 0, context.LastVersion)
+
+	_, err = db.ProcessWrite(&proto.WriteRequest{
+		Puts: []*proto.PutRequest{{
+			Key:   "a",
+			Value: []byte("a"),
+		}},
+	}, 1, 0, NoOpCallback)
+	assert.NoError(t, err)
+
+	context = db.ReadCommitContext()
+	assert.EqualValues(t, 1, context.CommitOffset)
+	assert.EqualValues(t, 1, context.LastVersion)
+
+	assert.NoError(t, db.Close())
+	assert.NoError(t, factory.Close())
+}
+
 func TestDb_UpdateTerm(t *testing.T) {
 	factory, err := NewPebbleKVFactory(&FactoryOptions{
 		InMemory:    false,

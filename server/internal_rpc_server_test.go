@@ -17,6 +17,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"github.com/streamnative/oxia/common"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -45,4 +46,30 @@ func TestInternalHealthCheck(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, grpc_health_v1.HealthCheckResponse_SERVING, response.Status)
+}
+
+func TestInternalRpcServer_ReadOptionalCommitContext(t *testing.T) {
+	healthServer := health.NewServer()
+	server, err := newInternalRpcServer(container.Default, "localhost:0", nil,
+		NewShardAssignmentDispatcher(healthServer), healthServer, nil)
+	assert.NoError(t, err)
+
+	md := map[string][]string{}
+	commitContext := server.ReadOptionalCommitContext(md)
+	assert.Nil(t, commitContext)
+
+	commitContext = server.ReadOptionalCommitContext(map[string][]string{
+		common.MetadataCommitContextOffset: {"2"},
+	})
+
+	assert.EqualValues(t, 2, commitContext.CommitOffset)
+	assert.EqualValues(t, common.InvalidVersion, commitContext.LastVersion)
+
+	commitContext = server.ReadOptionalCommitContext(map[string][]string{
+		common.MetadataCommitContextOffset:      {"2"},
+		common.MetadataCommitContextLastVersion: {"30"},
+	})
+
+	assert.EqualValues(t, 2, commitContext.CommitOffset)
+	assert.EqualValues(t, 30, commitContext.LastVersion)
 }
