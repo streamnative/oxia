@@ -32,7 +32,7 @@ var namespaceConfig = &model.NamespaceConfig{
 	Name:                 "my-namespace",
 	InitialShardCount:    1,
 	ReplicationFactor:    3,
-	NotificationsEnabled: common.OptBooleanDefaultTrue{},
+	NotificationsEnabled: nil,
 }
 
 func TestShardController(t *testing.T) {
@@ -305,11 +305,12 @@ func TestShardController_NotificationsDisabled(t *testing.T) {
 	s2 := model.ServerAddress{Public: "s2:9091", Internal: "s2:8191"}
 	s3 := model.ServerAddress{Public: "s3:9091", Internal: "s3:8191"}
 
+	pFalse := false
 	namespaceConfig := &model.NamespaceConfig{
 		Name:                 "my-ns-2",
 		InitialShardCount:    1,
 		ReplicationFactor:    1,
-		NotificationsEnabled: common.Bool(false),
+		NotificationsEnabled: &pFalse,
 	}
 
 	sc := NewShardController(common.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{

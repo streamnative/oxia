@@ -604,7 +604,7 @@ func (s *shardController) newTerm(ctx context.Context, node model.ServerAddress)
 		Shard:     s.shard,
 		Term:      s.shardMetadata.Term,
 		Options: &proto.NewTermOptions{
-			EnableNotifications: s.namespaceConfig.NotificationsEnabled.Get(),
+			EnableNotifications: s.namespaceConfig.GetNotificationEnabled(),
 		},
 	})
 	if err != nil {
