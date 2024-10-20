@@ -23,7 +23,7 @@ type NamespaceConfig struct {
 	Name                 string `json:"name" yaml:"name"`
 	InitialShardCount    uint32 `json:"initialShardCount" yaml:"initialShardCount"`
 	ReplicationFactor    uint32 `json:"replicationFactor" yaml:"replicationFactor"`
-	NotificationsEnabled *bool  `json:"notificationsEnabled,omitempty" yaml:"notificationsEnabled"`
+	NotificationsEnabled *bool  `json:"notificationsEnabled,omitempty" yaml:"notificationsEnabled,omitempty"`
 }
 
 func (nc *NamespaceConfig) GetNotificationEnabled() bool {
