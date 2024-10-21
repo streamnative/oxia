@@ -16,6 +16,9 @@ package common
 
 import (
 	"encoding/json"
+	"reflect"
+
+	"github.com/mitchellh/mapstructure"
 
 	"github.com/pkg/errors"
 )
@@ -40,6 +43,10 @@ func (o *OptBooleanDefaultTrue) MarshalJSON() ([]byte, error) {
 	return json.Marshal(o.val)
 }
 
+func (o OptBooleanDefaultTrue) MarshalYAML() (any, error) {
+	return o.val, nil
+}
+
 var trueVal = true
 var falseVal = false
 
@@ -61,4 +68,19 @@ func (o *OptBooleanDefaultTrue) UnmarshalJSON(data []byte) error {
 	}
 
 	return errors.New("invalid boolean value: " + s)
+}
+
+func OptBooleanViperHook() mapstructure.DecodeHookFuncType {
+	return func(_ reflect.Type, t reflect.Type, data any) (any, error) {
+		if t == reflect.TypeOf(OptBooleanDefaultTrue{}) {
+			b, ok := data.(bool)
+			if !ok {
+				return nil, errors.Errorf("invalid boolean value: '%v'", data)
+			}
+
+			return Bool(b), nil
+		}
+
+		return data, nil
+	}
 }

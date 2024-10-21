@@ -15,10 +15,12 @@
 package coordinator
 
 import (
-	"errors"
 	"io"
 	"log/slog"
 	"strings"
+
+	"github.com/mitchellh/mapstructure"
+	"github.com/pkg/errors"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/cobra"
@@ -128,8 +130,12 @@ func loadClusterConfig(v *viper.Viper) (model.ClusterConfig, error) {
 		return cc, err
 	}
 
-	if err := v.Unmarshal(&cc); err != nil {
-		return cc, err
+	if err := v.Unmarshal(&cc, viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
+		common.OptBooleanViperHook(),
+		mapstructure.StringToTimeDurationHookFunc(), // default hook
+		mapstructure.StringToSliceHookFunc(","),     // default hook
+	))); err != nil {
+		return cc, errors.Wrap(err, "failed to load cluster config")
 	}
 
 	return cc, nil
