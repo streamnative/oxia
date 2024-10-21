@@ -33,9 +33,10 @@ import (
 func TestCmd(t *testing.T) {
 	clusterConfig := model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
-			Name:              common.DefaultNamespace,
-			ReplicationFactor: 1,
-			InitialShardCount: 2,
+			Name:                 common.DefaultNamespace,
+			ReplicationFactor:    1,
+			InitialShardCount:    2,
+			NotificationsEnabled: common.Bool(false),
 		}},
 		Servers: []model.ServerAddress{{
 			Public:   "public:1234",
@@ -47,7 +48,6 @@ func TestCmd(t *testing.T) {
 	assert.NoError(t, err)
 
 	name := "config.yaml"
-
 	err = os.WriteFile(name, bytes, os.ModePerm)
 	assert.NoError(t, err)
 
@@ -68,9 +68,10 @@ func TestCmd(t *testing.T) {
 			MetadataProviderImpl: coordinator.File,
 		}, model.ClusterConfig{
 			Namespaces: []model.NamespaceConfig{{
-				Name:              common.DefaultNamespace,
-				ReplicationFactor: 1,
-				InitialShardCount: 2,
+				Name:                 common.DefaultNamespace,
+				ReplicationFactor:    1,
+				InitialShardCount:    2,
+				NotificationsEnabled: common.Bool(false),
 			}},
 			Servers: []model.ServerAddress{{
 				Public:   "public:1234",
@@ -84,9 +85,10 @@ func TestCmd(t *testing.T) {
 			MetadataProviderImpl: coordinator.File,
 		}, model.ClusterConfig{
 			Namespaces: []model.NamespaceConfig{{
-				Name:              common.DefaultNamespace,
-				ReplicationFactor: 1,
-				InitialShardCount: 2,
+				Name:                 common.DefaultNamespace,
+				ReplicationFactor:    1,
+				InitialShardCount:    2,
+				NotificationsEnabled: common.Bool(false),
 			}},
 			Servers: []model.ServerAddress{{
 				Public:   "public:1234",
@@ -100,9 +102,10 @@ func TestCmd(t *testing.T) {
 			MetadataProviderImpl: coordinator.File,
 		}, model.ClusterConfig{
 			Namespaces: []model.NamespaceConfig{{
-				Name:              common.DefaultNamespace,
-				ReplicationFactor: 1,
-				InitialShardCount: 2,
+				Name:                 common.DefaultNamespace,
+				ReplicationFactor:    1,
+				InitialShardCount:    2,
+				NotificationsEnabled: common.Bool(false),
 			}},
 			Servers: []model.ServerAddress{{
 				Public:   "public:1234",
@@ -116,9 +119,10 @@ func TestCmd(t *testing.T) {
 			MetadataProviderImpl: coordinator.File,
 		}, model.ClusterConfig{
 			Namespaces: []model.NamespaceConfig{{
-				Name:              common.DefaultNamespace,
-				ReplicationFactor: 1,
-				InitialShardCount: 2,
+				Name:                 common.DefaultNamespace,
+				ReplicationFactor:    1,
+				InitialShardCount:    2,
+				NotificationsEnabled: common.Bool(false),
 			}},
 			Servers: []model.ServerAddress{{
 				Public:   "public:1234",
@@ -132,9 +136,10 @@ func TestCmd(t *testing.T) {
 			MetadataProviderImpl: coordinator.File,
 		}, model.ClusterConfig{
 			Namespaces: []model.NamespaceConfig{{
-				Name:              common.DefaultNamespace,
-				ReplicationFactor: 1,
-				InitialShardCount: 2,
+				Name:                 common.DefaultNamespace,
+				ReplicationFactor:    1,
+				InitialShardCount:    2,
+				NotificationsEnabled: common.Bool(false),
 			}},
 			Servers: []model.ServerAddress{{
 				Public:   "public:1234",
