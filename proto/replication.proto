@@ -22,8 +22,7 @@ option go_package = "github.com/streamnative/oxia/proto";
 
 // coordinator -> node
 service OxiaCoordination {
-  rpc PushShardAssignments(stream io.streamnative.oxia.proto.ShardAssignments)
-      returns (CoordinationShardAssignmentsResponse);
+  rpc PushShardAssignments(io.streamnative.oxia.proto.ShardAssignments) returns (CoordinationShardAssignmentsResponse);
 
   rpc NewTerm(NewTermRequest) returns (NewTermResponse);
   rpc BecomeLeader(BecomeLeaderRequest) returns (BecomeLeaderResponse);

@@ -25,7 +25,6 @@ import (
 
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
@@ -75,22 +74,15 @@ func (s *internalRpcServer) Close() error {
 	return s.grpcServer.Close()
 }
 
-func (s *internalRpcServer) PushShardAssignments(srv proto.OxiaCoordination_PushShardAssignmentsServer) error {
+func (s *internalRpcServer) PushShardAssignments(ctx context.Context, req *proto.ShardAssignments) (*proto.CoordinationShardAssignmentsResponse, error) {
 	s.log.Info(
 		"Received shard assignment request from coordinator",
-		slog.String("peer", common.GetPeer(srv.Context())),
+		slog.String("peer", common.GetPeer(ctx)),
 	)
-
-	err := s.assignmentDispatcher.PushShardAssignments(srv)
-	if err != nil && status.Code(err) != codes.Canceled {
-		s.log.Warn(
-			"Failed to provide shards assignments updates",
-			slog.Any("error", err),
-			slog.String("peer", common.GetPeer(srv.Context())),
-		)
+	if err := s.assignmentDispatcher.PushShardAssignments(req); err != nil {
+		return nil, err
 	}
-
-	return err
+	return &proto.CoordinationShardAssignmentsResponse{}, nil
 }
 
 func (s *internalRpcServer) NewTerm(c context.Context, req *proto.NewTermRequest) (*proto.NewTermResponse, error) {

@@ -32,7 +32,6 @@ import (
 	"github.com/streamnative/oxia/common/container"
 	"github.com/streamnative/oxia/common/metrics"
 	"github.com/streamnative/oxia/proto"
-	"github.com/streamnative/oxia/server/util"
 )
 
 type Client interface {
@@ -44,7 +43,7 @@ type Client interface {
 type ShardAssignmentsDispatcher interface {
 	io.Closer
 	Initialized() bool
-	PushShardAssignments(stream proto.OxiaCoordination_PushShardAssignmentsServer) error
+	PushShardAssignments(req *proto.ShardAssignments) error
 	RegisterForUpdates(req *proto.ShardAssignmentsRequest, client Client) error
 }
 
@@ -202,19 +201,8 @@ func (s *shardAssignmentDispatcher) Initialized() bool {
 	return s.assignments != nil
 }
 
-func (s *shardAssignmentDispatcher) PushShardAssignments(stream proto.OxiaCoordination_PushShardAssignmentsServer) error {
-	streamReader := util.ReadStream[proto.ShardAssignments](
-		s.ctx,
-		stream,
-		s.updateShardAssignment,
-		map[string]string{
-			"oxia": "receive-shards-assignments",
-		},
-		s.log.With(
-			slog.String("stream", "receive-shards-assignments"),
-		),
-	)
-	return streamReader.Run()
+func (s *shardAssignmentDispatcher) PushShardAssignments(req *proto.ShardAssignments) error {
+	return s.updateShardAssignment(req)
 }
 
 func (s *shardAssignmentDispatcher) updateShardAssignment(assignments *proto.ShardAssignments) error {

@@ -17,6 +17,8 @@ package impl
 import (
 	"context"
 	"fmt"
+	"github.com/streamnative/oxia/common/container"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	"log/slog"
 	"math"
 	"sync"
@@ -597,6 +599,125 @@ func TestCoordinator_RebalanceCluster(t *testing.T) {
 	for _, serverObj := range servers {
 		assert.NoError(t, serverObj.Close())
 	}
+}
+
+func TestCoordinator_RestartNodes(t *testing.T) {
+	s1DataDir := t.TempDir()
+	s1WalDir := t.TempDir()
+	s1Config := server.Config{
+		PublicServiceAddr:          "localhost:0",
+		InternalServiceAddr:        "localhost:0",
+		MetricsServiceAddr:         "", // Disable metrics to avoid conflict
+		DataDir:                    s1DataDir,
+		WalDir:                     s1WalDir,
+		NotificationsRetentionTime: 1 * time.Minute,
+	}
+	s1, err := server.New(s1Config)
+	assert.NoError(t, err)
+	sa1 := model.ServerAddress{
+		Public:   fmt.Sprintf("localhost:%d", s1.PublicPort()),
+		Internal: fmt.Sprintf("localhost:%d", s1.InternalPort()),
+	}
+	s2, sa2 := newServer(t)
+	defer s2.Close()
+	s3, sa3 := newServer(t)
+	defer s3.Close()
+	metadataProvider := NewMetadataProviderMemory()
+	clusterConfig := model.ClusterConfig{
+		Namespaces: []model.NamespaceConfig{{
+			Name:              "my-ns-n",
+			ReplicationFactor: 3,
+			InitialShardCount: 1,
+		}},
+		Servers: []model.ServerAddress{sa1, sa2, sa3},
+	}
+	clientPool := common.NewClientPool(nil, nil)
+	configProvider := func() (model.ClusterConfig, error) {
+		return clusterConfig, nil
+	}
+
+	configChangesCh := make(chan any)
+	c, err := NewCoordinator(metadataProvider, configProvider, configChangesCh, NewRpcProvider(clientPool))
+	assert.NoError(t, err)
+
+	assert.Equal(t, 3, len(c.(*coordinator).getNodeControllers()))
+
+	assert.Eventually(t, func() bool {
+		cs, _, err := metadataProvider.Get()
+		if err != nil {
+			return false
+		}
+		status := cs.Namespaces["my-ns-n"]
+		metadata := status.Shards[0]
+		return metadata.Status == model.ShardStatusSteadyState
+	}, 10*time.Second, 100*time.Millisecond)
+
+	// check s1
+	rpc, err := clientPool.GetHealthRpc(sa1.Internal)
+	assert.NoError(t, err)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	req := &grpc_health_v1.HealthCheckRequest{Service: container.ReadinessProbeService}
+	resp, err := rpc.Check(ctx, req)
+	assert.NoError(t, err)
+	defer cancel()
+	assert.EqualValues(t, resp.GetStatus(), grpc_health_v1.HealthCheckResponse_SERVING)
+
+	// check s2
+	rpc, err = clientPool.GetHealthRpc(sa2.Internal)
+	assert.NoError(t, err)
+	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+	req = &grpc_health_v1.HealthCheckRequest{Service: container.ReadinessProbeService}
+	resp, err = rpc.Check(ctx, req)
+	assert.NoError(t, err)
+	defer cancel()
+	assert.EqualValues(t, resp.GetStatus(), grpc_health_v1.HealthCheckResponse_SERVING)
+
+	// check s3
+	rpc, err = clientPool.GetHealthRpc(sa3.Internal)
+	assert.NoError(t, err)
+	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+	req = &grpc_health_v1.HealthCheckRequest{Service: container.ReadinessProbeService}
+	resp, err = rpc.Check(ctx, req)
+	assert.NoError(t, err)
+	defer cancel()
+	assert.EqualValues(t, resp.GetStatus(), grpc_health_v1.HealthCheckResponse_SERVING)
+
+	// restart s1
+	err = s1.Close()
+	assert.NoError(t, err)
+
+	s1Config.PublicServiceAddr = sa1.Public
+	s1Config.InternalServiceAddr = sa1.Internal
+	s1, err = server.New(s1Config)
+	assert.NoError(t, err)
+	defer s1.Close()
+
+	// wait for shard ready
+	assert.Eventually(t, func() bool {
+		cs, _, err := metadataProvider.Get()
+		if err != nil {
+			return false
+		}
+		status := cs.Namespaces["my-ns-n"]
+		metadata := status.Shards[0]
+		return metadata.Status == model.ShardStatusSteadyState
+	}, 10*time.Second, 100*time.Millisecond)
+
+	// check s1 again
+	assert.Eventually(t, func() bool {
+		rpc, err = clientPool.GetHealthRpc(sa1.Internal)
+		if err != nil {
+			return false
+		}
+		ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+		req = &grpc_health_v1.HealthCheckRequest{Service: container.ReadinessProbeService}
+		resp, err = rpc.Check(ctx, req)
+		if err != nil {
+			return false
+		}
+		defer cancel()
+		return resp.GetStatus() == grpc_health_v1.HealthCheckResponse_SERVING
+	}, 30*time.Second, 100*time.Millisecond)
 }
 
 func TestCoordinator_AddRemoveNodes(t *testing.T) {

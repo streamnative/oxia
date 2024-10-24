@@ -282,15 +282,12 @@ func (n *nodeController) sendAssignmentsUpdatesWithRetries() {
 	})
 }
 
-func (n *nodeController) sendAssignmentsUpdateOnce(
-	stream proto.OxiaCoordination_PushShardAssignmentsClient,
-	assignments *proto.ShardAssignments,
-) (*proto.ShardAssignments, error) {
+func (n *nodeController) sendAssignmentsUpdateOnce(ctx context.Context, assignments *proto.ShardAssignments) (*proto.ShardAssignments, error) {
 	n.log.Debug(
 		"Waiting for next assignments update",
 		slog.Any("current-assignments", assignments),
 	)
-	assignments, err := n.shardAssignmentsProvider.WaitForNextUpdate(stream.Context(), assignments)
+	assignments, err := n.shardAssignmentsProvider.WaitForNextUpdate(ctx, assignments)
 	if err != nil {
 		return nil, err
 	}
@@ -305,7 +302,7 @@ func (n *nodeController) sendAssignmentsUpdateOnce(
 		slog.Any("assignments", assignments),
 	)
 
-	if err := stream.Send(assignments); err != nil {
+	if _, err := n.rpc.PushShardAssignments(ctx, n.addr, assignments); err != nil {
 		n.log.Debug(
 			"Failed to send assignments",
 			slog.Any("error", err),
@@ -323,24 +320,18 @@ func (n *nodeController) sendAssignmentsUpdates(backoff backoff.BackOff) error {
 	n.Unlock()
 	defer n.sendAssignmentsCancel()
 
-	stream, err := n.rpc.PushShardAssignments(n.sendAssignmentsCtx, n.addr)
-	if err != nil {
-		return err
-	}
-
+	var err error
 	var assignments *proto.ShardAssignments
 
 	for {
 		select {
 		case <-n.ctx.Done():
 			return nil
-
 		default:
-			assignments, err = n.sendAssignmentsUpdateOnce(stream, assignments)
+			assignments, err = n.sendAssignmentsUpdateOnce(n.sendAssignmentsCtx, assignments)
 			if err != nil {
 				return err
 			}
-
 			backoff.Reset()
 		}
 	}

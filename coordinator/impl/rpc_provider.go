@@ -28,7 +28,7 @@ import (
 const rpcTimeout = 30 * time.Second
 
 type RpcProvider interface {
-	PushShardAssignments(ctx context.Context, node model.ServerAddress) (proto.OxiaCoordination_PushShardAssignmentsClient, error)
+	PushShardAssignments(ctx context.Context, node model.ServerAddress, req *proto.ShardAssignments) (*proto.CoordinationShardAssignmentsResponse, error)
 	NewTerm(ctx context.Context, node model.ServerAddress, req *proto.NewTermRequest) (*proto.NewTermResponse, error)
 	BecomeLeader(ctx context.Context, node model.ServerAddress, req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error)
 	AddFollower(ctx context.Context, node model.ServerAddress, req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error)
@@ -46,13 +46,15 @@ func NewRpcProvider(pool common.ClientPool) RpcProvider {
 	return &rpcProvider{pool: pool}
 }
 
-func (r *rpcProvider) PushShardAssignments(ctx context.Context, node model.ServerAddress) (proto.OxiaCoordination_PushShardAssignmentsClient, error) {
+func (r *rpcProvider) PushShardAssignments(ctx context.Context, node model.ServerAddress, req *proto.ShardAssignments) (*proto.CoordinationShardAssignmentsResponse, error) {
 	rpc, err := r.pool.GetCoordinationRpc(node.Internal)
 	if err != nil {
 		return nil, err
 	}
 
-	return rpc.PushShardAssignments(ctx)
+	ctx, cancel := context.WithTimeout(ctx, rpcTimeout)
+	defer cancel()
+	return rpc.PushShardAssignments(ctx, req)
 }
 
 func (r *rpcProvider) NewTerm(ctx context.Context, node model.ServerAddress, req *proto.NewTermRequest) (*proto.NewTermResponse, error) {

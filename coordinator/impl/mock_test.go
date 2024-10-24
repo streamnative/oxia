@@ -254,15 +254,8 @@ func (r *mockRpcProvider) getNode(node model.ServerAddress) *mockPerNodeChannels
 	return res
 }
 
-func (r *mockRpcProvider) PushShardAssignments(ctx context.Context, node model.ServerAddress) (proto.OxiaCoordination_PushShardAssignmentsClient, error) {
-	r.Lock()
-	defer r.Unlock()
-
-	n := r.getNode(node)
-	if n.err != nil {
-		return nil, n.err
-	}
-	return n.shardAssignmentsStream, nil
+func (r *mockRpcProvider) PushShardAssignments(ctx context.Context, node model.ServerAddress, req *proto.ShardAssignments) (*proto.CoordinationShardAssignmentsResponse, error) {
+	return nil, nil
 }
 
 func (r *mockRpcProvider) NewTerm(ctx context.Context, node model.ServerAddress, req *proto.NewTermRequest) (*proto.NewTermResponse, error) {
