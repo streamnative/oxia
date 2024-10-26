@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 
@@ -40,6 +41,9 @@ type maelstromCoordinatorRpcProvider struct {
 
 	dispatcher        *dispatcher
 	assignmentStreams map[int64]*maelstromShardAssignmentClient
+}
+
+func (m *maelstromCoordinatorRpcProvider) ClearPooledConnections(node model.ServerAddress) {
 }
 
 func newRpcProvider(dispatcher *dispatcher) impl.RpcProvider {
@@ -98,11 +102,13 @@ func (m *maelstromCoordinatorRpcProvider) DeleteShard(ctx context.Context, node 
 	return res.(*proto.DeleteShardResponse), nil
 }
 
-func (m *maelstromCoordinatorRpcProvider) GetHealthClient(node model.ServerAddress) (grpc_health_v1.HealthClient, error) {
-	return &maelstromHealthCheckClient{
+func (m *maelstromCoordinatorRpcProvider) GetHealthClient(node model.ServerAddress) (grpc_health_v1.HealthClient, io.Closer, error) {
+	c := &maelstromHealthCheckClient{
 		provider: m,
 		node:     node.Internal,
-	}, nil
+	}
+
+	return c, c, nil
 }
 
 type maelstromShardAssignmentClient struct {
@@ -221,6 +227,10 @@ func (m *maelstromHealthCheckClient) Check(ctx context.Context, _ *grpc_health_v
 	}
 
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
+}
+
+func (m *maelstromHealthCheckClient) Close() error {
+	return nil
 }
 
 func (m *maelstromHealthCheckClient) Watch(ctx context.Context, in *grpc_health_v1.HealthCheckRequest, opts ...grpc.CallOption) (grpc_health_v1.Health_WatchClient, error) {

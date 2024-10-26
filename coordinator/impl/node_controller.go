@@ -63,12 +63,17 @@ type nodeController struct {
 	nodeAvailabilityListener NodeAvailabilityListener
 	rpc                      RpcProvider
 	log                      *slog.Logger
-	ctx                      context.Context
-	cancel                   context.CancelFunc
-	initialRetryBackoff      time.Duration
 
-	sendAssignmentsCtx    context.Context
-	sendAssignmentsCancel context.CancelFunc
+	// This is the overall context for the node controller
+	// it gets created once and canceled when the controller is closed
+	ctx    context.Context
+	cancel context.CancelFunc
+
+	// This context is re-created each time we have a health-check failure
+	healthCheckCtx    context.Context
+	healthCheckCancel context.CancelFunc
+
+	initialRetryBackoff time.Duration
 
 	nodeIsRunningGauge metrics.Gauge
 	failedHealthChecks metrics.Counter
@@ -104,6 +109,7 @@ func newNodeController(addr model.ServerAddress,
 	}
 
 	nc.ctx, nc.cancel = context.WithCancel(context.Background())
+	nc.healthCheckCtx, nc.healthCheckCancel = context.WithCancel(nc.ctx)
 
 	nc.nodeIsRunningGauge = metrics.NewGauge("oxia_coordinator_node_running",
 		"Whether the node is considered to be running by the coordinator", "count", labels, func() int64 {
@@ -173,12 +179,6 @@ func (n *nodeController) healthCheckWithRetries() {
 			n.failedHealthChecks.Inc()
 			n.nodeAvailabilityListener.NodeBecameUnavailable(n.addr)
 		}
-
-		// To avoid the send assignments stream to miss the notification about the current
-		// node went down, we interrupt the current stream when the ping on the node fails
-		if n.sendAssignmentsCancel != nil {
-			n.sendAssignmentsCancel()
-		}
 	})
 }
 
@@ -204,16 +204,20 @@ func (n *nodeController) healthCheckLoop(ctx context.Context, health grpc_health
 }
 
 func (n *nodeController) healthCheck(backoff backoff.BackOff) error {
-	health, err := n.rpc.GetHealthClient(n.addr)
+	n.log.Debug("Start new health check cycle")
+	health, closer, err := n.rpc.GetHealthClient(n.addr)
 	if err != nil {
+		n.log.Debug("Failed to get health check client", slog.Any("error", err))
 		return err
 	}
+
+	defer closer.Close()
 
 	ctx, cancel := context.WithCancel(n.ctx)
 	defer cancel()
 
 	go common.DoWithLabels(
-		n.ctx,
+		ctx,
 		map[string]string{
 			"oxia": "node-controller-health-check-ping",
 			"addr": n.addr.Internal,
@@ -233,6 +237,7 @@ func (n *nodeController) healthCheck(backoff backoff.BackOff) error {
 		res, err := watch.Recv()
 
 		if err2 := n.processHealthCheckResponse(res, err); err2 != nil {
+			n.log.Warn("Node watcher check failed", slog.Any("error", err2))
 			return err2
 		}
 
@@ -254,7 +259,15 @@ func (n *nodeController) processHealthCheckResponse(res *grpc_health_v1.HealthCh
 	n.Lock()
 	if n.status == NotRunning {
 		n.log.Info("Storage node is back online")
+
+		// To avoid the send assignments stream to miss the notification about the current
+		// node went down, we interrupt the current stream when the ping on the node fails
+		n.rpc.ClearPooledConnections(n.addr)
+		n.healthCheckCancel()
+		n.log.Debug("Cancelled the send assignments stream")
+		n.healthCheckCtx, n.healthCheckCancel = context.WithCancel(n.ctx)
 	}
+
 	n.status = Running
 	n.Unlock()
 
@@ -318,13 +331,14 @@ func (n *nodeController) sendAssignmentsUpdateOnce(
 }
 
 func (n *nodeController) sendAssignmentsUpdates(backoff backoff.BackOff) error {
+	n.log.Debug("Ready to send assignments")
 	n.Lock()
-	n.sendAssignmentsCtx, n.sendAssignmentsCancel = context.WithCancel(n.ctx)
+	ctx := n.healthCheckCtx
 	n.Unlock()
-	defer n.sendAssignmentsCancel()
 
-	stream, err := n.rpc.PushShardAssignments(n.sendAssignmentsCtx, n.addr)
+	stream, err := n.rpc.PushShardAssignments(ctx, n.addr)
 	if err != nil {
+		n.log.Debug("Failed to create shard assignments stream", slog.Any("error", err))
 		return err
 	}
 
@@ -338,9 +352,11 @@ func (n *nodeController) sendAssignmentsUpdates(backoff backoff.BackOff) error {
 		default:
 			assignments, err = n.sendAssignmentsUpdateOnce(stream, assignments)
 			if err != nil {
+				n.log.Debug("Failed to send assignments", slog.Any("error", err))
 				return err
 			}
 
+			n.log.Debug("Sent assignments to stream")
 			backoff.Reset()
 		}
 	}
