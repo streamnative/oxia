@@ -41,14 +41,17 @@ const DefaultRpcTimeout = 30 * time.Second
 type ClientPool interface {
 	io.Closer
 	GetClientRpc(target string) (proto.OxiaClientClient, error)
-	GetHealthRpc(target string) (grpc_health_v1.HealthClient, error)
+	GetHealthRpc(target string) (grpc_health_v1.HealthClient, io.Closer, error)
 	GetCoordinationRpc(target string) (proto.OxiaCoordinationClient, error)
 	GetReplicationRpc(target string) (proto.OxiaLogReplicationClient, error)
+
+	// Clear all the pooled client instances for the given target
+	Clear(target string)
 }
 
 type clientPool struct {
 	sync.RWMutex
-	connections map[string]grpc.ClientConnInterface
+	connections map[string]*grpc.ClientConn
 
 	tls            *tls.Config
 	authentication auth.Authentication
@@ -57,7 +60,7 @@ type clientPool struct {
 
 func NewClientPool(tlsConf *tls.Config, authentication auth.Authentication) ClientPool {
 	return &clientPool{
-		connections:    make(map[string]grpc.ClientConnInterface),
+		connections:    make(map[string]*grpc.ClientConn),
 		tls:            tlsConf,
 		authentication: authentication,
 		log: slog.With(
@@ -71,7 +74,7 @@ func (cp *clientPool) Close() error {
 	defer cp.Unlock()
 
 	for target, cnx := range cp.connections {
-		err := cnx.(*grpc.ClientConn).Close()
+		err := cnx.Close()
 		if err != nil {
 			cp.log.Warn(
 				"Failed to close GRPC connection",
@@ -83,17 +86,18 @@ func (cp *clientPool) Close() error {
 	return nil
 }
 
-func (cp *clientPool) GetHealthRpc(target string) (grpc_health_v1.HealthClient, error) {
-	cnx, err := cp.getConnection(target)
+func (cp *clientPool) GetHealthRpc(target string) (grpc_health_v1.HealthClient, io.Closer, error) {
+	// Skip the pooling for health-checks
+	cnx, err := cp.newConnection(target)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return grpc_health_v1.NewHealthClient(cnx), nil
+	return grpc_health_v1.NewHealthClient(cnx), cnx, nil
 }
 
 func (cp *clientPool) GetClientRpc(target string) (proto.OxiaClientClient, error) {
-	cnx, err := cp.getConnection(target)
+	cnx, err := cp.getConnectionFromPool(target)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +106,7 @@ func (cp *clientPool) GetClientRpc(target string) (proto.OxiaClientClient, error
 }
 
 func (cp *clientPool) GetCoordinationRpc(target string) (proto.OxiaCoordinationClient, error) {
-	cnx, err := cp.getConnection(target)
+	cnx, err := cp.getConnectionFromPool(target)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +115,7 @@ func (cp *clientPool) GetCoordinationRpc(target string) (proto.OxiaCoordinationC
 }
 
 func (cp *clientPool) GetReplicationRpc(target string) (proto.OxiaLogReplicationClient, error) {
-	cnx, err := cp.getConnection(target)
+	cnx, err := cp.getConnectionFromPool(target)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +123,24 @@ func (cp *clientPool) GetReplicationRpc(target string) (proto.OxiaLogReplication
 	return proto.NewOxiaLogReplicationClient(cnx), nil
 }
 
-func (cp *clientPool) getConnection(target string) (grpc.ClientConnInterface, error) {
+func (cp *clientPool) Clear(target string) {
+	cp.Lock()
+	defer cp.Unlock()
+
+	if cnx, ok := cp.connections[target]; ok {
+		if err := cnx.Close(); err != nil {
+			cp.log.Warn(
+				"Failed to close GRPC connection",
+				slog.String("server_address", target),
+				slog.Any("error", err),
+			)
+		}
+
+		delete(cp.connections, target)
+	}
+}
+
+func (cp *clientPool) getConnectionFromPool(target string) (grpc.ClientConnInterface, error) {
 	cp.RLock()
 	cnx, ok := cp.connections[target]
 	cp.RUnlock()
@@ -135,6 +156,15 @@ func (cp *clientPool) getConnection(target string) (grpc.ClientConnInterface, er
 		return cnx, nil
 	}
 
+	cnx, err := cp.newConnection(target)
+	if err != nil {
+		return nil, err
+	}
+	cp.connections[target] = cnx
+	return cnx, nil
+}
+
+func (cp *clientPool) newConnection(target string) (*grpc.ClientConn, error) {
 	cp.log.Debug(
 		"Creating new GRPC connection",
 		slog.String("server_address", target),
@@ -159,7 +189,6 @@ func (cp *clientPool) getConnection(target string) (grpc.ClientConnInterface, er
 		return nil, errors.Wrapf(err, "error connecting to %s", target)
 	}
 
-	cp.connections[target] = cnx
 	return cnx, nil
 }
 

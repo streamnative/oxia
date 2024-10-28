@@ -16,6 +16,7 @@ package impl
 
 import (
 	"context"
+	"io"
 	"time"
 
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -35,7 +36,9 @@ type RpcProvider interface {
 	GetStatus(ctx context.Context, node model.ServerAddress, req *proto.GetStatusRequest) (*proto.GetStatusResponse, error)
 	DeleteShard(ctx context.Context, node model.ServerAddress, req *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error)
 
-	GetHealthClient(node model.ServerAddress) (grpc_health_v1.HealthClient, error)
+	GetHealthClient(node model.ServerAddress) (grpc_health_v1.HealthClient, io.Closer, error)
+
+	ClearPooledConnections(node model.ServerAddress)
 }
 
 type rpcProvider struct {
@@ -115,6 +118,10 @@ func (r *rpcProvider) DeleteShard(ctx context.Context, node model.ServerAddress,
 	return rpc.DeleteShard(ctx, req)
 }
 
-func (r *rpcProvider) GetHealthClient(node model.ServerAddress) (grpc_health_v1.HealthClient, error) {
+func (r *rpcProvider) GetHealthClient(node model.ServerAddress) (grpc_health_v1.HealthClient, io.Closer, error) {
 	return r.pool.GetHealthRpc(node.Internal)
+}
+
+func (r *rpcProvider) ClearPooledConnections(node model.ServerAddress) {
+	r.pool.Clear(node.Internal)
 }

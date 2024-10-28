@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"sync"
 	"testing"
 	"time"
@@ -214,6 +215,9 @@ type mockRpcProvider struct {
 	channels map[string]*mockPerNodeChannels
 }
 
+func (r *mockRpcProvider) ClearPooledConnections(node model.ServerAddress) {
+}
+
 func newMockRpcProvider() *mockRpcProvider {
 	return &mockRpcProvider{
 		channels: make(map[string]*mockPerNodeChannels),
@@ -380,8 +384,9 @@ func (r *mockRpcProvider) AddFollower(ctx context.Context, node model.ServerAddr
 	}
 }
 
-func (r *mockRpcProvider) GetHealthClient(node model.ServerAddress) (grpc_health_v1.HealthClient, error) {
-	return r.GetNode(node).healthClient, nil
+func (r *mockRpcProvider) GetHealthClient(node model.ServerAddress) (grpc_health_v1.HealthClient, io.Closer, error) {
+	c := r.GetNode(node).healthClient
+	return c, c, nil
 }
 
 type mockShardAssignmentClient struct {
@@ -452,6 +457,10 @@ type mockHealthClient struct {
 	status  grpc_health_v1.HealthCheckResponse_ServingStatus
 	err     error
 	watches []*mockHealthWatchClient
+}
+
+func (m *mockHealthClient) Close() error {
+	return nil
 }
 
 func newMockHealthClient() *mockHealthClient {
