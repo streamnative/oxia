@@ -38,8 +38,8 @@ type Config struct {
 	K8SMetadataNamespace             string
 	K8SMetadataConfigMapName         string
 	FileMetadataPath                 string
-	ClusterConfigProvider            func() (model.ClusterConfig, error)
-	ClusterConfigChangeNotifications chan any
+	ClusterConfigProvider            func() (model.ClusterConfig, error) `json:"-"`
+	ClusterConfigChangeNotifications chan any                            `json:"-"`
 }
 
 type MetadataProviderImpl string
