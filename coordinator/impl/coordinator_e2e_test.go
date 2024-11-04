@@ -844,4 +844,6 @@ func TestCoordinator_RefreshServerInfo(t *testing.T) {
 	assert.NoError(t, err)
 	err = s3.Close()
 	assert.NoError(t, err)
+	err = c.Close()
+	assert.NoError(t, err)
 }
