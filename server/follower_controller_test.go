@@ -824,12 +824,12 @@ func TestFollowerController_DeleteShard_WrongTerm(t *testing.T) {
 	walFactory := newTestWalFactory(t)
 
 	fc, _ := NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
-	_, _ = fc.NewTerm(&proto.NewTermRequest{Term: 1})
+	_, _ = fc.NewTerm(&proto.NewTermRequest{Term: 2})
 
 	_, err := fc.DeleteShard(&proto.DeleteShardRequest{
 		Namespace: common.DefaultNamespace,
 		Shard:     shardId,
-		Term:      2,
+		Term:      1,
 	})
 
 	assert.ErrorIs(t, err, common.ErrorInvalidTerm)
