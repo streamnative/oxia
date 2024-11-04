@@ -295,6 +295,8 @@ func (s *shardController) electLeader() error {
 	s.shardMetadata.Status = model.ShardStatusElection
 	s.shardMetadata.Leader = nil
 	s.shardMetadata.Term++
+	// it's a safe point to update the service info
+	s.shardMetadata.Ensemble = s.getRefreshedEnsemble()
 	s.shardMetadataMutex.Unlock()
 
 	s.log.Info(
@@ -367,6 +369,19 @@ func (s *shardController) electLeader() error {
 
 	s.keepFencingFailedFollowers(followers)
 	return nil
+}
+
+func (s *shardController) getRefreshedEnsemble() []model.ServerAddress {
+	refreshedEnsembleServiceInfo := make([]model.ServerAddress, 0)
+	for _, currentServer := range s.shardMetadata.Ensemble {
+		logicalNodeId := currentServer.Internal
+		if refreshedServiceInfo := s.coordinator.FindServerByInternalAddress(logicalNodeId); refreshedServiceInfo != nil {
+			refreshedEnsembleServiceInfo = append(refreshedEnsembleServiceInfo, *refreshedServiceInfo)
+			continue
+		}
+		refreshedEnsembleServiceInfo = append(refreshedEnsembleServiceInfo, currentServer)
+	}
+	return refreshedEnsembleServiceInfo
 }
 
 func (s *shardController) deletingRemovedNodes() error {

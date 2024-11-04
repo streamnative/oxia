@@ -55,6 +55,8 @@ type Coordinator interface {
 	NodeAvailabilityListener
 
 	ClusterStatus() model.ClusterStatus
+
+	FindServerByInternalAddress(internalAddress string) *model.ServerAddress
 }
 
 type coordinator struct {
@@ -510,6 +512,10 @@ func (c *coordinator) rebalanceCluster() error {
 	}
 
 	return nil
+}
+
+func (c *coordinator) FindServerByInternalAddress(internalAddress string) *model.ServerAddress {
+	return c.findServerByInternalAddress(c.ClusterConfig, internalAddress)
 }
 
 func (*coordinator) findServerByInternalAddress(newClusterConfig model.ClusterConfig, server string) *model.ServerAddress {
