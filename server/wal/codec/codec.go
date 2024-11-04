@@ -117,7 +117,7 @@ type Codec interface {
 	//   - buf: the byte slice containing the raw data.
 	//   - startFileOffset: the starting file offset from which recovery begins.
 	//   - baseEntryOffset: the base offset for the index entries, used to adjust entry offsets.
-	//   - commitOffset: a pointer to the commit offset, which is using for auto-discard uncommitted corruption data
+	//   - commitOffset: a pointer to the commit offset, which is using for auto-discard uncommited corruption data
 	//
 	// Returns:
 	//   - index: the recovered index data as a byte slice.
@@ -165,7 +165,7 @@ func ReadInt(b []byte, offset uint32) uint32 {
 	return binary.BigEndian.Uint32(b[offset : offset+4])
 }
 
-// Index buf.
+// Index buf
 var bufferPool = sync.Pool{}
 
 const initialIndexBufferCapacity = 16 * 1024

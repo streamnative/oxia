@@ -16,10 +16,9 @@ package wal
 
 import (
 	"fmt"
+	"github.com/google/uuid"
 	"os"
 	"testing"
-
-	"github.com/google/uuid"
 
 	"github.com/streamnative/oxia/server/wal/codec"
 

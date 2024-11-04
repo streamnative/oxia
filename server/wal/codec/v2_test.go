@@ -16,11 +16,10 @@ package codec
 
 import (
 	"encoding/binary"
+	"github.com/google/uuid"
 	"os"
 	"path"
 	"testing"
-
-	"github.com/google/uuid"
 
 	"github.com/stretchr/testify/assert"
 

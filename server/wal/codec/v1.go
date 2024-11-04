@@ -16,11 +16,10 @@ package codec
 
 import (
 	"encoding/binary"
-	"io"
-	"os"
-
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
+	"io"
+	"os"
 )
 
 // Txn File:
@@ -34,7 +33,7 @@ import (
 // +----------------+----------------+----------------+
 // | Index(4 Bytes) | Index(4 Bytes) | 	... 		  |
 // +----------------+----------------+----------------+
-// Index: 			The file offset index.
+// Index: 			The file offset index
 var _ Codec = &V1{}
 
 const v1PayloadSizeLen uint32 = 4

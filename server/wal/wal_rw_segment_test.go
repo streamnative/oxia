@@ -16,9 +16,8 @@ package wal
 
 import (
 	"encoding/binary"
-	"testing"
-
 	"github.com/streamnative/oxia/server/wal/codec"
+	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
