@@ -47,7 +47,7 @@ func (u *useIndex) applyRangeScan(opts *rangeScanOptions) {
 }
 
 // UseIndex let the users specify a different index to follow for the
-// Note: The returned list will contain they primary keys of the records
+// Note: The returned list will contain they primary keys of the records.
 func UseIndex(indexName string) ListOption {
 	return &useIndex{indexName}
 }

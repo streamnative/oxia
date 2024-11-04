@@ -16,13 +16,14 @@ package kv
 
 import (
 	"fmt"
-	"golang.org/x/net/context"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"sync/atomic"
 	"time"
+
+	"golang.org/x/net/context"
 
 	"github.com/cockroachdb/pebble/bloom"
 

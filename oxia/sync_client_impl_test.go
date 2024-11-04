@@ -17,10 +17,11 @@ package oxia
 import (
 	"context"
 	"fmt"
-	"github.com/streamnative/oxia/server"
 	"log/slog"
 	"strings"
 	"testing"
+
+	"github.com/streamnative/oxia/server"
 
 	"github.com/stretchr/testify/assert"
 )
