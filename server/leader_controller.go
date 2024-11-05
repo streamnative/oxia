@@ -1090,7 +1090,7 @@ func (lc *leaderController) DeleteShard(request *proto.DeleteShardRequest) (*pro
 	lc.Lock()
 	defer lc.Unlock()
 
-	if request.Term != lc.term {
+	if request.Term < lc.term {
 		lc.log.Warn("Invalid term when deleting shard",
 			slog.Int64("follower-term", lc.term),
 			slog.Int64("new-term", request.Term))
