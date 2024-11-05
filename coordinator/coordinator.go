@@ -31,15 +31,15 @@ import (
 type Config struct {
 	InternalServiceAddr              string
 	InternalSecureServiceAddr        string
-	PeerTLS                          *tls.Config
-	ServerTLS                        *tls.Config
+	PeerTLS                          *tls.Config `json:"-"`
+	ServerTLS                        *tls.Config `json:"-"`
 	MetricsServiceAddr               string
 	MetadataProviderImpl             MetadataProviderImpl
 	K8SMetadataNamespace             string
 	K8SMetadataConfigMapName         string
 	FileMetadataPath                 string
-	ClusterConfigProvider            func() (model.ClusterConfig, error)
-	ClusterConfigChangeNotifications chan any
+	ClusterConfigProvider            func() (model.ClusterConfig, error) `json:"-"`
+	ClusterConfigChangeNotifications chan any                            `json:"-"`
 }
 
 type MetadataProviderImpl string
