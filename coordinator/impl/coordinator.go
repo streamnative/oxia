@@ -54,9 +54,8 @@ type Coordinator interface {
 
 	NodeAvailabilityListener
 
+	GetServers() []model.ServerAddress
 	ClusterStatus() model.ClusterStatus
-
-	FindServerByInternalAddress(internalAddress string) *model.ServerAddress
 }
 
 type coordinator struct {
@@ -569,6 +568,9 @@ func (c *coordinator) getNodeControllers() map[string]NodeController {
 		nc[k] = v
 	}
 	return nc
+}
+func (c *coordinator) GetServers() []model.ServerAddress {
+	return c.ClusterConfig.Servers
 }
 
 func GetNamespaceConfig(namespaces []model.NamespaceConfig, namespace string) *model.NamespaceConfig {

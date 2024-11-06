@@ -20,7 +20,6 @@ import (
 	"io"
 	"log/slog"
 	"math/rand"
-	"sync"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -73,13 +72,13 @@ type ShardController interface {
 }
 
 type shardController struct {
-	namespace          string
-	shard              int64
-	namespaceConfig    *model.NamespaceConfig
-	shardMetadata      model.ShardMetadata
-	shardMetadataMutex sync.Mutex
-	rpc                RpcProvider
-	coordinator        Coordinator
+	namespace       string
+	shard           int64
+	namespaceConfig *model.NamespaceConfig
+	shardMetadata   *model.ConcurrentShardMetadata
+
+	rpc         RpcProvider
+	coordinator Coordinator
 
 	deleteOp                chan any
 	nodeFailureOp           chan model.ServerAddress
@@ -107,7 +106,7 @@ func NewShardController(namespace string, shard int64, namespaceConfig *model.Na
 		namespace:               namespace,
 		shard:                   shard,
 		namespaceConfig:         namespaceConfig,
-		shardMetadata:           shardMetadata,
+		shardMetadata:           model.NewConcurrentShardMetadata(&shardMetadata),
 		rpc:                     rpc,
 		coordinator:             coordinator,
 		deleteOp:                make(chan any, chanBufferSize),
@@ -132,7 +131,7 @@ func NewShardController(namespace string, shard int64, namespaceConfig *model.Na
 
 	s.termGauge = metrics.NewGauge("oxia_coordinator_term",
 		"The term of the shard", "count", labels, func() int64 {
-			return s.shardMetadata.Term
+			return s.shardMetadata.GetTerm()
 		})
 
 	s.ctx, s.cancel = context.WithCancel(context.Background())
@@ -156,15 +155,17 @@ func NewShardController(namespace string, shard int64, namespaceConfig *model.Na
 
 func (s *shardController) run() {
 	// Do initial check or leader election
+	shardStatus := s.shardMetadata.GetStatus()
+	shardLeader := s.shardMetadata.GetLeader()
 	switch {
-	case s.shardMetadata.Status == model.ShardStatusDeleting:
+	case shardStatus == model.ShardStatusDeleting:
 		s.DeleteShard()
-	case s.shardMetadata.Leader == nil || s.shardMetadata.Status != model.ShardStatusSteadyState:
+	case shardLeader == nil || shardStatus != model.ShardStatusSteadyState:
 		s.electLeaderWithRetries()
 	default:
 		s.log.Info(
 			"There is already a node marked as leader on the shard, verifying",
-			slog.Any("current-leader", s.shardMetadata.Leader),
+			slog.Any("current-leader", shardLeader),
 		)
 
 		if !s.verifyCurrentEnsemble() {
@@ -174,7 +175,7 @@ func (s *shardController) run() {
 
 	s.log.Info(
 		"Shard is ready",
-		slog.Any("leader", s.shardMetadata.Leader),
+		slog.Any("leader", shardLeader),
 	)
 
 	for {
@@ -202,14 +203,14 @@ func (s *shardController) HandleNodeFailure(failedNode model.ServerAddress) {
 }
 
 func (s *shardController) handleNodeFailure(failedNode model.ServerAddress) {
+	shardLeader := s.shardMetadata.GetLeader()
 	s.log.Debug(
 		"Received notification of failed node",
 		slog.Any("failed-node", failedNode),
-		slog.Any("current-leader", s.shardMetadata.Leader),
+		slog.Any("current-leader", shardLeader),
 	)
 
-	if s.shardMetadata.Leader != nil &&
-		*s.shardMetadata.Leader == failedNode {
+	if shardLeader != nil && *shardLeader == failedNode {
 		s.log.Info(
 			"Detected failure on shard leader",
 			slog.Any("leader", failedNode),
@@ -222,9 +223,11 @@ func (s *shardController) verifyCurrentEnsemble() bool {
 	// Ideally, we shouldn't need to trigger a new leader election if a follower
 	// is out of sync. We should just go back into the retry-to-fence follower
 	// loop. In practice, the current approach is easier for now.
-	for _, node := range s.shardMetadata.Ensemble {
+	for _, node := range s.shardMetadata.GetEnsemble() {
 		nodeStatus, err := s.rpc.GetStatus(s.ctx, node, &proto.GetStatusRequest{Shard: s.shard})
 
+		currentLeader := s.shardMetadata.GetLeader()
+		term := s.shardMetadata.GetTerm()
 		switch {
 		case err != nil:
 			s.log.Warn(
@@ -233,7 +236,7 @@ func (s *shardController) verifyCurrentEnsemble() bool {
 				slog.Any("node", node),
 			)
 			return false
-		case node.Internal == s.shardMetadata.Leader.Internal &&
+		case node.Internal == currentLeader.Internal &&
 			nodeStatus.Status != proto.ServingStatus_LEADER:
 			s.log.Warn(
 				"Expected leader is not in leader status. Start a new election",
@@ -241,7 +244,7 @@ func (s *shardController) verifyCurrentEnsemble() bool {
 				slog.Any("status", nodeStatus.Status),
 			)
 			return false
-		case node.Internal != s.shardMetadata.Leader.Internal &&
+		case node.Internal != currentLeader.Internal &&
 			nodeStatus.Status != proto.ServingStatus_FOLLOWER:
 			s.log.Warn(
 				"Expected follower is not in follower status. Start a new election",
@@ -249,12 +252,12 @@ func (s *shardController) verifyCurrentEnsemble() bool {
 				slog.Any("status", nodeStatus.Status),
 			)
 			return false
-		case nodeStatus.Term != s.shardMetadata.Term:
+		case nodeStatus.Term != term:
 			s.log.Warn(
 				"Node has a wrong term. Start a new election",
 				slog.Any("node", node),
 				slog.Any("node-term", nodeStatus.Term),
-				slog.Any("coordinator-term", s.shardMetadata.Term),
+				slog.Any("coordinator-term", term),
 			)
 			return false
 		default:
@@ -291,20 +294,14 @@ func (s *shardController) electLeader() error {
 
 	s.currentElectionCtx, s.currentElectionCancel = context.WithCancel(s.ctx)
 
-	s.shardMetadataMutex.Lock()
-	s.shardMetadata.Status = model.ShardStatusElection
-	s.shardMetadata.Leader = nil
-	s.shardMetadata.Term++
-	// it's a safe point to update the service info
-	s.shardMetadata.Ensemble = s.getRefreshedEnsemble()
-	s.shardMetadataMutex.Unlock()
+	s.shardMetadata.PrepareNewElection(s.coordinator.GetServers())
 
 	s.log.Info(
 		"Starting leader election",
-		slog.Int64("term", s.shardMetadata.Term),
+		slog.Int64("term", s.shardMetadata.GetTerm()),
 	)
 
-	if err := s.coordinator.InitiateLeaderElection(s.namespace, s.shard, s.shardMetadata); err != nil {
+	if err := s.coordinator.InitiateLeaderElection(s.namespace, s.shard, s.shardMetadata.CloneData()); err != nil {
 		return err
 	}
 
@@ -329,7 +326,7 @@ func (s *shardController) electLeader() error {
 		}
 		s.log.Info(
 			"Successfully moved ensemble to a new term",
-			slog.Int64("term", s.shardMetadata.Term),
+			slog.Int64("term", s.shardMetadata.GetTerm()),
 			slog.Any("new-leader", newLeader),
 			slog.Any("followers", f),
 		)
@@ -339,7 +336,7 @@ func (s *shardController) electLeader() error {
 		return err
 	}
 
-	metadata := s.shardMetadata.Clone()
+	metadata := s.shardMetadata.CloneData()
 	metadata.Status = model.ShardStatusSteadyState
 	metadata.Leader = &newLeader
 
@@ -355,14 +352,12 @@ func (s *shardController) electLeader() error {
 		return err
 	}
 
-	s.shardMetadataMutex.Lock()
-	s.shardMetadata = metadata
-	s.shardMetadataMutex.Unlock()
+	s.shardMetadata.Update(&metadata)
 
 	s.log.Info(
 		"Elected new leader",
-		slog.Int64("term", s.shardMetadata.Term),
-		slog.Any("leader", s.shardMetadata.Leader),
+		slog.Int64("term", s.shardMetadata.GetTerm()),
+		slog.Any("leader", s.shardMetadata.GetLeader()),
 	)
 
 	timer.Done()
@@ -371,25 +366,13 @@ func (s *shardController) electLeader() error {
 	return nil
 }
 
-func (s *shardController) getRefreshedEnsemble() []model.ServerAddress {
-	refreshedEnsembleServiceInfo := make([]model.ServerAddress, 0)
-	for _, currentServer := range s.shardMetadata.Ensemble {
-		logicalNodeId := currentServer.Internal
-		if refreshedServiceInfo := s.coordinator.FindServerByInternalAddress(logicalNodeId); refreshedServiceInfo != nil {
-			refreshedEnsembleServiceInfo = append(refreshedEnsembleServiceInfo, *refreshedServiceInfo)
-			continue
-		}
-		refreshedEnsembleServiceInfo = append(refreshedEnsembleServiceInfo, currentServer)
-	}
-	return refreshedEnsembleServiceInfo
-}
-
 func (s *shardController) deletingRemovedNodes() error {
-	for _, ds := range s.shardMetadata.RemovedNodes {
+	currentTerm := s.shardMetadata.GetTerm()
+	for _, ds := range s.shardMetadata.GetRemovedNodes() {
 		if _, err := s.rpc.DeleteShard(s.ctx, ds, &proto.DeleteShardRequest{
 			Namespace: s.namespace,
 			Shard:     s.shard,
-			Term:      s.shardMetadata.Term,
+			Term:      currentTerm,
 		}); err != nil {
 			return err
 		}
@@ -404,17 +387,18 @@ func (s *shardController) deletingRemovedNodes() error {
 }
 
 func (s *shardController) keepFencingFailedFollowers(successfulFollowers map[model.ServerAddress]*proto.EntryId) {
-	if len(successfulFollowers) == len(s.shardMetadata.Ensemble)-1 {
+	currentEnsemble := s.shardMetadata.GetEnsemble()
+	if len(successfulFollowers) == len(currentEnsemble)-1 {
 		s.log.Debug(
 			"All the member of the ensemble were successfully added",
-			slog.Int64("term", s.shardMetadata.Term),
+			slog.Int64("term", s.shardMetadata.GetTerm()),
 		)
 		return
 	}
 
 	// Identify failed followers
-	for _, sa := range s.shardMetadata.Ensemble {
-		if sa == *s.shardMetadata.Leader {
+	for _, sa := range currentEnsemble {
+		if sa == *s.shardMetadata.GetLeader() {
 			continue
 		}
 
@@ -487,13 +471,13 @@ func (s *shardController) internalNewTermAndAddFollower(ctx context.Context, nod
 		return
 	}
 
-	leader := s.shardMetadata.Leader
+	leader := s.shardMetadata.GetLeader()
 	if leader == nil {
 		res <- errors.New("not leader is active on the shard")
 		return
 	}
 
-	if err = s.addFollower(*s.shardMetadata.Leader, node.Internal, &proto.EntryId{
+	if err = s.addFollower(*s.shardMetadata.GetLeader(), node.Internal, &proto.EntryId{
 		Term:   fr.Term,
 		Offset: fr.Offset,
 	}); err != nil {
@@ -515,7 +499,7 @@ func (s *shardController) internalNewTermAndAddFollower(ctx context.Context, nod
 func (s *shardController) newTermQuorum() (map[model.ServerAddress]*proto.EntryId, error) { //nolint:revive
 	timer := s.newTermQuorumLatency.Timer()
 
-	fencingQuorum := mergeLists(s.shardMetadata.Ensemble, s.shardMetadata.RemovedNodes)
+	fencingQuorum := mergeLists(s.shardMetadata.GetEnsemble(), s.shardMetadata.GetRemovedNodes())
 	fencingQuorumSize := len(fencingQuorum)
 	majority := fencingQuorumSize/2 + 1
 
@@ -579,7 +563,7 @@ func (s *shardController) newTermQuorum() (map[model.ServerAddress]*proto.EntryI
 			successResponses++
 
 			// We don't consider the removed nodes as candidates for leader/followers
-			if listContains(s.shardMetadata.Ensemble, r.ServerAddress) {
+			if listContains(s.shardMetadata.GetEnsemble(), r.ServerAddress) {
 				res[r.ServerAddress] = r.EntryId
 			}
 		} else {
@@ -617,7 +601,7 @@ func (s *shardController) newTerm(ctx context.Context, node model.ServerAddress)
 	res, err := s.rpc.NewTerm(ctx, node, &proto.NewTermRequest{
 		Namespace: s.namespace,
 		Shard:     s.shard,
-		Term:      s.shardMetadata.Term,
+		Term:      s.shardMetadata.GetTerm(),
 		Options: &proto.NewTermOptions{
 			EnableNotifications: s.namespaceConfig.NotificationsEnabled.Get(),
 		},
@@ -633,7 +617,7 @@ func (s *shardController) deleteShardRpc(ctx context.Context, node model.ServerA
 	_, err := s.rpc.DeleteShard(ctx, node, &proto.DeleteShardRequest{
 		Namespace: s.namespace,
 		Shard:     s.shard,
-		Term:      s.shardMetadata.Term,
+		Term:      s.shardMetadata.GetTerm(),
 	})
 
 	return err
@@ -680,8 +664,8 @@ func (s *shardController) becomeLeader(leader model.ServerAddress, followers map
 	if _, err := s.rpc.BecomeLeader(s.ctx, leader, &proto.BecomeLeaderRequest{
 		Namespace:         s.namespace,
 		Shard:             s.shard,
-		Term:              s.shardMetadata.Term,
-		ReplicationFactor: uint32(len(s.shardMetadata.Ensemble)),
+		Term:              s.shardMetadata.GetTerm(),
+		ReplicationFactor: uint32(len(s.shardMetadata.GetEnsemble())),
 		FollowerMaps:      followersMap,
 	}); err != nil {
 		return err
@@ -695,7 +679,7 @@ func (s *shardController) addFollower(leader model.ServerAddress, follower strin
 	if _, err := s.rpc.AddFollower(s.ctx, leader, &proto.AddFollowerRequest{
 		Namespace:           s.namespace,
 		Shard:               s.shard,
-		Term:                s.shardMetadata.Term,
+		Term:                s.shardMetadata.GetTerm(),
 		FollowerName:        follower,
 		FollowerHeadEntryId: followerHeadEntryId,
 	}); err != nil {
@@ -725,7 +709,7 @@ func (s *shardController) deleteShardWithRetries() {
 }
 
 func (s *shardController) deleteShard() error {
-	for _, sa := range s.shardMetadata.Ensemble {
+	for _, sa := range s.shardMetadata.GetEnsemble() {
 		// We need to save the address because it gets modified in the loop
 		if err := s.deleteShardRpc(s.ctx, sa); err != nil {
 			s.log.Warn(
@@ -750,21 +734,15 @@ func (s *shardController) deleteShard() error {
 }
 
 func (s *shardController) Term() int64 {
-	s.shardMetadataMutex.Lock()
-	defer s.shardMetadataMutex.Unlock()
-	return s.shardMetadata.Term
+	return s.shardMetadata.GetTerm()
 }
 
 func (s *shardController) Leader() *model.ServerAddress {
-	s.shardMetadataMutex.Lock()
-	defer s.shardMetadataMutex.Unlock()
-	return s.shardMetadata.Leader
+	return s.shardMetadata.GetLeader()
 }
 
 func (s *shardController) Status() model.ShardStatus {
-	s.shardMetadataMutex.Lock()
-	defer s.shardMetadataMutex.Unlock()
-	return s.shardMetadata.Status
+	return s.shardMetadata.GetStatus()
 }
 
 func (s *shardController) Close() error {
@@ -785,15 +763,12 @@ func (s *shardController) SwapNode(from model.ServerAddress, to model.ServerAddr
 }
 
 func (s *shardController) swapNode(from model.ServerAddress, to model.ServerAddress, res chan error) {
-	s.shardMetadataMutex.Lock()
-	s.shardMetadata.RemovedNodes = append(s.shardMetadata.RemovedNodes, from)
-	s.shardMetadata.Ensemble = replaceInList(s.shardMetadata.Ensemble, from, to)
-	s.shardMetadataMutex.Unlock()
-
+	s.shardMetadata.PrepareSwap(append(s.shardMetadata.GetRemovedNodes(), from),
+		replaceInList(s.shardMetadata.GetEnsemble(), from, to))
 	s.log.Info(
 		"Swapping node",
-		slog.Any("removed-nodes", s.shardMetadata.RemovedNodes),
-		slog.Any("new-ensemble", s.shardMetadata.Ensemble),
+		slog.Any("removed-nodes", s.shardMetadata.GetRemovedNodes()),
+		slog.Any("new-ensemble", s.shardMetadata.GetEnsemble()),
 		slog.Any("from", from),
 		slog.Any("to", to),
 	)
@@ -802,8 +777,8 @@ func (s *shardController) swapNode(from model.ServerAddress, to model.ServerAddr
 		return
 	}
 
-	leader := s.shardMetadata.Leader
-	ensemble := s.shardMetadata.Ensemble
+	leader := s.shardMetadata.GetLeader()
+	ensemble := s.shardMetadata.GetEnsemble()
 	ctx := s.currentElectionCtx
 
 	// Wait until all followers are caught up.
