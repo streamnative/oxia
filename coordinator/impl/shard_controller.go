@@ -377,14 +377,22 @@ func (s *shardController) electLeader() error {
 }
 
 func (s *shardController) getRefreshedEnsemble() []model.ServerAddress {
-	refreshedEnsembleServiceInfo := make([]model.ServerAddress, 0)
-	for _, currentServer := range s.shardMetadata.Ensemble {
-		logicalNodeId := currentServer.Internal
-		if refreshedServiceInfo := s.coordinator.FindServerByInternalAddress(logicalNodeId); refreshedServiceInfo != nil {
-			refreshedEnsembleServiceInfo = append(refreshedEnsembleServiceInfo, *refreshedServiceInfo)
+	serversInfos := s.coordinator.GetServers()
+	// build a logic index here.
+	// todo: might introduce global index in the coordinator in the future
+	index := map[string]model.ServerAddress{}
+	for _, server := range serversInfos {
+		index[server.Internal] = server
+	}
+
+	currentEnsemble := s.shardMetadata.Ensemble
+	refreshedEnsembleServiceInfo := make([]model.ServerAddress, len(currentEnsemble))
+	for idx, candidate := range currentEnsemble {
+		if refreshedInfo, exist := index[candidate.Internal]; exist {
+			refreshedEnsembleServiceInfo[idx] = refreshedInfo
 			continue
 		}
-		refreshedEnsembleServiceInfo = append(refreshedEnsembleServiceInfo, currentServer)
+		refreshedEnsembleServiceInfo[idx] = candidate
 	}
 	return refreshedEnsembleServiceInfo
 }

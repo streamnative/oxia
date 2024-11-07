@@ -365,8 +365,8 @@ func (m *mockCoordinator) WaitForNextUpdate(ctx context.Context, currentValue *p
 	panic("not implemented")
 }
 
-func (m *mockCoordinator) FindServerByInternalAddress(internalAddress string) *model.ServerAddress {
-	return nil
+func (m *mockCoordinator) GetServers() []model.ServerAddress {
+	return []model.ServerAddress{}
 }
 
 func (m *mockCoordinator) InitiateLeaderElection(namespace string, shard int64, metadata model.ShardMetadata) error {

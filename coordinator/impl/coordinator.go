@@ -54,13 +54,12 @@ type Coordinator interface {
 
 	NodeAvailabilityListener
 
+	GetServers() []model.ServerAddress
 	ClusterStatus() model.ClusterStatus
-
-	FindServerByInternalAddress(internalAddress string) *model.ServerAddress
 }
 
 type coordinator struct {
-	sync.Mutex
+	sync.RWMutex
 	assignmentsChanged common.ConditionContext
 
 	MetadataProvider
@@ -512,6 +511,12 @@ func (c *coordinator) rebalanceCluster() error {
 	}
 
 	return nil
+}
+
+func (c *coordinator) GetServers() []model.ServerAddress {
+	c.RLock()
+	defer c.RUnlock()
+	return c.ClusterConfig.Servers
 }
 
 func (c *coordinator) FindServerByInternalAddress(internalAddress string) *model.ServerAddress {
