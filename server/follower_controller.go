@@ -189,7 +189,6 @@ func (fc *followerController) isClosed() bool {
 }
 
 func (fc *followerController) Close() error {
-
 	fc.cancel()
 	<-fc.applyEntriesDone
 
