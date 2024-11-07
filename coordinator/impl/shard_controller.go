@@ -20,6 +20,7 @@ import (
 	"io"
 	"log/slog"
 	"math/rand"
+	"reflect"
 	"sync"
 	"time"
 
@@ -389,6 +390,12 @@ func (s *shardController) getRefreshedEnsemble() []model.ServerAddress {
 			continue
 		}
 		refreshedEnsembleServiceAddress[idx] = candidate
+	}
+	if s.log.Enabled(s.ctx, slog.LevelDebug) {
+		if !reflect.DeepEqual(currentEnsemble, refreshedEnsembleServiceAddress) {
+			s.log.Info("refresh the shard ensemble server address", slog.Any("current-ensemble", currentEnsemble),
+				slog.Any("new-ensemble", refreshedEnsembleServiceAddress))
+		}
 	}
 	return refreshedEnsembleServiceAddress
 }
