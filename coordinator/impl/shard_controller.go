@@ -906,7 +906,7 @@ func (s *shardController) SyncServerAddress() {
 		return
 	}
 	s.shardMetadataMutex.RUnlock()
-	s.log.Info("node info changed, start a new leader election")
+	s.log.Info("server address changed, start a new leader election")
 	s.electionOp <- nil
 }
 
