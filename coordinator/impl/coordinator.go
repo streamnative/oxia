@@ -533,10 +533,6 @@ func (c *coordinator) FindNodeInfoById(id model.NodeId) (*model.ServerAddress, b
 	return nil, false
 }
 
-func (c *coordinator) FindServerByInternalAddress(internalAddress string) *model.ServerAddress {
-	return c.findServerByInternalAddress(c.ClusterConfig, internalAddress)
-}
-
 func (*coordinator) findServerByInternalAddress(newClusterConfig model.ClusterConfig, server string) *model.ServerAddress {
 	for _, s := range newClusterConfig.Servers {
 		if server == s.Internal {
