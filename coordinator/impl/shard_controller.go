@@ -384,7 +384,7 @@ func (s *shardController) getRefreshedEnsemble() []model.ServerAddress {
 	currentEnsemble := s.shardMetadata.Ensemble
 	refreshedEnsembleServiceAddress := make([]model.ServerAddress, len(currentEnsemble))
 	for idx, candidate := range currentEnsemble {
-		if refreshedAddress, exist := s.coordinator.FindNodeInfoByInternalAddress(candidate.Internal); exist {
+		if refreshedAddress, exist := s.coordinator.FindServerAddressByInternalAddress(candidate.Internal); exist {
 			refreshedEnsembleServiceAddress[idx] = *refreshedAddress
 			continue
 		}

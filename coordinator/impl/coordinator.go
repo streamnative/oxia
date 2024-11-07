@@ -54,7 +54,7 @@ type Coordinator interface {
 
 	NodeAvailabilityListener
 
-	FindNodeInfoByInternalAddress(internalAddress string) (*model.ServerAddress, bool)
+	FindServerAddressByInternalAddress(internalAddress string) (*model.ServerAddress, bool)
 
 	ClusterStatus() model.ClusterStatus
 }
@@ -522,7 +522,7 @@ func (c *coordinator) rebalanceCluster() error {
 	return nil
 }
 
-func (c *coordinator) FindNodeInfoByInternalAddress(internalAddress string) (*model.ServerAddress, bool) {
+func (c *coordinator) FindServerAddressByInternalAddress(internalAddress string) (*model.ServerAddress, bool) {
 	if info, exist := c.serverIndexes.Load(internalAddress); exist {
 		address, ok := info.(model.ServerAddress)
 		if !ok {
