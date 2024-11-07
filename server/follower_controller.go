@@ -189,13 +189,13 @@ func (fc *followerController) isClosed() bool {
 }
 
 func (fc *followerController) Close() error {
+	fc.Lock()
+	defer fc.Unlock()
+
 	fc.log.Debug("Closing follower controller")
 	fc.cancel()
 
 	<-fc.applyEntriesDone
-
-	fc.Lock()
-	defer fc.Unlock()
 	return fc.close()
 }
 
