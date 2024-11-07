@@ -54,6 +54,8 @@ type Coordinator interface {
 
 	NodeAvailabilityListener
 
+	FindServerAddressByInternalAddress(internalAddress string) (*model.ServerAddress, bool)
+
 	ClusterStatus() model.ClusterStatus
 }
 
@@ -64,6 +66,8 @@ type coordinator struct {
 	MetadataProvider
 	clusterConfigProvider func() (model.ClusterConfig, error)
 	model.ClusterConfig
+	serverIndexes sync.Map
+
 	clusterConfigChangeCh chan any
 
 	shardControllers map[int64]ShardController
@@ -100,6 +104,7 @@ func NewCoordinator(metadataProvider MetadataProvider,
 		shardControllers:      make(map[int64]ShardController),
 		nodeControllers:       make(map[string]NodeController),
 		drainingNodes:         make(map[string]NodeController),
+		serverIndexes:         sync.Map{},
 		rpc:                   rpc,
 		log: slog.With(
 			slog.String("component", "coordinator"),
@@ -117,6 +122,7 @@ func NewCoordinator(metadataProvider MetadataProvider,
 
 	for _, sa := range c.ClusterConfig.Servers {
 		c.nodeControllers[sa.Internal] = NewNodeController(sa, c, c, c.rpc)
+		c.serverIndexes.Store(sa.Internal, sa)
 	}
 
 	if c.clusterStatus == nil {
@@ -446,6 +452,10 @@ func (c *coordinator) handleClusterConfigUpdated() error {
 		slog.Any("metadataVersion", c.metadataVersion),
 	)
 
+	for _, sc := range c.shardControllers {
+		sc.SyncServerAddress()
+	}
+
 	c.checkClusterNodeChanges(newClusterConfig)
 
 	clusterStatus, shardsToAdd, shardsToDelete := applyClusterChanges(&newClusterConfig, c.clusterStatus)
@@ -512,6 +522,17 @@ func (c *coordinator) rebalanceCluster() error {
 	return nil
 }
 
+func (c *coordinator) FindServerAddressByInternalAddress(internalAddress string) (*model.ServerAddress, bool) {
+	if info, exist := c.serverIndexes.Load(internalAddress); exist {
+		address, ok := info.(model.ServerAddress)
+		if !ok {
+			panic("unexpected cast")
+		}
+		return &address, true
+	}
+	return nil, false
+}
+
 func (*coordinator) findServerByInternalAddress(newClusterConfig model.ClusterConfig, server string) *model.ServerAddress {
 	for _, s := range newClusterConfig.Servers {
 		if server == s.Internal {
@@ -525,6 +546,8 @@ func (*coordinator) findServerByInternalAddress(newClusterConfig model.ClusterCo
 func (c *coordinator) checkClusterNodeChanges(newClusterConfig model.ClusterConfig) {
 	// Check for nodes to add
 	for _, sa := range newClusterConfig.Servers {
+		c.serverIndexes.Store(sa.Internal, sa)
+
 		if _, ok := c.nodeControllers[sa.Internal]; ok {
 			continue
 		}
@@ -548,6 +571,7 @@ func (c *coordinator) checkClusterNodeChanges(newClusterConfig model.ClusterConf
 		}
 
 		c.log.Info("Detected a removed node", slog.Any("addr", ia))
+		c.serverIndexes.Delete(ia)
 		// Moved the node
 		delete(c.nodeControllers, ia)
 		nc.SetStatus(Draining)

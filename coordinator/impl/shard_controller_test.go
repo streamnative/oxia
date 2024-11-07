@@ -365,6 +365,10 @@ func (m *mockCoordinator) WaitForNextUpdate(ctx context.Context, currentValue *p
 	panic("not implemented")
 }
 
+func (m *mockCoordinator) FindServerAddressByInternalAddress(_ string) (*model.ServerAddress, bool) {
+	return nil, false
+}
+
 func (m *mockCoordinator) InitiateLeaderElection(namespace string, shard int64, metadata model.ShardMetadata) error {
 	m.Lock()
 	defer m.Unlock()

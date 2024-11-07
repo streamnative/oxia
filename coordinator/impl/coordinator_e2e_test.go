@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -768,4 +769,75 @@ func checkServerLists(t *testing.T, expected, actual []model.ServerAddress) {
 		}
 		assert.True(t, ok)
 	}
+}
+
+func TestCoordinator_RefreshServerInfo(t *testing.T) {
+	s1, sa1 := newServer(t)
+	s2, sa2 := newServer(t)
+	s3, sa3 := newServer(t)
+
+	metadataProvider := NewMetadataProviderMemory()
+	clusterConfig := model.ClusterConfig{
+		Namespaces: []model.NamespaceConfig{{
+			Name:              "my-ns-1",
+			ReplicationFactor: 3,
+			InitialShardCount: 1,
+		}},
+		Servers: []model.ServerAddress{sa1, sa2, sa3},
+	}
+	configChangesCh := make(chan any)
+	c, err := NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) {
+		return clusterConfig, nil
+	}, configChangesCh,
+		NewRpcProvider(common.NewClientPool(nil, nil)))
+	assert.NoError(t, err)
+
+	// wait for all shards to be ready
+	assert.Eventually(t, func() bool {
+		for _, ns := range c.ClusterStatus().Namespaces {
+			for _, shard := range ns.Shards {
+				if shard.Status != model.ShardStatusSteadyState {
+					return false
+				}
+			}
+		}
+		return true
+	}, 10*time.Second, 10*time.Millisecond)
+
+	// change the localhost to 127.0.0.1
+	clusterServer := make([]model.ServerAddress, 0)
+	for _, sv := range clusterConfig.Servers {
+		clusterServer = append(clusterServer, model.ServerAddress{
+			Public:   strings.ReplaceAll(sv.Public, "localhost", "127.0.0.1"),
+			Internal: sv.Internal,
+		})
+	}
+
+	clusterConfig.Servers = clusterServer
+	configChangesCh <- nil
+
+	assert.Eventually(t, func() bool {
+		for _, ns := range c.ClusterStatus().Namespaces {
+			for _, shard := range ns.Shards {
+				if shard.Status != model.ShardStatusSteadyState {
+					return false
+				}
+				for _, sv := range shard.Ensemble {
+					if !strings.HasPrefix(sv.Public, "127.0.0.1") {
+						return false
+					}
+				}
+			}
+		}
+		return true
+	}, 10*time.Second, 10*time.Millisecond)
+
+	err = s1.Close()
+	assert.NoError(t, err)
+	err = s2.Close()
+	assert.NoError(t, err)
+	err = s3.Close()
+	assert.NoError(t, err)
+	err = c.Close()
+	assert.NoError(t, err)
 }

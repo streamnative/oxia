@@ -20,6 +20,7 @@ import (
 	"io"
 	"log/slog"
 	"math/rand"
+	"reflect"
 	"sync"
 	"time"
 
@@ -64,6 +65,8 @@ type ShardController interface {
 
 	HandleNodeFailure(failedNode model.ServerAddress)
 
+	SyncServerAddress()
+
 	SwapNode(from model.ServerAddress, to model.ServerAddress) error
 	DeleteShard()
 
@@ -77,10 +80,11 @@ type shardController struct {
 	shard              int64
 	namespaceConfig    *model.NamespaceConfig
 	shardMetadata      model.ShardMetadata
-	shardMetadataMutex sync.Mutex
+	shardMetadataMutex sync.RWMutex
 	rpc                RpcProvider
 	coordinator        Coordinator
 
+	electionOp              chan any
 	deleteOp                chan any
 	nodeFailureOp           chan model.ServerAddress
 	swapNodeOp              chan swapNodeRequest
@@ -110,6 +114,7 @@ func NewShardController(namespace string, shard int64, namespaceConfig *model.Na
 		shardMetadata:           shardMetadata,
 		rpc:                     rpc,
 		coordinator:             coordinator,
+		electionOp:              make(chan any, chanBufferSize),
 		deleteOp:                make(chan any, chanBufferSize),
 		nodeFailureOp:           make(chan model.ServerAddress, chanBufferSize),
 		swapNodeOp:              make(chan swapNodeRequest, chanBufferSize),
@@ -169,6 +174,8 @@ func (s *shardController) run() {
 
 		if !s.verifyCurrentEnsemble() {
 			s.electLeaderWithRetries()
+		} else {
+			s.SyncServerAddress()
 		}
 	}
 
@@ -193,6 +200,9 @@ func (s *shardController) run() {
 
 		case a := <-s.newTermAndAddFollowerOp:
 			s.internalNewTermAndAddFollower(a.ctx, a.node, a.res)
+
+		case <-s.electionOp:
+			s.electLeaderWithRetries()
 		}
 	}
 }
@@ -209,7 +219,7 @@ func (s *shardController) handleNodeFailure(failedNode model.ServerAddress) {
 	)
 
 	if s.shardMetadata.Leader != nil &&
-		*s.shardMetadata.Leader == failedNode {
+		s.shardMetadata.Leader.Internal == failedNode.Internal {
 		s.log.Info(
 			"Detected failure on shard leader",
 			slog.Any("leader", failedNode),
@@ -295,6 +305,8 @@ func (s *shardController) electLeader() error {
 	s.shardMetadata.Status = model.ShardStatusElection
 	s.shardMetadata.Leader = nil
 	s.shardMetadata.Term++
+	// it's a safe point to update the service info
+	s.shardMetadata.Ensemble = s.getRefreshedEnsemble()
 	s.shardMetadataMutex.Unlock()
 
 	s.log.Info(
@@ -367,6 +379,25 @@ func (s *shardController) electLeader() error {
 
 	s.keepFencingFailedFollowers(followers)
 	return nil
+}
+
+func (s *shardController) getRefreshedEnsemble() []model.ServerAddress {
+	currentEnsemble := s.shardMetadata.Ensemble
+	refreshedEnsembleServiceAddress := make([]model.ServerAddress, len(currentEnsemble))
+	for idx, candidate := range currentEnsemble {
+		if refreshedAddress, exist := s.coordinator.FindServerAddressByInternalAddress(candidate.Internal); exist {
+			refreshedEnsembleServiceAddress[idx] = *refreshedAddress
+			continue
+		}
+		refreshedEnsembleServiceAddress[idx] = candidate
+	}
+	if s.log.Enabled(s.ctx, slog.LevelDebug) {
+		if !reflect.DeepEqual(currentEnsemble, refreshedEnsembleServiceAddress) {
+			s.log.Info("refresh the shard ensemble server address", slog.Any("current-ensemble", currentEnsemble),
+				slog.Any("new-ensemble", refreshedEnsembleServiceAddress))
+		}
+	}
+	return refreshedEnsembleServiceAddress
 }
 
 func (s *shardController) deletingRemovedNodes() error {
@@ -866,9 +897,29 @@ func (s *shardController) waitForFollowersToCatchUp(ctx context.Context, leader 
 	return nil
 }
 
+func (s *shardController) SyncServerAddress() {
+	s.shardMetadataMutex.RLock()
+	exist := false
+	for _, candidate := range s.shardMetadata.Ensemble {
+		if newInfo, ok := s.coordinator.FindServerAddressByInternalAddress(candidate.Internal); ok {
+			if *newInfo != candidate {
+				exist = true
+				break
+			}
+		}
+	}
+	if !exist {
+		s.shardMetadataMutex.RUnlock()
+		return
+	}
+	s.shardMetadataMutex.RUnlock()
+	s.log.Info("server address changed, start a new leader election")
+	s.electionOp <- nil
+}
+
 func listContains(list []model.ServerAddress, sa model.ServerAddress) bool {
 	for _, item := range list {
-		if item.Public == sa.Public && item.Internal == sa.Internal {
+		if item.Internal == sa.Internal {
 			return true
 		}
 	}
@@ -887,7 +938,7 @@ func mergeLists[T any](lists ...[]T) []T {
 func replaceInList(list []model.ServerAddress, oldServerAddress, newServerAddress model.ServerAddress) []model.ServerAddress {
 	var res []model.ServerAddress
 	for _, item := range list {
-		if item.Public != oldServerAddress.Public && item.Internal != oldServerAddress.Internal {
+		if item.Internal != oldServerAddress.Internal {
 			res = append(res, item)
 		}
 	}
