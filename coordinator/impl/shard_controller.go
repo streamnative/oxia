@@ -141,8 +141,6 @@ func NewShardController(namespace string, shard int64, namespaceConfig *model.Na
 
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 
-	s.SyncServerAddress()
-
 	s.log.Info(
 		"Started shard controller",
 		slog.Any("shard-metadata", s.shardMetadata),
@@ -175,6 +173,8 @@ func (s *shardController) run() {
 
 		if !s.verifyCurrentEnsemble() {
 			s.electLeaderWithRetries()
+		} else {
+			s.SyncServerAddress()
 		}
 	}
 
