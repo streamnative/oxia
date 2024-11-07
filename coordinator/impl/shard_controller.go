@@ -64,6 +64,8 @@ type ShardController interface {
 
 	HandleNodeFailure(failedNode model.ServerAddress)
 
+	SyncServerInfo()
+
 	SwapNode(from model.ServerAddress, to model.ServerAddress) error
 	DeleteShard()
 
@@ -77,7 +79,7 @@ type shardController struct {
 	shard              int64
 	namespaceConfig    *model.NamespaceConfig
 	shardMetadata      model.ShardMetadata
-	shardMetadataMutex sync.Mutex
+	shardMetadataMutex sync.RWMutex
 	rpc                RpcProvider
 	coordinator        Coordinator
 
@@ -139,6 +141,8 @@ func NewShardController(namespace string, shard int64, namespaceConfig *model.Na
 
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 
+	s.SyncServerInfo()
+
 	s.log.Info(
 		"Started shard controller",
 		slog.Any("shard-metadata", s.shardMetadata),
@@ -196,7 +200,7 @@ func (s *shardController) run() {
 		case a := <-s.newTermAndAddFollowerOp:
 			s.internalNewTermAndAddFollower(a.ctx, a.node, a.res)
 
-		case <-s.electionOp: // for testing
+		case <-s.electionOp:
 			s.electLeaderWithRetries()
 		}
 	}
@@ -214,7 +218,7 @@ func (s *shardController) handleNodeFailure(failedNode model.ServerAddress) {
 	)
 
 	if s.shardMetadata.Leader != nil &&
-		*s.shardMetadata.Leader == failedNode {
+		s.shardMetadata.Leader.Internal == failedNode.Internal {
 		s.log.Info(
 			"Detected failure on shard leader",
 			slog.Any("leader", failedNode),
@@ -377,19 +381,11 @@ func (s *shardController) electLeader() error {
 }
 
 func (s *shardController) getRefreshedEnsemble() []model.ServerAddress {
-	serversInfos := s.coordinator.GetServers()
-	// build a logic index here.
-	// todo: might introduce global index in the coordinator in the future
-	index := map[string]model.ServerAddress{}
-	for _, server := range serversInfos {
-		index[server.Internal] = server
-	}
-
 	currentEnsemble := s.shardMetadata.Ensemble
 	refreshedEnsembleServiceInfo := make([]model.ServerAddress, len(currentEnsemble))
 	for idx, candidate := range currentEnsemble {
-		if refreshedInfo, exist := index[candidate.Internal]; exist {
-			refreshedEnsembleServiceInfo[idx] = refreshedInfo
+		if refreshedInfo, exist := s.coordinator.FindNodeInfoById(candidate.GetNodeId()); exist {
+			refreshedEnsembleServiceInfo[idx] = *refreshedInfo
 			continue
 		}
 		refreshedEnsembleServiceInfo[idx] = candidate
@@ -892,6 +888,26 @@ func (s *shardController) waitForFollowersToCatchUp(ctx context.Context, leader 
 
 	s.log.Info("All the followers are caught up after node-swap")
 	return nil
+}
+
+func (s *shardController) SyncServerInfo() {
+	s.shardMetadataMutex.RLock()
+	exist := false
+	for _, candidate := range s.shardMetadata.Ensemble {
+		if newInfo, ok := s.coordinator.FindNodeInfoById(candidate.GetNodeId()); ok {
+			if *newInfo != candidate {
+				exist = true
+				break
+			}
+		}
+	}
+	if !exist {
+		s.shardMetadataMutex.RUnlock()
+		return
+	}
+	s.shardMetadataMutex.RUnlock()
+	s.log.Info("node info changed, start a new leader election")
+	s.electionOp <- nil
 }
 
 func listContains(list []model.ServerAddress, sa model.ServerAddress) bool {

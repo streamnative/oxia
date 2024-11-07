@@ -14,12 +14,20 @@
 
 package model
 
+type NodeId string
+
 type ServerAddress struct {
 	// Public is the endpoint that is advertised to clients
 	Public string `json:"public" yaml:"public"`
 
 	// Internal is the endpoint for server->server RPCs
 	Internal string `json:"internal" yaml:"internal"`
+}
+
+func (s *ServerAddress) GetNodeId() NodeId {
+	// use the internal address as the node id by default.
+	// todo: introduce node id in the future
+	return NodeId(s.Internal)
 }
 
 type Int32HashRange struct {

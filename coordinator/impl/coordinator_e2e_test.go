@@ -816,12 +816,6 @@ func TestCoordinator_RefreshServerInfo(t *testing.T) {
 	clusterConfig.Servers = clusterServer
 	configChangesCh <- nil
 
-	// new term
-	coordinatorInstance := c.(*coordinator)
-	controller := coordinatorInstance.shardControllers[0]
-	controllerInstance := controller.(*shardController)
-	controllerInstance.electionOp <- nil
-
 	assert.Eventually(t, func() bool {
 		for _, ns := range c.ClusterStatus().Namespaces {
 			for _, shard := range ns.Shards {
