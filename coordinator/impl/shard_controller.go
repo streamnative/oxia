@@ -894,7 +894,7 @@ func (s *shardController) SyncServerAddress() {
 	s.shardMetadataMutex.RLock()
 	exist := false
 	for _, candidate := range s.shardMetadata.Ensemble {
-		if newInfo, ok := s.coordinator.FindNodeInfoById(candidate.GetNodeId()); ok {
+		if newInfo, ok := s.coordinator.FindServerAddressByInternalAddress(candidate.Internal); ok {
 			if *newInfo != candidate {
 				exist = true
 				break
