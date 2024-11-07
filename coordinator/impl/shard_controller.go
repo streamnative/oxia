@@ -81,6 +81,7 @@ type shardController struct {
 	rpc                RpcProvider
 	coordinator        Coordinator
 
+	electionOp              chan any
 	deleteOp                chan any
 	nodeFailureOp           chan model.ServerAddress
 	swapNodeOp              chan swapNodeRequest
@@ -110,6 +111,7 @@ func NewShardController(namespace string, shard int64, namespaceConfig *model.Na
 		shardMetadata:           shardMetadata,
 		rpc:                     rpc,
 		coordinator:             coordinator,
+		electionOp:              make(chan any, chanBufferSize),
 		deleteOp:                make(chan any, chanBufferSize),
 		nodeFailureOp:           make(chan model.ServerAddress, chanBufferSize),
 		swapNodeOp:              make(chan swapNodeRequest, chanBufferSize),
@@ -193,6 +195,9 @@ func (s *shardController) run() {
 
 		case a := <-s.newTermAndAddFollowerOp:
 			s.internalNewTermAndAddFollower(a.ctx, a.node, a.res)
+
+		case <-s.electionOp: // for testing
+			s.electLeaderWithRetries()
 		}
 	}
 }

@@ -820,7 +820,7 @@ func TestCoordinator_RefreshServerInfo(t *testing.T) {
 	coordinatorInstance := c.(*coordinator)
 	controller := coordinatorInstance.shardControllers[0]
 	controllerInstance := controller.(*shardController)
-	controllerInstance.electLeaderWithRetries()
+	controllerInstance.electionOp <- nil
 
 	assert.Eventually(t, func() bool {
 		for _, ns := range c.ClusterStatus().Namespaces {
