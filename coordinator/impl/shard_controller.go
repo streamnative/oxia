@@ -919,7 +919,7 @@ func (s *shardController) SyncServerAddress() {
 
 func listContains(list []model.ServerAddress, sa model.ServerAddress) bool {
 	for _, item := range list {
-		if item.Public == sa.Public && item.Internal == sa.Internal {
+		if item.Internal == sa.Internal {
 			return true
 		}
 	}
@@ -938,7 +938,7 @@ func mergeLists[T any](lists ...[]T) []T {
 func replaceInList(list []model.ServerAddress, oldServerAddress, newServerAddress model.ServerAddress) []model.ServerAddress {
 	var res []model.ServerAddress
 	for _, item := range list {
-		if item.Public != oldServerAddress.Public && item.Internal != oldServerAddress.Internal {
+		if item.Internal != oldServerAddress.Internal {
 			res = append(res, item)
 		}
 	}
