@@ -382,15 +382,15 @@ func (s *shardController) electLeader() error {
 
 func (s *shardController) getRefreshedEnsemble() []model.ServerAddress {
 	currentEnsemble := s.shardMetadata.Ensemble
-	refreshedEnsembleServiceInfo := make([]model.ServerAddress, len(currentEnsemble))
+	refreshedEnsembleServiceAddress := make([]model.ServerAddress, len(currentEnsemble))
 	for idx, candidate := range currentEnsemble {
-		if refreshedInfo, exist := s.coordinator.FindNodeInfoById(candidate.GetNodeId()); exist {
-			refreshedEnsembleServiceInfo[idx] = *refreshedInfo
+		if refreshedAddress, exist := s.coordinator.FindNodeInfoByInternalAddress(candidate.Internal); exist {
+			refreshedEnsembleServiceAddress[idx] = *refreshedAddress
 			continue
 		}
-		refreshedEnsembleServiceInfo[idx] = candidate
+		refreshedEnsembleServiceAddress[idx] = candidate
 	}
-	return refreshedEnsembleServiceInfo
+	return refreshedEnsembleServiceAddress
 }
 
 func (s *shardController) deletingRemovedNodes() error {

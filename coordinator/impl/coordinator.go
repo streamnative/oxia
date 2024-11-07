@@ -54,7 +54,7 @@ type Coordinator interface {
 
 	NodeAvailabilityListener
 
-	FindNodeInfoById(id model.NodeId) (*model.ServerAddress, bool)
+	FindNodeInfoByInternalAddress(internalAddress string) (*model.ServerAddress, bool)
 
 	ClusterStatus() model.ClusterStatus
 }
@@ -66,7 +66,7 @@ type coordinator struct {
 	MetadataProvider
 	clusterConfigProvider func() (model.ClusterConfig, error)
 	model.ClusterConfig
-	nodeIndexes sync.Map
+	serverIndexes sync.Map
 
 	clusterConfigChangeCh chan any
 
@@ -104,7 +104,7 @@ func NewCoordinator(metadataProvider MetadataProvider,
 		shardControllers:      make(map[int64]ShardController),
 		nodeControllers:       make(map[string]NodeController),
 		drainingNodes:         make(map[string]NodeController),
-		nodeIndexes:           sync.Map{},
+		serverIndexes:         sync.Map{},
 		rpc:                   rpc,
 		log: slog.With(
 			slog.String("component", "coordinator"),
@@ -122,7 +122,7 @@ func NewCoordinator(metadataProvider MetadataProvider,
 
 	for _, sa := range c.ClusterConfig.Servers {
 		c.nodeControllers[sa.Internal] = NewNodeController(sa, c, c, c.rpc)
-		c.nodeIndexes.Store(sa.GetNodeId(), sa)
+		c.serverIndexes.Store(sa.Internal, sa)
 	}
 
 	if c.clusterStatus == nil {
@@ -522,8 +522,8 @@ func (c *coordinator) rebalanceCluster() error {
 	return nil
 }
 
-func (c *coordinator) FindNodeInfoById(id model.NodeId) (*model.ServerAddress, bool) {
-	if info, exist := c.nodeIndexes.Load(id); exist {
+func (c *coordinator) FindNodeInfoByInternalAddress(internalAddress string) (*model.ServerAddress, bool) {
+	if info, exist := c.serverIndexes.Load(internalAddress); exist {
 		address, ok := info.(model.ServerAddress)
 		if !ok {
 			panic("unexpected cast")
@@ -546,7 +546,7 @@ func (*coordinator) findServerByInternalAddress(newClusterConfig model.ClusterCo
 func (c *coordinator) checkClusterNodeChanges(newClusterConfig model.ClusterConfig) {
 	// Check for nodes to add
 	for _, sa := range newClusterConfig.Servers {
-		c.nodeIndexes.Store(sa.GetNodeId(), sa)
+		c.serverIndexes.Store(sa.Internal, sa)
 
 		if _, ok := c.nodeControllers[sa.Internal]; ok {
 			continue
@@ -571,7 +571,7 @@ func (c *coordinator) checkClusterNodeChanges(newClusterConfig model.ClusterConf
 		}
 
 		c.log.Info("Detected a removed node", slog.Any("addr", ia))
-		c.nodeIndexes.Delete(model.NodeId(ia))
+		c.serverIndexes.Delete(ia)
 		// Moved the node
 		delete(c.nodeControllers, ia)
 		nc.SetStatus(Draining)

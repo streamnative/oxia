@@ -365,7 +365,7 @@ func (m *mockCoordinator) WaitForNextUpdate(ctx context.Context, currentValue *p
 	panic("not implemented")
 }
 
-func (m *mockCoordinator) FindNodeInfoById(id model.NodeId) (*model.ServerAddress, bool) {
+func (m *mockCoordinator) FindNodeInfoByInternalAddress(_ string) (*model.ServerAddress, bool) {
 	return nil, false
 }
 
