@@ -524,7 +524,10 @@ func (c *coordinator) rebalanceCluster() error {
 
 func (c *coordinator) FindNodeInfoById(id model.NodeId) (*model.ServerAddress, bool) {
 	if info, exist := c.nodeIndexes.Load(id); exist {
-		address := info.(model.ServerAddress)
+		address, ok := info.(model.ServerAddress)
+		if !ok {
+			panic("unexpected cast")
+		}
 		return &address, true
 	}
 	return nil, false
