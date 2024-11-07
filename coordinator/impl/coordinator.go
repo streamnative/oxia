@@ -477,7 +477,7 @@ func (c *coordinator) handleClusterConfigUpdated() error {
 	}
 
 	for _, sc := range c.shardControllers {
-		sc.SyncServerInfo()
+		sc.SyncServerAddress()
 	}
 
 	c.ClusterConfig = newClusterConfig

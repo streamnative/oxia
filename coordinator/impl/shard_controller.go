@@ -64,7 +64,7 @@ type ShardController interface {
 
 	HandleNodeFailure(failedNode model.ServerAddress)
 
-	SyncServerInfo()
+	SyncServerAddress()
 
 	SwapNode(from model.ServerAddress, to model.ServerAddress) error
 	DeleteShard()
@@ -141,7 +141,7 @@ func NewShardController(namespace string, shard int64, namespaceConfig *model.Na
 
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 
-	s.SyncServerInfo()
+	s.SyncServerAddress()
 
 	s.log.Info(
 		"Started shard controller",
@@ -890,7 +890,7 @@ func (s *shardController) waitForFollowersToCatchUp(ctx context.Context, leader 
 	return nil
 }
 
-func (s *shardController) SyncServerInfo() {
+func (s *shardController) SyncServerAddress() {
 	s.shardMetadataMutex.RLock()
 	exist := false
 	for _, candidate := range s.shardMetadata.Ensemble {
