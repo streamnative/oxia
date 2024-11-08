@@ -226,12 +226,12 @@ func (s *internalRpcServer) Truncate(c context.Context, req *proto.TruncateReque
 		return nil, err
 	}
 
-	res, err2 := follower.Truncate(req)
+	res, truncateErr := follower.Truncate(req)
 	log.Warn(
 		"Truncate failed",
-		slog.Any("error", err),
+		slog.Any("error", truncateErr),
 	)
-	return res, err2
+	return res, truncateErr
 }
 
 func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServer) error {
