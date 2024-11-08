@@ -172,14 +172,14 @@ func (s *internalRpcServer) BecomeLeader(c context.Context, req *proto.BecomeLea
 		return nil, err
 	}
 
-	res, err2 := leader.BecomeLeader(c, req)
-	if err2 != nil {
+	res, err := leader.BecomeLeader(c, req)
+	if err != nil {
 		log.Warn(
 			"BecomeLeader failed",
 			slog.Any("error", err),
 		)
 	}
-	return res, err2
+	return res, err
 }
 
 func (s *internalRpcServer) AddFollower(c context.Context, req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error) {
@@ -199,14 +199,14 @@ func (s *internalRpcServer) AddFollower(c context.Context, req *proto.AddFollowe
 		return nil, err
 	}
 
-	res, err2 := leader.AddFollower(req)
-	if err2 != nil {
+	res, err := leader.AddFollower(req)
+	if err != nil {
 		log.Warn(
 			"AddFollower failed",
 			slog.Any("error", err),
 		)
 	}
-	return res, err2
+	return res, err
 }
 
 func (s *internalRpcServer) Truncate(c context.Context, req *proto.TruncateRequest) (*proto.TruncateResponse, error) {
@@ -226,14 +226,14 @@ func (s *internalRpcServer) Truncate(c context.Context, req *proto.TruncateReque
 		return nil, err
 	}
 
-	res, truncateErr := follower.Truncate(req)
-	if truncateErr != nil {
+	res, err := follower.Truncate(req)
+	if err != nil {
 		log.Warn(
 			"Truncate failed",
-			slog.Any("error", truncateErr),
+			slog.Any("error", err),
 		)
 	}
-	return res, truncateErr
+	return res, err
 }
 
 func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServer) error {
@@ -276,14 +276,14 @@ func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServ
 		return err
 	}
 
-	replicateErr := follower.Replicate(srv)
-	if replicateErr != nil && !errors.Is(replicateErr, io.EOF) {
+	err = follower.Replicate(srv)
+	if err != nil && !errors.Is(err, io.EOF) {
 		log.Warn(
 			"Replicate failed",
-			slog.Any("error", replicateErr),
+			slog.Any("error", err),
 		)
 	}
-	return replicateErr
+	return err
 }
 
 func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapshotServer) error {
@@ -328,17 +328,17 @@ func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapsh
 		return err
 	}
 
-	snapshotErr := follower.SendSnapshot(srv)
-	if snapshotErr != nil {
+	err = follower.SendSnapshot(srv)
+	if err != nil {
 		s.log.Warn(
 			"SendSnapshot failed",
-			slog.Any("error", snapshotErr),
+			slog.Any("error", err),
 			slog.String("namespace", namespace),
 			slog.Int64("shard", shardId),
 			slog.String("peer", common.GetPeer(srv.Context())),
 		)
 	}
-	return snapshotErr
+	return err
 }
 
 func (s *internalRpcServer) GetStatus(_ context.Context, req *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
