@@ -227,10 +227,12 @@ func (s *internalRpcServer) Truncate(c context.Context, req *proto.TruncateReque
 	}
 
 	res, truncateErr := follower.Truncate(req)
-	log.Warn(
-		"Truncate failed",
-		slog.Any("error", truncateErr),
-	)
+	if truncateErr != nil {
+		log.Warn(
+			"Truncate failed",
+			slog.Any("error", truncateErr),
+		)
+	}
 	return res, truncateErr
 }
 
