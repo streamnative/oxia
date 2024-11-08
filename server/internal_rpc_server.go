@@ -328,17 +328,17 @@ func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapsh
 		return err
 	}
 
-	err2 := follower.SendSnapshot(srv)
-	if err2 != nil {
+	snapshotErr := follower.SendSnapshot(srv)
+	if snapshotErr != nil {
 		s.log.Warn(
 			"SendSnapshot failed",
-			slog.Any("error", err),
+			slog.Any("error", snapshotErr),
 			slog.String("namespace", namespace),
 			slog.Int64("shard", shardId),
 			slog.String("peer", common.GetPeer(srv.Context())),
 		)
 	}
-	return err2
+	return snapshotErr
 }
 
 func (s *internalRpcServer) GetStatus(_ context.Context, req *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
