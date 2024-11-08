@@ -276,14 +276,14 @@ func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServ
 		return err
 	}
 
-	err2 := follower.Replicate(srv)
-	if err2 != nil && !errors.Is(err2, io.EOF) {
+	replicateErr := follower.Replicate(srv)
+	if replicateErr != nil && !errors.Is(replicateErr, io.EOF) {
 		log.Warn(
 			"Replicate failed",
-			slog.Any("error", err),
+			slog.Any("error", replicateErr),
 		)
 	}
-	return err2
+	return replicateErr
 }
 
 func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapshotServer) error {
