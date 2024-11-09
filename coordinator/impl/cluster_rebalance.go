@@ -54,10 +54,10 @@ outer:
 		}
 		if len(deletedServers) > 0 {
 			slog.Debug("Deleted servers: ")
-			for ds, context := range deletedServers {
+			for id, context := range deletedServers {
 				slog.Debug(
 					"",
-					slog.String("server", ds),
+					slog.String("server", id),
 					slog.Int("count", context.Shards.Count()),
 				)
 			}
