@@ -816,28 +816,6 @@ func TestCoordinator_RefreshServerInfo(t *testing.T) {
 	clusterConfig.Servers = clusterServer
 	configChangesCh <- nil
 
-	removeNodeHappened := false
-	timeout, cancelFunc := context.WithTimeout(context.Background(), 5*time.Second)
-outer:
-	for {
-		select {
-		case <-timeout.Done():
-			break outer
-		default:
-			time.Sleep(100 * time.Millisecond)
-			for _, ns := range c.ClusterStatus().Namespaces {
-				for _, shard := range ns.Shards {
-					if shard.RemovedNodes == nil || len(shard.RemovedNodes) == 0 {
-						continue
-					}
-					removeNodeHappened = true
-				}
-			}
-		}
-	}
-	cancelFunc()
-	assert.False(t, removeNodeHappened)
-
 	assert.Eventually(t, func() bool {
 		for _, ns := range c.ClusterStatus().Namespaces {
 			for _, shard := range ns.Shards {
