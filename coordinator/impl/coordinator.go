@@ -452,11 +452,11 @@ func (c *coordinator) handleClusterConfigUpdated() error {
 		slog.Any("metadataVersion", c.metadataVersion),
 	)
 
+	c.checkClusterNodeChanges(newClusterConfig)
+
 	for _, sc := range c.shardControllers {
 		sc.SyncServerAddress()
 	}
-
-	c.checkClusterNodeChanges(newClusterConfig)
 
 	clusterStatus, shardsToAdd, shardsToDelete := applyClusterChanges(&newClusterConfig, c.clusterStatus)
 

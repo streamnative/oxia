@@ -73,15 +73,30 @@ func TestClusterRebalance_Count(t *testing.T) {
 
 	count, deletedServers := getShardsPerServer([]model.ServerAddress{s1, s2, s3, s4, s5}, cs)
 
-	assert.Equal(t, map[model.ServerAddress]common.Set[int64]{
-		s1: common.NewSetFrom[int64]([]int64{0, 1, 2}),
-		s2: common.NewSetFrom[int64]([]int64{0, 1}),
-		s3: common.NewSetFrom[int64]([]int64{0, 2}),
-		s4: common.NewSetFrom[int64]([]int64{1, 2}),
-		s5: common.NewSet[int64](),
+	assert.Equal(t, map[string]ServerContext{
+		s1.Internal: {
+			s1,
+			common.NewSetFrom[int64]([]int64{0, 1, 2}),
+		},
+		s2.Internal: {
+			s2,
+			common.NewSetFrom[int64]([]int64{0, 1}),
+		},
+		s3.Internal: {
+			s3,
+			common.NewSetFrom[int64]([]int64{0, 2}),
+		},
+		s4.Internal: {
+			s4,
+			common.NewSetFrom[int64]([]int64{1, 2}),
+		},
+		s5.Internal: {
+			s5,
+			common.NewSet[int64](),
+		},
 	}, count)
 
-	assert.Equal(t, map[model.ServerAddress]common.Set[int64]{}, deletedServers)
+	assert.Equal(t, map[string]ServerContext{}, deletedServers)
 }
 
 func TestClusterRebalance_Single(t *testing.T) {
