@@ -15,6 +15,7 @@
 package codec
 
 import (
+	"bytes"
 	"encoding/binary"
 	"github.com/google/uuid"
 	"os"
@@ -307,4 +308,14 @@ func TestV2_IndexBroken(t *testing.T) {
 
 	_, err = v2.ReadIndex(p)
 	assert.ErrorIs(t, err, ErrDataCorrupted)
+}
+
+func TestV2_ReadWithValidation(t *testing.T) {
+	buf := make([]byte, 15)
+	payloadSize := uint32(len(buf)) - v2.HeaderSize
+	payload := bytes.Repeat([]byte("A"), int(payloadSize))
+	_, wPayloadCrc := v2.WriteRecord(buf, 0, 0, payload)
+	_, _, rPayloadCrc, err := v2.ReadHeaderWithValidation(buf, 0)
+	assert.NoError(t, err)
+	assert.EqualValues(t, wPayloadCrc, rPayloadCrc)
 }
