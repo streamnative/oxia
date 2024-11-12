@@ -205,7 +205,7 @@ func (v *V2) RecoverIndex(buf []byte, startFileOffset uint32, baseEntryOffset in
 
 	index = BorrowEmptyIndexBuf()
 
-	for newFileOffset < maxSize {
+	for newFileOffset+v.HeaderSize <= maxSize {
 		var payloadSize uint32
 		var payloadCrc uint32
 		var err error

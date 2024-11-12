@@ -319,3 +319,14 @@ func TestV2_ReadWithValidation(t *testing.T) {
 	assert.NoError(t, err)
 	assert.EqualValues(t, wPayloadCrc, rPayloadCrc)
 }
+
+func TestV2_RecoveryWithNotEnoughBuf(t *testing.T) {
+	buf := make([]byte, 16)
+	payloadSize := uint32(len(buf)) - v2.HeaderSize - 1
+	payload := bytes.Repeat([]byte("A"), int(payloadSize))
+	_, wPayloadCrc := v2.WriteRecord(buf, 0, 0, payload)
+	_, rLastCrc, _, entryOffset, err := v2.RecoverIndex(buf, 0, 0, nil)
+	assert.NoError(t, err)
+	assert.EqualValues(t, wPayloadCrc, rLastCrc)
+	assert.EqualValues(t, entryOffset, 0)
+}
