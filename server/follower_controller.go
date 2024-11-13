@@ -337,6 +337,7 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 		return nil, errors.Wrapf(err, "failed to truncate wal. truncate-offset: %d - wal-last-offset: %d",
 			req.HeadEntryId.Offset, fc.wal.LastOffset())
 	}
+	fc.lastAppendedOffset = headOffset
 
 	return &proto.TruncateResponse{
 		HeadEntryId: &proto.EntryId{
