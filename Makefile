@@ -36,7 +36,7 @@ docker:
 	docker build -t oxia:latest .
 
 docker_multi_arch:
-	docker buildx build --platform linux/x86_64,linux/arm64 -t oxia:latest .
+	docker buildx build --platform linux/x86_64 -t oxia:replica.debug .
 
 .PHONY: proto
 proto:
