@@ -425,7 +425,7 @@ func (fc *followerCursor) receiveAcks(cancel context.CancelFunc, stream proto.Ox
 			return
 		}
 
-		fc.log.Info(
+		fc.log.Debug(
 			"Received ack",
 			slog.Int64("offset", res.Offset),
 		)
