@@ -17,6 +17,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"go.uber.org/multierr"
 	"io"
 	"log/slog"
 	"sync"
@@ -325,7 +326,9 @@ func (fc *followerCursor) streamEntriesLoop(ctx context.Context, reader wal.Read
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			fc.log.Info("close the failed stream")
+			err := fc.stream.CloseSend()
+			return multierr.Append(err, ctx.Err())
 		default:
 		}
 
@@ -413,7 +416,6 @@ func (fc *followerCursor) receiveAcks(cancel context.CancelFunc, stream proto.Ox
 					slog.Any("error", err),
 				)
 			}
-
 			cancel()
 			return
 		}
