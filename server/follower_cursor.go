@@ -16,7 +16,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -324,6 +323,11 @@ func (fc *followerCursor) streamEntriesLoop(ctx context.Context, reader wal.Read
 		if fc.closed.Load() {
 			return nil
 		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 
 		if !reader.HasNext() {
 			// We have reached the head of the wal
@@ -340,7 +344,7 @@ func (fc *followerCursor) streamEntriesLoop(ctx context.Context, reader wal.Read
 			return err
 		}
 
-		fc.log.Info(
+		fc.log.Debug(
 			"Sending entries to follower",
 			slog.Int64("offset", le.Offset),
 		)
@@ -402,10 +406,6 @@ func (fc *followerCursor) streamEntries() error {
 func (fc *followerCursor) receiveAcks(cancel context.CancelFunc, stream proto.OxiaLogReplication_ReplicateClient) {
 	for {
 		res, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			fc.log.Info("Ack stream finished")
-			return
-		}
 		if err != nil {
 			if status.Code(err) != codes.Canceled && status.Code(err) != codes.Unavailable {
 				fc.log.Warn(
@@ -423,7 +423,7 @@ func (fc *followerCursor) receiveAcks(cancel context.CancelFunc, stream proto.Ox
 			return
 		}
 
-		fc.log.Debug(
+		fc.log.Info(
 			"Received ack",
 			slog.Int64("offset", res.Offset),
 		)
