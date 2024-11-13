@@ -340,7 +340,7 @@ func (fc *followerCursor) streamEntriesLoop(ctx context.Context, reader wal.Read
 			return err
 		}
 
-		fc.log.Debug(
+		fc.log.Info(
 			"Sending entries to follower",
 			slog.Int64("offset", le.Offset),
 		)
