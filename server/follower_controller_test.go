@@ -117,7 +117,7 @@ func TestFollower(t *testing.T) {
 	fc, err = NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, fc.Status())
-	fenceRes, err = fc.NewTerm(&proto.NewTermRequest{Term: 2})
+	_, err = fc.NewTerm(&proto.NewTermRequest{Term: 2})
 	assert.NoError(t, err)
 	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
 	assert.EqualValues(t, 2, fc.Term())
