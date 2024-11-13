@@ -116,7 +116,7 @@ func (v *V2) ReadHeaderWithValidation(buf []byte, startFileOffset uint32) (paylo
 
 	expectSize := payloadSize + v.HeaderSize
 	// overflow checking
-	actualBufSize := bufSize - (startFileOffset + headerOffset)
+	actualBufSize := bufSize - startFileOffset
 	if expectSize > actualBufSize {
 		return payloadSize, previousCrc, payloadCrc,
 			errors.Wrapf(ErrOffsetOutOfBounds, "expected payload size: %d. actual buf size: %d ", expectSize, bufSize)
@@ -205,7 +205,7 @@ func (v *V2) RecoverIndex(buf []byte, startFileOffset uint32, baseEntryOffset in
 
 	index = BorrowEmptyIndexBuf()
 
-	for newFileOffset < maxSize {
+	for newFileOffset+v.HeaderSize <= maxSize {
 		var payloadSize uint32
 		var payloadCrc uint32
 		var err error
