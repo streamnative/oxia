@@ -189,7 +189,7 @@ func (fc *followerController) isClosed() bool {
 }
 
 func (fc *followerController) Close() error {
-	fc.log.Debug("Closing follower controller")
+	fc.log.Info("Closing follower controller")
 	fc.cancel()
 
 	<-fc.applyEntriesDone
@@ -347,6 +347,8 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 }
 
 func (fc *followerController) Replicate(stream proto.OxiaLogReplication_ReplicateServer) error {
+	fc.log.Info("replicate messages", slog.Any("fcContext", fc.ctx),
+		slog.Any("streamContext", stream.Context()))
 	fc.Lock()
 	if fc.status != proto.ServingStatus_FENCED && fc.status != proto.ServingStatus_FOLLOWER {
 		fc.Unlock()
