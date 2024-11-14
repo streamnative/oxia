@@ -274,7 +274,7 @@ func (lc *leaderController) NewTerm(req *proto.NewTermRequest) (*proto.NewTermRe
 	)
 
 	return &proto.NewTermResponse{
-		HeadEntryId: headEntryId,
+		HeadEntryId: &proto.EntryId{Term: lc.term, Offset: headEntryId.Offset},
 	}, nil
 }
 
