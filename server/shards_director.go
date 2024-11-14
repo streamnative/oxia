@@ -168,7 +168,7 @@ func (s *shardsDirector) GetOrCreateFollower(namespace string, shardId int64, te
 		return follower, nil
 	} else if leader, ok := s.leaders[shardId]; ok {
 		// There is an existing leader controller
-		if term >= 0 && term != leader.Term() {
+		if term >= 0 && term < leader.Term() {
 			// We should not close the existing leader because of a late request
 			return nil, common.ErrorInvalidTerm
 		}
