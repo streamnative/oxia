@@ -425,7 +425,7 @@ func (fc *followerController) append(req *proto.Append, stream proto.OxiaLogRepl
 
 	if req.Entry.Offset <= fc.lastAppendedOffset {
 		// This was a duplicated request. We already have this entry
-		fc.log.Debug(
+		fc.log.Warn(
 			"Ignoring duplicated entry",
 			slog.Int64("commit-offset", req.CommitOffset),
 			slog.Int64("offset", req.Entry.Offset),
