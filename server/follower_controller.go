@@ -275,7 +275,7 @@ func (fc *followerController) NewTerm(req *proto.NewTermRequest) (*proto.NewTerm
 			slog.Int64("new-term", req.Term),
 			slog.Any("status", fc.status),
 		)
-		return nil, common.ErrorInvalidStatus
+		return nil, common.ErrorFollowerAlreadyFenced
 	}
 
 	if fc.db == nil {
