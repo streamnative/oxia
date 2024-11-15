@@ -897,7 +897,7 @@ func (lc *leaderController) handleWriteStream(closeStreamSignal chan error, stre
 	for {
 		if lastCallbackError.Load() != nil {
 			closeStreamSignal <- *lastCallbackError.Load()
-			break
+			return
 		}
 
 		var writeRequest *proto.WriteRequest
