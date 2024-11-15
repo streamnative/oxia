@@ -553,6 +553,59 @@ func TestLeaderController_AddFollower(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
+func TestLeaderController_AddFollowerRepeated(t *testing.T) {
+	var shard int64 = 1
+
+	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
+	walFactory := newTestWalFactory(t)
+
+	lc, err := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	assert.NoError(t, err)
+
+	_, err = lc.NewTerm(&proto.NewTermRequest{
+		Term:  5,
+		Shard: shard,
+	})
+	assert.NoError(t, err)
+
+	assert.EqualValues(t, 5, lc.Term())
+	assert.Equal(t, proto.ServingStatus_FENCED, lc.Status())
+
+	_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
+		Shard:             shard,
+		Term:              5,
+		ReplicationFactor: 3,
+		FollowerMaps: map[string]*proto.EntryId{
+			"f1": InvalidEntryId,
+		},
+	})
+	assert.NoError(t, err)
+
+	// f1 is already connected
+	afRes, err := lc.AddFollower(&proto.AddFollowerRequest{
+		Shard:               shard,
+		Term:                5,
+		FollowerName:        "f1",
+		FollowerHeadEntryId: InvalidEntryId,
+	})
+	assert.Nil(t, afRes)
+	assert.Error(t, err)
+
+	_, err = lc.AddFollower(&proto.AddFollowerRequest{
+		Shard:               shard,
+		Term:                5,
+		FollowerName:        "f1",
+		FollowerHeadEntryId: InvalidEntryId,
+	})
+	assert.Error(t, err)
+	assert.Equal(t, common.CodeFollowerAlreadyPresent, status.Code(err))
+
+	assert.NoError(t, lc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
 // When a follower is added after the initial leader election,
 // the leader should use the head-entry at the time of the
 // election instead of the current head-entry.
