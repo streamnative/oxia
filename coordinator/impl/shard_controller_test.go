@@ -174,6 +174,11 @@ func TestShardController_NewTermWithNonRespondingServer(t *testing.T) {
 	rpc.GetNode(s1).expectBecomeLeaderRequest(t, shard, 2, 3)
 
 	assert.WithinDuration(t, timeStart, time.Now(), 1*time.Second)
+
+	assert.Eventually(t, func() bool {
+		return sc.Status() == model.ShardStatusSteadyState
+	}, 10*time.Second, 100*time.Millisecond)
+
 	assert.Equal(t, model.ShardStatusSteadyState, sc.Status())
 	assert.EqualValues(t, 2, sc.Term())
 	assert.Equal(t, s1, *sc.Leader())
