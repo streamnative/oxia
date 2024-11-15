@@ -868,8 +868,7 @@ func (lc *leaderController) WriteStream(stream proto.OxiaClient_WriteStreamServe
 		return err
 	}
 
-	closeStreamSignal := make(chan error, 1)
-
+	streamErr := make(chan error, 1)
 	go common.DoWithLabels(
 		stream.Context(),
 		map[string]string{
@@ -878,59 +877,62 @@ func (lc *leaderController) WriteStream(stream proto.OxiaClient_WriteStreamServe
 			"shard":     fmt.Sprintf("%d", lc.shardId),
 		},
 		func() {
-			lastCallbackError := atomic.Pointer[error]{}
-
-			for {
-				if lastCallbackError.Load() != nil {
-					closeStreamSignal <- *lastCallbackError.Load()
-					break
-				}
-
-				var writeRequest *proto.WriteRequest
-				var err error
-				if writeRequest, err = stream.Recv(); err != nil {
-					closeStreamSignal <- err
-					return
-				}
-
-				timer := lc.writeLatencyHisto.Timer()
-				slog.Debug("Got request in stream", slog.Any("req", writeRequest))
-				lc.appendToWalStreamRequest(writeRequest, func(offset int64, timestamp uint64, err error) {
-					if err != nil {
-						timer.Done()
-						lastCallbackError.Store(&err)
-						return
-					}
-					lc.quorumAckTracker.WaitForCommitOffsetAsync(stream.Context(), offset, func(_ context.Context, innerErr error) {
-						if innerErr != nil {
-							timer.Done()
-							lastCallbackError.Store(&err)
-							return
-						}
-						var writeResponse *proto.WriteResponse
-						if writeResponse, err = lc.db.ProcessWrite(writeRequest, offset, timestamp, WrapperUpdateOperationCallback); err != nil {
-							timer.Done()
-							lastCallbackError.Store(&err)
-							return
-						}
-						if err = stream.Send(writeResponse); err != nil {
-							timer.Done()
-							lastCallbackError.Store(&err)
-							return
-						}
-					})
-				})
-			}
+			lc.handleWriteStream(streamErr, stream)
 		},
 	)
 
 	select {
-	case err := <-closeStreamSignal:
+	case err := <-streamErr:
 		return err
 	case <-stream.Context().Done():
 		return stream.Context().Err()
 	case <-lc.ctx.Done():
 		return lc.ctx.Err()
+	}
+}
+
+func (lc *leaderController) handleWriteStream(closeStreamSignal chan error, stream proto.OxiaClient_WriteStreamServer) {
+	lastCallbackError := atomic.Pointer[error]{}
+	for {
+		if lastCallbackError.Load() != nil {
+			closeStreamSignal <- *lastCallbackError.Load()
+			break
+		}
+
+		var writeRequest *proto.WriteRequest
+		var err error
+		if writeRequest, err = stream.Recv(); err != nil {
+			closeStreamSignal <- err
+			return
+		}
+
+		timer := lc.writeLatencyHisto.Timer()
+		slog.Debug("Got request in stream", slog.Any("req", writeRequest))
+		lc.appendToWalStreamRequest(writeRequest, func(offset int64, timestamp uint64, err error) {
+			if err != nil {
+				timer.Done()
+				lastCallbackError.Store(&err)
+				return
+			}
+			lc.quorumAckTracker.WaitForCommitOffsetAsync(stream.Context(), offset, func(_ context.Context, innerErr error) {
+				if innerErr != nil {
+					timer.Done()
+					lastCallbackError.Store(&err)
+					return
+				}
+				var writeResponse *proto.WriteResponse
+				if writeResponse, err = lc.db.ProcessWrite(writeRequest, offset, timestamp, WrapperUpdateOperationCallback); err != nil {
+					timer.Done()
+					lastCallbackError.Store(&err)
+					return
+				}
+				if err = stream.Send(writeResponse); err != nil {
+					timer.Done()
+					lastCallbackError.Store(&err)
+					return
+				}
+			})
+		})
 	}
 }
 
