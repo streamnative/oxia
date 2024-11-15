@@ -133,11 +133,11 @@ func TestFollower(t *testing.T) {
 
 	assert.Equal(t, proto.ServingStatus_FOLLOWER, fc.Status())
 	stream = newMockServerReplicateStream()
-	wg = common.NewWaitGroup(1)
+	wg2 := common.NewWaitGroup(1)
 	go func() {
 		err := fc.Replicate(stream)
 		assert.ErrorIs(t, err, context.Canceled)
-		wg.Done()
+		wg2.Done()
 	}()
 	stream.AddRequest(createAddRequest(t, 2, 0, map[string]string{"a": "0", "b": "1"}, wal.InvalidOffset))
 	// Wait for response
@@ -180,7 +180,7 @@ func TestFollower(t *testing.T) {
 	assert.NoError(t, kvFactory.Close())
 	assert.NoError(t, walFactory.Close())
 
-	_ = wg.Wait(context.Background())
+	_ = wg2.Wait(context.Background())
 }
 
 func TestReadingUpToCommitOffset(t *testing.T) {
