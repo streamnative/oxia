@@ -68,7 +68,7 @@ type QuorumAckTracker interface {
 }
 
 type quorumAckTracker struct {
-	sync.Mutex
+	sync.RWMutex
 	waitingRequests   []waitingRequest
 	waitForHeadOffset common.ConditionContext
 
@@ -154,16 +154,19 @@ func (q *quorumAckTracker) HeadOffset() int64 {
 }
 
 func (q *quorumAckTracker) WaitForHeadOffset(ctx context.Context, offset int64) error {
-	q.Lock()
-	defer q.Unlock()
-
-	for !q.closed && q.headOffset.Load() < offset {
-		if err := q.waitForHeadOffset.Wait(ctx); err != nil {
-			return err
+	for {
+		q.RLock()
+		// safe judge if current tracker is closed
+		if q.closed {
+			return nil
+		}
+		q.RUnlock()
+		if q.headOffset.Load() < offset {
+			if err := q.waitForHeadOffset.Wait(ctx); err != nil {
+				return err
+			}
 		}
 	}
-
-	return nil
 }
 
 func (q *quorumAckTracker) WaitForCommitOffset(ctx context.Context, offset int64, f func() (*proto.WriteResponse, error)) (*proto.WriteResponse, error) {
