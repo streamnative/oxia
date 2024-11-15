@@ -429,6 +429,7 @@ func (fc *followerController) append(req *proto.Append, stream proto.OxiaLogRepl
 			"Ignoring duplicated entry",
 			slog.Int64("commit-offset", req.CommitOffset),
 			slog.Int64("offset", req.Entry.Offset),
+			slog.Int64("lastAppendedOffset", fc.lastAppendedOffset),
 		)
 		if err := stream.Send(&proto.Ack{Offset: req.Entry.Offset}); err != nil {
 			fc.closeStreamNoMutex(err)
