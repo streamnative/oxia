@@ -891,6 +891,7 @@ func (lc *leaderController) WriteStream(stream proto.OxiaClient_WriteStreamServe
 	}
 }
 
+//nolint:cognitive-complexity
 func (lc *leaderController) handleWriteStream(closeStreamSignal chan error, stream proto.OxiaClient_WriteStreamServer) {
 	lastCallbackError := atomic.Pointer[error]{}
 	for {
