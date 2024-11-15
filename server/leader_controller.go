@@ -891,7 +891,7 @@ func (lc *leaderController) WriteStream(stream proto.OxiaClient_WriteStreamServe
 	}
 }
 
-// nolint:cognitive-complexity
+// nolint:revive
 func (lc *leaderController) handleWriteStream(closeStreamSignal chan error, stream proto.OxiaClient_WriteStreamServer) {
 	lastCallbackError := atomic.Pointer[error]{}
 	for {
@@ -911,27 +911,27 @@ func (lc *leaderController) handleWriteStream(closeStreamSignal chan error, stre
 		slog.Debug("Got request in stream", slog.Any("req", writeRequest))
 		lc.appendToWalStreamRequest(writeRequest, func(offset int64, timestamp uint64, err error) {
 			if err != nil {
-				latencyTimer.Done() // nolint:contextcheck
+				latencyTimer.Done()
 				slog.Debug("Got an error when write to wal", slog.Any("error", err))
 				lastCallbackError.Store(&err)
 				return
 			}
 			lc.quorumAckTracker.WaitForCommitOffsetAsync(stream.Context(), offset, func(_ context.Context, innerErr error) {
 				if innerErr != nil {
-					latencyTimer.Done() // nolint:contextcheck
+					latencyTimer.Done()
 					slog.Debug("Got an error when commit async", slog.Any("error", err))
 					lastCallbackError.Store(&err)
 					return
 				}
 				var writeResponse *proto.WriteResponse
 				if writeResponse, err = lc.db.ProcessWrite(writeRequest, offset, timestamp, WrapperUpdateOperationCallback); err != nil {
-					latencyTimer.Done() // nolint:contextcheck
+					latencyTimer.Done()
 					slog.Debug("Got an error when write to DB", slog.Any("error", err))
 					lastCallbackError.Store(&err)
 					return
 				}
 				if err = stream.Send(writeResponse); err != nil {
-					latencyTimer.Done() // nolint:contextcheck
+					latencyTimer.Done()
 					slog.Debug("Got an error when write response to client", slog.Any("error", err))
 					lastCallbackError.Store(&err)
 					return
