@@ -919,20 +919,20 @@ func (lc *leaderController) handleWriteStream(closeStreamSignal chan error, stre
 			lc.quorumAckTracker.WaitForCommitOffsetAsync(stream.Context(), offset, func(_ context.Context, innerErr error) {
 				if innerErr != nil {
 					latencyTimer.Done()
-					slog.Debug("Got an callback error when write to wal", slog.Any("error", err))
+					slog.Debug("Got an callback error when commit async", slog.Any("error", err))
 					lastCallbackError.Store(&err)
 					return
 				}
 				var writeResponse *proto.WriteResponse
 				if writeResponse, err = lc.db.ProcessWrite(writeRequest, offset, timestamp, WrapperUpdateOperationCallback); err != nil {
 					latencyTimer.Done()
-					slog.Debug("Got an callback error when write to wal", slog.Any("error", err))
+					slog.Debug("Got an callback error when write to DB", slog.Any("error", err))
 					lastCallbackError.Store(&err)
 					return
 				}
 				if err = stream.Send(writeResponse); err != nil {
 					latencyTimer.Done()
-					slog.Debug("Got an callback error when write to wal", slog.Any("error", err))
+					slog.Debug("Got an callback error when write response to client", slog.Any("error", err))
 					lastCallbackError.Store(&err)
 					return
 				}
