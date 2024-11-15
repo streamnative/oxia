@@ -498,7 +498,7 @@ func (s *shardController) newTermAndAddFollower(ctx context.Context, node model.
 
 func (s *shardController) internalNewTermAndAddFollower(ctx context.Context, node model.ServerAddress, res chan error) {
 	fr, err := s.newTerm(ctx, node)
-	if err != nil {
+	if err != nil && status.Code(err) != common.CodeFollowerAlreadyFenced {
 		res <- err
 		return
 	}

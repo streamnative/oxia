@@ -357,6 +357,41 @@ func TestFollower_NewTerm(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
+func TestFollower_DuplicateNewTermInFollowerState(t *testing.T) {
+	var shardId int64 = 5
+	kvFactory, err := kv.NewPebbleKVFactory(&kv.FactoryOptions{DataDir: t.TempDir()})
+	assert.NoError(t, err)
+	walFactory := wal.NewWalFactory(&wal.FactoryOptions{BaseWalDir: t.TempDir()})
+
+	fc, _ := NewFollowerController(Config{}, common.DefaultNamespace, shardId, walFactory, kvFactory)
+	_, _ = fc.NewTerm(&proto.NewTermRequest{Term: 1})
+
+	stream := newMockServerReplicateStream()
+	go func() {
+		// cancelled due to fc.Close() below
+		assert.ErrorIs(t, fc.Replicate(stream), context.Canceled)
+	}()
+
+	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, 10))
+
+	// Wait for acks
+	r1 := stream.GetResponse()
+
+	assert.EqualValues(t, 0, r1.Offset)
+
+	assert.Eventually(t, func() bool {
+		return fc.CommitOffset() == 0
+	}, 10*time.Second, 10*time.Millisecond)
+
+	r, err := fc.NewTerm(&proto.NewTermRequest{Term: 1})
+	assert.Nil(t, r)
+	assert.Equal(t, common.CodeFollowerAlreadyFenced, status.Code(err))
+
+	assert.NoError(t, fc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
 // If a node is restarted, it might get the truncate request
 // when it's in the `NotMember` state. That is ok, provided
 // the request comes in the same term that the follower

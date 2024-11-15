@@ -33,6 +33,7 @@ const (
 	CodeNamespaceNotFound       codes.Code = 110
 	CodeNotificationsNotEnabled codes.Code = 111
 	CodeFollowerAlreadyPresent  codes.Code = 112
+	CodeFollowerAlreadyFenced   codes.Code = 113
 )
 
 var (
@@ -49,4 +50,5 @@ var (
 	ErrorNamespaceNotFound       = status.Error(CodeNamespaceNotFound, "oxia: namespace not found")
 	ErrorNotificationsNotEnabled = status.Error(CodeNotificationsNotEnabled, "oxia: notifications not enabled on namespace")
 	ErrorFollowerAlreadyPresent  = status.Error(CodeFollowerAlreadyPresent, "oxia: follower is already present")
+	ErrorFollowerAlreadyFenced   = status.Error(CodeFollowerAlreadyFenced, "oxia: follower is already fenced")
 )
