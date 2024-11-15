@@ -441,7 +441,7 @@ GetNewTermResponse(nstate, new_term, o) ==
      node           |-> nstate.id,
      coordinator       |-> o,
      head_entry_id     |-> nstate.head_entry_id,
-     term          |-> nstate.term]
+     term          |-> new_term]
 
 NodeHandlesFencingRequest ==
     \* enabling conditions
@@ -771,7 +771,7 @@ GetTruncateResponse(msg, head_entry_id) ==
      dest_node   |-> msg.source_node,
      source_node |-> msg.dest_node,
      head_entry_id  |-> head_entry_id,
-     term       |-> head_entry_id.term]
+     term       |-> msg.term]
 
 TruncateLog(log, last_safe_entry_id) ==
     { entry \in log : IsLowerOrEqualId(entry.entry_id, last_safe_entry_id) }
