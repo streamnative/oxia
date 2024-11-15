@@ -376,7 +376,7 @@ func (lc *leaderController) AddFollower(req *proto.AddFollowerRequest) (*proto.A
 	}
 
 	if _, followerAlreadyPresent := lc.followers[req.FollowerName]; followerAlreadyPresent {
-		return nil, errors.Errorf("follower %s is already present", req.FollowerName)
+		return nil, errors.Wrapf(common.ErrorFollowerAlreadyPresent, "follower: %s", req.FollowerName)
 	}
 
 	if len(lc.followers) == int(lc.replicationFactor)-1 {
