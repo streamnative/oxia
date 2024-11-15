@@ -907,28 +907,28 @@ func (lc *leaderController) handleWriteStream(closeStreamSignal chan error, stre
 			return
 		}
 
-		timer := lc.writeLatencyHisto.Timer()
+		latencyTimer := lc.writeLatencyHisto.Timer()
 		slog.Debug("Got request in stream", slog.Any("req", writeRequest))
 		lc.appendToWalStreamRequest(writeRequest, func(offset int64, timestamp uint64, err error) {
 			if err != nil {
-				timer.Done()
+				latencyTimer.Done()
 				lastCallbackError.Store(&err)
 				return
 			}
 			lc.quorumAckTracker.WaitForCommitOffsetAsync(stream.Context(), offset, func(_ context.Context, innerErr error) {
 				if innerErr != nil {
-					timer.Done()
+					latencyTimer.Done()
 					lastCallbackError.Store(&err)
 					return
 				}
 				var writeResponse *proto.WriteResponse
 				if writeResponse, err = lc.db.ProcessWrite(writeRequest, offset, timestamp, WrapperUpdateOperationCallback); err != nil {
-					timer.Done()
+					latencyTimer.Done()
 					lastCallbackError.Store(&err)
 					return
 				}
 				if err = stream.Send(writeResponse); err != nil {
-					timer.Done()
+					latencyTimer.Done()
 					lastCallbackError.Store(&err)
 					return
 				}
