@@ -891,7 +891,7 @@ func (lc *leaderController) WriteStream(stream proto.OxiaClient_WriteStreamServe
 	}
 }
 
-// nolint:revive
+// nolint:revive,contextcheck
 func (lc *leaderController) handleWriteStream(closeStreamSignal chan error, stream proto.OxiaClient_WriteStreamServer) {
 	lastCallbackError := atomic.Pointer[error]{}
 	for {
