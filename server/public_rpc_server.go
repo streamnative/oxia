@@ -141,14 +141,13 @@ func (s *publicRpcServer) WriteStream(stream proto.OxiaClient_WriteStreamServer)
 		return err
 	}
 
-	err = lc.WriteStream(stream)
-	if err != nil &&
-		!errors.Is(err, io.EOF) &&
-		!errors.Is(err, context.Canceled) {
-		log.Warn(
-			"Write stream failed",
-			slog.Any("error", err),
-		)
+	if err = lc.WriteStream(stream); err != nil {
+		if errors.Is(err, io.EOF) || errors.Is(err, context.Canceled) {
+			log.Info("Write stream closed")
+			return nil
+		}
+		log.Warn("Write stream unexpected closed", slog.Any("error", err))
+		return err
 	}
 	return err
 }

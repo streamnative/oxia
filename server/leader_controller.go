@@ -874,9 +874,9 @@ func (lc *leaderController) WriteStream(stream proto.OxiaClient_WriteStreamServe
 	case err := <-closeStreamCh:
 		return err
 	case <-stream.Context().Done():
-		return context.Canceled
+		return stream.Context().Err()
 	case <-lc.ctx.Done():
-		return context.Canceled
+		return lc.ctx.Err()
 	}
 }
 
