@@ -35,6 +35,8 @@ import (
 	"github.com/streamnative/oxia/server/wal"
 )
 
+var ErrLeaderClosed = errors.New("the leader has been closed")
+
 type GetResult struct {
 	Response *proto.GetResponse
 	Err      error
@@ -874,9 +876,9 @@ func (lc *leaderController) WriteStream(stream proto.OxiaClient_WriteStreamServe
 	case err := <-closeStreamCh:
 		return err
 	case <-stream.Context().Done():
-		return context.Canceled
+		return stream.Context().Err()
 	case <-lc.ctx.Done():
-		return context.Canceled
+		return errors.Wrap(ErrLeaderClosed, lc.ctx.Err().Error())
 	}
 }
 
