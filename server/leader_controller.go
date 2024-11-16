@@ -886,10 +886,10 @@ func (lc *leaderController) handleWriteStream(stream proto.OxiaClient_WriteStrea
 		req, err := stream.Recv()
 
 		if err != nil {
-			closeCh <- err
+			sendNonBlocking(closeCh, err)
 			return
 		} else if req == nil {
-			closeCh <- errors.New("stream closed")
+			sendNonBlocking(closeCh, errors.New("stream closed"))
 			return
 		}
 
@@ -908,7 +908,7 @@ func (lc *leaderController) handleWalSynced(stream proto.OxiaClient_WriteStreamS
 	offset int64, timestamp uint64, err error, timer metrics.Timer) {
 	if err != nil {
 		timer.Done()
-		closeCh <- err
+		sendNonBlocking(closeCh, err)
 		return
 	}
 
@@ -917,13 +917,13 @@ func (lc *leaderController) handleWalSynced(stream proto.OxiaClient_WriteStreamS
 	}, func(response *proto.WriteResponse, err error) {
 		if err != nil {
 			timer.Done()
-			closeCh <- err
+			sendNonBlocking(closeCh, err)
 			return
 		}
 
 		if err = stream.Send(response); err != nil {
 			timer.Done()
-			closeCh <- err
+			sendNonBlocking(closeCh, err)
 			return
 		}
 		timer.Done()
@@ -1135,4 +1135,11 @@ func checkStatusIsLeader(actual proto.ServingStatus) error {
 		return status.Errorf(common.CodeInvalidStatus, "Received message in the wrong state. In %+v, should be %+v.", actual, proto.ServingStatus_LEADER)
 	}
 	return nil
+}
+
+func sendNonBlocking(ch chan error, err error) {
+	select {
+	case ch <- err:
+	default:
+	}
 }

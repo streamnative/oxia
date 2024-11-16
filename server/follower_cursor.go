@@ -355,9 +355,6 @@ func (fc *followerCursor) streamEntriesLoop(ctx context.Context, reader wal.Read
 
 		fc.lastPushed.Store(le.Offset)
 		currentOffset = le.Offset
-
-		// Since we've made progress, we can reset the backoff to initial setting
-		fc.backoff.Reset()
 	}
 }
 
@@ -430,5 +427,8 @@ func (fc *followerCursor) receiveAcks(cancel context.CancelFunc, stream proto.Ox
 		fc.cursorAcker.Ack(res.Offset)
 
 		fc.ackOffset.Store(res.Offset)
+
+		// Since we've made progress, we can reset the backoff to initial setting
+		fc.backoff.Reset()
 	}
 }
