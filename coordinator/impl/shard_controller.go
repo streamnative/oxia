@@ -324,7 +324,7 @@ func (s *shardController) electLeader() error {
 		return err
 	}
 
-	newLeader, followers := s.selectNewLeader(fr)
+	newLeader, followers := selectNewLeader(fr)
 
 	if s.log.Enabled(context.Background(), slog.LevelInfo) {
 		f := make([]struct {
@@ -655,22 +655,27 @@ func (s *shardController) deleteShardRpc(ctx context.Context, node model.ServerA
 	return err
 }
 
-func (*shardController) selectNewLeader(newTermResponses map[model.ServerAddress]*proto.EntryId) (
+func selectNewLeader(newTermResponses map[model.ServerAddress]*proto.EntryId) (
 	leader model.ServerAddress, followers map[model.ServerAddress]*proto.EntryId) {
+	// Select all the nodes that have the highest term first
+	var currentMaxTerm int64 = -1
 	// Select all the nodes that have the highest entry in the wal
 	var currentMax int64 = -1
 	var candidates []model.ServerAddress
 
 	for addr, headEntryId := range newTermResponses {
-		switch {
-		case headEntryId.Offset < currentMax:
-			continue
-		case headEntryId.Offset == currentMax:
-			candidates = append(candidates, addr)
-		default:
-			// Found a new max
-			currentMax = headEntryId.Offset
-			candidates = []model.ServerAddress{addr}
+		if headEntryId.Term >= currentMaxTerm {
+			currentMaxTerm = headEntryId.Term
+			switch {
+			case headEntryId.Offset < currentMax:
+				continue
+			case headEntryId.Offset == currentMax:
+				candidates = append(candidates, addr)
+			default:
+				// Found a new max
+				currentMax = headEntryId.Offset
+				candidates = []model.ServerAddress{addr}
+			}
 		}
 	}
 

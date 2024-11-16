@@ -35,6 +35,24 @@ var namespaceConfig = &model.NamespaceConfig{
 	NotificationsEnabled: common.OptBooleanDefaultTrue{},
 }
 
+func TestLeaderElection_ShouldChooseHighestTerm(t *testing.T) {
+	s1 := model.ServerAddress{Public: "1", Internal: "1"}
+	s2 := model.ServerAddress{Public: "2", Internal: "2"}
+	s3 := model.ServerAddress{Public: "3", Internal: "3"}
+	candidates := map[model.ServerAddress]*proto.EntryId{
+		s1: {Term: 200, Offset: 2480},
+		s2: {Term: 200, Offset: 2500},
+		s3: {Term: 198, Offset: 3000},
+	}
+	leader, followers := selectNewLeader(candidates)
+	assert.EqualValues(t, leader, s2)
+	assert.EqualValues(t, 2, len(followers))
+	_, exist := followers[s1]
+	assert.True(t, exist)
+	_, exist = followers[s3]
+	assert.True(t, exist)
+}
+
 func TestShardController(t *testing.T) {
 	var shard int64 = 5
 	rpc := newMockRpcProvider()
