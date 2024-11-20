@@ -19,6 +19,7 @@ import (
 	"crypto/tls"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -36,7 +37,10 @@ import (
 	"github.com/streamnative/oxia/proto"
 )
 
-const DefaultRpcTimeout = 30 * time.Second
+const (
+	DefaultRpcTimeout = 30 * time.Second
+	TLSSchema         = "tls://"
+)
 
 type ClientPool interface {
 	io.Closer
@@ -174,6 +178,9 @@ func (cp *clientPool) newConnection(target string) (*grpc.ClientConn, error) {
 	tcs := insecure.NewCredentials()
 	if cp.tls != nil {
 		tcs = credentials.NewTLS(cp.tls)
+	}
+	if strings.HasPrefix(target, TLSSchema) {
+		target = strings.TrimPrefix(target, TLSSchema)
 	}
 
 	options := []grpc.DialOption{
