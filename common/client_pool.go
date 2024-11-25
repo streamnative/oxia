@@ -19,6 +19,7 @@ import (
 	"crypto/tls"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -37,6 +38,7 @@ import (
 )
 
 const DefaultRpcTimeout = 30 * time.Second
+const AddressSchemaTLS = "tls://"
 
 type ClientPool interface {
 	io.Closer
@@ -170,11 +172,7 @@ func (cp *clientPool) newConnection(target string) (*grpc.ClientConn, error) {
 		slog.String("server_address", target),
 	)
 
-	// tls configure
-	tcs := insecure.NewCredentials()
-	if cp.tls != nil {
-		tcs = credentials.NewTLS(cp.tls)
-	}
+	tcs := cp.getTransportCredential(target)
 
 	options := []grpc.DialOption{
 		grpc.WithTransportCredentials(tcs),
@@ -184,12 +182,31 @@ func (cp *clientPool) newConnection(target string) (*grpc.ClientConn, error) {
 	if cp.authentication != nil {
 		options = append(options, grpc.WithPerRPCCredentials(cp.authentication))
 	}
-	cnx, err := grpc.NewClient(target, options...)
+	cnx, err := grpc.NewClient(cp.getActualAddress(target), options...)
 	if err != nil {
 		return nil, errors.Wrapf(err, "error connecting to %s", target)
 	}
 
 	return cnx, nil
+}
+
+func (cp *clientPool) getActualAddress(target string) string {
+	if strings.HasPrefix(target, AddressSchemaTLS) {
+		after, _ := strings.CutPrefix(target, AddressSchemaTLS)
+		return after
+	}
+	return target
+}
+
+func (cp *clientPool) getTransportCredential(target string) credentials.TransportCredentials {
+	tcs := insecure.NewCredentials()
+	if strings.HasPrefix(target, AddressSchemaTLS) {
+		tcs = credentials.NewTLS(&tls.Config{})
+	}
+	if cp.tls != nil {
+		tcs = credentials.NewTLS(cp.tls)
+	}
+	return tcs
 }
 
 func GetPeer(ctx context.Context) string {
