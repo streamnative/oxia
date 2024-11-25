@@ -190,7 +190,7 @@ func (cp *clientPool) newConnection(target string) (*grpc.ClientConn, error) {
 	return cnx, nil
 }
 
-func (cp *clientPool) getActualAddress(target string) string {
+func (*clientPool) getActualAddress(target string) string {
 	if strings.HasPrefix(target, AddressSchemaTLS) {
 		after, _ := strings.CutPrefix(target, AddressSchemaTLS)
 		return after
@@ -198,6 +198,7 @@ func (cp *clientPool) getActualAddress(target string) string {
 	return target
 }
 
+//nolint:gosec
 func (cp *clientPool) getTransportCredential(target string) credentials.TransportCredentials {
 	tcs := insecure.NewCredentials()
 	if strings.HasPrefix(target, AddressSchemaTLS) {
