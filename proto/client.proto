@@ -87,6 +87,11 @@ service OxiaClient {
    */
   rpc RangeScan(RangeScanRequest) returns (stream RangeScanResponse);
 
+  /**
+   * Requests all the records between a range of keys.
+   */
+  rpc GetSequenceUpdates(GetSequenceUpdatesRequest) returns (stream GetSequenceUpdatesResponse);
+
   rpc GetNotifications(NotificationsRequest) returns (stream NotificationBatch);
 
   /*
@@ -401,6 +406,15 @@ message RangeScanRequest {
 message RangeScanResponse {
   // A portion of the records found within the specified range
   repeated GetResponse records = 1;
+}
+
+message GetSequenceUpdatesRequest {
+  int64 shard = 1;
+  string key = 2;
+}
+
+message GetSequenceUpdatesResponse {
+  string highest_sequence_key = 1;
 }
 
 /**

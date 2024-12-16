@@ -378,6 +378,21 @@ func (s *publicRpcServer) CloseSession(ctx context.Context, req *proto.CloseSess
 	return res, nil
 }
 
+func (s *publicRpcServer) GetSequenceUpdates(req *proto.GetSequenceUpdatesRequest,
+	stream proto.OxiaClient_GetSequenceUpdatesServer) error {
+	s.log.Debug(
+		"Get sequence update request",
+		slog.String("peer", common.GetPeer(stream.Context())),
+		slog.Any("req", req),
+	)
+	lc, err := s.getLeader(req.Shard)
+	if err != nil {
+		return err
+	}
+
+	return lc.GetSequenceUpdates(req, stream)
+}
+
 func (s *publicRpcServer) getLeader(shardId int64) (LeaderController, error) {
 	lc, err := s.shardsDirector.GetLeader(shardId)
 	if err != nil {

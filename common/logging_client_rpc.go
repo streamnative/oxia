@@ -124,3 +124,11 @@ func (l *loggingClientRpc) CloseSession(ctx context.Context, in *proto.CloseSess
 
 	return res, err
 }
+
+func (l *loggingClientRpc) GetSequenceUpdates(ctx context.Context, in *proto.GetSequenceUpdatesRequest, opts ...grpc.CallOption) (res proto.OxiaClient_GetSequenceUpdatesClient, err error) {
+	if res, err = l.client.GetSequenceUpdates(ctx, in, opts...); err != nil {
+		return nil, l.decorateErr(err)
+	}
+
+	return res, err
+}
