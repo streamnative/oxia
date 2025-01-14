@@ -36,10 +36,10 @@ import (
 )
 
 const (
-	maxGrpcFrameSize                   = 256 * 1024 * 1024
-	DefaultGrpcKeepAliveMinTime        = 5 * time.Second
-	DefaultGrpcKeepPermitWithoutStream = true
-	ReadinessProbeService              = "oxia-readiness"
+	maxGrpcFrameSize                         = 256 * 1024 * 1024
+	defaultGrpcServerKeepAliveMinTime        = 5 * time.Second
+	defaultGrpcServerKeepPermitWithoutStream = true
+	ReadinessProbeService                    = "oxia-readiness"
 )
 
 type GrpcServer interface {
@@ -106,8 +106,8 @@ func newDefaultGrpcProvider(name, bindAddress string, registerFunc func(grpc.Ser
 			grpc.ChainUnaryInterceptor(unaryInterceptors...),
 			grpc.MaxRecvMsgSize(maxGrpcFrameSize),
 			grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
-				MinTime:             DefaultGrpcKeepAliveMinTime,
-				PermitWithoutStream: DefaultGrpcKeepPermitWithoutStream,
+				MinTime:             defaultGrpcServerKeepAliveMinTime,
+				PermitWithoutStream: defaultGrpcServerKeepPermitWithoutStream,
 			}),
 		),
 	}

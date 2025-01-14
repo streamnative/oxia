@@ -17,6 +17,7 @@ package common
 import (
 	"context"
 	"crypto/tls"
+	"google.golang.org/grpc/keepalive"
 	"io"
 	"log/slog"
 	"strings"
@@ -39,6 +40,11 @@ import (
 
 const DefaultRpcTimeout = 30 * time.Second
 const AddressSchemaTLS = "tls://"
+const (
+	defaultGrpcClientKeepAliveTime       = time.Second * 10
+	defaultGrpcClientKeepAliveTimeout    = time.Second * 5
+	defaultGrpcClientPermitWithoutStream = true
+)
 
 type ClientPool interface {
 	io.Closer
@@ -178,6 +184,11 @@ func (cp *clientPool) newConnection(target string) (*grpc.ClientConn, error) {
 		grpc.WithTransportCredentials(tcs),
 		grpc.WithStreamInterceptor(grpcprometheus.StreamClientInterceptor),
 		grpc.WithUnaryInterceptor(grpcprometheus.UnaryClientInterceptor),
+		grpc.WithKeepaliveParams(keepalive.ClientParameters{
+			PermitWithoutStream: defaultGrpcClientPermitWithoutStream,
+			Time:                defaultGrpcClientKeepAliveTime,
+			Timeout:             defaultGrpcClientKeepAliveTimeout,
+		}),
 	}
 	if cp.authentication != nil {
 		options = append(options, grpc.WithPerRPCCredentials(cp.authentication))
