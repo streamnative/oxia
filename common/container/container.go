@@ -17,10 +17,12 @@ package container
 import (
 	"context"
 	"crypto/tls"
+	"google.golang.org/grpc/keepalive"
 	"io"
 	"log/slog"
 	"net"
 	"os"
+	"time"
 
 	"github.com/streamnative/oxia/server/auth"
 
@@ -34,9 +36,10 @@ import (
 )
 
 const (
-	maxGrpcFrameSize = 256 * 1024 * 1024
-
-	ReadinessProbeService = "oxia-readiness"
+	maxGrpcFrameSize                         = 256 * 1024 * 1024
+	defaultGrpcServerKeepAliveMinTime        = 5 * time.Second
+	defaultGrpcServerKeepPermitWithoutStream = true
+	ReadinessProbeService                    = "oxia-readiness"
 )
 
 type GrpcServer interface {
@@ -102,6 +105,10 @@ func newDefaultGrpcProvider(name, bindAddress string, registerFunc func(grpc.Ser
 			grpc.ChainStreamInterceptor(streamInterceptors...),
 			grpc.ChainUnaryInterceptor(unaryInterceptors...),
 			grpc.MaxRecvMsgSize(maxGrpcFrameSize),
+			grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
+				MinTime:             defaultGrpcServerKeepAliveMinTime,
+				PermitWithoutStream: defaultGrpcServerKeepPermitWithoutStream,
+			}),
 		),
 	}
 	registerFunc(c.server)
