@@ -65,7 +65,10 @@ func TestSecondaryIndices_List(t *testing.T) {
 	assert.Equal(t, "/b", k)
 	k = <-strCh
 	assert.Equal(t, "/c", k)
-	assert.Empty(t, strCh)
+	// NOTE: we cannot use assert.Empty to check strCh and must to validate it's closed, because when there is no more
+	// items to return, assert.Empty will passthrough and leave the iterator opened.
+	_, ok := <-strCh
+	assert.False(t, ok)
 
 	// Wrong index
 	strCh, err = lc.List(context.Background(), &proto.ListRequest{
@@ -75,7 +78,8 @@ func TestSecondaryIndices_List(t *testing.T) {
 		SecondaryIndexName: pb.String("wrong-idx"),
 	})
 	assert.NoError(t, err)
-	assert.Empty(t, strCh)
+	_, ok = <-strCh
+	assert.False(t, ok)
 
 	// Individual delete
 	_, err = lc.Write(context.Background(), &proto.WriteRequest{
@@ -99,8 +103,8 @@ func TestSecondaryIndices_List(t *testing.T) {
 	assert.Equal(t, "/d", k)
 	k = <-strCh
 	assert.Equal(t, "/e", k)
-
-	assert.Empty(t, strCh)
+	_, ok = <-strCh
+	assert.False(t, ok)
 
 	// Range delete
 	_, err = lc.Write(context.Background(), &proto.WriteRequest{
@@ -124,7 +128,8 @@ func TestSecondaryIndices_List(t *testing.T) {
 	assert.Equal(t, "/d", k)
 	k = <-strCh
 	assert.Equal(t, "/e", k)
-	assert.Empty(t, strCh)
+	_, ok = <-strCh
+	assert.False(t, ok)
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())
