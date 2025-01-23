@@ -17,11 +17,11 @@ package server
 import (
 	"context"
 	"fmt"
+	"github.com/streamnative/oxia/common/collection"
 	"io"
 	"log/slog"
 	"net/url"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"go.uber.org/multierr"
@@ -80,8 +80,7 @@ type sessionManager struct {
 	leaderController *leaderController
 	namespace        string
 	shardId          int64
-	sessions         map[SessionId]*session
-	sessionCounts    atomic.Int64
+	sessions         collection.Map[SessionId, *session]
 	log              *slog.Logger
 
 	ctx    context.Context
@@ -96,8 +95,7 @@ type sessionManager struct {
 func NewSessionManager(ctx context.Context, namespace string, shardId int64, controller *leaderController) SessionManager {
 	labels := metrics.LabelsForShard(namespace, shardId)
 	sm := &sessionManager{
-		sessions:         make(map[SessionId]*session),
-		sessionCounts:    atomic.Int64{},
+		sessions:         collection.NewVisibleMap[SessionId, *session](),
 		namespace:        namespace,
 		shardId:          shardId,
 		leaderController: controller,
@@ -120,7 +118,7 @@ func NewSessionManager(ctx context.Context, namespace string, shardId int64, con
 
 	sm.activeSessions = metrics.NewGauge("oxia_server_session_active",
 		"The number of sessions currently active", "count", labels, func() int64 {
-			return sm.sessionCounts.Load()
+			return int64(sm.sessions.Size())
 		})
 
 	return sm
@@ -173,7 +171,7 @@ func (sm *sessionManager) createSession(request *proto.CreateSessionRequest, min
 }
 
 func (sm *sessionManager) getSession(sessionId int64) (*session, error) {
-	s, found := sm.sessions[SessionId(sessionId)]
+	s, found := sm.sessions.Get(SessionId(sessionId))
 	if !found {
 		sm.log.Warn(
 			"Session not found",
@@ -202,8 +200,7 @@ func (sm *sessionManager) CloseSession(request *proto.CloseSessionRequest) (*pro
 		sm.Unlock()
 		return nil, err
 	}
-	delete(sm.sessions, s.id)
-	sm.sessionCounts.Add(-1)
+	sm.sessions.Remove(s.id)
 	sm.Unlock()
 	s.Lock()
 	defer s.Unlock()
@@ -296,9 +293,8 @@ func (sm *sessionManager) Close() error {
 	sm.Lock()
 	defer sm.Unlock()
 	sm.cancel()
-	for _, s := range sm.sessions {
-		delete(sm.sessions, s.id)
-		sm.sessionCounts.Add(-1)
+	for _, s := range sm.sessions.Values() {
+		sm.sessions.Remove(s.id)
 		s.Lock()
 		s.closeChannels()
 		s.Unlock()
