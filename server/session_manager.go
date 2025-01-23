@@ -17,6 +17,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"github.com/streamnative/oxia/common/collection"
 	"io"
 	"log/slog"
 	"net/url"
@@ -79,7 +80,7 @@ type sessionManager struct {
 	leaderController *leaderController
 	namespace        string
 	shardId          int64
-	sessions         map[SessionId]*session
+	sessions         collection.Map[SessionId, *session]
 	log              *slog.Logger
 
 	ctx    context.Context
@@ -94,7 +95,7 @@ type sessionManager struct {
 func NewSessionManager(ctx context.Context, namespace string, shardId int64, controller *leaderController) SessionManager {
 	labels := metrics.LabelsForShard(namespace, shardId)
 	sm := &sessionManager{
-		sessions:         make(map[SessionId]*session),
+		sessions:         collection.NewVisibleMap[SessionId, *session](),
 		namespace:        namespace,
 		shardId:          shardId,
 		leaderController: controller,
@@ -117,9 +118,7 @@ func NewSessionManager(ctx context.Context, namespace string, shardId int64, con
 
 	sm.activeSessions = metrics.NewGauge("oxia_server_session_active",
 		"The number of sessions currently active", "count", labels, func() int64 {
-			sm.RLock()
-			defer sm.RUnlock()
-			return int64(len(sm.sessions))
+			return int64(sm.sessions.Size())
 		})
 
 	return sm
@@ -172,7 +171,7 @@ func (sm *sessionManager) createSession(request *proto.CreateSessionRequest, min
 }
 
 func (sm *sessionManager) getSession(sessionId int64) (*session, error) {
-	s, found := sm.sessions[SessionId(sessionId)]
+	s, found := sm.sessions.Get(SessionId(sessionId))
 	if !found {
 		sm.log.Warn(
 			"Session not found",
@@ -201,7 +200,7 @@ func (sm *sessionManager) CloseSession(request *proto.CloseSessionRequest) (*pro
 		sm.Unlock()
 		return nil, err
 	}
-	delete(sm.sessions, s.id)
+	sm.sessions.Remove(s.id)
 	sm.Unlock()
 	s.Lock()
 	defer s.Unlock()
@@ -294,8 +293,8 @@ func (sm *sessionManager) Close() error {
 	sm.Lock()
 	defer sm.Unlock()
 	sm.cancel()
-	for _, s := range sm.sessions {
-		delete(sm.sessions, s.id)
+	for _, s := range sm.sessions.Values() {
+		sm.sessions.Remove(s.id)
 		s.Lock()
 		s.closeChannels()
 		s.Unlock()
