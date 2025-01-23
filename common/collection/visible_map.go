@@ -15,8 +15,7 @@
 package collection
 
 import (
-	"fmt"
-	"strings"
+	"encoding/json"
 	"sync/atomic"
 )
 
@@ -87,17 +86,9 @@ func (v *visibleMap[K, V]) Clear() {
 }
 
 func (v *visibleMap[K, V]) String() string {
-	var builder strings.Builder
-	builder.WriteString("{")
-
-	first := true
-	for k, val := range v.container {
-		if !first {
-			builder.WriteString(", ")
-		}
-		builder.WriteString(fmt.Sprintf("%v: %v", k, val))
-		first = false
+	data, err := json.Marshal(v.container)
+	if err != nil {
+		panic(err)
 	}
-	builder.WriteString("}")
-	return builder.String()
+	return string(data)
 }

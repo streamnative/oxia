@@ -83,7 +83,7 @@ func TestVisibleMap(t *testing.T) {
 
 	vm.Put("four", 4)
 	output := vm.String()
-	assert.Equal(t, "{four: 4}", output)
+	assert.Equal(t, "{\"four\":4}", output)
 
 	vm.Clear()
 	output = vm.String()
