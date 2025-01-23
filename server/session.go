@@ -59,6 +59,7 @@ func startSession(sessionId SessionId, sessionMetadata *proto.SessionMetadata, s
 		),
 	}
 	sm.sessions[sessionId] = s
+	sm.sessionCounts.Add(1)
 
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 
@@ -185,6 +186,7 @@ func (s *session) waitForHeartbeats() {
 
 			s.sm.Lock()
 			delete(s.sm.sessions, s.id)
+			s.sm.sessionCounts.Add(-1)
 			s.sm.expiredSessions.Inc()
 			s.sm.Unlock()
 		}

@@ -21,6 +21,7 @@ import (
 	"log/slog"
 	"net/url"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.uber.org/multierr"
@@ -80,6 +81,7 @@ type sessionManager struct {
 	namespace        string
 	shardId          int64
 	sessions         map[SessionId]*session
+	sessionCounts    atomic.Int64
 	log              *slog.Logger
 
 	ctx    context.Context
@@ -95,6 +97,7 @@ func NewSessionManager(ctx context.Context, namespace string, shardId int64, con
 	labels := metrics.LabelsForShard(namespace, shardId)
 	sm := &sessionManager{
 		sessions:         make(map[SessionId]*session),
+		sessionCounts:    atomic.Int64{},
 		namespace:        namespace,
 		shardId:          shardId,
 		leaderController: controller,
@@ -117,9 +120,7 @@ func NewSessionManager(ctx context.Context, namespace string, shardId int64, con
 
 	sm.activeSessions = metrics.NewGauge("oxia_server_session_active",
 		"The number of sessions currently active", "count", labels, func() int64 {
-			sm.RLock()
-			defer sm.RUnlock()
-			return int64(len(sm.sessions))
+			return sm.sessionCounts.Load()
 		})
 
 	return sm
@@ -202,6 +203,7 @@ func (sm *sessionManager) CloseSession(request *proto.CloseSessionRequest) (*pro
 		return nil, err
 	}
 	delete(sm.sessions, s.id)
+	sm.sessionCounts.Add(-1)
 	sm.Unlock()
 	s.Lock()
 	defer s.Unlock()
@@ -296,6 +298,7 @@ func (sm *sessionManager) Close() error {
 	sm.cancel()
 	for _, s := range sm.sessions {
 		delete(sm.sessions, s.id)
+		sm.sessionCounts.Add(-1)
 		s.Lock()
 		s.closeChannels()
 		s.Unlock()
