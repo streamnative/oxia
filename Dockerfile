@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM golang:1.23-alpine as build
+FROM golang:1.23-alpine AS build
 
 RUN apk add --no-cache make git build-base bash
 
@@ -35,4 +35,4 @@ ENV PATH=$PATH:/oxia/bin
 
 RUN oxia completion bash > ~/.bashrc
 
-CMD /bin/bash
+CMD [ "/bin/bash" ]
