@@ -385,7 +385,7 @@ func TestFollower_DuplicateNewTermInFollowerState(t *testing.T) {
 
 	r, err := fc.NewTerm(&proto.NewTermRequest{Term: 1})
 	assert.Nil(t, r)
-	assert.Equal(t, common.CodeFollowerAlreadyFenced, status.Code(err))
+	assert.Equal(t, common.CodeInvalidStatus, status.Code(err))
 
 	assert.NoError(t, fc.Close())
 	assert.NoError(t, kvFactory.Close())
