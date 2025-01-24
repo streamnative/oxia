@@ -471,6 +471,14 @@ func (s *shardController) keepFencingFollower(ctx context.Context, node model.Se
 					)
 					return nil
 				}
+				if status.Code(err) == common.CodeInvalidStatus {
+					s.log.Warn(
+						"Failed to newTerm, invalid status. Stop trying",
+						slog.Any("follower", node),
+						slog.Int64("term", s.Term()),
+					)
+					return nil
+				}
 				return err
 			}, backOff, func(err error, duration time.Duration) {
 				s.log.Warn(
@@ -498,7 +506,7 @@ func (s *shardController) newTermAndAddFollower(ctx context.Context, node model.
 
 func (s *shardController) internalNewTermAndAddFollower(ctx context.Context, node model.ServerAddress, res chan error) {
 	fr, err := s.newTerm(ctx, node)
-	if err != nil && status.Code(err) != common.CodeFollowerAlreadyFenced {
+	if err != nil {
 		res <- err
 		return
 	}
@@ -512,7 +520,7 @@ func (s *shardController) internalNewTermAndAddFollower(ctx context.Context, nod
 	if err = s.addFollower(*s.shardMetadata.Leader, node.Internal, &proto.EntryId{
 		Term:   fr.Term,
 		Offset: fr.Offset,
-	}); err != nil && status.Code(err) != common.CodeFollowerAlreadyPresent {
+	}); err != nil {
 		res <- err
 		return
 	}
