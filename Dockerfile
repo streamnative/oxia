@@ -35,4 +35,4 @@ ENV PATH=$PATH:/oxia/bin
 
 RUN oxia completion bash > ~/.bashrc
 
-CMD /bin/bash
+CMD [ "/bin/bash" ]
