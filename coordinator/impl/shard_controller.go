@@ -664,17 +664,18 @@ func selectNewLeader(newTermResponses map[model.ServerAddress]*proto.EntryId) (
 	var candidates []model.ServerAddress
 
 	for addr, headEntryId := range newTermResponses {
-		if headEntryId.Term >= currentMaxTerm {
+		if headEntryId.Term > currentMaxTerm {
+			// the new max
 			currentMaxTerm = headEntryId.Term
-			switch {
-			case headEntryId.Offset < currentMax:
-				continue
-			case headEntryId.Offset == currentMax:
-				candidates = append(candidates, addr)
-			default:
-				// Found a new max
+			currentMax = headEntryId.Offset
+			candidates = []model.ServerAddress{addr}
+		} else if headEntryId.Term == currentMaxTerm {
+			if headEntryId.Offset > currentMax {
+				// the new max
 				currentMax = headEntryId.Offset
 				candidates = []model.ServerAddress{addr}
+			} else if headEntryId.Offset == currentMax {
+				candidates = append(candidates, addr)
 			}
 		}
 	}
