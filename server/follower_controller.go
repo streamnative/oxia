@@ -267,7 +267,8 @@ func (fc *followerController) NewTerm(req *proto.NewTermRequest) (*proto.NewTerm
 			slog.Int64("new-term", req.Term),
 		)
 		return nil, common.ErrorInvalidTerm
-	} else if req.Term == fc.term && fc.status != proto.ServingStatus_FENCED {
+	}
+	if req.Term == fc.term && fc.status != proto.ServingStatus_FENCED {
 		// It's OK to receive a duplicate Fence request, for the same term, as long as we haven't moved
 		// out of the Fenced state for that term
 		fc.log.Warn(
@@ -276,7 +277,20 @@ func (fc *followerController) NewTerm(req *proto.NewTermRequest) (*proto.NewTerm
 			slog.Int64("new-term", req.Term),
 			slog.Any("status", fc.status),
 		)
-		return nil, common.ErrorFollowerAlreadyFenced
+		return nil, common.ErrorInvalidStatus
+	}
+	if req.Term == fc.term && fc.status == proto.ServingStatus_FENCED {
+		lastEntryId, err := getLastEntryIdInWal(fc.wal)
+		if err != nil {
+			fc.log.Warn(
+				"Failed to get last",
+				slog.Any("error", err),
+				slog.Int64("follower-term", fc.term),
+				slog.Int64("new-term", req.Term),
+			)
+			return nil, err
+		}
+		return &proto.NewTermResponse{HeadEntryId: lastEntryId}, nil
 	}
 
 	if fc.db == nil {
