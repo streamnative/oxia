@@ -526,8 +526,8 @@ func TestLeaderController_AddFollower(t *testing.T) {
 		FollowerName:        "f1",
 		FollowerHeadEntryId: InvalidEntryId,
 	})
-	assert.Nil(t, afRes)
-	assert.Error(t, err)
+	assert.Equal(t, &proto.AddFollowerResponse{}, afRes)
+	assert.Nil(t, err)
 
 	_, err = lc.AddFollower(&proto.AddFollowerRequest{
 		Shard:               shard,
@@ -589,8 +589,8 @@ func TestLeaderController_AddFollowerRepeated(t *testing.T) {
 		FollowerName:        "f1",
 		FollowerHeadEntryId: InvalidEntryId,
 	})
-	assert.Nil(t, afRes)
-	assert.Error(t, err)
+	assert.Nil(t, err)
+	assert.Equal(t, &proto.AddFollowerResponse{}, afRes)
 
 	_, err = lc.AddFollower(&proto.AddFollowerRequest{
 		Shard:               shard,
@@ -598,8 +598,8 @@ func TestLeaderController_AddFollowerRepeated(t *testing.T) {
 		FollowerName:        "f1",
 		FollowerHeadEntryId: InvalidEntryId,
 	})
-	assert.Error(t, err)
-	assert.Equal(t, common.CodeFollowerAlreadyPresent, status.Code(err))
+	assert.Nil(t, err)
+	assert.Equal(t, &proto.AddFollowerResponse{}, afRes)
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())

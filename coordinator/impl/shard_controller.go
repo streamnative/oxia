@@ -512,7 +512,7 @@ func (s *shardController) internalNewTermAndAddFollower(ctx context.Context, nod
 	if err = s.addFollower(*s.shardMetadata.Leader, node.Internal, &proto.EntryId{
 		Term:   fr.Term,
 		Offset: fr.Offset,
-	}); err != nil && status.Code(err) != common.CodeFollowerAlreadyPresent {
+	}); err != nil {
 		res <- err
 		return
 	}
