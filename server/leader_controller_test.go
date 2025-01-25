@@ -526,8 +526,8 @@ func TestLeaderController_AddFollower(t *testing.T) {
 		FollowerName:        "f1",
 		FollowerHeadEntryId: InvalidEntryId,
 	})
-	assert.Nil(t, afRes)
-	assert.Error(t, err)
+	assert.Equal(t, &proto.AddFollowerResponse{}, afRes)
+	assert.Nil(t, err)
 
 	_, err = lc.AddFollower(&proto.AddFollowerRequest{
 		Shard:               shard,
