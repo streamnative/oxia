@@ -32,7 +32,6 @@ const (
 	CodeInvalidSessionTimeout   codes.Code = 109
 	CodeNamespaceNotFound       codes.Code = 110
 	CodeNotificationsNotEnabled codes.Code = 111
-	CodeFollowerAlreadyFenced   codes.Code = 113
 )
 
 var (
@@ -48,5 +47,4 @@ var (
 	ErrorInvalidSessionTimeout   = status.Error(CodeInvalidSessionTimeout, "oxia: invalid session timeout")
 	ErrorNamespaceNotFound       = status.Error(CodeNamespaceNotFound, "oxia: namespace not found")
 	ErrorNotificationsNotEnabled = status.Error(CodeNotificationsNotEnabled, "oxia: notifications not enabled on namespace")
-	ErrorFollowerAlreadyFenced   = status.Error(CodeFollowerAlreadyFenced, "oxia: follower is already fenced")
 )

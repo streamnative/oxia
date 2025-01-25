@@ -368,8 +368,7 @@ func TestFollower_DuplicateNewTermInFollowerState(t *testing.T) {
 
 	stream := newMockServerReplicateStream()
 	go func() {
-		// cancelled due to fc.Close() below
-		assert.ErrorIs(t, fc.Replicate(stream), context.Canceled)
+		assert.NoError(t, fc.Replicate(stream))
 	}()
 
 	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"a": "0", "b": "1"}, 10))
@@ -384,8 +383,21 @@ func TestFollower_DuplicateNewTermInFollowerState(t *testing.T) {
 	}, 10*time.Second, 10*time.Millisecond)
 
 	r, err := fc.NewTerm(&proto.NewTermRequest{Term: 1})
-	assert.Nil(t, r)
-	assert.Equal(t, common.CodeFollowerAlreadyFenced, status.Code(err))
+	assert.NoError(t, err)
+	assert.NotNil(t, r)
+	assert.EqualValues(t, r1.Offset, r.HeadEntryId.Offset)
+	assert.EqualValues(t, 1, r.HeadEntryId.Term)
+
+	stream.AddRequest(createAddRequest(t, 1, 1, map[string]string{"a": "1", "b": "2"}, 11))
+
+	// Wait for acks
+	r2 := stream.GetResponse()
+
+	assert.EqualValues(t, 1, r2.Offset)
+
+	assert.Eventually(t, func() bool {
+		return fc.CommitOffset() == 1
+	}, 10*time.Second, 10*time.Millisecond)
 
 	assert.NoError(t, fc.Close())
 	assert.NoError(t, kvFactory.Close())
