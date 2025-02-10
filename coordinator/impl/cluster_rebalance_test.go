@@ -35,7 +35,7 @@ func TestClusterRebalance_Count(t *testing.T) {
 						Status:   model.ShardStatusUnknown,
 						Term:     -1,
 						Leader:   nil,
-						Ensemble: []model.ServerAddress{s1, s2, s3},
+						Ensemble: []model.NodeInfo{s1, s2, s3},
 						Int32HashRange: model.Int32HashRange{
 							Min: 0,
 							Max: math.MaxUint32,
@@ -50,7 +50,7 @@ func TestClusterRebalance_Count(t *testing.T) {
 						Status:   model.ShardStatusUnknown,
 						Term:     -1,
 						Leader:   nil,
-						Ensemble: []model.ServerAddress{s4, s1, s2},
+						Ensemble: []model.NodeInfo{s4, s1, s2},
 						Int32HashRange: model.Int32HashRange{
 							Min: 0,
 							Max: math.MaxUint32 / 2,
@@ -60,7 +60,7 @@ func TestClusterRebalance_Count(t *testing.T) {
 						Status:   model.ShardStatusUnknown,
 						Term:     -1,
 						Leader:   nil,
-						Ensemble: []model.ServerAddress{s3, s4, s1},
+						Ensemble: []model.NodeInfo{s3, s4, s1},
 						Int32HashRange: model.Int32HashRange{
 							Min: math.MaxUint32/2 + 1,
 							Max: math.MaxUint32,
@@ -71,7 +71,7 @@ func TestClusterRebalance_Count(t *testing.T) {
 		},
 	}
 
-	count, deletedServers := getShardsPerServer([]model.ServerAddress{s1, s2, s3, s4, s5}, cs)
+	count, deletedServers := getShardsPerServer([]model.NodeInfo{s1, s2, s3, s4, s5}, cs)
 
 	assert.Equal(t, map[string]ServerContext{
 		s1.Internal: {
@@ -109,7 +109,7 @@ func TestClusterRebalance_Single(t *testing.T) {
 						Status:   model.ShardStatusUnknown,
 						Term:     -1,
 						Leader:   nil,
-						Ensemble: []model.ServerAddress{s1, s2, s3},
+						Ensemble: []model.NodeInfo{s1, s2, s3},
 						Int32HashRange: model.Int32HashRange{
 							Min: 0,
 							Max: math.MaxUint32,
@@ -124,7 +124,7 @@ func TestClusterRebalance_Single(t *testing.T) {
 						Status:   model.ShardStatusUnknown,
 						Term:     -1,
 						Leader:   nil,
-						Ensemble: []model.ServerAddress{s4, s1, s2},
+						Ensemble: []model.NodeInfo{s4, s1, s2},
 						Int32HashRange: model.Int32HashRange{
 							Min: 0,
 							Max: math.MaxUint32 / 2,
@@ -134,7 +134,7 @@ func TestClusterRebalance_Single(t *testing.T) {
 						Status:   model.ShardStatusUnknown,
 						Term:     -1,
 						Leader:   nil,
-						Ensemble: []model.ServerAddress{s3, s4, s1},
+						Ensemble: []model.NodeInfo{s3, s4, s1},
 						Int32HashRange: model.Int32HashRange{
 							Min: math.MaxUint32/2 + 1,
 							Max: math.MaxUint32,
@@ -145,7 +145,7 @@ func TestClusterRebalance_Single(t *testing.T) {
 		},
 	}
 
-	actions := rebalanceCluster([]model.ServerAddress{s1, s2, s3, s4, s5}, cs)
+	actions := rebalanceCluster([]model.NodeInfo{s1, s2, s3, s4, s5}, cs)
 	assert.Equal(t, []SwapNodeAction{{
 		Shard: 0,
 		From:  s1,
@@ -158,17 +158,17 @@ func TestClusterRebalance_Multiple(t *testing.T) {
 		Namespaces: map[string]model.NamespaceStatus{
 			"ns-1": {
 				Shards: map[int64]model.ShardMetadata{
-					0: {Ensemble: []model.ServerAddress{s1, s2, s3}},
-					1: {Ensemble: []model.ServerAddress{s2, s3, s4}},
-					2: {Ensemble: []model.ServerAddress{s4, s1, s2}},
-					3: {Ensemble: []model.ServerAddress{s1, s2, s3}},
-					4: {Ensemble: []model.ServerAddress{s2, s3, s4}},
+					0: {Ensemble: []model.NodeInfo{s1, s2, s3}},
+					1: {Ensemble: []model.NodeInfo{s2, s3, s4}},
+					2: {Ensemble: []model.NodeInfo{s4, s1, s2}},
+					3: {Ensemble: []model.NodeInfo{s1, s2, s3}},
+					4: {Ensemble: []model.NodeInfo{s2, s3, s4}},
 				},
 			},
 		},
 	}
 
-	actions := rebalanceCluster([]model.ServerAddress{s1, s2, s3, s4, s5}, cs)
+	actions := rebalanceCluster([]model.NodeInfo{s1, s2, s3, s4, s5}, cs)
 	slog.Info(
 		"actions",
 		slog.Any("actions", actions),
@@ -193,18 +193,18 @@ func TestClusterRebalance_DoubleSize(t *testing.T) {
 		Namespaces: map[string]model.NamespaceStatus{
 			"ns-1": {
 				Shards: map[int64]model.ShardMetadata{
-					0: {Ensemble: []model.ServerAddress{s1, s2, s3}},
-					1: {Ensemble: []model.ServerAddress{s2, s3, s1}},
-					2: {Ensemble: []model.ServerAddress{s3, s1, s2}},
-					3: {Ensemble: []model.ServerAddress{s1, s2, s3}},
-					4: {Ensemble: []model.ServerAddress{s2, s3, s1}},
-					5: {Ensemble: []model.ServerAddress{s3, s1, s2}},
+					0: {Ensemble: []model.NodeInfo{s1, s2, s3}},
+					1: {Ensemble: []model.NodeInfo{s2, s3, s1}},
+					2: {Ensemble: []model.NodeInfo{s3, s1, s2}},
+					3: {Ensemble: []model.NodeInfo{s1, s2, s3}},
+					4: {Ensemble: []model.NodeInfo{s2, s3, s1}},
+					5: {Ensemble: []model.NodeInfo{s3, s1, s2}},
 				},
 			},
 		},
 	}
 
-	actions := rebalanceCluster([]model.ServerAddress{s1, s2, s3, s4, s5, s6}, cs)
+	actions := rebalanceCluster([]model.NodeInfo{s1, s2, s3, s4, s5, s6}, cs)
 	slog.Info(
 		"actions",
 		slog.Any("actions", actions),
@@ -253,18 +253,18 @@ func TestClusterRebalance_ShrinkOne(t *testing.T) {
 		Namespaces: map[string]model.NamespaceStatus{
 			"ns-1": {
 				Shards: map[int64]model.ShardMetadata{
-					0: {Ensemble: []model.ServerAddress{s1, s2, s3}},
-					1: {Ensemble: []model.ServerAddress{s4, s5, s6}},
-					2: {Ensemble: []model.ServerAddress{s1, s2, s3}},
-					3: {Ensemble: []model.ServerAddress{s4, s5, s6}},
-					4: {Ensemble: []model.ServerAddress{s1, s2, s3}},
-					5: {Ensemble: []model.ServerAddress{s4, s5, s6}},
+					0: {Ensemble: []model.NodeInfo{s1, s2, s3}},
+					1: {Ensemble: []model.NodeInfo{s4, s5, s6}},
+					2: {Ensemble: []model.NodeInfo{s1, s2, s3}},
+					3: {Ensemble: []model.NodeInfo{s4, s5, s6}},
+					4: {Ensemble: []model.NodeInfo{s1, s2, s3}},
+					5: {Ensemble: []model.NodeInfo{s4, s5, s6}},
 				},
 			},
 		},
 	}
 
-	actions := rebalanceCluster([]model.ServerAddress{s1, s2, s3, s4, s5}, cs)
+	actions := rebalanceCluster([]model.NodeInfo{s1, s2, s3, s4, s5}, cs)
 	slog.Info(
 		"actions",
 		slog.Any("actions", actions),
@@ -289,18 +289,18 @@ func TestClusterRebalance_ShrinkToHalf(t *testing.T) {
 		Namespaces: map[string]model.NamespaceStatus{
 			"ns-1": {
 				Shards: map[int64]model.ShardMetadata{
-					0: {Ensemble: []model.ServerAddress{s1, s2, s3}},
-					1: {Ensemble: []model.ServerAddress{s4, s5, s6}},
-					2: {Ensemble: []model.ServerAddress{s1, s2, s3}},
-					3: {Ensemble: []model.ServerAddress{s4, s5, s6}},
-					4: {Ensemble: []model.ServerAddress{s1, s2, s3}},
-					5: {Ensemble: []model.ServerAddress{s4, s5, s6}},
+					0: {Ensemble: []model.NodeInfo{s1, s2, s3}},
+					1: {Ensemble: []model.NodeInfo{s4, s5, s6}},
+					2: {Ensemble: []model.NodeInfo{s1, s2, s3}},
+					3: {Ensemble: []model.NodeInfo{s4, s5, s6}},
+					4: {Ensemble: []model.NodeInfo{s1, s2, s3}},
+					5: {Ensemble: []model.NodeInfo{s4, s5, s6}},
 				},
 			},
 		},
 	}
 
-	actions := rebalanceCluster([]model.ServerAddress{s1, s2, s3}, cs)
+	actions := rebalanceCluster([]model.NodeInfo{s1, s2, s3}, cs)
 	slog.Info(
 		"actions",
 		slog.Any("actions", actions),

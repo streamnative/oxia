@@ -57,7 +57,7 @@ type NodeController interface {
 
 type nodeController struct {
 	sync.Mutex
-	addr                     model.ServerAddress
+	addr                     model.NodeInfo
 	status                   NodeStatus
 	shardAssignmentsProvider ShardAssignmentsProvider
 	nodeAvailabilityListener NodeAvailabilityListener
@@ -79,19 +79,19 @@ type nodeController struct {
 	failedHealthChecks metrics.Counter
 }
 
-func NewNodeController(addr model.ServerAddress,
+func NewNodeController(addr model.NodeInfo,
 	shardAssignmentsProvider ShardAssignmentsProvider,
 	nodeAvailabilityListener NodeAvailabilityListener,
 	rpc RpcProvider) NodeController {
 	return newNodeController(addr, shardAssignmentsProvider, nodeAvailabilityListener, rpc, defaultInitialRetryBackoff)
 }
 
-func newNodeController(addr model.ServerAddress,
+func newNodeController(addr model.NodeInfo,
 	shardAssignmentsProvider ShardAssignmentsProvider,
 	nodeAvailabilityListener NodeAvailabilityListener,
 	rpc RpcProvider,
 	initialRetryBackoff time.Duration) NodeController {
-	labels := map[string]any{"node": addr.Internal}
+	labels := map[string]any{"nodeId": addr.GetID(), "internalAddress": addr.Internal}
 	nc := &nodeController{
 		addr:                     addr,
 		shardAssignmentsProvider: shardAssignmentsProvider,
@@ -123,7 +123,7 @@ func newNodeController(addr model.ServerAddress,
 		nc.ctx,
 		map[string]string{
 			"oxia": "node-controller",
-			"addr": nc.addr.Internal,
+			"node": nc.addr.GetID(),
 		},
 		nc.healthCheckWithRetries,
 	)
@@ -132,7 +132,7 @@ func newNodeController(addr model.ServerAddress,
 		nc.ctx,
 		map[string]string{
 			"oxia": "node-controller-send-updates",
-			"addr": nc.addr.Internal,
+			"node": nc.addr.GetID(),
 		},
 		nc.sendAssignmentsUpdatesWithRetries,
 	)
@@ -220,7 +220,7 @@ func (n *nodeController) healthCheck(backoff backoff.BackOff) error {
 		ctx,
 		map[string]string{
 			"oxia": "node-controller-health-check-ping",
-			"addr": n.addr.Internal,
+			"node": n.addr.GetID(),
 		},
 		func() {
 			defer cancel()

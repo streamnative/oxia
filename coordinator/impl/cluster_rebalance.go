@@ -24,18 +24,18 @@ import (
 
 type SwapNodeAction struct {
 	Shard int64
-	From  model.ServerAddress
-	To    model.ServerAddress
+	From  model.NodeInfo
+	To    model.NodeInfo
 }
 
 type ServerContext struct {
-	Addr   model.ServerAddress
+	Addr   model.NodeInfo
 	Shards common.Set[int64]
 }
 
 // Make sure every server is assigned a similar number of shards
 // Output a list of actions to be taken to rebalance the cluster.
-func rebalanceCluster(servers []model.ServerAddress, currentStatus *model.ClusterStatus) []SwapNodeAction { //nolint:revive
+func rebalanceCluster(servers []model.NodeInfo, currentStatus *model.ClusterStatus) []SwapNodeAction { //nolint:revive
 	res := make([]SwapNodeAction, 0)
 
 	serversCount := len(servers)
@@ -48,7 +48,7 @@ outer:
 		for _, r := range rankings {
 			slog.Debug(
 				"",
-				slog.String("server", r.Addr.Internal),
+				slog.String("server", r.Addr.GetID()),
 				slog.Int("count", r.Shards.Count()),
 			)
 		}
@@ -86,7 +86,7 @@ outer:
 					} else {
 						deletedServers[id] = context
 					}
-					shardsPerServer[a.To.Internal].Shards.Add(a.Shard)
+					shardsPerServer[a.To.GetID()].Shards.Add(a.Shard)
 
 					slog.Debug(
 						"Transfer from removed node",
@@ -122,8 +122,8 @@ outer:
 			To:    leastLoaded.Addr,
 		}
 
-		shardsPerServer[a.From.Internal].Shards.Remove(a.Shard)
-		shardsPerServer[a.To.Internal].Shards.Add(a.Shard)
+		shardsPerServer[a.From.GetID()].Shards.Remove(a.Shard)
+		shardsPerServer[a.To.GetID()].Shards.Add(a.Shard)
 
 		slog.Debug(
 			"Swapping nodes",
@@ -136,14 +136,14 @@ outer:
 	return res
 }
 
-func getShardsPerServer(servers []model.ServerAddress, currentStatus *model.ClusterStatus) (
+func getShardsPerServer(servers []model.NodeInfo, currentStatus *model.ClusterStatus) (
 	existingServers map[string]ServerContext,
 	deletedServers map[string]ServerContext) {
 	existingServers = map[string]ServerContext{}
 	deletedServers = map[string]ServerContext{}
 
 	for _, s := range servers {
-		existingServers[s.Internal] = ServerContext{
+		existingServers[s.GetID()] = ServerContext{
 			Addr:   s,
 			Shards: common.NewSet[int64](),
 		}
@@ -152,19 +152,19 @@ func getShardsPerServer(servers []model.ServerAddress, currentStatus *model.Clus
 	for _, nss := range currentStatus.Namespaces {
 		for shardId, shard := range nss.Shards {
 			for _, candidate := range shard.Ensemble {
-				if _, ok := existingServers[candidate.Internal]; ok {
-					existingServers[candidate.Internal].Shards.Add(shardId)
+				if _, ok := existingServers[candidate.GetID()]; ok {
+					existingServers[candidate.GetID()].Shards.Add(shardId)
 					continue
 				}
 
 				// This server is getting removed
-				if _, ok := deletedServers[candidate.Internal]; !ok {
-					deletedServers[candidate.Internal] = ServerContext{
+				if _, ok := deletedServers[candidate.GetID()]; !ok {
+					deletedServers[candidate.GetID()] = ServerContext{
 						Addr:   candidate,
 						Shards: common.NewSet[int64]()}
 				}
 
-				deletedServers[candidate.Internal].Shards.Add(shardId)
+				deletedServers[candidate.GetID()].Shards.Add(shardId)
 			}
 		}
 	}
@@ -188,7 +188,7 @@ func getServerRanking(shardsPerServer map[string]ServerContext) []ServerContext 
 		}
 
 		// Ensure predictable sorting
-		return res[i].Addr.Internal < res[j].Addr.Internal
+		return res[i].Addr.GetID() < res[j].Addr.GetID()
 	})
 	return res
 }

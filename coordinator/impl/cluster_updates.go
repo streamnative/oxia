@@ -19,9 +19,9 @@ import (
 	"github.com/streamnative/oxia/coordinator/model"
 )
 
-func getServers(servers []model.ServerAddress, startIdx uint32, count uint32) []model.ServerAddress {
+func getServers(servers []model.NodeInfo, startIdx uint32, count uint32) []model.NodeInfo {
 	n := len(servers)
-	res := make([]model.ServerAddress, count)
+	res := make([]model.NodeInfo, count)
 	for i := uint32(0); i < count; i++ {
 		res[i] = servers[int(startIdx+i)%n]
 	}

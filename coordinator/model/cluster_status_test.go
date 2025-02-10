@@ -29,11 +29,11 @@ func TestClusterStatus_Clone(t *testing.T) {
 					0: {
 						Status: ShardStatusSteadyState,
 						Term:   1,
-						Leader: &ServerAddress{
+						Leader: &NodeInfo{
 							Public:   "l1",
 							Internal: "l1",
 						},
-						Ensemble: []ServerAddress{{
+						Ensemble: []NodeInfo{{
 							Public:   "f1",
 							Internal: "f1",
 						}, {
@@ -41,7 +41,7 @@ func TestClusterStatus_Clone(t *testing.T) {
 							Internal: "f2",
 						}},
 						Int32HashRange: Int32HashRange{},
-						RemovedNodes: []ServerAddress{{
+						RemovedNodes: []NodeInfo{{
 							Public:   "r1",
 							Internal: "r1",
 						}},

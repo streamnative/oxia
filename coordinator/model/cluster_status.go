@@ -14,29 +14,20 @@
 
 package model
 
-type ServerAddress struct {
-	// Public is the endpoint that is advertised to clients
-	Public string `json:"public" yaml:"public"`
-
-	// Internal is the endpoint for server->server RPCs
-	Internal string `json:"internal" yaml:"internal"`
-}
-
 type Int32HashRange struct {
 	// The minimum inclusive hash that the shard can contain
 	Min uint32 `json:"min"`
-
 	// The maximum inclusive hash that the shard can contain
 	Max uint32 `json:"max"`
 }
 
 type ShardMetadata struct {
-	Status         ShardStatus     `json:"status" yaml:"status"`
-	Term           int64           `json:"term" yaml:"term"`
-	Leader         *ServerAddress  `json:"leader" yaml:"leader"`
-	Ensemble       []ServerAddress `json:"ensemble" yaml:"ensemble"`
-	RemovedNodes   []ServerAddress `json:"removedNodes" yaml:"removedNodes"`
-	Int32HashRange Int32HashRange  `json:"int32HashRange" yaml:"int32HashRange"`
+	Status         ShardStatus    `json:"status" yaml:"status"`
+	Term           int64          `json:"term" yaml:"term"`
+	Leader         *NodeInfo      `json:"leader" yaml:"leader"`
+	Ensemble       []NodeInfo     `json:"ensemble" yaml:"ensemble"`
+	RemovedNodes   []NodeInfo     `json:"removedNodes" yaml:"removedNodes"`
+	Int32HashRange Int32HashRange `json:"int32HashRange" yaml:"int32HashRange"`
 }
 
 type NamespaceStatus struct {
@@ -70,8 +61,8 @@ func (sm ShardMetadata) Clone() ShardMetadata {
 		Status:         sm.Status,
 		Term:           sm.Term,
 		Leader:         sm.Leader,
-		Ensemble:       make([]ServerAddress, len(sm.Ensemble)),
-		RemovedNodes:   make([]ServerAddress, len(sm.RemovedNodes)),
+		Ensemble:       make([]NodeInfo, len(sm.Ensemble)),
+		RemovedNodes:   make([]NodeInfo, len(sm.RemovedNodes)),
 		Int32HashRange: sm.Int32HashRange.Clone(),
 	}
 

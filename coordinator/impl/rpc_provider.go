@@ -29,16 +29,16 @@ import (
 const rpcTimeout = 30 * time.Second
 
 type RpcProvider interface {
-	PushShardAssignments(ctx context.Context, node model.ServerAddress) (proto.OxiaCoordination_PushShardAssignmentsClient, error)
-	NewTerm(ctx context.Context, node model.ServerAddress, req *proto.NewTermRequest) (*proto.NewTermResponse, error)
-	BecomeLeader(ctx context.Context, node model.ServerAddress, req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error)
-	AddFollower(ctx context.Context, node model.ServerAddress, req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error)
-	GetStatus(ctx context.Context, node model.ServerAddress, req *proto.GetStatusRequest) (*proto.GetStatusResponse, error)
-	DeleteShard(ctx context.Context, node model.ServerAddress, req *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error)
+	PushShardAssignments(ctx context.Context, node model.NodeInfo) (proto.OxiaCoordination_PushShardAssignmentsClient, error)
+	NewTerm(ctx context.Context, node model.NodeInfo, req *proto.NewTermRequest) (*proto.NewTermResponse, error)
+	BecomeLeader(ctx context.Context, node model.NodeInfo, req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error)
+	AddFollower(ctx context.Context, node model.NodeInfo, req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error)
+	GetStatus(ctx context.Context, node model.NodeInfo, req *proto.GetStatusRequest) (*proto.GetStatusResponse, error)
+	DeleteShard(ctx context.Context, node model.NodeInfo, req *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error)
 
-	GetHealthClient(node model.ServerAddress) (grpc_health_v1.HealthClient, io.Closer, error)
+	GetHealthClient(node model.NodeInfo) (grpc_health_v1.HealthClient, io.Closer, error)
 
-	ClearPooledConnections(node model.ServerAddress)
+	ClearPooledConnections(node model.NodeInfo)
 }
 
 type rpcProvider struct {
@@ -49,8 +49,8 @@ func NewRpcProvider(pool common.ClientPool) RpcProvider {
 	return &rpcProvider{pool: pool}
 }
 
-func (r *rpcProvider) PushShardAssignments(ctx context.Context, node model.ServerAddress) (proto.OxiaCoordination_PushShardAssignmentsClient, error) {
-	rpc, err := r.pool.GetCoordinationRpc(node.Internal)
+func (r *rpcProvider) PushShardAssignments(ctx context.Context, node model.NodeInfo) (proto.OxiaCoordination_PushShardAssignmentsClient, error) {
+	rpc, err := r.pool.GetCoordinationRpc(node.GetID())
 	if err != nil {
 		return nil, err
 	}
@@ -58,8 +58,8 @@ func (r *rpcProvider) PushShardAssignments(ctx context.Context, node model.Serve
 	return rpc.PushShardAssignments(ctx)
 }
 
-func (r *rpcProvider) NewTerm(ctx context.Context, node model.ServerAddress, req *proto.NewTermRequest) (*proto.NewTermResponse, error) {
-	rpc, err := r.pool.GetCoordinationRpc(node.Internal)
+func (r *rpcProvider) NewTerm(ctx context.Context, node model.NodeInfo, req *proto.NewTermRequest) (*proto.NewTermResponse, error) {
+	rpc, err := r.pool.GetCoordinationRpc(node.GetID())
 	if err != nil {
 		return nil, err
 	}
@@ -70,8 +70,8 @@ func (r *rpcProvider) NewTerm(ctx context.Context, node model.ServerAddress, req
 	return rpc.NewTerm(ctx, req)
 }
 
-func (r *rpcProvider) BecomeLeader(ctx context.Context, node model.ServerAddress, req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error) {
-	rpc, err := r.pool.GetCoordinationRpc(node.Internal)
+func (r *rpcProvider) BecomeLeader(ctx context.Context, node model.NodeInfo, req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error) {
+	rpc, err := r.pool.GetCoordinationRpc(node.GetID())
 	if err != nil {
 		return nil, err
 	}
@@ -82,8 +82,8 @@ func (r *rpcProvider) BecomeLeader(ctx context.Context, node model.ServerAddress
 	return rpc.BecomeLeader(ctx, req)
 }
 
-func (r *rpcProvider) AddFollower(ctx context.Context, node model.ServerAddress, req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error) {
-	rpc, err := r.pool.GetCoordinationRpc(node.Internal)
+func (r *rpcProvider) AddFollower(ctx context.Context, node model.NodeInfo, req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error) {
+	rpc, err := r.pool.GetCoordinationRpc(node.GetID())
 	if err != nil {
 		return nil, err
 	}
@@ -94,8 +94,8 @@ func (r *rpcProvider) AddFollower(ctx context.Context, node model.ServerAddress,
 	return rpc.AddFollower(ctx, req)
 }
 
-func (r *rpcProvider) GetStatus(ctx context.Context, node model.ServerAddress, req *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
-	rpc, err := r.pool.GetCoordinationRpc(node.Internal)
+func (r *rpcProvider) GetStatus(ctx context.Context, node model.NodeInfo, req *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
+	rpc, err := r.pool.GetCoordinationRpc(node.GetID())
 	if err != nil {
 		return nil, err
 	}
@@ -106,8 +106,8 @@ func (r *rpcProvider) GetStatus(ctx context.Context, node model.ServerAddress, r
 	return rpc.GetStatus(ctx, req)
 }
 
-func (r *rpcProvider) DeleteShard(ctx context.Context, node model.ServerAddress, req *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error) {
-	rpc, err := r.pool.GetCoordinationRpc(node.Internal)
+func (r *rpcProvider) DeleteShard(ctx context.Context, node model.NodeInfo, req *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error) {
+	rpc, err := r.pool.GetCoordinationRpc(node.GetID())
 	if err != nil {
 		return nil, err
 	}
@@ -118,10 +118,10 @@ func (r *rpcProvider) DeleteShard(ctx context.Context, node model.ServerAddress,
 	return rpc.DeleteShard(ctx, req)
 }
 
-func (r *rpcProvider) GetHealthClient(node model.ServerAddress) (grpc_health_v1.HealthClient, io.Closer, error) {
-	return r.pool.GetHealthRpc(node.Internal)
+func (r *rpcProvider) GetHealthClient(node model.NodeInfo) (grpc_health_v1.HealthClient, io.Closer, error) {
+	return r.pool.GetHealthRpc(node.GetID())
 }
 
-func (r *rpcProvider) ClearPooledConnections(node model.ServerAddress) {
-	r.pool.Clear(node.Internal)
+func (r *rpcProvider) ClearPooledConnections(node model.NodeInfo) {
+	r.pool.Clear(node.GetID())
 }

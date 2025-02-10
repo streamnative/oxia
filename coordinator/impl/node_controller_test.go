@@ -28,7 +28,7 @@ import (
 )
 
 func TestNodeController_HealthCheck(t *testing.T) {
-	addr := model.ServerAddress{
+	addr := model.NodeInfo{
 		Public:   "my-server:9190",
 		Internal: "my-server:8190",
 	}
@@ -65,7 +65,7 @@ func TestNodeController_HealthCheck(t *testing.T) {
 }
 
 func TestNodeController_ShardsAssignments(t *testing.T) {
-	addr := model.ServerAddress{
+	addr := model.NodeInfo{
 		Public:   "my-server:9190",
 		Internal: "my-server:8190",
 	}

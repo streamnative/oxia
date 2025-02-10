@@ -38,61 +38,61 @@ var namespaceConfig = &model.NamespaceConfig{
 func TestLeaderElection_ShouldChooseHighestTerm(t *testing.T) {
 	tests := []struct {
 		name                   string
-		candidates             map[model.ServerAddress]*proto.EntryId
-		expectedLeader         model.ServerAddress
+		candidates             map[model.NodeInfo]*proto.EntryId
+		expectedLeader         model.NodeInfo
 		expectedFollowersCount int
-		expectedFollowers      map[model.ServerAddress]*proto.EntryId
+		expectedFollowers      map[model.NodeInfo]*proto.EntryId
 	}{
 		{
 			name: "Choose highest term",
-			candidates: map[model.ServerAddress]*proto.EntryId{
+			candidates: map[model.NodeInfo]*proto.EntryId{
 				{Public: "1", Internal: "1"}: {Term: 200, Offset: 2480},
 				{Public: "2", Internal: "2"}: {Term: 200, Offset: 2500},
 				{Public: "3", Internal: "3"}: {Term: 198, Offset: 3000},
 			},
-			expectedLeader:         model.ServerAddress{Public: "2", Internal: "2"},
+			expectedLeader:         model.NodeInfo{Public: "2", Internal: "2"},
 			expectedFollowersCount: 2,
-			expectedFollowers: map[model.ServerAddress]*proto.EntryId{
+			expectedFollowers: map[model.NodeInfo]*proto.EntryId{
 				{Public: "1", Internal: "1"}: {Term: 200, Offset: 2480},
 				{Public: "3", Internal: "3"}: {Term: 198, Offset: 3000},
 			},
 		},
 		{
 			name: "Same term, different offsets",
-			candidates: map[model.ServerAddress]*proto.EntryId{
+			candidates: map[model.NodeInfo]*proto.EntryId{
 				{Public: "1", Internal: "1"}: {Term: 200, Offset: 1000},
 				{Public: "2", Internal: "2"}: {Term: 200, Offset: 2000},
 				{Public: "3", Internal: "3"}: {Term: 200, Offset: 1500},
 			},
-			expectedLeader:         model.ServerAddress{Public: "2", Internal: "2"},
+			expectedLeader:         model.NodeInfo{Public: "2", Internal: "2"},
 			expectedFollowersCount: 2,
-			expectedFollowers: map[model.ServerAddress]*proto.EntryId{
+			expectedFollowers: map[model.NodeInfo]*proto.EntryId{
 				{Public: "1", Internal: "1"}: {Term: 200, Offset: 1000},
 				{Public: "3", Internal: "3"}: {Term: 200, Offset: 1500},
 			},
 		},
 		{
 			name: "Different terms, same offsets",
-			candidates: map[model.ServerAddress]*proto.EntryId{
+			candidates: map[model.NodeInfo]*proto.EntryId{
 				{Public: "1", Internal: "1"}: {Term: 200, Offset: 1500},
 				{Public: "2", Internal: "2"}: {Term: 198, Offset: 1500},
 				{Public: "3", Internal: "3"}: {Term: 199, Offset: 1500},
 			},
-			expectedLeader:         model.ServerAddress{Public: "1", Internal: "1"},
+			expectedLeader:         model.NodeInfo{Public: "1", Internal: "1"},
 			expectedFollowersCount: 2,
-			expectedFollowers: map[model.ServerAddress]*proto.EntryId{
+			expectedFollowers: map[model.NodeInfo]*proto.EntryId{
 				{Public: "2", Internal: "2"}: {Term: 198, Offset: 1500},
 				{Public: "3", Internal: "3"}: {Term: 199, Offset: 1500},
 			},
 		},
 		{
 			name: "Single candidate",
-			candidates: map[model.ServerAddress]*proto.EntryId{
+			candidates: map[model.NodeInfo]*proto.EntryId{
 				{Public: "1", Internal: "1"}: {Term: 200, Offset: 1500},
 			},
-			expectedLeader:         model.ServerAddress{Public: "1", Internal: "1"},
+			expectedLeader:         model.NodeInfo{Public: "1", Internal: "1"},
 			expectedFollowersCount: 0,
-			expectedFollowers:      map[model.ServerAddress]*proto.EntryId{},
+			expectedFollowers:      map[model.NodeInfo]*proto.EntryId{},
 		},
 	}
 
@@ -120,15 +120,15 @@ func TestShardController(t *testing.T) {
 	rpc := newMockRpcProvider()
 	coordinator := newMockCoordinator()
 
-	s1 := model.ServerAddress{Public: "s1:9091", Internal: "s1:8191"}
-	s2 := model.ServerAddress{Public: "s2:9091", Internal: "s2:8191"}
-	s3 := model.ServerAddress{Public: "s3:9091", Internal: "s3:8191"}
+	s1 := model.NodeInfo{Public: "s1:9091", Internal: "s1:8191"}
+	s2 := model.NodeInfo{Public: "s2:9091", Internal: "s2:8191"}
+	s3 := model.NodeInfo{Public: "s3:9091", Internal: "s3:8191"}
 
 	sc := NewShardController(common.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
 		Status:   model.ShardStatusUnknown,
 		Term:     1,
 		Leader:   nil,
-		Ensemble: []model.ServerAddress{s1, s2, s3},
+		Ensemble: []model.NodeInfo{s1, s2, s3},
 	}, rpc, coordinator)
 
 	// Shard controller should initiate a leader election
@@ -194,15 +194,15 @@ func TestShardController_StartingWithLeaderAlreadyPresent(t *testing.T) {
 	rpc := newMockRpcProvider()
 	coordinator := newMockCoordinator()
 
-	s1 := model.ServerAddress{Public: "s1:9091", Internal: "s1:8191"}
-	s2 := model.ServerAddress{Public: "s2:9091", Internal: "s2:8191"}
-	s3 := model.ServerAddress{Public: "s3:9091", Internal: "s3:8191"}
+	s1 := model.NodeInfo{Public: "s1:9091", Internal: "s1:8191"}
+	s2 := model.NodeInfo{Public: "s2:9091", Internal: "s2:8191"}
+	s3 := model.NodeInfo{Public: "s3:9091", Internal: "s3:8191"}
 
 	sc := NewShardController(common.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
 		Status:   model.ShardStatusSteadyState,
 		Term:     1,
 		Leader:   &s1,
-		Ensemble: []model.ServerAddress{s1, s2, s3},
+		Ensemble: []model.NodeInfo{s1, s2, s3},
 	}, rpc, coordinator)
 
 	select {
@@ -225,15 +225,15 @@ func TestShardController_NewTermWithNonRespondingServer(t *testing.T) {
 	rpc := newMockRpcProvider()
 	coordinator := newMockCoordinator()
 
-	s1 := model.ServerAddress{Public: "s1:9091", Internal: "s1:8191"}
-	s2 := model.ServerAddress{Public: "s2:9091", Internal: "s2:8191"}
-	s3 := model.ServerAddress{Public: "s3:9091", Internal: "s3:8191"}
+	s1 := model.NodeInfo{Public: "s1:9091", Internal: "s1:8191"}
+	s2 := model.NodeInfo{Public: "s2:9091", Internal: "s2:8191"}
+	s3 := model.NodeInfo{Public: "s3:9091", Internal: "s3:8191"}
 
 	sc := NewShardController(common.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
 		Status:   model.ShardStatusUnknown,
 		Term:     1,
 		Leader:   nil,
-		Ensemble: []model.ServerAddress{s1, s2, s3},
+		Ensemble: []model.NodeInfo{s1, s2, s3},
 	}, rpc, coordinator)
 
 	timeStart := time.Now()
@@ -271,15 +271,15 @@ func TestShardController_NewTermFollowerUntilItRecovers(t *testing.T) {
 	rpc := newMockRpcProvider()
 	coordinator := newMockCoordinator()
 
-	s1 := model.ServerAddress{Public: "s1:9091", Internal: "s1:8191"}
-	s2 := model.ServerAddress{Public: "s2:9091", Internal: "s2:8191"}
-	s3 := model.ServerAddress{Public: "s3:9091", Internal: "s3:8191"}
+	s1 := model.NodeInfo{Public: "s1:9091", Internal: "s1:8191"}
+	s2 := model.NodeInfo{Public: "s2:9091", Internal: "s2:8191"}
+	s3 := model.NodeInfo{Public: "s3:9091", Internal: "s3:8191"}
 
 	sc := NewShardController(common.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
 		Status:   model.ShardStatusUnknown,
 		Term:     1,
 		Leader:   nil,
-		Ensemble: []model.ServerAddress{s1, s2, s3},
+		Ensemble: []model.NodeInfo{s1, s2, s3},
 	}, rpc, coordinator)
 
 	// s3 is failing, though we can still elect a leader
@@ -322,9 +322,9 @@ func TestShardController_VerifyFollowersWereAllFenced(t *testing.T) {
 	rpc := newMockRpcProvider()
 	coordinator := newMockCoordinator()
 
-	s1 := model.ServerAddress{Public: "s1:9091", Internal: "s1:8191"}
-	s2 := model.ServerAddress{Public: "s2:9091", Internal: "s2:8191"}
-	s3 := model.ServerAddress{Public: "s3:9091", Internal: "s3:8191"}
+	s1 := model.NodeInfo{Public: "s1:9091", Internal: "s1:8191"}
+	s2 := model.NodeInfo{Public: "s2:9091", Internal: "s2:8191"}
+	s3 := model.NodeInfo{Public: "s3:9091", Internal: "s3:8191"}
 	n1 := rpc.GetNode(s1)
 	n2 := rpc.GetNode(s2)
 	n3 := rpc.GetNode(s3)
@@ -333,7 +333,7 @@ func TestShardController_VerifyFollowersWereAllFenced(t *testing.T) {
 		Status:   model.ShardStatusSteadyState,
 		Term:     4,
 		Leader:   &s1,
-		Ensemble: []model.ServerAddress{s1, s2, s3},
+		Ensemble: []model.NodeInfo{s1, s2, s3},
 	}, rpc, coordinator)
 
 	r1 := <-n1.getStatusRequests
@@ -386,9 +386,9 @@ func TestShardController_NotificationsDisabled(t *testing.T) {
 	rpc := newMockRpcProvider()
 	coordinator := newMockCoordinator()
 
-	s1 := model.ServerAddress{Public: "s1:9091", Internal: "s1:8191"}
-	s2 := model.ServerAddress{Public: "s2:9091", Internal: "s2:8191"}
-	s3 := model.ServerAddress{Public: "s3:9091", Internal: "s3:8191"}
+	s1 := model.NodeInfo{Public: "s1:9091", Internal: "s1:8191"}
+	s2 := model.NodeInfo{Public: "s2:9091", Internal: "s2:8191"}
+	s3 := model.NodeInfo{Public: "s3:9091", Internal: "s3:8191"}
 
 	namespaceConfig := &model.NamespaceConfig{
 		Name:                 "my-ns-2",
@@ -401,7 +401,7 @@ func TestShardController_NotificationsDisabled(t *testing.T) {
 		Status:   model.ShardStatusUnknown,
 		Term:     1,
 		Leader:   nil,
-		Ensemble: []model.ServerAddress{s1, s2, s3},
+		Ensemble: []model.NodeInfo{s1, s2, s3},
 	}, rpc, coordinator)
 
 	// Shard controller should initiate a leader election
@@ -450,7 +450,7 @@ func (m *mockCoordinator) WaitForNextUpdate(ctx context.Context, currentValue *p
 	panic("not implemented")
 }
 
-func (m *mockCoordinator) FindServerAddressByInternalAddress(_ string) (*model.ServerAddress, bool) {
+func (m *mockCoordinator) FindServerAddressByInternalAddress(_ string) (*model.NodeInfo, bool) {
 	return nil, false
 }
 
@@ -487,6 +487,6 @@ func (m *mockCoordinator) ShardDeleted(namespace string, shard int64) error {
 	return nil
 }
 
-func (m *mockCoordinator) NodeBecameUnavailable(node model.ServerAddress) {
+func (m *mockCoordinator) NodeBecameUnavailable(node model.NodeInfo) {
 	panic("not implemented")
 }
