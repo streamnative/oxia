@@ -26,4 +26,5 @@ type NamespaceConfig struct {
 	InitialShardCount    uint32                       `json:"initialShardCount" yaml:"initialShardCount"`
 	ReplicationFactor    uint32                       `json:"replicationFactor" yaml:"replicationFactor"`
 	NotificationsEnabled common.OptBooleanDefaultTrue `json:"notificationsEnabled" yaml:"notificationsEnabled"`
+	AntiAffinityLabels   []string                     `json:"AntiAffinityLabels" yaml:"AntiAffinityLabels"`
 }
