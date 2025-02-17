@@ -76,17 +76,14 @@ func startSession(sessionId SessionId, sessionMetadata *proto.SessionMetadata, s
 }
 
 func (s *session) closeChannels() {
+	s.Lock()
+	defer s.Unlock()
 	s.cancel()
 	if s.heartbeatCh != nil {
 		close(s.heartbeatCh)
 		s.heartbeatCh = nil
 	}
 	s.log.Debug("Session channels closed")
-}
-
-func (s *session) close() error {
-	s.log.Info("Session closing")
-	return s.delete()
 }
 
 func (s *session) delete() error {
@@ -171,7 +168,6 @@ func (s *session) waitForHeartbeats() {
 		case <-timeoutCh:
 			s.log.Warn("Session expired")
 
-			s.Lock()
 			s.closeChannels()
 			err := s.delete()
 
@@ -181,7 +177,6 @@ func (s *session) waitForHeartbeats() {
 					slog.Any("error", err),
 				)
 			}
-			s.Unlock()
 
 			s.sm.Lock()
 			s.sm.sessions.Remove(s.id)
