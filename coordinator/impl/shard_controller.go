@@ -341,6 +341,7 @@ func (s *shardController) electLeader() error {
 			"Successfully moved ensemble to a new term",
 			slog.Int64("term", s.shardMetadata.Term),
 			slog.Any("new-leader", newLeader),
+			slog.Any("new-leader-entry", fr[newLeader]),
 			slog.Any("followers", f),
 		)
 	}
