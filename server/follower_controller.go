@@ -321,6 +321,15 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 	if req.Term != fc.term {
 		return nil, common.ErrorInvalidTerm
 	}
+	if commitOffset, err := fc.db.ReadCommitOffset(); err != nil {
+		return nil, errors.Wrapf(err, "failed to truncate wal. truncate-offset: %d - wal-last-offset: %d",
+			req.HeadEntryId.Offset, fc.wal.LastOffset())
+	} else {
+		if req.GetHeadEntryId().Offset < commitOffset {
+			slog.Error("bug! expected truncate offset.", slog.Any("truncated-offset", req.GetHeadEntryId().Offset),
+				slog.Any("commit-offset", commitOffset), slog.Any("wal-last-offset", fc.wal.LastOffset()))
+		}
+	}
 
 	fc.status = proto.ServingStatus_FOLLOWER
 	headOffset, err := fc.wal.TruncateLog(req.HeadEntryId.Offset)
