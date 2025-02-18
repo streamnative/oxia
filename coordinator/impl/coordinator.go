@@ -40,7 +40,7 @@ type ShardAssignmentsProvider interface {
 }
 
 type NodeAvailabilityListener interface {
-	NodeBecameUnavailable(node model.ServerAddress)
+	NodeBecameUnavailable(node model.ServerInfo)
 }
 
 type Coordinator interface {
@@ -54,7 +54,7 @@ type Coordinator interface {
 
 	NodeAvailabilityListener
 
-	FindServerAddressByInternalAddress(internalAddress string) (*model.ServerAddress, bool)
+	FindServerAddressByInternalAddress(internalAddress string) (*model.ServerInfo, bool)
 
 	ClusterStatus() model.ClusterStatus
 }
@@ -121,8 +121,8 @@ func NewCoordinator(metadataProvider MetadataProvider,
 	}
 
 	for _, sa := range c.ClusterConfig.Servers {
-		c.nodeControllers[sa.Internal] = NewNodeController(sa, c, c, c.rpc)
-		c.serverIndexes.Store(sa.Internal, sa)
+		c.nodeControllers[sa.GetID()] = NewNodeController(sa, c, c, c.rpc)
+		c.serverIndexes.Store(sa.GetID(), sa)
 	}
 
 	if c.clusterStatus == nil {
@@ -254,12 +254,12 @@ func (c *coordinator) Close() error {
 	return err
 }
 
-func (c *coordinator) NodeBecameUnavailable(node model.ServerAddress) {
+func (c *coordinator) NodeBecameUnavailable(node model.ServerInfo) {
 	c.Lock()
 
-	if nc, ok := c.drainingNodes[node.Internal]; ok {
+	if nc, ok := c.drainingNodes[node.GetID()]; ok {
 		// The draining node became unavailable. Let's remove it
-		delete(c.drainingNodes, node.Internal)
+		delete(c.drainingNodes, node.GetID())
 		_ = nc.Close()
 	}
 
@@ -522,9 +522,9 @@ func (c *coordinator) rebalanceCluster() error {
 	return nil
 }
 
-func (c *coordinator) FindServerAddressByInternalAddress(internalAddress string) (*model.ServerAddress, bool) {
+func (c *coordinator) FindServerAddressByInternalAddress(internalAddress string) (*model.ServerInfo, bool) {
 	if info, exist := c.serverIndexes.Load(internalAddress); exist {
-		address, ok := info.(model.ServerAddress)
+		address, ok := info.(model.ServerInfo)
 		if !ok {
 			panic("unexpected cast")
 		}
@@ -533,9 +533,9 @@ func (c *coordinator) FindServerAddressByInternalAddress(internalAddress string)
 	return nil, false
 }
 
-func (*coordinator) findServerByInternalAddress(newClusterConfig model.ClusterConfig, server string) *model.ServerAddress {
+func (*coordinator) findServerByInternalAddress(newClusterConfig model.ClusterConfig, serverId string) *model.ServerInfo {
 	for _, s := range newClusterConfig.Servers {
-		if server == s.Internal {
+		if serverId == s.GetID() {
 			return &s
 		}
 	}
@@ -546,22 +546,22 @@ func (*coordinator) findServerByInternalAddress(newClusterConfig model.ClusterCo
 func (c *coordinator) checkClusterNodeChanges(newClusterConfig model.ClusterConfig) {
 	// Check for nodes to add
 	for _, sa := range newClusterConfig.Servers {
-		c.serverIndexes.Store(sa.Internal, sa)
+		c.serverIndexes.Store(sa.GetID(), sa)
 
-		if _, ok := c.nodeControllers[sa.Internal]; ok {
+		if _, ok := c.nodeControllers[sa.GetID()]; ok {
 			continue
 		}
 
 		// The node is present in the config, though we don't know it yet,
 		// therefore it must be a newly added node
 		c.log.Info("Detected new node", slog.Any("addr", sa))
-		if nc, ok := c.drainingNodes[sa.Internal]; ok {
+		if nc, ok := c.drainingNodes[sa.GetID()]; ok {
 			// If there were any controller for a draining node, close it
 			// and recreate it as a new node
 			_ = nc.Close()
-			delete(c.drainingNodes, sa.Internal)
+			delete(c.drainingNodes, sa.GetID())
 		}
-		c.nodeControllers[sa.Internal] = NewNodeController(sa, c, c, c.rpc)
+		c.nodeControllers[sa.GetID()] = NewNodeController(sa, c, c, c.rpc)
 	}
 
 	// Check for nodes to remove

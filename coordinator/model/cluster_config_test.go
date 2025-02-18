@@ -27,7 +27,7 @@ func TestClusterConfig(t *testing.T) {
 			InitialShardCount: 2,
 			ReplicationFactor: 3,
 		}},
-		Servers: []ServerAddress{{
+		Servers: []ServerInfo{{
 			Public:   "f1",
 			Internal: "f1",
 		}, {
@@ -42,7 +42,7 @@ func TestClusterConfig(t *testing.T) {
 			InitialShardCount: 2,
 			ReplicationFactor: 3,
 		}},
-		Servers: []ServerAddress{{
+		Servers: []ServerInfo{{
 			Public:   "f1",
 			Internal: "f1",
 		}, {

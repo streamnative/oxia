@@ -67,14 +67,14 @@ func getClientTLSOption() (*security.TLSOption, error) {
 	return &clientOption, nil
 }
 
-func newTLSServer(t *testing.T) (s *server.Server, addr model.ServerAddress) {
+func newTLSServer(t *testing.T) (s *server.Server, addr model.ServerInfo) {
 	t.Helper()
 	return newTLSServerWithInterceptor(t, func(config *server.Config) {
 
 	})
 }
 
-func newTLSServerWithInterceptor(t *testing.T, interceptor func(config *server.Config)) (s *server.Server, addr model.ServerAddress) {
+func newTLSServerWithInterceptor(t *testing.T, interceptor func(config *server.Config)) (s *server.Server, addr model.ServerInfo) {
 	t.Helper()
 	option, err := getPeerTLSOption()
 	assert.NoError(t, err)
@@ -102,7 +102,7 @@ func newTLSServerWithInterceptor(t *testing.T, interceptor func(config *server.C
 
 	assert.NoError(t, err)
 
-	addr = model.ServerAddress{
+	addr = model.ServerInfo{
 		Public:   fmt.Sprintf("localhost:%d", s.PublicPort()),
 		Internal: fmt.Sprintf("localhost:%d", s.InternalPort()),
 	}
@@ -125,7 +125,7 @@ func TestClusterHandshakeSuccess(t *testing.T) {
 			ReplicationFactor: 3,
 			InitialShardCount: 1,
 		}},
-		Servers: []model.ServerAddress{sa1, sa2, sa3},
+		Servers: []model.ServerInfo{sa1, sa2, sa3},
 	}
 	option, err := getPeerTLSOption()
 	assert.NoError(t, err)
@@ -155,7 +155,7 @@ func TestClientHandshakeFailByNoTlsConfig(t *testing.T) {
 			ReplicationFactor: 3,
 			InitialShardCount: 1,
 		}},
-		Servers: []model.ServerAddress{sa1, sa2, sa3},
+		Servers: []model.ServerInfo{sa1, sa2, sa3},
 	}
 	option, err := getPeerTLSOption()
 	assert.NoError(t, err)
@@ -189,7 +189,7 @@ func TestClientHandshakeByAuthFail(t *testing.T) {
 			ReplicationFactor: 3,
 			InitialShardCount: 1,
 		}},
-		Servers: []model.ServerAddress{sa1, sa2, sa3},
+		Servers: []model.ServerInfo{sa1, sa2, sa3},
 	}
 	option, err := getPeerTLSOption()
 	assert.NoError(t, err)
@@ -229,7 +229,7 @@ func TestClientHandshakeWithInsecure(t *testing.T) {
 			ReplicationFactor: 3,
 			InitialShardCount: 1,
 		}},
-		Servers: []model.ServerAddress{sa1, sa2, sa3},
+		Servers: []model.ServerInfo{sa1, sa2, sa3},
 	}
 	option, err := getPeerTLSOption()
 	assert.NoError(t, err)
@@ -270,7 +270,7 @@ func TestClientHandshakeSuccess(t *testing.T) {
 			ReplicationFactor: 3,
 			InitialShardCount: 1,
 		}},
-		Servers: []model.ServerAddress{sa1, sa2, sa3},
+		Servers: []model.ServerInfo{sa1, sa2, sa3},
 	}
 	option, err := getPeerTLSOption()
 	assert.NoError(t, err)
@@ -312,7 +312,7 @@ func TestOnlyEnablePublicTls(t *testing.T) {
 			ReplicationFactor: 3,
 			InitialShardCount: 1,
 		}},
-		Servers: []model.ServerAddress{sa1, sa2, sa3},
+		Servers: []model.ServerInfo{sa1, sa2, sa3},
 	}
 	clientPool := common.NewClientPool(nil, nil)
 	defer clientPool.Close()

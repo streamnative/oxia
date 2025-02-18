@@ -60,7 +60,7 @@ func newOxiaClusterWithAuth(t *testing.T, issueURL string, audiences string) (ad
 		AuthOptions:                authParams,
 	})
 	assert.NoError(t, err)
-	s1Addr := model.ServerAddress{
+	s1Addr := model.ServerInfo{
 		Public:   fmt.Sprintf("localhost:%d", s1.PublicPort()),
 		Internal: fmt.Sprintf("localhost:%d", s1.InternalPort()),
 	}
@@ -74,7 +74,7 @@ func newOxiaClusterWithAuth(t *testing.T, issueURL string, audiences string) (ad
 		AuthOptions:                authParams,
 	})
 	assert.NoError(t, err)
-	s2Addr := model.ServerAddress{
+	s2Addr := model.ServerInfo{
 		Public:   fmt.Sprintf("localhost:%d", s2.PublicPort()),
 		Internal: fmt.Sprintf("localhost:%d", s2.InternalPort()),
 	}
@@ -88,7 +88,7 @@ func newOxiaClusterWithAuth(t *testing.T, issueURL string, audiences string) (ad
 		AuthOptions:                authParams,
 	})
 	assert.NoError(t, err)
-	s3Addr := model.ServerAddress{
+	s3Addr := model.ServerInfo{
 		Public:   fmt.Sprintf("localhost:%d", s3.PublicPort()),
 		Internal: fmt.Sprintf("localhost:%d", s3.InternalPort()),
 	}
@@ -100,7 +100,7 @@ func newOxiaClusterWithAuth(t *testing.T, issueURL string, audiences string) (ad
 			ReplicationFactor: 3,
 			InitialShardCount: 1,
 		}},
-		Servers: []model.ServerAddress{s1Addr, s2Addr, s3Addr},
+		Servers: []model.ServerInfo{s1Addr, s2Addr, s3Addr},
 	}
 
 	clientPool := common.NewClientPool(nil, nil)

@@ -32,7 +32,7 @@ import (
 	"github.com/streamnative/oxia/server"
 )
 
-func newServer(t *testing.T) (s *server.Server, addr model.ServerAddress) {
+func newServer(t *testing.T) (s *server.Server, addr model.ServerInfo) {
 	t.Helper()
 
 	var err error
@@ -47,7 +47,7 @@ func newServer(t *testing.T) (s *server.Server, addr model.ServerAddress) {
 
 	assert.NoError(t, err)
 
-	addr = model.ServerAddress{
+	addr = model.ServerInfo{
 		Public:   fmt.Sprintf("localhost:%d", s.PublicPort()),
 		Internal: fmt.Sprintf("localhost:%d", s.InternalPort()),
 	}
@@ -67,7 +67,7 @@ func TestCoordinatorE2E(t *testing.T) {
 			ReplicationFactor: 3,
 			InitialShardCount: 1,
 		}},
-		Servers: []model.ServerAddress{sa1, sa2, sa3},
+		Servers: []model.ServerInfo{sa1, sa2, sa3},
 	}
 	clientPool := common.NewClientPool(nil, nil)
 
@@ -105,7 +105,7 @@ func TestCoordinatorE2E_ShardsRanges(t *testing.T) {
 			ReplicationFactor: 3,
 			InitialShardCount: 4,
 		}},
-		Servers: []model.ServerAddress{sa1, sa2, sa3},
+		Servers: []model.ServerInfo{sa1, sa2, sa3},
 	}
 	clientPool := common.NewClientPool(nil, nil)
 
@@ -145,7 +145,7 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 	s1, sa1 := newServer(t)
 	s2, sa2 := newServer(t)
 	s3, sa3 := newServer(t)
-	servers := map[model.ServerAddress]*server.Server{
+	servers := map[model.ServerInfo]*server.Server{
 		sa1: s1,
 		sa2: s2,
 		sa3: s3,
@@ -158,7 +158,7 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 			ReplicationFactor: 3,
 			InitialShardCount: 1,
 		}},
-		Servers: []model.ServerAddress{sa1, sa2, sa3},
+		Servers: []model.ServerInfo{sa1, sa2, sa3},
 	}
 	clientPool := common.NewClientPool(nil, nil)
 
@@ -178,7 +178,7 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 	nsStatus = cs.Namespaces[common.DefaultNamespace]
 
 	leader := *nsStatus.Shards[0].Leader
-	var follower model.ServerAddress
+	var follower model.ServerInfo
 	for serverObj := range servers {
 		if serverObj != leader {
 			follower = serverObj
@@ -241,7 +241,7 @@ func TestCoordinator_MultipleNamespaces(t *testing.T) {
 	s1, sa1 := newServer(t)
 	s2, sa2 := newServer(t)
 	s3, sa3 := newServer(t)
-	servers := map[model.ServerAddress]*server.Server{
+	servers := map[model.ServerInfo]*server.Server{
 		sa1: s1,
 		sa2: s2,
 		sa3: s3,
@@ -262,7 +262,7 @@ func TestCoordinator_MultipleNamespaces(t *testing.T) {
 			ReplicationFactor: 2,
 			InitialShardCount: 3,
 		}},
-		Servers: []model.ServerAddress{sa1, sa2, sa3},
+		Servers: []model.ServerInfo{sa1, sa2, sa3},
 	}
 	clientPool := common.NewClientPool(nil, nil)
 
@@ -340,7 +340,7 @@ func TestCoordinator_DeleteNamespace(t *testing.T) {
 	s1, sa1 := newServer(t)
 	s2, sa2 := newServer(t)
 	s3, sa3 := newServer(t)
-	servers := map[model.ServerAddress]*server.Server{
+	servers := map[model.ServerInfo]*server.Server{
 		sa1: s1,
 		sa2: s2,
 		sa3: s3,
@@ -353,7 +353,7 @@ func TestCoordinator_DeleteNamespace(t *testing.T) {
 			ReplicationFactor: 1,
 			InitialShardCount: 2,
 		}},
-		Servers: []model.ServerAddress{sa1, sa2, sa3},
+		Servers: []model.ServerInfo{sa1, sa2, sa3},
 	}
 	clientPool := common.NewClientPool(nil, nil)
 
@@ -399,7 +399,7 @@ func TestCoordinator_DeleteNamespace(t *testing.T) {
 
 	newClusterConfig := model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{},
-		Servers:    []model.ServerAddress{sa1, sa2, sa3},
+		Servers:    []model.ServerInfo{sa1, sa2, sa3},
 	}
 
 	coordinator, err = NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return newClusterConfig, nil }, nil, NewRpcProvider(clientPool))
@@ -422,7 +422,7 @@ func TestCoordinator_DynamicallAddNamespace(t *testing.T) {
 	s1, sa1 := newServer(t)
 	s2, sa2 := newServer(t)
 	s3, sa3 := newServer(t)
-	servers := map[model.ServerAddress]*server.Server{
+	servers := map[model.ServerInfo]*server.Server{
 		sa1: s1,
 		sa2: s2,
 		sa3: s3,
@@ -435,7 +435,7 @@ func TestCoordinator_DynamicallAddNamespace(t *testing.T) {
 			ReplicationFactor: 1,
 			InitialShardCount: 2,
 		}},
-		Servers: []model.ServerAddress{sa1, sa2, sa3},
+		Servers: []model.ServerInfo{sa1, sa2, sa3},
 	}
 	clientPool := common.NewClientPool(nil, nil)
 
@@ -509,7 +509,7 @@ func TestCoordinator_RebalanceCluster(t *testing.T) {
 	s2, sa2 := newServer(t)
 	s3, sa3 := newServer(t)
 	s4, sa4 := newServer(t)
-	servers := map[model.ServerAddress]*server.Server{
+	servers := map[model.ServerInfo]*server.Server{
 		sa1: s1,
 		sa2: s2,
 		sa3: s3,
@@ -523,7 +523,7 @@ func TestCoordinator_RebalanceCluster(t *testing.T) {
 			ReplicationFactor: 3,
 			InitialShardCount: 2,
 		}},
-		Servers: []model.ServerAddress{sa1, sa2, sa3},
+		Servers: []model.ServerInfo{sa1, sa2, sa3},
 	}
 	clientPool := common.NewClientPool(nil, nil)
 	mutex := &sync.Mutex{}
@@ -562,12 +562,12 @@ func TestCoordinator_RebalanceCluster(t *testing.T) {
 	ns1Status = coordinator.ClusterStatus().Namespaces["my-ns-1"]
 	assert.EqualValues(t, 2, len(ns1Status.Shards))
 	assert.EqualValues(t, 3, ns1Status.ReplicationFactor)
-	checkServerLists(t, []model.ServerAddress{sa1, sa2, sa3}, ns1Status.Shards[0].Ensemble)
-	checkServerLists(t, []model.ServerAddress{sa1, sa2, sa3}, ns1Status.Shards[1].Ensemble)
+	checkServerLists(t, []model.ServerInfo{sa1, sa2, sa3}, ns1Status.Shards[0].Ensemble)
+	checkServerLists(t, []model.ServerInfo{sa1, sa2, sa3}, ns1Status.Shards[1].Ensemble)
 
 	// Add `s4` and remove `s1` from the cluster config
 	mutex.Lock()
-	clusterConfig.Servers = []model.ServerAddress{sa2, sa3, sa4}
+	clusterConfig.Servers = []model.ServerInfo{sa2, sa3, sa4}
 	mutex.Unlock()
 
 	configChangesCh <- nil
@@ -589,8 +589,8 @@ func TestCoordinator_RebalanceCluster(t *testing.T) {
 	ns1Status = coordinator.ClusterStatus().Namespaces["my-ns-1"]
 	assert.EqualValues(t, 2, len(ns1Status.Shards))
 	assert.EqualValues(t, 3, ns1Status.ReplicationFactor)
-	checkServerLists(t, []model.ServerAddress{sa2, sa3, sa4}, ns1Status.Shards[0].Ensemble)
-	checkServerLists(t, []model.ServerAddress{sa2, sa3, sa4}, ns1Status.Shards[1].Ensemble)
+	checkServerLists(t, []model.ServerInfo{sa2, sa3, sa4}, ns1Status.Shards[0].Ensemble)
+	checkServerLists(t, []model.ServerInfo{sa2, sa3, sa4}, ns1Status.Shards[1].Ensemble)
 
 	assert.NoError(t, coordinator.Close())
 	assert.NoError(t, clientPool.Close())
@@ -606,7 +606,7 @@ func TestCoordinator_AddRemoveNodes(t *testing.T) {
 	s3, sa3 := newServer(t)
 	s4, sa4 := newServer(t)
 	s5, sa5 := newServer(t)
-	servers := map[model.ServerAddress]*server.Server{
+	servers := map[model.ServerInfo]*server.Server{
 		sa1: s1,
 		sa2: s2,
 		sa3: s3,
@@ -621,7 +621,7 @@ func TestCoordinator_AddRemoveNodes(t *testing.T) {
 			ReplicationFactor: 1,
 			InitialShardCount: 2,
 		}},
-		Servers: []model.ServerAddress{sa1, sa2, sa3},
+		Servers: []model.ServerInfo{sa1, sa2, sa3},
 	}
 	clientPool := common.NewClientPool(nil, nil)
 
@@ -669,7 +669,7 @@ func TestCoordinator_ShrinkCluster(t *testing.T) {
 	s2, sa2 := newServer(t)
 	s3, sa3 := newServer(t)
 	s4, sa4 := newServer(t)
-	servers := map[model.ServerAddress]*server.Server{
+	servers := map[model.ServerInfo]*server.Server{
 		sa1: s1,
 		sa2: s2,
 		sa3: s3,
@@ -683,7 +683,7 @@ func TestCoordinator_ShrinkCluster(t *testing.T) {
 			ReplicationFactor: 1,
 			InitialShardCount: 1,
 		}},
-		Servers: []model.ServerAddress{sa1, sa2, sa3, sa4},
+		Servers: []model.ServerInfo{sa1, sa2, sa3, sa4},
 	}
 	clientPool := common.NewClientPool(nil, nil)
 
@@ -749,7 +749,7 @@ func TestCoordinator_ShrinkCluster(t *testing.T) {
 	}
 }
 
-func checkServerLists(t *testing.T, expected, actual []model.ServerAddress) {
+func checkServerLists(t *testing.T, expected, actual []model.ServerInfo) {
 	t.Helper()
 
 	assert.Equal(t, len(expected), len(actual))
@@ -783,7 +783,7 @@ func TestCoordinator_RefreshServerInfo(t *testing.T) {
 			ReplicationFactor: 3,
 			InitialShardCount: 1,
 		}},
-		Servers: []model.ServerAddress{sa1, sa2, sa3},
+		Servers: []model.ServerInfo{sa1, sa2, sa3},
 	}
 	configChangesCh := make(chan any)
 	c, err := NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) {
@@ -805,9 +805,9 @@ func TestCoordinator_RefreshServerInfo(t *testing.T) {
 	}, 10*time.Second, 10*time.Millisecond)
 
 	// change the localhost to 127.0.0.1
-	clusterServer := make([]model.ServerAddress, 0)
+	clusterServer := make([]model.ServerInfo, 0)
 	for _, sv := range clusterConfig.Servers {
-		clusterServer = append(clusterServer, model.ServerAddress{
+		clusterServer = append(clusterServer, model.ServerInfo{
 			Public:   strings.ReplaceAll(sv.Public, "localhost", "127.0.0.1"),
 			Internal: sv.Internal,
 		})

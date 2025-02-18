@@ -43,7 +43,7 @@ type maelstromCoordinatorRpcProvider struct {
 	assignmentStreams map[int64]*maelstromShardAssignmentClient
 }
 
-func (m *maelstromCoordinatorRpcProvider) ClearPooledConnections(node model.ServerAddress) {
+func (m *maelstromCoordinatorRpcProvider) ClearPooledConnections(node model.ServerInfo) {
 }
 
 func newRpcProvider(dispatcher *dispatcher) impl.RpcProvider {
@@ -53,11 +53,11 @@ func newRpcProvider(dispatcher *dispatcher) impl.RpcProvider {
 	}
 }
 
-func (m *maelstromCoordinatorRpcProvider) PushShardAssignments(ctx context.Context, node model.ServerAddress) (proto.OxiaCoordination_PushShardAssignmentsClient, error) {
+func (m *maelstromCoordinatorRpcProvider) PushShardAssignments(ctx context.Context, node model.ServerInfo) (proto.OxiaCoordination_PushShardAssignmentsClient, error) {
 	return newShardAssignmentClient(ctx, m, node.Internal), nil
 }
 
-func (m *maelstromCoordinatorRpcProvider) NewTerm(ctx context.Context, node model.ServerAddress, req *proto.NewTermRequest) (*proto.NewTermResponse, error) {
+func (m *maelstromCoordinatorRpcProvider) NewTerm(ctx context.Context, node model.ServerInfo, req *proto.NewTermRequest) (*proto.NewTermResponse, error) {
 	res, err := m.dispatcher.RpcRequest(ctx, node.Internal, MsgTypeNewTermRequest, req)
 	if err != nil {
 		return nil, err
@@ -66,7 +66,7 @@ func (m *maelstromCoordinatorRpcProvider) NewTerm(ctx context.Context, node mode
 	return res.(*proto.NewTermResponse), nil
 }
 
-func (m *maelstromCoordinatorRpcProvider) BecomeLeader(ctx context.Context, node model.ServerAddress, req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error) {
+func (m *maelstromCoordinatorRpcProvider) BecomeLeader(ctx context.Context, node model.ServerInfo, req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error) {
 	res, err := m.dispatcher.RpcRequest(ctx, node.Internal, MsgTypeBecomeLeaderRequest, req)
 	if err != nil {
 		return nil, err
@@ -75,7 +75,7 @@ func (m *maelstromCoordinatorRpcProvider) BecomeLeader(ctx context.Context, node
 	return res.(*proto.BecomeLeaderResponse), nil
 }
 
-func (m *maelstromCoordinatorRpcProvider) AddFollower(ctx context.Context, node model.ServerAddress, req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error) {
+func (m *maelstromCoordinatorRpcProvider) AddFollower(ctx context.Context, node model.ServerInfo, req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error) {
 	res, err := m.dispatcher.RpcRequest(ctx, node.Internal, MsgTypeAddFollowerRequest, req)
 	if err != nil {
 		return nil, err
@@ -84,7 +84,7 @@ func (m *maelstromCoordinatorRpcProvider) AddFollower(ctx context.Context, node 
 	return res.(*proto.AddFollowerResponse), nil
 }
 
-func (m *maelstromCoordinatorRpcProvider) GetStatus(ctx context.Context, node model.ServerAddress, req *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
+func (m *maelstromCoordinatorRpcProvider) GetStatus(ctx context.Context, node model.ServerInfo, req *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
 	res, err := m.dispatcher.RpcRequest(ctx, node.Internal, MsgTypeGetStatusRequest, req)
 	if err != nil {
 		return nil, err
@@ -93,7 +93,7 @@ func (m *maelstromCoordinatorRpcProvider) GetStatus(ctx context.Context, node mo
 	return res.(*proto.GetStatusResponse), nil
 }
 
-func (m *maelstromCoordinatorRpcProvider) DeleteShard(ctx context.Context, node model.ServerAddress, req *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error) {
+func (m *maelstromCoordinatorRpcProvider) DeleteShard(ctx context.Context, node model.ServerInfo, req *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error) {
 	res, err := m.dispatcher.RpcRequest(ctx, node.Internal, MsgTypeDeleteShardRequest, req)
 	if err != nil {
 		return nil, err
@@ -102,7 +102,7 @@ func (m *maelstromCoordinatorRpcProvider) DeleteShard(ctx context.Context, node 
 	return res.(*proto.DeleteShardResponse), nil
 }
 
-func (m *maelstromCoordinatorRpcProvider) GetHealthClient(node model.ServerAddress) (grpc_health_v1.HealthClient, io.Closer, error) {
+func (m *maelstromCoordinatorRpcProvider) GetHealthClient(node model.ServerInfo) (grpc_health_v1.HealthClient, io.Closer, error) {
 	c := &maelstromHealthCheckClient{
 		provider: m,
 		node:     node.Internal,

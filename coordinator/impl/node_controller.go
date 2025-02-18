@@ -57,7 +57,7 @@ type NodeController interface {
 
 type nodeController struct {
 	sync.Mutex
-	addr                     model.ServerAddress
+	info                     model.ServerInfo
 	status                   NodeStatus
 	shardAssignmentsProvider ShardAssignmentsProvider
 	nodeAvailabilityListener NodeAvailabilityListener
@@ -79,28 +79,28 @@ type nodeController struct {
 	failedHealthChecks metrics.Counter
 }
 
-func NewNodeController(addr model.ServerAddress,
+func NewNodeController(addr model.ServerInfo,
 	shardAssignmentsProvider ShardAssignmentsProvider,
 	nodeAvailabilityListener NodeAvailabilityListener,
 	rpc RpcProvider) NodeController {
 	return newNodeController(addr, shardAssignmentsProvider, nodeAvailabilityListener, rpc, defaultInitialRetryBackoff)
 }
 
-func newNodeController(addr model.ServerAddress,
+func newNodeController(info model.ServerInfo,
 	shardAssignmentsProvider ShardAssignmentsProvider,
 	nodeAvailabilityListener NodeAvailabilityListener,
 	rpc RpcProvider,
 	initialRetryBackoff time.Duration) NodeController {
-	labels := map[string]any{"node": addr.Internal}
+	labels := map[string]any{"node": info.GetID()}
 	nc := &nodeController{
-		addr:                     addr,
+		info:                     info,
 		shardAssignmentsProvider: shardAssignmentsProvider,
 		nodeAvailabilityListener: nodeAvailabilityListener,
 		rpc:                      rpc,
 		status:                   Running,
 		log: slog.With(
 			slog.String("component", "node-controller"),
-			slog.Any("addr", addr),
+			slog.Any("info", info),
 		),
 		initialRetryBackoff: initialRetryBackoff,
 
@@ -123,7 +123,8 @@ func newNodeController(addr model.ServerAddress,
 		nc.ctx,
 		map[string]string{
 			"oxia": "node-controller",
-			"addr": nc.addr.Internal,
+			"id":   nc.info.GetID(),
+			"addr": nc.info.Internal,
 		},
 		nc.healthCheckWithRetries,
 	)
@@ -132,7 +133,8 @@ func newNodeController(addr model.ServerAddress,
 		nc.ctx,
 		map[string]string{
 			"oxia": "node-controller-send-updates",
-			"addr": nc.addr.Internal,
+			"id":   nc.info.GetID(),
+			"addr": nc.info.Internal,
 		},
 		nc.sendAssignmentsUpdatesWithRetries,
 	)
@@ -162,7 +164,7 @@ func (n *nodeController) healthCheckWithRetries() {
 		if n.Status() == Draining {
 			// Stop the health check and close
 			_ = n.Close()
-			n.nodeAvailabilityListener.NodeBecameUnavailable(n.addr)
+			n.nodeAvailabilityListener.NodeBecameUnavailable(n.info)
 			return
 		}
 
@@ -177,7 +179,7 @@ func (n *nodeController) healthCheckWithRetries() {
 		if n.status == Running {
 			n.status = NotRunning
 			n.failedHealthChecks.Inc()
-			n.nodeAvailabilityListener.NodeBecameUnavailable(n.addr)
+			n.nodeAvailabilityListener.NodeBecameUnavailable(n.info)
 		}
 	})
 }
@@ -205,7 +207,7 @@ func (n *nodeController) healthCheckLoop(ctx context.Context, health grpc_health
 
 func (n *nodeController) healthCheck(backoff backoff.BackOff) error {
 	n.log.Debug("Start new health check cycle")
-	health, closer, err := n.rpc.GetHealthClient(n.addr)
+	health, closer, err := n.rpc.GetHealthClient(n.info)
 	if err != nil {
 		n.log.Debug("Failed to get health check client", slog.Any("error", err))
 		return err
@@ -220,7 +222,8 @@ func (n *nodeController) healthCheck(backoff backoff.BackOff) error {
 		ctx,
 		map[string]string{
 			"oxia": "node-controller-health-check-ping",
-			"addr": n.addr.Internal,
+			"id":   n.info.GetID(),
+			"addr": n.info.Internal,
 		},
 		func() {
 			defer cancel()
@@ -262,7 +265,7 @@ func (n *nodeController) processHealthCheckResponse(res *grpc_health_v1.HealthCh
 
 		// To avoid the send assignments stream to miss the notification about the current
 		// node went down, we interrupt the current stream when the ping on the node fails
-		n.rpc.ClearPooledConnections(n.addr)
+		n.rpc.ClearPooledConnections(n.info)
 		n.healthCheckCancel()
 		n.log.Debug("Cancelled the send assignments stream")
 		n.healthCheckCtx, n.healthCheckCancel = context.WithCancel(n.ctx)
@@ -283,7 +286,7 @@ func (n *nodeController) sendAssignmentsUpdatesWithRetries() {
 		if n.Status() == Draining {
 			// Stop the health check and close
 			_ = n.Close()
-			n.nodeAvailabilityListener.NodeBecameUnavailable(n.addr)
+			n.nodeAvailabilityListener.NodeBecameUnavailable(n.info)
 			return
 		}
 
@@ -336,7 +339,7 @@ func (n *nodeController) sendAssignmentsUpdates(backoff backoff.BackOff) error {
 	ctx := n.healthCheckCtx
 	n.Unlock()
 
-	stream, err := n.rpc.PushShardAssignments(ctx, n.addr)
+	stream, err := n.rpc.PushShardAssignments(ctx, n.info)
 	if err != nil {
 		n.log.Debug("Failed to create shard assignments stream", slog.Any("error", err))
 		return err

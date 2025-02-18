@@ -47,14 +47,14 @@ const (
 )
 
 type swapNodeRequest struct {
-	from model.ServerAddress
-	to   model.ServerAddress
+	from model.ServerInfo
+	to   model.ServerInfo
 	res  chan error
 }
 
 type newTermAndAddFollowerRequest struct {
 	ctx  context.Context
-	node model.ServerAddress
+	node model.ServerInfo
 	res  chan error
 }
 
@@ -63,15 +63,15 @@ type newTermAndAddFollowerRequest struct {
 type ShardController interface {
 	io.Closer
 
-	HandleNodeFailure(failedNode model.ServerAddress)
+	HandleNodeFailure(failedNode model.ServerInfo)
 
 	SyncServerAddress()
 
-	SwapNode(from model.ServerAddress, to model.ServerAddress) error
+	SwapNode(from model.ServerInfo, to model.ServerInfo) error
 	DeleteShard()
 
 	Term() int64
-	Leader() *model.ServerAddress
+	Leader() *model.ServerInfo
 	Status() model.ShardStatus
 }
 
@@ -86,7 +86,7 @@ type shardController struct {
 
 	electionOp              chan any
 	deleteOp                chan any
-	nodeFailureOp           chan model.ServerAddress
+	nodeFailureOp           chan model.ServerInfo
 	swapNodeOp              chan swapNodeRequest
 	newTermAndAddFollowerOp chan newTermAndAddFollowerRequest
 
@@ -116,7 +116,7 @@ func NewShardController(namespace string, shard int64, namespaceConfig *model.Na
 		coordinator:             coordinator,
 		electionOp:              make(chan any, chanBufferSize),
 		deleteOp:                make(chan any, chanBufferSize),
-		nodeFailureOp:           make(chan model.ServerAddress, chanBufferSize),
+		nodeFailureOp:           make(chan model.ServerInfo, chanBufferSize),
 		swapNodeOp:              make(chan swapNodeRequest, chanBufferSize),
 		newTermAndAddFollowerOp: make(chan newTermAndAddFollowerRequest, chanBufferSize),
 		log: slog.With(
@@ -207,11 +207,11 @@ func (s *shardController) run() {
 	}
 }
 
-func (s *shardController) HandleNodeFailure(failedNode model.ServerAddress) {
+func (s *shardController) HandleNodeFailure(failedNode model.ServerInfo) {
 	s.nodeFailureOp <- failedNode
 }
 
-func (s *shardController) handleNodeFailure(failedNode model.ServerAddress) {
+func (s *shardController) handleNodeFailure(failedNode model.ServerInfo) {
 	s.log.Debug(
 		"Received notification of failed node",
 		slog.Any("failed-node", failedNode),
@@ -219,7 +219,7 @@ func (s *shardController) handleNodeFailure(failedNode model.ServerAddress) {
 	)
 
 	if s.shardMetadata.Leader != nil &&
-		s.shardMetadata.Leader.Internal == failedNode.Internal {
+		s.shardMetadata.Leader.GetID() == failedNode.GetID() {
 		s.log.Info(
 			"Detected failure on shard leader",
 			slog.Any("leader", failedNode),
@@ -243,7 +243,7 @@ func (s *shardController) verifyCurrentEnsemble() bool {
 				slog.Any("node", node),
 			)
 			return false
-		case node.Internal == s.shardMetadata.Leader.Internal &&
+		case node.GetID() == s.shardMetadata.Leader.GetID() &&
 			nodeStatus.Status != proto.ServingStatus_LEADER:
 			s.log.Warn(
 				"Expected leader is not in leader status. Start a new election",
@@ -251,7 +251,7 @@ func (s *shardController) verifyCurrentEnsemble() bool {
 				slog.Any("status", nodeStatus.Status),
 			)
 			return false
-		case node.Internal != s.shardMetadata.Leader.Internal &&
+		case node.GetID() != s.shardMetadata.Leader.GetID() &&
 			nodeStatus.Status != proto.ServingStatus_FOLLOWER:
 			s.log.Warn(
 				"Expected follower is not in follower status. Start a new election",
@@ -328,13 +328,13 @@ func (s *shardController) electLeader() error {
 
 	if s.log.Enabled(context.Background(), slog.LevelInfo) {
 		f := make([]struct {
-			ServerAddress model.ServerAddress `json:"server-address"`
-			EntryId       *proto.EntryId      `json:"entry-id"`
+			ServerAddress model.ServerInfo `json:"server-address"`
+			EntryId       *proto.EntryId   `json:"entry-id"`
 		}, 0)
 		for sa, entryId := range followers {
 			f = append(f, struct {
-				ServerAddress model.ServerAddress `json:"server-address"`
-				EntryId       *proto.EntryId      `json:"entry-id"`
+				ServerAddress model.ServerInfo `json:"server-address"`
+				EntryId       *proto.EntryId   `json:"entry-id"`
 			}{ServerAddress: sa, EntryId: entryId})
 		}
 		s.log.Info(
@@ -381,11 +381,11 @@ func (s *shardController) electLeader() error {
 	return nil
 }
 
-func (s *shardController) getRefreshedEnsemble() []model.ServerAddress {
+func (s *shardController) getRefreshedEnsemble() []model.ServerInfo {
 	currentEnsemble := s.shardMetadata.Ensemble
-	refreshedEnsembleServiceAddress := make([]model.ServerAddress, len(currentEnsemble))
+	refreshedEnsembleServiceAddress := make([]model.ServerInfo, len(currentEnsemble))
 	for idx, candidate := range currentEnsemble {
-		if refreshedAddress, exist := s.coordinator.FindServerAddressByInternalAddress(candidate.Internal); exist {
+		if refreshedAddress, exist := s.coordinator.FindServerAddressByInternalAddress(candidate.GetID()); exist {
 			refreshedEnsembleServiceAddress[idx] = *refreshedAddress
 			continue
 		}
@@ -419,7 +419,7 @@ func (s *shardController) deletingRemovedNodes() error {
 	return nil
 }
 
-func (s *shardController) keepFencingFailedFollowers(successfulFollowers map[model.ServerAddress]*proto.EntryId) {
+func (s *shardController) keepFencingFailedFollowers(successfulFollowers map[model.ServerInfo]*proto.EntryId) {
 	if len(successfulFollowers) == len(s.shardMetadata.Ensemble)-1 {
 		s.log.Debug(
 			"All the member of the ensemble were successfully added",
@@ -442,7 +442,7 @@ func (s *shardController) keepFencingFailedFollowers(successfulFollowers map[mod
 	}
 }
 
-func (s *shardController) keepFencingFollower(ctx context.Context, node model.ServerAddress) {
+func (s *shardController) keepFencingFollower(ctx context.Context, node model.ServerInfo) {
 	s.log.Info(
 		"Node has failed in leader election, retrying",
 		slog.Any("follower", node),
@@ -451,9 +451,10 @@ func (s *shardController) keepFencingFollower(ctx context.Context, node model.Se
 	go common.DoWithLabels(
 		s.ctx,
 		map[string]string{
-			"oxia":     "shard-controller-retry-failed-follower",
-			"shard":    fmt.Sprintf("%d", s.shard),
-			"follower": node.Internal,
+			"oxia":          "shard-controller-retry-failed-follower",
+			"shard":         fmt.Sprintf("%d", s.shard),
+			"follower":      node.GetID(),
+			"follower-addr": node.Internal,
 		},
 		func() {
 			backOff := common.NewBackOffWithInitialInterval(ctx, 1*time.Second)
@@ -485,7 +486,7 @@ func (s *shardController) keepFencingFollower(ctx context.Context, node model.Se
 	)
 }
 
-func (s *shardController) newTermAndAddFollower(ctx context.Context, node model.ServerAddress) error {
+func (s *shardController) newTermAndAddFollower(ctx context.Context, node model.ServerInfo) error {
 	res := make(chan error)
 	s.newTermAndAddFollowerOp <- newTermAndAddFollowerRequest{
 		ctx:  ctx,
@@ -496,7 +497,7 @@ func (s *shardController) newTermAndAddFollower(ctx context.Context, node model.
 	return <-res
 }
 
-func (s *shardController) internalNewTermAndAddFollower(ctx context.Context, node model.ServerAddress, res chan error) {
+func (s *shardController) internalNewTermAndAddFollower(ctx context.Context, node model.ServerInfo, res chan error) {
 	fr, err := s.newTerm(ctx, node)
 	if err != nil {
 		res <- err
@@ -509,7 +510,7 @@ func (s *shardController) internalNewTermAndAddFollower(ctx context.Context, nod
 		return
 	}
 
-	if err = s.addFollower(*s.shardMetadata.Leader, node.Internal, &proto.EntryId{
+	if err = s.addFollower(*s.shardMetadata.Leader, node.GetID(), &proto.EntryId{
 		Term:   fr.Term,
 		Offset: fr.Offset,
 	}); err != nil {
@@ -528,7 +529,7 @@ func (s *shardController) internalNewTermAndAddFollower(ctx context.Context, nod
 
 // Send NewTerm to all the ensemble members in parallel and wait for
 // a majority of them to reply successfully.
-func (s *shardController) newTermQuorum() (map[model.ServerAddress]*proto.EntryId, error) { //nolint:revive
+func (s *shardController) newTermQuorum() (map[model.ServerInfo]*proto.EntryId, error) { //nolint:revive
 	timer := s.newTermQuorumLatency.Timer()
 
 	fencingQuorum := mergeLists(s.shardMetadata.Ensemble, s.shardMetadata.RemovedNodes)
@@ -541,41 +542,43 @@ func (s *shardController) newTermQuorum() (map[model.ServerAddress]*proto.EntryI
 
 	// Channel to receive responses or errors from each server
 	ch := make(chan struct {
-		model.ServerAddress
+		model.ServerInfo
 		*proto.EntryId
 		error
 	}, fencingQuorumSize)
 
 	for _, sa := range fencingQuorum {
 		// We need to save the address because it gets modified in the loop
-		serverAddress := sa
+		serverInfo := sa
 		go common.DoWithLabels(
 			s.ctx,
 			map[string]string{
-				"oxia":  "shard-controller-leader-election",
-				"shard": fmt.Sprintf("%d", s.shard),
-				"node":  sa.Internal,
+				"oxia":      "shard-controller-leader-election",
+				"shard":     fmt.Sprintf("%d", s.shard),
+				"node-addr": sa.Internal,
+				"node":      sa.GetID(),
 			}, func() {
-				entryId, err := s.newTerm(ctx, serverAddress)
+				entryId, err := s.newTerm(ctx, serverInfo)
 				if err != nil {
 					s.log.Warn(
 						"Failed to newTerm node",
 						slog.Any("error", err),
-						slog.String("node", serverAddress.Internal),
+						slog.String("node-addr", serverInfo.Internal),
+						slog.String("node", serverInfo.GetID()),
 					)
 				} else {
 					s.log.Info(
 						"Processed newTerm response",
-						slog.Any("server-address", serverAddress),
+						slog.Any("server-address", serverInfo),
 						slog.Any("entry-id", entryId),
 					)
 				}
 
 				ch <- struct {
-					model.ServerAddress
+					model.ServerInfo
 					*proto.EntryId
 					error
-				}{serverAddress, entryId, err}
+				}{serverInfo, entryId, err}
 			},
 		)
 	}
@@ -583,7 +586,7 @@ func (s *shardController) newTermQuorum() (map[model.ServerAddress]*proto.EntryI
 	successResponses := 0
 	totalResponses := 0
 
-	res := make(map[model.ServerAddress]*proto.EntryId)
+	res := make(map[model.ServerInfo]*proto.EntryId)
 	var err error
 
 	// Wait for a majority to respond
@@ -595,8 +598,8 @@ func (s *shardController) newTermQuorum() (map[model.ServerAddress]*proto.EntryI
 			successResponses++
 
 			// We don't consider the removed nodes as candidates for leader/followers
-			if listContains(s.shardMetadata.Ensemble, r.ServerAddress) {
-				res[r.ServerAddress] = r.EntryId
+			if listContains(s.shardMetadata.Ensemble, r.ServerInfo) {
+				res[r.ServerInfo] = r.EntryId
 			}
 		} else {
 			err = multierr.Append(err, r.error)
@@ -614,7 +617,7 @@ func (s *shardController) newTermQuorum() (map[model.ServerAddress]*proto.EntryI
 		case r := <-ch:
 			totalResponses++
 			if r.error == nil {
-				res[r.ServerAddress] = r.EntryId
+				res[r.ServerInfo] = r.EntryId
 			} else {
 				err = multierr.Append(err, r.error)
 			}
@@ -629,7 +632,7 @@ func (s *shardController) newTermQuorum() (map[model.ServerAddress]*proto.EntryI
 	return res, nil
 }
 
-func (s *shardController) newTerm(ctx context.Context, node model.ServerAddress) (*proto.EntryId, error) {
+func (s *shardController) newTerm(ctx context.Context, node model.ServerInfo) (*proto.EntryId, error) {
 	res, err := s.rpc.NewTerm(ctx, node, &proto.NewTermRequest{
 		Namespace: s.namespace,
 		Shard:     s.shard,
@@ -645,7 +648,7 @@ func (s *shardController) newTerm(ctx context.Context, node model.ServerAddress)
 	return res.HeadEntryId, nil
 }
 
-func (s *shardController) deleteShardRpc(ctx context.Context, node model.ServerAddress) error {
+func (s *shardController) deleteShardRpc(ctx context.Context, node model.ServerInfo) error {
 	_, err := s.rpc.DeleteShard(ctx, node, &proto.DeleteShardRequest{
 		Namespace: s.namespace,
 		Shard:     s.shard,
@@ -655,25 +658,25 @@ func (s *shardController) deleteShardRpc(ctx context.Context, node model.ServerA
 	return err
 }
 
-func selectNewLeader(newTermResponses map[model.ServerAddress]*proto.EntryId) (
-	leader model.ServerAddress, followers map[model.ServerAddress]*proto.EntryId) {
+func selectNewLeader(newTermResponses map[model.ServerInfo]*proto.EntryId) (
+	leader model.ServerInfo, followers map[model.ServerInfo]*proto.EntryId) {
 	// Select all the nodes that have the highest term first
 	var currentMaxTerm int64 = -1
 	// Select all the nodes that have the highest entry in the wal
 	var currentMax int64 = -1
-	var candidates []model.ServerAddress
+	var candidates []model.ServerInfo
 
 	for addr, headEntryId := range newTermResponses {
 		if headEntryId.Term > currentMaxTerm {
 			// the new max
 			currentMaxTerm = headEntryId.Term
 			currentMax = headEntryId.Offset
-			candidates = []model.ServerAddress{addr}
+			candidates = []model.ServerInfo{addr}
 		} else if headEntryId.Term == currentMaxTerm {
 			if headEntryId.Offset > currentMax {
 				// the new max
 				currentMax = headEntryId.Offset
-				candidates = []model.ServerAddress{addr}
+				candidates = []model.ServerInfo{addr}
 			} else if headEntryId.Offset == currentMax {
 				candidates = append(candidates, addr)
 			}
@@ -682,7 +685,7 @@ func selectNewLeader(newTermResponses map[model.ServerAddress]*proto.EntryId) (
 
 	// Select a random leader among the nodes with the highest entry in the wal
 	leader = candidates[rand.Intn(len(candidates))] //nolint:gosec
-	followers = make(map[model.ServerAddress]*proto.EntryId)
+	followers = make(map[model.ServerInfo]*proto.EntryId)
 	for a, e := range newTermResponses {
 		if a != leader {
 			followers[a] = e
@@ -691,12 +694,12 @@ func selectNewLeader(newTermResponses map[model.ServerAddress]*proto.EntryId) (
 	return leader, followers
 }
 
-func (s *shardController) becomeLeader(leader model.ServerAddress, followers map[model.ServerAddress]*proto.EntryId) error {
+func (s *shardController) becomeLeader(leader model.ServerInfo, followers map[model.ServerInfo]*proto.EntryId) error {
 	timer := s.leaderElectionLatency.Timer()
 
 	followersMap := make(map[string]*proto.EntryId)
 	for sa, e := range followers {
-		followersMap[sa.Internal] = e
+		followersMap[sa.GetID()] = e
 	}
 
 	if _, err := s.rpc.BecomeLeader(s.ctx, leader, &proto.BecomeLeaderRequest{
@@ -713,7 +716,7 @@ func (s *shardController) becomeLeader(leader model.ServerAddress, followers map
 	return nil
 }
 
-func (s *shardController) addFollower(leader model.ServerAddress, follower string, followerHeadEntryId *proto.EntryId) error {
+func (s *shardController) addFollower(leader model.ServerInfo, follower string, followerHeadEntryId *proto.EntryId) error {
 	if _, err := s.rpc.AddFollower(s.ctx, leader, &proto.AddFollowerRequest{
 		Namespace:           s.namespace,
 		Shard:               s.shard,
@@ -777,7 +780,7 @@ func (s *shardController) Term() int64 {
 	return s.shardMetadata.Term
 }
 
-func (s *shardController) Leader() *model.ServerAddress {
+func (s *shardController) Leader() *model.ServerInfo {
 	s.shardMetadataMutex.Lock()
 	defer s.shardMetadataMutex.Unlock()
 	return s.shardMetadata.Leader
@@ -795,7 +798,7 @@ func (s *shardController) Close() error {
 	return nil
 }
 
-func (s *shardController) SwapNode(from model.ServerAddress, to model.ServerAddress) error {
+func (s *shardController) SwapNode(from model.ServerInfo, to model.ServerInfo) error {
 	res := make(chan error)
 	s.swapNodeOp <- swapNodeRequest{
 		from: from,
@@ -806,7 +809,7 @@ func (s *shardController) SwapNode(from model.ServerAddress, to model.ServerAddr
 	return <-res
 }
 
-func (s *shardController) swapNode(from model.ServerAddress, to model.ServerAddress, res chan error) {
+func (s *shardController) swapNode(from model.ServerInfo, to model.ServerInfo, res chan error) {
 	s.shardMetadataMutex.Lock()
 	s.shardMetadata.RemovedNodes = append(s.shardMetadata.RemovedNodes, from)
 	s.shardMetadata.Ensemble = replaceInList(s.shardMetadata.Ensemble, from, to)
@@ -848,7 +851,7 @@ func (s *shardController) swapNode(from model.ServerAddress, to model.ServerAddr
 	res <- nil
 }
 
-func (s *shardController) isFollowerCatchUp(ctx context.Context, server model.ServerAddress, leaderHeadOffset int64) error {
+func (s *shardController) isFollowerCatchUp(ctx context.Context, server model.ServerInfo, leaderHeadOffset int64) error {
 	fs, err := s.rpc.GetStatus(ctx, server, &proto.GetStatusRequest{Shard: s.shard})
 	if err != nil {
 		return err
@@ -873,7 +876,7 @@ func (s *shardController) isFollowerCatchUp(ctx context.Context, server model.Se
 }
 
 // Check that all the followers in the ensemble are catching up with the leader.
-func (s *shardController) waitForFollowersToCatchUp(ctx context.Context, leader model.ServerAddress, ensemble []model.ServerAddress) error {
+func (s *shardController) waitForFollowersToCatchUp(ctx context.Context, leader model.ServerInfo, ensemble []model.ServerInfo) error {
 	ctx, cancel := context.WithTimeout(ctx, catchupTimeout)
 	defer cancel()
 
@@ -886,7 +889,7 @@ func (s *shardController) waitForFollowersToCatchUp(ctx context.Context, leader 
 	leaderHeadOffset := ls.HeadOffset
 
 	for _, server := range ensemble {
-		if server.Internal == leader.Internal {
+		if server.GetID() == leader.GetID() {
 			continue
 		}
 
@@ -907,7 +910,7 @@ func (s *shardController) SyncServerAddress() {
 	s.shardMetadataMutex.RLock()
 	exist := false
 	for _, candidate := range s.shardMetadata.Ensemble {
-		if newInfo, ok := s.coordinator.FindServerAddressByInternalAddress(candidate.Internal); ok {
+		if newInfo, ok := s.coordinator.FindServerAddressByInternalAddress(candidate.GetID()); ok {
 			if *newInfo != candidate {
 				exist = true
 				break
@@ -923,9 +926,9 @@ func (s *shardController) SyncServerAddress() {
 	s.electionOp <- nil
 }
 
-func listContains(list []model.ServerAddress, sa model.ServerAddress) bool {
+func listContains(list []model.ServerInfo, sa model.ServerInfo) bool {
 	for _, item := range list {
-		if item.Internal == sa.Internal {
+		if item.GetID() == sa.GetID() {
 			return true
 		}
 	}
@@ -941,10 +944,10 @@ func mergeLists[T any](lists ...[]T) []T {
 	return res
 }
 
-func replaceInList(list []model.ServerAddress, oldServerAddress, newServerAddress model.ServerAddress) []model.ServerAddress {
-	var res []model.ServerAddress
+func replaceInList(list []model.ServerInfo, oldServerAddress, newServerAddress model.ServerInfo) []model.ServerInfo {
+	var res []model.ServerInfo
 	for _, item := range list {
-		if item.Internal != oldServerAddress.Internal {
+		if item.GetID() != oldServerAddress.GetID() {
 			res = append(res, item)
 		}
 	}
