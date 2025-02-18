@@ -337,13 +337,19 @@ func (s *shardController) electLeader() error {
 				EntryId       *proto.EntryId      `json:"entry-id"`
 			}{ServerAddress: sa, EntryId: entryId})
 		}
+		leaderEntry := fr[newLeader]
 		s.log.Info(
 			"Successfully moved ensemble to a new term",
 			slog.Int64("term", s.shardMetadata.Term),
 			slog.Any("new-leader", newLeader),
-			slog.Any("new-leader-entry", fr[newLeader]),
+			slog.Any("new-leader-entry", leaderEntry),
 			slog.Any("followers", f),
 		)
+		for _, follower := range f {
+			if follower.EntryId.Offset > leaderEntry.Offset {
+				s.log.Error("bug! unexpected leader election!")
+			}
+		}
 	}
 
 	if err = s.becomeLeader(newLeader, followers); err != nil {
