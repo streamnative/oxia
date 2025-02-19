@@ -16,6 +16,7 @@ package server
 
 import (
 	"context"
+	"github.com/streamnative/oxia/common"
 	"testing"
 	"time"
 
@@ -265,4 +266,23 @@ func TestQuorumAckTracker_AddingCursors_RF5(t *testing.T) {
 
 	assert.EqualValues(t, 10, at.HeadOffset())
 	assert.EqualValues(t, 7, at.CommitOffset())
+}
+
+func TestQuorumAckTracker_ClearPending(t *testing.T) {
+	at := NewQuorumAckTracker(5, 10, 5)
+	asyncRes := make(chan error, 1)
+	go func() {
+		asyncRes <- at.WaitForCommitOffset(context.Background(), 6)
+	}()
+	err := at.Close()
+	assert.NoError(t, err)
+
+	// Wait for the result from asyncRes
+	select {
+	case resErr := <-asyncRes:
+		// Ensure that we received the expected result (in this case, error should be nil)
+		assert.ErrorIs(t, resErr, common.ErrorAlreadyClosed)
+	case <-time.After(2 * time.Second): // Adding a timeout for safety
+		t.Fatal("Timed out waiting for async result")
+	}
 }
