@@ -17,6 +17,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"github.com/streamnative/oxia/common/callback"
 	"io"
 	"log/slog"
 	"sync"
@@ -349,7 +350,7 @@ func (lc *leaderController) BecomeLeader(ctx context.Context, req *proto.BecomeL
 	// committed in the quorum, to avoid missing any entries in the DB
 	// by the moment we make the leader controller accepting new write/read
 	// requests
-	if _, err = lc.quorumAckTracker.WaitForCommitOffset(ctx, lc.leaderElectionHeadEntryId.Offset, nil); err != nil {
+	if err = lc.quorumAckTracker.WaitForCommitOffset(ctx, lc.leaderElectionHeadEntryId.Offset); err != nil {
 		return nil, err
 	}
 
@@ -796,10 +797,11 @@ func (lc *leaderController) write(ctx context.Context, request func(int64) *prot
 		return wal.InvalidOffset, nil, err
 	}
 
-	resp, err := lc.quorumAckTracker.WaitForCommitOffset(ctx, newOffset, func() (*proto.WriteResponse, error) {
-		return lc.db.ProcessWrite(actualRequest, newOffset, timestamp, WrapperUpdateOperationCallback)
-	})
-	return newOffset, resp, err
+	if err := lc.quorumAckTracker.WaitForCommitOffset(ctx, newOffset); err != nil {
+		return wal.InvalidOffset, nil, err
+	}
+	writeResponse, err := lc.db.ProcessWrite(actualRequest, newOffset, timestamp, WrapperUpdateOperationCallback)
+	return newOffset, writeResponse, err
 }
 
 func (lc *leaderController) appendToWal(ctx context.Context, request func(int64) *proto.WriteRequest) (actualRequest *proto.WriteRequest, offset int64, timestamp uint64, err error) {
@@ -914,22 +916,24 @@ func (lc *leaderController) handleWalSynced(stream proto.OxiaClient_WriteStreamS
 		return
 	}
 
-	lc.quorumAckTracker.WaitForCommitOffsetAsync(offset, func() (*proto.WriteResponse, error) {
-		return lc.db.ProcessWrite(req, offset, timestamp, WrapperUpdateOperationCallback)
-	}, func(response *proto.WriteResponse, err error) {
-		if err != nil {
-			timer.Done()
+	lc.quorumAckTracker.WaitForCommitOffsetAsync(context.Background(), offset, callback.NewOnce[any](
+		func(_ any) {
+			defer timer.Done()
+			localResponse, err := lc.db.ProcessWrite(req, offset, timestamp, WrapperUpdateOperationCallback)
+			if err != nil {
+				sendNonBlocking(closeCh, err)
+				return
+			}
+			if err = stream.Send(localResponse); err != nil {
+				sendNonBlocking(closeCh, err)
+				return
+			}
+		},
+		func(err error) {
+			defer timer.Done()
 			sendNonBlocking(closeCh, err)
-			return
-		}
-
-		if err = stream.Send(response); err != nil {
-			timer.Done()
-			sendNonBlocking(closeCh, err)
-			return
-		}
-		timer.Done()
-	})
+		},
+	))
 }
 
 func (lc *leaderController) appendToWalStreamRequest(request *proto.WriteRequest,

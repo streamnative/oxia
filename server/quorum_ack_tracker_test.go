@@ -21,7 +21,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/wal"
 )
 
@@ -188,10 +187,7 @@ func TestQuorumAckTracker_WaitForCommitOffset(t *testing.T) {
 	ch := make(chan error)
 
 	go func() {
-		_, err := at.WaitForCommitOffset(context.Background(), 2, func() (*proto.WriteResponse, error) {
-			return nil, nil //nolint:nilnil
-		})
-		ch <- err
+		ch <- at.WaitForCommitOffset(context.Background(), 2)
 	}()
 
 	time.Sleep(100 * time.Millisecond)
