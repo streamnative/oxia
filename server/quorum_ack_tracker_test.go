@@ -274,6 +274,8 @@ func TestQuorumAckTracker_ClearPending(t *testing.T) {
 	go func() {
 		asyncRes <- at.WaitForCommitOffset(context.Background(), 6)
 	}()
+
+	time.Sleep(100 * time.Millisecond)
 	err := at.Close()
 	assert.NoError(t, err)
 
