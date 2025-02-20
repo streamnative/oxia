@@ -202,10 +202,10 @@ func (sm *sessionManager) CloseSession(request *proto.CloseSessionRequest) (*pro
 	}
 	sm.sessions.Remove(s.id)
 	sm.Unlock()
-	s.Lock()
-	defer s.Unlock()
-	s.closeChannels()
-	err = s.close()
+
+	s.log.Info("Session closing")
+	s.Close()
+	err = s.delete()
 	if err != nil {
 		return nil, err
 	}
@@ -295,9 +295,7 @@ func (sm *sessionManager) Close() error {
 	sm.cancel()
 	for _, s := range sm.sessions.Values() {
 		sm.sessions.Remove(s.id)
-		s.Lock()
-		s.closeChannels()
-		s.Unlock()
+		s.Close()
 	}
 
 	sm.activeSessions.Unregister()

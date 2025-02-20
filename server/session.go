@@ -17,6 +17,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/url"
 	"sync"
@@ -30,6 +31,7 @@ import (
 // --- Session
 
 type session struct {
+	io.Closer
 	sync.Mutex
 	id             SessionId
 	clientIdentity string
@@ -75,18 +77,15 @@ func startSession(sessionId SessionId, sessionMetadata *proto.SessionMetadata, s
 	return s
 }
 
-func (s *session) closeChannels() {
+func (s *session) Close() {
+	s.Lock()
+	defer s.Unlock()
 	s.cancel()
 	if s.heartbeatCh != nil {
 		close(s.heartbeatCh)
 		s.heartbeatCh = nil
 	}
 	s.log.Debug("Session channels closed")
-}
-
-func (s *session) close() error {
-	s.log.Info("Session closing")
-	return s.delete()
 }
 
 func (s *session) delete() error {
@@ -171,8 +170,7 @@ func (s *session) waitForHeartbeats() {
 		case <-timeoutCh:
 			s.log.Warn("Session expired")
 
-			s.Lock()
-			s.closeChannels()
+			s.Close()
 			err := s.delete()
 
 			if err != nil {
@@ -181,7 +179,6 @@ func (s *session) waitForHeartbeats() {
 					slog.Any("error", err),
 				)
 			}
-			s.Unlock()
 
 			s.sm.Lock()
 			s.sm.sessions.Remove(s.id)
