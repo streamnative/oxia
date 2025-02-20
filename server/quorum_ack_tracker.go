@@ -17,12 +17,12 @@ package server
 import (
 	"context"
 	"errors"
+	"github.com/streamnative/oxia/common/callback"
 	"io"
 	"sync"
 	"sync/atomic"
 
 	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/util"
 )
 
@@ -44,13 +44,40 @@ type QuorumAckTracker interface {
 	CommitOffset() int64
 
 	// WaitForCommitOffset
-	// Waits for the specific entry id to be fully committed.
-	// After that, invokes the function f
-	WaitForCommitOffset(ctx context.Context, offset int64, f func() (*proto.WriteResponse, error)) (*proto.WriteResponse, error)
+	// Waits for the specific entry, identified by its offset, to be fully committed.
+	// Once the commit is confirmed, the function will return without error.
+	//
+	// Parameters:
+	// - ctx: The context used for managing cancellation and deadlines for the operation.
+	// - offset: The unique identifier (offset) of the entry to wait for.
+	//
+	// Returns:
+	// - error: Returns an error if the operation is unsuccessful, otherwise nil.
+	//
+	// Note:
+	// This method blocks until the commit is confirmed.
 
-	WaitForCommitOffsetAsync(offset int64, f func() (*proto.WriteResponse, error), callback func(*proto.WriteResponse, error))
+	WaitForCommitOffset(ctx context.Context, offset int64) error
 
-	// NextOffset returns the offset for the next entry to write
+	// WaitForCommitOffsetAsync
+	// Asynchronously waits for the specific entry, identified by its offset, to be fully committed.
+	// Once the commit is confirmed, the provided callback function (cb) is invoked.
+	//
+	// Parameters:
+	// - ctx: The context used for managing cancellation and deadlines for the operation.
+	// - offset: The unique identifier (offset) of the entry to wait for.
+	// - cb: The callback function to invoke after the commit is confirmed. The callback
+	//       will receive the result or error from the operation.
+	//
+	// Returns:
+	// - This method does not return anything immediately. The callback will handle
+	//   the result or error asynchronously.
+	//
+	// Note:
+	// This method returns immediately and does not block the caller, allowing other
+	// operations to continue while waiting for the commit.
+	WaitForCommitOffsetAsync(ctx context.Context, offset int64, cb callback.Callback[any]) // NextOffset returns the offset for the next entry to write
+
 	// Note this can go ahead of the head-offset as there can be multiple operations in flight.
 	NextOffset() int64
 
@@ -97,7 +124,7 @@ type cursorAcker struct {
 
 type waitingRequest struct {
 	minOffset int64
-	callback  func()
+	callback  callback.Callback[any]
 }
 
 func NewQuorumAckTracker(replicationFactor uint32, headOffset int64, commitOffset int64) QuorumAckTracker {
@@ -166,59 +193,37 @@ func (q *quorumAckTracker) WaitForHeadOffset(ctx context.Context, offset int64) 
 	return nil
 }
 
-func (q *quorumAckTracker) WaitForCommitOffset(ctx context.Context, offset int64, f func() (*proto.WriteResponse, error)) (*proto.WriteResponse, error) {
-	ch := make(chan struct {
-		*proto.WriteResponse
-		error
-	}, 1)
-	q.WaitForCommitOffsetAsync(offset, f, func(response *proto.WriteResponse, err error) {
-		ch <- struct {
-			*proto.WriteResponse
-			error
-		}{response, err}
-	})
+func (q *quorumAckTracker) WaitForCommitOffset(ctx context.Context, offset int64) error {
+	ch := make(chan error, 1)
+	q.WaitForCommitOffsetAsync(ctx, offset, callback.NewOnce(
+		func(_ any) { ch <- nil },
+		func(err error) { ch <- err },
+	))
 
 	select {
-	case s := <-ch:
-		return s.WriteResponse, s.error
+	case err := <-ch:
+		return err
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return ctx.Err()
 	}
 }
 
-func (q *quorumAckTracker) WaitForCommitOffsetAsync(offset int64, f func() (*proto.WriteResponse, error),
-	callback func(*proto.WriteResponse, error)) {
+func (q *quorumAckTracker) WaitForCommitOffsetAsync(_ context.Context, offset int64, cb callback.Callback[any]) {
 	q.Lock()
 
 	if q.closed {
 		q.Unlock()
-		callback(nil, common.ErrorAlreadyClosed)
+		cb.CompleteError(common.ErrorAlreadyClosed)
 		return
 	}
 
 	if q.requiredAcks == 0 || q.commitOffset.Load() >= offset {
 		q.Unlock()
-
-		var res *proto.WriteResponse
-		var err error
-		if f != nil {
-			res, err = f()
-		}
-
-		callback(res, err)
+		cb.Complete(nil)
 		return
 	}
 
-	q.waitingRequests = append(q.waitingRequests, waitingRequest{offset, func() {
-		var res *proto.WriteResponse
-		var err error
-		if f != nil {
-			res, err = f()
-		}
-
-		callback(res, err)
-	}})
-
+	q.waitingRequests = append(q.waitingRequests, waitingRequest{offset, cb})
 	q.Unlock()
 }
 
@@ -231,16 +236,19 @@ func (q *quorumAckTracker) notifyCommitOffsetAdvanced(commitOffset int64) {
 		}
 
 		q.waitingRequests = q.waitingRequests[1:]
-		r.callback()
+		r.callback.Complete(nil)
 	}
 }
 
 func (q *quorumAckTracker) Close() error {
 	q.Lock()
-	defer q.Unlock()
-
 	q.closed = true
 	q.waitForHeadOffset.Broadcast()
+	q.Unlock()
+	// unblock waiting request
+	for _, r := range q.waitingRequests {
+		r.callback.CompleteError(common.ErrorAlreadyClosed)
+	}
 	return nil
 }
 

@@ -40,7 +40,7 @@ var (
 	ErrorInvalidTerm             = status.Error(CodeInvalidTerm, "oxia: invalid term")
 	ErrorInvalidStatus           = status.Error(CodeInvalidStatus, "oxia: invalid status")
 	ErrorLeaderAlreadyConnected  = status.Error(CodeLeaderAlreadyConnected, "oxia: leader is already connected")
-	ErrorAlreadyClosed           = status.Error(CodeAlreadyClosed, "oxia: node is shutting down")
+	ErrorAlreadyClosed           = status.Error(CodeAlreadyClosed, "oxia: resource is already closed")
 	ErrorNodeIsNotLeader         = status.Error(CodeNodeIsNotLeader, "oxia: node is not leader for shard")
 	ErrorNodeIsNotFollower       = status.Error(CodeNodeIsNotFollower, "oxia: node is not follower for shard")
 	ErrorInvalidSession          = status.Error(CodeInvalidSession, "oxia: session not found")
