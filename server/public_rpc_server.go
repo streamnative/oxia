@@ -394,11 +394,15 @@ func (s *publicRpcServer) CloseSession(ctx context.Context, req *proto.CloseSess
 	}
 	res, err := lc.CloseSession(req)
 	if err != nil {
-		s.log.Warn(
-			"Failed to close session",
-			slog.Any("error", err),
-		)
-		return nil, err
+		if status.Code(err) != common.CodeSessionNotFound {
+			s.log.Warn(
+				"Failed to close session",
+				slog.Any("error", err),
+			)
+			return nil, err
+		}
+
+		s.log.Warn("Session not found, it should already closed")
 	}
 	return res, nil
 }

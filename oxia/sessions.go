@@ -194,7 +194,7 @@ func (cs *clientSession) createSession() error {
 			backOff := common.NewBackOff(cs.sessions.ctx)
 			err := backoff.RetryNotify(func() error {
 				err := cs.keepAlive()
-				if status.Code(err) == common.CodeInvalidSession {
+				if status.Code(err) == common.CodeSessionNotFound {
 					cs.log.Error(
 						"Session is no longer valid",
 						slog.Any("error", err),
