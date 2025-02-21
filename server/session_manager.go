@@ -17,18 +17,17 @@ package server
 import (
 	"context"
 	"fmt"
-	"github.com/streamnative/oxia/common/collection"
 	"io"
 	"log/slog"
 	"net/url"
 	"sync"
 	"time"
 
+	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 
-	"github.com/pkg/errors"
-
 	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/collection"
 	"github.com/streamnative/oxia/common/metrics"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/kv"
@@ -177,7 +176,7 @@ func (sm *sessionManager) getSession(sessionId int64) (*session, error) {
 			"Session not found",
 			slog.Int64("session-id", sessionId),
 		)
-		return nil, common.ErrorInvalidSession
+		return nil, common.ErrorSessionNotFound
 	}
 	return s, nil
 }
