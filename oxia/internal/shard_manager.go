@@ -107,6 +107,7 @@ func (s *shardManagerImpl) Get(key string) int64 {
 
 	for _, shard := range s.shards {
 		if predicate(shard) {
+			slog.Info("Got shard", slog.Any("key", key), slog.Any("shard", shard))
 			return shard.Id
 		}
 	}

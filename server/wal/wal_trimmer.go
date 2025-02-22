@@ -117,26 +117,20 @@ func (t *trimmer) run() {
 }
 
 func (t *trimmer) doTrim() error {
-	t.log.Debug(
-		"Starting wal trimming",
-		slog.Int64("first-offset", t.wal.FirstOffset()),
-		slog.Int64("last-offset", t.wal.LastOffset()),
-	)
-
 	if t.wal.LastOffset() == InvalidOffset {
 		return nil
 	}
-
 	cutoffTime := t.clock.Now().Add(-t.retention)
-
 	// Check if first entry has expired
 	tsFirst, err := t.readAtOffset(t.wal.FirstOffset())
 	if err != nil {
 		return err
 	}
 
-	t.log.Debug(
+	t.log.Info(
 		"Starting wal trimming",
+		slog.Int64("first-offset", t.wal.FirstOffset()),
+		slog.Int64("last-offset", t.wal.LastOffset()),
 		slog.Time("timestamp-first-entry", tsFirst),
 		slog.Time("cutoff-time", cutoffTime),
 	)
@@ -162,7 +156,7 @@ func (t *trimmer) doTrim() error {
 		return errors.Wrap(err, "failed to trim wal")
 	}
 
-	t.log.Debug(
+	t.log.Info(
 		"Successfully trimmed the wal",
 		slog.Int64("trimmed-offset", trimOffset),
 		slog.Int64("first-offset", t.wal.FirstOffset()),

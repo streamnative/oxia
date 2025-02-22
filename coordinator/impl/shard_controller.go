@@ -340,7 +340,10 @@ func (s *shardController) electLeader() error {
 		s.log.Info(
 			"Successfully moved ensemble to a new term",
 			slog.Int64("term", s.shardMetadata.Term),
-			slog.Any("new-leader", newLeader),
+			slog.Any("new-leader", struct {
+				ServerAddress model.ServerAddress `json:"server-address"`
+				EntryId       *proto.EntryId      `json:"entry-id"`
+			}{ServerAddress: newLeader, EntryId: fr[newLeader]}),
 			slog.Any("followers", f),
 		)
 	}
