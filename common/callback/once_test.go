@@ -28,11 +28,12 @@
 package callback
 
 import (
-	"github.com/pkg/errors"
-	"github.com/stretchr/testify/assert"
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"github.com/pkg/errors"
+	"github.com/stretchr/testify/assert"
 )
 
 func Test_Once_Complete_Concurrent(t *testing.T) {

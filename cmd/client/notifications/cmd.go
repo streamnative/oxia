@@ -17,11 +17,10 @@ package notifications
 import (
 	"log/slog"
 
-	"github.com/streamnative/oxia/oxia"
-
 	"github.com/spf13/cobra"
 
 	"github.com/streamnative/oxia/cmd/client/common"
+	"github.com/streamnative/oxia/oxia"
 )
 
 var Cmd = &cobra.Command{

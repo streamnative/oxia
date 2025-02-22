@@ -17,12 +17,13 @@ package oxia
 import (
 	"context"
 	"fmt"
-	"github.com/streamnative/oxia/server"
 	"log/slog"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/server"
 )
 
 type neverCompleteAsyncClient struct {

@@ -23,13 +23,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/streamnative/oxia/server/wal/codec"
-
 	"github.com/edsrzf/mmap-go"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 
 	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/server/wal/codec"
 )
 
 func segmentPath(basePath string, firstOffset int64) string {
@@ -329,7 +328,7 @@ func (r *readOnlySegmentsGroup) PollHighestSegment() (common.RefCount[ReadOnlySe
 	defer r.Unlock()
 
 	if r.allSegments.Empty() {
-		return nil, nil // nolint: nilnil
+		return nil, nil //nolint:nilnil
 	}
 
 	offset, _ := r.allSegments.Max()

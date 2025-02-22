@@ -16,12 +16,12 @@ package codec
 
 import (
 	"encoding/binary"
-	"go.uber.org/multierr"
 	"io"
 	"log/slog"
 	"os"
 
 	"github.com/pkg/errors"
+	"go.uber.org/multierr"
 
 	"github.com/streamnative/oxia/server/util/crc"
 )
@@ -40,7 +40,7 @@ import (
 // | CRC(4Bytes)  | Index(4B) | Index(4B) | ... |
 // +--------------+-----------+-----------+-----+
 // CRC: 	 		32bit hash computed over the payload using CRC.
-// Index:    		The file offset index
+// Index:    		The file offset index.
 var _ Codec = &V2{}
 
 const v2PayloadSizeLen uint32 = 4
@@ -217,8 +217,8 @@ func (v *V2) RecoverIndex(buf []byte, startFileOffset uint32, baseEntryOffset in
 			// data corruption
 			if errors.Is(err, ErrOffsetOutOfBounds) || errors.Is(err, ErrDataCorrupted) {
 				if commitOffset != nil && currentEntryOffset > *commitOffset {
-					// uncommited data corruption, simply discard it
-					slog.Warn("discard the corrupted uncommited data.",
+					// uncommitted data corruption, simply discard it
+					slog.Warn("discard the corrupted uncommitted data.",
 						slog.Int64("entryId", currentEntryOffset), slog.Any("error", err))
 					break
 				}

@@ -16,7 +16,6 @@ package kv
 
 import (
 	"fmt"
-	"golang.org/x/net/context"
 	"io"
 	"log/slog"
 	"os"
@@ -24,16 +23,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cockroachdb/pebble/bloom"
-
-	"github.com/streamnative/oxia/common/compare"
-
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
+	"golang.org/x/net/context"
 
 	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/compare"
 	"github.com/streamnative/oxia/common/metrics"
 )
 

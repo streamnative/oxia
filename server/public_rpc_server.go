@@ -20,18 +20,16 @@ import (
 	"io"
 	"log/slog"
 
-	"google.golang.org/grpc/metadata"
-
-	"github.com/streamnative/oxia/server/auth"
-
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protowire"
 
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/container"
 	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/auth"
 )
 
 const (

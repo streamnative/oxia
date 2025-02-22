@@ -17,22 +17,20 @@ package container
 import (
 	"context"
 	"crypto/tls"
-	"google.golang.org/grpc/keepalive"
 	"io"
 	"log/slog"
 	"net"
 	"os"
 	"time"
 
-	"github.com/streamnative/oxia/server/auth"
-
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
-
 	grpcprometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 
 	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/server/auth"
 )
 
 const (

@@ -16,12 +16,12 @@ package server
 
 import (
 	"context"
-	"github.com/streamnative/oxia/common"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/server/wal"
 )
 

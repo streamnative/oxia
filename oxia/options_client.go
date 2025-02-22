@@ -18,8 +18,6 @@ import (
 	"crypto/tls"
 	"time"
 
-	"github.com/streamnative/oxia/oxia/auth"
-
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel"
@@ -28,6 +26,7 @@ import (
 	"go.uber.org/multierr"
 
 	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/oxia/auth"
 )
 
 const (

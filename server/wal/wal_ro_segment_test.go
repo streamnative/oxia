@@ -16,13 +16,13 @@ package wal
 
 import (
 	"fmt"
-	"github.com/google/uuid"
 	"os"
 	"testing"
 
-	"github.com/streamnative/oxia/server/wal/codec"
-
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/server/wal/codec"
 )
 
 func TestReadOnlySegment(t *testing.T) {

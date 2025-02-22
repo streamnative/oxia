@@ -25,7 +25,7 @@ test: build
 
 lint:
 	#brew install golangci-lint
-	golangci-lint run
+	golangci-lint run -v
 
 clean:
 	rm -f bin/oxia bin/oxia-maelstrom

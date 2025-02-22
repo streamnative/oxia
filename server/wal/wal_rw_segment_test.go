@@ -16,10 +16,11 @@ package wal
 
 import (
 	"encoding/binary"
-	"github.com/streamnative/oxia/server/wal/codec"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/server/wal/codec"
 )
 
 func TestReadWriteSegment(t *testing.T) {

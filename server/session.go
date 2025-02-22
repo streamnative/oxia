@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/streamnative/oxia/common"
-
 	"github.com/streamnative/oxia/proto"
 )
 

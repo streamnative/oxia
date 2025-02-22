@@ -17,19 +17,18 @@ package server
 import (
 	"context"
 	"fmt"
-	"github.com/streamnative/oxia/common/callback"
 	"io"
 	"log/slog"
 	"sync"
 	"time"
 
-	"google.golang.org/grpc/status"
-
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
+	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
 
 	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/callback"
 	"github.com/streamnative/oxia/common/metrics"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/kv"

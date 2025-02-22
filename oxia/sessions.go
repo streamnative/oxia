@@ -22,9 +22,8 @@ import (
 	"sync"
 	"time"
 
-	"go.uber.org/multierr"
-
 	"github.com/cenkalti/backoff/v4"
+	"go.uber.org/multierr"
 	"google.golang.org/grpc/status"
 
 	"github.com/streamnative/oxia/common"

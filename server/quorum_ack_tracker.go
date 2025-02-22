@@ -17,12 +17,12 @@ package server
 import (
 	"context"
 	"errors"
-	"github.com/streamnative/oxia/common/callback"
 	"io"
 	"sync"
 	"sync/atomic"
 
 	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/callback"
 	"github.com/streamnative/oxia/server/util"
 )
 

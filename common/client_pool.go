@@ -17,24 +17,22 @@ package common
 import (
 	"context"
 	"crypto/tls"
-	"google.golang.org/grpc/keepalive"
 	"io"
 	"log/slog"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/streamnative/oxia/oxia/auth"
-
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
-
 	grpcprometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/peer"
 
+	"github.com/streamnative/oxia/oxia/auth"
 	"github.com/streamnative/oxia/proto"
 )
 
