@@ -20,11 +20,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/streamnative/oxia/server/wal/codec"
-
 	"github.com/edsrzf/mmap-go"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
+
+	"github.com/streamnative/oxia/server/wal/codec"
 )
 
 type ReadWriteSegment interface {

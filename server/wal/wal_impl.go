@@ -23,17 +23,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	"golang.org/x/exp/slices"
-
-	"github.com/streamnative/oxia/server/wal/codec"
-
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
+	"golang.org/x/exp/slices"
 	pb "google.golang.org/protobuf/proto"
 
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/metrics"
 	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/wal/codec"
 )
 
 type walFactory struct {

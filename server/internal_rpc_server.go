@@ -21,8 +21,6 @@ import (
 	"io"
 	"log/slog"
 
-	"github.com/streamnative/oxia/server/auth"
-
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -34,6 +32,7 @@ import (
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/container"
 	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/auth"
 )
 
 type internalRpcServer struct {

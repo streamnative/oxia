@@ -24,10 +24,9 @@ import (
 	"go.uber.org/multierr"
 	"golang.org/x/exp/slices"
 
-	"github.com/streamnative/oxia/common/compare"
-
 	"github.com/streamnative/oxia/common"
 	commonbatch "github.com/streamnative/oxia/common/batch"
+	"github.com/streamnative/oxia/common/compare"
 	"github.com/streamnative/oxia/oxia/internal"
 	"github.com/streamnative/oxia/oxia/internal/batch"
 	"github.com/streamnative/oxia/oxia/internal/metrics"

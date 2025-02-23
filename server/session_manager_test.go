@@ -21,14 +21,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/streamnative/oxia/server/wal"
-
 	"github.com/stretchr/testify/assert"
 	pb "google.golang.org/protobuf/proto"
 
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/kv"
+	"github.com/streamnative/oxia/server/wal"
 )
 
 func TestSessionKey(t *testing.T) {

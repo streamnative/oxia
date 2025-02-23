@@ -19,7 +19,6 @@ import (
 	"reflect"
 
 	"github.com/mitchellh/mapstructure"
-
 	"github.com/pkg/errors"
 )
 

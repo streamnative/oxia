@@ -19,14 +19,13 @@ import (
 	"log/slog"
 	"path/filepath"
 
-	"github.com/streamnative/oxia/server/auth"
-
 	"go.uber.org/multierr"
 
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/container"
 	"github.com/streamnative/oxia/common/metrics"
 	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/auth"
 	"github.com/streamnative/oxia/server/kv"
 	"github.com/streamnative/oxia/server/wal"
 )

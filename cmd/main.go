@@ -19,8 +19,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/streamnative/oxia/cmd/wal"
-
 	"github.com/spf13/cobra"
 	"go.uber.org/automaxprocs/maxprocs"
 
@@ -31,6 +29,7 @@ import (
 	"github.com/streamnative/oxia/cmd/perf"
 	"github.com/streamnative/oxia/cmd/server"
 	"github.com/streamnative/oxia/cmd/standalone"
+	"github.com/streamnative/oxia/cmd/wal"
 	"github.com/streamnative/oxia/common"
 )
 

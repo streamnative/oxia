@@ -23,10 +23,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	pb "google.golang.org/protobuf/proto"
-
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
+	pb "google.golang.org/protobuf/proto"
 
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/metrics"

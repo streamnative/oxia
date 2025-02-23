@@ -16,11 +16,11 @@ package kv
 
 import (
 	"fmt"
-	"github.com/google/uuid"
 	"os"
 	"path"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	pb "google.golang.org/protobuf/proto"
 

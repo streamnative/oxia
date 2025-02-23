@@ -18,8 +18,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/streamnative/oxia/server/auth"
-
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -28,6 +26,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/streamnative/oxia/common/container"
+	"github.com/streamnative/oxia/server/auth"
 )
 
 func TestHealthCmd(t *testing.T) {

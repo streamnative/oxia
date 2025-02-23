@@ -19,13 +19,12 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/streamnative/oxia/server/auth"
-
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/health"
 
 	"github.com/streamnative/oxia/common/container"
 	"github.com/streamnative/oxia/common/metrics"
+	"github.com/streamnative/oxia/server/auth"
 	"github.com/streamnative/oxia/server/kv"
 	"github.com/streamnative/oxia/server/wal"
 )

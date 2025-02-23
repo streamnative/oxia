@@ -17,11 +17,11 @@ package codec
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/google/uuid"
 	"os"
 	"path"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/streamnative/oxia/server/util/crc"

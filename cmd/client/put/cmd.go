@@ -22,9 +22,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/streamnative/oxia/oxia"
-
 	"github.com/streamnative/oxia/cmd/client/common"
+	"github.com/streamnative/oxia/oxia"
 )
 
 var (

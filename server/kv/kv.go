@@ -17,9 +17,9 @@ package kv
 import (
 	"io"
 
-	"github.com/streamnative/oxia/proto"
-
 	"github.com/pkg/errors"
+
+	"github.com/streamnative/oxia/proto"
 )
 
 var (

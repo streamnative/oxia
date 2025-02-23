@@ -23,8 +23,6 @@ import (
 	"os"
 	"sync"
 
-	"github.com/streamnative/oxia/server/auth"
-
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
@@ -32,6 +30,7 @@ import (
 
 	"github.com/streamnative/oxia/common/container"
 	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/auth"
 )
 
 const (
