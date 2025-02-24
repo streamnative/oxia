@@ -63,6 +63,12 @@ jobs:
         with:
           version: v1.61.0
           args: --timeout=10m -v
+      - name: Check git status if clean
+        uses: CatChen/check-git-status-action@v1
+        with:
+          fail-if-not-clean: true
+          push-if-not-clean: false
+          request-changes-if-not-clean: false
 
       - name: Test
         run: make test
