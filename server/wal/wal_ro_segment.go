@@ -312,7 +312,7 @@ func (r *readOnlySegmentsGroup) TrimSegments(offset int64) error {
 			err = multierr.Append(err, segment.Get().Delete())
 			r.openSegments.Remove(s)
 		} else {
-			if segment, err2 := newReadOnlySegment(r.basePath, s); err != nil {
+			if segment, err2 := newReadOnlySegment(r.basePath, s); err2 != nil {
 				err = multierr.Append(err, err2)
 			} else {
 				err = multierr.Append(err, segment.Delete())

@@ -100,3 +100,17 @@ func TestRO_auto_recover_broken_index(t *testing.T) {
 
 	assert.NoError(t, ro.Close())
 }
+
+func TestReadOnlySegmentsGroupTrimSegments(t *testing.T) {
+	basePath := t.TempDir()
+	t.Run("when newReadOnlySegment failed", func(t *testing.T) {
+		readOnlySegments, err := newReadOnlySegmentsGroup(basePath)
+		assert.NoError(t, err)
+
+		readOnlySegments.AddedNewSegment(0)
+		readOnlySegments.AddedNewSegment(10)
+		readOnlySegments.AddedNewSegment(20)
+		err = readOnlySegments.TrimSegments(11)
+		assert.Error(t, err)
+	})
+}
