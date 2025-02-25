@@ -87,9 +87,7 @@ func ConfigureLogger() {
 	if err != nil {
 		panic(err)
 	}
-	if !LogJSON {
-		zerologLogger = log.Output(file)
-	}
+	zerologLogger = log.Output(file)
 
 	slogLogger := slog.New(
 		slogzerolog.Option{
