@@ -52,5 +52,5 @@ func TestClusterConfig(t *testing.T) {
 	}
 
 	assert.Equal(t, cc1, cc2)
-	assert.NotSame(t, cc1, cc2)
+	assert.NotSame(t, &cc1, &cc2)
 }

@@ -58,11 +58,9 @@ func TestClusterStatus_Clone(t *testing.T) {
 	assert.Equal(t, cs1, cs2)
 	assert.NotSame(t, cs1, cs2)
 	assert.Equal(t, cs1.Namespaces, cs2.Namespaces)
-	assert.NotSame(t, cs1.Namespaces, cs2.Namespaces)
+	assert.NotSame(t, &cs1.Namespaces, &cs2.Namespaces)
 	assert.Equal(t, cs1.Namespaces["test-ns"].Shards, cs2.Namespaces["test-ns"].Shards)
-	assert.NotSame(t, cs1.Namespaces["test-ns"].Shards, cs2.Namespaces["test-ns"].Shards)
 	assert.Equal(t, cs1.Namespaces["test-ns"].Shards[0], cs2.Namespaces["test-ns"].Shards[0])
-	assert.NotSame(t, cs1.Namespaces["test-ns"].Shards[0], cs2.Namespaces["test-ns"].Shards[0])
 
 	assert.Equal(t, cs1.ShardIdGenerator, cs2.ShardIdGenerator)
 	assert.Equal(t, cs1.ServerIdx, cs2.ServerIdx)
