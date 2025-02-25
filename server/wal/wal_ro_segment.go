@@ -313,7 +313,12 @@ func (r *readOnlySegmentsGroup) TrimSegments(offset int64) error {
 			r.openSegments.Remove(s)
 		} else {
 			if segment, err2 := newReadOnlySegment(r.basePath, s); err2 != nil {
-				err = multierr.Append(err, err2)
+				// When the error is NotExists, it means the segment was deleted,
+				// so we can ignore it.
+				// TODO: There is a lot of errors when newReadOnlySegment, we should avoid all of it.
+				if !errors.Is(err2, os.ErrNotExist) {
+					err = multierr.Append(err, err2)
+				}
 			} else {
 				err = multierr.Append(err, segment.Delete())
 			}
