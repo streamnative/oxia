@@ -437,25 +437,26 @@ func (lc *leaderController) addFollower(follower string, followerHeadEntryId *pr
 	return nil
 }
 
-func (lc *leaderController) applyAllEntriesIntoDBLoop(r wal.Reader) error {
+func (lc *leaderController) applyAllEntriesIntoDBLoop(r wal.Reader) (int64, error) {
+	appliedOffset := wal.InvalidOffset
 	for r.HasNext() {
 		entry, err := r.ReadNext()
 		if err != nil {
-			return err
+			return wal.InvalidOffset, err
 		}
 
 		logEntryValue := &proto.LogEntryValue{}
 		if err = pb.Unmarshal(entry.Value, logEntryValue); err != nil {
-			return err
+			return entry.Offset, err
 		}
 		for _, writeRequest := range logEntryValue.GetRequests().Writes {
 			if _, err = lc.db.ProcessWrite(writeRequest, entry.Offset, entry.Timestamp, WrapperUpdateOperationCallback); err != nil {
-				return err
+				return entry.Offset, err
 			}
 		}
+		appliedOffset = entry.Offset
 	}
-
-	return nil
+	return appliedOffset, nil
 }
 
 func (lc *leaderController) applyAllEntriesIntoDB() error {
@@ -481,7 +482,8 @@ func (lc *leaderController) applyAllEntriesIntoDB() error {
 		return err
 	}
 
-	if err = lc.applyAllEntriesIntoDBLoop(r); err != nil {
+	lastAppliedOffset, err := lc.applyAllEntriesIntoDBLoop(r)
+	if err != nil {
 		return errors.Wrap(err, "failed to applies wal entries to db")
 	}
 
@@ -493,6 +495,13 @@ func (lc *leaderController) applyAllEntriesIntoDB() error {
 		)
 		return err
 	}
+
+	lc.log.Info(
+		"Applied all pending entries to database",
+		slog.Int64("last-applied-offset", lastAppliedOffset),
+		slog.Int64("commit-offset", dbCommitOffset),
+		slog.Int64("head-offset", lc.quorumAckTracker.HeadOffset()),
+	)
 
 	return nil
 }
