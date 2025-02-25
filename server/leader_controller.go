@@ -321,7 +321,6 @@ func (lc *leaderController) BecomeLeader(ctx context.Context, req *proto.BecomeL
 		return nil, common.ErrorInvalidTerm
 	}
 
-	lc.status = proto.ServingStatus_LEADER
 	lc.replicationFactor = req.GetReplicationFactor()
 	lc.followers = make(map[string]FollowerCursor)
 
@@ -362,6 +361,8 @@ func (lc *leaderController) BecomeLeader(ctx context.Context, req *proto.BecomeL
 		slog.Int64("term", lc.term),
 		slog.Int64("head-offset", lc.leaderElectionHeadEntryId.Offset),
 	)
+
+	lc.status = proto.ServingStatus_LEADER
 	return &proto.BecomeLeaderResponse{}, nil
 }
 
