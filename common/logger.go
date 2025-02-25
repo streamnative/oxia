@@ -76,11 +76,19 @@ func ConfigureLogger() {
 		Stack().
 		Logger()
 
+	logDir := "/data/logs"
+	if _, err := os.Stat(logDir); os.IsNotExist(err) {
+		if err := os.Mkdir(logDir, os.ModePerm); err != nil {
+			panic(err)
+		}
+	}
+	fileName := fmt.Sprintf("/data/logs/app.log")
+	file, err := os.OpenFile(fileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		panic(err)
+	}
 	if !LogJSON {
-		zerologLogger = log.Output(zerolog.ConsoleWriter{
-			Out:        os.Stdout,
-			TimeFormat: time.StampMicro,
-		})
+		zerologLogger = log.Output(file)
 	}
 
 	slogLogger := slog.New(
