@@ -78,7 +78,7 @@ func ConfigureLogger() {
 
 	logDir := "/data/logs"
 	if _, err := os.Stat(logDir); os.IsNotExist(err) {
-		if err := os.Mkdir(logDir, os.ModePerm); err != nil {
+		if err := os.MkdirAll(logDir, os.ModePerm); err != nil {
 			panic(err)
 		}
 	}
