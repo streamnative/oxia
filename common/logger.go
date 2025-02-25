@@ -15,7 +15,6 @@
 package common
 
 import (
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -26,8 +25,6 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/rs/zerolog/pkgerrors"
 	slogzerolog "github.com/samber/slog-zerolog/v2"
-	"google.golang.org/protobuf/encoding/protojson"
-	pb "google.golang.org/protobuf/proto"
 )
 
 const DefaultLogLevel = slog.LevelInfo
@@ -59,16 +56,6 @@ func ConfigureLogger() {
 	zerolog.TimeFieldFormat = time.RFC3339Nano
 	//nolint
 	zerolog.ErrorStackMarshaler = pkgerrors.MarshalStack
-
-	protoMarshal := protojson.MarshalOptions{
-		EmitUnpopulated: true,
-	}
-	zerolog.InterfaceMarshalFunc = func(i any) ([]byte, error) {
-		if m, ok := i.(pb.Message); ok {
-			return protoMarshal.Marshal(m)
-		}
-		return json.Marshal(i)
-	}
 
 	zerologLogger := zerolog.New(os.Stdout).
 		With().
