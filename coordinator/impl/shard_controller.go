@@ -92,6 +92,7 @@ type shardController struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
+	wg     *sync.WaitGroup
 
 	currentElectionCtx    context.Context
 	currentElectionCancel context.CancelFunc
@@ -124,6 +125,7 @@ func NewShardController(namespace string, shard int64, namespaceConfig *model.Na
 			slog.String("namespace", namespace),
 			slog.Int64("shard", shard),
 		),
+		wg: &sync.WaitGroup{},
 
 		leaderElectionLatency: metrics.NewLatencyHistogram("oxia_coordinator_leader_election_latency",
 			"The time it takes to elect a leader for the shard", labels),
@@ -147,14 +149,18 @@ func NewShardController(namespace string, shard int64, namespaceConfig *model.Na
 		slog.Any("shard-metadata", s.shardMetadata),
 	)
 
-	go common.DoWithLabels(
-		s.ctx,
-		map[string]string{
-			"oxia":      "shard-controller",
-			"namespace": s.namespace,
-			"shard":     fmt.Sprintf("%d", s.shard),
-		}, s.run,
-	)
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		common.DoWithLabels(
+			s.ctx,
+			map[string]string{
+				"oxia":      "shard-controller",
+				"namespace": s.namespace,
+				"shard":     fmt.Sprintf("%d", s.shard),
+			}, s.run,
+		)
+	}()
 
 	return s
 }
@@ -767,7 +773,7 @@ func (s *shardController) deleteShard() error {
 	s.log.Info("Successfully deleted shard from all the nodes")
 	return multierr.Combine(
 		s.coordinator.ShardDeleted(s.namespace, s.shard),
-		s.Close(),
+		s.close(),
 	)
 }
 
@@ -790,6 +796,18 @@ func (s *shardController) Status() model.ShardStatus {
 }
 
 func (s *shardController) Close() error {
+	err := s.close()
+	if err != nil {
+		return err
+	}
+
+	// NOTE: we must wait the run goroutine to exit, otherwise
+	// the controller maybe running after close is returned.
+	s.wg.Wait()
+	return nil
+}
+
+func (s *shardController) close() error {
 	s.cancel()
 	s.termGauge.Unregister()
 	return nil
