@@ -402,6 +402,7 @@ func TestCoordinator_DeleteNamespace(t *testing.T) {
 		Servers:    []model.ServerAddress{sa1, sa2, sa3},
 	}
 
+	slog.Info("Restarting coordinator")
 	coordinator, err = NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return newClusterConfig, nil }, nil, NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 
