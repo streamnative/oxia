@@ -933,6 +933,7 @@ func (lc *leaderController) handleWalSynced(stream proto.OxiaClient_WriteStreamS
 				sendNonBlocking(closeCh, err)
 				return
 			}
+			lc.log.Debug("sending response to the client", slog.Any("response", localResponse))
 			if err = stream.Send(localResponse); err != nil {
 				sendNonBlocking(closeCh, err)
 				return
