@@ -308,5 +308,5 @@ func TestSegmentAppendShouldNotPanic(t *testing.T) {
 	}
 
 	err = rw.Append(51, fmt.Appendf(nil, "entry-%d", 51))
-	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrSegmentFull)
 }
