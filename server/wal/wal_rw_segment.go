@@ -154,6 +154,9 @@ func (ms *readWriteSegment) Append(offset int64, data []byte) error {
 	if len(data) == 0 {
 		return codec.ErrEmptyPayload
 	}
+	if !ms.HasSpace(len(data)) {
+		return ErrSegmentFull
+	}
 	if offset != ms.lastOffset+1 {
 		return ErrInvalidNextOffset
 	}

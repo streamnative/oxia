@@ -284,17 +284,23 @@ func (t *wal) AppendAsync(entry *proto.LogEntry) error {
 		}
 	}
 
-	if !t.currentSegment.HasSpace(len(val)) {
+	if err = t.currentSegment.Append(entry.Offset, val); err != nil {
+		if !errors.Is(err, ErrSegmentFull) {
+			t.writeErrors.Inc()
+			return err
+		}
 		if err = t.rolloverSegment(); err != nil {
 			t.writeErrors.Inc()
 			return errors.Wrap(err, "failed to rollover segment")
 		}
+
+		// After the rollover, try to append again
+		if err = t.currentSegment.Append(entry.Offset, val); err != nil {
+			t.writeErrors.Inc()
+			return err
+		}
 	}
 
-	if err = t.currentSegment.Append(entry.Offset, val); err != nil {
-		t.writeErrors.Inc()
-		return err
-	}
 	t.lastAppendedOffset.Store(entry.Offset)
 	t.firstOffset.CompareAndSwap(InvalidOffset, entry.Offset)
 

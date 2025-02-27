@@ -16,6 +16,7 @@ package wal
 
 import (
 	"encoding/binary"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -295,4 +296,17 @@ func TestReadWriteSegment_BrokenCommittedData_ErrDataCorrupted(t *testing.T) {
 	// recover the rw segment
 	_, err = newReadWriteSegment(dir, 0, 1024, 0, commitOffsetProvider)
 	assert.ErrorIs(t, err, codec.ErrDataCorrupted)
+}
+
+func TestSegmentAppendShouldNotPanic(t *testing.T) {
+	basePath := t.TempDir()
+	rw, err := newReadWriteSegment(basePath, 0, 1024, 0, nil)
+	assert.NoError(t, err)
+	for i := int64(0); i < 51; i++ {
+		err := rw.Append(i, fmt.Appendf(nil, "entry-%d", i))
+		assert.NoError(t, err)
+	}
+
+	err = rw.Append(51, fmt.Appendf(nil, "entry-%d", 51))
+	assert.Error(t, err)
 }

@@ -101,7 +101,10 @@ func TestWalTrimUpToCommitOffset(t *testing.T) {
 				Retention:   2 * time.Millisecond,
 				SegmentSize: 128 * 1024,
 			}
-
+			slog.Info("Starting",
+				slog.String("TestName", t.Name()),
+				slog.String("BaseWalDir", t.TempDir()),
+			)
 			clock := &common.MockedClock{}
 			commitOffsetProvider := &mockedCommitOffsetProvider{}
 			commitOffsetProvider.commitOffset.Store(math.MaxInt64)
@@ -133,6 +136,7 @@ func TestWalTrimUpToCommitOffset(t *testing.T) {
 				slog.Info(
 					"checking...",
 					slog.Int64("first-offset", w.FirstOffset()),
+					slog.String("TestName", t.Name()),
 				)
 				return w.FirstOffset() == 2
 			}, 10*time.Second, 10*time.Millisecond)
@@ -151,6 +155,7 @@ func TestWalTrimUpToCommitOffset(t *testing.T) {
 				slog.Info(
 					"checking...",
 					slog.Int64("first-offset", w.FirstOffset()),
+					slog.String("TestName", t.Name()),
 				)
 				return w.FirstOffset() == 87
 			}, 10*time.Second, 10*time.Millisecond)
