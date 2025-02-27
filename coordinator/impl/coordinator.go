@@ -299,7 +299,6 @@ func (c *coordinator) InitiateLeaderElection(namespace string, shard int64, meta
 	}
 
 	ns.Shards[shard] = metadata
-
 	newMetadataVersion, err := c.MetadataProvider.Store(cs, c.metadataVersion)
 	if err != nil {
 		return err
@@ -320,7 +319,6 @@ func (c *coordinator) ElectedLeader(namespace string, shard int64, metadata mode
 	}
 
 	ns.Shards[shard] = metadata
-
 	newMetadataVersion, err := c.MetadataProvider.Store(cs, c.metadataVersion)
 	if err != nil {
 		return err
