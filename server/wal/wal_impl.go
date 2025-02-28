@@ -222,6 +222,10 @@ func (t *wal) trim(firstOffset int64) error {
 }
 
 func (t *wal) Close() error {
+	if err := t.trimmer.Close(); err != nil {
+		return err
+	}
+
 	t.Lock()
 	defer t.Unlock()
 
@@ -237,7 +241,6 @@ func (t *wal) closeWithoutLock() error {
 		t.activeEntries.Unregister()
 
 		return multierr.Combine(
-			t.trimmer.Close(),
 			t.currentSegment.Close(),
 			t.readOnlySegments.Close(),
 		)
@@ -455,6 +458,12 @@ func (t *wal) Clear() error {
 }
 
 func (t *wal) Delete() error {
+	// NOTE: we must close the trimmer before closing the wal(without the lock), otherwise
+	// when trimmer is doTrim, it accquire the lock and it will block forever
+	if err := t.Close(); err != nil {
+		return err
+	}
+
 	t.Lock()
 	defer t.Unlock()
 

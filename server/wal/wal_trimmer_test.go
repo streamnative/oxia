@@ -133,16 +133,16 @@ func TestWalTrimUpToCommitOffset(t *testing.T) {
 			commitOffsetProvider.commitOffset.Store(2)
 
 			assert.Eventually(t, func() bool {
+				offset := w.FirstOffset()
 				slog.Info(
 					"checking...",
-					slog.Int64("first-offset", w.FirstOffset()),
+					slog.Int64("first-offset", offset),
 					slog.String("TestName", t.Name()),
 				)
-				return w.FirstOffset() == 2
+				return offset == 2
 			}, 10*time.Second, 10*time.Millisecond)
 
 			clock.Set(89)
-
 			time.Sleep(100 * time.Microsecond)
 
 			// No trimming should happen yet, because of commit offset
@@ -152,14 +152,16 @@ func TestWalTrimUpToCommitOffset(t *testing.T) {
 			commitOffsetProvider.commitOffset.Store(100)
 
 			assert.Eventually(t, func() bool {
+				offset := w.FirstOffset()
 				slog.Info(
 					"checking...",
-					slog.Int64("first-offset", w.FirstOffset()),
+					slog.Int64("first-offset", offset),
 					slog.String("TestName", t.Name()),
 				)
-				return w.FirstOffset() == 87
+				return offset == 87
 			}, 10*time.Second, 10*time.Millisecond)
 
+			slog.Info("Starting to close wal")
 			assert.NoError(t, w.Close())
 		})
 	}
