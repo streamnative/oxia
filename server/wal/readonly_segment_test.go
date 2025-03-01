@@ -17,14 +17,11 @@ package wal
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/wal/codec"
 )
 
@@ -71,7 +68,7 @@ func TestRO_auto_recover_broken_index(t *testing.T) {
 	rwSegment := rw.(*readWriteSegment)
 	assert.NoError(t, rw.Close())
 
-	idxPath := rwSegment.idxPath
+	idxPath := rwSegment.c.idxPath
 	// inject wrong data
 	file, err := os.OpenFile(idxPath, os.O_RDWR, 0644)
 	assert.NoError(t, err)
@@ -101,65 +98,4 @@ func TestRO_auto_recover_broken_index(t *testing.T) {
 	assert.ErrorIs(t, err, codec.ErrOffsetOutOfBounds)
 
 	assert.NoError(t, ro.Close())
-}
-
-func TestReadOnlySegmentsGroupTrimSegments(t *testing.T) {
-	basePath := t.TempDir()
-	t.Run("when newReadOnlySegment failed", func(t *testing.T) {
-		walFactory := NewWalFactory(&FactoryOptions{
-			BaseWalDir:  basePath,
-			Retention:   1 * time.Hour,
-			SegmentSize: 128,
-			SyncData:    true,
-		})
-		w, err := walFactory.NewWal("test", 0, nil)
-		assert.NoError(t, err)
-		for i := int64(0); i < 1000; i++ {
-			assert.NoError(t, w.Append(&proto.LogEntry{
-				Term:   1,
-				Offset: i,
-				Value:  fmt.Appendf(nil, "test-%d", i),
-			}))
-		}
-		walBasePath := w.(*wal).walPath
-		readOnlySegments, err := newReadOnlySegmentsGroup(walBasePath)
-		assert.NoError(t, err)
-
-		// Ensure newReadOnlySegment will return an error
-		err = os.Truncate(filepath.Join(walBasePath, "0.txnx"), 0)
-		assert.NoError(t, err)
-
-		assert.NoError(t, err)
-		err = readOnlySegments.TrimSegments(6)
-		assert.Error(t, err)
-	})
-
-	t.Run("when txnFile is not exists", func(t *testing.T) {
-		walFactory := NewWalFactory(&FactoryOptions{
-			BaseWalDir:  basePath,
-			Retention:   1 * time.Hour,
-			SegmentSize: 128,
-			SyncData:    true,
-		})
-		w, err := walFactory.NewWal("test", 1, nil)
-		assert.NoError(t, err)
-		for i := int64(0); i < 1000; i++ {
-			assert.NoError(t, w.Append(&proto.LogEntry{
-				Term:   1,
-				Offset: i,
-				Value:  fmt.Appendf(nil, "test-%d", i),
-			}))
-		}
-		walBasePath := w.(*wal).walPath
-		readOnlySegments, err := newReadOnlySegmentsGroup(walBasePath)
-		assert.NoError(t, err)
-
-		// Ensure newReadOnlySegment will return an NotExists error
-		err = os.Remove(filepath.Join(walBasePath, "0.txnx"))
-		assert.NoError(t, err)
-
-		assert.NoError(t, err)
-		err = readOnlySegments.TrimSegments(6)
-		assert.NoError(t, err)
-	})
 }

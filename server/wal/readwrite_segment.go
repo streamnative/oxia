@@ -42,11 +42,8 @@ type ReadWriteSegment interface {
 type readWriteSegment struct {
 	sync.RWMutex
 
-	codec   codec.Codec
-	txnPath string
-	idxPath string
+	c *segmentConfig
 
-	baseOffset    int64
 	lastOffset    int64
 	lastCrc       uint32
 	txnFile       *os.File
@@ -67,32 +64,29 @@ func newReadWriteSegment(basePath string, baseOffset int64, segmentSize uint32, 
 		}
 	}
 
-	_codec, segmentExists, err := codec.GetOrCreate(segmentPath(basePath, baseOffset))
+	c, err := newSegmentConfig(basePath, baseOffset)
 	if err != nil {
 		return nil, err
 	}
 
 	ms := &readWriteSegment{
-		codec:       _codec,
-		txnPath:     segmentPath(basePath, baseOffset) + _codec.GetTxnExtension(),
-		idxPath:     segmentPath(basePath, baseOffset) + _codec.GetIdxExtension(),
-		baseOffset:  baseOffset,
+		c:           c,
 		segmentSize: segmentSize,
 		lastCrc:     lastCrc,
 	}
 
-	if ms.txnFile, err = os.OpenFile(ms.txnPath, os.O_CREATE|os.O_RDWR, 0644); err != nil {
-		return nil, errors.Wrapf(err, "failed to open segment file %s", ms.txnPath)
+	if ms.txnFile, err = os.OpenFile(ms.c.txnPath, os.O_CREATE|os.O_RDWR, 0644); err != nil {
+		return nil, errors.Wrapf(err, "failed to open segment file %s", ms.c.txnPath)
 	}
 
-	if !segmentExists {
+	if !c.segmentExists {
 		if err = initFileWithZeroes(ms.txnFile, segmentSize); err != nil {
 			return nil, err
 		}
 	}
 
 	if ms.txnMappedFile, err = mmap.MapRegion(ms.txnFile, int(segmentSize), mmap.RDWR, 0, 0); err != nil {
-		return nil, errors.Wrapf(err, "failed to map segment file %s", ms.txnPath)
+		return nil, errors.Wrapf(err, "failed to map segment file %s", ms.c.txnPath)
 	}
 
 	var commitOffset *int64
@@ -102,9 +96,9 @@ func newReadWriteSegment(basePath string, baseOffset int64, segmentSize uint32, 
 	} else {
 		commitOffset = nil
 	}
-	if ms.writingIdx, ms.lastCrc, ms.currentFileOffset, ms.lastOffset, err = ms.codec.RecoverIndex(ms.txnMappedFile,
-		ms.currentFileOffset, ms.baseOffset, commitOffset); err != nil {
-		return nil, errors.Wrapf(err, "failed to rebuild index for segment file %s", ms.txnPath)
+	if ms.writingIdx, ms.lastCrc, ms.currentFileOffset, ms.lastOffset, err = ms.c.codec.RecoverIndex(ms.txnMappedFile,
+		ms.currentFileOffset, ms.c.baseOffset, commitOffset); err != nil {
+		return nil, errors.Wrapf(err, "failed to rebuild index for segment file %s", ms.c.txnPath)
 	}
 	return ms, nil
 }
@@ -116,7 +110,7 @@ func (ms *readWriteSegment) LastCrc() uint32 {
 }
 
 func (ms *readWriteSegment) BaseOffset() int64 {
-	return ms.baseOffset
+	return ms.c.baseOffset
 }
 
 func (ms *readWriteSegment) LastOffset() int64 {
@@ -131,10 +125,10 @@ func (ms *readWriteSegment) Read(offset int64) ([]byte, error) {
 	defer ms.Unlock()
 	// todo: we might need validate if the offset less than base offset
 
-	fileReadOffset := fileOffset(ms.writingIdx, ms.baseOffset, offset)
+	fileReadOffset := fileOffset(ms.writingIdx, ms.c.baseOffset, offset)
 	var payload []byte
 	var err error
-	if payload, err = ms.codec.ReadRecordWithValidation(ms.txnMappedFile, fileReadOffset); err != nil {
+	if payload, err = ms.c.codec.ReadRecordWithValidation(ms.txnMappedFile, fileReadOffset); err != nil {
 		if errors.Is(err, codec.ErrDataCorrupted) {
 			return nil, errors.Wrapf(err, "read record failed. entryOffset: %d", offset)
 		}
@@ -144,7 +138,7 @@ func (ms *readWriteSegment) Read(offset int64) ([]byte, error) {
 }
 
 func (ms *readWriteSegment) HasSpace(l int) bool {
-	return ms.currentFileOffset+ms.codec.GetHeaderSize()+uint32(l) <= ms.segmentSize
+	return ms.currentFileOffset+ms.c.codec.GetHeaderSize()+uint32(l) <= ms.segmentSize
 }
 
 func (ms *readWriteSegment) Append(offset int64, data []byte) error {
@@ -163,7 +157,7 @@ func (ms *readWriteSegment) Append(offset int64, data []byte) error {
 
 	fOffset := ms.currentFileOffset
 	var recordSize uint32
-	recordSize, ms.lastCrc = ms.codec.WriteRecord(ms.txnMappedFile, fOffset, ms.lastCrc, data)
+	recordSize, ms.lastCrc = ms.c.codec.WriteRecord(ms.txnMappedFile, fOffset, ms.lastCrc, data)
 	ms.currentFileOffset += recordSize
 	ms.lastOffset = offset
 	ms.writingIdx = binary.BigEndian.AppendUint32(ms.writingIdx, fOffset)
@@ -186,7 +180,7 @@ func (ms *readWriteSegment) Close() error {
 		ms.txnMappedFile.Unmap(),
 		ms.txnFile.Close(),
 		// Write index file
-		ms.codec.WriteIndex(ms.idxPath, ms.writingIdx),
+		ms.c.codec.WriteIndex(ms.c.idxPath, ms.writingIdx),
 	)
 	codec.ReturnIndexBuf(&ms.writingIdx)
 	return err
@@ -195,21 +189,21 @@ func (ms *readWriteSegment) Close() error {
 func (ms *readWriteSegment) Delete() error {
 	return multierr.Combine(
 		ms.Close(),
-		os.Remove(ms.txnPath),
-		os.Remove(ms.idxPath),
+		os.Remove(ms.c.txnPath),
+		os.Remove(ms.c.idxPath),
 	)
 }
 
 func (ms *readWriteSegment) Truncate(lastSafeOffset int64) error {
-	if lastSafeOffset < ms.baseOffset || lastSafeOffset > ms.lastOffset {
+	if lastSafeOffset < ms.c.baseOffset || lastSafeOffset > ms.lastOffset {
 		return codec.ErrOffsetOutOfBounds
 	}
 
 	// Write zeroes in the section to clear
-	fileLastSafeOffset := fileOffset(ms.writingIdx, ms.baseOffset, lastSafeOffset)
+	fileLastSafeOffset := fileOffset(ms.writingIdx, ms.c.baseOffset, lastSafeOffset)
 	var recordSize uint32
 	var err error
-	if recordSize, err = ms.codec.GetRecordSize(ms.txnMappedFile, fileLastSafeOffset); err != nil {
+	if recordSize, err = ms.c.codec.GetRecordSize(ms.txnMappedFile, fileLastSafeOffset); err != nil {
 		return err
 	}
 	fileEndOffset := fileLastSafeOffset + recordSize
@@ -218,7 +212,7 @@ func (ms *readWriteSegment) Truncate(lastSafeOffset int64) error {
 	}
 
 	// Truncate the index
-	ms.writingIdx = ms.writingIdx[:4*(lastSafeOffset-ms.baseOffset+1)]
+	ms.writingIdx = ms.writingIdx[:4*(lastSafeOffset-ms.c.baseOffset+1)]
 	ms.currentFileOffset = fileEndOffset
 	ms.lastOffset = lastSafeOffset
 	return ms.Flush()
