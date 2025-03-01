@@ -102,7 +102,7 @@ func TestReadWriteSegment_HasSpace(t *testing.T) {
 	rw, err := newReadWriteSegment(t.TempDir(), 0, 1024, 0, nil)
 	assert.NoError(t, err)
 	segment := rw.(*readWriteSegment)
-	headerSize := int(segment.codec.GetHeaderSize())
+	headerSize := int(segment.c.codec.GetHeaderSize())
 
 	assert.True(t, rw.HasSpace(10))
 	assert.False(t, rw.HasSpace(1024))
