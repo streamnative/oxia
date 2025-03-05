@@ -237,7 +237,7 @@ func (c *clientImpl) Get(key string, options ...GetOption) <-chan GetResult {
 	if opts.comparisonType == proto.KeyComparisonType_EQUAL || opts.partitionKey != nil {
 		c.doSingleShardGet(key, opts, ch)
 	} else {
-		c.doFloorCeilingGet(key, opts.comparisonType, ch)
+		c.doFloorCeilingGet(key, opts, ch)
 	}
 
 	return ch
@@ -248,6 +248,7 @@ func (c *clientImpl) doSingleShardGet(key string, opts *getOptions, ch chan GetR
 	c.readBatchManager.Get(shardId).Add(model.GetCall{
 		Key:            key,
 		ComparisonType: opts.comparisonType,
+		IncludeValue:   opts.includeValue,
 		Callback: func(response *proto.GetResponse, err error) {
 			ch <- toGetResult(response, key, err)
 			close(ch)
@@ -256,7 +257,7 @@ func (c *clientImpl) doSingleShardGet(key string, opts *getOptions, ch chan GetR
 }
 
 // The keys might get hashed to multiple shards, so we have to check on all shards and then compare the results.
-func (c *clientImpl) doFloorCeilingGet(key string, comparisonType proto.KeyComparisonType, ch chan GetResult) {
+func (c *clientImpl) doFloorCeilingGet(key string, options *getOptions, ch chan GetResult) {
 	m := sync.Mutex{}
 	var results []*proto.GetResponse
 	shards := c.shardManager.GetAll()
@@ -265,7 +266,8 @@ func (c *clientImpl) doFloorCeilingGet(key string, comparisonType proto.KeyCompa
 	for _, shardId := range shards {
 		c.readBatchManager.Get(shardId).Add(model.GetCall{
 			Key:            key,
-			ComparisonType: comparisonType,
+			ComparisonType: options.comparisonType,
+			IncludeValue:   options.includeValue,
 			Callback: func(response *proto.GetResponse, err error) {
 				m.Lock()
 				defer m.Unlock()
@@ -283,7 +285,7 @@ func (c *clientImpl) doFloorCeilingGet(key string, comparisonType proto.KeyCompa
 				counter--
 				if counter == 0 {
 					// We have responses from all the shards
-					processAllGetResponses(key, results, comparisonType, ch)
+					processAllGetResponses(key, results, options.comparisonType, ch)
 				}
 			},
 		})
