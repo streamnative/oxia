@@ -122,8 +122,9 @@ func TestReadBatchComplete(t *testing.T) {
 		}
 
 		batch.Add(model.GetCall{
-			Key:      "/a",
-			Callback: getCallback,
+			Key:          "/a",
+			Callback:     getCallback,
+			IncludeValue: true,
 		})
 		assert.Equal(t, 1, batch.Size())
 

@@ -19,6 +19,7 @@ import "github.com/streamnative/oxia/proto"
 type getOptions struct {
 	baseOptions
 	comparisonType proto.KeyComparisonType
+	includeValue   bool
 }
 
 // GetOption represents an option for the [SyncClient.Get] operation.
@@ -27,7 +28,9 @@ type GetOption interface {
 }
 
 func newGetOptions(opts []GetOption) *getOptions {
-	getOpts := &getOptions{}
+	getOpts := &getOptions{
+		includeValue: true,
+	}
 	for _, opt := range opts {
 		opt.applyGet(getOpts)
 	}
@@ -69,4 +72,19 @@ func ComparisonLower() GetOption {
 // key is strictly > to the supplied key.
 func ComparisonHigher() GetOption {
 	return &getComparisonType{proto.KeyComparisonType_HIGHER}
+}
+
+type includeValue struct {
+	includeValue bool
+}
+
+func (t *includeValue) applyGet(opts *getOptions) {
+	opts.includeValue = t.includeValue
+}
+
+// IncludeValue is a function that creates a GetOption for including or excluding a value.
+func IncludeValue(include bool) GetOption {
+	return &includeValue{
+		includeValue: include,
+	}
 }

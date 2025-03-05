@@ -920,3 +920,43 @@ func TestGetValueWithSessionId(t *testing.T) {
 	assert.NotEqualValues(t, 0, r0.Version.SessionId)
 	assert.EqualValues(t, r1.Version.SessionId, r0.Version.SessionId)
 }
+
+func TestGetWithoutValue(t *testing.T) {
+	standaloneServer, err := server.NewStandalone(server.NewTestConfig(t.TempDir()))
+	assert.NoError(t, err)
+	defer standaloneServer.Close()
+
+	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())
+	client, err := NewAsyncClient(serviceAddress)
+	assert.NoError(t, err)
+	defer client.Close()
+
+	key := "stream"
+
+	var keys []string
+
+	putResult := <-client.Put(key, []byte("0"), PartitionKey(key), SequenceKeysDeltas(1))
+	assert.NotNil(t, putResult.Key)
+	assert.NoError(t, putResult.Err)
+	keys = append(keys, putResult.Key)
+
+	putResult = <-client.Put(key, []byte("1"), PartitionKey(key), SequenceKeysDeltas(1))
+	assert.NotNil(t, putResult.Key)
+	assert.NoError(t, putResult.Err)
+	keys = append(keys, putResult.Key)
+
+	for _, subKey := range keys {
+		result := <-client.Get(subKey, PartitionKey(key), IncludeValue(true))
+		assert.NotNil(t, result.Value)
+		result = <-client.Get(subKey, PartitionKey(key), IncludeValue(false))
+		assert.Nil(t, result.Value)
+	}
+
+	result := <-client.Get(keys[0], PartitionKey(key), IncludeValue(false), ComparisonHigher())
+	assert.Nil(t, result.Value)
+	assert.Equal(t, result.Key, keys[1])
+
+	result = <-client.Get(keys[1], PartitionKey(key), IncludeValue(false), ComparisonLower())
+	assert.Nil(t, result.Value)
+	assert.Equal(t, result.Key, keys[0])
+}
