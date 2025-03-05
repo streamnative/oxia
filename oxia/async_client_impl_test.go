@@ -924,10 +924,12 @@ func TestGetValueWithSessionId(t *testing.T) {
 func TestGetWithoutValue(t *testing.T) {
 	standaloneServer, err := server.NewStandalone(server.NewTestConfig(t.TempDir()))
 	assert.NoError(t, err)
+	defer standaloneServer.Close()
 
 	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())
 	client, err := NewAsyncClient(serviceAddress)
 	assert.NoError(t, err)
+	defer client.Close()
 
 	key := "stream"
 
