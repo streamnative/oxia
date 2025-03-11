@@ -24,18 +24,18 @@ import (
 
 type SwapNodeAction struct {
 	Shard int64
-	From  model.ServerAddress
-	To    model.ServerAddress
+	From  model.Server
+	To    model.Server
 }
 
 type ServerContext struct {
-	Addr   model.ServerAddress
+	Server model.Server
 	Shards common.Set[int64]
 }
 
 // Make sure every server is assigned a similar number of shards
 // Output a list of actions to be taken to rebalance the cluster.
-func rebalanceCluster(servers []model.ServerAddress, currentStatus *model.ClusterStatus) []SwapNodeAction { //nolint:revive
+func rebalanceCluster(servers []model.Server, currentStatus *model.ClusterStatus) []SwapNodeAction { //nolint:revive
 	res := make([]SwapNodeAction, 0)
 
 	serversCount := len(servers)
@@ -48,16 +48,16 @@ outer:
 		for _, r := range rankings {
 			slog.Debug(
 				"",
-				slog.String("server", r.Addr.Internal),
+				slog.Any("server", r.Server),
 				slog.Int("count", r.Shards.Count()),
 			)
 		}
 		if len(deletedServers) > 0 {
 			slog.Debug("Deleted servers: ")
-			for id, context := range deletedServers {
+			for server, context := range deletedServers {
 				slog.Debug(
 					"",
-					slog.String("server", id),
+					slog.String("server", server),
 					slog.Int("count", context.Shards.Count()),
 				)
 			}
@@ -76,8 +76,8 @@ outer:
 				if !eligibleShards.IsEmpty() {
 					a := SwapNodeAction{
 						Shard: eligibleShards.GetSorted()[0],
-						From:  context.Addr,
-						To:    to.Addr,
+						From:  context.Server,
+						To:    to.Server,
 					}
 
 					context.Shards.Remove(a.Shard)
@@ -86,7 +86,7 @@ outer:
 					} else {
 						deletedServers[id] = context
 					}
-					shardsPerServer[a.To.Internal].Shards.Add(a.Shard)
+					shardsPerServer[a.To.GetIdentifier()].Shards.Add(a.Shard)
 
 					slog.Debug(
 						"Transfer from removed node",
@@ -118,12 +118,12 @@ outer:
 
 		a := SwapNodeAction{
 			Shard: eligibleShards.GetSorted()[0],
-			From:  mostLoaded.Addr,
-			To:    leastLoaded.Addr,
+			From:  mostLoaded.Server,
+			To:    leastLoaded.Server,
 		}
 
-		shardsPerServer[a.From.Internal].Shards.Remove(a.Shard)
-		shardsPerServer[a.To.Internal].Shards.Add(a.Shard)
+		shardsPerServer[a.From.GetIdentifier()].Shards.Remove(a.Shard)
+		shardsPerServer[a.To.GetIdentifier()].Shards.Add(a.Shard)
 
 		slog.Debug(
 			"Swapping nodes",
@@ -136,15 +136,15 @@ outer:
 	return res
 }
 
-func getShardsPerServer(servers []model.ServerAddress, currentStatus *model.ClusterStatus) (
+func getShardsPerServer(servers []model.Server, currentStatus *model.ClusterStatus) (
 	existingServers map[string]ServerContext,
 	deletedServers map[string]ServerContext) {
 	existingServers = map[string]ServerContext{}
 	deletedServers = map[string]ServerContext{}
 
 	for _, s := range servers {
-		existingServers[s.Internal] = ServerContext{
-			Addr:   s,
+		existingServers[s.GetIdentifier()] = ServerContext{
+			Server: s,
 			Shards: common.NewSet[int64](),
 		}
 	}
@@ -152,19 +152,19 @@ func getShardsPerServer(servers []model.ServerAddress, currentStatus *model.Clus
 	for _, nss := range currentStatus.Namespaces {
 		for shardId, shard := range nss.Shards {
 			for _, candidate := range shard.Ensemble {
-				if _, ok := existingServers[candidate.Internal]; ok {
-					existingServers[candidate.Internal].Shards.Add(shardId)
+				if _, ok := existingServers[candidate.GetIdentifier()]; ok {
+					existingServers[candidate.GetIdentifier()].Shards.Add(shardId)
 					continue
 				}
 
 				// This server is getting removed
-				if _, ok := deletedServers[candidate.Internal]; !ok {
-					deletedServers[candidate.Internal] = ServerContext{
-						Addr:   candidate,
+				if _, ok := deletedServers[candidate.GetIdentifier()]; !ok {
+					deletedServers[candidate.GetIdentifier()] = ServerContext{
+						Server: candidate,
 						Shards: common.NewSet[int64]()}
 				}
 
-				deletedServers[candidate.Internal].Shards.Add(shardId)
+				deletedServers[candidate.GetIdentifier()].Shards.Add(shardId)
 			}
 		}
 	}
@@ -188,7 +188,7 @@ func getServerRanking(shardsPerServer map[string]ServerContext) []ServerContext 
 		}
 
 		// Ensure predictable sorting
-		return res[i].Addr.Internal < res[j].Addr.Internal
+		return res[i].Server.GetIdentifier() < res[j].Server.GetIdentifier()
 	})
 	return res
 }

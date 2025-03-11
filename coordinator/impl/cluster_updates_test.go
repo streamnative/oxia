@@ -25,12 +25,12 @@ import (
 )
 
 var (
-	s1 = model.ServerAddress{Public: "s1:6648", Internal: "s1:6649"}
-	s2 = model.ServerAddress{Public: "s2:6648", Internal: "s2:6649"}
-	s3 = model.ServerAddress{Public: "s3:6648", Internal: "s3:6649"}
-	s4 = model.ServerAddress{Public: "s4:6648", Internal: "s4:6649"}
-	s5 = model.ServerAddress{Public: "s5:6648", Internal: "s5:6649"}
-	s6 = model.ServerAddress{Public: "s6:6648", Internal: "s6:6649"}
+	s1 = model.Server{Public: "s1:6648", Internal: "s1:6649"}
+	s2 = model.Server{Public: "s2:6648", Internal: "s2:6649"}
+	s3 = model.Server{Public: "s3:6648", Internal: "s3:6649"}
+	s4 = model.Server{Public: "s4:6648", Internal: "s4:6649"}
+	s5 = model.Server{Public: "s5:6648", Internal: "s5:6649"}
+	s6 = model.Server{Public: "s6:6648", Internal: "s6:6649"}
 )
 
 func TestClientUpdates_ClusterInit(t *testing.T) {
@@ -44,7 +44,7 @@ func TestClientUpdates_ClusterInit(t *testing.T) {
 			InitialShardCount: 2,
 			ReplicationFactor: 3,
 		}},
-		Servers: []model.ServerAddress{s1, s2, s3, s4},
+		Servers: []model.Server{s1, s2, s3, s4},
 	}, model.NewClusterStatus())
 
 	assert.Equal(t, &model.ClusterStatus{
@@ -56,7 +56,7 @@ func TestClientUpdates_ClusterInit(t *testing.T) {
 						Status:   model.ShardStatusUnknown,
 						Term:     -1,
 						Leader:   nil,
-						Ensemble: []model.ServerAddress{s1, s2, s3},
+						Ensemble: []model.Server{s1, s2, s3},
 						Int32HashRange: model.Int32HashRange{
 							Min: 0,
 							Max: math.MaxUint32,
@@ -71,7 +71,7 @@ func TestClientUpdates_ClusterInit(t *testing.T) {
 						Status:   model.ShardStatusUnknown,
 						Term:     -1,
 						Leader:   nil,
-						Ensemble: []model.ServerAddress{s4, s1, s2},
+						Ensemble: []model.Server{s4, s1, s2},
 						Int32HashRange: model.Int32HashRange{
 							Min: 0,
 							Max: math.MaxUint32 / 2,
@@ -81,7 +81,7 @@ func TestClientUpdates_ClusterInit(t *testing.T) {
 						Status:   model.ShardStatusUnknown,
 						Term:     -1,
 						Leader:   nil,
-						Ensemble: []model.ServerAddress{s3, s4, s1},
+						Ensemble: []model.Server{s3, s4, s1},
 						Int32HashRange: model.Int32HashRange{
 							Min: math.MaxUint32/2 + 1,
 							Max: math.MaxUint32,
@@ -112,7 +112,7 @@ func TestClientUpdates_NamespaceAdded(t *testing.T) {
 			InitialShardCount: 2,
 			ReplicationFactor: 3,
 		}},
-		Servers: []model.ServerAddress{s1, s2, s3, s4},
+		Servers: []model.Server{s1, s2, s3, s4},
 	}, &model.ClusterStatus{Namespaces: map[string]model.NamespaceStatus{
 		"ns-1": {
 			ReplicationFactor: 3,
@@ -121,7 +121,7 @@ func TestClientUpdates_NamespaceAdded(t *testing.T) {
 					Status:   model.ShardStatusUnknown,
 					Term:     -1,
 					Leader:   nil,
-					Ensemble: []model.ServerAddress{s1, s2, s3},
+					Ensemble: []model.Server{s1, s2, s3},
 					Int32HashRange: model.Int32HashRange{
 						Min: 0,
 						Max: math.MaxUint32,
@@ -141,8 +141,8 @@ func TestClientUpdates_NamespaceAdded(t *testing.T) {
 						Status:       model.ShardStatusUnknown,
 						Term:         -1,
 						Leader:       nil,
-						Ensemble:     []model.ServerAddress{s1, s2, s3},
-						RemovedNodes: []model.ServerAddress{},
+						Ensemble:     []model.Server{s1, s2, s3},
+						RemovedNodes: []model.Server{},
 						Int32HashRange: model.Int32HashRange{
 							Min: 0,
 							Max: math.MaxUint32,
@@ -157,7 +157,7 @@ func TestClientUpdates_NamespaceAdded(t *testing.T) {
 						Status:   model.ShardStatusUnknown,
 						Term:     -1,
 						Leader:   nil,
-						Ensemble: []model.ServerAddress{s4, s1, s2},
+						Ensemble: []model.Server{s4, s1, s2},
 						Int32HashRange: model.Int32HashRange{
 							Min: 0,
 							Max: math.MaxUint32 / 2,
@@ -167,7 +167,7 @@ func TestClientUpdates_NamespaceAdded(t *testing.T) {
 						Status:   model.ShardStatusUnknown,
 						Term:     -1,
 						Leader:   nil,
-						Ensemble: []model.ServerAddress{s3, s4, s1},
+						Ensemble: []model.Server{s3, s4, s1},
 						Int32HashRange: model.Int32HashRange{
 							Min: math.MaxUint32/2 + 1,
 							Max: math.MaxUint32,
@@ -193,7 +193,7 @@ func TestClientUpdates_NamespaceRemoved(t *testing.T) {
 			InitialShardCount: 1,
 			ReplicationFactor: 3,
 		}},
-		Servers: []model.ServerAddress{s1, s2, s3, s4},
+		Servers: []model.Server{s1, s2, s3, s4},
 	}, &model.ClusterStatus{
 		Namespaces: map[string]model.NamespaceStatus{
 			"ns-1": {
@@ -203,7 +203,7 @@ func TestClientUpdates_NamespaceRemoved(t *testing.T) {
 						Status:   model.ShardStatusUnknown,
 						Term:     -1,
 						Leader:   nil,
-						Ensemble: []model.ServerAddress{s1, s2, s3},
+						Ensemble: []model.Server{s1, s2, s3},
 						Int32HashRange: model.Int32HashRange{
 							Min: 0,
 							Max: math.MaxUint32,
@@ -218,7 +218,7 @@ func TestClientUpdates_NamespaceRemoved(t *testing.T) {
 						Status:   model.ShardStatusUnknown,
 						Term:     -1,
 						Leader:   nil,
-						Ensemble: []model.ServerAddress{s4, s1, s2},
+						Ensemble: []model.Server{s4, s1, s2},
 						Int32HashRange: model.Int32HashRange{
 							Min: 0,
 							Max: math.MaxUint32 / 2,
@@ -228,7 +228,7 @@ func TestClientUpdates_NamespaceRemoved(t *testing.T) {
 						Status:   model.ShardStatusUnknown,
 						Term:     -1,
 						Leader:   nil,
-						Ensemble: []model.ServerAddress{s3, s4, s1},
+						Ensemble: []model.Server{s3, s4, s1},
 						Int32HashRange: model.Int32HashRange{
 							Min: math.MaxUint32/2 + 1,
 							Max: math.MaxUint32,
@@ -249,8 +249,8 @@ func TestClientUpdates_NamespaceRemoved(t *testing.T) {
 						Status:       model.ShardStatusUnknown,
 						Term:         -1,
 						Leader:       nil,
-						Ensemble:     []model.ServerAddress{s1, s2, s3},
-						RemovedNodes: []model.ServerAddress{},
+						Ensemble:     []model.Server{s1, s2, s3},
+						RemovedNodes: []model.Server{},
 						Int32HashRange: model.Int32HashRange{
 							Min: 0,
 							Max: math.MaxUint32,
@@ -265,8 +265,8 @@ func TestClientUpdates_NamespaceRemoved(t *testing.T) {
 						Status:       model.ShardStatusDeleting,
 						Term:         -1,
 						Leader:       nil,
-						Ensemble:     []model.ServerAddress{s4, s1, s2},
-						RemovedNodes: []model.ServerAddress{},
+						Ensemble:     []model.Server{s4, s1, s2},
+						RemovedNodes: []model.Server{},
 						Int32HashRange: model.Int32HashRange{
 							Min: 0,
 							Max: math.MaxUint32 / 2,
@@ -276,8 +276,8 @@ func TestClientUpdates_NamespaceRemoved(t *testing.T) {
 						Status:       model.ShardStatusDeleting,
 						Term:         -1,
 						Leader:       nil,
-						Ensemble:     []model.ServerAddress{s3, s4, s1},
-						RemovedNodes: []model.ServerAddress{},
+						Ensemble:     []model.Server{s3, s4, s1},
+						RemovedNodes: []model.Server{},
 						Int32HashRange: model.Int32HashRange{
 							Min: math.MaxUint32/2 + 1,
 							Max: math.MaxUint32,

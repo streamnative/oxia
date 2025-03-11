@@ -18,7 +18,7 @@ import "github.com/streamnative/oxia/common"
 
 type ClusterConfig struct {
 	Namespaces []NamespaceConfig `json:"namespaces" yaml:"namespaces"`
-	Servers    []ServerAddress   `json:"servers" yaml:"servers"`
+	Servers    []Server          `json:"servers" yaml:"servers"`
 }
 
 type NamespaceConfig struct {

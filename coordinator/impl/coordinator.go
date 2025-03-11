@@ -40,7 +40,7 @@ type ShardAssignmentsProvider interface {
 }
 
 type NodeAvailabilityListener interface {
-	NodeBecameUnavailable(node model.ServerAddress)
+	NodeBecameUnavailable(node model.Server)
 }
 
 type Coordinator interface {
@@ -53,10 +53,9 @@ type Coordinator interface {
 	ShardDeleted(namespace string, shard int64) error
 
 	NodeAvailabilityListener
-
-	FindServerAddressByInternalAddress(internalAddress string) (*model.ServerAddress, bool)
-
 	ClusterStatus() model.ClusterStatus
+
+	FindServerByIdentifier(identifier string) (*model.Server, bool)
 }
 
 type coordinator struct {
@@ -121,8 +120,8 @@ func NewCoordinator(metadataProvider MetadataProvider,
 	}
 
 	for _, sa := range c.ClusterConfig.Servers {
-		c.nodeControllers[sa.Internal] = NewNodeController(sa, c, c, c.rpc)
-		c.serverIndexes.Store(sa.Internal, sa)
+		c.nodeControllers[sa.GetIdentifier()] = NewNodeController(sa, c, c, c.rpc)
+		c.serverIndexes.Store(sa.GetIdentifier(), sa)
 	}
 
 	if c.clusterStatus == nil {
@@ -254,12 +253,12 @@ func (c *coordinator) Close() error {
 	return err
 }
 
-func (c *coordinator) NodeBecameUnavailable(node model.ServerAddress) {
+func (c *coordinator) NodeBecameUnavailable(node model.Server) {
 	c.Lock()
 
-	if nc, ok := c.drainingNodes[node.Internal]; ok {
+	if nc, ok := c.drainingNodes[node.GetIdentifier()]; ok {
 		// The draining node became unavailable. Let's remove it
-		delete(c.drainingNodes, node.Internal)
+		delete(c.drainingNodes, node.GetIdentifier())
 		_ = nc.Close()
 	}
 
@@ -520,9 +519,9 @@ func (c *coordinator) rebalanceCluster() error {
 	return nil
 }
 
-func (c *coordinator) FindServerAddressByInternalAddress(internalAddress string) (*model.ServerAddress, bool) {
-	if info, exist := c.serverIndexes.Load(internalAddress); exist {
-		address, ok := info.(model.ServerAddress)
+func (c *coordinator) FindServerByIdentifier(identifier string) (*model.Server, bool) {
+	if info, exist := c.serverIndexes.Load(identifier); exist {
+		address, ok := info.(model.Server)
 		if !ok {
 			panic("unexpected cast")
 		}
@@ -531,9 +530,9 @@ func (c *coordinator) FindServerAddressByInternalAddress(internalAddress string)
 	return nil, false
 }
 
-func (*coordinator) findServerByInternalAddress(newClusterConfig model.ClusterConfig, server string) *model.ServerAddress {
+func (*coordinator) findServerByIdentifier(newClusterConfig model.ClusterConfig, identifier string) *model.Server {
 	for _, s := range newClusterConfig.Servers {
-		if server == s.Internal {
+		if identifier == s.GetIdentifier() {
 			return &s
 		}
 	}
@@ -544,36 +543,36 @@ func (*coordinator) findServerByInternalAddress(newClusterConfig model.ClusterCo
 func (c *coordinator) checkClusterNodeChanges(newClusterConfig model.ClusterConfig) {
 	// Check for nodes to add
 	for _, sa := range newClusterConfig.Servers {
-		c.serverIndexes.Store(sa.Internal, sa)
+		c.serverIndexes.Store(sa.GetIdentifier(), sa)
 
-		if _, ok := c.nodeControllers[sa.Internal]; ok {
+		if _, ok := c.nodeControllers[sa.GetIdentifier()]; ok {
 			continue
 		}
 
 		// The node is present in the config, though we don't know it yet,
 		// therefore it must be a newly added node
-		c.log.Info("Detected new node", slog.Any("addr", sa))
-		if nc, ok := c.drainingNodes[sa.Internal]; ok {
+		c.log.Info("Detected new node", slog.Any("server", sa))
+		if nc, ok := c.drainingNodes[sa.GetIdentifier()]; ok {
 			// If there were any controller for a draining node, close it
 			// and recreate it as a new node
 			_ = nc.Close()
-			delete(c.drainingNodes, sa.Internal)
+			delete(c.drainingNodes, sa.GetIdentifier())
 		}
-		c.nodeControllers[sa.Internal] = NewNodeController(sa, c, c, c.rpc)
+		c.nodeControllers[sa.GetIdentifier()] = NewNodeController(sa, c, c, c.rpc)
 	}
 
 	// Check for nodes to remove
-	for ia, nc := range c.nodeControllers {
-		if c.findServerByInternalAddress(newClusterConfig, ia) != nil {
+	for serverID, nc := range c.nodeControllers {
+		if c.findServerByIdentifier(newClusterConfig, serverID) != nil {
 			continue
 		}
 
-		c.log.Info("Detected a removed node", slog.Any("addr", ia))
-		c.serverIndexes.Delete(ia)
+		c.log.Info("Detected a removed node", slog.Any("server", serverID))
+		c.serverIndexes.Delete(serverID)
 		// Moved the node
-		delete(c.nodeControllers, ia)
+		delete(c.nodeControllers, serverID)
 		nc.SetStatus(Draining)
-		c.drainingNodes[ia] = nc
+		c.drainingNodes[serverID] = nc
 	}
 }
 
