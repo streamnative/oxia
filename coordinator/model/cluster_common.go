@@ -2,7 +2,7 @@ package model
 
 type Server struct {
 	// Name is the unique identification for clusters
-	Name *string `json:"id" yaml:"id"`
+	Name *string `json:"name" yaml:"name"`
 
 	// Public is the endpoint that is advertised to clients
 	Public string `json:"public" yaml:"public"`
