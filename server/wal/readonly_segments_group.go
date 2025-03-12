@@ -1,4 +1,4 @@
-// Copyright 2023 StreamNative, Inc.
+// Copyright 2025 StreamNative, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,167 +15,15 @@
 package wal
 
 import (
-	"fmt"
 	"io"
-	"log/slog"
-	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
-	"github.com/edsrzf/mmap-go"
-	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 
 	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/server/util"
 	"github.com/streamnative/oxia/server/wal/codec"
-)
-
-func segmentPath(basePath string, firstOffset int64) string {
-	return filepath.Join(basePath, fmt.Sprintf("%d", firstOffset))
-}
-
-func fileOffset(idx []byte, firstOffset, offset int64) uint32 {
-	return codec.ReadInt(idx, uint32((offset-firstOffset)*4))
-}
-
-type ReadOnlySegment interface {
-	io.Closer
-
-	BaseOffset() int64
-	LastOffset() int64
-
-	LastCrc() uint32
-
-	Read(offset int64) ([]byte, error)
-
-	Delete() error
-
-	OpenTimestamp() time.Time
-}
-
-type readonlySegment struct {
-	codec      codec.Codec
-	txnPath    string
-	idxPath    string
-	baseOffset int64
-	lastOffset int64
-	lastCrc    uint32
-	closed     bool
-
-	txnFile       *os.File
-	txnMappedFile mmap.MMap
-
-	// Index file maps a logical "offset" to a physical file offset within the wal segment
-	idx           []byte
-	openTimestamp time.Time
-}
-
-func newReadOnlySegment(basePath string, baseOffset int64) (ReadOnlySegment, error) {
-	_codec, _, err := codec.GetOrCreate(segmentPath(basePath, baseOffset))
-	if err != nil {
-		return nil, err
-	}
-
-	ms := &readonlySegment{
-		codec:         _codec,
-		txnPath:       segmentPath(basePath, baseOffset) + _codec.GetTxnExtension(),
-		idxPath:       segmentPath(basePath, baseOffset) + _codec.GetIdxExtension(),
-		baseOffset:    baseOffset,
-		openTimestamp: time.Now(),
-	}
-
-	if ms.txnFile, err = os.OpenFile(ms.txnPath, os.O_RDONLY, 0); err != nil {
-		return nil, errors.Wrapf(err, "failed to open segment txn file %s", ms.txnPath)
-	}
-
-	if ms.txnMappedFile, err = mmap.MapRegion(ms.txnFile, -1, mmap.RDONLY, 0, 0); err != nil {
-		return nil, errors.Wrapf(err, "failed to map segment txn file %s", ms.txnPath)
-	}
-
-	if ms.idx, err = ms.codec.ReadIndex(ms.idxPath); err != nil {
-		if !errors.Is(err, codec.ErrDataCorrupted) {
-			return nil, errors.Wrapf(err, "failed to decode segment index file %s", ms.idxPath)
-		}
-		slog.Warn("The segment index file is corrupted and the index is being rebuilt.", slog.String("path", ms.idxPath))
-		// recover from txn
-		if ms.idx, _, _, _, err = ms.codec.RecoverIndex(ms.txnMappedFile, 0,
-			ms.baseOffset, nil); err != nil {
-			slog.Error("The segment index file rebuild failed.", slog.String("path", ms.idxPath))
-			return nil, errors.Wrapf(err, "failed to rebuild segment index file %s", ms.idxPath)
-		}
-		slog.Info("The segment index file has been rebuilt.", slog.String("path", ms.idxPath))
-		if err := ms.codec.WriteIndex(ms.idxPath, ms.idx); err != nil {
-			slog.Warn("write recovered segment index failed. it can continue work but will retry writing after restart.",
-				slog.String("path", ms.idxPath))
-		}
-	}
-
-	ms.lastOffset = ms.baseOffset + int64(len(ms.idx)/4-1)
-
-	// recover the last crc
-	fo := fileOffset(ms.idx, ms.baseOffset, ms.lastOffset)
-	if _, _, ms.lastCrc, err = ms.codec.ReadHeaderWithValidation(ms.txnMappedFile, fo); err != nil {
-		return nil, err
-	}
-	return ms, nil
-}
-
-func (ms *readonlySegment) LastCrc() uint32 {
-	return ms.lastCrc
-}
-
-func (ms *readonlySegment) BaseOffset() int64 {
-	return ms.baseOffset
-}
-
-func (ms *readonlySegment) LastOffset() int64 {
-	return ms.lastOffset
-}
-
-func (ms *readonlySegment) Read(offset int64) ([]byte, error) {
-	if offset < ms.baseOffset || offset > ms.lastOffset {
-		return nil, codec.ErrOffsetOutOfBounds
-	}
-	fileReadOffset := fileOffset(ms.idx, ms.baseOffset, offset)
-	var payload []byte
-	var err error
-	if payload, err = ms.codec.ReadRecordWithValidation(ms.txnMappedFile, fileReadOffset); err != nil {
-		if errors.Is(err, codec.ErrDataCorrupted) {
-			return nil, errors.Wrapf(err, "read record failed. entryOffset: %d", offset)
-		}
-		return nil, err
-	}
-	return payload, nil
-}
-
-func (ms *readonlySegment) Close() error {
-	if ms.closed {
-		return nil
-	}
-
-	ms.closed = true
-	return multierr.Combine(
-		ms.txnMappedFile.Unmap(),
-		ms.txnFile.Close(),
-	)
-}
-
-func (ms *readonlySegment) Delete() error {
-	return multierr.Combine(
-		ms.Close(),
-		os.Remove(ms.txnPath),
-		os.Remove(ms.idxPath),
-	)
-}
-
-func (ms *readonlySegment) OpenTimestamp() time.Time {
-	return ms.openTimestamp
-}
-
-const (
-	maxReadOnlySegmentsInCacheCount = 5
-	maxReadOnlySegmentsInCacheTime  = 5 * time.Minute
 )
 
 type ReadOnlySegmentsGroup interface {
@@ -311,17 +159,21 @@ func (r *readOnlySegmentsGroup) TrimSegments(offset int64) error {
 		if segment, ok := r.openSegments.Get(s); ok {
 			err = multierr.Append(err, segment.Get().Delete())
 			r.openSegments.Remove(s)
-		} else {
-			if segment, err2 := newReadOnlySegment(r.basePath, s); err2 != nil {
-				// When the error is NotExists, it means the segment was deleted,
-				// so we can ignore it.
-				// TODO: There is a lot of errors when newReadOnlySegment, we should avoid all of it.
-				if !errors.Is(err2, os.ErrNotExist) {
-					err = multierr.Append(err, err2)
-				}
-			} else {
-				err = multierr.Append(err, segment.Delete())
-			}
+			continue
+		}
+
+		c, err2 := newSegmentConfig(r.basePath, s)
+		if err2 != nil {
+			err = multierr.Append(err, err2)
+			continue
+		}
+
+		err2 = multierr.Combine(
+			util.RemoveFileIfExists(c.idxPath),
+			util.RemoveFileIfExists(c.txnPath),
+		)
+		if err2 != nil {
+			err = multierr.Append(err, err2)
 		}
 	}
 
