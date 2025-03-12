@@ -18,6 +18,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/streamnative/oxia/cmd/wal/common"
+	"github.com/streamnative/oxia/cmd/wal/perf"
 	"github.com/streamnative/oxia/cmd/wal/truncate"
 )
 
@@ -34,6 +35,7 @@ func init() {
 	Cmd.PersistentFlags().StringVar(&common.WalOption.Namespace, "namespace", "default", "namespace name")
 	Cmd.PersistentFlags().StringVar(&common.WalOption.WalDir, "wal-dir", "", "directory path")
 	Cmd.AddCommand(truncate.Cmd)
+	Cmd.AddCommand(perf.Cmd)
 
 	if err := Cmd.MarkPersistentFlagRequired("wal-dir"); err != nil {
 		panic(err)
