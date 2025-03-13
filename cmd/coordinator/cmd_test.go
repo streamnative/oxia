@@ -37,7 +37,7 @@ func TestCmd(t *testing.T) {
 			InitialShardCount:    2,
 			NotificationsEnabled: common.Bool(false),
 		}},
-		Servers: []model.ServerAddress{{
+		Servers: []model.Server{{
 			Public:   "public:1234",
 			Internal: "internal:5678",
 		}},
@@ -72,7 +72,7 @@ func TestCmd(t *testing.T) {
 				InitialShardCount:    2,
 				NotificationsEnabled: common.Bool(false),
 			}},
-			Servers: []model.ServerAddress{{
+			Servers: []model.Server{{
 				Public:   "public:1234",
 				Internal: "internal:5678",
 			},
@@ -89,7 +89,7 @@ func TestCmd(t *testing.T) {
 				InitialShardCount:    2,
 				NotificationsEnabled: common.Bool(false),
 			}},
-			Servers: []model.ServerAddress{{
+			Servers: []model.Server{{
 				Public:   "public:1234",
 				Internal: "internal:5678",
 			},
@@ -106,7 +106,7 @@ func TestCmd(t *testing.T) {
 				InitialShardCount:    2,
 				NotificationsEnabled: common.Bool(false),
 			}},
-			Servers: []model.ServerAddress{{
+			Servers: []model.Server{{
 				Public:   "public:1234",
 				Internal: "internal:5678",
 			},
@@ -123,7 +123,7 @@ func TestCmd(t *testing.T) {
 				InitialShardCount:    2,
 				NotificationsEnabled: common.Bool(false),
 			}},
-			Servers: []model.ServerAddress{{
+			Servers: []model.Server{{
 				Public:   "public:1234",
 				Internal: "internal:5678",
 			},
@@ -140,7 +140,7 @@ func TestCmd(t *testing.T) {
 				InitialShardCount:    2,
 				NotificationsEnabled: common.Bool(false),
 			}},
-			Servers: []model.ServerAddress{{
+			Servers: []model.Server{{
 				Public:   "public:1234",
 				Internal: "internal:5678",
 			},
