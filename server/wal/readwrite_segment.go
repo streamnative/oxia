@@ -123,7 +123,9 @@ func (ms *readWriteSegment) LastOffset() int64 {
 func (ms *readWriteSegment) Read(offset int64) ([]byte, error) {
 	ms.Lock()
 	defer ms.Unlock()
-	// todo: we might need validate if the offset less than base offset
+	if offset < ms.c.baseOffset || offset > ms.lastOffset {
+		return nil, codec.ErrOffsetOutOfBounds
+	}
 
 	fileReadOffset := fileOffset(ms.writingIdx, ms.c.baseOffset, offset)
 	var payload []byte
