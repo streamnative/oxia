@@ -14,7 +14,8 @@
 
 module github.com/streamnative/oxia
 
-go 1.23
+go 1.23.0
+
 toolchain go1.23.3
 
 require (
