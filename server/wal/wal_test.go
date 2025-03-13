@@ -25,6 +25,7 @@ import (
 
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/wal/codec"
 )
 
 const shard = int64(100)
@@ -512,5 +513,34 @@ func TestDelete(t *testing.T) {
 	assert.EqualValues(t, InvalidOffset, w.LastOffset())
 
 	assert.NoError(t, w.Close())
+	assert.NoError(t, f.Close())
+}
+
+func TestReaderReadNext(t *testing.T) {
+	f, w := createWal(t)
+
+	c := int64(100)
+	for i := int64(0); i < c; i++ {
+		assert.NoError(t, w.Append(&proto.LogEntry{
+			Term:   1,
+			Offset: i,
+			Value:  []byte(fmt.Sprintf("entry-%d", i)),
+		}))
+	}
+
+	reader, err := w.NewReader(c - 2)
+	assert.NoError(t, err)
+	entry, err := reader.ReadNext()
+	assert.NoError(t, err)
+	assert.Equal(t, &proto.LogEntry{
+		Term:   1,
+		Offset: 99,
+		Value:  []byte("entry-99"),
+	}, entry)
+	entry2, err := reader.ReadNext()
+	assert.ErrorIs(t, err, codec.ErrOffsetOutOfBounds)
+	assert.Nil(t, entry2)
+
+	assert.NoError(t, reader.Close())
 	assert.NoError(t, f.Close())
 }
