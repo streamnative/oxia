@@ -232,9 +232,6 @@ func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, 
 		StartInclusive: sessionKeyPrefix + "/",
 		EndExclusive:   sessionKeyPrefix + "//",
 	})
-	sm.log.Debug("All sessions",
-		slog.Int("count", len(list)))
-
 	if err != nil {
 		return nil, err
 	}
