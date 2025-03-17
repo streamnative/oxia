@@ -916,7 +916,7 @@ func (lc *leaderController) handleWalSynced(stream proto.OxiaClient_WriteStreamS
 		return
 	}
 
-	lc.quorumAckTracker.WaitForCommitOffsetAsync(context.Background(), offset, callback.NewOnce[any](
+	lc.quorumAckTracker.WaitForCommitOffsetAsync(context.Background(), offset, callback.NewOnce(
 		func(_ any) {
 			defer timer.Done()
 			localResponse, err := lc.db.ProcessWrite(req, offset, timestamp, WrapperUpdateOperationCallback)

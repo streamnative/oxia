@@ -202,7 +202,7 @@ func (s *shardAssignmentDispatcher) Initialized() bool {
 }
 
 func (s *shardAssignmentDispatcher) PushShardAssignments(stream proto.OxiaCoordination_PushShardAssignmentsServer) error {
-	streamReader := util.ReadStream[proto.ShardAssignments](
+	streamReader := util.ReadStream(
 		s.ctx,
 		stream,
 		s.updateShardAssignment,
