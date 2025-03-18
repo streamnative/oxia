@@ -16,9 +16,15 @@ package model
 
 import "github.com/streamnative/oxia/common"
 
+type ServerMetadata struct {
+	Labels map[string]string `json:"labels" yaml:"labels"`
+}
+
 type ClusterConfig struct {
-	Namespaces []NamespaceConfig `json:"namespaces" yaml:"namespaces"`
-	Servers    []Server          `json:"servers" yaml:"servers"`
+	Namespaces        []NamespaceConfig         `json:"namespaces" yaml:"namespaces"`
+	Servers           []Server                  `json:"servers" yaml:"servers"`
+	ServerMetadata    map[string]ServerMetadata `json:"serverMetadata" yaml:"serverMetadata"`
+	HierarchyPolicies HierarchyPolicies         `json:"hierarchyPolicies" yaml:"hierarchyPolicies"`
 }
 
 type NamespaceConfig struct {
@@ -26,4 +32,5 @@ type NamespaceConfig struct {
 	InitialShardCount    uint32                       `json:"initialShardCount" yaml:"initialShardCount"`
 	ReplicationFactor    uint32                       `json:"replicationFactor" yaml:"replicationFactor"`
 	NotificationsEnabled common.OptBooleanDefaultTrue `json:"notificationsEnabled" yaml:"notificationsEnabled"`
+	HierarchyPolicies    HierarchyPolicies            `json:"hierarchyPolicies" yaml:"hierarchyPolicies"`
 }
