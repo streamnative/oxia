@@ -484,7 +484,9 @@ func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *pr
 		return nil, errors.Wrap(err, "oxia db: failed to apply batch")
 	}
 
+	versionId := wal.InvalidOffset
 	if !internal {
+		versionId = d.versionIdTracker.Add(1)
 		// No version conflict
 		status, err := updateOperationCallback.OnPut(batch, putReq, se)
 		if err != nil {
@@ -495,13 +497,6 @@ func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *pr
 				Status: status,
 			}, nil
 		}
-	}
-
-	var versionId int64
-	if internal {
-		versionId = wal.InvalidOffset
-	} else {
-		versionId = d.versionIdTracker.Add(1)
 	}
 
 	if se == nil {
