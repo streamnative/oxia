@@ -72,9 +72,6 @@ jobs:
 
       - name: Test
         run: make test
-      - name: Setup tmate session
-        if: ${{ failure() }}
-        uses: mxschmitt/action-tmate@v3
 
   chaos-mesh:
     name: Run chaos-mesh
