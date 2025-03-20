@@ -17,7 +17,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"sync"
 	"testing"
 	"time"
@@ -38,7 +37,6 @@ var testKVOptions = &kv.FactoryOptions{
 }
 
 func init() {
-	common.LogLevel = slog.LevelDebug
 	common.ConfigureLogger()
 }
 
