@@ -21,6 +21,7 @@ import (
 )
 
 func RunProcess(startProcess func() (io.Closer, error)) {
+	profiler := RunProfiling()
 	process, err := startProcess()
 	if err != nil {
 		slog.Error(
@@ -29,8 +30,6 @@ func RunProcess(startProcess func() (io.Closer, error)) {
 		)
 		os.Exit(1)
 	}
-
-	profiler := RunProfiling()
 
 	WaitUntilSignal(
 		process,
