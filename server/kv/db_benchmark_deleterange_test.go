@@ -19,10 +19,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/proto"
 	"github.com/stretchr/testify/assert"
 	"k8s.io/utils/ptr"
+
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/proto"
 )
 
 func BenchmarkGenerate100(b *testing.B) {
