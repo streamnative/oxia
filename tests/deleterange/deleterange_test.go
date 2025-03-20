@@ -29,7 +29,7 @@ import (
 	"time"
 )
 
-func Test_DB_DeleteRange(t *testing.T) {
+func Test_DeleteRange(t *testing.T) {
 	factory, err := kv.NewPebbleKVFactory(&kv.FactoryOptions{
 		DataDir:     t.TempDir(),
 		CacheSizeMB: 2048,
