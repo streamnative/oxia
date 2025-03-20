@@ -22,12 +22,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert
+
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server"
 	"github.com/streamnative/oxia/server/kv"
 	"github.com/streamnative/oxia/server/wal"
-	"github.com/stretchr/testify/assert"
 )
 
 func Test_DeleteRange(t *testing.T) {
