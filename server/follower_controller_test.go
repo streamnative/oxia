@@ -17,7 +17,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"sync"
 	"testing"
 	"time"
