@@ -615,11 +615,11 @@ func (d *db) applyDeleteRange(batch WriteBatch, notifications *notifications, de
 			validKeys = append(validKeys, it.Key())
 		}
 		if err = updateOperationCallback.OnDelete(batch, it.Key()); err != nil {
-			return nil, errors.Wrap(multierr.Combine(err, it.Close()), "oxia db: failed to delete range")
+			return nil, errors.Wrap(multierr.Combine(err, it.Close()), "oxia db: failed to callback on delete range")
 		}
 	}
 	if err := it.Close(); err != nil {
-		return nil, errors.Wrap(err, "oxia db: failed to delete range")
+		return nil, errors.Wrap(err, "oxia db: failed to close iterator on delete range")
 	}
 	if validKeysNum > DeleteRangeThreshold {
 		if err := batch.DeleteRange(delReq.StartInclusive, delReq.EndExclusive); err != nil {
