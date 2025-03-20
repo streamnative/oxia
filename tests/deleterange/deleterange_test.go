@@ -17,16 +17,17 @@ package deleterange
 import (
 	"context"
 	"fmt"
+	"os"
+	"path"
+	"testing"
+	"time"
+
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server"
 	"github.com/streamnative/oxia/server/kv"
 	"github.com/streamnative/oxia/server/wal"
 	"github.com/stretchr/testify/assert"
-	"os"
-	"path"
-	"testing"
-	"time"
 )
 
 func Test_DeleteRange(t *testing.T) {
