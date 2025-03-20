@@ -596,17 +596,41 @@ func (d *db) applyDelete(batch WriteBatch, notifications *notifications, delReq 
 	}
 }
 
+const DeleteRangeThreshold = 100
+
 func (d *db) applyDeleteRange(batch WriteBatch, notifications *notifications, delReq *proto.DeleteRangeRequest, updateOperationCallback UpdateOperationCallback) (*proto.DeleteRangeResponse, error) {
 	if notifications != nil {
 		notifications.DeletedRange(delReq.StartInclusive, delReq.EndExclusive)
 	}
 
-	if err := updateOperationCallback.OnDeleteRange(batch, delReq.StartInclusive, delReq.EndExclusive); err != nil {
+	it, err := batch.RangeScan(delReq.StartInclusive, delReq.EndExclusive)
+	if err != nil {
 		return nil, err
 	}
-
-	if err := batch.DeleteRange(delReq.StartInclusive, delReq.EndExclusive); err != nil {
+	var validKeys []string
+	var validKeysNum = 0
+	for ; it.Valid(); it.Next() {
+		validKeysNum++
+		if validKeysNum <= DeleteRangeThreshold {
+			validKeys = append(validKeys, it.Key())
+		}
+		if err = updateOperationCallback.OnDelete(batch, it.Key()); err != nil {
+			return nil, errors.Wrap(multierr.Combine(err, it.Close()), "oxia db: failed to delete range")
+		}
+	}
+	if err := it.Close(); err != nil {
 		return nil, errors.Wrap(err, "oxia db: failed to delete range")
+	}
+	if validKeysNum > DeleteRangeThreshold {
+		if err := batch.DeleteRange(delReq.StartInclusive, delReq.EndExclusive); err != nil {
+			return nil, errors.Wrap(err, "oxia db: failed to delete range")
+		}
+	} else {
+		for _, key := range validKeys {
+			if err := batch.Delete(key); err != nil {
+				return nil, errors.Wrap(err, "oxia db: failed to delete range")
+			}
+		}
 	}
 
 	d.log.Debug(
