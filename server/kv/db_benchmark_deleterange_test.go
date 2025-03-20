@@ -22,7 +22,7 @@ import (
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/proto"
 	"github.com/stretchr/testify/assert"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 )
 
 func BenchmarkGenerate100(b *testing.B) {
@@ -31,7 +31,7 @@ func BenchmarkGenerate100(b *testing.B) {
 	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
 	assert.NoError(b, err)
 	defer db.Close()
-	benchmarkDeleteRange(db, 100, b)
+	benchmarkDeleteRange(b, db, 100)
 }
 
 func BenchmarkGenerate1000(b *testing.B) {
@@ -40,7 +40,7 @@ func BenchmarkGenerate1000(b *testing.B) {
 	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
 	assert.NoError(b, err)
 	defer db.Close()
-	benchmarkDeleteRange(db, 1000, b)
+	benchmarkDeleteRange(b, db, 1000)
 }
 
 func BenchmarkGenerate10000(b *testing.B) {
@@ -49,16 +49,16 @@ func BenchmarkGenerate10000(b *testing.B) {
 	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
 	assert.NoError(b, err)
 	defer db.Close()
-	benchmarkDeleteRange(db, 10000, b)
+	benchmarkDeleteRange(b, db, 10000)
 }
 
-func benchmarkDeleteRange(db DB, n int, b *testing.B) {
+func benchmarkDeleteRange(b *testing.B, db DB, n int) {
 	for i := range b.N * n {
 		_, err := db.ProcessWrite(&proto.WriteRequest{
 			Puts: []*proto.PutRequest{
 				{
 					Key:              "00000000000000000001",
-					PartitionKey:     pointer.String("00000000000000000001"),
+					PartitionKey:     ptr.To("00000000000000000001"),
 					Value:            []byte("00000000000000000000"),
 					SequenceKeyDelta: []uint64{2},
 				},
