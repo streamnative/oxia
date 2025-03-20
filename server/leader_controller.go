@@ -443,9 +443,6 @@ func (lc *leaderController) applyAllEntriesIntoDBLoop(r wal.Reader) error {
 		if err != nil {
 			return err
 		}
-		if entry.Offset%100 == 0 {
-			println(fmt.Sprintf("current offset: %v", entry.Offset))
-		}
 		logEntryValue := &proto.LogEntryValue{}
 		if err = pb.Unmarshal(entry.Value, logEntryValue); err != nil {
 			return err
