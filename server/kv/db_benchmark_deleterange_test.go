@@ -53,6 +53,7 @@ func BenchmarkGenerate10000(b *testing.B) {
 }
 
 func benchmarkDeleteRange(b *testing.B, db DB, n int) {
+	b.Helper()
 	for i := range b.N * n {
 		_, err := db.ProcessWrite(&proto.WriteRequest{
 			Puts: []*proto.PutRequest{
