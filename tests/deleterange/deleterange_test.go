@@ -29,17 +29,10 @@ import (
 	"time"
 )
 
-func init() {
-	common.PprofEnable = true
-	common.PprofBindAddress = "127.0.0.1:6060"
-	common.ConfigureLogger()
-}
-
 func Test_DB_DeleteRange(t *testing.T) {
 	factory, err := kv.NewPebbleKVFactory(&kv.FactoryOptions{
 		DataDir:     t.TempDir(),
 		CacheSizeMB: 2048,
-		InMemory:    true,
 	})
 	assert.NoError(t, err)
 	shard := int64(1)
