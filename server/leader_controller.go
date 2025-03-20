@@ -443,6 +443,7 @@ func (lc *leaderController) applyAllEntriesIntoDBLoop(r wal.Reader) error {
 		if err != nil {
 			return err
 		}
+
 		logEntryValue := &proto.LogEntryValue{}
 		if err = pb.Unmarshal(entry.Value, logEntryValue); err != nil {
 			return err
