@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package server
+package deleterange
 
 import (
 	"context"
 	"fmt"
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server"
 	"github.com/streamnative/oxia/server/kv"
 	"github.com/streamnative/oxia/server/wal"
 	"github.com/stretchr/testify/assert"
@@ -45,8 +46,8 @@ func Test_DB_DeleteRange(t *testing.T) {
 
 	dir, err := os.Getwd()
 	assert.NoError(t, err)
-	lc, err := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), wal.NewWalFactory(&wal.FactoryOptions{
-		BaseWalDir:  path.Join(dir, "testdata", "rangedelete", "wal"),
+	lc, err := server.NewLeaderController(server.Config{}, common.DefaultNamespace, shard, nil, wal.NewWalFactory(&wal.FactoryOptions{
+		BaseWalDir:  path.Join(dir, "testdata", "wal"),
 		SegmentSize: wal.DefaultFactoryOptions.SegmentSize,
 	}), factory)
 	assert.NoError(t, err)
