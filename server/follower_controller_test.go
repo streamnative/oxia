@@ -38,7 +38,6 @@ var testKVOptions = &kv.FactoryOptions{
 }
 
 func init() {
-	common.LogLevel = slog.LevelDebug
 	common.ConfigureLogger()
 }
 
