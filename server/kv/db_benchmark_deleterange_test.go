@@ -42,7 +42,7 @@ func BenchmarkDeleteRange(b *testing.B) {
 					Key:              "00000000000000000001",
 					PartitionKey:     ptr.To("00000000000000000001"),
 					Value:            []byte("00000000000000000000"),
-					SequenceKeyDelta: []uint64{2},
+					SequenceKeyDelta: []uint64{1},
 				},
 			},
 			DeleteRanges: []*proto.DeleteRangeRequest{
