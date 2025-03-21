@@ -28,7 +28,7 @@ require (
 	github.com/edsrzf/mmap-go v1.2.0
 	github.com/emirpasic/gods v1.18.1
 	github.com/fsnotify/fsnotify v1.8.0
-	github.com/golang-jwt/jwt/v5 v5.2.1
+	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
 	github.com/juju/fslock v0.0.0-20160525022230-4d5c94c67b4b
