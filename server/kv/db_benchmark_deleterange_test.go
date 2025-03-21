@@ -26,36 +26,16 @@ import (
 	"github.com/streamnative/oxia/proto"
 )
 
-func BenchmarkGenerate100(b *testing.B) {
-	factory, err := NewPebbleKVFactory(testKVOptions)
+func BenchmarkDeleteRange(b *testing.B) {
+	factory, err := NewPebbleKVFactory(&FactoryOptions{
+		InMemory:    true,
+		CacheSizeMB: 1024,
+	})
 	assert.NoError(b, err)
 	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
 	assert.NoError(b, err)
 	defer db.Close()
-	benchmarkDeleteRange(b, db, 100)
-}
-
-func BenchmarkGenerate1000(b *testing.B) {
-	factory, err := NewPebbleKVFactory(testKVOptions)
-	assert.NoError(b, err)
-	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
-	assert.NoError(b, err)
-	defer db.Close()
-	benchmarkDeleteRange(b, db, 1000)
-}
-
-func BenchmarkGenerate10000(b *testing.B) {
-	factory, err := NewPebbleKVFactory(testKVOptions)
-	assert.NoError(b, err)
-	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
-	assert.NoError(b, err)
-	defer db.Close()
-	benchmarkDeleteRange(b, db, 10000)
-}
-
-func benchmarkDeleteRange(b *testing.B, db DB, n int) {
-	b.Helper()
-	for i := range b.N * n {
+	for i := range b.N {
 		_, err := db.ProcessWrite(&proto.WriteRequest{
 			Puts: []*proto.PutRequest{
 				{
