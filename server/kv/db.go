@@ -471,7 +471,7 @@ func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *pr
 	if len(putReq.GetSequenceKeyDelta()) > 0 {
 		newKey, err = generateUniqueKeyFromSequences(batch, putReq)
 		putReq.Key = newKey
-	} else {
+	} else if !internal {
 		se, err = checkExpectedVersionId(batch, putReq.Key, putReq.ExpectedVersionId)
 	}
 
@@ -484,22 +484,19 @@ func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *pr
 		return nil, errors.Wrap(err, "oxia db: failed to apply batch")
 	}
 
-	// No version conflict
-	status, err := updateOperationCallback.OnPut(batch, putReq, se)
-	if err != nil {
-		return nil, err
-	}
-	if status != proto.Status_OK {
-		return &proto.PutResponse{
-			Status: status,
-		}, nil
-	}
-
-	var versionId int64
-	if internal {
-		versionId = wal.InvalidOffset
-	} else {
+	versionId := wal.InvalidOffset
+	if !internal {
 		versionId = d.versionIdTracker.Add(1)
+		// No version conflict
+		status, err := updateOperationCallback.OnPut(batch, putReq, se)
+		if err != nil {
+			return nil, err
+		}
+		if status != proto.Status_OK {
+			return &proto.PutResponse{
+				Status: status,
+			}, nil
+		}
 	}
 
 	if se == nil {
