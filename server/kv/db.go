@@ -618,13 +618,15 @@ func (d *db) applyDeleteRange(batch WriteBatch, notifications *notifications, de
 			return nil, errors.Wrap(multierr.Combine(err, it.Close()), "oxia db: failed to get value on delete range")
 		}
 		se := proto.StorageEntryFromVTPool()
-		defer se.ReturnToVTPool()
 		if err = Deserialize(value, se); err != nil {
+			se.ReturnToVTPool()
 			return nil, err
 		}
 		if err = updateOperationCallback.OnDeleteWithEntry(batch, key, se); err != nil {
+			se.ReturnToVTPool()
 			return nil, errors.Wrap(multierr.Combine(err, it.Close()), "oxia db: failed to callback on delete range")
 		}
+		se.ReturnToVTPool()
 	}
 	if err := it.Close(); err != nil {
 		return nil, errors.Wrap(err, "oxia db: failed to close iterator on delete range")
@@ -755,7 +757,7 @@ func (d *db) ReadNextNotifications(ctx context.Context, startOffset int64) ([]*p
 
 type noopCallback struct{}
 
-func (c *noopCallback) OnDeleteWithEntry(batch WriteBatch, key string, value *proto.StorageEntry) error {
+func (c *noopCallback) OnDeleteWithEntry(WriteBatch, string, *proto.StorageEntry) error {
 	return nil
 }
 
