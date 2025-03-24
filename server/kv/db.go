@@ -757,7 +757,7 @@ func (d *db) ReadNextNotifications(ctx context.Context, startOffset int64) ([]*p
 
 type noopCallback struct{}
 
-func (c *noopCallback) OnDeleteWithEntry(WriteBatch, string, *proto.StorageEntry) error {
+func (*noopCallback) OnDeleteWithEntry(WriteBatch, string, *proto.StorageEntry) error {
 	return nil
 }
 

@@ -31,7 +31,7 @@ const secondaryIdxKeyPrefix = common.InternalKeyPrefix + "idx"
 
 type wrapperUpdateCallback struct{}
 
-func (c wrapperUpdateCallback) OnDeleteWithEntry(batch kv.WriteBatch, key string, value *proto.StorageEntry) error {
+func (wrapperUpdateCallback) OnDeleteWithEntry(batch kv.WriteBatch, key string, value *proto.StorageEntry) error {
 	// First update the session
 	if err := sessionManagerUpdateOperationCallback.OnDeleteWithEntry(batch, key, value); err != nil {
 		return err
