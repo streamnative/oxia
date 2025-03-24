@@ -31,6 +31,16 @@ const secondaryIdxKeyPrefix = common.InternalKeyPrefix + "idx"
 
 type wrapperUpdateCallback struct{}
 
+func (c wrapperUpdateCallback) OnDeleteWithEntry(batch kv.WriteBatch, key string, value *proto.StorageEntry) error {
+	// First update the session
+	if err := sessionManagerUpdateOperationCallback.OnDeleteWithEntry(batch, key, value); err != nil {
+		return err
+	}
+
+	// Check secondary indexes
+	return secondaryIndexesUpdateCallback.OnDeleteWithEntry(batch, key, value)
+}
+
 func (wrapperUpdateCallback) OnPut(batch kv.WriteBatch, req *proto.PutRequest, se *proto.StorageEntry) (proto.Status, error) {
 	// First update the session
 	status, err := sessionManagerUpdateOperationCallback.OnPut(batch, req, se)
@@ -91,6 +101,10 @@ func (secondaryIndexesUpdateCallbackS) OnDelete(batch kv.WriteBatch, key string)
 		err = deleteSecondaryIndexes(batch, key, se)
 	}
 	return err
+}
+
+func (secondaryIndexesUpdateCallbackS) OnDeleteWithEntry(batch kv.WriteBatch, key string, value *proto.StorageEntry) error {
+	return deleteSecondaryIndexes(batch, key, value)
 }
 
 func (secondaryIndexesUpdateCallbackS) OnDeleteRange(batch kv.WriteBatch, keyStartInclusive string, keyEndExclusive string) error {
