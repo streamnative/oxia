@@ -277,8 +277,8 @@ func (s *publicRpcServer) RangeScan(request *proto.RangeScanRequest, stream prot
 					"Failed to perform range-scan operation",
 					slog.Any("error", err),
 				)
+				return err
 			}
-			return err
 		case gr, more := <-ch:
 			if !more {
 				if len(response.Records) > 0 {
