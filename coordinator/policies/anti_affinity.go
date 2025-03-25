@@ -1,17 +1,17 @@
 package policies
 
-type UnsatisfiableConstraintAction string
+type UnsatisfiableAction string
 
 const (
 	// DoNotSchedule instructs the scheduler not to schedule the pod
 	// when constraints are not satisfied.
-	DoNotSchedule UnsatisfiableConstraintAction = "DoNotSchedule"
+	DoNotSchedule UnsatisfiableAction = "DoNotSchedule"
 	// ScheduleAnyway instructs the scheduler to schedule the pod
 	// even if constraints are not satisfied.
-	ScheduleAnyway UnsatisfiableConstraintAction = "ScheduleAnyway"
+	ScheduleAnyway UnsatisfiableAction = "ScheduleAnyway"
 )
 
 type AntiAffinity struct {
-	Labels                        []string                      `json:"labels" yaml:"labels"`
-	UnsatisfiableConstraintAction UnsatisfiableConstraintAction `json:"unsatisfiableConstraintAction" yaml:"unsatisfiableConstraintAction"`
+	Labels              []string            `json:"labels,omitempty" yaml:"labels,omitempty"`
+	UnsatisfiableAction UnsatisfiableAction `json:"UnsatisfiableAction,omitempty" yaml:"unsatisfiableAction,omitempty"`
 }

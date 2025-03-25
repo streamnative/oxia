@@ -7,7 +7,8 @@ import (
 )
 
 var (
-	ErrUnsatisfiedAntiAffinities = errors.New("unsatisfied anti-affinities")
+	ErrUnsatisfiedAntiAffinities      = errors.New("unsatisfied anti-affinities")
+	ErrUnsupportedUnsatisfiableAction = errors.New("unsupported unsatisfiable action")
 )
 
 type Allocator interface {
