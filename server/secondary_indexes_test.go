@@ -18,7 +18,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/streamnative/oxia/common/channel"
 	"github.com/stretchr/testify/assert"
 	pb "google.golang.org/protobuf/proto"
 
@@ -172,8 +171,7 @@ func TestSecondaryIndices_RangeScan(t *testing.T) {
 		EndExclusive:       "3",
 		SecondaryIndexName: pb.String("my-idx"),
 	})
-	_, exist := channel.Poll(errCh)
-	assert.False(t, exist)
+	assert.Empty(t, errCh)
 
 	gr := <-ch
 	assert.Equal(t, "/b", *gr.Key)
@@ -192,9 +190,8 @@ func TestSecondaryIndices_RangeScan(t *testing.T) {
 		EndExclusive:       "/d",
 		SecondaryIndexName: pb.String("wrong-idx"),
 	})
-	assert.NoError(t, err)
-	_, exist = channel.Poll(errCh)
-	assert.False(t, exist)
+	assert.Empty(t, ch)
+	assert.Empty(t, errCh)
 
 	// Individual delete
 	_, err = lc.Write(context.Background(), &proto.WriteRequest{
@@ -209,8 +206,7 @@ func TestSecondaryIndices_RangeScan(t *testing.T) {
 		EndExclusive:       "99999",
 		SecondaryIndexName: pb.String("my-idx"),
 	})
-	_, exist = channel.Poll(errCh)
-	assert.False(t, exist)
+	assert.Empty(t, errCh)
 
 	gr = <-ch
 	assert.Equal(t, "/a", *gr.Key)
@@ -242,8 +238,7 @@ func TestSecondaryIndices_RangeScan(t *testing.T) {
 		SecondaryIndexName: pb.String("my-idx"),
 	})
 	assert.NoError(t, err)
-	_, exist = channel.Poll(errCh)
-	assert.False(t, exist)
+	assert.Empty(t, errCh)
 
 	gr = <-ch
 	assert.Equal(t, "/d", *gr.Key)

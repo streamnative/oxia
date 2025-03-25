@@ -19,7 +19,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/streamnative/oxia/common/channel"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -1058,8 +1057,7 @@ func TestLeaderController_RangeScan(t *testing.T) {
 		StartInclusive: "/a",
 		EndExclusive:   "/c",
 	})
-	_, exist := channel.Poll(errCh)
-	assert.False(t, exist)
+	assert.Empty(t, errCh)
 
 	gr, more := <-ch
 	assert.Equal(t, "/a", *gr.Key)
@@ -1076,8 +1074,7 @@ func TestLeaderController_RangeScan(t *testing.T) {
 		StartInclusive: "/y",
 		EndExclusive:   "/z",
 	})
-	_, exist = channel.Poll(errCh)
-	assert.False(t, exist)
+	assert.Empty(t, errCh)
 
 	gr, more = <-ch
 	assert.Nil(t, gr)
