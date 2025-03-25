@@ -272,6 +272,7 @@ func (s *publicRpcServer) RangeScan(request *proto.RangeScanRequest, stream prot
 			"Failed to perform range-scan operation",
 			slog.Any("error", err),
 		)
+		return err
 	}
 
 	response := &proto.RangeScanResponse{}
