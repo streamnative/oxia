@@ -51,6 +51,7 @@ const (
 type UpdateOperationCallback interface {
 	OnPut(batch WriteBatch, req *proto.PutRequest, se *proto.StorageEntry) (proto.Status, error)
 	OnDelete(batch WriteBatch, key string) error
+	OnDeleteWithEntry(batch WriteBatch, key string, value *proto.StorageEntry) error
 	OnDeleteRange(batch WriteBatch, keyStartInclusive string, keyEndExclusive string) error
 }
 
@@ -608,12 +609,24 @@ func (d *db) applyDeleteRange(batch WriteBatch, notifications *notifications, de
 	var validKeysNum = 0
 	for ; it.Valid(); it.Next() {
 		validKeysNum++
+		key := it.Key()
 		if validKeysNum <= DeleteRangeThreshold {
-			validKeys = append(validKeys, it.Key())
+			validKeys = append(validKeys, key)
 		}
-		if err = updateOperationCallback.OnDelete(batch, it.Key()); err != nil {
+		value, err := it.Value()
+		if err != nil {
+			return nil, errors.Wrap(multierr.Combine(err, it.Close()), "oxia db: failed to get value on delete range")
+		}
+		se := proto.StorageEntryFromVTPool()
+		if err = Deserialize(value, se); err != nil {
+			se.ReturnToVTPool()
+			return nil, err
+		}
+		if err = updateOperationCallback.OnDeleteWithEntry(batch, key, se); err != nil {
+			se.ReturnToVTPool()
 			return nil, errors.Wrap(multierr.Combine(err, it.Close()), "oxia db: failed to callback on delete range")
 		}
+		se.ReturnToVTPool()
 	}
 	if err := it.Close(); err != nil {
 		return nil, errors.Wrap(err, "oxia db: failed to close iterator on delete range")
@@ -743,6 +756,10 @@ func (d *db) ReadNextNotifications(ctx context.Context, startOffset int64) ([]*p
 }
 
 type noopCallback struct{}
+
+func (*noopCallback) OnDeleteWithEntry(WriteBatch, string, *proto.StorageEntry) error {
+	return nil
+}
 
 func (*noopCallback) OnPut(_ WriteBatch, _ *proto.PutRequest, _ *proto.StorageEntry) (proto.Status, error) {
 	return proto.Status_OK, nil

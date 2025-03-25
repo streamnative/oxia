@@ -365,6 +365,11 @@ func (*sessionManagerUpdateOperationCallbackS) OnDelete(batch kv.WriteBatch, key
 	return err
 }
 
+func (*sessionManagerUpdateOperationCallbackS) OnDeleteWithEntry(batch kv.WriteBatch, key string, value *proto.StorageEntry) error {
+	_, err := deleteShadow(batch, key, value)
+	return err
+}
+
 func (*sessionManagerUpdateOperationCallbackS) OnDeleteRange(batch kv.WriteBatch, keyStartInclusive string, keyEndExclusive string) error {
 	it, err := batch.RangeScan(keyStartInclusive, keyEndExclusive)
 	if err != nil {
