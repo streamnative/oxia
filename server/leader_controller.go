@@ -50,7 +50,7 @@ type LeaderController interface {
 	Read(ctx context.Context, request *proto.ReadRequest) <-chan GetResult
 	List(ctx context.Context, request *proto.ListRequest) (<-chan string, error)
 	ListSliceNoMutex(ctx context.Context, request *proto.ListRequest) ([]string, error)
-	RangeScan(ctx context.Context, request *proto.RangeScanRequest) (<-chan *proto.GetResponse, <-chan error)
+	RangeScan(ctx context.Context, request *proto.RangeScanRequest) (<-chan *proto.GetResponse, <-chan error, error)
 
 	// NewTerm Handle new term requests
 	NewTerm(req *proto.NewTermRequest) (*proto.NewTermResponse, error)
@@ -701,7 +701,7 @@ func (lc *leaderController) ListSliceNoMutex(ctx context.Context, request *proto
 	}
 }
 
-func (lc *leaderController) RangeScan(ctx context.Context, request *proto.RangeScanRequest) (<-chan *proto.GetResponse, <-chan error) {
+func (lc *leaderController) RangeScan(ctx context.Context, request *proto.RangeScanRequest) (<-chan *proto.GetResponse, <-chan error, error) {
 	ch := make(chan *proto.GetResponse)
 	errCh := make(chan error)
 
@@ -709,13 +709,12 @@ func (lc *leaderController) RangeScan(ctx context.Context, request *proto.RangeS
 	err := checkStatusIsLeader(lc.status)
 	lc.RUnlock()
 	if err != nil {
-		errCh <- err
-		close(errCh)
-		close(ch)
-		return nil, errCh
+		return nil, nil, err
 	}
+
 	go lc.rangeScan(ctx, request, ch, errCh)
-	return ch, errCh
+
+	return ch, errCh, nil
 }
 
 func (lc *leaderController) rangeScan(ctx context.Context, request *proto.RangeScanRequest, ch chan<- *proto.GetResponse, errCh chan<- error) {
