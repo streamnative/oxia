@@ -17,10 +17,10 @@ type antiAffinitiesAllocator struct {
 func (z *antiAffinitiesAllocator) AllocateNew(
 	candidates []model.Server,
 	candidatesMetadata map[string]model.ServerMetadata,
-	policies *policies.Policies,
+	nsPolicies *policies.Policies,
 	_ *model.ClusterStatus,
 	replicas uint32) ([]model.Server, error) {
-	antiAffinities := policies.AntiAffinities
+	antiAffinities := nsPolicies.AntiAffinities
 	if antiAffinities == nil || len(antiAffinities) == 0 {
 		return candidates, nil
 	}
@@ -28,12 +28,23 @@ func (z *antiAffinitiesAllocator) AllocateNew(
 	groupingCandidates := z.groupingCandidates(candidates, candidatesMetadata)
 
 	var filteredCandidates hashset.Set
-	for _, antiAffinity := range policies.AntiAffinities {
+	for _, antiAffinity := range antiAffinities {
 		for _, label := range antiAffinity.Labels {
 			labelGroupedCandidates := groupingCandidates[label]
 			for _, servers := range labelGroupedCandidates {
 				if len(servers) > 1 {
 					filteredCandidates.Add(servers[1:])
+					leftCandidates := len(candidates) - filteredCandidates.Size()
+					if leftCandidates < int(replicas) {
+						switch antiAffinity.UnsatisfiableAction {
+						case policies.DoNotSchedule:
+							return nil, errors.Wrap(ErrUnsatisfiedAntiAffinities, fmt.Sprintf("expectCandidates=%v actualCandidates%v", replicas, leftCandidates))
+						case policies.ScheduleAnyway:
+							fallthrough
+						default:
+							return nil, errors.Wrap(ErrUnsupportedUnsatisfiableAction, fmt.Sprintf("unsupported unsatisfiable action %v", antiAffinity.UnsatisfiableAction))
+						}
+					}
 				}
 			}
 		}
@@ -44,9 +55,6 @@ func (z *antiAffinitiesAllocator) AllocateNew(
 			continue
 		}
 		leftCandidates = append(leftCandidates, candidate)
-	}
-	if len(leftCandidates) < int(replicas) {
-		return nil, errors.Wrap(ErrUnsatisfiedAntiAffinities, fmt.Sprintf("expectCandidates=%v actualCandidates%v", replicas, len(leftCandidates)))
 	}
 	return leftCandidates, nil
 }
