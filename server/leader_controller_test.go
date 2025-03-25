@@ -1052,12 +1052,12 @@ func TestLeaderController_RangeScan(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	ch, _, err := lc.RangeScan(context.Background(), &proto.RangeScanRequest{
+	ch, errCh := lc.RangeScan(context.Background(), &proto.RangeScanRequest{
 		Shard:          &shard,
 		StartInclusive: "/a",
 		EndExclusive:   "/c",
 	})
-	assert.NoError(t, err)
+	assert.Empty(t, errCh)
 
 	gr, more := <-ch
 	assert.Equal(t, "/a", *gr.Key)
@@ -1069,12 +1069,12 @@ func TestLeaderController_RangeScan(t *testing.T) {
 	assert.Nil(t, gr)
 	assert.False(t, more)
 
-	ch, _, err = lc.RangeScan(context.Background(), &proto.RangeScanRequest{
+	ch, errCh = lc.RangeScan(context.Background(), &proto.RangeScanRequest{
 		Shard:          &shard,
 		StartInclusive: "/y",
 		EndExclusive:   "/z",
 	})
-	assert.NoError(t, err)
+	assert.Empty(t, errCh)
 
 	gr, more = <-ch
 	assert.Nil(t, gr)

@@ -165,13 +165,13 @@ func TestSecondaryIndices_RangeScan(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	ch, errCh, err := lc.RangeScan(ctx, &proto.RangeScanRequest{
+	ch, errCh := lc.RangeScan(ctx, &proto.RangeScanRequest{
 		Shard:              &shard,
 		StartInclusive:     "1",
 		EndExclusive:       "3",
 		SecondaryIndexName: pb.String("my-idx"),
 	})
-	assert.NoError(t, err)
+	assert.Empty(t, errCh)
 
 	gr := <-ch
 	assert.Equal(t, "/b", *gr.Key)
@@ -184,15 +184,14 @@ func TestSecondaryIndices_RangeScan(t *testing.T) {
 	assert.NoError(t, <-errCh)
 
 	// Wrong index
-	ch, errCh, err = lc.RangeScan(ctx, &proto.RangeScanRequest{
+	ch, errCh = lc.RangeScan(ctx, &proto.RangeScanRequest{
 		Shard:              &shard,
 		StartInclusive:     "/a",
 		EndExclusive:       "/d",
 		SecondaryIndexName: pb.String("wrong-idx"),
 	})
-	assert.NoError(t, err)
 	assert.Empty(t, ch)
-	assert.NoError(t, <-errCh)
+	assert.Empty(t, errCh)
 
 	// Individual delete
 	_, err = lc.Write(context.Background(), &proto.WriteRequest{
@@ -201,13 +200,13 @@ func TestSecondaryIndices_RangeScan(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	ch, errCh, err = lc.RangeScan(ctx, &proto.RangeScanRequest{
+	ch, errCh = lc.RangeScan(ctx, &proto.RangeScanRequest{
 		Shard:              &shard,
 		StartInclusive:     "0",
 		EndExclusive:       "99999",
 		SecondaryIndexName: pb.String("my-idx"),
 	})
-	assert.NoError(t, err)
+	assert.Empty(t, errCh)
 
 	gr = <-ch
 	assert.Equal(t, "/a", *gr.Key)
@@ -232,13 +231,14 @@ func TestSecondaryIndices_RangeScan(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	ch, errCh, err = lc.RangeScan(ctx, &proto.RangeScanRequest{
+	ch, errCh = lc.RangeScan(ctx, &proto.RangeScanRequest{
 		Shard:              &shard,
 		StartInclusive:     "0",
 		EndExclusive:       "99999",
 		SecondaryIndexName: pb.String("my-idx"),
 	})
 	assert.NoError(t, err)
+	assert.Empty(t, errCh)
 
 	gr = <-ch
 	assert.Equal(t, "/d", *gr.Key)

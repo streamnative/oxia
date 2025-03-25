@@ -260,30 +260,25 @@ func (s *publicRpcServer) RangeScan(request *proto.RangeScanRequest, stream prot
 		slog.String("peer", common.GetPeer(stream.Context())),
 		slog.Any("req", request),
 	)
-
+	ctx := stream.Context()
 	lc, err := s.getLeader(*request.Shard)
 	if err != nil {
 		return err
 	}
 
-	ch, errCh, err := lc.RangeScan(stream.Context(), request)
-	if err != nil {
-		s.log.Warn(
-			"Failed to perform range-scan operation",
-			slog.Any("error", err),
-		)
-	}
-
+	ch, errCh := lc.RangeScan(ctx, request)
 	response := &proto.RangeScanResponse{}
 	var totalSize int
-
 	for {
 		select {
 		case err := <-errCh:
 			if err != nil {
+				s.log.Warn(
+					"Failed to perform range-scan operation",
+					slog.Any("error", err),
+				)
 				return err
 			}
-
 		case gr, more := <-ch:
 			if !more {
 				if len(response.Records) > 0 {
@@ -305,8 +300,8 @@ func (s *publicRpcServer) RangeScan(request *proto.RangeScanRequest, stream prot
 			response.Records = append(response.Records, gr)
 			totalSize += size
 
-		case <-stream.Context().Done():
-			return stream.Context().Err()
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
 }
