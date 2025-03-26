@@ -61,3 +61,60 @@ func NewOnce[T any](onComplete func(t T), onError func(err error)) Callback[T] {
 		atomic.Bool{},
 	}
 }
+
+// OnceStream is a generic struct designed to handle callbacks for streaming data.
+// It offers three methods: OnNext, Complete, and CompleteError.
+// The OnNext method processes each data item in the stream,
+// the Complete method marks the successful completion of the stream,
+// and the CompleteError method marks the stream's completion due to an error.
+//
+// Warning: There is a race condition in this implementation, which may allow the OnNext method
+// to be called after the Complete or CompleteError method has been invoked.
+// To avoid introducing locks or other high - overhead synchronization mechanisms,
+// the caller is responsible for ensuring that this does not happen.
+type OnceStream[T any] struct {
+	onNext          func(t T) error
+	onComplete      func()
+	onCompleteError func(err error)
+	completed       atomic.Bool
+}
+
+// OnNext processes the next data item in the stream.
+// Note: There is a potential race condition where this method might be called after the stream is completed.
+// The caller should ensure that this method is not called after the stream is marked as completed.
+// This method provides a best - effort check to avoid processing data after completion.
+func (o *OnceStream[T]) OnNext(t T) error {
+	if o.completed.Load() {
+		return nil
+	}
+	return o.onNext(t)
+}
+
+// CompleteError marks the stream as completed due to an error.
+// It uses an atomic compare - and - swap operation to ensure that this method is called only once.
+// If the stream has already been marked as completed, this method will do nothing.
+func (o *OnceStream[T]) CompleteError(err error) {
+	if !o.completed.CompareAndSwap(false, true) {
+		return
+	}
+	o.onCompleteError(err)
+}
+
+// Complete marks the stream as successfully completed.
+// It uses an atomic compare - and - swap operation to ensure that this method is called only once.
+// If the stream has already been marked as completed, this method will do nothing.
+func (o *OnceStream[T]) Complete() {
+	if !o.completed.CompareAndSwap(false, true) {
+		return
+	}
+	o.onComplete()
+}
+
+func NewOnceStream[T any](onNext func(t T) error, onComplete func(), onError func(err error)) StreamCallback[T] {
+	return &OnceStream[T]{
+		onNext,
+		onComplete,
+		onError,
+		atomic.Bool{},
+	}
+}

@@ -50,7 +50,8 @@ type LeaderController interface {
 	Read(ctx context.Context, request *proto.ReadRequest) <-chan GetResult
 	List(ctx context.Context, request *proto.ListRequest) (<-chan string, error)
 	ListSliceNoMutex(ctx context.Context, request *proto.ListRequest) ([]string, error)
-	RangeScan(ctx context.Context, request *proto.RangeScanRequest) (<-chan *proto.GetResponse, <-chan error, error)
+
+	RangeScan(ctx context.Context, request *proto.RangeScanRequest, streamCallback callback.StreamCallback[*proto.GetResponse])
 
 	// NewTerm Handle new term requests
 	NewTerm(req *proto.NewTermRequest) (*proto.NewTermResponse, error)
@@ -701,25 +702,16 @@ func (lc *leaderController) ListSliceNoMutex(ctx context.Context, request *proto
 	}
 }
 
-func (lc *leaderController) RangeScan(ctx context.Context, request *proto.RangeScanRequest) (<-chan *proto.GetResponse, <-chan error, error) {
-	ch := make(chan *proto.GetResponse)
-	errCh := make(chan error)
-
+func (lc *leaderController) RangeScan(ctx context.Context, request *proto.RangeScanRequest, cb callback.StreamCallback[*proto.GetResponse]) {
 	lc.RLock()
 	err := checkStatusIsLeader(lc.status)
 	lc.RUnlock()
 	if err != nil {
-		return nil, nil, err
+		cb.CompleteError(err)
+		return
 	}
 
-	go lc.rangeScan(ctx, request, ch, errCh)
-
-	return ch, errCh, nil
-}
-
-func (lc *leaderController) rangeScan(ctx context.Context, request *proto.RangeScanRequest, ch chan<- *proto.GetResponse, errCh chan<- error) {
-	common.DoWithLabels(
-		ctx,
+	go common.DoWithLabels(ctx,
 		map[string]string{
 			"oxia":  "range-scan",
 			"shard": fmt.Sprintf("%d", lc.shardId),
@@ -730,47 +722,39 @@ func (lc *leaderController) rangeScan(ctx context.Context, request *proto.RangeS
 
 			var it kv.RangeScanIterator
 			var err error
+
 			if request.SecondaryIndexName != nil {
 				it, err = newSecondaryIndexRangeScanIterator(request, lc.db)
 			} else {
 				it, err = lc.db.RangeScan(request)
 			}
-
 			if err != nil {
-				lc.log.Warn(
-					"Failed to process range-scan request",
-					slog.Any("error", err),
-				)
-				errCh <- err
-				close(ch)
-				close(errCh)
+				lc.log.Warn("Failed to process range-scan request", slog.Any("error", err))
+				cb.CompleteError(err)
 				return
 			}
-
 			defer func() {
-				_ = it.Close()
-				// NOTE:
-				// we must close the channel after iterator is closed, to avoid the
-				// iterator keep open when caller is trying to process the next step (for example db.Close)
-				// because this is execute in another goroutine.
-				close(ch)
-				close(errCh)
+				if err := it.Close(); err != nil {
+					lc.log.Warn("close range scan iterator failed.", slog.Any("error", err))
+				}
 			}()
 
 			for ; it.Valid(); it.Next() {
-				gr, err := it.Value()
+				record, err := it.Value()
 				if err != nil {
-					errCh <- err
+					cb.CompleteError(err)
 					return
 				}
-
-				ch <- gr
+				if err = cb.OnNext(record); err != nil {
+					cb.CompleteError(err)
+					return
+				}
 				if ctx.Err() != nil {
 					break
 				}
 			}
-		},
-	)
+			cb.Complete()
+		})
 }
 
 // Write

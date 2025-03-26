@@ -21,6 +21,7 @@ import (
 	"log/slog"
 
 	"github.com/pkg/errors"
+	"github.com/streamnative/oxia/common/callback"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -261,53 +262,57 @@ func (s *publicRpcServer) RangeScan(request *proto.RangeScanRequest, stream prot
 		slog.Any("req", request),
 	)
 
+	ctx := stream.Context()
 	lc, err := s.getLeader(*request.Shard)
 	if err != nil {
 		return err
 	}
 
-	ch, errCh, err := lc.RangeScan(stream.Context(), request)
-	if err != nil {
-		s.log.Warn(
-			"Failed to perform range-scan operation",
-			slog.Any("error", err),
-		)
-		return err
-	}
+	latch := make(chan error, 1)
+	defer close(latch)
 
 	response := &proto.RangeScanResponse{}
-	var totalSize int
+	var batchSize int
+
+	lc.RangeScan(ctx, request,
+		callback.NewOnceStream[*proto.GetResponse](
+			func(r *proto.GetResponse) error {
+				recordSize := len(r.Value)
+				if len(response.Records) >= maxTotalScanBatchCount || batchSize+recordSize > maxTotalReadValueSize {
+					if err = stream.Send(response); err != nil {
+						return err
+					}
+					response = &proto.RangeScanResponse{}
+					batchSize = 0
+				}
+				response.Records = append(response.Records, r)
+				batchSize += recordSize
+				return nil
+			},
+			func() {
+				if len(response.Records) > 0 {
+					if err = stream.Send(response); err != nil {
+						latch <- err
+						return
+					}
+				}
+				latch <- nil
+			},
+			func(err error) {
+				latch <- err
+				s.log.Warn(
+					"Failed to perform range-scan operation",
+					slog.Any("error", err),
+				)
+			},
+		))
 
 	for {
 		select {
-		case err := <-errCh:
-			if err != nil {
-				return err
-			}
-
-		case gr, more := <-ch:
-			if !more {
-				if len(response.Records) > 0 {
-					if err := stream.Send(response); err != nil {
-						return err
-					}
-				}
-				return nil
-			}
-
-			size := len(gr.Value)
-			if len(response.Records) >= maxTotalScanBatchCount || totalSize+size > maxTotalReadValueSize {
-				if err := stream.Send(response); err != nil {
-					return err
-				}
-				response = &proto.RangeScanResponse{}
-				totalSize = 0
-			}
-			response.Records = append(response.Records, gr)
-			totalSize += size
-
-		case <-stream.Context().Done():
-			return stream.Context().Err()
+		case signal := <-latch:
+			return signal
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
 }

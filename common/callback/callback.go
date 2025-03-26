@@ -36,3 +36,25 @@ type Callback[T any] interface {
 	// CompleteError is invoked when the operation fails, providing an error 'err' indicating the failure reason.
 	CompleteError(err error)
 }
+
+// StreamCallback is a generic interface designed to handle asynchronous stream - related operations.
+// It provides a set of methods to respond to different events during the stream processing.
+// Implementations of this interface should ensure that the methods are used appropriately
+// according to the stream's state.
+type StreamCallback[T any] interface {
+	// OnNext is called when a new item is available in the stream.
+	// It takes an item of type T as an argument and processes it.
+	// This method can be called multiple times as long as there are items in the stream.
+	OnNext(t T) error
+
+	// Complete is invoked when the stream has been fully processed without errors.
+	// It indicates the successful end of the stream processing.
+	// After this method is called, no further calls to OnNext or CompleteError should be expected.
+	Complete()
+
+	// CompleteError is triggered when an error occurs during the stream processing.
+	// It accepts an error object that describes the nature of the problem.
+	// Once this method is called, the stream processing is considered to have failed,
+	// and no more calls to OnNext or Complete will be made.
+	CompleteError(err error)
+}
