@@ -607,9 +607,11 @@ func (lc *leaderController) read(ctx context.Context, request *proto.ReadRequest
 		func() {
 			lc.log.Debug("Received read request")
 
+			defer close(ch)
 			for _, get := range request.Gets {
 				response, err := lc.db.Get(get)
 				if err != nil {
+					ch <- GetResult{Err: ctx.Err()}
 					return
 				}
 				ch <- GetResult{Response: response}
@@ -618,7 +620,6 @@ func (lc *leaderController) read(ctx context.Context, request *proto.ReadRequest
 					break
 				}
 			}
-			close(ch)
 		},
 	)
 }
