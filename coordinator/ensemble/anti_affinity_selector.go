@@ -19,6 +19,7 @@ import (
 
 	"github.com/emirpasic/gods/sets/hashset"
 	"github.com/pkg/errors"
+
 	"github.com/streamnative/oxia/coordinator/model"
 	p "github.com/streamnative/oxia/coordinator/policies"
 )
