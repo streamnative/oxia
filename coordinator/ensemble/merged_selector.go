@@ -16,7 +16,7 @@ package ensemble
 
 import (
 	"github.com/streamnative/oxia/coordinator/model"
-	"github.com/streamnative/oxia/coordinator/policies"
+	p "github.com/streamnative/oxia/coordinator/policies"
 )
 
 var _ Selector = &mergedSelector{}
@@ -28,10 +28,9 @@ type mergedSelector struct {
 func (l *mergedSelector) SelectNew(
 	candidates []model.Server,
 	candidatesMetadata map[string]model.ServerMetadata,
-	policies *policies.Policies,
+	policies *p.Policies,
 	status *model.ClusterStatus,
 	replicas uint32) ([]model.Server, error) {
-
 	leftCandidates := candidates
 	var err error
 	for _, selector := range l.selectors {
