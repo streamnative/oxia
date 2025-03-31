@@ -17,9 +17,10 @@ package ensemble
 import (
 	"testing"
 
-	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/stretchr/testify/assert"
 	"k8s.io/utils/ptr"
+
+	"github.com/streamnative/oxia/coordinator/model"
 )
 
 func TestServerIdx_SelectNew(t *testing.T) {
