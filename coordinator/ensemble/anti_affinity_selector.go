@@ -23,12 +23,12 @@ import (
 	"github.com/streamnative/oxia/coordinator/policies"
 )
 
-var _ Allocator = &antiAffinitiesAllocator{}
+var _ Selector = &antiAffinitiesSelector{}
 
-type antiAffinitiesAllocator struct {
+type antiAffinitiesSelector struct {
 }
 
-func (z *antiAffinitiesAllocator) AllocateNew(
+func (z *antiAffinitiesSelector) SelectNew(
 	candidates []model.Server,
 	candidatesMetadata map[string]model.ServerMetadata,
 	nsPolicies *policies.Policies,
@@ -78,7 +78,7 @@ func (z *antiAffinitiesAllocator) AllocateNew(
 	return leftCandidates, nil
 }
 
-func (z *antiAffinitiesAllocator) groupingCandidates(candidates []model.Server, candidatesMetadata map[string]model.ServerMetadata) map[string]map[string][]string {
+func (z *antiAffinitiesSelector) groupingCandidates(candidates []model.Server, candidatesMetadata map[string]model.ServerMetadata) map[string]map[string][]string {
 	groupedCandidates := make(map[string]map[string][]string)
 	for idx, candidate := range candidates {
 		id := candidate.GetIdentifier()

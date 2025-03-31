@@ -35,7 +35,7 @@ var (
 )
 
 func TestClientUpdates_ClusterInit(t *testing.T) {
-	newStatus, shardsAdded, shardsToRemove := applyClusterChanges(ensemble.NewAllocator(), &model.ClusterConfig{
+	newStatus, shardsAdded, shardsToRemove := applyClusterChanges(ensemble.NewSelector(), &model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
 			Name:              "ns-1",
 			InitialShardCount: 1,
@@ -103,7 +103,7 @@ func TestClientUpdates_ClusterInit(t *testing.T) {
 }
 
 func TestClientUpdates_NamespaceAdded(t *testing.T) {
-	newStatus, shardsAdded, shardsToRemove := applyClusterChanges(ensemble.NewAllocator(), &model.ClusterConfig{
+	newStatus, shardsAdded, shardsToRemove := applyClusterChanges(ensemble.NewSelector(), &model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
 			Name:              "ns-1",
 			InitialShardCount: 1,
@@ -188,7 +188,7 @@ func TestClientUpdates_NamespaceAdded(t *testing.T) {
 }
 
 func TestClientUpdates_NamespaceRemoved(t *testing.T) {
-	newStatus, shardsAdded, shardsToRemove := applyClusterChanges(ensemble.NewAllocator(), &model.ClusterConfig{
+	newStatus, shardsAdded, shardsToRemove := applyClusterChanges(ensemble.NewSelector(), &model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
 			Name:              "ns-1",
 			InitialShardCount: 1,

@@ -32,7 +32,7 @@ func findNamespaceConfig(config *model.ClusterConfig, ns string) *model.Namespac
 	return nil
 }
 
-func applyClusterChanges(allocator ensemble.Allocator, cc *model.ClusterConfig, currentStatus *model.ClusterStatus) (
+func applyClusterChanges(selector ensemble.Selector, cc *model.ClusterConfig, currentStatus *model.ClusterStatus) (
 	newStatus *model.ClusterStatus,
 	shardsToAdd map[int64]string,
 	shardsToDelete []int64) {
@@ -62,7 +62,7 @@ func applyClusterChanges(allocator ensemble.Allocator, cc *model.ClusterConfig, 
 		}
 
 		for _, shard := range common.GenerateShards(newStatus.ShardIdGenerator, nc.InitialShardCount) {
-			candidates, err := allocator.AllocateNew(cc.Servers, cc.ServerMetadata, nc.Policies, newStatus, nc.ReplicationFactor)
+			candidates, err := selector.SelectNew(cc.Servers, cc.ServerMetadata, nc.Policies, newStatus, nc.ReplicationFactor)
 			if err != nil {
 				slog.Error("failed to allocate new candidates.", slog.Any("error", err))
 				continue

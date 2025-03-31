@@ -19,29 +19,22 @@ import (
 	"github.com/streamnative/oxia/coordinator/policies"
 )
 
-var _ Allocator = &mergedAllocator{}
+var _ Selector = &serverIdxSelector{}
 
-type mergedAllocator struct {
-	allocators []Allocator
+type serverIdxSelector struct {
 }
 
-func (l *mergedAllocator) AllocateNew(
+func (l serverIdxSelector) SelectNew(
 	candidates []model.Server,
-	candidatesMetadata map[string]model.ServerMetadata,
-	policies *policies.Policies,
+	_ map[string]model.ServerMetadata,
+	_ *policies.Policies,
 	status *model.ClusterStatus,
 	replicas uint32) ([]model.Server, error) {
-
-	leftCandidates := candidates
-	var err error
-	for _, allocator := range l.allocators {
-		leftCandidates, err = allocator.AllocateNew(leftCandidates, candidatesMetadata, policies, status, replicas)
-		if err != nil {
-			return nil, err
-		}
+	startIdx := status.ServerIdx
+	n := len(candidates)
+	res := make([]model.Server, replicas)
+	for i := uint32(0); i < replicas; i++ {
+		res[i] = candidates[int(startIdx+i)%n]
 	}
-	if len(leftCandidates) != int(replicas) {
-		panic("unexpected number of left candidates")
-	}
-	return leftCandidates, nil
+	return res, nil
 }
