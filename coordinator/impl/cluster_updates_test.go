@@ -19,8 +19,9 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/streamnative/oxia/coordinator/ensemble"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/coordinator/ensemble"
 
 	"github.com/streamnative/oxia/coordinator/model"
 )
