@@ -534,7 +534,7 @@ func (s *shardController) internalNewTermAndAddFollower(ctx context.Context, nod
 
 // Send NewTerm to all the ensemble members in parallel and wait for
 // a majority of them to reply successfully.
-func (s *shardController) newTermQuorum() (map[model.Server]*proto.EntryId, error) { //nolint:revive
+func (s *shardController) newTermQuorum() (map[model.Server]*proto.EntryId, error) {
 	timer := s.newTermQuorumLatency.Timer()
 
 	fencingQuorum := mergeLists(s.shardMetadata.Ensemble, s.shardMetadata.RemovedNodes)

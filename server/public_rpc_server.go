@@ -80,6 +80,7 @@ func (s *publicRpcServer) GetShardAssignments(req *proto.ShardAssignmentsRequest
 			slog.Any("error", err),
 			slog.String("peer", common.GetPeer(srv.Context())),
 		)
+		return err
 	}
 
 	return err
@@ -103,6 +104,7 @@ func (s *publicRpcServer) Write(ctx context.Context, write *proto.WriteRequest) 
 			"Failed to perform write operation",
 			slog.Any("error", err),
 		)
+		return nil, err
 	}
 
 	return wr, err
@@ -221,6 +223,7 @@ func (s *publicRpcServer) List(request *proto.ListRequest, stream proto.OxiaClie
 			"Failed to perform list operation",
 			slog.Any("error", err),
 		)
+		return err
 	}
 
 	response := &proto.ListResponse{}
@@ -272,6 +275,7 @@ func (s *publicRpcServer) RangeScan(request *proto.RangeScanRequest, stream prot
 			"Failed to perform range-scan operation",
 			slog.Any("error", err),
 		)
+		return err
 	}
 
 	response := &proto.RangeScanResponse{}
