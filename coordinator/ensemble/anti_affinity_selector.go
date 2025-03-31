@@ -38,7 +38,7 @@ func (z *antiAffinitiesSelector) SelectNew(
 		return candidates, nil
 	}
 	antiAffinities := nsPolicies.AntiAffinities
-	if antiAffinities == nil || len(antiAffinities) == 0 {
+	if len(antiAffinities) == 0 {
 		return candidates, nil
 	}
 
