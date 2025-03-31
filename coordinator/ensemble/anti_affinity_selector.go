@@ -20,7 +20,7 @@ import (
 	"github.com/emirpasic/gods/sets/hashset"
 	"github.com/pkg/errors"
 	"github.com/streamnative/oxia/coordinator/model"
-	"github.com/streamnative/oxia/coordinator/policies"
+	p "github.com/streamnative/oxia/coordinator/policies"
 )
 
 var _ Selector = &antiAffinitiesSelector{}
@@ -31,7 +31,7 @@ type antiAffinitiesSelector struct {
 func (z *antiAffinitiesSelector) SelectNew(
 	candidates []model.Server,
 	candidatesMetadata map[string]model.ServerMetadata,
-	nsPolicies *policies.Policies,
+	nsPolicies *p.Policies,
 	_ *model.ClusterStatus,
 	replicas uint32) ([]model.Server, error) {
 	if nsPolicies == nil {
@@ -56,9 +56,9 @@ func (z *antiAffinitiesSelector) SelectNew(
 					leftCandidates := len(candidates) - filteredCandidates.Size()
 					if leftCandidates < int(replicas) {
 						switch antiAffinity.UnsatisfiableAction {
-						case policies.DoNotSchedule:
+						case p.DoNotSchedule:
 							return nil, errors.Wrap(ErrUnsatisfiedAntiAffinities, fmt.Sprintf("expectCandidates=%v actualCandidates%v", replicas, leftCandidates))
-						case policies.ScheduleAnyway:
+						case p.ScheduleAnyway:
 							fallthrough
 						default:
 							return nil, errors.Wrap(ErrUnsupportedUnsatisfiableAction, fmt.Sprintf("unsupported unsatisfiable action %v", antiAffinity.UnsatisfiableAction))

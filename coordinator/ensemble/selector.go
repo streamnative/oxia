@@ -17,7 +17,7 @@ package ensemble
 import (
 	"github.com/pkg/errors"
 	"github.com/streamnative/oxia/coordinator/model"
-	pkPolicies "github.com/streamnative/oxia/coordinator/policies"
+	p "github.com/streamnative/oxia/coordinator/policies"
 )
 
 var (
@@ -29,7 +29,7 @@ type Selector interface {
 	SelectNew(
 		candidates []model.Server,
 		candidatesMetadata map[string]model.ServerMetadata,
-		policies *pkPolicies.Policies,
+		policies *p.Policies,
 		status *model.ClusterStatus,
 		replicas uint32) ([]model.Server, error)
 }
