@@ -17,11 +17,9 @@ package policies
 type UnsatisfiableAction string
 
 const (
-	// DoNotSchedule instructs the scheduler not to schedule the pod
-	// when constraints are not satisfied.
+	// DoNotSchedule instructs the scheduler not to schedule the shard when constraints are not satisfied.
 	DoNotSchedule UnsatisfiableAction = "DoNotSchedule"
-	// ScheduleAnyway instructs the scheduler to schedule the pod
-	// even if constraints are not satisfied.
+	// ScheduleAnyway instructs the scheduler to schedule the shard even if constraints are not satisfied.
 	ScheduleAnyway UnsatisfiableAction = "ScheduleAnyway"
 )
 
