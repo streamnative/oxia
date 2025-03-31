@@ -156,7 +156,6 @@ func (s *publicRpcServer) WriteStream(stream proto.OxiaClient_WriteStreamServer)
 	return err
 }
 
-//nolint:revive
 func (s *publicRpcServer) Read(request *proto.ReadRequest, stream proto.OxiaClient_ReadServer) error {
 	s.log.Debug(
 		"Read request",
@@ -204,7 +203,6 @@ func (s *publicRpcServer) Read(request *proto.ReadRequest, stream proto.OxiaClie
 	}
 }
 
-//nolint:revive
 func (s *publicRpcServer) List(request *proto.ListRequest, stream proto.OxiaClient_ListServer) error {
 	s.log.Debug(
 		"List request",
@@ -256,7 +254,6 @@ func (s *publicRpcServer) List(request *proto.ListRequest, stream proto.OxiaClie
 	}
 }
 
-//nolint:revive
 func (s *publicRpcServer) RangeScan(request *proto.RangeScanRequest, stream proto.OxiaClient_RangeScanServer) error {
 	s.log.Debug(
 		"RangeScan request",

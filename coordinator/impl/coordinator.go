@@ -23,9 +23,10 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/streamnative/oxia/coordinator/ensemble"
 	"go.uber.org/multierr"
 	pb "google.golang.org/protobuf/proto"
+
+	"github.com/streamnative/oxia/coordinator/ensemble"
 
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/coordinator/model"
