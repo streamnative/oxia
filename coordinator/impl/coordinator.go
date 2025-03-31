@@ -207,7 +207,7 @@ func (c *coordinator) initialAssignment() error {
 		slog.Any("clusterConfig", c.ClusterConfig),
 	)
 
-	clusterStatus, _, _ := c.applyClusterChanges(&c.ClusterConfig, model.NewClusterStatus())
+	clusterStatus, _, _ := applyClusterChanges(c.ensembleAllocator, &c.ClusterConfig, model.NewClusterStatus())
 
 	var err error
 	if c.metadataVersion, err = c.MetadataProvider.Store(clusterStatus, MetadataNotExists); err != nil {
@@ -225,7 +225,7 @@ func (c *coordinator) applyNewClusterConfig() error {
 		slog.Any("metadataVersion", c.metadataVersion),
 	)
 
-	clusterStatus, shardsToAdd, shardsToDelete := c.applyClusterChanges(&c.ClusterConfig, c.clusterStatus)
+	clusterStatus, shardsToAdd, shardsToDelete := applyClusterChanges(c.ensembleAllocator, &c.ClusterConfig, c.clusterStatus)
 
 	if len(shardsToAdd) > 0 || len(shardsToDelete) > 0 {
 		var err error
@@ -458,7 +458,7 @@ func (c *coordinator) handleClusterConfigUpdated() error {
 		sc.SyncServerAddress()
 	}
 
-	clusterStatus, shardsToAdd, shardsToDelete := c.applyClusterChanges(&newClusterConfig, c.clusterStatus)
+	clusterStatus, shardsToAdd, shardsToDelete := applyClusterChanges(c.ensembleAllocator, &newClusterConfig, c.clusterStatus)
 
 	for shard, namespace := range shardsToAdd {
 		shardMetadata := clusterStatus.Namespaces[namespace].Shards[shard]

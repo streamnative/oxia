@@ -28,7 +28,13 @@ func (l lastAllocator) AllocateNew(
 	candidates []model.Server,
 	_ map[string]model.ServerMetadata,
 	_ *policies.Policies,
-	_ *model.ClusterStatus,
+	status *model.ClusterStatus,
 	replicas uint32) ([]model.Server, error) {
-	return candidates[0:replicas], nil
+	startIdx := status.ServerIdx
+	n := len(candidates)
+	res := make([]model.Server, replicas)
+	for i := uint32(0); i < replicas; i++ {
+		res[i] = candidates[int(startIdx+i)%n]
+	}
+	return res, nil
 }

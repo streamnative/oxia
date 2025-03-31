@@ -18,6 +18,7 @@ import (
 	"log/slog"
 
 	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/coordinator/ensemble"
 	"github.com/streamnative/oxia/coordinator/model"
 )
 
@@ -31,7 +32,7 @@ func findNamespaceConfig(config *model.ClusterConfig, ns string) *model.Namespac
 	return nil
 }
 
-func (c *coordinator) applyClusterChanges(cc *model.ClusterConfig, currentStatus *model.ClusterStatus) (
+func applyClusterChanges(allocator ensemble.Allocator, cc *model.ClusterConfig, currentStatus *model.ClusterStatus) (
 	newStatus *model.ClusterStatus,
 	shardsToAdd map[int64]string,
 	shardsToDelete []int64) {
@@ -61,9 +62,9 @@ func (c *coordinator) applyClusterChanges(cc *model.ClusterConfig, currentStatus
 		}
 
 		for _, shard := range common.GenerateShards(newStatus.ShardIdGenerator, nc.InitialShardCount) {
-			candidates, err := c.ensembleAllocator.AllocateNew(cc.Servers, cc.ServerMetadata, nc.Policies, newStatus, nc.ReplicationFactor)
+			candidates, err := allocator.AllocateNew(cc.Servers, cc.ServerMetadata, nc.Policies, newStatus, nc.ReplicationFactor)
 			if err != nil {
-				c.log.Error("failed to allocate new candidates.", slog.Any("error", err))
+				slog.Error("failed to allocate new candidates.", slog.Any("error", err))
 				continue
 			}
 			shardMetadata := model.ShardMetadata{

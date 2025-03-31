@@ -34,7 +34,9 @@ func TestLastAllocator(t *testing.T) {
 	candidates := []model.Server{server1, server2, server3, server4, server5, server6}
 	replicas := uint32(6)
 
-	result, err := allocator.AllocateNew(candidates, make(map[string]model.ServerMetadata), nil, nil, replicas)
+	result, err := allocator.AllocateNew(candidates, make(map[string]model.ServerMetadata), nil, &model.ClusterStatus{
+		ServerIdx: 0,
+	}, replicas)
 	assert.NoError(t, err)
 	assert.Equal(t, result[0], server1)
 	assert.Equal(t, result[1], server2)
