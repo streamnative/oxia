@@ -24,7 +24,7 @@ var _ Selector = &serverIdxSelector{}
 type serverIdxSelector struct {
 }
 
-func (l *serverIdxSelector) SelectNew(
+func (_ *serverIdxSelector) SelectNew(
 	candidates []model.Server,
 	_ map[string]model.ServerMetadata,
 	_ *policies.Policies,
