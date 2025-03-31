@@ -17,10 +17,11 @@ package ensemble
 import (
 	"testing"
 
-	"github.com/streamnative/oxia/coordinator/model"
-	"github.com/streamnative/oxia/coordinator/policies"
 	"github.com/stretchr/testify/assert"
 	"k8s.io/utils/ptr"
+
+	"github.com/streamnative/oxia/coordinator/model"
+	"github.com/streamnative/oxia/coordinator/policies"
 )
 
 func TestGroupingCandidates_NormalCase(t *testing.T) {
