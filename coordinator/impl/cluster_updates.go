@@ -64,7 +64,7 @@ func applyClusterChanges(selector ensemble.Selector, cc *model.ClusterConfig, cu
 		for _, shard := range common.GenerateShards(newStatus.ShardIdGenerator, nc.InitialShardCount) {
 			candidates, err := selector.SelectNew(cc.Servers, cc.ServerMetadata, nc.Policies, newStatus, nc.ReplicationFactor)
 			if err != nil {
-				slog.Error("failed to allocate new candidates.", slog.Any("error", err))
+				slog.Error("failed to select new candidates.", slog.Any("error", err))
 				continue
 			}
 			shardMetadata := model.ShardMetadata{

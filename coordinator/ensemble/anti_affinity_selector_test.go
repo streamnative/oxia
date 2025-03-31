@@ -89,11 +89,7 @@ func TestGroupingCandidates_PartialMetadataMissing(t *testing.T) {
 	candidates := []model.Server{server1, server2}
 
 	candidatesMetadata := map[string]model.ServerMetadata{
-		"server1": {
-			Labels: map[string]string{
-				"region": "us-east",
-			},
-		},
+		"server1": {Labels: map[string]string{"region": "us-east"}},
 	}
 
 	result := selector.groupingCandidates(candidates, candidatesMetadata)
@@ -112,16 +108,8 @@ func TestGroupingCandidates_AllSameLabelValue(t *testing.T) {
 	candidates := []model.Server{server1, server2}
 
 	candidatesMetadata := map[string]model.ServerMetadata{
-		"server1": {
-			Labels: map[string]string{
-				"region": "us-east",
-			},
-		},
-		"server2": {
-			Labels: map[string]string{
-				"region": "us-east",
-			},
-		},
+		"server1": {Labels: map[string]string{"region": "us-east"}},
+		"server2": {Labels: map[string]string{"region": "us-east"}},
 	}
 
 	result := selector.groupingCandidates(candidates, candidatesMetadata)
@@ -133,7 +121,7 @@ func TestGroupingCandidates_AllSameLabelValue(t *testing.T) {
 	assert.Contains(t, regionGroup["us-east"], "server2")
 }
 
-func TestAllocateNew_NoAntiAffinities(t *testing.T) {
+func TestSelectNew_NoAntiAffinities(t *testing.T) {
 	selector := &antiAffinitiesSelector{}
 	server1 := model.Server{Name: ptr.To("server1"), Public: "server1", Internal: "server1"}
 	server2 := model.Server{Name: ptr.To("server2"), Public: "server2", Internal: "server2"}
@@ -143,36 +131,12 @@ func TestAllocateNew_NoAntiAffinities(t *testing.T) {
 	server6 := model.Server{Name: ptr.To("server6"), Public: "server6", Internal: "server6"}
 	candidates := []model.Server{server1, server2, server3, server4, server5, server6}
 	candidatesMetadata := map[string]model.ServerMetadata{
-		"server1": {
-			Labels: map[string]string{
-				"region": "us-east",
-			},
-		},
-		"server2": {
-			Labels: map[string]string{
-				"region": "us-west",
-			},
-		},
-		"server3": {
-			Labels: map[string]string{
-				"region": "eu-east",
-			},
-		},
-		"server4": {
-			Labels: map[string]string{
-				"region": "eu-west",
-			},
-		},
-		"server5": {
-			Labels: map[string]string{
-				"region": "ap-east",
-			},
-		},
-		"server6": {
-			Labels: map[string]string{
-				"region": "ap-west",
-			},
-		},
+		"server1": {Labels: map[string]string{"region": "us-east"}},
+		"server2": {Labels: map[string]string{"region": "us-west"}},
+		"server3": {Labels: map[string]string{"region": "eu-east"}},
+		"server4": {Labels: map[string]string{"region": "eu-west"}},
+		"server5": {Labels: map[string]string{"region": "ap-east"}},
+		"server6": {Labels: map[string]string{"region": "ap-west"}},
 	}
 	var nsPolicies *policies.Policies
 	replicas := uint32(6)
@@ -182,7 +146,7 @@ func TestAllocateNew_NoAntiAffinities(t *testing.T) {
 	assert.Equal(t, len(candidates), len(result))
 }
 
-func TestAllocateNew_SatisfiedAntiAffinities(t *testing.T) {
+func TestSelectNew_SatisfiedAntiAffinities(t *testing.T) {
 	selector := &antiAffinitiesSelector{}
 	server1 := model.Server{Name: ptr.To("server1"), Public: "server1", Internal: "server1"}
 	server2 := model.Server{Name: ptr.To("server2"), Public: "server2", Internal: "server2"}
@@ -192,36 +156,12 @@ func TestAllocateNew_SatisfiedAntiAffinities(t *testing.T) {
 	server6 := model.Server{Name: ptr.To("server6"), Public: "server6", Internal: "server6"}
 	candidates := []model.Server{server1, server2, server3, server4, server5, server6}
 	candidatesMetadata := map[string]model.ServerMetadata{
-		"server1": {
-			Labels: map[string]string{
-				"region": "us-east",
-			},
-		},
-		"server2": {
-			Labels: map[string]string{
-				"region": "us-west",
-			},
-		},
-		"server3": {
-			Labels: map[string]string{
-				"region": "eu-east",
-			},
-		},
-		"server4": {
-			Labels: map[string]string{
-				"region": "eu-west",
-			},
-		},
-		"server5": {
-			Labels: map[string]string{
-				"region": "ap-east",
-			},
-		},
-		"server6": {
-			Labels: map[string]string{
-				"region": "ap-west",
-			},
-		},
+		"server1": {Labels: map[string]string{"region": "us-east"}},
+		"server2": {Labels: map[string]string{"region": "us-west"}},
+		"server3": {Labels: map[string]string{"region": "eu-east"}},
+		"server4": {Labels: map[string]string{"region": "eu-west"}},
+		"server5": {Labels: map[string]string{"region": "ap-east"}},
+		"server6": {Labels: map[string]string{"region": "ap-west"}},
 	}
 	nsPolicies := &policies.Policies{
 		AntiAffinities: []policies.AntiAffinity{
@@ -238,7 +178,7 @@ func TestAllocateNew_SatisfiedAntiAffinities(t *testing.T) {
 	assert.Equal(t, len(candidates), len(result))
 }
 
-func TestAllocateNew_UnsatisfiedAntiAffinities_DoNotSchedule(t *testing.T) {
+func TestSelectNew_UnsatisfiedAntiAffinities_DoNotSchedule(t *testing.T) {
 	selector := &antiAffinitiesSelector{}
 	server1 := model.Server{Name: ptr.To("server1"), Public: "server1", Internal: "server1"}
 	server2 := model.Server{Name: ptr.To("server2"), Public: "server2", Internal: "server2"}
@@ -248,36 +188,12 @@ func TestAllocateNew_UnsatisfiedAntiAffinities_DoNotSchedule(t *testing.T) {
 	server6 := model.Server{Name: ptr.To("server6"), Public: "server6", Internal: "server6"}
 	candidates := []model.Server{server1, server2, server3, server4, server5, server6}
 	candidatesMetadata := map[string]model.ServerMetadata{
-		"server1": {
-			Labels: map[string]string{
-				"region": "us-east",
-			},
-		},
-		"server2": {
-			Labels: map[string]string{
-				"region": "us-east",
-			},
-		},
-		"server3": {
-			Labels: map[string]string{
-				"region": "us-east",
-			},
-		},
-		"server4": {
-			Labels: map[string]string{
-				"region": "us-east",
-			},
-		},
-		"server5": {
-			Labels: map[string]string{
-				"region": "us-east",
-			},
-		},
-		"server6": {
-			Labels: map[string]string{
-				"region": "us-east",
-			},
-		},
+		"server1": {Labels: map[string]string{"region": "us-east"}},
+		"server2": {Labels: map[string]string{"region": "us-east"}},
+		"server3": {Labels: map[string]string{"region": "us-east"}},
+		"server4": {Labels: map[string]string{"region": "us-east"}},
+		"server5": {Labels: map[string]string{"region": "us-east"}},
+		"server6": {Labels: map[string]string{"region": "us-east"}},
 	}
 	nsPolicies := &policies.Policies{
 		AntiAffinities: []policies.AntiAffinity{
@@ -295,7 +211,7 @@ func TestAllocateNew_UnsatisfiedAntiAffinities_DoNotSchedule(t *testing.T) {
 	assert.Nil(t, result)
 }
 
-func TestAllocateNew_UnsatisfiedAntiAffinities_ScheduleAnyway(t *testing.T) {
+func TestSelectNew_UnsatisfiedAntiAffinities_ScheduleAnyway(t *testing.T) {
 	selector := &antiAffinitiesSelector{}
 	server1 := model.Server{Name: ptr.To("server1"), Public: "server1", Internal: "server1"}
 	server2 := model.Server{Name: ptr.To("server2"), Public: "server2", Internal: "server2"}
@@ -305,36 +221,12 @@ func TestAllocateNew_UnsatisfiedAntiAffinities_ScheduleAnyway(t *testing.T) {
 	server6 := model.Server{Name: ptr.To("server6"), Public: "server6", Internal: "server6"}
 	candidates := []model.Server{server1, server2, server3, server4, server5, server6}
 	candidatesMetadata := map[string]model.ServerMetadata{
-		"server1": {
-			Labels: map[string]string{
-				"region": "us-east",
-			},
-		},
-		"server2": {
-			Labels: map[string]string{
-				"region": "us-east",
-			},
-		},
-		"server3": {
-			Labels: map[string]string{
-				"region": "us-east",
-			},
-		},
-		"server4": {
-			Labels: map[string]string{
-				"region": "us-east",
-			},
-		},
-		"server5": {
-			Labels: map[string]string{
-				"region": "us-east",
-			},
-		},
-		"server6": {
-			Labels: map[string]string{
-				"region": "us-east",
-			},
-		},
+		"server1": {Labels: map[string]string{"region": "us-east"}},
+		"server2": {Labels: map[string]string{"region": "us-east"}},
+		"server3": {Labels: map[string]string{"region": "us-east"}},
+		"server4": {Labels: map[string]string{"region": "us-east"}},
+		"server5": {Labels: map[string]string{"region": "us-east"}},
+		"server6": {Labels: map[string]string{"region": "us-east"}},
 	}
 	nsPolicies := &policies.Policies{
 		AntiAffinities: []policies.AntiAffinity{
@@ -344,10 +236,174 @@ func TestAllocateNew_UnsatisfiedAntiAffinities_ScheduleAnyway(t *testing.T) {
 			},
 		},
 	}
-	replicas := uint32(6)
+	replicas := uint32(3)
 
 	result, err := selector.SelectNew(candidates, candidatesMetadata, nsPolicies, nil, replicas)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported unsatisfiable action")
 	assert.Nil(t, result)
+}
+
+func TestAllocateNew_MultipleAntiAffinities_Satisfied(t *testing.T) {
+	selector := &antiAffinitiesSelector{}
+	servers := []model.Server{
+		{Name: ptr.To("s1"), Public: "s1", Internal: "s1"},
+		{Name: ptr.To("s2"), Public: "s2", Internal: "s2"},
+		{Name: ptr.To("s3"), Public: "s3", Internal: "s3"},
+		{Name: ptr.To("s4"), Public: "s4", Internal: "s4"},
+	}
+	candidatesMetadata := map[string]model.ServerMetadata{
+		"s1": {Labels: map[string]string{"region": "us-east", "type": "compute1"}},
+		"s2": {Labels: map[string]string{"region": "us-north", "type": "compute2"}},
+		"s3": {Labels: map[string]string{"region": "us-south", "type": "storage1"}},
+		"s4": {Labels: map[string]string{"region": "us-west", "type": "storage2"}},
+	}
+	nsPolicies := &policies.Policies{
+		AntiAffinities: []policies.AntiAffinity{
+			{Labels: []string{"region"}, UnsatisfiableAction: policies.DoNotSchedule},
+			{Labels: []string{"type"}, UnsatisfiableAction: policies.DoNotSchedule},
+		},
+	}
+	replicas := uint32(4)
+
+	result, err := selector.SelectNew(servers, candidatesMetadata, nsPolicies, nil, replicas)
+	assert.NoError(t, err)
+	assert.Equal(t, len(servers), len(result))
+}
+
+func TestSelectNew_MultipleAntiAffinities_PartialUnsatisfied(t *testing.T) {
+	selector := &antiAffinitiesSelector{}
+	servers := []model.Server{
+		{Name: ptr.To("s1"), Public: "s1", Internal: "s1"},
+		{Name: ptr.To("s2"), Public: "s2", Internal: "s2"},
+		{Name: ptr.To("s3"), Public: "s3", Internal: "s3"},
+	}
+	candidatesMetadata := map[string]model.ServerMetadata{
+		"s1": {Labels: map[string]string{"region": "us-east", "type": "compute"}},
+		"s2": {Labels: map[string]string{"region": "us-east", "type": "compute"}},
+		"s3": {Labels: map[string]string{"region": "us-east", "type": "compute"}},
+	}
+	nsPolicies := &policies.Policies{
+		AntiAffinities: []policies.AntiAffinity{
+			{Labels: []string{"region"}, UnsatisfiableAction: policies.DoNotSchedule},
+			{Labels: []string{"type"}, UnsatisfiableAction: policies.DoNotSchedule},
+		},
+	}
+	replicas := uint32(3)
+
+	result, err := selector.SelectNew(servers, candidatesMetadata, nsPolicies, nil, replicas)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "unsatisfied anti-affinities")
+	assert.Nil(t, result)
+}
+
+func TestSelectNew_MixedActionPolicies(t *testing.T) {
+	selector := &antiAffinitiesSelector{}
+	servers := []model.Server{
+		{Name: ptr.To("s1"), Public: "s1", Internal: "s1"},
+		{Name: ptr.To("s2"), Public: "s2", Internal: "s2"},
+	}
+	candidatesMetadata := map[string]model.ServerMetadata{
+		"s1": {Labels: map[string]string{"region": "us-east", "type": "compute"}},
+		"s2": {Labels: map[string]string{"region": "us-east", "type": "storage"}},
+	}
+	nsPolicies := &policies.Policies{
+		AntiAffinities: []policies.AntiAffinity{
+			{Labels: []string{"region"}, UnsatisfiableAction: policies.DoNotSchedule},
+			{Labels: []string{"type"}, UnsatisfiableAction: policies.ScheduleAnyway},
+		},
+	}
+	replicas := uint32(2)
+
+	result, err := selector.SelectNew(servers, candidatesMetadata, nsPolicies, nil, replicas)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "unsatisfied anti-affinities")
+	assert.Nil(t, result)
+}
+
+func TestSelectNew_UnsupportedActionInMultiplePolicies(t *testing.T) {
+	selector := &antiAffinitiesSelector{}
+	servers := []model.Server{
+		{Name: ptr.To("s1"), Public: "s1", Internal: "s1"},
+		{Name: ptr.To("s2"), Public: "s2", Internal: "s2"},
+		{Name: ptr.To("s3"), Public: "s3", Internal: "s3"},
+		{Name: ptr.To("s4"), Public: "s4", Internal: "s4"},
+	}
+	candidatesMetadata := map[string]model.ServerMetadata{
+		"s1": {Labels: map[string]string{"region": "us-east"}},
+		"s2": {Labels: map[string]string{"region": "us-east"}},
+		"s3": {Labels: map[string]string{"region": "us-east"}},
+		"s4": {Labels: map[string]string{"region": "us-east"}},
+	}
+	nsPolicies := &policies.Policies{
+		AntiAffinities: []policies.AntiAffinity{
+			{Labels: []string{"region"}, UnsatisfiableAction: policies.ScheduleAnyway},
+			{Labels: []string{"zone"}, UnsatisfiableAction: policies.DoNotSchedule},
+		},
+	}
+	replicas := uint32(3)
+
+	result, err := selector.SelectNew(servers, candidatesMetadata, nsPolicies, nil, replicas)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported unsatisfiable action")
+	assert.Nil(t, result)
+}
+
+func TestSelectNew_MultiplePoliciesWithSameLabel(t *testing.T) {
+	selector := &antiAffinitiesSelector{}
+	servers := []model.Server{
+		{Name: ptr.To("s1"), Public: "s1", Internal: "s1"},
+		{Name: ptr.To("s2"), Public: "s2", Internal: "s2"},
+	}
+	candidatesMetadata := map[string]model.ServerMetadata{
+		"s1": {Labels: map[string]string{"region": "us-east", "rack": "rack1"}},
+		"s2": {Labels: map[string]string{"region": "us-west", "rack": "rack2"}},
+	}
+	nsPolicies := &policies.Policies{
+		AntiAffinities: []policies.AntiAffinity{
+			{Labels: []string{"region"}, UnsatisfiableAction: policies.DoNotSchedule},
+			{Labels: []string{"rack"}, UnsatisfiableAction: policies.DoNotSchedule},
+		},
+	}
+	replicas := uint32(2)
+
+	result, err := selector.SelectNew(servers, candidatesMetadata, nsPolicies, nil, replicas)
+	assert.NoError(t, err)
+	assert.Equal(t, len(servers), len(result))
+}
+
+func TestSelectNew_MultiplePolicies(t *testing.T) {
+	selector := &antiAffinitiesSelector{}
+	server1 := model.Server{Name: ptr.To("server1"), Public: "server1", Internal: "server1"}
+	server2 := model.Server{Name: ptr.To("server2"), Public: "server2", Internal: "server2"}
+	server3 := model.Server{Name: ptr.To("server3"), Public: "server3", Internal: "server3"}
+	server4 := model.Server{Name: ptr.To("server4"), Public: "server4", Internal: "server4"}
+	server5 := model.Server{Name: ptr.To("server5"), Public: "server5", Internal: "server5"}
+	server6 := model.Server{Name: ptr.To("server6"), Public: "server6", Internal: "server6"}
+	candidates := []model.Server{server1, server2, server3, server4, server5, server6}
+	candidatesMetadata := map[string]model.ServerMetadata{
+		"server1": {Labels: map[string]string{"region": "us-east", "zone": "z1"}},
+		"server2": {Labels: map[string]string{"region": "us-west", "zone": "z2"}},
+		"server3": {Labels: map[string]string{"region": "us-north", "zone": "z3"}},
+		"server4": {Labels: map[string]string{"region": "us-south", "zone": "z4"}},
+		"server5": {Labels: map[string]string{"region": "us-east", "zone": "z1"}},
+		"server6": {Labels: map[string]string{"region": "us-east", "zone": "z1"}},
+	}
+
+	replicas := uint32(4)
+
+	nsPolicies := &policies.Policies{
+		AntiAffinities: []policies.AntiAffinity{
+			{Labels: []string{"region"}, UnsatisfiableAction: policies.DoNotSchedule},
+			{Labels: []string{"zone"}, UnsatisfiableAction: policies.DoNotSchedule},
+		},
+	}
+
+	result, err := selector.SelectNew(candidates, candidatesMetadata, nsPolicies, nil, replicas)
+	assert.NoError(t, err)
+	assert.Equal(t, 4, len(result))
+	assert.Equal(t, "server2", *result[0].Name)
+	assert.Equal(t, "server3", *result[1].Name)
+	assert.Equal(t, "server4", *result[2].Name)
+	assert.Equal(t, "server6", *result[3].Name)
 }
