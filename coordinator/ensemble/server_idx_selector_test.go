@@ -22,8 +22,8 @@ import (
 	"k8s.io/utils/ptr"
 )
 
-func TestLastAllocator(t *testing.T) {
-	allocator := &lastAllocator{}
+func TestServerIdx_SelectNew(t *testing.T) {
+	selector := &serverIdxSelector{}
 
 	server1 := model.Server{Name: ptr.To("server1"), Public: "server1", Internal: "server1"}
 	server2 := model.Server{Name: ptr.To("server2"), Public: "server2", Internal: "server2"}
@@ -34,7 +34,7 @@ func TestLastAllocator(t *testing.T) {
 	candidates := []model.Server{server1, server2, server3, server4, server5, server6}
 	replicas := uint32(6)
 
-	result, err := allocator.AllocateNew(candidates, make(map[string]model.ServerMetadata), nil, &model.ClusterStatus{
+	result, err := selector.SelectNew(candidates, make(map[string]model.ServerMetadata), nil, &model.ClusterStatus{
 		ServerIdx: 0,
 	}, replicas)
 	assert.NoError(t, err)

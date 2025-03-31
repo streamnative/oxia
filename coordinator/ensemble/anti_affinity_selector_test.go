@@ -24,7 +24,7 @@ import (
 )
 
 func TestGroupingCandidates_NormalCase(t *testing.T) {
-	allocator := &antiAffinitiesAllocator{}
+	selector := &antiAffinitiesSelector{}
 
 	server1 := model.Server{Name: ptr.To("server1"), Public: "server1", Internal: "server1"}
 	server2 := model.Server{Name: ptr.To("server2"), Public: "server2", Internal: "server2"}
@@ -45,7 +45,7 @@ func TestGroupingCandidates_NormalCase(t *testing.T) {
 		},
 	}
 
-	result := allocator.groupingCandidates(candidates, candidatesMetadata)
+	result := selector.groupingCandidates(candidates, candidatesMetadata)
 
 	assert.NotNil(t, result)
 
@@ -61,28 +61,28 @@ func TestGroupingCandidates_NormalCase(t *testing.T) {
 }
 
 func TestGroupingCandidates_NoCandidates(t *testing.T) {
-	allocator := &antiAffinitiesAllocator{}
+	selector := &antiAffinitiesSelector{}
 	var candidates []model.Server
 	candidatesMetadata := map[string]model.ServerMetadata{}
 
-	result := allocator.groupingCandidates(candidates, candidatesMetadata)
+	result := selector.groupingCandidates(candidates, candidatesMetadata)
 
 	assert.Empty(t, result)
 }
 
 func TestGroupingCandidates_NoMetadata(t *testing.T) {
-	allocator := &antiAffinitiesAllocator{}
+	selector := &antiAffinitiesSelector{}
 	server1 := model.Server{Name: ptr.To("server1"), Public: "server1", Internal: "server1"}
 	candidates := []model.Server{server1}
 	candidatesMetadata := map[string]model.ServerMetadata{}
 
-	result := allocator.groupingCandidates(candidates, candidatesMetadata)
+	result := selector.groupingCandidates(candidates, candidatesMetadata)
 
 	assert.Empty(t, result)
 }
 
 func TestGroupingCandidates_PartialMetadataMissing(t *testing.T) {
-	allocator := &antiAffinitiesAllocator{}
+	selector := &antiAffinitiesSelector{}
 	server1 := model.Server{Name: ptr.To("server1"), Public: "server1", Internal: "server1"}
 	server2 := model.Server{Name: ptr.To("server2"), Public: "server2", Internal: "server2"}
 	candidates := []model.Server{server1, server2}
@@ -95,7 +95,7 @@ func TestGroupingCandidates_PartialMetadataMissing(t *testing.T) {
 		},
 	}
 
-	result := allocator.groupingCandidates(candidates, candidatesMetadata)
+	result := selector.groupingCandidates(candidates, candidatesMetadata)
 
 	assert.NotNil(t, result)
 	regionGroup, exists := result["region"]
@@ -105,7 +105,7 @@ func TestGroupingCandidates_PartialMetadataMissing(t *testing.T) {
 }
 
 func TestGroupingCandidates_AllSameLabelValue(t *testing.T) {
-	allocator := &antiAffinitiesAllocator{}
+	selector := &antiAffinitiesSelector{}
 	server1 := model.Server{Name: ptr.To("server1"), Public: "server1", Internal: "server1"}
 	server2 := model.Server{Name: ptr.To("server2"), Public: "server2", Internal: "server2"}
 	candidates := []model.Server{server1, server2}
@@ -123,7 +123,7 @@ func TestGroupingCandidates_AllSameLabelValue(t *testing.T) {
 		},
 	}
 
-	result := allocator.groupingCandidates(candidates, candidatesMetadata)
+	result := selector.groupingCandidates(candidates, candidatesMetadata)
 
 	assert.NotNil(t, result)
 	regionGroup, exists := result["region"]
@@ -133,7 +133,7 @@ func TestGroupingCandidates_AllSameLabelValue(t *testing.T) {
 }
 
 func TestAllocateNew_NoAntiAffinities(t *testing.T) {
-	allocator := &antiAffinitiesAllocator{}
+	selector := &antiAffinitiesSelector{}
 	server1 := model.Server{Name: ptr.To("server1"), Public: "server1", Internal: "server1"}
 	server2 := model.Server{Name: ptr.To("server2"), Public: "server2", Internal: "server2"}
 	server3 := model.Server{Name: ptr.To("server3"), Public: "server3", Internal: "server3"}
@@ -176,13 +176,13 @@ func TestAllocateNew_NoAntiAffinities(t *testing.T) {
 	var nsPolicies *policies.Policies
 	replicas := uint32(6)
 
-	result, err := allocator.AllocateNew(candidates, candidatesMetadata, nsPolicies, nil, replicas)
+	result, err := selector.SelectNew(candidates, candidatesMetadata, nsPolicies, nil, replicas)
 	assert.NoError(t, err)
 	assert.Equal(t, len(candidates), len(result))
 }
 
 func TestAllocateNew_SatisfiedAntiAffinities(t *testing.T) {
-	allocator := &antiAffinitiesAllocator{}
+	selector := &antiAffinitiesSelector{}
 	server1 := model.Server{Name: ptr.To("server1"), Public: "server1", Internal: "server1"}
 	server2 := model.Server{Name: ptr.To("server2"), Public: "server2", Internal: "server2"}
 	server3 := model.Server{Name: ptr.To("server3"), Public: "server3", Internal: "server3"}
@@ -232,13 +232,13 @@ func TestAllocateNew_SatisfiedAntiAffinities(t *testing.T) {
 	}
 	replicas := uint32(6)
 
-	result, err := allocator.AllocateNew(candidates, candidatesMetadata, nsPolicies, nil, replicas)
+	result, err := selector.SelectNew(candidates, candidatesMetadata, nsPolicies, nil, replicas)
 	assert.NoError(t, err)
 	assert.Equal(t, len(candidates), len(result))
 }
 
 func TestAllocateNew_UnsatisfiedAntiAffinities_DoNotSchedule(t *testing.T) {
-	allocator := &antiAffinitiesAllocator{}
+	selector := &antiAffinitiesSelector{}
 	server1 := model.Server{Name: ptr.To("server1"), Public: "server1", Internal: "server1"}
 	server2 := model.Server{Name: ptr.To("server2"), Public: "server2", Internal: "server2"}
 	server3 := model.Server{Name: ptr.To("server3"), Public: "server3", Internal: "server3"}
@@ -288,14 +288,14 @@ func TestAllocateNew_UnsatisfiedAntiAffinities_DoNotSchedule(t *testing.T) {
 	}
 	replicas := uint32(6)
 
-	result, err := allocator.AllocateNew(candidates, candidatesMetadata, nsPolicies, nil, replicas)
+	result, err := selector.SelectNew(candidates, candidatesMetadata, nsPolicies, nil, replicas)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unsatisfied anti-affinities")
 	assert.Nil(t, result)
 }
 
 func TestAllocateNew_UnsatisfiedAntiAffinities_ScheduleAnyway(t *testing.T) {
-	allocator := &antiAffinitiesAllocator{}
+	selector := &antiAffinitiesSelector{}
 	server1 := model.Server{Name: ptr.To("server1"), Public: "server1", Internal: "server1"}
 	server2 := model.Server{Name: ptr.To("server2"), Public: "server2", Internal: "server2"}
 	server3 := model.Server{Name: ptr.To("server3"), Public: "server3", Internal: "server3"}
@@ -345,7 +345,7 @@ func TestAllocateNew_UnsatisfiedAntiAffinities_ScheduleAnyway(t *testing.T) {
 	}
 	replicas := uint32(6)
 
-	result, err := allocator.AllocateNew(candidates, candidatesMetadata, nsPolicies, nil, replicas)
+	result, err := selector.SelectNew(candidates, candidatesMetadata, nsPolicies, nil, replicas)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported unsatisfiable action")
 	assert.Nil(t, result)

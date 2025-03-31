@@ -25,8 +25,8 @@ var (
 	ErrUnsupportedUnsatisfiableAction = errors.New("unsupported unsatisfiable action")
 )
 
-type Allocator interface {
-	AllocateNew(
+type Selector interface {
+	SelectNew(
 		candidates []model.Server,
 		candidatesMetadata map[string]model.ServerMetadata,
 		policies *policies.Policies,
@@ -34,11 +34,11 @@ type Allocator interface {
 		replicas uint32) ([]model.Server, error)
 }
 
-func NewAllocator() Allocator {
-	return &mergedAllocator{
-		allocators: []Allocator{
-			&antiAffinitiesAllocator{},
-			&lastAllocator{},
+func NewSelector() Selector {
+	return &mergedSelector{
+		selectors: []Selector{
+			&antiAffinitiesSelector{},
+			&serverIdxSelector{},
 		},
 	}
 }
