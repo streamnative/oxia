@@ -276,7 +276,7 @@ func TestAllocateNew_UnsatisfiedAntiAffinities_DoNotSchedule(t *testing.T) {
 
 	result, err := allocator.AllocateNew(candidates, candidatesMetadata, nsPolicies, nil, replicas)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "unsatisfied anti - affinities")
+	assert.Contains(t, err.Error(), "unsatisfied anti-affinities")
 	assert.Nil(t, result)
 }
 
