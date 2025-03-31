@@ -78,7 +78,7 @@ func (z *antiAffinitiesSelector) SelectNew(
 	return leftCandidates, nil
 }
 
-func (_ *antiAffinitiesSelector) groupingCandidates(candidates []model.Server, candidatesMetadata map[string]model.ServerMetadata) map[string]map[string][]string {
+func (*antiAffinitiesSelector) groupingCandidates(candidates []model.Server, candidatesMetadata map[string]model.ServerMetadata) map[string]map[string][]string {
 	groupedCandidates := make(map[string]map[string][]string)
 	for idx, candidate := range candidates {
 		id := candidate.GetIdentifier()
