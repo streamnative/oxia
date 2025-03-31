@@ -20,6 +20,9 @@ func (z *antiAffinitiesAllocator) AllocateNew(
 	nsPolicies *policies.Policies,
 	_ *model.ClusterStatus,
 	replicas uint32) ([]model.Server, error) {
+	if nsPolicies == nil {
+		return candidates, nil
+	}
 	antiAffinities := nsPolicies.AntiAffinities
 	if antiAffinities == nil || len(antiAffinities) == 0 {
 		return candidates, nil
@@ -27,13 +30,15 @@ func (z *antiAffinitiesAllocator) AllocateNew(
 
 	groupingCandidates := z.groupingCandidates(candidates, candidatesMetadata)
 
-	var filteredCandidates hashset.Set
+	filteredCandidates := hashset.New()
 	for _, antiAffinity := range antiAffinities {
 		for _, label := range antiAffinity.Labels {
 			labelGroupedCandidates := groupingCandidates[label]
 			for _, servers := range labelGroupedCandidates {
 				if len(servers) > 1 {
-					filteredCandidates.Add(servers[1:])
+					for idx := range servers[1:] {
+						filteredCandidates.Add(servers[idx])
+					}
 					leftCandidates := len(candidates) - filteredCandidates.Size()
 					if leftCandidates < int(replicas) {
 						switch antiAffinity.UnsatisfiableAction {
