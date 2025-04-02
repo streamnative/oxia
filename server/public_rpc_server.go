@@ -22,6 +22,7 @@ import (
 
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protowire"
@@ -164,6 +165,10 @@ func (s *publicRpcServer) Read(request *proto.ReadRequest, stream proto.OxiaClie
 		slog.Any("req", request),
 	)
 
+	if request.Shard == nil {
+		return status.Error(codes.InvalidArgument, "shard id is required")
+	}
+
 	lc, err := s.getLeader(*request.Shard)
 	if err != nil {
 		return err
@@ -211,6 +216,10 @@ func (s *publicRpcServer) List(request *proto.ListRequest, stream proto.OxiaClie
 		slog.String("peer", common.GetPeer(stream.Context())),
 		slog.Any("req", request),
 	)
+
+	if request.Shard == nil {
+		return status.Error(codes.InvalidArgument, "shard id is required")
+	}
 
 	lc, err := s.getLeader(*request.Shard)
 	if err != nil {
@@ -263,6 +272,10 @@ func (s *publicRpcServer) RangeScan(request *proto.RangeScanRequest, stream prot
 		slog.String("peer", common.GetPeer(stream.Context())),
 		slog.Any("req", request),
 	)
+
+	if request.Shard == nil {
+		return status.Error(codes.InvalidArgument, "shard id is required")
+	}
 
 	lc, err := s.getLeader(*request.Shard)
 	if err != nil {
