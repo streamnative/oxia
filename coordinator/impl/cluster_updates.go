@@ -15,18 +15,12 @@
 package impl
 
 import (
+	"log/slog"
+
 	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/coordinator/ensemble"
 	"github.com/streamnative/oxia/coordinator/model"
 )
-
-func getServers(servers []model.Server, startIdx uint32, count uint32) []model.Server {
-	n := len(servers)
-	res := make([]model.Server, count)
-	for i := uint32(0); i < count; i++ {
-		res[i] = servers[int(startIdx+i)%n]
-	}
-	return res
-}
 
 func findNamespaceConfig(config *model.ClusterConfig, ns string) *model.NamespaceConfig {
 	for _, cns := range config.Namespaces {
@@ -38,7 +32,7 @@ func findNamespaceConfig(config *model.ClusterConfig, ns string) *model.Namespac
 	return nil
 }
 
-func applyClusterChanges(config *model.ClusterConfig, currentStatus *model.ClusterStatus) (
+func applyClusterChanges(selector ensemble.Selector, cc *model.ClusterConfig, currentStatus *model.ClusterStatus) (
 	newStatus *model.ClusterStatus,
 	shardsToAdd map[int64]string,
 	shardsToDelete []int64) {
@@ -55,7 +49,7 @@ func applyClusterChanges(config *model.ClusterConfig, currentStatus *model.Clust
 	}
 
 	// Check for new namespaces
-	for _, nc := range config.Namespaces {
+	for _, nc := range cc.Namespaces {
 		nss, existing := currentStatus.Namespaces[nc.Name]
 		if existing {
 			continue
@@ -66,12 +60,18 @@ func applyClusterChanges(config *model.ClusterConfig, currentStatus *model.Clust
 			Shards:            map[int64]model.ShardMetadata{},
 			ReplicationFactor: nc.ReplicationFactor,
 		}
+
 		for _, shard := range common.GenerateShards(newStatus.ShardIdGenerator, nc.InitialShardCount) {
+			candidates, err := selector.SelectNew(cc.Servers, cc.ServerMetadata, nc.Policies, newStatus, nc.ReplicationFactor)
+			if err != nil {
+				slog.Error("failed to select new candidates.", slog.Any("error", err))
+				continue
+			}
 			shardMetadata := model.ShardMetadata{
 				Status:   model.ShardStatusUnknown,
 				Term:     -1,
 				Leader:   nil,
-				Ensemble: getServers(config.Servers, newStatus.ServerIdx, nc.ReplicationFactor),
+				Ensemble: candidates,
 				Int32HashRange: model.Int32HashRange{
 					Min: shard.Min,
 					Max: shard.Max,
@@ -79,7 +79,7 @@ func applyClusterChanges(config *model.ClusterConfig, currentStatus *model.Clust
 			}
 
 			nss.Shards[shard.Id] = shardMetadata
-			newStatus.ServerIdx = (newStatus.ServerIdx + nc.ReplicationFactor) % uint32(len(config.Servers))
+			newStatus.ServerIdx = (newStatus.ServerIdx + nc.ReplicationFactor) % uint32(len(cc.Servers))
 			shardsToAdd[shard.Id] = nc.Name
 		}
 		newStatus.Namespaces[nc.Name] = nss
@@ -89,7 +89,7 @@ func applyClusterChanges(config *model.ClusterConfig, currentStatus *model.Clust
 
 	// Check for any namespace that was removed
 	for name, ns := range currentStatus.Namespaces {
-		namespaceConfig := findNamespaceConfig(config, name)
+		namespaceConfig := findNamespaceConfig(cc, name)
 		if namespaceConfig != nil {
 			continue
 		}

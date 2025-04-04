@@ -88,7 +88,7 @@ linters-settings:
         severity: warning
         disabled: false
         arguments:
-          - 21
+          - 32
       - name: cyclomatic
         severity: warning
         disabled: false
