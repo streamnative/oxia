@@ -40,6 +40,7 @@ func (b *BatchStreamOnce[T]) OnNext(t T) error {
 		if err != nil {
 			return err
 		}
+		b.totalBatchBytes = 0
 		b.container = b.container[:0]
 	}
 	return nil
