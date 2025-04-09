@@ -170,7 +170,7 @@ func TestShardAssignmentDispatcher_AddClient(t *testing.T) {
 	}()
 
 	response := mockClient.GetResponse()
-	assert.Equal(t, request, response)
+	assert.True(t, pb.Equal(request, response))
 
 	request = &proto.ShardAssignments{
 		Namespaces: map[string]*proto.NamespaceShardsAssignment{
@@ -187,7 +187,7 @@ func TestShardAssignmentDispatcher_AddClient(t *testing.T) {
 
 	// Should get the assignment update as they arrived from controller
 	response = mockClient.GetResponse()
-	assert.Equal(t, request, response)
+	assert.True(t, pb.Equal(request, response))
 
 	mockClient.cancel()
 	wg.Wait()
@@ -205,7 +205,7 @@ func TestShardAssignmentDispatcher_AddClient(t *testing.T) {
 	}()
 
 	response = mockClient.GetResponse()
-	assert.Equal(t, request, response)
+	assert.True(t, pb.Equal(request, response))
 
 	mockClient.cancel()
 	wg.Wait()
