@@ -26,6 +26,7 @@ import (
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
+	pb "google.golang.org/protobuf/proto"
 
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/container"
@@ -268,7 +269,7 @@ func TestShardAssignmentDispatcher_MultipleNamespaces(t *testing.T) {
 	wg.Wait()
 
 	response := mockClient.GetResponse()
-	assert.Equal(t, &proto.ShardAssignments{
+	assert.True(t, pb.Equal(&proto.ShardAssignments{
 		Namespaces: map[string]*proto.NamespaceShardsAssignment{
 			"test-ns-1": {
 				Assignments: []*proto.ShardAssignment{
@@ -278,7 +279,7 @@ func TestShardAssignmentDispatcher_MultipleNamespaces(t *testing.T) {
 				ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
 			},
 		},
-	}, response)
+	}, response))
 
 	// If namespace is not passed, it will use "default"
 	mockClient = newMockShardAssignmentClientStream()
@@ -295,7 +296,7 @@ func TestShardAssignmentDispatcher_MultipleNamespaces(t *testing.T) {
 	wg.Wait()
 
 	response = mockClient.GetResponse()
-	assert.Equal(t, &proto.ShardAssignments{
+	assert.True(t, pb.Equal(&proto.ShardAssignments{
 		Namespaces: map[string]*proto.NamespaceShardsAssignment{
 			"default": {
 				Assignments: []*proto.ShardAssignment{
@@ -305,7 +306,7 @@ func TestShardAssignmentDispatcher_MultipleNamespaces(t *testing.T) {
 				ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
 			},
 		},
-	}, response)
+	}, response))
 
 	// If the namespace is not valid, we'll get an error
 	mockClient = newMockShardAssignmentClientStream()
