@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/streamnative/oxia/common/policies"
 	"go.uber.org/multierr"
 	pb "google.golang.org/protobuf/proto"
 
@@ -65,6 +66,7 @@ type RangeScanIterator interface {
 
 type TermOptions struct {
 	NotificationsEnabled bool
+	Policies             *policies.Policies
 }
 
 type DB interface {
@@ -76,6 +78,7 @@ type DB interface {
 	Get(request *proto.GetRequest) (*proto.GetResponse, error)
 	List(request *proto.ListRequest) (KeyIterator, error)
 	RangeScan(request *proto.RangeScanRequest) (RangeScanIterator, error)
+
 	ReadCommitOffset() (int64, error)
 
 	ReadNextNotifications(ctx context.Context, startOffset int64) ([]*proto.NotificationBatch, error)
@@ -147,6 +150,7 @@ type db struct {
 	versionIdTracker     atomic.Int64
 	notificationsTracker *notificationsTracker
 	log                  *slog.Logger
+	policies             *policies.Policies
 	notificationsEnabled bool
 
 	putCounter          metrics.Counter
@@ -196,7 +200,7 @@ func (d *db) applyWriteRequest(b *proto.WriteRequest, batch WriteBatch, commitOf
 
 	d.putCounter.Add(len(b.Puts))
 	for _, putReq := range b.Puts {
-		pr, err := d.applyPut(batch, notifications, putReq, timestamp, updateOperationCallback, false)
+		pr, err := d.applyPut(batch, notifications, putReq, timestamp, updateOperationCallback, true)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -281,7 +285,7 @@ func (d *db) addASCIILong(key string, value int64, batch WriteBatch, timestamp u
 		Key:               key,
 		Value:             asciiValue,
 		ExpectedVersionId: nil,
-	}, timestamp, NoOpCallback, true)
+	}, timestamp, NoOpCallback, false)
 	return err
 }
 
@@ -405,7 +409,7 @@ func (d *db) UpdateTerm(newTerm int64, options TermOptions) error {
 	if _, err := d.applyPut(batch, nil, &proto.PutRequest{
 		Key:   termKey,
 		Value: []byte(fmt.Sprintf("%d", newTerm)),
-	}, now(), NoOpCallback, true); err != nil {
+	}, now(), NoOpCallback, false); err != nil {
 		return err
 	}
 
@@ -416,7 +420,7 @@ func (d *db) UpdateTerm(newTerm int64, options TermOptions) error {
 	if _, err := d.applyPut(batch, nil, &proto.PutRequest{
 		Key:   termOptionsKey,
 		Value: serOptions,
-	}, now(), NoOpCallback, true); err != nil {
+	}, now(), NoOpCallback, false); err != nil {
 		return err
 	}
 
@@ -465,14 +469,14 @@ func (d *db) ReadTerm() (term int64, options TermOptions, err error) {
 	return term, options, nil
 }
 
-func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *proto.PutRequest, timestamp uint64, updateOperationCallback UpdateOperationCallback, internal bool) (*proto.PutResponse, error) { //nolint:revive
+func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *proto.PutRequest, timestamp uint64, updateOperationCallback UpdateOperationCallback, userKey bool) (*proto.PutResponse, error) { //nolint:revive
 	var se *proto.StorageEntry
 	var err error
 	var newKey string
 	if len(putReq.GetSequenceKeyDelta()) > 0 {
 		newKey, err = generateUniqueKeyFromSequences(batch, putReq)
 		putReq.Key = newKey
-	} else if !internal {
+	} else if userKey {
 		se, err = checkExpectedVersionId(batch, putReq.Key, putReq.ExpectedVersionId)
 	}
 
@@ -486,7 +490,7 @@ func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *pr
 	}
 
 	versionId := wal.InvalidOffset
-	if !internal {
+	if userKey {
 		versionId = d.versionIdTracker.Add(1)
 		// No version conflict
 		status, err := updateOperationCallback.OnPut(batch, putReq, se)

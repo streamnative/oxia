@@ -268,7 +268,7 @@ func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServ
 
 	log.Info("Received Replicate request")
 
-	follower, err := s.shardsDirector.GetOrCreateFollower(namespace, shardId, term)
+	follower, err := s.shardsDirector.GetOrCreateFollower(namespace, shardId, term, nil)
 	if err != nil {
 		log.Warn(
 			"Replicate failed: could not get follower controller",
@@ -317,7 +317,7 @@ func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapsh
 		slog.String("peer", common.GetPeer(srv.Context())),
 	)
 
-	follower, err := s.shardsDirector.GetOrCreateFollower(namespace, shardId, term)
+	follower, err := s.shardsDirector.GetOrCreateFollower(namespace, shardId, term, nil)
 	if err != nil {
 		s.log.Warn(
 			"SendSnapshot failed: could not get follower controller",

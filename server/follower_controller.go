@@ -23,6 +23,7 @@ import (
 	"sync/atomic"
 
 	"github.com/pkg/errors"
+	"github.com/streamnative/oxia/common/policies"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -95,6 +96,7 @@ type followerController struct {
 	kvFactory   kv.Factory
 	db          kv.DB
 	termOptions kv.TermOptions
+	checkpoint  *proto.Checkpoint
 
 	ctx              context.Context
 	cancel           context.CancelFunc
@@ -108,13 +110,19 @@ type followerController struct {
 	writeLatencyHisto metrics.LatencyHistogram
 }
 
-func NewFollowerController(config Config, namespace string, shardId int64, wf wal.Factory, kvFactory kv.Factory) (FollowerController, error) {
+func NewFollowerController(config Config,
+	namespace string,
+	shardId int64,
+	wf wal.Factory,
+	kvFactory kv.Factory,
+	checkpoint *proto.Checkpoint) (FollowerController, error) {
 	fc := &followerController{
 		config:           config,
 		namespace:        namespace,
 		shardId:          shardId,
 		kvFactory:        kvFactory,
 		status:           proto.ServingStatus_NOT_MEMBER,
+		checkpoint:       checkpoint,
 		closeStreamWg:    nil,
 		applyEntriesDone: make(chan any),
 		writeLatencyHisto: metrics.NewLatencyHistogram("oxia_server_follower_write_latency",
@@ -323,6 +331,23 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 	}
 
 	fc.status = proto.ServingStatus_FOLLOWER
+
+	rawCheckpoint, err := fc.db.Get(&proto.GetRequest{
+		Key:            policies.CheckpointKey,
+		IncludeValue:   true,
+		ComparisonType: proto.KeyComparisonType_EQUAL,
+	})
+	if err != nil {
+		return nil, err
+	}
+	checkpoint := &proto.Checkpoint{}
+	value := rawCheckpoint.GetValue()
+	// todo: something
+
+	if fc.checkpoint != nil {
+		err := checkpoint.verify(checkpoint)
+	}
+
 	headOffset, err := fc.wal.TruncateLog(req.HeadEntryId.Offset)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to truncate wal. truncate-offset: %d - wal-last-offset: %d",
