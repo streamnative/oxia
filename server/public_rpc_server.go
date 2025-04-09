@@ -287,13 +287,10 @@ func (s *publicRpcServer) RangeScan(request *proto.RangeScanRequest, stream prot
 	finish := make(chan error, 1)
 	lc.RangeScan(ctx, request,
 		NewBatchStreamOnce[*proto.GetResponse](maxTotalScanBatchCount, maxTotalReadValueSize,
-			// get bytes
 			func(response *proto.GetResponse) int { return len(response.Value) },
-			// on flush
 			func(container []*proto.GetResponse) error {
 				return stream.Send(&proto.RangeScanResponse{Records: container})
 			},
-			// on finish
 			func(err error) {
 				finish <- err
 				close(finish)
