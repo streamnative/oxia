@@ -18,6 +18,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/streamnative/oxia/common/callback"
 	"github.com/stretchr/testify/assert"
 	pb "google.golang.org/protobuf/proto"
 
@@ -165,12 +166,14 @@ func TestSecondaryIndices_RangeScan(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	ch, errCh, err := lc.RangeScan(ctx, &proto.RangeScanRequest{
+	ch := make(chan *proto.GetResponse, 100)
+	errCh := make(chan error, 1)
+	lc.RangeScan(ctx, &proto.RangeScanRequest{
 		Shard:              &shard,
 		StartInclusive:     "1",
 		EndExclusive:       "3",
 		SecondaryIndexName: pb.String("my-idx"),
-	})
+	}, callback.ReadFromStreamCallback(ch, errCh))
 	assert.NoError(t, err)
 
 	gr := <-ch
@@ -181,18 +184,19 @@ func TestSecondaryIndices_RangeScan(t *testing.T) {
 	assert.Equal(t, "2", string(gr.Value))
 	assert.Empty(t, ch)
 
-	assert.NoError(t, <-errCh)
+	assert.Empty(t, errCh)
 
+	ch = make(chan *proto.GetResponse, 100)
+	errCh = make(chan error, 1)
 	// Wrong index
-	ch, errCh, err = lc.RangeScan(ctx, &proto.RangeScanRequest{
+	lc.RangeScan(ctx, &proto.RangeScanRequest{
 		Shard:              &shard,
 		StartInclusive:     "/a",
 		EndExclusive:       "/d",
 		SecondaryIndexName: pb.String("wrong-idx"),
-	})
-	assert.NoError(t, err)
+	}, callback.ReadFromStreamCallback(ch, errCh))
 	assert.Empty(t, ch)
-	assert.NoError(t, <-errCh)
+	assert.Empty(t, errCh)
 
 	// Individual delete
 	_, err = lc.Write(context.Background(), &proto.WriteRequest{
@@ -201,13 +205,14 @@ func TestSecondaryIndices_RangeScan(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	ch, errCh, err = lc.RangeScan(ctx, &proto.RangeScanRequest{
+	ch = make(chan *proto.GetResponse, 100)
+	errCh = make(chan error, 1)
+	lc.RangeScan(ctx, &proto.RangeScanRequest{
 		Shard:              &shard,
 		StartInclusive:     "0",
 		EndExclusive:       "99999",
 		SecondaryIndexName: pb.String("my-idx"),
-	})
-	assert.NoError(t, err)
+	}, callback.ReadFromStreamCallback(ch, errCh))
 
 	gr = <-ch
 	assert.Equal(t, "/a", *gr.Key)
@@ -218,9 +223,9 @@ func TestSecondaryIndices_RangeScan(t *testing.T) {
 	gr = <-ch
 	assert.Equal(t, "/e", *gr.Key)
 	assert.Empty(t, ch)
-	assert.NoError(t, <-errCh)
+	assert.Empty(t, errCh)
 
-	assert.NoError(t, <-errCh)
+	assert.Empty(t, errCh)
 
 	// Range delete
 	_, err = lc.Write(context.Background(), &proto.WriteRequest{
@@ -232,20 +237,21 @@ func TestSecondaryIndices_RangeScan(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	ch, errCh, err = lc.RangeScan(ctx, &proto.RangeScanRequest{
+	ch = make(chan *proto.GetResponse, 100)
+	errCh = make(chan error, 1)
+	lc.RangeScan(ctx, &proto.RangeScanRequest{
 		Shard:              &shard,
 		StartInclusive:     "0",
 		EndExclusive:       "99999",
 		SecondaryIndexName: pb.String("my-idx"),
-	})
-	assert.NoError(t, err)
+	}, callback.ReadFromStreamCallback(ch, errCh))
 
 	gr = <-ch
 	assert.Equal(t, "/d", *gr.Key)
 	gr = <-ch
 	assert.Equal(t, "/e", *gr.Key)
 	assert.Empty(t, ch)
-	assert.NoError(t, <-errCh)
+	assert.Empty(t, errCh)
 
 	cancel()
 	assert.NoError(t, lc.Close())

@@ -21,6 +21,7 @@ import (
 	"log/slog"
 
 	"github.com/pkg/errors"
+	. "github.com/streamnative/oxia/common/callback"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -272,58 +273,45 @@ func (s *publicRpcServer) RangeScan(request *proto.RangeScanRequest, stream prot
 		slog.String("peer", common.GetPeer(stream.Context())),
 		slog.Any("req", request),
 	)
-
 	if request.Shard == nil {
 		return status.Error(codes.InvalidArgument, "shard id is required")
 	}
+	ctx := stream.Context()
 
-	lc, err := s.getLeader(*request.Shard)
-	if err != nil {
+	var lc LeaderController
+	var err error
+	if lc, err = s.getLeader(*request.Shard); err != nil {
 		return err
 	}
 
-	ch, errCh, err := lc.RangeScan(stream.Context(), request)
-	if err != nil {
-		s.log.Warn(
-			"Failed to perform range-scan operation",
-			slog.Any("error", err),
-		)
-		return err
-	}
-
-	response := &proto.RangeScanResponse{}
-	var totalSize int
+	finish := make(chan error, 1)
+	lc.RangeScan(ctx, request,
+		NewBatchStreamOnce[*proto.GetResponse](maxTotalScanBatchCount, maxTotalReadValueSize,
+			// get bytes
+			func(response *proto.GetResponse) int { return len(response.Value) },
+			// on flush
+			func(container []*proto.GetResponse) error {
+				return stream.Send(&proto.RangeScanResponse{Records: container})
+			},
+			// on finish
+			func(err error) {
+				finish <- err
+				close(finish)
+			}),
+	)
 
 	for {
 		select {
-		case err := <-errCh:
+		case err := <-finish:
 			if err != nil {
-				return err
+				s.log.Warn(
+					"Failed to perform range-scan operation",
+					slog.Any("error", err),
+				)
 			}
-
-		case gr, more := <-ch:
-			if !more {
-				if len(response.Records) > 0 {
-					if err := stream.Send(response); err != nil {
-						return err
-					}
-				}
-				return nil
-			}
-
-			size := len(gr.Value)
-			if len(response.Records) >= maxTotalScanBatchCount || totalSize+size > maxTotalReadValueSize {
-				if err := stream.Send(response); err != nil {
-					return err
-				}
-				response = &proto.RangeScanResponse{}
-				totalSize = 0
-			}
-			response.Records = append(response.Records, gr)
-			totalSize += size
-
-		case <-stream.Context().Done():
-			return stream.Context().Err()
+			return err
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
 }
