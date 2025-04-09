@@ -36,7 +36,11 @@ func (b *BatchStreamOnce[T]) OnNext(t T) error {
 	b.container = append(b.container, t)
 	b.totalBatchBytes += b.getBytes(t)
 	if len(b.container) >= b.maxBatchCount || b.totalBatchBytes >= b.maxBatchBytes {
-		return b.onFlush(b.container)
+		err := b.onFlush(b.container)
+		if err != nil {
+			return err
+		}
+		b.container = b.container[:0]
 	}
 	return nil
 }
