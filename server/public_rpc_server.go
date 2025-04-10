@@ -21,7 +21,7 @@ import (
 	"log/slog"
 
 	"github.com/pkg/errors"
-	. "github.com/streamnative/oxia/common/callback"
+	"github.com/streamnative/oxia/common/callback"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -286,7 +286,7 @@ func (s *publicRpcServer) RangeScan(request *proto.RangeScanRequest, stream prot
 
 	finish := make(chan error, 1)
 	lc.RangeScan(ctx, request,
-		NewBatchStreamOnce[*proto.GetResponse](maxTotalScanBatchCount, maxTotalReadValueSize,
+		callback.NewBatchStreamOnce[*proto.GetResponse](maxTotalScanBatchCount, maxTotalReadValueSize,
 			func(response *proto.GetResponse) int { return len(response.Value) },
 			func(container []*proto.GetResponse) error {
 				return stream.Send(&proto.RangeScanResponse{Records: container})
