@@ -25,6 +25,7 @@ func (m *Checkpoint) CloneVT() *Checkpoint {
 	}
 	r := new(Checkpoint)
 	r.CommitOffset = m.CommitOffset
+	r.VersionId = m.VersionId
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -43,6 +44,9 @@ func (this *Checkpoint) EqualVT(that *Checkpoint) bool {
 		return false
 	}
 	if this.CommitOffset != that.CommitOffset {
+		return false
+	}
+	if this.VersionId != that.VersionId {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -85,6 +89,11 @@ func (m *Checkpoint) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.VersionId != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.VersionId))
+		i--
+		dAtA[i] = 0x10
+	}
 	if m.CommitOffset != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.CommitOffset))
 		i--
@@ -101,6 +110,9 @@ func (m *Checkpoint) SizeVT() (n int) {
 	_ = l
 	if m.CommitOffset != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.CommitOffset))
+	}
+	if m.VersionId != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.VersionId))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -150,6 +162,25 @@ func (m *Checkpoint) UnmarshalVT(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.CommitOffset |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field VersionId", wireType)
+			}
+			m.VersionId = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.VersionId |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -220,6 +251,25 @@ func (m *Checkpoint) UnmarshalVTUnsafe(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.CommitOffset |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field VersionId", wireType)
+			}
+			m.VersionId = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.VersionId |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

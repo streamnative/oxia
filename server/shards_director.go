@@ -36,7 +36,7 @@ type ShardsDirector interface {
 	GetFollower(shardId int64) (FollowerController, error)
 
 	GetOrCreateLeader(namespace string, shardId int64) (LeaderController, error)
-	GetOrCreateFollower(namespace string, shardId int64, term int64, checkpoint *proto.Checkpoint) (FollowerController, error)
+	GetOrCreateFollower(namespace string, shardId int64, term int64, termCheckpoint *proto.Checkpoint) (FollowerController, error)
 
 	DeleteShard(req *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error)
 }
@@ -155,7 +155,7 @@ func (s *shardsDirector) GetOrCreateLeader(namespace string, shardId int64) (Lea
 	return lc, nil
 }
 
-func (s *shardsDirector) GetOrCreateFollower(namespace string, shardId int64, term int64, checkpoint *proto.Checkpoint) (FollowerController, error) {
+func (s *shardsDirector) GetOrCreateFollower(namespace string, shardId int64, term int64, termCheckpoint *proto.Checkpoint) (FollowerController, error) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -185,7 +185,7 @@ func (s *shardsDirector) GetOrCreateFollower(namespace string, shardId int64, te
 	}
 
 	// Create new follower controller
-	fc, err := NewFollowerController(s.config, namespace, shardId, s.walFactory, s.kvFactory, checkpoint)
+	fc, err := NewFollowerController(s.config, namespace, shardId, s.walFactory, s.kvFactory, termCheckpoint)
 	if err != nil {
 		return nil, err
 	}

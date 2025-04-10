@@ -46,16 +46,20 @@ func NewReplicationRpcProvider(tlsConf *tls.Config) ReplicationRpcProvider {
 	}
 }
 
-func (r *replicationRpcProvider) GetReplicateStream(ctx context.Context, follower string, namespace string, shard int64, term int64) (
-	proto.OxiaLogReplication_ReplicateClient, error) {
+func (r *replicationRpcProvider) GetReplicateStream(ctx context.Context, follower string, namespace string, shard int64, term int64, checkpoint *proto.Checkpoint) (proto.OxiaLogReplication_ReplicateClient, error) {
 	rpc, err := r.pool.GetReplicationRpc(follower)
 	if err != nil {
 		return nil, err
 	}
 
+	data, err := checkpoint.MarshalVT()
+	if err != nil {
+		return nil, err
+	}
 	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataNamespace, namespace)
 	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataShardId, fmt.Sprintf("%d", shard))
 	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataTerm, fmt.Sprintf("%d", term))
+	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataCheckpoint, string(data))
 
 	stream, err := rpc.Replicate(ctx)
 	return stream, err

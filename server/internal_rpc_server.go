@@ -22,6 +22,7 @@ import (
 	"log/slog"
 
 	"github.com/pkg/errors"
+	"github.com/streamnative/oxia/common/policies"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
@@ -218,7 +219,7 @@ func (s *internalRpcServer) Truncate(c context.Context, req *proto.TruncateReque
 
 	log.Info("Received Truncate request")
 
-	follower, err := s.shardsDirector.GetOrCreateFollower(req.Namespace, req.Shard, req.Term)
+	follower, err := s.shardsDirector.GetOrCreateFollower(req.Namespace, req.Shard, req.Term, nil)
 	if err != nil {
 		log.Warn(
 			"Truncate failed: could not get follower controller",
@@ -249,14 +250,20 @@ func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServ
 	if err != nil {
 		return err
 	}
-
 	namespace, err := readHeader(md, common.MetadataNamespace)
 	if err != nil {
 		return err
 	}
-
 	term, err := readTerm(md)
 	if err != nil {
+		return err
+	}
+	checkpoint, err := readHeader(md, common.MetadataCheckpoint)
+	if err != nil {
+		return err
+	}
+	leaderCheckpoint := &proto.Checkpoint{}
+	if err = leaderCheckpoint.UnmarshalVT([]byte(checkpoint)); err != nil {
 		return err
 	}
 
@@ -268,13 +275,24 @@ func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServ
 
 	log.Info("Received Replicate request")
 
-	follower, err := s.shardsDirector.GetOrCreateFollower(namespace, shardId, term, nil)
+	follower, err := s.shardsDirector.GetOrCreateFollower(namespace, shardId, term, leaderCheckpoint)
 	if err != nil {
 		log.Warn(
 			"Replicate failed: could not get follower controller",
 			slog.Any("error", err),
 		)
 		return err
+	}
+
+	followerCheckpoint, err := follower.Checkpoint()
+	if err != nil {
+		return err
+	}
+
+	if followerCheckpoint != nil && followerCheckpoint.CommitOffset == leaderCheckpoint.CommitOffset {
+		if err = policies.VerifyCheckpoint(leaderCheckpoint, followerCheckpoint); err != nil {
+			return err
+		}
 	}
 
 	err = follower.Replicate(srv)

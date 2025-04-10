@@ -72,6 +72,7 @@ type FollowerController interface {
 
 	Term() int64
 	CommitOffset() int64
+	Checkpoint() (*proto.Checkpoint, error)
 	Status() proto.ServingStatus
 }
 
@@ -91,12 +92,12 @@ type followerController struct {
 	// Offset of the last entry appended and not fully synced yet on the wal
 	lastAppendedOffset int64
 
-	status      proto.ServingStatus
-	wal         wal.Wal
-	kvFactory   kv.Factory
-	db          kv.DB
-	termOptions kv.TermOptions
-	checkpoint  *proto.Checkpoint
+	status         proto.ServingStatus
+	wal            wal.Wal
+	kvFactory      kv.Factory
+	db             kv.DB
+	termOptions    kv.TermOptions
+	termCheckpoint *proto.Checkpoint
 
 	ctx              context.Context
 	cancel           context.CancelFunc
@@ -122,7 +123,7 @@ func NewFollowerController(config Config,
 		shardId:          shardId,
 		kvFactory:        kvFactory,
 		status:           proto.ServingStatus_NOT_MEMBER,
-		checkpoint:       checkpoint,
+		termCheckpoint:   checkpoint,
 		closeStreamWg:    nil,
 		applyEntriesDone: make(chan any),
 		writeLatencyHisto: metrics.NewLatencyHistogram("oxia_server_follower_write_latency",
@@ -332,22 +333,6 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 
 	fc.status = proto.ServingStatus_FOLLOWER
 
-	rawCheckpoint, err := fc.db.Get(&proto.GetRequest{
-		Key:            policies.CheckpointKey,
-		IncludeValue:   true,
-		ComparisonType: proto.KeyComparisonType_EQUAL,
-	})
-	if err != nil {
-		return nil, err
-	}
-	checkpoint := &proto.Checkpoint{}
-	value := rawCheckpoint.GetValue()
-	// todo: something
-
-	if fc.checkpoint != nil {
-		err := checkpoint.verify(checkpoint)
-	}
-
 	headOffset, err := fc.wal.TruncateLog(req.HeadEntryId.Offset)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to truncate wal. truncate-offset: %d - wal-last-offset: %d",
@@ -517,7 +502,8 @@ func (fc *followerController) applyAllCommittedEntries() {
 
 func (fc *followerController) processCommitRequest(entry *proto.LogEntry, logEntryValue *proto.LogEntryValue) error {
 	for _, br := range logEntryValue.GetRequests().Writes {
-		_, err := fc.db.ProcessWrite(br, entry.Offset, entry.Timestamp, WrapperUpdateOperationCallback)
+		commitOffset := entry.Offset
+		response, err := fc.db.ProcessWrite(br, commitOffset, entry.Timestamp, WrapperUpdateOperationCallback)
 		if err != nil {
 			fc.log.Error(
 				"Error applying committed entry",
@@ -525,8 +511,29 @@ func (fc *followerController) processCommitRequest(entry *proto.LogEntry, logEnt
 			)
 			return err
 		}
+		termCheckpoint := fc.termCheckpoint
+		if termCheckpoint != nil && commitOffset == termCheckpoint.CommitOffset {
+			puts := response.Puts
+			verifiedVersionId := false
+			if puts != nil && len(puts) != 0 {
+				// reverse loop because of piggyback messages
+				for i := len(puts) - 1; i >= 0; i-- {
+					maybeCheckpointResponse := puts[i]
+					if *maybeCheckpointResponse.Key == policies.CheckpointKey {
+						if maybeCheckpointResponse.Version.VersionId == termCheckpoint.VersionId {
+							// okay
+							verifiedVersionId = true
+							break
+						}
+					}
+				}
+			}
+			if !verifiedVersionId {
+				fc.log.Error("corrupted internal stats")
+				return errors.New("corrupted internal stats")
+			}
+		}
 	}
-
 	return nil
 }
 
@@ -757,6 +764,12 @@ func (fc *followerController) GetStatus(_ *proto.GetStatusRequest) (*proto.GetSt
 		HeadOffset:   fc.lastAppendedOffset,
 		CommitOffset: fc.CommitOffset(),
 	}, nil
+}
+
+func (fc *followerController) Checkpoint() (*proto.Checkpoint, error) {
+	fc.Lock()
+	defer fc.Unlock()
+	return fc.db.ReadCheckpoint()
 }
 
 func (fc *followerController) DeleteShard(request *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error) {

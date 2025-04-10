@@ -98,7 +98,7 @@ func (m *mockRpcClient) CloseSend() error {
 	return nil
 }
 
-func (m *mockRpcClient) GetReplicateStream(ctx context.Context, follower string, namespace string, shard int64, term int64) (proto.OxiaLogReplication_ReplicateClient, error) {
+func (m *mockRpcClient) GetReplicateStream(ctx context.Context, follower string, namespace string, shard int64, term int64, checkpoint *proto.Checkpoint) (proto.OxiaLogReplication_ReplicateClient, error) {
 	return m, nil
 }
 

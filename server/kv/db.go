@@ -80,6 +80,7 @@ type DB interface {
 	RangeScan(request *proto.RangeScanRequest) (RangeScanIterator, error)
 
 	ReadCommitOffset() (int64, error)
+	ReadCheckpoint() (*proto.Checkpoint, error)
 
 	ReadNextNotifications(ctx context.Context, startOffset int64) ([]*proto.NotificationBatch, error)
 
@@ -375,6 +376,29 @@ func (d *db) RangeScan(request *proto.RangeScanRequest) (RangeScanIterator, erro
 
 func (d *db) ReadCommitOffset() (int64, error) {
 	return d.readASCIILong(commitOffsetKey)
+}
+
+func (d *db) ReadCheckpoint() (*proto.Checkpoint, error) {
+	v, err := applyGet(d.kv, &proto.GetRequest{
+		Key:            policies.CheckpointKey,
+		IncludeValue:   true,
+		ComparisonType: proto.KeyComparisonType_EQUAL,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if v.Status != proto.Status_OK {
+		if v.Status != proto.Status_KEY_NOT_FOUND {
+			return nil, errors.New("unexpected checkpoint status")
+		}
+		return nil, nil
+	}
+	Checkpoint := &proto.Checkpoint{}
+	if err = Checkpoint.UnmarshalVT(v.Value); err != nil {
+		return nil, err
+	}
+	Checkpoint.VersionId = v.Version.VersionId
+	return Checkpoint, nil
 }
 
 func (d *db) readLastVersionId() (int64, error) {
