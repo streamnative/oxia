@@ -267,7 +267,6 @@ func (s *publicRpcServer) List(request *proto.ListRequest, stream proto.OxiaClie
 	}
 }
 
-//nolint:revive
 func (s *publicRpcServer) RangeScan(request *proto.RangeScanRequest, stream proto.OxiaClient_RangeScanServer) error {
 	s.log.Debug(
 		"RangeScan request",
