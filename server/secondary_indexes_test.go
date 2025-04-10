@@ -18,9 +18,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/streamnative/oxia/common/callback"
 	"github.com/stretchr/testify/assert"
 	pb "google.golang.org/protobuf/proto"
+
+	"github.com/streamnative/oxia/common/callback"
 
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/proto"
