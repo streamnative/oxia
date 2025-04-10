@@ -14,11 +14,15 @@
 
 package model
 
-import "github.com/streamnative/oxia/common"
+import (
+	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/coordinator/policies"
+)
 
 type ClusterConfig struct {
-	Namespaces []NamespaceConfig `json:"namespaces" yaml:"namespaces"`
-	Servers    []Server          `json:"servers" yaml:"servers"`
+	Namespaces     []NamespaceConfig         `json:"namespaces" yaml:"namespaces"`
+	Servers        []Server                  `json:"servers" yaml:"servers"`
+	ServerMetadata map[string]ServerMetadata `json:"serverMetadata" yaml:"serverMetadata"`
 }
 
 type NamespaceConfig struct {
@@ -26,4 +30,5 @@ type NamespaceConfig struct {
 	InitialShardCount    uint32                       `json:"initialShardCount" yaml:"initialShardCount"`
 	ReplicationFactor    uint32                       `json:"replicationFactor" yaml:"replicationFactor"`
 	NotificationsEnabled common.OptBooleanDefaultTrue `json:"notificationsEnabled" yaml:"notificationsEnabled"`
+	Policies             *policies.Policies           `json:"policies,omitempty" yaml:"policies,omitempty"`
 }

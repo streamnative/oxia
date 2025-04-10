@@ -26,6 +26,8 @@ import (
 	"go.uber.org/multierr"
 	pb "google.golang.org/protobuf/proto"
 
+	"github.com/streamnative/oxia/coordinator/ensemble"
+
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/proto"
@@ -61,6 +63,7 @@ type Coordinator interface {
 type coordinator struct {
 	sync.Mutex
 	assignmentsChanged common.ConditionContext
+	ensembleSelector   ensemble.Selector
 
 	MetadataProvider
 	clusterConfigProvider func() (model.ClusterConfig, error)
@@ -100,6 +103,7 @@ func NewCoordinator(metadataProvider MetadataProvider,
 		clusterConfigProvider: clusterConfigProvider,
 		clusterConfigChangeCh: clusterConfigNotificationsCh,
 		ClusterConfig:         initialClusterConf,
+		ensembleSelector:      ensemble.NewSelector(),
 		shardControllers:      make(map[int64]ShardController),
 		nodeControllers:       make(map[string]NodeController),
 		drainingNodes:         make(map[string]NodeController),
@@ -204,7 +208,7 @@ func (c *coordinator) initialAssignment() error {
 		slog.Any("clusterConfig", c.ClusterConfig),
 	)
 
-	clusterStatus, _, _ := applyClusterChanges(&c.ClusterConfig, model.NewClusterStatus())
+	clusterStatus, _, _ := applyClusterChanges(c.ensembleSelector, &c.ClusterConfig, model.NewClusterStatus())
 
 	var err error
 	if c.metadataVersion, err = c.MetadataProvider.Store(clusterStatus, MetadataNotExists); err != nil {
@@ -222,7 +226,7 @@ func (c *coordinator) applyNewClusterConfig() error {
 		slog.Any("metadataVersion", c.metadataVersion),
 	)
 
-	clusterStatus, shardsToAdd, shardsToDelete := applyClusterChanges(&c.ClusterConfig, c.clusterStatus)
+	clusterStatus, shardsToAdd, shardsToDelete := applyClusterChanges(c.ensembleSelector, &c.ClusterConfig, c.clusterStatus)
 
 	if len(shardsToAdd) > 0 || len(shardsToDelete) > 0 {
 		var err error
@@ -455,7 +459,7 @@ func (c *coordinator) handleClusterConfigUpdated() error {
 		sc.SyncServerAddress()
 	}
 
-	clusterStatus, shardsToAdd, shardsToDelete := applyClusterChanges(&newClusterConfig, c.clusterStatus)
+	clusterStatus, shardsToAdd, shardsToDelete := applyClusterChanges(c.ensembleSelector, &newClusterConfig, c.clusterStatus)
 
 	for shard, namespace := range shardsToAdd {
 		shardMetadata := clusterStatus.Namespaces[namespace].Shards[shard]

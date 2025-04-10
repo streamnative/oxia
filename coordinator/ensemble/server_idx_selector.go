@@ -12,26 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package model
+package ensemble
 
-type Server struct {
-	// Name is the unique identification for clusters
-	Name *string `json:"name" yaml:"name"`
+import (
+	"github.com/streamnative/oxia/coordinator/model"
+	"github.com/streamnative/oxia/coordinator/policies"
+)
 
-	// Public is the endpoint that is advertised to clients
-	Public string `json:"public" yaml:"public"`
+var _ Selector = &serverIdxSelector{}
 
-	// Internal is the endpoint for server->server RPCs
-	Internal string `json:"internal" yaml:"internal"`
+type serverIdxSelector struct {
 }
 
-type ServerMetadata struct {
-	Labels map[string]string `json:"labels" yaml:"labels"`
-}
-
-func (sv *Server) GetIdentifier() string {
-	if sv.Name == nil {
-		return sv.Internal
+func (*serverIdxSelector) SelectNew(
+	candidates []model.Server,
+	_ map[string]model.ServerMetadata,
+	_ *policies.Policies,
+	status *model.ClusterStatus,
+	replicas uint32) ([]model.Server, error) {
+	startIdx := status.ServerIdx
+	n := len(candidates)
+	res := make([]model.Server, replicas)
+	for i := uint32(0); i < replicas; i++ {
+		res[i] = candidates[int(startIdx+i)%n]
 	}
-	return *sv.Name
+	return res, nil
 }
