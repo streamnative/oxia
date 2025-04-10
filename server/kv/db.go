@@ -80,6 +80,7 @@ type DB interface {
 	RangeScan(request *proto.RangeScanRequest) (RangeScanIterator, error)
 
 	ReadCommitOffset() (int64, error)
+	ReadLastVersionId() (int64, error)
 	ReadCheckpoint() (*proto.Checkpoint, error)
 
 	ReadNextNotifications(ctx context.Context, startOffset int64) ([]*proto.NotificationBatch, error)
@@ -135,7 +136,7 @@ func NewDB(namespace string, shardId int64, factory Factory, notificationRetenti
 		return nil, err
 	}
 
-	lastVersionId, err := db.readLastVersionId()
+	lastVersionId, err := db.ReadLastVersionId()
 	if err != nil {
 		return nil, err
 	}
@@ -401,7 +402,7 @@ func (d *db) ReadCheckpoint() (*proto.Checkpoint, error) {
 	return Checkpoint, nil
 }
 
-func (d *db) readLastVersionId() (int64, error) {
+func (d *db) ReadLastVersionId() (int64, error) {
 	return d.readASCIILong(commitLastVersionIdKey)
 }
 
@@ -574,7 +575,7 @@ func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *pr
 		ClientIdentity:     se.ClientIdentity,
 	}
 
-	d.log.Debug(
+	d.log.Info(
 		"Applied put operation",
 		slog.String("key", putReq.Key),
 		slog.Any("version", version),

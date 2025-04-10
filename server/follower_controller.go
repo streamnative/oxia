@@ -37,6 +37,7 @@ import (
 
 // FollowerController handles all the operations of a given shard's follower.
 type FollowerController interface {
+	TestController
 	io.Closer
 
 	// NewTerm
@@ -182,6 +183,12 @@ func NewFollowerController(config Config,
 		slog.Int64("commit-offset", commitOffset),
 	)
 	return fc, nil
+}
+
+func (fc *followerController) GetDB() kv.DB {
+	fc.Lock()
+	defer fc.Unlock()
+	return fc.db
 }
 
 func (fc *followerController) setLogger() {
@@ -552,15 +559,15 @@ func (fc *followerController) processCommittedEntriesLoop(reader wal.Reader, max
 			return err
 		}
 
-		fc.log.Debug(
-			"Reading entry",
-			slog.Int64("offset", entry.Offset),
-		)
-
 		if entry.Offset > maxInclusive {
 			// We read up to the max point
 			return nil
 		}
+
+		fc.log.Debug(
+			"Reading entry",
+			slog.Int64("offset", entry.Offset),
+		)
 
 		logEntryValue.ResetVT()
 		if err := logEntryValue.UnmarshalVT(entry.Value); err != nil {

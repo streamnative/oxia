@@ -117,6 +117,11 @@ func NewWithGrpcProvider(config Config, provider container.GrpcProvider, replica
 	return s, nil
 }
 
+// GetShardsDirector is using for internal testing
+func (s *Server) GetShardsDirector() ShardsDirector {
+	return s.shardsDirector
+}
+
 func (s *Server) PublicPort() int {
 	return s.publicRpcServer.grpcServer.Port()
 }

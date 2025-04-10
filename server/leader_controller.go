@@ -41,7 +41,13 @@ type GetResult struct {
 	Err      error
 }
 
+type TestController interface {
+	// GetDB is using for internal testing
+	GetDB() kv.DB
+}
+
 type LeaderController interface {
+	TestController
 	io.Closer
 
 	Write(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error)
@@ -183,6 +189,12 @@ func (lc *leaderController) Status() proto.ServingStatus {
 	lc.RLock()
 	defer lc.RUnlock()
 	return lc.status
+}
+
+func (lc *leaderController) GetDB() kv.DB {
+	lc.RLock()
+	defer lc.RUnlock()
+	return lc.db
 }
 
 func (lc *leaderController) Term() int64 {
