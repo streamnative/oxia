@@ -250,10 +250,12 @@ func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServ
 	if err != nil {
 		return err
 	}
+
 	namespace, err := readHeader(md, common.MetadataNamespace)
 	if err != nil {
 		return err
 	}
+
 	term, err := readTerm(md)
 	if err != nil {
 		return err

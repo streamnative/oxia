@@ -222,7 +222,7 @@ func (d *db) applyWriteRequest(b *proto.WriteRequest, batch WriteBatch, commitOf
 
 	d.putCounter.Add(len(b.Puts))
 	for _, putReq := range b.Puts {
-		pr, err := d.applyPut(batch, notifications, putReq, timestamp, updateOperationCallback, true)
+		pr, err := d.applyPut(batch, notifications, putReq, timestamp, updateOperationCallback, false)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -307,7 +307,7 @@ func (d *db) addASCIILong(key string, value int64, batch WriteBatch, timestamp u
 		Key:               key,
 		Value:             asciiValue,
 		ExpectedVersionId: nil,
-	}, timestamp, NoOpCallback, false)
+	}, timestamp, NoOpCallback, true)
 	return err
 }
 
@@ -454,7 +454,7 @@ func (d *db) UpdateTerm(newTerm int64, options TermOptions) error {
 	if _, err := d.applyPut(batch, nil, &proto.PutRequest{
 		Key:   termKey,
 		Value: []byte(fmt.Sprintf("%d", newTerm)),
-	}, now(), NoOpCallback, false); err != nil {
+	}, now(), NoOpCallback, true); err != nil {
 		return err
 	}
 
@@ -465,7 +465,7 @@ func (d *db) UpdateTerm(newTerm int64, options TermOptions) error {
 	if _, err := d.applyPut(batch, nil, &proto.PutRequest{
 		Key:   termOptionsKey,
 		Value: serOptions,
-	}, now(), NoOpCallback, false); err != nil {
+	}, now(), NoOpCallback, true); err != nil {
 		return err
 	}
 
@@ -514,14 +514,14 @@ func (d *db) ReadTerm() (term int64, options TermOptions, err error) {
 	return term, options, nil
 }
 
-func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *proto.PutRequest, timestamp uint64, updateOperationCallback UpdateOperationCallback, userKey bool) (*proto.PutResponse, error) { //nolint:revive
+func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *proto.PutRequest, timestamp uint64, updateOperationCallback UpdateOperationCallback, internalKey bool) (*proto.PutResponse, error) { //nolint:revive
 	var se *proto.StorageEntry
 	var err error
 	var newKey string
 	if len(putReq.GetSequenceKeyDelta()) > 0 {
 		newKey, err = generateUniqueKeyFromSequences(batch, putReq)
 		putReq.Key = newKey
-	} else if userKey {
+	} else if !internalKey {
 		se, err = checkExpectedVersionId(batch, putReq.Key, putReq.ExpectedVersionId)
 	}
 
@@ -535,7 +535,7 @@ func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *pr
 	}
 
 	versionId := wal.InvalidOffset
-	if userKey {
+	if !internalKey {
 		versionId = d.versionIdTracker.Add(1)
 		// No version conflict
 		status, err := updateOperationCallback.OnPut(batch, putReq, se)

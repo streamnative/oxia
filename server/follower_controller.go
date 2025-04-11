@@ -117,14 +117,14 @@ func NewFollowerController(config Config,
 	shardId int64,
 	wf wal.Factory,
 	kvFactory kv.Factory,
-	checkpoint *proto.Checkpoint) (FollowerController, error) {
+	termCheckpoint *proto.Checkpoint) (FollowerController, error) {
 	fc := &followerController{
 		config:           config,
 		namespace:        namespace,
 		shardId:          shardId,
 		kvFactory:        kvFactory,
 		status:           proto.ServingStatus_NOT_MEMBER,
-		termCheckpoint:   checkpoint,
+		termCheckpoint:   termCheckpoint,
 		closeStreamWg:    nil,
 		applyEntriesDone: make(chan any),
 		writeLatencyHisto: metrics.NewLatencyHistogram("oxia_server_follower_write_latency",
@@ -343,7 +343,6 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 	}
 
 	fc.status = proto.ServingStatus_FOLLOWER
-
 	headOffset, err := fc.wal.TruncateLog(req.HeadEntryId.Offset)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to truncate wal. truncate-offset: %d - wal-last-offset: %d",
@@ -576,15 +575,15 @@ func (fc *followerController) processCommittedEntriesLoop(reader wal.Reader, max
 			return err
 		}
 
-		if entry.Offset > maxInclusive {
-			// We read up to the max point
-			return nil
-		}
-
 		fc.log.Debug(
 			"Reading entry",
 			slog.Int64("offset", entry.Offset),
 		)
+
+		if entry.Offset > maxInclusive {
+			// We read up to the max point
+			return nil
+		}
 
 		logEntryValue.ResetVT()
 		if err := logEntryValue.UnmarshalVT(entry.Value); err != nil {
