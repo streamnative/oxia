@@ -21,6 +21,7 @@ const (
 
 var _ codec.ProtoCodec[*proto.CheckpointPolicies] = &Checkpoint{}
 
+// Checkpoint represents a checkpoint policy with failure handling and commit settings.
 type Checkpoint struct {
 	Enabled         *bool  `json:"enabled,omitempty" yaml:"enabled,omitempty"`
 	CommitEvery     *int32 `json:"commitEvery,omitempty" yaml:"commitEvery,omitempty"`
@@ -60,8 +61,9 @@ func (c *Checkpoint) GetFailureHandling() int32 {
 	return *c.FailureHandling
 }
 
+// PiggybackWrite adds checkpoint metadata to a WriteRequest for atomic commit.
+// Creates a proto.Checkpoint with the given commit offset, marshals it, and appends to requests.Puts.
 func (c *Checkpoint) PiggybackWrite(requests *proto.WriteRequest, commitOffset int64) error {
-
 	checkPoint := proto.Checkpoint{
 		CommitOffset: commitOffset,
 	}

@@ -165,6 +165,7 @@ func (s *shardsDirector) GetOrCreateFollower(namespace string, shardId int64, te
 
 	if follower, ok := s.followers[shardId]; ok {
 		// There is already a follower controller for this shard
+		follower.UpdateTermCheckpoint(termCheckpoint)
 		return follower, nil
 	} else if leader, ok := s.leaders[shardId]; ok {
 		// There is an existing leader controller
@@ -185,11 +186,11 @@ func (s *shardsDirector) GetOrCreateFollower(namespace string, shardId int64, te
 	}
 
 	// Create new follower controller
-	fc, err := NewFollowerController(s.config, namespace, shardId, s.walFactory, s.kvFactory, termCheckpoint)
+	fc, err := NewFollowerController(s.config, namespace, shardId, s.walFactory, s.kvFactory)
 	if err != nil {
 		return nil, err
 	}
-
+	fc.UpdateTermCheckpoint(termCheckpoint)
 	s.followers[shardId] = fc
 	s.followersCounter.Inc()
 	return fc, nil

@@ -23,16 +23,15 @@ import (
 	"sync/atomic"
 
 	"github.com/pkg/errors"
-	"github.com/streamnative/oxia/common/policies"
-	"go.uber.org/multierr"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/metrics"
+	"github.com/streamnative/oxia/common/policies"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/kv"
 	"github.com/streamnative/oxia/server/wal"
+	"go.uber.org/multierr"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // FollowerController handles all the operations of a given shard's follower.
@@ -73,8 +72,11 @@ type FollowerController interface {
 
 	Term() int64
 	CommitOffset() int64
-	Checkpoint() (*proto.Checkpoint, error)
 	Status() proto.ServingStatus
+
+	VerifyCheckpoint() error
+
+	UpdateTermCheckpoint(checkpoint *proto.Checkpoint)
 }
 
 type followerController struct {
@@ -116,15 +118,13 @@ func NewFollowerController(config Config,
 	namespace string,
 	shardId int64,
 	wf wal.Factory,
-	kvFactory kv.Factory,
-	termCheckpoint *proto.Checkpoint) (FollowerController, error) {
+	kvFactory kv.Factory) (FollowerController, error) {
 	fc := &followerController{
 		config:           config,
 		namespace:        namespace,
 		shardId:          shardId,
 		kvFactory:        kvFactory,
 		status:           proto.ServingStatus_NOT_MEMBER,
-		termCheckpoint:   termCheckpoint,
 		closeStreamWg:    nil,
 		applyEntriesDone: make(chan any),
 		writeLatencyHisto: metrics.NewLatencyHistogram("oxia_server_follower_write_latency",
@@ -189,6 +189,53 @@ func (fc *followerController) GetDB() kv.DB {
 	fc.Lock()
 	defer fc.Unlock()
 	return fc.db
+}
+
+func (fc *followerController) UpdateTermCheckpoint(checkpoint *proto.Checkpoint) {
+	fc.Lock()
+	defer fc.Unlock()
+	fc.termCheckpoint = checkpoint
+}
+
+func (fc *followerController) VerifyCheckpoint() error {
+	termPolicies := fc.termOptions.Policies
+	if termPolicies == nil {
+		return nil
+	}
+	if !termPolicies.Checkpoint.IsEnabled() {
+		return nil
+	}
+	leaderCheckpoint := fc.termCheckpoint
+	if leaderCheckpoint == nil {
+		return nil
+	}
+	followerCheckpoint, err := fc.db.ReadCheckpoint()
+	if err != nil {
+		return err
+	}
+	if followerCheckpoint == nil {
+		return nil
+	}
+	if leaderCheckpoint.CommitOffset != followerCheckpoint.CommitOffset {
+		return nil
+	}
+	passed := true
+	if leaderCheckpoint.VersionId != followerCheckpoint.VersionId {
+		passed = false
+	}
+
+	if passed {
+		return nil
+	}
+
+	switch *termPolicies.Checkpoint.FailureHandling {
+	case policies.FailureHandlingWarn:
+		fc.log.Error("Detect unmatched checkpoint.")
+		break
+	case policies.FailureHandlingDiscard:
+		return policies.ErrUnmatchedCheckpoint
+	}
+	return nil
 }
 
 func (fc *followerController) setLogger() {
