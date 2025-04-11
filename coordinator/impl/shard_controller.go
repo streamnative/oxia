@@ -636,13 +636,18 @@ func (s *shardController) newTermQuorum() (map[model.Server]*proto.EntryId, erro
 }
 
 func (s *shardController) newTerm(ctx context.Context, node model.Server) (*proto.EntryId, error) {
+	nsConfig := s.namespaceConfig
+	termOptions := &proto.NewTermOptions{
+		EnableNotifications: nsConfig.NotificationsEnabled.Get(),
+	}
+	if nsConfig.Policies != nil {
+		termOptions.Policies = nsConfig.Policies.ToProto()
+	}
 	res, err := s.rpc.NewTerm(ctx, node, &proto.NewTermRequest{
 		Namespace: s.namespace,
 		Shard:     s.shard,
 		Term:      s.shardMetadata.Term,
-		Options: &proto.NewTermOptions{
-			EnableNotifications: s.namespaceConfig.NotificationsEnabled.Get(),
-		},
+		Options:   termOptions,
 	})
 	if err != nil {
 		return nil, err

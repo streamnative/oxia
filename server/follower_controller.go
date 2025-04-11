@@ -23,6 +23,7 @@ import (
 	"sync/atomic"
 
 	"github.com/pkg/errors"
+	"github.com/streamnative/oxia/common/policies"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -36,6 +37,7 @@ import (
 
 // FollowerController handles all the operations of a given shard's follower.
 type FollowerController interface {
+	TestController
 	io.Closer
 
 	// NewTerm
@@ -71,6 +73,7 @@ type FollowerController interface {
 
 	Term() int64
 	CommitOffset() int64
+	Checkpoint() (*proto.Checkpoint, error)
 	Status() proto.ServingStatus
 }
 
@@ -90,11 +93,12 @@ type followerController struct {
 	// Offset of the last entry appended and not fully synced yet on the wal
 	lastAppendedOffset int64
 
-	status      proto.ServingStatus
-	wal         wal.Wal
-	kvFactory   kv.Factory
-	db          kv.DB
-	termOptions kv.TermOptions
+	status         proto.ServingStatus
+	wal            wal.Wal
+	kvFactory      kv.Factory
+	db             kv.DB
+	termOptions    kv.TermOptions
+	termCheckpoint *proto.Checkpoint
 
 	ctx              context.Context
 	cancel           context.CancelFunc
@@ -108,13 +112,19 @@ type followerController struct {
 	writeLatencyHisto metrics.LatencyHistogram
 }
 
-func NewFollowerController(config Config, namespace string, shardId int64, wf wal.Factory, kvFactory kv.Factory) (FollowerController, error) {
+func NewFollowerController(config Config,
+	namespace string,
+	shardId int64,
+	wf wal.Factory,
+	kvFactory kv.Factory,
+	termCheckpoint *proto.Checkpoint) (FollowerController, error) {
 	fc := &followerController{
 		config:           config,
 		namespace:        namespace,
 		shardId:          shardId,
 		kvFactory:        kvFactory,
 		status:           proto.ServingStatus_NOT_MEMBER,
+		termCheckpoint:   termCheckpoint,
 		closeStreamWg:    nil,
 		applyEntriesDone: make(chan any),
 		writeLatencyHisto: metrics.NewLatencyHistogram("oxia_server_follower_write_latency",
@@ -173,6 +183,12 @@ func NewFollowerController(config Config, namespace string, shardId int64, wf wa
 		slog.Int64("commit-offset", commitOffset),
 	)
 	return fc, nil
+}
+
+func (fc *followerController) GetDB() kv.DB {
+	fc.Lock()
+	defer fc.Unlock()
+	return fc.db
 }
 
 func (fc *followerController) setLogger() {
@@ -276,7 +292,11 @@ func (fc *followerController) NewTerm(req *proto.NewTermRequest) (*proto.NewTerm
 		}
 	}
 
-	fc.termOptions = kv.ToDbOption(req.Options)
+	options := kv.TermOptions{}
+	if err := options.FromProto(req.Options); err != nil {
+		return nil, err
+	}
+	fc.termOptions = options
 	if err := fc.db.UpdateTerm(req.Term, fc.termOptions); err != nil {
 		return nil, err
 	}
@@ -492,7 +512,8 @@ func (fc *followerController) applyAllCommittedEntries() {
 
 func (fc *followerController) processCommitRequest(entry *proto.LogEntry, logEntryValue *proto.LogEntryValue) error {
 	for _, br := range logEntryValue.GetRequests().Writes {
-		_, err := fc.db.ProcessWrite(br, entry.Offset, entry.Timestamp, WrapperUpdateOperationCallback)
+		commitOffset := entry.Offset
+		response, err := fc.db.ProcessWrite(br, commitOffset, entry.Timestamp, WrapperUpdateOperationCallback)
 		if err != nil {
 			fc.log.Error(
 				"Error applying committed entry",
@@ -500,8 +521,42 @@ func (fc *followerController) processCommitRequest(entry *proto.LogEntry, logEnt
 			)
 			return err
 		}
+		options := fc.termOptions
+		if options.Policies == nil {
+			continue
+		}
+		checkpointPolicies := options.Policies.Checkpoint
+		if checkpointPolicies.IsEnabled() {
+			termCheckpoint := fc.termCheckpoint
+			if termCheckpoint != nil && commitOffset == termCheckpoint.CommitOffset {
+				requestPuts := br.Puts
+				verifiedVersionId := false
+				if requestPuts != nil && len(requestPuts) != 0 {
+					// reverse loop because of piggyback messages
+					for i := len(requestPuts) - 1; i >= 0; i-- {
+						maybeCheckpointRequest := requestPuts[i]
+						if maybeCheckpointRequest.Key == policies.CheckpointEntryKey {
+							if response.Puts[i].Version.VersionId == termCheckpoint.VersionId {
+								// okay
+								verifiedVersionId = true
+								break
+							}
+						}
+					}
+				}
+				if !verifiedVersionId {
+					fc.log.Error("Unmatched checkpoint",
+						slog.Any("error", policies.ErrUnmatchedCheckpoint.Error()))
+					switch checkpointPolicies.GetFailureHandling() {
+					case policies.FailureHandlingWarn:
+						continue
+					case policies.FailureHandlingDiscard:
+						return status.Error(common.CodeUnmatchedCheckpoint, policies.ErrUnmatchedCheckpoint.Error())
+					}
+				}
+			}
+		}
 	}
-
 	return nil
 }
 
@@ -732,6 +787,12 @@ func (fc *followerController) GetStatus(_ *proto.GetStatusRequest) (*proto.GetSt
 		HeadOffset:   fc.lastAppendedOffset,
 		CommitOffset: fc.CommitOffset(),
 	}, nil
+}
+
+func (fc *followerController) Checkpoint() (*proto.Checkpoint, error) {
+	fc.Lock()
+	defer fc.Unlock()
+	return fc.db.ReadCheckpoint()
 }
 
 func (fc *followerController) DeleteShard(request *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error) {
