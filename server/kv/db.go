@@ -595,7 +595,7 @@ func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *pr
 		ClientIdentity:     se.ClientIdentity,
 	}
 
-	d.log.Info(
+	d.log.Debug(
 		"Applied put operation",
 		slog.String("key", putReq.Key),
 		slog.Any("version", version),
