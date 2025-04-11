@@ -258,12 +258,9 @@ func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServ
 	if err != nil {
 		return err
 	}
-	checkpoint, err := readHeader(md, common.MetadataCheckpoint)
-	if err != nil {
-		return err
-	}
-	leaderCheckpoint := &proto.Checkpoint{}
-	if err = leaderCheckpoint.UnmarshalVT([]byte(checkpoint)); err != nil {
+
+	var leaderCheckpoint *proto.Checkpoint
+	if leaderCheckpoint, err = readCheckpoint(md); err != nil {
 		return err
 	}
 
@@ -289,9 +286,10 @@ func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServ
 		return err
 	}
 
-	if followerCheckpoint != nil && followerCheckpoint.CommitOffset == leaderCheckpoint.CommitOffset {
+	if followerCheckpoint != nil && leaderCheckpoint != nil && followerCheckpoint.CommitOffset == leaderCheckpoint.CommitOffset {
 		if err = policies.VerifyCheckpoint(leaderCheckpoint, followerCheckpoint); err != nil {
-			return err
+			slog.Error("Unmatched checkpoint",
+				slog.Any("error", policies.ErrUnmatchedCheckpoint.Error()))
 		}
 	}
 
@@ -381,6 +379,29 @@ func (s *internalRpcServer) GetStatus(_ context.Context, req *proto.GetStatusReq
 
 func (s *internalRpcServer) DeleteShard(_ context.Context, req *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error) {
 	return s.shardsDirector.DeleteShard(req)
+}
+
+func readCheckpoint(md metadata.MD) (*proto.Checkpoint, error) {
+	checkpointOffsetArr := md.Get(policies.CheckpointMetadataCommitOffsetKey)
+	if len(checkpointOffsetArr) == 0 {
+		return nil, nil
+	}
+	var commitOffset int64
+	if _, err := fmt.Sscan(checkpointOffsetArr[0], &commitOffset); err != nil {
+		return nil, err
+	}
+	versionIdArr := md.Get(policies.CheckpointMetadataVersionIdKey)
+	if len(versionIdArr) == 0 {
+		return nil, nil
+	}
+	var versionId int64
+	if _, err := fmt.Sscan(versionIdArr[0], &versionId); err != nil {
+		return nil, err
+	}
+	return &proto.Checkpoint{
+		VersionId:    versionId,
+		CommitOffset: commitOffset,
+	}, nil
 }
 
 func readHeader(md metadata.MD, key string) (value string, err error) {

@@ -17,6 +17,7 @@ syntax = "proto3";
 package replication;
 
 import "client.proto";
+import "policies.proto";
 
 option go_package = "github.com/streamnative/oxia/proto";
 
@@ -64,6 +65,7 @@ message SnapshotChunk {
 
 message NewTermOptions {
   bool enable_notifications = 1;
+  optional proto.Policies policies = 2;
 }
 
 message NewTermRequest {

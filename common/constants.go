@@ -17,11 +17,10 @@ package common
 import "time"
 
 const (
-	MetadataTerm       = "term"
-	MetadataNamespace  = "namespace"
-	MetadataShardId    = "shard-id"
-	MetadataCheckpoint = "checkpoint"
-	DefaultNamespace   = "default"
+	MetadataTerm      = "term"
+	MetadataNamespace = "namespace"
+	MetadataShardId   = "shard-id"
+	DefaultNamespace  = "default"
 
 	DefaultPublicPort   = 6648
 	DefaultInternalPort = 6649

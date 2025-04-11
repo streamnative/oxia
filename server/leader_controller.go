@@ -239,7 +239,11 @@ func (lc *leaderController) NewTerm(req *proto.NewTermRequest) (*proto.NewTermRe
 		return nil, common.ErrorInvalidStatus
 	}
 
-	lc.termOptions = kv.ToDbOption(req.Options)
+	options := kv.TermOptions{}
+	if err := options.FromProto(req.Options); err != nil {
+		return nil, err
+	}
+	lc.termOptions = options
 	if err := lc.db.UpdateTerm(req.Term, lc.termOptions); err != nil {
 		return nil, err
 	}
@@ -349,11 +353,6 @@ func (lc *leaderController) BecomeLeader(ctx context.Context, req *proto.BecomeL
 	lc.quorumAckTracker = NewQuorumAckTracker(req.GetReplicationFactor(), lc.leaderElectionHeadEntryId.Offset, leaderCommitOffset)
 	lc.sessionManager = NewSessionManager(lc.ctx, lc.namespace, lc.shardId, lc)
 
-	// apply all the pending entries to db first
-	if err = lc.applyAllEntriesIntoDB(); err != nil {
-		return nil, err
-	}
-
 	for follower, followerHeadEntryId := range req.FollowerMaps {
 		if err := lc.addFollower(follower, followerHeadEntryId); err != nil { //nolint:contextcheck
 			return nil, err
@@ -365,6 +364,10 @@ func (lc *leaderController) BecomeLeader(ctx context.Context, req *proto.BecomeL
 	// by the moment we make the leader controller accepting new write/read
 	// requests
 	if err = lc.quorumAckTracker.WaitForCommitOffset(ctx, lc.leaderElectionHeadEntryId.Offset); err != nil {
+		return nil, err
+	}
+
+	if err = lc.applyAllEntriesIntoDB(); err != nil {
 		return nil, err
 	}
 
@@ -510,6 +513,19 @@ func (lc *leaderController) applyAllEntriesIntoDB() error {
 }
 
 func (lc *leaderController) truncateFollowerIfNeeded(follower string, followerHeadEntryId *proto.EntryId) (*proto.EntryId, error) {
+	lc.log.Debug(
+		"Needs truncation?",
+		slog.Int64("term", lc.term),
+		slog.String("follower", follower),
+		slog.Any("leader-head-entry", lc.leaderElectionHeadEntryId),
+		slog.Any("follower-head-entry", followerHeadEntryId),
+	)
+	if followerHeadEntryId.Term == lc.leaderElectionHeadEntryId.Term &&
+		followerHeadEntryId.Offset <= lc.leaderElectionHeadEntryId.Offset {
+		// No need for truncation
+		return followerHeadEntryId, nil
+	}
+
 	// Coordinator should never send us a follower with an invalid term.
 	// Checking for sanity here.
 	if followerHeadEntryId.Term > lc.leaderElectionHeadEntryId.Term {
@@ -519,6 +535,20 @@ func (lc *leaderController) truncateFollowerIfNeeded(follower string, followerHe
 	lastEntryInFollowerTerm, err := getHighestEntryOfTerm(lc.wal, followerHeadEntryId.Term)
 	if err != nil {
 		return nil, err
+	}
+
+	if followerHeadEntryId.Term == lastEntryInFollowerTerm.Term &&
+		followerHeadEntryId.Offset <= lastEntryInFollowerTerm.Offset {
+		// If the follower is on a previous term, but we have the same entry,
+		// we don't need to truncate
+		lc.log.Debug(
+			"No need to truncate follower",
+			slog.Int64("term", lc.term),
+			slog.String("follower", follower),
+			slog.Any("last-entry-in-follower-term", lastEntryInFollowerTerm),
+			slog.Any("follower-head-entry", followerHeadEntryId),
+		)
+		return followerHeadEntryId, nil
 	}
 
 	tr, err := lc.rpcClient.Truncate(follower, &proto.TruncateRequest{
@@ -952,11 +982,13 @@ func (lc *leaderController) appendToWalStreamRequest(request *proto.WriteRequest
 
 	if options.Policies != nil {
 		if p := options.Policies; p != nil && p.Checkpoint.IsEnabled() {
-			if err := p.Checkpoint.PiggybackWrite(request, newOffset); err != nil {
-				cb(wal.InvalidOffset, 0, 0, err)
-				return
+			if newOffset != 0 && newOffset%int64(p.Checkpoint.GetCommitEvery()) == 0 {
+				if err := p.Checkpoint.PiggybackWrite(request, newOffset); err != nil {
+					cb(wal.InvalidOffset, 0, 0, err)
+					return
+				}
+				piggybackNum++
 			}
-			piggybackNum++
 		}
 	}
 

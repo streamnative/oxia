@@ -9,3 +9,14 @@ message Checkpoint {
   int64 commit_offset = 1;
   int64 version_id = 2;
 }
+
+
+message CheckpointPolicies {
+  bool enabled = 1;
+  int32 commit_every = 2;
+  int32 failure_handling = 3;
+}
+
+message Policies {
+  optional CheckpointPolicies checkpoint_policies = 1;
+}

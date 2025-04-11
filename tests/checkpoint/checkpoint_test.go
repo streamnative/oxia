@@ -67,7 +67,7 @@ func TestCheckpoint_VersionID(t *testing.T) {
 
 	metadataProvider := impl.NewMetadataProviderMemory()
 	checkpointEnabled := true
-	checkpointCommitEvery := int64(5)
+	checkpointCommitEvery := int32(5)
 	clusterConfig := model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
 			Name:              common.DefaultNamespace,
@@ -101,14 +101,7 @@ func TestCheckpoint_VersionID(t *testing.T) {
 	_, _, err = client.Put(context.Background(), "t3", []byte("t3"))
 	assert.NoError(t, err)
 
-	status := coordinator.ClusterStatus()
-	namespaceStatus := status.Namespaces[common.DefaultNamespace]
-	firstShare := namespaceStatus.Shards[0]
-
-	leaderServer := firstShare.Leader
-	leader := servers[leaderServer.GetIdentifier()]
-	lc, err := leader.GetShardsDirector().GetLeader(0)
-	assert.NoError(t, err)
+	lc, leaderInfo := getLeader(t, coordinator, common.DefaultNamespace, 0, servers)
 	lcDB := lc.GetDB()
 	lcCommitOffset, err := lcDB.ReadCommitOffset()
 	assert.NoError(t, err)
@@ -116,7 +109,7 @@ func TestCheckpoint_VersionID(t *testing.T) {
 	assert.NoError(t, err)
 
 	for svID, sv := range servers {
-		if svID == leaderServer.GetIdentifier() {
+		if svID == leaderInfo.GetIdentifier() {
 			continue
 		}
 		follower := sv
@@ -124,9 +117,13 @@ func TestCheckpoint_VersionID(t *testing.T) {
 		f, err := fd.GetFollower(0)
 		assert.NoError(t, err)
 		db := f.GetDB()
-		fcLastVersion, err := db.ReadLastVersionId()
-		assert.NoError(t, err)
-		assert.Equal(t, lcLastVersion-1, fcLastVersion)
+		assert.Eventually(t, func() bool {
+			fcLastVersion, err := db.ReadLastVersionId()
+			if err != nil {
+				return false
+			}
+			return lcLastVersion-1 == fcLastVersion
+		}, time.Second, time.Millisecond*100)
 
 		// make the follower become dirty
 		_, err = db.ProcessWrite(&proto.WriteRequest{
@@ -140,7 +137,7 @@ func TestCheckpoint_VersionID(t *testing.T) {
 		assert.NoError(t, err)
 
 		// last version has already dirty
-		fcLastVersion, err = db.ReadLastVersionId()
+		fcLastVersion, err := db.ReadLastVersionId()
 		assert.NoError(t, err)
 		assert.NotEqual(t, lcLastVersion-1, fcLastVersion)
 	}
@@ -151,11 +148,64 @@ func TestCheckpoint_VersionID(t *testing.T) {
 	assert.NoError(t, err)
 	_, _, err = client.Put(context.Background(), "t6", []byte("t6"))
 	assert.NoError(t, err)
-
-	// trigger election
-	coordinator.NodeBecameUnavailable(*leaderServer)
 	_, _, err = client.Put(context.Background(), "t7", []byte("t7"))
 	assert.NoError(t, err)
+	_, _, err = client.Put(context.Background(), "t8", []byte("t8"))
+	assert.NoError(t, err)
 
-	time.Sleep(10 * time.Second)
+	// trigger election
+	coordinator.NodeBecameUnavailable(*leaderInfo)
+
+	time.Sleep(2 * time.Second)
+	assert.Eventually(t, func() bool {
+		status := coordinator.ClusterStatus()
+		namespaceStatus := status.Namespaces[common.DefaultNamespace]
+		firstShare := namespaceStatus.Shards[0]
+		return firstShare.Status == model.ShardStatusSteadyState
+	}, time.Second, time.Millisecond*100)
+
+	_, _, err = client.Put(context.Background(), "t9", []byte("t9"))
+	assert.NoError(t, err)
+
+	_, _, err = client.Put(context.Background(), "t10", []byte("t10"))
+	assert.NoError(t, err)
+
+	lc, leaderInfo = getLeader(t, coordinator, common.DefaultNamespace, 0, servers)
+	lcDB = lc.GetDB()
+	lcCommitOffset, err = lcDB.ReadCommitOffset()
+	assert.NoError(t, err)
+	lcLastVersion, err = lcDB.ReadLastVersionId()
+	assert.NoError(t, err)
+
+	for svID, sv := range servers {
+		if svID == leaderInfo.GetIdentifier() {
+			continue
+		}
+		follower := sv
+		fd := follower.GetShardsDirector()
+		f, err := fd.GetFollower(0)
+		assert.NoError(t, err)
+		db := f.GetDB()
+		assert.Eventually(t, func() bool {
+			fcLastVersion, err := db.ReadLastVersionId()
+			if err != nil {
+				return false
+			}
+			return lcLastVersion-1 == fcLastVersion
+		}, time.Second, time.Millisecond*100)
+	}
+}
+
+func getLeader(t *testing.T, coordinator impl.Coordinator, namespace string,
+	shard int64, servers map[string]*server.Server) (server.LeaderController, *model.Server) {
+	t.Helper()
+
+	status := coordinator.ClusterStatus()
+	namespaceStatus := status.Namespaces[namespace]
+	firstShare := namespaceStatus.Shards[shard]
+	leaderServer := firstShare.Leader
+	leader := servers[leaderServer.GetIdentifier()]
+	lc, err := leader.GetShardsDirector().GetLeader(0)
+	assert.NoError(t, err)
+	return lc, leaderServer
 }

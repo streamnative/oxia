@@ -292,7 +292,11 @@ func (fc *followerController) NewTerm(req *proto.NewTermRequest) (*proto.NewTerm
 		}
 	}
 
-	fc.termOptions = kv.ToDbOption(req.Options)
+	options := kv.TermOptions{}
+	if err := options.FromProto(req.Options); err != nil {
+		return nil, err
+	}
+	fc.termOptions = options
 	if err := fc.db.UpdateTerm(req.Term, fc.termOptions); err != nil {
 		return nil, err
 	}
@@ -518,26 +522,39 @@ func (fc *followerController) processCommitRequest(entry *proto.LogEntry, logEnt
 			)
 			return err
 		}
-		termCheckpoint := fc.termCheckpoint
-		if termCheckpoint != nil && commitOffset == termCheckpoint.CommitOffset {
-			puts := response.Puts
-			verifiedVersionId := false
-			if puts != nil && len(puts) != 0 {
-				// reverse loop because of piggyback messages
-				for i := len(puts) - 1; i >= 0; i-- {
-					maybeCheckpointResponse := puts[i]
-					if *maybeCheckpointResponse.Key == policies.CheckpointKey {
-						if maybeCheckpointResponse.Version.VersionId == termCheckpoint.VersionId {
-							// okay
-							verifiedVersionId = true
-							break
+		options := fc.termOptions
+		if options.Policies == nil {
+			continue
+		}
+		checkpointPolicies := options.Policies.Checkpoint
+		if checkpointPolicies.IsEnabled() {
+			termCheckpoint := fc.termCheckpoint
+			if termCheckpoint != nil && commitOffset == termCheckpoint.CommitOffset {
+				requestPuts := br.Puts
+				verifiedVersionId := false
+				if requestPuts != nil && len(requestPuts) != 0 {
+					// reverse loop because of piggyback messages
+					for i := len(requestPuts) - 1; i >= 0; i-- {
+						maybeCheckpointRequest := requestPuts[i]
+						if maybeCheckpointRequest.Key == policies.CheckpointKey {
+							if response.Puts[i].Version.VersionId == termCheckpoint.VersionId {
+								// okay
+								verifiedVersionId = true
+								break
+							}
 						}
 					}
 				}
-			}
-			if !verifiedVersionId {
-				fc.log.Error("corrupted internal stats")
-				return errors.New("corrupted internal stats")
+				if !verifiedVersionId {
+					fc.log.Error("Unmatched checkpoint",
+						slog.Any("error", policies.ErrUnmatchedCheckpoint.Error()))
+					switch checkpointPolicies.GetFailureHandling() {
+					case policies.FailureHandlingWarn:
+						continue
+					case policies.FailureHandlingDiscard:
+						return status.Error(common.CodeUnmatchedCheckpoint, policies.ErrUnmatchedCheckpoint.Error())
+					}
+				}
 			}
 		}
 	}

@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/streamnative/oxia/common/codec"
 	"github.com/streamnative/oxia/common/policies"
 	"go.uber.org/multierr"
 	pb "google.golang.org/protobuf/proto"
@@ -64,9 +65,28 @@ type RangeScanIterator interface {
 	Next() bool
 }
 
+var _ codec.ProtoCodec[*proto.NewTermOptions] = &TermOptions{}
+
 type TermOptions struct {
 	NotificationsEnabled bool
 	Policies             *policies.Policies
+}
+
+func (t *TermOptions) ToProto() *proto.NewTermOptions {
+	panic("not support yet")
+}
+
+func (t *TermOptions) FromProto(prot *proto.NewTermOptions) error {
+	t.NotificationsEnabled = true
+	if prot != nil {
+		t.NotificationsEnabled = prot.EnableNotifications
+		p := &policies.Policies{}
+		if err := p.FromProto(prot.Policies); err != nil {
+			return err
+		}
+		t.Policies = p
+	}
+	return nil
 }
 
 type DB interface {
@@ -803,12 +823,3 @@ func (*noopCallback) OnDeleteRange(_ WriteBatch, _ string, _ string) error {
 }
 
 var NoOpCallback UpdateOperationCallback = &noopCallback{}
-
-func ToDbOption(opt *proto.NewTermOptions) TermOptions {
-	to := TermOptions{NotificationsEnabled: true}
-	if opt != nil {
-		to.NotificationsEnabled = opt.EnableNotifications
-	}
-
-	return to
-}

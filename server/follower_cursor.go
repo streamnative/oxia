@@ -414,6 +414,9 @@ func (fc *followerCursor) receiveAcks(cancel context.CancelFunc, stream proto.Ox
 					slog.Any("error", err),
 				)
 			}
+			if status.Code(err) == common.CodeUnmatchedCheckpoint {
+				fc.ackOffset.Store(wal.InvalidOffset)
+			}
 
 			cancel()
 			return
