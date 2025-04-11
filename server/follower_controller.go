@@ -536,7 +536,7 @@ func (fc *followerController) processCommitRequest(entry *proto.LogEntry, logEnt
 					// reverse loop because of piggyback messages
 					for i := len(requestPuts) - 1; i >= 0; i-- {
 						maybeCheckpointRequest := requestPuts[i]
-						if maybeCheckpointRequest.Key == policies.CheckpointKey {
+						if maybeCheckpointRequest.Key == policies.CheckpointEntryKey {
 							if response.Puts[i].Version.VersionId == termCheckpoint.VersionId {
 								// okay
 								verifiedVersionId = true

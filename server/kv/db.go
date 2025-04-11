@@ -401,7 +401,7 @@ func (d *db) ReadCommitOffset() (int64, error) {
 
 func (d *db) ReadCheckpoint() (*proto.Checkpoint, error) {
 	v, err := applyGet(d.kv, &proto.GetRequest{
-		Key:            policies.CheckpointKey,
+		Key:            policies.CheckpointEntryKey,
 		IncludeValue:   true,
 		ComparisonType: proto.KeyComparisonType_EQUAL,
 	})

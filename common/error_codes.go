@@ -33,7 +33,7 @@ const (
 	CodeNamespaceNotFound       codes.Code = 110
 	CodeNotificationsNotEnabled codes.Code = 111
 
-	CodeUnmatchedCheckpoint codes.Code = 500
+	CodeUnmatchedCheckpoint codes.Code = 500 // internal
 )
 
 var (

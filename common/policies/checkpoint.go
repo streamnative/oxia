@@ -9,18 +9,17 @@ import (
 	"github.com/streamnative/oxia/proto"
 )
 
-const DefaultCommitEvery int32 = 1000
-const CheckpointKey = common.InternalKeyPrefix + "checkpoint"
+const (
+	DefaultCommitEvery                int32 = 1000
+	CheckpointEntryKey                      = common.InternalKeyPrefix + "checkpoint"
+	CheckpointMetadataCommitOffsetKey       = "checkpoint-commit-offset"
+	CheckpointMetadataVersionIdKey          = "checkpoint-version-id"
 
-const CheckpointMetadataCommitOffsetKey = "checkpoint-commit-offset"
-const CheckpointMetadataVersionIdKey = "checkpoint-version-id"
-
-var _ codec.ProtoCodec[*proto.CheckpointPolicies] = &Checkpoint{}
-
-var (
 	FailureHandlingWarn    int32 = 0
 	FailureHandlingDiscard int32 = 1
 )
+
+var _ codec.ProtoCodec[*proto.CheckpointPolicies] = &Checkpoint{}
 
 type Checkpoint struct {
 	Enabled         *bool  `json:"enabled,omitempty" yaml:"enabled,omitempty"`
@@ -71,7 +70,7 @@ func (c *Checkpoint) PiggybackWrite(requests *proto.WriteRequest, commitOffset i
 		return err
 	}
 	requests.Puts = append(requests.Puts, &proto.PutRequest{
-		Key:   CheckpointKey,
+		Key:   CheckpointEntryKey,
 		Value: value,
 	})
 	return nil
