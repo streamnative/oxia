@@ -85,13 +85,13 @@ func TestShardsDirector_GetOrCreateFollower(t *testing.T) {
 	assert.EqualValues(t, 2, lc.Term())
 
 	// Should fail to get closed if the term is wrong
-	fc, err := sd.GetOrCreateFollower(common.DefaultNamespace, shard, 1)
+	fc, err := sd.GetOrCreateFollower(common.DefaultNamespace, shard, 1, nil)
 	assert.ErrorIs(t, common.ErrorInvalidTerm, err)
 	assert.Nil(t, fc)
 	assert.Equal(t, proto.ServingStatus_LEADER, lc.Status())
 
 	// Will get closed if term is correct
-	fc, err = sd.GetOrCreateFollower(common.DefaultNamespace, shard, 2)
+	fc, err = sd.GetOrCreateFollower(common.DefaultNamespace, shard, 2, nil)
 	assert.NoError(t, err)
 
 	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, lc.Status())
