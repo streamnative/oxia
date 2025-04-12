@@ -2,98 +2,46 @@ package checkpoint
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/policies"
-	"github.com/streamnative/oxia/coordinator/impl"
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/oxia"
 	"github.com/streamnative/oxia/proto"
-	"github.com/streamnative/oxia/server"
 	"github.com/streamnative/oxia/server/kv"
+	"github.com/streamnative/oxia/tests/utils"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestCheckpoint_VersionID(t *testing.T) {
 
-	servers := map[string]*server.Server{}
-	s1, err := server.New(server.Config{
-		PublicServiceAddr:          "localhost:0",
-		InternalServiceAddr:        "localhost:0",
-		MetricsServiceAddr:         "", // Disable metrics to avoid conflict
-		DataDir:                    t.TempDir(),
-		WalDir:                     t.TempDir(),
-		NotificationsRetentionTime: 1 * time.Minute,
-	})
-	assert.NoError(t, err)
-	s1Addr := model.Server{
-		Public:   fmt.Sprintf("localhost:%d", s1.PublicPort()),
-		Internal: fmt.Sprintf("localhost:%d", s1.InternalPort()),
-	}
-	servers[s1Addr.GetIdentifier()] = s1
-
-	s2, err := server.New(server.Config{
-		PublicServiceAddr:          "localhost:0",
-		InternalServiceAddr:        "localhost:0",
-		MetricsServiceAddr:         "", // Disable metrics to avoid conflict
-		DataDir:                    t.TempDir(),
-		WalDir:                     t.TempDir(),
-		NotificationsRetentionTime: 1 * time.Minute,
-	})
-	assert.NoError(t, err)
-	s2Addr := model.Server{
-		Public:   fmt.Sprintf("localhost:%d", s2.PublicPort()),
-		Internal: fmt.Sprintf("localhost:%d", s2.InternalPort()),
-	}
-	servers[s2Addr.GetIdentifier()] = s2
-
-	s3, err := server.New(server.Config{
-		PublicServiceAddr:          "localhost:0",
-		InternalServiceAddr:        "localhost:0",
-		MetricsServiceAddr:         "", // Disable metrics to avoid conflict
-		DataDir:                    t.TempDir(),
-		WalDir:                     t.TempDir(),
-		NotificationsRetentionTime: 1 * time.Minute,
-	})
-	assert.NoError(t, err)
-	s3Addr := model.Server{
-		Public:   fmt.Sprintf("localhost:%d", s3.PublicPort()),
-		Internal: fmt.Sprintf("localhost:%d", s3.InternalPort()),
-	}
-	servers[s3Addr.GetIdentifier()] = s3
-
-	metadataProvider := impl.NewMetadataProviderMemory()
 	checkpointEnabled := true
 	checkpointCommitEvery := int32(5)
 	failureHandling := policies.FailureHandlingDiscard
-	clusterConfig := model.ClusterConfig{
-		Namespaces: []model.NamespaceConfig{{
-			Name:              common.DefaultNamespace,
-			ReplicationFactor: 3,
-			InitialShardCount: 1,
-			Policies: &policies.Policies{
-				Checkpoint: &policies.Checkpoint{
-					Enabled:         &checkpointEnabled,
-					CommitEvery:     &checkpointCommitEvery,
-					FailureHandling: &failureHandling,
+	coordinator, serverInfos, servers, cleanupFunc := utils.CreateCluster(t, utils.TestClusterOptions{
+		ServerNum: 3,
+		ClusterConfig: model.ClusterConfig{
+			Namespaces: []model.NamespaceConfig{{
+				Name:              common.DefaultNamespace,
+				ReplicationFactor: 3,
+				InitialShardCount: 1,
+				Policies: &policies.Policies{
+					Checkpoint: &policies.Checkpoint{
+						Enabled:         &checkpointEnabled,
+						CommitEvery:     &checkpointCommitEvery,
+						FailureHandling: &failureHandling,
+					},
 				},
-			},
-		}},
-		Servers: []model.Server{s1Addr, s2Addr, s3Addr},
-	}
-	clientPool := common.NewClientPool(nil, nil)
-	coordinator, err := impl.NewCoordinator(metadataProvider,
-		func() (model.ClusterConfig, error) { return clusterConfig, nil },
-		nil, impl.NewRpcProvider(clientPool))
-	assert.NoError(t, err)
-	defer coordinator.Close()
+			}},
+		},
+	})
 
-	client, err := oxia.NewSyncClient(s1Addr.Public)
-	assert.NoError(t, err)
+	defer cleanupFunc()
 
+	client, err := oxia.NewSyncClient(serverInfos[0].Public)
+	assert.NoError(t, err)
 	defer client.Close()
 
 	_, _, err = client.Put(context.Background(), "t1", []byte("t1"))
@@ -103,7 +51,7 @@ func TestCheckpoint_VersionID(t *testing.T) {
 	_, _, err = client.Put(context.Background(), "t3", []byte("t3"))
 	assert.NoError(t, err)
 
-	lc, leaderInfo := getLeader(t, coordinator, common.DefaultNamespace, 0, servers)
+	lc, leaderInfo := utils.GetClusterLeader(t, coordinator, servers, common.DefaultNamespace, 0)
 	lcDB := lc.GetDB()
 	lcCommitOffset, err := lcDB.ReadCommitOffset()
 	assert.NoError(t, err)
@@ -172,7 +120,7 @@ func TestCheckpoint_VersionID(t *testing.T) {
 	_, _, err = client.Put(context.Background(), "t10", []byte("t10"))
 	assert.NoError(t, err)
 
-	lc, leaderInfo = getLeader(t, coordinator, common.DefaultNamespace, 0, servers)
+	lc, leaderInfo = utils.GetClusterLeader(t, coordinator, servers, common.DefaultNamespace, 0)
 	lcDB = lc.GetDB()
 	lcCommitOffset, err = lcDB.ReadCommitOffset()
 	assert.NoError(t, err)
@@ -196,18 +144,4 @@ func TestCheckpoint_VersionID(t *testing.T) {
 			return lcLastVersion-1 == fcLastVersion
 		}, time.Second, time.Millisecond*100)
 	}
-}
-
-func getLeader(t *testing.T, coordinator impl.Coordinator, namespace string,
-	shard int64, servers map[string]*server.Server) (server.LeaderController, *model.Server) {
-	t.Helper()
-
-	status := coordinator.ClusterStatus()
-	namespaceStatus := status.Namespaces[namespace]
-	firstShare := namespaceStatus.Shards[shard]
-	leaderServer := firstShare.Leader
-	leader := servers[leaderServer.GetIdentifier()]
-	lc, err := leader.GetShardsDirector().GetLeader(0)
-	assert.NoError(t, err)
-	return lc, leaderServer
 }
