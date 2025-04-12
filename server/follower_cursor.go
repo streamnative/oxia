@@ -415,6 +415,7 @@ func (fc *followerCursor) receiveAcks(cancel context.CancelFunc, stream proto.Ox
 				)
 			}
 			if status.Code(err) == common.CodeUnmatchedCheckpoint {
+				// reset the ack offset to resend snapshot
 				fc.ackOffset.Store(wal.InvalidOffset)
 			}
 

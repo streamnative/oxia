@@ -23,15 +23,16 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"go.uber.org/multierr"
+	"google.golang.org/grpc/status"
+	pb "google.golang.org/protobuf/proto"
+
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/callback"
 	"github.com/streamnative/oxia/common/metrics"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/kv"
 	"github.com/streamnative/oxia/server/wal"
-	"go.uber.org/multierr"
-	"google.golang.org/grpc/status"
-	pb "google.golang.org/protobuf/proto"
 )
 
 var ErrLeaderClosed = errors.New("the leader has been closed")

@@ -23,15 +23,16 @@ import (
 	"sync/atomic"
 
 	"github.com/pkg/errors"
+	"go.uber.org/multierr"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/metrics"
 	"github.com/streamnative/oxia/common/policies"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/kv"
 	"github.com/streamnative/oxia/server/wal"
-	"go.uber.org/multierr"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // FollowerController handles all the operations of a given shard's follower.
@@ -115,11 +116,7 @@ type followerController struct {
 	writeLatencyHisto metrics.LatencyHistogram
 }
 
-func NewFollowerController(config Config,
-	namespace string,
-	shardId int64,
-	wf wal.Factory,
-	kvFactory kv.Factory) (FollowerController, error) {
+func NewFollowerController(config Config, namespace string, shardId int64, wf wal.Factory, kvFactory kv.Factory) (FollowerController, error) {
 	fc := &followerController{
 		config:           config,
 		namespace:        namespace,
@@ -832,12 +829,6 @@ func (fc *followerController) GetStatus(_ *proto.GetStatusRequest) (*proto.GetSt
 		HeadOffset:   fc.lastAppendedOffset,
 		CommitOffset: fc.CommitOffset(),
 	}, nil
-}
-
-func (fc *followerController) Checkpoint() (*proto.Checkpoint, error) {
-	fc.Lock()
-	defer fc.Unlock()
-	return fc.db.ReadCheckpoint()
 }
 
 func (fc *followerController) DeleteShard(request *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error) {

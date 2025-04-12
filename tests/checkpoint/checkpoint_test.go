@@ -19,6 +19,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/policies"
 	"github.com/streamnative/oxia/coordinator/model"
@@ -26,7 +28,6 @@ import (
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/kv"
 	"github.com/streamnative/oxia/tests/utils"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestCheckpoint_VersionID_Discard(t *testing.T) {

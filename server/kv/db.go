@@ -24,10 +24,11 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/streamnative/oxia/common/codec"
-	"github.com/streamnative/oxia/common/policies"
 	"go.uber.org/multierr"
 	pb "google.golang.org/protobuf/proto"
+
+	"github.com/streamnative/oxia/common/codec"
+	"github.com/streamnative/oxia/common/policies"
 
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/metrics"
