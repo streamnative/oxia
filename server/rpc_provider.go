@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc/metadata"
-	
+
 	"github.com/streamnative/oxia/common/policies"
 
 	"github.com/streamnative/oxia/common"
