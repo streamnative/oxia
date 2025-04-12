@@ -411,7 +411,7 @@ func (d *db) ReadCheckpoint() (*proto.Checkpoint, error) {
 		if v.Status != proto.Status_KEY_NOT_FOUND {
 			return nil, errors.New("unexpected checkpoint status")
 		}
-		return nil, nil
+		return nil, nil //nolint:nilnil
 	}
 	checkpoint := &proto.Checkpoint{}
 	if err = checkpoint.UnmarshalVT(v.Value); err != nil {
