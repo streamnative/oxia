@@ -380,7 +380,7 @@ func (s *internalRpcServer) DeleteShard(_ context.Context, req *proto.DeleteShar
 func readCheckpoint(md metadata.MD) (*proto.Checkpoint, error) {
 	checkpointOffsetArr := md.Get(policies.CheckpointMetadataCommitOffsetKey)
 	if len(checkpointOffsetArr) == 0 {
-		return nil, nil
+		return nil, nil //nolint:nilnil
 	}
 	var commitOffset int64
 	if _, err := fmt.Sscan(checkpointOffsetArr[0], &commitOffset); err != nil {
@@ -388,7 +388,7 @@ func readCheckpoint(md metadata.MD) (*proto.Checkpoint, error) {
 	}
 	versionIdArr := md.Get(policies.CheckpointMetadataVersionIdKey)
 	if len(versionIdArr) == 0 {
-		return nil, nil
+		return nil, nil //nolint:nilnil
 	}
 	var versionId int64
 	if _, err := fmt.Sscan(versionIdArr[0], &versionId); err != nil {

@@ -72,7 +72,7 @@ type TermOptions struct {
 	Policies             *policies.Policies
 }
 
-func (t *TermOptions) ToProto() *proto.NewTermOptions {
+func (*TermOptions) ToProto() *proto.NewTermOptions {
 	panic("not support yet")
 }
 
@@ -172,7 +172,6 @@ type db struct {
 	versionIdTracker     atomic.Int64
 	notificationsTracker *notificationsTracker
 	log                  *slog.Logger
-	policies             *policies.Policies
 	notificationsEnabled bool
 
 	putCounter          metrics.Counter
@@ -414,12 +413,12 @@ func (d *db) ReadCheckpoint() (*proto.Checkpoint, error) {
 		}
 		return nil, nil
 	}
-	Checkpoint := &proto.Checkpoint{}
-	if err = Checkpoint.UnmarshalVT(v.Value); err != nil {
+	checkpoint := &proto.Checkpoint{}
+	if err = checkpoint.UnmarshalVT(v.Value); err != nil {
 		return nil, err
 	}
-	Checkpoint.VersionId = v.Version.VersionId
-	return Checkpoint, nil
+	checkpoint.VersionId = v.Version.VersionId
+	return checkpoint, nil
 }
 
 func (d *db) ReadLastVersionId() (int64, error) {

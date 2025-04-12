@@ -32,8 +32,8 @@ const (
 )
 
 var (
-	ErrUnmatchedCheckpoint            = errors.New("checkpoint not exactly same.")
-	ErrCommitOffsetCheckpointNotFound = errors.New("checkpoint not found with the target commit offset.")
+	ErrUnmatchedCheckpoint            = errors.New("checkpoints are not exactly the same")
+	ErrCommitOffsetCheckpointNotFound = errors.New("commit offset target checkpoint is not found")
 )
 
 type CheckpointProvider = func(commitOffset int64) (*proto.Checkpoint, error)
@@ -82,7 +82,7 @@ func (c *Checkpoint) GetFailureHandling() int32 {
 
 // PiggybackWrite adds checkpoint metadata to a WriteRequest for atomic commit.
 // Creates a proto.Checkpoint with the given commit offset, marshals it, and appends to requests.Puts.
-func (c *Checkpoint) PiggybackWrite(requests *proto.WriteRequest, commitOffset int64) error {
+func (*Checkpoint) PiggybackWrite(requests *proto.WriteRequest, commitOffset int64) error {
 	checkPoint := proto.Checkpoint{
 		CommitOffset: commitOffset,
 	}

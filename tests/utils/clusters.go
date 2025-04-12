@@ -34,7 +34,7 @@ type TestClusterOptions struct {
 func CreateCluster(t *testing.T, options TestClusterOptions) (impl.Coordinator, []model.Server, map[string]*server.Server, func()) {
 	t.Helper()
 	servers := map[string]*server.Server{}
-	var serverInfos []model.Server
+	serverInfos := make([]model.Server, 0)
 	for range options.ServerNum {
 		s, err := server.New(server.Config{
 			PublicServiceAddr:          "localhost:0",

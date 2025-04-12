@@ -134,8 +134,6 @@ func TestCheckpoint_VersionID_Discard(t *testing.T) {
 
 	lc, leaderInfo = utils.GetClusterLeader(t, coordinator, servers, common.DefaultNamespace, 0)
 	lcDB = lc.GetDB()
-	lcCommitOffset, err = lcDB.ReadCommitOffset()
-	assert.NoError(t, err)
 	lcLastVersion, err = lcDB.ReadLastVersionId()
 	assert.NoError(t, err)
 

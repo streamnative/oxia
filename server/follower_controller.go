@@ -584,12 +584,12 @@ func (fc *followerController) processCommitRequest(entry *proto.LogEntry, logEnt
 			)
 			return err
 		}
-		if br.Puts == nil || len(br.Puts) == 0 {
+		if len(br.Puts) == 0 {
 			continue
 		}
 		if err := fc.verifyCheckpoint(func(commitOffset int64) (*proto.Checkpoint, error) {
 			if commitOffset != entry.Offset {
-				return nil, nil
+				return nil, nil //nolint:nilnil
 			}
 			// reverse loop because of piggyback messages
 			for i := len(br.Puts) - 1; i >= 0; i-- {
