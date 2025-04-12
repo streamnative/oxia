@@ -68,6 +68,7 @@ func TestCheckpoint_VersionID(t *testing.T) {
 	metadataProvider := impl.NewMetadataProviderMemory()
 	checkpointEnabled := true
 	checkpointCommitEvery := int32(5)
+	failureHandling := policies.FailureHandlingDiscard
 	clusterConfig := model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
 			Name:              common.DefaultNamespace,
@@ -75,8 +76,9 @@ func TestCheckpoint_VersionID(t *testing.T) {
 			InitialShardCount: 1,
 			Policies: &policies.Policies{
 				Checkpoint: &policies.Checkpoint{
-					Enabled:     &checkpointEnabled,
-					CommitEvery: &checkpointCommitEvery,
+					Enabled:         &checkpointEnabled,
+					CommitEvery:     &checkpointCommitEvery,
+					FailureHandling: &failureHandling,
 				},
 			},
 		}},

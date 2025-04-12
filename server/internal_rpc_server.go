@@ -282,17 +282,11 @@ func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServ
 		)
 		return err
 	}
-
-	followerCheckpoint, err := follower.Checkpoint()
-	if err != nil {
-		return err
-	}
-
-	if followerCheckpoint != nil && leaderCheckpoint != nil && followerCheckpoint.CommitOffset == leaderCheckpoint.CommitOffset {
-		if err = policies.VerifyCheckpoint(leaderCheckpoint, followerCheckpoint); err != nil {
-			slog.Error("Unmatched checkpoint",
-				slog.Any("error", policies.ErrUnmatchedCheckpoint.Error()))
+	if err = follower.VerifyCheckpoint(); err != nil {
+		if errors.Is(err, policies.ErrUnmatchedCheckpoint) {
+			return status.Error(common.CodeUnmatchedCheckpoint, err.Error())
 		}
+		return status.Error(codes.Internal, err.Error())
 	}
 
 	err = follower.Replicate(srv)

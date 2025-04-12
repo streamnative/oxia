@@ -74,9 +74,10 @@ type FollowerController interface {
 	CommitOffset() int64
 	Status() proto.ServingStatus
 
-	VerifyCheckpoint() error
-
 	UpdateTermCheckpoint(checkpoint *proto.Checkpoint)
+
+	// VerifyCheckpoint validates the state of a checkpoint, ensuring the replicas states are consistent.
+	VerifyCheckpoint() error
 }
 
 type followerController struct {
@@ -197,7 +198,7 @@ func (fc *followerController) UpdateTermCheckpoint(checkpoint *proto.Checkpoint)
 	fc.termCheckpoint = checkpoint
 }
 
-func (fc *followerController) VerifyCheckpoint() error {
+func (fc *followerController) verifyCheckpoint(checkpointProvider policies.CheckpointProvider) error {
 	termPolicies := fc.termOptions.Policies
 	if termPolicies == nil {
 		return nil
@@ -205,12 +206,26 @@ func (fc *followerController) VerifyCheckpoint() error {
 	if !termPolicies.Checkpoint.IsEnabled() {
 		return nil
 	}
+	var checkpointFailureHandler = func() error {
+		switch *termPolicies.Checkpoint.FailureHandling {
+		case policies.FailureHandlingWarn:
+			fc.log.Error("Detect unmatched checkpoint.")
+			return nil
+		case policies.FailureHandlingDiscard:
+			return policies.ErrUnmatchedCheckpoint
+		}
+		return nil
+	}
+
 	leaderCheckpoint := fc.termCheckpoint
 	if leaderCheckpoint == nil {
 		return nil
 	}
-	followerCheckpoint, err := fc.db.ReadCheckpoint()
+	followerCheckpoint, err := checkpointProvider(leaderCheckpoint.CommitOffset)
 	if err != nil {
+		if errors.Is(err, policies.ErrCommitOffsetCheckpointNotFound) {
+			return checkpointFailureHandler()
+		}
 		return err
 	}
 	if followerCheckpoint == nil {
@@ -223,19 +238,16 @@ func (fc *followerController) VerifyCheckpoint() error {
 	if leaderCheckpoint.VersionId != followerCheckpoint.VersionId {
 		passed = false
 	}
-
 	if passed {
 		return nil
 	}
+	return checkpointFailureHandler()
+}
 
-	switch *termPolicies.Checkpoint.FailureHandling {
-	case policies.FailureHandlingWarn:
-		fc.log.Error("Detect unmatched checkpoint.")
-		break
-	case policies.FailureHandlingDiscard:
-		return policies.ErrUnmatchedCheckpoint
-	}
-	return nil
+func (fc *followerController) VerifyCheckpoint() error {
+	return fc.verifyCheckpoint(func(_ int64) (*proto.Checkpoint, error) {
+		return fc.db.ReadCheckpoint()
+	})
 }
 
 func (fc *followerController) setLogger() {
@@ -286,11 +298,16 @@ func (fc *followerController) closeStream(err error) {
 }
 
 func (fc *followerController) closeStreamNoMutex(err error) {
-	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, context.Canceled) && status.Code(err) != codes.Canceled {
-		fc.log.Warn(
-			"Error in handle Replicate stream",
-			slog.Any("error", err),
-		)
+	if err != nil {
+		if !errors.Is(err, io.EOF) && !errors.Is(err, context.Canceled) && status.Code(err) != codes.Canceled {
+			fc.log.Warn(
+				"Error in handle Replicate stream",
+				slog.Any("error", err),
+			)
+		}
+		if errors.Is(err, policies.ErrUnmatchedCheckpoint) {
+			err = status.Error(common.CodeUnmatchedCheckpoint, err.Error())
+		}
 	}
 
 	if fc.closeStreamWg != nil {
@@ -559,8 +576,7 @@ func (fc *followerController) applyAllCommittedEntries() {
 
 func (fc *followerController) processCommitRequest(entry *proto.LogEntry, logEntryValue *proto.LogEntryValue) error {
 	for _, br := range logEntryValue.GetRequests().Writes {
-		commitOffset := entry.Offset
-		response, err := fc.db.ProcessWrite(br, commitOffset, entry.Timestamp, WrapperUpdateOperationCallback)
+		_, err := fc.db.ProcessWrite(br, entry.Offset, entry.Timestamp, WrapperUpdateOperationCallback)
 		if err != nil {
 			fc.log.Error(
 				"Error applying committed entry",
@@ -568,40 +584,22 @@ func (fc *followerController) processCommitRequest(entry *proto.LogEntry, logEnt
 			)
 			return err
 		}
-		options := fc.termOptions
-		if options.Policies == nil {
+		if br.Puts == nil || len(br.Puts) == 0 {
 			continue
 		}
-		checkpointPolicies := options.Policies.Checkpoint
-		if checkpointPolicies.IsEnabled() {
-			termCheckpoint := fc.termCheckpoint
-			if termCheckpoint != nil && commitOffset == termCheckpoint.CommitOffset {
-				requestPuts := br.Puts
-				verifiedVersionId := false
-				if requestPuts != nil && len(requestPuts) != 0 {
-					// reverse loop because of piggyback messages
-					for i := len(requestPuts) - 1; i >= 0; i-- {
-						maybeCheckpointRequest := requestPuts[i]
-						if maybeCheckpointRequest.Key == policies.CheckpointEntryKey {
-							if response.Puts[i].Version.VersionId == termCheckpoint.VersionId {
-								// okay
-								verifiedVersionId = true
-								break
-							}
-						}
-					}
-				}
-				if !verifiedVersionId {
-					fc.log.Error("Unmatched checkpoint",
-						slog.Any("error", policies.ErrUnmatchedCheckpoint.Error()))
-					switch checkpointPolicies.GetFailureHandling() {
-					case policies.FailureHandlingWarn:
-						continue
-					case policies.FailureHandlingDiscard:
-						return status.Error(common.CodeUnmatchedCheckpoint, policies.ErrUnmatchedCheckpoint.Error())
-					}
+		if err := fc.verifyCheckpoint(func(commitOffset int64) (*proto.Checkpoint, error) {
+			if commitOffset != entry.Offset {
+				return nil, nil
+			}
+			// reverse loop because of piggyback messages
+			for i := len(br.Puts) - 1; i >= 0; i-- {
+				if br.Puts[i].Key == policies.CheckpointEntryKey {
+					return fc.db.ReadCheckpoint()
 				}
 			}
+			return nil, policies.ErrCommitOffsetCheckpointNotFound
+		}); err != nil {
+			return err
 		}
 	}
 	return nil

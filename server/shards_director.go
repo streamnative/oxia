@@ -222,7 +222,7 @@ func (s *shardsDirector) DeleteShard(req *proto.DeleteShardRequest) (*proto.Dele
 		return resp, nil
 	}
 
-	fc, err := NewFollowerController(s.config, req.Namespace, req.Shard, s.walFactory, s.kvFactory, nil)
+	fc, err := NewFollowerController(s.config, req.Namespace, req.Shard, s.walFactory, s.kvFactory)
 	if err != nil {
 		return nil, err
 	}

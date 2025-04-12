@@ -1,8 +1,6 @@
 package policies
 
 import (
-	"fmt"
-
 	"github.com/pkg/errors"
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/codec"
@@ -18,6 +16,13 @@ const (
 	FailureHandlingWarn    int32 = 0
 	FailureHandlingDiscard int32 = 1
 )
+
+var (
+	ErrUnmatchedCheckpoint            = errors.New("checkpoint not exactly same.")
+	ErrCommitOffsetCheckpointNotFound = errors.New("checkpoint not found with the target commit offset.")
+)
+
+type CheckpointProvider = func(commitOffset int64) (*proto.Checkpoint, error)
 
 var _ codec.ProtoCodec[*proto.CheckpointPolicies] = &Checkpoint{}
 
@@ -75,15 +80,5 @@ func (c *Checkpoint) PiggybackWrite(requests *proto.WriteRequest, commitOffset i
 		Key:   CheckpointEntryKey,
 		Value: value,
 	})
-	return nil
-}
-
-var ErrUnmatchedCheckpoint = errors.New("checkpoint not exactly same.")
-
-func VerifyCheckpoint(expect *proto.Checkpoint, actual *proto.Checkpoint) error {
-	if expect.VersionId != actual.VersionId {
-		return errors.Wrap(ErrUnmatchedCheckpoint,
-			fmt.Sprintf("expected version id %v, actual version id %v", expect.VersionId, actual.VersionId))
-	}
 	return nil
 }
