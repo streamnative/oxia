@@ -171,7 +171,6 @@ func TestCheckpoint_VersionID(t *testing.T) {
 						}
 						return lcLastVersion-1 == fcLastVersion
 					}, time.Second, time.Millisecond*100)
-					break
 				case policies.FailureHandlingDiscard:
 					assert.Eventually(t, func() bool {
 						fcLastVersion, err := db.ReadLastVersionId()
@@ -180,7 +179,6 @@ func TestCheckpoint_VersionID(t *testing.T) {
 						}
 						return lcLastVersion-1 == fcLastVersion
 					}, time.Second, time.Millisecond*100)
-					break
 				}
 			}
 		})
