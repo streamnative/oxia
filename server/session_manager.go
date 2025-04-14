@@ -132,8 +132,6 @@ func (sm *sessionManager) createSession(request *proto.CreateSessionRequest, min
 	if timeout > common.MaxSessionTimeout || timeout < minTimeout {
 		return nil, errors.Wrap(common.ErrorInvalidSessionTimeout, fmt.Sprintf("timeoutMs=%d", request.SessionTimeoutMs))
 	}
-	sm.Lock()
-	defer sm.Unlock()
 
 	metadata := proto.SessionMetadataFromVTPool()
 	metadata.TimeoutMs = uint32(timeout.Milliseconds())
@@ -153,16 +151,16 @@ func (sm *sessionManager) createSession(request *proto.CreateSessionRequest, min
 			}},
 		}
 	})
-
 	sessionId := SessionId(id)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to register session")
 	}
-
 	if resp.Puts[0].Status != proto.Status_OK {
 		return nil, errors.Errorf("failed to register session. invalid status %#v", resp.Puts[0].Status)
 	}
 
+	sm.Lock()
+	defer sm.Unlock()
 	s := startSession(sessionId, metadata, sm)
 
 	sm.createdSessions.Inc()
