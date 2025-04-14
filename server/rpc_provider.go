@@ -23,6 +23,8 @@ import (
 
 	"google.golang.org/grpc/metadata"
 
+	"github.com/streamnative/oxia/common/policies"
+
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/proto"
 )
@@ -46,8 +48,8 @@ func NewReplicationRpcProvider(tlsConf *tls.Config) ReplicationRpcProvider {
 	}
 }
 
-func (r *replicationRpcProvider) GetReplicateStream(ctx context.Context, follower string, namespace string, shard int64, term int64) (
-	proto.OxiaLogReplication_ReplicateClient, error) {
+func (r *replicationRpcProvider) GetReplicateStream(ctx context.Context, follower string, namespace string, shard int64, term int64,
+	checkpoint *proto.Checkpoint) (proto.OxiaLogReplication_ReplicateClient, error) {
 	rpc, err := r.pool.GetReplicationRpc(follower)
 	if err != nil {
 		return nil, err
@@ -56,6 +58,11 @@ func (r *replicationRpcProvider) GetReplicateStream(ctx context.Context, followe
 	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataNamespace, namespace)
 	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataShardId, fmt.Sprintf("%d", shard))
 	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataTerm, fmt.Sprintf("%d", term))
+
+	if checkpoint != nil {
+		ctx = metadata.AppendToOutgoingContext(ctx, policies.CheckpointMetadataCommitOffsetKey, fmt.Sprintf("%d", checkpoint.CommitOffset))
+		ctx = metadata.AppendToOutgoingContext(ctx, policies.CheckpointMetadataVersionIdKey, fmt.Sprintf("%d", checkpoint.VersionId))
+	}
 
 	stream, err := rpc.Replicate(ctx)
 	return stream, err

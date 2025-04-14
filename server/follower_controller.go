@@ -29,6 +29,7 @@ import (
 
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/metrics"
+	"github.com/streamnative/oxia/common/policies"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/kv"
 	"github.com/streamnative/oxia/server/wal"
@@ -36,6 +37,7 @@ import (
 
 // FollowerController handles all the operations of a given shard's follower.
 type FollowerController interface {
+	TestController
 	io.Closer
 
 	// NewTerm
@@ -72,6 +74,11 @@ type FollowerController interface {
 	Term() int64
 	CommitOffset() int64
 	Status() proto.ServingStatus
+
+	UpdateTermCheckpoint(checkpoint *proto.Checkpoint)
+
+	// VerifyCheckpoint validates the state of a checkpoint, ensuring the replicas states are consistent.
+	VerifyCheckpoint() error
 }
 
 type followerController struct {
@@ -90,11 +97,12 @@ type followerController struct {
 	// Offset of the last entry appended and not fully synced yet on the wal
 	lastAppendedOffset int64
 
-	status      proto.ServingStatus
-	wal         wal.Wal
-	kvFactory   kv.Factory
-	db          kv.DB
-	termOptions kv.TermOptions
+	status         proto.ServingStatus
+	wal            wal.Wal
+	kvFactory      kv.Factory
+	db             kv.DB
+	termOptions    kv.TermOptions
+	termCheckpoint *proto.Checkpoint
 
 	ctx              context.Context
 	cancel           context.CancelFunc
@@ -175,6 +183,70 @@ func NewFollowerController(config Config, namespace string, shardId int64, wf wa
 	return fc, nil
 }
 
+func (fc *followerController) GetDB() kv.DB {
+	fc.Lock()
+	defer fc.Unlock()
+	return fc.db
+}
+
+func (fc *followerController) UpdateTermCheckpoint(checkpoint *proto.Checkpoint) {
+	fc.Lock()
+	defer fc.Unlock()
+	fc.termCheckpoint = checkpoint
+}
+
+func (fc *followerController) verifyCheckpoint(checkpointProvider policies.CheckpointProvider) error {
+	termPolicies := fc.termOptions.Policies
+	if termPolicies == nil {
+		return nil
+	}
+	if !termPolicies.Checkpoint.IsEnabled() {
+		return nil
+	}
+	var checkpointFailureHandler = func() error {
+		switch *termPolicies.Checkpoint.FailureHandling {
+		case policies.FailureHandlingWarn:
+			fc.log.Error("Detect unmatched checkpoint.")
+			return nil
+		case policies.FailureHandlingDiscard:
+			return policies.ErrUnmatchedCheckpoint
+		}
+		return nil
+	}
+
+	leaderCheckpoint := fc.termCheckpoint
+	if leaderCheckpoint == nil {
+		return nil
+	}
+	followerCheckpoint, err := checkpointProvider(leaderCheckpoint.CommitOffset)
+	if err != nil {
+		if errors.Is(err, policies.ErrCommitOffsetCheckpointNotFound) {
+			return checkpointFailureHandler()
+		}
+		return err
+	}
+	if followerCheckpoint == nil {
+		return nil
+	}
+	if leaderCheckpoint.CommitOffset != followerCheckpoint.CommitOffset {
+		return nil
+	}
+	passed := true
+	if leaderCheckpoint.VersionId != followerCheckpoint.VersionId {
+		passed = false
+	}
+	if passed {
+		return nil
+	}
+	return checkpointFailureHandler()
+}
+
+func (fc *followerController) VerifyCheckpoint() error {
+	return fc.verifyCheckpoint(func(_ int64) (*proto.Checkpoint, error) {
+		return fc.db.ReadCheckpoint()
+	})
+}
+
 func (fc *followerController) setLogger() {
 	fc.log = slog.With(
 		slog.String("component", "follower-controller"),
@@ -223,11 +295,16 @@ func (fc *followerController) closeStream(err error) {
 }
 
 func (fc *followerController) closeStreamNoMutex(err error) {
-	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, context.Canceled) && status.Code(err) != codes.Canceled {
-		fc.log.Warn(
-			"Error in handle Replicate stream",
-			slog.Any("error", err),
-		)
+	if err != nil {
+		if !errors.Is(err, io.EOF) && !errors.Is(err, context.Canceled) && status.Code(err) != codes.Canceled {
+			fc.log.Warn(
+				"Error in handle Replicate stream",
+				slog.Any("error", err),
+			)
+		}
+		if errors.Is(err, policies.ErrUnmatchedCheckpoint) {
+			err = status.Error(common.CodeUnmatchedCheckpoint, err.Error())
+		}
 	}
 
 	if fc.closeStreamWg != nil {
@@ -276,7 +353,11 @@ func (fc *followerController) NewTerm(req *proto.NewTermRequest) (*proto.NewTerm
 		}
 	}
 
-	fc.termOptions = kv.ToDbOption(req.Options)
+	options := kv.TermOptions{}
+	if err := options.FromProto(req.Options); err != nil {
+		return nil, err
+	}
+	fc.termOptions = options
 	if err := fc.db.UpdateTerm(req.Term, fc.termOptions); err != nil {
 		return nil, err
 	}
@@ -500,8 +581,24 @@ func (fc *followerController) processCommitRequest(entry *proto.LogEntry, logEnt
 			)
 			return err
 		}
+		if len(br.Puts) == 0 {
+			continue
+		}
+		if err := fc.verifyCheckpoint(func(commitOffset int64) (*proto.Checkpoint, error) {
+			if commitOffset != entry.Offset {
+				return nil, nil //nolint:nilnil
+			}
+			// reverse loop because of piggyback messages
+			for i := len(br.Puts) - 1; i >= 0; i-- {
+				if br.Puts[i].Key == policies.CheckpointEntryKey {
+					return fc.db.ReadCheckpoint()
+				}
+			}
+			return nil, policies.ErrCommitOffsetCheckpointNotFound
+		}); err != nil {
+			return err
+		}
 	}
-
 	return nil
 }
 

@@ -36,7 +36,7 @@ type ShardsDirector interface {
 	GetFollower(shardId int64) (FollowerController, error)
 
 	GetOrCreateLeader(namespace string, shardId int64) (LeaderController, error)
-	GetOrCreateFollower(namespace string, shardId int64, term int64) (FollowerController, error)
+	GetOrCreateFollower(namespace string, shardId int64, term int64, termCheckpoint *proto.Checkpoint) (FollowerController, error)
 
 	DeleteShard(req *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error)
 }
@@ -155,7 +155,7 @@ func (s *shardsDirector) GetOrCreateLeader(namespace string, shardId int64) (Lea
 	return lc, nil
 }
 
-func (s *shardsDirector) GetOrCreateFollower(namespace string, shardId int64, term int64) (FollowerController, error) {
+func (s *shardsDirector) GetOrCreateFollower(namespace string, shardId int64, term int64, termCheckpoint *proto.Checkpoint) (FollowerController, error) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -165,6 +165,7 @@ func (s *shardsDirector) GetOrCreateFollower(namespace string, shardId int64, te
 
 	if follower, ok := s.followers[shardId]; ok {
 		// There is already a follower controller for this shard
+		follower.UpdateTermCheckpoint(termCheckpoint)
 		return follower, nil
 	} else if leader, ok := s.leaders[shardId]; ok {
 		// There is an existing leader controller
@@ -189,7 +190,7 @@ func (s *shardsDirector) GetOrCreateFollower(namespace string, shardId int64, te
 	if err != nil {
 		return nil, err
 	}
-
+	fc.UpdateTermCheckpoint(termCheckpoint)
 	s.followers[shardId] = fc
 	s.followersCounter.Inc()
 	return fc, nil

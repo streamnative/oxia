@@ -45,8 +45,7 @@ func (r *maelstromReplicationRpcProvider) Close() error {
 	return nil
 }
 
-func (r *maelstromReplicationRpcProvider) GetReplicateStream(ctx context.Context, follower string, namespace string, shard int64, term int64) (
-	proto.OxiaLogReplication_ReplicateClient, error) {
+func (r *maelstromReplicationRpcProvider) GetReplicateStream(ctx context.Context, follower string, namespace string, shard int64, term int64, checkpoint *proto.Checkpoint) (proto.OxiaLogReplication_ReplicateClient, error) {
 	s := &maelstromReplicateClient{
 		ctx:       ctx,
 		follower:  follower,

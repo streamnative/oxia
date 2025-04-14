@@ -42,7 +42,13 @@ type GetResult struct {
 	Err      error
 }
 
+type TestController interface {
+	// GetDB is using for internal testing
+	GetDB() kv.DB
+}
+
 type LeaderController interface {
+	TestController
 	io.Closer
 
 	Write(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error)
@@ -186,6 +192,12 @@ func (lc *leaderController) Status() proto.ServingStatus {
 	return lc.status
 }
 
+func (lc *leaderController) GetDB() kv.DB {
+	lc.RLock()
+	defer lc.RUnlock()
+	return lc.db
+}
+
 func (lc *leaderController) Term() int64 {
 	lc.RLock()
 	defer lc.RUnlock()
@@ -228,7 +240,11 @@ func (lc *leaderController) NewTerm(req *proto.NewTermRequest) (*proto.NewTermRe
 		return nil, common.ErrorInvalidStatus
 	}
 
-	lc.termOptions = kv.ToDbOption(req.Options)
+	options := kv.TermOptions{}
+	if err := options.FromProto(req.Options); err != nil {
+		return nil, err
+	}
+	lc.termOptions = options
 	if err := lc.db.UpdateTerm(req.Term, lc.termOptions); err != nil {
 		return nil, err
 	}
@@ -899,18 +915,17 @@ func (lc *leaderController) handleWriteStream(stream proto.OxiaClient_WriteStrea
 		}
 
 		timer := lc.writeLatencyHisto.Timer()
-		slog.Debug("Got request in stream",
-			slog.Any("req", req))
+		slog.Debug("Got request in stream", slog.Any("req", req))
 
-		lc.appendToWalStreamRequest(req, func(offset int64, timestamp uint64, err error) {
-			lc.handleWalSynced(stream, req, closeCh, offset, timestamp, err, timer)
+		lc.appendToWalStreamRequest(req, func(offset int64, piggybackNum int, timestamp uint64, err error) {
+			lc.handleWalSynced(stream, req, closeCh, offset, timestamp, err, timer, piggybackNum)
 		})
 	}
 }
 
-func (lc *leaderController) handleWalSynced(stream proto.OxiaClient_WriteStreamServer,
-	req *proto.WriteRequest, closeCh chan error,
-	offset int64, timestamp uint64, err error, timer metrics.Timer) {
+func (lc *leaderController) handleWalSynced(stream proto.OxiaClient_WriteStreamServer, req *proto.WriteRequest,
+	closeCh chan error, offset int64, timestamp uint64,
+	err error, timer metrics.Timer, piggybackNum int) {
 	if err != nil {
 		timer.Done()
 		sendNonBlocking(closeCh, err)
@@ -925,6 +940,11 @@ func (lc *leaderController) handleWalSynced(stream proto.OxiaClient_WriteStreamS
 				sendNonBlocking(closeCh, err)
 				return
 			}
+
+			putsResponse := localResponse.Puts
+			if piggybackNum != 0 && putsResponse != nil {
+				localResponse.Puts = putsResponse[0:(len(putsResponse) - piggybackNum)]
+			}
 			if err = stream.Send(localResponse); err != nil {
 				sendNonBlocking(closeCh, err)
 				return
@@ -938,12 +958,12 @@ func (lc *leaderController) handleWalSynced(stream proto.OxiaClient_WriteStreamS
 }
 
 func (lc *leaderController) appendToWalStreamRequest(request *proto.WriteRequest,
-	cb func(offset int64, timestamp uint64, err error)) {
+	cb func(offset int64, piggybackNum int, timestamp uint64, err error)) {
 	lc.Lock()
 
 	if err := checkStatusIsLeader(lc.status); err != nil {
 		lc.Unlock()
-		cb(wal.InvalidOffset, 0, err)
+		cb(wal.InvalidOffset, 0, 0, err)
 		return
 	}
 
@@ -958,6 +978,21 @@ func (lc *leaderController) appendToWalStreamRequest(request *proto.WriteRequest
 	logEntryValue := proto.LogEntryValueFromVTPool()
 	defer logEntryValue.ReturnToVTPool()
 
+	piggybackNum := 0
+	options := lc.termOptions
+
+	if options.Policies != nil {
+		if p := options.Policies; p != nil && p.Checkpoint.IsEnabled() {
+			if newOffset != 0 && newOffset%int64(p.Checkpoint.GetCommitEvery()) == 0 {
+				if err := p.Checkpoint.PiggybackWrite(request, newOffset); err != nil {
+					cb(wal.InvalidOffset, 0, 0, err)
+					return
+				}
+				piggybackNum++
+			}
+		}
+	}
+
 	logEntryValue.Value = &proto.LogEntryValue_Requests{
 		Requests: &proto.WriteRequests{
 			Writes: []*proto.WriteRequest{request},
@@ -966,7 +1001,7 @@ func (lc *leaderController) appendToWalStreamRequest(request *proto.WriteRequest
 	value, err := logEntryValue.MarshalVT()
 	if err != nil {
 		lc.Unlock()
-		cb(wal.InvalidOffset, timestamp, err)
+		cb(wal.InvalidOffset, piggybackNum, timestamp, err)
 		return
 	}
 	logEntry := &proto.LogEntry{
@@ -978,10 +1013,10 @@ func (lc *leaderController) appendToWalStreamRequest(request *proto.WriteRequest
 
 	lc.wal.AppendAndSync(logEntry, func(err error) {
 		if err != nil {
-			cb(wal.InvalidOffset, timestamp, errors.Wrap(err, "oxia: failed to append to wal"))
+			cb(wal.InvalidOffset, piggybackNum, timestamp, errors.Wrap(err, "oxia: failed to append to wal"))
 		} else {
 			lc.quorumAckTracker.AdvanceHeadOffset(newOffset)
-			cb(newOffset, timestamp, nil)
+			cb(newOffset, piggybackNum, timestamp, nil)
 		}
 	})
 	lc.Unlock()

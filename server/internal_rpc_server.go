@@ -29,6 +29,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	"github.com/streamnative/oxia/common/policies"
+
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/container"
 	"github.com/streamnative/oxia/proto"
@@ -218,7 +220,7 @@ func (s *internalRpcServer) Truncate(c context.Context, req *proto.TruncateReque
 
 	log.Info("Received Truncate request")
 
-	follower, err := s.shardsDirector.GetOrCreateFollower(req.Namespace, req.Shard, req.Term)
+	follower, err := s.shardsDirector.GetOrCreateFollower(req.Namespace, req.Shard, req.Term, nil)
 	if err != nil {
 		log.Warn(
 			"Truncate failed: could not get follower controller",
@@ -260,6 +262,11 @@ func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServ
 		return err
 	}
 
+	var leaderCheckpoint *proto.Checkpoint
+	if leaderCheckpoint, err = readCheckpoint(md); err != nil {
+		return err
+	}
+
 	log := s.log.With(
 		slog.Int64("shard", shardId),
 		slog.String("namespace", namespace),
@@ -268,13 +275,19 @@ func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServ
 
 	log.Info("Received Replicate request")
 
-	follower, err := s.shardsDirector.GetOrCreateFollower(namespace, shardId, term)
+	follower, err := s.shardsDirector.GetOrCreateFollower(namespace, shardId, term, leaderCheckpoint)
 	if err != nil {
 		log.Warn(
 			"Replicate failed: could not get follower controller",
 			slog.Any("error", err),
 		)
 		return err
+	}
+	if err = follower.VerifyCheckpoint(); err != nil {
+		if errors.Is(err, policies.ErrUnmatchedCheckpoint) {
+			return status.Error(common.CodeUnmatchedCheckpoint, err.Error())
+		}
+		return status.Error(codes.Internal, err.Error())
 	}
 
 	err = follower.Replicate(srv)
@@ -317,7 +330,7 @@ func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapsh
 		slog.String("peer", common.GetPeer(srv.Context())),
 	)
 
-	follower, err := s.shardsDirector.GetOrCreateFollower(namespace, shardId, term)
+	follower, err := s.shardsDirector.GetOrCreateFollower(namespace, shardId, term, nil)
 	if err != nil {
 		s.log.Warn(
 			"SendSnapshot failed: could not get follower controller",
@@ -363,6 +376,29 @@ func (s *internalRpcServer) GetStatus(_ context.Context, req *proto.GetStatusReq
 
 func (s *internalRpcServer) DeleteShard(_ context.Context, req *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error) {
 	return s.shardsDirector.DeleteShard(req)
+}
+
+func readCheckpoint(md metadata.MD) (*proto.Checkpoint, error) {
+	checkpointOffsetArr := md.Get(policies.CheckpointMetadataCommitOffsetKey)
+	if len(checkpointOffsetArr) == 0 {
+		return nil, nil //nolint:nilnil
+	}
+	var commitOffset int64
+	if _, err := fmt.Sscan(checkpointOffsetArr[0], &commitOffset); err != nil {
+		return nil, err
+	}
+	versionIdArr := md.Get(policies.CheckpointMetadataVersionIdKey)
+	if len(versionIdArr) == 0 {
+		return nil, nil //nolint:nilnil
+	}
+	var versionId int64
+	if _, err := fmt.Sscan(versionIdArr[0], &versionId); err != nil {
+		return nil, err
+	}
+	return &proto.Checkpoint{
+		VersionId:    versionId,
+		CommitOffset: commitOffset,
+	}, nil
 }
 
 func readHeader(md metadata.MD, key string) (value string, err error) {

@@ -27,6 +27,9 @@ import (
 	"go.uber.org/multierr"
 	pb "google.golang.org/protobuf/proto"
 
+	"github.com/streamnative/oxia/common/codec"
+	"github.com/streamnative/oxia/common/policies"
+
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/metrics"
 	"github.com/streamnative/oxia/proto"
@@ -63,8 +66,28 @@ type RangeScanIterator interface {
 	Next() bool
 }
 
+var _ codec.ProtoCodec[*proto.NewTermOptions] = &TermOptions{}
+
 type TermOptions struct {
 	NotificationsEnabled bool
+	Policies             *policies.Policies
+}
+
+func (*TermOptions) ToProto() *proto.NewTermOptions {
+	panic("not support yet")
+}
+
+func (t *TermOptions) FromProto(prot *proto.NewTermOptions) error {
+	t.NotificationsEnabled = true
+	if prot != nil {
+		t.NotificationsEnabled = prot.EnableNotifications
+		p := &policies.Policies{}
+		if err := p.FromProto(prot.Policies); err != nil {
+			return err
+		}
+		t.Policies = p
+	}
+	return nil
 }
 
 type DB interface {
@@ -76,7 +99,10 @@ type DB interface {
 	Get(request *proto.GetRequest) (*proto.GetResponse, error)
 	List(request *proto.ListRequest) (KeyIterator, error)
 	RangeScan(request *proto.RangeScanRequest) (RangeScanIterator, error)
+
 	ReadCommitOffset() (int64, error)
+	ReadLastVersionId() (int64, error)
+	ReadCheckpoint() (*proto.Checkpoint, error)
 
 	ReadNextNotifications(ctx context.Context, startOffset int64) ([]*proto.NotificationBatch, error)
 
@@ -131,7 +157,7 @@ func NewDB(namespace string, shardId int64, factory Factory, notificationRetenti
 		return nil, err
 	}
 
-	lastVersionId, err := db.readLastVersionId()
+	lastVersionId, err := db.ReadLastVersionId()
 	if err != nil {
 		return nil, err
 	}
@@ -373,7 +399,30 @@ func (d *db) ReadCommitOffset() (int64, error) {
 	return d.readASCIILong(commitOffsetKey)
 }
 
-func (d *db) readLastVersionId() (int64, error) {
+func (d *db) ReadCheckpoint() (*proto.Checkpoint, error) {
+	v, err := applyGet(d.kv, &proto.GetRequest{
+		Key:            policies.CheckpointEntryKey,
+		IncludeValue:   true,
+		ComparisonType: proto.KeyComparisonType_EQUAL,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if v.Status != proto.Status_OK {
+		if v.Status != proto.Status_KEY_NOT_FOUND {
+			return nil, errors.New("unexpected checkpoint status")
+		}
+		return nil, nil //nolint:nilnil
+	}
+	checkpoint := &proto.Checkpoint{}
+	if err = checkpoint.UnmarshalVT(v.Value); err != nil {
+		return nil, err
+	}
+	checkpoint.VersionId = v.Version.VersionId
+	return checkpoint, nil
+}
+
+func (d *db) ReadLastVersionId() (int64, error) {
 	return d.readASCIILong(commitLastVersionIdKey)
 }
 
@@ -465,14 +514,14 @@ func (d *db) ReadTerm() (term int64, options TermOptions, err error) {
 	return term, options, nil
 }
 
-func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *proto.PutRequest, timestamp uint64, updateOperationCallback UpdateOperationCallback, internal bool) (*proto.PutResponse, error) { //nolint:revive
+func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *proto.PutRequest, timestamp uint64, updateOperationCallback UpdateOperationCallback, internalKey bool) (*proto.PutResponse, error) { //nolint:revive
 	var se *proto.StorageEntry
 	var err error
 	var newKey string
 	if len(putReq.GetSequenceKeyDelta()) > 0 {
 		newKey, err = generateUniqueKeyFromSequences(batch, putReq)
 		putReq.Key = newKey
-	} else if !internal {
+	} else if !internalKey {
 		se, err = checkExpectedVersionId(batch, putReq.Key, putReq.ExpectedVersionId)
 	}
 
@@ -486,7 +535,7 @@ func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *pr
 	}
 
 	versionId := wal.InvalidOffset
-	if !internal {
+	if !internalKey {
 		versionId = d.versionIdTracker.Add(1)
 		// No version conflict
 		status, err := updateOperationCallback.OnPut(batch, putReq, se)
@@ -774,12 +823,3 @@ func (*noopCallback) OnDeleteRange(_ WriteBatch, _ string, _ string) error {
 }
 
 var NoOpCallback UpdateOperationCallback = &noopCallback{}
-
-func ToDbOption(opt *proto.NewTermOptions) TermOptions {
-	to := TermOptions{NotificationsEnabled: true}
-	if opt != nil {
-		to.NotificationsEnabled = opt.EnableNotifications
-	}
-
-	return to
-}
