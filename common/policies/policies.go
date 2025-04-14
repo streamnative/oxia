@@ -22,7 +22,7 @@ import (
 var _ codec.ProtoCodec[*proto.Policies] = &Policies{}
 
 type Policies struct {
-	Checkpoint *Checkpoint `json:"checkpoint" yaml:"checkpoint"`
+	Checkpoint *Checkpoint `json:"checkpoint,omitempty" yaml:"checkpoint,omitempty"`
 }
 
 func (p *Policies) FromProto(t *proto.Policies) error {
