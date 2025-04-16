@@ -99,3 +99,68 @@ func Test_Once_Complete_Error(t *testing.T) {
 	assert.Equal(t, e1, callbackError)
 	assert.Nil(t, callbackValue)
 }
+
+func Test_Once_Stream_CompleteConcurrent(t *testing.T) {
+	callbackCounter := atomic.Int32{}
+	onceCallback := NewStreamOnce[any](
+		func(t any) {
+		},
+		func(err error) {
+			callbackCounter.Add(1)
+		})
+
+	group := sync.WaitGroup{}
+	for i := 0; i < 5; i++ {
+		group.Add(1)
+		go func() {
+			if i%2 == 0 {
+				onceCallback.Complete(nil)
+			}
+			group.Done()
+		}()
+	}
+	group.Wait()
+	assert.Equal(t, int32(1), callbackCounter.Load())
+}
+
+func Test_Once_Stream_ReadFromStreamCallback(t *testing.T) {
+	dataCh := make(chan int, 10)
+	errCh := make(chan error, 1)
+	callback := ReadFromStreamCallback(dataCh, errCh)
+
+	assert.NoError(t, callback.OnNext(1))
+	assert.NoError(t, callback.OnNext(2))
+	assert.NoError(t, callback.OnNext(3))
+	callback.Complete(nil)
+
+	assert.NoError(t, <-errCh)
+	assert.Equal(t, 1, <-dataCh)
+	assert.Equal(t, 2, <-dataCh)
+	assert.Equal(t, 3, <-dataCh)
+
+	_, more := <-dataCh
+	assert.False(t, more)
+	_, more = <-errCh
+	assert.False(t, more)
+}
+
+func Test_Once_Stream_ReadFromStreamCallback_Error(t *testing.T) {
+	dataCh := make(chan int, 10)
+	errCh := make(chan error, 1)
+	callback := ReadFromStreamCallback(dataCh, errCh)
+
+	assert.NoError(t, callback.OnNext(1))
+	assert.NoError(t, callback.OnNext(2))
+	assert.NoError(t, callback.OnNext(3))
+	callback.Complete(errors.New("error"))
+
+	assert.Equal(t, 1, <-dataCh)
+	assert.Equal(t, 2, <-dataCh)
+	assert.Equal(t, 3, <-dataCh)
+	assert.Error(t, <-errCh)
+
+	_, more := <-dataCh
+	assert.False(t, more)
+	_, more = <-errCh
+	assert.False(t, more)
+}

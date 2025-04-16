@@ -24,6 +24,8 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	pb "google.golang.org/protobuf/proto"
 
+	"github.com/streamnative/oxia/common/callback"
+
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/kv"
@@ -1052,12 +1054,14 @@ func TestLeaderController_RangeScan(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	ch, _, err := lc.RangeScan(context.Background(), &proto.RangeScanRequest{
+	ch := make(chan *proto.GetResponse, 100)
+	errCh := make(chan error, 1)
+	lc.RangeScan(context.Background(), &proto.RangeScanRequest{
 		Shard:          &shard,
 		StartInclusive: "/a",
 		EndExclusive:   "/c",
-	})
-	assert.NoError(t, err)
+	}, callback.ReadFromStreamCallback(ch, errCh))
+	assert.Empty(t, errCh)
 
 	gr, more := <-ch
 	assert.Equal(t, "/a", *gr.Key)
@@ -1069,12 +1073,14 @@ func TestLeaderController_RangeScan(t *testing.T) {
 	assert.Nil(t, gr)
 	assert.False(t, more)
 
-	ch, _, err = lc.RangeScan(context.Background(), &proto.RangeScanRequest{
+	ch = make(chan *proto.GetResponse, 100)
+	errCh = make(chan error, 1)
+	lc.RangeScan(context.Background(), &proto.RangeScanRequest{
 		Shard:          &shard,
 		StartInclusive: "/y",
 		EndExclusive:   "/z",
-	})
-	assert.NoError(t, err)
+	}, callback.ReadFromStreamCallback(ch, errCh))
+	assert.Empty(t, errCh)
 
 	gr, more = <-ch
 	assert.Nil(t, gr)
