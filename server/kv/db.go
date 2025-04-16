@@ -487,7 +487,6 @@ func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *pr
 
 	versionId := wal.InvalidOffset
 	if !internal {
-		versionId = d.versionIdTracker.Add(1)
 		// No version conflict
 		status, err := updateOperationCallback.OnPut(batch, putReq, se)
 		if err != nil {
@@ -498,6 +497,7 @@ func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *pr
 				Status: status,
 			}, nil
 		}
+		versionId = d.versionIdTracker.Add(1)
 	}
 
 	if se == nil {
