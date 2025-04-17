@@ -356,7 +356,7 @@ func (n *nodeController) sendAssignmentsUpdates(backoff backoff.BackOff) error {
 				return err
 			}
 
-			n.log.Debug("Sent assignments to stream")
+			n.log.Info("Sent new shareds assignments.", slog.Any("assignments", assignments))
 			backoff.Reset()
 		}
 	}

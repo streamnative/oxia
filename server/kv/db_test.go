@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	pb "google.golang.org/protobuf/proto"
 
@@ -920,6 +921,83 @@ func TestDb_versionId(t *testing.T) {
 	assert.Equal(t, proto.Status_OK, r2.Status)
 	assert.EqualValues(t, 2, r2.Version.VersionId)
 	assert.EqualValues(t, 2, r2.Version.ModificationsCount)
+
+	assert.NoError(t, db.Close())
+	assert.NoError(t, factory.Close())
+}
+
+var _ UpdateOperationCallback = &FailureCallback{}
+
+type FailureCallback struct{}
+
+const FailureCallbackKey = "failure"
+
+func (f FailureCallback) OnPut(_ WriteBatch, req *proto.PutRequest, _ *proto.StorageEntry) (proto.Status, error) {
+	if req.Key == FailureCallbackKey {
+		return proto.Status_SESSION_DOES_NOT_EXIST, errors.New("failure injection")
+	}
+	return proto.Status_OK, nil
+}
+func (f FailureCallback) OnDelete(WriteBatch, string) error                               { return nil }
+func (f FailureCallback) OnDeleteWithEntry(WriteBatch, string, *proto.StorageEntry) error { return nil }
+func (f FailureCallback) OnDeleteRange(WriteBatch, string, string) error                  { return nil }
+
+func TestDBVersionIDWithError(t *testing.T) {
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
+	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	assert.NoError(t, err)
+
+	errReq := &proto.WriteRequest{
+		Puts: []*proto.PutRequest{
+			{
+				Key:   FailureCallbackKey,
+				Value: []byte("0"),
+			},
+			{
+				Key:   FailureCallbackKey,
+				Value: []byte("2"),
+			},
+		},
+	}
+	_, err = db.ProcessWrite(errReq, 0, 0, &FailureCallback{})
+	assert.Error(t, err)
+
+	req := &proto.WriteRequest{
+		Puts: []*proto.PutRequest{
+			{
+				Key:   "a",
+				Value: []byte("0"),
+			},
+			{
+				Key:   "b",
+				Value: []byte("1"),
+			},
+			{
+				Key:   "c",
+				Value: []byte("2"),
+			},
+		},
+	}
+
+	res, err := db.ProcessWrite(req, 0, 0, &FailureCallback{})
+	assert.NoError(t, err)
+
+	assert.Equal(t, 3, len(res.Puts))
+	r0 := res.Puts[0]
+	assert.Equal(t, proto.Status_OK, r0.Status)
+	assert.EqualValues(t, 0, r0.Version.VersionId)
+	assert.EqualValues(t, 0, r0.Version.ModificationsCount)
+
+	r1 := res.Puts[1]
+	assert.Equal(t, proto.Status_OK, r1.Status)
+	assert.EqualValues(t, 1, r1.Version.VersionId)
+	assert.EqualValues(t, 0, r1.Version.ModificationsCount)
+
+	r2 := res.Puts[2]
+	assert.Equal(t, proto.Status_OK, r2.Status)
+	assert.EqualValues(t, 2, r2.Version.VersionId)
+	assert.EqualValues(t, 0, r2.Version.ModificationsCount)
 
 	assert.NoError(t, db.Close())
 	assert.NoError(t, factory.Close())
