@@ -908,6 +908,16 @@ func (lc *leaderController) handleWriteStream(stream proto.OxiaClient_WriteStrea
 	}
 }
 
+// QuorumTracker Get the reference of quorum tracker with leader controller state validation
+func (lc *leaderController) QuorumTracker() (QuorumAckTracker, error) {
+	lc.RLock()
+	defer lc.RUnlock()
+	if lc.quorumAckTracker == nil {
+		return nil, common.ErrorAlreadyClosed
+	}
+	return lc.quorumAckTracker, nil
+}
+
 func (lc *leaderController) handleWalSynced(stream proto.OxiaClient_WriteStreamServer,
 	req *proto.WriteRequest, closeCh chan error,
 	offset int64, timestamp uint64, err error, timer metrics.Timer) {
@@ -917,7 +927,14 @@ func (lc *leaderController) handleWalSynced(stream proto.OxiaClient_WriteStreamS
 		return
 	}
 
-	lc.quorumAckTracker.WaitForCommitOffsetAsync(context.Background(), offset, callback.NewOnce(
+	var tracker QuorumAckTracker
+	if tracker, err = lc.QuorumTracker(); err != nil {
+		timer.Done()
+		sendNonBlocking(closeCh, err)
+		return
+	}
+
+	tracker.WaitForCommitOffsetAsync(context.Background(), offset, callback.NewOnce(
 		func(_ any) {
 			defer timer.Done()
 			localResponse, err := lc.db.ProcessWrite(req, offset, timestamp, WrapperUpdateOperationCallback)
