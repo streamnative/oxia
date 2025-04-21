@@ -24,7 +24,7 @@ import (
 	"github.com/streamnative/oxia/coordinator/policies"
 )
 
-func TestGroupingCandidates_NormalCase(t *testing.T) {
+func TestGroupingCandidatesNormalCase(t *testing.T) {
 	selector := &antiAffinitiesSelector{}
 
 	server1 := model.Server{Name: ptr.To("server1"), Public: "server1", Internal: "server1"}
@@ -61,7 +61,7 @@ func TestGroupingCandidates_NormalCase(t *testing.T) {
 	assert.Contains(t, typeGroup["compute"], "server2")
 }
 
-func TestGroupingCandidates_NoCandidates(t *testing.T) {
+func TestGroupingCandidatesNoCandidates(t *testing.T) {
 	selector := &antiAffinitiesSelector{}
 	var candidates []model.Server
 	candidatesMetadata := map[string]model.ServerMetadata{}
@@ -71,7 +71,7 @@ func TestGroupingCandidates_NoCandidates(t *testing.T) {
 	assert.Empty(t, result)
 }
 
-func TestGroupingCandidates_NoMetadata(t *testing.T) {
+func TestGroupingCandidatesNoMetadata(t *testing.T) {
 	selector := &antiAffinitiesSelector{}
 	server1 := model.Server{Name: ptr.To("server1"), Public: "server1", Internal: "server1"}
 	candidates := []model.Server{server1}
@@ -82,7 +82,7 @@ func TestGroupingCandidates_NoMetadata(t *testing.T) {
 	assert.Empty(t, result)
 }
 
-func TestGroupingCandidates_PartialMetadataMissing(t *testing.T) {
+func TestGroupingCandidatesPartialMetadataMissing(t *testing.T) {
 	selector := &antiAffinitiesSelector{}
 	server1 := model.Server{Name: ptr.To("server1"), Public: "server1", Internal: "server1"}
 	server2 := model.Server{Name: ptr.To("server2"), Public: "server2", Internal: "server2"}
@@ -101,7 +101,7 @@ func TestGroupingCandidates_PartialMetadataMissing(t *testing.T) {
 	assert.NotContains(t, regionGroup["us-east"], "server2")
 }
 
-func TestGroupingCandidates_AllSameLabelValue(t *testing.T) {
+func TestGroupingCandidatesAllSameLabelValue(t *testing.T) {
 	selector := &antiAffinitiesSelector{}
 	server1 := model.Server{Name: ptr.To("server1"), Public: "server1", Internal: "server1"}
 	server2 := model.Server{Name: ptr.To("server2"), Public: "server2", Internal: "server2"}
@@ -121,7 +121,7 @@ func TestGroupingCandidates_AllSameLabelValue(t *testing.T) {
 	assert.Contains(t, regionGroup["us-east"], "server2")
 }
 
-func TestSelectNew_NoAntiAffinities(t *testing.T) {
+func TestSelectNewNoAntiAffinities(t *testing.T) {
 	selector := &antiAffinitiesSelector{}
 	server1 := model.Server{Name: ptr.To("server1"), Public: "server1", Internal: "server1"}
 	server2 := model.Server{Name: ptr.To("server2"), Public: "server2", Internal: "server2"}
@@ -146,7 +146,7 @@ func TestSelectNew_NoAntiAffinities(t *testing.T) {
 	assert.Equal(t, len(candidates), len(result))
 }
 
-func TestSelectNew_SatisfiedAntiAffinities(t *testing.T) {
+func TestSelectNewSatisfiedAntiAffinities(t *testing.T) {
 	selector := &antiAffinitiesSelector{}
 	server1 := model.Server{Name: ptr.To("server1"), Public: "server1", Internal: "server1"}
 	server2 := model.Server{Name: ptr.To("server2"), Public: "server2", Internal: "server2"}
@@ -178,7 +178,7 @@ func TestSelectNew_SatisfiedAntiAffinities(t *testing.T) {
 	assert.Equal(t, len(candidates), len(result))
 }
 
-func TestSelectNew_UnsatisfiedAntiAffinities_DoNotSchedule(t *testing.T) {
+func TestSelectNewUnsatisfiedAntiAffinitiesDoNotSchedule(t *testing.T) {
 	selector := &antiAffinitiesSelector{}
 	server1 := model.Server{Name: ptr.To("server1"), Public: "server1", Internal: "server1"}
 	server2 := model.Server{Name: ptr.To("server2"), Public: "server2", Internal: "server2"}
@@ -211,7 +211,7 @@ func TestSelectNew_UnsatisfiedAntiAffinities_DoNotSchedule(t *testing.T) {
 	assert.Nil(t, result)
 }
 
-func TestSelectNew_UnsatisfiedAntiAffinities_ScheduleAnyway(t *testing.T) {
+func TestSelectNewUnsatisfiedAntiAffinitiesScheduleAnyway(t *testing.T) {
 	selector := &antiAffinitiesSelector{}
 	server1 := model.Server{Name: ptr.To("server1"), Public: "server1", Internal: "server1"}
 	server2 := model.Server{Name: ptr.To("server2"), Public: "server2", Internal: "server2"}
@@ -244,7 +244,7 @@ func TestSelectNew_UnsatisfiedAntiAffinities_ScheduleAnyway(t *testing.T) {
 	assert.Nil(t, result)
 }
 
-func TestAllocateNew_MultipleAntiAffinities_Satisfied(t *testing.T) {
+func TestAllocateNewMultipleAntiAffinitiesSatisfied(t *testing.T) {
 	selector := &antiAffinitiesSelector{}
 	servers := []model.Server{
 		{Name: ptr.To("s1"), Public: "s1", Internal: "s1"},
@@ -271,7 +271,7 @@ func TestAllocateNew_MultipleAntiAffinities_Satisfied(t *testing.T) {
 	assert.Equal(t, len(servers), len(result))
 }
 
-func TestSelectNew_MultipleAntiAffinities_PartialUnsatisfied(t *testing.T) {
+func TestSelectNewMultipleAntiAffinitiesPartialUnsatisfied(t *testing.T) {
 	selector := &antiAffinitiesSelector{}
 	servers := []model.Server{
 		{Name: ptr.To("s1"), Public: "s1", Internal: "s1"},
@@ -297,7 +297,7 @@ func TestSelectNew_MultipleAntiAffinities_PartialUnsatisfied(t *testing.T) {
 	assert.Nil(t, result)
 }
 
-func TestSelectNew_MixedActionPolicies(t *testing.T) {
+func TestSelectNewMixedActionPolicies(t *testing.T) {
 	selector := &antiAffinitiesSelector{}
 	servers := []model.Server{
 		{Name: ptr.To("s1"), Public: "s1", Internal: "s1"},
@@ -321,7 +321,7 @@ func TestSelectNew_MixedActionPolicies(t *testing.T) {
 	assert.Nil(t, result)
 }
 
-func TestSelectNew_UnsupportedActionInMultiplePolicies(t *testing.T) {
+func TestSelectNewUnsupportedActionInMultiplePolicies(t *testing.T) {
 	selector := &antiAffinitiesSelector{}
 	servers := []model.Server{
 		{Name: ptr.To("s1"), Public: "s1", Internal: "s1"},
@@ -349,7 +349,7 @@ func TestSelectNew_UnsupportedActionInMultiplePolicies(t *testing.T) {
 	assert.Nil(t, result)
 }
 
-func TestSelectNew_MultiplePoliciesWithSameLabel(t *testing.T) {
+func TestSelectNewMultiplePoliciesWithSameLabel(t *testing.T) {
 	selector := &antiAffinitiesSelector{}
 	servers := []model.Server{
 		{Name: ptr.To("s1"), Public: "s1", Internal: "s1"},
@@ -372,7 +372,7 @@ func TestSelectNew_MultiplePoliciesWithSameLabel(t *testing.T) {
 	assert.Equal(t, len(servers), len(result))
 }
 
-func TestSelectNew_MultiplePolicies(t *testing.T) {
+func TestSelectNewMultiplePolicies(t *testing.T) {
 	selector := &antiAffinitiesSelector{}
 	server1 := model.Server{Name: ptr.To("server1"), Public: "server1", Internal: "server1"}
 	server2 := model.Server{Name: ptr.To("server2"), Public: "server2", Internal: "server2"}

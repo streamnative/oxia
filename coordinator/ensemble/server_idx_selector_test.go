@@ -23,7 +23,7 @@ import (
 	"github.com/streamnative/oxia/coordinator/model"
 )
 
-func TestServerIdx_SelectNew(t *testing.T) {
+func TestServerIdxSelectNew(t *testing.T) {
 	selector := &serverIdxSelector{}
 
 	server1 := model.Server{Name: ptr.To("server1"), Public: "server1", Internal: "server1"}
