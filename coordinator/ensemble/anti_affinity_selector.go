@@ -51,7 +51,7 @@ func (z *antiAffinitiesSelector) SelectNew(
 			labelGroupedCandidates := groupingCandidates[label]
 			for _, servers := range labelGroupedCandidates {
 				if len(servers) > 1 {
-					for idx := range servers[1:] {
+					for idx := range servers[1:] { // todo: avoid always choose first
 						filteredCandidates.Add(servers[idx])
 					}
 					leftCandidates := len(candidates) - filteredCandidates.Size()
