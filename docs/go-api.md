@@ -12,12 +12,12 @@ if err != nil {
 	return err
 }
 
-v1, err := client.Put(context.Background(), "/my-key", []byte("my-value"))
+insertedKey, v1, err := client.Put(context.Background(), "/my-key", []byte("my-value"))
 if err != nil {
     return err
 }
 
-res, version, err := client.Get(context.Background(), "/my-key")
+storedKey, res, version, err := client.Get(context.Background(), "/my-key")
 if err != nil {
     return err
 }
@@ -93,7 +93,7 @@ Applications can create records that will automatically be removed once the clie
 
 ```go
 client, err := oxia.NewSyncClient("localhost:6648")
-version, err := client.Put(context.Background(), "/my-key", []byte("my-value"), oxia.Ephemeral())
+insertedKey, version, err := client.Put(context.Background(), "/my-key", []byte("my-value"), oxia.Ephemeral())
 ```
 
 Ephemeral records have their lifecycle tied to a particular client instance, and they
@@ -123,7 +123,7 @@ client, _ := NewSyncClient(serviceAddress)
 cache, _ := NewCache[myStruct](client, json.Marshal, json.Unmarshal)
 
 // We can pass a struct to the Put(), instead of bytes
-v1, err := cache.Put(context.Background(), "/my-key", myStruct{"hello", 1})
+insertedKey, v1, err := cache.Put(context.Background(), "/my-key", myStruct{"hello", 1})
 
 // The returned value is already deserialized
 value, version, err := cache.Get(context.Background(), "/my-key")
