@@ -908,7 +908,7 @@ func (lc *leaderController) handleWriteStream(stream proto.OxiaClient_WriteStrea
 	}
 }
 
-// QuorumTracker Get the reference of quorum tracker with leader controller state validation
+// QuorumTracker Get the reference of quorum tracker with leader controller state validation.
 func (lc *leaderController) QuorumTracker() (QuorumAckTracker, error) {
 	lc.RLock()
 	defer lc.RUnlock()
