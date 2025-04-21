@@ -913,7 +913,7 @@ func (lc *leaderController) QuorumTracker() (QuorumAckTracker, error) {
 	lc.RLock()
 	defer lc.RUnlock()
 	if lc.quorumAckTracker == nil {
-		return nil, common.ErrorAlreadyClosed
+		return nil, common.ErrorInvalidStatus
 	}
 	return lc.quorumAckTracker, nil
 }
