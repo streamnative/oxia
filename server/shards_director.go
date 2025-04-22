@@ -84,7 +84,7 @@ func (s *shardsDirector) GetLeader(shardId int64) (LeaderController, error) {
 	defer s.RUnlock()
 
 	if s.closed {
-		return nil, common.ErrorAlreadyClosed
+		return nil, common.ErrAlreadyClosed
 	}
 
 	if leader, ok := s.leaders[shardId]; ok {
@@ -104,7 +104,7 @@ func (s *shardsDirector) GetFollower(shardId int64) (FollowerController, error) 
 	defer s.RUnlock()
 
 	if s.closed {
-		return nil, common.ErrorAlreadyClosed
+		return nil, common.ErrAlreadyClosed
 	}
 
 	if follower, ok := s.followers[shardId]; ok {
@@ -124,7 +124,7 @@ func (s *shardsDirector) GetOrCreateLeader(namespace string, shardId int64) (Lea
 	defer s.Unlock()
 
 	if s.closed {
-		return nil, common.ErrorAlreadyClosed
+		return nil, common.ErrAlreadyClosed
 	}
 
 	if leader, ok := s.leaders[shardId]; ok {
@@ -160,7 +160,7 @@ func (s *shardsDirector) GetOrCreateFollower(namespace string, shardId int64, te
 	defer s.Unlock()
 
 	if s.closed {
-		return nil, common.ErrorAlreadyClosed
+		return nil, common.ErrAlreadyClosed
 	}
 
 	if follower, ok := s.followers[shardId]; ok {
@@ -170,7 +170,7 @@ func (s *shardsDirector) GetOrCreateFollower(namespace string, shardId int64, te
 		// There is an existing leader controller
 		if term >= 0 && term != leader.Term() {
 			// We should not close the existing leader because of a late request
-			return nil, common.ErrorInvalidTerm
+			return nil, common.ErrInvalidTerm
 		}
 
 		// If we are in the right term, let's close the leader and reopen as a follower controller

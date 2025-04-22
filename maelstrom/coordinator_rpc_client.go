@@ -17,6 +17,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -33,7 +34,7 @@ import (
 )
 
 var (
-	ErrNotImplement = fmt.Errorf("not implement")
+	ErrNotImplement = errors.New("not implement")
 )
 
 type maelstromCoordinatorRpcProvider struct {

@@ -130,7 +130,7 @@ func (sm *sessionManager) CreateSession(request *proto.CreateSessionRequest) (*p
 func (sm *sessionManager) createSession(request *proto.CreateSessionRequest, minTimeout time.Duration) (*proto.CreateSessionResponse, error) {
 	timeout := time.Duration(request.SessionTimeoutMs) * time.Millisecond
 	if timeout > common.MaxSessionTimeout || timeout < minTimeout {
-		return nil, errors.Wrap(common.ErrorInvalidSessionTimeout, fmt.Sprintf("timeoutMs=%d", request.SessionTimeoutMs))
+		return nil, errors.Wrap(common.ErrInvalidSessionTimeout, fmt.Sprintf("timeoutMs=%d", request.SessionTimeoutMs))
 	}
 
 	metadata := proto.SessionMetadataFromVTPool()
@@ -174,7 +174,7 @@ func (sm *sessionManager) getSession(sessionId int64) (*session, error) {
 			"Session not found",
 			slog.Int64("session-id", sessionId),
 		)
-		return nil, common.ErrorSessionNotFound
+		return nil, common.ErrSessionNotFound
 	}
 	return s, nil
 }
