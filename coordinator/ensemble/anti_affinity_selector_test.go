@@ -166,8 +166,8 @@ func TestSelectNewSatisfiedAntiAffinities(t *testing.T) {
 	nsPolicies := &policies.Policies{
 		AntiAffinities: []policies.AntiAffinity{
 			{
-				Labels:              []string{"region"},
-				UnsatisfiableAction: policies.DoNotSchedule,
+				Labels: []string{"region"},
+				Mode:   policies.Strict,
 			},
 		},
 	}
@@ -178,7 +178,7 @@ func TestSelectNewSatisfiedAntiAffinities(t *testing.T) {
 	assert.Equal(t, len(candidates), len(result))
 }
 
-func TestSelectNewUnsatisfiedAntiAffinitiesDoNotSchedule(t *testing.T) {
+func TestSelectNewUnsatisfiedAntiAffinitiesStrict(t *testing.T) {
 	selector := &antiAffinitiesSelector{}
 	server1 := model.Server{Name: ptr.To("server1"), Public: "server1", Internal: "server1"}
 	server2 := model.Server{Name: ptr.To("server2"), Public: "server2", Internal: "server2"}
@@ -198,8 +198,8 @@ func TestSelectNewUnsatisfiedAntiAffinitiesDoNotSchedule(t *testing.T) {
 	nsPolicies := &policies.Policies{
 		AntiAffinities: []policies.AntiAffinity{
 			{
-				Labels:              []string{"region"},
-				UnsatisfiableAction: policies.DoNotSchedule,
+				Labels: []string{"region"},
+				Mode:   policies.Strict,
 			},
 		},
 	}
@@ -211,7 +211,7 @@ func TestSelectNewUnsatisfiedAntiAffinitiesDoNotSchedule(t *testing.T) {
 	assert.Nil(t, result)
 }
 
-func TestSelectNewUnsatisfiedAntiAffinitiesScheduleAnyway(t *testing.T) {
+func TestSelectNewUnsatisfiedAntiAffinitiesRelax(t *testing.T) {
 	selector := &antiAffinitiesSelector{}
 	server1 := model.Server{Name: ptr.To("server1"), Public: "server1", Internal: "server1"}
 	server2 := model.Server{Name: ptr.To("server2"), Public: "server2", Internal: "server2"}
@@ -231,8 +231,8 @@ func TestSelectNewUnsatisfiedAntiAffinitiesScheduleAnyway(t *testing.T) {
 	nsPolicies := &policies.Policies{
 		AntiAffinities: []policies.AntiAffinity{
 			{
-				Labels:              []string{"region"},
-				UnsatisfiableAction: policies.ScheduleAnyway,
+				Labels: []string{"region"},
+				Mode:   policies.Relax,
 			},
 		},
 	}
@@ -260,8 +260,8 @@ func TestAllocateNewMultipleAntiAffinitiesSatisfied(t *testing.T) {
 	}
 	nsPolicies := &policies.Policies{
 		AntiAffinities: []policies.AntiAffinity{
-			{Labels: []string{"region"}, UnsatisfiableAction: policies.DoNotSchedule},
-			{Labels: []string{"type"}, UnsatisfiableAction: policies.DoNotSchedule},
+			{Labels: []string{"region"}, Mode: policies.Strict},
+			{Labels: []string{"type"}, Mode: policies.Strict},
 		},
 	}
 	replicas := uint32(4)
@@ -285,8 +285,8 @@ func TestSelectNewMultipleAntiAffinitiesPartialUnsatisfied(t *testing.T) {
 	}
 	nsPolicies := &policies.Policies{
 		AntiAffinities: []policies.AntiAffinity{
-			{Labels: []string{"region"}, UnsatisfiableAction: policies.DoNotSchedule},
-			{Labels: []string{"type"}, UnsatisfiableAction: policies.DoNotSchedule},
+			{Labels: []string{"region"}, Mode: policies.Strict},
+			{Labels: []string{"type"}, Mode: policies.Strict},
 		},
 	}
 	replicas := uint32(3)
@@ -309,8 +309,8 @@ func TestSelectNewMixedActionPolicies(t *testing.T) {
 	}
 	nsPolicies := &policies.Policies{
 		AntiAffinities: []policies.AntiAffinity{
-			{Labels: []string{"region"}, UnsatisfiableAction: policies.DoNotSchedule},
-			{Labels: []string{"type"}, UnsatisfiableAction: policies.ScheduleAnyway},
+			{Labels: []string{"region"}, Mode: policies.Strict},
+			{Labels: []string{"type"}, Mode: policies.Relax},
 		},
 	}
 	replicas := uint32(2)
@@ -337,8 +337,8 @@ func TestSelectNewUnsupportedActionInMultiplePolicies(t *testing.T) {
 	}
 	nsPolicies := &policies.Policies{
 		AntiAffinities: []policies.AntiAffinity{
-			{Labels: []string{"region"}, UnsatisfiableAction: policies.ScheduleAnyway},
-			{Labels: []string{"zone"}, UnsatisfiableAction: policies.DoNotSchedule},
+			{Labels: []string{"region"}, Mode: policies.Relax},
+			{Labels: []string{"zone"}, Mode: policies.Strict},
 		},
 	}
 	replicas := uint32(3)
@@ -361,8 +361,8 @@ func TestSelectNewMultiplePoliciesWithSameLabel(t *testing.T) {
 	}
 	nsPolicies := &policies.Policies{
 		AntiAffinities: []policies.AntiAffinity{
-			{Labels: []string{"region"}, UnsatisfiableAction: policies.DoNotSchedule},
-			{Labels: []string{"rack"}, UnsatisfiableAction: policies.DoNotSchedule},
+			{Labels: []string{"region"}, Mode: policies.Strict},
+			{Labels: []string{"rack"}, Mode: policies.Strict},
 		},
 	}
 	replicas := uint32(2)
@@ -394,8 +394,8 @@ func TestSelectNewMultiplePolicies(t *testing.T) {
 
 	nsPolicies := &policies.Policies{
 		AntiAffinities: []policies.AntiAffinity{
-			{Labels: []string{"region"}, UnsatisfiableAction: policies.DoNotSchedule},
-			{Labels: []string{"zone"}, UnsatisfiableAction: policies.DoNotSchedule},
+			{Labels: []string{"region"}, Mode: policies.Strict},
+			{Labels: []string{"zone"}, Mode: policies.Strict},
 		},
 	}
 

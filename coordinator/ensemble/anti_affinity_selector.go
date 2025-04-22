@@ -56,13 +56,13 @@ func (z *antiAffinitiesSelector) SelectNew(
 					}
 					leftCandidates := len(candidates) - filteredCandidates.Size()
 					if leftCandidates < int(replicas) {
-						switch antiAffinity.UnsatisfiableAction {
-						case p.DoNotSchedule:
+						switch antiAffinity.Mode {
+						case p.Strict:
 							return nil, errors.Wrap(ErrUnsatisfiedAntiAffinities, fmt.Sprintf("expectCandidates=%v actualCandidates%v", replicas, leftCandidates))
-						case p.ScheduleAnyway:
+						case p.Relax:
 							fallthrough
 						default:
-							return nil, errors.Wrap(ErrUnsupportedUnsatisfiableAction, fmt.Sprintf("unsupported unsatisfiable action %v", antiAffinity.UnsatisfiableAction))
+							return nil, errors.Wrap(ErrUnsupportedUnsatisfiableAction, fmt.Sprintf("unsupported unsatisfiable action %v", antiAffinity.Mode))
 						}
 					}
 				}

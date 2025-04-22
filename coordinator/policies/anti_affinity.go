@@ -14,19 +14,16 @@
 
 package policies
 
-// UnsatisfiableAction defines the behavior when policy constraints cannot be satisfied.
-type UnsatisfiableAction string
+type AntiAffinityMode string
 
 const (
-	// DoNotSchedule instructs the coordinator to not schedule the shard when constraints
-	// cannot be satisfied. This is the more conservative approach that ensures policy
-	// compliance at the cost of potentially leaving shards unscheduled.
-	DoNotSchedule UnsatisfiableAction = "DoNotSchedule"
+	// Strict Enforce anti-affinity rules strictly. Ensemble choosing fails if rules can't be met.
+	// This mode is for high-availability systems needing strict resource separation.
+	Strict AntiAffinityMode = "Strict"
 
-	// ScheduleAnyway instructs the coordinator to proceed with scheduling the shard even
-	// when constraints cannot be satisfied. This is a more permissive approach that
-	// ensures service availability at the cost of potentially violating policy constraints.
-	ScheduleAnyway UnsatisfiableAction = "ScheduleAnyway"
+	// Relax Try to follow anti-affinity rules, but proceed with ensemble choosing if not feasible.
+	// Ideal for environments where resource utilization is limited.
+	Relax AntiAffinityMode = "Relax"
 )
 
 // AntiAffinity defines rules for keeping certain shards separated based on labels.
@@ -39,8 +36,7 @@ type AntiAffinity struct {
 	// the anti-affinity rules.
 	Labels []string `json:"labels,omitempty" yaml:"labels,omitempty"`
 
-	// UnsatisfiableAction determines what action to take when anti-affinity
-	// constraints cannot be satisfied. It can be either DoNotSchedule or
-	// ScheduleAnyway.
-	UnsatisfiableAction UnsatisfiableAction `json:"UnsatisfiableAction,omitempty" yaml:"unsatisfiableAction,omitempty"`
+	// Mode specifies the execution mode of the anti-affinity, with the optional values of Strict or Relax.
+	// This mode determines the behavior of the ensemble choosing when the anti-affinity rules cannot be satisfied.
+	Mode AntiAffinityMode `json:"mode,omitempty" yaml:"mode,omitempty"`
 }
