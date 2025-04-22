@@ -154,6 +154,10 @@ func (q *quorumAckTracker) AdvanceHeadOffset(headOffset int64) {
 	q.Lock()
 	defer q.Unlock()
 
+	if q.closed {
+		return
+	}
+
 	if headOffset <= q.headOffset.Load() {
 		return
 	}
