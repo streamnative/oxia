@@ -14,9 +14,7 @@
 
 module github.com/streamnative/oxia
 
-go 1.23.0
-
-toolchain go1.23.3
+go 1.24.2
 
 require (
 	github.com/bmizerany/perks v0.0.0-20230307044200-03f9df79da1e
