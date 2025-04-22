@@ -12,29 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+version: "2"
 linters:
   enable:
-    - goimports
-    - goconst
-    - misspell
-    - errcheck
-    - gosimple
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
-    - revive
     - asasalint
     - asciicheck
     - bodyclose
     - contextcheck
+    - copyloopvar
     - errname
     - errorlint
-    - copyloopvar
+    - goconst
     - gocritic
     - godot
     - gomoddirectives
     - gosec
+    - misspell
     - nakedret
     - nilerr
     - nilnil
@@ -44,9 +37,9 @@ linters:
     - predeclared
     - promlinter
     - reassign
+    - revive
     - rowserrcheck
     - sqlclosecheck
-    - tenv
     - testableexamples
     - thelper
     - tparallel
@@ -54,117 +47,139 @@ linters:
     - unparam
     - usestdlibvars
     - wastedassign
-
-linters-settings:
-  goimports:
-    local-prefixes: github.com/streamnative/oxia
-  goconst:
-    ignore-tests: true
-  revive:
-    enable-all-rules: true
+  settings:
+    gosec:
+      excludes:
+        - G115
+    revive:
+      enable-all-rules: true
+      rules:
+        - name: var-naming
+          arguments:
+            - - ID
+              - RPC
+            - - ""
+            - - upperCaseConst: false
+          severity: warning
+          disabled: false
+        - name: line-length-limit
+          arguments:
+            - 120
+          severity: warning
+          disabled: false
+        - name: add-constant
+          arguments:
+            - allowFloats: 0.0,0.,0.5,0.50,0.95,0.99,0.999,1.0,1.,2.0,2.,80.0,100.0
+              allowInts: 0,1,2,3,4,5,6,7,8,9,10,11,16,17,20,22,32,64,100,128,1000,1024,0644,0755,0600,1000000,3600,500,900,990,999
+              allowStrs: '""'
+              ignoreFuncs: slog\.*,metrics\.*,fmt\.*
+              maxLitCount: "3"
+          severity: warning
+          disabled: false
+        - name: cognitive-complexity
+          arguments:
+            - 21
+          severity: warning
+          disabled: false
+        - name: cyclomatic
+          arguments:
+            - 15
+          severity: warning
+          disabled: false
+        - name: function-length
+          arguments:
+            - 10
+            - 0
+          severity: warning
+          disabled: true
+        - name: line-length-limit
+          arguments:
+            - 80
+          severity: warning
+          disabled: true
+        - name: function-result-limit
+          arguments:
+            - 5
+          severity: warning
+          disabled: false
+        - name: flag-parameter
+          severity: warning
+          disabled: false
+        - name: deep-exit
+          severity: warning
+          disabled: true
+        - name: max-public-structs
+          arguments:
+            - 3
+          severity: warning
+          disabled: true
+        - name: bare-return
+          severity: warning
+          disabled: false
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
     rules:
-      - name: var-naming
-        severity: warning
-        disabled: false
-        arguments:
-          - ["ID", "RPC"]
-          - [""]
-          - - upperCaseConst: false
-      - name: line-length-limit
-        severity: warning
-        disabled: false
-        arguments:
-          - 120
-      - name: add-constant
-        severity: warning
-        disabled: false
-        arguments:
-          - maxLitCount: "3"
-            allowStrs: '""'
-            allowInts: "0,1,2,3,4,5,6,7,8,9,10,11,16,17,20,22,32,64,100,128,1000,1024,0644,0755,0600,1000000,3600,500,900,990,999"
-            allowFloats: "0.0,0.,0.5,0.50,0.95,0.99,0.999,1.0,1.,2.0,2.,80.0,100.0"
-            ignoreFuncs: 'slog\.*,metrics\.*,fmt\.*'
-      - name: cognitive-complexity
-        severity: warning
-        disabled: false
-        arguments:
-          - 21
-      - name: cyclomatic
-        severity: warning
-        disabled: false
-        arguments:
-          - 15
-      - name: function-length
-        severity: warning
-        disabled: true
-        arguments: [10, 0]
-      - name: line-length-limit
-        severity: warning
-        disabled: true
-        arguments: [80]
-      - name: function-result-limit
-        severity: warning
-        disabled: false
-        arguments:
-          - 5
-      - name: flag-parameter
-        severity: warning
-        disabled: false
-      - name: deep-exit
-        severity: warning
-        disabled: true
-      - name: max-public-structs
-        severity: warning
-        disabled: true
-        arguments:
-          - 3
-      - name: bare-return
-        severity: warning
-        disabled: false
-  gosec:
-    excludes:
-      - G115
-
+      - linters:
+          - contextcheck
+          - gosec
+          - noctx
+          - unparam
+        path: _test\.go
+      - linters:
+          - contextcheck
+        path: \.go
+        text: Non-inherited new context
+      - linters:
+          - gomoddirectives
+        text: github.com/samber/slog-common
+      - linters:
+          - gocritic
+        path: _test\.go
+        text: exitAfterDefer|singleCaseSwitch
+      - linters:
+          - revive
+        path: _test\.go
+        text: add-constant|cognitive-complexity|unused-parameter|unused-receiver|function-length|line-length-limit|unhandled-error|deep-exit|unchecked-type-assertion|cyclomatic
+      - linters:
+          - revive
+        path: \.go
+        text: confusing-naming.*only by capitalization.*
+      - linters:
+          - revive
+        path: maelstrom/
+        text: unchecked-type-assertion|unhandled-error|unused-receiver|unused-parameter|add-constant|cyclomatic|cognitive-complexity
+      - linters:
+          - revive
+        path: _grpc\.go
+        text: blank-imports
+      - linters:
+          - goconst
+        path: (.+)_test\.go
+    paths:
+      - pkg/generated
+      - third_party$
+      - builtin$
+      - examples$
 issues:
-  fix: true
-  max-same-issues: 3
   max-issues-per-linter: 50
-  exclude-dirs:
-    - pkg/generated
-  # include:
-  #   - "EXC0012"
-  #   - "EXC0014"
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - unparam
-        - gosec
-        - contextcheck
-        - noctx
-    - path: \.go
-      linters:
-        - contextcheck
-      text: "Non-inherited new context"
-    - linters:
-        - gomoddirectives
-      text: "github.com/samber/slog-common"
-    - path: _test\.go
-      linters:
-        - gocritic
-      text: "exitAfterDefer|singleCaseSwitch"
-    - path: _test\.go
-      linters:
-        - revive
-      text: "add-constant|cognitive-complexity|unused-parameter|unused-receiver|function-length|line-length-limit|unhandled-error|deep-exit|unchecked-type-assertion|cyclomatic"
-    - path: \.go
-      linters:
-        - revive
-      text: "confusing-naming.*only by capitalization.*"
-    - path: maelstrom/
-      linters:
-        - revive
-      text: "unchecked-type-assertion|unhandled-error|unused-receiver|unused-parameter|add-constant|cyclomatic|cognitive-complexity"
-    - path: _grpc\.go
-      linters:
-        - revive
-      text: "blank-imports"
+  max-same-issues: 3
+  fix: true
+formatters:
+  enable:
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/streamnative/oxia
+  exclusions:
+    generated: lax
+    paths:
+      - pkg/generated
+      - third_party$
+      - builtin$
+      - examples$

@@ -190,7 +190,7 @@ func printLatench(name string, datas []int64) {
 			}
 		}
 	}
-	//nolint:revive
+
 	fmt.Printf(`
 Histogram of %s latency:
 P50:  %s

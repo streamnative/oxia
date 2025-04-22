@@ -119,7 +119,7 @@ func NewCoordinator(metadataProvider MetadataProvider,
 		return nil, err
 	}
 
-	for _, sa := range c.ClusterConfig.Servers {
+	for _, sa := range c.Servers {
 		c.nodeControllers[sa.GetIdentifier()] = NewNodeController(sa, c, c, c.rpc)
 		c.serverIndexes.Store(sa.GetIdentifier(), sa)
 	}
@@ -207,7 +207,7 @@ func (c *coordinator) initialAssignment() error {
 	clusterStatus, _, _ := applyClusterChanges(&c.ClusterConfig, model.NewClusterStatus())
 
 	var err error
-	if c.metadataVersion, err = c.MetadataProvider.Store(clusterStatus, MetadataNotExists); err != nil {
+	if c.metadataVersion, err = c.Store(clusterStatus, MetadataNotExists); err != nil {
 		return err
 	}
 
@@ -227,7 +227,7 @@ func (c *coordinator) applyNewClusterConfig() error {
 	if len(shardsToAdd) > 0 || len(shardsToDelete) > 0 {
 		var err error
 
-		if c.metadataVersion, err = c.MetadataProvider.Store(clusterStatus, c.metadataVersion); err != nil {
+		if c.metadataVersion, err = c.Store(clusterStatus, c.metadataVersion); err != nil {
 			return err
 		}
 	}
@@ -298,7 +298,7 @@ func (c *coordinator) InitiateLeaderElection(namespace string, shard int64, meta
 	}
 
 	ns.Shards[shard] = metadata
-	newMetadataVersion, err := c.MetadataProvider.Store(cs, c.metadataVersion)
+	newMetadataVersion, err := c.Store(cs, c.metadataVersion)
 	if err != nil {
 		return err
 	}
@@ -318,7 +318,7 @@ func (c *coordinator) ElectedLeader(namespace string, shard int64, metadata mode
 	}
 
 	ns.Shards[shard] = metadata
-	newMetadataVersion, err := c.MetadataProvider.Store(cs, c.metadataVersion)
+	newMetadataVersion, err := c.Store(cs, c.metadataVersion)
 	if err != nil {
 		return err
 	}
@@ -345,7 +345,7 @@ func (c *coordinator) ShardDeleted(namespace string, shard int64) error {
 		delete(cs.Namespaces, namespace)
 	}
 
-	newMetadataVersion, err := c.MetadataProvider.Store(cs, c.metadataVersion)
+	newMetadataVersion, err := c.Store(cs, c.metadataVersion)
 	if err != nil {
 		return err
 	}
@@ -487,7 +487,7 @@ func (c *coordinator) handleClusterConfigUpdated() error {
 //nolint:unparam
 func (c *coordinator) rebalanceCluster() error {
 	c.Lock()
-	actions := rebalanceCluster(c.ClusterConfig.Servers, c.clusterStatus)
+	actions := rebalanceCluster(c.Servers, c.clusterStatus)
 	c.Unlock()
 
 	for _, swapAction := range actions {

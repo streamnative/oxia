@@ -820,7 +820,7 @@ func TestFollower_DisconnectLeader(t *testing.T) {
 	assert.Eventually(t, closeChanIsNotNil(fc), 10*time.Second, 10*time.Millisecond)
 
 	// It's not possible to add a new leader stream
-	assert.ErrorIs(t, fc.Replicate(stream), common.ErrorLeaderAlreadyConnected)
+	assert.ErrorIs(t, fc.Replicate(stream), common.ErrLeaderAlreadyConnected)
 
 	// When we fence again, the leader should have been cutoff
 	_, err = fc.NewTerm(&proto.NewTermRequest{Term: 2})
@@ -926,7 +926,7 @@ func TestFollowerController_DeleteShard_WrongTerm(t *testing.T) {
 		Term:      1,
 	})
 
-	assert.ErrorIs(t, err, common.ErrorInvalidTerm)
+	assert.ErrorIs(t, err, common.ErrInvalidTerm)
 }
 
 func TestFollowerController_Closed(t *testing.T) {
@@ -1074,7 +1074,7 @@ func TestFollower_HandleSnapshotWithWrongTerm(t *testing.T) {
 	close(snapshotStream.chunks)
 
 	// The snapshot sending should fail because the term is invalid
-	assert.ErrorIs(t, common.ErrorInvalidTerm, wg.Wait(context.Background()))
+	assert.ErrorIs(t, common.ErrInvalidTerm, wg.Wait(context.Background()))
 
 	_, err = fc.NewTerm(&proto.NewTermRequest{Term: 5})
 	assert.NoError(t, err)
