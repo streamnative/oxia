@@ -17,7 +17,6 @@ package impl
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"sync"
 	"testing"
@@ -39,7 +38,7 @@ func init() {
 }
 
 var (
-	ErrNotImplement = fmt.Errorf("not implement")
+	ErrNotImplement = errors.New("not implement")
 )
 
 type mockShardAssignmentsProvider struct {

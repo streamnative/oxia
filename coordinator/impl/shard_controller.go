@@ -698,7 +698,7 @@ func selectNewLeader(newTermResponses map[model.Server]*proto.EntryId) (
 }
 
 func (s *shardController) becomeLeader(leader model.Server, followers map[model.Server]*proto.EntryId) error {
-	timer := s.leaderElectionLatency.Timer()
+	timer := s.becomeLeaderLatency.Timer()
 
 	followersMap := make(map[string]*proto.EntryId)
 	for server, e := range followers {

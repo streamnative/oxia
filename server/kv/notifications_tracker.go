@@ -167,7 +167,7 @@ func (nt *notificationsTracker) waitForNotifications(ctx context.Context, startO
 	}
 
 	if nt.closed.Load() {
-		return common.ErrorAlreadyClosed
+		return common.ErrAlreadyClosed
 	}
 
 	return nil
