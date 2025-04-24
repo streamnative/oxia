@@ -16,6 +16,7 @@ package ensemble
 
 import (
 	"github.com/emirpasic/gods/sets/linkedhashset"
+
 	"github.com/streamnative/oxia/coordinator/selectors"
 	"github.com/streamnative/oxia/coordinator/selectors/single"
 )

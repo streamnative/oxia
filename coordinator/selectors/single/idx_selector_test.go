@@ -18,9 +18,10 @@ import (
 	"testing"
 
 	"github.com/emirpasic/gods/sets/linkedhashset"
-	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/stretchr/testify/assert"
 	"k8s.io/utils/ptr"
+
+	"github.com/streamnative/oxia/coordinator/model"
 )
 
 func TestServerIdxSelectNew(t *testing.T) {

@@ -16,6 +16,7 @@ package single
 
 import (
 	"github.com/pkg/errors"
+
 	"github.com/streamnative/oxia/coordinator/selectors"
 )
 

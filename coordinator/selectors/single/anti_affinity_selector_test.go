@@ -20,10 +20,11 @@ import (
 
 	"github.com/emirpasic/gods/sets/linkedhashset"
 	"github.com/pkg/errors"
+	"github.com/stretchr/testify/assert"
+
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/coordinator/policies"
 	"github.com/streamnative/oxia/coordinator/selectors"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestSelectNoAntiAffinities(t *testing.T) {

@@ -25,9 +25,10 @@ import (
 	"github.com/emirpasic/gods/sets/linkedhashset"
 	"github.com/pkg/errors"
 
-	"github.com/streamnative/oxia/coordinator/selectors/ensemble"
 	"go.uber.org/multierr"
 	pb "google.golang.org/protobuf/proto"
+
+	"github.com/streamnative/oxia/coordinator/selectors/ensemble"
 
 	"github.com/streamnative/oxia/coordinator/selectors"
 

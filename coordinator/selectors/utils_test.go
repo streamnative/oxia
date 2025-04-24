@@ -18,8 +18,9 @@ import (
 	"testing"
 
 	"github.com/emirpasic/gods/sets/linkedhashset"
-	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/coordinator/model"
 )
 
 func TestGroupingCandidatesNormalCase(t *testing.T) {

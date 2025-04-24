@@ -16,6 +16,7 @@ package single
 
 import (
 	"github.com/emirpasic/gods/sets/linkedhashset"
+
 	p "github.com/streamnative/oxia/coordinator/policies"
 	"github.com/streamnative/oxia/coordinator/selectors"
 )

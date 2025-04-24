@@ -16,6 +16,7 @@ package selectors
 
 import (
 	"github.com/emirpasic/gods/sets/linkedhashset"
+
 	"github.com/streamnative/oxia/coordinator/model"
 )
 
