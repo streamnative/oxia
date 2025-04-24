@@ -503,7 +503,9 @@ func (c *coordinator) handleClusterConfigUpdated() error {
 		slog.Any("metadataVersion", c.metadataVersion),
 	)
 
-	c.checkClusterNodeChanges(newClusterConfig)
+	c.ClusterConfig = newClusterConfig
+	c.serverIndexesOnce = sync.Once{}
+	c.checkClusterNodeChanges()
 
 	for _, sc := range c.shardControllers {
 		sc.SyncServerAddress()
@@ -531,9 +533,7 @@ func (c *coordinator) handleClusterConfigUpdated() error {
 		}
 	}
 
-	c.ClusterConfig = newClusterConfig
 	c.clusterStatus = clusterStatus
-
 	c.computeNewAssignments()
 	return nil
 }
@@ -588,9 +588,9 @@ func (*coordinator) findServerByIdentifier(newClusterConfig model.ClusterConfig,
 	return nil
 }
 
-func (c *coordinator) checkClusterNodeChanges(newClusterConfig model.ClusterConfig) {
+func (c *coordinator) checkClusterNodeChanges() {
 	// Check for nodes to add
-	for _, sa := range newClusterConfig.Servers {
+	for _, sa := range c.ClusterConfig.Servers {
 		if _, ok := c.nodeControllers[sa.GetIdentifier()]; ok {
 			continue
 		}
@@ -609,7 +609,7 @@ func (c *coordinator) checkClusterNodeChanges(newClusterConfig model.ClusterConf
 
 	// Check for nodes to remove
 	for serverID, nc := range c.nodeControllers {
-		if c.findServerByIdentifier(newClusterConfig, serverID) != nil {
+		if _, exist := c.FindServerByIdentifier(serverID); !exist {
 			continue
 		}
 
