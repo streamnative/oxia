@@ -21,9 +21,9 @@ const (
 	// This mode is for high-availability systems needing strict resource separation.
 	Strict AntiAffinityMode = "Strict"
 
-	// Relax Try to follow anti-affinity rules, but proceed with ensemble choosing if not feasible.
+	// Relaxed Try to follow anti-affinity rules, but proceed with ensemble choosing if not feasible.
 	// Ideal for environments where resource utilization is limited.
-	Relax AntiAffinityMode = "Relax"
+	Relaxed AntiAffinityMode = "Relaxed"
 )
 
 // AntiAffinity defines rules for keeping certain shards separated based on labels.
@@ -36,7 +36,7 @@ type AntiAffinity struct {
 	// the anti-affinity rules.
 	Labels []string `json:"labels,omitempty" yaml:"labels,omitempty"`
 
-	// Mode specifies the execution mode of the anti-affinity, with the optional values of Strict or Relax.
+	// Mode specifies the execution mode of the anti-affinity, with the optional values of Strict or Relaxed.
 	// This mode determines the behavior of the ensemble choosing when the anti-affinity rules cannot be satisfied.
 	Mode AntiAffinityMode `json:"mode,omitempty" yaml:"mode,omitempty"`
 }

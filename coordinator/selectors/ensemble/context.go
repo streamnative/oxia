@@ -15,32 +15,15 @@
 package ensemble
 
 import (
+	"github.com/emirpasic/gods/sets/linkedhashset"
 	"github.com/streamnative/oxia/coordinator/model"
 	p "github.com/streamnative/oxia/coordinator/policies"
 )
 
-var _ Selector = &mergedSelector{}
-
-type mergedSelector struct {
-	selectors []Selector
-}
-
-func (l *mergedSelector) SelectNew(
-	candidates []model.Server,
-	candidatesMetadata map[string]model.ServerMetadata,
-	policies *p.Policies,
-	status *model.ClusterStatus,
-	replicas uint32) ([]model.Server, error) {
-	leftCandidates := candidates
-	var err error
-	for _, selector := range l.selectors {
-		leftCandidates, err = selector.SelectNew(leftCandidates, candidatesMetadata, policies, status, replicas)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if len(leftCandidates) != int(replicas) {
-		panic("unexpected number of left candidates")
-	}
-	return leftCandidates, nil
+type Context struct {
+	Candidates         *linkedhashset.Set
+	CandidatesMetadata map[string]model.ServerMetadata
+	Policies           *p.Policies
+	Status             *model.ClusterStatus
+	Replicas           int
 }

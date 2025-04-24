@@ -12,15 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package ensemble
+package single
 
 import (
 	"testing"
 
+	"github.com/emirpasic/gods/sets/linkedhashset"
+	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/stretchr/testify/assert"
 	"k8s.io/utils/ptr"
-
-	"github.com/streamnative/oxia/coordinator/model"
 )
 
 func TestServerIdxSelectNew(t *testing.T) {
@@ -32,14 +32,22 @@ func TestServerIdxSelectNew(t *testing.T) {
 	server4 := model.Server{Name: ptr.To("server4"), Public: "server4", Internal: "server4"}
 	server5 := model.Server{Name: ptr.To("server5"), Public: "server5", Internal: "server5"}
 	server6 := model.Server{Name: ptr.To("server6"), Public: "server6", Internal: "server6"}
-	candidates := []model.Server{server1, server2, server3, server4, server5, server6}
-	replicas := uint32(6)
+	candidates := []interface{}{server1.GetIdentifier(), server2.GetIdentifier(), server3.GetIdentifier(), server4.GetIdentifier(), server5.GetIdentifier(), server6.GetIdentifier()}
 
-	result, err := selector.SelectNew(candidates, make(map[string]model.ServerMetadata), nil, &model.ClusterStatus{
-		ServerIdx: 0,
-	}, replicas)
-	assert.NoError(t, err)
-	assert.Equal(t, result[0], server1)
-	assert.Equal(t, result[1], server2)
-	assert.Equal(t, result[2], server3)
+	options := &Context{
+		CandidatesMetadata: make(map[string]model.ServerMetadata),
+		Candidates:         linkedhashset.New(candidates...),
+		Policies:           nil,
+		Status: &model.ClusterStatus{
+			ServerIdx: 0,
+		},
+	}
+
+	for i := 0; i < 12; i++ {
+		options.Status.ServerIdx = uint32(i)
+		result, err := selector.Select(options)
+		assert.NoError(t, err)
+		assert.EqualValues(t, *result, candidates[i%6])
+	}
+
 }

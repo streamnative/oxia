@@ -21,7 +21,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/coordinator/ensemble"
+	"github.com/streamnative/oxia/coordinator/selectors"
 
 	"github.com/streamnative/oxia/coordinator/model"
 )
@@ -36,7 +36,7 @@ var (
 )
 
 func TestClientUpdates_ClusterInit(t *testing.T) {
-	newStatus, shardsAdded, shardsToRemove := applyClusterChanges(ensemble.NewSelector(), &model.ClusterConfig{
+	newStatus, shardsAdded, shardsToRemove := applyClusterChanges(selectors.NewSelector(), &model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
 			Name:              "ns-1",
 			InitialShardCount: 1,
@@ -104,7 +104,7 @@ func TestClientUpdates_ClusterInit(t *testing.T) {
 }
 
 func TestClientUpdates_NamespaceAdded(t *testing.T) {
-	newStatus, shardsAdded, shardsToRemove := applyClusterChanges(ensemble.NewSelector(), &model.ClusterConfig{
+	newStatus, shardsAdded, shardsToRemove := applyClusterChanges(selectors.NewSelector(), &model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
 			Name:              "ns-1",
 			InitialShardCount: 1,
@@ -189,7 +189,7 @@ func TestClientUpdates_NamespaceAdded(t *testing.T) {
 }
 
 func TestClientUpdates_NamespaceRemoved(t *testing.T) {
-	newStatus, shardsAdded, shardsToRemove := applyClusterChanges(ensemble.NewSelector(), &model.ClusterConfig{
+	newStatus, shardsAdded, shardsToRemove := applyClusterChanges(selectors.NewSelector(), &model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
 			Name:              "ns-1",
 			InitialShardCount: 1,

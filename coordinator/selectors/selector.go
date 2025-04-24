@@ -12,29 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package ensemble
+package selectors
 
 import (
-	"github.com/streamnative/oxia/coordinator/model"
-	"github.com/streamnative/oxia/coordinator/policies"
+	"github.com/pkg/errors"
 )
 
-var _ Selector = &serverIdxSelector{}
+var (
+	ErrUnsatisfiedAntiAffinity     = errors.New("selector: unsatisfied anti-affinity")
+	ErrUnsupportedAntiAffinityMode = errors.New("selector: unsupported anti-affinity mode")
+	ErrNoFunctioning               = errors.New("selector: no functioning selection")
+	ErrMultipleResult              = errors.New("selector: multiple results")
+)
 
-type serverIdxSelector struct {
-}
-
-func (*serverIdxSelector) SelectNew(
-	candidates []model.Server,
-	_ map[string]model.ServerMetadata,
-	_ *policies.Policies,
-	status *model.ClusterStatus,
-	replicas uint32) ([]model.Server, error) {
-	startIdx := status.ServerIdx
-	n := len(candidates)
-	res := make([]model.Server, replicas)
-	for i := uint32(0); i < replicas; i++ {
-		res[i] = candidates[int(startIdx+i)%n]
-	}
-	return res, nil
+type Selector[O any, R any] interface {
+	Select(o O) (R, error)
 }

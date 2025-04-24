@@ -26,7 +26,7 @@ import (
 	"go.uber.org/multierr"
 	pb "google.golang.org/protobuf/proto"
 
-	"github.com/streamnative/oxia/coordinator/ensemble"
+	"github.com/streamnative/oxia/coordinator/selectors"
 
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/coordinator/model"
@@ -63,7 +63,7 @@ type Coordinator interface {
 type coordinator struct {
 	sync.Mutex
 	assignmentsChanged common.ConditionContext
-	ensembleSelector   ensemble.Selector
+	ensembleSelector   selectors.Selector
 
 	MetadataProvider
 	clusterConfigProvider func() (model.ClusterConfig, error)
@@ -103,7 +103,7 @@ func NewCoordinator(metadataProvider MetadataProvider,
 		clusterConfigProvider: clusterConfigProvider,
 		clusterConfigChangeCh: clusterConfigNotificationsCh,
 		ClusterConfig:         initialClusterConf,
-		ensembleSelector:      ensemble.NewSelector(),
+		ensembleSelector:      selectors.NewSelector(),
 		shardControllers:      make(map[int64]ShardController),
 		nodeControllers:       make(map[string]NodeController),
 		drainingNodes:         make(map[string]NodeController),

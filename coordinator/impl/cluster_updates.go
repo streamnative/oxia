@@ -18,8 +18,8 @@ import (
 	"log/slog"
 
 	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/coordinator/ensemble"
 	"github.com/streamnative/oxia/coordinator/model"
+	"github.com/streamnative/oxia/coordinator/selectors"
 )
 
 func findNamespaceConfig(config *model.ClusterConfig, ns string) *model.NamespaceConfig {
@@ -32,7 +32,7 @@ func findNamespaceConfig(config *model.ClusterConfig, ns string) *model.Namespac
 	return nil
 }
 
-func applyClusterChanges(selector ensemble.Selector, cc *model.ClusterConfig, currentStatus *model.ClusterStatus) (
+func applyClusterChanges(selector selectors.Selector, cc *model.ClusterConfig, currentStatus *model.ClusterStatus) (
 	newStatus *model.ClusterStatus,
 	shardsToAdd map[int64]string,
 	shardsToDelete []int64) {
