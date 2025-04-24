@@ -31,7 +31,7 @@ func findNamespaceConfig(config *model.ClusterConfig, ns string) *model.Namespac
 	return nil
 }
 
-func applyClusterChanges(cc *model.ClusterConfig, currentStatus *model.ClusterStatus, ensembleSupplier func(namespaceConfig *model.NamespaceConfig, status *model.ClusterStatus) ([]model.Server, error)) (
+func applyClusterChanges(config *model.ClusterConfig, currentStatus *model.ClusterStatus, ensembleSupplier func(namespaceConfig *model.NamespaceConfig, status *model.ClusterStatus) ([]model.Server, error)) (
 	newStatus *model.ClusterStatus,
 	shardsToAdd map[int64]string,
 	shardsToDelete []int64) {
@@ -49,7 +49,7 @@ func applyClusterChanges(cc *model.ClusterConfig, currentStatus *model.ClusterSt
 	}
 
 	// Check for new namespaces
-	for _, nc := range cc.Namespaces {
+	for _, nc := range config.Namespaces {
 		nss, existing := currentStatus.Namespaces[nc.Name]
 		if existing {
 			continue
@@ -79,7 +79,7 @@ func applyClusterChanges(cc *model.ClusterConfig, currentStatus *model.ClusterSt
 			}
 
 			nss.Shards[shard.Id] = shardMetadata
-			newStatus.ServerIdx = (newStatus.ServerIdx + nc.ReplicationFactor) % uint32(len(cc.Servers))
+			newStatus.ServerIdx = (newStatus.ServerIdx + nc.ReplicationFactor) % uint32(len(config.Servers))
 			shardsToAdd[shard.Id] = nc.Name
 		}
 		newStatus.Namespaces[nc.Name] = nss
@@ -89,7 +89,7 @@ func applyClusterChanges(cc *model.ClusterConfig, currentStatus *model.ClusterSt
 
 	// Check for any namespace that was removed
 	for name, ns := range currentStatus.Namespaces {
-		namespaceConfig := findNamespaceConfig(cc, name)
+		namespaceConfig := findNamespaceConfig(config, name)
 		if namespaceConfig != nil {
 			continue
 		}
@@ -108,6 +108,7 @@ func applyClusterChanges(cc *model.ClusterConfig, currentStatus *model.ClusterSt
 	return newStatus, shardsToAdd, shardsToDelete
 }
 
+// SimpleEnsembleSupplier is using for internal mocking test
 func SimpleEnsembleSupplier(candidates []model.Server, nc *model.NamespaceConfig, cs *model.ClusterStatus) []model.Server {
 	n := len(candidates)
 	res := make([]model.Server, nc.ReplicationFactor)
