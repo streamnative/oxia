@@ -176,7 +176,7 @@ func TestSelectUnsatisfiedAntiAffinitiesRelax(t *testing.T) {
 	assert.Equal(t, 6, context.Candidates.Size())
 
 	// choose the first one
-	_, v := context.Candidates.Find(func(index int, value interface{}) bool {
+	_, v := context.Candidates.Find(func(index int, value any) bool {
 		return index == 0
 	})
 	selectedServers.Add(v)
@@ -228,7 +228,7 @@ func selectTimes(t *testing.T, selector *serverAntiAffinitiesSelector, context *
 		if selectedServer, err := selector.Select(context); err != nil {
 			if errors.Is(err, selectors.ErrMultipleResult) || errors.Is(err, selectors.ErrNoFunctioning) {
 				// assume we will use the first as selected servers
-				_, v := context.Candidates.Find(func(index int, value interface{}) bool {
+				_, v := context.Candidates.Find(func(index int, value any) bool {
 					return index == 0
 				})
 				context.selected.Add(v)
