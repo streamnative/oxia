@@ -52,6 +52,7 @@ func (so *Context) LabelGroupedSelectedLabelValues() map[string]*linkedhashset.S
 func (so *Context) SetSelected(selected *linkedhashset.Set) {
 	so.selected = selected
 	so.selectedOnce = sync.Once{}
+	so.Candidates = so.Candidates.Difference(so.selected)
 }
 
 func (so *Context) maybeGrouping() {

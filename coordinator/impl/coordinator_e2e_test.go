@@ -140,6 +140,10 @@ func TestCoordinatorE2E_ShardsRanges(t *testing.T) {
 	assert.NoError(t, s2.Close())
 	assert.NoError(t, s3.Close())
 }
+func init() {
+	common.LogLevel = slog.LevelDebug
+	common.ConfigureLogger()
+}
 
 func TestCoordinator_LeaderFailover(t *testing.T) {
 	s1, sa1 := newServer(t)
