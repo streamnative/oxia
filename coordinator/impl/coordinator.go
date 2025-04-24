@@ -74,10 +74,8 @@ type coordinator struct {
 	model.ClusterConfig
 
 	serverIndexesOnce sync.Once
-	serverIndexes     struct {
-		serverIds     *linkedhashset.Set
-		serverIdIndex map[string]*model.Server
-	}
+	serverIDs         *linkedhashset.Set
+	serverIDIndex     map[string]*model.Server
 
 	clusterConfigChangeCh chan any
 
@@ -164,14 +162,14 @@ func NewCoordinator(metadataProvider MetadataProvider,
 	return c, nil
 }
 
-func (c *coordinator) ServerIds() *linkedhashset.Set {
+func (c *coordinator) ServerIDs() *linkedhashset.Set {
 	c.maybeLoadServerIndex()
-	return c.serverIndexes.serverIds
+	return c.serverIDs
 }
 
-func (c *coordinator) ServerIdIndex() map[string]*model.Server {
+func (c *coordinator) ServerIDIndex() map[string]*model.Server {
 	c.maybeLoadServerIndex()
-	return c.serverIndexes.serverIdIndex
+	return c.serverIDIndex
 }
 
 func (c *coordinator) maybeLoadServerIndex() {
@@ -184,8 +182,8 @@ func (c *coordinator) maybeLoadServerIndex() {
 			ids.Add(identifier)
 			idIndex[identifier] = server
 		}
-		c.serverIndexes.serverIdIndex = idIndex
-		c.serverIndexes.serverIds = ids
+		c.serverIDIndex = idIndex
+		c.serverIDs = ids
 	})
 }
 
@@ -235,20 +233,20 @@ func (c *coordinator) waitForAllNodesToBeAvailable() {
 
 func (c *coordinator) SelectNewEnsemble(ns *model.NamespaceConfig, editingStatus *model.ClusterStatus) ([]model.Server, error) {
 	ensembleContext := &ensemble.Context{
-		Candidates:         c.ServerIds(),
+		Candidates:         c.ServerIDs(),
 		CandidatesMetadata: c.ServerMetadata,
 		Policies:           ns.Policies,
 		Status:             editingStatus,
 		Replicas:           int(ns.ReplicationFactor),
 	}
-	var ensembleIds []string
+	var ensembleIDs []string
 	var err error
-	if ensembleIds, err = c.ensembleSelector.Select(ensembleContext); err != nil {
+	if ensembleIDs, err = c.ensembleSelector.Select(ensembleContext); err != nil {
 		return nil, err
 	}
 	esm := make([]model.Server, 0)
-	for _, id := range ensembleIds {
-		server := c.ServerIdIndex()[id]
+	for _, id := range ensembleIDs {
+		server := c.ServerIDIndex()[id]
 		esm = append(esm, *server)
 	}
 	return esm, nil
@@ -577,7 +575,7 @@ func (c *coordinator) rebalanceCluster() error {
 }
 
 func (c *coordinator) FindServerByIdentifier(identifier string) (*model.Server, bool) {
-	server, exist := c.ServerIdIndex()[identifier]
+	server, exist := c.ServerIDIndex()[identifier]
 	return server, exist
 }
 

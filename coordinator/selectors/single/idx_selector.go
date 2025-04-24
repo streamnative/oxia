@@ -21,9 +21,12 @@ var _ selectors.Selector[*Context, *string] = &serverIdxSelector{}
 type serverIdxSelector struct {
 }
 
-func (s *serverIdxSelector) Select(ssContext *Context) (*string, error) {
+func (*serverIdxSelector) Select(ssContext *Context) (*string, error) {
 	startIdx := ssContext.Status.ServerIdx
 	candidatesArr := ssContext.Candidates.Values()
-	server := candidatesArr[int(startIdx)%len(candidatesArr)].(string)
+	server, ok := candidatesArr[int(startIdx)%len(candidatesArr)].(string)
+	if !ok {
+		panic("unexpected candidate cast")
+	}
 	return &server, nil
 }

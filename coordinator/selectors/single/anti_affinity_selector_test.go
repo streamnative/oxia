@@ -91,7 +91,7 @@ func TestSelectSatisfiedAntiAffinities(t *testing.T) {
 		assert.Equal(t, replicas-idx, context.Candidates.Size())
 
 		// assume we will use the first as selected servers
-		_, v := context.Candidates.Find(func(index int, value interface{}) bool {
+		_, v := context.Candidates.Find(func(index int, _ interface{}) bool {
 			return index == 0
 		})
 		selected.Add(v)
@@ -134,7 +134,7 @@ func TestSelectUnsatisfiedAntiAffinitiesStrict(t *testing.T) {
 	assert.Equal(t, 6, context.Candidates.Size())
 
 	// choose the first one
-	_, v := context.Candidates.Find(func(index int, value interface{}) bool {
+	_, v := context.Candidates.Find(func(index int, _ interface{}) bool {
 		return index == 0
 	})
 	selected.Add(v)
@@ -223,6 +223,7 @@ func TestSelectMultipleAntiAffinitiesSatisfied(t *testing.T) {
 }
 
 func selectTimes(t *testing.T, selector *serverAntiAffinitiesSelector, context *Context, times int) {
+	t.Helper()
 	for i := 0; i < times; i++ {
 		if selectedServer, err := selector.Select(context); err != nil {
 			if errors.Is(err, selectors.ErrMultipleResult) || errors.Is(err, selectors.ErrNoFunctioning) {
@@ -239,6 +240,5 @@ func selectTimes(t *testing.T, selector *serverAntiAffinitiesSelector, context *
 			context.selected.Add(*selectedServer)
 			context.SetSelected(context.selected)
 		}
-
 	}
 }

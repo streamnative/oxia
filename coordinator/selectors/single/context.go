@@ -31,35 +31,33 @@ type Context struct {
 
 	selected *linkedhashset.Set
 
-	state struct {
-		candidateOnce               sync.Once
-		labelValueGroupedCandidates map[string]map[string]*linkedhashset.Set
+	candidateOnce               sync.Once
+	labelValueGroupedCandidates map[string]map[string]*linkedhashset.Set
 
-		selectedOnce                    sync.Once
-		labelGroupedSelectedLabelValues map[string]*linkedhashset.Set
-	}
+	selectedOnce                    sync.Once
+	labelGroupedSelectedLabelValues map[string]*linkedhashset.Set
 }
 
 func (so *Context) LabelValueGroupedCandidates() map[string]map[string]*linkedhashset.Set {
 	so.maybeGrouping()
-	return so.state.labelValueGroupedCandidates
+	return so.labelValueGroupedCandidates
 }
 
 func (so *Context) LabelGroupedSelectedLabelValues() map[string]*linkedhashset.Set {
 	so.maybeGrouping()
-	return so.state.labelGroupedSelectedLabelValues
+	return so.labelGroupedSelectedLabelValues
 }
 
 func (so *Context) SetSelected(selected *linkedhashset.Set) {
 	so.selected = selected
-	so.state.selectedOnce = sync.Once{}
+	so.selectedOnce = sync.Once{}
 }
 
 func (so *Context) maybeGrouping() {
-	so.state.candidateOnce.Do(func() {
-		so.state.labelValueGroupedCandidates = selectors.GroupingCandidatesWithLabelValue(so.Candidates, so.CandidatesMetadata)
+	so.candidateOnce.Do(func() {
+		so.labelValueGroupedCandidates = selectors.GroupingCandidatesWithLabelValue(so.Candidates, so.CandidatesMetadata)
 	})
-	so.state.selectedOnce.Do(func() {
-		so.state.labelGroupedSelectedLabelValues = selectors.GroupingValueWithLabel(so.selected, so.CandidatesMetadata)
+	so.selectedOnce.Do(func() {
+		so.labelGroupedSelectedLabelValues = selectors.GroupingValueWithLabel(so.selected, so.CandidatesMetadata)
 	})
 }

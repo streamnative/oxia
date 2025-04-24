@@ -32,7 +32,7 @@ func TestServerIdxSelectNew(t *testing.T) {
 	server4 := model.Server{Name: ptr.To("server4"), Public: "server4", Internal: "server4"}
 	server5 := model.Server{Name: ptr.To("server5"), Public: "server5", Internal: "server5"}
 	server6 := model.Server{Name: ptr.To("server6"), Public: "server6", Internal: "server6"}
-	candidates := []interface{}{server1.GetIdentifier(), server2.GetIdentifier(), server3.GetIdentifier(), server4.GetIdentifier(), server5.GetIdentifier(), server6.GetIdentifier()}
+	candidates := []any{server1.GetIdentifier(), server2.GetIdentifier(), server3.GetIdentifier(), server4.GetIdentifier(), server5.GetIdentifier(), server6.GetIdentifier()}
 
 	options := &Context{
 		CandidatesMetadata: make(map[string]model.ServerMetadata),
@@ -49,5 +49,4 @@ func TestServerIdxSelectNew(t *testing.T) {
 		assert.NoError(t, err)
 		assert.EqualValues(t, *result, candidates[i%6])
 	}
-
 }

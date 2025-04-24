@@ -22,7 +22,10 @@ import (
 func GroupingCandidatesWithLabelValue(candidates *linkedhashset.Set, candidatesMetadata map[string]model.ServerMetadata) map[string]map[string]*linkedhashset.Set {
 	groupedCandidates := make(map[string]map[string]*linkedhashset.Set)
 	for iterator := candidates.Iterator(); iterator.Next(); {
-		candidate := iterator.Value().(string)
+		candidate, ok := iterator.Value().(string)
+		if !ok {
+			panic("unexpected type in iterator")
+		}
 		metadata, exist := candidatesMetadata[candidate]
 		if !exist {
 			continue
@@ -42,7 +45,6 @@ func GroupingCandidatesWithLabelValue(candidates *linkedhashset.Set, candidatesM
 			}
 			labelValueGroup.Add(candidate)
 		}
-
 	}
 	return groupedCandidates
 }

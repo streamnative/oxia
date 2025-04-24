@@ -35,7 +35,7 @@ type ServerContext struct {
 
 // Make sure every server is assigned a similar number of shards
 // Output a list of actions to be taken to rebalance the cluster.
-func rebalanceCluster(servers []model.Server, currentStatus *model.ClusterStatus) []SwapNodeAction {
+func rebalanceCluster(servers []model.Server, currentStatus *model.ClusterStatus) []SwapNodeAction { //nolint:revive
 	res := make([]SwapNodeAction, 0)
 
 	serversCount := len(servers)
