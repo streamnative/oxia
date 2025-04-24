@@ -71,9 +71,7 @@ type coordinator struct {
 
 	MetadataProvider
 	clusterConfigProvider func() (model.ClusterConfig, error)
-
 	model.ClusterConfig
-
 	serverIndexesOnce sync.Once
 	serverIDs         *linkedhashset.Set
 	serverIDIndex     map[string]*model.Server
