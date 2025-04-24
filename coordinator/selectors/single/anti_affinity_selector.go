@@ -24,7 +24,7 @@ var _ selectors.Selector[*Context, *string] = &serverAntiAffinitiesSelector{}
 
 type serverAntiAffinitiesSelector struct{}
 
-func (*serverAntiAffinitiesSelector) Select(ssContext *Context) (*string, error) {
+func (*serverAntiAffinitiesSelector) Select(ssContext *Context) (*string, error) { //nolint:revive
 	policies := ssContext.Policies
 	if policies == nil || len(policies.AntiAffinities) == 0 {
 		return nil, selectors.ErrNoFunctioning
@@ -73,7 +73,7 @@ func (*serverAntiAffinitiesSelector) Select(ssContext *Context) (*string, error)
 		}
 	}
 	if candidates.Size() == 1 {
-		_, value := candidates.Find(func(_ int, _ interface{}) bool { return true })
+		_, value := candidates.Find(func(_ int, _ any) bool { return true })
 		var res = value.(string)
 		return &res, nil
 	}

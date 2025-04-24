@@ -231,7 +231,7 @@ func (c *coordinator) waitForAllNodesToBeAvailable() {
 	}
 }
 
-func (c *coordinator) SelectNewEnsemble(ns *model.NamespaceConfig, editingStatus *model.ClusterStatus) ([]model.Server, error) {
+func (c *coordinator) selectNewEnsemble(ns *model.NamespaceConfig, editingStatus *model.ClusterStatus) ([]model.Server, error) {
 	ensembleContext := &ensemble.Context{
 		Candidates:         c.ServerIDs(),
 		CandidatesMetadata: c.ServerMetadata,
@@ -259,7 +259,7 @@ func (c *coordinator) initialAssignment() error {
 		slog.Any("clusterConfig", c.ClusterConfig),
 	)
 
-	clusterStatus, _, _ := applyClusterChanges(&c.ClusterConfig, model.NewClusterStatus(), c.SelectNewEnsemble)
+	clusterStatus, _, _ := applyClusterChanges(&c.ClusterConfig, model.NewClusterStatus(), c.selectNewEnsemble)
 
 	var err error
 	if c.metadataVersion, err = c.Store(clusterStatus, MetadataNotExists); err != nil {
@@ -277,7 +277,7 @@ func (c *coordinator) applyNewClusterConfig() error {
 		slog.Any("metadataVersion", c.metadataVersion),
 	)
 
-	clusterStatus, shardsToAdd, shardsToDelete := applyClusterChanges(&c.ClusterConfig, c.clusterStatus, c.SelectNewEnsemble)
+	clusterStatus, shardsToAdd, shardsToDelete := applyClusterChanges(&c.ClusterConfig, c.clusterStatus, c.selectNewEnsemble)
 
 	if len(shardsToAdd) > 0 || len(shardsToDelete) > 0 {
 		var err error
@@ -510,7 +510,7 @@ func (c *coordinator) handleClusterConfigUpdated() error {
 		sc.SyncServerAddress()
 	}
 
-	clusterStatus, shardsToAdd, shardsToDelete := applyClusterChanges(&newClusterConfig, c.clusterStatus, c.SelectNewEnsemble)
+	clusterStatus, shardsToAdd, shardsToDelete := applyClusterChanges(&newClusterConfig, c.clusterStatus, c.selectNewEnsemble)
 
 	for shard, namespace := range shardsToAdd {
 		shardMetadata := clusterStatus.Namespaces[namespace].Shards[shard]

@@ -91,7 +91,7 @@ func TestSelectSatisfiedAntiAffinities(t *testing.T) {
 		assert.Equal(t, replicas-idx, context.Candidates.Size())
 
 		// assume we will use the first as selected servers
-		_, v := context.Candidates.Find(func(index int, _ interface{}) bool {
+		_, v := context.Candidates.Find(func(index int, _ any) bool {
 			return index == 0
 		})
 		selected.Add(v)
@@ -134,7 +134,7 @@ func TestSelectUnsatisfiedAntiAffinitiesStrict(t *testing.T) {
 	assert.Equal(t, 6, context.Candidates.Size())
 
 	// choose the first one
-	_, v := context.Candidates.Find(func(index int, _ interface{}) bool {
+	_, v := context.Candidates.Find(func(index int, _ any) bool {
 		return index == 0
 	})
 	selected.Add(v)
