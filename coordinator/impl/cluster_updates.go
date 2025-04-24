@@ -19,7 +19,6 @@ import (
 
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/coordinator/model"
-	"github.com/streamnative/oxia/coordinator/selectors"
 )
 
 func findNamespaceConfig(config *model.ClusterConfig, ns string) *model.NamespaceConfig {
@@ -32,12 +31,13 @@ func findNamespaceConfig(config *model.ClusterConfig, ns string) *model.Namespac
 	return nil
 }
 
-func applyClusterChanges(selector selectors.Selector, cc *model.ClusterConfig, currentStatus *model.ClusterStatus) (
+func applyClusterChanges(cc *model.ClusterConfig, currentStatus *model.ClusterStatus, ensembleSupplier func(namespaceConfig *model.NamespaceConfig, status *model.ClusterStatus) ([]model.Server, error)) (
 	newStatus *model.ClusterStatus,
 	shardsToAdd map[int64]string,
 	shardsToDelete []int64) {
 	shardsToAdd = map[int64]string{}
 	shardsToDelete = []int64{}
+	var err error
 
 	newStatus = &model.ClusterStatus{
 		Namespaces:       map[string]model.NamespaceStatus{},
@@ -62,8 +62,8 @@ func applyClusterChanges(selector selectors.Selector, cc *model.ClusterConfig, c
 		}
 
 		for _, shard := range common.GenerateShards(newStatus.ShardIdGenerator, nc.InitialShardCount) {
-			candidates, err := selector.SelectNew(cc.Servers, cc.ServerMetadata, nc.Policies, newStatus, nc.ReplicationFactor)
-			if err != nil {
+			var esm []model.Server
+			if esm, err = ensembleSupplier(&nc, newStatus); err != nil {
 				slog.Error("failed to select new candidates.", slog.Any("error", err))
 				continue
 			}
@@ -71,7 +71,7 @@ func applyClusterChanges(selector selectors.Selector, cc *model.ClusterConfig, c
 				Status:   model.ShardStatusUnknown,
 				Term:     -1,
 				Leader:   nil,
-				Ensemble: candidates,
+				Ensemble: esm,
 				Int32HashRange: model.Int32HashRange{
 					Min: shard.Min,
 					Max: shard.Max,
@@ -106,4 +106,13 @@ func applyClusterChanges(selector selectors.Selector, cc *model.ClusterConfig, c
 	}
 
 	return newStatus, shardsToAdd, shardsToDelete
+}
+
+func SimpleEnsembleSupplier(candidates []model.Server, nc *model.NamespaceConfig, cs *model.ClusterStatus) []model.Server {
+	n := len(candidates)
+	res := make([]model.Server, nc.ReplicationFactor)
+	for i := uint32(0); i < nc.ReplicationFactor; i++ {
+		res[i] = candidates[int(cs.ServerIdx+i)%n]
+	}
+	return res
 }
