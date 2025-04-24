@@ -578,16 +578,6 @@ func (c *coordinator) FindServerByIdentifier(identifier string) (*model.Server, 
 	return server, exist
 }
 
-func (*coordinator) findServerByIdentifier(newClusterConfig model.ClusterConfig, identifier string) *model.Server {
-	for _, s := range newClusterConfig.Servers {
-		if identifier == s.GetIdentifier() {
-			return &s
-		}
-	}
-
-	return nil
-}
-
 func (c *coordinator) checkClusterNodeChanges() {
 	// Check for nodes to add
 	for _, sa := range c.ClusterConfig.Servers {
