@@ -16,7 +16,6 @@ package impl
 
 import "github.com/streamnative/oxia/coordinator/model"
 
-// SimpleEnsembleSupplier is using for internal mocking test.
 func SimpleEnsembleSupplier(candidates []model.Server, nc *model.NamespaceConfig, cs *model.ClusterStatus) []model.Server {
 	n := len(candidates)
 	res := make([]model.Server, nc.ReplicationFactor)

@@ -26,17 +26,14 @@ const (
 	Relaxed AntiAffinityMode = "Relaxed"
 )
 
-// AntiAffinity defines rules for keeping certain shards separated based on labels.
-// It helps in achieving better fault tolerance by ensuring shards are distributed
-// across different failure domains.
+// AntiAffinity defines rules to prevent co-location of resources based on specified labels and operation mode.
+// Labels specifies a set of key-value labels that form the basis of the anti-affinity constraints.
+// Mode determines the mode of anti-affinity enforcement, for instance, strict or relaxed.
 type AntiAffinity struct {
 
-	// Labels specifies the set of labels to consider when making anti-affinity
-	// decisions. Shards with matching labels will be scheduled according to
-	// the anti-affinity rules.
+	// Labels defines a list of label keys used to evaluate anti-affinity constraints for resource placement decisions.
 	Labels []string `json:"labels,omitempty" yaml:"labels,omitempty"`
 
-	// Mode specifies the execution mode of the anti-affinity, with the optional values of Strict or Relaxed.
-	// This mode determines the behavior of the ensemble choosing when the anti-affinity rules cannot be satisfied.
+	// Mode specifies the enforcement level of anti-affinity constraints, such as Strict or Relaxed behavior.
 	Mode AntiAffinityMode `json:"mode,omitempty" yaml:"mode,omitempty"`
 }

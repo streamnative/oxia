@@ -26,6 +26,7 @@ type Server struct {
 }
 
 type ServerMetadata struct {
+	// Labels represents a key-value map to store metadata associated with a server.
 	Labels map[string]string `json:"labels" yaml:"labels"`
 }
 

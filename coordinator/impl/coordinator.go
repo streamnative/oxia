@@ -61,6 +61,7 @@ type Coordinator interface {
 	NodeAvailabilityListener
 	ClusterStatus() model.ClusterStatus
 
+	// FindServerByIdentifier searches for a server in the cluster by its identifier and returns it if found.
 	FindServerByIdentifier(identifier string) (*model.Server, bool)
 }
 
@@ -230,6 +231,8 @@ func (c *coordinator) waitForAllNodesToBeAvailable() {
 	}
 }
 
+// selectNewEnsemble select a new server ensemble based on namespace policies and current cluster status.
+// It uses the ensemble selector to choose appropriate servers and returns the selected server metadata or an error.
 func (c *coordinator) selectNewEnsemble(ns *model.NamespaceConfig, editingStatus *model.ClusterStatus) ([]model.Server, error) {
 	ensembleContext := &ensemble.Context{
 		Candidates:         c.ServerIDs(),
