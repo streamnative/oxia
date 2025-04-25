@@ -39,5 +39,5 @@ func ReadFromStreamCallback[T any](dataCh chan T, errCh chan error) StreamCallba
 
 type streamCallbackCompleteOnly struct{ onComplete func(err error) }
 
-func (c *streamCallbackCompleteOnly) OnNext(any) error     { return nil }
+func (*streamCallbackCompleteOnly) OnNext(any) error       { return nil }
 func (c *streamCallbackCompleteOnly) OnComplete(err error) { c.onComplete(err) }
