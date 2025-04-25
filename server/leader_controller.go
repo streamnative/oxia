@@ -996,7 +996,6 @@ func (lc *leaderController) appendToWalStreamRequest(request *proto.WriteRequest
 			cb(newOffset, timestamp, nil)
 		}
 	})
-
 }
 
 // ////
