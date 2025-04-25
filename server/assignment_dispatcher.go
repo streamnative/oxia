@@ -69,7 +69,7 @@ func (s *shardAssignmentDispatcher) RegisterForUpdates(req *proto.ShardAssignmen
 
 	if s.assignments == nil {
 		s.Unlock()
-		return common.ErrorNotInitialized
+		return common.ErrNotInitialized
 	}
 
 	namespace := req.Namespace
@@ -79,7 +79,7 @@ func (s *shardAssignmentDispatcher) RegisterForUpdates(req *proto.ShardAssignmen
 
 	if _, ok := s.assignments.Namespaces[namespace]; !ok {
 		s.Unlock()
-		return common.ErrorNamespaceNotFound
+		return common.ErrNamespaceNotFound
 	}
 
 	initialAssignments := filterByNamespace(s.assignments, namespace)
@@ -109,7 +109,7 @@ func (s *shardAssignmentDispatcher) RegisterForUpdates(req *proto.ShardAssignmen
 		select {
 		case assignments := <-clientCh:
 			if assignments == nil {
-				return common.ErrorCancelled
+				return common.ErrCancelled
 			}
 
 			assignments = filterByNamespace(assignments, namespace)

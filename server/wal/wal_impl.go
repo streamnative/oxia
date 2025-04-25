@@ -414,7 +414,7 @@ func (t *wal) Sync(ctx context.Context) error {
 
 func (t *wal) checkNextOffset(nextOffset int64) error {
 	if nextOffset < 0 {
-		return fmt.Errorf("Invalid next offset. %d should be > 0", nextOffset)
+		return fmt.Errorf("invalid next offset. %d should be > 0", nextOffset)
 	}
 
 	lastAppendedOffset := t.lastAppendedOffset.Load()

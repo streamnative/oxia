@@ -1166,7 +1166,7 @@ func TestLeaderController_DeleteShard_WrongTerm(t *testing.T) {
 		Shard:     shard,
 		Term:      0,
 	})
-	assert.ErrorIs(t, err, common.ErrorInvalidTerm)
+	assert.ErrorIs(t, err, common.ErrInvalidTerm)
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, walFactory.Close())
@@ -1342,7 +1342,7 @@ func TestLeaderController_NotificationsDisabled(t *testing.T) {
 	stream := newMockGetNotificationsServer(ctx)
 
 	err := lc.GetNotifications(&proto.NotificationsRequest{Shard: shard}, stream)
-	assert.ErrorIs(t, err, common.ErrorNotificationsNotEnabled)
+	assert.ErrorIs(t, err, common.ErrNotificationsNotEnabled)
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())

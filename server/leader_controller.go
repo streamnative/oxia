@@ -211,11 +211,11 @@ func (lc *leaderController) NewTerm(req *proto.NewTermRequest) (*proto.NewTermRe
 	defer lc.Unlock()
 
 	if lc.isClosed() {
-		return nil, common.ErrorAlreadyClosed
+		return nil, common.ErrAlreadyClosed
 	}
 
 	if req.Term < lc.term {
-		return nil, common.ErrorInvalidTerm
+		return nil, common.ErrInvalidTerm
 	} else if req.Term == lc.term && lc.status != proto.ServingStatus_FENCED {
 		// It's OK to receive a duplicate Fence request, for the same term, as long as we haven't moved
 		// out of the Fenced state for that term
@@ -225,7 +225,7 @@ func (lc *leaderController) NewTerm(req *proto.NewTermRequest) (*proto.NewTermRe
 			slog.Int64("new-term", req.Term),
 			slog.Any("status", lc.status),
 		)
-		return nil, common.ErrorInvalidStatus
+		return nil, common.ErrInvalidStatus
 	}
 
 	lc.termOptions = kv.ToDbOption(req.Options)
@@ -310,15 +310,15 @@ func (lc *leaderController) BecomeLeader(ctx context.Context, req *proto.BecomeL
 	defer lc.Unlock()
 
 	if lc.isClosed() {
-		return nil, common.ErrorAlreadyClosed
+		return nil, common.ErrAlreadyClosed
 	}
 
 	if lc.status != proto.ServingStatus_FENCED {
-		return nil, common.ErrorInvalidStatus
+		return nil, common.ErrInvalidStatus
 	}
 
 	if req.Term != lc.term {
-		return nil, common.ErrorInvalidTerm
+		return nil, common.ErrInvalidTerm
 	}
 
 	lc.replicationFactor = req.GetReplicationFactor()
@@ -371,11 +371,11 @@ func (lc *leaderController) AddFollower(req *proto.AddFollowerRequest) (*proto.A
 	defer lc.Unlock()
 
 	if req.Term != lc.term {
-		return nil, common.ErrorInvalidTerm
+		return nil, common.ErrInvalidTerm
 	}
 
 	if lc.status != proto.ServingStatus_LEADER {
-		return nil, errors.Wrap(common.ErrorInvalidStatus, "Node is not leader")
+		return nil, errors.Wrap(common.ErrInvalidStatus, "Node is not leader")
 	}
 
 	if _, followerAlreadyPresent := lc.followers[req.FollowerName]; followerAlreadyPresent {
@@ -514,7 +514,7 @@ func (lc *leaderController) truncateFollowerIfNeeded(follower string, followerHe
 	// Coordinator should never send us a follower with an invalid term.
 	// Checking for sanity here.
 	if followerHeadEntryId.Term > lc.leaderElectionHeadEntryId.Term {
-		return nil, common.ErrorInvalidStatus
+		return nil, common.ErrInvalidStatus
 	}
 
 	lastEntryInFollowerTerm, err := getHighestEntryOfTerm(lc.wal, followerHeadEntryId.Term)
@@ -974,7 +974,7 @@ func (lc *leaderController) appendToWalStreamRequest(request *proto.WriteRequest
 
 func (lc *leaderController) GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
 	if !lc.termOptions.NotificationsEnabled {
-		return common.ErrorNotificationsNotEnabled
+		return common.ErrNotificationsNotEnabled
 	}
 	return startNotificationDispatcher(lc, req, stream)
 }
@@ -1085,7 +1085,7 @@ func (lc *leaderController) DeleteShard(request *proto.DeleteShardRequest) (*pro
 			slog.Int64("follower-term", lc.term),
 			slog.Int64("new-term", request.Term))
 		_ = lc.close()
-		return nil, common.ErrorInvalidTerm
+		return nil, common.ErrInvalidTerm
 	}
 
 	lc.log.Info("Deleting shard")

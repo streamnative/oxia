@@ -49,8 +49,8 @@ var toShardStatus = map[string]ShardStatus{
 // MarshalJSON marshals the enum as a quoted json string.
 func (s ShardStatus) MarshalJSON() ([]byte, error) {
 	buffer := bytes.NewBufferString(`"`)
-	buffer.WriteString(toString[s]) //nolint:revive
-	buffer.WriteString(`"`)         //nolint:revive
+	buffer.WriteString(toString[s])
+	buffer.WriteString(`"`)
 	return buffer.Bytes(), nil
 }
 

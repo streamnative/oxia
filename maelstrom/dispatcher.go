@@ -120,7 +120,7 @@ func (d *dispatcher) onOxiaProxiedMessage(msgType MsgType, m any, _ pb.Message) 
 		if ch, ok := d.requests[*res.Body.InReplyTo]; !ok {
 			slog.Error("Invalid response id")
 			os.Exit(1)
-		} else {
+		} else { //nolint:revive
 			ch <- ResponseError{msg: nil, err: nil}
 		}
 	case MsgTypeWrite:
@@ -128,10 +128,10 @@ func (d *dispatcher) onOxiaProxiedMessage(msgType MsgType, m any, _ pb.Message) 
 	case MsgTypeRead:
 		fallthrough
 	case MsgTypeCas:
-		switch {
-		case d.currentLeader == "":
+		switch d.currentLeader {
+		case "":
 			sendErrorNotInitialized(msgType, m)
-		case d.currentLeader == thisNode:
+		case thisNode:
 			// We should answer
 			go d.grpcProvider.HandleClientRequest(msgType, m)
 		default:

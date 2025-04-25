@@ -269,12 +269,12 @@ func TestSessionManager(t *testing.T) {
 		Shard:            shardId,
 		SessionTimeoutMs: uint32((1 * time.Hour).Milliseconds()),
 	})
-	assert.ErrorIs(t, err, common.ErrorInvalidSessionTimeout)
+	assert.ErrorIs(t, err, common.ErrInvalidSessionTimeout)
 	_, err = sManager.CreateSession(&proto.CreateSessionRequest{
 		Shard:            shardId,
 		SessionTimeoutMs: uint32((1 * time.Second).Milliseconds()),
 	})
-	assert.ErrorIs(t, err, common.ErrorInvalidSessionTimeout)
+	assert.ErrorIs(t, err, common.ErrInvalidSessionTimeout)
 
 	// Create and close a session, check if its persisted
 	createResp, err := sManager.CreateSession(&proto.CreateSessionRequest{
