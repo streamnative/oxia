@@ -19,6 +19,7 @@ import (
 )
 
 var (
+	ErrUnsatisfiedEnsembleReplicas = errors.New("selector: unsatisfied ensemble replicas")
 	ErrUnsatisfiedAntiAffinity     = errors.New("selector: unsatisfied anti-affinity")
 	ErrUnsupportedAntiAffinityMode = errors.New("selector: unsupported anti-affinity mode")
 	ErrNoFunctioning               = errors.New("selector: no functioning selection")

@@ -52,6 +52,9 @@ func (ensemble *ensemble) Select(context *Context) ([]string, error) {
 			sServerContext.SetSelected(selected)
 		}
 	}
+	if selected.Size() != context.Replicas {
+		return nil, selectors.ErrUnsatisfiedEnsembleReplicas
+	}
 	return esm, nil
 }
 

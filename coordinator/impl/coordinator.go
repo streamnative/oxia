@@ -599,7 +599,7 @@ func (c *coordinator) checkClusterNodeChanges() {
 
 	// Check for nodes to remove
 	for serverID, nc := range c.nodeControllers {
-		if _, exist := c.FindServerByIdentifier(serverID); !exist {
+		if _, exist := c.FindServerByIdentifier(serverID); exist {
 			continue
 		}
 
