@@ -65,7 +65,7 @@ func NewBatchStreamOnce[T any](
 	maxBatchBytes int,
 	getBytes func(T) int,
 	onFlush func(container []T) error,
-	onComplete func(err error)) *BatchStreamOnce[T] {
+	onComplete func(err error)) StreamCallback[T] {
 	return &BatchStreamOnce[T]{
 		maxBatchCount: maxBatchCount,
 		maxBatchBytes: maxBatchBytes,
