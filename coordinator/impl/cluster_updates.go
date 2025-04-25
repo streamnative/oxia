@@ -64,7 +64,7 @@ func applyClusterChanges(config *model.ClusterConfig, currentStatus *model.Clust
 		for _, shard := range common.GenerateShards(newStatus.ShardIdGenerator, nc.InitialShardCount) {
 			var esm []model.Server
 			if esm, err = ensembleSupplier(&nc, newStatus); err != nil {
-				slog.Error("failed to select new candidates.", slog.Any("error", err))
+				slog.Error("failed to select new ensembles.", slog.Any("shard", shard), slog.Any("error", err))
 				continue
 			}
 			shardMetadata := model.ShardMetadata{
@@ -106,14 +106,4 @@ func applyClusterChanges(config *model.ClusterConfig, currentStatus *model.Clust
 	}
 
 	return newStatus, shardsToAdd, shardsToDelete
-}
-
-// SimpleEnsembleSupplier is using for internal mocking test.
-func SimpleEnsembleSupplier(candidates []model.Server, nc *model.NamespaceConfig, cs *model.ClusterStatus) []model.Server {
-	n := len(candidates)
-	res := make([]model.Server, nc.ReplicationFactor)
-	for i := uint32(0); i < nc.ReplicationFactor; i++ {
-		res[i] = candidates[int(cs.ServerIdx+i)%n]
-	}
-	return res
 }
