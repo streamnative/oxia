@@ -924,7 +924,7 @@ func (lc *leaderController) handleWalSynced(stream proto.OxiaClient_WriteStreamS
 
 	if tracker == nil {
 		timer.Done()
-		sendNonBlocking(closeCh, common.ErrorInvalidStatus)
+		sendNonBlocking(closeCh, common.ErrInvalidStatus)
 		return
 	}
 
