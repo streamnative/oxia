@@ -108,7 +108,7 @@ func applyClusterChanges(config *model.ClusterConfig, currentStatus *model.Clust
 	return newStatus, shardsToAdd, shardsToDelete
 }
 
-// SimpleEnsembleSupplier is using for internal mocking test
+// SimpleEnsembleSupplier is using for internal mocking test.
 func SimpleEnsembleSupplier(candidates []model.Server, nc *model.NamespaceConfig, cs *model.ClusterStatus) []model.Server {
 	n := len(candidates)
 	res := make([]model.Server, nc.ReplicationFactor)

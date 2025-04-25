@@ -580,7 +580,7 @@ func (c *coordinator) FindServerByIdentifier(identifier string) (*model.Server, 
 
 func (c *coordinator) checkClusterNodeChanges() {
 	// Check for nodes to add
-	for _, sa := range c.ClusterConfig.Servers {
+	for _, sa := range c.Servers {
 		if _, ok := c.nodeControllers[sa.GetIdentifier()]; ok {
 			continue
 		}
