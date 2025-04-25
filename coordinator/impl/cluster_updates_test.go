@@ -34,6 +34,7 @@ var (
 )
 
 func TestClientUpdates_ClusterInit(t *testing.T) {
+	servers := []model.Server{s1, s2, s3, s4}
 	newStatus, shardsAdded, shardsToRemove := applyClusterChanges(&model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
 			Name:              "ns-1",
@@ -44,8 +45,10 @@ func TestClientUpdates_ClusterInit(t *testing.T) {
 			InitialShardCount: 2,
 			ReplicationFactor: 3,
 		}},
-		Servers: []model.Server{s1, s2, s3, s4},
-	}, model.NewClusterStatus())
+		Servers: servers,
+	}, model.NewClusterStatus(), func(namespaceConfig *model.NamespaceConfig, status *model.ClusterStatus) ([]model.Server, error) {
+		return SimpleEnsembleSupplier(servers, namespaceConfig, status), nil
+	})
 
 	assert.Equal(t, &model.ClusterStatus{
 		Namespaces: map[string]model.NamespaceStatus{
@@ -102,6 +105,7 @@ func TestClientUpdates_ClusterInit(t *testing.T) {
 }
 
 func TestClientUpdates_NamespaceAdded(t *testing.T) {
+	servers := []model.Server{s1, s2, s3, s4}
 	newStatus, shardsAdded, shardsToRemove := applyClusterChanges(&model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
 			Name:              "ns-1",
@@ -112,7 +116,7 @@ func TestClientUpdates_NamespaceAdded(t *testing.T) {
 			InitialShardCount: 2,
 			ReplicationFactor: 3,
 		}},
-		Servers: []model.Server{s1, s2, s3, s4},
+		Servers: servers,
 	}, &model.ClusterStatus{Namespaces: map[string]model.NamespaceStatus{
 		"ns-1": {
 			ReplicationFactor: 3,
@@ -130,7 +134,9 @@ func TestClientUpdates_NamespaceAdded(t *testing.T) {
 			},
 		},
 	}, ShardIdGenerator: 1,
-		ServerIdx: 3})
+		ServerIdx: 3}, func(namespaceConfig *model.NamespaceConfig, status *model.ClusterStatus) ([]model.Server, error) {
+		return SimpleEnsembleSupplier(servers, namespaceConfig, status), nil
+	})
 
 	assert.Equal(t, &model.ClusterStatus{
 		Namespaces: map[string]model.NamespaceStatus{
@@ -187,13 +193,14 @@ func TestClientUpdates_NamespaceAdded(t *testing.T) {
 }
 
 func TestClientUpdates_NamespaceRemoved(t *testing.T) {
+	servers := []model.Server{s1, s2, s3, s4}
 	newStatus, shardsAdded, shardsToRemove := applyClusterChanges(&model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
 			Name:              "ns-1",
 			InitialShardCount: 1,
 			ReplicationFactor: 3,
 		}},
-		Servers: []model.Server{s1, s2, s3, s4},
+		Servers: servers,
 	}, &model.ClusterStatus{
 		Namespaces: map[string]model.NamespaceStatus{
 			"ns-1": {
@@ -238,7 +245,9 @@ func TestClientUpdates_NamespaceRemoved(t *testing.T) {
 			},
 		},
 		ShardIdGenerator: 3,
-		ServerIdx:        1})
+		ServerIdx:        1}, func(namespaceConfig *model.NamespaceConfig, status *model.ClusterStatus) ([]model.Server, error) {
+		return SimpleEnsembleSupplier(servers, namespaceConfig, status), nil
+	})
 
 	assert.Equal(t, &model.ClusterStatus{
 		Namespaces: map[string]model.NamespaceStatus{

@@ -12,27 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package model
+package single
 
-type Server struct {
-	// Name is the unique identification for clusters
-	Name *string `json:"name" yaml:"name"`
+import "github.com/streamnative/oxia/coordinator/selectors"
 
-	// Public is the endpoint that is advertised to clients
-	Public string `json:"public" yaml:"public"`
+var _ selectors.Selector[*Context, *string] = &serverIdxSelector{}
 
-	// Internal is the endpoint for server->server RPCs
-	Internal string `json:"internal" yaml:"internal"`
+type serverIdxSelector struct {
 }
 
-type ServerMetadata struct {
-	// Labels represents a key-value map to store metadata associated with a server.
-	Labels map[string]string `json:"labels" yaml:"labels"`
-}
-
-func (sv *Server) GetIdentifier() string {
-	if sv.Name == nil {
-		return sv.Internal
+func (*serverIdxSelector) Select(ssContext *Context) (*string, error) {
+	startIdx := ssContext.Status.ServerIdx
+	candidatesArr := ssContext.Candidates.Values()
+	server, ok := candidatesArr[int(startIdx)%len(candidatesArr)].(string)
+	if !ok {
+		panic("unexpected candidate cast")
 	}
-	return *sv.Name
+	return &server, nil
 }

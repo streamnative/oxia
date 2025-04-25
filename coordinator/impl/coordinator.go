@@ -22,9 +22,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/emirpasic/gods/sets/linkedhashset"
 	"github.com/pkg/errors"
+
 	"go.uber.org/multierr"
 	pb "google.golang.org/protobuf/proto"
+
+	"github.com/streamnative/oxia/coordinator/selectors/ensemble"
+
+	"github.com/streamnative/oxia/coordinator/selectors"
 
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/coordinator/model"
@@ -55,17 +61,21 @@ type Coordinator interface {
 	NodeAvailabilityListener
 	ClusterStatus() model.ClusterStatus
 
+	// FindServerByIdentifier searches for a server in the cluster by its identifier and returns it if found.
 	FindServerByIdentifier(identifier string) (*model.Server, bool)
 }
 
 type coordinator struct {
 	sync.Mutex
 	assignmentsChanged common.ConditionContext
+	ensembleSelector   selectors.Selector[*ensemble.Context, []string]
 
 	MetadataProvider
 	clusterConfigProvider func() (model.ClusterConfig, error)
 	model.ClusterConfig
-	serverIndexes sync.Map
+	serverIndexesOnce sync.Once
+	serverIDs         *linkedhashset.Set
+	serverIDIndex     map[string]*model.Server
 
 	clusterConfigChangeCh chan any
 
@@ -100,10 +110,10 @@ func NewCoordinator(metadataProvider MetadataProvider,
 		clusterConfigProvider: clusterConfigProvider,
 		clusterConfigChangeCh: clusterConfigNotificationsCh,
 		ClusterConfig:         initialClusterConf,
+		ensembleSelector:      ensemble.NewSelector(),
 		shardControllers:      make(map[int64]ShardController),
 		nodeControllers:       make(map[string]NodeController),
 		drainingNodes:         make(map[string]NodeController),
-		serverIndexes:         sync.Map{},
 		rpc:                   rpc,
 		log: slog.With(
 			slog.String("component", "coordinator"),
@@ -121,7 +131,6 @@ func NewCoordinator(metadataProvider MetadataProvider,
 
 	for _, sa := range c.Servers {
 		c.nodeControllers[sa.GetIdentifier()] = NewNodeController(sa, c, c, c.rpc)
-		c.serverIndexes.Store(sa.GetIdentifier(), sa)
 	}
 
 	if c.clusterStatus == nil {
@@ -151,6 +160,31 @@ func NewCoordinator(metadataProvider MetadataProvider,
 	)
 
 	return c, nil
+}
+
+func (c *coordinator) ServerIDs() *linkedhashset.Set {
+	c.maybeLoadServerIndex()
+	return c.serverIDs
+}
+
+func (c *coordinator) ServerIDIndex() map[string]*model.Server {
+	c.maybeLoadServerIndex()
+	return c.serverIDIndex
+}
+
+func (c *coordinator) maybeLoadServerIndex() {
+	c.serverIndexesOnce.Do(func() {
+		ids := linkedhashset.New()
+		idIndex := make(map[string]*model.Server)
+		for idx := range c.Servers {
+			server := &c.Servers[idx]
+			identifier := server.GetIdentifier()
+			ids.Add(identifier)
+			idIndex[identifier] = server
+		}
+		c.serverIDIndex = idIndex
+		c.serverIDs = ids
+	})
 }
 
 func (c *coordinator) allUnavailableNodes() []string {
@@ -197,6 +231,29 @@ func (c *coordinator) waitForAllNodesToBeAvailable() {
 	}
 }
 
+// selectNewEnsemble select a new server ensemble based on namespace policies and current cluster status.
+// It uses the ensemble selector to choose appropriate servers and returns the selected server metadata or an error.
+func (c *coordinator) selectNewEnsemble(ns *model.NamespaceConfig, editingStatus *model.ClusterStatus) ([]model.Server, error) {
+	ensembleContext := &ensemble.Context{
+		Candidates:         c.ServerIDs(),
+		CandidatesMetadata: c.ServerMetadata,
+		Policies:           ns.Policies,
+		Status:             editingStatus,
+		Replicas:           int(ns.ReplicationFactor),
+	}
+	var ensembleIDs []string
+	var err error
+	if ensembleIDs, err = c.ensembleSelector.Select(ensembleContext); err != nil {
+		return nil, err
+	}
+	esm := make([]model.Server, 0)
+	for _, id := range ensembleIDs {
+		server := c.ServerIDIndex()[id]
+		esm = append(esm, *server)
+	}
+	return esm, nil
+}
+
 // Assign the shards to the available servers.
 func (c *coordinator) initialAssignment() error {
 	c.log.Info(
@@ -204,7 +261,7 @@ func (c *coordinator) initialAssignment() error {
 		slog.Any("clusterConfig", c.ClusterConfig),
 	)
 
-	clusterStatus, _, _ := applyClusterChanges(&c.ClusterConfig, model.NewClusterStatus())
+	clusterStatus, _, _ := applyClusterChanges(&c.ClusterConfig, model.NewClusterStatus(), c.selectNewEnsemble)
 
 	var err error
 	if c.metadataVersion, err = c.Store(clusterStatus, MetadataNotExists); err != nil {
@@ -222,7 +279,7 @@ func (c *coordinator) applyNewClusterConfig() error {
 		slog.Any("metadataVersion", c.metadataVersion),
 	)
 
-	clusterStatus, shardsToAdd, shardsToDelete := applyClusterChanges(&c.ClusterConfig, c.clusterStatus)
+	clusterStatus, shardsToAdd, shardsToDelete := applyClusterChanges(&c.ClusterConfig, c.clusterStatus, c.selectNewEnsemble)
 
 	if len(shardsToAdd) > 0 || len(shardsToDelete) > 0 {
 		var err error
@@ -449,13 +506,15 @@ func (c *coordinator) handleClusterConfigUpdated() error {
 		slog.Any("metadataVersion", c.metadataVersion),
 	)
 
-	c.checkClusterNodeChanges(newClusterConfig)
+	c.ClusterConfig = newClusterConfig
+	c.serverIndexesOnce = sync.Once{}
+	c.checkClusterNodeChanges()
 
 	for _, sc := range c.shardControllers {
 		sc.SyncServerAddress()
 	}
 
-	clusterStatus, shardsToAdd, shardsToDelete := applyClusterChanges(&newClusterConfig, c.clusterStatus)
+	clusterStatus, shardsToAdd, shardsToDelete := applyClusterChanges(&newClusterConfig, c.clusterStatus, c.selectNewEnsemble)
 
 	for shard, namespace := range shardsToAdd {
 		shardMetadata := clusterStatus.Namespaces[namespace].Shards[shard]
@@ -477,9 +536,7 @@ func (c *coordinator) handleClusterConfigUpdated() error {
 		}
 	}
 
-	c.ClusterConfig = newClusterConfig
 	c.clusterStatus = clusterStatus
-
 	c.computeNewAssignments()
 	return nil
 }
@@ -520,31 +577,13 @@ func (c *coordinator) rebalanceCluster() error {
 }
 
 func (c *coordinator) FindServerByIdentifier(identifier string) (*model.Server, bool) {
-	if info, exist := c.serverIndexes.Load(identifier); exist {
-		address, ok := info.(model.Server)
-		if !ok {
-			panic("unexpected cast")
-		}
-		return &address, true
-	}
-	return nil, false
+	server, exist := c.ServerIDIndex()[identifier]
+	return server, exist
 }
 
-func (*coordinator) findServerByIdentifier(newClusterConfig model.ClusterConfig, identifier string) *model.Server {
-	for _, s := range newClusterConfig.Servers {
-		if identifier == s.GetIdentifier() {
-			return &s
-		}
-	}
-
-	return nil
-}
-
-func (c *coordinator) checkClusterNodeChanges(newClusterConfig model.ClusterConfig) {
+func (c *coordinator) checkClusterNodeChanges() {
 	// Check for nodes to add
-	for _, sa := range newClusterConfig.Servers {
-		c.serverIndexes.Store(sa.GetIdentifier(), sa)
-
+	for _, sa := range c.Servers {
 		if _, ok := c.nodeControllers[sa.GetIdentifier()]; ok {
 			continue
 		}
@@ -563,12 +602,11 @@ func (c *coordinator) checkClusterNodeChanges(newClusterConfig model.ClusterConf
 
 	// Check for nodes to remove
 	for serverID, nc := range c.nodeControllers {
-		if c.findServerByIdentifier(newClusterConfig, serverID) != nil {
+		if _, exist := c.FindServerByIdentifier(serverID); exist {
 			continue
 		}
 
 		c.log.Info("Detected a removed node", slog.Any("server", serverID))
-		c.serverIndexes.Delete(serverID)
 		// Moved the node
 		delete(c.nodeControllers, serverID)
 		nc.SetStatus(Draining)
