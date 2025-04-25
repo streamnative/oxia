@@ -275,7 +275,7 @@ func (t *wal) appendAsync0(entry *proto.LogEntry) error {
 	defer timer.Done()
 
 	if t.isClosed() {
-		return common.ErrorAlreadyClosed
+		return common.ErrAlreadyClosed
 	}
 
 	if err := t.checkNextOffset(entry.Offset); err != nil {
