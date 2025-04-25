@@ -917,9 +917,8 @@ func (lc *leaderController) handleWalSynced(stream proto.OxiaClient_WriteStreamS
 		return
 	}
 
-	var tracker QuorumAckTracker
 	lc.RLock()
-	tracker = lc.quorumAckTracker
+	tracker := lc.quorumAckTracker
 	lc.RUnlock()
 
 	if tracker == nil {
