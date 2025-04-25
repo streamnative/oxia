@@ -192,7 +192,7 @@ func TestSelectMultipleAntiAffinitiesSatisfied(t *testing.T) {
 	selector := &serverAntiAffinitiesSelector{}
 	candidatesMetadata := map[string]model.ServerMetadata{
 		"s1": {Labels: map[string]string{"region": "us-east", "type": "compute1"}},
-		"s2": {Labels: map[string]string{"region": "us-north", "type": "compute1"}},
+		"s2": {Labels: map[string]string{"region": "us-south", "type": "compute1"}},
 		"s3": {Labels: map[string]string{"region": "us-south", "type": "storage1"}},
 		"s4": {Labels: map[string]string{"region": "us-west", "type": "storage2"}},
 	}
