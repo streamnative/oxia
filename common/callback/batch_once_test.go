@@ -62,7 +62,7 @@ func TestBatchOnce_FlushByCounter(t *testing.T) {
 
 	assert.NoError(t, streamOnceCb.OnNext(7))
 	assert.NoError(t, streamOnceCb.OnNext(8))
-	streamOnceCb.Complete(nil)
+	streamOnceCb.OnComplete(nil)
 
 	// expect final flush
 	for i := 7; i <= 8; i++ {
@@ -119,7 +119,7 @@ func TestBatchOnce_FlushByBytes(t *testing.T) {
 	assert.Empty(t, queue)
 
 	assert.NoError(t, streamOnceCb.OnNext(1024))
-	streamOnceCb.Complete(nil)
+	streamOnceCb.OnComplete(nil)
 
 	// expect final flush
 	el := <-queue
@@ -152,7 +152,7 @@ func TestBatchOnce_Error(t *testing.T) {
 	})
 
 	assert.NoError(t, streamOnceCb.OnNext(1024))
-	streamOnceCb.Complete(errors.New("test"))
+	streamOnceCb.OnComplete(errors.New("test"))
 
 	_, more := <-queue
 	assert.False(t, more)

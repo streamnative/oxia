@@ -37,10 +37,6 @@ type Callback[T any] interface {
 	CompleteError(err error)
 }
 
-// StreamCallback is a generic interface designed to handle streaming data.
-// It provides methods to process each incoming data item and to signal the completion of the stream,
-// which can be used in scenarios where data is processed in a streaming fashion,
-// such as handling network streams or reading large files in chunks.
 type StreamCallback[T any] interface {
 
 	// OnNext is called whenever a new data item of type T is received from the stream.
@@ -48,9 +44,9 @@ type StreamCallback[T any] interface {
 	// This method allows for custom logic to be applied to each individual data item in the stream.
 	OnNext(t T) error
 
-	// Complete is called when the stream has ended, either successfully or due to an error.
+	// OnComplete is called when the stream has ended, either successfully or due to an error.
 	// The 'err' parameter indicates the status of the stream completion.
 	// If the stream ended successfully, 'err' will be nil. Otherwise,
 	// it will contain the error that caused the stream to terminate.
-	Complete(err error)
+	OnComplete(err error)
 }

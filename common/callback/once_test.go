@@ -102,19 +102,16 @@ func Test_Once_Complete_Error(t *testing.T) {
 
 func Test_Once_Stream_CompleteConcurrent(t *testing.T) {
 	callbackCounter := atomic.Int32{}
-	onceCallback := NewStreamOnce[any](
-		func(t any) {
-		},
-		func(err error) {
-			callbackCounter.Add(1)
-		})
+	onceCallback := NewStreamOnce[any](&streamCallbackCompleteOnly{onComplete: func(err error) {
+		callbackCounter.Add(1)
+	}})
 
 	group := sync.WaitGroup{}
 	for i := 0; i < 5; i++ {
 		group.Add(1)
 		go func() {
 			if i%2 == 0 {
-				onceCallback.Complete(nil)
+				onceCallback.OnComplete(nil)
 			}
 			group.Done()
 		}()
@@ -131,7 +128,7 @@ func Test_Once_Stream_ReadFromStreamCallback(t *testing.T) {
 	assert.NoError(t, callback.OnNext(1))
 	assert.NoError(t, callback.OnNext(2))
 	assert.NoError(t, callback.OnNext(3))
-	callback.Complete(nil)
+	callback.OnComplete(nil)
 
 	assert.NoError(t, <-errCh)
 	assert.Equal(t, 1, <-dataCh)
@@ -152,7 +149,7 @@ func Test_Once_Stream_ReadFromStreamCallback_Error(t *testing.T) {
 	assert.NoError(t, callback.OnNext(1))
 	assert.NoError(t, callback.OnNext(2))
 	assert.NoError(t, callback.OnNext(3))
-	callback.Complete(errors.New("error"))
+	callback.OnComplete(errors.New("error"))
 
 	assert.Equal(t, 1, <-dataCh)
 	assert.Equal(t, 2, <-dataCh)

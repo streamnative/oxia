@@ -707,7 +707,7 @@ func (lc *leaderController) RangeScan(ctx context.Context, request *proto.RangeS
 	err := checkStatusIsLeader(lc.status)
 	lc.RUnlock()
 	if err != nil {
-		cb.Complete(err)
+		cb.OnComplete(err)
 		return
 	}
 
@@ -730,7 +730,7 @@ func (lc *leaderController) RangeScan(ctx context.Context, request *proto.RangeS
 
 			if err != nil {
 				lc.log.Warn("Failed to process range-scan request", slog.Any("error", err))
-				cb.Complete(err)
+				cb.OnComplete(err)
 				return
 			}
 
@@ -741,18 +741,18 @@ func (lc *leaderController) RangeScan(ctx context.Context, request *proto.RangeS
 			for ; it.Valid(); it.Next() {
 				gr, err := it.Value()
 				if err != nil {
-					cb.Complete(err)
+					cb.OnComplete(err)
 					return
 				}
 				if err = cb.OnNext(gr); err != nil {
-					cb.Complete(err)
+					cb.OnComplete(err)
 					return
 				}
 				if ctx.Err() != nil {
 					break
 				}
 			}
-			cb.Complete(nil)
+			cb.OnComplete(nil)
 		},
 	)
 }

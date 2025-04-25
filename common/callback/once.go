@@ -64,48 +64,27 @@ func NewOnce[T any](onComplete func(t T), onError func(err error)) Callback[T] {
 
 var _ StreamCallback[any] = &Stream[any]{}
 
-// Stream is a generic struct that represents a data stream.
-// It allows for handling individual data elements and signaling the completion of the stream.
-// It uses atomic operations to ensure thread - safety when marking the stream as completed.
 type Stream[T any] struct {
-	onNext     func(t T)
+	onNext     func(t T) error
 	onComplete func(err error)
 	completed  atomic.Bool
 }
 
-// OnNext is a method of the Stream struct. It is called when a new data element is received.
 func (s *Stream[T]) OnNext(element T) error {
-	s.onNext(element)
-	return nil
+	return s.onNext(element)
 }
 
-// Complete is a method of the Stream struct. It is called when the stream is completed either successfully or due to an error.
-func (s *Stream[T]) Complete(err error) {
+func (s *Stream[T]) OnComplete(err error) {
 	if !s.completed.CompareAndSwap(false, true) {
 		return
 	}
 	s.onComplete(err)
 }
 
-// NewStreamOnce is a factory function used to create a new Stream instance.
-func NewStreamOnce[T any](onNext func(t T), onComplete func(err error)) *Stream[T] {
+func NewStreamOnce[T any](callback StreamCallback[T]) StreamCallback[T] {
 	return &Stream[T]{
-		onNext:     onNext,
-		onComplete: onComplete,
+		onNext:     callback.OnNext,
+		onComplete: callback.OnComplete,
 		completed:  atomic.Bool{},
 	}
-}
-
-// ReadFromStreamCallback is a function that creates a StreamCallback instance from two channels:
-// a data channel and an error channel.
-func ReadFromStreamCallback[T any](dataCh chan T, errCh chan error) StreamCallback[T] {
-	return NewStreamOnce(
-		func(t T) { dataCh <- t },
-		func(err error) {
-			if err != nil {
-				errCh <- err
-			}
-			close(dataCh)
-			close(errCh)
-		})
 }
