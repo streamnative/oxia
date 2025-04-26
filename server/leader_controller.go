@@ -900,7 +900,17 @@ func (lc *leaderController) handleWalSynced(stream proto.OxiaClient_WriteStreamS
 		return
 	}
 
-	lc.quorumAckTracker.WaitForCommitOffsetAsync(context.Background(), offset, callback.NewOnce(
+	lc.RLock()
+	tracker := lc.quorumAckTracker
+	lc.RUnlock()
+
+	if tracker == nil {
+		timer.Done()
+		sendNonBlocking(closeCh, common.ErrInvalidStatus)
+		return
+	}
+
+	tracker.WaitForCommitOffsetAsync(context.Background(), offset, callback.NewOnce(
 		func(_ any) {
 			defer timer.Done()
 			localResponse, err := lc.db.ProcessWrite(req, offset, timestamp, WrapperUpdateOperationCallback)
@@ -931,8 +941,11 @@ func (lc *leaderController) appendToWalStreamRequest(request *proto.WriteRequest
 	}
 
 	newOffset := lc.quorumAckTracker.NextOffset()
-	timestamp := uint64(time.Now().UnixMilli())
+	log := lc.wal
+	tracker := lc.quorumAckTracker
+	lc.Unlock()
 
+	timestamp := uint64(time.Now().UnixMilli())
 	lc.log.Debug(
 		"Append operation",
 		slog.Any("req", request),
@@ -948,7 +961,6 @@ func (lc *leaderController) appendToWalStreamRequest(request *proto.WriteRequest
 	}
 	value, err := logEntryValue.MarshalVT()
 	if err != nil {
-		lc.Unlock()
 		cb(wal.InvalidOffset, timestamp, err)
 		return
 	}
@@ -959,15 +971,14 @@ func (lc *leaderController) appendToWalStreamRequest(request *proto.WriteRequest
 		Timestamp: timestamp,
 	}
 
-	lc.wal.AppendAndSync(logEntry, func(err error) {
+	log.AppendAndSync(logEntry, func(err error) {
 		if err != nil {
 			cb(wal.InvalidOffset, timestamp, errors.Wrap(err, "oxia: failed to append to wal"))
 		} else {
-			lc.quorumAckTracker.AdvanceHeadOffset(newOffset)
+			tracker.AdvanceHeadOffset(newOffset)
 			cb(newOffset, timestamp, nil)
 		}
 	})
-	lc.Unlock()
 }
 
 // ////
