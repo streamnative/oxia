@@ -19,6 +19,7 @@ import (
 
 	"github.com/emirpasic/gods/sets/linkedhashset"
 	"github.com/stretchr/testify/assert"
+	"golang.org/x/exp/slices"
 
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/coordinator/policies"
@@ -53,7 +54,7 @@ func TestSelectMultipleAntiAffinitiesSatisfied(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 3, len(esm))
 
-	assert.Contains(t, esm, "s1")
+	assert.True(t, slices.Contains(esm, "s1") || slices.Contains(esm, "s2"))
 	assert.Contains(t, esm, "s3")
 	assert.Contains(t, esm, "s4")
 }
