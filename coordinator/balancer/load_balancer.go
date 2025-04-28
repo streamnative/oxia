@@ -12,14 +12,15 @@ type LoadRatioAlgorithm = func(params *LoadRatioParams) *LoadRatio
 
 type Options struct {
 	context.Context
-	actionCh chan<- Action
 
-	clusterStatusSupplier    func() *model.ClusterStatus
-	namespaceConfigSupplier  func(namespace string) *model.NamespaceConfig
-	metadataSupplier         func() map[string]model.ServerMetadata
-	clusterServerIdsSupplier func() *linkedhashset.Set
+	ClusterStatusSupplier    func() *model.ClusterStatus
+	NamespaceConfigSupplier  func(namespace string) *model.NamespaceConfig
+	MetadataSupplier         func() map[string]model.ServerMetadata
+	ClusterServerIdsSupplier func() *linkedhashset.Set
 }
 
 type LoadBalancer interface {
 	io.Closer
+
+	Action() <-chan Action
 }

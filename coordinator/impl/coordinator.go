@@ -24,6 +24,7 @@ import (
 
 	"github.com/emirpasic/gods/sets/linkedhashset"
 	"github.com/pkg/errors"
+	"github.com/streamnative/oxia/coordinator/balancer"
 
 	"go.uber.org/multierr"
 	pb "google.golang.org/protobuf/proto"
@@ -66,9 +67,11 @@ type Coordinator interface {
 }
 
 type coordinator struct {
-	sync.Mutex
+	sync.RWMutex
 	assignmentsChanged common.ConditionContext
-	ensembleSelector   selectors.Selector[*ensemble.Context, []string]
+
+	loadBalancer     balancer.LoadBalancer
+	ensembleSelector selectors.Selector[*ensemble.Context, []string]
 
 	MetadataProvider
 	clusterConfigProvider func() (model.ClusterConfig, error)
@@ -150,6 +153,30 @@ func NewCoordinator(metadataProvider MetadataProvider,
 	}
 
 	c.initialShardController(&initialClusterConf)
+
+	c.loadBalancer = balancer.NewLoadBalancer(balancer.Options{
+		Context: c.ctx,
+		ClusterStatusSupplier: func() *model.ClusterStatus {
+			c.RLock()
+			defer c.RUnlock()
+			return c.clusterStatus
+		},
+		MetadataSupplier: func() map[string]model.ServerMetadata {
+			c.RLock()
+			defer c.RUnlock()
+			return c.ServerMetadata
+		},
+		ClusterServerIdsSupplier: func() *linkedhashset.Set {
+			c.RLock()
+			defer c.RUnlock()
+			return c.ServerIDs()
+		},
+		NamespaceConfigSupplier: func(namespace string) *model.NamespaceConfig {
+			c.RLock()
+			defer c.RUnlock()
+			return GetNamespaceConfig(c.ClusterConfig.Namespaces, namespace)
+		},
+	})
 
 	go common.DoWithLabels(
 		c.ctx,
@@ -538,41 +565,6 @@ func (c *coordinator) handleClusterConfigUpdated() error {
 
 	c.clusterStatus = clusterStatus
 	c.computeNewAssignments()
-	return nil
-}
-
-//nolint:unparam
-func (c *coordinator) rebalanceCluster() error {
-	c.Lock()
-	actions := rebalanceCluster(c.Servers, c.clusterStatus)
-	c.Unlock()
-
-	for _, swapAction := range actions {
-		c.log.Info(
-			"Applying swap action",
-			slog.Any("swap-action", swapAction),
-		)
-
-		c.Lock()
-		sc, ok := c.shardControllers[swapAction.Shard]
-		c.Unlock()
-		if !ok {
-			c.log.Warn(
-				"Shard controller not found",
-				slog.Int64("shard", swapAction.Shard),
-			)
-			continue
-		}
-
-		if err := sc.SwapNode(swapAction.From, swapAction.To); err != nil {
-			c.log.Warn(
-				"Failed to swap node",
-				slog.Any("error", err),
-				slog.Any("swap-action", swapAction),
-			)
-		}
-	}
-
 	return nil
 }
 
