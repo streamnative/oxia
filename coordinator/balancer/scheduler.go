@@ -23,7 +23,7 @@ type nodeBasedBalancer struct {
 	latch  *sync.WaitGroup
 	log    *slog.Logger
 
-	actionCh chan<- Action
+	actionCh chan Action
 
 	clusterStatusSupplier    func() *model.ClusterStatus
 	namespaceConfigSupplier  func(namespace string) *model.NamespaceConfig
@@ -34,8 +34,11 @@ type nodeBasedBalancer struct {
 	loadRatioAlgorithm LoadRatioAlgorithm
 
 	quarantineNode *linkedhashset.Set
+	triggerCh      chan struct{}
+}
 
-	triggerCh chan struct{}
+func (r *nodeBasedBalancer) Action() <-chan Action {
+	return r.actionCh
 }
 
 func (r *nodeBasedBalancer) Close() error {
@@ -236,11 +239,11 @@ func NewLoadBalancer(options Options) LoadBalancer {
 		cancel:                   cancelFunc,
 		latch:                    &sync.WaitGroup{},
 		log:                      logger,
-		actionCh:                 options.actionCh,
-		clusterStatusSupplier:    options.clusterStatusSupplier,
-		namespaceConfigSupplier:  options.namespaceConfigSupplier,
-		metadataSupplier:         options.metadataSupplier,
-		clusterServerIdsSupplier: options.clusterServerIdsSupplier,
+		actionCh:                 make(chan Action, 1000),
+		clusterStatusSupplier:    options.ClusterStatusSupplier,
+		namespaceConfigSupplier:  options.NamespaceConfigSupplier,
+		metadataSupplier:         options.MetadataSupplier,
+		clusterServerIdsSupplier: options.ClusterServerIdsSupplier,
 		selector:                 single.NewSelector(),
 		loadRatioAlgorithm:       DefaultShardsRank,
 		quarantineNode:           linkedhashset.New(),
