@@ -29,8 +29,6 @@ var (
 	s2 = model.Server{Public: "s2:6648", Internal: "s2:6649"}
 	s3 = model.Server{Public: "s3:6648", Internal: "s3:6649"}
 	s4 = model.Server{Public: "s4:6648", Internal: "s4:6649"}
-	s5 = model.Server{Public: "s5:6648", Internal: "s5:6649"}
-	s6 = model.Server{Public: "s6:6648", Internal: "s6:6649"}
 )
 
 func TestClientUpdates_ClusterInit(t *testing.T) {
