@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/streamnative/oxia/common/channel"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
@@ -48,8 +49,7 @@ type LeaderController interface {
 	Write(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error)
 	WriteStream(stream proto.OxiaClient_WriteStreamServer) error
 	Read(ctx context.Context, request *proto.ReadRequest) <-chan GetResult
-	List(ctx context.Context, request *proto.ListRequest) (<-chan string, error)
-	ListSliceNoMutex(ctx context.Context, request *proto.ListRequest) ([]string, error)
+	List(ctx context.Context, request *proto.ListRequest, cb callback.StreamCallback[string])
 	RangeScan(ctx context.Context, request *proto.RangeScanRequest, cb callback.StreamCallback[*proto.GetResponse])
 
 	// NewTerm Handle new term requests
@@ -356,6 +356,14 @@ func (lc *leaderController) BecomeLeader(ctx context.Context, req *proto.BecomeL
 		return nil, err
 	}
 
+	if err = lc.sessionManager.Initialize(); err != nil {
+		lc.log.Error(
+			"Failed to initialize session manager",
+			slog.Any("error", err),
+		)
+		return nil, err
+	}
+
 	lc.log.Info(
 		"Started leading the shard",
 		slog.Int64("term", lc.term),
@@ -484,16 +492,6 @@ func (lc *leaderController) applyAllEntriesIntoDB() error {
 	if err = lc.applyAllEntriesIntoDBLoop(r); err != nil {
 		return errors.Wrap(err, "failed to applies wal entries to db")
 	}
-
-	err = lc.sessionManager.Initialize()
-	if err != nil {
-		lc.log.Error(
-			"Failed to initialize session manager",
-			slog.Any("error", err),
-		)
-		return err
-	}
-
 	return nil
 }
 
@@ -624,23 +622,19 @@ func (lc *leaderController) read(ctx context.Context, request *proto.ReadRequest
 	)
 }
 
-func (lc *leaderController) List(ctx context.Context, request *proto.ListRequest) (<-chan string, error) {
-	ch := make(chan string)
-
+func (lc *leaderController) List(ctx context.Context, request *proto.ListRequest, cb callback.StreamCallback[string]) {
 	lc.RLock()
 	err := checkStatusIsLeader(lc.status)
 	lc.RUnlock()
 	if err != nil {
-		return nil, err
+		cb.OnComplete(err)
+		return
 	}
-
-	go lc.list(ctx, request, ch)
-
-	return ch, nil
+	lc.list(ctx, request, cb)
 }
 
-func (lc *leaderController) list(ctx context.Context, request *proto.ListRequest, ch chan<- string) {
-	common.DoWithLabels(
+func (lc *leaderController) list(ctx context.Context, request *proto.ListRequest, cb callback.StreamCallback[string]) {
+	go common.DoWithLabels(
 		ctx,
 		map[string]string{
 			"oxia":  "list",
@@ -662,44 +656,33 @@ func (lc *leaderController) list(ctx context.Context, request *proto.ListRequest
 					"Failed to process list request",
 					slog.Any("error", err),
 				)
-				close(ch)
+				cb.OnComplete(err)
 				return
 			}
 
 			defer func() {
 				_ = it.Close()
-				// NOTE:
-				// we must close the channel after iterator is closed, to avoid the
-				// iterator keep open when caller is trying to process the next step (for example db.Close)
-				// because this is execute in another goroutine.
-				close(ch)
 			}()
 
 			for ; it.Valid(); it.Next() {
-				ch <- it.Key()
+				if err = cb.OnNext(it.Key()); err != nil {
+					cb.OnComplete(err)
+					return
+				}
 				if ctx.Err() != nil {
 					break
 				}
 			}
+			cb.OnComplete(nil)
 		},
 	)
 }
 
-func (lc *leaderController) ListSliceNoMutex(ctx context.Context, request *proto.ListRequest) ([]string, error) {
+func (lc *leaderController) listBlock(ctx context.Context, request *proto.ListRequest) ([]string, error) {
 	ch := make(chan string)
-	go lc.list(ctx, request, ch)
-	keys := make([]string, 0)
-	for {
-		select {
-		case key, more := <-ch:
-			if !more {
-				return keys, nil
-			}
-			keys = append(keys, key)
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-	}
+	errCh := make(chan error)
+	go lc.list(ctx, request, callback.ReadFromStreamCallback(ch, errCh))
+	return channel.ReadAll(ch, errCh)
 }
 
 func (lc *leaderController) RangeScan(ctx context.Context, request *proto.RangeScanRequest, cb callback.StreamCallback[*proto.GetResponse]) {

@@ -38,6 +38,7 @@ import (
 const (
 	maxTotalScanBatchCount = 1000
 	maxTotalReadValueSize  = 2 << (10 * 2) // 2Mi
+	maxTotalListKeyCount   = 0             // no limitation
 	maxTotalListKeySize    = 2 << (10 * 2) // 2Mi
 )
 
@@ -218,51 +219,32 @@ func (s *publicRpcServer) List(request *proto.ListRequest, stream proto.OxiaClie
 		slog.String("peer", common.GetPeer(stream.Context())),
 		slog.Any("req", request),
 	)
-
 	if request.Shard == nil {
 		return status.Error(codes.InvalidArgument, "shard id is required")
 	}
-
 	lc, err := s.getLeader(*request.Shard)
 	if err != nil {
 		return err
 	}
-
-	ch, err := lc.List(stream.Context(), request)
-	if err != nil {
-		s.log.Warn(
-			"Failed to perform list operation",
-			slog.Any("error", err),
-		)
-		return err
-	}
-
-	response := &proto.ListResponse{}
-	var totalSize int
-
+	ctx := stream.Context()
+	finish := make(chan error, 1)
+	lc.List(ctx, request, callback.NewBatchStreamOnce[string](maxTotalListKeyCount, maxTotalListKeySize,
+		func(s string) int { return protowire.SizeBytes(len(s)) },
+		func(container []string) error { return stream.Send(&proto.ListResponse{Keys: container}) },
+		func(err error) { finish <- err },
+	))
 	for {
 		select {
-		case key, more := <-ch:
-			if !more {
-				if len(response.Keys) > 0 {
-					if err := stream.Send(response); err != nil {
-						return err
-					}
-				}
-				return nil
+		case err = <-finish:
+			if err != nil {
+				s.log.Warn(
+					"Failed to perform list operation",
+					slog.Any("error", err),
+				)
 			}
-			size := protowire.SizeBytes(len(key))
-			if len(response.Keys) > 0 && totalSize+size > maxTotalListKeySize {
-				if err := stream.Send(response); err != nil {
-					return err
-				}
-				response = &proto.ListResponse{}
-				totalSize = 0
-			}
-			response.Keys = append(response.Keys, key)
-			totalSize += size
-		case <-stream.Context().Done():
-			return stream.Context().Err()
+			return err
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
 }
