@@ -1,3 +1,17 @@
+// Copyright 2025 StreamNative, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package balancer
 
 import (
@@ -7,6 +21,7 @@ import (
 	"time"
 
 	"github.com/emirpasic/gods/sets/linkedhashset"
+
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/channel"
 	"github.com/streamnative/oxia/common/entities"
@@ -29,7 +44,7 @@ type nodeBasedBalancer struct {
 	clusterStatusSupplier    func() *model.ClusterStatus
 	namespaceConfigSupplier  func(namespace string) *model.NamespaceConfig
 	metadataSupplier         func() map[string]model.ServerMetadata
-	clusterServerIdsSupplier func() *linkedhashset.Set
+	clusterServerIDsSupplier func() *linkedhashset.Set
 
 	selector           selectors.Selector[*single.Context, *string]
 	loadRatioAlgorithm selectors.LoadRatioAlgorithm
@@ -52,20 +67,28 @@ func (r *nodeBasedBalancer) Close() error {
 func (r *nodeBasedBalancer) rebalanceEnsemble(currentStatus *model.ClusterStatus, shardsGroupingByNode map[string][]model.ShardInfo) {
 	var err error
 	swapGroup := &sync.WaitGroup{}
-	serverIds := r.clusterServerIdsSupplier()
+	serverIDs := r.clusterServerIDsSupplier()
 	metadata := r.metadataSupplier()
 	loadRatios := r.loadRatioAlgorithm(&model.RatioParams{NodeShardsInfos: shardsGroupingByNode})
 
 	// (1) deleted node
 	for nodeIter := loadRatios.NodeLoadRatios().Iterator(); nodeIter.Next(); {
-		nodeLoadRatio := nodeIter.Value().(*model.NodeLoadRatio)
-		if serverIds.Contains(nodeLoadRatio.NodeID) {
+		var nodeLoadRatio *model.NodeLoadRatio
+		var ok bool
+		if nodeLoadRatio, ok = nodeIter.Value().(*model.NodeLoadRatio); !ok {
+			panic("unexpected type cast")
+		}
+		if serverIDs.Contains(nodeLoadRatio.NodeID) {
 			continue
 		}
 		deletedNodeID := nodeLoadRatio.NodeID
 		for shardIter := nodeLoadRatio.ShardRatios.Iterator(); shardIter.Next(); {
-			shardRatio := shardIter.Value().(*model.ShardLoadRatio)
-			if err = r.swapShard(shardRatio, deletedNodeID, swapGroup, loadRatios, serverIds, metadata, currentStatus); err != nil {
+			var shardRatio *model.ShardLoadRatio
+			if shardRatio, ok = shardIter.Value().(*model.ShardLoadRatio); !ok {
+				panic("unexpected type cast")
+			}
+
+			if err = r.swapShard(shardRatio, deletedNodeID, swapGroup, loadRatios, serverIDs, metadata, currentStatus); err != nil {
 				r.log.Error("failed to select server when move ensemble out of deleted node",
 					slog.String("namespace", shardRatio.Namespace),
 					slog.Int64("shard", shardRatio.ShardID),
@@ -96,7 +119,7 @@ func (r *nodeBasedBalancer) rebalanceEnsemble(currentStatus *model.ClusterStatus
 		if highestLoadRatioShard = highestLoadRatioNode.DequeueHighestShard(); highestLoadRatioShard == nil {
 			return
 		}
-		if err = r.swapShard(highestLoadRatioShard, highestLoadRatioNode.NodeID, swapGroup, loadRatios, serverIds, metadata, currentStatus); err != nil {
+		if err = r.swapShard(highestLoadRatioShard, highestLoadRatioNode.NodeID, swapGroup, loadRatios, serverIDs, metadata, currentStatus); err != nil {
 			r.log.Info("has no other choose to move the current shard ensemble to other node.",
 				slog.String("namespace", highestLoadRatioShard.Namespace),
 				slog.Int64("shard", highestLoadRatioShard.ShardID),
@@ -120,13 +143,13 @@ func (r *nodeBasedBalancer) swapShard(
 	fromNodeID string,
 	swapGroup *sync.WaitGroup,
 	loadRatios *model.Ratio,
-	serverIds *linkedhashset.Set,
+	serverIDs *linkedhashset.Set,
 	metadata map[string]model.ServerMetadata,
 	currentStatus *model.ClusterStatus) error {
 	nsc := r.namespaceConfigSupplier(candidateShard.Namespace)
 	policies := nsc.Policies
 	sContext := &single.Context{
-		Candidates:         serverIds,
+		Candidates:         serverIDs,
 		CandidatesMetadata: metadata,
 		Policies:           policies,
 		Status:             currentStatus,
@@ -159,7 +182,7 @@ func (r *nodeBasedBalancer) IsNodeQuarantined(highestLoadRatioNode *model.NodeLo
 		// cleanup expired quarantine node
 		iterator := r.quarantineNode.Iterator()
 		for count := 0; iterator.Next(); count++ {
-			nodeWithTs := iterator.Value().(*entities.TWithTimestamp[string])
+			nodeWithTs := iterator.Value().(*entities.TWithTimestamp[string]) //nolint:revive
 			if time.Since(nodeWithTs.Timestamp) >= quarantineTime {
 				continue
 			}
@@ -236,7 +259,7 @@ func NewLoadBalancer(options Options) LoadBalancer {
 		clusterStatusSupplier:    options.ClusterStatusSupplier,
 		namespaceConfigSupplier:  options.NamespaceConfigSupplier,
 		metadataSupplier:         options.MetadataSupplier,
-		clusterServerIdsSupplier: options.ClusterServerIdsSupplier,
+		clusterServerIDsSupplier: options.ClusterServerIDsSupplier,
 		selector:                 single.NewSelector(),
 		loadRatioAlgorithm:       single.DefaultShardsRank,
 		quarantineNode:           linkedhashset.New(),

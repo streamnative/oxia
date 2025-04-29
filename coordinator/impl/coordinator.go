@@ -24,6 +24,7 @@ import (
 
 	"github.com/emirpasic/gods/sets/linkedhashset"
 	"github.com/pkg/errors"
+
 	"github.com/streamnative/oxia/coordinator/balancer"
 
 	"go.uber.org/multierr"
@@ -166,7 +167,7 @@ func NewCoordinator(metadataProvider MetadataProvider,
 			defer c.RUnlock()
 			return c.ServerMetadata
 		},
-		ClusterServerIdsSupplier: func() *linkedhashset.Set {
+		ClusterServerIDsSupplier: func() *linkedhashset.Set {
 			c.RLock()
 			defer c.RUnlock()
 			return c.ServerIDs()
@@ -174,7 +175,7 @@ func NewCoordinator(metadataProvider MetadataProvider,
 		NamespaceConfigSupplier: func(namespace string) *model.NamespaceConfig {
 			c.RLock()
 			defer c.RUnlock()
-			return GetNamespaceConfig(c.ClusterConfig.Namespaces, namespace)
+			return GetNamespaceConfig(c.Namespaces, namespace)
 		},
 	})
 	c.startBackgroundActionWorker()
@@ -488,16 +489,20 @@ func (c *coordinator) ClusterStatus() model.ClusterStatus {
 	return *c.clusterStatus.Clone()
 }
 
-func (c *coordinator) startBackgroundActionWorker() {
+func (c *coordinator) startBackgroundActionWorker() { //nolint:revive
 	go common.DoWithLabels(c.ctx, map[string]string{
 		"component": "coordinator-action-worker",
 	}, func() {
 		for {
 			select {
 			case action := <-c.loadBalancer.Action():
-				switch action.Type() {
+				switch action.Type() { //nolint:revive
 				case balancer.SwapNode:
-					ac := action.(*balancer.SwapNodeAction)
+					var ac *balancer.SwapNodeAction
+					var ok bool
+					if ac, ok = action.(*balancer.SwapNodeAction); !ok {
+						panic("unexpected action type")
+					}
 					defer ac.Done()
 					c.log.Info("Applying swap action", slog.Any("swap-action", ac))
 

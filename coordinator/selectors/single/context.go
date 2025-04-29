@@ -18,6 +18,7 @@ import (
 	"sync"
 
 	"github.com/emirpasic/gods/sets/linkedhashset"
+
 	"github.com/streamnative/oxia/coordinator/utils"
 
 	"github.com/streamnative/oxia/coordinator/model"
