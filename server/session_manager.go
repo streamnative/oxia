@@ -225,7 +225,7 @@ func (sm *sessionManager) Initialize() error {
 }
 
 func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, error) {
-	list, err := sm.leaderController.ListSliceNoMutex(context.Background(), &proto.ListRequest{
+	list, err := sm.leaderController.listBlock(context.Background(), &proto.ListRequest{
 		Shard:          &sm.shardId,
 		StartInclusive: sessionKeyPrefix + "/",
 		EndExclusive:   sessionKeyPrefix + "//",

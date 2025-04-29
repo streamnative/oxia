@@ -91,7 +91,7 @@ func (s *session) delete() error {
 	// Delete ephemeral data associated with this session
 	sessionKey := SessionKey(s.id)
 	// Read "index"
-	list, err := s.sm.leaderController.ListSliceNoMutex(context.Background(), &proto.ListRequest{
+	list, err := s.sm.leaderController.listBlock(context.Background(), &proto.ListRequest{
 		Shard:          &s.shardId,
 		StartInclusive: sessionKey + "/",
 		EndExclusive:   sessionKey + "//",
