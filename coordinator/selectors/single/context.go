@@ -18,10 +18,10 @@ import (
 	"sync"
 
 	"github.com/emirpasic/gods/sets/linkedhashset"
+	"github.com/streamnative/oxia/coordinator/utils"
 
 	"github.com/streamnative/oxia/coordinator/model"
 	p "github.com/streamnative/oxia/coordinator/policies"
-	"github.com/streamnative/oxia/coordinator/selectors"
 )
 
 type Context struct {
@@ -29,6 +29,8 @@ type Context struct {
 	CandidatesMetadata map[string]model.ServerMetadata
 	Policies           *p.Policies
 	Status             *model.ClusterStatus
+
+	LoadRatioSupplier func() *model.Ratio
 
 	selected *linkedhashset.Set
 
@@ -57,9 +59,9 @@ func (so *Context) SetSelected(selected *linkedhashset.Set) {
 
 func (so *Context) maybeGrouping() {
 	so.candidateOnce.Do(func() {
-		so.labelValueGroupedCandidates = selectors.GroupingCandidatesWithLabelValue(so.Candidates, so.CandidatesMetadata)
+		so.labelValueGroupedCandidates = utils.GroupingCandidatesWithLabelValue(so.Candidates, so.CandidatesMetadata)
 	})
 	so.selectedOnce.Do(func() {
-		so.labelGroupedSelectedLabelValues = selectors.GroupingValueWithLabel(so.selected, so.CandidatesMetadata)
+		so.labelGroupedSelectedLabelValues = utils.GroupingValueWithLabel(so.selected, so.CandidatesMetadata)
 	})
 }

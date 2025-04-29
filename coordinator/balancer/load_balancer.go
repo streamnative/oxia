@@ -8,15 +8,13 @@ import (
 	"golang.org/x/net/context"
 )
 
-type LoadRatioAlgorithm = func(params *LoadRatioParams) *LoadRatio
-
 type Options struct {
 	context.Context
 
-	ClusterStatusSupplier    func() *model.ClusterStatus
-	NamespaceConfigSupplier  func(namespace string) *model.NamespaceConfig
 	MetadataSupplier         func() map[string]model.ServerMetadata
+	ClusterStatusSupplier    func() *model.ClusterStatus
 	ClusterServerIdsSupplier func() *linkedhashset.Set
+	NamespaceConfigSupplier  func(namespace string) *model.NamespaceConfig
 }
 
 type LoadBalancer interface {

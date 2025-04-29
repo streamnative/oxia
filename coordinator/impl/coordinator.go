@@ -179,6 +179,7 @@ func NewCoordinator(metadataProvider MetadataProvider,
 			return GetNamespaceConfig(c.ClusterConfig.Namespaces, namespace)
 		},
 	})
+	c.startBackgroundActionWorker()
 
 	go common.DoWithLabels(
 		c.ctx,
@@ -490,6 +491,53 @@ func (c *coordinator) ClusterStatus() model.ClusterStatus {
 	return *c.clusterStatus.Clone()
 }
 
+func (c *coordinator) startBackgroundActionWorker() {
+	go common.DoWithLabels(c.ctx, map[string]string{
+		"component": "coordinator-action-worker",
+	}, func() {
+		for {
+			select {
+			case action := <-c.loadBalancer.Action():
+				switch action.Type() {
+				case balancer.SwapNode:
+					ac := action.(*balancer.SwapNodeAction)
+					defer ac.Done()
+					c.log.Info("Applying swap action", slog.Any("swap-action", ac))
+
+					c.Lock()
+					sc, ok := c.shardControllers[ac.Shard]
+					c.Unlock()
+					if !ok {
+						c.log.Warn(
+							"Shard controller not found",
+							slog.Int64("shard", ac.Shard),
+						)
+						continue
+					}
+					index := c.ServerIDIndex()
+					fromServer := index[ac.From]
+					toServer := index[ac.To]
+					if fromServer == nil || toServer == nil {
+						// todo: improve log
+						c.log.Warn("server not found")
+						continue
+					}
+					// todo: use pointer here
+					if err := sc.SwapNode(*fromServer, *toServer); err != nil {
+						c.log.Warn(
+							"Failed to swap node",
+							slog.Any("error", err),
+							slog.Any("swap-action", ac),
+						)
+					}
+				}
+			case <-c.ctx.Done():
+				return
+			}
+		}
+	})
+}
+
 func (c *coordinator) waitForExternalEvents() {
 	for {
 		select {
@@ -501,13 +549,6 @@ func (c *coordinator) waitForExternalEvents() {
 			if err := c.handleClusterConfigUpdated(); err != nil {
 				c.log.Warn(
 					"Failed to update cluster config",
-					slog.Any("error", err),
-				)
-			}
-
-			if err := c.rebalanceCluster(); err != nil {
-				c.log.Warn(
-					"Failed to rebalance cluster",
 					slog.Any("error", err),
 				)
 			}
