@@ -12,6 +12,8 @@ const (
 
 type Action interface {
 	Type() ActionType
+
+	Done()
 }
 
 var _ Action = &SwapNodeAction{}
@@ -22,6 +24,10 @@ type SwapNodeAction struct {
 	To    string
 
 	waiter *sync.WaitGroup
+}
+
+func (s *SwapNodeAction) Done() {
+	s.waiter.Done()
 }
 
 func (s *SwapNodeAction) Type() ActionType {

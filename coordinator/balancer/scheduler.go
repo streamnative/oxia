@@ -13,6 +13,7 @@ import (
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/coordinator/selectors"
 	"github.com/streamnative/oxia/coordinator/selectors/single"
+	"github.com/streamnative/oxia/coordinator/utils"
 )
 
 var _ LoadBalancer = &nodeBasedBalancer{}
@@ -31,7 +32,7 @@ type nodeBasedBalancer struct {
 	clusterServerIdsSupplier func() *linkedhashset.Set
 
 	selector           selectors.Selector[*single.Context, *string]
-	loadRatioAlgorithm LoadRatioAlgorithm
+	loadRatioAlgorithm selectors.LoadRatioAlgorithm
 
 	quarantineNode *linkedhashset.Set
 	triggerCh      chan struct{}
@@ -48,118 +49,110 @@ func (r *nodeBasedBalancer) Close() error {
 	return nil
 }
 
-func (r *nodeBasedBalancer) rebalanceEnsemble(currentStatus *model.ClusterStatus, shardsGroupingByNode map[string][]shardInfo) {
+func (r *nodeBasedBalancer) rebalanceEnsemble(currentStatus *model.ClusterStatus, shardsGroupingByNode map[string][]model.ShardInfo) {
 	var err error
-	var tmpI interface{}
-	var ok bool
 	swapGroup := &sync.WaitGroup{}
-
 	serverIds := r.clusterServerIdsSupplier()
 	metadata := r.metadataSupplier()
-	for maybeDeletedNodeId, shardInfos := range shardsGroupingByNode {
-		if !serverIds.Contains(maybeDeletedNodeId) {
+	loadRatios := r.loadRatioAlgorithm(&model.RatioParams{NodeShardsInfos: shardsGroupingByNode})
+
+	// (1) deleted node
+	for nodeIter := loadRatios.NodeLoadRatios().Iterator(); nodeIter.Next(); {
+		nodeLoadRatio := nodeIter.Value().(*model.NodeLoadRatio)
+		if serverIds.Contains(nodeLoadRatio.NodeID) {
 			continue
 		}
-		for _, si := range shardInfos {
-			nsc := r.namespaceConfigSupplier(si.namespace)
-			policies := nsc.Policies
-			sContext := &single.Context{
-				Candidates:         serverIds,
-				CandidatesMetadata: metadata,
-				Policies:           policies,
-				Status:             currentStatus,
-			}
-			sContext.SetSelected(filterEnsemble(si.ensemble, maybeDeletedNodeId))
-			var targetNodeId *string
-			if targetNodeId, err = r.selector.Select(sContext); err != nil {
+		deletedNodeID := nodeLoadRatio.NodeID
+		for shardIter := nodeLoadRatio.ShardRatios.Iterator(); shardIter.Next(); {
+			shardRatio := shardIter.Value().(*model.ShardLoadRatio)
+			if err = r.swapShard(shardRatio, deletedNodeID, swapGroup, loadRatios, serverIds, metadata, currentStatus); err != nil {
 				r.log.Error("failed to select server when move ensemble out of deleted node",
-					slog.String("namespace", si.namespace),
-					slog.Int64("shard", si.shardID),
-					slog.String("deleted-node", maybeDeletedNodeId),
+					slog.String("namespace", shardRatio.Namespace),
+					slog.Int64("shard", shardRatio.ShardID),
+					slog.String("from-node", deletedNodeID),
 					slog.Any("error", err),
 				)
 				continue
 			}
-			swapGroup.Add(1)
-			r.actionCh <- &SwapNodeAction{
-				Shard:  si.shardID,
-				From:   maybeDeletedNodeId,
-				To:     *targetNodeId,
-				waiter: swapGroup,
-			}
 		}
 	}
-	loadRatios := r.loadRatioAlgorithm(&LoadRatioParams{shardsGroupingByNode})
-	if (loadRatios.maxNodeLoadRatio - loadRatios.minNodeLoadRatio) < loadGapRatio {
-		// todo: improve here
-		r.log.Info("load gap is less than threshold, no need to rebalance")
+
+	// (2) rebalance by load ratio
+	if loadRatios.RatioGap() < loadGapRatio {
 		return
 	}
-	var highestLoadRatioNode *NodeLoadRatio
+	var highestLoadRatioNode *model.NodeLoadRatio
 	for {
-		if tmpI, ok = loadRatios.nodeLoadRatios.Dequeue(); !ok {
-			return
+		if highestLoadRatioNode = loadRatios.DequeueHighestNode(); highestLoadRatioNode == nil {
+			return // unexpected
 		}
-		highestLoadRatioNode = tmpI.(*NodeLoadRatio)
 		if r.IsNodeQuarantined(highestLoadRatioNode) {
 			continue
 		}
 		break
 	}
-
-	var currentRatio = loadRatios.maxNodeLoadRatio
-	for (currentRatio - loadRatios.minNodeLoadRatio) >= loadGapRatio {
-		if tmpI, ok = highestLoadRatioNode.shardRatios.Dequeue(); !ok {
+	for loadRatios.RatioGap() >= loadGapRatio {
+		var highestLoadRatioShard *model.ShardLoadRatio
+		if highestLoadRatioShard = highestLoadRatioNode.DequeueHighestShard(); highestLoadRatioShard == nil {
 			return
 		}
-		highestLoadRatioShard := tmpI.(*ShardLoadRatio)
-		ns := highestLoadRatioShard.namespace
-		fromNodeID := highestLoadRatioNode.nodeID
-		sContext := &single.Context{
-			Candidates:         serverIds,
-			CandidatesMetadata: metadata,
-			Policies:           r.namespaceConfigSupplier(ns).Policies,
-			Status:             currentStatus,
-		}
-		sContext.SetSelected(filterEnsemble(highestLoadRatioShard.ensemble, fromNodeID))
-		var targetNodeId *string
-		if targetNodeId, err = r.selector.Select(sContext); err != nil {
-			r.log.Error("failed to select server when do rebalance",
-				slog.String("namespace", highestLoadRatioShard.namespace),
-				slog.Int64("shard", highestLoadRatioShard.shardID),
-				slog.String("highest-load-node", highestLoadRatioNode.nodeID),
-				slog.Any("error", err),
-			)
-			continue
-		}
-		if *targetNodeId == fromNodeID {
+		if err = r.swapShard(highestLoadRatioShard, highestLoadRatioNode.NodeID, swapGroup, loadRatios, serverIds, metadata, currentStatus); err != nil {
 			r.log.Info("has no other choose to move the current shard ensemble to other node.",
-				slog.String("namespace", highestLoadRatioShard.namespace),
-				slog.Int64("shard", highestLoadRatioShard.shardID),
-				slog.String("highest-load-node", highestLoadRatioNode.nodeID),
+				slog.String("namespace", highestLoadRatioShard.Namespace),
+				slog.Int64("shard", highestLoadRatioShard.ShardID),
+				slog.String("highest-load-node", highestLoadRatioNode.NodeID),
 				slog.Any("error", err),
 			)
 			continue
-		}
-		swapGroup.Add(1)
-		r.actionCh <- &SwapNodeAction{
-			Shard:  highestLoadRatioShard.shardID,
-			From:   fromNodeID,
-			To:     *targetNodeId,
-			waiter: swapGroup,
 		}
 	}
-	if (currentRatio - loadRatios.minNodeLoadRatio) >= loadGapRatio {
-		r.quarantineNode.Add(highestLoadRatioNode.nodeID)
+	if loadRatios.RatioGap() >= loadGapRatio {
+		r.quarantineNode.Add(highestLoadRatioNode.NodeID)
 		r.log.Info("can't rebalance the current node, quarantine it.",
-			slog.Float64("highest-load-node-ratio", highestLoadRatioNode.ratio),
-			slog.String("highest-load-node", highestLoadRatioNode.nodeID))
+			slog.Float64("highest-load-node-ratio", highestLoadRatioNode.Ratio),
+			slog.String("highest-load-node", highestLoadRatioNode.NodeID))
 	}
 	swapGroup.Wait()
 }
 
-func (r *nodeBasedBalancer) IsNodeQuarantined(highestLoadRatioNode *NodeLoadRatio) bool {
-	if r.quarantineNode.Contains(highestLoadRatioNode.nodeID) {
+func (r *nodeBasedBalancer) swapShard(
+	candidateShard *model.ShardLoadRatio,
+	fromNodeID string,
+	swapGroup *sync.WaitGroup,
+	loadRatios *model.Ratio,
+	serverIds *linkedhashset.Set,
+	metadata map[string]model.ServerMetadata,
+	currentStatus *model.ClusterStatus) error {
+	nsc := r.namespaceConfigSupplier(candidateShard.Namespace)
+	policies := nsc.Policies
+	sContext := &single.Context{
+		Candidates:         serverIds,
+		CandidatesMetadata: metadata,
+		Policies:           policies,
+		Status:             currentStatus,
+		LoadRatioSupplier:  func() *model.Ratio { return loadRatios },
+	}
+	sContext.SetSelected(utils.FilterEnsemble(candidateShard.Ensemble, fromNodeID))
+	var targetNodeId *string
+	var err error
+	if targetNodeId, err = r.selector.Select(sContext); err != nil {
+		return err
+	}
+	swapGroup.Add(1)
+	tnID := *targetNodeId
+	r.actionCh <- &SwapNodeAction{
+		Shard:  candidateShard.ShardID,
+		From:   fromNodeID,
+		To:     tnID,
+		waiter: swapGroup,
+	}
+	loadRatios.MoveShardToNode(candidateShard, tnID)
+	loadRatios.ReCalculateRatios()
+	return nil
+}
+
+func (r *nodeBasedBalancer) IsNodeQuarantined(highestLoadRatioNode *model.NodeLoadRatio) bool {
+	if r.quarantineNode.Contains(highestLoadRatioNode.NodeID) {
 		// todo: improve it by high performance data structure
 		needRefresh := false
 		newHashSet := linkedhashset.New()
@@ -180,7 +173,7 @@ func (r *nodeBasedBalancer) IsNodeQuarantined(highestLoadRatioNode *NodeLoadRati
 			return true
 		}
 		r.quarantineNode = newHashSet
-		if r.quarantineNode.Contains(highestLoadRatioNode.nodeID) {
+		if r.quarantineNode.Contains(highestLoadRatioNode.NodeID) {
 			return true
 		}
 	}
@@ -209,10 +202,10 @@ func (r *nodeBasedBalancer) startBackgroundScheduler() {
 	})
 }
 
-func (r *nodeBasedBalancer) startBackgroundWorker() {
+func (r *nodeBasedBalancer) startBackgroundNotifier() {
 	r.latch.Add(1)
 	go common.DoWithLabels(r.ctx, map[string]string{
-		"component": "load-balancer-worker",
+		"component": "load-balancer-notifier",
 	}, func() {
 		for {
 			defer r.latch.Done()
@@ -222,7 +215,7 @@ func (r *nodeBasedBalancer) startBackgroundWorker() {
 					return
 				}
 				currentClusterStatus := r.clusterStatusSupplier()
-				groupedStatus := groupingShardsNodeByStatus(r.clusterStatusSupplier())
+				groupedStatus := utils.GroupingShardsNodeByStatus(r.clusterStatusSupplier())
 				r.rebalanceEnsemble(currentClusterStatus, groupedStatus)
 			case <-r.ctx.Done():
 				return
@@ -245,11 +238,11 @@ func NewLoadBalancer(options Options) LoadBalancer {
 		metadataSupplier:         options.MetadataSupplier,
 		clusterServerIdsSupplier: options.ClusterServerIdsSupplier,
 		selector:                 single.NewSelector(),
-		loadRatioAlgorithm:       DefaultShardsRank,
+		loadRatioAlgorithm:       single.DefaultShardsRank,
 		quarantineNode:           linkedhashset.New(),
-		triggerCh:                make(chan struct{}),
+		triggerCh:                make(chan struct{}, 1),
 	}
 	nb.startBackgroundScheduler()
-	nb.startBackgroundWorker()
+	nb.startBackgroundNotifier()
 	return nb
 }
