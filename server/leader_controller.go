@@ -50,7 +50,7 @@ type LeaderController interface {
 	Read(ctx context.Context, request *proto.ReadRequest) <-chan GetResult
 	List(ctx context.Context, request *proto.ListRequest) (<-chan string, error)
 	ListSliceNoMutex(ctx context.Context, request *proto.ListRequest) ([]string, error)
-	RangeScan(ctx context.Context, request *proto.RangeScanRequest) (<-chan *proto.GetResponse, <-chan error, error)
+	RangeScan(ctx context.Context, request *proto.RangeScanRequest, cb callback.StreamCallback[*proto.GetResponse])
 
 	// NewTerm Handle new term requests
 	NewTerm(req *proto.NewTermRequest) (*proto.NewTermResponse, error)
@@ -702,25 +702,16 @@ func (lc *leaderController) ListSliceNoMutex(ctx context.Context, request *proto
 	}
 }
 
-func (lc *leaderController) RangeScan(ctx context.Context, request *proto.RangeScanRequest) (<-chan *proto.GetResponse, <-chan error, error) {
-	ch := make(chan *proto.GetResponse)
-	errCh := make(chan error)
-
+func (lc *leaderController) RangeScan(ctx context.Context, request *proto.RangeScanRequest, cb callback.StreamCallback[*proto.GetResponse]) {
 	lc.RLock()
 	err := checkStatusIsLeader(lc.status)
 	lc.RUnlock()
 	if err != nil {
-		return nil, nil, err
+		cb.OnComplete(err)
+		return
 	}
 
-	go lc.rangeScan(ctx, request, ch, errCh)
-
-	return ch, errCh, nil
-}
-
-func (lc *leaderController) rangeScan(ctx context.Context, request *proto.RangeScanRequest, ch chan<- *proto.GetResponse, errCh chan<- error) {
-	common.DoWithLabels(
-		ctx,
+	go common.DoWithLabels(ctx,
 		map[string]string{
 			"oxia":  "range-scan",
 			"shard": fmt.Sprintf("%d", lc.shardId),
@@ -738,38 +729,30 @@ func (lc *leaderController) rangeScan(ctx context.Context, request *proto.RangeS
 			}
 
 			if err != nil {
-				lc.log.Warn(
-					"Failed to process range-scan request",
-					slog.Any("error", err),
-				)
-				errCh <- err
-				close(ch)
-				close(errCh)
+				lc.log.Warn("Failed to process range-scan request", slog.Any("error", err))
+				cb.OnComplete(err)
 				return
 			}
 
 			defer func() {
 				_ = it.Close()
-				// NOTE:
-				// we must close the channel after iterator is closed, to avoid the
-				// iterator keep open when caller is trying to process the next step (for example db.Close)
-				// because this is execute in another goroutine.
-				close(ch)
-				close(errCh)
 			}()
 
 			for ; it.Valid(); it.Next() {
 				gr, err := it.Value()
 				if err != nil {
-					errCh <- err
+					cb.OnComplete(err)
 					return
 				}
-
-				ch <- gr
+				if err = cb.OnNext(gr); err != nil {
+					cb.OnComplete(err)
+					return
+				}
 				if ctx.Err() != nil {
 					break
 				}
 			}
+			cb.OnComplete(nil)
 		},
 	)
 }
@@ -917,7 +900,17 @@ func (lc *leaderController) handleWalSynced(stream proto.OxiaClient_WriteStreamS
 		return
 	}
 
-	lc.quorumAckTracker.WaitForCommitOffsetAsync(context.Background(), offset, callback.NewOnce(
+	lc.RLock()
+	tracker := lc.quorumAckTracker
+	lc.RUnlock()
+
+	if tracker == nil {
+		timer.Done()
+		sendNonBlocking(closeCh, common.ErrInvalidStatus)
+		return
+	}
+
+	tracker.WaitForCommitOffsetAsync(context.Background(), offset, callback.NewOnce(
 		func(_ any) {
 			defer timer.Done()
 			localResponse, err := lc.db.ProcessWrite(req, offset, timestamp, WrapperUpdateOperationCallback)
@@ -948,8 +941,11 @@ func (lc *leaderController) appendToWalStreamRequest(request *proto.WriteRequest
 	}
 
 	newOffset := lc.quorumAckTracker.NextOffset()
-	timestamp := uint64(time.Now().UnixMilli())
+	log := lc.wal
+	tracker := lc.quorumAckTracker
+	lc.Unlock()
 
+	timestamp := uint64(time.Now().UnixMilli())
 	lc.log.Debug(
 		"Append operation",
 		slog.Any("req", request),
@@ -965,7 +961,6 @@ func (lc *leaderController) appendToWalStreamRequest(request *proto.WriteRequest
 	}
 	value, err := logEntryValue.MarshalVT()
 	if err != nil {
-		lc.Unlock()
 		cb(wal.InvalidOffset, timestamp, err)
 		return
 	}
@@ -976,15 +971,14 @@ func (lc *leaderController) appendToWalStreamRequest(request *proto.WriteRequest
 		Timestamp: timestamp,
 	}
 
-	lc.wal.AppendAndSync(logEntry, func(err error) {
+	log.AppendAndSync(logEntry, func(err error) {
 		if err != nil {
 			cb(wal.InvalidOffset, timestamp, errors.Wrap(err, "oxia: failed to append to wal"))
 		} else {
-			lc.quorumAckTracker.AdvanceHeadOffset(newOffset)
+			tracker.AdvanceHeadOffset(newOffset)
 			cb(newOffset, timestamp, nil)
 		}
 	})
-	lc.Unlock()
 }
 
 // ////
