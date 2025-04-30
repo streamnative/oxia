@@ -228,7 +228,7 @@ func (s *publicRpcServer) List(request *proto.ListRequest, stream proto.OxiaClie
 	ctx := stream.Context()
 	finish := make(chan error, 1)
 	lc.List(ctx, request, callback.NewBatchStreamOnce[string](maxTotalListKeyCount, maxTotalListKeySize,
-		func(s string) int { return protowire.SizeBytes(len(s)) },
+		func(key string) int { return protowire.SizeBytes(len(key)) },
 		func(container []string) error { return stream.Send(&proto.ListResponse{Keys: container}) },
 		func(err error) { finish <- err },
 	))
