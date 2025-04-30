@@ -49,10 +49,11 @@ type LeaderController interface {
 	io.Closer
 
 	Write(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error)
+	ListBlock(ctx context.Context, request *proto.ListRequest) ([]string, error)
+
 	WriteStream(stream proto.OxiaClient_WriteStreamServer) error
 	Read(ctx context.Context, request *proto.ReadRequest) <-chan GetResult
 	List(ctx context.Context, request *proto.ListRequest, cb callback.StreamCallback[string])
-	ListBlock(ctx context.Context, request *proto.ListRequest) ([]string, error)
 	RangeScan(ctx context.Context, request *proto.RangeScanRequest, cb callback.StreamCallback[*proto.GetResponse])
 
 	// NewTerm Handle new term requests
