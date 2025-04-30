@@ -18,6 +18,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/streamnative/oxia/common/entities"
 	"github.com/stretchr/testify/assert"
 	pb "google.golang.org/protobuf/proto"
 
@@ -64,8 +65,8 @@ func TestSecondaryIndices_List(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, 2, len(keys))
-	assert.Contains(t, "/b", keys)
-	assert.Contains(t, "/c", keys)
+	assert.Contains(t, keys, "/b")
+	assert.Contains(t, keys, "/c")
 
 	// Wrong index
 	keys, err = lc.ListBlock(context.Background(), &proto.ListRequest{
@@ -92,10 +93,10 @@ func TestSecondaryIndices_List(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, 4, len(keys))
-	assert.Contains(t, "/a", keys)
-	assert.Contains(t, "/c", keys)
-	assert.Contains(t, "/d", keys)
-	assert.Contains(t, "/e", keys)
+	assert.Contains(t, keys, "/a")
+	assert.Contains(t, keys, "/c")
+	assert.Contains(t, keys, "/d")
+	assert.Contains(t, keys, "/e")
 
 	// Range delete
 	_, err = lc.Write(context.Background(), &proto.WriteRequest{
@@ -116,8 +117,8 @@ func TestSecondaryIndices_List(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, 2, len(keys))
-	assert.Contains(t, "/d", keys)
-	assert.Contains(t, "/e", keys)
+	assert.Contains(t, keys, "/d")
+	assert.Contains(t, keys, "/e")
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())
@@ -153,37 +154,32 @@ func TestSecondaryIndices_RangeScan(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	ch := make(chan *proto.GetResponse, 100)
-	errCh := make(chan error, 1)
+	ch := make(chan *entities.TWithError[*proto.GetResponse], 100)
 	lc.RangeScan(ctx, &proto.RangeScanRequest{
 		Shard:              &shard,
 		StartInclusive:     "1",
 		EndExclusive:       "3",
 		SecondaryIndexName: pb.String("my-idx"),
-	}, callback.ReadFromStreamCallback(ch, errCh))
+	}, callback.ReadFromStreamCallback(ch))
 	assert.NoError(t, err)
 
 	gr := <-ch
-	assert.Equal(t, "/b", *gr.Key)
-	assert.Equal(t, "1", string(gr.Value))
+	assert.Equal(t, "/b", *gr.T.Key)
+	assert.Equal(t, "1", string(gr.T.Value))
 	gr = <-ch
-	assert.Equal(t, "/c", *gr.Key)
-	assert.Equal(t, "2", string(gr.Value))
+	assert.Equal(t, "/c", *gr.T.Key)
+	assert.Equal(t, "2", string(gr.T.Value))
 	assert.Empty(t, ch)
 
-	assert.Empty(t, errCh)
-
-	ch = make(chan *proto.GetResponse, 100)
-	errCh = make(chan error, 1)
+	ch = make(chan *entities.TWithError[*proto.GetResponse], 100)
 	// Wrong index
 	lc.RangeScan(ctx, &proto.RangeScanRequest{
 		Shard:              &shard,
 		StartInclusive:     "/a",
 		EndExclusive:       "/d",
 		SecondaryIndexName: pb.String("wrong-idx"),
-	}, callback.ReadFromStreamCallback(ch, errCh))
+	}, callback.ReadFromStreamCallback(ch))
 	assert.Empty(t, ch)
-	assert.Empty(t, errCh)
 
 	// Individual delete
 	_, err = lc.Write(context.Background(), &proto.WriteRequest{
@@ -192,27 +188,23 @@ func TestSecondaryIndices_RangeScan(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	ch = make(chan *proto.GetResponse, 100)
-	errCh = make(chan error, 1)
+	ch = make(chan *entities.TWithError[*proto.GetResponse], 100)
 	lc.RangeScan(ctx, &proto.RangeScanRequest{
 		Shard:              &shard,
 		StartInclusive:     "0",
 		EndExclusive:       "99999",
 		SecondaryIndexName: pb.String("my-idx"),
-	}, callback.ReadFromStreamCallback(ch, errCh))
+	}, callback.ReadFromStreamCallback(ch))
 
 	gr = <-ch
-	assert.Equal(t, "/a", *gr.Key)
+	assert.Equal(t, "/a", *gr.T.Key)
 	gr = <-ch
-	assert.Equal(t, "/c", *gr.Key)
+	assert.Equal(t, "/c", *gr.T.Key)
 	gr = <-ch
-	assert.Equal(t, "/d", *gr.Key)
+	assert.Equal(t, "/d", *gr.T.Key)
 	gr = <-ch
-	assert.Equal(t, "/e", *gr.Key)
+	assert.Equal(t, "/e", *gr.T.Key)
 	assert.Empty(t, ch)
-	assert.Empty(t, errCh)
-
-	assert.Empty(t, errCh)
 
 	// Range delete
 	_, err = lc.Write(context.Background(), &proto.WriteRequest{
@@ -224,21 +216,19 @@ func TestSecondaryIndices_RangeScan(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	ch = make(chan *proto.GetResponse, 100)
-	errCh = make(chan error, 1)
+	ch = make(chan *entities.TWithError[*proto.GetResponse], 100)
 	lc.RangeScan(ctx, &proto.RangeScanRequest{
 		Shard:              &shard,
 		StartInclusive:     "0",
 		EndExclusive:       "99999",
 		SecondaryIndexName: pb.String("my-idx"),
-	}, callback.ReadFromStreamCallback(ch, errCh))
+	}, callback.ReadFromStreamCallback(ch))
 
 	gr = <-ch
-	assert.Equal(t, "/d", *gr.Key)
+	assert.Equal(t, "/d", *gr.T.Key)
 	gr = <-ch
-	assert.Equal(t, "/e", *gr.Key)
+	assert.Equal(t, "/e", *gr.T.Key)
 	assert.Empty(t, ch)
-	assert.Empty(t, errCh)
 
 	cancel()
 	assert.NoError(t, lc.Close())
@@ -296,8 +286,8 @@ func TestSecondaryIndices_MultipleKeysForSameIdx(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(keys))
-	assert.Contains(t, "/b", keys)
-	assert.Contains(t, "/c", keys)
+	assert.Contains(t, keys, "/b")
+	assert.Contains(t, keys, "/c")
 
 	// using alternate values on same index
 	keys, err = lc.ListBlock(context.Background(), &proto.ListRequest{
@@ -309,8 +299,8 @@ func TestSecondaryIndices_MultipleKeysForSameIdx(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, 2, len(keys))
-	assert.Contains(t, "/b", len(keys))
-	assert.Contains(t, "/c", len(keys))
+	assert.Contains(t, keys, "/b")
+	assert.Contains(t, keys, "/c")
 
 	// Repeated primary keys when multiple indexes
 	keys, err = lc.ListBlock(context.Background(), &proto.ListRequest{
@@ -322,16 +312,16 @@ func TestSecondaryIndices_MultipleKeysForSameIdx(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, 10, len(keys))
-	assert.Contains(t, "/a", keys)
-	assert.Contains(t, "/b", keys)
-	assert.Contains(t, "/c", keys)
-	assert.Contains(t, "/d", keys)
-	assert.Contains(t, "/e", keys)
-	assert.Contains(t, "/a", keys)
-	assert.Contains(t, "/b", keys)
-	assert.Contains(t, "/c", keys)
-	assert.Contains(t, "/d", keys)
-	assert.Contains(t, "/e", keys)
+	assert.Contains(t, keys, "/a")
+	assert.Contains(t, keys, "/b")
+	assert.Contains(t, keys, "/c")
+	assert.Contains(t, keys, "/d")
+	assert.Contains(t, keys, "/e")
+	assert.Contains(t, keys, "/a")
+	assert.Contains(t, keys, "/b")
+	assert.Contains(t, keys, "/c")
+	assert.Contains(t, keys, "/d")
+	assert.Contains(t, keys, "/e")
 
 	// Delete
 	_, err = lc.Write(context.Background(), &proto.WriteRequest{
@@ -349,10 +339,10 @@ func TestSecondaryIndices_MultipleKeysForSameIdx(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, 4, len(keys))
-	assert.Contains(t, "/a", keys)
-	assert.Contains(t, "/c", keys)
-	assert.Contains(t, "/d", keys)
-	assert.Contains(t, "/e", keys)
+	assert.Contains(t, keys, "/a")
+	assert.Contains(t, keys, "/c")
+	assert.Contains(t, keys, "/d")
+	assert.Contains(t, keys, "/e")
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())

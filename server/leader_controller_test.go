@@ -1063,11 +1063,11 @@ func TestLeaderController_RangeScan(t *testing.T) {
 	}, callback.ReadFromStreamCallback(ch))
 	entity, more := <-ch
 	assert.Nil(t, entity.Err)
-	assert.Equal(t, "/a", entity.T.Key)
+	assert.Equal(t, "/a", *entity.T.Key)
 	assert.True(t, more)
 	entity, more = <-ch
 	assert.Nil(t, entity.Err)
-	assert.Equal(t, "/b", entity.T.Key)
+	assert.Equal(t, "/b", *entity.T.Key)
 	assert.True(t, more)
 	entity, more = <-ch
 	assert.Nil(t, entity)
