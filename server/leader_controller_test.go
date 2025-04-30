@@ -1011,9 +1011,7 @@ func TestLeaderController_List(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	lci := lc.(*leaderController)
-
-	list, err := lci.listBlock(context.Background(), &proto.ListRequest{
+	list, err := lc.ListBlock(context.Background(), &proto.ListRequest{
 		Shard:          &shard,
 		StartInclusive: "/a",
 		EndExclusive:   "/c",
@@ -1021,7 +1019,7 @@ func TestLeaderController_List(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, []string{"/a", "/b"}, list)
 
-	list, err = lci.listBlock(context.Background(), &proto.ListRequest{
+	list, err = lc.ListBlock(context.Background(), &proto.ListRequest{
 		Shard:          &shard,
 		StartInclusive: "/y",
 		EndExclusive:   "/z",

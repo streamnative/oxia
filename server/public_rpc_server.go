@@ -212,7 +212,6 @@ func (s *publicRpcServer) Read(request *proto.ReadRequest, stream proto.OxiaClie
 	}
 }
 
-//nolint:revive
 func (s *publicRpcServer) List(request *proto.ListRequest, stream proto.OxiaClient_ListServer) error {
 	s.log.Debug(
 		"List request",
