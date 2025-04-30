@@ -20,8 +20,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/streamnative/oxia/common/entities"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/common/entities"
 )
 
 func TestReadAll(t *testing.T) {
@@ -29,7 +30,7 @@ func TestReadAll(t *testing.T) {
 		value int
 	}
 
-	ErrUnknown := errors.New("error unknown")
+	errUnknown := errors.New("error unknown")
 	tests := []struct {
 		name        string
 		setupFunc   func() (context.Context, chan *entities.TWithError[testItem])
@@ -87,12 +88,12 @@ func TestReadAll(t *testing.T) {
 			setupFunc: func() (context.Context, chan *entities.TWithError[testItem]) {
 				ch := make(chan *entities.TWithError[testItem], 3)
 				ch <- &entities.TWithError[testItem]{T: testItem{value: 1}}
-				ch <- &entities.TWithError[testItem]{T: testItem{value: 2}, Err: ErrUnknown}
+				ch <- &entities.TWithError[testItem]{T: testItem{value: 2}, Err: errUnknown}
 				close(ch)
 				return context.Background(), ch
 			},
 			expected:    nil,
-			expectedErr: ErrUnknown,
+			expectedErr: errUnknown,
 		},
 	}
 

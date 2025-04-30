@@ -33,8 +33,9 @@ import (
 	"testing"
 
 	"github.com/pkg/errors"
-	"github.com/streamnative/oxia/common/entities"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/common/entities"
 )
 
 func Test_Once_Complete_Concurrent(t *testing.T) {
