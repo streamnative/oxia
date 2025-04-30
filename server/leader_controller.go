@@ -359,14 +359,6 @@ func (lc *leaderController) BecomeLeader(ctx context.Context, req *proto.BecomeL
 		return nil, err
 	}
 
-	if err = lc.sessionManager.Initialize(); err != nil {
-		lc.log.Error(
-			"Failed to initialize session manager",
-			slog.Any("error", err),
-		)
-		return nil, err
-	}
-
 	lc.log.Info(
 		"Started leading the shard",
 		slog.Int64("term", lc.term),
@@ -494,6 +486,14 @@ func (lc *leaderController) applyAllEntriesIntoDB() error {
 
 	if err = lc.applyAllEntriesIntoDBLoop(r); err != nil {
 		return errors.Wrap(err, "failed to applies wal entries to db")
+	}
+
+	if err = lc.sessionManager.Initialize(); err != nil {
+		lc.log.Error(
+			"Failed to initialize session manager",
+			slog.Any("error", err),
+		)
+		return err
 	}
 	return nil
 }
