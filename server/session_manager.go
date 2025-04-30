@@ -225,7 +225,7 @@ func (sm *sessionManager) Initialize() error {
 }
 
 func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, error) {
-	list, err := sm.leaderController.listBlock(context.Background(), &proto.ListRequest{
+	keys, err := sm.leaderController.ListBlock(context.Background(), &proto.ListRequest{
 		Shard:          &sm.shardId,
 		StartInclusive: sessionKeyPrefix + "/",
 		EndExclusive:   sessionKeyPrefix + "//",
@@ -234,11 +234,11 @@ func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, 
 		return nil, err
 	}
 
-	sm.log.Info("All sessions", slog.Int("count", len(list)))
+	sm.log.Info("All sessions", slog.Int("count", len(keys)))
 
 	result := map[SessionId]*proto.SessionMetadata{}
 
-	for _, key := range list {
+	for _, key := range keys {
 		metaEntry, err := sm.leaderController.db.Get(&proto.GetRequest{
 			Key:          key,
 			IncludeValue: true,

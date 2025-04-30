@@ -23,10 +23,11 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/streamnative/oxia/common/channel"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
+
+	"github.com/streamnative/oxia/common/channel"
 
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/callback"
@@ -50,6 +51,7 @@ type LeaderController interface {
 	WriteStream(stream proto.OxiaClient_WriteStreamServer) error
 	Read(ctx context.Context, request *proto.ReadRequest) <-chan GetResult
 	List(ctx context.Context, request *proto.ListRequest, cb callback.StreamCallback[string])
+	ListBlock(ctx context.Context, request *proto.ListRequest) ([]string, error)
 	RangeScan(ctx context.Context, request *proto.RangeScanRequest, cb callback.StreamCallback[*proto.GetResponse])
 
 	// NewTerm Handle new term requests
@@ -678,7 +680,8 @@ func (lc *leaderController) list(ctx context.Context, request *proto.ListRequest
 	)
 }
 
-func (lc *leaderController) listBlock(ctx context.Context, request *proto.ListRequest) ([]string, error) {
+func (lc *leaderController) ListBlock(ctx context.Context, request *proto.ListRequest) ([]string, error) {
+	// todo: support leader status check without lock
 	ch := make(chan string)
 	errCh := make(chan error)
 	go lc.list(ctx, request, callback.ReadFromStreamCallback(ch, errCh))
