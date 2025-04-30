@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/streamnative/oxia/common/entities"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
@@ -682,10 +683,9 @@ func (lc *leaderController) list(ctx context.Context, request *proto.ListRequest
 
 func (lc *leaderController) ListBlock(ctx context.Context, request *proto.ListRequest) ([]string, error) {
 	// todo: support leader status check without lock
-	ch := make(chan string)
-	errCh := make(chan error)
-	go lc.list(ctx, request, callback.ReadFromStreamCallback(ch, errCh))
-	return channel.ReadAll(ch, errCh)
+	ch := make(chan *entities.TWithError[string])
+	go lc.list(ctx, request, callback.ReadFromStreamCallback(ch))
+	return channel.ReadAll(ctx, ch)
 }
 
 func (lc *leaderController) RangeScan(ctx context.Context, request *proto.RangeScanRequest, cb callback.StreamCallback[*proto.GetResponse]) {

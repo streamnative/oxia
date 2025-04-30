@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/streamnative/oxia/common/entities"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -1054,36 +1055,32 @@ func TestLeaderController_RangeScan(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	ch := make(chan *proto.GetResponse, 100)
-	errCh := make(chan error, 1)
+	ch := make(chan *entities.TWithError[*proto.GetResponse], 100)
 	lc.RangeScan(context.Background(), &proto.RangeScanRequest{
 		Shard:          &shard,
 		StartInclusive: "/a",
 		EndExclusive:   "/c",
-	}, callback.ReadFromStreamCallback(ch, errCh))
-	assert.Empty(t, errCh)
-
-	gr, more := <-ch
-	assert.Equal(t, "/a", *gr.Key)
+	}, callback.ReadFromStreamCallback(ch))
+	entity, more := <-ch
+	assert.Nil(t, entity.Err)
+	assert.Equal(t, "/a", entity.T.Key)
 	assert.True(t, more)
-	gr, more = <-ch
-	assert.Equal(t, "/b", *gr.Key)
+	entity, more = <-ch
+	assert.Nil(t, entity.Err)
+	assert.Equal(t, "/b", entity.T.Key)
 	assert.True(t, more)
-	gr, more = <-ch
-	assert.Nil(t, gr)
+	entity, more = <-ch
+	assert.Nil(t, entity)
 	assert.False(t, more)
 
-	ch = make(chan *proto.GetResponse, 100)
-	errCh = make(chan error, 1)
+	ch = make(chan *entities.TWithError[*proto.GetResponse], 100)
 	lc.RangeScan(context.Background(), &proto.RangeScanRequest{
 		Shard:          &shard,
 		StartInclusive: "/y",
 		EndExclusive:   "/z",
-	}, callback.ReadFromStreamCallback(ch, errCh))
-	assert.Empty(t, errCh)
-
-	gr, more = <-ch
-	assert.Nil(t, gr)
+	}, callback.ReadFromStreamCallback(ch))
+	entity, more = <-ch
+	assert.Nil(t, entity)
 	assert.False(t, more)
 }
 

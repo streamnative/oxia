@@ -1,24 +1,25 @@
 package channel
 
-import "context"
+import (
+	"context"
 
-func ReadAll[T any](ch chan T, errCh chan error) ([]T, error) {
-	ctx := context.Background()
+	"github.com/streamnative/oxia/common/entities"
+)
+
+func ReadAll[T any](ctx context.Context, ch chan *entities.TWithError[T]) ([]T, error) {
 	container := make([]T, 0)
-	var err error
-loop:
 	for {
 		select {
-		case data, more := <-ch:
+		case t, more := <-ch:
 			if !more {
-				break loop
+				return container, nil
 			}
-			container = append(container, data)
-		case err = <-errCh:
-			break loop
+			if t.Err != nil {
+				return nil, t.Err
+			}
+			container = append(container, t.T)
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
 	}
-	return container, err
 }
