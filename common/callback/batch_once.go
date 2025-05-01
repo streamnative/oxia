@@ -35,7 +35,7 @@ type BatchStreamOnce[T any] struct {
 func (b *BatchStreamOnce[T]) OnNext(t T) error {
 	b.container = append(b.container, t)
 	b.totalBatchBytes += b.getBytes(t)
-	if len(b.container) >= b.maxBatchCount || b.totalBatchBytes >= b.maxBatchBytes {
+	if (b.maxBatchCount != 0 && len(b.container) >= b.maxBatchCount) || b.totalBatchBytes >= b.maxBatchBytes {
 		err := b.onFlush(b.container)
 		if err != nil {
 			return err
