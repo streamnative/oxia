@@ -509,6 +509,15 @@ func (m *mockHealthClient) Watch(ctx context.Context, in *grpc_health_v1.HealthC
 	return w, nil
 }
 
+func (m *mockHealthClient) List(ctx context.Context, in *grpc_health_v1.HealthListRequest, opts ...grpc.CallOption) (*grpc_health_v1.HealthListResponse, error) {
+	m.Lock()
+	defer m.Unlock()
+	if m.err != nil {
+		return nil, m.err
+	}
+	return &grpc_health_v1.HealthListResponse{}, nil
+}
+
 func (m *mockHealthClient) sendWatchResponse(w *mockHealthWatchClient) {
 	w.responses <- struct {
 		*grpc_health_v1.HealthCheckResponse

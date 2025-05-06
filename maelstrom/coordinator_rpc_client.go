@@ -244,6 +244,13 @@ func (m *maelstromHealthCheckClient) Watch(ctx context.Context, in *grpc_health_
 	}, nil
 }
 
+func (m *maelstromHealthCheckClient) List(ctx context.Context, in *grpc_health_v1.HealthListRequest, opts ...grpc.CallOption) (*grpc_health_v1.HealthListResponse, error) {
+	if _, err := m.Check(ctx, &grpc_health_v1.HealthCheckRequest{}, opts...); err != nil {
+		return nil, err
+	}
+	return &grpc_health_v1.HealthListResponse{}, nil
+}
+
 func (m *maelstromHealthCheckClientStream) Recv() (*grpc_health_v1.HealthCheckResponse, error) {
 	if !m.sentFirst {
 		m.sentFirst = true
