@@ -18,6 +18,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+	"github.com/streamnative/oxia/cmd/client/proofs"
 
 	"github.com/streamnative/oxia/cmd/client/common"
 	"github.com/streamnative/oxia/cmd/client/del"
@@ -52,4 +53,6 @@ func init() {
 	Cmd.AddCommand(rangescan.Cmd)
 	Cmd.AddCommand(deleterange.Cmd)
 	Cmd.AddCommand(notifications.Cmd)
+
+	Cmd.AddCommand(proofs.Cmd)
 }

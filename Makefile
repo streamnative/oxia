@@ -96,8 +96,3 @@ license-check:
 license-format:
 	@command -v go-license > /dev/null || go install github.com/palantir/go-license@latest
 	find . -type f -name '*.go' | grep -v '.pb.go' | xargs go-license --config=.github/license.yml
-
-
-.PHONY: build-proof
-build-proof:
-	go build -v -o ./proofs/bin/oxia-proof ./proofs/cmd
