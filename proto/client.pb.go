@@ -2751,8 +2751,8 @@ var file_client_proto_depIdxs = []int32{
 	6,  // 23: io.streamnative.oxia.proto.ShardAssignments.NamespacesEntry.value:type_name -> io.streamnative.oxia.proto.NamespaceShardsAssignment
 	35, // 24: io.streamnative.oxia.proto.NotificationBatch.NotificationsEntry.value:type_name -> io.streamnative.oxia.proto.Notification
 	4,  // 25: io.streamnative.oxia.proto.OxiaClient.GetShardAssignments:input_type -> io.streamnative.oxia.proto.ShardAssignmentsRequest
-	9,  // 26: io.streamnative.oxia.proto.OxiaClient.Write:input_type -> io.streamnative.oxia.proto.WriteRequest
-	9,  // 27: io.streamnative.oxia.proto.OxiaClient.WriteStream:input_type -> io.streamnative.oxia.proto.WriteRequest
+	9,  // 26: io.streamnative.oxia.proto.OxiaClient.WriteBlock:input_type -> io.streamnative.oxia.proto.WriteRequest
+	9,  // 27: io.streamnative.oxia.proto.OxiaClient.Write:input_type -> io.streamnative.oxia.proto.WriteRequest
 	11, // 28: io.streamnative.oxia.proto.OxiaClient.Read:input_type -> io.streamnative.oxia.proto.ReadRequest
 	22, // 29: io.streamnative.oxia.proto.OxiaClient.List:input_type -> io.streamnative.oxia.proto.ListRequest
 	24, // 30: io.streamnative.oxia.proto.OxiaClient.RangeScan:input_type -> io.streamnative.oxia.proto.RangeScanRequest
@@ -2761,8 +2761,8 @@ var file_client_proto_depIdxs = []int32{
 	29, // 33: io.streamnative.oxia.proto.OxiaClient.KeepAlive:input_type -> io.streamnative.oxia.proto.SessionHeartbeat
 	31, // 34: io.streamnative.oxia.proto.OxiaClient.CloseSession:input_type -> io.streamnative.oxia.proto.CloseSessionRequest
 	5,  // 35: io.streamnative.oxia.proto.OxiaClient.GetShardAssignments:output_type -> io.streamnative.oxia.proto.ShardAssignments
-	10, // 36: io.streamnative.oxia.proto.OxiaClient.Write:output_type -> io.streamnative.oxia.proto.WriteResponse
-	10, // 37: io.streamnative.oxia.proto.OxiaClient.WriteStream:output_type -> io.streamnative.oxia.proto.WriteResponse
+	10, // 36: io.streamnative.oxia.proto.OxiaClient.WriteBlock:output_type -> io.streamnative.oxia.proto.WriteResponse
+	10, // 37: io.streamnative.oxia.proto.OxiaClient.Write:output_type -> io.streamnative.oxia.proto.WriteResponse
 	12, // 38: io.streamnative.oxia.proto.OxiaClient.Read:output_type -> io.streamnative.oxia.proto.ReadResponse
 	23, // 39: io.streamnative.oxia.proto.OxiaClient.List:output_type -> io.streamnative.oxia.proto.ListResponse
 	25, // 40: io.streamnative.oxia.proto.OxiaClient.RangeScan:output_type -> io.streamnative.oxia.proto.RangeScanResponse

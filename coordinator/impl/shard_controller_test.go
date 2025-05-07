@@ -131,7 +131,7 @@ func TestShardController(t *testing.T) {
 		Ensemble: []model.Server{s1, s2, s3},
 	}, rpc, coordinator)
 
-	// Shard controller should initiate a leader election
+	// ShardID controller should initiate a leader election
 	// and newTerm each server
 	rpc.GetNode(s1).NewTermResponse(1, 0, nil)
 	rpc.GetNode(s2).NewTermResponse(1, -1, nil)
@@ -240,7 +240,7 @@ func TestShardController_NewTermWithNonRespondingServer(t *testing.T) {
 
 	rpc.GetNode(s1).BecomeLeaderResponse(nil)
 
-	// Shard controller should initiate a leader election
+	// ShardID controller should initiate a leader election
 	// and newTerm each server
 	rpc.GetNode(s1).NewTermResponse(1, 0, nil)
 	rpc.GetNode(s2).NewTermResponse(1, -1, nil)
@@ -404,7 +404,7 @@ func TestShardController_NotificationsDisabled(t *testing.T) {
 		Ensemble: []model.Server{s1, s2, s3},
 	}, rpc, coordinator)
 
-	// Shard controller should initiate a leader election
+	// ShardID controller should initiate a leader election
 	// and newTerm each server
 	rpc.GetNode(s1).NewTermResponse(1, 0, nil)
 	rpc.GetNode(s2).NewTermResponse(1, -1, nil)

@@ -242,7 +242,7 @@ func (m *maelstromGrpcProvider) HandleClientRequest(msgType MsgType, msg any) {
 			return
 		}
 
-		// Write it back with conditional write
+		// WriteBlock it back with conditional write
 		if writeRes, err := m.getService(oxiaClient).(proto.OxiaClientServer).Write(context.Background(), &proto.WriteRequest{
 			Shard: pb.Int64(0),
 			Puts: []*proto.PutRequest{{

@@ -4469,7 +4469,7 @@ func (m *ShardAssignment) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ShardID", wireType)
 			}
 			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
@@ -4683,7 +4683,7 @@ func (m *WriteRequest) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ShardID", wireType)
 			}
 			var v int64
 			for shift := uint(0); ; shift += 7 {
@@ -5009,7 +5009,7 @@ func (m *ReadRequest) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ShardID", wireType)
 			}
 			var v int64
 			for shift := uint(0); ; shift += 7 {
@@ -6439,7 +6439,7 @@ func (m *ListRequest) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ShardID", wireType)
 			}
 			var v int64
 			for shift := uint(0); ; shift += 7 {
@@ -6690,7 +6690,7 @@ func (m *RangeScanRequest) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ShardID", wireType)
 			}
 			var v int64
 			for shift := uint(0); ; shift += 7 {
@@ -7105,7 +7105,7 @@ func (m *CreateSessionRequest) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ShardID", wireType)
 			}
 			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
@@ -7296,7 +7296,7 @@ func (m *SessionHeartbeat) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ShardID", wireType)
 			}
 			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
@@ -7436,7 +7436,7 @@ func (m *CloseSessionRequest) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ShardID", wireType)
 			}
 			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
@@ -7576,7 +7576,7 @@ func (m *NotificationsRequest) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ShardID", wireType)
 			}
 			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
@@ -7666,7 +7666,7 @@ func (m *NotificationBatch) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ShardID", wireType)
 			}
 			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
@@ -8392,7 +8392,7 @@ func (m *ShardAssignment) UnmarshalVTUnsafe(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ShardID", wireType)
 			}
 			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
@@ -8610,7 +8610,7 @@ func (m *WriteRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ShardID", wireType)
 			}
 			var v int64
 			for shift := uint(0); ; shift += 7 {
@@ -8936,7 +8936,7 @@ func (m *ReadRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ShardID", wireType)
 			}
 			var v int64
 			for shift := uint(0); ; shift += 7 {
@@ -10404,7 +10404,7 @@ func (m *ListRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ShardID", wireType)
 			}
 			var v int64
 			for shift := uint(0); ; shift += 7 {
@@ -10671,7 +10671,7 @@ func (m *RangeScanRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ShardID", wireType)
 			}
 			var v int64
 			for shift := uint(0); ; shift += 7 {
@@ -11102,7 +11102,7 @@ func (m *CreateSessionRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ShardID", wireType)
 			}
 			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
@@ -11297,7 +11297,7 @@ func (m *SessionHeartbeat) UnmarshalVTUnsafe(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ShardID", wireType)
 			}
 			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
@@ -11437,7 +11437,7 @@ func (m *CloseSessionRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ShardID", wireType)
 			}
 			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
@@ -11577,7 +11577,7 @@ func (m *NotificationsRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ShardID", wireType)
 			}
 			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
@@ -11667,7 +11667,7 @@ func (m *NotificationBatch) UnmarshalVTUnsafe(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ShardID", wireType)
 			}
 			m.Shard = 0
 			for shift := uint(0); ; shift += 7 {
