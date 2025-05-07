@@ -36,7 +36,7 @@ type Once[T any] struct {
 
 // Complete is called to notify that the operation has completed successfully with the result 't'.
 // It ensures that the 'OnComplete' callback is only called once.
-func (c *Once[T]) Complete(t T) {
+func (c *Once[T]) OnComplete(t T) {
 	if !c.completed.CompareAndSwap(false, true) {
 		return
 	}
@@ -45,7 +45,7 @@ func (c *Once[T]) Complete(t T) {
 
 // CompleteError is called to notify that the operation has failed with an error 'err'.
 // It ensures that the 'OnCompleteError' callback is only called once.
-func (c *Once[T]) CompleteError(err error) {
+func (c *Once[T]) OnCompleteError(err error) {
 	if !c.completed.CompareAndSwap(false, true) {
 		return
 	}

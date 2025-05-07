@@ -42,7 +42,7 @@ func TestShardsDirector_DeleteShardLeader(t *testing.T) {
 		FollowerMaps:      nil,
 	})
 
-	_, err := lc.Write(context.Background(), &proto.WriteRequest{
+	_, err := lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard: &shard,
 		Puts:  []*proto.PutRequest{{Key: "k1", Value: []byte("hello")}},
 	})

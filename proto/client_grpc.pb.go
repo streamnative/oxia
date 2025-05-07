@@ -119,7 +119,7 @@ func (x *oxiaClientGetShardAssignmentsClient) Recv() (*ShardAssignments, error) 
 
 func (c *oxiaClientClient) Write(ctx context.Context, in *WriteRequest, opts ...grpc.CallOption) (*WriteResponse, error) {
 	out := new(WriteResponse)
-	err := c.cc.Invoke(ctx, "/io.streamnative.oxia.proto.OxiaClient/Write", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/io.streamnative.oxia.proto.OxiaClient/WriteBlock", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +127,7 @@ func (c *oxiaClientClient) Write(ctx context.Context, in *WriteRequest, opts ...
 }
 
 func (c *oxiaClientClient) WriteStream(ctx context.Context, opts ...grpc.CallOption) (OxiaClient_WriteStreamClient, error) {
-	stream, err := c.cc.NewStream(ctx, &OxiaClient_ServiceDesc.Streams[1], "/io.streamnative.oxia.proto.OxiaClient/WriteStream", opts...)
+	stream, err := c.cc.NewStream(ctx, &OxiaClient_ServiceDesc.Streams[1], "/io.streamnative.oxia.proto.OxiaClient/Write", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -412,10 +412,10 @@ func (UnimplementedOxiaClientServer) GetShardAssignments(*ShardAssignmentsReques
 	return status.Errorf(codes.Unimplemented, "method GetShardAssignments not implemented")
 }
 func (UnimplementedOxiaClientServer) Write(context.Context, *WriteRequest) (*WriteResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Write not implemented")
+	return nil, status.Errorf(codes.Unimplemented, "method WriteBlock not implemented")
 }
 func (UnimplementedOxiaClientServer) WriteStream(OxiaClient_WriteStreamServer) error {
-	return status.Errorf(codes.Unimplemented, "method WriteStream not implemented")
+	return status.Errorf(codes.Unimplemented, "method Write not implemented")
 }
 func (UnimplementedOxiaClientServer) Read(*ReadRequest, OxiaClient_ReadServer) error {
 	return status.Errorf(codes.Unimplemented, "method Read not implemented")
@@ -485,7 +485,7 @@ func _OxiaClient_Write_Handler(srv interface{}, ctx context.Context, dec func(in
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/io.streamnative.oxia.proto.OxiaClient/Write",
+		FullMethod: "/io.streamnative.oxia.proto.OxiaClient/WriteBlock",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(OxiaClientServer).Write(ctx, req.(*WriteRequest))
@@ -686,7 +686,7 @@ var OxiaClient_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*OxiaClientServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "Write",
+			MethodName: "WriteBlock",
 			Handler:    _OxiaClient_Write_Handler,
 		},
 		{
@@ -709,7 +709,7 @@ var OxiaClient_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 		{
-			StreamName:    "WriteStream",
+			StreamName:    "Write",
 			Handler:       _OxiaClient_WriteStream_Handler,
 			ServerStreams: true,
 			ClientStreams: true,

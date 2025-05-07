@@ -98,7 +98,7 @@ func TestFollower(t *testing.T) {
 
 	assert.EqualValues(t, 0, response.Offset)
 
-	// Write next entry
+	// WriteBlock next entry
 	stream.AddRequest(createAddRequest(t, 1, 1, map[string]string{"a": "4", "b": "5"}, wal.InvalidOffset))
 
 	// Wait for response
@@ -142,7 +142,7 @@ func TestFollower(t *testing.T) {
 	response = stream.GetResponse()
 	assert.Equal(t, proto.ServingStatus_FOLLOWER, fc.Status())
 	assert.EqualValues(t, 0, response.Offset)
-	// Write next entry
+	// WriteBlock next entry
 	stream.AddRequest(createAddRequest(t, 2, 1, map[string]string{"a": "4", "b": "5"}, wal.InvalidOffset))
 
 	// Wait for response
@@ -864,7 +864,7 @@ func TestFollower_DupEntries(t *testing.T) {
 	r2 := stream.GetResponse()
 	assert.EqualValues(t, 0, r2.Offset)
 
-	// Write next entry
+	// WriteBlock next entry
 	stream.AddRequest(createAddRequest(t, 1, 1, map[string]string{"a": "4", "b": "5"}, wal.InvalidOffset))
 	r3 := stream.GetResponse()
 	assert.EqualValues(t, 1, r3.Offset)

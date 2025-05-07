@@ -54,14 +54,14 @@ func Example() {
 	}
 	defer client.Close()
 
-	// Write a record to Oxia with the specified key and value, and with the expectation
+	// WriteBlock a record to Oxia with the specified key and value, and with the expectation
 	// that the record does not already exist.
 	_, res1, err := client.Put(context.Background(), "/my-key", []byte("value-1"), ExpectedRecordNotExists())
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Write a record with the expectation that it has not changed since the previous write.
+	// WriteBlock a record with the expectation that it has not changed since the previous write.
 	// If there was any change, the operation will fail
 	_, _, err = client.Put(context.Background(), "/my-key", []byte("value-2"), ExpectedVersionId(res1.VersionId))
 	if err != nil {
@@ -93,7 +93,7 @@ func ExampleAsyncClient() {
 		log.Fatal(err)
 	}
 
-	// Write a record to Oxia with the specified key and value, and with the expectation
+	// WriteBlock a record to Oxia with the specified key and value, and with the expectation
 	// that the record does not already exist.
 	// The client library will try to batch multiple operations into a single request, to
 	// achieve much better efficiency and performance
