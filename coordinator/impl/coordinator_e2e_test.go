@@ -20,7 +20,6 @@ import (
 	"log/slog"
 	"math"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
