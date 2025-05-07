@@ -499,7 +499,7 @@ func (c *coordinator) startBackgroundActionWorker() { //nolint:revive
 		for {
 			select {
 			case action := <-c.loadBalancer.Action():
-				switch action.Type() { //nolint:revive
+				switch action.Type() { //nolint:revive,gocritic
 				case balancer.SwapNode:
 					var ac *balancer.SwapNodeAction
 					var ok bool
