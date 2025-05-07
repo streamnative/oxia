@@ -37,9 +37,10 @@ import (
 
 const (
 	maxTotalScanBatchCount = 1000
-	maxTotalReadValueSize  = 2 << (10 * 2) // 2Mi
 	maxTotalListKeyCount   = 0             // no limitation
 	maxTotalListKeySize    = 2 << (10 * 2) // 2Mi
+	maxTotalReadCount      = 0
+	maxTotalReadValueSize  = 2 << (10 * 2) // 2Mi
 )
 
 type publicRpcServer struct {
@@ -177,37 +178,27 @@ func (s *publicRpcServer) Read(request *proto.ReadRequest, stream proto.OxiaClie
 		return err
 	}
 
-	ch := lc.Read(stream.Context(), request)
+	ctx := stream.Context()
 
-	response := &proto.ReadResponse{}
-	var totalSize int
+	finish := make(chan error, 1)
+	lc.Read(stream.Context(), request, callback.NewBatchStreamOnce[*proto.GetResponse](maxTotalReadCount, maxTotalReadValueSize,
+		func(result *proto.GetResponse) int { return protowire.SizeBytes(len(result.Value)) },
+		func(container []*proto.GetResponse) error { return stream.Send(&proto.ReadResponse{Gets: container}) },
+		func(err error) { finish <- err },
+	))
 
 	for {
 		select {
-		case result, more := <-ch:
-			if !more {
-				if len(response.Gets) > 0 {
-					if err := stream.Send(response); err != nil {
-						return err
-					}
-				}
-				return nil
+		case err = <-finish:
+			if err != nil {
+				s.log.Warn(
+					"Failed to perform list operation",
+					slog.Any("error", err),
+				)
 			}
-			if result.Err != nil {
-				return result.Err
-			}
-			size := protowire.SizeBytes(len(result.Response.Value))
-			if len(response.Gets) > 0 && totalSize+size > maxTotalReadValueSize {
-				if err := stream.Send(response); err != nil {
-					return err
-				}
-				response = &proto.ReadResponse{}
-				totalSize = 0
-			}
-			response.Gets = append(response.Gets, result.Response)
-			totalSize += size
-		case <-stream.Context().Done():
-			return stream.Context().Err()
+			return err
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
 }
