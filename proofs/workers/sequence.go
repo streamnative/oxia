@@ -47,6 +47,8 @@ func (*sequenceProof) Close() error {
 func (s *sequenceProof) Bootstrap(ctx context.Context) error {
 	s.Info("bootstrap sequence proof worker")
 	limiter := rate.NewLimiter(rate.Limit(s.ratePerSec), 1)
+
+nextPut:
 	for {
 		if err := limiter.Wait(ctx); err != nil {
 			s.Error("unexpected error when wait for rate limiter", slog.Any("error", err))
@@ -77,7 +79,7 @@ func (s *sequenceProof) Bootstrap(ctx context.Context) error {
 				if deltaIndex == 1 { // base delta
 					s.nextBaseDelta.Store(delta)
 				}
-				continue
+				continue nextPut
 			}
 			if delta < expectDelta {
 				return errors.Wrap(proofs.ErrUnexpectedResult, fmt.Sprintf("unexpected sequence key delta: %v   expect: %v  actual: %v", key, expectDelta, delta))
