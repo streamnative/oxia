@@ -34,6 +34,8 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/common/entities"
 )
 
 func Test_Once_Complete_Concurrent(t *testing.T) {
@@ -121,43 +123,43 @@ func Test_Once_Stream_CompleteConcurrent(t *testing.T) {
 }
 
 func Test_Once_Stream_ReadFromStreamCallback(t *testing.T) {
-	dataCh := make(chan int, 10)
-	errCh := make(chan error, 1)
-	callback := ReadFromStreamCallback(dataCh, errCh)
+	ch := make(chan *entities.TWithError[int], 10)
+	callback := ReadFromStreamCallback(ch)
 
 	assert.NoError(t, callback.OnNext(1))
 	assert.NoError(t, callback.OnNext(2))
 	assert.NoError(t, callback.OnNext(3))
 	callback.OnComplete(nil)
 
-	assert.NoError(t, <-errCh)
-	assert.Equal(t, 1, <-dataCh)
-	assert.Equal(t, 2, <-dataCh)
-	assert.Equal(t, 3, <-dataCh)
+	v := <-ch
+	assert.Equal(t, 1, v.T)
+	v = <-ch
+	assert.Equal(t, 2, v.T)
+	v = <-ch
+	assert.Equal(t, 3, v.T)
 
-	_, more := <-dataCh
-	assert.False(t, more)
-	_, more = <-errCh
+	_, more := <-ch
 	assert.False(t, more)
 }
 
 func Test_Once_Stream_ReadFromStreamCallback_Error(t *testing.T) {
-	dataCh := make(chan int, 10)
-	errCh := make(chan error, 1)
-	callback := ReadFromStreamCallback(dataCh, errCh)
+	ch := make(chan *entities.TWithError[int], 10)
+	callback := ReadFromStreamCallback(ch)
 
 	assert.NoError(t, callback.OnNext(1))
 	assert.NoError(t, callback.OnNext(2))
 	assert.NoError(t, callback.OnNext(3))
 	callback.OnComplete(errors.New("error"))
 
-	assert.Equal(t, 1, <-dataCh)
-	assert.Equal(t, 2, <-dataCh)
-	assert.Equal(t, 3, <-dataCh)
-	assert.Error(t, <-errCh)
+	v := <-ch
+	assert.Equal(t, 1, v.T)
+	v = <-ch
+	assert.Equal(t, 2, v.T)
+	v = <-ch
+	assert.Equal(t, 3, v.T)
+	v = <-ch
+	assert.Error(t, v.Err)
 
-	_, more := <-dataCh
-	assert.False(t, more)
-	_, more = <-errCh
+	_, more := <-ch
 	assert.False(t, more)
 }

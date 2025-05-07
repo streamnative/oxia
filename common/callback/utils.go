@@ -14,26 +14,31 @@
 
 package callback
 
+import "github.com/streamnative/oxia/common/entities"
+
 type streamCallbackChannelAdaptor[T any] struct {
-	dataCh chan T
-	errCh  chan error
+	Ch chan *entities.TWithError[T]
 }
 
 func (c *streamCallbackChannelAdaptor[T]) OnNext(t T) error {
-	c.dataCh <- t
+	c.Ch <- &entities.TWithError[T]{
+		T:   t,
+		Err: nil,
+	}
 	return nil
 }
 
 func (c *streamCallbackChannelAdaptor[T]) OnComplete(err error) {
 	if err != nil {
-		c.errCh <- err
+		c.Ch <- &entities.TWithError[T]{
+			Err: err,
+		}
 	}
-	close(c.dataCh)
-	close(c.errCh)
+	close(c.Ch)
 }
 
-func ReadFromStreamCallback[T any](dataCh chan T, errCh chan error) StreamCallback[T] {
-	adaptor := &streamCallbackChannelAdaptor[T]{dataCh: dataCh, errCh: errCh}
+func ReadFromStreamCallback[T any](ch chan *entities.TWithError[T]) StreamCallback[T] {
+	adaptor := &streamCallbackChannelAdaptor[T]{Ch: ch}
 	return NewStreamOnce(adaptor)
 }
 
