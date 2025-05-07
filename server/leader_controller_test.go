@@ -19,11 +19,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/streamnative/oxia/common/channel"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 	pb "google.golang.org/protobuf/proto"
+
+	"github.com/streamnative/oxia/common/channel"
 
 	"github.com/streamnative/oxia/common/entities"
 

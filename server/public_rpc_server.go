@@ -161,7 +161,6 @@ func (s *publicRpcServer) WriteStream(stream proto.OxiaClient_WriteStreamServer)
 	return err
 }
 
-//nolint:revive
 func (s *publicRpcServer) Read(request *proto.ReadRequest, stream proto.OxiaClient_ReadServer) error {
 	s.log.Debug(
 		"Read request",
