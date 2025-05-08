@@ -687,7 +687,6 @@ func prepareTestDb(t *testing.T) kv.Snapshot {
 }
 
 func TestFollower_HandleSnapshot(t *testing.T) {
-	
 	var shardId int64
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.FactoryOptions{
 		DataDir: t.TempDir(),
