@@ -12,24 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package selectors
+package balancer
 
 import (
-	"github.com/pkg/errors"
+	"io"
+
+	"github.com/emirpasic/gods/sets/linkedhashset"
+	"golang.org/x/net/context"
 
 	"github.com/streamnative/oxia/coordinator/model"
 )
 
-var (
-	ErrUnsatisfiedEnsembleReplicas = errors.New("selector: unsatisfied ensemble replicas")
-	ErrUnsatisfiedAntiAffinity     = errors.New("selector: unsatisfied anti-affinity")
-	ErrUnsupportedAntiAffinityMode = errors.New("selector: unsupported anti-affinity mode")
-	ErrNoFunctioning               = errors.New("selector: no functioning selection")
-	ErrMultipleResult              = errors.New("selector: multiple results")
-)
+type Options struct {
+	context.Context
 
-type LoadRatioAlgorithm = func(params *model.RatioParams) *model.Ratio
+	MetadataSupplier         func() map[string]model.ServerMetadata
+	ClusterStatusSupplier    func() *model.ClusterStatus
+	ClusterServerIDsSupplier func() *linkedhashset.Set
+	NamespaceConfigSupplier  func(namespace string) *model.NamespaceConfig
+}
 
-type Selector[O any, R any] interface {
-	Select(o O) (R, error)
+type LoadBalancer interface {
+	io.Closer
+
+	Action() <-chan Action
 }
