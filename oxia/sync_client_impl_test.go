@@ -17,6 +17,7 @@ package oxia
 import (
 	"context"
 	"fmt"
+	"github.com/rs/zerolog/log"
 	"log/slog"
 	"strings"
 	"testing"
@@ -190,6 +191,156 @@ func TestSyncClientImpl_SecondaryIndexesRepeated(t *testing.T) {
 	l, err = client.List(ctx, "I", "d", UseIndex("val-idx"))
 	assert.NoError(t, err)
 	assert.Equal(t, []string{"/i", "/j", "/a", "/b", "/c"}, l)
+
+	assert.NoError(t, client.Close())
+	assert.NoError(t, standaloneServer.Close())
+}
+
+func TestSyncClientImpl_SecondaryIndexes_Get(t *testing.T) {
+	config := server.NewTestConfig(t.TempDir())
+	config.NumShards = 10
+	standaloneServer, err := server.NewStandalone(config)
+	assert.NoError(t, err)
+
+	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())
+	client, err := NewSyncClient(serviceAddress)
+	assert.NoError(t, err)
+
+	// ////////////////////////////////////////////////////////////////////////
+
+	ctx := context.Background()
+	for i := 1; i < 10; i++ {
+		primKey := fmt.Sprintf("%c", 'a'+i)
+		val := fmt.Sprintf("%03d", i)
+		log.Info().
+			Str("key", primKey).
+			Str("value", val).
+			Msg("Adding record")
+		_, _, _ = client.Put(ctx, primKey, []byte(val), SecondaryIndex("val-idx", val))
+	}
+
+	var primaryKey string
+	var val []byte
+	// ////////////////////////////////////////////////////////////////////////
+
+	primaryKey, val, _, err = client.Get(ctx, "000", UseIndex("val-idx"))
+	assert.ErrorIs(t, err, ErrKeyNotFound)
+
+	primaryKey, val, _, err = client.Get(ctx, "001", UseIndex("val-idx"))
+	assert.NoError(t, err)
+	assert.Equal(t, "b", primaryKey)
+	assert.Equal(t, []byte("001"), val)
+
+	primaryKey, val, _, err = client.Get(ctx, "005", UseIndex("val-idx"))
+	assert.NoError(t, err)
+	assert.Equal(t, "f", primaryKey)
+	assert.Equal(t, []byte("005"), val)
+
+	primaryKey, val, _, err = client.Get(ctx, "009", UseIndex("val-idx"))
+	assert.NoError(t, err)
+	assert.Equal(t, "j", primaryKey)
+	assert.Equal(t, []byte("009"), val)
+
+	primaryKey, val, _, err = client.Get(ctx, "999", UseIndex("val-idx"))
+	assert.ErrorIs(t, err, ErrKeyNotFound)
+
+	// ////////////////////////////////////////////////////////////////////////
+
+	primaryKey, val, _, err = client.Get(ctx, "000", UseIndex("val-idx"), ComparisonLower())
+	assert.ErrorIs(t, err, ErrKeyNotFound)
+
+	primaryKey, val, _, err = client.Get(ctx, "001", UseIndex("val-idx"), ComparisonLower())
+	assert.ErrorIs(t, err, ErrKeyNotFound)
+
+	primaryKey, val, _, err = client.Get(ctx, "005", UseIndex("val-idx"), ComparisonLower())
+	assert.NoError(t, err)
+	assert.Equal(t, "e", primaryKey)
+	assert.Equal(t, []byte("004"), val)
+
+	primaryKey, val, _, err = client.Get(ctx, "009", UseIndex("val-idx"), ComparisonLower())
+	assert.NoError(t, err)
+	assert.Equal(t, "i", primaryKey)
+	assert.Equal(t, []byte("008"), val)
+
+	primaryKey, val, _, err = client.Get(ctx, "999", UseIndex("val-idx"), ComparisonLower())
+	assert.NoError(t, err)
+	assert.Equal(t, "j", primaryKey)
+	assert.Equal(t, []byte("009"), val)
+
+	// ////////////////////////////////////////////////////////////////////////
+
+	primaryKey, val, _, err = client.Get(ctx, "000", UseIndex("val-idx"), ComparisonFloor())
+	assert.ErrorIs(t, err, ErrKeyNotFound)
+
+	primaryKey, val, _, err = client.Get(ctx, "001", UseIndex("val-idx"), ComparisonFloor())
+	assert.NoError(t, err)
+	assert.Equal(t, "b", primaryKey)
+	assert.Equal(t, []byte("001"), val)
+
+	primaryKey, val, _, err = client.Get(ctx, "005", UseIndex("val-idx"), ComparisonFloor())
+	assert.NoError(t, err)
+	assert.Equal(t, "f", primaryKey)
+	assert.Equal(t, []byte("005"), val)
+
+	primaryKey, val, _, err = client.Get(ctx, "009", UseIndex("val-idx"), ComparisonFloor())
+	assert.NoError(t, err)
+	assert.Equal(t, "j", primaryKey)
+	assert.Equal(t, []byte("009"), val)
+
+	primaryKey, val, _, err = client.Get(ctx, "999", UseIndex("val-idx"), ComparisonFloor())
+	assert.NoError(t, err)
+	assert.Equal(t, "j", primaryKey)
+	assert.Equal(t, []byte("009"), val)
+
+	// ////////////////////////////////////////////////////////////////////////
+
+	primaryKey, val, _, err = client.Get(ctx, "000", UseIndex("val-idx"), ComparisonHigher())
+	assert.NoError(t, err)
+	assert.Equal(t, "b", primaryKey)
+	assert.Equal(t, []byte("001"), val)
+
+	primaryKey, val, _, err = client.Get(ctx, "001", UseIndex("val-idx"), ComparisonHigher())
+	assert.NoError(t, err)
+	assert.Equal(t, "c", primaryKey)
+	assert.Equal(t, []byte("002"), val)
+
+	primaryKey, val, _, err = client.Get(ctx, "005", UseIndex("val-idx"), ComparisonHigher())
+	assert.NoError(t, err)
+	assert.Equal(t, "g", primaryKey)
+	assert.Equal(t, []byte("006"), val)
+
+	primaryKey, val, _, err = client.Get(ctx, "009", UseIndex("val-idx"), ComparisonHigher())
+	assert.ErrorIs(t, err, ErrKeyNotFound)
+
+	primaryKey, val, _, err = client.Get(ctx, "999", UseIndex("val-idx"), ComparisonHigher())
+	assert.ErrorIs(t, err, ErrKeyNotFound)
+
+	// ////////////////////////////////////////////////////////////////////////
+
+	primaryKey, val, _, err = client.Get(ctx, "000", UseIndex("val-idx"), ComparisonCeiling())
+	assert.NoError(t, err)
+	assert.Equal(t, "b", primaryKey)
+	assert.Equal(t, []byte("001"), val)
+
+	primaryKey, val, _, err = client.Get(ctx, "001", UseIndex("val-idx"), ComparisonCeiling())
+	assert.NoError(t, err)
+	assert.Equal(t, "b", primaryKey)
+	assert.Equal(t, []byte("001"), val)
+
+	primaryKey, val, _, err = client.Get(ctx, "005", UseIndex("val-idx"), ComparisonCeiling())
+	assert.NoError(t, err)
+	assert.Equal(t, "f", primaryKey)
+	assert.Equal(t, []byte("005"), val)
+
+	primaryKey, val, _, err = client.Get(ctx, "009", UseIndex("val-idx"), ComparisonCeiling())
+	assert.NoError(t, err)
+	assert.Equal(t, "j", primaryKey)
+	assert.Equal(t, []byte("009"), val)
+
+	primaryKey, val, _, err = client.Get(ctx, "999", UseIndex("val-idx"), ComparisonCeiling())
+	assert.ErrorIs(t, err, ErrKeyNotFound)
+
+	// ////////////////////////////////////////////////////////////////////////
 
 	assert.NoError(t, client.Close())
 	assert.NoError(t, standaloneServer.Close())

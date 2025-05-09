@@ -234,10 +234,12 @@ func (c *clientImpl) Get(key string, options ...GetOption) <-chan GetResult {
 	ch := make(chan GetResult)
 
 	opts := newGetOptions(options)
-	if opts.comparisonType == proto.KeyComparisonType_EQUAL || opts.partitionKey != nil {
-		c.doSingleShardGet(key, opts, ch)
+	if opts.partitionKey == nil && //
+		(opts.comparisonType != proto.KeyComparisonType_EQUAL ||
+			opts.secondaryIndexName != nil) {
+		c.doMultiShardGet(key, opts, ch)
 	} else {
-		c.doFloorCeilingGet(key, opts, ch)
+		c.doSingleShardGet(key, opts, ch)
 	}
 
 	return ch
@@ -246,9 +248,10 @@ func (c *clientImpl) Get(key string, options ...GetOption) <-chan GetResult {
 func (c *clientImpl) doSingleShardGet(key string, opts *getOptions, ch chan GetResult) {
 	shardId := c.getShardForKey(key, opts)
 	c.readBatchManager.Get(shardId).Add(model.GetCall{
-		Key:            key,
-		ComparisonType: opts.comparisonType,
-		IncludeValue:   opts.includeValue,
+		Key:                key,
+		ComparisonType:     opts.comparisonType,
+		IncludeValue:       opts.includeValue,
+		SecondaryIndexName: opts.secondaryIndexName,
 		Callback: func(response *proto.GetResponse, err error) {
 			ch <- toGetResult(response, key, err)
 			close(ch)
@@ -257,7 +260,7 @@ func (c *clientImpl) doSingleShardGet(key string, opts *getOptions, ch chan GetR
 }
 
 // The keys might get hashed to multiple shards, so we have to check on all shards and then compare the results.
-func (c *clientImpl) doFloorCeilingGet(key string, options *getOptions, ch chan GetResult) {
+func (c *clientImpl) doMultiShardGet(key string, options *getOptions, ch chan GetResult) {
 	m := sync.Mutex{}
 	var results []*proto.GetResponse
 	shards := c.shardManager.GetAll()
@@ -265,9 +268,10 @@ func (c *clientImpl) doFloorCeilingGet(key string, options *getOptions, ch chan 
 
 	for _, shardId := range shards {
 		c.readBatchManager.Get(shardId).Add(model.GetCall{
-			Key:            key,
-			ComparisonType: options.comparisonType,
-			IncludeValue:   options.includeValue,
+			Key:                key,
+			ComparisonType:     options.comparisonType,
+			IncludeValue:       options.includeValue,
+			SecondaryIndexName: options.secondaryIndexName,
 			Callback: func(response *proto.GetResponse, err error) {
 				m.Lock()
 				defer m.Unlock()
@@ -278,7 +282,7 @@ func (c *clientImpl) doFloorCeilingGet(key string, options *getOptions, ch chan 
 					counter = 0
 				}
 
-				if response.Status == proto.Status_OK {
+				if response != nil && response.Status == proto.Status_OK {
 					results = append(results, response)
 				}
 
@@ -292,20 +296,25 @@ func (c *clientImpl) doFloorCeilingGet(key string, options *getOptions, ch chan 
 	}
 }
 
-func processAllGetResponses(key string, results []*proto.GetResponse, comparisonType proto.KeyComparisonType, ch chan GetResult) {
-	var selected *proto.GetResponse
+var keyNotFound = &proto.GetResponse{
+	Status: proto.Status_KEY_NOT_FOUND,
+}
 
-	if len(results) == 0 {
-		// We haven't found the key on any shard
-		selected = &proto.GetResponse{
-			Status: proto.Status_KEY_NOT_FOUND,
-		}
-	} else {
+func processAllGetResponses(originalKey string, results []*proto.GetResponse, comparisonType proto.KeyComparisonType, ch chan GetResult) {
+	selected := keyNotFound
+
+	if len(results) > 0 {
 		slices.SortFunc(results, func(a, b *proto.GetResponse) int {
-			return compare.CompareWithSlash([]byte(a.GetKey()), []byte(b.GetKey()))
+			if a.SecondaryIndexKey != nil && b.SecondaryIndexKey != nil {
+				return compare.CompareWithSlash([]byte(a.GetSecondaryIndexKey()), []byte(b.GetSecondaryIndexKey()))
+			} else {
+				return compare.CompareWithSlash([]byte(a.GetKey()), []byte(b.GetKey()))
+			}
 		})
 
 		switch comparisonType {
+		case proto.KeyComparisonType_EQUAL:
+			selected = results[len(results)-1]
 		case proto.KeyComparisonType_FLOOR:
 			selected = results[len(results)-1]
 		case proto.KeyComparisonType_LOWER:
@@ -317,7 +326,7 @@ func processAllGetResponses(key string, results []*proto.GetResponse, comparison
 		}
 	}
 
-	ch <- toGetResult(selected, key, nil)
+	ch <- toGetResult(selected, originalKey, nil)
 	close(ch)
 }
 

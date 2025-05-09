@@ -598,7 +598,14 @@ func (lc *leaderController) Read(ctx context.Context, request *proto.ReadRequest
 			for _, get := range request.Gets {
 				var response *proto.GetResponse
 				var err error
-				if response, err = lc.db.Get(get); err != nil {
+
+				if get.SecondaryIndexName != nil {
+					response, err = secondaryIndexGet(get, lc.db)
+				} else {
+					response, err = lc.db.Get(get)
+				}
+
+				if err != nil {
 					cb.OnComplete(err)
 					return
 				}
