@@ -108,6 +108,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 				ModifiedTimestamp:  time.UnixMilli(int64(version.ModifiedTimestamp)),
 				ModificationsCount: version.ModificationsCount,
 				Ephemeral:          version.Ephemeral,
+				SessionId:          version.SessionId,
 				ClientIdentity:     version.ClientIdentity,
 			})
 		}
