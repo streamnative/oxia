@@ -16,6 +16,7 @@ package wal
 
 import (
 	"github.com/spf13/cobra"
+	"github.com/streamnative/oxia/cmd/wal/scan"
 
 	"github.com/streamnative/oxia/cmd/wal/common"
 	"github.com/streamnative/oxia/cmd/wal/perf"
@@ -33,17 +34,12 @@ var (
 func init() {
 	Cmd.PersistentFlags().Int64Var(&common.WalOption.Shard, "shard", 0, "shard id")
 	Cmd.PersistentFlags().StringVar(&common.WalOption.Namespace, "namespace", "default", "namespace name")
-	Cmd.PersistentFlags().StringVar(&common.WalOption.WalDir, "wal-dir", "", "directory path")
+	Cmd.PersistentFlags().StringVar(&common.WalOption.WalDir, "wal-dir", "data/wal", "directory path")
 	Cmd.AddCommand(truncate.Cmd)
 	Cmd.AddCommand(perf.Cmd)
+	Cmd.AddCommand(scan.Cmd)
 
-	if err := Cmd.MarkPersistentFlagRequired("wal-dir"); err != nil {
-		panic(err)
-	}
 	if err := Cmd.MarkPersistentFlagRequired("shard"); err != nil {
-		panic(err)
-	}
-	if err := Cmd.MarkPersistentFlagRequired("namespace"); err != nil {
 		panic(err)
 	}
 }
