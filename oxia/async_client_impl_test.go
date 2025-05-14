@@ -17,11 +17,12 @@ package oxia
 import (
 	"context"
 	"fmt"
-	"github.com/rs/zerolog/log"
 	"log/slog"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"

@@ -218,15 +218,15 @@ func (it *secondaryIndexListIterator) Key() string {
 	return primaryKey
 }
 
-func (it *secondaryIndexListIterator) Prev() bool {
+func (*secondaryIndexListIterator) Prev() bool {
 	panic("not supported")
 }
 
-func (it *secondaryIndexListIterator) SeekGE(key string) bool {
+func (*secondaryIndexListIterator) SeekGE(string) bool {
 	panic("not supported")
 }
 
-func (it *secondaryIndexListIterator) SeekLT(key string) bool {
+func (*secondaryIndexListIterator) SeekLT(string) bool {
 	panic("not supported")
 }
 
