@@ -76,6 +76,8 @@ type DB interface {
 	Get(request *proto.GetRequest) (*proto.GetResponse, error)
 	List(request *proto.ListRequest) (KeyIterator, error)
 	RangeScan(request *proto.RangeScanRequest) (RangeScanIterator, error)
+	KeyIterator() (KeyIterator, error)
+
 	ReadCommitOffset() (int64, error)
 
 	ReadNextNotifications(ctx context.Context, startOffset int64) ([]*proto.NotificationBatch, error)
@@ -369,6 +371,10 @@ func (d *db) RangeScan(request *proto.RangeScanRequest) (RangeScanIterator, erro
 	}, nil
 }
 
+func (d *db) KeyIterator() (KeyIterator, error) {
+	return d.kv.KeyIterator()
+}
+
 func (d *db) ReadCommitOffset() (int64, error) {
 	return d.readASCIILong(commitOffsetKey)
 }
@@ -470,7 +476,7 @@ func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *pr
 	var err error
 	var newKey string
 	if len(putReq.GetSequenceKeyDelta()) > 0 {
-		newKey, err = generateUniqueKeyFromSequences(batch, putReq)
+		newKey, err = generateUniqueKeyFromSequences(d, batch, putReq)
 		putReq.Key = newKey
 	} else if !internal {
 		se, err = checkExpectedVersionId(batch, putReq.Key, putReq.ExpectedVersionId)

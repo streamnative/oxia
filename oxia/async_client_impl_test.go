@@ -17,6 +17,7 @@ package oxia
 import (
 	"context"
 	"fmt"
+	"github.com/rs/zerolog/log"
 	"log/slog"
 	"sync/atomic"
 	"testing"
@@ -959,4 +960,36 @@ func TestGetWithoutValue(t *testing.T) {
 	result = <-client.Get(keys[1], PartitionKey(key), IncludeValue(false), ComparisonLower())
 	assert.Nil(t, result.Value)
 	assert.Equal(t, result.Key, keys[0])
+}
+
+func TestSyncClientImpl_SequentialKeysIssue(t *testing.T) {
+	config := server.NewTestConfig(t.TempDir())
+	standaloneServer, err := server.NewStandalone(config)
+	assert.NoError(t, err)
+
+	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())
+	client, err := NewAsyncClient(serviceAddress)
+	assert.NoError(t, err)
+
+	for i := 0; i < 10; i++ {
+		if i == 5 {
+			_ = client.Put("/abc", []byte("0"),
+				PartitionKey("x"))
+		}
+
+		ch := client.Put("x", []byte("0"),
+			PartitionKey("x"),
+			SequenceKeysDeltas(1))
+
+		pr := <-ch
+		assert.NoError(t, pr.Err)
+		log.Info().
+			Str("key", pr.Key).
+			Msg("Inserted")
+
+		assert.Equal(t, fmt.Sprintf("x-%020d", i+1), pr.Key)
+	}
+
+	assert.NoError(t, client.Close())
+	assert.NoError(t, standaloneServer.Close())
 }

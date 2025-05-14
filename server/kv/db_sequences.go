@@ -26,7 +26,7 @@ import (
 
 const maxSequence = uint64(math.MaxUint64)
 
-func generateUniqueKeyFromSequences(batch WriteBatch, req *proto.PutRequest) (string, error) {
+func generateUniqueKeyFromSequences(db DB, batch WriteBatch, req *proto.PutRequest) (string, error) {
 	if req.PartitionKey == nil {
 		// All the keys need to be in same shard to guarantee atomicity
 		return "", ErrMissingPartitionKey
@@ -37,7 +37,7 @@ func generateUniqueKeyFromSequences(batch WriteBatch, req *proto.PutRequest) (st
 		return "", ErrBadVersionId
 	}
 
-	parts, err := findCurrentLastKeyInSequence(batch, req)
+	parts, err := findCurrentLastKeyInSequence(db, batch, req)
 	if err != nil {
 		return "", err
 	}
@@ -67,7 +67,7 @@ func generateUniqueKeyFromSequences(batch WriteBatch, req *proto.PutRequest) (st
 	return newKey, nil
 }
 
-func findCurrentLastKeyInSequence(wb WriteBatch, req *proto.PutRequest) ([]string, error) {
+func findCurrentLastKeyInSequence(db DB, wb WriteBatch, req *proto.PutRequest) ([]string, error) {
 	prefixKey := req.Key
 	maxKey := fmt.Sprintf("%s-%020d", prefixKey, maxSequence)
 	lastKeyInSequence, err := wb.FindLower(maxKey)
@@ -75,11 +75,27 @@ func findCurrentLastKeyInSequence(wb WriteBatch, req *proto.PutRequest) ([]strin
 		return nil, err
 	}
 
-	if errors.Is(err, ErrKeyNotFound) || !strings.HasPrefix(lastKeyInSequence, prefixKey) {
+	if errors.Is(err, ErrKeyNotFound) {
 		lastKeyInSequence = ""
-	} else {
-		lastKeyInSequence = strings.TrimPrefix(lastKeyInSequence, prefixKey)
+	} else if !strings.HasPrefix(lastKeyInSequence, prefixKey) {
+		// If we found a different key in the batch, we still need to check in the database
+		lastKeyInSequence = ""
+		it, err := db.KeyIterator()
+		if err != nil {
+			return nil, err
+		}
+
+		if it.SeekLT(maxKey) {
+			lastKeyInSequence = it.Key()
+			if !strings.HasPrefix(lastKeyInSequence, prefixKey) {
+				lastKeyInSequence = ""
+			}
+		}
+
+		_ = it.Close()
 	}
+
+	lastKeyInSequence = strings.TrimPrefix(lastKeyInSequence, prefixKey)
 
 	parts := strings.Split(lastKeyInSequence, "-")[1:]
 	if len(parts) > len(req.SequenceKeyDelta) {

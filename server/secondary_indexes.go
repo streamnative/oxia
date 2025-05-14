@@ -218,6 +218,18 @@ func (it *secondaryIndexListIterator) Key() string {
 	return primaryKey
 }
 
+func (it *secondaryIndexListIterator) Prev() bool {
+	panic("not supported")
+}
+
+func (it *secondaryIndexListIterator) SeekGE(key string) bool {
+	panic("not supported")
+}
+
+func (it *secondaryIndexListIterator) SeekLT(key string) bool {
+	panic("not supported")
+}
+
 func (it *secondaryIndexListIterator) Next() bool {
 	return it.it.Next()
 }
