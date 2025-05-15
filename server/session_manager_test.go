@@ -24,6 +24,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	pb "google.golang.org/protobuf/proto"
 
+	"github.com/streamnative/oxia/common/callback"
+	"github.com/streamnative/oxia/common/channel"
+	"github.com/streamnative/oxia/common/entities"
+
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/kv"
@@ -405,7 +409,8 @@ func TestMultipleSessionsExpiry(t *testing.T) {
 		return getSessionMetadata(t, lc, sessionId2) == nil
 	}, 10*time.Second, 30*time.Millisecond)
 
-	readCh := lc.Read(context.Background(), &proto.ReadRequest{
+	responses := make(chan *entities.TWithError[*proto.GetResponse], 1000)
+	lc.Read(context.Background(), &proto.ReadRequest{
 		Shard: &shardId,
 		Gets: []*proto.GetRequest{{
 			Key:          "/ephemeral-1",
@@ -414,26 +419,24 @@ func TestMultipleSessionsExpiry(t *testing.T) {
 			Key:          "/ephemeral-2",
 			IncludeValue: true,
 		}},
-	})
+	}, callback.ReadFromStreamCallback(responses))
+	results, err := channel.ReadAll[*proto.GetResponse](context.Background(), responses) // Read entry a
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(results))
 
 	// ephemeral-1
-	rr, ok := <-readCh
-	assert.True(t, ok)
-	assert.NoError(t, rr.Err)
-	assert.Equal(t, proto.Status_OK, rr.Response.Status)
+	assert.Equal(t, proto.Status_OK, results[0].Status)
 
 	// ephemeral-2
-	rr, ok = <-readCh
-	assert.True(t, ok)
-	assert.NoError(t, rr.Err)
-	assert.Equal(t, proto.Status_KEY_NOT_FOUND, rr.Response.Status)
+	assert.Equal(t, proto.Status_KEY_NOT_FOUND, results[1].Status)
 
 	// Now Let session-1 expire and verify its key was deleted
 	assert.Eventually(t, func() bool {
 		return getSessionMetadata(t, lc, sessionId1) == nil
 	}, 10*time.Second, 30*time.Millisecond)
 
-	readCh = lc.Read(context.Background(), &proto.ReadRequest{
+	responses = make(chan *entities.TWithError[*proto.GetResponse], 1000)
+	lc.Read(context.Background(), &proto.ReadRequest{
 		Shard: &shardId,
 		Gets: []*proto.GetRequest{{
 			Key:          "/ephemeral-1",
@@ -442,19 +445,15 @@ func TestMultipleSessionsExpiry(t *testing.T) {
 			Key:          "/ephemeral-2",
 			IncludeValue: true,
 		}},
-	})
-
+	}, callback.ReadFromStreamCallback(responses))
+	results, err = channel.ReadAll[*proto.GetResponse](context.Background(), responses)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(results))
 	// ephemeral-1
-	rr, ok = <-readCh
-	assert.True(t, ok)
-	assert.NoError(t, rr.Err)
-	assert.Equal(t, proto.Status_KEY_NOT_FOUND, rr.Response.Status)
+	assert.Equal(t, proto.Status_KEY_NOT_FOUND, results[0].Status)
 
 	// ephemeral-2
-	rr, ok = <-readCh
-	assert.True(t, ok)
-	assert.NoError(t, rr.Err)
-	assert.Equal(t, proto.Status_KEY_NOT_FOUND, rr.Response.Status)
+	assert.Equal(t, proto.Status_KEY_NOT_FOUND, results[1].Status)
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvf.Close())
