@@ -16,6 +16,9 @@ package compare
 
 import (
 	"bytes"
+	"math"
+
+	"github.com/cockroachdb/pebble"
 )
 
 func CompareWithSlash(a, b []byte) int { //nolint:revive
@@ -50,6 +53,10 @@ func CompareWithSlash(a, b []byte) int { //nolint:revive
 	return 0
 }
 
-func DisableAbbreviatedKey(_ []byte) uint64 {
-	return 0 // disable  abbreviate key
+func AbbreviatedKeyDisableSlash(key []byte) uint64 {
+	slashPosition := bytes.IndexByte(key, '/')
+	if slashPosition != -1 {
+		return math.MaxUint64
+	}
+	return pebble.DefaultComparer.AbbreviatedKey(key)
 }
