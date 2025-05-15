@@ -24,12 +24,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/oxia"
 	"github.com/streamnative/oxia/server"
+	"github.com/stretchr/testify/assert"
 )
 
 func newServer(t *testing.T) (s *server.Server, addr model.Server) {
@@ -710,8 +709,15 @@ func TestCoordinator_ShrinkCluster(t *testing.T) {
 
 	assert.Equal(t, 4, len(c.(*coordinator).getNodeControllers()))
 
-	// Remove s1
-	clusterConfig.Servers = clusterConfig.Servers[1:]
+	// Remove leader server
+	leaderID := c.ClusterStatus().Namespaces["my-ns-1"].Shards[0].Leader.GetIdentifier()
+	d := make([]model.Server, 0)
+	for _, sv := range clusterConfig.Servers {
+		if sv.GetIdentifier() != leaderID {
+			d = append(d, sv)
+		}
+	}
+	clusterConfig.Servers = d
 
 	configChangesCh <- nil
 	assert.Eventually(t, func() bool {
