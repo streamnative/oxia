@@ -39,7 +39,7 @@ var (
 	OxiaSlashSpanComparer = &pebble.Comparer{
 		Compare:            compare.CompareWithSlash,
 		Equal:              pebble.DefaultComparer.Equal,
-		AbbreviatedKey:     pebble.DefaultComparer.AbbreviatedKey,
+		AbbreviatedKey:     compare.DisableAbbreviatedKey,
 		FormatKey:          pebble.DefaultComparer.FormatKey,
 		FormatValue:        pebble.DefaultComparer.FormatValue,
 		Separator:          pebble.DefaultComparer.Separator,

@@ -49,3 +49,7 @@ func CompareWithSlash(a, b []byte) int { //nolint:revive
 
 	return 0
 }
+
+func DisableAbbreviatedKey(_ []byte) uint64 {
+	return 0 // disable  abbreviate key
+}
