@@ -69,18 +69,20 @@ func exec(*cobra.Command, []string) error {
 		SyncData:    false,
 	})
 
-	wal, err := factory.NewWal(common.WalOption.Namespace, common.WalOption.Shard, nil)
+	_wal, err := factory.NewWal(common.WalOption.Namespace, common.WalOption.Shard, nil)
 	if err != nil {
 		return err
 	}
-	defer wal.Close()
+	defer func(_wal wal.Wal) {
+		_ = _wal.Close()
+	}(_wal)
 
 	firstOffset := options.firstOffset
 	if firstOffset < 0 {
-		firstOffset = wal.FirstOffset() - 1
+		firstOffset = _wal.FirstOffset() - 1
 	}
 
-	reader, err := wal.NewReader(firstOffset)
+	reader, err := _wal.NewReader(firstOffset)
 	if err != nil {
 		return err
 	}
