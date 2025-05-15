@@ -25,6 +25,11 @@ type Server struct {
 	Internal string `json:"internal" yaml:"internal"`
 }
 
+type ServerMetadata struct {
+	// Labels represents a key-value map to store metadata associated with a server.
+	Labels map[string]string `json:"labels" yaml:"labels"`
+}
+
 func (sv *Server) GetIdentifier() string {
 	if sv.Name == nil {
 		return sv.Internal

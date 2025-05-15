@@ -39,7 +39,7 @@ func TestUninitializedAssignmentDispatcher(t *testing.T) {
 	assert.False(t, dispatcher.Initialized())
 	req := &proto.ShardAssignmentsRequest{Namespace: common.DefaultNamespace}
 	err := dispatcher.RegisterForUpdates(req, mockClient)
-	assert.ErrorIs(t, err, common.ErrorNotInitialized)
+	assert.ErrorIs(t, err, common.ErrNotInitialized)
 	assert.NoError(t, dispatcher.Close())
 }
 
@@ -315,7 +315,7 @@ func TestShardAssignmentDispatcher_MultipleNamespaces(t *testing.T) {
 	go func() {
 		req := &proto.ShardAssignmentsRequest{Namespace: "non-valid-namespace"}
 		err := dispatcher.RegisterForUpdates(req, mockClient)
-		assert.ErrorIs(t, err, common.ErrorNamespaceNotFound)
+		assert.ErrorIs(t, err, common.ErrNamespaceNotFound)
 		wg.Done()
 	}()
 

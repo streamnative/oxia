@@ -17,6 +17,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -33,7 +34,7 @@ import (
 )
 
 var (
-	ErrNotImplement = fmt.Errorf("not implement")
+	ErrNotImplement = errors.New("not implement")
 )
 
 type maelstromCoordinatorRpcProvider struct {
@@ -241,6 +242,13 @@ func (m *maelstromHealthCheckClient) Watch(ctx context.Context, in *grpc_health_
 	return &maelstromHealthCheckClientStream{
 		ctx: ctx,
 	}, nil
+}
+
+func (m *maelstromHealthCheckClient) List(ctx context.Context, in *grpc_health_v1.HealthListRequest, opts ...grpc.CallOption) (*grpc_health_v1.HealthListResponse, error) {
+	if _, err := m.Check(ctx, &grpc_health_v1.HealthCheckRequest{}, opts...); err != nil {
+		return nil, err
+	}
+	return &grpc_health_v1.HealthListResponse{}, nil
 }
 
 func (m *maelstromHealthCheckClientStream) Recv() (*grpc_health_v1.HealthCheckResponse, error) {

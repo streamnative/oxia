@@ -17,7 +17,6 @@ package impl
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"sync"
 	"testing"
@@ -39,7 +38,7 @@ func init() {
 }
 
 var (
-	ErrNotImplement = fmt.Errorf("not implement")
+	ErrNotImplement = errors.New("not implement")
 )
 
 type mockShardAssignmentsProvider struct {
@@ -508,6 +507,15 @@ func (m *mockHealthClient) Watch(ctx context.Context, in *grpc_health_v1.HealthC
 	m.sendWatchResponse(w)
 	m.watches = append(m.watches, w)
 	return w, nil
+}
+
+func (m *mockHealthClient) List(ctx context.Context, in *grpc_health_v1.HealthListRequest, opts ...grpc.CallOption) (*grpc_health_v1.HealthListResponse, error) {
+	m.Lock()
+	defer m.Unlock()
+	if m.err != nil {
+		return nil, m.err
+	}
+	return &grpc_health_v1.HealthListResponse{}, nil
 }
 
 func (m *mockHealthClient) sendWatchResponse(w *mockHealthWatchClient) {

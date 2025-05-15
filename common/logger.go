@@ -52,7 +52,7 @@ func ParseLogLevel(levelStr string) (slog.Level, error) {
 		return slog.LevelError, nil
 	}
 
-	return slog.LevelInfo, fmt.Errorf("Unknown Level String: '%s', defaulting to LevelInfo", levelStr)
+	return slog.LevelInfo, fmt.Errorf("unknown level string: '%s', defaulting to LevelInfo", levelStr)
 }
 
 func ConfigureLogger() {

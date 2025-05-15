@@ -247,6 +247,15 @@ func (t *wal) closeWithoutLock() error {
 	}
 }
 
+func (t *wal) isClosed() bool {
+	select {
+	case <-t.ctx.Done():
+		return true
+	default:
+		return false
+	}
+}
+
 func (t *wal) Append(entry *proto.LogEntry) error {
 	if err := t.AppendAsync(entry); err != nil {
 		return err
@@ -256,11 +265,18 @@ func (t *wal) Append(entry *proto.LogEntry) error {
 }
 
 func (t *wal) AppendAsync(entry *proto.LogEntry) error {
+	t.Lock()
+	defer t.Unlock()
+	return t.appendAsync0(entry)
+}
+
+func (t *wal) appendAsync0(entry *proto.LogEntry) error {
 	timer := t.appendLatency.Timer()
 	defer timer.Done()
 
-	t.Lock()
-	defer t.Unlock()
+	if t.isClosed() {
+		return common.ErrAlreadyClosed
+	}
 
 	if err := t.checkNextOffset(entry.Offset); err != nil {
 		t.writeErrors.Inc()
@@ -312,11 +328,12 @@ func (t *wal) AppendAsync(entry *proto.LogEntry) error {
 }
 
 func (t *wal) AppendAndSync(entry *proto.LogEntry, callback func(err error)) {
-	if err := t.AppendAsync(entry); err != nil {
+	t.Lock()
+	defer t.Unlock()
+	if err := t.appendAsync0(entry); err != nil {
 		callback(err)
 		return
 	}
-
 	t.doSync(callback)
 }
 
@@ -414,7 +431,7 @@ func (t *wal) Sync(ctx context.Context) error {
 
 func (t *wal) checkNextOffset(nextOffset int64) error {
 	if nextOffset < 0 {
-		return fmt.Errorf("Invalid next offset. %d should be > 0", nextOffset)
+		return fmt.Errorf("invalid next offset. %d should be > 0", nextOffset)
 	}
 
 	lastAppendedOffset := t.lastAppendedOffset.Load()

@@ -257,7 +257,7 @@ func (fc *followerController) NewTerm(req *proto.NewTermRequest) (*proto.NewTerm
 	defer fc.Unlock()
 
 	if fc.isClosed() {
-		return nil, common.ErrorAlreadyClosed
+		return nil, common.ErrAlreadyClosed
 	}
 
 	if req.Term < fc.term {
@@ -266,7 +266,7 @@ func (fc *followerController) NewTerm(req *proto.NewTermRequest) (*proto.NewTerm
 			slog.Int64("follower-term", fc.term),
 			slog.Int64("new-term", req.Term),
 		)
-		return nil, common.ErrorInvalidTerm
+		return nil, common.ErrInvalidTerm
 	}
 
 	if fc.db == nil {
@@ -311,15 +311,15 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 	defer fc.Unlock()
 
 	if fc.isClosed() {
-		return nil, common.ErrorAlreadyClosed
+		return nil, common.ErrAlreadyClosed
 	}
 
 	if fc.status != proto.ServingStatus_FENCED {
-		return nil, common.ErrorInvalidStatus
+		return nil, common.ErrInvalidStatus
 	}
 
 	if req.Term != fc.term {
-		return nil, common.ErrorInvalidTerm
+		return nil, common.ErrInvalidTerm
 	}
 
 	fc.status = proto.ServingStatus_FOLLOWER
@@ -342,12 +342,12 @@ func (fc *followerController) Replicate(stream proto.OxiaLogReplication_Replicat
 	fc.Lock()
 	if fc.status != proto.ServingStatus_FENCED && fc.status != proto.ServingStatus_FOLLOWER {
 		fc.Unlock()
-		return common.ErrorInvalidStatus
+		return common.ErrInvalidStatus
 	}
 
 	if fc.closeStreamWg != nil {
 		fc.Unlock()
-		return common.ErrorLeaderAlreadyConnected
+		return common.ErrLeaderAlreadyConnected
 	}
 
 	closeStreamWg := common.NewWaitGroup(1)
@@ -398,7 +398,7 @@ func (fc *followerController) append(req *proto.Append, stream proto.OxiaLogRepl
 	defer fc.Unlock()
 
 	if req.Term != fc.term {
-		return common.ErrorInvalidTerm
+		return common.ErrInvalidTerm
 	}
 
 	fc.log.Debug(
@@ -589,7 +589,7 @@ func (fc *followerController) SendSnapshot(stream proto.OxiaLogReplication_SendS
 
 	if fc.closeStreamWg != nil {
 		fc.Unlock()
-		return common.ErrorLeaderAlreadyConnected
+		return common.ErrLeaderAlreadyConnected
 	}
 
 	closeStreamWg := common.NewWaitGroup(1)
@@ -626,8 +626,8 @@ func (fc *followerController) readSnapshotStream(stream proto.OxiaLogReplication
 		case fc.term != wal.InvalidTerm && snapChunk.Term != fc.term:
 			// The follower could be left with term=-1 by a previous failed
 			// attempt at sending the snapshot. It's ok to proceed in that case.
-			fc.closeStreamNoMutex(common.ErrorInvalidTerm)
-			return totalSize, common.ErrorInvalidTerm
+			fc.closeStreamNoMutex(common.ErrInvalidTerm)
+			return totalSize, common.ErrInvalidTerm
 		}
 
 		fc.term = snapChunk.Term
@@ -746,7 +746,7 @@ func (fc *followerController) DeleteShard(request *proto.DeleteShardRequest) (*p
 			slog.Int64("follower-term", fc.term),
 			slog.Int64("new-term", request.Term))
 		_ = fc.close()
-		return nil, common.ErrorInvalidTerm
+		return nil, common.ErrInvalidTerm
 	}
 
 	fc.log.Info("Deleting shard")

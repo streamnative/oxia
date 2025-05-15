@@ -24,6 +24,10 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	pb "google.golang.org/protobuf/proto"
 
+	"github.com/streamnative/oxia/common/entities"
+
+	"github.com/streamnative/oxia/common/callback"
+
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/kv"
@@ -1009,7 +1013,7 @@ func TestLeaderController_List(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	list, err := lc.ListSliceNoMutex(context.Background(), &proto.ListRequest{
+	list, err := lc.ListBlock(context.Background(), &proto.ListRequest{
 		Shard:          &shard,
 		StartInclusive: "/a",
 		EndExclusive:   "/c",
@@ -1017,7 +1021,7 @@ func TestLeaderController_List(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, []string{"/a", "/b"}, list)
 
-	list, err = lc.ListSliceNoMutex(context.Background(), &proto.ListRequest{
+	list, err = lc.ListBlock(context.Background(), &proto.ListRequest{
 		Shard:          &shard,
 		StartInclusive: "/y",
 		EndExclusive:   "/z",
@@ -1052,32 +1056,32 @@ func TestLeaderController_RangeScan(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	ch, _, err := lc.RangeScan(context.Background(), &proto.RangeScanRequest{
+	ch := make(chan *entities.TWithError[*proto.GetResponse], 100)
+	lc.RangeScan(context.Background(), &proto.RangeScanRequest{
 		Shard:          &shard,
 		StartInclusive: "/a",
 		EndExclusive:   "/c",
-	})
-	assert.NoError(t, err)
-
-	gr, more := <-ch
-	assert.Equal(t, "/a", *gr.Key)
+	}, callback.ReadFromStreamCallback(ch))
+	entity, more := <-ch
+	assert.Nil(t, entity.Err)
+	assert.Equal(t, "/a", *entity.T.Key)
 	assert.True(t, more)
-	gr, more = <-ch
-	assert.Equal(t, "/b", *gr.Key)
+	entity, more = <-ch
+	assert.Nil(t, entity.Err)
+	assert.Equal(t, "/b", *entity.T.Key)
 	assert.True(t, more)
-	gr, more = <-ch
-	assert.Nil(t, gr)
+	entity, more = <-ch
+	assert.Nil(t, entity)
 	assert.False(t, more)
 
-	ch, _, err = lc.RangeScan(context.Background(), &proto.RangeScanRequest{
+	ch = make(chan *entities.TWithError[*proto.GetResponse], 100)
+	lc.RangeScan(context.Background(), &proto.RangeScanRequest{
 		Shard:          &shard,
 		StartInclusive: "/y",
 		EndExclusive:   "/z",
-	})
-	assert.NoError(t, err)
-
-	gr, more = <-ch
-	assert.Nil(t, gr)
+	}, callback.ReadFromStreamCallback(ch))
+	entity, more = <-ch
+	assert.Nil(t, entity)
 	assert.False(t, more)
 }
 
@@ -1160,7 +1164,7 @@ func TestLeaderController_DeleteShard_WrongTerm(t *testing.T) {
 		Shard:     shard,
 		Term:      0,
 	})
-	assert.ErrorIs(t, err, common.ErrorInvalidTerm)
+	assert.ErrorIs(t, err, common.ErrInvalidTerm)
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, walFactory.Close())
@@ -1336,7 +1340,7 @@ func TestLeaderController_NotificationsDisabled(t *testing.T) {
 	stream := newMockGetNotificationsServer(ctx)
 
 	err := lc.GetNotifications(&proto.NotificationsRequest{Shard: shard}, stream)
-	assert.ErrorIs(t, err, common.ErrorNotificationsNotEnabled)
+	assert.ErrorIs(t, err, common.ErrNotificationsNotEnabled)
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())

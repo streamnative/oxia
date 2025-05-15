@@ -27,6 +27,8 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protowire"
 
+	"github.com/streamnative/oxia/common/callback"
+
 	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/container"
 	"github.com/streamnative/oxia/proto"
@@ -36,6 +38,7 @@ import (
 const (
 	maxTotalScanBatchCount = 1000
 	maxTotalReadValueSize  = 2 << (10 * 2) // 2Mi
+	maxTotalListKeyCount   = 0             // no limitation
 	maxTotalListKeySize    = 2 << (10 * 2) // 2Mi
 )
 
@@ -209,121 +212,84 @@ func (s *publicRpcServer) Read(request *proto.ReadRequest, stream proto.OxiaClie
 	}
 }
 
-//nolint:revive
 func (s *publicRpcServer) List(request *proto.ListRequest, stream proto.OxiaClient_ListServer) error {
 	s.log.Debug(
 		"List request",
 		slog.String("peer", common.GetPeer(stream.Context())),
 		slog.Any("req", request),
 	)
-
 	if request.Shard == nil {
 		return status.Error(codes.InvalidArgument, "shard id is required")
 	}
-
 	lc, err := s.getLeader(*request.Shard)
 	if err != nil {
 		return err
 	}
-
-	ch, err := lc.List(stream.Context(), request)
-	if err != nil {
-		s.log.Warn(
-			"Failed to perform list operation",
-			slog.Any("error", err),
-		)
-		return err
-	}
-
-	response := &proto.ListResponse{}
-	var totalSize int
-
+	ctx := stream.Context()
+	finish := make(chan error, 1)
+	lc.List(ctx, request, callback.NewBatchStreamOnce[string](maxTotalListKeyCount, maxTotalListKeySize,
+		func(key string) int { return protowire.SizeBytes(len(key)) },
+		func(container []string) error { return stream.Send(&proto.ListResponse{Keys: container}) },
+		func(err error) { finish <- err },
+	))
 	for {
 		select {
-		case key, more := <-ch:
-			if !more {
-				if len(response.Keys) > 0 {
-					if err := stream.Send(response); err != nil {
-						return err
-					}
-				}
-				return nil
+		case err = <-finish:
+			if err != nil {
+				s.log.Warn(
+					"Failed to perform list operation",
+					slog.Any("error", err),
+				)
 			}
-			size := protowire.SizeBytes(len(key))
-			if len(response.Keys) > 0 && totalSize+size > maxTotalListKeySize {
-				if err := stream.Send(response); err != nil {
-					return err
-				}
-				response = &proto.ListResponse{}
-				totalSize = 0
-			}
-			response.Keys = append(response.Keys, key)
-			totalSize += size
-		case <-stream.Context().Done():
-			return stream.Context().Err()
+			return err
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
 }
 
-//nolint:revive
 func (s *publicRpcServer) RangeScan(request *proto.RangeScanRequest, stream proto.OxiaClient_RangeScanServer) error {
 	s.log.Debug(
 		"RangeScan request",
 		slog.String("peer", common.GetPeer(stream.Context())),
 		slog.Any("req", request),
 	)
-
 	if request.Shard == nil {
 		return status.Error(codes.InvalidArgument, "shard id is required")
 	}
+	ctx := stream.Context()
 
-	lc, err := s.getLeader(*request.Shard)
-	if err != nil {
+	var lc LeaderController
+	var err error
+	if lc, err = s.getLeader(*request.Shard); err != nil {
 		return err
 	}
 
-	ch, errCh, err := lc.RangeScan(stream.Context(), request)
-	if err != nil {
-		s.log.Warn(
-			"Failed to perform range-scan operation",
-			slog.Any("error", err),
-		)
-		return err
-	}
-
-	response := &proto.RangeScanResponse{}
-	var totalSize int
+	finish := make(chan error, 1)
+	lc.RangeScan(ctx, request,
+		callback.NewBatchStreamOnce[*proto.GetResponse](maxTotalScanBatchCount, maxTotalReadValueSize,
+			func(response *proto.GetResponse) int { return len(response.Value) },
+			func(container []*proto.GetResponse) error {
+				return stream.Send(&proto.RangeScanResponse{Records: container})
+			},
+			func(err error) {
+				finish <- err
+				close(finish)
+			}),
+	)
 
 	for {
 		select {
-		case err := <-errCh:
+		case err := <-finish:
 			if err != nil {
-				return err
+				s.log.Warn(
+					"Failed to perform range-scan operation",
+					slog.Any("error", err),
+				)
 			}
-
-		case gr, more := <-ch:
-			if !more {
-				if len(response.Records) > 0 {
-					if err := stream.Send(response); err != nil {
-						return err
-					}
-				}
-				return nil
-			}
-
-			size := len(gr.Value)
-			if len(response.Records) >= maxTotalScanBatchCount || totalSize+size > maxTotalReadValueSize {
-				if err := stream.Send(response); err != nil {
-					return err
-				}
-				response = &proto.RangeScanResponse{}
-				totalSize = 0
-			}
-			response.Records = append(response.Records, gr)
-			totalSize += size
-
-		case <-stream.Context().Done():
-			return stream.Context().Err()
+			return err
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
 }

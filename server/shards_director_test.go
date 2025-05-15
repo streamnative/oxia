@@ -86,7 +86,7 @@ func TestShardsDirector_GetOrCreateFollower(t *testing.T) {
 
 	// Should fail to get closed if the term is wrong
 	fc, err := sd.GetOrCreateFollower(common.DefaultNamespace, shard, 1)
-	assert.ErrorIs(t, common.ErrorInvalidTerm, err)
+	assert.ErrorIs(t, common.ErrInvalidTerm, err)
 	assert.Nil(t, fc)
 	assert.Equal(t, proto.ServingStatus_LEADER, lc.Status())
 

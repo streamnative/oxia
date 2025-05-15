@@ -130,7 +130,7 @@ func (sm *sessionManager) CreateSession(request *proto.CreateSessionRequest) (*p
 func (sm *sessionManager) createSession(request *proto.CreateSessionRequest, minTimeout time.Duration) (*proto.CreateSessionResponse, error) {
 	timeout := time.Duration(request.SessionTimeoutMs) * time.Millisecond
 	if timeout > common.MaxSessionTimeout || timeout < minTimeout {
-		return nil, errors.Wrap(common.ErrorInvalidSessionTimeout, fmt.Sprintf("timeoutMs=%d", request.SessionTimeoutMs))
+		return nil, errors.Wrap(common.ErrInvalidSessionTimeout, fmt.Sprintf("timeoutMs=%d", request.SessionTimeoutMs))
 	}
 
 	metadata := proto.SessionMetadataFromVTPool()
@@ -174,7 +174,7 @@ func (sm *sessionManager) getSession(sessionId int64) (*session, error) {
 			"Session not found",
 			slog.Int64("session-id", sessionId),
 		)
-		return nil, common.ErrorSessionNotFound
+		return nil, common.ErrSessionNotFound
 	}
 	return s, nil
 }
@@ -225,7 +225,7 @@ func (sm *sessionManager) Initialize() error {
 }
 
 func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, error) {
-	list, err := sm.leaderController.ListSliceNoMutex(context.Background(), &proto.ListRequest{
+	keys, err := sm.leaderController.ListBlock(context.Background(), &proto.ListRequest{
 		Shard:          &sm.shardId,
 		StartInclusive: sessionKeyPrefix + "/",
 		EndExclusive:   sessionKeyPrefix + "//",
@@ -234,11 +234,11 @@ func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, 
 		return nil, err
 	}
 
-	sm.log.Info("All sessions", slog.Int("count", len(list)))
+	sm.log.Info("All sessions", slog.Int("count", len(keys)))
 
 	result := map[SessionId]*proto.SessionMetadata{}
 
-	for _, key := range list {
+	for _, key := range keys {
 		metaEntry, err := sm.leaderController.db.Get(&proto.GetRequest{
 			Key:          key,
 			IncludeValue: true,

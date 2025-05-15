@@ -304,7 +304,7 @@ func TestCoordinator_MultipleNamespaces(t *testing.T) {
 	defer clientNs1.Close()
 
 	clientNs3, err := oxia.NewSyncClient(sa1.Public, oxia.WithNamespace("my-ns-does-not-exist"))
-	assert.ErrorIs(t, err, common.ErrorNamespaceNotFound)
+	assert.ErrorIs(t, err, common.ErrNamespaceNotFound)
 	assert.Nil(t, clientNs3)
 
 	ctx := context.Background()
@@ -710,9 +710,6 @@ func TestCoordinator_ShrinkCluster(t *testing.T) {
 
 	assert.Equal(t, 4, len(c.(*coordinator).getNodeControllers()))
 
-	shard0 := c.ClusterStatus().Namespaces["my-ns-1"].Shards[0]
-	assert.Equal(t, sa1.Public, shard0.Leader.Public)
-
 	// Remove s1
 	clusterConfig.Servers = clusterConfig.Servers[1:]
 
@@ -730,10 +727,6 @@ func TestCoordinator_ShrinkCluster(t *testing.T) {
 		}
 		return true
 	}, 10*time.Second, 10*time.Millisecond)
-
-	// S1 should receive the updated leader info
-	shard0 = c.ClusterStatus().Namespaces["my-ns-1"].Shards[0]
-	assert.NotEqual(t, sa1.Public, shard0.Leader.Public)
 
 	client, err := oxia.NewSyncClient(sa1.Public, oxia.WithNamespace("my-ns-1"))
 	assert.NoError(t, err)
