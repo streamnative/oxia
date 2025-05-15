@@ -17,10 +17,11 @@ package scan
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/streamnative/oxia/proto"
 	"log/slog"
 	"math"
 	"time"
+
+	"github.com/streamnative/oxia/proto"
 
 	"github.com/spf13/cobra"
 
@@ -29,9 +30,9 @@ import (
 )
 
 type scanOptions struct {
-	json bool
-	//lastEntry      bool
-	//safePointEntry int64
+	json        bool
+	firstOffset int64
+	lastOffset  int64
 }
 
 var (
@@ -46,11 +47,11 @@ var (
 
 func init() {
 	// operations
-	//Cmd.Flags().Int64Var(&options.safePointEntry, "last-safe-entry", math.MaxInt64,
-	//	"removes entries from the end of the log that have an offset greater than last safe entry")
+	Cmd.Flags().Int64Var(&options.firstOffset, "offset-first", -1,
+		"offset where to start reading from")
+	Cmd.Flags().Int64Var(&options.lastOffset, "offset-last", -1,
+		"last offset to read")
 	Cmd.Flags().BoolVar(&options.json, "json", false, "dump entries in json format")
-	//
-	//Cmd.MarkFlagsMutuallyExclusive("last-safe-entry", "truncate-last-entry")
 }
 
 type LogEntry struct {
@@ -74,7 +75,12 @@ func exec(*cobra.Command, []string) error {
 	}
 	defer wal.Close()
 
-	reader, err := wal.NewReader(wal.FirstOffset() - 1)
+	firstOffset := options.firstOffset
+	if firstOffset < 0 {
+		firstOffset = wal.FirstOffset() - 1
+	}
+
+	reader, err := wal.NewReader(firstOffset)
 	if err != nil {
 		return err
 	}
@@ -83,6 +89,10 @@ func exec(*cobra.Command, []string) error {
 		le, err := reader.ReadNext()
 		if err != nil {
 			return err
+		}
+
+		if options.lastOffset > 0 && le.Offset >= options.lastOffset {
+			break
 		}
 
 		lev := proto.LogEntryValue{}
@@ -104,57 +114,66 @@ func exec(*cobra.Command, []string) error {
 			}
 			fmt.Println(string(ser))
 		} else {
-			//fmt.Printf("Timestamp: %s -- Term: %d -- Offset: %d\n", time.UnixMilli(int64(le.Timestamp)), logEntry.Term, logEntry.Offset)
 			for _, writes := range lev.GetRequests().Writes {
-				for _, p := range writes.Puts {
-					args := []any{
-						slog.String("op", "put"),
-						slog.Time("ts", time.UnixMilli(int64(le.Timestamp))),
-						slog.String("key", p.Key),
-						slog.Int64("offset", le.Offset),
-						slog.Int64("term", le.Term),
-					}
-
-					if p.ExpectedVersionId != nil {
-						args = append(args, slog.Int64("expected-version-id", p.GetExpectedVersionId()))
-					}
-					if p.ClientIdentity != nil {
-						args = append(args, slog.String("client-identity", p.GetClientIdentity()))
-					}
-					if p.SessionId != nil {
-						args = append(args, slog.Int64("session-id", p.GetSessionId()))
-					}
-
-					slog.Info("", args...)
-				}
-
-				for _, d := range writes.Deletes {
-					args := []any{
-						slog.String("op", "delete"),
-						slog.Time("ts", time.UnixMilli(int64(le.Timestamp))),
-						slog.String("key", d.Key),
-						slog.Int64("offset", le.Offset),
-						slog.Int64("term", le.Term),
-					}
-					if d.ExpectedVersionId != nil {
-						args = append(args, slog.Int64("expected-version-i", d.GetExpectedVersionId()))
-					}
-					slog.Info("", args...)
-				}
-
-				for _, dr := range writes.DeleteRanges {
-					slog.Info("",
-						slog.String("op", "delete-range"),
-						slog.Time("ts", time.UnixMilli(int64(le.Timestamp))),
-						slog.String("key-start", dr.StartInclusive),
-						slog.String("key-end", dr.EndExclusive),
-						slog.Int64("offset", le.Offset),
-						slog.Int64("term", le.Term),
-					)
-				}
+				printPuts(le, writes.Puts)
+				printDeletes(le, writes.Deletes)
+				printDeleteRanges(le, writes.DeleteRanges)
 			}
 		}
 	}
 
 	return nil
+}
+
+func printPuts(le *proto.LogEntry, puts []*proto.PutRequest) {
+	for _, p := range puts {
+		args := []any{
+			slog.String("op", "put"),
+			slog.Time("ts", time.UnixMilli(int64(le.Timestamp))),
+			slog.String("key", p.Key),
+			slog.Int64("offset", le.Offset),
+			slog.Int64("term", le.Term),
+		}
+
+		if p.ExpectedVersionId != nil {
+			args = append(args, slog.Int64("expected-version-id", p.GetExpectedVersionId()))
+		}
+		if p.ClientIdentity != nil {
+			args = append(args, slog.String("client-identity", p.GetClientIdentity()))
+		}
+		if p.SessionId != nil {
+			args = append(args, slog.Int64("session-id", p.GetSessionId()))
+		}
+
+		slog.Info("", args...)
+	}
+}
+
+func printDeletes(le *proto.LogEntry, deletes []*proto.DeleteRequest) {
+	for _, d := range deletes {
+		args := []any{
+			slog.String("op", "delete"),
+			slog.Time("ts", time.UnixMilli(int64(le.Timestamp))),
+			slog.String("key", d.Key),
+			slog.Int64("offset", le.Offset),
+			slog.Int64("term", le.Term),
+		}
+		if d.ExpectedVersionId != nil {
+			args = append(args, slog.Int64("expected-version-i", d.GetExpectedVersionId()))
+		}
+		slog.Info("", args...)
+	}
+}
+
+func printDeleteRanges(le *proto.LogEntry, deleteRanges []*proto.DeleteRangeRequest) {
+	for _, dr := range deleteRanges {
+		slog.Info("",
+			slog.String("op", "delete-range"),
+			slog.Time("ts", time.UnixMilli(int64(le.Timestamp))),
+			slog.String("key-start", dr.StartInclusive),
+			slog.String("key-end", dr.EndExclusive),
+			slog.Int64("offset", le.Offset),
+			slog.Int64("term", le.Term),
+		)
+	}
 }
