@@ -18,9 +18,10 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/streamnative/oxia/oxia"
 	"github.com/streamnative/oxia/server"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestSequence_WithOtherKeyInBatch(t *testing.T) {
