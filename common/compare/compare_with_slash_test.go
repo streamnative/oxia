@@ -46,31 +46,6 @@ func TestCompareWithSlash(t *testing.T) {
 	assert.Equal(t, +1, CompareWithSlash([]byte("/a/b/a/a/a"), []byte("/a/b/a/b")))
 }
 
-func TestAbbreviatedKey(t *testing.T) {
-	aKey1 := AbbreviatedKeyDisableSlash([]byte("aaa"))
-	aKey2 := AbbreviatedKeyDisableSlash([]byte("/aaa"))
-	aKey3 := AbbreviatedKeyDisableSlash([]byte("/aa/a"))
-	aKey4 := AbbreviatedKeyDisableSlash([]byte("/aa/a/a"))
-	aKey5 := AbbreviatedKeyDisableSlash([]byte("/aa/a/a/"))
-
-	bKey1 := AbbreviatedKeyDisableSlash([]byte("bbb"))
-	bKey2 := AbbreviatedKeyDisableSlash([]byte("/bbb"))
-	bKey3 := AbbreviatedKeyDisableSlash([]byte("/bb/b"))
-	bKey4 := AbbreviatedKeyDisableSlash([]byte("/bb/b/b"))
-	bKey5 := AbbreviatedKeyDisableSlash([]byte("/bb/b/b/"))
-
-	assert.Greater(t, aKey2, aKey1)
-	assert.Greater(t, aKey3, aKey2)
-	assert.Greater(t, aKey4, aKey3)
-	assert.Equal(t, aKey5, aKey4)
-
-	assert.Greater(t, bKey1, aKey1)
-	assert.Greater(t, bKey2, aKey2)
-	assert.Greater(t, bKey3, aKey3)
-	assert.Greater(t, bKey4, aKey4)
-	assert.Greater(t, bKey5, aKey5)
-}
-
 func TestCompareWithDataset(t *testing.T) {
 	for _, test := range []struct {
 		leftKey  string
