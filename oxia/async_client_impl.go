@@ -307,9 +307,9 @@ func processAllGetResponses(originalKey string, results []*proto.GetResponse, co
 		slices.SortFunc(results, func(a, b *proto.GetResponse) int {
 			if a.SecondaryIndexKey != nil && b.SecondaryIndexKey != nil {
 				return compare.CompareWithSlash([]byte(a.GetSecondaryIndexKey()), []byte(b.GetSecondaryIndexKey()))
-			} else {
-				return compare.CompareWithSlash([]byte(a.GetKey()), []byte(b.GetKey()))
 			}
+
+			return compare.CompareWithSlash([]byte(a.GetKey()), []byte(b.GetKey()))
 		})
 
 		switch comparisonType {

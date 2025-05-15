@@ -16,9 +16,10 @@ package server
 
 import (
 	"fmt"
-	"github.com/streamnative/oxia/common/compare"
 	"net/url"
 	"regexp"
+
+	"github.com/streamnative/oxia/common/compare"
 
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
@@ -169,7 +170,7 @@ func secondaryIndexPrimaryAndSecondaryKey(completeKey string) (primaryKey string
 
 	secondaryKey = matches[1]
 	primaryKey, err = url.PathUnescape(matches[2])
-	return
+	return primaryKey, secondaryKey, err
 }
 
 func deleteSecondaryIndexes(batch kv.WriteBatch, primaryKey string, existingEntry *proto.StorageEntry) error {
@@ -306,6 +307,9 @@ func (it *secondaryIndexRangeIterator) Value() (*proto.GetResponse, error) {
 
 func secondaryIndexGet(req *proto.GetRequest, db kv.DB) (*proto.GetResponse, error) {
 	primaryKey, secondaryKey, err := doSecondaryGet(db, req)
+	if err != nil {
+		return nil, err
+	}
 
 	if primaryKey == "" {
 		return &proto.GetResponse{Status: proto.Status_KEY_NOT_FOUND}, nil
@@ -324,6 +328,7 @@ func secondaryIndexGet(req *proto.GetRequest, db kv.DB) (*proto.GetResponse, err
 	return gr, err
 }
 
+//nolint:revive
 func doSecondaryGet(db kv.DB, req *proto.GetRequest) (primaryKey string, secondaryKey string, err error) {
 	indexName := *req.SecondaryIndexName
 	searchKey := fmt.Sprintf(secondaryIdxRangePrefixFormat, indexName, req.Key)
@@ -356,33 +361,33 @@ func doSecondaryGet(db kv.DB, req *proto.GetRequest) (primaryKey string, seconda
 			if cmp != 0 {
 				primaryKey = ""
 			}
-			return
+			return primaryKey, secondaryKey, err
 
 		case proto.KeyComparisonType_FLOOR:
 			if primaryKey == "" || cmp < 0 {
 				it.Prev()
 			} else {
-				return
+				return primaryKey, secondaryKey, err
 			}
 
 		case proto.KeyComparisonType_LOWER:
 			if cmp <= 0 {
 				it.Prev()
 			} else {
-				return
+				return primaryKey, secondaryKey, err
 			}
 
 		case proto.KeyComparisonType_CEILING:
-			return
+			return primaryKey, secondaryKey, err
 
 		case proto.KeyComparisonType_HIGHER:
 			if cmp >= 0 {
 				it.Next()
 			} else {
-				return
+				return primaryKey, secondaryKey, err
 			}
 		}
 	}
 
-	return
+	return primaryKey, secondaryKey, err
 }

@@ -17,10 +17,11 @@ package oxia
 import (
 	"context"
 	"fmt"
-	"github.com/rs/zerolog/log"
 	"log/slog"
 	"strings"
 	"testing"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/stretchr/testify/assert"
 
@@ -223,7 +224,7 @@ func TestSyncClientImpl_SecondaryIndexes_Get(t *testing.T) {
 	var val []byte
 	// ////////////////////////////////////////////////////////////////////////
 
-	primaryKey, val, _, err = client.Get(ctx, "000", UseIndex("val-idx"))
+	_, _, _, err = client.Get(ctx, "000", UseIndex("val-idx"))
 	assert.ErrorIs(t, err, ErrKeyNotFound)
 
 	primaryKey, val, _, err = client.Get(ctx, "001", UseIndex("val-idx"))
@@ -241,15 +242,15 @@ func TestSyncClientImpl_SecondaryIndexes_Get(t *testing.T) {
 	assert.Equal(t, "j", primaryKey)
 	assert.Equal(t, []byte("009"), val)
 
-	primaryKey, val, _, err = client.Get(ctx, "999", UseIndex("val-idx"))
+	_, _, _, err = client.Get(ctx, "999", UseIndex("val-idx"))
 	assert.ErrorIs(t, err, ErrKeyNotFound)
 
 	// ////////////////////////////////////////////////////////////////////////
 
-	primaryKey, val, _, err = client.Get(ctx, "000", UseIndex("val-idx"), ComparisonLower())
+	_, _, _, err = client.Get(ctx, "000", UseIndex("val-idx"), ComparisonLower())
 	assert.ErrorIs(t, err, ErrKeyNotFound)
 
-	primaryKey, val, _, err = client.Get(ctx, "001", UseIndex("val-idx"), ComparisonLower())
+	_, _, _, err = client.Get(ctx, "001", UseIndex("val-idx"), ComparisonLower())
 	assert.ErrorIs(t, err, ErrKeyNotFound)
 
 	primaryKey, val, _, err = client.Get(ctx, "005", UseIndex("val-idx"), ComparisonLower())
@@ -269,7 +270,7 @@ func TestSyncClientImpl_SecondaryIndexes_Get(t *testing.T) {
 
 	// ////////////////////////////////////////////////////////////////////////
 
-	primaryKey, val, _, err = client.Get(ctx, "000", UseIndex("val-idx"), ComparisonFloor())
+	_, _, _, err = client.Get(ctx, "000", UseIndex("val-idx"), ComparisonFloor())
 	assert.ErrorIs(t, err, ErrKeyNotFound)
 
 	primaryKey, val, _, err = client.Get(ctx, "001", UseIndex("val-idx"), ComparisonFloor())
@@ -309,10 +310,10 @@ func TestSyncClientImpl_SecondaryIndexes_Get(t *testing.T) {
 	assert.Equal(t, "g", primaryKey)
 	assert.Equal(t, []byte("006"), val)
 
-	primaryKey, val, _, err = client.Get(ctx, "009", UseIndex("val-idx"), ComparisonHigher())
+	_, _, _, err = client.Get(ctx, "009", UseIndex("val-idx"), ComparisonHigher())
 	assert.ErrorIs(t, err, ErrKeyNotFound)
 
-	primaryKey, val, _, err = client.Get(ctx, "999", UseIndex("val-idx"), ComparisonHigher())
+	_, _, _, err = client.Get(ctx, "999", UseIndex("val-idx"), ComparisonHigher())
 	assert.ErrorIs(t, err, ErrKeyNotFound)
 
 	// ////////////////////////////////////////////////////////////////////////
@@ -337,7 +338,7 @@ func TestSyncClientImpl_SecondaryIndexes_Get(t *testing.T) {
 	assert.Equal(t, "j", primaryKey)
 	assert.Equal(t, []byte("009"), val)
 
-	primaryKey, val, _, err = client.Get(ctx, "999", UseIndex("val-idx"), ComparisonCeiling())
+	_, _, _, err = client.Get(ctx, "999", UseIndex("val-idx"), ComparisonCeiling())
 	assert.ErrorIs(t, err, ErrKeyNotFound)
 
 	// ////////////////////////////////////////////////////////////////////////
