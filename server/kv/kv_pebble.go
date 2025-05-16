@@ -485,6 +485,16 @@ func (p *Pebble) KeyRangeScan(lowerBound, upperBound string) (KeyIterator, error
 	return p.RangeScan(lowerBound, upperBound)
 }
 
+func (p *Pebble) KeyIterator() (KeyIterator, error) {
+	opts := &pebble.IterOptions{}
+	pbit, err := p.db.NewIter(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	return &PebbleIterator{p, pbit}, nil
+}
+
 func (p *Pebble) KeyRangeScanReverse(lowerBound, upperBound string) (ReverseKeyIterator, error) {
 	opts := &pebble.IterOptions{}
 	if lowerBound != "" {
@@ -509,6 +519,7 @@ func (p *Pebble) RangeScan(lowerBound, upperBound string) (KeyValueIterator, err
 	if upperBound != "" {
 		opts.UpperBound = []byte(upperBound)
 	}
+
 	pbit, err := p.db.NewIter(opts)
 	if err != nil {
 		return nil, err
@@ -640,6 +651,18 @@ func (p *PebbleIterator) Key() string {
 
 func (p *PebbleIterator) Next() bool {
 	return p.pi.Next()
+}
+
+func (p *PebbleIterator) Prev() bool {
+	return p.pi.Prev()
+}
+
+func (p *PebbleIterator) SeekGE(key string) bool {
+	return p.pi.SeekGE([]byte(key))
+}
+
+func (p *PebbleIterator) SeekLT(key string) bool {
+	return p.pi.SeekLT([]byte(key))
 }
 
 func (p *PebbleIterator) Value() ([]byte, error) {
