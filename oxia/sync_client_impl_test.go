@@ -17,11 +17,11 @@ package oxia
 import (
 	"context"
 	"fmt"
+	"github.com/rs/zerolog/log"
+	"github.com/stretchr/testify/require"
 	"log/slog"
 	"strings"
 	"testing"
-
-	"github.com/rs/zerolog/log"
 
 	"github.com/stretchr/testify/assert"
 
@@ -58,6 +58,10 @@ func (c *neverCompleteAsyncClient) RangeScan(ctx context.Context, minKeyInclusiv
 }
 
 func (c *neverCompleteAsyncClient) GetNotifications() (Notifications, error) {
+	panic("not implemented")
+}
+
+func (c *neverCompleteAsyncClient) GetSequenceUpdates(ctx context.Context, prefixKey string, options ...GetSequenceUpdatesOption) (<-chan string, error) {
 	panic("not implemented")
 }
 
@@ -344,5 +348,64 @@ func TestSyncClientImpl_SecondaryIndexes_Get(t *testing.T) {
 	// ////////////////////////////////////////////////////////////////////////
 
 	assert.NoError(t, client.Close())
+	assert.NoError(t, standaloneServer.Close())
+}
+
+func TestSyncClientImpl_GetSequenceUpdates(t *testing.T) {
+	standaloneServer, err := server.NewStandalone(server.NewTestConfig(t.TempDir()))
+	assert.NoError(t, err)
+
+	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())
+	client, err := NewSyncClient(serviceAddress, WithBatchLinger(0))
+	assert.NoError(t, err)
+
+	ch1, err := client.GetSequenceUpdates(context.Background(), "a")
+	assert.Nil(t, ch1)
+	assert.ErrorIs(t, err, ErrInvalidOptions)
+
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	ch1, err = client.GetSequenceUpdates(ctx1, "a", PartitionKey("x"))
+	assert.NotNil(t, ch1)
+	assert.NoError(t, err)
+	cancel1()
+
+	k1, _, _ := client.Put(context.Background(), "a", []byte("0"), PartitionKey("x"), SequenceKeysDeltas(1))
+	assert.Equal(t, fmt.Sprintf("a-%020d", 1), k1)
+	k2, _, _ := client.Put(context.Background(), "a", []byte("0"), PartitionKey("x"), SequenceKeysDeltas(1))
+	assert.Equal(t, fmt.Sprintf("a-%020d", 2), k2)
+	assert.NotEqual(t, k1, k2)
+
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	updates2, err := client.GetSequenceUpdates(ctx2, "a", PartitionKey("x"))
+	require.NoError(t, err)
+
+	recvK2 := <-updates2
+	assert.Equal(t, k2, recvK2)
+
+	cancel2()
+
+	k3, _, _ := client.Put(context.Background(), "a", []byte("0"), PartitionKey("x"), SequenceKeysDeltas(1))
+	assert.Empty(t, updates2)
+
+	select {
+	case <-updates2:
+		// Ok
+
+	default:
+		assert.Fail(t, "should have been closed")
+	}
+
+	updates3, err := client.GetSequenceUpdates(context.Background(), "a", PartitionKey("x"))
+	require.NoError(t, err)
+
+	recvK3 := <-updates3
+	assert.Equal(t, k3, recvK3)
+
+	k4, _, _ := client.Put(context.Background(), "a", []byte("0"), PartitionKey("x"), SequenceKeysDeltas(1))
+	recvK4 := <-updates3
+	assert.Equal(t, k4, recvK4)
+
+	assert.NoError(t, client.Close())
+
 	assert.NoError(t, standaloneServer.Close())
 }
