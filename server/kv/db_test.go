@@ -1002,3 +1002,56 @@ func TestDBVersionIDWithError(t *testing.T) {
 	assert.NoError(t, db.Close())
 	assert.NoError(t, factory.Close())
 }
+
+func TestDB_SequentialKeysNotification(t *testing.T) {
+	factory, err := NewPebbleKVFactory(testKVOptions)
+	assert.NoError(t, err)
+	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	assert.NoError(t, err)
+
+	sw, err := db.GetSequenceUpdates("a")
+	assert.NoError(t, err)
+
+	assert.Empty(t, sw.Ch())
+
+	_, err = db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
+		Key:              "a",
+		Value:            []byte("0"),
+		SequenceKeyDelta: []uint64{3},
+		PartitionKey:     pb.String("x"),
+	}}}, 0, 0, NoOpCallback)
+	assert.NoError(t, err)
+
+	n1 := <-sw.Ch()
+	assert.Equal(t, fmt.Sprintf("a-%020d", 3), n1)
+
+	_, err = db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
+		Key:              "a",
+		Value:            []byte("1"),
+		SequenceKeyDelta: []uint64{5},
+		PartitionKey:     pb.String("x"),
+	}, {
+		Key:              "a",
+		Value:            []byte("1"),
+		SequenceKeyDelta: []uint64{10},
+		PartitionKey:     pb.String("x"),
+	}}}, 0, 0, NoOpCallback)
+	assert.NoError(t, err)
+
+	// Only get notification of the last value
+	n2 := <-sw.Ch()
+	assert.Equal(t, fmt.Sprintf("a-%020d", 18), n2)
+
+	assert.Empty(t, sw.Ch())
+	assert.NoError(t, sw.Close())
+
+	// Create a new one will get notification of existing last key
+	sw2, err := db.GetSequenceUpdates("a")
+	assert.NoError(t, err)
+
+	n2 = <-sw2.Ch()
+	assert.Equal(t, fmt.Sprintf("a-%020d", 18), n2)
+
+	assert.NoError(t, db.Close())
+	assert.NoError(t, factory.Close())
+}
