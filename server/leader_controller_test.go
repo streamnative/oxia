@@ -16,6 +16,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -1437,6 +1438,72 @@ func TestLeaderController_DuplicateNewTerm_WithSession(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(results))
 	assert.Equal(t, proto.Status_KEY_NOT_FOUND, results[0].Status)
+
+	assert.NoError(t, lc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
+func TestLeaderController_GetSequenceUpdates(t *testing.T) {
+	var shard int64 = 1
+
+	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
+	walFactory := newTestWalFactory(t)
+
+	lc, _ := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
+	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
+		Shard:             shard,
+		Term:              1,
+		ReplicationFactor: 1,
+		FollowerMaps:      nil,
+	})
+
+	_, err := lc.Write(context.Background(), &proto.WriteRequest{
+		Shard: &shard,
+		Puts: []*proto.PutRequest{
+			{Key: "a", Value: []byte{0}, SequenceKeyDelta: []uint64{1}, PartitionKey: pb.String("x")},
+			{Key: "a", Value: []byte{0}, SequenceKeyDelta: []uint64{2}, PartitionKey: pb.String("x")},
+			{Key: "a", Value: []byte{0}, SequenceKeyDelta: []uint64{3}, PartitionKey: pb.String("x")},
+		},
+	})
+	assert.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	stream := newMockSequenceUpdatesServerStream(ctx)
+
+	doneCh := make(chan any)
+
+	go func() {
+		err := lc.GetSequenceUpdates(&proto.GetSequenceUpdatesRequest{
+			Shard: shard,
+			Key:   "a",
+		}, stream)
+		assert.ErrorIs(t, err, context.Canceled)
+
+		close(doneCh)
+	}()
+
+	u1 := <-stream.updates
+	assert.Equal(t, fmt.Sprintf("a-%020d", 6), u1.HighestSequenceKey)
+
+	_, err = lc.Write(context.Background(), &proto.WriteRequest{
+		Shard: &shard,
+		Puts: []*proto.PutRequest{
+			{Key: "a", Value: []byte{0}, SequenceKeyDelta: []uint64{5}, PartitionKey: pb.String("x")},
+		},
+	})
+	assert.NoError(t, err)
+
+	u2 := <-stream.updates
+	assert.Equal(t, fmt.Sprintf("a-%020d", 11), u2.HighestSequenceKey)
+
+	assert.Empty(t, stream.updates)
+
+	// When the context is canceled the method should return
+	cancel()
+
+	<-doneCh
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())

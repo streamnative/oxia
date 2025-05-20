@@ -333,3 +333,29 @@ func (m *mockWriteStream) CloseSend() error {
 	m.cancel()
 	return nil
 }
+
+// //////////////////////////////////////////////////////////////////////////////////
+
+func newMockSequenceUpdatesServerStream(ctx context.Context) *mockSequenceUpdatesServerStream {
+	r := &mockSequenceUpdatesServerStream{
+		updates: make(chan *proto.GetSequenceUpdatesResponse),
+	}
+
+	r.ctx, r.cancel = context.WithCancel(ctx)
+	return r
+}
+
+type mockSequenceUpdatesServerStream struct {
+	mockBase
+	updates chan *proto.GetSequenceUpdatesResponse
+	cancel  context.CancelFunc
+}
+
+func (m *mockSequenceUpdatesServerStream) Send(res *proto.GetSequenceUpdatesResponse) error {
+	select {
+	case <-m.ctx.Done():
+		return m.ctx.Err()
+	case m.updates <- res:
+		return nil
+	}
+}
