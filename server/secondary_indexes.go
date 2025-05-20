@@ -156,7 +156,7 @@ func secondaryIndexKey(primaryKey string, si *proto.SecondaryIndex) string {
 func secondaryIndexPrimaryKey(completeKey string) (string, error) {
 	matches := secondaryIdxFormatRegex.FindStringSubmatch(completeKey)
 	if len(matches) != 3 {
-		return "", errors.Errorf("oxia db: failed to parse secondary index key")
+		return "", errors.New("oxia db: failed to parse secondary index key")
 	}
 
 	return url.PathUnescape(matches[2])
@@ -165,7 +165,7 @@ func secondaryIndexPrimaryKey(completeKey string) (string, error) {
 func secondaryIndexPrimaryAndSecondaryKey(completeKey string) (primaryKey string, secondaryKey string, err error) {
 	matches := secondaryIdxFormatRegex.FindStringSubmatch(completeKey)
 	if len(matches) != 3 {
-		return "", "", nil
+		return "", "", errors.New("oxia db: failed to parse secondary index key")
 	}
 
 	secondaryKey = matches[1]
