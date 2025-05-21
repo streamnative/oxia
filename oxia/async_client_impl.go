@@ -276,7 +276,7 @@ func (c *clientImpl) doMultiShardGet(key string, options *getOptions, ch chan Ge
 				m.Lock()
 				defer m.Unlock()
 
-				if err != nil {
+				if err != nil && counter > 0 {
 					ch <- toGetResult(nil, key, err)
 					close(ch)
 					counter = 0

@@ -149,6 +149,8 @@ const regex = "^" + secondaryIdxKeyPrefix + "/[^/]+/([^" + secondaryIdxSeparator
 
 var secondaryIdxFormatRegex = regexp.MustCompile(regex)
 
+var errFailedToParseSecondaryKey = errors.New("oxia db: failed to parse secondary index key")
+
 func secondaryIndexKey(primaryKey string, si *proto.SecondaryIndex) string {
 	return fmt.Sprintf(secondaryIdxFormat, si.IndexName, si.SecondaryKey, url.PathEscape(primaryKey))
 }
@@ -156,7 +158,7 @@ func secondaryIndexKey(primaryKey string, si *proto.SecondaryIndex) string {
 func secondaryIndexPrimaryKey(completeKey string) (string, error) {
 	matches := secondaryIdxFormatRegex.FindStringSubmatch(completeKey)
 	if len(matches) != 3 {
-		return "", errors.New("oxia db: failed to parse secondary index key")
+		return "", errFailedToParseSecondaryKey
 	}
 
 	return url.PathUnescape(matches[2])
@@ -165,7 +167,7 @@ func secondaryIndexPrimaryKey(completeKey string) (string, error) {
 func secondaryIndexPrimaryAndSecondaryKey(completeKey string) (primaryKey string, secondaryKey string, err error) {
 	matches := secondaryIdxFormatRegex.FindStringSubmatch(completeKey)
 	if len(matches) != 3 {
-		return "", "", errors.New("oxia db: failed to parse secondary index key")
+		return "", "", errFailedToParseSecondaryKey
 	}
 
 	secondaryKey = matches[1]
@@ -307,7 +309,7 @@ func (it *secondaryIndexRangeIterator) Value() (*proto.GetResponse, error) {
 
 func secondaryIndexGet(req *proto.GetRequest, db kv.DB) (*proto.GetResponse, error) {
 	primaryKey, secondaryKey, err := doSecondaryGet(db, req)
-	if err != nil {
+	if err != nil && !errors.Is(err, errFailedToParseSecondaryKey) {
 		return nil, err
 	}
 
@@ -350,7 +352,7 @@ func doSecondaryGet(db kv.DB, req *proto.GetRequest) (primaryKey string, seconda
 	for it.Valid() {
 		itKey := it.Key()
 		primaryKey, secondaryKey, err = secondaryIndexPrimaryAndSecondaryKey(itKey)
-		if err != nil {
+		if err != nil && !errors.Is(err, errFailedToParseSecondaryKey) {
 			return "", "", err
 		}
 
