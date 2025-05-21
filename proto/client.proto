@@ -327,6 +327,7 @@ message GetRequest {
   bool include_value = 2;
 
   KeyComparisonType comparison_type = 3;
+  optional string secondary_index_name = 4;
 }
 
 /**
@@ -342,6 +343,7 @@ message GetResponse {
   // In case of non-exact queries (eg. floor, ceiling) the found key will be
   // returned in the GetResponse.
   optional string key = 4;
+  optional string secondary_index_key = 5;
 }
 
 /**

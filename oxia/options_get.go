@@ -18,6 +18,7 @@ import "github.com/streamnative/oxia/proto"
 
 type getOptions struct {
 	baseOptions
+	listOptions
 	comparisonType proto.KeyComparisonType
 	includeValue   bool
 }
