@@ -16,6 +16,7 @@ package client
 
 import (
 	"fmt"
+	"github.com/streamnative/oxia/cmd/client/sequenceupdates"
 
 	"github.com/spf13/cobra"
 
@@ -52,4 +53,5 @@ func init() {
 	Cmd.AddCommand(rangescan.Cmd)
 	Cmd.AddCommand(deleterange.Cmd)
 	Cmd.AddCommand(notifications.Cmd)
+	Cmd.AddCommand(sequenceupdates.Cmd)
 }
