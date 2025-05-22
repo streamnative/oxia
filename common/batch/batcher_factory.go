@@ -15,6 +15,9 @@
 package batch
 
 import (
+	"context"
+	"fmt"
+	"github.com/streamnative/oxia/common"
 	"runtime"
 	"time"
 )
@@ -26,7 +29,7 @@ type BatcherFactory struct {
 	MaxRequestsPerBatch int
 }
 
-func (b *BatcherFactory) NewBatcher(batchFactory func() Batch) Batcher {
+func (b *BatcherFactory) NewBatcher(ctx context.Context, shard int64, batcherType string, batchFactory func() Batch) Batcher {
 	batcher := &batcherImpl{
 		batchFactory:        batchFactory,
 		callC:               make(chan any, batcherChannelBufferSize),
@@ -35,7 +38,10 @@ func (b *BatcherFactory) NewBatcher(batchFactory func() Batch) Batcher {
 		maxRequestsPerBatch: b.MaxRequestsPerBatch,
 	}
 
-	go batcher.Run()
+	go common.DoWithLabels(ctx, map[string]string{
+		"oxia":  fmt.Sprintf("batcher-%s", batcherType),
+		"shard": fmt.Sprintf("%d", shard),
+	}, batcher.Run)
 
 	return batcher
 }
