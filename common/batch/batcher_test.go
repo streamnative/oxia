@@ -15,6 +15,7 @@
 package batch
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -78,7 +79,7 @@ func TestBatcher(t *testing.T) {
 				Linger:              item.linger,
 				MaxRequestsPerBatch: item.maxSize,
 			}
-			batcher := factory.NewBatcher(batchFactory)
+			batcher := factory.NewBatcher(context.Background(), 1, "test-write", batchFactory)
 			batcher.Add(1)
 
 			if item.closeImmediately {
