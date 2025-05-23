@@ -16,6 +16,7 @@ package client
 
 import (
 	"fmt"
+
 	"github.com/streamnative/oxia/cmd/client/sequenceupdates"
 
 	"github.com/spf13/cobra"
