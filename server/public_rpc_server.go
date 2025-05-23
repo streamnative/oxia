@@ -76,7 +76,7 @@ func newPublicRpcServer(provider container.GrpcProvider, bindAddress string, sha
 
 func (s *publicRpcServer) GetShardAssignments(req *proto.ShardAssignmentsRequest, srv proto.OxiaClient_GetShardAssignmentsServer) error {
 	s.log.Debug(
-		"ShardID assignments requests",
+		"Shard assignments requests",
 		slog.String("peer", common.GetPeer(srv.Context())),
 	)
 	err := s.assignmentDispatcher.RegisterForUpdates(req, srv)
@@ -94,7 +94,7 @@ func (s *publicRpcServer) GetShardAssignments(req *proto.ShardAssignmentsRequest
 
 func (s *publicRpcServer) Write(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error) {
 	s.log.Debug(
-		"WriteBlock request",
+		"Write request",
 		slog.String("peer", common.GetPeer(ctx)),
 		slog.Any("req", write),
 	)

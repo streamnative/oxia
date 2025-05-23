@@ -105,7 +105,7 @@ func (p *perf) Run(ctx context.Context) {
 			readRate := float64(readOps) / float64(10)
 			failedOpsRate := float64(p.failedOps.Swap(0)) / float64(10)
 			slog.Info(fmt.Sprintf(`Stats - Total ops: %6.1f ops/s - Failed ops: %6.1f ops/s
-			WriteBlock ops %6.1f w/s  Latency ms: 50%% %5.1f - 95%% %5.1f - 99%% %5.1f - 99.9%% %5.1f - max %6.1f
+			Write ops %6.1f w/s  Latency ms: 50%% %5.1f - 95%% %5.1f - 99%% %5.1f - 99.9%% %5.1f - max %6.1f
 			Read  ops %6.1f r/s  Latency ms: 50%% %5.1f - 95%% %5.1f - 99%% %5.1f - 99.9%% %5.1f - max %6.1f`,
 				writeRate+readRate,
 				failedOpsRate,
@@ -161,14 +161,14 @@ func (p *perf) generateWriteTraffic(ctx context.Context, client oxia.AsyncClient
 			r := <-ch
 			if r.Err != nil {
 				slog.Warn(
-					"WriteBlock operation has failed",
+					"Write operation has failed",
 					slog.Any("error", r.Err),
 					slog.String("key", key),
 				)
 				p.failedOps.Add(1)
 			} else {
 				slog.Debug(
-					"WriteBlock operation has succeeded",
+					"Write operation has succeeded",
 					slog.String("key", key),
 					slog.Any("version", r.Version),
 				)

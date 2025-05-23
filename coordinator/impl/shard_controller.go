@@ -186,7 +186,7 @@ func (s *shardController) run() {
 	}
 
 	s.log.Info(
-		"ShardID is ready",
+		"Shard is ready",
 		slog.Any("leader", s.shardMetadata.Leader),
 	)
 

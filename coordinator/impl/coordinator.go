@@ -558,7 +558,7 @@ func (c *coordinator) rebalanceCluster() error {
 		c.Unlock()
 		if !ok {
 			c.log.Warn(
-				"ShardID controller not found",
+				"Shard controller not found",
 				slog.Int64("shard", swapAction.Shard),
 			)
 			continue

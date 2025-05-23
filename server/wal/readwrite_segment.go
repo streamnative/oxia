@@ -181,7 +181,7 @@ func (ms *readWriteSegment) Close() error {
 	err := multierr.Combine(
 		ms.txnMappedFile.Unmap(),
 		ms.txnFile.Close(),
-		// WriteBlock index file
+		// Write index file
 		ms.c.codec.WriteIndex(ms.c.idxPath, ms.writingIdx),
 	)
 	codec.ReturnIndexBuf(&ms.writingIdx)
@@ -201,7 +201,7 @@ func (ms *readWriteSegment) Truncate(lastSafeOffset int64) error {
 		return codec.ErrOffsetOutOfBounds
 	}
 
-	// WriteBlock zeroes in the section to clear
+	// Write zeroes in the section to clear
 	fileLastSafeOffset := fileOffset(ms.writingIdx, ms.c.baseOffset, lastSafeOffset)
 	var recordSize uint32
 	var err error

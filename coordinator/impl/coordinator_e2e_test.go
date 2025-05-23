@@ -309,7 +309,7 @@ func TestCoordinator_MultipleNamespaces(t *testing.T) {
 
 	ctx := context.Background()
 
-	// WriteBlock in default ns
+	// Write in default ns
 	_, version1, err := clientDefault.Put(ctx, "my-key", []byte("my-value"))
 	assert.NoError(t, err)
 	assert.EqualValues(t, 0, version1.ModificationsCount)
