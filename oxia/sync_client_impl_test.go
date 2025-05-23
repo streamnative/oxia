@@ -17,11 +17,12 @@ package oxia
 import (
 	"context"
 	"fmt"
-	"github.com/rs/zerolog/log"
-	"github.com/stretchr/testify/require"
 	"log/slog"
 	"strings"
 	"testing"
+
+	"github.com/rs/zerolog/log"
+	"github.com/stretchr/testify/require"
 
 	"github.com/stretchr/testify/assert"
 

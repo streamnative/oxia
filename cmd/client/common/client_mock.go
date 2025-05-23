@@ -82,6 +82,6 @@ func (*MockClient) GetNotifications() (oxia.Notifications, error) {
 	return nil, errors.New("not implemented in mock")
 }
 
-func (*MockClient) GetSequenceUpdates(ctx context.Context, prefixKey string, options ...oxia.GetSequenceUpdatesOption) (<-chan string, error) {
+func (*MockClient) GetSequenceUpdates(context.Context, string, ...oxia.GetSequenceUpdatesOption) (<-chan string, error) {
 	return nil, errors.New("not implemented in mock")
 }
