@@ -648,6 +648,9 @@ func (lc *leaderController) GetSequenceUpdates(req *proto.GetSequenceUpdatesRequ
 				return err
 			}
 
+		case <-lc.ctx.Done():
+			return lc.ctx.Err()
+
 		case <-stream.Context().Done():
 			return stream.Context().Err()
 		}

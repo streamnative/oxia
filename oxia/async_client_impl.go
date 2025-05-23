@@ -458,6 +458,15 @@ func (c *clientImpl) RangeScan(ctx context.Context, minKeyInclusive string, maxK
 	return outCh
 }
 
+func (c *clientImpl) GetSequenceUpdates(ctx context.Context, prefixKey string, options ...GetSequenceUpdatesOption) (<-chan string, error) {
+	opts := newGetSequenceUpdatesOptions(options)
+	if opts.partitionKey == nil {
+		return nil, errors.Wrap(ErrInvalidOptions, "partitionKey is required")
+	}
+
+	return newSequenceUpdates(ctx, prefixKey, *opts.partitionKey, c.clientPool, c.shardManager), nil
+}
+
 // We do range scan on all the shards, and we need to always pick the lowest key
 // across all the shards.
 func aggregateAndSortRangeScanAcrossShards(channels []chan GetResult, outCh chan GetResult) {
