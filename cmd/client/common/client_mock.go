@@ -81,3 +81,7 @@ func (m *MockClient) RangeScan(_ context.Context, minKeyInclusive string, maxKey
 func (*MockClient) GetNotifications() (oxia.Notifications, error) {
 	return nil, errors.New("not implemented in mock")
 }
+
+func (*MockClient) GetSequenceUpdates(context.Context, string, ...oxia.GetSequenceUpdatesOption) (<-chan string, error) {
+	return nil, errors.New("not implemented in mock")
+}
