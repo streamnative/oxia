@@ -155,10 +155,6 @@ func (s *publicRpcServer) WriteStream(stream proto.OxiaClient_WriteStreamServer)
 			"shard":     fmt.Sprintf("%d", lc.ShardID()),
 		},
 		func() {
-			if err := checkStatusIsLeader(lc.Status()); err != nil {
-				channel.PushNoBlock(finished, err)
-				return
-			}
 			for {
 				var req *proto.WriteRequest
 				if req, err = stream.Recv(); err != nil {

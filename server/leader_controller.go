@@ -863,13 +863,8 @@ func (lc *leaderController) appendToWalBlock(ctx context.Context, request func(i
 }
 
 func (lc *leaderController) Write(ctx context.Context, request *proto.WriteRequest, cb callback.Callback[*proto.WriteResponse]) {
-	if err := checkStatusIsLeader(lc.status); err != nil {
-		cb.OnCompleteError(err)
-		return
-	}
 	timer := lc.writeLatencyHisto.Timer()
 	slog.Debug("Got request in stream", slog.Any("req", request))
-
 	lc.Lock()
 	if err := checkStatusIsLeader(lc.status); err != nil {
 		lc.Unlock()
@@ -1075,11 +1070,4 @@ func checkStatusIsLeader(actual proto.ServingStatus) error {
 		return status.Errorf(common.CodeInvalidStatus, "Received message in the wrong state. In %+v, should be %+v.", actual, proto.ServingStatus_LEADER)
 	}
 	return nil
-}
-
-func sendNonBlocking(ch chan error, err error) {
-	select {
-	case ch <- err:
-	default:
-	}
 }
