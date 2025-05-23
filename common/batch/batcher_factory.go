@@ -17,9 +17,10 @@ package batch
 import (
 	"context"
 	"fmt"
-	"github.com/streamnative/oxia/common"
 	"runtime"
 	"time"
+
+	"github.com/streamnative/oxia/common"
 )
 
 var batcherChannelBufferSize = runtime.GOMAXPROCS(-1)
