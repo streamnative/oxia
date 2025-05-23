@@ -15,6 +15,7 @@
 package batch
 
 import (
+	"context"
 	"sync"
 
 	"go.uber.org/multierr"
@@ -22,8 +23,9 @@ import (
 	"github.com/streamnative/oxia/common/batch"
 )
 
-func NewManager(batcherFactory func(*int64) batch.Batcher) *Manager {
+func NewManager(ctx context.Context, batcherFactory func(context.Context, *int64) batch.Batcher) *Manager {
 	return &Manager{
+		ctx:            ctx,
 		batcherFactory: batcherFactory,
 		batchers:       make(map[int64]batch.Batcher),
 	}
@@ -31,7 +33,8 @@ func NewManager(batcherFactory func(*int64) batch.Batcher) *Manager {
 
 type Manager struct {
 	sync.RWMutex
-	batcherFactory func(*int64) batch.Batcher
+	ctx            context.Context
+	batcherFactory func(context.Context, *int64) batch.Batcher
 	batchers       map[int64]batch.Batcher
 }
 
@@ -49,7 +52,7 @@ func (m *Manager) Get(shardId int64) batch.Batcher {
 	defer m.Unlock()
 
 	if batcher, ok = m.batchers[shardId]; !ok {
-		batcher = m.batcherFactory(&shardId)
+		batcher = m.batcherFactory(m.ctx, &shardId)
 		m.batchers[shardId] = batcher
 	}
 	return batcher
