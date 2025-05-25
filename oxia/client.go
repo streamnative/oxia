@@ -103,6 +103,12 @@ type AsyncClient interface {
 	// https://github.com/streamnative/oxia/blob/main/docs/oxia-key-sorting.md
 	RangeScan(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, options ...RangeScanOption) <-chan GetResult
 
+	// GetSequenceUpdates allows to subscribe to the updates happening on a sequential key
+	// The channel will report the current latest sequence for a given key.
+	// Multiple updates can be collapsed into one single event with the
+	// highest sequence.
+	GetSequenceUpdates(ctx context.Context, prefixKey string, options ...GetSequenceUpdatesOption) (<-chan string, error)
+
 	// GetNotifications creates a new subscription to receive the notifications
 	// from Oxia for any change that is applied to the database
 	GetNotifications() (Notifications, error)
@@ -163,6 +169,12 @@ type SyncClient interface {
 	// Ordering in results channel is respected only if a [PartitionKey] option is passed (and the keys were
 	// inserted with that partition key).
 	RangeScan(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, options ...RangeScanOption) <-chan GetResult
+
+	// GetSequenceUpdates allows to subscribe to the updates happening on a sequential key
+	// The channel will report the current latest sequence for a given key.
+	// Multiple updates can be collapsed into one single event with the
+	// highest sequence.
+	GetSequenceUpdates(ctx context.Context, prefixKey string, options ...GetSequenceUpdatesOption) (<-chan string, error)
 
 	// GetNotifications creates a new subscription to receive the notifications
 	// from Oxia for any change that is applied to the database
