@@ -29,27 +29,27 @@ import "sync/atomic"
 // - completed: An atomic boolean used to track if the operation has already completed, ensuring only one callback is executed.
 
 type Once[T any] struct {
-	OnComplete      func(t T)       // Callback function called on successful completion
-	OnCompleteError func(err error) // Callback function called when an error occurs
+	onComplete      func(t T)       // Callback function called on successful completion
+	onCompleteError func(err error) // Callback function called when an error occurs
 	completed       atomic.Bool     // Atomic flag to track completion status
 }
 
-// Complete is called to notify that the operation has completed successfully with the result 't'.
+// OnComplete is called to notify that the operation has completed successfully with the result 't'.
 // It ensures that the 'OnComplete' callback is only called once.
 func (c *Once[T]) OnComplete(t T) {
 	if !c.completed.CompareAndSwap(false, true) {
 		return
 	}
-	c.OnComplete(t)
+	c.onComplete(t)
 }
 
-// CompleteError is called to notify that the operation has failed with an error 'err'.
+// OnCompleteError is called to notify that the operation has failed with an error 'err'.
 // It ensures that the 'OnCompleteError' callback is only called once.
 func (c *Once[T]) OnCompleteError(err error) {
 	if !c.completed.CompareAndSwap(false, true) {
 		return
 	}
-	c.OnCompleteError(err)
+	c.onCompleteError(err)
 }
 
 // NewOnce creates a new instance of Once with the provided success and error callbacks.

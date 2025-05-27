@@ -38,8 +38,6 @@ import (
 	"github.com/streamnative/oxia/server/wal"
 )
 
-var ErrLeaderClosed = errors.New("the leader has been closed")
-
 type LeaderController interface {
 	io.Closer
 
@@ -778,8 +776,16 @@ func (lc *leaderController) RangeScan(ctx context.Context, request *proto.RangeS
 }
 
 func (lc *leaderController) WriteBlock(ctx context.Context, request *proto.WriteRequest) (*proto.WriteResponse, error) {
+	return lc.writeBlock(ctx, func(offset int64) *proto.WriteRequest { return request })
+}
+
+func (lc *leaderController) Write(ctx context.Context, request *proto.WriteRequest, cb callback.Callback[*proto.WriteResponse]) {
+	lc.write(ctx, func(offset int64) *proto.WriteRequest { return request }, cb)
+}
+
+func (lc *leaderController) writeBlock(ctx context.Context, requestSupplier func(offset int64) *proto.WriteRequest) (*proto.WriteResponse, error) {
 	res := make(chan *entities.TWithError[*proto.WriteResponse], 1)
-	lc.Write(ctx, request, callback.NewOnce(func(t *proto.WriteResponse) {
+	lc.write(ctx, requestSupplier, callback.NewOnce(func(t *proto.WriteResponse) {
 		res <- &entities.TWithError[*proto.WriteResponse]{
 			Err: nil,
 			T:   t,
@@ -794,9 +800,8 @@ func (lc *leaderController) WriteBlock(ctx context.Context, request *proto.Write
 	return response.T, response.Err
 }
 
-func (lc *leaderController) Write(ctx context.Context, request *proto.WriteRequest, cb callback.Callback[*proto.WriteResponse]) {
+func (lc *leaderController) write(ctx context.Context, requestSupplier func(offset int64) *proto.WriteRequest, cb callback.Callback[*proto.WriteResponse]) {
 	timer := lc.writeLatencyHisto.Timer()
-	slog.Debug("Got request in stream", slog.Any("req", request))
 	lc.Lock()
 	if err := checkStatusIsLeader(lc.status); err != nil {
 		lc.Unlock()
@@ -808,6 +813,7 @@ func (lc *leaderController) Write(ctx context.Context, request *proto.WriteReque
 	tracker := lc.quorumAckTracker
 	term := lc.term
 	lc.Unlock()
+	request := requestSupplier(newOffset)
 
 	lc.log.Debug("Append operation", slog.Any("req", request))
 
