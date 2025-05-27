@@ -21,12 +21,13 @@ import (
 	"log/slog"
 
 	"github.com/pkg/errors"
-	"github.com/streamnative/oxia/common/channel"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protowire"
+
+	"github.com/streamnative/oxia/common/channel"
 
 	"github.com/streamnative/oxia/common/callback"
 
