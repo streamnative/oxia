@@ -1250,7 +1250,7 @@ func TestLeaderController_WriteStream(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	// WriteBlock entry
+	// Write entry
 	ctx, cancel := context.WithCancel(context.Background())
 	stream := newMockWriteStream(ctx)
 

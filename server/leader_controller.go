@@ -23,11 +23,10 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/streamnative/oxia/common/entities"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
-
-	"github.com/streamnative/oxia/common/entities"
 
 	"github.com/streamnative/oxia/common/channel"
 
@@ -778,88 +777,21 @@ func (lc *leaderController) RangeScan(ctx context.Context, request *proto.RangeS
 	)
 }
 
-// Write
-// A client sends a batch of entries to the leader
-//
-// A client writes a value from Values to a leader node
-// if that value has not previously been written. The leader adds
-// the entry to its log, updates its head offset.
 func (lc *leaderController) WriteBlock(ctx context.Context, request *proto.WriteRequest) (*proto.WriteResponse, error) {
-	_, resp, err := lc.write(ctx, func(_ int64) *proto.WriteRequest {
-		return request
-	})
-	return resp, err
-}
-
-func (lc *leaderController) write(ctx context.Context, request func(int64) *proto.WriteRequest) (int64, *proto.WriteResponse, error) {
-	timer := lc.writeLatencyHisto.Timer()
-	defer timer.Done() //nolint:contextcheck
-
-	lc.log.Debug("WriteBlock operation")
-
-	actualRequest, newOffset, timestamp, err := lc.appendToWalBlock(ctx, request)
-	if err != nil {
-		return wal.InvalidOffset, nil, err
-	}
-
-	if err := lc.quorumAckTracker.WaitForCommitOffset(ctx, newOffset); err != nil {
-		return wal.InvalidOffset, nil, err
-	}
-	writeResponse, err := lc.db.ProcessWrite(actualRequest, newOffset, timestamp, WrapperUpdateOperationCallback)
-	return newOffset, writeResponse, err
-}
-
-func (lc *leaderController) appendToWalBlock(ctx context.Context, request func(int64) *proto.WriteRequest) (actualRequest *proto.WriteRequest, offset int64, timestamp uint64, err error) {
-	lc.Lock()
-
-	if err := checkStatusIsLeader(lc.status); err != nil {
-		lc.Unlock()
-		return nil, wal.InvalidOffset, 0, err
-	}
-
-	newOffset := lc.quorumAckTracker.NextOffset()
-	timestamp = uint64(time.Now().UnixMilli())
-	actualRequest = request(newOffset)
-
-	lc.log.Debug(
-		"Append operation",
-		slog.Any("req", actualRequest),
-	)
-
-	logEntryValue := proto.LogEntryValueFromVTPool()
-	defer logEntryValue.ReturnToVTPool()
-
-	logEntryValue.Value = &proto.LogEntryValue_Requests{
-		Requests: &proto.WriteRequests{
-			Writes: []*proto.WriteRequest{actualRequest},
-		},
-	}
-	value, err := logEntryValue.MarshalVT()
-	if err != nil {
-		lc.Unlock()
-		return actualRequest, wal.InvalidOffset, timestamp, err
-	}
-	logEntry := &proto.LogEntry{
-		Term:      lc.term,
-		Offset:    newOffset,
-		Value:     value,
-		Timestamp: timestamp,
-	}
-
-	if err = lc.wal.AppendAsync(logEntry); err != nil {
-		lc.Unlock()
-		return actualRequest, wal.InvalidOffset, timestamp, errors.Wrap(err, "oxia: failed to append to wal")
-	}
-
-	lc.Unlock()
-
-	// Sync the WAL outside the mutex, so that we can have multiple waiting
-	// sync requests
-	if err = lc.wal.Sync(ctx); err != nil {
-		return actualRequest, wal.InvalidOffset, timestamp, errors.Wrap(err, "oxia: failed to sync the wal")
-	}
-	lc.quorumAckTracker.AdvanceHeadOffset(newOffset)
-	return actualRequest, newOffset, timestamp, nil
+	res := make(chan *entities.TWithError[*proto.WriteResponse], 1)
+	lc.Write(ctx, request, callback.NewOnce(func(t *proto.WriteResponse) {
+		res <- &entities.TWithError[*proto.WriteResponse]{
+			Err: nil,
+			T:   t,
+		}
+	}, func(err error) {
+		res <- &entities.TWithError[*proto.WriteResponse]{
+			Err: err,
+			T:   nil,
+		}
+	}))
+	response := <-res
+	return response.T, response.Err
 }
 
 func (lc *leaderController) Write(ctx context.Context, request *proto.WriteRequest, cb callback.Callback[*proto.WriteResponse]) {

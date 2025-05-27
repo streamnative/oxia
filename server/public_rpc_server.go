@@ -161,7 +161,7 @@ func (s *publicRpcServer) WriteStream(stream proto.OxiaClient_WriteStreamServer)
 					channel.PushNoBlock(finished, err)
 					return
 				} else if req == nil {
-					channel.PushNoBlock(finished, errors.New("empty request received"))
+					channel.PushNoBlock(finished, errors.New("stream closed"))
 					return
 				}
 
