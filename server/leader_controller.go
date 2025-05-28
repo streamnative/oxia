@@ -594,30 +594,26 @@ func (lc *leaderController) Read(ctx context.Context, request *proto.ReadRequest
 		},
 		func() {
 			lc.log.Debug("Received read request")
+			var response *proto.GetResponse
+			var err error
 
 			for _, get := range request.Gets {
-				var response *proto.GetResponse
-				var err error
-
 				if get.SecondaryIndexName != nil {
 					response, err = secondaryIndexGet(get, lc.db)
 				} else {
 					response, err = lc.db.Get(get)
 				}
-
 				if err != nil {
-					cb.OnComplete(err)
-					return
+					break
 				}
 				if err = cb.OnNext(response); err != nil {
-					cb.OnComplete(err)
-					return
+					break
 				}
-				if ctx.Err() != nil {
+				if err = ctx.Err(); err != nil {
 					break
 				}
 			}
-			cb.OnComplete(nil)
+			cb.OnComplete(err)
 		},
 	)
 }
@@ -681,6 +677,7 @@ func (lc *leaderController) list(ctx context.Context, request *proto.ListRequest
 
 			var it kv.KeyIterator
 			var err error
+
 			if request.SecondaryIndexName != nil {
 				it, err = newSecondaryIndexListIterator(request, lc.db)
 			} else {
@@ -701,14 +698,13 @@ func (lc *leaderController) list(ctx context.Context, request *proto.ListRequest
 
 			for ; it.Valid(); it.Next() {
 				if err = cb.OnNext(it.Key()); err != nil {
-					cb.OnComplete(err)
-					return
+					break
 				}
-				if ctx.Err() != nil {
+				if err = ctx.Err(); err != nil {
 					break
 				}
 			}
-			cb.OnComplete(nil)
+			cb.OnComplete(err)
 		},
 	)
 }
@@ -740,6 +736,7 @@ func (lc *leaderController) RangeScan(ctx context.Context, request *proto.RangeS
 
 			var it kv.RangeScanIterator
 			var err error
+
 			if request.SecondaryIndexName != nil {
 				it, err = newSecondaryIndexRangeScanIterator(request, lc.db)
 			} else {
@@ -756,21 +753,19 @@ func (lc *leaderController) RangeScan(ctx context.Context, request *proto.RangeS
 				_ = it.Close()
 			}()
 
+			var gr *proto.GetResponse
 			for ; it.Valid(); it.Next() {
-				gr, err := it.Value()
-				if err != nil {
-					cb.OnComplete(err)
-					return
+				if gr, err = it.Value(); err != nil {
+					break
 				}
 				if err = cb.OnNext(gr); err != nil {
-					cb.OnComplete(err)
-					return
+					break
 				}
-				if ctx.Err() != nil {
+				if err = ctx.Err(); err != nil {
 					break
 				}
 			}
-			cb.OnComplete(nil)
+			cb.OnComplete(err)
 		},
 	)
 }
