@@ -787,11 +787,11 @@ func (lc *leaderController) RangeScan(ctx context.Context, request *proto.RangeS
 }
 
 func (lc *leaderController) WriteBlock(ctx context.Context, request *proto.WriteRequest) (*proto.WriteResponse, error) {
-	return lc.writeBlock(ctx, func(offset int64) *proto.WriteRequest { return request })
+	return lc.writeBlock(ctx, func(_ int64) *proto.WriteRequest { return request })
 }
 
 func (lc *leaderController) Write(ctx context.Context, request *proto.WriteRequest, cb callback.Callback[*proto.WriteResponse]) {
-	lc.write(ctx, func(offset int64) *proto.WriteRequest { return request }, cb)
+	lc.write(ctx, func(_ int64) *proto.WriteRequest { return request }, cb)
 }
 
 func (lc *leaderController) writeBlock(ctx context.Context, requestSupplier func(offset int64) *proto.WriteRequest) (*proto.WriteResponse, error) {

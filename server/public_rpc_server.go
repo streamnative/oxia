@@ -174,7 +174,6 @@ func (s *publicRpcServer) WriteStream(stream proto.OxiaClient_WriteStreamServer)
 						}
 					}, func(err error) {
 						channel.PushNoBlock(finished, err)
-						return
 					}))
 			}
 		},
