@@ -698,8 +698,7 @@ func (lc *leaderController) list(ctx context.Context, request *proto.ListRequest
 
 			for ; it.Valid(); it.Next() {
 				if err = cb.OnNext(it.Key()); err != nil {
-					cb.OnComplete(err)
-					return
+					break
 				}
 				if err = ctx.Err(); err != nil {
 					break
