@@ -30,7 +30,6 @@ type Timer struct {
 	start time.Time
 }
 
-//nolint:contextcheck
 func (tm Timer) Done() {
 	tm.histo.histo.Record(context.Background(), float64(time.Since(tm.start).Microseconds())/1000.0, tm.histo.attrs)
 }
