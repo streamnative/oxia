@@ -54,7 +54,11 @@ type KeyIterator interface {
 
 	Valid() bool
 	Key() string
+	Prev() bool
 	Next() bool
+
+	SeekGE(key string) bool
+	SeekLT(key string) bool
 }
 
 type ReverseKeyIterator interface {
@@ -116,6 +120,7 @@ type KV interface {
 
 	KeyRangeScan(lowerBound, upperBound string) (KeyIterator, error)
 	KeyRangeScanReverse(lowerBound, upperBound string) (ReverseKeyIterator, error)
+	KeyIterator() (KeyIterator, error)
 
 	RangeScan(lowerBound, upperBound string) (KeyValueIterator, error)
 

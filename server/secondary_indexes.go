@@ -19,6 +19,8 @@ import (
 	"net/url"
 	"regexp"
 
+	"github.com/streamnative/oxia/common/compare"
+
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 
@@ -143,9 +145,11 @@ const secondaryIdxSeparator = "\x01"
 const secondaryIdxRangePrefixFormat = secondaryIdxKeyPrefix + "/%s/%s"
 const secondaryIdxFormat = secondaryIdxRangePrefixFormat + secondaryIdxSeparator + "%s"
 
-const regex = "^" + secondaryIdxKeyPrefix + "/[^/]+/[^" + secondaryIdxSeparator + "]+" + secondaryIdxSeparator + "(.+)$"
+const regex = "^" + secondaryIdxKeyPrefix + "/[^/]+/([^" + secondaryIdxSeparator + "]+)" + secondaryIdxSeparator + "(.+)$"
 
 var secondaryIdxFormatRegex = regexp.MustCompile(regex)
+
+var errFailedToParseSecondaryKey = errors.New("oxia db: failed to parse secondary index key")
 
 func secondaryIndexKey(primaryKey string, si *proto.SecondaryIndex) string {
 	return fmt.Sprintf(secondaryIdxFormat, si.IndexName, si.SecondaryKey, url.PathEscape(primaryKey))
@@ -153,11 +157,22 @@ func secondaryIndexKey(primaryKey string, si *proto.SecondaryIndex) string {
 
 func secondaryIndexPrimaryKey(completeKey string) (string, error) {
 	matches := secondaryIdxFormatRegex.FindStringSubmatch(completeKey)
-	if len(matches) != 2 {
-		return "", errors.Errorf("oxia db: failed to parse secondary index key")
+	if len(matches) != 3 {
+		return "", errFailedToParseSecondaryKey
 	}
 
-	return url.PathUnescape(matches[1])
+	return url.PathUnescape(matches[2])
+}
+
+func secondaryIndexPrimaryAndSecondaryKey(completeKey string) (primaryKey string, secondaryKey string, err error) {
+	matches := secondaryIdxFormatRegex.FindStringSubmatch(completeKey)
+	if len(matches) != 3 {
+		return "", "", errFailedToParseSecondaryKey
+	}
+
+	secondaryKey = matches[1]
+	primaryKey, err = url.PathUnescape(matches[2])
+	return primaryKey, secondaryKey, err
 }
 
 func deleteSecondaryIndexes(batch kv.WriteBatch, primaryKey string, existingEntry *proto.StorageEntry) error {
@@ -218,6 +233,18 @@ func (it *secondaryIndexListIterator) Key() string {
 	return primaryKey
 }
 
+func (*secondaryIndexListIterator) Prev() bool {
+	panic("not supported")
+}
+
+func (*secondaryIndexListIterator) SeekGE(string) bool {
+	panic("not supported")
+}
+
+func (*secondaryIndexListIterator) SeekLT(string) bool {
+	panic("not supported")
+}
+
 func (it *secondaryIndexListIterator) Next() bool {
 	return it.it.Next()
 }
@@ -276,4 +303,93 @@ func (it *secondaryIndexRangeIterator) Value() (*proto.GetResponse, error) {
 	}
 
 	return gr, err
+}
+
+// /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+func secondaryIndexGet(req *proto.GetRequest, db kv.DB) (*proto.GetResponse, error) {
+	primaryKey, secondaryKey, err := doSecondaryGet(db, req)
+	if err != nil && !errors.Is(err, errFailedToParseSecondaryKey) {
+		return nil, err
+	}
+
+	if primaryKey == "" {
+		return &proto.GetResponse{Status: proto.Status_KEY_NOT_FOUND}, nil
+	}
+
+	gr, err := db.Get(&proto.GetRequest{
+		Key:            primaryKey,
+		IncludeValue:   req.IncludeValue,
+		ComparisonType: proto.KeyComparisonType_EQUAL,
+	})
+
+	if gr != nil {
+		gr.Key = &primaryKey
+		gr.SecondaryIndexKey = &secondaryKey
+	}
+	return gr, err
+}
+
+//nolint:revive
+func doSecondaryGet(db kv.DB, req *proto.GetRequest) (primaryKey string, secondaryKey string, err error) {
+	indexName := *req.SecondaryIndexName
+	searchKey := fmt.Sprintf(secondaryIdxRangePrefixFormat, indexName, req.Key)
+
+	it, err := db.KeyIterator()
+	if err != nil {
+		return "", "", err
+	}
+
+	defer func() { _ = it.Close() }()
+
+	if req.ComparisonType == proto.KeyComparisonType_LOWER {
+		it.SeekLT(searchKey)
+	} else {
+		// For all the other cases, we set the iterator on >=
+		it.SeekGE(searchKey)
+	}
+
+	for it.Valid() {
+		itKey := it.Key()
+		primaryKey, secondaryKey, err = secondaryIndexPrimaryAndSecondaryKey(itKey)
+		if err != nil && !errors.Is(err, errFailedToParseSecondaryKey) {
+			return "", "", err
+		}
+
+		cmp := compare.CompareWithSlash([]byte(req.Key), []byte(secondaryKey))
+
+		switch req.ComparisonType {
+		case proto.KeyComparisonType_EQUAL:
+			if cmp != 0 {
+				primaryKey = ""
+			}
+			return primaryKey, secondaryKey, err
+
+		case proto.KeyComparisonType_FLOOR:
+			if primaryKey == "" || cmp < 0 {
+				it.Prev()
+			} else {
+				return primaryKey, secondaryKey, err
+			}
+
+		case proto.KeyComparisonType_LOWER:
+			if cmp <= 0 {
+				it.Prev()
+			} else {
+				return primaryKey, secondaryKey, err
+			}
+
+		case proto.KeyComparisonType_CEILING:
+			return primaryKey, secondaryKey, err
+
+		case proto.KeyComparisonType_HIGHER:
+			if cmp >= 0 {
+				it.Next()
+			} else {
+				return primaryKey, secondaryKey, err
+			}
+		}
+	}
+
+	return primaryKey, secondaryKey, err
 }

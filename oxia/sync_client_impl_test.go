@@ -21,6 +21,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rs/zerolog/log"
+	"github.com/stretchr/testify/require"
+
 	"github.com/stretchr/testify/assert"
 
 	"github.com/streamnative/oxia/server"
@@ -56,6 +59,10 @@ func (c *neverCompleteAsyncClient) RangeScan(ctx context.Context, minKeyInclusiv
 }
 
 func (c *neverCompleteAsyncClient) GetNotifications() (Notifications, error) {
+	panic("not implemented")
+}
+
+func (c *neverCompleteAsyncClient) GetSequenceUpdates(ctx context.Context, prefixKey string, options ...GetSequenceUpdatesOption) (<-chan string, error) {
 	panic("not implemented")
 }
 
@@ -192,5 +199,214 @@ func TestSyncClientImpl_SecondaryIndexesRepeated(t *testing.T) {
 	assert.Equal(t, []string{"/i", "/j", "/a", "/b", "/c"}, l)
 
 	assert.NoError(t, client.Close())
+	assert.NoError(t, standaloneServer.Close())
+}
+
+func TestSyncClientImpl_SecondaryIndexes_Get(t *testing.T) {
+	config := server.NewTestConfig(t.TempDir())
+	config.NumShards = 10
+	standaloneServer, err := server.NewStandalone(config)
+	assert.NoError(t, err)
+
+	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())
+	client, err := NewSyncClient(serviceAddress)
+	assert.NoError(t, err)
+
+	// ////////////////////////////////////////////////////////////////////////
+
+	ctx := context.Background()
+	for i := 1; i < 10; i++ {
+		primKey := fmt.Sprintf("%c", 'a'+i)
+		val := fmt.Sprintf("%03d", i)
+		log.Info().
+			Str("key", primKey).
+			Str("value", val).
+			Msg("Adding record")
+		_, _, _ = client.Put(ctx, primKey, []byte(val), SecondaryIndex("val-idx", val))
+	}
+
+	var primaryKey string
+	var val []byte
+	// ////////////////////////////////////////////////////////////////////////
+
+	_, _, _, err = client.Get(ctx, "000", UseIndex("val-idx"))
+	assert.ErrorIs(t, err, ErrKeyNotFound)
+
+	primaryKey, val, _, err = client.Get(ctx, "001", UseIndex("val-idx"))
+	assert.NoError(t, err)
+	assert.Equal(t, "b", primaryKey)
+	assert.Equal(t, []byte("001"), val)
+
+	primaryKey, val, _, err = client.Get(ctx, "005", UseIndex("val-idx"))
+	assert.NoError(t, err)
+	assert.Equal(t, "f", primaryKey)
+	assert.Equal(t, []byte("005"), val)
+
+	primaryKey, val, _, err = client.Get(ctx, "009", UseIndex("val-idx"))
+	assert.NoError(t, err)
+	assert.Equal(t, "j", primaryKey)
+	assert.Equal(t, []byte("009"), val)
+
+	_, _, _, err = client.Get(ctx, "999", UseIndex("val-idx"))
+	assert.ErrorIs(t, err, ErrKeyNotFound)
+
+	// ////////////////////////////////////////////////////////////////////////
+
+	_, _, _, err = client.Get(ctx, "000", UseIndex("val-idx"), ComparisonLower())
+	assert.ErrorIs(t, err, ErrKeyNotFound)
+
+	_, _, _, err = client.Get(ctx, "001", UseIndex("val-idx"), ComparisonLower())
+	assert.ErrorIs(t, err, ErrKeyNotFound)
+
+	primaryKey, val, _, err = client.Get(ctx, "005", UseIndex("val-idx"), ComparisonLower())
+	assert.NoError(t, err)
+	assert.Equal(t, "e", primaryKey)
+	assert.Equal(t, []byte("004"), val)
+
+	primaryKey, val, _, err = client.Get(ctx, "009", UseIndex("val-idx"), ComparisonLower())
+	assert.NoError(t, err)
+	assert.Equal(t, "i", primaryKey)
+	assert.Equal(t, []byte("008"), val)
+
+	primaryKey, val, _, err = client.Get(ctx, "999", UseIndex("val-idx"), ComparisonLower())
+	assert.NoError(t, err)
+	assert.Equal(t, "j", primaryKey)
+	assert.Equal(t, []byte("009"), val)
+
+	// ////////////////////////////////////////////////////////////////////////
+
+	_, _, _, err = client.Get(ctx, "000", UseIndex("val-idx"), ComparisonFloor())
+	assert.ErrorIs(t, err, ErrKeyNotFound)
+
+	primaryKey, val, _, err = client.Get(ctx, "001", UseIndex("val-idx"), ComparisonFloor())
+	assert.NoError(t, err)
+	assert.Equal(t, "b", primaryKey)
+	assert.Equal(t, []byte("001"), val)
+
+	primaryKey, val, _, err = client.Get(ctx, "005", UseIndex("val-idx"), ComparisonFloor())
+	assert.NoError(t, err)
+	assert.Equal(t, "f", primaryKey)
+	assert.Equal(t, []byte("005"), val)
+
+	primaryKey, val, _, err = client.Get(ctx, "009", UseIndex("val-idx"), ComparisonFloor())
+	assert.NoError(t, err)
+	assert.Equal(t, "j", primaryKey)
+	assert.Equal(t, []byte("009"), val)
+
+	primaryKey, val, _, err = client.Get(ctx, "999", UseIndex("val-idx"), ComparisonFloor())
+	assert.NoError(t, err)
+	assert.Equal(t, "j", primaryKey)
+	assert.Equal(t, []byte("009"), val)
+
+	// ////////////////////////////////////////////////////////////////////////
+
+	primaryKey, val, _, err = client.Get(ctx, "000", UseIndex("val-idx"), ComparisonHigher())
+	assert.NoError(t, err)
+	assert.Equal(t, "b", primaryKey)
+	assert.Equal(t, []byte("001"), val)
+
+	primaryKey, val, _, err = client.Get(ctx, "001", UseIndex("val-idx"), ComparisonHigher())
+	assert.NoError(t, err)
+	assert.Equal(t, "c", primaryKey)
+	assert.Equal(t, []byte("002"), val)
+
+	primaryKey, val, _, err = client.Get(ctx, "005", UseIndex("val-idx"), ComparisonHigher())
+	assert.NoError(t, err)
+	assert.Equal(t, "g", primaryKey)
+	assert.Equal(t, []byte("006"), val)
+
+	_, _, _, err = client.Get(ctx, "009", UseIndex("val-idx"), ComparisonHigher())
+	assert.ErrorIs(t, err, ErrKeyNotFound)
+
+	_, _, _, err = client.Get(ctx, "999", UseIndex("val-idx"), ComparisonHigher())
+	assert.ErrorIs(t, err, ErrKeyNotFound)
+
+	// ////////////////////////////////////////////////////////////////////////
+
+	primaryKey, val, _, err = client.Get(ctx, "000", UseIndex("val-idx"), ComparisonCeiling())
+	assert.NoError(t, err)
+	assert.Equal(t, "b", primaryKey)
+	assert.Equal(t, []byte("001"), val)
+
+	primaryKey, val, _, err = client.Get(ctx, "001", UseIndex("val-idx"), ComparisonCeiling())
+	assert.NoError(t, err)
+	assert.Equal(t, "b", primaryKey)
+	assert.Equal(t, []byte("001"), val)
+
+	primaryKey, val, _, err = client.Get(ctx, "005", UseIndex("val-idx"), ComparisonCeiling())
+	assert.NoError(t, err)
+	assert.Equal(t, "f", primaryKey)
+	assert.Equal(t, []byte("005"), val)
+
+	primaryKey, val, _, err = client.Get(ctx, "009", UseIndex("val-idx"), ComparisonCeiling())
+	assert.NoError(t, err)
+	assert.Equal(t, "j", primaryKey)
+	assert.Equal(t, []byte("009"), val)
+
+	_, _, _, err = client.Get(ctx, "999", UseIndex("val-idx"), ComparisonCeiling())
+	assert.ErrorIs(t, err, ErrKeyNotFound)
+
+	// ////////////////////////////////////////////////////////////////////////
+
+	assert.NoError(t, client.Close())
+	assert.NoError(t, standaloneServer.Close())
+}
+
+func TestSyncClientImpl_GetSequenceUpdates(t *testing.T) {
+	standaloneServer, err := server.NewStandalone(server.NewTestConfig(t.TempDir()))
+	assert.NoError(t, err)
+
+	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())
+	client, err := NewSyncClient(serviceAddress, WithBatchLinger(0))
+	assert.NoError(t, err)
+
+	ch1, err := client.GetSequenceUpdates(context.Background(), "a")
+	assert.Nil(t, ch1)
+	assert.ErrorIs(t, err, ErrInvalidOptions)
+
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	ch1, err = client.GetSequenceUpdates(ctx1, "a", PartitionKey("x"))
+	assert.NotNil(t, ch1)
+	assert.NoError(t, err)
+	cancel1()
+
+	k1, _, _ := client.Put(context.Background(), "a", []byte("0"), PartitionKey("x"), SequenceKeysDeltas(1))
+	assert.Equal(t, fmt.Sprintf("a-%020d", 1), k1)
+	k2, _, _ := client.Put(context.Background(), "a", []byte("0"), PartitionKey("x"), SequenceKeysDeltas(1))
+	assert.Equal(t, fmt.Sprintf("a-%020d", 2), k2)
+	assert.NotEqual(t, k1, k2)
+
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	updates2, err := client.GetSequenceUpdates(ctx2, "a", PartitionKey("x"))
+	require.NoError(t, err)
+
+	recvK2 := <-updates2
+	assert.Equal(t, k2, recvK2)
+
+	cancel2()
+
+	k3, _, _ := client.Put(context.Background(), "a", []byte("0"), PartitionKey("x"), SequenceKeysDeltas(1))
+	assert.Empty(t, updates2)
+
+	select {
+	case <-updates2:
+		// Ok
+
+	default:
+		assert.Fail(t, "should have been closed")
+	}
+
+	updates3, err := client.GetSequenceUpdates(context.Background(), "a", PartitionKey("x"))
+	require.NoError(t, err)
+
+	recvK3 := <-updates3
+	assert.Equal(t, k3, recvK3)
+
+	k4, _, _ := client.Put(context.Background(), "a", []byte("0"), PartitionKey("x"), SequenceKeysDeltas(1))
+	recvK4 := <-updates3
+	assert.Equal(t, k4, recvK4)
+
+	assert.NoError(t, client.Close())
+
 	assert.NoError(t, standaloneServer.Close())
 }

@@ -133,7 +133,7 @@ func (e *executorImpl) writeStream(shardId *int64) (*streamWrapper, error) {
 		return nil, err
 	}
 
-	sw = newStreamWrapper(stream)
+	sw = newStreamWrapper(*shardId, stream)
 
 	e.Lock()
 	defer e.Unlock()

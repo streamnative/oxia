@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"sync/atomic"
 	"time"
 
@@ -76,9 +77,12 @@ type DB interface {
 	Get(request *proto.GetRequest) (*proto.GetResponse, error)
 	List(request *proto.ListRequest) (KeyIterator, error)
 	RangeScan(request *proto.RangeScanRequest) (RangeScanIterator, error)
+	KeyIterator() (KeyIterator, error)
+
 	ReadCommitOffset() (int64, error)
 
 	ReadNextNotifications(ctx context.Context, startOffset int64) ([]*proto.NotificationBatch, error)
+	GetSequenceUpdates(prefixKey string) (SequenceWaiter, error)
 
 	UpdateTerm(newTerm int64, options TermOptions) error
 	ReadTerm() (term int64, options TermOptions, err error)
@@ -97,9 +101,10 @@ func NewDB(namespace string, shardId int64, factory Factory, notificationRetenti
 
 	labels := metrics.LabelsForShard(namespace, shardId)
 	db := &db{
-		kv:                   kv,
-		shardId:              shardId,
-		notificationsEnabled: true,
+		kv:                    kv,
+		shardId:               shardId,
+		notificationsEnabled:  true,
+		sequenceWaiterTracker: NewSequencesWaitTracker(),
 		log: slog.With(
 			slog.String("component", "db"),
 			slog.String("namespace", namespace),
@@ -120,6 +125,8 @@ func NewDB(namespace string, shardId int64, factory Factory, notificationRetenti
 			"The total number of delete ranges operations", "count", labels),
 		getCounter: metrics.NewCounter("oxia_server_db_gets",
 			"The total number of get operations", "count", labels),
+		getSequenceUpdatesCounter: metrics.NewCounter("oxia_server_db_get_sequence_updates",
+			"The total number of get sequence updates operations", "count", labels),
 		listCounter: metrics.NewCounter("oxia_server_db_lists",
 			"The total number of list operations", "count", labels),
 		rangeScanCounter: metrics.NewCounter("oxia_server_db_range_scans",
@@ -142,19 +149,21 @@ func NewDB(namespace string, shardId int64, factory Factory, notificationRetenti
 }
 
 type db struct {
-	kv                   KV
-	shardId              int64
-	versionIdTracker     atomic.Int64
-	notificationsTracker *notificationsTracker
-	log                  *slog.Logger
-	notificationsEnabled bool
+	kv                    KV
+	shardId               int64
+	versionIdTracker      atomic.Int64
+	notificationsTracker  *notificationsTracker
+	log                   *slog.Logger
+	notificationsEnabled  bool
+	sequenceWaiterTracker SequenceWaiterTracker
 
-	putCounter          metrics.Counter
-	deleteCounter       metrics.Counter
-	deleteRangesCounter metrics.Counter
-	getCounter          metrics.Counter
-	listCounter         metrics.Counter
-	rangeScanCounter    metrics.Counter
+	putCounter                metrics.Counter
+	deleteCounter             metrics.Counter
+	deleteRangesCounter       metrics.Counter
+	getCounter                metrics.Counter
+	getSequenceUpdatesCounter metrics.Counter
+	listCounter               metrics.Counter
+	rangeScanCounter          metrics.Counter
 
 	batchWriteLatencyHisto metrics.LatencyHistogram
 	getLatencyHisto        metrics.LatencyHistogram
@@ -293,6 +302,25 @@ func (d *db) Get(request *proto.GetRequest) (*proto.GetResponse, error) {
 	return applyGet(d.kv, request)
 }
 
+func (d *db) GetSequenceUpdates(prefixKey string) (SequenceWaiter, error) {
+	d.getSequenceUpdatesCounter.Add(1)
+
+	sw := d.sequenceWaiterTracker.AddSequenceWaiter(prefixKey)
+
+	// First read last key in the sequence
+	it, err := d.kv.KeyRangeScanReverse(fmt.Sprintf("%s-%020d", prefixKey, 0),
+		fmt.Sprintf("%s-%020d", prefixKey, math.MaxInt64))
+	if err != nil {
+		err = multierr.Append(err, sw.Close())
+		return nil, err
+	} else if it.Valid() {
+		sw.och.WriteLast(it.Key())
+	}
+
+	_ = it.Close()
+	return sw, nil
+}
+
 type listIterator struct {
 	KeyIterator
 	timer metrics.Timer
@@ -367,6 +395,10 @@ func (d *db) RangeScan(request *proto.RangeScanRequest) (RangeScanIterator, erro
 		KeyValueIterator: it,
 		timer:            d.listLatencyHisto.Timer(),
 	}, nil
+}
+
+func (d *db) KeyIterator() (KeyIterator, error) {
+	return d.kv.KeyIterator()
 }
 
 func (d *db) ReadCommitOffset() (int64, error) {
@@ -470,8 +502,10 @@ func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *pr
 	var err error
 	var newKey string
 	if len(putReq.GetSequenceKeyDelta()) > 0 {
+		prefixKey := putReq.Key
 		newKey, err = generateUniqueKeyFromSequences(batch, putReq)
 		putReq.Key = newKey
+		d.sequenceWaiterTracker.SequenceUpdated(prefixKey, newKey)
 	} else if !internal {
 		se, err = checkExpectedVersionId(batch, putReq.Key, putReq.ExpectedVersionId)
 	}

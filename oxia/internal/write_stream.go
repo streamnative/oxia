@@ -16,6 +16,7 @@ package internal
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"sync"
@@ -33,14 +34,20 @@ type streamWrapper struct {
 	failed          atomic.Bool
 }
 
-func newStreamWrapper(stream proto.OxiaClient_WriteStreamClient) *streamWrapper {
+func newStreamWrapper(shard int64, stream proto.OxiaClient_WriteStreamClient) *streamWrapper {
 	sw := &streamWrapper{
 		stream:          stream,
 		pendingRequests: nil,
 	}
 
-	go sw.handleResponses()
-	go sw.handleStreamClosed()
+	go common.DoWithLabels(stream.Context(), map[string]string{
+		"oxia":  "write-stream-handle-response",
+		"shard": fmt.Sprintf("%d", shard),
+	}, sw.handleResponses)
+	go common.DoWithLabels(stream.Context(), map[string]string{
+		"oxia":  "write-stream-handle-stream-closed",
+		"shard": fmt.Sprintf("%d", shard),
+	}, sw.handleStreamClosed)
 	return sw
 }
 

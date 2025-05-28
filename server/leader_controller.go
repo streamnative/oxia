@@ -41,11 +41,6 @@ import (
 
 var ErrLeaderClosed = errors.New("the leader has been closed")
 
-type GetResult struct {
-	Response *proto.GetResponse
-	Err      error
-}
-
 type LeaderController interface {
 	io.Closer
 
@@ -53,9 +48,10 @@ type LeaderController interface {
 	ListBlock(ctx context.Context, request *proto.ListRequest) ([]string, error)
 
 	WriteStream(stream proto.OxiaClient_WriteStreamServer) error
-	Read(ctx context.Context, request *proto.ReadRequest) <-chan GetResult
 	List(ctx context.Context, request *proto.ListRequest, cb callback.StreamCallback[string])
+	Read(ctx context.Context, request *proto.ReadRequest, cb callback.StreamCallback[*proto.GetResponse])
 	RangeScan(ctx context.Context, request *proto.RangeScanRequest, cb callback.StreamCallback[*proto.GetResponse])
+	GetSequenceUpdates(request *proto.GetSequenceUpdatesRequest, stream proto.OxiaClient_GetSequenceUpdatesServer) error
 
 	// NewTerm Handle new term requests
 	NewTerm(req *proto.NewTermRequest) (*proto.NewTermResponse, error)
@@ -581,26 +577,15 @@ func getHighestEntryOfTerm(w wal.Wal, term int64) (*proto.EntryId, error) {
 	return InvalidEntryId, nil
 }
 
-func (lc *leaderController) Read(ctx context.Context, request *proto.ReadRequest) <-chan GetResult {
-	ch := make(chan GetResult)
-
+func (lc *leaderController) Read(ctx context.Context, request *proto.ReadRequest, cb callback.StreamCallback[*proto.GetResponse]) {
 	lc.RLock()
 	err := checkStatusIsLeader(lc.status)
 	lc.RUnlock()
 	if err != nil {
-		go func() {
-			ch <- GetResult{Err: err}
-		}()
-		return ch
+		cb.OnComplete(err)
+		return
 	}
-
-	go lc.read(ctx, request, ch)
-
-	return ch
-}
-
-func (lc *leaderController) read(ctx context.Context, request *proto.ReadRequest, ch chan<- GetResult) {
-	common.DoWithLabels(
+	go common.DoWithLabels(
 		ctx,
 		map[string]string{
 			"oxia":  "read",
@@ -610,21 +595,66 @@ func (lc *leaderController) read(ctx context.Context, request *proto.ReadRequest
 		func() {
 			lc.log.Debug("Received read request")
 
-			defer close(ch)
 			for _, get := range request.Gets {
-				response, err := lc.db.Get(get)
+				var response *proto.GetResponse
+				var err error
+
+				if get.SecondaryIndexName != nil {
+					response, err = secondaryIndexGet(get, lc.db)
+				} else {
+					response, err = lc.db.Get(get)
+				}
+
 				if err != nil {
-					ch <- GetResult{Err: ctx.Err()}
+					cb.OnComplete(err)
 					return
 				}
-				ch <- GetResult{Response: response}
+				if err = cb.OnNext(response); err != nil {
+					cb.OnComplete(err)
+					return
+				}
 				if ctx.Err() != nil {
-					ch <- GetResult{Err: ctx.Err()}
 					break
 				}
 			}
+			cb.OnComplete(nil)
 		},
 	)
+}
+
+func (lc *leaderController) GetSequenceUpdates(req *proto.GetSequenceUpdatesRequest, stream proto.OxiaClient_GetSequenceUpdatesServer) error {
+	lc.RLock()
+	err := checkStatusIsLeader(lc.status)
+	lc.RUnlock()
+	if err != nil {
+		return err
+	}
+
+	lc.log.Debug("Received get sequence updates request", slog.Any("request", req))
+
+	sw, err := lc.db.GetSequenceUpdates(req.Key)
+	if err != nil {
+		return err
+	}
+
+	defer func(sw kv.SequenceWaiter) {
+		_ = sw.Close()
+	}(sw)
+
+	for {
+		select {
+		case newKey := <-sw.Ch():
+			if err = stream.Send(&proto.GetSequenceUpdatesResponse{HighestSequenceKey: newKey}); err != nil {
+				return err
+			}
+
+		case <-lc.ctx.Done():
+			return lc.ctx.Err()
+
+		case <-stream.Context().Done():
+			return stream.Context().Err()
+		}
+	}
 }
 
 func (lc *leaderController) List(ctx context.Context, request *proto.ListRequest, cb callback.StreamCallback[string]) {

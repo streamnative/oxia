@@ -133,6 +133,10 @@ func (c *syncClientImpl) RangeScan(ctx context.Context, minKeyInclusive string, 
 	return c.asyncClient.RangeScan(ctx, minKeyInclusive, maxKeyExclusive, options...)
 }
 
+func (c *syncClientImpl) GetSequenceUpdates(ctx context.Context, prefixKey string, options ...GetSequenceUpdatesOption) (<-chan string, error) {
+	return c.asyncClient.GetSequenceUpdates(ctx, prefixKey, options...)
+}
+
 func (c *syncClientImpl) GetNotifications() (Notifications, error) {
 	return c.asyncClient.GetNotifications()
 }

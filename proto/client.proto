@@ -87,6 +87,11 @@ service OxiaClient {
    */
   rpc RangeScan(RangeScanRequest) returns (stream RangeScanResponse);
 
+  /**
+   * Requests all the records between a range of keys.
+   */
+  rpc GetSequenceUpdates(GetSequenceUpdatesRequest) returns (stream GetSequenceUpdatesResponse);
+
   rpc GetNotifications(NotificationsRequest) returns (stream NotificationBatch);
 
   /*
@@ -322,6 +327,7 @@ message GetRequest {
   bool include_value = 2;
 
   KeyComparisonType comparison_type = 3;
+  optional string secondary_index_name = 4;
 }
 
 /**
@@ -337,6 +343,7 @@ message GetResponse {
   // In case of non-exact queries (eg. floor, ceiling) the found key will be
   // returned in the GetResponse.
   optional string key = 4;
+  optional string secondary_index_key = 5;
 }
 
 /**
@@ -401,6 +408,15 @@ message RangeScanRequest {
 message RangeScanResponse {
   // A portion of the records found within the specified range
   repeated GetResponse records = 1;
+}
+
+message GetSequenceUpdatesRequest {
+  int64 shard = 1;
+  string key = 2;
+}
+
+message GetSequenceUpdatesResponse {
+  string highest_sequence_key = 1;
 }
 
 /**

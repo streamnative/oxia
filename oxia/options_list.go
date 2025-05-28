@@ -24,6 +24,7 @@ type listOptions struct {
 type ListOption interface {
 	applyList(opts *listOptions)
 	applyRangeScan(opts *rangeScanOptions)
+	applyGet(opts *getOptions)
 }
 
 func newListOptions(opts []ListOption) *listOptions {
@@ -43,6 +44,10 @@ func (u *useIndex) applyList(opts *listOptions) {
 }
 
 func (u *useIndex) applyRangeScan(opts *rangeScanOptions) {
+	opts.secondaryIndexName = &u.indexName
+}
+
+func (u *useIndex) applyGet(opts *getOptions) {
 	opts.secondaryIndexName = &u.indexName
 }
 

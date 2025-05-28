@@ -15,6 +15,7 @@
 package batch
 
 import (
+	"context"
 	"time"
 
 	"github.com/streamnative/oxia/common/batch"
@@ -49,8 +50,8 @@ func NewBatcherFactory(
 	}
 }
 
-func (b *BatcherFactory) NewWriteBatcher(shardId *int64, maxWriteBatchSize int) batch.Batcher {
-	return b.newBatcher(shardId, writeBatchFactory{
+func (b *BatcherFactory) NewWriteBatcher(ctx context.Context, shardId *int64, maxWriteBatchSize int) batch.Batcher {
+	return b.newBatcher(ctx, shardId, "write", writeBatchFactory{
 		execute:        b.Executor.ExecuteWrite,
 		metrics:        b.Metrics,
 		requestTimeout: b.RequestTimeout,
@@ -58,16 +59,16 @@ func (b *BatcherFactory) NewWriteBatcher(shardId *int64, maxWriteBatchSize int) 
 	}.newBatch)
 }
 
-func (b *BatcherFactory) NewReadBatcher(shardId *int64) batch.Batcher {
-	return b.newBatcher(shardId, readBatchFactory{
+func (b *BatcherFactory) NewReadBatcher(ctx context.Context, shardId *int64) batch.Batcher {
+	return b.newBatcher(ctx, shardId, "read", readBatchFactory{
 		execute:        b.Executor.ExecuteRead,
 		metrics:        b.Metrics,
 		requestTimeout: b.RequestTimeout,
 	}.newBatch)
 }
 
-func (b *BatcherFactory) newBatcher(shardId *int64, batchFactory func(shardId *int64) batch.Batch) batch.Batcher {
-	return b.NewBatcher(func() batch.Batch {
+func (b *BatcherFactory) newBatcher(ctx context.Context, shardId *int64, batcherType string, batchFactory func(shardId *int64) batch.Batch) batch.Batcher {
+	return b.NewBatcher(ctx, *shardId, batcherType, func() batch.Batch {
 		return batchFactory(shardId)
 	})
 }

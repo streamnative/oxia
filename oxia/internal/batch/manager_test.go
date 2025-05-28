@@ -15,6 +15,7 @@
 package batch
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -42,12 +43,12 @@ func TestManager(t *testing.T) {
 	testBatcher := &testBatcher{}
 
 	newBatcherInvocations := 0
-	batcherFactory := func(*int64) batch.Batcher {
+	batcherFactory := func(context.Context, *int64) batch.Batcher {
 		newBatcherInvocations++
 		return testBatcher
 	}
 
-	manager := NewManager(batcherFactory)
+	manager := NewManager(context.Background(), batcherFactory)
 
 	batcher := manager.Get(shardId)
 	assert.Equal(t, testBatcher, batcher)
