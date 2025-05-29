@@ -132,12 +132,12 @@ func (s *publicRpcServer) WriteStream(stream proto.OxiaClient_WriteStreamServer)
 	if err != nil {
 		return err
 	}
-	ctx := stream.Context()
+	streamCtx := stream.Context()
 
 	log := s.log.With(
 		slog.Int64("shard", shardId),
 		slog.String("namespace", namespace),
-		slog.String("peer", common.GetPeer(ctx)),
+		slog.String("peer", common.GetPeer(streamCtx)),
 	)
 	log.Debug("Write request")
 
@@ -149,7 +149,7 @@ func (s *publicRpcServer) WriteStream(stream proto.OxiaClient_WriteStreamServer)
 
 	finished := make(chan error, 1)
 	go common.DoWithLabels(
-		ctx,
+		streamCtx,
 		map[string]string{
 			"oxia":      "write-stream",
 			"namespace": lc.Namespace(),
@@ -166,7 +166,7 @@ func (s *publicRpcServer) WriteStream(stream proto.OxiaClient_WriteStreamServer)
 					return
 				}
 
-				lc.Write(ctx, req, callback.NewOnce[*proto.WriteResponse](
+				lc.Write(streamCtx, req, callback.NewOnce[*proto.WriteResponse](
 					func(t *proto.WriteResponse) {
 						if err := stream.Send(t); err != nil {
 							channel.PushNoBlock(finished, err)
@@ -179,17 +179,17 @@ func (s *publicRpcServer) WriteStream(stream proto.OxiaClient_WriteStreamServer)
 		},
 	)
 
-	lcContext := lc.Context()
+	leaderCtx := lc.Context()
 	select {
 	case err := <-finished:
 		if err != nil {
 			s.log.Warn("Failed to perform write operation", slog.Any("error", err))
 		}
 		return err
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-lcContext.Done():
-		return lcContext.Err()
+	case <-streamCtx.Done():
+		return streamCtx.Err()
+	case <-leaderCtx.Done():
+		return leaderCtx.Err()
 
 	}
 }
