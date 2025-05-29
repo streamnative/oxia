@@ -172,7 +172,6 @@ func (s *session) waitForHeartbeats() {
 		s.latch.Done()
 	}()
 	for {
-
 		select {
 		case <-s.ctx.Done():
 			return
