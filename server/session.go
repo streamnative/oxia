@@ -170,6 +170,7 @@ func (s *session) waitForHeartbeats() {
 	defer s.latch.Done()
 	for {
 		timeoutTimer := time.NewTimer(s.timeout)
+		defer timeoutTimer.Stop()
 
 		select {
 		case <-s.ctx.Done():
