@@ -23,8 +23,9 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/logging"
 
-	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/coordinator/impl"
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/server"
@@ -47,17 +48,17 @@ func (l LogLevelError) Error() string {
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVarP(&logLevelStr, "log-level", "l", common.DefaultLogLevel.String(), "Set logging level [debug|info|warn|error]")
-	rootCmd.PersistentFlags().BoolVarP(&common.LogJSON, "log-json", "j", false, "Print logs in JSON format")
+	rootCmd.PersistentFlags().StringVarP(&logLevelStr, "log-level", "l", logging.DefaultLogLevel.String(), "Set logging level [debug|info|warn|error]")
+	rootCmd.PersistentFlags().BoolVarP(&logging.LogJSON, "log-json", "j", false, "Print logs in JSON format")
 }
 
 func configureLogLevel(_ *cobra.Command, _ []string) error {
-	logLevel, err := common.ParseLogLevel(logLevelStr)
+	logLevel, err := logging.ParseLogLevel(logLevelStr)
 	if err != nil {
 		return LogLevelError(logLevelStr)
 	}
-	common.LogLevel = logLevel
-	common.ConfigureLogger()
+	logging.LogLevel = logLevel
+	logging.ConfigureLogger()
 	return nil
 }
 
@@ -119,7 +120,7 @@ func receiveInit(scanner *bufio.Scanner) error {
 }
 
 func main() {
-	common.ConfigureLogger()
+	logging.ConfigureLogger()
 	// NOTE: we must change the default logger to use Stderr for output,
 	// because stdout is used as communication channel, see `sendErrorWithCode` for
 	// more details.
@@ -164,7 +165,7 @@ func main() {
 		// First node is going to be the "coordinator"
 		clusterConfig := model.ClusterConfig{
 			Namespaces: []model.NamespaceConfig{{
-				Name:              common.DefaultNamespace,
+				Name:              constant.DefaultNamespace,
 				ReplicationFactor: 3,
 				InitialShardCount: 1,
 			}},

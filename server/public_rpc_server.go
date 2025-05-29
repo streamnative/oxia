@@ -21,6 +21,10 @@ import (
 	"log/slog"
 
 	"github.com/pkg/errors"
+	"github.com/streamnative/oxia/common/concurrent"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/process"
+	"github.com/streamnative/oxia/common/rpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -29,10 +33,6 @@ import (
 
 	"github.com/streamnative/oxia/common/channel"
 
-	"github.com/streamnative/oxia/common/callback"
-
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/common/container"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/auth"
 )
@@ -50,11 +50,11 @@ type publicRpcServer struct {
 
 	shardsDirector       ShardsDirector
 	assignmentDispatcher ShardAssignmentsDispatcher
-	grpcServer           container.GrpcServer
+	grpcServer           rpc.GrpcServer
 	log                  *slog.Logger
 }
 
-func newPublicRpcServer(provider container.GrpcProvider, bindAddress string, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher,
+func newPublicRpcServer(provider rpc.GrpcProvider, bindAddress string, shardsDirector ShardsDirector, assignmentDispatcher ShardAssignmentsDispatcher,
 	tlsConf *tls.Config, options *auth.Options) (*publicRpcServer, error) {
 	server := &publicRpcServer{
 		shardsDirector:       shardsDirector,
@@ -78,14 +78,14 @@ func newPublicRpcServer(provider container.GrpcProvider, bindAddress string, sha
 func (s *publicRpcServer) GetShardAssignments(req *proto.ShardAssignmentsRequest, srv proto.OxiaClient_GetShardAssignmentsServer) error {
 	s.log.Debug(
 		"Shard assignments requests",
-		slog.String("peer", common.GetPeer(srv.Context())),
+		slog.String("peer", rpc.GetPeer(srv.Context())),
 	)
 	err := s.assignmentDispatcher.RegisterForUpdates(req, srv)
 	if err != nil {
 		s.log.Warn(
 			"Failed to add client for shards assignments notifications",
 			slog.Any("error", err),
-			slog.String("peer", common.GetPeer(srv.Context())),
+			slog.String("peer", rpc.GetPeer(srv.Context())),
 		)
 		return err
 	}
@@ -96,7 +96,7 @@ func (s *publicRpcServer) GetShardAssignments(req *proto.ShardAssignmentsRequest
 func (s *publicRpcServer) Write(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error) {
 	s.log.Debug(
 		"Write request",
-		slog.String("peer", common.GetPeer(ctx)),
+		slog.String("peer", rpc.GetPeer(ctx)),
 		slog.Any("req", write),
 	)
 
@@ -124,11 +124,11 @@ func (s *publicRpcServer) WriteStream(stream proto.OxiaClient_WriteStreamServer)
 	if !ok {
 		return errors.New("shard id is not set in the request metadata")
 	}
-	shardId, err := ReadHeaderInt64(md, common.MetadataShardId)
+	shardId, err := ReadHeaderInt64(md, constant.MetadataShardId)
 	if err != nil {
 		return err
 	}
-	namespace, err := readHeader(md, common.MetadataNamespace)
+	namespace, err := readHeader(md, constant.MetadataNamespace)
 	if err != nil {
 		return err
 	}
@@ -137,7 +137,7 @@ func (s *publicRpcServer) WriteStream(stream proto.OxiaClient_WriteStreamServer)
 	log := s.log.With(
 		slog.Int64("shard", shardId),
 		slog.String("namespace", namespace),
-		slog.String("peer", common.GetPeer(streamCtx)),
+		slog.String("peer", rpc.GetPeer(streamCtx)),
 	)
 	log.Debug("Write request")
 
@@ -148,7 +148,7 @@ func (s *publicRpcServer) WriteStream(stream proto.OxiaClient_WriteStreamServer)
 	}
 
 	finished := make(chan error, 1)
-	go common.DoWithLabels(
+	go process.DoWithLabels(
 		streamCtx,
 		map[string]string{
 			"oxia":      "write-stream",
@@ -166,7 +166,7 @@ func (s *publicRpcServer) WriteStream(stream proto.OxiaClient_WriteStreamServer)
 					return
 				}
 
-				lc.Write(streamCtx, req, callback.NewOnce[*proto.WriteResponse](
+				lc.Write(streamCtx, req, concurrent.NewOnce[*proto.WriteResponse](
 					func(t *proto.WriteResponse) {
 						if err := stream.Send(t); err != nil {
 							channel.PushNoBlock(finished, err)
@@ -197,7 +197,7 @@ func (s *publicRpcServer) WriteStream(stream proto.OxiaClient_WriteStreamServer)
 func (s *publicRpcServer) Read(request *proto.ReadRequest, stream proto.OxiaClient_ReadServer) error {
 	s.log.Debug(
 		"Read request",
-		slog.String("peer", common.GetPeer(stream.Context())),
+		slog.String("peer", rpc.GetPeer(stream.Context())),
 		slog.Any("req", request),
 	)
 
@@ -213,7 +213,7 @@ func (s *publicRpcServer) Read(request *proto.ReadRequest, stream proto.OxiaClie
 	ctx := stream.Context()
 
 	finish := make(chan error, 1)
-	lc.Read(stream.Context(), request, callback.NewBatchStreamOnce[*proto.GetResponse](maxTotalReadCount, maxTotalReadValueSize,
+	lc.Read(stream.Context(), request, concurrent.NewBatchStreamOnce[*proto.GetResponse](maxTotalReadCount, maxTotalReadValueSize,
 		func(result *proto.GetResponse) int { return protowire.SizeBytes(len(result.Value)) },
 		func(container []*proto.GetResponse) error { return stream.Send(&proto.ReadResponse{Gets: container}) },
 		func(err error) { finish <- err },
@@ -238,7 +238,7 @@ func (s *publicRpcServer) Read(request *proto.ReadRequest, stream proto.OxiaClie
 func (s *publicRpcServer) List(request *proto.ListRequest, stream proto.OxiaClient_ListServer) error {
 	s.log.Debug(
 		"List request",
-		slog.String("peer", common.GetPeer(stream.Context())),
+		slog.String("peer", rpc.GetPeer(stream.Context())),
 		slog.Any("req", request),
 	)
 	if request.Shard == nil {
@@ -250,7 +250,7 @@ func (s *publicRpcServer) List(request *proto.ListRequest, stream proto.OxiaClie
 	}
 	ctx := stream.Context()
 	finish := make(chan error, 1)
-	lc.List(ctx, request, callback.NewBatchStreamOnce[string](maxTotalListKeyCount, maxTotalListKeySize,
+	lc.List(ctx, request, concurrent.NewBatchStreamOnce[string](maxTotalListKeyCount, maxTotalListKeySize,
 		func(key string) int { return protowire.SizeBytes(len(key)) },
 		func(container []string) error { return stream.Send(&proto.ListResponse{Keys: container}) },
 		func(err error) { finish <- err },
@@ -274,7 +274,7 @@ func (s *publicRpcServer) List(request *proto.ListRequest, stream proto.OxiaClie
 func (s *publicRpcServer) RangeScan(request *proto.RangeScanRequest, stream proto.OxiaClient_RangeScanServer) error {
 	s.log.Debug(
 		"RangeScan request",
-		slog.String("peer", common.GetPeer(stream.Context())),
+		slog.String("peer", rpc.GetPeer(stream.Context())),
 		slog.Any("req", request),
 	)
 	if request.Shard == nil {
@@ -290,7 +290,7 @@ func (s *publicRpcServer) RangeScan(request *proto.RangeScanRequest, stream prot
 
 	finish := make(chan error, 1)
 	lc.RangeScan(ctx, request,
-		callback.NewBatchStreamOnce[*proto.GetResponse](maxTotalScanBatchCount, maxTotalReadValueSize,
+		concurrent.NewBatchStreamOnce[*proto.GetResponse](maxTotalScanBatchCount, maxTotalReadValueSize,
 			func(response *proto.GetResponse) int { return len(response.Value) },
 			func(container []*proto.GetResponse) error {
 				return stream.Send(&proto.RangeScanResponse{Records: container})
@@ -320,7 +320,7 @@ func (s *publicRpcServer) RangeScan(request *proto.RangeScanRequest, stream prot
 func (s *publicRpcServer) GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
 	s.log.Debug(
 		"Get notifications",
-		slog.String("peer", common.GetPeer(stream.Context())),
+		slog.String("peer", rpc.GetPeer(stream.Context())),
 		slog.Any("req", req),
 	)
 
@@ -346,7 +346,7 @@ func (s *publicRpcServer) Port() int {
 func (s *publicRpcServer) CreateSession(ctx context.Context, req *proto.CreateSessionRequest) (*proto.CreateSessionResponse, error) {
 	s.log.Debug(
 		"Create session request",
-		slog.String("peer", common.GetPeer(ctx)),
+		slog.String("peer", rpc.GetPeer(ctx)),
 		slog.Any("req", req),
 	)
 	lc, err := s.getLeader(req.Shard)
@@ -369,7 +369,7 @@ func (s *publicRpcServer) KeepAlive(ctx context.Context, req *proto.SessionHeart
 		"Session keep alive",
 		slog.Int64("shard", req.Shard),
 		slog.Int64("session", req.SessionId),
-		slog.String("peer", common.GetPeer(ctx)),
+		slog.String("peer", rpc.GetPeer(ctx)),
 	)
 	lc, err := s.getLeader(req.Shard)
 	if err != nil {
@@ -389,7 +389,7 @@ func (s *publicRpcServer) KeepAlive(ctx context.Context, req *proto.SessionHeart
 func (s *publicRpcServer) CloseSession(ctx context.Context, req *proto.CloseSessionRequest) (*proto.CloseSessionResponse, error) {
 	s.log.Debug(
 		"Close session request",
-		slog.String("peer", common.GetPeer(ctx)),
+		slog.String("peer", rpc.GetPeer(ctx)),
 		slog.Any("req", req),
 	)
 	lc, err := s.getLeader(req.Shard)
@@ -398,7 +398,7 @@ func (s *publicRpcServer) CloseSession(ctx context.Context, req *proto.CloseSess
 	}
 	res, err := lc.CloseSession(req)
 	if err != nil {
-		if status.Code(err) != common.CodeSessionNotFound {
+		if status.Code(err) != constant.CodeSessionNotFound {
 			s.log.Warn(
 				"Failed to close session",
 				slog.Any("error", err),
@@ -415,7 +415,7 @@ func (s *publicRpcServer) GetSequenceUpdates(req *proto.GetSequenceUpdatesReques
 	stream proto.OxiaClient_GetSequenceUpdatesServer) error {
 	s.log.Debug(
 		"Get sequence update request",
-		slog.String("peer", common.GetPeer(stream.Context())),
+		slog.String("peer", rpc.GetPeer(stream.Context())),
 		slog.Any("req", req),
 	)
 	lc, err := s.getLeader(req.Shard)
@@ -429,7 +429,7 @@ func (s *publicRpcServer) GetSequenceUpdates(req *proto.GetSequenceUpdatesReques
 func (s *publicRpcServer) getLeader(shardId int64) (LeaderController, error) {
 	lc, err := s.shardsDirector.GetLeader(shardId)
 	if err != nil {
-		if status.Code(err) != common.CodeNodeIsNotLeader {
+		if status.Code(err) != constant.CodeNodeIsNotLeader {
 			s.log.Warn(
 				"Failed to get the leader controller",
 				slog.Any("error", err),

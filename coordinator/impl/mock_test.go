@@ -22,19 +22,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/streamnative/oxia/common/concurrent"
+	"github.com/streamnative/oxia/common/logging"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
 	pb "google.golang.org/protobuf/proto"
 
-	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/proto"
 )
 
 func init() {
-	common.ConfigureLogger()
+	logging.ConfigureLogger()
 }
 
 var (
@@ -43,7 +44,7 @@ var (
 
 type mockShardAssignmentsProvider struct {
 	sync.Mutex
-	cond    common.ConditionContext
+	cond    concurrent.ConditionContext
 	current *proto.ShardAssignments
 }
 
@@ -52,7 +53,7 @@ func newMockShardAssignmentsProvider() *mockShardAssignmentsProvider {
 		current: nil,
 	}
 
-	sap.cond = common.NewConditionContext(sap)
+	sap.cond = concurrent.NewConditionContext(sap)
 	return sap
 }
 

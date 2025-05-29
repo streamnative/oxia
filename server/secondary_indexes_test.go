@@ -18,14 +18,13 @@ import (
 	"context"
 	"testing"
 
+	"github.com/streamnative/oxia/common/concurrent"
+	"github.com/streamnative/oxia/common/constant"
 	"github.com/stretchr/testify/assert"
 	pb "google.golang.org/protobuf/proto"
 
-	"github.com/streamnative/oxia/common/entities"
+	"github.com/streamnative/oxia/common/entity"
 
-	"github.com/streamnative/oxia/common/callback"
-
-	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/kv"
 )
@@ -36,7 +35,7 @@ func TestSecondaryIndices_List(t *testing.T) {
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := newTestWalFactory(t)
 
-	lc, _ := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, _ := NewLeaderController(Config{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
 	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
 		Shard:             shard,
@@ -132,7 +131,7 @@ func TestSecondaryIndices_RangeScan(t *testing.T) {
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := newTestWalFactory(t)
 
-	lc, _ := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, _ := NewLeaderController(Config{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
 	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
 		Shard:             shard,
@@ -155,13 +154,13 @@ func TestSecondaryIndices_RangeScan(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	ch := make(chan *entities.TWithError[*proto.GetResponse], 100)
+	ch := make(chan *entity.TWithError[*proto.GetResponse], 100)
 	lc.RangeScan(ctx, &proto.RangeScanRequest{
 		Shard:              &shard,
 		StartInclusive:     "1",
 		EndExclusive:       "3",
 		SecondaryIndexName: pb.String("my-idx"),
-	}, callback.ReadFromStreamCallback(ch))
+	}, concurrent.ReadFromStreamCallback(ch))
 	assert.NoError(t, err)
 
 	gr := <-ch
@@ -172,14 +171,14 @@ func TestSecondaryIndices_RangeScan(t *testing.T) {
 	assert.Equal(t, "2", string(gr.T.Value))
 	assert.Empty(t, ch)
 
-	ch = make(chan *entities.TWithError[*proto.GetResponse], 100)
+	ch = make(chan *entity.TWithError[*proto.GetResponse], 100)
 	// Wrong index
 	lc.RangeScan(ctx, &proto.RangeScanRequest{
 		Shard:              &shard,
 		StartInclusive:     "/a",
 		EndExclusive:       "/d",
 		SecondaryIndexName: pb.String("wrong-idx"),
-	}, callback.ReadFromStreamCallback(ch))
+	}, concurrent.ReadFromStreamCallback(ch))
 	assert.Empty(t, ch)
 
 	// Individual delete
@@ -189,13 +188,13 @@ func TestSecondaryIndices_RangeScan(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	ch = make(chan *entities.TWithError[*proto.GetResponse], 100)
+	ch = make(chan *entity.TWithError[*proto.GetResponse], 100)
 	lc.RangeScan(ctx, &proto.RangeScanRequest{
 		Shard:              &shard,
 		StartInclusive:     "0",
 		EndExclusive:       "99999",
 		SecondaryIndexName: pb.String("my-idx"),
-	}, callback.ReadFromStreamCallback(ch))
+	}, concurrent.ReadFromStreamCallback(ch))
 
 	gr = <-ch
 	assert.Equal(t, "/a", *gr.T.Key)
@@ -217,13 +216,13 @@ func TestSecondaryIndices_RangeScan(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	ch = make(chan *entities.TWithError[*proto.GetResponse], 100)
+	ch = make(chan *entity.TWithError[*proto.GetResponse], 100)
 	lc.RangeScan(ctx, &proto.RangeScanRequest{
 		Shard:              &shard,
 		StartInclusive:     "0",
 		EndExclusive:       "99999",
 		SecondaryIndexName: pb.String("my-idx"),
-	}, callback.ReadFromStreamCallback(ch))
+	}, concurrent.ReadFromStreamCallback(ch))
 
 	gr = <-ch
 	assert.Equal(t, "/d", *gr.T.Key)
@@ -243,7 +242,7 @@ func TestSecondaryIndices_MultipleKeysForSameIdx(t *testing.T) {
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := newTestWalFactory(t)
 
-	lc, _ := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, _ := NewLeaderController(Config{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
 	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
 		Shard:             shard,

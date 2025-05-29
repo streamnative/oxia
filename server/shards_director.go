@@ -19,11 +19,11 @@ import (
 	"log/slog"
 	"sync"
 
+	"github.com/streamnative/oxia/common/constant"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/status"
 
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/common/metrics"
+	"github.com/streamnative/oxia/common/metric"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/kv"
 	"github.com/streamnative/oxia/server/wal"
@@ -54,8 +54,8 @@ type shardsDirector struct {
 	closed                 bool
 	log                    *slog.Logger
 
-	leadersCounter   metrics.UpDownCounter
-	followersCounter metrics.UpDownCounter
+	leadersCounter   metric.UpDownCounter
+	followersCounter metric.UpDownCounter
 }
 
 func NewShardsDirector(config Config, walFactory wal.Factory, kvFactory kv.Factory, provider ReplicationRpcProvider) ShardsDirector {
@@ -70,9 +70,9 @@ func NewShardsDirector(config Config, walFactory wal.Factory, kvFactory kv.Facto
 			slog.String("component", "shards-director"),
 		),
 
-		leadersCounter: metrics.NewUpDownCounter("oxia_server_leaders_count",
+		leadersCounter: metric.NewUpDownCounter("oxia_server_leaders_count",
 			"The number of leader controllers in a server", "count", map[string]any{}),
-		followersCounter: metrics.NewUpDownCounter("oxia_server_followers_count",
+		followersCounter: metric.NewUpDownCounter("oxia_server_followers_count",
 			"The number of follower controllers in a server", "count", map[string]any{}),
 	}
 
@@ -84,7 +84,7 @@ func (s *shardsDirector) GetLeader(shardId int64) (LeaderController, error) {
 	defer s.RUnlock()
 
 	if s.closed {
-		return nil, common.ErrAlreadyClosed
+		return nil, constant.ErrAlreadyClosed
 	}
 
 	if leader, ok := s.leaders[shardId]; ok {
@@ -96,7 +96,7 @@ func (s *shardsDirector) GetLeader(shardId int64) (LeaderController, error) {
 		"This node is not hosting shard",
 		slog.Int64("shard", shardId),
 	)
-	return nil, status.Errorf(common.CodeNodeIsNotLeader, "node is not leader for shard %d", shardId)
+	return nil, status.Errorf(constant.CodeNodeIsNotLeader, "node is not leader for shard %d", shardId)
 }
 
 func (s *shardsDirector) GetFollower(shardId int64) (FollowerController, error) {
@@ -104,7 +104,7 @@ func (s *shardsDirector) GetFollower(shardId int64) (FollowerController, error) 
 	defer s.RUnlock()
 
 	if s.closed {
-		return nil, common.ErrAlreadyClosed
+		return nil, constant.ErrAlreadyClosed
 	}
 
 	if follower, ok := s.followers[shardId]; ok {
@@ -116,7 +116,7 @@ func (s *shardsDirector) GetFollower(shardId int64) (FollowerController, error) 
 		"This node is not hosting shard",
 		slog.Int64("shard", shardId),
 	)
-	return nil, status.Errorf(common.CodeNodeIsNotFollower, "node is not follower for shard %d", shardId)
+	return nil, status.Errorf(constant.CodeNodeIsNotFollower, "node is not follower for shard %d", shardId)
 }
 
 func (s *shardsDirector) GetOrCreateLeader(namespace string, shardId int64) (LeaderController, error) {
@@ -124,7 +124,7 @@ func (s *shardsDirector) GetOrCreateLeader(namespace string, shardId int64) (Lea
 	defer s.Unlock()
 
 	if s.closed {
-		return nil, common.ErrAlreadyClosed
+		return nil, constant.ErrAlreadyClosed
 	}
 
 	if leader, ok := s.leaders[shardId]; ok {
@@ -160,7 +160,7 @@ func (s *shardsDirector) GetOrCreateFollower(namespace string, shardId int64, te
 	defer s.Unlock()
 
 	if s.closed {
-		return nil, common.ErrAlreadyClosed
+		return nil, constant.ErrAlreadyClosed
 	}
 
 	if follower, ok := s.followers[shardId]; ok {
@@ -170,7 +170,7 @@ func (s *shardsDirector) GetOrCreateFollower(namespace string, shardId int64, te
 		// There is an existing leader controller
 		if term >= 0 && term != leader.Term() {
 			// We should not close the existing leader because of a late request
-			return nil, common.ErrInvalidTerm
+			return nil, constant.ErrInvalidTerm
 		}
 
 		// If we are in the right term, let's close the leader and reopen as a follower controller

@@ -21,11 +21,12 @@ import (
 	"sync"
 
 	"github.com/pkg/errors"
+	"github.com/streamnative/oxia/common/concurrent"
+	"github.com/streamnative/oxia/common/rpc"
+	commonbatch "github.com/streamnative/oxia/oxia/batch"
 	"go.uber.org/multierr"
 	"golang.org/x/exp/slices"
 
-	"github.com/streamnative/oxia/common"
-	commonbatch "github.com/streamnative/oxia/common/batch"
 	"github.com/streamnative/oxia/common/compare"
 	"github.com/streamnative/oxia/oxia/internal"
 	"github.com/streamnative/oxia/oxia/internal/batch"
@@ -44,7 +45,7 @@ type clientImpl struct {
 	sessions          *sessions
 	notifications     []*notifications
 
-	clientPool common.ClientPool
+	clientPool rpc.ClientPool
 	ctx        context.Context
 	cancel     context.CancelFunc
 }
@@ -64,7 +65,7 @@ func NewAsyncClient(serviceAddress string, opts ...ClientOption) (AsyncClient, e
 		return nil, err
 	}
 
-	clientPool := common.NewClientPool(options.tls, options.authentication)
+	clientPool := rpc.NewClientPool(options.tls, options.authentication)
 
 	shardManager, err := internal.NewShardManager(internal.NewShardStrategy(), clientPool, serviceAddress,
 		options.namespace, options.requestTimeout)
@@ -185,7 +186,7 @@ func (c *clientImpl) DeleteRange(minKeyInclusive string, maxKeyExclusive string,
 
 	// If there is no partition key, we will make the request to delete-range on all the shards
 	shardIDs := c.shardManager.GetAll()
-	wg := common.NewWaitGroup(len(shardIDs))
+	wg := concurrent.NewWaitGroup(len(shardIDs))
 
 	for _, shardId := range shardIDs {
 		// chInner := make(chan error, 1)
@@ -375,7 +376,7 @@ func (c *clientImpl) List(ctx context.Context, minKeyInclusive string, maxKeyExc
 		// Do the list on all shards and aggregate the responses
 		shardIDs := c.shardManager.GetAll()
 
-		wg := common.NewWaitGroup(len(shardIDs))
+		wg := concurrent.NewWaitGroup(len(shardIDs))
 		for _, shardId := range shardIDs {
 			shardIdPtr := shardId
 			go func() {

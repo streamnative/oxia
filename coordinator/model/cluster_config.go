@@ -15,7 +15,7 @@
 package model
 
 import (
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/entity"
 	"github.com/streamnative/oxia/coordinator/policies"
 )
 
@@ -30,7 +30,7 @@ type NamespaceConfig struct {
 	Name                 string                       `json:"name" yaml:"name"`
 	InitialShardCount    uint32                       `json:"initialShardCount" yaml:"initialShardCount"`
 	ReplicationFactor    uint32                       `json:"replicationFactor" yaml:"replicationFactor"`
-	NotificationsEnabled common.OptBooleanDefaultTrue `json:"notificationsEnabled" yaml:"notificationsEnabled"`
+	NotificationsEnabled entity.OptBooleanDefaultTrue `json:"notificationsEnabled" yaml:"notificationsEnabled"`
 	// Policies represents additional configuration policies for the namespace, such as anti-affinity rules.
 	Policies *policies.Policies `json:"policies,omitempty" yaml:"policies,omitempty"`
 }

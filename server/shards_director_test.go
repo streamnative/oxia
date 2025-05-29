@@ -18,9 +18,9 @@ import (
 	"context"
 	"testing"
 
+	"github.com/streamnative/oxia/common/constant"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/kv"
 )
@@ -33,7 +33,7 @@ func TestShardsDirector_DeleteShardLeader(t *testing.T) {
 
 	sd := NewShardsDirector(Config{}, walFactory, kvFactory, newMockRpcClient())
 
-	lc, _ := sd.GetOrCreateLeader(common.DefaultNamespace, shard)
+	lc, _ := sd.GetOrCreateLeader(constant.DefaultNamespace, shard)
 	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
 	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
 		Shard:             shard,
@@ -49,14 +49,14 @@ func TestShardsDirector_DeleteShardLeader(t *testing.T) {
 	assert.NoError(t, err)
 
 	_, err = lc.DeleteShard(&proto.DeleteShardRequest{
-		Namespace: common.DefaultNamespace,
+		Namespace: constant.DefaultNamespace,
 		Shard:     shard,
 		Term:      1,
 	})
 	assert.NoError(t, err)
 
 	// Reopen
-	lc, err = sd.GetOrCreateLeader(common.DefaultNamespace, shard)
+	lc, err = sd.GetOrCreateLeader(constant.DefaultNamespace, shard)
 	assert.NoError(t, err)
 
 	assert.NoError(t, lc.Close())
@@ -71,7 +71,7 @@ func TestShardsDirector_GetOrCreateFollower(t *testing.T) {
 
 	sd := NewShardsDirector(Config{}, walFactory, kvFactory, newMockRpcClient())
 
-	lc, _ := sd.GetOrCreateLeader(common.DefaultNamespace, shard)
+	lc, _ := sd.GetOrCreateLeader(constant.DefaultNamespace, shard)
 	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 2})
 	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
 		Shard:             shard,
@@ -85,13 +85,13 @@ func TestShardsDirector_GetOrCreateFollower(t *testing.T) {
 	assert.EqualValues(t, 2, lc.Term())
 
 	// Should fail to get closed if the term is wrong
-	fc, err := sd.GetOrCreateFollower(common.DefaultNamespace, shard, 1)
-	assert.ErrorIs(t, common.ErrInvalidTerm, err)
+	fc, err := sd.GetOrCreateFollower(constant.DefaultNamespace, shard, 1)
+	assert.ErrorIs(t, constant.ErrInvalidTerm, err)
 	assert.Nil(t, fc)
 	assert.Equal(t, proto.ServingStatus_LEADER, lc.Status())
 
 	// Will get closed if term is correct
-	fc, err = sd.GetOrCreateFollower(common.DefaultNamespace, shard, 2)
+	fc, err = sd.GetOrCreateFollower(constant.DefaultNamespace, shard, 2)
 	assert.NoError(t, err)
 
 	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, lc.Status())

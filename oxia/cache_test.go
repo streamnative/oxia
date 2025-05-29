@@ -24,9 +24,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/streamnative/oxia/common/concurrent"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/server"
 )
 
@@ -198,10 +198,10 @@ func TestCache_ConcurrentUpdate(t *testing.T) {
 	assert.NoError(t, err)
 	assert.EqualValues(t, 0, version1.ModificationsCount)
 
-	wg := common.NewWaitGroup(2)
-	wg1 := common.NewWaitGroup(1)
-	wg2 := common.NewWaitGroup(1)
-	wgResult := common.NewWaitGroup(2)
+	wg := concurrent.NewWaitGroup(2)
+	wg1 := concurrent.NewWaitGroup(1)
+	wg2 := concurrent.NewWaitGroup(1)
+	wgResult := concurrent.NewWaitGroup(2)
 	var isFirstTime atomic.Bool
 	isFirstTime.Store(true)
 

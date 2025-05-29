@@ -23,17 +23,20 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/streamnative/oxia/common/concurrent"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/process"
+	"github.com/streamnative/oxia/common/rpc"
+	time2 "github.com/streamnative/oxia/common/time"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
 
-	"github.com/streamnative/oxia/common/entities"
+	"github.com/streamnative/oxia/common/entity"
 
 	"github.com/streamnative/oxia/common/channel"
 
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/common/callback"
-	"github.com/streamnative/oxia/common/metrics"
+	"github.com/streamnative/oxia/common/metric"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/kv"
 	"github.com/streamnative/oxia/server/wal"
@@ -45,10 +48,10 @@ type LeaderController interface {
 	WriteBlock(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error)
 	ListBlock(ctx context.Context, request *proto.ListRequest) ([]string, error)
 
-	Write(ctx context.Context, request *proto.WriteRequest, cb callback.Callback[*proto.WriteResponse])
-	List(ctx context.Context, request *proto.ListRequest, cb callback.StreamCallback[string])
-	Read(ctx context.Context, request *proto.ReadRequest, cb callback.StreamCallback[*proto.GetResponse])
-	RangeScan(ctx context.Context, request *proto.RangeScanRequest, cb callback.StreamCallback[*proto.GetResponse])
+	Write(ctx context.Context, request *proto.WriteRequest, cb concurrent.Callback[*proto.WriteResponse])
+	List(ctx context.Context, request *proto.ListRequest, cb concurrent.StreamCallback[string])
+	Read(ctx context.Context, request *proto.ReadRequest, cb concurrent.StreamCallback[*proto.GetResponse])
+	RangeScan(ctx context.Context, request *proto.RangeScanRequest, cb concurrent.StreamCallback[*proto.GetResponse])
 	GetSequenceUpdates(request *proto.GetSequenceUpdatesRequest, stream proto.OxiaClient_GetSequenceUpdatesServer) error
 
 	// NewTerm Handle new term requests
@@ -102,16 +105,16 @@ type leaderController struct {
 	sessionManager SessionManager
 	log            *slog.Logger
 
-	writeLatencyHisto       metrics.LatencyHistogram
-	headOffsetGauge         metrics.Gauge
-	commitOffsetGauge       metrics.Gauge
-	followerAckOffsetGauges map[string]metrics.Gauge
+	writeLatencyHisto       metric.LatencyHistogram
+	headOffsetGauge         metric.Gauge
+	commitOffsetGauge       metric.Gauge
+	followerAckOffsetGauges map[string]metric.Gauge
 
 	notificationDispatchers map[int64]*notificationDispatcher
 }
 
 func NewLeaderController(config Config, namespace string, shardId int64, rpcClient ReplicationRpcProvider, walFactory wal.Factory, kvFactory kv.Factory) (LeaderController, error) {
-	labels := metrics.LabelsForShard(namespace, shardId)
+	labels := metric.LabelsForShard(namespace, shardId)
 	lc := &leaderController{
 		status:                  proto.ServingStatus_NOT_MEMBER,
 		namespace:               namespace,
@@ -121,12 +124,12 @@ func NewLeaderController(config Config, namespace string, shardId int64, rpcClie
 		followers:               make(map[string]FollowerCursor),
 		notificationDispatchers: make(map[int64]*notificationDispatcher),
 
-		writeLatencyHisto: metrics.NewLatencyHistogram("oxia_server_leader_write_latency",
+		writeLatencyHisto: metric.NewLatencyHistogram("oxia_server_leader_write_latency",
 			"Latency for write operations in the leader", labels),
-		followerAckOffsetGauges: map[string]metrics.Gauge{},
+		followerAckOffsetGauges: map[string]metric.Gauge{},
 	}
 
-	lc.headOffsetGauge = metrics.NewGauge("oxia_server_leader_head_offset",
+	lc.headOffsetGauge = metric.NewGauge("oxia_server_leader_head_offset",
 		"The current head offset", "offset", labels, func() int64 {
 			qat := lc.quorumAckTracker
 			if qat != nil {
@@ -135,7 +138,7 @@ func NewLeaderController(config Config, namespace string, shardId int64, rpcClie
 
 			return -1
 		})
-	lc.commitOffsetGauge = metrics.NewGauge("oxia_server_leader_commit_offset",
+	lc.commitOffsetGauge = metric.NewGauge("oxia_server_leader_commit_offset",
 		"The current commit offset", "offset", labels, func() int64 {
 			qat := lc.quorumAckTracker
 			if qat != nil {
@@ -154,7 +157,7 @@ func NewLeaderController(config Config, namespace string, shardId int64, rpcClie
 		return nil, err
 	}
 
-	if lc.db, err = kv.NewDB(namespace, shardId, kvFactory, config.NotificationsRetentionTime, common.SystemClock); err != nil {
+	if lc.db, err = kv.NewDB(namespace, shardId, kvFactory, config.NotificationsRetentionTime, time2.SystemClock); err != nil {
 		return nil, err
 	}
 
@@ -228,11 +231,11 @@ func (lc *leaderController) NewTerm(req *proto.NewTermRequest) (*proto.NewTermRe
 	defer lc.Unlock()
 
 	if lc.isClosed() {
-		return nil, common.ErrAlreadyClosed
+		return nil, constant.ErrAlreadyClosed
 	}
 
 	if req.Term < lc.term {
-		return nil, common.ErrInvalidTerm
+		return nil, constant.ErrInvalidTerm
 	} else if req.Term == lc.term && lc.status != proto.ServingStatus_FENCED {
 		// It's OK to receive a duplicate Fence request, for the same term, as long as we haven't moved
 		// out of the Fenced state for that term
@@ -242,7 +245,7 @@ func (lc *leaderController) NewTerm(req *proto.NewTermRequest) (*proto.NewTermRe
 			slog.Int64("new-term", req.Term),
 			slog.Any("status", lc.status),
 		)
-		return nil, common.ErrInvalidStatus
+		return nil, constant.ErrInvalidStatus
 	}
 
 	lc.termOptions = kv.ToDbOption(req.Options)
@@ -327,15 +330,15 @@ func (lc *leaderController) BecomeLeader(ctx context.Context, req *proto.BecomeL
 	defer lc.Unlock()
 
 	if lc.isClosed() {
-		return nil, common.ErrAlreadyClosed
+		return nil, constant.ErrAlreadyClosed
 	}
 
 	if lc.status != proto.ServingStatus_FENCED {
-		return nil, common.ErrInvalidStatus
+		return nil, constant.ErrInvalidStatus
 	}
 
 	if req.Term != lc.term {
-		return nil, common.ErrInvalidTerm
+		return nil, constant.ErrInvalidTerm
 	}
 
 	lc.replicationFactor = req.GetReplicationFactor()
@@ -388,11 +391,11 @@ func (lc *leaderController) AddFollower(req *proto.AddFollowerRequest) (*proto.A
 	defer lc.Unlock()
 
 	if req.Term != lc.term {
-		return nil, common.ErrInvalidTerm
+		return nil, constant.ErrInvalidTerm
 	}
 
 	if lc.status != proto.ServingStatus_LEADER {
-		return nil, errors.Wrap(common.ErrInvalidStatus, "Node is not leader")
+		return nil, errors.Wrap(constant.ErrInvalidStatus, "Node is not leader")
 	}
 
 	if _, followerAlreadyPresent := lc.followers[req.FollowerName]; followerAlreadyPresent {
@@ -444,7 +447,7 @@ func (lc *leaderController) addFollower(follower string, followerHeadEntryId *pr
 		slog.Int64("head-offset", lc.wal.LastOffset()),
 	)
 	lc.followers[follower] = cursor
-	lc.followerAckOffsetGauges[follower] = metrics.NewGauge("oxia_server_follower_ack_offset", "", "count",
+	lc.followerAckOffsetGauges[follower] = metric.NewGauge("oxia_server_follower_ack_offset", "", "count",
 		map[string]any{
 			"shard":    lc.shardId,
 			"follower": follower,
@@ -529,7 +532,7 @@ func (lc *leaderController) truncateFollowerIfNeeded(follower string, followerHe
 	// Coordinator should never send us a follower with an invalid term.
 	// Checking for sanity here.
 	if followerHeadEntryId.Term > lc.leaderElectionHeadEntryId.Term {
-		return nil, common.ErrInvalidStatus
+		return nil, constant.ErrInvalidStatus
 	}
 
 	lastEntryInFollowerTerm, err := getHighestEntryOfTerm(lc.wal, followerHeadEntryId.Term)
@@ -593,7 +596,7 @@ func getHighestEntryOfTerm(w wal.Wal, term int64) (*proto.EntryId, error) {
 	return InvalidEntryId, nil
 }
 
-func (lc *leaderController) Read(ctx context.Context, request *proto.ReadRequest, cb callback.StreamCallback[*proto.GetResponse]) {
+func (lc *leaderController) Read(ctx context.Context, request *proto.ReadRequest, cb concurrent.StreamCallback[*proto.GetResponse]) {
 	lc.RLock()
 	err := checkStatusIsLeader(lc.status)
 	lc.RUnlock()
@@ -601,12 +604,12 @@ func (lc *leaderController) Read(ctx context.Context, request *proto.ReadRequest
 		cb.OnComplete(err)
 		return
 	}
-	go common.DoWithLabels(
+	go process.DoWithLabels(
 		ctx,
 		map[string]string{
 			"oxia":  "read",
 			"shard": fmt.Sprintf("%d", lc.shardId),
-			"peer":  common.GetPeer(ctx),
+			"peer":  rpc.GetPeer(ctx),
 		},
 		func() {
 			lc.log.Debug("Received read request")
@@ -669,7 +672,7 @@ func (lc *leaderController) GetSequenceUpdates(req *proto.GetSequenceUpdatesRequ
 	}
 }
 
-func (lc *leaderController) List(ctx context.Context, request *proto.ListRequest, cb callback.StreamCallback[string]) {
+func (lc *leaderController) List(ctx context.Context, request *proto.ListRequest, cb concurrent.StreamCallback[string]) {
 	lc.RLock()
 	err := checkStatusIsLeader(lc.status)
 	lc.RUnlock()
@@ -680,13 +683,13 @@ func (lc *leaderController) List(ctx context.Context, request *proto.ListRequest
 	lc.list(ctx, request, cb)
 }
 
-func (lc *leaderController) list(ctx context.Context, request *proto.ListRequest, cb callback.StreamCallback[string]) {
-	go common.DoWithLabels(
+func (lc *leaderController) list(ctx context.Context, request *proto.ListRequest, cb concurrent.StreamCallback[string]) {
+	go process.DoWithLabels(
 		ctx,
 		map[string]string{
 			"oxia":  "list",
 			"shard": fmt.Sprintf("%d", lc.shardId),
-			"peer":  common.GetPeer(ctx),
+			"peer":  rpc.GetPeer(ctx),
 		},
 		func() {
 			lc.log.Debug("Received list request", slog.Any("request", request))
@@ -727,12 +730,12 @@ func (lc *leaderController) list(ctx context.Context, request *proto.ListRequest
 
 func (lc *leaderController) ListBlock(ctx context.Context, request *proto.ListRequest) ([]string, error) {
 	// todo: support leader status check without lock
-	ch := make(chan *entities.TWithError[string])
-	go lc.list(ctx, request, callback.ReadFromStreamCallback(ch))
+	ch := make(chan *entity.TWithError[string])
+	go lc.list(ctx, request, concurrent.ReadFromStreamCallback(ch))
 	return channel.ReadAll(ctx, ch)
 }
 
-func (lc *leaderController) RangeScan(ctx context.Context, request *proto.RangeScanRequest, cb callback.StreamCallback[*proto.GetResponse]) {
+func (lc *leaderController) RangeScan(ctx context.Context, request *proto.RangeScanRequest, cb concurrent.StreamCallback[*proto.GetResponse]) {
 	lc.RLock()
 	err := checkStatusIsLeader(lc.status)
 	lc.RUnlock()
@@ -741,11 +744,11 @@ func (lc *leaderController) RangeScan(ctx context.Context, request *proto.RangeS
 		return
 	}
 
-	go common.DoWithLabels(ctx,
+	go process.DoWithLabels(ctx,
 		map[string]string{
 			"oxia":  "range-scan",
 			"shard": fmt.Sprintf("%d", lc.shardId),
-			"peer":  common.GetPeer(ctx),
+			"peer":  rpc.GetPeer(ctx),
 		},
 		func() {
 			lc.log.Debug("Received list request", slog.Any("request", request))
@@ -790,19 +793,19 @@ func (lc *leaderController) WriteBlock(ctx context.Context, request *proto.Write
 	return lc.writeBlock(ctx, func(_ int64) *proto.WriteRequest { return request })
 }
 
-func (lc *leaderController) Write(ctx context.Context, request *proto.WriteRequest, cb callback.Callback[*proto.WriteResponse]) {
+func (lc *leaderController) Write(ctx context.Context, request *proto.WriteRequest, cb concurrent.Callback[*proto.WriteResponse]) {
 	lc.write(ctx, func(_ int64) *proto.WriteRequest { return request }, cb)
 }
 
 func (lc *leaderController) writeBlock(ctx context.Context, requestSupplier func(offset int64) *proto.WriteRequest) (*proto.WriteResponse, error) {
-	res := make(chan *entities.TWithError[*proto.WriteResponse], 1)
-	lc.write(ctx, requestSupplier, callback.NewOnce(func(t *proto.WriteResponse) {
-		res <- &entities.TWithError[*proto.WriteResponse]{
+	res := make(chan *entity.TWithError[*proto.WriteResponse], 1)
+	lc.write(ctx, requestSupplier, concurrent.NewOnce(func(t *proto.WriteResponse) {
+		res <- &entity.TWithError[*proto.WriteResponse]{
 			Err: nil,
 			T:   t,
 		}
 	}, func(err error) {
-		res <- &entities.TWithError[*proto.WriteResponse]{
+		res <- &entity.TWithError[*proto.WriteResponse]{
 			Err: err,
 			T:   nil,
 		}
@@ -811,7 +814,7 @@ func (lc *leaderController) writeBlock(ctx context.Context, requestSupplier func
 	return response.T, response.Err
 }
 
-func (lc *leaderController) write(ctx context.Context, requestSupplier func(offset int64) *proto.WriteRequest, cb callback.Callback[*proto.WriteResponse]) {
+func (lc *leaderController) write(ctx context.Context, requestSupplier func(offset int64) *proto.WriteRequest, cb concurrent.Callback[*proto.WriteResponse]) {
 	timer := lc.writeLatencyHisto.Timer()
 	lc.Lock()
 	if err := checkStatusIsLeader(lc.status); err != nil {
@@ -850,7 +853,7 @@ func (lc *leaderController) write(ctx context.Context, requestSupplier func(offs
 			return
 		}
 		tracker.AdvanceHeadOffset(newOffset)
-		tracker.WaitForCommitOffsetAsync(ctx, newOffset, callback.NewOnce[any](
+		tracker.WaitForCommitOffsetAsync(ctx, newOffset, concurrent.NewOnce[any](
 			func(_ any) { //nolint:contextcheck
 				defer timer.Done()
 				var wr *proto.WriteResponse
@@ -868,7 +871,7 @@ func (lc *leaderController) write(ctx context.Context, requestSupplier func(offs
 
 func (lc *leaderController) GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
 	if !lc.termOptions.NotificationsEnabled {
-		return common.ErrNotificationsNotEnabled
+		return constant.ErrNotificationsNotEnabled
 	}
 	return startNotificationDispatcher(lc, req, stream)
 }
@@ -898,7 +901,7 @@ func (lc *leaderController) close() error {
 	for _, g := range lc.followerAckOffsetGauges {
 		g.Unregister()
 	}
-	lc.followerAckOffsetGauges = map[string]metrics.Gauge{}
+	lc.followerAckOffsetGauges = map[string]metric.Gauge{}
 
 	err = lc.sessionManager.Close()
 
@@ -979,7 +982,7 @@ func (lc *leaderController) DeleteShard(request *proto.DeleteShardRequest) (*pro
 			slog.Int64("follower-term", lc.term),
 			slog.Int64("new-term", request.Term))
 		_ = lc.close()
-		return nil, common.ErrInvalidTerm
+		return nil, constant.ErrInvalidTerm
 	}
 
 	lc.log.Info("Deleting shard")
@@ -1016,7 +1019,7 @@ func (lc *leaderController) CloseSession(request *proto.CloseSessionRequest) (*p
 
 func checkStatusIsLeader(actual proto.ServingStatus) error {
 	if actual != proto.ServingStatus_LEADER {
-		return status.Errorf(common.CodeInvalidStatus, "Received message in the wrong state. In %+v, should be %+v.", actual, proto.ServingStatus_LEADER)
+		return status.Errorf(constant.CodeInvalidStatus, "Received message in the wrong state. In %+v, should be %+v.", actual, proto.ServingStatus_LEADER)
 	}
 	return nil
 }

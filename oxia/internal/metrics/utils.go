@@ -21,23 +21,23 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
-	"github.com/streamnative/oxia/common/metrics"
+	ometric "github.com/streamnative/oxia/common/metric"
 	"github.com/streamnative/oxia/proto"
 )
 
-func newHistogram(meter metric.Meter, name string, unit metrics.Unit) metric.Int64Histogram {
+func newHistogram(meter metric.Meter, name string, unit ometric.Unit) metric.Int64Histogram {
 	histogram, err := meter.Int64Histogram(name, metric.WithUnit(string(unit)))
 	fatalOnErr(err, name)
 	return histogram
 }
 
 func newMillisCounter(meter metric.Meter, name string) metric.Float64Counter {
-	counter, err := meter.Float64Counter(name, metric.WithUnit(string(metrics.Milliseconds)))
+	counter, err := meter.Float64Counter(name, metric.WithUnit(string(ometric.Milliseconds)))
 	fatalOnErr(err, name)
 	return counter
 }
 
-func newCounter(meter metric.Meter, name string, unit metrics.Unit) metric.Int64Counter {
+func newCounter(meter metric.Meter, name string, unit ometric.Unit) metric.Int64Counter {
 	counter, err := meter.Int64Counter(name, metric.WithUnit(string(unit)))
 	fatalOnErr(err, name)
 	return counter

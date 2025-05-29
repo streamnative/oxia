@@ -24,17 +24,17 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/streamnative/oxia/common/constant"
 	"go.uber.org/multierr"
 
-	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/collection"
-	"github.com/streamnative/oxia/common/metrics"
+	"github.com/streamnative/oxia/common/metric"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/kv"
 )
 
 const (
-	sessionKeyPrefix = common.InternalKeyPrefix + "session"
+	sessionKeyPrefix = constant.InternalKeyPrefix + "session"
 	sessionKeyFormat = sessionKeyPrefix + "/%016x"
 )
 
@@ -85,14 +85,14 @@ type sessionManager struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	createdSessions metrics.Counter
-	closedSessions  metrics.Counter
-	expiredSessions metrics.Counter
-	activeSessions  metrics.Gauge
+	createdSessions metric.Counter
+	closedSessions  metric.Counter
+	expiredSessions metric.Counter
+	activeSessions  metric.Gauge
 }
 
 func NewSessionManager(ctx context.Context, namespace string, shardId int64, controller *leaderController) SessionManager {
-	labels := metrics.LabelsForShard(namespace, shardId)
+	labels := metric.LabelsForShard(namespace, shardId)
 	sm := &sessionManager{
 		sessions:         collection.NewVisibleMap[SessionId, *session](),
 		namespace:        namespace,
@@ -105,17 +105,17 @@ func NewSessionManager(ctx context.Context, namespace string, shardId int64, con
 			slog.Int64("term", controller.term),
 		),
 
-		createdSessions: metrics.NewCounter("oxia_server_sessions_created",
+		createdSessions: metric.NewCounter("oxia_server_sessions_created",
 			"The total number of sessions created", "count", labels),
-		closedSessions: metrics.NewCounter("oxia_server_sessions_closed",
+		closedSessions: metric.NewCounter("oxia_server_sessions_closed",
 			"The total number of sessions closed", "count", labels),
-		expiredSessions: metrics.NewCounter("oxia_server_sessions_expired",
+		expiredSessions: metric.NewCounter("oxia_server_sessions_expired",
 			"The total number of sessions expired", "count", labels),
 	}
 
 	sm.ctx, sm.cancel = context.WithCancel(ctx)
 
-	sm.activeSessions = metrics.NewGauge("oxia_server_session_active",
+	sm.activeSessions = metric.NewGauge("oxia_server_session_active",
 		"The number of sessions currently active", "count", labels, func() int64 {
 			return int64(sm.sessions.Size())
 		})
@@ -124,13 +124,13 @@ func NewSessionManager(ctx context.Context, namespace string, shardId int64, con
 }
 
 func (sm *sessionManager) CreateSession(request *proto.CreateSessionRequest) (*proto.CreateSessionResponse, error) {
-	return sm.createSession(request, common.MinSessionTimeout)
+	return sm.createSession(request, constant.MinSessionTimeout)
 }
 
 func (sm *sessionManager) createSession(request *proto.CreateSessionRequest, minTimeout time.Duration) (*proto.CreateSessionResponse, error) {
 	timeout := time.Duration(request.SessionTimeoutMs) * time.Millisecond
-	if timeout > common.MaxSessionTimeout || timeout < minTimeout {
-		return nil, errors.Wrap(common.ErrInvalidSessionTimeout, fmt.Sprintf("timeoutMs=%d", request.SessionTimeoutMs))
+	if timeout > constant.MaxSessionTimeout || timeout < minTimeout {
+		return nil, errors.Wrap(constant.ErrInvalidSessionTimeout, fmt.Sprintf("timeoutMs=%d", request.SessionTimeoutMs))
 	}
 
 	metadata := proto.SessionMetadataFromVTPool()
@@ -175,7 +175,7 @@ func (sm *sessionManager) getSession(sessionId int64) (*session, error) {
 			"Session not found",
 			slog.Int64("session-id", sessionId),
 		)
-		return nil, common.ErrSessionNotFound
+		return nil, constant.ErrSessionNotFound
 	}
 	return s, nil
 }

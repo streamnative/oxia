@@ -21,9 +21,11 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/streamnative/oxia/common/concurrent"
+	"github.com/streamnative/oxia/common/process"
+	time2 "github.com/streamnative/oxia/common/time"
 	pb "google.golang.org/protobuf/proto"
 
-	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/proto"
 )
 
@@ -34,15 +36,15 @@ const (
 
 type notificationsTrimmer struct {
 	ctx                        context.Context
-	waitClose                  common.WaitGroup
+	waitClose                  concurrent.WaitGroup
 	kv                         KV
 	interval                   time.Duration
 	notificationsRetentionTime time.Duration
-	clock                      common.Clock
+	clock                      time2.Clock
 	log                        *slog.Logger
 }
 
-func newNotificationsTrimmer(ctx context.Context, namespace string, shardId int64, kv KV, notificationRetentionTime time.Duration, waitClose common.WaitGroup, clock common.Clock) *notificationsTrimmer {
+func newNotificationsTrimmer(ctx context.Context, namespace string, shardId int64, kv KV, notificationRetentionTime time.Duration, waitClose concurrent.WaitGroup, clock time2.Clock) *notificationsTrimmer {
 	interval := notificationRetentionTime / 10
 	if interval < minNotificationTrimmingInterval {
 		interval = minNotificationTrimmingInterval
@@ -65,7 +67,7 @@ func newNotificationsTrimmer(ctx context.Context, namespace string, shardId int6
 		),
 	}
 
-	go common.DoWithLabels(
+	go process.DoWithLabels(
 		t.ctx,
 		map[string]string{
 			"oxia":      "notifications-trimmer",

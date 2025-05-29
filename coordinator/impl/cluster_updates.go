@@ -17,7 +17,7 @@ package impl
 import (
 	"log/slog"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/sharding"
 	"github.com/streamnative/oxia/coordinator/model"
 )
 
@@ -61,7 +61,7 @@ func applyClusterChanges(config *model.ClusterConfig, currentStatus *model.Clust
 			ReplicationFactor: nc.ReplicationFactor,
 		}
 
-		for _, shard := range common.GenerateShards(newStatus.ShardIdGenerator, nc.InitialShardCount) {
+		for _, shard := range sharding.GenerateShards(newStatus.ShardIdGenerator, nc.InitialShardCount) {
 			var esm []model.Server
 			if esm, err = ensembleSupplier(&nc, newStatus); err != nil {
 				slog.Error("failed to select new ensembles.", slog.Any("shard", shard), slog.Any("error", err))

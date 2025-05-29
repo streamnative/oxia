@@ -19,9 +19,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/streamnative/oxia/common/object"
 	"go.uber.org/multierr"
 
-	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/server/util"
 	"github.com/streamnative/oxia/server/wal/codec"
 )
@@ -29,7 +29,7 @@ import (
 type ReadOnlySegmentsGroup interface {
 	io.Closer
 
-	Get(offset int64) (common.RefCount[ReadOnlySegment], error)
+	Get(offset int64) (object.RefCount[ReadOnlySegment], error)
 
 	TrimSegments(offset int64) error
 
@@ -37,7 +37,7 @@ type ReadOnlySegmentsGroup interface {
 
 	AddedNewSegment(baseOffset int64)
 
-	PollHighestSegment() (common.RefCount[ReadOnlySegment], error)
+	PollHighestSegment() (object.RefCount[ReadOnlySegment], error)
 }
 
 type readOnlySegmentsGroup struct {
@@ -45,14 +45,14 @@ type readOnlySegmentsGroup struct {
 
 	basePath     string
 	allSegments  *treeMap[int64, bool]
-	openSegments *treeMap[int64, common.RefCount[ReadOnlySegment]]
+	openSegments *treeMap[int64, object.RefCount[ReadOnlySegment]]
 }
 
 func newReadOnlySegmentsGroup(basePath string) (ReadOnlySegmentsGroup, error) {
 	g := &readOnlySegmentsGroup{
 		basePath:     basePath,
 		allSegments:  newInt64TreeMap[bool](),
-		openSegments: newInt64TreeMap[common.RefCount[ReadOnlySegment]](),
+		openSegments: newInt64TreeMap[object.RefCount[ReadOnlySegment]](),
 	}
 
 	segments, err := listAllSegments(basePath)
@@ -82,7 +82,7 @@ func (r *readOnlySegmentsGroup) Close() error {
 	defer r.Unlock()
 
 	var err error
-	r.openSegments.Each(func(_ int64, segment common.RefCount[ReadOnlySegment]) bool {
+	r.openSegments.Each(func(_ int64, segment object.RefCount[ReadOnlySegment]) bool {
 		err = multierr.Append(err, segment.(io.Closer).Close())
 		return true
 	})
@@ -104,7 +104,7 @@ func (r *readOnlySegmentsGroup) GetLastCrc(baseOffset int64) (uint32, error) {
 	return lastCrc, nil
 }
 
-func (r *readOnlySegmentsGroup) Get(offset int64) (common.RefCount[ReadOnlySegment], error) {
+func (r *readOnlySegmentsGroup) Get(offset int64) (object.RefCount[ReadOnlySegment], error) {
 	r.Lock()
 	defer r.Unlock()
 
@@ -124,7 +124,7 @@ func (r *readOnlySegmentsGroup) Get(offset int64) (common.RefCount[ReadOnlySegme
 		return nil, err
 	}
 
-	rc := common.NewRefCount(rosegment)
+	rc := object.NewRefCount(rosegment)
 	res := rc.Acquire()
 
 	r.openSegments.Put(rosegment.BaseOffset(), rc)
@@ -180,7 +180,7 @@ func (r *readOnlySegmentsGroup) TrimSegments(offset int64) error {
 	return err
 }
 
-func (r *readOnlySegmentsGroup) PollHighestSegment() (common.RefCount[ReadOnlySegment], error) {
+func (r *readOnlySegmentsGroup) PollHighestSegment() (object.RefCount[ReadOnlySegment], error) {
 	r.Lock()
 	defer r.Unlock()
 
@@ -200,14 +200,14 @@ func (r *readOnlySegmentsGroup) PollHighestSegment() (common.RefCount[ReadOnlySe
 		return nil, err
 	}
 
-	return common.NewRefCount(roSegment), err
+	return object.NewRefCount(roSegment), err
 }
 
 func (r *readOnlySegmentsGroup) cleanSegmentsCache() error {
 	var err error
 
 	// Delete based on open-timestamp
-	r.openSegments.Each(func(k int64, v common.RefCount[ReadOnlySegment]) bool {
+	r.openSegments.Each(func(k int64, v object.RefCount[ReadOnlySegment]) bool {
 		ts := v.Get().OpenTimestamp()
 		if time.Since(ts) > maxReadOnlySegmentsInCacheTime {
 			err = multierr.Append(err, v.Close())
@@ -218,7 +218,7 @@ func (r *readOnlySegmentsGroup) cleanSegmentsCache() error {
 	})
 
 	// Delete based on max-count
-	r.openSegments.Each(func(k int64, v common.RefCount[ReadOnlySegment]) bool {
+	r.openSegments.Each(func(k int64, v object.RefCount[ReadOnlySegment]) bool {
 		if r.openSegments.Size() > maxReadOnlySegmentsInCacheCount {
 			err = multierr.Append(err, v.Close())
 			r.openSegments.Remove(k)

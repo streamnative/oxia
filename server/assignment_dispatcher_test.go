@@ -21,6 +21,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/rpc"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
@@ -28,8 +30,6 @@ import (
 	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
 
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/common/container"
 	"github.com/streamnative/oxia/proto"
 )
 
@@ -37,9 +37,9 @@ func TestUninitializedAssignmentDispatcher(t *testing.T) {
 	dispatcher := NewShardAssignmentDispatcher(health.NewServer())
 	mockClient := newMockShardAssignmentClientStream()
 	assert.False(t, dispatcher.Initialized())
-	req := &proto.ShardAssignmentsRequest{Namespace: common.DefaultNamespace}
+	req := &proto.ShardAssignmentsRequest{Namespace: constant.DefaultNamespace}
 	err := dispatcher.RegisterForUpdates(req, mockClient)
-	assert.ErrorIs(t, err, common.ErrNotInitialized)
+	assert.ErrorIs(t, err, constant.ErrNotInitialized)
 	assert.NoError(t, dispatcher.Close())
 }
 
@@ -54,7 +54,7 @@ func TestShardAssignmentDispatcher_Initialized(t *testing.T) {
 	assert.False(t, dispatcher.Initialized())
 	coordinatorStream.AddRequest(&proto.ShardAssignments{
 		Namespaces: map[string]*proto.NamespaceShardsAssignment{
-			common.DefaultNamespace: {
+			constant.DefaultNamespace: {
 				Assignments: []*proto.ShardAssignment{
 					newShardAssignment(0, "server1", 0, 100),
 					newShardAssignment(1, "server2", 100, math.MaxUint32),
@@ -72,7 +72,7 @@ func TestShardAssignmentDispatcher_Initialized(t *testing.T) {
 	wg.Add(1)
 
 	go func() {
-		req := &proto.ShardAssignmentsRequest{Namespace: common.DefaultNamespace}
+		req := &proto.ShardAssignmentsRequest{Namespace: constant.DefaultNamespace}
 		err := dispatcher.RegisterForUpdates(req, mockClient)
 		assert.NoError(t, err)
 		wg.Done()
@@ -97,7 +97,7 @@ func TestShardAssignmentDispatcher_ReadinessProbe(t *testing.T) {
 
 	// Readiness probe should fail while not initialized
 	resp, err := healthServer.Check(context.Background(), &grpc_health_v1.HealthCheckRequest{
-		Service: container.ReadinessProbeService,
+		Service: rpc.ReadinessProbeService,
 	})
 
 	assert.Equal(t, codes.NotFound, status.Code(err))
@@ -105,7 +105,7 @@ func TestShardAssignmentDispatcher_ReadinessProbe(t *testing.T) {
 
 	coordinatorStream.AddRequest(&proto.ShardAssignments{
 		Namespaces: map[string]*proto.NamespaceShardsAssignment{
-			common.DefaultNamespace: {
+			constant.DefaultNamespace: {
 				Assignments: []*proto.ShardAssignment{
 					newShardAssignment(0, "server1", 0, 100),
 					newShardAssignment(1, "server2", 100, math.MaxUint32),
@@ -119,7 +119,7 @@ func TestShardAssignmentDispatcher_ReadinessProbe(t *testing.T) {
 	}, 10*time.Second, 10*time.Millisecond)
 
 	resp, err = healthServer.Check(context.Background(), &grpc_health_v1.HealthCheckRequest{
-		Service: container.ReadinessProbeService,
+		Service: rpc.ReadinessProbeService,
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, grpc_health_v1.HealthCheckResponse_SERVING, resp.Status)
@@ -142,7 +142,7 @@ func TestShardAssignmentDispatcher_AddClient(t *testing.T) {
 
 	request := &proto.ShardAssignments{
 		Namespaces: map[string]*proto.NamespaceShardsAssignment{
-			common.DefaultNamespace: {
+			constant.DefaultNamespace: {
 				Assignments: []*proto.ShardAssignment{
 					shard0InitialAssignment,
 					shard1InitialAssignment,
@@ -163,7 +163,7 @@ func TestShardAssignmentDispatcher_AddClient(t *testing.T) {
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
-		req := &proto.ShardAssignmentsRequest{Namespace: common.DefaultNamespace}
+		req := &proto.ShardAssignmentsRequest{Namespace: constant.DefaultNamespace}
 		err := dispatcher.RegisterForUpdates(req, mockClient)
 		assert.NoError(t, err)
 		wg.Done()
@@ -174,7 +174,7 @@ func TestShardAssignmentDispatcher_AddClient(t *testing.T) {
 
 	request = &proto.ShardAssignments{
 		Namespaces: map[string]*proto.NamespaceShardsAssignment{
-			common.DefaultNamespace: {
+			constant.DefaultNamespace: {
 				Assignments: []*proto.ShardAssignment{
 					shard0InitialAssignment,
 					shard1UpdatedAssignment,
@@ -198,7 +198,7 @@ func TestShardAssignmentDispatcher_AddClient(t *testing.T) {
 	wg2.Add(1)
 
 	go func() {
-		req := &proto.ShardAssignmentsRequest{Namespace: common.DefaultNamespace}
+		req := &proto.ShardAssignmentsRequest{Namespace: constant.DefaultNamespace}
 		err := dispatcher.RegisterForUpdates(req, mockClient)
 		assert.NoError(t, err)
 		wg2.Done()
@@ -315,7 +315,7 @@ func TestShardAssignmentDispatcher_MultipleNamespaces(t *testing.T) {
 	go func() {
 		req := &proto.ShardAssignmentsRequest{Namespace: "non-valid-namespace"}
 		err := dispatcher.RegisterForUpdates(req, mockClient)
-		assert.ErrorIs(t, err, common.ErrNamespaceNotFound)
+		assert.ErrorIs(t, err, constant.ErrNamespaceNotFound)
 		wg.Done()
 	}()
 

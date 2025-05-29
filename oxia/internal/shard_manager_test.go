@@ -19,9 +19,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/rpc"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/server"
 )
 
@@ -38,9 +39,9 @@ func TestWithStandalone(t *testing.T) {
 	standaloneServer, err := server.NewStandalone(server.NewTestConfig(t.TempDir()))
 	assert.NoError(t, err)
 
-	clientPool := common.NewClientPool(nil, nil)
+	clientPool := rpc.NewClientPool(nil, nil)
 	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())
-	shardManager, err := NewShardManager(&testShardStrategy{}, clientPool, serviceAddress, common.DefaultNamespace, 30*time.Second)
+	shardManager, err := NewShardManager(&testShardStrategy{}, clientPool, serviceAddress, constant.DefaultNamespace, 30*time.Second)
 	assert.NoError(t, err)
 
 	defer func() {

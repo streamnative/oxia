@@ -21,9 +21,9 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/rpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
-
-	"github.com/streamnative/oxia/common"
 )
 
 type Config struct {
@@ -36,7 +36,7 @@ type Config struct {
 func NewConfig() Config {
 	return Config{
 		Host:    "",
-		Port:    common.DefaultInternalPort,
+		Port:    constant.DefaultInternalPort,
 		Timeout: 10 * time.Second,
 		Service: "",
 	}
@@ -63,7 +63,7 @@ func init() {
 }
 
 func exec(*cobra.Command, []string) error {
-	clientPool := common.NewClientPool(nil, nil)
+	clientPool := rpc.NewClientPool(nil, nil)
 
 	serverAddress := fmt.Sprintf("%s:%d", config.Host, config.Port)
 

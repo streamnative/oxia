@@ -15,10 +15,9 @@
 package batch
 
 import (
+	"github.com/streamnative/oxia/common/constant"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
-	"github.com/streamnative/oxia/common"
 )
 
 func isRetriable(err error) bool {
@@ -27,13 +26,13 @@ func isRetriable(err error) bool {
 	case codes.Unavailable:
 		// Failure to connect is ok to re-attempt
 		return true
-	case common.CodeInvalidStatus:
+	case constant.CodeInvalidStatus:
 		// Leader has fenced the shard, though we expect a new leader to be elected
 		return true
-	case common.CodeAlreadyClosed:
+	case constant.CodeAlreadyClosed:
 		// Leader is closing, though we expect a new leader to be elected
 		return true
-	case common.CodeNodeIsNotLeader:
+	case constant.CodeNodeIsNotLeader:
 		// We're making a request to a node that is not leader anymore.
 		// Retry to make the request to the new leader
 		return true

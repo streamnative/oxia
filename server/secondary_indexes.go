@@ -20,16 +20,16 @@ import (
 	"regexp"
 
 	"github.com/streamnative/oxia/common/compare"
+	"github.com/streamnative/oxia/common/constant"
 
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 
-	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/kv"
 )
 
-const secondaryIdxKeyPrefix = common.InternalKeyPrefix + "idx"
+const secondaryIdxKeyPrefix = constant.InternalKeyPrefix + "idx"
 
 type wrapperUpdateCallback struct{}
 

@@ -19,9 +19,10 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/rpc"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/proto"
 )
 
@@ -35,8 +36,8 @@ type Executor interface {
 type executorImpl struct {
 	sync.RWMutex
 
-	ClientPool     common.ClientPool
-	ShardManager   ShardManager
+	ClientPool   rpc.ClientPool
+	ShardManager ShardManager
 	ServiceAddress string
 
 	writeStreams map[int64]*streamWrapper
@@ -45,7 +46,7 @@ type executorImpl struct {
 	namespace string
 }
 
-func NewExecutor(ctx context.Context, namespace string, pool common.ClientPool, manager ShardManager, serviceAddress string) Executor {
+func NewExecutor(ctx context.Context, namespace string, pool rpc.ClientPool, manager ShardManager, serviceAddress string) Executor {
 	e := &executorImpl{
 		ctx:            ctx,
 		namespace:      namespace,
@@ -125,8 +126,8 @@ func (e *executorImpl) writeStream(shardId *int64) (*streamWrapper, error) {
 		return nil, err
 	}
 
-	ctx := metadata.AppendToOutgoingContext(e.ctx, common.MetadataNamespace, e.namespace)
-	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataShardId, fmt.Sprintf("%d", *shardId))
+	ctx := metadata.AppendToOutgoingContext(e.ctx, constant.MetadataNamespace, e.namespace)
+	ctx = metadata.AppendToOutgoingContext(ctx, constant.MetadataShardId, fmt.Sprintf("%d", *shardId))
 
 	stream, err := rpc.WriteStream(ctx)
 	if err != nil {

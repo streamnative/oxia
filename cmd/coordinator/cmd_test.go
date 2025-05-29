@@ -21,10 +21,11 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/entity"
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v3"
 
-	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/coordinator"
 	"github.com/streamnative/oxia/coordinator/model"
 )
@@ -32,10 +33,10 @@ import (
 func TestCmd(t *testing.T) {
 	clusterConfig := model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
-			Name:                 common.DefaultNamespace,
+			Name:                 constant.DefaultNamespace,
 			ReplicationFactor:    1,
 			InitialShardCount:    2,
-			NotificationsEnabled: common.Bool(false),
+			NotificationsEnabled: entity.Bool(false),
 		}},
 		Servers: []model.Server{{
 			Public:   "public:1234",
@@ -67,10 +68,10 @@ func TestCmd(t *testing.T) {
 			MetadataProviderImpl: coordinator.File,
 		}, model.ClusterConfig{
 			Namespaces: []model.NamespaceConfig{{
-				Name:                 common.DefaultNamespace,
+				Name:                 constant.DefaultNamespace,
 				ReplicationFactor:    1,
 				InitialShardCount:    2,
-				NotificationsEnabled: common.Bool(false),
+				NotificationsEnabled: entity.Bool(false),
 			}},
 			Servers: []model.Server{{
 				Public:   "public:1234",
@@ -84,10 +85,10 @@ func TestCmd(t *testing.T) {
 			MetadataProviderImpl: coordinator.File,
 		}, model.ClusterConfig{
 			Namespaces: []model.NamespaceConfig{{
-				Name:                 common.DefaultNamespace,
+				Name:                 constant.DefaultNamespace,
 				ReplicationFactor:    1,
 				InitialShardCount:    2,
-				NotificationsEnabled: common.Bool(false),
+				NotificationsEnabled: entity.Bool(false),
 			}},
 			Servers: []model.Server{{
 				Public:   "public:1234",
@@ -101,10 +102,10 @@ func TestCmd(t *testing.T) {
 			MetadataProviderImpl: coordinator.File,
 		}, model.ClusterConfig{
 			Namespaces: []model.NamespaceConfig{{
-				Name:                 common.DefaultNamespace,
+				Name:                 constant.DefaultNamespace,
 				ReplicationFactor:    1,
 				InitialShardCount:    2,
-				NotificationsEnabled: common.Bool(false),
+				NotificationsEnabled: entity.Bool(false),
 			}},
 			Servers: []model.Server{{
 				Public:   "public:1234",
@@ -118,10 +119,10 @@ func TestCmd(t *testing.T) {
 			MetadataProviderImpl: coordinator.File,
 		}, model.ClusterConfig{
 			Namespaces: []model.NamespaceConfig{{
-				Name:                 common.DefaultNamespace,
+				Name:                 constant.DefaultNamespace,
 				ReplicationFactor:    1,
 				InitialShardCount:    2,
-				NotificationsEnabled: common.Bool(false),
+				NotificationsEnabled: entity.Bool(false),
 			}},
 			Servers: []model.Server{{
 				Public:   "public:1234",
@@ -135,10 +136,10 @@ func TestCmd(t *testing.T) {
 			MetadataProviderImpl: coordinator.File,
 		}, model.ClusterConfig{
 			Namespaces: []model.NamespaceConfig{{
-				Name:                 common.DefaultNamespace,
+				Name:                 constant.DefaultNamespace,
 				ReplicationFactor:    1,
 				InitialShardCount:    2,
-				NotificationsEnabled: common.Bool(false),
+				NotificationsEnabled: entity.Bool(false),
 			}},
 			Servers: []model.Server{{
 				Public:   "public:1234",

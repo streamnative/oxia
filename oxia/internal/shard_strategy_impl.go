@@ -15,7 +15,7 @@
 package internal
 
 import (
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/hash"
 )
 
 type shardStrategyImpl struct {
@@ -24,7 +24,7 @@ type shardStrategyImpl struct {
 
 func NewShardStrategy() ShardStrategy {
 	return &shardStrategyImpl{
-		hashFunc: common.Xxh332,
+		hashFunc: hash.Xxh332,
 	}
 }
 

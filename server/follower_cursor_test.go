@@ -20,10 +20,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/streamnative/oxia/common/constant"
+	time2 "github.com/streamnative/oxia/common/time"
 	"github.com/stretchr/testify/assert"
 	pb "google.golang.org/protobuf/proto"
 
-	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/kv"
 	"github.com/streamnative/oxia/server/wal"
@@ -37,10 +38,10 @@ func TestFollowerCursor(t *testing.T) {
 	ackTracker := NewQuorumAckTracker(3, wal.InvalidOffset, wal.InvalidOffset)
 	kvf, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := kv.NewDB(common.DefaultNamespace, shard, kvf, 1*time.Hour, common.SystemClock)
+	db, err := kv.NewDB(constant.DefaultNamespace, shard, kvf, 1*time.Hour, time2.SystemClock)
 	assert.NoError(t, err)
 	wf := wal.NewWalFactory(&wal.FactoryOptions{BaseWalDir: t.TempDir()})
-	w, err := wf.NewWal(common.DefaultNamespace, shard, nil)
+	w, err := wf.NewWal(constant.DefaultNamespace, shard, nil)
 	assert.NoError(t, err)
 
 	err = w.Append(&proto.LogEntry{
@@ -51,7 +52,7 @@ func TestFollowerCursor(t *testing.T) {
 	assert.NoError(t, err)
 	slog.Info("Appended entry 0 to the log")
 
-	fc, err := NewFollowerCursor("f1", term, common.DefaultNamespace, shard, stream, ackTracker, w, db, wal.InvalidOffset)
+	fc, err := NewFollowerCursor("f1", term, constant.DefaultNamespace, shard, stream, ackTracker, w, db, wal.InvalidOffset)
 	assert.NoError(t, err)
 
 	time.Sleep(10 * time.Millisecond)
@@ -126,10 +127,10 @@ func TestFollowerCursor_SendSnapshot(t *testing.T) {
 	stream := newMockRpcClient()
 	kvf, err := kv.NewPebbleKVFactory(&kv.FactoryOptions{DataDir: t.TempDir()})
 	assert.NoError(t, err)
-	db, err := kv.NewDB(common.DefaultNamespace, shard, kvf, 1*time.Hour, common.SystemClock)
+	db, err := kv.NewDB(constant.DefaultNamespace, shard, kvf, 1*time.Hour, time2.SystemClock)
 	assert.NoError(t, err)
 	wf := wal.NewWalFactory(&wal.FactoryOptions{BaseWalDir: t.TempDir()})
-	w, err := wf.NewWal(common.DefaultNamespace, shard, nil)
+	w, err := wf.NewWal(constant.DefaultNamespace, shard, nil)
 	assert.NoError(t, err)
 
 	// Load some entries into the db & wal
@@ -155,7 +156,7 @@ func TestFollowerCursor_SendSnapshot(t *testing.T) {
 
 	ackTracker := NewQuorumAckTracker(3, n-1, n-1)
 
-	fc, err := NewFollowerCursor("f1", term, common.DefaultNamespace, shard, stream, ackTracker, w, db, wal.InvalidOffset)
+	fc, err := NewFollowerCursor("f1", term, constant.DefaultNamespace, shard, stream, ackTracker, w, db, wal.InvalidOffset)
 	assert.NoError(t, err)
 
 	s := stream.sendSnapshotStream

@@ -24,6 +24,8 @@ import (
 
 	"github.com/emirpasic/gods/sets/linkedhashset"
 	"github.com/pkg/errors"
+	"github.com/streamnative/oxia/common/concurrent"
+	"github.com/streamnative/oxia/common/process"
 
 	"go.uber.org/multierr"
 	pb "google.golang.org/protobuf/proto"
@@ -32,7 +34,6 @@ import (
 
 	"github.com/streamnative/oxia/coordinator/selectors"
 
-	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/proto"
 )
@@ -67,7 +68,7 @@ type Coordinator interface {
 
 type coordinator struct {
 	sync.Mutex
-	assignmentsChanged common.ConditionContext
+	assignmentsChanged concurrent.ConditionContext
 	ensembleSelector   selectors.Selector[*ensemble.Context, []string]
 
 	MetadataProvider
@@ -122,7 +123,7 @@ func NewCoordinator(metadataProvider MetadataProvider,
 
 	c.ctx, c.cancel = context.WithCancel(context.Background())
 
-	c.assignmentsChanged = common.NewConditionContext(c)
+	c.assignmentsChanged = concurrent.NewConditionContext(c)
 
 	c.clusterStatus, c.metadataVersion, err = metadataProvider.Get()
 	if err != nil && !errors.Is(err, ErrMetadataNotInitialized) {
@@ -151,7 +152,7 @@ func NewCoordinator(metadataProvider MetadataProvider,
 
 	c.initialShardController(&initialClusterConf)
 
-	go common.DoWithLabels(
+	go process.DoWithLabels(
 		c.ctx,
 		map[string]string{
 			"oxia": "coordinator-wait-for-events",

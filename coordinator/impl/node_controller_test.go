@@ -19,10 +19,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/streamnative/oxia/common/constant"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/proto"
 )
@@ -79,7 +79,7 @@ func TestNodeController_ShardsAssignments(t *testing.T) {
 
 	resp := &proto.ShardAssignments{
 		Namespaces: map[string]*proto.NamespaceShardsAssignment{
-			common.DefaultNamespace: {
+			constant.DefaultNamespace: {
 				Assignments: []*proto.ShardAssignment{{
 					Shard:  0,
 					Leader: "leader-0",
@@ -102,7 +102,7 @@ func TestNodeController_ShardsAssignments(t *testing.T) {
 
 	resp2 := &proto.ShardAssignments{
 		Namespaces: map[string]*proto.NamespaceShardsAssignment{
-			common.DefaultNamespace: {
+			constant.DefaultNamespace: {
 				Assignments: []*proto.ShardAssignment{{
 					Shard:  0,
 					Leader: "leader-1",

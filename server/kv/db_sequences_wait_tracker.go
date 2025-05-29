@@ -20,7 +20,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/channel"
 )
 
 type SequenceWaiter interface {
@@ -48,7 +48,7 @@ type sequenceWaiterTracker struct {
 type sequenceWaiter struct {
 	key     string
 	id      sequenceWaiterID
-	och     common.OverrideChannel[string]
+	och     channel.OverrideChannel[string]
 	tracker *sequenceWaiterTracker
 }
 
@@ -84,7 +84,7 @@ func (swt *sequenceWaiterTracker) AddSequenceWaiter(key string) *sequenceWaiter 
 	}
 
 	id := sequenceWaiterID(swt.idGen.Add(1))
-	sw := &sequenceWaiter{key, id, common.NewOverrideChannel[string](), swt}
+	sw := &sequenceWaiter{key, id, channel.NewOverrideChannel[string](), swt}
 	im[id] = sw
 	return sw
 }

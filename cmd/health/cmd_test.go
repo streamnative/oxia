@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/streamnative/oxia/common/rpc"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -25,13 +26,12 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 
-	"github.com/streamnative/oxia/common/container"
 	"github.com/streamnative/oxia/server/auth"
 )
 
 func TestHealthCmd(t *testing.T) {
 	_health := health.NewServer()
-	server, err := container.Default.StartGrpcServer("health", "localhost:0", func(registrar grpc.ServiceRegistrar) {
+	server, err := rpc.Default.StartGrpcServer("health", "localhost:0", func(registrar grpc.ServiceRegistrar) {
 		grpc_health_v1.RegisterHealthServer(registrar, _health)
 	}, nil, &auth.Options{})
 	assert.NoError(t, err)

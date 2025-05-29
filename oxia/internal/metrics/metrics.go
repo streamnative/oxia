@@ -20,7 +20,7 @@ import (
 
 	"go.opentelemetry.io/otel/metric"
 
-	"github.com/streamnative/oxia/common/metrics"
+	ometric "github.com/streamnative/oxia/common/metric"
 	"github.com/streamnative/oxia/oxia/internal/model"
 	"github.com/streamnative/oxia/proto"
 )
@@ -49,11 +49,11 @@ func newMetrics(provider metric.MeterProvider, timeFunc func() time.Time, sinceF
 		sinceFunc: sinceFunc,
 
 		opTime:  newTimer(meter, "oxia_client_op"),
-		opValue: newHistogram(meter, "oxia_client_op_value", metrics.Bytes),
+		opValue: newHistogram(meter, "oxia_client_op_value", ometric.Bytes),
 
 		batchTotalTime: newTimer(meter, "oxia_client_batch_total"),
 		batchExecTime:  newTimer(meter, "oxia_client_batch_exec"),
-		batchValue:     newHistogram(meter, "oxia_client_batch_value", metrics.Bytes),
+		batchValue:     newHistogram(meter, "oxia_client_batch_value", ometric.Bytes),
 		batchRequests:  newHistogram(meter, "oxia_client_batch_request", ""),
 	}
 }

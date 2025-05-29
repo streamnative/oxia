@@ -20,10 +20,11 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/rpc"
 	"go.uber.org/multierr"
 
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/common/metrics"
+	"github.com/streamnative/oxia/common/metric"
 	"github.com/streamnative/oxia/coordinator/impl"
 	"github.com/streamnative/oxia/coordinator/model"
 )
@@ -70,17 +71,17 @@ var (
 
 func NewConfig() Config {
 	return Config{
-		InternalServiceAddr:  fmt.Sprintf("localhost:%d", common.DefaultInternalPort),
-		MetricsServiceAddr:   fmt.Sprintf("localhost:%d", common.DefaultMetricsPort),
+		InternalServiceAddr:  fmt.Sprintf("localhost:%d", constant.DefaultInternalPort),
+		MetricsServiceAddr:   fmt.Sprintf("localhost:%d", constant.DefaultMetricsPort),
 		MetadataProviderImpl: File,
 	}
 }
 
 type Coordinator struct {
 	coordinator impl.Coordinator
-	clientPool  common.ClientPool
+	clientPool  rpc.ClientPool
 	rpcServer   *rpcServer
-	metrics     *metrics.PrometheusMetrics
+	metrics     *metric.PrometheusMetrics
 }
 
 func New(config Config) (*Coordinator, error) {
@@ -90,7 +91,7 @@ func New(config Config) (*Coordinator, error) {
 	)
 
 	s := &Coordinator{
-		clientPool: common.NewClientPool(config.PeerTLS, nil),
+		clientPool: rpc.NewClientPool(config.PeerTLS, nil),
 	}
 
 	var metadataProvider impl.MetadataProvider
@@ -116,7 +117,7 @@ func New(config Config) (*Coordinator, error) {
 		return nil, err
 	}
 
-	if s.metrics, err = metrics.Start(config.MetricsServiceAddr); err != nil {
+	if s.metrics, err = metric.Start(config.MetricsServiceAddr); err != nil {
 		return nil, err
 	}
 

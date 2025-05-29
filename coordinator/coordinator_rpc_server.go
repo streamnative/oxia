@@ -17,16 +17,16 @@ package coordinator
 import (
 	"crypto/tls"
 
+	"github.com/streamnative/oxia/common/rpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/streamnative/oxia/common/container"
 	"github.com/streamnative/oxia/server/auth"
 )
 
 type rpcServer struct {
-	grpcServer   container.GrpcServer
+	grpcServer   rpc.GrpcServer
 	healthServer *health.Server
 }
 
@@ -36,7 +36,7 @@ func newRpcServer(bindAddress string, tlsConf *tls.Config) (*rpcServer, error) {
 	}
 
 	var err error
-	server.grpcServer, err = container.Default.StartGrpcServer("coordinator", bindAddress, func(registrar grpc.ServiceRegistrar) {
+	server.grpcServer, err = rpc.Default.StartGrpcServer("coordinator", bindAddress, func(registrar grpc.ServiceRegistrar) {
 		grpc_health_v1.RegisterHealthServer(registrar, server.healthServer)
 	}, tlsConf, &auth.Disabled)
 	if err != nil {

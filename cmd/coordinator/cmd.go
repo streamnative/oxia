@@ -24,9 +24,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/streamnative/oxia/common/entity"
+	"github.com/streamnative/oxia/common/process"
 
 	"github.com/streamnative/oxia/cmd/flag"
-	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/security"
 	"github.com/streamnative/oxia/coordinator"
 	"github.com/streamnative/oxia/coordinator/model"
@@ -130,7 +131,7 @@ func loadClusterConfig(v *viper.Viper) (model.ClusterConfig, error) {
 	}
 
 	if err := v.Unmarshal(&cc, viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
-		common.OptBooleanViperHook(),
+		entity.OptBooleanViperHook(),
 		mapstructure.StringToTimeDurationHookFunc(), // default hook
 		mapstructure.StringToSliceHookFunc(","),     // default hook
 	))); err != nil {
@@ -160,7 +161,7 @@ func exec(*cobra.Command, []string) error {
 		return err
 	}
 
-	common.RunProcess(func() (io.Closer, error) {
+	process.RunProcess(func() (io.Closer, error) {
 		var err error
 		if serverTLS.IsConfigured() {
 			if conf.ServerTLS, err = serverTLS.MakeServerTLSConf(); err != nil {

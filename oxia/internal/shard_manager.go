@@ -23,10 +23,14 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/pkg/errors"
+	"github.com/streamnative/oxia/common/concurrent"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/process"
+	"github.com/streamnative/oxia/common/rpc"
+	time2 "github.com/streamnative/oxia/common/time"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/proto"
 )
 
@@ -39,10 +43,10 @@ type ShardManager interface {
 
 type shardManagerImpl struct {
 	sync.RWMutex
-	updatedWg common.WaitGroup
+	updatedWg concurrent.WaitGroup
 
 	shardStrategy  ShardStrategy
-	clientPool     common.ClientPool
+	clientPool     rpc.ClientPool
 	serviceAddress string
 	namespace      string
 	shards         map[int64]Shard
@@ -52,7 +56,7 @@ type shardManagerImpl struct {
 	requestTimeout time.Duration
 }
 
-func NewShardManager(shardStrategy ShardStrategy, clientPool common.ClientPool,
+func NewShardManager(shardStrategy ShardStrategy, clientPool rpc.ClientPool,
 	serviceAddress string, namespace string, requestTimeout time.Duration) (ShardManager, error) {
 	sm := &shardManagerImpl{
 		namespace:      namespace,
@@ -66,7 +70,7 @@ func NewShardManager(shardStrategy ShardStrategy, clientPool common.ClientPool,
 		),
 	}
 
-	sm.updatedWg = common.NewWaitGroup(1)
+	sm.updatedWg = concurrent.NewWaitGroup(1)
 	sm.ctx, sm.cancel = context.WithCancel(context.Background())
 
 	if err := sm.start(); err != nil {
@@ -84,7 +88,7 @@ func (s *shardManagerImpl) Close() error {
 func (s *shardManagerImpl) start() error {
 	s.Lock()
 
-	go common.DoWithLabels(
+	go process.DoWithLabels(
 		s.ctx,
 		map[string]string{
 			"oxia": "receive-shard-updates",
@@ -139,7 +143,7 @@ func (s *shardManagerImpl) isClosed() bool {
 }
 
 func (s *shardManagerImpl) receiveWithRecovery() {
-	backOff := common.NewBackOff(s.ctx)
+	backOff := time2.NewBackOff(s.ctx)
 	err := backoff.RetryNotify(
 		func() error {
 			err := s.receive(backOff)
@@ -239,7 +243,7 @@ func overlap(a HashRange, b HashRange) bool {
 
 func isErrorRetryable(err error) bool {
 	switch status.Code(err) {
-	case common.CodeNamespaceNotFound:
+	case constant.CodeNamespaceNotFound:
 		return false
 	case codes.Unauthenticated:
 		return false

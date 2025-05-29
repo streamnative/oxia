@@ -19,11 +19,10 @@ import (
 	"io"
 	"log/slog"
 
+	"github.com/streamnative/oxia/common/process"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
-	"github.com/streamnative/oxia/common"
 )
 
 type Stream[T any] interface {
@@ -49,7 +48,7 @@ type streamReader[T any, U any] struct {
 }
 
 func (s *streamReader[T, U]) Run() error {
-	go common.DoWithLabels(
+	go process.DoWithLabels(
 		s.ctx,
 		s.labels,
 		func() { s.handleServerStream() },

@@ -22,7 +22,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/common/entities"
+	"github.com/streamnative/oxia/common/entity"
 )
 
 func TestReadAll(t *testing.T) {
@@ -33,17 +33,17 @@ func TestReadAll(t *testing.T) {
 	errUnknown := errors.New("error unknown")
 	tests := []struct {
 		name        string
-		setupFunc   func() (context.Context, chan *entities.TWithError[testItem])
+		setupFunc   func() (context.Context, chan *entity.TWithError[testItem])
 		expected    []testItem
 		expectedErr error
 	}{
 		{
 			name: "ReadAll completes successfully",
-			setupFunc: func() (context.Context, chan *entities.TWithError[testItem]) {
-				ch := make(chan *entities.TWithError[testItem], 3)
-				ch <- &entities.TWithError[testItem]{T: testItem{value: 1}}
-				ch <- &entities.TWithError[testItem]{T: testItem{value: 2}}
-				ch <- &entities.TWithError[testItem]{T: testItem{value: 3}}
+			setupFunc: func() (context.Context, chan *entity.TWithError[testItem]) {
+				ch := make(chan *entity.TWithError[testItem], 3)
+				ch <- &entity.TWithError[testItem]{T: testItem{value: 1}}
+				ch <- &entity.TWithError[testItem]{T: testItem{value: 2}}
+				ch <- &entity.TWithError[testItem]{T: testItem{value: 3}}
 				close(ch)
 				return context.Background(), ch
 			},
@@ -52,8 +52,8 @@ func TestReadAll(t *testing.T) {
 		},
 		{
 			name: "Channel is empty and closed",
-			setupFunc: func() (context.Context, chan *entities.TWithError[testItem]) {
-				ch := make(chan *entities.TWithError[testItem])
+			setupFunc: func() (context.Context, chan *entity.TWithError[testItem]) {
+				ch := make(chan *entity.TWithError[testItem])
 				close(ch)
 				return context.Background(), ch
 			},
@@ -62,10 +62,10 @@ func TestReadAll(t *testing.T) {
 		},
 		{
 			name: "Context is canceled before reading",
-			setupFunc: func() (context.Context, chan *entities.TWithError[testItem]) {
+			setupFunc: func() (context.Context, chan *entity.TWithError[testItem]) {
 				ctx, cancel := context.WithCancel(context.Background())
 				cancel()
-				ch := make(chan *entities.TWithError[testItem])
+				ch := make(chan *entity.TWithError[testItem])
 				return ctx, ch
 			},
 			expected:    nil,
@@ -73,11 +73,11 @@ func TestReadAll(t *testing.T) {
 		},
 		{
 			name: "Context times out during read",
-			setupFunc: func() (context.Context, chan *entities.TWithError[testItem]) {
+			setupFunc: func() (context.Context, chan *entity.TWithError[testItem]) {
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 				time.Sleep(20 * time.Millisecond)
 				cancel()
-				ch := make(chan *entities.TWithError[testItem])
+				ch := make(chan *entity.TWithError[testItem])
 				return ctx, ch
 			},
 			expected:    nil,
@@ -85,10 +85,10 @@ func TestReadAll(t *testing.T) {
 		},
 		{
 			name: "Read until error in channel",
-			setupFunc: func() (context.Context, chan *entities.TWithError[testItem]) {
-				ch := make(chan *entities.TWithError[testItem], 3)
-				ch <- &entities.TWithError[testItem]{T: testItem{value: 1}}
-				ch <- &entities.TWithError[testItem]{T: testItem{value: 2}, Err: errUnknown}
+			setupFunc: func() (context.Context, chan *entity.TWithError[testItem]) {
+				ch := make(chan *entity.TWithError[testItem], 3)
+				ch <- &entity.TWithError[testItem]{T: testItem{value: 1}}
+				ch <- &entity.TWithError[testItem]{T: testItem{value: 2}, Err: errUnknown}
 				close(ch)
 				return context.Background(), ch
 			},

@@ -22,7 +22,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/concurrent"
+	"github.com/streamnative/oxia/common/process"
 	"github.com/streamnative/oxia/proto"
 )
 
@@ -30,7 +31,7 @@ type streamWrapper struct {
 	sync.Mutex
 
 	stream          proto.OxiaClient_WriteStreamClient
-	pendingRequests []common.Future[*proto.WriteResponse]
+	pendingRequests []concurrent.Future[*proto.WriteResponse]
 	failed          atomic.Bool
 }
 
@@ -40,11 +41,11 @@ func newStreamWrapper(shard int64, stream proto.OxiaClient_WriteStreamClient) *s
 		pendingRequests: nil,
 	}
 
-	go common.DoWithLabels(stream.Context(), map[string]string{
+	go process.DoWithLabels(stream.Context(), map[string]string{
 		"oxia":  "write-stream-handle-response",
 		"shard": fmt.Sprintf("%d", shard),
 	}, sw.handleResponses)
-	go common.DoWithLabels(stream.Context(), map[string]string{
+	go process.DoWithLabels(stream.Context(), map[string]string{
 		"oxia":  "write-stream-handle-stream-closed",
 		"shard": fmt.Sprintf("%d", shard),
 	}, sw.handleStreamClosed)
@@ -52,7 +53,7 @@ func newStreamWrapper(shard int64, stream proto.OxiaClient_WriteStreamClient) *s
 }
 
 func (sw *streamWrapper) Send(ctx context.Context, req *proto.WriteRequest) (*proto.WriteResponse, error) {
-	f := common.NewFuture[*proto.WriteResponse]()
+	f := concurrent.NewFuture[*proto.WriteResponse]()
 
 	sw.Lock()
 	sw.pendingRequests = append(sw.pendingRequests, f)
@@ -97,7 +98,7 @@ func (sw *streamWrapper) handleResponses() {
 			slog.Any("err", err),
 		)
 
-		var f common.Future[*proto.WriteResponse]
+		var f concurrent.Future[*proto.WriteResponse]
 		f, sw.pendingRequests = sw.pendingRequests[0], sw.pendingRequests[1:]
 		sw.Unlock()
 

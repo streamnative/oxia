@@ -21,14 +21,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/streamnative/oxia/common/concurrent"
+	"github.com/streamnative/oxia/common/constant"
 	"github.com/stretchr/testify/assert"
 	pb "google.golang.org/protobuf/proto"
 
-	"github.com/streamnative/oxia/common/callback"
 	"github.com/streamnative/oxia/common/channel"
-	"github.com/streamnative/oxia/common/entities"
+	"github.com/streamnative/oxia/common/entity"
 
-	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/kv"
 	"github.com/streamnative/oxia/server/wal"
@@ -273,12 +273,12 @@ func TestSessionManager(t *testing.T) {
 		Shard:            shardId,
 		SessionTimeoutMs: uint32((1 * time.Hour).Milliseconds()),
 	})
-	assert.ErrorIs(t, err, common.ErrInvalidSessionTimeout)
+	assert.ErrorIs(t, err, constant.ErrInvalidSessionTimeout)
 	_, err = sManager.CreateSession(&proto.CreateSessionRequest{
 		Shard:            shardId,
 		SessionTimeoutMs: uint32((1 * time.Second).Milliseconds()),
 	})
-	assert.ErrorIs(t, err, common.ErrInvalidSessionTimeout)
+	assert.ErrorIs(t, err, constant.ErrInvalidSessionTimeout)
 
 	// Create and close a session, check if its persisted
 	createResp, err := sManager.CreateSession(&proto.CreateSessionRequest{
@@ -409,7 +409,7 @@ func TestMultipleSessionsExpiry(t *testing.T) {
 		return getSessionMetadata(t, lc, sessionId2) == nil
 	}, 10*time.Second, 30*time.Millisecond)
 
-	responses := make(chan *entities.TWithError[*proto.GetResponse], 1000)
+	responses := make(chan *entity.TWithError[*proto.GetResponse], 1000)
 	lc.Read(context.Background(), &proto.ReadRequest{
 		Shard: &shardId,
 		Gets: []*proto.GetRequest{{
@@ -419,7 +419,7 @@ func TestMultipleSessionsExpiry(t *testing.T) {
 			Key:          "/ephemeral-2",
 			IncludeValue: true,
 		}},
-	}, callback.ReadFromStreamCallback(responses))
+	}, concurrent.ReadFromStreamCallback(responses))
 	results, err := channel.ReadAll[*proto.GetResponse](context.Background(), responses) // Read entry a
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(results))
@@ -435,7 +435,7 @@ func TestMultipleSessionsExpiry(t *testing.T) {
 		return getSessionMetadata(t, lc, sessionId1) == nil
 	}, 10*time.Second, 30*time.Millisecond)
 
-	responses = make(chan *entities.TWithError[*proto.GetResponse], 1000)
+	responses = make(chan *entity.TWithError[*proto.GetResponse], 1000)
 	lc.Read(context.Background(), &proto.ReadRequest{
 		Shard: &shardId,
 		Gets: []*proto.GetRequest{{
@@ -445,7 +445,7 @@ func TestMultipleSessionsExpiry(t *testing.T) {
 			Key:          "/ephemeral-2",
 			IncludeValue: true,
 		}},
-	}, callback.ReadFromStreamCallback(responses))
+	}, concurrent.ReadFromStreamCallback(responses))
 	results, err = channel.ReadAll[*proto.GetResponse](context.Background(), responses)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(results))
@@ -566,7 +566,7 @@ func createSessionManager(t *testing.T) (kv.Factory, wal.Factory, *sessionManage
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
 	walFactory := newTestWalFactory(t)
-	lc, err := NewLeaderController(Config{NotificationsRetentionTime: 10 * time.Second}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(Config{NotificationsRetentionTime: 10 * time.Second}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 	_, err = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
 	assert.NoError(t, err)
@@ -591,7 +591,7 @@ func reopenLeaderController(t *testing.T, kvFactory kv.Factory, walFactory wal.F
 	assert.NoError(t, oldlc.Close())
 
 	var err error
-	lc, err := NewLeaderController(Config{}, common.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(Config{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 	_, err = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
 	assert.NoError(t, err)

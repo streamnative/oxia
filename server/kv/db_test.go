@@ -22,10 +22,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/time"
 	"github.com/stretchr/testify/assert"
 	pb "google.golang.org/protobuf/proto"
 
-	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/wal"
 )
@@ -33,7 +34,7 @@ import (
 func TestDBSimple(t *testing.T) {
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	db, err := NewDB(constant.DefaultNamespace, 1, factory, 0, time.SystemClock)
 	assert.NoError(t, err)
 
 	req := &proto.WriteRequest{
@@ -173,7 +174,7 @@ func TestDBSimple(t *testing.T) {
 func TestDBSameKeyMutations(t *testing.T) {
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	db, err := NewDB(constant.DefaultNamespace, 1, factory, 0, time.SystemClock)
 	assert.NoError(t, err)
 
 	writeReq := &proto.WriteRequest{
@@ -281,7 +282,7 @@ func TestDBSameKeyMutations(t *testing.T) {
 func TestDBList(t *testing.T) {
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	db, err := NewDB(constant.DefaultNamespace, 1, factory, 0, time.SystemClock)
 	assert.NoError(t, err)
 
 	writeReq := &proto.WriteRequest{
@@ -355,7 +356,7 @@ func keyIteratorToSlice(it KeyIterator, err error) []string {
 func TestDBDeleteRange(t *testing.T) {
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	db, err := NewDB(constant.DefaultNamespace, 1, factory, 0, time.SystemClock)
 	assert.NoError(t, err)
 
 	writeReq := &proto.WriteRequest{
@@ -424,7 +425,7 @@ func TestDB_ReadCommitOffset(t *testing.T) {
 
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	db, err := NewDB(constant.DefaultNamespace, 1, factory, 0, time.SystemClock)
 	assert.NoError(t, err)
 
 	commitOffset, err := db.ReadCommitOffset()
@@ -455,7 +456,7 @@ func TestDb_UpdateTerm(t *testing.T) {
 		DataDir:     path.Join(os.TempDir(), uuid.New().String()),
 	})
 	assert.NoError(t, err)
-	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	db, err := NewDB(constant.DefaultNamespace, 1, factory, 0, time.SystemClock)
 	assert.NoError(t, err)
 
 	term, options, err := db.ReadTerm()
@@ -474,7 +475,7 @@ func TestDb_UpdateTerm(t *testing.T) {
 	assert.NoError(t, db.Close())
 
 	// Reopen and verify the term is maintained
-	db, err = NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	db, err = NewDB(constant.DefaultNamespace, 1, factory, 0, time.SystemClock)
 	assert.NoError(t, err)
 
 	term, _, err = db.ReadTerm()
@@ -493,7 +494,7 @@ func TestDB_Delete(t *testing.T) {
 		DataDir:     path.Join(os.TempDir(), uuid.New().String()),
 	})
 	assert.NoError(t, err)
-	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	db, err := NewDB(constant.DefaultNamespace, 1, factory, 0, time.SystemClock)
 	assert.NoError(t, err)
 
 	writeReq := &proto.WriteRequest{
@@ -508,7 +509,7 @@ func TestDB_Delete(t *testing.T) {
 	assert.NoError(t, db.Delete())
 
 	// Reopen and verify the db is empty
-	db, err = NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	db, err = NewDB(constant.DefaultNamespace, 1, factory, 0, time.SystemClock)
 	assert.NoError(t, err)
 
 	getRes, err := db.Get(&proto.GetRequest{
@@ -524,7 +525,7 @@ func TestDB_Delete(t *testing.T) {
 func TestDB_FloorCeiling(t *testing.T) {
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	db, err := NewDB(constant.DefaultNamespace, 1, factory, 0, time.SystemClock)
 	assert.NoError(t, err)
 
 	writeReq := &proto.WriteRequest{
@@ -689,7 +690,7 @@ func TestDB_FloorCeiling(t *testing.T) {
 func TestDB_SequentialKeys(t *testing.T) {
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	db, err := NewDB(constant.DefaultNamespace, 1, factory, 0, time.SystemClock)
 	assert.NoError(t, err)
 
 	_, err = db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
@@ -819,7 +820,7 @@ func rangeScanIteratorToSlice(it RangeScanIterator, err error) []string {
 func TestDBRangeScan(t *testing.T) {
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	db, err := NewDB(constant.DefaultNamespace, 1, factory, 0, time.SystemClock)
 	assert.NoError(t, err)
 
 	writeReq := &proto.WriteRequest{
@@ -883,7 +884,7 @@ func TestDBRangeScan(t *testing.T) {
 func TestDb_versionId(t *testing.T) {
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	db, err := NewDB(constant.DefaultNamespace, 1, factory, 0, time.SystemClock)
 	assert.NoError(t, err)
 
 	req := &proto.WriteRequest{
@@ -945,7 +946,7 @@ func (f FailureCallback) OnDeleteRange(WriteBatch, string, string) error        
 func TestDBVersionIDWithError(t *testing.T) {
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	db, err := NewDB(constant.DefaultNamespace, 1, factory, 0, time.SystemClock)
 	assert.NoError(t, err)
 
 	errReq := &proto.WriteRequest{
@@ -1006,7 +1007,7 @@ func TestDBVersionIDWithError(t *testing.T) {
 func TestDB_SequentialKeysNotification(t *testing.T) {
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	db, err := NewDB(constant.DefaultNamespace, 1, factory, 0, time.SystemClock)
 	assert.NoError(t, err)
 
 	sw, err := db.GetSequenceUpdates("a")

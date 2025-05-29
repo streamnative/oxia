@@ -23,11 +23,11 @@ import (
 	"os"
 	"sync"
 
+	"github.com/streamnative/oxia/common/constant"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/coordinator/impl"
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/proto"
@@ -140,7 +140,7 @@ func newShardAssignmentClient(ctx context.Context, provider *maelstromCoordinato
 }
 
 func (m *maelstromShardAssignmentClient) Send(response *proto.ShardAssignments) error {
-	m.provider.dispatcher.currentLeader = response.Namespaces[common.DefaultNamespace].Assignments[0].Leader
+	m.provider.dispatcher.currentLeader = response.Namespaces[constant.DefaultNamespace].Assignments[0].Leader
 	req := &Message[OxiaStreamMessage]{
 		Src:  thisNode,
 		Dest: m.node,

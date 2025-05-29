@@ -19,9 +19,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/streamnative/oxia/common/constant"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/server/wal"
 )
 
@@ -283,7 +283,7 @@ func TestQuorumAckTracker_ClearPending(t *testing.T) {
 	select {
 	case resErr := <-asyncRes:
 		// Ensure that we received the expected result (in this case, error should be nil)
-		assert.ErrorIs(t, resErr, common.ErrAlreadyClosed)
+		assert.ErrorIs(t, resErr, constant.ErrAlreadyClosed)
 	case <-time.After(2 * time.Second): // Adding a timeout for safety
 		t.Fatal("Timed out waiting for async result")
 	}

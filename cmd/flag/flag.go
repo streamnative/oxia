@@ -18,18 +18,17 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/constant"
 )
 
 func PublicAddr(cmd *cobra.Command, conf *string) {
-	cmd.Flags().StringVarP(conf, "public-addr", "p", fmt.Sprintf("0.0.0.0:%d", common.DefaultPublicPort), "Public service bind address")
+	cmd.Flags().StringVarP(conf, "public-addr", "p", fmt.Sprintf("0.0.0.0:%d", constant.DefaultPublicPort), "Public service bind address")
 }
 
 func InternalAddr(cmd *cobra.Command, conf *string) {
-	cmd.Flags().StringVarP(conf, "internal-addr", "i", fmt.Sprintf("0.0.0.0:%d", common.DefaultInternalPort), "Internal service bind address")
+	cmd.Flags().StringVarP(conf, "internal-addr", "i", fmt.Sprintf("0.0.0.0:%d", constant.DefaultInternalPort), "Internal service bind address")
 }
 
 func MetricsAddr(cmd *cobra.Command, conf *string) {
-	cmd.Flags().StringVarP(conf, "metrics-addr", "m", fmt.Sprintf("0.0.0.0:%d", common.DefaultMetricsPort), "Metrics service bind address")
+	cmd.Flags().StringVarP(conf, "metrics-addr", "m", fmt.Sprintf("0.0.0.0:%d", constant.DefaultMetricsPort), "Metrics service bind address")
 }

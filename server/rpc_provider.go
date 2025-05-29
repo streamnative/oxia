@@ -21,9 +21,10 @@ import (
 	"io"
 	"time"
 
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/rpc"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/proto"
 )
 
@@ -37,12 +38,12 @@ type ReplicationRpcProvider interface {
 }
 
 type replicationRpcProvider struct {
-	pool common.ClientPool
+	pool rpc.ClientPool
 }
 
 func NewReplicationRpcProvider(tlsConf *tls.Config) ReplicationRpcProvider {
 	return &replicationRpcProvider{
-		pool: common.NewClientPool(tlsConf, nil),
+		pool: rpc.NewClientPool(tlsConf, nil),
 	}
 }
 
@@ -53,9 +54,9 @@ func (r *replicationRpcProvider) GetReplicateStream(ctx context.Context, followe
 		return nil, err
 	}
 
-	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataNamespace, namespace)
-	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataShardId, fmt.Sprintf("%d", shard))
-	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataTerm, fmt.Sprintf("%d", term))
+	ctx = metadata.AppendToOutgoingContext(ctx, constant.MetadataNamespace, namespace)
+	ctx = metadata.AppendToOutgoingContext(ctx, constant.MetadataShardId, fmt.Sprintf("%d", shard))
+	ctx = metadata.AppendToOutgoingContext(ctx, constant.MetadataTerm, fmt.Sprintf("%d", term))
 
 	stream, err := rpc.Replicate(ctx)
 	return stream, err
@@ -68,9 +69,9 @@ func (r *replicationRpcProvider) SendSnapshot(ctx context.Context, follower stri
 		return nil, err
 	}
 
-	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataNamespace, namespace)
-	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataShardId, fmt.Sprintf("%d", shard))
-	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataTerm, fmt.Sprintf("%d", term))
+	ctx = metadata.AppendToOutgoingContext(ctx, constant.MetadataNamespace, namespace)
+	ctx = metadata.AppendToOutgoingContext(ctx, constant.MetadataShardId, fmt.Sprintf("%d", shard))
+	ctx = metadata.AppendToOutgoingContext(ctx, constant.MetadataTerm, fmt.Sprintf("%d", term))
 
 	stream, err := rpc.SendSnapshot(ctx)
 	return stream, err

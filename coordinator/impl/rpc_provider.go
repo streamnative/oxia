@@ -19,9 +19,9 @@ import (
 	"io"
 	"time"
 
+	"github.com/streamnative/oxia/common/rpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/proto"
 )
@@ -42,10 +42,10 @@ type RpcProvider interface {
 }
 
 type rpcProvider struct {
-	pool common.ClientPool
+	pool rpc.ClientPool
 }
 
-func NewRpcProvider(pool common.ClientPool) RpcProvider {
+func NewRpcProvider(pool rpc.ClientPool) RpcProvider {
 	return &rpcProvider{pool: pool}
 }
 
