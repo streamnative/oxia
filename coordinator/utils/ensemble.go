@@ -12,24 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package selectors
+package utils
 
 import (
-	"github.com/pkg/errors"
+	"github.com/emirpasic/gods/sets/linkedhashset"
 
 	"github.com/streamnative/oxia/coordinator/model"
 )
 
-var (
-	ErrUnsatisfiedEnsembleReplicas = errors.New("selector: unsatisfied ensemble replicas")
-	ErrUnsatisfiedAntiAffinity     = errors.New("selector: unsatisfied anti-affinity")
-	ErrUnsupportedAntiAffinityMode = errors.New("selector: unsupported anti-affinity mode")
-	ErrNoFunctioning               = errors.New("selector: no functioning selection")
-	ErrMultipleResult              = errors.New("selector: multiple results")
-)
-
-type LoadRatioAlgorithm = func(params *model.RatioParams) *model.Ratio
-
-type Selector[O any, R any] interface {
-	Select(o O) (R, error)
+func FilterEnsemble(ensemble []model.Server, filterNodeId string) *linkedhashset.Set {
+	selected := linkedhashset.New()
+	for _, candidate := range ensemble {
+		nodeID := candidate.GetIdentifier()
+		if nodeID == filterNodeId {
+			continue
+		}
+		selected.Add(candidate.GetIdentifier())
+	}
+	return selected
 }
