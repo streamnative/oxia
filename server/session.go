@@ -166,11 +166,12 @@ func (s *session) waitForHeartbeats() {
 	heartbeatChannel := s.heartbeatCh
 	s.Unlock()
 	s.log.Debug("Waiting for heartbeats")
-
-	defer s.latch.Done()
+	timeoutTimer := time.NewTimer(s.timeout)
+	defer func() {
+		timeoutTimer.Stop()
+		s.latch.Done()
+	}()
 	for {
-		timeoutTimer := time.NewTimer(s.timeout)
-		defer timeoutTimer.Stop()
 
 		select {
 		case <-s.ctx.Done():
