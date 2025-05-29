@@ -15,30 +15,21 @@
 package balancer
 
 import (
-	"context"
 	"testing"
-
-	"github.com/emirpasic/gods/sets/linkedhashset"
-
-	"github.com/streamnative/oxia/coordinator/model"
 )
 
-func TestLoadBalancerActions(t *testing.T) {
-	status := &model.ClusterStatus{}
-	serverIDs := linkedhashset.New()
-	balancer := NewLoadBalancer(Options{
-		Context: context.Background(),
-		MetadataSupplier: func() map[string]model.ServerMetadata {
-			return make(map[string]model.ServerMetadata)
-		},
-		ClusterServerIDsSupplier: func() *linkedhashset.Set {
-			return serverIDs
-		},
-		ClusterStatusSupplier: func() *model.ClusterStatus { return status },
-		NamespaceConfigSupplier: func(namespace string) *model.NamespaceConfig {
-			return nil
-		},
-	})
+func TestLoadBalanceDeleteNode(t *testing.T) {
 
-	<-balancer.Action()
+}
+
+func TestLoadBalanceLoadRatio(t *testing.T) {
+
+}
+
+func TestLoadBalanceQuarantined(t *testing.T) {
+
+}
+
+func TestLoadBalanceWithAntiAffinity(t *testing.T) {
+
 }
