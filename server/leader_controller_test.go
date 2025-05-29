@@ -30,7 +30,7 @@ import (
 
 	"github.com/streamnative/oxia/common/channel"
 
-	"github.com/streamnative/oxia/common/entity"
+	oentity "github.com/streamnative/oxia/common/entity"
 
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/kv"
@@ -73,7 +73,7 @@ func TestLeaderController_NotInitialized(t *testing.T) {
 	assert.Nil(t, res)
 	assert.Equal(t, constant.CodeInvalidStatus, status.Code(err))
 
-	responses := make(chan *entity.TWithError[*proto.GetResponse], 1000)
+	responses := make(chan *oentity.TWithError[*proto.GetResponse], 1000)
 	lc.Read(context.Background(), &proto.ReadRequest{
 		Shard: &shard,
 		Gets:  []*proto.GetRequest{{Key: "a"}},
@@ -196,7 +196,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	assert.NotEqualValues(t, 0, res.Puts[0].Version.ModifiedTimestamp)
 	assert.EqualValues(t, res.Puts[0].Version.CreatedTimestamp, res.Puts[0].Version.ModifiedTimestamp)
 
-	responses := make(chan *entity.TWithError[*proto.GetResponse], 1000)
+	responses := make(chan *oentity.TWithError[*proto.GetResponse], 1000)
 	lc.Read(context.Background(), &proto.ReadRequest{
 		Shard: &shard,
 		Gets:  []*proto.GetRequest{{Key: "a", IncludeValue: true}},
@@ -233,7 +233,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	assert.Nil(t, res3)
 	assert.Equal(t, constant.CodeInvalidStatus, status.Code(err))
 
-	responses = make(chan *entity.TWithError[*proto.GetResponse], 1000)
+	responses = make(chan *oentity.TWithError[*proto.GetResponse], 1000)
 	lc.Read(context.Background(), &proto.ReadRequest{
 		Shard: &shard,
 		Gets:  []*proto.GetRequest{{Key: "a"}},
@@ -303,7 +303,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	assert.Equal(t, proto.Status_OK, res.Puts[0].Status)
 	assert.EqualValues(t, 0, res.Puts[0].Version.VersionId)
 
-	responses := make(chan *entity.TWithError[*proto.GetResponse], 1000)
+	responses := make(chan *oentity.TWithError[*proto.GetResponse], 1000)
 	lc.Read(context.Background(), &proto.ReadRequest{
 		Shard: &shard,
 		Gets:  []*proto.GetRequest{{Key: "a", IncludeValue: true}},
@@ -341,7 +341,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	assert.Nil(t, res3)
 	assert.Equal(t, constant.CodeInvalidStatus, status.Code(err))
 
-	responses = make(chan *entity.TWithError[*proto.GetResponse], 1000)
+	responses = make(chan *oentity.TWithError[*proto.GetResponse], 1000)
 	lc.Read(context.Background(), &proto.ReadRequest{
 		Shard: &shard,
 		Gets:  []*proto.GetRequest{{Key: "a"}},
@@ -846,7 +846,7 @@ func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
 	})
 
 	// We should be able to read the entry, even if it was not fully committed before the leader started
-	responses := make(chan *entity.TWithError[*proto.GetResponse], 1000)
+	responses := make(chan *oentity.TWithError[*proto.GetResponse], 1000)
 	lc.Read(context.Background(), &proto.ReadRequest{
 		Shard: &shard,
 		Gets:  []*proto.GetRequest{{Key: "my-key", IncludeValue: true}},
@@ -1070,7 +1070,7 @@ func TestLeaderController_RangeScan(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	ch := make(chan *entity.TWithError[*proto.GetResponse], 100)
+	ch := make(chan *oentity.TWithError[*proto.GetResponse], 100)
 	lc.RangeScan(context.Background(), &proto.RangeScanRequest{
 		Shard:          &shard,
 		StartInclusive: "/a",
@@ -1088,7 +1088,7 @@ func TestLeaderController_RangeScan(t *testing.T) {
 	assert.Nil(t, entity)
 	assert.False(t, more)
 
-	ch = make(chan *entity.TWithError[*proto.GetResponse], 100)
+	ch = make(chan *oentity.TWithError[*proto.GetResponse], 100)
 	lc.RangeScan(context.Background(), &proto.RangeScanRequest{
 		Shard:          &shard,
 		StartInclusive: "/y",
@@ -1138,7 +1138,7 @@ func TestLeaderController_DeleteShard(t *testing.T) {
 		FollowerMaps:      nil,
 	})
 
-	responses := make(chan *entity.TWithError[*proto.GetResponse], 1000)
+	responses := make(chan *oentity.TWithError[*proto.GetResponse], 1000)
 	lc.Read(context.Background(), &proto.ReadRequest{
 		Shard: &shard,
 		Gets:  []*proto.GetRequest{{Key: "a", IncludeValue: true}},
@@ -1279,7 +1279,7 @@ func TestLeaderController_Write(t *testing.T) {
 	assert.NotEqualValues(t, 0, res2.Puts[0].Version.ModifiedTimestamp)
 	assert.EqualValues(t, res2.Puts[0].Version.CreatedTimestamp, res2.Puts[0].Version.ModifiedTimestamp)
 
-	responses := make(chan *entity.TWithError[*proto.GetResponse], 1000)
+	responses := make(chan *oentity.TWithError[*proto.GetResponse], 1000)
 	lc.Read(context.Background(), &proto.ReadRequest{
 		Shard: &shard,
 		Gets:  []*proto.GetRequest{{Key: "a", IncludeValue: true}},
@@ -1292,7 +1292,7 @@ func TestLeaderController_Write(t *testing.T) {
 	assert.Equal(t, []byte("value-a"), results[0].Value)
 	assert.EqualValues(t, 0, res1.Puts[0].Version.VersionId)
 
-	responses = make(chan *entity.TWithError[*proto.GetResponse], 1000)
+	responses = make(chan *oentity.TWithError[*proto.GetResponse], 1000)
 	lc.Read(context.Background(), &proto.ReadRequest{
 		Shard: &shard,
 		Gets:  []*proto.GetRequest{{Key: "b", IncludeValue: true}},
@@ -1410,7 +1410,7 @@ func TestLeaderController_DuplicateNewTerm_WithSession(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	responses := make(chan *entity.TWithError[*proto.GetResponse], 1000)
+	responses := make(chan *oentity.TWithError[*proto.GetResponse], 1000)
 	lc.Read(context.Background(), &proto.ReadRequest{
 		Shard: &shard,
 		Gets:  []*proto.GetRequest{{Key: key}},
