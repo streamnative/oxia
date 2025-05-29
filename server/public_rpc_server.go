@@ -179,6 +179,7 @@ func (s *publicRpcServer) WriteStream(stream proto.OxiaClient_WriteStreamServer)
 		},
 	)
 
+	lcContext := lc.Context()
 	select {
 	case err := <-finished:
 		if err != nil {
@@ -187,6 +188,9 @@ func (s *publicRpcServer) WriteStream(stream proto.OxiaClient_WriteStreamServer)
 		return err
 	case <-ctx.Done():
 		return ctx.Err()
+	case <-lcContext.Done():
+		return lcContext.Err()
+
 	}
 }
 

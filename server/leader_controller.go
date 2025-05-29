@@ -64,6 +64,7 @@ type LeaderController interface {
 	GetStatus(request *proto.GetStatusRequest) (*proto.GetStatusResponse, error)
 	DeleteShard(request *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error)
 
+	Context() context.Context
 	// Term The current term of the leader
 	Term() int64
 	// Status The Status of the leader
@@ -169,6 +170,10 @@ func NewLeaderController(config Config, namespace string, shardId int64, rpcClie
 	lc.setLogger()
 	lc.log.Info("Created leader controller")
 	return lc, nil
+}
+
+func (lc *leaderController) Context() context.Context {
+	return lc.ctx
 }
 
 func (lc *leaderController) Namespace() string {

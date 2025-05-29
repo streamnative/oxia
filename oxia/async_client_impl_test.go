@@ -850,6 +850,9 @@ func TestAsyncClientImpl_SequenceOrdering(t *testing.T) {
 }
 
 func TestAsyncClientImpl_versionId(t *testing.T) {
+	common.PprofEnable = true
+	common.PprofBindAddress = "127.0.0.1:6060"
+	common.RunProfiling()
 	standaloneServer, err := server.NewStandalone(server.NewTestConfig(t.TempDir()))
 	assert.NoError(t, err)
 
