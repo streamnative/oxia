@@ -188,6 +188,7 @@ func (s *publicRpcServer) WriteStream(stream proto.OxiaClient_WriteStreamServer)
 		return err
 	case <-streamCtx.Done():
 		return streamCtx.Err()
+	// Monitor the leader context to make sure the gRPC server can be gracefully shut down.
 	case <-leaderCtx.Done():
 		return leaderCtx.Err()
 
