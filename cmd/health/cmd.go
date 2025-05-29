@@ -68,7 +68,7 @@ func exec(*cobra.Command, []string) error {
 
 	serverAddress := fmt.Sprintf("%s:%d", config.Host, config.Port)
 
-	rpc, closer, err := clientPool.GetHealthRpc(serverAddress)
+	client, closer, err := clientPool.GetHealthRpc(serverAddress)
 	if err != nil {
 		return err
 	}
@@ -79,7 +79,7 @@ func exec(*cobra.Command, []string) error {
 
 	req := &grpc_health_v1.HealthCheckRequest{Service: config.Service}
 
-	resp, err := rpc.Check(ctx, req)
+	resp, err := client.Check(ctx, req)
 	if err != nil {
 		return err
 	}
