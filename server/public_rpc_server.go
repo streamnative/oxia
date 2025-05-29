@@ -17,7 +17,7 @@ package server
 import (
 	"context"
 	"crypto/tls"
-	"io"
+	"fmt"
 	"log/slog"
 
 	"github.com/pkg/errors"
@@ -26,6 +26,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protowire"
+
+	"github.com/streamnative/oxia/common/channel"
 
 	"github.com/streamnative/oxia/common/callback"
 
@@ -103,7 +105,7 @@ func (s *publicRpcServer) Write(ctx context.Context, write *proto.WriteRequest) 
 		return nil, err
 	}
 
-	wr, err := lc.Write(ctx, write)
+	wr, err := lc.WriteBlock(ctx, write)
 	if err != nil {
 		s.log.Warn(
 			"Failed to perform write operation",
@@ -122,43 +124,74 @@ func (s *publicRpcServer) WriteStream(stream proto.OxiaClient_WriteStreamServer)
 	if !ok {
 		return errors.New("shard id is not set in the request metadata")
 	}
-
 	shardId, err := ReadHeaderInt64(md, common.MetadataShardId)
 	if err != nil {
 		return err
 	}
-
 	namespace, err := readHeader(md, common.MetadataNamespace)
 	if err != nil {
 		return err
 	}
+	streamCtx := stream.Context()
 
 	log := s.log.With(
 		slog.Int64("shard", shardId),
 		slog.String("namespace", namespace),
-		slog.String("peer", common.GetPeer(stream.Context())),
+		slog.String("peer", common.GetPeer(streamCtx)),
 	)
+	log.Debug("Write request")
 
-	log.Debug("Write Stream request")
-
-	lc, err := s.getLeader(shardId)
+	var lc LeaderController
+	lc, err = s.getLeader(shardId)
 	if err != nil {
 		return err
 	}
 
-	if err = lc.WriteStream(stream); err != nil {
-		if errors.Is(err, io.EOF) || errors.Is(err, context.Canceled) {
-			log.Info("Write stream has been closed")
-			return nil
+	finished := make(chan error, 1)
+	go common.DoWithLabels(
+		streamCtx,
+		map[string]string{
+			"oxia":      "write-stream",
+			"namespace": lc.Namespace(),
+			"shard":     fmt.Sprintf("%d", lc.ShardID()),
+		},
+		func() {
+			for {
+				var req *proto.WriteRequest
+				if req, err = stream.Recv(); err != nil {
+					channel.PushNoBlock(finished, err)
+					return
+				} else if req == nil {
+					channel.PushNoBlock(finished, errors.New("stream closed"))
+					return
+				}
+
+				lc.Write(streamCtx, req, callback.NewOnce[*proto.WriteResponse](
+					func(t *proto.WriteResponse) {
+						if err := stream.Send(t); err != nil {
+							channel.PushNoBlock(finished, err)
+							return
+						}
+					}, func(err error) {
+						channel.PushNoBlock(finished, err)
+					}))
+			}
+		},
+	)
+
+	leaderCtx := lc.Context()
+	select {
+	case err := <-finished:
+		if err != nil {
+			s.log.Warn("Failed to perform write operation", slog.Any("error", err))
 		}
-		if errors.Is(err, ErrLeaderClosed) {
-			log.Info("Write stream has been closed by leader closed")
-			return err
-		}
-		log.Warn("Write stream has been closed by error", slog.Any("error", err))
 		return err
+	case <-streamCtx.Done():
+		return streamCtx.Err()
+	// Monitor the leader context to make sure the gRPC server can be gracefully shut down.
+	case <-leaderCtx.Done():
+		return leaderCtx.Err()
 	}
-	return err
 }
 
 func (s *publicRpcServer) Read(request *proto.ReadRequest, stream proto.OxiaClient_ReadServer) error {

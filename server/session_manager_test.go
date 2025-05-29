@@ -342,7 +342,7 @@ func TestSessionManager(t *testing.T) {
 	assert.NotNil(t, meta)
 	keepAlive(t, sManager, sessionId, err, 30*time.Millisecond, 6)
 
-	_, err = lc.Write(context.Background(), &proto.WriteRequest{
+	_, err = lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard: &shardId,
 		Puts: []*proto.PutRequest{{
 			Key:       "a/b",
@@ -384,7 +384,7 @@ func TestMultipleSessionsExpiry(t *testing.T) {
 	assert.NoError(t, err)
 	sessionId2 := createResp2.SessionId
 
-	_, err = lc.Write(context.Background(), &proto.WriteRequest{
+	_, err = lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard: &shardId,
 		Puts: []*proto.PutRequest{{
 			Key:       "/ephemeral-1",
@@ -394,7 +394,7 @@ func TestMultipleSessionsExpiry(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	_, err = lc.Write(context.Background(), &proto.WriteRequest{
+	_, err = lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard: &shardId,
 		Puts: []*proto.PutRequest{{
 			Key:       "/ephemeral-2",
@@ -465,7 +465,7 @@ func TestSessionManagerReopening(t *testing.T) {
 	// Invalid session timeout
 	walf, kvf, sManager, lc := createSessionManager(t)
 
-	_, err := lc.Write(context.Background(), &proto.WriteRequest{
+	_, err := lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard: &shardId,
 		Puts: []*proto.PutRequest{{
 			Key:   "/ledgers",
@@ -491,7 +491,7 @@ func TestSessionManagerReopening(t *testing.T) {
 	assert.NotNil(t, meta)
 	assert.Equal(t, uint32(5000), meta.TimeoutMs)
 
-	_, err = lc.Write(context.Background(), &proto.WriteRequest{
+	_, err = lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard: &shardId,
 		Puts: []*proto.PutRequest{{
 			Key:       "/a/b",

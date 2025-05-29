@@ -45,7 +45,7 @@ func TestSecondaryIndices_List(t *testing.T) {
 		FollowerMaps:      nil,
 	})
 
-	_, err := lc.Write(context.Background(), &proto.WriteRequest{
+	_, err := lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard: &shard,
 		Puts: []*proto.PutRequest{
 			{Key: "/a", Value: []byte("0"), SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "my-idx", SecondaryKey: "0"}}},
@@ -80,7 +80,7 @@ func TestSecondaryIndices_List(t *testing.T) {
 	assert.Empty(t, keys)
 
 	// Individual delete
-	_, err = lc.Write(context.Background(), &proto.WriteRequest{
+	_, err = lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard:   &shard,
 		Deletes: []*proto.DeleteRequest{{Key: "/b"}},
 	})
@@ -100,7 +100,7 @@ func TestSecondaryIndices_List(t *testing.T) {
 	assert.Contains(t, keys, "/e")
 
 	// Range delete
-	_, err = lc.Write(context.Background(), &proto.WriteRequest{
+	_, err = lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard: &shard,
 		DeleteRanges: []*proto.DeleteRangeRequest{{
 			StartInclusive: "/a",
@@ -141,7 +141,7 @@ func TestSecondaryIndices_RangeScan(t *testing.T) {
 		FollowerMaps:      nil,
 	})
 
-	_, err := lc.Write(context.Background(), &proto.WriteRequest{
+	_, err := lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard: &shard,
 		Puts: []*proto.PutRequest{
 			{Key: "/a", Value: []byte("0"), SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "my-idx", SecondaryKey: "0"}}},
@@ -183,7 +183,7 @@ func TestSecondaryIndices_RangeScan(t *testing.T) {
 	assert.Empty(t, ch)
 
 	// Individual delete
-	_, err = lc.Write(context.Background(), &proto.WriteRequest{
+	_, err = lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard:   &shard,
 		Deletes: []*proto.DeleteRequest{{Key: "/b"}},
 	})
@@ -208,7 +208,7 @@ func TestSecondaryIndices_RangeScan(t *testing.T) {
 	assert.Empty(t, ch)
 
 	// Range delete
-	_, err = lc.Write(context.Background(), &proto.WriteRequest{
+	_, err = lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard: &shard,
 		DeleteRanges: []*proto.DeleteRangeRequest{{
 			StartInclusive: "/a",
@@ -252,7 +252,7 @@ func TestSecondaryIndices_MultipleKeysForSameIdx(t *testing.T) {
 		FollowerMaps:      nil,
 	})
 
-	_, err := lc.Write(context.Background(), &proto.WriteRequest{
+	_, err := lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard: &shard,
 		Puts: []*proto.PutRequest{
 			{Key: "/a", Value: []byte("0"), SecondaryIndexes: []*proto.SecondaryIndex{
@@ -325,7 +325,7 @@ func TestSecondaryIndices_MultipleKeysForSameIdx(t *testing.T) {
 	assert.Contains(t, keys, "/e")
 
 	// Delete
-	_, err = lc.Write(context.Background(), &proto.WriteRequest{
+	_, err = lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard:   &shard,
 		Deletes: []*proto.DeleteRequest{{Key: "/b"}},
 	})

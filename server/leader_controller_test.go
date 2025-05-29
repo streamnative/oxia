@@ -63,7 +63,7 @@ func TestLeaderController_NotInitialized(t *testing.T) {
 	assert.EqualValues(t, wal.InvalidTerm, lc.Term())
 	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, lc.Status())
 
-	res, err := lc.Write(context.Background(), &proto.WriteRequest{
+	res, err := lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard: &shard,
 		Puts: []*proto.PutRequest{{
 			Key:   "a",
@@ -180,8 +180,8 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	assert.EqualValues(t, 1, lc.Term())
 	assert.Equal(t, proto.ServingStatus_LEADER, lc.Status())
 
-	// Write entry
-	res, err := lc.Write(context.Background(), &proto.WriteRequest{
+	// WriteBlock entry
+	res, err := lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard: &shard,
 		Puts: []*proto.PutRequest{{
 			Key:   "a",
@@ -223,7 +223,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 
 	// Should not accept anymore writes & reads
 
-	res3, err := lc.Write(context.Background(), &proto.WriteRequest{
+	res3, err := lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard: &shard,
 		Puts: []*proto.PutRequest{{
 			Key:   "a",
@@ -290,8 +290,8 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 		}
 	}()
 
-	// Write entry
-	res, err := lc.Write(context.Background(), &proto.WriteRequest{
+	// WriteBlock entry
+	res, err := lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard: &shard,
 		Puts: []*proto.PutRequest{{
 			Key:   "a",
@@ -331,7 +331,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 
 	// Should not accept anymore writes & reads
 
-	res3, err := lc.Write(context.Background(), &proto.WriteRequest{
+	res3, err := lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard: &shard,
 		Puts: []*proto.PutRequest{{
 			Key:   "a",
@@ -694,9 +694,9 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 		}
 	}()
 
-	// Write entries
+	// WriteBlock entries
 	for i := 10; i < 20; i++ {
-		res, err := lc.Write(context.Background(), &proto.WriteRequest{
+		res, err := lc.WriteBlock(context.Background(), &proto.WriteRequest{
 			Shard: &shard,
 			Puts: []*proto.PutRequest{{
 				Key:   "my-key",
@@ -890,8 +890,8 @@ func TestLeaderController_Notifications(t *testing.T) {
 		close(closeCh)
 	}()
 
-	// Write entry
-	_, _ = lc.Write(context.Background(), &proto.WriteRequest{
+	// WriteBlock entry
+	_, _ = lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard: &shard,
 		Puts: []*proto.PutRequest{{
 			Key:   "a",
@@ -1016,7 +1016,7 @@ func TestLeaderController_List(t *testing.T) {
 		FollowerMaps:      nil,
 	})
 
-	_, err := lc.Write(context.Background(), &proto.WriteRequest{
+	_, err := lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard: &shard,
 		Puts: []*proto.PutRequest{
 			{Key: "/a", Value: []byte{0}},
@@ -1059,7 +1059,7 @@ func TestLeaderController_RangeScan(t *testing.T) {
 		FollowerMaps:      nil,
 	})
 
-	_, err := lc.Write(context.Background(), &proto.WriteRequest{
+	_, err := lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard: &shard,
 		Puts: []*proto.PutRequest{
 			{Key: "/a", Value: []byte{0}},
@@ -1114,7 +1114,7 @@ func TestLeaderController_DeleteShard(t *testing.T) {
 		FollowerMaps:      nil,
 	})
 
-	_, err := lc.Write(context.Background(), &proto.WriteRequest{
+	_, err := lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard: &shard,
 		Puts:  []*proto.PutRequest{{Key: "k1", Value: []byte("hello")}},
 	})
@@ -1169,7 +1169,7 @@ func TestLeaderController_DeleteShard_WrongTerm(t *testing.T) {
 		FollowerMaps:      nil,
 	})
 
-	_, err := lc.Write(context.Background(), &proto.WriteRequest{
+	_, err := lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard: &shard,
 		Puts:  []*proto.PutRequest{{Key: "k1", Value: []byte("hello")}},
 	})
@@ -1201,14 +1201,14 @@ func TestLeaderController_GetStatus(t *testing.T) {
 		FollowerMaps:      nil,
 	})
 
-	// Write entry
-	_, _ = lc.Write(context.Background(), &proto.WriteRequest{
+	// WriteBlock entry
+	_, _ = lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard: &shard,
 		Puts: []*proto.PutRequest{{
 			Key:   "a",
 			Value: []byte("value-a")}},
 	})
-	_, _ = lc.Write(context.Background(), &proto.WriteRequest{
+	_, _ = lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard: &shard,
 		Puts: []*proto.PutRequest{{
 			Key:   "b",
@@ -1229,7 +1229,7 @@ func TestLeaderController_GetStatus(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
-func TestLeaderController_WriteStream(t *testing.T) {
+func TestLeaderController_Write(t *testing.T) {
 	var shard int64 = 1
 
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
@@ -1251,29 +1251,13 @@ func TestLeaderController_WriteStream(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Write entry
-	ctx, cancel := context.WithCancel(context.Background())
-	stream := newMockWriteStream(ctx)
-
-	stream.requests <- &proto.WriteRequest{
+	res1, err := lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard: &shard,
 		Puts: []*proto.PutRequest{{
 			Key:   "a",
 			Value: []byte("value-a")}},
-	}
-
-	stream.requests <- &proto.WriteRequest{
-		Shard: &shard,
-		Puts: []*proto.PutRequest{{
-			Key:   "b",
-			Value: []byte("value-b")}},
-	}
-
-	go func() {
-		err1 := lc.WriteStream(stream)
-		assert.ErrorIs(t, err1, context.Canceled)
-	}()
-
-	res1 := <-stream.response
+	})
+	assert.NoError(t, err)
 	assert.EqualValues(t, 1, len(res1.Puts))
 	assert.Equal(t, proto.Status_OK, res1.Puts[0].Status)
 	assert.EqualValues(t, 0, res1.Puts[0].Version.VersionId)
@@ -1281,15 +1265,19 @@ func TestLeaderController_WriteStream(t *testing.T) {
 	assert.NotEqualValues(t, 0, res1.Puts[0].Version.ModifiedTimestamp)
 	assert.EqualValues(t, res1.Puts[0].Version.CreatedTimestamp, res1.Puts[0].Version.ModifiedTimestamp)
 
-	res2 := <-stream.response
+	res2, err := lc.WriteBlock(context.Background(), &proto.WriteRequest{
+		Shard: &shard,
+		Puts: []*proto.PutRequest{{
+			Key:   "b",
+			Value: []byte("value-b")}},
+	})
+	assert.NoError(t, err)
 	assert.EqualValues(t, 1, len(res2.Puts))
 	assert.Equal(t, proto.Status_OK, res2.Puts[0].Status)
 	assert.EqualValues(t, 1, res2.Puts[0].Version.VersionId)
 	assert.NotEqualValues(t, 0, res2.Puts[0].Version.CreatedTimestamp)
 	assert.NotEqualValues(t, 0, res2.Puts[0].Version.ModifiedTimestamp)
 	assert.EqualValues(t, res2.Puts[0].Version.CreatedTimestamp, res2.Puts[0].Version.ModifiedTimestamp)
-
-	cancel()
 
 	responses := make(chan *entities.TWithError[*proto.GetResponse], 1000)
 	lc.Read(context.Background(), &proto.ReadRequest{
@@ -1327,12 +1315,6 @@ func TestLeaderController_WriteStream(t *testing.T) {
 
 	assert.EqualValues(t, 2, lc.Term())
 	assert.Equal(t, proto.ServingStatus_FENCED, lc.Status())
-
-	// Should not accept anymore writes & reads
-	stream = newMockWriteStream(context.Background())
-	err = lc.WriteStream(stream)
-	assert.Error(t, err)
-	assert.Equal(t, common.CodeInvalidStatus, status.Code(err))
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())
@@ -1399,8 +1381,8 @@ func TestLeaderController_DuplicateNewTerm_WithSession(t *testing.T) {
 
 	key := "/namespace/sn/system/0xe0000000_0xf0000000"
 
-	// Write entry
-	_, err = lc.Write(context.Background(), &proto.WriteRequest{
+	// WriteBlock entry
+	_, err = lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard: &shard,
 		Puts: []*proto.PutRequest{{
 			Key:       key,
@@ -1459,7 +1441,7 @@ func TestLeaderController_GetSequenceUpdates(t *testing.T) {
 		FollowerMaps:      nil,
 	})
 
-	_, err := lc.Write(context.Background(), &proto.WriteRequest{
+	_, err := lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard: &shard,
 		Puts: []*proto.PutRequest{
 			{Key: "a", Value: []byte{0}, SequenceKeyDelta: []uint64{1}, PartitionKey: pb.String("x")},
@@ -1487,7 +1469,7 @@ func TestLeaderController_GetSequenceUpdates(t *testing.T) {
 	u1 := <-stream.updates
 	assert.Equal(t, fmt.Sprintf("a-%020d", 6), u1.HighestSequenceKey)
 
-	_, err = lc.Write(context.Background(), &proto.WriteRequest{
+	_, err = lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard: &shard,
 		Puts: []*proto.PutRequest{
 			{Key: "a", Value: []byte{0}, SequenceKeyDelta: []uint64{5}, PartitionKey: pb.String("x")},
