@@ -39,15 +39,13 @@ import (
 	"github.com/streamnative/oxia/server/wal"
 )
 
-var ErrLeaderClosed = errors.New("the leader has been closed")
-
 type LeaderController interface {
 	io.Closer
 
-	Write(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error)
+	WriteBlock(ctx context.Context, write *proto.WriteRequest) (*proto.WriteResponse, error)
 	ListBlock(ctx context.Context, request *proto.ListRequest) ([]string, error)
 
-	WriteStream(stream proto.OxiaClient_WriteStreamServer) error
+	Write(ctx context.Context, request *proto.WriteRequest, cb callback.Callback[*proto.WriteResponse])
 	List(ctx context.Context, request *proto.ListRequest, cb callback.StreamCallback[string])
 	Read(ctx context.Context, request *proto.ReadRequest, cb callback.StreamCallback[*proto.GetResponse])
 	RangeScan(ctx context.Context, request *proto.RangeScanRequest, cb callback.StreamCallback[*proto.GetResponse])
@@ -66,11 +64,13 @@ type LeaderController interface {
 	GetStatus(request *proto.GetStatusRequest) (*proto.GetStatusResponse, error)
 	DeleteShard(request *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error)
 
+	Context() context.Context
 	// Term The current term of the leader
 	Term() int64
-
 	// Status The Status of the leader
 	Status() proto.ServingStatus
+	Namespace() string
+	ShardID() int64
 
 	CreateSession(*proto.CreateSessionRequest) (*proto.CreateSessionResponse, error)
 	KeepAlive(sessionId int64) error
@@ -170,6 +170,22 @@ func NewLeaderController(config Config, namespace string, shardId int64, rpcClie
 	lc.setLogger()
 	lc.log.Info("Created leader controller")
 	return lc, nil
+}
+
+func (lc *leaderController) Context() context.Context {
+	return lc.ctx
+}
+
+func (lc *leaderController) Namespace() string {
+	lc.RLock()
+	defer lc.RUnlock()
+	return lc.namespace
+}
+
+func (lc *leaderController) ShardID() int64 {
+	lc.RLock()
+	defer lc.RUnlock()
+	return lc.shardId
 }
 
 func (lc *leaderController) setLogger() {
@@ -770,231 +786,85 @@ func (lc *leaderController) RangeScan(ctx context.Context, request *proto.RangeS
 	)
 }
 
-// Write
-// A client sends a batch of entries to the leader
-//
-// A client writes a value from Values to a leader node
-// if that value has not previously been written. The leader adds
-// the entry to its log, updates its head offset.
-func (lc *leaderController) Write(ctx context.Context, request *proto.WriteRequest) (*proto.WriteResponse, error) {
-	_, resp, err := lc.write(ctx, func(_ int64) *proto.WriteRequest {
-		return request
-	})
-	return resp, err
+func (lc *leaderController) WriteBlock(ctx context.Context, request *proto.WriteRequest) (*proto.WriteResponse, error) {
+	return lc.writeBlock(ctx, func(_ int64) *proto.WriteRequest { return request })
 }
 
-func (lc *leaderController) write(ctx context.Context, request func(int64) *proto.WriteRequest) (int64, *proto.WriteResponse, error) {
-	timer := lc.writeLatencyHisto.Timer()
-	defer timer.Done() //nolint:contextcheck
-
-	lc.log.Debug("Write operation")
-
-	actualRequest, newOffset, timestamp, err := lc.appendToWal(ctx, request)
-	if err != nil {
-		return wal.InvalidOffset, nil, err
-	}
-
-	if err := lc.quorumAckTracker.WaitForCommitOffset(ctx, newOffset); err != nil {
-		return wal.InvalidOffset, nil, err
-	}
-	writeResponse, err := lc.db.ProcessWrite(actualRequest, newOffset, timestamp, WrapperUpdateOperationCallback)
-	return newOffset, writeResponse, err
+func (lc *leaderController) Write(ctx context.Context, request *proto.WriteRequest, cb callback.Callback[*proto.WriteResponse]) {
+	lc.write(ctx, func(_ int64) *proto.WriteRequest { return request }, cb)
 }
 
-func (lc *leaderController) appendToWal(ctx context.Context, request func(int64) *proto.WriteRequest) (actualRequest *proto.WriteRequest, offset int64, timestamp uint64, err error) {
-	lc.Lock()
-
-	if err := checkStatusIsLeader(lc.status); err != nil {
-		lc.Unlock()
-		return nil, wal.InvalidOffset, 0, err
-	}
-
-	newOffset := lc.quorumAckTracker.NextOffset()
-	timestamp = uint64(time.Now().UnixMilli())
-	actualRequest = request(newOffset)
-
-	lc.log.Debug(
-		"Append operation",
-		slog.Any("req", actualRequest),
-	)
-
-	logEntryValue := proto.LogEntryValueFromVTPool()
-	defer logEntryValue.ReturnToVTPool()
-
-	logEntryValue.Value = &proto.LogEntryValue_Requests{
-		Requests: &proto.WriteRequests{
-			Writes: []*proto.WriteRequest{actualRequest},
-		},
-	}
-	value, err := logEntryValue.MarshalVT()
-	if err != nil {
-		lc.Unlock()
-		return actualRequest, wal.InvalidOffset, timestamp, err
-	}
-	logEntry := &proto.LogEntry{
-		Term:      lc.term,
-		Offset:    newOffset,
-		Value:     value,
-		Timestamp: timestamp,
-	}
-
-	if err = lc.wal.AppendAsync(logEntry); err != nil {
-		lc.Unlock()
-		return actualRequest, wal.InvalidOffset, timestamp, errors.Wrap(err, "oxia: failed to append to wal")
-	}
-
-	lc.Unlock()
-
-	// Sync the WAL outside the mutex, so that we can have multiple waiting
-	// sync requests
-	if err = lc.wal.Sync(ctx); err != nil {
-		return actualRequest, wal.InvalidOffset, timestamp, errors.Wrap(err, "oxia: failed to sync the wal")
-	}
-	lc.quorumAckTracker.AdvanceHeadOffset(newOffset)
-	return actualRequest, newOffset, timestamp, nil
-}
-
-func (lc *leaderController) WriteStream(stream proto.OxiaClient_WriteStreamServer) error {
-	if err := checkStatusIsLeader(lc.status); err != nil {
-		return err
-	}
-
-	closeStreamCh := make(chan error, 1)
-
-	go common.DoWithLabels(
-		stream.Context(),
-		map[string]string{
-			"oxia":      "write-stream",
-			"namespace": lc.namespace,
-			"shard":     fmt.Sprintf("%d", lc.shardId),
-		},
-		func() { lc.handleWriteStream(stream, closeStreamCh) },
-	)
-
-	select {
-	case err := <-closeStreamCh:
-		return err
-	case <-stream.Context().Done():
-		return stream.Context().Err()
-	case <-lc.ctx.Done():
-		return errors.Wrap(ErrLeaderClosed, lc.ctx.Err().Error())
-	}
-}
-
-func (lc *leaderController) handleWriteStream(stream proto.OxiaClient_WriteStreamServer,
-	closeCh chan error) {
-	for {
-		req, err := stream.Recv()
-
-		if err != nil {
-			sendNonBlocking(closeCh, err)
-			return
-		} else if req == nil {
-			sendNonBlocking(closeCh, errors.New("stream closed"))
-			return
+func (lc *leaderController) writeBlock(ctx context.Context, requestSupplier func(offset int64) *proto.WriteRequest) (*proto.WriteResponse, error) {
+	res := make(chan *entities.TWithError[*proto.WriteResponse], 1)
+	lc.write(ctx, requestSupplier, callback.NewOnce(func(t *proto.WriteResponse) {
+		res <- &entities.TWithError[*proto.WriteResponse]{
+			Err: nil,
+			T:   t,
 		}
-
-		timer := lc.writeLatencyHisto.Timer()
-		slog.Debug("Got request in stream",
-			slog.Any("req", req))
-
-		lc.appendToWalStreamRequest(req, func(offset int64, timestamp uint64, err error) {
-			lc.handleWalSynced(stream, req, closeCh, offset, timestamp, err, timer)
-		})
-	}
+	}, func(err error) {
+		res <- &entities.TWithError[*proto.WriteResponse]{
+			Err: err,
+			T:   nil,
+		}
+	}))
+	response := <-res
+	return response.T, response.Err
 }
 
-func (lc *leaderController) handleWalSynced(stream proto.OxiaClient_WriteStreamServer,
-	req *proto.WriteRequest, closeCh chan error,
-	offset int64, timestamp uint64, err error, timer metrics.Timer) {
-	if err != nil {
-		timer.Done()
-		sendNonBlocking(closeCh, err)
-		return
-	}
-
-	lc.RLock()
-	tracker := lc.quorumAckTracker
-	lc.RUnlock()
-
-	if tracker == nil {
-		timer.Done()
-		sendNonBlocking(closeCh, common.ErrInvalidStatus)
-		return
-	}
-
-	tracker.WaitForCommitOffsetAsync(context.Background(), offset, callback.NewOnce(
-		func(_ any) {
-			defer timer.Done()
-			localResponse, err := lc.db.ProcessWrite(req, offset, timestamp, WrapperUpdateOperationCallback)
-			if err != nil {
-				sendNonBlocking(closeCh, err)
-				return
-			}
-			if err = stream.Send(localResponse); err != nil {
-				sendNonBlocking(closeCh, err)
-				return
-			}
-		},
-		func(err error) {
-			defer timer.Done()
-			sendNonBlocking(closeCh, err)
-		},
-	))
-}
-
-func (lc *leaderController) appendToWalStreamRequest(request *proto.WriteRequest,
-	cb func(offset int64, timestamp uint64, err error)) {
+func (lc *leaderController) write(ctx context.Context, requestSupplier func(offset int64) *proto.WriteRequest, cb callback.Callback[*proto.WriteResponse]) {
+	timer := lc.writeLatencyHisto.Timer()
 	lc.Lock()
-
 	if err := checkStatusIsLeader(lc.status); err != nil {
 		lc.Unlock()
-		cb(wal.InvalidOffset, 0, err)
+		cb.OnCompleteError(err)
 		return
 	}
-
 	newOffset := lc.quorumAckTracker.NextOffset()
-	log := lc.wal
+	walLog := lc.wal
 	tracker := lc.quorumAckTracker
+	term := lc.term
 	lc.Unlock()
+	request := requestSupplier(newOffset)
+
+	lc.log.Debug("Append operation", slog.Any("req", request))
 
 	timestamp := uint64(time.Now().UnixMilli())
-	lc.log.Debug(
-		"Append operation",
-		slog.Any("req", request),
-	)
-
 	logEntryValue := proto.LogEntryValueFromVTPool()
 	defer logEntryValue.ReturnToVTPool()
 
-	logEntryValue.Value = &proto.LogEntryValue_Requests{
-		Requests: &proto.WriteRequests{
-			Writes: []*proto.WriteRequest{request},
-		},
-	}
+	logEntryValue.Value = &proto.LogEntryValue_Requests{Requests: &proto.WriteRequests{Writes: []*proto.WriteRequest{request}}}
 	value, err := logEntryValue.MarshalVT()
 	if err != nil {
-		cb(wal.InvalidOffset, timestamp, err)
+		cb.OnCompleteError(err)
 		return
 	}
-	logEntry := &proto.LogEntry{
-		Term:      lc.term,
+	walLog.AppendAndSync(&proto.LogEntry{
+		Term:      term,
 		Offset:    newOffset,
 		Value:     value,
 		Timestamp: timestamp,
-	}
-
-	log.AppendAndSync(logEntry, func(err error) {
+	}, func(err error) {
 		if err != nil {
-			cb(wal.InvalidOffset, timestamp, errors.Wrap(err, "oxia: failed to append to wal"))
-		} else {
-			tracker.AdvanceHeadOffset(newOffset)
-			cb(newOffset, timestamp, nil)
+			timer.Done() //nolint:contextcheck
+			cb.OnCompleteError(errors.Wrap(err, "oxia: failed to append to wal"))
+			return
 		}
+		tracker.AdvanceHeadOffset(newOffset)
+		tracker.WaitForCommitOffsetAsync(ctx, newOffset, callback.NewOnce[any](
+			func(_ any) { //nolint:contextcheck
+				defer timer.Done()
+				var wr *proto.WriteResponse
+				if wr, err = lc.db.ProcessWrite(request, newOffset, timestamp, WrapperUpdateOperationCallback); err != nil {
+					cb.OnCompleteError(err)
+					return
+				}
+				cb.OnComplete(wr)
+			}, func(err error) { //nolint:contextcheck
+				timer.Done()
+				cb.OnCompleteError(errors.Wrap(err, "oxia: failed to append to wal"))
+			}))
 	})
 }
-
-// ////
 
 func (lc *leaderController) GetNotifications(req *proto.NotificationsRequest, stream proto.OxiaClient_GetNotificationsServer) error {
 	if !lc.termOptions.NotificationsEnabled {
@@ -1149,11 +1019,4 @@ func checkStatusIsLeader(actual proto.ServingStatus) error {
 		return status.Errorf(common.CodeInvalidStatus, "Received message in the wrong state. In %+v, should be %+v.", actual, proto.ServingStatus_LEADER)
 	}
 	return nil
-}
-
-func sendNonBlocking(ch chan error, err error) {
-	select {
-	case ch <- err:
-	default:
-	}
 }

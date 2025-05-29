@@ -53,9 +53,9 @@ func Test_Once_Complete_Concurrent(t *testing.T) {
 		group.Add(1)
 		go func() {
 			if i%2 == 0 {
-				onceCallback.Complete(nil)
+				onceCallback.OnComplete(nil)
 			} else {
-				onceCallback.CompleteError(errors.New("error"))
+				onceCallback.OnCompleteError(errors.New("error"))
 			}
 			group.Done()
 		}()
@@ -77,7 +77,7 @@ func Test_Once_Complete(t *testing.T) {
 			callbackError = err
 		})
 
-	onceCallback.Complete(1)
+	onceCallback.OnComplete(1)
 
 	assert.Nil(t, callbackError)
 	assert.Equal(t, int32(1), callbackValue)
@@ -96,7 +96,7 @@ func Test_Once_Complete_Error(t *testing.T) {
 		})
 
 	e1 := errors.New("error")
-	onceCallback.CompleteError(e1)
+	onceCallback.OnCompleteError(e1)
 
 	assert.Equal(t, e1, callbackError)
 	assert.Nil(t, callbackValue)

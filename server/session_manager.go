@@ -142,16 +142,17 @@ func (sm *sessionManager) createSession(request *proto.CreateSessionRequest, min
 	if err != nil {
 		return nil, errors.Wrap(err, "could not marshal session metadata")
 	}
-	id, resp, err := sm.leaderController.write(sm.ctx, func(id int64) *proto.WriteRequest {
+	var sessionId SessionId
+	resp, err := sm.leaderController.writeBlock(sm.ctx, func(offset int64) *proto.WriteRequest {
+		sessionId = SessionId(offset)
 		return &proto.WriteRequest{
 			Shard: &request.Shard,
 			Puts: []*proto.PutRequest{{
-				Key:   SessionKey(SessionId(id)),
+				Key:   SessionKey(sessionId),
 				Value: marshalledMetadata,
 			}},
 		}
 	})
-	sessionId := SessionId(id)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to register session")
 	}

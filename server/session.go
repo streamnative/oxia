@@ -136,7 +136,7 @@ func (s *session) delete() error {
 	deletes = append(deletes, &proto.DeleteRequest{
 		Key: sessionKey,
 	})
-	_, err = s.sm.leaderController.Write(context.Background(), &proto.WriteRequest{
+	_, err = s.sm.leaderController.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard:   &s.shardId,
 		Puts:    nil,
 		Deletes: deletes,
