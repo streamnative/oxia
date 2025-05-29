@@ -24,10 +24,11 @@ import (
 	"sync"
 
 	"github.com/pkg/errors"
-	"github.com/streamnative/oxia/common/rpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	pb "google.golang.org/protobuf/proto"
+
+	"github.com/streamnative/oxia/common/rpc"
 
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/auth"

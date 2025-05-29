@@ -23,9 +23,10 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/pkg/errors"
+	"google.golang.org/grpc/health/grpc_health_v1"
+
 	"github.com/streamnative/oxia/common/process"
 	time2 "github.com/streamnative/oxia/common/time"
-	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/streamnative/oxia/common/metric"
 	"github.com/streamnative/oxia/coordinator/model"

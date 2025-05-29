@@ -19,9 +19,10 @@ import (
 	"log/slog"
 	"path/filepath"
 
+	"go.uber.org/multierr"
+
 	"github.com/streamnative/oxia/common/constant"
 	"github.com/streamnative/oxia/common/rpc"
-	"go.uber.org/multierr"
 
 	"github.com/streamnative/oxia/common/metric"
 	"github.com/streamnative/oxia/proto"

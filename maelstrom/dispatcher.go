@@ -25,9 +25,10 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/streamnative/oxia/common/constant"
 	"google.golang.org/protobuf/encoding/protojson"
 	pb "google.golang.org/protobuf/proto"
+
+	"github.com/streamnative/oxia/common/constant"
 
 	"github.com/streamnative/oxia/proto"
 )

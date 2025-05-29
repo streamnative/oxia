@@ -23,12 +23,13 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
+	"go.uber.org/multierr"
+	"google.golang.org/grpc/status"
+
 	"github.com/streamnative/oxia/common/constant"
 	"github.com/streamnative/oxia/common/process"
 	"github.com/streamnative/oxia/common/rpc"
 	time2 "github.com/streamnative/oxia/common/time"
-	"go.uber.org/multierr"
-	"google.golang.org/grpc/status"
 
 	"github.com/streamnative/oxia/oxia/internal"
 	"github.com/streamnative/oxia/proto"
@@ -160,13 +161,13 @@ func (cs *clientSession) createSessionWithRetries() {
 }
 
 func (cs *clientSession) createSession() error {
-	rpc, err := cs.getRpc()
+	client, err := cs.getRpc()
 	if err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(cs.ctx, cs.sessions.clientOpts.requestTimeout)
 	defer cancel()
-	createSessionResponse, err := rpc.CreateSession(ctx, &proto.CreateSessionRequest{
+	createSessionResponse, err := client.CreateSession(ctx, &proto.CreateSessionRequest{
 		Shard:            cs.shardId,
 		ClientIdentity:   cs.sessions.clientIdentity,
 		SessionTimeoutMs: uint32(cs.sessions.clientOpts.sessionTimeout.Milliseconds()),
@@ -238,14 +239,14 @@ func (cs *clientSession) getRpc() (proto.OxiaClientClient, error) {
 func (cs *clientSession) Close() error {
 	cs.cancel()
 
-	rpc, err := cs.getRpc()
+	client, err := cs.getRpc()
 	if err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(cs.sessions.ctx, cs.sessions.clientOpts.requestTimeout)
 	defer cancel()
 
-	if _, err = rpc.CloseSession(ctx, &proto.CloseSessionRequest{
+	if _, err = client.CloseSession(ctx, &proto.CloseSessionRequest{
 		Shard:     cs.shardId,
 		SessionId: cs.sessionId,
 	}); err != nil {
@@ -272,7 +273,7 @@ func (cs *clientSession) keepAlive() error {
 	ticker := time.NewTicker(tickTime)
 	defer ticker.Stop()
 
-	rpc, err := cs.getRpc()
+	client, err := cs.getRpc()
 	if err != nil {
 		return err
 	}
@@ -280,7 +281,7 @@ func (cs *clientSession) keepAlive() error {
 	for {
 		select {
 		case <-ticker.C:
-			_, err = rpc.KeepAlive(ctx, &proto.SessionHeartbeat{Shard: shardId, SessionId: sessionId})
+			_, err = client.KeepAlive(ctx, &proto.SessionHeartbeat{Shard: shardId, SessionId: sessionId})
 			if err != nil {
 				return err
 			}

@@ -23,13 +23,14 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/pkg/errors"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/streamnative/oxia/common/concurrent"
 	"github.com/streamnative/oxia/common/constant"
 	"github.com/streamnative/oxia/common/process"
 	"github.com/streamnative/oxia/common/rpc"
 	time2 "github.com/streamnative/oxia/common/time"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	"github.com/streamnative/oxia/proto"
 )
@@ -181,14 +182,14 @@ func (s *shardManagerImpl) receiveWithRecovery() {
 }
 
 func (s *shardManagerImpl) receive(backOff backoff.BackOff) error {
-	rpc, err := s.clientPool.GetClientRpc(s.serviceAddress)
+	client, err := s.clientPool.GetClientRpc(s.serviceAddress)
 	if err != nil {
 		return err
 	}
 
 	request := proto.ShardAssignmentsRequest{Namespace: s.namespace}
 
-	stream, err := rpc.GetShardAssignments(s.ctx, &request)
+	stream, err := client.GetShardAssignments(s.ctx, &request)
 	if err != nil {
 		return err
 	}

@@ -19,8 +19,9 @@ import (
 	"math"
 	"testing"
 
-	"github.com/streamnative/oxia/common/collection"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/common/collection"
 
 	"github.com/streamnative/oxia/coordinator/model"
 )

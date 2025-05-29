@@ -21,11 +21,12 @@ import (
 	"sync"
 
 	"github.com/pkg/errors"
+	"go.uber.org/multierr"
+	"golang.org/x/exp/slices"
+
 	"github.com/streamnative/oxia/common/concurrent"
 	"github.com/streamnative/oxia/common/rpc"
 	commonbatch "github.com/streamnative/oxia/oxia/batch"
-	"go.uber.org/multierr"
-	"golang.org/x/exp/slices"
 
 	"github.com/streamnative/oxia/common/compare"
 	"github.com/streamnative/oxia/oxia/internal"

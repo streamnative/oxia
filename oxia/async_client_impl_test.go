@@ -23,8 +23,9 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/streamnative/oxia/common/logging"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/common/logging"
 
 	"github.com/streamnative/oxia/server"
 )

@@ -23,10 +23,11 @@ import (
 	"os"
 	"sync"
 
-	"github.com/streamnative/oxia/common/constant"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
+
+	"github.com/streamnative/oxia/common/constant"
 
 	"github.com/streamnative/oxia/coordinator/impl"
 	"github.com/streamnative/oxia/coordinator/model"

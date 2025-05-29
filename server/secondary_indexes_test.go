@@ -18,10 +18,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/streamnative/oxia/common/concurrent"
-	"github.com/streamnative/oxia/common/constant"
 	"github.com/stretchr/testify/assert"
 	pb "google.golang.org/protobuf/proto"
+
+	"github.com/streamnative/oxia/common/concurrent"
+	"github.com/streamnative/oxia/common/constant"
 
 	"github.com/streamnative/oxia/common/entity"
 

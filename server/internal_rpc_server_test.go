@@ -19,12 +19,13 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/streamnative/oxia/common/rpc"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"github.com/streamnative/oxia/common/rpc"
 )
 
 func TestInternalHealthCheck(t *testing.T) {

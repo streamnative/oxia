@@ -19,8 +19,9 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
-	"github.com/streamnative/oxia/common/logging"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/common/logging"
 )
 
 func TestCall_LogLevel_Default(t *testing.T) {

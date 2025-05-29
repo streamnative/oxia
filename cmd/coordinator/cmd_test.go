@@ -21,10 +21,11 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/streamnative/oxia/common/constant"
-	"github.com/streamnative/oxia/common/entity"
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v3"
+
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/entity"
 
 	"github.com/streamnative/oxia/coordinator"
 	"github.com/streamnative/oxia/coordinator/model"

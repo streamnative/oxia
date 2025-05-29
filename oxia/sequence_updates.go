@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
+
 	"github.com/streamnative/oxia/common/process"
 	"github.com/streamnative/oxia/common/rpc"
 	time2 "github.com/streamnative/oxia/common/time"
@@ -89,12 +90,12 @@ func (su *sequenceUpdates) getSequenceUpdates() error {
 	shard := su.shardManager.Get(su.partitionKey)
 	leader := su.shardManager.Leader(shard)
 
-	rpc, err := su.clientPool.GetClientRpc(leader)
+	client, err := su.clientPool.GetClientRpc(leader)
 	if err != nil {
 		return err
 	}
 
-	updates, err := rpc.GetSequenceUpdates(su.ctx, &proto.GetSequenceUpdatesRequest{
+	updates, err := client.GetSequenceUpdates(su.ctx, &proto.GetSequenceUpdatesRequest{
 		Key: su.prefixKey,
 	})
 	if err != nil {

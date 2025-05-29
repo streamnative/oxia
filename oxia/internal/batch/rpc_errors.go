@@ -15,9 +15,10 @@
 package batch
 
 import (
-	"github.com/streamnative/oxia/common/constant"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/streamnative/oxia/common/constant"
 )
 
 func isRetriable(err error) bool {

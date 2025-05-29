@@ -21,15 +21,16 @@ import (
 	"log/slog"
 
 	"github.com/pkg/errors"
-	"github.com/streamnative/oxia/common/concurrent"
-	"github.com/streamnative/oxia/common/constant"
-	"github.com/streamnative/oxia/common/process"
-	"github.com/streamnative/oxia/common/rpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protowire"
+
+	"github.com/streamnative/oxia/common/concurrent"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/process"
+	"github.com/streamnative/oxia/common/rpc"
 
 	"github.com/streamnative/oxia/common/channel"
 

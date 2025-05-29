@@ -19,9 +19,10 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/streamnative/oxia/common/constant"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/status"
+
+	"github.com/streamnative/oxia/common/constant"
 
 	"github.com/streamnative/oxia/common/metric"
 	"github.com/streamnative/oxia/proto"

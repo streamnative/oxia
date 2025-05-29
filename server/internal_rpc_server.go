@@ -22,14 +22,15 @@ import (
 	"log/slog"
 
 	"github.com/pkg/errors"
-	"github.com/streamnative/oxia/common/constant"
-	"github.com/streamnative/oxia/common/rpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/rpc"
 
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/auth"

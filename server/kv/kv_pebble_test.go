@@ -20,8 +20,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/streamnative/oxia/common/constant"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/common/constant"
 )
 
 var testKVOptions = &FactoryOptions{

@@ -21,14 +21,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/streamnative/oxia/common/constant"
-	"github.com/streamnative/oxia/common/rpc"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
+
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/rpc"
 
 	"github.com/streamnative/oxia/proto"
 )

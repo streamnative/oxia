@@ -27,9 +27,10 @@ import (
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/pkg/errors"
-	"github.com/streamnative/oxia/common/cache"
 	"go.uber.org/multierr"
 	"golang.org/x/net/context"
+
+	"github.com/streamnative/oxia/common/cache"
 
 	"github.com/streamnative/oxia/common/compare"
 	"github.com/streamnative/oxia/common/metric"
@@ -72,14 +73,14 @@ func NewPebbleKVFactory(options *FactoryOptions) (Factory, error) {
 		dataDir = DefaultFactoryOptions.DataDir
 	}
 
-	cache := pebble.NewCache(cacheSizeMB * 1024 * 1024)
+	blockCache := pebble.NewCache(cacheSizeMB * 1024 * 1024)
 
 	pf := &PebbleFactory{
 		dataDir: dataDir,
 		options: options,
 
 		// Share a single cache instance across the databases for all the shards
-		cache: cache,
+		cache: blockCache,
 
 		gaugeCacheSize: metric.NewGauge("oxia_server_kv_pebble_max_cache_size",
 			"The max size configured for the Pebble block cache in bytes",

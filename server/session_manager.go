@@ -24,8 +24,9 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/streamnative/oxia/common/constant"
 	"go.uber.org/multierr"
+
+	"github.com/streamnative/oxia/common/constant"
 
 	"github.com/streamnative/oxia/common/collection"
 	"github.com/streamnative/oxia/common/metric"

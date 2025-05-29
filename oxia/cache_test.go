@@ -24,8 +24,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/streamnative/oxia/common/concurrent"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/common/concurrent"
 
 	"github.com/streamnative/oxia/server"
 )

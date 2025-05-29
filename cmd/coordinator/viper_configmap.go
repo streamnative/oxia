@@ -23,10 +23,11 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
-	"github.com/streamnative/oxia/common/process"
 	v1 "k8s.io/api/core/v1" //nolint:revive
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
+
+	"github.com/streamnative/oxia/common/process"
 
 	"github.com/streamnative/oxia/coordinator/impl"
 )

@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
+
 	"github.com/streamnative/oxia/common/concurrent"
 	"github.com/streamnative/oxia/common/process"
 	"github.com/streamnative/oxia/common/rpc"
@@ -234,7 +235,7 @@ func (snm *shardNotificationsManager) multiplexNotifications(notifications proto
 func (snm *shardNotificationsManager) getNotifications() error {
 	leader := snm.nm.shardManager.Leader(snm.shard)
 
-	rpc, err := snm.nm.clientPool.GetClientRpc(leader)
+	client, err := snm.nm.clientPool.GetClientRpc(leader)
 	if err != nil {
 		return err
 	}
@@ -244,7 +245,7 @@ func (snm *shardNotificationsManager) getNotifications() error {
 		startOffsetExclusive = &snm.lastOffsetReceived
 	}
 
-	notifications, err := rpc.GetNotifications(snm.ctx, &proto.NotificationsRequest{
+	notifications, err := client.GetNotifications(snm.ctx, &proto.NotificationsRequest{
 		Shard:                snm.shard,
 		StartOffsetExclusive: startOffsetExclusive,
 	})

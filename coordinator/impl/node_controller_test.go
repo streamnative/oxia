@@ -19,9 +19,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/streamnative/oxia/common/constant"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"github.com/streamnative/oxia/common/constant"
 
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/proto"

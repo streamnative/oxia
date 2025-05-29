@@ -26,11 +26,12 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/pkg/errors"
+	"go.uber.org/multierr"
+	"google.golang.org/grpc/status"
+
 	"github.com/streamnative/oxia/common/constant"
 	"github.com/streamnative/oxia/common/process"
 	time2 "github.com/streamnative/oxia/common/time"
-	"go.uber.org/multierr"
-	"google.golang.org/grpc/status"
 
 	"github.com/streamnative/oxia/common/metric"
 	"github.com/streamnative/oxia/coordinator/model"

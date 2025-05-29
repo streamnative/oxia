@@ -22,10 +22,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
-	"github.com/streamnative/oxia/common/constant"
-	"github.com/streamnative/oxia/common/time"
 	"github.com/stretchr/testify/assert"
 	pb "google.golang.org/protobuf/proto"
+
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/time"
 
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/wal"

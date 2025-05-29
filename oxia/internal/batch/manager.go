@@ -18,8 +18,9 @@ import (
 	"context"
 	"sync"
 
-	"github.com/streamnative/oxia/oxia/batch"
 	"go.uber.org/multierr"
+
+	"github.com/streamnative/oxia/oxia/batch"
 )
 
 func NewManager(ctx context.Context, batcherFactory func(context.Context, *int64) batch.Batcher) *Manager {

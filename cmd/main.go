@@ -20,9 +20,10 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"go.uber.org/automaxprocs/maxprocs"
+
 	"github.com/streamnative/oxia/common/logging"
 	"github.com/streamnative/oxia/common/process"
-	"go.uber.org/automaxprocs/maxprocs"
 
 	"github.com/streamnative/oxia/cmd/client"
 	"github.com/streamnative/oxia/cmd/coordinator"

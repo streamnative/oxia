@@ -29,9 +29,9 @@ func NewShardStrategy() ShardStrategy {
 }
 
 func (s *shardStrategyImpl) Get(key string) func(Shard) bool {
-	hash := s.hashFunc(key)
+	code := s.hashFunc(key)
 	return func(shard Shard) bool {
 		hashRange := shard.HashRange
-		return hashRange.MinInclusive <= hash && hash <= hashRange.MaxInclusive
+		return hashRange.MinInclusive <= code && code <= hashRange.MaxInclusive
 	}
 }

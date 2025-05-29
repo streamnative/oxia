@@ -21,6 +21,7 @@ import (
 	"sync/atomic"
 
 	"github.com/pkg/errors"
+
 	"github.com/streamnative/oxia/common/process"
 	"github.com/streamnative/oxia/common/rpc"
 

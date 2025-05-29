@@ -26,10 +26,11 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/dustin/go-humanize"
-	"github.com/streamnative/oxia/common/process"
-	time2 "github.com/streamnative/oxia/common/time"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/streamnative/oxia/common/process"
+	time2 "github.com/streamnative/oxia/common/time"
 
 	"github.com/streamnative/oxia/common/metric"
 	"github.com/streamnative/oxia/proto"

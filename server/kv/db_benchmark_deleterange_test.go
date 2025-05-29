@@ -19,10 +19,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/streamnative/oxia/common/constant"
-	time2 "github.com/streamnative/oxia/common/time"
 	"github.com/stretchr/testify/assert"
 	"k8s.io/utils/ptr"
+
+	"github.com/streamnative/oxia/common/constant"
+	time2 "github.com/streamnative/oxia/common/time"
 
 	"github.com/streamnative/oxia/proto"
 )

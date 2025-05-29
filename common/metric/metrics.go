@@ -26,9 +26,10 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/streamnative/oxia/common/process"
 	"go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/sdk/metric"
+
+	"github.com/streamnative/oxia/common/process"
 )
 
 func init() {

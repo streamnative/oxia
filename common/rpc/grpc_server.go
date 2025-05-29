@@ -24,11 +24,12 @@ import (
 	"time"
 
 	grpcprometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
-	"github.com/streamnative/oxia/common/process"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
+
+	"github.com/streamnative/oxia/common/process"
 
 	"github.com/streamnative/oxia/server/auth"
 )

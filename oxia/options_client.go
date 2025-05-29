@@ -20,11 +20,12 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
-	"github.com/streamnative/oxia/common/constant"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/multierr"
+
+	"github.com/streamnative/oxia/common/constant"
 
 	"github.com/streamnative/oxia/oxia/auth"
 )

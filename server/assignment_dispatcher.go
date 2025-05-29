@@ -20,9 +20,6 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/streamnative/oxia/common/constant"
-	"github.com/streamnative/oxia/common/rpc"
-	"github.com/streamnative/oxia/common/sharding"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -30,6 +27,10 @@ import (
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
+
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/rpc"
+	"github.com/streamnative/oxia/common/sharding"
 
 	"github.com/streamnative/oxia/common/metric"
 	"github.com/streamnative/oxia/proto"

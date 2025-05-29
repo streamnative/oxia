@@ -24,8 +24,9 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/dgraph-io/ristretto"
 	"github.com/pkg/errors"
-	"github.com/streamnative/oxia/common/process"
 	"go.uber.org/multierr"
+
+	"github.com/streamnative/oxia/common/process"
 )
 
 // Cache provides a view of the data stored in Oxia that is locally cached.

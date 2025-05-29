@@ -21,10 +21,11 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	pb "google.golang.org/protobuf/proto"
+
 	"github.com/streamnative/oxia/common/concurrent"
 	"github.com/streamnative/oxia/common/process"
 	time2 "github.com/streamnative/oxia/common/time"
-	pb "google.golang.org/protobuf/proto"
 
 	"github.com/streamnative/oxia/proto"
 )

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
 	"github.com/streamnative/oxia/common/process"
 
 	"github.com/streamnative/oxia/cmd/flag"

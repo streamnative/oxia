@@ -19,8 +19,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/streamnative/oxia/common/object"
 	"go.uber.org/multierr"
+
+	"github.com/streamnative/oxia/common/object"
 
 	"github.com/streamnative/oxia/server/util"
 	"github.com/streamnative/oxia/server/wal/codec"

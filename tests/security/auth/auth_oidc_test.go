@@ -24,12 +24,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/oauth2-proxy/mockoidc"
 	"github.com/pkg/errors"
-	"github.com/streamnative/oxia/common/constant"
-	"github.com/streamnative/oxia/common/rpc"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/util/json"
+
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/rpc"
 
 	"github.com/streamnative/oxia/coordinator/impl"
 	"github.com/streamnative/oxia/coordinator/model"
