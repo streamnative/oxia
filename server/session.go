@@ -32,19 +32,24 @@ import (
 type session struct {
 	io.Closer
 	sync.Mutex
+
+	ctx       context.Context
+	ctxCancel context.CancelFunc
+	latch     sync.WaitGroup
+
 	id             SessionId
 	clientIdentity string
 	shardId        int64
 	timeout        time.Duration
 	sm             *sessionManager
 	heartbeatCh    chan bool
-	cancel         context.CancelFunc
-	ctx            context.Context
 	log            *slog.Logger
 }
 
 func startSession(sessionId SessionId, sessionMetadata *proto.SessionMetadata, sm *sessionManager) *session {
 	s := &session{
+		latch: sync.WaitGroup{},
+
 		id:             sessionId,
 		clientIdentity: sessionMetadata.Identity,
 		timeout:        time.Duration(sessionMetadata.TimeoutMs) * time.Millisecond,
@@ -60,9 +65,9 @@ func startSession(sessionId SessionId, sessionMetadata *proto.SessionMetadata, s
 		),
 	}
 	sm.sessions.Put(sessionId, s)
+	s.ctx, s.ctxCancel = context.WithCancel(context.Background())
 
-	s.ctx, s.cancel = context.WithCancel(context.Background())
-
+	s.latch.Add(1)
 	go common.DoWithLabels(s.ctx, map[string]string{
 		"oxia":            "session",
 		"client-identity": sessionMetadata.Identity,
@@ -71,20 +76,21 @@ func startSession(sessionId SessionId, sessionMetadata *proto.SessionMetadata, s
 		"shard":           fmt.Sprintf("%d", sm.shardId),
 	}, s.waitForHeartbeats)
 
-	s.log.Info("Session started",
-		slog.Duration("session-timeout", s.timeout))
+	s.log.Info("Session started", slog.Duration("session-timeout", s.timeout))
 	return s
 }
 
 func (s *session) Close() {
 	s.Lock()
-	defer s.Unlock()
-	s.cancel()
+	s.ctxCancel()
 	if s.heartbeatCh != nil {
 		close(s.heartbeatCh)
 		s.heartbeatCh = nil
 	}
+	s.Unlock()
 	s.log.Debug("Session channels closed")
+	// wait until all the background goroutine gracefully shutdown
+	s.latch.Wait()
 }
 
 func (s *session) delete() error {
@@ -156,27 +162,26 @@ func (s *session) waitForHeartbeats() {
 	heartbeatChannel := s.heartbeatCh
 	s.Unlock()
 	s.log.Debug("Waiting for heartbeats")
+
+	defer s.latch.Done()
 	for {
-		var timer = time.NewTimer(s.timeout)
-		var timeoutCh = timer.C
+		timeoutTimer := time.NewTimer(s.timeout)
+
 		select {
+		case <-s.ctx.Done():
+			return
 		case heartbeat := <-heartbeatChannel:
 			if !heartbeat {
 				// The channel is closed, so the session must be closing
 				return
 			}
-			timer.Reset(s.timeout)
-		case <-timeoutCh:
+			timeoutTimer.Reset(s.timeout)
+		case <-timeoutTimer.C:
 			s.log.Warn("Session expired")
 
 			s.Close()
-			err := s.delete()
-
-			if err != nil {
-				s.log.Error(
-					"Failed to delete session",
-					slog.Any("error", err),
-				)
+			if err := s.delete(); err != nil {
+				s.log.Error("Failed to delete session", slog.Any("error", err))
 			}
 
 			s.sm.Lock()
