@@ -81,6 +81,12 @@ func startSession(sessionId SessionId, sessionMetadata *proto.SessionMetadata, s
 }
 
 func (s *session) Close() {
+	s.close()
+	// wait until all the background goroutine gracefully shutdown
+	s.latch.Wait()
+}
+
+func (s *session) close() {
 	s.Lock()
 	s.ctxCancel()
 	if s.heartbeatCh != nil {
@@ -89,8 +95,6 @@ func (s *session) Close() {
 	}
 	s.Unlock()
 	s.log.Debug("Session channels closed")
-	// wait until all the background goroutine gracefully shutdown
-	s.latch.Wait()
 }
 
 func (s *session) delete() error {
@@ -179,7 +183,7 @@ func (s *session) waitForHeartbeats() {
 		case <-timeoutTimer.C:
 			s.log.Warn("Session expired")
 
-			s.Close()
+			s.close()
 			if err := s.delete(); err != nil {
 				s.log.Error("Failed to delete session", slog.Any("error", err))
 			}
