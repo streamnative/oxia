@@ -1,41 +1,21 @@
-# StreamNative Oxia
+<p align="center">
+  <img src="docs/oxia-logo.png" width="200" />
+</p>
 
-<img align="right" width="350" height="350" src="docs/oxia-logo.png">
+<h2 align="center">Oxia</h1>
+a robust, scalable metadata store and coordination system designed for large-scale distributed systems, with built-in support for stream index storage to optimize real-time data management.
+<p align="center">
+  <a href="https://github.com/streamnative/oxia/blob/main/docs/getting-started.md">Getting Started </a> | <a href="https://github.com/streamnative/oxia/tree/main/docs">Documents</a>
+</p>
 
-[![Build](https://github.com/streamnative/oxia/actions/workflows/pr_build_and_test.yaml/badge.svg)](https://github.com/streamnative/oxia/actions/workflows/pr_build_and_test.yaml)
+<p align="center">
+  <a href="https://github.com/streamnative/oxia/actions/workflows/pr_build_and_test.yaml/badge.svg"><img src="https://github.com/streamnative/oxia/actions/workflows/pr_build_and_test.yaml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/streamnative/oxia/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-white.svg" alt="License"></a>
+  <a href="https://github.com/streamnative/oxia/discussions/new/choose"><img src="https://img.shields.io/badge/Github-Discussion-blue.svg?logo=refinedgithub" alt="Github Discussion"></a>
+</p>
 
-Oxia is a scalable metadata store and coordination system that can be used as the core infrastructure to build
-large scale distributed systems.
+## Contributing to Oxia
 
-## Why Oxia?
-
-* Design optimized for Kubernetes environment
-* Transparent horizontal scalability
-* Linearizable per-key operations
-* Able to sustain millions of read/write per second
-* Able to store 100s of GBs
-
-## Features
-
-* Key-Value interface
-* Notification mechanism
-* Ephemeral records
-* Automated session management
-
-## Documentation
-
-* [Design goals](docs/design-goals.md)
-* [Architecture](docs/architecture.md)
-* [Getting started with Oxia](docs/getting-started.md)
-* [Go client API](docs/go-api.md)
-* [Deploy using Helm Chart](docs/k8s-deploy.md)
-* [Deploy using bare metal](docs/bare-metal-deploy.md)
-* Developer docs 
-  * [Replication protocol](docs/replication-protocol.md)
-    * [Coordinator](docs/replication-coordinator.md)
-    * [Storage](docs/replication-storage.md)
-  * [Verifying correctness](docs/correctness.md) 
-  * [Oxia's K8S resources](docs/kubernetes-oxia-cluster.md)
 
 ## License
 
