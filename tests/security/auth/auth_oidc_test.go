@@ -29,7 +29,9 @@ import (
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/util/json"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/rpc"
+
 	"github.com/streamnative/oxia/coordinator/impl"
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/oxia"
@@ -96,14 +98,14 @@ func newOxiaClusterWithAuth(t *testing.T, issueURL string, audiences string) (ad
 	metadataProvider := impl.NewMetadataProviderMemory()
 	clusterConfig := model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
-			Name:              common.DefaultNamespace,
+			Name:              constant.DefaultNamespace,
 			ReplicationFactor: 3,
 			InitialShardCount: 1,
 		}},
 		Servers: []model.Server{s1Addr, s2Addr, s3Addr},
 	}
 
-	clientPool := common.NewClientPool(nil, nil)
+	clientPool := rpc.NewClientPool(nil, nil)
 
 	coordinator, err := impl.NewCoordinator(metadataProvider,
 		func() (model.ClusterConfig, error) { return clusterConfig, nil },

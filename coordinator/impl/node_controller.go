@@ -25,8 +25,10 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/common/metrics"
+	"github.com/streamnative/oxia/common/process"
+	time2 "github.com/streamnative/oxia/common/time"
+
+	"github.com/streamnative/oxia/common/metric"
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/proto"
 )
@@ -75,8 +77,8 @@ type nodeController struct {
 
 	initialRetryBackoff time.Duration
 
-	nodeIsRunningGauge metrics.Gauge
-	failedHealthChecks metrics.Counter
+	nodeIsRunningGauge metric.Gauge
+	failedHealthChecks metric.Counter
 }
 
 func NewNodeController(addr model.Server,
@@ -104,14 +106,14 @@ func newNodeController(server model.Server,
 		),
 		initialRetryBackoff: initialRetryBackoff,
 
-		failedHealthChecks: metrics.NewCounter("oxia_coordinator_node_health_checks_failed",
+		failedHealthChecks: metric.NewCounter("oxia_coordinator_node_health_checks_failed",
 			"The number of failed health checks to a node", "count", labels),
 	}
 
 	nc.ctx, nc.cancel = context.WithCancel(context.Background())
 	nc.healthCheckCtx, nc.healthCheckCancel = context.WithCancel(nc.ctx)
 
-	nc.nodeIsRunningGauge = metrics.NewGauge("oxia_coordinator_node_running",
+	nc.nodeIsRunningGauge = metric.NewGauge("oxia_coordinator_node_running",
 		"Whether the node is considered to be running by the coordinator", "count", labels, func() int64 {
 			if nc.status == Running {
 				return 1
@@ -119,7 +121,7 @@ func newNodeController(server model.Server,
 			return 0
 		})
 
-	go common.DoWithLabels(
+	go process.DoWithLabels(
 		nc.ctx,
 		map[string]string{
 			"oxia":   "node-controller",
@@ -128,7 +130,7 @@ func newNodeController(server model.Server,
 		nc.healthCheckWithRetries,
 	)
 
-	go common.DoWithLabels(
+	go process.DoWithLabels(
 		nc.ctx,
 		map[string]string{
 			"oxia":   "node-controller-send-updates",
@@ -155,7 +157,7 @@ func (n *nodeController) SetStatus(status NodeStatus) {
 }
 
 func (n *nodeController) healthCheckWithRetries() {
-	backOff := common.NewBackOffWithInitialInterval(n.ctx, n.initialRetryBackoff)
+	backOff := time2.NewBackOffWithInitialInterval(n.ctx, n.initialRetryBackoff)
 	_ = backoff.RetryNotify(func() error {
 		return n.healthCheck(backOff)
 	}, backOff, func(err error, duration time.Duration) {
@@ -216,7 +218,7 @@ func (n *nodeController) healthCheck(backoff backoff.BackOff) error {
 	ctx, cancel := context.WithCancel(n.ctx)
 	defer cancel()
 
-	go common.DoWithLabels(
+	go process.DoWithLabels(
 		ctx,
 		map[string]string{
 			"oxia":   "node-controller-health-check-ping",
@@ -275,7 +277,7 @@ func (n *nodeController) processHealthCheckResponse(res *grpc_health_v1.HealthCh
 }
 
 func (n *nodeController) sendAssignmentsUpdatesWithRetries() {
-	backOff := common.NewBackOffWithInitialInterval(n.ctx, n.initialRetryBackoff)
+	backOff := time2.NewBackOffWithInitialInterval(n.ctx, n.initialRetryBackoff)
 
 	_ = backoff.RetryNotify(func() error {
 		return n.sendAssignmentsUpdates(backOff)

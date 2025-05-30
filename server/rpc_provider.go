@@ -23,7 +23,9 @@ import (
 
 	"google.golang.org/grpc/metadata"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/rpc"
+
 	"github.com/streamnative/oxia/proto"
 )
 
@@ -37,47 +39,47 @@ type ReplicationRpcProvider interface {
 }
 
 type replicationRpcProvider struct {
-	pool common.ClientPool
+	pool rpc.ClientPool
 }
 
 func NewReplicationRpcProvider(tlsConf *tls.Config) ReplicationRpcProvider {
 	return &replicationRpcProvider{
-		pool: common.NewClientPool(tlsConf, nil),
+		pool: rpc.NewClientPool(tlsConf, nil),
 	}
 }
 
 func (r *replicationRpcProvider) GetReplicateStream(ctx context.Context, follower string, namespace string, shard int64, term int64) (
 	proto.OxiaLogReplication_ReplicateClient, error) {
-	rpc, err := r.pool.GetReplicationRpc(follower)
+	client, err := r.pool.GetReplicationRpc(follower)
 	if err != nil {
 		return nil, err
 	}
 
-	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataNamespace, namespace)
-	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataShardId, fmt.Sprintf("%d", shard))
-	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataTerm, fmt.Sprintf("%d", term))
+	ctx = metadata.AppendToOutgoingContext(ctx, constant.MetadataNamespace, namespace)
+	ctx = metadata.AppendToOutgoingContext(ctx, constant.MetadataShardId, fmt.Sprintf("%d", shard))
+	ctx = metadata.AppendToOutgoingContext(ctx, constant.MetadataTerm, fmt.Sprintf("%d", term))
 
-	stream, err := rpc.Replicate(ctx)
+	stream, err := client.Replicate(ctx)
 	return stream, err
 }
 
 func (r *replicationRpcProvider) SendSnapshot(ctx context.Context, follower string, namespace string, shard int64, term int64) (
 	proto.OxiaLogReplication_SendSnapshotClient, error) {
-	rpc, err := r.pool.GetReplicationRpc(follower)
+	client, err := r.pool.GetReplicationRpc(follower)
 	if err != nil {
 		return nil, err
 	}
 
-	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataNamespace, namespace)
-	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataShardId, fmt.Sprintf("%d", shard))
-	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataTerm, fmt.Sprintf("%d", term))
+	ctx = metadata.AppendToOutgoingContext(ctx, constant.MetadataNamespace, namespace)
+	ctx = metadata.AppendToOutgoingContext(ctx, constant.MetadataShardId, fmt.Sprintf("%d", shard))
+	ctx = metadata.AppendToOutgoingContext(ctx, constant.MetadataTerm, fmt.Sprintf("%d", term))
 
-	stream, err := rpc.SendSnapshot(ctx)
+	stream, err := client.SendSnapshot(ctx)
 	return stream, err
 }
 
 func (r *replicationRpcProvider) Truncate(follower string, req *proto.TruncateRequest) (*proto.TruncateResponse, error) {
-	rpc, err := r.pool.GetReplicationRpc(follower)
+	client, err := r.pool.GetReplicationRpc(follower)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +87,7 @@ func (r *replicationRpcProvider) Truncate(follower string, req *proto.TruncateRe
 	ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
 	defer cancel()
 
-	return rpc.Truncate(ctx, req)
+	return client.Truncate(ctx, req)
 }
 
 func (r *replicationRpcProvider) Close() error {

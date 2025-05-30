@@ -26,13 +26,16 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/common/metrics"
+	"github.com/streamnative/oxia/common/concurrent"
+	"github.com/streamnative/oxia/common/constant"
+	time2 "github.com/streamnative/oxia/common/time"
+
+	"github.com/streamnative/oxia/common/metric"
 	"github.com/streamnative/oxia/proto"
 )
 
 const (
-	notificationsPrefix      = common.InternalKeyPrefix + "notifications"
+	notificationsPrefix      = constant.InternalKeyPrefix + "notifications"
 	maxNotificationBatchSize = 100
 )
 
@@ -59,7 +62,7 @@ func newNotifications(shardId int64, offset int64, timestamp uint64) *notificati
 }
 
 func (n *notifications) Modified(key string, versionId, modificationsCount int64) {
-	if strings.HasPrefix(key, common.InternalKeyPrefix) {
+	if strings.HasPrefix(key, constant.InternalKeyPrefix) {
 		return
 	}
 	nType := proto.NotificationType_KEY_CREATED
@@ -73,7 +76,7 @@ func (n *notifications) Modified(key string, versionId, modificationsCount int64
 }
 
 func (n *notifications) Deleted(key string) {
-	if strings.HasPrefix(key, common.InternalKeyPrefix) {
+	if strings.HasPrefix(key, constant.InternalKeyPrefix) {
 		return
 	}
 	n.batch.Notifications[key] = &proto.Notification{
@@ -82,7 +85,7 @@ func (n *notifications) Deleted(key string) {
 }
 
 func (n *notifications) DeletedRange(keyStartInclusive, keyEndExclusive string) {
-	if strings.HasPrefix(keyStartInclusive, common.InternalKeyPrefix) {
+	if strings.HasPrefix(keyStartInclusive, constant.InternalKeyPrefix) {
 		return
 	}
 	n.batch.Notifications[keyStartInclusive] = &proto.Notification{
@@ -104,7 +107,7 @@ func parseNotificationKey(key string) (offset int64, err error) {
 
 type notificationsTracker struct {
 	sync.Mutex
-	cond       common.ConditionContext
+	cond       concurrent.ConditionContext
 	shard      int64
 	lastOffset atomic.Int64
 	closed     atomic.Bool
@@ -113,33 +116,33 @@ type notificationsTracker struct {
 
 	ctx       context.Context
 	cancel    context.CancelFunc
-	waitClose common.WaitGroup
+	waitClose concurrent.WaitGroup
 
-	readCounter      metrics.Counter
-	readBatchCounter metrics.Counter
-	readBytesCounter metrics.Counter
+	readCounter      metric.Counter
+	readBatchCounter metric.Counter
+	readBytesCounter metric.Counter
 }
 
-func newNotificationsTracker(namespace string, shard int64, lastOffset int64, kv KV, notificationRetentionTime time.Duration, clock common.Clock) *notificationsTracker {
-	labels := metrics.LabelsForShard(namespace, shard)
+func newNotificationsTracker(namespace string, shard int64, lastOffset int64, kv KV, notificationRetentionTime time.Duration, clock time2.Clock) *notificationsTracker {
+	labels := metric.LabelsForShard(namespace, shard)
 	nt := &notificationsTracker{
 		shard:     shard,
 		kv:        kv,
-		waitClose: common.NewWaitGroup(1),
+		waitClose: concurrent.NewWaitGroup(1),
 		log: slog.With(
 			slog.String("component", "notifications-tracker"),
 			slog.String("namespace", namespace),
 			slog.Int64("shard", shard),
 		),
-		readCounter: metrics.NewCounter("oxia_server_notifications_read",
+		readCounter: metric.NewCounter("oxia_server_notifications_read",
 			"The total number of notifications", "count", labels),
-		readBatchCounter: metrics.NewCounter("oxia_server_notifications_read_batches",
+		readBatchCounter: metric.NewCounter("oxia_server_notifications_read_batches",
 			"The total number of notification batches", "count", labels),
-		readBytesCounter: metrics.NewCounter("oxia_server_notifications_read",
-			"The total size in bytes of notifications reads", metrics.Bytes, labels),
+		readBytesCounter: metric.NewCounter("oxia_server_notifications_read",
+			"The total size in bytes of notifications reads", metric.Bytes, labels),
 	}
 	nt.lastOffset.Store(lastOffset)
-	nt.cond = common.NewConditionContext(nt)
+	nt.cond = concurrent.NewConditionContext(nt)
 	nt.ctx, nt.cancel = context.WithCancel(context.Background())
 	newNotificationsTrimmer(nt.ctx, namespace, shard, kv, notificationRetentionTime, nt.waitClose, clock)
 	return nt
@@ -167,7 +170,7 @@ func (nt *notificationsTracker) waitForNotifications(ctx context.Context, startO
 	}
 
 	if nt.closed.Load() {
-		return common.ErrAlreadyClosed
+		return constant.ErrAlreadyClosed
 	}
 
 	return nil

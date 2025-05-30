@@ -21,18 +21,18 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/logging"
 )
 
 func TestCall_LogLevel_Default(t *testing.T) {
 	var captured slog.Level
 	rootCmd.SetArgs([]string{})
 	rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		captured = common.LogLevel
+		captured = logging.LogLevel
 		return nil
 	}
 	err := rootCmd.Execute()
-	assert.Equal(t, common.DefaultLogLevel, captured)
+	assert.Equal(t, logging.DefaultLogLevel, captured)
 	assert.NoError(t, err)
 }
 
@@ -55,7 +55,7 @@ func TestCall_LogLevel(t *testing.T) {
 			rootCmd.SetArgs(append([]string{"-l"}, test.level))
 			rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
 				invoked = true
-				assert.Equal(t, test.expectedLevel, common.LogLevel)
+				assert.Equal(t, test.expectedLevel, logging.LogLevel)
 				return nil
 			}
 			err := rootCmd.Execute()

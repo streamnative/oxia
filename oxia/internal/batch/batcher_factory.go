@@ -18,13 +18,13 @@ import (
 	"context"
 	"time"
 
-	"github.com/streamnative/oxia/common/batch"
+	batch2 "github.com/streamnative/oxia/oxia/batch"
 	"github.com/streamnative/oxia/oxia/internal"
 	"github.com/streamnative/oxia/oxia/internal/metrics"
 )
 
 type BatcherFactory struct {
-	batch.BatcherFactory
+	batch2.BatcherFactory
 	Namespace      string
 	Executor       internal.Executor
 	RequestTimeout time.Duration
@@ -41,7 +41,7 @@ func NewBatcherFactory(
 	return &BatcherFactory{
 		Namespace: namespace,
 		Executor:  executor,
-		BatcherFactory: batch.BatcherFactory{
+		BatcherFactory: batch2.BatcherFactory{
 			Linger:              batchLinger,
 			MaxRequestsPerBatch: maxRequestsPerBatch,
 		},
@@ -50,7 +50,7 @@ func NewBatcherFactory(
 	}
 }
 
-func (b *BatcherFactory) NewWriteBatcher(ctx context.Context, shardId *int64, maxWriteBatchSize int) batch.Batcher {
+func (b *BatcherFactory) NewWriteBatcher(ctx context.Context, shardId *int64, maxWriteBatchSize int) batch2.Batcher {
 	return b.newBatcher(ctx, shardId, "write", writeBatchFactory{
 		execute:        b.Executor.ExecuteWrite,
 		metrics:        b.Metrics,
@@ -59,7 +59,7 @@ func (b *BatcherFactory) NewWriteBatcher(ctx context.Context, shardId *int64, ma
 	}.newBatch)
 }
 
-func (b *BatcherFactory) NewReadBatcher(ctx context.Context, shardId *int64) batch.Batcher {
+func (b *BatcherFactory) NewReadBatcher(ctx context.Context, shardId *int64) batch2.Batcher {
 	return b.newBatcher(ctx, shardId, "read", readBatchFactory{
 		execute:        b.Executor.ExecuteRead,
 		metrics:        b.Metrics,
@@ -67,8 +67,8 @@ func (b *BatcherFactory) NewReadBatcher(ctx context.Context, shardId *int64) bat
 	}.newBatch)
 }
 
-func (b *BatcherFactory) newBatcher(ctx context.Context, shardId *int64, batcherType string, batchFactory func(shardId *int64) batch.Batch) batch.Batcher {
-	return b.NewBatcher(ctx, *shardId, batcherType, func() batch.Batch {
+func (b *BatcherFactory) newBatcher(ctx context.Context, shardId *int64, batcherType string, batchFactory func(shardId *int64) batch2.Batch) batch2.Batcher {
+	return b.NewBatcher(ctx, *shardId, batcherType, func() batch2.Batch {
 		return batchFactory(shardId)
 	})
 }

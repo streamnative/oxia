@@ -18,7 +18,7 @@ import (
 	"log/slog"
 	"sort"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/collection"
 	"github.com/streamnative/oxia/coordinator/model"
 )
 
@@ -30,7 +30,7 @@ type SwapNodeAction struct {
 
 type ServerContext struct {
 	Server model.Server
-	Shards common.Set[int64]
+	Shards collection.Set[int64]
 }
 
 // Make sure every server is assigned a similar number of shards
@@ -145,7 +145,7 @@ func getShardsPerServer(servers []model.Server, currentStatus *model.ClusterStat
 	for _, s := range servers {
 		existingServers[s.GetIdentifier()] = ServerContext{
 			Server: s,
-			Shards: common.NewSet[int64](),
+			Shards: collection.NewSet[int64](),
 		}
 	}
 
@@ -161,7 +161,7 @@ func getShardsPerServer(servers []model.Server, currentStatus *model.ClusterStat
 				if _, ok := deletedServers[candidate.GetIdentifier()]; !ok {
 					deletedServers[candidate.GetIdentifier()] = ServerContext{
 						Server: candidate,
-						Shards: common.NewSet[int64]()}
+						Shards: collection.NewSet[int64]()}
 				}
 
 				deletedServers[candidate.GetIdentifier()].Shards.Add(shardId)

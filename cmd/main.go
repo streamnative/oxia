@@ -22,6 +22,9 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/automaxprocs/maxprocs"
 
+	"github.com/streamnative/oxia/common/logging"
+	"github.com/streamnative/oxia/common/process"
+
 	"github.com/streamnative/oxia/cmd/client"
 	"github.com/streamnative/oxia/cmd/coordinator"
 	"github.com/streamnative/oxia/cmd/health"
@@ -30,7 +33,6 @@ import (
 	"github.com/streamnative/oxia/cmd/server"
 	"github.com/streamnative/oxia/cmd/standalone"
 	"github.com/streamnative/oxia/cmd/wal"
-	"github.com/streamnative/oxia/common"
 )
 
 var (
@@ -51,10 +53,10 @@ func (l LogLevelError) Error() string {
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVarP(&logLevelStr, "log-level", "l", common.DefaultLogLevel.String(), "Set logging level [debug|info|warn|error]")
-	rootCmd.PersistentFlags().BoolVarP(&common.LogJSON, "log-json", "j", false, "Print logs in JSON format")
-	rootCmd.PersistentFlags().BoolVar(&common.PprofEnable, "profile", false, "Enable pprof profiler")
-	rootCmd.PersistentFlags().StringVar(&common.PprofBindAddress, "profile-bind-address", "127.0.0.1:6060", "Bind address for pprof")
+	rootCmd.PersistentFlags().StringVarP(&logLevelStr, "log-level", "l", logging.DefaultLogLevel.String(), "Set logging level [debug|info|warn|error]")
+	rootCmd.PersistentFlags().BoolVarP(&logging.LogJSON, "log-json", "j", false, "Print logs in JSON format")
+	rootCmd.PersistentFlags().BoolVar(&process.PprofEnable, "profile", false, "Enable pprof profiler")
+	rootCmd.PersistentFlags().StringVar(&process.PprofBindAddress, "profile-bind-address", "127.0.0.1:6060", "Bind address for pprof")
 
 	rootCmd.AddCommand(client.Cmd)
 	rootCmd.AddCommand(coordinator.Cmd)
@@ -67,17 +69,17 @@ func init() {
 }
 
 func configureLogLevel(_ *cobra.Command, _ []string) error {
-	logLevel, err := common.ParseLogLevel(logLevelStr)
+	logLevel, err := logging.ParseLogLevel(logLevelStr)
 	if err != nil {
 		return LogLevelError(logLevelStr)
 	}
-	common.LogLevel = logLevel
-	common.ConfigureLogger()
+	logging.LogLevel = logLevel
+	logging.ConfigureLogger()
 	return nil
 }
 
 func main() {
-	common.DoWithLabels(
+	process.DoWithLabels(
 		context.Background(),
 		map[string]string{
 			"oxia": "main",

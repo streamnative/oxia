@@ -21,7 +21,9 @@ import (
 
 	"google.golang.org/grpc/metadata"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/rpc"
+
 	"github.com/streamnative/oxia/proto"
 )
 
@@ -35,7 +37,7 @@ type Executor interface {
 type executorImpl struct {
 	sync.RWMutex
 
-	ClientPool     common.ClientPool
+	ClientPool     rpc.ClientPool
 	ShardManager   ShardManager
 	ServiceAddress string
 
@@ -45,7 +47,7 @@ type executorImpl struct {
 	namespace string
 }
 
-func NewExecutor(ctx context.Context, namespace string, pool common.ClientPool, manager ShardManager, serviceAddress string) Executor {
+func NewExecutor(ctx context.Context, namespace string, pool rpc.ClientPool, manager ShardManager, serviceAddress string) Executor {
 	e := &executorImpl{
 		ctx:            ctx,
 		namespace:      namespace,
@@ -68,30 +70,30 @@ func (e *executorImpl) ExecuteWrite(ctx context.Context, request *proto.WriteReq
 }
 
 func (e *executorImpl) ExecuteRead(ctx context.Context, request *proto.ReadRequest) (proto.OxiaClient_ReadClient, error) {
-	rpc, err := e.rpc(request.Shard)
+	client, err := e.rpc(request.Shard)
 	if err != nil {
 		return nil, err
 	}
 
-	return rpc.Read(ctx, request)
+	return client.Read(ctx, request)
 }
 
 func (e *executorImpl) ExecuteList(ctx context.Context, request *proto.ListRequest) (proto.OxiaClient_ListClient, error) {
-	rpc, err := e.rpc(request.Shard)
+	client, err := e.rpc(request.Shard)
 	if err != nil {
 		return nil, err
 	}
 
-	return rpc.List(ctx, request)
+	return client.List(ctx, request)
 }
 
 func (e *executorImpl) ExecuteRangeScan(ctx context.Context, request *proto.RangeScanRequest) (proto.OxiaClient_RangeScanClient, error) {
-	rpc, err := e.rpc(request.Shard)
+	client, err := e.rpc(request.Shard)
 	if err != nil {
 		return nil, err
 	}
 
-	return rpc.RangeScan(ctx, request)
+	return client.RangeScan(ctx, request)
 }
 
 func (e *executorImpl) rpc(shardId *int64) (proto.OxiaClientClient, error) {
@@ -102,11 +104,11 @@ func (e *executorImpl) rpc(shardId *int64) (proto.OxiaClientClient, error) {
 		target = e.ServiceAddress
 	}
 
-	rpc, err := e.ClientPool.GetClientRpc(target)
+	client, err := e.ClientPool.GetClientRpc(target)
 	if err != nil {
 		return nil, err
 	}
-	return rpc, nil
+	return client, nil
 }
 
 func (e *executorImpl) writeStream(shardId *int64) (*streamWrapper, error) {
@@ -120,15 +122,15 @@ func (e *executorImpl) writeStream(shardId *int64) (*streamWrapper, error) {
 
 	e.RUnlock()
 
-	rpc, err := e.rpc(shardId)
+	client, err := e.rpc(shardId)
 	if err != nil {
 		return nil, err
 	}
 
-	ctx := metadata.AppendToOutgoingContext(e.ctx, common.MetadataNamespace, e.namespace)
-	ctx = metadata.AppendToOutgoingContext(ctx, common.MetadataShardId, fmt.Sprintf("%d", *shardId))
+	ctx := metadata.AppendToOutgoingContext(e.ctx, constant.MetadataNamespace, e.namespace)
+	ctx = metadata.AppendToOutgoingContext(ctx, constant.MetadataShardId, fmt.Sprintf("%d", *shardId))
 
-	stream, err := rpc.WriteStream(ctx)
+	stream, err := client.WriteStream(ctx)
 	if err != nil {
 		return nil, err
 	}

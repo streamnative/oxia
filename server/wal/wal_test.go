@@ -23,7 +23,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/constant"
+
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/wal/codec"
 )
@@ -46,7 +47,7 @@ func createWal(t *testing.T) (Factory, Wal) {
 	t.Helper()
 
 	f := NewTestWalFactory(t)
-	w, err := f.NewWal(common.DefaultNamespace, shard, nil)
+	w, err := f.NewWal(constant.DefaultNamespace, shard, nil)
 	assert.NoError(t, err)
 
 	return f, w
@@ -283,7 +284,7 @@ func TestTruncate(t *testing.T) {
 	err = w.Close()
 	assert.NoError(t, err)
 
-	w, err = f.NewWal(common.DefaultNamespace, shard, nil)
+	w, err = f.NewWal(constant.DefaultNamespace, shard, nil)
 	assert.NoError(t, err)
 
 	// Read with forward reader from beginning
@@ -343,7 +344,7 @@ func TestReopen(t *testing.T) {
 	err := w.Close()
 	assert.NoError(t, err)
 
-	w, err = f.NewWal(common.DefaultNamespace, shard, nil)
+	w, err = f.NewWal(constant.DefaultNamespace, shard, nil)
 	assert.NoError(t, err)
 
 	// Read with forward reader from beginning
@@ -506,7 +507,7 @@ func TestDelete(t *testing.T) {
 
 	assert.NoError(t, w.Delete())
 
-	w, err := f.NewWal(common.DefaultNamespace, 1, nil)
+	w, err := f.NewWal(constant.DefaultNamespace, 1, nil)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, InvalidOffset, w.FirstOffset())

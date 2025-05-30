@@ -21,9 +21,10 @@ import (
 
 	"go.uber.org/multierr"
 
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/common/container"
-	"github.com/streamnative/oxia/common/metrics"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/rpc"
+
+	"github.com/streamnative/oxia/common/metric"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/auth"
 	"github.com/streamnative/oxia/server/kv"
@@ -45,7 +46,7 @@ type Standalone struct {
 	shardsDirector            ShardsDirector
 	shardAssignmentDispatcher ShardAssignmentsDispatcher
 
-	metrics *metrics.PrometheusMetrics
+	metrics *metric.PrometheusMetrics
 }
 
 func NewTestConfig(dir string) StandaloneConfig {
@@ -88,7 +89,7 @@ func NewStandalone(config StandaloneConfig) (*Standalone, error) {
 		return nil, err
 	}
 
-	s.rpc, err = newPublicRpcServer(container.Default, config.PublicServiceAddr, s.shardsDirector,
+	s.rpc, err = newPublicRpcServer(rpc.Default, config.PublicServiceAddr, s.shardsDirector,
 		nil, config.ServerTLS, &auth.Disabled)
 	if err != nil {
 		return nil, err
@@ -99,7 +100,7 @@ func NewStandalone(config StandaloneConfig) (*Standalone, error) {
 	s.rpc.assignmentDispatcher = s.shardAssignmentDispatcher
 
 	if config.MetricsServiceAddr != "" {
-		s.metrics, err = metrics.Start(config.MetricsServiceAddr)
+		s.metrics, err = metric.Start(config.MetricsServiceAddr)
 	}
 	if err != nil {
 		return nil, err
@@ -112,7 +113,7 @@ func (s *Standalone) initializeShards(numShards uint32) error {
 	var err error
 	for i := int64(0); i < int64(numShards); i++ {
 		var lc LeaderController
-		if lc, err = s.shardsDirector.GetOrCreateLeader(common.DefaultNamespace, i); err != nil {
+		if lc, err = s.shardsDirector.GetOrCreateLeader(constant.DefaultNamespace, i); err != nil {
 			return err
 		}
 

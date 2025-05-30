@@ -21,18 +21,21 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/logging"
+	time2 "github.com/streamnative/oxia/common/time"
+
 	"github.com/streamnative/oxia/proto"
 )
 
 func init() {
-	common.ConfigureLogger()
+	logging.ConfigureLogger()
 }
 
 func TestDB_Notifications(t *testing.T) {
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := NewDB(common.DefaultNamespace, 1, factory, 1*time.Hour, common.SystemClock)
+	db, err := NewDB(constant.DefaultNamespace, 1, factory, 1*time.Hour, time2.SystemClock)
 	assert.NoError(t, err)
 
 	t0 := now()
@@ -168,7 +171,7 @@ func TestDB_Notifications(t *testing.T) {
 func TestDB_NotificationsCancelWait(t *testing.T) {
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := NewDB(common.DefaultNamespace, 1, factory, 1*time.Hour, common.SystemClock)
+	db, err := NewDB(constant.DefaultNamespace, 1, factory, 1*time.Hour, time2.SystemClock)
 	assert.NoError(t, err)
 
 	t0 := now()
@@ -208,7 +211,7 @@ func TestDB_NotificationsCancelWait(t *testing.T) {
 func TestDB_NotificationsDisabled(t *testing.T) {
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := NewDB(common.DefaultNamespace, 1, factory, 1*time.Hour, common.SystemClock)
+	db, err := NewDB(constant.DefaultNamespace, 1, factory, 1*time.Hour, time2.SystemClock)
 	assert.NoError(t, err)
 
 	db.EnableNotifications(false)
@@ -231,7 +234,7 @@ func TestDB_NotificationsDisabled(t *testing.T) {
 func TestDB_NotificationsDeleteRange(t *testing.T) {
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	db, err := NewDB(common.DefaultNamespace, 1, factory, 1*time.Hour, common.SystemClock)
+	db, err := NewDB(constant.DefaultNamespace, 1, factory, 1*time.Hour, time2.SystemClock)
 	assert.NoError(t, err)
 
 	t0 := now()

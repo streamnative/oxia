@@ -21,7 +21,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/process"
+
 	"github.com/streamnative/oxia/oxia"
 	"github.com/streamnative/oxia/perf"
 )
@@ -38,7 +40,7 @@ var (
 )
 
 func init() {
-	defaultServiceAddress := fmt.Sprintf("localhost:%d", common.DefaultPublicPort)
+	defaultServiceAddress := fmt.Sprintf("localhost:%d", constant.DefaultPublicPort)
 	Cmd.Flags().StringVarP(&config.ServiceAddr, "service-address", "a", defaultServiceAddress, "Service address")
 	Cmd.PersistentFlags().StringVarP(&config.Namespace, "namespace", "n", oxia.DefaultNamespace, "The Oxia namespace to use")
 
@@ -53,7 +55,7 @@ func init() {
 }
 
 func exec(*cobra.Command, []string) {
-	common.RunProcess(runPerf)
+	process.RunProcess(runPerf)
 }
 
 type closer struct {

@@ -24,7 +24,11 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/concurrent"
+	"github.com/streamnative/oxia/common/process"
+	"github.com/streamnative/oxia/common/rpc"
+	time2 "github.com/streamnative/oxia/common/time"
+
 	"github.com/streamnative/oxia/oxia/internal"
 	"github.com/streamnative/oxia/proto"
 )
@@ -33,9 +37,9 @@ type notifications struct {
 	multiplexCh  chan *Notification
 	closeCh      chan any
 	shardManager internal.ShardManager
-	clientPool   common.ClientPool
+	clientPool   rpc.ClientPool
 
-	initWaitGroup common.WaitGroup
+	initWaitGroup concurrent.WaitGroup
 	ctx           context.Context
 	cancel        context.CancelFunc
 
@@ -43,7 +47,7 @@ type notifications struct {
 	cancelMultiplexChanClosed context.CancelFunc
 }
 
-func newNotifications(ctx context.Context, options clientOptions, clientPool common.ClientPool, shardManager internal.ShardManager) (*notifications, error) {
+func newNotifications(ctx context.Context, options clientOptions, clientPool rpc.ClientPool, shardManager internal.ShardManager) (*notifications, error) {
 	nm := &notifications{
 		multiplexCh:  make(chan *Notification, 100),
 		closeCh:      make(chan any),
@@ -56,13 +60,13 @@ func newNotifications(ctx context.Context, options clientOptions, clientPool com
 
 	// Create a notification manager for each shard
 	shards := shardManager.GetAll()
-	nm.initWaitGroup = common.NewWaitGroup(len(shards))
+	nm.initWaitGroup = concurrent.NewWaitGroup(len(shards))
 
 	for _, shard := range shards {
 		newShardNotificationsManager(shard, nm)
 	}
 
-	go common.DoWithLabels(
+	go process.DoWithLabels(
 		nm.ctx,
 		map[string]string{
 			"oxia": "notifications-manager-close",
@@ -127,14 +131,14 @@ func newShardNotificationsManager(shard int64, nm *notifications) *shardNotifica
 		ctx:                nm.ctx,
 		nm:                 nm,
 		lastOffsetReceived: -1,
-		backoff:            common.NewBackOffWithInitialInterval(nm.ctx, 1*time.Second),
+		backoff:            time2.NewBackOffWithInitialInterval(nm.ctx, 1*time.Second),
 		log: slog.With(
 			slog.String("component", "oxia-notifications-manager"),
 			slog.Int64("shard", shard),
 		),
 	}
 
-	go common.DoWithLabels(
+	go process.DoWithLabels(
 		snm.ctx,
 		map[string]string{
 			"oxia":  "notifications-manager",
@@ -231,7 +235,7 @@ func (snm *shardNotificationsManager) multiplexNotifications(notifications proto
 func (snm *shardNotificationsManager) getNotifications() error {
 	leader := snm.nm.shardManager.Leader(snm.shard)
 
-	rpc, err := snm.nm.clientPool.GetClientRpc(leader)
+	client, err := snm.nm.clientPool.GetClientRpc(leader)
 	if err != nil {
 		return err
 	}
@@ -241,7 +245,7 @@ func (snm *shardNotificationsManager) getNotifications() error {
 		startOffsetExclusive = &snm.lastOffsetReceived
 	}
 
-	notifications, err := rpc.GetNotifications(snm.ctx, &proto.NotificationsRequest{
+	notifications, err := client.GetNotifications(snm.ctx, &proto.NotificationsRequest{
 		Shard:                snm.shard,
 		StartOffsetExclusive: startOffsetExclusive,
 	})

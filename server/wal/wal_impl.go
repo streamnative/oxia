@@ -28,8 +28,13 @@ import (
 	"golang.org/x/exp/slices"
 	pb "google.golang.org/protobuf/proto"
 
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/common/metrics"
+	"github.com/streamnative/oxia/common/concurrent"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/object"
+	"github.com/streamnative/oxia/common/process"
+	time2 "github.com/streamnative/oxia/common/time"
+
+	"github.com/streamnative/oxia/common/metric"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/wal/codec"
 )
@@ -45,7 +50,7 @@ func NewWalFactory(options *FactoryOptions) Factory {
 }
 
 func (f *walFactory) NewWal(namespace string, shard int64, commitOffsetProvider CommitOffsetProvider) (Wal, error) {
-	impl, err := newWal(namespace, shard, f.options, commitOffsetProvider, common.SystemClock, DefaultCheckInterval)
+	impl, err := newWal(namespace, shard, f.options, commitOffsetProvider, time2.SystemClock, DefaultCheckInterval)
 	return impl, err
 }
 
@@ -78,15 +83,15 @@ type wal struct {
 
 	trimmer Trimmer
 
-	appendLatency metrics.LatencyHistogram
-	appendBytes   metrics.Counter
-	readLatency   metrics.LatencyHistogram
-	readBytes     metrics.Counter
-	trimOps       metrics.Counter
-	readErrors    metrics.Counter
-	writeErrors   metrics.Counter
-	activeEntries metrics.Gauge
-	syncLatency   metrics.LatencyHistogram
+	appendLatency metric.LatencyHistogram
+	appendBytes   metric.Counter
+	readLatency   metric.LatencyHistogram
+	readBytes     metric.Counter
+	trimOps       metric.Counter
+	readErrors    metric.Counter
+	writeErrors   metric.Counter
+	activeEntries metric.Gauge
+	syncLatency   metric.LatencyHistogram
 }
 
 func walPath(logDir string, namespace string, shard int64) string {
@@ -94,12 +99,12 @@ func walPath(logDir string, namespace string, shard int64) string {
 }
 
 func newWal(namespace string, shard int64, options *FactoryOptions, commitOffsetProvider CommitOffsetProvider,
-	clock common.Clock, trimmerCheckInterval time.Duration) (Wal, error) {
+	clock time2.Clock, trimmerCheckInterval time.Duration) (Wal, error) {
 	if options.SegmentSize == 0 {
 		options.SegmentSize = DefaultFactoryOptions.SegmentSize
 	}
 
-	labels := metrics.LabelsForShard(namespace, shard)
+	labels := metric.LabelsForShard(namespace, shard)
 	w := &wal{
 		walPath:              walPath(options.BaseWalDir, namespace, shard),
 		namespace:            namespace,
@@ -108,21 +113,21 @@ func newWal(namespace string, shard int64, options *FactoryOptions, commitOffset
 		syncData:             options.SyncData,
 		commitOffsetProvider: commitOffsetProvider,
 
-		appendLatency: metrics.NewLatencyHistogram("oxia_server_wal_append_latency",
+		appendLatency: metric.NewLatencyHistogram("oxia_server_wal_append_latency",
 			"The time it takes to append entries to the WAL", labels),
-		appendBytes: metrics.NewCounter("oxia_server_wal_append",
-			"Bytes appended to the WAL", metrics.Bytes, labels),
-		readLatency: metrics.NewLatencyHistogram("oxia_server_wal_read_latency",
+		appendBytes: metric.NewCounter("oxia_server_wal_append",
+			"Bytes appended to the WAL", metric.Bytes, labels),
+		readLatency: metric.NewLatencyHistogram("oxia_server_wal_read_latency",
 			"The time it takes to read an entry from the WAL", labels),
-		readBytes: metrics.NewCounter("oxia_server_wal_read",
-			"Bytes read from the WAL", metrics.Bytes, labels),
-		trimOps: metrics.NewCounter("oxia_server_wal_trim",
+		readBytes: metric.NewCounter("oxia_server_wal_read",
+			"Bytes read from the WAL", metric.Bytes, labels),
+		trimOps: metric.NewCounter("oxia_server_wal_trim",
 			"The number of trim operations happening on the WAL", "count", labels),
-		readErrors: metrics.NewCounter("oxia_server_wal_read_errors",
+		readErrors: metric.NewCounter("oxia_server_wal_read_errors",
 			"The number of IO errors in the WAL read operations", "count", labels),
-		writeErrors: metrics.NewCounter("oxia_server_wal_write_errors",
+		writeErrors: metric.NewCounter("oxia_server_wal_write_errors",
 			"The number of IO errors in the WAL read operations", "count", labels),
-		syncLatency: metrics.NewLatencyHistogram("oxia_server_wal_sync_latency",
+		syncLatency: metric.NewLatencyHistogram("oxia_server_wal_sync_latency",
 			"The time it takes to fsync the wal data on disk", labels),
 	}
 
@@ -134,7 +139,7 @@ func newWal(namespace string, shard int64, options *FactoryOptions, commitOffset
 	w.ctx, w.cancel = context.WithCancel(context.Background())
 	w.syncRequests = make(chan func(error), 1000)
 
-	w.activeEntries = metrics.NewGauge("oxia_server_wal_entries",
+	w.activeEntries = metric.NewGauge("oxia_server_wal_entries",
 		"The number of active entries in the wal", "count", labels, func() int64 {
 			return w.lastSyncedOffset.Load() - w.firstOffset.Load()
 		})
@@ -146,7 +151,7 @@ func newWal(namespace string, shard int64, options *FactoryOptions, commitOffset
 	w.trimmer = newTrimmer(namespace, shard, w, options.Retention, trimmerCheckInterval, clock, commitOffsetProvider)
 
 	if options.SyncData {
-		go common.DoWithLabels(
+		go process.DoWithLabels(
 			w.ctx,
 			map[string]string{
 				"oxia":      "wal-sync",
@@ -168,7 +173,7 @@ func (t *wal) readAtIndex(index int64) (*proto.LogEntry, error) {
 	defer timer.Done()
 
 	var err error
-	var rc common.RefCount[ReadOnlySegment]
+	var rc object.RefCount[ReadOnlySegment]
 	var segment ReadOnlySegment
 	if index >= t.currentSegment.BaseOffset() {
 		segment = t.currentSegment
@@ -178,7 +183,7 @@ func (t *wal) readAtIndex(index int64) (*proto.LogEntry, error) {
 			return nil, err
 		}
 
-		defer func(rc common.RefCount[ReadOnlySegment]) {
+		defer func(rc object.RefCount[ReadOnlySegment]) {
 			err = multierr.Append(err, rc.Close())
 		}(rc)
 		segment = rc.Get()
@@ -275,7 +280,7 @@ func (t *wal) appendAsync0(entry *proto.LogEntry) error {
 	defer timer.Done()
 
 	if t.isClosed() {
-		return common.ErrAlreadyClosed
+		return constant.ErrAlreadyClosed
 	}
 
 	if err := t.checkNextOffset(entry.Offset); err != nil {
@@ -417,7 +422,7 @@ func (t *wal) doSync(callback func(error)) {
 }
 
 func (t *wal) Sync(ctx context.Context) error {
-	wg := common.NewWaitGroup(1)
+	wg := concurrent.NewWaitGroup(1)
 	t.doSync(func(err error) {
 		if err != nil {
 			wg.Fail(err)

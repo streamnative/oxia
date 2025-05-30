@@ -28,7 +28,8 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	pb "google.golang.org/protobuf/proto"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/constant"
+
 	"github.com/streamnative/oxia/proto"
 )
 
@@ -89,7 +90,7 @@ func (d *dispatcher) onOxiaStreamRequestMessage(msgType MsgType, m any, message 
 	switch msgType {
 	case MsgTypeShardAssignmentsResponse:
 		r := message.(*proto.ShardAssignments)
-		d.currentLeader = r.Namespaces[common.DefaultNamespace].Assignments[0].Leader
+		d.currentLeader = r.Namespaces[constant.DefaultNamespace].Assignments[0].Leader
 		slog.Info(
 			"Received notification of new leader",
 			slog.String("leader", d.currentLeader),

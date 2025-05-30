@@ -18,6 +18,7 @@ import (
 	"fmt"
 
 	"github.com/streamnative/oxia/cmd/client/sequenceupdates"
+	oxiacommon "github.com/streamnative/oxia/common/constant"
 
 	"github.com/spf13/cobra"
 
@@ -29,7 +30,6 @@ import (
 	"github.com/streamnative/oxia/cmd/client/notifications"
 	"github.com/streamnative/oxia/cmd/client/put"
 	"github.com/streamnative/oxia/cmd/client/rangescan"
-	oxiacommon "github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/oxia"
 )
 

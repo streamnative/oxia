@@ -29,8 +29,11 @@ import (
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/status"
 
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/common/metrics"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/process"
+	time2 "github.com/streamnative/oxia/common/time"
+
+	"github.com/streamnative/oxia/common/metric"
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/proto"
 )
@@ -98,16 +101,16 @@ type shardController struct {
 	currentElectionCancel context.CancelFunc
 	log                   *slog.Logger
 
-	leaderElectionLatency metrics.LatencyHistogram
-	newTermQuorumLatency  metrics.LatencyHistogram
-	becomeLeaderLatency   metrics.LatencyHistogram
-	leaderElectionsFailed metrics.Counter
-	termGauge             metrics.Gauge
+	leaderElectionLatency metric.LatencyHistogram
+	newTermQuorumLatency  metric.LatencyHistogram
+	becomeLeaderLatency   metric.LatencyHistogram
+	leaderElectionsFailed metric.Counter
+	termGauge             metric.Gauge
 }
 
 func NewShardController(namespace string, shard int64, namespaceConfig *model.NamespaceConfig,
 	shardMetadata model.ShardMetadata, rpc RpcProvider, coordinator Coordinator) ShardController {
-	labels := metrics.LabelsForShard(namespace, shard)
+	labels := metric.LabelsForShard(namespace, shard)
 	s := &shardController{
 		namespace:               namespace,
 		shard:                   shard,
@@ -127,17 +130,17 @@ func NewShardController(namespace string, shard int64, namespaceConfig *model.Na
 		),
 		wg: &sync.WaitGroup{},
 
-		leaderElectionLatency: metrics.NewLatencyHistogram("oxia_coordinator_leader_election_latency",
+		leaderElectionLatency: metric.NewLatencyHistogram("oxia_coordinator_leader_election_latency",
 			"The time it takes to elect a leader for the shard", labels),
-		leaderElectionsFailed: metrics.NewCounter("oxia_coordinator_leader_election_failed",
+		leaderElectionsFailed: metric.NewCounter("oxia_coordinator_leader_election_failed",
 			"The number of failed leader elections", "count", labels),
-		newTermQuorumLatency: metrics.NewLatencyHistogram("oxia_coordinator_new_term_quorum_latency",
+		newTermQuorumLatency: metric.NewLatencyHistogram("oxia_coordinator_new_term_quorum_latency",
 			"The time it takes to take the ensemble of nodes to a new term", labels),
-		becomeLeaderLatency: metrics.NewLatencyHistogram("oxia_coordinator_become_leader_latency",
+		becomeLeaderLatency: metric.NewLatencyHistogram("oxia_coordinator_become_leader_latency",
 			"The time it takes for the new elected leader to start", labels),
 	}
 
-	s.termGauge = metrics.NewGauge("oxia_coordinator_term",
+	s.termGauge = metric.NewGauge("oxia_coordinator_term",
 		"The term of the shard", "count", labels, func() int64 {
 			return s.shardMetadata.Term
 		})
@@ -152,7 +155,7 @@ func NewShardController(namespace string, shard int64, namespaceConfig *model.Na
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		common.DoWithLabels(
+		process.DoWithLabels(
 			s.ctx,
 			map[string]string{
 				"oxia":      "shard-controller",
@@ -286,7 +289,7 @@ func (s *shardController) verifyCurrentEnsemble() bool {
 }
 
 func (s *shardController) electLeaderWithRetries() {
-	_ = backoff.RetryNotify(s.electLeader, common.NewBackOff(s.ctx),
+	_ = backoff.RetryNotify(s.electLeader, time2.NewBackOff(s.ctx),
 		func(err error, duration time.Duration) {
 			s.leaderElectionsFailed.Inc()
 			s.log.Warn(
@@ -454,7 +457,7 @@ func (s *shardController) keepFencingFollower(ctx context.Context, node model.Se
 		slog.Any("follower", node),
 	)
 
-	go common.DoWithLabels(
+	go process.DoWithLabels(
 		s.ctx,
 		map[string]string{
 			"oxia":     "shard-controller-retry-failed-follower",
@@ -462,11 +465,11 @@ func (s *shardController) keepFencingFollower(ctx context.Context, node model.Se
 			"follower": node.GetIdentifier(),
 		},
 		func() {
-			backOff := common.NewBackOffWithInitialInterval(ctx, 1*time.Second)
+			backOff := time2.NewBackOffWithInitialInterval(ctx, 1*time.Second)
 
 			_ = backoff.RetryNotify(func() error {
 				err := s.newTermAndAddFollower(ctx, node)
-				if status.Code(err) == common.CodeInvalidTerm {
+				if status.Code(err) == constant.CodeInvalidTerm {
 					// If we're receiving invalid term error, it would mean
 					// there's already a new term generated, and we don't have
 					// to keep trying with this old term
@@ -555,7 +558,7 @@ func (s *shardController) newTermQuorum() (map[model.Server]*proto.EntryId, erro
 	for _, server := range fencingQuorum {
 		// We need to save the address because it gets modified in the loop
 		pinedServer := server
-		go common.DoWithLabels(
+		go process.DoWithLabels(
 			s.ctx,
 			map[string]string{
 				"oxia":  "shard-controller-leader-election",
@@ -740,7 +743,7 @@ func (s *shardController) DeleteShard() {
 func (s *shardController) deleteShardWithRetries() {
 	s.log.Info("Deleting shard")
 
-	_ = backoff.RetryNotify(s.deleteShard, common.NewBackOff(s.ctx),
+	_ = backoff.RetryNotify(s.deleteShard, time2.NewBackOff(s.ctx),
 		func(err error, duration time.Duration) {
 			s.log.Warn(
 				"Delete shard failed, retrying later",
@@ -910,7 +913,7 @@ func (s *shardController) waitForFollowersToCatchUp(ctx context.Context, leader 
 
 		err = backoff.Retry(func() error {
 			return s.isFollowerCatchUp(ctx, server, leaderHeadOffset)
-		}, common.NewBackOff(ctx))
+		}, time2.NewBackOff(ctx))
 
 		if err != nil {
 			return errors.Wrap(err, "failed to get the follower status")

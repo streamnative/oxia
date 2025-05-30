@@ -26,7 +26,7 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/process"
 )
 
 // Cache provides a view of the data stored in Oxia that is locally cached.
@@ -122,7 +122,7 @@ func newCacheManager(client SyncClient) (*cacheManager, error) {
 		return nil, errors.Wrap(err, "failed to create notifications client")
 	}
 
-	go common.DoWithLabels(
+	go process.DoWithLabels(
 		cm.ctx,
 		map[string]string{
 			"oxia": "cache-manager",

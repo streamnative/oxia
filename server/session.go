@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/process"
 	"github.com/streamnative/oxia/proto"
 )
 
@@ -68,7 +68,7 @@ func startSession(sessionId SessionId, sessionMetadata *proto.SessionMetadata, s
 	s.ctx, s.ctxCancel = context.WithCancel(context.Background())
 
 	s.latch.Add(1)
-	go common.DoWithLabels(s.ctx, map[string]string{
+	go process.DoWithLabels(s.ctx, map[string]string{
 		"oxia":            "session",
 		"client-identity": sessionMetadata.Identity,
 		"session-id":      fmt.Sprintf("%d", sessionId),

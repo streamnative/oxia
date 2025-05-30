@@ -26,7 +26,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/rpc"
+
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/oxia"
 	"github.com/streamnative/oxia/server"
@@ -63,25 +65,25 @@ func TestCoordinatorE2E(t *testing.T) {
 	metadataProvider := NewMetadataProviderMemory()
 	clusterConfig := model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
-			Name:              common.DefaultNamespace,
+			Name:              constant.DefaultNamespace,
 			ReplicationFactor: 3,
 			InitialShardCount: 1,
 		}},
 		Servers: []model.Server{sa1, sa2, sa3},
 	}
-	clientPool := common.NewClientPool(nil, nil)
+	clientPool := rpc.NewClientPool(nil, nil)
 
 	coordinator, err := NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, NewRpcProvider(clientPool))
 
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 1, len(coordinator.ClusterStatus().Namespaces))
-	nsStatus := coordinator.ClusterStatus().Namespaces[common.DefaultNamespace]
+	nsStatus := coordinator.ClusterStatus().Namespaces[constant.DefaultNamespace]
 	assert.EqualValues(t, 1, len(nsStatus.Shards))
 	assert.EqualValues(t, 3, nsStatus.ReplicationFactor)
 
 	assert.Eventually(t, func() bool {
-		shard := coordinator.ClusterStatus().Namespaces[common.DefaultNamespace].Shards[0]
+		shard := coordinator.ClusterStatus().Namespaces[constant.DefaultNamespace].Shards[0]
 		return shard.Status == model.ShardStatusSteadyState
 	}, 10*time.Second, 10*time.Millisecond)
 
@@ -101,19 +103,19 @@ func TestCoordinatorE2E_ShardsRanges(t *testing.T) {
 	metadataProvider := NewMetadataProviderMemory()
 	clusterConfig := model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
-			Name:              common.DefaultNamespace,
+			Name:              constant.DefaultNamespace,
 			ReplicationFactor: 3,
 			InitialShardCount: 4,
 		}},
 		Servers: []model.Server{sa1, sa2, sa3},
 	}
-	clientPool := common.NewClientPool(nil, nil)
+	clientPool := rpc.NewClientPool(nil, nil)
 
 	coordinator, err := NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 
 	cs := coordinator.ClusterStatus()
-	nsStatus := cs.Namespaces[common.DefaultNamespace]
+	nsStatus := cs.Namespaces[constant.DefaultNamespace]
 	assert.EqualValues(t, 4, len(nsStatus.Shards))
 	assert.EqualValues(t, 3, nsStatus.ReplicationFactor)
 
@@ -154,28 +156,28 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 	metadataProvider := NewMetadataProviderMemory()
 	clusterConfig := model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
-			Name:              common.DefaultNamespace,
+			Name:              constant.DefaultNamespace,
 			ReplicationFactor: 3,
 			InitialShardCount: 1,
 		}},
 		Servers: []model.Server{sa1, sa2, sa3},
 	}
-	clientPool := common.NewClientPool(nil, nil)
+	clientPool := rpc.NewClientPool(nil, nil)
 
 	coordinator, err := NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 
-	nsStatus := coordinator.ClusterStatus().Namespaces[common.DefaultNamespace]
+	nsStatus := coordinator.ClusterStatus().Namespaces[constant.DefaultNamespace]
 	assert.EqualValues(t, 1, len(nsStatus.Shards))
 	assert.EqualValues(t, 3, nsStatus.ReplicationFactor)
 
 	assert.Eventually(t, func() bool {
-		shard := coordinator.ClusterStatus().Namespaces[common.DefaultNamespace].Shards[0]
+		shard := coordinator.ClusterStatus().Namespaces[constant.DefaultNamespace].Shards[0]
 		return shard.Status == model.ShardStatusSteadyState
 	}, 10*time.Second, 10*time.Millisecond)
 
 	cs := coordinator.ClusterStatus()
-	nsStatus = cs.Namespaces[common.DefaultNamespace]
+	nsStatus = cs.Namespaces[constant.DefaultNamespace]
 
 	leader := *nsStatus.Shards[0].Leader
 	var follower model.Server
@@ -212,7 +214,7 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 	delete(servers, leader)
 
 	assert.Eventually(t, func() bool {
-		shard := coordinator.ClusterStatus().Namespaces[common.DefaultNamespace].Shards[0]
+		shard := coordinator.ClusterStatus().Namespaces[constant.DefaultNamespace].Shards[0]
 		return shard.Status == model.ShardStatusSteadyState
 	}, 10*time.Second, 10*time.Millisecond)
 
@@ -250,7 +252,7 @@ func TestCoordinator_MultipleNamespaces(t *testing.T) {
 	metadataProvider := NewMetadataProviderMemory()
 	clusterConfig := model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
-			Name:              common.DefaultNamespace,
+			Name:              constant.DefaultNamespace,
 			ReplicationFactor: 3,
 			InitialShardCount: 1,
 		}, {
@@ -264,12 +266,12 @@ func TestCoordinator_MultipleNamespaces(t *testing.T) {
 		}},
 		Servers: []model.Server{sa1, sa2, sa3},
 	}
-	clientPool := common.NewClientPool(nil, nil)
+	clientPool := rpc.NewClientPool(nil, nil)
 
 	coordinator, err := NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 
-	nsDefaultStatus := coordinator.ClusterStatus().Namespaces[common.DefaultNamespace]
+	nsDefaultStatus := coordinator.ClusterStatus().Namespaces[constant.DefaultNamespace]
 	assert.EqualValues(t, 1, len(nsDefaultStatus.Shards))
 	assert.EqualValues(t, 3, nsDefaultStatus.ReplicationFactor)
 
@@ -304,7 +306,7 @@ func TestCoordinator_MultipleNamespaces(t *testing.T) {
 	defer clientNs1.Close()
 
 	clientNs3, err := oxia.NewSyncClient(sa1.Public, oxia.WithNamespace("my-ns-does-not-exist"))
-	assert.ErrorIs(t, err, common.ErrNamespaceNotFound)
+	assert.ErrorIs(t, err, constant.ErrNamespaceNotFound)
 	assert.Nil(t, clientNs3)
 
 	ctx := context.Background()
@@ -355,7 +357,7 @@ func TestCoordinator_DeleteNamespace(t *testing.T) {
 		}},
 		Servers: []model.Server{sa1, sa2, sa3},
 	}
-	clientPool := common.NewClientPool(nil, nil)
+	clientPool := rpc.NewClientPool(nil, nil)
 
 	coordinator, err := NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, NewRpcProvider(clientPool))
 	assert.NoError(t, err)
@@ -438,7 +440,7 @@ func TestCoordinator_DynamicallAddNamespace(t *testing.T) {
 		}},
 		Servers: []model.Server{sa1, sa2, sa3},
 	}
-	clientPool := common.NewClientPool(nil, nil)
+	clientPool := rpc.NewClientPool(nil, nil)
 
 	configChangesCh := make(chan any)
 	configProvider := func() (model.ClusterConfig, error) {
@@ -526,7 +528,7 @@ func TestCoordinator_RebalanceCluster(t *testing.T) {
 		}},
 		Servers: []model.Server{sa1, sa2, sa3},
 	}
-	clientPool := common.NewClientPool(nil, nil)
+	clientPool := rpc.NewClientPool(nil, nil)
 	mutex := &sync.Mutex{}
 
 	configProvider := func() (model.ClusterConfig, error) {
@@ -624,7 +626,7 @@ func TestCoordinator_AddRemoveNodes(t *testing.T) {
 		}},
 		Servers: []model.Server{sa1, sa2, sa3},
 	}
-	clientPool := common.NewClientPool(nil, nil)
+	clientPool := rpc.NewClientPool(nil, nil)
 
 	configProvider := func() (model.ClusterConfig, error) {
 		return clusterConfig, nil
@@ -686,7 +688,7 @@ func TestCoordinator_ShrinkCluster(t *testing.T) {
 		}},
 		Servers: []model.Server{sa1, sa2, sa3, sa4},
 	}
-	clientPool := common.NewClientPool(nil, nil)
+	clientPool := rpc.NewClientPool(nil, nil)
 
 	configProvider := func() (model.ClusterConfig, error) {
 		return clusterConfig, nil
@@ -790,7 +792,7 @@ func TestCoordinator_RefreshServerInfo(t *testing.T) {
 	c, err := NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) {
 		return clusterConfig, nil
 	}, configChangesCh,
-		NewRpcProvider(common.NewClientPool(nil, nil)))
+		NewRpcProvider(rpc.NewClientPool(nil, nil)))
 	assert.NoError(t, err)
 
 	// wait for all shards to be ready

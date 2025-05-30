@@ -28,9 +28,11 @@ import (
 	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
 
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/common/container"
-	"github.com/streamnative/oxia/common/metrics"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/rpc"
+	"github.com/streamnative/oxia/common/sharding"
+
+	"github.com/streamnative/oxia/common/metric"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/util"
 )
@@ -61,7 +63,7 @@ type shardAssignmentDispatcher struct {
 
 	log *slog.Logger
 
-	activeClientsGauge metrics.Gauge
+	activeClientsGauge metric.Gauge
 }
 
 func (s *shardAssignmentDispatcher) RegisterForUpdates(req *proto.ShardAssignmentsRequest, clientStream Client) error {
@@ -69,17 +71,17 @@ func (s *shardAssignmentDispatcher) RegisterForUpdates(req *proto.ShardAssignmen
 
 	if s.assignments == nil {
 		s.Unlock()
-		return common.ErrNotInitialized
+		return constant.ErrNotInitialized
 	}
 
 	namespace := req.Namespace
 	if namespace == "" {
-		namespace = common.DefaultNamespace
+		namespace = constant.DefaultNamespace
 	}
 
 	if _, ok := s.assignments.Namespaces[namespace]; !ok {
 		s.Unlock()
-		return common.ErrNamespaceNotFound
+		return constant.ErrNamespaceNotFound
 	}
 
 	initialAssignments := filterByNamespace(s.assignments, namespace)
@@ -109,7 +111,7 @@ func (s *shardAssignmentDispatcher) RegisterForUpdates(req *proto.ShardAssignmen
 		select {
 		case assignments := <-clientCh:
 			if assignments == nil {
-				return common.ErrCancelled
+				return constant.ErrCancelled
 			}
 
 			assignments = filterByNamespace(assignments, namespace)
@@ -219,7 +221,7 @@ func (s *shardAssignmentDispatcher) PushShardAssignments(stream proto.OxiaCoordi
 func (s *shardAssignmentDispatcher) updateShardAssignment(assignments *proto.ShardAssignments) error {
 	// Once we receive the first update of the shards mapping, this service can be
 	// considered "ready" and it will be able to respond to service discovery requests
-	s.healthServer.SetServingStatus(container.ReadinessProbeService, grpc_health_v1.HealthCheckResponse_SERVING)
+	s.healthServer.SetServingStatus(rpc.ReadinessProbeService, grpc_health_v1.HealthCheckResponse_SERVING)
 
 	s.log.Info("Update shares assignments.",
 		slog.Any("previous", s.assignments),
@@ -258,7 +260,7 @@ func NewShardAssignmentDispatcher(healthServer *health.Server) ShardAssignmentsD
 
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 
-	s.activeClientsGauge = metrics.NewGauge("oxia_server_shards_assignments_active_clients",
+	s.activeClientsGauge = metric.NewGauge("oxia_server_shards_assignments_active_clients",
 		"The number of client currently connected for fetching the shards assignments updates", "count",
 		map[string]any{}, func() int64 {
 			s.Lock()
@@ -275,7 +277,7 @@ func NewStandaloneShardAssignmentDispatcher(numShards uint32) ShardAssignmentsDi
 	assignmentDispatcher.standalone = true
 	res := &proto.ShardAssignments{
 		Namespaces: map[string]*proto.NamespaceShardsAssignment{
-			common.DefaultNamespace: {
+			constant.DefaultNamespace: {
 				ShardKeyRouter: proto.ShardKeyRouter_XXHASH3,
 				Assignments:    generateStandaloneShards(numShards),
 			},
@@ -290,7 +292,7 @@ func NewStandaloneShardAssignmentDispatcher(numShards uint32) ShardAssignmentsDi
 }
 
 func generateStandaloneShards(numShards uint32) []*proto.ShardAssignment {
-	shards := common.GenerateShards(0, numShards)
+	shards := sharding.GenerateShards(0, numShards)
 	assignments := make([]*proto.ShardAssignment, numShards)
 	for i, shard := range shards {
 		assignments[i] = &proto.ShardAssignment{

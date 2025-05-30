@@ -15,7 +15,7 @@
 package internal
 
 import (
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/hash"
 )
 
 type shardStrategyImpl struct {
@@ -24,14 +24,14 @@ type shardStrategyImpl struct {
 
 func NewShardStrategy() ShardStrategy {
 	return &shardStrategyImpl{
-		hashFunc: common.Xxh332,
+		hashFunc: hash.Xxh332,
 	}
 }
 
 func (s *shardStrategyImpl) Get(key string) func(Shard) bool {
-	hash := s.hashFunc(key)
+	code := s.hashFunc(key)
 	return func(shard Shard) bool {
 		hashRange := shard.HashRange
-		return hashRange.MinInclusive <= hash && hash <= hashRange.MaxInclusive
+		return hashRange.MinInclusive <= code && code <= hashRange.MaxInclusive
 	}
 }

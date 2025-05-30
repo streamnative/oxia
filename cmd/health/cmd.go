@@ -23,7 +23,8 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/rpc"
 )
 
 type Config struct {
@@ -36,7 +37,7 @@ type Config struct {
 func NewConfig() Config {
 	return Config{
 		Host:    "",
-		Port:    common.DefaultInternalPort,
+		Port:    constant.DefaultInternalPort,
 		Timeout: 10 * time.Second,
 		Service: "",
 	}
@@ -63,11 +64,11 @@ func init() {
 }
 
 func exec(*cobra.Command, []string) error {
-	clientPool := common.NewClientPool(nil, nil)
+	clientPool := rpc.NewClientPool(nil, nil)
 
 	serverAddress := fmt.Sprintf("%s:%d", config.Host, config.Port)
 
-	rpc, closer, err := clientPool.GetHealthRpc(serverAddress)
+	client, closer, err := clientPool.GetHealthRpc(serverAddress)
 	if err != nil {
 		return err
 	}
@@ -78,7 +79,7 @@ func exec(*cobra.Command, []string) error {
 
 	req := &grpc_health_v1.HealthCheckRequest{Service: config.Service}
 
-	resp, err := rpc.Check(ctx, req)
+	resp, err := client.Check(ctx, req)
 	if err != nil {
 		return err
 	}

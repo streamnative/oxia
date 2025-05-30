@@ -20,8 +20,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/streamnative/oxia/common/process"
+
 	"github.com/streamnative/oxia/cmd/flag"
-	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/security"
 	"github.com/streamnative/oxia/server"
 	"github.com/streamnative/oxia/server/kv"
@@ -88,7 +89,7 @@ func init() {
 }
 
 func exec(*cobra.Command, []string) {
-	common.RunProcess(func() (io.Closer, error) {
+	process.RunProcess(func() (io.Closer, error) {
 		if err := configureTLS(); err != nil {
 			return nil, err
 		}

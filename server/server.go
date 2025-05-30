@@ -22,8 +22,9 @@ import (
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/health"
 
-	"github.com/streamnative/oxia/common/container"
-	"github.com/streamnative/oxia/common/metrics"
+	"github.com/streamnative/oxia/common/rpc"
+
+	"github.com/streamnative/oxia/common/metric"
 	"github.com/streamnative/oxia/server/auth"
 	"github.com/streamnative/oxia/server/kv"
 	"github.com/streamnative/oxia/server/wal"
@@ -56,7 +57,7 @@ type Server struct {
 	replicationRpcProvider    ReplicationRpcProvider
 	shardAssignmentDispatcher ShardAssignmentsDispatcher
 	shardsDirector            ShardsDirector
-	metrics                   *metrics.PrometheusMetrics
+	metrics                   *metric.PrometheusMetrics
 	walFactory                wal.Factory
 	kvFactory                 kv.Factory
 
@@ -64,10 +65,10 @@ type Server struct {
 }
 
 func New(config Config) (*Server, error) {
-	return NewWithGrpcProvider(config, container.Default, NewReplicationRpcProvider(config.PeerTLS))
+	return NewWithGrpcProvider(config, rpc.Default, NewReplicationRpcProvider(config.PeerTLS))
 }
 
-func NewWithGrpcProvider(config Config, provider container.GrpcProvider, replicationRpcProvider ReplicationRpcProvider) (*Server, error) {
+func NewWithGrpcProvider(config Config, provider rpc.GrpcProvider, replicationRpcProvider ReplicationRpcProvider) (*Server, error) {
 	slog.Info(
 		"Starting Oxia server",
 		slog.Any("config", config),
@@ -109,7 +110,7 @@ func NewWithGrpcProvider(config Config, provider container.GrpcProvider, replica
 	}
 
 	if config.MetricsServiceAddr != "" {
-		s.metrics, err = metrics.Start(config.MetricsServiceAddr)
+		s.metrics, err = metric.Start(config.MetricsServiceAddr)
 		if err != nil {
 			return nil, err
 		}

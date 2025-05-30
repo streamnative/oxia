@@ -25,13 +25,14 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/logging"
+
 	"github.com/streamnative/oxia/server"
 )
 
 func init() {
-	common.LogJSON = false
-	common.ConfigureLogger()
+	logging.LogJSON = false
+	logging.ConfigureLogger()
 }
 
 func TestAsyncClientImpl(t *testing.T) {

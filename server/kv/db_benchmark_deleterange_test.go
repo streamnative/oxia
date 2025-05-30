@@ -22,7 +22,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"k8s.io/utils/ptr"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/constant"
+	time2 "github.com/streamnative/oxia/common/time"
+
 	"github.com/streamnative/oxia/proto"
 )
 
@@ -32,7 +34,7 @@ func BenchmarkDeleteRange(b *testing.B) {
 		CacheSizeMB: 1024,
 	})
 	assert.NoError(b, err)
-	db, err := NewDB(common.DefaultNamespace, 1, factory, 0, common.SystemClock)
+	db, err := NewDB(constant.DefaultNamespace, 1, factory, 0, time2.SystemClock)
 	assert.NoError(b, err)
 	defer db.Close()
 	for i := range b.N {

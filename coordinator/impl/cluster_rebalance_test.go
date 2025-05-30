@@ -21,7 +21,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/collection"
+
 	"github.com/streamnative/oxia/coordinator/model"
 )
 
@@ -76,23 +77,23 @@ func TestClusterRebalance_Count(t *testing.T) {
 	assert.Equal(t, map[string]ServerContext{
 		s1.Internal: {
 			s1,
-			common.NewSetFrom[int64]([]int64{0, 1, 2}),
+			collection.NewSetFrom[int64]([]int64{0, 1, 2}),
 		},
 		s2.Internal: {
 			s2,
-			common.NewSetFrom[int64]([]int64{0, 1}),
+			collection.NewSetFrom[int64]([]int64{0, 1}),
 		},
 		s3.Internal: {
 			s3,
-			common.NewSetFrom[int64]([]int64{0, 2}),
+			collection.NewSetFrom[int64]([]int64{0, 2}),
 		},
 		s4.Internal: {
 			s4,
-			common.NewSetFrom[int64]([]int64{1, 2}),
+			collection.NewSetFrom[int64]([]int64{1, 2}),
 		},
 		s5.Internal: {
 			s5,
-			common.NewSet[int64](),
+			collection.NewSet[int64](),
 		},
 	}, count)
 

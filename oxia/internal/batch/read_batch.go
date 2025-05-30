@@ -23,8 +23,9 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/common/batch"
+	time2 "github.com/streamnative/oxia/common/time"
+	"github.com/streamnative/oxia/oxia/batch"
+
 	"github.com/streamnative/oxia/oxia/internal/metrics"
 	"github.com/streamnative/oxia/oxia/internal/model"
 	"github.com/streamnative/oxia/proto"
@@ -94,7 +95,7 @@ func (b *readBatch) doRequestWithRetries(request *proto.ReadRequest) (response *
 	ctx, cancel := context.WithTimeout(context.Background(), b.requestTimeout)
 	defer cancel()
 
-	backOff := common.NewBackOff(ctx)
+	backOff := time2.NewBackOff(ctx)
 
 	err = backoff.RetryNotify(func() error {
 		response, err = b.doRequest(ctx, request)

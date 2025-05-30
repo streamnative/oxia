@@ -29,8 +29,9 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/common/container"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/rpc"
+
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/auth"
 )
@@ -41,12 +42,12 @@ type internalRpcServer struct {
 
 	shardsDirector       ShardsDirector
 	assignmentDispatcher ShardAssignmentsDispatcher
-	grpcServer           container.GrpcServer
+	grpcServer           rpc.GrpcServer
 	healthServer         *health.Server
 	log                  *slog.Logger
 }
 
-func newInternalRpcServer(grpcProvider container.GrpcProvider, bindAddress string, shardsDirector ShardsDirector,
+func newInternalRpcServer(grpcProvider rpc.GrpcProvider, bindAddress string, shardsDirector ShardsDirector,
 	assignmentDispatcher ShardAssignmentsDispatcher, healthServer *health.Server, tlsConf *tls.Config) (*internalRpcServer, error) {
 	server := &internalRpcServer{
 		shardsDirector:       shardsDirector,
@@ -77,7 +78,7 @@ func (s *internalRpcServer) Close() error {
 func (s *internalRpcServer) PushShardAssignments(srv proto.OxiaCoordination_PushShardAssignmentsServer) error {
 	s.log.Info(
 		"Received shard assignment request from coordinator",
-		slog.String("peer", common.GetPeer(srv.Context())),
+		slog.String("peer", rpc.GetPeer(srv.Context())),
 	)
 
 	err := s.assignmentDispatcher.PushShardAssignments(srv)
@@ -85,7 +86,7 @@ func (s *internalRpcServer) PushShardAssignments(srv proto.OxiaCoordination_Push
 		s.log.Warn(
 			"Failed to provide shards assignments updates",
 			slog.Any("error", err),
-			slog.String("peer", common.GetPeer(srv.Context())),
+			slog.String("peer", rpc.GetPeer(srv.Context())),
 		)
 	}
 
@@ -95,7 +96,7 @@ func (s *internalRpcServer) PushShardAssignments(srv proto.OxiaCoordination_Push
 func (s *internalRpcServer) NewTerm(c context.Context, req *proto.NewTermRequest) (*proto.NewTermResponse, error) {
 	log := s.log.With(
 		slog.Any("req", req),
-		slog.String("peer", common.GetPeer(c)),
+		slog.String("peer", rpc.GetPeer(c)),
 	)
 
 	log.Info("Received NewTerm request")
@@ -103,7 +104,7 @@ func (s *internalRpcServer) NewTerm(c context.Context, req *proto.NewTermRequest
 	// NewTerm applies to both followers and leaders
 	// First check if we have already a follower controller running
 	if follower, err := s.shardsDirector.GetFollower(req.Shard); err != nil { //nolint:revive
-		if status.Code(err) != common.CodeNodeIsNotFollower {
+		if status.Code(err) != constant.CodeNodeIsNotFollower {
 			log.Warn(
 				"NewTerm failed: could not get follower controller",
 				slog.Any("error", err),
@@ -159,7 +160,7 @@ func (s *internalRpcServer) NewTerm(c context.Context, req *proto.NewTermRequest
 func (s *internalRpcServer) BecomeLeader(c context.Context, req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error) {
 	log := s.log.With(
 		slog.Any("request", req),
-		slog.String("peer", common.GetPeer(c)),
+		slog.String("peer", rpc.GetPeer(c)),
 	)
 
 	log.Info("Received BecomeLeader request")
@@ -186,7 +187,7 @@ func (s *internalRpcServer) BecomeLeader(c context.Context, req *proto.BecomeLea
 func (s *internalRpcServer) AddFollower(c context.Context, req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error) {
 	log := s.log.With(
 		slog.Any("request", req),
-		slog.String("peer", common.GetPeer(c)),
+		slog.String("peer", rpc.GetPeer(c)),
 	)
 
 	log.Info("Received AddFollower request")
@@ -213,7 +214,7 @@ func (s *internalRpcServer) AddFollower(c context.Context, req *proto.AddFollowe
 func (s *internalRpcServer) Truncate(c context.Context, req *proto.TruncateRequest) (*proto.TruncateResponse, error) {
 	log := s.log.With(
 		slog.Any("request", req),
-		slog.String("peer", common.GetPeer(c)),
+		slog.String("peer", rpc.GetPeer(c)),
 	)
 
 	log.Info("Received Truncate request")
@@ -245,12 +246,12 @@ func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServ
 		return errors.New("shard id is not set in the request metadata")
 	}
 
-	shardId, err := ReadHeaderInt64(md, common.MetadataShardId)
+	shardId, err := ReadHeaderInt64(md, constant.MetadataShardId)
 	if err != nil {
 		return err
 	}
 
-	namespace, err := readHeader(md, common.MetadataNamespace)
+	namespace, err := readHeader(md, constant.MetadataNamespace)
 	if err != nil {
 		return err
 	}
@@ -263,7 +264,7 @@ func (s *internalRpcServer) Replicate(srv proto.OxiaLogReplication_ReplicateServ
 	log := s.log.With(
 		slog.Int64("shard", shardId),
 		slog.String("namespace", namespace),
-		slog.String("peer", common.GetPeer(srv.Context())),
+		slog.String("peer", rpc.GetPeer(srv.Context())),
 	)
 
 	log.Info("Received Replicate request")
@@ -295,12 +296,12 @@ func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapsh
 		return errors.New("shard id is not set in the request metadata")
 	}
 
-	shardId, err := ReadHeaderInt64(md, common.MetadataShardId)
+	shardId, err := ReadHeaderInt64(md, constant.MetadataShardId)
 	if err != nil {
 		return err
 	}
 
-	namespace, err := readHeader(md, common.MetadataNamespace)
+	namespace, err := readHeader(md, constant.MetadataNamespace)
 	if err != nil {
 		return err
 	}
@@ -314,7 +315,7 @@ func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapsh
 		"Received SendSnapshot request",
 		slog.Int64("shard", shardId),
 		slog.String("namespace", namespace),
-		slog.String("peer", common.GetPeer(srv.Context())),
+		slog.String("peer", rpc.GetPeer(srv.Context())),
 	)
 
 	follower, err := s.shardsDirector.GetOrCreateFollower(namespace, shardId, term)
@@ -324,7 +325,7 @@ func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapsh
 			slog.Any("error", err),
 			slog.String("namespace", namespace),
 			slog.Int64("shard", shardId),
-			slog.String("peer", common.GetPeer(srv.Context())),
+			slog.String("peer", rpc.GetPeer(srv.Context())),
 		)
 		return err
 	}
@@ -336,7 +337,7 @@ func (s *internalRpcServer) SendSnapshot(srv proto.OxiaLogReplication_SendSnapsh
 			slog.Any("error", err),
 			slog.String("namespace", namespace),
 			slog.Int64("shard", shardId),
-			slog.String("peer", common.GetPeer(srv.Context())),
+			slog.String("peer", rpc.GetPeer(srv.Context())),
 		)
 	}
 	return err
@@ -348,7 +349,7 @@ func (s *internalRpcServer) GetStatus(_ context.Context, req *proto.GetStatusReq
 		return follower.GetStatus(req)
 	}
 
-	if status.Code(err) != common.CodeNodeIsNotFollower {
+	if status.Code(err) != constant.CodeNodeIsNotFollower {
 		return nil, err
 	}
 
@@ -389,7 +390,7 @@ func ReadHeaderInt64(md metadata.MD, key string) (v int64, err error) {
 }
 
 func readTerm(md metadata.MD) (v int64, err error) {
-	arr := md.Get(common.MetadataTerm)
+	arr := md.Get(constant.MetadataTerm)
 	if len(arr) == 0 {
 		// There was no term in the metadata for the stream.
 		// In order to retain compatibility in a rollout scenario, skip
@@ -397,5 +398,5 @@ func readTerm(md metadata.MD) (v int64, err error) {
 		return -1, nil
 	}
 
-	return ReadHeaderInt64(md, common.MetadataTerm)
+	return ReadHeaderInt64(md, constant.MetadataTerm)
 }

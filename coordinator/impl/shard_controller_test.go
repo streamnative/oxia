@@ -23,7 +23,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/entity"
+
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/proto"
 )
@@ -32,7 +34,7 @@ var namespaceConfig = &model.NamespaceConfig{
 	Name:                 "my-namespace",
 	InitialShardCount:    1,
 	ReplicationFactor:    3,
-	NotificationsEnabled: common.OptBooleanDefaultTrue{},
+	NotificationsEnabled: entity.OptBooleanDefaultTrue{},
 }
 
 func TestLeaderElection_ShouldChooseHighestTerm(t *testing.T) {
@@ -124,7 +126,7 @@ func TestShardController(t *testing.T) {
 	s2 := model.Server{Public: "s2:9091", Internal: "s2:8191"}
 	s3 := model.Server{Public: "s3:9091", Internal: "s3:8191"}
 
-	sc := NewShardController(common.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
+	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
 		Status:   model.ShardStatusUnknown,
 		Term:     1,
 		Leader:   nil,
@@ -198,7 +200,7 @@ func TestShardController_StartingWithLeaderAlreadyPresent(t *testing.T) {
 	s2 := model.Server{Public: "s2:9091", Internal: "s2:8191"}
 	s3 := model.Server{Public: "s3:9091", Internal: "s3:8191"}
 
-	sc := NewShardController(common.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
+	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
 		Status:   model.ShardStatusSteadyState,
 		Term:     1,
 		Leader:   &s1,
@@ -229,7 +231,7 @@ func TestShardController_NewTermWithNonRespondingServer(t *testing.T) {
 	s2 := model.Server{Public: "s2:9091", Internal: "s2:8191"}
 	s3 := model.Server{Public: "s3:9091", Internal: "s3:8191"}
 
-	sc := NewShardController(common.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
+	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
 		Status:   model.ShardStatusUnknown,
 		Term:     1,
 		Leader:   nil,
@@ -275,7 +277,7 @@ func TestShardController_NewTermFollowerUntilItRecovers(t *testing.T) {
 	s2 := model.Server{Public: "s2:9091", Internal: "s2:8191"}
 	s3 := model.Server{Public: "s3:9091", Internal: "s3:8191"}
 
-	sc := NewShardController(common.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
+	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
 		Status:   model.ShardStatusUnknown,
 		Term:     1,
 		Leader:   nil,
@@ -329,7 +331,7 @@ func TestShardController_VerifyFollowersWereAllFenced(t *testing.T) {
 	n2 := rpc.GetNode(s2)
 	n3 := rpc.GetNode(s3)
 
-	sc := NewShardController(common.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
+	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
 		Status:   model.ShardStatusSteadyState,
 		Term:     4,
 		Leader:   &s1,
@@ -394,10 +396,10 @@ func TestShardController_NotificationsDisabled(t *testing.T) {
 		Name:                 "my-ns-2",
 		InitialShardCount:    1,
 		ReplicationFactor:    1,
-		NotificationsEnabled: common.Bool(false),
+		NotificationsEnabled: entity.Bool(false),
 	}
 
-	sc := NewShardController(common.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
+	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
 		Status:   model.ShardStatusUnknown,
 		Term:     1,
 		Leader:   nil,

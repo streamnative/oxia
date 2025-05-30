@@ -21,8 +21,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/common/callback"
+	"github.com/streamnative/oxia/common/concurrent"
+	"github.com/streamnative/oxia/common/constant"
 	"github.com/streamnative/oxia/server/util"
 )
 
@@ -76,7 +76,7 @@ type QuorumAckTracker interface {
 	// Note:
 	// This method returns immediately and does not block the caller, allowing other
 	// operations to continue while waiting for the commit.
-	WaitForCommitOffsetAsync(ctx context.Context, offset int64, cb callback.Callback[any]) // NextOffset returns the offset for the next entry to write
+	WaitForCommitOffsetAsync(ctx context.Context, offset int64, cb concurrent.Callback[any]) // NextOffset returns the offset for the next entry to write
 
 	// Note this can go ahead of the head-offset as there can be multiple operations in flight.
 	NextOffset() int64
@@ -97,7 +97,7 @@ type QuorumAckTracker interface {
 type quorumAckTracker struct {
 	sync.Mutex
 	waitingRequests   []waitingRequest
-	waitForHeadOffset common.ConditionContext
+	waitForHeadOffset concurrent.ConditionContext
 
 	replicationFactor uint32
 	requiredAcks      uint32
@@ -124,7 +124,7 @@ type cursorAcker struct {
 
 type waitingRequest struct {
 	minOffset int64
-	callback  callback.Callback[any]
+	callback  concurrent.Callback[any]
 }
 
 func NewQuorumAckTracker(replicationFactor uint32, headOffset int64, commitOffset int64) QuorumAckTracker {
@@ -146,7 +146,7 @@ func NewQuorumAckTracker(replicationFactor uint32, headOffset int64, commitOffse
 		q.tracker[offset] = &util.BitSet{}
 	}
 
-	q.waitForHeadOffset = common.NewConditionContext(q)
+	q.waitForHeadOffset = concurrent.NewConditionContext(q)
 	return q
 }
 
@@ -199,7 +199,7 @@ func (q *quorumAckTracker) WaitForHeadOffset(ctx context.Context, offset int64) 
 
 func (q *quorumAckTracker) WaitForCommitOffset(ctx context.Context, offset int64) error {
 	ch := make(chan error, 1)
-	q.WaitForCommitOffsetAsync(ctx, offset, callback.NewOnce(
+	q.WaitForCommitOffsetAsync(ctx, offset, concurrent.NewOnce(
 		func(_ any) { ch <- nil },
 		func(err error) { ch <- err },
 	))
@@ -212,12 +212,12 @@ func (q *quorumAckTracker) WaitForCommitOffset(ctx context.Context, offset int64
 	}
 }
 
-func (q *quorumAckTracker) WaitForCommitOffsetAsync(_ context.Context, offset int64, cb callback.Callback[any]) {
+func (q *quorumAckTracker) WaitForCommitOffsetAsync(_ context.Context, offset int64, cb concurrent.Callback[any]) {
 	q.Lock()
 
 	if q.closed {
 		q.Unlock()
-		cb.OnCompleteError(common.ErrAlreadyClosed)
+		cb.OnCompleteError(constant.ErrAlreadyClosed)
 		return
 	}
 
@@ -251,7 +251,7 @@ func (q *quorumAckTracker) Close() error {
 	q.Unlock()
 	// unblock waiting request
 	for _, r := range q.waitingRequests {
-		r.callback.OnCompleteError(common.ErrAlreadyClosed)
+		r.callback.OnCompleteError(constant.ErrAlreadyClosed)
 	}
 	return nil
 }

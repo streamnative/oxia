@@ -17,10 +17,10 @@ package channel
 import (
 	"context"
 
-	"github.com/streamnative/oxia/common/entities"
+	"github.com/streamnative/oxia/common/entity"
 )
 
-func ReadAll[T any](ctx context.Context, ch chan *entities.TWithError[T]) ([]T, error) {
+func ReadAll[T any](ctx context.Context, ch chan *entity.TWithError[T]) ([]T, error) {
 	container := make([]T, 0)
 	for {
 		select {

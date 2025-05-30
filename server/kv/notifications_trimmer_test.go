@@ -22,16 +22,18 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/constant"
+	time2 "github.com/streamnative/oxia/common/time"
+
 	"github.com/streamnative/oxia/proto"
 )
 
 func TestNotificationsTrimmer(t *testing.T) {
-	clock := &common.MockedClock{}
+	clock := &time2.MockedClock{}
 
 	factory, err := NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
-	dbx, err := NewDB(common.DefaultNamespace, 1, factory, 10*time.Millisecond, clock)
+	dbx, err := NewDB(constant.DefaultNamespace, 1, factory, 10*time.Millisecond, clock)
 	assert.NoError(t, err)
 	defer dbx.Close()
 

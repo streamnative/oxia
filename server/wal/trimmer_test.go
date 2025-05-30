@@ -24,12 +24,15 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/logging"
+	time2 "github.com/streamnative/oxia/common/time"
+
 	"github.com/streamnative/oxia/proto"
 )
 
 func init() {
-	common.ConfigureLogger()
+	logging.ConfigureLogger()
 }
 
 type mockedCommitOffsetProvider struct {
@@ -47,11 +50,11 @@ func TestWalTrimmer(t *testing.T) {
 		SegmentSize: 10 * 1024,
 	}
 
-	clock := &common.MockedClock{}
+	clock := &time2.MockedClock{}
 	commitOffsetProvider := &mockedCommitOffsetProvider{}
 	commitOffsetProvider.commitOffset.Store(math.MaxInt64)
 
-	w, err := newWal(common.DefaultNamespace, 1, options, commitOffsetProvider, clock, 10*time.Millisecond)
+	w, err := newWal(constant.DefaultNamespace, 1, options, commitOffsetProvider, clock, 10*time.Millisecond)
 	assert.NoError(t, err)
 
 	for i := int64(0); i < 100; i++ {
@@ -105,11 +108,11 @@ func TestWalTrimUpToCommitOffset(t *testing.T) {
 				slog.String("TestName", t.Name()),
 				slog.String("BaseWalDir", t.TempDir()),
 			)
-			clock := &common.MockedClock{}
+			clock := &time2.MockedClock{}
 			commitOffsetProvider := &mockedCommitOffsetProvider{}
 			commitOffsetProvider.commitOffset.Store(math.MaxInt64)
 
-			w, err := newWal(common.DefaultNamespace, 1, options, commitOffsetProvider, clock, 10*time.Millisecond)
+			w, err := newWal(constant.DefaultNamespace, 1, options, commitOffsetProvider, clock, 10*time.Millisecond)
 			assert.NoError(t, err)
 
 			commitOffsetProvider.commitOffset.Store(-1)

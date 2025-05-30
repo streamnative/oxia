@@ -28,8 +28,10 @@ import (
 	"go.uber.org/multierr"
 	pb "google.golang.org/protobuf/proto"
 
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/common/metrics"
+	"github.com/streamnative/oxia/common/constant"
+	time2 "github.com/streamnative/oxia/common/time"
+
+	"github.com/streamnative/oxia/common/metric"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/wal"
 )
@@ -43,9 +45,9 @@ var (
 )
 
 const (
-	commitOffsetKey        = common.InternalKeyPrefix + "commit-offset"
-	commitLastVersionIdKey = common.InternalKeyPrefix + "last-version-id"
-	termKey                = common.InternalKeyPrefix + "term"
+	commitOffsetKey        = constant.InternalKeyPrefix + "commit-offset"
+	commitLastVersionIdKey = constant.InternalKeyPrefix + "last-version-id"
+	termKey                = constant.InternalKeyPrefix + "term"
 	termOptionsKey         = termKey + "-options"
 )
 
@@ -93,13 +95,13 @@ type DB interface {
 	Delete() error
 }
 
-func NewDB(namespace string, shardId int64, factory Factory, notificationRetentionTime time.Duration, clock common.Clock) (DB, error) {
+func NewDB(namespace string, shardId int64, factory Factory, notificationRetentionTime time.Duration, clock time2.Clock) (DB, error) {
 	kv, err := factory.NewKV(namespace, shardId)
 	if err != nil {
 		return nil, err
 	}
 
-	labels := metrics.LabelsForShard(namespace, shardId)
+	labels := metric.LabelsForShard(namespace, shardId)
 	db := &db{
 		kv:                    kv,
 		shardId:               shardId,
@@ -111,25 +113,25 @@ func NewDB(namespace string, shardId int64, factory Factory, notificationRetenti
 			slog.Int64("shard", shardId),
 		),
 
-		batchWriteLatencyHisto: metrics.NewLatencyHistogram("oxia_server_db_batch_write_latency",
+		batchWriteLatencyHisto: metric.NewLatencyHistogram("oxia_server_db_batch_write_latency",
 			"The time it takes to write a batch in the db", labels),
-		getLatencyHisto: metrics.NewLatencyHistogram("oxia_server_db_get_latency",
+		getLatencyHisto: metric.NewLatencyHistogram("oxia_server_db_get_latency",
 			"The time it takes to get from the db", labels),
-		listLatencyHisto: metrics.NewLatencyHistogram("oxia_server_db_list_latency",
+		listLatencyHisto: metric.NewLatencyHistogram("oxia_server_db_list_latency",
 			"The time it takes to read a list from the db", labels),
-		putCounter: metrics.NewCounter("oxia_server_db_puts",
+		putCounter: metric.NewCounter("oxia_server_db_puts",
 			"The total number of put operations", "count", labels),
-		deleteCounter: metrics.NewCounter("oxia_server_db_deletes",
+		deleteCounter: metric.NewCounter("oxia_server_db_deletes",
 			"The total number of delete operations", "count", labels),
-		deleteRangesCounter: metrics.NewCounter("oxia_server_db_delete_ranges",
+		deleteRangesCounter: metric.NewCounter("oxia_server_db_delete_ranges",
 			"The total number of delete ranges operations", "count", labels),
-		getCounter: metrics.NewCounter("oxia_server_db_gets",
+		getCounter: metric.NewCounter("oxia_server_db_gets",
 			"The total number of get operations", "count", labels),
-		getSequenceUpdatesCounter: metrics.NewCounter("oxia_server_db_get_sequence_updates",
+		getSequenceUpdatesCounter: metric.NewCounter("oxia_server_db_get_sequence_updates",
 			"The total number of get sequence updates operations", "count", labels),
-		listCounter: metrics.NewCounter("oxia_server_db_lists",
+		listCounter: metric.NewCounter("oxia_server_db_lists",
 			"The total number of list operations", "count", labels),
-		rangeScanCounter: metrics.NewCounter("oxia_server_db_range_scans",
+		rangeScanCounter: metric.NewCounter("oxia_server_db_range_scans",
 			"The total number of range-scan operations", "count", labels),
 	}
 
@@ -157,17 +159,17 @@ type db struct {
 	notificationsEnabled  bool
 	sequenceWaiterTracker SequenceWaiterTracker
 
-	putCounter                metrics.Counter
-	deleteCounter             metrics.Counter
-	deleteRangesCounter       metrics.Counter
-	getCounter                metrics.Counter
-	getSequenceUpdatesCounter metrics.Counter
-	listCounter               metrics.Counter
-	rangeScanCounter          metrics.Counter
+	putCounter                metric.Counter
+	deleteCounter             metric.Counter
+	deleteRangesCounter       metric.Counter
+	getCounter                metric.Counter
+	getSequenceUpdatesCounter metric.Counter
+	listCounter               metric.Counter
+	rangeScanCounter          metric.Counter
 
-	batchWriteLatencyHisto metrics.LatencyHistogram
-	getLatencyHisto        metrics.LatencyHistogram
-	listLatencyHisto       metrics.LatencyHistogram
+	batchWriteLatencyHisto metric.LatencyHistogram
+	getLatencyHisto        metric.LatencyHistogram
+	listLatencyHisto       metric.LatencyHistogram
 }
 
 func (d *db) Snapshot() (Snapshot, error) {
@@ -323,7 +325,7 @@ func (d *db) GetSequenceUpdates(prefixKey string) (SequenceWaiter, error) {
 
 type listIterator struct {
 	KeyIterator
-	timer metrics.Timer
+	timer metric.Timer
 }
 
 func (it *listIterator) Close() error {
@@ -347,7 +349,7 @@ func (d *db) List(request *proto.ListRequest) (KeyIterator, error) {
 
 type rangeScanIterator struct {
 	KeyValueIterator
-	timer metrics.Timer
+	timer metric.Timer
 }
 
 func (it *rangeScanIterator) Value() (*proto.GetResponse, error) {

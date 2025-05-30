@@ -27,8 +27,12 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/common/metrics"
+	"github.com/streamnative/oxia/common/concurrent"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/process"
+	"github.com/streamnative/oxia/common/time"
+
+	"github.com/streamnative/oxia/common/metric"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/kv"
 	"github.com/streamnative/oxia/server/wal"
@@ -98,14 +102,14 @@ type followerController struct {
 
 	ctx              context.Context
 	cancel           context.CancelFunc
-	syncCond         common.ConditionContext
-	applyEntriesCond common.ConditionContext
+	syncCond         concurrent.ConditionContext
+	applyEntriesCond concurrent.ConditionContext
 	applyEntriesDone chan any
-	closeStreamWg    common.WaitGroup
+	closeStreamWg    concurrent.WaitGroup
 	log              *slog.Logger
 	config           Config
 
-	writeLatencyHisto metrics.LatencyHistogram
+	writeLatencyHisto metric.LatencyHistogram
 }
 
 func NewFollowerController(config Config, namespace string, shardId int64, wf wal.Factory, kvFactory kv.Factory) (FollowerController, error) {
@@ -117,12 +121,12 @@ func NewFollowerController(config Config, namespace string, shardId int64, wf wa
 		status:           proto.ServingStatus_NOT_MEMBER,
 		closeStreamWg:    nil,
 		applyEntriesDone: make(chan any),
-		writeLatencyHisto: metrics.NewLatencyHistogram("oxia_server_follower_write_latency",
-			"Latency for write operations in the follower", metrics.LabelsForShard(namespace, shardId)),
+		writeLatencyHisto: metric.NewLatencyHistogram("oxia_server_follower_write_latency",
+			"Latency for write operations in the follower", metric.LabelsForShard(namespace, shardId)),
 	}
 	fc.ctx, fc.cancel = context.WithCancel(context.Background())
-	fc.syncCond = common.NewConditionContext(fc)
-	fc.applyEntriesCond = common.NewConditionContext(fc)
+	fc.syncCond = concurrent.NewConditionContext(fc)
+	fc.applyEntriesCond = concurrent.NewConditionContext(fc)
 
 	var err error
 	if fc.wal, err = wf.NewWal(namespace, shardId, fc); err != nil {
@@ -131,7 +135,7 @@ func NewFollowerController(config Config, namespace string, shardId int64, wf wa
 
 	fc.lastAppendedOffset = fc.wal.LastOffset()
 
-	if fc.db, err = kv.NewDB(namespace, shardId, kvFactory, config.NotificationsRetentionTime, common.SystemClock); err != nil {
+	if fc.db, err = kv.NewDB(namespace, shardId, kvFactory, config.NotificationsRetentionTime, time.SystemClock); err != nil {
 		return nil, err
 	}
 
@@ -158,7 +162,7 @@ func NewFollowerController(config Config, namespace string, shardId int64, wf wa
 
 	fc.setLogger()
 
-	go common.DoWithLabels(
+	go process.DoWithLabels(
 		fc.ctx,
 		map[string]string{
 			"oxia":  "follower-apply-committed-entries",
@@ -257,7 +261,7 @@ func (fc *followerController) NewTerm(req *proto.NewTermRequest) (*proto.NewTerm
 	defer fc.Unlock()
 
 	if fc.isClosed() {
-		return nil, common.ErrAlreadyClosed
+		return nil, constant.ErrAlreadyClosed
 	}
 
 	if req.Term < fc.term {
@@ -266,12 +270,12 @@ func (fc *followerController) NewTerm(req *proto.NewTermRequest) (*proto.NewTerm
 			slog.Int64("follower-term", fc.term),
 			slog.Int64("new-term", req.Term),
 		)
-		return nil, common.ErrInvalidTerm
+		return nil, constant.ErrInvalidTerm
 	}
 
 	if fc.db == nil {
 		var err error
-		if fc.db, err = kv.NewDB(fc.namespace, fc.shardId, fc.kvFactory, fc.config.NotificationsRetentionTime, common.SystemClock); err != nil {
+		if fc.db, err = kv.NewDB(fc.namespace, fc.shardId, fc.kvFactory, fc.config.NotificationsRetentionTime, time.SystemClock); err != nil {
 			return nil, errors.Wrapf(err, "failed to reopen database")
 		}
 	}
@@ -311,15 +315,15 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 	defer fc.Unlock()
 
 	if fc.isClosed() {
-		return nil, common.ErrAlreadyClosed
+		return nil, constant.ErrAlreadyClosed
 	}
 
 	if fc.status != proto.ServingStatus_FENCED {
-		return nil, common.ErrInvalidStatus
+		return nil, constant.ErrInvalidStatus
 	}
 
 	if req.Term != fc.term {
-		return nil, common.ErrInvalidTerm
+		return nil, constant.ErrInvalidTerm
 	}
 
 	fc.status = proto.ServingStatus_FOLLOWER
@@ -342,19 +346,19 @@ func (fc *followerController) Replicate(stream proto.OxiaLogReplication_Replicat
 	fc.Lock()
 	if fc.status != proto.ServingStatus_FENCED && fc.status != proto.ServingStatus_FOLLOWER {
 		fc.Unlock()
-		return common.ErrInvalidStatus
+		return constant.ErrInvalidStatus
 	}
 
 	if fc.closeStreamWg != nil {
 		fc.Unlock()
-		return common.ErrLeaderAlreadyConnected
+		return constant.ErrLeaderAlreadyConnected
 	}
 
-	closeStreamWg := common.NewWaitGroup(1)
+	closeStreamWg := concurrent.NewWaitGroup(1)
 	fc.closeStreamWg = closeStreamWg
 	fc.Unlock()
 
-	go common.DoWithLabels(
+	go process.DoWithLabels(
 		stream.Context(),
 		map[string]string{
 			"oxia":  "add-entries",
@@ -363,7 +367,7 @@ func (fc *followerController) Replicate(stream proto.OxiaLogReplication_Replicat
 		func() { fc.handleServerStream(stream) },
 	)
 
-	go common.DoWithLabels(
+	go process.DoWithLabels(
 		stream.Context(),
 		map[string]string{
 			"oxia":  "add-entries-sync",
@@ -398,7 +402,7 @@ func (fc *followerController) append(req *proto.Append, stream proto.OxiaLogRepl
 	defer fc.Unlock()
 
 	if req.Term != fc.term {
-		return common.ErrInvalidTerm
+		return constant.ErrInvalidTerm
 	}
 
 	fc.log.Debug(
@@ -589,14 +593,14 @@ func (fc *followerController) SendSnapshot(stream proto.OxiaLogReplication_SendS
 
 	if fc.closeStreamWg != nil {
 		fc.Unlock()
-		return common.ErrLeaderAlreadyConnected
+		return constant.ErrLeaderAlreadyConnected
 	}
 
-	closeStreamWg := common.NewWaitGroup(1)
+	closeStreamWg := concurrent.NewWaitGroup(1)
 	fc.closeStreamWg = closeStreamWg
 	fc.Unlock()
 
-	go common.DoWithLabels(
+	go process.DoWithLabels(
 		stream.Context(),
 		map[string]string{
 			"oxia":  "receive-snapshot",
@@ -626,8 +630,8 @@ func (fc *followerController) readSnapshotStream(stream proto.OxiaLogReplication
 		case fc.term != wal.InvalidTerm && snapChunk.Term != fc.term:
 			// The follower could be left with term=-1 by a previous failed
 			// attempt at sending the snapshot. It's ok to proceed in that case.
-			fc.closeStreamNoMutex(common.ErrInvalidTerm)
-			return totalSize, common.ErrInvalidTerm
+			fc.closeStreamNoMutex(constant.ErrInvalidTerm)
+			return totalSize, constant.ErrInvalidTerm
 		}
 
 		fc.term = snapChunk.Term
@@ -685,7 +689,7 @@ func (fc *followerController) handleSnapshot(stream proto.OxiaLogReplication_Sen
 	// We have received all the files for the database
 	loader.Complete()
 
-	newDb, err := kv.NewDB(fc.namespace, fc.shardId, fc.kvFactory, fc.config.NotificationsRetentionTime, common.SystemClock)
+	newDb, err := kv.NewDB(fc.namespace, fc.shardId, fc.kvFactory, fc.config.NotificationsRetentionTime, time.SystemClock)
 	if err != nil {
 		fc.closeStreamNoMutex(errors.Wrap(err, "failed to open database after loading snapshot"))
 		return
@@ -746,7 +750,7 @@ func (fc *followerController) DeleteShard(request *proto.DeleteShardRequest) (*p
 			slog.Int64("follower-term", fc.term),
 			slog.Int64("new-term", request.Term))
 		_ = fc.close()
-		return nil, common.ErrInvalidTerm
+		return nil, constant.ErrInvalidTerm
 	}
 
 	fc.log.Info("Deleting shard")

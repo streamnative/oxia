@@ -27,7 +27,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/process"
+
 	"github.com/streamnative/oxia/coordinator/impl"
 )
 
@@ -83,7 +84,7 @@ func (*cmConfigProvider) WatchChannel(rp viper.RemoteProvider) (<-chan *viper.Re
 		return ch, nil
 	}
 
-	go common.DoWithLabels(context.Background(), map[string]string{
+	go process.DoWithLabels(context.Background(), map[string]string{
 		"component": "k8s-configmap-watch",
 	}, func() {
 		for res := range w.ResultChan() {

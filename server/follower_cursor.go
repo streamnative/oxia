@@ -29,8 +29,10 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/streamnative/oxia/common"
-	"github.com/streamnative/oxia/common/metrics"
+	"github.com/streamnative/oxia/common/process"
+	time2 "github.com/streamnative/oxia/common/time"
+
+	"github.com/streamnative/oxia/common/metric"
 	"github.com/streamnative/oxia/proto"
 	"github.com/streamnative/oxia/server/kv"
 	"github.com/streamnative/oxia/server/wal"
@@ -83,11 +85,11 @@ type followerCursor struct {
 	cancel  context.CancelFunc
 	log     *slog.Logger
 
-	snapshotsTransferTime     metrics.LatencyHistogram
-	snapshotsStartedCounter   metrics.Counter
-	snapshotsCompletedCounter metrics.Counter
-	snapshotsFailedCounter    metrics.Counter
-	snapshotsBytesSent        metrics.Counter
+	snapshotsTransferTime     metric.LatencyHistogram
+	snapshotsStartedCounter   metric.Counter
+	snapshotsCompletedCounter metric.Counter
+	snapshotsFailedCounter    metric.Counter
+	snapshotsBytesSent        metric.Counter
 }
 
 func NewFollowerCursor( //nolint:revive
@@ -124,20 +126,20 @@ func NewFollowerCursor( //nolint:revive
 			slog.String("follower", follower),
 		),
 
-		snapshotsTransferTime: metrics.NewLatencyHistogram("oxia_server_snapshots_transfer_time",
+		snapshotsTransferTime: metric.NewLatencyHistogram("oxia_server_snapshots_transfer_time",
 			"The time taken to transfer a full snapshot", labels),
-		snapshotsStartedCounter: metrics.NewCounter("oxia_server_snapshots_started",
+		snapshotsStartedCounter: metric.NewCounter("oxia_server_snapshots_started",
 			"The number of DB snapshots started", "count", labels),
-		snapshotsCompletedCounter: metrics.NewCounter("oxia_server_snapshots_completed",
+		snapshotsCompletedCounter: metric.NewCounter("oxia_server_snapshots_completed",
 			"The number of DB snapshots completed", "count", labels),
-		snapshotsFailedCounter: metrics.NewCounter("oxia_server_snapshots_failed",
+		snapshotsFailedCounter: metric.NewCounter("oxia_server_snapshots_failed",
 			"The number of DB snapshots failed", "count", labels),
-		snapshotsBytesSent: metrics.NewCounter("oxia_server_snapshots_sent",
-			"The amount of data sent as snapshot", metrics.Bytes, labels),
+		snapshotsBytesSent: metric.NewCounter("oxia_server_snapshots_sent",
+			"The amount of data sent as snapshot", metric.Bytes, labels),
 	}
 
 	fc.ctx, fc.cancel = context.WithCancel(context.Background())
-	fc.backoff = common.NewBackOff(fc.ctx)
+	fc.backoff = time2.NewBackOff(fc.ctx)
 
 	fc.lastPushed.Store(ackOffset)
 	fc.ackOffset.Store(ackOffset)
@@ -147,7 +149,7 @@ func NewFollowerCursor( //nolint:revive
 		return nil, err
 	}
 
-	go common.DoWithLabels(
+	go process.DoWithLabels(
 		context.Background(),
 		map[string]string{
 			"oxia":      "follower-cursor-send",
@@ -378,7 +380,7 @@ func (fc *followerCursor) streamEntries() error {
 	}
 	defer reader.Close()
 
-	go common.DoWithLabels(
+	go process.DoWithLabels(
 		ctx,
 		map[string]string{
 			"oxia":  "follower-cursor-receive",

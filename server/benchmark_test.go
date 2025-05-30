@@ -24,14 +24,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/logging"
 	"github.com/streamnative/oxia/oxia"
 	"github.com/streamnative/oxia/perf"
 )
 
 func BenchmarkServer(b *testing.B) {
-	common.LogLevel = slog.LevelInfo
-	common.ConfigureLogger()
+	logging.LogLevel = slog.LevelInfo
+	logging.ConfigureLogger()
 
 	tmp := b.TempDir()
 

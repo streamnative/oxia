@@ -23,7 +23,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/rpc"
+
 	"github.com/streamnative/oxia/common/security"
 	"github.com/streamnative/oxia/coordinator/impl"
 	"github.com/streamnative/oxia/coordinator/model"
@@ -121,7 +123,7 @@ func TestClusterHandshakeSuccess(t *testing.T) {
 	metadataProvider := impl.NewMetadataProviderMemory()
 	clusterConfig := model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
-			Name:              common.DefaultNamespace,
+			Name:              constant.DefaultNamespace,
 			ReplicationFactor: 3,
 			InitialShardCount: 1,
 		}},
@@ -132,7 +134,7 @@ func TestClusterHandshakeSuccess(t *testing.T) {
 	tlsConf, err := option.MakeClientTLSConf()
 	assert.NoError(t, err)
 
-	clientPool := common.NewClientPool(tlsConf, nil)
+	clientPool := rpc.NewClientPool(tlsConf, nil)
 	defer clientPool.Close()
 
 	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, impl.NewRpcProvider(clientPool))
@@ -151,7 +153,7 @@ func TestClientHandshakeFailByNoTlsConfig(t *testing.T) {
 	metadataProvider := impl.NewMetadataProviderMemory()
 	clusterConfig := model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
-			Name:              common.DefaultNamespace,
+			Name:              constant.DefaultNamespace,
 			ReplicationFactor: 3,
 			InitialShardCount: 1,
 		}},
@@ -162,7 +164,7 @@ func TestClientHandshakeFailByNoTlsConfig(t *testing.T) {
 	tlsConf, err := option.MakeClientTLSConf()
 	assert.NoError(t, err)
 
-	clientPool := common.NewClientPool(tlsConf, nil)
+	clientPool := rpc.NewClientPool(tlsConf, nil)
 	defer clientPool.Close()
 
 	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, impl.NewRpcProvider(clientPool))
@@ -185,7 +187,7 @@ func TestClientHandshakeByAuthFail(t *testing.T) {
 	metadataProvider := impl.NewMetadataProviderMemory()
 	clusterConfig := model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
-			Name:              common.DefaultNamespace,
+			Name:              constant.DefaultNamespace,
 			ReplicationFactor: 3,
 			InitialShardCount: 1,
 		}},
@@ -196,7 +198,7 @@ func TestClientHandshakeByAuthFail(t *testing.T) {
 	tlsConf, err := option.MakeClientTLSConf()
 	assert.NoError(t, err)
 
-	clientPool := common.NewClientPool(tlsConf, nil)
+	clientPool := rpc.NewClientPool(tlsConf, nil)
 	defer clientPool.Close()
 
 	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, impl.NewRpcProvider(clientPool))
@@ -225,7 +227,7 @@ func TestClientHandshakeWithInsecure(t *testing.T) {
 	metadataProvider := impl.NewMetadataProviderMemory()
 	clusterConfig := model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
-			Name:              common.DefaultNamespace,
+			Name:              constant.DefaultNamespace,
 			ReplicationFactor: 3,
 			InitialShardCount: 1,
 		}},
@@ -236,7 +238,7 @@ func TestClientHandshakeWithInsecure(t *testing.T) {
 	tlsConf, err := option.MakeClientTLSConf()
 	assert.NoError(t, err)
 
-	clientPool := common.NewClientPool(tlsConf, nil)
+	clientPool := rpc.NewClientPool(tlsConf, nil)
 	defer clientPool.Close()
 
 	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, impl.NewRpcProvider(clientPool))
@@ -266,7 +268,7 @@ func TestClientHandshakeSuccess(t *testing.T) {
 	metadataProvider := impl.NewMetadataProviderMemory()
 	clusterConfig := model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
-			Name:              common.DefaultNamespace,
+			Name:              constant.DefaultNamespace,
 			ReplicationFactor: 3,
 			InitialShardCount: 1,
 		}},
@@ -277,7 +279,7 @@ func TestClientHandshakeSuccess(t *testing.T) {
 	tlsConf, err := option.MakeClientTLSConf()
 	assert.NoError(t, err)
 
-	clientPool := common.NewClientPool(tlsConf, nil)
+	clientPool := rpc.NewClientPool(tlsConf, nil)
 	defer clientPool.Close()
 
 	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, impl.NewRpcProvider(clientPool))
@@ -308,13 +310,13 @@ func TestOnlyEnablePublicTls(t *testing.T) {
 	metadataProvider := impl.NewMetadataProviderMemory()
 	clusterConfig := model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
-			Name:              common.DefaultNamespace,
+			Name:              constant.DefaultNamespace,
 			ReplicationFactor: 3,
 			InitialShardCount: 1,
 		}},
 		Servers: []model.Server{sa1, sa2, sa3},
 	}
-	clientPool := common.NewClientPool(nil, nil)
+	clientPool := rpc.NewClientPool(nil, nil)
 	defer clientPool.Close()
 
 	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, impl.NewRpcProvider(clientPool))

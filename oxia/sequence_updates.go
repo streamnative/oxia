@@ -22,7 +22,10 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/process"
+	"github.com/streamnative/oxia/common/rpc"
+	time2 "github.com/streamnative/oxia/common/time"
+
 	"github.com/streamnative/oxia/oxia/internal"
 	"github.com/streamnative/oxia/proto"
 )
@@ -32,7 +35,7 @@ type sequenceUpdates struct {
 	partitionKey string
 	ch           chan string
 	shardManager internal.ShardManager
-	clientPool   common.ClientPool
+	clientPool   rpc.ClientPool
 
 	ctx     context.Context
 	backoff backoff.BackOff
@@ -40,7 +43,7 @@ type sequenceUpdates struct {
 }
 
 func newSequenceUpdates(ctx context.Context, prefixKey string, partitionKey string,
-	clientPool common.ClientPool, shardManager internal.ShardManager) <-chan string {
+	clientPool rpc.ClientPool, shardManager internal.ShardManager) <-chan string {
 	su := &sequenceUpdates{
 		prefixKey:    prefixKey,
 		partitionKey: partitionKey,
@@ -48,14 +51,14 @@ func newSequenceUpdates(ctx context.Context, prefixKey string, partitionKey stri
 		shardManager: shardManager,
 		clientPool:   clientPool,
 		ctx:          ctx,
-		backoff:      common.NewBackOffWithInitialInterval(ctx, 1*time.Second),
+		backoff:      time2.NewBackOffWithInitialInterval(ctx, 1*time.Second),
 		log: slog.With(
 			slog.String("component", "oxia-get-sequence-updates"),
 			slog.String("key", "key"),
 		),
 	}
 
-	go common.DoWithLabels(
+	go process.DoWithLabels(
 		su.ctx,
 		map[string]string{
 			"oxia":      "sequence-updates",
@@ -87,12 +90,12 @@ func (su *sequenceUpdates) getSequenceUpdates() error {
 	shard := su.shardManager.Get(su.partitionKey)
 	leader := su.shardManager.Leader(shard)
 
-	rpc, err := su.clientPool.GetClientRpc(leader)
+	client, err := su.clientPool.GetClientRpc(leader)
 	if err != nil {
 		return err
 	}
 
-	updates, err := rpc.GetSequenceUpdates(su.ctx, &proto.GetSequenceUpdatesRequest{
+	updates, err := client.GetSequenceUpdates(su.ctx, &proto.GetSequenceUpdatesRequest{
 		Key: su.prefixKey,
 	})
 	if err != nil {

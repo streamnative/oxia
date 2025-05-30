@@ -25,12 +25,12 @@ import (
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/streamnative/oxia/common/container"
+	"github.com/streamnative/oxia/common/rpc"
 )
 
 func TestInternalHealthCheck(t *testing.T) {
 	healthServer := health.NewServer()
-	server, err := newInternalRpcServer(container.Default, "localhost:0", nil,
+	server, err := newInternalRpcServer(rpc.Default, "localhost:0", nil,
 		NewShardAssignmentDispatcher(healthServer), healthServer, nil)
 	assert.NoError(t, err)
 

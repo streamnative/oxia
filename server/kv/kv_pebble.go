@@ -30,9 +30,10 @@ import (
 	"go.uber.org/multierr"
 	"golang.org/x/net/context"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/cache"
+
 	"github.com/streamnative/oxia/common/compare"
-	"github.com/streamnative/oxia/common/metrics"
+	"github.com/streamnative/oxia/common/metric"
 )
 
 var (
@@ -55,7 +56,7 @@ type PebbleFactory struct {
 	cache   *pebble.Cache
 	options *FactoryOptions
 
-	gaugeCacheSize metrics.Gauge
+	gaugeCacheSize metric.Gauge
 }
 
 func NewPebbleKVFactory(options *FactoryOptions) (Factory, error) {
@@ -72,18 +73,18 @@ func NewPebbleKVFactory(options *FactoryOptions) (Factory, error) {
 		dataDir = DefaultFactoryOptions.DataDir
 	}
 
-	cache := pebble.NewCache(cacheSizeMB * 1024 * 1024)
+	blockCache := pebble.NewCache(cacheSizeMB * 1024 * 1024)
 
 	pf := &PebbleFactory{
 		dataDir: dataDir,
 		options: options,
 
 		// Share a single cache instance across the databases for all the shards
-		cache: cache,
+		cache: blockCache,
 
-		gaugeCacheSize: metrics.NewGauge("oxia_server_kv_pebble_max_cache_size",
+		gaugeCacheSize: metric.NewGauge("oxia_server_kv_pebble_max_cache_size",
 			"The max size configured for the Pebble block cache in bytes",
-			metrics.Bytes, map[string]any{}, func() int64 {
+			metric.Bytes, map[string]any{}, func() int64 {
 				return options.CacheSizeMB * 1024 * 1024
 			}),
 	}
@@ -147,24 +148,24 @@ type Pebble struct {
 	snapshotCounter atomic.Int64
 
 	dbMetrics          func() *pebble.Metrics
-	gauges             []metrics.Gauge
-	batchCommitLatency metrics.LatencyHistogram
+	gauges             []metric.Gauge
+	batchCommitLatency metric.LatencyHistogram
 
-	writeBytes  metrics.Counter
-	writeCount  metrics.Counter
-	readBytes   metrics.Counter
-	readCount   metrics.Counter
-	readLatency metrics.LatencyHistogram
-	writeErrors metrics.Counter
-	readErrors  metrics.Counter
+	writeBytes  metric.Counter
+	writeCount  metric.Counter
+	readBytes   metric.Counter
+	readCount   metric.Counter
+	readLatency metric.LatencyHistogram
+	writeErrors metric.Counter
+	readErrors  metric.Counter
 
-	batchSizeHisto  metrics.Histogram
-	batchCountHisto metrics.Histogram
+	batchSizeHisto  metric.Histogram
+	batchCountHisto metric.Histogram
 }
 
 func newKVPebble(factory *PebbleFactory, namespace string, shardId int64) (KV, error) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
-	labels := metrics.LabelsForShard(namespace, shardId)
+	labels := metric.LabelsForShard(namespace, shardId)
 	pb := &Pebble{
 		ctx:       ctx,
 		cancel:    cancelFunc,
@@ -173,26 +174,26 @@ func newKVPebble(factory *PebbleFactory, namespace string, shardId int64) (KV, e
 		shardId:   shardId,
 		dataDir:   factory.dataDir,
 
-		batchCommitLatency: metrics.NewLatencyHistogram("oxia_server_kv_batch_commit_latency",
+		batchCommitLatency: metric.NewLatencyHistogram("oxia_server_kv_batch_commit_latency",
 			"The latency for committing a batch into the database", labels),
-		readLatency: metrics.NewLatencyHistogram("oxia_server_kv_read_latency",
+		readLatency: metric.NewLatencyHistogram("oxia_server_kv_read_latency",
 			"The latency for reading a value from the database", labels),
-		writeBytes: metrics.NewCounter("oxia_server_kv_write",
-			"The amount of bytes written into the database", metrics.Bytes, labels),
-		writeCount: metrics.NewCounter("oxia_server_kv_write_ops",
+		writeBytes: metric.NewCounter("oxia_server_kv_write",
+			"The amount of bytes written into the database", metric.Bytes, labels),
+		writeCount: metric.NewCounter("oxia_server_kv_write_ops",
 			"The amount of write operations", "count", labels),
-		readBytes: metrics.NewCounter("oxia_server_kv_read",
-			"The amount of bytes read from the database", metrics.Bytes, labels),
-		readCount: metrics.NewCounter("oxia_server_kv_write_ops",
+		readBytes: metric.NewCounter("oxia_server_kv_read",
+			"The amount of bytes read from the database", metric.Bytes, labels),
+		readCount: metric.NewCounter("oxia_server_kv_write_ops",
 			"The amount of write operations", "count", labels),
-		writeErrors: metrics.NewCounter("oxia_server_kv_write_errors",
+		writeErrors: metric.NewCounter("oxia_server_kv_write_errors",
 			"The count of write operations errors", "count", labels),
-		readErrors: metrics.NewCounter("oxia_server_kv_read_errors",
+		readErrors: metric.NewCounter("oxia_server_kv_read_errors",
 			"The count of read operations errors", "count", labels),
 
-		batchSizeHisto: metrics.NewBytesHistogram("oxia_server_kv_batch_size",
+		batchSizeHisto: metric.NewBytesHistogram("oxia_server_kv_batch_size",
 			"The size in bytes for a given batch", labels),
-		batchCountHisto: metrics.NewCountHistogram("oxia_server_kv_batch_count",
+		batchCountHisto: metric.NewCountHistogram("oxia_server_kv_batch_count",
 			"The number of operations in a given batch", labels),
 	}
 
@@ -240,74 +241,74 @@ func newKVPebble(factory *PebbleFactory, namespace string, shardId int64) (KV, e
 	pb.db = db
 
 	// Cache the calls to db.Metrics() which are common to all the gauges
-	pb.dbMetrics = common.Memoize(func() *pebble.Metrics {
+	pb.dbMetrics = cache.Memoize(func() *pebble.Metrics {
 		return pb.db.Metrics()
 	}, 5*time.Second)
 
-	pb.gauges = []metrics.Gauge{
-		metrics.NewGauge("oxia_server_kv_pebble_block_cache_used",
+	pb.gauges = []metric.Gauge{
+		metric.NewGauge("oxia_server_kv_pebble_block_cache_used",
 			"The size of the block cache used by a given db shard",
-			metrics.Bytes, labels, func() int64 {
+			metric.Bytes, labels, func() int64 {
 				return pb.dbMetrics().BlockCache.Size
 			}),
-		metrics.NewGauge("oxia_server_kv_pebble_block_cache_hits",
+		metric.NewGauge("oxia_server_kv_pebble_block_cache_hits",
 			"The number of hits in the block cache",
 			"count", labels, func() int64 {
 				return pb.dbMetrics().BlockCache.Hits
 			}),
-		metrics.NewGauge("oxia_server_kv_pebble_block_cache_misses",
+		metric.NewGauge("oxia_server_kv_pebble_block_cache_misses",
 			"The number of misses in the block cache",
 			"count", labels, func() int64 {
 				return pb.dbMetrics().BlockCache.Misses
 			}),
-		metrics.NewGauge("oxia_server_kv_pebble_read_iterators",
+		metric.NewGauge("oxia_server_kv_pebble_read_iterators",
 			"The number of iterators open",
 			"value", labels, func() int64 {
 				return pb.dbMetrics().TableIters
 			}),
 
-		metrics.NewGauge("oxia_server_kv_pebble_compactions_total",
+		metric.NewGauge("oxia_server_kv_pebble_compactions_total",
 			"The number of compactions operations",
 			"count", labels, func() int64 {
 				return pb.dbMetrics().Compact.Count
 			}),
-		metrics.NewGauge("oxia_server_kv_pebble_compaction_debt",
+		metric.NewGauge("oxia_server_kv_pebble_compaction_debt",
 			"The estimated number of bytes that need to be compacted",
-			metrics.Bytes, labels, func() int64 {
+			metric.Bytes, labels, func() int64 {
 				return int64(pb.dbMetrics().Compact.EstimatedDebt)
 			}),
-		metrics.NewGauge("oxia_server_kv_pebble_flush_total",
+		metric.NewGauge("oxia_server_kv_pebble_flush_total",
 			"The total number of db flushes",
 			"count", labels, func() int64 {
 				return pb.dbMetrics().Flush.Count
 			}),
-		metrics.NewGauge("oxia_server_kv_pebble_flush",
+		metric.NewGauge("oxia_server_kv_pebble_flush",
 			"The total amount of bytes flushed into the db",
-			metrics.Bytes, labels, func() int64 {
+			metric.Bytes, labels, func() int64 {
 				return pb.dbMetrics().Flush.WriteThroughput.Bytes
 			}),
-		metrics.NewGauge("oxia_server_kv_pebble_memtable_size",
+		metric.NewGauge("oxia_server_kv_pebble_memtable_size",
 			"The size of the memtable",
-			metrics.Bytes, labels, func() int64 {
+			metric.Bytes, labels, func() int64 {
 				return int64(pb.dbMetrics().MemTable.Size)
 			}),
 
-		metrics.NewGauge("oxia_server_kv_pebble_disk_space",
+		metric.NewGauge("oxia_server_kv_pebble_disk_space",
 			"The total size of all the db files",
-			metrics.Bytes, labels, func() int64 {
+			metric.Bytes, labels, func() int64 {
 				return int64(pb.dbMetrics().DiskSpaceUsage())
 			}),
-		metrics.NewGauge("oxia_server_kv_pebble_num_files_total",
+		metric.NewGauge("oxia_server_kv_pebble_num_files_total",
 			"The total number of files for the db",
 			"count", labels, func() int64 {
 				return pb.dbMetrics().Total().NumFiles
 			}),
-		metrics.NewGauge("oxia_server_kv_pebble_read",
+		metric.NewGauge("oxia_server_kv_pebble_read",
 			"The total amount of bytes read at this db level",
-			metrics.Bytes, labels, func() int64 {
+			metric.Bytes, labels, func() int64 {
 				return int64(pb.dbMetrics().Total().BytesRead)
 			}),
-		metrics.NewGauge("oxia_server_kv_pebble_write_amplification_percent",
+		metric.NewGauge("oxia_server_kv_pebble_write_amplification_percent",
 			"The total amount of bytes read at this db level",
 			"percent", labels, func() int64 {
 				t := pb.dbMetrics().Total()
@@ -324,19 +325,19 @@ func newKVPebble(factory *PebbleFactory, namespace string, shardId int64) (KV, e
 		}
 
 		pb.gauges = append(pb.gauges,
-			metrics.NewGauge("oxia_server_kv_pebble_per_level_num_files",
+			metric.NewGauge("oxia_server_kv_pebble_per_level_num_files",
 				"The total number of files at this db level",
 				"count", labels, func() int64 {
 					return pb.dbMetrics().Levels[level].NumFiles
 				}),
-			metrics.NewGauge("oxia_server_kv_pebble_per_level_size",
+			metric.NewGauge("oxia_server_kv_pebble_per_level_size",
 				"The total size in bytes of the files at this db level",
-				metrics.Bytes, labels, func() int64 {
+				metric.Bytes, labels, func() int64 {
 					return pb.dbMetrics().Levels[level].Size
 				}),
-			metrics.NewGauge("oxia_server_kv_pebble_per_level_read",
+			metric.NewGauge("oxia_server_kv_pebble_per_level_read",
 				"The total amount of bytes read at this db level",
-				metrics.Bytes, labels, func() int64 {
+				metric.Bytes, labels, func() int64 {
 					return int64(pb.dbMetrics().Levels[level].BytesRead)
 				}),
 		)

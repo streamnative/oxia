@@ -22,7 +22,9 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/process"
+	"github.com/streamnative/oxia/common/rpc"
+
 	"github.com/streamnative/oxia/proto"
 )
 
@@ -58,19 +60,19 @@ func startNotificationDispatcher(lc *leaderController, req *proto.NotificationsR
 	// Create a context for handling this stream
 	nd.ctx, nd.cancel = context.WithCancel(stream.Context())
 
-	go common.DoWithLabels(
+	go process.DoWithLabels(
 		nd.ctx,
 		map[string]string{
 			"oxia":  "dispatch-notifications",
 			"shard": fmt.Sprintf("%d", lc.shardId),
-			"peer":  common.GetPeer(stream.Context()),
+			"peer":  rpc.GetPeer(stream.Context()),
 		},
 		func() {
 			if err := nd.dispatchNotifications(); err != nil && !errors.Is(err, context.Canceled) {
 				nd.log.Warn(
 					"Failed to dispatch notifications",
 					slog.Any("error", err),
-					slog.String("peer", common.GetPeer(stream.Context())),
+					slog.String("peer", rpc.GetPeer(stream.Context())),
 				)
 				nd.cancel()
 			}

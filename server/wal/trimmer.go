@@ -23,7 +23,8 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/process"
+	time2 "github.com/streamnative/oxia/common/time"
 )
 
 const (
@@ -39,7 +40,7 @@ type Trimmer interface {
 	io.Closer
 }
 
-func newTrimmer(namespace string, shard int64, wal *wal, retention time.Duration, checkInterval time.Duration, clock common.Clock,
+func newTrimmer(namespace string, shard int64, wal *wal, retention time.Duration, checkInterval time.Duration, clock time2.Clock,
 	commitOffsetProvider CommitOffsetProvider) Trimmer {
 	if retention.Nanoseconds() == 0 {
 		retention = DefaultRetention
@@ -60,7 +61,7 @@ func newTrimmer(namespace string, shard int64, wal *wal, retention time.Duration
 	}
 	t.ctx, t.cancel = context.WithCancel(context.Background())
 
-	go common.DoWithLabels(
+	go process.DoWithLabels(
 		t.ctx,
 		map[string]string{
 			"oxia":  "wal-trimmer",
@@ -75,7 +76,7 @@ func newTrimmer(namespace string, shard int64, wal *wal, retention time.Duration
 type trimmer struct {
 	wal                  *wal
 	retention            time.Duration
-	clock                common.Clock
+	clock                time2.Clock
 	ticker               *time.Ticker
 	commitOffsetProvider CommitOffsetProvider
 	ctx                  context.Context

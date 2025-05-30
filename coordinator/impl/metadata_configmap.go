@@ -25,7 +25,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8s "k8s.io/client-go/kubernetes"
 
-	"github.com/streamnative/oxia/common/metrics"
+	"github.com/streamnative/oxia/common/metric"
 	"github.com/streamnative/oxia/coordinator/model"
 )
 
@@ -35,9 +35,9 @@ type metadataProviderConfigMap struct {
 	namespace, name string
 
 	metadataSize      atomic.Int64
-	getLatencyHisto   metrics.LatencyHistogram
-	storeLatencyHisto metrics.LatencyHistogram
-	metadataSizeGauge metrics.Gauge
+	getLatencyHisto   metric.LatencyHistogram
+	storeLatencyHisto metric.LatencyHistogram
+	metadataSizeGauge metric.Gauge
 }
 
 func NewMetadataProviderConfigMap(kc k8s.Interface, namespace, name string) MetadataProvider {
@@ -46,14 +46,14 @@ func NewMetadataProviderConfigMap(kc k8s.Interface, namespace, name string) Meta
 		namespace:  namespace,
 		name:       name,
 
-		getLatencyHisto: metrics.NewLatencyHistogram("oxia_coordinator_metadata_get_latency",
+		getLatencyHisto: metric.NewLatencyHistogram("oxia_coordinator_metadata_get_latency",
 			"Latency for reading coordinator metadata", nil),
-		storeLatencyHisto: metrics.NewLatencyHistogram("oxia_coordinator_metadata_store_latency",
+		storeLatencyHisto: metric.NewLatencyHistogram("oxia_coordinator_metadata_store_latency",
 			"Latency for storing coordinator metadata", nil),
 	}
 
-	m.metadataSizeGauge = metrics.NewGauge("oxia_coordinator_metadata_size",
-		"The size of the coordinator metadata", metrics.Bytes, nil, func() int64 {
+	m.metadataSizeGauge = metric.NewGauge("oxia_coordinator_metadata_size",
+		"The size of the coordinator metadata", metric.Bytes, nil, func() int64 {
 			return m.metadataSize.Load()
 		})
 

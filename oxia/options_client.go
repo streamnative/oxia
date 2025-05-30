@@ -25,7 +25,8 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/multierr"
 
-	"github.com/streamnative/oxia/common"
+	"github.com/streamnative/oxia/common/constant"
+
 	"github.com/streamnative/oxia/oxia/auth"
 )
 
@@ -35,7 +36,7 @@ const (
 	DefaultMaxBatchSize        = 128 * 1024
 	DefaultRequestTimeout      = 30 * time.Second
 	DefaultSessionTimeout      = 15 * time.Second
-	DefaultNamespace           = common.DefaultNamespace
+	DefaultNamespace           = constant.DefaultNamespace
 )
 
 var (
@@ -84,7 +85,7 @@ type ClientOption interface {
 func newClientOptions(serviceAddress string, opts ...ClientOption) (clientOptions, error) {
 	options := clientOptions{
 		serviceAddress:      serviceAddress,
-		namespace:           common.DefaultNamespace,
+		namespace:           constant.DefaultNamespace,
 		batchLinger:         DefaultBatchLinger,
 		maxRequestsPerBatch: DefaultMaxRequestsPerBatch,
 		maxBatchSize:        DefaultMaxBatchSize,
