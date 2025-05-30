@@ -363,7 +363,6 @@ func (c *coordinator) InitiateLeaderElection(namespace string, shard int64, meta
 	}
 
 	c.metadataVersion = newMetadataVersion
-	c.clusterStatus = cs
 	return nil
 }
 
