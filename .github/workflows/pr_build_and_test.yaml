@@ -120,6 +120,9 @@ jobs:
   maelstrom:
     name: Maelstrom
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@v3
 
