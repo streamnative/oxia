@@ -33,6 +33,9 @@ jobs:
   publish-docker:
     name: Publish docker image
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v3
       - uses: docker/setup-qemu-action@v2
