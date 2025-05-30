@@ -17,9 +17,10 @@ package impl
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/streamnative/oxia/common/rpc"
 	"github.com/streamnative/oxia/coordinator/model"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestCoordinatorInitiateLeaderElection(t *testing.T) {
