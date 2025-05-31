@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/oxia-logo.svg" width="200" />
+  <img src="docs/oxia-logo.svg" width="200" style="margin-bottom:-4rem"/>
 </p>
 
 <h2 align="center">Oxia</h1>
@@ -14,6 +14,8 @@ a robust, scalable metadata store and coordination system designed for large-sca
   <a href="https://github.com/streamnative/oxia/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-white.svg" alt="License"></a>
   <a href="https://github.com/streamnative/oxia/discussions/new/choose"><img src="https://img.shields.io/badge/Github-Discussion-blue.svg?logo=refinedgithub" alt="Github Discussion"></a>
 </p>
+
+
 
 ### Contributing to Oxia
 
