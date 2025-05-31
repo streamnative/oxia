@@ -15,13 +15,13 @@ a robust, scalable metadata store and coordination system designed for large-sca
   <a href="https://github.com/streamnative/oxia/discussions/new/choose"><img src="https://img.shields.io/badge/Github-Discussion-blue.svg?logo=refinedgithub" alt="Github Discussion"></a>
 </p>
 
-## Contributing to Oxia
+### Contributing to Oxia
 
 Please 🌟 star the project if you like it. 
 
 Feel free to open an [issue](https://github.com/streamnative/oxia/issues/new) or start a [discussion](https://github.com/streamnative/oxia/discussions/new/choose). You can also follow the development [guide]() to contribute and build on it.
 
-## License
+### License
 
 Copyright 2023 StreamNative, Inc.
 
