@@ -25,6 +25,8 @@ Oxia offers a sharding architecture designed to efficiently manage distributed m
 
 With Oxia, you get a scalable, robust, and flexible solution for managing metadata in distributed systems, allowing you to unlock the potential of modern cloud-native architectures.
 
+<br>
+
 ### Contributing to Oxia
 
 Please 🌟 star the project if you like it. 
