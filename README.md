@@ -1,8 +1,8 @@
-<p align="center">
+<p align="center" style="margin-bottom: -4rem">
   <img src="docs/oxia-logo.svg" width="200"/>
 </p>
 
-<h2 align="center" style="margin-top:-4rem">Oxia</h1>
+<h2 align="center">Oxia</h1>
 a robust, scalable metadata store and coordination system designed for large-scale distributed systems, with built-in support for stream index storage to optimize real-time data management.
 <p align="center">
   <a href="https://github.com/streamnative/oxia/blob/main/docs/getting-started.md">Getting Started </a> | <a href="https://github.com/streamnative/oxia/tree/main/docs">Documents</a>
