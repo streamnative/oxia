@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/oxia-logo.svg" width="200"/>
+  <img src="docs/oxia-logo.svg" width="250"/>
 </p>
 
 <h2 align="center">Oxia</h1>
