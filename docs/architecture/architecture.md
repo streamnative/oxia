@@ -3,7 +3,7 @@
 
 An Oxia cluster, running in a Kubernetes environment has a few components.
 
-![architecture diagram](./oxia-architecture.png)
+![architecture diagram](oxia-architecture.png)
 
 ### Oxia Coordinator
 
@@ -73,7 +73,7 @@ This will protect against multiple coordinator processes that might be ending up
 This is an application using Oxia through the Oxia client library.
 
 The client library will handle the service discovery, the sharding and batching of requests and will communicate with
-storage pods using a gRPC protocol. The client-server protocol can be found at [client.proto](../proto/client.proto).
+storage pods using a gRPC protocol. The client-server protocol can be found at [client.proto](../../proto/client.proto).
 
 ### Storage pods
 
@@ -94,7 +94,7 @@ The leader will log all the write operations in the local WAL and then push them
 acknowledgment from a majority of the servers in the ensemble (including itself), it will apply the change to the 
 local KV store.
 
-![shard's view](oxia-data-replication.png)
+![shard's view](../consensus/oxia-data-replication.png)
 
 A more in-depth discussion of the replication protocol can be found in 
-[Oxia replication protocol](replication-protocol.md).
+[Oxia replication protocol](../consensus/replication-protocol.md).
