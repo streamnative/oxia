@@ -21,6 +21,10 @@ a robust, scalable metadata store and coordination system designed for large-sca
 
 <img src="docs/banner.svg" width="600"/>
 
+Oxia offers a sharding architecture designed to efficiently manage distributed metadata. In the world of cloud-native applications, scalability and high availability are essential. Traditional systems with a shard-nothing architecture (like etcd) are great for consistency but often face limitations when handling extremely large datasets or high-throughput scenarios. This is where Oxia shines.
+
+With Oxia, you get a scalable, robust, and flexible solution for managing metadata in distributed systems, allowing you to unlock the potential of modern cloud-native architectures.
+
 ### Contributing to Oxia
 
 Please 🌟 star the project if you like it. 
