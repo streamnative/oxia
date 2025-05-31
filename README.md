@@ -19,7 +19,7 @@ a robust, scalable metadata store and coordination system designed for large-sca
 
 ### Why Oxia
 
-<img src="docs/banner.svg" width="800"/>
+<img src="docs/banner.svg" width="600"/>
 
 ### Contributing to Oxia
 
