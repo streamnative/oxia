@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/oxia-logo.png" width="200" />
+  <img src="docs/oxia-logo.svg" width="200" />
 </p>
 
 <h2 align="center">Oxia</h1>
@@ -9,6 +9,7 @@ a robust, scalable metadata store and coordination system designed for large-sca
 </p>
 
 <p align="center">
+  <a href="https://github.com/streamnative/oxia/releases"><img src="https://img.shields.io/github/v/release/streamnative/oxia" alt="Latest Release"></a>
   <a href="https://github.com/streamnative/oxia/actions/workflows/pr_build_and_test.yaml/badge.svg"><img src="https://github.com/streamnative/oxia/actions/workflows/pr_build_and_test.yaml/badge.svg" alt="CI"></a>
   <a href="https://github.com/streamnative/oxia/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-white.svg" alt="License"></a>
   <a href="https://github.com/streamnative/oxia/discussions/new/choose"><img src="https://img.shields.io/badge/Github-Discussion-blue.svg?logo=refinedgithub" alt="Github Discussion"></a>
@@ -16,6 +17,9 @@ a robust, scalable metadata store and coordination system designed for large-sca
 
 ## Contributing to Oxia
 
+Please 🌟 star the project if you like it. 
+
+Feel free to open an [issue](https://github.com/streamnative/oxia/issues/new) or start a [discussion](https://github.com/streamnative/oxia/discussions/new/choose). You can also follow the development [guide]() to contribute and build on it.
 
 ## License
 

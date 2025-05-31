@@ -15,7 +15,7 @@ We apply 3 methods to validate Oxia:
 [TLA+](https://lamport.azurewebsites.net/tla/tla.html) is a high-level language for modeling distributed and 
 concurrent systems.
 
-The Oxia TLA model [OxiaReplication.tla](../tlaplus/OxiaReplication.tla), contains a model of data replication for a
+The Oxia TLA model [OxiaReplication.tla](../../tlaplus/OxiaReplication.tla), contains a model of data replication for a
 single shard.
 
 The TLA+ tools are able to use this model and explore all the possible states, verifying that the system properties are

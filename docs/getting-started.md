@@ -65,7 +65,7 @@ $ oxia client get -k /my-key
 
 ## Interacting by Go client
 
-Instead, you can write a Go application with [Oxia Go API](go-api.md).
+Instead, you can write a Go application with [Oxia Go API](features/go-api.md).
 
 ## Using perf client
 
