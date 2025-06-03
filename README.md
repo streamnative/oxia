@@ -1,43 +1,39 @@
-# StreamNative Oxia
+<p align="center">
+  <img src="docs/oxia-logo.svg" width="250"/>
+</p>
 
-<img align="right" width="350" height="350" src="docs/oxia-logo.png">
+<h2 align="center">Oxia</h1>
+a robust, scalable metadata store and coordination system designed for large-scale distributed systems, with built-in support for stream index storage to optimize real-time data management.
+<p align="center">
+  <a href="https://github.com/streamnative/oxia/blob/main/docs/getting-started.md">Getting Started </a> | <a href="https://github.com/streamnative/oxia/tree/main/docs">Documentation</a>
+</p>
 
-[![Build](https://github.com/streamnative/oxia/actions/workflows/pr_build_and_test.yaml/badge.svg)](https://github.com/streamnative/oxia/actions/workflows/pr_build_and_test.yaml)
+<p align="center">
+  <a href="https://github.com/streamnative/oxia/releases"><img src="https://img.shields.io/github/v/release/streamnative/oxia" alt="Latest Release"></a>
+  <a href="https://github.com/streamnative/oxia/actions/workflows/pr_build_and_test.yaml/badge.svg"><img src="https://github.com/streamnative/oxia/actions/workflows/pr_build_and_test.yaml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/streamnative/oxia/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-white.svg" alt="License"></a>
+  <a href="https://github.com/streamnative/oxia/discussions/new/choose"><img src="https://img.shields.io/badge/Github-Discussion-blue.svg?logo=refinedgithub" alt="Github Discussion"></a>
+</p>
 
-Oxia is a scalable metadata store and coordination system that can be used as the core infrastructure to build
-large scale distributed systems.
+<br><br><br>
 
-## Why Oxia?
+### Why Oxia
 
-* Design optimized for Kubernetes environment
-* Transparent horizontal scalability
-* Linearizable per-key operations
-* Able to sustain millions of read/write per second
-* Able to store 100s of GBs
+<img src="docs/banner.svg" width="600"/>
 
-## Features
+Oxia offers a sharding architecture designed to efficiently manage distributed metadata. In the world of cloud-native applications, scalability and high availability are essential. Traditional systems with a shard-nothing architecture are great for consistency but often face limitations when handling extremely large datasets or high-throughput scenarios. This is where Oxia shines.
 
-* Key-Value interface
-* Notification mechanism
-* Ephemeral records
-* Automated session management
+With Oxia, you get a scalable, robust, and flexible solution for managing metadata in distributed systems, allowing you to unlock the potential of modern cloud-native architectures.
 
-## Documentation
+<br>
 
-* [Design goals](docs/design-goals.md)
-* [Architecture](docs/architecture.md)
-* [Getting started with Oxia](docs/getting-started.md)
-* [Go client API](docs/go-api.md)
-* [Deploy using Helm Chart](docs/k8s-deploy.md)
-* [Deploy using bare metal](docs/bare-metal-deploy.md)
-* Developer docs 
-  * [Replication protocol](docs/replication-protocol.md)
-    * [Coordinator](docs/replication-coordinator.md)
-    * [Storage](docs/replication-storage.md)
-  * [Verifying correctness](docs/correctness.md) 
-  * [Oxia's K8S resources](docs/kubernetes-oxia-cluster.md)
+### Contributing to Oxia
 
-## License
+Please 🌟 star the project if you like it. 
+
+Feel free to open an [issue](https://github.com/streamnative/oxia/issues/new) or start a [discussion](https://github.com/streamnative/oxia/discussions/new/choose). You can also follow the development [guide]() to contribute and build on it.
+
+### License
 
 Copyright 2023 StreamNative, Inc.
 

@@ -38,7 +38,7 @@ a consistent snapshot of the data, without requiring to dump the full data set e
 
 ### Oxia Cluster Helm Chart
 
-Oxia is designed to work natively in a Kubernetes environment. There is an [Oxia Helm Chart](k8s-deploy.md) provided
+Oxia is designed to work natively in a Kubernetes environment. There is an [Oxia Helm Chart](../deployment/k8s-deploy.md) provided
 by default as the canonical way to deploy.
 
 ### Namespaces
