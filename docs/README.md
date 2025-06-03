@@ -4,24 +4,25 @@
 ## Table of contents
 
 - Architecture
-  - [Physical Architecture]()
-  - [Logical Architecture]()
+  - [Design Goal](./architecture/design-goals.md)
+  - [Physical Architecture](./architecture/physical-architecture.md)
+  - [Logical Architecture](./architecture/logical-architecture.md)
   - [Storage Architecture]()
   - [Replication Architecture]()
 - Client
-  - [Golang]()
+  - [Golang](./client/go-api.md)
   - [JVM]()
 - Consensus
   - [Leader Election]()
   - [Data Replication]()
 - Deployment
-  - [Bare Metal]()
+  - [Bare Metal](./deployment/bare-metal.md)
   - [Docker]()
-  - [Kubernetes]()
-- [Development](./development)
+  - [Kubernetes](./deployment/kubernetes.md)
+- [Development]()
 - Correctness
-  - [TLA+]()
-  - [Proof]()
+  - [TLA+](./correctness/tla+.md)
+  - [Maelstrom](./correctness/maelstrom.md)
 - Performance
   - [Perf]()
 - Features

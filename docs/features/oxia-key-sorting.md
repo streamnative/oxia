@@ -1,4 +1,3 @@
-
 # Oxia Keys Sorting
 
 Oxia uses a custom comparison operator for sorting the keys of the stored records. 
