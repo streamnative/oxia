@@ -21,8 +21,8 @@ import (
 	"time"
 
 	"github.com/emirpasic/gods/sets/linkedhashset"
+	"github.com/streamnative/oxia/common/process"
 
-	"github.com/streamnative/oxia/common"
 	"github.com/streamnative/oxia/common/channel"
 	"github.com/streamnative/oxia/common/entities"
 	"github.com/streamnative/oxia/coordinator/model"
@@ -205,7 +205,7 @@ func (r *nodeBasedBalancer) IsNodeQuarantined(highestLoadRatioNode *model.NodeLo
 
 func (r *nodeBasedBalancer) startBackgroundScheduler() {
 	r.latch.Add(1)
-	go common.DoWithLabels(r.ctx, map[string]string{
+	go process.DoWithLabels(r.ctx, map[string]string{
 		"component": "load-balancer-scheduler",
 	}, func() {
 		for {
@@ -227,7 +227,7 @@ func (r *nodeBasedBalancer) startBackgroundScheduler() {
 
 func (r *nodeBasedBalancer) startBackgroundNotifier() {
 	r.latch.Add(1)
-	go common.DoWithLabels(r.ctx, map[string]string{
+	go process.DoWithLabels(r.ctx, map[string]string{
 		"component": "load-balancer-notifier",
 	}, func() {
 		for {

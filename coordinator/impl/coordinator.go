@@ -24,11 +24,11 @@ import (
 
 	"github.com/emirpasic/gods/sets/linkedhashset"
 	"github.com/pkg/errors"
+	"github.com/streamnative/oxia/common/process"
 
 	"github.com/streamnative/oxia/coordinator/balancer"
 
 	"github.com/streamnative/oxia/common/concurrent"
-	"github.com/streamnative/oxia/common/process"
 
 	"go.uber.org/multierr"
 	pb "google.golang.org/protobuf/proto"
@@ -71,10 +71,10 @@ type Coordinator interface {
 
 type coordinator struct {
 	sync.RWMutex
-	assignmentsChanged common.ConditionContext
+	assignmentsChanged concurrent.ConditionContext
 
 	loadBalancer     balancer.LoadBalancer
-	ensembleSelector   selectors.Selector[*ensemble.Context, []string]
+	ensembleSelector selectors.Selector[*ensemble.Context, []string]
 
 	MetadataProvider
 	clusterConfigProvider func() (model.ClusterConfig, error)
@@ -182,7 +182,7 @@ func NewCoordinator(metadataProvider MetadataProvider,
 	})
 	c.startBackgroundActionWorker()
 
-	go common.DoWithLabels(
+	go process.DoWithLabels(
 		c.ctx,
 		map[string]string{
 			"oxia": "coordinator-wait-for-events",
@@ -493,7 +493,7 @@ func (c *coordinator) ClusterStatus() model.ClusterStatus {
 }
 
 func (c *coordinator) startBackgroundActionWorker() { //nolint:revive
-	go common.DoWithLabels(c.ctx, map[string]string{
+	go process.DoWithLabels(c.ctx, map[string]string{
 		"component": "coordinator-action-worker",
 	}, func() {
 		for {
