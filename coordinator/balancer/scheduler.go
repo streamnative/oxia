@@ -34,10 +34,11 @@ import (
 var _ LoadBalancer = &nodeBasedBalancer{}
 
 type nodeBasedBalancer struct {
+	*slog.Logger
+	*sync.WaitGroup
+
 	ctx    context.Context
 	cancel context.CancelFunc
-	latch  *sync.WaitGroup
-	log    *slog.Logger
 
 	actionCh chan Action
 
@@ -60,7 +61,7 @@ func (r *nodeBasedBalancer) Action() <-chan Action {
 func (r *nodeBasedBalancer) Close() error {
 	close(r.triggerCh)
 	r.cancel()
-	r.latch.Wait()
+	r.Wait()
 	return nil
 }
 
@@ -93,7 +94,7 @@ func (r *nodeBasedBalancer) rebalanceEnsemble() {
 			}
 
 			if err = r.swapShard(shardRatio, deletedNodeID, swapGroup, loadRatios, candidates, metadata, currentStatus); err != nil {
-				r.log.Error("failed to select server when move ensemble out of deleted node",
+				r.Error("failed to select server when move ensemble out of deleted node",
 					slog.String("namespace", shardRatio.Namespace),
 					slog.Int64("shard", shardRatio.ShardID),
 					slog.String("from-node", deletedNodeID),
@@ -135,7 +136,7 @@ func (r *nodeBasedBalancer) rebalanceEnsemble() {
 			break
 		}
 		if err = r.swapShard(highestLoadRatioShard, highestLoadRatioNode.NodeID, swapGroup, loadRatios, candidates, metadata, currentStatus); err != nil {
-			r.log.Info("has no other choose to move the current shard ensemble to other node.",
+			r.Info("has no other choose to move the current shard ensemble to other node.",
 				slog.String("namespace", highestLoadRatioShard.Namespace),
 				slog.Int64("shard", highestLoadRatioShard.ShardID),
 				slog.String("highest-load-node", highestLoadRatioNode.NodeID),
@@ -149,7 +150,7 @@ func (r *nodeBasedBalancer) rebalanceEnsemble() {
 	}
 	if highestLoadRatioNode.Ratio-loadRatios.MinNodeLoadRatio() >= loadGapRatio {
 		r.quarantineNode.Add(highestLoadRatioNode.NodeID)
-		r.log.Info("can't rebalance the current node, quarantine it.",
+		r.Info("can't rebalance the current node, quarantine it.",
 			slog.Float64("highest-load-node-ratio", highestLoadRatioNode.Ratio),
 			slog.String("highest-load-node", highestLoadRatioNode.NodeID))
 	}
@@ -224,14 +225,14 @@ func (r *nodeBasedBalancer) Trigger() {
 }
 
 func (r *nodeBasedBalancer) startBackgroundScheduler() {
-	r.latch.Add(1)
+	r.Add(1)
 	go process.DoWithLabels(r.ctx, map[string]string{
 		"component": "load-balancer-scheduler",
 	}, func() {
 		for {
 			timer := time.NewTimer(loadBalancerScheduleInterval)
 			defer timer.Stop()
-			defer r.latch.Done()
+			defer r.Done()
 			select {
 			case _, more := <-timer.C:
 				if !more {
@@ -246,12 +247,12 @@ func (r *nodeBasedBalancer) startBackgroundScheduler() {
 }
 
 func (r *nodeBasedBalancer) startBackgroundNotifier() {
-	r.latch.Add(1)
+	r.Add(1)
 	go process.DoWithLabels(r.ctx, map[string]string{
 		"component": "load-balancer-notifier",
 	}, func() {
 		for {
-			defer r.latch.Done()
+			defer r.Done()
 			select {
 			case _, more := <-r.triggerCh:
 				if !more {
@@ -267,12 +268,14 @@ func (r *nodeBasedBalancer) startBackgroundNotifier() {
 
 func NewLoadBalancer(options Options) LoadBalancer {
 	ctx, cancelFunc := context.WithCancel(options.Context)
+	// todo: add parameters
 	logger := slog.With()
 	nb := &nodeBasedBalancer{
+		WaitGroup: &sync.WaitGroup{},
+		Logger:    logger,
+
 		ctx:                       ctx,
 		cancel:                    cancelFunc,
-		latch:                     &sync.WaitGroup{},
-		log:                       logger,
 		actionCh:                  make(chan Action, 1000),
 		candidatesSupplier:        options.CandidatesSupplier,
 		candidateMetadataSupplier: options.CandidateMetadataSupplier,
