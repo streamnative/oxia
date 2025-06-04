@@ -24,7 +24,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestLoadBalance(t *testing.T) {
+func TestBalanceLoad(t *testing.T) {
 	candidatesMetadata := map[string]model.ServerMetadata{
 		"sv-1": {},
 		"sv-2": {},
@@ -121,6 +121,10 @@ func ApplyActions(ctx context.Context, shardsMetadata map[int64]model.ShardMetad
 			return
 		}
 	}
+}
+
+func TestDeletedNode(t *testing.T) {
+
 }
 
 func TestLoadBalanceQuarantined(t *testing.T) {
