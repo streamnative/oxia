@@ -17,9 +17,8 @@ package balancer
 import "time"
 
 const (
-	loadGapRatio                 float64 = 0.1
-	loadBalancerScheduleInterval         = time.Second * 30
-	quarantineTime                       = time.Minute * 5
+	loadBalancerScheduleInterval = time.Second * 30
+	quarantineTime               = time.Minute * 5
 )
 
 var triggerEvent = struct{}{}

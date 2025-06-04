@@ -106,7 +106,7 @@ func (r *nodeBasedBalancer) rebalanceEnsemble() {
 	}
 
 	// (2) rebalance by load ratio
-	if loadRatios.RatioGap() < loadGapRatio {
+	if loadRatios.RatioGap() < loadRatios.AvgShardLoadRatio() {
 		return
 	}
 	iter := loadRatios.NodeLoadRatios.Iterator()
@@ -130,7 +130,7 @@ func (r *nodeBasedBalancer) rebalanceEnsemble() {
 	if !iter.Last() {
 		return
 	}
-	for highestLoadRatioNode.Ratio-loadRatios.MinNodeLoadRatio() >= loadGapRatio {
+	for highestLoadRatioNode.Ratio-loadRatios.MinNodeLoadRatio() > loadRatios.AvgShardLoadRatio() {
 		var highestLoadRatioShard *model.ShardLoadRatio
 		if highestLoadRatioShard = iter.Value().(*model.ShardLoadRatio); highestLoadRatioShard == nil {
 			break
@@ -148,7 +148,7 @@ func (r *nodeBasedBalancer) rebalanceEnsemble() {
 			break
 		}
 	}
-	if highestLoadRatioNode.Ratio-loadRatios.MinNodeLoadRatio() >= loadGapRatio {
+	if highestLoadRatioNode.Ratio-loadRatios.MinNodeLoadRatio() > loadRatios.AvgShardLoadRatio() {
 		r.quarantineNode.Add(highestLoadRatioNode.NodeID)
 		r.Info("can't rebalance the current node, quarantine it.",
 			slog.Float64("highest-load-node-ratio", highestLoadRatioNode.Ratio),

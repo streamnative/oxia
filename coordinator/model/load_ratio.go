@@ -30,13 +30,18 @@ type RatioParams struct {
 }
 
 type RatioSnapshot struct {
-	maxNodeLoadRatio float64
-	minNodeLoadRatio float64
-	NodeLoadRatios   *arraylist.List
+	maxNodeLoadRatio  float64
+	minNodeLoadRatio  float64
+	avgShardLoadRatio float64
+	NodeLoadRatios    *arraylist.List
 }
 
 func (r *RatioSnapshot) MaxNodeLoadRatio() float64 {
 	return r.maxNodeLoadRatio
+}
+
+func (r *RatioSnapshot) AvgShardLoadRatio() float64 {
+	return r.avgShardLoadRatio
 }
 
 func (r *RatioSnapshot) MinNodeLoadRatio() float64 {
@@ -81,11 +86,12 @@ func (r *RatioSnapshot) ReCalculateRatios() {
 	}
 }
 
-func NewRatio(maxNodeLoadRatio float64, minNodeLoadRatio float64, nodeLoadRatios *arraylist.List) *RatioSnapshot {
+func NewRatio(maxNodeLoadRatio float64, minNodeLoadRatio float64, avgShardLoadRatio float64, nodeLoadRatios *arraylist.List) *RatioSnapshot {
 	return &RatioSnapshot{
-		maxNodeLoadRatio: maxNodeLoadRatio,
-		minNodeLoadRatio: minNodeLoadRatio,
-		NodeLoadRatios:   nodeLoadRatios,
+		maxNodeLoadRatio:  maxNodeLoadRatio,
+		minNodeLoadRatio:  minNodeLoadRatio,
+		avgShardLoadRatio: avgShardLoadRatio,
+		NodeLoadRatios:    nodeLoadRatios,
 	}
 }
 
