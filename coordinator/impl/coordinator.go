@@ -159,17 +159,17 @@ func NewCoordinator(metadataProvider MetadataProvider,
 
 	c.loadBalancer = balancer.NewLoadBalancer(balancer.Options{
 		Context: c.ctx,
-		ClusterStatusSupplier: func() *model.ClusterStatus {
+		StatusSupplier: func() *model.ClusterStatus {
 			c.RLock()
 			defer c.RUnlock()
 			return c.clusterStatus
 		},
-		MetadataSupplier: func() map[string]model.ServerMetadata {
+		CandidateMetadataSupplier: func() map[string]model.ServerMetadata {
 			c.RLock()
 			defer c.RUnlock()
 			return c.ServerMetadata
 		},
-		ClusterServerIDsSupplier: func() *linkedhashset.Set {
+		CandidatesSupplier: func() *linkedhashset.Set {
 			c.RLock()
 			defer c.RUnlock()
 			return c.ServerIDs()

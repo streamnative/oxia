@@ -13,3 +13,87 @@
 // limitations under the License.
 
 package single
+
+import (
+	"testing"
+
+	"github.com/emirpasic/gods/sets/linkedhashset"
+	"github.com/streamnative/oxia/coordinator/model"
+	"github.com/streamnative/oxia/coordinator/selectors"
+	"github.com/stretchr/testify/assert"
+)
+
+func TestSelectLowerestLoadSelector(t *testing.T) {
+	selector := &lowerestLoadSelector{}
+	_, err := selector.Select(&Context{
+		LoadRatioSupplier: nil,
+	})
+	assert.ErrorIs(t, err, selectors.ErrNoFunctioning)
+	ratioSnapshot := DefaultShardsRank(&model.RatioParams{
+		NodeShardsInfos: map[string][]model.ShardInfo{
+			"sv-1": {
+				{Namespace: "ns-1", ShardID: 1, Ensemble: []model.Server{{Internal: "sv-1"}, {Internal: "sv-2"}, {Internal: "sv-3"}}},
+				{Namespace: "ns-2", ShardID: 2, Ensemble: []model.Server{{Internal: "sv-1"}, {Internal: "sv-2"}, {Internal: "sv-3"}}},
+				{Namespace: "ns-3", ShardID: 3, Ensemble: []model.Server{{Internal: "sv-1"}, {Internal: "sv-2"}, {Internal: "sv-3"}}},
+				{Namespace: "ns-4", ShardID: 4, Ensemble: []model.Server{{Internal: "sv-1"}, {Internal: "sv-3"}, {Internal: "sv-4"}}},
+				{Namespace: "ns-5", ShardID: 5, Ensemble: []model.Server{{Internal: "sv-1"}, {Internal: "sv-4"}, {Internal: "sv-5"}}},
+			},
+			"sv-2": {
+				{Namespace: "ns-1", ShardID: 1, Ensemble: []model.Server{{Internal: "sv-1"}, {Internal: "sv-2"}, {Internal: "sv-3"}}},
+				{Namespace: "ns-2", ShardID: 2, Ensemble: []model.Server{{Internal: "sv-1"}, {Internal: "sv-2"}, {Internal: "sv-3"}}},
+				{Namespace: "ns-3", ShardID: 3, Ensemble: []model.Server{{Internal: "sv-1"}, {Internal: "sv-2"}, {Internal: "sv-3"}}},
+			},
+			"sv-3": {
+				{Namespace: "ns-1", ShardID: 1, Ensemble: []model.Server{{Internal: "sv-1"}, {Internal: "sv-2"}, {Internal: "sv-3"}}},
+				{Namespace: "ns-2", ShardID: 2, Ensemble: []model.Server{{Internal: "sv-1"}, {Internal: "sv-2"}, {Internal: "sv-3"}}},
+				{Namespace: "ns-3", ShardID: 3, Ensemble: []model.Server{{Internal: "sv-1"}, {Internal: "sv-2"}, {Internal: "sv-3"}}},
+				{Namespace: "ns-4", ShardID: 4, Ensemble: []model.Server{{Internal: "sv-1"}, {Internal: "sv-3"}, {Internal: "sv-4"}}},
+			},
+			"sv-4": {
+				{Namespace: "ns-4", ShardID: 4, Ensemble: []model.Server{{Internal: "sv-1"}, {Internal: "sv-3"}, {Internal: "sv-4"}}},
+				{Namespace: "ns-5", ShardID: 5, Ensemble: []model.Server{{Internal: "sv-1"}, {Internal: "sv-4"}, {Internal: "sv-5"}}},
+			},
+			"sv-5": {
+				{Namespace: "ns-5", ShardID: 5, Ensemble: []model.Server{{Internal: "sv-1"}, {Internal: "sv-4"}, {Internal: "sv-5"}}},
+			},
+		},
+	})
+	selected := linkedhashset.New()
+	context := &Context{
+		Candidates: linkedhashset.New("sv-1", "sv-2", "sv-3", "sv-4", "sv-5"),
+		LoadRatioSupplier: func() *model.RatioSnapshot {
+			return ratioSnapshot
+		},
+	}
+	id, err := selector.Select(context)
+	assert.NoError(t, err)
+	assert.EqualValues(t, "sv-5", id)
+
+	selected.Add(id)
+	context.SetSelected(selected)
+
+	id, err = selector.Select(context)
+	assert.NoError(t, err)
+	assert.EqualValues(t, "sv-4", id)
+
+	selected.Add(id)
+	context.SetSelected(selected)
+
+	id, err = selector.Select(context)
+	assert.NoError(t, err)
+	assert.EqualValues(t, "sv-2", id)
+
+	selected.Add(id)
+	context.SetSelected(selected)
+
+	id, err = selector.Select(context)
+	assert.NoError(t, err)
+	assert.EqualValues(t, "sv-3", id)
+
+	selected.Add(id)
+	context.SetSelected(selected)
+
+	id, err = selector.Select(context)
+	assert.NoError(t, err)
+	assert.EqualValues(t, "sv-1", id)
+}

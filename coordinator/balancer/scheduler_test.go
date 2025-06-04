@@ -16,9 +16,27 @@ package balancer
 
 import (
 	"testing"
+
+	"github.com/emirpasic/gods/sets/linkedhashset"
+	"github.com/streamnative/oxia/coordinator/model"
 )
 
 func TestLoadBalanceDeleteNode(t *testing.T) {
+
+	context := t.Context()
+	balancer := NewLoadBalancer(Options{
+		Context:                   context,
+		CandidateMetadataSupplier: func() map[string]model.ServerMetadata {},
+		CandidatesSupplier: func() *linkedhashset.Set {
+
+		},
+		NamespaceConfigSupplier: func(namespace string) *model.NamespaceConfig {
+
+		},
+		StatusSupplier: func() *model.ClusterStatus {
+
+		},
+	})
 
 }
 

@@ -26,10 +26,10 @@ import (
 type Options struct {
 	context.Context
 
-	MetadataSupplier         func() map[string]model.ServerMetadata
-	ClusterStatusSupplier    func() *model.ClusterStatus
-	ClusterServerIDsSupplier func() *linkedhashset.Set
-	NamespaceConfigSupplier  func(namespace string) *model.NamespaceConfig
+	CandidatesSupplier        func() *linkedhashset.Set
+	CandidateMetadataSupplier func() map[string]model.ServerMetadata
+	NamespaceConfigSupplier   func(namespace string) *model.NamespaceConfig
+	StatusSupplier            func() *model.ClusterStatus
 }
 
 type LoadBalancer interface {

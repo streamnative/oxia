@@ -15,23 +15,22 @@
 package single
 
 import (
-	"github.com/emirpasic/gods/queues/priorityqueue"
-
+	"github.com/emirpasic/gods/lists/arraylist"
 	"github.com/streamnative/oxia/coordinator/model"
 )
 
-func DefaultShardsRank(params *model.RatioParams) *model.Ratio {
+func DefaultShardsRank(params *model.RatioParams) *model.RatioSnapshot {
 	totalShards := 0
 	for _, shards := range params.NodeShardsInfos {
 		totalShards += len(shards)
 	}
-	nodeLoadRatios := priorityqueue.NewWith(model.NodeLoadRatioComparator)
+	nodeLoadRatios := arraylist.New()
 	maxNodeLoadRatio := 0.0
 	minNodeLoadRatio := 0.0
 	for nodeID, shards := range params.NodeShardsInfos {
-		shardRatios := priorityqueue.NewWith(model.ShardLoadRatioComparator)
+		shardRatios := arraylist.New()
 		for _, info := range shards {
-			shardRatios.Enqueue(&model.ShardLoadRatio{
+			shardRatios.Add(&model.ShardLoadRatio{
 				ShardInfo: &info,
 				Ratio:     1.0,
 			})
@@ -42,11 +41,13 @@ func DefaultShardsRank(params *model.RatioParams) *model.Ratio {
 		} else if nodeLoadRatio < minNodeLoadRatio {
 			minNodeLoadRatio = nodeLoadRatio
 		}
-		nodeLoadRatios.Enqueue(&model.NodeLoadRatio{
+		shardRatios.Sort(model.ShardLoadRatioComparator)
+		nodeLoadRatios.Add(&model.NodeLoadRatio{
 			NodeID:      nodeID,
 			Ratio:       nodeLoadRatio,
 			ShardRatios: shardRatios,
 		})
 	}
+	nodeLoadRatios.Sort(model.NodeLoadRatioComparator)
 	return model.NewRatio(maxNodeLoadRatio, minNodeLoadRatio, nodeLoadRatios)
 }

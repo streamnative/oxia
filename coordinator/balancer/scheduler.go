@@ -41,12 +41,12 @@ type nodeBasedBalancer struct {
 
 	actionCh chan Action
 
-	clusterStatusSupplier    func() *model.ClusterStatus
-	namespaceConfigSupplier  func(namespace string) *model.NamespaceConfig
-	metadataSupplier         func() map[string]model.ServerMetadata
-	clusterServerIDsSupplier func() *linkedhashset.Set
+	statusSupplier            func() *model.ClusterStatus
+	namespaceConfigSupplier   func(namespace string) *model.NamespaceConfig
+	candidateMetadataSupplier func() map[string]model.ServerMetadata
+	candidatesSupplier        func() *linkedhashset.Set
 
-	selector           selectors.Selector[*single.Context, *string]
+	selector           selectors.Selector[*single.Context, string]
 	loadRatioAlgorithm selectors.LoadRatioAlgorithm
 
 	quarantineNode *linkedhashset.Set
@@ -67,18 +67,18 @@ func (r *nodeBasedBalancer) Close() error {
 func (r *nodeBasedBalancer) rebalanceEnsemble(currentStatus *model.ClusterStatus, shardsGroupingByNode map[string][]model.ShardInfo) {
 	var err error
 	swapGroup := &sync.WaitGroup{}
-	serverIDs := r.clusterServerIDsSupplier()
-	metadata := r.metadataSupplier()
+	candidates := r.candidatesSupplier()
+	metadata := r.candidateMetadataSupplier()
 	loadRatios := r.loadRatioAlgorithm(&model.RatioParams{NodeShardsInfos: shardsGroupingByNode})
 
 	// (1) deleted node
-	for nodeIter := loadRatios.NodeLoadRatios().Iterator(); nodeIter.Next(); {
+	for nodeIter := loadRatios.NodeLoadRatios.Iterator(); nodeIter.Next(); {
 		var nodeLoadRatio *model.NodeLoadRatio
 		var ok bool
 		if nodeLoadRatio, ok = nodeIter.Value().(*model.NodeLoadRatio); !ok {
 			panic("unexpected type cast")
 		}
-		if serverIDs.Contains(nodeLoadRatio.NodeID) {
+		if candidates.Contains(nodeLoadRatio.NodeID) {
 			continue
 		}
 		deletedNodeID := nodeLoadRatio.NodeID
@@ -88,7 +88,7 @@ func (r *nodeBasedBalancer) rebalanceEnsemble(currentStatus *model.ClusterStatus
 				panic("unexpected type cast")
 			}
 
-			if err = r.swapShard(shardRatio, deletedNodeID, swapGroup, loadRatios, serverIDs, metadata, currentStatus); err != nil {
+			if err = r.swapShard(shardRatio, deletedNodeID, swapGroup, loadRatios, candidates, metadata, currentStatus); err != nil {
 				r.log.Error("failed to select server when move ensemble out of deleted node",
 					slog.String("namespace", shardRatio.Namespace),
 					slog.Int64("shard", shardRatio.ShardID),
@@ -104,22 +104,33 @@ func (r *nodeBasedBalancer) rebalanceEnsemble(currentStatus *model.ClusterStatus
 	if loadRatios.RatioGap() < loadGapRatio {
 		return
 	}
+	iter := loadRatios.NodeLoadRatios.Iterator()
+	if !iter.Last() {
+		return
+	}
 	var highestLoadRatioNode *model.NodeLoadRatio
 	for {
-		if highestLoadRatioNode = loadRatios.DequeueHighestNode(); highestLoadRatioNode == nil {
+		if highestLoadRatioNode = iter.Value().(*model.NodeLoadRatio); highestLoadRatioNode == nil {
 			return // unexpected
 		}
-		if r.IsNodeQuarantined(highestLoadRatioNode) {
+		if !r.IsNodeQuarantined(highestLoadRatioNode) {
+			break
+		}
+		if iter.Prev() {
 			continue
 		}
 		break
 	}
 	for loadRatios.RatioGap() >= loadGapRatio {
 		var highestLoadRatioShard *model.ShardLoadRatio
-		if highestLoadRatioShard = highestLoadRatioNode.DequeueHighestShard(); highestLoadRatioShard == nil {
+		iter := highestLoadRatioNode.ShardRatios.Iterator()
+		if !iter.Last() {
 			return
 		}
-		if err = r.swapShard(highestLoadRatioShard, highestLoadRatioNode.NodeID, swapGroup, loadRatios, serverIDs, metadata, currentStatus); err != nil {
+		if highestLoadRatioShard = iter.Value().(*model.ShardLoadRatio); highestLoadRatioShard == nil {
+			return
+		}
+		if err = r.swapShard(highestLoadRatioShard, highestLoadRatioNode.NodeID, swapGroup, loadRatios, candidates, metadata, currentStatus); err != nil {
 			r.log.Info("has no other choose to move the current shard ensemble to other node.",
 				slog.String("namespace", highestLoadRatioShard.Namespace),
 				slog.Int64("shard", highestLoadRatioShard.ShardID),
@@ -142,34 +153,33 @@ func (r *nodeBasedBalancer) swapShard(
 	candidateShard *model.ShardLoadRatio,
 	fromNodeID string,
 	swapGroup *sync.WaitGroup,
-	loadRatios *model.Ratio,
-	serverIDs *linkedhashset.Set,
+	loadRatios *model.RatioSnapshot,
+	candidates *linkedhashset.Set,
 	metadata map[string]model.ServerMetadata,
 	currentStatus *model.ClusterStatus) error {
 	nsc := r.namespaceConfigSupplier(candidateShard.Namespace)
 	policies := nsc.Policies
 	sContext := &single.Context{
-		Candidates:         serverIDs,
+		Candidates:         candidates,
 		CandidatesMetadata: metadata,
 		Policies:           policies,
 		Status:             currentStatus,
-		LoadRatioSupplier:  func() *model.Ratio { return loadRatios },
+		LoadRatioSupplier:  func() *model.RatioSnapshot { return loadRatios },
 	}
 	sContext.SetSelected(utils.FilterEnsemble(candidateShard.Ensemble, fromNodeID))
-	var targetNodeId *string
+	var targetNodeId string
 	var err error
 	if targetNodeId, err = r.selector.Select(sContext); err != nil {
 		return err
 	}
 	swapGroup.Add(1)
-	tnID := *targetNodeId
 	r.actionCh <- &SwapNodeAction{
 		Shard:  candidateShard.ShardID,
 		From:   fromNodeID,
-		To:     tnID,
+		To:     targetNodeId,
 		waiter: swapGroup,
 	}
-	loadRatios.MoveShardToNode(candidateShard, tnID)
+	loadRatios.MoveShardToNode(candidateShard, targetNodeId)
 	loadRatios.ReCalculateRatios()
 	return nil
 }
@@ -237,9 +247,9 @@ func (r *nodeBasedBalancer) startBackgroundNotifier() {
 				if !more {
 					return
 				}
-				currentClusterStatus := r.clusterStatusSupplier()
-				groupedStatus := utils.GroupingShardsNodeByStatus(r.clusterStatusSupplier())
-				r.rebalanceEnsemble(currentClusterStatus, groupedStatus)
+				currentStatus := r.statusSupplier()
+				groupedStatus := utils.GroupingShardsNodeByStatus(currentStatus)
+				r.rebalanceEnsemble(currentStatus, groupedStatus)
 			case <-r.ctx.Done():
 				return
 			}
@@ -251,19 +261,19 @@ func NewLoadBalancer(options Options) LoadBalancer {
 	ctx, cancelFunc := context.WithCancel(options.Context)
 	logger := slog.With()
 	nb := &nodeBasedBalancer{
-		ctx:                      ctx,
-		cancel:                   cancelFunc,
-		latch:                    &sync.WaitGroup{},
-		log:                      logger,
-		actionCh:                 make(chan Action, 1000),
-		clusterStatusSupplier:    options.ClusterStatusSupplier,
-		namespaceConfigSupplier:  options.NamespaceConfigSupplier,
-		metadataSupplier:         options.MetadataSupplier,
-		clusterServerIDsSupplier: options.ClusterServerIDsSupplier,
-		selector:                 single.NewSelector(),
-		loadRatioAlgorithm:       single.DefaultShardsRank,
-		quarantineNode:           linkedhashset.New(),
-		triggerCh:                make(chan struct{}, 1),
+		ctx:                       ctx,
+		cancel:                    cancelFunc,
+		latch:                     &sync.WaitGroup{},
+		log:                       logger,
+		actionCh:                  make(chan Action, 1000),
+		candidatesSupplier:        options.CandidatesSupplier,
+		candidateMetadataSupplier: options.CandidateMetadataSupplier,
+		namespaceConfigSupplier:   options.NamespaceConfigSupplier,
+		statusSupplier:            options.StatusSupplier,
+		selector:                  single.NewSelector(),
+		loadRatioAlgorithm:        single.DefaultShardsRank,
+		quarantineNode:            linkedhashset.New(),
+		triggerCh:                 make(chan struct{}, 1),
 	}
 	nb.startBackgroundScheduler()
 	nb.startBackgroundNotifier()

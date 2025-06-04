@@ -16,17 +16,17 @@ package single
 
 import "github.com/streamnative/oxia/coordinator/selectors"
 
-var _ selectors.Selector[*Context, *string] = &serverIdxSelector{}
+var _ selectors.Selector[*Context, string] = &serverIdxSelector{}
 
 type serverIdxSelector struct {
 }
 
-func (*serverIdxSelector) Select(ssContext *Context) (*string, error) {
+func (*serverIdxSelector) Select(ssContext *Context) (string, error) {
 	startIdx := ssContext.Status.ServerIdx
 	candidatesArr := ssContext.Candidates.Values()
 	server, ok := candidatesArr[int(startIdx)%len(candidatesArr)].(string)
 	if !ok {
 		panic("unexpected candidate cast")
 	}
-	return &server, nil
+	return server, nil
 }

@@ -31,7 +31,7 @@ type Context struct {
 	Policies           *p.Policies
 	Status             *model.ClusterStatus
 
-	LoadRatioSupplier func() *model.Ratio
+	LoadRatioSupplier func() *model.RatioSnapshot
 
 	selected *linkedhashset.Set
 

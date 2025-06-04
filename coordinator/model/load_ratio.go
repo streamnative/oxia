@@ -15,7 +15,7 @@
 package model
 
 import (
-	"github.com/emirpasic/gods/queues/priorityqueue"
+	"github.com/emirpasic/gods/lists/arraylist"
 	"github.com/emirpasic/gods/utils"
 )
 
@@ -29,54 +29,38 @@ type RatioParams struct {
 	NodeShardsInfos map[string][]ShardInfo
 }
 
-type Ratio struct {
+type RatioSnapshot struct {
 	maxNodeLoadRatio float64
 	minNodeLoadRatio float64
-	nodeLoadRatios   *priorityqueue.Queue
+	NodeLoadRatios   *arraylist.List
 }
 
-func (r *Ratio) MaxNodeLoadRatio() float64 {
+func (r *RatioSnapshot) MaxNodeLoadRatio() float64 {
 	return r.maxNodeLoadRatio
 }
 
-func (r *Ratio) MinNodeLoadRatio() float64 {
+func (r *RatioSnapshot) MinNodeLoadRatio() float64 {
 	return r.minNodeLoadRatio
 }
 
-func (r *Ratio) NodeLoadRatios() *priorityqueue.Queue { return r.nodeLoadRatios }
-
-func (r *Ratio) RatioGap() float64 {
+func (r *RatioSnapshot) RatioGap() float64 {
 	return r.maxNodeLoadRatio - r.minNodeLoadRatio
 }
 
-func (r *Ratio) PeekHighestNode() *NodeLoadRatio {
-	if v, ok := r.nodeLoadRatios.Peek(); ok {
-		return v.(*NodeLoadRatio) //nolint:revive
-	}
-	return nil
-}
-
-func (r *Ratio) DequeueHighestNode() *NodeLoadRatio {
-	if v, ok := r.nodeLoadRatios.Dequeue(); ok {
-		return v.(*NodeLoadRatio) //nolint:revive
-	}
-	return nil
-}
-
-func (r *Ratio) MoveShardToNode(shard *ShardLoadRatio, nodeID string) {
-	iterator := r.nodeLoadRatios.Iterator()
+func (r *RatioSnapshot) MoveShardToNode(shard *ShardLoadRatio, nodeID string) {
+	iterator := r.NodeLoadRatios.Iterator()
 	iterator.Last()
 	for iterator.Prev() {
 		node := iterator.Value().(*NodeLoadRatio) //nolint:revive
 		if node.NodeID == nodeID {
-			node.EnqueueShard(shard)
+			node.AddShard(shard)
 			return
 		}
 	}
 }
 
-func (r *Ratio) ReCalculateRatios() {
-	for iter := r.nodeLoadRatios.Iterator(); iter.Next(); {
+func (r *RatioSnapshot) ReCalculateRatios() {
+	for iter := r.NodeLoadRatios.Iterator(); iter.Next(); {
 		nodeLoadRatio := iter.Value().(*NodeLoadRatio) //nolint:revive
 		if nodeLoadRatio.Ratio > r.maxNodeLoadRatio {
 			r.maxNodeLoadRatio = nodeLoadRatio.Ratio
@@ -86,38 +70,23 @@ func (r *Ratio) ReCalculateRatios() {
 	}
 }
 
-func NewRatio(maxNodeLoadRatio float64, minNodeLoadRatio float64, nodeLoadRatios *priorityqueue.Queue) *Ratio {
-	return &Ratio{
+func NewRatio(maxNodeLoadRatio float64, minNodeLoadRatio float64, nodeLoadRatios *arraylist.List) *RatioSnapshot {
+	return &RatioSnapshot{
 		maxNodeLoadRatio: maxNodeLoadRatio,
 		minNodeLoadRatio: minNodeLoadRatio,
-		nodeLoadRatios:   nodeLoadRatios,
+		NodeLoadRatios:   nodeLoadRatios,
 	}
 }
 
 type NodeLoadRatio struct {
 	NodeID      string
 	Ratio       float64
-	ShardRatios *priorityqueue.Queue
+	ShardRatios *arraylist.List
 }
 
-func (n *NodeLoadRatio) PeekHighestShard() *ShardLoadRatio {
-	if v, ok := n.ShardRatios.Peek(); ok {
-		return v.(*ShardLoadRatio) //nolint:revive
-	}
-	return nil
-}
-func (n *NodeLoadRatio) EnqueueShard(shard *ShardLoadRatio) {
+func (n *NodeLoadRatio) AddShard(shard *ShardLoadRatio) {
 	n.Ratio += shard.Ratio
-	n.ShardRatios.Enqueue(shard)
-}
-
-func (n *NodeLoadRatio) DequeueHighestShard() *ShardLoadRatio {
-	if v, ok := n.ShardRatios.Dequeue(); ok {
-		shardLoadRatio := v.(*ShardLoadRatio) //nolint:revive
-		n.Ratio -= shardLoadRatio.Ratio
-		return shardLoadRatio
-	}
-	return nil
+	n.ShardRatios.Add(shard)
 }
 
 type ShardLoadRatio struct {
@@ -128,11 +97,11 @@ type ShardLoadRatio struct {
 func NodeLoadRatioComparator(a, b any) int {
 	tmpA := a.(*NodeLoadRatio) //nolint:revive
 	tmpB := b.(*NodeLoadRatio) //nolint:revive
-	return -utils.Float64Comparator(tmpA.Ratio, tmpB.Ratio)
+	return utils.Float64Comparator(tmpA.Ratio, tmpB.Ratio)
 }
 
 func ShardLoadRatioComparator(a, b any) int {
 	tmpA := a.(*ShardLoadRatio) //nolint:revive
 	tmpB := b.(*ShardLoadRatio) //nolint:revive
-	return -utils.Float64Comparator(tmpA.Ratio, tmpB.Ratio)
+	return utils.Float64Comparator(tmpA.Ratio, tmpB.Ratio)
 }

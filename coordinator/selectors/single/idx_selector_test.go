@@ -48,6 +48,6 @@ func TestServerIdxSelectNew(t *testing.T) {
 		options.Status.ServerIdx = uint32(i)
 		result, err := selector.Select(options)
 		assert.NoError(t, err)
-		assert.EqualValues(t, *result, candidates[i%6])
+		assert.EqualValues(t, result, candidates[i%6])
 	}
 }

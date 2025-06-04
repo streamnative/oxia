@@ -19,26 +19,24 @@ import (
 	"github.com/streamnative/oxia/coordinator/selectors"
 )
 
-var _ selectors.Selector[*Context, *string] = &lowerestLoadSelector{}
+var _ selectors.Selector[*Context, string] = &lowerestLoadSelector{}
 
 type lowerestLoadSelector struct{}
 
-func (*lowerestLoadSelector) Select(ssContext *Context) (*string, error) {
+func (*lowerestLoadSelector) Select(ssContext *Context) (string, error) {
 	if ssContext.LoadRatioSupplier == nil {
-		return nil, selectors.ErrNoFunctioning
+		return "", selectors.ErrNoFunctioning
 	}
 	loadRatios := ssContext.LoadRatioSupplier()
 	if loadRatios == nil {
-		return nil, selectors.ErrNoFunctioning
+		return "", selectors.ErrNoFunctioning
 	}
-	iter := loadRatios.NodeLoadRatios().Iterator()
-	iter.Last()
-	for iter.Prev() {
+	for iter := loadRatios.NodeLoadRatios.Iterator(); iter.Next(); {
 		nodeRatio := iter.Value().(*model.NodeLoadRatio) //nolint:revive
 		lowerLoad := nodeRatio.NodeID
 		if ssContext.Candidates.Contains(lowerLoad) {
-			return &lowerLoad, nil
+			return lowerLoad, nil
 		}
 	}
-	return nil, selectors.ErrNoFunctioning
+	return "", selectors.ErrNoFunctioning
 }
