@@ -63,7 +63,15 @@ func (r *RatioSnapshot) MoveShardToNode(shard *ShardLoadRatio, fromNodeID string
 }
 
 func (r *RatioSnapshot) ReCalculateRatios() {
-	for iter := r.NodeLoadRatios.Iterator(); iter.Next(); {
+	iter := r.NodeLoadRatios.Iterator()
+	if !iter.First() {
+		return
+	}
+	nodeRatio := iter.Value().(*NodeLoadRatio)
+	r.maxNodeLoadRatio = nodeRatio.Ratio
+	r.minNodeLoadRatio = nodeRatio.Ratio
+
+	for iter.Next() {
 		nodeLoadRatio := iter.Value().(*NodeLoadRatio) //nolint:revive
 		if nodeLoadRatio.Ratio > r.maxNodeLoadRatio {
 			r.maxNodeLoadRatio = nodeLoadRatio.Ratio
