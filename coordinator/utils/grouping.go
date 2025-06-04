@@ -20,7 +20,7 @@ import (
 	"github.com/streamnative/oxia/coordinator/model"
 )
 
-func GroupingShardsNodeByStatus(status *model.ClusterStatus) map[string][]model.ShardInfo {
+func GroupingShardsNodeByStatus(candidates *linkedhashset.Set, status *model.ClusterStatus) map[string][]model.ShardInfo {
 	groupingShardByNode := make(map[string][]model.ShardInfo)
 	for namespace, namespaceStatus := range status.Namespaces {
 		for shard, shardStatus := range namespaceStatus.Shards {
@@ -39,6 +39,13 @@ func GroupingShardsNodeByStatus(status *model.ClusterStatus) map[string][]model.
 				})
 				groupingShardByNode[nodeID] = groupedShard
 			}
+		}
+	}
+	for iter := candidates.Iterator(); iter.Next(); {
+		nodeID := iter.Value().(string)
+		_, exist := groupingShardByNode[nodeID]
+		if !exist {
+			groupingShardByNode[nodeID] = make([]model.ShardInfo, 0)
 		}
 	}
 	return groupingShardByNode

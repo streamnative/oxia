@@ -47,14 +47,17 @@ func (r *RatioSnapshot) RatioGap() float64 {
 	return r.maxNodeLoadRatio - r.minNodeLoadRatio
 }
 
-func (r *RatioSnapshot) MoveShardToNode(shard *ShardLoadRatio, nodeID string) {
-	iterator := r.NodeLoadRatios.Iterator()
-	iterator.Last()
-	for iterator.Prev() {
-		node := iterator.Value().(*NodeLoadRatio) //nolint:revive
-		if node.NodeID == nodeID {
+func (r *RatioSnapshot) MoveShardToNode(shard *ShardLoadRatio, fromNodeID string, toNodeID string) {
+	// todo: add another index to avoid O(n)
+	for iter := r.NodeLoadRatios.Iterator(); iter.Next(); {
+		node := iter.Value().(*NodeLoadRatio) //nolint:revive
+		if node.NodeID == fromNodeID {
+			node.RemoveShard(shard)
+			continue
+		}
+		if node.NodeID == toNodeID {
 			node.AddShard(shard)
-			return
+			continue
 		}
 	}
 }
@@ -87,6 +90,11 @@ type NodeLoadRatio struct {
 func (n *NodeLoadRatio) AddShard(shard *ShardLoadRatio) {
 	n.Ratio += shard.Ratio
 	n.ShardRatios.Add(shard)
+}
+
+func (n *NodeLoadRatio) RemoveShard(shard *ShardLoadRatio) {
+	n.Ratio -= shard.Ratio
+	n.ShardRatios.Remove(n.ShardRatios.IndexOf(shard))
 }
 
 type ShardLoadRatio struct {

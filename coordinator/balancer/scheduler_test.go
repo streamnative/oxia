@@ -22,22 +22,61 @@ import (
 )
 
 func TestLoadBalanceDeleteNode(t *testing.T) {
+	candidatesMetadata := map[string]model.ServerMetadata{
+		"sv-1": {},
+		"sv-2": {},
+		"sv-3": {},
+		"sv-4": {},
+		"sv-5": {},
+	}
+	candidates := linkedhashset.New("sv-1", "sv-2", "sv-3", "sv-4", "sv-5")
+	nc := &model.NamespaceConfig{
+		Name:              "default",
+		InitialShardCount: 1,
+		ReplicationFactor: 3,
+	}
+	cs := &model.ClusterStatus{
+		Namespaces: map[string]model.NamespaceStatus{
+			"default": {ReplicationFactor: 3, Shards: map[int64]model.ShardMetadata{
+				0: {
+					Ensemble: []model.Server{
+						{Internal: "sv-1", Public: "sv1"},
+						{Internal: "sv-2", Public: "sv2"},
+						{Internal: "sv-3", Public: "sv3"},
+					},
+				},
+				1: {
+					Ensemble: []model.Server{
+						{Internal: "sv-2", Public: "sv2"},
+						{Internal: "sv-3", Public: "sv3"},
+						{Internal: "sv-4", Public: "sv4"},
+					},
+				},
+				2: {
+					Ensemble: []model.Server{
+						{Internal: "sv-1", Public: "sv1"},
+						{Internal: "sv-2", Public: "sv2"},
+						{Internal: "sv-3", Public: "sv3"},
+					},
+				},
+			}},
+		},
+		ShardIdGenerator: 0,
+		ServerIdx:        0,
+	}
 
-	context := t.Context()
 	balancer := NewLoadBalancer(Options{
-		Context:                   context,
-		CandidateMetadataSupplier: func() map[string]model.ServerMetadata {},
-		CandidatesSupplier: func() *linkedhashset.Set {
-
-		},
-		NamespaceConfigSupplier: func(namespace string) *model.NamespaceConfig {
-
-		},
-		StatusSupplier: func() *model.ClusterStatus {
-
-		},
+		Context:                   t.Context(),
+		CandidateMetadataSupplier: func() map[string]model.ServerMetadata { return candidatesMetadata },
+		CandidatesSupplier:        func() *linkedhashset.Set { return candidates },
+		NamespaceConfigSupplier:   func(namespace string) *model.NamespaceConfig { return nc },
+		StatusSupplier:            func() *model.ClusterStatus { return cs },
 	})
 
+	balancer.Trigger()
+
+	ch := make(chan string, 1)
+	<-ch
 }
 
 func TestLoadBalanceLoadRatio(t *testing.T) {

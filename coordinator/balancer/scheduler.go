@@ -64,12 +64,16 @@ func (r *nodeBasedBalancer) Close() error {
 	return nil
 }
 
-func (r *nodeBasedBalancer) rebalanceEnsemble(currentStatus *model.ClusterStatus, shardsGroupingByNode map[string][]model.ShardInfo) {
+func (r *nodeBasedBalancer) rebalanceEnsemble() {
 	var err error
 	swapGroup := &sync.WaitGroup{}
+	defer swapGroup.Wait()
+
+	currentStatus := r.statusSupplier()
 	candidates := r.candidatesSupplier()
+	groupedStatus := utils.GroupingShardsNodeByStatus(candidates, currentStatus)
 	metadata := r.candidateMetadataSupplier()
-	loadRatios := r.loadRatioAlgorithm(&model.RatioParams{NodeShardsInfos: shardsGroupingByNode})
+	loadRatios := r.loadRatioAlgorithm(&model.RatioParams{NodeShardsInfos: groupedStatus})
 
 	// (1) deleted node
 	for nodeIter := loadRatios.NodeLoadRatios.Iterator(); nodeIter.Next(); {
@@ -121,14 +125,14 @@ func (r *nodeBasedBalancer) rebalanceEnsemble(currentStatus *model.ClusterStatus
 		}
 		break
 	}
+	iter = highestLoadRatioNode.ShardRatios.Iterator()
+	if !iter.Last() {
+		return
+	}
 	for loadRatios.RatioGap() >= loadGapRatio {
 		var highestLoadRatioShard *model.ShardLoadRatio
-		iter := highestLoadRatioNode.ShardRatios.Iterator()
-		if !iter.Last() {
-			return
-		}
 		if highestLoadRatioShard = iter.Value().(*model.ShardLoadRatio); highestLoadRatioShard == nil {
-			return
+			break
 		}
 		if err = r.swapShard(highestLoadRatioShard, highestLoadRatioNode.NodeID, swapGroup, loadRatios, candidates, metadata, currentStatus); err != nil {
 			r.log.Info("has no other choose to move the current shard ensemble to other node.",
@@ -139,6 +143,9 @@ func (r *nodeBasedBalancer) rebalanceEnsemble(currentStatus *model.ClusterStatus
 			)
 			continue
 		}
+		if !iter.Prev() {
+			break
+		}
 	}
 	if loadRatios.RatioGap() >= loadGapRatio {
 		r.quarantineNode.Add(highestLoadRatioNode.NodeID)
@@ -146,7 +153,6 @@ func (r *nodeBasedBalancer) rebalanceEnsemble(currentStatus *model.ClusterStatus
 			slog.Float64("highest-load-node-ratio", highestLoadRatioNode.Ratio),
 			slog.String("highest-load-node", highestLoadRatioNode.NodeID))
 	}
-	swapGroup.Wait()
 }
 
 func (r *nodeBasedBalancer) swapShard(
@@ -179,7 +185,7 @@ func (r *nodeBasedBalancer) swapShard(
 		To:     targetNodeId,
 		waiter: swapGroup,
 	}
-	loadRatios.MoveShardToNode(candidateShard, targetNodeId)
+	loadRatios.MoveShardToNode(candidateShard, fromNodeID, targetNodeId)
 	loadRatios.ReCalculateRatios()
 	return nil
 }
@@ -211,6 +217,10 @@ func (r *nodeBasedBalancer) IsNodeQuarantined(highestLoadRatioNode *model.NodeLo
 		}
 	}
 	return false
+}
+
+func (r *nodeBasedBalancer) Trigger() {
+	channel.PushNoBlock(r.triggerCh, triggerEvent)
 }
 
 func (r *nodeBasedBalancer) startBackgroundScheduler() {
@@ -247,9 +257,7 @@ func (r *nodeBasedBalancer) startBackgroundNotifier() {
 				if !more {
 					return
 				}
-				currentStatus := r.statusSupplier()
-				groupedStatus := utils.GroupingShardsNodeByStatus(currentStatus)
-				r.rebalanceEnsemble(currentStatus, groupedStatus)
+				r.rebalanceEnsemble()
 			case <-r.ctx.Done():
 				return
 			}

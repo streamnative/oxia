@@ -24,6 +24,7 @@ func DefaultShardsRank(params *model.RatioParams) *model.RatioSnapshot {
 	for _, shards := range params.NodeShardsInfos {
 		totalShards += len(shards)
 	}
+	fTotalShards := float64(totalShards)
 	nodeLoadRatios := arraylist.New()
 	maxNodeLoadRatio := 0.0
 	minNodeLoadRatio := 0.0
@@ -32,10 +33,10 @@ func DefaultShardsRank(params *model.RatioParams) *model.RatioSnapshot {
 		for _, info := range shards {
 			shardRatios.Add(&model.ShardLoadRatio{
 				ShardInfo: &info,
-				Ratio:     1.0,
+				Ratio:     1 / fTotalShards,
 			})
 		}
-		nodeLoadRatio := float64(len(shards)) / float64(totalShards)
+		nodeLoadRatio := float64(len(shards)) / fTotalShards
 		if nodeLoadRatio > maxNodeLoadRatio {
 			maxNodeLoadRatio = nodeLoadRatio
 		} else if nodeLoadRatio < minNodeLoadRatio {
