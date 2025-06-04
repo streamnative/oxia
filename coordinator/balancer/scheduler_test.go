@@ -15,13 +15,16 @@
 package balancer
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/emirpasic/gods/sets/linkedhashset"
 	"github.com/streamnative/oxia/coordinator/model"
+	"github.com/stretchr/testify/assert"
 )
 
-func TestLoadBalanceDeleteNode(t *testing.T) {
+func TestLoadBalance(t *testing.T) {
 	candidatesMetadata := map[string]model.ServerMetadata{
 		"sv-1": {},
 		"sv-2": {},
@@ -35,31 +38,32 @@ func TestLoadBalanceDeleteNode(t *testing.T) {
 		InitialShardCount: 1,
 		ReplicationFactor: 3,
 	}
+	shardsMetadata := map[int64]model.ShardMetadata{
+		0: {
+			Ensemble: []model.Server{
+				{Internal: "sv-1", Public: "sv-1"},
+				{Internal: "sv-2", Public: "sv-2"},
+				{Internal: "sv-3", Public: "sv-3"},
+			},
+		},
+		1: {
+			Ensemble: []model.Server{
+				{Internal: "sv-2", Public: "sv-2"},
+				{Internal: "sv-3", Public: "sv-3"},
+				{Internal: "sv-4", Public: "sv-4"},
+			},
+		},
+		2: {
+			Ensemble: []model.Server{
+				{Internal: "sv-1", Public: "sv-1"},
+				{Internal: "sv-2", Public: "sv-2"},
+				{Internal: "sv-3", Public: "sv-3"},
+			},
+		},
+	}
 	cs := &model.ClusterStatus{
 		Namespaces: map[string]model.NamespaceStatus{
-			"default": {ReplicationFactor: 3, Shards: map[int64]model.ShardMetadata{
-				0: {
-					Ensemble: []model.Server{
-						{Internal: "sv-1", Public: "sv1"},
-						{Internal: "sv-2", Public: "sv2"},
-						{Internal: "sv-3", Public: "sv3"},
-					},
-				},
-				1: {
-					Ensemble: []model.Server{
-						{Internal: "sv-2", Public: "sv2"},
-						{Internal: "sv-3", Public: "sv3"},
-						{Internal: "sv-4", Public: "sv4"},
-					},
-				},
-				2: {
-					Ensemble: []model.Server{
-						{Internal: "sv-1", Public: "sv1"},
-						{Internal: "sv-2", Public: "sv2"},
-						{Internal: "sv-3", Public: "sv3"},
-					},
-				},
-			}},
+			"default": {ReplicationFactor: 3, Shards: shardsMetadata},
 		},
 		ShardIdGenerator: 0,
 		ServerIdx:        0,
@@ -73,20 +77,52 @@ func TestLoadBalanceDeleteNode(t *testing.T) {
 		StatusSupplier:            func() *model.ClusterStatus { return cs },
 	})
 
-	balancer.Trigger()
+	go func() {
+		ApplyActions(t.Context(), shardsMetadata, balancer.Action())
+	}()
 
-	ch := make(chan string, 1)
-	<-ch
+	assert.Eventually(t, func() bool {
+		balancer.Trigger()
+		return balancer.IsBalanced()
+	}, 15*time.Second, 100*time.Millisecond)
+	assert.NoError(t, balancer.Close())
 }
 
-func TestLoadBalanceLoadRatio(t *testing.T) {
-
+func ApplyActions(ctx context.Context, shardsMetadata map[int64]model.ShardMetadata, actionCh <-chan Action) {
+	for {
+		select {
+		case action, more := <-actionCh:
+			if !more {
+				return
+			}
+			if action.Type() != SwapNode {
+				action.Done()
+				continue
+			}
+			swapAction := action.(*SwapNodeAction)
+			metadata := shardsMetadata[swapAction.Shard]
+			if metadata.Ensemble == nil {
+				action.Done()
+				continue
+			}
+			fromNodeID := swapAction.From
+			toNodeID := swapAction.To
+			var servers []model.Server
+			for _, node := range metadata.Ensemble {
+				if node.GetIdentifier() != fromNodeID {
+					servers = append(servers, node)
+				}
+			}
+			servers = append(servers, model.Server{Internal: toNodeID, Public: toNodeID}) // simplify
+			metadata.Ensemble = servers
+			shardsMetadata[swapAction.Shard] = metadata
+			action.Done()
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 func TestLoadBalanceQuarantined(t *testing.T) {
-
-}
-
-func TestLoadBalanceWithAntiAffinity(t *testing.T) {
 
 }

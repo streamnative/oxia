@@ -38,4 +38,6 @@ type LoadBalancer interface {
 	Trigger()
 
 	Action() <-chan Action
+
+	IsBalanced() bool
 }

@@ -73,8 +73,21 @@ func (r *nodeBasedBalancer) rebalanceEnsemble() {
 	currentStatus := r.statusSupplier()
 	candidates := r.candidatesSupplier()
 	groupedStatus := utils.GroupingShardsNodeByStatus(candidates, currentStatus)
-	metadata := r.candidateMetadataSupplier()
 	loadRatios := r.loadRatioAlgorithm(&model.RatioParams{NodeShardsInfos: groupedStatus})
+	metadata := r.candidateMetadataSupplier()
+
+	r.Info("start rebalance",
+		slog.Float64("max-node-load-ratio", loadRatios.MaxNodeLoadRatio()),
+		slog.Float64("min-node-load-ratio", loadRatios.MinNodeLoadRatio()),
+		slog.Float64("avg-shard-load-ratio", loadRatios.AvgShardLoadRatio()),
+	)
+	defer func() {
+		r.Info("end rebalance",
+			slog.Float64("max-node-load-ratio", loadRatios.MaxNodeLoadRatio()),
+			slog.Float64("min-node-load-ratio", loadRatios.MinNodeLoadRatio()),
+			slog.Float64("avg-shard-load-ratio", loadRatios.AvgShardLoadRatio()),
+		)
+	}()
 
 	// (1) deleted node
 	for nodeIter := loadRatios.NodeLoadRatios.Iterator(); nodeIter.Next(); {
@@ -186,6 +199,7 @@ func (r *nodeBasedBalancer) swapShard(
 		To:     targetNodeId,
 		waiter: swapGroup,
 	}
+	r.Info("propose to swap the shard", slog.Int64("shard", candidateShard.ShardID), slog.String("from", fromNodeID), slog.String("to", targetNodeId))
 	loadRatios.MoveShardToNode(candidateShard, fromNodeID, targetNodeId)
 	loadRatios.ReCalculateRatios()
 	return nil
@@ -220,7 +234,16 @@ func (r *nodeBasedBalancer) IsNodeQuarantined(highestLoadRatioNode *model.NodeLo
 	return false
 }
 
+func (r *nodeBasedBalancer) IsBalanced() bool {
+	currentStatus := r.statusSupplier()
+	candidates := r.candidatesSupplier()
+	groupedStatus := utils.GroupingShardsNodeByStatus(candidates, currentStatus)
+	loadRatios := r.loadRatioAlgorithm(&model.RatioParams{NodeShardsInfos: groupedStatus})
+	return loadRatios.IsBalanced()
+}
+
 func (r *nodeBasedBalancer) Trigger() {
+	r.Info("manually trigger balance")
 	channel.PushNoBlock(r.triggerCh, triggerEvent)
 }
 
@@ -229,10 +252,10 @@ func (r *nodeBasedBalancer) startBackgroundScheduler() {
 	go process.DoWithLabels(r.ctx, map[string]string{
 		"component": "load-balancer-scheduler",
 	}, func() {
+		timer := time.NewTicker(loadBalancerScheduleInterval)
+		defer timer.Stop()
+		defer r.Done()
 		for {
-			timer := time.NewTimer(loadBalancerScheduleInterval)
-			defer timer.Stop()
-			defer r.Done()
 			select {
 			case _, more := <-timer.C:
 				if !more {
@@ -251,8 +274,8 @@ func (r *nodeBasedBalancer) startBackgroundNotifier() {
 	go process.DoWithLabels(r.ctx, map[string]string{
 		"component": "load-balancer-notifier",
 	}, func() {
+		defer r.Done()
 		for {
-			defer r.Done()
 			select {
 			case _, more := <-r.triggerCh:
 				if !more {

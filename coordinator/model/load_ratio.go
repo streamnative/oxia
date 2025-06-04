@@ -86,6 +86,10 @@ func (r *RatioSnapshot) ReCalculateRatios() {
 	}
 }
 
+func (r *RatioSnapshot) IsBalanced() bool {
+	return r.maxNodeLoadRatio-r.minNodeLoadRatio <= r.avgShardLoadRatio
+}
+
 func NewRatio(maxNodeLoadRatio float64, minNodeLoadRatio float64, avgShardLoadRatio float64, nodeLoadRatios *arraylist.List) *RatioSnapshot {
 	return &RatioSnapshot{
 		maxNodeLoadRatio:  maxNodeLoadRatio,
