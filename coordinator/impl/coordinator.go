@@ -180,15 +180,14 @@ func NewCoordinator(metadataProvider MetadataProvider,
 			return GetNamespaceConfig(c.Namespaces, namespace)
 		},
 	})
-	c.startBackgroundActionWorker()
 
-	go process.DoWithLabels(
-		c.ctx,
-		map[string]string{
-			"oxia": "coordinator-wait-for-events",
-		},
-		c.waitForExternalEvents,
-	)
+	go process.DoWithLabels(c.ctx, map[string]string{
+		"component": "coordinator-action-worker",
+	}, c.startBackgroundActionWorker)
+
+	go process.DoWithLabels(c.ctx, map[string]string{
+		"oxia": "coordinator-wait-for-events",
+	}, c.waitForExternalEvents)
 
 	return c, nil
 }
@@ -493,54 +492,50 @@ func (c *coordinator) ClusterStatus() model.ClusterStatus {
 }
 
 func (c *coordinator) startBackgroundActionWorker() { //nolint:revive
-	go process.DoWithLabels(c.ctx, map[string]string{
-		"component": "coordinator-action-worker",
-	}, func() {
-		for {
-			select {
-			case action := <-c.loadBalancer.Action():
-				switch action.Type() { //nolint:revive,gocritic
-				case balancer.SwapNode:
-					var ac *balancer.SwapNodeAction
-					var ok bool
-					if ac, ok = action.(*balancer.SwapNodeAction); !ok {
-						panic("unexpected action type")
-					}
-					defer ac.Done()
-					c.log.Info("Applying swap action", slog.Any("swap-action", ac))
-
-					c.Lock()
-					sc, ok := c.shardControllers[ac.Shard]
-					c.Unlock()
-					if !ok {
-						c.log.Warn(
-							"Shard controller not found",
-							slog.Int64("shard", ac.Shard),
-						)
-						continue
-					}
-					index := c.ServerIDIndex()
-					fromServer := index[ac.From]
-					toServer := index[ac.To]
-					if fromServer == nil || toServer == nil {
-						// todo: improve log
-						c.log.Warn("server not found")
-						continue
-					}
-					// todo: use pointer here
-					if err := sc.SwapNode(*fromServer, *toServer); err != nil {
-						c.log.Warn(
-							"Failed to swap node",
-							slog.Any("error", err),
-							slog.Any("swap-action", ac),
-						)
-					}
+	for {
+		select {
+		case action := <-c.loadBalancer.Action():
+			switch action.Type() { //nolint:revive,gocritic
+			case balancer.SwapNode:
+				var ac *balancer.SwapNodeAction
+				var ok bool
+				if ac, ok = action.(*balancer.SwapNodeAction); !ok {
+					panic("unexpected action type")
 				}
-			case <-c.ctx.Done():
-				return
+				defer ac.Done()
+				c.log.Info("Applying swap action", slog.Any("swap-action", ac))
+
+				c.Lock()
+				sc, ok := c.shardControllers[ac.Shard]
+				c.Unlock()
+				if !ok {
+					c.log.Warn(
+						"Shard controller not found",
+						slog.Int64("shard", ac.Shard),
+					)
+					continue
+				}
+				index := c.ServerIDIndex()
+				fromServer := index[ac.From]
+				toServer := index[ac.To]
+				if fromServer == nil || toServer == nil {
+					// todo: improve log
+					c.log.Warn("server not found")
+					continue
+				}
+				// todo: use pointer here
+				if err := sc.SwapNode(*fromServer, *toServer); err != nil {
+					c.log.Warn(
+						"Failed to swap node",
+						slog.Any("error", err),
+						slog.Any("swap-action", ac),
+					)
+				}
 			}
+		case <-c.ctx.Done():
+			return
 		}
-	})
+	}
 }
 
 func (c *coordinator) waitForExternalEvents() {
