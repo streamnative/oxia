@@ -93,6 +93,12 @@ func TestBalanceLoad(t *testing.T) {
 		return balancer.IsBalanced()
 	}, 15*time.Second, 100*time.Millisecond)
 	assert.NoError(t, balancer.Close())
+
+	for _, sm := range shardsMetadata {
+		for _, ens := range sm.Ensemble {
+			assert.NotEqualValues(t, ens.GetIdentifier(), "sv-6")
+		}
+	}
 }
 
 func ApplyActions(ctx context.Context, shardsMetadata map[int64]model.ShardMetadata, actionCh <-chan Action) {
@@ -128,8 +134,4 @@ func ApplyActions(ctx context.Context, shardsMetadata map[int64]model.ShardMetad
 			return
 		}
 	}
-}
-
-func TestLoadBalanceQuarantined(t *testing.T) {
-
 }
