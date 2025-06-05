@@ -61,7 +61,7 @@ func TestSelectLowerestLoadSelector(t *testing.T) {
 	selected := linkedhashset.New()
 	context := &Context{
 		Candidates: linkedhashset.New("sv-1", "sv-2", "sv-3", "sv-4", "sv-5"),
-		LoadRatioSupplier: func() *model.RatioSnapshot {
+		LoadRatioSupplier: func() *model.Ratio {
 			return ratioSnapshot
 		},
 	}

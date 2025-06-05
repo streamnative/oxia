@@ -48,7 +48,7 @@ func TestBalanceLoad(t *testing.T) {
 		},
 		1: {
 			Ensemble: []model.Server{
-				{Internal: "sv-2", Public: "sv-2"},
+				{Internal: "sv-1", Public: "sv-1"},
 				{Internal: "sv-3", Public: "sv-3"},
 				{Internal: "sv-4", Public: "sv-4"},
 			},
@@ -57,7 +57,14 @@ func TestBalanceLoad(t *testing.T) {
 			Ensemble: []model.Server{
 				{Internal: "sv-1", Public: "sv-1"},
 				{Internal: "sv-2", Public: "sv-2"},
-				{Internal: "sv-3", Public: "sv-3"},
+				{Internal: "sv-6", Public: "sv-6"},
+			},
+		},
+		3: {
+			Ensemble: []model.Server{
+				{Internal: "sv-1", Public: "sv-1"},
+				{Internal: "sv-4", Public: "sv-4"},
+				{Internal: "sv-6", Public: "sv-6"},
 			},
 		},
 	}
@@ -121,10 +128,6 @@ func ApplyActions(ctx context.Context, shardsMetadata map[int64]model.ShardMetad
 			return
 		}
 	}
-}
-
-func TestDeletedNode(t *testing.T) {
-
 }
 
 func TestLoadBalanceQuarantined(t *testing.T) {

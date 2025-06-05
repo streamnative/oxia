@@ -28,7 +28,7 @@ var (
 	ErrMultipleResult              = errors.New("selector: multiple results")
 )
 
-type LoadRatioAlgorithm = func(params *model.RatioParams) *model.RatioSnapshot
+type LoadRatioAlgorithm = func(params *model.RatioParams) *model.Ratio
 
 type Selector[O any, R any] interface {
 	Select(o O) (R, error)

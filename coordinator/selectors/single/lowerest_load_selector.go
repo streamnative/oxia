@@ -31,7 +31,7 @@ func (*lowerestLoadSelector) Select(ssContext *Context) (string, error) {
 	if loadRatios == nil {
 		return "", selectors.ErrNoFunctioning
 	}
-	for iter := loadRatios.NodeLoadRatios.Iterator(); iter.Next(); {
+	for iter := loadRatios.NodeIterator(); iter.Next(); {
 		nodeRatio := iter.Value().(*model.NodeLoadRatio) //nolint:revive
 		lowerLoad := nodeRatio.NodeID
 		if ssContext.Candidates.Contains(lowerLoad) {

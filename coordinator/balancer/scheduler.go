@@ -75,22 +75,23 @@ func (r *nodeBasedBalancer) rebalanceEnsemble() {
 	groupedStatus := utils.GroupingShardsNodeByStatus(candidates, currentStatus)
 	loadRatios := r.loadRatioAlgorithm(&model.RatioParams{NodeShardsInfos: groupedStatus})
 	metadata := r.candidateMetadataSupplier()
+	avgNodeLoadRatio := 1 / float64(candidates.Size())
 
 	r.Info("start rebalance",
 		slog.Float64("max-node-load-ratio", loadRatios.MaxNodeLoadRatio()),
 		slog.Float64("min-node-load-ratio", loadRatios.MinNodeLoadRatio()),
-		slog.Float64("avg-shard-load-ratio", loadRatios.AvgShardLoadRatio()),
+		slog.Float64("avg-node-load-ratio", avgNodeLoadRatio),
 	)
 	defer func() {
 		r.Info("end rebalance",
 			slog.Float64("max-node-load-ratio", loadRatios.MaxNodeLoadRatio()),
 			slog.Float64("min-node-load-ratio", loadRatios.MinNodeLoadRatio()),
-			slog.Float64("avg-shard-load-ratio", loadRatios.AvgShardLoadRatio()),
+			slog.Float64("avg-node-load-ratio", avgNodeLoadRatio),
 		)
 	}()
 
 	// (1) deleted node
-	for nodeIter := loadRatios.NodeLoadRatios.Iterator(); nodeIter.Next(); {
+	for nodeIter := loadRatios.NodeIterator(); nodeIter.Next(); {
 		var nodeLoadRatio *model.NodeLoadRatio
 		var ok bool
 		if nodeLoadRatio, ok = nodeIter.Value().(*model.NodeLoadRatio); !ok {
@@ -100,7 +101,7 @@ func (r *nodeBasedBalancer) rebalanceEnsemble() {
 			continue
 		}
 		deletedNodeID := nodeLoadRatio.NodeID
-		for shardIter := nodeLoadRatio.ShardRatios.Iterator(); shardIter.Next(); {
+		for shardIter := nodeLoadRatio.ShardIterator(); shardIter.Next(); {
 			var shardRatio *model.ShardLoadRatio
 			if shardRatio, ok = shardIter.Value().(*model.ShardLoadRatio); !ok {
 				panic("unexpected type cast")
@@ -116,13 +117,17 @@ func (r *nodeBasedBalancer) rebalanceEnsemble() {
 				continue
 			}
 		}
+		if err := loadRatios.RemoveDeletedNode(nodeLoadRatio.NodeID); err != nil {
+			r.Error("failed to remove deleted node from ratio snapshot", slog.Any("error", err))
+			return
+		}
 	}
 
 	// (2) rebalance by load ratio
-	if loadRatios.RatioGap() < loadRatios.AvgShardLoadRatio() {
+	if loadRatios.RatioGap() < avgNodeLoadRatio {
 		return
 	}
-	iter := loadRatios.NodeLoadRatios.Iterator()
+	iter := loadRatios.NodeIterator()
 	if !iter.Last() {
 		return
 	}
@@ -139,11 +144,11 @@ func (r *nodeBasedBalancer) rebalanceEnsemble() {
 		}
 		break
 	}
-	iter = highestLoadRatioNode.ShardRatios.Iterator()
+	iter = highestLoadRatioNode.ShardIterator()
 	if !iter.Last() {
 		return
 	}
-	for highestLoadRatioNode.Ratio-loadRatios.MinNodeLoadRatio() > loadRatios.AvgShardLoadRatio() {
+	for highestLoadRatioNode.Ratio-loadRatios.MinNodeLoadRatio() > avgNodeLoadRatio {
 		var highestLoadRatioShard *model.ShardLoadRatio
 		if highestLoadRatioShard = iter.Value().(*model.ShardLoadRatio); highestLoadRatioShard == nil {
 			break
@@ -161,7 +166,7 @@ func (r *nodeBasedBalancer) rebalanceEnsemble() {
 			break
 		}
 	}
-	if highestLoadRatioNode.Ratio-loadRatios.MinNodeLoadRatio() > loadRatios.AvgShardLoadRatio() {
+	if highestLoadRatioNode.Ratio-loadRatios.MinNodeLoadRatio() > avgNodeLoadRatio {
 		r.quarantineNode.Add(highestLoadRatioNode.NodeID)
 		r.Info("can't rebalance the current node, quarantine it.",
 			slog.Float64("highest-load-node-ratio", highestLoadRatioNode.Ratio),
@@ -173,7 +178,7 @@ func (r *nodeBasedBalancer) swapShard(
 	candidateShard *model.ShardLoadRatio,
 	fromNodeID string,
 	swapGroup *sync.WaitGroup,
-	loadRatios *model.RatioSnapshot,
+	loadRatios *model.Ratio,
 	candidates *linkedhashset.Set,
 	metadata map[string]model.ServerMetadata,
 	currentStatus *model.ClusterStatus) error {
@@ -184,7 +189,7 @@ func (r *nodeBasedBalancer) swapShard(
 		CandidatesMetadata: metadata,
 		Policies:           policies,
 		Status:             currentStatus,
-		LoadRatioSupplier:  func() *model.RatioSnapshot { return loadRatios },
+		LoadRatioSupplier:  func() *model.Ratio { return loadRatios },
 	}
 	sContext.SetSelected(utils.FilterEnsemble(candidateShard.Ensemble, fromNodeID))
 	var targetNodeId string
@@ -239,7 +244,9 @@ func (r *nodeBasedBalancer) IsBalanced() bool {
 	candidates := r.candidatesSupplier()
 	groupedStatus := utils.GroupingShardsNodeByStatus(candidates, currentStatus)
 	loadRatios := r.loadRatioAlgorithm(&model.RatioParams{NodeShardsInfos: groupedStatus})
-	return loadRatios.IsBalanced()
+	avgNodeLoadRatio := 1 / float64(candidates.Size())
+
+	return loadRatios.MaxNodeLoadRatio()-loadRatios.MinNodeLoadRatio() < avgNodeLoadRatio
 }
 
 func (r *nodeBasedBalancer) Trigger() {
