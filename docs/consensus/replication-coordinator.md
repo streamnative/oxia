@@ -47,7 +47,7 @@ a new leader election.
 
 ## Anatomy of a leadership election
 
-> As mentioned elsewhere, a [formal description](correctness.md) of the protocol is available in 
+> As mentioned elsewhere, a [formal description](../correctness/correctness.md) of the protocol is available in 
 > [TLA+](https://lamport.azurewebsites.net/tla/tla.html).
 
 ### Fence Nodes
