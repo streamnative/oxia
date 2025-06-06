@@ -17,12 +17,12 @@ package oxia
 import (
 	"container/heap"
 	"context"
+	"fmt"
 	"io"
 	"sync"
 
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
-	"golang.org/x/exp/slices"
 
 	"github.com/streamnative/oxia/common/concurrent"
 	"github.com/streamnative/oxia/common/rpc"
@@ -261,12 +261,67 @@ func (c *clientImpl) doSingleShardGet(key string, opts *getOptions, ch chan GetR
 	})
 }
 
+func compareGetResponse(a, b *proto.GetResponse) int {
+	if a.SecondaryIndexKey != nil && b.SecondaryIndexKey != nil {
+		c := compare.CompareWithSlash([]byte(a.GetSecondaryIndexKey()), []byte(b.GetSecondaryIndexKey()))
+		if c != 0 {
+			return c
+		}
+	}
+	return compare.CompareWithSlash([]byte(a.GetKey()), []byte(b.GetKey()))
+}
+
+func validateComparisonType(c proto.KeyComparisonType) error {
+	switch c {
+	case proto.KeyComparisonType_EQUAL,
+		proto.KeyComparisonType_FLOOR,
+		proto.KeyComparisonType_LOWER,
+		proto.KeyComparisonType_CEILING,
+		proto.KeyComparisonType_HIGHER:
+		return nil
+	default:
+		return fmt.Errorf("unsupported comparison type: %v", c)
+	}
+}
+
+var keyNotFound = &proto.GetResponse{
+	Status: proto.Status_KEY_NOT_FOUND,
+}
+
+func selectResponse(kc proto.KeyComparisonType, selected *proto.GetResponse, response *proto.GetResponse) *proto.GetResponse {
+	if response != nil && response.Status == proto.Status_OK {
+		switch kc {
+		case proto.KeyComparisonType_EQUAL:
+			if selected == keyNotFound {
+				selected = response
+			}
+
+		case proto.KeyComparisonType_FLOOR, proto.KeyComparisonType_LOWER:
+			if selected == keyNotFound || compareGetResponse(selected, response) < 0 {
+				selected = response
+			}
+
+		case proto.KeyComparisonType_CEILING, proto.KeyComparisonType_HIGHER:
+			if selected == keyNotFound || compareGetResponse(selected, response) > 0 {
+				selected = response
+			}
+		}
+	}
+	return selected
+}
+
 // The keys might get hashed to multiple shards, so we have to check on all shards and then compare the results.
 func (c *clientImpl) doMultiShardGet(key string, options *getOptions, ch chan GetResult) {
+	if err := validateComparisonType(options.comparisonType); err != nil {
+		ch <- toGetResult(nil, key, err)
+		close(ch)
+		return
+	}
+
 	m := sync.Mutex{}
-	var results []*proto.GetResponse
 	shards := c.shardManager.GetAll()
 	counter := len(shards)
+	selected := keyNotFound
 
 	for _, shardId := range shards {
 		c.readBatchManager.Get(shardId).Add(model.GetCall{
@@ -278,58 +333,27 @@ func (c *clientImpl) doMultiShardGet(key string, options *getOptions, ch chan Ge
 				m.Lock()
 				defer m.Unlock()
 
-				if err != nil && counter > 0 {
+				if counter == 0 {
+					// Response already sent, nothing to do
+					return
+				}
+
+				if err != nil {
 					ch <- toGetResult(nil, key, err)
 					close(ch)
 					counter = 0
 				}
 
-				if response != nil && response.Status == proto.Status_OK {
-					results = append(results, response)
-				}
+				selected = selectResponse(options.comparisonType, selected, response)
 
 				counter--
 				if counter == 0 {
-					// We have responses from all the shards
-					processAllGetResponses(key, results, options.comparisonType, ch)
+					ch <- toGetResult(selected, key, nil)
+					close(ch)
 				}
 			},
 		})
 	}
-}
-
-var keyNotFound = &proto.GetResponse{
-	Status: proto.Status_KEY_NOT_FOUND,
-}
-
-func processAllGetResponses(originalKey string, results []*proto.GetResponse, comparisonType proto.KeyComparisonType, ch chan GetResult) {
-	selected := keyNotFound
-
-	if len(results) > 0 {
-		slices.SortFunc(results, func(a, b *proto.GetResponse) int {
-			if a.SecondaryIndexKey != nil && b.SecondaryIndexKey != nil {
-				return compare.CompareWithSlash([]byte(a.GetSecondaryIndexKey()), []byte(b.GetSecondaryIndexKey()))
-			}
-
-			return compare.CompareWithSlash([]byte(a.GetKey()), []byte(b.GetKey()))
-		})
-
-		switch comparisonType {
-		case proto.KeyComparisonType_EQUAL:
-			selected = results[len(results)-1]
-		case proto.KeyComparisonType_FLOOR:
-			selected = results[len(results)-1]
-		case proto.KeyComparisonType_LOWER:
-			selected = results[len(results)-1]
-		case proto.KeyComparisonType_CEILING:
-			selected = results[0]
-		case proto.KeyComparisonType_HIGHER:
-			selected = results[0]
-		}
-	}
-
-	ch <- toGetResult(selected, originalKey, nil)
-	close(ch)
 }
 
 func (c *clientImpl) listFromShard(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, shardId int64, secondaryIndexName *string,
