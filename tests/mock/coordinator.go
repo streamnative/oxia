@@ -9,11 +9,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func NewCoordinator(t *testing.T, config model.ClusterConfig) impl.Coordinator {
+func NewCoordinator(t *testing.T, config *model.ClusterConfig, clusterConfigNotificationCh chan any) impl.Coordinator {
 	t.Helper()
 	metadataProvider := impl.NewMetadataProviderMemory()
 	clientPool := rpc.NewClientPool(nil, nil)
-	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return config, nil }, nil, impl.NewRpcProvider(clientPool))
+	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return *config, nil }, clusterConfigNotificationCh, impl.NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 	return coordinator
 }

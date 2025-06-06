@@ -22,22 +22,24 @@ import (
 
 func GroupingShardsNodeByStatus(candidates *linkedhashset.Set, status *model.ClusterStatus) map[string][]model.ShardInfo {
 	groupingShardByNode := make(map[string][]model.ShardInfo)
-	for namespace, namespaceStatus := range status.Namespaces {
-		for shard, shardStatus := range namespaceStatus.Shards {
-			for _, server := range shardStatus.Ensemble {
-				nodeID := server.GetIdentifier()
-				var groupedShard []model.ShardInfo
-				var exist bool
-				if groupedShard, exist = groupingShardByNode[nodeID]; !exist {
-					tmp := make([]model.ShardInfo, 0)
-					groupedShard = tmp
+	if status != nil {
+		for namespace, namespaceStatus := range status.Namespaces {
+			for shard, shardStatus := range namespaceStatus.Shards {
+				for _, server := range shardStatus.Ensemble {
+					nodeID := server.GetIdentifier()
+					var groupedShard []model.ShardInfo
+					var exist bool
+					if groupedShard, exist = groupingShardByNode[nodeID]; !exist {
+						tmp := make([]model.ShardInfo, 0)
+						groupedShard = tmp
+					}
+					groupedShard = append(groupedShard, model.ShardInfo{
+						Namespace: namespace,
+						ShardID:   shard,
+						Ensemble:  shardStatus.Ensemble,
+					})
+					groupingShardByNode[nodeID] = groupedShard
 				}
-				groupedShard = append(groupedShard, model.ShardInfo{
-					Namespace: namespace,
-					ShardID:   shard,
-					Ensemble:  shardStatus.Ensemble,
-				})
-				groupingShardByNode[nodeID] = groupedShard
 			}
 		}
 	}

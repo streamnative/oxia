@@ -27,4 +27,6 @@ type Context struct {
 	Policies           *p.Policies
 	Status             *model.ClusterStatus
 	Replicas           int
+
+	LoadRatioSupplier func() *model.Ratio
 }

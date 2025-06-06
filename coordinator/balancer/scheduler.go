@@ -71,7 +71,6 @@ func (r *nodeBasedBalancer) Close() error {
 func (r *nodeBasedBalancer) rebalanceEnsemble() {
 	var err error
 	swapGroup := &sync.WaitGroup{}
-	defer swapGroup.Wait()
 
 	currentStatus := r.statusSupplier()
 	candidates := r.candidatesSupplier()
@@ -86,6 +85,7 @@ func (r *nodeBasedBalancer) rebalanceEnsemble() {
 		slog.Float64("avg-node-load-ratio", avgNodeLoadRatio),
 	)
 	defer func() {
+		swapGroup.Wait()
 		r.Info("end rebalance",
 			slog.Float64("max-node-load-ratio", loadRatios.MaxNodeLoadRatio()),
 			slog.Float64("min-node-load-ratio", loadRatios.MinNodeLoadRatio()),
@@ -255,6 +255,13 @@ func (r *nodeBasedBalancer) IsBalanced() bool {
 func (r *nodeBasedBalancer) Trigger() {
 	r.Info("manually trigger balance")
 	channel.PushNoBlock(r.triggerCh, triggerEvent)
+}
+
+func (r *nodeBasedBalancer) LoadRatio() *model.Ratio {
+	currentStatus := r.statusSupplier()
+	candidates := r.candidatesSupplier()
+	groupedStatus := utils.GroupingShardsNodeByStatus(candidates, currentStatus)
+	return r.loadRatioAlgorithm(&model.RatioParams{NodeShardsInfos: groupedStatus})
 }
 
 func (r *nodeBasedBalancer) startBackgroundScheduler() {

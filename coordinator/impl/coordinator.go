@@ -69,6 +69,8 @@ type Coordinator interface {
 	FindServerByIdentifier(identifier string) (*model.Server, bool)
 
 	TriggerBalance()
+
+	IsBalanced() bool
 }
 
 type coordinator struct {
@@ -141,24 +143,6 @@ func NewCoordinator(metadataProvider MetadataProvider,
 		c.nodeControllers[sa.GetIdentifier()] = NewNodeController(sa, c, c, c.rpc)
 	}
 
-	if c.clusterStatus == nil {
-		// Before initializing the cluster, it's better to make sure we
-		// have all the nodes available, otherwise the coordinator might be
-		// the first component in getting started and will print out a lot
-		// of error logs regarding failed leader elections
-		c.waitForAllNodesToBeAvailable()
-
-		if err = c.initialAssignment(); err != nil {
-			return nil, err
-		}
-	} else {
-		if err = c.applyNewClusterConfig(); err != nil {
-			return nil, err
-		}
-	}
-
-	c.initialShardController(&initialClusterConf)
-
 	c.loadBalancer = balancer.NewLoadBalancer(balancer.Options{
 		Context: c.ctx,
 		StatusSupplier: func() *model.ClusterStatus {
@@ -183,6 +167,24 @@ func NewCoordinator(metadataProvider MetadataProvider,
 		},
 	})
 
+	if c.clusterStatus == nil {
+		// Before initializing the cluster, it's better to make sure we
+		// have all the nodes available, otherwise the coordinator might be
+		// the first component in getting started and will print out a lot
+		// of error logs regarding failed leader elections
+		c.waitForAllNodesToBeAvailable()
+
+		if err = c.initialAssignment(); err != nil {
+			return nil, err
+		}
+	} else {
+		if err = c.applyNewClusterConfig(); err != nil {
+			return nil, err
+		}
+	}
+
+	c.initialShardController(&initialClusterConf)
+
 	go process.DoWithLabels(c.ctx, map[string]string{
 		"component": "coordinator-action-worker",
 	}, c.startBackgroundActionWorker)
@@ -192,6 +194,10 @@ func NewCoordinator(metadataProvider MetadataProvider,
 	}, c.waitForExternalEvents)
 
 	return c, nil
+}
+
+func (c *coordinator) IsBalanced() bool {
+	return c.loadBalancer.IsBalanced()
 }
 
 func (c *coordinator) ServerIDs() *linkedhashset.Set {
@@ -276,6 +282,9 @@ func (c *coordinator) selectNewEnsemble(ns *model.NamespaceConfig, editingStatus
 		Policies:           ns.Policies,
 		Status:             editingStatus,
 		Replicas:           int(ns.ReplicationFactor),
+		LoadRatioSupplier: func() *model.Ratio {
+			return c.loadBalancer.LoadRatio()
+		},
 	}
 	var ensembleIDs []string
 	var err error
@@ -503,44 +512,48 @@ func (c *coordinator) startBackgroundActionWorker() { //nolint:revive
 		case action := <-c.loadBalancer.Action():
 			switch action.Type() { //nolint:revive,gocritic
 			case balancer.SwapNode:
-				var ac *balancer.SwapNodeAction
-				var ok bool
-				if ac, ok = action.(*balancer.SwapNodeAction); !ok {
-					panic("unexpected action type")
-				}
-				defer ac.Done()
-				c.log.Info("Applying swap action", slog.Any("swap-action", ac))
-
-				c.Lock()
-				sc, ok := c.shardControllers[ac.Shard]
-				c.Unlock()
-				if !ok {
-					c.log.Warn(
-						"Shard controller not found",
-						slog.Int64("shard", ac.Shard),
-					)
-					continue
-				}
-				index := c.ServerIDIndex()
-				fromServer := index[ac.From]
-				toServer := index[ac.To]
-				if fromServer == nil || toServer == nil {
-					// todo: improve log
-					c.log.Warn("server not found")
-					continue
-				}
-				// todo: use pointer here
-				if err := sc.SwapNode(*fromServer, *toServer); err != nil {
-					c.log.Warn(
-						"Failed to swap node",
-						slog.Any("error", err),
-						slog.Any("swap-action", ac),
-					)
-				}
+				c.handleActionSwap(action)
 			}
 		case <-c.ctx.Done():
 			return
 		}
+	}
+}
+
+func (c *coordinator) handleActionSwap(action balancer.Action) {
+	var ac *balancer.SwapNodeAction
+	var ok bool
+	if ac, ok = action.(*balancer.SwapNodeAction); !ok {
+		panic("unexpected action type")
+	}
+	defer ac.Done()
+	c.log.Info("Applying swap action", slog.Any("swap-action", ac))
+
+	c.Lock()
+	sc, ok := c.shardControllers[ac.Shard]
+	c.Unlock()
+	if !ok {
+		c.log.Warn(
+			"Shard controller not found",
+			slog.Int64("shard", ac.Shard),
+		)
+		return
+	}
+	index := c.ServerIDIndex()
+	fromServer := index[ac.From]
+	toServer := index[ac.To]
+	if fromServer == nil || toServer == nil {
+		// todo: improve log
+		c.log.Warn("server not found")
+		return
+	}
+	// todo: use pointer here
+	if err := sc.SwapNode(*fromServer, *toServer); err != nil {
+		c.log.Warn(
+			"Failed to swap node",
+			slog.Any("error", err),
+			slog.Any("swap-action", ac),
+		)
 	}
 }
 

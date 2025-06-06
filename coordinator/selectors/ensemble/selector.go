@@ -24,7 +24,7 @@ import (
 var _ selectors.Selector[*Context, []string] = &ensemble{}
 
 type ensemble struct {
-	singleServerSelector selectors.Selector[*single.Context, *string]
+	singleServerSelector selectors.Selector[*single.Context, string]
 }
 
 func (ensemble *ensemble) Select(context *Context) ([]string, error) {
@@ -35,18 +35,19 @@ func (ensemble *ensemble) Select(context *Context) ([]string, error) {
 		CandidatesMetadata: context.CandidatesMetadata,
 		Status:             context.Status,
 		Policies:           context.Policies,
+		LoadRatioSupplier:  context.LoadRatioSupplier,
 	}
 	selected := linkedhashset.New()
 	sServerContext.SetSelected(selected)
 
 	for idx := range context.Replicas {
-		var selectedIdPtr *string
+		var selectedIdPtr string
 		var err error
 		if selectedIdPtr, err = ensemble.singleServerSelector.Select(sServerContext); err != nil {
 			return nil, err
 		}
-		if selectedIdPtr != nil {
-			selectedId := *selectedIdPtr
+		if selectedIdPtr != "" {
+			selectedId := selectedIdPtr
 			esm[idx] = selectedId
 			selected.Add(selectedId)
 			sServerContext.SetSelected(selected)

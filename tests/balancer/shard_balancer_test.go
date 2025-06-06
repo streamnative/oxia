@@ -21,9 +21,7 @@ func TestNormalShardBalancer(t *testing.T) {
 	s5, s5ad := mock.NewServer(t)
 	defer s5.Close()
 
-	servers := []model.Server{s1ad, s2ad, s3ad}
-
-	coordinator := mock.NewCoordinator(t, model.ClusterConfig{
+	cc := model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{
 			{
 				Name:              "ns-1",
@@ -41,8 +39,11 @@ func TestNormalShardBalancer(t *testing.T) {
 				ReplicationFactor: 3,
 			},
 		},
-		Servers: servers,
-	})
+		Servers: []model.Server{s1ad, s2ad, s3ad},
+	}
+
+	ch := make(chan any, 1)
+	coordinator := mock.NewCoordinator(t, &cc, ch)
 	defer coordinator.Close()
 
 	assert.Eventually(t, func() bool {
@@ -56,8 +57,18 @@ func TestNormalShardBalancer(t *testing.T) {
 		return true
 	}, 10*time.Second, 50*time.Millisecond)
 
-	servers = append(servers, s4ad, s5ad)
+	cc.Servers = append(cc.Servers, s4ad, s5ad)
+	ch <- struct{}{}
 
+	assert.Eventually(t, func() bool {
+		_, exist := coordinator.FindServerByIdentifier(s4ad.GetIdentifier())
+		return exist
+	}, 10*time.Second, 50*time.Millisecond)
+
+	assert.Eventually(t, func() bool {
+		coordinator.TriggerBalance()
+		return coordinator.IsBalanced()
+	}, 30*time.Second, 50*time.Millisecond)
 }
 
 func TestPolicyBasedShardBalancer(t *testing.T) {

@@ -44,4 +44,6 @@ type LoadBalancer interface {
 	Action() <-chan Action
 
 	IsBalanced() bool
+
+	LoadRatio() *model.Ratio
 }
