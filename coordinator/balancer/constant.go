@@ -17,8 +17,8 @@ package balancer
 import "time"
 
 const (
-	loadBalancerScheduleInterval = time.Second * 30
-	quarantineTime               = time.Minute * 5
+	defaultLoadBalancerScheduleInterval = time.Second * 30
+	defaultQuarantineTime               = time.Minute * 5
 )
 
 var triggerEvent = struct{}{}

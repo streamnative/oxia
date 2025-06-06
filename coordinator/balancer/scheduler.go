@@ -42,6 +42,9 @@ type nodeBasedBalancer struct {
 
 	actionCh chan Action
 
+	scheduleInterval time.Duration
+	quarantineTime   time.Duration
+
 	statusSupplier            func() *model.ClusterStatus
 	namespaceConfigSupplier   func(namespace string) *model.NamespaceConfig
 	candidateMetadataSupplier func() map[string]model.ServerMetadata
@@ -219,7 +222,7 @@ func (r *nodeBasedBalancer) IsNodeQuarantined(highestLoadRatioNode *model.NodeLo
 		iterator := r.quarantineNode.Iterator()
 		for count := 0; iterator.Next(); count++ {
 			nodeWithTs := iterator.Value().(*entities.TWithTimestamp[string]) //nolint:revive
-			if time.Since(nodeWithTs.Timestamp) >= quarantineTime {
+			if time.Since(nodeWithTs.Timestamp) >= r.quarantineTime {
 				continue
 			}
 			if count == 0 {
@@ -259,7 +262,7 @@ func (r *nodeBasedBalancer) startBackgroundScheduler() {
 	go process.DoWithLabels(r.ctx, map[string]string{
 		"component": "load-balancer-scheduler",
 	}, func() {
-		timer := time.NewTicker(loadBalancerScheduleInterval)
+		timer := time.NewTicker(r.scheduleInterval)
 		defer timer.Stop()
 		defer r.Done()
 		for {
@@ -300,10 +303,19 @@ func NewLoadBalancer(options Options) LoadBalancer {
 	ctx, cancelFunc := context.WithCancel(options.Context)
 	// todo: add parameters
 	logger := slog.With()
-	nb := &nodeBasedBalancer{
-		WaitGroup: &sync.WaitGroup{},
-		Logger:    logger,
 
+	if options.ScheduleInterval == 0 {
+		options.ScheduleInterval = defaultLoadBalancerScheduleInterval
+	}
+	if options.QuarantineTime == 0 {
+		options.QuarantineTime = defaultQuarantineTime
+	}
+
+	nb := &nodeBasedBalancer{
+		WaitGroup:                 &sync.WaitGroup{},
+		Logger:                    logger,
+		scheduleInterval:          options.ScheduleInterval,
+		quarantineTime:            options.QuarantineTime,
 		ctx:                       ctx,
 		cancel:                    cancelFunc,
 		actionCh:                  make(chan Action, 1000),

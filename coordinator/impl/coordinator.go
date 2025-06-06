@@ -67,6 +67,8 @@ type Coordinator interface {
 
 	// FindServerByIdentifier searches for a server in the cluster by its identifier and returns it if found.
 	FindServerByIdentifier(identifier string) (*model.Server, bool)
+
+	TriggerBalance()
 }
 
 type coordinator struct {
@@ -200,6 +202,10 @@ func (c *coordinator) ServerIDs() *linkedhashset.Set {
 func (c *coordinator) ServerIDIndex() map[string]*model.Server {
 	c.maybeLoadServerIndex()
 	return c.serverIDIndex
+}
+
+func (c *coordinator) TriggerBalance() {
+	c.loadBalancer.Trigger()
 }
 
 func (c *coordinator) maybeLoadServerIndex() {

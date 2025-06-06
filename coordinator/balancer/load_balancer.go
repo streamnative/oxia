@@ -16,6 +16,7 @@ package balancer
 
 import (
 	"io"
+	"time"
 
 	"github.com/emirpasic/gods/sets/linkedhashset"
 	"golang.org/x/net/context"
@@ -25,6 +26,9 @@ import (
 
 type Options struct {
 	context.Context
+
+	ScheduleInterval time.Duration
+	QuarantineTime   time.Duration
 
 	CandidatesSupplier        func() *linkedhashset.Set
 	CandidateMetadataSupplier func() map[string]model.ServerMetadata
