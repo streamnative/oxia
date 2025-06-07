@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func NewServer(t *testing.T) (s *server.Server, addr model.Server) {
+func NewServer(t *testing.T, name string) (s *server.Server, addr model.Server) {
 	t.Helper()
 
 	var err error
@@ -25,7 +25,9 @@ func NewServer(t *testing.T) (s *server.Server, addr model.Server) {
 
 	assert.NoError(t, err)
 
+	tmp := &name
 	addr = model.Server{
+		Name:     tmp,
 		Public:   fmt.Sprintf("localhost:%d", s.PublicPort()),
 		Internal: fmt.Sprintf("localhost:%d", s.InternalPort()),
 	}

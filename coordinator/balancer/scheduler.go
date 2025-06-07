@@ -70,6 +70,7 @@ func (r *nodeBasedBalancer) Close() error {
 
 func (r *nodeBasedBalancer) rebalanceEnsemble() {
 	var err error
+	var swapped bool
 	swapGroup := &sync.WaitGroup{}
 
 	currentStatus := r.statusSupplier()
@@ -82,6 +83,7 @@ func (r *nodeBasedBalancer) rebalanceEnsemble() {
 	r.Info("start rebalance",
 		slog.Float64("max-node-load-ratio", loadRatios.MaxNodeLoadRatio()),
 		slog.Float64("min-node-load-ratio", loadRatios.MinNodeLoadRatio()),
+		slog.Any("quarantine-nodes", r.quarantineNode),
 		slog.Float64("avg-node-load-ratio", avgNodeLoadRatio),
 	)
 	defer func() {
@@ -110,7 +112,7 @@ func (r *nodeBasedBalancer) rebalanceEnsemble() {
 				panic("unexpected type cast")
 			}
 
-			if err = r.swapShard(shardRatio, deletedNodeID, swapGroup, loadRatios, candidates, metadata, currentStatus); err != nil {
+			if swapped, err = r.swapShard(shardRatio, deletedNodeID, swapGroup, loadRatios, candidates, metadata, currentStatus); err != nil || !swapped {
 				r.Error("failed to select server when move ensemble out of deleted node",
 					slog.String("namespace", shardRatio.Namespace),
 					slog.Int64("shard", shardRatio.ShardID),
@@ -151,16 +153,17 @@ func (r *nodeBasedBalancer) rebalanceEnsemble() {
 	if !iter.Last() {
 		return
 	}
-	for highestLoadRatioNode.Ratio-loadRatios.MinNodeLoadRatio() > avgNodeLoadRatio {
+	for highestLoadRatioNode.Ratio > avgNodeLoadRatio {
 		var highestLoadRatioShard *model.ShardLoadRatio
 		if highestLoadRatioShard = iter.Value().(*model.ShardLoadRatio); highestLoadRatioShard == nil {
 			break
 		}
-		if err = r.swapShard(highestLoadRatioShard, highestLoadRatioNode.NodeID, swapGroup, loadRatios, candidates, metadata, currentStatus); err != nil {
-			r.Info("has no other choose to move the current shard ensemble to other node.",
+		fromNodeID := highestLoadRatioNode.NodeID
+		if swapped, err = r.swapShard(highestLoadRatioShard, fromNodeID, swapGroup, loadRatios, candidates, metadata, currentStatus); err != nil {
+			r.Error("failed to select server when swap the node",
 				slog.String("namespace", highestLoadRatioShard.Namespace),
 				slog.Int64("shard", highestLoadRatioShard.ShardID),
-				slog.String("highest-load-node", highestLoadRatioNode.NodeID),
+				slog.String("from-node", fromNodeID),
 				slog.Any("error", err),
 			)
 			continue
@@ -169,7 +172,7 @@ func (r *nodeBasedBalancer) rebalanceEnsemble() {
 			break
 		}
 	}
-	if highestLoadRatioNode.Ratio-loadRatios.MinNodeLoadRatio() > avgNodeLoadRatio {
+	if highestLoadRatioNode.Ratio > avgNodeLoadRatio {
 		r.quarantineNode.Add(highestLoadRatioNode.NodeID)
 		r.Info("can't rebalance the current node, quarantine it.",
 			slog.Float64("highest-load-node-ratio", highestLoadRatioNode.Ratio),
@@ -184,7 +187,7 @@ func (r *nodeBasedBalancer) swapShard(
 	loadRatios *model.Ratio,
 	candidates *linkedhashset.Set,
 	metadata map[string]model.ServerMetadata,
-	currentStatus *model.ClusterStatus) error {
+	currentStatus *model.ClusterStatus) (bool, error) {
 	nsc := r.namespaceConfigSupplier(candidateShard.Namespace)
 	policies := nsc.Policies
 	sContext := &single.Context{
@@ -198,7 +201,10 @@ func (r *nodeBasedBalancer) swapShard(
 	var targetNodeId string
 	var err error
 	if targetNodeId, err = r.selector.Select(sContext); err != nil {
-		return err
+		return false, err
+	}
+	if targetNodeId == fromNodeID {
+		return false, nil
 	}
 	swapGroup.Add(1)
 	r.actionCh <- &SwapNodeAction{
@@ -210,7 +216,7 @@ func (r *nodeBasedBalancer) swapShard(
 	r.Info("propose to swap the shard", slog.Int64("shard", candidateShard.ShardID), slog.String("from", fromNodeID), slog.String("to", targetNodeId))
 	loadRatios.MoveShardToNode(candidateShard, fromNodeID, targetNodeId)
 	loadRatios.ReCalculateRatios()
-	return nil
+	return true, nil
 }
 
 func (r *nodeBasedBalancer) IsNodeQuarantined(highestLoadRatioNode *model.NodeLoadRatio) bool {
@@ -246,10 +252,10 @@ func (r *nodeBasedBalancer) IsBalanced() bool {
 	currentStatus := r.statusSupplier()
 	candidates := r.candidatesSupplier()
 	groupedStatus := utils.GroupingShardsNodeByStatus(candidates, currentStatus)
-	loadRatios := r.loadRatioAlgorithm(&model.RatioParams{NodeShardsInfos: groupedStatus})
+	loadRatios := r.loadRatioAlgorithm(&model.RatioParams{NodeShardsInfos: groupedStatus, QuarantineNodes: r.quarantineNode})
 	avgNodeLoadRatio := 1 / float64(candidates.Size())
 
-	return loadRatios.MaxNodeLoadRatio()-loadRatios.MinNodeLoadRatio() < avgNodeLoadRatio
+	return loadRatios.MaxNodeLoadRatio() <= avgNodeLoadRatio
 }
 
 func (r *nodeBasedBalancer) Trigger() {
