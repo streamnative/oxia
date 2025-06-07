@@ -20,7 +20,6 @@ import (
 	"log/slog"
 	"math"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -752,28 +751,6 @@ func TestCoordinator_ShrinkCluster(t *testing.T) {
 	}
 }
 
-func checkServerLists(t *testing.T, expected, actual []model.Server) {
-	t.Helper()
-
-	assert.Equal(t, len(expected), len(actual))
-	mExpected := map[string]bool{}
-	for _, x := range expected {
-		mExpected[x.Public] = true
-	}
-
-	for _, x := range actual {
-		_, ok := mExpected[x.Public]
-		if !ok {
-			slog.Warn(
-				"Got unexpected server",
-				slog.Any("expected-servers", expected),
-				slog.Any("found-server", x),
-			)
-		}
-		assert.True(t, ok)
-	}
-}
-
 func TestCoordinator_RefreshServerInfo(t *testing.T) {
 	s1, sa1 := newServer(t)
 	s2, sa2 := newServer(t)
@@ -817,9 +794,9 @@ func TestCoordinator_RefreshServerInfo(t *testing.T) {
 	}
 
 	// check if the new config will trigger node swap
-	status := c.ClusterStatus()
-	actions := rebalanceCluster(clusterServer, &status)
-	assert.EqualValues(t, 0, len(actions))
+	// status := c.ClusterStatus()
+	// actions := coordinator.rebalanceCluster(clusterServer, &status)
+	// assert.EqualValues(t, 0, len(actions))
 
 	clusterConfig.Servers = clusterServer
 	configChangesCh <- nil

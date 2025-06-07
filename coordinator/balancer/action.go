@@ -12,21 +12,38 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package ensemble
+package balancer
 
 import (
-	"github.com/emirpasic/gods/sets/linkedhashset"
-
-	"github.com/streamnative/oxia/coordinator/model"
-	p "github.com/streamnative/oxia/coordinator/policies"
+	"sync"
 )
 
-type Context struct {
-	Candidates         *linkedhashset.Set
-	CandidatesMetadata map[string]model.ServerMetadata
-	Policies           *p.Policies
-	Status             *model.ClusterStatus
-	Replicas           int
+type ActionType string
 
-	LoadRatioSupplier func() *model.Ratio
+const (
+	SwapNode ActionType = "swap-node"
+)
+
+type Action interface {
+	Type() ActionType
+
+	Done()
+}
+
+var _ Action = &SwapNodeAction{}
+
+type SwapNodeAction struct {
+	Shard int64
+	From  string
+	To    string
+
+	waiter *sync.WaitGroup
+}
+
+func (s *SwapNodeAction) Done() {
+	s.waiter.Done()
+}
+
+func (*SwapNodeAction) Type() ActionType {
+	return SwapNode
 }

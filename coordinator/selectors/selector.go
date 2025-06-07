@@ -16,6 +16,8 @@ package selectors
 
 import (
 	"github.com/pkg/errors"
+
+	"github.com/streamnative/oxia/coordinator/model"
 )
 
 var (
@@ -25,6 +27,8 @@ var (
 	ErrNoFunctioning               = errors.New("selector: no functioning selection")
 	ErrMultipleResult              = errors.New("selector: multiple results")
 )
+
+type LoadRatioAlgorithm = func(params *model.RatioParams) *model.Ratio
 
 type Selector[O any, R any] interface {
 	Select(o O) (R, error)

@@ -705,7 +705,7 @@ func (s *shardController) becomeLeader(leader model.Server, followers map[model.
 
 	followersMap := make(map[string]*proto.EntryId)
 	for server, e := range followers {
-		followersMap[server.GetIdentifier()] = e
+		followersMap[server.Internal] = e
 	}
 
 	if _, err := s.rpc.BecomeLeader(s.ctx, leader, &proto.BecomeLeaderRequest{

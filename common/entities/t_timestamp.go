@@ -12,21 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package ensemble
+package entities
 
-import (
-	"github.com/emirpasic/gods/sets/linkedhashset"
+import "time"
 
-	"github.com/streamnative/oxia/coordinator/model"
-	p "github.com/streamnative/oxia/coordinator/policies"
-)
-
-type Context struct {
-	Candidates         *linkedhashset.Set
-	CandidatesMetadata map[string]model.ServerMetadata
-	Policies           *p.Policies
-	Status             *model.ClusterStatus
-	Replicas           int
-
-	LoadRatioSupplier func() *model.Ratio
+type TWithTimestamp[T any] struct {
+	T         T
+	Timestamp time.Time
 }

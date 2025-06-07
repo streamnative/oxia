@@ -12,21 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package single
+package utils
 
-import "github.com/streamnative/oxia/coordinator/selectors"
+import (
+	"github.com/emirpasic/gods/sets/linkedhashset"
 
-var _ selectors.Selector[*Context, *string] = &serverIdxSelector{}
+	"github.com/streamnative/oxia/coordinator/model"
+)
 
-type serverIdxSelector struct {
-}
-
-func (*serverIdxSelector) Select(ssContext *Context) (*string, error) {
-	startIdx := ssContext.Status.ServerIdx
-	candidatesArr := ssContext.Candidates.Values()
-	server, ok := candidatesArr[int(startIdx)%len(candidatesArr)].(string)
-	if !ok {
-		panic("unexpected candidate cast")
+func FilterEnsemble(ensemble []model.Server, filterNodeId string) *linkedhashset.Set {
+	selected := linkedhashset.New()
+	for _, candidate := range ensemble {
+		nodeID := candidate.GetIdentifier()
+		if nodeID == filterNodeId {
+			continue
+		}
+		selected.Add(candidate.GetIdentifier())
 	}
-	return &server, nil
+	return selected
 }

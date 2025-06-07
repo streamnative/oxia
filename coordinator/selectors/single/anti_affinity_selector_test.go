@@ -83,7 +83,7 @@ func TestSelectSatisfiedAntiAffinities(t *testing.T) {
 		if idx == replicas-1 { // last select
 			assert.Nil(t, err)
 			assert.NotNil(t, selectedServer)
-			selected.Add(*selectedServer)
+			selected.Add(selectedServer)
 			context.SetSelected(selected)
 			continue
 		}
@@ -238,7 +238,7 @@ func selectTimes(t *testing.T, selector *serverAntiAffinitiesSelector, context *
 			}
 			assert.NoError(t, err)
 		} else {
-			context.selected.Add(*selectedServer)
+			context.selected.Add(selectedServer)
 			context.SetSelected(context.selected)
 		}
 	}
