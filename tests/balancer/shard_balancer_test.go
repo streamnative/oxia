@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/emirpasic/gods/sets/linkedhashset"
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/coordinator/policies"
 	"github.com/streamnative/oxia/tests/mock"
@@ -83,6 +84,23 @@ func TestPolicyBasedShardBalancer(t *testing.T) {
 	defer s4.Close()
 	s5, s5ad := mock.NewServer(t, "sv-5")
 	defer s5.Close()
+	serverMetadata := map[string]model.ServerMetadata{
+		s1ad.GetIdentifier(): {
+			Labels: map[string]string{"zone": "us-east-1"},
+		},
+		s2ad.GetIdentifier(): {
+			Labels: map[string]string{"zone": "us-north-1"},
+		},
+		s3ad.GetIdentifier(): {
+			Labels: map[string]string{"zone": "us-west-1"},
+		},
+		s4ad.GetIdentifier(): {
+			Labels: map[string]string{"zone": "us-west-1"},
+		},
+		s5ad.GetIdentifier(): {
+			Labels: map[string]string{"zone": "us-east-1"},
+		},
+	}
 
 	cc := model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{
@@ -116,24 +134,8 @@ func TestPolicyBasedShardBalancer(t *testing.T) {
 				ReplicationFactor: 3,
 			},
 		},
-		ServerMetadata: map[string]model.ServerMetadata{
-			s1ad.GetIdentifier(): {
-				Labels: map[string]string{"zone": "us-east-1"},
-			},
-			s2ad.GetIdentifier(): {
-				Labels: map[string]string{"zone": "us-north-1"},
-			},
-			s3ad.GetIdentifier(): {
-				Labels: map[string]string{"zone": "us-west-1"},
-			},
-			s4ad.GetIdentifier(): {
-				Labels: map[string]string{"zone": "us-west-1"},
-			},
-			s5ad.GetIdentifier(): {
-				Labels: map[string]string{"zone": "us-east-1"},
-			},
-		},
-		Servers: []model.Server{s1ad, s2ad, s3ad},
+		ServerMetadata: serverMetadata,
+		Servers:        []model.Server{s1ad, s2ad, s3ad},
 	}
 
 	ch := make(chan any, 1)
@@ -164,10 +166,21 @@ func TestPolicyBasedShardBalancer(t *testing.T) {
 		return coordinator.IsBalanced()
 	}, 30*time.Second, 50*time.Millisecond)
 
+	// check if follow the policies
 	for name, ns := range coordinator.ClusterStatus().Namespaces {
 		for _, shard := range ns.Shards {
-			assert.NotNil(t, shard)
-			println(name)
+			nodeIDs := linkedhashset.New()
+			nodeZones := linkedhashset.New()
+			for _, server := range shard.Ensemble {
+				id := server.GetIdentifier()
+				nodeIDs.Add(id)
+				metadata := serverMetadata[id]
+				nodeZones.Add(metadata.Labels["zone"])
+			}
+			assert.Equal(t, 3, nodeIDs.Size())
+			if name != "ns-3" {
+				assert.Equal(t, 3, nodeZones.Size())
+			}
 		}
 	}
 }

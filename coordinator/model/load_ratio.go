@@ -15,8 +15,9 @@
 package model
 
 import (
+	"time"
+
 	"github.com/emirpasic/gods/lists/arraylist"
-	"github.com/emirpasic/gods/sets/linkedhashset"
 	"github.com/emirpasic/gods/utils"
 	"github.com/pkg/errors"
 )
@@ -29,13 +30,14 @@ type ShardInfo struct {
 
 type RatioParams struct {
 	NodeShardsInfos map[string][]ShardInfo
-	QuarantineNodes *linkedhashset.Set
+	QuarantineNodes map[string]time.Time
 }
 
 type Ratio struct {
-	maxNodeLoadRatio float64
-	minNodeLoadRatio float64
-	nodeLoadRatios   *arraylist.List
+	maxNodeLoadRatio  float64
+	minNodeLoadRatio  float64
+	avgShardLoadRatio float64
+	nodeLoadRatios    *arraylist.List
 }
 
 func (r *Ratio) NodeIterator() *arraylist.Iterator {
@@ -49,6 +51,10 @@ func (r *Ratio) MaxNodeLoadRatio() float64 {
 
 func (r *Ratio) MinNodeLoadRatio() float64 {
 	return r.minNodeLoadRatio
+}
+
+func (r *Ratio) AvgShardLoadRatio() float64 {
+	return r.avgShardLoadRatio
 }
 
 func (r *Ratio) RatioGap() float64 {
@@ -103,11 +109,12 @@ func (r *Ratio) RemoveDeletedNode(id string) error {
 	return nil
 }
 
-func NewRatio(maxNodeLoadRatio float64, minNodeLoadRatio float64, nodeLoadRatios *arraylist.List) *Ratio {
+func NewRatio(maxNodeLoadRatio float64, minNodeLoadRatio float64, avgShardLoadRatio float64, nodeLoadRatios *arraylist.List) *Ratio {
 	return &Ratio{
-		maxNodeLoadRatio: maxNodeLoadRatio,
-		minNodeLoadRatio: minNodeLoadRatio,
-		nodeLoadRatios:   nodeLoadRatios,
+		maxNodeLoadRatio:  maxNodeLoadRatio,
+		minNodeLoadRatio:  minNodeLoadRatio,
+		avgShardLoadRatio: avgShardLoadRatio,
+		nodeLoadRatios:    nodeLoadRatios,
 	}
 }
 

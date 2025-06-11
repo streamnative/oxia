@@ -36,9 +36,12 @@ func DefaultShardsRank(params *model.RatioParams) *model.Ratio {
 	minNodeLoadRatio := 0.0
 
 	for nodeID, shards := range params.NodeShardsInfos {
-		if params.QuarantineNodes != nil && params.QuarantineNodes.Contains(nodeID) {
-			continue
+		if params.QuarantineNodes != nil {
+			if _, found := params.QuarantineNodes[nodeID]; found {
+				continue
+			}
 		}
+
 		shardRatios := arraylist.New()
 		for _, info := range shards {
 			shardRatios.Add(&model.ShardLoadRatio{
@@ -68,5 +71,5 @@ func DefaultShardsRank(params *model.RatioParams) *model.Ratio {
 		})
 	}
 	nodeLoadRatios.Sort(model.NodeLoadRatioComparator)
-	return model.NewRatio(maxNodeLoadRatio, minNodeLoadRatio, nodeLoadRatios)
+	return model.NewRatio(maxNodeLoadRatio, minNodeLoadRatio, shardLoadRatio, nodeLoadRatios)
 }
