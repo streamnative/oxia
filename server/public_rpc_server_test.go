@@ -24,13 +24,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/streamnative/oxia/common/logging"
-	"github.com/streamnative/oxia/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+
+	"github.com/streamnative/oxia/common/logging"
+	"github.com/streamnative/oxia/proto"
 )
 
 func init() {
