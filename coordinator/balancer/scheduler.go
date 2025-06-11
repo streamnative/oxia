@@ -53,7 +53,7 @@ type nodeBasedBalancer struct {
 	selector           selectors.Selector[*single.Context, string]
 	loadRatioAlgorithm selectors.LoadRatioAlgorithm
 
-	quarantineNode map[string]time.Time
+	quarantineNodeMap sync.Map
 
 	triggerCh chan struct{}
 }
@@ -69,6 +69,15 @@ func (r *nodeBasedBalancer) Close() error {
 	return nil
 }
 
+func (r *nodeBasedBalancer) quarantineNodes() *linkedhashset.Set {
+	nodes := linkedhashset.New()
+	r.quarantineNodeMap.Range(func(_, value any) bool {
+		nodes.Add(value)
+		return true
+	})
+	return nodes
+}
+
 func (r *nodeBasedBalancer) rebalanceEnsemble() {
 	r.checkQuarantineNodes()
 
@@ -82,7 +91,7 @@ func (r *nodeBasedBalancer) rebalanceEnsemble() {
 	r.Info("start rebalance",
 		slog.Float64("max-node-load-ratio", loadRatios.MaxNodeLoadRatio()),
 		slog.Float64("min-node-load-ratio", loadRatios.MinNodeLoadRatio()),
-		slog.Any("quarantine-nodes", r.quarantineNode),
+		slog.Any("quarantine-nodes", r.quarantineNodes()),
 		slog.Float64("avg-shard-ratio", loadRatios.AvgShardLoadRatio()),
 	)
 
@@ -145,7 +154,7 @@ func (r *nodeBasedBalancer) balanceHighestNode(loadRatios *model.Ratio, candidat
 		}
 	}
 	if highestLoadRatioNode.Ratio-loadRatios.MinNodeLoadRatio() > loadRatios.AvgShardLoadRatio() {
-		r.quarantineNode[highestLoadRatioNode.NodeID] = time.Now()
+		r.quarantineNodeMap.Store(highestLoadRatioNode.NodeID, time.Now())
 		r.Info("can't rebalance the current node, quarantine it.",
 			slog.Float64("highest-load-node-ratio", highestLoadRatioNode.Ratio),
 			slog.String("highest-load-node", highestLoadRatioNode.NodeID))
@@ -229,30 +238,29 @@ func (r *nodeBasedBalancer) swapShard(
 }
 
 func (r *nodeBasedBalancer) checkQuarantineNodes() {
-	for node, timestamp := range r.quarantineNode {
+	deletedKeys := make([]string, 0)
+	r.quarantineNodeMap.Range(func(key, value any) bool {
+		timestamp := value.(time.Time) //nolint: revive
 		if time.Since(timestamp) >= r.quarantineTime {
-			delete(r.quarantineNode, node)
+			deletedKeys = append(deletedKeys, key.(string))
 		}
+		return true
+	})
+	for _, key := range deletedKeys {
+		r.quarantineNodeMap.Delete(key)
 	}
 }
 
 func (r *nodeBasedBalancer) IsNodeQuarantined(highestLoadRatioNode *model.NodeLoadRatio) bool {
-	nodeID := highestLoadRatioNode.NodeID
-	if timestamp, found := r.quarantineNode[nodeID]; found {
-		if time.Since(timestamp) >= r.quarantineTime {
-			delete(r.quarantineNode, nodeID)
-			return false
-		}
-		return true
-	}
-	return false
+	_, found := r.quarantineNodeMap.Load(highestLoadRatioNode.NodeID)
+	return found
 }
 
 func (r *nodeBasedBalancer) IsBalanced() bool {
 	return r.loadRatioAlgorithm(
 		&model.RatioParams{
 			NodeShardsInfos: utils.GroupingShardsNodeByStatus(r.candidatesSupplier(), r.statusSupplier()),
-			QuarantineNodes: r.quarantineNode,
+			QuarantineNodes: r.quarantineNodes(),
 		},
 	).IsBalanced()
 }
@@ -337,7 +345,7 @@ func NewLoadBalancer(options Options) LoadBalancer {
 		statusSupplier:            options.StatusSupplier,
 		selector:                  single.NewSelector(),
 		loadRatioAlgorithm:        single.DefaultShardsRank,
-		quarantineNode:            make(map[string]time.Time),
+		quarantineNodeMap:         sync.Map{},
 		triggerCh:                 make(chan struct{}, 1),
 	}
 	nb.startBackgroundScheduler()

@@ -15,9 +15,8 @@
 package model
 
 import (
-	"time"
-
 	"github.com/emirpasic/gods/lists/arraylist"
+	"github.com/emirpasic/gods/sets/linkedhashset"
 	"github.com/emirpasic/gods/utils"
 	"github.com/pkg/errors"
 )
@@ -30,7 +29,7 @@ type ShardInfo struct {
 
 type RatioParams struct {
 	NodeShardsInfos map[string][]ShardInfo
-	QuarantineNodes map[string]time.Time
+	QuarantineNodes *linkedhashset.Set
 }
 
 type Ratio struct {

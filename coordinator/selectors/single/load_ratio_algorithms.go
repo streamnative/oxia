@@ -38,7 +38,7 @@ func DefaultShardsRank(params *model.RatioParams) *model.Ratio {
 
 	for nodeID, shards := range params.NodeShardsInfos {
 		if params.QuarantineNodes != nil {
-			if _, found := params.QuarantineNodes[nodeID]; found {
+			if params.QuarantineNodes.Contains(nodeID) {
 				continue
 			}
 		}
