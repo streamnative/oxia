@@ -24,6 +24,7 @@ import (
 
 	"github.com/emirpasic/gods/sets/linkedhashset"
 	"github.com/pkg/errors"
+
 	"github.com/streamnative/oxia/coordinator/utils"
 
 	"github.com/streamnative/oxia/common/process"
@@ -223,6 +224,7 @@ func (c *coordinator) TriggerBalance() {
 	c.loadBalancer.Trigger()
 }
 
+//nolint:revive
 func (c *coordinator) maybeLoadServerIndex() {
 	c.serverIndexesOnce.Do(func() {
 		ids := linkedhashset.New()

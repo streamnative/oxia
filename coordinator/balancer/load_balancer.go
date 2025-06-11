@@ -19,8 +19,9 @@ import (
 	"time"
 
 	"github.com/emirpasic/gods/sets/linkedhashset"
-	"github.com/streamnative/oxia/coordinator/selectors"
 	"golang.org/x/net/context"
+
+	"github.com/streamnative/oxia/coordinator/selectors"
 
 	"github.com/streamnative/oxia/coordinator/model"
 )
