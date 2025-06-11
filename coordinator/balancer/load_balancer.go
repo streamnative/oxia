@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/emirpasic/gods/sets/linkedhashset"
+	"github.com/streamnative/oxia/coordinator/selectors"
 	"golang.org/x/net/context"
 
 	"github.com/streamnative/oxia/coordinator/model"
@@ -45,5 +46,5 @@ type LoadBalancer interface {
 
 	IsBalanced() bool
 
-	LoadRatio() *model.Ratio
+	LoadRatioAlgorithm() selectors.LoadRatioAlgorithm
 }

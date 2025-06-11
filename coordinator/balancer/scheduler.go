@@ -270,11 +270,8 @@ func (r *nodeBasedBalancer) Trigger() {
 	channel.PushNoBlock(r.triggerCh, triggerEvent)
 }
 
-func (r *nodeBasedBalancer) LoadRatio() *model.Ratio {
-	currentStatus := r.statusSupplier()
-	candidates := r.candidatesSupplier()
-	groupedStatus := utils.GroupingShardsNodeByStatus(candidates, currentStatus)
-	return r.loadRatioAlgorithm(&model.RatioParams{NodeShardsInfos: groupedStatus})
+func (r *nodeBasedBalancer) LoadRatioAlgorithm() selectors.LoadRatioAlgorithm {
+	return r.loadRatioAlgorithm
 }
 
 func (r *nodeBasedBalancer) startBackgroundScheduler() {

@@ -24,6 +24,7 @@ import (
 
 	"github.com/emirpasic/gods/sets/linkedhashset"
 	"github.com/pkg/errors"
+	"github.com/streamnative/oxia/coordinator/utils"
 
 	"github.com/streamnative/oxia/common/process"
 
@@ -284,7 +285,8 @@ func (c *coordinator) selectNewEnsemble(ns *model.NamespaceConfig, editingStatus
 		Status:             editingStatus,
 		Replicas:           int(ns.ReplicationFactor),
 		LoadRatioSupplier: func() *model.Ratio {
-			return c.loadBalancer.LoadRatio()
+			groupedStatus := utils.GroupingShardsNodeByStatus(c.serverIDs, editingStatus)
+			return c.loadBalancer.LoadRatioAlgorithm()(&model.RatioParams{NodeShardsInfos: groupedStatus})
 		},
 	}
 	var ensembleIDs []string
@@ -559,11 +561,9 @@ func (c *coordinator) waitForExternalEvents() {
 		case <-c.clusterConfigChangeCh:
 			c.log.Info("Received cluster config change event")
 			if err := c.handleClusterConfigUpdated(); err != nil {
-				c.log.Warn(
-					"Failed to update cluster config",
-					slog.Any("error", err),
-				)
+				c.log.Warn("Failed to update cluster config", slog.Any("error", err))
 			}
+			c.loadBalancer.Trigger()
 		}
 	}
 }
@@ -576,49 +576,36 @@ func (c *coordinator) handleClusterConfigUpdated() error {
 	if err != nil {
 		return errors.Wrap(err, "failed to read cluster configuration")
 	}
-
 	if reflect.DeepEqual(newClusterConfig, c.ClusterConfig) {
 		c.log.Info("No cluster config changes detected")
 		return nil
 	}
-
 	c.log.Info(
 		"Detected change in cluster config",
 		slog.Any("clusterConfig", c.ClusterConfig),
 		slog.Any("newClusterConfig", newClusterConfig),
 		slog.Any("metadataVersion", c.metadataVersion),
 	)
-
 	c.ClusterConfig = newClusterConfig
 	c.serverIndexesOnce = sync.Once{}
 	c.checkClusterNodeChanges()
-
 	for _, sc := range c.shardControllers {
 		sc.SyncServerAddress()
 	}
-
 	clusterStatus, shardsToAdd, shardsToDelete := applyClusterChanges(&newClusterConfig, c.clusterStatus, c.selectNewEnsemble)
-
 	for shard, namespace := range shardsToAdd {
 		shardMetadata := clusterStatus.Namespaces[namespace].Shards[shard]
-
 		namespaceConfig := GetNamespaceConfig(c.Namespaces, namespace)
 		c.shardControllers[shard] = NewShardController(namespace, shard, namespaceConfig, shardMetadata, c.rpc, c)
-		slog.Info(
-			"Added new shard",
-			slog.Int64("shard", shard),
-			slog.String("namespace", namespace),
-			slog.Any("shard-metadata", shardMetadata),
-		)
+		slog.Info("Added new shard", slog.Int64("shard", shard),
+			slog.String("namespace", namespace), slog.Any("shard-metadata", shardMetadata))
 	}
-
 	for _, shard := range shardsToDelete {
 		s, ok := c.shardControllers[shard]
 		if ok {
 			s.DeleteShard()
 		}
 	}
-
 	c.clusterStatus = clusterStatus
 	c.computeNewAssignments()
 	return nil
