@@ -65,7 +65,6 @@ func (r *Ratio) RatioGap() float64 {
 }
 
 func (r *Ratio) MoveShardToNode(shard *ShardLoadRatio, fromNodeID string, toNodeID string) {
-	// todo: add another index to avoid O(n)
 	for iter := r.nodeLoadRatios.Iterator(); iter.Next(); {
 		node := iter.Value().(*NodeLoadRatio) //nolint:revive
 		if node.NodeID == fromNodeID {

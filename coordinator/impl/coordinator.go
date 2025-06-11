@@ -534,27 +534,19 @@ func (c *coordinator) handleActionSwap(action balancer.Action) {
 	sc, ok := c.shardControllers[ac.Shard]
 	c.Unlock()
 	if !ok {
-		c.log.Warn(
-			"Shard controller not found",
-			slog.Int64("shard", ac.Shard),
-		)
+		c.log.Warn("Shard controller not found", slog.Int64("shard", ac.Shard))
 		return
 	}
 	index := c.ServerIDIndex()
 	fromServer := index[ac.From]
 	toServer := index[ac.To]
 	if fromServer == nil || toServer == nil {
-		// todo: improve log
-		c.log.Warn("server not found")
+		c.log.Warn("server not found for swap, skipped.", slog.String("from", ac.From), slog.String("to", ac.To))
 		return
 	}
 	// todo: use pointer here
 	if err := sc.SwapNode(*fromServer, *toServer); err != nil {
-		c.log.Warn(
-			"Failed to swap node",
-			slog.Any("error", err),
-			slog.Any("swap-action", ac),
-		)
+		c.log.Warn("Failed to swap node", slog.Any("error", err), slog.Any("swap-action", ac))
 	}
 }
 

@@ -321,8 +321,8 @@ func (r *nodeBasedBalancer) startBackgroundNotifier() {
 
 func NewLoadBalancer(options Options) LoadBalancer {
 	ctx, cancelFunc := context.WithCancel(options.Context)
-	// todo: add parameters
-	logger := slog.With()
+	logger := slog.With(
+		slog.String("component", "load-balancer"))
 
 	if options.ScheduleInterval == 0 {
 		options.ScheduleInterval = defaultLoadBalancerScheduleInterval
