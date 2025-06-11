@@ -18,9 +18,10 @@ import (
 	"testing"
 
 	"github.com/emirpasic/gods/sets/linkedhashset"
+	"github.com/stretchr/testify/assert"
+
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/coordinator/selectors"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestSelectLowerestLoadSelector(t *testing.T) {

@@ -24,6 +24,7 @@ import (
 
 	"github.com/emirpasic/gods/sets/linkedhashset"
 	"github.com/pkg/errors"
+
 	"github.com/streamnative/oxia/common/process"
 
 	"github.com/streamnative/oxia/coordinator/balancer"
@@ -506,7 +507,7 @@ func (c *coordinator) ClusterStatus() model.ClusterStatus {
 	return *c.clusterStatus.Clone()
 }
 
-func (c *coordinator) startBackgroundActionWorker() { //nolint:revive
+func (c *coordinator) startBackgroundActionWorker() {
 	for {
 		select {
 		case action := <-c.loadBalancer.Action():

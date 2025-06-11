@@ -17,10 +17,11 @@ package mock
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/streamnative/oxia/common/rpc"
 	"github.com/streamnative/oxia/coordinator/impl"
 	"github.com/streamnative/oxia/coordinator/model"
-	"github.com/stretchr/testify/assert"
 )
 
 func NewCoordinator(t *testing.T, config *model.ClusterConfig, clusterConfigNotificationCh chan any) impl.Coordinator {

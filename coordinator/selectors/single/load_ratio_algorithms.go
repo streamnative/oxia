@@ -16,6 +16,7 @@ package single
 
 import (
 	"github.com/emirpasic/gods/lists/arraylist"
+
 	"github.com/streamnative/oxia/coordinator/model"
 )
 

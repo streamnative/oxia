@@ -19,9 +19,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/server"
-	"github.com/stretchr/testify/assert"
 )
 
 func NewServer(t *testing.T, name string) (s *server.Server, addr model.Server) {

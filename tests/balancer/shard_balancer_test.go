@@ -19,10 +19,11 @@ import (
 	"time"
 
 	"github.com/emirpasic/gods/sets/linkedhashset"
+	"github.com/stretchr/testify/assert"
+
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/coordinator/policies"
 	"github.com/streamnative/oxia/tests/mock"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestNormalShardBalancer(t *testing.T) {

@@ -17,8 +17,9 @@ package single
 import (
 	"testing"
 
-	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/coordinator/model"
 )
 
 func TestDefaultShardsRank(t *testing.T) {
@@ -52,7 +53,7 @@ func TestDefaultShardsRank(t *testing.T) {
 		},
 	}
 	ratioSnapshot := DefaultShardsRank(params)
-	nodeIter := ratioSnapshot.NodeLoadRatios.Iterator()
+	nodeIter := ratioSnapshot.NodeIterator()
 
 	assert.True(t, nodeIter.Last())
 	nodeRatio := nodeIter.Value().(*model.NodeLoadRatio)

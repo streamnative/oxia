@@ -20,8 +20,9 @@ import (
 	"time"
 
 	"github.com/emirpasic/gods/sets/linkedhashset"
-	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/coordinator/model"
 )
 
 func TestBalanceLoad(t *testing.T) {

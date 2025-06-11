@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/emirpasic/gods/sets/linkedhashset"
+
 	"github.com/streamnative/oxia/common/process"
 
 	"github.com/streamnative/oxia/common/channel"
@@ -69,12 +70,9 @@ func (r *nodeBasedBalancer) Close() error {
 }
 
 func (r *nodeBasedBalancer) rebalanceEnsemble() {
-	var err error
-	var swapped bool
-	swapGroup := &sync.WaitGroup{}
-
 	r.checkQuarantineNodes()
 
+	swapGroup := &sync.WaitGroup{}
 	currentStatus := r.statusSupplier()
 	candidates := r.candidatesSupplier()
 	groupedStatus := utils.GroupingShardsNodeByStatus(candidates, currentStatus)
@@ -87,6 +85,7 @@ func (r *nodeBasedBalancer) rebalanceEnsemble() {
 		slog.Any("quarantine-nodes", r.quarantineNode),
 		slog.Float64("avg-shard-ratio", loadRatios.AvgShardLoadRatio()),
 	)
+
 	defer func() {
 		swapGroup.Wait()
 		r.Info("end rebalance",
@@ -96,40 +95,12 @@ func (r *nodeBasedBalancer) rebalanceEnsemble() {
 		)
 	}()
 
-	// (1) deleted node
-	for nodeIter := loadRatios.NodeIterator(); nodeIter.Next(); {
-		var nodeLoadRatio *model.NodeLoadRatio
-		var ok bool
-		if nodeLoadRatio, ok = nodeIter.Value().(*model.NodeLoadRatio); !ok {
-			panic("unexpected type cast")
-		}
-		if candidates.Contains(nodeLoadRatio.NodeID) {
-			continue
-		}
-		deletedNodeID := nodeLoadRatio.NodeID
-		for shardIter := nodeLoadRatio.ShardIterator(); shardIter.Next(); {
-			var shardRatio *model.ShardLoadRatio
-			if shardRatio, ok = shardIter.Value().(*model.ShardLoadRatio); !ok {
-				panic("unexpected type cast")
-			}
+	r.cleanDeletedNode(loadRatios, candidates, metadata, currentStatus, swapGroup)
 
-			if swapped, err = r.swapShard(shardRatio, deletedNodeID, swapGroup, loadRatios, candidates, metadata, currentStatus); err != nil || !swapped {
-				r.Error("failed to select server when move ensemble out of deleted node",
-					slog.String("namespace", shardRatio.Namespace),
-					slog.Int64("shard", shardRatio.ShardID),
-					slog.String("from-node", deletedNodeID),
-					slog.Any("error", err),
-				)
-				continue
-			}
-		}
-		if err := loadRatios.RemoveDeletedNode(nodeLoadRatio.NodeID); err != nil {
-			r.Error("failed to remove deleted node from ratio snapshot", slog.Any("error", err))
-			return
-		}
-	}
+	r.balanceHighestNode(loadRatios, candidates, metadata, currentStatus, swapGroup)
+}
 
-	// (2) rebalance by load ratio
+func (r *nodeBasedBalancer) balanceHighestNode(loadRatios *model.Ratio, candidates *linkedhashset.Set, metadata map[string]model.ServerMetadata, currentStatus *model.ClusterStatus, swapGroup *sync.WaitGroup) {
 	if loadRatios.RatioGap() <= loadRatios.AvgShardLoadRatio() {
 		return
 	}
@@ -160,7 +131,8 @@ func (r *nodeBasedBalancer) rebalanceEnsemble() {
 			break
 		}
 		fromNodeID := highestLoadRatioNode.NodeID
-		if swapped, err = r.swapShard(highestLoadRatioShard, fromNodeID, swapGroup, loadRatios, candidates, metadata, currentStatus); err != nil {
+		// todo: check first result?
+		if _, err := r.swapShard(highestLoadRatioShard, fromNodeID, swapGroup, loadRatios, candidates, metadata, currentStatus); err != nil {
 			r.Error("failed to select server when swap the node",
 				slog.String("namespace", highestLoadRatioShard.Namespace),
 				slog.Int64("shard", highestLoadRatioShard.ShardID),
@@ -178,6 +150,44 @@ func (r *nodeBasedBalancer) rebalanceEnsemble() {
 		r.Info("can't rebalance the current node, quarantine it.",
 			slog.Float64("highest-load-node-ratio", highestLoadRatioNode.Ratio),
 			slog.String("highest-load-node", highestLoadRatioNode.NodeID))
+	}
+}
+
+func (r *nodeBasedBalancer) cleanDeletedNode(loadRatios *model.Ratio,
+	candidates *linkedhashset.Set,
+	metadata map[string]model.ServerMetadata,
+	currentStatus *model.ClusterStatus,
+	swapGroup *sync.WaitGroup) {
+	// (1) deleted node
+	for nodeIter := loadRatios.NodeIterator(); nodeIter.Next(); {
+		var nodeLoadRatio *model.NodeLoadRatio
+		var ok bool
+		if nodeLoadRatio, ok = nodeIter.Value().(*model.NodeLoadRatio); !ok {
+			panic("unexpected type cast")
+		}
+		if candidates.Contains(nodeLoadRatio.NodeID) {
+			continue
+		}
+		deletedNodeID := nodeLoadRatio.NodeID
+		for shardIter := nodeLoadRatio.ShardIterator(); shardIter.Next(); {
+			var shardRatio *model.ShardLoadRatio
+			if shardRatio, ok = shardIter.Value().(*model.ShardLoadRatio); !ok {
+				panic("unexpected type cast")
+			}
+
+			if swapped, err := r.swapShard(shardRatio, deletedNodeID, swapGroup, loadRatios, candidates, metadata, currentStatus); err != nil || !swapped {
+				r.Error("failed to select server when move ensemble out of deleted node",
+					slog.String("namespace", shardRatio.Namespace),
+					slog.Int64("shard", shardRatio.ShardID),
+					slog.String("from-node", deletedNodeID),
+					slog.Any("error", err),
+				)
+				continue
+			}
+		}
+		if err := loadRatios.RemoveDeletedNode(nodeLoadRatio.NodeID); err != nil {
+			r.Error("failed to remove deleted node from ratio snapshot", slog.Any("error", err))
+		}
 	}
 }
 
