@@ -85,9 +85,11 @@ type coordinator struct {
 	MetadataProvider
 	clusterConfigProvider func() (model.ClusterConfig, error)
 	model.ClusterConfig
-	serverIndexesOnce sync.Once
-	serverIDs         *linkedhashset.Set
-	serverIDIndex     map[string]*model.Server
+
+	serverIndexesOnce     sync.Once
+	serverIDs             *linkedhashset.Set
+	serverIDIndex         map[string]*model.Server
+	drainingServerIDIndex map[string]*model.Server
 
 	clusterConfigChangeCh chan any
 
@@ -207,6 +209,11 @@ func (c *coordinator) ServerIDs() *linkedhashset.Set {
 	return c.serverIDs
 }
 
+func (c *coordinator) DrainingServerIDIndex() map[string]*model.Server {
+	c.maybeLoadServerIndex()
+	return c.drainingServerIDIndex
+}
+
 func (c *coordinator) ServerIDIndex() map[string]*model.Server {
 	c.maybeLoadServerIndex()
 	return c.serverIDIndex
@@ -220,12 +227,34 @@ func (c *coordinator) maybeLoadServerIndex() {
 	c.serverIndexesOnce.Do(func() {
 		ids := linkedhashset.New()
 		idIndex := make(map[string]*model.Server)
+		drainingIndex := make(map[string]*model.Server)
+
 		for idx := range c.Servers {
 			server := &c.Servers[idx]
 			identifier := server.GetIdentifier()
 			ids.Add(identifier)
 			idIndex[identifier] = server
 		}
+
+		if c.clusterStatus != nil {
+			// todo: improve the index here
+			for _, namespace := range c.clusterStatus.Namespaces {
+				for _, shard := range namespace.Shards {
+					for idx, sv := range shard.Ensemble {
+						if _, exist := idIndex[sv.GetIdentifier()]; !exist {
+							drainingIndex[sv.GetIdentifier()] = &shard.Ensemble[idx]
+						}
+					}
+					for idx, sv := range shard.RemovedNodes {
+						if _, exist := idIndex[sv.GetIdentifier()]; !exist {
+							drainingIndex[sv.GetIdentifier()] = &shard.RemovedNodes[idx]
+						}
+					}
+				}
+			}
+		}
+
+		c.drainingServerIDIndex = drainingIndex
 		c.serverIDIndex = idIndex
 		c.serverIDs = ids
 	})
@@ -285,7 +314,7 @@ func (c *coordinator) selectNewEnsemble(ns *model.NamespaceConfig, editingStatus
 		Status:             editingStatus,
 		Replicas:           int(ns.ReplicationFactor),
 		LoadRatioSupplier: func() *model.Ratio {
-			groupedStatus := utils.GroupingShardsNodeByStatus(c.serverIDs, editingStatus)
+			groupedStatus := utils.GroupingShardsNodeByStatus(c.ServerIDs(), editingStatus)
 			return c.loadBalancer.LoadRatioAlgorithm()(&model.RatioParams{NodeShardsInfos: groupedStatus})
 		},
 	}
@@ -540,8 +569,14 @@ func (c *coordinator) handleActionSwap(action balancer.Action) {
 		return
 	}
 	index := c.ServerIDIndex()
-	fromServer := index[ac.From]
+	drainingIndex := c.DrainingServerIDIndex()
+	var fromServer *model.Server
+	var exist bool
+	if fromServer, exist = index[ac.From]; !exist {
+		fromServer = drainingIndex[ac.From]
+	}
 	toServer := index[ac.To]
+
 	if fromServer == nil || toServer == nil {
 		c.log.Warn("server not found for swap, skipped.", slog.String("from", ac.From), slog.String("to", ac.To))
 		return
