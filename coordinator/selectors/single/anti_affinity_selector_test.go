@@ -88,7 +88,7 @@ func TestSelectSatisfiedAntiAffinities(t *testing.T) {
 			continue
 		}
 		assert.ErrorIs(t, err, selectors.ErrMultipleResult)
-		assert.Nil(t, selectedServer)
+		assert.Empty(t, selectedServer)
 		assert.Equal(t, replicas-idx, context.Candidates.Size())
 
 		// assume we will use the first as selected servers
@@ -131,7 +131,7 @@ func TestSelectUnsatisfiedAntiAffinitiesStrict(t *testing.T) {
 	}
 	result, err := selector.Select(context)
 	assert.ErrorIs(t, err, selectors.ErrMultipleResult)
-	assert.Nil(t, result)
+	assert.Empty(t, result)
 	assert.Equal(t, 6, context.Candidates.Size())
 
 	// choose the first one
@@ -143,7 +143,7 @@ func TestSelectUnsatisfiedAntiAffinitiesStrict(t *testing.T) {
 
 	result, err = selector.Select(context)
 	assert.ErrorIs(t, err, selectors.ErrUnsatisfiedAntiAffinity)
-	assert.Nil(t, result)
+	assert.Empty(t, result)
 }
 
 func TestSelectUnsatisfiedAntiAffinitiesRelax(t *testing.T) {
@@ -173,7 +173,7 @@ func TestSelectUnsatisfiedAntiAffinitiesRelax(t *testing.T) {
 	context.SetSelected(selectedServers)
 	result, err := selector.Select(context)
 	assert.ErrorIs(t, err, selectors.ErrMultipleResult)
-	assert.Nil(t, result)
+	assert.Empty(t, result)
 	assert.Equal(t, 6, context.Candidates.Size())
 
 	// choose the first one
@@ -185,7 +185,7 @@ func TestSelectUnsatisfiedAntiAffinitiesRelax(t *testing.T) {
 
 	result, err = selector.Select(context)
 	assert.ErrorIs(t, err, selectors.ErrUnsupportedAntiAffinityMode)
-	assert.Nil(t, result)
+	assert.Empty(t, result)
 }
 
 func TestSelectMultipleAntiAffinitiesSatisfied(t *testing.T) {
@@ -220,7 +220,7 @@ func TestSelectMultipleAntiAffinitiesSatisfied(t *testing.T) {
 
 	result, err := selector.Select(context)
 	assert.ErrorIs(t, err, selectors.ErrUnsatisfiedAntiAffinity)
-	assert.Nil(t, result)
+	assert.Empty(t, result)
 }
 
 func selectTimes(t *testing.T, selector *serverAntiAffinitiesSelector, context *Context, times int) {
