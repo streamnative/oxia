@@ -26,7 +26,6 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/streamnative/oxia/common/logging"
-
 	"github.com/streamnative/oxia/server"
 )
 
