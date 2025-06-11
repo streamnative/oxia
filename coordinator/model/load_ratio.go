@@ -40,6 +40,10 @@ type Ratio struct {
 	nodeLoadRatios    *arraylist.List
 }
 
+func (r *Ratio) IsBalanced() bool {
+	return r.RatioGap() <= r.avgShardLoadRatio
+}
+
 func (r *Ratio) NodeIterator() *arraylist.Iterator {
 	iter := arraylist.New(r.nodeLoadRatios.Values()...).Iterator()
 	return &iter

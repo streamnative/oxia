@@ -131,7 +131,6 @@ func (r *nodeBasedBalancer) balanceHighestNode(loadRatios *model.Ratio, candidat
 			break
 		}
 		fromNodeID := highestLoadRatioNode.NodeID
-		// todo: check first result?
 		if _, err := r.swapShard(highestLoadRatioShard, fromNodeID, swapGroup, loadRatios, candidates, metadata, currentStatus); err != nil {
 			r.Error("failed to select server when swap the node",
 				slog.String("namespace", highestLoadRatioShard.Namespace),
@@ -158,7 +157,6 @@ func (r *nodeBasedBalancer) cleanDeletedNode(loadRatios *model.Ratio,
 	metadata map[string]model.ServerMetadata,
 	currentStatus *model.ClusterStatus,
 	swapGroup *sync.WaitGroup) {
-	// (1) deleted node
 	for nodeIter := loadRatios.NodeIterator(); nodeIter.Next(); {
 		var nodeLoadRatio *model.NodeLoadRatio
 		var ok bool
@@ -251,12 +249,12 @@ func (r *nodeBasedBalancer) IsNodeQuarantined(highestLoadRatioNode *model.NodeLo
 }
 
 func (r *nodeBasedBalancer) IsBalanced() bool {
-	currentStatus := r.statusSupplier()
-	candidates := r.candidatesSupplier()
-	groupedStatus := utils.GroupingShardsNodeByStatus(candidates, currentStatus)
-	loadRatios := r.loadRatioAlgorithm(&model.RatioParams{NodeShardsInfos: groupedStatus, QuarantineNodes: r.quarantineNode})
-
-	return loadRatios.RatioGap() <= loadRatios.AvgShardLoadRatio()
+	return r.loadRatioAlgorithm(
+		&model.RatioParams{
+			NodeShardsInfos: utils.GroupingShardsNodeByStatus(r.candidatesSupplier(), r.statusSupplier()),
+			QuarantineNodes: r.quarantineNode,
+		},
+	).IsBalanced()
 }
 
 func (r *nodeBasedBalancer) Trigger() {
