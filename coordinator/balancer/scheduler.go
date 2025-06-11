@@ -110,7 +110,7 @@ func (r *nodeBasedBalancer) balanceHighestNode(loadRatios *model.Ratio, candidat
 	}
 	var highestLoadRatioNode *model.NodeLoadRatio
 	for {
-		if highestLoadRatioNode = iter.Value().(*model.NodeLoadRatio); highestLoadRatioNode == nil {
+		if highestLoadRatioNode = iter.Value().(*model.NodeLoadRatio); highestLoadRatioNode == nil { //nolint:revive
 			return // unexpected
 		}
 		if !r.IsNodeQuarantined(highestLoadRatioNode) {
@@ -127,7 +127,7 @@ func (r *nodeBasedBalancer) balanceHighestNode(loadRatios *model.Ratio, candidat
 	}
 	for highestLoadRatioNode.Ratio-loadRatios.MinNodeLoadRatio() > loadRatios.AvgShardLoadRatio() {
 		var highestLoadRatioShard *model.ShardLoadRatio
-		if highestLoadRatioShard = iter.Value().(*model.ShardLoadRatio); highestLoadRatioShard == nil {
+		if highestLoadRatioShard = iter.Value().(*model.ShardLoadRatio); highestLoadRatioShard == nil { //nolint:revive
 			break
 		}
 		fromNodeID := highestLoadRatioNode.NodeID

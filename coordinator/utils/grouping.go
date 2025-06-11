@@ -44,7 +44,7 @@ func GroupingShardsNodeByStatus(candidates *linkedhashset.Set, status *model.Clu
 		}
 	}
 	for iter := candidates.Iterator(); iter.Next(); {
-		nodeID := iter.Value().(string)
+		nodeID := iter.Value().(string) //nolint:revive
 		_, exist := groupingShardByNode[nodeID]
 		if !exist {
 			groupingShardByNode[nodeID] = make([]model.ShardInfo, 0)

@@ -81,7 +81,7 @@ func (r *Ratio) ReCalculateRatios() {
 	if !iter.First() {
 		return
 	}
-	nodeRatio := iter.Value().(*NodeLoadRatio)
+	nodeRatio := iter.Value().(*NodeLoadRatio) //nolint:revive
 	r.maxNodeLoadRatio = nodeRatio.Ratio
 	r.minNodeLoadRatio = nodeRatio.Ratio
 
@@ -97,7 +97,7 @@ func (r *Ratio) ReCalculateRatios() {
 
 func (r *Ratio) RemoveDeletedNode(id string) error {
 	for iter := r.nodeLoadRatios.Iterator(); iter.Next(); {
-		ratio := iter.Value().(*NodeLoadRatio)
+		ratio := iter.Value().(*NodeLoadRatio) //nolint:revive
 		if ratio.NodeID == id {
 			if ratio.Ratio != 0.0 {
 				return errors.New("cannot remove non-empty node")

@@ -73,7 +73,7 @@ func (*serverAntiAffinitiesSelector) Select(ssContext *Context) (string, error) 
 	}
 	if candidates.Size() == 1 {
 		_, value := candidates.Find(func(_ int, _ any) bool { return true })
-		return value.(string), nil
+		return value.(string), nil //nolint:revive
 	}
 
 	ssContext.Candidates = candidates
