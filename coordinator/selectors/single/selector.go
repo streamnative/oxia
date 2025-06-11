@@ -51,6 +51,7 @@ func NewSelector() selectors.Selector[*Context, string] {
 		selectors: []selectors.Selector[*Context, string]{
 			&serverAntiAffinitiesSelector{},
 			&lowerestLoadSelector{},
+			&finalSelector{},
 		},
 	}
 }

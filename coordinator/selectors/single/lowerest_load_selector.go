@@ -25,13 +25,7 @@ type lowerestLoadSelector struct{}
 
 func (*lowerestLoadSelector) Select(ssContext *Context) (string, error) {
 	if ssContext.LoadRatioSupplier == nil {
-		startIdx := ssContext.Status.ServerIdx
-		candidatesArr := ssContext.Candidates.Values()
-		sv, ok := candidatesArr[int(startIdx)%len(candidatesArr)].(string)
-		if !ok {
-			return "", selectors.ErrNoFunctioning
-		}
-		return sv, nil
+		return "", selectors.ErrNoFunctioning
 	}
 	loadRatios := ssContext.LoadRatioSupplier()
 	if loadRatios == nil {
