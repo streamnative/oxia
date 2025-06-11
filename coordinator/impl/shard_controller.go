@@ -26,6 +26,8 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/pkg/errors"
+	"github.com/streamnative/oxia/coordinator/selectors"
+	"github.com/streamnative/oxia/coordinator/selectors/single"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/status"
 
@@ -87,6 +89,8 @@ type shardController struct {
 	rpc                RpcProvider
 	coordinator        Coordinator
 
+	leaderSelector selectors.Selector[*single.Context, string]
+
 	electionOp              chan any
 	deleteOp                chan any
 	nodeFailureOp           chan model.Server
@@ -118,6 +122,7 @@ func NewShardController(namespace string, shard int64, namespaceConfig *model.Na
 		shardMetadata:           shardMetadata,
 		rpc:                     rpc,
 		coordinator:             coordinator,
+		leaderSelector:          single.NewLeaderBasedSelect(),
 		electionOp:              make(chan any, chanBufferSize),
 		deleteOp:                make(chan any, chanBufferSize),
 		nodeFailureOp:           make(chan model.Server, chanBufferSize),
@@ -333,7 +338,7 @@ func (s *shardController) electLeader() error {
 		return err
 	}
 
-	newLeader, followers := selectNewLeader(fr)
+	newLeader, followers := s.selectNewLeader(fr)
 
 	if s.log.Enabled(context.Background(), slog.LevelInfo) {
 		f := make([]struct {
@@ -664,7 +669,7 @@ func (s *shardController) deleteShardRpc(ctx context.Context, node model.Server)
 	return err
 }
 
-func selectNewLeader(newTermResponses map[model.Server]*proto.EntryId) (
+func (s *shardController) selectNewLeader(newTermResponses map[model.Server]*proto.EntryId) (
 	leader model.Server, followers map[model.Server]*proto.EntryId) {
 	// Select all the nodes that have the highest term first
 	var currentMaxTerm int64 = -1

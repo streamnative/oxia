@@ -55,3 +55,12 @@ func NewSelector() selectors.Selector[*Context, string] {
 		},
 	}
 }
+
+func NewLeaderBasedSelect() selectors.Selector[*Context, string] {
+	return &server{
+		selectors: []selectors.Selector[*Context, string]{
+			&lowerestLeaderCountSelector{},
+			&finalSelector{},
+		},
+	}
+}
