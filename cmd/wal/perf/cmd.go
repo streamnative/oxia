@@ -24,9 +24,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/cobra"
 
+	"github.com/streamnative/oxia/common/constant"
+
 	"github.com/streamnative/oxia/cmd/wal/common"
+	"github.com/streamnative/oxia/datanode/wal"
 	"github.com/streamnative/oxia/proto"
-	"github.com/streamnative/oxia/server/wal"
 )
 
 type perfOptions struct {
@@ -106,7 +108,7 @@ func run(*cobra.Command, []string) error {
 			defer wg.Done()
 			n := time.Now().UnixMicro()
 
-			reader, err := writeAheadLog.NewReader(wal.InvalidOffset)
+			reader, err := writeAheadLog.NewReader(constant.InvalidOffset)
 			if err != nil {
 				panic(err)
 			}

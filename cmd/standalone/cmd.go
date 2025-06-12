@@ -23,12 +23,12 @@ import (
 	"github.com/streamnative/oxia/common/process"
 
 	"github.com/streamnative/oxia/cmd/flag"
-	"github.com/streamnative/oxia/server"
-	"github.com/streamnative/oxia/server/kv"
+	"github.com/streamnative/oxia/datanode"
+	"github.com/streamnative/oxia/datanode/kv"
 )
 
 var (
-	conf = server.StandaloneConfig{}
+	conf = datanode.StandaloneConfig{}
 
 	Cmd = &cobra.Command{
 		Use:   "standalone",
@@ -55,6 +55,6 @@ func init() {
 
 func exec(*cobra.Command, []string) {
 	process.RunProcess(func() (io.Closer, error) {
-		return server.NewStandalone(conf)
+		return datanode.NewStandalone(conf)
 	})
 }

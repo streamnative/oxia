@@ -25,16 +25,16 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 
-	"github.com/streamnative/oxia/common/rpc"
+	"github.com/streamnative/oxia/common/security"
 
-	"github.com/streamnative/oxia/server/auth"
+	"github.com/streamnative/oxia/common/rpc"
 )
 
 func TestHealthCmd(t *testing.T) {
 	_health := health.NewServer()
 	server, err := rpc.Default.StartGrpcServer("health", "localhost:0", func(registrar grpc.ServiceRegistrar) {
 		grpc_health_v1.RegisterHealthServer(registrar, _health)
-	}, nil, &auth.Options{})
+	}, nil, &security.Options{})
 	assert.NoError(t, err)
 	defer func() {
 		_ = server.Close()

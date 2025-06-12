@@ -28,7 +28,7 @@ import (
 
 	"github.com/streamnative/oxia/common/concurrent"
 
-	"github.com/streamnative/oxia/server"
+	"github.com/streamnative/oxia/datanode"
 )
 
 type testStruct struct {
@@ -36,7 +36,7 @@ type testStruct struct {
 	B int    `json:"b"`
 }
 
-var standalone *server.Standalone
+var standalone *datanode.Standalone
 var serviceAddress string
 
 func TestMain(m *testing.M) {
@@ -44,8 +44,8 @@ func TestMain(m *testing.M) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{})))
 
 	dir, _ := os.MkdirTemp(os.TempDir(), "oxia-test-*")
-	config := server.NewTestConfig(dir)
-	standalone, _ = server.NewStandalone(config)
+	config := datanode.NewTestConfig(dir)
+	standalone, _ = datanode.NewStandalone(config)
 	defer standalone.Close()
 	serviceAddress = fmt.Sprintf("localhost:%d", standalone.RpcPort())
 

@@ -18,7 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/tool"
 	"github.com/spf13/cobra"
 
-	"github.com/streamnative/oxia/server/kv"
+	"github.com/streamnative/oxia/datanode/kv"
 )
 
 var (
