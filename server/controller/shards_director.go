@@ -47,7 +47,7 @@ type ShardsDirector interface {
 type shardsDirector struct {
 	sync.RWMutex
 
-	config    config.NodeConfig
+	config    config.ServerConfig
 	leaders   map[int64]LeaderController
 	followers map[int64]FollowerController
 
@@ -61,9 +61,9 @@ type shardsDirector struct {
 	followersCounter metric.UpDownCounter
 }
 
-func NewShardsDirector(nodeConfig config.NodeConfig, walFactory wal.Factory, kvFactory kv.Factory, provider ReplicationRpcProvider) ShardsDirector {
+func NewShardsDirector(serverConfig config.ServerConfig, walFactory wal.Factory, kvFactory kv.Factory, provider ReplicationRpcProvider) ShardsDirector {
 	sd := &shardsDirector{
-		config:                 nodeConfig,
+		config:                 serverConfig,
 		walFactory:             walFactory,
 		kvFactory:              kvFactory,
 		leaders:                make(map[int64]LeaderController),

@@ -569,7 +569,7 @@ func createSessionManager(t *testing.T) (kv.Factory, wal.Factory, *sessionManage
 	kvFactory, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
 	walFactory := newTestWalFactory(t)
-	lc, err := NewLeaderController(config.NodeConfig{NotificationsRetentionTime: 10 * time.Second}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(config.ServerConfig{NotificationsRetentionTime: 10 * time.Second}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 	_, err = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
 	assert.NoError(t, err)
@@ -594,7 +594,7 @@ func reopenLeaderController(t *testing.T, kvFactory kv.Factory, walFactory wal.F
 	assert.NoError(t, oldlc.Close())
 
 	var err error
-	lc, err := NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 	_, err = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
 	assert.NoError(t, err)

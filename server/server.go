@@ -45,19 +45,19 @@ type Server struct {
 	healthServer *health.Server
 }
 
-func New(nodeConfig config.NodeConfig) (*Server, error) {
-	return NewWithGrpcProvider(nodeConfig, rpc.Default, controller.NewReplicationRpcProvider(nodeConfig.PeerTLS))
+func New(serverConfig config.ServerConfig) (*Server, error) {
+	return NewWithGrpcProvider(serverConfig, rpc.Default, controller.NewReplicationRpcProvider(serverConfig.PeerTLS))
 }
 
-func NewWithGrpcProvider(nodeConfig config.NodeConfig, provider rpc.GrpcProvider, replicationRpcProvider controller.ReplicationRpcProvider) (*Server, error) {
+func NewWithGrpcProvider(serverConfig config.ServerConfig, provider rpc.GrpcProvider, replicationRpcProvider controller.ReplicationRpcProvider) (*Server, error) {
 	slog.Info(
 		"Starting Oxia server",
-		slog.Any("config", nodeConfig),
+		slog.Any("config", serverConfig),
 	)
 
 	kvFactory, err := kv.NewPebbleKVFactory(&kv.FactoryOptions{
-		DataDir:     nodeConfig.DataDir,
-		CacheSizeMB: nodeConfig.DbBlockCacheMB,
+		DataDir:     serverConfig.DataDir,
+		CacheSizeMB: serverConfig.DbBlockCacheMB,
 	})
 	if err != nil {
 		return nil, err
@@ -66,8 +66,8 @@ func NewWithGrpcProvider(nodeConfig config.NodeConfig, provider rpc.GrpcProvider
 	s := &Server{
 		replicationRpcProvider: replicationRpcProvider,
 		walFactory: wal.NewWalFactory(&wal.FactoryOptions{
-			BaseWalDir:  nodeConfig.WalDir,
-			Retention:   nodeConfig.WalRetentionTime,
+			BaseWalDir:  serverConfig.WalDir,
+			Retention:   serverConfig.WalRetentionTime,
 			SegmentSize: wal.DefaultFactoryOptions.SegmentSize,
 			SyncData:    true,
 		}),
@@ -75,23 +75,23 @@ func NewWithGrpcProvider(nodeConfig config.NodeConfig, provider rpc.GrpcProvider
 		healthServer: health.NewServer(),
 	}
 
-	s.shardsDirector = controller.NewShardsDirector(nodeConfig, s.walFactory, s.kvFactory, replicationRpcProvider)
+	s.shardsDirector = controller.NewShardsDirector(serverConfig, s.walFactory, s.kvFactory, replicationRpcProvider)
 	s.shardAssignmentDispatcher = NewShardAssignmentDispatcher(s.healthServer)
 
-	s.internalRpcServer, err = newInternalRpcServer(provider, nodeConfig.InternalServiceAddr,
-		s.shardsDirector, s.shardAssignmentDispatcher, s.healthServer, nodeConfig.InternalServerTLS)
+	s.internalRpcServer, err = newInternalRpcServer(provider, serverConfig.InternalServiceAddr,
+		s.shardsDirector, s.shardAssignmentDispatcher, s.healthServer, serverConfig.InternalServerTLS)
 	if err != nil {
 		return nil, err
 	}
 
-	s.publicRpcServer, err = newPublicRpcServer(provider, nodeConfig.PublicServiceAddr, s.shardsDirector,
-		s.shardAssignmentDispatcher, nodeConfig.ServerTLS, &nodeConfig.AuthOptions)
+	s.publicRpcServer, err = newPublicRpcServer(provider, serverConfig.PublicServiceAddr, s.shardsDirector,
+		s.shardAssignmentDispatcher, serverConfig.ServerTLS, &serverConfig.AuthOptions)
 	if err != nil {
 		return nil, err
 	}
 
-	if nodeConfig.MetricsServiceAddr != "" {
-		s.metrics, err = metric.Start(nodeConfig.MetricsServiceAddr)
+	if serverConfig.MetricsServiceAddr != "" {
+		s.metrics, err = metric.Start(serverConfig.MetricsServiceAddr)
 		if err != nil {
 			return nil, err
 		}

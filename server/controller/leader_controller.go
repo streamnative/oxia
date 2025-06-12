@@ -116,7 +116,7 @@ type leaderController struct {
 	notificationDispatchers map[int64]*notificationDispatcher
 }
 
-func NewLeaderController(nodeConfig config.NodeConfig, namespace string, shardId int64, rpcClient ReplicationRpcProvider, walFactory wal.Factory, kvFactory kv.Factory) (LeaderController, error) {
+func NewLeaderController(serverConfig config.ServerConfig, namespace string, shardId int64, rpcClient ReplicationRpcProvider, walFactory wal.Factory, kvFactory kv.Factory) (LeaderController, error) {
 	labels := metric.LabelsForShard(namespace, shardId)
 	lc := &leaderController{
 		status:                  proto.ServingStatus_NOT_MEMBER,
@@ -160,7 +160,7 @@ func NewLeaderController(nodeConfig config.NodeConfig, namespace string, shardId
 		return nil, err
 	}
 
-	if lc.db, err = kv.NewDB(namespace, shardId, kvFactory, nodeConfig.NotificationsRetentionTime, time2.SystemClock); err != nil {
+	if lc.db, err = kv.NewDB(namespace, shardId, kvFactory, serverConfig.NotificationsRetentionTime, time2.SystemClock); err != nil {
 		return nil, err
 	}
 

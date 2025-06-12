@@ -34,7 +34,7 @@ func TestShardsDirector_DeleteShardLeader(t *testing.T) {
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := newTestWalFactory(t)
 
-	sd := NewShardsDirector(config.NodeConfig{}, walFactory, kvFactory, newMockRpcClient())
+	sd := NewShardsDirector(config.ServerConfig{}, walFactory, kvFactory, newMockRpcClient())
 
 	lc, _ := sd.GetOrCreateLeader(constant.DefaultNamespace, shard)
 	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
@@ -72,7 +72,7 @@ func TestShardsDirector_GetOrCreateFollower(t *testing.T) {
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := newTestWalFactory(t)
 
-	sd := NewShardsDirector(config.NodeConfig{}, walFactory, kvFactory, newMockRpcClient())
+	sd := NewShardsDirector(config.ServerConfig{}, walFactory, kvFactory, newMockRpcClient())
 
 	lc, _ := sd.GetOrCreateLeader(constant.DefaultNamespace, shard)
 	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 2})

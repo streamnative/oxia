@@ -40,7 +40,7 @@ func newServer(t *testing.T) (s *server.Server, addr model.Server) {
 	t.Helper()
 
 	var err error
-	s, err = server.New(config.NodeConfig{
+	s, err = server.New(config.ServerConfig{
 		PublicServiceAddr:          "localhost:0",
 		InternalServiceAddr:        "localhost:0",
 		MetricsServiceAddr:         "", // Disable metrics to avoid conflict

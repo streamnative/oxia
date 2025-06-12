@@ -39,7 +39,7 @@ func BenchmarkServer(b *testing.B) {
 
 	standaloneConf := server.StandaloneConfig{
 		NumShards: 1,
-		NodeConfig: config.NodeConfig{
+		ServerConfig: config.ServerConfig{
 			InternalServiceAddr: "localhost:0",
 			PublicServiceAddr:   "localhost:0",
 			MetricsServiceAddr:  "localhost:0",

@@ -26,13 +26,13 @@ import (
 )
 
 func TestNewServer(t *testing.T) {
-	nodeConfig := config.NodeConfig{
+	serverConfig := config.ServerConfig{
 		InternalServiceAddr: "localhost:0",
 		PublicServiceAddr:   "localhost:0",
 		MetricsServiceAddr:  "localhost:0",
 	}
 
-	server, err := New(nodeConfig)
+	server, err := New(serverConfig)
 	assert.NoError(t, err)
 
 	url := fmt.Sprintf("http://localhost:%d/metrics", server.metrics.Port())

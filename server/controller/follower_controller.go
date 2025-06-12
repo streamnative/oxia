@@ -109,14 +109,14 @@ type followerController struct {
 	applyEntriesDone chan any
 	closeStreamWg    concurrent.WaitGroup
 	log              *slog.Logger
-	config           config.NodeConfig
+	config           config.ServerConfig
 
 	writeLatencyHisto metric.LatencyHistogram
 }
 
-func NewFollowerController(nodeConfig config.NodeConfig, namespace string, shardId int64, wf wal.Factory, kvFactory kv.Factory) (FollowerController, error) {
+func NewFollowerController(serverConfig config.ServerConfig, namespace string, shardId int64, wf wal.Factory, kvFactory kv.Factory) (FollowerController, error) {
 	fc := &followerController{
-		config:           nodeConfig,
+		config:           serverConfig,
 		namespace:        namespace,
 		shardId:          shardId,
 		kvFactory:        kvFactory,
@@ -137,7 +137,7 @@ func NewFollowerController(nodeConfig config.NodeConfig, namespace string, shard
 
 	fc.lastAppendedOffset = fc.wal.LastOffset()
 
-	if fc.db, err = kv.NewDB(namespace, shardId, kvFactory, nodeConfig.NotificationsRetentionTime, time.SystemClock); err != nil {
+	if fc.db, err = kv.NewDB(namespace, shardId, kvFactory, serverConfig.NotificationsRetentionTime, time.SystemClock); err != nil {
 		return nil, err
 	}
 
