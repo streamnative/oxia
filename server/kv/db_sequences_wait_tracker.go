@@ -62,6 +62,7 @@ func (sw *sequenceWaiter) Ch() <-chan string {
 
 func (sw *sequenceWaiter) Close() error {
 	sw.tracker.remove(sw.key, sw.id)
+	close(sw.och.Ch())
 	return nil
 }
 
