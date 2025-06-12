@@ -884,8 +884,6 @@ func (lc *leaderController) GetNotifications(ctx context.Context, req *proto.Not
 	qat := lc.quorumAckTracker
 	lc.Unlock()
 
-	notificationCh := make(chan *proto.NotificationBatch, 1)
-
 	var offsetExclusive int64
 	if req.StartOffsetExclusive != nil {
 		offsetExclusive = *req.StartOffsetExclusive
@@ -903,11 +901,13 @@ func (lc *leaderController) GetNotifications(ctx context.Context, req *proto.Not
 			"Sending first dummy notification",
 			slog.Int64("commit-offset", commitOffset),
 		)
-		notificationCh <- &proto.NotificationBatch{
+		if err := cb.OnNext(&proto.NotificationBatch{
 			Shard:         lc.shardId,
 			Offset:        commitOffset,
 			Timestamp:     0,
 			Notifications: nil,
+		}); err != nil {
+			cb.OnComplete(err)
 		}
 		offsetExclusive = commitOffset
 	}
@@ -921,7 +921,6 @@ func (lc *leaderController) GetNotifications(ctx context.Context, req *proto.Not
 		},
 		func() {
 			lc.log.Debug("Dispatch notifications", slog.Any("start-offset-include", offsetExclusive))
-			defer close(notificationCh)
 			offset := offsetExclusive
 			for {
 				select {
