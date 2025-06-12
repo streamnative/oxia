@@ -21,8 +21,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/streamnative/oxia/server/constant"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/server/constant"
 
 	"github.com/streamnative/oxia/server/wal"
 
@@ -36,13 +37,13 @@ func Benchmark_Wal_Append(b *testing.B) {
 		SegmentSize: 1024 * 1024,
 		SyncData:    true,
 	})
-	wal, err := walFactory.NewWal("test", 1, nil)
+	w, err := walFactory.NewWal("test", 1, nil)
 	assert.NoError(b, err)
-	defer wal.Close()
+	defer w.Close()
 
 	n := time.Now()
 	for i := 0; i < b.N; i++ {
-		err := wal.Append(&proto.LogEntry{
+		err := w.Append(&proto.LogEntry{
 			Term:   1,
 			Offset: int64(i),
 			Value:  []byte("value"),
@@ -59,9 +60,9 @@ func Benchmark_Wal_Append_with_Read(b *testing.B) {
 		SegmentSize: 1024 * 1024,
 		SyncData:    true,
 	})
-	wal, err := walFactory.NewWal("test", 1, nil)
+	w, err := walFactory.NewWal("test", 1, nil)
 	assert.NoError(b, err)
-	defer wal.Close()
+	defer w.Close()
 
 	var wg sync.WaitGroup
 	c := 2
@@ -71,7 +72,7 @@ func Benchmark_Wal_Append_with_Read(b *testing.B) {
 		defer wg.Done()
 
 		for i := 0; i < b.N; i++ {
-			err := wal.Append(&proto.LogEntry{
+			err := w.Append(&proto.LogEntry{
 				Term:   1,
 				Offset: int64(i),
 				Value:  []byte("value"),
@@ -83,7 +84,7 @@ func Benchmark_Wal_Append_with_Read(b *testing.B) {
 	for i := 0; i < c-1; i++ {
 		go func() {
 			defer wg.Done()
-			reader, err := wal.NewReader(constant.InvalidOffset)
+			reader, err := w.NewReader(constant.InvalidOffset)
 			assert.NoError(b, err)
 
 			for i := 0; i < b.N; i++ {
@@ -111,9 +112,9 @@ func Benchmark_Wal_Append_to_Read_latency(b *testing.B) {
 		SegmentSize: 1024 * 1024,
 		SyncData:    true,
 	})
-	wal, err := walFactory.NewWal("test", 1, nil)
+	w, err := walFactory.NewWal("test", 1, nil)
 	assert.NoError(b, err)
-	defer wal.Close()
+	defer w.Close()
 	diffs := make([]int64, b.N)
 
 	var wg sync.WaitGroup
@@ -123,7 +124,7 @@ func Benchmark_Wal_Append_to_Read_latency(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			ts := time.Now().UnixMicro()
 
-			err := wal.Append(&proto.LogEntry{
+			err := w.Append(&proto.LogEntry{
 				Term:      1,
 				Offset:    int64(i),
 				Value:     []byte{},
@@ -135,7 +136,7 @@ func Benchmark_Wal_Append_to_Read_latency(b *testing.B) {
 	go func() {
 		defer wg.Done()
 
-		reader, err := wal.NewReader(constant.InvalidOffset)
+		reader, err := w.NewReader(constant.InvalidOffset)
 		assert.NoError(b, err)
 		for i := 0; i < b.N; i++ {
 			for {
