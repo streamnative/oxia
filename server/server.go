@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package datanode
+package server
 
 import (
 	"log/slog"
@@ -20,15 +20,15 @@ import (
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/health"
 
-	"github.com/streamnative/oxia/datanode/config"
+	"github.com/streamnative/oxia/server/config"
 
-	"github.com/streamnative/oxia/datanode/controller"
+	"github.com/streamnative/oxia/server/controller"
 
 	"github.com/streamnative/oxia/common/rpc"
 
 	"github.com/streamnative/oxia/common/metric"
-	"github.com/streamnative/oxia/datanode/kv"
-	"github.com/streamnative/oxia/datanode/wal"
+	"github.com/streamnative/oxia/server/kv"
+	"github.com/streamnative/oxia/server/wal"
 )
 
 type Server struct {

@@ -27,8 +27,8 @@ import (
 	"github.com/streamnative/oxia/common/constant"
 
 	"github.com/streamnative/oxia/cmd/wal/common"
-	"github.com/streamnative/oxia/datanode/wal"
 	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/wal"
 )
 
 type perfOptions struct {

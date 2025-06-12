@@ -21,7 +21,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/datanode/wal/codec"
+	"github.com/streamnative/oxia/server/wal/codec"
 )
 
 func TestReadWriteSegment(t *testing.T) {

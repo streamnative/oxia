@@ -26,9 +26,9 @@ import (
 	"github.com/streamnative/oxia/common/constant"
 	time2 "github.com/streamnative/oxia/common/time"
 
-	"github.com/streamnative/oxia/datanode/kv"
-	"github.com/streamnative/oxia/datanode/wal"
 	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/kv"
+	"github.com/streamnative/oxia/server/wal"
 )
 
 func TestFollowerCursor(t *testing.T) {

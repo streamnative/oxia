@@ -26,21 +26,21 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/datanode/config"
+	"github.com/streamnative/oxia/server/config"
 
 	"github.com/streamnative/oxia/common/constant"
 	"github.com/streamnative/oxia/common/rpc"
 
 	"github.com/streamnative/oxia/coordinator/model"
-	"github.com/streamnative/oxia/datanode"
 	"github.com/streamnative/oxia/oxia"
+	"github.com/streamnative/oxia/server"
 )
 
-func newServer(t *testing.T) (s *datanode.Server, addr model.Server) {
+func newServer(t *testing.T) (s *server.Server, addr model.Server) {
 	t.Helper()
 
 	var err error
-	s, err = datanode.New(config.NodeConfig{
+	s, err = server.New(config.NodeConfig{
 		PublicServiceAddr:          "localhost:0",
 		InternalServiceAddr:        "localhost:0",
 		MetricsServiceAddr:         "", // Disable metrics to avoid conflict
@@ -149,7 +149,7 @@ func TestCoordinator_LeaderFailover(t *testing.T) {
 	s1, sa1 := newServer(t)
 	s2, sa2 := newServer(t)
 	s3, sa3 := newServer(t)
-	servers := map[model.Server]*datanode.Server{
+	servers := map[model.Server]*server.Server{
 		sa1: s1,
 		sa2: s2,
 		sa3: s3,
@@ -245,7 +245,7 @@ func TestCoordinator_MultipleNamespaces(t *testing.T) {
 	s1, sa1 := newServer(t)
 	s2, sa2 := newServer(t)
 	s3, sa3 := newServer(t)
-	servers := map[model.Server]*datanode.Server{
+	servers := map[model.Server]*server.Server{
 		sa1: s1,
 		sa2: s2,
 		sa3: s3,
@@ -344,7 +344,7 @@ func TestCoordinator_DeleteNamespace(t *testing.T) {
 	s1, sa1 := newServer(t)
 	s2, sa2 := newServer(t)
 	s3, sa3 := newServer(t)
-	servers := map[model.Server]*datanode.Server{
+	servers := map[model.Server]*server.Server{
 		sa1: s1,
 		sa2: s2,
 		sa3: s3,
@@ -427,7 +427,7 @@ func TestCoordinator_DynamicallAddNamespace(t *testing.T) {
 	s1, sa1 := newServer(t)
 	s2, sa2 := newServer(t)
 	s3, sa3 := newServer(t)
-	servers := map[model.Server]*datanode.Server{
+	servers := map[model.Server]*server.Server{
 		sa1: s1,
 		sa2: s2,
 		sa3: s3,
@@ -514,7 +514,7 @@ func TestCoordinator_RebalanceCluster(t *testing.T) {
 	s2, sa2 := newServer(t)
 	s3, sa3 := newServer(t)
 	s4, sa4 := newServer(t)
-	servers := map[model.Server]*datanode.Server{
+	servers := map[model.Server]*server.Server{
 		sa1: s1,
 		sa2: s2,
 		sa3: s3,
@@ -611,7 +611,7 @@ func TestCoordinator_AddRemoveNodes(t *testing.T) {
 	s3, sa3 := newServer(t)
 	s4, sa4 := newServer(t)
 	s5, sa5 := newServer(t)
-	servers := map[model.Server]*datanode.Server{
+	servers := map[model.Server]*server.Server{
 		sa1: s1,
 		sa2: s2,
 		sa3: s3,
@@ -674,7 +674,7 @@ func TestCoordinator_ShrinkCluster(t *testing.T) {
 	s2, sa2 := newServer(t)
 	s3, sa3 := newServer(t)
 	s4, sa4 := newServer(t)
-	servers := map[model.Server]*datanode.Server{
+	servers := map[model.Server]*server.Server{
 		sa1: s1,
 		sa2: s2,
 		sa3: s3,

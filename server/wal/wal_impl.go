@@ -35,7 +35,7 @@ import (
 	time2 "github.com/streamnative/oxia/common/time"
 
 	"github.com/streamnative/oxia/common/metric"
-	"github.com/streamnative/oxia/datanode/wal/codec"
+	"github.com/streamnative/oxia/server/wal/codec"
 	"github.com/streamnative/oxia/proto"
 )
 

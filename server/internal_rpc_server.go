@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package datanode
+package server
 
 import (
 	"context"
@@ -30,7 +30,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/streamnative/oxia/common/security"
-	"github.com/streamnative/oxia/datanode/controller"
+	"github.com/streamnative/oxia/server/controller"
 
 	"github.com/streamnative/oxia/common/constant"
 	"github.com/streamnative/oxia/common/rpc"

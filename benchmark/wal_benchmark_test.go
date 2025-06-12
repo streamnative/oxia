@@ -23,7 +23,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	wal2 "github.com/streamnative/oxia/datanode/wal"
+	wal2 "github.com/streamnative/oxia/server/wal"
 
 	"github.com/streamnative/oxia/common/constant"
 

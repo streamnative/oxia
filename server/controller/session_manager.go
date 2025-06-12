@@ -30,8 +30,8 @@ import (
 
 	"github.com/streamnative/oxia/common/collection"
 	"github.com/streamnative/oxia/common/metric"
-	"github.com/streamnative/oxia/datanode/kv"
 	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/kv"
 )
 
 const (

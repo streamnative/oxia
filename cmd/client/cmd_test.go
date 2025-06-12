@@ -26,11 +26,11 @@ import (
 	"github.com/streamnative/oxia/cmd/client/get"
 	"github.com/streamnative/oxia/cmd/client/list"
 	"github.com/streamnative/oxia/cmd/client/put"
-	"github.com/streamnative/oxia/datanode"
+	"github.com/streamnative/oxia/server"
 )
 
 func TestClientCmd(t *testing.T) {
-	standaloneServer, err := datanode.NewStandalone(datanode.NewTestConfig(t.TempDir()))
+	standaloneServer, err := server.NewStandalone(server.NewTestConfig(t.TempDir()))
 	assert.NoError(t, err)
 
 	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())

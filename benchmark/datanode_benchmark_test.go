@@ -25,10 +25,10 @@ import (
 	"time"
 
 	"github.com/streamnative/oxia/common/logging"
-	"github.com/streamnative/oxia/datanode"
-	"github.com/streamnative/oxia/datanode/config"
 	"github.com/streamnative/oxia/oxia"
 	"github.com/streamnative/oxia/perf"
+	"github.com/streamnative/oxia/server"
+	"github.com/streamnative/oxia/server/config"
 )
 
 func BenchmarkServer(b *testing.B) {
@@ -37,7 +37,7 @@ func BenchmarkServer(b *testing.B) {
 
 	tmp := b.TempDir()
 
-	standaloneConf := datanode.StandaloneConfig{
+	standaloneConf := server.StandaloneConfig{
 		NumShards: 1,
 		NodeConfig: config.NodeConfig{
 			InternalServiceAddr: "localhost:0",
@@ -48,7 +48,7 @@ func BenchmarkServer(b *testing.B) {
 		},
 	}
 
-	standalone, err := datanode.NewStandalone(standaloneConf)
+	standalone, err := server.NewStandalone(standaloneConf)
 	if err != nil {
 		b.Fatal(err)
 	}
