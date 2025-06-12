@@ -23,7 +23,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	wal2 "github.com/streamnative/oxia/server/wal"
+	"github.com/streamnative/oxia/server/wal"
 
 	"github.com/streamnative/oxia/common/constant"
 
@@ -31,7 +31,7 @@ import (
 )
 
 func Benchmark_Wal_Append(b *testing.B) {
-	walFactory := wal2.NewWalFactory(&wal2.FactoryOptions{
+	walFactory := wal.NewWalFactory(&wal.FactoryOptions{
 		BaseWalDir:  b.TempDir(),
 		Retention:   time.Minute,
 		SegmentSize: 1024 * 1024,
@@ -54,7 +54,7 @@ func Benchmark_Wal_Append(b *testing.B) {
 }
 
 func Benchmark_Wal_Append_with_Read(b *testing.B) {
-	walFactory := wal2.NewWalFactory(&wal2.FactoryOptions{
+	walFactory := wal.NewWalFactory(&wal.FactoryOptions{
 		BaseWalDir:  b.TempDir(),
 		Retention:   time.Minute,
 		SegmentSize: 1024 * 1024,
@@ -106,7 +106,7 @@ func Benchmark_Wal_Append_with_Read(b *testing.B) {
 }
 
 func Benchmark_Wal_Append_to_Read_latency(b *testing.B) {
-	walFactory := wal2.NewWalFactory(&wal2.FactoryOptions{
+	walFactory := wal.NewWalFactory(&wal.FactoryOptions{
 		BaseWalDir:  b.TempDir(),
 		Retention:   time.Minute,
 		SegmentSize: 1024 * 1024,
