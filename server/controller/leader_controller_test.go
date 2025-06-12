@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	constant2 "github.com/streamnative/oxia/server/constant"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -63,7 +64,7 @@ func TestLeaderController_NotInitialized(t *testing.T) {
 	lc, err := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, constant.InvalidTerm, lc.Term())
+	assert.EqualValues(t, constant2.InvalidTerm, lc.Term())
 	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, lc.Status())
 
 	res, err := lc.WriteBlock(context.Background(), &proto.WriteRequest{
@@ -100,7 +101,7 @@ func TestLeaderController_Closed(t *testing.T) {
 	lc, err := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, constant.InvalidTerm, lc.Term())
+	assert.EqualValues(t, constant2.InvalidTerm, lc.Term())
 	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, lc.Status())
 
 	assert.NoError(t, lc.Close())
@@ -136,7 +137,7 @@ func TestLeaderController_BecomeLeader_NoFencing(t *testing.T) {
 	lc, err := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, constant.InvalidTerm, lc.Term())
+	assert.EqualValues(t, constant2.InvalidTerm, lc.Term())
 	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, lc.Status())
 	resp, err := lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
 		Shard:             shard,
@@ -162,7 +163,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	lc, err := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, constant.InvalidTerm, lc.Term())
+	assert.EqualValues(t, constant2.InvalidTerm, lc.Term())
 	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, lc.Status())
 
 	fr, err := lc.NewTerm(&proto.NewTermRequest{
@@ -170,7 +171,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 		Term:  1,
 	})
 	assert.NoError(t, err)
-	AssertProtoEqual(t, constant.InvalidEntryId, fr.HeadEntryId)
+	AssertProtoEqual(t, constant2.InvalidEntryId, fr.HeadEntryId)
 
 	_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
 		Shard:             shard,
@@ -262,7 +263,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	lc, err := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, rpc, walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, constant.InvalidTerm, lc.Term())
+	assert.EqualValues(t, constant2.InvalidTerm, lc.Term())
 	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, lc.Status())
 
 	fr, err := lc.NewTerm(&proto.NewTermRequest{
@@ -270,14 +271,14 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 		Term:  1,
 	})
 	assert.NoError(t, err)
-	assert.Equal(t, constant.InvalidEntryId, fr.HeadEntryId)
+	assert.Equal(t, constant2.InvalidEntryId, fr.HeadEntryId)
 
 	_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
 		Shard:             shard,
 		Term:              1,
 		ReplicationFactor: 2,
 		FollowerMaps: map[string]*proto.EntryId{
-			"f1": constant.InvalidEntryId,
+			"f1": constant2.InvalidEntryId,
 		},
 	})
 	assert.NoError(t, err)
@@ -374,7 +375,7 @@ func TestLeaderController_TermPersistent(t *testing.T) {
 	lc, err := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
-	assert.EqualValues(t, constant.InvalidTerm, lc.Term())
+	assert.EqualValues(t, constant2.InvalidTerm, lc.Term())
 	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, lc.Status())
 
 	// Set NewTerm to leader
@@ -384,7 +385,7 @@ func TestLeaderController_TermPersistent(t *testing.T) {
 		Term:  5,
 	})
 	assert.NoError(t, err)
-	AssertProtoEqual(t, &proto.EntryId{Term: constant.InvalidTerm, Offset: constant.InvalidOffset}, fr2.HeadEntryId)
+	AssertProtoEqual(t, &proto.EntryId{Term: constant2.InvalidTerm, Offset: constant2.InvalidOffset}, fr2.HeadEntryId)
 
 	assert.EqualValues(t, 5, lc.Term())
 	assert.Equal(t, proto.ServingStatus_FENCED, lc.Status())
@@ -443,7 +444,7 @@ func TestLeaderController_FenceTerm(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.NotNil(t, fr)
-	AssertProtoEqual(t, constant.InvalidEntryId, fr.HeadEntryId)
+	AssertProtoEqual(t, constant2.InvalidEntryId, fr.HeadEntryId)
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())
@@ -532,7 +533,7 @@ func TestLeaderController_AddFollower(t *testing.T) {
 		Term:              5,
 		ReplicationFactor: 3,
 		FollowerMaps: map[string]*proto.EntryId{
-			"f1": constant.InvalidEntryId,
+			"f1": constant2.InvalidEntryId,
 		},
 	})
 	assert.NoError(t, err)
@@ -542,7 +543,7 @@ func TestLeaderController_AddFollower(t *testing.T) {
 		Shard:               shard,
 		Term:                5,
 		FollowerName:        "f1",
-		FollowerHeadEntryId: constant.InvalidEntryId,
+		FollowerHeadEntryId: constant2.InvalidEntryId,
 	})
 	assert.Equal(t, &proto.AddFollowerResponse{}, afRes)
 	assert.Nil(t, err)
@@ -551,7 +552,7 @@ func TestLeaderController_AddFollower(t *testing.T) {
 		Shard:               shard,
 		Term:                5,
 		FollowerName:        "f2",
-		FollowerHeadEntryId: constant.InvalidEntryId,
+		FollowerHeadEntryId: constant2.InvalidEntryId,
 	})
 	assert.NoError(t, err)
 
@@ -561,7 +562,7 @@ func TestLeaderController_AddFollower(t *testing.T) {
 		Shard:               shard,
 		Term:                5,
 		FollowerName:        "f3",
-		FollowerHeadEntryId: constant.InvalidEntryId,
+		FollowerHeadEntryId: constant2.InvalidEntryId,
 	})
 	assert.Nil(t, afRes)
 	assert.Error(t, err)
@@ -595,7 +596,7 @@ func TestLeaderController_AddFollowerRepeated(t *testing.T) {
 		Term:              5,
 		ReplicationFactor: 3,
 		FollowerMaps: map[string]*proto.EntryId{
-			"f1": constant.InvalidEntryId,
+			"f1": constant2.InvalidEntryId,
 		},
 	})
 	assert.NoError(t, err)
@@ -605,7 +606,7 @@ func TestLeaderController_AddFollowerRepeated(t *testing.T) {
 		Shard:               shard,
 		Term:                5,
 		FollowerName:        "f1",
-		FollowerHeadEntryId: constant.InvalidEntryId,
+		FollowerHeadEntryId: constant2.InvalidEntryId,
 	})
 	assert.Nil(t, err)
 	assert.Equal(t, &proto.AddFollowerResponse{}, afRes)
@@ -614,7 +615,7 @@ func TestLeaderController_AddFollowerRepeated(t *testing.T) {
 		Shard:               shard,
 		Term:                5,
 		FollowerName:        "f1",
-		FollowerHeadEntryId: constant.InvalidEntryId,
+		FollowerHeadEntryId: constant2.InvalidEntryId,
 	})
 	assert.Nil(t, err)
 	assert.Equal(t, &proto.AddFollowerResponse{}, afRes)
@@ -760,7 +761,7 @@ func TestLeaderController_AddFollowerCheckTerm(t *testing.T) {
 		Term:              5,
 		ReplicationFactor: 3,
 		FollowerMaps: map[string]*proto.EntryId{
-			"f1": constant.InvalidEntryId,
+			"f1": constant2.InvalidEntryId,
 		},
 	})
 	assert.NoError(t, err)
@@ -769,7 +770,7 @@ func TestLeaderController_AddFollowerCheckTerm(t *testing.T) {
 		Shard:               shard,
 		Term:                4,
 		FollowerName:        "f2",
-		FollowerHeadEntryId: constant.InvalidEntryId,
+		FollowerHeadEntryId: constant2.InvalidEntryId,
 	})
 	assert.Nil(t, afRes)
 	assert.Equal(t, constant.CodeInvalidTerm, status.Code(err))
@@ -778,7 +779,7 @@ func TestLeaderController_AddFollowerCheckTerm(t *testing.T) {
 		Shard:               shard,
 		Term:                6,
 		FollowerName:        "f2",
-		FollowerHeadEntryId: constant.InvalidEntryId,
+		FollowerHeadEntryId: constant2.InvalidEntryId,
 	})
 	assert.Nil(t, afRes)
 	assert.Equal(t, constant.CodeInvalidTerm, status.Code(err))
@@ -888,7 +889,7 @@ func TestLeaderController_Notifications(t *testing.T) {
 	closeCh := make(chan any)
 
 	go func() {
-		err := lc.GetNotifications(&proto.NotificationsRequest{Shard: shard, StartOffsetExclusive: &constant.InvalidOffset}, stream)
+		err := lc.GetNotifications(&proto.NotificationsRequest{Shard: shard, StartOffsetExclusive: &constant2.InvalidOffset}, stream)
 		assert.ErrorIs(t, err, context.Canceled)
 		close(closeCh)
 	}()
@@ -953,7 +954,7 @@ func TestLeaderController_NotificationsCloseLeader(t *testing.T) {
 	closeCh := make(chan any)
 
 	go func() {
-		err := lc.GetNotifications(&proto.NotificationsRequest{Shard: shard, StartOffsetExclusive: &constant.InvalidOffset}, stream)
+		err := lc.GetNotifications(&proto.NotificationsRequest{Shard: shard, StartOffsetExclusive: &constant2.InvalidOffset}, stream)
 		assert.ErrorIs(t, err, context.Canceled)
 		close(closeCh)
 	}()
