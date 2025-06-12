@@ -60,8 +60,14 @@ func (sw *sequenceWaiter) Ch() <-chan string {
 	return sw.och.Ch()
 }
 
+func (sw *sequenceWaiter) closeWithoutLock() {
+	sw.tracker.removeWithoutLock(sw.key, sw.id)
+	close(sw.och.Ch())
+}
+
 func (sw *sequenceWaiter) Close() error {
 	sw.tracker.remove(sw.key, sw.id)
+	close(sw.och.Ch())
 	return nil
 }
 
@@ -89,10 +95,7 @@ func (swt *sequenceWaiterTracker) AddSequenceWaiter(key string) *sequenceWaiter 
 	return sw
 }
 
-func (swt *sequenceWaiterTracker) remove(key string, id sequenceWaiterID) {
-	swt.Lock()
-	defer swt.Unlock()
-
+func (swt *sequenceWaiterTracker) removeWithoutLock(key string, id sequenceWaiterID) {
 	im, existing := swt.waiters[key]
 	if !existing {
 		return
@@ -102,6 +105,12 @@ func (swt *sequenceWaiterTracker) remove(key string, id sequenceWaiterID) {
 	if len(im) == 0 {
 		delete(swt.waiters, key)
 	}
+}
+
+func (swt *sequenceWaiterTracker) remove(key string, id sequenceWaiterID) {
+	swt.Lock()
+	defer swt.Unlock()
+	swt.removeWithoutLock(key, id)
 }
 
 func (swt *sequenceWaiterTracker) SequenceUpdated(prefixKey string, lastSequenceKey string) {
@@ -119,7 +128,7 @@ func (swt *sequenceWaiterTracker) Close() error {
 
 	for _, m := range swt.waiters {
 		for _, w := range m {
-			_ = w.Close()
+			w.closeWithoutLock()
 		}
 
 		clear(m)

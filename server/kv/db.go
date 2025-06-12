@@ -182,6 +182,7 @@ func (d *db) EnableNotifications(enabled bool) {
 
 func (d *db) Close() error {
 	return multierr.Combine(
+		d.sequenceWaiterTracker.Close(),
 		d.notificationsTracker.Close(),
 		d.kv.Close(),
 	)
@@ -189,6 +190,7 @@ func (d *db) Close() error {
 
 func (d *db) Delete() error {
 	return multierr.Combine(
+		d.sequenceWaiterTracker.Close(),
 		d.notificationsTracker.Close(),
 		d.kv.Delete(),
 	)

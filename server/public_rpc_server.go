@@ -412,8 +412,7 @@ func (s *publicRpcServer) CloseSession(ctx context.Context, req *proto.CloseSess
 	return res, nil
 }
 
-func (s *publicRpcServer) GetSequenceUpdates(req *proto.GetSequenceUpdatesRequest,
-	stream proto.OxiaClient_GetSequenceUpdatesServer) error {
+func (s *publicRpcServer) GetSequenceUpdates(req *proto.GetSequenceUpdatesRequest, stream proto.OxiaClient_GetSequenceUpdatesServer) error {
 	s.log.Debug(
 		"Get sequence update request",
 		slog.String("peer", rpc.GetPeer(stream.Context())),
@@ -424,7 +423,29 @@ func (s *publicRpcServer) GetSequenceUpdates(req *proto.GetSequenceUpdatesReques
 		return err
 	}
 
-	return lc.GetSequenceUpdates(req, stream)
+	ctx := stream.Context()
+	sequenceWaiter, err := lc.GetSequenceUpdates(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		_ = sequenceWaiter.Close()
+	}()
+
+	for {
+		select {
+		case newKey, more := <-sequenceWaiter.Ch():
+			if !more {
+				return nil
+			}
+			if err = stream.Send(&proto.GetSequenceUpdatesResponse{HighestSequenceKey: newKey}); err != nil {
+				return err
+			}
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 }
 
 func (s *publicRpcServer) getLeader(shardId int64) (LeaderController, error) {

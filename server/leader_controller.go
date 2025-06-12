@@ -53,7 +53,8 @@ type LeaderController interface {
 	List(ctx context.Context, request *proto.ListRequest, cb concurrent.StreamCallback[string])
 	Read(ctx context.Context, request *proto.ReadRequest, cb concurrent.StreamCallback[*proto.GetResponse])
 	RangeScan(ctx context.Context, request *proto.RangeScanRequest, cb concurrent.StreamCallback[*proto.GetResponse])
-	GetSequenceUpdates(request *proto.GetSequenceUpdatesRequest, stream proto.OxiaClient_GetSequenceUpdatesServer) error
+
+	GetSequenceUpdates(ctx context.Context, request *proto.GetSequenceUpdatesRequest) (kv.SequenceWaiter, error)
 
 	// NewTerm Handle new term requests
 	NewTerm(req *proto.NewTermRequest) (*proto.NewTermResponse, error)
@@ -638,39 +639,16 @@ func (lc *leaderController) Read(ctx context.Context, request *proto.ReadRequest
 	)
 }
 
-func (lc *leaderController) GetSequenceUpdates(req *proto.GetSequenceUpdatesRequest, stream proto.OxiaClient_GetSequenceUpdatesServer) error {
+func (lc *leaderController) GetSequenceUpdates(_ context.Context, request *proto.GetSequenceUpdatesRequest) (kv.SequenceWaiter, error) {
 	lc.RLock()
 	err := checkStatusIsLeader(lc.status)
 	lc.RUnlock()
 	if err != nil {
-		return err
+		return nil, err
 	}
+	lc.log.Debug("Received get sequence updates request", slog.Any("request", request))
 
-	lc.log.Debug("Received get sequence updates request", slog.Any("request", req))
-
-	sw, err := lc.db.GetSequenceUpdates(req.Key)
-	if err != nil {
-		return err
-	}
-
-	defer func(sw kv.SequenceWaiter) {
-		_ = sw.Close()
-	}(sw)
-
-	for {
-		select {
-		case newKey := <-sw.Ch():
-			if err = stream.Send(&proto.GetSequenceUpdatesResponse{HighestSequenceKey: newKey}); err != nil {
-				return err
-			}
-
-		case <-lc.ctx.Done():
-			return lc.ctx.Err()
-
-		case <-stream.Context().Done():
-			return stream.Context().Err()
-		}
-	}
+	return lc.db.GetSequenceUpdates(request.Key)
 }
 
 func (lc *leaderController) List(ctx context.Context, request *proto.ListRequest, cb concurrent.StreamCallback[string]) {
