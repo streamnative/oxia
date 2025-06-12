@@ -23,14 +23,16 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/streamnative/oxia/datanode/config"
+
 	"github.com/streamnative/oxia/common/constant"
 	"github.com/streamnative/oxia/common/rpc"
 
 	"github.com/streamnative/oxia/common/security"
 	"github.com/streamnative/oxia/coordinator/impl"
 	"github.com/streamnative/oxia/coordinator/model"
+	"github.com/streamnative/oxia/datanode"
 	"github.com/streamnative/oxia/oxia"
-	"github.com/streamnative/oxia/server"
 )
 
 func getPeerTLSOption() (*security.TLSOption, error) {
@@ -69,14 +71,14 @@ func getClientTLSOption() (*security.TLSOption, error) {
 	return &clientOption, nil
 }
 
-func newTLSServer(t *testing.T) (s *server.Server, addr model.Server) {
+func newTLSServer(t *testing.T) (s *datanode.Server, addr model.Server) {
 	t.Helper()
-	return newTLSServerWithInterceptor(t, func(config *server.Config) {
+	return newTLSServerWithInterceptor(t, func(config *config.NodeConfig) {
 
 	})
 }
 
-func newTLSServerWithInterceptor(t *testing.T, interceptor func(config *server.Config)) (s *server.Server, addr model.Server) {
+func newTLSServerWithInterceptor(t *testing.T, interceptor func(nodeConfig *config.NodeConfig)) (s *datanode.Server, addr model.Server) {
 	t.Helper()
 	option, err := getPeerTLSOption()
 	assert.NoError(t, err)
@@ -86,7 +88,7 @@ func newTLSServerWithInterceptor(t *testing.T, interceptor func(config *server.C
 	peerTLSConf, err := option.MakeClientTLSConf()
 	assert.NoError(t, err)
 
-	config := server.Config{
+	nodeConfig := config.NodeConfig{
 		PublicServiceAddr:          "localhost:0",
 		InternalServiceAddr:        "localhost:0",
 		MetricsServiceAddr:         "", // Disable metrics to avoid conflict
@@ -98,9 +100,9 @@ func newTLSServerWithInterceptor(t *testing.T, interceptor func(config *server.C
 		InternalServerTLS:          serverTLSConf,
 	}
 
-	interceptor(&config)
+	interceptor(&nodeConfig)
 
-	s, err = server.New(config)
+	s, err = datanode.New(nodeConfig)
 
 	assert.NoError(t, err)
 
@@ -296,9 +298,9 @@ func TestClientHandshakeSuccess(t *testing.T) {
 }
 
 func TestOnlyEnablePublicTls(t *testing.T) {
-	disableInternalTLS := func(config *server.Config) {
-		config.InternalServerTLS = nil
-		config.PeerTLS = nil
+	disableInternalTLS := func(nodeConfig *config.NodeConfig) {
+		nodeConfig.InternalServerTLS = nil
+		nodeConfig.PeerTLS = nil
 	}
 	s1, sa1 := newTLSServerWithInterceptor(t, disableInternalTLS)
 	defer s1.Close()

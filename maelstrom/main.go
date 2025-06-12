@@ -24,12 +24,14 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 
+	"github.com/streamnative/oxia/datanode/config"
+
 	"github.com/streamnative/oxia/common/constant"
 	"github.com/streamnative/oxia/common/logging"
 
 	"github.com/streamnative/oxia/coordinator/impl"
 	"github.com/streamnative/oxia/coordinator/model"
-	"github.com/streamnative/oxia/server"
+	"github.com/streamnative/oxia/datanode"
 )
 
 var (
@@ -186,7 +188,7 @@ func main() {
 		}
 	} else {
 		// Any other node will be a storage node
-		_, err := server.NewWithGrpcProvider(server.Config{
+		_, err := datanode.NewWithGrpcProvider(config.NodeConfig{
 			MetricsServiceAddr: "",
 			DataDir:            filepath.Join(dataDir, thisNode, "db"),
 			WalDir:             filepath.Join(dataDir, thisNode, "wal"),

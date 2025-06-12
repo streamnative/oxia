@@ -21,9 +21,9 @@ import (
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/streamnative/oxia/common/rpc"
+	"github.com/streamnative/oxia/common/security"
 
-	"github.com/streamnative/oxia/server/auth"
+	"github.com/streamnative/oxia/common/rpc"
 )
 
 type rpcServer struct {
@@ -39,7 +39,7 @@ func newRpcServer(bindAddress string, tlsConf *tls.Config) (*rpcServer, error) {
 	var err error
 	server.grpcServer, err = rpc.Default.StartGrpcServer("coordinator", bindAddress, func(registrar grpc.ServiceRegistrar) {
 		grpc_health_v1.RegisterHealthServer(registrar, server.healthServer)
-	}, tlsConf, &auth.Disabled)
+	}, tlsConf, &security.Disabled)
 	if err != nil {
 		return nil, err
 	}
