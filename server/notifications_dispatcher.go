@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 
 	"github.com/pkg/errors"
@@ -29,16 +30,14 @@ import (
 )
 
 type notificationDispatcher struct {
-	lc     *leaderController
-	id     int64
-	req    *proto.NotificationsRequest
-	stream proto.OxiaClient_GetNotificationsServer
+	*slog.Logger
+	sync.WaitGroup
 
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	closeCh chan any
-	log     *slog.Logger
+	id  int64
+	req *proto.NotificationsRequest
 }
 
 var notificationDispatcherIdGen atomic.Int64
