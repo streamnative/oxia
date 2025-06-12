@@ -26,7 +26,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/datanode"
+	"github.com/streamnative/oxia/server"
 )
 
 type neverCompleteAsyncClient struct {
@@ -105,10 +105,10 @@ func assertCancellable(t *testing.T, operationFunc func(context.Context) error) 
 }
 
 func TestSyncClientImpl_SecondaryIndexes(t *testing.T) {
-	config := datanode.NewTestConfig(t.TempDir())
+	config := server.NewTestConfig(t.TempDir())
 	// Test with multiple shards to ensure correctness across shards
 	config.NumShards = 1
-	standaloneServer, err := datanode.NewStandalone(config)
+	standaloneServer, err := server.NewStandalone(config)
 	assert.NoError(t, err)
 
 	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())
@@ -162,10 +162,10 @@ func TestSyncClientImpl_SecondaryIndexes(t *testing.T) {
 }
 
 func TestSyncClientImpl_SecondaryIndexesRepeated(t *testing.T) {
-	config := datanode.NewTestConfig(t.TempDir())
+	config := server.NewTestConfig(t.TempDir())
 	// Test with multiple shards to ensure correctness across shards
 	config.NumShards = 1
-	standaloneServer, err := datanode.NewStandalone(config)
+	standaloneServer, err := server.NewStandalone(config)
 	assert.NoError(t, err)
 
 	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())
@@ -203,9 +203,9 @@ func TestSyncClientImpl_SecondaryIndexesRepeated(t *testing.T) {
 }
 
 func TestSyncClientImpl_SecondaryIndexes_Get(t *testing.T) {
-	config := datanode.NewTestConfig(t.TempDir())
+	config := server.NewTestConfig(t.TempDir())
 	config.NumShards = 10
-	standaloneServer, err := datanode.NewStandalone(config)
+	standaloneServer, err := server.NewStandalone(config)
 	assert.NoError(t, err)
 
 	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())
@@ -353,7 +353,7 @@ func TestSyncClientImpl_SecondaryIndexes_Get(t *testing.T) {
 }
 
 func TestSyncClientImpl_GetSequenceUpdates(t *testing.T) {
-	standaloneServer, err := datanode.NewStandalone(datanode.NewTestConfig(t.TempDir()))
+	standaloneServer, err := server.NewStandalone(server.NewTestConfig(t.TempDir()))
 	assert.NoError(t, err)
 
 	serviceAddress := fmt.Sprintf("localhost:%d", standaloneServer.RpcPort())

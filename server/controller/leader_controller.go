@@ -27,7 +27,7 @@ import (
 	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
 
-	"github.com/streamnative/oxia/datanode/config"
+	"github.com/streamnative/oxia/server/config"
 
 	"github.com/streamnative/oxia/common/concurrent"
 	"github.com/streamnative/oxia/common/constant"
@@ -40,9 +40,9 @@ import (
 	"github.com/streamnative/oxia/common/channel"
 
 	"github.com/streamnative/oxia/common/metric"
-	"github.com/streamnative/oxia/datanode/kv"
-	"github.com/streamnative/oxia/datanode/wal"
 	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/kv"
+	"github.com/streamnative/oxia/server/wal"
 )
 
 type LeaderController interface {

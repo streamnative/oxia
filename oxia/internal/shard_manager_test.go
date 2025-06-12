@@ -24,7 +24,7 @@ import (
 	"github.com/streamnative/oxia/common/constant"
 	"github.com/streamnative/oxia/common/rpc"
 
-	"github.com/streamnative/oxia/datanode"
+	"github.com/streamnative/oxia/server"
 )
 
 type testShardStrategy struct {
@@ -37,7 +37,7 @@ func (s *testShardStrategy) Get(key string) func(Shard) bool {
 }
 
 func TestWithStandalone(t *testing.T) {
-	standaloneServer, err := datanode.NewStandalone(datanode.NewTestConfig(t.TempDir()))
+	standaloneServer, err := server.NewStandalone(server.NewTestConfig(t.TempDir()))
 	assert.NoError(t, err)
 
 	clientPool := rpc.NewClientPool(nil, nil)

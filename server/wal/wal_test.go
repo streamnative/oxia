@@ -25,8 +25,8 @@ import (
 
 	"github.com/streamnative/oxia/common/constant"
 
-	"github.com/streamnative/oxia/datanode/wal/codec"
 	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/wal/codec"
 )
 
 const shard = int64(100)

@@ -25,8 +25,8 @@ import (
 	"github.com/streamnative/oxia/common/compare"
 	"github.com/streamnative/oxia/common/constant"
 
-	"github.com/streamnative/oxia/datanode/kv"
 	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/kv"
 )
 
 const secondaryIdxKeyPrefix = constant.InternalKeyPrefix + "idx"

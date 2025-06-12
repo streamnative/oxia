@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package datanode
+package server
 
 import (
 	"fmt"
@@ -22,7 +22,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/datanode/config"
+	"github.com/streamnative/oxia/server/config"
 )
 
 func TestNewServer(t *testing.T) {

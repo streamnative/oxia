@@ -22,18 +22,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/streamnative/oxia/datanode"
+	"github.com/streamnative/oxia/server"
 )
 
 var (
 	exampleServerAddr = "localhost:6648"
 )
 
-func initExampleServer(serviceAddr string) *datanode.Standalone {
+func initExampleServer(serviceAddr string) *server.Standalone {
 	dir, _ := os.MkdirTemp(os.TempDir(), "oxia-test-*")
-	config := datanode.NewTestConfig(dir)
+	config := server.NewTestConfig(dir)
 	config.PublicServiceAddr = serviceAddr
-	standaloneServer, err := datanode.NewStandalone(config)
+	standaloneServer, err := server.NewStandalone(config)
 	if err != nil {
 		log.Fatal(err)
 	}

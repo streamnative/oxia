@@ -23,7 +23,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/datanode/config"
+	"github.com/streamnative/oxia/server/config"
 
 	"github.com/streamnative/oxia/common/constant"
 	"github.com/streamnative/oxia/common/rpc"
@@ -31,8 +31,8 @@ import (
 	"github.com/streamnative/oxia/common/security"
 	"github.com/streamnative/oxia/coordinator/impl"
 	"github.com/streamnative/oxia/coordinator/model"
-	"github.com/streamnative/oxia/datanode"
 	"github.com/streamnative/oxia/oxia"
+	"github.com/streamnative/oxia/server"
 )
 
 func getPeerTLSOption() (*security.TLSOption, error) {
@@ -71,14 +71,14 @@ func getClientTLSOption() (*security.TLSOption, error) {
 	return &clientOption, nil
 }
 
-func newTLSServer(t *testing.T) (s *datanode.Server, addr model.Server) {
+func newTLSServer(t *testing.T) (s *server.Server, addr model.Server) {
 	t.Helper()
 	return newTLSServerWithInterceptor(t, func(config *config.NodeConfig) {
 
 	})
 }
 
-func newTLSServerWithInterceptor(t *testing.T, interceptor func(nodeConfig *config.NodeConfig)) (s *datanode.Server, addr model.Server) {
+func newTLSServerWithInterceptor(t *testing.T, interceptor func(nodeConfig *config.NodeConfig)) (s *server.Server, addr model.Server) {
 	t.Helper()
 	option, err := getPeerTLSOption()
 	assert.NoError(t, err)
@@ -102,7 +102,7 @@ func newTLSServerWithInterceptor(t *testing.T, interceptor func(nodeConfig *conf
 
 	interceptor(&nodeConfig)
 
-	s, err = datanode.New(nodeConfig)
+	s, err = server.New(nodeConfig)
 
 	assert.NoError(t, err)
 
