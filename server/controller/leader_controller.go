@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	constant2 "github.com/streamnative/oxia/server/constant"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
@@ -168,7 +169,7 @@ func NewLeaderController(serverConfig config.ServerConfig, namespace string, sha
 		return nil, err
 	}
 
-	if lc.term != constant.InvalidTerm {
+	if lc.term != constant2.InvalidTerm {
 		lc.status = proto.ServingStatus_FENCED
 	}
 
@@ -581,13 +582,13 @@ func (lc *leaderController) truncateFollowerIfNeeded(follower string, followerHe
 func getHighestEntryOfTerm(w wal.Wal, term int64) (*proto.EntryId, error) {
 	r, err := w.NewReverseReader()
 	if err != nil {
-		return constant.InvalidEntryId, err
+		return constant2.InvalidEntryId, err
 	}
 	defer r.Close()
 	for r.HasNext() {
 		e, err := r.ReadNext()
 		if err != nil {
-			return constant.InvalidEntryId, err
+			return constant2.InvalidEntryId, err
 		}
 		if e.Term <= term {
 			return &proto.EntryId{
@@ -596,7 +597,7 @@ func getHighestEntryOfTerm(w wal.Wal, term int64) (*proto.EntryId, error) {
 			}, nil
 		}
 	}
-	return constant.InvalidEntryId, nil
+	return constant2.InvalidEntryId, nil
 }
 
 func (lc *leaderController) Read(ctx context.Context, request *proto.ReadRequest, cb concurrent.StreamCallback[*proto.GetResponse]) {
@@ -937,7 +938,7 @@ func getLastEntryIdInWal(walObject wal.Wal) (*proto.EntryId, error) {
 	}
 
 	if !reader.HasNext() {
-		return constant.InvalidEntryId, nil
+		return constant2.InvalidEntryId, nil
 	}
 
 	entry, err := reader.ReadNext()
@@ -952,7 +953,7 @@ func (lc *leaderController) CommitOffset() int64 {
 	if qat != nil {
 		return qat.CommitOffset()
 	}
-	return constant.InvalidOffset
+	return constant2.InvalidOffset
 }
 
 func (lc *leaderController) GetStatus(_ *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
@@ -960,8 +961,8 @@ func (lc *leaderController) GetStatus(_ *proto.GetStatusRequest) (*proto.GetStat
 	defer lc.RUnlock()
 
 	var (
-		headOffset   = constant.InvalidOffset
-		commitOffset = constant.InvalidOffset
+		headOffset   = constant2.InvalidOffset
+		commitOffset = constant2.InvalidOffset
 	)
 	if lc.quorumAckTracker != nil {
 		headOffset = lc.quorumAckTracker.HeadOffset()

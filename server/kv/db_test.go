@@ -22,6 +22,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
+	constant2 "github.com/streamnative/oxia/server/constant"
 	"github.com/stretchr/testify/assert"
 	pb "google.golang.org/protobuf/proto"
 
@@ -304,7 +305,7 @@ func TestDBList(t *testing.T) {
 		}},
 	}
 
-	writeRes, err := db.ProcessWrite(writeReq, constant.InvalidOffset, now(), NoOpCallback)
+	writeRes, err := db.ProcessWrite(writeReq, constant2.InvalidOffset, now(), NoOpCallback)
 	assert.NoError(t, err)
 
 	assert.Equal(t, 5, len(writeRes.Puts))
@@ -378,7 +379,7 @@ func TestDBDeleteRange(t *testing.T) {
 		}},
 	}
 
-	_, err = db.ProcessWrite(writeReq, constant.InvalidOffset, 0, NoOpCallback)
+	_, err = db.ProcessWrite(writeReq, constant2.InvalidOffset, 0, NoOpCallback)
 	assert.NoError(t, err)
 
 	writeReq = &proto.WriteRequest{
@@ -391,7 +392,7 @@ func TestDBDeleteRange(t *testing.T) {
 		}},
 	}
 
-	writeRes, err := db.ProcessWrite(writeReq, constant.InvalidOffset, 0, NoOpCallback)
+	writeRes, err := db.ProcessWrite(writeReq, constant2.InvalidOffset, 0, NoOpCallback)
 	assert.NoError(t, err)
 
 	keys := make([]string, 0)
@@ -430,7 +431,7 @@ func TestDB_ReadCommitOffset(t *testing.T) {
 
 	commitOffset, err := db.ReadCommitOffset()
 	assert.NoError(t, err)
-	assert.Equal(t, constant.InvalidOffset, commitOffset)
+	assert.Equal(t, constant2.InvalidOffset, commitOffset)
 
 	writeReq := &proto.WriteRequest{
 		Puts: []*proto.PutRequest{{
@@ -461,7 +462,7 @@ func TestDb_UpdateTerm(t *testing.T) {
 
 	term, options, err := db.ReadTerm()
 	assert.NoError(t, err)
-	assert.Equal(t, constant.InvalidOffset, term)
+	assert.Equal(t, constant2.InvalidOffset, term)
 	assert.Equal(t, TermOptions{}, options)
 
 	err = db.UpdateTerm(1, TermOptions{NotificationsEnabled: true})
@@ -842,7 +843,7 @@ func TestDBRangeScan(t *testing.T) {
 		}},
 	}
 
-	writeRes, err := db.ProcessWrite(writeReq, constant.InvalidOffset, now(), NoOpCallback)
+	writeRes, err := db.ProcessWrite(writeReq, constant2.InvalidOffset, now(), NoOpCallback)
 	assert.NoError(t, err)
 
 	assert.Equal(t, 5, len(writeRes.Puts))

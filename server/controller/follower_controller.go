@@ -23,6 +23,7 @@ import (
 	"sync/atomic"
 
 	"github.com/pkg/errors"
+	constant2 "github.com/streamnative/oxia/server/constant"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -145,7 +146,7 @@ func NewFollowerController(serverConfig config.ServerConfig, namespace string, s
 		return nil, err
 	}
 
-	if fc.term != constant.InvalidTerm {
+	if fc.term != constant2.InvalidTerm {
 		fc.status = proto.ServingStatus_FENCED
 	}
 
@@ -157,7 +158,7 @@ func NewFollowerController(serverConfig config.ServerConfig, namespace string, s
 	}
 	fc.commitOffset.Store(commitOffset)
 
-	if fc.lastAppendedOffset == constant.InvalidOffset {
+	if fc.lastAppendedOffset == constant2.InvalidOffset {
 		// The wal is empty, though we have restored from snapshot
 		fc.lastAppendedOffset = commitOffset
 	}
@@ -629,7 +630,7 @@ func (fc *followerController) readSnapshotStream(stream proto.OxiaLogReplication
 			return totalSize, err
 		case snapChunk == nil:
 			return totalSize, nil
-		case fc.term != constant.InvalidTerm && snapChunk.Term != fc.term:
+		case fc.term != constant2.InvalidTerm && snapChunk.Term != fc.term:
 			// The follower could be left with term=-1 by a previous failed
 			// attempt at sending the snapshot. It's ok to proceed in that case.
 			fc.closeStreamNoMutex(constant.ErrInvalidTerm)

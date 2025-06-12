@@ -22,8 +22,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-
-	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/server/constant"
 
 	"github.com/streamnative/oxia/common/process"
 	time2 "github.com/streamnative/oxia/common/time"

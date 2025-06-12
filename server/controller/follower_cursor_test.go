@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	constant2 "github.com/streamnative/oxia/server/constant"
 	"github.com/stretchr/testify/assert"
 	pb "google.golang.org/protobuf/proto"
 
@@ -36,7 +37,7 @@ func TestFollowerCursor(t *testing.T) {
 	var shard int64 = 2
 
 	stream := newMockRpcClient()
-	ackTracker := NewQuorumAckTracker(3, constant.InvalidOffset, constant.InvalidOffset)
+	ackTracker := NewQuorumAckTracker(3, constant2.InvalidOffset, constant2.InvalidOffset)
 	kvf, err := kv.NewPebbleKVFactory(testKVOptions)
 	assert.NoError(t, err)
 	db, err := kv.NewDB(constant.DefaultNamespace, shard, kvf, 1*time.Hour, time2.SystemClock)
@@ -53,7 +54,7 @@ func TestFollowerCursor(t *testing.T) {
 	assert.NoError(t, err)
 	slog.Info("Appended entry 0 to the log")
 
-	fc, err := NewFollowerCursor("f1", term, constant.DefaultNamespace, shard, stream, ackTracker, w, db, constant.InvalidOffset)
+	fc, err := NewFollowerCursor("f1", term, constant.DefaultNamespace, shard, stream, ackTracker, w, db, constant2.InvalidOffset)
 	assert.NoError(t, err)
 
 	time.Sleep(10 * time.Millisecond)
@@ -63,24 +64,24 @@ func TestFollowerCursor(t *testing.T) {
 	// it will start to `streamEntries` and maybe make it advanced to 0.
 	assert.True(t, func() bool {
 		lastPushed := fc.LastPushed()
-		return lastPushed == constant.InvalidOffset || lastPushed == 0
+		return lastPushed == constant2.InvalidOffset || lastPushed == 0
 	}())
-	assert.Equal(t, constant.InvalidOffset, fc.AckOffset())
+	assert.Equal(t, constant2.InvalidOffset, fc.AckOffset())
 
 	assert.Eventually(t, func() bool {
 		return fc.LastPushed() == 0
 	}, 10*time.Second, 100*time.Millisecond)
 
-	assert.Equal(t, constant.InvalidOffset, fc.AckOffset())
+	assert.Equal(t, constant2.InvalidOffset, fc.AckOffset())
 
 	ackTracker.AdvanceHeadOffset(0)
 
-	assert.Equal(t, constant.InvalidOffset, fc.AckOffset())
+	assert.Equal(t, constant2.InvalidOffset, fc.AckOffset())
 
 	// The follower is acking back
 	req := <-stream.appendReqs
 	assert.EqualValues(t, 1, req.Term)
-	assert.Equal(t, constant.InvalidOffset, req.CommitOffset)
+	assert.Equal(t, constant2.InvalidOffset, req.CommitOffset)
 
 	stream.ackResps <- &proto.Ack{
 		Offset: 0,
@@ -157,7 +158,7 @@ func TestFollowerCursor_SendSnapshot(t *testing.T) {
 
 	ackTracker := NewQuorumAckTracker(3, n-1, n-1)
 
-	fc, err := NewFollowerCursor("f1", term, constant.DefaultNamespace, shard, stream, ackTracker, w, db, constant.InvalidOffset)
+	fc, err := NewFollowerCursor("f1", term, constant.DefaultNamespace, shard, stream, ackTracker, w, db, constant2.InvalidOffset)
 	assert.NoError(t, err)
 
 	s := stream.sendSnapshotStream

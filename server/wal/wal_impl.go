@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	constant2 "github.com/streamnative/oxia/server/constant"
 	"go.uber.org/multierr"
 	"golang.org/x/exp/slices"
 	pb "google.golang.org/protobuf/proto"
@@ -294,7 +295,7 @@ func (t *wal) appendAsync0(entry *proto.LogEntry) error {
 		return err
 	}
 
-	if t.lastAppendedOffset.Load() == constant.InvalidOffset && entry.Offset != 0 && t.currentSegment.BaseOffset() == 0 {
+	if t.lastAppendedOffset.Load() == constant2.InvalidOffset && entry.Offset != 0 && t.currentSegment.BaseOffset() == 0 {
 		// The wal was cleared and we're starting from a non-initial position
 		if err = t.currentSegment.Delete(); err != nil {
 			t.writeErrors.Inc()
@@ -326,7 +327,7 @@ func (t *wal) appendAsync0(entry *proto.LogEntry) error {
 	}
 
 	t.lastAppendedOffset.Store(entry.Offset)
-	t.firstOffset.CompareAndSwap(constant.InvalidOffset, entry.Offset)
+	t.firstOffset.CompareAndSwap(constant2.InvalidOffset, entry.Offset)
 
 	t.appendBytes.Add(len(val))
 	return nil
@@ -442,7 +443,7 @@ func (t *wal) checkNextOffset(nextOffset int64) error {
 	lastAppendedOffset := t.lastAppendedOffset.Load()
 	expectedOffset := lastAppendedOffset + 1
 
-	if lastAppendedOffset != constant.InvalidOffset && nextOffset != expectedOffset {
+	if lastAppendedOffset != constant2.InvalidOffset && nextOffset != expectedOffset {
 		return errors.Wrapf(ErrInvalidNextOffset,
 			"%d can not immediately follow %d", nextOffset, lastAppendedOffset)
 	}
@@ -473,9 +474,9 @@ func (t *wal) Clear() error {
 		return err
 	}
 
-	t.lastAppendedOffset.Store(constant.InvalidOffset)
-	t.lastSyncedOffset.Store(constant.InvalidOffset)
-	t.firstOffset.Store(constant.InvalidOffset)
+	t.lastAppendedOffset.Store(constant2.InvalidOffset)
+	t.lastSyncedOffset.Store(constant2.InvalidOffset)
+	t.firstOffset.Store(constant2.InvalidOffset)
 	return nil
 }
 
@@ -496,9 +497,9 @@ func (t *wal) Delete() error {
 }
 
 func (t *wal) TruncateLog(lastSafeOffset int64) (int64, error) { //nolint:revive
-	if lastSafeOffset == constant.InvalidOffset {
+	if lastSafeOffset == constant2.InvalidOffset {
 		if err := t.Clear(); err != nil {
-			return constant.InvalidOffset, err
+			return constant2.InvalidOffset, err
 		}
 		return t.LastOffset(), nil
 	}
@@ -507,19 +508,19 @@ func (t *wal) TruncateLog(lastSafeOffset int64) (int64, error) { //nolint:revive
 	defer t.Unlock()
 
 	lastIndex := t.lastAppendedOffset.Load()
-	if lastIndex == constant.InvalidOffset {
+	if lastIndex == constant2.InvalidOffset {
 		// The WAL is empty
-		return constant.InvalidOffset, nil
+		return constant2.InvalidOffset, nil
 	}
 
 	if lastSafeOffset >= t.currentSegment.BaseOffset() {
 		// Truncation is only affecting the
 		if err := t.currentSegment.Truncate(lastSafeOffset); err != nil {
-			return constant.InvalidOffset, err
+			return constant2.InvalidOffset, err
 		}
 	} else {
 		if err := t.currentSegment.Delete(); err != nil {
-			return constant.InvalidOffset, err
+			return constant2.InvalidOffset, err
 		}
 
 		// Delete any intermediate segment and truncate to the right position
@@ -527,27 +528,27 @@ func (t *wal) TruncateLog(lastSafeOffset int64) (int64, error) { //nolint:revive
 			segment, err := t.readOnlySegments.PollHighestSegment()
 			switch {
 			case err != nil:
-				return constant.InvalidOffset, err
+				return constant2.InvalidOffset, err
 			case segment == nil:
 				// There are no segments left
 				if err := t.Clear(); err != nil {
-					return constant.InvalidOffset, err
+					return constant2.InvalidOffset, err
 				}
 				return t.LastOffset(), nil
 			case lastSafeOffset >= segment.Get().BaseOffset():
 				// The truncation will happen in the middle of this segment,
 				// and this will also become the new current segment
 				if err = segment.Close(); err != nil {
-					return constant.InvalidOffset, err
+					return constant2.InvalidOffset, err
 				}
 				if t.currentSegment, err = newReadWriteSegment(t.walPath, segment.Get().BaseOffset(),
 					t.segmentSize, segment.Get().LastCrc(), t.commitOffsetProvider); err != nil {
 					err = multierr.Append(err, segment.Close())
-					return constant.InvalidOffset, err
+					return constant2.InvalidOffset, err
 				}
 				if err := t.currentSegment.Truncate(lastSafeOffset); err != nil {
 					err = multierr.Append(err, segment.Close())
-					return constant.InvalidOffset, err
+					return constant2.InvalidOffset, err
 				}
 
 				err = segment.Close()
@@ -556,9 +557,9 @@ func (t *wal) TruncateLog(lastSafeOffset int64) (int64, error) { //nolint:revive
 				// The entire segment can be discarded
 				if err := segment.Get().Delete(); err != nil {
 					err = multierr.Append(err, segment.Close())
-					return constant.InvalidOffset, err
+					return constant2.InvalidOffset, err
 				} else if err := segment.Close(); err != nil {
-					return constant.InvalidOffset, err
+					return constant2.InvalidOffset, err
 				}
 			}
 		}
@@ -605,7 +606,7 @@ func (t *wal) recoverWal() error {
 		if t.lastSyncedOffset.Load() >= 0 {
 			t.firstOffset.Store(t.currentSegment.BaseOffset())
 		} else {
-			t.firstOffset.Store(constant.InvalidOffset)
+			t.firstOffset.Store(constant2.InvalidOffset)
 		}
 	} else {
 		t.firstOffset.Store(firstSegment)

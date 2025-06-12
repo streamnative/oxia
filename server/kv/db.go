@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	constant2 "github.com/streamnative/oxia/server/constant"
 	"go.uber.org/multierr"
 	pb "google.golang.org/protobuf/proto"
 
@@ -419,15 +420,15 @@ func (d *db) readASCIILong(key string) (int64, error) {
 	}
 	gr, err := applyGet(kv, getReq)
 	if err != nil {
-		return constant.InvalidOffset, err
+		return constant2.InvalidOffset, err
 	}
 	if gr.Status == proto.Status_KEY_NOT_FOUND {
-		return constant.InvalidOffset, nil
+		return constant2.InvalidOffset, nil
 	}
 
 	var res int64
 	if _, err = fmt.Sscanf(string(gr.Value), "%d", &res); err != nil {
-		return constant.InvalidOffset, err
+		return constant2.InvalidOffset, err
 	}
 	return res, nil
 }
@@ -473,25 +474,25 @@ func (d *db) ReadTerm() (term int64, options TermOptions, err error) {
 	}
 	gr, err := applyGet(d.kv, getReq)
 	if err != nil {
-		return constant.InvalidTerm, TermOptions{}, err
+		return constant2.InvalidTerm, TermOptions{}, err
 	}
 	if gr.Status == proto.Status_KEY_NOT_FOUND {
-		return constant.InvalidTerm, TermOptions{}, nil
+		return constant2.InvalidTerm, TermOptions{}, nil
 	}
 
 	if _, err = fmt.Sscanf(string(gr.Value), "%d", &term); err != nil {
-		return constant.InvalidTerm, TermOptions{}, err
+		return constant2.InvalidTerm, TermOptions{}, err
 	}
 
 	if gr, err = applyGet(d.kv, &proto.GetRequest{Key: termOptionsKey, IncludeValue: true}); err != nil {
-		return constant.InvalidTerm, TermOptions{}, err
+		return constant2.InvalidTerm, TermOptions{}, err
 	}
 
 	if gr.Status == proto.Status_KEY_NOT_FOUND {
 		options = TermOptions{}
 	} else {
 		if err := json.Unmarshal(gr.Value, &options); err != nil {
-			return constant.InvalidTerm, TermOptions{}, err
+			return constant2.InvalidTerm, TermOptions{}, err
 		}
 	}
 
@@ -521,7 +522,7 @@ func (d *db) applyPut(batch WriteBatch, notifications *notifications, putReq *pr
 	}
 
 	// No version conflict
-	versionId := constant.InvalidOffset
+	versionId := constant2.InvalidOffset
 	if !internal {
 		status, err := updateOperationCallback.OnPut(batch, putReq, se)
 		if err != nil {
