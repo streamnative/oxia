@@ -21,7 +21,7 @@ import (
 	"github.com/streamnative/oxia/common/security"
 )
 
-type NodeConfig struct {
+type ServerConfig struct {
 	PublicServiceAddr   string
 	InternalServiceAddr string
 	PeerTLS             *tls.Config

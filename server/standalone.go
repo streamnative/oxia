@@ -36,7 +36,7 @@ import (
 )
 
 type StandaloneConfig struct {
-	config.NodeConfig
+	config.ServerConfig
 
 	NumShards            uint32
 	NotificationsEnabled bool
@@ -55,7 +55,7 @@ type Standalone struct {
 
 func NewTestConfig(dir string) StandaloneConfig {
 	return StandaloneConfig{
-		NodeConfig: config.NodeConfig{
+		ServerConfig: config.ServerConfig{
 			DataDir:             filepath.Join(dir, "db"),
 			WalDir:              filepath.Join(dir, "wal"),
 			InternalServiceAddr: "localhost:0",
@@ -67,44 +67,44 @@ func NewTestConfig(dir string) StandaloneConfig {
 	}
 }
 
-func NewStandalone(nodeConfig StandaloneConfig) (*Standalone, error) {
+func NewStandalone(serverConfig StandaloneConfig) (*Standalone, error) {
 	slog.Info(
 		"Starting Oxia standalone",
-		slog.Any("config", nodeConfig),
+		slog.Any("config", serverConfig),
 	)
 
-	s := &Standalone{config: nodeConfig}
+	s := &Standalone{config: serverConfig}
 
-	kvOptions := kv.FactoryOptions{DataDir: nodeConfig.DataDir}
+	kvOptions := kv.FactoryOptions{DataDir: serverConfig.DataDir}
 	s.walFactory = wal.NewWalFactory(&wal.FactoryOptions{
-		BaseWalDir:  nodeConfig.WalDir,
-		Retention:   nodeConfig.WalRetentionTime,
+		BaseWalDir:  serverConfig.WalDir,
+		Retention:   serverConfig.WalRetentionTime,
 		SegmentSize: wal.DefaultFactoryOptions.SegmentSize,
-		SyncData:    nodeConfig.WalSyncData,
+		SyncData:    serverConfig.WalSyncData,
 	})
 	var err error
 	if s.kvFactory, err = kv.NewPebbleKVFactory(&kvOptions); err != nil {
 		return nil, err
 	}
 
-	s.shardsDirector = controller.NewShardsDirector(nodeConfig.NodeConfig, s.walFactory, s.kvFactory, newNoOpReplicationRpcProvider())
+	s.shardsDirector = controller.NewShardsDirector(serverConfig.ServerConfig, s.walFactory, s.kvFactory, newNoOpReplicationRpcProvider())
 
-	if err := s.initializeShards(nodeConfig.NumShards); err != nil {
+	if err := s.initializeShards(serverConfig.NumShards); err != nil {
 		return nil, err
 	}
 
-	s.rpc, err = newPublicRpcServer(rpc.Default, nodeConfig.PublicServiceAddr, s.shardsDirector,
-		nil, nodeConfig.ServerTLS, &security.Disabled)
+	s.rpc, err = newPublicRpcServer(rpc.Default, serverConfig.PublicServiceAddr, s.shardsDirector,
+		nil, serverConfig.ServerTLS, &security.Disabled)
 	if err != nil {
 		return nil, err
 	}
 
-	s.shardAssignmentDispatcher = NewStandaloneShardAssignmentDispatcher(nodeConfig.NumShards)
+	s.shardAssignmentDispatcher = NewStandaloneShardAssignmentDispatcher(serverConfig.NumShards)
 
 	s.rpc.assignmentDispatcher = s.shardAssignmentDispatcher
 
-	if nodeConfig.MetricsServiceAddr != "" {
-		s.metrics, err = metric.Start(nodeConfig.MetricsServiceAddr)
+	if serverConfig.MetricsServiceAddr != "" {
+		s.metrics, err = metric.Start(serverConfig.MetricsServiceAddr)
 	}
 	if err != nil {
 		return nil, err

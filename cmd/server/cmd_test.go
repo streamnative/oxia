@@ -28,10 +28,10 @@ import (
 func TestServerCmd(t *testing.T) {
 	for _, test := range []struct {
 		args         []string
-		expectedConf config.NodeConfig
+		expectedConf config.ServerConfig
 		isErr        bool
 	}{
-		{[]string{}, config.NodeConfig{
+		{[]string{}, config.ServerConfig{
 			PublicServiceAddr:          "0.0.0.0:6648",
 			InternalServiceAddr:        "0.0.0.0:6649",
 			MetricsServiceAddr:         "0.0.0.0:8080",

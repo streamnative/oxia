@@ -31,7 +31,7 @@ import (
 )
 
 var (
-	conf = config.NodeConfig{}
+	conf = config.ServerConfig{}
 
 	peerTLS           = security.TLSOption{}
 	serverTLS         = security.TLSOption{}

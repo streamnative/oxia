@@ -38,7 +38,7 @@ func TestSecondaryIndices_List(t *testing.T) {
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := newTestWalFactory(t)
 
-	lc, _ := NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, _ := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
 	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
 		Shard:             shard,
@@ -134,7 +134,7 @@ func TestSecondaryIndices_RangeScan(t *testing.T) {
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := newTestWalFactory(t)
 
-	lc, _ := NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, _ := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
 	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
 		Shard:             shard,
@@ -245,7 +245,7 @@ func TestSecondaryIndices_MultipleKeysForSameIdx(t *testing.T) {
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := newTestWalFactory(t)
 
-	lc, _ := NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, _ := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
 	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
 		Shard:             shard,

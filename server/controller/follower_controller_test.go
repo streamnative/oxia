@@ -61,7 +61,7 @@ func TestFollower(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := newTestWalFactory(t)
 
-	fc, err := NewFollowerController(config.NodeConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(config.ServerConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, fc.Status())
@@ -118,7 +118,7 @@ func TestFollower(t *testing.T) {
 	assert.NoError(t, fc.Close())
 
 	// new term to test if we can continue replicate messages
-	fc, err = NewFollowerController(config.NodeConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
+	fc, err = NewFollowerController(config.ServerConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, fc.Status())
 	_, err = fc.NewTerm(&proto.NewTermRequest{Term: 2})
@@ -193,7 +193,7 @@ func TestReadingUpToCommitOffset(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.FactoryOptions{BaseWalDir: t.TempDir()})
 
-	fc, err := NewFollowerController(config.NodeConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(config.ServerConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	_, err = fc.NewTerm(&proto.NewTermRequest{Term: 1})
@@ -276,7 +276,7 @@ func TestFollower_RestoreCommitOffset(t *testing.T) {
 	assert.NoError(t, db.UpdateTerm(6, kv.TermOptions{}))
 	assert.NoError(t, db.Close())
 
-	fc, err := NewFollowerController(config.NodeConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(config.ServerConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
@@ -297,7 +297,7 @@ func TestFollower_AdvanceCommitOffsetToHead(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.FactoryOptions{BaseWalDir: t.TempDir()})
 
-	fc, _ := NewFollowerController(config.NodeConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
+	fc, _ := NewFollowerController(config.ServerConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
 	_, _ = fc.NewTerm(&proto.NewTermRequest{Term: 1})
 
 	stream := NewMockServerReplicateStream()
@@ -328,7 +328,7 @@ func TestFollower_NewTerm(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.FactoryOptions{BaseWalDir: t.TempDir()})
 
-	fc, err := NewFollowerController(config.NodeConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(config.ServerConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	_, err = fc.NewTerm(&proto.NewTermRequest{Term: 1})
@@ -367,7 +367,7 @@ func TestFollower_DuplicateNewTermInFollowerState(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.FactoryOptions{BaseWalDir: t.TempDir()})
 
-	fc, _ := NewFollowerController(config.NodeConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
+	fc, _ := NewFollowerController(config.ServerConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
 	_, _ = fc.NewTerm(&proto.NewTermRequest{Term: 1})
 
 	stream := NewMockServerReplicateStream()
@@ -418,7 +418,7 @@ func TestFollower_TruncateAfterRestart(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := newTestWalFactory(t)
 
-	fc, err := NewFollowerController(config.NodeConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(config.ServerConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	// Follower needs to be in "Fenced" state to receive a Truncate request
@@ -442,7 +442,7 @@ func TestFollower_TruncateAfterRestart(t *testing.T) {
 	fc.Close()
 
 	// Restart
-	fc, err = NewFollowerController(config.NodeConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
+	fc, err = NewFollowerController(config.ServerConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
@@ -475,7 +475,7 @@ func TestFollower_PersistentTerm(t *testing.T) {
 		BaseWalDir: t.TempDir(),
 	})
 
-	fc, err := NewFollowerController(config.NodeConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(config.ServerConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, fc.Status())
@@ -491,7 +491,7 @@ func TestFollower_PersistentTerm(t *testing.T) {
 	assert.NoError(t, fc.Close())
 
 	// Reopen and verify term
-	fc, err = NewFollowerController(config.NodeConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
+	fc, err = NewFollowerController(config.ServerConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
@@ -507,7 +507,7 @@ func TestFollower_CommitOffsetLastEntry(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.FactoryOptions{BaseWalDir: t.TempDir()})
 
-	fc, err := NewFollowerController(config.NodeConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(config.ServerConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	_, err = fc.NewTerm(&proto.NewTermRequest{Term: 1})
@@ -571,7 +571,7 @@ func TestFollowerController_RejectEntriesWithDifferentTerm(t *testing.T) {
 
 	walFactory := wal.NewWalFactory(&wal.FactoryOptions{BaseWalDir: t.TempDir()})
 
-	fc, err := NewFollowerController(config.NodeConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(config.ServerConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
@@ -604,7 +604,7 @@ func TestFollowerController_RejectEntriesWithDifferentTerm(t *testing.T) {
 	close(stream.requests)
 
 	// A higher term will also be rejected
-	fc, err = NewFollowerController(config.NodeConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
+	fc, err = NewFollowerController(config.ServerConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	stream = NewMockServerReplicateStream()
@@ -625,7 +625,7 @@ func TestFollower_RejectTruncateInvalidTerm(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := newTestWalFactory(t)
 
-	fc, err := NewFollowerController(config.NodeConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(config.ServerConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.Equal(t, proto.ServingStatus_NOT_MEMBER, fc.Status())
@@ -700,7 +700,7 @@ func TestFollower_HandleSnapshot(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := wal.NewWalFactory(&wal.FactoryOptions{BaseWalDir: t.TempDir()})
 
-	fc, err := NewFollowerController(config.NodeConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(config.ServerConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	_, err = fc.NewTerm(&proto.NewTermRequest{Term: 1})
@@ -793,7 +793,7 @@ func TestFollower_HandleSnapshot(t *testing.T) {
 	assert.NoError(t, fc.Close())
 
 	// Re-Open the follower controller
-	fc, err = NewFollowerController(config.NodeConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
+	fc, err = NewFollowerController(config.ServerConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	statusRes, err = fc.(*followerController).GetStatus(&proto.GetStatusRequest{
@@ -816,7 +816,7 @@ func TestFollower_DisconnectLeader(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := newTestWalFactory(t)
 
-	fc, _ := NewFollowerController(config.NodeConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
+	fc, _ := NewFollowerController(config.ServerConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
 	_, _ = fc.NewTerm(&proto.NewTermRequest{Term: 1})
 
 	stream := NewMockServerReplicateStream()
@@ -851,7 +851,7 @@ func TestFollower_DupEntries(t *testing.T) {
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := newTestWalFactory(t)
 
-	fc, _ := NewFollowerController(config.NodeConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
+	fc, _ := NewFollowerController(config.ServerConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
 	_, _ = fc.NewTerm(&proto.NewTermRequest{Term: 1})
 
 	stream := NewMockServerReplicateStream()
@@ -890,7 +890,7 @@ func TestFollowerController_DeleteShard(t *testing.T) {
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := newTestWalFactory(t)
 
-	fc, _ := NewFollowerController(config.NodeConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
+	fc, _ := NewFollowerController(config.ServerConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
 	_, _ = fc.NewTerm(&proto.NewTermRequest{Term: 1})
 
 	stream := NewMockServerReplicateStream()
@@ -923,7 +923,7 @@ func TestFollowerController_DeleteShard_WrongTerm(t *testing.T) {
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := newTestWalFactory(t)
 
-	fc, _ := NewFollowerController(config.NodeConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
+	fc, _ := NewFollowerController(config.ServerConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
 	_, _ = fc.NewTerm(&proto.NewTermRequest{Term: 2})
 
 	_, err := fc.DeleteShard(&proto.DeleteShardRequest{
@@ -942,7 +942,7 @@ func TestFollowerController_Closed(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := newTestWalFactory(t)
 
-	fc, err := NewFollowerController(config.NodeConfig{}, constant.DefaultNamespace, shard, walFactory, kvFactory)
+	fc, err := NewFollowerController(config.ServerConfig{}, constant.DefaultNamespace, shard, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, constant.InvalidTerm, fc.Term())
@@ -979,7 +979,7 @@ func TestFollower_GetStatus(t *testing.T) {
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := newTestWalFactory(t)
 
-	fc, _ := NewFollowerController(config.NodeConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
+	fc, _ := NewFollowerController(config.ServerConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
 	_, _ = fc.NewTerm(&proto.NewTermRequest{Term: 2})
 
 	stream := NewMockServerReplicateStream()
@@ -1029,7 +1029,7 @@ func TestFollower_HandleSnapshotWithWrongTerm(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := newTestWalFactory(t)
 
-	fc, err := NewFollowerController(config.NodeConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
+	fc, err := NewFollowerController(config.ServerConfig{}, constant.DefaultNamespace, shardId, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	_, err = fc.NewTerm(&proto.NewTermRequest{Term: 1})

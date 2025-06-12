@@ -60,7 +60,7 @@ func TestLeaderController_NotInitialized(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := newTestWalFactory(t)
 
-	lc, err := NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, constant.InvalidTerm, lc.Term())
@@ -97,7 +97,7 @@ func TestLeaderController_Closed(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := newTestWalFactory(t)
 
-	lc, err := NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, constant.InvalidTerm, lc.Term())
@@ -133,7 +133,7 @@ func TestLeaderController_BecomeLeader_NoFencing(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := newTestWalFactory(t)
 
-	lc, err := NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, constant.InvalidTerm, lc.Term())
@@ -159,7 +159,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := newTestWalFactory(t)
 
-	lc, err := NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, constant.InvalidTerm, lc.Term())
@@ -259,7 +259,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 
 	rpc := newMockRpcClient()
 
-	lc, err := NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, rpc, walFactory, kvFactory)
+	lc, err := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, rpc, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, constant.InvalidTerm, lc.Term())
@@ -371,7 +371,7 @@ func TestLeaderController_TermPersistent(t *testing.T) {
 		BaseWalDir: t.TempDir(),
 	})
 
-	lc, err := NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, constant.InvalidTerm, lc.Term())
@@ -392,7 +392,7 @@ func TestLeaderController_TermPersistent(t *testing.T) {
 	assert.NoError(t, lc.Close())
 
 	// Re-open lead controller
-	lc, err = NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err = NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 5, lc.Term())
@@ -421,7 +421,7 @@ func TestLeaderController_FenceTerm(t *testing.T) {
 	assert.NoError(t, db.UpdateTerm(5, kv.TermOptions{}))
 	assert.NoError(t, db.Close())
 
-	lc, err := NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 5, lc.Term())
@@ -468,7 +468,7 @@ func TestLeaderController_BecomeLeaderTerm(t *testing.T) {
 	assert.NoError(t, db.UpdateTerm(5, kv.TermOptions{}))
 	assert.NoError(t, db.Close())
 
-	lc, err := NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 5, lc.Term())
@@ -515,7 +515,7 @@ func TestLeaderController_AddFollower(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := newTestWalFactory(t)
 
-	lc, err := NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	_, err = lc.NewTerm(&proto.NewTermRequest{
@@ -578,7 +578,7 @@ func TestLeaderController_AddFollowerRepeated(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := newTestWalFactory(t)
 
-	lc, err := NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	_, err = lc.NewTerm(&proto.NewTermRequest{
@@ -666,7 +666,7 @@ func TestLeaderController_AddFollower_Truncate(t *testing.T) {
 
 	rpcClient := newMockRpcClient()
 
-	lc, err := NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, rpcClient, walFactory, kvFactory)
+	lc, err := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, rpcClient, walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	_, err = lc.NewTerm(&proto.NewTermRequest{
@@ -746,7 +746,7 @@ func TestLeaderController_AddFollowerCheckTerm(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := newTestWalFactory(t)
 
-	lc, err := NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	_, err = lc.NewTerm(&proto.NewTermRequest{
@@ -822,7 +822,7 @@ func TestLeaderController_EntryVisibilityAfterBecomingLeader(t *testing.T) {
 
 	rpc := newMockRpcClient()
 
-	lc, _ := NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, rpc, walFactory, kvFactory)
+	lc, _ := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, rpc, walFactory, kvFactory)
 
 	_, _ = lc.NewTerm(&proto.NewTermRequest{
 		Shard: shard,
@@ -873,7 +873,7 @@ func TestLeaderController_Notifications(t *testing.T) {
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := newTestWalFactory(t)
 
-	lc, _ := NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, _ := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
 	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
 		Shard:             shard,
@@ -939,7 +939,7 @@ func TestLeaderController_NotificationsCloseLeader(t *testing.T) {
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := newTestWalFactory(t)
 
-	lc, _ := NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, _ := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
 	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
 		Shard:             shard,
@@ -988,7 +988,7 @@ func TestLeaderController_NotificationsWhenNotReady(t *testing.T) {
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := newTestWalFactory(t)
 
-	lc, _ := NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, _ := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1010,7 +1010,7 @@ func TestLeaderController_List(t *testing.T) {
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := newTestWalFactory(t)
 
-	lc, _ := NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, _ := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
 	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
 		Shard:             shard,
@@ -1053,7 +1053,7 @@ func TestLeaderController_RangeScan(t *testing.T) {
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := newTestWalFactory(t)
 
-	lc, _ := NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, _ := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
 	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
 		Shard:             shard,
@@ -1108,7 +1108,7 @@ func TestLeaderController_DeleteShard(t *testing.T) {
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := newTestWalFactory(t)
 
-	lc, _ := NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, _ := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
 	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
 		Shard:             shard,
@@ -1132,7 +1132,7 @@ func TestLeaderController_DeleteShard(t *testing.T) {
 
 	assert.NoError(t, lc.Close())
 
-	lc, _ = NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, _ = NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 2})
 	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
 		Shard:             shard,
@@ -1163,7 +1163,7 @@ func TestLeaderController_DeleteShard_WrongTerm(t *testing.T) {
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := newTestWalFactory(t)
 
-	lc, _ := NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, _ := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
 	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
 		Shard:             shard,
@@ -1195,7 +1195,7 @@ func TestLeaderController_GetStatus(t *testing.T) {
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := newTestWalFactory(t)
 
-	lc, _ := NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, _ := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 2})
 	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
 		Shard:             shard,
@@ -1239,7 +1239,7 @@ func TestLeaderController_Write(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := newTestWalFactory(t)
 
-	lc, err := NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	_, err = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
@@ -1330,7 +1330,7 @@ func TestLeaderController_NotificationsDisabled(t *testing.T) {
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := newTestWalFactory(t)
 
-	lc, _ := NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, _ := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1, Options: &proto.NewTermOptions{EnableNotifications: false}})
 	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
 		Shard:             shard,
@@ -1358,7 +1358,7 @@ func TestLeaderController_DuplicateNewTerm_WithSession(t *testing.T) {
 	assert.NoError(t, err)
 	walFactory := newTestWalFactory(t)
 
-	lc, err := NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, err := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	assert.NoError(t, err)
 
 	_, err = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
@@ -1435,7 +1435,7 @@ func TestLeaderController_GetSequenceUpdates(t *testing.T) {
 	kvFactory, _ := kv.NewPebbleKVFactory(testKVOptions)
 	walFactory := newTestWalFactory(t)
 
-	lc, _ := NewLeaderController(config.NodeConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
+	lc, _ := NewLeaderController(config.ServerConfig{}, constant.DefaultNamespace, shard, newMockRpcClient(), walFactory, kvFactory)
 	_, _ = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
 	_, _ = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
 		Shard:             shard,
