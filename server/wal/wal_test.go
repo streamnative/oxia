@@ -21,8 +21,9 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	constant2 "github.com/streamnative/oxia/server/constant"
 	"github.com/stretchr/testify/assert"
+
+	constant2 "github.com/streamnative/oxia/server/constant"
 
 	"github.com/streamnative/oxia/common/constant"
 

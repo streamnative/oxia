@@ -21,10 +21,11 @@ import (
 	"testing"
 	"time"
 
-	constant2 "github.com/streamnative/oxia/server/constant"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
+
+	constant2 "github.com/streamnative/oxia/server/constant"
 
 	"github.com/streamnative/oxia/server/config"
 

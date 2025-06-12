@@ -24,10 +24,11 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	constant2 "github.com/streamnative/oxia/server/constant"
 	"go.uber.org/multierr"
 	"golang.org/x/exp/slices"
 	pb "google.golang.org/protobuf/proto"
+
+	constant2 "github.com/streamnative/oxia/server/constant"
 
 	"github.com/streamnative/oxia/common/concurrent"
 	"github.com/streamnative/oxia/common/constant"

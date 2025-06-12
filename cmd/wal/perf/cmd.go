@@ -23,6 +23,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/cobra"
+
 	"github.com/streamnative/oxia/server/constant"
 
 	"github.com/streamnative/oxia/cmd/wal/common"
