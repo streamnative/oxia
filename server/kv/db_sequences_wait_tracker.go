@@ -60,10 +60,9 @@ func (sw *sequenceWaiter) Ch() <-chan string {
 	return sw.och.Ch()
 }
 
-func (sw *sequenceWaiter) closeWithoutLock() error {
+func (sw *sequenceWaiter) closeWithoutLock() {
 	sw.tracker.removeWithoutLock(sw.key, sw.id)
 	close(sw.och.Ch())
-	return nil
 }
 
 func (sw *sequenceWaiter) Close() error {
@@ -129,7 +128,7 @@ func (swt *sequenceWaiterTracker) Close() error {
 
 	for _, m := range swt.waiters {
 		for _, w := range m {
-			_ = w.closeWithoutLock()
+			w.closeWithoutLock()
 		}
 
 		clear(m)
