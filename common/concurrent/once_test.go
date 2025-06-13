@@ -104,9 +104,12 @@ func Test_Once_Complete_Error(t *testing.T) {
 
 func Test_Once_Stream_CompleteConcurrent(t *testing.T) {
 	callbackCounter := atomic.Int32{}
-	onceCallback := NewStreamOnce[any](&streamCallbackCompleteOnly{onComplete: func(err error) {
+	onceCallback := NewStreamOnce[any](func(a any) error {
+		return nil
+	}, func(err error) {
 		callbackCounter.Add(1)
-	}})
+	},
+	)
 
 	group := sync.WaitGroup{}
 	for i := 0; i < 5; i++ {

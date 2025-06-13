@@ -201,24 +201,6 @@ func (m *mockServerSendSnapshotStream) Recv() (*proto.SnapshotChunk, error) {
 	return <-m.chunks, nil
 }
 
-type mockGetNotificationsServer struct {
-	mockBase
-	ch chan *proto.NotificationBatch
-}
-
-func newMockGetNotificationsServer(ctx context.Context) *mockGetNotificationsServer {
-	r := &mockGetNotificationsServer{
-		ch: make(chan *proto.NotificationBatch, 100),
-	}
-	r.ctx = ctx
-	return r
-}
-
-func (m *mockGetNotificationsServer) Send(batch *proto.NotificationBatch) error {
-	m.ch <- batch
-	return nil
-}
-
 func newMockSendSnapshotClientStream(ctx context.Context) *mockSendSnapshotClientStream {
 	r := &mockSendSnapshotClientStream{
 		requests: make(chan *proto.SnapshotChunk, 100),

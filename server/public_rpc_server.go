@@ -334,19 +334,35 @@ func (s *publicRpcServer) GetNotifications(req *proto.NotificationsRequest, stre
 		slog.Any("req", req),
 	)
 
-	lc, err := s.getLeader(req.Shard)
-	if err != nil {
+	var lc LeaderController
+	var err error
+	if lc, err = s.getLeader(req.Shard); err != nil {
 		return err
 	}
 
-	if err = lc.GetNotifications(req, stream); err != nil && !errors.Is(err, context.Canceled) {
-		s.log.Warn(
-			"Failed to handle notifications request",
-			slog.Any("error", err),
-		)
-	}
+	ctx := stream.Context()
 
-	return err
+	finish := make(chan error, 1)
+	lc.GetNotifications(ctx, req, concurrent.NewStreamOnce(func(notificationBatch *proto.NotificationBatch) error {
+		return stream.Send(notificationBatch)
+	}, func(err error) {
+		channel.PushNoBlock(finish, err)
+	}))
+
+	for {
+		select {
+		case err := <-finish:
+			if err != nil {
+				s.log.Warn(
+					"Failed to handle notifications request",
+					slog.Any("error", err),
+				)
+			}
+			return err
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 }
 
 func (s *publicRpcServer) Port() int {

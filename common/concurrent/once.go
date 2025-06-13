@@ -65,24 +65,26 @@ func NewOnce[T any](onComplete func(t T), onError func(err error)) Callback[T] {
 var _ StreamCallback[any] = &Stream[any]{}
 
 type Stream[T any] struct {
-	callback  StreamCallback[T]
-	completed atomic.Bool
+	onNext     func(t T) error
+	onComplete func(err error)
+	completed  atomic.Bool
 }
 
 func (s *Stream[T]) OnNext(element T) error {
-	return s.callback.OnNext(element)
+	return s.onNext(element)
 }
 
 func (s *Stream[T]) OnComplete(err error) {
 	if !s.completed.CompareAndSwap(false, true) {
 		return
 	}
-	s.callback.OnComplete(err)
+	s.onComplete(err)
 }
 
-func NewStreamOnce[T any](callback StreamCallback[T]) StreamCallback[T] {
+func NewStreamOnce[T any](onNext func(T) error, onComplete func(err error)) StreamCallback[T] {
 	return &Stream[T]{
-		callback:  callback,
-		completed: atomic.Bool{},
+		onNext:     onNext,
+		onComplete: onComplete,
+		completed:  atomic.Bool{},
 	}
 }

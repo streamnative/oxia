@@ -881,15 +881,9 @@ func TestLeaderController_Notifications(t *testing.T) {
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
-	stream := newMockGetNotificationsServer(ctx)
 
-	closeCh := make(chan any)
-
-	go func() {
-		err := lc.GetNotifications(&proto.NotificationsRequest{Shard: shard, StartOffsetExclusive: &wal.InvalidOffset}, stream)
-		assert.ErrorIs(t, err, context.Canceled)
-		close(closeCh)
-	}()
+	adaptor := concurrent.NewStreamCallbackAdaptor[*proto.NotificationBatch]()
+	lc.GetNotifications(ctx, &proto.NotificationsRequest{Shard: shard, StartOffsetExclusive: &wal.InvalidOffset}, adaptor)
 
 	// WriteBlock entry
 	_, _ = lc.WriteBlock(context.Background(), &proto.WriteRequest{
@@ -899,7 +893,7 @@ func TestLeaderController_Notifications(t *testing.T) {
 			Value: []byte("value-a")}},
 	})
 
-	nb1 := <-stream.ch
+	nb1 := <-adaptor.Ch()
 	assert.EqualValues(t, 0, nb1.Offset)
 	assert.Equal(t, 1, len(nb1.Notifications))
 	n1 := nb1.Notifications["a"]
@@ -907,24 +901,15 @@ func TestLeaderController_Notifications(t *testing.T) {
 	assert.EqualValues(t, 0, *n1.VersionId)
 
 	// The handler is still running waiting for more notifications
-	select {
-	case <-closeCh:
-		assert.Fail(t, "Shouldn't have been terminated")
-
-	case <-time.After(1 * time.Second):
-		// Expected to timeout
-	}
+	time.Sleep(1 * time.Second)
+	assert.False(t, adaptor.IsCompleted())
 
 	// Cancelling the stream context should close the `GetNotification()` handler
 	cancel()
 
-	select {
-	case <-closeCh:
-		// Expected to be already closed
-
-	case <-time.After(1 * time.Second):
-		assert.Fail(t, "Shouldn't have timed out")
-	}
+	assert.Eventually(t, func() bool {
+		return adaptor.IsCompleted()
+	}, 10*time.Second, 100*time.Millisecond)
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())
@@ -946,36 +931,23 @@ func TestLeaderController_NotificationsCloseLeader(t *testing.T) {
 		FollowerMaps:      nil,
 	})
 
-	stream := newMockGetNotificationsServer(context.Background())
-
-	closeCh := make(chan any)
-
-	go func() {
-		err := lc.GetNotifications(&proto.NotificationsRequest{Shard: shard, StartOffsetExclusive: &wal.InvalidOffset}, stream)
-		assert.ErrorIs(t, err, context.Canceled)
-		close(closeCh)
-	}()
+	ctx, cancel := context.WithCancel(context.Background())
+	adaptor := concurrent.NewStreamCallbackAdaptor[*proto.NotificationBatch]()
+	lc.GetNotifications(ctx, &proto.NotificationsRequest{Shard: shard, StartOffsetExclusive: &wal.InvalidOffset}, adaptor)
 
 	// The handler is still running waiting for more notifications
-	select {
-	case <-closeCh:
-		assert.Fail(t, "Shouldn't have been terminated")
+	time.Sleep(1 * time.Second)
 
-	case <-time.After(1 * time.Second):
-		// Expected to timeout
-	}
+	assert.False(t, adaptor.IsCompleted())
 
 	// Closing the leader should close the `GetNotification()` handler
 	assert.NoError(t, lc.Close())
 
-	select {
-	case <-closeCh:
-		// Expected to be already closed
+	time.Sleep(1 * time.Second)
 
-	case <-time.After(1 * time.Second):
-		assert.Fail(t, "Shouldn't have timed out")
-	}
+	assert.True(t, adaptor.IsCompleted())
 
+	cancel()
 	assert.NoError(t, kvFactory.Close())
 	assert.NoError(t, walFactory.Close())
 }
@@ -991,11 +963,10 @@ func TestLeaderController_NotificationsWhenNotReady(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	stream := newMockGetNotificationsServer(ctx)
 
-	// Get notification should fail if the leader controller is not fully initialized
-	err := lc.GetNotifications(&proto.NotificationsRequest{Shard: shard}, stream)
-	assert.ErrorIs(t, err, context.Canceled)
+	adaptor := concurrent.NewStreamCallbackAdaptor[*proto.NotificationBatch]()
+	lc.GetNotifications(ctx, &proto.NotificationsRequest{Shard: shard, StartOffsetExclusive: &wal.InvalidOffset}, adaptor)
+	assert.Equal(t, status.Code(adaptor.Error()), constant.CodeInvalidStatus)
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())
@@ -1339,10 +1310,9 @@ func TestLeaderController_NotificationsDisabled(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	stream := newMockGetNotificationsServer(ctx)
-
-	err := lc.GetNotifications(&proto.NotificationsRequest{Shard: shard}, stream)
-	assert.ErrorIs(t, err, constant.ErrNotificationsNotEnabled)
+	adaptor := concurrent.NewStreamCallbackAdaptor[*proto.NotificationBatch]()
+	lc.GetNotifications(ctx, &proto.NotificationsRequest{Shard: shard, StartOffsetExclusive: &wal.InvalidOffset}, adaptor)
+	assert.ErrorIs(t, adaptor.Error(), constant.ErrNotificationsNotEnabled)
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())
