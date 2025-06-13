@@ -18,6 +18,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"log/slog"
 
 	"github.com/pkg/errors"
@@ -118,6 +119,33 @@ func (s *publicRpcServer) Write(ctx context.Context, write *proto.WriteRequest) 
 	return wr, err
 }
 
+func procesWriteStream(streamCtx context.Context, finished chan<- error, stream proto.OxiaClient_WriteStreamServer, lc LeaderController) {
+	for {
+		req, err := stream.Recv()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				channel.PushNoBlock(finished, nil)
+			} else {
+				channel.PushNoBlock(finished, err)
+			}
+			return
+		}
+		if req == nil {
+			channel.PushNoBlock(finished, errors.New("stream closed"))
+			return
+		}
+
+		lc.Write(streamCtx, req, concurrent.NewOnce(
+			func(t *proto.WriteResponse) {
+				if err := stream.Send(t); err != nil {
+					channel.PushNoBlock(finished, err)
+				}
+			}, func(err error) {
+				channel.PushNoBlock(finished, err)
+			}))
+	}
+}
+
 func (s *publicRpcServer) WriteStream(stream proto.OxiaClient_WriteStreamServer) error {
 	// Add entries receives an incoming stream of request, the shard_id needs to be encoded
 	// as a property in the metadata
@@ -157,26 +185,7 @@ func (s *publicRpcServer) WriteStream(stream proto.OxiaClient_WriteStreamServer)
 			"shard":     fmt.Sprintf("%d", lc.ShardID()),
 		},
 		func() {
-			for {
-				var req *proto.WriteRequest
-				if req, err = stream.Recv(); err != nil {
-					channel.PushNoBlock(finished, err)
-					return
-				} else if req == nil {
-					channel.PushNoBlock(finished, errors.New("stream closed"))
-					return
-				}
-
-				lc.Write(streamCtx, req, concurrent.NewOnce[*proto.WriteResponse](
-					func(t *proto.WriteResponse) {
-						if err := stream.Send(t); err != nil {
-							channel.PushNoBlock(finished, err)
-							return
-						}
-					}, func(err error) {
-						channel.PushNoBlock(finished, err)
-					}))
-			}
+			procesWriteStream(streamCtx, finished, stream, lc)
 		},
 	)
 
