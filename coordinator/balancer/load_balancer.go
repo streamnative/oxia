@@ -12,21 +12,40 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package ensemble
+package balancer
 
 import (
+	"io"
+	"time"
+
 	"github.com/emirpasic/gods/sets/linkedhashset"
+	"golang.org/x/net/context"
+
+	"github.com/streamnative/oxia/coordinator/selectors"
 
 	"github.com/streamnative/oxia/coordinator/model"
-	p "github.com/streamnative/oxia/coordinator/policies"
 )
 
-type Context struct {
-	Candidates         *linkedhashset.Set
-	CandidatesMetadata map[string]model.ServerMetadata
-	Policies           *p.Policies
-	Status             *model.ClusterStatus
-	Replicas           int
+type Options struct {
+	context.Context
 
-	LoadRatioSupplier func() *model.Ratio
+	ScheduleInterval time.Duration
+	QuarantineTime   time.Duration
+
+	CandidatesSupplier        func() *linkedhashset.Set
+	CandidateMetadataSupplier func() map[string]model.ServerMetadata
+	NamespaceConfigSupplier   func(namespace string) *model.NamespaceConfig
+	StatusSupplier            func() *model.ClusterStatus
+}
+
+type LoadBalancer interface {
+	io.Closer
+
+	Trigger()
+
+	Action() <-chan Action
+
+	IsBalanced() bool
+
+	LoadRatioAlgorithm() selectors.LoadRatioAlgorithm
 }

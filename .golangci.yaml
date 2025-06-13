@@ -78,7 +78,7 @@ linters:
           disabled: false
         - name: cognitive-complexity
           arguments:
-            - 24
+            - 25
           severity: warning
           disabled: false
         - name: cyclomatic

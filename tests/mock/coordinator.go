@@ -12,21 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package ensemble
+package mock
 
 import (
-	"github.com/emirpasic/gods/sets/linkedhashset"
+	"testing"
 
+	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/common/rpc"
+	"github.com/streamnative/oxia/coordinator/impl"
 	"github.com/streamnative/oxia/coordinator/model"
-	p "github.com/streamnative/oxia/coordinator/policies"
 )
 
-type Context struct {
-	Candidates         *linkedhashset.Set
-	CandidatesMetadata map[string]model.ServerMetadata
-	Policies           *p.Policies
-	Status             *model.ClusterStatus
-	Replicas           int
-
-	LoadRatioSupplier func() *model.Ratio
+func NewCoordinator(t *testing.T, config *model.ClusterConfig, clusterConfigNotificationCh chan any) impl.Coordinator {
+	t.Helper()
+	metadataProvider := impl.NewMetadataProviderMemory()
+	clientPool := rpc.NewClientPool(nil, nil)
+	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return *config, nil }, clusterConfigNotificationCh, impl.NewRpcProvider(clientPool))
+	assert.NoError(t, err)
+	return coordinator
 }

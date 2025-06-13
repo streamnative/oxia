@@ -426,11 +426,21 @@ type sCoordinatorEvents struct {
 	metadata model.ShardMetadata
 }
 
+var _ Coordinator = &mockCoordinator{}
+
 type mockCoordinator struct {
 	sync.Mutex
 	err                      error
 	initiatedLeaderElections chan sCoordinatorEvents
 	electedLeaders           chan sCoordinatorEvents
+}
+
+func (m *mockCoordinator) TriggerBalance() {
+	panic("implement me")
+}
+
+func (m *mockCoordinator) IsBalanced() bool {
+	panic("implement me")
 }
 
 func newMockCoordinator() Coordinator {
