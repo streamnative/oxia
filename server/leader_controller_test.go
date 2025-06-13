@@ -1423,22 +1423,14 @@ func TestLeaderController_GetSequenceUpdates(t *testing.T) {
 	assert.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	stream := newMockSequenceUpdatesServerStream(ctx)
+	waiter, err := lc.GetSequenceUpdates(ctx, &proto.GetSequenceUpdatesRequest{
+		Shard: shard,
+		Key:   "a",
+	})
+	assert.NoError(t, err)
 
-	doneCh := make(chan any)
-
-	go func() {
-		err := lc.GetSequenceUpdates(&proto.GetSequenceUpdatesRequest{
-			Shard: shard,
-			Key:   "a",
-		}, stream)
-		assert.ErrorIs(t, err, context.Canceled)
-
-		close(doneCh)
-	}()
-
-	u1 := <-stream.updates
-	assert.Equal(t, fmt.Sprintf("a-%020d", 6), u1.HighestSequenceKey)
+	u1 := <-waiter.Ch()
+	assert.Equal(t, fmt.Sprintf("a-%020d", 6), u1)
 
 	_, err = lc.WriteBlock(context.Background(), &proto.WriteRequest{
 		Shard: &shard,
@@ -1448,15 +1440,14 @@ func TestLeaderController_GetSequenceUpdates(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	u2 := <-stream.updates
-	assert.Equal(t, fmt.Sprintf("a-%020d", 11), u2.HighestSequenceKey)
+	u2 := <-waiter.Ch()
+	assert.Equal(t, fmt.Sprintf("a-%020d", 11), u2)
 
-	assert.Empty(t, stream.updates)
+	assert.Empty(t, waiter.Ch())
 
 	// When the context is canceled the method should return
 	cancel()
-
-	<-doneCh
+	assert.NoError(t, waiter.Close())
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())
