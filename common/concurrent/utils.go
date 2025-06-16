@@ -16,33 +16,19 @@ package concurrent
 
 import "github.com/streamnative/oxia/common/entity"
 
-type streamCallbackChannelAdaptor[T any] struct {
-	Ch chan *entity.TWithError[T]
-}
-
-func (c *streamCallbackChannelAdaptor[T]) OnNext(t T) error {
-	c.Ch <- &entity.TWithError[T]{
-		T:   t,
-		Err: nil,
-	}
-	return nil
-}
-
-func (c *streamCallbackChannelAdaptor[T]) OnComplete(err error) {
-	if err != nil {
-		c.Ch <- &entity.TWithError[T]{
-			Err: err,
-		}
-	}
-	close(c.Ch)
-}
-
 func ReadFromStreamCallback[T any](ch chan *entity.TWithError[T]) StreamCallback[T] {
-	adaptor := &streamCallbackChannelAdaptor[T]{Ch: ch}
-	return NewStreamOnce(adaptor)
+	return NewStreamOnce(func(t T) error {
+		ch <- &entity.TWithError[T]{
+			T:   t,
+			Err: nil,
+		}
+		return nil
+	}, func(err error) {
+		if err != nil {
+			ch <- &entity.TWithError[T]{
+				Err: err,
+			}
+		}
+		close(ch)
+	})
 }
-
-type streamCallbackCompleteOnly struct{ onComplete func(err error) }
-
-func (*streamCallbackCompleteOnly) OnNext(any) error       { return nil }
-func (c *streamCallbackCompleteOnly) OnComplete(err error) { c.onComplete(err) }
