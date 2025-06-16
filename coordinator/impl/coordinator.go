@@ -25,8 +25,13 @@ import (
 	"github.com/emirpasic/gods/sets/linkedhashset"
 	"github.com/pkg/errors"
 
-	"github.com/streamnative/oxia/common/concurrent"
+	"github.com/streamnative/oxia/coordinator/utils"
+
 	"github.com/streamnative/oxia/common/process"
+
+	"github.com/streamnative/oxia/coordinator/balancer"
+
+	"github.com/streamnative/oxia/common/concurrent"
 
 	"go.uber.org/multierr"
 	pb "google.golang.org/protobuf/proto"
@@ -65,19 +70,27 @@ type Coordinator interface {
 
 	// FindServerByIdentifier searches for a server in the cluster by its identifier and returns it if found.
 	FindServerByIdentifier(identifier string) (*model.Server, bool)
+
+	TriggerBalance()
+
+	IsBalanced() bool
 }
 
 type coordinator struct {
-	sync.Mutex
+	sync.RWMutex
 	assignmentsChanged concurrent.ConditionContext
-	ensembleSelector   selectors.Selector[*ensemble.Context, []string]
+
+	loadBalancer     balancer.LoadBalancer
+	ensembleSelector selectors.Selector[*ensemble.Context, []string]
 
 	MetadataProvider
 	clusterConfigProvider func() (model.ClusterConfig, error)
 	model.ClusterConfig
-	serverIndexesOnce sync.Once
-	serverIDs         *linkedhashset.Set
-	serverIDIndex     map[string]*model.Server
+
+	serverIndexesOnce     sync.Once
+	serverIDs             *linkedhashset.Set
+	serverIDIndex         map[string]*model.Server
+	drainingServerIDIndex map[string]*model.Server
 
 	clusterConfigChangeCh chan any
 
@@ -135,6 +148,30 @@ func NewCoordinator(metadataProvider MetadataProvider,
 		c.nodeControllers[sa.GetIdentifier()] = NewNodeController(sa, c, c, c.rpc)
 	}
 
+	c.loadBalancer = balancer.NewLoadBalancer(balancer.Options{
+		Context: c.ctx,
+		StatusSupplier: func() *model.ClusterStatus {
+			c.RLock()
+			defer c.RUnlock()
+			return c.clusterStatus
+		},
+		CandidateMetadataSupplier: func() map[string]model.ServerMetadata {
+			c.RLock()
+			defer c.RUnlock()
+			return c.ServerMetadata
+		},
+		CandidatesSupplier: func() *linkedhashset.Set {
+			c.RLock()
+			defer c.RUnlock()
+			return c.ServerIDs()
+		},
+		NamespaceConfigSupplier: func(namespace string) *model.NamespaceConfig {
+			c.RLock()
+			defer c.RUnlock()
+			return GetNamespaceConfig(c.Namespaces, namespace)
+		},
+	})
+
 	if c.clusterStatus == nil {
 		// Before initializing the cluster, it's better to make sure we
 		// have all the nodes available, otherwise the coordinator might be
@@ -153,15 +190,19 @@ func NewCoordinator(metadataProvider MetadataProvider,
 
 	c.initialShardController(&initialClusterConf)
 
-	go process.DoWithLabels(
-		c.ctx,
-		map[string]string{
-			"oxia": "coordinator-wait-for-events",
-		},
-		c.waitForExternalEvents,
-	)
+	go process.DoWithLabels(c.ctx, map[string]string{
+		"component": "coordinator-action-worker",
+	}, c.startBackgroundActionWorker)
+
+	go process.DoWithLabels(c.ctx, map[string]string{
+		"oxia": "coordinator-wait-for-events",
+	}, c.waitForExternalEvents)
 
 	return c, nil
+}
+
+func (c *coordinator) IsBalanced() bool {
+	return c.loadBalancer.IsBalanced()
 }
 
 func (c *coordinator) ServerIDs() *linkedhashset.Set {
@@ -169,21 +210,53 @@ func (c *coordinator) ServerIDs() *linkedhashset.Set {
 	return c.serverIDs
 }
 
+func (c *coordinator) DrainingServerIDIndex() map[string]*model.Server {
+	c.maybeLoadServerIndex()
+	return c.drainingServerIDIndex
+}
+
 func (c *coordinator) ServerIDIndex() map[string]*model.Server {
 	c.maybeLoadServerIndex()
 	return c.serverIDIndex
 }
 
+func (c *coordinator) TriggerBalance() {
+	c.loadBalancer.Trigger()
+}
+
+//nolint:revive
 func (c *coordinator) maybeLoadServerIndex() {
 	c.serverIndexesOnce.Do(func() {
 		ids := linkedhashset.New()
 		idIndex := make(map[string]*model.Server)
+		drainingIndex := make(map[string]*model.Server)
+
 		for idx := range c.Servers {
 			server := &c.Servers[idx]
 			identifier := server.GetIdentifier()
 			ids.Add(identifier)
 			idIndex[identifier] = server
 		}
+
+		if c.clusterStatus != nil {
+			// todo: improve the index here
+			for _, namespace := range c.clusterStatus.Namespaces {
+				for _, shard := range namespace.Shards {
+					for idx, sv := range shard.Ensemble {
+						if _, exist := idIndex[sv.GetIdentifier()]; !exist {
+							drainingIndex[sv.GetIdentifier()] = &shard.Ensemble[idx]
+						}
+					}
+					for idx, sv := range shard.RemovedNodes {
+						if _, exist := idIndex[sv.GetIdentifier()]; !exist {
+							drainingIndex[sv.GetIdentifier()] = &shard.RemovedNodes[idx]
+						}
+					}
+				}
+			}
+		}
+
+		c.drainingServerIDIndex = drainingIndex
 		c.serverIDIndex = idIndex
 		c.serverIDs = ids
 	})
@@ -242,6 +315,10 @@ func (c *coordinator) selectNewEnsemble(ns *model.NamespaceConfig, editingStatus
 		Policies:           ns.Policies,
 		Status:             editingStatus,
 		Replicas:           int(ns.ReplicationFactor),
+		LoadRatioSupplier: func() *model.Ratio {
+			groupedStatus := utils.GroupingShardsNodeByStatus(c.ServerIDs(), editingStatus)
+			return c.loadBalancer.LoadRatioAlgorithm()(&model.RatioParams{NodeShardsInfos: groupedStatus})
+		},
 	}
 	var ensembleIDs []string
 	var err error
@@ -463,6 +540,55 @@ func (c *coordinator) ClusterStatus() model.ClusterStatus {
 	return *c.clusterStatus.Clone()
 }
 
+func (c *coordinator) startBackgroundActionWorker() {
+	for {
+		select {
+		case action := <-c.loadBalancer.Action():
+			switch action.Type() { //nolint:revive,gocritic
+			case balancer.SwapNode:
+				c.handleActionSwap(action)
+			}
+		case <-c.ctx.Done():
+			return
+		}
+	}
+}
+
+func (c *coordinator) handleActionSwap(action balancer.Action) {
+	var ac *balancer.SwapNodeAction
+	var ok bool
+	if ac, ok = action.(*balancer.SwapNodeAction); !ok {
+		panic("unexpected action type")
+	}
+	defer ac.Done()
+	c.log.Info("Applying swap action", slog.Any("swap-action", ac))
+
+	c.Lock()
+	sc, ok := c.shardControllers[ac.Shard]
+	c.Unlock()
+	if !ok {
+		c.log.Warn("Shard controller not found", slog.Int64("shard", ac.Shard))
+		return
+	}
+	index := c.ServerIDIndex()
+	drainingIndex := c.DrainingServerIDIndex()
+	var fromServer *model.Server
+	var exist bool
+	if fromServer, exist = index[ac.From]; !exist {
+		fromServer = drainingIndex[ac.From]
+	}
+	toServer := index[ac.To]
+
+	if fromServer == nil || toServer == nil {
+		c.log.Warn("server not found for swap, skipped.", slog.String("from", ac.From), slog.String("to", ac.To))
+		return
+	}
+	// todo: use pointer here
+	if err := sc.SwapNode(*fromServer, *toServer); err != nil {
+		c.log.Warn("Failed to swap node", slog.Any("error", err), slog.Any("swap-action", ac))
+	}
+}
+
 func (c *coordinator) waitForExternalEvents() {
 	for {
 		select {
@@ -472,18 +598,9 @@ func (c *coordinator) waitForExternalEvents() {
 		case <-c.clusterConfigChangeCh:
 			c.log.Info("Received cluster config change event")
 			if err := c.handleClusterConfigUpdated(); err != nil {
-				c.log.Warn(
-					"Failed to update cluster config",
-					slog.Any("error", err),
-				)
+				c.log.Warn("Failed to update cluster config", slog.Any("error", err))
 			}
-
-			if err := c.rebalanceCluster(); err != nil {
-				c.log.Warn(
-					"Failed to rebalance cluster",
-					slog.Any("error", err),
-				)
-			}
+			c.loadBalancer.Trigger()
 		}
 	}
 }
@@ -496,86 +613,38 @@ func (c *coordinator) handleClusterConfigUpdated() error {
 	if err != nil {
 		return errors.Wrap(err, "failed to read cluster configuration")
 	}
-
 	if reflect.DeepEqual(newClusterConfig, c.ClusterConfig) {
 		c.log.Info("No cluster config changes detected")
 		return nil
 	}
-
 	c.log.Info(
 		"Detected change in cluster config",
 		slog.Any("clusterConfig", c.ClusterConfig),
 		slog.Any("newClusterConfig", newClusterConfig),
 		slog.Any("metadataVersion", c.metadataVersion),
 	)
-
 	c.ClusterConfig = newClusterConfig
 	c.serverIndexesOnce = sync.Once{}
 	c.checkClusterNodeChanges()
-
 	for _, sc := range c.shardControllers {
 		sc.SyncServerAddress()
 	}
-
 	clusterStatus, shardsToAdd, shardsToDelete := applyClusterChanges(&newClusterConfig, c.clusterStatus, c.selectNewEnsemble)
-
 	for shard, namespace := range shardsToAdd {
 		shardMetadata := clusterStatus.Namespaces[namespace].Shards[shard]
-
 		namespaceConfig := GetNamespaceConfig(c.Namespaces, namespace)
 		c.shardControllers[shard] = NewShardController(namespace, shard, namespaceConfig, shardMetadata, c.rpc, c)
-		slog.Info(
-			"Added new shard",
-			slog.Int64("shard", shard),
-			slog.String("namespace", namespace),
-			slog.Any("shard-metadata", shardMetadata),
-		)
+		slog.Info("Added new shard", slog.Int64("shard", shard),
+			slog.String("namespace", namespace), slog.Any("shard-metadata", shardMetadata))
 	}
-
 	for _, shard := range shardsToDelete {
 		s, ok := c.shardControllers[shard]
 		if ok {
 			s.DeleteShard()
 		}
 	}
-
 	c.clusterStatus = clusterStatus
 	c.computeNewAssignments()
-	return nil
-}
-
-//nolint:unparam
-func (c *coordinator) rebalanceCluster() error {
-	c.Lock()
-	actions := rebalanceCluster(c.Servers, c.clusterStatus)
-	c.Unlock()
-
-	for _, swapAction := range actions {
-		c.log.Info(
-			"Applying swap action",
-			slog.Any("swap-action", swapAction),
-		)
-
-		c.Lock()
-		sc, ok := c.shardControllers[swapAction.Shard]
-		c.Unlock()
-		if !ok {
-			c.log.Warn(
-				"Shard controller not found",
-				slog.Int64("shard", swapAction.Shard),
-			)
-			continue
-		}
-
-		if err := sc.SwapNode(swapAction.From, swapAction.To); err != nil {
-			c.log.Warn(
-				"Failed to swap node",
-				slog.Any("error", err),
-				slog.Any("swap-action", swapAction),
-			)
-		}
-	}
-
 	return nil
 }
 

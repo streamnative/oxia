@@ -12,21 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package ensemble
+package balancer
 
-import (
-	"github.com/emirpasic/gods/sets/linkedhashset"
+import "time"
 
-	"github.com/streamnative/oxia/coordinator/model"
-	p "github.com/streamnative/oxia/coordinator/policies"
+const (
+	defaultLoadBalancerScheduleInterval = time.Second * 30
+	defaultQuarantineTime               = time.Minute * 5
 )
 
-type Context struct {
-	Candidates         *linkedhashset.Set
-	CandidatesMetadata map[string]model.ServerMetadata
-	Policies           *p.Policies
-	Status             *model.ClusterStatus
-	Replicas           int
-
-	LoadRatioSupplier func() *model.Ratio
-}
+var triggerEvent = struct{}{}

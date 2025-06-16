@@ -21,14 +21,14 @@ import (
 	"github.com/streamnative/oxia/coordinator/selectors"
 )
 
-var _ selectors.Selector[*Context, *string] = &serverAntiAffinitiesSelector{}
+var _ selectors.Selector[*Context, string] = &serverAntiAffinitiesSelector{}
 
 type serverAntiAffinitiesSelector struct{}
 
-func (*serverAntiAffinitiesSelector) Select(ssContext *Context) (*string, error) { //nolint:revive
+func (*serverAntiAffinitiesSelector) Select(ssContext *Context) (string, error) { //nolint:revive
 	policies := ssContext.Policies
 	if policies == nil || len(policies.AntiAffinities) == 0 {
-		return nil, selectors.ErrNoFunctioning
+		return "", selectors.ErrNoFunctioning
 	}
 	if ssContext.selected == nil {
 		ssContext.selected = linkedhashset.New()
@@ -47,10 +47,8 @@ func (*serverAntiAffinitiesSelector) Select(ssContext *Context) (*string, error)
 						}
 					}
 				}
-				if result := servers.Difference(ssContext.selected); result.Size() > 0 {
-					for iter := result.Iterator(); iter.Next(); {
-						labelSatisfiedCandidates.Add(iter.Value())
-					}
+				for iter := servers.Iterator(); iter.Next(); {
+					labelSatisfiedCandidates.Add(iter.Value())
 				}
 			}
 			if affinityIdx > 0 {
@@ -59,11 +57,11 @@ func (*serverAntiAffinitiesSelector) Select(ssContext *Context) (*string, error)
 			if labelSatisfiedCandidates.Size() < 1 {
 				switch affinity.Mode {
 				case p.Strict:
-					return nil, selectors.ErrUnsatisfiedAntiAffinity
+					return "", selectors.ErrUnsatisfiedAntiAffinity
 				case p.Relaxed:
 					fallthrough
 				default:
-					return nil, selectors.ErrUnsupportedAntiAffinityMode
+					return "", selectors.ErrUnsupportedAntiAffinityMode
 				}
 			}
 			if affinityIdx == 0 {
@@ -75,10 +73,9 @@ func (*serverAntiAffinitiesSelector) Select(ssContext *Context) (*string, error)
 	}
 	if candidates.Size() == 1 {
 		_, value := candidates.Find(func(_ int, _ any) bool { return true })
-		var res = value.(string)
-		return &res, nil
+		return value.(string), nil //nolint:revive
 	}
 
 	ssContext.Candidates = candidates
-	return nil, selectors.ErrMultipleResult
+	return "", selectors.ErrMultipleResult
 }

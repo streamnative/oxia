@@ -20,37 +20,38 @@ import (
 	"github.com/streamnative/oxia/coordinator/selectors"
 )
 
-var _ selectors.Selector[*Context, *string] = &server{}
+var _ selectors.Selector[*Context, string] = &server{}
 
 type server struct {
-	selectors []selectors.Selector[*Context, *string]
+	selectors []selectors.Selector[*Context, string]
 }
 
-func (s *server) Select(selectorContext *Context) (*string, error) {
-	var serverId *string
+func (s *server) Select(selectorContext *Context) (string, error) {
+	var serverId string
 	var err error
 	for _, selector := range s.selectors {
 		if serverId, err = selector.Select(selectorContext); err != nil {
 			if errors.Is(err, selectors.ErrNoFunctioning) || errors.Is(err, selectors.ErrMultipleResult) {
 				continue
 			}
-			return nil, err
+			return "", err
 		}
-		if serverId != nil {
+		if serverId != "" {
 			return serverId, nil
 		}
 	}
-	if serverId == nil {
+	if serverId == "" {
 		panic("unexpected behaviour")
 	}
 	return serverId, nil
 }
 
-func NewSelector() selectors.Selector[*Context, *string] {
+func NewSelector() selectors.Selector[*Context, string] {
 	return &server{
-		selectors: []selectors.Selector[*Context, *string]{
+		selectors: []selectors.Selector[*Context, string]{
 			&serverAntiAffinitiesSelector{},
-			&serverIdxSelector{},
+			&lowerestLoadSelector{},
+			&finalSelector{},
 		},
 	}
 }

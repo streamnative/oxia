@@ -12,21 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package ensemble
+package balancer
 
 import (
-	"github.com/emirpasic/gods/sets/linkedhashset"
-
-	"github.com/streamnative/oxia/coordinator/model"
-	p "github.com/streamnative/oxia/coordinator/policies"
+	"sync"
+	"testing"
 )
 
-type Context struct {
-	Candidates         *linkedhashset.Set
-	CandidatesMetadata map[string]model.ServerMetadata
-	Policies           *p.Policies
-	Status             *model.ClusterStatus
-	Replicas           int
-
-	LoadRatioSupplier func() *model.Ratio
+func TestActionSwapDone(t *testing.T) {
+	group := &sync.WaitGroup{}
+	group.Add(1)
+	swapAction := SwapNodeAction{
+		Shard:  int64(1),
+		From:   "sv-1",
+		To:     "sv-2",
+		waiter: group,
+	}
+	swapAction.Done()
+	group.Wait()
 }

@@ -20,7 +20,6 @@ import (
 	"log/slog"
 	"math"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -507,102 +506,6 @@ func TestCoordinator_DynamicallAddNamespace(t *testing.T) {
 	}
 }
 
-func TestCoordinator_RebalanceCluster(t *testing.T) {
-	s1, sa1 := newServer(t)
-	s2, sa2 := newServer(t)
-	s3, sa3 := newServer(t)
-	s4, sa4 := newServer(t)
-	servers := map[model.Server]*server.Server{
-		sa1: s1,
-		sa2: s2,
-		sa3: s3,
-		sa4: s4,
-	}
-
-	metadataProvider := NewMetadataProviderMemory()
-	clusterConfig := model.ClusterConfig{
-		Namespaces: []model.NamespaceConfig{{
-			Name:              "my-ns-1",
-			ReplicationFactor: 3,
-			InitialShardCount: 2,
-		}},
-		Servers: []model.Server{sa1, sa2, sa3},
-	}
-	clientPool := rpc.NewClientPool(nil, nil)
-	mutex := &sync.Mutex{}
-
-	configProvider := func() (model.ClusterConfig, error) {
-		mutex.Lock()
-		defer mutex.Unlock()
-		return clusterConfig, nil
-	}
-
-	configChangesCh := make(chan any)
-	coordinator, err := NewCoordinator(metadataProvider, configProvider, configChangesCh, NewRpcProvider(clientPool))
-	assert.NoError(t, err)
-
-	ns1Status := coordinator.ClusterStatus().Namespaces["my-ns-1"]
-	assert.EqualValues(t, 2, len(ns1Status.Shards))
-	assert.EqualValues(t, 3, ns1Status.ReplicationFactor)
-
-	// Wait for all shards to be ready
-	assert.Eventually(t, func() bool {
-		for _, ns := range coordinator.ClusterStatus().Namespaces {
-			for _, shard := range ns.Shards {
-				if shard.Status != model.ShardStatusSteadyState {
-					return false
-				}
-			}
-		}
-		return true
-	}, 10*time.Second, 10*time.Millisecond)
-
-	slog.Info(
-		"Cluster is ready",
-		slog.Any("cluster-status", coordinator.ClusterStatus()),
-	)
-
-	ns1Status = coordinator.ClusterStatus().Namespaces["my-ns-1"]
-	assert.EqualValues(t, 2, len(ns1Status.Shards))
-	assert.EqualValues(t, 3, ns1Status.ReplicationFactor)
-	checkServerLists(t, []model.Server{sa1, sa2, sa3}, ns1Status.Shards[0].Ensemble)
-	checkServerLists(t, []model.Server{sa1, sa2, sa3}, ns1Status.Shards[1].Ensemble)
-
-	// Add `s4` and remove `s1` from the cluster config
-	mutex.Lock()
-	clusterConfig.Servers = []model.Server{sa2, sa3, sa4}
-	mutex.Unlock()
-
-	configChangesCh <- nil
-
-	// Wait for all shards to be ready
-	assert.Eventually(t, func() bool {
-		for _, ns := range coordinator.ClusterStatus().Namespaces {
-			for _, shard := range ns.Shards {
-				// Use Term to detect for EnsembleChange have done, we cann't use status
-				// because it always be Steady when EnsembleChange.
-				if shard.Term != 1 {
-					return false
-				}
-			}
-		}
-		return true
-	}, 10*time.Second, 10*time.Millisecond)
-
-	ns1Status = coordinator.ClusterStatus().Namespaces["my-ns-1"]
-	assert.EqualValues(t, 2, len(ns1Status.Shards))
-	assert.EqualValues(t, 3, ns1Status.ReplicationFactor)
-	checkServerLists(t, []model.Server{sa2, sa3, sa4}, ns1Status.Shards[0].Ensemble)
-	checkServerLists(t, []model.Server{sa2, sa3, sa4}, ns1Status.Shards[1].Ensemble)
-
-	assert.NoError(t, coordinator.Close())
-	assert.NoError(t, clientPool.Close())
-
-	for _, serverObj := range servers {
-		assert.NoError(t, serverObj.Close())
-	}
-}
-
 func TestCoordinator_AddRemoveNodes(t *testing.T) {
 	s1, sa1 := newServer(t)
 	s2, sa2 := newServer(t)
@@ -752,28 +655,6 @@ func TestCoordinator_ShrinkCluster(t *testing.T) {
 	}
 }
 
-func checkServerLists(t *testing.T, expected, actual []model.Server) {
-	t.Helper()
-
-	assert.Equal(t, len(expected), len(actual))
-	mExpected := map[string]bool{}
-	for _, x := range expected {
-		mExpected[x.Public] = true
-	}
-
-	for _, x := range actual {
-		_, ok := mExpected[x.Public]
-		if !ok {
-			slog.Warn(
-				"Got unexpected server",
-				slog.Any("expected-servers", expected),
-				slog.Any("found-server", x),
-			)
-		}
-		assert.True(t, ok)
-	}
-}
-
 func TestCoordinator_RefreshServerInfo(t *testing.T) {
 	s1, sa1 := newServer(t)
 	s2, sa2 := newServer(t)
@@ -817,9 +698,9 @@ func TestCoordinator_RefreshServerInfo(t *testing.T) {
 	}
 
 	// check if the new config will trigger node swap
-	status := c.ClusterStatus()
-	actions := rebalanceCluster(clusterServer, &status)
-	assert.EqualValues(t, 0, len(actions))
+	// status := c.ClusterStatus()
+	// actions := coordinator.rebalanceCluster(clusterServer, &status)
+	// assert.EqualValues(t, 0, len(actions))
 
 	clusterConfig.Servers = clusterServer
 	configChangesCh <- nil

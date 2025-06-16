@@ -12,13 +12,46 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package selectors
+package utils
 
 import (
 	"github.com/emirpasic/gods/sets/linkedhashset"
 
 	"github.com/streamnative/oxia/coordinator/model"
 )
+
+func GroupingShardsNodeByStatus(candidates *linkedhashset.Set, status *model.ClusterStatus) map[string][]model.ShardInfo {
+	groupingShardByNode := make(map[string][]model.ShardInfo)
+	if status != nil {
+		for namespace, namespaceStatus := range status.Namespaces {
+			for shard, shardStatus := range namespaceStatus.Shards {
+				for _, server := range shardStatus.Ensemble {
+					nodeID := server.GetIdentifier()
+					var groupedShard []model.ShardInfo
+					var exist bool
+					if groupedShard, exist = groupingShardByNode[nodeID]; !exist {
+						tmp := make([]model.ShardInfo, 0)
+						groupedShard = tmp
+					}
+					groupedShard = append(groupedShard, model.ShardInfo{
+						Namespace: namespace,
+						ShardID:   shard,
+						Ensemble:  shardStatus.Ensemble,
+					})
+					groupingShardByNode[nodeID] = groupedShard
+				}
+			}
+		}
+	}
+	for iter := candidates.Iterator(); iter.Next(); {
+		nodeID := iter.Value().(string) //nolint:revive
+		_, exist := groupingShardByNode[nodeID]
+		if !exist {
+			groupingShardByNode[nodeID] = make([]model.ShardInfo, 0)
+		}
+	}
+	return groupingShardByNode
+}
 
 func GroupingCandidatesWithLabelValue(candidates *linkedhashset.Set, candidatesMetadata map[string]model.ServerMetadata) map[string]map[string]*linkedhashset.Set {
 	groupedCandidates := make(map[string]map[string]*linkedhashset.Set)
