@@ -70,3 +70,12 @@ func TestSequencesWaitTracker(t *testing.T) {
 	swt.SequenceUpdated("key-1", "key-1-234")
 	assert.Empty(t, ch3)
 }
+
+func TestSequencesWaitTrackerMultipleClose(t *testing.T) {
+	swt := NewSequencesWaitTracker()
+
+	w1 := swt.AddSequenceWaiter("key-1")
+	assert.Empty(t, swt.Close())
+
+	assert.NoError(t, w1.Close())
+}

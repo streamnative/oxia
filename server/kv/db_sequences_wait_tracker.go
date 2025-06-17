@@ -50,6 +50,8 @@ type sequenceWaiter struct {
 	id      sequenceWaiterID
 	och     channel.OverrideChannel[string]
 	tracker *sequenceWaiterTracker
+
+	closed atomic.Bool
 }
 
 func (sw *sequenceWaiter) Receive(ctx context.Context) (string, error) {
@@ -61,11 +63,17 @@ func (sw *sequenceWaiter) Ch() <-chan string {
 }
 
 func (sw *sequenceWaiter) closeWithoutLock() {
+	if !sw.closed.CompareAndSwap(false, true) {
+		return
+	}
 	sw.tracker.removeWithoutLock(sw.key, sw.id)
 	close(sw.och.Ch())
 }
 
 func (sw *sequenceWaiter) Close() error {
+	if !sw.closed.CompareAndSwap(false, true) {
+		return nil
+	}
 	sw.tracker.remove(sw.key, sw.id)
 	close(sw.och.Ch())
 	return nil
@@ -90,7 +98,7 @@ func (swt *sequenceWaiterTracker) AddSequenceWaiter(key string) *sequenceWaiter 
 	}
 
 	id := sequenceWaiterID(swt.idGen.Add(1))
-	sw := &sequenceWaiter{key, id, channel.NewOverrideChannel[string](), swt}
+	sw := &sequenceWaiter{key, id, channel.NewOverrideChannel[string](), swt, atomic.Bool{}}
 	im[id] = sw
 	return sw
 }
