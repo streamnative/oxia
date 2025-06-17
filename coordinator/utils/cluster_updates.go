@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package impl
+package utils
 
 import (
 	"log/slog"
@@ -27,11 +27,10 @@ func findNamespaceConfig(config *model.ClusterConfig, ns string) *model.Namespac
 			return &cns
 		}
 	}
-
 	return nil
 }
 
-func applyClusterChanges(config *model.ClusterConfig, currentStatus *model.ClusterStatus, ensembleSupplier func(namespaceConfig *model.NamespaceConfig, status *model.ClusterStatus) ([]model.Server, error)) (
+func ApplyClusterChanges(config *model.ClusterConfig, currentStatus *model.ClusterStatus, ensembleSupplier func(namespaceConfig *model.NamespaceConfig, status *model.ClusterStatus) ([]model.Server, error)) (
 	newStatus *model.ClusterStatus,
 	shardsToAdd map[int64]string,
 	shardsToDelete []int64) {

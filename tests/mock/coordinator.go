@@ -19,16 +19,19 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/streamnative/oxia/coordinator"
+	"github.com/streamnative/oxia/coordinator/metadata"
+	rpc2 "github.com/streamnative/oxia/coordinator/rpc"
+
 	"github.com/streamnative/oxia/common/rpc"
-	"github.com/streamnative/oxia/coordinator/impl"
 	"github.com/streamnative/oxia/coordinator/model"
 )
 
-func NewCoordinator(t *testing.T, config *model.ClusterConfig, clusterConfigNotificationCh chan any) impl.Coordinator {
+func NewCoordinator(t *testing.T, config *model.ClusterConfig, clusterConfigNotificationCh chan any) coordinator.Coordinator {
 	t.Helper()
-	metadataProvider := impl.NewMetadataProviderMemory()
+	metadataProvider := metadata.NewMetadataProviderMemory()
 	clientPool := rpc.NewClientPool(nil, nil)
-	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return *config, nil }, clusterConfigNotificationCh, impl.NewRpcProvider(clientPool))
+	coordinatorInstance, err := coordinator.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return *config, nil }, clusterConfigNotificationCh, rpc2.NewRpcProvider(clientPool))
 	assert.NoError(t, err)
-	return coordinator
+	return coordinatorInstance
 }

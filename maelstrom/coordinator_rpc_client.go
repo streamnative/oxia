@@ -27,9 +27,10 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/streamnative/oxia/coordinator/rpc"
+
 	"github.com/streamnative/oxia/common/constant"
 
-	"github.com/streamnative/oxia/coordinator/impl"
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/proto"
 )
@@ -48,7 +49,7 @@ type maelstromCoordinatorRpcProvider struct {
 func (m *maelstromCoordinatorRpcProvider) ClearPooledConnections(node model.Server) {
 }
 
-func newRpcProvider(dispatcher *dispatcher) impl.RpcProvider {
+func newRpcProvider(dispatcher *dispatcher) rpc.Provider {
 	return &maelstromCoordinatorRpcProvider{
 		dispatcher:        dispatcher,
 		assignmentStreams: map[int64]*maelstromShardAssignmentClient{},

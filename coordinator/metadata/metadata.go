@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package impl
+package metadata
 
 import (
 	"io"
@@ -22,16 +22,22 @@ import (
 	"github.com/streamnative/oxia/coordinator/model"
 )
 
-type Version string
-
 var (
 	ErrMetadataNotInitialized = errors.New("metadata not initialized")
 	ErrMetadataBadVersion     = errors.New("metadata bad version")
 )
 
-const MetadataNotExists Version = "-1"
+var (
+	ProviderNameMemory    = "memory"
+	ProviderNameConfigmap = "configmap"
+	ProviderNameFile      = "file"
+)
 
-type MetadataProvider interface {
+type Version string
+
+const NotExists Version = "-1"
+
+type Provider interface {
 	io.Closer
 
 	Get() (cs *model.ClusterStatus, version Version, err error)

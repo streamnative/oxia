@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package impl
+package coordinator
 
 import (
 	"context"
@@ -433,6 +433,10 @@ type mockCoordinator struct {
 	err                      error
 	initiatedLeaderElections chan sCoordinatorEvents
 	electedLeaders           chan sCoordinatorEvents
+}
+
+func (m *mockCoordinator) NodeControllers() map[string]NodeController {
+	panic("implement me")
 }
 
 func (m *mockCoordinator) TriggerBalance() {

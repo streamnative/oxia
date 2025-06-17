@@ -25,7 +25,7 @@ func TestCoordinator_MarshalingError(t *testing.T) {
 	config := Config{
 		InternalServiceAddr:       "123",
 		InternalSecureServiceAddr: "123",
-		MetadataProviderImpl:      "123",
+		MetadataProviderName:      "123",
 		K8SMetadataConfigMapName:  "123",
 	}
 	_, err := json.Marshal(config)

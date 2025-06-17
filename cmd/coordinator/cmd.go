@@ -25,6 +25,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	"github.com/streamnative/oxia/coordinator/metadata"
+
 	"github.com/streamnative/oxia/common/entity"
 	"github.com/streamnative/oxia/common/process"
 
@@ -52,7 +54,7 @@ var (
 func init() {
 	flag.InternalAddr(Cmd, &conf.InternalServiceAddr)
 	flag.MetricsAddr(Cmd, &conf.MetricsServiceAddr)
-	Cmd.Flags().Var(&conf.MetadataProviderImpl, "metadata", "Metadata provider implementation: file, configmap or memory")
+	Cmd.Flags().StringVar(&conf.MetadataProviderName, "metadata", "file", "Metadata provider implementation: file, configmap or memory")
 	Cmd.Flags().StringVar(&conf.K8SMetadataNamespace, "k8s-namespace", conf.K8SMetadataNamespace, "Kubernetes namespace for oxia config maps")
 	Cmd.Flags().StringVar(&conf.K8SMetadataConfigMapName, "k8s-configmap-name", conf.K8SMetadataConfigMapName, "ConfigMap name for cluster status configmap")
 	Cmd.Flags().StringVar(&conf.FileMetadataPath, "file-clusters-status-path", "data/cluster-status.json", "The path where the cluster status is stored when using 'file' provider")
@@ -78,7 +80,7 @@ func init() {
 }
 
 func validate(*cobra.Command, []string) error {
-	if conf.MetadataProviderImpl == coordinator.Configmap {
+	if conf.MetadataProviderName == metadata.ProviderNameConfigmap {
 		if conf.K8SMetadataNamespace == "" {
 			return errors.New("k8s-namespace must be set with metadata=configmap")
 		}
@@ -86,7 +88,12 @@ func validate(*cobra.Command, []string) error {
 			return errors.New("k8s-configmap-name must be set with metadata=configmap")
 		}
 	}
-	return nil
+	switch conf.MetadataProviderName {
+	case "memory", "configmap", "file":
+		return nil
+	default:
+		return errors.New(`must be one of "memory", "configmap" or "file"`)
+	}
 }
 
 func configIsRemote() bool {
@@ -174,7 +181,7 @@ func exec(*cobra.Command, []string) error {
 				return nil, err
 			}
 		}
-		return coordinator.New(conf)
+		return coordinator.NewGrpcServer(conf)
 	})
 	return nil
 }

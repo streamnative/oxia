@@ -24,6 +24,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v3"
 
+	"github.com/streamnative/oxia/coordinator/metadata"
+
 	"github.com/streamnative/oxia/common/constant"
 	"github.com/streamnative/oxia/common/entity"
 
@@ -66,7 +68,7 @@ func TestCmd(t *testing.T) {
 		{[]string{}, coordinator.Config{
 			InternalServiceAddr:  "localhost:6649",
 			MetricsServiceAddr:   "localhost:8080",
-			MetadataProviderImpl: coordinator.File,
+			MetadataProviderName: metadata.ProviderNameFile,
 		}, model.ClusterConfig{
 			Namespaces: []model.NamespaceConfig{{
 				Name:                 constant.DefaultNamespace,
@@ -83,7 +85,7 @@ func TestCmd(t *testing.T) {
 		{[]string{"-i=localhost:1234"}, coordinator.Config{
 			InternalServiceAddr:  "localhost:1234",
 			MetricsServiceAddr:   "localhost:8080",
-			MetadataProviderImpl: coordinator.File,
+			MetadataProviderName: metadata.ProviderNameFile,
 		}, model.ClusterConfig{
 			Namespaces: []model.NamespaceConfig{{
 				Name:                 constant.DefaultNamespace,
@@ -100,7 +102,7 @@ func TestCmd(t *testing.T) {
 		{[]string{"-i=0.0.0.0:1234"}, coordinator.Config{
 			InternalServiceAddr:  "0.0.0.0:1234",
 			MetricsServiceAddr:   "localhost:8080",
-			MetadataProviderImpl: coordinator.File,
+			MetadataProviderName: metadata.ProviderNameFile,
 		}, model.ClusterConfig{
 			Namespaces: []model.NamespaceConfig{{
 				Name:                 constant.DefaultNamespace,
@@ -117,7 +119,7 @@ func TestCmd(t *testing.T) {
 		{[]string{"-m=localhost:1234"}, coordinator.Config{
 			InternalServiceAddr:  "localhost:6649",
 			MetricsServiceAddr:   "localhost:1234",
-			MetadataProviderImpl: coordinator.File,
+			MetadataProviderName: metadata.ProviderNameFile,
 		}, model.ClusterConfig{
 			Namespaces: []model.NamespaceConfig{{
 				Name:                 constant.DefaultNamespace,
@@ -134,7 +136,7 @@ func TestCmd(t *testing.T) {
 		{[]string{"-f=" + name}, coordinator.Config{
 			InternalServiceAddr:  "localhost:6649",
 			MetricsServiceAddr:   "localhost:8080",
-			MetadataProviderImpl: coordinator.File,
+			MetadataProviderName: metadata.ProviderNameFile,
 		}, model.ClusterConfig{
 			Namespaces: []model.NamespaceConfig{{
 				Name:                 constant.DefaultNamespace,
@@ -151,7 +153,7 @@ func TestCmd(t *testing.T) {
 		{[]string{"-f=invalid.yaml"}, coordinator.Config{
 			InternalServiceAddr:  "localhost:6649",
 			MetricsServiceAddr:   "localhost:8080",
-			MetadataProviderImpl: coordinator.File,
+			MetadataProviderName: metadata.ProviderNameFile,
 		}, model.ClusterConfig{}, true},
 	} {
 		t.Run(strings.Join(test.args, "_"), func(t *testing.T) {

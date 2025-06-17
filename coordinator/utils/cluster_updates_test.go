@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package impl
+package utils
 
 import (
 	"math"
@@ -33,7 +33,7 @@ var (
 
 func TestClientUpdates_ClusterInit(t *testing.T) {
 	servers := []model.Server{s1, s2, s3, s4}
-	newStatus, shardsAdded, shardsToRemove := applyClusterChanges(&model.ClusterConfig{
+	newStatus, shardsAdded, shardsToRemove := ApplyClusterChanges(&model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
 			Name:              "ns-1",
 			InitialShardCount: 1,
@@ -104,7 +104,7 @@ func TestClientUpdates_ClusterInit(t *testing.T) {
 
 func TestClientUpdates_NamespaceAdded(t *testing.T) {
 	servers := []model.Server{s1, s2, s3, s4}
-	newStatus, shardsAdded, shardsToRemove := applyClusterChanges(&model.ClusterConfig{
+	newStatus, shardsAdded, shardsToRemove := ApplyClusterChanges(&model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
 			Name:              "ns-1",
 			InitialShardCount: 1,
@@ -192,7 +192,7 @@ func TestClientUpdates_NamespaceAdded(t *testing.T) {
 
 func TestClientUpdates_NamespaceRemoved(t *testing.T) {
 	servers := []model.Server{s1, s2, s3, s4}
-	newStatus, shardsAdded, shardsToRemove := applyClusterChanges(&model.ClusterConfig{
+	newStatus, shardsAdded, shardsToRemove := ApplyClusterChanges(&model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
 			Name:              "ns-1",
 			InitialShardCount: 1,

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package impl
+package coordinator
 
 import (
 	"context"
@@ -28,6 +28,8 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/status"
+
+	"github.com/streamnative/oxia/coordinator/rpc"
 
 	"github.com/streamnative/oxia/common/constant"
 	"github.com/streamnative/oxia/common/process"
@@ -84,7 +86,7 @@ type shardController struct {
 	namespaceConfig    *model.NamespaceConfig
 	shardMetadata      model.ShardMetadata
 	shardMetadataMutex sync.RWMutex
-	rpc                RpcProvider
+	rpc                rpc.Provider
 	coordinator        Coordinator
 
 	electionOp              chan any
@@ -109,14 +111,14 @@ type shardController struct {
 }
 
 func NewShardController(namespace string, shard int64, namespaceConfig *model.NamespaceConfig,
-	shardMetadata model.ShardMetadata, rpc RpcProvider, coordinator Coordinator) ShardController {
+	shardMetadata model.ShardMetadata, rpcProvider rpc.Provider, coordinator Coordinator) ShardController {
 	labels := metric.LabelsForShard(namespace, shard)
 	s := &shardController{
 		namespace:               namespace,
 		shard:                   shard,
 		namespaceConfig:         namespaceConfig,
 		shardMetadata:           shardMetadata,
-		rpc:                     rpc,
+		rpc:                     rpcProvider,
 		coordinator:             coordinator,
 		electionOp:              make(chan any, chanBufferSize),
 		deleteOp:                make(chan any, chanBufferSize),

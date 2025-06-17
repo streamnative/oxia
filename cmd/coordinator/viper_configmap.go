@@ -27,9 +27,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
 
-	"github.com/streamnative/oxia/common/process"
+	"github.com/streamnative/oxia/coordinator/metadata"
 
-	"github.com/streamnative/oxia/coordinator/impl"
+	"github.com/streamnative/oxia/common/process"
 )
 
 type cmConfigProvider struct {
@@ -47,12 +47,12 @@ func getNamespaceAndCmName(rp viper.RemoteProvider) (namespace, cmName string, e
 }
 
 func (*cmConfigProvider) Get(rp viper.RemoteProvider) (io.Reader, error) {
-	kubernetes := impl.NewK8SClientset(impl.NewK8SClientConfig())
+	kubernetes := metadata.NewK8SClientset(metadata.NewK8SClientConfig())
 	namespace, configmap, err := getNamespaceAndCmName(rp)
 	if err != nil {
 		return nil, err
 	}
-	cmValue, err := impl.K8SConfigMaps(kubernetes).Get(namespace, configmap)
+	cmValue, err := metadata.K8SConfigMaps(kubernetes).Get(namespace, configmap)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +69,7 @@ func (c *cmConfigProvider) Watch(rp viper.RemoteProvider) (io.Reader, error) {
 }
 
 func (*cmConfigProvider) WatchChannel(rp viper.RemoteProvider) (<-chan *viper.RemoteResponse, chan bool) {
-	kubernetes := impl.NewK8SClientset(impl.NewK8SClientConfig())
+	kubernetes := metadata.NewK8SClientset(metadata.NewK8SClientConfig())
 	namespace, configmap, _ := getNamespaceAndCmName(rp)
 
 	ch := make(chan *viper.RemoteResponse)
