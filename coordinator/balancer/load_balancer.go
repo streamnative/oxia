@@ -19,9 +19,10 @@ import (
 	"time"
 
 	"github.com/emirpasic/gods/v2/sets/linkedhashset"
+	"golang.org/x/net/context"
+
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/coordinator/selectors"
-	"golang.org/x/net/context"
 )
 
 type Options struct {

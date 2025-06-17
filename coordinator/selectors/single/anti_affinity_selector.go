@@ -16,6 +16,7 @@ package single
 
 import (
 	"github.com/emirpasic/gods/v2/sets/linkedhashset"
+
 	p "github.com/streamnative/oxia/coordinator/policies"
 	"github.com/streamnative/oxia/coordinator/selectors"
 )
@@ -72,7 +73,7 @@ func (*serverAntiAffinitiesSelector) Select(ssContext *Context) (string, error) 
 	}
 	if candidates.Size() == 1 {
 		_, value := candidates.Find(func(_ int, _ string) bool { return true })
-		return value, nil //nolint:revive
+		return value, nil
 	}
 
 	ssContext.Candidates = candidates

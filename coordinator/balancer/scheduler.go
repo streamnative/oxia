@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/emirpasic/gods/v2/sets/linkedhashset"
+
 	"github.com/streamnative/oxia/common/process"
 
 	"github.com/streamnative/oxia/common/channel"
@@ -135,7 +136,7 @@ func (r *nodeBasedBalancer) balanceHighestNode(loadRatios *model.Ratio, candidat
 	}
 	for highestLoadRatioNode.Ratio-loadRatios.MinNodeLoadRatio() > loadRatios.AvgShardLoadRatio() {
 		var highestLoadRatioShard *model.ShardLoadRatio
-		if highestLoadRatioShard = shardIter.Value(); highestLoadRatioShard == nil { //nolint:revive
+		if highestLoadRatioShard = shardIter.Value(); highestLoadRatioShard == nil {
 			break
 		}
 		fromNodeID := highestLoadRatioNode.NodeID
@@ -172,8 +173,7 @@ func (r *nodeBasedBalancer) cleanDeletedNode(loadRatios *model.Ratio,
 		}
 		deletedNodeID := nodeLoadRatio.NodeID
 		for shardIter := nodeLoadRatio.ShardIterator(); shardIter.Next(); {
-			var shardRatio *model.ShardLoadRatio
-			shardRatio = shardIter.Value()
+			var shardRatio = shardIter.Value()
 			if swapped, err := r.swapShard(shardRatio, deletedNodeID, swapGroup, loadRatios, candidates, metadata, currentStatus); err != nil || !swapped {
 				r.Error("failed to select server when move ensemble out of deleted node",
 					slog.String("namespace", shardRatio.Namespace),

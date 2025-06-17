@@ -147,12 +147,13 @@ func (r *readOnlySegmentsGroup) TrimSegments(offset int64) error {
 	}
 
 	var cutoffSegment int64
-	if node, found := r.allSegments.Floor(segmentToKeep - 1); found {
-		cutoffSegment = node.Key
-	} else {
+	var node *redblacktree.Node[int64, bool]
+	var found bool
+	if node, found = r.allSegments.Floor(segmentToKeep - 1); !found {
 		return nil
 	}
 
+	cutoffSegment = node.Key
 	var err error
 	for _, s := range r.allSegments.Keys() {
 		if s > cutoffSegment {
