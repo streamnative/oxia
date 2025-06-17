@@ -15,14 +15,14 @@
 package ensemble
 
 import (
-	"github.com/emirpasic/gods/sets/linkedhashset"
+	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 
 	"github.com/streamnative/oxia/coordinator/model"
 	p "github.com/streamnative/oxia/coordinator/policies"
 )
 
 type Context struct {
-	Candidates         *linkedhashset.Set
+	Candidates         *linkedhashset.Set[string]
 	CandidatesMetadata map[string]model.ServerMetadata
 	Policies           *p.Policies
 	Status             *model.ClusterStatus

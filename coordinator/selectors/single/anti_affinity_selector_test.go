@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/emirpasic/gods/sets/linkedhashset"
+	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 
@@ -41,10 +41,10 @@ func TestSelectNoAntiAffinities(t *testing.T) {
 
 	context := &Context{
 		CandidatesMetadata: candidatesMetadata,
-		Candidates:         linkedhashset.New("server1", "server2", "server3", "server4", "server5", "server6"),
+		Candidates:         linkedhashset.New[string]("server1", "server2", "server3", "server4", "server5", "server6"),
 		Policies:           nsPolicies,
 	}
-	context.SetSelected(linkedhashset.New())
+	context.SetSelected(linkedhashset.New[string]())
 
 	_, err := selector.Select(context)
 	assert.ErrorIs(t, err, selectors.ErrNoFunctioning)
@@ -68,7 +68,7 @@ func TestSelectSatisfiedAntiAffinities(t *testing.T) {
 			},
 		},
 	}
-	selected := linkedhashset.New()
+	selected := linkedhashset.New[string]()
 
 	context := &Context{
 		CandidatesMetadata: candidatesMetadata,
@@ -92,7 +92,7 @@ func TestSelectSatisfiedAntiAffinities(t *testing.T) {
 		assert.Equal(t, replicas-idx, context.Candidates.Size())
 
 		// assume we will use the first as selected servers
-		_, v := context.Candidates.Find(func(index int, _ any) bool {
+		_, v := context.Candidates.Find(func(index int, _ string) bool {
 			return index == 0
 		})
 		selected.Add(v)
@@ -123,7 +123,7 @@ func TestSelectUnsatisfiedAntiAffinitiesStrict(t *testing.T) {
 			},
 		},
 	}
-	selected := linkedhashset.New()
+	selected := linkedhashset.New[string]()
 	context := &Context{
 		CandidatesMetadata: candidatesMetadata,
 		Candidates:         linkedhashset.New("server1", "server2", "server3", "server4", "server5", "server6"),
@@ -135,7 +135,7 @@ func TestSelectUnsatisfiedAntiAffinitiesStrict(t *testing.T) {
 	assert.Equal(t, 6, context.Candidates.Size())
 
 	// choose the first one
-	_, v := context.Candidates.Find(func(index int, _ any) bool {
+	_, v := context.Candidates.Find(func(index int, _ string) bool {
 		return index == 0
 	})
 	selected.Add(v)
@@ -164,7 +164,7 @@ func TestSelectUnsatisfiedAntiAffinitiesRelax(t *testing.T) {
 			},
 		},
 	}
-	selectedServers := linkedhashset.New()
+	selectedServers := linkedhashset.New[string]()
 	context := &Context{
 		CandidatesMetadata: candidatesMetadata,
 		Candidates:         linkedhashset.New("server1", "server2", "server3", "server4", "server5", "server6"),
@@ -177,7 +177,7 @@ func TestSelectUnsatisfiedAntiAffinitiesRelax(t *testing.T) {
 	assert.Equal(t, 6, context.Candidates.Size())
 
 	// choose the first one
-	_, v := context.Candidates.Find(func(index int, value any) bool {
+	_, v := context.Candidates.Find(func(index int, value string) bool {
 		return index == 0
 	})
 	selectedServers.Add(v)
@@ -203,7 +203,7 @@ func TestSelectMultipleAntiAffinitiesSatisfied(t *testing.T) {
 		},
 	}
 
-	selectedServers := linkedhashset.New()
+	selectedServers := linkedhashset.New[string]()
 	context := &Context{
 		CandidatesMetadata: candidatesMetadata,
 		Candidates:         linkedhashset.New("s1", "s2", "s3", "s4"),
@@ -229,7 +229,7 @@ func selectTimes(t *testing.T, selector *serverAntiAffinitiesSelector, context *
 		if selectedServer, err := selector.Select(context); err != nil {
 			if errors.Is(err, selectors.ErrMultipleResult) || errors.Is(err, selectors.ErrNoFunctioning) {
 				// assume we will use the first as selected servers
-				_, v := context.Candidates.Find(func(index int, value any) bool {
+				_, v := context.Candidates.Find(func(index int, value string) bool {
 					return index == 0
 				})
 				context.selected.Add(v)

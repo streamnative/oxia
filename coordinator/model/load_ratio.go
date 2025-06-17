@@ -15,9 +15,8 @@
 package model
 
 import (
-	"github.com/emirpasic/gods/lists/arraylist"
-	"github.com/emirpasic/gods/sets/linkedhashset"
-	"github.com/emirpasic/gods/utils"
+	"github.com/emirpasic/gods/v2/lists/arraylist"
+	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 	"github.com/pkg/errors"
 )
 
@@ -29,23 +28,23 @@ type ShardInfo struct {
 
 type RatioParams struct {
 	NodeShardsInfos map[string][]ShardInfo
-	QuarantineNodes *linkedhashset.Set
+	QuarantineNodes *linkedhashset.Set[string]
 }
 
 type Ratio struct {
 	maxNodeLoadRatio  float64
 	minNodeLoadRatio  float64
 	avgShardLoadRatio float64
-	nodeLoadRatios    *arraylist.List
+	nodeLoadRatios    *arraylist.List[*NodeLoadRatio]
 }
 
 func (r *Ratio) IsBalanced() bool {
 	return r.RatioGap() <= r.avgShardLoadRatio
 }
 
-func (r *Ratio) NodeIterator() *arraylist.Iterator {
+func (r *Ratio) NodeIterator() *arraylist.Iterator[*NodeLoadRatio] {
 	iter := arraylist.New(r.nodeLoadRatios.Values()...).Iterator()
-	return &iter
+	return iter
 }
 
 func (r *Ratio) MaxNodeLoadRatio() float64 {
@@ -66,7 +65,7 @@ func (r *Ratio) RatioGap() float64 {
 
 func (r *Ratio) MoveShardToNode(shard *ShardLoadRatio, fromNodeID string, toNodeID string) {
 	for iter := r.nodeLoadRatios.Iterator(); iter.Next(); {
-		node := iter.Value().(*NodeLoadRatio) //nolint:revive
+		node := iter.Value()
 		if node.NodeID == fromNodeID {
 			node.RemoveShard(shard)
 			continue
@@ -83,12 +82,12 @@ func (r *Ratio) ReCalculateRatios() {
 	if !iter.First() {
 		return
 	}
-	nodeRatio := iter.Value().(*NodeLoadRatio) //nolint:revive
+	nodeRatio := iter.Value()
 	r.maxNodeLoadRatio = nodeRatio.Ratio
 	r.minNodeLoadRatio = nodeRatio.Ratio
 
 	for iter.Next() {
-		nodeLoadRatio := iter.Value().(*NodeLoadRatio) //nolint:revive
+		nodeLoadRatio := iter.Value()
 		if nodeLoadRatio.Ratio > r.maxNodeLoadRatio {
 			r.maxNodeLoadRatio = nodeLoadRatio.Ratio
 		} else if nodeLoadRatio.Ratio < r.minNodeLoadRatio {
@@ -99,7 +98,7 @@ func (r *Ratio) ReCalculateRatios() {
 
 func (r *Ratio) RemoveDeletedNode(id string) error {
 	for iter := r.nodeLoadRatios.Iterator(); iter.Next(); {
-		ratio := iter.Value().(*NodeLoadRatio) //nolint:revive
+		ratio := iter.Value()
 		if ratio.NodeID == id {
 			if ratio.Ratio != 0.0 {
 				return errors.New("cannot remove non-empty node")
@@ -111,7 +110,7 @@ func (r *Ratio) RemoveDeletedNode(id string) error {
 	return nil
 }
 
-func NewRatio(maxNodeLoadRatio float64, minNodeLoadRatio float64, avgShardLoadRatio float64, nodeLoadRatios *arraylist.List) *Ratio {
+func NewRatio(maxNodeLoadRatio float64, minNodeLoadRatio float64, avgShardLoadRatio float64, nodeLoadRatios *arraylist.List[*NodeLoadRatio]) *Ratio {
 	return &Ratio{
 		maxNodeLoadRatio:  maxNodeLoadRatio,
 		minNodeLoadRatio:  minNodeLoadRatio,
@@ -123,7 +122,7 @@ func NewRatio(maxNodeLoadRatio float64, minNodeLoadRatio float64, avgShardLoadRa
 type NodeLoadRatio struct {
 	NodeID      string
 	Ratio       float64
-	ShardRatios *arraylist.List
+	ShardRatios *arraylist.List[*ShardLoadRatio]
 }
 
 func (n *NodeLoadRatio) AddShard(shard *ShardLoadRatio) {
@@ -136,24 +135,12 @@ func (n *NodeLoadRatio) RemoveShard(shard *ShardLoadRatio) {
 	n.ShardRatios.Remove(n.ShardRatios.IndexOf(shard))
 }
 
-func (n *NodeLoadRatio) ShardIterator() *arraylist.Iterator {
+func (n *NodeLoadRatio) ShardIterator() *arraylist.Iterator[*ShardLoadRatio] {
 	iter := arraylist.New(n.ShardRatios.Values()...).Iterator()
-	return &iter
+	return iter
 }
 
 type ShardLoadRatio struct {
 	*ShardInfo
 	Ratio float64
-}
-
-func NodeLoadRatioComparator(a, b any) int {
-	tmpA := a.(*NodeLoadRatio) //nolint:revive
-	tmpB := b.(*NodeLoadRatio) //nolint:revive
-	return utils.Float64Comparator(tmpA.Ratio, tmpB.Ratio)
-}
-
-func ShardLoadRatioComparator(a, b any) int {
-	tmpA := a.(*ShardLoadRatio) //nolint:revive
-	tmpB := b.(*ShardLoadRatio) //nolint:revive
-	return utils.Float64Comparator(tmpA.Ratio, tmpB.Ratio)
 }

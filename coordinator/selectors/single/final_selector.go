@@ -32,7 +32,7 @@ func (*finalSelector) Select(ssContext *Context) (string, error) {
 	}
 	if status != nil {
 		startIdx := ssContext.Status.ServerIdx
-		return candidatesArr[int(startIdx)%len(candidatesArr)].(string), nil //nolint:revive
+		return candidatesArr[int(startIdx)%len(candidatesArr)], nil
 	}
-	return candidatesArr[rand.Intn(len(candidatesArr))].(string), nil //nolint:revive
+	return candidatesArr[rand.Intn(len(candidatesArr))], nil
 }

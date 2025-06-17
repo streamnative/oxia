@@ -56,35 +56,35 @@ func TestDefaultShardsRank(t *testing.T) {
 	nodeIter := ratioSnapshot.NodeIterator()
 
 	assert.True(t, nodeIter.Last())
-	nodeRatio := nodeIter.Value().(*model.NodeLoadRatio)
+	nodeRatio := nodeIter.Value()
 	assert.Equal(t, "sv-1", nodeRatio.NodeID)
 	assert.Equal(t, 0.3333333333333333, nodeRatio.Ratio)
 	shardRatios := nodeRatio.ShardRatios
 	assert.Equal(t, 5, shardRatios.Size())
 
 	assert.True(t, nodeIter.Prev())
-	nodeRatio = nodeIter.Value().(*model.NodeLoadRatio)
+	nodeRatio = nodeIter.Value()
 	assert.Equal(t, "sv-3", nodeRatio.NodeID)
 	assert.Equal(t, 0.26666666666666666, nodeRatio.Ratio)
 	shardRatios = nodeRatio.ShardRatios
 	assert.Equal(t, 4, shardRatios.Size())
 
 	assert.True(t, nodeIter.Prev())
-	nodeRatio = nodeIter.Value().(*model.NodeLoadRatio)
+	nodeRatio = nodeIter.Value()
 	assert.Equal(t, "sv-2", nodeRatio.NodeID)
 	assert.Equal(t, 0.2, nodeRatio.Ratio)
 	shardRatios = nodeRatio.ShardRatios
 	assert.Equal(t, 3, shardRatios.Size())
 
 	assert.True(t, nodeIter.Prev())
-	nodeRatio = nodeIter.Value().(*model.NodeLoadRatio)
+	nodeRatio = nodeIter.Value()
 	assert.Equal(t, "sv-4", nodeRatio.NodeID)
 	assert.Equal(t, 0.13333333333333333, nodeRatio.Ratio)
 	shardRatios = nodeRatio.ShardRatios
 	assert.Equal(t, 2, shardRatios.Size())
 
 	assert.True(t, nodeIter.Prev())
-	nodeRatio = nodeIter.Value().(*model.NodeLoadRatio)
+	nodeRatio = nodeIter.Value()
 	assert.Equal(t, "sv-5", nodeRatio.NodeID)
 	assert.Equal(t, 0.06666666666666667, nodeRatio.Ratio)
 	shardRatios = nodeRatio.ShardRatios

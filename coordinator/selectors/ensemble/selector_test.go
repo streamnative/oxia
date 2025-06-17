@@ -17,7 +17,7 @@ package ensemble
 import (
 	"testing"
 
-	"github.com/emirpasic/gods/sets/linkedhashset"
+	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/exp/slices"
 

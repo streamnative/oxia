@@ -17,7 +17,7 @@ package utils
 import (
 	"testing"
 
-	"github.com/emirpasic/gods/sets/linkedhashset"
+	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/streamnative/oxia/coordinator/model"
@@ -57,7 +57,7 @@ func TestGroupingCandidatesNormalCase(t *testing.T) {
 func TestGroupingCandidatesNoCandidates(t *testing.T) {
 	candidatesMetadata := map[string]model.ServerMetadata{}
 
-	result := GroupingCandidatesWithLabelValue(linkedhashset.New(), candidatesMetadata)
+	result := GroupingCandidatesWithLabelValue(linkedhashset.New[string](), candidatesMetadata)
 	assert.Empty(t, result)
 }
 

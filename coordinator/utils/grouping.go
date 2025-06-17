@@ -15,12 +15,12 @@
 package utils
 
 import (
-	"github.com/emirpasic/gods/sets/linkedhashset"
+	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 
 	"github.com/streamnative/oxia/coordinator/model"
 )
 
-func GroupingShardsNodeByStatus(candidates *linkedhashset.Set, status *model.ClusterStatus) map[string][]model.ShardInfo {
+func GroupingShardsNodeByStatus(candidates *linkedhashset.Set[string], status *model.ClusterStatus) map[string][]model.ShardInfo {
 	groupingShardByNode := make(map[string][]model.ShardInfo)
 	if status != nil {
 		for namespace, namespaceStatus := range status.Namespaces {
@@ -44,7 +44,7 @@ func GroupingShardsNodeByStatus(candidates *linkedhashset.Set, status *model.Clu
 		}
 	}
 	for iter := candidates.Iterator(); iter.Next(); {
-		nodeID := iter.Value().(string) //nolint:revive
+		nodeID := iter.Value()
 		_, exist := groupingShardByNode[nodeID]
 		if !exist {
 			groupingShardByNode[nodeID] = make([]model.ShardInfo, 0)
@@ -53,13 +53,10 @@ func GroupingShardsNodeByStatus(candidates *linkedhashset.Set, status *model.Clu
 	return groupingShardByNode
 }
 
-func GroupingCandidatesWithLabelValue(candidates *linkedhashset.Set, candidatesMetadata map[string]model.ServerMetadata) map[string]map[string]*linkedhashset.Set {
-	groupedCandidates := make(map[string]map[string]*linkedhashset.Set)
+func GroupingCandidatesWithLabelValue(candidates *linkedhashset.Set[string], candidatesMetadata map[string]model.ServerMetadata) map[string]map[string]*linkedhashset.Set[string] {
+	groupedCandidates := make(map[string]map[string]*linkedhashset.Set[string])
 	for iterator := candidates.Iterator(); iterator.Next(); {
-		candidate, ok := iterator.Value().(string)
-		if !ok {
-			panic("unexpected type in iterator")
-		}
+		candidate := iterator.Value()
 		metadata, exist := candidatesMetadata[candidate]
 		if !exist {
 			continue
@@ -67,13 +64,13 @@ func GroupingCandidatesWithLabelValue(candidates *linkedhashset.Set, candidatesM
 		for label, labelValue := range metadata.Labels {
 			labelGroup, exist := groupedCandidates[label]
 			if !exist {
-				tmp := make(map[string]*linkedhashset.Set)
+				tmp := make(map[string]*linkedhashset.Set[string])
 				groupedCandidates[label] = tmp
 				labelGroup = tmp
 			}
 			labelValueGroup, exist := labelGroup[labelValue]
 			if !exist {
-				tmp := linkedhashset.New()
+				tmp := linkedhashset.New[string]()
 				labelGroup[labelValue] = tmp
 				labelValueGroup = tmp
 			}
@@ -83,10 +80,10 @@ func GroupingCandidatesWithLabelValue(candidates *linkedhashset.Set, candidatesM
 	return groupedCandidates
 }
 
-func GroupingValueWithLabel(candidates *linkedhashset.Set, candidatesMetadata map[string]model.ServerMetadata) map[string]*linkedhashset.Set {
-	selectedLabelValues := make(map[string]*linkedhashset.Set)
+func GroupingValueWithLabel(candidates *linkedhashset.Set[string], candidatesMetadata map[string]model.ServerMetadata) map[string]*linkedhashset.Set[string] {
+	selectedLabelValues := make(map[string]*linkedhashset.Set[string])
 	for selectedIter := candidates.Iterator(); selectedIter.Next(); {
-		if metadata, exist := candidatesMetadata[selectedIter.Value().(string)]; exist {
+		if metadata, exist := candidatesMetadata[selectedIter.Value()]; exist {
 			for label, labelValue := range metadata.Labels {
 				collection := selectedLabelValues[label]
 				if collection == nil {

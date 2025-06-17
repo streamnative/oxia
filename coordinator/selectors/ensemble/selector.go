@@ -15,7 +15,7 @@
 package ensemble
 
 import (
-	"github.com/emirpasic/gods/sets/linkedhashset"
+	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 
 	"github.com/streamnative/oxia/coordinator/selectors"
 	"github.com/streamnative/oxia/coordinator/selectors/single"
@@ -37,7 +37,7 @@ func (ensemble *ensemble) Select(context *Context) ([]string, error) {
 		Policies:           context.Policies,
 		LoadRatioSupplier:  context.LoadRatioSupplier,
 	}
-	selected := linkedhashset.New()
+	selected := linkedhashset.New[string]()
 	sServerContext.SetSelected(selected)
 
 	for idx := range context.Replicas {

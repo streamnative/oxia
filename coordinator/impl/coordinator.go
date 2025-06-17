@@ -22,7 +22,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/emirpasic/gods/sets/linkedhashset"
+	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 	"github.com/pkg/errors"
 
 	"github.com/streamnative/oxia/coordinator/utils"
@@ -88,7 +88,7 @@ type coordinator struct {
 	model.ClusterConfig
 
 	serverIndexesOnce     sync.Once
-	serverIDs             *linkedhashset.Set
+	serverIDs             *linkedhashset.Set[string]
 	serverIDIndex         map[string]*model.Server
 	drainingServerIDIndex map[string]*model.Server
 
@@ -160,7 +160,7 @@ func NewCoordinator(metadataProvider MetadataProvider,
 			defer c.RUnlock()
 			return c.ServerMetadata
 		},
-		CandidatesSupplier: func() *linkedhashset.Set {
+		CandidatesSupplier: func() *linkedhashset.Set[string] {
 			c.RLock()
 			defer c.RUnlock()
 			return c.ServerIDs()
@@ -205,7 +205,7 @@ func (c *coordinator) IsBalanced() bool {
 	return c.loadBalancer.IsBalanced()
 }
 
-func (c *coordinator) ServerIDs() *linkedhashset.Set {
+func (c *coordinator) ServerIDs() *linkedhashset.Set[string] {
 	c.maybeLoadServerIndex()
 	return c.serverIDs
 }
@@ -227,7 +227,7 @@ func (c *coordinator) TriggerBalance() {
 //nolint:revive
 func (c *coordinator) maybeLoadServerIndex() {
 	c.serverIndexesOnce.Do(func() {
-		ids := linkedhashset.New()
+		ids := linkedhashset.New[string]()
 		idIndex := make(map[string]*model.Server)
 		drainingIndex := make(map[string]*model.Server)
 
