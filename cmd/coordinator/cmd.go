@@ -88,7 +88,12 @@ func validate(*cobra.Command, []string) error {
 			return errors.New("k8s-configmap-name must be set with metadata=configmap")
 		}
 	}
-	return nil
+	switch conf.MetadataProviderName {
+	case "memory", "configmap", "file":
+		return nil
+	default:
+		return errors.New(`must be one of "memory", "configmap" or "file"`)
+	}
 }
 
 func configIsRemote() bool {

@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -28,7 +29,7 @@ import (
 	"github.com/streamnative/oxia/common/metric"
 	"github.com/streamnative/oxia/coordinator/metadata"
 	"github.com/streamnative/oxia/coordinator/model"
-	rpc2 "github.com/streamnative/oxia/coordinator/rpc"
+	coordinatorrpc "github.com/streamnative/oxia/coordinator/rpc"
 
 	"github.com/streamnative/oxia/common/rpc"
 
@@ -78,10 +79,12 @@ func NewGrpcServer(config Config) (*GrpcServer, error) {
 		k8sConfig := metadata.NewK8SClientConfig()
 		metadataProvider = metadata.NewMetadataProviderConfigMap(metadata.NewK8SClientset(k8sConfig),
 			config.K8SMetadataNamespace, config.K8SMetadataConfigMapName)
+	default:
+		return nil, errors.New(`must be one of "memory", "configmap" or "file"`)
 	}
 
 	clientPool := rpc.NewClientPool(config.PeerTLS, nil)
-	rpcClient := rpc2.NewRpcProvider(clientPool)
+	rpcClient := coordinatorrpc.NewRpcProvider(clientPool)
 
 	coordinatorInstance, err := NewCoordinator(metadataProvider, config.ClusterConfigProvider, config.ClusterConfigChangeNotifications, rpcClient)
 	if err != nil {
