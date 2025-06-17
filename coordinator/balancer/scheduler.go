@@ -71,8 +71,8 @@ func (r *nodeBasedBalancer) Close() error {
 
 func (r *nodeBasedBalancer) quarantineNodes() *linkedhashset.Set[string] {
 	nodes := linkedhashset.New[string]()
-	r.quarantineNodeMap.Range(func(_, value any) bool {
-		nodes.Add(value.(string))
+	r.quarantineNodeMap.Range(func(nodeID, _ any) bool {
+		nodes.Add(nodeID.(string))
 		return true
 	})
 	return nodes
