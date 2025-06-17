@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/emirpasic/gods/sets/linkedhashset"
+	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/streamnative/oxia/coordinator/model"
@@ -184,8 +184,8 @@ func TestPolicyBasedShardBalancer(t *testing.T) {
 	// check if follow the policies
 	for name, ns := range coordinator.ClusterStatus().Namespaces {
 		for _, shard := range ns.Shards {
-			nodeIDs := linkedhashset.New()
-			nodeZones := linkedhashset.New()
+			nodeIDs := linkedhashset.New[string]()
+			nodeZones := linkedhashset.New[string]()
 			for _, server := range shard.Ensemble {
 				id := server.GetIdentifier()
 				nodeIDs.Add(id)

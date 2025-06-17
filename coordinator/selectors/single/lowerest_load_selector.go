@@ -15,7 +15,6 @@
 package single
 
 import (
-	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/coordinator/selectors"
 )
 
@@ -32,7 +31,7 @@ func (*lowerestLoadSelector) Select(ssContext *Context) (string, error) {
 		return "", selectors.ErrNoFunctioning
 	}
 	for iter := loadRatios.NodeIterator(); iter.Next(); {
-		nodeRatio := iter.Value().(*model.NodeLoadRatio) //nolint:revive
+		nodeRatio := iter.Value()
 		lowerLoad := nodeRatio.NodeID
 		if ssContext.Candidates.Contains(lowerLoad) {
 			return lowerLoad, nil

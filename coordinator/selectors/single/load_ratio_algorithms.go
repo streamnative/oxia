@@ -15,8 +15,9 @@
 package single
 
 import (
-	"github.com/emirpasic/gods/lists/arraylist"
+	"cmp"
 
+	"github.com/emirpasic/gods/v2/lists/arraylist"
 	"github.com/streamnative/oxia/coordinator/model"
 )
 
@@ -30,7 +31,7 @@ func DefaultShardsRank(params *model.RatioParams) *model.Ratio {
 	// the 1 means we are using count as a ratio.
 	shardLoadRatio := 1 / fTotalShards
 
-	nodeLoadRatios := arraylist.New()
+	nodeLoadRatios := arraylist.New[*model.NodeLoadRatio]()
 
 	first := true
 	maxNodeLoadRatio := 0.0
@@ -43,7 +44,7 @@ func DefaultShardsRank(params *model.RatioParams) *model.Ratio {
 			}
 		}
 
-		shardRatios := arraylist.New()
+		shardRatios := arraylist.New[*model.ShardLoadRatio]()
 		for _, info := range shards {
 			shardRatios.Add(&model.ShardLoadRatio{
 				ShardInfo: &info,
@@ -64,13 +65,17 @@ func DefaultShardsRank(params *model.RatioParams) *model.Ratio {
 			}
 		}
 
-		shardRatios.Sort(model.ShardLoadRatioComparator)
+		shardRatios.Sort(func(x, y *model.ShardLoadRatio) int {
+			return cmp.Compare(x.Ratio, y.Ratio)
+		})
 		nodeLoadRatios.Add(&model.NodeLoadRatio{
 			NodeID:      nodeID,
 			Ratio:       nodeLoadRatio,
 			ShardRatios: shardRatios,
 		})
 	}
-	nodeLoadRatios.Sort(model.NodeLoadRatioComparator)
+	nodeLoadRatios.Sort(func(x, y *model.NodeLoadRatio) int {
+		return cmp.Compare(x.Ratio, y.Ratio)
+	})
 	return model.NewRatio(maxNodeLoadRatio, minNodeLoadRatio, shardLoadRatio, nodeLoadRatios)
 }

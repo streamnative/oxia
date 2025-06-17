@@ -18,12 +18,10 @@ import (
 	"io"
 	"time"
 
-	"github.com/emirpasic/gods/sets/linkedhashset"
-	"golang.org/x/net/context"
-
-	"github.com/streamnative/oxia/coordinator/selectors"
-
+	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 	"github.com/streamnative/oxia/coordinator/model"
+	"github.com/streamnative/oxia/coordinator/selectors"
+	"golang.org/x/net/context"
 )
 
 type Options struct {
@@ -32,7 +30,7 @@ type Options struct {
 	ScheduleInterval time.Duration
 	QuarantineTime   time.Duration
 
-	CandidatesSupplier        func() *linkedhashset.Set
+	CandidatesSupplier        func() *linkedhashset.Set[string]
 	CandidateMetadataSupplier func() map[string]model.ServerMetadata
 	NamespaceConfigSupplier   func(namespace string) *model.NamespaceConfig
 	StatusSupplier            func() *model.ClusterStatus

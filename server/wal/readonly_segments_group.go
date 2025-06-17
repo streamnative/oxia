@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/emirpasic/gods/v2/trees/redblacktree"
 	"go.uber.org/multierr"
 
 	"github.com/streamnative/oxia/common/object"
@@ -45,15 +46,15 @@ type readOnlySegmentsGroup struct {
 	sync.Mutex
 
 	basePath     string
-	allSegments  *treeMap[int64, bool]
-	openSegments *treeMap[int64, object.RefCount[ReadOnlySegment]]
+	allSegments  *redblacktree.Tree[int64, bool]
+	openSegments *redblacktree.Tree[int64, object.RefCount[ReadOnlySegment]]
 }
 
 func newReadOnlySegmentsGroup(basePath string) (ReadOnlySegmentsGroup, error) {
 	g := &readOnlySegmentsGroup{
 		basePath:     basePath,
-		allSegments:  newInt64TreeMap[bool](),
-		openSegments: newInt64TreeMap[object.RefCount[ReadOnlySegment]](),
+		allSegments:  redblacktree.New[int64, bool](),
+		openSegments: redblacktree.New[int64, object.RefCount[ReadOnlySegment]](),
 	}
 
 	segments, err := listAllSegments(basePath)
@@ -83,10 +84,9 @@ func (r *readOnlySegmentsGroup) Close() error {
 	defer r.Unlock()
 
 	var err error
-	r.openSegments.Each(func(_ int64, segment object.RefCount[ReadOnlySegment]) bool {
-		err = multierr.Append(err, segment.(io.Closer).Close())
-		return true
-	})
+	for iter := r.openSegments.Iterator(); iter.Next(); {
+		err = multierr.Append(err, iter.Value().Close())
+	}
 
 	r.openSegments.Clear()
 	r.allSegments.Clear()
@@ -109,8 +109,9 @@ func (r *readOnlySegmentsGroup) Get(offset int64) (object.RefCount[ReadOnlySegme
 	r.Lock()
 	defer r.Unlock()
 
-	_, segment := r.openSegments.Floor(offset)
-	if segment != nil && offset <= segment.Get().LastOffset() {
+	node, exist := r.openSegments.Floor(offset)
+	segment := node.Value
+	if exist && offset <= segment.Get().LastOffset() {
 		return segment.Acquire(), nil
 	}
 
@@ -120,7 +121,7 @@ func (r *readOnlySegmentsGroup) Get(offset int64) (object.RefCount[ReadOnlySegme
 		return nil, codec.ErrOffsetOutOfBounds
 	}
 
-	rosegment, err := newReadOnlySegment(r.basePath, baseOffset)
+	rosegment, err := newReadOnlySegment(r.basePath, baseOffset.Key)
 	if err != nil {
 		return nil, err
 	}
@@ -140,13 +141,15 @@ func (r *readOnlySegmentsGroup) TrimSegments(offset int64) error {
 	defer r.Unlock()
 
 	// Find the segment that ends before the trim offset
-	segmentToKeep, found := r.allSegments.Floor(offset)
-	if !found {
-		segmentToKeep = offset
+	segmentToKeep := offset
+	if node, found := r.allSegments.Floor(offset); found {
+		segmentToKeep = node.Key
 	}
 
-	cutoffSegment, found := r.allSegments.Floor(segmentToKeep - 1)
-	if !found {
+	var cutoffSegment int64
+	if node, found := r.allSegments.Floor(segmentToKeep - 1); found {
+		cutoffSegment = node.Key
+	} else {
 		return nil
 	}
 
@@ -189,7 +192,8 @@ func (r *readOnlySegmentsGroup) PollHighestSegment() (object.RefCount[ReadOnlySe
 		return nil, nil //nolint:nilnil
 	}
 
-	offset, _ := r.allSegments.Max()
+	maxNode := r.allSegments.Right()
+	offset := maxNode.Key
 	r.allSegments.Remove(offset)
 	segment, found := r.openSegments.Get(offset)
 	if found {
@@ -207,27 +211,22 @@ func (r *readOnlySegmentsGroup) PollHighestSegment() (object.RefCount[ReadOnlySe
 func (r *readOnlySegmentsGroup) cleanSegmentsCache() error {
 	var err error
 
-	// Delete based on open-timestamp
-	r.openSegments.Each(func(k int64, v object.RefCount[ReadOnlySegment]) bool {
-		ts := v.Get().OpenTimestamp()
+	for iter := r.openSegments.Iterator(); iter.Next(); {
+		// Delete based on open-timestamp
+		segment := iter.Value()
+		offset := iter.Key()
+		ts := segment.Get().OpenTimestamp()
 		if time.Since(ts) > maxReadOnlySegmentsInCacheTime {
-			err = multierr.Append(err, v.Close())
-			r.openSegments.Remove(k)
+			err = multierr.Append(err, segment.Close())
+			r.openSegments.Remove(offset)
+			continue
 		}
-
-		return true
-	})
-
-	// Delete based on max-count
-	r.openSegments.Each(func(k int64, v object.RefCount[ReadOnlySegment]) bool {
+		// Delete based on max-count
 		if r.openSegments.Size() > maxReadOnlySegmentsInCacheCount {
-			err = multierr.Append(err, v.Close())
-			r.openSegments.Remove(k)
-			return true
+			err = multierr.Append(err, segment.Close())
+			r.openSegments.Remove(offset)
+			continue
 		}
-
-		return false
-	})
-
+	}
 	return err
 }

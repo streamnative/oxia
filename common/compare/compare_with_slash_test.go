@@ -15,10 +15,10 @@
 package compare
 
 import (
+	"cmp"
 	"fmt"
 	"testing"
 
-	"github.com/emirpasic/gods/utils"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -78,7 +78,7 @@ func TestCompareWithDataset(t *testing.T) {
 			if lbk == rbk {
 				assert.Equal(t, test.expect, CompareWithSlash([]byte(test.leftKey), []byte(test.rightKey)))
 			} else {
-				assert.Equal(t, test.expect, utils.UInt64Comparator(lbk, rbk))
+				assert.Equal(t, test.expect, cmp.Compare(lbk, rbk))
 			}
 		})
 	}

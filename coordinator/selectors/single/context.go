@@ -17,8 +17,7 @@ package single
 import (
 	"sync"
 
-	"github.com/emirpasic/gods/sets/linkedhashset"
-
+	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 	"github.com/streamnative/oxia/coordinator/utils"
 
 	"github.com/streamnative/oxia/coordinator/model"
@@ -26,33 +25,33 @@ import (
 )
 
 type Context struct {
-	Candidates         *linkedhashset.Set
+	Candidates         *linkedhashset.Set[string]
 	CandidatesMetadata map[string]model.ServerMetadata
 	Policies           *p.Policies
 	Status             *model.ClusterStatus
 
 	LoadRatioSupplier func() *model.Ratio
 
-	selected *linkedhashset.Set
+	selected *linkedhashset.Set[string]
 
 	candidateOnce               sync.Once
-	labelValueGroupedCandidates map[string]map[string]*linkedhashset.Set
+	labelValueGroupedCandidates map[string]map[string]*linkedhashset.Set[string]
 
 	selectedOnce                    sync.Once
-	labelGroupedSelectedLabelValues map[string]*linkedhashset.Set
+	labelGroupedSelectedLabelValues map[string]*linkedhashset.Set[string]
 }
 
-func (so *Context) LabelValueGroupedCandidates() map[string]map[string]*linkedhashset.Set {
+func (so *Context) LabelValueGroupedCandidates() map[string]map[string]*linkedhashset.Set[string] {
 	so.maybeGrouping()
 	return so.labelValueGroupedCandidates
 }
 
-func (so *Context) LabelGroupedSelectedLabelValues() map[string]*linkedhashset.Set {
+func (so *Context) LabelGroupedSelectedLabelValues() map[string]*linkedhashset.Set[string] {
 	so.maybeGrouping()
 	return so.labelGroupedSelectedLabelValues
 }
 
-func (so *Context) SetSelected(selected *linkedhashset.Set) {
+func (so *Context) SetSelected(selected *linkedhashset.Set[string]) {
 	so.selected = selected
 	so.selectedOnce = sync.Once{}
 	so.Candidates = so.Candidates.Difference(so.selected)

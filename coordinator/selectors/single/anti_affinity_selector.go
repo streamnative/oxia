@@ -15,8 +15,7 @@
 package single
 
 import (
-	"github.com/emirpasic/gods/sets/linkedhashset"
-
+	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 	p "github.com/streamnative/oxia/coordinator/policies"
 	"github.com/streamnative/oxia/coordinator/selectors"
 )
@@ -31,13 +30,13 @@ func (*serverAntiAffinitiesSelector) Select(ssContext *Context) (string, error) 
 		return "", selectors.ErrNoFunctioning
 	}
 	if ssContext.selected == nil {
-		ssContext.selected = linkedhashset.New()
+		ssContext.selected = linkedhashset.New[string]()
 	}
 	selectedLabelValues := ssContext.LabelGroupedSelectedLabelValues()
-	candidates := linkedhashset.New()
+	candidates := linkedhashset.New[string]()
 	for affinityIdx, affinity := range policies.AntiAffinities {
 		for _, label := range affinity.Labels {
-			labelSatisfiedCandidates := linkedhashset.New()
+			labelSatisfiedCandidates := linkedhashset.New[string]()
 			labelGroupedCandidates := ssContext.LabelValueGroupedCandidates()[label]
 			for candidatesLabelValue, servers := range labelGroupedCandidates {
 				if len(selectedLabelValues) > 0 {
@@ -72,8 +71,8 @@ func (*serverAntiAffinitiesSelector) Select(ssContext *Context) (string, error) 
 		}
 	}
 	if candidates.Size() == 1 {
-		_, value := candidates.Find(func(_ int, _ any) bool { return true })
-		return value.(string), nil //nolint:revive
+		_, value := candidates.Find(func(_ int, _ string) bool { return true })
+		return value, nil //nolint:revive
 	}
 
 	ssContext.Candidates = candidates
