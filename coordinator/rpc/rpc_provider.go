@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package impl
+package rpc
 
 import (
 	"context"
@@ -29,7 +29,7 @@ import (
 
 const rpcTimeout = 30 * time.Second
 
-type RpcProvider interface {
+type Provider interface {
 	PushShardAssignments(ctx context.Context, node model.Server) (proto.OxiaCoordination_PushShardAssignmentsClient, error)
 	NewTerm(ctx context.Context, node model.Server, req *proto.NewTermRequest) (*proto.NewTermResponse, error)
 	BecomeLeader(ctx context.Context, node model.Server, req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error)
@@ -46,7 +46,7 @@ type rpcProvider struct {
 	pool rpc.ClientPool
 }
 
-func NewRpcProvider(pool rpc.ClientPool) RpcProvider {
+func NewRpcProvider(pool rpc.ClientPool) Provider {
 	return &rpcProvider{pool: pool}
 }
 

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package impl
+package metadata
 
 import (
 	"path/filepath"
@@ -30,18 +30,18 @@ var (
 		f.PrependReactor("*", "*", K8SResourceVersionSupport(f.Tracker()))
 		return f
 	}()
-	metadataProviders = map[string]func(t *testing.T) MetadataProvider{
-		"memory": func(t *testing.T) MetadataProvider {
+	metadataProviders = map[string]func(t *testing.T) Provider{
+		"memory": func(t *testing.T) Provider {
 			t.Helper()
 
 			return NewMetadataProviderMemory()
 		},
-		"file": func(t *testing.T) MetadataProvider {
+		"file": func(t *testing.T) Provider {
 			t.Helper()
 
 			return NewMetadataProviderFile(filepath.Join(t.TempDir(), "metadata"))
 		},
-		"configmap": func(t *testing.T) MetadataProvider {
+		"configmap": func(t *testing.T) Provider {
 			t.Helper()
 
 			return NewMetadataProviderConfigMap(_fake, "ns", "n")
@@ -56,7 +56,7 @@ func TestMetadataProvider(t *testing.T) {
 
 			res, version, err := m.Get()
 			assert.NoError(t, err)
-			assert.Equal(t, MetadataNotExists, version)
+			assert.Equal(t, NotExists, version)
 			assert.Nil(t, res)
 
 			assert.PanicsWithError(t, ErrMetadataBadVersion.Error(), func() {
@@ -68,7 +68,7 @@ func TestMetadataProvider(t *testing.T) {
 
 			newVersion, err := m.Store(&model.ClusterStatus{
 				Namespaces: map[string]model.NamespaceStatus{},
-			}, MetadataNotExists)
+			}, NotExists)
 			assert.NoError(t, err)
 			assert.EqualValues(t, Version("0"), newVersion)
 

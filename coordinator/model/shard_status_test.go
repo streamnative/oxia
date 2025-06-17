@@ -12,31 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package impl
+package model
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/streamnative/oxia/coordinator/model"
 )
 
 func TestShardStatus_String(t *testing.T) {
-	assert.Equal(t, "Unknown", model.ShardStatusUnknown.String())
-	assert.Equal(t, "SteadyState", model.ShardStatusSteadyState.String())
-	assert.Equal(t, "Election", model.ShardStatusElection.String())
+	assert.Equal(t, "Unknown", ShardStatusUnknown.String())
+	assert.Equal(t, "SteadyState", ShardStatusSteadyState.String())
+	assert.Equal(t, "Election", ShardStatusElection.String())
 }
 
 func TestShardStatus_JSON(t *testing.T) {
-	j, err := model.ShardStatusSteadyState.MarshalJSON()
+	j, err := ShardStatusSteadyState.MarshalJSON()
 	assert.NoError(t, err)
 	assert.Equal(t, []byte("\"SteadyState\""), j)
 
-	var s model.ShardStatus
+	var s ShardStatus
 	err = s.UnmarshalJSON(j)
 	assert.NoError(t, err)
-	assert.Equal(t, model.ShardStatusSteadyState, s)
+	assert.Equal(t, ShardStatusSteadyState, s)
 
 	err = s.UnmarshalJSON([]byte("xyz"))
 	assert.Error(t, err)

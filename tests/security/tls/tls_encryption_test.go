@@ -23,11 +23,14 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/streamnative/oxia/coordinator"
+	"github.com/streamnative/oxia/coordinator/metadata"
+	rpc2 "github.com/streamnative/oxia/coordinator/rpc"
+
 	"github.com/streamnative/oxia/common/constant"
 	"github.com/streamnative/oxia/common/rpc"
 
 	"github.com/streamnative/oxia/common/security"
-	"github.com/streamnative/oxia/coordinator/impl"
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/oxia"
 	"github.com/streamnative/oxia/server"
@@ -120,7 +123,7 @@ func TestClusterHandshakeSuccess(t *testing.T) {
 	s3, sa3 := newTLSServer(t)
 	defer s3.Close()
 
-	metadataProvider := impl.NewMetadataProviderMemory()
+	metadataProvider := metadata.NewMetadataProviderMemory()
 	clusterConfig := model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
 			Name:              constant.DefaultNamespace,
@@ -137,9 +140,9 @@ func TestClusterHandshakeSuccess(t *testing.T) {
 	clientPool := rpc.NewClientPool(tlsConf, nil)
 	defer clientPool.Close()
 
-	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, impl.NewRpcProvider(clientPool))
+	coordinatorInstance, err := coordinator.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, rpc2.NewRpcProvider(clientPool))
 	assert.NoError(t, err)
-	defer coordinator.Close()
+	defer coordinatorInstance.Close()
 }
 
 func TestClientHandshakeFailByNoTlsConfig(t *testing.T) {
@@ -150,7 +153,7 @@ func TestClientHandshakeFailByNoTlsConfig(t *testing.T) {
 	s3, sa3 := newTLSServer(t)
 	defer s3.Close()
 
-	metadataProvider := impl.NewMetadataProviderMemory()
+	metadataProvider := metadata.NewMetadataProviderMemory()
 	clusterConfig := model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
 			Name:              constant.DefaultNamespace,
@@ -167,9 +170,9 @@ func TestClientHandshakeFailByNoTlsConfig(t *testing.T) {
 	clientPool := rpc.NewClientPool(tlsConf, nil)
 	defer clientPool.Close()
 
-	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, impl.NewRpcProvider(clientPool))
+	coordinatorInstance, err := coordinator.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, rpc2.NewRpcProvider(clientPool))
 	assert.NoError(t, err)
-	defer coordinator.Close()
+	defer coordinatorInstance.Close()
 
 	client, err := oxia.NewSyncClient(sa1.Public, oxia.WithRequestTimeout(1*time.Second))
 	assert.Error(t, err)
@@ -184,7 +187,7 @@ func TestClientHandshakeByAuthFail(t *testing.T) {
 	s3, sa3 := newTLSServer(t)
 	defer s3.Close()
 
-	metadataProvider := impl.NewMetadataProviderMemory()
+	metadataProvider := metadata.NewMetadataProviderMemory()
 	clusterConfig := model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
 			Name:              constant.DefaultNamespace,
@@ -201,9 +204,9 @@ func TestClientHandshakeByAuthFail(t *testing.T) {
 	clientPool := rpc.NewClientPool(tlsConf, nil)
 	defer clientPool.Close()
 
-	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, impl.NewRpcProvider(clientPool))
+	coordinatorInstance, err := coordinator.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, rpc2.NewRpcProvider(clientPool))
 	assert.NoError(t, err)
-	defer coordinator.Close()
+	defer coordinatorInstance.Close()
 
 	tlsOption, err := getClientTLSOption()
 	// clear the CA file
@@ -224,7 +227,7 @@ func TestClientHandshakeWithInsecure(t *testing.T) {
 	s3, sa3 := newTLSServer(t)
 	defer s3.Close()
 
-	metadataProvider := impl.NewMetadataProviderMemory()
+	metadataProvider := metadata.NewMetadataProviderMemory()
 	clusterConfig := model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
 			Name:              constant.DefaultNamespace,
@@ -241,9 +244,9 @@ func TestClientHandshakeWithInsecure(t *testing.T) {
 	clientPool := rpc.NewClientPool(tlsConf, nil)
 	defer clientPool.Close()
 
-	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, impl.NewRpcProvider(clientPool))
+	coordinatorInstance, err := coordinator.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, rpc2.NewRpcProvider(clientPool))
 	assert.NoError(t, err)
-	defer coordinator.Close()
+	defer coordinatorInstance.Close()
 
 	tlsOption, err := getClientTLSOption()
 	// clear the CA file
@@ -265,7 +268,7 @@ func TestClientHandshakeSuccess(t *testing.T) {
 	s3, sa3 := newTLSServer(t)
 	defer s3.Close()
 
-	metadataProvider := impl.NewMetadataProviderMemory()
+	metadataProvider := metadata.NewMetadataProviderMemory()
 	clusterConfig := model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
 			Name:              constant.DefaultNamespace,
@@ -282,9 +285,9 @@ func TestClientHandshakeSuccess(t *testing.T) {
 	clientPool := rpc.NewClientPool(tlsConf, nil)
 	defer clientPool.Close()
 
-	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, impl.NewRpcProvider(clientPool))
+	coordinatorInstance, err := coordinator.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, rpc2.NewRpcProvider(clientPool))
 	assert.NoError(t, err)
-	defer coordinator.Close()
+	defer coordinatorInstance.Close()
 
 	tlsOption, err := getClientTLSOption()
 	assert.NoError(t, err)
@@ -307,7 +310,7 @@ func TestOnlyEnablePublicTls(t *testing.T) {
 	s3, sa3 := newTLSServerWithInterceptor(t, disableInternalTLS)
 	defer s3.Close()
 
-	metadataProvider := impl.NewMetadataProviderMemory()
+	metadataProvider := metadata.NewMetadataProviderMemory()
 	clusterConfig := model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
 			Name:              constant.DefaultNamespace,
@@ -319,9 +322,9 @@ func TestOnlyEnablePublicTls(t *testing.T) {
 	clientPool := rpc.NewClientPool(nil, nil)
 	defer clientPool.Close()
 
-	coordinator, err := impl.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, impl.NewRpcProvider(clientPool))
+	coordinatorInstance, err := coordinator.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, rpc2.NewRpcProvider(clientPool))
 	assert.NoError(t, err)
-	defer coordinator.Close()
+	defer coordinatorInstance.Close()
 
 	// failed without cert
 

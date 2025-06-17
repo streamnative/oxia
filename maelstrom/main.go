@@ -24,10 +24,12 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 
+	"github.com/streamnative/oxia/coordinator"
+	"github.com/streamnative/oxia/coordinator/metadata"
+
 	"github.com/streamnative/oxia/common/constant"
 	"github.com/streamnative/oxia/common/logging"
 
-	"github.com/streamnative/oxia/coordinator/impl"
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/server"
 )
@@ -173,8 +175,8 @@ func main() {
 			Servers: servers,
 		}
 
-		_, err := impl.NewCoordinator(
-			impl.NewMetadataProviderFile(filepath.Join(dataDir, "cluster-status.json")),
+		_, err := coordinator.NewCoordinator(
+			metadata.NewMetadataProviderFile(filepath.Join(dataDir, "cluster-status.json")),
 			func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil,
 			newRpcProvider(dispatcher))
 		if err != nil {

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package impl
+package metadata
 
 import (
 	"strconv"
@@ -20,6 +20,8 @@ import (
 
 	"github.com/streamnative/oxia/coordinator/model"
 )
+
+var _ Provider = &metadataProviderMemory{}
 
 // MetadataProviderMemory is a provider that just keeps the cluster status in memory
 // Used for unit tests.
@@ -30,10 +32,10 @@ type metadataProviderMemory struct {
 	version Version
 }
 
-func NewMetadataProviderMemory() MetadataProvider {
+func NewMetadataProviderMemory() Provider {
 	return &metadataProviderMemory{
 		cs:      nil,
-		version: MetadataNotExists,
+		version: NotExists,
 	}
 }
 

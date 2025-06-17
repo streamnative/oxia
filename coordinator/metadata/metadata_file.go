@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package impl
+package metadata
 
 import (
 	"encoding/json"
@@ -26,6 +26,13 @@ import (
 	"github.com/streamnative/oxia/coordinator/model"
 )
 
+type container struct {
+	ClusterStatus *model.ClusterStatus `json:"clusterStatus"`
+	Version       Version              `json:"version"`
+}
+
+var _ Provider = &metadataProviderFile{}
+
 // MetadataProviderMemory is a provider that just keeps the cluster status in a local file,
 // using a lock mechanism to prevent missing updates.
 type metadataProviderFile struct {
@@ -33,12 +40,7 @@ type metadataProviderFile struct {
 	fileLock *fslock.Lock
 }
 
-type MetadataContainer struct {
-	ClusterStatus *model.ClusterStatus `json:"clusterStatus"`
-	Version       Version              `json:"version"`
-}
-
-func NewMetadataProviderFile(path string) MetadataProvider {
+func NewMetadataProviderFile(path string) Provider {
 	return &metadataProviderFile{
 		path:     path,
 		fileLock: fslock.New(path),
@@ -53,18 +55,18 @@ func (m *metadataProviderFile) Get() (cs *model.ClusterStatus, version Version, 
 	content, err := os.ReadFile(m.path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, MetadataNotExists, nil
+			return nil, NotExists, nil
 		}
-		return nil, MetadataNotExists, err
+		return nil, NotExists, err
 	}
 
 	if len(content) == 0 {
-		return nil, MetadataNotExists, nil
+		return nil, NotExists, nil
 	}
 
-	mc := MetadataContainer{}
+	mc := container{}
 	if err = json.Unmarshal(content, &mc); err != nil {
-		return nil, MetadataNotExists, err
+		return nil, NotExists, err
 	}
 
 	return mc.ClusterStatus, mc.Version, nil
@@ -75,11 +77,11 @@ func (m *metadataProviderFile) Store(cs *model.ClusterStatus, expectedVersion Ve
 	parentDir := filepath.Dir(m.path)
 	if _, err := os.Stat(parentDir); err != nil {
 		if !os.IsNotExist(err) {
-			return MetadataNotExists, err
+			return NotExists, err
 		}
 
 		if err := os.MkdirAll(parentDir, 0755); err != nil {
-			return MetadataNotExists, err
+			return NotExists, err
 		}
 	}
 
@@ -97,7 +99,7 @@ func (m *metadataProviderFile) Store(cs *model.ClusterStatus, expectedVersion Ve
 
 	_, existingVersion, err := m.Get()
 	if err != nil {
-		return MetadataNotExists, err
+		return NotExists, err
 	}
 
 	if expectedVersion != existingVersion {
@@ -105,7 +107,7 @@ func (m *metadataProviderFile) Store(cs *model.ClusterStatus, expectedVersion Ve
 	}
 
 	newVersion = incrVersion(existingVersion)
-	newContent, err := json.Marshal(MetadataContainer{
+	newContent, err := json.Marshal(container{
 		ClusterStatus: cs,
 		Version:       newVersion,
 	})
@@ -114,7 +116,7 @@ func (m *metadataProviderFile) Store(cs *model.ClusterStatus, expectedVersion Ve
 	}
 
 	if err := os.WriteFile(m.path, newContent, 0600); err != nil {
-		return MetadataNotExists, err
+		return NotExists, err
 	}
 
 	return newVersion, nil

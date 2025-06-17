@@ -12,12 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package impl
+package coordinator
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/streamnative/oxia/coordinator"
+	metadata2 "github.com/streamnative/oxia/coordinator/metadata"
+	rpc2 "github.com/streamnative/oxia/coordinator/rpc"
 
 	"github.com/streamnative/oxia/common/rpc"
 	"github.com/streamnative/oxia/coordinator/model"
@@ -31,7 +35,7 @@ func TestCoordinatorInitiateLeaderElection(t *testing.T) {
 	defer s2.Close()
 	defer s3.Close()
 
-	metadataProvider := NewMetadataProviderMemory()
+	metadataProvider := metadata2.NewMetadataProviderMemory()
 	clusterConfig := model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
 			Name:              "default",
@@ -42,9 +46,9 @@ func TestCoordinatorInitiateLeaderElection(t *testing.T) {
 	}
 	clientPool := rpc.NewClientPool(nil, nil)
 
-	coordinator, err := NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, NewRpcProvider(clientPool))
+	coordinatorInstance, err := coordinator.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return clusterConfig, nil }, nil, rpc2.NewRpcProvider(clientPool))
 	assert.NoError(t, err)
-	defer coordinator.Close()
+	defer coordinatorInstance.Close()
 
 	metadata := model.ShardMetadata{
 		Status:         model.ShardStatusSteadyState,
@@ -54,9 +58,9 @@ func TestCoordinatorInitiateLeaderElection(t *testing.T) {
 		RemovedNodes:   []model.Server{},
 		Int32HashRange: model.Int32HashRange{Min: 2000, Max: 100000},
 	}
-	err = coordinator.InitiateLeaderElection("default", 1, metadata)
+	err = coordinatorInstance.InitiateLeaderElection("default", 1, metadata)
 	assert.NoError(t, err)
 
-	status := coordinator.ClusterStatus()
+	status := coordinatorInstance.ClusterStatus()
 	assert.EqualValues(t, status.Namespaces["default"].Shards[1], metadata)
 }

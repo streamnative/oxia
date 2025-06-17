@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package impl
+package coordinator
 
 import (
 	"context"
@@ -24,6 +24,8 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"github.com/streamnative/oxia/coordinator/rpc"
 
 	"github.com/streamnative/oxia/common/process"
 	time2 "github.com/streamnative/oxia/common/time"
@@ -47,6 +49,14 @@ const (
 	defaultInitialRetryBackoff = 10 * time.Second
 )
 
+type NodeAvailabilityListener interface {
+	NodeBecameUnavailable(node model.Server)
+}
+
+type ShardAssignmentsProvider interface {
+	WaitForNextUpdate(ctx context.Context, currentValue *proto.ShardAssignments) (*proto.ShardAssignments, error)
+}
+
 // The NodeController takes care of checking the health-status of each node
 // and to push all the service discovery updates.
 type NodeController interface {
@@ -63,7 +73,7 @@ type nodeController struct {
 	status                   NodeStatus
 	shardAssignmentsProvider ShardAssignmentsProvider
 	nodeAvailabilityListener NodeAvailabilityListener
-	rpc                      RpcProvider
+	rpc                      rpc.Provider
 	log                      *slog.Logger
 
 	// This is the overall context for the node controller
@@ -84,21 +94,21 @@ type nodeController struct {
 func NewNodeController(addr model.Server,
 	shardAssignmentsProvider ShardAssignmentsProvider,
 	nodeAvailabilityListener NodeAvailabilityListener,
-	rpc RpcProvider) NodeController {
-	return newNodeController(addr, shardAssignmentsProvider, nodeAvailabilityListener, rpc, defaultInitialRetryBackoff)
+	rpcProvider rpc.Provider) NodeController {
+	return newNodeController(addr, shardAssignmentsProvider, nodeAvailabilityListener, rpcProvider, defaultInitialRetryBackoff)
 }
 
 func newNodeController(server model.Server,
 	shardAssignmentsProvider ShardAssignmentsProvider,
 	nodeAvailabilityListener NodeAvailabilityListener,
-	rpc RpcProvider,
+	rpcProvider rpc.Provider,
 	initialRetryBackoff time.Duration) NodeController {
 	labels := map[string]any{"node": server.GetIdentifier()}
 	nc := &nodeController{
 		server:                   server,
 		shardAssignmentsProvider: shardAssignmentsProvider,
 		nodeAvailabilityListener: nodeAvailabilityListener,
-		rpc:                      rpc,
+		rpc:                      rpcProvider,
 		status:                   Running,
 		log: slog.With(
 			slog.String("component", "node-controller"),

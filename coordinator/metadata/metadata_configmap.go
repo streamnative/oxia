@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package impl
+package metadata
 
 import (
 	"log/slog"
@@ -29,6 +29,8 @@ import (
 	"github.com/streamnative/oxia/coordinator/model"
 )
 
+var _ Provider = &metadataProviderConfigMap{}
+
 type metadataProviderConfigMap struct {
 	sync.Mutex
 	kubernetes      k8s.Interface
@@ -40,7 +42,7 @@ type metadataProviderConfigMap struct {
 	metadataSizeGauge metric.Gauge
 }
 
-func NewMetadataProviderConfigMap(kc k8s.Interface, namespace, name string) MetadataProvider {
+func NewMetadataProviderConfigMap(kc k8s.Interface, namespace, name string) Provider {
 	m := &metadataProviderConfigMap{
 		kubernetes: kc,
 		namespace:  namespace,
@@ -73,7 +75,7 @@ func (m *metadataProviderConfigMap) getWithoutLock() (*model.ClusterStatus, Vers
 	cm, err := K8SConfigMaps(m.kubernetes).Get(m.namespace, m.name)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			return nil, MetadataNotExists, nil
+			return nil, NotExists, nil
 		}
 		return nil, "", err
 	}
@@ -145,7 +147,7 @@ func configMap(name string, status *model.ClusterStatus, version Version) *corev
 		},
 	}
 
-	if version != MetadataNotExists {
+	if version != NotExists {
 		cm.ResourceVersion = string(version)
 	}
 

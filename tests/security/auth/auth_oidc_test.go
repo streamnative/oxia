@@ -29,10 +29,13 @@ import (
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/util/json"
 
+	"github.com/streamnative/oxia/coordinator"
+	"github.com/streamnative/oxia/coordinator/metadata"
+	rpc2 "github.com/streamnative/oxia/coordinator/rpc"
+
 	"github.com/streamnative/oxia/common/constant"
 	"github.com/streamnative/oxia/common/rpc"
 
-	"github.com/streamnative/oxia/coordinator/impl"
 	"github.com/streamnative/oxia/coordinator/model"
 	"github.com/streamnative/oxia/oxia"
 	clientauth "github.com/streamnative/oxia/oxia/auth"
@@ -95,7 +98,7 @@ func newOxiaClusterWithAuth(t *testing.T, issueURL string, audiences string) (ad
 		Internal: fmt.Sprintf("localhost:%d", s3.InternalPort()),
 	}
 
-	metadataProvider := impl.NewMetadataProviderMemory()
+	metadataProvider := metadata.NewMetadataProviderMemory()
 	clusterConfig := model.ClusterConfig{
 		Namespaces: []model.NamespaceConfig{{
 			Name:              constant.DefaultNamespace,
@@ -107,9 +110,9 @@ func newOxiaClusterWithAuth(t *testing.T, issueURL string, audiences string) (ad
 
 	clientPool := rpc.NewClientPool(nil, nil)
 
-	coordinator, err := impl.NewCoordinator(metadataProvider,
+	coordinatorInstance, err := coordinator.NewCoordinator(metadataProvider,
 		func() (model.ClusterConfig, error) { return clusterConfig, nil },
-		nil, impl.NewRpcProvider(clientPool))
+		nil, rpc2.NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 
 	return s1Addr.Public, func() {
@@ -118,7 +121,7 @@ func newOxiaClusterWithAuth(t *testing.T, issueURL string, audiences string) (ad
 		s3.Close()
 
 		clientPool.Close()
-		coordinator.Close()
+		coordinatorInstance.Close()
 	}
 }
 
