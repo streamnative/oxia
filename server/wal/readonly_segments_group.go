@@ -110,9 +110,8 @@ func (r *readOnlySegmentsGroup) Get(offset int64) (object.RefCount[ReadOnlySegme
 	defer r.Unlock()
 
 	node, exist := r.openSegments.Floor(offset)
-	segment := node.Value
-	if exist && offset <= segment.Get().LastOffset() {
-		return segment.Acquire(), nil
+	if exist && offset <= node.Value.Get().LastOffset() {
+		return node.Value.Acquire(), nil
 	}
 
 	// Check if we have a segment file on disk
