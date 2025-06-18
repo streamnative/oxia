@@ -26,8 +26,8 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
-	"github.com/streamnative/oxia/oxia/internal/model"
-	"github.com/streamnative/oxia/proto"
+	"github.com/oxia-db/oxia/oxia/internal/model"
+	"github.com/oxia-db/oxia/proto"
 )
 
 func TestMetricsDecorate(t *testing.T) {

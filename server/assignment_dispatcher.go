@@ -28,13 +28,13 @@ import (
 	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
 
-	"github.com/streamnative/oxia/common/constant"
-	"github.com/streamnative/oxia/common/rpc"
-	"github.com/streamnative/oxia/common/sharding"
+	"github.com/oxia-db/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/rpc"
+	"github.com/oxia-db/oxia/common/sharding"
 
-	"github.com/streamnative/oxia/common/metric"
-	"github.com/streamnative/oxia/proto"
-	"github.com/streamnative/oxia/server/util"
+	"github.com/oxia-db/oxia/common/metric"
+	"github.com/oxia-db/oxia/proto"
+	"github.com/oxia-db/oxia/server/util"
 )
 
 type Client interface {

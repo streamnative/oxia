@@ -21,9 +21,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/constant"
 
-	"github.com/streamnative/oxia/server/wal"
+	"github.com/oxia-db/oxia/server/wal"
 )
 
 func TestQuorumAckTrackerNoFollower(t *testing.T) {

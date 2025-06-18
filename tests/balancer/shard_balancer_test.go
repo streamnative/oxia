@@ -21,9 +21,9 @@ import (
 	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/coordinator/model"
-	"github.com/streamnative/oxia/coordinator/policies"
-	"github.com/streamnative/oxia/tests/mock"
+	"github.com/oxia-db/oxia/coordinator/model"
+	"github.com/oxia-db/oxia/coordinator/policies"
+	"github.com/oxia-db/oxia/tests/mock"
 )
 
 func TestNormalShardBalancer(t *testing.T) {

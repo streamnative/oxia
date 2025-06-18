@@ -25,15 +25,15 @@ import (
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/streamnative/oxia/common/constant"
-	"github.com/streamnative/oxia/common/metric"
-	"github.com/streamnative/oxia/coordinator/metadata"
-	"github.com/streamnative/oxia/coordinator/model"
-	coordinatorrpc "github.com/streamnative/oxia/coordinator/rpc"
+	"github.com/oxia-db/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/metric"
+	"github.com/oxia-db/oxia/coordinator/metadata"
+	"github.com/oxia-db/oxia/coordinator/model"
+	coordinatorrpc "github.com/oxia-db/oxia/coordinator/rpc"
 
-	"github.com/streamnative/oxia/common/rpc"
+	"github.com/oxia-db/oxia/common/rpc"
 
-	"github.com/streamnative/oxia/server/auth"
+	"github.com/oxia-db/oxia/server/auth"
 )
 
 type Config struct {

@@ -15,7 +15,7 @@
 package internal
 
 import (
-	"github.com/streamnative/oxia/proto"
+	"github.com/oxia-db/oxia/proto"
 )
 
 func toShard(assignment *proto.ShardAssignment) Shard {

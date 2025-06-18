@@ -6,7 +6,7 @@ Suppose you don't have the Kubernetes environment or some container-based system
 
 ## Download code from the GitHub
 
-You can check https://github.com/streamnative/oxia to download the source of StreamNative oxia.
+You can check https://github.com/oxia-db/oxia to download the source of StreamNative oxia.
 
 ## Build from the source code
 
@@ -91,7 +91,7 @@ servers:
     internal: 127.0.0.1:6663
 ```
 
-> If you need to know what the namespaces are. You can check the [architecture](https://github.com/streamnative/oxia/blob/main/docs/architecture.md) section to get more information.
+> If you need to know what the namespaces are. You can check the [architecture](https://github.com/oxia-db/oxia/blob/main/docs/architecture.md) section to get more information.
 
 After configuration file creation, we can start the coordinator. The command is as follows.
 

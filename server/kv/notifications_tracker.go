@@ -26,12 +26,12 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/streamnative/oxia/common/concurrent"
-	"github.com/streamnative/oxia/common/constant"
-	time2 "github.com/streamnative/oxia/common/time"
+	"github.com/oxia-db/oxia/common/concurrent"
+	"github.com/oxia-db/oxia/common/constant"
+	time2 "github.com/oxia-db/oxia/common/time"
 
-	"github.com/streamnative/oxia/common/metric"
-	"github.com/streamnative/oxia/proto"
+	"github.com/oxia-db/oxia/common/metric"
+	"github.com/oxia-db/oxia/proto"
 )
 
 const (

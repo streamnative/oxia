@@ -23,8 +23,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/cmd/client/common"
-	"github.com/streamnative/oxia/oxia"
+	"github.com/oxia-db/oxia/cmd/client/common"
+	"github.com/oxia-db/oxia/oxia"
 )
 
 func runCmd(cmd *cobra.Command, args string) (string, error) {

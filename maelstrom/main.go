@@ -24,14 +24,14 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 
-	"github.com/streamnative/oxia/coordinator"
-	"github.com/streamnative/oxia/coordinator/metadata"
+	"github.com/oxia-db/oxia/coordinator"
+	"github.com/oxia-db/oxia/coordinator/metadata"
 
-	"github.com/streamnative/oxia/common/constant"
-	"github.com/streamnative/oxia/common/logging"
+	"github.com/oxia-db/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/logging"
 
-	"github.com/streamnative/oxia/coordinator/model"
-	"github.com/streamnative/oxia/server"
+	"github.com/oxia-db/oxia/coordinator/model"
+	"github.com/oxia-db/oxia/server"
 )
 
 var (

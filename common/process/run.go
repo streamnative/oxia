@@ -19,7 +19,7 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/streamnative/oxia/common/concurrent"
+	"github.com/oxia-db/oxia/common/concurrent"
 )
 
 func RunProcess(startProcess func() (io.Closer, error)) {

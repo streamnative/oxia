@@ -25,14 +25,14 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/streamnative/oxia/coordinator/rpc"
+	"github.com/oxia-db/oxia/coordinator/rpc"
 
-	"github.com/streamnative/oxia/common/process"
-	time2 "github.com/streamnative/oxia/common/time"
+	"github.com/oxia-db/oxia/common/process"
+	time2 "github.com/oxia-db/oxia/common/time"
 
-	"github.com/streamnative/oxia/common/metric"
-	"github.com/streamnative/oxia/coordinator/model"
-	"github.com/streamnative/oxia/proto"
+	"github.com/oxia-db/oxia/common/metric"
+	"github.com/oxia-db/oxia/coordinator/model"
+	"github.com/oxia-db/oxia/proto"
 )
 
 type NodeStatus uint32

@@ -15,7 +15,7 @@
 package internal
 
 import (
-	"github.com/streamnative/oxia/common/hash"
+	"github.com/oxia-db/oxia/common/hash"
 )
 
 type shardStrategyImpl struct {

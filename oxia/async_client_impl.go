@@ -24,16 +24,16 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 
-	"github.com/streamnative/oxia/common/concurrent"
-	"github.com/streamnative/oxia/common/rpc"
-	commonbatch "github.com/streamnative/oxia/oxia/batch"
+	"github.com/oxia-db/oxia/common/concurrent"
+	"github.com/oxia-db/oxia/common/rpc"
+	commonbatch "github.com/oxia-db/oxia/oxia/batch"
 
-	"github.com/streamnative/oxia/common/compare"
-	"github.com/streamnative/oxia/oxia/internal"
-	"github.com/streamnative/oxia/oxia/internal/batch"
-	"github.com/streamnative/oxia/oxia/internal/metrics"
-	"github.com/streamnative/oxia/oxia/internal/model"
-	"github.com/streamnative/oxia/proto"
+	"github.com/oxia-db/oxia/common/compare"
+	"github.com/oxia-db/oxia/oxia/internal"
+	"github.com/oxia-db/oxia/oxia/internal/batch"
+	"github.com/oxia-db/oxia/oxia/internal/metrics"
+	"github.com/oxia-db/oxia/oxia/internal/model"
+	"github.com/oxia-db/oxia/proto"
 )
 
 type clientImpl struct {

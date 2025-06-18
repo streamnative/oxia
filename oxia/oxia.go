@@ -13,4 +13,4 @@
 // limitations under the License.
 
 // Package oxia provides a Go client library for interacting with Oxia service.
-package oxia // import "github.com/streamnative/oxia/oxia"
+package oxia // import "github.com/oxia-db/oxia/oxia"

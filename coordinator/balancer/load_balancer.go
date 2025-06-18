@@ -21,8 +21,8 @@ import (
 	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 	"golang.org/x/net/context"
 
-	"github.com/streamnative/oxia/coordinator/model"
-	"github.com/streamnative/oxia/coordinator/selectors"
+	"github.com/oxia-db/oxia/coordinator/model"
+	"github.com/oxia-db/oxia/coordinator/selectors"
 )
 
 type Options struct {

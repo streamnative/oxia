@@ -24,13 +24,13 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 
-	"github.com/streamnative/oxia/common/concurrent"
-	"github.com/streamnative/oxia/common/process"
-	"github.com/streamnative/oxia/common/rpc"
-	time2 "github.com/streamnative/oxia/common/time"
+	"github.com/oxia-db/oxia/common/concurrent"
+	"github.com/oxia-db/oxia/common/process"
+	"github.com/oxia-db/oxia/common/rpc"
+	time2 "github.com/oxia-db/oxia/common/time"
 
-	"github.com/streamnative/oxia/oxia/internal"
-	"github.com/streamnative/oxia/proto"
+	"github.com/oxia-db/oxia/oxia/internal"
+	"github.com/oxia-db/oxia/proto"
 )
 
 type notifications struct {

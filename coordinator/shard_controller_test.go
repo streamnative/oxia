@@ -23,11 +23,11 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/common/constant"
-	"github.com/streamnative/oxia/common/entity"
+	"github.com/oxia-db/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/entity"
 
-	"github.com/streamnative/oxia/coordinator/model"
-	"github.com/streamnative/oxia/proto"
+	"github.com/oxia-db/oxia/coordinator/model"
+	"github.com/oxia-db/oxia/proto"
 )
 
 var namespaceConfig = &model.NamespaceConfig{

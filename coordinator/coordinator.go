@@ -27,16 +27,16 @@ import (
 	"go.uber.org/multierr"
 	pb "google.golang.org/protobuf/proto"
 
-	"github.com/streamnative/oxia/common/concurrent"
-	"github.com/streamnative/oxia/common/process"
-	"github.com/streamnative/oxia/coordinator/balancer"
-	"github.com/streamnative/oxia/coordinator/metadata"
-	"github.com/streamnative/oxia/coordinator/model"
-	rpc2 "github.com/streamnative/oxia/coordinator/rpc"
-	"github.com/streamnative/oxia/coordinator/selectors"
-	"github.com/streamnative/oxia/coordinator/selectors/ensemble"
-	"github.com/streamnative/oxia/coordinator/utils"
-	"github.com/streamnative/oxia/proto"
+	"github.com/oxia-db/oxia/common/concurrent"
+	"github.com/oxia-db/oxia/common/process"
+	"github.com/oxia-db/oxia/coordinator/balancer"
+	"github.com/oxia-db/oxia/coordinator/metadata"
+	"github.com/oxia-db/oxia/coordinator/model"
+	rpc2 "github.com/oxia-db/oxia/coordinator/rpc"
+	"github.com/oxia-db/oxia/coordinator/selectors"
+	"github.com/oxia-db/oxia/coordinator/selectors/ensemble"
+	"github.com/oxia-db/oxia/coordinator/utils"
+	"github.com/oxia-db/oxia/proto"
 )
 
 var (

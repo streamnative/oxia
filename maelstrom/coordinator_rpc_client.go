@@ -27,12 +27,12 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/streamnative/oxia/coordinator/rpc"
+	"github.com/oxia-db/oxia/coordinator/rpc"
 
-	"github.com/streamnative/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/constant"
 
-	"github.com/streamnative/oxia/coordinator/model"
-	"github.com/streamnative/oxia/proto"
+	"github.com/oxia-db/oxia/coordinator/model"
+	"github.com/oxia-db/oxia/proto"
 )
 
 var (
