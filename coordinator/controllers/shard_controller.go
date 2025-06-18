@@ -86,7 +86,7 @@ type ShardController interface {
 type shardController struct {
 	namespace          string
 	shard              int64
-	namespaceConfig    model.NamespaceConfig
+	namespaceConfig    *model.NamespaceConfig
 	shardMetadata      model.ShardMetadata
 	shardMetadataMutex sync.RWMutex
 	rpc                rpc.Provider
@@ -123,7 +123,7 @@ func (s *shardController) NodeBecameUnavailable(node model.Server) {
 func NewShardController(
 	namespace string,
 	shard int64,
-	nc model.NamespaceConfig,
+	nc *model.NamespaceConfig,
 	shardMetadata model.ShardMetadata,
 	configResource resources.ClusterConfigResource,
 	statusResource resources.StatusResource,
@@ -787,7 +787,6 @@ func (s *shardController) deleteShard() error {
 		)
 	}
 
-	s.log.Info("Successfully deleted shard from all the nodes")
 	s.statusResource.DeleteShardMetadata(s.namespace, s.shard)
 	s.eventListener.ShardDeleted(s.shard)
 	return s.close()

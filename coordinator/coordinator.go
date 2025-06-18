@@ -170,7 +170,7 @@ func (c *coordinator) ConfigChanged(newConfig *model.ClusterConfig) {
 	for shard, namespace := range shardsToAdd {
 		shardMetadata := clusterStatus.Namespaces[namespace].Shards[shard]
 		if namespaceConfig, exist := c.configResource.NamespaceConfig(namespace); exist {
-			c.shardControllers[shard] = controllers.NewShardController(namespace, shard, *namespaceConfig, shardMetadata, c.configResource, c.statusResource, c, c.rpc)
+			c.shardControllers[shard] = controllers.NewShardController(namespace, shard, namespaceConfig, shardMetadata, c.configResource, c.statusResource, c, c.rpc)
 			slog.Info("Added new shard", slog.Int64("shard", shard),
 				slog.String("namespace", namespace), slog.Any("shard-metadata", shardMetadata))
 		}
@@ -440,9 +440,9 @@ func NewCoordinator(meta metadata.Provider,
 	for ns, shards := range clusterStatus.Namespaces {
 		for shard := range shards.Shards {
 			shardMetadata := shards.Shards[shard]
-			if nsConfig, exist := c.configResource.NamespaceConfig(ns); exist {
-				c.shardControllers[shard] = controllers.NewShardController(ns, shard, *nsConfig, shardMetadata, c.configResource, c.statusResource, c, c.rpc)
-			}
+			nsConfig := &model.NamespaceConfig{}
+			nsConfig, _ = c.configResource.NamespaceConfig(ns)
+			c.shardControllers[shard] = controllers.NewShardController(ns, shard, nsConfig, shardMetadata, c.configResource, c.statusResource, c, c.rpc)
 		}
 	}
 

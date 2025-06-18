@@ -420,9 +420,12 @@ func TestCoordinator_DeleteNamespace(t *testing.T) {
 	coordinatorInstance, err = coordinator.NewCoordinator(metadataProvider, func() (model.ClusterConfig, error) { return newClusterConfig, nil }, nil, rpc2.NewRpcProvider(clientPool))
 	assert.NoError(t, err)
 
+	statusResource = coordinatorInstance.StatusResource()
 	// Wait for all shards to be deleted
 	assert.Eventually(t, func() bool {
-		return len(statusResource.Load().Namespaces) == 0
+		load := statusResource.Load()
+		slog.Info("load", slog.Any("load", load))
+		return len(load.Namespaces) == 0
 	}, 10*time.Second, 10*time.Millisecond)
 
 	assert.NoError(t, coordinatorInstance.Close())

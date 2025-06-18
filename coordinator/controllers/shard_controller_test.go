@@ -133,7 +133,7 @@ func TestShardController(t *testing.T) {
 	}, nil, nil)
 	defer configResource.Close()
 
-	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, &model.ShardMetadata{
+	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
 		Status:   model.ShardStatusUnknown,
 		Term:     1,
 		Leader:   nil,
@@ -214,7 +214,7 @@ func TestShardController_StartingWithLeaderAlreadyPresent(t *testing.T) {
 	}, nil, nil)
 	defer configResource.Close()
 
-	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, &model.ShardMetadata{
+	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
 		Status:   model.ShardStatusSteadyState,
 		Term:     1,
 		Leader:   &s1,
@@ -252,7 +252,7 @@ func TestShardController_NewTermWithNonRespondingServer(t *testing.T) {
 	}, nil, nil)
 	defer configResource.Close()
 
-	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, &model.ShardMetadata{
+	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
 		Status:   model.ShardStatusUnknown,
 		Term:     1,
 		Leader:   nil,
@@ -305,7 +305,7 @@ func TestShardController_NewTermFollowerUntilItRecovers(t *testing.T) {
 	}, nil, nil)
 	defer configResource.Close()
 
-	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, &model.ShardMetadata{
+	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
 		Status:   model.ShardStatusUnknown,
 		Term:     1,
 		Leader:   nil,
@@ -366,7 +366,7 @@ func TestShardController_VerifyFollowersWereAllFenced(t *testing.T) {
 	}, nil, nil)
 	defer configResource.Close()
 
-	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, &model.ShardMetadata{
+	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
 		Status:   model.ShardStatusSteadyState,
 		Term:     4,
 		Leader:   &s1,
@@ -441,7 +441,7 @@ func TestShardController_NotificationsDisabled(t *testing.T) {
 	}, nil, nil)
 	defer configResource.Close()
 
-	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, &model.ShardMetadata{
+	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
 		Status:   model.ShardStatusUnknown,
 		Term:     1,
 		Leader:   nil,
