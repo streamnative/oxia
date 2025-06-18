@@ -19,7 +19,7 @@ import (
 	"time"
 
 	"github.com/emirpasic/gods/v2/sets/linkedhashset"
-	"github.com/streamnative/oxia/common/process"
+	"github.com/oxia-db/oxia/common/process"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/oxia-db/oxia/coordinator/model"

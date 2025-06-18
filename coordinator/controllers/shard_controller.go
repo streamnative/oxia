@@ -30,6 +30,8 @@ import (
 	"golang.org/x/exp/maps"
 	"google.golang.org/grpc/status"
 
+	"github.com/oxia-db/oxia/coordinator/resources"
+
 	"github.com/oxia-db/oxia/coordinator/rpc"
 
 	"github.com/oxia-db/oxia/common/constant"
@@ -38,7 +40,6 @@ import (
 
 	"github.com/oxia-db/oxia/common/metric"
 	"github.com/oxia-db/oxia/coordinator/model"
-	"github.com/oxia-db/oxia/coordinator/resources"
 	"github.com/oxia-db/oxia/proto"
 )
 

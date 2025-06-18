@@ -18,9 +18,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/oxia-db/oxia/coordinator/metadata"
+	"github.com/oxia-db/oxia/coordinator/resources"
 	"github.com/pkg/errors"
-	"github.com/streamnative/oxia/coordinator/metadata"
-	"github.com/streamnative/oxia/coordinator/resources"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/oxia-db/oxia/common/constant"

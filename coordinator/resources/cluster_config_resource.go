@@ -9,9 +9,9 @@ import (
 
 	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 	"github.com/emirpasic/gods/v2/trees/redblacktree"
-	"github.com/streamnative/oxia/common/process"
+	"github.com/oxia-db/oxia/common/process"
 
-	"github.com/streamnative/oxia/coordinator/model"
+	"github.com/oxia-db/oxia/coordinator/model"
 )
 
 type ClusterConfigResource interface {
