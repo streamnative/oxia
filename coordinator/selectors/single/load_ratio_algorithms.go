@@ -71,6 +71,7 @@ func DefaultShardsRank(params *model.RatioParams) *model.Ratio {
 		})
 		nodeLoadRatios.Add(&model.NodeLoadRatio{
 			NodeID:      nodeID,
+			Node:        params.HistoryNodes[nodeID],
 			Ratio:       nodeLoadRatio,
 			ShardRatios: shardRatios,
 		})

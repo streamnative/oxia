@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package coordinator
+package controllers
 
 import (
 	"context"
@@ -27,7 +27,10 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
+	"golang.org/x/exp/maps"
 	"google.golang.org/grpc/status"
+
+	"github.com/oxia-db/oxia/coordinator/resources"
 
 	"github.com/oxia-db/oxia/coordinator/rpc"
 
@@ -63,12 +66,13 @@ type newTermAndAddFollowerRequest struct {
 	res  chan error
 }
 
+var _ ShardController = &shardController{}
+
 // The ShardController is responsible to handle all the state transition for a given a shard
 // e.g. electing a new leader.
 type ShardController interface {
 	io.Closer
-
-	HandleNodeFailure(failedNode model.Server)
+	NodeEventListener
 
 	SyncServerAddress()
 
@@ -87,7 +91,10 @@ type shardController struct {
 	shardMetadata      model.ShardMetadata
 	shardMetadataMutex sync.RWMutex
 	rpc                rpc.Provider
-	coordinator        Coordinator
+
+	eventListener  ShardEventListener
+	configResource resources.ClusterConfigResource
+	statusResource resources.StatusResource
 
 	electionOp              chan any
 	deleteOp                chan any
@@ -110,16 +117,29 @@ type shardController struct {
 	termGauge             metric.Gauge
 }
 
-func NewShardController(namespace string, shard int64, namespaceConfig *model.NamespaceConfig,
-	shardMetadata model.ShardMetadata, rpcProvider rpc.Provider, coordinator Coordinator) ShardController {
+func (s *shardController) NodeBecameUnavailable(node model.Server) {
+	s.nodeFailureOp <- node
+}
+
+func NewShardController(
+	namespace string,
+	shard int64,
+	nc *model.NamespaceConfig,
+	shardMetadata model.ShardMetadata,
+	configResource resources.ClusterConfigResource,
+	statusResource resources.StatusResource,
+	eventListener ShardEventListener,
+	rpcProvider rpc.Provider) ShardController {
 	labels := metric.LabelsForShard(namespace, shard)
 	s := &shardController{
 		namespace:               namespace,
 		shard:                   shard,
-		namespaceConfig:         namespaceConfig,
+		namespaceConfig:         nc,
 		shardMetadata:           shardMetadata,
 		rpc:                     rpcProvider,
-		coordinator:             coordinator,
+		configResource:          configResource,
+		statusResource:          statusResource,
+		eventListener:           eventListener,
 		electionOp:              make(chan any, chanBufferSize),
 		deleteOp:                make(chan any, chanBufferSize),
 		nodeFailureOp:           make(chan model.Server, chanBufferSize),
@@ -155,22 +175,20 @@ func NewShardController(namespace string, shard int64, namespaceConfig *model.Na
 	)
 
 	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		process.DoWithLabels(
-			s.ctx,
-			map[string]string{
-				"oxia":      "shard-controller",
-				"namespace": s.namespace,
-				"shard":     fmt.Sprintf("%d", s.shard),
-			}, s.run,
-		)
-	}()
+	go process.DoWithLabels(
+		s.ctx,
+		map[string]string{
+			"oxia":      "shard-controller",
+			"namespace": s.namespace,
+			"shard":     fmt.Sprintf("%d", s.shard),
+		}, s.run,
+	)
 
 	return s
 }
 
 func (s *shardController) run() {
+	defer s.wg.Done()
 	// Do initial check or leader election
 	switch {
 	case s.shardMetadata.Status == model.ShardStatusDeleting:
@@ -216,10 +234,6 @@ func (s *shardController) run() {
 			s.electLeaderWithRetries()
 		}
 	}
-}
-
-func (s *shardController) HandleNodeFailure(failedNode model.Server) {
-	s.nodeFailureOp <- failedNode
 }
 
 func (s *shardController) handleNodeFailure(failedNode model.Server) {
@@ -325,9 +339,7 @@ func (s *shardController) electLeader() error {
 		slog.Int64("term", s.shardMetadata.Term),
 	)
 
-	if err := s.coordinator.InitiateLeaderElection(s.namespace, s.shard, s.shardMetadata); err != nil {
-		return err
-	}
+	s.statusResource.UpdateShardMetadata(s.namespace, s.shard, s.shardMetadata)
 
 	// Send NewTerm to all the ensemble members
 	fr, err := s.newTermQuorum()
@@ -372,9 +384,7 @@ func (s *shardController) electLeader() error {
 		metadata.RemovedNodes = nil
 	}
 
-	if err = s.coordinator.ElectedLeader(s.namespace, s.shard, metadata); err != nil {
-		return err
-	}
+	s.statusResource.UpdateShardMetadata(s.namespace, s.shard, metadata)
 
 	s.shardMetadataMutex.Lock()
 	s.shardMetadata = metadata
@@ -385,8 +395,11 @@ func (s *shardController) electLeader() error {
 		slog.Int64("term", s.shardMetadata.Term),
 		slog.Any("leader", s.shardMetadata.Leader),
 	)
-
 	timer.Done()
+
+	if s.eventListener != nil {
+		s.eventListener.LeaderElected(s.shard, newLeader, maps.Keys(followers))
+	}
 
 	s.keepFencingFailedFollowers(followers)
 	return nil
@@ -396,7 +409,7 @@ func (s *shardController) getRefreshedEnsemble() []model.Server {
 	currentEnsemble := s.shardMetadata.Ensemble
 	refreshedEnsembleServiceAddress := make([]model.Server, len(currentEnsemble))
 	for idx, candidate := range currentEnsemble {
-		if refreshedAddress, exist := s.coordinator.FindServerByIdentifier(candidate.GetIdentifier()); exist {
+		if refreshedAddress, exist := s.configResource.Node(candidate.GetIdentifier()); exist {
 			refreshedEnsembleServiceAddress[idx] = *refreshedAddress
 			continue
 		}
@@ -775,11 +788,9 @@ func (s *shardController) deleteShard() error {
 		)
 	}
 
-	s.log.Info("Successfully deleted shard from all the nodes")
-	return multierr.Combine(
-		s.coordinator.ShardDeleted(s.namespace, s.shard),
-		s.close(),
-	)
+	s.statusResource.DeleteShardMetadata(s.namespace, s.shard)
+	s.eventListener.ShardDeleted(s.shard)
+	return s.close()
 }
 
 func (s *shardController) Term() int64 {
@@ -928,20 +939,19 @@ func (s *shardController) waitForFollowersToCatchUp(ctx context.Context, leader 
 
 func (s *shardController) SyncServerAddress() {
 	s.shardMetadataMutex.RLock()
-	exist := false
+	defer s.shardMetadataMutex.RUnlock()
+	needSync := false
 	for _, candidate := range s.shardMetadata.Ensemble {
-		if newInfo, ok := s.coordinator.FindServerByIdentifier(candidate.GetIdentifier()); ok {
-			if *newInfo != candidate {
-				exist = true
+		if newInfo, ok := s.configResource.Node(candidate.GetIdentifier()); ok {
+			if newInfo.Public != candidate.Public || newInfo.Internal != candidate.Internal {
+				needSync = true
 				break
 			}
 		}
 	}
-	if !exist {
-		s.shardMetadataMutex.RUnlock()
+	if !needSync {
 		return
 	}
-	s.shardMetadataMutex.RUnlock()
 	s.log.Info("server address changed, start a new leader election")
 	s.electionOp <- nil
 }

@@ -12,40 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package balancer
+package controllers
 
-import (
-	"sync"
+import "github.com/oxia-db/oxia/coordinator/model"
 
-	"github.com/oxia-db/oxia/coordinator/model"
-)
+type ShardEventListener interface {
+	LeaderElected(shard int64, leader model.Server, followers []model.Server)
 
-type ActionType string
-
-const (
-	SwapNode ActionType = "swap-node"
-)
-
-type Action interface {
-	Type() ActionType
-
-	Done()
-}
-
-var _ Action = &SwapNodeAction{}
-
-type SwapNodeAction struct {
-	Shard int64
-	From  model.Server
-	To    model.Server
-
-	waiter *sync.WaitGroup
-}
-
-func (s *SwapNodeAction) Done() {
-	s.waiter.Done()
-}
-
-func (*SwapNodeAction) Type() ActionType {
-	return SwapNode
+	ShardDeleted(shard int64)
 }

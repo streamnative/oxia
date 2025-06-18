@@ -63,8 +63,11 @@ func TestNormalShardBalancer(t *testing.T) {
 	coordinator := mock.NewCoordinator(t, &cc, ch)
 	defer coordinator.Close()
 
+	statusResource := coordinator.StatusResource()
+	configResource := coordinator.ConfigResource()
+
 	assert.Eventually(t, func() bool {
-		for _, ns := range coordinator.ClusterStatus().Namespaces {
+		for _, ns := range statusResource.Load().Namespaces {
 			for _, shard := range ns.Shards {
 				if shard.Status != model.ShardStatusSteadyState {
 					return false
@@ -78,13 +81,14 @@ func TestNormalShardBalancer(t *testing.T) {
 	ch <- struct{}{}
 
 	assert.Eventually(t, func() bool {
-		_, exist := coordinator.FindServerByIdentifier(s4ad.GetIdentifier())
+		_, exist := configResource.Node(s4ad.GetIdentifier())
 		return exist
 	}, 10*time.Second, 50*time.Millisecond)
 
+	balancer := coordinator.LoadBalancer()
 	assert.Eventually(t, func() bool {
-		coordinator.TriggerBalance()
-		return coordinator.IsBalanced()
+		balancer.Trigger()
+		return balancer.IsBalanced()
 	}, 30*time.Second, 50*time.Millisecond)
 }
 
@@ -157,8 +161,11 @@ func TestPolicyBasedShardBalancer(t *testing.T) {
 	coordinator := mock.NewCoordinator(t, &cc, ch)
 	defer coordinator.Close()
 
+	statusResource := coordinator.StatusResource()
+	configResource := coordinator.ConfigResource()
+
 	assert.Eventually(t, func() bool {
-		for _, ns := range coordinator.ClusterStatus().Namespaces {
+		for _, ns := range statusResource.Load().Namespaces {
 			for _, shard := range ns.Shards {
 				if shard.Status != model.ShardStatusSteadyState {
 					return false
@@ -172,17 +179,18 @@ func TestPolicyBasedShardBalancer(t *testing.T) {
 	ch <- struct{}{}
 
 	assert.Eventually(t, func() bool {
-		_, exist := coordinator.FindServerByIdentifier(s4ad.GetIdentifier())
+		_, exist := configResource.Node(s4ad.GetIdentifier())
 		return exist
 	}, 10*time.Second, 50*time.Millisecond)
 
+	balancer := coordinator.LoadBalancer()
 	assert.Eventually(t, func() bool {
-		coordinator.TriggerBalance()
-		return coordinator.IsBalanced()
+		balancer.Trigger()
+		return balancer.IsBalanced()
 	}, 30*time.Second, 50*time.Millisecond)
 
 	// check if follow the policies
-	for name, ns := range coordinator.ClusterStatus().Namespaces {
+	for name, ns := range statusResource.Load().Namespaces {
 		for _, shard := range ns.Shards {
 			nodeIDs := linkedhashset.New[string]()
 			nodeZones := linkedhashset.New[string]()

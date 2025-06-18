@@ -12,16 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package coordinator
+package controllers
 
 import (
-	"context"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/oxia-db/oxia/coordinator/metadata"
+	"github.com/oxia-db/oxia/coordinator/resources"
 
 	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/entity"
@@ -120,18 +121,25 @@ func TestLeaderElection_ShouldChooseHighestTerm(t *testing.T) {
 func TestShardController(t *testing.T) {
 	var shard int64 = 5
 	rpc := newMockRpcProvider()
-	coordinator := newMockCoordinator()
 
 	s1 := model.Server{Public: "s1:9091", Internal: "s1:8191"}
 	s2 := model.Server{Public: "s2:9091", Internal: "s2:8191"}
 	s3 := model.Server{Public: "s3:9091", Internal: "s3:8191"}
+
+	meta := metadata.NewMetadataProviderMemory()
+	defer meta.Close()
+	statusResource := resources.NewStatusResource(meta)
+	configResource := resources.NewClusterConfigResource(t.Context(), func() (model.ClusterConfig, error) {
+		return model.ClusterConfig{}, nil
+	}, nil, nil)
+	defer configResource.Close()
 
 	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
 		Status:   model.ShardStatusUnknown,
 		Term:     1,
 		Leader:   nil,
 		Ensemble: []model.Server{s1, s2, s3},
-	}, rpc, coordinator)
+	}, configResource, statusResource, nil, rpc)
 
 	// Shard controller should initiate a leader election
 	// and newTerm each server
@@ -161,7 +169,7 @@ func TestShardController(t *testing.T) {
 
 	// Simulate the failure of the leader
 	rpc.FailNode(s1, errors.New("failed to connect"))
-	sc.HandleNodeFailure(s1)
+	sc.NodeBecameUnavailable(s1)
 
 	rpc.GetNode(s1).expectNewTermRequest(t, shard, 3, true)
 	rpc.GetNode(s2).expectNewTermRequest(t, shard, 3, true)
@@ -178,7 +186,7 @@ func TestShardController(t *testing.T) {
 	assert.Equal(t, s2, *sc.Leader())
 
 	// Simulate the failure of the leader
-	sc.HandleNodeFailure(s2)
+	sc.NodeBecameUnavailable(s2)
 
 	rpc.FailNode(s2, errors.New("failed to connect"))
 	rpc.GetNode(s3).NewTermResponse(2, -1, nil)
@@ -194,18 +202,25 @@ func TestShardController(t *testing.T) {
 func TestShardController_StartingWithLeaderAlreadyPresent(t *testing.T) {
 	var shard int64 = 5
 	rpc := newMockRpcProvider()
-	coordinator := newMockCoordinator()
 
 	s1 := model.Server{Public: "s1:9091", Internal: "s1:8191"}
 	s2 := model.Server{Public: "s2:9091", Internal: "s2:8191"}
 	s3 := model.Server{Public: "s3:9091", Internal: "s3:8191"}
+
+	meta := metadata.NewMetadataProviderMemory()
+	defer meta.Close()
+	statusResource := resources.NewStatusResource(meta)
+	configResource := resources.NewClusterConfigResource(t.Context(), func() (model.ClusterConfig, error) {
+		return model.ClusterConfig{}, nil
+	}, nil, nil)
+	defer configResource.Close()
 
 	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
 		Status:   model.ShardStatusSteadyState,
 		Term:     1,
 		Leader:   &s1,
 		Ensemble: []model.Server{s1, s2, s3},
-	}, rpc, coordinator)
+	}, configResource, statusResource, nil, rpc)
 
 	select {
 	case <-rpc.GetNode(s1).newTermRequests:
@@ -225,18 +240,25 @@ func TestShardController_StartingWithLeaderAlreadyPresent(t *testing.T) {
 func TestShardController_NewTermWithNonRespondingServer(t *testing.T) {
 	var shard int64 = 5
 	rpc := newMockRpcProvider()
-	coordinator := newMockCoordinator()
 
 	s1 := model.Server{Public: "s1:9091", Internal: "s1:8191"}
 	s2 := model.Server{Public: "s2:9091", Internal: "s2:8191"}
 	s3 := model.Server{Public: "s3:9091", Internal: "s3:8191"}
+
+	meta := metadata.NewMetadataProviderMemory()
+	defer meta.Close()
+	statusResource := resources.NewStatusResource(meta)
+	configResource := resources.NewClusterConfigResource(t.Context(), func() (model.ClusterConfig, error) {
+		return model.ClusterConfig{}, nil
+	}, nil, nil)
+	defer configResource.Close()
 
 	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
 		Status:   model.ShardStatusUnknown,
 		Term:     1,
 		Leader:   nil,
 		Ensemble: []model.Server{s1, s2, s3},
-	}, rpc, coordinator)
+	}, configResource, statusResource, nil, rpc)
 
 	timeStart := time.Now()
 
@@ -271,18 +293,25 @@ func TestShardController_NewTermWithNonRespondingServer(t *testing.T) {
 func TestShardController_NewTermFollowerUntilItRecovers(t *testing.T) {
 	var shard int64 = 5
 	rpc := newMockRpcProvider()
-	coordinator := newMockCoordinator()
 
 	s1 := model.Server{Public: "s1:9091", Internal: "s1:8191"}
 	s2 := model.Server{Public: "s2:9091", Internal: "s2:8191"}
 	s3 := model.Server{Public: "s3:9091", Internal: "s3:8191"}
+
+	meta := metadata.NewMetadataProviderMemory()
+	defer meta.Close()
+	statusResource := resources.NewStatusResource(meta)
+	configResource := resources.NewClusterConfigResource(t.Context(), func() (model.ClusterConfig, error) {
+		return model.ClusterConfig{}, nil
+	}, nil, nil)
+	defer configResource.Close()
 
 	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
 		Status:   model.ShardStatusUnknown,
 		Term:     1,
 		Leader:   nil,
 		Ensemble: []model.Server{s1, s2, s3},
-	}, rpc, coordinator)
+	}, configResource, statusResource, nil, rpc)
 
 	// s3 is failing, though we can still elect a leader
 	rpc.GetNode(s1).NewTermResponse(1, 0, nil)
@@ -322,7 +351,6 @@ func TestShardController_NewTermFollowerUntilItRecovers(t *testing.T) {
 func TestShardController_VerifyFollowersWereAllFenced(t *testing.T) {
 	var shard int64 = 5
 	rpc := newMockRpcProvider()
-	coordinator := newMockCoordinator()
 
 	s1 := model.Server{Public: "s1:9091", Internal: "s1:8191"}
 	s2 := model.Server{Public: "s2:9091", Internal: "s2:8191"}
@@ -331,12 +359,20 @@ func TestShardController_VerifyFollowersWereAllFenced(t *testing.T) {
 	n2 := rpc.GetNode(s2)
 	n3 := rpc.GetNode(s3)
 
+	meta := metadata.NewMetadataProviderMemory()
+	defer meta.Close()
+	statusResource := resources.NewStatusResource(meta)
+	configResource := resources.NewClusterConfigResource(t.Context(), func() (model.ClusterConfig, error) {
+		return model.ClusterConfig{}, nil
+	}, nil, nil)
+	defer configResource.Close()
+
 	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
 		Status:   model.ShardStatusSteadyState,
 		Term:     4,
 		Leader:   &s1,
 		Ensemble: []model.Server{s1, s2, s3},
-	}, rpc, coordinator)
+	}, configResource, statusResource, nil, rpc)
 
 	r1 := <-n1.getStatusRequests
 	assert.EqualValues(t, 5, r1.Shard)
@@ -386,7 +422,6 @@ func TestShardController_VerifyFollowersWereAllFenced(t *testing.T) {
 func TestShardController_NotificationsDisabled(t *testing.T) {
 	var shard int64 = 5
 	rpc := newMockRpcProvider()
-	coordinator := newMockCoordinator()
 
 	s1 := model.Server{Public: "s1:9091", Internal: "s1:8191"}
 	s2 := model.Server{Public: "s2:9091", Internal: "s2:8191"}
@@ -399,12 +434,20 @@ func TestShardController_NotificationsDisabled(t *testing.T) {
 		NotificationsEnabled: entity.Bool(false),
 	}
 
+	meta := metadata.NewMetadataProviderMemory()
+	defer meta.Close()
+	statusResource := resources.NewStatusResource(meta)
+	configResource := resources.NewClusterConfigResource(t.Context(), func() (model.ClusterConfig, error) {
+		return model.ClusterConfig{}, nil
+	}, nil, nil)
+	defer configResource.Close()
+
 	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
 		Status:   model.ShardStatusUnknown,
 		Term:     1,
 		Leader:   nil,
 		Ensemble: []model.Server{s1, s2, s3},
-	}, rpc, coordinator)
+	}, configResource, statusResource, nil, rpc)
 
 	// Shard controller should initiate a leader election
 	// and newTerm each server
@@ -419,90 +462,4 @@ func TestShardController_NotificationsDisabled(t *testing.T) {
 	rpc.GetNode(s3).expectNewTermRequest(t, shard, 2, false)
 
 	assert.NoError(t, sc.Close())
-}
-
-type sCoordinatorEvents struct {
-	shard    int64
-	metadata model.ShardMetadata
-}
-
-var _ Coordinator = &mockCoordinator{}
-
-type mockCoordinator struct {
-	sync.Mutex
-	err                      error
-	initiatedLeaderElections chan sCoordinatorEvents
-	electedLeaders           chan sCoordinatorEvents
-}
-
-func (m *mockCoordinator) NodeControllers() map[string]NodeController {
-	panic("implement me")
-}
-
-func (m *mockCoordinator) TriggerBalance() {
-	panic("implement me")
-}
-
-func (m *mockCoordinator) IsBalanced() bool {
-	panic("implement me")
-}
-
-func newMockCoordinator() Coordinator {
-	return &mockCoordinator{
-		initiatedLeaderElections: make(chan sCoordinatorEvents, 100),
-		electedLeaders:           make(chan sCoordinatorEvents, 100),
-	}
-}
-
-func (m *mockCoordinator) Close() error {
-	return nil
-}
-
-func (m *mockCoordinator) ClusterStatus() model.ClusterStatus {
-	panic("not implemented")
-}
-
-func (m *mockCoordinator) WaitForNextUpdate(ctx context.Context, currentValue *proto.ShardAssignments) (*proto.ShardAssignments, error) {
-	panic("not implemented")
-}
-
-func (m *mockCoordinator) FindServerByIdentifier(_ string) (*model.Server, bool) {
-	return nil, false
-}
-
-func (m *mockCoordinator) InitiateLeaderElection(namespace string, shard int64, metadata model.ShardMetadata) error {
-	m.Lock()
-	defer m.Unlock()
-	if m.err != nil {
-		err := m.err
-		m.err = nil
-		return err
-	}
-
-	m.initiatedLeaderElections <- sCoordinatorEvents{
-		shard:    shard,
-		metadata: metadata,
-	}
-	return nil
-}
-
-func (m *mockCoordinator) ElectedLeader(namespace string, shard int64, metadata model.ShardMetadata) error {
-	m.Lock()
-	defer m.Unlock()
-	if m.err != nil {
-		err := m.err
-		m.err = nil
-		return err
-	}
-
-	m.electedLeaders <- sCoordinatorEvents{shard, metadata}
-	return nil
-}
-
-func (m *mockCoordinator) ShardDeleted(namespace string, shard int64) error {
-	return nil
-}
-
-func (m *mockCoordinator) NodeBecameUnavailable(node model.Server) {
-	panic("not implemented")
 }

@@ -18,10 +18,10 @@ import (
 	"io"
 	"time"
 
-	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 	"golang.org/x/net/context"
 
-	"github.com/oxia-db/oxia/coordinator/model"
+	"github.com/oxia-db/oxia/coordinator/resources"
+
 	"github.com/oxia-db/oxia/coordinator/selectors"
 )
 
@@ -31,10 +31,8 @@ type Options struct {
 	ScheduleInterval time.Duration
 	QuarantineTime   time.Duration
 
-	CandidatesSupplier        func() *linkedhashset.Set[string]
-	CandidateMetadataSupplier func() map[string]model.ServerMetadata
-	NamespaceConfigSupplier   func(namespace string) *model.NamespaceConfig
-	StatusSupplier            func() *model.ClusterStatus
+	StatusResource        resources.StatusResource
+	ClusterConfigResource resources.ClusterConfigResource
 }
 
 type LoadBalancer interface {

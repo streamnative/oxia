@@ -58,9 +58,9 @@ func TestCoordinatorInitiateLeaderElection(t *testing.T) {
 		RemovedNodes:   []model.Server{},
 		Int32HashRange: model.Int32HashRange{Min: 2000, Max: 100000},
 	}
-	err = coordinatorInstance.InitiateLeaderElection("default", 1, metadata)
-	assert.NoError(t, err)
+	statusResource := coordinatorInstance.StatusResource()
+	statusResource.UpdateShardMetadata("default", 1, metadata)
 
-	status := coordinatorInstance.ClusterStatus()
+	status := statusResource.Load()
 	assert.EqualValues(t, status.Namespaces["default"].Shards[1], metadata)
 }

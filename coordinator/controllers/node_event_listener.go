@@ -12,22 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package utils
+package controllers
 
-import (
-	"github.com/emirpasic/gods/v2/sets/linkedhashset"
+import "github.com/oxia-db/oxia/coordinator/model"
 
-	"github.com/oxia-db/oxia/coordinator/model"
-)
-
-func FilterEnsemble(ensemble []model.Server, filterNodeId string) *linkedhashset.Set[string] {
-	selected := linkedhashset.New[string]()
-	for _, candidate := range ensemble {
-		nodeID := candidate.GetIdentifier()
-		if nodeID == filterNodeId {
-			continue
-		}
-		selected.Add(candidate.GetIdentifier())
-	}
-	return selected
+type NodeEventListener interface {
+	NodeBecameUnavailable(node model.Server)
 }
