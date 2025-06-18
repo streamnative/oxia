@@ -27,6 +27,7 @@ type ShardInfo struct {
 }
 
 type RatioParams struct {
+	HistoryNodes    map[string]Server
 	NodeShardsInfos map[string][]ShardInfo
 	QuarantineNodes *linkedhashset.Set[string]
 }
@@ -63,14 +64,14 @@ func (r *Ratio) RatioGap() float64 {
 	return r.maxNodeLoadRatio - r.minNodeLoadRatio
 }
 
-func (r *Ratio) MoveShardToNode(shard *ShardLoadRatio, fromNodeID string, toNodeID string) {
+func (r *Ratio) MoveShardToNode(shard *ShardLoadRatio, fromNode string, toNode string) {
 	for iter := r.nodeLoadRatios.Iterator(); iter.Next(); {
 		node := iter.Value()
-		if node.NodeID == fromNodeID {
+		if node.NodeID == fromNode {
 			node.RemoveShard(shard)
 			continue
 		}
-		if node.NodeID == toNodeID {
+		if node.NodeID == toNode {
 			node.AddShard(shard)
 			continue
 		}
@@ -96,10 +97,10 @@ func (r *Ratio) ReCalculateRatios() {
 	}
 }
 
-func (r *Ratio) RemoveDeletedNode(id string) error {
+func (r *Ratio) RemoveDeletedNode(nodeID string) error {
 	for iter := r.nodeLoadRatios.Iterator(); iter.Next(); {
 		ratio := iter.Value()
-		if ratio.NodeID == id {
+		if ratio.NodeID == nodeID {
 			if ratio.Ratio != 0.0 {
 				return errors.New("cannot remove non-empty node")
 			}
@@ -121,6 +122,7 @@ func NewRatio(maxNodeLoadRatio float64, minNodeLoadRatio float64, avgShardLoadRa
 
 type NodeLoadRatio struct {
 	NodeID      string
+	Node        Server
 	Ratio       float64
 	ShardRatios *arraylist.List[*ShardLoadRatio]
 }

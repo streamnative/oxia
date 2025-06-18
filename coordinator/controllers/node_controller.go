@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package coordinator
+package controllers
 
 import (
 	"context"
@@ -25,13 +25,11 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/oxia-db/oxia/coordinator/rpc"
-
+	"github.com/oxia-db/oxia/common/metric"
 	"github.com/oxia-db/oxia/common/process"
 	time2 "github.com/oxia-db/oxia/common/time"
-
-	"github.com/oxia-db/oxia/common/metric"
 	"github.com/oxia-db/oxia/coordinator/model"
+	"github.com/oxia-db/oxia/coordinator/rpc"
 	"github.com/oxia-db/oxia/proto"
 )
 
@@ -48,10 +46,6 @@ const (
 	healthCheckProbeTimeout    = 2 * time.Second
 	defaultInitialRetryBackoff = 10 * time.Second
 )
-
-type NodeAvailabilityListener interface {
-	NodeBecameUnavailable(node model.Server)
-}
 
 type ShardAssignmentsProvider interface {
 	WaitForNextUpdate(ctx context.Context, currentValue *proto.ShardAssignments) (*proto.ShardAssignments, error)
@@ -72,7 +66,7 @@ type nodeController struct {
 	server                   model.Server
 	status                   NodeStatus
 	shardAssignmentsProvider ShardAssignmentsProvider
-	nodeAvailabilityListener NodeAvailabilityListener
+	nodeAvailabilityListener NodeEventListener
 	rpc                      rpc.Provider
 	log                      *slog.Logger
 
@@ -93,14 +87,14 @@ type nodeController struct {
 
 func NewNodeController(addr model.Server,
 	shardAssignmentsProvider ShardAssignmentsProvider,
-	nodeAvailabilityListener NodeAvailabilityListener,
+	nodeAvailabilityListener NodeEventListener,
 	rpcProvider rpc.Provider) NodeController {
 	return newNodeController(addr, shardAssignmentsProvider, nodeAvailabilityListener, rpcProvider, defaultInitialRetryBackoff)
 }
 
 func newNodeController(server model.Server,
 	shardAssignmentsProvider ShardAssignmentsProvider,
-	nodeAvailabilityListener NodeAvailabilityListener,
+	nodeAvailabilityListener NodeEventListener,
 	rpcProvider rpc.Provider,
 	initialRetryBackoff time.Duration) NodeController {
 	labels := map[string]any{"node": server.GetIdentifier()}

@@ -17,15 +17,21 @@ package balancer
 import (
 	"sync"
 	"testing"
+
+	"github.com/streamnative/oxia/coordinator/model"
 )
 
 func TestActionSwapDone(t *testing.T) {
 	group := &sync.WaitGroup{}
 	group.Add(1)
 	swapAction := SwapNodeAction{
-		Shard:  int64(1),
-		From:   "sv-1",
-		To:     "sv-2",
+		Shard: int64(1),
+		From: model.Server{
+			Internal: "sv-1",
+		},
+		To: model.Server{
+			Internal: "sv-2",
+		},
 		waiter: group,
 	}
 	swapAction.Done()

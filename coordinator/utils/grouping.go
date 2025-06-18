@@ -20,13 +20,14 @@ import (
 	"github.com/oxia-db/oxia/coordinator/model"
 )
 
-func GroupingShardsNodeByStatus(candidates *linkedhashset.Set[string], status *model.ClusterStatus) map[string][]model.ShardInfo {
+func GroupingShardsNodeByStatus(candidates *linkedhashset.Set[string], status *model.ClusterStatus) (map[string][]model.ShardInfo, map[string]model.Server) {
 	groupingShardByNode := make(map[string][]model.ShardInfo)
+	historyNodes := make(map[string]model.Server)
 	if status != nil {
 		for namespace, namespaceStatus := range status.Namespaces {
 			for shard, shardStatus := range namespaceStatus.Shards {
-				for _, server := range shardStatus.Ensemble {
-					nodeID := server.GetIdentifier()
+				for idx, node := range shardStatus.Ensemble {
+					nodeID := node.GetIdentifier()
 					var groupedShard []model.ShardInfo
 					var exist bool
 					if groupedShard, exist = groupingShardByNode[nodeID]; !exist {
@@ -39,6 +40,7 @@ func GroupingShardsNodeByStatus(candidates *linkedhashset.Set[string], status *m
 						Ensemble:  shardStatus.Ensemble,
 					})
 					groupingShardByNode[nodeID] = groupedShard
+					historyNodes[nodeID] = shardStatus.Ensemble[idx]
 				}
 			}
 		}
@@ -50,7 +52,7 @@ func GroupingShardsNodeByStatus(candidates *linkedhashset.Set[string], status *m
 			groupingShardByNode[nodeID] = make([]model.ShardInfo, 0)
 		}
 	}
-	return groupingShardByNode
+	return groupingShardByNode, historyNodes
 }
 
 func GroupingCandidatesWithLabelValue(candidates *linkedhashset.Set[string], candidatesMetadata map[string]model.ServerMetadata) map[string]map[string]*linkedhashset.Set[string] {
@@ -83,7 +85,8 @@ func GroupingCandidatesWithLabelValue(candidates *linkedhashset.Set[string], can
 func GroupingValueWithLabel(candidates *linkedhashset.Set[string], candidatesMetadata map[string]model.ServerMetadata) map[string]*linkedhashset.Set[string] {
 	selectedLabelValues := make(map[string]*linkedhashset.Set[string])
 	for selectedIter := candidates.Iterator(); selectedIter.Next(); {
-		if metadata, exist := candidatesMetadata[selectedIter.Value()]; exist {
+		nodeID := selectedIter.Value()
+		if metadata, exist := candidatesMetadata[nodeID]; exist {
 			for label, labelValue := range metadata.Labels {
 				collection := selectedLabelValues[label]
 				if collection == nil {

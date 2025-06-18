@@ -21,8 +21,10 @@ import (
 	"time"
 
 	"github.com/emirpasic/gods/v2/sets/linkedhashset"
+	"github.com/pkg/errors"
 
 	"github.com/oxia-db/oxia/common/process"
+	"github.com/oxia-db/oxia/coordinator/resources"
 
 	"github.com/oxia-db/oxia/common/channel"
 	"github.com/oxia-db/oxia/coordinator/model"
@@ -40,21 +42,17 @@ type nodeBasedBalancer struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	actionCh chan Action
-
 	scheduleInterval time.Duration
 	quarantineTime   time.Duration
 
-	statusSupplier            func() *model.ClusterStatus
-	namespaceConfigSupplier   func(namespace string) *model.NamespaceConfig
-	candidateMetadataSupplier func() map[string]model.ServerMetadata
-	candidatesSupplier        func() *linkedhashset.Set[string]
+	statusResource resources.StatusResource
+	configResource resources.ClusterConfigResource
 
 	selector           selectors.Selector[*single.Context, string]
 	loadRatioAlgorithm selectors.LoadRatioAlgorithm
+	quarantineNodeMap  sync.Map
 
-	quarantineNodeMap sync.Map
-
+	actionCh  chan Action
 	triggerCh chan struct{}
 }
 
@@ -82,11 +80,10 @@ func (r *nodeBasedBalancer) rebalanceEnsemble() {
 	r.checkQuarantineNodes()
 
 	swapGroup := &sync.WaitGroup{}
-	currentStatus := r.statusSupplier()
-	candidates := r.candidatesSupplier()
-	groupedStatus := utils.GroupingShardsNodeByStatus(candidates, currentStatus)
-	loadRatios := r.loadRatioAlgorithm(&model.RatioParams{NodeShardsInfos: groupedStatus})
-	metadata := r.candidateMetadataSupplier()
+	currentStatus := r.statusResource.Load()
+	candidates, metadata := r.configResource.NodesWithMetadata()
+	groupedStatus, historyNodes := utils.GroupingShardsNodeByStatus(candidates, currentStatus)
+	loadRatios := r.loadRatioAlgorithm(&model.RatioParams{NodeShardsInfos: groupedStatus, HistoryNodes: historyNodes})
 
 	r.Info("start rebalance",
 		slog.Float64("max-node-load-ratio", loadRatios.MaxNodeLoadRatio()),
@@ -140,7 +137,8 @@ func (r *nodeBasedBalancer) balanceHighestNode(loadRatios *model.Ratio, candidat
 			break
 		}
 		fromNodeID := highestLoadRatioNode.NodeID
-		if _, err := r.swapShard(highestLoadRatioShard, fromNodeID, swapGroup, loadRatios, candidates, metadata, currentStatus); err != nil {
+		fromNode := highestLoadRatioNode.Node
+		if _, err := r.swapShard(highestLoadRatioShard, fromNode, swapGroup, loadRatios, candidates, metadata, currentStatus); err != nil {
 			r.Error("failed to select server when swap the node",
 				slog.String("namespace", highestLoadRatioShard.Namespace),
 				slog.Int64("shard", highestLoadRatioShard.ShardID),
@@ -172,9 +170,10 @@ func (r *nodeBasedBalancer) cleanDeletedNode(loadRatios *model.Ratio,
 			continue
 		}
 		deletedNodeID := nodeLoadRatio.NodeID
+		deletedNode := nodeLoadRatio.Node
 		for shardIter := nodeLoadRatio.ShardIterator(); shardIter.Next(); {
 			var shardRatio = shardIter.Value()
-			if swapped, err := r.swapShard(shardRatio, deletedNodeID, swapGroup, loadRatios, candidates, metadata, currentStatus); err != nil || !swapped {
+			if swapped, err := r.swapShard(shardRatio, deletedNode, swapGroup, loadRatios, candidates, metadata, currentStatus); err != nil || !swapped {
 				r.Error("failed to select server when move ensemble out of deleted node",
 					slog.String("namespace", shardRatio.Namespace),
 					slog.Int64("shard", shardRatio.ShardID),
@@ -192,13 +191,19 @@ func (r *nodeBasedBalancer) cleanDeletedNode(loadRatios *model.Ratio,
 
 func (r *nodeBasedBalancer) swapShard(
 	candidateShard *model.ShardLoadRatio,
-	fromNodeID string,
+	fromNode model.Server,
 	swapGroup *sync.WaitGroup,
 	loadRatios *model.Ratio,
 	candidates *linkedhashset.Set[string],
 	metadata map[string]model.ServerMetadata,
 	currentStatus *model.ClusterStatus) (bool, error) {
-	nsc := r.namespaceConfigSupplier(candidateShard.Namespace)
+	var nsc *model.NamespaceConfig
+	var exist bool
+	var err error
+
+	if nsc, exist = r.configResource.NamespaceConfig(candidateShard.Namespace); !exist {
+		return false, nil
+	}
 	policies := nsc.Policies
 	sContext := &single.Context{
 		Candidates:         candidates,
@@ -207,24 +212,40 @@ func (r *nodeBasedBalancer) swapShard(
 		Status:             currentStatus,
 		LoadRatioSupplier:  func() *model.Ratio { return loadRatios },
 	}
-	sContext.SetSelected(utils.FilterEnsemble(candidateShard.Ensemble, fromNodeID))
-	var targetNodeId string
-	var err error
-	if targetNodeId, err = r.selector.Select(sContext); err != nil {
+	fromNodeID := fromNode.GetIdentifier()
+
+	// filter selected
+	selected := linkedhashset.New[string]()
+	for _, candidate := range candidateShard.Ensemble {
+		candidateID := candidate.GetIdentifier()
+		if candidateID == fromNodeID {
+			continue
+		}
+		selected.Add(candidateID)
+	}
+	sContext.SetSelected(selected)
+
+	var targetNodeID string
+	if targetNodeID, err = r.selector.Select(sContext); err != nil {
 		return false, err
 	}
-	if targetNodeId == fromNodeID {
+	if targetNodeID == fromNodeID {
 		return false, nil
 	}
+	var targetNode *model.Server
+	if targetNode, exist = r.configResource.Node(targetNodeID); !exist {
+		return false, errors.New("target node does not exist")
+	}
+
 	swapGroup.Add(1)
 	r.actionCh <- &SwapNodeAction{
 		Shard:  candidateShard.ShardID,
-		From:   fromNodeID,
-		To:     targetNodeId,
+		From:   fromNode,
+		To:     *targetNode,
 		waiter: swapGroup,
 	}
-	r.Info("propose to swap the shard", slog.Int64("shard", candidateShard.ShardID), slog.String("from", fromNodeID), slog.String("to", targetNodeId))
-	loadRatios.MoveShardToNode(candidateShard, fromNodeID, targetNodeId)
+	r.Info("propose to swap the shard", slog.Int64("shard", candidateShard.ShardID), slog.Any("from", fromNode), slog.Any("to", targetNodeID))
+	loadRatios.MoveShardToNode(candidateShard, fromNodeID, targetNodeID)
 	loadRatios.ReCalculateRatios()
 	return true, nil
 }
@@ -249,9 +270,13 @@ func (r *nodeBasedBalancer) IsNodeQuarantined(highestLoadRatioNode *model.NodeLo
 }
 
 func (r *nodeBasedBalancer) IsBalanced() bool {
+	status := r.statusResource.Load()
+	candidates := r.configResource.Nodes()
+	groupedStatus, historyNodes := utils.GroupingShardsNodeByStatus(candidates, status)
 	return r.loadRatioAlgorithm(
 		&model.RatioParams{
-			NodeShardsInfos: utils.GroupingShardsNodeByStatus(r.candidatesSupplier(), r.statusSupplier()),
+			NodeShardsInfos: groupedStatus,
+			HistoryNodes:    historyNodes,
 			QuarantineNodes: r.quarantineNodes(),
 		},
 	).IsBalanced()
@@ -321,21 +346,18 @@ func NewLoadBalancer(options Options) LoadBalancer {
 	}
 
 	nb := &nodeBasedBalancer{
-		WaitGroup:                 &sync.WaitGroup{},
-		Logger:                    logger,
-		scheduleInterval:          options.ScheduleInterval,
-		quarantineTime:            options.QuarantineTime,
-		ctx:                       ctx,
-		cancel:                    cancelFunc,
-		actionCh:                  make(chan Action, 1000),
-		candidatesSupplier:        options.CandidatesSupplier,
-		candidateMetadataSupplier: options.CandidateMetadataSupplier,
-		namespaceConfigSupplier:   options.NamespaceConfigSupplier,
-		statusSupplier:            options.StatusSupplier,
-		selector:                  single.NewSelector(),
-		loadRatioAlgorithm:        single.DefaultShardsRank,
-		quarantineNodeMap:         sync.Map{},
-		triggerCh:                 make(chan struct{}, 1),
+		WaitGroup:        &sync.WaitGroup{},
+		Logger:           logger,
+		scheduleInterval: options.ScheduleInterval,
+		quarantineTime:   options.QuarantineTime,
+		ctx:              ctx,
+		cancel:           cancelFunc,
+		actionCh:         make(chan Action, 1000),
+
+		selector:           single.NewSelector(),
+		loadRatioAlgorithm: single.DefaultShardsRank,
+		quarantineNodeMap:  sync.Map{},
+		triggerCh:          make(chan struct{}, 1),
 	}
 	nb.startBackgroundScheduler()
 	nb.startBackgroundNotifier()

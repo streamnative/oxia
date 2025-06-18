@@ -16,6 +16,8 @@ package balancer
 
 import (
 	"sync"
+
+	"github.com/streamnative/oxia/coordinator/model"
 )
 
 type ActionType string
@@ -34,8 +36,8 @@ var _ Action = &SwapNodeAction{}
 
 type SwapNodeAction struct {
 	Shard int64
-	From  string
-	To    string
+	From  model.Server
+	To    model.Server
 
 	waiter *sync.WaitGroup
 }
