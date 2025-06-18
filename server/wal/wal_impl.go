@@ -28,15 +28,15 @@ import (
 	"golang.org/x/exp/slices"
 	pb "google.golang.org/protobuf/proto"
 
-	"github.com/streamnative/oxia/common/concurrent"
-	"github.com/streamnative/oxia/common/constant"
-	"github.com/streamnative/oxia/common/object"
-	"github.com/streamnative/oxia/common/process"
-	time2 "github.com/streamnative/oxia/common/time"
+	"github.com/oxia-db/oxia/common/concurrent"
+	"github.com/oxia-db/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/object"
+	"github.com/oxia-db/oxia/common/process"
+	time2 "github.com/oxia-db/oxia/common/time"
 
-	"github.com/streamnative/oxia/common/metric"
-	"github.com/streamnative/oxia/proto"
-	"github.com/streamnative/oxia/server/wal/codec"
+	"github.com/oxia-db/oxia/common/metric"
+	"github.com/oxia-db/oxia/proto"
+	"github.com/oxia-db/oxia/server/wal/codec"
 )
 
 type walFactory struct {

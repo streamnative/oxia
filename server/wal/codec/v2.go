@@ -23,7 +23,7 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 
-	"github.com/streamnative/oxia/server/util/crc"
+	"github.com/oxia-db/oxia/server/util/crc"
 )
 
 // Txn File:

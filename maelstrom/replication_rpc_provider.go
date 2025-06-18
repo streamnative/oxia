@@ -24,7 +24,7 @@ import (
 
 	"google.golang.org/grpc/metadata"
 
-	"github.com/streamnative/oxia/proto"
+	"github.com/oxia-db/oxia/proto"
 )
 
 type maelstromReplicationRpcProvider struct {

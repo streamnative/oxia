@@ -26,7 +26,7 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 
-	"github.com/streamnative/oxia/server/wal/codec"
+	"github.com/oxia-db/oxia/server/wal/codec"
 )
 
 func segmentPath(basePath string, firstOffset int64) string {

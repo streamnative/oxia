@@ -22,12 +22,12 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 
-	time2 "github.com/streamnative/oxia/common/time"
-	"github.com/streamnative/oxia/oxia/batch"
+	time2 "github.com/oxia-db/oxia/common/time"
+	"github.com/oxia-db/oxia/oxia/batch"
 
-	"github.com/streamnative/oxia/oxia/internal/metrics"
-	"github.com/streamnative/oxia/oxia/internal/model"
-	"github.com/streamnative/oxia/proto"
+	"github.com/oxia-db/oxia/oxia/internal/metrics"
+	"github.com/oxia-db/oxia/oxia/internal/model"
+	"github.com/oxia-db/oxia/proto"
 )
 
 var ErrRequestTooLarge = errors.New("put request is too large")

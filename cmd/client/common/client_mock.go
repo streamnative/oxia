@@ -20,7 +20,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/mock"
 
-	"github.com/streamnative/oxia/oxia"
+	"github.com/oxia-db/oxia/oxia"
 )
 
 type MockClient struct {

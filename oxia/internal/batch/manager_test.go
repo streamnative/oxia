@@ -21,7 +21,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/oxia/batch"
+	"github.com/oxia-db/oxia/oxia/batch"
 )
 
 var errClose = errors.New("closed")

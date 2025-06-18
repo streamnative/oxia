@@ -28,9 +28,9 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	pb "google.golang.org/protobuf/proto"
 
-	"github.com/streamnative/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/constant"
 
-	"github.com/streamnative/oxia/proto"
+	"github.com/oxia-db/oxia/proto"
 )
 
 type Dispatcher interface {

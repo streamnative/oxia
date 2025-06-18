@@ -7,7 +7,7 @@ To deploy the Oxia cluster with Helm:
 ```shell
 $ kubectl create namespace oxia
 
-$ git clone https://github.com/streamnative/oxia.git
+$ git clone https://github.com/oxia-db/oxia.git
 
 $ cd oxia
 

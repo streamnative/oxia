@@ -24,13 +24,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v3"
 
-	"github.com/streamnative/oxia/coordinator/metadata"
+	"github.com/oxia-db/oxia/coordinator/metadata"
 
-	"github.com/streamnative/oxia/common/constant"
-	"github.com/streamnative/oxia/common/entity"
+	"github.com/oxia-db/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/entity"
 
-	"github.com/streamnative/oxia/coordinator"
-	"github.com/streamnative/oxia/coordinator/model"
+	"github.com/oxia-db/oxia/coordinator"
+	"github.com/oxia-db/oxia/coordinator/model"
 )
 
 func TestCmd(t *testing.T) {

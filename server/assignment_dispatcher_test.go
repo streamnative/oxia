@@ -28,10 +28,10 @@ import (
 	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
 
-	"github.com/streamnative/oxia/common/constant"
-	"github.com/streamnative/oxia/common/rpc"
+	"github.com/oxia-db/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/rpc"
 
-	"github.com/streamnative/oxia/proto"
+	"github.com/oxia-db/oxia/proto"
 )
 
 func TestUninitializedAssignmentDispatcher(t *testing.T) {

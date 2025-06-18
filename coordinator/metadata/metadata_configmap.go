@@ -25,8 +25,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8s "k8s.io/client-go/kubernetes"
 
-	"github.com/streamnative/oxia/common/metric"
-	"github.com/streamnative/oxia/coordinator/model"
+	"github.com/oxia-db/oxia/common/metric"
+	"github.com/oxia-db/oxia/coordinator/model"
 )
 
 var _ Provider = &metadataProviderConfigMap{}

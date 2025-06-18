@@ -24,9 +24,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/streamnative/oxia/common/logging"
-	"github.com/streamnative/oxia/oxia"
-	"github.com/streamnative/oxia/perf"
+	"github.com/oxia-db/oxia/common/logging"
+	"github.com/oxia-db/oxia/oxia"
+	"github.com/oxia-db/oxia/perf"
 )
 
 func BenchmarkServer(b *testing.B) {

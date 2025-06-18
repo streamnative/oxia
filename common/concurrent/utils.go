@@ -14,7 +14,7 @@
 
 package concurrent
 
-import "github.com/streamnative/oxia/common/entity"
+import "github.com/oxia-db/oxia/common/entity"
 
 func ReadFromStreamCallback[T any](ch chan *entity.TWithError[T]) StreamCallback[T] {
 	return NewStreamOnce(func(t T) error {

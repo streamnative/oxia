@@ -21,10 +21,10 @@ import (
 
 	"google.golang.org/grpc/metadata"
 
-	"github.com/streamnative/oxia/common/constant"
-	"github.com/streamnative/oxia/common/rpc"
+	"github.com/oxia-db/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/rpc"
 
-	"github.com/streamnative/oxia/proto"
+	"github.com/oxia-db/oxia/proto"
 )
 
 type Executor interface {

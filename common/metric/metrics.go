@@ -29,7 +29,7 @@ import (
 	"go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/sdk/metric"
 
-	"github.com/streamnative/oxia/common/process"
+	"github.com/oxia-db/oxia/common/process"
 )
 
 func init() {

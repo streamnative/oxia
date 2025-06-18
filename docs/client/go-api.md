@@ -1,11 +1,11 @@
 # Oxia Go client API
 
-The full GoDoc reference for the Oxia Go client can be found at: https://pkg.go.dev/github.com/streamnative/oxia/oxia.
+The full GoDoc reference for the Oxia Go client can be found at: https://pkg.go.dev/github.com/oxia-db/oxia/oxia.
 
 A simple example on how to write and read records:
 
 ```go
-// import "github.com/streamnative/oxia/oxia"
+// import "github.com/oxia-db/oxia/oxia"
 
 client, err := oxia.NewSyncClient("localhost:6648")
 if err != nil {

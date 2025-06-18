@@ -17,7 +17,7 @@ package selectors
 import (
 	"github.com/pkg/errors"
 
-	"github.com/streamnative/oxia/coordinator/model"
+	"github.com/oxia-db/oxia/coordinator/model"
 )
 
 var (

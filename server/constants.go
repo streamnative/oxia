@@ -15,8 +15,8 @@
 package server
 
 import (
-	"github.com/streamnative/oxia/proto"
-	"github.com/streamnative/oxia/server/wal"
+	"github.com/oxia-db/oxia/proto"
+	"github.com/oxia-db/oxia/server/wal"
 )
 
 var InvalidEntryId = &proto.EntryId{

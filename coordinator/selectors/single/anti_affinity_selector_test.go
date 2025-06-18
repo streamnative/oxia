@@ -22,9 +22,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/coordinator/model"
-	"github.com/streamnative/oxia/coordinator/policies"
-	"github.com/streamnative/oxia/coordinator/selectors"
+	"github.com/oxia-db/oxia/coordinator/model"
+	"github.com/oxia-db/oxia/coordinator/policies"
+	"github.com/oxia-db/oxia/coordinator/selectors"
 )
 
 func TestSelectNoAntiAffinities(t *testing.T) {

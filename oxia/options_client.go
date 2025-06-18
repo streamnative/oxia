@@ -25,9 +25,9 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/multierr"
 
-	"github.com/streamnative/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/constant"
 
-	"github.com/streamnative/oxia/oxia/auth"
+	"github.com/oxia-db/oxia/oxia/auth"
 )
 
 const (
