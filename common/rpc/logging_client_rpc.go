@@ -20,7 +20,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
 
-	"github.com/streamnative/oxia/proto"
+	"github.com/oxia-db/oxia/proto"
 )
 
 type loggingClientRpc struct {

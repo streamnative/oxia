@@ -23,7 +23,7 @@ import (
 	"github.com/juju/fslock"
 	"github.com/pkg/errors"
 
-	"github.com/streamnative/oxia/coordinator/model"
+	"github.com/oxia-db/oxia/coordinator/model"
 )
 
 type container struct {

@@ -19,12 +19,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/coordinator"
-	metadata2 "github.com/streamnative/oxia/coordinator/metadata"
-	rpc2 "github.com/streamnative/oxia/coordinator/rpc"
+	"github.com/oxia-db/oxia/coordinator"
+	metadata2 "github.com/oxia-db/oxia/coordinator/metadata"
+	rpc2 "github.com/oxia-db/oxia/coordinator/rpc"
 
-	"github.com/streamnative/oxia/common/rpc"
-	"github.com/streamnative/oxia/coordinator/model"
+	"github.com/oxia-db/oxia/common/rpc"
+	"github.com/oxia-db/oxia/coordinator/model"
 )
 
 func TestCoordinatorInitiateLeaderElection(t *testing.T) {

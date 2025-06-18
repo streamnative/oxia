@@ -19,14 +19,14 @@ import (
 	"net/url"
 	"regexp"
 
-	"github.com/streamnative/oxia/common/compare"
-	"github.com/streamnative/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/compare"
+	"github.com/oxia-db/oxia/common/constant"
 
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 
-	"github.com/streamnative/oxia/proto"
-	"github.com/streamnative/oxia/server/kv"
+	"github.com/oxia-db/oxia/proto"
+	"github.com/oxia-db/oxia/server/kv"
 )
 
 const secondaryIdxKeyPrefix = constant.InternalKeyPrefix + "idx"

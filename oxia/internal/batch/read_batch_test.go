@@ -25,9 +25,9 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/streamnative/oxia/oxia/internal/metrics"
-	"github.com/streamnative/oxia/oxia/internal/model"
-	"github.com/streamnative/oxia/proto"
+	"github.com/oxia-db/oxia/oxia/internal/metrics"
+	"github.com/oxia-db/oxia/oxia/internal/model"
+	"github.com/oxia-db/oxia/proto"
 )
 
 func TestReadBatchAdd(t *testing.T) {

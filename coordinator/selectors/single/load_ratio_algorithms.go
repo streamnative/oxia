@@ -19,7 +19,7 @@ import (
 
 	"github.com/emirpasic/gods/v2/lists/arraylist"
 
-	"github.com/streamnative/oxia/coordinator/model"
+	"github.com/oxia-db/oxia/coordinator/model"
 )
 
 func DefaultShardsRank(params *model.RatioParams) *model.Ratio {

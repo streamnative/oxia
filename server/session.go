@@ -23,8 +23,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/streamnative/oxia/common/process"
-	"github.com/streamnative/oxia/proto"
+	"github.com/oxia-db/oxia/common/process"
+	"github.com/oxia-db/oxia/proto"
 )
 
 // --- Session

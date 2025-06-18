@@ -17,7 +17,7 @@ package single
 import (
 	"k8s.io/apimachinery/pkg/util/rand"
 
-	"github.com/streamnative/oxia/coordinator/selectors"
+	"github.com/oxia-db/oxia/coordinator/selectors"
 )
 
 var _ selectors.Selector[*Context, string] = &finalSelector{}

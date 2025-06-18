@@ -17,8 +17,8 @@ package resources
 import (
 	"sync"
 
-	"github.com/streamnative/oxia/coordinator/metadata"
-	"github.com/streamnative/oxia/coordinator/model"
+	"github.com/oxia-db/oxia/coordinator/metadata"
+	"github.com/oxia-db/oxia/coordinator/model"
 )
 
 type StatusResource interface {

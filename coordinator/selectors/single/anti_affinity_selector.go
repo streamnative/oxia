@@ -17,8 +17,8 @@ package single
 import (
 	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 
-	p "github.com/streamnative/oxia/coordinator/policies"
-	"github.com/streamnative/oxia/coordinator/selectors"
+	p "github.com/oxia-db/oxia/coordinator/policies"
+	"github.com/oxia-db/oxia/coordinator/selectors"
 )
 
 var _ selectors.Selector[*Context, string] = &serverAntiAffinitiesSelector{}

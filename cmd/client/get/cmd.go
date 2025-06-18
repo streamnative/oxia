@@ -21,8 +21,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 
-	"github.com/streamnative/oxia/cmd/client/common"
-	"github.com/streamnative/oxia/oxia"
+	"github.com/oxia-db/oxia/cmd/client/common"
+	"github.com/oxia-db/oxia/oxia"
 )
 
 var (

@@ -15,7 +15,7 @@
 package batch
 
 import (
-	"github.com/streamnative/oxia/oxia/batch"
+	"github.com/oxia-db/oxia/oxia/batch"
 )
 
 var (

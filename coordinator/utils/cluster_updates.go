@@ -17,8 +17,8 @@ package utils
 import (
 	"log/slog"
 
-	"github.com/streamnative/oxia/common/sharding"
-	"github.com/streamnative/oxia/coordinator/model"
+	"github.com/oxia-db/oxia/common/sharding"
+	"github.com/oxia-db/oxia/coordinator/model"
 )
 
 func findNamespaceConfig(config *model.ClusterConfig, ns string) *model.NamespaceConfig {

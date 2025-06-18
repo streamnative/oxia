@@ -15,7 +15,7 @@
 package wal
 
 import (
-	"github.com/streamnative/oxia/server/wal/codec"
+	"github.com/oxia-db/oxia/server/wal/codec"
 )
 
 type segmentConfig struct {

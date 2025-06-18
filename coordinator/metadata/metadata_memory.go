@@ -18,7 +18,7 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/streamnative/oxia/coordinator/model"
+	"github.com/oxia-db/oxia/coordinator/model"
 )
 
 var _ Provider = &metadataProviderMemory{}

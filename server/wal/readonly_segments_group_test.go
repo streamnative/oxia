@@ -23,7 +23,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/proto"
+	"github.com/oxia-db/oxia/proto"
 )
 
 func TestReadOnlySegmentsGroupTrimSegments(t *testing.T) {

@@ -30,10 +30,10 @@ import (
 	"go.uber.org/multierr"
 	"golang.org/x/net/context"
 
-	"github.com/streamnative/oxia/common/cache"
+	"github.com/oxia-db/oxia/common/cache"
 
-	"github.com/streamnative/oxia/common/compare"
-	"github.com/streamnative/oxia/common/metric"
+	"github.com/oxia-db/oxia/common/compare"
+	"github.com/oxia-db/oxia/common/metric"
 )
 
 var (

@@ -22,7 +22,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/server"
+	"github.com/oxia-db/oxia/server"
 )
 
 func TestServerCmd(t *testing.T) {

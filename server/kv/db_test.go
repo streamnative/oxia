@@ -25,11 +25,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	pb "google.golang.org/protobuf/proto"
 
-	"github.com/streamnative/oxia/common/constant"
-	"github.com/streamnative/oxia/common/time"
+	"github.com/oxia-db/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/time"
 
-	"github.com/streamnative/oxia/proto"
-	"github.com/streamnative/oxia/server/wal"
+	"github.com/oxia-db/oxia/proto"
+	"github.com/oxia-db/oxia/server/wal"
 )
 
 func TestDBSimple(t *testing.T) {

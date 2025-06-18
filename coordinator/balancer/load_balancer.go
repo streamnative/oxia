@@ -20,9 +20,9 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/streamnative/oxia/coordinator/resources"
+	"github.com/oxia-db/oxia/coordinator/resources"
 
-	"github.com/streamnative/oxia/coordinator/selectors"
+	"github.com/oxia-db/oxia/coordinator/selectors"
 )
 
 type Options struct {

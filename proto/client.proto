@@ -19,7 +19,7 @@ syntax = "proto3";
 
 package io.streamnative.oxia.proto;
 
-option go_package = "github.com/streamnative/oxia/proto";
+option go_package = "github.com/oxia-db/oxia/proto";
 option java_multiple_files = true;
 
 /**

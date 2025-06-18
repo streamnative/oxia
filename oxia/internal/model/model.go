@@ -15,7 +15,7 @@
 package model
 
 import (
-	"github.com/streamnative/oxia/proto"
+	"github.com/oxia-db/oxia/proto"
 )
 
 type PutCall struct {

@@ -15,8 +15,8 @@
 package model
 
 import (
-	"github.com/streamnative/oxia/common/entity"
-	"github.com/streamnative/oxia/coordinator/policies"
+	"github.com/oxia-db/oxia/common/entity"
+	"github.com/oxia-db/oxia/coordinator/policies"
 )
 
 type ClusterConfig struct {

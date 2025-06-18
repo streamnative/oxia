@@ -25,16 +25,16 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/streamnative/oxia/coordinator"
-	"github.com/streamnative/oxia/coordinator/metadata"
-	rpc2 "github.com/streamnative/oxia/coordinator/rpc"
+	"github.com/oxia-db/oxia/coordinator"
+	"github.com/oxia-db/oxia/coordinator/metadata"
+	rpc2 "github.com/oxia-db/oxia/coordinator/rpc"
 
-	"github.com/streamnative/oxia/common/constant"
-	"github.com/streamnative/oxia/common/rpc"
+	"github.com/oxia-db/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/rpc"
 
-	"github.com/streamnative/oxia/coordinator/model"
-	"github.com/streamnative/oxia/oxia"
-	"github.com/streamnative/oxia/server"
+	"github.com/oxia-db/oxia/coordinator/model"
+	"github.com/oxia-db/oxia/oxia"
+	"github.com/oxia-db/oxia/server"
 )
 
 func newServer(t *testing.T) (s *server.Server, addr model.Server) {

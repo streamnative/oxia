@@ -22,10 +22,10 @@ import (
 	"github.com/emirpasic/gods/v2/trees/redblacktree"
 	"go.uber.org/multierr"
 
-	"github.com/streamnative/oxia/common/object"
+	"github.com/oxia-db/oxia/common/object"
 
-	"github.com/streamnative/oxia/server/util"
-	"github.com/streamnative/oxia/server/wal/codec"
+	"github.com/oxia-db/oxia/server/util"
+	"github.com/oxia-db/oxia/server/wal/codec"
 )
 
 type ReadOnlySegmentsGroup interface {
