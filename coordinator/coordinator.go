@@ -87,10 +87,14 @@ type coordinator struct {
 }
 
 func (c *coordinator) LeaderElected(int64, model.Server, []model.Server) {
+	c.Lock()
+	defer c.Unlock()
 	c.computeNewAssignments()
 }
 
 func (c *coordinator) ShardDeleted(int64) {
+	c.Lock()
+	defer c.Unlock()
 	c.computeNewAssignments()
 }
 
@@ -115,7 +119,7 @@ func (c *coordinator) NodeControllers() map[string]controllers.NodeController {
 func (c *coordinator) ConfigChanged(newConfig *model.ClusterConfig) {
 	c.Lock()
 	defer c.Unlock()
-	currentStatus := c.statusResource.Load()
+
 	c.Info("Detected change in cluster config", slog.Any("newClusterConfig", newConfig))
 
 	// Check for nodes to add
@@ -150,21 +154,33 @@ func (c *coordinator) ConfigChanged(newConfig *model.ClusterConfig) {
 		sc.SyncServerAddress()
 	}
 
-	clusterStatus, shardsToAdd, shardsToDelete := utils.ApplyClusterChanges(newConfig, currentStatus, c.selectNewEnsemble)
+	// compare and set
+	currentStatus, version := c.statusResource.LoadWithVersion()
+	var clusterStatus *model.ClusterStatus
+	var shardsToAdd map[int64]string
+	var shardsToDelete []int64
+	for {
+		clusterStatus, shardsToAdd, shardsToDelete = utils.ApplyClusterChanges(newConfig, currentStatus, c.selectNewEnsemble)
+		if !c.statusResource.Swap(clusterStatus, version) {
+			currentStatus, version = c.statusResource.LoadWithVersion()
+			continue
+		}
+		break
+	}
 	for shard, namespace := range shardsToAdd {
 		shardMetadata := clusterStatus.Namespaces[namespace].Shards[shard]
 		if namespaceConfig, exist := c.configResource.NamespaceConfig(namespace); exist {
-			c.shardControllers[shard] = controllers.NewShardController(namespace, shard, namespaceConfig, shardMetadata, c.rpc)
+			c.shardControllers[shard] = controllers.NewShardController(namespace, shard, *namespaceConfig, shardMetadata, c.configResource, c.statusResource, c, c.rpc)
 			slog.Info("Added new shard", slog.Int64("shard", shard),
 				slog.String("namespace", namespace), slog.Any("shard-metadata", shardMetadata))
 		}
 	}
 	for _, shard := range shardsToDelete {
-		s, ok := c.shardControllers[shard]
-		if ok {
+		if s, exist := c.shardControllers[shard]; exist {
 			s.DeleteShard()
 		}
 	}
+
 	c.computeNewAssignments()
 	c.loadBalancer.Trigger()
 }
@@ -234,7 +250,7 @@ func (c *coordinator) Close() error {
 	c.cancel()
 	c.Wait()
 
-	var err error
+	err := c.configResource.Close()
 	for _, sc := range c.shardControllers {
 		err = multierr.Append(err, sc.Close())
 	}
@@ -283,6 +299,7 @@ func (c *coordinator) WaitForNextUpdate(ctx context.Context, currentValue *proto
 }
 
 func (c *coordinator) startBackgroundActionWorker() {
+	defer c.Done()
 	for {
 		select {
 		case action := <-c.loadBalancer.Action():
@@ -305,9 +322,9 @@ func (c *coordinator) handleActionSwap(action balancer.Action) {
 	defer ac.Done()
 	c.Info("Applying swap action", slog.Any("swap-action", ac))
 
-	c.Lock()
+	c.RLock()
 	sc, ok := c.shardControllers[ac.Shard]
-	c.Unlock()
+	c.RUnlock()
 	if !ok {
 		c.Warn("Shard controller not found", slog.Int64("shard", ac.Shard))
 		return
@@ -366,6 +383,7 @@ func NewCoordinator(meta metadata.Provider,
 		Logger: slog.With(
 			slog.String("component", "coordinator"),
 		),
+		WaitGroup:             sync.WaitGroup{},
 		clusterConfigChangeCh: clusterConfigNotificationsCh,
 		ensembleSelector:      ensemble.NewSelector(),
 		shardControllers:      make(map[int64]controllers.ShardController),
@@ -420,9 +438,10 @@ func NewCoordinator(meta metadata.Provider,
 
 	// init shard controllers
 	for ns, shards := range clusterStatus.Namespaces {
-		for shard, shardMetadata := range shards.Shards {
+		for shard := range shards.Shards {
+			shardMetadata := shards.Shards[shard]
 			if nsConfig, exist := c.configResource.NamespaceConfig(ns); exist {
-				c.shardControllers[shard] = controllers.NewShardController(ns, shard, nsConfig, shardMetadata, c.rpc)
+				c.shardControllers[shard] = controllers.NewShardController(ns, shard, *nsConfig, shardMetadata, c.configResource, c.statusResource, c, c.rpc)
 			}
 		}
 	}

@@ -86,7 +86,7 @@ type ShardController interface {
 type shardController struct {
 	namespace          string
 	shard              int64
-	namespaceConfig    *model.NamespaceConfig
+	namespaceConfig    model.NamespaceConfig
 	shardMetadata      model.ShardMetadata
 	shardMetadataMutex sync.RWMutex
 	rpc                rpc.Provider
@@ -120,14 +120,25 @@ func (s *shardController) NodeBecameUnavailable(node model.Server) {
 	s.nodeFailureOp <- node
 }
 
-func NewShardController(namespace string, shard int64, namespaceConfig *model.NamespaceConfig, shardMetadata model.ShardMetadata, rpcProvider rpc.Provider) ShardController {
+func NewShardController(
+	namespace string,
+	shard int64,
+	nc model.NamespaceConfig,
+	shardMetadata model.ShardMetadata,
+	configResource resources.ClusterConfigResource,
+	statusResource resources.StatusResource,
+	eventListener ShardEventListener,
+	rpcProvider rpc.Provider) ShardController {
 	labels := metric.LabelsForShard(namespace, shard)
 	s := &shardController{
 		namespace:               namespace,
 		shard:                   shard,
-		namespaceConfig:         namespaceConfig,
+		namespaceConfig:         nc,
 		shardMetadata:           shardMetadata,
 		rpc:                     rpcProvider,
+		configResource:          configResource,
+		statusResource:          statusResource,
+		eventListener:           eventListener,
 		electionOp:              make(chan any, chanBufferSize),
 		deleteOp:                make(chan any, chanBufferSize),
 		nodeFailureOp:           make(chan model.Server, chanBufferSize),
@@ -163,22 +174,20 @@ func NewShardController(namespace string, shard int64, namespaceConfig *model.Na
 	)
 
 	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		process.DoWithLabels(
-			s.ctx,
-			map[string]string{
-				"oxia":      "shard-controller",
-				"namespace": s.namespace,
-				"shard":     fmt.Sprintf("%d", s.shard),
-			}, s.run,
-		)
-	}()
+	go process.DoWithLabels(
+		s.ctx,
+		map[string]string{
+			"oxia":      "shard-controller",
+			"namespace": s.namespace,
+			"shard":     fmt.Sprintf("%d", s.shard),
+		}, s.run,
+	)
 
 	return s
 }
 
 func (s *shardController) run() {
+	defer s.wg.Done()
 	// Do initial check or leader election
 	switch {
 	case s.shardMetadata.Status == model.ShardStatusDeleting:
@@ -386,7 +395,10 @@ func (s *shardController) electLeader() error {
 		slog.Any("leader", s.shardMetadata.Leader),
 	)
 	timer.Done()
-	s.eventListener.LeaderElected(s.shard, newLeader, maps.Keys(followers))
+
+	if s.eventListener != nil {
+		s.eventListener.LeaderElected(s.shard, newLeader, maps.Keys(followers))
+	}
 
 	s.keepFencingFailedFollowers(followers)
 	return nil
@@ -927,21 +939,19 @@ func (s *shardController) waitForFollowersToCatchUp(ctx context.Context, leader 
 
 func (s *shardController) SyncServerAddress() {
 	s.shardMetadataMutex.RLock()
-	exist := false
+	defer s.shardMetadataMutex.RUnlock()
+	needSync := false
 	for _, candidate := range s.shardMetadata.Ensemble {
-		candidateID := candidate.GetIdentifier()
-		if newInfo, ok := s.configResource.Node(candidateID); ok {
-			if newInfo.GetIdentifier() != candidateID {
-				exist = true
+		if newInfo, ok := s.configResource.Node(candidate.GetIdentifier()); ok {
+			if newInfo.Public != candidate.Public || newInfo.Internal != candidate.Internal {
+				needSync = true
 				break
 			}
 		}
 	}
-	if !exist {
-		s.shardMetadataMutex.RUnlock()
+	if !needSync {
 		return
 	}
-	s.shardMetadataMutex.RUnlock()
 	s.log.Info("server address changed, start a new leader election")
 	s.electionOp <- nil
 }

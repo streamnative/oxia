@@ -10,6 +10,10 @@ import (
 type StatusResource interface {
 	Load() *model.ClusterStatus
 
+	LoadWithVersion() (*model.ClusterStatus, metadata.Version)
+
+	Swap(newStatus *model.ClusterStatus, version metadata.Version) bool
+
 	Update(newStatus *model.ClusterStatus)
 
 	UpdateShardMetadata(namespace string, shard int64, shardMetadata model.ShardMetadata)
@@ -37,9 +41,17 @@ func (s *status) loadWithInitSlow() {
 	if s.current, s.currentVersionID, err = s.metadata.Get(); err != nil {
 		panic(err)
 	}
+	if s.current == nil {
+		s.current = &model.ClusterStatus{}
+	}
 }
 
 func (s *status) Load() *model.ClusterStatus {
+	current, _ := s.LoadWithVersion()
+	return current
+}
+
+func (s *status) LoadWithVersion() (*model.ClusterStatus, metadata.Version) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 	if s.current == nil {
@@ -47,7 +59,21 @@ func (s *status) Load() *model.ClusterStatus {
 		s.loadWithInitSlow()
 		s.lock.RLock()
 	}
-	return s.current
+	return s.current, s.currentVersionID
+}
+
+func (s *status) Swap(newStatus *model.ClusterStatus, version metadata.Version) bool {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	if s.currentVersionID != version {
+		return false
+	}
+	var err error
+	if s.currentVersionID, err = s.metadata.Store(newStatus, s.currentVersionID); err != nil {
+		panic(err)
+	}
+	s.current = newStatus
+	return true
 }
 
 func (s *status) Update(newStatus *model.ClusterStatus) {
@@ -100,10 +126,12 @@ func (s *status) DeleteShardMetadata(namespace string, shard int64) {
 }
 
 func NewStatusResource(meta metadata.Provider) StatusResource {
-	return &status{
+	s := status{
 		lock:             sync.RWMutex{},
 		metadata:         meta,
 		currentVersionID: metadata.NotExists,
 		current:          nil,
 	}
+	s.Load()
+	return &s
 }

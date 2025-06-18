@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/streamnative/oxia/coordinator/metadata"
+	"github.com/streamnative/oxia/coordinator/resources"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/oxia-db/oxia/common/constant"
@@ -123,12 +125,20 @@ func TestShardController(t *testing.T) {
 	s2 := model.Server{Public: "s2:9091", Internal: "s2:8191"}
 	s3 := model.Server{Public: "s3:9091", Internal: "s3:8191"}
 
-	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
+	meta := metadata.NewMetadataProviderMemory()
+	defer meta.Close()
+	statusResource := resources.NewStatusResource(meta)
+	configResource := resources.NewClusterConfigResource(t.Context(), func() (model.ClusterConfig, error) {
+		return model.ClusterConfig{}, nil
+	}, nil, nil)
+	defer configResource.Close()
+
+	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, &model.ShardMetadata{
 		Status:   model.ShardStatusUnknown,
 		Term:     1,
 		Leader:   nil,
 		Ensemble: []model.Server{s1, s2, s3},
-	}, rpc)
+	}, configResource, statusResource, nil, rpc)
 
 	// Shard controller should initiate a leader election
 	// and newTerm each server
@@ -196,12 +206,20 @@ func TestShardController_StartingWithLeaderAlreadyPresent(t *testing.T) {
 	s2 := model.Server{Public: "s2:9091", Internal: "s2:8191"}
 	s3 := model.Server{Public: "s3:9091", Internal: "s3:8191"}
 
-	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
+	meta := metadata.NewMetadataProviderMemory()
+	defer meta.Close()
+	statusResource := resources.NewStatusResource(meta)
+	configResource := resources.NewClusterConfigResource(t.Context(), func() (model.ClusterConfig, error) {
+		return model.ClusterConfig{}, nil
+	}, nil, nil)
+	defer configResource.Close()
+
+	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, &model.ShardMetadata{
 		Status:   model.ShardStatusSteadyState,
 		Term:     1,
 		Leader:   &s1,
 		Ensemble: []model.Server{s1, s2, s3},
-	}, rpc)
+	}, configResource, statusResource, nil, rpc)
 
 	select {
 	case <-rpc.GetNode(s1).newTermRequests:
@@ -226,12 +244,20 @@ func TestShardController_NewTermWithNonRespondingServer(t *testing.T) {
 	s2 := model.Server{Public: "s2:9091", Internal: "s2:8191"}
 	s3 := model.Server{Public: "s3:9091", Internal: "s3:8191"}
 
-	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
+	meta := metadata.NewMetadataProviderMemory()
+	defer meta.Close()
+	statusResource := resources.NewStatusResource(meta)
+	configResource := resources.NewClusterConfigResource(t.Context(), func() (model.ClusterConfig, error) {
+		return model.ClusterConfig{}, nil
+	}, nil, nil)
+	defer configResource.Close()
+
+	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, &model.ShardMetadata{
 		Status:   model.ShardStatusUnknown,
 		Term:     1,
 		Leader:   nil,
 		Ensemble: []model.Server{s1, s2, s3},
-	}, rpc)
+	}, configResource, statusResource, nil, rpc)
 
 	timeStart := time.Now()
 
@@ -271,12 +297,20 @@ func TestShardController_NewTermFollowerUntilItRecovers(t *testing.T) {
 	s2 := model.Server{Public: "s2:9091", Internal: "s2:8191"}
 	s3 := model.Server{Public: "s3:9091", Internal: "s3:8191"}
 
-	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
+	meta := metadata.NewMetadataProviderMemory()
+	defer meta.Close()
+	statusResource := resources.NewStatusResource(meta)
+	configResource := resources.NewClusterConfigResource(t.Context(), func() (model.ClusterConfig, error) {
+		return model.ClusterConfig{}, nil
+	}, nil, nil)
+	defer configResource.Close()
+
+	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, &model.ShardMetadata{
 		Status:   model.ShardStatusUnknown,
 		Term:     1,
 		Leader:   nil,
 		Ensemble: []model.Server{s1, s2, s3},
-	}, rpc)
+	}, configResource, statusResource, nil, rpc)
 
 	// s3 is failing, though we can still elect a leader
 	rpc.GetNode(s1).NewTermResponse(1, 0, nil)
@@ -324,12 +358,20 @@ func TestShardController_VerifyFollowersWereAllFenced(t *testing.T) {
 	n2 := rpc.GetNode(s2)
 	n3 := rpc.GetNode(s3)
 
-	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
+	meta := metadata.NewMetadataProviderMemory()
+	defer meta.Close()
+	statusResource := resources.NewStatusResource(meta)
+	configResource := resources.NewClusterConfigResource(t.Context(), func() (model.ClusterConfig, error) {
+		return model.ClusterConfig{}, nil
+	}, nil, nil)
+	defer configResource.Close()
+
+	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, &model.ShardMetadata{
 		Status:   model.ShardStatusSteadyState,
 		Term:     4,
 		Leader:   &s1,
 		Ensemble: []model.Server{s1, s2, s3},
-	}, rpc)
+	}, configResource, statusResource, nil, rpc)
 
 	r1 := <-n1.getStatusRequests
 	assert.EqualValues(t, 5, r1.Shard)
@@ -391,12 +433,20 @@ func TestShardController_NotificationsDisabled(t *testing.T) {
 		NotificationsEnabled: entity.Bool(false),
 	}
 
-	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, model.ShardMetadata{
+	meta := metadata.NewMetadataProviderMemory()
+	defer meta.Close()
+	statusResource := resources.NewStatusResource(meta)
+	configResource := resources.NewClusterConfigResource(t.Context(), func() (model.ClusterConfig, error) {
+		return model.ClusterConfig{}, nil
+	}, nil, nil)
+	defer configResource.Close()
+
+	sc := NewShardController(constant.DefaultNamespace, shard, namespaceConfig, &model.ShardMetadata{
 		Status:   model.ShardStatusUnknown,
 		Term:     1,
 		Leader:   nil,
 		Ensemble: []model.Server{s1, s2, s3},
-	}, rpc)
+	}, configResource, statusResource, nil, rpc)
 
 	// Shard controller should initiate a leader election
 	// and newTerm each server

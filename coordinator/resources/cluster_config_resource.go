@@ -4,12 +4,13 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"reflect"
 	"sync"
 
 	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 	"github.com/emirpasic/gods/v2/trees/redblacktree"
-
 	"github.com/streamnative/oxia/common/process"
+
 	"github.com/streamnative/oxia/coordinator/model"
 )
 
@@ -80,8 +81,8 @@ func (ccf *clusterConfig) Load() *model.ClusterConfig {
 	defer ccf.clusterConfigLock.RUnlock()
 	if ccf.currentClusterConfig == nil {
 		ccf.clusterConfigLock.RUnlock()
-		defer ccf.clusterConfigLock.RLock()
 		ccf.loadWithInitSlow()
+		ccf.clusterConfigLock.RLock()
 	}
 	return ccf.currentClusterConfig
 }
@@ -91,8 +92,8 @@ func (ccf *clusterConfig) Nodes() *linkedhashset.Set[string] {
 	defer ccf.clusterConfigLock.RUnlock()
 	if ccf.currentClusterConfig == nil {
 		ccf.clusterConfigLock.RUnlock()
-		defer ccf.clusterConfigLock.RLock()
 		ccf.loadWithInitSlow()
+		ccf.clusterConfigLock.RLock()
 	}
 	nodes := linkedhashset.New[string]()
 	for idx := range ccf.currentClusterConfig.Servers {
@@ -106,8 +107,8 @@ func (ccf *clusterConfig) NodesWithMetadata() (*linkedhashset.Set[string], map[s
 	defer ccf.clusterConfigLock.RUnlock()
 	if ccf.currentClusterConfig == nil {
 		ccf.clusterConfigLock.RUnlock()
-		defer ccf.clusterConfigLock.RLock()
 		ccf.loadWithInitSlow()
+		ccf.clusterConfigLock.RLock()
 	}
 	nodes := linkedhashset.New[string]()
 	for idx := range ccf.currentClusterConfig.Servers {
@@ -122,8 +123,8 @@ func (ccf *clusterConfig) NamespaceConfig(namespace string) (*model.NamespaceCon
 	defer ccf.clusterConfigLock.RUnlock()
 	if ccf.currentClusterConfig == nil {
 		ccf.clusterConfigLock.RUnlock()
-		defer ccf.clusterConfigLock.RLock()
 		ccf.loadWithInitSlow()
+		ccf.clusterConfigLock.RLock()
 	}
 	return ccf.namespaceConfigsIndex.Get(namespace)
 }
@@ -133,13 +134,14 @@ func (ccf *clusterConfig) Node(id string) (*model.Server, bool) {
 	defer ccf.clusterConfigLock.RUnlock()
 	if ccf.currentClusterConfig == nil {
 		ccf.clusterConfigLock.RUnlock()
-		defer ccf.clusterConfigLock.RLock()
 		ccf.loadWithInitSlow()
+		ccf.clusterConfigLock.RLock()
 	}
 	return ccf.nodesIndex.Get(id)
 }
 
 func (ccf *clusterConfig) waitForUpdates() {
+	defer ccf.Done()
 	for {
 		select {
 		case <-ccf.ctx.Done():
@@ -148,6 +150,7 @@ func (ccf *clusterConfig) waitForUpdates() {
 		case <-ccf.clusterConfigNotificationsCh:
 			ccf.Info("Received cluster config change event")
 			ccf.clusterConfigLock.Lock()
+			oldClusterConfig := ccf.currentClusterConfig
 			ccf.currentClusterConfig = nil
 			ccf.clusterConfigLock.Unlock()
 
@@ -157,6 +160,10 @@ func (ccf *clusterConfig) waitForUpdates() {
 			currentClusterConfig := ccf.currentClusterConfig
 			ccf.clusterConfigLock.RUnlock()
 
+			if reflect.DeepEqual(oldClusterConfig, currentClusterConfig) {
+				ccf.Info("No cluster config changes detected")
+				return
+			}
 			ccf.clusterConfigEventListener.ConfigChanged(currentClusterConfig)
 		}
 	}
@@ -170,6 +177,8 @@ func NewClusterConfigResource(ctx context.Context,
 	ctx, cancelFunc := context.WithCancel(ctx)
 
 	cc := &clusterConfig{
+		Logger:                       slog.With("component", "cluster-config-resource"),
+		WaitGroup:                    sync.WaitGroup{},
 		ctx:                          ctx,
 		cancel:                       cancelFunc,
 		clusterConfigProvider:        clusterConfigProvider,
@@ -177,9 +186,12 @@ func NewClusterConfigResource(ctx context.Context,
 		clusterConfigEventListener:   clusterConfigEventListener,
 	}
 
-	go process.DoWithLabels(ctx, map[string]string{
-		"component": "coordinator-action-worker",
-	}, cc.waitForUpdates)
+	if clusterConfigNotificationsCh != nil {
+		cc.Add(1)
+		go process.DoWithLabels(ctx, map[string]string{
+			"component": "coordinator-action-worker",
+		}, cc.waitForUpdates)
+	}
 
 	return cc
 }

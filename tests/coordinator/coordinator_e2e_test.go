@@ -715,11 +715,6 @@ func TestCoordinator_RefreshServerInfo(t *testing.T) {
 		})
 	}
 
-	// check if the new config will trigger node swap
-	// status := c.ClusterStatus()
-	// actions := coordinator.rebalanceCluster(clusterServer, &status)
-	// assert.EqualValues(t, 0, len(actions))
-
 	clusterConfig.Servers = clusterServer
 	configChangesCh <- nil
 

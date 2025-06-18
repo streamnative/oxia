@@ -354,6 +354,8 @@ func NewLoadBalancer(options Options) LoadBalancer {
 		cancel:           cancelFunc,
 		actionCh:         make(chan Action, 1000),
 
+		statusResource:     options.StatusResource,
+		configResource:     options.ClusterConfigResource,
 		selector:           single.NewSelector(),
 		loadRatioAlgorithm: single.DefaultShardsRank,
 		quarantineNodeMap:  sync.Map{},

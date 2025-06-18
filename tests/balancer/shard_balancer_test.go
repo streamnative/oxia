@@ -19,12 +19,19 @@ import (
 	"time"
 
 	"github.com/emirpasic/gods/v2/sets/linkedhashset"
+	"github.com/streamnative/oxia/common/process"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/oxia-db/oxia/coordinator/model"
 	"github.com/oxia-db/oxia/coordinator/policies"
 	"github.com/oxia-db/oxia/tests/mock"
 )
+
+func init() {
+	process.PprofEnable = true
+	process.PprofBindAddress = "127.0.0.1:6060"
+	process.RunProfiling()
+}
 
 func TestNormalShardBalancer(t *testing.T) {
 	s1, s1ad := mock.NewServer(t, "sv-1")
