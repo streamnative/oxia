@@ -20,7 +20,9 @@ import (
 	"log/slog"
 	"reflect"
 	"sync"
+	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 	"github.com/emirpasic/gods/v2/trees/redblacktree"
 
@@ -68,11 +70,20 @@ func (ccf *clusterConfig) loadWithInitSlow() {
 	if ccf.currentClusterConfig != nil {
 		return
 	}
-	newConfig, err := ccf.clusterConfigProvider()
-	if err != nil {
-		panic(err)
-	}
-	ccf.currentClusterConfig = &newConfig
+	_ = backoff.RetryNotify(func() error {
+		newConfig, err := ccf.clusterConfigProvider()
+		if err != nil {
+			return err
+		}
+		ccf.currentClusterConfig = &newConfig
+		return nil
+	}, backoff.NewExponentialBackOff(), func(err error, duration time.Duration) {
+		ccf.Warn(
+			"failed to load cluster configuration, retrying later",
+			slog.Any("error", err),
+			slog.Duration("retry-after", duration),
+		)
+	})
 	index := redblacktree.New[string, *model.Server]()
 	for idx, server := range ccf.currentClusterConfig.Servers {
 		index.Put(server.GetIdentifier(), &ccf.currentClusterConfig.Servers[idx])
