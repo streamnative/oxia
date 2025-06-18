@@ -19,9 +19,10 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/stretchr/testify/assert"
+
 	"github.com/oxia-db/oxia/coordinator/metadata"
 	"github.com/oxia-db/oxia/coordinator/resources"
-	"github.com/stretchr/testify/assert"
 
 	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/entity"

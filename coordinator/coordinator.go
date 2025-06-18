@@ -440,8 +440,11 @@ func NewCoordinator(meta metadata.Provider,
 	for ns, shards := range clusterStatus.Namespaces {
 		for shard := range shards.Shards {
 			shardMetadata := shards.Shards[shard]
-			nsConfig := &model.NamespaceConfig{}
-			nsConfig, _ = c.configResource.NamespaceConfig(ns)
+			var nsConfig *model.NamespaceConfig
+			var exist bool
+			if nsConfig, exist = c.configResource.NamespaceConfig(ns); !exist {
+				nsConfig = &model.NamespaceConfig{}
+			}
 			c.shardControllers[shard] = controllers.NewShardController(ns, shard, nsConfig, shardMetadata, c.configResource, c.statusResource, c, c.rpc)
 		}
 	}
