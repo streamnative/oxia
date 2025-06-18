@@ -14,7 +14,7 @@
 
 .PHONY: build
 build:
-	go build -v -o bin/oxia ./cmd
+	go build -ldflags "-X main.version=$(shell git describe --tags --always | cut -c2-)" -v -o bin/oxia ./cmd
 
 .PHONY: maelstrom
 maelstrom:

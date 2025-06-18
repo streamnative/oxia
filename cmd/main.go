@@ -36,6 +36,7 @@ import (
 )
 
 var (
+	version     string
 	logLevelStr string
 	rootCmd     = &cobra.Command{
 		Use:               "oxia",
@@ -43,6 +44,7 @@ var (
 		Long:              `Oxia root command`,
 		PersistentPreRunE: configureLogLevel,
 		SilenceUsage:      true,
+		Version:           version,
 	}
 )
 
