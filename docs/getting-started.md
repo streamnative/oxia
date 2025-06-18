@@ -54,13 +54,19 @@ There is a convenient CLI tool that allows you to interact with the records stor
 
 ```shell
 # Write or update a record
-$ bin/oxia client put -k /my-key -v my-value
-{"version":{"version_id":0,"created_timestamp":1680220430128,"modified_timestamp":1680220430128,"modifications_count":0}}
+$ oxia client put my-key my-value
+{"key":"my-key","version_id":2132,"created_timestamp":"2025-06-17T17:09:26.043-07:00","modified_timestamp":"2025-06-17T17:09:26.043-07:00","modifications_count":0,"ephemeral":false,"session_id":0,"client_identity":""}
 
 
 # Read the value of a key
-$ oxia client get -k /my-key
-{"binary":false,"value":"my-value","version":{"version_id":0,"created_timestamp":1680220430128,"modified_timestamp":1680220430128,"modifications_count":0}}
+$ oxia client get my-key
+my-value
+
+# Read value with version information
+$ oxia client get my-key -v
+my-value
+---
+{"key":"my-key","version_id":2132,"created_timestamp":"2025-06-17T17:09:26.043-07:00","modified_timestamp":"2025-06-17T17:09:26.043-07:00","modifications_count":0,"ephemeral":false,"session_id":0,"client_identity":""}
 ```
 
 ## Interacting by Go client
