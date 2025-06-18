@@ -30,17 +30,17 @@ import (
 	"golang.org/x/exp/maps"
 	"google.golang.org/grpc/status"
 
-	"github.com/oxia-db/oxia/coordinator/resources"
+	"github.com/streamnative/oxia/coordinator/resources"
 
-	"github.com/oxia-db/oxia/coordinator/rpc"
+	"github.com/streamnative/oxia/coordinator/rpc"
 
-	"github.com/oxia-db/oxia/common/constant"
-	"github.com/oxia-db/oxia/common/process"
-	time2 "github.com/oxia-db/oxia/common/time"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/process"
+	time2 "github.com/streamnative/oxia/common/time"
 
-	"github.com/oxia-db/oxia/common/metric"
-	"github.com/oxia-db/oxia/coordinator/model"
-	"github.com/oxia-db/oxia/proto"
+	"github.com/streamnative/oxia/common/metric"
+	"github.com/streamnative/oxia/coordinator/model"
+	"github.com/streamnative/oxia/proto"
 )
 
 const (

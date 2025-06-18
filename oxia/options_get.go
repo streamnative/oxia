@@ -14,7 +14,7 @@
 
 package oxia
 
-import "github.com/oxia-db/oxia/proto"
+import "github.com/streamnative/oxia/proto"
 
 type getOptions struct {
 	baseOptions

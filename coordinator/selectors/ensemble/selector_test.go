@@ -21,8 +21,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/exp/slices"
 
-	"github.com/oxia-db/oxia/coordinator/model"
-	"github.com/oxia-db/oxia/coordinator/policies"
+	"github.com/streamnative/oxia/coordinator/model"
+	"github.com/streamnative/oxia/coordinator/policies"
 )
 
 func TestSelectMultipleAntiAffinitiesSatisfied(t *testing.T) {

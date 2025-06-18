@@ -20,10 +20,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/oxia-db/oxia/common/constant"
+	"github.com/streamnative/oxia/common/constant"
 
-	"github.com/oxia-db/oxia/proto"
-	"github.com/oxia-db/oxia/server/kv"
+	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/kv"
 )
 
 func TestShardsDirector_DeleteShardLeader(t *testing.T) {

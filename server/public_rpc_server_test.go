@@ -30,8 +30,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/oxia-db/oxia/common/logging"
-	"github.com/oxia-db/oxia/proto"
+	"github.com/streamnative/oxia/common/logging"
+	"github.com/streamnative/oxia/proto"
 )
 
 func init() {

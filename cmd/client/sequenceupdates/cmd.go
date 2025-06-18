@@ -20,8 +20,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/oxia-db/oxia/cmd/client/common"
-	"github.com/oxia-db/oxia/oxia"
+	"github.com/streamnative/oxia/cmd/client/common"
+	"github.com/streamnative/oxia/oxia"
 )
 
 var Config = flags{}

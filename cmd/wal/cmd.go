@@ -17,11 +17,11 @@ package wal
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/oxia-db/oxia/cmd/wal/scan"
+	"github.com/streamnative/oxia/cmd/wal/scan"
 
-	"github.com/oxia-db/oxia/cmd/wal/common"
-	"github.com/oxia-db/oxia/cmd/wal/perf"
-	"github.com/oxia-db/oxia/cmd/wal/truncate"
+	"github.com/streamnative/oxia/cmd/wal/common"
+	"github.com/streamnative/oxia/cmd/wal/perf"
+	"github.com/streamnative/oxia/cmd/wal/truncate"
 )
 
 var (

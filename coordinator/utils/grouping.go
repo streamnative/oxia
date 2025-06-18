@@ -17,7 +17,7 @@ package utils
 import (
 	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 
-	"github.com/oxia-db/oxia/coordinator/model"
+	"github.com/streamnative/oxia/coordinator/model"
 )
 
 func GroupingShardsNodeByStatus(candidates *linkedhashset.Set[string], status *model.ClusterStatus) (map[string][]model.ShardInfo, map[string]model.Server) {

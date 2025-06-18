@@ -21,13 +21,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	pb "google.golang.org/protobuf/proto"
 
-	"github.com/oxia-db/oxia/common/concurrent"
-	"github.com/oxia-db/oxia/common/constant"
+	"github.com/streamnative/oxia/common/concurrent"
+	"github.com/streamnative/oxia/common/constant"
 
-	"github.com/oxia-db/oxia/common/entity"
+	"github.com/streamnative/oxia/common/entity"
 
-	"github.com/oxia-db/oxia/proto"
-	"github.com/oxia-db/oxia/server/kv"
+	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/kv"
 )
 
 func TestSecondaryIndices_List(t *testing.T) {

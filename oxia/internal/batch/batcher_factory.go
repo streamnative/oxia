@@ -18,9 +18,9 @@ import (
 	"context"
 	"time"
 
-	batch2 "github.com/oxia-db/oxia/oxia/batch"
-	"github.com/oxia-db/oxia/oxia/internal"
-	"github.com/oxia-db/oxia/oxia/internal/metrics"
+	batch2 "github.com/streamnative/oxia/oxia/batch"
+	"github.com/streamnative/oxia/oxia/internal"
+	"github.com/streamnative/oxia/oxia/internal/metrics"
 )
 
 type BatcherFactory struct {

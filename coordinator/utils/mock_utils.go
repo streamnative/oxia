@@ -14,7 +14,7 @@
 
 package utils
 
-import "github.com/oxia-db/oxia/coordinator/model"
+import "github.com/streamnative/oxia/coordinator/model"
 
 func SimpleEnsembleSupplier(candidates []model.Server, nc *model.NamespaceConfig, cs *model.ClusterStatus) []model.Server {
 	n := len(candidates)

@@ -17,7 +17,7 @@ package wal
 import (
 	"sync"
 
-	"github.com/oxia-db/oxia/proto"
+	"github.com/streamnative/oxia/proto"
 )
 
 func (t *wal) NewReader(after int64) (Reader, error) {

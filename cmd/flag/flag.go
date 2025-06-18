@@ -19,7 +19,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/oxia-db/oxia/common/constant"
+	"github.com/streamnative/oxia/common/constant"
 )
 
 func PublicAddr(cmd *cobra.Command, conf *string) {

@@ -29,9 +29,9 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 
-	"github.com/oxia-db/oxia/common/process"
+	"github.com/streamnative/oxia/common/process"
 
-	"github.com/oxia-db/oxia/server/auth"
+	"github.com/streamnative/oxia/server/auth"
 )
 
 const (

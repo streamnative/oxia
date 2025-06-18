@@ -28,15 +28,15 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protowire"
 
-	"github.com/oxia-db/oxia/common/concurrent"
-	"github.com/oxia-db/oxia/common/constant"
-	"github.com/oxia-db/oxia/common/process"
-	"github.com/oxia-db/oxia/common/rpc"
+	"github.com/streamnative/oxia/common/concurrent"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/process"
+	"github.com/streamnative/oxia/common/rpc"
 
-	"github.com/oxia-db/oxia/common/channel"
+	"github.com/streamnative/oxia/common/channel"
 
-	"github.com/oxia-db/oxia/proto"
-	"github.com/oxia-db/oxia/server/auth"
+	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/auth"
 )
 
 const (

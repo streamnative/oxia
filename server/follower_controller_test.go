@@ -25,14 +25,14 @@ import (
 	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
 
-	"github.com/oxia-db/oxia/common/concurrent"
-	"github.com/oxia-db/oxia/common/constant"
-	"github.com/oxia-db/oxia/common/logging"
-	time2 "github.com/oxia-db/oxia/common/time"
+	"github.com/streamnative/oxia/common/concurrent"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/logging"
+	time2 "github.com/streamnative/oxia/common/time"
 
-	"github.com/oxia-db/oxia/proto"
-	"github.com/oxia-db/oxia/server/kv"
-	"github.com/oxia-db/oxia/server/wal"
+	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/kv"
+	"github.com/streamnative/oxia/server/wal"
 )
 
 var testKVOptions = &kv.FactoryOptions{

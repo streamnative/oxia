@@ -23,10 +23,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/oxia-db/oxia/common/constant"
+	"github.com/streamnative/oxia/common/constant"
 
-	"github.com/oxia-db/oxia/proto"
-	"github.com/oxia-db/oxia/server/wal/codec"
+	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/wal/codec"
 )
 
 const shard = int64(100)

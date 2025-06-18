@@ -19,7 +19,7 @@ import (
 	"errors"
 	"io"
 
-	"github.com/oxia-db/oxia/oxia/internal/batch"
+	"github.com/streamnative/oxia/oxia/internal/batch"
 )
 
 const (
@@ -82,7 +82,7 @@ type AsyncClient interface {
 	// DeleteRange deletes any records with keys within the specified range.
 	// Note: Oxia uses a custom sorting order that treats `/` characters in special way.
 	// Refer to this documentation for the specifics:
-	// https://github.com/oxia-db/oxia/blob/main/docs/oxia-key-sorting.md
+	// https://github.com/streamnative/oxia/blob/main/docs/oxia-key-sorting.md
 	DeleteRange(minKeyInclusive string, maxKeyExclusive string, options ...DeleteRangeOption) <-chan error
 
 	// Get returns the value associated with the specified key.
@@ -94,13 +94,13 @@ type AsyncClient interface {
 	// List any existing keys within the specified range.
 	// Note: Oxia uses a custom sorting order that treats `/` characters in special way.
 	// Refer to this documentation for the specifics:
-	// https://github.com/oxia-db/oxia/blob/main/docs/oxia-key-sorting.md
+	// https://github.com/streamnative/oxia/blob/main/docs/oxia-key-sorting.md
 	List(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, options ...ListOption) <-chan ListResult
 
 	// RangeScan perform a scan for existing records with any keys within the specified range.
 	// Note: Oxia uses a custom sorting order that treats `/` characters in special way.
 	// Refer to this documentation for the specifics:
-	// https://github.com/oxia-db/oxia/blob/main/docs/oxia-key-sorting.md
+	// https://github.com/streamnative/oxia/blob/main/docs/oxia-key-sorting.md
 	RangeScan(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, options ...RangeScanOption) <-chan GetResult
 
 	// GetSequenceUpdates allows to subscribe to the updates happening on a sequential key
@@ -150,7 +150,7 @@ type SyncClient interface {
 	// DeleteRange deletes any records with keys within the specified range.
 	// Note: Oxia uses a custom sorting order that treats `/` characters in special way.
 	// Refer to this documentation for the specifics:
-	// https://github.com/oxia-db/oxia/blob/main/docs/oxia-key-sorting.md
+	// https://github.com/streamnative/oxia/blob/main/docs/oxia-key-sorting.md
 	DeleteRange(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, options ...DeleteRangeOption) error
 
 	// Get returns the value associated with the specified key.
@@ -162,7 +162,7 @@ type SyncClient interface {
 	// List any existing keys within the specified range.
 	// Note: Oxia uses a custom sorting order that treats `/` characters in special way.
 	// Refer to this documentation for the specifics:
-	// https://github.com/oxia-db/oxia/blob/main/docs/oxia-key-sorting.md
+	// https://github.com/streamnative/oxia/blob/main/docs/oxia-key-sorting.md
 	List(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, options ...ListOption) (keys []string, err error)
 
 	// RangeScan perform a scan for existing records with any keys within the specified range.

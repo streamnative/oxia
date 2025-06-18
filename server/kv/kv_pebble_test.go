@@ -22,7 +22,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/oxia-db/oxia/common/constant"
+	"github.com/streamnative/oxia/common/constant"
 )
 
 var testKVOptions = &FactoryOptions{

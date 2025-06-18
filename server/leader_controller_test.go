@@ -25,17 +25,17 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	pb "google.golang.org/protobuf/proto"
 
-	"github.com/oxia-db/oxia/common/concurrent"
-	"github.com/oxia-db/oxia/common/constant"
-	time2 "github.com/oxia-db/oxia/common/time"
+	"github.com/streamnative/oxia/common/concurrent"
+	"github.com/streamnative/oxia/common/constant"
+	time2 "github.com/streamnative/oxia/common/time"
 
-	"github.com/oxia-db/oxia/common/channel"
+	"github.com/streamnative/oxia/common/channel"
 
-	oentity "github.com/oxia-db/oxia/common/entity"
+	oentity "github.com/streamnative/oxia/common/entity"
 
-	"github.com/oxia-db/oxia/proto"
-	"github.com/oxia-db/oxia/server/kv"
-	"github.com/oxia-db/oxia/server/wal"
+	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/kv"
+	"github.com/streamnative/oxia/server/wal"
 )
 
 func AssertProtoEqual(t *testing.T, expected, actual pb.Message) {

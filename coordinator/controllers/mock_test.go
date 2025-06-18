@@ -28,11 +28,11 @@ import (
 	"google.golang.org/grpc/metadata"
 	pb "google.golang.org/protobuf/proto"
 
-	"github.com/oxia-db/oxia/common/concurrent"
-	"github.com/oxia-db/oxia/common/logging"
+	"github.com/streamnative/oxia/common/concurrent"
+	"github.com/streamnative/oxia/common/logging"
 
-	"github.com/oxia-db/oxia/coordinator/model"
-	"github.com/oxia-db/oxia/proto"
+	"github.com/streamnative/oxia/coordinator/model"
+	"github.com/streamnative/oxia/proto"
 )
 
 func init() {

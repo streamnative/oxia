@@ -22,7 +22,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/oxia-db/oxia/server/wal/codec"
+	"github.com/streamnative/oxia/server/wal/codec"
 )
 
 func TestReadOnlySegment(t *testing.T) {

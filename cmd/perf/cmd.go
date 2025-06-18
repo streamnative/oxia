@@ -21,11 +21,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/oxia-db/oxia/common/constant"
-	"github.com/oxia-db/oxia/common/process"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/process"
 
-	"github.com/oxia-db/oxia/oxia"
-	"github.com/oxia-db/oxia/perf"
+	"github.com/streamnative/oxia/oxia"
+	"github.com/streamnative/oxia/perf"
 )
 
 var (

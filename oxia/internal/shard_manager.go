@@ -26,13 +26,13 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/oxia-db/oxia/common/concurrent"
-	"github.com/oxia-db/oxia/common/constant"
-	"github.com/oxia-db/oxia/common/process"
-	"github.com/oxia-db/oxia/common/rpc"
-	time2 "github.com/oxia-db/oxia/common/time"
+	"github.com/streamnative/oxia/common/concurrent"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/process"
+	"github.com/streamnative/oxia/common/rpc"
+	time2 "github.com/streamnative/oxia/common/time"
 
-	"github.com/oxia-db/oxia/proto"
+	"github.com/streamnative/oxia/proto"
 )
 
 type ShardManager interface {

@@ -29,18 +29,18 @@ import (
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/util/json"
 
-	"github.com/oxia-db/oxia/coordinator"
-	"github.com/oxia-db/oxia/coordinator/metadata"
-	rpc2 "github.com/oxia-db/oxia/coordinator/rpc"
+	"github.com/streamnative/oxia/coordinator"
+	"github.com/streamnative/oxia/coordinator/metadata"
+	rpc2 "github.com/streamnative/oxia/coordinator/rpc"
 
-	"github.com/oxia-db/oxia/common/constant"
-	"github.com/oxia-db/oxia/common/rpc"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/rpc"
 
-	"github.com/oxia-db/oxia/coordinator/model"
-	"github.com/oxia-db/oxia/oxia"
-	clientauth "github.com/oxia-db/oxia/oxia/auth"
-	"github.com/oxia-db/oxia/server"
-	"github.com/oxia-db/oxia/server/auth"
+	"github.com/streamnative/oxia/coordinator/model"
+	"github.com/streamnative/oxia/oxia"
+	clientauth "github.com/streamnative/oxia/oxia/auth"
+	"github.com/streamnative/oxia/server"
+	"github.com/streamnative/oxia/server/auth"
 )
 
 func newOxiaClusterWithAuth(t *testing.T, issueURL string, audiences string) (address string, closeFunc func()) {

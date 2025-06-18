@@ -29,11 +29,11 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/oxia-db/oxia/common/constant"
-	"github.com/oxia-db/oxia/common/rpc"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/rpc"
 
-	"github.com/oxia-db/oxia/proto"
-	"github.com/oxia-db/oxia/server/auth"
+	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/auth"
 )
 
 type internalRpcServer struct {

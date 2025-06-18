@@ -20,7 +20,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/oxia-db/oxia/common/channel"
+	"github.com/streamnative/oxia/common/channel"
 )
 
 type SequenceWaiter interface {

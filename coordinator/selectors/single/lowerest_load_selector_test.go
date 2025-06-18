@@ -20,8 +20,8 @@ import (
 	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/oxia-db/oxia/coordinator/model"
-	"github.com/oxia-db/oxia/coordinator/selectors"
+	"github.com/streamnative/oxia/coordinator/model"
+	"github.com/streamnative/oxia/coordinator/selectors"
 )
 
 func TestSelectLowerestLoadSelector(t *testing.T) {

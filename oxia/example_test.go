@@ -22,7 +22,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/oxia-db/oxia/server"
+	"github.com/streamnative/oxia/server"
 )
 
 var (

@@ -175,7 +175,7 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - github.com/oxia-db/oxia
+        - github.com/streamnative/oxia
   exclusions:
     generated: lax
     paths:

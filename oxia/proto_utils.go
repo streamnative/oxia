@@ -14,7 +14,7 @@
 
 package oxia
 
-import "github.com/oxia-db/oxia/proto"
+import "github.com/streamnative/oxia/proto"
 
 func toPutResult(originalKey string, r *proto.PutResponse) PutResult {
 	if err := toError(r.Status); err != nil {

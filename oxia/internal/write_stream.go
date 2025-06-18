@@ -22,9 +22,9 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/oxia-db/oxia/common/concurrent"
-	"github.com/oxia-db/oxia/common/process"
-	"github.com/oxia-db/oxia/proto"
+	"github.com/streamnative/oxia/common/concurrent"
+	"github.com/streamnative/oxia/common/process"
+	"github.com/streamnative/oxia/proto"
 )
 
 type streamWrapper struct {

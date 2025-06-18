@@ -20,7 +20,7 @@ import (
 	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/oxia-db/oxia/coordinator/model"
+	"github.com/streamnative/oxia/coordinator/model"
 )
 
 func TestGroupingCandidatesNormalCase(t *testing.T) {

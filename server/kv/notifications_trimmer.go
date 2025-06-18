@@ -23,11 +23,11 @@ import (
 	"github.com/pkg/errors"
 	pb "google.golang.org/protobuf/proto"
 
-	"github.com/oxia-db/oxia/common/concurrent"
-	"github.com/oxia-db/oxia/common/process"
-	time2 "github.com/oxia-db/oxia/common/time"
+	"github.com/streamnative/oxia/common/concurrent"
+	"github.com/streamnative/oxia/common/process"
+	time2 "github.com/streamnative/oxia/common/time"
 
-	"github.com/oxia-db/oxia/proto"
+	"github.com/streamnative/oxia/proto"
 )
 
 const (

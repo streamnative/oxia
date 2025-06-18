@@ -15,7 +15,7 @@
 package single
 
 import (
-	"github.com/oxia-db/oxia/coordinator/selectors"
+	"github.com/streamnative/oxia/coordinator/selectors"
 )
 
 var _ selectors.Selector[*Context, string] = &lowerestLoadSelector{}

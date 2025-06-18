@@ -72,7 +72,7 @@ Instead, you can write a Go application with [Oxia Go API](client/go-api.md).
 
 ## Interacting by Java client
 
-There is a Java client SDK available: https://github.com/oxia-db/oxia-java.
+There is a Java client SDK available: https://github.com/streamnative/oxia-java.
 
 ## Using perf client
 

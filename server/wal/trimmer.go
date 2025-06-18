@@ -23,8 +23,8 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/oxia-db/oxia/common/process"
-	time2 "github.com/oxia-db/oxia/common/time"
+	"github.com/streamnative/oxia/common/process"
+	time2 "github.com/streamnative/oxia/common/time"
 )
 
 const (

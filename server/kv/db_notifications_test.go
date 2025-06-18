@@ -21,11 +21,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/oxia-db/oxia/common/constant"
-	"github.com/oxia-db/oxia/common/logging"
-	time2 "github.com/oxia-db/oxia/common/time"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/logging"
+	time2 "github.com/streamnative/oxia/common/time"
 
-	"github.com/oxia-db/oxia/proto"
+	"github.com/streamnative/oxia/proto"
 )
 
 func init() {

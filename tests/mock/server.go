@@ -21,8 +21,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/oxia-db/oxia/coordinator/model"
-	"github.com/oxia-db/oxia/server"
+	"github.com/streamnative/oxia/coordinator/model"
+	"github.com/streamnative/oxia/server"
 )
 
 func NewServer(t *testing.T, name string) (s *server.Server, addr model.Server) {

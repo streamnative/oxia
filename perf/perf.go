@@ -27,7 +27,7 @@ import (
 	"github.com/bmizerany/perks/quantile"
 	"golang.org/x/time/rate"
 
-	"github.com/oxia-db/oxia/oxia"
+	"github.com/streamnative/oxia/oxia"
 )
 
 type Config struct {

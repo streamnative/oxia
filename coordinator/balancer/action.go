@@ -17,7 +17,7 @@ package balancer
 import (
 	"sync"
 
-	"github.com/oxia-db/oxia/coordinator/model"
+	"github.com/streamnative/oxia/coordinator/model"
 )
 
 type ActionType string

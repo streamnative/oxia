@@ -26,7 +26,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/oxia-db/oxia/server"
+	"github.com/streamnative/oxia/server"
 )
 
 type neverCompleteAsyncClient struct {

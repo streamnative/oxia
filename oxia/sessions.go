@@ -26,13 +26,13 @@ import (
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/status"
 
-	"github.com/oxia-db/oxia/common/constant"
-	"github.com/oxia-db/oxia/common/process"
-	"github.com/oxia-db/oxia/common/rpc"
-	time2 "github.com/oxia-db/oxia/common/time"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/process"
+	"github.com/streamnative/oxia/common/rpc"
+	time2 "github.com/streamnative/oxia/common/time"
 
-	"github.com/oxia-db/oxia/oxia/internal"
-	"github.com/oxia-db/oxia/proto"
+	"github.com/streamnative/oxia/oxia/internal"
+	"github.com/streamnative/oxia/proto"
 )
 
 func newSessions(ctx context.Context, shardManager internal.ShardManager, pool rpc.ClientPool, options clientOptions) *sessions {

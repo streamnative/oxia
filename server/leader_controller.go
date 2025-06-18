@@ -27,20 +27,20 @@ import (
 	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
 
-	"github.com/oxia-db/oxia/common/concurrent"
-	"github.com/oxia-db/oxia/common/constant"
-	"github.com/oxia-db/oxia/common/process"
-	"github.com/oxia-db/oxia/common/rpc"
-	time2 "github.com/oxia-db/oxia/common/time"
+	"github.com/streamnative/oxia/common/concurrent"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/process"
+	"github.com/streamnative/oxia/common/rpc"
+	time2 "github.com/streamnative/oxia/common/time"
 
-	"github.com/oxia-db/oxia/common/entity"
+	"github.com/streamnative/oxia/common/entity"
 
-	"github.com/oxia-db/oxia/common/channel"
+	"github.com/streamnative/oxia/common/channel"
 
-	"github.com/oxia-db/oxia/common/metric"
-	"github.com/oxia-db/oxia/proto"
-	"github.com/oxia-db/oxia/server/kv"
-	"github.com/oxia-db/oxia/server/wal"
+	"github.com/streamnative/oxia/common/metric"
+	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/kv"
+	"github.com/streamnative/oxia/server/wal"
 )
 
 type LeaderController interface {

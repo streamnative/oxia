@@ -19,10 +19,10 @@ import (
 
 	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 
-	"github.com/oxia-db/oxia/coordinator/utils"
+	"github.com/streamnative/oxia/coordinator/utils"
 
-	"github.com/oxia-db/oxia/coordinator/model"
-	p "github.com/oxia-db/oxia/coordinator/policies"
+	"github.com/streamnative/oxia/coordinator/model"
+	p "github.com/streamnative/oxia/coordinator/policies"
 )
 
 type Context struct {

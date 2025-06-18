@@ -24,9 +24,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/otel/metric/noop"
 
-	"github.com/oxia-db/oxia/oxia/internal/metrics"
-	"github.com/oxia-db/oxia/oxia/internal/model"
-	"github.com/oxia-db/oxia/proto"
+	"github.com/streamnative/oxia/oxia/internal/metrics"
+	"github.com/streamnative/oxia/oxia/internal/model"
+	"github.com/streamnative/oxia/proto"
 )
 
 func TestWriteBatchAdd(t *testing.T) {

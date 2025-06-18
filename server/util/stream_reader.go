@@ -23,7 +23,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/oxia-db/oxia/common/process"
+	"github.com/streamnative/oxia/common/process"
 )
 
 type Stream[T any] interface {

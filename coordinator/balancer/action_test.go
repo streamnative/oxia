@@ -18,7 +18,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/oxia-db/oxia/coordinator/model"
+	"github.com/streamnative/oxia/coordinator/model"
 )
 
 func TestActionSwapDone(t *testing.T) {

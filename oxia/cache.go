@@ -26,7 +26,7 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 
-	"github.com/oxia-db/oxia/common/process"
+	"github.com/streamnative/oxia/common/process"
 )
 
 // Cache provides a view of the data stored in Oxia that is locally cached.

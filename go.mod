@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-module github.com/oxia-db/oxia
+module github.com/streamnative/oxia
 
 go 1.24.2
 

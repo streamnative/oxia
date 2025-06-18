@@ -27,9 +27,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
 
-	"github.com/oxia-db/oxia/coordinator/metadata"
+	"github.com/streamnative/oxia/coordinator/metadata"
 
-	"github.com/oxia-db/oxia/common/process"
+	"github.com/streamnative/oxia/common/process"
 )
 
 type cmConfigProvider struct {

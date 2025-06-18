@@ -25,15 +25,15 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"github.com/oxia-db/oxia/coordinator/metadata"
+	"github.com/streamnative/oxia/coordinator/metadata"
 
-	"github.com/oxia-db/oxia/common/entity"
-	"github.com/oxia-db/oxia/common/process"
+	"github.com/streamnative/oxia/common/entity"
+	"github.com/streamnative/oxia/common/process"
 
-	"github.com/oxia-db/oxia/cmd/flag"
-	"github.com/oxia-db/oxia/common/security"
-	"github.com/oxia-db/oxia/coordinator"
-	"github.com/oxia-db/oxia/coordinator/model"
+	"github.com/streamnative/oxia/cmd/flag"
+	"github.com/streamnative/oxia/common/security"
+	"github.com/streamnative/oxia/coordinator"
+	"github.com/streamnative/oxia/coordinator/model"
 )
 
 var (

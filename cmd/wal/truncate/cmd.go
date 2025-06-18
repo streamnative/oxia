@@ -20,8 +20,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/oxia-db/oxia/cmd/wal/common"
-	"github.com/oxia-db/oxia/server/wal"
+	"github.com/streamnative/oxia/cmd/wal/common"
+	"github.com/streamnative/oxia/server/wal"
 )
 
 type truncateOptions struct {

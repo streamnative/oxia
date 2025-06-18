@@ -17,8 +17,8 @@ package ensemble
 import (
 	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 
-	"github.com/oxia-db/oxia/coordinator/selectors"
-	"github.com/oxia-db/oxia/coordinator/selectors/single"
+	"github.com/streamnative/oxia/coordinator/selectors"
+	"github.com/streamnative/oxia/coordinator/selectors/single"
 )
 
 var _ selectors.Selector[*Context, []string] = &ensemble{}

@@ -22,11 +22,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/oxia-db/oxia/cmd/client/del"
-	"github.com/oxia-db/oxia/cmd/client/get"
-	"github.com/oxia-db/oxia/cmd/client/list"
-	"github.com/oxia-db/oxia/cmd/client/put"
-	"github.com/oxia-db/oxia/server"
+	"github.com/streamnative/oxia/cmd/client/del"
+	"github.com/streamnative/oxia/cmd/client/get"
+	"github.com/streamnative/oxia/cmd/client/list"
+	"github.com/streamnative/oxia/cmd/client/put"
+	"github.com/streamnative/oxia/server"
 )
 
 func TestClientCmd(t *testing.T) {

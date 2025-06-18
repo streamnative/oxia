@@ -24,9 +24,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/cobra"
 
-	"github.com/oxia-db/oxia/cmd/wal/common"
-	"github.com/oxia-db/oxia/proto"
-	"github.com/oxia-db/oxia/server/wal"
+	"github.com/streamnative/oxia/cmd/wal/common"
+	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/wal"
 )
 
 type perfOptions struct {

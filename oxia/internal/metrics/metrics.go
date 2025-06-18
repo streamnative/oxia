@@ -20,9 +20,9 @@ import (
 
 	"go.opentelemetry.io/otel/metric"
 
-	ometric "github.com/oxia-db/oxia/common/metric"
-	"github.com/oxia-db/oxia/oxia/internal/model"
-	"github.com/oxia-db/oxia/proto"
+	ometric "github.com/streamnative/oxia/common/metric"
+	"github.com/streamnative/oxia/oxia/internal/model"
+	"github.com/streamnative/oxia/proto"
 )
 
 type Metrics struct {

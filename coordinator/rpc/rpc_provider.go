@@ -21,10 +21,10 @@ import (
 
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/oxia-db/oxia/common/rpc"
+	"github.com/streamnative/oxia/common/rpc"
 
-	"github.com/oxia-db/oxia/coordinator/model"
-	"github.com/oxia-db/oxia/proto"
+	"github.com/streamnative/oxia/coordinator/model"
+	"github.com/streamnative/oxia/proto"
 )
 
 const rpcTimeout = 30 * time.Second

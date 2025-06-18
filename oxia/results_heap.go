@@ -14,7 +14,7 @@
 
 package oxia
 
-import "github.com/oxia-db/oxia/common/compare"
+import "github.com/streamnative/oxia/common/compare"
 
 type ResultAndChannel struct {
 	gr GetResult

@@ -23,14 +23,14 @@ import (
 	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 	"github.com/pkg/errors"
 
-	"github.com/oxia-db/oxia/common/process"
-	"github.com/oxia-db/oxia/coordinator/resources"
+	"github.com/streamnative/oxia/common/process"
+	"github.com/streamnative/oxia/coordinator/resources"
 
-	"github.com/oxia-db/oxia/common/channel"
-	"github.com/oxia-db/oxia/coordinator/model"
-	"github.com/oxia-db/oxia/coordinator/selectors"
-	"github.com/oxia-db/oxia/coordinator/selectors/single"
-	"github.com/oxia-db/oxia/coordinator/utils"
+	"github.com/streamnative/oxia/common/channel"
+	"github.com/streamnative/oxia/coordinator/model"
+	"github.com/streamnative/oxia/coordinator/selectors"
+	"github.com/streamnative/oxia/coordinator/selectors/single"
+	"github.com/streamnative/oxia/coordinator/utils"
 )
 
 var _ LoadBalancer = &nodeBasedBalancer{}

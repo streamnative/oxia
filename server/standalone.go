@@ -21,14 +21,14 @@ import (
 
 	"go.uber.org/multierr"
 
-	"github.com/oxia-db/oxia/common/constant"
-	"github.com/oxia-db/oxia/common/rpc"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/rpc"
 
-	"github.com/oxia-db/oxia/common/metric"
-	"github.com/oxia-db/oxia/proto"
-	"github.com/oxia-db/oxia/server/auth"
-	"github.com/oxia-db/oxia/server/kv"
-	"github.com/oxia-db/oxia/server/wal"
+	"github.com/streamnative/oxia/common/metric"
+	"github.com/streamnative/oxia/proto"
+	"github.com/streamnative/oxia/server/auth"
+	"github.com/streamnative/oxia/server/kv"
+	"github.com/streamnative/oxia/server/wal"
 )
 
 type StandaloneConfig struct {

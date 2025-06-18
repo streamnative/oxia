@@ -25,7 +25,7 @@ import (
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/oxia-db/oxia/common/rpc"
+	"github.com/streamnative/oxia/common/rpc"
 )
 
 func TestInternalHealthCheck(t *testing.T) {

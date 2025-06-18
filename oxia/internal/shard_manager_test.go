@@ -21,10 +21,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/oxia-db/oxia/common/constant"
-	"github.com/oxia-db/oxia/common/rpc"
+	"github.com/streamnative/oxia/common/constant"
+	"github.com/streamnative/oxia/common/rpc"
 
-	"github.com/oxia-db/oxia/server"
+	"github.com/streamnative/oxia/server"
 )
 
 type testShardStrategy struct {

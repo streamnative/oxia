@@ -19,7 +19,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/oxia-db/oxia/proto"
+	"github.com/streamnative/oxia/proto"
 )
 
 var (

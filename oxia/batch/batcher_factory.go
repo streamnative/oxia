@@ -20,7 +20,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/oxia-db/oxia/common/process"
+	"github.com/streamnative/oxia/common/process"
 )
 
 var batcherChannelBufferSize = runtime.GOMAXPROCS(-1)
