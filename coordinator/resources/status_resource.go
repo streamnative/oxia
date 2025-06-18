@@ -15,7 +15,11 @@
 package resources
 
 import (
+	"log/slog"
 	"sync"
+	"time"
+
+	"github.com/cenkalti/backoff/v4"
 
 	"github.com/oxia-db/oxia/coordinator/metadata"
 	"github.com/oxia-db/oxia/coordinator/model"
@@ -38,6 +42,7 @@ type StatusResource interface {
 var _ StatusResource = &status{}
 
 type status struct {
+	*slog.Logger
 	metadata metadata.Provider
 
 	lock             sync.RWMutex
@@ -51,10 +56,21 @@ func (s *status) loadWithInitSlow() {
 	if s.current != nil {
 		return
 	}
-	var err error
-	if s.current, s.currentVersionID, err = s.metadata.Get(); err != nil {
-		panic(err)
-	}
+	_ = backoff.RetryNotify(func() error {
+		clusterStatus, version, err := s.metadata.Get()
+		if err != nil {
+			return err
+		}
+		s.current = clusterStatus
+		s.currentVersionID = version
+		return nil
+	}, backoff.NewExponentialBackOff(), func(err error, duration time.Duration) {
+		s.Warn(
+			"failed to load status, retrying later",
+			slog.Any("error", err),
+			slog.Duration("retry-after", duration),
+		)
+	})
 	if s.current == nil {
 		s.current = &model.ClusterStatus{}
 	}
@@ -82,22 +98,42 @@ func (s *status) Swap(newStatus *model.ClusterStatus, version metadata.Version) 
 	if s.currentVersionID != version {
 		return false
 	}
-	var err error
-	if s.currentVersionID, err = s.metadata.Store(newStatus, s.currentVersionID); err != nil {
-		panic(err)
-	}
-	s.current = newStatus
+	_ = backoff.RetryNotify(func() error {
+		versionID, err := s.metadata.Store(newStatus, s.currentVersionID)
+		if err != nil {
+			return err
+		}
+		s.current = newStatus
+		s.currentVersionID = versionID
+		return nil
+	}, backoff.NewExponentialBackOff(), func(err error, duration time.Duration) {
+		s.Warn(
+			"failed to swap status, retrying later",
+			slog.Any("error", err),
+			slog.Duration("retry-after", duration),
+		)
+	})
 	return true
 }
 
 func (s *status) Update(newStatus *model.ClusterStatus) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	var err error
-	if s.currentVersionID, err = s.metadata.Store(newStatus, s.currentVersionID); err != nil {
-		panic(err)
-	}
-	s.current = newStatus
+	_ = backoff.RetryNotify(func() error {
+		versionID, err := s.metadata.Store(newStatus, s.currentVersionID)
+		if err != nil {
+			return err
+		}
+		s.current = newStatus
+		s.currentVersionID = versionID
+		return nil
+	}, backoff.NewExponentialBackOff(), func(err error, duration time.Duration) {
+		s.Warn(
+			"failed to update status, retrying later",
+			slog.Any("error", err),
+			slog.Duration("retry-after", duration),
+		)
+	})
 }
 
 func (s *status) UpdateShardMetadata(namespace string, shard int64, shardMetadata model.ShardMetadata) {
@@ -110,12 +146,21 @@ func (s *status) UpdateShardMetadata(namespace string, shard int64, shardMetadat
 		return
 	}
 	ns.Shards[shard] = shardMetadata
-	version, err := s.metadata.Store(clonedStatus, s.currentVersionID)
-	if err != nil {
-		panic(err)
-	}
-	s.current = clonedStatus
-	s.currentVersionID = version
+	_ = backoff.RetryNotify(func() error {
+		versionID, err := s.metadata.Store(clonedStatus, s.currentVersionID)
+		if err != nil {
+			return err
+		}
+		s.current = clonedStatus
+		s.currentVersionID = versionID
+		return nil
+	}, backoff.NewExponentialBackOff(), func(err error, duration time.Duration) {
+		s.Warn(
+			"failed to update shard metadata, retrying later",
+			slog.Any("error", err),
+			slog.Duration("retry-after", duration),
+		)
+	})
 }
 
 func (s *status) DeleteShardMetadata(namespace string, shard int64) {
@@ -131,12 +176,21 @@ func (s *status) DeleteShardMetadata(namespace string, shard int64) {
 	if len(ns.Shards) == 0 {
 		delete(clonedStatus.Namespaces, namespace)
 	}
-	version, err := s.metadata.Store(clonedStatus, s.currentVersionID)
-	if err != nil {
-		panic(err)
-	}
-	s.current = clonedStatus
-	s.currentVersionID = version
+	_ = backoff.RetryNotify(func() error {
+		versionID, err := s.metadata.Store(clonedStatus, s.currentVersionID)
+		if err != nil {
+			return err
+		}
+		s.current = clonedStatus
+		s.currentVersionID = versionID
+		return nil
+	}, backoff.NewExponentialBackOff(), func(err error, duration time.Duration) {
+		s.Warn(
+			"failed to delete shard metadata, retrying later",
+			slog.Any("error", err),
+			slog.Duration("retry-after", duration),
+		)
+	})
 }
 
 func NewStatusResource(meta metadata.Provider) StatusResource {
