@@ -4,11 +4,8 @@
 
 ### Docker image
 
-Oxia is available in form of a Docker image
+Oxia is available in form of a Docker image: `streamnative/oxia:latest`
 
-```shell
-docker pull streamnative/oxia:main
-```
 
 ### Building from source
 
@@ -45,7 +42,7 @@ The service is now ready at `localhost:6648` address.
 Using docker this can be done with:
 
 ```shell
-docker run -p 6648:6648 streamnative/oxia:main oxia standalone
+docker run -p 6648:6648 streamnative/oxia:latest oxia standalone
 ```
 
 ## Interacting by CLI
@@ -72,6 +69,10 @@ my-value
 ## Interacting by Go client
 
 Instead, you can write a Go application with [Oxia Go API](client/go-api.md).
+
+## Interacting by Java client
+
+There is a Java client SDK available: https://github.com/streamnative/oxia-java.
 
 ## Using perf client
 
