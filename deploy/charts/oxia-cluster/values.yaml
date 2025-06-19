@@ -38,8 +38,8 @@ server:
     metrics: 8080
 
 image:
-  repository: streamnative/oxia
-  tag: main
+  repository: oxia/oxia
+  tag: latest
   pullPolicy: Always
   #pullSecrets: xxx
 
