@@ -45,7 +45,8 @@ jobs:
         id: meta
         uses: docker/metadata-action@v4
         with:
-          images: ${{ github.repository }}
+          # images: ${{ github.repository }}
+          images: oxia/oxia
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
