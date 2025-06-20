@@ -19,7 +19,7 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/oxia-db/oxia/coordinator/action"
+	"github.com/oxia-db/oxia/coordinator/actions"
 
 	"github.com/oxia-db/oxia/coordinator/resources"
 
@@ -40,7 +40,7 @@ type LoadBalancer interface {
 
 	Trigger()
 
-	Action() <-chan action.Action
+	Action() <-chan actions.Action
 
 	IsBalanced() bool
 

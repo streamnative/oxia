@@ -18,14 +18,14 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/oxia-db/oxia/coordinator/action"
+	"github.com/oxia-db/oxia/coordinator/actions"
 	"github.com/oxia-db/oxia/coordinator/model"
 )
 
 func TestActionSwapDone(t *testing.T) {
 	group := &sync.WaitGroup{}
 	group.Add(1)
-	swapAction := action.SwapNodeAction{
+	swapAction := actions.SwapNodeAction{
 		Shard: int64(1),
 		From: model.Server{
 			Internal: "sv-1",

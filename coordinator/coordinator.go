@@ -25,7 +25,7 @@ import (
 	"go.uber.org/multierr"
 	pb "google.golang.org/protobuf/proto"
 
-	"github.com/oxia-db/oxia/coordinator/action"
+	"github.com/oxia-db/oxia/coordinator/actions"
 
 	"github.com/oxia-db/oxia/coordinator/controllers"
 	"github.com/oxia-db/oxia/coordinator/resources"
@@ -306,9 +306,9 @@ func (c *coordinator) startBackgroundActionWorker() {
 		select {
 		case ac := <-c.loadBalancer.Action():
 			switch ac.Type() {
-			case action.SwapNode:
+			case actions.SwapNode:
 				c.handleActionSwap(ac)
-			case action.Election:
+			case actions.Election:
 				c.handleActionElection(ac)
 			}
 
@@ -318,10 +318,10 @@ func (c *coordinator) startBackgroundActionWorker() {
 	}
 }
 
-func (c *coordinator) handleActionElection(ac action.Action) {
-	var electionAc *action.ElectionAction
+func (c *coordinator) handleActionElection(ac actions.Action) {
+	var electionAc *actions.ElectionAction
 	var ok bool
-	if electionAc, ok = ac.(*action.ElectionAction); !ok {
+	if electionAc, ok = ac.(*actions.ElectionAction); !ok {
 		panic("unexpected action type")
 	}
 	c.Info("Applying swap action", slog.Any("swap-action", ac))
@@ -337,10 +337,10 @@ func (c *coordinator) handleActionElection(ac action.Action) {
 	electionAc.Done(sc.Election(electionAc))
 }
 
-func (c *coordinator) handleActionSwap(ac action.Action) {
-	var swapAction *action.SwapNodeAction
+func (c *coordinator) handleActionSwap(ac actions.Action) {
+	var swapAction *actions.SwapNodeAction
 	var ok bool
-	if swapAction, ok = ac.(*action.SwapNodeAction); !ok {
+	if swapAction, ok = ac.(*actions.SwapNodeAction); !ok {
 		panic("unexpected action type")
 	}
 	defer swapAction.Done(nil)

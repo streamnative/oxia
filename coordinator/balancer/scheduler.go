@@ -25,7 +25,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/oxia-db/oxia/common/process"
-	"github.com/oxia-db/oxia/coordinator/action"
+	"github.com/oxia-db/oxia/coordinator/actions"
 	"github.com/oxia-db/oxia/coordinator/resources"
 
 	"github.com/oxia-db/oxia/common/channel"
@@ -59,10 +59,10 @@ type nodeBasedBalancer struct {
 
 	triggerCh chan any
 
-	actionCh chan action.Action
+	actionCh chan actions.Action
 }
 
-func (r *nodeBasedBalancer) Action() <-chan action.Action {
+func (r *nodeBasedBalancer) Action() <-chan actions.Action {
 	return r.actionCh
 }
 
@@ -254,7 +254,7 @@ func (r *nodeBasedBalancer) swapShard(
 	}
 
 	swapGroup.Add(1)
-	r.actionCh <- &action.SwapNodeAction{
+	r.actionCh <- &actions.SwapNodeAction{
 		Shard:  candidateShard.ShardID,
 		From:   fromNode,
 		To:     *targetNode,
@@ -423,7 +423,7 @@ func (r *nodeBasedBalancer) rebalanceLeader() {
 
 		latch := &sync.WaitGroup{}
 		latch.Add(1)
-		ac := &action.ElectionAction{
+		ac := &actions.ElectionAction{
 			Shard:  shard,
 			Waiter: latch,
 		}
@@ -481,7 +481,7 @@ func NewLoadBalancer(options Options) LoadBalancer {
 		ctx:                     ctx,
 		cancel:                  cancelFunc,
 		loadBalancerConf:        options.ClusterConfigResource.LoadLoadBalancer(),
-		actionCh:                make(chan action.Action, 1000),
+		actionCh:                make(chan actions.Action, 1000),
 		nodeAvailableJudger:     options.NodeAvailableJudger,
 		statusResource:          options.StatusResource,
 		configResource:          options.ClusterConfigResource,

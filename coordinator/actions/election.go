@@ -12,28 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package action
+package actions
 
-import (
-	"sync"
+import "sync"
 
-	"github.com/oxia-db/oxia/coordinator/model"
-)
-
-var _ Action = &SwapNodeAction{}
-
-type SwapNodeAction struct {
+type ElectionAction struct {
 	Shard int64
-	From  model.Server
-	To    model.Server
 
-	Waiter *sync.WaitGroup
+	NewLeader string
+	Waiter    *sync.WaitGroup
 }
 
-func (s *SwapNodeAction) Done(_ any) {
-	s.Waiter.Done()
+func (e *ElectionAction) Done(leader any) {
+	e.NewLeader = leader.(string) //nolint:revive
+	e.Waiter.Done()
 }
 
-func (*SwapNodeAction) Type() Type {
-	return SwapNode
+func (*ElectionAction) Type() Type {
+	return Election
+}
+
+func (e *ElectionAction) Clone() *ElectionAction {
+	return &ElectionAction{
+		Shard:  e.Shard,
+		Waiter: &sync.WaitGroup{},
+	}
 }

@@ -12,29 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package action
+package actions
 
-import "sync"
+type Type string
 
-type ElectionAction struct {
-	Shard int64
+const (
+	SwapNode Type = "swap-node"
+	Election Type = "election"
+)
 
-	NewLeader string
-	Waiter    *sync.WaitGroup
-}
+type Action interface {
+	Type() Type
 
-func (e *ElectionAction) Done(leader any) {
-	e.NewLeader = leader.(string) //nolint:revive
-	e.Waiter.Done()
-}
-
-func (*ElectionAction) Type() Type {
-	return Election
-}
-
-func (e *ElectionAction) Clone() *ElectionAction {
-	return &ElectionAction{
-		Shard:  e.Shard,
-		Waiter: &sync.WaitGroup{},
-	}
+	Done(t any)
 }

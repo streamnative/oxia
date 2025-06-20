@@ -29,7 +29,7 @@ import (
 	"golang.org/x/exp/maps"
 	"google.golang.org/grpc/status"
 
-	"github.com/oxia-db/oxia/coordinator/action"
+	"github.com/oxia-db/oxia/coordinator/actions"
 	"github.com/oxia-db/oxia/coordinator/selectors"
 	leaderselector "github.com/oxia-db/oxia/coordinator/selectors/leader"
 
@@ -82,7 +82,7 @@ type ShardController interface {
 	SwapNode(from model.Server, to model.Server) error
 	DeleteShard()
 
-	Election(ac *action.ElectionAction) string
+	Election(action *actions.ElectionAction) string
 
 	Term() int64
 	Leader() *model.Server
@@ -103,7 +103,7 @@ type shardController struct {
 	configResource resources.ClusterConfigResource
 	statusResource resources.StatusResource
 
-	electionOp              chan *action.ElectionAction
+	electionOp              chan *actions.ElectionAction
 	deleteOp                chan any
 	nodeFailureOp           chan model.Server
 	swapNodeOp              chan swapNodeRequest
@@ -148,7 +148,7 @@ func NewShardController(
 		statusResource:          statusResource,
 		eventListener:           eventListener,
 		leaderSelector:          leaderselector.NewSelector(),
-		electionOp:              make(chan *action.ElectionAction, chanBufferSize),
+		electionOp:              make(chan *actions.ElectionAction, chanBufferSize),
 		deleteOp:                make(chan any, chanBufferSize),
 		nodeFailureOp:           make(chan model.Server, chanBufferSize),
 		swapNodeOp:              make(chan swapNodeRequest, chanBufferSize),
@@ -195,8 +195,8 @@ func NewShardController(
 	return s
 }
 
-func (s *shardController) Election(ac *action.ElectionAction) string {
-	clonedAction := ac.Clone()
+func (s *shardController) Election(action *actions.ElectionAction) string {
+	clonedAction := action.Clone()
 	clonedAction.Waiter.Add(1)
 	s.electionOp <- clonedAction
 	clonedAction.Waiter.Wait()
@@ -320,7 +320,7 @@ func (s *shardController) verifyCurrentEnsemble() bool {
 	return true
 }
 
-func (s *shardController) electLeaderWithRetries(ea *action.ElectionAction) {
+func (s *shardController) electLeaderWithRetries(ea *actions.ElectionAction) {
 	newLeader, _ := backoff.RetryNotifyWithData[string](func() (string, error) {
 		return s.electLeader()
 	}, time2.NewBackOff(s.ctx),

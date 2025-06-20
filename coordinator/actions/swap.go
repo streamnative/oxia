@@ -12,17 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package action
+package actions
 
-type Type string
+import (
+	"sync"
 
-const (
-	SwapNode Type = "swap-node"
-	Election Type = "election"
+	"github.com/oxia-db/oxia/coordinator/model"
 )
 
-type Action interface {
-	Type() Type
+var _ Action = &SwapNodeAction{}
 
-	Done(t any)
+type SwapNodeAction struct {
+	Shard int64
+	From  model.Server
+	To    model.Server
+
+	Waiter *sync.WaitGroup
+}
+
+func (s *SwapNodeAction) Done(_ any) {
+	s.Waiter.Done()
+}
+
+func (*SwapNodeAction) Type() Type {
+	return SwapNode
 }
