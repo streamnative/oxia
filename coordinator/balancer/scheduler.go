@@ -444,7 +444,7 @@ func (r *nodeBasedBalancer) rankLeaders(nodeLeaders map[string]*arraylist.List[u
 	maxLeaders = -1
 	minLeaders = -1
 	for nodeID, nsAndShards := range nodeLeaders {
-		existNonQuarantineShard := nsAndShards.Any(func(index int, value utils.NamespaceAndShard) bool {
+		existNonQuarantineShard := nsAndShards.Any(func(_ int, value utils.NamespaceAndShard) bool {
 			_, exist := r.shardQuarantineShardMap.Load(value.ShardID)
 			return !exist
 		})
