@@ -1,4 +1,0 @@
-# Storage Architecture
-
-
-(todo...)

@@ -17,10 +17,10 @@ description: Oxia cluster
 type: application
 version: 0.0.1
 appVersion: "0.0.1"
-home: https://streamnative.io
+home: https://oxia-db.github.io
 sources:
 - https://github.com/oxia-db/oxia
-icon: https://raw.githubusercontent.com/streamnative/oxia/main/docs/oxia-logo.png
+icon: https://raw.githubusercontent.com/oxia-db/oxia/main/docs/oxia-logo.png
 maintainers:
 - name: StreamNative Support
   email: support@streamnative.io
