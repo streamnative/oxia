@@ -396,7 +396,7 @@ func (r *nodeBasedBalancer) rebalanceLeader() {
 		if maxLeaders-minLeaders <= 1 {
 			break
 		}
-		if _, exist := r.shardQuarantineShardMap.Load(nsAndShard); exist {
+		if _, exist := r.shardQuarantineShardMap.Load(nsAndShard.ShardID); exist {
 			continue
 		}
 		namespace := nsAndShard.Namespace
@@ -444,14 +444,14 @@ func (r *nodeBasedBalancer) rankLeaders(nodeLeaders map[string]*arraylist.List[u
 	maxLeaders = -1
 	minLeaders = -1
 	for nodeID, nsAndShards := range nodeLeaders {
-		validLeaderNum := 0
-		for iter := nsAndShards.Iterator(); iter.Next(); {
-			nsAndShard := iter.Value()
-			if _, exist := r.shardQuarantineShardMap.Load(nsAndShard.ShardID); exist {
-				continue
-			}
-			validLeaderNum++
+		existNonQuarantineShard := nsAndShards.Any(func(index int, value utils.NamespaceAndShard) bool {
+			_, exist := r.shardQuarantineShardMap.Load(value.ShardID)
+			return !exist
+		})
+		if !existNonQuarantineShard { // Filter out quarantined nodes
+			continue
 		}
+		validLeaderNum := nsAndShards.Size()
 		if maxLeaders == -1 {
 			maxLeaders = validLeaderNum
 			minLeaders = validLeaderNum
