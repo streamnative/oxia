@@ -86,7 +86,9 @@ func TestLeaderElection_ShouldChooseHighestTerm(t *testing.T) {
 
 			// Check candidates
 			assert.Equal(t, 1, len(candidates))
-			assert.Equal(t, tt.expectedLeader, candidates)
+			for _, candidate := range candidates {
+				assert.Equal(t, tt.expectedLeader, candidate)
+			}
 		})
 	}
 }
