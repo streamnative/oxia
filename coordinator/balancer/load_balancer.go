@@ -17,8 +17,9 @@ package balancer
 import (
 	"io"
 
-	"github.com/oxia-db/oxia/coordinator/action"
 	"golang.org/x/net/context"
+
+	"github.com/oxia-db/oxia/coordinator/action"
 
 	"github.com/oxia-db/oxia/coordinator/resources"
 

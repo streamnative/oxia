@@ -24,13 +24,14 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	"github.com/oxia-db/oxia/coordinator/action"
-	"github.com/oxia-db/oxia/coordinator/selectors"
-	leaderselector "github.com/oxia-db/oxia/coordinator/selectors/leader"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"golang.org/x/exp/maps"
 	"google.golang.org/grpc/status"
+
+	"github.com/oxia-db/oxia/coordinator/action"
+	"github.com/oxia-db/oxia/coordinator/selectors"
+	leaderselector "github.com/oxia-db/oxia/coordinator/selectors/leader"
 
 	"github.com/oxia-db/oxia/coordinator/resources"
 
@@ -81,7 +82,7 @@ type ShardController interface {
 	SwapNode(from model.Server, to model.Server) error
 	DeleteShard()
 
-	Election(action *action.ElectionAction) string
+	Election(ac *action.ElectionAction) string
 
 	Term() int64
 	Leader() *model.Server
@@ -699,8 +700,7 @@ func (s *shardController) deleteShardRpc(ctx context.Context, node model.Server)
 	return err
 }
 
-func (s *shardController) selectNewLeader(newTermResponses map[model.Server]*proto.EntryId) (
-	leader model.Server, followers map[model.Server]*proto.EntryId) {
+func chooseCandidates(newTermResponses map[model.Server]*proto.EntryId) []model.Server {
 	// Select all the nodes that have the highest term first
 	var currentMaxTerm int64 = -1
 	// Select all the nodes that have the highest entry in the wal
@@ -723,6 +723,13 @@ func (s *shardController) selectNewLeader(newTermResponses map[model.Server]*pro
 			}
 		}
 	}
+	return candidates
+}
+
+func (s *shardController) selectNewLeader(newTermResponses map[model.Server]*proto.EntryId) (
+	leader model.Server, followers map[model.Server]*proto.EntryId) {
+	candidates := chooseCandidates(newTermResponses)
+
 	server, _ := s.leaderSelector.Select(&leaderselector.Context{
 		Candidates: candidates,
 		Status:     s.statusResource.Load(),

@@ -22,9 +22,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/oxia-db/oxia/coordinator/action"
 	"go.uber.org/multierr"
 	pb "google.golang.org/protobuf/proto"
+
+	"github.com/oxia-db/oxia/coordinator/action"
 
 	"github.com/oxia-db/oxia/coordinator/controllers"
 	"github.com/oxia-db/oxia/coordinator/resources"
@@ -304,7 +305,7 @@ func (c *coordinator) startBackgroundActionWorker() {
 	for {
 		select {
 		case ac := <-c.loadBalancer.Action():
-			switch ac.Type() { //nolint:revive,gocritic
+			switch ac.Type() {
 			case action.SwapNode:
 				c.handleActionSwap(ac)
 			case action.Election:
@@ -334,7 +335,6 @@ func (c *coordinator) handleActionElection(ac action.Action) {
 		return
 	}
 	electionAc.Done(sc.Election(electionAc))
-
 }
 
 func (c *coordinator) handleActionSwap(ac action.Action) {
@@ -426,8 +426,8 @@ func NewCoordinator(meta metadata.Provider,
 		StatusResource:        c.statusResource,
 		ClusterConfigResource: c.configResource,
 		NodeAvailableJudger: func(nodeID string) bool {
-			c.RWMutex.RLock()
-			c.RWMutex.RUnlock()
+			c.RLock()
+			defer c.RUnlock()
 			nc := c.nodeControllers[nodeID]
 			return nc.Status() == controllers.Running
 		},

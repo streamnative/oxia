@@ -28,10 +28,10 @@ type NamespaceAndShard struct {
 	ShardID   int64
 }
 
-func NodeShardLeaders(candidates *linkedhashset.Set[string], status *model.ClusterStatus) (int, int, map[string]*arraylist.List[NamespaceAndShard]) {
-	result := make(map[string]*arraylist.List[NamespaceAndShard])
-	totalShards := 0
-	electedShards := 0
+func NodeShardLeaders(candidates *linkedhashset.Set[string], status *model.ClusterStatus) (totalShards int, electedShards int, result map[string]*arraylist.List[NamespaceAndShard]) {
+	result = make(map[string]*arraylist.List[NamespaceAndShard])
+	totalShards = 0
+	electedShards = 0
 	for na, ns := range status.Namespaces {
 		for shardID, shardStatus := range ns.Shards {
 			totalShards++

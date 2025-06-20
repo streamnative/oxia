@@ -22,10 +22,11 @@ import (
 
 	"github.com/emirpasic/gods/v2/lists/arraylist"
 	"github.com/emirpasic/gods/v2/sets/linkedhashset"
+	"github.com/pkg/errors"
+
 	"github.com/oxia-db/oxia/common/process"
 	"github.com/oxia-db/oxia/coordinator/action"
 	"github.com/oxia-db/oxia/coordinator/resources"
-	"github.com/pkg/errors"
 
 	"github.com/oxia-db/oxia/common/channel"
 	"github.com/oxia-db/oxia/coordinator/model"
@@ -33,6 +34,8 @@ import (
 	"github.com/oxia-db/oxia/coordinator/selectors/single"
 	"github.com/oxia-db/oxia/coordinator/utils"
 )
+
+const defaultThreshElectedThreshold = 0.75
 
 var _ LoadBalancer = &nodeBasedBalancer{}
 
@@ -370,7 +373,7 @@ func (r *nodeBasedBalancer) rebalanceLeader() {
 	totalShards, electedShards, nodeLeaders := utils.NodeShardLeaders(candidates, status)
 
 	electedRate := float64(electedShards) / float64(totalShards)
-	if electedRate < 0.75 {
+	if electedRate < defaultThreshElectedThreshold {
 		// leader does not inited
 		return
 	}
@@ -436,10 +439,10 @@ func (r *nodeBasedBalancer) rebalanceLeader() {
 	}
 }
 
-func (r *nodeBasedBalancer) rankLeaders(nodeLeaders map[string]*arraylist.List[utils.NamespaceAndShard]) (string, int, int) {
-	maxLeadersNodeID := ""
-	maxLeaders := -1
-	minLeaders := -1
+func (r *nodeBasedBalancer) rankLeaders(nodeLeaders map[string]*arraylist.List[utils.NamespaceAndShard]) (maxLeadersNodeID string, maxLeaders int, minLeaders int) {
+	maxLeadersNodeID = ""
+	maxLeaders = -1
+	minLeaders = -1
 	for nodeID, nsAndShards := range nodeLeaders {
 		validLeaderNum := 0
 		for iter := nsAndShards.Iterator(); iter.Next(); {
