@@ -22,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/oxia-db/oxia/coordinator/action"
 	"go.uber.org/multierr"
 	pb "google.golang.org/protobuf/proto"
 
@@ -302,36 +303,59 @@ func (c *coordinator) startBackgroundActionWorker() {
 	defer c.Done()
 	for {
 		select {
-		case action := <-c.loadBalancer.Action():
-			switch action.Type() { //nolint:revive,gocritic
-			case balancer.SwapNode:
-				c.handleActionSwap(action)
+		case ac := <-c.loadBalancer.Action():
+			switch ac.Type() { //nolint:revive,gocritic
+			case action.SwapNode:
+				c.handleActionSwap(ac)
+			case action.Election:
+				c.handleActionElection(ac)
 			}
+
 		case <-c.ctx.Done():
 			return
 		}
 	}
 }
 
-func (c *coordinator) handleActionSwap(action balancer.Action) {
-	var ac *balancer.SwapNodeAction
+func (c *coordinator) handleActionElection(ac action.Action) {
+	var electionAc *action.ElectionAction
 	var ok bool
-	if ac, ok = action.(*balancer.SwapNodeAction); !ok {
+	if electionAc, ok = ac.(*action.ElectionAction); !ok {
 		panic("unexpected action type")
 	}
-	defer ac.Done()
 	c.Info("Applying swap action", slog.Any("swap-action", ac))
 
 	c.RLock()
-	sc, ok := c.shardControllers[ac.Shard]
+	sc, ok := c.shardControllers[electionAc.Shard]
 	c.RUnlock()
 	if !ok {
-		c.Warn("Shard controller not found", slog.Int64("shard", ac.Shard))
+		c.Warn("Shard controller not found", slog.Int64("shard", electionAc.Shard))
+		electionAc.Done(nil)
+		return
+	}
+	electionAc.Done(sc.Election(electionAc))
+
+}
+
+func (c *coordinator) handleActionSwap(ac action.Action) {
+	var swapAction *action.SwapNodeAction
+	var ok bool
+	if swapAction, ok = ac.(*action.SwapNodeAction); !ok {
+		panic("unexpected action type")
+	}
+	defer swapAction.Done(nil)
+	c.Info("Applying swap action", slog.Any("swap-action", ac))
+
+	c.RLock()
+	sc, ok := c.shardControllers[swapAction.Shard]
+	c.RUnlock()
+	if !ok {
+		c.Warn("Shard controller not found", slog.Int64("shard", swapAction.Shard))
 		return
 	}
 
-	if err := sc.SwapNode(ac.From, ac.To); err != nil {
-		c.Warn("Failed to swap node", slog.Any("error", err), slog.Any("swap-action", ac))
+	if err := sc.SwapNode(swapAction.From, swapAction.To); err != nil {
+		c.Warn("Failed to swap node", slog.Any("error", err), slog.Int64("shard", swapAction.Shard), slog.Any("swap-action", ac))
 	}
 }
 

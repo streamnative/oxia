@@ -20,5 +20,3 @@ const (
 	defaultLoadBalancerScheduleInterval = time.Second * 30
 	defaultQuarantineTime               = time.Minute * 5
 )
-
-var triggerEvent = struct{}{}

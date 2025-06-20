@@ -20,6 +20,27 @@ import (
 	"github.com/oxia-db/oxia/coordinator/model"
 )
 
+func NodeShardLeaders(status *model.ClusterStatus) (int, int, map[string][]int64) {
+	result := make(map[string][]int64)
+	totalShards := 0
+	electedShards := 0
+	for _, ns := range status.Namespaces {
+		for shardID, shardStatus := range ns.Shards {
+			totalShards++
+			if leader := shardStatus.Leader; leader != nil {
+				electedShards++
+				leaderNodeID := leader.GetIdentifier()
+				var exist bool
+				if _, exist = result[leaderNodeID]; !exist {
+					result[leaderNodeID] = make([]int64, 0)
+				}
+				result[leaderNodeID] = append(result[leaderNodeID], shardID)
+			}
+		}
+	}
+	return totalShards, electedShards, result
+}
+
 func GroupingShardsNodeByStatus(candidates *linkedhashset.Set[string], status *model.ClusterStatus) (map[string][]model.ShardInfo, map[string]model.Server) {
 	groupingShardByNode := make(map[string][]model.ShardInfo)
 	historyNodes := make(map[string]model.Server)
