@@ -49,7 +49,7 @@ func (*leader) Select(context *Context) (model.Server, error) {
 		}
 	}
 	if minLeaders == -1 {
-		return context.Candidates[rand.Intn(len(context.Candidates))], nil //nolint:revive,gosec
+		return context.Candidates[rand.Intn(len(context.Candidates))], nil //nolint:gosec
 	}
 	return minLeadersNode, nil
 }
