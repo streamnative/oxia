@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/emirpasic/gods/v2/lists/arraylist"
 	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 	"github.com/oxia-db/oxia/common/process"
 	"github.com/oxia-db/oxia/coordinator/action"
@@ -387,7 +388,8 @@ func (r *nodeBasedBalancer) rebalanceLeader() {
 
 	nsAndShards := nodeLeaders[maxLeadersNodeID]
 
-	for _, nsAndShard := range nsAndShards {
+	for iter := nsAndShards.Iterator(); iter.Next(); {
+		nsAndShard := iter.Value()
 		if maxLeaders-minLeaders <= 1 {
 			break
 		}
@@ -405,7 +407,7 @@ func (r *nodeBasedBalancer) rebalanceLeader() {
 				continue
 			}
 			shards := nodeLeaders[candidateID]
-			leaders := len(shards)
+			leaders := shards.Size()
 			if minCandidateLeaders == -1 || leaders < minCandidateLeaders {
 				minCandidateLeaders = leaders
 			}
@@ -434,13 +436,14 @@ func (r *nodeBasedBalancer) rebalanceLeader() {
 	}
 }
 
-func (r *nodeBasedBalancer) rankLeaders(nodeLeaders map[string][]utils.NamespaceAndShard) (string, int, int) {
+func (r *nodeBasedBalancer) rankLeaders(nodeLeaders map[string]*arraylist.List[utils.NamespaceAndShard]) (string, int, int) {
 	maxLeadersNodeID := ""
 	maxLeaders := -1
 	minLeaders := -1
 	for nodeID, nsAndShards := range nodeLeaders {
 		validLeaderNum := 0
-		for _, nsAndShard := range nsAndShards {
+		for iter := nsAndShards.Iterator(); iter.Next(); {
+			nsAndShard := iter.Value()
 			if _, exist := r.shardQuarantineShardMap.Load(nsAndShard.ShardID); exist {
 				continue
 			}

@@ -26,7 +26,7 @@ func (l *leader) Select(context *Context) (model.Server, error) {
 
 	for idx, candidate := range context.Candidates {
 		if shards, exist := leaders[candidate.GetIdentifier()]; exist {
-			leaderNum := len(shards)
+			leaderNum := shards.Size()
 			if minLeaders == -1 || leaderNum < minLeaders {
 				minLeaders = leaderNum
 				minLeadersNode = context.Candidates[idx]

@@ -15,6 +15,9 @@
 package utils
 
 import (
+	"cmp"
+
+	"github.com/emirpasic/gods/v2/lists/arraylist"
 	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 
 	"github.com/oxia-db/oxia/coordinator/model"
@@ -25,8 +28,8 @@ type NamespaceAndShard struct {
 	ShardID   int64
 }
 
-func NodeShardLeaders(candidates *linkedhashset.Set[string], status *model.ClusterStatus) (int, int, map[string][]NamespaceAndShard) {
-	result := make(map[string][]NamespaceAndShard)
+func NodeShardLeaders(candidates *linkedhashset.Set[string], status *model.ClusterStatus) (int, int, map[string]*arraylist.List[NamespaceAndShard]) {
+	result := make(map[string]*arraylist.List[NamespaceAndShard])
 	totalShards := 0
 	electedShards := 0
 	for na, ns := range status.Namespaces {
@@ -37,20 +40,25 @@ func NodeShardLeaders(candidates *linkedhashset.Set[string], status *model.Clust
 				leaderNodeID := leader.GetIdentifier()
 				var exist bool
 				if _, exist = result[leaderNodeID]; !exist {
-					result[leaderNodeID] = make([]NamespaceAndShard, 0)
+					result[leaderNodeID] = arraylist.New[NamespaceAndShard]()
 				}
-				result[leaderNodeID] = append(result[leaderNodeID], NamespaceAndShard{
+				result[leaderNodeID].Add(NamespaceAndShard{
 					Namespace: na,
 					ShardID:   shardID,
 				})
 			}
 		}
 	}
+	for _, shards := range result {
+		shards.Sort(func(x, y NamespaceAndShard) int {
+			return cmp.Compare(x.ShardID, y.ShardID)
+		})
+	}
 	for iter := candidates.Iterator(); iter.Next(); {
 		nodeID := iter.Value()
 		_, exist := result[nodeID]
 		if !exist {
-			result[nodeID] = make([]NamespaceAndShard, 0)
+			result[nodeID] = arraylist.New[NamespaceAndShard]()
 		}
 	}
 	return totalShards, electedShards, result

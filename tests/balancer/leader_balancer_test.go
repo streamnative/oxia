@@ -71,7 +71,7 @@ func TestLeaderBalanced(t *testing.T) {
 		}
 		balancer.Trigger()
 		for _, shards := range nodeShards {
-			if len(shards) != 4 {
+			if shards.Size() != 4 {
 				return false
 			}
 		}
@@ -141,7 +141,7 @@ func TestLeaderBalancedNodeCrashAndBack(t *testing.T) {
 		}
 		balancer.Trigger()
 		for _, shards := range nodeShards {
-			if len(shards) != 4 {
+			if shards.Size() != 4 {
 				return false
 			}
 		}
@@ -156,7 +156,7 @@ func TestLeaderBalancedNodeCrashAndBack(t *testing.T) {
 		status := statusResource.Load()
 		_, _, nodeShards := utils.NodeShardLeaders(candidates, status)
 		shards := nodeShards[s3ad.GetIdentifier()]
-		return len(shards) == 0
+		return shards.Size() == 0
 	}, 10*time.Second, 50*time.Millisecond)
 
 	// start s3
@@ -171,7 +171,7 @@ func TestLeaderBalancedNodeCrashAndBack(t *testing.T) {
 		}
 		balancer.Trigger()
 		for _, shards := range nodeShards {
-			if len(shards) != 4 {
+			if shards.Size() != 4 {
 				return false
 			}
 		}
@@ -249,7 +249,7 @@ func TestLeaderBalancedNodeAdded(t *testing.T) {
 		}
 		balancer.Trigger()
 		for _, shards := range nodeShards {
-			if len(shards) != 4 {
+			if shards.Size() != 4 {
 				return false
 			}
 		}
@@ -269,7 +269,7 @@ func TestLeaderBalancedNodeAdded(t *testing.T) {
 		}
 		balancer.Trigger()
 		for _, shards := range nodeShards {
-			if len(shards) != 2 {
+			if shards.Size() != 2 {
 				return false
 			}
 		}
