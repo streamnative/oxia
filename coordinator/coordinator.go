@@ -425,6 +425,12 @@ func NewCoordinator(meta metadata.Provider,
 		Context:               c.ctx,
 		StatusResource:        c.statusResource,
 		ClusterConfigResource: c.configResource,
+		NodeAvailableJudger: func(nodeID string) bool {
+			c.RWMutex.RLock()
+			c.RWMutex.RUnlock()
+			nc := c.nodeControllers[nodeID]
+			return nc.Status() == controllers.Running
+		},
 	})
 
 	clusterConfig := c.configResource.Load()

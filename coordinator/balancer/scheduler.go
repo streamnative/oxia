@@ -42,11 +42,10 @@ type nodeBasedBalancer struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	scheduleInterval time.Duration
-	quarantineTime   time.Duration
-
-	statusResource resources.StatusResource
-	configResource resources.ClusterConfigResource
+	loadBalancerConf    *model.LoadBalancer
+	statusResource      resources.StatusResource
+	configResource      resources.ClusterConfigResource
+	nodeAvailableJudger func(nodeID string) bool
 
 	selector           selectors.Selector[*single.Context, string]
 	loadRatioAlgorithm selectors.LoadRatioAlgorithm
@@ -267,13 +266,27 @@ func (r *nodeBasedBalancer) checkQuarantineNodes() {
 	deletedKeys := make([]string, 0)
 	r.nodeQuarantineNodeMap.Range(func(key, value any) bool {
 		timestamp := value.(time.Time) //nolint: revive
-		if time.Since(timestamp) >= r.quarantineTime {
+		if time.Since(timestamp) >= r.loadBalancerConf.QuarantineTime {
 			deletedKeys = append(deletedKeys, key.(string))
 		}
 		return true
 	})
 	for _, key := range deletedKeys {
 		r.nodeQuarantineNodeMap.Delete(key)
+	}
+}
+
+func (r *nodeBasedBalancer) checkQuarantineShards() {
+	deletedKeys := make([]int64, 0)
+	r.shardQuarantineShardMap.Range(func(key, value any) bool {
+		timestamp := value.(time.Time) //nolint: revive
+		if time.Since(timestamp) >= r.loadBalancerConf.QuarantineTime {
+			deletedKeys = append(deletedKeys, key.(int64))
+		}
+		return true
+	})
+	for _, key := range deletedKeys {
+		r.shardQuarantineShardMap.Delete(key)
 	}
 }
 
@@ -309,7 +322,7 @@ func (r *nodeBasedBalancer) startBackgroundScheduler() {
 	go process.DoWithLabels(r.ctx, map[string]string{
 		"component": "load-balancer-scheduler",
 	}, func() {
-		timer := time.NewTicker(r.scheduleInterval)
+		timer := time.NewTicker(r.loadBalancerConf.ScheduleInterval)
 		defer timer.Stop()
 		defer r.Done()
 		for {
@@ -349,8 +362,11 @@ func (r *nodeBasedBalancer) startBackgroundNotifier() {
 }
 
 func (r *nodeBasedBalancer) rebalanceLeader() {
+	r.checkQuarantineShards()
+
 	status := r.statusResource.Load()
-	totalShards, electedShards, nodeLeaders := utils.NodeShardLeaders(status)
+	candidates := r.configResource.Nodes()
+	totalShards, electedShards, nodeLeaders := utils.NodeShardLeaders(candidates, status)
 
 	electedRate := float64(electedShards) / float64(totalShards)
 	if electedRate < 0.75 {
@@ -367,13 +383,65 @@ func (r *nodeBasedBalancer) rebalanceLeader() {
 		r.Info("end leader rebalance")
 	}()
 
+	maxLeadersNodeID, maxLeaders, minLeaders := r.rankLeaders(nodeLeaders)
+
+	nsAndShards := nodeLeaders[maxLeadersNodeID]
+
+	for _, nsAndShard := range nsAndShards {
+		if maxLeaders-minLeaders <= 1 {
+			break
+		}
+		if _, exist := r.shardQuarantineShardMap.Load(nsAndShard); exist {
+			continue
+		}
+		namespace := nsAndShard.Namespace
+		shard := nsAndShard.ShardID
+		shardStatus := status.Namespaces[namespace].Shards[shard]
+
+		minCandidateLeaders := -1
+		for _, candidate := range shardStatus.Ensemble {
+			candidateID := candidate.GetIdentifier()
+			if !r.nodeAvailableJudger(candidateID) {
+				continue
+			}
+			shards := nodeLeaders[candidateID]
+			leaders := len(shards)
+			if minCandidateLeaders == -1 || leaders < minCandidateLeaders {
+				minCandidateLeaders = leaders
+			}
+		}
+		if minCandidateLeaders == maxLeaders || minCandidateLeaders+1 == maxLeaders {
+			r.Info("quarantine the shard due to no valid candidates", slog.Int64("shard", shard), slog.Any("leader", maxLeadersNodeID))
+			r.shardQuarantineShardMap.Store(shard, time.Now())
+			break
+		}
+
+		latch := &sync.WaitGroup{}
+		latch.Add(1)
+		ac := &action.ElectionAction{
+			Shard:  shard,
+			Waiter: latch,
+		}
+		r.actionCh <- ac
+		latch.Wait()
+		leader := ac.NewLeader
+		r.Info("triggered new election", slog.Int64("shard", shard), slog.Any("old-leader", maxLeadersNodeID), slog.Any("new-leader", leader))
+		if leader == maxLeadersNodeID { // no changes
+			r.Info("quarantine the shard due to no leader changed", slog.Int64("shard", shard), slog.Any("old-leader", maxLeadersNodeID), slog.Any("new-leader", leader))
+			r.shardQuarantineShardMap.Store(shard, time.Now())
+		}
+		break
+	}
+}
+
+func (r *nodeBasedBalancer) rankLeaders(nodeLeaders map[string][]utils.NamespaceAndShard) (string, int, int) {
 	maxLeadersNodeID := ""
 	maxLeaders := -1
 	minLeaders := -1
-	for nodeID, shards := range nodeLeaders {
+	for nodeID, nsAndShards := range nodeLeaders {
 		validLeaderNum := 0
-		for _, shard := range shards {
-			if _, exist := r.shardQuarantineShardMap.Load(shard); exist {
+		for _, nsAndShard := range nsAndShards {
+			if _, exist := r.shardQuarantineShardMap.Load(nsAndShard.ShardID); exist {
 				continue
 			}
 			validLeaderNum++
@@ -393,33 +461,7 @@ func (r *nodeBasedBalancer) rebalanceLeader() {
 			minLeaders = validLeaderNum
 		}
 	}
-
-	nodes := len(nodeLeaders)
-	estimateAvg := nodes / totalShards
-	shards := nodeLeaders[maxLeadersNodeID]
-	for _, shard := range shards {
-		if maxLeaders-minLeaders <= estimateAvg {
-			break
-		}
-		if _, exist := r.shardQuarantineShardMap.Load(shard); exist {
-			continue
-		}
-		latch := &sync.WaitGroup{}
-		latch.Add(1)
-		ac := &action.ElectionAction{
-			Shard:  shard,
-			Waiter: latch,
-		}
-		r.actionCh <- ac
-		latch.Wait()
-		leader := ac.NewLeader
-		r.Info("triggered new election", slog.Int64("shard", shard), slog.Any("old-leader", maxLeadersNodeID), slog.Any("new-leader", leader))
-		if leader == maxLeadersNodeID { // no changes
-			r.Info("quarantine the shard due to no leader changed", slog.Int64("shard", shard), slog.Any("old-leader", maxLeadersNodeID), slog.Any("new-leader", leader))
-			r.shardQuarantineShardMap.Store(shard, time.Now())
-		}
-		break
-	}
+	return maxLeadersNodeID, maxLeaders, minLeaders
 }
 
 func NewLoadBalancer(options Options) LoadBalancer {
@@ -427,22 +469,14 @@ func NewLoadBalancer(options Options) LoadBalancer {
 	logger := slog.With(
 		slog.String("component", "load-balancer"))
 
-	if options.ScheduleInterval == 0 {
-		options.ScheduleInterval = defaultLoadBalancerScheduleInterval
-	}
-	if options.QuarantineTime == 0 {
-		options.QuarantineTime = defaultQuarantineTime
-	}
-
 	nb := &nodeBasedBalancer{
-		WaitGroup:        &sync.WaitGroup{},
-		Logger:           logger,
-		scheduleInterval: options.ScheduleInterval,
-		quarantineTime:   options.QuarantineTime,
-		ctx:              ctx,
-		cancel:           cancelFunc,
-		actionCh:         make(chan action.Action, 1000),
-
+		WaitGroup:               &sync.WaitGroup{},
+		Logger:                  logger,
+		ctx:                     ctx,
+		cancel:                  cancelFunc,
+		loadBalancerConf:        options.ClusterConfigResource.LoadLoadBalancer(),
+		actionCh:                make(chan action.Action, 1000),
+		nodeAvailableJudger:     options.NodeAvailableJudger,
 		statusResource:          options.StatusResource,
 		configResource:          options.ClusterConfigResource,
 		selector:                single.NewSelector(),

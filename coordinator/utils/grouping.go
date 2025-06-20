@@ -20,11 +20,16 @@ import (
 	"github.com/oxia-db/oxia/coordinator/model"
 )
 
-func NodeShardLeaders(status *model.ClusterStatus) (int, int, map[string][]int64) {
-	result := make(map[string][]int64)
+type NamespaceAndShard struct {
+	Namespace string
+	ShardID   int64
+}
+
+func NodeShardLeaders(candidates *linkedhashset.Set[string], status *model.ClusterStatus) (int, int, map[string][]NamespaceAndShard) {
+	result := make(map[string][]NamespaceAndShard)
 	totalShards := 0
 	electedShards := 0
-	for _, ns := range status.Namespaces {
+	for na, ns := range status.Namespaces {
 		for shardID, shardStatus := range ns.Shards {
 			totalShards++
 			if leader := shardStatus.Leader; leader != nil {
@@ -32,10 +37,20 @@ func NodeShardLeaders(status *model.ClusterStatus) (int, int, map[string][]int64
 				leaderNodeID := leader.GetIdentifier()
 				var exist bool
 				if _, exist = result[leaderNodeID]; !exist {
-					result[leaderNodeID] = make([]int64, 0)
+					result[leaderNodeID] = make([]NamespaceAndShard, 0)
 				}
-				result[leaderNodeID] = append(result[leaderNodeID], shardID)
+				result[leaderNodeID] = append(result[leaderNodeID], NamespaceAndShard{
+					Namespace: na,
+					ShardID:   shardID,
+				})
 			}
+		}
+	}
+	for iter := candidates.Iterator(); iter.Next(); {
+		nodeID := iter.Value()
+		_, exist := result[nodeID]
+		if !exist {
+			result[nodeID] = make([]NamespaceAndShard, 0)
 		}
 	}
 	return totalShards, electedShards, result
