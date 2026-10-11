@@ -176,6 +176,47 @@ func TestMakeCommonConfig_ValidVersions(t *testing.T) {
 	assert.Equal(t, uint16(libtls.VersionTLS13), conf.MaxVersion)
 }
 
+func TestTryIntoClientTLSConf_ClientCertificate(t *testing.T) {
+	dir := t.TempDir()
+	certPEM, keyPEM := generateSelfSignedCert(t, "client")
+	certPath := writeTempFile(t, dir, "cert.pem", certPEM)
+	keyPath := writeTempFile(t, dir, "key.pem", keyPEM)
+
+	enabled := true
+	tests := []struct {
+		name           string
+		certFile       string
+		keyFile        string
+		wantErr        error
+		wantClientCert bool
+	}{
+		{name: "no client certificate"},
+		{name: "client certificate", certFile: certPath, keyFile: keyPath, wantClientCert: true},
+		{name: "certificate without key", certFile: certPath, wantErr: ErrInvalidTLSKeyFile},
+		{name: "key without certificate", keyFile: keyPath, wantErr: ErrInvalidTLSCertFile},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := &TLSOptions{Enabled: &enabled, CertFile: tt.certFile, KeyFile: tt.keyFile}
+			conf, err := opts.TryIntoClientTLSConf()
+			if tt.wantErr != nil {
+				assert.ErrorIs(t, err, tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			require.NotNil(t, conf)
+			assert.Equal(t, tt.wantClientCert, conf.GetClientCertificate != nil)
+		})
+	}
+}
+
+func TestTryIntoServerTLSConf_RequiresCertificate(t *testing.T) {
+	enabled := true
+	opts := &TLSOptions{Enabled: &enabled}
+	_, err := opts.TryIntoServerTLSConf()
+	assert.ErrorIs(t, err, ErrInvalidTLSCertFile)
+}
+
 func TestTryIntoServerTLSConf_ClientAuthTrust(t *testing.T) {
 	dir := t.TempDir()
 	certPEM, keyPEM := generateSelfSignedCert(t, "server")
