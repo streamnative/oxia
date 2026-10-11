@@ -26,7 +26,7 @@ This section describes what Oxia does and does not protect against. Please check
 
 ### Authentication and authorization
 
-Oxia has authentication but no authorization.
+Oxia has authentication but no authorization (yet).
 
 * The data server public port can authenticate clients with OIDC bearer tokens (`--auth-provider-name oidc`,
   or `server.public.auth` in the configuration file). It is off by default.
