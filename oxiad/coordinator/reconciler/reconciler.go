@@ -24,10 +24,28 @@ import (
 // Reconciler brings the coordinator runtime in line with the cluster
 // configuration: the data servers and namespaces of the configuration are
 // created in the runtime, and the ones that are no longer in it are deleted.
+// The configuration changes through the management API, or in its store,
+// e.g. the configuration file, and the reconcilers apply it to the runtime.
 //
-// The data server and namespace reconcilers each handle their part, and the
-// cluster reconciler, which New returns, runs them all on the configuration,
-// first when it starts, then on each of its changes.
+// The cluster reconciler, which New returns, drives the others. It reconciles
+// the configuration once when it starts, then on each of its changes, and a
+// pass runs the data server reconciler, then the namespace reconciler, then
+// recomputes the shard assignments that the clients receive:
+//
+//	cluster configuration (metadata)
+//	   |
+//	   | GetConfig, then each change notified by SubscribeConfig
+//	   v
+//	clusterReconciler           New: the first pass, which must succeed
+//	   |                        reconcileWithRetries: the next passes, retried with a backoff
+//	   | Reconcile
+//	   +--> dataServerReconciler   creates the data servers of the configuration, deletes the
+//	   |                           others, and syncs the addresses of the shard ensembles
+//	   +--> namespaceReconciler    creates the namespaces of the configuration, with their
+//	   |                           shards and shard controllers, and deletes the others
+//	   +--> runtime.RecomputeAssignments
+//
+// A pass runs every reconciler even if one fails, and returns all their errors.
 type Reconciler interface {
 	io.Closer
 
