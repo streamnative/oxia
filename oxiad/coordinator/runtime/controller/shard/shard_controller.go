@@ -122,7 +122,9 @@ type controller struct {
 	periodicTasksInterval time.Duration
 	logger                *slog.Logger
 
-	// currentElection is owned by the event loop, and read by the term gauge
+	// currentElection is owned by the event loop, the only goroutine that
+	// replaces it. The term gauge, which runs on the goroutine that collects
+	// the metrics, borrows it to read its term: hence the atomic pointer.
 	currentElection atomic.Pointer[Election]
 
 	leaderElectionLatency metric.LatencyHistogram

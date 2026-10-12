@@ -102,8 +102,10 @@ type Election struct {
 	becomeLeaderSent bool
 	// started
 	started atomic.Bool
-	// term is the term of the shard as the election last persisted it, read
-	// from any goroutine
+	// term is the term of the shard as the election last persisted it. It is
+	// owned by the election, which writes it when it is created and when it
+	// persists a new term; Term lends it to any goroutine, e.g. the term
+	// gauge of the shard controller.
 	term atomic.Int64
 }
 
