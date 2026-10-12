@@ -28,7 +28,7 @@ import (
 
 	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/proto"
-	"github.com/oxia-db/oxia/oxiad/coordinator/runtime/controller/mockutils"
+	"github.com/oxia-db/oxia/oxiad/coordinator/rpc/rpctest"
 )
 
 // testHealthPolicy keeps the probing cadence fast so the tests exercising the
@@ -57,9 +57,9 @@ func TestDataServerController_HealthCheck(t *testing.T) {
 	}
 	dataServer := &proto.DataServer{Identity: addr, Metadata: &proto.DataServerMetadata{}}
 
-	sap := mockutils.NewShardAssignmentsProvider()
-	nal := mockutils.NewNodeAvailabilityListener()
-	rpc := mockutils.NewRpcProvider()
+	sap := rpctest.NewShardAssignmentsProvider()
+	nal := rpctest.NewNodeAvailabilityListener()
+	rpc := rpctest.NewRpcProvider()
 	nc := newController(context.Background(), dataServer, sap, nal, rpc, "test-instance", 1*time.Second, testHealthPolicy)
 
 	node := rpc.GetNode(addr)
@@ -99,9 +99,9 @@ func TestDataServerController_ToleratesTransientHealthCheckFailures(t *testing.T
 	}
 	dataServer := &proto.DataServer{Identity: addr, Metadata: &proto.DataServerMetadata{}}
 
-	sap := mockutils.NewShardAssignmentsProvider()
-	nal := mockutils.NewNodeAvailabilityListener()
-	rpc := mockutils.NewRpcProvider()
+	sap := rpctest.NewShardAssignmentsProvider()
+	nal := rpctest.NewNodeAvailabilityListener()
+	rpc := rpctest.NewRpcProvider()
 	nc := newController(context.Background(), dataServer, sap, nal, rpc, "test-instance", 1*time.Second, testHealthPolicy)
 
 	node := rpc.GetNode(addr)
@@ -142,9 +142,9 @@ func TestDataServerController_CloseInterruptsHealthCheckBackoff(t *testing.T) {
 	}
 	dataServer := &proto.DataServer{Identity: addr, Metadata: &proto.DataServerMetadata{}}
 
-	sap := mockutils.NewShardAssignmentsProvider()
-	nal := mockutils.NewNodeAvailabilityListener()
-	rpc := mockutils.NewRpcProvider()
+	sap := rpctest.NewShardAssignmentsProvider()
+	nal := rpctest.NewNodeAvailabilityListener()
+	rpc := rpctest.NewRpcProvider()
 	nc := newController(context.Background(), dataServer, sap, nal, rpc, "test-instance", time.Hour, testHealthPolicy)
 
 	node := rpc.GetNode(addr)
@@ -186,9 +186,9 @@ func TestDataServerController_WatchFailureAloneDoesNotFence(t *testing.T) {
 	}
 	dataServer := &proto.DataServer{Identity: addr, Metadata: &proto.DataServerMetadata{}}
 
-	sap := mockutils.NewShardAssignmentsProvider()
-	nal := mockutils.NewNodeAvailabilityListener()
-	rpc := mockutils.NewRpcProvider()
+	sap := rpctest.NewShardAssignmentsProvider()
+	nal := rpctest.NewNodeAvailabilityListener()
+	rpc := rpctest.NewRpcProvider()
 	nc := newController(context.Background(), dataServer, sap, nal, rpc, "test-instance", 1*time.Second, testHealthPolicy)
 
 	node := rpc.GetNode(addr)
@@ -229,9 +229,9 @@ func TestDataServerController_WatchFailureFencesDeadNode(t *testing.T) {
 	}
 	dataServer := &proto.DataServer{Identity: addr, Metadata: &proto.DataServerMetadata{}}
 
-	sap := mockutils.NewShardAssignmentsProvider()
-	nal := mockutils.NewNodeAvailabilityListener()
-	rpc := mockutils.NewRpcProvider()
+	sap := rpctest.NewShardAssignmentsProvider()
+	nal := rpctest.NewNodeAvailabilityListener()
+	rpc := rpctest.NewRpcProvider()
 	nc := newController(context.Background(), dataServer, sap, nal, rpc, "test-instance", 1*time.Second, slowPingHealthPolicy)
 
 	node := rpc.GetNode(addr)
@@ -264,9 +264,9 @@ func TestDataServerController_WatchFailureToleratesSlowNode(t *testing.T) {
 	}
 	dataServer := &proto.DataServer{Identity: addr, Metadata: &proto.DataServerMetadata{}}
 
-	sap := mockutils.NewShardAssignmentsProvider()
-	nal := mockutils.NewNodeAvailabilityListener()
-	rpc := mockutils.NewRpcProvider()
+	sap := rpctest.NewShardAssignmentsProvider()
+	nal := rpctest.NewNodeAvailabilityListener()
+	rpc := rpctest.NewRpcProvider()
 	nc := newController(context.Background(), dataServer, sap, nal, rpc, "test-instance", 1*time.Second, slowPingHealthPolicy)
 
 	node := rpc.GetNode(addr)
@@ -298,9 +298,9 @@ func TestDataServerController_WatchFailureToleratesTransportClosing(t *testing.T
 	}
 	dataServer := &proto.DataServer{Identity: addr, Metadata: &proto.DataServerMetadata{}}
 
-	sap := mockutils.NewShardAssignmentsProvider()
-	nal := mockutils.NewNodeAvailabilityListener()
-	rpc := mockutils.NewRpcProvider()
+	sap := rpctest.NewShardAssignmentsProvider()
+	nal := rpctest.NewNodeAvailabilityListener()
+	rpc := rpctest.NewRpcProvider()
 	nc := newController(context.Background(), dataServer, sap, nal, rpc, "test-instance", 1*time.Second, slowPingHealthPolicy)
 
 	node := rpc.GetNode(addr)
@@ -332,9 +332,9 @@ func TestDataServerController_IsStablyRunning(t *testing.T) {
 	}
 	dataServer := &proto.DataServer{Identity: addr, Metadata: &proto.DataServerMetadata{}}
 
-	sap := mockutils.NewShardAssignmentsProvider()
-	nal := mockutils.NewNodeAvailabilityListener()
-	rpc := mockutils.NewRpcProvider()
+	sap := rpctest.NewShardAssignmentsProvider()
+	nal := rpctest.NewNodeAvailabilityListener()
+	rpc := rpctest.NewRpcProvider()
 	nc := newController(context.Background(), dataServer, sap, nal, rpc, "test-instance", 1*time.Second, testHealthPolicy)
 
 	node := rpc.GetNode(addr)
@@ -373,9 +373,9 @@ func TestDataServerController_HandshakeOnlyCalledOnStateTransition(t *testing.T)
 	}
 	dataServer := &proto.DataServer{Identity: addr, Metadata: &proto.DataServerMetadata{}}
 
-	sap := mockutils.NewShardAssignmentsProvider()
-	nal := mockutils.NewNodeAvailabilityListener()
-	rpc := mockutils.NewRpcProvider()
+	sap := rpctest.NewShardAssignmentsProvider()
+	nal := rpctest.NewNodeAvailabilityListener()
+	rpc := rpctest.NewRpcProvider()
 	nc := newController(context.Background(), dataServer, sap, nal, rpc, "test-instance", 1*time.Second, testHealthPolicy)
 
 	node := rpc.GetNode(addr)
@@ -436,9 +436,9 @@ func TestDataServerController_ConcurrentServingObservationsHandshakeOnce(t *test
 	}
 	dataServer := &proto.DataServer{Identity: addr, Metadata: &proto.DataServerMetadata{}}
 
-	sap := mockutils.NewShardAssignmentsProvider()
-	nal := mockutils.NewNodeAvailabilityListener()
-	rpc := mockutils.NewRpcProvider()
+	sap := rpctest.NewShardAssignmentsProvider()
+	nal := rpctest.NewNodeAvailabilityListener()
+	rpc := rpctest.NewRpcProvider()
 	node := rpc.GetNode(addr)
 	// Hold the first handshake in flight, so that the second SERVING
 	// observation is guaranteed to arrive before the node is Running.
@@ -479,9 +479,9 @@ func TestDataServerController_ReportsChangedFeatures(t *testing.T) {
 	}
 	dataServer := &proto.DataServer{Identity: addr, Metadata: &proto.DataServerMetadata{}}
 
-	sap := mockutils.NewShardAssignmentsProvider()
-	nal := mockutils.NewNodeAvailabilityListener()
-	rpc := mockutils.NewRpcProvider()
+	sap := rpctest.NewShardAssignmentsProvider()
+	nal := rpctest.NewNodeAvailabilityListener()
+	rpc := rpctest.NewRpcProvider()
 	node := rpc.GetNode(addr)
 	node.SetNodeFeatures([]proto.Feature{proto.Feature_FEATURE_DB_CHECKSUM})
 	nc := newController(context.Background(), dataServer, sap, nal, rpc, "test-instance", 1*time.Second, testHealthPolicy)
@@ -533,9 +533,9 @@ func TestDataServerController_ShardsAssignments(t *testing.T) {
 	}
 	dataServer := &proto.DataServer{Identity: addr, Metadata: &proto.DataServerMetadata{}}
 
-	sap := mockutils.NewShardAssignmentsProvider()
-	nal := mockutils.NewNodeAvailabilityListener()
-	rpc := mockutils.NewRpcProvider()
+	sap := rpctest.NewShardAssignmentsProvider()
+	nal := rpctest.NewNodeAvailabilityListener()
+	rpc := rpctest.NewRpcProvider()
 	nc := newController(context.Background(), dataServer, sap, nal, rpc, "test-instance", 1*time.Second, testHealthPolicy)
 
 	node := rpc.GetNode(addr)
@@ -590,9 +590,9 @@ func TestDataServerController_RetriesLatestAssignmentsAfterSendError(t *testing.
 	}
 	dataServer := &proto.DataServer{Identity: addr, Metadata: &proto.DataServerMetadata{}}
 
-	sap := mockutils.NewShardAssignmentsProvider()
-	nal := mockutils.NewNodeAvailabilityListener()
-	rpc := mockutils.NewRpcProvider()
+	sap := rpctest.NewShardAssignmentsProvider()
+	nal := rpctest.NewNodeAvailabilityListener()
+	rpc := rpctest.NewRpcProvider()
 	node := rpc.GetNode(addr)
 	node.ShardAssignmentsStream.SetError(errors.New("failed to send"))
 	resp := &proto.ShardAssignments{
@@ -630,9 +630,9 @@ func TestDataServerController_ReestablishesStreamAfterServerEnd(t *testing.T) {
 	}
 	dataServer := &proto.DataServer{Identity: addr, Metadata: &proto.DataServerMetadata{}}
 
-	sap := mockutils.NewShardAssignmentsProvider()
-	nal := mockutils.NewNodeAvailabilityListener()
-	rpc := mockutils.NewRpcProvider()
+	sap := rpctest.NewShardAssignmentsProvider()
+	nal := rpctest.NewNodeAvailabilityListener()
+	rpc := rpctest.NewRpcProvider()
 	nc := newController(context.Background(), dataServer, sap, nal, rpc, "test-instance", 10*time.Millisecond, testHealthPolicy)
 	defer func() {
 		assert.NoError(t, nc.Close())
@@ -673,9 +673,9 @@ func TestDataServerController_RecoversFromStreamEstablishmentRejection(t *testin
 	}
 	dataServer := &proto.DataServer{Identity: addr, Metadata: &proto.DataServerMetadata{}}
 
-	sap := mockutils.NewShardAssignmentsProvider()
-	nal := mockutils.NewNodeAvailabilityListener()
-	rpc := mockutils.NewRpcProvider()
+	sap := rpctest.NewShardAssignmentsProvider()
+	nal := rpctest.NewNodeAvailabilityListener()
+	rpc := rpctest.NewRpcProvider()
 
 	// Reject stream establishment up front.
 	rpc.FailNode(addr, errors.New("data server not initialized"))
@@ -724,9 +724,9 @@ func TestDataServerController_SendsAssignmentsRightAfterHandshake(t *testing.T) 
 	}
 	dataServer := &proto.DataServer{Identity: addr, Metadata: &proto.DataServerMetadata{}}
 
-	sap := mockutils.NewShardAssignmentsProvider()
-	nal := mockutils.NewNodeAvailabilityListener()
-	rpc := mockutils.NewRpcProvider()
+	sap := rpctest.NewShardAssignmentsProvider()
+	nal := rpctest.NewNodeAvailabilityListener()
+	rpc := rpctest.NewRpcProvider()
 	node := rpc.GetNode(addr)
 
 	// The data server rejects the stream until the handshake, held in flight
