@@ -696,8 +696,6 @@ func (s *controller) deleteShardWithRetries() {
 	}
 }
 
-// deleteShard deletes the shard from the data servers of its ensemble, then
-// from the status. It returns the errors to retry.
 func (s *controller) deleteShard() error {
 	borrowedMeta, exists, err := s.metadataStore.GetShardStatus(s.namespace, s.shard)
 	if err != nil {
@@ -727,21 +725,18 @@ func (s *controller) deleteShard() error {
 		)
 	}
 
-	s.terminating.Store(true)
-	// The event loop stops once terminating, so the deletion of the status is
-	// retried here. If the shard controller closes first, the shard is still
-	// marked as deleting: its deletion resumes when the coordinator restarts.
-	err = backoff.RetryNotify(func() error {
-		return s.metadataStore.DeleteShardStatus(s.namespace, s.shard)
-	}, oxiatime.NewBackOff(s.ctx), func(err error, duration time.Duration) {
-		s.logger.Warn(
-			"Failed to delete the shard status, retrying later",
-			slog.Any("error", err),
-			slog.Duration("retry-after", duration),
-		)
-	})
+	// The shard controller terminates once the status is deleted, under the
+	// termination lock: SyncServerAddress never finds the shard missing while
+	// the controller isn't terminating, and a failed deletion is sent again to
+	// the event loop, which runs until the controller terminates.
+	s.terminationMu.Lock()
+	err = s.metadataStore.DeleteShardStatus(s.namespace, s.shard)
+	if err == nil {
+		s.terminating.Store(true)
+	}
+	s.terminationMu.Unlock()
 	if err != nil {
-		return nil
+		return err
 	}
 	if s.eventListener != nil {
 		go func() {
