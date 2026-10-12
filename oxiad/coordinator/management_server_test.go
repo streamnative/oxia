@@ -570,7 +570,8 @@ func TestManagementServerCreateNamespace(t *testing.T) {
 	assert.False(t, res.Namespace.NotificationsEnabledOrDefault())
 	assert.Equal(t, "natural", res.Namespace.GetKeySorting())
 
-	namespace, found := management.metadata.GetNamespace("ns-1")
+	namespace, found, err := management.metadata.GetNamespace("ns-1")
+	require.NoError(t, err)
 	require.True(t, found)
 	assert.Equal(t, "ns-1", namespace.UnsafeBorrow().GetName())
 }
@@ -663,7 +664,8 @@ func TestManagementServerCreateNamespaceRejectsReservedName(t *testing.T) {
 			require.Error(t, err)
 			assert.Equal(t, codes.InvalidArgument, grpcstatus.Code(err))
 
-			_, found := management.metadata.GetNamespace(name)
+			_, found, err := management.metadata.GetNamespace(name)
+			require.NoError(t, err)
 			assert.False(t, found)
 		})
 	}
@@ -780,7 +782,8 @@ func TestManagementServerPatchNamespace(t *testing.T) {
 	assert.False(t, res.Namespace.NotificationsEnabledOrDefault())
 	assert.Equal(t, "hierarchical", res.Namespace.GetKeySorting())
 
-	namespace, found := management.metadata.GetNamespace("ns-1")
+	namespace, found, err := management.metadata.GetNamespace("ns-1")
+	require.NoError(t, err)
 	require.True(t, found)
 	assert.EqualValues(t, 1, namespace.UnsafeBorrow().GetInitialShardCount())
 	assert.EqualValues(t, 2, namespace.UnsafeBorrow().GetReplicationFactor())
@@ -822,7 +825,8 @@ func TestManagementServerPatchNamespaceRejectsAntiAffinities(t *testing.T) {
 	assert.Equal(t, codes.InvalidArgument, grpcstatus.Code(err))
 	assert.Nil(t, res)
 
-	namespace, found := management.metadata.GetNamespace("ns-1")
+	namespace, found, err := management.metadata.GetNamespace("ns-1")
+	require.NoError(t, err)
 	require.True(t, found)
 	require.Len(t, namespace.UnsafeBorrow().GetAntiAffinities(), 1)
 	assert.Equal(t, []string{"rack"}, namespace.UnsafeBorrow().GetAntiAffinities()[0].GetLabels())
@@ -981,9 +985,11 @@ func TestManagementServerDeleteNamespace(t *testing.T) {
 	assert.EqualValues(t, 1, res.Namespace.GetInitialShardCount())
 	assert.Equal(t, "natural", res.Namespace.GetKeySorting())
 
-	_, found := management.metadata.GetNamespace("ns-1")
+	_, found, err := management.metadata.GetNamespace("ns-1")
+	require.NoError(t, err)
 	assert.False(t, found)
-	namespace, found := management.metadata.GetNamespace("ns-2")
+	namespace, found, err := management.metadata.GetNamespace("ns-2")
+	require.NoError(t, err)
 	require.True(t, found)
 	assert.Equal(t, "ns-2", namespace.UnsafeBorrow().GetName())
 }

@@ -391,7 +391,11 @@ func (sc *SplitController) fenceAndResetChild(childId int64, parentTerm int64) e
 	}
 
 	childTerm := parentTerm
-	headEntries, _, err := sc.fenceEnsemble(sc.ctx, childId, childTerm, childMeta.Ensemble, namespaceTermOptions(sc.metadata, sc.namespace))
+	termOptions, err := namespaceTermOptions(sc.metadata, sc.namespace)
+	if err != nil {
+		return err
+	}
+	headEntries, _, err := sc.fenceEnsemble(sc.ctx, childId, childTerm, childMeta.Ensemble, termOptions)
 	if err != nil {
 		return errors.Wrapf(err, "failed to fence child shard %d", childId)
 	}
@@ -441,11 +445,15 @@ func (sc *SplitController) resetChildMember(childId int64, childTerm int64,
 	}); err != nil {
 		return err
 	}
-	_, err := sc.rpcProvider.NewTerm(sc.ctx, member, &proto.NewTermRequest{
+	termOptions, err := namespaceTermOptions(sc.metadata, sc.namespace)
+	if err != nil {
+		return err
+	}
+	_, err = sc.rpcProvider.NewTerm(sc.ctx, member, &proto.NewTermRequest{
 		Namespace: sc.namespace,
 		Shard:     childId,
 		Term:      childTerm,
-		Options:   namespaceTermOptions(sc.metadata, sc.namespace),
+		Options:   termOptions,
 	})
 	return err
 }
@@ -1297,7 +1305,10 @@ func (sc *SplitController) reelectChild(ctx context.Context, childId int64) erro
 		return err
 	}
 
-	termOptions := namespaceTermOptions(sc.metadata, sc.namespace)
+	termOptions, err := namespaceTermOptions(sc.metadata, sc.namespace)
+	if err != nil {
+		return err
+	}
 	termOptions.Features = negotiatedFeatures
 	headEntries, enabledFeatures, err := sc.fenceEnsemble(ctx, childId, newTerm, childMeta.Ensemble, termOptions)
 	if err != nil {

@@ -560,17 +560,21 @@ func (s *controller) verifyCurrentEnsemble(initShardMeta *proto.ShardMetadata) b
 // namespace config is missing. Shared by the leader-election path and the
 // shard-split path so post-split children inherit the same term settings as a
 // normally-elected leader.
-func namespaceTermOptions(metadataStore coordmetadata.Metadata, namespace string) *proto.NewTermOptions {
+func namespaceTermOptions(metadataStore coordmetadata.Metadata, namespace string) (*proto.NewTermOptions, error) {
 	termOptions := &proto.NewTermOptions{
 		EnableNotifications: true,
 		KeySorting:          proto.KeySortingType_UNKNOWN,
 	}
-	if borrowedNamespaceConfig, exist := metadataStore.GetNamespace(namespace); exist {
+	borrowedNamespaceConfig, exist, err := metadataStore.GetNamespace(namespace)
+	if err != nil {
+		return nil, err
+	}
+	if exist {
 		nsConfig := borrowedNamespaceConfig.UnsafeBorrow()
 		termOptions.EnableNotifications = nsConfig.NotificationsEnabledOrDefault()
 		termOptions.KeySorting, _ = nsConfig.GetKeySortingType()
 	}
-	return termOptions
+	return termOptions, nil
 }
 
 func (s *controller) validateChangeEnsembleFeatures(shardMeta *proto.ShardMetadata,
@@ -663,11 +667,9 @@ func (s *controller) electLeader(shardMeta *proto.ShardMetadata,
 		e.Stop()
 	}
 
-	termOptions := namespaceTermOptions(s.metadataStore, s.namespace)
 	election := NewElection(s.ctx, s.logger, s.eventListener,
 		s.metadataStore, s.dataServerSupportedFeaturesSupplier, s.leaderSelector,
 		s.rpc, s.namespace, s.shard, shardMeta, changeEnsembleAction,
-		termOptions,
 		s.leaderElectionLatency,
 		s.newTermQuorumLatency,
 		s.becomeLeaderLatency,

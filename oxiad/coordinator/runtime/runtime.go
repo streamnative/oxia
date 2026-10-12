@@ -754,7 +754,10 @@ func (c *runtime) InitiateSplit(namespace string, parentShardId int64, splitPoin
 		supported := c.findDataServerFeaturesLocked([]*proto.DataServerIdentity{dataServer})[dataServer.GetNameOrDefault()]
 		return len(feature.Missing(parentFeatures, supported)) == 0
 	}
-	nsConfig := c.namespaceConfigForSplit(namespace)
+	nsConfig, err := c.namespaceConfigForSplit(namespace)
+	if err != nil {
+		return 0, 0, err
+	}
 	leftEnsemble, err := c.selectNewEnsemble(namespace, leftChildId, nsConfig, status, supportsParentFeatures)
 	if err != nil {
 		return 0, 0, errors.Wrap(err, "failed to select ensemble for left child")
@@ -862,7 +865,11 @@ func (c *runtime) InitiateSplit(namespace string, parentShardId int64, splitPoin
 			if err != nil {
 				return nil, err
 			}
-			return c.selectNewEnsemble(ns, 0, c.namespaceConfigForSplit(ns), status, nil)
+			nsConfig, err := c.namespaceConfigForSplit(ns)
+			if err != nil {
+				return nil, err
+			}
+			return c.selectNewEnsemble(ns, 0, nsConfig, status, nil)
 		},
 		SupportedFeaturesSupplier: c.findDataServerFeatures,
 	})
@@ -954,12 +961,15 @@ func (c *runtime) SplitAborted(parentShard int64, leftChild int64, rightChild in
 	c.computeNewAssignments()
 }
 
-func (c *runtime) namespaceConfigForSplit(namespace string) *proto.Namespace {
-	borrowedNsConfig, exist := c.metadata.GetNamespace(namespace)
-	if !exist {
-		return &proto.Namespace{}
+func (c *runtime) namespaceConfigForSplit(namespace string) (*proto.Namespace, error) {
+	borrowedNsConfig, exist, err := c.metadata.GetNamespace(namespace)
+	if err != nil {
+		return nil, err
 	}
-	return borrowedNsConfig.UnsafeBorrow()
+	if !exist {
+		return &proto.Namespace{}, nil
+	}
+	return borrowedNsConfig.UnsafeBorrow(), nil
 }
 
 // restartInProgressSplits checks the cluster status for any shards that have
@@ -994,7 +1004,11 @@ func (c *runtime) restartInProgressSplits(clusterStatus map[string]commonobject.
 					if err != nil {
 						return nil, err
 					}
-					return c.selectNewEnsemble(namespace, 0, c.namespaceConfigForSplit(namespace), status, nil)
+					nsConfig, err := c.namespaceConfigForSplit(namespace)
+					if err != nil {
+						return nil, err
+					}
+					return c.selectNewEnsemble(namespace, 0, nsConfig, status, nil)
 				},
 				SupportedFeaturesSupplier: c.findDataServerFeatures,
 			})
@@ -1022,6 +1036,10 @@ func New(
 	loadBalancerConfig, err := metadata.GetLoadBalancerConfig()
 	if err != nil {
 		return nil, err
+	}
+	namespaces := make(map[string]*proto.Namespace, len(config.UnsafeBorrow().GetNamespaces()))
+	for _, namespace := range config.UnsafeBorrow().GetNamespaces() {
+		namespaces[namespace.GetName()] = namespace
 	}
 
 	c := &runtime{
@@ -1086,12 +1104,9 @@ func New(
 		shards := borrowedShards.UnsafeBorrow()
 		for shard := range shards.Shards {
 			shardMetadata := shards.Shards[shard]
-			var nsConfig *proto.Namespace
-			borrowedNsConfig, exist := c.metadata.GetNamespace(ns)
+			nsConfig, exist := namespaces[ns]
 			if !exist {
 				nsConfig = &proto.Namespace{}
-			} else {
-				nsConfig = borrowedNsConfig.UnsafeBorrow()
 			}
 			c.shardControllers[shard] = shardcontroller.NewController(ns, shard, nsConfig,
 				shardMetadata, c.metadata, c.findDataServerFeatures,

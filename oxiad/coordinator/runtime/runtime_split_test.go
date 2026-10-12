@@ -425,9 +425,11 @@ func TestSplit_RestartPastPointOfNoReturn(t *testing.T) {
 	r.Lock()
 	status, err := r.metadata.ListNamespaceStatus()
 	require.NoError(t, err)
+	nsConfig, err := r.namespaceConfigForSplit(constant.DefaultNamespace)
+	require.NoError(t, err)
 	for _, shard := range []int64{splitParentShard, splitLeftChild, splitRightChild} {
 		r.shardControllers[shard] = shardcontroller.NewController(constant.DefaultNamespace, shard,
-			r.namespaceConfigForSplit(constant.DefaultNamespace),
+			nsConfig,
 			status[constant.DefaultNamespace].UnsafeBorrow().Shards[shard], r.metadata,
 			r.findDataServerFeatures, r.runtime, r.rpc, shardcontroller.DefaultPeriodicTasksInterval)
 	}
@@ -696,8 +698,10 @@ func TestSplit_RejectsChangeEnsemblePlannedBeforeSplit(t *testing.T) {
 	rpc.GetNode(splitPs3).GetStatusResponse(splitParentTerm, proto.ServingStatus_FOLLOWER, 0, 0)
 	borrowed, _, err := metadata.GetShardStatus(constant.DefaultNamespace, splitParentShard)
 	require.NoError(t, err)
+	nsConfig, err := r.namespaceConfigForSplit(constant.DefaultNamespace)
+	require.NoError(t, err)
 	parentController := shardcontroller.NewController(constant.DefaultNamespace, splitParentShard,
-		r.namespaceConfigForSplit(constant.DefaultNamespace), borrowed.UnsafeBorrow(), metadata,
+		nsConfig, borrowed.UnsafeBorrow(), metadata,
 		shardcontroller.NoOpSupportedFeaturesSupplier, r, rpc, time.Hour)
 	t.Cleanup(func() {
 		assert.NoError(t, parentController.Close())

@@ -66,7 +66,12 @@ func (r *namespaceReconciler) Reconcile(_ context.Context, snapshot *proto.Clust
 		return multierr.Append(errs, err)
 	}
 	for name := range status {
-		if _, exists := metadata.GetNamespace(name); exists {
+		_, exists, err := metadata.GetNamespace(name)
+		if err != nil {
+			errs = multierr.Append(errs, err)
+			continue
+		}
+		if exists {
 			continue
 		}
 		r.runtime.DeleteNamespace(name)

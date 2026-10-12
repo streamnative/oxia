@@ -212,12 +212,12 @@ func (m *mockMetadata) ListDataServer() map[string]commonobject.Borrowed[*proto.
 	return dataServers
 }
 
-func (m *mockMetadata) GetNamespace(namespace string) (commonobject.Borrowed[*proto.Namespace], bool) {
+func (m *mockMetadata) GetNamespace(namespace string) (commonobject.Borrowed[*proto.Namespace], bool, error) {
 	nc, ok := m.nsConfigs[namespace]
 	if !ok {
-		return commonobject.Borrowed[*proto.Namespace]{}, false
+		return commonobject.Borrowed[*proto.Namespace]{}, false, nil
 	}
-	return commonobject.Borrow(nc), true
+	return commonobject.Borrow(nc), true, nil
 }
 
 func (m *mockMetadata) GetDataServer(name string) (commonobject.Borrowed[*proto.DataServer], bool) {
