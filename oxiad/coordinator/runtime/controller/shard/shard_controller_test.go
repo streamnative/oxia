@@ -2171,6 +2171,73 @@ func TestController_SyncServerAddressDiscardsElectionWhenQueueIsFull(t *testing.
 	assert.Len(t, s.electionOp, chanBufferSize)
 }
 
+// deleteShardStatusFailingMetadata fails the shard status deletions while
+// failures is positive, each failed deletion decrementing it.
+type deleteShardStatusFailingMetadata struct {
+	coordmetadata.Metadata
+	failures atomic.Int32
+}
+
+func (m *deleteShardStatusFailingMetadata) DeleteShardStatus(namespace string, shard int64) error {
+	if m.failures.Add(-1) >= 0 {
+		return errors.New("store unavailable")
+	}
+	return m.Metadata.DeleteShardStatus(namespace, shard)
+}
+
+// The deletion of a shard retries the deletion of its status, which the event
+// loop can't do once the shard controller is terminating.
+func TestController_DeleteShardRetriesStatusDeletion(t *testing.T) {
+	var shard int64 = 5
+	rpc := mockutils.NewRpcProvider()
+	metadata := &deleteShardStatusFailingMetadata{
+		Metadata: newTestMetadata(t, memory.NewProvider(metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled, ""),
+			&proto.ClusterConfiguration{}),
+	}
+	metadata.failures.Store(2)
+
+	leader := &proto.DataServerIdentity{Public: "s1:9091", Internal: "s1:8191"}
+	require.NoError(t, metadata.CreateNamespaceStatus(constant.DefaultNamespace, &proto.NamespaceStatus{
+		Shards: map[int64]*proto.ShardMetadata{
+			shard: {
+				Status:   proto.ShardStatusDeleting,
+				Term:     1,
+				Leader:   leader,
+				Ensemble: []*proto.DataServerIdentity{leader},
+			},
+		},
+	}))
+
+	s := &controller{
+		namespace:     constant.DefaultNamespace,
+		shard:         shard,
+		metadataStore: metadata,
+		rpc:           rpc,
+		logger:        slog.Default(),
+	}
+	s.ctx, s.ctxCancel = context.WithCancel(context.Background())
+	defer s.ctxCancel()
+
+	done := make(chan struct{})
+	go func() {
+		s.deleteShardWithRetries()
+		close(done)
+	}()
+
+	rpc.GetNode(leader).ExpectDeleteShardRequest(t, shard, 1)
+	rpc.GetNode(leader).DeleteShardResponse(nil)
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("deleteShardWithRetries did not complete")
+	}
+	_, exists, err := metadata.GetShardStatus(constant.DefaultNamespace, shard)
+	require.NoError(t, err)
+	assert.False(t, exists)
+	assert.Negative(t, metadata.failures.Load(), "the status deletion didn't fail")
+}
+
 func TestController_DeleteShardAllowsNilEventListener(t *testing.T) {
 	var shard int64 = 5
 	rpc := mockutils.NewRpcProvider()

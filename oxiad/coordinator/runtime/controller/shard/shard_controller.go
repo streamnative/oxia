@@ -728,10 +728,19 @@ func (s *controller) deleteShard() error {
 	}
 
 	s.terminating.Store(true)
-	if err := s.metadataStore.DeleteShardStatus(s.namespace, s.shard); err != nil {
-		// The shard is still marked as deleting: its deletion resumes when
-		// the coordinator restarts
-		s.logger.Warn("Failed to delete the shard status", slog.Any("error", err))
+	// The event loop stops once terminating, so the deletion of the status is
+	// retried here. If the shard controller closes first, the shard is still
+	// marked as deleting: its deletion resumes when the coordinator restarts.
+	err = backoff.RetryNotify(func() error {
+		return s.metadataStore.DeleteShardStatus(s.namespace, s.shard)
+	}, oxiatime.NewBackOff(s.ctx), func(err error, duration time.Duration) {
+		s.logger.Warn(
+			"Failed to delete the shard status, retrying later",
+			slog.Any("error", err),
+			slog.Duration("retry-after", duration),
+		)
+	})
+	if err != nil {
 		return nil
 	}
 	if s.eventListener != nil {
