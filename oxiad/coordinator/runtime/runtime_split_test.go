@@ -65,50 +65,6 @@ var (
 	splitRs3 = &proto.DataServerIdentity{Public: "rs3:9091", Internal: "rs3:8191"}
 )
 
-// recomputingMetadata recomputes the shard assignments after every cluster
-// status write, the way an unrelated shard's leader election or a
-// configuration reconcile can at any moment.
-type recomputingMetadata struct {
-	coordmetadata.Metadata
-	afterWrite func()
-}
-
-func (m *recomputingMetadata) UpdateShardStatus(namespace string, shard int64, shardMetadata *proto.ShardMetadata) error {
-	err := m.Metadata.UpdateShardStatus(namespace, shard, shardMetadata)
-	m.afterWrite()
-	return err
-}
-
-func (m *recomputingMetadata) PatchNamespaceStatus(namespace string, modify func(*proto.NamespaceStatus) bool) error {
-	err := m.Metadata.PatchNamespaceStatus(namespace, modify)
-	m.afterWrite()
-	return err
-}
-
-func (m *recomputingMetadata) DeleteShardStatus(namespace string, shard int64) error {
-	err := m.Metadata.DeleteShardStatus(namespace, shard)
-	m.afterWrite()
-	return err
-}
-
-// racingMetadata calls beforeWrite right before every shard status update,
-// once the writer has read the status it builds on, to race a concurrent
-// update with it.
-type racingMetadata struct {
-	coordmetadata.Metadata
-	beforeWrite func()
-}
-
-func (m *racingMetadata) UpdateShardStatus(namespace string, shard int64, shardMetadata *proto.ShardMetadata) error {
-	m.beforeWrite()
-	return m.Metadata.UpdateShardStatus(namespace, shard, shardMetadata)
-}
-
-func (m *racingMetadata) PatchNamespaceStatus(namespace string, modify func(*proto.NamespaceStatus) bool) error {
-	m.beforeWrite()
-	return m.Metadata.PatchNamespaceStatus(namespace, modify)
-}
-
 // electLeader writes the outcome of a new leader election of the shard, as its
 // shard controller does, and returns it. The leadership moves to the next
 // member of the ensemble. It can be called from any goroutine.
@@ -211,19 +167,21 @@ func newSplitTestRuntime(t *testing.T) *splitTestRuntime {
 	}))
 
 	r := &splitTestRuntime{rpc: mockutils.NewRpcProvider()}
+	// Recompute the shard assignments after every cluster status write, the
+	// way an unrelated shard's leader election or a configuration reconcile
+	// can at any moment
+	recomputing := &fakeMetadata{Metadata: metadata}
+	recomputing.afterStatusWrites(func() {
+		// An unrelated shard's election completing
+		r.LeaderElected(splitOtherShard, splitPs2, nil)
+		r.snapshotsLock.Lock()
+		r.snapshots = append(r.snapshots, r.assignmentsWatch.Load())
+		r.snapshotsLock.Unlock()
+	})
 	r.runtime = &runtime{
-		logger: slog.With(slog.String("component", "coordinator")),
-		ctx:    t.Context(),
-		metadata: &recomputingMetadata{
-			Metadata: metadata,
-			afterWrite: func() {
-				// An unrelated shard's election completing
-				r.LeaderElected(splitOtherShard, splitPs2, nil)
-				r.snapshotsLock.Lock()
-				r.snapshots = append(r.snapshots, r.assignmentsWatch.Load())
-				r.snapshotsLock.Unlock()
-			},
-		},
+		logger:           slog.With(slog.String("component", "coordinator")),
+		ctx:              t.Context(),
+		metadata:         recomputing,
 		assignmentsWatch: commonwatch.New(&proto.ShardAssignments{}),
 		shardControllers: map[int64]shardcontroller.Controller{},
 		splitControllers: map[int64]*shardcontroller.SplitController{},
@@ -347,7 +305,7 @@ func checkAssignments(assignments *proto.ShardAssignments) ([]int64, error) {
 	return ids, nil
 }
 
-func TestSplit_PublishedAssignmentsAreConsistent(t *testing.T) {
+func TestRuntimeSplitPublishesConsistentAssignments(t *testing.T) {
 	r := newSplitTestRuntime(t)
 	r.queueSplitResponses()
 
@@ -364,7 +322,7 @@ func TestSplit_PublishedAssignmentsAreConsistent(t *testing.T) {
 	assert.ElementsMatch(t, []int64{splitOtherShard, splitLeftChild, splitRightChild}, ids)
 }
 
-func TestSplit_AbortPublishesConsistentAssignments(t *testing.T) {
+func TestRuntimeSplitAbortPublishesConsistentAssignments(t *testing.T) {
 	r := newSplitTestRuntime(t)
 	// No data server responses: Bootstrap cannot fence the children, and the
 	// split is aborted once it times out
@@ -382,11 +340,11 @@ func TestSplit_AbortPublishesConsistentAssignments(t *testing.T) {
 	assert.ElementsMatch(t, []int64{splitParentShard, splitOtherShard}, ids)
 }
 
-// TestSplit_RestartPastPointOfNoReturn verifies that a coordinator restarting
+// TestRuntimeRestartInProgressSplitsResumesPastPointOfNoReturn verifies that a coordinator restarting
 // with a split past the point of no return completes it. The parent's shard
 // controller must not elect the parent again: only the split controller fences
 // it, and the parent then gets deleted.
-func TestSplit_RestartPastPointOfNoReturn(t *testing.T) {
+func TestRuntimeRestartInProgressSplitsResumesPastPointOfNoReturn(t *testing.T) {
 	r := newSplitTestRuntime(t)
 
 	// The previous coordinator elected the child leaders at the parent's term,
@@ -474,22 +432,21 @@ func TestSplit_RestartPastPointOfNoReturn(t *testing.T) {
 
 // The leader elections of the other shards of the namespace run concurrently
 // with a split: none of the split's status updates may revert them.
-func TestSplit_KeepsConcurrentLeaderElections(t *testing.T) {
+func TestRuntimeSplitKeepsConcurrentLeaderElections(t *testing.T) {
 	r := newSplitTestRuntime(t)
 	r.queueSplitResponses()
 
 	metadata := r.metadata
 	var elected *proto.ShardMetadata
-	r.metadata = &racingMetadata{
-		Metadata: metadata,
-		beforeWrite: func() {
-			if elected != nil {
-				// The previous status update of the split kept the election
-				assertElectionKept(t, metadata, splitOtherShard, elected)
-			}
-			elected = electLeader(t, metadata, splitOtherShard)
-		},
-	}
+	racing := &fakeMetadata{Metadata: metadata}
+	racing.beforeStatusWrites(func() {
+		if elected != nil {
+			// The previous status update of the split kept the election
+			assertElectionKept(t, metadata, splitOtherShard, elected)
+		}
+		elected = electLeader(t, metadata, splitOtherShard)
+	})
+	r.metadata = racing
 
 	r.runSplit(t, 0)
 
@@ -499,7 +456,7 @@ func TestSplit_KeepsConcurrentLeaderElections(t *testing.T) {
 
 // newInitiateSplitTestRuntime creates a runtime with a namespace of two shards
 // that are not being split.
-func newInitiateSplitTestRuntime(t *testing.T) (*runtime, *racingMetadata) {
+func newInitiateSplitTestRuntime(t *testing.T) (*runtime, *fakeMetadata) {
 	t.Helper()
 
 	metadata := newTestMetadata(t, &proto.ClusterConfiguration{
@@ -535,7 +492,7 @@ func newInitiateSplitTestRuntime(t *testing.T) (*runtime, *racingMetadata) {
 		},
 	}))
 
-	racing := &racingMetadata{Metadata: metadata, beforeWrite: func() {}}
+	racing := &fakeMetadata{Metadata: metadata}
 	loadBalancerConfig, err := racing.GetLoadBalancerConfig()
 	require.NoError(t, err)
 	r := &runtime{
@@ -570,17 +527,17 @@ func newInitiateSplitTestRuntime(t *testing.T) (*runtime, *racingMetadata) {
 // InitiateSplit validates the parent and selects the ensembles of the children
 // from the status it reads first: leader elections completed in the meantime
 // must be kept when the split is written.
-func TestInitiateSplit_KeepsConcurrentLeaderElections(t *testing.T) {
+func TestRuntimeInitiateSplitKeepsConcurrentLeaderElections(t *testing.T) {
 	r, metadata := newInitiateSplitTestRuntime(t)
 
 	var once sync.Once
 	var parentElected, otherElected *proto.ShardMetadata
-	metadata.beforeWrite = func() {
+	metadata.beforeStatusWrites(func() {
 		once.Do(func() {
 			parentElected = electLeader(t, metadata.Metadata, splitParentShard)
 			otherElected = electLeader(t, metadata.Metadata, splitOtherShard)
 		})
-	}
+	})
 
 	leftChild, rightChild, err := r.InitiateSplit(constant.DefaultNamespace, splitParentShard, nil)
 	require.NoError(t, err)
@@ -602,12 +559,12 @@ func TestInitiateSplit_KeepsConcurrentLeaderElections(t *testing.T) {
 
 // A leader election of the parent that starts before the split is written
 // makes InitiateSplit fail, as it would have if it had started earlier.
-func TestInitiateSplit_FailsIfParentElectionStarts(t *testing.T) {
+func TestRuntimeInitiateSplitFailsIfParentElectionStarts(t *testing.T) {
 	r, metadata := newInitiateSplitTestRuntime(t)
 
 	var once sync.Once
 	var election *proto.ShardMetadata
-	metadata.beforeWrite = func() {
+	metadata.beforeStatusWrites(func() {
 		once.Do(func() {
 			borrowed, _, err := metadata.GetShardStatus(constant.DefaultNamespace, splitParentShard)
 			assert.NoError(t, err)
@@ -617,7 +574,7 @@ func TestInitiateSplit_FailsIfParentElectionStarts(t *testing.T) {
 			election.Term++
 			assert.NoError(t, metadata.Metadata.UpdateShardStatus(constant.DefaultNamespace, splitParentShard, election))
 		})
-	}
+	})
 
 	_, _, err := r.InitiateSplit(constant.DefaultNamespace, splitParentShard, nil)
 	assert.ErrorContains(t, err, "not in steady state")
@@ -652,7 +609,7 @@ func (c *featuresDataServerController) SupportedFeatures() []proto.Feature {
 // the split can't complete if the ensemble of a child doesn't support them.
 // InitiateSplit selects the ensembles of the children among the data servers
 // that support the features of the parent's ensemble.
-func TestInitiateSplit_SelectsChildrenSupportingParentFeatures(t *testing.T) {
+func TestRuntimeInitiateSplitSelectsChildrenSupportingParentFeatures(t *testing.T) {
 	r, metadata := newInitiateSplitTestRuntime(t)
 
 	// The ls* data servers don't support ordered writes yet, e.g. during a
@@ -689,7 +646,7 @@ func TestInitiateSplit_SelectsChildrenSupportingParentFeatures(t *testing.T) {
 // A change of the parent's ensemble that the balancer planned before the split
 // started, and that reaches the parent's shard controller after it, is
 // rejected: the parent's ensemble doesn't change until the split ends.
-func TestSplit_RejectsChangeEnsemblePlannedBeforeSplit(t *testing.T) {
+func TestRuntimeInitiateSplitRejectsChangeEnsemblePlannedBefore(t *testing.T) {
 	r, metadata := newInitiateSplitTestRuntime(t)
 	rpc := r.rpc.(*mockutils.RpcProvider)
 
