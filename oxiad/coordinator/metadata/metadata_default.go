@@ -52,7 +52,7 @@ type defaultMetadata struct {
 	leadershipLost <-chan struct{}
 }
 
-func newMetadata(
+func newDefaultMetadata(
 	ctx context.Context,
 	statusProvider provider.Provider[*commonproto.ClusterStatus],
 	configProvider provider.Provider[*commonproto.ClusterConfiguration],

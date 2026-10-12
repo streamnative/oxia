@@ -56,7 +56,7 @@ func newLeaderMetadata(t *testing.T) (Metadata, supersededStatusProvider) {
 		superseded: &atomic.Bool{},
 	}
 	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
-	metadata := newMetadata(t.Context(), statusProvider, configProvider, "")
+	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
 	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
 
 	_, err := metadata.WaitToBecomeLeader()

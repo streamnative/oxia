@@ -157,7 +157,7 @@ func TestMetadataStatusWritersGiveUpOnceCanceled(t *testing.T) {
 	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
 
 	ctx, cancel := context.WithCancel(t.Context())
-	metadata := newMetadata(ctx, storeFailingProvider{statusProvider}, configProvider, "")
+	metadata := newDefaultMetadata(ctx, storeFailingProvider{statusProvider}, configProvider, "")
 	cancel()
 
 	// Every status writer gives up, and reports that nothing was persisted
@@ -182,7 +182,7 @@ func TestMetadataStatusWritersGiveUpOnceCanceled(t *testing.T) {
 func TestMetadataStatusUpdatesFailWhenTargetIsGone(t *testing.T) {
 	statusProvider := memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, "")
 	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
-	metadata := newMetadata(t.Context(), statusProvider, configProvider, "")
+	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
 	require.NoError(t, metadata.CreateNamespaceStatus("default", &commonproto.NamespaceStatus{
 		Shards: map[int64]*commonproto.ShardMetadata{0: {Term: 1}},
 	}))
@@ -239,7 +239,7 @@ servers:
 func TestMetadataPatchNamespaceStatusDeletesEmptiedNamespace(t *testing.T) {
 	statusProvider := memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, "")
 	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
-	metadata := newMetadata(t.Context(), statusProvider, configProvider, "")
+	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
 	defer func() {
 		require.NoError(t, metadata.Close())
 	}()
@@ -296,7 +296,7 @@ func TestMetadataReloadsOnLeadership(t *testing.T) {
 	}
 	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
 	countingConfig := reloadRecordingConfig{Provider: configProvider, reloads: &configReloads}
-	metadata := newMetadata(t.Context(), statusProvider, countingConfig, "")
+	metadata := newDefaultMetadata(t.Context(), statusProvider, countingConfig, "")
 	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
 
 	_, err := metadata.WaitToBecomeLeader()
@@ -327,7 +327,7 @@ func TestMetadataStopsTakeoverWhenLeadershipLost(t *testing.T) {
 		Provider: memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, ""),
 	}
 	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
-	metadata := newMetadata(t.Context(), statusProvider, configProvider, "")
+	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
 	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
 
 	_, err := metadata.WaitToBecomeLeader()
@@ -371,7 +371,7 @@ func TestMetadataTakeoverFailsWhenRecoveryFails(t *testing.T) {
 		Provider: memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, ""),
 	}
 	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
-	metadata := newMetadata(t.Context(), statusProvider, configProvider, "")
+	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
 	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
 
 	_, err := metadata.WaitToBecomeLeader()
@@ -394,7 +394,7 @@ func TestMetadataGetSelfReturnsLoadError(t *testing.T) {
 	configProvider := loadFailingConfigProvider{
 		Provider: memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, ""),
 	}
-	metadata := newMetadata(t.Context(), statusProvider, configProvider, "coordinator")
+	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "coordinator")
 	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
 
 	_, err := metadata.GetSelf()
@@ -408,7 +408,7 @@ func TestMetadataGetLeaderReturnsLoadError(t *testing.T) {
 	configProvider := loadFailingConfigProvider{
 		Provider: memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "coordinator"),
 	}
-	metadata := newMetadata(t.Context(), statusProvider, configProvider, "coordinator")
+	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "coordinator")
 	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
 
 	_, err := metadata.GetLeader()
@@ -422,7 +422,7 @@ func TestMetadataGetConfigReturnsLoadError(t *testing.T) {
 	configProvider := loadFailingConfigProvider{
 		Provider: memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, ""),
 	}
-	metadata := newMetadata(t.Context(), statusProvider, configProvider, "")
+	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
 	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
 
 	_, err := metadata.GetConfig()
@@ -436,7 +436,7 @@ func TestMetadataGetLoadBalancerConfigReturnsLoadError(t *testing.T) {
 	configProvider := loadFailingConfigProvider{
 		Provider: memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, ""),
 	}
-	metadata := newMetadata(t.Context(), statusProvider, configProvider, "")
+	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
 	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
 
 	_, err := metadata.GetLoadBalancerConfig()
@@ -450,7 +450,7 @@ func TestMetadataGetNamespaceReturnsLoadError(t *testing.T) {
 	configProvider := loadFailingConfigProvider{
 		Provider: memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, ""),
 	}
-	metadata := newMetadata(t.Context(), statusProvider, configProvider, "")
+	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
 	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
 
 	_, exists, err := metadata.GetNamespace("default")
@@ -465,7 +465,7 @@ func TestMetadataGetNamespaceTermOptionsReturnsLoadError(t *testing.T) {
 	configProvider := loadFailingConfigProvider{
 		Provider: memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, ""),
 	}
-	metadata := newMetadata(t.Context(), statusProvider, configProvider, "")
+	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
 	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
 
 	_, err := metadata.GetNamespaceTermOptions("default")
@@ -479,7 +479,7 @@ func TestMetadataListNamespaceReturnsLoadError(t *testing.T) {
 	configProvider := loadFailingConfigProvider{
 		Provider: memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, ""),
 	}
-	metadata := newMetadata(t.Context(), statusProvider, configProvider, "")
+	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
 	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
 
 	_, err := metadata.ListNamespace()
@@ -493,7 +493,7 @@ func TestMetadataDataServersReturnLoadError(t *testing.T) {
 	configProvider := loadFailingConfigProvider{
 		Provider: memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, ""),
 	}
-	metadata := newMetadata(t.Context(), statusProvider, configProvider, "")
+	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
 	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
 
 	_, err := metadata.ListDataServer()
@@ -519,7 +519,7 @@ func TestMetadataGetInstanceIDReturnsLoadError(t *testing.T) {
 		Provider: memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, ""),
 	}
 	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
-	metadata := newMetadata(t.Context(), statusProvider, configProvider, "")
+	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
 	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
 
 	_, err := metadata.GetInstanceID()
@@ -531,7 +531,7 @@ func TestMetadataListNamespaceStatusReturnsLoadError(t *testing.T) {
 		Provider: memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, ""),
 	}
 	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
-	metadata := newMetadata(t.Context(), statusProvider, configProvider, "")
+	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
 	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
 
 	_, err := metadata.ListNamespaceStatus()
@@ -543,7 +543,7 @@ func TestMetadataGetNamespaceStatusReturnsLoadError(t *testing.T) {
 		Provider: memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, ""),
 	}
 	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
-	metadata := newMetadata(t.Context(), statusProvider, configProvider, "")
+	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
 	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
 
 	_, exists, err := metadata.GetNamespaceStatus("default")
@@ -556,7 +556,7 @@ func TestMetadataGetShardStatusReturnsLoadError(t *testing.T) {
 		Provider: memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, ""),
 	}
 	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
-	metadata := newMetadata(t.Context(), statusProvider, configProvider, "")
+	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
 	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
 
 	_, exists, err := metadata.GetShardStatus("default", 0)
@@ -589,7 +589,7 @@ func TestMetadataUpdateShardStatusReturnsWriteError(t *testing.T) {
 	var writes atomic.Int32
 	statusProvider := countingFailingStatusProvider{Provider: memoryProvider, writes: &writes}
 	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
-	metadata := newMetadata(t.Context(), statusProvider, configProvider, "")
+	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
 	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
 
 	err = metadata.UpdateShardStatus("default", 0, &commonproto.ShardMetadata{Term: 2})
@@ -611,7 +611,7 @@ func TestMetadataPatchNamespaceStatusReturnsWriteError(t *testing.T) {
 	var writes atomic.Int32
 	statusProvider := countingFailingStatusProvider{Provider: memoryProvider, writes: &writes}
 	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
-	metadata := newMetadata(t.Context(), statusProvider, configProvider, "")
+	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
 	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
 
 	err = metadata.PatchNamespaceStatus("default", func(status *commonproto.NamespaceStatus) bool {
@@ -636,7 +636,7 @@ func TestMetadataDeleteShardStatusReturnsWriteError(t *testing.T) {
 	var writes atomic.Int32
 	statusProvider := countingFailingStatusProvider{Provider: memoryProvider, writes: &writes}
 	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
-	metadata := newMetadata(t.Context(), statusProvider, configProvider, "")
+	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
 	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
 
 	require.ErrorContains(t, metadata.DeleteShardStatus("default", 0), "store unavailable")
@@ -652,7 +652,7 @@ func TestMetadataAllocateShardIDsReturnsWriteError(t *testing.T) {
 		writes:   &writes,
 	}
 	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
-	metadata := newMetadata(t.Context(), statusProvider, configProvider, "")
+	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
 	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
 
 	_, err := metadata.AllocateShardIDs(2)
