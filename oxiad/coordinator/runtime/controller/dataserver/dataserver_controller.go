@@ -62,15 +62,48 @@ func (s State) ToProto() proto.DataServerState {
 
 // Status is the state of a data server, and when it last changed.
 type Status struct {
-	State State
-	// LastTransitionTime is when the state last changed: zero until it changes
+	state State
+	// lastTransitionTime is when the state last changed: zero until it changes
 	// after the data server joined, as a data server that never failed doesn't
 	// need to prove that it's stable.
-	LastTransitionTime time.Time
+	lastTransitionTime time.Time
 	// epoch increments on every transition, so that a probe observation (a
 	// SERVING answer or a failure) obtained before a concurrent transition can
 	// be recognized as stale and discarded instead of flapping the state back.
 	epoch int64
+	// changed is closed, and replaced, on every transition, to wake up the
+	// goroutines waiting for one.
+	changed chan any
+}
+
+// NewStatus returns the status of a data server in state, before any
+// transition.
+func NewStatus(state State) Status {
+	return Status{state: state, changed: make(chan any)}
+}
+
+// GetState returns the state of the data server.
+func (s Status) GetState() State {
+	return s.state
+}
+
+// GetLastTransitionTime returns when the state last changed, or zero if it
+// didn't change since the data server joined.
+func (s Status) GetLastTransitionTime() time.Time {
+	return s.lastTransitionTime
+}
+
+// advance moves the status to state, even if it already is in it: the epoch
+// increments, and the transition time is recorded, except for the first
+// transition, the data server joining.
+func (s *Status) advance(state State) {
+	if s.epoch > 0 {
+		s.lastTransitionTime = time.Now()
+	}
+	s.state = state
+	s.epoch++
+	close(s.changed)
+	s.changed = make(chan any)
 }
 
 // Controller manages one data server for the coordinator. It:

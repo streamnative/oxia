@@ -2801,7 +2801,7 @@ func TestController_RollingUpgradePinsNewFeatures(t *testing.T) {
 		t.Helper()
 		require.Eventually(t, func() bool {
 			rpc.GetNode(dataServer).HealthClient.SetStatus(servingStatus)
-			return dataServers[dataServer.GetNameOrDefault()].GetStatus().State == status
+			return dataServers[dataServer.GetNameOrDefault()].GetStatus().GetState() == status
 		}, 10*time.Second, 100*time.Millisecond)
 	}
 	for _, dataServer := range ensemble {

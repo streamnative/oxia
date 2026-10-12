@@ -67,7 +67,7 @@ func TestDataServerControllerHealthPingWithRetriesTracksServingStatus(t *testing
 
 	// Controller starts as NotRunning and transitions to Running on first health check
 	assert.Eventually(t, func() bool {
-		return nc.GetStatus().State == Running
+		return nc.GetStatus().GetState() == Running
 	}, 10*time.Second, 100*time.Millisecond)
 
 	node.HealthClient.SetStatus(grpc_health_v1.HealthCheckResponse_NOT_SERVING)
@@ -75,12 +75,12 @@ func TestDataServerControllerHealthPingWithRetriesTracksServingStatus(t *testing
 	unavailableNode := <-nal.Events
 	assert.Equal(t, addr, unavailableNode)
 
-	assert.Equal(t, NotRunning, nc.GetStatus().State)
+	assert.Equal(t, NotRunning, nc.GetStatus().GetState())
 
 	node.HealthClient.SetStatus(grpc_health_v1.HealthCheckResponse_SERVING)
 
 	assert.Eventually(t, func() bool {
-		return nc.GetStatus().State == Running
+		return nc.GetStatus().GetState() == Running
 	}, 10*time.Second, 100*time.Millisecond)
 
 	node.HealthClient.SetError(errors.New("failed to connect"))
@@ -88,7 +88,7 @@ func TestDataServerControllerHealthPingWithRetriesTracksServingStatus(t *testing
 	unavailableNode = <-nal.Events
 	assert.Equal(t, addr, unavailableNode)
 
-	assert.Equal(t, NotRunning, nc.GetStatus().State)
+	assert.Equal(t, NotRunning, nc.GetStatus().GetState())
 
 	assert.NoError(t, nc.Close())
 }
@@ -108,7 +108,7 @@ func TestDataServerControllerHealthPingWithRetriesToleratesTransientFailures(t *
 	node := rpc.GetNode(addr)
 
 	assert.Eventually(t, func() bool {
-		return nc.GetStatus().State == Running
+		return nc.GetStatus().GetState() == Running
 	}, 10*time.Second, 10*time.Millisecond)
 
 	// Fail fewer consecutive probes than the threshold: a saturated node can
@@ -127,7 +127,7 @@ func TestDataServerControllerHealthPingWithRetriesToleratesTransientFailures(t *
 		assert.Fail(t, "probe failures below the threshold must not mark the node unavailable")
 	default:
 	}
-	assert.Equal(t, Running, nc.GetStatus().State)
+	assert.Equal(t, Running, nc.GetStatus().GetState())
 
 	assert.NoError(t, nc.Close())
 }
@@ -151,7 +151,7 @@ func TestDataServerControllerCloseInterruptsHealthCheckBackoff(t *testing.T) {
 	node := rpc.GetNode(addr)
 
 	assert.Eventually(t, func() bool {
-		return nc.GetStatus().State == Running
+		return nc.GetStatus().GetState() == Running
 	}, 10*time.Second, 10*time.Millisecond)
 
 	// Make the ping loop give up on the node: it fences the node from its
@@ -195,7 +195,7 @@ func TestDataServerControllerVerifyAfterWatchFailureDoesNotFenceAliveNode(t *tes
 	node := rpc.GetNode(addr)
 
 	assert.Eventually(t, func() bool {
-		return nc.GetStatus().State == Running
+		return nc.GetStatus().GetState() == Running
 	}, 10*time.Second, 10*time.Millisecond)
 
 	// A watch stream reset while the node keeps answering pings (e.g. an
@@ -209,7 +209,7 @@ func TestDataServerControllerVerifyAfterWatchFailureDoesNotFenceAliveNode(t *tes
 		assert.Fail(t, "a watch stream failure alone must not mark the node unavailable")
 	default:
 	}
-	assert.Equal(t, Running, nc.GetStatus().State)
+	assert.Equal(t, Running, nc.GetStatus().GetState())
 
 	assert.NoError(t, nc.Close())
 }
@@ -238,7 +238,7 @@ func TestDataServerControllerVerifyAfterWatchFailureFencesDeadNode(t *testing.T)
 	node := rpc.GetNode(addr)
 
 	assert.Eventually(t, func() bool {
-		return nc.GetStatus().State == Running
+		return nc.GetStatus().GetState() == Running
 	}, 10*time.Second, 10*time.Millisecond)
 
 	// Simulate a killed pod: the watch stream breaks and every probe fails
@@ -253,7 +253,7 @@ func TestDataServerControllerVerifyAfterWatchFailureFencesDeadNode(t *testing.T)
 	case <-time.After(10 * time.Second):
 		assert.Fail(t, "a dead node must be fenced when its watch stream breaks")
 	}
-	assert.Equal(t, NotRunning, nc.GetStatus().State)
+	assert.Equal(t, NotRunning, nc.GetStatus().GetState())
 
 	assert.NoError(t, nc.Close())
 }
@@ -273,7 +273,7 @@ func TestDataServerControllerVerifyAfterWatchFailureToleratesSlowNode(t *testing
 	node := rpc.GetNode(addr)
 
 	assert.Eventually(t, func() bool {
-		return nc.GetStatus().State == Running
+		return nc.GetStatus().GetState() == Running
 	}, 10*time.Second, 10*time.Millisecond)
 
 	// The watch stream breaks and the verification probe times out: that is
@@ -287,7 +287,7 @@ func TestDataServerControllerVerifyAfterWatchFailureToleratesSlowNode(t *testing
 		assert.Fail(t, "a slow verification probe must not fence the node")
 	case <-time.After(500 * time.Millisecond):
 	}
-	assert.Equal(t, Running, nc.GetStatus().State)
+	assert.Equal(t, Running, nc.GetStatus().GetState())
 
 	assert.NoError(t, nc.Close())
 }
@@ -307,7 +307,7 @@ func TestDataServerControllerVerifyAfterWatchFailureToleratesTransportClosing(t 
 	node := rpc.GetNode(addr)
 
 	assert.Eventually(t, func() bool {
-		return nc.GetStatus().State == Running
+		return nc.GetStatus().GetState() == Running
 	}, 10*time.Second, 10*time.Millisecond)
 
 	// The connection carrying the watch is being torn down: the stream and
@@ -321,7 +321,7 @@ func TestDataServerControllerVerifyAfterWatchFailureToleratesTransportClosing(t 
 		assert.Fail(t, "a transport teardown must not fence the node")
 	case <-time.After(500 * time.Millisecond):
 	}
-	assert.Equal(t, Running, nc.GetStatus().State)
+	assert.Equal(t, Running, nc.GetStatus().GetState())
 
 	assert.NoError(t, nc.Close())
 }
@@ -344,22 +344,22 @@ func TestDataServerControllerGetStatusRecordsTransitionsAfterJoining(t *testing.
 	node := rpc.GetNode(addr)
 
 	assert.Eventually(t, func() bool {
-		return nc.GetStatus().State == Running
+		return nc.GetStatus().GetState() == Running
 	}, 10*time.Second, 10*time.Millisecond)
-	assert.True(t, nc.GetStatus().LastTransitionTime.IsZero())
+	assert.True(t, nc.GetStatus().GetLastTransitionTime().IsZero())
 
 	beforeFailure := time.Now()
 	node.HealthClient.SetStatus(grpc_health_v1.HealthCheckResponse_NOT_SERVING)
 	<-nal.Events
 	failed := nc.GetStatus()
-	assert.Equal(t, NotRunning, failed.State)
-	assert.False(t, failed.LastTransitionTime.Before(beforeFailure))
+	assert.Equal(t, NotRunning, failed.GetState())
+	assert.False(t, failed.GetLastTransitionTime().Before(beforeFailure))
 
 	node.HealthClient.SetStatus(grpc_health_v1.HealthCheckResponse_SERVING)
 	assert.Eventually(t, func() bool {
-		return nc.GetStatus().State == Running
+		return nc.GetStatus().GetState() == Running
 	}, 10*time.Second, 10*time.Millisecond)
-	assert.True(t, nc.GetStatus().LastTransitionTime.After(failed.LastTransitionTime))
+	assert.True(t, nc.GetStatus().GetLastTransitionTime().After(failed.GetLastTransitionTime()))
 
 	assert.NoError(t, nc.Close())
 }
@@ -381,15 +381,15 @@ func TestDataServerControllerDrainKeepsDataServerDrainingUntilUnavailable(t *tes
 	node := rpc.GetNode(addr)
 
 	assert.Eventually(t, func() bool {
-		return nc.GetStatus().State == Running
+		return nc.GetStatus().GetState() == Running
 	}, 10*time.Second, 10*time.Millisecond)
 
 	nc.Drain()
-	assert.Equal(t, Draining, nc.GetStatus().State)
+	assert.Equal(t, Draining, nc.GetStatus().GetState())
 
 	node.HealthClient.SetStatus(grpc_health_v1.HealthCheckResponse_NOT_SERVING)
 	assert.Equal(t, addr, <-nal.Events)
-	assert.Equal(t, Draining, nc.GetStatus().State)
+	assert.Equal(t, Draining, nc.GetStatus().GetState())
 
 	assert.NoError(t, nc.Close())
 }
@@ -412,7 +412,7 @@ func TestDataServerControllerBecomeAvailableHandshakesOnlyOnTransition(t *testin
 	// Handshake on the transition to Running, even though the watch and ping
 	// paths both observe SERVING at startup.
 	assert.Eventually(t, func() bool {
-		return nc.GetStatus().State == Running
+		return nc.GetStatus().GetState() == Running
 	}, 10*time.Second, 100*time.Millisecond)
 	assert.Equal(t, int64(1), node.HandshakeCount.Load(),
 		"Handshake should be called exactly once on the initial transition to Running")
@@ -430,14 +430,14 @@ func TestDataServerControllerBecomeAvailableHandshakesOnlyOnTransition(t *testin
 
 	unavailableNode := <-nal.Events
 	assert.Equal(t, addr, unavailableNode)
-	assert.Equal(t, NotRunning, nc.GetStatus().State)
+	assert.Equal(t, NotRunning, nc.GetStatus().GetState())
 
 	// Bring the server back online
 	node.HealthClient.SetStatus(grpc_health_v1.HealthCheckResponse_SERVING)
 
 	// Handshake should be called again, once, for the NotRunning -> Running transition
 	assert.Eventually(t, func() bool {
-		return nc.GetStatus().State == Running
+		return nc.GetStatus().GetState() == Running
 	}, 10*time.Second, 100*time.Millisecond,
 		"the server should be Running again after it reports SERVING")
 	assert.Equal(t, int64(2), node.HandshakeCount.Load(),
@@ -483,12 +483,12 @@ func TestDataServerControllerBecomeAvailableHandshakesOnceForConcurrentObservati
 	time.Sleep(10 * testHealthPolicy.ProbeInterval)
 	assert.Equal(t, int64(1), node.HandshakeCount.Load(),
 		"concurrent SERVING observations must not handshake the node more than once")
-	assert.Equal(t, NotRunning, nc.GetStatus().State)
+	assert.Equal(t, NotRunning, nc.GetStatus().GetState())
 
 	node.ReleaseHandshakes()
 
 	assert.Eventually(t, func() bool {
-		return nc.GetStatus().State == Running
+		return nc.GetStatus().GetState() == Running
 	}, 10*time.Second, 10*time.Millisecond)
 	assert.Equal(t, int64(1), node.HandshakeCount.Load(),
 		"the node must be bound by a single Handshake")
@@ -530,12 +530,12 @@ func TestDataServerControllerBecomeAvailableReportsChangedFeatures(t *testing.T)
 		node.SetNodeFeatures(features)
 		node.HealthClient.SetStatus(grpc_health_v1.HealthCheckResponse_SERVING)
 		assert.Eventually(t, func() bool {
-			return nc.GetStatus().State == Running
+			return nc.GetStatus().GetState() == Running
 		}, 10*time.Second, 10*time.Millisecond)
 	}
 
 	expectReport()
-	assert.Equal(t, Running, nc.GetStatus().State)
+	assert.Equal(t, Running, nc.GetStatus().GetState())
 	assert.Equal(t, []proto.Feature{proto.Feature_FEATURE_DB_CHECKSUM}, nc.GetFeatures())
 
 	// The data server restarts with the same binary
