@@ -425,6 +425,7 @@ func TestSplitController_ObserversGetParentRange(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      statusRes,
 		RpcProvider:   rpcMock,
 		EventListener: listener,
