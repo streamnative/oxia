@@ -43,9 +43,18 @@ import (
 // loaded, e.g. after a change of leadership.
 //
 // Reads and writes return their error without retrying: the caller decides
-// whether and how to retry, e.g. with a backoff, or on its next round. The
-// borrowed values that the reads return are shared with the other readers,
-// and must not be modified.
+// whether and how to retry, e.g. with a backoff, or on its next round.
+//
+// Metadata owns the documents. The reads lend parts of them without copying,
+// as commonobject.Borrowed values: a borrowed value is shared with every other
+// reader, so the borrower only reads it, and only while it uses it. A write
+// replaces the document instead of modifying it, so a borrowed value stays
+// consistent, but no longer current: a borrower that needs to keep a value,
+// or to modify it, clones it. The values returned as plain pointers, e.g. by
+// GetSelf or PatchNamespace, are copies that the caller owns, and so are the
+// values that the caller passes to a write: Metadata stores its own copy. The
+// status that PatchNamespaceStatus passes to modify is a copy owned by the
+// write, which modify changes in place but doesn't keep.
 type Metadata interface {
 	io.Closer
 
