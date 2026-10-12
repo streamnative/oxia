@@ -375,7 +375,7 @@ func (m *coordinatorMetadata) UpdateShardStatus(namespace string, shard int64, s
 		shardMetadata = gproto.Clone(shardMetadata).(*commonproto.ShardMetadata) //nolint:revive
 	}
 	shardExists := true
-	err := m.computeStatus(func(clusterStatus *commonproto.ClusterStatus, _ metadatacommon.Version) (*commonproto.ClusterStatus, bool, error) {
+	if err := m.computeStatus(func(clusterStatus *commonproto.ClusterStatus, _ metadatacommon.Version) (*commonproto.ClusterStatus, bool, error) {
 		ns, exist := clusterStatus.Namespaces[namespace]
 		if !exist {
 			shardExists = false
@@ -387,8 +387,7 @@ func (m *coordinatorMetadata) UpdateShardStatus(namespace string, shard int64, s
 		}
 		ns.Shards[shard] = shardMetadata
 		return clusterStatus, true, nil
-	})
-	if err != nil {
+	}); err != nil {
 		return err
 	}
 	if !shardExists {
