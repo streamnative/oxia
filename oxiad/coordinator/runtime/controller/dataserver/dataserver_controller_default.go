@@ -94,7 +94,7 @@ func (n *controller) GetStatus() Status {
 	return n.status
 }
 
-func (n *controller) GetSupportedFeatures() []proto.Feature {
+func (n *controller) GetFeatures() []proto.Feature {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
 	return n.supportedFeatures
