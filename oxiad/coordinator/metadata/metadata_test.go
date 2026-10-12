@@ -33,67 +33,131 @@ import (
 	"github.com/oxia-db/oxia/oxiad/coordinator/option"
 )
 
-func TestNewFactoryFromOptionsLoadsFileClusterConfig(t *testing.T) {
-	dir := t.TempDir()
-	writeClusterConfig(t, filepath.Join(dir, option.DefaultFileConfigName))
+// --- Leadership ---
 
-	factory, err := New(t.Context(), &option.Options{
-		Metadata: option.MetadataOptions{
-			ProviderOptions: option.ProviderOptions{
-				ProviderName: metadataconstant.NameFile,
-				File: option.FileMetadata{
-					Dir: dir,
-				},
-			},
+// A coordinator taking over reloads the snapshots it loaded before the
+// leadership, before its first write.
+func TestMetadataWaitToBecomeLeaderReloadsMetadata(t *testing.T) {
+	var statusReloads, configReloads atomic.Int32
+	statusProvider := newStatusProvider()
+	configProvider := newConfigProvider()
+	metadata := newTestMetadata(t, fakeProvider[*commonproto.ClusterStatus]{
+		Provider: statusProvider,
+		reload: func() error {
+			statusReloads.Add(1)
+			return statusProvider.Reload()
 		},
-	})
-	require.NoError(t, err)
-	metadata, err := factory.CreateMetadata(t.Context())
-	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, metadata.Close())
-		require.NoError(t, factory.Close())
-	}()
+		// The snapshot is outdated until reloaded
+		store: func(snapshot provider.Versioned[*commonproto.ClusterStatus]) (metadataconstant.Version, error) {
+			if statusReloads.Load() == 0 {
+				return metadataconstant.NotExists, metadataconstant.ErrBadVersion
+			}
+			return statusProvider.Store(snapshot)
+		},
+	}, fakeProvider[*commonproto.ClusterConfiguration]{
+		Provider: configProvider,
+		reload: func() error {
+			configReloads.Add(1)
+			return configProvider.Reload()
+		},
+	}, "")
 
-	borrowedConfig, err := metadata.GetConfig()
+	_, err := metadata.WaitToBecomeLeader()
 	require.NoError(t, err)
-	config := borrowedConfig.UnsafeBorrow()
-	require.Len(t, config.GetNamespaces(), 1)
-	require.Equal(t, "default", config.GetNamespaces()[0].GetName())
+	require.EqualValues(t, 1, statusReloads.Load())
+	require.EqualValues(t, 1, configReloads.Load())
+	// The status recovery, the first write, came after the reload.
+	instanceID, err := metadata.GetInstanceID()
+	require.NoError(t, err)
+	require.NotEmpty(t, instanceID)
 }
 
-func TestNewFactoryFromOptionsMergesLegacyClusterConfigPath(t *testing.T) {
-	dir := t.TempDir()
-	configPath := filepath.Join(dir, "legacy-cluster.yaml")
-	writeClusterConfig(t, configPath)
-
-	factory, err := New(t.Context(), &option.Options{
-		Cluster: option.ClusterOptions{
-			ConfigPath: configPath,
+// A coordinator that loses the leadership while it reloads the metadata does
+// not write the status recovery.
+func TestMetadataWaitToBecomeLeaderStopsWhenLeadershipLost(t *testing.T) {
+	metadata := newTestMetadata(t, fakeProvider[*commonproto.ClusterStatus]{
+		Provider: newStatusProvider(),
+		waitToBecomeLeader: func() (<-chan struct{}, error) {
+			lost := make(chan struct{})
+			close(lost)
+			return lost, nil
 		},
-		Metadata: option.MetadataOptions{
-			ProviderOptions: option.ProviderOptions{
-				ProviderName: metadataconstant.NameFile,
-				File: option.FileMetadata{
-					StatusName: filepath.Join(dir, option.DefaultFileStatusName),
-				},
-			},
-		},
-	})
-	require.NoError(t, err)
-	metadata, err := factory.CreateMetadata(t.Context())
-	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, metadata.Close())
-		require.NoError(t, factory.Close())
-	}()
+	}, newConfigProvider(), "")
 
-	borrowedConfig, err := metadata.GetConfig()
+	_, err := metadata.WaitToBecomeLeader()
+	require.Error(t, err)
+	instanceID, err := metadata.GetInstanceID()
 	require.NoError(t, err)
-	config := borrowedConfig.UnsafeBorrow()
-	require.Len(t, config.GetNamespaces(), 1)
-	require.Equal(t, "default", config.GetNamespaces()[0].GetName())
+	require.Empty(t, instanceID)
 }
+
+// A takeover whose status recovery fails reports the failure, instead of
+// starting without an instance id.
+func TestMetadataWaitToBecomeLeaderFailsWhenRecoveryFails(t *testing.T) {
+	metadata := newTestMetadata(t, fakeProvider[*commonproto.ClusterStatus]{
+		Provider: newStatusProvider(),
+		store:    failStore("store unavailable"),
+	}, newConfigProvider(), "")
+
+	_, err := metadata.WaitToBecomeLeader()
+	require.ErrorContains(t, err, "store unavailable")
+}
+
+// newLeaderMetadata returns a metadata that holds the leadership. Closing lost
+// loses it, and once superseded is set, every status write is refused on the
+// version, as when another coordinator took over and wrote the status.
+func newLeaderMetadata(t *testing.T) (metadata Metadata, lost chan struct{}, superseded *atomic.Bool) {
+	t.Helper()
+
+	lost = make(chan struct{})
+	superseded = &atomic.Bool{}
+	statusProvider := newStatusProvider()
+	metadata = newTestMetadata(t, fakeProvider[*commonproto.ClusterStatus]{
+		Provider: statusProvider,
+		waitToBecomeLeader: func() (<-chan struct{}, error) {
+			return lost, nil
+		},
+		store: func(snapshot provider.Versioned[*commonproto.ClusterStatus]) (metadataconstant.Version, error) {
+			if superseded.Load() {
+				return metadataconstant.NotExists, metadataconstant.ErrBadVersion
+			}
+			return statusProvider.Store(snapshot)
+		},
+	}, newConfigProvider(), "")
+
+	_, err := metadata.WaitToBecomeLeader()
+	require.NoError(t, err)
+	return metadata, lost, superseded
+}
+
+// A coordinator that lost the leadership can still have a status write in
+// flight. The new leader's writes refuse it on the version: the write fails
+// instead of taking the whole process down.
+func TestMetadataStatusWriteAfterLeadershipLossFails(t *testing.T) {
+	metadata, lost, superseded := newLeaderMetadata(t)
+
+	close(lost)
+	superseded.Store(true)
+
+	_, err := metadata.AllocateShardIDs(1)
+	require.ErrorIs(t, err, metadataconstant.ErrBadVersion)
+}
+
+// A new leader can write the status before this coordinator learns that it
+// lost the leadership. The version check already refused the stale write: it
+// fails, and the process keeps running.
+func TestMetadataStatusVersionConflictWhileLeadingFails(t *testing.T) {
+	metadata, _, superseded := newLeaderMetadata(t)
+
+	superseded.Store(true)
+
+	require.NotPanics(t, func() {
+		_, err := metadata.AllocateShardIDs(1)
+		require.ErrorIs(t, err, metadataconstant.ErrBadVersion)
+	})
+}
+
+// --- Coordinators ---
 
 func TestMetadataGetSelfReturnsConfiguredCoordinator(t *testing.T) {
 	dir := t.TempDir()
@@ -133,56 +197,139 @@ coordinators:
 	require.Equal(t, "coordinator-0", nextSelf.GetName())
 }
 
-// storeFailingProvider fails every write, like a store the coordinator lost
-// access to (e.g. after losing the leadership).
-type storeFailingProvider struct {
-	provider.Provider[*commonproto.ClusterStatus]
-}
+// --- Namespace status ---
 
-func (storeFailingProvider) Store(provider.Versioned[*commonproto.ClusterStatus]) (metadataconstant.Version, error) {
-	return metadataconstant.NotExists, errors.New("store failed")
-}
+func TestMetadataCreateNamespaceStatusAlreadyExists(t *testing.T) {
+	statusProvider := newStatusProvider()
+	metadata := newTestMetadata(t, statusProvider, newConfigProvider(), "")
 
-func TestMetadataStatusWritersGiveUpOnceCanceled(t *testing.T) {
-	statusProvider := memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, "")
-	_, err := statusProvider.Store(provider.Versioned[*commonproto.ClusterStatus]{
-		Value: &commonproto.ClusterStatus{
-			Namespaces: map[string]*commonproto.NamespaceStatus{
-				"default": {Shards: map[int64]*commonproto.ShardMetadata{0: {Term: 1}}},
-			},
-		},
-		Version: metadataconstant.NotExists,
-	})
+	require.NoError(t, metadata.CreateNamespaceStatus("default", &commonproto.NamespaceStatus{ReplicationFactor: 3}))
+	version := loaded(t, statusProvider).Version
+	err := metadata.CreateNamespaceStatus("default", &commonproto.NamespaceStatus{ReplicationFactor: 1})
+	require.ErrorIs(t, err, metadataconstant.ErrAlreadyExists)
+	require.Contains(t, err.Error(), "default")
+	require.Equal(t, version, loaded(t, statusProvider).Version)
+	status, exists, err := metadata.GetNamespaceStatus("default")
 	require.NoError(t, err)
-	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
-
-	ctx, cancel := context.WithCancel(t.Context())
-	metadata := newDefaultMetadata(ctx, storeFailingProvider{statusProvider}, configProvider, "")
-	cancel()
-
-	// Every status writer gives up, and reports that nothing was persisted
-	_, err = metadata.AllocateShardIDs(1)
-	require.Error(t, err)
-	require.Error(t, metadata.CreateNamespaceStatus("other", &commonproto.NamespaceStatus{}))
-	require.Nil(t, metadata.DeleteNamespaceStatus("default").UnsafeBorrow())
-	require.Error(t, metadata.UpdateShardStatus("default", 0, &commonproto.ShardMetadata{Term: 2}))
-	require.Error(t, metadata.PatchNamespaceStatus("default", func(status *commonproto.NamespaceStatus) bool {
-		shards := status.Shards
-		shards[0].Term = 2
-		return true
-	}))
-	require.Error(t, metadata.DeleteShardStatus("default", 0))
-
-	status := loaded(t, statusProvider).Value
-	require.Len(t, status.GetNamespaces(), 1)
-	require.EqualValues(t, 1, status.GetNamespaces()["default"].GetShards()[0].GetTerm())
-	require.NoError(t, metadata.Close())
+	require.True(t, exists)
+	require.EqualValues(t, 3, status.UnsafeBorrow().GetReplicationFactor())
 }
+
+func TestMetadataCreateNamespaceStatusReturnsWriteError(t *testing.T) {
+	statusProvider := newStatusProvider()
+	storeErr := errors.New("status store unavailable")
+	writes := 0
+	metadata := newTestMetadata(t, fakeProvider[*commonproto.ClusterStatus]{
+		Provider: statusProvider,
+		store: func(snapshot provider.Versioned[*commonproto.ClusterStatus]) (metadataconstant.Version, error) {
+			writes++
+			if writes > 1 {
+				return statusProvider.Store(snapshot)
+			}
+			return metadataconstant.NotExists, storeErr
+		},
+	}, newConfigProvider(), "")
+
+	err := metadata.CreateNamespaceStatus("default", &commonproto.NamespaceStatus{ReplicationFactor: 3})
+	require.ErrorIs(t, err, storeErr)
+	require.NotErrorIs(t, err, metadataconstant.ErrAlreadyExists)
+	require.Equal(t, 1, writes)
+	_, exists, err := metadata.GetNamespaceStatus("default")
+	require.NoError(t, err)
+	require.False(t, exists)
+	require.Equal(t, metadataconstant.NotExists, loaded(t, statusProvider).Version)
+}
+
+func TestMetadataCreateNamespaceStatusCanBeRetriedByCaller(t *testing.T) {
+	statusProvider := newStatusProvider()
+	writes := 0
+	storeErr := errors.New("temporary status store failure")
+	metadata := newTestMetadata(t, fakeProvider[*commonproto.ClusterStatus]{
+		Provider: statusProvider,
+		store: func(snapshot provider.Versioned[*commonproto.ClusterStatus]) (metadataconstant.Version, error) {
+			writes++
+			if writes == 1 {
+				return metadataconstant.NotExists, storeErr
+			}
+			return statusProvider.Store(snapshot)
+		},
+	}, newConfigProvider(), "")
+
+	namespaceStatus := &commonproto.NamespaceStatus{ReplicationFactor: 3}
+	err := metadata.CreateNamespaceStatus("default", namespaceStatus)
+	require.ErrorIs(t, err, storeErr)
+	require.Equal(t, 1, writes)
+	_, exists, err := metadata.GetNamespaceStatus("default")
+	require.NoError(t, err)
+	require.False(t, exists)
+
+	require.NoError(t, metadata.CreateNamespaceStatus("default", namespaceStatus))
+	require.Equal(t, 2, writes)
+	status, exists, err := metadata.GetNamespaceStatus("default")
+	require.NoError(t, err)
+	require.True(t, exists)
+	require.EqualValues(t, 3, status.UnsafeBorrow().GetReplicationFactor())
+}
+
+func TestMetadataCreateNamespaceStatusReturnsErrorAfterCommit(t *testing.T) {
+	statusProvider := newStatusProvider()
+	storeErr := errors.New("metadata write timed out after committing")
+	writes := 0
+	metadata := newTestMetadata(t, fakeProvider[*commonproto.ClusterStatus]{
+		Provider: statusProvider,
+		store: func(snapshot provider.Versioned[*commonproto.ClusterStatus]) (metadataconstant.Version, error) {
+			writes++
+			version, err := statusProvider.Store(snapshot)
+			if err != nil {
+				return version, err
+			}
+			return version, storeErr
+		},
+	}, newConfigProvider(), "")
+
+	err := metadata.CreateNamespaceStatus("default", &commonproto.NamespaceStatus{ReplicationFactor: 3})
+	require.ErrorIs(t, err, storeErr)
+	saved, exists, err := metadata.GetNamespaceStatus("default")
+	require.NoError(t, err)
+	require.True(t, exists)
+	require.EqualValues(t, 3, saved.UnsafeBorrow().ReplicationFactor)
+	require.NotEqual(t, metadataconstant.NotExists, loaded(t, statusProvider).Version)
+
+	require.ErrorIs(t, metadata.CreateNamespaceStatus("default", &commonproto.NamespaceStatus{}), metadataconstant.ErrAlreadyExists)
+	require.Equal(t, 1, writes)
+}
+
+// PatchNamespaceStatus deletes a namespace left without shards, as
+// DeleteShardStatus does, so that it can be created again.
+func TestMetadataPatchNamespaceStatusDeletesEmptiedNamespace(t *testing.T) {
+	metadata := newTestMetadata(t, newStatusProvider(), newConfigProvider(), "")
+	newNamespaceStatus := func() *commonproto.NamespaceStatus {
+		return &commonproto.NamespaceStatus{Shards: map[int64]*commonproto.ShardMetadata{0: {}, 1: {}}}
+	}
+	deleteShard := func(shard int64) func(*commonproto.NamespaceStatus) bool {
+		return func(status *commonproto.NamespaceStatus) bool {
+			delete(status.Shards, shard)
+			return true
+		}
+	}
+	require.NoError(t, metadata.CreateNamespaceStatus("default", newNamespaceStatus()))
+
+	require.NoError(t, metadata.PatchNamespaceStatus("default", deleteShard(0)))
+	_, exists, err := metadata.GetNamespaceStatus("default")
+	require.NoError(t, err)
+	require.True(t, exists)
+
+	require.NoError(t, metadata.PatchNamespaceStatus("default", deleteShard(1)))
+	_, exists, err = metadata.GetNamespaceStatus("default")
+	require.NoError(t, err)
+	require.False(t, exists)
+	require.NoError(t, metadata.CreateNamespaceStatus("default", newNamespaceStatus()))
+}
+
+// --- Shard status ---
 
 func TestMetadataStatusUpdatesFailWhenTargetIsGone(t *testing.T) {
-	statusProvider := memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, "")
-	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
-	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
+	metadata := newTestMetadata(t, newStatusProvider(), newConfigProvider(), "")
 	require.NoError(t, metadata.CreateNamespaceStatus("default", &commonproto.NamespaceStatus{
 		Shards: map[int64]*commonproto.ShardMetadata{0: {Term: 1}},
 	}))
@@ -207,8 +354,7 @@ func TestMetadataStatusUpdatesFailWhenTargetIsGone(t *testing.T) {
 		return true
 	}), metadataconstant.ErrNotFound)
 	require.NoError(t, metadata.PatchNamespaceStatus("default", func(status *commonproto.NamespaceStatus) bool {
-		shards := status.Shards
-		shards[0].Term = 3
+		status.Shards[0].Term = 3
 		return false
 	}))
 	shard, _, err = metadata.GetShardStatus("default", 0)
@@ -217,134 +363,217 @@ func TestMetadataStatusUpdatesFailWhenTargetIsGone(t *testing.T) {
 	_, exists, err = metadata.GetShardStatus("default", 1)
 	require.NoError(t, err)
 	require.False(t, exists)
+}
+
+// --- Errors ---
+
+// The reads of the configuration report a configuration that cannot be
+// loaded, without waiting for it.
+func TestMetadataReadsReturnConfigurationLoadError(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		read func(t *testing.T, metadata Metadata) error
+	}{
+		{"GetSelf", func(_ *testing.T, metadata Metadata) error {
+			_, err := metadata.GetSelf()
+			return err
+		}},
+		{"GetLeader", func(_ *testing.T, metadata Metadata) error {
+			_, err := metadata.GetLeader()
+			return err
+		}},
+		{"GetConfig", func(_ *testing.T, metadata Metadata) error {
+			_, err := metadata.GetConfig()
+			return err
+		}},
+		{"GetLoadBalancerConfig", func(_ *testing.T, metadata Metadata) error {
+			_, err := metadata.GetLoadBalancerConfig()
+			return err
+		}},
+		{"ListNamespace", func(_ *testing.T, metadata Metadata) error {
+			_, err := metadata.ListNamespace()
+			return err
+		}},
+		{"GetNamespace", func(t *testing.T, metadata Metadata) error {
+			t.Helper()
+			_, exists, err := metadata.GetNamespace("default")
+			require.False(t, exists)
+			return err
+		}},
+		{"GetNamespaceTermOptions", func(_ *testing.T, metadata Metadata) error {
+			_, err := metadata.GetNamespaceTermOptions("default")
+			return err
+		}},
+		{"ListDataServer", func(_ *testing.T, metadata Metadata) error {
+			_, err := metadata.ListDataServer()
+			return err
+		}},
+		{"GetDataServer", func(t *testing.T, metadata Metadata) error {
+			t.Helper()
+			_, exists, err := metadata.GetDataServer("s1")
+			require.False(t, exists)
+			return err
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			metadata := newTestMetadata(t,
+				memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, "coordinator"),
+				fakeProvider[*commonproto.ClusterConfiguration]{
+					Provider: memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "coordinator"),
+					load:     failLoad[*commonproto.ClusterConfiguration]("configuration unavailable"),
+				}, "coordinator")
+
+			require.ErrorContains(t, test.read(t, metadata), "configuration unavailable")
+		})
+	}
+}
+
+// The reads of the status report a status that cannot be loaded, without
+// waiting for it.
+func TestMetadataReadsReturnStatusLoadError(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		read func(t *testing.T, metadata Metadata) error
+	}{
+		{"GetInstanceID", func(_ *testing.T, metadata Metadata) error {
+			_, err := metadata.GetInstanceID()
+			return err
+		}},
+		{"ListNamespaceStatus", func(_ *testing.T, metadata Metadata) error {
+			_, err := metadata.ListNamespaceStatus()
+			return err
+		}},
+		{"GetNamespaceStatus", func(t *testing.T, metadata Metadata) error {
+			t.Helper()
+			_, exists, err := metadata.GetNamespaceStatus("default")
+			require.False(t, exists)
+			return err
+		}},
+		{"GetShardStatus", func(t *testing.T, metadata Metadata) error {
+			t.Helper()
+			_, exists, err := metadata.GetShardStatus("default", 0)
+			require.False(t, exists)
+			return err
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			metadata := newTestMetadata(t, fakeProvider[*commonproto.ClusterStatus]{
+				Provider: newStatusProvider(),
+				load:     failLoad[*commonproto.ClusterStatus]("status unavailable"),
+			}, newConfigProvider(), "")
+
+			require.ErrorContains(t, test.read(t, metadata), "status unavailable")
+		})
+	}
+}
+
+// The writes of the status report a failed write to their caller, which
+// decides how to retry, after a single attempt.
+func TestMetadataStatusWritesReturnWriteError(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		write func(metadata Metadata) error
+	}{
+		{"UpdateShardStatus", func(metadata Metadata) error {
+			return metadata.UpdateShardStatus("default", 0, &commonproto.ShardMetadata{Term: 2})
+		}},
+		{"PatchNamespaceStatus", func(metadata Metadata) error {
+			return metadata.PatchNamespaceStatus("default", func(status *commonproto.NamespaceStatus) bool {
+				status.Shards[0].Term = 2
+				return true
+			})
+		}},
+		{"DeleteShardStatus", func(metadata Metadata) error {
+			return metadata.DeleteShardStatus("default", 0)
+		}},
+		{"AllocateShardIDs", func(metadata Metadata) error {
+			_, err := metadata.AllocateShardIDs(2)
+			return err
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var writes atomic.Int32
+			failing := failStore("store unavailable")
+			metadata := newTestMetadata(t, fakeProvider[*commonproto.ClusterStatus]{
+				Provider: newStoredStatusProvider(t),
+				store: func(snapshot provider.Versioned[*commonproto.ClusterStatus]) (metadataconstant.Version, error) {
+					writes.Add(1)
+					return failing(snapshot)
+				},
+			}, newConfigProvider(), "")
+
+			require.ErrorContains(t, test.write(metadata), "store unavailable")
+			require.EqualValues(t, 1, writes.Load())
+		})
+	}
+}
+
+// Every status writer gives up once the metadata is closing, and reports that
+// nothing was persisted.
+func TestMetadataStatusWritersGiveUpOnceCanceled(t *testing.T) {
+	statusProvider := newStoredStatusProvider(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	metadata := newDefaultMetadata(ctx, fakeProvider[*commonproto.ClusterStatus]{
+		Provider: statusProvider,
+		store:    failStore("store failed"),
+	}, newConfigProvider(), "")
+	cancel()
+
+	_, err := metadata.AllocateShardIDs(1)
+	require.Error(t, err)
+	require.Error(t, metadata.CreateNamespaceStatus("other", &commonproto.NamespaceStatus{}))
+	require.Nil(t, metadata.DeleteNamespaceStatus("default").UnsafeBorrow())
+	require.Error(t, metadata.UpdateShardStatus("default", 0, &commonproto.ShardMetadata{Term: 2}))
+	require.Error(t, metadata.PatchNamespaceStatus("default", func(status *commonproto.NamespaceStatus) bool {
+		status.Shards[0].Term = 2
+		return true
+	}))
+	require.Error(t, metadata.DeleteShardStatus("default", 0))
+
+	status := loaded(t, statusProvider).Value
+	require.Len(t, status.GetNamespaces(), 1)
+	require.EqualValues(t, 1, status.GetNamespaces()["default"].GetShards()[0].GetTerm())
 	require.NoError(t, metadata.Close())
 }
 
-func writeClusterConfig(t *testing.T, path string) {
+// --- Helpers ---
+
+// newTestMetadata returns a metadata on the providers, closed with the test.
+func newTestMetadata(
+	t *testing.T,
+	statusProvider provider.Provider[*commonproto.ClusterStatus],
+	configProvider provider.Provider[*commonproto.ClusterConfiguration],
+	name string,
+) Metadata {
 	t.Helper()
-
-	require.NoError(t, os.WriteFile(path, []byte(`
-namespaces:
-  - name: default
-    replicationFactor: 1
-    initialShardCount: 1
-servers:
-  - public: s1:9091
-    internal: s1:8191
-`), 0600))
-}
-
-// PatchNamespaceStatus deletes a namespace left without shards, as
-// DeleteShardStatus does, so that it can be created again.
-func TestMetadataPatchNamespaceStatusDeletesEmptiedNamespace(t *testing.T) {
-	statusProvider := memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, "")
-	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
-	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
-	defer func() {
-		require.NoError(t, metadata.Close())
-	}()
-	newNamespaceStatus := func() *commonproto.NamespaceStatus {
-		return &commonproto.NamespaceStatus{Shards: map[int64]*commonproto.ShardMetadata{0: {}, 1: {}}}
-	}
-	deleteShard := func(shard int64) func(*commonproto.NamespaceStatus) bool {
-		return func(status *commonproto.NamespaceStatus) bool {
-			shards := status.Shards
-			delete(shards, shard)
-			return true
-		}
-	}
-	require.NoError(t, metadata.CreateNamespaceStatus("default", newNamespaceStatus()))
-
-	require.NoError(t, metadata.PatchNamespaceStatus("default", deleteShard(0)))
-	_, exists, err := metadata.GetNamespaceStatus("default")
-	require.NoError(t, err)
-	require.True(t, exists)
-
-	require.NoError(t, metadata.PatchNamespaceStatus("default", deleteShard(1)))
-	_, exists, err = metadata.GetNamespaceStatus("default")
-	require.NoError(t, err)
-	require.False(t, exists)
-	require.NoError(t, metadata.CreateNamespaceStatus("default", newNamespaceStatus()))
-}
-
-// reloadRecordingProvider counts the reloads, and only accepts writes after
-// one, like a provider whose snapshot is outdated until reloaded.
-type reloadRecordingProvider struct {
-	provider.Provider[*commonproto.ClusterStatus]
-	reloads *atomic.Int32
-}
-
-func (p reloadRecordingProvider) Reload() error {
-	p.reloads.Add(1)
-	return p.Provider.Reload()
-}
-
-func (p reloadRecordingProvider) Store(snapshot provider.Versioned[*commonproto.ClusterStatus]) (metadataconstant.Version, error) {
-	if p.reloads.Load() == 0 {
-		return metadataconstant.NotExists, metadataconstant.ErrBadVersion
-	}
-	return p.Provider.Store(snapshot)
-}
-
-// A coordinator taking over reloads the snapshots it loaded before the
-// leadership, before its first write.
-func TestMetadataReloadsOnLeadership(t *testing.T) {
-	var statusReloads, configReloads atomic.Int32
-	statusProvider := reloadRecordingProvider{
-		Provider: memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, ""),
-		reloads:  &statusReloads,
-	}
-	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
-	countingConfig := reloadRecordingConfig{Provider: configProvider, reloads: &configReloads}
-	metadata := newDefaultMetadata(t.Context(), statusProvider, countingConfig, "")
+	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, name)
 	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
+	return metadata
+}
 
-	_, err := metadata.WaitToBecomeLeader()
+func newStatusProvider() provider.Provider[*commonproto.ClusterStatus] {
+	return memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, "")
+}
+
+func newConfigProvider() provider.Provider[*commonproto.ClusterConfiguration] {
+	return memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
+}
+
+// newStoredStatusProvider returns a status provider that stores the namespace
+// default, with the shard 0 in the term 1.
+func newStoredStatusProvider(t *testing.T) provider.Provider[*commonproto.ClusterStatus] {
+	t.Helper()
+	statusProvider := newStatusProvider()
+	_, err := statusProvider.Store(provider.Versioned[*commonproto.ClusterStatus]{
+		Value: &commonproto.ClusterStatus{
+			Namespaces: map[string]*commonproto.NamespaceStatus{
+				"default": {Shards: map[int64]*commonproto.ShardMetadata{0: {Term: 1}}},
+			},
+		},
+		Version: metadataconstant.NotExists,
+	})
 	require.NoError(t, err)
-	require.EqualValues(t, 1, statusReloads.Load())
-	require.EqualValues(t, 1, configReloads.Load())
-	// The status recovery, the first write, came after the reload.
-	instanceID, err := metadata.GetInstanceID()
-	require.NoError(t, err)
-	require.NotEmpty(t, instanceID)
-}
-
-// lostLeadershipProvider reports a leadership already lost when it is acquired.
-type lostLeadershipProvider struct {
-	provider.Provider[*commonproto.ClusterStatus]
-}
-
-func (lostLeadershipProvider) WaitToBecomeLeader() (<-chan struct{}, error) {
-	lost := make(chan struct{})
-	close(lost)
-	return lost, nil
-}
-
-// A coordinator that loses the leadership while it reloads the metadata does
-// not write the status recovery.
-func TestMetadataStopsTakeoverWhenLeadershipLost(t *testing.T) {
-	statusProvider := lostLeadershipProvider{
-		Provider: memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, ""),
-	}
-	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
-	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
-	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
-
-	_, err := metadata.WaitToBecomeLeader()
-	require.Error(t, err)
-	instanceID, err := metadata.GetInstanceID()
-	require.NoError(t, err)
-	require.Empty(t, instanceID)
-}
-
-type reloadRecordingConfig struct {
-	provider.Provider[*commonproto.ClusterConfiguration]
-	reloads *atomic.Int32
-}
-
-func (p reloadRecordingConfig) Reload() error {
-	p.reloads.Add(1)
-	return p.Provider.Reload()
+	return statusProvider
 }
 
 // loaded returns the stored snapshot, failing the test if it cannot be loaded.
@@ -355,307 +584,54 @@ func loaded[T gproto.Message](t *testing.T, p provider.Provider[T]) *provider.Ve
 	return snapshot
 }
 
-// writeFailingStatusProvider fails every status write.
-type writeFailingStatusProvider struct {
-	provider.Provider[*commonproto.ClusterStatus]
+// fakeProvider wraps a provider: each of its functions, when set, replaces the
+// method of the wrapped provider.
+type fakeProvider[T gproto.Message] struct {
+	provider.Provider[T]
+	load               func() (*provider.Versioned[T], error)
+	store              func(provider.Versioned[T]) (metadataconstant.Version, error)
+	reload             func() error
+	waitToBecomeLeader func() (<-chan struct{}, error)
 }
 
-func (writeFailingStatusProvider) Store(provider.Versioned[*commonproto.ClusterStatus]) (metadataconstant.Version, error) {
-	return metadataconstant.NotExists, errors.New("store unavailable")
-}
-
-// A takeover whose status recovery fails reports the failure, instead of
-// starting without an instance id.
-func TestMetadataTakeoverFailsWhenRecoveryFails(t *testing.T) {
-	statusProvider := writeFailingStatusProvider{
-		Provider: memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, ""),
+func (p fakeProvider[T]) Load() (*provider.Versioned[T], error) {
+	if p.load != nil {
+		return p.load()
 	}
-	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
-	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
-	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
-
-	_, err := metadata.WaitToBecomeLeader()
-	require.ErrorContains(t, err, "store unavailable")
+	return p.Provider.Load()
 }
 
-// loadFailingConfigProvider fails every load of the configuration.
-type loadFailingConfigProvider struct {
-	provider.Provider[*commonproto.ClusterConfiguration]
-}
-
-func (loadFailingConfigProvider) Load() (*provider.Versioned[*commonproto.ClusterConfiguration], error) {
-	return nil, errors.New("configuration unavailable")
-}
-
-// GetSelf reports a configuration that cannot be loaded, without waiting for
-// it.
-func TestMetadataGetSelfReturnsLoadError(t *testing.T) {
-	statusProvider := memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, "")
-	configProvider := loadFailingConfigProvider{
-		Provider: memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, ""),
+func (p fakeProvider[T]) Store(snapshot provider.Versioned[T]) (metadataconstant.Version, error) {
+	if p.store != nil {
+		return p.store(snapshot)
 	}
-	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "coordinator")
-	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
-
-	_, err := metadata.GetSelf()
-	require.ErrorContains(t, err, "configuration unavailable")
+	return p.Provider.Store(snapshot)
 }
 
-// GetLeader reports a configuration that cannot be loaded, without waiting
-// for it.
-func TestMetadataGetLeaderReturnsLoadError(t *testing.T) {
-	statusProvider := memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, "coordinator")
-	configProvider := loadFailingConfigProvider{
-		Provider: memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "coordinator"),
+func (p fakeProvider[T]) Reload() error {
+	if p.reload != nil {
+		return p.reload()
 	}
-	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "coordinator")
-	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
-
-	_, err := metadata.GetLeader()
-	require.ErrorContains(t, err, "configuration unavailable")
+	return p.Provider.Reload()
 }
 
-// GetConfig reports a configuration that cannot be loaded, without waiting
-// for it.
-func TestMetadataGetConfigReturnsLoadError(t *testing.T) {
-	statusProvider := memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, "")
-	configProvider := loadFailingConfigProvider{
-		Provider: memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, ""),
+func (p fakeProvider[T]) WaitToBecomeLeader() (<-chan struct{}, error) {
+	if p.waitToBecomeLeader != nil {
+		return p.waitToBecomeLeader()
 	}
-	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
-	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
-
-	_, err := metadata.GetConfig()
-	require.ErrorContains(t, err, "configuration unavailable")
+	return p.Provider.WaitToBecomeLeader()
 }
 
-// GetLoadBalancerConfig reports a configuration that cannot be loaded,
-// without waiting for it.
-func TestMetadataGetLoadBalancerConfigReturnsLoadError(t *testing.T) {
-	statusProvider := memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, "")
-	configProvider := loadFailingConfigProvider{
-		Provider: memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, ""),
+// failLoad returns a load that fails with message.
+func failLoad[T gproto.Message](message string) func() (*provider.Versioned[T], error) {
+	return func() (*provider.Versioned[T], error) {
+		return nil, errors.New(message)
 	}
-	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
-	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
-
-	_, err := metadata.GetLoadBalancerConfig()
-	require.ErrorContains(t, err, "configuration unavailable")
 }
 
-// GetNamespace reports a configuration that cannot be loaded, without waiting
-// for it.
-func TestMetadataGetNamespaceReturnsLoadError(t *testing.T) {
-	statusProvider := memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, "")
-	configProvider := loadFailingConfigProvider{
-		Provider: memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, ""),
+// failStore returns a status store that fails with message.
+func failStore(message string) func(provider.Versioned[*commonproto.ClusterStatus]) (metadataconstant.Version, error) {
+	return func(provider.Versioned[*commonproto.ClusterStatus]) (metadataconstant.Version, error) {
+		return metadataconstant.NotExists, errors.New(message)
 	}
-	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
-	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
-
-	_, exists, err := metadata.GetNamespace("default")
-	require.ErrorContains(t, err, "configuration unavailable")
-	require.False(t, exists)
-}
-
-// GetNamespaceTermOptions reports a configuration that cannot be loaded,
-// without waiting for it.
-func TestMetadataGetNamespaceTermOptionsReturnsLoadError(t *testing.T) {
-	statusProvider := memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, "")
-	configProvider := loadFailingConfigProvider{
-		Provider: memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, ""),
-	}
-	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
-	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
-
-	_, err := metadata.GetNamespaceTermOptions("default")
-	require.ErrorContains(t, err, "configuration unavailable")
-}
-
-// ListNamespace reports a configuration that cannot be loaded, without
-// waiting for it.
-func TestMetadataListNamespaceReturnsLoadError(t *testing.T) {
-	statusProvider := memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, "")
-	configProvider := loadFailingConfigProvider{
-		Provider: memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, ""),
-	}
-	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
-	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
-
-	_, err := metadata.ListNamespace()
-	require.ErrorContains(t, err, "configuration unavailable")
-}
-
-// ListDataServer and GetDataServer report a configuration that cannot be
-// loaded, without waiting for it.
-func TestMetadataDataServersReturnLoadError(t *testing.T) {
-	statusProvider := memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, "")
-	configProvider := loadFailingConfigProvider{
-		Provider: memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, ""),
-	}
-	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
-	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
-
-	_, err := metadata.ListDataServer()
-	require.ErrorContains(t, err, "configuration unavailable")
-	_, exists, err := metadata.GetDataServer("s1")
-	require.ErrorContains(t, err, "configuration unavailable")
-	require.False(t, exists)
-}
-
-// loadFailingStatusProvider fails every load of the status.
-type loadFailingStatusProvider struct {
-	provider.Provider[*commonproto.ClusterStatus]
-}
-
-func (loadFailingStatusProvider) Load() (*provider.Versioned[*commonproto.ClusterStatus], error) {
-	return nil, errors.New("status unavailable")
-}
-
-// GetInstanceID reports a status that cannot be loaded, without waiting for
-// it.
-func TestMetadataGetInstanceIDReturnsLoadError(t *testing.T) {
-	statusProvider := loadFailingStatusProvider{
-		Provider: memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, ""),
-	}
-	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
-	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
-	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
-
-	_, err := metadata.GetInstanceID()
-	require.ErrorContains(t, err, "status unavailable")
-}
-
-func TestMetadataListNamespaceStatusReturnsLoadError(t *testing.T) {
-	statusProvider := loadFailingStatusProvider{
-		Provider: memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, ""),
-	}
-	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
-	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
-	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
-
-	_, err := metadata.ListNamespaceStatus()
-	require.ErrorContains(t, err, "status unavailable")
-}
-
-func TestMetadataGetNamespaceStatusReturnsLoadError(t *testing.T) {
-	statusProvider := loadFailingStatusProvider{
-		Provider: memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, ""),
-	}
-	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
-	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
-	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
-
-	_, exists, err := metadata.GetNamespaceStatus("default")
-	require.ErrorContains(t, err, "status unavailable")
-	require.False(t, exists)
-}
-
-func TestMetadataGetShardStatusReturnsLoadError(t *testing.T) {
-	statusProvider := loadFailingStatusProvider{
-		Provider: memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, ""),
-	}
-	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
-	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
-	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
-
-	_, exists, err := metadata.GetShardStatus("default", 0)
-	require.ErrorContains(t, err, "status unavailable")
-	require.False(t, exists)
-}
-
-// countingFailingStatusProvider counts the status writes, and fails them.
-type countingFailingStatusProvider struct {
-	provider.Provider[*commonproto.ClusterStatus]
-	writes *atomic.Int32
-}
-
-func (p countingFailingStatusProvider) Store(provider.Versioned[*commonproto.ClusterStatus]) (metadataconstant.Version, error) {
-	p.writes.Add(1)
-	return metadataconstant.NotExists, errors.New("store unavailable")
-}
-
-// UpdateShardStatus reports a failed write to its caller, instead of retrying
-// it.
-func TestMetadataUpdateShardStatusReturnsWriteError(t *testing.T) {
-	memoryProvider := memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, "")
-	_, err := memoryProvider.Store(provider.Versioned[*commonproto.ClusterStatus]{
-		Value: &commonproto.ClusterStatus{Namespaces: map[string]*commonproto.NamespaceStatus{
-			"default": {Shards: map[int64]*commonproto.ShardMetadata{0: {Term: 1}}},
-		}},
-		Version: metadataconstant.NotExists,
-	})
-	require.NoError(t, err)
-	var writes atomic.Int32
-	statusProvider := countingFailingStatusProvider{Provider: memoryProvider, writes: &writes}
-	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
-	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
-	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
-
-	err = metadata.UpdateShardStatus("default", 0, &commonproto.ShardMetadata{Term: 2})
-	require.ErrorContains(t, err, "store unavailable")
-	require.EqualValues(t, 1, writes.Load())
-}
-
-// PatchNamespaceStatus reports a failed write to its caller, instead of
-// retrying it.
-func TestMetadataPatchNamespaceStatusReturnsWriteError(t *testing.T) {
-	memoryProvider := memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, "")
-	_, err := memoryProvider.Store(provider.Versioned[*commonproto.ClusterStatus]{
-		Value: &commonproto.ClusterStatus{Namespaces: map[string]*commonproto.NamespaceStatus{
-			"default": {Shards: map[int64]*commonproto.ShardMetadata{0: {Term: 1}}},
-		}},
-		Version: metadataconstant.NotExists,
-	})
-	require.NoError(t, err)
-	var writes atomic.Int32
-	statusProvider := countingFailingStatusProvider{Provider: memoryProvider, writes: &writes}
-	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
-	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
-	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
-
-	err = metadata.PatchNamespaceStatus("default", func(status *commonproto.NamespaceStatus) bool {
-		status.Shards[0].Term = 2
-		return true
-	})
-	require.ErrorContains(t, err, "store unavailable")
-	require.EqualValues(t, 1, writes.Load())
-}
-
-// DeleteShardStatus reports a failed write to its caller, instead of retrying
-// it.
-func TestMetadataDeleteShardStatusReturnsWriteError(t *testing.T) {
-	memoryProvider := memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, "")
-	_, err := memoryProvider.Store(provider.Versioned[*commonproto.ClusterStatus]{
-		Value: &commonproto.ClusterStatus{Namespaces: map[string]*commonproto.NamespaceStatus{
-			"default": {Shards: map[int64]*commonproto.ShardMetadata{0: {Term: 1}}},
-		}},
-		Version: metadataconstant.NotExists,
-	})
-	require.NoError(t, err)
-	var writes atomic.Int32
-	statusProvider := countingFailingStatusProvider{Provider: memoryProvider, writes: &writes}
-	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
-	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
-	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
-
-	require.ErrorContains(t, metadata.DeleteShardStatus("default", 0), "store unavailable")
-	require.EqualValues(t, 1, writes.Load())
-}
-
-// AllocateShardIDs reports a failed write to its caller, which retries,
-// instead of retrying it.
-func TestMetadataAllocateShardIDsReturnsWriteError(t *testing.T) {
-	var writes atomic.Int32
-	statusProvider := countingFailingStatusProvider{
-		Provider: memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, ""),
-		writes:   &writes,
-	}
-	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
-	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
-	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
-
-	_, err := metadata.AllocateShardIDs(2)
-	require.ErrorContains(t, err, "store unavailable")
-	require.EqualValues(t, 1, writes.Load())
 }
