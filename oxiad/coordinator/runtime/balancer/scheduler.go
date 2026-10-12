@@ -244,7 +244,10 @@ func (r *nodeBasedBalancer) swapShard(
 	var err error
 
 	var borrowedNamespace commonobject.Borrowed[*commonproto.Namespace]
-	if borrowedNamespace, exist = r.metadata.GetNamespace(candidateShard.Namespace); !exist {
+	if borrowedNamespace, exist, err = r.metadata.GetNamespace(candidateShard.Namespace); err != nil {
+		return false, err
+	}
+	if !exist {
 		return false, nil
 	}
 	nsc = borrowedNamespace.UnsafeBorrow()

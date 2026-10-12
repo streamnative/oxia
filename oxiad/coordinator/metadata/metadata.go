@@ -71,7 +71,8 @@ type Metadata interface {
 	PatchNamespace(namespace *commonproto.Namespace) (*commonproto.Namespace, error)
 	DeleteNamespace(name string) (*commonproto.Namespace, error)
 	ListNamespace() map[string]commonobject.Borrowed[*commonproto.Namespace]
-	GetNamespace(namespace string) (commonobject.Borrowed[*commonproto.Namespace], bool)
+	GetNamespace(namespace string) (commonobject.Borrowed[*commonproto.Namespace], bool, error)
+	GetNamespaceTermOptions(namespace string) (*commonproto.NewTermOptions, error)
 
 	CreateDataServer(dataServer *commonproto.DataServer) error
 	PatchDataServer(dataServer *commonproto.DataServer) (*commonproto.DataServer, error)
@@ -670,9 +671,34 @@ func (m *coordinatorMetadata) ListDataServer() map[string]commonobject.Borrowed[
 	return dataServers
 }
 
-func (m *coordinatorMetadata) GetNamespace(namespace string) (commonobject.Borrowed[*commonproto.Namespace], bool) {
-	ns, exists := m.ListNamespace()[namespace]
-	return ns, exists
+func (m *coordinatorMetadata) GetNamespace(namespace string) (commonobject.Borrowed[*commonproto.Namespace], bool, error) {
+	config, err := m.configProvider.Load()
+	if err != nil {
+		return commonobject.Borrowed[*commonproto.Namespace]{}, false, err
+	}
+	for _, ns := range config.Value.GetNamespaces() {
+		if ns.GetName() == namespace {
+			return commonobject.Borrow(ns), true, nil
+		}
+	}
+	return commonobject.Borrowed[*commonproto.Namespace]{}, false, nil
+}
+
+func (m *coordinatorMetadata) GetNamespaceTermOptions(namespace string) (*commonproto.NewTermOptions, error) {
+	termOptions := &commonproto.NewTermOptions{
+		EnableNotifications: true,
+		KeySorting:          commonproto.KeySortingType_UNKNOWN,
+	}
+	borrowedNamespace, exists, err := m.GetNamespace(namespace)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		ns := borrowedNamespace.UnsafeBorrow()
+		termOptions.EnableNotifications = ns.NotificationsEnabledOrDefault()
+		termOptions.KeySorting, _ = ns.GetKeySortingType()
+	}
+	return termOptions, nil
 }
 
 func (m *coordinatorMetadata) ListNamespace() map[string]commonobject.Borrowed[*commonproto.Namespace] {

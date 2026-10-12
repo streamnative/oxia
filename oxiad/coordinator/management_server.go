@@ -409,7 +409,10 @@ func (management *managementServer) GetNamespace(_ context.Context, req *proto.G
 		return nil, grpcstatus.Error(codes.InvalidArgument, "namespace must not be empty")
 	}
 
-	namespace, found := runtime.Metadata().GetNamespace(req.Namespace)
+	namespace, found, err := runtime.Metadata().GetNamespace(req.Namespace)
+	if err != nil {
+		return nil, grpcstatus.Errorf(codes.Internal, "failed to get namespace %q: %v", req.Namespace, err)
+	}
 	if !found {
 		return nil, grpcstatus.Errorf(codes.NotFound, "namespace %q not found", req.Namespace)
 	}

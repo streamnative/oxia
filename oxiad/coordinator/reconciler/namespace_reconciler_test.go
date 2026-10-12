@@ -16,6 +16,7 @@ package reconciler
 
 import (
 	"context"
+	"errors"
 	"math"
 	"sort"
 	"testing"
@@ -88,6 +89,8 @@ type mockNamespaceMetadata struct {
 	status   *proto.ClusterStatus
 	config   *proto.ClusterConfiguration
 	configNS map[string]*proto.Namespace
+	// getNamespaceErr, when set, fails the namespace loads
+	getNamespaceErr error
 }
 
 func (*mockNamespaceMetadata) Close() error { return nil }
@@ -241,12 +244,20 @@ func (*mockNamespaceMetadata) GetDataServer(string) (commonobject.Borrowed[*prot
 	return commonobject.Borrowed[*proto.DataServer]{}, false
 }
 
-func (m *mockNamespaceMetadata) GetNamespace(namespace string) (commonobject.Borrowed[*proto.Namespace], bool) {
+// GetNamespaceTermOptions is not used by these tests.
+func (*mockNamespaceMetadata) GetNamespaceTermOptions(string) (*proto.NewTermOptions, error) {
+	return &proto.NewTermOptions{}, nil
+}
+
+func (m *mockNamespaceMetadata) GetNamespace(namespace string) (commonobject.Borrowed[*proto.Namespace], bool, error) {
+	if m.getNamespaceErr != nil {
+		return commonobject.Borrowed[*proto.Namespace]{}, false, m.getNamespaceErr
+	}
 	ns, exists := m.configNS[namespace]
 	if !exists {
-		return commonobject.Borrowed[*proto.Namespace]{}, false
+		return commonobject.Borrowed[*proto.Namespace]{}, false, nil
 	}
-	return commonobject.Borrow(ns), true
+	return commonobject.Borrow(ns), true, nil
 }
 
 var _ coordmetadata.Metadata = (*mockNamespaceMetadata)(nil)
@@ -597,6 +608,34 @@ func TestNamespaceReconcilerNamespaceRemovedMarksDeletingAndDeletesRuntimeShards
 	sort.Slice(runtime.deleted, func(i, j int) bool { return runtime.deleted[i] < runtime.deleted[j] })
 	assert.Equal(t, []int64{1, 2}, runtime.deleted)
 	assert.Equal(t, map[int64]string{0: "ns-1"}, runtime.added)
+}
+
+// A namespace whose configuration can't be loaded is kept: the reconciler
+// returns the error instead of deleting it.
+func TestNamespaceReconcilerKeepsNamespaceOnConfigurationLoadError(t *testing.T) {
+	metadata := &mockNamespaceMetadata{
+		status: &proto.ClusterStatus{
+			Namespaces: map[string]*proto.NamespaceStatus{
+				"ns-1": {
+					ReplicationFactor: 3,
+					Shards: map[int64]*proto.ShardMetadata{
+						0: shardMetadata(proto.ShardStatusUnknown, []*proto.DataServerIdentity{s1, s2, s3}, 0, math.MaxUint32),
+					},
+				},
+			},
+			ShardIdGenerator: 1,
+		},
+		configNS:        map[string]*proto.Namespace{},
+		getNamespaceErr: errors.New("configuration unavailable"),
+	}
+	runtime := &mockNamespaceRuntime{metadata: metadata}
+
+	err := (&namespaceReconciler{runtime: runtime}).Reconcile(context.Background(), &proto.ClusterConfiguration{
+		Servers: []*proto.DataServerIdentity{s1, s2, s3},
+	})
+	assert.ErrorContains(t, err, "configuration unavailable")
+	assert.Empty(t, runtime.deleted)
+	assert.Equal(t, proto.ShardStatusUnknown, metadata.status.Namespaces["ns-1"].Shards[0].GetStatusOrDefault())
 }
 
 // Namespaces added to the configuration file don't go through the management
