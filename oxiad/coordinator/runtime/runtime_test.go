@@ -39,9 +39,9 @@ import (
 	metadatacodec "github.com/oxia-db/oxia/oxiad/coordinator/metadata/common/codec"
 	coordoption "github.com/oxia-db/oxia/oxiad/coordinator/option"
 	"github.com/oxia-db/oxia/oxiad/coordinator/rpc"
+	"github.com/oxia-db/oxia/oxiad/coordinator/rpc/rpctest"
 	"github.com/oxia-db/oxia/oxiad/coordinator/runtime/balancer/selector/ensemble"
 	dataservercontroller "github.com/oxia-db/oxia/oxiad/coordinator/runtime/controller/dataserver"
-	"github.com/oxia-db/oxia/oxiad/coordinator/runtime/controller/mockutils"
 	shardcontroller "github.com/oxia-db/oxia/oxiad/coordinator/runtime/controller/shard"
 )
 
@@ -87,7 +87,7 @@ func TestRuntimeNewDiscoversFeaturesWhileStartingShardControllers(t *testing.T) 
 	}))
 
 	// Each node supports features, so its first handshake is a discovery
-	rpcProvider := mockutils.NewRpcProvider()
+	rpcProvider := rpctest.NewRpcProvider()
 	for _, server := range servers {
 		rpcProvider.GetNode(server).SetNodeFeatures([]proto.Feature{proto.Feature_FEATURE_DB_CHECKSUM})
 	}
@@ -115,7 +115,7 @@ func TestRuntimeNewFailsWithoutInstanceID(t *testing.T) {
 			return "", errors.New("status unavailable")
 		},
 	}
-	_, err := New(metadata, func(string) rpc.Provider { return mockutils.NewRpcProvider() })
+	_, err := New(metadata, func(string) rpc.Provider { return rpctest.NewRpcProvider() })
 	require.ErrorContains(t, err, "status unavailable")
 }
 
@@ -269,7 +269,7 @@ func TestRuntimeCreateNamespaceDoesNotReviveDeletedShards(t *testing.T) {
 			})
 			require.NoError(t, c.CreateNamespace(namespace.Name, namespace))
 			// Wait for the original controllers to start before deleting their status.
-			requests := c.rpc.(*mockutils.RpcProvider).GetNode(server).NewTermRequests
+			requests := c.rpc.(*rpctest.RpcProvider).GetNode(server).NewTermRequests
 			for range count {
 				select {
 				case <-requests:
@@ -654,7 +654,7 @@ func newNamespaceTestRuntime(t *testing.T, metadata coordmetadata.Metadata) *run
 		ensembleSelector: namespaceEnsembleSelector{},
 		shardControllers: make(map[int64]shardcontroller.Controller),
 		assignmentsWatch: commonwatch.New(&proto.ShardAssignments{}),
-		rpc:              mockutils.NewRpcProvider(),
+		rpc:              rpctest.NewRpcProvider(),
 	}
 	t.Cleanup(func() { require.NoError(t, c.Close()) })
 	return c

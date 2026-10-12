@@ -35,11 +35,11 @@ import (
 	"github.com/oxia-db/oxia/oxiad/common/feature"
 	commonwatch "github.com/oxia-db/oxia/oxiad/common/watch"
 	coordmetadata "github.com/oxia-db/oxia/oxiad/coordinator/metadata"
+	"github.com/oxia-db/oxia/oxiad/coordinator/rpc/rpctest"
 	"github.com/oxia-db/oxia/oxiad/coordinator/runtime/action"
 	"github.com/oxia-db/oxia/oxiad/coordinator/runtime/balancer"
 	"github.com/oxia-db/oxia/oxiad/coordinator/runtime/balancer/selector/ensemble"
 	dataservercontroller "github.com/oxia-db/oxia/oxiad/coordinator/runtime/controller/dataserver"
-	"github.com/oxia-db/oxia/oxiad/coordinator/runtime/controller/mockutils"
 	shardcontroller "github.com/oxia-db/oxia/oxiad/coordinator/runtime/controller/shard"
 )
 
@@ -99,7 +99,7 @@ func assertElectionKept(t *testing.T, metadata coordmetadata.Metadata, shard int
 // every cluster status write, recording each published snapshot.
 type splitTestRuntime struct {
 	*runtime
-	rpc *mockutils.RpcProvider
+	rpc *rpctest.RpcProvider
 
 	snapshotsLock sync.Mutex
 	snapshots     []*proto.ShardAssignments
@@ -166,7 +166,7 @@ func newSplitTestRuntime(t *testing.T) *splitTestRuntime {
 		},
 	}))
 
-	r := &splitTestRuntime{rpc: mockutils.NewRpcProvider()}
+	r := &splitTestRuntime{rpc: rpctest.NewRpcProvider()}
 	// Recompute the shard assignments after every cluster status write, the
 	// way an unrelated shard's leader election or a configuration reconcile
 	// can at any moment
@@ -499,7 +499,7 @@ func newInitiateSplitTestRuntime(t *testing.T) (*runtime, *fakeMetadata) {
 		logger:           slog.With(slog.String("component", "coordinator")),
 		ctx:              t.Context(),
 		metadata:         racing,
-		rpc:              mockutils.NewRpcProvider(),
+		rpc:              rpctest.NewRpcProvider(),
 		ensembleSelector: ensemble.NewSelector(),
 		loadBalancer: balancer.NewLoadBalancer(balancer.Options{
 			Context:             t.Context(),
@@ -648,7 +648,7 @@ func TestRuntimeInitiateSplitSelectsChildrenSupportingParentFeatures(t *testing.
 // rejected: the parent's ensemble doesn't change until the split ends.
 func TestRuntimeInitiateSplitRejectsChangeEnsemblePlannedBefore(t *testing.T) {
 	r, metadata := newInitiateSplitTestRuntime(t)
-	rpc := r.rpc.(*mockutils.RpcProvider)
+	rpc := r.rpc.(*rpctest.RpcProvider)
 
 	// The parent's shard controller verifies its ensemble when it starts
 	rpc.GetNode(splitPs1).GetStatusResponse(splitParentTerm, proto.ServingStatus_LEADER, 0, 0)

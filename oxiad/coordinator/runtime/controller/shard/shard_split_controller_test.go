@@ -40,7 +40,7 @@ import (
 	coordmetadata "github.com/oxia-db/oxia/oxiad/coordinator/metadata"
 	"github.com/oxia-db/oxia/oxiad/coordinator/metadata/provider/memory"
 	coordoption "github.com/oxia-db/oxia/oxiad/coordinator/option"
-	"github.com/oxia-db/oxia/oxiad/coordinator/runtime/controller/mockutils"
+	"github.com/oxia-db/oxia/oxiad/coordinator/rpc/rpctest"
 
 	"github.com/oxia-db/oxia/common/constant"
 
@@ -96,13 +96,13 @@ var (
 // two child shards ready for split, and returns the test resources. Optional
 // nsMutators customize the namespace config (e.g. to disable notifications).
 func setupSplitTest(t *testing.T, phase proto.SplitPhase, nsMutators ...func(*proto.Namespace)) (
-	*mockutils.RpcProvider,
+	*rpctest.RpcProvider,
 	coordmetadata.Metadata,
 	*mockShardSplitEventListener,
 ) {
 	t.Helper()
 
-	rpcMock := mockutils.NewRpcProvider()
+	rpcMock := rpctest.NewRpcProvider()
 	metaProvider := memory.NewProvider(metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled, "")
 	nsConfig := &proto.Namespace{
 		Name:              constant.DefaultNamespace,
@@ -232,7 +232,7 @@ func loadTestStatus(t *testing.T, metadata coordmetadata.Metadata) *proto.Cluste
 // queueChildResetResponses queues what Bootstrap needs to reset each fenced
 // member of a child to an empty copy of the child: the deletion of its copy,
 // and the fence that follows it.
-func queueChildResetResponses(rpcMock *mockutils.RpcProvider, members ...*proto.DataServerIdentity) {
+func queueChildResetResponses(rpcMock *rpctest.RpcProvider, members ...*proto.DataServerIdentity) {
 	for _, member := range members {
 		rpcMock.GetNode(member).DeleteShardResponse(nil)
 		rpcMock.GetNode(member).NewTermResponse(-1, -1, nil)
@@ -241,7 +241,7 @@ func queueChildResetResponses(rpcMock *mockutils.RpcProvider, members ...*proto.
 
 // queueChildObserverResponses queues what Bootstrap needs to add every member
 // of both children as an observer on the parent leader.
-func queueChildObserverResponses(rpcMock *mockutils.RpcProvider, parentLeader *proto.DataServerIdentity) {
+func queueChildObserverResponses(rpcMock *rpctest.RpcProvider, parentLeader *proto.DataServerIdentity) {
 	for range 6 {
 		rpcMock.GetNode(parentLeader).AddFollowerResponse(nil)
 	}
@@ -249,7 +249,7 @@ func queueChildObserverResponses(rpcMock *mockutils.RpcProvider, parentLeader *p
 
 // queueBootstrapResponses queues all responses needed for the bootstrap phase.
 // The *1 nodes report a higher offset so pickLeader deterministically chooses them.
-func queueBootstrapResponses(rpcMock *mockutils.RpcProvider) {
+func queueBootstrapResponses(rpcMock *rpctest.RpcProvider) {
 	// Fence left child ensemble: ls1 has highest offset -> becomes leader
 	rpcMock.GetNode(ls1).NewTermResponse(0, 0, nil)
 	rpcMock.GetNode(ls2).NewTermResponse(0, -1, nil)
@@ -269,14 +269,14 @@ func queueBootstrapResponses(rpcMock *mockutils.RpcProvider) {
 // queueChildrenAppliedResponses queues what CatchUp or Cutover need to see that
 // a majority of each child applied the parent's entries up to offset: its
 // leader, the *1 node, and one of its followers.
-func queueChildrenAppliedResponses(rpcMock *mockutils.RpcProvider, offset int64) {
+func queueChildrenAppliedResponses(rpcMock *rpctest.RpcProvider, offset int64) {
 	for _, member := range []*proto.DataServerIdentity{ls1, ls2, rs1, rs2} {
 		rpcMock.GetNode(member).GetStatusResponse(5, proto.ServingStatus_FOLLOWER, offset, offset)
 	}
 }
 
 // queueCatchUpResponses queues all responses needed for the catch-up phase.
-func queueCatchUpResponses(rpcMock *mockutils.RpcProvider) {
+func queueCatchUpResponses(rpcMock *rpctest.RpcProvider) {
 	// Parent commitOffset as target
 	rpcMock.GetNode(ps1).GetStatusResponse(5, proto.ServingStatus_LEADER, 105, 105)
 	// Children commitOffset >= target
@@ -284,7 +284,7 @@ func queueCatchUpResponses(rpcMock *mockutils.RpcProvider) {
 }
 
 // queueCutoverResponses queues all responses needed for the cutover phase.
-func queueCutoverResponses(rpcMock *mockutils.RpcProvider) {
+func queueCutoverResponses(rpcMock *rpctest.RpcProvider) {
 	// Freeze the parent leader: returns its frozen head offset (the target the
 	// children must apply before the parent is fenced).
 	rpcMock.GetNode(ps1).FreezeShardResponse(105, nil)
@@ -459,7 +459,7 @@ func TestSplitController_ObserversGetParentRange(t *testing.T) {
 // drainNewTermRequests returns all NewTerm requests buffered for a node.
 // Non-blocking: it stops once the channel is momentarily empty, so it must be
 // called after the operation under test has finished sending.
-func drainNewTermRequests(node *mockutils.PerNodeChannels) []*proto.NewTermRequest {
+func drainNewTermRequests(node *rpctest.PerNodeChannels) []*proto.NewTermRequest {
 	var reqs []*proto.NewTermRequest
 	for {
 		select {
@@ -473,7 +473,7 @@ func drainNewTermRequests(node *mockutils.PerNodeChannels) []*proto.NewTermReque
 
 // drainFreezeShardRequests returns all FreezeShard requests buffered for a
 // node, like drainNewTermRequests.
-func drainFreezeShardRequests(node *mockutils.PerNodeChannels) []*proto.FreezeShardRequest {
+func drainFreezeShardRequests(node *rpctest.PerNodeChannels) []*proto.FreezeShardRequest {
 	var reqs []*proto.FreezeShardRequest
 	for {
 		select {
@@ -652,7 +652,7 @@ func TestSplitController_TimeoutDuringBootstrap(t *testing.T) {
 		ParentShardId: 0,
 		Split:         testSplit,
 		Metadata:      statusRes,
-		RpcProvider:   mockutils.NewRpcProvider(), // fresh mock, no responses queued
+		RpcProvider:   rpctest.NewRpcProvider(), // fresh mock, no responses queued
 		EventListener: listener,
 		SplitTimeout:  2 * time.Second,
 	})
@@ -795,7 +795,7 @@ func TestSplitController_AbortStoresWholeSplitOrNone(t *testing.T) {
 		ParentShardId: 0,
 		Split:         testSplit,
 		Metadata:      observing,
-		RpcProvider:   mockutils.NewRpcProvider(),
+		RpcProvider:   rpctest.NewRpcProvider(),
 		EventListener: listener,
 		SplitTimeout:  time.Second,
 	})
@@ -950,12 +950,12 @@ func TestSplitController_ParentTermChangeFromFirstTerm(t *testing.T) {
 // childCallsRecorder records, in order, the calls made to each data server for
 // the children of the split.
 type childCallsRecorder struct {
-	*mockutils.RpcProvider
+	*rpctest.RpcProvider
 	mu    sync.Mutex
 	calls map[string][]string
 }
 
-func newChildCallsRecorder(rpcMock *mockutils.RpcProvider) *childCallsRecorder {
+func newChildCallsRecorder(rpcMock *rpctest.RpcProvider) *childCallsRecorder {
 	return &childCallsRecorder{RpcProvider: rpcMock, calls: make(map[string][]string)}
 }
 
@@ -1741,7 +1741,7 @@ func setBootstrappedState(t *testing.T, metadata coordmetadata.Metadata) {
 }
 
 // queueNewTermResponses queues a successful NewTerm response on each node.
-func queueNewTermResponses(rpcMock *mockutils.RpcProvider, nodes ...*proto.DataServerIdentity) {
+func queueNewTermResponses(rpcMock *rpctest.RpcProvider, nodes ...*proto.DataServerIdentity) {
 	for _, node := range nodes {
 		rpcMock.GetNode(node).NewTermResponse(5, 105, nil)
 	}
@@ -1749,7 +1749,7 @@ func queueNewTermResponses(rpcMock *mockutils.RpcProvider, nodes ...*proto.DataS
 
 // queueCutoverDrainResponses queues the responses Cutover needs to reach the
 // point of no return: the parent freeze, and both children reporting its tail.
-func queueCutoverDrainResponses(rpcMock *mockutils.RpcProvider) {
+func queueCutoverDrainResponses(rpcMock *rpctest.RpcProvider) {
 	rpcMock.GetNode(ps1).FreezeShardResponse(105, nil)
 	queueChildrenAppliedResponses(rpcMock, 105)
 }
@@ -2286,7 +2286,7 @@ func requireClosed(t *testing.T, ch <-chan struct{}, what string) {
 
 // queueParentElectionResponses queues what an election of the parent needs to
 // elect a leader, whichever member it picks.
-func queueParentElectionResponses(rpcMock *mockutils.RpcProvider) {
+func queueParentElectionResponses(rpcMock *rpctest.RpcProvider) {
 	queueNewTermResponses(rpcMock, ps1, ps2, ps3)
 	for _, node := range []*proto.DataServerIdentity{ps1, ps2, ps3} {
 		rpcMock.GetNode(node).BecomeLeaderResponse(nil)
@@ -2295,7 +2295,7 @@ func queueParentElectionResponses(rpcMock *mockutils.RpcProvider) {
 
 // queueChildrenReelectionResponses queues what Finalize needs to re-elect the
 // children in a clean term.
-func queueChildrenReelectionResponses(rpcMock *mockutils.RpcProvider) {
+func queueChildrenReelectionResponses(rpcMock *rpctest.RpcProvider) {
 	queueNewTermResponses(rpcMock, ls1, ls2, ls3, rs1, rs2, rs3)
 	rpcMock.GetNode(ls1).BecomeLeaderResponse(nil)
 	rpcMock.GetNode(rs1).BecomeLeaderResponse(nil)
@@ -2304,7 +2304,7 @@ func queueChildrenReelectionResponses(rpcMock *mockutils.RpcProvider) {
 // assertParentNotElected checks that the election of the parent stopped
 // without electing a leader, that only Finalize fenced the parent, and that
 // the split completed.
-func assertParentNotElected(t *testing.T, rpcMock *mockutils.RpcProvider, metadata coordmetadata.Metadata,
+func assertParentNotElected(t *testing.T, rpcMock *rpctest.RpcProvider, metadata coordmetadata.Metadata,
 	elected <-chan *proto.DataServerIdentity) {
 	t.Helper()
 	assert.Nil(t, requireElectionEnded(t, elected), "the parent was elected")

@@ -30,9 +30,9 @@ import (
 	"github.com/oxia-db/oxia/common/proto"
 	coordmetadata "github.com/oxia-db/oxia/oxiad/coordinator/metadata"
 	coordrpc "github.com/oxia-db/oxia/oxiad/coordinator/rpc"
+	"github.com/oxia-db/oxia/oxiad/coordinator/rpc/rpctest"
 	"github.com/oxia-db/oxia/oxiad/coordinator/runtime/action"
 	leaderselector "github.com/oxia-db/oxia/oxiad/coordinator/runtime/balancer/selector/leader"
-	"github.com/oxia-db/oxia/oxiad/coordinator/runtime/controller/mockutils"
 )
 
 func testDataServer(id string) *proto.DataServerIdentity {
@@ -654,7 +654,7 @@ func requireElectionEnded(t *testing.T, elected <-chan *proto.DataServerIdentity
 // electParentLeader completes an election of the parent shard of
 // setupSplitTest that is fencing its ensemble: ps2 has the highest entry, and
 // becomes the leader.
-func electParentLeader(t *testing.T, rpc *mockutils.RpcProvider, elected <-chan *proto.DataServerIdentity) {
+func electParentLeader(t *testing.T, rpc *rpctest.RpcProvider, elected <-chan *proto.DataServerIdentity) {
 	t.Helper()
 	rpc.GetNode(ps1).NewTermResponse(5, 100, nil)
 	rpc.GetNode(ps2).NewTermResponse(5, 105, nil)
@@ -665,7 +665,7 @@ func electParentLeader(t *testing.T, rpc *mockutils.RpcProvider, elected <-chan 
 
 // expectParentFenced waits for the election to fence each member of the
 // parent's ensemble at the term.
-func expectParentFenced(t *testing.T, rpc *mockutils.RpcProvider, term int64) {
+func expectParentFenced(t *testing.T, rpc *rpctest.RpcProvider, term int64) {
 	t.Helper()
 	for _, node := range []*proto.DataServerIdentity{ps1, ps2, ps3} {
 		rpc.GetNode(node).ExpectNewTermRequest(t, 0, term, true)
