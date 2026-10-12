@@ -391,7 +391,7 @@ func (sc *SplitController) fenceAndResetChild(childId int64, parentTerm int64) e
 	}
 
 	childTerm := parentTerm
-	termOptions, err := namespaceTermOptions(sc.metadata, sc.namespace)
+	termOptions, err := sc.metadata.GetNamespaceTermOptions(sc.namespace)
 	if err != nil {
 		return err
 	}
@@ -445,7 +445,7 @@ func (sc *SplitController) resetChildMember(childId int64, childTerm int64,
 	}); err != nil {
 		return err
 	}
-	termOptions, err := namespaceTermOptions(sc.metadata, sc.namespace)
+	termOptions, err := sc.metadata.GetNamespaceTermOptions(sc.namespace)
 	if err != nil {
 		return err
 	}
@@ -1305,7 +1305,7 @@ func (sc *SplitController) reelectChild(ctx context.Context, childId int64) erro
 		return err
 	}
 
-	termOptions, err := namespaceTermOptions(sc.metadata, sc.namespace)
+	termOptions, err := sc.metadata.GetNamespaceTermOptions(sc.namespace)
 	if err != nil {
 		return err
 	}

@@ -212,6 +212,11 @@ func (m *mockMetadata) ListDataServer() map[string]commonobject.Borrowed[*proto.
 	return dataServers
 }
 
+// GetNamespaceTermOptions is not used by these tests.
+func (*mockMetadata) GetNamespaceTermOptions(string) (*proto.NewTermOptions, error) {
+	return &proto.NewTermOptions{}, nil
+}
+
 func (m *mockMetadata) GetNamespace(namespace string) (commonobject.Borrowed[*proto.Namespace], bool, error) {
 	nc, ok := m.nsConfigs[namespace]
 	if !ok {

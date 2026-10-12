@@ -72,6 +72,10 @@ type Metadata interface {
 	DeleteNamespace(name string) (*commonproto.Namespace, error)
 	ListNamespace() map[string]commonobject.Borrowed[*commonproto.Namespace]
 	GetNamespace(namespace string) (commonobject.Borrowed[*commonproto.Namespace], bool, error)
+	// GetNamespaceTermOptions returns the NewTerm options of the shards of a
+	// namespace: its notifications and key sorting, or the defaults if the
+	// namespace doesn't exist.
+	GetNamespaceTermOptions(namespace string) (*commonproto.NewTermOptions, error)
 
 	CreateDataServer(dataServer *commonproto.DataServer) error
 	PatchDataServer(dataServer *commonproto.DataServer) (*commonproto.DataServer, error)
@@ -681,6 +685,23 @@ func (m *coordinatorMetadata) GetNamespace(namespace string) (commonobject.Borro
 		}
 	}
 	return commonobject.Borrowed[*commonproto.Namespace]{}, false, nil
+}
+
+func (m *coordinatorMetadata) GetNamespaceTermOptions(namespace string) (*commonproto.NewTermOptions, error) {
+	termOptions := &commonproto.NewTermOptions{
+		EnableNotifications: true,
+		KeySorting:          commonproto.KeySortingType_UNKNOWN,
+	}
+	borrowedNamespace, exists, err := m.GetNamespace(namespace)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		ns := borrowedNamespace.UnsafeBorrow()
+		termOptions.EnableNotifications = ns.NotificationsEnabledOrDefault()
+		termOptions.KeySorting, _ = ns.GetKeySortingType()
+	}
+	return termOptions, nil
 }
 
 func (m *coordinatorMetadata) ListNamespace() map[string]commonobject.Borrowed[*commonproto.Namespace] {

@@ -719,7 +719,7 @@ func (e *Election) start() (newLeader *proto.DataServerIdentity, err error) {
 
 	// Load the options of the namespace before persisting a new term: a
 	// failed load is retried without using up a term
-	termOptions, err := namespaceTermOptions(e.metadataStore, e.namespace)
+	termOptions, err := e.metadataStore.GetNamespaceTermOptions(e.namespace)
 	if err != nil {
 		return nil, err
 	}

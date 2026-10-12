@@ -244,6 +244,11 @@ func (*mockNamespaceMetadata) GetDataServer(string) (commonobject.Borrowed[*prot
 	return commonobject.Borrowed[*proto.DataServer]{}, false
 }
 
+// GetNamespaceTermOptions is not used by these tests.
+func (*mockNamespaceMetadata) GetNamespaceTermOptions(string) (*proto.NewTermOptions, error) {
+	return &proto.NewTermOptions{}, nil
+}
+
 func (m *mockNamespaceMetadata) GetNamespace(namespace string) (commonobject.Borrowed[*proto.Namespace], bool, error) {
 	if m.getNamespaceErr != nil {
 		return commonobject.Borrowed[*proto.Namespace]{}, false, m.getNamespaceErr

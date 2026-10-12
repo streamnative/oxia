@@ -555,28 +555,6 @@ func (s *controller) verifyCurrentEnsemble(initShardMeta *proto.ShardMetadata) b
 	return true
 }
 
-// namespaceTermOptions builds the NewTerm options (notifications + key sorting)
-// for a shard from its namespace config, falling back to defaults when the
-// namespace config is missing. Shared by the leader-election path and the
-// shard-split path so post-split children inherit the same term settings as a
-// normally-elected leader.
-func namespaceTermOptions(metadataStore coordmetadata.Metadata, namespace string) (*proto.NewTermOptions, error) {
-	termOptions := &proto.NewTermOptions{
-		EnableNotifications: true,
-		KeySorting:          proto.KeySortingType_UNKNOWN,
-	}
-	borrowedNamespaceConfig, exist, err := metadataStore.GetNamespace(namespace)
-	if err != nil {
-		return nil, err
-	}
-	if exist {
-		nsConfig := borrowedNamespaceConfig.UnsafeBorrow()
-		termOptions.EnableNotifications = nsConfig.NotificationsEnabledOrDefault()
-		termOptions.KeySorting, _ = nsConfig.GetKeySortingType()
-	}
-	return termOptions, nil
-}
-
 func (s *controller) validateChangeEnsembleFeatures(shardMeta *proto.ShardMetadata,
 	changeEnsembleAction *action.ChangeEnsembleAction) error {
 	// The ensemble of the parent and of the children of a split doesn't change
