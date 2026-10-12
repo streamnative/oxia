@@ -203,12 +203,12 @@ func (*mockNamespaceMetadata) DeleteNamespace(string) (*proto.Namespace, error) 
 	return &proto.Namespace{}, nil
 }
 
-func (m *mockNamespaceMetadata) ListNamespace() map[string]commonobject.Borrowed[*proto.Namespace] {
+func (m *mockNamespaceMetadata) ListNamespace() (map[string]commonobject.Borrowed[*proto.Namespace], error) {
 	namespaces := make(map[string]commonobject.Borrowed[*proto.Namespace], len(m.configNS))
 	for name, namespace := range m.configNS {
 		namespaces[name] = commonobject.Borrow(namespace)
 	}
-	return namespaces
+	return namespaces, nil
 }
 
 func (m *mockNamespaceMetadata) GetConfig() (commonobject.Borrowed[*proto.ClusterConfiguration], error) {

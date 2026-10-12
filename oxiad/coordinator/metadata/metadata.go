@@ -70,7 +70,7 @@ type Metadata interface {
 	CreateNamespace(namespace *commonproto.Namespace) error
 	PatchNamespace(namespace *commonproto.Namespace) (*commonproto.Namespace, error)
 	DeleteNamespace(name string) (*commonproto.Namespace, error)
-	ListNamespace() map[string]commonobject.Borrowed[*commonproto.Namespace]
+	ListNamespace() (map[string]commonobject.Borrowed[*commonproto.Namespace], error)
 	GetNamespace(namespace string) (commonobject.Borrowed[*commonproto.Namespace], bool, error)
 	GetNamespaceTermOptions(namespace string) (*commonproto.NewTermOptions, error)
 
@@ -701,13 +701,17 @@ func (m *coordinatorMetadata) GetNamespaceTermOptions(namespace string) (*common
 	return termOptions, nil
 }
 
-func (m *coordinatorMetadata) ListNamespace() map[string]commonobject.Borrowed[*commonproto.Namespace] {
-	configNamespaces := m.loadConfig().UnsafeBorrow().GetNamespaces()
+func (m *coordinatorMetadata) ListNamespace() (map[string]commonobject.Borrowed[*commonproto.Namespace], error) {
+	config, err := m.configProvider.Load()
+	if err != nil {
+		return nil, err
+	}
+	configNamespaces := config.Value.GetNamespaces()
 	namespaces := make(map[string]commonobject.Borrowed[*commonproto.Namespace], len(configNamespaces))
 	for _, namespace := range configNamespaces {
 		namespaces[namespace.GetName()] = commonobject.Borrow(namespace)
 	}
-	return namespaces
+	return namespaces, nil
 }
 
 func (m *coordinatorMetadata) GetDataServer(name string) (commonobject.Borrowed[*commonproto.DataServer], bool) {

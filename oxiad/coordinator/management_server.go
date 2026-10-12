@@ -260,7 +260,10 @@ func (management *managementServer) ListNamespaces(_ context.Context, _ *proto.L
 	if err != nil {
 		return nil, err
 	}
-	namespaces := runtime.Metadata().ListNamespace()
+	namespaces, err := runtime.Metadata().ListNamespace()
+	if err != nil {
+		return nil, grpcstatus.Errorf(codes.Internal, "failed to list namespaces: %v", err)
+	}
 	statuses, err := runtime.Metadata().ListNamespaceStatus()
 	if err != nil {
 		return nil, grpcstatus.Errorf(codes.Internal, "failed to list namespaces: %v", err)

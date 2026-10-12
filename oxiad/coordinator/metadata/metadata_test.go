@@ -469,6 +469,20 @@ func TestMetadataGetNamespaceTermOptionsReturnsLoadError(t *testing.T) {
 	require.ErrorContains(t, err, "configuration unavailable")
 }
 
+// ListNamespace reports a configuration that cannot be loaded, without
+// waiting for it.
+func TestMetadataListNamespaceReturnsLoadError(t *testing.T) {
+	statusProvider := memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, "")
+	configProvider := loadFailingConfigProvider{
+		Provider: memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, ""),
+	}
+	metadata := newMetadata(t.Context(), statusProvider, configProvider, "")
+	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
+
+	_, err := metadata.ListNamespace()
+	require.ErrorContains(t, err, "configuration unavailable")
+}
+
 // loadFailingStatusProvider fails every load of the status.
 type loadFailingStatusProvider struct {
 	provider.Provider[*commonproto.ClusterStatus]
