@@ -51,9 +51,6 @@ type Metadata interface {
 	DeleteNamespaceStatus(name string) commonobject.Borrowed[*commonproto.NamespaceStatus]
 
 	GetShardStatus(namespace string, shard int64) (commonobject.Borrowed[*commonproto.ShardMetadata], bool, error)
-	// UpdateShardStatus replaces the metadata of an existing shard. It
-	// overwrites the concurrent updates of the shard, e.g. a leader election:
-	// use UpdateShardStatuses for an update that depends on the current status.
 	UpdateShardStatus(namespace string, shard int64, shardMetadata *commonproto.ShardMetadata) error
 	// UpdateShardStatuses applies update to the shards of a namespace, as they
 	// are in the current status, and stores the result in a single status
