@@ -536,7 +536,7 @@ func TestDataServerControllerBecomeAvailableReportsChangedFeatures(t *testing.T)
 
 	expectReport()
 	assert.Equal(t, Running, nc.GetStatus().State)
-	assert.Equal(t, []proto.Feature{proto.Feature_FEATURE_DB_CHECKSUM}, nc.GetSupportedFeatures())
+	assert.Equal(t, []proto.Feature{proto.Feature_FEATURE_DB_CHECKSUM}, nc.GetFeatures())
 
 	// The data server restarts with the same binary
 	restart([]proto.Feature{proto.Feature_FEATURE_DB_CHECKSUM})
@@ -547,7 +547,7 @@ func TestDataServerControllerBecomeAvailableReportsChangedFeatures(t *testing.T)
 	restart(upgraded)
 	expectReport()
 	assert.Equal(t, int64(3), node.HandshakeCount.Load())
-	assert.Equal(t, upgraded, nc.GetSupportedFeatures())
+	assert.Equal(t, upgraded, nc.GetFeatures())
 
 	// Close waits for the health checks, so a report would be in the channel
 	assert.NoError(t, nc.Close())

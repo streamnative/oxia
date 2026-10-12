@@ -2810,7 +2810,7 @@ func TestController_RollingUpgradePinsNewFeatures(t *testing.T) {
 	supply := func(servers []*proto.DataServerIdentity) map[string][]proto.Feature {
 		features := make(map[string][]proto.Feature, len(servers))
 		for _, server := range servers {
-			features[server.GetNameOrDefault()] = dataServers[server.GetNameOrDefault()].GetSupportedFeatures()
+			features[server.GetNameOrDefault()] = dataServers[server.GetNameOrDefault()].GetFeatures()
 		}
 		return features
 	}

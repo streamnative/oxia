@@ -92,10 +92,10 @@ type Controller interface {
 	// GetStatus returns the current status of the data server.
 	GetStatus() Status
 
-	// GetSupportedFeatures returns the features that the data server
+	// GetFeatures returns the features that the data server
 	// supports, as its last handshake reported them, or none before its
 	// first handshake.
-	GetSupportedFeatures() []proto.Feature
+	GetFeatures() []proto.Feature
 
 	// Drain moves a data server removed from the configuration to Draining:
 	// it keeps receiving the shard assignments until it becomes unavailable.
