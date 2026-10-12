@@ -145,13 +145,13 @@ func (c *runtime) ListDataServerStatus() map[string]*proto.DataServerStatus {
 	statuses := make(map[string]*proto.DataServerStatus, len(c.dataServerControllers)+len(c.drainingNodes))
 	for name, dataServerController := range c.dataServerControllers {
 		statuses[name] = &proto.DataServerStatus{
-			State:             dataServerController.GetStatus().State.ToProto(),
+			State:             dataServerController.GetStatus().GetState().ToProto(),
 			SupportedFeatures: dataServerController.GetFeatures(),
 		}
 	}
 	for name, dataServerController := range c.drainingNodes {
 		statuses[name] = &proto.DataServerStatus{
-			State:             dataServerController.GetStatus().State.ToProto(),
+			State:             dataServerController.GetStatus().GetState().ToProto(),
 			SupportedFeatures: dataServerController.GetFeatures(),
 		}
 	}
@@ -170,7 +170,7 @@ func (c *runtime) GetDataServerStatus(name string) (*proto.DataServerStatus, boo
 		return nil, false
 	}
 	return &proto.DataServerStatus{
-		State:             dataServerController.GetStatus().State.ToProto(),
+		State:             dataServerController.GetStatus().GetState().ToProto(),
 		SupportedFeatures: dataServerController.GetFeatures(),
 	}, true
 }
@@ -759,8 +759,8 @@ func New(
 			// flap into a rebalancing loop. The re-election of leaders away
 			// from a dead node is not affected.
 			status := nc.GetStatus()
-			return status.State == dataservercontroller.Running &&
-				time.Since(status.LastTransitionTime) >= 5*time.Minute
+			return status.GetState() == dataservercontroller.Running &&
+				time.Since(status.GetLastTransitionTime()) >= 5*time.Minute
 		},
 	})
 
