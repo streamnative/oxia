@@ -263,10 +263,6 @@ func (s *controller) Election(electionAction *action.ElectionAction) string {
 	return clonedAction.NewLeader
 }
 
-// run does the initial check of the shard, or its leader election, then runs
-// the event loop until the shard controller closes. It fails only if the
-// shard metadata can't be loaded, before doing anything. It resets bo, the
-// backoff of its retries, once the shard is ready.
 func (s *controller) run(bo backoff.BackOff) error {
 	borrowedMeta, exists, err := s.metadataStore.GetShardStatus(s.namespace, s.shard)
 	if err != nil {
