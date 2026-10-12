@@ -36,20 +36,20 @@ import (
 )
 
 type defaultMetadata struct {
+	name   string
 	logger *slog.Logger
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+
+	configProvider provider.Provider[*commonproto.ClusterConfiguration]
+	configLock     sync.Mutex
 
 	statusProvider provider.Provider[*commonproto.ClusterStatus]
 	statusLock     sync.Mutex
 	// leadershipLost is the channel WaitToBecomeLeader returned: closed once
 	// this coordinator lost the leadership. Guarded by statusLock.
 	leadershipLost <-chan struct{}
-
-	configProvider provider.Provider[*commonproto.ClusterConfiguration]
-	configLock     sync.Mutex
-	name           string
 }
 
 func newMetadata(
@@ -60,12 +60,12 @@ func newMetadata(
 ) Metadata {
 	metadataCtx, cancel := context.WithCancel(ctx)
 	m := &defaultMetadata{
+		name:           name,
 		logger:         slog.With(slog.String("component", "coordinator-metadata")),
 		ctx:            metadataCtx,
 		cancel:         cancel,
-		statusProvider: statusProvider,
 		configProvider: configProvider,
-		name:           name,
+		statusProvider: statusProvider,
 	}
 	return m
 }
