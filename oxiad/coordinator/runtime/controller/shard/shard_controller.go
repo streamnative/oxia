@@ -253,9 +253,6 @@ func (s *controller) Election(electionAction *action.ElectionAction) string {
 	return clonedAction.NewLeader
 }
 
-// enqueueElectionAction sends the election action to the event loop without
-// waiting for it, or completes it without a leader if the shard controller is
-// closing or its queue is full.
 func (s *controller) enqueueElectionAction(electionAction *action.ElectionAction) {
 	s.terminationMu.RLock()
 	defer s.terminationMu.RUnlock()
