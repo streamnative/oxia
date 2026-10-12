@@ -50,7 +50,7 @@ type Metadata interface {
 	GetNamespaceStatus(namespace string) (commonobject.Borrowed[*commonproto.NamespaceStatus], bool, error)
 	DeleteNamespaceStatus(name string) commonobject.Borrowed[*commonproto.NamespaceStatus]
 
-	GetShardStatus(namespace string, shard int64) (commonobject.Borrowed[*commonproto.ShardMetadata], bool)
+	GetShardStatus(namespace string, shard int64) (commonobject.Borrowed[*commonproto.ShardMetadata], bool, error)
 	UpdateShardStatus(namespace string, shard int64, shardMetadata *commonproto.ShardMetadata) error
 	// UpdateShardStatuses applies update to the shards of a namespace, as they
 	// are in the current status, and stores the result in a single status
@@ -354,26 +354,20 @@ func (m *coordinatorMetadata) DeleteNamespaceStatus(name string) commonobject.Bo
 	return commonobject.Borrow(namespaceStatus)
 }
 
-func (m *coordinatorMetadata) GetShardStatus(namespace string, shard int64) (commonobject.Borrowed[*commonproto.ShardMetadata], bool) {
-	status, err := backoff.RetryNotifyWithData(m.statusProvider.Load, oxiatime.NewBackOff(m.ctx), func(err error, duration time.Duration) {
-		m.logger.Warn(
-			"failed to load the cluster status",
-			slog.Any("error", err),
-			slog.Duration("retry-after", duration),
-		)
-	})
+func (m *coordinatorMetadata) GetShardStatus(namespace string, shard int64) (commonobject.Borrowed[*commonproto.ShardMetadata], bool, error) {
+	status, err := m.statusProvider.Load()
 	if err != nil {
-		return commonobject.Borrowed[*commonproto.ShardMetadata]{}, false
+		return commonobject.Borrowed[*commonproto.ShardMetadata]{}, false, err
 	}
 	namespaceStatus, exists := status.Value.GetNamespaces()[namespace]
 	if !exists {
-		return commonobject.Borrowed[*commonproto.ShardMetadata]{}, false
+		return commonobject.Borrowed[*commonproto.ShardMetadata]{}, false, nil
 	}
 	shardStatus, exists := namespaceStatus.GetShards()[shard]
 	if !exists {
-		return commonobject.Borrowed[*commonproto.ShardMetadata]{}, false
+		return commonobject.Borrowed[*commonproto.ShardMetadata]{}, false, nil
 	}
-	return commonobject.Borrow(shardStatus), true
+	return commonobject.Borrow(shardStatus), true, nil
 }
 
 func (m *coordinatorMetadata) UpdateShardStatus(namespace string, shard int64, shardMetadata *commonproto.ShardMetadata) error {

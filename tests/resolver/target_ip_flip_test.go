@@ -113,7 +113,10 @@ func (c *testCluster) stopAllServers(t *testing.T) {
 }
 
 func (c *testCluster) leader() *proto.DataServerIdentity {
-	shard, _ := c.coordinator.Metadata().GetShardStatus(constant.DefaultNamespace, 0)
+	shard, exists, err := c.coordinator.Metadata().GetShardStatus(constant.DefaultNamespace, 0)
+	if err != nil || !exists {
+		return nil
+	}
 	return shard.UnsafeBorrow().Leader
 }
 

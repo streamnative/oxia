@@ -22,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -34,6 +35,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	gproto "google.golang.org/protobuf/proto"
 
+	commonobject "github.com/oxia-db/oxia/common/object"
 	"github.com/oxia-db/oxia/common/proto"
 	coordmetadata "github.com/oxia-db/oxia/oxiad/coordinator/metadata"
 	"github.com/oxia-db/oxia/oxiad/coordinator/metadata/provider"
@@ -153,8 +155,8 @@ func storeTestShardMetadata(
 }
 
 func testShardMetadata(metadata coordmetadata.Metadata, namespace string, shard int64) (*proto.ShardMetadata, bool) {
-	borrowedMeta, exists := metadata.GetShardStatus(namespace, shard)
-	if !exists {
+	borrowedMeta, exists, err := metadata.GetShardStatus(namespace, shard)
+	if err != nil || !exists {
 		return nil, false
 	}
 	return gproto.CloneOf(borrowedMeta.UnsafeBorrow()), true
@@ -425,6 +427,104 @@ func TestController(t *testing.T) {
 
 	rpc.GetNode(s1).ExpectNewTermRequest(t, shard, 4, true)
 	assert.NoError(t, sc.Close())
+}
+
+// shardStatusFailingMetadata fails the shard status loads while failures is
+// positive, each failed load decrementing it.
+type shardStatusFailingMetadata struct {
+	coordmetadata.Metadata
+	failures atomic.Int32
+}
+
+func (m *shardStatusFailingMetadata) GetShardStatus(namespace string, shard int64) (
+	commonobject.Borrowed[*proto.ShardMetadata], bool, error) {
+	if m.failures.Add(-1) >= 0 {
+		return commonobject.Borrowed[*proto.ShardMetadata]{}, false, errors.New("status unavailable")
+	}
+	return m.Metadata.GetShardStatus(namespace, shard)
+}
+
+// The shard controller retries the shard status loads that fail when it
+// starts, and when it handles the failure of the leader, which is notified
+// once: it elects a leader in both cases.
+func TestController_RetriesShardStatusLoadError(t *testing.T) {
+	var shard int64 = 5
+	rpc := mockutils.NewRpcProvider()
+
+	s1 := &proto.DataServerIdentity{Public: "s1:9091", Internal: "s1:8191"}
+	s2 := &proto.DataServerIdentity{Public: "s2:9091", Internal: "s2:8191"}
+	s3 := &proto.DataServerIdentity{Public: "s3:9091", Internal: "s3:8191"}
+
+	metadata := &shardStatusFailingMetadata{
+		Metadata: newTestMetadata(t, memory.NewProvider(metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled, ""),
+			&proto.ClusterConfiguration{}),
+	}
+	metadata.failures.Store(2)
+
+	sc := newTestController(t, metadata, constant.DefaultNamespace, shard, namespaceConfig, &proto.ShardMetadata{
+		Status:   proto.ShardStatusUnknown,
+		Term:     1,
+		Leader:   nil,
+		Ensemble: []*proto.DataServerIdentity{s1, s2, s3},
+	}, NoOpSupportedFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
+	t.Cleanup(func() {
+		assert.NoError(t, sc.Close())
+	})
+
+	rpc.GetNode(s1).NewTermResponse(1, 0, nil)
+	rpc.GetNode(s2).NewTermResponse(1, -1, nil)
+	rpc.GetNode(s3).NewTermResponse(1, -1, nil)
+	rpc.GetNode(s1).BecomeLeaderResponse(nil)
+
+	rpc.GetNode(s1).ExpectNewTermRequest(t, shard, 2, true)
+	rpc.GetNode(s2).ExpectNewTermRequest(t, shard, 2, true)
+	rpc.GetNode(s3).ExpectNewTermRequest(t, shard, 2, true)
+	rpc.GetNode(s1).ExpectBecomeLeaderRequest(t, shard, 2, 3)
+
+	assert.Eventually(t, func() bool {
+		return shardStatus(metadata, constant.DefaultNamespace, shard) == proto.ShardStatusSteadyState
+	}, 10*time.Second, 100*time.Millisecond)
+	assertShardLeader(t, metadata, constant.DefaultNamespace, shard, s1)
+
+	// The failure of the leader is notified once: its handling retries the
+	// load of the shard status
+	rpc.GetNode(s2).NewTermResponse(2, 0, nil)
+	rpc.GetNode(s3).NewTermResponse(2, -1, nil)
+	rpc.GetNode(s2).BecomeLeaderResponse(nil)
+
+	metadata.failures.Store(2)
+	rpc.FailNode(s1, errors.New("failed to connect"))
+	sc.BecameUnavailable(s1)
+
+	rpc.GetNode(s2).ExpectNewTermRequest(t, shard, 3, true)
+	rpc.GetNode(s3).ExpectNewTermRequest(t, shard, 3, true)
+	rpc.GetNode(s2).ExpectBecomeLeaderRequest(t, shard, 3, 3)
+
+	assert.Eventually(t, func() bool {
+		return shardStatus(metadata, constant.DefaultNamespace, shard) == proto.ShardStatusSteadyState &&
+			shardTerm(metadata, constant.DefaultNamespace, shard) == 3
+	}, 10*time.Second, 100*time.Millisecond)
+	assertShardLeader(t, metadata, constant.DefaultNamespace, shard, s2)
+}
+
+// The periodic tasks skip a round whose shard status load fails, instead of
+// panicking as if the shard was missing.
+func TestController_PeriodicTasksSkipShardStatusLoadError(t *testing.T) {
+	metadata := &shardStatusFailingMetadata{
+		Metadata: newTestMetadata(t, memory.NewProvider(metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled, ""),
+			&proto.ClusterConfiguration{}),
+	}
+	metadata.failures.Store(1)
+	s := &controller{
+		namespace:     constant.DefaultNamespace,
+		shard:         5,
+		metadataStore: metadata,
+		rpc:           mockutils.NewRpcProvider(),
+		ctx:           t.Context(),
+		logger:        slog.Default(),
+	}
+	assert.NotPanics(t, s.handlePeriodicTasks)
+	assert.Zero(t, metadata.failures.Load(), "the status load failed")
 }
 
 func TestController_StartingWithLeaderAlreadyPresent(t *testing.T) {
@@ -1824,30 +1924,35 @@ func TestController_PeriodicTasksPersistOnlyDirtyState(t *testing.T) {
 		logger:        slog.Default(),
 	}
 
-	borrowedBefore, exists := metadata.GetShardStatus(constant.DefaultNamespace, shard)
+	borrowedBefore, exists, err := metadata.GetShardStatus(constant.DefaultNamespace, shard)
+	require.NoError(t, err)
 	assert.True(t, exists)
 
 	// Steady state without pending-delete nodes: no persist
 	s.handlePeriodicTasks()
-	borrowedAfter, _ := metadata.GetShardStatus(constant.DefaultNamespace, shard)
+	borrowedAfter, _, err := metadata.GetShardStatus(constant.DefaultNamespace, shard)
+	require.NoError(t, err)
 	assert.Same(t, borrowedBefore.UnsafeBorrow(), borrowedAfter.UnsafeBorrow())
 
 	updatedShardMeta := gproto.CloneOf(shardMeta)
 	updatedShardMeta.PendingDeleteShardNodes = []*proto.DataServerIdentity{pendingDeleteNode}
 	require.NoError(t, metadata.UpdateShardStatus(constant.DefaultNamespace, shard, updatedShardMeta))
-	borrowedBefore, _ = metadata.GetShardStatus(constant.DefaultNamespace, shard)
+	borrowedBefore, _, err = metadata.GetShardStatus(constant.DefaultNamespace, shard)
+	require.NoError(t, err)
 
 	rpc.GetNode(pendingDeleteNode).DeleteShardResponse(nil)
 	s.handlePeriodicTasks()
 	rpc.GetNode(pendingDeleteNode).ExpectDeleteShardRequest(t, shard, shardMeta.Term)
 
-	borrowedAfter, _ = metadata.GetShardStatus(constant.DefaultNamespace, shard)
+	borrowedAfter, _, err = metadata.GetShardStatus(constant.DefaultNamespace, shard)
+	require.NoError(t, err)
 	assert.NotSame(t, borrowedBefore.UnsafeBorrow(), borrowedAfter.UnsafeBorrow())
 	assert.Empty(t, borrowedAfter.UnsafeBorrow().PendingDeleteShardNodes)
 
 	borrowedBefore = borrowedAfter
 	s.handlePeriodicTasks()
-	borrowedAfter, _ = metadata.GetShardStatus(constant.DefaultNamespace, shard)
+	borrowedAfter, _, err = metadata.GetShardStatus(constant.DefaultNamespace, shard)
+	require.NoError(t, err)
 	assert.Same(t, borrowedBefore.UnsafeBorrow(), borrowedAfter.UnsafeBorrow())
 }
 
@@ -2082,7 +2187,8 @@ func TestController_DeleteShardAllowsNilEventListener(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("deleteShardWithRetries did not complete")
 	}
-	_, exists := metadata.GetShardStatus(constant.DefaultNamespace, shard)
+	_, exists, err := metadata.GetShardStatus(constant.DefaultNamespace, shard)
+	require.NoError(t, err)
 	assert.False(t, exists)
 	assert.True(t, s.terminating.Load())
 }

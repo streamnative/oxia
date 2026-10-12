@@ -632,7 +632,7 @@ func startElection(t *testing.T, metadata coordmetadata.Metadata, rpc coordrpc.P
 	t.Cleanup(func() {
 		s.ctxCancel()
 		<-done
-		s.currentElection.Stop()
+		s.currentElection.Load().Stop()
 	})
 	return elected
 }

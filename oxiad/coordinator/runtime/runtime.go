@@ -809,6 +809,11 @@ func (c *runtime) InitiateSplit(namespace string, parentShardId int64, splitPoin
 	// leader elections don't hold the runtime lock, and may have updated them
 	// since the status was read above. For the same reason, the parent is
 	// validated again.
+	parentSplit := &proto.SplitMetadata{
+		Phase:         proto.SplitPhaseBootstrap,
+		ChildShardIds: []int64{leftChildId, rightChildId},
+		SplitPoint:    sp,
+	}
 	var parentErr error
 	if err := c.metadata.UpdateShardStatuses(namespace, func(shards map[int64]*proto.ShardMetadata) bool {
 		parent := shards[parentShardId]
@@ -816,11 +821,7 @@ func (c *runtime) InitiateSplit(namespace string, parentShardId int64, splitPoin
 			return false
 		}
 		// Create split metadata for parent
-		parent.Split = &proto.SplitMetadata{
-			Phase:         proto.SplitPhaseBootstrap,
-			ChildShardIds: []int64{leftChildId, rightChildId},
-			SplitPoint:    sp,
-		}
+		parent.Split = pb.CloneOf(parentSplit)
 		maps.Copy(shards, children)
 		return true
 	}); err != nil {
@@ -851,6 +852,7 @@ func (c *runtime) InitiateSplit(namespace string, parentShardId int64, splitPoin
 		Metadata:      c.metadata,
 		RpcProvider:   c.rpc,
 		EventListener: c,
+		Split:         parentSplit,
 		EnsembleSelector: func(ns string) ([]*proto.DataServerIdentity, error) {
 			status, err := c.metadata.ListNamespaceStatus()
 			if err != nil {
@@ -982,6 +984,7 @@ func (c *runtime) restartInProgressSplits(clusterStatus map[string]commonobject.
 				Metadata:      c.metadata,
 				RpcProvider:   c.rpc,
 				EventListener: c,
+				Split:         meta.Split,
 				EnsembleSelector: func(namespace string) ([]*proto.DataServerIdentity, error) {
 					status, err := c.metadata.ListNamespaceStatus()
 					if err != nil {

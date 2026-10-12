@@ -96,16 +96,16 @@ func (m *mockMetadata) GetNamespaceStatus(namespace string) (commonobject.Borrow
 	return commonobject.Borrow(status), true, nil
 }
 
-func (m *mockMetadata) GetShardStatus(namespace string, shard int64) (commonobject.Borrowed[*proto.ShardMetadata], bool) {
+func (m *mockMetadata) GetShardStatus(namespace string, shard int64) (commonobject.Borrowed[*proto.ShardMetadata], bool, error) {
 	namespaceStatus, exists := m.status.GetNamespaces()[namespace]
 	if !exists {
-		return commonobject.Borrowed[*proto.ShardMetadata]{}, false
+		return commonobject.Borrowed[*proto.ShardMetadata]{}, false, nil
 	}
 	shardStatus, exists := namespaceStatus.GetShards()[shard]
 	if !exists {
-		return commonobject.Borrowed[*proto.ShardMetadata]{}, false
+		return commonobject.Borrowed[*proto.ShardMetadata]{}, false, nil
 	}
-	return commonobject.Borrow(shardStatus), true
+	return commonobject.Borrow(shardStatus), true, nil
 }
 
 func (*mockMetadata) DeleteNamespaceStatus(string) commonobject.Borrowed[*proto.NamespaceStatus] {

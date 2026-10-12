@@ -114,7 +114,8 @@ func (m *racingMetadata) UpdateShardStatuses(namespace string, update func(map[i
 // member of the ensemble. It can be called from any goroutine.
 func electLeader(t *testing.T, metadata coordmetadata.Metadata, shard int64) *proto.ShardMetadata {
 	t.Helper()
-	borrowed, _ := metadata.GetShardStatus(constant.DefaultNamespace, shard)
+	borrowed, _, err := metadata.GetShardStatus(constant.DefaultNamespace, shard)
+	assert.NoError(t, err)
 	elected := pb.CloneOf(borrowed.UnsafeBorrow())
 	leader := slices.IndexFunc(elected.Ensemble, func(server *proto.DataServerIdentity) bool {
 		return server.GetPublic() == elected.GetLeader().GetPublic()
@@ -130,7 +131,8 @@ func electLeader(t *testing.T, metadata coordmetadata.Metadata, shard int64) *pr
 // the leader of its last election. It can be called from any goroutine.
 func assertElectionKept(t *testing.T, metadata coordmetadata.Metadata, shard int64, elected *proto.ShardMetadata) {
 	t.Helper()
-	borrowed, _ := metadata.GetShardStatus(constant.DefaultNamespace, shard)
+	borrowed, _, err := metadata.GetShardStatus(constant.DefaultNamespace, shard)
+	assert.NoError(t, err)
 	current := borrowed.UnsafeBorrow()
 	assert.Equal(t, elected.GetStatus(), current.GetStatus(), "shard %d status", shard)
 	assert.Equal(t, elected.GetTerm(), current.GetTerm(), "shard %d term", shard)
@@ -242,7 +244,11 @@ func (r *splitTestRuntime) runSplit(t *testing.T, splitTimeout time.Duration) {
 		Metadata:      r.metadata,
 		RpcProvider:   r.rpc,
 		EventListener: r.runtime,
-		SplitTimeout:  splitTimeout,
+		Split: &proto.SplitMetadata{
+			ChildShardIds: []int64{splitLeftChild, splitRightChild},
+			SplitPoint:    splitPoint,
+		},
+		SplitTimeout: splitTimeout,
 	})
 	r.splitControllers[splitParentShard] = sc
 	r.Unlock()
@@ -577,10 +583,12 @@ func TestInitiateSplit_KeepsConcurrentLeaderElections(t *testing.T) {
 	assertElectionKept(t, metadata, splitOtherShard, otherElected)
 	assertElectionKept(t, metadata, splitParentShard, parentElected)
 
-	parent, _ := metadata.GetShardStatus(constant.DefaultNamespace, splitParentShard)
+	parent, _, err := metadata.GetShardStatus(constant.DefaultNamespace, splitParentShard)
+	require.NoError(t, err)
 	assert.Equal(t, []int64{leftChild, rightChild}, parent.UnsafeBorrow().GetSplit().GetChildShardIds())
 	for _, child := range []int64{leftChild, rightChild} {
-		childMeta, exists := metadata.GetShardStatus(constant.DefaultNamespace, child)
+		childMeta, exists, err := metadata.GetShardStatus(constant.DefaultNamespace, child)
+		require.NoError(t, err)
 		require.True(t, exists, "child shard %d", child)
 		assert.Equal(t, splitParentShard, childMeta.UnsafeBorrow().GetSplit().GetParentShardId())
 	}
@@ -595,7 +603,8 @@ func TestInitiateSplit_FailsIfParentElectionStarts(t *testing.T) {
 	var election *proto.ShardMetadata
 	metadata.beforeWrite = func() {
 		once.Do(func() {
-			borrowed, _ := metadata.GetShardStatus(constant.DefaultNamespace, splitParentShard)
+			borrowed, _, err := metadata.GetShardStatus(constant.DefaultNamespace, splitParentShard)
+			assert.NoError(t, err)
 			election = pb.CloneOf(borrowed.UnsafeBorrow())
 			election.Status = proto.ShardStatusElection
 			election.Leader = nil
@@ -609,7 +618,8 @@ func TestInitiateSplit_FailsIfParentElectionStarts(t *testing.T) {
 
 	require.NotNil(t, election)
 	assertElectionKept(t, metadata, splitParentShard, election)
-	parent, _ := metadata.GetShardStatus(constant.DefaultNamespace, splitParentShard)
+	parent, _, err := metadata.GetShardStatus(constant.DefaultNamespace, splitParentShard)
+	require.NoError(t, err)
 	assert.Nil(t, parent.UnsafeBorrow().GetSplit())
 	namespace, _, err := metadata.GetNamespaceStatus(constant.DefaultNamespace)
 	require.NoError(t, err)
@@ -659,7 +669,8 @@ func TestInitiateSplit_SelectsChildrenSupportingParentFeatures(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, child := range []int64{leftChild, rightChild} {
-		childMeta, exists := metadata.GetShardStatus(constant.DefaultNamespace, child)
+		childMeta, exists, err := metadata.GetShardStatus(constant.DefaultNamespace, child)
+		require.NoError(t, err)
 		require.True(t, exists, "child shard %d", child)
 		for _, server := range childMeta.UnsafeBorrow().GetEnsemble() {
 			assert.False(t, slices.ContainsFunc(older, func(o *proto.DataServerIdentity) bool {
@@ -680,7 +691,8 @@ func TestSplit_RejectsChangeEnsemblePlannedBeforeSplit(t *testing.T) {
 	rpc.GetNode(splitPs1).GetStatusResponse(splitParentTerm, proto.ServingStatus_LEADER, 0, 0)
 	rpc.GetNode(splitPs2).GetStatusResponse(splitParentTerm, proto.ServingStatus_FOLLOWER, 0, 0)
 	rpc.GetNode(splitPs3).GetStatusResponse(splitParentTerm, proto.ServingStatus_FOLLOWER, 0, 0)
-	borrowed, _ := metadata.GetShardStatus(constant.DefaultNamespace, splitParentShard)
+	borrowed, _, err := metadata.GetShardStatus(constant.DefaultNamespace, splitParentShard)
+	require.NoError(t, err)
 	parentController := shardcontroller.NewController(constant.DefaultNamespace, splitParentShard,
 		r.namespaceConfigForSplit(constant.DefaultNamespace), borrowed.UnsafeBorrow(), metadata,
 		shardcontroller.NoOpSupportedFeaturesSupplier, r, rpc, time.Hour)
@@ -696,7 +708,7 @@ func TestSplit_RejectsChangeEnsemblePlannedBeforeSplit(t *testing.T) {
 	// pick it for the ensemble of a child.
 	spare := &proto.DataServerIdentity{Public: "spare:9091", Internal: "spare:8191"}
 	swap := action.NewChangeEnsembleAction(splitParentShard, splitPs3, spare)
-	_, _, err := r.InitiateSplit(constant.DefaultNamespace, splitParentShard, nil)
+	_, _, err = r.InitiateSplit(constant.DefaultNamespace, splitParentShard, nil)
 	require.NoError(t, err)
 
 	// What the election that changes the ensemble would need
@@ -710,7 +722,8 @@ func TestSplit_RejectsChangeEnsemblePlannedBeforeSplit(t *testing.T) {
 	_, err = swap.Wait()
 	assert.ErrorIs(t, err, shardcontroller.ErrNotReadyForChangeEnsemble)
 
-	borrowed, _ = metadata.GetShardStatus(constant.DefaultNamespace, splitParentShard)
+	borrowed, _, err = metadata.GetShardStatus(constant.DefaultNamespace, splitParentShard)
+	require.NoError(t, err)
 	parent := borrowed.UnsafeBorrow()
 	assert.NotNil(t, parent.GetSplit())
 	assert.Equal(t, splitParentTerm, parent.GetTerm())
