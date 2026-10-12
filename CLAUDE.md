@@ -90,6 +90,9 @@ Key components:
 - Sign off every commit with `git commit -s`: the DCO check fails without it.
 - Prefix the titles with the type of change: `fix:`, `feat:`, `perf:`, `refactor:`, `test:`, `docs:`, `ci:`, `chore:`.
 - Keep a pull request to one change, and its description short. Split a larger change into stacked pull requests.
+- Write the description with the sections of `.github/pull_request_template.md`: Motivation, Modifications, Shared
+  state (only when the change adds shared mutable state), Testing and Checklist.
+- Leave the boxes of the checklist unchecked: the author checks them, after reviewing the change.
 
 ## Concurrency: Avoid New Shared Mutable State
 
