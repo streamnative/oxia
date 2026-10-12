@@ -72,9 +72,6 @@ type Metadata interface {
 	DeleteNamespace(name string) (*commonproto.Namespace, error)
 	ListNamespace() map[string]commonobject.Borrowed[*commonproto.Namespace]
 	GetNamespace(namespace string) (commonobject.Borrowed[*commonproto.Namespace], bool, error)
-	// GetNamespaceTermOptions returns the NewTerm options of the shards of a
-	// namespace: its notifications and key sorting, or the defaults if the
-	// namespace doesn't exist.
 	GetNamespaceTermOptions(namespace string) (*commonproto.NewTermOptions, error)
 
 	CreateDataServer(dataServer *commonproto.DataServer) error
