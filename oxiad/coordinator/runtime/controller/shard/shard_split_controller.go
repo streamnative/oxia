@@ -190,7 +190,7 @@ func (sc *SplitController) run() {
 	switch {
 	case exists && phase == proto.SplitPhaseFinalize:
 		if finalizeErr != nil && sc.finalizeCtx.Err() == nil {
-			// The split state could not be persisted, see updateShardMeta
+			// A shard of the split is gone, see updateShardMeta
 			sc.logger.Warn("Split stopped, it resumes from its persisted state after a restart",
 				slog.Any("error", finalizeErr))
 		}
@@ -202,7 +202,7 @@ func (sc *SplitController) run() {
 		return
 	}
 	if err != nil && sc.ctx.Err() == nil {
-		// The split state could not be persisted, see updateShardMeta
+		// A shard of the split is gone, see updateShardMeta
 		sc.logger.Warn("Split stopped, it resumes from its persisted state after a restart", slog.Any("error", err))
 	}
 
@@ -278,8 +278,8 @@ func isFinalizingSplitParent(meta *proto.ShardMetadata) bool {
 }
 
 // updatePhase atomically updates the split phase on both parent and children,
-// on their current metadata. Failing to persist it stops the split, as in
-// updateShardMeta.
+// on their current metadata. A failed write is returned, and the step that
+// updates the phase is retried.
 func (sc *SplitController) updatePhase(newPhase proto.SplitPhase) error {
 	_, exists, err := sc.metadata.GetNamespaceStatus(sc.namespace)
 	if err != nil {
@@ -291,7 +291,8 @@ func (sc *SplitController) updatePhase(newPhase proto.SplitPhase) error {
 			slog.String("phase", newPhase.String()))
 		return nil
 	}
-	if err := sc.metadata.UpdateShardStatuses(sc.namespace, func(shards map[int64]*proto.ShardMetadata) bool {
+	return sc.metadata.PatchNamespaceStatus(sc.namespace, func(status *proto.NamespaceStatus) bool {
+		shards := status.Shards
 		changed := false
 		for _, shardId := range []int64{sc.parentShardId, sc.leftChildId, sc.rightChildId} {
 			if meta, exists := shards[shardId]; exists && meta.Split != nil {
@@ -300,10 +301,7 @@ func (sc *SplitController) updatePhase(newPhase proto.SplitPhase) error {
 			}
 		}
 		return changed
-	}); err != nil {
-		return backoff.Permanent(err)
-	}
-	return nil
+	})
 }
 
 // runBootstrap validates preconditions, fences the members of the children's
@@ -1000,7 +998,8 @@ func (sc *SplitController) removeSplit() error {
 			slog.String("namespace", sc.namespace))
 		return nil
 	}
-	return sc.metadata.UpdateShardStatuses(sc.namespace, func(shards map[int64]*proto.ShardMetadata) bool {
+	return sc.metadata.PatchNamespaceStatus(sc.namespace, func(status *proto.NamespaceStatus) bool {
+		shards := status.Shards
 		changed := false
 		for _, childId := range []int64{sc.leftChildId, sc.rightChildId} {
 			if _, exists := shards[childId]; exists {
@@ -1060,18 +1059,17 @@ func (sc *SplitController) updateChildMeta(childId int64, fn func(meta *proto.Sh
 // updateShardMeta persists a change to a shard's metadata, applied to its
 // current metadata: the shard controller updates the same shard concurrently,
 // e.g. with the outcome of a leader election, which a write of an earlier copy
-// would revert. A failed write (the coordinator is closing, or the shard is
-// gone) returns a permanent error: the split must stop rather than retry its
-// phases from a state that was not persisted. It resumes from the persisted
-// state after a restart.
+// would revert. A shard that is gone returns a permanent error: the split
+// stops, and resumes from its persisted state after a restart. A failed write
+// is returned, and the step that made it is retried: it applies the change to
+// the current metadata again.
 func (sc *SplitController) updateShardMeta(shardId int64, fn func(meta *proto.ShardMetadata)) error {
 	return sc.updateShardsMeta(map[int64]func(meta *proto.ShardMetadata){shardId: fn})
 }
 
 // updateShardsMeta persists changes to the metadata of several shards in a
 // single status update, applied to their current metadata: all of them, or
-// none if one of the shards is gone. A failed write returns a permanent error,
-// as in updateShardMeta.
+// none if one of the shards is gone, as in updateShardMeta.
 func (sc *SplitController) updateShardsMeta(updates map[int64]func(meta *proto.ShardMetadata)) error {
 	_, err := sc.updateShardsMetaIf(nil, updates)
 	return err
@@ -1095,7 +1093,8 @@ func (sc *SplitController) updateShardsMetaIf(
 	}
 	var notFound error
 	applied := false
-	err = sc.metadata.UpdateShardStatuses(sc.namespace, func(shards map[int64]*proto.ShardMetadata) bool {
+	err = sc.metadata.PatchNamespaceStatus(sc.namespace, func(status *proto.NamespaceStatus) bool {
+		shards := status.Shards
 		notFound = nil
 		applied = false
 		for shardId := range updates {
@@ -1113,11 +1112,11 @@ func (sc *SplitController) updateShardsMetaIf(
 		applied = true
 		return true
 	})
-	if err == nil {
-		err = notFound
-	}
 	if err != nil {
-		return false, backoff.Permanent(err)
+		return false, err
+	}
+	if notFound != nil {
+		return false, backoff.Permanent(notFound)
 	}
 	return applied, nil
 }

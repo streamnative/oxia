@@ -329,7 +329,7 @@ func (statusWriteFailingMetadata) UpdateShardStatus(string, int64, *proto.ShardM
 	return context.Canceled
 }
 
-func (statusWriteFailingMetadata) UpdateShardStatuses(string, func(map[int64]*proto.ShardMetadata) bool) error {
+func (statusWriteFailingMetadata) PatchNamespaceStatus(string, func(*proto.NamespaceStatus) bool) error {
 	return context.Canceled
 }
 
@@ -1882,7 +1882,8 @@ func TestController_ChangeEnsembleStopsWhenSplitStarts(t *testing.T) {
 	requireClosed(t, election.held, "the election to start")
 
 	// ...when the split of the shard starts
-	require.NoError(t, metadata.UpdateShardStatuses(constant.DefaultNamespace, func(shards map[int64]*proto.ShardMetadata) bool {
+	require.NoError(t, metadata.PatchNamespaceStatus(constant.DefaultNamespace, func(status *proto.NamespaceStatus) bool {
+		shards := status.Shards
 		shards[0].Split = &proto.SplitMetadata{
 			Phase:         proto.SplitPhaseBootstrap,
 			ChildShardIds: []int64{1, 2},
@@ -1907,7 +1908,8 @@ func TestController_ChangeEnsembleStopsWhenSplitStarts(t *testing.T) {
 
 	// The split is aborted, and the balancer moves the shard again: the
 	// stopped election must not hold the change back as not ready
-	require.NoError(t, metadata.UpdateShardStatuses(constant.DefaultNamespace, func(shards map[int64]*proto.ShardMetadata) bool {
+	require.NoError(t, metadata.PatchNamespaceStatus(constant.DefaultNamespace, func(status *proto.NamespaceStatus) bool {
+		shards := status.Shards
 		shards[0].Split = nil
 		return true
 	}))
@@ -2081,8 +2083,9 @@ func TestController_PeriodicTasksKeepSplitUpdates(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			_, metadata, _ := setupSplitTest(t, proto.SplitPhaseCutover)
 			updateParent := func(update func(parent *proto.ShardMetadata)) {
-				require.NoError(t, metadata.UpdateShardStatuses(constant.DefaultNamespace,
-					func(shards map[int64]*proto.ShardMetadata) bool {
+				require.NoError(t, metadata.PatchNamespaceStatus(constant.DefaultNamespace,
+					func(status *proto.NamespaceStatus) bool {
+						shards := status.Shards
 						update(shards[0])
 						return true
 					}))

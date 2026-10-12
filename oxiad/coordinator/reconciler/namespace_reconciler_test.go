@@ -179,10 +179,10 @@ func (m *mockNamespaceMetadata) UpdateShardStatus(namespace string, shard int64,
 	return nil
 }
 
-func (m *mockNamespaceMetadata) UpdateShardStatuses(namespace string, update func(map[int64]*proto.ShardMetadata) bool) error {
+func (m *mockNamespaceMetadata) PatchNamespaceStatus(namespace string, update func(*proto.NamespaceStatus) bool) error {
 	cloned := gproto.Clone(m.status).(*proto.ClusterStatus)
 	ns, exists := cloned.GetNamespaces()[namespace]
-	if !exists || !update(ns.Shards) {
+	if !exists || !update(ns) {
 		return nil
 	}
 	m.status = cloned

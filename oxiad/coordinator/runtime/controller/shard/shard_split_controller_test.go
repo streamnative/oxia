@@ -27,6 +27,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
+
 	metadatacommon "github.com/oxia-db/oxia/oxiad/coordinator/metadata/common"
 	metadatacodec "github.com/oxia-db/oxia/oxiad/coordinator/metadata/common/codec"
 
@@ -755,8 +757,8 @@ func (m *writeObservingMetadata) UpdateShardStatus(namespace string, shard int64
 	return err
 }
 
-func (m *writeObservingMetadata) UpdateShardStatuses(namespace string, update func(map[int64]*proto.ShardMetadata) bool) error {
-	err := m.Metadata.UpdateShardStatuses(namespace, update)
+func (m *writeObservingMetadata) PatchNamespaceStatus(namespace string, update func(*proto.NamespaceStatus) bool) error {
+	err := m.Metadata.PatchNamespaceStatus(namespace, update)
 	m.afterWrite()
 	return err
 }
@@ -1676,6 +1678,51 @@ func TestSplitController_AbortReturnsShardStatusLoadError(t *testing.T) {
 	}
 }
 
+// patchFailingMetadata fails the namespace status patches while failures is
+// positive, each failed patch decrementing it.
+type patchFailingMetadata struct {
+	coordmetadata.Metadata
+	failures atomic.Int32
+}
+
+func (m *patchFailingMetadata) PatchNamespaceStatus(namespace string, update func(*proto.NamespaceStatus) bool) error {
+	if m.failures.Add(-1) >= 0 {
+		return errors.New("store unavailable")
+	}
+	return m.Metadata.PatchNamespaceStatus(namespace, update)
+}
+
+// A failed status write of the split is retried with the step that made it,
+// instead of stopping the split. A shard that is gone stops it.
+func TestSplitController_RetriesFailedStatusWrite(t *testing.T) {
+	_, statusRes, _ := setupSplitTest(t, proto.SplitPhaseBootstrap)
+	metadata := &patchFailingMetadata{Metadata: statusRes}
+	metadata.failures.Store(1)
+
+	sc := &SplitController{
+		namespace:     constant.DefaultNamespace,
+		parentShardId: 0,
+		leftChildId:   1,
+		rightChildId:  2,
+		metadata:      metadata,
+		logger:        slog.Default(),
+	}
+	err := sc.updatePhase(proto.SplitPhaseCatchUp)
+	require.ErrorContains(t, err, "store unavailable")
+	var permanent *backoff.PermanentError
+	assert.False(t, errors.As(err, &permanent), "a failed write stops the split")
+
+	require.NoError(t, sc.updatePhase(proto.SplitPhaseCatchUp))
+	phase, exists, err := sc.currentPhase()
+	require.NoError(t, err)
+	assert.True(t, exists)
+	assert.Equal(t, proto.SplitPhaseCatchUp, phase)
+
+	require.NoError(t, statusRes.DeleteShardStatus(constant.DefaultNamespace, 2))
+	err = sc.updateChildMeta(2, func(meta *proto.ShardMetadata) {})
+	assert.True(t, errors.As(err, &permanent), "a missing shard doesn't stop the split")
+}
+
 // --- Point of no return ---
 
 // setBootstrappedState records what Bootstrap leaves behind: the child leaders
@@ -2223,8 +2270,8 @@ func (m *holdingMetadata) UpdateShardStatus(namespace string, shard int64, shard
 	return m.write(func() error { return m.Metadata.UpdateShardStatus(namespace, shard, shardMetadata) })
 }
 
-func (m *holdingMetadata) UpdateShardStatuses(namespace string, update func(map[int64]*proto.ShardMetadata) bool) error {
-	return m.write(func() error { return m.Metadata.UpdateShardStatuses(namespace, update) })
+func (m *holdingMetadata) PatchNamespaceStatus(namespace string, update func(*proto.NamespaceStatus) bool) error {
+	return m.write(func() error { return m.Metadata.PatchNamespaceStatus(namespace, update) })
 }
 
 // requireClosed waits for the channel to be closed.

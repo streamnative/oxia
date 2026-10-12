@@ -79,8 +79,8 @@ func (m *recomputingMetadata) UpdateShardStatus(namespace string, shard int64, s
 	return err
 }
 
-func (m *recomputingMetadata) UpdateShardStatuses(namespace string, update func(map[int64]*proto.ShardMetadata) bool) error {
-	err := m.Metadata.UpdateShardStatuses(namespace, update)
+func (m *recomputingMetadata) PatchNamespaceStatus(namespace string, update func(*proto.NamespaceStatus) bool) error {
+	err := m.Metadata.PatchNamespaceStatus(namespace, update)
 	m.afterWrite()
 	return err
 }
@@ -104,9 +104,9 @@ func (m *racingMetadata) UpdateShardStatus(namespace string, shard int64, shardM
 	return m.Metadata.UpdateShardStatus(namespace, shard, shardMetadata)
 }
 
-func (m *racingMetadata) UpdateShardStatuses(namespace string, update func(map[int64]*proto.ShardMetadata) bool) error {
+func (m *racingMetadata) PatchNamespaceStatus(namespace string, update func(*proto.NamespaceStatus) bool) error {
 	m.beforeWrite()
-	return m.Metadata.UpdateShardStatuses(namespace, update)
+	return m.Metadata.PatchNamespaceStatus(namespace, update)
 }
 
 // electLeader writes the outcome of a new leader election of the shard, as its
@@ -391,7 +391,8 @@ func TestSplit_RestartPastPointOfNoReturn(t *testing.T) {
 
 	// The previous coordinator elected the child leaders at the parent's term,
 	// then moved the split past the point of no return
-	require.NoError(t, r.metadata.UpdateShardStatuses(constant.DefaultNamespace, func(shards map[int64]*proto.ShardMetadata) bool {
+	require.NoError(t, r.metadata.PatchNamespaceStatus(constant.DefaultNamespace, func(status *proto.NamespaceStatus) bool {
+		shards := status.Shards
 		parent := shards[splitParentShard]
 		parent.Term = splitParentTerm + 1
 		parent.Leader = nil

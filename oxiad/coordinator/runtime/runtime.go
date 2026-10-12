@@ -827,7 +827,8 @@ func (c *runtime) InitiateSplit(namespace string, parentShardId int64, splitPoin
 		SplitPoint:    sp,
 	}
 	var parentErr error
-	if err := c.metadata.UpdateShardStatuses(namespace, func(shards map[int64]*proto.ShardMetadata) bool {
+	if err := c.metadata.PatchNamespaceStatus(namespace, func(status *proto.NamespaceStatus) bool {
+		shards := status.Shards
 		parent := shards[parentShardId]
 		if parentErr = validateSplitParent(namespace, parentShardId, parent); parentErr != nil {
 			return false

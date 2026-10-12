@@ -48,19 +48,11 @@ type Metadata interface {
 	CreateNamespaceStatus(name string, status *commonproto.NamespaceStatus) error
 	ListNamespaceStatus() (map[string]commonobject.Borrowed[*commonproto.NamespaceStatus], error)
 	GetNamespaceStatus(namespace string) (commonobject.Borrowed[*commonproto.NamespaceStatus], bool, error)
+	PatchNamespaceStatus(namespace string, update func(status *commonproto.NamespaceStatus) bool) error
 	DeleteNamespaceStatus(name string) commonobject.Borrowed[*commonproto.NamespaceStatus]
 
 	GetShardStatus(namespace string, shard int64) (commonobject.Borrowed[*commonproto.ShardMetadata], bool, error)
 	UpdateShardStatus(namespace string, shard int64, shardMetadata *commonproto.ShardMetadata) error
-	// UpdateShardStatuses applies update to the shards of a namespace, as they
-	// are in the current status, and stores the result in a single status
-	// write: no reader sees some of the changes without the others, and no
-	// concurrent update, e.g. a leader election, is reverted. update may run
-	// more than once, each time on a fresh copy, and returns false to leave
-	// the status unchanged, in which case UpdateShardStatuses returns nil. It
-	// may delete shards: a namespace left without shards is deleted, as by
-	// DeleteShardStatus.
-	UpdateShardStatuses(namespace string, update func(shards map[int64]*commonproto.ShardMetadata) bool) error
 	DeleteShardStatus(namespace string, shard int64) error
 
 	GetConfig() (commonobject.Borrowed[*commonproto.ClusterConfiguration], error)
@@ -323,6 +315,28 @@ func (m *coordinatorMetadata) GetNamespaceStatus(namespace string) (commonobject
 	return commonobject.Borrow(namespaceStatus), true, nil
 }
 
+func (m *coordinatorMetadata) PatchNamespaceStatus(
+	namespace string,
+	update func(status *commonproto.NamespaceStatus) bool,
+) error {
+	namespaceExists := true
+	if err := m.computeStatus(func(clusterStatus *commonproto.ClusterStatus, _ metadatacommon.Version) (*commonproto.ClusterStatus, bool, error) {
+		ns, exist := clusterStatus.Namespaces[namespace]
+		namespaceExists = exist
+		updated := exist && update(ns)
+		if updated && len(ns.Shards) == 0 {
+			delete(clusterStatus.Namespaces, namespace)
+		}
+		return clusterStatus, updated, nil
+	}); err != nil {
+		return err
+	}
+	if !namespaceExists {
+		return fmt.Errorf("%w: namespace %q", metadatacommon.ErrNotFound, namespace)
+	}
+	return nil
+}
+
 func (m *coordinatorMetadata) DeleteNamespaceStatus(name string) commonobject.Borrowed[*commonproto.NamespaceStatus] {
 	var namespaceStatus *commonproto.NamespaceStatus
 	changed := false
@@ -393,37 +407,6 @@ func (m *coordinatorMetadata) UpdateShardStatus(namespace string, shard int64, s
 	}
 	if !shardExists {
 		return fmt.Errorf("%w: shard %d of namespace %q", metadatacommon.ErrNotFound, shard, namespace)
-	}
-	return nil
-}
-
-func (m *coordinatorMetadata) UpdateShardStatuses(
-	namespace string,
-	update func(shards map[int64]*commonproto.ShardMetadata) bool,
-) error {
-	namespaceExists := true
-	err := backoff.RetryNotify(func() error {
-		return m.computeStatus(func(clusterStatus *commonproto.ClusterStatus, _ metadatacommon.Version) (*commonproto.ClusterStatus, bool, error) {
-			ns, exist := clusterStatus.Namespaces[namespace]
-			namespaceExists = exist
-			updated := exist && update(ns.Shards)
-			if updated && len(ns.Shards) == 0 {
-				delete(clusterStatus.Namespaces, namespace)
-			}
-			return clusterStatus, updated, nil
-		})
-	}, oxiatime.NewBackOff(m.ctx), func(err error, duration time.Duration) {
-		m.logger.Warn(
-			"failed to update shards metadata",
-			slog.Any("error", err),
-			slog.Duration("retry-after", duration),
-		)
-	})
-	if err != nil {
-		return err
-	}
-	if !namespaceExists {
-		return fmt.Errorf("%w: namespace %q", metadatacommon.ErrNotFound, namespace)
 	}
 	return nil
 }
