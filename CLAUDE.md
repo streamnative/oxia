@@ -59,6 +59,69 @@ Key components:
 - All Go files require Apache 2.0 license header
 - Cyclomatic complexity limit: 15
 - Cognitive complexity limit: 25
+- Use the simplest design that meets the requirements, and look for an existing abstraction before adding another
+  representation of the same concept
+- Name types and methods for what they hold or do
+- Comments explain why, not what: document the behavior, preconditions and failure modes of an API, and the
+  non-obvious decisions and invariants; don't restate the code or narrate the history of a change, and keep them short
+- Check the APIs in this checkout: an older release, or another project, may not match the code here
+
+## Changes
+
+- **Keep changes focused**: one concern per pull request. Open a separate pull request for an unrelated issue found
+  along the way.
+- **Separate mechanical changes**: move and rename code in its own pull request, apart from the changes of behavior,
+  so that each diff can be reviewed on its own, e.g. a file split, then the change to the split code.
+- **Update the docs in the same change** when a behavior or an API changes.
+- **Discuss large changes first**: open an issue, or a proposal in the GitHub Discussions, before a substantial
+  change.
+
+## Errors and Retries
+
+- **Return errors, don't retry inside**: a function that does the work returns its error to the caller, and never
+  retries in place. The caller decides whether and how to retry.
+- **Retry in a wrapper**: when an operation must be retried, wrap it in `xxxWithRetries`, which calls `xxx`, e.g.
+  `deleteShardWithRetries` and `deleteShard`. Retry with `oxiatime.NewBackOff(ctx)` so that it stops when the
+  component closes, and mark the errors that must not be retried with `backoff.Permanent`.
+- **Don't block an event loop**: a handler of an event loop never retries in place. If it fails, it sends its
+  message to the channel again later, e.g. with `time.AfterFunc(time.Second, ...)`, or leaves it to the next
+  periodic round. A request that has a caller waiting for it, e.g. a change of ensemble, fails fast instead and its
+  caller retries it.
+
+## Test Structure
+
+- **One test file per source file**: the tests of `xxx.go` live in `xxx_test.go`, in the same package. Don't add
+  test files per feature or per scenario (e.g. `xxx_leadership_test.go`); if a test file grows too large, split the
+  source file, and its tests follow.
+- **Naming**: name the tests `Test<Type><Method><Behavior>`, e.g. `TestRuntimeCreateNamespaceRepairsCommittedWrite`,
+  or `Test<Function><Behavior>` for a function, without underscores.
+- **Layout**: order the tests by the method they test, and put the fakes and helpers at the end of the file.
+- **Fakes**: prefer one fake per interface, with a hook for each method a test overrides, over a fake type per test.
+- **End-to-end tests**: the tests that run a cluster or go through the public endpoints live in the top-level
+  `tests/` module, not in the package.
+
+## Validation
+
+- Add a regression test to every bug fix.
+- Report the checks that actually ran and their results, e.g. `make test` and `make lint`, and the checks that were
+  skipped.
+- Verify the cause of a failure before calling it unrelated to the change.
+
+## Commits and Pull Requests
+
+- Sign off every commit with `git commit -s`: the DCO check fails without it.
+- Prefix the titles with the type of change: `fix:`, `feat:`, `perf:`, `refactor:`, `test:`, `docs:`, `ci:`, `chore:`.
+- Keep a pull request to one change, and its description short. Split a larger change into stacked pull requests.
+- Write the description with the [PR template](.github/pull_request_template.md): Checklist, Motivation,
+  Modifications, Shared state (only when the change adds shared mutable state), Testing and AI Usage. A few
+  sentences plus the test results are enough for a simple change; don't repeat the diff.
+- Leave the boxes of the checklist unchecked: the contributor checks them, after reviewing the change. The
+  contributor remains responsible for understanding and validating it.
+- Complete the AI Usage section accurately, including your own involvement: the code, the tests, the description, or
+  creating the PR. Don't claim that the contributor reviewed the changes unless they have confirmed it.
+- Keep the AI disclosure in the PR description: don't add AI coauthor or generated-by trailers to the commits.
+- Identify a review written by an agent as such, give concrete findings with their evidence, and tell confirmed
+  problems apart from questions. The maintainers make the review and merge decisions.
 
 ## Concurrency: Avoid New Shared Mutable State
 
