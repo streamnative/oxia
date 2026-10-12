@@ -102,6 +102,11 @@ type Election struct {
 	becomeLeaderSent bool
 	// started
 	started atomic.Bool
+	// term is the term of the shard as the election last persisted it. It is
+	// owned by the election, which writes it when it is created and when it
+	// persists a new term; Term lends it to any goroutine, e.g. the term
+	// gauge of the shard controller.
+	term atomic.Int64
 }
 
 func (e *Election) refreshedEnsemble(ensemble []*proto.DataServerIdentity) []*proto.DataServerIdentity {
@@ -720,6 +725,7 @@ func (e *Election) start() (newLeader *proto.DataServerIdentity, err error) {
 	if err = e.persistNewTerm(); err != nil {
 		return nil, err
 	}
+	e.term.Store(e.mutableShardMetadata.Term)
 
 	var retryShardMetadata *proto.ShardMetadata
 	if e.changeEnsembleAction != nil {
@@ -940,6 +946,13 @@ func negotiate(nodeFeatures map[string][]proto.Feature, candidates int) []proto.
 	return negotiated
 }
 
+// Term returns the term of the shard as the election last persisted it, the
+// term of the shard when the election was created until then. It can be called
+// from any goroutine.
+func (e *Election) Term() int64 {
+	return e.term.Load()
+}
+
 func (e *Election) IsReadyForChangeEnsemble() bool {
 	return e.followerCaughtUp.Load()
 }
@@ -1004,7 +1017,7 @@ func NewElection(ctx context.Context, logger *slog.Logger, eventListener control
 	leaderElectionLatency metric.LatencyHistogram, newTermQuorumLatency metric.LatencyHistogram,
 	becomeLeaderLatency metric.LatencyHistogram, leaderElectionsFailed metric.Counter) *Election {
 	current, cancelFunc := context.WithCancel(ctx)
-	return &Election{
+	election := &Election{
 		logger:                              logger,
 		ctx:                                 current,
 		ctxCancel:                           cancelFunc,
@@ -1024,6 +1037,8 @@ func NewElection(ctx context.Context, logger *slog.Logger, eventListener control
 		becomeLeaderLatency:                 becomeLeaderLatency,
 		leaderElectionsFailed:               leaderElectionsFailed,
 	}
+	election.term.Store(shardMetadata.GetTerm())
+	return election
 }
 
 func chooseCandidates(candidatesStatus map[*proto.DataServerIdentity]*proto.EntryId) []*proto.DataServerIdentity {

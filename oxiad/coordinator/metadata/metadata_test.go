@@ -186,11 +186,13 @@ func TestMetadataStatusUpdatesFailWhenTargetIsGone(t *testing.T) {
 
 	// A deleted shard must not be re-created
 	require.ErrorIs(t, metadata.UpdateShardStatus("default", 1, &commonproto.ShardMetadata{Term: 2}), metadataconstant.ErrNotFound)
-	_, exists := metadata.GetShardStatus("default", 1)
+	_, exists, err := metadata.GetShardStatus("default", 1)
+	require.NoError(t, err)
 	require.False(t, exists)
 
 	require.NoError(t, metadata.UpdateShardStatus("default", 0, &commonproto.ShardMetadata{Term: 2}))
-	shard, exists := metadata.GetShardStatus("default", 0)
+	shard, exists, err := metadata.GetShardStatus("default", 0)
+	require.NoError(t, err)
 	require.True(t, exists)
 	require.EqualValues(t, 2, shard.UnsafeBorrow().GetTerm())
 
@@ -203,9 +205,11 @@ func TestMetadataStatusUpdatesFailWhenTargetIsGone(t *testing.T) {
 		shards[0].Term = 3
 		return false
 	}))
-	shard, _ = metadata.GetShardStatus("default", 0)
+	shard, _, err = metadata.GetShardStatus("default", 0)
+	require.NoError(t, err)
 	require.EqualValues(t, 2, shard.UnsafeBorrow().GetTerm())
-	_, exists = metadata.GetShardStatus("default", 1)
+	_, exists, err = metadata.GetShardStatus("default", 1)
+	require.NoError(t, err)
 	require.False(t, exists)
 	require.NoError(t, metadata.Close())
 }
@@ -448,6 +452,19 @@ func TestMetadataGetNamespaceStatusReturnsLoadError(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
 
 	_, exists, err := metadata.GetNamespaceStatus("default")
+	require.ErrorContains(t, err, "status unavailable")
+	require.False(t, exists)
+}
+
+func TestMetadataGetShardStatusReturnsLoadError(t *testing.T) {
+	statusProvider := loadFailingStatusProvider{
+		Provider: memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, ""),
+	}
+	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
+	metadata := newMetadata(t.Context(), statusProvider, configProvider, "")
+	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
+
+	_, exists, err := metadata.GetShardStatus("default", 0)
 	require.ErrorContains(t, err, "status unavailable")
 	require.False(t, exists)
 }

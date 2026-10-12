@@ -45,6 +45,13 @@ import (
 	"github.com/oxia-db/oxia/common/proto"
 )
 
+// testSplit is the split metadata of the parent shard in setupSplitTest.
+var testSplit = &proto.SplitMetadata{
+	Phase:         proto.SplitPhaseBootstrap,
+	ChildShardIds: []int64{1, 2},
+	SplitPoint:    500,
+}
+
 type mockShardSplitEventListener struct {
 	completions chan splitEvent
 	aborts      chan splitEvent
@@ -311,6 +318,7 @@ func TestSplitController_FullLifecycle(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      statusRes,
 		RpcProvider:   rpcMock,
 		EventListener: listener,
@@ -362,6 +370,7 @@ func TestSplitController_ChildrenFencedAtParentTerm(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      statusRes,
 		RpcProvider:   rpcMock,
 		EventListener: listener,
@@ -416,6 +425,7 @@ func TestSplitController_ObserversGetParentRange(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      statusRes,
 		RpcProvider:   rpcMock,
 		EventListener: listener,
@@ -493,6 +503,7 @@ func TestSplitController_ChildrenInheritNamespaceTermOptions(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      statusRes,
 		RpcProvider:   rpcMock,
 		EventListener: listener,
@@ -532,6 +543,7 @@ func TestSplitController_ResumeFromBootstrap(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      statusRes,
 		RpcProvider:   rpcMock,
 		EventListener: listener,
@@ -573,6 +585,7 @@ func TestSplitController_ResumeFromCatchUp(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      statusRes,
 		RpcProvider:   rpcMock,
 		EventListener: listener,
@@ -597,6 +610,7 @@ func TestSplitController_PhaseTransitions(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      statusRes,
 		RpcProvider:   rpcMock,
 		EventListener: listener,
@@ -634,6 +648,7 @@ func TestSplitController_TimeoutDuringBootstrap(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      statusRes,
 		RpcProvider:   mockutils.NewRpcProvider(), // fresh mock, no responses queued
 		EventListener: listener,
@@ -700,6 +715,7 @@ func TestSplitController_TimeoutDuringCatchUp(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      statusRes,
 		RpcProvider:   rpcMock,
 		EventListener: listener,
@@ -775,6 +791,7 @@ func TestSplitController_AbortStoresWholeSplitOrNone(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      observing,
 		RpcProvider:   mockutils.NewRpcProvider(),
 		EventListener: listener,
@@ -849,6 +866,7 @@ func TestSplitController_ParentTermChangeDuringCatchUp(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      statusRes,
 		RpcProvider:   rpcMock,
 		EventListener: listener,
@@ -906,6 +924,7 @@ func TestSplitController_ParentTermChangeFromFirstTerm(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      statusRes,
 		RpcProvider:   rpcMock,
 		EventListener: listener,
@@ -1007,6 +1026,7 @@ func TestSplitController_BootstrapResetsChildMembersAfterParentElection(t *testi
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      statusRes,
 		RpcProvider:   recorder,
 		EventListener: listener,
@@ -1059,6 +1079,7 @@ func TestSplitController_ChildFencingPartialSuccess(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      statusRes,
 		RpcProvider:   rpcMock,
 		EventListener: listener,
@@ -1101,6 +1122,7 @@ func TestSplitController_ParentFencingPartialFailure(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      statusRes,
 		RpcProvider:   rpcMock,
 		EventListener: listener,
@@ -1153,6 +1175,7 @@ func TestSplitController_ChildQuorumCommitRetry(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      statusRes,
 		RpcProvider:   rpcMock,
 		EventListener: listener,
@@ -1204,6 +1227,7 @@ func TestSplitController_ChildLeaderDiesTimesOutAndAborts(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      statusRes,
 		RpcProvider:   rpcMock,
 		EventListener: listener,
@@ -1280,6 +1304,7 @@ func TestSplitController_ChildFollowersDeadCommitStalls(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      statusRes,
 		RpcProvider:   rpcMock,
 		EventListener: listener,
@@ -1391,6 +1416,7 @@ func TestSplitController_ChildLeaderChangeDuringCatchUp(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      statusRes,
 		RpcProvider:   rpcMock,
 		EventListener: listener,
@@ -1455,6 +1481,7 @@ func TestSplitController_ChildEnsembleMemberDiesDuringBootstrap(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      statusRes,
 		RpcProvider:   rpcMock,
 		EventListener: listener,
@@ -1519,6 +1546,7 @@ func TestSplitController_ChildEnsembleWithoutParentFeature(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:                 constant.DefaultNamespace,
 		ParentShardId:             0,
+		Split:                     testSplit,
 		Metadata:                  metadata,
 		RpcProvider:               rpcMock,
 		EventListener:             listener,
@@ -1583,6 +1611,69 @@ func TestSplitController_DetachChildrenIsAllOrNothing(t *testing.T) {
 	assert.NotNil(t, ns.Shards[0].Split, "parent split metadata should be kept")
 	assert.Equal(t, proto.ShardStatusSteadyState, ns.Shards[0].GetStatusOrDefault())
 	assert.NotNil(t, ns.Shards[1].Split, "left child split metadata should be kept")
+}
+
+// A status load error is not taken for a completed split: Finalize, which is
+// retried until the split completes, returns it.
+func TestSplitController_FinalizeReturnsShardStatusLoadError(t *testing.T) {
+	_, statusRes, _ := setupSplitTest(t, proto.SplitPhaseFinalize)
+	metadata := &shardStatusFailingMetadata{Metadata: statusRes}
+	metadata.failures.Store(2)
+
+	sc := &SplitController{
+		namespace:     constant.DefaultNamespace,
+		parentShardId: 0,
+		leftChildId:   1,
+		rightChildId:  2,
+		metadata:      metadata,
+		logger:        slog.Default(),
+	}
+	_, _, err := sc.currentPhase()
+	require.ErrorContains(t, err, "status unavailable")
+	require.ErrorContains(t, sc.runFinalize(), "status unavailable")
+
+	phase, exists, err := sc.currentPhase()
+	require.NoError(t, err)
+	assert.True(t, exists)
+	assert.Equal(t, proto.SplitPhaseFinalize, phase)
+}
+
+// An abort keeps the split until it can load the parent: it would otherwise
+// remove the split without unfreezing the parent, which then keeps rejecting
+// writes. The retried abort unfreezes the parent and removes the split.
+func TestSplitController_AbortReturnsShardStatusLoadError(t *testing.T) {
+	rpcMock, statusRes, listener := setupSplitTest(t, proto.SplitPhaseCutover)
+	metadata := &shardStatusFailingMetadata{Metadata: statusRes}
+	metadata.failures.Store(1)
+
+	sc := &SplitController{
+		namespace:     constant.DefaultNamespace,
+		parentShardId: 0,
+		leftChildId:   1,
+		rightChildId:  2,
+		metadata:      metadata,
+		rpcProvider:   rpcMock,
+		eventListener: listener,
+		logger:        slog.Default(),
+	}
+	require.ErrorContains(t, sc.abort(), "status unavailable")
+	assert.Empty(t, drainFreezeShardRequests(rpcMock.GetNode(ps1)))
+	assert.NotNil(t, loadTestStatus(t, statusRes).Namespaces[constant.DefaultNamespace].Shards[0].GetSplit())
+
+	require.NoError(t, sc.abort())
+	requests := drainFreezeShardRequests(rpcMock.GetNode(ps1))
+	require.Len(t, requests, 1)
+	assert.False(t, requests[0].Frozen)
+
+	shards := loadTestStatus(t, statusRes).Namespaces[constant.DefaultNamespace].GetShards()
+	assert.Nil(t, shards[0].GetSplit())
+	assert.NotContains(t, shards, int64(1))
+	assert.NotContains(t, shards, int64(2))
+	select {
+	case <-listener.aborts:
+	default:
+		t.Fatal("the split abort was not notified")
+	}
 }
 
 // --- Point of no return ---
@@ -1659,6 +1750,7 @@ func TestSplitController_FinalizeRetriesAfterFailure(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      statusRes,
 		RpcProvider:   rpcMock,
 		EventListener: listener,
@@ -1715,6 +1807,7 @@ func TestSplitController_ResumeFromFinalize(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      statusRes,
 		RpcProvider:   rpcMock,
 		EventListener: listener,
@@ -1791,6 +1884,7 @@ func TestSplitController_FinalizePinsEnabledFeaturesWithUnknownMember(t *testing
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:                 constant.DefaultNamespace,
 		ParentShardId:             0,
+		Split:                     testSplit,
 		Metadata:                  statusRes,
 		RpcProvider:               rpcMock,
 		EventListener:             listener,
@@ -1860,6 +1954,7 @@ func TestSplitController_FinalizeRejectsChildEnsembleMissingEnabledFeature(t *te
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:                 constant.DefaultNamespace,
 		ParentShardId:             0,
+		Split:                     testSplit,
 		Metadata:                  statusRes,
 		RpcProvider:               rpcMock,
 		EventListener:             listener,
@@ -1898,6 +1993,7 @@ func TestSplitController_FinalizeOutlivesSplitTimeout(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      statusRes,
 		RpcProvider:   rpcMock,
 		EventListener: listener,
@@ -1934,6 +2030,7 @@ func TestSplitController_CutoverWaitsForChildrenToApplyTail(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      metadata,
 		RpcProvider:   rpcMock,
 		EventListener: listener,
@@ -1977,6 +2074,7 @@ func TestSplitController_BootstrapAddsEveryChildMemberAsObserver(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      metadata,
 		RpcProvider:   rpcMock,
 		EventListener: listener,
@@ -2046,6 +2144,7 @@ func TestSplitController_CutoverWaitsForChildMajority(t *testing.T) {
 			sc := NewSplitController(SplitControllerConfig{
 				Namespace:     constant.DefaultNamespace,
 				ParentShardId: 0,
+				Split:         testSplit,
 				Metadata:      metadata,
 				RpcProvider:   rpcMock,
 				EventListener: listener,
@@ -2196,6 +2295,7 @@ func TestSplitController_ParentElectionAfterPointOfNoReturn(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      split,
 		RpcProvider:   rpcMock,
 		EventListener: listener,
@@ -2241,6 +2341,7 @@ func TestSplitController_ParentElectionAfterSplitCompleted(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      metadata,
 		RpcProvider:   rpcMock,
 		EventListener: listener,
@@ -2280,6 +2381,7 @@ func TestSplitController_ParentElectionBeforePointOfNoReturn(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      split,
 		RpcProvider:   rpcMock,
 		EventListener: listener,
@@ -2354,6 +2456,7 @@ func TestSplitController_ParentElectionBeforeCutover(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      metadata,
 		RpcProvider:   rpcMock,
 		EventListener: listener,
@@ -2396,6 +2499,7 @@ func TestSplitController_BootstrapKeepsConcurrentParentElection(t *testing.T) {
 	sc := NewSplitController(SplitControllerConfig{
 		Namespace:     constant.DefaultNamespace,
 		ParentShardId: 0,
+		Split:         testSplit,
 		Metadata:      split,
 		RpcProvider:   rpcMock,
 		EventListener: listener,

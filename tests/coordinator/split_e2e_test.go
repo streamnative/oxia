@@ -2755,8 +2755,8 @@ func (p *leaderOnlyChildObservers) splittingChildLeader(shard int64) *proto.Data
 	if metadata == nil {
 		return nil
 	}
-	status, exists := metadata.GetShardStatus(constant.DefaultNamespace, shard)
-	if !exists {
+	status, exists, err := metadata.GetShardStatus(constant.DefaultNamespace, shard)
+	if err != nil || !exists {
 		return nil
 	}
 	child := status.UnsafeBorrow()
