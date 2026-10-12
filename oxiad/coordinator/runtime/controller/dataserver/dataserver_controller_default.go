@@ -121,6 +121,7 @@ func (n *controller) currentStatusEpoch() int64 {
 // advanceStatusEpochLocked records a status transition and wakes up the
 // goroutines waiting for one. It must be called with mu held.
 func (n *controller) advanceStatusEpochLocked() {
+	// The first transition, the data server joining, isn't recorded
 	if n.statusEpoch > 0 {
 		n.status.LastTransitionTime = time.Now()
 	}

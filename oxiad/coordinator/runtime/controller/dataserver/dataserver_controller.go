@@ -38,7 +38,7 @@ const (
 	// handshake bound to this coordinator: it receives the shard assignments.
 	Running State = iota
 	// NotRunning is a data server whose health checks fail, or that isn't
-	// bound to this coordinator yet: the status of a new controller.
+	// bound to this coordinator yet: the state of a new controller.
 	NotRunning
 	// Draining is a data server removed from the configuration. It keeps
 	// receiving the shard assignments until it becomes unavailable, and the
