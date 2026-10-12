@@ -925,13 +925,40 @@ func (sc *SplitController) abort() error {
 	if err != nil {
 		return err
 	}
-	if parentMeta != nil {
-		sc.removeObserversBestEffort(ctx, parentMeta)
 
-		// Lift any write-freeze placed on the parent during cutover so it
-		// resumes serving.
-		sc.unfreezeParentBestEffort(parentMeta.Leader, parentMeta.Term)
+	// Remove observer cursors from parent leader (best-effort).
+	// Only needed if we reached Bootstrap (observers were added).
+	if parentMeta != nil && parentMeta.Split != nil && parentMeta.Leader != nil {
+		phase := parentMeta.Split.GetPhaseOrDefault()
+		if phase == proto.SplitPhaseBootstrap || phase == proto.SplitPhaseCatchUp || phase == proto.SplitPhaseCutover {
+			for _, childId := range []int64{sc.leftChildId, sc.rightChildId} {
+				childMeta, err := sc.loadShardMeta(childId)
+				if err != nil || childMeta == nil || childMeta.Leader == nil {
+					continue
+				}
+				for _, member := range childMeta.Ensemble {
+					_, err := sc.rpcProvider.RemoveObserver(ctx, parentMeta.Leader, &proto.RemoveObserverRequest{
+						Namespace:    sc.namespace,
+						Shard:        sc.parentShardId,
+						Term:         parentMeta.Term,
+						FollowerName: member.GetInternal(),
+						TargetShard:  childId,
+					})
+					if err != nil {
+						sc.logger.Warn("Failed to remove observer during abort",
+							slog.Int64("child-shard", childId),
+							slog.Any("member", member),
+							slog.Any("error", err),
+						)
+					}
+				}
+			}
+		}
 	}
+
+	// Lift any write-freeze placed on the parent during cutover so it resumes
+	// serving (best-effort; a new term would clear it anyway).
+	sc.unfreezeParentBestEffort(parentMeta.GetLeader(), parentMeta.GetTerm())
 
 	if err := sc.removeSplit(); err != nil {
 		return err
@@ -942,48 +969,6 @@ func (sc *SplitController) abort() error {
 	// Notify coordinator to clean up child controllers and recompute assignments.
 	sc.eventListener.SplitAborted(sc.parentShardId, sc.leftChildId, sc.rightChildId)
 	return nil
-}
-
-// removeObserversBestEffort removes the observer cursors of the children from
-// the parent leader, during an abort. They are only there if the split reached
-// Bootstrap.
-func (sc *SplitController) removeObserversBestEffort(ctx context.Context, parentMeta *proto.ShardMetadata) {
-	if parentMeta.Split == nil || parentMeta.Leader == nil {
-		return
-	}
-	phase := parentMeta.Split.GetPhaseOrDefault()
-	if phase != proto.SplitPhaseBootstrap && phase != proto.SplitPhaseCatchUp && phase != proto.SplitPhaseCutover {
-		return
-	}
-	for _, childId := range []int64{sc.leftChildId, sc.rightChildId} {
-		childMeta, err := sc.loadShardMeta(childId)
-		if err != nil {
-			sc.logger.Warn("Failed to remove observers during abort",
-				slog.Int64("child-shard", childId),
-				slog.Any("error", err),
-			)
-			continue
-		}
-		if childMeta == nil || childMeta.Leader == nil {
-			continue
-		}
-		for _, member := range childMeta.Ensemble {
-			_, err := sc.rpcProvider.RemoveObserver(ctx, parentMeta.Leader, &proto.RemoveObserverRequest{
-				Namespace:    sc.namespace,
-				Shard:        sc.parentShardId,
-				Term:         parentMeta.Term,
-				FollowerName: member.GetInternal(),
-				TargetShard:  childId,
-			})
-			if err != nil {
-				sc.logger.Warn("Failed to remove observer during abort",
-					slog.Int64("child-shard", childId),
-					slog.Any("member", member),
-					slog.Any("error", err),
-				)
-			}
-		}
-	}
 }
 
 // removeSplit deletes the child shards and clears the parent's split metadata
