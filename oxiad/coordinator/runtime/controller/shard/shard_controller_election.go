@@ -87,6 +87,7 @@ type Election struct {
 	mutableShardMetadata *proto.ShardMetadata
 	changeEnsembleAction *action.ChangeEnsembleAction
 	followerCaughtUp     atomic.Bool // If the followers caught up leader after election
+	termOptions          *proto.NewTermOptions
 	// requiredFeatures are the features that an earlier attempt found
 	// already enabled on the shard, which the next attempts must pin
 	requiredFeatures []proto.Feature
@@ -717,13 +718,6 @@ func (e *Election) start() (newLeader *proto.DataServerIdentity, err error) {
 	e.logger.Info("Starting a new election")
 	timer := e.leaderElectionLatency.Timer()
 
-	// Load the options of the namespace before persisting a new term: a
-	// failed load is retried without using up a term
-	termOptions, err := namespaceTermOptions(e.metadataStore, e.namespace)
-	if err != nil {
-		return nil, err
-	}
-
 	e.mutableShardMetadata.Status = proto.ShardStatusElection
 	e.mutableShardMetadata.Leader = nil
 	e.mutableShardMetadata.Term++
@@ -751,6 +745,10 @@ func (e *Election) start() (newLeader *proto.DataServerIdentity, err error) {
 	// pinned as well (see checkNegotiatedFeatures).
 	features := e.dataServerSupportedFeaturesSupplier(e.mutableShardMetadata.Ensemble)
 	negotiatedFeatures := unionFeatures(negotiate(features, len(e.mutableShardMetadata.Ensemble)), e.requiredFeatures)
+	termOptions := e.termOptions.CloneVT()
+	if termOptions == nil {
+		termOptions = &proto.NewTermOptions{}
+	}
 	termOptions.Features = negotiatedFeatures
 
 	// Send NewTerm to all the ensemble members
@@ -1015,7 +1013,7 @@ func NewElection(ctx context.Context, logger *slog.Logger, eventListener control
 	leaderSelector selector.Selector[*leaderselector.Context, *proto.DataServerIdentity],
 	provider rpc.Provider, namespace string, shard int64,
 	shardMetadata *proto.ShardMetadata,
-	changeEnsembleAction *action.ChangeEnsembleAction,
+	changeEnsembleAction *action.ChangeEnsembleAction, termOptions *proto.NewTermOptions,
 	leaderElectionLatency metric.LatencyHistogram, newTermQuorumLatency metric.LatencyHistogram,
 	becomeLeaderLatency metric.LatencyHistogram, leaderElectionsFailed metric.Counter) *Election {
 	current, cancelFunc := context.WithCancel(ctx)
@@ -1032,6 +1030,7 @@ func NewElection(ctx context.Context, logger *slog.Logger, eventListener control
 		namespace:                           namespace,
 		shard:                               shard,
 		mutableShardMetadata:                gproto.CloneOf(shardMetadata),
+		termOptions:                         termOptions,
 		changeEnsembleAction:                changeEnsembleAction,
 		leaderElectionLatency:               leaderElectionLatency,
 		newTermQuorumLatency:                newTermQuorumLatency,

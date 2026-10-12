@@ -287,7 +287,7 @@ func (s *controller) run(bo backoff.BackOff) error {
 		s.logger.Info("Child shard during split, waiting for split to complete")
 		s.waitForSplitComplete()
 	case initShardMeta.Leader == nil || initShardMeta.GetStatusOrDefault() != proto.ShardStatusSteadyState:
-		s.electLeader(initShardMeta, nil)
+		_, err = s.electLeader(initShardMeta, nil)
 	default:
 		s.logger.Info(
 			"There is already a data server marked as leader on the shard, verifying",
@@ -295,10 +295,13 @@ func (s *controller) run(bo backoff.BackOff) error {
 		)
 
 		if !s.verifyCurrentEnsemble(initShardMeta) {
-			s.electLeader(initShardMeta, nil)
+			_, err = s.electLeader(initShardMeta, nil)
 		} else {
 			s.SyncServerAddress()
 		}
+	}
+	if err != nil {
+		return err
 	}
 
 	s.logger.Info("Shard is ready", slog.Any("leader", initShardMeta.Leader))
@@ -394,7 +397,10 @@ func (s *controller) handleDataServerFailureWithRetries(failedDataServer *proto.
 			"Detected failure on shard leader",
 			slog.Any("leader", failedDataServer.GetNameOrDefault()),
 		)
-		s.electLeader(shardMeta, nil)
+		if _, err := s.electLeader(shardMeta, nil); err != nil {
+			s.logger.Warn("Failed to replace the failed leader, retrying later", slog.Any("error", err))
+			time.AfterFunc(time.Second, func() { s.BecameUnavailable(failedDataServer) })
+		}
 	}
 }
 
@@ -481,7 +487,10 @@ func (s *controller) checkTermFeatures(shardMeta *proto.ShardMetadata) {
 		slog.Any("pinned-features", pinned),
 		slog.Any("features", features),
 	)
-	s.electLeader(shardMeta, nil)
+	if _, err := s.electLeader(shardMeta, nil); err != nil {
+		s.logger.Warn("Failed to start the election pinning the features, retrying later", slog.Any("error", err))
+		s.termFeaturesCheckPending = true
+	}
 }
 
 // termFeatures returns the features pinned by the current term of the shard.
@@ -655,13 +664,25 @@ func (s *controller) handleElectionWithRetries(electionAction *action.ElectionAc
 	shardMeta := common.Must(borrowedMeta, exists,
 		"bug: shard metadata missing while starting election: namespace=", s.namespace, " shard=",
 		s.shard).UnsafeBorrow()
-	electionAction.Done(s.electLeader(shardMeta, nil).GetNameOrDefault())
+	leader, err := s.electLeader(shardMeta, nil)
+	if err != nil {
+		s.logger.Warn("Failed to start the election, retrying later", slog.Any("error", err))
+		time.AfterFunc(time.Second, func() { s.enqueueElectionAction(electionAction) })
+		return
+	}
+	electionAction.Done(leader.GetNameOrDefault())
 }
 
 // electLeader starts a new election of the shard, with its current metadata,
-// in place of the current one.
+// in place of the current one. It fails only if the options of the namespace
+// can't be loaded, before stopping the current election.
 func (s *controller) electLeader(shardMeta *proto.ShardMetadata,
-	changeEnsembleAction *action.ChangeEnsembleAction) *proto.DataServerIdentity {
+	changeEnsembleAction *action.ChangeEnsembleAction) (*proto.DataServerIdentity, error) {
+	termOptions, err := namespaceTermOptions(s.metadataStore, s.namespace)
+	if err != nil {
+		return nil, err
+	}
+
 	// stop the current term election
 	if e := s.currentElection.Swap(nil); e != nil {
 		e.Stop()
@@ -670,12 +691,13 @@ func (s *controller) electLeader(shardMeta *proto.ShardMetadata,
 	election := NewElection(s.ctx, s.logger, s.eventListener,
 		s.metadataStore, s.dataServerSupportedFeaturesSupplier, s.leaderSelector,
 		s.rpc, s.namespace, s.shard, shardMeta, changeEnsembleAction,
+		termOptions,
 		s.leaderElectionLatency,
 		s.newTermQuorumLatency,
 		s.becomeLeaderLatency,
 		s.leaderElectionsFailed)
 	s.currentElection.Store(election)
-	return election.Start()
+	return election.Start(), nil
 }
 
 func (s *controller) DeleteShard() {
@@ -822,7 +844,11 @@ func (s *controller) onChangeEnsemble(changeEnsembleAction *action.ChangeEnsembl
 		return
 	}
 	// todo: support optimized ensemble change to avoid start a new election
-	leader := s.electLeader(shardMeta, changeEnsembleAction)
+	leader, err := s.electLeader(shardMeta, changeEnsembleAction)
+	if err != nil {
+		changeEnsembleAction.Error(err)
+		return
+	}
 	election := s.currentElection.Load()
 	if err := election.ChangeEnsembleError(); err != nil {
 		changeEnsembleAction.Error(err)
