@@ -682,10 +682,8 @@ func (s *controller) DeleteShard() {
 	if s.terminating.Load() {
 		return
 	}
-	select {
-	case s.deleteOp <- nil:
-	case <-s.ctx.Done():
-	}
+	// A pending deletion covers this one too
+	channel.PushNoBlock(s.deleteOp, nil)
 }
 
 func (s *controller) deleteShardWithRetries() {
