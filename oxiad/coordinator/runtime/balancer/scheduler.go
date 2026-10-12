@@ -343,7 +343,10 @@ func (r *nodeBasedBalancer) IsNodeQuarantined(highestLoadRatioNode *model.NodeLo
 }
 
 func (r *nodeBasedBalancer) IsBalanced() bool {
-	configNamespaces := r.metadata.ListNamespace()
+	configNamespaces, err := r.metadata.ListNamespace()
+	if err != nil {
+		return false
+	}
 	status, err := r.metadata.ListNamespaceStatus()
 	if err != nil || len(configNamespaces) != len(status) {
 		return false

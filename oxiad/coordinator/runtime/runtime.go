@@ -590,7 +590,10 @@ func (c *runtime) computeNewAssignments0() error {
 	if err != nil {
 		return err
 	}
-	namespaces := c.metadata.ListNamespace()
+	namespaces, err := c.metadata.ListNamespace()
+	if err != nil {
+		return err
+	}
 	assignments := &proto.ShardAssignments{
 		Namespaces:         map[string]*proto.NamespaceShardsAssignment{},
 		AllowedAuthorities: mergedAuthorities(status, config.GetServers(), config.GetAllowExtraAuthorities()),
