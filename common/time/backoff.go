@@ -22,8 +22,16 @@ import (
 	"github.com/cenkalti/backoff/v4"
 )
 
+const (
+	// DefaultInitialInterval is the first interval of NewBackOff.
+	DefaultInitialInterval = 100 * time.Millisecond
+	// SlowInitialInterval is a first interval for retrying a remote server
+	// that is likely down, e.g. a data server that failed its health checks.
+	SlowInitialInterval = 10 * time.Second
+)
+
 func NewBackOff(ctx context.Context) backoff.BackOff {
-	return NewBackOffWithInitialInterval(ctx, 100*time.Millisecond)
+	return NewBackOffWithInitialInterval(ctx, DefaultInitialInterval)
 }
 
 func NewBackOffWithInitialInterval(ctx context.Context, initialInterval time.Duration) backoff.BackOff {

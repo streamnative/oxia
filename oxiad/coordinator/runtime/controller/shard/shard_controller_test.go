@@ -37,6 +37,7 @@ import (
 
 	commonobject "github.com/oxia-db/oxia/common/object"
 	"github.com/oxia-db/oxia/common/proto"
+	oxiatime "github.com/oxia-db/oxia/common/time"
 	coordmetadata "github.com/oxia-db/oxia/oxiad/coordinator/metadata"
 	"github.com/oxia-db/oxia/oxiad/coordinator/metadata/provider"
 	"github.com/oxia-db/oxia/oxiad/coordinator/metadata/provider/memory"
@@ -53,6 +54,7 @@ import (
 	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/metric"
 	"github.com/oxia-db/oxia/oxiad/common/feature"
+	"github.com/oxia-db/oxia/oxiad/common/health"
 	leaderselector "github.com/oxia-db/oxia/oxiad/coordinator/runtime/balancer/selector/leader"
 )
 
@@ -2827,7 +2829,8 @@ func TestController_RollingUpgradePinsNewFeatures(t *testing.T) {
 	for _, dataServer := range ensemble {
 		rpc.GetNode(dataServer).SetNodeFeatures(previous)
 		dataServers[dataServer.GetNameOrDefault()] = dataservercontroller.NewController(context.Background(),
-			&proto.DataServer{Identity: dataServer}, rpctest.NewShardAssignmentsProvider(), relay, rpc, "test-instance")
+			&proto.DataServer{Identity: dataServer}, rpctest.NewShardAssignmentsProvider(), relay, rpc, "test-instance",
+			oxiatime.SlowInitialInterval, health.DefaultCheckPolicy)
 	}
 	defer func() {
 		for _, dataServer := range dataServers {
@@ -2837,12 +2840,12 @@ func TestController_RollingUpgradePinsNewFeatures(t *testing.T) {
 	// The health watch of a data server controller discards a report as
 	// stale if its ping loop changed the status while the watch waited for
 	// it: the data server reports its health until the controller acts on it.
-	setHealth := func(dataServer *proto.DataServerIdentity, health grpc_health_v1.HealthCheckResponse_ServingStatus,
+	setHealth := func(dataServer *proto.DataServerIdentity, servingStatus grpc_health_v1.HealthCheckResponse_ServingStatus,
 		status dataservercontroller.Status) {
 		t.Helper()
 		require.Eventually(t, func() bool {
-			rpc.GetNode(dataServer).HealthClient.SetStatus(health)
-			return dataServers[dataServer.GetNameOrDefault()].Status() == status
+			rpc.GetNode(dataServer).HealthClient.SetStatus(servingStatus)
+			return dataServers[dataServer.GetNameOrDefault()].GetStatus() == status
 		}, 10*time.Second, 100*time.Millisecond)
 	}
 	for _, dataServer := range ensemble {
@@ -2851,7 +2854,7 @@ func TestController_RollingUpgradePinsNewFeatures(t *testing.T) {
 	supply := func(servers []*proto.DataServerIdentity) map[string][]proto.Feature {
 		features := make(map[string][]proto.Feature, len(servers))
 		for _, server := range servers {
-			features[server.GetNameOrDefault()] = dataServers[server.GetNameOrDefault()].SupportedFeatures()
+			features[server.GetNameOrDefault()] = dataServers[server.GetNameOrDefault()].GetSupportedFeatures()
 		}
 		return features
 	}
