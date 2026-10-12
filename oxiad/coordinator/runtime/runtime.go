@@ -220,7 +220,7 @@ func (c *runtime) DeleteDataServer(name string) {
 	}
 	c.logger.Info("Detected a removed node", slog.Any("server", name))
 	delete(c.dataServerControllers, name)
-	nc.SetStatus(dataservercontroller.Draining)
+	nc.Drain()
 	c.drainingNodes[name] = nc
 }
 

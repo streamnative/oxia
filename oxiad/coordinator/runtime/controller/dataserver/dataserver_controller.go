@@ -30,7 +30,7 @@ import (
 //	    +------------------------------+
 //	           health check failed
 //
-//	removed from the configuration: Running or NotRunning --> Draining
+//	removed from the configuration (Drain): Running or NotRunning --> Draining
 type Status uint32
 
 const (
@@ -96,7 +96,7 @@ type Controller interface {
 	// first handshake.
 	GetSupportedFeatures() []proto.Feature
 
-	// SetStatus sets the status of the data server. The runtime uses it to
-	// drain a data server removed from the configuration.
-	SetStatus(status Status)
+	// Drain moves a data server removed from the configuration to Draining:
+	// it keeps receiving the shard assignments until it becomes unavailable.
+	Drain()
 }
