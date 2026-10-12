@@ -757,8 +757,8 @@ func (m *writeObservingMetadata) UpdateShardStatus(namespace string, shard int64
 	return err
 }
 
-func (m *writeObservingMetadata) PatchNamespaceStatus(namespace string, update func(*proto.NamespaceStatus) bool) error {
-	err := m.Metadata.PatchNamespaceStatus(namespace, update)
+func (m *writeObservingMetadata) PatchNamespaceStatus(namespace string, modify func(*proto.NamespaceStatus) bool) error {
+	err := m.Metadata.PatchNamespaceStatus(namespace, modify)
 	m.afterWrite()
 	return err
 }
@@ -1685,11 +1685,11 @@ type patchFailingMetadata struct {
 	failures atomic.Int32
 }
 
-func (m *patchFailingMetadata) PatchNamespaceStatus(namespace string, update func(*proto.NamespaceStatus) bool) error {
+func (m *patchFailingMetadata) PatchNamespaceStatus(namespace string, modify func(*proto.NamespaceStatus) bool) error {
 	if m.failures.Add(-1) >= 0 {
 		return errors.New("store unavailable")
 	}
-	return m.Metadata.PatchNamespaceStatus(namespace, update)
+	return m.Metadata.PatchNamespaceStatus(namespace, modify)
 }
 
 // A failed status write of the split is retried with the step that made it,
@@ -2270,8 +2270,8 @@ func (m *holdingMetadata) UpdateShardStatus(namespace string, shard int64, shard
 	return m.write(func() error { return m.Metadata.UpdateShardStatus(namespace, shard, shardMetadata) })
 }
 
-func (m *holdingMetadata) PatchNamespaceStatus(namespace string, update func(*proto.NamespaceStatus) bool) error {
-	return m.write(func() error { return m.Metadata.PatchNamespaceStatus(namespace, update) })
+func (m *holdingMetadata) PatchNamespaceStatus(namespace string, modify func(*proto.NamespaceStatus) bool) error {
+	return m.write(func() error { return m.Metadata.PatchNamespaceStatus(namespace, modify) })
 }
 
 // requireClosed waits for the channel to be closed.

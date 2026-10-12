@@ -121,9 +121,9 @@ func (m *mockMetadata) UpdateShardStatus(namespace string, shard int64, shardMet
 	return nil
 }
 
-func (m *mockMetadata) PatchNamespaceStatus(namespace string, update func(*proto.NamespaceStatus) bool) error {
+func (m *mockMetadata) PatchNamespaceStatus(namespace string, modify func(*proto.NamespaceStatus) bool) error {
 	if ns, exists := m.status.GetNamespaces()[namespace]; exists {
-		update(ns)
+		modify(ns)
 	}
 	return nil
 }

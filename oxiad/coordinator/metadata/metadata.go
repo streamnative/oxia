@@ -48,7 +48,7 @@ type Metadata interface {
 	CreateNamespaceStatus(name string, status *commonproto.NamespaceStatus) error
 	ListNamespaceStatus() (map[string]commonobject.Borrowed[*commonproto.NamespaceStatus], error)
 	GetNamespaceStatus(namespace string) (commonobject.Borrowed[*commonproto.NamespaceStatus], bool, error)
-	PatchNamespaceStatus(namespace string, update func(status *commonproto.NamespaceStatus) bool) error
+	PatchNamespaceStatus(namespace string, modify func(status *commonproto.NamespaceStatus) bool) error
 	DeleteNamespaceStatus(name string) commonobject.Borrowed[*commonproto.NamespaceStatus]
 
 	GetShardStatus(namespace string, shard int64) (commonobject.Borrowed[*commonproto.ShardMetadata], bool, error)
@@ -317,13 +317,13 @@ func (m *coordinatorMetadata) GetNamespaceStatus(namespace string) (commonobject
 
 func (m *coordinatorMetadata) PatchNamespaceStatus(
 	namespace string,
-	update func(status *commonproto.NamespaceStatus) bool,
+	modify func(status *commonproto.NamespaceStatus) bool,
 ) error {
 	namespaceExists := true
 	if err := m.computeStatus(func(clusterStatus *commonproto.ClusterStatus, _ metadatacommon.Version) (*commonproto.ClusterStatus, bool, error) {
 		ns, exist := clusterStatus.Namespaces[namespace]
 		namespaceExists = exist
-		updated := exist && update(ns)
+		updated := exist && modify(ns)
 		if updated && len(ns.Shards) == 0 {
 			delete(clusterStatus.Namespaces, namespace)
 		}

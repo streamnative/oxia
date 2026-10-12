@@ -79,8 +79,8 @@ func (m *recomputingMetadata) UpdateShardStatus(namespace string, shard int64, s
 	return err
 }
 
-func (m *recomputingMetadata) PatchNamespaceStatus(namespace string, update func(*proto.NamespaceStatus) bool) error {
-	err := m.Metadata.PatchNamespaceStatus(namespace, update)
+func (m *recomputingMetadata) PatchNamespaceStatus(namespace string, modify func(*proto.NamespaceStatus) bool) error {
+	err := m.Metadata.PatchNamespaceStatus(namespace, modify)
 	m.afterWrite()
 	return err
 }
@@ -104,9 +104,9 @@ func (m *racingMetadata) UpdateShardStatus(namespace string, shard int64, shardM
 	return m.Metadata.UpdateShardStatus(namespace, shard, shardMetadata)
 }
 
-func (m *racingMetadata) PatchNamespaceStatus(namespace string, update func(*proto.NamespaceStatus) bool) error {
+func (m *racingMetadata) PatchNamespaceStatus(namespace string, modify func(*proto.NamespaceStatus) bool) error {
 	m.beforeWrite()
-	return m.Metadata.PatchNamespaceStatus(namespace, update)
+	return m.Metadata.PatchNamespaceStatus(namespace, modify)
 }
 
 // electLeader writes the outcome of a new leader election of the shard, as its
