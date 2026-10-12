@@ -59,7 +59,22 @@ Key components:
 - All Go files require Apache 2.0 license header
 - Cyclomatic complexity limit: 15
 - Cognitive complexity limit: 25
-- Comments explain why, not what: don't restate the code, and keep them short
+- Use the simplest design that meets the requirements, and look for an existing abstraction before adding another
+  representation of the same concept
+- Name types and methods for what they hold or do
+- Comments explain why, not what: document the behavior, preconditions and failure modes of an API, and the
+  non-obvious decisions and invariants; don't restate the code or narrate the history of a change, and keep them short
+- Check the APIs in this checkout: an older release, or another project, may not match the code here
+
+## Changes
+
+- **Keep changes focused**: one concern per pull request. Open a separate pull request for an unrelated issue found
+  along the way.
+- **Separate mechanical changes**: move and rename code in its own pull request, apart from the changes of behavior,
+  so that each diff can be reviewed on its own, e.g. a file split, then the change to the split code.
+- **Update the docs in the same change** when a behavior or an API changes.
+- **Discuss large changes first**: open an issue, or a proposal in the GitHub Discussions, before a substantial
+  change.
 
 ## Errors and Retries
 
@@ -85,14 +100,28 @@ Key components:
 - **End-to-end tests**: the tests that run a cluster or go through the public endpoints live in the top-level
   `tests/` module, not in the package.
 
+## Validation
+
+- Add a regression test to every bug fix.
+- Report the checks that actually ran and their results, e.g. `make test` and `make lint`, and the checks that were
+  skipped.
+- Verify the cause of a failure before calling it unrelated to the change.
+
 ## Commits and Pull Requests
 
 - Sign off every commit with `git commit -s`: the DCO check fails without it.
 - Prefix the titles with the type of change: `fix:`, `feat:`, `perf:`, `refactor:`, `test:`, `docs:`, `ci:`, `chore:`.
 - Keep a pull request to one change, and its description short. Split a larger change into stacked pull requests.
-- Write the description with the sections of `.github/pull_request_template.md`: Motivation, Modifications, Shared
-  state (only when the change adds shared mutable state), Testing and Checklist.
-- Leave the boxes of the checklist unchecked: the author checks them, after reviewing the change.
+- Write the description with the [PR template](.github/pull_request_template.md): Checklist, Motivation,
+  Modifications, Shared state (only when the change adds shared mutable state), Testing and AI Usage. A few
+  sentences plus the test results are enough for a simple change; don't repeat the diff.
+- Leave the boxes of the checklist unchecked: the contributor checks them, after reviewing the change. The
+  contributor remains responsible for understanding and validating it.
+- Complete the AI Usage section accurately, including your own involvement: the code, the tests, the description, or
+  creating the PR. Don't claim that the contributor reviewed the changes unless they have confirmed it.
+- Keep the AI disclosure in the PR description: don't add AI coauthor or generated-by trailers to the commits.
+- Identify a review written by an agent as such, give concrete findings with their evidence, and tell confirmed
+  problems apart from questions. The maintainers make the review and merge decisions.
 
 ## Concurrency: Avoid New Shared Mutable State
 
