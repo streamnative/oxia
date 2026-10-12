@@ -57,10 +57,14 @@ func New(ctx context.Context, coordinatorRuntime runtime.Runtime) Reconciler {
 		},
 	}
 
-	// The subscription signals the changes, and GetConfig reads the
-	// configuration, retrying its load if needed.
+	// The subscription signals the changes, and the watch below reconciles
+	// again, with a backoff, if this first reconciliation fails.
 	subscription := r.runtime.Metadata().SubscribeConfig()
-	if err := r.Reconcile(reconcilerCtx, r.runtime.Metadata().GetConfig().UnsafeBorrow()); err != nil {
+	config, err := r.runtime.Metadata().GetConfig()
+	if err == nil {
+		err = r.Reconcile(reconcilerCtx, config.UnsafeBorrow())
+	}
+	if err != nil {
 		r.logger.Warn("failed to reconcile config", slog.Any("error", err))
 	}
 	r.wg.Go(func() {
@@ -107,7 +111,11 @@ func (r *clusterReconciler) Reconcile(_ context.Context, snapshot *proto.Cluster
 
 func (r *clusterReconciler) bgWatchClusterConfiguration(subscription *cache.Subscription[provider.Versioned[*proto.ClusterConfiguration]], bo backoff.BackOff) error {
 	for {
-		if err := r.Reconcile(r.ctx, r.runtime.Metadata().GetConfig().UnsafeBorrow()); err != nil {
+		config, err := r.runtime.Metadata().GetConfig()
+		if err != nil {
+			return err
+		}
+		if err := r.Reconcile(r.ctx, config.UnsafeBorrow()); err != nil {
 			return err
 		}
 		bo.Reset()

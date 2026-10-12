@@ -55,7 +55,9 @@ func TestNewFactoryFromOptionsLoadsFileClusterConfig(t *testing.T) {
 		require.NoError(t, factory.Close())
 	}()
 
-	config := metadata.GetConfig().UnsafeBorrow()
+	borrowedConfig, err := metadata.GetConfig()
+	require.NoError(t, err)
+	config := borrowedConfig.UnsafeBorrow()
 	require.Len(t, config.GetNamespaces(), 1)
 	require.Equal(t, "default", config.GetNamespaces()[0].GetName())
 }
@@ -86,7 +88,9 @@ func TestNewFactoryFromOptionsMergesLegacyClusterConfigPath(t *testing.T) {
 		require.NoError(t, factory.Close())
 	}()
 
-	config := metadata.GetConfig().UnsafeBorrow()
+	borrowedConfig, err := metadata.GetConfig()
+	require.NoError(t, err)
+	config := borrowedConfig.UnsafeBorrow()
 	require.Len(t, config.GetNamespaces(), 1)
 	require.Equal(t, "default", config.GetNamespaces()[0].GetName())
 }
@@ -405,6 +409,20 @@ func TestMetadataGetLeaderReturnsLoadError(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
 
 	_, err := metadata.GetLeader()
+	require.ErrorContains(t, err, "configuration unavailable")
+}
+
+// GetConfig reports a configuration that cannot be loaded, without waiting
+// for it.
+func TestMetadataGetConfigReturnsLoadError(t *testing.T) {
+	statusProvider := memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, "")
+	configProvider := loadFailingConfigProvider{
+		Provider: memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, ""),
+	}
+	metadata := newMetadata(t.Context(), statusProvider, configProvider, "")
+	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
+
+	_, err := metadata.GetConfig()
 	require.ErrorContains(t, err, "configuration unavailable")
 }
 

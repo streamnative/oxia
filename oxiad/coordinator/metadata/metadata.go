@@ -63,7 +63,7 @@ type Metadata interface {
 	UpdateShardStatuses(namespace string, update func(shards map[int64]*commonproto.ShardMetadata) bool) error
 	DeleteShardStatus(namespace string, shard int64) error
 
-	GetConfig() commonobject.Borrowed[*commonproto.ClusterConfiguration]
+	GetConfig() (commonobject.Borrowed[*commonproto.ClusterConfiguration], error)
 	SubscribeConfig() *cache.Subscription[provider.Versioned[*commonproto.ClusterConfiguration]]
 	GetLoadBalancer() commonobject.Borrowed[*commonproto.LoadBalancer]
 
@@ -444,7 +444,17 @@ func (m *coordinatorMetadata) DeleteShardStatus(namespace string, shard int64) e
 	})
 }
 
-func (m *coordinatorMetadata) GetConfig() commonobject.Borrowed[*commonproto.ClusterConfiguration] {
+func (m *coordinatorMetadata) GetConfig() (commonobject.Borrowed[*commonproto.ClusterConfiguration], error) {
+	config, err := m.configProvider.Load()
+	if err != nil {
+		return commonobject.Borrowed[*commonproto.ClusterConfiguration]{}, err
+	}
+	return commonobject.Borrow(config.Value), nil
+}
+
+// loadConfig retries the load of the configuration until it succeeds or the
+// metadata closes, and returns an empty configuration then.
+func (m *coordinatorMetadata) loadConfig() commonobject.Borrowed[*commonproto.ClusterConfiguration] {
 	config, err := backoff.RetryNotifyWithData(m.configProvider.Load, oxiatime.NewBackOff(m.ctx), func(err error, duration time.Duration) {
 		m.logger.Warn(
 			"failed to load the cluster configuration",
@@ -463,7 +473,7 @@ func (m *coordinatorMetadata) SubscribeConfig() *cache.Subscription[provider.Ver
 }
 
 func (m *coordinatorMetadata) GetLoadBalancer() commonobject.Borrowed[*commonproto.LoadBalancer] {
-	return commonobject.Borrow(m.GetConfig().UnsafeBorrow().GetLoadBalancerWithDefaults())
+	return commonobject.Borrow(m.loadConfig().UnsafeBorrow().GetLoadBalancerWithDefaults())
 }
 
 func (m *coordinatorMetadata) CreateNamespace(namespace *commonproto.Namespace) error {
@@ -632,7 +642,7 @@ func (m *coordinatorMetadata) DeleteDataServer(name string) (*commonproto.DataSe
 }
 
 func (m *coordinatorMetadata) ListDataServer() map[string]commonobject.Borrowed[*commonproto.DataServer] {
-	config := m.GetConfig().UnsafeBorrow()
+	config := m.loadConfig().UnsafeBorrow()
 	dataServers := make(map[string]commonobject.Borrowed[*commonproto.DataServer], len(config.GetServers()))
 	for _, server := range config.GetServers() {
 		name := server.GetNameOrDefault()
@@ -662,7 +672,7 @@ func (m *coordinatorMetadata) GetNamespace(namespace string) (commonobject.Borro
 }
 
 func (m *coordinatorMetadata) ListNamespace() map[string]commonobject.Borrowed[*commonproto.Namespace] {
-	configNamespaces := m.GetConfig().UnsafeBorrow().GetNamespaces()
+	configNamespaces := m.loadConfig().UnsafeBorrow().GetNamespaces()
 	namespaces := make(map[string]commonobject.Borrowed[*commonproto.Namespace], len(configNamespaces))
 	for _, namespace := range configNamespaces {
 		namespaces[namespace.GetName()] = commonobject.Borrow(namespace)
@@ -671,7 +681,7 @@ func (m *coordinatorMetadata) ListNamespace() map[string]commonobject.Borrowed[*
 }
 
 func (m *coordinatorMetadata) GetDataServer(name string) (commonobject.Borrowed[*commonproto.DataServer], bool) {
-	value, ok := m.GetConfig().UnsafeBorrow().GetDataServer(name)
+	value, ok := m.loadConfig().UnsafeBorrow().GetDataServer(name)
 	if !ok {
 		return commonobject.Borrowed[*commonproto.DataServer]{}, false
 	}
