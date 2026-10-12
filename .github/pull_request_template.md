@@ -2,7 +2,6 @@
 
 - [ ] I have reviewed and understand the changes in this PR, and I can explain why they are correct.
 - [ ] Confirmed that `make test` and `make lint` pass.
-- [ ] Every commit is signed off (`git commit -s`).
 
 ### Motivation
 
