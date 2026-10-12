@@ -428,27 +428,19 @@ func (m *coordinatorMetadata) UpdateShardStatuses(
 }
 
 func (m *coordinatorMetadata) DeleteShardStatus(namespace string, shard int64) error {
-	return backoff.RetryNotify(func() error {
-		return m.computeStatus(func(clusterStatus *commonproto.ClusterStatus, _ metadatacommon.Version) (*commonproto.ClusterStatus, bool, error) {
-			ns, exist := clusterStatus.Namespaces[namespace]
-			if !exist {
-				return clusterStatus, false, nil
-			}
-			if _, exists := ns.Shards[shard]; !exists {
-				return clusterStatus, false, nil
-			}
-			delete(ns.Shards, shard)
-			if len(ns.Shards) == 0 {
-				delete(clusterStatus.Namespaces, namespace)
-			}
-			return clusterStatus, true, nil
-		})
-	}, oxiatime.NewBackOff(m.ctx), func(err error, duration time.Duration) {
-		m.logger.Warn(
-			"failed to delete shard metadata",
-			slog.Any("error", err),
-			slog.Duration("retry-after", duration),
-		)
+	return m.computeStatus(func(clusterStatus *commonproto.ClusterStatus, _ metadatacommon.Version) (*commonproto.ClusterStatus, bool, error) {
+		ns, exist := clusterStatus.Namespaces[namespace]
+		if !exist {
+			return clusterStatus, false, nil
+		}
+		if _, exists := ns.Shards[shard]; !exists {
+			return clusterStatus, false, nil
+		}
+		delete(ns.Shards, shard)
+		if len(ns.Shards) == 0 {
+			delete(clusterStatus.Namespaces, namespace)
+		}
+		return clusterStatus, true, nil
 	})
 }
 

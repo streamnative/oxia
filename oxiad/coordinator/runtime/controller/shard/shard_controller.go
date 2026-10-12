@@ -682,10 +682,8 @@ func (s *controller) DeleteShard() {
 	if s.terminating.Load() {
 		return
 	}
-	select {
-	case s.deleteOp <- nil:
-	case <-s.ctx.Done():
-	}
+	// A pending deletion covers this one too
+	channel.PushNoBlock(s.deleteOp, nil)
 }
 
 func (s *controller) deleteShardWithRetries() {
@@ -696,8 +694,6 @@ func (s *controller) deleteShardWithRetries() {
 	}
 }
 
-// deleteShard deletes the shard from the data servers of its ensemble, then
-// from the status. It returns the errors to retry.
 func (s *controller) deleteShard() error {
 	borrowedMeta, exists, err := s.metadataStore.GetShardStatus(s.namespace, s.shard)
 	if err != nil {
@@ -727,12 +723,14 @@ func (s *controller) deleteShard() error {
 		)
 	}
 
-	s.terminating.Store(true)
-	if err := s.metadataStore.DeleteShardStatus(s.namespace, s.shard); err != nil {
-		// The shard is still marked as deleting: its deletion resumes when
-		// the coordinator restarts
-		s.logger.Warn("Failed to delete the shard status", slog.Any("error", err))
-		return nil
+	s.terminationMu.Lock()
+	err = s.metadataStore.DeleteShardStatus(s.namespace, s.shard)
+	if err == nil {
+		s.terminating.Store(true)
+	}
+	s.terminationMu.Unlock()
+	if err != nil {
+		return err
 	}
 	if s.eventListener != nil {
 		go func() {

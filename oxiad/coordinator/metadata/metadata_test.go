@@ -502,6 +502,27 @@ func TestMetadataUpdateShardStatusReturnsWriteError(t *testing.T) {
 	require.EqualValues(t, 1, writes.Load())
 }
 
+// DeleteShardStatus reports a failed write to its caller, instead of retrying
+// it.
+func TestMetadataDeleteShardStatusReturnsWriteError(t *testing.T) {
+	memoryProvider := memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, "")
+	_, err := memoryProvider.Store(provider.Versioned[*commonproto.ClusterStatus]{
+		Value: &commonproto.ClusterStatus{Namespaces: map[string]*commonproto.NamespaceStatus{
+			"default": {Shards: map[int64]*commonproto.ShardMetadata{0: {Term: 1}}},
+		}},
+		Version: metadataconstant.NotExists,
+	})
+	require.NoError(t, err)
+	var writes atomic.Int32
+	statusProvider := countingFailingStatusProvider{Provider: memoryProvider, writes: &writes}
+	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
+	metadata := newMetadata(t.Context(), statusProvider, configProvider, "")
+	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
+
+	require.ErrorContains(t, metadata.DeleteShardStatus("default", 0), "store unavailable")
+	require.EqualValues(t, 1, writes.Load())
+}
+
 // AllocateShardIDs reports a failed write to its caller, which retries,
 // instead of retrying it.
 func TestMetadataAllocateShardIDsReturnsWriteError(t *testing.T) {
