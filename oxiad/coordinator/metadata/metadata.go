@@ -375,28 +375,19 @@ func (m *coordinatorMetadata) UpdateShardStatus(namespace string, shard int64, s
 		shardMetadata = gproto.Clone(shardMetadata).(*commonproto.ShardMetadata) //nolint:revive
 	}
 	shardExists := true
-	err := backoff.RetryNotify(func() error {
-		return m.computeStatus(func(clusterStatus *commonproto.ClusterStatus, _ metadatacommon.Version) (*commonproto.ClusterStatus, bool, error) {
-			ns, exist := clusterStatus.Namespaces[namespace]
-			if !exist {
-				shardExists = false
-				return clusterStatus, false, nil
-			}
-			if _, exist = ns.Shards[shard]; !exist {
-				shardExists = false
-				return clusterStatus, false, nil
-			}
-			ns.Shards[shard] = shardMetadata
-			return clusterStatus, true, nil
-		})
-	}, oxiatime.NewBackOff(m.ctx), func(err error, duration time.Duration) {
-		m.logger.Warn(
-			"failed to update shard metadata",
-			slog.Any("error", err),
-			slog.Duration("retry-after", duration),
-		)
-	})
-	if err != nil {
+	if err := m.computeStatus(func(clusterStatus *commonproto.ClusterStatus, _ metadatacommon.Version) (*commonproto.ClusterStatus, bool, error) {
+		ns, exist := clusterStatus.Namespaces[namespace]
+		if !exist {
+			shardExists = false
+			return clusterStatus, false, nil
+		}
+		if _, exist = ns.Shards[shard]; !exist {
+			shardExists = false
+			return clusterStatus, false, nil
+		}
+		ns.Shards[shard] = shardMetadata
+		return clusterStatus, true, nil
+	}); err != nil {
 		return err
 	}
 	if !shardExists {
