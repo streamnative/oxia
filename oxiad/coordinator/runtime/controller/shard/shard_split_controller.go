@@ -207,8 +207,9 @@ func (sc *SplitController) run() {
 	}
 
 	// If we exited due to timeout/cancellation and the split isn't done,
-	// abort and clean up. Closing the controller leaves it for the next
-	// coordinator to resume.
+	// abort and clean up. The abort runs at least once, even when the
+	// controller is closing; closing stops its retries, and a split whose abort
+	// wasn't persisted resumes after a restart.
 	if sc.ctx.Err() != nil {
 		sc.logger.Warn("Aborting split due to timeout or cancellation")
 		if err := backoff.RetryNotify(sc.abort, oxiatime.NewBackOff(sc.finalizeCtx), logRetry); err != nil &&
@@ -915,7 +916,8 @@ func (sc *SplitController) unfreezeParentBestEffort(leader *proto.DataServerIden
 // It unfreezes the parent (if cutover had frozen it), removes observer cursors
 // from the parent, deletes child shards from status, clears the parent's split
 // metadata, and notifies the coordinator. It returns the errors to retry: the
-// split is kept until the parent is unfrozen and the abort is persisted.
+// split is kept until the parent and the children can be loaded, and the abort
+// is persisted. The unfreeze and the removal of the observers are best-effort.
 func (sc *SplitController) abort() error {
 	// Use a fresh context since the split context is cancelled.
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
