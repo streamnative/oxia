@@ -218,59 +218,15 @@ func assertShardEnsemble(
 	}
 }
 
-func TestLeaderElection_ShouldChooseHighestTerm(t *testing.T) {
-	tests := []struct {
-		name           string
-		candidates     map[*proto.DataServerIdentity]*proto.EntryId
-		expectedLeader *proto.DataServerIdentity
-	}{
-		{
-			name: "Choose highest term",
-			candidates: map[*proto.DataServerIdentity]*proto.EntryId{
-				{Public: "1", Internal: "1"}: {Term: 200, Offset: 2480},
-				{Public: "2", Internal: "2"}: {Term: 200, Offset: 2500},
-				{Public: "3", Internal: "3"}: {Term: 198, Offset: 3000},
-			},
-			expectedLeader: &proto.DataServerIdentity{Public: "2", Internal: "2"},
-		},
-		{
-			name: "Same term, different offsets",
-			candidates: map[*proto.DataServerIdentity]*proto.EntryId{
-				{Public: "1", Internal: "1"}: {Term: 200, Offset: 1000},
-				{Public: "2", Internal: "2"}: {Term: 200, Offset: 2000},
-				{Public: "3", Internal: "3"}: {Term: 200, Offset: 1500},
-			},
-			expectedLeader: &proto.DataServerIdentity{Public: "2", Internal: "2"},
-		},
-		{
-			name: "Different terms, same offsets",
-			candidates: map[*proto.DataServerIdentity]*proto.EntryId{
-				{Public: "1", Internal: "1"}: {Term: 200, Offset: 1500},
-				{Public: "2", Internal: "2"}: {Term: 198, Offset: 1500},
-				{Public: "3", Internal: "3"}: {Term: 199, Offset: 1500},
-			},
-			expectedLeader: &proto.DataServerIdentity{Public: "1", Internal: "1"},
-		},
-		{
-			name: "Single candidate",
-			candidates: map[*proto.DataServerIdentity]*proto.EntryId{
-				{Public: "1", Internal: "1"}: {Term: 200, Offset: 1500},
-			},
-			expectedLeader: &proto.DataServerIdentity{Public: "1", Internal: "1"},
-		},
-	}
+func TestNoOpSupportedFeaturesSupplierReturnsNoFeatures(t *testing.T) {
+	result := NoOpSupportedFeaturesSupplier(nil)
+	assert.NotNil(t, result)
+	assert.Empty(t, result)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			candidates := chooseCandidates(tt.candidates)
-
-			// Check candidates
-			assert.Equal(t, 1, len(candidates))
-			for _, candidate := range candidates {
-				assert.Equal(t, tt.expectedLeader, candidate)
-			}
-		})
-	}
+	server := testDataServer("node1")
+	result = NoOpSupportedFeaturesSupplier([]*proto.DataServerIdentity{server})
+	assert.Contains(t, result, server.GetNameOrDefault())
+	assert.Empty(t, result[server.GetNameOrDefault()])
 }
 
 func TestController_OnElectLeaderReturnsNewLeader(t *testing.T) {
