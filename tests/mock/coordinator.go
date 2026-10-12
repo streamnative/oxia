@@ -21,6 +21,7 @@ import (
 	metadatacodec "github.com/oxia-db/oxia/oxiad/coordinator/metadata/common/codec"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	commonproto "github.com/oxia-db/oxia/common/proto"
 	"github.com/oxia-db/oxia/oxiad/coordinator/metadata/provider"
@@ -41,7 +42,8 @@ func NewCoordinator(t *testing.T, configProvider provider.Provider[*commonproto.
 	})
 	coordinatorInstance, err := coordruntime.New(metadata, rpc2.NewRpcProviderFactory(nil))
 	assert.NoError(t, err)
-	reconciler := coordreconciler.New(t.Context(), coordinatorInstance)
+	reconciler, err := coordreconciler.New(t.Context(), coordinatorInstance)
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		assert.NoError(t, reconciler.Close())
 	})

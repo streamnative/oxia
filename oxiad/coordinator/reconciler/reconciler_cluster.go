@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
+	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 
 	"github.com/oxia-db/oxia/common/process"
@@ -43,7 +44,11 @@ type clusterReconciler struct {
 	reconcilers []Reconciler
 }
 
-func New(ctx context.Context, coordinatorRuntime runtime.Runtime) Reconciler {
+// New returns the cluster reconciler of the runtime. It reconciles the current
+// configuration before returning, and fails if that pass fails, then reconciles
+// each change of the configuration in the background, retrying a failed pass
+// with a backoff until it is closed.
+func New(ctx context.Context, coordinatorRuntime runtime.Runtime) (Reconciler, error) {
 	reconcilerCtx, cancel := context.WithCancel(ctx)
 	r := &clusterReconciler{
 		ctx:       reconcilerCtx,
@@ -57,27 +62,28 @@ func New(ctx context.Context, coordinatorRuntime runtime.Runtime) Reconciler {
 		},
 	}
 
-	// The subscription signals the changes, and the watch below reconciles
-	// again, with a backoff, if this first reconciliation fails.
-	subscription := r.runtime.Metadata().SubscribeConfig()
 	config, err := r.runtime.Metadata().GetConfig()
-	if err == nil {
-		err = r.Reconcile(reconcilerCtx, config.UnsafeBorrow())
-	}
 	if err != nil {
-		r.logger.Warn("failed to reconcile config", slog.Any("error", err))
+		return nil, multierr.Append(errors.Wrap(err, "failed to load the cluster configuration"), r.Close())
 	}
+	if err := r.Reconcile(reconcilerCtx, config.UnsafeBorrow()); err != nil {
+		return nil, multierr.Append(errors.Wrap(err, "failed to reconcile the cluster configuration"), r.Close())
+	}
+
+	// The watch reconciles the current configuration before waiting for its
+	// changes, so a change made since the first reconciliation isn't missed
+	subscription := r.runtime.Metadata().SubscribeConfig()
 	r.wg.Go(func() {
 		defer subscription.Close()
 		process.DoWithLabels(reconcilerCtx, map[string]string{
 			"component": "coordinator-reconciler",
 		}, func() {
-			r.watchClusterConfigurationWithRetries(subscription,
+			r.reconcileWithRetries(subscription,
 				oxiatime.NewBackOffWithInitialInterval(reconcilerCtx, time.Second))
 		})
 	})
 
-	return r
+	return r, nil
 }
 
 func (r *clusterReconciler) Close() error {
@@ -102,7 +108,7 @@ func (r *clusterReconciler) Reconcile(_ context.Context, snapshot *proto.Cluster
 	return errs
 }
 
-func (r *clusterReconciler) watchClusterConfigurationWithRetries(
+func (r *clusterReconciler) reconcileWithRetries(
 	subscription *cache.Subscription[provider.Versioned[*proto.ClusterConfiguration]], bo backoff.BackOff) {
 	_ = backoff.RetryNotify(func() error {
 		for {

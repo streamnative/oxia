@@ -21,9 +21,20 @@ import (
 	"github.com/oxia-db/oxia/common/proto"
 )
 
+// Reconciler brings the coordinator runtime in line with the cluster
+// configuration: the data servers and namespaces of the configuration are
+// created in the runtime, and the ones that are no longer in it are deleted.
+//
+// The data server and namespace reconcilers each handle their part, and the
+// cluster reconciler, which New returns, runs them all on the configuration,
+// first when it starts, then on each of its changes.
 type Reconciler interface {
 	io.Closer
 
-	// Reconcile performs one pass. Callers can retry returned errors with backoff.
+	// Reconcile makes one pass over the given configuration, and returns its
+	// errors without retrying. A pass that fails on one data server or
+	// namespace still handles the others, and a pass can be repeated: it only
+	// changes what doesn't match the configuration yet. The caller retries a
+	// failed pass, e.g. with a backoff.
 	Reconcile(context.Context, *proto.ClusterConfiguration) error
 }

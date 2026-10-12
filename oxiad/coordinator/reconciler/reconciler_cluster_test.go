@@ -57,7 +57,26 @@ func (b *countingBackOff) Reset() {
 	b.resets++
 }
 
-func TestClusterReconcilerWatchClusterConfigurationWithRetriesRetriesReconcileError(t *testing.T) {
+// New fails when the first reconciliation fails, instead of starting without
+// the configuration applied.
+func TestClusterReconcilerNewReturnsReconcileError(t *testing.T) {
+	base := namespaceRuntimeForErrors("failing")
+	base.metadata.config = &proto.ClusterConfiguration{Namespaces: []*proto.Namespace{base.metadata.configNS["failing"]}}
+	createErr := errors.New("namespace write failure")
+	runtime := &watchedNamespaceRuntime{
+		mockNamespaceRuntime: base,
+		failures:             map[string]error{"failing": createErr},
+		attempts:             make(chan string, 1),
+	}
+
+	reconciler, err := New(t.Context(), runtime)
+	require.ErrorIs(t, err, createErr)
+	require.Nil(t, reconciler)
+	require.Equal(t, "failing", <-runtime.attempts)
+	require.Empty(t, base.added)
+}
+
+func TestClusterReconcilerReconcileWithRetriesRetriesReconcileError(t *testing.T) {
 	base := namespaceRuntimeForErrors("retry", "healthy")
 	base.metadata.config = &proto.ClusterConfiguration{Namespaces: []*proto.Namespace{
 		base.metadata.configNS["healthy"], base.metadata.configNS["retry"],
@@ -81,7 +100,7 @@ func TestClusterReconcilerWatchClusterConfigurationWithRetriesRetriesReconcileEr
 	defer func() { require.NoError(t, config.Close()) }()
 	subscription := config.Subscribe()
 	bo := &countingBackOff{}
-	reconciler.wg.Go(func() { reconciler.watchClusterConfigurationWithRetries(subscription, bo) })
+	reconciler.wg.Go(func() { reconciler.reconcileWithRetries(subscription, bo) })
 	// The first reconciliation fails on "retry", and the retry reconciles both
 	// namespaces again
 	for _, expected := range []string{"healthy", "retry", "healthy", "retry"} {
