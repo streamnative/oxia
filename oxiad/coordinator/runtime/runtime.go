@@ -1036,7 +1036,7 @@ func New(
 
 	c.ctx, c.ctxCancel = context.WithCancel(context.Background())
 
-	c.loadBalancer = balancer.NewLoadBalancer(balancer.Options{
+	c.loadBalancer, err = balancer.NewLoadBalancer(balancer.Options{
 		Context:  c.ctx,
 		Metadata: c.metadata,
 		NodeAvailableJudger: func(nodeID string) bool {
@@ -1055,6 +1055,10 @@ func New(
 			return nc.IsStablyRunning(dataServerRecoveryStabilizationWindow)
 		},
 	})
+	if err != nil {
+		c.ctxCancel()
+		return nil, err
+	}
 
 	c.rpc = rpcProvider(c.insID)
 

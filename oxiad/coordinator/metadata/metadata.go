@@ -65,7 +65,7 @@ type Metadata interface {
 
 	GetConfig() (commonobject.Borrowed[*commonproto.ClusterConfiguration], error)
 	SubscribeConfig() *cache.Subscription[provider.Versioned[*commonproto.ClusterConfiguration]]
-	GetLoadBalancer() commonobject.Borrowed[*commonproto.LoadBalancer]
+	GetLoadBalancerConfig() (commonobject.Borrowed[*commonproto.LoadBalancer], error)
 
 	CreateNamespace(namespace *commonproto.Namespace) error
 	PatchNamespace(namespace *commonproto.Namespace) (*commonproto.Namespace, error)
@@ -472,8 +472,12 @@ func (m *coordinatorMetadata) SubscribeConfig() *cache.Subscription[provider.Ver
 	return m.configProvider.Subscribe()
 }
 
-func (m *coordinatorMetadata) GetLoadBalancer() commonobject.Borrowed[*commonproto.LoadBalancer] {
-	return commonobject.Borrow(m.loadConfig().UnsafeBorrow().GetLoadBalancerWithDefaults())
+func (m *coordinatorMetadata) GetLoadBalancerConfig() (commonobject.Borrowed[*commonproto.LoadBalancer], error) {
+	config, err := m.configProvider.Load()
+	if err != nil {
+		return commonobject.Borrowed[*commonproto.LoadBalancer]{}, err
+	}
+	return commonobject.Borrow(config.Value.GetLoadBalancerWithDefaults()), nil
 }
 
 func (m *coordinatorMetadata) CreateNamespace(namespace *commonproto.Namespace) error {

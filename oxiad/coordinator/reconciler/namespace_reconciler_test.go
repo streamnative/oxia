@@ -217,8 +217,8 @@ func (*mockNamespaceMetadata) SubscribeConfig() *cache.Subscription[provider.Ver
 	return nil
 }
 
-func (*mockNamespaceMetadata) GetLoadBalancer() commonobject.Borrowed[*proto.LoadBalancer] {
-	return commonobject.Borrowed[*proto.LoadBalancer]{}
+func (*mockNamespaceMetadata) GetLoadBalancerConfig() (commonobject.Borrowed[*proto.LoadBalancer], error) {
+	return commonobject.Borrowed[*proto.LoadBalancer]{}, nil
 }
 
 func (*mockNamespaceMetadata) CreateDataServer(*proto.DataServer) error {
