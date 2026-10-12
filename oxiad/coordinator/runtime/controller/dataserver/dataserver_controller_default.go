@@ -67,12 +67,7 @@ type controller struct {
 	status Status
 	// supportedFeatures are the features that the last handshake reported.
 	supportedFeatures []proto.Feature
-	// statusEpoch increments on every status transition, so that a probe
-	// observation (a SERVING answer or a failure) obtained before a
-	// concurrent transition can be recognized as stale and discarded instead
-	// of flapping the status back.
-	statusEpoch int64
-	// statusChanged is closed, and replaced, every time statusEpoch
+	// statusChanged is closed, and replaced, every time the status epoch
 	// increments, to wake up the goroutines waiting for a status transition.
 	statusChanged chan any
 	// handshaking is set while the NotRunning -> Running handshake is in
@@ -115,17 +110,17 @@ func (n *controller) Drain() {
 func (n *controller) currentStatusEpoch() int64 {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
-	return n.statusEpoch
+	return n.status.epoch
 }
 
 // advanceStatusEpochLocked records a status transition and wakes up the
 // goroutines waiting for one. It must be called with mu held.
 func (n *controller) advanceStatusEpochLocked() {
 	// The first transition, the data server joining, isn't recorded
-	if n.statusEpoch > 0 {
+	if n.status.epoch > 0 {
 		n.status.LastTransitionTime = time.Now()
 	}
-	n.statusEpoch++
+	n.status.epoch++
 	close(n.statusChanged)
 	n.statusChanged = make(chan any)
 }
@@ -417,7 +412,7 @@ func isTransportClosing(err error) bool {
 
 func (n *controller) becomeUnavailable(observedEpoch int64) {
 	n.mu.Lock()
-	if n.statusEpoch != observedEpoch {
+	if n.status.epoch != observedEpoch {
 		// The status changed since the failing observation was made (e.g.
 		// the node already recovered through the watch path): the failure is
 		// stale and must not fence the node again. The next probe evaluates
@@ -441,7 +436,7 @@ func (n *controller) becomeUnavailable(observedEpoch int64) {
 
 func (n *controller) becomeAvailable(observedEpoch int64) {
 	n.mu.Lock()
-	if n.statusEpoch != observedEpoch {
+	if n.status.epoch != observedEpoch {
 		// The node was fenced while the probe was in flight: the SERVING
 		// answer is stale. The next probe will re-evaluate.
 		n.mu.Unlock()
@@ -497,7 +492,7 @@ func (n *controller) becomeAvailable(observedEpoch int64) {
 	featuresChanged := len(feature.Missing(features, n.supportedFeatures)) > 0 ||
 		len(feature.Missing(n.supportedFeatures, features)) > 0
 	n.supportedFeatures = features
-	if n.status.State == NotRunning && n.statusEpoch == observedEpoch {
+	if n.status.State == NotRunning && n.status.epoch == observedEpoch {
 		n.status.State = Running
 		n.advanceStatusEpochLocked()
 	}

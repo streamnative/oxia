@@ -67,6 +67,10 @@ type Status struct {
 	// after the data server joined, as a data server that never failed doesn't
 	// need to prove that it's stable.
 	LastTransitionTime time.Time
+	// epoch increments on every transition, so that a probe observation (a
+	// SERVING answer or a failure) obtained before a concurrent transition can
+	// be recognized as stale and discarded instead of flapping the state back.
+	epoch int64
 }
 
 // Controller manages one data server for the coordinator. It:
