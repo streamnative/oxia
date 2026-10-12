@@ -67,15 +67,11 @@ type controller struct {
 	status Status
 	// supportedFeatures are the features that the last handshake reported.
 	supportedFeatures []proto.Feature
-	// runningSince is when the node last transitioned to Running;
-	// everUnavailable records whether it ever failed a health check;
 	// statusEpoch increments on every status transition, so that a probe
 	// observation (a SERVING answer or a failure) obtained before a
 	// concurrent transition can be recognized as stale and discarded instead
 	// of flapping the status back.
-	runningSince    time.Time
-	everUnavailable bool
-	statusEpoch     int64
+	statusEpoch int64
 	// statusChanged is closed, and replaced, every time statusEpoch
 	// increments, to wake up the goroutines waiting for a status transition.
 	statusChanged chan any
@@ -107,24 +103,13 @@ func (n *controller) GetSupportedFeatures() []proto.Feature {
 func (n *controller) Drain() {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	previous := n.status
+	previous := n.status.State
 	if previous == Draining {
 		return
 	}
-	n.status = Draining
+	n.status.State = Draining
 	n.advanceStatusEpochLocked()
 	n.logger.Info("Changed status", slog.Any("from", previous), slog.Any("to", Draining))
-}
-
-func (n *controller) IsStablyRunning(window time.Duration) bool {
-	n.mu.RLock()
-	defer n.mu.RUnlock()
-	if n.status != Running {
-		return false
-	}
-	// A node that never failed a health check (e.g. it just joined, or the
-	// whole cluster just started) is considered stable right away.
-	return !n.everUnavailable || time.Since(n.runningSince) >= window
 }
 
 func (n *controller) currentStatusEpoch() int64 {
@@ -136,6 +121,10 @@ func (n *controller) currentStatusEpoch() int64 {
 // advanceStatusEpochLocked records a status transition and wakes up the
 // goroutines waiting for one. It must be called with mu held.
 func (n *controller) advanceStatusEpochLocked() {
+	// The first transition, the data server joining, isn't recorded
+	if n.statusEpoch > 0 {
+		n.status.LastTransitionTime = time.Now()
+	}
 	n.statusEpoch++
 	close(n.statusChanged)
 	n.statusChanged = make(chan any)
@@ -161,7 +150,7 @@ func (n *controller) Close() error {
 func (n *controller) openAssignmentsStream() (proto.OxiaCoordination_PushShardAssignmentsClient, error) {
 	for {
 		n.mu.RLock()
-		status, statusChanged := n.status, n.statusChanged
+		status, statusChanged := n.status.State, n.statusChanged
 		n.mu.RUnlock()
 		if status == Running || status == Draining {
 			n.logger.Debug("Ready to send assignments")
@@ -436,14 +425,13 @@ func (n *controller) becomeUnavailable(observedEpoch int64) {
 		n.mu.Unlock()
 		return
 	}
-	if n.status != Running && n.status != Draining {
+	if n.status.State != Running && n.status.State != Draining {
 		n.mu.Unlock()
 		return
 	}
-	if n.status == Running {
-		n.status = NotRunning
+	if n.status.State == Running {
+		n.status.State = NotRunning
 	}
-	n.everUnavailable = true
 	n.advanceStatusEpochLocked()
 	n.mu.Unlock()
 
@@ -459,7 +447,7 @@ func (n *controller) becomeAvailable(observedEpoch int64) {
 		n.mu.Unlock()
 		return
 	}
-	if n.status != NotRunning || n.handshaking {
+	if n.status.State != NotRunning || n.handshaking {
 		// Nothing to do: the node is Running or Draining, or the other health
 		// path is already binding it for this same observation.
 		n.mu.Unlock()
@@ -509,9 +497,8 @@ func (n *controller) becomeAvailable(observedEpoch int64) {
 	featuresChanged := len(feature.Missing(features, n.supportedFeatures)) > 0 ||
 		len(feature.Missing(n.supportedFeatures, features)) > 0
 	n.supportedFeatures = features
-	if n.status == NotRunning && n.statusEpoch == observedEpoch {
-		n.status = Running
-		n.runningSince = time.Now()
+	if n.status.State == NotRunning && n.statusEpoch == observedEpoch {
+		n.status.State = Running
 		n.advanceStatusEpochLocked()
 	}
 	n.mu.Unlock()
@@ -560,7 +547,7 @@ func NewController(ctx context.Context, dataServer *proto.DataServer,
 		listener:            dataServerEventListener,
 		rpc:                 rpcProvider,
 		insID:               insID,
-		status:              NotRunning,
+		status:              Status{State: NotRunning},
 		statusChanged:       make(chan any),
 		supportedFeatures:   make([]proto.Feature, 0),
 		logger:              logger,
@@ -572,7 +559,7 @@ func NewController(ctx context.Context, dataServer *proto.DataServer,
 	}
 	nc.dataServerRunningGauge = metric.NewGauge("oxia_coordinator_node_running",
 		"Whether the dataServer is considered to be running by the coordinator", "count", labels, func() int64 {
-			if nc.GetStatus() == Running {
+			if nc.GetStatus().State == Running {
 				return 1
 			}
 			return 0

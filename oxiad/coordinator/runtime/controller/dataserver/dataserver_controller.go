@@ -22,7 +22,7 @@ import (
 	"github.com/oxia-db/oxia/common/proto"
 )
 
-// Status is the status of a data server, as its controller sees it:
+// State is the state of a data server, as its controller sees it:
 //
 //	           handshake succeeded
 //	NotRunning -------------------> Running
@@ -31,14 +31,14 @@ import (
 //	           health check failed
 //
 //	removed from the configuration (Drain): Running or NotRunning --> Draining
-type Status uint32
+type State uint32
 
 const (
 	// Running is a data server that passes its health checks, and that the
 	// handshake bound to this coordinator: it receives the shard assignments.
-	Running Status = iota
+	Running State = iota
 	// NotRunning is a data server whose health checks fail, or that isn't
-	// bound to this coordinator yet: the status of a new controller.
+	// bound to this coordinator yet: the state of a new controller.
 	NotRunning
 	// Draining is a data server removed from the configuration. It keeps
 	// receiving the shard assignments until it becomes unavailable, and the
@@ -47,7 +47,7 @@ const (
 )
 
 // ToProto returns the state of the data server reported by the management API.
-func (s Status) ToProto() proto.DataServerState {
+func (s State) ToProto() proto.DataServerState {
 	switch s {
 	case Running:
 		return proto.DataServerState_DATA_SERVER_STATE_RUNNING
@@ -58,6 +58,15 @@ func (s Status) ToProto() proto.DataServerState {
 	default:
 		return proto.DataServerState_DATA_SERVER_STATE_UNSPECIFIED
 	}
+}
+
+// Status is the state of a data server, and when it last changed.
+type Status struct {
+	State State
+	// LastTransitionTime is when the state last changed: zero until it changes
+	// after the data server joined, as a data server that never failed doesn't
+	// need to prove that it's stable.
+	LastTransitionTime time.Time
 }
 
 // Controller manages one data server for the coordinator. It:
@@ -82,14 +91,6 @@ type Controller interface {
 
 	// GetStatus returns the current status of the data server.
 	GetStatus() Status
-
-	// IsStablyRunning reports whether the data server is Running and, if it
-	// previously failed a health check, whether it has now been Running
-	// continuously for at least window. The load balancer uses it to keep a
-	// freshly recovered node out of leader rebalancing until it proves
-	// stable, so that a flapping node does not get leaders moved back onto
-	// it just to lose them again.
-	IsStablyRunning(window time.Duration) bool
 
 	// GetSupportedFeatures returns the features that the data server
 	// supports, as its last handshake reported them, or none before its

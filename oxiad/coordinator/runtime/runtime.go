@@ -53,12 +53,6 @@ import (
 	commonwatch "github.com/oxia-db/oxia/oxiad/common/watch"
 )
 
-// dataServerRecoveryStabilizationWindow is how long a data server must stay
-// Running after recovering from a health-check failure before the load
-// balancer considers it for leader rebalancing again. Failure handling (the
-// re-election of leaders away from a dead node) is not affected.
-const dataServerRecoveryStabilizationWindow = 5 * time.Minute
-
 type runtime struct {
 	sync.RWMutex
 
@@ -151,13 +145,13 @@ func (c *runtime) ListDataServerStatus() map[string]*proto.DataServerStatus {
 	statuses := make(map[string]*proto.DataServerStatus, len(c.dataServerControllers)+len(c.drainingNodes))
 	for name, dataServerController := range c.dataServerControllers {
 		statuses[name] = &proto.DataServerStatus{
-			State:             dataServerController.GetStatus().ToProto(),
+			State:             dataServerController.GetStatus().State.ToProto(),
 			SupportedFeatures: dataServerController.GetSupportedFeatures(),
 		}
 	}
 	for name, dataServerController := range c.drainingNodes {
 		statuses[name] = &proto.DataServerStatus{
-			State:             dataServerController.GetStatus().ToProto(),
+			State:             dataServerController.GetStatus().State.ToProto(),
 			SupportedFeatures: dataServerController.GetSupportedFeatures(),
 		}
 	}
@@ -176,7 +170,7 @@ func (c *runtime) GetDataServerStatus(name string) (*proto.DataServerStatus, boo
 		return nil, false
 	}
 	return &proto.DataServerStatus{
-		State:             dataServerController.GetStatus().ToProto(),
+		State:             dataServerController.GetStatus().State.ToProto(),
 		SupportedFeatures: dataServerController.GetSupportedFeatures(),
 	}, true
 }
@@ -760,10 +754,13 @@ func New(
 				return false
 			}
 			// A node that just recovered from a health-check failure is left
-			// out of leader rebalancing until it has been stable for a while:
-			// moving leaders straight back onto it is what turns one flap
-			// into a rebalancing loop.
-			return nc.IsStablyRunning(dataServerRecoveryStabilizationWindow)
+			// out of leader rebalancing until it has been stable for 5
+			// minutes: moving leaders straight back onto it is what turns one
+			// flap into a rebalancing loop. The re-election of leaders away
+			// from a dead node is not affected.
+			status := nc.GetStatus()
+			return status.State == dataservercontroller.Running &&
+				time.Since(status.LastTransitionTime) >= 5*time.Minute
 		},
 	})
 
