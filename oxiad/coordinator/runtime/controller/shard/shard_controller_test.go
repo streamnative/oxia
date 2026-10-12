@@ -2797,11 +2797,11 @@ func TestController_RollingUpgradePinsNewFeatures(t *testing.T) {
 	// stale if its ping loop changed the status while the watch waited for
 	// it: the data server reports its health until the controller acts on it.
 	setHealth := func(dataServer *proto.DataServerIdentity, servingStatus grpc_health_v1.HealthCheckResponse_ServingStatus,
-		status dataservercontroller.Status) {
+		status dataservercontroller.State) {
 		t.Helper()
 		require.Eventually(t, func() bool {
 			rpc.GetNode(dataServer).HealthClient.SetStatus(servingStatus)
-			return dataServers[dataServer.GetNameOrDefault()].GetStatus() == status
+			return dataServers[dataServer.GetNameOrDefault()].GetStatus().State == status
 		}, 10*time.Second, 100*time.Millisecond)
 	}
 	for _, dataServer := range ensemble {

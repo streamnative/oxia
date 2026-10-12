@@ -612,6 +612,31 @@ func TestRuntimeFindDataServerFeaturesOmitsUnknownNodes(t *testing.T) {
 	assert.NotContains(t, features, dataServer.GetNameOrDefault())
 }
 
+// A data server is stable once it has been Running for the stabilization
+// window since its status last changed, or right away if it never changed
+// since it joined.
+func TestIsStablyRunningWaitsForWindowAfterTransition(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status dataservercontroller.Status
+		stable bool
+	}{
+		{"running since it joined", dataservercontroller.Status{State: dataservercontroller.Running}, true},
+		{"just recovered", dataservercontroller.Status{
+			State: dataservercontroller.Running, LastTransitionTime: time.Now(),
+		}, false},
+		{"recovered for the window", dataservercontroller.Status{
+			State: dataservercontroller.Running, LastTransitionTime: time.Now().Add(-dataServerRecoveryStabilizationWindow),
+		}, true},
+		{"not running", dataservercontroller.Status{State: dataservercontroller.NotRunning}, false},
+		{"draining", dataservercontroller.Status{State: dataservercontroller.Draining}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.stable, isStablyRunning(tc.status))
+		})
+	}
+}
+
 func newTestMetadata(t *testing.T, config *proto.ClusterConfiguration) coordmetadata.Metadata {
 	t.Helper()
 

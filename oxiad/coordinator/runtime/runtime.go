@@ -59,6 +59,15 @@ import (
 // re-election of leaders away from a dead node) is not affected.
 const dataServerRecoveryStabilizationWindow = 5 * time.Minute
 
+// isStablyRunning reports whether a data server is Running, and has been for
+// the stabilization window since its status last changed. A data server whose
+// status never changed since it joined is stable right away: the startup of
+// the cluster doesn't delay the leader rebalancing.
+func isStablyRunning(status dataservercontroller.Status) bool {
+	return status.State == dataservercontroller.Running &&
+		time.Since(status.LastTransitionTime) >= dataServerRecoveryStabilizationWindow
+}
+
 type runtime struct {
 	sync.RWMutex
 
@@ -150,16 +159,10 @@ func (c *runtime) ListDataServerStatus() map[string]*proto.DataServerStatus {
 
 	statuses := make(map[string]*proto.DataServerStatus, len(c.dataServerControllers)+len(c.drainingNodes))
 	for name, dataServerController := range c.dataServerControllers {
-		statuses[name] = &proto.DataServerStatus{
-			State:             dataServerController.GetStatus().ToProto(),
-			SupportedFeatures: dataServerController.GetSupportedFeatures(),
-		}
+		statuses[name] = dataServerStatus(dataServerController)
 	}
 	for name, dataServerController := range c.drainingNodes {
-		statuses[name] = &proto.DataServerStatus{
-			State:             dataServerController.GetStatus().ToProto(),
-			SupportedFeatures: dataServerController.GetSupportedFeatures(),
-		}
+		statuses[name] = dataServerStatus(dataServerController)
 	}
 	return statuses
 }
@@ -175,10 +178,14 @@ func (c *runtime) GetDataServerStatus(name string) (*proto.DataServerStatus, boo
 	if !found {
 		return nil, false
 	}
+	return dataServerStatus(dataServerController), true
+}
+
+func dataServerStatus(controller dataservercontroller.Controller) *proto.DataServerStatus {
 	return &proto.DataServerStatus{
-		State:             dataServerController.GetStatus().ToProto(),
-		SupportedFeatures: dataServerController.GetSupportedFeatures(),
-	}, true
+		State:             controller.GetStatus().State.ToProto(),
+		SupportedFeatures: controller.GetSupportedFeatures(),
+	}
 }
 
 func (c *runtime) CreateDataServer(name string, dataServer *proto.DataServer) bool {
@@ -763,7 +770,7 @@ func New(
 			// out of leader rebalancing until it has been stable for a while:
 			// moving leaders straight back onto it is what turns one flap
 			// into a rebalancing loop.
-			return nc.IsStablyRunning(dataServerRecoveryStabilizationWindow)
+			return isStablyRunning(nc.GetStatus())
 		},
 	})
 
