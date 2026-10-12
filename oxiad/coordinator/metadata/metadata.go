@@ -23,13 +23,29 @@ import (
 	"github.com/oxia-db/oxia/oxiad/coordinator/metadata/provider"
 )
 
-// Metadata is the coordinator's view of the cluster metadata: the status,
-// which the coordinator maintains (the namespaces and their shards), and the
-// configuration (the namespaces and the data servers to run them on).
+// Metadata is the coordinator's view of the cluster metadata. It holds two
+// documents, each stored by a provider (memory, file, Kubernetes or raft):
 //
-// The reads return the error of the load, and the writes the error of the
-// write, without retrying: the caller decides how to retry. The returned
-// borrowed values must not be modified.
+//   - The status, which the coordinator maintains: the cluster instance ID,
+//     the shard ID generator, and for each namespace its shards, with their
+//     term, leader, ensemble and split state.
+//   - The configuration, which the operators maintain, through the management
+//     API or the configuration file: the coordinators, the namespaces, the
+//     data servers to run them on, and the load balancer settings.
+//
+// Reads are served from a cache of each document. The cache loads the
+// document when it is empty: at first, and after a failed write, which may
+// still have been applied. A read then returns the error of that load.
+//
+// Writes apply a change to the current document, and store the result in a
+// single write: concurrent writes are serialized, and none reverts another.
+// A write fails if another coordinator wrote the document since it was
+// loaded, e.g. after a change of leadership.
+//
+// Reads and writes return their error without retrying: the caller decides
+// whether and how to retry, e.g. with a backoff, or on its next round. The
+// borrowed values that the reads return are shared with the other readers,
+// and must not be modified.
 type Metadata interface {
 	io.Closer
 
@@ -48,7 +64,10 @@ type Metadata interface {
 	// CreateNamespaceStatus creates the status of a namespace, or returns
 	// ErrAlreadyExists.
 	CreateNamespaceStatus(namespace string, status *commonproto.NamespaceStatus) error
+	// ListNamespaceStatus returns the status of every namespace, by name.
 	ListNamespaceStatus() (map[string]commonobject.Borrowed[*commonproto.NamespaceStatus], error)
+	// GetNamespaceStatus returns the status of a namespace, and false if it
+	// doesn't exist.
 	GetNamespaceStatus(namespace string) (commonobject.Borrowed[*commonproto.NamespaceStatus], bool, error)
 	// PatchNamespaceStatus applies modify to a copy of the current status of a
 	// namespace, and stores it in a single write, unless modify returns false.
@@ -60,6 +79,8 @@ type Metadata interface {
 	// succeeds or the metadata closes, and returns an empty value then.
 	DeleteNamespaceStatus(namespace string) commonobject.Borrowed[*commonproto.NamespaceStatus]
 
+	// GetShardStatus returns the metadata of a shard, and false if it doesn't
+	// exist.
 	GetShardStatus(namespace string, shard int64) (commonobject.Borrowed[*commonproto.ShardMetadata], bool, error)
 	// UpdateShardStatus replaces the metadata of an existing shard, or returns
 	// ErrNotFound.
@@ -68,6 +89,7 @@ type Metadata interface {
 	// shard.
 	DeleteShardStatus(namespace string, shard int64) error
 
+	// GetConfig returns the configuration.
 	GetConfig() (commonobject.Borrowed[*commonproto.ClusterConfiguration], error)
 	// SubscribeConfig returns a subscription notified on each change of the
 	// configuration.
@@ -86,7 +108,10 @@ type Metadata interface {
 	// DeleteNamespace removes a namespace from the configuration, and returns
 	// it, or ErrNotFound.
 	DeleteNamespace(name string) (*commonproto.Namespace, error)
+	// ListNamespace returns the configuration of every namespace, by name.
 	ListNamespace() (map[string]commonobject.Borrowed[*commonproto.Namespace], error)
+	// GetNamespace returns the configuration of a namespace, and false if it
+	// doesn't exist.
 	GetNamespace(name string) (commonobject.Borrowed[*commonproto.Namespace], bool, error)
 	// GetNamespaceTermOptions returns the NewTerm options of the shards of a
 	// namespace, or the defaults if it doesn't exist.
@@ -102,6 +127,11 @@ type Metadata interface {
 	// returns it, or ErrNotFound, or ErrFailedPrecondition if a namespace
 	// would be left with fewer data servers than its replication factor.
 	DeleteDataServer(name string) (*commonproto.DataServer, error)
+	// ListDataServer returns every data server, with its identity and its
+	// metadata, by name: the internal address of a data server without a
+	// name.
 	ListDataServer() (map[string]commonobject.Borrowed[*commonproto.DataServer], error)
+	// GetDataServer returns a data server, with its identity and its
+	// metadata, and false if it doesn't exist.
 	GetDataServer(name string) (commonobject.Borrowed[*commonproto.DataServer], bool, error)
 }
