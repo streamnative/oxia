@@ -22,14 +22,31 @@ import (
 	"github.com/oxia-db/oxia/common/proto"
 )
 
+// Status is the status of a data server, as its controller sees it:
+//
+//	           handshake succeeded
+//	NotRunning -------------------> Running
+//	    ^                              |
+//	    +------------------------------+
+//	           health check failed
+//
+//	removed from the configuration: Running or NotRunning --> Draining
 type Status uint32
 
 const (
+	// Running is a data server that passes its health checks, and that the
+	// handshake bound to this coordinator: it receives the shard assignments.
 	Running Status = iota
+	// NotRunning is a data server whose health checks fail, or that isn't
+	// bound to this coordinator yet: the status of a new controller.
 	NotRunning
-	Draining //
+	// Draining is a data server removed from the configuration. It keeps
+	// receiving the shard assignments until it becomes unavailable, and the
+	// runtime closes its controller then.
+	Draining
 )
 
+// ToProto returns the state of the data server reported by the management API.
 func (s Status) ToProto() proto.DataServerState {
 	switch s {
 	case Running:
@@ -43,13 +60,27 @@ func (s Status) ToProto() proto.DataServerState {
 	}
 }
 
-// The Controller takes care of checking the health-status of each dataServer
-// and to push all the service discovery updates.
+// Controller manages one data server for the coordinator. It:
+//
+//   - checks the health of the data server, with a watch stream and periodic
+//     probes, and tells the listener when the data server becomes unavailable;
+//   - binds a data server that becomes available to this coordinator with a
+//     handshake, which reports the features it supports, and tells the
+//     listener when they change;
+//   - pushes the shard assignments to the data server while it is Running or
+//     Draining, retrying with a backoff when the stream fails.
+//
+// The runtime creates a controller for each data server of the configuration,
+// or still in the ensemble of a shard, and closes it once the data server is
+// removed and unavailable, or replaced.
 type Controller interface {
+	// Close stops the health checks and the assignments stream.
 	io.Closer
 
+	// GetDataServer returns the data server that the controller manages.
 	GetDataServer() commonobject.Borrowed[*proto.DataServer]
 
+	// GetStatus returns the current status of the data server.
 	GetStatus() Status
 
 	// IsStablyRunning reports whether the data server is Running and, if it
@@ -60,7 +91,12 @@ type Controller interface {
 	// it just to lose them again.
 	IsStablyRunning(window time.Duration) bool
 
+	// GetSupportedFeatures returns the features that the data server
+	// supports, as its last handshake reported them, or none before its
+	// first handshake.
 	GetSupportedFeatures() []proto.Feature
 
+	// SetStatus sets the status of the data server. The runtime uses it to
+	// drain a data server removed from the configuration.
 	SetStatus(status Status)
 }
