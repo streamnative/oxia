@@ -35,7 +35,7 @@ import (
 	"github.com/oxia-db/oxia/oxiad/coordinator/metadata/provider"
 )
 
-type coordinatorMetadata struct {
+type defaultMetadata struct {
 	logger *slog.Logger
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -59,7 +59,7 @@ func newMetadata(
 	name string,
 ) Metadata {
 	metadataCtx, cancel := context.WithCancel(ctx)
-	m := &coordinatorMetadata{
+	m := &defaultMetadata{
 		logger:         slog.With(slog.String("component", "coordinator-metadata")),
 		ctx:            metadataCtx,
 		cancel:         cancel,
@@ -70,7 +70,7 @@ func newMetadata(
 	return m
 }
 
-func (m *coordinatorMetadata) computeStatus(fn func(*commonproto.ClusterStatus, metadatacommon.Version) (*commonproto.ClusterStatus, bool, error)) error {
+func (m *defaultMetadata) computeStatus(fn func(*commonproto.ClusterStatus, metadatacommon.Version) (*commonproto.ClusterStatus, bool, error)) error {
 	m.statusLock.Lock()
 	defer m.statusLock.Unlock()
 
@@ -104,7 +104,7 @@ func (m *coordinatorMetadata) computeStatus(fn func(*commonproto.ClusterStatus, 
 
 // stoppedLeadingLocked reports whether this coordinator lost the leadership or
 // is closing. The caller holds statusLock.
-func (m *coordinatorMetadata) stoppedLeadingLocked() bool {
+func (m *defaultMetadata) stoppedLeadingLocked() bool {
 	if m.ctx.Err() != nil {
 		return true
 	}
@@ -119,7 +119,7 @@ func (m *coordinatorMetadata) stoppedLeadingLocked() bool {
 	}
 }
 
-func (m *coordinatorMetadata) computeConfig(fn func(*commonproto.ClusterConfiguration, metadatacommon.Version) (*commonproto.ClusterConfiguration, error)) error {
+func (m *defaultMetadata) computeConfig(fn func(*commonproto.ClusterConfiguration, metadatacommon.Version) (*commonproto.ClusterConfiguration, error)) error {
 	m.configLock.Lock()
 	defer m.configLock.Unlock()
 
@@ -143,13 +143,13 @@ func (m *coordinatorMetadata) computeConfig(fn func(*commonproto.ClusterConfigur
 	return err
 }
 
-func (m *coordinatorMetadata) Close() error {
+func (m *defaultMetadata) Close() error {
 	m.cancel()
 	m.wg.Wait()
 	return nil
 }
 
-func (m *coordinatorMetadata) GetInstanceID() (string, error) {
+func (m *defaultMetadata) GetInstanceID() (string, error) {
 	status, err := m.statusProvider.Load()
 	if err != nil {
 		return "", err
@@ -157,7 +157,7 @@ func (m *coordinatorMetadata) GetInstanceID() (string, error) {
 	return status.Value.GetInstanceId(), nil
 }
 
-func (m *coordinatorMetadata) GetSelf() (*commonproto.Coordinator, error) {
+func (m *defaultMetadata) GetSelf() (*commonproto.Coordinator, error) {
 	config, err := m.configProvider.Load()
 	if err != nil {
 		return nil, err
@@ -169,7 +169,7 @@ func (m *coordinatorMetadata) GetSelf() (*commonproto.Coordinator, error) {
 	return coordinator.CloneVT(), nil
 }
 
-func (m *coordinatorMetadata) GetLeader() (*commonproto.Coordinator, error) {
+func (m *defaultMetadata) GetLeader() (*commonproto.Coordinator, error) {
 	name, err := m.statusProvider.GetLeaderName()
 	if err != nil {
 		return nil, err
@@ -185,7 +185,7 @@ func (m *coordinatorMetadata) GetLeader() (*commonproto.Coordinator, error) {
 	return coordinator.CloneVT(), nil
 }
 
-func (m *coordinatorMetadata) WaitToBecomeLeader() (<-chan struct{}, error) {
+func (m *defaultMetadata) WaitToBecomeLeader() (<-chan struct{}, error) {
 	m.logger.Info("Waiting to become leader")
 	leadershipLost, err := m.statusProvider.WaitToBecomeLeader()
 	if err != nil {
@@ -223,7 +223,7 @@ func (m *coordinatorMetadata) WaitToBecomeLeader() (<-chan struct{}, error) {
 	return leadershipLost, nil
 }
 
-func (m *coordinatorMetadata) AllocateShardIDs(count uint32) (int64, error) {
+func (m *defaultMetadata) AllocateShardIDs(count uint32) (int64, error) {
 	var base int64
 	if err := m.computeStatus(func(status *commonproto.ClusterStatus, _ metadatacommon.Version) (*commonproto.ClusterStatus, bool, error) {
 		base = status.GetShardIdGenerator()
@@ -235,7 +235,7 @@ func (m *coordinatorMetadata) AllocateShardIDs(count uint32) (int64, error) {
 	return base, nil
 }
 
-func (m *coordinatorMetadata) CreateNamespaceStatus(namespace string, status *commonproto.NamespaceStatus) error {
+func (m *defaultMetadata) CreateNamespaceStatus(namespace string, status *commonproto.NamespaceStatus) error {
 	return m.computeStatus(func(clusterStatus *commonproto.ClusterStatus, _ metadatacommon.Version) (*commonproto.ClusterStatus, bool, error) {
 		if clusterStatus.Namespaces == nil {
 			clusterStatus.Namespaces = map[string]*commonproto.NamespaceStatus{}
@@ -248,7 +248,7 @@ func (m *coordinatorMetadata) CreateNamespaceStatus(namespace string, status *co
 	})
 }
 
-func (m *coordinatorMetadata) ListNamespaceStatus() (map[string]commonobject.Borrowed[*commonproto.NamespaceStatus], error) {
+func (m *defaultMetadata) ListNamespaceStatus() (map[string]commonobject.Borrowed[*commonproto.NamespaceStatus], error) {
 	status, err := m.statusProvider.Load()
 	if err != nil {
 		return nil, err
@@ -260,7 +260,7 @@ func (m *coordinatorMetadata) ListNamespaceStatus() (map[string]commonobject.Bor
 	return namespaces, nil
 }
 
-func (m *coordinatorMetadata) GetNamespaceStatus(namespace string) (commonobject.Borrowed[*commonproto.NamespaceStatus], bool, error) {
+func (m *defaultMetadata) GetNamespaceStatus(namespace string) (commonobject.Borrowed[*commonproto.NamespaceStatus], bool, error) {
 	status, err := m.statusProvider.Load()
 	if err != nil {
 		return commonobject.Borrowed[*commonproto.NamespaceStatus]{}, false, err
@@ -272,7 +272,7 @@ func (m *coordinatorMetadata) GetNamespaceStatus(namespace string) (commonobject
 	return commonobject.Borrow(namespaceStatus), true, nil
 }
 
-func (m *coordinatorMetadata) PatchNamespaceStatus(
+func (m *defaultMetadata) PatchNamespaceStatus(
 	namespace string,
 	modify func(status *commonproto.NamespaceStatus) bool,
 ) error {
@@ -294,7 +294,7 @@ func (m *coordinatorMetadata) PatchNamespaceStatus(
 	return nil
 }
 
-func (m *coordinatorMetadata) DeleteNamespaceStatus(namespace string) commonobject.Borrowed[*commonproto.NamespaceStatus] {
+func (m *defaultMetadata) DeleteNamespaceStatus(namespace string) commonobject.Borrowed[*commonproto.NamespaceStatus] {
 	var namespaceStatus *commonproto.NamespaceStatus
 	changed := false
 	err := backoff.RetryNotify(func() error {
@@ -326,7 +326,7 @@ func (m *coordinatorMetadata) DeleteNamespaceStatus(namespace string) commonobje
 	return commonobject.Borrow(namespaceStatus)
 }
 
-func (m *coordinatorMetadata) GetShardStatus(namespace string, shard int64) (commonobject.Borrowed[*commonproto.ShardMetadata], bool, error) {
+func (m *defaultMetadata) GetShardStatus(namespace string, shard int64) (commonobject.Borrowed[*commonproto.ShardMetadata], bool, error) {
 	status, err := m.statusProvider.Load()
 	if err != nil {
 		return commonobject.Borrowed[*commonproto.ShardMetadata]{}, false, err
@@ -342,7 +342,7 @@ func (m *coordinatorMetadata) GetShardStatus(namespace string, shard int64) (com
 	return commonobject.Borrow(shardStatus), true, nil
 }
 
-func (m *coordinatorMetadata) UpdateShardStatus(namespace string, shard int64, shardMetadata *commonproto.ShardMetadata) error {
+func (m *defaultMetadata) UpdateShardStatus(namespace string, shard int64, shardMetadata *commonproto.ShardMetadata) error {
 	if shardMetadata != nil {
 		shardMetadata = gproto.Clone(shardMetadata).(*commonproto.ShardMetadata) //nolint:revive
 	}
@@ -368,7 +368,7 @@ func (m *coordinatorMetadata) UpdateShardStatus(namespace string, shard int64, s
 	return nil
 }
 
-func (m *coordinatorMetadata) DeleteShardStatus(namespace string, shard int64) error {
+func (m *defaultMetadata) DeleteShardStatus(namespace string, shard int64) error {
 	return m.computeStatus(func(clusterStatus *commonproto.ClusterStatus, _ metadatacommon.Version) (*commonproto.ClusterStatus, bool, error) {
 		ns, exist := clusterStatus.Namespaces[namespace]
 		if !exist {
@@ -385,7 +385,7 @@ func (m *coordinatorMetadata) DeleteShardStatus(namespace string, shard int64) e
 	})
 }
 
-func (m *coordinatorMetadata) GetConfig() (commonobject.Borrowed[*commonproto.ClusterConfiguration], error) {
+func (m *defaultMetadata) GetConfig() (commonobject.Borrowed[*commonproto.ClusterConfiguration], error) {
 	config, err := m.configProvider.Load()
 	if err != nil {
 		return commonobject.Borrowed[*commonproto.ClusterConfiguration]{}, err
@@ -393,11 +393,11 @@ func (m *coordinatorMetadata) GetConfig() (commonobject.Borrowed[*commonproto.Cl
 	return commonobject.Borrow(config.Value), nil
 }
 
-func (m *coordinatorMetadata) SubscribeConfig() *cache.Subscription[provider.Versioned[*commonproto.ClusterConfiguration]] {
+func (m *defaultMetadata) SubscribeConfig() *cache.Subscription[provider.Versioned[*commonproto.ClusterConfiguration]] {
 	return m.configProvider.Subscribe()
 }
 
-func (m *coordinatorMetadata) GetLoadBalancerConfig() (commonobject.Borrowed[*commonproto.LoadBalancer], error) {
+func (m *defaultMetadata) GetLoadBalancerConfig() (commonobject.Borrowed[*commonproto.LoadBalancer], error) {
 	config, err := m.configProvider.Load()
 	if err != nil {
 		return commonobject.Borrowed[*commonproto.LoadBalancer]{}, err
@@ -405,7 +405,7 @@ func (m *coordinatorMetadata) GetLoadBalancerConfig() (commonobject.Borrowed[*co
 	return commonobject.Borrow(config.Value.GetLoadBalancerWithDefaults()), nil
 }
 
-func (m *coordinatorMetadata) CreateNamespace(namespace *commonproto.Namespace) error {
+func (m *defaultMetadata) CreateNamespace(namespace *commonproto.Namespace) error {
 	name := namespace.GetName()
 
 	return m.computeConfig(func(config *commonproto.ClusterConfiguration, _ metadatacommon.Version) (*commonproto.ClusterConfiguration, error) {
@@ -424,7 +424,7 @@ func (m *coordinatorMetadata) CreateNamespace(namespace *commonproto.Namespace) 
 	})
 }
 
-func (m *coordinatorMetadata) PatchNamespace(desiredNamespace *commonproto.Namespace) (*commonproto.Namespace, error) {
+func (m *defaultMetadata) PatchNamespace(desiredNamespace *commonproto.Namespace) (*commonproto.Namespace, error) {
 	var updated *commonproto.Namespace
 	if err := m.computeConfig(func(config *commonproto.ClusterConfiguration, _ metadatacommon.Version) (*commonproto.ClusterConfiguration, error) {
 		for _, namespace := range config.GetNamespaces() {
@@ -454,7 +454,7 @@ func (m *coordinatorMetadata) PatchNamespace(desiredNamespace *commonproto.Names
 	return updated, nil
 }
 
-func (m *coordinatorMetadata) DeleteNamespace(name string) (*commonproto.Namespace, error) {
+func (m *defaultMetadata) DeleteNamespace(name string) (*commonproto.Namespace, error) {
 	var deleted *commonproto.Namespace
 	if err := m.computeConfig(func(config *commonproto.ClusterConfiguration, _ metadatacommon.Version) (*commonproto.ClusterConfiguration, error) {
 		for i, namespace := range config.GetNamespaces() {
@@ -474,7 +474,7 @@ func (m *coordinatorMetadata) DeleteNamespace(name string) (*commonproto.Namespa
 	return deleted, nil
 }
 
-func (m *coordinatorMetadata) CreateDataServer(dataServer *commonproto.DataServer) error {
+func (m *defaultMetadata) CreateDataServer(dataServer *commonproto.DataServer) error {
 	name := dataServer.GetIdentity().GetName()
 
 	return m.computeConfig(func(config *commonproto.ClusterConfiguration, _ metadatacommon.Version) (*commonproto.ClusterConfiguration, error) {
@@ -494,7 +494,7 @@ func (m *coordinatorMetadata) CreateDataServer(dataServer *commonproto.DataServe
 	})
 }
 
-func (m *coordinatorMetadata) PatchDataServer(desireDataServer *commonproto.DataServer) (*commonproto.DataServer, error) {
+func (m *defaultMetadata) PatchDataServer(desireDataServer *commonproto.DataServer) (*commonproto.DataServer, error) {
 	var updated *commonproto.DataServer
 	if err := m.computeConfig(func(config *commonproto.ClusterConfiguration, _ metadatacommon.Version) (*commonproto.ClusterConfiguration, error) {
 		for _, existID := range config.GetServers() {
@@ -535,7 +535,7 @@ func (m *coordinatorMetadata) PatchDataServer(desireDataServer *commonproto.Data
 	return updated, nil
 }
 
-func (m *coordinatorMetadata) DeleteDataServer(name string) (*commonproto.DataServer, error) {
+func (m *defaultMetadata) DeleteDataServer(name string) (*commonproto.DataServer, error) {
 	var deleted *commonproto.DataServer
 	if err := m.computeConfig(func(config *commonproto.ClusterConfiguration, _ metadatacommon.Version) (*commonproto.ClusterConfiguration, error) {
 		for i, identity := range config.GetServers() {
@@ -570,7 +570,7 @@ func (m *coordinatorMetadata) DeleteDataServer(name string) (*commonproto.DataSe
 	return deleted, nil
 }
 
-func (m *coordinatorMetadata) ListDataServer() (map[string]commonobject.Borrowed[*commonproto.DataServer], error) {
+func (m *defaultMetadata) ListDataServer() (map[string]commonobject.Borrowed[*commonproto.DataServer], error) {
 	loaded, err := m.configProvider.Load()
 	if err != nil {
 		return nil, err
@@ -599,7 +599,7 @@ func (m *coordinatorMetadata) ListDataServer() (map[string]commonobject.Borrowed
 	return dataServers, nil
 }
 
-func (m *coordinatorMetadata) GetNamespace(name string) (commonobject.Borrowed[*commonproto.Namespace], bool, error) {
+func (m *defaultMetadata) GetNamespace(name string) (commonobject.Borrowed[*commonproto.Namespace], bool, error) {
 	config, err := m.configProvider.Load()
 	if err != nil {
 		return commonobject.Borrowed[*commonproto.Namespace]{}, false, err
@@ -612,7 +612,7 @@ func (m *coordinatorMetadata) GetNamespace(name string) (commonobject.Borrowed[*
 	return commonobject.Borrowed[*commonproto.Namespace]{}, false, nil
 }
 
-func (m *coordinatorMetadata) GetNamespaceTermOptions(name string) (*commonproto.NewTermOptions, error) {
+func (m *defaultMetadata) GetNamespaceTermOptions(name string) (*commonproto.NewTermOptions, error) {
 	termOptions := &commonproto.NewTermOptions{
 		EnableNotifications: true,
 		KeySorting:          commonproto.KeySortingType_UNKNOWN,
@@ -629,7 +629,7 @@ func (m *coordinatorMetadata) GetNamespaceTermOptions(name string) (*commonproto
 	return termOptions, nil
 }
 
-func (m *coordinatorMetadata) ListNamespace() (map[string]commonobject.Borrowed[*commonproto.Namespace], error) {
+func (m *defaultMetadata) ListNamespace() (map[string]commonobject.Borrowed[*commonproto.Namespace], error) {
 	config, err := m.configProvider.Load()
 	if err != nil {
 		return nil, err
@@ -642,7 +642,7 @@ func (m *coordinatorMetadata) ListNamespace() (map[string]commonobject.Borrowed[
 	return namespaces, nil
 }
 
-func (m *coordinatorMetadata) GetDataServer(name string) (commonobject.Borrowed[*commonproto.DataServer], bool, error) {
+func (m *defaultMetadata) GetDataServer(name string) (commonobject.Borrowed[*commonproto.DataServer], bool, error) {
 	config, err := m.configProvider.Load()
 	if err != nil {
 		return commonobject.Borrowed[*commonproto.DataServer]{}, false, err
