@@ -51,6 +51,9 @@ type Metadata interface {
 	DeleteNamespaceStatus(name string) commonobject.Borrowed[*commonproto.NamespaceStatus]
 
 	GetShardStatus(namespace string, shard int64) (commonobject.Borrowed[*commonproto.ShardMetadata], bool, error)
+	// UpdateShardStatus replaces the metadata of an existing shard. It
+	// overwrites the concurrent updates of the shard, e.g. a leader election:
+	// use UpdateShardStatuses for an update that depends on the current status.
 	UpdateShardStatus(namespace string, shard int64, shardMetadata *commonproto.ShardMetadata) error
 	// UpdateShardStatuses applies update to the shards of a namespace, as they
 	// are in the current status, and stores the result in a single status
@@ -375,26 +378,18 @@ func (m *coordinatorMetadata) UpdateShardStatus(namespace string, shard int64, s
 		shardMetadata = gproto.Clone(shardMetadata).(*commonproto.ShardMetadata) //nolint:revive
 	}
 	shardExists := true
-	err := backoff.RetryNotify(func() error {
-		return m.computeStatus(func(clusterStatus *commonproto.ClusterStatus, _ metadatacommon.Version) (*commonproto.ClusterStatus, bool, error) {
-			ns, exist := clusterStatus.Namespaces[namespace]
-			if !exist {
-				shardExists = false
-				return clusterStatus, false, nil
-			}
-			if _, exist = ns.Shards[shard]; !exist {
-				shardExists = false
-				return clusterStatus, false, nil
-			}
-			ns.Shards[shard] = shardMetadata
-			return clusterStatus, true, nil
-		})
-	}, oxiatime.NewBackOff(m.ctx), func(err error, duration time.Duration) {
-		m.logger.Warn(
-			"failed to update shard metadata",
-			slog.Any("error", err),
-			slog.Duration("retry-after", duration),
-		)
+	err := m.computeStatus(func(clusterStatus *commonproto.ClusterStatus, _ metadatacommon.Version) (*commonproto.ClusterStatus, bool, error) {
+		ns, exist := clusterStatus.Namespaces[namespace]
+		if !exist {
+			shardExists = false
+			return clusterStatus, false, nil
+		}
+		if _, exist = ns.Shards[shard]; !exist {
+			shardExists = false
+			return clusterStatus, false, nil
+		}
+		ns.Shards[shard] = shardMetadata
+		return clusterStatus, true, nil
 	})
 	if err != nil {
 		return err
