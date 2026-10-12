@@ -104,18 +104,16 @@ func (n *controller) GetSupportedFeatures() []proto.Feature {
 	return n.supportedFeatures.Load().([]proto.Feature) //nolint: revive
 }
 
-func (n *controller) SetStatus(status Status) {
+func (n *controller) Drain() {
 	n.statusLock.Lock()
 	defer n.statusLock.Unlock()
 	previous := n.status
-	n.status = status
-	if status != previous {
-		n.advanceStatusEpochLocked()
+	if previous == Draining {
+		return
 	}
-	if status == Running && previous != Running {
-		n.runningSince = time.Now()
-	}
-	n.logger.Info("Changed status", slog.Any("from", previous), slog.Any("to", status))
+	n.status = Draining
+	n.advanceStatusEpochLocked()
+	n.logger.Info("Changed status", slog.Any("from", previous), slog.Any("to", Draining))
 }
 
 func (n *controller) IsStablyRunning(window time.Duration) bool {

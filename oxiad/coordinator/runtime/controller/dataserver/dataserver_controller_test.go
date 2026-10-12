@@ -367,6 +367,36 @@ func TestDataServerControllerIsStablyRunningWaitsForWindowAfterRecovery(t *testi
 	assert.NoError(t, nc.Close())
 }
 
+// A drained data server stays Draining when it becomes unavailable, and the
+// listener is told, so that the runtime closes its controller.
+func TestDataServerControllerDrainKeepsDataServerDrainingUntilUnavailable(t *testing.T) {
+	addr := &proto.DataServerIdentity{
+		Public:   "my-server:9190",
+		Internal: "my-server:8190",
+	}
+	dataServer := &proto.DataServer{Identity: addr, Metadata: &proto.DataServerMetadata{}}
+
+	sap := rpctest.NewShardAssignmentsProvider()
+	nal := rpctest.NewNodeAvailabilityListener()
+	rpc := rpctest.NewRpcProvider()
+	nc := NewController(context.Background(), dataServer, sap, nal, rpc, "test-instance", 1*time.Second, testHealthPolicy)
+
+	node := rpc.GetNode(addr)
+
+	assert.Eventually(t, func() bool {
+		return nc.GetStatus() == Running
+	}, 10*time.Second, 10*time.Millisecond)
+
+	nc.Drain()
+	assert.Equal(t, Draining, nc.GetStatus())
+
+	node.HealthClient.SetStatus(grpc_health_v1.HealthCheckResponse_NOT_SERVING)
+	assert.Equal(t, addr, <-nal.Events)
+	assert.Equal(t, Draining, nc.GetStatus())
+
+	assert.NoError(t, nc.Close())
+}
+
 func TestDataServerControllerBecomeAvailableHandshakesOnlyOnTransition(t *testing.T) {
 	addr := &proto.DataServerIdentity{
 		Public:   "my-server:9190",
