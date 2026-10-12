@@ -248,14 +248,15 @@ func NewController(
 func (s *controller) Election(electionAction *action.ElectionAction) string {
 	clonedAction := electionAction.Clone()
 	clonedAction.Waiter.Add(1)
-	s.notifyElection(clonedAction)
+	s.enqueueElectionAction(clonedAction)
 	clonedAction.Waiter.Wait()
 	return clonedAction.NewLeader
 }
 
-// notifyElection sends the election action to the event loop, or completes it
-// without a leader if the shard controller is closing or its queue is full.
-func (s *controller) notifyElection(electionAction *action.ElectionAction) {
+// enqueueElectionAction sends the election action to the event loop without
+// waiting for it, or completes it without a leader if the shard controller is
+// closing or its queue is full.
+func (s *controller) enqueueElectionAction(electionAction *action.ElectionAction) {
 	s.terminationMu.RLock()
 	defer s.terminationMu.RUnlock()
 	if s.terminating.Load() {
@@ -647,7 +648,7 @@ func (s *controller) handleElectionWithRetries(electionAction *action.ElectionAc
 	borrowedMeta, exists, err := s.metadataStore.GetShardStatus(s.namespace, s.shard)
 	if err != nil {
 		s.logger.Warn("Failed to start the election, retrying later", slog.Any("error", err))
-		time.AfterFunc(time.Second, func() { s.notifyElection(electionAction) })
+		time.AfterFunc(time.Second, func() { s.enqueueElectionAction(electionAction) })
 		return
 	}
 	shardMeta := common.Must(borrowedMeta, exists,
