@@ -533,11 +533,7 @@ func newInitiateSplitTestRuntime(t *testing.T) (*runtime, *racingMetadata) {
 	}))
 
 	racing := &racingMetadata{Metadata: metadata, beforeWrite: func() {}}
-	loadBalancer, err := balancer.NewLoadBalancer(balancer.Options{
-		Context:             t.Context(),
-		Metadata:            racing,
-		NodeAvailableJudger: func(string) bool { return true },
-	})
+	loadBalancerConfig, err := racing.GetLoadBalancerConfig()
 	require.NoError(t, err)
 	r := &runtime{
 		logger:           slog.With(slog.String("component", "coordinator")),
@@ -545,7 +541,12 @@ func newInitiateSplitTestRuntime(t *testing.T) (*runtime, *racingMetadata) {
 		metadata:         racing,
 		rpc:              mockutils.NewRpcProvider(),
 		ensembleSelector: ensemble.NewSelector(),
-		loadBalancer:     loadBalancer,
+		loadBalancer: balancer.NewLoadBalancer(balancer.Options{
+			Context:             t.Context(),
+			Metadata:            racing,
+			LoadBalancerConfig:  loadBalancerConfig.UnsafeBorrow(),
+			NodeAvailableJudger: func(string) bool { return true },
+		}),
 		assignmentsWatch: commonwatch.New(&proto.ShardAssignments{}),
 		shardControllers: map[int64]shardcontroller.Controller{},
 		splitControllers: map[int64]*shardcontroller.SplitController{},

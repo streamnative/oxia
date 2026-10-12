@@ -18,6 +18,7 @@ import (
 	"context"
 	"io"
 
+	commonproto "github.com/oxia-db/oxia/common/proto"
 	coordmetadata "github.com/oxia-db/oxia/oxiad/coordinator/metadata"
 	"github.com/oxia-db/oxia/oxiad/coordinator/runtime/action"
 	"github.com/oxia-db/oxia/oxiad/coordinator/runtime/balancer/selector"
@@ -27,6 +28,8 @@ type Options struct {
 	context.Context
 
 	Metadata coordmetadata.Metadata
+
+	LoadBalancerConfig *commonproto.LoadBalancer
 
 	NodeAvailableJudger func(nodeID string) bool
 }

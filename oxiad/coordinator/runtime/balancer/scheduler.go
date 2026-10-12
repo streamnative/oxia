@@ -557,11 +557,7 @@ func (r *nodeBasedBalancer) Start() {
 	r.startBackgroundNotifier()
 }
 
-func NewLoadBalancer(options Options) (LoadBalancer, error) {
-	loadBalancerConf, err := options.Metadata.GetLoadBalancerConfig()
-	if err != nil {
-		return nil, err
-	}
+func NewLoadBalancer(options Options) LoadBalancer {
 	ctx, cancelFunc := context.WithCancel(options.Context)
 	logger := slog.With(
 		slog.String("component", "load-balancer"))
@@ -571,7 +567,7 @@ func NewLoadBalancer(options Options) (LoadBalancer, error) {
 		ctx:                     ctx,
 		ctxCancel:               cancelFunc,
 		wg:                      sync.WaitGroup{},
-		loadBalancerConf:        loadBalancerConf.UnsafeBorrow(),
+		loadBalancerConf:        options.LoadBalancerConfig,
 		actionCh:                make(chan action.Action, 1000),
 		nodeAvailableJudger:     options.NodeAvailableJudger,
 		metadata:                options.Metadata,
@@ -580,5 +576,5 @@ func NewLoadBalancer(options Options) (LoadBalancer, error) {
 		nodeQuarantineNodeMap:   &sync.Map{},
 		shardQuarantineShardMap: &sync.Map{},
 		triggerCh:               make(chan any, 1),
-	}, nil
+	}
 }
