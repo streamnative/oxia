@@ -841,7 +841,12 @@ func (s *controller) SyncServerAddress() {
 		s.shard).UnsafeBorrow()
 	needSync := false
 	for _, candidate := range shardMeta.Ensemble {
-		if borrowedDataServer, ok := s.metadataStore.GetDataServer(candidate.GetNameOrDefault()); ok {
+		borrowedDataServer, ok, err := s.metadataStore.GetDataServer(candidate.GetNameOrDefault())
+		if err != nil {
+			s.logger.Warn("Failed to sync the server addresses", slog.Any("error", err))
+			return
+		}
+		if ok {
 			newInfo := borrowedDataServer.UnsafeBorrow().GetIdentity()
 			if newInfo != nil &&
 				(newInfo.GetPublic() != candidate.GetPublic() || newInfo.GetInternal() != candidate.GetInternal()) {

@@ -387,7 +387,10 @@ func cloneNamespaceStatuses(namespaces map[string]commonobject.Borrowed[*proto.N
 // When eligible is set, only the data servers that it accepts can be selected.
 func (c *runtime) selectNewEnsemble(namespace string, shard int64, ns *proto.Namespace, editingStatus map[string]commonobject.Borrowed[*proto.NamespaceStatus],
 	eligible func(dataServer *proto.DataServerIdentity) bool) ([]*proto.DataServerIdentity, error) {
-	dataServers := c.metadata.ListDataServer()
+	dataServers, err := c.metadata.ListDataServer()
+	if err != nil {
+		return nil, err
+	}
 	nodes, metadata := dataServersToCandidatesAndMetadata(dataServers)
 	candidates := nodes
 	if eligible != nil {
@@ -408,7 +411,6 @@ func (c *runtime) selectNewEnsemble(namespace string, shard int64, ns *proto.Nam
 		},
 	}
 	var ensembles []string
-	var err error
 	if ensembles, err = c.ensembleSelector.Select(ensembleContext); err != nil {
 		return nil, err
 	}

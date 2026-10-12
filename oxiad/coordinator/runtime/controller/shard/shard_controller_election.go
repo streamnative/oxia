@@ -108,10 +108,14 @@ type Election struct {
 	term atomic.Int64
 }
 
-func (e *Election) refreshedEnsemble(ensemble []*proto.DataServerIdentity) []*proto.DataServerIdentity {
+func (e *Election) refreshedEnsemble(ensemble []*proto.DataServerIdentity) ([]*proto.DataServerIdentity, error) {
 	refreshedEnsembleDataServerAddress := make([]*proto.DataServerIdentity, len(ensemble))
 	for idx, candidate := range ensemble {
-		if borrowedDataServer, exist := e.metadataStore.GetDataServer(candidate.GetNameOrDefault()); exist {
+		borrowedDataServer, exist, err := e.metadataStore.GetDataServer(candidate.GetNameOrDefault())
+		if err != nil {
+			return nil, err
+		}
+		if exist {
 			if identity := borrowedDataServer.UnsafeBorrow().GetIdentity(); identity != nil {
 				refreshedEnsembleDataServerAddress[idx] = identity
 				continue
@@ -125,7 +129,7 @@ func (e *Election) refreshedEnsemble(ensemble []*proto.DataServerIdentity) []*pr
 				slog.Any("new-ensemble", refreshedEnsembleDataServerAddress))
 		}
 	}
-	return refreshedEnsembleDataServerAddress
+	return refreshedEnsembleDataServerAddress, nil
 }
 
 func (e *Election) fenceNewTerm(ctx context.Context, term int64, options *proto.NewTermOptions, dataServer *proto.DataServerIdentity) (*proto.NewTermResponse, error) {
@@ -717,9 +721,14 @@ func (e *Election) start() (newLeader *proto.DataServerIdentity, err error) {
 	e.logger.Info("Starting a new election")
 	timer := e.leaderElectionLatency.Timer()
 
-	// Load the options of the namespace before persisting a new term: a
-	// failed load is retried without using up a term
+	// Load the options of the namespace and the addresses of the ensemble
+	// before persisting a new term: a failed load is retried without using up
+	// a term
 	termOptions, err := e.metadataStore.GetNamespaceTermOptions(e.namespace)
+	if err != nil {
+		return nil, err
+	}
+	refreshedEnsemble, err := e.refreshedEnsemble(e.mutableShardMetadata.Ensemble)
 	if err != nil {
 		return nil, err
 	}
@@ -727,7 +736,7 @@ func (e *Election) start() (newLeader *proto.DataServerIdentity, err error) {
 	e.mutableShardMetadata.Status = proto.ShardStatusElection
 	e.mutableShardMetadata.Leader = nil
 	e.mutableShardMetadata.Term++
-	e.mutableShardMetadata.Ensemble = e.refreshedEnsemble(e.mutableShardMetadata.Ensemble)
+	e.mutableShardMetadata.Ensemble = refreshedEnsemble
 	if err = e.persistNewTerm(); err != nil {
 		return nil, err
 	}

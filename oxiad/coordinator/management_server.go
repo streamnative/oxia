@@ -142,7 +142,10 @@ func (management *managementServer) GetDataServer(_ context.Context, req *proto.
 		return nil, grpcstatus.Error(codes.InvalidArgument, "data server must not be empty")
 	}
 
-	borrowedDataServer, found := runtime.Metadata().GetDataServer(req.DataServer)
+	borrowedDataServer, found, err := runtime.Metadata().GetDataServer(req.DataServer)
+	if err != nil {
+		return nil, grpcstatus.Errorf(codes.Internal, "failed to get data server %q: %v", req.DataServer, err)
+	}
 	if !found {
 		return nil, grpcstatus.Errorf(codes.NotFound, "data server %q not found", req.DataServer)
 	}

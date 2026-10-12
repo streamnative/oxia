@@ -77,8 +77,8 @@ type Metadata interface {
 	CreateDataServer(dataServer *commonproto.DataServer) error
 	PatchDataServer(dataServer *commonproto.DataServer) (*commonproto.DataServer, error)
 	DeleteDataServer(name string) (*commonproto.DataServer, error)
-	ListDataServer() map[string]commonobject.Borrowed[*commonproto.DataServer]
-	GetDataServer(name string) (commonobject.Borrowed[*commonproto.DataServer], bool)
+	ListDataServer() (map[string]commonobject.Borrowed[*commonproto.DataServer], error)
+	GetDataServer(name string) (commonobject.Borrowed[*commonproto.DataServer], bool, error)
 }
 
 type EnsembleSupplier func(
@@ -453,22 +453,6 @@ func (m *coordinatorMetadata) GetConfig() (commonobject.Borrowed[*commonproto.Cl
 	return commonobject.Borrow(config.Value), nil
 }
 
-// loadConfig retries the load of the configuration until it succeeds or the
-// metadata closes, and returns an empty configuration then.
-func (m *coordinatorMetadata) loadConfig() commonobject.Borrowed[*commonproto.ClusterConfiguration] {
-	config, err := backoff.RetryNotifyWithData(m.configProvider.Load, oxiatime.NewBackOff(m.ctx), func(err error, duration time.Duration) {
-		m.logger.Warn(
-			"failed to load the cluster configuration",
-			slog.Any("error", err),
-			slog.Duration("retry-after", duration),
-		)
-	})
-	if err != nil {
-		return commonobject.Borrowed[*commonproto.ClusterConfiguration]{}
-	}
-	return commonobject.Borrow(config.Value)
-}
-
 func (m *coordinatorMetadata) SubscribeConfig() *cache.Subscription[provider.Versioned[*commonproto.ClusterConfiguration]] {
 	return m.configProvider.Subscribe()
 }
@@ -646,8 +630,12 @@ func (m *coordinatorMetadata) DeleteDataServer(name string) (*commonproto.DataSe
 	return deleted, nil
 }
 
-func (m *coordinatorMetadata) ListDataServer() map[string]commonobject.Borrowed[*commonproto.DataServer] {
-	config := m.loadConfig().UnsafeBorrow()
+func (m *coordinatorMetadata) ListDataServer() (map[string]commonobject.Borrowed[*commonproto.DataServer], error) {
+	loaded, err := m.configProvider.Load()
+	if err != nil {
+		return nil, err
+	}
+	config := loaded.Value
 	dataServers := make(map[string]commonobject.Borrowed[*commonproto.DataServer], len(config.GetServers()))
 	for _, server := range config.GetServers() {
 		name := server.GetNameOrDefault()
@@ -668,7 +656,7 @@ func (m *coordinatorMetadata) ListDataServer() map[string]commonobject.Borrowed[
 		}
 		dataServers[name] = commonobject.Borrow(dataServer)
 	}
-	return dataServers
+	return dataServers, nil
 }
 
 func (m *coordinatorMetadata) GetNamespace(namespace string) (commonobject.Borrowed[*commonproto.Namespace], bool, error) {
@@ -714,10 +702,14 @@ func (m *coordinatorMetadata) ListNamespace() (map[string]commonobject.Borrowed[
 	return namespaces, nil
 }
 
-func (m *coordinatorMetadata) GetDataServer(name string) (commonobject.Borrowed[*commonproto.DataServer], bool) {
-	value, ok := m.loadConfig().UnsafeBorrow().GetDataServer(name)
-	if !ok {
-		return commonobject.Borrowed[*commonproto.DataServer]{}, false
+func (m *coordinatorMetadata) GetDataServer(name string) (commonobject.Borrowed[*commonproto.DataServer], bool, error) {
+	config, err := m.configProvider.Load()
+	if err != nil {
+		return commonobject.Borrowed[*commonproto.DataServer]{}, false, err
 	}
-	return commonobject.Borrow(value), true
+	value, ok := config.Value.GetDataServer(name)
+	if !ok {
+		return commonobject.Borrowed[*commonproto.DataServer]{}, false, nil
+	}
+	return commonobject.Borrow(value), true, nil
 }
