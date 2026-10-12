@@ -284,7 +284,7 @@ func (s *controller) run(bo backoff.BackOff) error {
 		s.logger.Info("Child shard during split, waiting for split to complete")
 		s.waitForSplitComplete()
 	case initShardMeta.Leader == nil || initShardMeta.GetStatusOrDefault() != proto.ShardStatusSteadyState:
-		s.onElectLeader(nil)
+		s.electLeader(initShardMeta, nil)
 	default:
 		s.logger.Info(
 			"There is already a data server marked as leader on the shard, verifying",
@@ -292,7 +292,7 @@ func (s *controller) run(bo backoff.BackOff) error {
 		)
 
 		if !s.verifyCurrentEnsemble(initShardMeta) {
-			s.onElectLeader(nil)
+			s.electLeader(initShardMeta, nil)
 		} else {
 			s.SyncServerAddress()
 		}
@@ -308,9 +308,8 @@ func (s *controller) run(bo backoff.BackOff) error {
 	// The event loop must not block on a failure. A handler that can't
 	// complete, e.g. because the shard metadata can't be loaded, sends its
 	// notification to the channel again a second later instead of retrying
-	// in place. The actions with a callback, e.g. a change of the ensemble or
-	// an election, fail fast instead: their caller gets the error and retries
-	// them.
+	// in place. A change of the ensemble fails fast instead: its caller gets
+	// the error and retries it.
 	for !s.terminating.Load() {
 		select {
 		case <-s.ctx.Done():
@@ -327,7 +326,7 @@ func (s *controller) run(bo backoff.BackOff) error {
 			s.handlePeriodicTasks()
 			periodicTasksTimer.Reset(s.periodicTasksInterval)
 		case electionAction := <-s.electionOp:
-			electionAction.Done(s.onElectLeader(nil).GetNameOrDefault())
+			s.handleElectionWithRetries(electionAction)
 		}
 	}
 	s.logger.Info("Shard controller is stopped, stopping event loop")
@@ -479,7 +478,7 @@ func (s *controller) checkTermFeatures(shardMeta *proto.ShardMetadata) {
 		slog.Any("pinned-features", pinned),
 		slog.Any("features", features),
 	)
-	s.onElectLeader(nil)
+	s.electLeader(shardMeta, nil)
 }
 
 // termFeatures returns the features pinned by the current term of the shard.
@@ -571,15 +570,8 @@ func namespaceTermOptions(metadataStore coordmetadata.Metadata, namespace string
 	return termOptions
 }
 
-func (s *controller) validateChangeEnsembleFeatures(changeEnsembleAction *action.ChangeEnsembleAction) error {
-	borrowedMeta, exists, err := s.metadataStore.GetShardStatus(s.namespace, s.shard)
-	if err != nil {
-		return err
-	}
-	shardMeta := common.Must(borrowedMeta, exists,
-		"bug: shard metadata missing while validating change ensemble: namespace=", s.namespace, " shard=",
-		s.shard).UnsafeBorrow()
-
+func (s *controller) validateChangeEnsembleFeatures(shardMeta *proto.ShardMetadata,
+	changeEnsembleAction *action.ChangeEnsembleAction) error {
 	// The ensemble of the parent and of the children of a split doesn't change
 	// until the split ends. Checking it before the election that changes the
 	// ensemble keeps the current election of the shard running; the election
@@ -646,16 +638,25 @@ func (s *controller) validateChangeEnsembleFeatures(changeEnsembleAction *action
 	return nil
 }
 
-func (s *controller) onElectLeader(changeEnsembleAction *action.ChangeEnsembleAction) *proto.DataServerIdentity {
+func (s *controller) handleElectionWithRetries(electionAction *action.ElectionAction) {
 	borrowedMeta, exists, err := s.metadataStore.GetShardStatus(s.namespace, s.shard)
 	if err != nil {
-		s.logger.Warn("Failed to start the election", slog.Any("error", err))
-		return nil
+		s.logger.Warn("Failed to start the election, retrying later", slog.Any("error", err))
+		time.AfterFunc(time.Second, func() {
+			// The caller waits for the action: complete it if it can't be
+			// sent again, as Election does
+			s.terminationMu.RLock()
+			defer s.terminationMu.RUnlock()
+			if s.terminating.Load() || !channel.PushNoBlock(s.electionOp, electionAction) {
+				electionAction.Done("")
+			}
+		})
+		return
 	}
 	shardMeta := common.Must(borrowedMeta, exists,
 		"bug: shard metadata missing while starting election: namespace=", s.namespace, " shard=",
 		s.shard).UnsafeBorrow()
-	return s.electLeader(shardMeta, changeEnsembleAction)
+	electionAction.Done(s.electLeader(shardMeta, nil).GetNameOrDefault())
 }
 
 // electLeader starts a new election of the shard, with its current metadata,
@@ -813,19 +814,21 @@ func (s *controller) onChangeEnsemble(changeEnsembleAction *action.ChangeEnsembl
 			return
 		}
 	}
-	if err := s.validateChangeEnsembleFeatures(changeEnsembleAction); err != nil {
+	borrowedMeta, exists, err := s.metadataStore.GetShardStatus(s.namespace, s.shard)
+	if err != nil {
+		changeEnsembleAction.Error(err)
+		return
+	}
+	shardMeta := common.Must(borrowedMeta, exists,
+		"bug: shard metadata missing while changing the ensemble: namespace=", s.namespace, " shard=",
+		s.shard).UnsafeBorrow()
+	if err := s.validateChangeEnsembleFeatures(shardMeta, changeEnsembleAction); err != nil {
 		changeEnsembleAction.Error(err)
 		return
 	}
 	// todo: support optimized ensemble change to avoid start a new election
-	previous := s.currentElection.Load()
-	leader := s.onElectLeader(changeEnsembleAction)
+	leader := s.electLeader(shardMeta, changeEnsembleAction)
 	election := s.currentElection.Load()
-	if election == nil || election == previous {
-		// The election didn't start, e.g. the shard metadata couldn't be loaded
-		changeEnsembleAction.Error(fmt.Errorf("%w: the election didn't start", ErrNotReadyForChangeEnsemble))
-		return
-	}
 	if err := election.ChangeEnsembleError(); err != nil {
 		changeEnsembleAction.Error(err)
 		return

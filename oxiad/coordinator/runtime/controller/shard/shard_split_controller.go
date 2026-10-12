@@ -925,6 +925,10 @@ func (sc *SplitController) abort() error {
 	if err != nil {
 		return err
 	}
+	childrenMeta, err := sc.loadChildrenMeta()
+	if err != nil {
+		return err
+	}
 
 	// Remove observer cursors from parent leader (best-effort).
 	// Only needed if we reached Bootstrap (observers were added).
@@ -932,8 +936,8 @@ func (sc *SplitController) abort() error {
 		phase := parentMeta.Split.GetPhaseOrDefault()
 		if phase == proto.SplitPhaseBootstrap || phase == proto.SplitPhaseCatchUp || phase == proto.SplitPhaseCutover {
 			for _, childId := range []int64{sc.leftChildId, sc.rightChildId} {
-				childMeta, err := sc.loadShardMeta(childId)
-				if err != nil || childMeta == nil || childMeta.Leader == nil {
+				childMeta := childrenMeta[childId]
+				if childMeta == nil || childMeta.Leader == nil {
 					continue
 				}
 				for _, member := range childMeta.Ensemble {
@@ -1019,6 +1023,20 @@ func (sc *SplitController) loadShardMeta(shardId int64) (*proto.ShardMetadata, e
 		return nil, nil //nolint:nilnil
 	}
 	return gproto.Clone(meta.UnsafeBorrow()).(*proto.ShardMetadata), nil //nolint:revive
+}
+
+// loadChildrenMeta returns copies of the metadata of the child shards, nil for
+// a child that doesn't exist.
+func (sc *SplitController) loadChildrenMeta() (map[int64]*proto.ShardMetadata, error) {
+	childrenMeta := make(map[int64]*proto.ShardMetadata, 2)
+	for _, childId := range []int64{sc.leftChildId, sc.rightChildId} {
+		childMeta, err := sc.loadShardMeta(childId)
+		if err != nil {
+			return nil, err
+		}
+		childrenMeta[childId] = childMeta
+	}
+	return childrenMeta, nil
 }
 
 func (sc *SplitController) updateParentMeta(fn func(meta *proto.ShardMetadata)) error {

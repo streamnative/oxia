@@ -623,11 +623,12 @@ func startElection(t *testing.T, metadata coordmetadata.Metadata, rpc coordrpc.P
 	}
 	s.ctx, s.ctxCancel = context.WithCancel(context.Background())
 
+	shardMeta, _ := testShardMetadata(metadata, constant.DefaultNamespace, shard)
 	elected := make(chan *proto.DataServerIdentity, 1)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		elected <- s.onElectLeader(nil)
+		elected <- s.electLeader(shardMeta, nil)
 	}()
 	t.Cleanup(func() {
 		s.ctxCancel()

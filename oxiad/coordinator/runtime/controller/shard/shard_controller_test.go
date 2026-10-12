@@ -309,7 +309,8 @@ func TestController_OnElectLeaderReturnsNewLeader(t *testing.T) {
 	rpc.GetNode(s1).NewTermResponse(1, 0, nil)
 	rpc.GetNode(s1).BecomeLeaderResponse(nil)
 
-	newLeader := s.onElectLeader(nil)
+	shardMeta, _ := testShardMetadata(metadata, constant.DefaultNamespace, shard)
+	newLeader := s.electLeader(shardMeta, nil)
 	require.NotNil(t, newLeader)
 	assert.True(t, gproto.Equal(s1, newLeader))
 	assertShardLeader(t, metadata, constant.DefaultNamespace, shard, s1)
@@ -505,6 +506,27 @@ func TestController_RetriesShardStatusLoadError(t *testing.T) {
 			shardTerm(metadata, constant.DefaultNamespace, shard) == 3
 	}, 10*time.Second, 100*time.Millisecond)
 	assertShardLeader(t, metadata, constant.DefaultNamespace, shard, s2)
+
+	// An election request is sent again too: its caller gets the new leader
+	rpc.GetNode(s2).NewTermResponse(3, 0, nil)
+	rpc.GetNode(s3).NewTermResponse(3, -1, nil)
+	rpc.GetNode(s2).BecomeLeaderResponse(nil)
+
+	metadata.failures.Store(1)
+	newLeader := make(chan string, 1)
+	go func() {
+		newLeader <- sc.Election(&action.ElectionAction{Shard: shard})
+	}()
+
+	rpc.GetNode(s2).ExpectNewTermRequest(t, shard, 4, true)
+	rpc.GetNode(s3).ExpectNewTermRequest(t, shard, 4, true)
+	rpc.GetNode(s2).ExpectBecomeLeaderRequest(t, shard, 4, 3)
+	select {
+	case leader := <-newLeader:
+		assert.Equal(t, s2.GetNameOrDefault(), leader)
+	case <-time.After(10 * time.Second):
+		t.Fatal("the election request was not completed")
+	}
 }
 
 // The periodic tasks skip a round whose shard status load fails, instead of
@@ -1735,7 +1757,8 @@ func TestController_ChangeEnsembleRejectsMissingFeatureInfo(t *testing.T) {
 				logger: slog.Default(),
 			}
 
-			err := s.validateChangeEnsembleFeatures(action.NewChangeEnsembleAction(shard, s1, s4))
+			shardMeta, _ := testShardMetadata(s.metadataStore, constant.DefaultNamespace, shard)
+			err := s.validateChangeEnsembleFeatures(shardMeta, action.NewChangeEnsembleAction(shard, s1, s4))
 			assert.ErrorIs(t, err, ErrNotReadyForChangeEnsemble)
 		})
 	}
@@ -1777,14 +1800,15 @@ func TestController_ChangeEnsembleRejectsInvalidAction(t *testing.T) {
 		{name: "duplicate to", from: s1, to: s2},
 	}
 
+	shardMeta, _ := testShardMetadata(metadata, constant.DefaultNamespace, shard)
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := s.validateChangeEnsembleFeatures(action.NewChangeEnsembleAction(shard, tt.from, tt.to))
+			err := s.validateChangeEnsembleFeatures(shardMeta, action.NewChangeEnsembleAction(shard, tt.from, tt.to))
 			assert.ErrorIs(t, err, ErrInvalidChangeEnsemble)
 		})
 	}
 
-	assert.NoError(t, s.validateChangeEnsembleFeatures(action.NewChangeEnsembleAction(shard, s1, s4)))
+	assert.NoError(t, s.validateChangeEnsembleFeatures(shardMeta, action.NewChangeEnsembleAction(shard, s1, s4)))
 }
 
 // A change of the ensemble of the parent or of a child of a split is rejected
@@ -1811,7 +1835,8 @@ func TestController_ChangeEnsembleRejectsSplitShard(t *testing.T) {
 				logger:                              slog.Default(),
 			}
 
-			err := s.validateChangeEnsembleFeatures(action.NewChangeEnsembleAction(test.shard, test.from, spare))
+			shardMeta, _ := testShardMetadata(metadata, constant.DefaultNamespace, test.shard)
+			err := s.validateChangeEnsembleFeatures(shardMeta, action.NewChangeEnsembleAction(test.shard, test.from, spare))
 			assert.ErrorIs(t, err, ErrNotReadyForChangeEnsemble)
 		})
 	}
