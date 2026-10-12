@@ -1100,7 +1100,8 @@ func TestManagementServerCreateDataServer(t *testing.T) {
 	assert.Equal(t, "internal-1", res.DataServer.Identity.GetInternal())
 	assert.Equal(t, map[string]string{"rack": "rack-1"}, res.DataServer.Metadata.GetLabels())
 
-	created, found := management.metadata.GetDataServer(serverName)
+	created, found, err := management.metadata.GetDataServer(serverName)
+	require.NoError(t, err)
 	require.True(t, found)
 	assert.Equal(t, "public-1", created.UnsafeBorrow().Identity.GetPublic())
 }
@@ -1189,7 +1190,8 @@ func TestManagementServerPatchDataServer(t *testing.T) {
 	assert.Equal(t, "internal-1", res.DataServer.Identity.GetInternal())
 	assert.Equal(t, map[string]string{"rack": "rack-2"}, res.DataServer.Metadata.GetLabels())
 
-	patched, found := management.metadata.GetDataServer(serverName)
+	patched, found, err := management.metadata.GetDataServer(serverName)
+	require.NoError(t, err)
 	require.True(t, found)
 	assert.Equal(t, "public-2", patched.UnsafeBorrow().Identity.GetPublic())
 	assert.Equal(t, "internal-1", patched.UnsafeBorrow().Identity.GetInternal())
@@ -1262,7 +1264,8 @@ func TestManagementServerDeleteDataServer(t *testing.T) {
 	assert.Equal(t, "internal-1", res.DataServer.Identity.GetInternal())
 	assert.Equal(t, map[string]string{"rack": "rack-1"}, res.DataServer.Metadata.GetLabels())
 
-	_, found := management.metadata.GetDataServer(serverName)
+	_, found, err := management.metadata.GetDataServer(serverName)
+	require.NoError(t, err)
 	assert.False(t, found)
 }
 
@@ -1319,6 +1322,7 @@ func TestManagementServerDeleteDataServerFailedPrecondition(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, codes.FailedPrecondition, grpcstatus.Code(err))
 
-	_, found := management.metadata.GetDataServer(serverName1)
+	_, found, err := management.metadata.GetDataServer(serverName1)
+	require.NoError(t, err)
 	assert.True(t, found)
 }

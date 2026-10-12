@@ -120,7 +120,11 @@ func (r *nodeBasedBalancer) rebalanceEnsemble() bool {
 		r.logger.Warn("Failed to rebalance the shard ensembles", slog.Any("error", err))
 		return false
 	}
-	dataServers := r.metadata.ListDataServer()
+	dataServers, err := r.metadata.ListDataServer()
+	if err != nil {
+		r.logger.Warn("Failed to rebalance the shard ensembles", slog.Any("error", err))
+		return false
+	}
 	candidates, metadata := dataServersToCandidatesAndMetadata(dataServers)
 	groupedStatus, historyNodes := state.GroupingShardsNodeByStatus(candidates, currentStatus)
 	loadRatios := r.loadRatioAlgorithm(&model.RatioParams{NodeShardsInfos: groupedStatus, HistoryNodes: historyNodes})
@@ -288,7 +292,10 @@ func (r *nodeBasedBalancer) swapShard(
 	}
 	var targetNode *commonproto.DataServerIdentity
 	var borrowedTargetNode commonobject.Borrowed[*commonproto.DataServer]
-	if borrowedTargetNode, exist = r.metadata.GetDataServer(targetNodeID); !exist {
+	if borrowedTargetNode, exist, err = r.metadata.GetDataServer(targetNodeID); err != nil {
+		return false, err
+	}
+	if !exist {
 		return false, errors.New("target node does not exist")
 	}
 	targetNode = borrowedTargetNode.UnsafeBorrow().GetIdentity()
@@ -357,7 +364,11 @@ func (r *nodeBasedBalancer) IsBalanced() bool {
 		}
 	}
 
-	candidates, _ := dataServersToCandidatesAndMetadata(r.metadata.ListDataServer())
+	dataServers, err := r.metadata.ListDataServer()
+	if err != nil {
+		return false
+	}
+	candidates, _ := dataServersToCandidatesAndMetadata(dataServers)
 	groupedStatus, historyNodes := state.GroupingShardsNodeByStatus(candidates, status)
 	shardsBalanced := r.loadRatioAlgorithm(
 		&model.RatioParams{
@@ -513,7 +524,12 @@ func (r *nodeBasedBalancer) rebalanceLeader() {
 		r.logger.Warn("Failed to rebalance the shard leaders", slog.Any("error", err))
 		return
 	}
-	candidates, _ := dataServersToCandidatesAndMetadata(r.metadata.ListDataServer())
+	dataServers, err := r.metadata.ListDataServer()
+	if err != nil {
+		r.logger.Warn("Failed to rebalance the shard leaders", slog.Any("error", err))
+		return
+	}
+	candidates, _ := dataServersToCandidatesAndMetadata(dataServers)
 	totalShards, electedShards, nodeLeaders := state.NodeShardLeaders(candidates, status)
 
 	electedRate := float64(electedShards) / float64(totalShards)

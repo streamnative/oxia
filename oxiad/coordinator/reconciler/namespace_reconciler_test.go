@@ -236,12 +236,12 @@ func (*mockNamespaceMetadata) DeleteDataServer(string) (*proto.DataServer, error
 	return &proto.DataServer{}, nil
 }
 
-func (*mockNamespaceMetadata) ListDataServer() map[string]commonobject.Borrowed[*proto.DataServer] {
-	return map[string]commonobject.Borrowed[*proto.DataServer]{}
+func (*mockNamespaceMetadata) ListDataServer() (map[string]commonobject.Borrowed[*proto.DataServer], error) {
+	return map[string]commonobject.Borrowed[*proto.DataServer]{}, nil
 }
 
-func (*mockNamespaceMetadata) GetDataServer(string) (commonobject.Borrowed[*proto.DataServer], bool) {
-	return commonobject.Borrowed[*proto.DataServer]{}, false
+func (*mockNamespaceMetadata) GetDataServer(string) (commonobject.Borrowed[*proto.DataServer], bool, error) {
+	return commonobject.Borrowed[*proto.DataServer]{}, false, nil
 }
 
 // GetNamespaceTermOptions is not used by these tests.

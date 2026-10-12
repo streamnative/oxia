@@ -189,7 +189,7 @@ func (*mockMetadata) DeleteDataServer(string) (*proto.DataServer, error) {
 	return &proto.DataServer{}, nil
 }
 
-func (m *mockMetadata) ListDataServer() map[string]commonobject.Borrowed[*proto.DataServer] {
+func (m *mockMetadata) ListDataServer() (map[string]commonobject.Borrowed[*proto.DataServer], error) {
 	dataServers := make(map[string]commonobject.Borrowed[*proto.DataServer], m.nodes.Size())
 	for _, id := range m.nodes.Values() {
 		name := id
@@ -209,7 +209,7 @@ func (m *mockMetadata) ListDataServer() map[string]commonobject.Borrowed[*proto.
 			Metadata: metadata,
 		})
 	}
-	return dataServers
+	return dataServers, nil
 }
 
 // GetNamespaceTermOptions is not used by these tests.
@@ -225,10 +225,10 @@ func (m *mockMetadata) GetNamespace(namespace string) (commonobject.Borrowed[*pr
 	return commonobject.Borrow(nc), true, nil
 }
 
-func (m *mockMetadata) GetDataServer(name string) (commonobject.Borrowed[*proto.DataServer], bool) {
+func (m *mockMetadata) GetDataServer(name string) (commonobject.Borrowed[*proto.DataServer], bool, error) {
 	n, ok := m.nodeMap[name]
 	if !ok {
-		return commonobject.Borrowed[*proto.DataServer]{}, false
+		return commonobject.Borrowed[*proto.DataServer]{}, false, nil
 	}
 	metadata, ok := m.metadata[name]
 	if !ok {
@@ -237,7 +237,7 @@ func (m *mockMetadata) GetDataServer(name string) (commonobject.Borrowed[*proto.
 	return commonobject.Borrow(&proto.DataServer{
 		Identity: n,
 		Metadata: metadata,
-	}), true
+	}), true, nil
 }
 
 // alwaysErrorSelector is a selector that always returns ErrUnsatisfiedAntiAffinity.
@@ -610,7 +610,9 @@ func TestSwapShardPassesNamespaceAndShardToSelector(t *testing.T) {
 	defer cancel()
 
 	b := newTestBalancer(ctx, cancel, metadata, sel)
-	candidates, candidatesMetadata := dataServersToCandidatesAndMetadata(metadata.ListDataServer())
+	dataServers, err := metadata.ListDataServer()
+	assert.NoError(t, err)
+	candidates, candidatesMetadata := dataServersToCandidatesAndMetadata(dataServers)
 	loadRatios := single.DefaultShardsRank(&model.RatioParams{
 		NodeShardsInfos: map[string][]model.ShardInfo{
 			"sv-1": {{
@@ -627,7 +629,7 @@ func TestSwapShardPassesNamespaceAndShardToSelector(t *testing.T) {
 		},
 	})
 
-	_, err := b.swapShard(
+	_, err = b.swapShard(
 		&model.ShardLoadRatio{
 			ShardInfo: &model.ShardInfo{
 				Namespace: "ns-1",

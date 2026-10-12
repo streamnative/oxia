@@ -483,6 +483,23 @@ func TestMetadataListNamespaceReturnsLoadError(t *testing.T) {
 	require.ErrorContains(t, err, "configuration unavailable")
 }
 
+// ListDataServer and GetDataServer report a configuration that cannot be
+// loaded, without waiting for it.
+func TestMetadataDataServersReturnLoadError(t *testing.T) {
+	statusProvider := memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, "")
+	configProvider := loadFailingConfigProvider{
+		Provider: memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, ""),
+	}
+	metadata := newMetadata(t.Context(), statusProvider, configProvider, "")
+	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
+
+	_, err := metadata.ListDataServer()
+	require.ErrorContains(t, err, "configuration unavailable")
+	_, exists, err := metadata.GetDataServer("s1")
+	require.ErrorContains(t, err, "configuration unavailable")
+	require.False(t, exists)
+}
+
 // loadFailingStatusProvider fails every load of the status.
 type loadFailingStatusProvider struct {
 	provider.Provider[*commonproto.ClusterStatus]
