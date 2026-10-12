@@ -644,15 +644,7 @@ func (s *controller) handleElectionWithRetries(electionAction *action.ElectionAc
 	borrowedMeta, exists, err := s.metadataStore.GetShardStatus(s.namespace, s.shard)
 	if err != nil {
 		s.logger.Warn("Failed to start the election, retrying later", slog.Any("error", err))
-		time.AfterFunc(time.Second, func() {
-			// The caller waits for the action: complete it if it can't be
-			// sent again, as Election does
-			s.terminationMu.RLock()
-			defer s.terminationMu.RUnlock()
-			if s.terminating.Load() || !channel.PushNoBlock(s.electionOp, electionAction) {
-				electionAction.Done("")
-			}
-		})
+		time.AfterFunc(time.Second, func() { electionAction.Done(s.Election(electionAction)) })
 		return
 	}
 	shardMeta := common.Must(borrowedMeta, exists,
