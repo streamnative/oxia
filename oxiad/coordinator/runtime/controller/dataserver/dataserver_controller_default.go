@@ -48,9 +48,6 @@ import (
 // failed at the transport level.
 var errNotServing = errors.New("data server is not actively serving")
 
-// controller is the default Controller. Its health watch, health ping and
-// assignments dispatcher run on their own goroutines, and the runtime and the
-// metrics read it from theirs.
 type controller struct {
 	// Set when the controller is created, then only read.
 	logger              *slog.Logger
