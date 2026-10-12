@@ -50,19 +50,20 @@ import (
 var errNotServing = errors.New("data server is not actively serving")
 
 type controller struct {
-	wg                        sync.WaitGroup
-	closed                    atomic.Bool
-	logger                    *slog.Logger
-	ctx                       context.Context
-	ctxCancel                 context.CancelFunc
-	dataServer                *proto.DataServer
-	rpc                       rpc.Provider
-	insID                     string
-	assignmentsProvider       controllerapi.ShardAssignmentsProvider
-	listener                  controllerapi.DataServerEventListener
-	healthPolicy              health.CheckPolicy
-	initialRetryBackoff       time.Duration
-	healthCheckBackoff        *commontime.ConcurrentBackOff
+	wg                  sync.WaitGroup
+	closed              atomic.Bool
+	logger              *slog.Logger
+	ctx                 context.Context
+	ctxCancel           context.CancelFunc
+	dataServer          *proto.DataServer
+	rpc                 rpc.Provider
+	insID               string
+	assignmentsProvider controllerapi.ShardAssignmentsProvider
+	listener            controllerapi.DataServerEventListener
+	healthPolicy        health.CheckPolicy
+	initialRetryBackoff time.Duration
+	healthCheckBackoff  *commontime.ConcurrentBackOff
+
 	runningGauge              metric.Gauge
 	failedHealthChecksCounter metric.Counter
 
