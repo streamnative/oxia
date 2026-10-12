@@ -37,6 +37,7 @@ import (
 
 	commonobject "github.com/oxia-db/oxia/common/object"
 	"github.com/oxia-db/oxia/common/proto"
+	oxiatime "github.com/oxia-db/oxia/common/time"
 	coordmetadata "github.com/oxia-db/oxia/oxiad/coordinator/metadata"
 	"github.com/oxia-db/oxia/oxiad/coordinator/metadata/provider"
 	"github.com/oxia-db/oxia/oxiad/coordinator/metadata/provider/memory"
@@ -53,6 +54,7 @@ import (
 	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/metric"
 	"github.com/oxia-db/oxia/oxiad/common/feature"
+	"github.com/oxia-db/oxia/oxiad/common/health"
 	leaderselector "github.com/oxia-db/oxia/oxiad/coordinator/runtime/balancer/selector/leader"
 )
 
@@ -2828,7 +2830,7 @@ func TestController_RollingUpgradePinsNewFeatures(t *testing.T) {
 		rpc.GetNode(dataServer).SetNodeFeatures(previous)
 		dataServers[dataServer.GetNameOrDefault()] = dataservercontroller.NewController(context.Background(),
 			&proto.DataServer{Identity: dataServer}, rpctest.NewShardAssignmentsProvider(), relay, rpc, "test-instance",
-			dataservercontroller.DefaultInitialRetryBackoff, dataservercontroller.DefaultHealthCheckPolicy)
+			oxiatime.SlowInitialInterval, health.DefaultCheckPolicy)
 	}
 	defer func() {
 		for _, dataServer := range dataServers {

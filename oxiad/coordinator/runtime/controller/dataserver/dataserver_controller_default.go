@@ -30,6 +30,7 @@ import (
 	pb "google.golang.org/protobuf/proto"
 
 	"github.com/oxia-db/oxia/oxiad/common/feature"
+	"github.com/oxia-db/oxia/oxiad/common/health"
 	"github.com/oxia-db/oxia/oxiad/coordinator/rpc"
 	controllerapi "github.com/oxia-db/oxia/oxiad/coordinator/runtime/controller"
 
@@ -42,33 +43,10 @@ import (
 	commontime "github.com/oxia-db/oxia/common/time"
 )
 
-const DefaultInitialRetryBackoff = 10 * time.Second
-
 // errNotServing marks a health response where the data server deliberately
 // reported NOT_SERVING (e.g. it is shutting down), as opposed to a probe that
 // failed at the transport level.
 var errNotServing = errors.New("data server is not actively serving")
-
-// HealthCheckPolicy controls how the controller distinguishes a dead data
-// server from one that is merely slow. A node that is saturated but healthy
-// can miss individual probe deadlines; declaring it unavailable fences its
-// shard leaders, moves the load elsewhere and makes the next node miss its
-// probes in turn. Requiring several consecutive probe failures keeps that
-// feedback loop from starting, while a deliberate NOT_SERVING report still
-// fails the node immediately.
-type HealthCheckPolicy struct {
-	ProbeInterval time.Duration
-	ProbeTimeout  time.Duration
-	// FailureThreshold is the number of consecutive failed probes after which
-	// the data server is declared unavailable.
-	FailureThreshold int
-}
-
-var DefaultHealthCheckPolicy = HealthCheckPolicy{
-	ProbeInterval:    2 * time.Second,
-	ProbeTimeout:     5 * time.Second,
-	FailureThreshold: 3,
-}
 
 type controller struct {
 	logger *slog.Logger
@@ -104,7 +82,7 @@ type controller struct {
 	// status epoch (e.g. at startup), and only the first one binds the node.
 	handshaking bool
 
-	healthPolicy               HealthCheckPolicy
+	healthPolicy               health.CheckPolicy
 	healthCheckBackoff         *commontime.ConcurrentBackOff
 	dispatchAssignmentsBackoff backoff.BackOff
 
@@ -497,7 +475,7 @@ func (n *controller) becomeAvailable(observedEpoch int64) {
 
 	// Bind the node before it can receive other internal traffic.
 	featuresChanged := false
-	bo := commontime.NewBackOffWithInitialInterval(n.ctx, DefaultInitialRetryBackoff)
+	bo := commontime.NewBackOffWithInitialInterval(n.ctx, commontime.SlowInitialInterval)
 	err := backoff.RetryNotify(func() error {
 		handshake, err := n.rpc.Handshake(n.ctx, n.dataServer.GetIdentity(), &proto.HandshakeRequest{
 			InstanceId: n.insID,
@@ -566,7 +544,7 @@ func NewController(ctx context.Context, dataServer *proto.DataServer,
 	rpcProvider rpc.Provider,
 	insID string,
 	initialRetryBackoff time.Duration,
-	healthPolicy HealthCheckPolicy) Controller {
+	healthPolicy health.CheckPolicy) Controller {
 	dataServerCtx, cancel := context.WithCancel(ctx)
 	dataServerID := dataServer.GetIdentity().GetNameOrDefault()
 	labels := map[string]any{"data-server": dataServerID}

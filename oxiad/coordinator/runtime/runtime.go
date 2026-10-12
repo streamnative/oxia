@@ -30,6 +30,7 @@ import (
 
 	"github.com/oxia-db/oxia/common/constant"
 	commonobject "github.com/oxia-db/oxia/common/object"
+	"github.com/oxia-db/oxia/oxiad/common/health"
 	oxiadcommonrpc "github.com/oxia-db/oxia/oxiad/common/rpc"
 	coordmetadata "github.com/oxia-db/oxia/oxiad/coordinator/metadata"
 	metadatacommon "github.com/oxia-db/oxia/oxiad/coordinator/metadata/common"
@@ -203,8 +204,8 @@ func (c *runtime) CreateDataServer(name string, dataServer *proto.DataServer) bo
 		c,
 		c.rpc,
 		c.insID,
-		dataservercontroller.DefaultInitialRetryBackoff,
-		dataservercontroller.DefaultHealthCheckPolicy,
+		oxiatime.SlowInitialInterval,
+		health.DefaultCheckPolicy,
 	)
 	return true
 }
@@ -783,8 +784,8 @@ func New(
 			c,
 			c.rpc,
 			c.insID,
-			dataservercontroller.DefaultInitialRetryBackoff,
-			dataservercontroller.DefaultHealthCheckPolicy,
+			oxiatime.SlowInitialInterval,
+			health.DefaultCheckPolicy,
 		)
 	}
 

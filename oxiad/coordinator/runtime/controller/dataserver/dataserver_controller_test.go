@@ -28,12 +28,13 @@ import (
 
 	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/proto"
+	"github.com/oxia-db/oxia/oxiad/common/health"
 	"github.com/oxia-db/oxia/oxiad/coordinator/rpc/rpctest"
 )
 
 // testHealthPolicy keeps the probing cadence fast so the tests exercising the
 // consecutive-failure threshold complete quickly.
-var testHealthPolicy = HealthCheckPolicy{
+var testHealthPolicy = health.CheckPolicy{
 	ProbeInterval:    20 * time.Millisecond,
 	ProbeTimeout:     1 * time.Second,
 	FailureThreshold: 3,
@@ -216,7 +217,7 @@ func TestDataServerControllerVerifyAfterWatchFailureDoesNotFenceAliveNode(t *tes
 // slowPingHealthPolicy makes the ping cadence so slow that only the
 // watch-failure verification path can possibly fence the node, so the tests
 // below prove pod-death detection does not depend on the ping loop.
-var slowPingHealthPolicy = HealthCheckPolicy{
+var slowPingHealthPolicy = health.CheckPolicy{
 	ProbeInterval:    time.Hour,
 	ProbeTimeout:     1 * time.Second,
 	FailureThreshold: 3,
