@@ -57,7 +57,7 @@ func (b *countingBackOff) Reset() {
 	b.resets++
 }
 
-func TestClusterReconcilerReturnsReconcileErrorForRetry(t *testing.T) {
+func TestClusterReconcilerBgWatchClusterConfigurationReturnsReconcileErrorForRetry(t *testing.T) {
 	base := namespaceRuntimeForErrors("retry", "healthy")
 	base.metadata.config = &proto.ClusterConfiguration{Namespaces: []*proto.Namespace{
 		base.metadata.configNS["healthy"], base.metadata.configNS["retry"],
