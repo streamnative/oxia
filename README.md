@@ -30,12 +30,6 @@ With Oxia, you get a scalable, robust, and flexible solution for managing metada
 
 <br>
 
-### Embedding Oxia
-
-Oxia can also be embedded as a library inside a Go application. See [Embedding Oxia](https://oxia-db.github.io/docs/deployment/embedding) in the documentation.
-
-<br>
-
 ### Contributing to Oxia
 
 Please 🌟 star the project if you like it. 
