@@ -50,19 +50,21 @@ import (
 var errNotServing = errors.New("data server is not actively serving")
 
 type controller struct {
-	wg                  sync.WaitGroup
-	closed              atomic.Bool
-	logger              *slog.Logger
-	ctx                 context.Context
-	ctxCancel           context.CancelFunc
-	dataServer          *proto.DataServer
-	rpc                 rpc.Provider
-	insID               string
-	assignmentsProvider controllerapi.ShardAssignmentsProvider
-	listener            controllerapi.DataServerEventListener
-	healthPolicy        health.CheckPolicy
-	initialRetryBackoff time.Duration
-	healthCheckBackoff  *commontime.ConcurrentBackOff
+	wg                        sync.WaitGroup
+	closed                    atomic.Bool
+	logger                    *slog.Logger
+	ctx                       context.Context
+	ctxCancel                 context.CancelFunc
+	dataServer                *proto.DataServer
+	rpc                       rpc.Provider
+	insID                     string
+	assignmentsProvider       controllerapi.ShardAssignmentsProvider
+	listener                  controllerapi.DataServerEventListener
+	healthPolicy              health.CheckPolicy
+	initialRetryBackoff       time.Duration
+	healthCheckBackoff        *commontime.ConcurrentBackOff
+	runningGauge              metric.Gauge
+	failedHealthChecksCounter metric.Counter
 
 	mu sync.RWMutex
 	// status is written under mu, and read without it.
@@ -73,9 +75,6 @@ type controller struct {
 	// flight: the watch and ping paths can both observe SERVING for the same
 	// status epoch (e.g. at startup), and only the first one binds the node.
 	handshaking bool
-
-	dataServerRunningGauge metric.Gauge
-	failedHealthChecks     metric.Counter
 }
 
 func (n *controller) GetDataServer() commonobject.Borrowed[*proto.DataServer] {
@@ -113,7 +112,7 @@ func (n *controller) Close() error {
 	if !n.closed.CompareAndSwap(false, true) {
 		return nil
 	}
-	n.dataServerRunningGauge.Unregister()
+	n.runningGauge.Unregister()
 	n.ctxCancel()
 	n.wg.Wait()
 
@@ -417,7 +416,7 @@ func (n *controller) becomeUnavailable(observedEpoch int64) {
 	n.status.Publish(status)
 	n.mu.Unlock()
 
-	n.failedHealthChecks.Inc()
+	n.failedHealthChecksCounter.Inc()
 	n.listener.BecameUnavailable(n.dataServer.GetIdentity())
 }
 
@@ -536,10 +535,10 @@ func NewController(ctx context.Context, dataServer *proto.DataServer,
 		healthPolicy:        healthPolicy,
 		initialRetryBackoff: initialRetryBackoff,
 		healthCheckBackoff:  commontime.NewConcurrentBackOff(commontime.NewBackOffWithInitialInterval(dataServerCtx, initialRetryBackoff)),
-		failedHealthChecks: metric.NewCounter("oxia_coordinator_node_health_checks_failed",
+		failedHealthChecksCounter: metric.NewCounter("oxia_coordinator_node_health_checks_failed",
 			"The number of failed health checks to a dataServer", "count", labels),
 	}
-	nc.dataServerRunningGauge = metric.NewGauge("oxia_coordinator_node_running",
+	nc.runningGauge = metric.NewGauge("oxia_coordinator_node_running",
 		"Whether the dataServer is considered to be running by the coordinator", "count", labels, func() int64 {
 			if nc.GetStatus().GetState() == Running {
 				return 1
