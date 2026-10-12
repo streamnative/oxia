@@ -72,15 +72,7 @@ func New(ctx context.Context, coordinatorRuntime runtime.Runtime) Reconciler {
 		process.DoWithLabels(reconcilerCtx, map[string]string{
 			"component": "coordinator-reconciler",
 		}, func() {
-			bo := oxiatime.NewBackOffWithInitialInterval(reconcilerCtx, time.Second)
-			_ = backoff.RetryNotify(func() error {
-				return r.bgWatchClusterConfiguration(subscription, bo)
-			}, bo, func(err error, retryAfter time.Duration) {
-				r.logger.Warn("failed to reconcile config update",
-					slog.Any("error", err),
-					slog.Duration("retry-after", retryAfter))
-			})
-			r.logger.Info("Cluster configuration watcher closed")
+			r.watchClusterConfigurationWithRetries(subscription)
 		})
 	})
 
@@ -109,7 +101,19 @@ func (r *clusterReconciler) Reconcile(_ context.Context, snapshot *proto.Cluster
 	return errs
 }
 
-func (r *clusterReconciler) bgWatchClusterConfiguration(subscription *cache.Subscription[provider.Versioned[*proto.ClusterConfiguration]], bo backoff.BackOff) error {
+func (r *clusterReconciler) watchClusterConfigurationWithRetries(subscription *cache.Subscription[provider.Versioned[*proto.ClusterConfiguration]]) {
+	bo := oxiatime.NewBackOffWithInitialInterval(r.ctx, time.Second)
+	_ = backoff.RetryNotify(func() error {
+		return r.watchClusterConfiguration(subscription, bo)
+	}, bo, func(err error, retryAfter time.Duration) {
+		r.logger.Warn("failed to reconcile config update",
+			slog.Any("error", err),
+			slog.Duration("retry-after", retryAfter))
+	})
+	r.logger.Info("Cluster configuration watcher closed")
+}
+
+func (r *clusterReconciler) watchClusterConfiguration(subscription *cache.Subscription[provider.Versioned[*proto.ClusterConfiguration]], bo backoff.BackOff) error {
 	for {
 		config, err := r.runtime.Metadata().GetConfig()
 		if err != nil {

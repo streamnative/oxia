@@ -57,7 +57,7 @@ func (b *countingBackOff) Reset() {
 	b.resets++
 }
 
-func TestClusterReconcilerBgWatchClusterConfigurationReturnsReconcileErrorForRetry(t *testing.T) {
+func TestClusterReconcilerWatchClusterConfigurationReturnsReconcileErrorForRetry(t *testing.T) {
 	base := namespaceRuntimeForErrors("retry", "healthy")
 	base.metadata.config = &proto.ClusterConfiguration{Namespaces: []*proto.Namespace{
 		base.metadata.configNS["healthy"], base.metadata.configNS["retry"],
@@ -81,11 +81,11 @@ func TestClusterReconcilerBgWatchClusterConfigurationReturnsReconcileErrorForRet
 	defer func() { require.NoError(t, config.Close()) }()
 	subscription := config.Subscribe()
 	bo := &countingBackOff{}
-	require.EqualError(t, reconciler.bgWatchClusterConfiguration(subscription, bo), "temporary namespace write failure")
+	require.EqualError(t, reconciler.watchClusterConfiguration(subscription, bo), "temporary namespace write failure")
 	require.Equal(t, []string{"healthy", "retry"}, []string{<-runtime.attempts, <-runtime.attempts})
 	require.Zero(t, bo.resets)
 
-	reconciler.wg.Go(func() { require.NoError(t, reconciler.bgWatchClusterConfiguration(subscription, bo)) })
+	reconciler.wg.Go(func() { require.NoError(t, reconciler.watchClusterConfiguration(subscription, bo)) })
 	require.Equal(t, []string{"healthy", "retry"}, []string{<-runtime.attempts, <-runtime.attempts})
 	require.NoError(t, reconciler.Close())
 	require.Equal(t, 2, runtime.recomputations)
