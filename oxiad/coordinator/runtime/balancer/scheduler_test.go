@@ -167,14 +167,14 @@ func (*mockMetadata) SubscribeConfig() *cache.Subscription[provider.Versioned[*p
 	return nil
 }
 
-func (m *mockMetadata) GetLoadBalancer() commonobject.Borrowed[*proto.LoadBalancer] {
+func (m *mockMetadata) GetLoadBalancerConfig() (commonobject.Borrowed[*proto.LoadBalancer], error) {
 	if m.lbConfig != nil {
-		return commonobject.Borrow(m.lbConfig)
+		return commonobject.Borrow(m.lbConfig), nil
 	}
 	return commonobject.Borrow(&proto.LoadBalancer{
 		ScheduleInterval: "30s",
 		QuarantineTime:   "5m",
-	})
+	}), nil
 }
 
 func (*mockMetadata) CreateDataServer(*proto.DataServer) error {
@@ -248,12 +248,14 @@ func newTestBalancer(
 	metadata *mockMetadata,
 	sel selector.Selector[*single.Context, string],
 ) *nodeBasedBalancer {
+	// The mock never fails to load the configuration
+	loadBalancerConf, _ := metadata.GetLoadBalancerConfig()
 	return &nodeBasedBalancer{
 		logger:                  slog.Default(),
 		ctx:                     ctx,
 		ctxCancel:               cancel,
 		wg:                      sync.WaitGroup{},
-		loadBalancerConf:        metadata.GetLoadBalancer().UnsafeBorrow(),
+		loadBalancerConf:        loadBalancerConf.UnsafeBorrow(),
 		metadata:                metadata,
 		selector:                sel,
 		loadRatioAlgorithm:      single.DefaultShardsRank,

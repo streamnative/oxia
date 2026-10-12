@@ -533,6 +533,8 @@ func newInitiateSplitTestRuntime(t *testing.T) (*runtime, *racingMetadata) {
 	}))
 
 	racing := &racingMetadata{Metadata: metadata, beforeWrite: func() {}}
+	loadBalancerConfig, err := racing.GetLoadBalancerConfig()
+	require.NoError(t, err)
 	r := &runtime{
 		logger:           slog.With(slog.String("component", "coordinator")),
 		ctx:              t.Context(),
@@ -542,6 +544,7 @@ func newInitiateSplitTestRuntime(t *testing.T) (*runtime, *racingMetadata) {
 		loadBalancer: balancer.NewLoadBalancer(balancer.Options{
 			Context:             t.Context(),
 			Metadata:            racing,
+			LoadBalancerConfig:  loadBalancerConfig.UnsafeBorrow(),
 			NodeAvailableJudger: func(string) bool { return true },
 		}),
 		assignmentsWatch: commonwatch.New(&proto.ShardAssignments{}),

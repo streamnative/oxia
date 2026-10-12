@@ -1019,6 +1019,10 @@ func New(
 	if err != nil {
 		return nil, err
 	}
+	loadBalancerConfig, err := metadata.GetLoadBalancerConfig()
+	if err != nil {
+		return nil, err
+	}
 
 	c := &runtime{
 		logger: slog.With(
@@ -1037,8 +1041,9 @@ func New(
 	c.ctx, c.ctxCancel = context.WithCancel(context.Background())
 
 	c.loadBalancer = balancer.NewLoadBalancer(balancer.Options{
-		Context:  c.ctx,
-		Metadata: c.metadata,
+		Context:            c.ctx,
+		Metadata:           c.metadata,
+		LoadBalancerConfig: loadBalancerConfig.UnsafeBorrow(),
 		NodeAvailableJudger: func(nodeID string) bool {
 			c.RLock()
 			defer c.RUnlock()
