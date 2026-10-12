@@ -31,6 +31,7 @@ import (
 
 	"github.com/oxia-db/oxia/oxiad/common/feature"
 	"github.com/oxia-db/oxia/oxiad/common/health"
+	commonwatch "github.com/oxia-db/oxia/oxiad/common/watch"
 	"github.com/oxia-db/oxia/oxiad/coordinator/rpc"
 	controllerapi "github.com/oxia-db/oxia/oxiad/coordinator/runtime/controller"
 
@@ -63,8 +64,9 @@ type controller struct {
 	initialRetryBackoff time.Duration
 	healthCheckBackoff  *commontime.ConcurrentBackOff
 
-	mu     sync.RWMutex
-	status Status
+	mu sync.RWMutex
+	// status is written under mu, and read without it.
+	status *commonwatch.Watch[Status]
 	// supportedFeatures are the features that the last handshake reported.
 	supportedFeatures []proto.Feature
 	// handshaking is set while the NotRunning -> Running handshake is in
@@ -81,9 +83,7 @@ func (n *controller) GetDataServer() commonobject.Borrowed[*proto.DataServer] {
 }
 
 func (n *controller) GetStatus() Status {
-	n.mu.RLock()
-	defer n.mu.RUnlock()
-	return n.status
+	return n.status.Load()
 }
 
 func (n *controller) GetFeatures() []proto.Feature {
@@ -95,18 +95,18 @@ func (n *controller) GetFeatures() []proto.Feature {
 func (n *controller) Drain() {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	previous := n.status.state
+	status := n.status.Load()
+	previous := status.GetState()
 	if previous == Draining {
 		return
 	}
-	n.status.advance(Draining)
+	status.Advance(Draining)
+	n.status.Publish(status)
 	n.logger.Info("Changed status", slog.Any("from", previous), slog.Any("to", Draining))
 }
 
 func (n *controller) currentStatusEpoch() int64 {
-	n.mu.RLock()
-	defer n.mu.RUnlock()
-	return n.status.epoch
+	return n.status.Load().epoch
 }
 
 func (n *controller) Close() error {
@@ -127,11 +127,9 @@ func (n *controller) Close() error {
 // the full backoff: waiting for the handshake instead delivers the first
 // assignments right after it.
 func (n *controller) openAssignmentsStream() (proto.OxiaCoordination_PushShardAssignmentsClient, error) {
+	receiver := n.status.Subscribe()
 	for {
-		n.mu.RLock()
-		status, statusChanged := n.status.state, n.status.changed
-		n.mu.RUnlock()
-		if status == Running || status == Draining {
+		if state := receiver.Load().GetState(); state == Running || state == Draining {
 			n.logger.Debug("Ready to send assignments")
 			return n.rpc.PushShardAssignments(n.ctx, n.dataServer.GetIdentity())
 		}
@@ -139,7 +137,7 @@ func (n *controller) openAssignmentsStream() (proto.OxiaCoordination_PushShardAs
 		select {
 		case <-n.ctx.Done():
 			return nil, n.ctx.Err()
-		case <-statusChanged:
+		case <-receiver.Changed():
 		}
 	}
 }
@@ -396,7 +394,8 @@ func isTransportClosing(err error) bool {
 
 func (n *controller) becomeUnavailable(observedEpoch int64) {
 	n.mu.Lock()
-	if n.status.epoch != observedEpoch {
+	status := n.status.Load()
+	if status.epoch != observedEpoch {
 		// The status changed since the failing observation was made (e.g.
 		// the node already recovered through the watch path): the failure is
 		// stale and must not fence the node again. The next probe evaluates
@@ -404,17 +403,18 @@ func (n *controller) becomeUnavailable(observedEpoch int64) {
 		n.mu.Unlock()
 		return
 	}
-	if n.status.state != Running && n.status.state != Draining {
+	if status.GetState() != Running && status.GetState() != Draining {
 		n.mu.Unlock()
 		return
 	}
 	// A Draining data server stays Draining: its epoch still advances, to
 	// discard the observations in flight
-	next := n.status.state
+	next := status.GetState()
 	if next == Running {
 		next = NotRunning
 	}
-	n.status.advance(next)
+	status.Advance(next)
+	n.status.Publish(status)
 	n.mu.Unlock()
 
 	n.failedHealthChecks.Inc()
@@ -423,13 +423,14 @@ func (n *controller) becomeUnavailable(observedEpoch int64) {
 
 func (n *controller) becomeAvailable(observedEpoch int64) {
 	n.mu.Lock()
-	if n.status.epoch != observedEpoch {
+	status := n.status.Load()
+	if status.epoch != observedEpoch {
 		// The node was fenced while the probe was in flight: the SERVING
 		// answer is stale. The next probe will re-evaluate.
 		n.mu.Unlock()
 		return
 	}
-	if n.status.state != NotRunning || n.handshaking {
+	if status.GetState() != NotRunning || n.handshaking {
 		// Nothing to do: the node is Running or Draining, or the other health
 		// path is already binding it for this same observation.
 		n.mu.Unlock()
@@ -479,8 +480,9 @@ func (n *controller) becomeAvailable(observedEpoch int64) {
 	featuresChanged := len(feature.Missing(features, n.supportedFeatures)) > 0 ||
 		len(feature.Missing(n.supportedFeatures, features)) > 0
 	n.supportedFeatures = features
-	if n.status.state == NotRunning && n.status.epoch == observedEpoch {
-		n.status.advance(Running)
+	if status = n.status.Load(); status.GetState() == NotRunning && status.epoch == observedEpoch {
+		status.Advance(Running)
+		n.status.Publish(status)
 	}
 	n.mu.Unlock()
 
@@ -528,7 +530,7 @@ func NewController(ctx context.Context, dataServer *proto.DataServer,
 		listener:            dataServerEventListener,
 		rpc:                 rpcProvider,
 		insID:               insID,
-		status:              NewStatus(NotRunning),
+		status:              commonwatch.New(NewStatus(NotRunning)),
 		supportedFeatures:   make([]proto.Feature, 0),
 		logger:              logger,
 		healthPolicy:        healthPolicy,
