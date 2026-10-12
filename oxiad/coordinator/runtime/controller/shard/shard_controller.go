@@ -723,10 +723,6 @@ func (s *controller) deleteShard() error {
 		)
 	}
 
-	// The shard controller terminates once the status is deleted, under the
-	// termination lock: SyncServerAddress never finds the shard missing while
-	// the controller isn't terminating, and a failed deletion is sent again to
-	// the event loop, which runs until the controller terminates.
 	s.terminationMu.Lock()
 	err = s.metadataStore.DeleteShardStatus(s.namespace, s.shard)
 	if err == nil {
