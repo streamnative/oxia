@@ -59,6 +59,7 @@ type controller struct {
 	assignmentsProvider controllerapi.ShardAssignmentsProvider
 	listener            controllerapi.DataServerEventListener
 	healthPolicy        health.CheckPolicy
+	initialRetryBackoff time.Duration
 
 	wg sync.WaitGroup
 	// closed makes Close run once.
@@ -88,8 +89,6 @@ type controller struct {
 	// healthCheckBackoff is shared by the health watch and the health ping,
 	// and reset when the data server becomes available: it guards itself.
 	healthCheckBackoff *commontime.ConcurrentBackOff
-	// dispatchAssignmentsBackoff is only used by the assignments dispatcher.
-	dispatchAssignmentsBackoff backoff.BackOff
 
 	dataServerRunningGauge metric.Gauge
 	failedHealthChecks     metric.Counter
@@ -185,6 +184,7 @@ func (n *controller) openAssignmentsStream() (proto.OxiaCoordination_PushShardAs
 
 func (n *controller) sendAssignmentsDispatchWithRetries() {
 	receiver := n.assignmentsProvider.SubscribeShardAssignments()
+	bo := commontime.NewBackOffWithInitialInterval(n.ctx, n.initialRetryBackoff)
 
 	_ = backoff.RetryNotify(func() error {
 		stream, err := n.openAssignmentsStream()
@@ -224,7 +224,7 @@ func (n *controller) sendAssignmentsDispatchWithRetries() {
 					return err
 				}
 				n.logger.Debug("Send assignments completed successfully")
-				n.dispatchAssignmentsBackoff.Reset()
+				bo.Reset()
 				assignments = latest
 			}
 
@@ -236,7 +236,7 @@ func (n *controller) sendAssignmentsDispatchWithRetries() {
 			case <-receiver.Changed():
 			}
 		}
-	}, n.dispatchAssignmentsBackoff, func(err error, duration time.Duration) {
+	}, bo, func(err error, duration time.Duration) {
 		switch {
 		case errors.Is(err, context.Canceled):
 		case errors.Is(err, constant.ErrNotInitialized):
@@ -559,20 +559,20 @@ func NewController(ctx context.Context, dataServer *proto.DataServer,
 	)
 
 	nc := &controller{
-		ctx:                        dataServerCtx,
-		ctxCancel:                  cancel,
-		dataServer:                 dataServer,
-		assignmentsProvider:        shardAssignmentsProvider,
-		listener:                   dataServerEventListener,
-		rpc:                        rpcProvider,
-		insID:                      insID,
-		status:                     NotRunning,
-		statusChanged:              make(chan any),
-		supportedFeatures:          make([]proto.Feature, 0),
-		logger:                     logger,
-		healthPolicy:               healthPolicy,
-		healthCheckBackoff:         commontime.NewConcurrentBackOff(commontime.NewBackOffWithInitialInterval(dataServerCtx, initialRetryBackoff)),
-		dispatchAssignmentsBackoff: commontime.NewBackOffWithInitialInterval(dataServerCtx, initialRetryBackoff),
+		ctx:                 dataServerCtx,
+		ctxCancel:           cancel,
+		dataServer:          dataServer,
+		assignmentsProvider: shardAssignmentsProvider,
+		listener:            dataServerEventListener,
+		rpc:                 rpcProvider,
+		insID:               insID,
+		status:              NotRunning,
+		statusChanged:       make(chan any),
+		supportedFeatures:   make([]proto.Feature, 0),
+		logger:              logger,
+		healthPolicy:        healthPolicy,
+		initialRetryBackoff: initialRetryBackoff,
+		healthCheckBackoff:  commontime.NewConcurrentBackOff(commontime.NewBackOffWithInitialInterval(dataServerCtx, initialRetryBackoff)),
 		failedHealthChecks: metric.NewCounter("oxia_coordinator_node_health_checks_failed",
 			"The number of failed health checks to a dataServer", "count", labels),
 	}
