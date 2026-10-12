@@ -208,8 +208,8 @@ func (m *mockNamespaceMetadata) ListNamespace() map[string]commonobject.Borrowed
 	return namespaces
 }
 
-func (m *mockNamespaceMetadata) GetConfig() commonobject.Borrowed[*proto.ClusterConfiguration] {
-	return commonobject.Borrow(m.config)
+func (m *mockNamespaceMetadata) GetConfig() (commonobject.Borrowed[*proto.ClusterConfiguration], error) {
+	return commonobject.Borrow(m.config), nil
 }
 
 // SubscribeConfig is not used by these tests.

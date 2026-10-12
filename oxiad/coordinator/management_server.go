@@ -95,7 +95,11 @@ func (management *managementServer) ListDataServers(_ context.Context, _ *proto.
 	if err != nil {
 		return nil, err
 	}
-	config := runtime.Metadata().GetConfig().UnsafeBorrow()
+	borrowedConfig, err := runtime.Metadata().GetConfig()
+	if err != nil {
+		return nil, grpcstatus.Errorf(codes.Internal, "failed to list data servers: %v", err)
+	}
+	config := borrowedConfig.UnsafeBorrow()
 	statuses := runtime.ListDataServerStatus()
 
 	views := make([]*proto.DataServerView, 0, len(config.GetServers()))

@@ -140,7 +140,12 @@ func (m *Monitor) run() {
 }
 
 func (m *Monitor) evaluate() {
-	config := m.metadata.GetConfig().UnsafeBorrow()
+	borrowedConfig, err := m.metadata.GetConfig()
+	if err != nil {
+		m.logger.Warn("Failed to evaluate the auto-split", slog.Any("error", err))
+		return
+	}
+	config := borrowedConfig.UnsafeBorrow()
 	autoSplit := config.GetAutoSplitWithDefaults()
 
 	if !autoSplit.GetEnabled() {

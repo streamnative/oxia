@@ -581,7 +581,11 @@ func (c *runtime) computeNewAssignments() {
 }
 
 func (c *runtime) computeNewAssignments0() error {
-	config := c.metadata.GetConfig().UnsafeBorrow()
+	borrowedConfig, err := c.metadata.GetConfig()
+	if err != nil {
+		return err
+	}
+	config := borrowedConfig.UnsafeBorrow()
 	status, err := c.metadata.ListNamespaceStatus()
 	if err != nil {
 		return err
@@ -1011,6 +1015,10 @@ func New(
 	if err != nil {
 		return nil, err
 	}
+	config, err := metadata.GetConfig()
+	if err != nil {
+		return nil, err
+	}
 
 	c := &runtime{
 		logger: slog.With(
@@ -1097,7 +1105,7 @@ func New(
 	})
 	c.loadBalancer.Start()
 
-	autoSplitInterval := c.metadata.GetConfig().UnsafeBorrow().GetAutoSplitWithDefaults().GetCollectionIntervalDurationOrDefault()
+	autoSplitInterval := config.UnsafeBorrow().GetAutoSplitWithDefaults().GetCollectionIntervalDurationOrDefault()
 	c.autoSplitMonitor = autosplit.NewMonitor(c.metadata, c.rpc, c, autoSplitInterval)
 	c.autoSplitMonitor.Start()
 
