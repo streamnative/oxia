@@ -226,7 +226,10 @@ func NewController(
 				"shard":     fmt.Sprintf("%d", s.shard),
 			}, func() {
 				// Retry until the shard controller closes
-				_ = backoff.RetryNotify(s.run, oxiatime.NewBackOff(s.ctx), func(err error, duration time.Duration) {
+				bo := oxiatime.NewBackOff(s.ctx)
+				_ = backoff.RetryNotify(func() error {
+					return s.run(bo)
+				}, bo, func(err error, duration time.Duration) {
 					s.logger.Warn(
 						"Failed to start the shard controller, retrying later",
 						slog.Any("error", err),
@@ -262,8 +265,9 @@ func (s *controller) Election(electionAction *action.ElectionAction) string {
 
 // run does the initial check of the shard, or its leader election, then runs
 // the event loop until the shard controller closes. It fails only if the
-// shard metadata can't be loaded, before doing anything.
-func (s *controller) run() error {
+// shard metadata can't be loaded, before doing anything. It resets bo, the
+// backoff of its retries, once the shard is ready.
+func (s *controller) run(bo backoff.BackOff) error {
 	borrowedMeta, exists, err := s.metadataStore.GetShardStatus(s.namespace, s.shard)
 	if err != nil {
 		return err
@@ -299,6 +303,8 @@ func (s *controller) run() error {
 	}
 
 	s.logger.Info("Shard is ready", slog.Any("leader", initShardMeta.Leader))
+	// A failure from now on is retried from the initial interval
+	bo.Reset()
 
 	periodicTasksTimer := time.NewTimer(s.periodicTasksInterval)
 	defer periodicTasksTimer.Stop()
