@@ -148,7 +148,7 @@ func (f *Factory) CreateMetadata(ctx context.Context) (Metadata, error) {
 	coordinatorName := f.coordinatorName
 	f.mu.Unlock()
 
-	return newMetadata(ctx, statusProvider, configProvider, coordinatorName), nil
+	return newDefaultMetadata(ctx, statusProvider, configProvider, coordinatorName), nil
 }
 
 // Close closes the metadata providers. It is safe to call more than once,

@@ -39,7 +39,7 @@ func (p interceptingStatusProvider) Store(snapshot provider.Versioned[*proto.Clu
 func TestCreateNamespaceStatusAlreadyExists(t *testing.T) {
 	statusProvider := memory.NewProvider(metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled, "")
 	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadatacommon.WatchEnabled, "")
-	metadata := newMetadata(t.Context(), statusProvider, configProvider, "")
+	metadata := newDefaultMetadata(t.Context(), statusProvider, configProvider, "")
 	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
 
 	require.NoError(t, metadata.CreateNamespaceStatus("default", &proto.NamespaceStatus{ReplicationFactor: 3}))
@@ -69,7 +69,7 @@ func TestCreateNamespaceStatusReturnsWriteError(t *testing.T) {
 			return metadatacommon.NotExists, storeErr
 		},
 	}
-	metadata := newMetadata(t.Context(), failing, configProvider, "")
+	metadata := newDefaultMetadata(t.Context(), failing, configProvider, "")
 	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
 
 	err := metadata.CreateNamespaceStatus("default", &proto.NamespaceStatus{ReplicationFactor: 3})
@@ -97,7 +97,7 @@ func TestCreateNamespaceStatusCanBeRetriedByCaller(t *testing.T) {
 			return statusProvider.Store(snapshot)
 		},
 	}
-	metadata := newMetadata(t.Context(), failingOnce, configProvider, "")
+	metadata := newDefaultMetadata(t.Context(), failingOnce, configProvider, "")
 	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
 
 	namespaceStatus := &proto.NamespaceStatus{ReplicationFactor: 3}
@@ -132,7 +132,7 @@ func TestCreateNamespaceStatusReturnsErrorAfterCommit(t *testing.T) {
 			return version, storeErr
 		},
 	}
-	metadata := newMetadata(t.Context(), committing, configProvider, "")
+	metadata := newDefaultMetadata(t.Context(), committing, configProvider, "")
 	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
 
 	err := metadata.CreateNamespaceStatus("default", &proto.NamespaceStatus{ReplicationFactor: 3})
