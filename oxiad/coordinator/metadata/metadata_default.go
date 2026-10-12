@@ -235,15 +235,15 @@ func (m *coordinatorMetadata) AllocateShardIDs(count uint32) (int64, error) {
 	return base, nil
 }
 
-func (m *coordinatorMetadata) CreateNamespaceStatus(name string, status *commonproto.NamespaceStatus) error {
+func (m *coordinatorMetadata) CreateNamespaceStatus(namespace string, status *commonproto.NamespaceStatus) error {
 	return m.computeStatus(func(clusterStatus *commonproto.ClusterStatus, _ metadatacommon.Version) (*commonproto.ClusterStatus, bool, error) {
 		if clusterStatus.Namespaces == nil {
 			clusterStatus.Namespaces = map[string]*commonproto.NamespaceStatus{}
 		}
-		if _, exists := clusterStatus.Namespaces[name]; exists {
-			return clusterStatus, false, fmt.Errorf("%w: namespace %q", metadatacommon.ErrAlreadyExists, name)
+		if _, exists := clusterStatus.Namespaces[namespace]; exists {
+			return clusterStatus, false, fmt.Errorf("%w: namespace %q", metadatacommon.ErrAlreadyExists, namespace)
 		}
-		clusterStatus.Namespaces[name] = status
+		clusterStatus.Namespaces[namespace] = status
 		return clusterStatus, true, nil
 	})
 }
@@ -294,12 +294,12 @@ func (m *coordinatorMetadata) PatchNamespaceStatus(
 	return nil
 }
 
-func (m *coordinatorMetadata) DeleteNamespaceStatus(name string) commonobject.Borrowed[*commonproto.NamespaceStatus] {
+func (m *coordinatorMetadata) DeleteNamespaceStatus(namespace string) commonobject.Borrowed[*commonproto.NamespaceStatus] {
 	var namespaceStatus *commonproto.NamespaceStatus
 	changed := false
 	err := backoff.RetryNotify(func() error {
 		return m.computeStatus(func(clusterStatus *commonproto.ClusterStatus, _ metadatacommon.Version) (*commonproto.ClusterStatus, bool, error) {
-			ns, exists := clusterStatus.Namespaces[name]
+			ns, exists := clusterStatus.Namespaces[namespace]
 			if !exists {
 				return clusterStatus, false, nil
 			}
@@ -599,25 +599,25 @@ func (m *coordinatorMetadata) ListDataServer() (map[string]commonobject.Borrowed
 	return dataServers, nil
 }
 
-func (m *coordinatorMetadata) GetNamespace(namespace string) (commonobject.Borrowed[*commonproto.Namespace], bool, error) {
+func (m *coordinatorMetadata) GetNamespace(name string) (commonobject.Borrowed[*commonproto.Namespace], bool, error) {
 	config, err := m.configProvider.Load()
 	if err != nil {
 		return commonobject.Borrowed[*commonproto.Namespace]{}, false, err
 	}
 	for _, ns := range config.Value.GetNamespaces() {
-		if ns.GetName() == namespace {
+		if ns.GetName() == name {
 			return commonobject.Borrow(ns), true, nil
 		}
 	}
 	return commonobject.Borrowed[*commonproto.Namespace]{}, false, nil
 }
 
-func (m *coordinatorMetadata) GetNamespaceTermOptions(namespace string) (*commonproto.NewTermOptions, error) {
+func (m *coordinatorMetadata) GetNamespaceTermOptions(name string) (*commonproto.NewTermOptions, error) {
 	termOptions := &commonproto.NewTermOptions{
 		EnableNotifications: true,
 		KeySorting:          commonproto.KeySortingType_UNKNOWN,
 	}
-	borrowedNamespace, exists, err := m.GetNamespace(namespace)
+	borrowedNamespace, exists, err := m.GetNamespace(name)
 	if err != nil {
 		return nil, err
 	}
