@@ -271,7 +271,10 @@ func NewGrpcServer(parent context.Context, optionsWatch *commonwatch.Watch[*opti
 		return nil, err
 	}
 	management.setRuntime(runtime)
-	reconciler = coordreconciler.New(parent, runtime)
+	reconciler, err = coordreconciler.New(parent, runtime)
+	if err != nil {
+		return nil, err
+	}
 
 	metricsServer, err = startMetricsServer(options.Observability.Metric) //nolint:contextcheck
 	if err != nil {

@@ -21,9 +21,38 @@ import (
 	"github.com/oxia-db/oxia/common/proto"
 )
 
+// Reconciler brings the coordinator runtime in line with the cluster
+// configuration: the data servers and namespaces of the configuration are
+// created in the runtime, and the ones that are no longer in it are deleted.
+// The configuration changes through the management API, or in its store,
+// e.g. the configuration file, and the reconcilers apply it to the runtime.
+//
+// The cluster reconciler, which New returns, drives the others. It reconciles
+// the configuration once when it starts, then on each of its changes, and a
+// pass runs the data server reconciler, then the namespace reconciler, then
+// recomputes the shard assignments that the clients receive:
+//
+//	cluster configuration (metadata)
+//	   |
+//	   | GetConfig, then each change notified by SubscribeConfig
+//	   v
+//	clusterReconciler           New: the first pass, which must succeed
+//	   |                        reconcileWithRetries: the next passes, retried with a backoff
+//	   | Reconcile
+//	   +--> dataServerReconciler   creates the data servers of the configuration, deletes the
+//	   |                           others, and syncs the addresses of the shard ensembles
+//	   +--> namespaceReconciler    creates the namespaces of the configuration, with their
+//	   |                           shards and shard controllers, and deletes the others
+//	   +--> runtime.RecomputeAssignments
+//
+// A pass runs every reconciler even if one fails, and returns all their errors.
 type Reconciler interface {
 	io.Closer
 
-	// Reconcile performs one pass. Callers can retry returned errors with backoff.
+	// Reconcile makes one pass over the given configuration, and returns its
+	// errors without retrying. A pass that fails on one data server or
+	// namespace still handles the others, and a pass can be repeated: it only
+	// changes what doesn't match the configuration yet. The caller retries a
+	// failed pass, e.g. with a backoff.
 	Reconcile(context.Context, *proto.ClusterConfiguration) error
 }

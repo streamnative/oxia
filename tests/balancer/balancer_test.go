@@ -74,7 +74,8 @@ func TestBalancer(t *testing.T) {
 		require.NoError(t, coordinatorInstance.Close())
 	})
 
-	reconciler := coordreconciler.New(t.Context(), coordinatorInstance)
+	reconciler, err := coordreconciler.New(t.Context(), coordinatorInstance)
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, reconciler.Close())
 	})

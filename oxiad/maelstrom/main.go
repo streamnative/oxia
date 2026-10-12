@@ -281,8 +281,12 @@ func runCoordinator(dispatcher *dispatcher, servers []*commonproto.DataServerIde
 		return errors.Wrap(err, "failed to create coordinator")
 	}
 
-	reconciler := coordreconciler.New(ctx, coordinatorRuntime)
-	_ = reconciler
+	if _, err := coordreconciler.New(ctx, coordinatorRuntime); err != nil {
+		_ = commonio.CloseIfNotNil(coordinatorRuntime)
+		_ = commonio.CloseIfNotNil(metadata)
+		_ = commonio.CloseIfNotNil(metadataFactory)
+		return errors.Wrap(err, "failed to reconcile the cluster configuration")
+	}
 
 	return nil
 }
