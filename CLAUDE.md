@@ -73,15 +73,6 @@ Key components:
   periodic round. A request that has a caller waiting for it, e.g. a change of ensemble, fails fast instead and its
   caller retries it.
 
-## Coordinator Metadata
-
-- **Handle the errors**: the reads and writes of `metadata.Metadata` return their errors without retrying.
-- **Borrowed values**: a `commonobject.Borrowed` value is shared with every other reader. Only read it, and only
-  while you use it; clone it to keep it or to modify it.
-- **Write only what you own**: update a namespace status with `PatchNamespaceStatus`, and change only the fields
-  that the caller owns in the status it gets, never by storing back a copy read earlier, which would revert the
-  concurrent writes of the other components.
-
 ## Test Structure
 
 - **One test file per source file**: the tests of `xxx.go` live in `xxx_test.go`, in the same package. Don't add
