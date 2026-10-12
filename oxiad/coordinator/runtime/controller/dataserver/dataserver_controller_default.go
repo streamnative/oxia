@@ -49,7 +49,8 @@ import (
 var errNotServing = errors.New("data server is not actively serving")
 
 type controller struct {
-	// Set when the controller is created, then only read.
+	wg                  sync.WaitGroup
+	closed              atomic.Bool
 	logger              *slog.Logger
 	ctx                 context.Context
 	ctxCancel           context.CancelFunc
@@ -60,10 +61,7 @@ type controller struct {
 	listener            controllerapi.DataServerEventListener
 	healthPolicy        health.CheckPolicy
 	initialRetryBackoff time.Duration
-
-	wg sync.WaitGroup
-	// closed makes Close run once.
-	closed atomic.Bool
+	healthCheckBackoff  *commontime.ConcurrentBackOff
 
 	mu     sync.RWMutex
 	status Status
@@ -85,10 +83,6 @@ type controller struct {
 	// flight: the watch and ping paths can both observe SERVING for the same
 	// status epoch (e.g. at startup), and only the first one binds the node.
 	handshaking bool
-
-	// healthCheckBackoff is shared by the health watch and the health ping,
-	// and reset when the data server becomes available: it guards itself.
-	healthCheckBackoff *commontime.ConcurrentBackOff
 
 	dataServerRunningGauge metric.Gauge
 	failedHealthChecks     metric.Counter
