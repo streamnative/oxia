@@ -246,23 +246,26 @@ func NewController(
 }
 
 func (s *controller) Election(electionAction *action.ElectionAction) string {
-	s.terminationMu.RLock()
-	if s.terminating.Load() {
-		s.terminationMu.RUnlock()
-		return ""
-	}
 	clonedAction := electionAction.Clone()
 	clonedAction.Waiter.Add(1)
-	if !channel.PushNoBlock(s.electionOp, clonedAction) {
-		s.terminationMu.RUnlock()
-		clonedAction.Waiter.Done()
-		s.logger.Debug("Discarding leader election because queue is full")
-		return ""
-	}
-	s.terminationMu.RUnlock()
-
+	s.notifyElection(clonedAction)
 	clonedAction.Waiter.Wait()
 	return clonedAction.NewLeader
+}
+
+// notifyElection sends the election action to the event loop, or completes it
+// without a leader if the shard controller is closing or its queue is full.
+func (s *controller) notifyElection(electionAction *action.ElectionAction) {
+	s.terminationMu.RLock()
+	defer s.terminationMu.RUnlock()
+	if s.terminating.Load() {
+		electionAction.Done("")
+		return
+	}
+	if !channel.PushNoBlock(s.electionOp, electionAction) {
+		s.logger.Debug("Discarding leader election because queue is full")
+		electionAction.Done("")
+	}
 }
 
 func (s *controller) run(bo backoff.BackOff) error {
@@ -644,7 +647,7 @@ func (s *controller) handleElectionWithRetries(electionAction *action.ElectionAc
 	borrowedMeta, exists, err := s.metadataStore.GetShardStatus(s.namespace, s.shard)
 	if err != nil {
 		s.logger.Warn("Failed to start the election, retrying later", slog.Any("error", err))
-		time.AfterFunc(time.Second, func() { electionAction.Done(s.Election(electionAction)) })
+		time.AfterFunc(time.Second, func() { s.notifyElection(electionAction) })
 		return
 	}
 	shardMeta := common.Must(borrowedMeta, exists,
