@@ -59,6 +59,46 @@ Key components:
 - All Go files require Apache 2.0 license header
 - Cyclomatic complexity limit: 15
 - Cognitive complexity limit: 25
+- Comments explain why, not what: don't restate the code, and keep them short
+
+## Errors and Retries
+
+- **Return errors, don't retry inside**: a function that does the work returns its error to the caller, and never
+  retries in place. The caller decides whether and how to retry.
+- **Retry in a wrapper**: when an operation must be retried, wrap it in `xxxWithRetries`, which calls `xxx`, e.g.
+  `deleteShardWithRetries` and `deleteShard`. Retry with `oxiatime.NewBackOff(ctx)` so that it stops when the
+  component closes, and mark the errors that must not be retried with `backoff.Permanent`.
+- **Don't block an event loop**: a handler of an event loop never retries in place. If it fails, it sends its
+  message to the channel again later, e.g. with `time.AfterFunc(time.Second, ...)`, or leaves it to the next
+  periodic round. A request that has a caller waiting for it, e.g. a change of ensemble, fails fast instead and its
+  caller retries it.
+
+## Coordinator Metadata
+
+- **Handle the errors**: the reads and writes of `metadata.Metadata` return their errors without retrying.
+- **Borrowed values**: a `commonobject.Borrowed` value is shared with every other reader. Only read it, and only
+  while you use it; clone it to keep it or to modify it.
+- **Write only what you own**: update a namespace status with `PatchNamespaceStatus`, and change only the fields
+  that the caller owns in the status it gets, never by storing back a copy read earlier, which would revert the
+  concurrent writes of the other components.
+
+## Test Structure
+
+- **One test file per source file**: the tests of `xxx.go` live in `xxx_test.go`, in the same package. Don't add
+  test files per feature or per scenario (e.g. `xxx_leadership_test.go`); if a test file grows too large, split the
+  source file, and its tests follow.
+- **Naming**: name the tests `Test<Type><Method><Behavior>`, e.g. `TestRuntimeCreateNamespaceRepairsCommittedWrite`,
+  or `Test<Function><Behavior>` for a function, without underscores.
+- **Layout**: order the tests by the method they test, and put the fakes and helpers at the end of the file.
+- **Fakes**: prefer one fake per interface, with a hook for each method a test overrides, over a fake type per test.
+- **End-to-end tests**: the tests that run a cluster or go through the public endpoints live in the top-level
+  `tests/` module, not in the package.
+
+## Commits and Pull Requests
+
+- Sign off every commit with `git commit -s`: the DCO check fails without it.
+- Prefix the titles with the type of change: `fix:`, `feat:`, `perf:`, `refactor:`, `test:`, `docs:`, `ci:`, `chore:`.
+- Keep a pull request to one change, and its description short. Split a larger change into stacked pull requests.
 
 ## Concurrency: Avoid New Shared Mutable State
 
