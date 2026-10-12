@@ -53,12 +53,6 @@ import (
 	commonwatch "github.com/oxia-db/oxia/oxiad/common/watch"
 )
 
-// dataServerRecoveryStabilizationWindow is how long a data server must stay
-// Running after recovering from a health-check failure before the load
-// balancer considers it for leader rebalancing again. Failure handling (the
-// re-election of leaders away from a dead node) is not affected.
-const dataServerRecoveryStabilizationWindow = 5 * time.Minute
-
 type runtime struct {
 	sync.RWMutex
 
@@ -760,12 +754,13 @@ func New(
 				return false
 			}
 			// A node that just recovered from a health-check failure is left
-			// out of leader rebalancing until it has been stable for a while:
-			// moving leaders straight back onto it is what turns one flap
-			// into a rebalancing loop.
+			// out of leader rebalancing until it has been stable for 5
+			// minutes: moving leaders straight back onto it is what turns one
+			// flap into a rebalancing loop. The re-election of leaders away
+			// from a dead node is not affected.
 			status := nc.GetStatus()
 			return status.State == dataservercontroller.Running &&
-				time.Since(status.LastTransitionTime) >= dataServerRecoveryStabilizationWindow
+				time.Since(status.LastTransitionTime) >= 5*time.Minute
 		},
 	})
 
