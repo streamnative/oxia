@@ -15,6 +15,8 @@
 package metadata
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -114,4 +116,80 @@ func TestSeedClusterConfigRejectsInvalid(t *testing.T) {
 			assert.Nil(t, loadConfig(t, factory))
 		})
 	}
+}
+
+func TestNewFactoryFromOptionsLoadsFileClusterConfig(t *testing.T) {
+	dir := t.TempDir()
+	writeClusterConfig(t, filepath.Join(dir, option.DefaultFileConfigName))
+
+	factory, err := New(t.Context(), &option.Options{
+		Metadata: option.MetadataOptions{
+			ProviderOptions: option.ProviderOptions{
+				ProviderName: metadatacommon.NameFile,
+				File: option.FileMetadata{
+					Dir: dir,
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+	metadata, err := factory.CreateMetadata(t.Context())
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, metadata.Close())
+		require.NoError(t, factory.Close())
+	}()
+
+	borrowedConfig, err := metadata.GetConfig()
+	require.NoError(t, err)
+	config := borrowedConfig.UnsafeBorrow()
+	require.Len(t, config.GetNamespaces(), 1)
+	require.Equal(t, "default", config.GetNamespaces()[0].GetName())
+}
+
+func TestNewFactoryFromOptionsMergesLegacyClusterConfigPath(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "legacy-cluster.yaml")
+	writeClusterConfig(t, configPath)
+
+	factory, err := New(t.Context(), &option.Options{
+		Cluster: option.ClusterOptions{
+			ConfigPath: configPath,
+		},
+		Metadata: option.MetadataOptions{
+			ProviderOptions: option.ProviderOptions{
+				ProviderName: metadatacommon.NameFile,
+				File: option.FileMetadata{
+					StatusName: filepath.Join(dir, option.DefaultFileStatusName),
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+	metadata, err := factory.CreateMetadata(t.Context())
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, metadata.Close())
+		require.NoError(t, factory.Close())
+	}()
+
+	borrowedConfig, err := metadata.GetConfig()
+	require.NoError(t, err)
+	config := borrowedConfig.UnsafeBorrow()
+	require.Len(t, config.GetNamespaces(), 1)
+	require.Equal(t, "default", config.GetNamespaces()[0].GetName())
+}
+
+func writeClusterConfig(t *testing.T, path string) {
+	t.Helper()
+
+	require.NoError(t, os.WriteFile(path, []byte(`
+namespaces:
+  - name: default
+    replicationFactor: 1
+    initialShardCount: 1
+servers:
+  - public: s1:9091
+    internal: s1:8191
+`), 0600))
 }
