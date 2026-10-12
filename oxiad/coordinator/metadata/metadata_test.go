@@ -166,7 +166,8 @@ func TestMetadataStatusWritersGiveUpOnceCanceled(t *testing.T) {
 	require.Error(t, metadata.CreateNamespaceStatus("other", &commonproto.NamespaceStatus{}))
 	require.Nil(t, metadata.DeleteNamespaceStatus("default").UnsafeBorrow())
 	require.Error(t, metadata.UpdateShardStatus("default", 0, &commonproto.ShardMetadata{Term: 2}))
-	require.Error(t, metadata.UpdateShardStatuses("default", func(shards map[int64]*commonproto.ShardMetadata) bool {
+	require.Error(t, metadata.PatchNamespaceStatus("default", func(status *commonproto.NamespaceStatus) bool {
+		shards := status.Shards
 		shards[0].Term = 2
 		return true
 	}))
@@ -202,10 +203,11 @@ func TestMetadataStatusUpdatesFailWhenTargetIsGone(t *testing.T) {
 
 	// Several shards are updated in a namespace that exists, and nothing is
 	// stored when the update returns false
-	require.ErrorIs(t, metadata.UpdateShardStatuses("other", func(map[int64]*commonproto.ShardMetadata) bool {
+	require.ErrorIs(t, metadata.PatchNamespaceStatus("other", func(*commonproto.NamespaceStatus) bool {
 		return true
 	}), metadataconstant.ErrNotFound)
-	require.NoError(t, metadata.UpdateShardStatuses("default", func(shards map[int64]*commonproto.ShardMetadata) bool {
+	require.NoError(t, metadata.PatchNamespaceStatus("default", func(status *commonproto.NamespaceStatus) bool {
+		shards := status.Shards
 		shards[0].Term = 3
 		return false
 	}))
@@ -232,9 +234,9 @@ servers:
 `), 0600))
 }
 
-// UpdateShardStatuses deletes a namespace left without shards, as
+// PatchNamespaceStatus deletes a namespace left without shards, as
 // DeleteShardStatus does, so that it can be created again.
-func TestMetadataUpdateShardStatusesDeletesEmptiedNamespace(t *testing.T) {
+func TestMetadataPatchNamespaceStatusDeletesEmptiedNamespace(t *testing.T) {
 	statusProvider := memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, "")
 	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
 	metadata := newMetadata(t.Context(), statusProvider, configProvider, "")
@@ -244,20 +246,21 @@ func TestMetadataUpdateShardStatusesDeletesEmptiedNamespace(t *testing.T) {
 	newNamespaceStatus := func() *commonproto.NamespaceStatus {
 		return &commonproto.NamespaceStatus{Shards: map[int64]*commonproto.ShardMetadata{0: {}, 1: {}}}
 	}
-	deleteShard := func(shard int64) func(map[int64]*commonproto.ShardMetadata) bool {
-		return func(shards map[int64]*commonproto.ShardMetadata) bool {
+	deleteShard := func(shard int64) func(*commonproto.NamespaceStatus) bool {
+		return func(status *commonproto.NamespaceStatus) bool {
+			shards := status.Shards
 			delete(shards, shard)
 			return true
 		}
 	}
 	require.NoError(t, metadata.CreateNamespaceStatus("default", newNamespaceStatus()))
 
-	require.NoError(t, metadata.UpdateShardStatuses("default", deleteShard(0)))
+	require.NoError(t, metadata.PatchNamespaceStatus("default", deleteShard(0)))
 	_, exists, err := metadata.GetNamespaceStatus("default")
 	require.NoError(t, err)
 	require.True(t, exists)
 
-	require.NoError(t, metadata.UpdateShardStatuses("default", deleteShard(1)))
+	require.NoError(t, metadata.PatchNamespaceStatus("default", deleteShard(1)))
 	_, exists, err = metadata.GetNamespaceStatus("default")
 	require.NoError(t, err)
 	require.False(t, exists)
@@ -590,6 +593,31 @@ func TestMetadataUpdateShardStatusReturnsWriteError(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
 
 	err = metadata.UpdateShardStatus("default", 0, &commonproto.ShardMetadata{Term: 2})
+	require.ErrorContains(t, err, "store unavailable")
+	require.EqualValues(t, 1, writes.Load())
+}
+
+// PatchNamespaceStatus reports a failed write to its caller, instead of
+// retrying it.
+func TestMetadataPatchNamespaceStatusReturnsWriteError(t *testing.T) {
+	memoryProvider := memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled, "")
+	_, err := memoryProvider.Store(provider.Versioned[*commonproto.ClusterStatus]{
+		Value: &commonproto.ClusterStatus{Namespaces: map[string]*commonproto.NamespaceStatus{
+			"default": {Shards: map[int64]*commonproto.ShardMetadata{0: {Term: 1}}},
+		}},
+		Version: metadataconstant.NotExists,
+	})
+	require.NoError(t, err)
+	var writes atomic.Int32
+	statusProvider := countingFailingStatusProvider{Provider: memoryProvider, writes: &writes}
+	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadataconstant.WatchEnabled, "")
+	metadata := newMetadata(t.Context(), statusProvider, configProvider, "")
+	t.Cleanup(func() { require.NoError(t, metadata.Close()) })
+
+	err = metadata.PatchNamespaceStatus("default", func(status *commonproto.NamespaceStatus) bool {
+		status.Shards[0].Term = 2
+		return true
+	})
 	require.ErrorContains(t, err, "store unavailable")
 	require.EqualValues(t, 1, writes.Load())
 }

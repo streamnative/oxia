@@ -648,7 +648,8 @@ func (e *Election) abortChangeEnsemble(retryShardMetadata *proto.ShardMetadata, 
 func (e *Election) persistNewTerm() error {
 	var stopReason string
 	shardExists := false
-	if err := e.metadataStore.UpdateShardStatuses(e.namespace, func(shards map[int64]*proto.ShardMetadata) bool {
+	if err := e.metadataStore.PatchNamespaceStatus(e.namespace, func(status *proto.NamespaceStatus) bool {
+		shards := status.Shards
 		stopReason = ""
 		current, exists := shards[e.shard]
 		shardExists = exists
@@ -683,7 +684,8 @@ func (e *Election) persistNewTerm() error {
 // persistNewLeader stores the shard metadata with the elected leader.
 func (e *Election) persistNewLeader() error {
 	shardExists := false
-	if err := e.metadataStore.UpdateShardStatuses(e.namespace, func(shards map[int64]*proto.ShardMetadata) bool {
+	if err := e.metadataStore.PatchNamespaceStatus(e.namespace, func(status *proto.NamespaceStatus) bool {
+		shards := status.Shards
 		current, exists := shards[e.shard]
 		shardExists = exists
 		if exists {

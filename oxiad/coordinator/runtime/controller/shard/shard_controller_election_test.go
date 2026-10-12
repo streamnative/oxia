@@ -676,7 +676,8 @@ func expectParentFenced(t *testing.T, rpc *mockutils.RpcProvider, term int64) {
 // shard of setupSplitTest, and returns the updated split metadata.
 func updateSplitParent(t *testing.T, metadata coordmetadata.Metadata, update func(parent *proto.ShardMetadata)) *proto.SplitMetadata {
 	t.Helper()
-	require.NoError(t, metadata.UpdateShardStatuses(constant.DefaultNamespace, func(shards map[int64]*proto.ShardMetadata) bool {
+	require.NoError(t, metadata.PatchNamespaceStatus(constant.DefaultNamespace, func(status *proto.NamespaceStatus) bool {
+		shards := status.Shards
 		update(shards[0])
 		return true
 	}))

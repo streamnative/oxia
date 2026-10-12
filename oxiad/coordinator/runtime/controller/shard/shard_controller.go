@@ -912,7 +912,8 @@ func (s *controller) handlePendingDeleteShard(shardMeta *proto.ShardMetadata) er
 	}
 
 	// Best-effort: if this is not persisted, the pending deletes are retried
-	_ = s.metadataStore.UpdateShardStatuses(s.namespace, func(shards map[int64]*proto.ShardMetadata) bool {
+	_ = s.metadataStore.PatchNamespaceStatus(s.namespace, func(status *proto.NamespaceStatus) bool {
+		shards := status.Shards
 		current, exists := shards[s.shard]
 		if !exists {
 			return false
