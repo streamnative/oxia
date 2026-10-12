@@ -601,7 +601,7 @@ type featuresDataServerController struct {
 	features []proto.Feature
 }
 
-func (c *featuresDataServerController) SupportedFeatures() []proto.Feature {
+func (c *featuresDataServerController) GetSupportedFeatures() []proto.Feature {
 	return c.features
 }
 

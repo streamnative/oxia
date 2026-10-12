@@ -2827,7 +2827,8 @@ func TestController_RollingUpgradePinsNewFeatures(t *testing.T) {
 	for _, dataServer := range ensemble {
 		rpc.GetNode(dataServer).SetNodeFeatures(previous)
 		dataServers[dataServer.GetNameOrDefault()] = dataservercontroller.NewController(context.Background(),
-			&proto.DataServer{Identity: dataServer}, rpctest.NewShardAssignmentsProvider(), relay, rpc, "test-instance")
+			&proto.DataServer{Identity: dataServer}, rpctest.NewShardAssignmentsProvider(), relay, rpc, "test-instance",
+			dataservercontroller.DefaultInitialRetryBackoff, dataservercontroller.DefaultHealthCheckPolicy)
 	}
 	defer func() {
 		for _, dataServer := range dataServers {
@@ -2842,7 +2843,7 @@ func TestController_RollingUpgradePinsNewFeatures(t *testing.T) {
 		t.Helper()
 		require.Eventually(t, func() bool {
 			rpc.GetNode(dataServer).HealthClient.SetStatus(health)
-			return dataServers[dataServer.GetNameOrDefault()].Status() == status
+			return dataServers[dataServer.GetNameOrDefault()].GetStatus() == status
 		}, 10*time.Second, 100*time.Millisecond)
 	}
 	for _, dataServer := range ensemble {
@@ -2851,7 +2852,7 @@ func TestController_RollingUpgradePinsNewFeatures(t *testing.T) {
 	supply := func(servers []*proto.DataServerIdentity) map[string][]proto.Feature {
 		features := make(map[string][]proto.Feature, len(servers))
 		for _, server := range servers {
-			features[server.GetNameOrDefault()] = dataServers[server.GetNameOrDefault()].SupportedFeatures()
+			features[server.GetNameOrDefault()] = dataServers[server.GetNameOrDefault()].GetSupportedFeatures()
 		}
 		return features
 	}

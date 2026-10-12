@@ -150,14 +150,14 @@ func (c *runtime) ListDataServerStatus() map[string]*proto.DataServerStatus {
 	statuses := make(map[string]*proto.DataServerStatus, len(c.dataServerControllers)+len(c.drainingNodes))
 	for name, dataServerController := range c.dataServerControllers {
 		statuses[name] = &proto.DataServerStatus{
-			State:             dataServerController.Status().ToProto(),
-			SupportedFeatures: dataServerController.SupportedFeatures(),
+			State:             dataServerController.GetStatus().ToProto(),
+			SupportedFeatures: dataServerController.GetSupportedFeatures(),
 		}
 	}
 	for name, dataServerController := range c.drainingNodes {
 		statuses[name] = &proto.DataServerStatus{
-			State:             dataServerController.Status().ToProto(),
-			SupportedFeatures: dataServerController.SupportedFeatures(),
+			State:             dataServerController.GetStatus().ToProto(),
+			SupportedFeatures: dataServerController.GetSupportedFeatures(),
 		}
 	}
 	return statuses
@@ -175,8 +175,8 @@ func (c *runtime) GetDataServerStatus(name string) (*proto.DataServerStatus, boo
 		return nil, false
 	}
 	return &proto.DataServerStatus{
-		State:             dataServerController.Status().ToProto(),
-		SupportedFeatures: dataServerController.SupportedFeatures(),
+		State:             dataServerController.GetStatus().ToProto(),
+		SupportedFeatures: dataServerController.GetSupportedFeatures(),
 	}, true
 }
 
@@ -203,6 +203,8 @@ func (c *runtime) CreateDataServer(name string, dataServer *proto.DataServer) bo
 		c,
 		c.rpc,
 		c.insID,
+		dataservercontroller.DefaultInitialRetryBackoff,
+		dataservercontroller.DefaultHealthCheckPolicy,
 	)
 	return true
 }
@@ -343,12 +345,12 @@ func (c *runtime) findDataServerFeaturesLocked(dataServers []*proto.DataServerId
 	for _, dataServer := range dataServers {
 		dataServerID := dataServer.GetNameOrDefault()
 		if serverController, exist := c.dataServerControllers[dataServerID]; exist {
-			features[dataServerID] = serverController.SupportedFeatures()
+			features[dataServerID] = serverController.GetSupportedFeatures()
 			continue
 		}
 		// fallback to draining node if alive not found
 		if serverController, exist := c.drainingNodes[dataServerID]; exist {
-			features[dataServerID] = serverController.SupportedFeatures()
+			features[dataServerID] = serverController.GetSupportedFeatures()
 			continue
 		}
 	}
@@ -781,6 +783,8 @@ func New(
 			c,
 			c.rpc,
 			c.insID,
+			dataservercontroller.DefaultInitialRetryBackoff,
+			dataservercontroller.DefaultHealthCheckPolicy,
 		)
 	}
 
