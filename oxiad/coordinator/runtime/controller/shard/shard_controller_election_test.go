@@ -628,9 +628,7 @@ func startElection(t *testing.T, metadata coordmetadata.Metadata, rpc coordrpc.P
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		leader, err := s.electLeader(shardMeta, nil)
-		assert.NoError(t, err)
-		elected <- leader
+		elected <- s.electLeader(shardMeta, nil)
 	}()
 	t.Cleanup(func() {
 		s.ctxCancel()
