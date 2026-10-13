@@ -38,4 +38,7 @@ const (
 
 	MaxSessionTimeout = 5 * time.Minute
 	MinSessionTimeout = 2 * time.Second
+
+	// MaxGrpcFrameSize is the largest gRPC message size allowed by both the client and the server.
+	MaxGrpcFrameSize = 256 * 1024 * 1024
 )

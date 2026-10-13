@@ -15,6 +15,7 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
@@ -460,6 +461,30 @@ func TestSyncClientImpl_InternalKeys(t *testing.T) {
 	for _, k := range systemKeys {
 		assert.True(t, strings.HasPrefix(k, "__oxia/"), "expected internal key prefix, got: %s", k)
 	}
+
+	assert.NoError(t, client.Close())
+	assert.NoError(t, standaloneServer.Close())
+}
+
+// Ensure the client can handle legitimately large requests without being constrained by gRPC's default configuration.
+func TestSyncClientImpl_LargeValue(t *testing.T) {
+	standaloneServer, err := dataserver.NewStandalone(dataserver.NewTestConfig(t.TempDir()))
+	require.NoError(t, err)
+
+	client, err := oxia.NewSyncClient(standaloneServer.ServiceAddr())
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	const key = "/large-value"
+	// Larger than the 4 MiB gRPC default receive limit
+	value := bytes.Repeat([]byte("a"), 5*1024*1024)
+
+	_, _, err = client.Put(ctx, key, value)
+	require.NoError(t, err)
+
+	_, readValue, _, err := client.Get(ctx, key)
+	require.NoError(t, err)
+	assert.Equal(t, value, readValue)
 
 	assert.NoError(t, client.Close())
 	assert.NoError(t, standaloneServer.Close())

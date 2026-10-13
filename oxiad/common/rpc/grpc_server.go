@@ -31,12 +31,12 @@ import (
 
 	"github.com/oxia-db/oxia/oxiad/common/rpc/auth"
 
+	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/process"
 	"github.com/oxia-db/oxia/common/rpc/grpcmetrics"
 )
 
 const (
-	maxGrpcFrameSize                         = 256 * 1024 * 1024
 	defaultGrpcServerKeepAliveMinTime        = 5 * time.Second
 	defaultGrpcServerKeepPermitWithoutStream = true
 	ReadinessProbeService                    = "oxia-readiness"
@@ -113,7 +113,7 @@ func newDefaultGrpcProvider(name, bindAddress string, registerFunc func(grpc.Ser
 			grpc.Creds(tcs),
 			grpc.ChainStreamInterceptor(streamInterceptors...),
 			grpc.ChainUnaryInterceptor(unaryInterceptors...),
-			grpc.MaxRecvMsgSize(maxGrpcFrameSize),
+			grpc.MaxRecvMsgSize(constant.MaxGrpcFrameSize),
 			grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
 				MinTime:             defaultGrpcServerKeepAliveMinTime,
 				PermitWithoutStream: defaultGrpcServerKeepPermitWithoutStream,
