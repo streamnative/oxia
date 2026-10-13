@@ -160,10 +160,9 @@ func (r *readOnlySegmentsGroup) TrimSegments(offset int64, beforeDelete func() e
 
 		r.allSegments.Remove(s)
 		if segment, ok := r.openSegments.Get(s); ok {
-			// Release the cache reference instead of closing the segment: the
-			// readers holding one keep it mapped until they close it. Its
-			// files are removed below like the ones of the uncached segments,
-			// and the mapping stays readable after the removal
+			// Release only the cache reference: the readers holding one keep
+			// the segment mapped until they close it, and a mapped file stays
+			// readable after its removal below
 			err = multierr.Append(err, segment.Close())
 			r.openSegments.Remove(s)
 		}
