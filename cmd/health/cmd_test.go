@@ -23,6 +23,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"math/big"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -106,10 +107,9 @@ func TestHealthCmdTLS(t *testing.T) {
 		{"tls: trusted ca", []string{tlsPortArg, caArg}, codes.OK, ""},
 		{"tls: system roots", []string{tlsPortArg, "--tls"}, codes.Unavailable, "failed to verify certificate"},
 		{"tls: insecure skip verify", []string{tlsPortArg, "--tls-insecure-skip-verify"}, codes.OK, ""},
-		{"tls: host not in certificate", []string{tlsPortArg, caArg, "--host=127.0.0.1"},
+		{"tls: server name", []string{tlsPortArg, caArg, "--tls-server-name=localhost"}, codes.OK, ""},
+		{"tls: server name not in certificate", []string{tlsPortArg, caArg, "--tls-server-name=other"},
 			codes.Unavailable, "failed to verify certificate"},
-		{"tls: server name", []string{tlsPortArg, caArg, "--host=127.0.0.1", "--tls-server-name=localhost"},
-			codes.OK, ""},
 		{"mtls: no client certificate", []string{mtlsPortArg, caArg}, codes.Unavailable, "certificate required"},
 		{"mtls: client certificate", []string{mtlsPortArg, caArg, certArg, keyArg}, codes.OK, ""},
 		{"mtls: certificate without key", []string{mtlsPortArg, caArg, certArg},
@@ -118,7 +118,9 @@ func TestHealthCmdTLS(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			config = NewConfig()
 
-			Cmd.SetArgs(test.args)
+			// Dial the address the servers listen on: "localhost" may resolve
+			// to ::1 first, and the refused ::1 dial would hide the TLS error.
+			Cmd.SetArgs(append([]string{"--host=127.0.0.1"}, test.args...))
 			err := Cmd.Execute()
 
 			assert.Equal(t, test.expectedCode, status.Code(err))
@@ -134,7 +136,7 @@ func startTLSHealthServer(t *testing.T, options security.TLSOptions) int {
 	tlsConf, err := options.TryIntoServerTLSConf()
 	require.NoError(t, err)
 
-	server, err := rpc.Default.StartGrpcServer("health", "localhost:0", func(registrar grpc.ServiceRegistrar) {
+	server, err := rpc.Default.StartGrpcServer("health", "127.0.0.1:0", func(registrar grpc.ServiceRegistrar) {
 		grpc_health_v1.RegisterHealthServer(registrar, health.NewServer())
 	}, tlsConf, &auth.Options{}, nil)
 	require.NoError(t, err)
@@ -144,9 +146,9 @@ func startTLSHealthServer(t *testing.T, options security.TLSOptions) int {
 	return server.Port()
 }
 
-// writeTestCerts writes a CA (ca.crt) and the localhost certificates it
-// issues to the server (server.crt, server.key) and the client (client.crt,
-// client.key), and returns their directory.
+// writeTestCerts writes a CA (ca.crt) and the localhost/127.0.0.1
+// certificates it issues to the server (server.crt, server.key) and the client
+// (client.crt, client.key), and returns their directory.
 func writeTestCerts(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -175,6 +177,7 @@ func writeTestCerts(t *testing.T) string {
 			SerialNumber: big.NewInt(int64(i + 2)),
 			Subject:      pkix.Name{CommonName: name},
 			DNSNames:     []string{"localhost"},
+			IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
 			NotBefore:    time.Now().Add(-time.Minute),
 			NotAfter:     time.Now().Add(time.Hour),
 			KeyUsage:     x509.KeyUsageDigitalSignature,
