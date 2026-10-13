@@ -644,7 +644,10 @@ func (p *Pebble) Get(key string, comparisonType ComparisonType, itOpts IteratorO
 	case ComparisonHigher:
 		returnedKey, value, closer, err = p.getHigher(k, itOpts)
 	default:
-		panic(fmt.Sprintf("Unknown comparison type: %v", comparisonType))
+		// The comparison type comes from the client's GetRequest.ComparisonType,
+		// an enum the wire format does not bound to the defined values. Refuse an
+		// unknown one like Seek does rather than take down the server.
+		return "", nil, nil, errors.Errorf("unsupported comparison type: %v", comparisonType)
 	}
 
 	switch {
