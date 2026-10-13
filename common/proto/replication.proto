@@ -93,6 +93,9 @@ enum Feature {
   // records outside its hash range once the split completes. A child does so
   // when the term of its parent pins the feature
   FEATURE_SPLIT_DEFERRED_FILTER = 10;
+  // The leader includes the end of the range of a List or a RangeScan request
+  // with end_inclusive, and says so in its responses
+  FEATURE_RANGE_END_INCLUSIVE = 11;
 }
 
 message GetInfoRequest {
