@@ -110,7 +110,10 @@ func TestHealthCmdTLS(t *testing.T) {
 		{"tls: server name", []string{tlsPortArg, caArg, "--tls-server-name=localhost"}, codes.OK, ""},
 		{"tls: server name not in certificate", []string{tlsPortArg, caArg, "--tls-server-name=other"},
 			codes.Unavailable, "failed to verify certificate"},
-		{"mtls: no client certificate", []string{mtlsPortArg, caArg}, codes.Unavailable, "certificate required"},
+		// With TLS 1.3 the client completes its handshake before the server
+		// rejects the missing certificate: the error is either that alert or a
+		// broken pipe on the next write.
+		{"mtls: no client certificate", []string{mtlsPortArg, caArg}, codes.Unavailable, ""},
 		{"mtls: client certificate", []string{mtlsPortArg, caArg, certArg, keyArg}, codes.OK, ""},
 		{"mtls: certificate without key", []string{mtlsPortArg, caArg, certArg},
 			codes.Unknown, security.ErrInvalidTLSKeyFile.Error()},
