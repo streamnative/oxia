@@ -112,6 +112,8 @@ Key components:
 - Sign off every commit with `git commit -s`: the DCO check fails without it.
 - Prefix the titles with the type of change: `fix:`, `feat:`, `perf:`, `refactor:`, `test:`, `docs:`, `ci:`, `chore:`.
 - Keep a pull request to one change, and its description short. Split a larger change into stacked pull requests.
+- Open a pull request as a draft when an agent creates it, and mark it ready for review only after the contributor
+  confirms they have reviewed the change.
 - Write the description with the [PR template](.github/pull_request_template.md): Checklist, Motivation,
   Modifications, Shared state (only when the change adds shared mutable state), Testing and AI Usage. A few
   sentences plus the test results are enough for a simple change; don't repeat the diff.
