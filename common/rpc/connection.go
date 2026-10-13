@@ -34,6 +34,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/oxia-db/oxia/common/auth"
+	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/process"
 	"github.com/oxia-db/oxia/common/rpc/grpcmetrics"
 )
@@ -123,6 +124,7 @@ func newConnectionWithHealthConfig(
 		grpc.WithTransportCredentials(transportCredential),
 		grpc.WithChainStreamInterceptor(grpcmetrics.StreamClientInterceptor),
 		grpc.WithChainUnaryInterceptor(grpcmetrics.UnaryClientInterceptor),
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(constant.MaxGrpcFrameSize)),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
 			PermitWithoutStream: defaultGrpcClientPermitWithoutStream,
 			Time:                defaultGrpcClientKeepAliveTime,
