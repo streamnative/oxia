@@ -20,9 +20,12 @@ import (
 	"os"
 	"runtime"
 	"slices"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/oxia-db/oxia/oxiad/dataserver/wal/codec"
 )
@@ -544,4 +547,68 @@ func TestReadWriteSegment_TruncateResetsLastCrc(t *testing.T) {
 			assert.NoError(t, rw.Close())
 		})
 	}
+}
+
+// blockingReadCodec stops each record read before its copy, until released.
+type blockingReadCodec struct {
+	codec.Codec
+	reading chan struct{}
+	release chan struct{}
+}
+
+func newBlockingReadCodec(c codec.Codec) *blockingReadCodec {
+	return &blockingReadCodec{Codec: c, reading: make(chan struct{}, 1), release: make(chan struct{})}
+}
+
+func (c *blockingReadCodec) ReadRecordWithValidation(buf []byte, startFileOffset uint32) (
+	payload []byte, previousCrc uint32, payloadCrc uint32, err error) {
+	c.reading <- struct{}{}
+	<-c.release
+	return c.Codec.ReadRecordWithValidation(buf, startFileOffset)
+}
+
+// Read copies the record without holding the segment mutex: the appends
+// proceed while the copy is in flight, while Close waits for it before
+// unmapping the segment.
+func TestReadWriteSegment_ReadConcurrentWithAppendAndClose(t *testing.T) {
+	rw, err := newReadWriteSegment(t.TempDir(), 0, 128*1024, 0, nil)
+	require.NoError(t, err)
+	require.NoError(t, rw.Append(0, []byte("entry-0")))
+
+	blocking := newBlockingReadCodec(rw.(*readWriteSegment).c.codec)
+	rw.(*readWriteSegment).c.codec = blocking
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(blocking.release) }) }
+	defer release()
+
+	readDone := make(chan error, 1)
+	go func() {
+		payload, _, _, err := rw.Read(0)
+		if err == nil && string(payload) != "entry-0" {
+			err = fmt.Errorf("unexpected payload %q", payload)
+		}
+		readDone <- err
+	}()
+	<-blocking.reading
+
+	appendDone := make(chan error, 1)
+	go func() { appendDone <- rw.Append(1, []byte("entry-1")) }()
+	select {
+	case err := <-appendDone:
+		assert.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		require.FailNow(t, "the append waited for the read")
+	}
+
+	closeDone := make(chan error, 1)
+	go func() { closeDone <- rw.Close() }()
+	assert.Never(t, func() bool { return len(closeDone) > 0 }, 100*time.Millisecond, 10*time.Millisecond,
+		"the segment got closed under the read")
+
+	release()
+	assert.NoError(t, <-readDone)
+	assert.NoError(t, <-closeDone)
+
+	_, _, _, err = rw.Read(1)
+	assert.ErrorIs(t, err, errSegmentClosed)
 }

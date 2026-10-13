@@ -31,6 +31,7 @@ var (
 	ErrInvalidNextOffset = errors.New("oxia: invalid next offset in wal")
 	ErrSegmentFull       = errors.New("oxia: current segment is full")
 	ErrEmptySegment      = errors.New("oxia: segment has no entries")
+	errSegmentClosed     = errors.New("oxia: segment is closed")
 
 	InvalidTerm   int64 = -1
 	InvalidOffset int64 = -1

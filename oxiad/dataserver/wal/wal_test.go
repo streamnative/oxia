@@ -17,21 +17,28 @@ package wal
 import (
 	"context"
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	"go.uber.org/multierr"
 
 	"github.com/oxia-db/oxia/oxiad/dataserver/wal/codec"
 
 	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/metric"
+	"github.com/oxia-db/oxia/common/object"
 
 	"github.com/oxia-db/oxia/common/proto"
 )
@@ -1347,6 +1354,299 @@ func TestWal_ReadLatencyRecordedOncePerEntry(t *testing.T) {
 	assertReaderReads(t, rr, []string{"C", "B", "A"})
 	assert.NoError(t, rr.Close())
 	assert.EqualValues(t, len(input), readLatencyCount()-before)
+
+	assert.NoError(t, w.Close())
+	assert.NoError(t, f.Close())
+}
+
+// hookedReadWriteSegment runs a hook before each read of the segment.
+type hookedReadWriteSegment struct {
+	ReadWriteSegment
+	beforeRead func()
+}
+
+func (s *hookedReadWriteSegment) Read(offset int64) (payload []byte, previousCrc uint32, payloadCrc uint32, err error) {
+	s.beforeRead()
+	return s.ReadWriteSegment.Read(offset)
+}
+
+// blockingGetSegmentsGroup stops each segment lookup until released.
+type blockingGetSegmentsGroup struct {
+	ReadOnlySegmentsGroup
+	getting chan struct{}
+	release chan struct{}
+}
+
+func (g *blockingGetSegmentsGroup) Get(offset int64) (object.RefCount[ReadOnlySegment], error) {
+	g.getting <- struct{}{}
+	<-g.release
+	return g.ReadOnlySegmentsGroup.Get(offset)
+}
+
+// appendRolledOver leaves the wal with the entries 0..149, of 1 KiB: the
+// first segment (128 KiB) holds the synced ones up to 99, and the async ones
+// cross into the second segment, leaving the first one pending close.
+func appendRolledOver(t *testing.T, w Wal) {
+	t.Helper()
+	appendEntries(t, w, 1, 0, 99, strings.Repeat("x", 1024))
+	for i := int64(100); i < 150; i++ {
+		require.NoError(t, w.AppendAsync(&proto.LogEntry{
+			Term: 1, Offset: i, Value: []byte(fmt.Sprintf("%s-%d", strings.Repeat("x", 1024), i))}))
+	}
+	impl := w.(*wal)
+	impl.RLock()
+	defer impl.RUnlock()
+	require.Len(t, impl.pendingCloseSegments, 1)
+}
+
+func readEntry(w Wal, offset int64) (*proto.LogEntry, error) {
+	r, err := w.NewReader(offset - 1)
+	if err != nil {
+		return nil, err
+	}
+	entry, _, _, err := r.ReadNext()
+	return entry, multierr.Append(err, r.Close())
+}
+
+// A read holds the wal mutex at most to pick the segment holding the entry:
+// the appends do not wait for it to open the segment, or to copy the record.
+func TestWal_ReadsDoNotBlockAppends(t *testing.T) {
+	blockCopy := func(segment ReadWriteSegment) (<-chan struct{}, func()) {
+		blocking := newBlockingReadCodec(segment.(*readWriteSegment).c.codec)
+		segment.(*readWriteSegment).c.codec = blocking
+		return blocking.reading, func() { close(blocking.release) }
+	}
+	for _, test := range []struct {
+		name   string
+		offset int64
+		block  func(w *wal) (blocked <-chan struct{}, release func())
+	}{
+		{"current segment copy", 140, func(w *wal) (<-chan struct{}, func()) {
+			return blockCopy(w.currentSegment)
+		}},
+		{"rolled-over segment copy", 50, func(w *wal) (<-chan struct{}, func()) {
+			return blockCopy(w.pendingCloseSegments[0])
+		}},
+		{"read-only segment open", 50, func(w *wal) (<-chan struct{}, func()) {
+			// Close the rolled-over segment, moving it to the read-only group
+			require.NoError(t, w.Sync(context.Background()))
+			w.Lock()
+			defer w.Unlock()
+			blocking := &blockingGetSegmentsGroup{ReadOnlySegmentsGroup: w.readOnlySegments,
+				getting: make(chan struct{}, 1), release: make(chan struct{})}
+			w.readOnlySegments = blocking
+			return blocking.getting, func() { close(blocking.release) }
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f, w := createWal(t)
+			appendRolledOver(t, w)
+			blocked, release := test.block(w.(*wal))
+			var releaseOnce sync.Once
+			defer releaseOnce.Do(release)
+
+			readDone := make(chan *proto.LogEntry, 1)
+			go func() {
+				entry, err := readEntry(w, test.offset)
+				assert.NoError(t, err)
+				readDone <- entry
+			}()
+			<-blocked
+
+			appendDone := make(chan error, 1)
+			go func() {
+				appendDone <- w.AppendAsync(&proto.LogEntry{Term: 1, Offset: 150, Value: []byte("entry-150")})
+			}()
+			select {
+			case err := <-appendDone:
+				assert.NoError(t, err)
+			case <-time.After(5 * time.Second):
+				require.FailNow(t, "the append waited for the read")
+			}
+
+			releaseOnce.Do(release)
+			if entry := <-readDone; assert.NotNil(t, entry) {
+				assert.EqualValues(t, test.offset, entry.Offset)
+			}
+			assert.NoError(t, w.Close())
+			assert.NoError(t, f.Close())
+		})
+	}
+}
+
+// A read can find closed the read-write segment it picked: a rollover moved it
+// to the read-only group meanwhile, where the read finds the entry.
+func TestWal_ReadRetriesSegmentClosedByRollover(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		// Whether the segment got rolled over before the read picked it
+		pending bool
+	}{
+		{"current segment", false},
+		{"rolled-over segment", true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f, w := createWal(t)
+			impl := w.(*wal)
+			payload := strings.Repeat("x", 1024)
+			appendEntries(t, w, 1, 0, 99, payload)
+
+			reading := make(chan struct{})
+			release := make(chan struct{})
+			var blocked atomic.Bool
+			impl.Lock()
+			var segment ReadWriteSegment = &hookedReadWriteSegment{
+				ReadWriteSegment: impl.currentSegment,
+				beforeRead: func() {
+					if blocked.CompareAndSwap(false, true) {
+						close(reading)
+						<-release
+					}
+				},
+			}
+			impl.currentSegment = segment
+			impl.publishedCurrentSegment.Store(&segment)
+			impl.Unlock()
+
+			roll := func() {
+				for i := int64(100); i < 150; i++ {
+					require.NoError(t, w.AppendAsync(&proto.LogEntry{
+						Term: 1, Offset: i, Value: []byte(fmt.Sprintf("%s-%d", payload, i))}))
+				}
+			}
+			if test.pending {
+				roll()
+			}
+
+			readDone := make(chan *proto.LogEntry, 1)
+			go func() {
+				entry, err := readEntry(w, 50)
+				assert.NoError(t, err)
+				readDone <- entry
+			}()
+			<-reading
+
+			if !test.pending {
+				roll()
+			}
+			// The sync round closes the rolled-over segment
+			require.NoError(t, w.Sync(context.Background()))
+			_, _, _, err := segment.Read(50)
+			require.ErrorIs(t, err, errSegmentClosed)
+
+			close(release)
+			if entry := <-readDone; assert.NotNil(t, entry) {
+				assert.EqualValues(t, 50, entry.Offset)
+				assert.Equal(t, fmt.Sprintf("%s-%d", payload, 50), string(entry.Value))
+			}
+			assert.NoError(t, w.Close())
+			assert.NoError(t, f.Close())
+		})
+	}
+}
+
+// TruncateLog waits for the reads in flight: it zeroes the truncated records in
+// place.
+func TestWal_TruncateWaitsForReads(t *testing.T) {
+	f, w := createWal(t)
+	impl := w.(*wal)
+	appendEntries(t, w, 1, 0, 99, "entry")
+
+	blocking := newBlockingReadCodec(impl.currentSegment.(*readWriteSegment).c.codec)
+	impl.currentSegment.(*readWriteSegment).c.codec = blocking
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(blocking.release) }) }
+	defer release()
+
+	readDone := make(chan *proto.LogEntry, 1)
+	go func() {
+		entry, err := readEntry(w, 50)
+		assert.NoError(t, err)
+		readDone <- entry
+	}()
+	<-blocking.reading
+
+	truncateDone := make(chan error, 1)
+	go func() {
+		_, err := w.TruncateLog(30)
+		truncateDone <- err
+	}()
+	assert.Never(t, func() bool { return len(truncateDone) > 0 }, 100*time.Millisecond, 10*time.Millisecond,
+		"the truncation did not wait for the read")
+
+	release()
+	if entry := <-readDone; assert.NotNil(t, entry) {
+		assert.Equal(t, "entry-50", string(entry.Value))
+	}
+	assert.NoError(t, <-truncateDone)
+	assert.EqualValues(t, 30, w.LastOffset())
+	assert.NoError(t, w.Close())
+	assert.NoError(t, f.Close())
+}
+
+// Tailing and random reads run while the appends roll the segments over, and
+// the sync rounds close them: every read returns the entry it asked for.
+func TestWal_ConcurrentReadsAndAppends(t *testing.T) {
+	f := NewWalFactory(&FactoryOptions{
+		BaseWalDir:  t.TempDir(),
+		Retention:   time.Hour,
+		SegmentSize: 16 * 1024,
+		SyncData:    true,
+	})
+	w, err := f.NewWal(constant.DefaultNamespace, shard, nil)
+	require.NoError(t, err)
+
+	const entries = 5_000
+	value := func(offset int64) string { return fmt.Sprintf("%s-%d", strings.Repeat("x", 100), offset) }
+
+	var done atomic.Bool
+	var wg sync.WaitGroup
+	for range 3 {
+		wg.Go(func() {
+			r, err := w.NewReader(InvalidOffset)
+			require.NoError(t, err)
+			defer r.Close()
+			for offset := int64(0); offset < entries; offset++ {
+				for !r.HasNext() {
+					runtime.Gosched()
+				}
+				entry, _, _, err := r.ReadNext()
+				if !assert.NoError(t, err) {
+					return
+				}
+				assert.Equal(t, value(offset), string(entry.Value))
+			}
+		})
+	}
+	wg.Go(func() {
+		for !done.Load() {
+			lastOffset := w.LastOffset()
+			if lastOffset == InvalidOffset {
+				runtime.Gosched()
+				continue
+			}
+			offset := rand.Int64N(lastOffset + 1)
+			entry, err := readEntry(w, offset)
+			if !assert.NoError(t, err) {
+				return
+			}
+			assert.Equal(t, value(offset), string(entry.Value))
+		}
+	})
+
+	for offset := int64(0); offset < entries; offset++ {
+		entry := &proto.LogEntry{Term: 1, Offset: offset, Value: []byte(value(offset))}
+		// Sync every few entries only: the rolled-over segments stay pending
+		// close in between
+		if offset%10 == 9 {
+			require.NoError(t, w.Append(entry))
+		} else {
+			require.NoError(t, w.AppendAsync(entry))
+		}
+	}
+	require.NoError(t, w.Sync(context.Background()))
+	done.Store(true)
+	wg.Wait()
 
 	assert.NoError(t, w.Close())
 	assert.NoError(t, f.Close())

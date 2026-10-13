@@ -70,6 +70,17 @@ func (*walFactory) Close() error {
 
 type wal struct {
 	sync.RWMutex
+
+	// The reads hold the mutex at most to pick the segment to read from, and
+	// hold the read side of truncateLock for the whole read instead. A
+	// rollover, Clear or Close leaves the reads correct: it unmaps a read-write
+	// segment once the copies from it are done, and releases the references to
+	// the read-only ones. TruncateLog does not: it zeroes the truncated records
+	// in place, deletes the read-only segments it polls, and moves the
+	// remaining entries from the read-only group to the current segment. It
+	// takes the write side, before the mutex.
+	truncateLock sync.RWMutex
+
 	walPath     string
 	namespace   string
 	shard       int64
@@ -78,6 +89,9 @@ type wal struct {
 	syncData    bool
 
 	currentSegment ReadWriteSegment
+	// currentSegment, for the reads that pick it without holding the mutex:
+	// set along with it by openCurrentSegment
+	publishedCurrentSegment atomic.Pointer[ReadWriteSegment]
 
 	// Rolled-over segments waiting for the sync goroutine to make them
 	// durable and close them (see rolloverSegment); guarded by the wal
@@ -200,35 +214,14 @@ func newWal(namespace string, shard int64, options *FactoryOptions, commitOffset
 }
 
 func (t *wal) readAtIndex(index int64) (entry *proto.LogEntry, previousCrc uint32, entryCrc uint32, err error) {
-	t.RLock()
-	defer t.RUnlock()
-
 	timer := t.readLatency.Timer()
 	defer timer.Done()
 
-	var rc object.RefCount[ReadOnlySegment]
-	var segment ReadOnlySegment
-	if index >= t.currentSegment.BaseOffset() {
-		segment = t.currentSegment
-	} else if pending := t.pendingCloseSegmentFor(index); pending != nil {
-		// A rolled-over segment not closed by the sync goroutine yet: it is
-		// still mapped, read it directly
-		segment = pending
-	} else {
-		rc, err = t.readOnlySegments.Get(index)
-		if err != nil {
-			return nil, 0, 0, err
-		}
-
-		defer func(rc object.RefCount[ReadOnlySegment]) {
-			err = multierr.Append(err, rc.Close())
-		}(rc)
-		segment = rc.Get()
-	}
-
 	var val []byte
-	if val, previousCrc, entryCrc, err = segment.Read(index); err != nil {
-		t.readErrors.Inc()
+	t.truncateLock.RLock()
+	val, previousCrc, entryCrc, err = t.readRecord(index)
+	t.truncateLock.RUnlock()
+	if err != nil {
 		return nil, 0, 0, err
 	}
 
@@ -244,6 +237,78 @@ func (t *wal) readAtIndex(index int64) (entry *proto.LogEntry, previousCrc uint3
 	}
 	t.readBytes.Add(len(val))
 	return entry, previousCrc, entryCrc, err
+}
+
+// readRecord copies the record at the given index out of the segment holding
+// it. Must be called while holding the read side of truncateLock.
+func (t *wal) readRecord(index int64) (val []byte, previousCrc uint32, entryCrc uint32, err error) {
+	// The reads tailing the wal find the entry in the current segment: they
+	// read it without taking the mutex, which every append holds. A read-write
+	// segment serves its entries until it gets closed, even once a rollover
+	// replaced it as the current one
+	if current := *t.publishedCurrentSegment.Load(); index >= current.BaseOffset() {
+		if val, previousCrc, entryCrc, err = current.Read(index); err == nil {
+			return val, previousCrc, entryCrc, nil
+		}
+	}
+
+	val, previousCrc, entryCrc, err = t.readFromSegment(index)
+	if errors.Is(err, errSegmentClosed) {
+		// A rollover closed the read-write segment after it got picked, once
+		// it had moved to the read-only group: read it from there
+		val, previousCrc, entryCrc, err = t.readFromSegment(index)
+	}
+	return val, previousCrc, entryCrc, err
+}
+
+// readFromSegment holds the mutex only to pick the segment holding the given
+// index: opening it and copying the record happen after releasing it. A
+// read-write segment keeps its mapping until the copy is done (see
+// readWriteSegment.Read), and a read-only one until its reference is released.
+func (t *wal) readFromSegment(index int64) (val []byte, previousCrc uint32, entryCrc uint32, err error) {
+	t.RLock()
+	var segment ReadOnlySegment
+	if index >= t.currentSegment.BaseOffset() {
+		segment = t.currentSegment
+	} else if pending := t.pendingCloseSegmentFor(index); pending != nil {
+		// A rolled-over segment not closed by the sync goroutine yet: read
+		// it directly
+		segment = pending
+	}
+	readOnlySegments := t.readOnlySegments
+	t.RUnlock()
+
+	if segment == nil {
+		var rc object.RefCount[ReadOnlySegment]
+		if rc, err = readOnlySegments.Get(index); err != nil {
+			return nil, 0, 0, err
+		}
+
+		defer func(rc object.RefCount[ReadOnlySegment]) {
+			err = multierr.Append(err, rc.Close())
+		}(rc)
+		segment = rc.Get()
+	}
+
+	if val, previousCrc, entryCrc, err = segment.Read(index); err != nil {
+		if !errors.Is(err, errSegmentClosed) {
+			t.readErrors.Inc()
+		}
+		return nil, 0, 0, err
+	}
+	return val, previousCrc, entryCrc, nil
+}
+
+// openCurrentSegment opens the read-write segment that becomes the current
+// one. Must be called while holding the mutex, or before the wal gets shared.
+func (t *wal) openCurrentSegment(baseOffset int64, lastCrc uint32) (err error) {
+	if t.currentSegment, err = newReadWriteSegment(t.walPath, baseOffset, t.segmentSize, lastCrc,
+		t.commitOffsetProvider); err != nil {
+		return err
+	}
+	current := t.currentSegment
+	t.publishedCurrentSegment.Store(&current)
+	return nil
 }
 
 // pendingCloseSegmentFor returns the rolled-over segment containing the given
@@ -388,8 +453,7 @@ func (t *wal) appendAsync0(entry *proto.LogEntry, previousCrc *uint32) error {
 			lastCrc = *previousCrc
 		}
 
-		if t.currentSegment, err = newReadWriteSegment(t.walPath, entry.Offset, t.segmentSize,
-			lastCrc, t.commitOffsetProvider); err != nil {
+		if err = t.openCurrentSegment(entry.Offset, lastCrc); err != nil {
 			t.writeErrors.Inc()
 			return err
 		}
@@ -447,8 +511,7 @@ func (t *wal) rolloverSegment() error {
 	// leader, the controller lock), where the fsync would stall the whole
 	// shard. The sync goroutine fsyncs the file before the first entries of
 	// the segment are acknowledged (see runSync).
-	if t.currentSegment, err = newReadWriteSegment(t.walPath, t.lastAppendedOffset.Load()+1, t.segmentSize,
-		lastCrc, t.commitOffsetProvider); err != nil {
+	if err = t.openCurrentSegment(t.lastAppendedOffset.Load()+1, lastCrc); err != nil {
 		return err
 	}
 
@@ -658,8 +721,7 @@ func (t *wal) clearWithoutLock() error {
 		return errors.Wrap(err, "failed to clear wal")
 	}
 
-	if t.currentSegment, err = newReadWriteSegment(t.walPath, 0, t.segmentSize,
-		constant.U32Zero, t.commitOffsetProvider); err != nil {
+	if err = t.openCurrentSegment(0, constant.U32Zero); err != nil {
 		return err
 	}
 
@@ -697,6 +759,8 @@ func (t *wal) TruncateLog(lastSafeOffset int64) (int64, error) { //nolint:revive
 		return t.LastOffset(), nil
 	}
 
+	t.truncateLock.Lock()
+	defer t.truncateLock.Unlock()
 	t.Lock()
 	defer t.Unlock()
 
@@ -747,8 +811,7 @@ func (t *wal) TruncateLog(lastSafeOffset int64) (int64, error) { //nolint:revive
 				if err = segment.Close(); err != nil {
 					return InvalidOffset, err
 				}
-				if t.currentSegment, err = newReadWriteSegment(t.walPath, baseOffset,
-					t.segmentSize, lastCrc, t.commitOffsetProvider); err != nil {
+				if err = t.openCurrentSegment(baseOffset, lastCrc); err != nil {
 					return InvalidOffset, err
 				}
 				if err := t.currentSegment.Truncate(lastSafeOffset); err != nil {
@@ -807,8 +870,7 @@ func (t *wal) recoverWal() error {
 		segments = segments[:len(segments)-1]
 	}
 
-	if t.currentSegment, err = newReadWriteSegment(t.walPath, lastSegment, t.segmentSize,
-		lastCrc, t.commitOffsetProvider); err != nil {
+	if err = t.openCurrentSegment(lastSegment, lastCrc); err != nil {
 		return err
 	}
 
