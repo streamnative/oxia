@@ -66,20 +66,19 @@ func (tls *TLSOptions) IsEnabled() bool {
 	return *tls.Enabled
 }
 
-func (tls *TLSOptions) makeCommonConfig() (*libtls.Config, error) {
+func (tls *TLSOptions) validateKeyPair() error {
 	if tls.CertFile == "" {
-		return nil, ErrInvalidTLSCertFile
+		return ErrInvalidTLSCertFile
 	}
 	if tls.KeyFile == "" {
-		return nil, ErrInvalidTLSKeyFile
+		return ErrInvalidTLSKeyFile
 	}
 
-	// validate it first
 	_, err := libtls.LoadX509KeyPair(tls.CertFile, tls.KeyFile)
-	if err != nil {
-		return nil, err
-	}
+	return err
+}
 
+func (tls *TLSOptions) makeCommonConfig() (*libtls.Config, error) {
 	var minVersion uint16 = libtls.VersionTLS12
 	if tls.MinVersion != 0 {
 		minVersion = tls.MinVersion
@@ -154,6 +153,14 @@ func (tls *TLSOptions) TryIntoClientTLSConf() (*libtls.Config, error) {
 		tlsConf.RootCAs = certPool
 	}
 
+	// The client certificate is optional: only a server that requires client
+	// authentication asks for one.
+	if tls.CertFile == "" && tls.KeyFile == "" {
+		return tlsConf, nil
+	}
+	if err := tls.validateKeyPair(); err != nil {
+		return nil, err
+	}
 	tlsConf.GetClientCertificate = func(_ *libtls.CertificateRequestInfo) (cert *libtls.Certificate, err error) {
 		c, err := libtls.LoadX509KeyPair(tls.CertFile, tls.KeyFile)
 		return &c, err
@@ -164,6 +171,9 @@ func (tls *TLSOptions) TryIntoClientTLSConf() (*libtls.Config, error) {
 func (tls *TLSOptions) TryIntoServerTLSConf() (*libtls.Config, error) {
 	if !tls.IsEnabled() {
 		return nil, nil //nolint:nilnil
+	}
+	if err := tls.validateKeyPair(); err != nil {
+		return nil, err
 	}
 	tlsConf, err := tls.makeCommonConfig()
 	if err != nil {
