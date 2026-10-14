@@ -610,5 +610,5 @@ func TestReadWriteSegment_ReadConcurrentWithAppendAndClose(t *testing.T) {
 	assert.NoError(t, <-closeDone)
 
 	_, _, _, err = rw.Read(1)
-	assert.ErrorIs(t, err, errSegmentClosed)
+	assert.ErrorIs(t, err, ErrSegmentClosed)
 }
