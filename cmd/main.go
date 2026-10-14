@@ -18,11 +18,9 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/spf13/cobra"
 	"go.uber.org/automaxprocs/maxprocs"
-	"google.golang.org/grpc/resolver/dns"
 
 	"github.com/oxia-db/oxia/cmd/config"
 
@@ -100,8 +98,6 @@ func main() {
 				_, _ = fmt.Fprintln(os.Stderr, err)
 				os.Exit(1)
 			}
-			// Pick up the new IP of a restarted server sooner than the 30s default
-			dns.SetMinResolutionInterval(time.Second)
 			if err := rootCmd.Execute(); err != nil {
 				os.Exit(1)
 			}
