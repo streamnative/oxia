@@ -22,6 +22,7 @@ import (
 
 	"go.uber.org/multierr"
 
+	"github.com/oxia-db/oxia/common/commonio"
 	"github.com/oxia-db/oxia/common/process"
 	"github.com/oxia-db/oxia/oxiad/common/logging"
 	commonwatch "github.com/oxia-db/oxia/oxiad/common/watch"
@@ -97,11 +98,18 @@ func NewWithOptionsWatch(parent context.Context, optionsWatch *commonwatch.Watch
 		return nil, err
 	}
 	grpcProvider, err := NewWithGrpcProvider(parent, optionsWatch, commonrpc.Default, provider, manifest)
-	return grpcProvider, err
+	if err != nil {
+		return nil, multierr.Append(err, provider.Close())
+	}
+	return grpcProvider, nil
 }
 
+// NewWithGrpcProvider starts a data server with the given gRPC and replication
+// providers. On an error, it releases what it started, but not
+// replicationRpcProvider: the caller closes it. Otherwise the server closes it
+// in Close.
 func NewWithGrpcProvider(parent context.Context, optionsWatch *commonwatch.Watch[*option.Options], provider commonrpc.GrpcProvider,
-	replicationRpcProvider dataserverrpc.ReplicationRpcProvider, manifest *manifestpkg.Manifest) (*Server, error) {
+	replicationRpcProvider dataserverrpc.ReplicationRpcProvider, manifest *manifestpkg.Manifest) (_ *Server, err error) {
 	options := optionsWatch.Load()
 	slog.Info("Starting Oxia dataServer", slog.Any("options", options))
 
@@ -138,6 +146,30 @@ func NewWithGrpcProvider(parent context.Context, optionsWatch *commonwatch.Watch
 		kvFactory:    kvFactory,
 		healthServer: commonrpc.NewClosableHealthServer(context.Background()),
 	}
+	defer func() {
+		if err == nil {
+			return
+		}
+		// Same order as Close: stopping a gRPC server waits for its streams,
+		// which end when the health server, the dispatcher and the shards
+		// director close
+		cancel()
+		s.wg.Wait()
+		err = multierr.Append(err, s.healthServer.Close())
+		err = multierr.Append(err, commonio.CloseIfNotNil(s.shardAssignmentDispatcher))
+		err = multierr.Append(err, commonio.CloseIfNotNil(s.shardsDirector))
+		if s.publicRpcServer != nil {
+			err = multierr.Append(err, s.publicRpcServer.Close())
+		}
+		if s.internalRpcServer != nil {
+			err = multierr.Append(err, s.internalRpcServer.Close())
+		}
+		err = multierr.Append(err, s.kvFactory.Close())
+		err = multierr.Append(err, s.walFactory.Close())
+		if s.metrics != nil {
+			err = multierr.Append(err, s.metrics.Close())
+		}
+	}()
 
 	s.wg.Go(func() {
 		process.DoWithLabels(ctx, map[string]string{
