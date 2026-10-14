@@ -131,11 +131,20 @@ moves only when the replica leaves the ensemble, or when it couldn't take a
 due backup for half an interval because it is down or not caught up.
 
 A shard is eligible when it is in steady state with a leader, and its backup
-replica is the leader, or a follower that reports `FOLLOWER` status with a
-commit offset at least the leader's commit offset read just before. A split
-parent stays eligible until it is fenced; the children become eligible once
-the split completes, and inherit the parent's due time: a split never leaves
-a hash range without a backup for longer than an interval.
+replica is the leader, or a member of the ensemble whose commit offset is at
+least the leader's commit offset read just before (a follower reports
+`FENCED` until the first entry after the election, with a database as
+complete as a `FOLLOWER`'s). A split parent stays eligible until it is
+fenced; the children become eligible once the split completes, and inherit
+the parent's due time: a split never leaves a hash range without a backup
+for longer than an interval.
+
+A follower only learns that an entry is committed from the next entry the
+leader sends, so an idle follower used to leave the last committed entry
+unapplied. With `FEATURE_COMMIT_ADVERTISEMENT` pinned by the term, the leader
+advertises a commit offset advance to its followers with an entry-less
+`Append`, as it already did to split observers: the backups taken from a
+follower then hold every committed entry.
 
 ## Retention and cleanup
 
@@ -163,8 +172,9 @@ oxia admin restore --namespace orders --as-of 2026-10-03T12:00:00Z --to-namespac
 ```
 
 1. The coordinator lists the backups of the source namespace through a data
-   server, and for each part of the hash range picks the newest backup at or
-   before `--as-of`. Parent and child backups cover overlapping ranges: a
+   server, and for each part of the hash range picks the newest backup
+   started at or before `--as-of` (by the start time recorded in the
+   manifest, which is more precise than the second of the backup ID). Parent and child backups cover overlapping ranges: a
    restore to a time before a split picks the parent, and a restore to a time
    where only one child has a backup restores the other half from the parent,
    filtered to that half.
@@ -196,11 +206,27 @@ stopped at.
 ## Observability
 
 - `oxia_coordinator_backup_age`: per shard, the seconds since the shard's
-  state was last captured. Alert above about twice the interval: that
-  catches what scheduling can't fix, such as a shard without a leader.
-- `oxia_coordinator_backup_requests_total`, by result.
-- `oxia_server_backup_bytes_uploaded_total`, `oxia_server_backup_duration`,
-  `oxia_server_backup_failures_total`, `oxia_server_backup_cleanup_*`.
+  state was last captured (-1 until known). Alert above about twice the
+  interval: that catches what scheduling can't fix, such as a shard without
+  a leader.
+- `oxia_coordinator_backup_requests`, `oxia_coordinator_backups_completed`,
+  `oxia_coordinator_backup_failures`, `oxia_coordinator_backup_replica_moves`.
+- `oxia_server_backups_completed`, `oxia_server_backups_failed`,
+  `oxia_server_backup_uploaded` (bytes), `oxia_server_backup_latency`,
+  `oxia_server_backups_expired`, `oxia_server_backup_deleted` (bytes),
+  `oxia_server_backup_cleanups_failed`, `oxia_server_restores_completed`,
+  `oxia_server_restores_failed`.
+
+## Limitations
+
+- Restoring between two backups needs WAL archiving, which is future work:
+  a restore loses the writes made since the shard's last backup before
+  `--as-of`, up to one interval.
+- The restored sessions have no clients, and their ephemeral records go
+  when they expire.
+- The backups of a namespace that no longer exists are never expired.
+- A split child taken mid-split is backed up with the records of its parent
+  it still holds; a restore filters them out.
 
 ## Costs and trade-offs
 
