@@ -15,7 +15,7 @@
 package coordinator
 
 import (
-	"net"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -33,10 +33,9 @@ import (
 func TestAdminDataServerCRUD(t *testing.T) {
 	metadataDir := t.TempDir()
 
-	adminAddr := freeAddress(t)
 	options := coordoption.NewDefaultOptions()
 	options.Server.Internal.BindAddress = "127.0.0.1:0"
-	options.Server.Public.BindAddress = adminAddr
+	options.Server.Public.BindAddress = "127.0.0.1:0"
 	options.Observability.Metric.Enabled = &constant.FlagFalse
 	options.Metadata.ProviderName = metadatacommon.NameFile
 	options.Metadata.File.Dir = metadataDir
@@ -48,6 +47,7 @@ func TestAdminDataServerCRUD(t *testing.T) {
 		require.NoError(t, coordinatorServer.Close())
 	})
 
+	adminAddr := fmt.Sprintf("127.0.0.1:%d", coordinatorServer.PublicPort())
 	client, err := oxia.NewAdminClient(adminAddr, nil, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -125,14 +125,4 @@ func TestAdminDataServerCRUD(t *testing.T) {
 	require.NotNil(t, dataServers[0].GetDataServer().GetIdentity())
 	assert.Equal(t, remainingServerName, dataServers[0].GetDataServer().GetIdentity().GetName())
 	assert.Equal(t, map[string]string{"rack": "rack-2"}, dataServers[0].GetDataServer().GetMetadata().GetLabels())
-}
-
-func freeAddress(t *testing.T) string {
-	t.Helper()
-
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	addr := listener.Addr().String()
-	require.NoError(t, listener.Close())
-	return addr
 }

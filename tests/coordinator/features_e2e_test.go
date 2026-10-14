@@ -49,7 +49,8 @@ func TestCoordinator_PinsFeaturesOfDataServerStartedLate(t *testing.T) {
 		}
 	}()
 	// s3 only starts after the shard has elected a leader
-	sa3 := &proto.DataServerIdentity{Name: new("s3"), Public: freeAddress(t), Internal: freeAddress(t)}
+	addresses := mock.FreeAddresses(t, 2)
+	sa3 := &proto.DataServerIdentity{Name: new("s3"), Public: addresses[0], Internal: addresses[1]}
 
 	metadataProvider := memory.NewProvider(metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled, "")
 	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadatacommon.WatchEnabled, "")
