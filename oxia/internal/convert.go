@@ -15,26 +15,33 @@
 package internal
 
 import (
+	"fmt"
+
 	"github.com/oxia-db/oxia/common/proto"
 )
 
-func toShard(assignment *proto.ShardAssignment) Shard {
+func toShard(assignment *proto.ShardAssignment) (Shard, error) {
+	hashRange, err := toHashRange(assignment)
+	if err != nil {
+		return Shard{}, err
+	}
 	return Shard{
 		Id:        assignment.Shard,
 		Leader:    assignment.Leader,
-		HashRange: toHashRange(assignment),
-	}
+		HashRange: hashRange,
+	}, nil
 }
 
-func toHashRange(assignment *proto.ShardAssignment) HashRange {
+func toHashRange(assignment *proto.ShardAssignment) (HashRange, error) {
 	switch boundaries := assignment.ShardBoundaries.(type) {
 	case *proto.ShardAssignment_Int32HashRange:
 		return HashRange{
 			MinInclusive: boundaries.Int32HashRange.MinHashInclusive,
 			MaxInclusive: boundaries.Int32HashRange.MaxHashInclusive,
-		}
+		}, nil
 	default:
-		panic("unknown shard boundary")
+		return HashRange{}, fmt.Errorf("shard %d has an unsupported hash range boundary %T",
+			assignment.GetShard(), assignment.ShardBoundaries)
 	}
 }
 

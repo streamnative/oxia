@@ -43,8 +43,21 @@ func TestToShard(t *testing.T) {
 				Leader:    "leader:1234",
 				HashRange: hashRange(1, 2),
 			}, nil},
+		{
+			// A ShardAssignment whose hash range boundary is unset, as a
+			// version-skewed or misbehaving server can send: it must be
+			// rejected rather than crash the client.
+			&proto.ShardAssignment{
+				Shard:  2,
+				Leader: "leader:1234",
+			}, Shard{}, assert.AnError},
 	} {
-		result := toShard(item.assignment)
+		result, err := toShard(item.assignment)
+		if item.err != nil {
+			assert.Error(t, err)
+			continue
+		}
+		assert.NoError(t, err)
 		assert.Equal(t, item.shard, result)
 	}
 }
