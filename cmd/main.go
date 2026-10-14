@@ -18,14 +18,15 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 	"go.uber.org/automaxprocs/maxprocs"
+	"google.golang.org/grpc/resolver/dns"
 
 	"github.com/oxia-db/oxia/cmd/config"
 
 	"github.com/oxia-db/oxia/common/process"
-	"github.com/oxia-db/oxia/common/rpc"
 	"github.com/oxia-db/oxia/oxiad/common/logging"
 
 	"github.com/oxia-db/oxia/cmd/admin"
@@ -99,7 +100,11 @@ func main() {
 				_, _ = fmt.Fprintln(os.Stderr, err)
 				os.Exit(1)
 			}
-			rpc.ConfigureDNSResolver()
+			// A restarted server can come back with a new IP, while the lookup
+			// triggered by the disconnect still returns the old one. Re-resolve
+			// within a second instead of the gRPC default of 30s. Lookups only
+			// happen when a connection fails, so this adds no steady-state load.
+			dns.SetMinResolutionInterval(time.Second)
 			if err := rootCmd.Execute(); err != nil {
 				os.Exit(1)
 			}
