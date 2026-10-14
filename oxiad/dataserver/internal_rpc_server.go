@@ -22,7 +22,6 @@ import (
 	"log/slog"
 
 	"github.com/pkg/errors"
-	"go.uber.org/multierr"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -94,10 +93,14 @@ func newInternalRpcServer(grpcProvider dcommonrpc.GrpcProvider, bindAddress stri
 	return server, nil
 }
 
-// Close stops the gRPC server, then the backup jobs: they checkpoint the
-// shards, which the caller closes afterwards.
 func (s *internalRpcServer) Close() error {
-	return multierr.Combine(s.grpcServer.Close(), s.backups.Close())
+	return s.grpcServer.Close()
+}
+
+// stopBackups ends the backup jobs, which checkpoint the shards: it runs
+// before the shards close.
+func (s *internalRpcServer) stopBackups() error {
+	return s.backups.Close()
 }
 
 func (s *internalRpcServer) PushShardAssignments(srv proto.OxiaCoordination_PushShardAssignmentsServer) error {

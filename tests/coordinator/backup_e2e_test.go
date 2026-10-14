@@ -31,6 +31,7 @@ import (
 	"github.com/oxia-db/oxia/oxiad/coordinator/metadata/provider"
 	"github.com/oxia-db/oxia/oxiad/coordinator/metadata/provider/memory"
 	rpc2 "github.com/oxia-db/oxia/oxiad/coordinator/rpc"
+	"github.com/oxia-db/oxia/oxiad/dataserver"
 	"github.com/oxia-db/oxia/tests/mock"
 )
 
@@ -39,9 +40,15 @@ import (
 // follower, and a restore as of a time between two backups brings back the
 // records deleted after it, into a new namespace.
 func TestCoordinatorBackupAndRestore(t *testing.T) {
-	_, sa1 := newServer(t)
-	_, sa2 := newServer(t)
-	_, sa3 := newServer(t)
+	s1, sa1 := newServer(t)
+	s2, sa2 := newServer(t)
+	s3, sa3 := newServer(t)
+	// The servers close after the coordinator: their databases must outlive
+	// the backups and the restores it drives, and close before the test's
+	// directories go
+	for _, s := range []*dataserver.Server{s1, s2, s3} {
+		defer func() { assert.NoError(t, s.Close()) }()
+	}
 
 	metadataProvider := memory.NewProvider(metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled, "")
 	clusterConfig := newClusterConfig([]*proto.Namespace{{
