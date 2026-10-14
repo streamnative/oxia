@@ -17,12 +17,15 @@ package dataserver
 import (
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/oxia-db/oxia/common/constant"
@@ -131,4 +134,45 @@ func TestNewServerRejectsSameWalAndDataDir(t *testing.T) {
 	// Refused before writing anything, the manifest included
 	_, err = os.Stat(dir)
 	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestNewReleasesWhatItStartedOnError(t *testing.T) {
+	// New fails to bind the public port, after it started the internal server
+	publicListener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer publicListener.Close()
+	publicAddress := publicListener.Addr().String()
+
+	// The internal port is picked up front, to check that New releases it
+	internalListener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	internalAddress := internalListener.Addr().String()
+	require.NoError(t, internalListener.Close())
+
+	options := option.NewDefaultOptions()
+	options.Server.Public.BindAddress = publicAddress
+	options.Server.Internal.BindAddress = internalAddress
+	options.Observability.Metric.Enabled = &constant.FlagFalse
+	options.Storage.Database.Dir = t.TempDir()
+	options.Storage.WAL.Dir = t.TempDir()
+
+	server, err := New(t.Context(), options)
+	require.ErrorContains(t, err, publicAddress)
+	assert.Nil(t, server)
+
+	// A gRPC server stopped before it started serving closes its listener in
+	// its serve goroutine, which can run after New returned
+	require.Eventually(t, func() bool {
+		listener, err := net.Listen("tcp", internalAddress)
+		if err != nil {
+			return false
+		}
+		return listener.Close() == nil
+	}, 10*time.Second, 10*time.Millisecond, "the internal port is still bound")
+
+	// A retry binds the same internal address and opens the same directories
+	options.Server.Public.BindAddress = "127.0.0.1:0"
+	server, err = New(t.Context(), options)
+	require.NoError(t, err)
+	assert.NoError(t, server.Close())
 }
