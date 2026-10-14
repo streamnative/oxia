@@ -16,11 +16,9 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"os"
 	"sync"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -47,9 +45,23 @@ func (m *maelstromCoordinatorRpcProvider) Close() error {
 }
 
 func newRpcProvider(dispatcher *dispatcher) rpc.Provider {
-	return &maelstromCoordinatorRpcProvider{
+	provider := &maelstromCoordinatorRpcProvider{
 		dispatcher:        dispatcher,
 		assignmentStreams: map[int64]*maelstromShardAssignmentClient{},
+	}
+	dispatcher.coordinatorProvider = provider
+	return provider
+}
+
+// HandleShardAssignmentsAck stops the resends of the shard assignments that a
+// data server acknowledged.
+func (m *maelstromCoordinatorRpcProvider) HandleShardAssignmentsAck(streamId int64, msgId int64) {
+	m.Lock()
+	stream, ok := m.assignmentStreams[streamId]
+	m.Unlock()
+
+	if ok {
+		stream.ack(msgId)
 	}
 }
 
@@ -125,6 +137,12 @@ func (m *maelstromCoordinatorRpcProvider) GetHealthClient(node *proto.DataServer
 	return c, nil
 }
 
+// How often a shard assignments stream resends the assignments that the data
+// server hasn't acknowledged yet, see maelstromShardAssignmentClient.Send.
+// Well above the round trip of the latencies Maelstrom tests run with (0-20ms
+// each way for --latency 10 --latency-dist uniform).
+var assignmentsResendInterval = time.Second
+
 type maelstromShardAssignmentClient struct {
 	BaseStream
 
@@ -134,6 +152,12 @@ type maelstromShardAssignmentClient struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	// The last assignments sent, until the data server acks them. Owned by
+	// the stream, guarded by unackedMutex: the coordinator sets it in Send,
+	// the dispatcher clears it on the ack, and the resend timer reads it.
+	unackedMutex sync.Mutex
+	unacked      *Message[OxiaStreamMessage]
 }
 
 func newShardAssignmentClient(ctx context.Context, provider *maelstromCoordinatorRpcProvider, node string) proto.OxiaCoordination_PushShardAssignmentsClient {
@@ -152,6 +176,13 @@ func newShardAssignmentClient(ctx context.Context, provider *maelstromCoordinato
 	return sac
 }
 
+// Send pushes the assignments to the data server, and resends them every
+// assignmentsResendInterval until the data server acks them. A gRPC stream
+// either delivers what it sends or breaks, and then the coordinator re-opens
+// it and sends the assignments again. A Maelstrom message sent across a
+// partition is lost instead, while the stream stays open: without the
+// resends, the data server would keep routing the requests to the previous
+// leader, or to none, until the assignments change again.
 func (m *maelstromShardAssignmentClient) Send(response *proto.ShardAssignments) error {
 	assignments := response
 	if leader, ok := getDefaultNamespaceLeader(assignments); ok {
@@ -170,9 +201,35 @@ func (m *maelstromShardAssignmentClient) Send(response *proto.ShardAssignments) 
 		},
 	}
 
-	b, _ := json.Marshal(req)
-	fmt.Fprintln(os.Stdout, string(b))
+	m.unackedMutex.Lock()
+	m.unacked = req
+	m.unackedMutex.Unlock()
+
+	m.sendUntilAcked(req.Body.MsgId)
 	return nil
+}
+
+// sendUntilAcked sends the assignments message msgId and schedules its next
+// resend, unless the data server acked it, a later Send replaced it, or the
+// stream is closed. It sends under the lock, so that a resend never goes out
+// after the assignments that replaced it.
+func (m *maelstromShardAssignmentClient) sendUntilAcked(msgId int64) {
+	m.unackedMutex.Lock()
+	defer m.unackedMutex.Unlock()
+	if m.unacked == nil || m.unacked.Body.MsgId != msgId || m.ctx.Err() != nil {
+		return
+	}
+
+	sendResponse(m.unacked)
+	time.AfterFunc(assignmentsResendInterval, func() { m.sendUntilAcked(msgId) })
+}
+
+func (m *maelstromShardAssignmentClient) ack(msgId int64) {
+	m.unackedMutex.Lock()
+	defer m.unackedMutex.Unlock()
+	if m.unacked != nil && m.unacked.Body.MsgId == msgId {
+		m.unacked = nil
+	}
 }
 
 func (m *maelstromShardAssignmentClient) Context() context.Context {
