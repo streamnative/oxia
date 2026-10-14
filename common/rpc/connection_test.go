@@ -16,6 +16,7 @@ package rpc
 
 import (
 	"context"
+	"errors"
 	"net"
 	"sync/atomic"
 	"testing"
@@ -51,6 +52,30 @@ func TestConnectionReconnectsToNewAddressOfRestartedServer(t *testing.T) {
 	address.Store(newAddress)
 
 	require.Eventually(t, func() bool { return checkTestConnection(conn) == nil }, 5*time.Second, 50*time.Millisecond)
+}
+
+func TestConnectionDialsNameOfTLSTarget(t *testing.T) {
+	dialed := make(chan string, 1)
+	dialer := grpc.WithContextDialer(func(_ context.Context, target string) (net.Conn, error) {
+		select {
+		case dialed <- target:
+		default:
+		}
+		return nil, errors.New("unreachable")
+	})
+
+	conn, err := newConnectionWithHealthConfig("tls://oxia.test:6649", nil, nil, []grpc.DialOption{dialer},
+		func(string) {}, time.Hour, time.Second)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() })
+	conn.Connect()
+
+	select {
+	case target := <-dialed:
+		assert.Equal(t, "oxia.test:6649", target)
+	case <-time.After(5 * time.Second):
+		require.Fail(t, "the name of the target was never dialed")
+	}
 }
 
 func checkTestConnection(conn *connection) error {
