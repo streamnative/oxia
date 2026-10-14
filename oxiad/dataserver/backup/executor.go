@@ -29,6 +29,8 @@ import (
 	"github.com/oxia-db/oxia/common/proto"
 	"github.com/oxia-db/oxia/oxiad/backup"
 	"github.com/oxia-db/oxia/oxiad/backup/blob"
+	// The S3 destinations, registered with package blob
+	_ "github.com/oxia-db/oxia/oxiad/backup/blob/s3"
 	"github.com/oxia-db/oxia/oxiad/dataserver/controller"
 	"github.com/oxia-db/oxia/oxiad/dataserver/database"
 )

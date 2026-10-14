@@ -33,6 +33,7 @@ import (
 	commonrpc "github.com/oxia-db/oxia/oxiad/common/rpc"
 
 	"github.com/oxia-db/oxia/oxiad/dataserver/assignment"
+	"github.com/oxia-db/oxia/oxiad/dataserver/backup"
 	"github.com/oxia-db/oxia/oxiad/dataserver/controller"
 	"github.com/oxia-db/oxia/oxiad/dataserver/database/kvstore"
 	manifestpkg "github.com/oxia-db/oxia/oxiad/dataserver/manifest"
@@ -55,6 +56,7 @@ type Server struct {
 	replicationRpcProvider    dataserverrpc.ReplicationRpcProvider
 	shardAssignmentDispatcher assignment.ShardAssignmentsDispatcher
 	shardsDirector            controller.ShardsDirector
+	backups                   *backup.Executor
 	metrics                   *metric.PrometheusMetrics
 	walFactory                wal.Factory
 	kvFactory                 kvstore.Factory
@@ -183,6 +185,7 @@ func NewWithGrpcProvider(parent context.Context, optionsWatch *commonwatch.Watch
 		s.wg.Go(csScheduler.run)
 	}
 	s.shardAssignmentDispatcher = assignment.NewShardAssignmentDispatcher(s.healthServer)
+	s.backups = backup.New(backup.Options{Host: s.shardsDirector})
 
 	internalServer := options.Server.Internal
 	internalServerTLS, err := internalServer.TLS.TryIntoServerTLSConf()
@@ -191,7 +194,8 @@ func NewWithGrpcProvider(parent context.Context, optionsWatch *commonwatch.Watch
 	}
 	//nolint:contextcheck
 	s.internalRpcServer, err = newInternalRpcServer(provider, internalServer.BindAddress,
-		s.shardsDirector, s.shardAssignmentDispatcher, s.healthServer, internalServerTLS, &internalServer.Auth, manifest)
+		s.shardsDirector, s.shardAssignmentDispatcher, s.healthServer, internalServerTLS, &internalServer.Auth, manifest,
+		s.backups)
 	if err != nil {
 		return nil, err
 	}
@@ -261,6 +265,8 @@ func (s *Server) Close() error {
 	err := multierr.Combine(
 		s.healthServer.Close(),
 		s.shardAssignmentDispatcher.Close(),
+		// The backup jobs checkpoint the shards: they end before the shards do
+		s.backups.Close(),
 		s.shardsDirector.Close(),
 		s.publicRpcServer.Close(),
 		s.internalRpcServer.Close(),

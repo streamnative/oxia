@@ -81,7 +81,7 @@ func newInternalTestServer(t *testing.T, manifest *manifestpkg.Manifest, dispatc
 
 	healthServer := rpc2.NewClosableHealthServer(t.Context())
 	server, err := newInternalRpcServer(rpc2.Default, "localhost:0", nil,
-		dispatcher, healthServer, nil, &auth.Disabled, manifest)
+		dispatcher, healthServer, nil, &auth.Disabled, manifest, nil)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
