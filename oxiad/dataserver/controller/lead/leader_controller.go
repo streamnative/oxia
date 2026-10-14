@@ -79,6 +79,12 @@ type LeaderController interface {
 	AddFollower(request *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error)
 
 	GetStatus(request *proto.GetStatusRequest) (*proto.GetStatusResponse, error)
+	// Checkpoint takes a checkpoint of the database, for a backup. It holds
+	// the controller's read lock during the flush: a change of term waits
+	// for it.
+	Checkpoint() (*database.Checkpoint, error)
+	// DatabaseCommitOffset is the last entry applied to the database.
+	DatabaseCommitOffset() int64
 	DeleteShard(request *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error)
 	RemoveObserver(request *proto.RemoveObserverRequest) (*proto.RemoveObserverResponse, error)
 	Freeze(request *proto.FreezeShardRequest) (*proto.FreezeShardResponse, error)
@@ -1680,6 +1686,19 @@ func (lc *leaderController) CommitOffset() int64 {
 // it.
 func (lc *leaderController) FlushDatabase() error {
 	return lc.db.Flush()
+}
+
+func (lc *leaderController) Checkpoint() (*database.Checkpoint, error) {
+	lc.RLock()
+	defer lc.RUnlock()
+	if lc.closed || lc.db == nil {
+		return nil, constant.ErrResourceUnavailable
+	}
+	return lc.db.Checkpoint()
+}
+
+func (lc *leaderController) DatabaseCommitOffset() int64 {
+	return lc.dbCommitOffset.Load()
 }
 
 func (lc *leaderController) GetStatus(_ *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {

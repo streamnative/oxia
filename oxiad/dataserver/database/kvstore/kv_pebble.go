@@ -183,6 +183,10 @@ func (p *PebbleFactory) NewSnapshotLoader(namespace string, shardId int64) (Snap
 	return newPebbleSnapshotLoader(p, vfs.Default, namespace, shardId)
 }
 
+func (p *PebbleFactory) DatabaseDir(namespace string, shardId int64) string {
+	return p.getKVPath(namespace, shardId)
+}
+
 func (p *PebbleFactory) getKVPath(namespace string, shard int64) string {
 	if namespace == "" {
 		slog.Warn(
