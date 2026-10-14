@@ -71,6 +71,8 @@ type defaultGrpcServer struct {
 	server *grpc.Server
 	port   int
 	log    *slog.Logger
+	// serveDone is closed when Serve returns: the listener is closed by then
+	serveDone chan struct{}
 }
 
 func newDefaultGrpcProvider(name, bindAddress string, registerFunc func(grpc.ServiceRegistrar),
@@ -119,6 +121,7 @@ func newDefaultGrpcProvider(name, bindAddress string, registerFunc func(grpc.Ser
 				PermitWithoutStream: defaultGrpcServerKeepPermitWithoutStream,
 			}),
 		),
+		serveDone: make(chan struct{}),
 	}
 	registerFunc(c.server)
 	grpcmetrics.Register(c.server)
@@ -143,8 +146,9 @@ func newDefaultGrpcProvider(name, bindAddress string, registerFunc func(grpc.Ser
 			"bind": listener.Addr().String(),
 		},
 		func() {
-			// Serve returns ErrServerStopped when Close() completed before this
-			// goroutine was scheduled: a benign race, not a startup failure.
+			defer close(c.serveDone)
+			// Serve returns ErrServerStopped when Close() stopped the server before
+			// this goroutine was scheduled: a benign race, not a startup failure.
 			if err := c.server.Serve(listener); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
 				c.log.Error(
 					"Failed to start serving",
@@ -166,6 +170,10 @@ func (c *defaultGrpcServer) Port() int {
 
 func (c *defaultGrpcServer) Close() error {
 	c.server.GracefulStop()
+	// GracefulStop closes the listener only if Serve has started; otherwise
+	// Serve closes it when it starts. Wait for Serve, so that the port is
+	// free when Close returns.
+	<-c.serveDone
 	c.log.Info("Stopped Grpc server")
 	return nil
 }
