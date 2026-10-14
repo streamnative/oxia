@@ -183,7 +183,9 @@ func TestWriteStreamLeaderControllerClosed(t *testing.T) {
 
 	_, err = stream.Recv()
 	oxiaErr, _ := constant.FromGrpcError(err)
-	assert.ErrorIs(t, oxiaErr, constant.ErrNodeIsNotLeader)
+	// Not ErrNodeIsNotLeader, after which the clients send the writes again: the next
+	// leader may commit the writes that waited for the commit
+	assert.ErrorIs(t, oxiaErr, constant.ErrResourceUnavailable)
 	assert.True(t, constant.IsRetryable(oxiaErr), "the client does not retry on: %v", err)
 }
 

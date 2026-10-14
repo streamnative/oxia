@@ -104,7 +104,7 @@ func TestLeaderController_NotInitialized(t *testing.T) {
 	})
 
 	assert.Nil(t, res)
-	assert.ErrorIs(t, err, constant.ErrNodeIsNotLeader)
+	assert.ErrorIs(t, err, constant.ErrResourceUnavailable)
 
 	_, err = readAll(context.Background(), lc, &proto.ReadRequest{
 		Shard: &shard,
@@ -258,7 +258,7 @@ func TestLeaderController_BecomeLeader_RF1(t *testing.T) {
 	})
 
 	assert.Nil(t, res3)
-	assert.ErrorIs(t, err, constant.ErrNodeIsNotLeader)
+	assert.ErrorIs(t, err, constant.ErrResourceUnavailable)
 
 	_, err = readAll(context.Background(), lc, &proto.ReadRequest{
 		Shard: &shard,
@@ -314,7 +314,7 @@ func TestLeaderController_Freeze(t *testing.T) {
 		Puts:  []*proto.PutRequest{{Key: "b", Value: []byte("value-b")}},
 	})
 	assert.Nil(t, res)
-	assert.ErrorIs(t, err, constant.ErrNodeIsNotLeader)
+	assert.ErrorIs(t, err, constant.ErrResourceUnavailable)
 
 	st, err := lc.GetStatus(&proto.GetStatusRequest{Shard: shard})
 	assert.NoError(t, err)
@@ -755,7 +755,7 @@ func TestLeaderController_BecomeLeader_RF2(t *testing.T) {
 	})
 
 	assert.Nil(t, res3)
-	assert.ErrorIs(t, err, constant.ErrNodeIsNotLeader)
+	assert.ErrorIs(t, err, constant.ErrResourceUnavailable)
 
 	_, err = readAll(context.Background(), lc, &proto.ReadRequest{
 		Shard: &shard,

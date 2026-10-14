@@ -1301,15 +1301,19 @@ func (lc *leaderController) proposeLocked(ctx context.Context, proposalSupplier 
 	lc.proposeMu.Lock()
 	defer lc.proposeMu.Unlock()
 
+	// The proposal is rejected with ErrResourceUnavailable, not ErrNodeIsNotLeader:
+	// after ErrNodeIsNotLeader, the clients send all the writes of a write stream
+	// again, but the earlier writes of the stream may have been appended, and the
+	// next leader may commit them.
 	timer := lc.writeLatencyHisto.Timer()
-	if err := checkStatusIsLeader(lc.status); err != nil {
-		return err
+	if lc.status != proto.ServingStatus_LEADER {
+		return errors.Wrap(constant.ErrResourceUnavailable, "node is not leader")
 	}
 	if lc.frozen.Load() {
 		// The shard is frozen for split cutover: reject new writes with a
 		// retryable error so clients re-resolve and route to the child shards
 		// once the cutover completes. Head must not advance while frozen.
-		return constant.ErrNodeIsNotLeader
+		return errors.Wrap(constant.ErrResourceUnavailable, "shard is frozen for split")
 	}
 	newOffset := lc.quorumAckTracker.NextOffset()
 	walLog := lc.wal
