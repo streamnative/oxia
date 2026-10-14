@@ -21,6 +21,7 @@ import (
 	"runtime"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -549,37 +550,16 @@ func TestReadWriteSegment_TruncateResetsLastCrc(t *testing.T) {
 	}
 }
 
-// blockingReadCodec stops each record read before its copy, until released.
-type blockingReadCodec struct {
-	codec.Codec
-	reading chan struct{}
-	release chan struct{}
-}
-
-func newBlockingReadCodec(c codec.Codec) *blockingReadCodec {
-	return &blockingReadCodec{Codec: c, reading: make(chan struct{}, 1), release: make(chan struct{})}
-}
-
-func (c *blockingReadCodec) ReadRecordWithValidation(buf []byte, startFileOffset uint32) (
-	payload []byte, previousCrc uint32, payloadCrc uint32, err error) {
-	c.reading <- struct{}{}
-	<-c.release
-	return c.Codec.ReadRecordWithValidation(buf, startFileOffset)
-}
-
 // Read copies the record without holding the segment mutex: the appends
 // proceed while the copy is in flight, while Close waits for it before
 // unmapping the segment.
-func TestReadWriteSegment_ReadConcurrentWithAppendAndClose(t *testing.T) {
+func TestReadWriteSegmentReadConcurrentWithAppendAndClose(t *testing.T) {
 	rw, err := newReadWriteSegment(t.TempDir(), 0, 128*1024, 0, nil)
 	require.NoError(t, err)
 	require.NoError(t, rw.Append(0, []byte("entry-0")))
-
-	blocking := newBlockingReadCodec(rw.(*readWriteSegment).c.codec)
-	rw.(*readWriteSegment).c.codec = blocking
-	var releaseOnce sync.Once
-	release := func() { releaseOnce.Do(func() { close(blocking.release) }) }
+	hook, reading, release := blockFirstCall()
 	defer release()
+	hookRecordReads(rw, hook)
 
 	readDone := make(chan error, 1)
 	go func() {
@@ -589,7 +569,7 @@ func TestReadWriteSegment_ReadConcurrentWithAppendAndClose(t *testing.T) {
 		}
 		readDone <- err
 	}()
-	<-blocking.reading
+	<-reading
 
 	appendDone := make(chan error, 1)
 	go func() { appendDone <- rw.Append(1, []byte("entry-1")) }()
@@ -611,4 +591,41 @@ func TestReadWriteSegment_ReadConcurrentWithAppendAndClose(t *testing.T) {
 
 	_, _, _, err = rw.Read(1)
 	assert.ErrorIs(t, err, ErrSegmentClosed)
+}
+
+// hookedCodec runs a hook before each record read.
+type hookedCodec struct {
+	codec.Codec
+	readRecordHook func()
+}
+
+func (c *hookedCodec) ReadRecordWithValidation(buf []byte, startFileOffset uint32) (
+	payload []byte, previousCrc uint32, payloadCrc uint32, err error) {
+	if c.readRecordHook != nil {
+		c.readRecordHook()
+	}
+	return c.Codec.ReadRecordWithValidation(buf, startFileOffset)
+}
+
+// hookRecordReads runs the hook in the reads of the segment, right before they
+// copy the record.
+func hookRecordReads(segment ReadWriteSegment, hook func()) {
+	rw := segment.(*readWriteSegment)
+	rw.c.codec = &hookedCodec{Codec: rw.c.codec, readRecordHook: hook}
+}
+
+// blockFirstCall returns a hook that stops its first call until release, and
+// closes blocked once that call stops. The later calls go through.
+func blockFirstCall() (hook func(), blocked <-chan struct{}, release func()) {
+	blockedCh := make(chan struct{})
+	releaseCh := make(chan struct{})
+	var called atomic.Bool
+	var releaseOnce sync.Once
+	hook = func() {
+		if called.CompareAndSwap(false, true) {
+			close(blockedCh)
+			<-releaseCh
+		}
+	}
+	return hook, blockedCh, func() { releaseOnce.Do(func() { close(releaseCh) }) }
 }

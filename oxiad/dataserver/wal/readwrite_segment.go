@@ -61,8 +61,8 @@ type readWriteSegment struct {
 
 	c *segmentConfig
 
-	// Updated while holding the mutex, after the record and its index entry:
-	// Read loads it without taking the mutex
+	// Written by Append and Truncate while holding the mutex, after the record
+	// and its index entry. Read loads it without taking the mutex.
 	lastOffset    atomic.Int64
 	lastCrc       uint32
 	txnFile       *os.File
@@ -71,8 +71,10 @@ type readWriteSegment struct {
 	currentFileOffset uint32
 	writingIdx        []byte
 
-	// writingIdx extended to its capacity, for Read: published again when the
-	// appends move writingIdx to a larger buffer
+	// writingIdx extended to its capacity, for Read. Append stores it again,
+	// while holding the mutex, when writingIdx moves to a larger buffer, and
+	// before storing lastOffset: Read loads lastOffset first, so the index it
+	// loads next holds the entry.
 	readIdx atomic.Pointer[[]byte]
 
 	segmentSize     uint32

@@ -73,12 +73,12 @@ type wal struct {
 
 	// The reads hold the mutex at most to pick the segment to read from, and
 	// hold the read side of truncateLock for the whole read instead. A
-	// rollover, Clear or Close leaves the reads correct: it unmaps a read-write
-	// segment once the copies from it are done, and releases the references to
-	// the read-only ones. TruncateLog does not: it zeroes the truncated records
-	// in place, deletes the read-only segments it polls, and moves the
-	// remaining entries from the read-only group to the current segment. It
-	// takes the write side, before the mutex.
+	// rollover, the trimming, Clear or Close leaves the reads correct: it
+	// unmaps a read-write segment once the copies from it are done, and
+	// releases the references to the read-only ones. TruncateLog does not: it
+	// zeroes the truncated records in place, deletes the read-only segments it
+	// polls, and moves the remaining entries from the read-only group to the
+	// current segment. It takes the write side, before the mutex.
 	truncateLock sync.RWMutex
 
 	walPath     string
@@ -89,8 +89,9 @@ type wal struct {
 	syncData    bool
 
 	currentSegment ReadWriteSegment
-	// currentSegment, for the reads that pick it without holding the mutex:
-	// set along with it by openCurrentSegment
+	// A copy of currentSegment for the reads that pick it without the mutex
+	// (see readRecord): written only by openCurrentSegment, along with
+	// currentSegment, while holding the mutex. The reads only load it.
 	publishedCurrentSegment atomic.Pointer[ReadWriteSegment]
 
 	// Rolled-over segments waiting for the sync goroutine to make them
