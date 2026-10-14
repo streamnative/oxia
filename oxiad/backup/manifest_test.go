@@ -154,8 +154,8 @@ func newManifest(namespace string, shard int64, lineage string, at time.Time) *M
 		CommitOffset:    1234,
 		CreatedAt:       at,
 		SSTs: []File{
-			{Name: "000005.sst", Key: p.SSTKey(lineage, "000005.sst", false), Size: 1000, StoredSize: 1000, CRC32C: 1},
-			{Name: "000007.sst", Key: p.SSTKey(lineage, "000007.sst", false), Size: 2000, StoredSize: 2000, CRC32C: 2},
+			{Name: "000005.sst", Key: p.SSTKey(lineage, "000005.sst", ""), Size: 1000, StoredSize: 1000, CRC32C: 1},
+			{Name: "000007.sst", Key: p.SSTKey(lineage, "000007.sst", ""), Size: 2000, StoredSize: 2000, CRC32C: 2},
 		},
 		Files: []File{
 			{Name: "MANIFEST-000001", Key: p.FileKey(id, "MANIFEST-000001"), Size: 300, StoredSize: 300, CRC32C: 3},

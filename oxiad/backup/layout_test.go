@@ -74,8 +74,8 @@ func TestShardPathKeys(t *testing.T) {
 	assert.Equal(t, "orders/", NamespacePrefix("orders"))
 	assert.Equal(t, "orders/shard-12/", p.Prefix())
 	assert.Equal(t, "orders/shard-12/sst/", p.SSTPrefix())
-	assert.Equal(t, "orders/shard-12/sst/abcd-000123.sst", p.SSTKey("abcd", "000123.sst", false))
-	assert.Equal(t, "orders/shard-12/sst/abcd-000123.sst.zst", p.SSTKey("abcd", "000123.sst", true))
+	assert.Equal(t, "orders/shard-12/sst/abcd-000123.sst", p.SSTKey("abcd", "000123.sst", ""))
+	assert.Equal(t, "orders/shard-12/sst/abcd-000123.sst.zst", p.SSTKey("abcd", "000123.sst", CompressionZstd))
 	assert.Equal(t, "orders/shard-12/backups/", p.ManifestsPrefix())
 	assert.Equal(t, "orders/shard-12/backups/2026-10-03T14-25-07Z-abcd.json", p.ManifestKey(id))
 	assert.Equal(t, "orders/shard-12/backups/2026-10-03T14-25-07Z-abcd/", p.FilesPrefix(id))
@@ -106,6 +106,11 @@ func TestParseManifestKey(t *testing.T) {
 		_, _, ok := ParseManifestKey(key)
 		assert.False(t, ok, key)
 	}
+}
+
+func TestIsCompressedKey(t *testing.T) {
+	assert.True(t, IsCompressedKey("orders/shard-12/sst/abcd-000123.sst.zst"))
+	assert.False(t, IsCompressedKey("orders/shard-12/sst/abcd-000123.sst"))
 }
 
 func TestIsSSTName(t *testing.T) {

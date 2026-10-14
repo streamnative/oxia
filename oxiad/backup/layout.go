@@ -162,13 +162,20 @@ func (p ShardPath) SSTPrefix() string {
 }
 
 // SSTKey is the key of an SST file of a database, by the file name Pebble
-// gave it, e.g. "000123.sst".
-func (p ShardPath) SSTKey(lineage string, name string, compressed bool) string {
+// gave it, e.g. "000123.sst", stored with the given compression (see
+// Manifest.Compression): a key that ends with CompressedExt holds the
+// zstd-compressed file.
+func (p ShardPath) SSTKey(lineage string, name string, compression string) string {
 	key := p.SSTPrefix() + lineage + "-" + name
-	if compressed {
+	if compression == CompressionZstd {
 		key += CompressedExt
 	}
 	return key
+}
+
+// IsCompressedKey reports whether the object at key holds a compressed file.
+func IsCompressedKey(key string) bool {
+	return strings.HasSuffix(key, CompressedExt)
 }
 
 // ManifestsPrefix is the prefix of the manifests, and of the per-backup
