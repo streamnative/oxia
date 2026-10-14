@@ -100,10 +100,7 @@ func main() {
 				_, _ = fmt.Fprintln(os.Stderr, err)
 				os.Exit(1)
 			}
-			// A restarted server can come back with a new IP, while the lookup
-			// triggered by the disconnect still returns the old one. Re-resolve
-			// within a second instead of the gRPC default of 30s. Lookups only
-			// happen when a connection fails, so this adds no steady-state load.
+			// Pick up the new IP of a restarted server sooner than the 30s default
 			dns.SetMinResolutionInterval(time.Second)
 			if err := rootCmd.Execute(); err != nil {
 				os.Exit(1)
