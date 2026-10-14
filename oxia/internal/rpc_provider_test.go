@@ -17,7 +17,9 @@ package internal
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"math/rand/v2"
 	"net"
 	"slices"
 	"sync"
@@ -168,15 +170,29 @@ func startTestOxiaClientServer(t *testing.T, oxiaClientServer proto.OxiaClientSe
 }
 
 // unreachableAddress returns an address where nothing is listening, so
-// connecting to it fails with "connection refused".
+// connecting to it fails with "connection refused". The port is in
+// [10000, 32768): above the fixed ports that tests bind, e.g. Oxia's default
+// 6648, and below the default ephemeral port ranges of Linux (32768-60999),
+// macOS and Windows (49152-65535), so the kernel doesn't give it to a socket
+// that binds port 0 meanwhile, e.g. a listener of a test package that runs in
+// parallel, which would accept the connection. The scan starts at a random
+// port, so that it rarely picks a port that a parallel test binds.
 func unreachableAddress(t *testing.T) string {
 	t.Helper()
 
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	address := listener.Addr().String()
-	require.NoError(t, listener.Close())
-	return address
+	const minFixedPort, ephemeralPortsStart = 10000, 32768
+	const ports = ephemeralPortsStart - minFixedPort
+	start := rand.IntN(ports)
+	for i := 0; ; i++ {
+		require.Less(t, i, ports, "no free port below the ephemeral port range")
+		listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", minFixedPort+(start+i)%ports))
+		if err != nil {
+			continue
+		}
+		address := listener.Addr().String()
+		require.NoError(t, listener.Close())
+		return address
+	}
 }
 
 type testShardManager struct {
