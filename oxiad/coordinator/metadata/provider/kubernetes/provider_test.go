@@ -109,10 +109,10 @@ func TestProviderGetLeaderNameUnavailable(t *testing.T) {
 }
 
 // The operators manage the config map of the configuration, e.g. with Helm.
-// kubectl replace --force, kubectl delete followed by kubectl apply, and a Helm
-// replace delete it before they create it again, and an edit can remove its
-// key. A reload in between waits for the document to be restored: an empty
-// configuration would drain every data server and delete every namespace.
+// kubectl replace --force, and kubectl delete followed by kubectl apply, delete
+// it before they create it again, and an edit can remove its key. A reload in
+// between waits for the document to be restored: an empty configuration would
+// drain every data server and delete every namespace.
 func TestProviderReloadKeepsLoadedDocumentUntilConfigMapIsRestored(t *testing.T) {
 	kc := fake.NewSimpleClientset()
 	configMaps := kc.CoreV1().ConfigMaps("ns")
