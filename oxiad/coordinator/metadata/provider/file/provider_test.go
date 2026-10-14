@@ -16,6 +16,7 @@ package file
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -163,4 +164,70 @@ func TestCloseEndsWaitToBecomeLeader(t *testing.T) {
 	require.NoError(t, leader.Close())
 	requireBecomesLeader(t, acquired)
 	require.NoError(t, follower.Close())
+}
+
+// A writer that rewrites the file in place, as os.WriteFile does, truncates it
+// before it writes the new content, and one that replaces it may remove it
+// first. A reload in between waits for the new content: an empty configuration
+// would delete every namespace.
+func TestProviderReloadKeepsDocumentUntilFileIsRewritten(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config")
+	require.NoError(t, writeConfigFile(path, 4))
+	p, err := NewProvider(t.Context(), path, metadatacodec.ClusterConfigCodec, metadatacommon.WatchDisabled, "test")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		assert.NoError(t, p.Close())
+	})
+	requireServers(t, p, 4)
+
+	require.NoError(t, os.Truncate(path, 0))
+	finishRewriteLater(t, path, 3)
+	require.NoError(t, p.Reload())
+	requireServers(t, p, 3)
+
+	require.NoError(t, os.Remove(path))
+	finishRewriteLater(t, path, 2)
+	require.NoError(t, p.Reload())
+	requireServers(t, p, 2)
+}
+
+// writeConfigFile writes a configuration with the given number of servers, in
+// place.
+func writeConfigFile(path string, servers int) error {
+	config := &commonproto.ClusterConfiguration{}
+	for i := range servers {
+		config.Servers = append(config.Servers, &commonproto.DataServerIdentity{
+			Public:   fmt.Sprintf("server-%d:6648", i),
+			Internal: fmt.Sprintf("server-%d:6649", i),
+		})
+	}
+	data, err := metadatacodec.ClusterConfigCodec.MarshalYAML(config)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o600)
+}
+
+// finishRewriteLater writes a configuration with the given number of servers
+// from another goroutine, after a delay: a reload that the caller starts right
+// away first finds the file as the caller left it, empty or missing.
+func finishRewriteLater(t *testing.T, path string, servers int) {
+	t.Helper()
+
+	written := make(chan error, 1)
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		written <- writeConfigFile(path, servers)
+	}()
+	t.Cleanup(func() {
+		assert.NoError(t, <-written)
+	})
+}
+
+func requireServers(t *testing.T, p provider.Provider[*commonproto.ClusterConfiguration], servers int) {
+	t.Helper()
+
+	loaded, err := p.Load()
+	require.NoError(t, err)
+	require.Len(t, loaded.Value.GetServers(), servers)
 }
