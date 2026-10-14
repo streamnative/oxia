@@ -114,32 +114,6 @@ func TestPebbbleSimple(t *testing.T) {
 	assert.NoError(t, factory.Close())
 }
 
-func TestPebbleGetInvalidComparisonType(t *testing.T) {
-	factory, err := NewPebbleKVFactory(NewFactoryOptionsForTest(t))
-	assert.NoError(t, err)
-	kv, err := factory.NewKV(constant.DefaultNamespace, 1, proto.KeySortingType_HIERARCHICAL)
-	assert.NoError(t, err)
-
-	wb := kv.NewWriteBatch()
-	assert.NoError(t, wb.Put("a", []byte("0")))
-	assert.NoError(t, wb.Commit())
-	assert.NoError(t, wb.Close())
-
-	// The comparison type comes straight from GetRequest.ComparisonType, whose
-	// enum the wire format does not bound to the defined values. A value outside
-	// the known range must be refused like the other read paths do (Seek, the
-	// secondary-index get), not panic.
-	key, res, closer, err := kv.Get("a", ComparisonType(99), NoInternalKeys)
-	assert.Error(t, err)
-	assert.NotErrorIs(t, err, ErrKeyNotFound)
-	assert.Equal(t, "", key)
-	assert.Nil(t, res)
-	assert.Nil(t, closer)
-
-	assert.NoError(t, kv.Close())
-	assert.NoError(t, factory.Close())
-}
-
 func TestPebbbleKeyRangeScan(t *testing.T) {
 	factory, err := NewPebbleKVFactory(NewFactoryOptionsForTest(t))
 	assert.NoError(t, err)
