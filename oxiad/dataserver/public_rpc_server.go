@@ -286,6 +286,11 @@ func (s *publicRpcServer) WriteStream(stream proto.OxiaClient_WriteStreamServer)
 	select {
 	case err := <-finished:
 		if err != nil {
+			// After ErrNodeIsNotLeader, the clients send all the writes of the stream again. The
+			// write that failed holds one pending slot, but the others may have been appended
+			if errors.Is(err, constant.ErrNodeIsNotLeader) && len(pendingWrites) > 1 {
+				err = constant.ErrResourceUnavailable
+			}
 			s.log.Warn("Failed to perform write operation", slog.Any("error", err))
 			return constant.IntoGrpcStatusError(err)
 		}
@@ -295,9 +300,10 @@ func (s *publicRpcServer) WriteStream(stream proto.OxiaClient_WriteStreamServer)
 	// Monitor the leader context to make sure the gRPC server can be gracefully shut down.
 	// The leader controller is closed: this node no longer leads the shard. Reply with a
 	// retryable error, as the plain context error would reach the client as a
-	// non-retryable Canceled status, failing the in-flight writes.
+	// non-retryable Canceled status. Not ErrNodeIsNotLeader: the next leader may commit the
+	// writes that wait for the commit, and the clients would send them again.
 	case <-leaderCtx.Done():
-		return constant.IntoGrpcStatusError(constant.ErrNodeIsNotLeader)
+		return constant.IntoGrpcStatusError(constant.ErrResourceUnavailable)
 	}
 }
 

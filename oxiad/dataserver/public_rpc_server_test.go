@@ -183,7 +183,9 @@ func TestWriteStreamLeaderControllerClosed(t *testing.T) {
 
 	_, err = stream.Recv()
 	oxiaErr, _ := constant.FromGrpcError(err)
-	assert.ErrorIs(t, oxiaErr, constant.ErrNodeIsNotLeader)
+	// Not ErrNodeIsNotLeader, after which the clients send the writes again: the next
+	// leader may commit the writes that waited for the commit
+	assert.ErrorIs(t, oxiaErr, constant.ErrResourceUnavailable)
 	assert.True(t, constant.IsRetryable(oxiaErr), "the client does not retry on: %v", err)
 }
 
@@ -487,4 +489,86 @@ func TestWarnOnStreamErrorSkipsClientDisconnectErrors(t *testing.T) {
 	buf.Reset()
 	server.warnOnStreamError(context.Background(), "read", context.Canceled)
 	assert.Empty(t, buf.String())
+}
+
+type contextWriteStream struct {
+	mockWriteStream
+	ctx context.Context
+}
+
+func (m *contextWriteStream) Context() context.Context { return m.ctx }
+
+type contextWriteLeaderController struct {
+	mockWriteLeaderController
+	ctx context.Context
+}
+
+func (m *contextWriteLeaderController) Context() context.Context { return m.ctx }
+func (*contextWriteLeaderController) Namespace() string          { return "default" }
+func (*contextWriteLeaderController) ShardID() int64             { return 0 }
+
+// startWriteStream runs WriteStream against a leader controller whose writes
+// the test completes, and returns the error that ends the stream.
+func startWriteStream(t *testing.T) (*contextWriteStream, *contextWriteLeaderController, <-chan error) {
+	t.Helper()
+	streamCtx, cancelStream := context.WithCancel(metadata.NewIncomingContext(context.Background(),
+		metadata.New(map[string]string{constant.MetadataShardId: "0", constant.MetadataNamespace: "default"})))
+	t.Cleanup(cancelStream)
+
+	sendGate := make(chan struct{})
+	close(sendGate)
+	stream := &contextWriteStream{
+		mockWriteStream: mockWriteStream{
+			requests: make(chan *proto.WriteRequest, 10),
+			sent:     make(chan *proto.WriteResponse, 10),
+			sendGate: sendGate,
+		},
+		ctx: streamCtx,
+	}
+	lc := &contextWriteLeaderController{
+		mockWriteLeaderController: mockWriteLeaderController{
+			writes: make(chan concurrent.Callback[*proto.WriteResponse], 10),
+		},
+		ctx: context.Background(),
+	}
+	server := &publicRpcServer{
+		log: slog.Default(),
+		shardsDirector: &testShardsDirector{
+			getLeader: func(int64) (lead.LeaderController, error) { return lc, nil },
+		},
+	}
+	errs := make(chan error, 1)
+	go func() { errs <- server.WriteStream(stream) }()
+	return stream, lc, errs
+}
+
+func requireWriteStreamError(t *testing.T, result <-chan error, expected error) {
+	t.Helper()
+	err := receiveWithTimeout(t, result, "the write stream did not end")
+	oxiaErr, _ := constant.FromGrpcError(err)
+	assert.ErrorIs(t, oxiaErr, expected, "stream ended with: %v", err)
+	assert.True(t, constant.IsRetryable(oxiaErr), "the client does not retry on: %v", err)
+}
+
+// The clients send all the writes of a stream again after ErrNodeIsNotLeader: a
+// write rejected as not leader ends the stream with it only if no other write of
+// the stream may have been appended.
+func TestWriteStreamWriteRejectedAsNotLeader(t *testing.T) {
+	t.Run("only write rejected as not leader", func(t *testing.T) {
+		stream, lc, result := startWriteStream(t)
+		stream.requests <- &proto.WriteRequest{}
+		receiveWithTimeout(t, lc.writes, "leader did not receive the write").OnCompleteError(constant.ErrNodeIsNotLeader)
+
+		requireWriteStreamError(t, result, constant.ErrNodeIsNotLeader)
+	})
+
+	t.Run("write rejected as not leader after another one", func(t *testing.T) {
+		stream, lc, result := startWriteStream(t)
+		stream.requests <- &proto.WriteRequest{}
+		receiveWithTimeout(t, lc.writes, "leader did not receive the first write")
+		stream.requests <- &proto.WriteRequest{}
+		receiveWithTimeout(t, lc.writes, "leader did not receive the second write").OnCompleteError(constant.ErrNodeIsNotLeader)
+
+		requireWriteStreamError(t, result, constant.ErrResourceUnavailable)
+	})
 }
