@@ -31,6 +31,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/resolver/dns"
 	"google.golang.org/grpc/status"
 
 	"github.com/oxia-db/oxia/common/auth"
@@ -56,7 +57,21 @@ const (
 	// pooled connection kills every stream multiplexed on it, so a single
 	// missed ping on a saturated-but-healthy server must not tear it down.
 	connectionHealthFailureThreshold = 3
+
+	// dnsMinResolutionInterval bounds how often a connection re-resolves the
+	// DNS name of its target. With the gRPC default of 30s, a server that
+	// restarts with a new IP stays unreachable for up to 30s whenever the
+	// lookup triggered by the disconnect still returns the old IP. Lookups
+	// only happen when a connection fails, so a short interval does not add
+	// DNS load in the steady state.
+	dnsMinResolutionInterval = time.Second
 )
+
+// ConfigureDNSResolver sets the process-wide options of the gRPC DNS resolver.
+// It must be called at startup, before any gRPC connection is created.
+func ConfigureDNSResolver() {
+	dns.SetMinResolutionInterval(dnsMinResolutionInterval)
+}
 
 type connectionFailureCallback func(target string)
 

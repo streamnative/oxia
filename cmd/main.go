@@ -25,6 +25,7 @@ import (
 	"github.com/oxia-db/oxia/cmd/config"
 
 	"github.com/oxia-db/oxia/common/process"
+	"github.com/oxia-db/oxia/common/rpc"
 	"github.com/oxia-db/oxia/oxiad/common/logging"
 
 	"github.com/oxia-db/oxia/cmd/admin"
@@ -98,6 +99,7 @@ func main() {
 				_, _ = fmt.Fprintln(os.Stderr, err)
 				os.Exit(1)
 			}
+			rpc.ConfigureDNSResolver()
 			if err := rootCmd.Execute(); err != nil {
 				os.Exit(1)
 			}
