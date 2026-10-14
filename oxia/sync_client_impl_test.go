@@ -314,6 +314,50 @@ func TestSyncClient_WriteIsNotSentAfterItsContextEndsWithoutLeader(t *testing.T)
 	}
 }
 
+// The SyncClient fails a list with the error of the first shard that fails,
+// e.g. when no server supports an option of the request. The lists of the
+// other shards end with it, although the context of the caller is not done.
+func TestSyncClientListFailsWithTheFirstShardError(t *testing.T) {
+	failure := errors.New("shard unavailable")
+	for _, test := range []struct {
+		name     string
+		executor *staticExecutor
+	}{
+		{"every-shard-fails", &staticExecutor{
+			errs: map[int64]error{1: failure, 2: failure, 3: failure, 4: failure},
+		}},
+		{"one-shard-fails", &staticExecutor{
+			keys: map[int64][]string{2: {"a", "b"}, 3: {"c", "d"}, 4: {"e", "f"}},
+			errs: map[int64]error{1: failure},
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			client := newSyncClient(newScanTestClient(test.executor, 1, 2, 3, 4))
+
+			keys, err := client.List(context.Background(), "a", "z")
+			assert.ErrorIs(t, err, failure)
+			assert.Nil(t, keys)
+			assertGoroutinesEnd(t, "(*clientImpl).List")
+		})
+	}
+}
+
+// Once the context is done, the lists of the shards drop the keys they have
+// left: the SyncClient fails with the error of the context, instead of
+// returning a part of the keys.
+func TestSyncClientListFailsOnceItsContextIsDone(t *testing.T) {
+	client := newSyncClient(newScanTestClient(&staticExecutor{
+		keys: map[int64][]string{1: {"a", "b"}, 2: {"c", "d"}},
+	}, 1, 2))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	keys, err := client.List(ctx, "a", "z")
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.Nil(t, keys)
+	assertGoroutinesEnd(t, "(*clientImpl).List")
+}
+
 func assertCancellable(t *testing.T, operationFunc func(context.Context) error) {
 	t.Helper()
 

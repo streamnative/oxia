@@ -141,6 +141,9 @@ func (c *syncClientImpl) Get(ctx context.Context, key string, options ...GetOpti
 }
 
 func (c *syncClientImpl) List(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, options ...ListOption) ([]string, error) {
+	// Ends the lists of the other shards when one fails
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	ch := c.asyncClient.List(ctx, minKeyInclusive, maxKeyExclusive, options...)
 
 	keys := make([]string, 0)
@@ -152,6 +155,10 @@ func (c *syncClientImpl) List(ctx context.Context, minKeyInclusive string, maxKe
 		keys = append(keys, r.Keys...)
 	}
 
+	// Once ctx is done, the shards drop the keys they have left
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	return keys, nil
 }
 

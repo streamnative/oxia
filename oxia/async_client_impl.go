@@ -541,10 +541,18 @@ func (c *clientImpl) listFromShard(ctx context.Context, minKeyInclusive string, 
 	retryCtx, cancel := context.WithTimeout(ctx, c.options.requestTimeout)
 	defer cancel()
 
+	// Once ctx is done, the caller may have stopped reading: drop the results
+	// instead of waiting forever to send them
+	send := func(result ListResult) {
+		select {
+		case ch <- result:
+		case <-ctx.Done():
+		}
+	}
 	if err := c.executor.ExecuteList(retryCtx, request, func(response *proto.ListResponse) {
-		ch <- ListResult{Keys: response.Keys}
+		send(ListResult{Keys: response.Keys})
 	}); err != nil {
-		ch <- ListResult{Err: err}
+		send(ListResult{Err: err})
 	}
 }
 
@@ -563,18 +571,17 @@ func (c *clientImpl) List(ctx context.Context, minKeyInclusive string, maxKeyExc
 		// Do the list on all shards and aggregate the responses
 		shardIDs := c.shardManager.GetAll()
 
-		wg := concurrent.NewWaitGroup(len(shardIDs))
+		// The channel is closed once no shard can send to it anymore
+		var wg sync.WaitGroup
 		for _, shardId := range shardIDs {
 			shardIdPtr := shardId
-			go func() {
-				defer wg.Done()
-
+			wg.Go(func() {
 				c.listFromShard(ctx, minKeyInclusive, maxKeyExclusive, opts.showInternalKeys, shardIdPtr, opts.secondaryIndexName, ch)
-			}()
+			})
 		}
 
 		go func() {
-			_ = wg.Wait(ctx)
+			wg.Wait()
 			close(ch)
 		}()
 	}
@@ -622,13 +629,14 @@ func (c *clientImpl) RangeScan(ctx context.Context, minKeyInclusive string, maxK
 		// Do the list on all shards and aggregate the responses
 		shardIDs := c.shardManager.GetAll()
 		channels := make([]chan rangeScanResult, len(shardIDs))
+		scanCtx, cancel := context.WithCancel(ctx)
 
 		for i, shardId := range shardIDs {
 			shardIdPtr := shardId
 			ch := make(chan rangeScanResult)
 			channels[i] = ch
 			go func() {
-				c.rangeScanFromShard(ctx, minKeyInclusive, maxKeyExclusive, opts.showInternalKeys, shardIdPtr,
+				c.rangeScanFromShard(scanCtx, minKeyInclusive, maxKeyExclusive, opts.showInternalKeys, shardIdPtr,
 					opts.secondaryIndexName, func(result GetResult, secondaryIndexKey *string) {
 						ch <- rangeScanResult{result, secondaryIndexKey}
 					})
@@ -636,7 +644,17 @@ func (c *clientImpl) RangeScan(ctx context.Context, minKeyInclusive string, maxK
 			}()
 		}
 
-		go aggregateAndSortRangeScanAcrossShards(c.keyOrder(), channels, outCh)
+		go func() {
+			aggregateAndSortRangeScanAcrossShards(c.keyOrder(), channels, outCh)
+
+			// The merge stops at the first error: cancel the scans of the other
+			// shards, and drain the results they wait to send until they end
+			cancel()
+			for _, ch := range channels {
+				for range ch {
+				}
+			}
+		}()
 	}
 
 	return outCh
