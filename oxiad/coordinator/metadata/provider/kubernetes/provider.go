@@ -17,6 +17,7 @@ package kubernetes
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
@@ -68,6 +69,9 @@ type Provider[T gproto.Message] struct {
 	watchEnabled  metadatacommon.WatchMode
 	name          string
 	leaderElector atomic.Pointer[leaderelection.LeaderElector]
+	// hasDocument is set once this provider read the document from the config
+	// map, or wrote it, and is never reset.
+	hasDocument atomic.Bool
 
 	metadataSize      atomic.Int64
 	getLatencyHisto   metric.LatencyHistogram
@@ -148,20 +152,14 @@ func (m *Provider[T]) load(ctx context.Context) (*provider.Versioned[T], error) 
 	cm, err := m.kubernetes.CoreV1().ConfigMaps(m.namespace).Get(ctx, m.configMapName, metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			return &provider.Versioned[T]{
-				Value:   m.codec.NewZero(),
-				Version: metadatacommon.NotExists,
-			}, nil
+			return m.loadMissingDocument()
 		}
 		return nil, err
 	}
 
 	data, ok := cm.Data[m.codec.GetKey()]
 	if !ok {
-		return &provider.Versioned[T]{
-			Value:   m.codec.NewZero(),
-			Version: metadatacommon.NotExists,
-		}, nil
+		return m.loadMissingDocument()
 	}
 
 	slog.Debug("Get metadata successful",
@@ -171,9 +169,29 @@ func (m *Provider[T]) load(ctx context.Context) (*provider.Versioned[T], error) 
 	if err != nil {
 		panic(err)
 	}
+	m.hasDocument.Store(true)
 	return &provider.Versioned[T]{
 		Value:   value,
 		Version: metadatacommon.Version(cm.ResourceVersion),
+	}, nil
+}
+
+// loadMissingDocument loads a config map that doesn't exist, or doesn't hold
+// the document. There is no document until the first write creates it. Once
+// this provider read or wrote the document, though, it was deleted: kubectl
+// replace --force, and kubectl delete followed by kubectl apply, delete the
+// config map before they create it again, and an edit can remove its key.
+// Loading an empty document would drain every data server and delete every
+// namespace, so the load fails, and a reload keeps the cached document until
+// the config map holds it again.
+func (m *Provider[T]) loadMissingDocument() (*provider.Versioned[T], error) {
+	if m.hasDocument.Load() {
+		return nil, fmt.Errorf("config map %s/%s no longer holds %s, waiting for it to be restored",
+			m.namespace, m.configMapName, m.codec.GetKey())
+	}
+	return &provider.Versioned[T]{
+		Value:   m.codec.NewZero(),
+		Version: metadatacommon.NotExists,
 	}, nil
 }
 
@@ -220,6 +238,7 @@ func (m *Provider[T]) write(snapshot provider.Versioned[T]) (*provider.Versioned
 	}
 	version := metadatacommon.Version(cm.ResourceVersion)
 	m.metadataSize.Store(int64(len(cmData.Data[m.codec.GetKey()])))
+	m.hasDocument.Store(true)
 	return &provider.Versioned[T]{
 		Value:   m.codec.Clone(snapshot.Value),
 		Version: version,
