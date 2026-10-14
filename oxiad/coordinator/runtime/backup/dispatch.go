@@ -238,8 +238,10 @@ func (s *Scheduler) assignReplica(state *shardState, meta *proto.ShardMetadata, 
 }
 
 // replicaReady reports whether the backup replica can take a backup now:
-// it is available, and it is the leader, or a follower that has applied
-// everything the leader had committed when asked.
+// it is available, and it is the leader, or a member that has applied
+// everything the leader had committed when asked. A follower reports FENCED
+// until the first entry it receives after the election: its database is as
+// complete as a FOLLOWER's.
 func (s *Scheduler) replicaReady(shard int64, meta *proto.ShardMetadata, replica *proto.DataServerIdentity) bool {
 	if !s.available(replica.GetNameOrDefault()) {
 		return false
@@ -258,8 +260,12 @@ func (s *Scheduler) replicaReady(shard int64, meta *proto.ShardMetadata, replica
 	if err != nil {
 		return false
 	}
-	return replicaStatus.GetStatus() == proto.ServingStatus_FOLLOWER &&
-		replicaStatus.GetCommitOffset() >= leaderStatus.GetCommitOffset()
+	switch replicaStatus.GetStatus() {
+	case proto.ServingStatus_FOLLOWER, proto.ServingStatus_FENCED:
+		return replicaStatus.GetCommitOffset() >= leaderStatus.GetCommitOffset()
+	default:
+		return false
+	}
 }
 
 // applyResponse updates the state of a shard from the response of its

@@ -249,6 +249,8 @@ func TestExecutorListBackupsReturnsTheBackupsOfANamespace(t *testing.T) {
 	assert.Equal(t, done.LastBackup.SizeBytes, info.SizeBytes)
 	assert.EqualValues(t, 1, info.SstCount)
 	assert.Equal(t, fullRange(), info.HashRange)
+	assert.Equal(t, "ns", info.NamespaceConfig.GetName())
+	assert.EqualValues(t, 3, info.NamespaceConfig.GetReplicationFactor())
 
 	_, err = e.ListBackups(t.Context(), &proto.ListBackupsRequest{Namespace: "ns"})
 	assert.ErrorContains(t, err, "no destination")

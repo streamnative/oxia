@@ -93,3 +93,16 @@ func TestPlanSplitsTheParentAroundANewerMiddleRange(t *testing.T) {
 	assert.Equal(t, Part{Range: middle.Range, Source: middle}, parts[1])
 	assert.Equal(t, Part{Range: Range{Min: 3 * quarter, Max: FullRange.Max}, Source: parent}, parts[2])
 }
+
+func TestPlanUsesTheStartTimeOfTheBackupsWithinASecond(t *testing.T) {
+	at := retentionNow()
+	older := Summary{Namespace: "ns", Shard: 1, ID: NewID(at, "aaaa"), CreatedAt: at.Add(100 * time.Millisecond),
+		Range: FullRange}
+	newer := Summary{Namespace: "ns", Shard: 1, ID: NewID(at, "bbbb"), CreatedAt: at.Add(600 * time.Millisecond),
+		Range: FullRange}
+	parts, err := Plan([]Summary{older, newer}, at.Add(300*time.Millisecond))
+	require.NoError(t, err)
+	assert.Equal(t, older.ID, parts[0].Source.ID, "the newer one started after asOf")
+	_, err = Plan([]Summary{older, newer}, at.Add(50*time.Millisecond))
+	assert.ErrorIs(t, err, ErrNoBackup)
+}

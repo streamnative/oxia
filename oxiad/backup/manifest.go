@@ -113,28 +113,37 @@ const CompressionZstd = "zstd"
 // Summary is what the retention rule, the restore planning and the listings
 // need of a backup: its manifest without the file lists.
 type Summary struct {
-	Namespace    string
-	Shard        int64
-	ID           ID
+	Namespace string
+	Shard     int64
+	ID        ID
+	// CreatedAt is when the backup started, with more precision than the
+	// time of the ID: a restore as of a time picks the backups started at or
+	// before it.
+	CreatedAt    time.Time
 	Range        Range
 	Term         int64
 	CommitOffset int64
 	// SizeBytes is the size of the files of the backup, before compression.
 	SizeBytes int64
 	SSTCount  int
+	// NamespaceConfig is the configuration of the namespace recorded in the
+	// manifest, for a restore to recreate it.
+	NamespaceConfig json.RawMessage
 }
 
 // Summary returns the summary of the manifest, which must be valid.
 func (m *Manifest) Summary() Summary {
 	id, _ := ParseID(m.ID)
 	s := Summary{
-		Namespace:    m.Namespace,
-		Shard:        m.Shard,
-		ID:           id,
-		Range:        m.Range,
-		Term:         m.Term,
-		CommitOffset: m.CommitOffset,
-		SSTCount:     len(m.SSTs),
+		Namespace:       m.Namespace,
+		Shard:           m.Shard,
+		ID:              id,
+		CreatedAt:       m.CreatedAt,
+		Range:           m.Range,
+		Term:            m.Term,
+		CommitOffset:    m.CommitOffset,
+		SSTCount:        len(m.SSTs),
+		NamespaceConfig: m.NamespaceConfig,
 	}
 	for _, f := range m.SSTs {
 		s.SizeBytes += f.Size
@@ -143,6 +152,15 @@ func (m *Manifest) Summary() Summary {
 		s.SizeBytes += f.Size
 	}
 	return s
+}
+
+// StartedAt is when the backup started: CreatedAt, or the time of the ID
+// when the manifest doesn't record it.
+func (s Summary) StartedAt() time.Time {
+	if s.CreatedAt.IsZero() {
+		return s.ID.Time
+	}
+	return s.CreatedAt
 }
 
 // Path is the location of the backup in the store.

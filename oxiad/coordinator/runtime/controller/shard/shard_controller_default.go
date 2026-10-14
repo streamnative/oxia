@@ -260,6 +260,13 @@ func (s *controller) run(bo backoff.BackOff) error {
 		// triggering elections that would interfere with the split controller.
 		s.logger.Info("Child shard during split, waiting for split to complete")
 		s.waitForSplitComplete()
+	case initShardMeta.GetRestore() != nil:
+		// A shard created by a restore: its members install the backup before
+		// its first election
+		if err := s.restoreShard(initShardMeta); err != nil {
+			return err
+		}
+		s.electLeader(initShardMeta, nil)
 	case initShardMeta.Leader == nil || initShardMeta.GetStatusOrDefault() != proto.ShardStatusSteadyState:
 		s.electLeader(initShardMeta, nil)
 	default:

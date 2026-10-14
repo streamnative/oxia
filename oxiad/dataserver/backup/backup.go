@@ -17,6 +17,7 @@ package backup
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -94,7 +95,7 @@ func (j *backupJob) run(ctx context.Context) (*LastBackup, error) {
 		NamespaceConfig: j.namespaceConfig,
 		Term:            j.checkpoint.Term,
 		CommitOffset:    j.checkpoint.CommitOffset,
-		CreatedAt:       id.Time,
+		CreatedAt:       started,
 		Compression:     j.policy.compression,
 	}
 	var uploadedBytes int64
@@ -217,10 +218,15 @@ func (j *backupJob) uploadAll(ctx context.Context, uploads []upload) ([]backup.F
 	}
 	close(next)
 	wg.Wait()
+	// The first failure cancels the others: report it rather than them
+	var failed error
 	for i, err := range errs {
-		if err != nil {
-			return nil, fmt.Errorf("upload %s: %w", uploads[i].name, err)
+		if err != nil && (failed == nil || errors.Is(failed, context.Canceled)) {
+			failed = fmt.Errorf("upload %s: %w", uploads[i].name, err)
 		}
+	}
+	if failed != nil {
+		return nil, failed
 	}
 	// A cancellation from outside skips the uploads left without an error
 	if err := ctx.Err(); err != nil {

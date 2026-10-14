@@ -411,10 +411,18 @@ func (e *Executor) ListBackups(ctx context.Context, req *proto.ListBackupsReques
 	}
 	res := &proto.ListBackupsResponse{Backups: make([]*proto.BackupInfo, 0, len(summaries))}
 	for _, s := range summaries {
+		namespaceConfig := &proto.Namespace{}
+		if len(s.NamespaceConfig) > 0 {
+			if err := protojson.Unmarshal(s.NamespaceConfig, namespaceConfig); err != nil {
+				return nil, fmt.Errorf("%w: namespace configuration of %s: %w", backup.ErrInvalidManifest,
+					s.ID, err)
+			}
+		}
 		res.Backups = append(res.Backups, &proto.BackupInfo{
+			NamespaceConfig: namespaceConfig,
 			Shard:           s.Shard,
 			BackupId:        s.ID.String(),
-			TimestampMillis: s.ID.Time.UnixMilli(),
+			TimestampMillis: s.StartedAt().UnixMilli(),
 			CommitOffset:    s.CommitOffset,
 			Term:            s.Term,
 			HashRange:       &proto.HashRange{Min: s.Range.Min, Max: s.Range.Max},

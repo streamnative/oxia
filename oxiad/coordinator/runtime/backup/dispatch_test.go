@@ -226,3 +226,18 @@ func TestSchedulerDispatchHandlesManyShardsAtOnce(t *testing.T) {
 	f.scheduler.round()
 	assert.Len(t, f.rpc.backups(), 20)
 }
+
+func TestSchedulerDispatchAcceptsAFencedFollowerAtTheLeadersCommitOffset(t *testing.T) {
+	f := newFixture(t, enabledPolicy())
+	f.rpc.setStatus("s1", proto.ServingStatus_LEADER, 10)
+	f.rpc.setStatus("s2", proto.ServingStatus_FENCED, 10)
+	f.scheduler.round()
+	calls := f.rpc.backups()
+	require.Len(t, calls, 1)
+	assert.Equal(t, "s2", calls[0].node)
+
+	f.rpc.setStatus("s2", proto.ServingStatus_NOT_MEMBER, 10)
+	f.clock.Advance(time.Hour)
+	f.scheduler.round()
+	assert.Len(t, f.rpc.backups(), 1, "a member that doesn't host the shard isn't ready")
+}

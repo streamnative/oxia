@@ -55,11 +55,15 @@ func TestManifestSummary(t *testing.T) {
 	assert.Equal(t, "orders", s.Namespace)
 	assert.Equal(t, int64(12), s.Shard)
 	assert.Equal(t, m.ID, s.ID.String())
+	assert.Equal(t, m.CreatedAt, s.CreatedAt)
+	assert.Equal(t, m.CreatedAt, s.StartedAt())
+	assert.Equal(t, s.ID.Time, Summary{ID: s.ID}.StartedAt())
 	assert.Equal(t, m.Range, s.Range)
 	assert.Equal(t, int64(7), s.Term)
 	assert.Equal(t, int64(1234), s.CommitOffset)
 	assert.Equal(t, int64(1000+2000+300), s.SizeBytes)
 	assert.Equal(t, 2, s.SSTCount)
+	assert.Equal(t, m.NamespaceConfig, s.NamespaceConfig)
 	assert.Equal(t, "orders/shard-12/backups/2026-10-03T14-00-00Z-abcd.json", s.ManifestKey())
 }
 

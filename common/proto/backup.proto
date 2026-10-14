@@ -139,6 +139,8 @@ message BackupInfo {
   // The size of the backup, before compression
   uint64 size_bytes = 7;
   uint32 sst_count = 8;
+  // The configuration of the namespace when the backup was taken
+  Namespace namespace_config = 9;
 }
 
 message ListBackupsResponse {

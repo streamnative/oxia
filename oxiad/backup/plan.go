@@ -34,8 +34,9 @@ type Part struct {
 	Source Summary
 }
 
-// Plan picks, for every part of the hash space, the newest backup taken at
-// or before asOf, and returns the parts in range order. It returns ErrNoBackup
+// Plan picks, for every part of the hash space, the newest backup started
+// at or before asOf (by CreatedAt, or by the time of the ID without it), and
+// returns the parts in range order. It returns ErrNoBackup
 // when some part has none. A backup can be the source of several parts, when
 // newer backups cover parts of its range: e.g. after a split, when only one
 // child has a backup at asOf, the other half of the space is restored from
@@ -43,7 +44,7 @@ type Part struct {
 func Plan(backups []Summary, asOf time.Time) ([]Part, error) {
 	candidates := make([]Summary, 0, len(backups))
 	for _, b := range backups {
-		if !b.ID.Time.After(asOf) {
+		if !b.StartedAt().After(asOf) {
 			candidates = append(candidates, b)
 		}
 	}

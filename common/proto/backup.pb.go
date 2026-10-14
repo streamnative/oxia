@@ -633,10 +633,12 @@ type BackupInfo struct {
 	Term            int64                  `protobuf:"varint,5,opt,name=term,proto3" json:"term,omitempty"`
 	HashRange       *HashRange             `protobuf:"bytes,6,opt,name=hash_range,json=hashRange,proto3" json:"hash_range,omitempty"`
 	// The size of the backup, before compression
-	SizeBytes     uint64 `protobuf:"varint,7,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
-	SstCount      uint32 `protobuf:"varint,8,opt,name=sst_count,json=sstCount,proto3" json:"sst_count,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	SizeBytes uint64 `protobuf:"varint,7,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
+	SstCount  uint32 `protobuf:"varint,8,opt,name=sst_count,json=sstCount,proto3" json:"sst_count,omitempty"`
+	// The configuration of the namespace when the backup was taken
+	NamespaceConfig *Namespace `protobuf:"bytes,9,opt,name=namespace_config,json=namespaceConfig,proto3" json:"namespace_config,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *BackupInfo) Reset() {
@@ -723,6 +725,13 @@ func (x *BackupInfo) GetSstCount() uint32 {
 		return x.SstCount
 	}
 	return 0
+}
+
+func (x *BackupInfo) GetNamespaceConfig() *Namespace {
+	if x != nil {
+		return x.NamespaceConfig
+	}
+	return nil
 }
 
 type ListBackupsResponse struct {
@@ -979,7 +988,7 @@ const file_backup_proto_rawDesc = "" +
 	"\vdestination\x18\x01 \x01(\tR\vdestination\x12\x1c\n" +
 	"\tnamespace\x18\x02 \x01(\tR\tnamespace\x12\x19\n" +
 	"\x05shard\x18\x03 \x01(\x03H\x00R\x05shard\x88\x01\x01B\b\n" +
-	"\x06_shard\"\x9b\x02\n" +
+	"\x06_shard\"\xe3\x02\n" +
 	"\n" +
 	"BackupInfo\x12\x14\n" +
 	"\x05shard\x18\x01 \x01(\x03R\x05shard\x12\x1b\n" +
@@ -991,7 +1000,8 @@ const file_backup_proto_rawDesc = "" +
 	"hash_range\x18\x06 \x01(\v2\x1b.io.oxia.proto.v1.HashRangeR\thashRange\x12\x1d\n" +
 	"\n" +
 	"size_bytes\x18\a \x01(\x04R\tsizeBytes\x12\x1b\n" +
-	"\tsst_count\x18\b \x01(\rR\bsstCount\"M\n" +
+	"\tsst_count\x18\b \x01(\rR\bsstCount\x12F\n" +
+	"\x10namespace_config\x18\t \x01(\v2\x1b.io.oxia.proto.v1.NamespaceR\x0fnamespaceConfig\"M\n" +
 	"\x13ListBackupsResponse\x126\n" +
 	"\abackups\x18\x01 \x03(\v2\x1c.io.oxia.proto.v1.BackupInfoR\abackups\"\x92\x02\n" +
 	"\x13RestoreShardRequest\x12\x1c\n" +
@@ -1062,22 +1072,23 @@ var file_backup_proto_depIdxs = []int32{
 	1,  // 5: io.oxia.proto.v1.ExpireBackupsRequest.policy:type_name -> io.oxia.proto.v1.BackupPolicy
 	0,  // 6: io.oxia.proto.v1.ExpireBackupsResponse.state:type_name -> io.oxia.proto.v1.BackupJobState
 	13, // 7: io.oxia.proto.v1.BackupInfo.hash_range:type_name -> io.oxia.proto.v1.HashRange
-	8,  // 8: io.oxia.proto.v1.ListBackupsResponse.backups:type_name -> io.oxia.proto.v1.BackupInfo
-	13, // 9: io.oxia.proto.v1.RestoreShardRequest.hash_range:type_name -> io.oxia.proto.v1.HashRange
-	0,  // 10: io.oxia.proto.v1.RestoreShardResponse.state:type_name -> io.oxia.proto.v1.BackupJobState
-	3,  // 11: io.oxia.proto.v1.OxiaBackup.BackupShard:input_type -> io.oxia.proto.v1.BackupShardRequest
-	5,  // 12: io.oxia.proto.v1.OxiaBackup.ExpireBackups:input_type -> io.oxia.proto.v1.ExpireBackupsRequest
-	7,  // 13: io.oxia.proto.v1.OxiaBackup.ListBackups:input_type -> io.oxia.proto.v1.ListBackupsRequest
-	10, // 14: io.oxia.proto.v1.OxiaBackup.RestoreShard:input_type -> io.oxia.proto.v1.RestoreShardRequest
-	4,  // 15: io.oxia.proto.v1.OxiaBackup.BackupShard:output_type -> io.oxia.proto.v1.BackupShardResponse
-	6,  // 16: io.oxia.proto.v1.OxiaBackup.ExpireBackups:output_type -> io.oxia.proto.v1.ExpireBackupsResponse
-	9,  // 17: io.oxia.proto.v1.OxiaBackup.ListBackups:output_type -> io.oxia.proto.v1.ListBackupsResponse
-	11, // 18: io.oxia.proto.v1.OxiaBackup.RestoreShard:output_type -> io.oxia.proto.v1.RestoreShardResponse
-	15, // [15:19] is the sub-list for method output_type
-	11, // [11:15] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	12, // 8: io.oxia.proto.v1.BackupInfo.namespace_config:type_name -> io.oxia.proto.v1.Namespace
+	8,  // 9: io.oxia.proto.v1.ListBackupsResponse.backups:type_name -> io.oxia.proto.v1.BackupInfo
+	13, // 10: io.oxia.proto.v1.RestoreShardRequest.hash_range:type_name -> io.oxia.proto.v1.HashRange
+	0,  // 11: io.oxia.proto.v1.RestoreShardResponse.state:type_name -> io.oxia.proto.v1.BackupJobState
+	3,  // 12: io.oxia.proto.v1.OxiaBackup.BackupShard:input_type -> io.oxia.proto.v1.BackupShardRequest
+	5,  // 13: io.oxia.proto.v1.OxiaBackup.ExpireBackups:input_type -> io.oxia.proto.v1.ExpireBackupsRequest
+	7,  // 14: io.oxia.proto.v1.OxiaBackup.ListBackups:input_type -> io.oxia.proto.v1.ListBackupsRequest
+	10, // 15: io.oxia.proto.v1.OxiaBackup.RestoreShard:input_type -> io.oxia.proto.v1.RestoreShardRequest
+	4,  // 16: io.oxia.proto.v1.OxiaBackup.BackupShard:output_type -> io.oxia.proto.v1.BackupShardResponse
+	6,  // 17: io.oxia.proto.v1.OxiaBackup.ExpireBackups:output_type -> io.oxia.proto.v1.ExpireBackupsResponse
+	9,  // 18: io.oxia.proto.v1.OxiaBackup.ListBackups:output_type -> io.oxia.proto.v1.ListBackupsResponse
+	11, // 19: io.oxia.proto.v1.OxiaBackup.RestoreShard:output_type -> io.oxia.proto.v1.RestoreShardResponse
+	16, // [16:20] is the sub-list for method output_type
+	12, // [12:16] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_backup_proto_init() }
