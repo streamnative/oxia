@@ -22,6 +22,7 @@ import (
 	"log/slog"
 
 	"github.com/pkg/errors"
+	"go.uber.org/multierr"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -61,15 +62,14 @@ type internalRpcServer struct {
 
 func newInternalRpcServer(grpcProvider dcommonrpc.GrpcProvider, bindAddress string, shardsDirector controller.ShardsDirector,
 	assignmentDispatcher assignment.ShardAssignmentsDispatcher, healthServer dcommonrpc.HealthServer,
-	tlsConf *tls.Config, authOptions *auth.Options, manifest *manifestpkg.Manifest,
-	backups *backup.Executor) (*internalRpcServer, error) {
+	tlsConf *tls.Config, authOptions *auth.Options, manifest *manifestpkg.Manifest) (*internalRpcServer, error) {
 	if authOptions == nil {
 		authOptions = &auth.Disabled
 	}
 
 	server := &internalRpcServer{
 		shardsDirector:       shardsDirector,
-		backups:              backups,
+		backups:              backup.New(backup.Options{Host: shardsDirector}),
 		assignmentDispatcher: assignmentDispatcher,
 		manifest:             manifest,
 		healthServer:         healthServer,
@@ -94,8 +94,10 @@ func newInternalRpcServer(grpcProvider dcommonrpc.GrpcProvider, bindAddress stri
 	return server, nil
 }
 
+// Close stops the gRPC server, then the backup jobs: they checkpoint the
+// shards, which the caller closes afterwards.
 func (s *internalRpcServer) Close() error {
-	return s.grpcServer.Close()
+	return multierr.Combine(s.grpcServer.Close(), s.backups.Close())
 }
 
 func (s *internalRpcServer) PushShardAssignments(srv proto.OxiaCoordination_PushShardAssignmentsServer) error {

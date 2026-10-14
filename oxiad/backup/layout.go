@@ -44,6 +44,7 @@ const (
 	shardDir      = "shard-"
 	sstDir        = "sst/"
 	backupsDir    = "backups/"
+	separator     = "/"
 )
 
 // ErrInvalidID is returned when a backup ID doesn't parse.
@@ -131,15 +132,15 @@ type ShardPath struct {
 
 // NamespacePrefix is the prefix of the keys of every shard of a namespace.
 func NamespacePrefix(namespace string) string {
-	return namespace + "/"
+	return namespace + separator
 }
 
 // ParseShardDir returns the shard of a directory that ListDirs returned under
 // NamespacePrefix, e.g. "ns/shard-12/", and false for any other directory.
 func ParseShardDir(dir string) (ShardPath, bool) {
-	dir = strings.TrimSuffix(dir, "/")
+	dir = strings.TrimSuffix(dir, separator)
 	namespace, base := path.Split(dir)
-	namespace = strings.TrimSuffix(namespace, "/")
+	namespace = strings.TrimSuffix(namespace, separator)
 	if namespace == "" || !strings.HasPrefix(base, shardDir) {
 		return ShardPath{}, false
 	}
@@ -152,7 +153,7 @@ func ParseShardDir(dir string) (ShardPath, bool) {
 
 // Prefix is the prefix of every key of the shard.
 func (p ShardPath) Prefix() string {
-	return fmt.Sprintf("%s%s%d/", NamespacePrefix(p.Namespace), shardDir, p.Shard)
+	return fmt.Sprintf("%s%s%d%s", NamespacePrefix(p.Namespace), shardDir, p.Shard, separator)
 }
 
 // SSTPrefix is the prefix of the SST objects of the shard, shared by its
@@ -194,7 +195,7 @@ func (p ShardPath) ManifestKey(id ID) string {
 // FilesPrefix is the prefix of the per-backup files of a backup: the files
 // of the checkpoint other than the SSTs.
 func (p ShardPath) FilesPrefix(id ID) string {
-	return p.ManifestsPrefix() + id.String() + "/"
+	return p.ManifestsPrefix() + id.String() + separator
 }
 
 // FileKey is the key of a per-backup file.

@@ -248,7 +248,7 @@ func (j *backupJob) uploadFile(ctx context.Context, u upload) (backup.File, erro
 		return backup.File{}, err
 	}
 	crc := newCRC32C()
-	var body io.Reader = io.TeeReader(f, crc)
+	var body = io.TeeReader(f, crc)
 	if u.compression == backup.CompressionZstd {
 		compressed := compress(body)
 		defer func() { _ = compressed.Close() }()

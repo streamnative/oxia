@@ -31,7 +31,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
 	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
@@ -48,18 +48,17 @@ func init() {
 	blob.Register(Scheme, Open)
 }
 
-// API is the part of the S3 client that the store uses.
+// API is the part of the S3 client that the store uses: what the transfer
+// manager needs for the uploads, and the deletions.
 type API interface {
-	manager.UploadAPIClient
-	GetObject(ctx context.Context, params *awss3.GetObjectInput, optFns ...func(*awss3.Options)) (*awss3.GetObjectOutput, error)
-	ListObjectsV2(ctx context.Context, params *awss3.ListObjectsV2Input, optFns ...func(*awss3.Options)) (*awss3.ListObjectsV2Output, error)
+	transfermanager.S3APIClient
 	DeleteObjects(ctx context.Context, params *awss3.DeleteObjectsInput, optFns ...func(*awss3.Options)) (*awss3.DeleteObjectsOutput, error)
 }
 
 // Store is a blob.Store on one bucket, under one key prefix.
 type Store struct {
 	api      API
-	uploader *manager.Uploader
+	uploader *transfermanager.Client
 	bucket   string
 	prefix   string
 }
@@ -95,14 +94,14 @@ func New(api API, bucket string, prefix string) *Store {
 	}
 	return &Store{
 		api:      api,
-		uploader: manager.NewUploader(api),
+		uploader: transfermanager.New(api),
 		bucket:   bucket,
 		prefix:   prefix,
 	}
 }
 
 func (s *Store) Put(ctx context.Context, key string, r io.Reader) error {
-	_, err := s.uploader.Upload(ctx, &awss3.PutObjectInput{
+	_, err := s.uploader.UploadObject(ctx, &transfermanager.UploadObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(s.prefix + key),
 		Body:   r,

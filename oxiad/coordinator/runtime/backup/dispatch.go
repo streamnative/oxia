@@ -71,12 +71,12 @@ func (s *Scheduler) dispatch(due []*shardState, namespaces map[string]commonobje
 	slots := make(chan struct{}, roundWorkers)
 	var wg sync.WaitGroup
 	for _, state := range due {
-		meta := namespaces[state.key.namespace].UnsafeBorrow().GetShards()[state.key.shard]
-		select {
-		case slots <- struct{}{}:
-		case <-s.ctx.Done():
+		if s.ctx.Err() != nil {
 			break
 		}
+		meta := namespaces[state.key.namespace].UnsafeBorrow().GetShards()[state.key.shard]
+		// A slot frees within the timeout of the calls of a worker
+		slots <- struct{}{}
 		wg.Go(func() {
 			defer func() { <-slots }()
 			s.dispatchShard(state, meta, configs[state.key.namespace], policy, roles, now)

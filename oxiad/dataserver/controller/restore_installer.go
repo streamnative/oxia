@@ -97,7 +97,7 @@ func (i *installer) AddFile(name string, size int64, r io.Reader) error {
 	return nil
 }
 
-func (i *installer) Complete(hashRange *proto.HashRange) (int64, int64, error) {
+func (i *installer) Complete(hashRange *proto.HashRange) (commitOffset int64, term int64, err error) {
 	if err := i.loader.Complete(); err != nil {
 		return 0, 0, errors.Wrap(err, "failed to complete the snapshot")
 	}
@@ -107,26 +107,24 @@ func (i *installer) Complete(hashRange *proto.HashRange) (int64, int64, error) {
 	if err != nil {
 		return 0, 0, errors.Wrap(err, "failed to open the database")
 	}
-	commitOffset, term, err := filterRestoredDatabase(db, hashRange)
+	commitOffset, term, err = filterRestoredDatabase(db, hashRange)
 	return commitOffset, term, multierr.Append(err, db.Close())
 }
 
 // filterRestoredDatabase deletes the records outside the hash range: the
 // backup may be of a shard that covered more, and a split child's may hold
 // records of its parent.
-func filterRestoredDatabase(db database.DB, hashRange *proto.HashRange) (int64, int64, error) {
+func filterRestoredDatabase(db database.DB, hashRange *proto.HashRange) (commitOffset int64, term int64, err error) {
 	if err := database.FilterDBForSplit(db.RawKV(), hashRange); err != nil {
 		return 0, 0, errors.Wrap(err, "failed to filter the database")
 	}
 	if err := database.ClearSplitFilters(db.RawKV()); err != nil {
 		return 0, 0, err
 	}
-	commitOffset, err := db.ReadCommitOffset()
-	if err != nil {
+	if commitOffset, err = db.ReadCommitOffset(); err != nil {
 		return 0, 0, errors.Wrap(err, "failed to read the commit offset")
 	}
-	term, _, err := db.ReadTerm()
-	if err != nil {
+	if term, _, err = db.ReadTerm(); err != nil {
 		return 0, 0, errors.Wrap(err, "failed to read the term")
 	}
 	return commitOffset, term, nil

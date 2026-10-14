@@ -55,6 +55,7 @@ func TestStoreConformanceOnRealEndpoint(t *testing.T) {
 		t.Skipf("%s is not set", destinationEnv)
 	}
 	blobtest.RunConformance(t, func(t *testing.T) blob.Store {
+		t.Helper()
 		u, err := url.Parse(destination)
 		require.NoError(t, err)
 		// Each conformance test wants an empty store
@@ -175,6 +176,10 @@ func (*fakeAPI) CompleteMultipartUpload(context.Context, *awss3.CompleteMultipar
 
 func (*fakeAPI) AbortMultipartUpload(context.Context, *awss3.AbortMultipartUploadInput, ...func(*awss3.Options)) (*awss3.AbortMultipartUploadOutput, error) {
 	return nil, errors.New("multipart upload not supported by the fake")
+}
+
+func (*fakeAPI) HeadObject(context.Context, *awss3.HeadObjectInput, ...func(*awss3.Options)) (*awss3.HeadObjectOutput, error) {
+	return nil, errors.New("not supported by the fake")
 }
 
 func (f *fakeAPI) GetObject(ctx context.Context, params *awss3.GetObjectInput, _ ...func(*awss3.Options)) (*awss3.GetObjectOutput, error) {

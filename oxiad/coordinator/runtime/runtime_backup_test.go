@@ -25,12 +25,12 @@ import (
 	"github.com/oxia-db/oxia/oxiad/backup"
 )
 
-func backupInfo(shard int64, at time.Time, min, max uint32, config *proto.Namespace) *proto.BackupInfo {
+func backupInfo(shard int64, at time.Time, minHash, maxHash uint32, config *proto.Namespace) *proto.BackupInfo {
 	return &proto.BackupInfo{
 		Shard:           shard,
 		BackupId:        backup.NewID(at, "lineage").String(),
 		TimestampMillis: at.UnixMilli(),
-		HashRange:       &proto.HashRange{Min: min, Max: max},
+		HashRange:       &proto.HashRange{Min: minHash, Max: maxHash},
 		NamespaceConfig: config,
 	}
 }

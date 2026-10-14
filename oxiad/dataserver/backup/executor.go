@@ -29,7 +29,8 @@ import (
 	"github.com/oxia-db/oxia/common/proto"
 	"github.com/oxia-db/oxia/oxiad/backup"
 	"github.com/oxia-db/oxia/oxiad/backup/blob"
-	// The S3 destinations, registered with package blob
+
+	// The S3 destinations, registered with package blob.
 	_ "github.com/oxia-db/oxia/oxiad/backup/blob/s3"
 	"github.com/oxia-db/oxia/oxiad/dataserver/controller"
 	"github.com/oxia-db/oxia/oxiad/dataserver/database"
@@ -256,7 +257,7 @@ func (e *Executor) BackupShard(_ context.Context, req *proto.BackupShardRequest)
 	key := jobKey{kind: backupJobKind, namespace: req.GetNamespace(), shard: req.GetShard()}
 	dir := e.host.DatabaseDir(req.GetNamespace(), req.GetShard())
 	if state, finished := e.consume(key); state != proto.BackupJobState_BACKUP_JOB_STATE_UNKNOWN {
-		return e.backupResponse(state, finished, dir)
+		return backupResponse(state, finished, dir)
 	}
 	record, err := loadRecord(dir)
 	if err != nil {
@@ -285,7 +286,7 @@ func (e *Executor) BackupShard(_ context.Context, req *proto.BackupShardRequest)
 	return &proto.BackupShardResponse{State: state, LastBackup: lastBackup}, nil
 }
 
-func (e *Executor) backupResponse(state proto.BackupJobState, finished *job, dir string) (*proto.BackupShardResponse, error) {
+func backupResponse(state proto.BackupJobState, finished *job, dir string) (*proto.BackupShardResponse, error) {
 	record, _, err := readRecord(dir)
 	if err != nil {
 		return nil, fmt.Errorf("read the backup record: %w", err)

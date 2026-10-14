@@ -180,7 +180,7 @@ func (i *fakeInstaller) AddFile(name string, size int64, r io.Reader) error {
 	return nil
 }
 
-func (i *fakeInstaller) Complete(hashRange *proto.HashRange) (int64, int64, error) {
+func (i *fakeInstaller) Complete(hashRange *proto.HashRange) (commitOffset int64, term int64, err error) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	i.hashRange = hashRange
@@ -245,7 +245,7 @@ func protoPolicy(destination string) *proto.BackupPolicy {
 	}
 }
 
-func readObject(t *testing.T, ctx context.Context, store interface {
+func readObject(ctx context.Context, t *testing.T, store interface {
 	Get(ctx context.Context, key string) (io.ReadCloser, error)
 }, key string) []byte {
 	t.Helper()

@@ -35,16 +35,17 @@ func newCRC32C() hash.Hash32 {
 func compress(r io.Reader) io.ReadCloser {
 	pr, pw := io.Pipe()
 	go func() {
+		// Closing the pipe writer never fails
 		encoder, err := zstd.NewWriter(pw)
 		if err != nil {
-			pw.CloseWithError(err)
+			_ = pw.CloseWithError(err)
 			return
 		}
 		if _, err := io.Copy(encoder, r); err != nil {
-			pw.CloseWithError(err)
+			_ = pw.CloseWithError(err)
 			return
 		}
-		pw.CloseWithError(encoder.Close())
+		_ = pw.CloseWithError(encoder.Close())
 	}()
 	return pr
 }

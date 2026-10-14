@@ -88,7 +88,7 @@ func TestBackupJobRunUploadsEveryFileOfAFirstBackup(t *testing.T) {
 		CRC32C: crc32.Checksum(host.shards[1].files["000001.sst"], crc32cTable)}, m.SSTs[0])
 	assert.Len(t, m.Files, 4)
 	assert.Equal(t, m.SSTs, last.SSTs)
-	assert.Equal(t, host.shards[1].files["000002.sst"], readObject(t, t.Context(), store, "ns/shard-1/sst/abcd-000002.sst"))
+	assert.Equal(t, host.shards[1].files["000002.sst"], readObject(t.Context(), t, store, "ns/shard-1/sst/abcd-000002.sst"))
 }
 
 func TestBackupJobRunUploadsOnlyTheNewSSTs(t *testing.T) {
@@ -152,7 +152,7 @@ func TestBackupJobRunReusesAnSSTOnlyWithTheSameSize(t *testing.T) {
 		now.Add(time.Hour))
 	require.NoError(t, err)
 	assert.EqualValues(t, 9+8+7+7, second.UploadedBytes)
-	assert.Equal(t, []byte("rewritten"), readObject(t, t.Context(), store, "ns/shard-1/sst/abcd-000001.sst"))
+	assert.Equal(t, []byte("rewritten"), readObject(t.Context(), t, store, "ns/shard-1/sst/abcd-000001.sst"))
 }
 
 func TestBackupJobRunTakesTheNextSecondAfterTheLastBackup(t *testing.T) {

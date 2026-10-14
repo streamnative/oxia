@@ -49,6 +49,7 @@ const (
 	defaultBackupScheduleIntervalString        = "30s"
 	defaultBackupCleanupInterval               = 24 * time.Hour
 	defaultBackupCleanupIntervalString         = "24h"
+	hoursPerDay                                = 24
 
 	AntiAffinityModeUnknown = ""
 	AntiAffinityModeStrict  = "strict"
@@ -549,7 +550,7 @@ func (cc *ClusterConfiguration) GetAutoSplitWithDefaults() *AutoSplitConfig {
 func ParseBackupDuration(value string) (time.Duration, error) {
 	if days, ok := strings.CutSuffix(value, "d"); ok {
 		if n, err := strconv.ParseUint(days, 10, 32); err == nil {
-			return time.Duration(n) * 24 * time.Hour, nil
+			return time.Duration(n) * hoursPerDay * time.Hour, nil
 		}
 	}
 	return time.ParseDuration(value)

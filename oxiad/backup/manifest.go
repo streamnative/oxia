@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"time"
 
 	"github.com/oxia-db/oxia/oxiad/backup/blob"
@@ -98,7 +99,7 @@ func (m *Manifest) Validate() error {
 	if id.Lineage != m.Lineage {
 		return fmt.Errorf("%w: id %q is not of lineage %q", ErrInvalidManifest, m.ID, m.Lineage)
 	}
-	for _, f := range append(append([]File{}, m.SSTs...), m.Files...) {
+	for _, f := range slices.Concat(m.SSTs, m.Files) {
 		if f.Name == "" || f.Key == "" || f.Size < 0 {
 			return fmt.Errorf("%w: invalid file %+v", ErrInvalidManifest, f)
 		}

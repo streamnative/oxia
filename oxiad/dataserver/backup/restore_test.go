@@ -93,7 +93,7 @@ func TestRestoreJobRunRejectsAManifestOfAnotherShard(t *testing.T) {
 	last, err := runBackup(t, store, host, 1, &Record{Lineage: "abcd"}, testPolicy(), time.Now())
 	require.NoError(t, err)
 	// The manifest of shard 1 copied under shard 2's prefix
-	data := readObject(t, t.Context(), store, "ns/shard-1/backups/"+last.ID+".json")
+	data := readObject(t.Context(), t, store, "ns/shard-1/backups/"+last.ID+".json")
 	require.NoError(t, store.Put(t.Context(), "ns/shard-2/backups/"+last.ID+".json", strings.NewReader(string(data))))
 
 	j, _ := newRestoreJob(t, store, last, fullRange())
