@@ -55,3 +55,54 @@ func TestReadOnlySegmentsGroupTrimSegments(t *testing.T) {
 		assert.NoError(t, err)
 	})
 }
+
+// The trim of a segment that a reader holds removes its files, and releases
+// only the cache reference: the reader keeps reading the records until it
+// closes its own.
+func TestReadOnlySegmentsGroupTrimSegmentsKeepsHeldSegmentReadable(t *testing.T) {
+	walFactory := NewWalFactory(&FactoryOptions{
+		BaseWalDir:  t.TempDir(),
+		Retention:   1 * time.Hour,
+		SegmentSize: 128,
+	})
+	w, err := walFactory.NewWal("test", 1, nil)
+	assert.NoError(t, err)
+	for i := int64(0); i < 20; i++ {
+		assert.NoError(t, w.Append(&proto.LogEntry{
+			Term:   1,
+			Offset: i,
+			Value:  fmt.Appendf(nil, "test-%d", i),
+		}))
+	}
+	walBasePath := w.(*wal).walPath
+	assert.NoError(t, w.Close())
+	assert.NoError(t, walFactory.Close())
+
+	readOnlySegments, err := newReadOnlySegmentsGroup(walBasePath)
+	assert.NoError(t, err)
+	c, err := newSegmentConfig(walBasePath, 0)
+	assert.NoError(t, err)
+
+	rc, err := readOnlySegments.Get(0)
+	assert.NoError(t, err)
+	segment := rc.Get()
+	err = readOnlySegments.TrimSegments(segment.LastOffset()+1, func() error { return nil })
+	assert.NoError(t, err)
+	assert.NoFileExists(t, c.txnPath)
+	assert.NoFileExists(t, c.idxPath)
+
+	for offset := int64(0); offset <= segment.LastOffset(); offset++ {
+		payload, _, _, err := segment.Read(offset)
+		if !assert.NoError(t, err, "offset %d", offset) {
+			break
+		}
+		entry := &proto.LogEntry{}
+		assert.NoError(t, entry.UnmarshalVT(payload))
+		assert.Equal(t, fmt.Sprintf("test-%d", offset), string(entry.Value))
+	}
+
+	// The last reference closes the segment, exactly once
+	assert.NoError(t, rc.Close())
+	assert.EqualValues(t, 0, rc.RefCnt())
+	assert.NoError(t, readOnlySegments.Close())
+}
