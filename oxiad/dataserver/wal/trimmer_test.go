@@ -27,6 +27,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/oxia-db/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/object"
 	time2 "github.com/oxia-db/oxia/common/time"
 	"github.com/oxia-db/oxia/oxiad/common/logging"
 
@@ -143,14 +144,25 @@ func (p *hookedCommitOffsetProvider) CommitOffset() int64 {
 	return p.mockedCommitOffsetProvider.CommitOffset()
 }
 
-// hookedSegmentsGroup runs a hook when the trimming deletes its segments.
+// hookedSegmentsGroup runs hook when the trimming deletes its segments, and
+// getHook when a read looks a segment up.
 type hookedSegmentsGroup struct {
 	ReadOnlySegmentsGroup
-	hook func()
+	hook    func()
+	getHook func()
+}
+
+func (g *hookedSegmentsGroup) Get(offset int64) (object.RefCount[ReadOnlySegment], error) {
+	if g.getHook != nil {
+		g.getHook()
+	}
+	return g.ReadOnlySegmentsGroup.Get(offset)
 }
 
 func (g *hookedSegmentsGroup) TrimSegments(offset int64, beforeDelete func() error) error {
-	g.hook()
+	if g.hook != nil {
+		g.hook()
+	}
 	return g.ReadOnlySegmentsGroup.TrimSegments(offset, beforeDelete)
 }
 

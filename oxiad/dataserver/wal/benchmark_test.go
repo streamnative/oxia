@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -95,6 +96,54 @@ func Benchmark_Wal_Append_with_Read(b *testing.B) {
 
 	wg.Wait()
 	fmt.Printf("%s Count(%d) Latency(Per Entry): %d\n", b.Name(), b.N, time.Since(n).Microseconds()/int64(b.N))
+}
+
+// The appends while readers tail the wal, as the follower cursors of a leader
+// do: each reader reads every entry as soon as it is appended. The fsync is
+// off, so that it does not hide the time the appends wait for the readers.
+func Benchmark_Wal_Append_with_Tailing_Readers(b *testing.B) {
+	for _, readers := range []int{0, 2, 4} {
+		for _, size := range []int{128, 4096, 65536} {
+			b.Run(fmt.Sprintf("readers=%d/size=%d", readers, size), func(b *testing.B) {
+				walFactory := NewWalFactory(&FactoryOptions{
+					BaseWalDir:  b.TempDir(),
+					Retention:   time.Hour,
+					SegmentSize: 64 * 1024 * 1024,
+					SyncData:    false,
+				})
+				wal, err := walFactory.NewWal("test", 1, nil)
+				assert.NoError(b, err)
+				defer wal.Close()
+
+				var stop atomic.Bool
+				wg := sync.WaitGroup{}
+				for range readers {
+					wg.Go(func() {
+						reader, err := wal.NewReader(InvalidOffset)
+						assert.NoError(b, err)
+						defer reader.Close()
+						for !stop.Load() {
+							if !reader.HasNext() {
+								continue
+							}
+							_, _, _, err := reader.ReadNext()
+							assert.NoError(b, err)
+						}
+					})
+				}
+
+				value := make([]byte, size)
+				b.SetBytes(int64(size))
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					wal.AppendAndSync(&proto.LogEntry{Term: 1, Offset: int64(i), Value: value}, func(uint32, error) {})
+				}
+				b.StopTimer()
+				stop.Store(true)
+				wg.Wait()
+			})
+		}
+	}
 }
 
 func Benchmark_Wal_Append_to_Read_latency(b *testing.B) {
