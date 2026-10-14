@@ -46,9 +46,11 @@ func TestCoordinatorBackupAndRestore(t *testing.T) {
 	// The servers close after the coordinator: their databases must outlive
 	// the backups and the restores it drives, and close before the test's
 	// directories go
-	for _, s := range []*dataserver.Server{s1, s2, s3} {
-		defer func() { assert.NoError(t, s.Close()) }()
-	}
+	defer func() {
+		for _, s := range []*dataserver.Server{s1, s2, s3} {
+			assert.NoError(t, s.Close())
+		}
+	}()
 
 	metadataProvider := memory.NewProvider(metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled, "")
 	clusterConfig := newClusterConfig([]*proto.Namespace{{
