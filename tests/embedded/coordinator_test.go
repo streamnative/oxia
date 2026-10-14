@@ -34,6 +34,7 @@ import (
 	"github.com/oxia-db/oxia/common/proto"
 	"github.com/oxia-db/oxia/oxiad/coordinator"
 	coordinatoroption "github.com/oxia-db/oxia/oxiad/coordinator/option"
+	"github.com/oxia-db/oxia/tests/mock"
 )
 
 func newCoordinatorOptions(name string) *coordinatoroption.Options {
@@ -50,19 +51,6 @@ func newFileCoordinatorOptions(name, dir string) *coordinatoroption.Options {
 	options.Metadata.ProviderName = coordinatoroption.ProviderFile
 	options.Metadata.File.Dir = dir
 	return options
-}
-
-// freeAddress returns a loopback address with a port that was free a moment
-// ago, for the listeners that cannot bind an ephemeral port: a raft node's
-// address is also its identity.
-func freeAddress(t *testing.T) string {
-	t.Helper()
-
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	address := listener.Addr().String()
-	require.NoError(t, listener.Close())
-	return address
 }
 
 func requireHealth(t *testing.T, port int, expected grpc_health_v1.HealthCheckResponse_ServingStatus) {
@@ -172,7 +160,7 @@ func TestCoordinatorStandbyStartIsCancellable(t *testing.T) {
 // discovered from its New returning; cancelling the starts of the other two
 // shuts their raft nodes down, and the winner loses the quorum.
 func TestCoordinatorStopsCoordinatingOnLeadershipLoss(t *testing.T) {
-	raftAddresses := []string{freeAddress(t), freeAddress(t), freeAddress(t)}
+	raftAddresses := mock.FreeAddresses(t, 3)
 	raftDir := t.TempDir()
 
 	type indexedResult struct {

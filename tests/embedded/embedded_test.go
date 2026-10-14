@@ -32,6 +32,7 @@ import (
 	coordinatoroption "github.com/oxia-db/oxia/oxiad/coordinator/option"
 	"github.com/oxia-db/oxia/oxiad/dataserver"
 	dataserveroption "github.com/oxia-db/oxia/oxiad/dataserver/option"
+	"github.com/oxia-db/oxia/tests/mock"
 )
 
 // embeddedCluster is the in-process cluster of the coordinator package
@@ -49,11 +50,12 @@ type embeddedCluster struct {
 func newDataServerIdentities(t *testing.T) []*proto.DataServerIdentity {
 	t.Helper()
 
+	addresses := mock.FreeAddresses(t, 6)
 	identities := make([]*proto.DataServerIdentity, 3)
 	for i := range identities {
 		identities[i] = &proto.DataServerIdentity{
-			Public:   freeAddress(t),
-			Internal: freeAddress(t),
+			Public:   addresses[2*i],
+			Internal: addresses[2*i+1],
 		}
 	}
 	return identities
