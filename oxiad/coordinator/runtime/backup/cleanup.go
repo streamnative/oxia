@@ -34,10 +34,26 @@ type cleanupState struct {
 	failures int
 }
 
+// cleanupRequest is a cleanup request a round sends.
+type cleanupRequest struct {
+	namespace string
+	state     *cleanupState
+	server    *proto.DataServerIdentity
+}
+
 // cleanups sends the cleanup requests that are due. The first cleanup of a
 // namespace runs at the start of the scheduler: a cleanup is cheap next to
-// a missed one.
+// a missed one. The lock is not held across the requests: the states of
+// the namespaces are only changed by the round loop.
 func (s *Scheduler) cleanups(configs map[string]*proto.Namespace, policy *proto.BackupConfig, now time.Time) {
+	for _, req := range s.dueCleanups(configs, now) {
+		s.cleanup(req, policy, now)
+	}
+}
+
+// dueCleanups returns the cleanups to request in this round, with the
+// server each one goes to.
+func (s *Scheduler) dueCleanups(configs map[string]*proto.Namespace, now time.Time) []cleanupRequest {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for name := range s.namespaces {
@@ -51,6 +67,7 @@ func (s *Scheduler) cleanups(configs map[string]*proto.Namespace, policy *proto.
 		names = append(names, name)
 	}
 	slices.Sort(names)
+	var due []cleanupRequest
 	for _, name := range names {
 		state, ok := s.namespaces[name]
 		if !ok {
@@ -68,8 +85,9 @@ func (s *Scheduler) cleanups(configs map[string]*proto.Namespace, policy *proto.
 			server = servers[s.cleanupTurn%len(servers)]
 			s.cleanupTurn++
 		}
-		s.cleanup(name, state, server, policy, now)
+		due = append(due, cleanupRequest{namespace: name, state: state, server: server})
 	}
+	return due
 }
 
 // availableServers returns the running data servers, by name. The caller
@@ -104,17 +122,19 @@ func cmpStrings(a, b string) int {
 }
 
 // cleanup asks a data server for the cleanup of a namespace, and schedules
-// the next request from its answer. The caller holds mu.
-func (s *Scheduler) cleanup(namespace string, state *cleanupState, server *proto.DataServerIdentity,
-	policy *proto.BackupConfig, now time.Time) {
-	log := s.log.With(slog.String("namespace", namespace), slog.String("server", server.GetNameOrDefault()))
+// the next request from its answer.
+func (s *Scheduler) cleanup(req cleanupRequest, policy *proto.BackupConfig, now time.Time) {
+	log := s.log.With(slog.String("namespace", req.namespace), slog.String("server", req.server.GetNameOrDefault()))
 	ctx, cancel := context.WithTimeout(s.ctx, rpcTimeout)
 	defer cancel()
-	res, err := s.rpc.ExpireBackups(ctx, server, &proto.ExpireBackupsRequest{
-		Namespace: namespace,
+	res, err := s.rpc.ExpireBackups(ctx, req.server, &proto.ExpireBackupsRequest{
+		Namespace: req.namespace,
 		Policy:    policyProto(policy),
 	})
 	cleanupInterval := policy.GetCleanupIntervalDurationOrDefault()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	state := req.state
 	if err != nil {
 		state.failures++
 		state.server = nil
@@ -124,7 +144,7 @@ func (s *Scheduler) cleanup(namespace string, state *cleanupState, server *proto
 	}
 	switch res.GetState() {
 	case proto.BackupJobState_BACKUP_JOB_STATE_STARTED, proto.BackupJobState_BACKUP_JOB_STATE_RUNNING:
-		state.server = server
+		state.server = req.server
 		state.nextCleanup = now
 	case proto.BackupJobState_BACKUP_JOB_STATE_DONE:
 		state.server = nil
