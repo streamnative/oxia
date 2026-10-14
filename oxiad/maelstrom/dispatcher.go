@@ -55,7 +55,15 @@ type dispatcher struct {
 
 	replicationProvider *maelstromReplicationRpcProvider
 	grpcProvider        *maelstromGrpcProvider
+	// Only on the coordinator node, see newRpcProvider
+	coordinatorProvider *maelstromCoordinatorRpcProvider
 	currentLeader       string
+
+	// The stream and message ids of the last shard assignments applied, see
+	// applyShardAssignments. Only the message loop uses them, under the
+	// dispatcher lock.
+	assignmentsStreamId int64
+	assignmentsMsgId    int64
 }
 
 func newDispatcher(provider *maelstromGrpcProvider, replicationProvider *maelstromReplicationRpcProvider) *dispatcher {
@@ -87,14 +95,15 @@ func (d *dispatcher) onOxiaResponseMessage(_ MsgType, res *Message[OxiaMessage],
 func (d *dispatcher) onOxiaStreamRequestMessage(msgType MsgType, m any, message pb.Message) {
 	switch msgType {
 	case MsgTypeShardAssignmentsResponse:
-		r := message.(*proto.ShardAssignments)
-		if leader, ok := getDefaultNamespaceLeader(r); ok {
-			d.currentLeader = leader
-			slog.Info(
-				"Received notification of new leader",
-				slog.String("leader", d.currentLeader),
-			)
-		}
+		msg := m.(*Message[OxiaStreamMessage])
+		d.applyShardAssignments(msg, message.(*proto.ShardAssignments))
+		// Ack every copy, also a stale one, so that the coordinator stops
+		// resending it
+		sendShardAssignmentsAck(msg.Src, msg.Body.StreamId, msg.Body.MsgId)
+
+	case MsgTypeShardAssignmentsAck:
+		msg := m.(*Message[OxiaStreamMessage])
+		d.coordinatorProvider.HandleShardAssignmentsAck(msg.Body.StreamId, *msg.Body.InReplyTo)
 
 	case MsgTypeAppend:
 		// Deliver inline, not on a per-message goroutine: goroutine scheduling
@@ -117,6 +126,27 @@ func (d *dispatcher) onOxiaStreamRequestMessage(msgType MsgType, m any, message 
 
 	default:
 		panic(fmt.Sprintf("Unknown message type: %v", msgType))
+	}
+}
+
+// applyShardAssignments routes the requests to the leader in the assignments.
+// Each message carries all the assignments, and the coordinator gives the
+// messages of a stream increasing ids: a message that is not newer than the
+// last one applied from its stream, e.g. a resend that the network delayed
+// past the next message, is skipped.
+func (d *dispatcher) applyShardAssignments(msg *Message[OxiaStreamMessage], assignments *proto.ShardAssignments) {
+	if msg.Body.StreamId == d.assignmentsStreamId && msg.Body.MsgId <= d.assignmentsMsgId {
+		return
+	}
+	d.assignmentsStreamId = msg.Body.StreamId
+	d.assignmentsMsgId = msg.Body.MsgId
+
+	if leader, ok := getDefaultNamespaceLeader(assignments); ok {
+		d.currentLeader = leader
+		slog.Info(
+			"Received notification of new leader",
+			slog.String("leader", d.currentLeader),
+		)
 	}
 }
 
