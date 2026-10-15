@@ -40,7 +40,7 @@ func NoOpFeaturesSupplier(dataServers []*proto.DataServerIdentity) map[string][]
 //
 //	runtime, balancer                        data server controllers
 //	   | Election, ChangeEnsemble,              | BecameUnavailable,
-//	   | Delete, SyncServerAddress              | FeaturesDiscovered
+//	   | Delete, Refresh                        | FeaturesDiscovered
 //	   v                                        v
 //	+--------------------------- event loop ----------------------------+
 //	| elect a leader      when the leader fails, the balancer moves it, |
@@ -79,11 +79,11 @@ type Controller interface {
 	// is full; discovered features are kept until the event loop handles them.
 	controllerapi.DataServerEventListener
 
-	// SyncServerAddress starts a new election if the address of an ensemble
-	// member changed in the configuration, so that the members get the new
-	// address. It doesn't wait for the election, and drops it when the queue
-	// is full.
-	SyncServerAddress()
+	// Refresh brings the shard up to date with the cluster configuration
+	// after it changes. Today, it starts a new election if the address of an
+	// ensemble member changed, so that the members get the new address. It
+	// doesn't wait for the election, and drops it when the queue is full.
+	Refresh()
 
 	// Delete deletes the shard from the data servers of its ensemble,
 	// then its status, and calls ShardDeleted on the listener, retrying every

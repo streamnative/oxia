@@ -270,7 +270,7 @@ func (s *controller) run(bo backoff.BackOff) error {
 		if !s.verifyCurrentEnsemble(initShardMeta) {
 			s.electLeader(initShardMeta, nil)
 		} else {
-			s.SyncServerAddress()
+			s.Refresh()
 		}
 	}
 
@@ -794,7 +794,7 @@ func (s *controller) onChangeEnsemble(changeEnsembleAction *action.ChangeEnsembl
 	changeEnsembleAction.Done(nil)
 }
 
-func (s *controller) SyncServerAddress() {
+func (s *controller) Refresh() {
 	s.terminationMu.RLock()
 	defer s.terminationMu.RUnlock()
 	if s.terminating.Load() {
@@ -802,7 +802,7 @@ func (s *controller) SyncServerAddress() {
 	}
 	borrowedMeta, exists, err := s.metadataStore.GetShardStatus(s.namespace, s.shard)
 	if err != nil {
-		s.logger.Warn("Failed to sync the server addresses", slog.Any("error", err))
+		s.logger.Warn("Failed to refresh the ensemble addresses", slog.Any("error", err))
 		return
 	}
 	if !exists && s.terminating.Load() {
@@ -816,7 +816,7 @@ func (s *controller) SyncServerAddress() {
 	for _, candidate := range shardMeta.Ensemble {
 		borrowedDataServer, ok, err := s.metadataStore.GetDataServer(candidate.GetNameOrDefault())
 		if err != nil {
-			s.logger.Warn("Failed to sync the server addresses", slog.Any("error", err))
+			s.logger.Warn("Failed to refresh the ensemble addresses", slog.Any("error", err))
 			return
 		}
 		if ok {
@@ -839,7 +839,7 @@ func (s *controller) SyncServerAddress() {
 		Waiter: group,
 	}) {
 		group.Done()
-		s.logger.Debug("Discarding sync-server-address election because queue is full")
+		s.logger.Debug("Discarding refresh election because queue is full")
 	}
 }
 

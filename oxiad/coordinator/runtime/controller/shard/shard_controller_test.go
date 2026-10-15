@@ -2087,7 +2087,7 @@ func TestController_ElectionDiscardsWhenQueueIsFull(t *testing.T) {
 	assert.Len(t, s.electionOp, chanBufferSize)
 }
 
-func TestController_SyncServerAddressDiscardsElectionWhenQueueIsFull(t *testing.T) {
+func TestController_RefreshDiscardsElectionWhenQueueIsFull(t *testing.T) {
 	var shard int64 = 5
 	metadata := newTestMetadata(t, memory.NewProvider(metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled, ""), &proto.ClusterConfiguration{})
 
@@ -2120,14 +2120,14 @@ func TestController_SyncServerAddressDiscardsElectionWhenQueueIsFull(t *testing.
 
 	done := make(chan struct{})
 	go func() {
-		s.SyncServerAddress()
+		s.Refresh()
 		close(done)
 	}()
 
 	select {
 	case <-done:
 	case <-time.After(time.Second):
-		t.Fatal("SyncServerAddress blocked on a full election queue")
+		t.Fatal("Refresh blocked on a full election queue")
 	}
 	assert.Len(t, s.electionOp, chanBufferSize)
 }

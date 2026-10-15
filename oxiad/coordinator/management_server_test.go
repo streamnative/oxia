@@ -111,7 +111,7 @@ func (r *testRuntime) Metadata() coordmetadata.Metadata { return r.metadata }
 
 func (*testRuntime) RecomputeAssignments() {}
 
-func (*testRuntime) SyncShardControllerServerAddresses() {}
+func (*testRuntime) RefreshShardControllers() {}
 
 func newTestMetadata(t *testing.T, config *proto.ClusterConfiguration) coordmetadata.Metadata {
 	t.Helper()
