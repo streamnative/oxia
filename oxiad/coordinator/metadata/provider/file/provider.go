@@ -16,6 +16,7 @@ package file
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -169,12 +170,11 @@ func (m *Provider[T]) loadLatestOnceWithoutLock() (snapshot provider.Versioned[T
 		// The file holds no document until the first write, and the leadership
 		// lock creates it empty. Once it held one, an empty or missing file is
 		// being rewritten: a writer truncates it, or removes it, before it
-		// writes the new content. Loading an empty document then would delete
-		// every namespace, so the load fails, and a reload keeps the cached
-		// document until the new content is there.
+		// writes the new content. Loading an empty document would drain every
+		// data server and delete every namespace, so the load fails, and a
+		// reload keeps the cached document until the new content is there.
 		if m.hasDocument {
-			return snapshot, errors.Errorf("%s held a document and is now empty or missing, "+
-				"waiting for it to be rewritten", m.path)
+			return snapshot, fmt.Errorf("%s no longer holds a document, waiting for it to be rewritten", m.path)
 		}
 		return provider.Versioned[T]{
 			Value:   m.codec.NewZero(),
