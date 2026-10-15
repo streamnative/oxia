@@ -251,7 +251,7 @@ func TestNoOpFeaturesSupplierReturnsNoFeatures(t *testing.T) {
 	assert.Empty(t, result[server.GetNameOrDefault()])
 }
 
-func TestController_OnElectLeaderReturnsNewLeader(t *testing.T) {
+func TestControllerElectLeaderReturnsNewLeader(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -313,7 +313,7 @@ func (statusWriteFailingMetadata) PatchNamespaceStatus(string, func(*proto.Names
 	return context.Canceled
 }
 
-func TestController_ElectionDoesNotFenceWithUnpersistedTerm(t *testing.T) {
+func TestNewControllerDoesNotFenceWithUnpersistedTerm(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -335,7 +335,7 @@ func TestController_ElectionDoesNotFenceWithUnpersistedTerm(t *testing.T) {
 	assert.NoError(t, sc.Close())
 }
 
-func TestController(t *testing.T) {
+func TestControllerBecameUnavailableElectsNewLeader(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -428,7 +428,7 @@ func (m *shardStatusFailingMetadata) GetShardStatus(namespace string, shard int6
 // The shard controller retries the shard status loads that fail when it
 // starts, and when it handles the failure of the leader, which is notified
 // once: it elects a leader in both cases.
-func TestController_RetriesShardStatusLoadError(t *testing.T) {
+func TestNewControllerRetriesShardStatusLoadError(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -506,7 +506,7 @@ func TestController_RetriesShardStatusLoadError(t *testing.T) {
 
 // The periodic tasks skip a round whose shard status load fails, instead of
 // panicking as if the shard was missing.
-func TestController_PeriodicTasksSkipShardStatusLoadError(t *testing.T) {
+func TestControllerHandlePeriodicTasksSkipsShardStatusLoadError(t *testing.T) {
 	metadata := &shardStatusFailingMetadata{
 		Metadata: newTestMetadata(t, memory.NewProvider(metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled, ""),
 			&proto.ClusterConfiguration{}),
@@ -524,7 +524,7 @@ func TestController_PeriodicTasksSkipShardStatusLoadError(t *testing.T) {
 	assert.Zero(t, metadata.failures.Load(), "the status load failed")
 }
 
-func TestController_StartingWithLeaderAlreadyPresent(t *testing.T) {
+func TestNewControllerKeepsPresentLeader(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -558,10 +558,11 @@ func TestController_StartingWithLeaderAlreadyPresent(t *testing.T) {
 	assert.NoError(t, sc.Close())
 }
 
-// TestController_DoesNotElectFinalizingSplitParent verifies that the parent of
-// a split past the point of no return is never elected again: neither when its
-// controller starts, e.g. on a coordinator restart, nor on an election request.
-func TestController_DoesNotElectFinalizingSplitParent(t *testing.T) {
+// TestNewControllerDoesNotElectFinalizingSplitParent verifies that the parent
+// of a split past the point of no return is never elected again: neither when
+// its controller starts, e.g. on a coordinator restart, nor on an election
+// request.
+func TestNewControllerDoesNotElectFinalizingSplitParent(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -603,7 +604,7 @@ func TestController_DoesNotElectFinalizingSplitParent(t *testing.T) {
 	assert.Nil(t, shardMeta.Leader)
 }
 
-func TestController_RetriesElectionWhenDataServerNotInitialized(t *testing.T) {
+func TestNewControllerRetriesElectionWhenDataServerNotInitialized(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -649,7 +650,7 @@ func TestController_RetriesElectionWhenDataServerNotInitialized(t *testing.T) {
 	assert.NoError(t, sc.Close())
 }
 
-func TestController_NewTermWithNonRespondingServer(t *testing.T) {
+func TestNewControllerElectsLeaderWithNonRespondingServer(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -696,7 +697,7 @@ func TestController_NewTermWithNonRespondingServer(t *testing.T) {
 	assert.NoError(t, sc.Close())
 }
 
-func TestController_NewTermFollowerUntilItRecovers(t *testing.T) {
+func TestNewControllerSendsNewTermToFollowerUntilItRecovers(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -748,7 +749,7 @@ func TestController_NewTermFollowerUntilItRecovers(t *testing.T) {
 	assert.NoError(t, sc.Close())
 }
 
-func TestController_VerifyFollowersWereAllFenced(t *testing.T) {
+func TestNewControllerElectsLeaderWhenFollowerNotFenced(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -787,7 +788,7 @@ func TestController_VerifyFollowersWereAllFenced(t *testing.T) {
 	assert.NoError(t, sc.Close())
 }
 
-func TestController_NotificationsDisabled(t *testing.T) {
+func TestNewControllerElectsLeaderWithNotificationsDisabled(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -829,7 +830,7 @@ func TestController_NotificationsDisabled(t *testing.T) {
 	assert.NoError(t, sc.Close())
 }
 
-func TestController_SwapNodeWithLeaderElectionFailure(t *testing.T) {
+func TestControllerDispatchChangeEnsembleWithLeaderElectionFailure(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -928,7 +929,7 @@ func TestController_SwapNodeWithLeaderElectionFailure(t *testing.T) {
 	assert.NoError(t, sc.Close())
 }
 
-func TestController_LeaderElectionShouldNotFailIfRemoveFails(t *testing.T) {
+func TestControllerDispatchChangeEnsembleDoesNotFailIfRemoveFails(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -1044,7 +1045,7 @@ func TestController_LeaderElectionShouldNotFailIfRemoveFails(t *testing.T) {
 	assert.NoError(t, sc.Close())
 }
 
-func TestController_ShardsDataLostWithChangeEnsemble(t *testing.T) {
+func TestControllerDispatchChangeEnsembleKeepsEnsembleOnFailedElection(t *testing.T) {
 	var shardId = rand.Int63()
 	rpc := rpctest.NewRpcProvider()
 
@@ -1144,7 +1145,7 @@ func TestController_ShardsDataLostWithChangeEnsemble(t *testing.T) {
 // RF=2, the leader and the removed follower reach that majority on their own:
 // the election must still wait for the new member, otherwise the leader gets
 // no follower to commit its head entry and BecomeLeader cannot complete.
-func TestController_ChangeEnsembleWaitsForNewEnsembleQuorum(t *testing.T) {
+func TestControllerDispatchChangeEnsembleWaitsForNewEnsembleQuorum(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -1225,7 +1226,7 @@ func TestController_ChangeEnsembleWaitsForNewEnsembleQuorum(t *testing.T) {
 // committed entry. RF=3: s1 committed the entry at offset 5 with the ack of s2,
 // while s3 is still at offset 4. Swapping s2 out while s1 misses the fence must
 // not elect s3: s1 would be truncated when it rejoins, and s2 gets deleted.
-func TestController_ChangeEnsembleKeepsEntryOfRemovedFollower(t *testing.T) {
+func TestControllerDispatchChangeEnsembleKeepsEntryOfRemovedFollower(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -1314,10 +1315,11 @@ func TestController_ChangeEnsembleKeepsEntryOfRemovedFollower(t *testing.T) {
 	assert.NoError(t, sc.Close())
 }
 
-// Same as TestController_ChangeEnsembleKeepsEntryOfRemovedFollower, when the
-// swapped out data server is the leader: s1 committed the entry at offset 5
-// with the ack of s2, and s2 is slow to answer the fence of the new term.
-func TestController_ChangeEnsembleKeepsEntryOfRemovedLeader(t *testing.T) {
+// Same as TestControllerDispatchChangeEnsembleKeepsEntryOfRemovedFollower,
+// when the swapped out data server is the leader: s1 committed the entry at
+// offset 5 with the ack of s2, and s2 is slow to answer the fence of the new
+// term.
+func TestControllerDispatchChangeEnsembleKeepsEntryOfRemovedLeader(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -1408,7 +1410,7 @@ func TestController_ChangeEnsembleKeepsEntryOfRemovedLeader(t *testing.T) {
 // ensemble must go on even if the removed data server may hold entries that no
 // candidate has: the leader of the failed attempt may have committed entries on
 // the new ensemble alone, which a leader of the current ensemble could miss.
-func TestController_ChangeEnsembleNotAbortedAfterBecomeLeader(t *testing.T) {
+func TestControllerDispatchChangeEnsembleNotAbortedAfterBecomeLeader(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -1509,7 +1511,7 @@ func TestController_ChangeEnsembleNotAbortedAfterBecomeLeader(t *testing.T) {
 }
 
 // Test feature negotiation with all nodes supporting the same features.
-func TestController_FeatureNegotiation_AllNodesSupport(t *testing.T) {
+func TestNewControllerNegotiatesFeaturesSupportedByAllNodes(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -1564,7 +1566,7 @@ func TestController_FeatureNegotiation_AllNodesSupport(t *testing.T) {
 }
 
 // Test feature negotiation with mixed node versions (one old node).
-func TestController_FeatureNegotiation_MixedVersions(t *testing.T) {
+func TestNewControllerNegotiatesFeaturesOfMixedVersions(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -1618,7 +1620,7 @@ func TestController_FeatureNegotiation_MixedVersions(t *testing.T) {
 	sc.Close()
 }
 
-func TestController_ChangeEnsembleRejectsFeatureSupportRegression(t *testing.T) {
+func TestControllerDispatchChangeEnsembleRejectsFeatureSupportRegression(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -1681,7 +1683,7 @@ func TestController_ChangeEnsembleRejectsFeatureSupportRegression(t *testing.T) 
 	assertShardEnsemble(t, metaSnap.Ensemble, s1, s2, s3)
 }
 
-func TestController_ChangeEnsembleRejectsMissingFeatureInfo(t *testing.T) {
+func TestControllerValidateChangeEnsembleFeaturesRejectsMissingFeatureInfo(t *testing.T) {
 	var shard int64 = 5
 
 	s1 := &proto.DataServerIdentity{Public: "s1:9091", Internal: "s1:8191"}
@@ -1733,7 +1735,7 @@ func TestController_ChangeEnsembleRejectsMissingFeatureInfo(t *testing.T) {
 	}
 }
 
-func TestController_ChangeEnsembleRejectsInvalidAction(t *testing.T) {
+func TestControllerValidateChangeEnsembleFeaturesRejectsInvalidAction(t *testing.T) {
 	var shard int64 = 5
 
 	s1 := &proto.DataServerIdentity{Public: "s1:9091", Internal: "s1:8191"}
@@ -1783,7 +1785,7 @@ func TestController_ChangeEnsembleRejectsInvalidAction(t *testing.T) {
 // A change of the ensemble of the parent or of a child of a split is rejected
 // until the split ends, e.g. one that the balancer planned before the split
 // started.
-func TestController_ChangeEnsembleRejectsSplitShard(t *testing.T) {
+func TestControllerValidateChangeEnsembleFeaturesRejectsSplitShard(t *testing.T) {
 	_, metadata, _ := setupSplitTest(t, proto.SplitPhaseBootstrap)
 	spare := &proto.DataServerIdentity{Public: "spare:9091", Internal: "spare:8191"}
 
@@ -1816,7 +1818,7 @@ func TestController_ChangeEnsembleRejectsSplitShard(t *testing.T) {
 // the election: the change must be reported as failed, and leave the shard as
 // it was. Once the split is aborted, the ensemble of the shard can change
 // again.
-func TestController_ChangeEnsembleStopsWhenSplitStarts(t *testing.T) {
+func TestControllerDispatchChangeEnsembleStopsWhenSplitStarts(t *testing.T) {
 	rpc := rpctest.NewRpcProvider()
 	spare := &proto.DataServerIdentity{Public: "spare:9091", Internal: "spare:8191"}
 	metadata := newTestMetadata(t, memory.NewProvider(metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled, ""), &proto.ClusterConfiguration{})
@@ -1894,7 +1896,7 @@ func TestController_ChangeEnsembleStopsWhenSplitStarts(t *testing.T) {
 
 // Each UpdateShardStatus persists the full cluster status. A periodic tick
 // should only persist after it changes shard state.
-func TestController_PeriodicTasksPersistOnlyDirtyState(t *testing.T) {
+func TestControllerHandlePeriodicTasksPersistsOnlyDirtyState(t *testing.T) {
 	var shard int64 = 5
 	metadata := newTestMetadata(t, memory.NewProvider(metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled, ""), &proto.ClusterConfiguration{})
 	rpc := rpctest.NewRpcProvider()
@@ -1993,7 +1995,7 @@ func assertPeriodicTasksKeepUpdate(t *testing.T, metadata coordmetadata.Metadata
 // A namespace is deleted while the periodic tasks of one of its shards delete
 // it from a data server removed from its ensemble: the shard stays marked for
 // deletion.
-func TestController_PeriodicTasksKeepNamespaceDeletion(t *testing.T) {
+func TestControllerHandlePeriodicTasksKeepsNamespaceDeletion(t *testing.T) {
 	var shard int64 = 5
 	s1 := &proto.DataServerIdentity{Public: "s1:9091", Internal: "s1:8191"}
 	s2 := &proto.DataServerIdentity{Public: "s2:9091", Internal: "s2:8191"}
@@ -2021,7 +2023,7 @@ func TestController_PeriodicTasksKeepNamespaceDeletion(t *testing.T) {
 // parent keeps the split's updates. The shards of a split no longer change
 // their ensemble, but a status stored by an earlier coordinator can still have
 // such a parent.
-func TestController_PeriodicTasksKeepSplitUpdates(t *testing.T) {
+func TestControllerHandlePeriodicTasksKeepsSplitUpdates(t *testing.T) {
 	removed := &proto.DataServerIdentity{Public: "ps4:9091", Internal: "ps4:8191"}
 	for _, test := range []struct {
 		name   string
@@ -2068,7 +2070,7 @@ func TestController_PeriodicTasksKeepSplitUpdates(t *testing.T) {
 	}
 }
 
-func TestController_ElectionDiscardsWhenQueueIsFull(t *testing.T) {
+func TestControllerDispatchElectionDiscardsWhenQueueIsFull(t *testing.T) {
 	var shard int64 = 5
 	s := &controller{
 		shard:      shard,
@@ -2086,7 +2088,7 @@ func TestController_ElectionDiscardsWhenQueueIsFull(t *testing.T) {
 	assert.Len(t, s.electionOp, chanBufferSize)
 }
 
-func TestController_RefreshDiscardsElectionWhenQueueIsFull(t *testing.T) {
+func TestControllerRefreshDiscardsElectionWhenQueueIsFull(t *testing.T) {
 	var shard int64 = 5
 	metadata := newTestMetadata(t, memory.NewProvider(metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled, ""), &proto.ClusterConfiguration{})
 
@@ -2142,7 +2144,7 @@ func (m *deleteShardStatusFailingMetadata) DeleteShardStatus(namespace string, s
 
 // A shard deletion whose status deletion fails keeps the shard controller
 // running, and sends the deletion again to the event loop.
-func TestController_DeleteShardRetriesStatusDeletion(t *testing.T) {
+func TestControllerDeleteRetriesStatusDeletion(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 	metadata := &deleteShardStatusFailingMetadata{
@@ -2197,7 +2199,7 @@ func TestController_DeleteShardRetriesStatusDeletion(t *testing.T) {
 	assert.False(t, exists)
 }
 
-func TestController_DeleteShardAllowsNilEventListener(t *testing.T) {
+func TestControllerDeleteAllowsNilEventListener(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 	metadata := newTestMetadata(t, memory.NewProvider(metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled, ""), &proto.ClusterConfiguration{})
@@ -2274,7 +2276,7 @@ func (s *testFeaturesSupplier) supply(dataServers []*proto.DataServerIdentity) m
 // An ensemble that contains a node not supporting a feature already enabled
 // on the shard must not be able to elect a leader: the old node would apply
 // entries with different semantics and silently diverge.
-func TestController_ElectionRejectsEnsembleMissingEnabledFeature(t *testing.T) {
+func TestNewControllerDoesNotElectEnsembleMissingEnabledFeature(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -2320,7 +2322,7 @@ func TestController_ElectionRejectsEnsembleMissingEnabledFeature(t *testing.T) {
 
 // When the whole ensemble supports the negotiated features, the election pins
 // them in the NewTerm options of every member and passes them to the leader.
-func TestController_ElectionPinsNegotiatedFeatures(t *testing.T) {
+func TestNewControllerPinsNegotiatedFeatures(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -2368,7 +2370,7 @@ func TestController_ElectionPinsNegotiatedFeatures(t *testing.T) {
 // since the coordinator started, e.g. because it is down) must not block the
 // election of a shard that already has features enabled: the election pins
 // the enabled features, and the member is checked when it joins the term.
-func TestController_ElectionPinsEnabledFeaturesWithUnknownMember(t *testing.T) {
+func TestNewControllerPinsEnabledFeaturesWithUnknownMember(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -2425,7 +2427,7 @@ func TestController_ElectionPinsEnabledFeaturesWithUnknownMember(t *testing.T) {
 // (e.g. at coordinator startup). The election must then start over to pin
 // the features the whole ensemble supports, instead of leaving them disabled
 // until the next election.
-func TestController_ElectionPinsFeaturesOfHandshakeDuringFencing(t *testing.T) {
+func TestNewControllerPinsFeaturesOfHandshakeDuringFencing(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -2488,7 +2490,7 @@ func TestController_ElectionPinsFeaturesOfHandshakeDuringFencing(t *testing.T) {
 // yet, and complete it only after the rest of the ensemble elected a leader:
 // the term was negotiated while its features were unknown, and a new election
 // must pin the features that the whole ensemble supports once they are known.
-func TestController_ElectionPinsFeaturesDiscoveredAfterElection(t *testing.T) {
+func TestControllerFeaturesDiscoveredPinsFeaturesAfterElection(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -2553,7 +2555,7 @@ func TestController_ElectionPinsFeaturesDiscoveredAfterElection(t *testing.T) {
 // handshake of a data server outside of the ensemble doesn't either, even if
 // the ensemble supports more features by then: the members report their own
 // features when they change.
-func TestController_FeaturesDiscoveredWithoutNewFeaturesKeepsTerm(t *testing.T) {
+func TestControllerFeaturesDiscoveredWithoutNewFeaturesKeepsTerm(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -2610,7 +2612,7 @@ func TestController_FeaturesDiscoveredWithoutNewFeaturesKeepsTerm(t *testing.T) 
 // Discovering the features of a member doesn't start a new election when the
 // term pins them already: e.g. at coordinator startup, when the handshake
 // completes before the election negotiates the features of the term.
-func TestController_FeaturesDiscoveredAlreadyPinnedKeepsTerm(t *testing.T) {
+func TestControllerFeaturesDiscoveredAlreadyPinnedKeepsTerm(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -2663,7 +2665,7 @@ func TestController_FeaturesDiscoveredAlreadyPinnedKeepsTerm(t *testing.T) {
 // shard controller must not lose the notification while it is busy with an
 // election, however many data servers complete their first handshake in the
 // meantime (e.g. all of them at coordinator startup).
-func TestController_FeaturesDiscoveredDuringElectionAreNotDropped(t *testing.T) {
+func TestControllerFeaturesDiscoveredDuringElectionIsNotDropped(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -2762,7 +2764,7 @@ func (r *dataServerEventsRelay) FeaturesDiscovered(dataServer *proto.DataServerI
 // is down, with the features of its previous binary. Once the leader is back
 // and the whole ensemble supports the new feature, a new term must pin it.
 // The data server controllers report the features, as in the coordinator.
-func TestController_RollingUpgradePinsNewFeatures(t *testing.T) {
+func TestControllerFeaturesDiscoveredPinsNewFeaturesOfRollingUpgrade(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -2914,7 +2916,7 @@ func newRestartedTestController(t *testing.T, metadata coordmetadata.Metadata, s
 // shard, whose term it didn't negotiate: once the first handshakes make the
 // features of the whole ensemble known, the leader reports the ones pinned by
 // its term, and a new term must pin the ones that the ensemble supports.
-func TestController_PinsFeaturesOfEnsembleUpgradedWhileCoordinatorDown(t *testing.T) {
+func TestControllerFeaturesDiscoveredPinsFeaturesOfEnsembleUpgradedWhileCoordinatorDown(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -2961,7 +2963,7 @@ func TestController_PinsFeaturesOfEnsembleUpgradedWhileCoordinatorDown(t *testin
 // that the ensemble supports already, or when the leader runs a binary that
 // predates the report of the features pinned by its term: the election that
 // replaces it when it restarts with a newer binary negotiates them.
-func TestController_FeaturesDiscoveredAfterRestartKeepsTerm(t *testing.T) {
+func TestControllerFeaturesDiscoveredAfterRestartKeepsTerm(t *testing.T) {
 	upgraded := []proto.Feature{proto.Feature_FEATURE_DB_CHECKSUM, proto.Feature_FEATURE_ORDERED_WRITES}
 
 	for _, tt := range []struct {
@@ -3009,7 +3011,7 @@ func TestController_FeaturesDiscoveredAfterRestartKeepsTerm(t *testing.T) {
 // The periodic tasks retry the check of the features pinned by the term when
 // it can't complete, e.g. because the leader couldn't report them for a
 // moment.
-func TestController_RetriesTermFeaturesCheck(t *testing.T) {
+func TestControllerHandlePeriodicTasksRetriesTermFeaturesCheck(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
@@ -3056,7 +3058,7 @@ func TestController_RetriesTermFeaturesCheck(t *testing.T) {
 // A follower that failed the election fence rejoins later through
 // AddFollower: the coordinator must report the joiner's supported features so
 // the leader can validate them.
-func TestController_RejoiningFollowerFeaturesReported(t *testing.T) {
+func TestNewControllerReportsFeaturesOfRejoiningFollower(t *testing.T) {
 	var shard int64 = 5
 	rpc := rpctest.NewRpcProvider()
 
