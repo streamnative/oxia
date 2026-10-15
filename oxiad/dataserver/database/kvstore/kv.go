@@ -107,6 +107,18 @@ type KeyValueIterator interface {
 	Value() ([]byte, error)
 }
 
+// PrefixIterator is the iterator of KV.KeyPrefixIterator, which also reads the
+// other keys of the store as they were when it was created.
+type PrefixIterator interface {
+	KeyIterator
+
+	// Lookup returns the value of key, wherever it sorts, at the point in time
+	// of the iterator, or ErrKeyNotFound. It doesn't move the iterator. The
+	// value is only valid until the next Lookup, and until the iterator is
+	// closed.
+	Lookup(key string) ([]byte, error)
+}
+
 type SnapshotChunk interface {
 	Name() string
 	Index() int32
@@ -155,7 +167,7 @@ type KV interface {
 
 	// KeyPrefixIterator returns an iterator over the keys that start with
 	// prefix, internal keys included, to position with SeekGE or SeekLT
-	KeyPrefixIterator(prefix string) (KeyIterator, error)
+	KeyPrefixIterator(prefix string) (PrefixIterator, error)
 
 	RangeScan(lowerBound, upperBound string, opts IteratorOpts) (KeyValueIterator, error)
 

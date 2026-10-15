@@ -30,7 +30,6 @@ import (
 	time2 "github.com/oxia-db/oxia/common/time"
 	"github.com/oxia-db/oxia/oxiad/dataserver/controller/statemachine"
 	"github.com/oxia-db/oxia/oxiad/dataserver/database"
-	"github.com/oxia-db/oxia/oxiad/dataserver/database/kvstore"
 )
 
 // What a split child seeded with all the data of its parent does until it
@@ -202,16 +201,16 @@ var errSplitFilterPending = errors.Wrap(constant.ErrResourceUnavailable,
 // the records of a split child outside its hash range, until it deletes them.
 // It doesn't skip the entries from end on, if not empty, which the reads of the
 // index don't go past. On any other shard, filter is nil, and it returns it.
-func keptIndexEntries(db database.DB, filter *database.DeferredSplitFilter, it kvstore.KeyIterator,
-	end string) kvstore.KeyIterator {
+func keptIndexEntries(db database.DB, filter *database.DeferredSplitFilter, it database.PrefixIterator,
+	end string) database.PrefixIterator {
 	if filter == nil {
 		return it
 	}
-	return &keptIndexEntriesIterator{KeyIterator: it, db: db, filter: filter, end: end}
+	return &keptIndexEntriesIterator{PrefixIterator: it, db: db, filter: filter, end: end}
 }
 
 type keptIndexEntriesIterator struct {
-	kvstore.KeyIterator
+	database.PrefixIterator
 	db     database.DB
 	filter *database.DeferredSplitFilter
 	end    string
@@ -221,12 +220,12 @@ type keptIndexEntriesIterator struct {
 // skip moves the iterator with next until it reaches an entry that the shard
 // keeps, or the end, and reports whether it did.
 func (it *keptIndexEntriesIterator) skip(next func() bool) bool {
-	for it.KeyIterator.Valid() {
+	for it.PrefixIterator.Valid() {
 		key := it.Key()
 		if it.end != "" && it.db.CompareKeys(key, it.end) >= 0 {
 			return true
 		}
-		kept, err := it.db.KeepsIndexEntry(it.filter, key)
+		kept, err := it.KeepsIndexEntry(it.filter, key)
 		if err != nil {
 			it.err = err
 			return false
@@ -240,36 +239,36 @@ func (it *keptIndexEntriesIterator) skip(next func() bool) bool {
 }
 
 func (it *keptIndexEntriesIterator) Valid() bool {
-	return it.err == nil && it.KeyIterator.Valid()
+	return it.err == nil && it.PrefixIterator.Valid()
 }
 
 func (it *keptIndexEntriesIterator) Next() bool {
-	it.KeyIterator.Next()
-	return it.skip(it.KeyIterator.Next)
+	it.PrefixIterator.Next()
+	return it.skip(it.PrefixIterator.Next)
 }
 
 func (it *keptIndexEntriesIterator) Prev() bool {
-	it.KeyIterator.Prev()
-	return it.skip(it.KeyIterator.Prev)
+	it.PrefixIterator.Prev()
+	return it.skip(it.PrefixIterator.Prev)
 }
 
 func (it *keptIndexEntriesIterator) SeekGE(key string) bool {
-	it.KeyIterator.SeekGE(key)
-	return it.skip(it.KeyIterator.Next)
+	it.PrefixIterator.SeekGE(key)
+	return it.skip(it.PrefixIterator.Next)
 }
 
 func (it *keptIndexEntriesIterator) SeekLT(key string) bool {
-	it.KeyIterator.SeekLT(key)
-	return it.skip(it.KeyIterator.Prev)
+	it.PrefixIterator.SeekLT(key)
+	return it.skip(it.PrefixIterator.Prev)
 }
 
 func (it *keptIndexEntriesIterator) Error() error {
 	if it.err != nil {
 		return it.err
 	}
-	return it.KeyIterator.Error()
+	return it.PrefixIterator.Error()
 }
 
 func (it *keptIndexEntriesIterator) Close() error {
-	return multierr.Append(it.err, it.KeyIterator.Close())
+	return multierr.Append(it.err, it.PrefixIterator.Close())
 }

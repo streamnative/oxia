@@ -115,12 +115,12 @@ func TestSecondaryIndexGetReadFailure(t *testing.T) {
 	flushIntoUnreadableSST(t, db.RawKV(), dataDir)
 
 	for _, comparisonType := range []proto.KeyComparisonType{proto.KeyComparisonType_EQUAL, proto.KeyComparisonType_FLOOR} {
-		primaryKey, _, err := doSecondaryGet(db, &proto.GetRequest{
+		res, err := secondaryIndexGet(&proto.GetRequest{
 			Key:                "5",
 			SecondaryIndexName: pb.String("idx"),
 			ComparisonType:     comparisonType,
-		})
+		}, db)
 		assert.ErrorIs(t, err, os.ErrPermission, comparisonType)
-		assert.Empty(t, primaryKey, comparisonType)
+		assert.Nil(t, res, comparisonType)
 	}
 }

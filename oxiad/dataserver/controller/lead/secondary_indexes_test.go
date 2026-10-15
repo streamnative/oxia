@@ -306,10 +306,10 @@ func TestSecondaryIndices_RangeScan(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
-// An index range scan holds the entries of the index of the time it started,
-// and reads the records as they are when it reaches them: it skips the records
-// deleted in between, rather than returning them as not found.
-func TestSecondaryIndexRangeScanSkipsDeletedRecords(t *testing.T) {
+// An index range scan reads the records as they were when it started, like the
+// entries of the index: a record deleted since, or moved to another secondary
+// key, comes as it was, with its entry.
+func TestSecondaryIndexRangeScanReturnsRecordsAsOfStart(t *testing.T) {
 	var shard int64 = 1
 
 	kvFactory, err := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
@@ -348,10 +348,12 @@ func TestSecondaryIndexRangeScanSkipsDeletedRecords(t *testing.T) {
 		SecondaryIndexName: pb.String("my-idx"),
 	}, func(r *proto.GetResponse) error {
 		if len(keys) == 0 {
-			// The scan already holds the entries of these records
+			// Once the scan started
 			_, err := lc.WriteBlock(context.Background(), &proto.WriteRequest{
-				Shard:   &shard,
-				Deletes: []*proto.DeleteRequest{{Key: "/b"}, {Key: "/c"}, {Key: "/e"}},
+				Shard: &shard,
+				Puts: []*proto.PutRequest{{Key: "/c", Value: []byte("8"),
+					SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "my-idx", SecondaryKey: "8"}}}},
+				Deletes: []*proto.DeleteRequest{{Key: "/b"}, {Key: "/e"}},
 			})
 			require.NoError(t, err)
 		}
@@ -361,7 +363,7 @@ func TestSecondaryIndexRangeScanSkipsDeletedRecords(t *testing.T) {
 		return nil
 	})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"/a", "/d"}, keys)
+	assert.Equal(t, []string{"/a", "/b", "/c", "/d", "/e"}, keys)
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())
@@ -737,6 +739,54 @@ func TestSecondaryIndices_GetFollowsKeySorting(t *testing.T) {
 			assert.NoError(t, walFactory.Close())
 		})
 	}
+}
+
+// An index get reads the record of the entry it finds as it was when it found
+// the entry: a record moved to another secondary key since comes as it was.
+func TestSecondaryIndexGetReturnsRecordAsOfEntry(t *testing.T) {
+	var shard int64 = 1
+
+	kvFactory, err := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	walFactory := newTestWalFactory(t)
+
+	lc, err := NewLeaderController(&option.StorageOptions{}, constant.DefaultNamespace, shard, rpc.NewMockRpcClient(),
+		walFactory, kvFactory, nil)
+	require.NoError(t, err)
+	_, err = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
+	require.NoError(t, err)
+	_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
+		Shard:             shard,
+		Term:              1,
+		ReplicationFactor: 1,
+	})
+	require.NoError(t, err)
+
+	put := func(secondaryKey string) {
+		_, err := lc.WriteBlock(context.Background(), &proto.WriteRequest{
+			Shard: &shard,
+			Puts: []*proto.PutRequest{{Key: "/a", Value: []byte(secondaryKey),
+				SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "my-idx", SecondaryKey: secondaryKey}}}},
+		})
+		require.NoError(t, err)
+	}
+	put("0")
+
+	db := &hookedPrefixDB{DB: lc.(*leaderController).db, afterPrefixIterator: func() { put("1") }}
+	res, err := secondaryIndexGet(&proto.GetRequest{
+		Key:                "0",
+		IncludeValue:       true,
+		SecondaryIndexName: pb.String("my-idx"),
+	}, db)
+	require.NoError(t, err)
+	assert.Equal(t, proto.Status_OK, res.Status)
+	assert.Equal(t, "/a", res.GetKey())
+	assert.Equal(t, "0", res.GetSecondaryIndexKey())
+	assert.Equal(t, "0", string(res.Value))
+
+	assert.NoError(t, lc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
 }
 
 func TestSecondaryIndices_ListFollowsKeySorting(t *testing.T) {
@@ -1115,13 +1165,13 @@ func TestDoSecondaryGet_UnsupportedComparisonType(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	// Call doSecondaryGet with an unsupported ComparisonType to hit the default branch
+	// Get with an unsupported ComparisonType to hit the default branch of doSecondaryGet
 	db := lc.(*leaderController).db
-	_, _, err = doSecondaryGet(db, &proto.GetRequest{
+	_, err = secondaryIndexGet(&proto.GetRequest{
 		Key:                "0",
 		SecondaryIndexName: pb.String("my-idx"),
 		ComparisonType:     proto.KeyComparisonType(999),
-	})
+	}, db)
 	assert.ErrorContains(t, err, "unsupported comparison type")
 
 	assert.NoError(t, lc.Close())

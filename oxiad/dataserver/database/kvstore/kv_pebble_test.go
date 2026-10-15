@@ -434,6 +434,55 @@ func TestPebbleKeyPrefixIteratorSeeksOverOtherKeys(t *testing.T) {
 	assert.NoError(t, factory.Close())
 }
 
+// A lookup reads any key of the store as it was when the iterator was created,
+// in the flushed tables as in the memtable: the writes since don't show.
+func TestPebblePrefixIteratorLookupReadsAtIteratorView(t *testing.T) {
+	for _, sorting := range []proto.KeySortingType{proto.KeySortingType_NATURAL, proto.KeySortingType_HIERARCHICAL} {
+		t.Run(sorting.String(), func(t *testing.T) {
+			factory, err := NewPebbleKVFactory(NewFactoryOptionsForTest(t))
+			require.NoError(t, err)
+			kv, err := factory.NewKV(constant.DefaultNamespace, 1, sorting)
+			require.NoError(t, err)
+
+			putAll(t, kv, "", "/a", "/a/b", "__oxia/idx/i/x\x01%2Fa", "zzz")
+			require.NoError(t, kv.Flush())
+			putAll(t, kv, "/c")
+
+			it, err := kv.KeyPrefixIterator("__oxia/idx/i/")
+			require.NoError(t, err)
+
+			wb := kv.NewWriteBatch()
+			require.NoError(t, wb.Put("/a", []byte("updated")))
+			require.NoError(t, wb.Delete("/a/b"))
+			require.NoError(t, wb.Delete("/c"))
+			require.NoError(t, wb.Put("/new", []byte("new")))
+			require.NoError(t, wb.Commit())
+			require.NoError(t, wb.Close())
+
+			for _, key := range []string{"", "/a", "/a/b", "/c", "zzz"} {
+				value, err := it.Lookup(key)
+				require.NoError(t, err, key)
+				assert.Equal(t, "v-"+key, string(value), key)
+			}
+			for _, key := range []string{"/new", "/a/", "/b"} {
+				_, err := it.Lookup(key)
+				assert.ErrorIs(t, err, ErrKeyNotFound, key)
+			}
+
+			// The lookups don't move the iterator
+			assert.True(t, it.SeekGE("__oxia/idx/i/"))
+			_, err = it.Lookup("/a")
+			require.NoError(t, err)
+			assert.Equal(t, "__oxia/idx/i/x\x01%2Fa", it.Key())
+			assert.False(t, it.Next())
+
+			assert.NoError(t, it.Close())
+			assert.NoError(t, kv.Close())
+			assert.NoError(t, factory.Close())
+		})
+	}
+}
+
 func TestPebbbleGetWithinBatch(t *testing.T) {
 	factory, err := NewPebbleKVFactory(NewFactoryOptionsForTest(t))
 	assert.NoError(t, err)

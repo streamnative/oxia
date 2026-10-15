@@ -643,41 +643,41 @@ func TestSessionDelete_DeferredSplitFilterNotifications(t *testing.T) {
 }
 
 // hookedPrefixDB runs a hook once the next iterator over a prefix is created,
-// and another after each check of an entry of a secondary index, which it
-// counts.
+// and counts the checks of the entries of the secondary indexes by its
+// iterators.
 type hookedPrefixDB struct {
 	database.DB
 	afterPrefixIterator  func()
-	afterKeepsIndexEntry func(indexKey string)
 	keepsIndexEntryCalls int
 }
 
-func (db *hookedPrefixDB) hook() {
+func (db *hookedPrefixDB) hook(it database.PrefixIterator, err error) (database.PrefixIterator, error) {
 	if hook := db.afterPrefixIterator; hook != nil {
 		db.afterPrefixIterator = nil
 		hook()
 	}
-}
-
-func (db *hookedPrefixDB) ListPrefix(prefix string) (kvstore.KeyIterator, error) {
-	it, err := db.DB.ListPrefix(prefix)
-	db.hook()
-	return it, err
-}
-
-func (db *hookedPrefixDB) KeyPrefixIterator(prefix string) (kvstore.KeyIterator, error) {
-	it, err := db.DB.KeyPrefixIterator(prefix)
-	db.hook()
-	return it, err
-}
-
-func (db *hookedPrefixDB) KeepsIndexEntry(filter *database.DeferredSplitFilter, indexKey string) (bool, error) {
-	db.keepsIndexEntryCalls++
-	kept, err := db.DB.KeepsIndexEntry(filter, indexKey)
-	if db.afterKeepsIndexEntry != nil {
-		db.afterKeepsIndexEntry(indexKey)
+	if err != nil {
+		return nil, err
 	}
-	return kept, err
+	return &hookedPrefixIterator{PrefixIterator: it, db: db}, nil
+}
+
+func (db *hookedPrefixDB) ListPrefix(prefix string) (database.PrefixIterator, error) {
+	return db.hook(db.DB.ListPrefix(prefix))
+}
+
+func (db *hookedPrefixDB) KeyPrefixIterator(prefix string) (database.PrefixIterator, error) {
+	return db.hook(db.DB.KeyPrefixIterator(prefix))
+}
+
+type hookedPrefixIterator struct {
+	database.PrefixIterator
+	db *hookedPrefixDB
+}
+
+func (it *hookedPrefixIterator) KeepsIndexEntry(filter *database.DeferredSplitFilter, indexKey string) (bool, error) {
+	it.db.keepsIndexEntryCalls++
+	return it.PrefixIterator.KeepsIndexEntry(filter, indexKey)
 }
 
 // The queries of a secondary index that start before the last step of the
@@ -761,45 +761,76 @@ func TestSecondaryIndexes_DeferredSplitFilterReplacedRecord(t *testing.T) {
 	assert.Empty(t, listed)
 }
 
-// An index range scan of a split child checks that the child keeps the record
-// of an entry when it reaches the entry, and reads the record after: it skips a
-// record deleted in between too.
-func TestSecondaryIndexRangeScanDeferredSplitFilterSkipsDeletedRecords(t *testing.T) {
-	kvFactory, err := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
-	require.NoError(t, err)
-	defer func() { assert.NoError(t, kvFactory.Close()) }()
-	left, right := splitKeys(splitTestChildRange)
-	child := newSplitChildDB(t, kvFactory, 2, splitChildRecords(5, left, right))
-	defer func() { assert.NoError(t, child.Close()) }()
-
-	// The record is deleted once the scan checked its entry, before the scan
-	// reads it
-	deleted := left[1]
-	db := &hookedPrefixDB{DB: child}
-	db.afterKeepsIndexEntry = func(indexKey string) {
-		if primaryKey, _, _ := database.ParseSecondaryIndexKey(indexKey); primaryKey == deleted {
-			db.afterKeepsIndexEntry = nil
-			_, err := child.ProcessWrite(&proto.WriteRequest{Deletes: []*proto.DeleteRequest{{Key: deleted}}}, 2, 0,
-				WrapperUpdateOperationCallback)
-			require.NoError(t, err)
-		}
-	}
-
+// The queries of a secondary index of a split child check the entries, and
+// read their records, as they were when the query started: a record deleted
+// since, or moved to another secondary key, comes as it was, with its entry.
+func TestSecondaryIndexesDeferredSplitFilterRacingWrites(t *testing.T) {
 	idx := "idx"
-	scan, err := newSecondaryIndexRangeScanIterator(&proto.RangeScanRequest{
-		SecondaryIndexName: &idx, StartInclusive: "sec-", EndExclusive: "sec-~",
-	}, db)
-	require.NoError(t, err)
-	var scanned []string
-	for ; scan.Valid(); scan.Next() {
-		res, err := scan.Value()
-		require.NoError(t, err)
-		assert.Equal(t, proto.Status_OK, res.Status, res.GetKey())
-		scanned = append(scanned, res.GetKey())
+	for _, query := range []string{"list", "range-scan", "get"} {
+		t.Run(query, func(t *testing.T) {
+			kvFactory, err := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
+			require.NoError(t, err)
+			defer func() { assert.NoError(t, kvFactory.Close()) }()
+			left, right := splitKeys(splitTestChildRange)
+			child := newSplitChildDB(t, kvFactory, 2, splitChildRecords(5, left, right))
+			defer func() { assert.NoError(t, child.Close()) }()
+
+			// The record of sec-01 is deleted, and the one of sec-02 moves to
+			// sec-99, with another value
+			db := &hookedPrefixDB{DB: child, afterPrefixIterator: func() {
+				_, err := child.ProcessWrite(&proto.WriteRequest{
+					Puts: []*proto.PutRequest{{Key: left[2], Value: []byte("moved"),
+						SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: idx, SecondaryKey: "sec-99"}}}},
+					Deletes: []*proto.DeleteRequest{{Key: left[1]}},
+				}, 2, 0, WrapperUpdateOperationCallback)
+				require.NoError(t, err)
+			}}
+
+			switch query {
+			case "list":
+				it, err := newSecondaryIndexListIterator(&proto.ListRequest{
+					SecondaryIndexName: &idx, StartInclusive: "sec-", EndExclusive: "sec-~",
+				}, db)
+				require.NoError(t, err)
+				var listed []string
+				for ; it.Valid(); it.Next() {
+					listed = append(listed, it.Key())
+				}
+				require.NoError(t, it.Close())
+				// The kept records come in the order of their secondary keys, sec-00 on
+				assert.Equal(t, left, listed)
+
+			case "range-scan":
+				scan, err := newSecondaryIndexRangeScanIterator(&proto.RangeScanRequest{
+					SecondaryIndexName: &idx, StartInclusive: "sec-", EndExclusive: "sec-~",
+				}, db)
+				require.NoError(t, err)
+				var scanned []string
+				for ; scan.Valid(); scan.Next() {
+					res, err := scan.Value()
+					require.NoError(t, err)
+					assert.Equal(t, proto.Status_OK, res.Status, res.GetKey())
+					assert.Equal(t, fmt.Sprintf("sec-%02d", len(scanned)), res.GetSecondaryIndexKey(), res.GetKey())
+					assert.Equal(t, "value-"+res.GetKey(), string(res.Value))
+					scanned = append(scanned, res.GetKey())
+				}
+				require.NoError(t, scan.Close())
+				assert.Equal(t, left, scanned)
+
+			case "get":
+				res, err := secondaryIndexGet(&proto.GetRequest{
+					Key: "sec-02", SecondaryIndexName: &idx, IncludeValue: true,
+				}, db)
+				require.NoError(t, err)
+				assert.Equal(t, proto.Status_OK, res.Status)
+				assert.Equal(t, left[2], res.GetKey())
+				assert.Equal(t, "value-"+left[2], string(res.Value))
+
+			default:
+				require.FailNow(t, "unknown query", query)
+			}
+		})
 	}
-	require.NoError(t, scan.Close())
-	// The kept records come in the order of their secondary keys, sec-00 on
-	assert.Equal(t, slices.Concat(left[:1], left[2:]), scanned)
 }
 
 // The queries of a secondary index of a split child don't check the entries
