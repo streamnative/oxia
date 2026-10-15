@@ -183,8 +183,52 @@ func TestWriteStreamLeaderControllerClosed(t *testing.T) {
 
 	_, err = stream.Recv()
 	oxiaErr, _ := constant.FromGrpcError(err)
-	assert.ErrorIs(t, oxiaErr, constant.ErrNodeIsNotLeader)
+	// Not ErrNodeIsNotLeader, after which the clients send the writes again: the next
+	// leader may commit the writes that waited for the commit
+	assert.ErrorIs(t, oxiaErr, constant.ErrResourceUnavailable)
 	assert.True(t, constant.IsRetryable(oxiaErr), "the client does not retry on: %v", err)
+}
+
+// A write the leader rejects as not leader ends the stream with ErrResourceUnavailable: the
+// earlier writes of the stream may have been appended, and the clients send the writes again
+// after ErrNodeIsNotLeader.
+func TestWriteStreamWriteRejectedAsNotLeader(t *testing.T) {
+	standaloneServer, err := NewStandalone(NewTestConfig(t.TempDir()))
+	require.NoError(t, err)
+	defer standaloneServer.Close()
+
+	conn, err := grpc.NewClient(standaloneServer.ServiceAddr(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	defer conn.Close()
+
+	client := proto.NewOxiaClientClient(conn)
+	ctx := metadata.NewOutgoingContext(context.Background(), metadata.New(map[string]string{
+		"shard-id":  "0",
+		"namespace": "default",
+	}))
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	stream, err := client.WriteStream(ctx)
+	require.NoError(t, err)
+	require.NoError(t, stream.Send(&proto.WriteRequest{
+		Puts: []*proto.PutRequest{{Key: "test-key", Value: []byte("test-value")}},
+	}))
+	_, err = stream.Recv()
+	require.NoError(t, err)
+
+	// A shard frozen for a split rejects the writes as not leader
+	lc, err := standaloneServer.shardsDirector.GetLeader(0)
+	require.NoError(t, err)
+	_, err = lc.Freeze(&proto.FreezeShardRequest{Shard: 0, Term: lc.Term(), Frozen: true})
+	require.NoError(t, err)
+
+	require.NoError(t, stream.Send(&proto.WriteRequest{
+		Puts: []*proto.PutRequest{{Key: "test-key", Value: []byte("test-value")}},
+	}))
+	_, err = stream.Recv()
+	oxiaErr, _ := constant.FromGrpcError(err)
+	assert.ErrorIs(t, oxiaErr, constant.ErrResourceUnavailable)
 }
 
 type mockWriteStream struct {

@@ -205,6 +205,11 @@ func processWriteStream(streamCtx context.Context, finished chan<- error, stream
 				// The push cannot block (see maxWriteStreamPendingWrites).
 				responses <- t
 			}, func(err error) {
+				if errors.Is(err, constant.ErrNodeIsNotLeader) {
+					// Not ErrNodeIsNotLeader, after which the clients send the writes again: the
+					// earlier writes of the stream may have been appended
+					err = constant.ErrResourceUnavailable
+				}
 				channel.PushNoBlock(finished, err)
 			}))
 	}
@@ -295,9 +300,10 @@ func (s *publicRpcServer) WriteStream(stream proto.OxiaClient_WriteStreamServer)
 	// Monitor the leader context to make sure the gRPC server can be gracefully shut down.
 	// The leader controller is closed: this node no longer leads the shard. Reply with a
 	// retryable error, as the plain context error would reach the client as a
-	// non-retryable Canceled status, failing the in-flight writes.
+	// non-retryable Canceled status. Not ErrNodeIsNotLeader: the next leader may commit the
+	// writes that wait for the commit, and the clients would send them again.
 	case <-leaderCtx.Done():
-		return constant.IntoGrpcStatusError(constant.ErrNodeIsNotLeader)
+		return constant.IntoGrpcStatusError(constant.ErrResourceUnavailable)
 	}
 }
 
