@@ -31,10 +31,3 @@ func (e *ElectionAction) Done(leader any) {
 func (*ElectionAction) Type() Type {
 	return Election
 }
-
-func (e *ElectionAction) Clone() *ElectionAction {
-	return &ElectionAction{
-		Shard:  e.Shard,
-		Waiter: &sync.WaitGroup{},
-	}
-}

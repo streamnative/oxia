@@ -546,7 +546,7 @@ func (c *runtime) handleActionElection(ac action.Action) {
 		electionAc.Done("")
 		return
 	}
-	electionAc.Done(sc.Election(electionAc))
+	sc.Dispatch(electionAc)
 }
 
 func (c *runtime) handleActionChangeEnsemble(ac action.Action) {
@@ -566,7 +566,7 @@ func (c *runtime) handleActionChangeEnsemble(ac action.Action) {
 		return
 	}
 
-	sc.ChangeEnsemble(changeEnsembleAction)
+	sc.Dispatch(changeEnsembleAction)
 }
 
 // This is called while already holding the lock on the coordinator.

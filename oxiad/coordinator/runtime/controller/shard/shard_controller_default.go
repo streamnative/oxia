@@ -218,15 +218,18 @@ func NewController(
 	return s
 }
 
-func (s *controller) Election(electionAction *action.ElectionAction) string {
-	clonedAction := electionAction.Clone()
-	clonedAction.Waiter.Add(1)
-	s.enqueueElectionAction(clonedAction)
-	clonedAction.Waiter.Wait()
-	return clonedAction.NewLeader
+func (s *controller) Dispatch(ac action.Action) {
+	switch ac := ac.(type) {
+	case *action.ElectionAction:
+		s.dispatchElection(ac)
+	case *action.ChangeEnsembleAction:
+		s.dispatchChangeEnsemble(ac)
+	default:
+		panic(fmt.Sprintf("unknown action type: %T", ac))
+	}
 }
 
-func (s *controller) enqueueElectionAction(electionAction *action.ElectionAction) {
+func (s *controller) dispatchElection(electionAction *action.ElectionAction) {
 	s.terminationMu.RLock()
 	defer s.terminationMu.RUnlock()
 	if s.terminating.Load() {
@@ -600,7 +603,7 @@ func (s *controller) handleElectionWithRetries(electionAction *action.ElectionAc
 	borrowedMeta, exists, err := s.metadataStore.GetShardStatus(s.namespace, s.shard)
 	if err != nil {
 		s.logger.Warn("Failed to start the election, retrying later", slog.Any("error", err))
-		time.AfterFunc(time.Second, func() { s.enqueueElectionAction(electionAction) })
+		time.AfterFunc(time.Second, func() { s.dispatchElection(electionAction) })
 		return
 	}
 	shardMeta := common.Must(borrowedMeta, exists,
@@ -735,7 +738,7 @@ func (s *controller) Close() error {
 	return nil
 }
 
-func (s *controller) ChangeEnsemble(changeEnsembleAction *action.ChangeEnsembleAction) {
+func (s *controller) dispatchChangeEnsemble(changeEnsembleAction *action.ChangeEnsembleAction) {
 	s.terminationMu.RLock()
 	if s.terminating.Load() {
 		s.terminationMu.RUnlock()

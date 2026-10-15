@@ -39,8 +39,8 @@ func NoOpFeaturesSupplier(dataServers []*proto.DataServerIdentity) map[string][]
 // the requests and the notifications about the shard, one at a time:
 //
 //	runtime, balancer                        data server controllers
-//	   | Election, ChangeEnsemble,              | BecameUnavailable,
-//	   | Delete, Refresh                        | FeaturesDiscovered
+//	   | Dispatch, Delete,                      | BecameUnavailable,
+//	   | Refresh                                | FeaturesDiscovered
 //	   v                                        v
 //	+--------------------------- event loop ----------------------------+
 //	| elect a leader      when the leader fails, the balancer moves it, |
@@ -59,17 +59,17 @@ func NoOpFeaturesSupplier(dataServers []*proto.DataServerIdentity) map[string][]
 // healthy one, or verifies the ensemble of the current leader. It retries the
 // start until it is closed.
 //
-// The methods queue their work for the event loop, and only Election waits for
-// it. A request that arrives while the controller is closing, or after the
-// shard is deleted, is dropped or fails.
+// The methods queue their work for the event loop, and don't wait for it. A
+// request that arrives while the controller is closing, or after the shard is
+// deleted, is dropped or fails.
 //
 // The runtime creates a controller for each shard of a namespace, and for each
 // child shard of a split, and closes it when the shard is deleted, when its
 // namespace is removed, or when the runtime closes.
 type Controller interface {
 	// Close stops the event loop and the current election, and completes the
-	// requests still queued: Election returns no leader, and ChangeEnsemble
-	// fails with constant.ErrResourceUnavailable.
+	// requests still queued: an election completes with no leader, and a
+	// change of the ensemble fails with constant.ErrResourceUnavailable.
 	io.Closer
 
 	// DataServerEventListener receives the notifications of the data server
@@ -90,22 +90,24 @@ type Controller interface {
 	// second until it succeeds. It doesn't wait for the deletion.
 	Delete()
 
-	// Election elects a new leader of the shard, e.g. to move the leadership,
-	// and waits for it. It returns the name of the new leader, or "" if no
-	// leader was elected, the queue was full, or the controller is closing.
-	Election(electionAction *action.ElectionAction) string
-
-	// ChangeEnsemble replaces a member of the ensemble of the shard with a new
-	// election, and completes the action with its result. It fails with:
-	//   - ErrInvalidChangeEnsemble if the replaced member isn't in the
-	//     ensemble, or the new one already is;
-	//   - ErrNotReadyForChangeEnsemble while the followers of the current
-	//     leader catch up, the shard is part of a split, or the features of a
-	//     member aren't known yet;
-	//   - ErrChangeEnsembleLosesFeatureSupport if the new ensemble doesn't
-	//     support the features that the current one negotiated;
-	//   - constant.ErrResourceUnavailable while the controller is closing.
+	// Dispatch queues an action for the event loop, which completes it with
+	// its result. It panics on an action of another type:
 	//
-	// It waits for room in the queue, not for the change.
-	ChangeEnsemble(changeEnsembleAction *action.ChangeEnsembleAction)
+	//   - *action.ElectionAction elects a new leader of the shard, e.g. to move
+	//     the leadership. It completes with the name of the new leader, or ""
+	//     if no leader was elected, the queue was full, or the controller is
+	//     closing.
+	//   - *action.ChangeEnsembleAction replaces a member of the ensemble of the
+	//     shard with a new election. It fails with ErrInvalidChangeEnsemble if
+	//     the replaced member isn't in the ensemble, or the new one already is;
+	//     ErrNotReadyForChangeEnsemble while the followers of the current
+	//     leader catch up, the shard is part of a split, or the features of a
+	//     member aren't known yet; ErrChangeEnsembleLosesFeatureSupport if the
+	//     new ensemble doesn't support the features that the current one
+	//     negotiated; and constant.ErrResourceUnavailable while the controller
+	//     is closing.
+	//
+	// It doesn't wait for the action, only for room in the queue of the
+	// changes of the ensemble.
+	Dispatch(ac action.Action)
 }
