@@ -17,7 +17,6 @@ package shard
 import (
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"slices"
 	"sync"
@@ -57,32 +56,6 @@ const (
 )
 
 var _ Controller = &controller{}
-
-// The Controller is responsible to handle all the state transition for a given a shard
-// e.g. electing a new leader.
-type Controller interface {
-	io.Closer
-
-	controllerapi.DataServerEventListener
-
-	SyncServerAddress()
-
-	DeleteShard()
-
-	Election(electionAction *action.ElectionAction) string
-
-	ChangeEnsemble(changeEnsembleAction *action.ChangeEnsembleAction)
-}
-
-type DataServerSupportedFeaturesSupplier = func(dataServers []*proto.DataServerIdentity) map[string][]proto.Feature
-
-func NoOpSupportedFeaturesSupplier(dataServers []*proto.DataServerIdentity) map[string][]proto.Feature {
-	features := make(map[string][]proto.Feature, len(dataServers))
-	for _, dataServer := range dataServers {
-		features[dataServer.GetNameOrDefault()] = []proto.Feature{}
-	}
-	return features
-}
 
 type controller struct {
 	namespace       string
