@@ -287,7 +287,11 @@ func (s *shardManagerImpl) receive(backOff backoff.BackOff) error {
 
 		shards := make([]Shard, len(assignments.Assignments))
 		for i, assignment := range assignments.Assignments {
-			shards[i] = toShard(assignment)
+			shard, err := toShard(assignment)
+			if err != nil {
+				return err
+			}
+			shards[i] = shard
 		}
 		s.Lock()
 		s.keySorting = assignments.KeySorting

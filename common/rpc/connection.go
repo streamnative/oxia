@@ -34,6 +34,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/oxia-db/oxia/common/auth"
+	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/process"
 	"github.com/oxia-db/oxia/common/rpc/grpcmetrics"
 )
@@ -118,11 +119,17 @@ func newConnectionWithHealthConfig(
 	if tlsConf != nil {
 		transportCredential = credentials.NewTLS(tlsConf)
 	}
+	if !strings.Contains(actualAddress, "://") {
+		// Look the name up on every dial: the gRPC DNS resolver keeps the old
+		// IP of a restarted server for up to 30s
+		actualAddress = "passthrough:///" + actualAddress
+	}
 
 	options := []grpc.DialOption{
 		grpc.WithTransportCredentials(transportCredential),
 		grpc.WithChainStreamInterceptor(grpcmetrics.StreamClientInterceptor),
 		grpc.WithChainUnaryInterceptor(grpcmetrics.UnaryClientInterceptor),
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(constant.MaxGrpcFrameSize)),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
 			PermitWithoutStream: defaultGrpcClientPermitWithoutStream,
 			Time:                defaultGrpcClientKeepAliveTime,

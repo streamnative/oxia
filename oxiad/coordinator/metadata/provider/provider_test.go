@@ -17,6 +17,8 @@ package provider_test
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"math/rand/v2"
 	"net"
 	"path/filepath"
 	"strconv"
@@ -79,7 +81,7 @@ var (
 
 			addr := freeAddress(t)
 			r, err := raft.New(addr, []string{addr}, filepath.Join(t.TempDir(), "raft"), nil)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			p := raft.NewProvider(t.Context(), r, metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled)
 			_, err = p.WaitToBecomeLeader()
 			assert.NoError(t, err)
@@ -187,7 +189,7 @@ func TestProviderConfigResource(t *testing.T) {
 
 			addr := freeAddress(t)
 			r, err := raft.New(addr, []string{addr}, filepath.Join(t.TempDir(), "raft"), nil)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			statusProvider := raft.NewProvider(t.Context(), r, metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled)
 			configProvider := raft.NewProvider(t.Context(), r, metadatacodec.ClusterConfigCodec, metadatacommon.WatchDisabled)
 			_, err = statusProvider.WaitToBecomeLeader()
@@ -228,14 +230,30 @@ func TestProviderConfigResource(t *testing.T) {
 	}
 }
 
+// freeAddress returns a loopback address whose port was free a moment ago, for
+// a raft node: its address is also its ID, so it must be known before the node
+// binds it. The port is in [10000, 32768): above the fixed ports that tests
+// bind, e.g. Oxia's default 6648, and below the default ephemeral port ranges
+// of Linux (32768-60999), macOS and Windows (49152-65535), so the kernel
+// doesn't give it to a socket that binds port 0 meanwhile, e.g. a listener of a
+// test package that runs in parallel. The scan starts at a random port, so that
+// the tests that run in parallel rarely pick the same one.
 func freeAddress(t *testing.T) string {
 	t.Helper()
 
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	assert.NoError(t, err)
-	addr := listener.Addr().String()
-	assert.NoError(t, listener.Close())
-	return addr
+	const minFixedPort, ephemeralPortsStart = 10000, 32768
+	const ports = ephemeralPortsStart - minFixedPort
+	start := rand.IntN(ports)
+	for i := 0; ; i++ {
+		require.Less(t, i, ports, "no free port below the ephemeral port range")
+		listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", minFixedPort+(start+i)%ports))
+		if err != nil {
+			continue
+		}
+		address := listener.Addr().String()
+		require.NoError(t, listener.Close())
+		return address
+	}
 }
 
 func k8sResourceVersionSupport(tracker k8stesting.ObjectTracker) k8stesting.ReactionFunc {

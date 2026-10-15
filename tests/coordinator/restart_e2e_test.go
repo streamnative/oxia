@@ -15,6 +15,7 @@
 package coordinator
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -64,16 +65,16 @@ func TestCoordinator_RestartWithDataServerDown(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(metadataDir, coordoption.DefaultFileConfigName), configData, 0o600))
 
 	startCoordinator := func() (*coordserver.GrpcServer, oxia.AdminClient) {
-		adminAddr := freeAddress(t)
 		options := coordoption.NewDefaultOptions()
 		options.Server.Internal.BindAddress = "127.0.0.1:0"
-		options.Server.Public.BindAddress = adminAddr
+		options.Server.Public.BindAddress = "127.0.0.1:0"
 		options.Observability.Metric.Enabled = &constant.FlagFalse
 		options.Metadata.ProviderName = metadatacommon.NameFile
 		options.Metadata.File.Dir = metadataDir
 
 		coordinatorServer, err := coordserver.NewGrpcServer(t.Context(), commonwatch.New(options))
 		require.NoError(t, err)
+		adminAddr := fmt.Sprintf("127.0.0.1:%d", coordinatorServer.PublicPort())
 		adminClient, err := oxia.NewAdminClient(adminAddr, nil, nil)
 		require.NoError(t, err)
 		return coordinatorServer, adminClient
@@ -165,16 +166,16 @@ func TestCoordinator_RestartKeepsTermPinningAllFeatures(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(metadataDir, coordoption.DefaultFileConfigName), configData, 0o600))
 
 	startCoordinator := func() (*coordserver.GrpcServer, oxia.AdminClient) {
-		adminAddr := freeAddress(t)
 		options := coordoption.NewDefaultOptions()
 		options.Server.Internal.BindAddress = "127.0.0.1:0"
-		options.Server.Public.BindAddress = adminAddr
+		options.Server.Public.BindAddress = "127.0.0.1:0"
 		options.Observability.Metric.Enabled = &constant.FlagFalse
 		options.Metadata.ProviderName = metadatacommon.NameFile
 		options.Metadata.File.Dir = metadataDir
 
 		coordinatorServer, err := coordserver.NewGrpcServer(t.Context(), commonwatch.New(options))
 		require.NoError(t, err)
+		adminAddr := fmt.Sprintf("127.0.0.1:%d", coordinatorServer.PublicPort())
 		adminClient, err := oxia.NewAdminClient(adminAddr, nil, nil)
 		require.NoError(t, err)
 		return coordinatorServer, adminClient

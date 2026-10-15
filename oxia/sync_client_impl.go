@@ -19,6 +19,8 @@ import (
 	"sync"
 
 	"go.uber.org/multierr"
+
+	"github.com/oxia-db/oxia/oxia/internal/model"
 )
 
 type syncClientImpl struct {
@@ -78,30 +80,54 @@ func (c *syncClientImpl) Close() error {
 	return multierr.Combine(err, c.asyncClient.Close())
 }
 
+// callContextOption ties a write to the context of the SyncClient caller: once
+// the context is done, the write is dropped unless it was sent already.
+type callContextOption struct {
+	callContext *model.CallContext
+}
+
+func (o *callContextOption) applyPut(opts *putOptions) {
+	opts.callContext = o.callContext
+}
+
+func (o *callContextOption) applyDelete(opts *deleteOptions) {
+	opts.callContext = o.callContext
+}
+
+func (o *callContextOption) applyDeleteRange(opts *deleteRangeOptions) {
+	opts.callContext = o.callContext
+}
+
 func (c *syncClientImpl) Put(ctx context.Context, key string, value []byte, options ...PutOption) (string, Version, error) {
+	callContext := model.NewCallContext(ctx)
+	options = append([]PutOption{&callContextOption{callContext}}, options...)
 	select {
 	case r := <-c.asyncClient.Put(key, value, options...):
 		return r.Key, r.Version, r.Err
 	case <-ctx.Done():
-		return "", Version{}, ctx.Err()
+		return "", Version{}, callContext.Cancel()
 	}
 }
 
 func (c *syncClientImpl) Delete(ctx context.Context, key string, options ...DeleteOption) error {
+	callContext := model.NewCallContext(ctx)
+	options = append([]DeleteOption{&callContextOption{callContext}}, options...)
 	select {
 	case err := <-c.asyncClient.Delete(key, options...):
 		return err
 	case <-ctx.Done():
-		return ctx.Err()
+		return callContext.Cancel()
 	}
 }
 
 func (c *syncClientImpl) DeleteRange(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, options ...DeleteRangeOption) error {
+	callContext := model.NewCallContext(ctx)
+	options = append([]DeleteRangeOption{&callContextOption{callContext}}, options...)
 	select {
 	case err := <-c.asyncClient.DeleteRange(minKeyInclusive, maxKeyExclusive, options...):
 		return err
 	case <-ctx.Done():
-		return ctx.Err()
+		return callContext.Cancel()
 	}
 }
 
@@ -115,6 +141,9 @@ func (c *syncClientImpl) Get(ctx context.Context, key string, options ...GetOpti
 }
 
 func (c *syncClientImpl) List(ctx context.Context, minKeyInclusive string, maxKeyExclusive string, options ...ListOption) ([]string, error) {
+	// Ends the lists of the other shards when one fails
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	ch := c.asyncClient.List(ctx, minKeyInclusive, maxKeyExclusive, options...)
 
 	keys := make([]string, 0)
@@ -126,6 +155,10 @@ func (c *syncClientImpl) List(ctx context.Context, minKeyInclusive string, maxKe
 		keys = append(keys, r.Keys...)
 	}
 
+	// Once ctx is done, the shards drop the keys they have left
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	return keys, nil
 }
 

@@ -160,9 +160,11 @@ func (r *readOnlySegmentsGroup) TrimSegments(offset int64, beforeDelete func() e
 
 		r.allSegments.Remove(s)
 		if segment, ok := r.openSegments.Get(s); ok {
-			err = multierr.Append(err, segment.Get().Delete())
+			// Release only the cache reference: the readers holding one keep
+			// the segment mapped until they close it, and a mapped file stays
+			// readable after its removal below
+			err = multierr.Append(err, segment.Close())
 			r.openSegments.Remove(s)
-			continue
 		}
 
 		c, err2 := newSegmentConfig(r.basePath, s)

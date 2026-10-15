@@ -23,6 +23,7 @@ import (
 
 	"google.golang.org/protobuf/encoding/protojson"
 	pb "google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	"github.com/oxia-db/oxia/common/proto"
 )
@@ -63,6 +64,7 @@ const (
 	MsgTypeHealthCheckOk        MsgType = "health-ok"
 
 	MsgTypeShardAssignmentsResponse MsgType = "shards"
+	MsgTypeShardAssignmentsAck      MsgType = "shards-ack"
 )
 
 var (
@@ -91,6 +93,7 @@ var (
 		MsgTypeAck:                      true,
 		MsgTypeStreamError:              true,
 		MsgTypeShardAssignmentsResponse: true,
+		MsgTypeShardAssignmentsAck:      true,
 	}
 )
 
@@ -211,6 +214,23 @@ func sendStreamError(dest string, streamId int64) {
 	fmt.Fprintln(os.Stdout, string(b))
 }
 
+// sendShardAssignmentsAck tells the coordinator that the shard assignments
+// message msgId reached this node, see maelstromShardAssignmentClient.Send.
+func sendShardAssignmentsAck(dest string, streamId int64, msgId int64) {
+	sendResponse(&Message[OxiaStreamMessage]{
+		Src:  thisNode,
+		Dest: dest,
+		Body: OxiaStreamMessage{
+			BaseMessageBody: BaseMessageBody{
+				Type:      MsgTypeShardAssignmentsAck,
+				MsgId:     msgIdGenerator.Add(1),
+				InReplyTo: &msgId,
+			},
+			StreamId: streamId,
+		},
+	})
+}
+
 func sendErrorWithCode(msgId int64, dest string, code int, text string) {
 	b, err := json.Marshal(&Message[ErrorResponse]{
 		Src:  thisNode,
@@ -245,8 +265,9 @@ var jsonMsgMapping = map[MsgType]any{
 	MsgTypeHealthCheck:   &Message[OxiaMessage]{},
 	MsgTypeHealthCheckOk: &Message[OxiaMessage]{},
 
-	MsgTypeAppend:      &Message[OxiaStreamMessage]{},
-	MsgTypeStreamError: &Message[OxiaStreamMessage]{},
+	MsgTypeAppend:              &Message[OxiaStreamMessage]{},
+	MsgTypeStreamError:         &Message[OxiaStreamMessage]{},
+	MsgTypeShardAssignmentsAck: &Message[OxiaStreamMessage]{},
 }
 
 var protoMsgMapping = map[MsgType]pb.Message{
@@ -262,6 +283,9 @@ var protoMsgMapping = map[MsgType]pb.Message{
 	MsgTypeAddFollowerResponse:  &proto.AddFollowerResponse{},
 	MsgTypeGetStatusRequest:     &proto.GetStatusRequest{},
 	MsgTypeGetStatusResponse:    &proto.GetStatusResponse{},
+
+	// The process id of the data server, see maelstromGrpcProvider.processId
+	MsgTypeHealthCheckOk: &wrapperspb.Int64Value{},
 
 	MsgTypeShardAssignmentsResponse: &proto.ShardAssignments{},
 }

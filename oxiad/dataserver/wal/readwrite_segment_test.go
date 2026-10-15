@@ -20,9 +20,13 @@ import (
 	"os"
 	"runtime"
 	"slices"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/oxia-db/oxia/oxiad/dataserver/wal/codec"
 )
@@ -544,4 +548,84 @@ func TestReadWriteSegment_TruncateResetsLastCrc(t *testing.T) {
 			assert.NoError(t, rw.Close())
 		})
 	}
+}
+
+// Read copies the record without holding the segment mutex: the appends
+// proceed while the copy is in flight, while Close waits for it before
+// unmapping the segment.
+func TestReadWriteSegmentReadConcurrentWithAppendAndClose(t *testing.T) {
+	rw, err := newReadWriteSegment(t.TempDir(), 0, 128*1024, 0, nil)
+	require.NoError(t, err)
+	require.NoError(t, rw.Append(0, []byte("entry-0")))
+	hook, reading, release := blockFirstCall()
+	defer release()
+	hookRecordReads(rw, hook)
+
+	readDone := make(chan error, 1)
+	go func() {
+		payload, _, _, err := rw.Read(0)
+		if err == nil && string(payload) != "entry-0" {
+			err = fmt.Errorf("unexpected payload %q", payload)
+		}
+		readDone <- err
+	}()
+	<-reading
+
+	appendDone := make(chan error, 1)
+	go func() { appendDone <- rw.Append(1, []byte("entry-1")) }()
+	select {
+	case err := <-appendDone:
+		assert.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		require.FailNow(t, "the append waited for the read")
+	}
+
+	closeDone := make(chan error, 1)
+	go func() { closeDone <- rw.Close() }()
+	assert.Never(t, func() bool { return len(closeDone) > 0 }, 100*time.Millisecond, 10*time.Millisecond,
+		"the segment got closed under the read")
+
+	release()
+	assert.NoError(t, <-readDone)
+	assert.NoError(t, <-closeDone)
+
+	_, _, _, err = rw.Read(1)
+	assert.ErrorIs(t, err, ErrSegmentClosed)
+}
+
+// hookedCodec runs a hook before each record read.
+type hookedCodec struct {
+	codec.Codec
+	readRecordHook func()
+}
+
+func (c *hookedCodec) ReadRecordWithValidation(buf []byte, startFileOffset uint32) (
+	payload []byte, previousCrc uint32, payloadCrc uint32, err error) {
+	if c.readRecordHook != nil {
+		c.readRecordHook()
+	}
+	return c.Codec.ReadRecordWithValidation(buf, startFileOffset)
+}
+
+// hookRecordReads runs the hook in the reads of the segment, right before they
+// copy the record.
+func hookRecordReads(segment ReadWriteSegment, hook func()) {
+	rw := segment.(*readWriteSegment)
+	rw.c.codec = &hookedCodec{Codec: rw.c.codec, readRecordHook: hook}
+}
+
+// blockFirstCall returns a hook that stops its first call until release, and
+// closes blocked once that call stops. The later calls go through.
+func blockFirstCall() (hook func(), blocked <-chan struct{}, release func()) {
+	blockedCh := make(chan struct{})
+	releaseCh := make(chan struct{})
+	var called atomic.Bool
+	var releaseOnce sync.Once
+	hook = func() {
+		if called.CompareAndSwap(false, true) {
+			close(blockedCh)
+			<-releaseCh
+		}
+	}
+	return hook, blockedCh, func() { releaseOnce.Do(func() { close(releaseCh) }) }
 }

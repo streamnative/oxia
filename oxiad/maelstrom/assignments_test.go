@@ -90,6 +90,7 @@ func TestMaelstromShardAssignmentClientSendSkipsEmptyAssignments(t *testing.T) {
 		provider: provider,
 		node:     "n1",
 		streamId: 1,
+		ctx:      t.Context(),
 	}
 
 	require.NotPanics(t, func() {
@@ -100,11 +101,13 @@ func TestMaelstromShardAssignmentClientSendSkipsEmptyAssignments(t *testing.T) {
 }
 
 func TestDispatcherSkipsEmptyAssignmentLeaderUpdate(t *testing.T) {
+	captureStdout(t)
+
 	d := &dispatcher{currentLeader: "existing"}
 	require.NotPanics(t, func() {
 		d.onOxiaStreamRequestMessage(
 			MsgTypeShardAssignmentsResponse,
-			nil,
+			&Message[OxiaStreamMessage]{Src: "n1", Body: OxiaStreamMessage{StreamId: 1}},
 			&proto.ShardAssignments{Namespaces: map[string]*proto.NamespaceShardsAssignment{}},
 		)
 	})

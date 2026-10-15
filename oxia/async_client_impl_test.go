@@ -16,6 +16,8 @@ package oxia
 
 import (
 	"context"
+	"runtime/pprof"
+	"strings"
 	"testing"
 	"time"
 
@@ -438,4 +440,103 @@ func TestWriteKeysMustBeValidUTF8(t *testing.T) {
 	assert.Len(t, batchers[0].calls, 3)
 	require.Contains(t, batchers, int64(1))
 	assert.Len(t, batchers[1].calls, 1)
+}
+
+// A caller of List can stop reading once it cancelled the context, e.g. at the
+// first error: the lists of the other shards end without sending the results
+// they have left, and the channel is closed after them.
+func TestAsyncClientListEndsOnceItsContextIsDone(t *testing.T) {
+	failure := errors.New("shard unavailable")
+	client := newScanTestClient(&staticExecutor{
+		errs: map[int64]error{1: failure, 2: failure, 3: failure, 4: failure},
+	}, 1, 2, 3, 4)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	ch := client.List(ctx, "a", "z")
+	assert.ErrorIs(t, (<-ch).Err, failure)
+
+	cancel()
+	assertGoroutinesEnd(t, "(*clientImpl).List")
+	_, open := <-ch
+	assert.False(t, open)
+}
+
+// A range scan across the shards ends at the first error: the scans of the
+// other shards end with it, instead of waiting forever to send the records
+// they have left, or streaming them until the end.
+func TestAsyncClientRangeScanEndsTheOtherShardsAtTheFirstError(t *testing.T) {
+	failure := errors.New("shard unavailable")
+	client := newScanTestClient(&staticExecutor{
+		keys: map[int64][]string{2: {"a", "b"}, 3: {"c"}},
+		errs: map[int64]error{1: failure},
+		slow: map[int64]bool{3: true},
+	}, 1, 2, 3)
+
+	var results []GetResult
+	for result := range client.RangeScan(context.Background(), "a", "z") {
+		results = append(results, result)
+	}
+	require.Len(t, results, 1)
+	assert.ErrorIs(t, results[0].Err, failure)
+	assertGoroutinesEnd(t, "(*clientImpl).RangeScan")
+}
+
+// staticExecutor answers the lists and the range scans of each shard with its
+// keys, one per response, then with its error, if it has one. It sends the
+// keys whatever the context, like a stream whose responses were already
+// received.
+type staticExecutor struct {
+	internal.Executor
+	keys map[int64][]string
+	errs map[int64]error
+	// The shards whose scans end only once their context is done, like a scan
+	// that is still streaming
+	slow map[int64]bool
+}
+
+func (e *staticExecutor) ExecuteList(ctx context.Context, request *proto.ListRequest,
+	listResponseConsumer func(*proto.ListResponse)) error {
+	for _, key := range e.keys[request.GetShard()] {
+		listResponseConsumer(&proto.ListResponse{Keys: []string{key}})
+	}
+	return e.end(ctx, request.GetShard())
+}
+
+func (e *staticExecutor) ExecuteRangeScan(ctx context.Context, request *proto.RangeScanRequest,
+	rangeScanResponseConsumer func(*proto.RangeScanResponse)) error {
+	for _, key := range e.keys[request.GetShard()] {
+		rangeScanResponseConsumer(&proto.RangeScanResponse{
+			Records: []*proto.GetResponse{{Key: new(key), Version: &proto.Version{}}},
+		})
+	}
+	return e.end(ctx, request.GetShard())
+}
+
+func (e *staticExecutor) end(ctx context.Context, shardId int64) error {
+	if e.slow[shardId] {
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	return e.errs[shardId]
+}
+
+func newScanTestClient(executor *staticExecutor, shards ...int64) *clientImpl {
+	return &clientImpl{
+		options:      clientOptions{requestTimeout: time.Minute},
+		shardManager: &staticShardManager{shards: shards},
+		executor:     executor,
+	}
+}
+
+// assertGoroutinesEnd asserts that the goroutines that function started end,
+// e.g. that none of them waits forever to send a result that nobody receives.
+func assertGoroutinesEnd(t *testing.T, function string) {
+	t.Helper()
+
+	createdBy := "created by github.com/oxia-db/oxia/oxia." + function + " in goroutine"
+	assert.Eventually(t, func() bool {
+		var stacks strings.Builder
+		_ = pprof.Lookup("goroutine").WriteTo(&stacks, 2)
+		return !strings.Contains(stacks.String(), createdBy)
+	}, 10*time.Second, 10*time.Millisecond, "a goroutine started by %s did not end", function)
 }

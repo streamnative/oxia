@@ -15,6 +15,8 @@
 package rpc
 
 import (
+	"fmt"
+	"net"
 	"runtime"
 	"testing"
 
@@ -36,5 +38,22 @@ func TestGrpcServer_CloseBeforeServeStarts(t *testing.T) {
 			func(grpc.ServiceRegistrar) {}, nil, &auth.Options{}, nil)
 		require.NoError(t, err)
 		require.NoError(t, s.Close())
+	}
+}
+
+func TestGrpcServerCloseReleasesPort(t *testing.T) {
+	// GOMAXPROCS(1) keeps the Serve goroutine queued until Close() has stopped
+	// the server
+	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(1))
+
+	for i := 0; i < 100; i++ {
+		s, err := Default.StartGrpcServer("test", "127.0.0.1:0",
+			func(grpc.ServiceRegistrar) {}, nil, &auth.Options{}, nil)
+		require.NoError(t, err)
+		require.NoError(t, s.Close())
+
+		listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", s.Port()))
+		require.NoError(t, err, "the port is still bound after Close")
+		require.NoError(t, listener.Close())
 	}
 }

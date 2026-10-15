@@ -329,12 +329,21 @@ func newSecondaryIndexRangeScanIterator(req *proto.RangeScanRequest, db database
 		return nil, err
 	}
 
-	return &secondaryIndexRangeIterator{listIt: listIt, db: db}, nil
+	it := &secondaryIndexRangeIterator{listIt: listIt, db: db}
+	it.readRecord()
+	return it, nil
 }
 
+// secondaryIndexRangeIterator returns the records of the entries of an index.
+// It holds the entries of the time it was created, but reads each record as it
+// is when it reaches its entry: it skips the entries of the records deleted in
+// between.
 type secondaryIndexRangeIterator struct {
 	listIt *secondaryIndexListIterator
 	db     database.DB
+	// The record of the entry that the iterator is on, or the error of its read
+	record *proto.GetResponse
+	err    error
 }
 
 func (it *secondaryIndexRangeIterator) Close() error {
@@ -350,25 +359,37 @@ func (it *secondaryIndexRangeIterator) Key() string {
 }
 
 func (it *secondaryIndexRangeIterator) Next() bool {
-	return it.listIt.Next()
+	it.listIt.Next()
+	return it.readRecord()
 }
 
 func (it *secondaryIndexRangeIterator) Value() (*proto.GetResponse, error) {
-	primaryKey, secondaryKey := it.listIt.keys()
-	gr, err := it.db.Get(&proto.GetRequest{
-		Key:            primaryKey,
-		IncludeValue:   true,
-		ComparisonType: proto.KeyComparisonType_EQUAL,
-	})
+	return it.record, it.err
+}
 
-	if gr != nil {
-		gr.Key = &primaryKey
-		// The records come in the order of their secondary keys: clients need
-		// them to merge the records of several shards in that order
-		gr.SecondaryIndexKey = &secondaryKey
+// readRecord reads the record of the entry that the iterator is on, moving to
+// the next entry while the record is not found, and reports whether the
+// iterator is on an entry.
+func (it *secondaryIndexRangeIterator) readRecord() bool {
+	for ; it.listIt.Valid(); it.listIt.Next() {
+		primaryKey, secondaryKey := it.listIt.keys()
+		it.record, it.err = it.db.Get(&proto.GetRequest{
+			Key:            primaryKey,
+			IncludeValue:   true,
+			ComparisonType: proto.KeyComparisonType_EQUAL,
+		})
+		if it.err != nil {
+			return true
+		}
+		if it.record.Status != proto.Status_KEY_NOT_FOUND {
+			it.record.Key = &primaryKey
+			// The records come in the order of their secondary keys: clients
+			// need them to merge the records of several shards in that order
+			it.record.SecondaryIndexKey = &secondaryKey
+			return true
+		}
 	}
-
-	return gr, err
+	return false
 }
 
 // /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
