@@ -58,13 +58,16 @@ const (
 var _ Controller = &controller{}
 
 type controller struct {
-	namespace       string
-	shard           int64
-	namespaceConfig *proto.Namespace
-	rpc             rpc.Provider
-
-	leaderSelector selector.Selector[*leaderselector.Context, *proto.DataServerIdentity]
-
+	ctx                                 context.Context
+	ctxCancel                           context.CancelFunc
+	wg                                  sync.WaitGroup
+	logger                              *slog.Logger
+	namespace                           string
+	shard                               int64
+	namespaceConfig                     *proto.Namespace
+	periodicTasksInterval               time.Duration
+	rpc                                 rpc.Provider
+	leaderSelector                      selector.Selector[*leaderselector.Context, *proto.DataServerIdentity]
 	eventListener                       controllerapi.ShardEventListener
 	metadataStore                       coordmetadata.Metadata
 	dataServerSupportedFeaturesSupplier FeaturesSupplier
@@ -86,14 +89,9 @@ type controller struct {
 	// the event loop.
 	termFeaturesCheckPending bool
 
-	ctx                   context.Context
-	ctxCancel             context.CancelFunc
-	wg                    sync.WaitGroup
-	terminating           atomic.Bool
-	closeOnce             sync.Once
-	terminationMu         sync.RWMutex
-	periodicTasksInterval time.Duration
-	logger                *slog.Logger
+	terminating   atomic.Bool
+	closeOnce     sync.Once
+	terminationMu sync.RWMutex
 
 	// currentElection is owned by the event loop, the only goroutine that
 	// replaces it. The term gauge, which runs on the goroutine that collects
