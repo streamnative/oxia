@@ -26,6 +26,19 @@ backup:
 Durations take the `time.ParseDuration` syntax, plus a `d` suffix for days.
 `retention` must be longer than `interval`.
 
+A namespace opts out of the policy in its own entry, next to `keySorting`:
+
+```yaml
+namespaces:
+  - name: sessions
+    initialShardCount: 8
+    replicationFactor: 3
+    backup: false   # the policy doesn't cover this namespace
+```
+
+Its shards take no backups, forced or not, and report no backup age; its
+cleanup still runs, so the backups taken before it opted out expire.
+
 Destinations:
 
 - `s3://<bucket>/<prefix>[?region=<r>&endpoint=<url>&path-style=true]`:

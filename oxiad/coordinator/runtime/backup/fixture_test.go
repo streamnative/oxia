@@ -170,8 +170,15 @@ func (c *testClock) Advance(d time.Duration) {
 
 func newFixture(t *testing.T, policy *proto.BackupConfig) *fixture {
 	t.Helper()
+	return newFixtureWithNamespaces(t, policy, &proto.Namespace{Name: "ns", InitialShardCount: 1, ReplicationFactor: 3})
+}
+
+// newFixtureWithNamespaces is newFixture with the given namespaces in the
+// configuration; the first one is "ns", with the shard 1.
+func newFixtureWithNamespaces(t *testing.T, policy *proto.BackupConfig, namespaces ...*proto.Namespace) *fixture {
+	t.Helper()
 	config := &proto.ClusterConfiguration{
-		Namespaces: []*proto.Namespace{{Name: "ns", InitialShardCount: 1, ReplicationFactor: 3}},
+		Namespaces: namespaces,
 		Servers:    servers,
 		Backup:     policy,
 	}

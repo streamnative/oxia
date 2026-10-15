@@ -248,11 +248,28 @@ func (s *Scheduler) round() time.Duration {
 	for _, ns := range config.GetNamespaces() {
 		configs[ns.GetName()] = ns
 	}
+	covered := coveredNamespaces(namespaces, configs)
 	now := s.clock()
-	due := s.reconcile(namespaces, now, policy)
-	s.dispatch(due, namespaces, configs, policy, now)
+	due := s.reconcile(covered, now, policy)
+	s.dispatch(due, covered, configs, policy, now)
 	s.cleanups(configs, policy, now)
 	return interval
+}
+
+// coveredNamespaces drops the namespaces that opted out of the policy
+// with backup: false in their configuration: their shards take no
+// backups, forced or not, and report no age. Their cleanups still run,
+// so the backups taken before they opted out expire.
+func coveredNamespaces(namespaces map[string]commonobject.Borrowed[*proto.NamespaceStatus],
+	configs map[string]*proto.Namespace) map[string]commonobject.Borrowed[*proto.NamespaceStatus] {
+	covered := make(map[string]commonobject.Borrowed[*proto.NamespaceStatus], len(namespaces))
+	for name, status := range namespaces {
+		if config := configs[name]; config != nil && config.Backup != nil && !config.GetBackup() {
+			continue
+		}
+		covered[name] = status
+	}
+	return covered
 }
 
 // reconcile updates the shard states from the metadata, and returns the

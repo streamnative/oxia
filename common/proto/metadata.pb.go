@@ -528,8 +528,12 @@ type Namespace struct {
 	KeySorting string `protobuf:"bytes,5,opt,name=key_sorting,json=keySorting,proto3" json:"key_sorting,omitempty" yaml:"keySorting,omitempty"`
 
 	AntiAffinities []*AntiAffinity `protobuf:"bytes,6,rep,name=anti_affinities,json=antiAffinities,proto3" json:"anti_affinities,omitempty" yaml:"antiAffinities,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Whether the backup policy covers the namespace; unset is yes. See
+	// BackupConfig.
+
+	Backup        *bool `protobuf:"varint,7,opt,name=backup,proto3,oneof" json:"backup,omitempty" yaml:"backup,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Namespace) Reset() {
@@ -602,6 +606,13 @@ func (x *Namespace) GetAntiAffinities() []*AntiAffinity {
 		return x.AntiAffinities
 	}
 	return nil
+}
+
+func (x *Namespace) GetBackup() bool {
+	if x != nil && x.Backup != nil {
+		return *x.Backup
+	}
+	return false
 }
 
 type LoadBalancer struct {
@@ -1493,7 +1504,7 @@ const file_metadata_proto_rawDesc = "" +
 	"\x12supported_features\x18\x02 \x03(\x0e2\x14.replication.FeatureR\x11supportedFeatures\":\n" +
 	"\fAntiAffinity\x12\x16\n" +
 	"\x06labels\x18\x01 \x03(\tR\x06labels\x12\x12\n" +
-	"\x04mode\x18\x02 \x01(\tR\x04mode\"\xbc\x02\n" +
+	"\x04mode\x18\x02 \x01(\tR\x04mode\"\xe4\x02\n" +
 	"\tNamespace\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12.\n" +
 	"\x13initial_shard_count\x18\x02 \x01(\rR\x11initialShardCount\x12-\n" +
@@ -1501,8 +1512,10 @@ const file_metadata_proto_rawDesc = "" +
 	"\x15notifications_enabled\x18\x04 \x01(\bH\x00R\x14notificationsEnabled\x88\x01\x01\x12\x1f\n" +
 	"\vkey_sorting\x18\x05 \x01(\tR\n" +
 	"keySorting\x12G\n" +
-	"\x0fanti_affinities\x18\x06 \x03(\v2\x1e.io.oxia.proto.v1.AntiAffinityR\x0eantiAffinitiesB\x18\n" +
-	"\x16_notifications_enabled\"d\n" +
+	"\x0fanti_affinities\x18\x06 \x03(\v2\x1e.io.oxia.proto.v1.AntiAffinityR\x0eantiAffinities\x12\x1b\n" +
+	"\x06backup\x18\a \x01(\bH\x01R\x06backup\x88\x01\x01B\x18\n" +
+	"\x16_notifications_enabledB\t\n" +
+	"\a_backup\"d\n" +
 	"\fLoadBalancer\x12+\n" +
 	"\x11schedule_interval\x18\x01 \x01(\tR\x10scheduleInterval\x12'\n" +
 	"\x0fquarantine_time\x18\x02 \x01(\tR\x0equarantineTime\"\xca\x02\n" +

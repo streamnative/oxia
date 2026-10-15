@@ -49,6 +49,37 @@ func TestSchedulerRoundSkipsAShardInElection(t *testing.T) {
 	assert.False(t, f.state(1).nextDue.After(f.clock.Now()))
 }
 
+func TestSchedulerRoundSkipsANamespaceThatOptedOut(t *testing.T) {
+	optedOut := false
+	f := newFixtureWithNamespaces(t, enabledPolicy(),
+		&proto.Namespace{Name: "ns", InitialShardCount: 1, ReplicationFactor: 3},
+		&proto.Namespace{Name: "scratch", InitialShardCount: 1, ReplicationFactor: 3, Backup: &optedOut})
+	require.NoError(t, f.metadata.CreateNamespaceStatus("scratch", &proto.NamespaceStatus{
+		ReplicationFactor: 3,
+		Shards:            map[int64]*proto.ShardMetadata{2: steadyShard(server1, servers...)},
+	}))
+	f.rpc.setStatus("s1", proto.ServingStatus_LEADER, 10)
+	f.rpc.setStatus("s2", proto.ServingStatus_FOLLOWER, 10)
+	f.rpc.setStatus("s3", proto.ServingStatus_FOLLOWER, 10)
+	f.scheduler.round()
+	var backedUp []string
+	for _, call := range f.rpc.backups() {
+		backedUp = append(backedUp, call.req.GetNamespace())
+	}
+	assert.Equal(t, []string{"ns"}, backedUp, "the shards of the namespace that opted out take no backups")
+	f.scheduler.mu.Lock()
+	_, tracked := f.scheduler.shards[shardKey{namespace: "scratch", shard: 2}]
+	f.scheduler.mu.Unlock()
+	assert.False(t, tracked, "the namespace that opted out reports no age")
+	assert.Equal(t, 0, f.scheduler.RequestBackup("scratch", nil), "a forced backup doesn't override the opt-out")
+	var cleaned []string
+	for _, call := range f.rpc.expires() {
+		cleaned = append(cleaned, call.req.GetNamespace())
+	}
+	assert.ElementsMatch(t, []string{"ns", "scratch"}, cleaned,
+		"the cleanup of the namespace that opted out still runs, for the backups taken before")
+}
+
 func TestSchedulerRoundSkipsADeletingShardAndASplitChild(t *testing.T) {
 	f := newFixture(t, enabledPolicy())
 	f.patchShard(1, func(meta *proto.ShardMetadata) { meta.Status = proto.ShardStatusDeleting })

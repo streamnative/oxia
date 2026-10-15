@@ -80,6 +80,10 @@ message Namespace {
   string key_sorting = 5;
   // @gotags: yaml:"antiAffinities,omitempty"
   repeated AntiAffinity anti_affinities = 6;
+  // Whether the backup policy covers the namespace; unset is yes. See
+  // BackupConfig.
+  // @gotags: yaml:"backup,omitempty"
+  optional bool backup = 7;
 }
 
 message LoadBalancer {
