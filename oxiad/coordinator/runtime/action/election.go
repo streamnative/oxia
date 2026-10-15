@@ -28,6 +28,10 @@ func (e *ElectionAction) Done(leader any) {
 	e.Waiter.Done()
 }
 
-func (*ElectionAction) Type() Type {
-	return Election
+func (e *ElectionAction) Error(_ error) {
+	e.Done("")
+}
+
+func (e *ElectionAction) GetShard() int64 {
+	return e.Shard
 }

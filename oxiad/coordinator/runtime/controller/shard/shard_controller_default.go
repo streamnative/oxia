@@ -221,21 +221,17 @@ func NewController(
 func (s *controller) Dispatch(ac action.Action) {
 	s.terminationMu.RLock()
 	defer s.terminationMu.RUnlock()
+	if s.terminating.Load() {
+		ac.Error(constant.ErrResourceUnavailable)
+		return
+	}
 	switch ac := ac.(type) {
 	case *action.ElectionAction:
-		if s.terminating.Load() {
-			ac.Done("")
-			return
-		}
 		if !channel.PushNoBlock(s.electionOp, ac) {
 			s.logger.Debug("Discarding leader election because queue is full")
 			ac.Done("")
 		}
 	case *action.ChangeEnsembleAction:
-		if s.terminating.Load() {
-			ac.Error(constant.ErrResourceUnavailable)
-			return
-		}
 		select {
 		case s.changeEnsembleOp <- ac:
 		case <-s.ctx.Done():
