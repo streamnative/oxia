@@ -315,7 +315,7 @@ func (c *runtime) DeleteNamespace(namespace string) {
 	defer c.Unlock()
 	for shard := range namespaceStatus.GetShards() {
 		if s, exist := c.shardControllers[shard]; exist {
-			s.DeleteShard()
+			s.Delete()
 		}
 	}
 }

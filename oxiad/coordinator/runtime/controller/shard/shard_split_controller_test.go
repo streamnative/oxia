@@ -1504,7 +1504,7 @@ func TestSplitController_ChildEnsembleMemberDiesDuringBootstrap(t *testing.T) {
 // supportedFeaturesExcept reports every data server as supporting the
 // features of this binary, except for one data server that doesn't support
 // the given feature.
-func supportedFeaturesExcept(dataServer *proto.DataServerIdentity, unsupported proto.Feature) DataServerSupportedFeaturesSupplier {
+func supportedFeaturesExcept(dataServer *proto.DataServerIdentity, unsupported proto.Feature) FeaturesSupplier {
 	return func(dataServers []*proto.DataServerIdentity) map[string][]proto.Feature {
 		features := make(map[string][]proto.Feature, len(dataServers))
 		for _, server := range dataServers {

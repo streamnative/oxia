@@ -22,12 +22,25 @@ import (
 	controllerapi "github.com/oxia-db/oxia/oxiad/coordinator/runtime/controller"
 )
 
+// FeaturesSupplier returns the features that each data server supports, by
+// name, as their handshakes reported them.
+type FeaturesSupplier = func(dataServers []*proto.DataServerIdentity) map[string][]proto.Feature
+
+// NoOpFeaturesSupplier reports no features for any data server.
+func NoOpFeaturesSupplier(dataServers []*proto.DataServerIdentity) map[string][]proto.Feature {
+	features := make(map[string][]proto.Feature, len(dataServers))
+	for _, dataServer := range dataServers {
+		features[dataServer.GetNameOrDefault()] = []proto.Feature{}
+	}
+	return features
+}
+
 // Controller manages one shard for the coordinator. A single event loop applies
 // the requests and the notifications about the shard, one at a time:
 //
 //	runtime, balancer                        data server controllers
 //	   | Election, ChangeEnsemble,              | BecameUnavailable,
-//	   | DeleteShard, SyncServerAddress         | FeaturesDiscovered
+//	   | Delete, SyncServerAddress              | FeaturesDiscovered
 //	   v                                        v
 //	+--------------------------- event loop ----------------------------+
 //	| elect a leader      when the leader fails, the balancer moves it, |
@@ -72,10 +85,10 @@ type Controller interface {
 	// is full.
 	SyncServerAddress()
 
-	// DeleteShard deletes the shard from the data servers of its ensemble,
+	// Delete deletes the shard from the data servers of its ensemble,
 	// then its status, and calls ShardDeleted on the listener, retrying every
 	// second until it succeeds. It doesn't wait for the deletion.
-	DeleteShard()
+	Delete()
 
 	// Election elects a new leader of the shard, e.g. to move the leadership,
 	// and waits for it. It returns the name of the new leader, or "" if no
@@ -95,17 +108,4 @@ type Controller interface {
 	//
 	// It waits for room in the queue, not for the change.
 	ChangeEnsemble(changeEnsembleAction *action.ChangeEnsembleAction)
-}
-
-// DataServerSupportedFeaturesSupplier returns the features that each data
-// server supports, by name, as their handshakes reported them.
-type DataServerSupportedFeaturesSupplier = func(dataServers []*proto.DataServerIdentity) map[string][]proto.Feature
-
-// NoOpSupportedFeaturesSupplier reports no features for any data server.
-func NoOpSupportedFeaturesSupplier(dataServers []*proto.DataServerIdentity) map[string][]proto.Feature {
-	features := make(map[string][]proto.Feature, len(dataServers))
-	for _, dataServer := range dataServers {
-		features[dataServer.GetNameOrDefault()] = []proto.Feature{}
-	}
-	return features
 }

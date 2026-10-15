@@ -67,7 +67,7 @@ type controller struct {
 
 	eventListener                       controllerapi.ShardEventListener
 	metadataStore                       coordmetadata.Metadata
-	dataServerSupportedFeaturesSupplier DataServerSupportedFeaturesSupplier
+	dataServerSupportedFeaturesSupplier FeaturesSupplier
 
 	electionOp          chan *action.ElectionAction
 	deleteOp            chan any
@@ -141,7 +141,7 @@ func NewController(
 	nc *proto.Namespace,
 	shardMetadata *proto.ShardMetadata,
 	metadataStore coordmetadata.Metadata,
-	dataServerSupportedFeaturesSupplier DataServerSupportedFeaturesSupplier,
+	dataServerSupportedFeaturesSupplier FeaturesSupplier,
 	eventListener controllerapi.ShardEventListener,
 	rpcProvider rpc.Provider,
 	periodTasksInterval time.Duration) Controller {
@@ -251,7 +251,7 @@ func (s *controller) run(bo backoff.BackOff) error {
 	// Do initial check or leader election
 	switch {
 	case initShardMeta.GetStatusOrDefault() == proto.ShardStatusDeleting:
-		s.DeleteShard()
+		s.Delete()
 	case initShardMeta.Split != nil && len(initShardMeta.Split.ChildShardIds) == 0:
 		// Child shard during a split: the SplitController manages its lifecycle.
 		// Wait until the split is complete (Split metadata cleared) before
@@ -629,7 +629,7 @@ func (s *controller) electLeader(shardMeta *proto.ShardMetadata,
 	return election.Start()
 }
 
-func (s *controller) DeleteShard() {
+func (s *controller) Delete() {
 	s.terminationMu.RLock()
 	defer s.terminationMu.RUnlock()
 	if s.terminating.Load() {
@@ -643,7 +643,7 @@ func (s *controller) deleteShardWithRetries() {
 	s.logger.Info("Deleting shard")
 	if err := s.deleteShard(); err != nil {
 		s.logger.Warn("Delete shard failed, retrying later", slog.Any("error", err))
-		time.AfterFunc(time.Second, s.DeleteShard)
+		time.AfterFunc(time.Second, s.Delete)
 	}
 }
 

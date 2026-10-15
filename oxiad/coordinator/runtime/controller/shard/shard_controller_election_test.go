@@ -727,7 +727,7 @@ func startElection(t *testing.T, metadata coordmetadata.Metadata, rpc coordrpc.P
 		namespace:                           constant.DefaultNamespace,
 		shard:                               shard,
 		metadataStore:                       metadata,
-		dataServerSupportedFeaturesSupplier: NoOpSupportedFeaturesSupplier,
+		dataServerSupportedFeaturesSupplier: NoOpFeaturesSupplier,
 		leaderSelector:                      leaderselector.NewSelector(),
 		rpc:                                 rpc,
 		logger:                              slog.Default(),
