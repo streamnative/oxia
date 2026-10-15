@@ -306,6 +306,134 @@ func TestSecondaryIndices_RangeScan(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
+// An index range scan holds the entries of the index of the time it started,
+// and reads the records as they are when it reaches them: it skips the records
+// deleted in between, rather than returning them as not found.
+func TestSecondaryIndexRangeScanSkipsDeletedRecords(t *testing.T) {
+	var shard int64 = 1
+
+	kvFactory, err := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	walFactory := newTestWalFactory(t)
+
+	lc, err := NewLeaderController(&option.StorageOptions{}, constant.DefaultNamespace, shard, rpc.NewMockRpcClient(),
+		walFactory, kvFactory, nil)
+	require.NoError(t, err)
+	_, err = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
+	require.NoError(t, err)
+	_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
+		Shard:             shard,
+		Term:              1,
+		ReplicationFactor: 1,
+	})
+	require.NoError(t, err)
+
+	_, err = lc.WriteBlock(context.Background(), &proto.WriteRequest{
+		Shard: &shard,
+		Puts: []*proto.PutRequest{
+			{Key: "/a", Value: []byte("0"), SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "my-idx", SecondaryKey: "0"}}},
+			{Key: "/b", Value: []byte("1"), SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "my-idx", SecondaryKey: "1"}}},
+			{Key: "/c", Value: []byte("2"), SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "my-idx", SecondaryKey: "2"}}},
+			{Key: "/d", Value: []byte("3"), SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "my-idx", SecondaryKey: "3"}}},
+			{Key: "/e", Value: []byte("4"), SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "my-idx", SecondaryKey: "4"}}},
+		},
+	})
+	require.NoError(t, err)
+
+	var keys []string
+	err = lc.RangeScan(context.Background(), &proto.RangeScanRequest{
+		Shard:              &shard,
+		StartInclusive:     "0",
+		EndExclusive:       "9",
+		SecondaryIndexName: pb.String("my-idx"),
+	}, func(r *proto.GetResponse) error {
+		if len(keys) == 0 {
+			// The scan already holds the entries of these records
+			_, err := lc.WriteBlock(context.Background(), &proto.WriteRequest{
+				Shard:   &shard,
+				Deletes: []*proto.DeleteRequest{{Key: "/b"}, {Key: "/c"}, {Key: "/e"}},
+			})
+			require.NoError(t, err)
+		}
+		assert.Equal(t, proto.Status_OK, r.Status, r.GetKey())
+		assert.Equal(t, r.GetSecondaryIndexKey(), string(r.Value), r.GetKey())
+		keys = append(keys, r.GetKey())
+		return nil
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/a", "/d"}, keys)
+
+	assert.NoError(t, lc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
+// Without FEATURE_EPHEMERAL_SECONDARY_INDEX_CLEANUP, a session end deletes its
+// ephemeral records but leaves their index entries behind, and no write deletes
+// them later: an index range scan skips them too.
+func TestSecondaryIndexRangeScanSkipsLeakedEntries(t *testing.T) {
+	var shard int64 = 1
+
+	kvFactory, err := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	walFactory := newTestWalFactory(t)
+
+	lc, err := NewLeaderController(&option.StorageOptions{}, constant.DefaultNamespace, shard, rpc.NewMockRpcClient(),
+		walFactory, kvFactory, nil)
+	require.NoError(t, err)
+	_, err = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
+	require.NoError(t, err)
+	_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
+		Shard:             shard,
+		Term:              1,
+		ReplicationFactor: 1,
+	})
+	require.NoError(t, err)
+	sm := lc.(*leaderController).sessionManager
+
+	createResp, err := sm.CreateSession(&proto.CreateSessionRequest{Shard: shard, SessionTimeoutMs: 5000})
+	require.NoError(t, err)
+	sessionId := createResp.SessionId
+	_, err = lc.WriteBlock(context.Background(), &proto.WriteRequest{
+		Shard: &shard,
+		Puts: []*proto.PutRequest{
+			{Key: "/ephemeral", Value: []byte("0"), SessionId: &sessionId,
+				SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "my-idx", SecondaryKey: "0"}}},
+			{Key: "/persistent", Value: []byte("1"),
+				SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "my-idx", SecondaryKey: "1"}}},
+		},
+	})
+	require.NoError(t, err)
+	_, err = sm.CloseSession(&proto.CloseSessionRequest{Shard: shard, SessionId: sessionId})
+	require.NoError(t, err)
+
+	// The index still lists the record of the ended session
+	keys, err := lc.ListBlock(context.Background(), &proto.ListRequest{
+		Shard:              &shard,
+		StartInclusive:     "0",
+		EndExclusive:       "9",
+		SecondaryIndexName: pb.String("my-idx"),
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"/ephemeral", "/persistent"}, keys)
+
+	results, err := scanAll(context.Background(), lc, &proto.RangeScanRequest{
+		Shard:              &shard,
+		StartInclusive:     "0",
+		EndExclusive:       "9",
+		SecondaryIndexName: pb.String("my-idx"),
+	})
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, proto.Status_OK, results[0].Status)
+	assert.Equal(t, "/persistent", results[0].GetKey())
+	assert.Equal(t, "1", string(results[0].Value))
+
+	assert.NoError(t, lc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
 func TestSecondaryIndices_MultipleKeysForSameIdx(t *testing.T) {
 	var shard int64 = 1
 
