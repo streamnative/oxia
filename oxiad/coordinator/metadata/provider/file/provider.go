@@ -76,9 +76,12 @@ func NewProvider[T gproto.Message](
 		codec:        codec,
 		fileLock:     flock.New(path),
 		watchEnabled: watchEnabled,
-		version:      metadatacommon.NotExists,
-		name:         name,
-		logger:       slog.With(slog.String("component", "metadata-file-provider"), slog.String("path", path)),
+		// The file does not hold the version: a document that this provider
+		// has not written yet, e.g. one written before a restart, has the
+		// first version, because NotExists means that there is no document.
+		version: metadatacommon.NextVersion(metadatacommon.NotExists),
+		name:    name,
+		logger:  slog.With(slog.String("component", "metadata-file-provider"), slog.String("path", path)),
 	}
 	p.ctx, p.ctxCancel = context.WithCancel(ctx)
 	parentDir := filepath.Dir(path)
