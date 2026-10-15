@@ -593,7 +593,7 @@ func TestController_DoesNotElectFinalizingSplitParent(t *testing.T) {
 	electionAction := action.NewElectionAction(shard)
 	sc.Dispatch(electionAction)
 	_, err := requireElectionCompleted(t, electionAction)
-	assert.ErrorIs(t, err, ErrElectionStopped)
+	assert.ErrorIs(t, err, ErrElectionFailed)
 
 	for _, s := range []*proto.DataServerIdentity{s1, s2, s3} {
 		assert.Empty(t, rpc.GetNode(s).NewTermRequests)

@@ -94,7 +94,7 @@ type Controller interface {
 	//
 	//   - *action.ElectionAction elects a new leader of the shard, e.g. to move
 	//     the leadership. It completes with the name of the new leader, and
-	//     fails with ErrElectionStopped if the election stopped without
+	//     fails with ErrElectionFailed if the election ended without
 	//     electing one, e.g. because a newer election replaced it, and with
 	//     constant.ErrResourceUnavailable if the queue was full or the
 	//     controller is closing.

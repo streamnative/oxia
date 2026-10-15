@@ -611,7 +611,7 @@ func (s *controller) handleElectionWithRetries(electionAction *action.ElectionAc
 		s.shard).UnsafeBorrow()
 	leader := s.electLeader(shardMeta, nil)
 	if leader == nil {
-		electionAction.Error(ErrElectionStopped)
+		electionAction.Error(ErrElectionFailed)
 		return
 	}
 	electionAction.Done(leader.GetNameOrDefault())

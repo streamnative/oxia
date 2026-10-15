@@ -49,7 +49,7 @@ var (
 	ErrNotReadyForChangeEnsemble         = errors.New("shard is not ready for change ensemble, please retry later")
 	ErrInvalidChangeEnsemble             = errors.New("invalid change ensemble")
 	ErrFollowerNotCaughtUp               = errors.New("follower not caught up yet")
-	ErrElectionStopped                   = errors.New("the election stopped without electing a leader")
+	ErrElectionFailed                    = errors.New("the election failed to elect a leader")
 	ErrChangeEnsembleLosesFeatureSupport = errors.New(
 		"change ensemble would remove support for negotiated shard features")
 	ErrChangeEnsembleLosesEntries = errors.New(
