@@ -218,6 +218,16 @@ func assertShardEnsemble(
 	}
 }
 
+// dispatchElectionAndWait dispatches an election of the shard, and waits for the
+// leader that it completes with.
+func dispatchElectionAndWait(sc Controller, shard int64) string {
+	electionAction := &action.ElectionAction{Shard: shard, Waiter: &sync.WaitGroup{}}
+	electionAction.Waiter.Add(1)
+	sc.Dispatch(electionAction)
+	electionAction.Waiter.Wait()
+	return electionAction.NewLeader
+}
+
 func TestNoOpFeaturesSupplierReturnsNoFeatures(t *testing.T) {
 	result := NoOpFeaturesSupplier(nil)
 	assert.NotNil(t, result)
@@ -473,7 +483,7 @@ func TestController_RetriesShardStatusLoadError(t *testing.T) {
 	metadata.failures.Store(1)
 	newLeader := make(chan string, 1)
 	go func() {
-		newLeader <- sc.Election(&action.ElectionAction{Shard: shard})
+		newLeader <- dispatchElectionAndWait(sc, shard)
 	}()
 
 	rpc.GetNode(s2).ExpectNewTermRequest(t, shard, 4, true)
@@ -575,7 +585,7 @@ func TestController_DoesNotElectFinalizingSplitParent(t *testing.T) {
 	// started one
 	elected := make(chan string, 1)
 	go func() {
-		elected <- sc.Election(&action.ElectionAction{Shard: shard})
+		elected <- dispatchElectionAndWait(sc, shard)
 	}()
 	select {
 	case leader := <-elected:
@@ -868,7 +878,7 @@ func TestController_SwapNodeWithLeaderElectionFailure(t *testing.T) {
 		// goroutine; ChangeEnsemble is rejected until it completes.
 		for {
 			a := action.NewChangeEnsembleAction(shard, s1, s4)
-			sc.ChangeEnsemble(a)
+			sc.Dispatch(a)
 			_, err := a.Wait()
 			if err == nil {
 				return nil
@@ -967,7 +977,7 @@ func TestController_LeaderElectionShouldNotFailIfRemoveFails(t *testing.T) {
 		// goroutine; ChangeEnsemble is rejected until it completes.
 		for {
 			a := action.NewChangeEnsembleAction(shard, s1, s4)
-			sc.ChangeEnsemble(a)
+			sc.Dispatch(a)
 			_, err := a.Wait()
 			if err == nil {
 				return nil
@@ -1067,11 +1077,11 @@ func TestController_ShardsDataLostWithChangeEnsemble(t *testing.T) {
 
 	// test newTerm stage error would not change metadata ensemble
 	action1 := action.NewChangeEnsembleAction(shardId, s1, s4)
-	sc.ChangeEnsemble(action1)
+	sc.Dispatch(action1)
 	action2 := action.NewChangeEnsembleAction(shardId, s2, s5)
-	sc.ChangeEnsemble(action2)
+	sc.Dispatch(action2)
 	action3 := action.NewChangeEnsembleAction(shardId, s3, s6)
-	sc.ChangeEnsemble(action3)
+	sc.Dispatch(action3)
 
 	_, err := action1.Wait()
 	assert.Error(t, err)
@@ -1087,7 +1097,7 @@ func TestController_ShardsDataLostWithChangeEnsemble(t *testing.T) {
 	wait := sync.WaitGroup{}
 	wait.Go(func() {
 		action1 := action.NewChangeEnsembleAction(shardId, s1, s4)
-		sc.ChangeEnsemble(action1)
+		sc.Dispatch(action1)
 		_, err := action1.Wait()
 		assert.Error(t, err)
 	})
@@ -1101,7 +1111,7 @@ func TestController_ShardsDataLostWithChangeEnsemble(t *testing.T) {
 	wait = sync.WaitGroup{}
 	wait.Go(func() {
 		action1 := action.NewChangeEnsembleAction(shardId, s2, s5)
-		sc.ChangeEnsemble(action1)
+		sc.Dispatch(action1)
 		_, err := action1.Wait()
 		assert.Error(t, err)
 	})
@@ -1114,7 +1124,7 @@ func TestController_ShardsDataLostWithChangeEnsemble(t *testing.T) {
 	wait = sync.WaitGroup{}
 	wait.Go(func() {
 		action1 := action.NewChangeEnsembleAction(shardId, s3, s6)
-		sc.ChangeEnsemble(action1)
+		sc.Dispatch(action1)
 		_, err := action1.Wait()
 		assert.Error(t, err)
 	})
@@ -1171,7 +1181,7 @@ func TestController_ChangeEnsembleWaitsForNewEnsembleQuorum(t *testing.T) {
 		// Retry until the shard controller is ready for ensemble change.
 		for {
 			a := action.NewChangeEnsembleAction(shard, s2, s3)
-			sc.ChangeEnsemble(a)
+			sc.Dispatch(a)
 			_, err := a.Wait()
 			if !errors.Is(err, ErrNotReadyForChangeEnsemble) {
 				return err
@@ -1252,7 +1262,7 @@ func TestController_ChangeEnsembleKeepsEntryOfRemovedFollower(t *testing.T) {
 		// Retry until the shard controller is ready for ensemble change.
 		for {
 			a := action.NewChangeEnsembleAction(shard, s2, s4)
-			sc.ChangeEnsemble(a)
+			sc.Dispatch(a)
 			_, err := a.Wait()
 			if !errors.Is(err, ErrNotReadyForChangeEnsemble) {
 				return err
@@ -1344,7 +1354,7 @@ func TestController_ChangeEnsembleKeepsEntryOfRemovedLeader(t *testing.T) {
 		// Retry until the shard controller is ready for ensemble change.
 		for {
 			a := action.NewChangeEnsembleAction(shard, s1, s4)
-			sc.ChangeEnsemble(a)
+			sc.Dispatch(a)
 			_, err := a.Wait()
 			if !errors.Is(err, ErrNotReadyForChangeEnsemble) {
 				return err
@@ -1435,7 +1445,7 @@ func TestController_ChangeEnsembleNotAbortedAfterBecomeLeader(t *testing.T) {
 		// Retry until the shard controller is ready for ensemble change.
 		for {
 			a := action.NewChangeEnsembleAction(shard, s2, s4)
-			sc.ChangeEnsemble(a)
+			sc.Dispatch(a)
 			_, err := a.Wait()
 			if !errors.Is(err, ErrNotReadyForChangeEnsemble) {
 				return err
@@ -1651,7 +1661,7 @@ func TestController_ChangeEnsembleRejectsFeatureSupportRegression(t *testing.T) 
 	rpc.GetNode(s3).ExpectGetStatusRequest(t, shard)
 
 	change := action.NewChangeEnsembleAction(shard, s1, s4)
-	sc.ChangeEnsemble(change)
+	sc.Dispatch(change)
 
 	waitResult := make(chan error, 1)
 	go func() {
@@ -1836,7 +1846,7 @@ func TestController_ChangeEnsembleStopsWhenSplitStarts(t *testing.T) {
 	// The change of the ensemble is validated, and its election waits to make
 	// its first status update...
 	swap := action.NewChangeEnsembleAction(0, ps3, spare)
-	sc.ChangeEnsemble(swap)
+	sc.Dispatch(swap)
 	requireClosed(t, election.held, "the election to start")
 
 	// ...when the split of the shard starts
@@ -1872,7 +1882,7 @@ func TestController_ChangeEnsembleStopsWhenSplitStarts(t *testing.T) {
 		return true
 	}))
 	swap = action.NewChangeEnsembleAction(0, ps3, spare)
-	sc.ChangeEnsemble(swap)
+	sc.Dispatch(swap)
 	_, err = swap.Wait()
 	require.NoError(t, err)
 	shard := requireShardMetadata(t, metadata, constant.DefaultNamespace, 0)
@@ -2075,7 +2085,7 @@ func TestController_ElectionDiscardsWhenQueueIsFull(t *testing.T) {
 
 	done := make(chan string)
 	go func() {
-		done <- s.Election(&action.ElectionAction{Shard: shard})
+		done <- dispatchElectionAndWait(s, shard)
 	}()
 
 	select {

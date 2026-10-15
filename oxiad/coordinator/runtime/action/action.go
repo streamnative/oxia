@@ -14,15 +14,16 @@
 
 package action
 
-type Type string
-
-const (
-	SwapNode Type = "swap-node"
-	Election Type = "election"
-)
-
+// Action is a request of the balancer for the controller of a shard, which
+// completes it with its result.
 type Action interface {
-	Type() Type
+	// GetShard returns the shard that the action applies to.
+	GetShard() int64
 
+	// Done completes the action with its result.
 	Done(t any)
+
+	// Error completes the action with a failure: a change of the ensemble
+	// fails with err, and an election completes with no leader.
+	Error(err error)
 }
