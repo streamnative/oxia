@@ -229,7 +229,7 @@ func (s *controller) Dispatch(ac action.Action) {
 	case *action.ElectionAction:
 		if !channel.PushNoBlock(s.electionOp, ac) {
 			s.logger.Debug("Discarding leader election because queue is full")
-			ac.Done("")
+			ac.Error(fmt.Errorf("%w: the election queue is full", constant.ErrResourceUnavailable))
 		}
 	case *action.ChangeEnsembleAction:
 		select {
@@ -609,7 +609,12 @@ func (s *controller) handleElectionWithRetries(electionAction *action.ElectionAc
 	shardMeta := common.Must(borrowedMeta, exists,
 		"bug: shard metadata missing while starting election: namespace=", s.namespace, " shard=",
 		s.shard).UnsafeBorrow()
-	electionAction.Done(s.electLeader(shardMeta, nil).GetNameOrDefault())
+	leader := s.electLeader(shardMeta, nil)
+	if leader == nil {
+		electionAction.Error(ErrElectionStopped)
+		return
+	}
+	electionAction.Done(leader.GetNameOrDefault())
 }
 
 // electLeader starts a new election of the shard, with its current metadata,
@@ -722,7 +727,7 @@ func (s *controller) Close() error {
 		for {
 			select {
 			case electionAction := <-s.electionOp:
-				electionAction.Done("")
+				electionAction.Error(constant.ErrResourceUnavailable)
 			case <-s.deleteOp:
 			case <-s.dataServerFailureOp:
 			case <-s.featuresDiscoveredOp:
@@ -818,13 +823,7 @@ func (s *controller) Refresh() {
 		return
 	}
 	s.logger.Info("server address changed, start a new leader election")
-	group := &sync.WaitGroup{}
-	group.Add(1)
-	if !channel.PushNoBlock(s.electionOp, &action.ElectionAction{
-		Shard:  s.shard,
-		Waiter: group,
-	}) {
-		group.Done()
+	if !channel.PushNoBlock(s.electionOp, action.NewElectionAction(s.shard)) {
 		s.logger.Debug("Discarding refresh election because queue is full")
 	}
 }

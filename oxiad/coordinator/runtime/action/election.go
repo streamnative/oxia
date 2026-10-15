@@ -19,17 +19,32 @@ import "sync"
 type ElectionAction struct {
 	Shard int64
 
-	NewLeader string
-	Waiter    *sync.WaitGroup
+	waiter    *sync.WaitGroup
+	newLeader string
+	err       error
+}
+
+func NewElectionAction(shard int64) *ElectionAction {
+	action := &ElectionAction{Shard: shard, waiter: &sync.WaitGroup{}}
+	action.waiter.Add(1)
+	return action
 }
 
 func (e *ElectionAction) Done(leader any) {
-	e.NewLeader = leader.(string) //nolint:revive
-	e.Waiter.Done()
+	e.newLeader = leader.(string) //nolint:revive
+	e.waiter.Done()
 }
 
-func (e *ElectionAction) Error(_ error) {
-	e.Done("")
+func (e *ElectionAction) Error(err error) {
+	e.err = err
+	e.waiter.Done()
+}
+
+// Wait waits for the election, and returns the name of the new leader, or the
+// error that stopped it.
+func (e *ElectionAction) Wait() (string, error) {
+	e.waiter.Wait()
+	return e.newLeader, e.err
 }
 
 func (e *ElectionAction) GetShard() int64 {

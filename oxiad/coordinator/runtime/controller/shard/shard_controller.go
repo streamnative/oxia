@@ -67,9 +67,8 @@ func NoOpFeaturesSupplier(dataServers []*proto.DataServerIdentity) map[string][]
 // child shard of a split, and closes it when the shard is deleted, when its
 // namespace is removed, or when the runtime closes.
 type Controller interface {
-	// Close stops the event loop and the current election, and completes the
-	// requests still queued: an election completes with no leader, and a
-	// change of the ensemble fails with constant.ErrResourceUnavailable.
+	// Close stops the event loop and the current election, and fails the
+	// actions still queued with constant.ErrResourceUnavailable.
 	io.Closer
 
 	// DataServerEventListener receives the notifications of the data server
@@ -94,9 +93,11 @@ type Controller interface {
 	// its result. It panics on an action of another type:
 	//
 	//   - *action.ElectionAction elects a new leader of the shard, e.g. to move
-	//     the leadership. It completes with the name of the new leader, or ""
-	//     if no leader was elected, the queue was full, or the controller is
-	//     closing.
+	//     the leadership. It completes with the name of the new leader, and
+	//     fails with ErrElectionStopped if the election stopped without
+	//     electing one, e.g. because a newer election replaced it, and with
+	//     constant.ErrResourceUnavailable if the queue was full or the
+	//     controller is closing.
 	//   - *action.ChangeEnsembleAction replaces a member of the ensemble of the
 	//     shard with a new election. It fails with ErrInvalidChangeEnsemble if
 	//     the replaced member isn't in the ensemble, or the new one already is;

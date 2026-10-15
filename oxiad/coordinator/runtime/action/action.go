@@ -23,7 +23,6 @@ type Action interface {
 	// Done completes the action with its result.
 	Done(t any)
 
-	// Error completes the action with a failure: a change of the ensemble
-	// fails with err, and an election completes with no leader.
+	// Error completes the action with a failure.
 	Error(err error)
 }
