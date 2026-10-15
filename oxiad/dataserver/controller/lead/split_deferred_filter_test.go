@@ -643,10 +643,12 @@ func TestSessionDelete_DeferredSplitFilterNotifications(t *testing.T) {
 }
 
 // hookedPrefixDB runs a hook once the next iterator over a prefix is created,
-// and counts the checks of the entries of the secondary indexes.
+// and another after each check of an entry of a secondary index, which it
+// counts.
 type hookedPrefixDB struct {
 	database.DB
 	afterPrefixIterator  func()
+	afterKeepsIndexEntry func(indexKey string)
 	keepsIndexEntryCalls int
 }
 
@@ -671,7 +673,11 @@ func (db *hookedPrefixDB) KeyPrefixIterator(prefix string) (kvstore.KeyIterator,
 
 func (db *hookedPrefixDB) KeepsIndexEntry(filter *database.DeferredSplitFilter, indexKey string) (bool, error) {
 	db.keepsIndexEntryCalls++
-	return db.DB.KeepsIndexEntry(filter, indexKey)
+	kept, err := db.DB.KeepsIndexEntry(filter, indexKey)
+	if db.afterKeepsIndexEntry != nil {
+		db.afterKeepsIndexEntry(indexKey)
+	}
+	return kept, err
 }
 
 // The queries of a secondary index that start before the last step of the
@@ -753,6 +759,47 @@ func TestSecondaryIndexes_DeferredSplitFilterReplacedRecord(t *testing.T) {
 	}
 	require.NoError(t, it.Close())
 	assert.Empty(t, listed)
+}
+
+// An index range scan of a split child checks that the child keeps the record
+// of an entry when it reaches the entry, and reads the record after: it skips a
+// record deleted in between too.
+func TestSecondaryIndexRangeScanDeferredSplitFilterSkipsDeletedRecords(t *testing.T) {
+	kvFactory, err := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, kvFactory.Close()) }()
+	left, right := splitKeys(splitTestChildRange)
+	child := newSplitChildDB(t, kvFactory, 2, splitChildRecords(5, left, right))
+	defer func() { assert.NoError(t, child.Close()) }()
+
+	// The record is deleted once the scan checked its entry, before the scan
+	// reads it
+	deleted := left[1]
+	db := &hookedPrefixDB{DB: child}
+	db.afterKeepsIndexEntry = func(indexKey string) {
+		if primaryKey, _, _ := database.ParseSecondaryIndexKey(indexKey); primaryKey == deleted {
+			db.afterKeepsIndexEntry = nil
+			_, err := child.ProcessWrite(&proto.WriteRequest{Deletes: []*proto.DeleteRequest{{Key: deleted}}}, 2, 0,
+				WrapperUpdateOperationCallback)
+			require.NoError(t, err)
+		}
+	}
+
+	idx := "idx"
+	scan, err := newSecondaryIndexRangeScanIterator(&proto.RangeScanRequest{
+		SecondaryIndexName: &idx, StartInclusive: "sec-", EndExclusive: "sec-~",
+	}, db)
+	require.NoError(t, err)
+	var scanned []string
+	for ; scan.Valid(); scan.Next() {
+		res, err := scan.Value()
+		require.NoError(t, err)
+		assert.Equal(t, proto.Status_OK, res.Status, res.GetKey())
+		scanned = append(scanned, res.GetKey())
+	}
+	require.NoError(t, scan.Close())
+	// The kept records come in the order of their secondary keys, sec-00 on
+	assert.Equal(t, slices.Concat(left[:1], left[2:]), scanned)
 }
 
 // The queries of a secondary index of a split child don't check the entries

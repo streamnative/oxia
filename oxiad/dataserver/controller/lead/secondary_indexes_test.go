@@ -306,6 +306,68 @@ func TestSecondaryIndices_RangeScan(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
+// An index range scan holds the entries of the index of the time it started,
+// and reads the records as they are when it reaches them: it skips the records
+// deleted in between, rather than returning them as not found.
+func TestSecondaryIndexRangeScanSkipsDeletedRecords(t *testing.T) {
+	var shard int64 = 1
+
+	kvFactory, err := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	walFactory := newTestWalFactory(t)
+
+	lc, err := NewLeaderController(&option.StorageOptions{}, constant.DefaultNamespace, shard, rpc.NewMockRpcClient(),
+		walFactory, kvFactory, nil)
+	require.NoError(t, err)
+	_, err = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
+	require.NoError(t, err)
+	_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
+		Shard:             shard,
+		Term:              1,
+		ReplicationFactor: 1,
+	})
+	require.NoError(t, err)
+
+	_, err = lc.WriteBlock(context.Background(), &proto.WriteRequest{
+		Shard: &shard,
+		Puts: []*proto.PutRequest{
+			{Key: "/a", Value: []byte("0"), SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "my-idx", SecondaryKey: "0"}}},
+			{Key: "/b", Value: []byte("1"), SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "my-idx", SecondaryKey: "1"}}},
+			{Key: "/c", Value: []byte("2"), SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "my-idx", SecondaryKey: "2"}}},
+			{Key: "/d", Value: []byte("3"), SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "my-idx", SecondaryKey: "3"}}},
+			{Key: "/e", Value: []byte("4"), SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "my-idx", SecondaryKey: "4"}}},
+		},
+	})
+	require.NoError(t, err)
+
+	var keys []string
+	err = lc.RangeScan(context.Background(), &proto.RangeScanRequest{
+		Shard:              &shard,
+		StartInclusive:     "0",
+		EndExclusive:       "9",
+		SecondaryIndexName: pb.String("my-idx"),
+	}, func(r *proto.GetResponse) error {
+		if len(keys) == 0 {
+			// The scan already holds the entries of these records
+			_, err := lc.WriteBlock(context.Background(), &proto.WriteRequest{
+				Shard:   &shard,
+				Deletes: []*proto.DeleteRequest{{Key: "/b"}, {Key: "/c"}, {Key: "/e"}},
+			})
+			require.NoError(t, err)
+		}
+		assert.Equal(t, proto.Status_OK, r.Status, r.GetKey())
+		assert.Equal(t, r.GetSecondaryIndexKey(), string(r.Value), r.GetKey())
+		keys = append(keys, r.GetKey())
+		return nil
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/a", "/d"}, keys)
+
+	assert.NoError(t, lc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
 func TestSecondaryIndices_MultipleKeysForSameIdx(t *testing.T) {
 	var shard int64 = 1
 
