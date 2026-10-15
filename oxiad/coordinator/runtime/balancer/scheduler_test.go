@@ -707,3 +707,50 @@ func TestBalanceHighestNodeDoesNotHangOnSelectorError(t *testing.T) {
 		t.Fatal("rebalanceEnsemble hung due to infinite loop on selector error")
 	}
 }
+
+func TestNodeBasedBalancerRebalanceLeaderQuarantinesShardOnFailedElection(t *testing.T) {
+	sv1 := dataServer("sv-1")
+	sv2 := dataServer("sv-2")
+	sv3 := dataServer("sv-3")
+
+	ensemble := []*proto.DataServerIdentity{sv1, sv2, sv3}
+	status := &proto.ClusterStatus{
+		Namespaces: map[string]*proto.NamespaceStatus{
+			"ns": {
+				ReplicationFactor: 3,
+				Shards: map[int64]*proto.ShardMetadata{
+					0: {Status: proto.ShardStatusSteadyState, Leader: sv1, Ensemble: ensemble},
+					1: {Status: proto.ShardStatusSteadyState, Leader: sv1, Ensemble: ensemble},
+					2: {Status: proto.ShardStatusSteadyState, Leader: sv1, Ensemble: ensemble},
+				},
+			},
+		},
+	}
+	metadata := &mockMetadata{
+		status:   status,
+		nodes:    linkedhashset.New("sv-1", "sv-2", "sv-3"),
+		metadata: map[string]*proto.DataServerMetadata{},
+		nsConfigs: map[string]*proto.Namespace{
+			"ns": {Name: "ns", ReplicationFactor: 3},
+		},
+		nodeMap: map[string]*proto.DataServerIdentity{
+			"sv-1": sv1,
+			"sv-2": sv2,
+			"sv-3": sv3,
+		},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	b := newTestBalancer(ctx, cancel, metadata, &alwaysErrorSelector{})
+
+	electedShard := make(chan int64, 1)
+	go func() {
+		ac := <-b.actionCh
+		electedShard <- ac.GetShard()
+		ac.Error(errors.New("the election failed"))
+	}()
+	b.rebalanceLeader()
+
+	assert.Equal(t, []int64{<-electedShard}, b.quarantineShards().Values())
+}

@@ -218,14 +218,26 @@ func assertShardEnsemble(
 	}
 }
 
-// dispatchElectionAndWait dispatches an election of the shard, and waits for the
-// leader that it completes with.
-func dispatchElectionAndWait(sc Controller, shard int64) string {
-	electionAction := &action.ElectionAction{Shard: shard, Waiter: &sync.WaitGroup{}}
-	electionAction.Waiter.Add(1)
-	sc.Dispatch(electionAction)
-	electionAction.Waiter.Wait()
-	return electionAction.NewLeader
+// requireElectionCompleted waits for the election action to complete, and
+// returns its result.
+func requireElectionCompleted(t *testing.T, electionAction *action.ElectionAction) (string, error) {
+	t.Helper()
+	type result struct {
+		leader string
+		err    error
+	}
+	completed := make(chan result, 1)
+	go func() {
+		leader, err := electionAction.Wait()
+		completed <- result{leader, err}
+	}()
+	select {
+	case r := <-completed:
+		return r.leader, r.err
+	case <-time.After(10 * time.Second):
+		require.FailNow(t, "the election action was not completed")
+		return "", nil
+	}
 }
 
 func TestNoOpFeaturesSupplierReturnsNoFeatures(t *testing.T) {
@@ -481,20 +493,15 @@ func TestController_RetriesShardStatusLoadError(t *testing.T) {
 	rpc.GetNode(s2).BecomeLeaderResponse(nil)
 
 	metadata.failures.Store(1)
-	newLeader := make(chan string, 1)
-	go func() {
-		newLeader <- dispatchElectionAndWait(sc, shard)
-	}()
+	electionAction := action.NewElectionAction(shard)
+	sc.Dispatch(electionAction)
 
 	rpc.GetNode(s2).ExpectNewTermRequest(t, shard, 4, true)
 	rpc.GetNode(s3).ExpectNewTermRequest(t, shard, 4, true)
 	rpc.GetNode(s2).ExpectBecomeLeaderRequest(t, shard, 4, 3)
-	select {
-	case leader := <-newLeader:
-		assert.Equal(t, s2.GetNameOrDefault(), leader)
-	case <-time.After(10 * time.Second):
-		t.Fatal("the election request was not completed")
-	}
+	leader, err := requireElectionCompleted(t, electionAction)
+	require.NoError(t, err)
+	assert.Equal(t, s2.GetNameOrDefault(), leader)
 }
 
 // The periodic tasks skip a round whose shard status load fails, instead of
@@ -583,16 +590,10 @@ func TestController_DoesNotElectFinalizingSplitParent(t *testing.T) {
 	// An election would never complete, since no data server answers: the
 	// request completes only if neither the startup nor the request itself
 	// started one
-	elected := make(chan string, 1)
-	go func() {
-		elected <- dispatchElectionAndWait(sc, shard)
-	}()
-	select {
-	case leader := <-elected:
-		assert.Empty(t, leader)
-	case <-time.After(10 * time.Second):
-		t.Fatal("the split parent is being elected again")
-	}
+	electionAction := action.NewElectionAction(shard)
+	sc.Dispatch(electionAction)
+	_, err := requireElectionCompleted(t, electionAction)
+	assert.ErrorIs(t, err, ErrElectionFailed)
 
 	for _, s := range []*proto.DataServerIdentity{s1, s2, s3} {
 		assert.Empty(t, rpc.GetNode(s).NewTermRequests)
@@ -2075,25 +2076,13 @@ func TestController_ElectionDiscardsWhenQueueIsFull(t *testing.T) {
 		logger:     slog.Default(),
 	}
 	for range chanBufferSize {
-		group := &sync.WaitGroup{}
-		group.Add(1)
-		s.electionOp <- &action.ElectionAction{
-			Shard:  shard,
-			Waiter: group,
-		}
+		s.electionOp <- action.NewElectionAction(shard)
 	}
 
-	done := make(chan string)
-	go func() {
-		done <- dispatchElectionAndWait(s, shard)
-	}()
-
-	select {
-	case newLeader := <-done:
-		assert.Empty(t, newLeader)
-	case <-time.After(time.Second):
-		t.Fatal("Election blocked on a full election queue")
-	}
+	electionAction := action.NewElectionAction(shard)
+	s.Dispatch(electionAction)
+	_, err := requireElectionCompleted(t, electionAction)
+	assert.ErrorIs(t, err, constant.ErrResourceUnavailable)
 	assert.Len(t, s.electionOp, chanBufferSize)
 }
 
@@ -2120,12 +2109,7 @@ func TestController_RefreshDiscardsElectionWhenQueueIsFull(t *testing.T) {
 		logger:        slog.Default(),
 	}
 	for range chanBufferSize {
-		group := &sync.WaitGroup{}
-		group.Add(1)
-		s.electionOp <- &action.ElectionAction{
-			Shard:  shard,
-			Waiter: group,
-		}
+		s.electionOp <- action.NewElectionAction(shard)
 	}
 
 	done := make(chan struct{})
