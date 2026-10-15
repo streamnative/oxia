@@ -22,24 +22,86 @@ import (
 	controllerapi "github.com/oxia-db/oxia/oxiad/coordinator/runtime/controller"
 )
 
-// The Controller is responsible to handle all the state transition for a given a shard
-// e.g. electing a new leader.
+// Controller manages one shard for the coordinator. A single event loop applies
+// the requests and the notifications about the shard, one at a time:
+//
+//	runtime, balancer                        data server controllers
+//	   | Election, ChangeEnsemble,              | BecameUnavailable,
+//	   | DeleteShard, SyncServerAddress         | FeaturesDiscovered
+//	   v                                        v
+//	+--------------------------- event loop ----------------------------+
+//	| elect a leader      when the leader fails, the balancer moves it, |
+//	|                     an address changes, or the ensemble supports  |
+//	|                     features that the term doesn't pin            |
+//	| change the ensemble with a new election                           |
+//	| delete the shard    from its ensemble, then its status            |
+//	| periodic tasks      delete the shard from the removed members,    |
+//	|                     and check the features of the term            |
+//	+-------------------------------------------------------------------+
+//	   |
+//	   v the shard status (metadata), the data servers, ShardEventListener
+//
+// When it starts, the controller deletes a shard marked Deleting, waits for
+// the split of a child shard to complete, elects a leader if the shard has no
+// healthy one, or verifies the ensemble of the current leader. It retries the
+// start until it is closed.
+//
+// The methods queue their work for the event loop, and only Election waits for
+// it. A request that arrives while the controller is closing, or after the
+// shard is deleted, is dropped or fails.
+//
+// The runtime creates a controller for each shard of a namespace, and for each
+// child shard of a split, and closes it when the shard is deleted, when its
+// namespace is removed, or when the runtime closes.
 type Controller interface {
+	// Close stops the event loop and the current election, and completes the
+	// requests still queued: Election returns no leader, and ChangeEnsemble
+	// fails with constant.ErrResourceUnavailable.
 	io.Closer
 
+	// DataServerEventListener receives the notifications of the data server
+	// controllers. The failure of the leader starts a new election, and the
+	// discovery of the features of an ensemble member checks the features
+	// pinned by the term. A failure notification is dropped when the queue
+	// is full; discovered features are kept until the event loop handles them.
 	controllerapi.DataServerEventListener
 
+	// SyncServerAddress starts a new election if the address of an ensemble
+	// member changed in the configuration, so that the members get the new
+	// address. It doesn't wait for the election, and drops it when the queue
+	// is full.
 	SyncServerAddress()
 
+	// DeleteShard deletes the shard from the data servers of its ensemble,
+	// then its status, and calls ShardDeleted on the listener, retrying every
+	// second until it succeeds. It doesn't wait for the deletion.
 	DeleteShard()
 
+	// Election elects a new leader of the shard, e.g. to move the leadership,
+	// and waits for it. It returns the name of the new leader, or "" if no
+	// leader was elected, the queue was full, or the controller is closing.
 	Election(electionAction *action.ElectionAction) string
 
+	// ChangeEnsemble replaces a member of the ensemble of the shard with a new
+	// election, and completes the action with its result. It fails with:
+	//   - ErrInvalidChangeEnsemble if the replaced member isn't in the
+	//     ensemble, or the new one already is;
+	//   - ErrNotReadyForChangeEnsemble while the followers of the current
+	//     leader catch up, the shard is part of a split, or the features of a
+	//     member aren't known yet;
+	//   - ErrChangeEnsembleLosesFeatureSupport if the new ensemble doesn't
+	//     support the features that the current one negotiated;
+	//   - constant.ErrResourceUnavailable while the controller is closing.
+	//
+	// It waits for room in the queue, not for the change.
 	ChangeEnsemble(changeEnsembleAction *action.ChangeEnsembleAction)
 }
 
+// DataServerSupportedFeaturesSupplier returns the features that each data
+// server supports, by name, as their handshakes reported them.
 type DataServerSupportedFeaturesSupplier = func(dataServers []*proto.DataServerIdentity) map[string][]proto.Feature
 
+// NoOpSupportedFeaturesSupplier reports no features for any data server.
 func NoOpSupportedFeaturesSupplier(dataServers []*proto.DataServerIdentity) map[string][]proto.Feature {
 	features := make(map[string][]proto.Feature, len(dataServers))
 	for _, dataServer := range dataServers {
