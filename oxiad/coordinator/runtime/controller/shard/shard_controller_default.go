@@ -219,26 +219,30 @@ func NewController(
 }
 
 func (s *controller) Dispatch(ac action.Action) {
-	switch ac := ac.(type) {
-	case *action.ElectionAction:
-		s.dispatchElection(ac)
-	case *action.ChangeEnsembleAction:
-		s.dispatchChangeEnsemble(ac)
-	default:
-		panic(fmt.Sprintf("unknown action type: %T", ac))
-	}
-}
-
-func (s *controller) dispatchElection(electionAction *action.ElectionAction) {
 	s.terminationMu.RLock()
 	defer s.terminationMu.RUnlock()
-	if s.terminating.Load() {
-		electionAction.Done("")
-		return
-	}
-	if !channel.PushNoBlock(s.electionOp, electionAction) {
-		s.logger.Debug("Discarding leader election because queue is full")
-		electionAction.Done("")
+	switch ac := ac.(type) {
+	case *action.ElectionAction:
+		if s.terminating.Load() {
+			ac.Done("")
+			return
+		}
+		if !channel.PushNoBlock(s.electionOp, ac) {
+			s.logger.Debug("Discarding leader election because queue is full")
+			ac.Done("")
+		}
+	case *action.ChangeEnsembleAction:
+		if s.terminating.Load() {
+			ac.Error(constant.ErrResourceUnavailable)
+			return
+		}
+		select {
+		case s.changeEnsembleOp <- ac:
+		case <-s.ctx.Done():
+			ac.Error(constant.ErrResourceUnavailable)
+		}
+	default:
+		panic(fmt.Sprintf("unknown action type: %T", ac))
 	}
 }
 
@@ -603,7 +607,7 @@ func (s *controller) handleElectionWithRetries(electionAction *action.ElectionAc
 	borrowedMeta, exists, err := s.metadataStore.GetShardStatus(s.namespace, s.shard)
 	if err != nil {
 		s.logger.Warn("Failed to start the election, retrying later", slog.Any("error", err))
-		time.AfterFunc(time.Second, func() { s.dispatchElection(electionAction) })
+		time.AfterFunc(time.Second, func() { s.Dispatch(electionAction) })
 		return
 	}
 	shardMeta := common.Must(borrowedMeta, exists,
@@ -736,23 +740,6 @@ func (s *controller) Close() error {
 		s.termGauge.Unregister()
 	})
 	return nil
-}
-
-func (s *controller) dispatchChangeEnsemble(changeEnsembleAction *action.ChangeEnsembleAction) {
-	s.terminationMu.RLock()
-	if s.terminating.Load() {
-		s.terminationMu.RUnlock()
-		changeEnsembleAction.Error(constant.ErrResourceUnavailable)
-		return
-	}
-	select {
-	case s.changeEnsembleOp <- changeEnsembleAction:
-	case <-s.ctx.Done():
-		s.terminationMu.RUnlock()
-		changeEnsembleAction.Error(constant.ErrResourceUnavailable)
-		return
-	}
-	s.terminationMu.RUnlock()
 }
 
 func (s *controller) onChangeEnsemble(changeEnsembleAction *action.ChangeEnsembleAction) {
