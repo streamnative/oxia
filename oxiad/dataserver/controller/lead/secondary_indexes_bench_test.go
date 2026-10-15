@@ -17,6 +17,7 @@ package lead
 import (
 	"fmt"
 	"log/slog"
+	"runtime"
 	"testing"
 	"time"
 
@@ -50,6 +51,68 @@ func BenchmarkSecondaryIndexesOverwrite(b *testing.B) {
 			}
 		}
 	}
+}
+
+// BenchmarkSecondaryIndexRangeScan measures an index range scan over all the
+// records of a shard, in the flushed tables and in the memtable, per record.
+func BenchmarkSecondaryIndexRangeScan(b *testing.B) {
+	// The logs go to stdout, where they'd break the result lines
+	logging.LogLevel = slog.LevelWarn
+	logging.ConfigureLogger()
+
+	factory, err := kvstore.NewPebbleKVFactory(&kvstore.FactoryOptions{DataDir: b.TempDir()})
+	assert.NoError(b, err)
+	db, err := database.NewDB(constant.DefaultNamespace, 1, factory, proto.KeySortingType_HIERARCHICAL, 0,
+		time2.SystemClock)
+	assert.NoError(b, err)
+	defer db.Close()
+
+	const records = 10_000
+	const batch = 100
+	timestamp := uint64(time.Now().UnixMilli())
+	for i := 0; i < records; i += batch {
+		write := &proto.WriteRequest{}
+		for j := i; j < i+batch; j++ {
+			write.Puts = append(write.Puts, &proto.PutRequest{
+				Key:   fmt.Sprintf("/managed-ledgers/tenant/namespace/persistent/topic-%05d", j),
+				Value: make([]byte, 100),
+				// The secondary keys don't follow the order of the keys
+				SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "idx", SecondaryKey: fmt.Sprintf("%05d", j*7919%records)}},
+			})
+		}
+		if _, err := db.ProcessWrite(write, int64(i/batch), timestamp, WrapperUpdateOperationCallback); err != nil {
+			b.Fatal(err)
+		}
+		if i == records*9/10 {
+			assert.NoError(b, db.Flush())
+		}
+	}
+
+	idx := "idx"
+	request := &proto.RangeScanRequest{SecondaryIndexName: &idx, StartInclusive: "0", EndExclusive: "9"}
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	b.ResetTimer()
+	for range b.N {
+		it, err := newSecondaryIndexRangeScanIterator(request, db)
+		if err != nil {
+			b.Fatal(err)
+		}
+		scanned := 0
+		for ; it.Valid(); it.Next() {
+			if _, err := it.Value(); err != nil {
+				b.Fatal(err)
+			}
+			scanned++
+		}
+		if err := it.Close(); err != nil || scanned != records {
+			b.Fatal(err, scanned)
+		}
+	}
+	b.StopTimer()
+	runtime.ReadMemStats(&after)
+	b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N*records), "ns/record")
+	b.ReportMetric(float64(after.Mallocs-before.Mallocs)/float64(b.N*records), "allocs/record")
 }
 
 func benchmarkSecondaryIndexesOverwrite(b *testing.B, features []proto.Feature, indexes int,
