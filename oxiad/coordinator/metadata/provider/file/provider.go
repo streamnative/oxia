@@ -16,6 +16,7 @@ package file
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -52,6 +53,9 @@ type Provider[T gproto.Message] struct {
 	watchEnabled metadatacommon.WatchMode
 	version      metadatacommon.Version
 	name         string
+	// hasDocument is set once this provider read a document from the file, or
+	// wrote one, and is never reset. Guarded by mu.
+	hasDocument bool
 
 	ctx       context.Context
 	ctxCancel context.CancelFunc
@@ -158,17 +162,20 @@ func (m *Provider[T]) loadLatestOnceLocked() (snapshot provider.Versioned[T], er
 
 func (m *Provider[T]) loadLatestOnceWithoutLock() (snapshot provider.Versioned[T], err error) {
 	content, err := os.ReadFile(m.path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return provider.Versioned[T]{
-				Value:   m.codec.NewZero(),
-				Version: metadatacommon.NotExists,
-			}, nil
-		}
+	if err != nil && !os.IsNotExist(err) {
 		return snapshot, err
 	}
 
 	if len(content) == 0 {
+		// The file holds no document until the first write, and the leadership
+		// lock creates it empty. Once it held one, an empty or missing file is
+		// being rewritten: a writer truncates it, or removes it, before it
+		// writes the new content. Loading an empty document would drain every
+		// data server and delete every namespace, so the load fails, and a
+		// reload keeps the cached document until the new content is there.
+		if m.hasDocument {
+			return snapshot, fmt.Errorf("%s no longer holds a document, waiting for it to be rewritten", m.path)
+		}
 		return provider.Versioned[T]{
 			Value:   m.codec.NewZero(),
 			Version: metadatacommon.NotExists,
@@ -178,6 +185,7 @@ func (m *Provider[T]) loadLatestOnceWithoutLock() (snapshot provider.Versioned[T
 	if err != nil {
 		panic(err)
 	}
+	m.hasDocument = true
 	return provider.Versioned[T]{
 		Value:   value,
 		Version: m.version,
@@ -208,6 +216,7 @@ func (m *Provider[T]) write(snapshot provider.Versioned[T]) (*provider.Versioned
 		return nil, err
 	}
 	m.version = newVersion
+	m.hasDocument = true
 	return &provider.Versioned[T]{
 		Value:   m.codec.Clone(snapshot.Value),
 		Version: newVersion,

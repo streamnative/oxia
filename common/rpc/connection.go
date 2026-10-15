@@ -119,6 +119,11 @@ func newConnectionWithHealthConfig(
 	if tlsConf != nil {
 		transportCredential = credentials.NewTLS(tlsConf)
 	}
+	if !strings.Contains(actualAddress, "://") {
+		// Look the name up on every dial: the gRPC DNS resolver keeps the old
+		// IP of a restarted server for up to 30s
+		actualAddress = "passthrough:///" + actualAddress
+	}
 
 	options := []grpc.DialOption{
 		grpc.WithTransportCredentials(transportCredential),
