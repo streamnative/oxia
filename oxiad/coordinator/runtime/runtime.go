@@ -218,12 +218,12 @@ func (c *runtime) DeleteDataServer(name string) {
 	c.drainingNodes[name] = nc
 }
 
-func (c *runtime) SyncShardControllerServerAddresses() {
+func (c *runtime) RefreshShardControllers() {
 	c.Lock()
 	defer c.Unlock()
 
 	for _, sc := range c.shardControllers {
-		sc.SyncServerAddress()
+		sc.Refresh()
 	}
 }
 
@@ -315,7 +315,7 @@ func (c *runtime) DeleteNamespace(namespace string) {
 	defer c.Unlock()
 	for shard := range namespaceStatus.GetShards() {
 		if s, exist := c.shardControllers[shard]; exist {
-			s.DeleteShard()
+			s.Delete()
 		}
 	}
 }

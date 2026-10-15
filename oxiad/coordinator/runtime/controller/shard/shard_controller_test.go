@@ -119,7 +119,7 @@ func newTestController( //nolint:revive // Test helper mirrors NewController and
 	shard int64,
 	namespaceConfig *proto.Namespace,
 	shardMetadata *proto.ShardMetadata,
-	dataServerSupportedFeaturesSupplier DataServerSupportedFeaturesSupplier,
+	dataServerSupportedFeaturesSupplier FeaturesSupplier,
 	rpcProvider coordrpc.Provider,
 	periodicTasksInterval time.Duration,
 ) Controller {
@@ -218,13 +218,13 @@ func assertShardEnsemble(
 	}
 }
 
-func TestNoOpSupportedFeaturesSupplierReturnsNoFeatures(t *testing.T) {
-	result := NoOpSupportedFeaturesSupplier(nil)
+func TestNoOpFeaturesSupplierReturnsNoFeatures(t *testing.T) {
+	result := NoOpFeaturesSupplier(nil)
 	assert.NotNil(t, result)
 	assert.Empty(t, result)
 
 	server := testDataServer("node1")
-	result = NoOpSupportedFeaturesSupplier([]*proto.DataServerIdentity{server})
+	result = NoOpFeaturesSupplier([]*proto.DataServerIdentity{server})
 	assert.Contains(t, result, server.GetNameOrDefault())
 	assert.Empty(t, result[server.GetNameOrDefault()])
 }
@@ -248,7 +248,7 @@ func TestController_OnElectLeaderReturnsNewLeader(t *testing.T) {
 		namespace:                           constant.DefaultNamespace,
 		shard:                               shard,
 		metadataStore:                       metadata,
-		dataServerSupportedFeaturesSupplier: NoOpSupportedFeaturesSupplier,
+		dataServerSupportedFeaturesSupplier: NoOpFeaturesSupplier,
 		leaderSelector:                      leaderselector.NewSelector(),
 		rpc:                                 rpc,
 		logger:                              slog.Default(),
@@ -303,7 +303,7 @@ func TestController_ElectionDoesNotFenceWithUnpersistedTerm(t *testing.T) {
 		Term:     1,
 		Leader:   nil,
 		Ensemble: []*proto.DataServerIdentity{s1},
-	}, NoOpSupportedFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
+	}, NoOpFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
 
 	// The election fails to persist its new term: it must not fence the
 	// ensemble with it
@@ -328,7 +328,7 @@ func TestController(t *testing.T) {
 		Term:     1,
 		Leader:   nil,
 		Ensemble: []*proto.DataServerIdentity{s1, s2, s3},
-	}, NoOpSupportedFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
+	}, NoOpFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
 
 	// Shard controller should initiate a leader election
 	// and newTerm each server
@@ -425,7 +425,7 @@ func TestController_RetriesShardStatusLoadError(t *testing.T) {
 		Term:     1,
 		Leader:   nil,
 		Ensemble: []*proto.DataServerIdentity{s1, s2, s3},
-	}, NoOpSupportedFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
+	}, NoOpFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
 	t.Cleanup(func() {
 		assert.NoError(t, sc.Close())
 	})
@@ -525,7 +525,7 @@ func TestController_StartingWithLeaderAlreadyPresent(t *testing.T) {
 		Term:     1,
 		Leader:   s1,
 		Ensemble: []*proto.DataServerIdentity{s1, s2, s3},
-	}, NoOpSupportedFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
+	}, NoOpFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
 
 	n1.ExpectGetStatusRequest(t, shard)
 	n1.GetStatusResponse(1, proto.ServingStatus_LEADER, 0, 0)
@@ -565,7 +565,7 @@ func TestController_DoesNotElectFinalizingSplitParent(t *testing.T) {
 			SplitPoint:            500,
 			ParentTermAtBootstrap: 5,
 		},
-	}, NoOpSupportedFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
+	}, NoOpFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
 	defer func() {
 		assert.NoError(t, sc.Close())
 	}()
@@ -607,7 +607,7 @@ func TestController_RetriesElectionWhenDataServerNotInitialized(t *testing.T) {
 		Term:     1,
 		Leader:   nil,
 		Ensemble: []*proto.DataServerIdentity{s1, s2, s3},
-	}, NoOpSupportedFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
+	}, NoOpFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
 
 	rpc.GetNode(s1).NewTermResponse(0, 0, constant.ErrNotInitialized)
 	rpc.GetNode(s2).NewTermResponse(0, 0, constant.ErrNotInitialized)
@@ -653,7 +653,7 @@ func TestController_NewTermWithNonRespondingServer(t *testing.T) {
 		Term:     1,
 		Leader:   nil,
 		Ensemble: []*proto.DataServerIdentity{s1, s2, s3},
-	}, NoOpSupportedFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
+	}, NoOpFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
 
 	timeStart := time.Now()
 
@@ -700,7 +700,7 @@ func TestController_NewTermFollowerUntilItRecovers(t *testing.T) {
 		Term:     1,
 		Leader:   nil,
 		Ensemble: []*proto.DataServerIdentity{s1, s2, s3},
-	}, NoOpSupportedFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
+	}, NoOpFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
 
 	// s3 is failing, though we can still elect a leader
 	rpc.GetNode(s1).NewTermResponse(1, 0, nil)
@@ -755,7 +755,7 @@ func TestController_VerifyFollowersWereAllFenced(t *testing.T) {
 		Term:     4,
 		Leader:   s1,
 		Ensemble: []*proto.DataServerIdentity{s1, s2, s3},
-	}, NoOpSupportedFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
+	}, NoOpFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
 
 	n1.ExpectGetStatusRequest(t, 5)
 	n1.GetStatusResponse(4, proto.ServingStatus_LEADER, 0, 0)
@@ -801,7 +801,7 @@ func TestController_NotificationsDisabled(t *testing.T) {
 		Term:     1,
 		Leader:   nil,
 		Ensemble: []*proto.DataServerIdentity{s1, s2, s3},
-	}, NoOpSupportedFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
+	}, NoOpFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
 
 	// Shard controller should initiate a leader election
 	// and newTerm each server
@@ -834,7 +834,7 @@ func TestController_SwapNodeWithLeaderElectionFailure(t *testing.T) {
 		Term:     1,
 		Leader:   nil,
 		Ensemble: []*proto.DataServerIdentity{s1, s2, s3},
-	}, NoOpSupportedFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
+	}, NoOpFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
 
 	// Do initial election
 	rpc.GetNode(s1).NewTermResponse(1, 0, nil)
@@ -933,7 +933,7 @@ func TestController_LeaderElectionShouldNotFailIfRemoveFails(t *testing.T) {
 		Term:     1,
 		Leader:   nil,
 		Ensemble: []*proto.DataServerIdentity{s1, s2, s3},
-	}, NoOpSupportedFeaturesSupplier, rpc, 1*time.Second)
+	}, NoOpFeaturesSupplier, rpc, 1*time.Second)
 
 	// Do initial election
 	rpc.GetNode(s1).NewTermResponse(1, 0, nil)
@@ -1050,7 +1050,7 @@ func TestController_ShardsDataLostWithChangeEnsemble(t *testing.T) {
 		Term:     1,
 		Leader:   nil,
 		Ensemble: []*proto.DataServerIdentity{s1, s2, s3},
-	}, NoOpSupportedFeaturesSupplier, rpc, 1*time.Second)
+	}, NoOpFeaturesSupplier, rpc, 1*time.Second)
 
 	// Do initial election
 	rpc.GetNode(s1).NewTermResponse(1, 0, nil)
@@ -1151,7 +1151,7 @@ func TestController_ChangeEnsembleWaitsForNewEnsembleQuorum(t *testing.T) {
 		Term:     1,
 		Leader:   nil,
 		Ensemble: []*proto.DataServerIdentity{s1, s2},
-	}, NoOpSupportedFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
+	}, NoOpFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
 
 	// Do initial election
 	rpc.GetNode(s1).NewTermResponse(1, 0, nil)
@@ -1229,7 +1229,7 @@ func TestController_ChangeEnsembleKeepsEntryOfRemovedFollower(t *testing.T) {
 		Term:     1,
 		Leader:   nil,
 		Ensemble: []*proto.DataServerIdentity{s1, s2, s3},
-	}, NoOpSupportedFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
+	}, NoOpFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
 
 	// Do initial election
 	rpc.GetNode(s1).NewTermResponse(1, 0, nil)
@@ -1321,7 +1321,7 @@ func TestController_ChangeEnsembleKeepsEntryOfRemovedLeader(t *testing.T) {
 		Term:     1,
 		Leader:   nil,
 		Ensemble: []*proto.DataServerIdentity{s1, s2, s3},
-	}, NoOpSupportedFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
+	}, NoOpFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
 
 	// Do initial election
 	rpc.GetNode(s1).NewTermResponse(1, 0, nil)
@@ -1412,7 +1412,7 @@ func TestController_ChangeEnsembleNotAbortedAfterBecomeLeader(t *testing.T) {
 		Term:     1,
 		Leader:   nil,
 		Ensemble: []*proto.DataServerIdentity{s1, s2, s3},
-	}, NoOpSupportedFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
+	}, NoOpFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
 
 	// Do initial election
 	rpc.GetNode(s1).NewTermResponse(1, 0, nil)
@@ -1743,7 +1743,7 @@ func TestController_ChangeEnsembleRejectsInvalidAction(t *testing.T) {
 		namespace:                           constant.DefaultNamespace,
 		shard:                               shard,
 		metadataStore:                       metadata,
-		dataServerSupportedFeaturesSupplier: NoOpSupportedFeaturesSupplier,
+		dataServerSupportedFeaturesSupplier: NoOpFeaturesSupplier,
 		logger:                              slog.Default(),
 	}
 
@@ -1789,7 +1789,7 @@ func TestController_ChangeEnsembleRejectsSplitShard(t *testing.T) {
 				namespace:                           constant.DefaultNamespace,
 				shard:                               test.shard,
 				metadataStore:                       metadata,
-				dataServerSupportedFeaturesSupplier: NoOpSupportedFeaturesSupplier,
+				dataServerSupportedFeaturesSupplier: NoOpFeaturesSupplier,
 				logger:                              slog.Default(),
 			}
 
@@ -1821,7 +1821,7 @@ func TestController_ChangeEnsembleStopsWhenSplitStarts(t *testing.T) {
 		Leader:         ps1,
 		Ensemble:       []*proto.DataServerIdentity{ps1, ps2, ps3},
 		Int32HashRange: &proto.HashRange{Min: 0, Max: 1000},
-	}, NoOpSupportedFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
+	}, NoOpFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
 	defer func() {
 		assert.NoError(t, sc.Close())
 	}()
@@ -2087,7 +2087,7 @@ func TestController_ElectionDiscardsWhenQueueIsFull(t *testing.T) {
 	assert.Len(t, s.electionOp, chanBufferSize)
 }
 
-func TestController_SyncServerAddressDiscardsElectionWhenQueueIsFull(t *testing.T) {
+func TestController_RefreshDiscardsElectionWhenQueueIsFull(t *testing.T) {
 	var shard int64 = 5
 	metadata := newTestMetadata(t, memory.NewProvider(metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled, ""), &proto.ClusterConfiguration{})
 
@@ -2120,14 +2120,14 @@ func TestController_SyncServerAddressDiscardsElectionWhenQueueIsFull(t *testing.
 
 	done := make(chan struct{})
 	go func() {
-		s.SyncServerAddress()
+		s.Refresh()
 		close(done)
 	}()
 
 	select {
 	case <-done:
 	case <-time.After(time.Second):
-		t.Fatal("SyncServerAddress blocked on a full election queue")
+		t.Fatal("Refresh blocked on a full election queue")
 	}
 	assert.Len(t, s.electionOp, chanBufferSize)
 }
@@ -2250,7 +2250,7 @@ func TestController_DeleteShardAllowsNilEventListener(t *testing.T) {
 	assert.True(t, s.terminating.Load())
 }
 
-// testFeaturesSupplier is a mutable DataServerSupportedFeaturesSupplier for
+// testFeaturesSupplier is a mutable FeaturesSupplier for
 // simulating nodes running different binary versions.
 type testFeaturesSupplier struct {
 	sync.Mutex

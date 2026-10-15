@@ -77,7 +77,7 @@ type Election struct {
 	leaderElectionsFailed metric.Counter
 	// borrowed resource
 	metadataStore                       coordmetadata.Metadata
-	dataServerSupportedFeaturesSupplier DataServerSupportedFeaturesSupplier
+	dataServerSupportedFeaturesSupplier FeaturesSupplier
 	leaderSelector                      selector.Selector[*leaderselector.Context, *proto.DataServerIdentity]
 	eventListener                       controllerapi.ShardEventListener
 	provider                            rpc.Provider
@@ -922,7 +922,7 @@ func unionFeatures(a []proto.Feature, b []proto.Feature) []proto.Feature {
 // NegotiateFeatures returns the features that all the given data servers
 // support, as a leader election negotiates them for its ensemble: a data
 // server whose features are not known counts as supporting none.
-func NegotiateFeatures(dataServers []*proto.DataServerIdentity, supplier DataServerSupportedFeaturesSupplier) []proto.Feature {
+func NegotiateFeatures(dataServers []*proto.DataServerIdentity, supplier FeaturesSupplier) []proto.Feature {
 	return negotiate(supplier(dataServers), len(dataServers))
 }
 
@@ -1022,7 +1022,7 @@ func (e *Election) Stop() {
 //nolint:revive
 func NewElection(ctx context.Context, logger *slog.Logger, eventListener controllerapi.ShardEventListener,
 	metadataStore coordmetadata.Metadata,
-	dataServerSupportedFeaturesSupplier DataServerSupportedFeaturesSupplier,
+	dataServerSupportedFeaturesSupplier FeaturesSupplier,
 	leaderSelector selector.Selector[*leaderselector.Context, *proto.DataServerIdentity],
 	provider rpc.Provider, namespace string, shard int64,
 	shardMetadata *proto.ShardMetadata,
