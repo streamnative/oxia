@@ -100,11 +100,11 @@ type controller struct {
 	// the metrics, borrows it to read its term: hence the atomic pointer.
 	currentElection atomic.Pointer[Election]
 
-	leaderElectionLatency metric.LatencyHistogram
-	newTermQuorumLatency  metric.LatencyHistogram
-	becomeLeaderLatency   metric.LatencyHistogram
-	leaderElectionsFailed metric.Counter
-	termGauge             metric.Gauge
+	leaderElectionLatencyHistogram metric.LatencyHistogram
+	newTermQuorumLatencyHistogram  metric.LatencyHistogram
+	becomeLeaderLatencyHistogram   metric.LatencyHistogram
+	failedLeaderElectionsCounter   metric.Counter
+	termGauge                      metric.Gauge
 }
 
 func (s *controller) BecameUnavailable(dataServer *proto.DataServerIdentity) {
@@ -170,13 +170,13 @@ func NewController(
 		),
 		wg: sync.WaitGroup{},
 
-		leaderElectionLatency: metric.NewLatencyHistogram("oxia_coordinator_leader_election_latency",
+		leaderElectionLatencyHistogram: metric.NewLatencyHistogram("oxia_coordinator_leader_election_latency",
 			"The time it takes to elect a leader for the shard", labels),
-		leaderElectionsFailed: metric.NewCounter("oxia_coordinator_leader_election_failed",
+		failedLeaderElectionsCounter: metric.NewCounter("oxia_coordinator_leader_election_failed",
 			"The number of failed leader elections", "count", labels),
-		newTermQuorumLatency: metric.NewLatencyHistogram("oxia_coordinator_new_term_quorum_latency",
+		newTermQuorumLatencyHistogram: metric.NewLatencyHistogram("oxia_coordinator_new_term_quorum_latency",
 			"The time it takes to take the ensemble of data servers to a new term", labels),
-		becomeLeaderLatency: metric.NewLatencyHistogram("oxia_coordinator_become_leader_latency",
+		becomeLeaderLatencyHistogram: metric.NewLatencyHistogram("oxia_coordinator_become_leader_latency",
 			"The time it takes for the new elected leader to start", labels),
 	}
 
@@ -629,10 +629,10 @@ func (s *controller) electLeader(shardMeta *proto.ShardMetadata,
 	election := NewElection(s.ctx, s.logger, s.eventListener,
 		s.metadataStore, s.dataServerSupportedFeaturesSupplier, s.leaderSelector,
 		s.rpc, s.namespace, s.shard, shardMeta, changeEnsembleAction,
-		s.leaderElectionLatency,
-		s.newTermQuorumLatency,
-		s.becomeLeaderLatency,
-		s.leaderElectionsFailed)
+		s.leaderElectionLatencyHistogram,
+		s.newTermQuorumLatencyHistogram,
+		s.becomeLeaderLatencyHistogram,
+		s.failedLeaderElectionsCounter)
 	s.currentElection.Store(election)
 	return election.Start()
 }
