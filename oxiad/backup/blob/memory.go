@@ -27,12 +27,14 @@ import (
 )
 
 // MemoryScheme is the URL scheme of the in-process stores: "mem://<name>"
-// opens the store of that name, shared by every opener in the process.
+// opens the store of that name, shared by every opener in the process. The
+// name is the host and the path of the URL, so "mem://a/x" and "mem://a/y"
+// are two stores.
 const MemoryScheme = "mem"
 
 func init() {
 	Register(MemoryScheme, func(_ context.Context, destination *url.URL) (Store, error) {
-		return SharedMemory(destination.Host), nil
+		return SharedMemory(destination.Host + destination.Path), nil
 	})
 }
 

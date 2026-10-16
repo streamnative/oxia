@@ -38,8 +38,15 @@ import (
 // TestCoordinatorBackupAndRestore drives the backups end to end: a cluster
 // with the backup policy enabled backs the shard up on its own, through a
 // follower, and a restore as of a time between two backups brings back the
-// records deleted after it, into a new namespace.
+// records deleted after it, into a new namespace. It runs once with the
+// SST files compressed on upload and once with them stored as they are.
 func TestCoordinatorBackupAndRestore(t *testing.T) {
+	t.Run("compressed", func(t *testing.T) { testCoordinatorBackupAndRestore(t, true) })
+	t.Run("plain", func(t *testing.T) { testCoordinatorBackupAndRestore(t, false) })
+}
+
+func testCoordinatorBackupAndRestore(t *testing.T, compression bool) {
+	t.Helper()
 	s1, sa1 := newServer(t)
 	s2, sa2 := newServer(t)
 	s3, sa3 := newServer(t)
@@ -65,7 +72,7 @@ func TestCoordinatorBackupAndRestore(t *testing.T) {
 		Interval:         "1s",
 		Retention:        "1h",
 		ScheduleInterval: "100ms",
-		Compression:      true,
+		Compression:      compression,
 	}
 	configProvider := memory.NewProvider(metadatacodec.ClusterConfigCodec, metadatacommon.WatchEnabled, "")
 	_, err := configProvider.Store(provider.Versioned[*proto.ClusterConfiguration]{
