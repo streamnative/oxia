@@ -294,6 +294,23 @@ func (p *pendingAssignmentsRpcProvider) GetShardAssignments(ctx context.Context,
 	return nil, ctx.Err()
 }
 
+// A shard manager fails to start right away on an error that a retry can't fix,
+// and reports that error rather than a timeout.
+func TestNewShardManagerFailsOnPermanentErrors(t *testing.T) {
+	for name, permanentErr := range map[string]error{
+		"unauthenticated":     status.Error(codes.Unauthenticated, "token expired"),
+		"permission-denied":   status.Error(codes.PermissionDenied, "oxia: unexpected authority"),
+		"namespace-not-found": constant.ErrNamespaceNotFound,
+	} {
+		t.Run(name, func(t *testing.T) {
+			provider := &failingAssignmentsRpcProvider{err: permanentErr}
+			_, err := NewShardManager(NewShardStrategy(), provider, "localhost:6648", "default", 10*time.Second, nil)
+			assert.ErrorIs(t, err, permanentErr)
+			assert.NotErrorIs(t, err, context.DeadlineExceeded)
+		})
+	}
+}
+
 // A shard manager that does not receive the initial assignments in time fails
 // to start, and must stop requesting them.
 func TestNewShardManagerStopsReceivingOnTimeout(t *testing.T) {
@@ -313,6 +330,7 @@ func TestNewShardManagerStopsReceivingOnTimeout(t *testing.T) {
 func TestShardManagerRetriesPermanentErrorsAfterStart(t *testing.T) {
 	for name, err := range map[string]error{
 		"unauthenticated":     status.Error(codes.Unauthenticated, "token expired"),
+		"permission-denied":   status.Error(codes.PermissionDenied, "oxia: unexpected authority"),
 		"namespace-not-found": constant.ErrNamespaceNotFound,
 	} {
 		t.Run(name, func(t *testing.T) {
