@@ -238,7 +238,9 @@ func (s *shardManagerImpl) receiveWithRecovery() {
 			// assignments are received, there is no caller to report them to,
 			// and they are retried like the others: they can be transient, e.g.
 			// until the authentication token is renewed.
-			if !s.initialized && isPermanentAssignmentsError(err) {
+			code := status.Code(err)
+			if !s.initialized && (errors.Is(err, constant.ErrNamespaceNotFound) ||
+				code == codes.Unauthenticated || code == codes.PermissionDenied) {
 				return backoff.Permanent(err)
 			}
 			return err
@@ -263,20 +265,6 @@ func (s *shardManagerImpl) receiveWithRecovery() {
 			slog.Any("error", err),
 		)
 		s.updatedWg.Fail(err)
-	}
-}
-
-// isPermanentAssignmentsError reports whether a retry can't fix the error, e.g.
-// a service address whose authority the data server rejects.
-func isPermanentAssignmentsError(err error) bool {
-	if errors.Is(err, constant.ErrNamespaceNotFound) {
-		return true
-	}
-	switch status.Code(err) {
-	case codes.Unauthenticated, codes.PermissionDenied:
-		return true
-	default:
-		return false
 	}
 }
 
