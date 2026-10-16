@@ -257,7 +257,7 @@ func secondaryIndexRangeBound(indexPrefix, key string) string {
 }
 
 type secondaryIndexListIterator struct {
-	it    kvstore.KeyIterator
+	it    database.PrefixIterator
 	db    database.DB
 	end   string
 	key   string
@@ -329,18 +329,18 @@ func newSecondaryIndexRangeScanIterator(req *proto.RangeScanRequest, db database
 		return nil, err
 	}
 
-	it := &secondaryIndexRangeIterator{listIt: listIt, db: db}
+	it := &secondaryIndexRangeIterator{listIt: listIt}
 	it.readRecord()
 	return it, nil
 }
 
-// secondaryIndexRangeIterator returns the records of the entries of an index.
-// It holds the entries of the time it was created, but reads each record as it
-// is when it reaches its entry: it skips the entries of the records deleted in
-// between.
+// secondaryIndexRangeIterator returns the records of the entries of an index,
+// as they were when it was created, like the entries: a record written or
+// deleted since comes as it was, with its entry. It skips the entries without
+// a record, which the session ends left behind without
+// FEATURE_EPHEMERAL_SECONDARY_INDEX_CLEANUP.
 type secondaryIndexRangeIterator struct {
 	listIt *secondaryIndexListIterator
-	db     database.DB
 	// The record of the entry that the iterator is on, or the error of its read
 	record *proto.GetResponse
 	err    error
@@ -373,11 +373,7 @@ func (it *secondaryIndexRangeIterator) Value() (*proto.GetResponse, error) {
 func (it *secondaryIndexRangeIterator) readRecord() bool {
 	for ; it.listIt.Valid(); it.listIt.Next() {
 		primaryKey, secondaryKey := it.listIt.keys()
-		it.record, it.err = it.db.Get(&proto.GetRequest{
-			Key:            primaryKey,
-			IncludeValue:   true,
-			ComparisonType: proto.KeyComparisonType_EQUAL,
-		})
+		it.record, it.err = it.listIt.it.Record(primaryKey, true)
 		if it.err != nil {
 			return true
 		}
@@ -395,38 +391,7 @@ func (it *secondaryIndexRangeIterator) readRecord() bool {
 // /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 func secondaryIndexGet(req *proto.GetRequest, db database.DB) (*proto.GetResponse, error) {
-	primaryKey, secondaryKey, err := doSecondaryGet(db, req)
-	if err != nil && !errors.Is(err, database.ErrInvalidSecondaryIndexKey) {
-		return nil, err
-	}
-
-	if primaryKey == "" {
-		return &proto.GetResponse{Status: proto.Status_KEY_NOT_FOUND}, nil
-	}
-
-	gr, err := db.Get(&proto.GetRequest{
-		Key:            primaryKey,
-		IncludeValue:   req.IncludeValue,
-		ComparisonType: proto.KeyComparisonType_EQUAL,
-	})
-
-	if gr != nil {
-		gr.Key = &primaryKey
-		gr.SecondaryIndexKey = &secondaryKey
-	}
-	return gr, err
-}
-
-//nolint:revive
-func doSecondaryGet(db database.DB, req *proto.GetRequest) (primaryKey string, secondaryKey string, err error) {
-	indexName := *req.SecondaryIndexName
-	indexPrefix := fmt.Sprintf(secondaryIdxRangePrefixFormat, indexName, "")
-	// Entries are stored as indexPrefix + secondary key + separator + escaped
-	// primary key. With the separator, the search key sorts right before the
-	// entries of the requested key in either key sorting. Without it, the search
-	// key for "/", or for a key ending in "//", would end in "//", which the
-	// hierarchical sorting does not count as a level.
-	searchKey := indexPrefix + req.Key + secondaryIdxSeparator
+	indexPrefix := fmt.Sprintf(secondaryIdxRangePrefixFormat, *req.SecondaryIndexName, "")
 	// The iterator only visits the entries of the index. With the hierarchical
 	// key sorting, they are not contiguous: they are grouped by level, and other
 	// internal keys, like the entries of other indexes, sort between the groups.
@@ -435,11 +400,43 @@ func doSecondaryGet(db database.DB, req *proto.GetRequest) (primaryKey string, s
 	splitFilter := db.DeferredSplitFilter()
 	it, err := db.KeyPrefixIterator(indexPrefix)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 	it = keptIndexEntries(db, splitFilter, it, secondaryGetSkipEnd(indexPrefix, req))
 
 	defer func() { _ = it.Close() }()
+
+	primaryKey, secondaryKey, err := doSecondaryGet(db, it, indexPrefix, req)
+	if err != nil && !errors.Is(err, database.ErrInvalidSecondaryIndexKey) {
+		return nil, err
+	}
+
+	if primaryKey == "" {
+		return &proto.GetResponse{Status: proto.Status_KEY_NOT_FOUND}, nil
+	}
+
+	// The record as it was when the iterator found its entry
+	gr, err := it.Record(primaryKey, req.IncludeValue)
+
+	if gr != nil {
+		gr.Key = &primaryKey
+		gr.SecondaryIndexKey = &secondaryKey
+	}
+	return gr, err
+}
+
+// doSecondaryGet returns the keys of the entry that req, a get of the index at
+// indexPrefix, finds with it, an iterator over the entries of the index.
+//
+//nolint:revive
+func doSecondaryGet(db database.DB, it kvstore.KeyIterator, indexPrefix string, req *proto.GetRequest) (
+	primaryKey string, secondaryKey string, err error) {
+	// Entries are stored as indexPrefix + secondary key + separator + escaped
+	// primary key. With the separator, the search key sorts right before the
+	// entries of the requested key in either key sorting. Without it, the search
+	// key for "/", or for a key ending in "//", would end in "//", which the
+	// hierarchical sorting does not count as a level.
+	searchKey := indexPrefix + req.Key + secondaryIdxSeparator
 
 	if req.ComparisonType == proto.KeyComparisonType_LOWER {
 		it.SeekLT(searchKey)

@@ -275,15 +275,16 @@ func (d *db) applySplitFilter(batch kvstore.WriteBatch, step *proto.SplitFilterR
 
 // KeepsIndexEntry reports whether a split child with the deferred filter keeps
 // the entry of a secondary index at indexKey: it keeps the record of the
-// entry, and the record still has the entry. The reads of an index skip the
-// other entries, until the child deletes them with their records.
-func (d *db) KeepsIndexEntry(filter *DeferredSplitFilter, indexKey string) (bool, error) {
+// entry, and the record has the entry, at the point in time of the iterator.
+// The reads of an index skip the other entries, until the child deletes them
+// with their records.
+func (it *prefixIterator) KeepsIndexEntry(filter *DeferredSplitFilter, indexKey string) (bool, error) {
 	primaryKey, _, err := ParseSecondaryIndexKey(indexKey)
 	if err != nil {
 		// Not an entry of an index: the reads of the index handle it
 		return true, nil
 	}
-	_, value, closer, err := d.kv.Get(primaryKey, kvstore.ComparisonEqual, kvstore.NoInternalKeys)
+	value, err := it.Lookup(primaryKey)
 	if errors.Is(err, kvstore.ErrKeyNotFound) {
 		return false, nil
 	}
@@ -297,10 +298,7 @@ func (d *db) KeepsIndexEntry(filter *DeferredSplitFilter, indexKey string) (bool
 	if !kept || DeserializeMetadata(value, se) != nil {
 		// The entries of a record that can't be read can't be told: the reads
 		// of the index handle it, as on any other shard
-		return kept, closer.Close()
-	}
-	if err := closer.Close(); err != nil {
-		return false, err
+		return kept, nil
 	}
 	escapedKey := url.PathEscape(primaryKey)
 	for _, si := range se.SecondaryIndexes {

@@ -662,7 +662,7 @@ func (p *Pebble) KeyRangeScan(lowerBound, upperBound string, opts IteratorOpts) 
 	return p.RangeScan(lowerBound, upperBound, opts)
 }
 
-func (p *Pebble) KeyPrefixIterator(prefix string) (KeyIterator, error) {
+func (p *Pebble) KeyPrefixIterator(prefix string) (PrefixIterator, error) {
 	ranges := p.keyEncoder.PrefixRanges(prefix)
 	lower, upper := ranges.Bounds()
 	pbit, err := p.db.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})
@@ -1107,10 +1107,23 @@ type PebblePrefixIterator struct {
 	pi     *pebble.Iterator
 	ranges compare.PrefixRanges
 	valid  bool
+	// lookupIter serves the lookups, from the first one on: a clone of pi,
+	// which reads at the same sequence number. A Get builds a whole iterator
+	// stack for every key, while seeking an existing iterator costs a fraction
+	// of it.
+	lookupIter *pebble.Iterator
 }
 
+// lookupIterOptions has no bounds: the clone would keep the ones of pi, and a
+// seek to a key outside of them fails.
+var lookupIterOptions = pebble.IterOptions{}
+
 func (p *PebblePrefixIterator) Close() error {
-	return p.pi.Close()
+	var err error
+	if p.lookupIter != nil {
+		err = p.lookupIter.Close()
+	}
+	return multierr.Append(err, p.pi.Close())
 }
 
 func (p *PebblePrefixIterator) Valid() bool {
@@ -1143,6 +1156,33 @@ func (p *PebblePrefixIterator) SeekLT(key string) bool {
 
 func (p *PebblePrefixIterator) Error() error {
 	return p.pi.Error()
+}
+
+func (p *PebblePrefixIterator) Lookup(key string) ([]byte, error) {
+	if p.lookupIter == nil {
+		it, err := p.pi.Clone(pebble.CloneOptions{IterOptions: &lookupIterOptions})
+		if err != nil {
+			p.p.readErrors.Inc()
+			return nil, err
+		}
+		p.lookupIter = it
+	}
+
+	// The comparer splits no suffix off: the prefix is the whole key, and the
+	// seek skips the tables whose bloom filter doesn't have it
+	encodedKey := p.p.keyEncoder.Encode(key)
+	if !p.lookupIter.SeekPrefixGE(encodedKey) || !bytes.Equal(p.lookupIter.Key(), encodedKey) {
+		if err := p.lookupIter.Error(); err != nil {
+			p.p.readErrors.Inc()
+			return nil, err
+		}
+		return nil, ErrKeyNotFound
+	}
+	value, err := p.lookupIter.ValueAndErr()
+	if err != nil {
+		p.p.readErrors.Inc()
+	}
+	return value, err
 }
 
 // forward moves the iterator from a key between two ranges to the start of

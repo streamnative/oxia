@@ -88,6 +88,24 @@ type RangeScanIterator interface {
 	Next() bool
 }
 
+// PrefixIterator is the iterator of DB.KeyPrefixIterator, which also reads the
+// records of the shard as they were when it was created: the reads of an index
+// find the records of its entries at the same point in time as the entries.
+type PrefixIterator interface {
+	kvstore.KeyIterator
+
+	// Record returns the record at key, as Get with the EQUAL comparison, at
+	// the point in time of the iterator, and counts as a get. It doesn't check
+	// the deferred split filter: KeepsIndexEntry checks the entry of the record.
+	Record(key string, includeValue bool) (*proto.GetResponse, error)
+
+	// KeepsIndexEntry reports whether a split child with the deferred filter
+	// keeps the entry of a secondary index at indexKey, at the point in time of
+	// the iterator: the reads of an index skip the entries of the records it
+	// doesn't keep.
+	KeepsIndexEntry(filter *DeferredSplitFilter, indexKey string) (bool, error)
+}
+
 type TermOptions struct {
 	NotificationsEnabled bool
 	KeySorting           proto.KeySortingType
@@ -125,11 +143,11 @@ type DB interface {
 
 	// KeyPrefixIterator returns an iterator over the keys that start with
 	// prefix, internal keys included, to position with SeekGE or SeekLT
-	KeyPrefixIterator(prefix string) (kvstore.KeyIterator, error)
+	KeyPrefixIterator(prefix string) (PrefixIterator, error)
 
 	// ListPrefix returns the iterator of KeyPrefixIterator, and counts it as a
 	// list, like List
-	ListPrefix(prefix string) (kvstore.KeyIterator, error)
+	ListPrefix(prefix string) (PrefixIterator, error)
 
 	// CompareKeys compares two keys in the order the shard sorts them
 	CompareKeys(a, b string) int
@@ -167,10 +185,6 @@ type DB interface {
 	// DeferredSplitFilter returns the deferred filter of a split child that
 	// still holds records outside its hash range, or nil.
 	DeferredSplitFilter() *DeferredSplitFilter
-	// KeepsIndexEntry reports whether a split child with the deferred filter
-	// keeps the entry of a secondary index at indexKey: the reads of an index
-	// skip the entries of the records it doesn't keep.
-	KeepsIndexEntry(filter *DeferredSplitFilter, indexKey string) (bool, error)
 
 	Snapshot() (kvstore.Snapshot, error)
 
@@ -881,23 +895,57 @@ func (d *db) RangeScan(request *proto.RangeScanRequest) (RangeScanIterator, erro
 	}, nil
 }
 
-func (d *db) KeyPrefixIterator(prefix string) (kvstore.KeyIterator, error) {
-	return d.kv.KeyPrefixIterator(prefix)
-}
-
-func (d *db) ListPrefix(prefix string) (kvstore.KeyIterator, error) {
-	d.listCounter.Add(1)
-	d.readOpsTotal.Add(1)
-
+func (d *db) KeyPrefixIterator(prefix string) (PrefixIterator, error) {
 	it, err := d.kv.KeyPrefixIterator(prefix)
 	if err != nil {
 		return nil, err
 	}
+	return &prefixIterator{PrefixIterator: it, d: d}, nil
+}
 
-	return &listIterator{
-		KeyIterator: it,
-		timer:       d.listLatencyHisto.Timer(),
+type prefixIterator struct {
+	kvstore.PrefixIterator
+	d *db
+}
+
+func (it *prefixIterator) Record(key string, includeValue bool) (*proto.GetResponse, error) {
+	// A record counts as a get, and as a read of the shard for the auto split,
+	// but isn't timed: a scan reads one per entry, and is timed as a list
+	it.d.getCounter.Add(1)
+	it.d.readOpsTotal.Add(1)
+
+	value, err := it.Lookup(key)
+	if errors.Is(err, kvstore.ErrKeyNotFound) {
+		return &proto.GetResponse{Status: proto.Status_KEY_NOT_FOUND}, nil
+	} else if err != nil {
+		return nil, errors.Wrap(err, "oxia db: failed to read the record")
+	}
+	return newGetResponse(&proto.GetRequest{Key: key, IncludeValue: includeValue}, key, value)
+}
+
+func (d *db) ListPrefix(prefix string) (PrefixIterator, error) {
+	d.listCounter.Add(1)
+	d.readOpsTotal.Add(1)
+
+	it, err := d.KeyPrefixIterator(prefix)
+	if err != nil {
+		return nil, err
+	}
+
+	return &listPrefixIterator{
+		PrefixIterator: it,
+		timer:          d.listLatencyHisto.Timer(),
 	}, nil
+}
+
+type listPrefixIterator struct {
+	PrefixIterator
+	timer metric.Timer
+}
+
+func (it *listPrefixIterator) Close() error {
+	it.timer.Done()
+	return it.PrefixIterator.Close()
 }
 
 func (d *db) CompareKeys(a, b string) int {
