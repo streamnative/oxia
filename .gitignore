@@ -9,3 +9,4 @@ zz_generated.deepcopy.go
 pkg/generated/
 bin/
 mise.toml
+coverage.out

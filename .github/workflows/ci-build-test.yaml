@@ -19,9 +19,14 @@ on:
     branches:
       - main
       - 'release-*'
+  push:
+    # Uploads the coverage of main, the base Codecov compares PRs against
+    branches:
+      - main
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Pushes to main never cancel each other, so every commit gets a coverage report
+  group: ${{ github.workflow }}-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -87,8 +92,17 @@ jobs:
       - name: Test
         run: make test
 
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v7
+        with:
+          files: ./coverage.out
+          disable_search: true
+          # Empty on fork PRs, where the action falls back to a tokenless upload
+          token: ${{ secrets.CODECOV_TOKEN }}
+
   chaos-mesh:
     name: Run chaos-mesh
+    if: github.event_name == 'pull_request'
     runs-on: cncf-ubuntu-8-32-x86
     permissions:
       contents: read # for actions/checkout to fetch code
@@ -162,6 +176,7 @@ jobs:
 
   maelstrom:
     name: Maelstrom
+    if: github.event_name == 'pull_request'
     runs-on: cncf-ubuntu-8-32-x86
     permissions:
       contents: read

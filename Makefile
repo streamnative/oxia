@@ -62,8 +62,10 @@ release-build:
 maelstrom:
 	go build -tags disable_trap -v -o bin/oxia-maelstrom ./oxiad/maelstrom
 
+# -coverpkg counts the code that any test exercises, so the integration tests
+# under tests/ add to the coverage of the packages they run
 test: build
-	go test -cover -race\
+	go test -race -coverpkg=github.com/oxia-db/oxia/... -coverprofile=coverage.out \
 	 ./cmd/...     \
 	 ./common/...  \
 	 ./oxia/...    \
