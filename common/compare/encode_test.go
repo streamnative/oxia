@@ -156,6 +156,31 @@ func TestEncodeDeeplyNestedInternalKeys(t *testing.T) {
 	assert.Equal(t, key, enc.Decode(encoded))
 }
 
+func TestEncoderAppendEncodeMatchesEncode(t *testing.T) {
+	keys := []string{"", "a", "/", "//", "/a", "/a/", "/a//", "a//", "/a/b/c", "a\xffb", strings.Repeat("/", 1<<16) + "a"}
+	for _, key := range slices.Clone(keys) {
+		keys = append(keys, constant.InternalKeyPrefix+key)
+	}
+
+	for _, encoder := range []Encoder{EncoderNatural, EncoderHierarchical} {
+		t.Run(encoder.Name(), func(t *testing.T) {
+			// One buffer for all the keys, as a caller reuses it, after bytes
+			// that the encoding must leave as they are
+			buf := []byte("prefix")
+			for _, key := range keys {
+				expected := append([]byte("prefix"), encoder.Encode(key)...)
+				buf = encoder.AppendEncode(buf[:len("prefix")], key)
+				assert.Equal(t, expected, buf, "%.40q", key)
+			}
+
+			// A buffer with room for the key takes no allocation
+			assert.Zero(t, testing.AllocsPerRun(10, func() {
+				buf = encoder.AppendEncode(buf[:0], "__oxia/a/b//")
+			}))
+		})
+	}
+}
+
 // The keys with a prefix are in a single range with the natural encoder, and in
 // one range per level with the hierarchical one. From a key without the prefix,
 // NextStart and PrevEnd have to move past the key, towards the nearest keys
