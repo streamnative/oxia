@@ -19,6 +19,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"unsafe"
 
@@ -28,6 +29,10 @@ import (
 type Encoder interface {
 	Name() string
 	Encode(key string) []byte
+	// AppendEncode appends the bytes of Encode(key) to dst and returns the
+	// extended slice, so that a caller can encode its keys into one buffer
+	// instead of allocating one per key.
+	AppendEncode(dst []byte, key string) []byte
 	Decode(encodedKey []byte) string
 
 	IsInternalKey(encodedKey []byte) bool
@@ -111,8 +116,21 @@ func (encoderHierarchical) Name() string {
 }
 
 func (encoderHierarchical) Encode(key string) []byte {
+	buf := make([]byte, len(key)+2)
+	encodeHierarchical(buf, key)
+	return buf
+}
+
+func (encoderHierarchical) AppendEncode(dst []byte, key string) []byte {
+	start := len(dst)
+	dst = slices.Grow(dst, len(key)+2)[:start+len(key)+2]
+	encodeHierarchical(dst[start:], key)
+	return dst
+}
+
+// encodeHierarchical writes the encoding of key to buf, of length len(key)+2.
+func encodeHierarchical(buf []byte, key string) {
 	l := len(key)
-	buf := make([]byte, l+2)
 	copy(buf[2:], key)
 
 	// strings.Count appears to be faster than bytes.Count...
@@ -144,7 +162,6 @@ func (encoderHierarchical) Encode(key string) []byte {
 	}
 
 	binary.BigEndian.PutUint16(buf, uint16(sepCount))
-	return buf
 }
 
 func (encoderHierarchical) Decode(encoded []byte) string {
@@ -311,6 +328,16 @@ func (encoderNatural) Encode(key string) []byte {
 	b[0] = encodedInternalPrefix
 	b[1] = encodedInternalPrefix
 	return b
+}
+
+func (encoderNatural) AppendEncode(dst []byte, key string) []byte {
+	start := len(dst)
+	dst = append(dst, key...)
+	if strings.HasPrefix(key, constant.InternalKeyPrefix) {
+		dst[start] = encodedInternalPrefix
+		dst[start+1] = encodedInternalPrefix
+	}
+	return dst
 }
 
 func (encoderNatural) Decode(encoded []byte) string {

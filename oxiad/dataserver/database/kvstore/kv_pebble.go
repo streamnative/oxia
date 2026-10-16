@@ -1122,6 +1122,9 @@ type PebblePrefixIterator struct {
 	// stack for every key, while seeking an existing iterator costs a fraction
 	// of it.
 	lookupIter *pebble.Iterator
+	// lookupKey holds the encoded key of a lookup, and is reused by the next
+	// one: Pebble keeps no reference to the key of a seek once it returns.
+	lookupKey []byte
 }
 
 // lookupIterOptions has no bounds: the clone would keep the ones of pi, and a
@@ -1180,8 +1183,8 @@ func (p *PebblePrefixIterator) Lookup(key string) ([]byte, error) {
 
 	// The comparer splits no suffix off: the prefix is the whole key, and the
 	// seek skips the tables whose bloom filter doesn't have it
-	encodedKey := p.p.keyEncoder.Encode(key)
-	if !p.lookupIter.SeekPrefixGE(encodedKey) || !bytes.Equal(p.lookupIter.Key(), encodedKey) {
+	p.lookupKey = p.p.keyEncoder.AppendEncode(p.lookupKey[:0], key)
+	if !p.lookupIter.SeekPrefixGE(p.lookupKey) || !bytes.Equal(p.lookupIter.Key(), p.lookupKey) {
 		if err := p.lookupIter.Error(); err != nil {
 			p.p.readErrors.Inc()
 			return nil, err
