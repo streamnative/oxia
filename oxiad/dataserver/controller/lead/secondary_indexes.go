@@ -219,16 +219,16 @@ func newSecondaryIndexIterator(db database.DB, indexName, start, end string) (*s
 	// The split filter is loaded before the iterator, which holds the entries
 	// of the time it's created (see database.DB.RangeScan).
 	splitFilter := db.DeferredSplitFilter()
-	it, err := db.ListPrefix(indexPrefix)
+	it, err := db.ListPrefix(indexPrefix, secondaryIndexRangeBound(indexPrefix, end))
 	if err != nil {
 		return nil, err
 	}
-	endBound := secondaryIndexRangeBound(indexPrefix, end)
-	it = keptIndexEntries(db, splitFilter, it, endBound)
+	// The iterator stops at the end, so keptIndexEntries needs none
+	it = keptIndexEntries(db, splitFilter, it, "")
 
 	it.SeekGE(secondaryIndexRangeBound(indexPrefix, start))
-	listIt := &secondaryIndexListIterator{it: it, db: db, end: endBound}
-	listIt.stopAtEnd()
+	listIt := &secondaryIndexListIterator{it: it}
+	listIt.readKey()
 	return listIt, nil
 }
 
@@ -258,8 +258,6 @@ func secondaryIndexRangeBound(indexPrefix, key string) string {
 
 type secondaryIndexListIterator struct {
 	it    database.PrefixIterator
-	db    database.DB
-	end   string
 	key   string
 	valid bool
 }
@@ -268,14 +266,12 @@ func (it *secondaryIndexListIterator) Valid() bool {
 	return it.valid
 }
 
-// stopAtEnd ends the iteration on the first entry that is not below the end.
-// The entries come in the shard's key order, so the following ones are not
-// either.
-func (it *secondaryIndexListIterator) stopAtEnd() bool {
+// readKey reads the key of the entry that the iterator is on, if any, and
+// reports whether it is on one.
+func (it *secondaryIndexListIterator) readKey() bool {
 	it.valid = it.it.Valid()
 	if it.valid {
 		it.key = it.it.Key()
-		it.valid = it.db.CompareKeys(it.key, it.end) < 0
 	}
 	return it.valid
 }
@@ -310,7 +306,7 @@ func (*secondaryIndexListIterator) SeekLT(string) bool {
 
 func (it *secondaryIndexListIterator) Next() bool {
 	it.it.Next()
-	return it.stopAtEnd()
+	return it.readKey()
 }
 
 func (it *secondaryIndexListIterator) Error() error {
@@ -398,7 +394,7 @@ func secondaryIndexGet(req *proto.GetRequest, db database.DB) (*proto.GetRespons
 	// The split filter is loaded before the iterator, which holds the entries
 	// of the time it's created (see database.DB.RangeScan).
 	splitFilter := db.DeferredSplitFilter()
-	it, err := db.KeyPrefixIterator(indexPrefix)
+	it, err := db.KeyPrefixIterator(indexPrefix, "")
 	if err != nil {
 		return nil, err
 	}

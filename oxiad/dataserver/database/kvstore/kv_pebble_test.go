@@ -310,8 +310,8 @@ func TestPebbleCompareKeys(t *testing.T) {
 // The hierarchical sorting keeps the keys with a prefix in one range per level,
 // with other keys between the ranges: here, the entries of the neighbouring
 // indexes and other internal keys. However it is positioned and moved, the
-// iterator has to return the keys with the prefix, and only them, in the order
-// of the store.
+// iterator has to return the keys with the prefix that sort before its end,
+// and only them, in the order of the store.
 func TestPebbleKeyPrefixIterator(t *testing.T) {
 	keys := []string{"a", "b/c", "/a", "/a/b", "//",
 		"__oxia/term", "__oxia/session/0001", "__oxia/session/0001/k", "__oxia/notifications/0001"}
@@ -338,38 +338,41 @@ func TestPebbleKeyPrefixIterator(t *testing.T) {
 			all := scanAllKeys(t, kv, ShowInternalKeys)
 
 			for _, prefix := range []string{"__oxia/idx/b/", "__oxia/idx/", "__oxia/idx/missing/", "/", "/a/"} {
-				var expected []string
-				for _, key := range all {
-					if strings.HasPrefix(key, prefix) {
-						expected = append(expected, key)
+				// The first probe, "", is no end
+				for _, end := range probes {
+					var expected []string
+					for _, key := range all {
+						if strings.HasPrefix(key, prefix) && (end == "" || kv.CompareKeys(key, end) < 0) {
+							expected = append(expected, key)
+						}
 					}
+
+					it, err := kv.KeyPrefixIterator(prefix, end)
+					assert.NoError(t, err)
+
+					var found []string
+					for it.SeekGE(prefix); it.Valid(); it.Next() {
+						found = append(found, it.Key())
+					}
+					assert.Equal(t, expected, found, "%q end %q", prefix, end)
+
+					for _, probe := range probes {
+						// The position of the first key with the prefix at or after the probe
+						n := sort.Search(len(expected), func(i int) bool { return kv.CompareKeys(expected[i], probe) >= 0 })
+
+						it.SeekGE(probe)
+						assertIteratorAt(t, it, expected, n, "%q end %q SeekGE %q", prefix, end, probe)
+						it.Prev()
+						assertIteratorAt(t, it, expected, n-1, "%q end %q SeekGE %q, Prev", prefix, end, probe)
+
+						it.SeekLT(probe)
+						assertIteratorAt(t, it, expected, n-1, "%q end %q SeekLT %q", prefix, end, probe)
+						it.Next()
+						assertIteratorAt(t, it, expected, n, "%q end %q SeekLT %q, Next", prefix, end, probe)
+					}
+
+					assert.NoError(t, it.Close())
 				}
-
-				it, err := kv.KeyPrefixIterator(prefix)
-				assert.NoError(t, err)
-
-				var found []string
-				for it.SeekGE(prefix); it.Valid(); it.Next() {
-					found = append(found, it.Key())
-				}
-				assert.Equal(t, expected, found, prefix)
-
-				for _, probe := range probes {
-					// The position of the first key with the prefix at or after the probe
-					n := sort.Search(len(expected), func(i int) bool { return kv.CompareKeys(expected[i], probe) >= 0 })
-
-					it.SeekGE(probe)
-					assertIteratorAt(t, it, expected, n, "%q SeekGE %q", prefix, probe)
-					it.Prev()
-					assertIteratorAt(t, it, expected, n-1, "%q SeekGE %q, Prev", prefix, probe)
-
-					it.SeekLT(probe)
-					assertIteratorAt(t, it, expected, n-1, "%q SeekLT %q", prefix, probe)
-					it.Next()
-					assertIteratorAt(t, it, expected, n, "%q SeekLT %q, Next", prefix, probe)
-				}
-
-				assert.NoError(t, it.Close())
 			}
 
 			assert.NoError(t, kv.Close())
@@ -407,7 +410,7 @@ func TestPebbleKeyPrefixIteratorSeeksOverOtherKeys(t *testing.T) {
 	}
 	putAll(t, kv, keys...)
 
-	it, err := kv.KeyPrefixIterator("__oxia/idx/b/")
+	it, err := kv.KeyPrefixIterator("__oxia/idx/b/", "")
 	assert.NoError(t, err)
 	pi := it.(*PebblePrefixIterator).pi
 
@@ -448,7 +451,7 @@ func TestPebblePrefixIteratorLookupReadsAtIteratorView(t *testing.T) {
 			require.NoError(t, kv.Flush())
 			putAll(t, kv, "/c")
 
-			it, err := kv.KeyPrefixIterator("__oxia/idx/i/")
+			it, err := kv.KeyPrefixIterator("__oxia/idx/i/", "")
 			require.NoError(t, err)
 
 			wb := kv.NewWriteBatch()

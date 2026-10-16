@@ -166,8 +166,9 @@ type KV interface {
 	KeyRangeScanReverse(lowerBound, upperBound string, opts IteratorOpts) (ReverseKeyIterator, error)
 
 	// KeyPrefixIterator returns an iterator over the keys that start with
-	// prefix, internal keys included, to position with SeekGE or SeekLT
-	KeyPrefixIterator(prefix string) (PrefixIterator, error)
+	// prefix and sort before end, or all of them if end is empty, internal
+	// keys included, to position with SeekGE or SeekLT
+	KeyPrefixIterator(prefix, end string) (PrefixIterator, error)
 
 	RangeScan(lowerBound, upperBound string, opts IteratorOpts) (KeyValueIterator, error)
 

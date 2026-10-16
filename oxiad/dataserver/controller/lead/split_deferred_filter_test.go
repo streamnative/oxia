@@ -662,12 +662,12 @@ func (db *hookedPrefixDB) hook(it database.PrefixIterator, err error) (database.
 	return &hookedPrefixIterator{PrefixIterator: it, db: db}, nil
 }
 
-func (db *hookedPrefixDB) ListPrefix(prefix string) (database.PrefixIterator, error) {
-	return db.hook(db.DB.ListPrefix(prefix))
+func (db *hookedPrefixDB) ListPrefix(prefix, end string) (database.PrefixIterator, error) {
+	return db.hook(db.DB.ListPrefix(prefix, end))
 }
 
-func (db *hookedPrefixDB) KeyPrefixIterator(prefix string) (database.PrefixIterator, error) {
-	return db.hook(db.DB.KeyPrefixIterator(prefix))
+func (db *hookedPrefixDB) KeyPrefixIterator(prefix, end string) (database.PrefixIterator, error) {
+	return db.hook(db.DB.KeyPrefixIterator(prefix, end))
 }
 
 type hookedPrefixIterator struct {
