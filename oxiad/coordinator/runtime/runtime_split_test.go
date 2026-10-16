@@ -660,7 +660,7 @@ func TestRuntimeInitiateSplitRejectsChangeEnsemblePlannedBefore(t *testing.T) {
 	require.NoError(t, err)
 	parentController := shardcontroller.NewController(constant.DefaultNamespace, splitParentShard,
 		nsConfig, borrowed.UnsafeBorrow(), metadata,
-		shardcontroller.NoOpSupportedFeaturesSupplier, r, rpc, time.Hour)
+		shardcontroller.NoOpFeaturesSupplier, r, rpc, time.Hour)
 	t.Cleanup(func() {
 		assert.NoError(t, parentController.Close())
 	})
@@ -683,7 +683,7 @@ func TestRuntimeInitiateSplitRejectsChangeEnsemblePlannedBefore(t *testing.T) {
 	rpc.GetNode(spare).NewTermResponse(-1, -1, nil)
 	rpc.GetNode(splitPs1).BecomeLeaderResponse(nil)
 
-	r.handleActionChangeEnsemble(swap)
+	r.dispatchAction(swap)
 	_, err = swap.Wait()
 	assert.ErrorIs(t, err, shardcontroller.ErrNotReadyForChangeEnsemble)
 

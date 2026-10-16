@@ -257,7 +257,7 @@ func (c *runtime) SplitComplete(parentShard int64, leftChild int64, rightChild i
 	// retries DeleteShard RPCs indefinitely with backoff, handles unreachable
 	// nodes, and removes the parent from cluster status when done.
 	if sc, exists := c.shardControllers[parentShard]; exists {
-		sc.DeleteShard()
+		sc.Delete()
 	}
 
 	c.computeNewAssignments()

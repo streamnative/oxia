@@ -515,6 +515,12 @@ func (m *PerNodeChannels) SetOldNode() {
 	m.supportedFeatures = nil
 }
 
+// SetHandshakeError makes the Handshake calls fail with err, or succeed again
+// when err is nil.
+func (m *PerNodeChannels) SetHandshakeError(err error) {
+	m.handshakeErr = err
+}
+
 // BlockHandshakes holds every Handshake call in flight, after counting it,
 // until ReleaseHandshakes is called, so a test can observe the controller
 // while a handshake has not completed yet. Call it before the controller

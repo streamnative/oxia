@@ -45,6 +45,27 @@ func newMemoryFactory(t *testing.T) *Factory {
 	return factory
 }
 
+func newFileFactory(t *testing.T, dir string) *Factory {
+	t.Helper()
+
+	factory, err := New(t.Context(), &option.Options{
+		Metadata: option.MetadataOptions{
+			Name: "coordinator-test",
+			ProviderOptions: option.ProviderOptions{
+				ProviderName: metadatacommon.NameFile,
+				File: option.FileMetadata{
+					Dir: dir,
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		assert.NoError(t, factory.Close())
+	})
+	return factory
+}
+
 func newSeedConfig(namespace string) *commonproto.ClusterConfiguration {
 	return &commonproto.ClusterConfiguration{
 		Namespaces: []*commonproto.Namespace{{
@@ -88,6 +109,25 @@ func TestSeedClusterConfigDoesNotOverwrite(t *testing.T) {
 	require.NoError(t, factory.SeedClusterConfig(newSeedConfig("second")))
 
 	current := loadConfig(t, factory)
+	require.NotNil(t, current)
+	require.Len(t, current.Namespaces, 1)
+	assert.Equal(t, "first", current.Namespaces[0].Name)
+}
+
+// An embedded coordinator seeds its configuration at every start. A restart
+// must keep the configuration of the previous run, with the namespaces and
+// data servers added to it through the admin API.
+func TestFactorySeedClusterConfigDoesNotOverwriteAfterRestart(t *testing.T) {
+	dir := t.TempDir()
+
+	first := newFileFactory(t, dir)
+	require.NoError(t, first.SeedClusterConfig(newSeedConfig("first")))
+	require.NoError(t, first.Close())
+
+	restarted := newFileFactory(t, dir)
+	require.NoError(t, restarted.SeedClusterConfig(newSeedConfig("second")))
+
+	current := loadConfig(t, restarted)
 	require.NotNil(t, current)
 	require.Len(t, current.Namespaces, 1)
 	assert.Equal(t, "first", current.Namespaces[0].Name)

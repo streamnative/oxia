@@ -48,5 +48,5 @@ type Runtime interface {
 	Metadata() coordmetadata.Metadata
 
 	RecomputeAssignments()
-	SyncShardControllerServerAddresses()
+	RefreshShardControllers()
 }

@@ -49,6 +49,7 @@ var (
 	ErrNotReadyForChangeEnsemble         = errors.New("shard is not ready for change ensemble, please retry later")
 	ErrInvalidChangeEnsemble             = errors.New("invalid change ensemble")
 	ErrFollowerNotCaughtUp               = errors.New("follower not caught up yet")
+	ErrElectionFailed                    = errors.New("the election failed to elect a leader")
 	ErrChangeEnsembleLosesFeatureSupport = errors.New(
 		"change ensemble would remove support for negotiated shard features")
 	ErrChangeEnsembleLosesEntries = errors.New(
@@ -71,13 +72,13 @@ type Election struct {
 	ctxCancel context.CancelFunc
 	wg        sync.WaitGroup
 	// metrics
-	leaderElectionLatency metric.LatencyHistogram
-	newTermQuorumLatency  metric.LatencyHistogram
-	becomeLeaderLatency   metric.LatencyHistogram
-	leaderElectionsFailed metric.Counter
+	leaderElectionLatencyHistogram metric.LatencyHistogram
+	newTermQuorumLatencyHistogram  metric.LatencyHistogram
+	becomeLeaderLatencyHistogram   metric.LatencyHistogram
+	failedLeaderElectionsCounter   metric.Counter
 	// borrowed resource
 	metadataStore                       coordmetadata.Metadata
-	dataServerSupportedFeaturesSupplier DataServerSupportedFeaturesSupplier
+	dataServerSupportedFeaturesSupplier FeaturesSupplier
 	leaderSelector                      selector.Selector[*leaderselector.Context, *proto.DataServerIdentity]
 	eventListener                       controllerapi.ShardEventListener
 	provider                            rpc.Provider
@@ -155,7 +156,7 @@ type fenceResponse struct {
 func (e *Election) fenceNewTermQuorum(term int64, options *proto.NewTermOptions, ensemble []*proto.DataServerIdentity,
 	removedCandidates []*proto.DataServerIdentity) (candidates map[*proto.DataServerIdentity]*proto.EntryId,
 	removed map[*proto.DataServerIdentity]*proto.EntryId, features []proto.Feature, err error) {
-	fenceQuorumTimer := e.newTermQuorumLatency.Timer()
+	fenceQuorumTimer := e.newTermQuorumLatencyHistogram.Timer()
 
 	fencingDataServers := slices.Concat(ensemble, removedCandidates)
 	fencingQuorumSize := len(fencingDataServers)
@@ -341,7 +342,7 @@ func (e *Election) selectNewLeader(candidatesStatus map[*proto.DataServerIdentit
 
 func (e *Election) becomeLeader(term int64, leader *proto.DataServerIdentity, followers map[*proto.DataServerIdentity]*proto.EntryId,
 	replicationFactor uint32, negotiateFeatures []proto.Feature) error {
-	becomeLeaderTimer := e.becomeLeaderLatency.Timer()
+	becomeLeaderTimer := e.becomeLeaderLatencyHistogram.Timer()
 
 	followersMap := make(map[string]*proto.EntryId)
 	for server, e := range followers {
@@ -721,7 +722,7 @@ func (e *Election) storeShardMetadata(current *proto.ShardMetadata) {
 
 func (e *Election) start() (newLeader *proto.DataServerIdentity, err error) {
 	e.logger.Info("Starting a new election")
-	timer := e.leaderElectionLatency.Timer()
+	timer := e.leaderElectionLatencyHistogram.Timer()
 
 	// Load the options of the namespace and the addresses of the ensemble
 	// before persisting a new term: a failed load is retried without using up
@@ -922,7 +923,7 @@ func unionFeatures(a []proto.Feature, b []proto.Feature) []proto.Feature {
 // NegotiateFeatures returns the features that all the given data servers
 // support, as a leader election negotiates them for its ensemble: a data
 // server whose features are not known counts as supporting none.
-func NegotiateFeatures(dataServers []*proto.DataServerIdentity, supplier DataServerSupportedFeaturesSupplier) []proto.Feature {
+func NegotiateFeatures(dataServers []*proto.DataServerIdentity, supplier FeaturesSupplier) []proto.Feature {
 	return negotiate(supplier(dataServers), len(dataServers))
 }
 
@@ -983,7 +984,7 @@ func (e *Election) Start() *proto.DataServerIdentity {
 	newLeader, _ := backoff.RetryNotifyWithData[*proto.DataServerIdentity](func() (*proto.DataServerIdentity, error) {
 		return e.start()
 	}, oxiatime.NewBackOff(e.ctx), func(err error, duration time.Duration) {
-		e.leaderElectionsFailed.Inc()
+		e.failedLeaderElectionsCounter.Inc()
 		term := e.mutableShardMetadata.GetTerm()
 		if errors.Is(err, constant.ErrNotInitialized) {
 			e.logger.Debug(
@@ -1022,13 +1023,13 @@ func (e *Election) Stop() {
 //nolint:revive
 func NewElection(ctx context.Context, logger *slog.Logger, eventListener controllerapi.ShardEventListener,
 	metadataStore coordmetadata.Metadata,
-	dataServerSupportedFeaturesSupplier DataServerSupportedFeaturesSupplier,
+	dataServerSupportedFeaturesSupplier FeaturesSupplier,
 	leaderSelector selector.Selector[*leaderselector.Context, *proto.DataServerIdentity],
 	provider rpc.Provider, namespace string, shard int64,
 	shardMetadata *proto.ShardMetadata,
 	changeEnsembleAction *action.ChangeEnsembleAction,
-	leaderElectionLatency metric.LatencyHistogram, newTermQuorumLatency metric.LatencyHistogram,
-	becomeLeaderLatency metric.LatencyHistogram, leaderElectionsFailed metric.Counter) *Election {
+	leaderElectionLatencyHistogram metric.LatencyHistogram, newTermQuorumLatencyHistogram metric.LatencyHistogram,
+	becomeLeaderLatencyHistogram metric.LatencyHistogram, failedLeaderElectionsCounter metric.Counter) *Election {
 	current, cancelFunc := context.WithCancel(ctx)
 	election := &Election{
 		logger:                              logger,
@@ -1044,10 +1045,10 @@ func NewElection(ctx context.Context, logger *slog.Logger, eventListener control
 		shard:                               shard,
 		mutableShardMetadata:                gproto.CloneOf(shardMetadata),
 		changeEnsembleAction:                changeEnsembleAction,
-		leaderElectionLatency:               leaderElectionLatency,
-		newTermQuorumLatency:                newTermQuorumLatency,
-		becomeLeaderLatency:                 becomeLeaderLatency,
-		leaderElectionsFailed:               leaderElectionsFailed,
+		leaderElectionLatencyHistogram:      leaderElectionLatencyHistogram,
+		newTermQuorumLatencyHistogram:       newTermQuorumLatencyHistogram,
+		becomeLeaderLatencyHistogram:        becomeLeaderLatencyHistogram,
+		failedLeaderElectionsCounter:        failedLeaderElectionsCounter,
 	}
 	election.term.Store(shardMetadata.GetTerm())
 	return election

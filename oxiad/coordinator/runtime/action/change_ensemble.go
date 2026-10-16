@@ -62,8 +62,8 @@ func (s *ChangeEnsembleAction) Wait() (any, error) {
 	return nil, s.executeError
 }
 
-func (*ChangeEnsembleAction) Type() Type {
-	return SwapNode
+func (s *ChangeEnsembleAction) GetShard() int64 {
+	return s.Shard
 }
 
 func NewChangeEnsembleAction(shard int64, from *commonproto.DataServerIdentity, to *commonproto.DataServerIdentity) *ChangeEnsembleAction {
