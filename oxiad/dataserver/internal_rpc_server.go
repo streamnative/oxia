@@ -153,13 +153,8 @@ func (s *internalRpcServer) Handshake(c context.Context, req *proto.HandshakeReq
 }
 
 func (s *internalRpcServer) NewTerm(c context.Context, req *proto.NewTermRequest) (*proto.NewTermResponse, error) {
-	// The requests and responses of the term changes are logged at every
-	// failover: log a summary, not the feature lists they carry
 	log := s.log.With(
-		slog.String("namespace", req.Namespace),
-		slog.Int64("shard", req.Shard),
-		slog.Int64("term", req.Term),
-		slog.Int("features", len(req.GetOptions().GetFeatures())),
+		slog.Any("req", req),
 		slog.String("peer", rpc.GetPeer(c)),
 	)
 
@@ -214,8 +209,7 @@ func (s *internalRpcServer) NewTerm(c context.Context, req *proto.NewTermRequest
 	} else {
 		log.Info(
 			"New term processing completed",
-			slog.Any("head-entry-id", res.HeadEntryId),
-			slog.Int("features-enabled", len(res.FeaturesEnabled)),
+			slog.Any("response", res),
 			slog.Int64("leaderTerm", leader.Term()),
 		)
 	}
@@ -224,12 +218,7 @@ func (s *internalRpcServer) NewTerm(c context.Context, req *proto.NewTermRequest
 
 func (s *internalRpcServer) BecomeLeader(c context.Context, req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error) {
 	log := s.log.With(
-		slog.String("namespace", req.Namespace),
-		slog.Int64("shard", req.Shard),
-		slog.Int64("term", req.Term),
-		slog.Any("replication-factor", req.ReplicationFactor),
-		slog.Any("follower-maps", req.FollowerMaps),
-		slog.Int("features-supported", len(req.FeaturesSupported)),
+		slog.Any("request", req),
 		slog.String("peer", rpc.GetPeer(c)),
 	)
 
@@ -256,22 +245,9 @@ func (s *internalRpcServer) BecomeLeader(c context.Context, req *proto.BecomeLea
 
 func (s *internalRpcServer) AddFollower(c context.Context, req *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error) {
 	log := s.log.With(
-		slog.String("namespace", req.Namespace),
-		slog.Int64("shard", req.Shard),
-		slog.Int64("term", req.Term),
-		slog.String("follower", req.FollowerName),
-		slog.Any("follower-head-entry", req.FollowerHeadEntryId),
-		slog.Bool("observer", req.Observer),
-		slog.Int("follower-features", len(req.GetFollowerFeatures().GetSupported())),
+		slog.Any("request", req),
 		slog.String("peer", rpc.GetPeer(c)),
 	)
-	if req.TargetShard != nil {
-		log = log.With(
-			slog.Int64("target-shard", req.GetTargetShard()),
-			slog.Any("split-hash-range", req.SplitHashRange),
-			slog.Any("split-parent-hash-range", req.SplitParentHashRange),
-		)
-	}
 
 	log.Info("Received AddFollower request")
 
