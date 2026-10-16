@@ -1,0 +1,31 @@
+# Copyright 2023-2026 The Oxia Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Breaking change detection for the proto definitions, run on every pull request
+# by .github/workflows/ci-proto.yaml. To run it locally:
+#
+#   buf breaking --against 'https://github.com/oxia-db/oxia.git#branch=main'
+
+version: v2
+modules:
+  - path: common/proto
+breaking:
+  use:
+    # The binary encoding is used between clients and servers of different
+    # versions, and in the WAL and the DB. The JSON encoding is used for the
+    # cluster configuration and status persisted by the coordinator.
+    - WIRE_JSON
+    # A removed or renamed RPC or service fails the calls of older peers.
+    - RPC_NO_DELETE
+    - PACKAGE_SERVICE_NO_DELETE

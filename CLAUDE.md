@@ -169,6 +169,9 @@ make proto
 
 Requires: `protoc-gen-go`, `protoc-gen-go-grpc`, `protoc-gen-go-vtproto`
 
+Pull requests are checked for breaking changes to the proto definitions by `buf breaking` (rules in `buf.yaml`).
+An intentional break needs the `buf skip breaking` label on the pull request.
+
 ## Key Dependencies
 
 - **CockroachDB Pebble**: LSM-tree key-value store for data persistence
