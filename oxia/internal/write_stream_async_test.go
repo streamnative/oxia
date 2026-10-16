@@ -85,12 +85,25 @@ type scriptedStreams struct {
 	opened  atomic.Int32
 }
 
-func (o *scriptedStreams) open(context.Context, constant.ErrorMetadata) (proto.OxiaClient_WriteStreamClient, error) {
+func (o *scriptedStreams) open(context.Context, string) (proto.OxiaClient_WriteStreamClient, error) {
 	i := int(o.opened.Add(1)) - 1
 	if i >= len(o.streams) {
 		return nil, status.Error(codes.Unavailable, "no more streams")
 	}
 	return o.streams[i], nil
+}
+
+// resolveHintedLeader resolves the leader named by the hint, else a fixed one.
+func resolveHintedLeader(hint constant.ErrorMetadata) (string, error) {
+	if _, leader, ok := hint.GetLeaderHint(); ok {
+		return leader, nil
+	}
+	return "leader:6648", nil
+}
+
+// fixed prepares a request that is already built.
+func fixed(request *proto.WriteRequest) func() (*proto.WriteRequest, error) {
+	return func() (*proto.WriteRequest, error) { return request, nil }
 }
 
 // setupRejection is how a node that is not the leader ends a stream it
@@ -109,12 +122,12 @@ func TestAsyncWriteStreamPartialResendFailsTheWrites(t *testing.T) {
 	resend := newScriptedStream(ctx, 1, status.Error(codes.Unavailable, "connection reset"))
 	close(resend.release)
 	streams := &scriptedStreams{streams: []*scriptedStream{first, resend}}
-	stream := newAsyncWriteStream(ctx, 0, streams.open)
+	stream := newAsyncWriteStream(ctx, 0, resolveHintedLeader, streams.open)
 
 	shard := int64(0)
-	a, err := stream.send(ctx, nil, putRequest(&shard, "a"))
+	a, err := stream.send(ctx, nil, fixed(putRequest(&shard, "a")))
 	require.NoError(t, err)
-	b, err := stream.send(ctx, nil, putRequest(&shard, "b"))
+	b, err := stream.send(ctx, nil, fixed(putRequest(&shard, "b")))
 	require.NoError(t, err)
 
 	close(first.release)
@@ -139,15 +152,76 @@ func TestAsyncWriteStreamPartialResendRejectedAtSetupIsRetried(t *testing.T) {
 	close(rejected.release)
 	accepted := newScriptedStream(ctx, 2, io.EOF)
 	streams := &scriptedStreams{streams: []*scriptedStream{first, rejected, accepted}}
-	stream := newAsyncWriteStream(ctx, 0, streams.open)
+	stream := newAsyncWriteStream(ctx, 0, resolveHintedLeader, streams.open)
 
 	shard := int64(0)
-	_, err := stream.send(ctx, nil, putRequest(&shard, "a"))
+	_, err := stream.send(ctx, nil, fixed(putRequest(&shard, "a")))
 	require.NoError(t, err)
-	_, err = stream.send(ctx, nil, putRequest(&shard, "b"))
+	_, err = stream.send(ctx, nil, fixed(putRequest(&shard, "b")))
 	require.NoError(t, err)
 
 	close(first.release)
 	require.Eventually(t, func() bool { return len(accepted.sentKeys()) == 2 }, 10*time.Second, time.Millisecond)
 	assert.Equal(t, []string{"a", "b"}, accepted.sentKeys())
+}
+
+// A request whose deadline passed before it could be sent, e.g. while it was
+// waiting for the writes in flight on a retired stream, must not be sent
+// anymore, and its request is not even prepared.
+func TestAsyncWriteStreamDoesNotSendAfterTheDeadline(t *testing.T) {
+	stream := &silentWriteStream{ctx: t.Context()}
+	open := func(context.Context, string) (proto.OxiaClient_WriteStreamClient, error) { return stream, nil }
+	async := newAsyncWriteStream(t.Context(), 0, resolveHintedLeader, open)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	prepared := false
+	_, err := async.send(ctx, nil, func() (*proto.WriteRequest, error) {
+		prepared = true
+		return &proto.WriteRequest{}, nil
+	})
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.False(t, prepared)
+	assert.EqualValues(t, 0, stream.sent.Load())
+}
+
+// A stream to a leader that the shard assignments replaced is retired: the
+// next write waits for the writes in flight on it, which the old leader may
+// still apply, and goes to the new leader after them, on a new stream.
+func TestAsyncWriteStreamFollowsTheShardAssignments(t *testing.T) {
+	ctx := t.Context()
+	old := newScriptedStream(ctx, 1, io.EOF)
+	replacement := newScriptedStream(ctx, 1, io.EOF)
+	streams := &scriptedStreams{streams: []*scriptedStream{old, replacement}}
+	var leader atomic.Pointer[string]
+	resolve := func(constant.ErrorMetadata) (string, error) { return *leader.Load(), nil }
+	stream := newAsyncWriteStream(ctx, 0, resolve, streams.open)
+
+	oldLeader, newLeader := "old:6648", "new:6648"
+	leader.Store(&oldLeader)
+	shard := int64(0)
+	a, err := stream.send(ctx, nil, fixed(putRequest(&shard, "a")))
+	require.NoError(t, err)
+
+	leader.Store(&newLeader)
+	sent := make(chan error, 1)
+	go func() {
+		_, err := stream.send(ctx, nil, fixed(putRequest(&shard, "b")))
+		sent <- err
+	}()
+	assert.Never(t, func() bool { return streams.opened.Load() > 1 }, 100*time.Millisecond, 10*time.Millisecond,
+		"the write to the new leader must wait for the write in flight to the old one")
+
+	// The old leader answers, and the stream to it ends
+	stream.mu.Lock()
+	stream.inflight[0].response.Complete(&proto.WriteResponse{})
+	stream.inflight = nil
+	stream.endLocked()
+	stream.mu.Unlock()
+	_, err = a.response.Wait(ctx)
+	require.NoError(t, err)
+
+	require.NoError(t, <-sent)
+	assert.Equal(t, []string{"a"}, old.sentKeys())
+	assert.Equal(t, []string{"b"}, replacement.sentKeys())
 }

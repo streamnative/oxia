@@ -42,7 +42,12 @@ type heldWriteExecutor struct {
 	releases []chan struct{}
 }
 
-func (e *heldWriteExecutor) ExecuteWriteAsync(_ context.Context, request *proto.WriteRequest) func() (*proto.WriteResponse, error) {
+func (e *heldWriteExecutor) ExecuteWriteAsync(_ context.Context, _ int64,
+	prepare func() (*proto.WriteRequest, error)) func() (*proto.WriteResponse, error) {
+	request, err := prepare()
+	if err != nil {
+		return func() (*proto.WriteResponse, error) { return nil, err }
+	}
 	release := make(chan struct{})
 	e.mu.Lock()
 	for _, put := range request.Puts {
@@ -92,7 +97,12 @@ type splitWindowExecutor struct {
 	applied []string
 }
 
-func (e *splitWindowExecutor) ExecuteWriteAsync(_ context.Context, request *proto.WriteRequest) func() (*proto.WriteResponse, error) {
+func (e *splitWindowExecutor) ExecuteWriteAsync(_ context.Context, _ int64,
+	prepare func() (*proto.WriteRequest, error)) func() (*proto.WriteResponse, error) {
+	request, err := prepare()
+	if err != nil {
+		return func() (*proto.WriteResponse, error) { return nil, err }
+	}
 	if *request.Shard == e.frozenShard && e.shardManager.Exists(e.frozenShard) {
 		e.held <- struct{}{}
 		return func() (*proto.WriteResponse, error) {

@@ -17,6 +17,7 @@ package internal
 import (
 	"context"
 	"io"
+	"net"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -24,6 +25,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -118,6 +120,11 @@ func putRequest(shardId *int64, key string) *proto.WriteRequest {
 	return &proto.WriteRequest{Shard: shardId, Puts: []*proto.PutRequest{{Key: key, Value: []byte(key)}}}
 }
 
+// asyncPut sends the put of key on the shard without waiting for its response.
+func asyncPut(ctx context.Context, provider RpcProvider, shardId int64, key string) func() (*proto.WriteResponse, error) {
+	return provider.ExecuteWriteAsync(ctx, shardId, fixed(putRequest(&shardId, key)))
+}
+
 // Writes sent asynchronously on a shard reach the leader without waiting for
 // the responses of the writes sent before them, in the order they were sent.
 func TestRpcProvider_AsyncWritesAreSentBeforeTheirResponses(t *testing.T) {
@@ -127,8 +134,8 @@ func TestRpcProvider_AsyncWritesAreSentBeforeTheirResponses(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	first := provider.ExecuteWriteAsync(ctx, putRequest(&shardId, "a"))
-	second := provider.ExecuteWriteAsync(ctx, putRequest(&shardId, "b"))
+	first := asyncPut(ctx, provider, shardId, "a")
+	second := asyncPut(ctx, provider, shardId, "b")
 
 	require.Eventually(t, func() bool { return len(server.receivedKeys()) == 2 }, 10*time.Second, time.Millisecond)
 	assert.Equal(t, []string{"a", "b"}, server.receivedKeys())
@@ -153,8 +160,8 @@ func TestRpcProvider_AsyncWriteDeadlineClosesTheStream(t *testing.T) {
 	defer cancelShort()
 	long, cancelLong := context.WithTimeout(t.Context(), time.Minute)
 	defer cancelLong()
-	first := provider.ExecuteWriteAsync(short, putRequest(&shardId, "a"))
-	second := provider.ExecuteWriteAsync(long, putRequest(&shardId, "b"))
+	first := asyncPut(short, provider, shardId, "a")
+	second := asyncPut(long, provider, shardId, "b")
 	require.Eventually(t, func() bool { return len(server.receivedKeys()) == 2 }, 10*time.Second, time.Millisecond)
 
 	_, err := first()
@@ -171,7 +178,7 @@ func TestRpcProvider_AsyncWriteDeadlineClosesTheStream(t *testing.T) {
 		require.Fail(t, "the write behind the expired one kept waiting on the stream")
 	}
 
-	third := provider.ExecuteWriteAsync(long, putRequest(&shardId, "c"))
+	third := asyncPut(long, provider, shardId, "c")
 	require.Eventually(t, func() bool { return len(server.receivedKeys()) == 3 }, 10*time.Second, time.Millisecond)
 	server.answer <- nil
 	_, err = third()
@@ -189,8 +196,8 @@ func TestRpcProvider_AsyncWritesInFlightFailWhenTheLeaderStepsDown(t *testing.T)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	first := provider.ExecuteWriteAsync(ctx, putRequest(&shardId, "a"))
-	second := provider.ExecuteWriteAsync(ctx, putRequest(&shardId, "b"))
+	first := asyncPut(ctx, provider, shardId, "a")
+	second := asyncPut(ctx, provider, shardId, "b")
 	require.Eventually(t, func() bool { return len(server.receivedKeys()) == 2 }, 10*time.Second, time.Millisecond)
 
 	server.answer <- constant.IntoGrpcStatusError(constant.ErrNodeIsNotLeader)
@@ -199,7 +206,7 @@ func TestRpcProvider_AsyncWritesInFlightFailWhenTheLeaderStepsDown(t *testing.T)
 	_, err = second()
 	require.ErrorIs(t, err, constant.ErrNodeIsNotLeader)
 
-	third := provider.ExecuteWriteAsync(ctx, putRequest(&shardId, "c"))
+	third := asyncPut(ctx, provider, shardId, "c")
 	require.Eventually(t, func() bool { return len(server.receivedKeys()) == 3 }, 10*time.Second, time.Millisecond)
 	server.answer <- nil
 	_, err = third()
@@ -217,8 +224,8 @@ func TestRpcProvider_AsyncWritesLeftUnprocessedAreSentAgain(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	first := provider.ExecuteWriteAsync(ctx, putRequest(&shardId, "a"))
-	second := provider.ExecuteWriteAsync(ctx, putRequest(&shardId, "b"))
+	first := asyncPut(ctx, provider, shardId, "a")
+	second := asyncPut(ctx, provider, shardId, "b")
 	require.Eventually(t, func() bool { return len(server.receivedKeys()) == 2 }, 10*time.Second, time.Millisecond)
 
 	server.answer <- constant.IntoGrpcStatusError(constant.ErrNodeIsNotLeader, constant.WithUnprocessed())
@@ -252,9 +259,9 @@ func TestRpcProvider_AsyncWritesRejectedAtSetupAreSentToTheHintedLeader(t *testi
 
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	first := provider.ExecuteWriteAsync(ctx, putRequest(&shardId, "a"))
-	second := provider.ExecuteWriteAsync(ctx, putRequest(&shardId, "b"))
-	third := provider.ExecuteWriteAsync(ctx, putRequest(&shardId, "c"))
+	first := asyncPut(ctx, provider, shardId, "a")
+	second := asyncPut(ctx, provider, shardId, "b")
+	third := asyncPut(ctx, provider, shardId, "c")
 
 	require.Eventually(t, func() bool { return len(newLeader.receivedKeys()) == 3 }, 10*time.Second, time.Millisecond)
 	assert.Equal(t, []string{"a", "b", "c"}, newLeader.receivedKeys())
@@ -309,7 +316,7 @@ func TestRpcProvider_AsyncWritesRejectedAgainAreResentWithABackoff(t *testing.T)
 
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
-	_, err := provider.ExecuteWriteAsync(ctx, putRequest(&shardId, "a"))()
+	_, err := asyncPut(ctx, provider, shardId, "a")()
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.Less(t, server.streams.Load(), int32(10), "the writes were sent again without a delay")
 }
@@ -325,7 +332,7 @@ func TestRpcProvider_AsyncWritesRejectedByAGoneShardFail(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	wait := provider.ExecuteWriteAsync(ctx, putRequest(&shardId, "a"))
+	wait := asyncPut(ctx, provider, shardId, "a")
 	require.Eventually(t, func() bool { return server.streams.Load() > 0 }, 10*time.Second, time.Millisecond)
 	shardManager.removed.Store(true)
 
@@ -343,8 +350,8 @@ func TestRpcProvider_AsyncWritesInFlightFailWhenTheStreamBreaks(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	first := provider.ExecuteWriteAsync(ctx, putRequest(&shardId, "a"))
-	second := provider.ExecuteWriteAsync(ctx, putRequest(&shardId, "b"))
+	first := asyncPut(ctx, provider, shardId, "a")
+	second := asyncPut(ctx, provider, shardId, "b")
 	require.Eventually(t, func() bool { return len(server.receivedKeys()) == 2 }, 10*time.Second, time.Millisecond)
 
 	broken := status.Error(codes.Internal, "stream broken")
@@ -354,10 +361,85 @@ func TestRpcProvider_AsyncWritesInFlightFailWhenTheStreamBreaks(t *testing.T) {
 	_, err = second()
 	require.Equal(t, codes.Internal, status.Code(err))
 
-	third := provider.ExecuteWriteAsync(ctx, putRequest(&shardId, "c"))
+	third := asyncPut(ctx, provider, shardId, "c")
 	require.Eventually(t, func() bool { return len(server.receivedKeys()) == 3 }, 10*time.Second, time.Millisecond)
 	server.answer <- nil
 	_, err = third()
 	require.NoError(t, err)
 	assert.Equal(t, []string{"a", "b", "c"}, server.receivedKeys(), "no write was sent again")
+}
+
+// A leader that was deposed, but is still reachable, keeps the write stream of
+// the client open without answering the writes. Once the shard assignments name
+// the new leader, the next write must go to it, after the write in flight to
+// the old leader, which is not sent again: the old leader may apply it.
+func TestRpcProvider_AsyncWritesGoToTheNewLeader(t *testing.T) {
+	shardId := int64(0)
+	shardManager := &testShardManager{}
+	newLeader := &writeServer{}
+	newLeaderAddress := startTestOxiaClientServer(t, newLeader)
+	oldLeader := &writeServer{
+		stuck: true,
+		// The shard assignments name the new leader while the write is in flight
+		onRequest: func() { shardManager.leader.Store(&newLeaderAddress) },
+	}
+	oldLeaderAddress := startTestOxiaClientServer(t, oldLeader)
+	provider := newHeldWriteProviderAt(t, oldLeaderAddress, shardManager)
+
+	short, cancelShort := context.WithTimeout(t.Context(), 500*time.Millisecond)
+	defer cancelShort()
+	first := asyncPut(short, provider, shardId, "a")
+	require.Eventually(t, func() bool { return oldLeader.requests.Load() == 1 }, 10*time.Second, time.Millisecond)
+	firstErr := make(chan error, 1)
+	go func() {
+		_, err := first()
+		firstErr <- err
+	}()
+
+	long, cancelLong := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancelLong()
+	_, err := asyncPut(long, provider, shardId, "b")()
+	require.NoError(t, err)
+	assert.ErrorIs(t, <-firstErr, context.DeadlineExceeded)
+
+	assert.EqualValues(t, 1, oldLeader.requests.Load())
+	assert.EqualValues(t, 1, newLeader.requests.Load())
+}
+
+// Connecting to a leader that cannot be reached, e.g. because its address is
+// blackholed, can take up to the gRPC connect timeout. Setting up the write
+// stream must not outlast the request, and the request must never be sent after
+// its deadline.
+func TestRpcProvider_AsyncWriteStreamSetupRespectsTheDeadline(t *testing.T) {
+	shardId := int64(0)
+	leader := &writeServer{}
+	leaderAddress := startTestOxiaClientServer(t, leader)
+	shardManager := &testShardManager{}
+	shardManager.leader.Store(&leaderAddress)
+
+	// Connecting to the leader takes longer than the request timeout
+	connect := make(chan struct{})
+	dialer := func(ctx context.Context, address string) (net.Conn, error) {
+		select {
+		case <-connect:
+		case <-time.After(3 * time.Second):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		return (&net.Dialer{}).DialContext(ctx, "tcp", address)
+	}
+	provider := NewRpcProvider(t.Context(), constant.DefaultNamespace, nil, nil, leaderAddress,
+		func() ShardManager { return shardManager }, grpc.WithContextDialer(dialer))
+	t.Cleanup(func() { assert.NoError(t, provider.Close()) })
+
+	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := asyncPut(ctx, provider, shardId, "a")()
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Less(t, time.Since(start), 2*time.Second)
+
+	// Once connected, the request is not sent
+	close(connect)
+	assert.Never(t, func() bool { return leader.requests.Load() > 0 }, 300*time.Millisecond, 10*time.Millisecond)
 }
