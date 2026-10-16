@@ -25,10 +25,8 @@ type pebbleLogger struct {
 	zl *slog.Logger
 }
 
-// Infof logs at debug: pebble reports routine events at info, e.g. the WALs it
-// found each time a database opens.
 func (pl *pebbleLogger) Infof(format string, args ...any) {
-	pl.zl.Debug(
+	pl.zl.Info(
 		fmt.Sprintf(format, args...),
 	)
 }
