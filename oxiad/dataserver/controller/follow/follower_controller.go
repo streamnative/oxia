@@ -58,6 +58,10 @@ type FollowerController interface {
 	CommitOffset() int64
 	Status() proto.ServingStatus
 	GetStatus(request *proto.GetStatusRequest) (*proto.GetStatusResponse, error)
+	// Checkpoint takes a checkpoint of the database, for a backup. It holds
+	// the controller's read lock during the flush: a snapshot install waits
+	// for it, and it fails while one replaces the database.
+	Checkpoint() (*database.Checkpoint, error)
 	// NewTerm
 	//
 	// Node handles a new term request
@@ -899,6 +903,15 @@ func (fc *followerController) loadSnapshotChunks(loader kvstore.SnapshotLoader, 
 		}
 		totalSize += int64(len(snapChunk.Content))
 	}
+}
+
+func (fc *followerController) Checkpoint() (*database.Checkpoint, error) {
+	fc.rwMutex.RLock()
+	defer fc.rwMutex.RUnlock()
+	if fc.closed.Load() || fc.db == nil {
+		return nil, constant.ErrResourceUnavailable
+	}
+	return fc.db.Checkpoint()
 }
 
 func (fc *followerController) GetStatus(_ *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {

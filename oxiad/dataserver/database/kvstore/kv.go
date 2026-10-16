@@ -240,6 +240,11 @@ type Factory interface {
 	NewKV(namespace string, shardId int64, keySorting proto.KeySortingType) (KV, error)
 
 	NewSnapshotLoader(namespace string, shardId int64) (SnapshotLoader, error)
+
+	// DatabaseDir returns the directory that holds the database of a shard,
+	// which NewSnapshotLoader replaces as a whole. The files kept next to the
+	// database, e.g. the backup record of the shard, go with it.
+	DatabaseDir(namespace string, shardId int64) string
 }
 
 type IteratorOpts struct {
