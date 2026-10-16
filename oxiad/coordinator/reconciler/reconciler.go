@@ -40,7 +40,7 @@ import (
 //	   |                        reconcileWithRetries: the next passes, retried with a backoff
 //	   | Reconcile
 //	   +--> dataServerReconciler   creates the data servers of the configuration, deletes the
-//	   |                           others, and syncs the addresses of the shard ensembles
+//	   |                           others, and refreshes the shard controllers
 //	   +--> namespaceReconciler    creates the namespaces of the configuration, with their
 //	   |                           shards and shard controllers, and deletes the others
 //	   +--> runtime.RecomputeAssignments

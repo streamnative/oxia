@@ -663,7 +663,7 @@ func (*mockNamespaceRuntime) CreateDataServer(string, *proto.DataServer) bool { 
 
 func (*mockNamespaceRuntime) DeleteDataServer(string) {}
 
-func (*mockNamespaceRuntime) SyncShardControllerServerAddresses() {}
+func (*mockNamespaceRuntime) RefreshShardControllers() {}
 
 func (m *mockNamespaceRuntime) CreateNamespace(name string, namespaceConfig *proto.Namespace) error {
 	_, exists, err := m.metadata.GetNamespaceStatus(name)

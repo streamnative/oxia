@@ -50,6 +50,6 @@ func (r *dataServerReconciler) Reconcile(_ context.Context, snapshot *proto.Clus
 		}
 	}
 
-	r.runtime.SyncShardControllerServerAddresses()
+	r.runtime.RefreshShardControllers()
 	return nil
 }

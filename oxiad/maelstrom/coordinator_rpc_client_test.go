@@ -15,15 +15,18 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/proto"
+	"github.com/oxia-db/oxia/oxiad/common/health"
 )
 
 func TestMaelstromShardAssignmentClientSendResendsUntilAcked(t *testing.T) {
@@ -70,6 +73,63 @@ func TestMaelstromShardAssignmentClientSendResendsUntilAcked(t *testing.T) {
 	}
 }
 
+func TestMaelstromHealthCheckClientCheckClosesAssignmentStreamsAtFailureThreshold(t *testing.T) {
+	lines := captureStdout(t)
+
+	coordinator := newDispatcher(newMaelstromGrpcProvider(), newMaelstromReplicationRpcProvider())
+	provider := newRpcProvider(coordinator)
+	node := &proto.DataServerIdentity{Internal: "n4"}
+	stream, err := provider.PushShardAssignments(t.Context(), node)
+	require.NoError(t, err)
+	healthClient, err := provider.GetHealthClient(node)
+	require.NoError(t, err)
+	dataServer := newMaelstromGrpcProvider()
+
+	// The probes lost below the threshold keep the stream, and a probe that
+	// gets answered starts the count again
+	answerProbe(t, lines, coordinator, healthClient, dataServer)
+	for range health.DefaultCheckPolicy.FailureThreshold - 1 {
+		loseProbe(t, lines, healthClient)
+	}
+	answerProbe(t, lines, coordinator, healthClient, dataServer)
+	for range health.DefaultCheckPolicy.FailureThreshold - 1 {
+		loseProbe(t, lines, healthClient)
+	}
+	require.NoError(t, stream.Context().Err())
+
+	loseProbe(t, lines, healthClient)
+	require.ErrorIs(t, stream.Context().Err(), context.Canceled)
+}
+
+func TestMaelstromHealthCheckClientCheckClosesAssignmentStreamsOfRestartedDataServer(t *testing.T) {
+	lines := captureStdout(t)
+
+	coordinator := newDispatcher(newMaelstromGrpcProvider(), newMaelstromReplicationRpcProvider())
+	provider := newRpcProvider(coordinator)
+	node := &proto.DataServerIdentity{Internal: "n4"}
+	stream, err := provider.PushShardAssignments(t.Context(), node)
+	require.NoError(t, err)
+	healthClient, err := provider.GetHealthClient(node)
+	require.NoError(t, err)
+	dataServer := newMaelstromGrpcProvider()
+
+	answerProbe(t, lines, coordinator, healthClient, dataServer)
+	answerProbe(t, lines, coordinator, healthClient, dataServer)
+	require.NoError(t, stream.Context().Err())
+
+	// The kill nemesis restarts the data server, before any probe is lost
+	restarted := newMaelstromGrpcProvider()
+	restarted.processId = dataServer.processId + 1
+	answerProbe(t, lines, coordinator, healthClient, restarted)
+	require.ErrorIs(t, stream.Context().Err(), context.Canceled)
+
+	// The coordinator re-opens the stream, and the new process keeps it
+	stream, err = provider.PushShardAssignments(t.Context(), node)
+	require.NoError(t, err)
+	answerProbe(t, lines, coordinator, healthClient, restarted)
+	require.NoError(t, stream.Context().Err())
+}
+
 // deliver hands a Maelstrom message to the dispatcher, as the main loop does
 // with each line it reads.
 func deliver(d *dispatcher, line string) {
@@ -82,4 +142,33 @@ func assignmentsWithLeader(leader string) *proto.ShardAssignments {
 			constant.DefaultNamespace: {Assignments: []*proto.ShardAssignment{{Leader: leader}}},
 		},
 	}
+}
+
+// answerProbe runs a health check of the coordinator, and answers it from the
+// data server.
+func answerProbe(t *testing.T, lines <-chan string, coordinator *dispatcher,
+	healthClient grpc_health_v1.HealthClient, dataServer *maelstromGrpcProvider) {
+	t.Helper()
+	checked := make(chan error, 1)
+	go func() {
+		_, err := healthClient.Check(t.Context(), &grpc_health_v1.HealthCheckRequest{})
+		checked <- err
+	}()
+
+	msgType, probe, _ := parseRequest(receiveLines(t, lines, 1)[0])
+	require.Equal(t, MsgTypeHealthCheck, msgType)
+	dataServer.HandleOxiaRequest(msgType, probe.(*Message[OxiaMessage]), nil)
+	deliver(coordinator, receiveLines(t, lines, 1)[0])
+	require.NoError(t, <-checked)
+}
+
+// loseProbe runs a health check of the coordinator that gets no answer, as
+// across a partition.
+func loseProbe(t *testing.T, lines <-chan string, healthClient grpc_health_v1.HealthClient) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), time.Millisecond)
+	defer cancel()
+	_, err := healthClient.Check(ctx, &grpc_health_v1.HealthCheckRequest{})
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	receiveLines(t, lines, 1)
 }

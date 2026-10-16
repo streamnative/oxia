@@ -23,6 +23,7 @@ import (
 
 	"google.golang.org/protobuf/encoding/protojson"
 	pb "google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	"github.com/oxia-db/oxia/common/proto"
 )
@@ -282,6 +283,9 @@ var protoMsgMapping = map[MsgType]pb.Message{
 	MsgTypeAddFollowerResponse:  &proto.AddFollowerResponse{},
 	MsgTypeGetStatusRequest:     &proto.GetStatusRequest{},
 	MsgTypeGetStatusResponse:    &proto.GetStatusResponse{},
+
+	// The process id of the data server, see maelstromGrpcProvider.processId
+	MsgTypeHealthCheckOk: &wrapperspb.Int64Value{},
 
 	MsgTypeShardAssignmentsResponse: &proto.ShardAssignments{},
 }
