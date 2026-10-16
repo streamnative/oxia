@@ -108,10 +108,16 @@ func TestOpenAppliesEndpointAndPathStyle(t *testing.T) {
 }
 
 // createBucket creates the bucket of the store if it doesn't exist, for the
-// local S3-compatible servers that the tests run against.
+// local S3-compatible servers that the tests run against. An existing bucket
+// is left alone: AWS rejects a CreateBucket without a location constraint
+// outside us-east-1, before it reports that the bucket exists.
 func createBucket(t *testing.T, store *Store) {
 	t.Helper()
-	_, err := store.api.(*awss3.Client).CreateBucket(t.Context(), &awss3.CreateBucketInput{
+	api := store.api.(*awss3.Client)
+	if _, err := api.HeadBucket(t.Context(), &awss3.HeadBucketInput{Bucket: aws.String(store.bucket)}); err == nil {
+		return
+	}
+	_, err := api.CreateBucket(t.Context(), &awss3.CreateBucketInput{
 		Bucket: aws.String(store.bucket),
 	})
 	var owned *types.BucketAlreadyOwnedByYou
