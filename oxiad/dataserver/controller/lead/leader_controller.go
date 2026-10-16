@@ -594,7 +594,9 @@ func (lc *leaderController) AddFollower(req *proto.AddFollowerRequest) (*proto.A
 		slices.Sort(required)
 		required = slices.Compact(required)
 		if missing := feature.Missing(required, req.FollowerFeatures.GetSupported()); len(missing) > 0 {
-			lc.log.Error(
+			// The coordinator retries adding the follower, e.g. once it learns
+			// the features of a restarted follower
+			lc.log.Warn(
 				"Rejecting follower: it does not support features required by the shard",
 				slog.String("follower", req.FollowerName),
 				slog.Int64("term", req.Term),
