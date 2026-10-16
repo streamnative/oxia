@@ -1128,7 +1128,7 @@ func TestSecondaryIndices_OverwriteSkipsUnchangedEntries(t *testing.T) {
 				for _, si := range tc.updated {
 					expected = append(expected, "__oxia/idx/"+si.IndexName+"/"+si.SecondaryKey+"\x01%2Frecord")
 				}
-				it, err := kv.KeyPrefixIterator(secondaryIdxKeyPrefix + "/")
+				it, err := kv.KeyPrefixIterator(secondaryIdxKeyPrefix+"/", "")
 				require.NoError(t, err)
 				var entries []string
 				for it.SeekGE(secondaryIdxKeyPrefix + "/"); it.Valid(); it.Next() {

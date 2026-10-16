@@ -662,9 +662,19 @@ func (p *Pebble) KeyRangeScan(lowerBound, upperBound string, opts IteratorOpts) 
 	return p.RangeScan(lowerBound, upperBound, opts)
 }
 
-func (p *Pebble) KeyPrefixIterator(prefix string) (PrefixIterator, error) {
+func (p *Pebble) KeyPrefixIterator(prefix, end string) (PrefixIterator, error) {
 	ranges := p.keyEncoder.PrefixRanges(prefix)
 	lower, upper := ranges.Bounds()
+	if end != "" {
+		// Pebble needs the bounds in order: an end before the keys with the
+		// prefix leaves none
+		encodedEnd := p.keyEncoder.Encode(end)
+		if bytes.Compare(encodedEnd, lower) < 0 {
+			upper = lower
+		} else if upper == nil || bytes.Compare(encodedEnd, upper) < 0 {
+			upper = encodedEnd
+		}
+	}
 	pbit, err := p.db.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})
 	if err != nil {
 		return nil, err

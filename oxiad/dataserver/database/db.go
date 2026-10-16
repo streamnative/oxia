@@ -142,12 +142,13 @@ type DB interface {
 	RangeScan(request *proto.RangeScanRequest) (RangeScanIterator, error)
 
 	// KeyPrefixIterator returns an iterator over the keys that start with
-	// prefix, internal keys included, to position with SeekGE or SeekLT
-	KeyPrefixIterator(prefix string) (PrefixIterator, error)
+	// prefix and sort before end, or all of them if end is empty, internal
+	// keys included, to position with SeekGE or SeekLT
+	KeyPrefixIterator(prefix, end string) (PrefixIterator, error)
 
 	// ListPrefix returns the iterator of KeyPrefixIterator, and counts it as a
 	// list, like List
-	ListPrefix(prefix string) (PrefixIterator, error)
+	ListPrefix(prefix, end string) (PrefixIterator, error)
 
 	// CompareKeys compares two keys in the order the shard sorts them
 	CompareKeys(a, b string) int
@@ -895,8 +896,8 @@ func (d *db) RangeScan(request *proto.RangeScanRequest) (RangeScanIterator, erro
 	}, nil
 }
 
-func (d *db) KeyPrefixIterator(prefix string) (PrefixIterator, error) {
-	it, err := d.kv.KeyPrefixIterator(prefix)
+func (d *db) KeyPrefixIterator(prefix, end string) (PrefixIterator, error) {
+	it, err := d.kv.KeyPrefixIterator(prefix, end)
 	if err != nil {
 		return nil, err
 	}
@@ -923,11 +924,11 @@ func (it *prefixIterator) Record(key string, includeValue bool) (*proto.GetRespo
 	return newGetResponse(&proto.GetRequest{Key: key, IncludeValue: includeValue}, key, value)
 }
 
-func (d *db) ListPrefix(prefix string) (PrefixIterator, error) {
+func (d *db) ListPrefix(prefix, end string) (PrefixIterator, error) {
 	d.listCounter.Add(1)
 	d.readOpsTotal.Add(1)
 
-	it, err := d.KeyPrefixIterator(prefix)
+	it, err := d.KeyPrefixIterator(prefix, end)
 	if err != nil {
 		return nil, err
 	}
