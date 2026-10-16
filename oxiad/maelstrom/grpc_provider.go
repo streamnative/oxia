@@ -29,6 +29,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	pb "google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	"github.com/oxia-db/oxia/oxiad/common/rpc"
 
@@ -52,6 +53,11 @@ type maelstromGrpcProvider struct {
 	// instead of resurrecting the stream mid-sequence. Grows by one small
 	// entry per stream ever created, which is fine for a Maelstrom run.
 	deadStreams map[string]bool
+
+	// The health probes are answered with it, so that the coordinator can
+	// tell when the kill nemesis restarted the data server, see
+	// maelstromCoordinatorRpcProvider.probeSucceeded
+	processId int64
 }
 
 func newMaelstromGrpcProvider() *maelstromGrpcProvider {
@@ -59,6 +65,7 @@ func newMaelstromGrpcProvider() *maelstromGrpcProvider {
 		services:         make(map[string]any),
 		replicateStreams: make(map[string]*maelstromReplicateServerStream),
 		deadStreams:      make(map[string]bool),
+		processId:        int64(os.Getpid()),
 	}
 }
 
@@ -119,7 +126,7 @@ func (m *maelstromGrpcProvider) HandleOxiaRequest(msgType MsgType, msg *Message[
 		}
 
 	case MsgTypeHealthCheck:
-		m.sendResponse(msg, MsgTypeHealthCheckOk, &proto.BecomeLeaderResponse{})
+		m.sendResponse(msg, MsgTypeHealthCheckOk, wrapperspb.Int64(m.processId))
 	default:
 		panic(fmt.Sprintf("unknown msgType: %v", msgType))
 	}

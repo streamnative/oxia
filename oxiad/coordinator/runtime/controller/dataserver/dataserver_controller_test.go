@@ -496,6 +496,48 @@ func TestDataServerControllerBecomeAvailableHandshakesOnceForConcurrentObservati
 	assert.NoError(t, nc.Close())
 }
 
+// A failed handshake leaves the data server NotRunning, and the next SERVING
+// probe retries it: the health loops must keep probing instead of retrying the
+// handshake in place.
+func TestDataServerControllerBecomeAvailableRetriesFailedHandshakeOnNextProbe(t *testing.T) {
+	addr := &proto.DataServerIdentity{
+		Public:   "my-server:9190",
+		Internal: "my-server:8190",
+	}
+	dataServer := &proto.DataServer{Identity: addr, Metadata: &proto.DataServerMetadata{}}
+
+	sap := rpctest.NewShardAssignmentsProvider()
+	nal := rpctest.NewNodeAvailabilityListener()
+	rpc := rpctest.NewRpcProvider()
+	node := rpc.GetNode(addr)
+	node.SetHandshakeError(errors.New("handshake failed"))
+
+	nc := NewController(context.Background(), dataServer, sap, nal, rpc, "test-instance", 1*time.Second, testHealthPolicy)
+
+	// Each probe retries the handshake
+	assert.Eventually(t, func() bool {
+		return node.HandshakeCount.Load() >= 3
+	}, 10*time.Second, 10*time.Millisecond)
+	assert.Equal(t, NotRunning, nc.GetStatus().GetState())
+	assert.Len(t, nal.FeaturesDiscoveredEvents, 0)
+
+	rpc.Lock()
+	node.SetHandshakeError(nil)
+	rpc.Unlock()
+
+	assert.Eventually(t, func() bool {
+		return nc.GetStatus().GetState() == Running
+	}, 10*time.Second, 10*time.Millisecond)
+	select {
+	case discovered := <-nal.FeaturesDiscoveredEvents:
+		assert.Equal(t, addr, discovered)
+	case <-time.After(10 * time.Second):
+		assert.Fail(t, "the features of the data server were not reported")
+	}
+
+	assert.NoError(t, nc.Close())
+}
+
 // The features a data server supports are unknown until its first handshake,
 // which reports them to the listener. The later handshakes report them only
 // if they changed: e.g. the data server restarted with a newer binary in a

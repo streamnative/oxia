@@ -72,9 +72,9 @@ type controller struct {
 	status *commonwatch.Watch[Status]
 	// supportedFeatures are the features that the last handshake reported.
 	supportedFeatures []proto.Feature
-	// handshaking is set while the NotRunning -> Running handshake is in
-	// flight: the watch and ping paths can both observe SERVING for the same
-	// status epoch (e.g. at startup), and only the first one binds the node.
+	// handshaking is set while a handshake is in flight: the health paths keep
+	// observing SERVING while the node is NotRunning, and at most one of them
+	// handshakes it at a time.
 	handshaking bool
 }
 
@@ -431,58 +431,48 @@ func (n *controller) becomeAvailable(observedEpoch int64) {
 		return
 	}
 	if status.GetState() != NotRunning || n.handshaking {
-		// Nothing to do: the node is Running or Draining, or the other health
-		// path is already binding it for this same observation.
+		// Nothing to do: the node is Running or Draining, or a handshake is
+		// already in flight.
 		n.mu.Unlock()
 		return
 	}
 	n.handshaking = true
 	n.mu.Unlock()
 
-	n.logger.Info("Storage data server is back online")
-
 	n.healthCheckBackoff.Reset()
 
 	// Bind the node before it can receive other internal traffic.
-	var features []proto.Feature
-	bo := commontime.NewBackOffWithInitialInterval(n.ctx, commontime.SlowInitialInterval)
-	err := backoff.RetryNotify(func() error {
-		handshake, err := n.rpc.Handshake(n.ctx, n.dataServer.GetIdentity(), &proto.HandshakeRequest{
-			InstanceId: n.insID,
-		})
-		if err != nil {
-			return err
-		}
+	handshakeCtx, handshakeCancel := context.WithTimeout(n.ctx, n.healthPolicy.ProbeTimeout)
+	handshake, err := n.rpc.Handshake(handshakeCtx, n.dataServer.GetIdentity(), &proto.HandshakeRequest{
+		InstanceId: n.insID,
+	})
+	handshakeCancel()
+	if err == nil {
 		switch handshake.Status {
 		case proto.HandshakeStatus_HANDSHAKE_STATUS_BOUND, proto.HandshakeStatus_HANDSHAKE_STATUS_ALREADY_BOUND:
-			features = handshake.FeaturesSupported
-			return nil
 		case proto.HandshakeStatus_HANDSHAKE_STATUS_MISMATCH:
-			return errors.New("data server instance id mismatch")
+			err = errors.New("data server instance id mismatch")
 		default:
-			return errors.Errorf("unexpected handshake status: %s", handshake.Status.String())
+			err = errors.Errorf("unexpected handshake status: %s", handshake.Status.String())
 		}
-	}, bo, func(err error, duration time.Duration) {
-		n.logger.Warn("Failed to handshake with data server",
-			slog.Any("error", err),
-			slog.Duration("retry-after", duration),
-		)
-	})
+	}
 
 	n.mu.Lock()
 	n.handshaking = false
 	if err != nil {
-		// The retries only stop when the controller is closing; a later
-		// observation may bind the node again.
+		// The node stays NotRunning: the next SERVING observation retries
 		n.mu.Unlock()
+		n.logger.Warn("Failed to handshake with data server", slog.Any("error", err))
 		return
 	}
+	features := handshake.FeaturesSupported
 	featuresChanged := len(feature.Missing(features, n.supportedFeatures)) > 0 ||
 		len(feature.Missing(n.supportedFeatures, features)) > 0
 	n.supportedFeatures = features
 	if status = n.status.Load(); status.GetState() == NotRunning && status.epoch == observedEpoch {
 		status.Advance(Running)
 		n.status.Publish(status)
+		n.logger.Info("Storage data server is back online")
 	}
 	n.mu.Unlock()
 
