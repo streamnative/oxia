@@ -758,3 +758,10 @@ func TestInternalBackupRpcsReportTheExecutorErrors(t *testing.T) {
 	_, err = client.ListBackups(t.Context(), &proto.ListBackupsRequest{Namespace: "ns"})
 	assert.ErrorContains(t, err, "no destination")
 }
+
+func TestInternalExpireBackupsReportsTheExecutorErrors(t *testing.T) {
+	server := newInternalTestServer(t, newTestManifest(t, "cluster-a"), &internalTestAssignmentDispatcher{})
+	cnx := newInternalTestConn(t, server, "cluster-a")
+	_, err := proto.NewOxiaBackupClient(cnx).ExpireBackups(t.Context(), &proto.ExpireBackupsRequest{})
+	assert.ErrorContains(t, err, "no namespace")
+}
