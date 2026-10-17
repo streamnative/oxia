@@ -73,6 +73,9 @@ func TestRpcProviderCallsReachDataServer(t *testing.T) {
 	expireRes, err := backupProvider.ExpireBackups(ctx, node, &proto.ExpireBackupsRequest{Namespace: "ns"})
 	require.NoError(t, err)
 	assert.Equal(t, proto.BackupJobState_BACKUP_JOB_STATE_DONE, expireRes.State)
+	listRes, err := backupProvider.ListBackups(ctx, node, &proto.ListBackupsRequest{Namespace: "ns"})
+	require.NoError(t, err)
+	assert.Len(t, listRes.Backups, 1)
 
 	handshake, err := provider.Handshake(ctx, node, &proto.HandshakeRequest{InstanceId: "instance-0"})
 	require.NoError(t, err)
@@ -112,6 +115,8 @@ func TestRpcProviderCallsFailOnInvalidTarget(t *testing.T) {
 	_, err = provider.(BackupProvider).BackupShard(ctx, node, &proto.BackupShardRequest{})
 	assert.Error(t, err)
 	_, err = provider.(BackupProvider).ExpireBackups(ctx, node, &proto.ExpireBackupsRequest{})
+	assert.Error(t, err)
+	_, err = provider.(BackupProvider).ListBackups(ctx, node, &proto.ListBackupsRequest{})
 	assert.Error(t, err)
 }
 
@@ -227,4 +232,8 @@ func (*fakeBackupServer) BackupShard(context.Context, *proto.BackupShardRequest)
 
 func (*fakeBackupServer) ExpireBackups(context.Context, *proto.ExpireBackupsRequest) (*proto.ExpireBackupsResponse, error) {
 	return &proto.ExpireBackupsResponse{State: proto.BackupJobState_BACKUP_JOB_STATE_DONE}, nil
+}
+
+func (*fakeBackupServer) ListBackups(context.Context, *proto.ListBackupsRequest) (*proto.ListBackupsResponse, error) {
+	return &proto.ListBackupsResponse{Backups: []*proto.BackupInfo{{Shard: 1, BackupId: "2026-10-03T14-00-00Z-abcd"}}}, nil
 }
