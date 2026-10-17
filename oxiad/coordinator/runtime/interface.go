@@ -61,4 +61,9 @@ type Runtime interface {
 	// data server: a message per shard, given to visit as they arrive.
 	ListBackups(ctx context.Context, namespace string, shard *int64, destination string,
 		visit func(*proto.ListBackupsResponse) error) error
+	// RestoreNamespace restores a namespace as of a point in time into a new
+	// namespace, see docs/backups.md. It returns the shards of the new
+	// namespace, which install their backups and elect their leaders in the
+	// background.
+	RestoreNamespace(ctx context.Context, req *proto.RestoreNamespaceRequest) (*proto.RestoreNamespaceResponse, error)
 }

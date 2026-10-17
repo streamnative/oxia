@@ -831,3 +831,7 @@ func (*mockNamespaceRuntime) RequestBackup(string, *int64) (int, error) {
 func (*mockNamespaceRuntime) ListBackups(context.Context, string, *int64, string, func(*proto.ListBackupsResponse) error) error {
 	return coordruntime.ErrBackupsUnsupported
 }
+
+func (*mockNamespaceRuntime) RestoreNamespace(context.Context, *proto.RestoreNamespaceRequest) (*proto.RestoreNamespaceResponse, error) {
+	return nil, coordruntime.ErrBackupsUnsupported
+}

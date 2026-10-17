@@ -45,6 +45,10 @@ type backupRPCProvider struct {
 	backups  []*proto.BackupInfo
 }
 
+func (*backupRPCProvider) RestoreShard(context.Context, *proto.DataServerIdentity, *proto.RestoreShardRequest) (*proto.RestoreShardResponse, error) {
+	return &proto.RestoreShardResponse{State: proto.BackupJobState_BACKUP_JOB_STATE_DONE}, nil
+}
+
 // ListBackups sends each backup in its own message, as the shards of a
 // namespace come.
 func (p *backupRPCProvider) ListBackups(_ context.Context, node *proto.DataServerIdentity,

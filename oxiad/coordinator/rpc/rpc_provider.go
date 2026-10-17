@@ -67,6 +67,7 @@ type BackupProvider interface {
 	// bounded by ListBackupsTimeout rather than the usual timeout.
 	ListBackups(ctx context.Context, node *proto.DataServerIdentity, req *proto.ListBackupsRequest,
 		visit func(*proto.ListBackupsResponse) error) error
+	RestoreShard(ctx context.Context, node *proto.DataServerIdentity, req *proto.RestoreShardRequest) (*proto.RestoreShardResponse, error)
 }
 
 // ListBackupsTimeout bounds the ListBackups calls.
@@ -279,6 +280,12 @@ func (r *rpcProvider) ListBackups(ctx context.Context, node *proto.DataServerIde
 		}
 	})
 	return err
+}
+
+func (r *rpcProvider) RestoreShard(ctx context.Context, node *proto.DataServerIdentity, req *proto.RestoreShardRequest) (*proto.RestoreShardResponse, error) {
+	return backupCall(ctx, r, node, r.timeout, func(ctx context.Context, client proto.OxiaBackupClient) (*proto.RestoreShardResponse, error) {
+		return client.RestoreShard(ctx, req)
+	})
 }
 
 // backupCall calls the OxiaBackup service of a data server, within the
