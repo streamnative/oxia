@@ -33,12 +33,14 @@ import (
 
 	// The "mem://" destinations of the tests.
 	_ "github.com/oxia-db/oxia/oxiad/backup/blob/blobtest"
+	"github.com/oxia-db/oxia/oxiad/dataserver/controller"
 	"github.com/oxia-db/oxia/oxiad/dataserver/database"
 	"github.com/oxia-db/oxia/oxiad/dataserver/database/kvstore"
 )
 
 // The fakes of the package's tests: the host of the executor, with the
-// checkpoints it takes and what their files hold.
+// checkpoints it takes, what their files hold, and the installers it hands
+// out.
 
 var errNotHosted = errors.New("shard not hosted")
 
@@ -73,6 +75,8 @@ type fakeHost struct {
 	// same name
 	checkpointErr   error
 	withDatabaseErr error
+	installers      map[int64]*fakeInstaller
+	installerErr    error
 }
 
 type checkpointState struct {
@@ -82,7 +86,8 @@ type checkpointState struct {
 
 func newFakeHost(t *testing.T) *fakeHost {
 	t.Helper()
-	return &fakeHost{t: t, shards: map[int64]*fakeShard{}, checkpointStates: map[string]checkpointState{}}
+	return &fakeHost{t: t, shards: map[int64]*fakeShard{}, checkpointStates: map[string]checkpointState{},
+		installers: map[int64]*fakeInstaller{}}
 }
 
 // readCheckpoint is the Options.ReadCheckpoint of the tests: the commit
@@ -200,6 +205,17 @@ func (h *fakeHost) CommitOffset(shard int64) (int64, error) {
 	return s.commitOffset, nil
 }
 
+func (h *fakeHost) NewInstaller(_ string, shard int64) (controller.Installer, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.installerErr != nil {
+		return nil, h.installerErr
+	}
+	installer := &fakeInstaller{files: map[string][]byte{}, commitOffset: 42, term: 3}
+	h.installers[shard] = installer
+	return installer, nil
+}
+
 func (h *fakeHost) DatabaseDir(_ string, shard int64) string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -207,6 +223,12 @@ func (h *fakeHost) DatabaseDir(_ string, shard int64) string {
 		return s.dir
 	}
 	return filepath.Join(h.t.TempDir(), fmt.Sprintf("shard-%d", shard))
+}
+
+func (h *fakeHost) installer(shard int64) *fakeInstaller {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.installers[shard]
 }
 
 type fakeSnapshot struct {
@@ -220,6 +242,53 @@ func (*fakeSnapshot) Chunk() (kvstore.SnapshotChunk, error) {
 	return nil, errors.New("not implemented")
 }
 func (s *fakeSnapshot) Close() error { return os.RemoveAll(s.dir) }
+
+type fakeInstaller struct {
+	mu           sync.Mutex
+	files        map[string][]byte
+	addFileErr   error
+	completeErr  error
+	hashRange    *proto.HashRange
+	completed    bool
+	closed       bool
+	commitOffset int64
+	term         int64
+}
+
+func (i *fakeInstaller) AddFile(name string, size int64, r io.Reader) error {
+	content, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	if i.addFileErr != nil {
+		return i.addFileErr
+	}
+	if int64(len(content)) != size {
+		return fmt.Errorf("%s: %d bytes, want %d", name, len(content), size)
+	}
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.files[name] = content
+	return nil
+}
+
+func (i *fakeInstaller) Complete(hashRange *proto.HashRange) (commitOffset int64, term int64, err error) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if i.completeErr != nil {
+		return 0, 0, i.completeErr
+	}
+	i.hashRange = hashRange
+	i.completed = true
+	return i.commitOffset, i.term, nil
+}
+
+func (i *fakeInstaller) Close() error {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.closed = true
+	return nil
+}
 
 // testClock is a clock the tests advance.
 type testClock struct {

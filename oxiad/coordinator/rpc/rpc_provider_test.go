@@ -76,6 +76,9 @@ func TestRpcProviderCallsReachDataServer(t *testing.T) {
 	listRes, err := backupProvider.ListBackups(ctx, node, &proto.ListBackupsRequest{Namespace: "ns"})
 	require.NoError(t, err)
 	assert.Len(t, listRes.Backups, 1)
+	restoreRes, err := backupProvider.RestoreShard(ctx, node, &proto.RestoreShardRequest{Shard: 1})
+	require.NoError(t, err)
+	assert.Equal(t, int64(9), restoreRes.CommitOffset)
 
 	handshake, err := provider.Handshake(ctx, node, &proto.HandshakeRequest{InstanceId: "instance-0"})
 	require.NoError(t, err)
@@ -236,4 +239,8 @@ func (*fakeBackupServer) ExpireBackups(context.Context, *proto.ExpireBackupsRequ
 
 func (*fakeBackupServer) ListBackups(context.Context, *proto.ListBackupsRequest) (*proto.ListBackupsResponse, error) {
 	return &proto.ListBackupsResponse{Backups: []*proto.BackupInfo{{Shard: 1, BackupId: "2026-10-03T14-00-00Z-abcd"}}}, nil
+}
+
+func (*fakeBackupServer) RestoreShard(context.Context, *proto.RestoreShardRequest) (*proto.RestoreShardResponse, error) {
+	return &proto.RestoreShardResponse{State: proto.BackupJobState_BACKUP_JOB_STATE_DONE, CommitOffset: 9, Term: 2}, nil
 }
