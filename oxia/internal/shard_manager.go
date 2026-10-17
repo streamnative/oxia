@@ -238,7 +238,9 @@ func (s *shardManagerImpl) receiveWithRecovery() {
 			// assignments are received, there is no caller to report them to,
 			// and they are retried like the others: they can be transient, e.g.
 			// until the authentication token is renewed.
-			if !s.initialized && (errors.Is(err, constant.ErrNamespaceNotFound) || status.Code(err) == codes.Unauthenticated) {
+			code := status.Code(err)
+			if !s.initialized && (errors.Is(err, constant.ErrNamespaceNotFound) ||
+				code == codes.Unauthenticated || code == codes.PermissionDenied) {
 				return backoff.Permanent(err)
 			}
 			return err

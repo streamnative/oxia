@@ -594,7 +594,9 @@ func (lc *leaderController) AddFollower(req *proto.AddFollowerRequest) (*proto.A
 		slices.Sort(required)
 		required = slices.Compact(required)
 		if missing := feature.Missing(required, req.FollowerFeatures.GetSupported()); len(missing) > 0 {
-			lc.log.Error(
+			// The coordinator retries adding the follower, e.g. once it learns
+			// the features of a restarted follower
+			lc.log.Warn(
 				"Rejecting follower: it does not support features required by the shard",
 				slog.String("follower", req.FollowerName),
 				slog.Int64("term", req.Term),
@@ -743,7 +745,7 @@ func (lc *leaderController) addFollower(follower string, followerHeadEntryId *pr
 	}
 
 	cursor, err := NewFollowerCursor(follower, term, lc.namespace, lc.shardId, lc.rpcClient, lc.quorumAckTracker, lc.wal, lc.db,
-		followerHeadEntryId.Offset)
+		followerHeadEntryId.Offset, slices.Contains(lc.termOptions.Features, proto.Feature_FEATURE_COMMIT_ADVERTISEMENT))
 	if err != nil {
 		lc.log.Error(
 			"Failed to create follower cursor",
