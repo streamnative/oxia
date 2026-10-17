@@ -1038,8 +1038,12 @@ func (d *db) readLastNotificationOffset() (int64, error) {
 }
 
 func (d *db) readASCIILongOrDefault(key string, defaultValue int64) (int64, error) {
-	kv := d.kv
+	return readASCIILongOrDefault(d.kv, key, defaultValue)
+}
 
+// readASCIILongOrDefault reads the integer written in ASCII under key, or
+// returns defaultValue when the key is absent.
+func readASCIILongOrDefault(kv pointReader, key string, defaultValue int64) (int64, error) {
 	getReq := &proto.GetRequest{
 		Key:          key,
 		IncludeValue: true,
@@ -1418,7 +1422,13 @@ func deleteKeys(batch kvstore.WriteBatch, keys []string) error {
 	return nil
 }
 
-func applyGet(kv kvstore.KV, getReq *proto.GetRequest) (*proto.GetResponse, error) {
+// pointReader is the point read of a kvstore.KV, which the reader of a
+// snapshot's files provides as well.
+type pointReader interface {
+	Get(key string, comparisonType kvstore.ComparisonType, opts kvstore.IteratorOpts) (storedKey string, value []byte, closer io.Closer, err error)
+}
+
+func applyGet(kv pointReader, getReq *proto.GetRequest) (*proto.GetResponse, error) {
 	key, value, closer, err := kv.Get(getReq.Key, kvstore.ComparisonType(getReq.GetComparisonType()), kvstore.NoInternalKeys)
 
 	if errors.Is(err, kvstore.ErrKeyNotFound) {

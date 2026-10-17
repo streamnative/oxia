@@ -19,7 +19,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
+	"github.com/oxia-db/oxia/oxiad/dataserver/database"
 	"github.com/oxia-db/oxia/oxiad/dataserver/option"
 
 	"github.com/oxia-db/oxia/common/rpc"
@@ -114,4 +116,60 @@ func TestShardsDirector_GetOrCreateFollower(t *testing.T) {
 	assert.NoError(t, fc.Close())
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, walFactory.Close())
+}
+
+func TestShardsDirectorRoutesCheckpointAndCommitOffsetToTheHostingController(t *testing.T) {
+	kvFactory, err := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	sd := NewShardsDirector(&option.StorageOptions{}, newTestWalFactory(t), kvFactory, rpc.NewMockRpcClient())
+	t.Cleanup(func() { assert.NoError(t, sd.Close()) })
+
+	// A shard led here, with two entries
+	var led int64 = 1
+	lc, err := sd.GetOrCreateLeader(constant.DefaultNamespace, led, nil)
+	require.NoError(t, err)
+	_, err = lc.NewTerm(&proto.NewTermRequest{Shard: led, Term: 1})
+	require.NoError(t, err)
+	_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{Shard: led, Term: 1, ReplicationFactor: 1})
+	require.NoError(t, err)
+	for _, key := range []string{"a", "b"} {
+		_, err = lc.WriteBlock(context.Background(), &proto.WriteRequest{
+			Shard: &led, Puts: []*proto.PutRequest{{Key: key, Value: []byte("v")}}})
+		require.NoError(t, err)
+	}
+	offset, err := sd.CommitOffset(led)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, offset)
+	checkpoint, err := sd.Checkpoint(led)
+	require.NoError(t, err)
+	commitOffset, _, err := database.ReadCheckpoint(checkpoint.BasePath())
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, commitOffset)
+	assert.NoError(t, checkpoint.Close())
+	require.NoError(t, sd.WithDatabase(led, checkpoint.Generation, func(dir string) error {
+		assert.Equal(t, sd.DatabaseDir(constant.DefaultNamespace, led), dir)
+		return nil
+	}))
+
+	// A shard followed here, with no entry yet
+	var followed int64 = 2
+	fc, err := sd.GetOrCreateFollower(constant.DefaultNamespace, followed, 1, nil)
+	require.NoError(t, err)
+	_, err = fc.NewTerm(&proto.NewTermRequest{Shard: followed, Term: 1})
+	require.NoError(t, err)
+	offset, err = sd.CommitOffset(followed)
+	require.NoError(t, err)
+	assert.EqualValues(t, wal.InvalidOffset, offset)
+	checkpoint, err = sd.Checkpoint(followed)
+	require.NoError(t, err)
+	assert.NoError(t, checkpoint.Close())
+	require.NoError(t, sd.WithDatabase(followed, checkpoint.Generation, func(string) error { return nil }))
+
+	// A shard not hosted here
+	var absent int64 = 3
+	_, err = sd.CommitOffset(absent)
+	assert.ErrorIs(t, err, constant.ErrNodeIsNotMember)
+	_, err = sd.Checkpoint(absent)
+	assert.ErrorIs(t, err, constant.ErrNodeIsNotMember)
+	assert.ErrorIs(t, sd.WithDatabase(absent, 0, func(string) error { return nil }), constant.ErrNodeIsNotMember)
 }
