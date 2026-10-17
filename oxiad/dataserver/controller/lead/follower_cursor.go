@@ -320,7 +320,8 @@ func (fc *followerCursor) run() {
 				fc.ackOffset.Store(wal.InvalidOffset)
 				fc.lastPushed.Store(wal.InvalidOffset)
 			}
-			fc.log.Error(
+			// A failover cancels the cursor, and it retries on its own
+			fc.log.Warn(
 				"Error while pushing entries to follower",
 				slog.Any("error", err),
 				slog.Duration("retry-after", duration),
