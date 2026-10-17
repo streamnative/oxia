@@ -61,7 +61,9 @@ type LeaderController interface {
 	// List, Read and RangeScan run synchronously on the caller's goroutine,
 	// invoking onNext for every result; the returned error is the final
 	// status of the operation.
-	List(ctx context.Context, request *proto.ListRequest, onNext func(string) error) error
+	// List passes each primary key of the range to onNext, with its secondary key for a
+	// list through a secondary index, or "" otherwise.
+	List(ctx context.Context, request *proto.ListRequest, onNext func(primaryKey string, secondaryIndexKey string) error) error
 	Read(ctx context.Context, request *proto.ReadRequest, onNext func(*proto.GetResponse) error) error
 	RangeScan(ctx context.Context, request *proto.RangeScanRequest, onNext func(*proto.GetResponse) error) error
 
@@ -1033,7 +1035,8 @@ func (lc *leaderController) GetSequenceUpdates(_ context.Context, request *proto
 	return lc.db.GetSequenceUpdates(request.Key)
 }
 
-func (lc *leaderController) List(ctx context.Context, request *proto.ListRequest, onNext func(string) error) error {
+func (lc *leaderController) List(ctx context.Context, request *proto.ListRequest,
+	onNext func(primaryKey string, secondaryIndexKey string) error) error {
 	lc.RLock()
 	err := checkStatusIsLeader(lc.status)
 	if err != nil {
@@ -1046,7 +1049,8 @@ func (lc *leaderController) List(ctx context.Context, request *proto.ListRequest
 	return lc.list(ctx, request, onNext)
 }
 
-func (lc *leaderController) list(ctx context.Context, request *proto.ListRequest, onNext func(string) error) error {
+func (lc *leaderController) list(ctx context.Context, request *proto.ListRequest,
+	onNext func(primaryKey string, secondaryIndexKey string) error) error {
 	if lc.log.Enabled(ctx, slog.LevelDebug) {
 		lc.log.Debug("Received list request", slog.Int64("term", lc.term.Load()), slog.Any("request", request))
 	}
@@ -1068,8 +1072,16 @@ func (lc *leaderController) list(ctx context.Context, request *proto.ListRequest
 		return err
 	}
 
+	// Through an index, the iterator also has the secondary keys
+	indexIt, withIndex := it.(*secondaryIndexListIterator)
 	for ; it.Valid(); it.Next() {
-		if err = onNext(it.Key()); err != nil {
+		var primaryKey, secondaryIndexKey string
+		if withIndex {
+			primaryKey, secondaryIndexKey = indexIt.keys()
+		} else {
+			primaryKey = it.Key()
+		}
+		if err = onNext(primaryKey, secondaryIndexKey); err != nil {
 			break
 		}
 		if err = ctx.Err(); err != nil {
@@ -1090,8 +1102,8 @@ func (lc *leaderController) ListBlock(ctx context.Context, request *proto.ListRe
 	defer lc.waitGroup.Done()
 
 	var keys []string
-	err := lc.list(ctx, request, func(key string) error {
-		keys = append(keys, key)
+	err := lc.list(ctx, request, func(primaryKey string, _ string) error {
+		keys = append(keys, primaryKey)
 		return nil
 	})
 	if err != nil {
