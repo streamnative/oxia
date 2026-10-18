@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -216,6 +217,8 @@ func TestServer_CommandLineFlags(t *testing.T) {
 	defer func() { sconfFile = originalConfFile }()
 
 	// Reset the global options
+	originalOptions := dataServerOptions
+	defer func() { dataServerOptions = originalOptions }()
 	dataServerOptions = option.NewDefaultOptions()
 
 	// Create a config file
@@ -257,4 +260,19 @@ observability:
 	assert.Equal(t, "0.0.0.0:9000", dataServerOptions.Server.Public.BindAddress)
 	assert.Equal(t, "0.0.0.0:9001", dataServerOptions.Server.Internal.BindAddress)
 	assert.Equal(t, "0.0.0.0:9090", dataServerOptions.Observability.Metric.BindAddress)
+}
+
+func TestCmdPreRunAppliesRetentionFlags(t *testing.T) {
+	run := Cmd.Run
+	t.Cleanup(func() { Cmd.Run = run })
+	invoked := false
+	Cmd.Run = func(*cobra.Command, []string) { invoked = true }
+
+	Cmd.SetArgs([]string{"--wal-retention-time", "5m", "--notifications-retention-time", "7m"})
+	err := Cmd.Execute()
+
+	require.NoError(t, err)
+	assert.True(t, invoked)
+	assert.Equal(t, 5*time.Minute, time.Duration(dataServerOptions.Storage.WAL.Retention))
+	assert.Equal(t, 7*time.Minute, time.Duration(dataServerOptions.Storage.Notification.Retention))
 }

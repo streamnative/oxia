@@ -134,6 +134,17 @@ func TestHealthCmdTLS(t *testing.T) {
 	}
 }
 
+func TestHealthCmdRejectsInvalidTarget(t *testing.T) {
+	config = NewConfig()
+	t.Cleanup(func() { config = NewConfig() })
+
+	Cmd.SetArgs([]string{"--host", "%zz://invalid"})
+	err := Cmd.Execute()
+
+	require.ErrorContains(t, err, `invalid URL escape "%zz"`)
+	assert.Equal(t, codes.Unknown, status.Code(err))
+}
+
 func startTLSHealthServer(t *testing.T, options security.TLSOptions) int {
 	t.Helper()
 	tlsConf, err := options.TryIntoServerTLSConf()

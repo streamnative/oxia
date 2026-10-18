@@ -26,6 +26,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/oxia-db/oxia/cmd/admin/commons"
+	"github.com/oxia-db/oxia/cmd/common/clientauth"
 	"github.com/oxia-db/oxia/common/proto"
 )
 
@@ -371,4 +372,65 @@ func Test_cmd_getDataServersIdentities_DefaultTable(t *testing.T) {
 	assert.Contains(t, out, "internal2")
 	assert.Contains(t, out, "public2")
 	assert.Contains(t, out, "DATA_SERVER_STATE_RUNNING")
+}
+
+func TestExecRejectsMissingOutputFlag(t *testing.T) {
+	commons.MockedAdminClient = commons.NewMockAdminClient()
+	t.Cleanup(func() { commons.MockedAdminClient = nil })
+
+	cmd := newGetCmd()
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{})
+	err := cmd.Execute()
+
+	require.ErrorContains(t, err, "flag accessed but not defined: output")
+	commons.MockedAdminClient.AssertNotCalled(t, "ListDataServers")
+}
+
+func TestExecReturnsAdminClientError(t *testing.T) {
+	commons.MockedAdminClient = nil
+	commons.AdminConfig.Auth = clientauth.Config{Token: "token", TokenFile: "token-file"}
+	t.Cleanup(func() { commons.AdminConfig.Auth = clientauth.Config{} })
+
+	_, err := runCmd(newGetCmd())
+
+	require.ErrorIs(t, err, clientauth.ErrAuthTokenConflict)
+}
+
+func TestExecReturnsListError(t *testing.T) {
+	commons.MockedAdminClient = commons.NewMockAdminClient()
+	t.Cleanup(func() { commons.MockedAdminClient = nil })
+	commons.MockedAdminClient.On("Close").Return(nil)
+	// Without data servers to return, the mock fails the call
+	commons.MockedAdminClient.On("ListDataServers").Return(nil, nil)
+
+	_, err := runCmd(newGetCmd())
+
+	require.EqualError(t, err, "no data servers available")
+	commons.MockedAdminClient.AssertExpectations(t)
+}
+
+func TestExecReturnsGetError(t *testing.T) {
+	commons.MockedAdminClient = commons.NewMockAdminClient()
+	t.Cleanup(func() { commons.MockedAdminClient = nil })
+	commons.MockedAdminClient.On("Close").Return(nil)
+	// Without a data server to return, the mock fails the call
+	commons.MockedAdminClient.On("GetDataServer", "server-1").Return(nil, nil)
+
+	_, err := runCmd(newGetCmd(), "server-1")
+
+	require.EqualError(t, err, "data server not found")
+	commons.MockedAdminClient.AssertExpectations(t)
+}
+
+func newGetCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:          Cmd.Use,
+		Short:        Cmd.Short,
+		Long:         Cmd.Long,
+		Args:         Cmd.Args,
+		RunE:         Cmd.RunE,
+		SilenceUsage: Cmd.SilenceUsage,
+	}
 }
