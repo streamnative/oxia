@@ -317,3 +317,65 @@ func TestWriteManagerCloseReleasesHeldWrites(t *testing.T) {
 	assert.Empty(t, b.calls)
 	assert.Equal(t, []any{"b"}, b.failed)
 }
+
+func TestWriteManagerCloseTwice(t *testing.T) {
+	m := newTestWriteManager(nil)
+	m.Add(0, "a")
+
+	assert.NoError(t, m.Close())
+	assert.NoError(t, m.Close())
+	b := m.batcher(0)
+	b.Lock()
+	defer b.Unlock()
+	assert.True(t, b.closed)
+}
+
+func TestWriteManagerHandOffToRemovedShardWithoutWrites(t *testing.T) {
+	m := newTestWriteManager(map[int64]int64{0: 1})
+	m.ShardsReplaced(map[int64][]int64{0: {1}})
+
+	// Shard 0 never had a batcher: the write is forwarded to its successor
+	m.HandOff(0, "a")
+
+	assert.Nil(t, m.batcher(0))
+	assert.Equal(t, []any{"a"}, m.forwardedCalls())
+	assert.Equal(t, []any{"a"}, m.batcher(1).recorded())
+	assert.NoError(t, m.Close())
+}
+
+// Two shards are merged into one: the new shard holds its writes until both
+// have handed off theirs.
+func TestWriteManagerHoldsWritesUntilAllPredecessorsHandOff(t *testing.T) {
+	m := newTestWriteManager(nil)
+	m.Add(0, "a")
+	m.Add(1, "b")
+
+	m.ShardsReplaced(map[int64][]int64{0: {2}, 1: {2}})
+	added := m.addAsync(2, "c")
+	requireBlocked(t, added)
+
+	receiveBarrier(t, m.batcher(0)).Done()
+	requireBlocked(t, added)
+
+	receiveBarrier(t, m.batcher(1)).Done()
+	requireDone(t, added)
+	assert.Equal(t, []any{"c"}, m.batcher(2).recorded())
+	assert.NoError(t, m.Close())
+}
+
+// A shard that already received writes before it replaced a removed one does
+// not hold its writes for the hand-off.
+func TestWriteManagerExistingSuccessorDoesNotHoldWrites(t *testing.T) {
+	m := newTestWriteManager(nil)
+	m.Add(0, "a")
+	m.Add(1, "b")
+
+	m.ShardsReplaced(map[int64][]int64{0: {1}})
+	m.Add(1, "c")
+	assert.Equal(t, []any{"b", "c"}, m.batcher(1).recorded())
+
+	receiveBarrier(t, m.batcher(0)).Done()
+	m.Add(1, "d")
+	assert.Equal(t, []any{"b", "c", "d"}, m.batcher(1).recorded())
+	assert.NoError(t, m.Close())
+}
