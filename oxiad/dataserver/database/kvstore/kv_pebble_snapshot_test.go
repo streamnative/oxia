@@ -1,0 +1,111 @@
+// Copyright 2023-2026 The Oxia Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package kvstore
+
+import (
+	"crypto/rand"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/oxia-db/oxia/common/proto"
+	"github.com/oxia-db/oxia/common/validation"
+)
+
+func TestPebbleSnapshotNewFailsWhenCheckpointDirectoryExists(t *testing.T) {
+	kv := newSeekScanKV(t, proto.KeySortingType_NATURAL)
+	next := filepath.Join(kv.factory.dataDir, validation.KeywordNamespaceSnapshots, "shard-1", "snapshot-1")
+	require.NoError(t, os.MkdirAll(next, 0o755))
+
+	_, err := kv.Snapshot()
+	assert.Error(t, err)
+}
+
+func TestPebbleSnapshotNewFailsWhenMarkerIsMissing(t *testing.T) {
+	kv := newSeekScanKV(t, proto.KeySortingType_NATURAL)
+	require.NoError(t, os.Remove(filepath.Join(kv.dbPath, markerFileName)))
+
+	_, err := kv.Snapshot()
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+// Closing a snapshot in the middle of sending a file closes the file.
+func TestPebbleSnapshotCloseClosesPartiallyReadFile(t *testing.T) {
+	kv := newSeekScanKV(t, proto.KeySortingType_NATURAL)
+	// Incompressible values, for a sstable larger than a chunk
+	wb := kv.NewWriteBatch()
+	value := make([]byte, MaxSnapshotChunkSize/4)
+	for _, key := range []string{"big-1", "big-2", "big-3", "big-4", "big-5", "big-6"} {
+		_, err := rand.Read(value)
+		require.NoError(t, err)
+		require.NoError(t, wb.Put(key, value))
+	}
+	require.NoError(t, wb.Commit())
+	require.NoError(t, wb.Close())
+
+	snapshot, err := kv.Snapshot()
+	require.NoError(t, err)
+	var chunk SnapshotChunk
+	for ; snapshot.Valid(); snapshot.Next() {
+		if chunk, err = snapshot.Chunk(); err != nil || chunk.TotalCount() > 1 {
+			break
+		}
+	}
+	require.NoError(t, err)
+	require.Greater(t, chunk.TotalCount(), int32(1), "no file spans several chunks")
+	file := snapshot.(*pebbleSnapshot).file
+	require.NotNil(t, file)
+
+	assert.NoError(t, snapshot.Close())
+	assert.ErrorIs(t, file.Close(), os.ErrClosed)
+	assert.NoDirExists(t, snapshot.BasePath())
+}
+
+func TestPebbleSnapshotChunkFailsWhenFileIsMissing(t *testing.T) {
+	kv := newSeekScanKV(t, proto.KeySortingType_NATURAL)
+	snapshot, err := kv.Snapshot()
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, snapshot.Close()) })
+	require.True(t, snapshot.Valid())
+	require.NoError(t, os.Remove(filepath.Join(snapshot.BasePath(), snapshot.(*pebbleSnapshot).files[0])))
+
+	_, err = snapshot.Chunk()
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestPebbleSnapshotChunkFailsWhenFileCannotBeOpened(t *testing.T) {
+	kv := newSeekScanKV(t, proto.KeySortingType_NATURAL)
+	snapshot, err := kv.Snapshot()
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, snapshot.Close()) })
+	require.True(t, snapshot.Valid())
+	// The snapshot files can be hard links to the database ones: copy the
+	// file, to leave the database readable
+	path := filepath.Join(snapshot.BasePath(), snapshot.(*pebbleSnapshot).files[0])
+	content, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.NoError(t, os.Remove(path))
+	require.NoError(t, os.WriteFile(path, content, 0))
+	if f, err := os.Open(path); err == nil {
+		assert.NoError(t, f.Close())
+		t.Skip("the file is still readable, as when running as root")
+	}
+
+	_, err = snapshot.Chunk()
+	assert.ErrorIs(t, err, os.ErrPermission)
+}
