@@ -57,3 +57,13 @@ func TestGrpcServerCloseReleasesPort(t *testing.T) {
 		require.NoError(t, listener.Close())
 	}
 }
+
+func TestGrpcServerStartRejectsUnsupportedAuthProvider(t *testing.T) {
+	registered := false
+	s, err := Default.StartGrpcServer("test", "127.0.0.1:0",
+		func(grpc.ServiceRegistrar) { registered = true }, nil, &auth.Options{Provider: "ldap"}, nil)
+
+	require.ErrorIs(t, err, auth.ErrUnsupportedProvider)
+	require.Nil(t, s)
+	require.False(t, registered)
+}

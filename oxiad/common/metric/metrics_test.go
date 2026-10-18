@@ -16,13 +16,23 @@ package metric
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	libtls "crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"fmt"
 	"io"
+	"math/big"
+	"net"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -59,6 +69,50 @@ func TestPrometheusMetrics(t *testing.T) {
 	}
 }
 
+func TestStartServesMetricsOverTLS(t *testing.T) {
+	cert, roots := newSelfSignedCertificate(t)
+	metrics, err := Start("127.0.0.1:0", &libtls.Config{
+		Certificates: []libtls.Certificate{cert},
+		MinVersion:   libtls.VersionTLS12,
+	})
+	require.NoError(t, err)
+	defer metrics.Close()
+
+	client := &http.Client{Transport: &http.Transport{
+		TLSClientConfig: &libtls.Config{RootCAs: roots, MinVersion: libtls.VersionTLS12},
+	}}
+	defer client.CloseIdleConnections()
+	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet,
+		fmt.Sprintf("https://127.0.0.1:%d/metrics", metrics.Port()), http.NoBody)
+	require.NoError(t, err)
+	response, err := client.Do(request)
+	require.NoError(t, err)
+	defer response.Body.Close()
+
+	assert.Equal(t, http.StatusOK, response.StatusCode)
+	body, err := io.ReadAll(response.Body)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), "# HELP ")
+}
+
+func TestStartRejectsTLSConfigWithoutCertificates(t *testing.T) {
+	metrics, err := Start("127.0.0.1:0", &libtls.Config{MinVersion: libtls.VersionTLS12})
+
+	assert.ErrorContains(t, err, "no certificates configured")
+	assert.Nil(t, metrics)
+}
+
+func TestStartReturnsListenError(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer listener.Close()
+
+	metrics, err := Start(listener.Addr().String(), nil)
+
+	assert.Error(t, err)
+	assert.Nil(t, metrics)
+}
+
 // The OTel SDK defaults to 2000 attribute sets per instrument, collapsing the
 // rest into an `otel.metric.overflow` series. Per-shard metrics can exceed that.
 func TestNoCardinalityLimit(t *testing.T) {
@@ -88,4 +142,27 @@ func TestNoCardinalityLimit(t *testing.T) {
 		}
 	}
 	assert.Equal(t, attributeSets, series)
+}
+
+func newSelfSignedCertificate(t *testing.T) (libtls.Certificate, *x509.CertPool) {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "localhost"},
+		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
+		NotBefore:    time.Now().Add(-time.Minute),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	require.NoError(t, err)
+	leaf, err := x509.ParseCertificate(der)
+	require.NoError(t, err)
+
+	roots := x509.NewCertPool()
+	roots.AddCert(leaf)
+	return libtls.Certificate{Certificate: [][]byte{der}, PrivateKey: key, Leaf: leaf}, roots
 }

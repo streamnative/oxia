@@ -21,22 +21,51 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
+	"google.golang.org/grpc/status"
 )
 
-// recordingProvider accepts any token and records the last one.
-type recordingProvider struct {
-	token string
+func TestGrpcAuthenticationDelegatorGetUnaryInterceptorCallsHandlerWithValidToken(t *testing.T) {
+	provider := &recordingProvider{}
+	delegator, err := NewGrpcAuthenticationDelegator(provider)
+	require.NoError(t, err)
+	ctx := metadata.NewIncomingContext(newPeerContext(), metadata.Pairs(MetadataAuthorizationKey, TokenPrefix+"token"))
+
+	res, err := delegator.GetUnaryInterceptor()(ctx, "request", &grpc.UnaryServerInfo{},
+		func(_ context.Context, req any) (any, error) {
+			return req.(string) + "-handled", nil
+		})
+
+	require.NoError(t, err)
+	assert.Equal(t, "request-handled", res)
+	assert.Equal(t, "token", provider.token)
 }
 
-func (*recordingProvider) AcceptParamType() string {
-	return ProviderParamTypeToken
+func TestGrpcAuthenticationDelegatorGetUnaryInterceptorRejectsMissingToken(t *testing.T) {
+	delegator, err := NewGrpcAuthenticationDelegator(&recordingProvider{})
+	require.NoError(t, err)
+	handlerCalled := false
+
+	res, err := delegator.GetUnaryInterceptor()(newPeerContext(), "request", &grpc.UnaryServerInfo{},
+		func(context.Context, any) (any, error) {
+			handlerCalled = true
+			return "response", nil
+		})
+
+	assert.Nil(t, res)
+	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+	assert.Contains(t, status.Convert(err).Message(), ErrEmptyToken.Error())
+	assert.False(t, handlerCalled)
 }
 
-func (p *recordingProvider) Authenticate(_ context.Context, param any) (string, error) {
-	p.token = param.(string)
-	return "user", nil
+func TestNewGrpcAuthenticationDelegatorRejectsUnknownParamType(t *testing.T) {
+	delegator, err := NewGrpcAuthenticationDelegator(&recordingProvider{paramType: "certificate"})
+
+	assert.ErrorIs(t, err, ErrUnMatchedAuthenticationParamType)
+	assert.Nil(t, delegator)
 }
 
 func TestValidateTokenWithContext(t *testing.T) {
@@ -66,6 +95,17 @@ func TestValidateTokenWithContext(t *testing.T) {
 	})
 }
 
+func TestValidateTokenWithContextRejectsMissingPeer(t *testing.T) {
+	ctx := metadata.NewIncomingContext(context.Background(),
+		metadata.Pairs(MetadataAuthorizationKey, TokenPrefix+"token"))
+	provider := &recordingProvider{}
+
+	_, err := validateTokenWithContext(ctx, provider)
+
+	assert.ErrorIs(t, err, ErrMetadataFetchFailed)
+	assert.Empty(t, provider.token)
+}
+
 func TestRedactToken(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -87,4 +127,28 @@ func TestRedactToken(t *testing.T) {
 			assert.NotEqual(t, tt.token, result, "redacted output must differ from original token")
 		})
 	}
+}
+
+// recordingProvider accepts any token and records the last one.
+type recordingProvider struct {
+	// paramType overrides the accepted parameter type, the token type when empty
+	paramType string
+	token     string
+}
+
+func (p *recordingProvider) AcceptParamType() string {
+	if p.paramType != "" {
+		return p.paramType
+	}
+	return ProviderParamTypeToken
+}
+
+func (p *recordingProvider) Authenticate(_ context.Context, param any) (string, error) {
+	p.token = param.(string)
+	return "user", nil
+}
+
+func newPeerContext() context.Context {
+	return peer.NewContext(context.Background(),
+		&peer.Peer{Addr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1234}})
 }
