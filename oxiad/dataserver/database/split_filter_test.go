@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/hash"
 	"github.com/oxia-db/oxia/oxiad/dataserver/database/kvstore"
 
@@ -896,4 +897,37 @@ func TestFilterDBForSplit_ReadFailure(t *testing.T) {
 	leftRange, _ := splitRanges()
 	assert.ErrorIs(t, FilterDBForSplit(kv, leftRange), os.ErrPermission)
 	assert.NoError(t, kv.Close())
+}
+
+func TestFilterDBForSplitKeepsUnknownInternalKeys(t *testing.T) {
+	kv := newTestKV(t)
+	unknownKey := constant.InternalKeyPrefix + "unknown"
+	putRawKey(t, kv, unknownKey, []byte("v"))
+	left, _ := splitRanges()
+
+	require.NoError(t, FilterDBForSplit(kv, left))
+	assert.True(t, keyExists(t, kv, unknownKey))
+}
+
+// A record whose entry can't be read is placed by the hash of its key.
+func TestFilterDBForSplitPlacesUnreadableRecordByKey(t *testing.T) {
+	kv := newTestKV(t)
+	left, right := splitRanges()
+	keptKey, otherKey := keyInRange(t, "kept-%d", left), keyInRange(t, "other-%d", right)
+	putRawKey(t, kv, keptKey, []byte{0xff})
+	putRawKey(t, kv, otherKey, []byte{0xff})
+
+	require.NoError(t, FilterDBForSplit(kv, left))
+	assert.True(t, keyExists(t, kv, keptKey))
+	assert.False(t, keyExists(t, kv, otherKey))
+}
+
+func TestFilterDBForSplitFailsOnCorruptedNotificationBatch(t *testing.T) {
+	kv := newTestKV(t)
+	putRawKey(t, kv, notificationKey(0), []byte{0xff})
+	left, _ := splitRanges()
+
+	err := FilterDBForSplit(kv, left)
+	assert.ErrorContains(t, err, "failed to classify internal key")
+	assert.ErrorContains(t, err, "failed to deserialize notification batch")
 }

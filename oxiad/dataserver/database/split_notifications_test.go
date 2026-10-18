@@ -24,6 +24,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protowire"
 
 	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/proto"
@@ -160,6 +161,16 @@ func TestInheritedNotifications_Filter(t *testing.T) {
 	filtered, err = children["high-low"].filter(batches[2:])
 	require.NoError(t, err)
 	assert.Same(t, &batches[2].Data[0], &filtered[0].Data[0])
+}
+
+func TestInheritedNotificationsFilterFailsOnCorruptedBatch(t *testing.T) {
+	in := inheritedNotifications(nil).withSplit(0, math.MaxUint32)
+	// A notification that can't be decoded
+	data := protowire.AppendBytes(protowire.AppendTag(nil, notificationBatchNotifications, protowire.BytesType),
+		[]byte{0xff})
+
+	_, err := in.filter([]proto.EncodedNotificationBatch{{Offset: 0, Data: data}})
+	assert.ErrorContains(t, err, "failed to deserialize notification batch")
 }
 
 // readNotifiedKeys returns the keys of the notifications of each batch from

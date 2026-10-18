@@ -17,6 +17,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -160,4 +161,81 @@ func firstNotification(t *testing.T, db DB) int64 {
 	}
 
 	return nextNotifications[0].Offset
+}
+
+func TestNotificationsTrimmerTrimNotificationsFailsOnCorruptedFirstBatch(t *testing.T) {
+	trimmer, kv, listener := newIdleNotificationsTrimmer(t)
+	putRawKey(t, kv, notificationKey(0), []byte{0xff})
+	putNotificationBatch(t, kv, 1, map[string]*proto.Notification{"a": {}})
+
+	err := trimmer.trimNotifications()
+	assert.ErrorContains(t, err, "failed to deserialize notification batch")
+	assert.Empty(t, listener.trimmedOffsets)
+	assert.True(t, keyExists(t, kv, notificationKey(0)))
+}
+
+func TestNotificationsTrimmerTrimNotificationsFailsOnCorruptedBatchInBinarySearch(t *testing.T) {
+	trimmer, kv, listener := newIdleNotificationsTrimmer(t)
+	for offset := int64(0); offset < 5; offset++ {
+		putNotificationBatch(t, kv, offset, map[string]*proto.Notification{"a": {}})
+	}
+	// The first batch the binary search reads over [0, 4]
+	putRawKey(t, kv, notificationKey(2), []byte{0xff})
+
+	err := trimmer.trimNotifications()
+	assert.ErrorContains(t, err, "failed to perform binary search")
+	assert.Empty(t, listener.trimmedOffsets)
+	assert.True(t, keyExists(t, kv, notificationKey(0)))
+}
+
+func TestNotificationsTrimmerTrimNotificationsFailsWhenTrimmingFails(t *testing.T) {
+	trimmer, kv, listener := newIdleNotificationsTrimmer(t)
+	for offset := int64(0); offset < 5; offset++ {
+		putNotificationBatch(t, kv, offset, map[string]*proto.Notification{"a": {}})
+	}
+	trimmingErr := errors.New("trimming failed")
+	listener.trimmingHook = func(kvstore.WriteBatch, int64) (func(), error) { return nil, trimmingErr }
+
+	err := trimmer.trimNotifications()
+	assert.ErrorIs(t, err, trimmingErr)
+	assert.Empty(t, listener.trimmedOffsets)
+	for offset := int64(0); offset < 5; offset++ {
+		assert.True(t, keyExists(t, kv, notificationKey(offset)), "offset %d", offset)
+	}
+}
+
+// newIdleNotificationsTrimmer returns a trimmer that runs only when the test
+// calls it, with every batch past its retention, its store and its listener.
+func newIdleNotificationsTrimmer(t *testing.T) (*notificationsTrimmer, kvstore.KV, *fakeTrimListener) {
+	t.Helper()
+	kv := newTestKV(t)
+	t.Cleanup(func() { assert.NoError(t, kv.Close()) })
+	clock := &time2.MockedClock{}
+	clock.Set(time.Hour.Milliseconds())
+	listener := &fakeTrimListener{}
+	return &notificationsTrimmer{
+		kv:                         kv,
+		notificationsRetentionTime: time.Millisecond,
+		clock:                      clock,
+		log:                        slog.Default(),
+		listener:                   listener,
+	}, kv, listener
+}
+
+// fakeTrimListener records the trimmed offsets, and runs trimmingHook, if set,
+// on trimming.
+type fakeTrimListener struct {
+	trimmingHook   func(batch kvstore.WriteBatch, offset int64) (func(), error)
+	trimmedOffsets []int64
+}
+
+func (l *fakeTrimListener) trimming(batch kvstore.WriteBatch, offset int64) (func(), error) {
+	if l.trimmingHook != nil {
+		return l.trimmingHook(batch, offset)
+	}
+	return func() {}, nil
+}
+
+func (l *fakeTrimListener) trimmed(offset int64) {
+	l.trimmedOffsets = append(l.trimmedOffsets, offset)
 }

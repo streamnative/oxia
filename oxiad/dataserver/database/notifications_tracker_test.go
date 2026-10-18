@@ -17,13 +17,16 @@ package database
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protowire"
 
 	"github.com/oxia-db/oxia/oxiad/dataserver/database/kvstore"
 
@@ -226,4 +229,51 @@ func TestDB_DeleteRangeNotificationRecordsCached(t *testing.T) {
 
 	// Only the batch of the delete range itself is left
 	assert.EqualValues(t, 3, firstNotification(t, d))
+}
+
+func TestParseNotificationBatchRejectsMalformedData(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		data []byte
+	}{
+		{"truncated-tag", []byte{0xff}},
+		{"truncated-offset", append(protowire.AppendTag(nil, notificationBatchOffsetField, protowire.VarintType), 0xff)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, _, err := parseNotificationBatch(test.data)
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestNotificationsTrackerReadNextNotificationsFailsOnCorruptedBatch(t *testing.T) {
+	factory, err := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, factory.Close()) })
+	d, err := NewDB(constant.DefaultNamespace, 1, factory, proto.KeySortingType_NATURAL, time.Hour, time2.SystemClock)
+	require.NoError(t, err)
+	putRawKey(t, d.RawKV(), notificationKey(0), []byte{0xff})
+	require.NoError(t, d.Close())
+
+	// Reopened, the database reads the batch from the store
+	d, err = NewDB(constant.DefaultNamespace, 1, factory, proto.KeySortingType_NATURAL, time.Hour, time2.SystemClock)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, d.Close()) })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, err = d.ReadNextNotifications(ctx, 0)
+	assert.ErrorContains(t, err, "failed to Deserialize notification batch")
+}
+
+func TestNotificationsTrackerReadNextNotificationsLogsWaitAtDebugLevel(t *testing.T) {
+	d := newNotificationsTestDB(t)
+	var logs strings.Builder
+	d.(*db).notificationsTracker.log = slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := d.ReadNextNotifications(ctx, 0)
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.Contains(t, logs.String(), "Waiting for notification to be available")
 }
