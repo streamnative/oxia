@@ -229,7 +229,7 @@ func TestShardsDirectorDeleteShardNotHostedInvalidNamespace(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// A namespace with a path traversal, that the controllers reject
+// A namespace with a path traversal, that the controllers reject.
 const invalidNamespace = "../invalid"
 
 func newTestShardsDirector(t *testing.T) *shardsDirector {

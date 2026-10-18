@@ -32,7 +32,7 @@ import (
 	manifestpkg "github.com/oxia-db/oxia/oxiad/dataserver/manifest"
 )
 
-// A target that gRPC can't parse, to fail creating the connection
+// A target that gRPC can't parse, to fail creating the connection.
 const invalidTarget = "%zz://invalid"
 
 func TestNewReplicationRpcProviderInvalidTLS(t *testing.T) {

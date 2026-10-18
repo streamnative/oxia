@@ -31,7 +31,7 @@ func TestStreamReaderRunHandlesMessagesUntilEOF(t *testing.T) {
 		recv func() (*string, error)
 	}{
 		{name: "error", recv: func() (*string, error) { return nil, io.EOF }},
-		{name: "nil message", recv: func() (*string, error) { return nil, nil }},
+		{name: "nil message", recv: func() (*string, error) { return nil, nil }}, //nolint:nilnil // ends the stream
 	} {
 		t.Run(eof.name, func(t *testing.T) {
 			var handled []string

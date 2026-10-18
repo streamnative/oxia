@@ -174,3 +174,17 @@ func TestNewStandaloneReleasesWhatItStartedOnError(t *testing.T) {
 	require.NoError(t, err)
 	assert.NoError(t, standaloneServer.Close())
 }
+
+// A standalone server has no followers to replicate to.
+func TestNoOpReplicationRpcProvider(t *testing.T) {
+	provider := newNoOpReplicationRpcProvider()
+
+	assert.Panics(t, func() {
+		_, _ = provider.GetReplicateStream(t.Context(), "follower", constant.DefaultNamespace, 0, 1)
+	})
+	assert.Panics(t, func() {
+		_, _ = provider.SendSnapshot(t.Context(), "follower", constant.DefaultNamespace, 0, 1)
+	})
+	assert.Panics(t, func() { _, _ = provider.Truncate("follower", &proto.TruncateRequest{}) })
+	assert.NoError(t, provider.Close())
+}
