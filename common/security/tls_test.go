@@ -176,6 +176,34 @@ func TestMakeCommonConfig_ValidVersions(t *testing.T) {
 	assert.Equal(t, uint16(libtls.VersionTLS13), conf.MaxVersion)
 }
 
+func TestTLSOptionsMakeCommonConfigCipherSuites(t *testing.T) {
+	suites := []uint16{libtls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256}
+	opts := &TLSOptions{CipherSuites: suites}
+	conf, err := opts.makeCommonConfig()
+	require.NoError(t, err)
+	assert.Equal(t, suites, conf.CipherSuites)
+
+	conf, err = (&TLSOptions{}).makeCommonConfig()
+	require.NoError(t, err)
+	assert.Nil(t, conf.CipherSuites)
+}
+
+func TestTLSOptionsTryIntoClientTLSConfInvalidVersion(t *testing.T) {
+	enabled := true
+	opts := &TLSOptions{Enabled: &enabled, MinVersion: libtls.VersionTLS11}
+	conf, err := opts.TryIntoClientTLSConf()
+	assert.ErrorContains(t, err, "below TLS 1.2")
+	assert.Nil(t, conf)
+}
+
+func TestTLSOptionsTryIntoClientTLSConfMissingTrustedCaFile(t *testing.T) {
+	enabled := true
+	opts := &TLSOptions{Enabled: &enabled, TrustedCaFile: filepath.Join(t.TempDir(), "missing.pem")}
+	conf, err := opts.TryIntoClientTLSConf()
+	assert.ErrorIs(t, err, os.ErrNotExist)
+	assert.Nil(t, conf)
+}
+
 func TestTryIntoClientTLSConf_ClientCertificate(t *testing.T) {
 	dir := t.TempDir()
 	certPEM, keyPEM := generateSelfSignedCert(t, "client")
@@ -215,6 +243,33 @@ func TestTryIntoServerTLSConf_RequiresCertificate(t *testing.T) {
 	opts := &TLSOptions{Enabled: &enabled}
 	_, err := opts.TryIntoServerTLSConf()
 	assert.ErrorIs(t, err, ErrInvalidTLSCertFile)
+}
+
+func TestTLSOptionsTryIntoServerTLSConfInvalidVersion(t *testing.T) {
+	dir := t.TempDir()
+	certPEM, keyPEM := generateSelfSignedCert(t, "server")
+	opts := &TLSOptions{
+		CertFile:   writeTempFile(t, dir, "cert.pem", certPEM),
+		KeyFile:    writeTempFile(t, dir, "key.pem", keyPEM),
+		MinVersion: libtls.VersionTLS13,
+		MaxVersion: libtls.VersionTLS12,
+	}
+	conf, err := opts.TryIntoServerTLSConf()
+	assert.ErrorContains(t, err, "below minimum")
+	assert.Nil(t, conf)
+}
+
+func TestTLSOptionsTryIntoServerTLSConfMissingTrustedCaFile(t *testing.T) {
+	dir := t.TempDir()
+	certPEM, keyPEM := generateSelfSignedCert(t, "server")
+	opts := &TLSOptions{
+		CertFile:      writeTempFile(t, dir, "cert.pem", certPEM),
+		KeyFile:       writeTempFile(t, dir, "key.pem", keyPEM),
+		TrustedCaFile: filepath.Join(dir, "missing.pem"),
+	}
+	conf, err := opts.TryIntoServerTLSConf()
+	assert.ErrorIs(t, err, os.ErrNotExist)
+	assert.Nil(t, conf)
 }
 
 func TestTryIntoServerTLSConf_ClientAuthTrust(t *testing.T) {

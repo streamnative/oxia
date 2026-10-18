@@ -15,10 +15,12 @@
 package process
 
 import (
+	"net/http"
 	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRunProfilingEnablesContentionProfiles(t *testing.T) {
@@ -39,4 +41,18 @@ func TestRunProfilingEnablesContentionProfiles(t *testing.T) {
 	// Closing the profiling server restores the runtime defaults
 	assert.NoError(t, closer.Close())
 	assert.Equal(t, 0, runtime.SetMutexProfileFraction(-1))
+}
+
+func TestRunProfilingDisabledDoesNotStartServer(t *testing.T) {
+	PprofEnable = false
+	PprofBindAddress = "127.0.0.1:0"
+
+	closer := RunProfiling()
+
+	// The plain server is returned without listening, and contention profiling stays off
+	server, ok := closer.(*http.Server)
+	require.True(t, ok)
+	assert.Equal(t, "127.0.0.1:0", server.Addr)
+	assert.Equal(t, 0, runtime.SetMutexProfileFraction(-1))
+	assert.NoError(t, closer.Close())
 }

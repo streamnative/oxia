@@ -115,6 +115,15 @@ func TestEncodeInternalKeys(t *testing.T) {
 	}
 }
 
+func TestEncoderIsInternalKeyEmpty(t *testing.T) {
+	for _, encoder := range []Encoder{EncoderNatural, EncoderHierarchical} {
+		t.Run(encoder.Name(), func(t *testing.T) {
+			assert.False(t, encoder.IsInternalKey(nil))
+			assert.False(t, encoder.IsInternalKey([]byte{}))
+		})
+	}
+}
+
 // A key carries its own separator count in the 2-byte prefix, and that count
 // shares the prefix with the internal-key marker. Keys with more separators
 // than the prefix can hold must not reach into the marker, nor wrap around and
@@ -277,6 +286,20 @@ func TestEncoderNaturalDecodeDoesNotMutateInput(t *testing.T) {
 	originalPlain := bytes.Clone(plain)
 	assert.Equal(t, "a/b/c", encoderNatural{}.Decode(plain))
 	assert.Equal(t, originalPlain, plain)
+}
+
+func TestGetEncoder(t *testing.T) {
+	encoder, err := GetEncoder("hierarchical")
+	assert.NoError(t, err)
+	assert.Equal(t, "hierarchical", encoder.Name())
+
+	encoder, err = GetEncoder("natural")
+	assert.NoError(t, err)
+	assert.Equal(t, "natural", encoder.Name())
+
+	encoder, err = GetEncoder("unknown")
+	assert.EqualError(t, err, "unknown encoder unknown")
+	assert.Nil(t, encoder)
 }
 
 func BenchmarkEncoderNaturalDecode(b *testing.B) {
