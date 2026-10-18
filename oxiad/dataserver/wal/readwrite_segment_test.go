@@ -18,6 +18,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"sync"
@@ -593,6 +594,107 @@ func TestReadWriteSegmentReadConcurrentWithAppendAndClose(t *testing.T) {
 	assert.ErrorIs(t, err, ErrSegmentClosed)
 }
 
+func TestReadWriteSegmentNewFailsWhenWalDirectoryCannotBeCreated(t *testing.T) {
+	parent := readOnlyDir(t)
+
+	_, err := newReadWriteSegment(filepath.Join(parent, "wal"), 0, 1024, 0, nil)
+	assert.ErrorIs(t, err, os.ErrPermission)
+	assert.ErrorContains(t, err, "failed to create wal directory")
+}
+
+func TestReadWriteSegmentNewFailsWhenSegmentFileCannotBeCreated(t *testing.T) {
+	dir := readOnlyDir(t)
+
+	_, err := newReadWriteSegment(dir, 0, 1024, 0, nil)
+	assert.ErrorIs(t, err, os.ErrPermission)
+	assert.ErrorContains(t, err, "failed to open segment file")
+}
+
+func TestReadWriteSegmentReadReportsCorruptedRecord(t *testing.T) {
+	rw, err := newReadWriteSegment(t.TempDir(), 0, 1024, 0, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, rw.Close()) })
+	require.NoError(t, rw.Append(0, []byte("entry-0")))
+
+	rwSegment := rw.(*readWriteSegment)
+	payloadOffset := fileOffset(rwSegment.writingIdx, 0, 0) + rwSegment.c.codec.GetHeaderSize()
+	rwSegment.txnMappedFile[payloadOffset] ^= 0xff
+
+	_, _, _, err = rw.Read(0)
+	assert.ErrorIs(t, err, codec.ErrDataCorrupted)
+	assert.ErrorContains(t, err, "entryOffset: 0")
+}
+
+func TestReadWriteSegmentReadReportsEmptyRecord(t *testing.T) {
+	rw, err := newReadWriteSegment(t.TempDir(), 0, 1024, 0, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, rw.Close()) })
+	require.NoError(t, rw.Append(0, []byte("entry-0")))
+
+	rwSegment := rw.(*readWriteSegment)
+	binary.BigEndian.PutUint32(rwSegment.txnMappedFile[fileOffset(rwSegment.writingIdx, 0, 0):], 0)
+
+	_, _, _, err = rw.Read(0)
+	assert.ErrorIs(t, err, codec.ErrEmptyPayload)
+}
+
+func TestReadWriteSegmentAppendRejectsEmptyPayload(t *testing.T) {
+	rw, err := newReadWriteSegment(t.TempDir(), 0, 1024, 0, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, rw.Close()) })
+
+	assert.ErrorIs(t, rw.Append(0, nil), codec.ErrEmptyPayload)
+	assert.EqualValues(t, InvalidOffset, rw.LastOffset())
+}
+
+func TestReadWriteSegmentSyncFileIfNeededSkipsClosedSegment(t *testing.T) {
+	rw, err := newReadWriteSegment(t.TempDir(), 0, 1024, 0, nil)
+	require.NoError(t, err)
+	rwSegment := rw.(*readWriteSegment)
+	require.True(t, rwSegment.pendingFileSync.Load())
+	require.NoError(t, rw.Close())
+
+	assert.NoError(t, rw.SyncFileIfNeeded())
+	assert.True(t, rwSegment.pendingFileSync.Load())
+}
+
+func TestReadWriteSegmentOpenTimestampIsCurrentTime(t *testing.T) {
+	rw, err := newReadWriteSegment(t.TempDir(), 0, 1024, 0, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, rw.Close()) })
+
+	before := time.Now()
+	ts := rw.OpenTimestamp()
+	assert.False(t, ts.Before(before))
+	assert.False(t, ts.After(time.Now()))
+}
+
+func TestReadWriteSegmentTruncateRejectsOffsetOutsideSegment(t *testing.T) {
+	rw, err := newReadWriteSegment(t.TempDir(), 10, 1024, 0, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, rw.Close()) })
+	require.NoError(t, rw.Append(10, []byte("entry-10")))
+
+	assert.ErrorIs(t, rw.Truncate(9), codec.ErrOffsetOutOfBounds)
+	assert.ErrorIs(t, rw.Truncate(11), codec.ErrOffsetOutOfBounds)
+	assert.EqualValues(t, 10, rw.LastOffset())
+}
+
+func TestReadWriteSegmentTruncateFailsOnCorruptedRecord(t *testing.T) {
+	rw, err := newReadWriteSegment(t.TempDir(), 0, 1024, 0, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, rw.Close()) })
+	require.NoError(t, rw.Append(0, []byte("entry-0")))
+	require.NoError(t, rw.Append(1, []byte("entry-1")))
+
+	rwSegment := rw.(*readWriteSegment)
+	payloadOffset := fileOffset(rwSegment.writingIdx, 0, 0) + rwSegment.c.codec.GetHeaderSize()
+	rwSegment.txnMappedFile[payloadOffset] ^= 0xff
+
+	assert.ErrorIs(t, rw.Truncate(0), codec.ErrDataCorrupted)
+	assert.EqualValues(t, 1, rw.LastOffset())
+}
+
 // hookedCodec runs a hook before each record read.
 type hookedCodec struct {
 	codec.Codec
@@ -628,4 +730,14 @@ func blockFirstCall() (hook func(), blocked <-chan struct{}, release func()) {
 		}
 	}
 	return hook, blockedCh, func() { releaseOnce.Do(func() { close(releaseCh) }) }
+}
+
+// readOnlyDir returns a directory in which no file can be created, and makes
+// it writable again for the cleanup of the test.
+func readOnlyDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	require.NoError(t, os.Chmod(dir, 0o500))
+	t.Cleanup(func() { assert.NoError(t, os.Chmod(dir, 0o700)) })
+	return dir
 }

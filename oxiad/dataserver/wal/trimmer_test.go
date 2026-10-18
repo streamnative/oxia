@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"os"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -385,4 +387,65 @@ func TestWalTrimUpToCommitOffset(t *testing.T) {
 			assert.NoError(t, w.Close())
 		})
 	}
+}
+
+func TestTrimmerDoTrimFailsWhenFirstEntryIsUnreadable(t *testing.T) {
+	w, tr, segments := newWalWithExpiredSegments(t)
+	c, err := newSegmentConfig(w.walPath, segments[0])
+	require.NoError(t, err)
+	require.NoError(t, os.Remove(c.txnPath))
+
+	err = tr.doTrim()
+	assert.ErrorContains(t, err, "failed to read from wal at offset 0")
+	assert.EqualValues(t, 0, w.FirstOffset())
+}
+
+func TestTrimmerDoTrimFailsWhenBinarySearchHitsUnreadableEntry(t *testing.T) {
+	w, tr, segments := newWalWithExpiredSegments(t)
+	// The first probe of the binary search over [0, 19]
+	med := int64(10)
+	i, _ := slices.BinarySearch(segments, med+1)
+	holding := segments[i-1]
+	require.NotEqual(t, segments[0], holding)
+	require.NotEqual(t, segments[len(segments)-1], holding)
+	c, err := newSegmentConfig(w.walPath, holding)
+	require.NoError(t, err)
+	require.NoError(t, os.Remove(c.txnPath))
+
+	err = tr.doTrim()
+	assert.ErrorContains(t, err, "failed to perform binary search")
+	assert.EqualValues(t, 0, w.FirstOffset())
+}
+
+// newWalWithExpiredSegments returns a wal holding the entries 0..19 across
+// several segments, all past their retention, and its trimmer, which runs
+// only when the test calls it.
+func newWalWithExpiredSegments(t *testing.T) (*wal, *trimmer, []int64) {
+	t.Helper()
+	options := &FactoryOptions{
+		BaseWalDir:  t.TempDir(),
+		Retention:   1 * time.Millisecond,
+		SegmentSize: 128,
+	}
+	clock := &time2.MockedClock{}
+	commitOffsetProvider := &mockedCommitOffsetProvider{}
+	commitOffsetProvider.commitOffset.Store(math.MaxInt64)
+
+	w, err := newWal(constant.DefaultNamespace, 1, options, commitOffsetProvider, clock, time.Hour)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, w.Close()) })
+	for i := int64(0); i < 20; i++ {
+		require.NoError(t, w.Append(&proto.LogEntry{
+			Offset:    i,
+			Value:     []byte(fmt.Sprintf("%d", i)),
+			Timestamp: uint64(i),
+		}))
+	}
+	clock.Set(1000)
+
+	impl := w.(*wal)
+	segments, err := listAllSegments(impl.walPath)
+	require.NoError(t, err)
+	require.Greater(t, len(segments), 3)
+	return impl, impl.trimmer.(*trimmer), segments
 }

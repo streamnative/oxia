@@ -22,8 +22,10 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/oxia-db/oxia/common/proto"
+	"github.com/oxia-db/oxia/oxiad/dataserver/wal/codec"
 )
 
 func TestReadOnlySegmentsGroupTrimSegments(t *testing.T) {
@@ -105,4 +107,105 @@ func TestReadOnlySegmentsGroupTrimSegmentsKeepsHeldSegmentReadable(t *testing.T)
 	assert.NoError(t, rc.Close())
 	assert.EqualValues(t, 0, rc.RefCnt())
 	assert.NoError(t, readOnlySegments.Close())
+}
+
+func TestReadOnlySegmentsGroupNewFailsWhenPathIsFile(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "wal")
+	require.NoError(t, os.WriteFile(p, nil, 0o644))
+
+	_, err := newReadOnlySegmentsGroup(p)
+	assert.ErrorContains(t, err, "failed to list files in wal directory")
+}
+
+func TestReadOnlySegmentsGroupGetFailsBeforeFirstSegment(t *testing.T) {
+	walBasePath, _ := writeClosedWal(t)
+	group, err := newReadOnlySegmentsGroup(walBasePath)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, group.Close()) })
+
+	_, err = group.Get(-1)
+	assert.ErrorIs(t, err, codec.ErrOffsetOutOfBounds)
+}
+
+func TestReadOnlySegmentsGroupGetEvictsExpiredSegments(t *testing.T) {
+	walBasePath, segments := writeClosedWal(t)
+	require.GreaterOrEqual(t, len(segments), 3)
+	group, err := newReadOnlySegmentsGroup(walBasePath)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, group.Close()) })
+
+	rc, err := group.Get(segments[0])
+	require.NoError(t, err)
+	rc.Get().(*readOnlySegment).openTimestamp = time.Now().Add(-2 * maxReadOnlySegmentsInCacheTime)
+	require.NoError(t, rc.Close())
+
+	rc, err = group.Get(segments[1])
+	require.NoError(t, err)
+	require.NoError(t, rc.Close())
+
+	openSegments := group.(*readOnlySegmentsGroup).openSegments
+	assert.Equal(t, []int64{segments[1]}, openSegments.Keys())
+}
+
+func TestReadOnlySegmentsGroupTrimSegmentsReportsUnremovableFiles(t *testing.T) {
+	walBasePath, segments := writeClosedWal(t)
+	require.GreaterOrEqual(t, len(segments), 3)
+	c, err := newSegmentConfig(walBasePath, segments[0])
+	require.NoError(t, err)
+	// A non-empty directory in place of the index file cannot be removed
+	require.NoError(t, os.Remove(c.idxPath))
+	require.NoError(t, os.MkdirAll(filepath.Join(c.idxPath, "child"), 0o755))
+
+	group, err := newReadOnlySegmentsGroup(walBasePath)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, group.Close()) })
+
+	err = group.TrimSegments(segments[1], func() error { return nil })
+	assert.Error(t, err)
+	assert.NoFileExists(t, c.txnPath)
+	_, err = group.Get(segments[0])
+	assert.ErrorIs(t, err, codec.ErrOffsetOutOfBounds)
+}
+
+func TestReadOnlySegmentsGroupPollHighestSegmentFailsWhenTxnFileIsMissing(t *testing.T) {
+	walBasePath, segments := writeClosedWal(t)
+	require.GreaterOrEqual(t, len(segments), 2)
+	highest := segments[len(segments)-2]
+	c, err := newSegmentConfig(walBasePath, highest)
+	require.NoError(t, err)
+
+	group, err := newReadOnlySegmentsGroup(walBasePath)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, group.Close()) })
+	require.NoError(t, os.Remove(c.txnPath))
+
+	_, err = group.PollHighestSegment()
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+// writeClosedWal writes a closed wal of several segments, and returns its path
+// and the base offsets of its segments.
+func writeClosedWal(t *testing.T) (string, []int64) {
+	t.Helper()
+	walFactory := NewWalFactory(&FactoryOptions{
+		BaseWalDir:  t.TempDir(),
+		Retention:   1 * time.Hour,
+		SegmentSize: 128,
+	})
+	w, err := walFactory.NewWal("test", 1, nil)
+	require.NoError(t, err)
+	for i := int64(0); i < 20; i++ {
+		require.NoError(t, w.Append(&proto.LogEntry{
+			Term:   1,
+			Offset: i,
+			Value:  fmt.Appendf(nil, "test-%d", i),
+		}))
+	}
+	walBasePath := w.(*wal).walPath
+	require.NoError(t, w.Close())
+	require.NoError(t, walFactory.Close())
+
+	segments, err := listAllSegments(walBasePath)
+	require.NoError(t, err)
+	return walBasePath, segments
 }

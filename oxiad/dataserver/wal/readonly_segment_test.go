@@ -15,12 +15,14 @@
 package wal
 
 import (
+	"encoding/binary"
 	"fmt"
 	"os"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/oxia-db/oxia/oxiad/dataserver/wal/codec"
 )
@@ -149,4 +151,139 @@ func TestRO_auto_recover_broken_index(t *testing.T) {
 	assert.ErrorIs(t, err, codec.ErrOffsetOutOfBounds)
 
 	assert.NoError(t, ro.Close())
+}
+
+func TestReadOnlySegmentNewFailsWhenTxnFileIsMissing(t *testing.T) {
+	_, err := newReadOnlySegment(t.TempDir(), 0)
+	assert.ErrorIs(t, err, os.ErrNotExist)
+	assert.ErrorContains(t, err, "failed to open segment txn file")
+}
+
+func TestReadOnlySegmentNewFailsWhenTxnFileIsEmpty(t *testing.T) {
+	dir := t.TempDir()
+	c, err := newSegmentConfig(dir, 0)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(c.txnPath, nil, 0o644))
+
+	_, err = newReadOnlySegment(dir, 0)
+	assert.ErrorContains(t, err, "failed to map segment txn file")
+}
+
+func TestReadOnlySegmentNewFailsWhenIndexIsUnreadable(t *testing.T) {
+	dir := t.TempDir()
+	c, _ := writeSegment(t, dir, 3)
+	require.NoError(t, os.Remove(c.idxPath))
+	require.NoError(t, os.Mkdir(c.idxPath, 0o755))
+
+	_, err := newReadOnlySegment(dir, 0)
+	assert.ErrorContains(t, err, "failed to decode segment index file")
+}
+
+func TestReadOnlySegmentNewFailsWhenIndexRebuildFindsCorruption(t *testing.T) {
+	dir := t.TempDir()
+	c, offsets := writeSegment(t, dir, 3)
+	require.NoError(t, os.Remove(c.idxPath))
+	corruptPayload(t, c, offsets[1])
+
+	_, err := newReadOnlySegment(dir, 0)
+	assert.ErrorIs(t, err, codec.ErrDataCorrupted)
+	assert.ErrorContains(t, err, "failed to rebuild segment index file")
+}
+
+// The index rebuilt from the txn file serves the reads even when it cannot be
+// written back: the next open rebuilds it again.
+func TestReadOnlySegmentNewServesRebuiltIndexWhenItCannotBeWritten(t *testing.T) {
+	dir := t.TempDir()
+	c, _ := writeSegment(t, dir, 3)
+	require.NoError(t, os.Remove(c.idxPath))
+	require.NoError(t, os.Chmod(dir, 0o500))
+	t.Cleanup(func() { assert.NoError(t, os.Chmod(dir, 0o700)) })
+
+	ro, err := newReadOnlySegment(dir, 0)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, ro.Close()) })
+
+	assert.NoFileExists(t, c.idxPath)
+	assert.EqualValues(t, 2, ro.LastOffset())
+	for i := int64(0); i < 3; i++ {
+		data, _, _, err := ro.Read(i)
+		assert.NoError(t, err)
+		assert.Equal(t, fmt.Sprintf("entry-%d", i), string(data))
+	}
+}
+
+func TestReadOnlySegmentNewFailsWhenLastRecordIsCorrupted(t *testing.T) {
+	dir := t.TempDir()
+	c, offsets := writeSegment(t, dir, 3)
+	corruptPayload(t, c, offsets[2])
+
+	_, err := newReadOnlySegment(dir, 0)
+	assert.ErrorIs(t, err, codec.ErrDataCorrupted)
+}
+
+func TestReadOnlySegmentReadReportsCorruptedRecord(t *testing.T) {
+	dir := t.TempDir()
+	c, offsets := writeSegment(t, dir, 3)
+	corruptPayload(t, c, offsets[1])
+
+	ro, err := newReadOnlySegment(dir, 0)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, ro.Close()) })
+
+	_, _, _, err = ro.Read(1)
+	assert.ErrorIs(t, err, codec.ErrDataCorrupted)
+	assert.ErrorContains(t, err, "entryOffset: 1")
+}
+
+func TestReadOnlySegmentReadReportsEmptyRecord(t *testing.T) {
+	dir := t.TempDir()
+	c, offsets := writeSegment(t, dir, 3)
+	// Point the index entry of offset 1 to the zeroed tail of the txn file
+	idx := make([]byte, 0, 12)
+	for _, o := range []uint32{offsets[0], 1000, offsets[2]} {
+		idx = binary.BigEndian.AppendUint32(idx, o)
+	}
+	require.NoError(t, c.codec.WriteIndex(c.idxPath, idx))
+
+	ro, err := newReadOnlySegment(dir, 0)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, ro.Close()) })
+
+	_, _, _, err = ro.Read(1)
+	assert.ErrorIs(t, err, codec.ErrEmptyPayload)
+}
+
+// writeSegment writes a closed segment of 1KB at base offset 0 holding the
+// entries "entry-<i>", and returns its config and the file offsets of the
+// records.
+func writeSegment(t *testing.T, dir string, entries int) (*segmentConfig, []uint32) {
+	t.Helper()
+	rw, err := newReadWriteSegment(dir, 0, 1024, 0, nil)
+	require.NoError(t, err)
+	for i := int64(0); i < int64(entries); i++ {
+		require.NoError(t, rw.Append(i, []byte(fmt.Sprintf("entry-%d", i))))
+	}
+	rwSegment := rw.(*readWriteSegment)
+	offsets := make([]uint32, entries)
+	for i := range offsets {
+		offsets[i] = fileOffset(rwSegment.writingIdx, 0, int64(i))
+	}
+	require.NoError(t, rw.Close())
+	return rwSegment.c, offsets
+}
+
+// corruptPayload flips the first payload byte of the record at the given file
+// offset of the txn file.
+func corruptPayload(t *testing.T, c *segmentConfig, recordOffset uint32) {
+	t.Helper()
+	f, err := os.OpenFile(c.txnPath, os.O_RDWR, 0)
+	require.NoError(t, err)
+	defer f.Close()
+	b := make([]byte, 1)
+	payloadOffset := int64(recordOffset + c.codec.GetHeaderSize())
+	_, err = f.ReadAt(b, payloadOffset)
+	require.NoError(t, err)
+	b[0] ^= 0xff
+	_, err = f.WriteAt(b, payloadOffset)
+	require.NoError(t, err)
 }

@@ -386,3 +386,15 @@ func TestV2_RecoveryWithNotEnoughBuf(t *testing.T) {
 	assert.EqualValues(t, wPayloadCrc, rLastCrc)
 	assert.EqualValues(t, entryOffset, 0)
 }
+
+func TestV2WriteIndexFailsWhenDirectoryIsMissing(t *testing.T) {
+	p := path.Join(t.TempDir(), "missing", "0"+v2.GetIdxExtension())
+
+	err := v2.WriteIndex(p, []byte{0, 0, 0, 1})
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestV2ReadIndexFailsWhenPathIsDirectory(t *testing.T) {
+	_, err := v2.ReadIndex(t.TempDir())
+	assert.ErrorContains(t, err, "failed to read segment index file")
+}
