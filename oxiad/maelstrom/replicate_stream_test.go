@@ -70,12 +70,14 @@ func receiveLines(t *testing.T, lines <-chan string, count int) []string {
 }
 
 // recordingReplicationServer is a follower that records the offsets of the
-// entries its Replicate handler receives, in order.
+// entries its Replicate handler receives, in order, and answers the truncate
+// requests with its hook.
 type recordingReplicationServer struct {
 	proto.UnimplementedOxiaLogReplicationServer
 
-	offsets chan int64
-	done    chan error
+	offsets  chan int64
+	done     chan error
+	truncate func(*proto.TruncateRequest) (*proto.TruncateResponse, error)
 }
 
 func newRecordingReplicationServer() *recordingReplicationServer {
@@ -94,6 +96,14 @@ func (r *recordingReplicationServer) Replicate(stream grpc.BidiStreamingServer[p
 		}
 		r.offsets <- req.Entry.Offset
 	}
+}
+
+func (r *recordingReplicationServer) Truncate(ctx context.Context, req *proto.TruncateRequest) (
+	*proto.TruncateResponse, error) {
+	if r.truncate == nil {
+		return r.UnimplementedOxiaLogReplicationServer.Truncate(ctx, req)
+	}
+	return r.truncate(req)
 }
 
 // deliverToFollower feeds Maelstrom messages to the follower side of the
