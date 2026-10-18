@@ -17,6 +17,7 @@ package oxia
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -27,7 +28,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Serves the records from memory.
+// Serves the records from memory. The gets and the puts fail with getErr and
+// putErr, if set.
 type recordsClient struct {
 	SyncClient
 
@@ -36,12 +38,17 @@ type recordsClient struct {
 	gets    atomic.Int64
 	// Runs once, in the next Get, after it read the record
 	afterNextRead func()
+	getErr        error
+	putErr        error
 }
 
 func (r *recordsClient) Put(_ context.Context, key string, value []byte, _ ...PutOption) (string, Version, error) {
 	r.Lock()
 	defer r.Unlock()
 
+	if r.putErr != nil {
+		return "", Version{}, r.putErr
+	}
 	r.records[key] = value
 	return key, Version{}, nil
 }
@@ -61,7 +68,12 @@ func (r *recordsClient) Get(_ context.Context, key string, _ ...GetOption) (stri
 	value, found := r.records[key]
 	afterRead := r.afterNextRead
 	r.afterNextRead = nil
+	getErr := r.getErr
 	r.Unlock()
+
+	if getErr != nil {
+		return "", nil, Version{}, getErr
+	}
 
 	if afterRead != nil {
 		afterRead()
@@ -274,4 +286,150 @@ func TestCache_LoadRacingOtherKeyNotification(t *testing.T) {
 	})
 	assertRecord(t, c, &v1)
 	assert.EqualValues(t, 1, client.gets.Load(), "the second Get read the server")
+}
+
+func TestNewCacheRequiresTheClientImplementation(t *testing.T) {
+	_, err := NewCache[string](&recordsClient{}, json.Marshal, json.Unmarshal)
+	assert.ErrorContains(t, err, "Invalid client implementation")
+}
+
+func TestNewCacheFailsWithoutNotifications(t *testing.T) {
+	errNotifications := errors.New("notifications not enabled")
+	client := newSyncClient(&neverCompleteAsyncClient{notificationsErr: errNotifications})
+
+	_, err := NewCache[string](client, json.Marshal, json.Unmarshal)
+	assert.ErrorIs(t, err, errNotifications)
+	assert.NoError(t, client.Close())
+}
+
+// The caches of a client share its subscription to the notifications.
+func TestNewCacheSharesTheNotifications(t *testing.T) {
+	notifications := &testNotifications{ch: make(chan *Notification)}
+	asyncClient := &neverCompleteAsyncClient{notifications: notifications}
+	client := newSyncClient(asyncClient)
+
+	_, err := NewCache[string](client, json.Marshal, json.Unmarshal)
+	require.NoError(t, err)
+	_, err = NewCache[int](client, json.Marshal, json.Unmarshal)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, asyncClient.notificationsRequests.Load())
+
+	assert.NoError(t, client.Close())
+	assert.True(t, notifications.closed.Load())
+}
+
+// The cache manager stops once the notifications end.
+func TestCacheManagerStopsWhenNotificationsEnd(t *testing.T) {
+	notifications := &testNotifications{ch: make(chan *Notification)}
+	cm, err := newCacheManager(newSyncClient(&neverCompleteAsyncClient{notifications: notifications}))
+	require.NoError(t, err)
+
+	close(notifications.ch)
+	assertGoroutinesEnd(t, "newCacheManager")
+	assert.NoError(t, cm.Close())
+}
+
+func TestCachePutFailsOnSerializationError(t *testing.T) {
+	errSerialize := errors.New("unsupported value")
+	client := &recordsClient{records: map[string][]byte{}}
+	c, err := newCacheImpl[string](client, func(any) ([]byte, error) { return nil, errSerialize }, json.Unmarshal)
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, c.Close()) }()
+
+	_, _, err = c.Put(context.Background(), "/key", "v1")
+	assert.ErrorIs(t, err, errSerialize)
+	assert.Empty(t, client.records)
+}
+
+// A key that does not exist is cached as such.
+func TestCacheGetCachesKeyNotFound(t *testing.T) {
+	client := &recordsClient{records: map[string][]byte{}}
+	c, err := newCacheImpl[string](client, json.Marshal, json.Unmarshal)
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, c.Close()) }()
+
+	_, _, err = c.Get(context.Background(), "/key")
+	assert.ErrorIs(t, err, ErrKeyNotFound)
+	c.valueCache.Wait()
+
+	_, _, err = c.Get(context.Background(), "/key")
+	assert.ErrorIs(t, err, ErrKeyNotFound)
+	assert.EqualValues(t, 1, client.gets.Load(), "the second Get read the server")
+}
+
+// A failed read is not cached.
+func TestCacheGetFailsOnReadError(t *testing.T) {
+	errRead := errors.New("read failed")
+	client := &recordsClient{records: map[string][]byte{}, getErr: errRead}
+	c, err := newCacheImpl[string](client, json.Marshal, json.Unmarshal)
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, c.Close()) }()
+
+	_, _, err = c.Get(context.Background(), "/key")
+	assert.ErrorIs(t, err, errRead)
+	c.valueCache.Wait()
+
+	_, _, err = c.Get(context.Background(), "/key")
+	assert.ErrorIs(t, err, errRead)
+	assert.EqualValues(t, 2, client.gets.Load())
+}
+
+func TestCacheReadModifyUpdateCreatesMissingRecord(t *testing.T) {
+	client := &recordsClient{records: map[string][]byte{}}
+	c, err := newCacheImpl[string](client, json.Marshal, json.Unmarshal)
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, c.Close()) }()
+
+	err = c.ReadModifyUpdate(context.Background(), "/key", func(v Optional[string]) (string, error) {
+		assert.True(t, v.Empty())
+		return "v1", nil
+	})
+	require.NoError(t, err)
+
+	client.Lock()
+	defer client.Unlock()
+	assert.JSONEq(t, `"v1"`, string(client.records["/key"]))
+}
+
+func TestCacheReadModifyUpdateFailsWithoutRetrying(t *testing.T) {
+	errFailure := errors.New("failure")
+	for _, test := range []struct {
+		name   string
+		getErr error
+		putErr error
+		modify func(Optional[string]) (string, error)
+	}{
+		{"read-error", errFailure, nil, func(Optional[string]) (string, error) { return "v1", nil }},
+		{"modify-error", nil, nil, func(Optional[string]) (string, error) { return "", errFailure }},
+		{"write-error", nil, errFailure, func(Optional[string]) (string, error) { return "v1", nil }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			client := &recordsClient{records: map[string][]byte{}, getErr: test.getErr, putErr: test.putErr}
+			c, err := newCacheImpl[string](client, json.Marshal, json.Unmarshal)
+			require.NoError(t, err)
+			defer func() { assert.NoError(t, c.Close()) }()
+
+			attempts := 0
+			err = c.ReadModifyUpdate(context.Background(), "/key", func(v Optional[string]) (string, error) {
+				attempts++
+				return test.modify(v)
+			})
+			assert.ErrorIs(t, err, errFailure)
+			assert.LessOrEqual(t, attempts, 1)
+			assert.EqualValues(t, 1, client.gets.Load())
+		})
+	}
+}
+
+// testNotifications delivers the notifications that the test sends on ch.
+type testNotifications struct {
+	ch     chan *Notification
+	closed atomic.Bool
+}
+
+func (n *testNotifications) Ch() <-chan *Notification { return n.ch }
+
+func (n *testNotifications) Close() error {
+	n.closed.Store(true)
+	return nil
 }

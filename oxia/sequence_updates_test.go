@@ -18,6 +18,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -39,25 +40,39 @@ func (*sequenceUpdatesTestShardManager) Get(string) int64 { return 0 }
 
 func (*sequenceUpdatesTestShardManager) Leader(int64) string { return "server-1" }
 
-// Fails the first Recv() with err, once the delay has elapsed.
+// Returns the highest sequence keys in turn, then fails the next Recv() with
+// err, once the delay has elapsed.
 type sequenceUpdatesTestStream struct {
 	grpc.ClientStream
+	keys  []string
 	delay time.Duration
 	err   error
 }
 
 func (s *sequenceUpdatesTestStream) Recv() (*proto.GetSequenceUpdatesResponse, error) {
+	if len(s.keys) > 0 {
+		key := s.keys[0]
+		s.keys = s.keys[1:]
+		return &proto.GetSequenceUpdatesResponse{HighestSequenceKey: key}, nil
+	}
 	time.Sleep(s.delay)
 	return nil, s.err
 }
 
+// Returns the stream, or fails the requests with err, if set.
 type sequenceUpdatesTestRpcProvider struct {
 	internal.RpcProvider
-	stream *sequenceUpdatesTestStream
+	stream   *sequenceUpdatesTestStream
+	err      error
+	requests atomic.Int64
 }
 
 func (p *sequenceUpdatesTestRpcProvider) GetSequenceUpdates(context.Context, string,
 	*proto.GetSequenceUpdatesRequest) (proto.OxiaClient_GetSequenceUpdatesClient, error) {
+	p.requests.Add(1)
+	if p.err != nil {
+		return nil, p.err
+	}
 	return p.stream, nil
 }
 
@@ -101,4 +116,49 @@ func TestSequenceUpdatesAcceptedStreamResetsBackoff(t *testing.T) {
 
 	assert.ErrorIs(t, su.getSequenceUpdates(), io.EOF)
 	assert.Equal(t, 1, bo.resets)
+}
+
+func TestSequenceUpdatesGetSequenceUpdatesFailsOnRequestError(t *testing.T) {
+	su, _ := newTestSequenceUpdates(nil)
+	su.rpcProvider = &sequenceUpdatesTestRpcProvider{err: constant.ErrNodeIsNotLeader}
+
+	assert.ErrorIs(t, su.getSequenceUpdates(), constant.ErrNodeIsNotLeader)
+}
+
+// The first response is empty when no sequence key exists yet: it is not an
+// update.
+func TestSequenceUpdatesGetSequenceUpdatesSkipsEmptyKey(t *testing.T) {
+	su, _ := newTestSequenceUpdates(&sequenceUpdatesTestStream{keys: []string{"", "a-1", "a-2"}, err: io.EOF})
+
+	done := make(chan error, 1)
+	go func() { done <- su.getSequenceUpdates() }()
+
+	assert.Equal(t, "a-1", <-su.ch)
+	assert.Equal(t, "a-2", <-su.ch)
+	assert.ErrorIs(t, <-done, io.EOF)
+}
+
+// An update that nobody receives does not keep the subscription from ending.
+func TestSequenceUpdatesGetSequenceUpdatesEndsWhenContextIsDone(t *testing.T) {
+	su, _ := newTestSequenceUpdates(&sequenceUpdatesTestStream{keys: []string{"a-1"}, err: io.EOF})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	su.ctx = ctx
+
+	assert.ErrorIs(t, su.getSequenceUpdates(), context.Canceled)
+}
+
+// The failed subscriptions are retried, until the retries end, and the
+// channel is closed then.
+func TestSequenceUpdatesGetSequenceUpdatesWithRetries(t *testing.T) {
+	su, _ := newTestSequenceUpdates(nil)
+	provider := &sequenceUpdatesTestRpcProvider{err: constant.ErrNodeIsNotLeader}
+	su.rpcProvider = provider
+	su.backoff = backoff.WithMaxRetries(&backoff.ZeroBackOff{}, 2)
+
+	su.getSequenceUpdatesWithRetries()
+
+	_, open := <-su.ch
+	assert.False(t, open)
+	assert.EqualValues(t, 3, provider.requests.Load())
 }
