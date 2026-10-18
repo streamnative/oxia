@@ -11,9 +11,11 @@ a robust, scalable metadata store and coordination system designed for large-sca
 <p align="center">
   <a href="https://github.com/oxia-db/oxia/releases"><img src="https://img.shields.io/github/v/release/oxia-db/oxia" alt="Latest Release"></a>
   <a href="https://github.com/oxia-db/oxia/actions/workflows/ci-build-test.yaml/badge.svg"><img src="https://github.com/oxia-db/oxia/actions/workflows/ci-build-test.yaml/badge.svg" alt="CI"></a>
+  <a href="https://codecov.io/gh/oxia-db/oxia"><img src="https://codecov.io/gh/oxia-db/oxia/branch/main/graph/badge.svg" alt="Coverage"></a>
 <a href="https://app.fossa.com/projects/git%2Bgithub.com%2Foxia-db%2Foxia?ref=badge_shield" alt="FOSSA Status"><img src="https://app.fossa.com/api/projects/git%2Bgithub.com%2Foxia-db%2Foxia.svg?type=shield"/></a>
   <a href="https://github.com/oxia-db/oxia/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-white.svg" alt="License"></a>
   <a href="https://github.com/oxia-db/oxia/discussions/new/choose"><img src="https://img.shields.io/badge/Github-Discussion-blue.svg?logo=refinedgithub" alt="Github Discussion"></a>
+  <a href="https://slack.cncf.io"><img src="https://img.shields.io/badge/Slack-%23oxia-4A154B.svg?logo=slack" alt="Slack #oxia"></a>
 </p>
 
 <br><br><br>
@@ -39,6 +41,8 @@ Feel free to open an [issue](https://github.com/oxia-db/oxia/issues/new) or star
 ### Community
 
 Oxia follows the [CNCF Code of Conduct](CODE_OF_CONDUCT.md).
+
+Join the discussion in [#oxia](https://cloud-native.slack.com/archives/C09KFHURYF8) on the CNCF Slack. If you are not a member yet, get an invite at [slack.cncf.io](https://slack.cncf.io).
 
 - [Contributing](CONTRIBUTING.md): how to report issues and submit changes
 - [Governance](GOVERNANCE.md): how the project is run and how decisions are made
