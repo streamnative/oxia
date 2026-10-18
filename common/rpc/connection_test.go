@@ -26,6 +26,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"github.com/oxia-db/oxia/common/auth"
 )
 
 func TestConnectionReconnectsToNewAddressOfRestartedServer(t *testing.T) {
@@ -76,6 +78,13 @@ func TestConnectionDialsNameOfTLSTarget(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		require.Fail(t, "the name of the target was never dialed")
 	}
+}
+
+func TestConnectionReturnsClientError(t *testing.T) {
+	// Credentials that require TLS can't go over a plaintext connection
+	_, err := newConnection("localhost:1", nil, auth.NewTokenAuthenticationWithToken("token", true), nil,
+		func(string) {})
+	assert.ErrorContains(t, err, "error connecting to localhost:1")
 }
 
 func checkTestConnection(conn *connection) error {

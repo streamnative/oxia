@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -28,6 +29,8 @@ import (
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	grpcstatus "google.golang.org/grpc/status"
+
+	"github.com/oxia-db/oxia/common/auth"
 )
 
 func TestClientPool_RemovesConnectionAfterHealthFailure(t *testing.T) {
@@ -159,6 +162,81 @@ func TestClientPool_KeepsConnectionWhenHealthCheckIsUnsupported(t *testing.T) {
 		defer pool.RUnlock()
 		return pool.connections[target] != conn
 	}, 100*time.Millisecond, 10*time.Millisecond)
+}
+
+func TestClientPoolGetRpcReturnsConnectionError(t *testing.T) {
+	// Credentials that require TLS can't go over the plaintext connection to the target
+	pool := NewClientPool(nil, auth.NewTokenAuthenticationWithToken("token", true))
+	defer pool.Close()
+
+	const target = "localhost:1"
+	_, err := pool.GetClientRpc(target)
+	assert.ErrorContains(t, err, "require transport level security")
+	_, err = pool.GetHealthRpc(target)
+	assert.ErrorContains(t, err, "require transport level security")
+	_, err = pool.GetCoordinationRpc(target)
+	assert.ErrorContains(t, err, "require transport level security")
+	_, err = pool.GetReplicationRpc(target)
+	assert.ErrorContains(t, err, "require transport level security")
+	_, err = pool.GetAminRpc(target)
+	assert.ErrorContains(t, err, "require transport level security")
+
+	assert.Empty(t, pool.(*clientPool).connections)
+}
+
+func TestClientPoolGetRpcReusesConnection(t *testing.T) {
+	pool := NewClientPool(nil, nil).(*clientPool)
+	defer pool.Close()
+
+	const target = "localhost:1"
+	_, err := pool.GetAminRpc(target)
+	require.NoError(t, err)
+	_, err = pool.GetReplicationRpc(target)
+	require.NoError(t, err)
+	assert.Len(t, pool.connections, 1)
+}
+
+func TestClientPoolCloseIgnoresConnectionCloseError(t *testing.T) {
+	pool := NewClientPool(nil, nil).(*clientPool)
+
+	const target = "localhost:1"
+	_, err := pool.GetClientRpc(target)
+	require.NoError(t, err)
+
+	// The gRPC connection is already closed, so closing it again fails
+	require.NoError(t, pool.connections[target].ClientConn.Close())
+	assert.NoError(t, pool.Close())
+}
+
+func TestClientPoolRemoveConnectionIgnoresConnectionCloseError(t *testing.T) {
+	pool := NewClientPool(nil, nil).(*clientPool)
+	defer pool.Close()
+
+	const target = "localhost:1"
+	_, err := pool.GetClientRpc(target)
+	require.NoError(t, err)
+
+	require.NoError(t, pool.connections[target].ClientConn.Close())
+	pool.removeConnection(target)
+	assert.Empty(t, pool.connections)
+
+	// The next call opens a new connection
+	_, err = pool.GetClientRpc(target)
+	require.NoError(t, err)
+	assert.Len(t, pool.connections, 1)
+}
+
+func TestClientPoolRemoveConnectionKeepsOtherTargets(t *testing.T) {
+	pool := NewClientPool(nil, nil).(*clientPool)
+	defer pool.Close()
+
+	const target = "localhost:1"
+	_, err := pool.GetClientRpc(target)
+	require.NoError(t, err)
+	cnx := pool.connections[target]
+
+	pool.removeConnection("localhost:2")
+	assert.Same(t, cnx, pool.connections[target])
 }
 
 func newTestConnectionWithHealthConfig(
