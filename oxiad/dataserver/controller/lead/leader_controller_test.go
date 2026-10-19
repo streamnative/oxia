@@ -30,6 +30,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"google.golang.org/protobuf/encoding/protojson"
 	pb "google.golang.org/protobuf/proto"
 
@@ -47,6 +49,7 @@ import (
 
 	"github.com/oxia-db/oxia/common/concurrent"
 	"github.com/oxia-db/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/metric"
 	time2 "github.com/oxia-db/oxia/common/time"
 
 	"github.com/oxia-db/oxia/common/proto"
@@ -3532,4 +3535,81 @@ func TestLeaderController_BecomeLeaderWithFollowerSeededFromSnapshot(t *testing.
 			assert.NoError(t, walFactory.Close())
 		})
 	}
+}
+
+func TestLeaderControllerReportsOffsetGaugesWhileLeading(t *testing.T) {
+	previous := metric.GetMeter()
+	reader := sdkmetric.NewManualReader()
+	metric.SetMeter(sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)).Meter("test"))
+	defer metric.SetMeter(previous)
+
+	var shard int64 = 1
+	kvFactory, err := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	lc, err := NewLeaderController(&option.StorageOptions{}, constant.DefaultNamespace, shard,
+		rpc.NewMockRpcClient(), newTestWalFactory(t), kvFactory, nil)
+	require.NoError(t, err)
+	walLastOffset := lc.(*leaderController).wal.LastOffset
+
+	becomeLeader := func(term int64) {
+		_, err := lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: term})
+		require.NoError(t, err)
+		_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
+			Shard: shard, Term: term, ReplicationFactor: 1})
+		require.NoError(t, err)
+	}
+
+	assertReportsWalLastOffset := func() {
+		assert.Eventually(t, func() bool {
+			head, okHead := collectInt64Gauge(t, reader, "oxia_server_leader_head_offset")
+			commit, okCommit := collectInt64Gauge(t, reader, "oxia_server_leader_commit_offset")
+			return okHead && okCommit && head == walLastOffset() && commit == head
+		}, 10*time.Second, 10*time.Millisecond)
+	}
+
+	becomeLeader(1)
+	_, err = lc.WriteBlock(context.Background(), &proto.WriteRequest{
+		Shard: &shard,
+		Puts:  []*proto.PutRequest{{Key: "a", Value: []byte("a")}, {Key: "b", Value: []byte("b")}},
+	})
+	require.NoError(t, err)
+	assertReportsWalLastOffset()
+
+	// A fenced node does not lead the shard: it doesn't report the offsets
+	_, err = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 2})
+	require.NoError(t, err)
+	_, ok := collectInt64Gauge(t, reader, "oxia_server_leader_head_offset")
+	assert.False(t, ok)
+	_, ok = collectInt64Gauge(t, reader, "oxia_server_leader_commit_offset")
+	assert.False(t, ok)
+
+	becomeLeader(3)
+	assertReportsWalLastOffset()
+
+	require.NoError(t, lc.Close())
+	_, ok = collectInt64Gauge(t, reader, "oxia_server_leader_head_offset")
+	assert.False(t, ok)
+	_, ok = collectInt64Gauge(t, reader, "oxia_server_leader_commit_offset")
+	assert.False(t, ok)
+}
+
+// collectInt64Gauge returns the value of the int64 gauge with the given name,
+// and whether the reader collected it.
+func collectInt64Gauge(t *testing.T, reader sdkmetric.Reader, name string) (int64, bool) {
+	t.Helper()
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(context.Background(), &rm))
+	for _, scope := range rm.ScopeMetrics {
+		for _, m := range scope.Metrics {
+			if m.Name != name {
+				continue
+			}
+			gauge, ok := m.Data.(metricdata.Gauge[int64])
+			if !ok || len(gauge.DataPoints) == 0 {
+				return 0, false
+			}
+			return gauge.DataPoints[0].Value, true
+		}
+	}
+	return 0, false
 }
