@@ -466,8 +466,6 @@ func (fc *followerController) Truncate(req *proto.TruncateRequest) (*proto.Trunc
 func (fc *followerController) stateApplier() {
 	bo := commontime.NewBackOff(fc.ctx)
 	_ = backoff.RetryNotify(func() error {
-		// Apply before waiting: a retry has to apply the entries that the
-		// failed pass was signalled for, without waiting for the next signal
 		for {
 			maxInclusive := fc.advertisedCommitOffset.Load()
 			if err := fc.applyCommittedEntries(maxInclusive); err != nil {
