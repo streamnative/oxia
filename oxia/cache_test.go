@@ -17,9 +17,11 @@ package oxia
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -108,9 +110,6 @@ func loadRacing(t *testing.T, client *recordsClient, change func(c *cacheImpl[st
 	change(c)
 	close(release)
 	<-loaded
-
-	// Apply the Set that the load buffered in ristretto, if any
-	c.valueCache.Wait()
 	return c
 }
 
@@ -183,6 +182,84 @@ func TestCache_LoadRacingWrite(t *testing.T) {
 		})
 		assertRecord(t, c, nil)
 	})
+}
+
+// A Get after a Put or a Delete through the cache returns the written record,
+// also when a Get loaded the key just before: ristretto buffers the Set of the
+// load, which must not be applied after the eviction of the write.
+func TestCacheGetAfterWrite(t *testing.T) {
+	const keys = 2_000
+	v1, v2 := "v1", "v2"
+
+	t.Run("put", func(t *testing.T) {
+		client := &recordsClient{records: map[string][]byte{}}
+		c, err := newCacheImpl[string](client, json.Marshal, json.Unmarshal)
+		require.NoError(t, err)
+		defer c.Close()
+
+		for i := range keys {
+			key := fmt.Sprintf("/key-%d", i)
+			if i%2 == 0 {
+				client.write(key, &v1)
+			}
+			_, _, _ = c.Get(context.Background(), key)
+			_, _, err := c.Put(context.Background(), key, v2)
+			require.NoError(t, err)
+
+			value, _, err := c.Get(context.Background(), key)
+			require.NoError(t, err, key)
+			require.Equal(t, v2, value, key)
+		}
+	})
+
+	t.Run("delete", func(t *testing.T) {
+		client := &recordsClient{records: map[string][]byte{}}
+		c, err := newCacheImpl[string](client, json.Marshal, json.Unmarshal)
+		require.NoError(t, err)
+		defer c.Close()
+
+		for i := range keys {
+			key := fmt.Sprintf("/key-%d", i)
+			client.write(key, &v1)
+			_, _, err := c.Get(context.Background(), key)
+			require.NoError(t, err)
+			require.NoError(t, c.Delete(context.Background(), key))
+
+			_, _, err = c.Get(context.Background(), key)
+			require.ErrorIs(t, err, ErrKeyNotFound, key)
+		}
+	})
+}
+
+// A Get that loads a key while the cache closes returns.
+func TestCacheGetLoadingWhileClosing(t *testing.T) {
+	v1 := "v1"
+	client := &recordsClient{records: map[string][]byte{}}
+	client.write("/key", &v1)
+	c, err := newCacheImpl[string](client, json.Marshal, json.Unmarshal)
+	require.NoError(t, err)
+
+	read := make(chan struct{})
+	release := make(chan struct{})
+	client.afterNextRead = func() {
+		close(read)
+		<-release
+	}
+	loaded := make(chan error, 1)
+	go func() {
+		_, _, err := c.Get(context.Background(), "/key")
+		loaded <- err
+	}()
+
+	<-read
+	require.NoError(t, c.Close())
+	close(release)
+	select {
+	case err := <-loaded:
+		assert.NoError(t, err)
+	case <-time.After(10 * time.Second):
+		assert.Fail(t, "the Get did not return")
+	}
 }
 
 // The notification of another key must not keep a load from caching the record.

@@ -256,8 +256,8 @@ func (c *cacheImpl[Value]) handleNotification(n *Notification) {
 }
 
 // The eviction and the Set of a load that raced it are ordered by the loads
-// mutex: either the load sees the eviction and skips its Set, or ristretto
-// applies the Del after the Set, as both go through its buffer in order.
+// mutex: either the load sees the eviction and skips its Set, or the Set is
+// applied before the eviction, which removes it.
 func (c *cacheImpl[Value]) evict(key string) {
 	c.loadsMutex.Lock()
 	defer c.loadsMutex.Unlock()
@@ -317,11 +317,18 @@ func (c *cacheImpl[Value]) load(ctx context.Context, key string) (value Value, v
 	// Cache the record only if the key was not evicted since the load started,
 	// as the eviction can be of a change applied after the server read it
 	set := func(cr cachedResult[Value], cost int64, ttl time.Duration) {
+		// Close waits for the Set: Wait would block forever on a cache that
+		// stopped applying its buffer
+		c.RLock()
+		defer c.RUnlock()
 		c.loadsMutex.Lock()
 		defer c.loadsMutex.Unlock()
 
 		if kl.evictions == evictions {
 			c.valueCache.SetWithTTL(key, cr, cost, ttl)
+			// Apply the Set now: an eviction removes the records in the
+			// store, not the buffered ones
+			c.valueCache.Wait()
 		}
 	}
 
