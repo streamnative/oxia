@@ -2828,6 +2828,8 @@ type countingWalFactory struct {
 	wal.Factory
 	sync.Mutex
 	reads map[int64]int
+	// failedReaders is the number of the next readers that fail to open
+	failedReaders atomic.Int32
 }
 
 func (f *countingWalFactory) NewWal(namespace string, shard int64, provider wal.CommitOffsetProvider) (wal.Wal, error) {
@@ -2851,6 +2853,9 @@ type countingWal struct {
 
 // NewReader is only used by the follower state applier.
 func (w *countingWal) NewReader(after int64) (wal.Reader, error) {
+	if w.factory.failedReaders.Add(-1) >= 0 {
+		return nil, errors.New("failed to open the reader")
+	}
 	r, err := w.Wal.NewReader(after)
 	if err != nil {
 		return nil, err
@@ -2976,6 +2981,47 @@ func TestFollower_ReadsEachCommittedEntryOnce(t *testing.T) {
 	dbRes, err := fc.(*followerController).db.Get(&proto.GetRequest{Key: "k", IncludeValue: true})
 	assert.NoError(t, err)
 	assert.Equal(t, []byte(fmt.Sprintf("v%d", entries-1)), dbRes.Value)
+
+	assert.NoError(t, fc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
+// The state applier retries an apply that failed, without waiting for the
+// leader to advertise a new commit offset.
+func TestFollowerStateApplierRetriesFailedApply(t *testing.T) {
+	fc, kvFactory, walFactory := newCountingFollower(t)
+
+	// An entry appended by a previous stream, which the state applier reads
+	// from the WAL
+	stream := rpc.NewMockServerReplicateStream()
+	appendDone := make(chan error, 1)
+	go func() {
+		appendDone <- fc.AppendEntries(stream)
+	}()
+	stream.AddRequest(createAddRequest(t, 1, 0, map[string]string{"k": "v"}, wal.InvalidOffset))
+	assert.EqualValues(t, 0, stream.GetResponse().Offset)
+	close(stream.Requests)
+	assert.NoError(t, <-appendDone)
+
+	// The leader commits it once, and the first read of the WAL fails
+	walFactory.failedReaders.Store(1)
+	stream = rpc.NewMockServerReplicateStream()
+	go func() {
+		// cancelled due to fc.Close() below
+		assert.ErrorIs(t, fc.AppendEntries(stream), context.Canceled)
+		stream.Cancel()
+	}()
+	stream.AddRequest(&proto.Append{Term: 1, CommitOffset: 0})
+	assert.Eventually(t, func() bool {
+		return fc.CommitOffset() == 0
+	}, 10*time.Second, 10*time.Millisecond)
+	// The failure was injected
+	assert.Less(t, walFactory.failedReaders.Load(), int32(0))
+
+	dbRes, err := fc.(*followerController).db.Get(&proto.GetRequest{Key: "k", IncludeValue: true})
+	assert.NoError(t, err)
+	assert.Equal(t, []byte("v"), dbRes.Value)
 
 	assert.NoError(t, fc.Close())
 	assert.NoError(t, kvFactory.Close())

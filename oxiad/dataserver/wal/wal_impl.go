@@ -301,13 +301,15 @@ func (t *wal) readFromSegment(index int64) (val []byte, previousCrc uint32, entr
 }
 
 // openCurrentSegment opens the read-write segment that becomes the current
-// one. Must be called while holding the mutex, or before the wal gets shared.
-func (t *wal) openCurrentSegment(baseOffset int64, lastCrc uint32) (err error) {
-	if t.currentSegment, err = newReadWriteSegment(t.walPath, baseOffset, t.segmentSize, lastCrc,
-		t.commitOffsetProvider); err != nil {
+// one. On failure, the previous current segment is kept, so that the wal can
+// still be closed. Must be called while holding the mutex, or before the wal
+// gets shared.
+func (t *wal) openCurrentSegment(baseOffset int64, lastCrc uint32) error {
+	current, err := newReadWriteSegment(t.walPath, baseOffset, t.segmentSize, lastCrc, t.commitOffsetProvider)
+	if err != nil {
 		return err
 	}
-	current := t.currentSegment
+	t.currentSegment = current
 	t.publishedCurrentSegment.Store(&current)
 	return nil
 }

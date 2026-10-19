@@ -195,24 +195,6 @@ func NewLeaderController(storageOptions *option.StorageOptions, namespace string
 		followerAckOffsetGauges: map[string]metric.Gauge{},
 	}
 
-	lc.headOffsetGauge = metric.NewGauge("oxia_server_leader_head_offset",
-		"The current head offset", "offset", labels, func() int64 {
-			qat := lc.quorumAckTracker
-			if qat != nil {
-				return qat.HeadOffset()
-			}
-
-			return -1
-		})
-	lc.commitOffsetGauge = metric.NewGauge("oxia_server_leader_commit_offset",
-		"The current commit offset", "offset", labels, func() int64 {
-			qat := lc.quorumAckTracker
-			if qat != nil {
-				return qat.CommitOffset()
-			}
-
-			return -1
-		})
 	lc.checksumGauge = metric.NewSyncGauge("oxia_dataserver_db_checksum",
 		"The current DB checksum value", "count", labels)
 	lc.walChecksumGauge = metric.NewSyncGauge("oxia_dataserver_wal_checksum",
@@ -378,8 +360,7 @@ func (lc *leaderController) newTerm(req *proto.NewTermRequest) (*proto.NewTermRe
 	// not inherit a stale write-freeze from a previous (aborted) cutover.
 	lc.frozen.Store(false)
 
-	lc.headOffsetGauge.Unregister()
-	lc.commitOffsetGauge.Unregister()
+	lc.unregisterOffsetGauges()
 
 	if lc.quorumAckTracker != nil {
 		// Closing the tracker waits for the callback that is running, which
@@ -475,6 +456,7 @@ func (lc *leaderController) becomeLeader(ctx context.Context, req *proto.BecomeL
 	// followers seeded from the same snapshot drop them as duplicates.
 	headOffset := max(lc.leaderElectionHeadEntryId.Offset, leaderCommitOffset)
 	lc.quorumAckTracker = NewQuorumAckTracker(req.GetReplicationFactor(), headOffset, leaderCommitOffset)
+	lc.registerOffsetGauges(lc.quorumAckTracker)
 	lc.termCtx, lc.termCancel = context.WithCancel(lc.ctx)
 	lc.sessionManager = NewSessionManager(lc.ctx, lc.namespace, lc.shardId, lc)
 
@@ -1584,6 +1566,27 @@ func (lc *leaderController) GetNotifications(ctx context.Context, req *proto.Not
 	lc.RUnlock()
 }
 
+// registerOffsetGauges reports the offsets of the tracker of the term being
+// led. The gauges capture the tracker, which newTerm replaces.
+func (lc *leaderController) registerOffsetGauges(tracker QuorumAckTracker) {
+	lc.unregisterOffsetGauges()
+	labels := metric.LabelsForShard(lc.namespace, lc.shardId)
+	lc.headOffsetGauge = metric.NewGauge("oxia_server_leader_head_offset",
+		"The current head offset", "offset", labels, tracker.HeadOffset)
+	lc.commitOffsetGauge = metric.NewGauge("oxia_server_leader_commit_offset",
+		"The current commit offset", "offset", labels, tracker.CommitOffset)
+}
+
+func (lc *leaderController) unregisterOffsetGauges() {
+	if lc.headOffsetGauge == nil {
+		return
+	}
+	lc.headOffsetGauge.Unregister()
+	lc.commitOffsetGauge.Unregister()
+	lc.headOffsetGauge = nil
+	lc.commitOffsetGauge = nil
+}
+
 func (lc *leaderController) Close() error {
 	lc.Lock()
 	err := lc.close()
@@ -1619,6 +1622,7 @@ func (lc *leaderController) close() error {
 	}
 	lc.observers = nil
 
+	lc.unregisterOffsetGauges()
 	for _, g := range lc.followerAckOffsetGauges {
 		g.Unregister()
 	}
