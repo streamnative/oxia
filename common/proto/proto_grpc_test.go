@@ -16,6 +16,7 @@ package proto
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 
 	"github.com/planetscale/vtprotobuf/codec/grpc"
@@ -154,6 +155,20 @@ func TestVtprotoCodec_InvalidMessage(t *testing.T) {
 	assert.Error(t, codec.Unmarshal(mem.BufferSlice{}, struct{}{}))
 }
 
+func TestVtprotoCodecMarshalReturnsSerializationError(t *testing.T) {
+	codec := vtprotoCodec{}
+
+	// Below and above the buffer-pooling threshold
+	for _, size := range []int{16, 64 * 1024} {
+		_, err := codec.Marshal(&failingMarshaler{size: size})
+		assert.ErrorIs(t, err, errTestMarshal)
+	}
+
+	// A message without the vtproto methods: proto3 strings must be valid UTF-8
+	_, err := codec.Marshal(&grpc_health_v1.HealthCheckRequest{Service: "\xff"})
+	assert.Error(t, err)
+}
+
 func BenchmarkCodecUnmarshal(b *testing.B) {
 	entry := &LogEntry{Term: 1, Offset: 1, Value: make([]byte, 4096)}
 	raw, err := entry.MarshalVT()
@@ -212,4 +227,23 @@ func BenchmarkCodecMarshal(b *testing.B) {
 			data.Free()
 		}
 	})
+}
+
+var errTestMarshal = errors.New("marshal failed")
+
+// failingMarshaler is a vtproto message whose serialization fails.
+type failingMarshaler struct {
+	size int
+}
+
+func (f *failingMarshaler) SizeVT() int {
+	return f.size
+}
+
+func (*failingMarshaler) MarshalToSizedBufferVT([]byte) (int, error) {
+	return 0, errTestMarshal
+}
+
+func (*failingMarshaler) UnmarshalVT([]byte) error {
+	return nil
 }

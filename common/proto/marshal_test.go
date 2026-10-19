@@ -71,3 +71,10 @@ func TestMarshalToBuffer(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, data)
 }
+
+func TestMarshalToBufferReturnsSerializationError(t *testing.T) {
+	buf, data, err := MarshalToBuffer(nil, &failingMarshaler{size: 8})
+	require.ErrorIs(t, err, errTestMarshal)
+	assert.Nil(t, data)
+	assert.Len(t, buf, 8)
+}

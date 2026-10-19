@@ -20,6 +20,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -43,6 +45,35 @@ func TestWithCoordinatorLeaderHint(t *testing.T) {
 	assert.ErrorIs(t, oxiaErr, ErrNodeIsNotLeader)
 	assert.True(t, ok)
 	assert.Equal(t, "coordinator:6651", leader)
+}
+
+func TestErrorMetadataGetLeaderHintInvalidShard(t *testing.T) {
+	metadata := ErrorMetadata{ErrorMetadataLeader: "leader:6648", ErrorMetadataShard: "not-a-number"}
+	shard, leader, ok := metadata.GetLeaderHint()
+
+	assert.False(t, ok)
+	assert.Zero(t, shard)
+	assert.Empty(t, leader)
+}
+
+func TestWithLeaderHintEmptyLeader(t *testing.T) {
+	err := IntoGrpcStatusError(ErrNodeIsNotLeader, WithLeaderHint(1, ""))
+	oxiaErr, metadata := FromGrpcError(err)
+	_, _, ok := metadata.GetLeaderHint()
+
+	assert.ErrorIs(t, oxiaErr, ErrNodeIsNotLeader)
+	assert.Empty(t, metadata)
+	assert.False(t, ok)
+}
+
+func TestWithCoordinatorLeaderHintEmptyLeader(t *testing.T) {
+	err := IntoGrpcStatusError(ErrNodeIsNotLeader, WithCoordinatorLeaderHint(""))
+	oxiaErr, metadata := FromGrpcError(err)
+	_, ok := metadata.GetCoordinatorLeaderHint()
+
+	assert.ErrorIs(t, oxiaErr, ErrNodeIsNotLeader)
+	assert.Empty(t, metadata)
+	assert.False(t, ok)
 }
 
 func TestIntoGrpcStatusError(t *testing.T) {
@@ -118,6 +149,24 @@ func TestIntoGrpcStatusAddsErrorInfoToGrpcStatusError(t *testing.T) {
 	assert.Equal(t, "leader:6648", leader)
 }
 
+// A status with code OK cannot carry details, and gRPC maps it to a nil error.
+func TestIntoGrpcStatusErrorOkStatus(t *testing.T) {
+	assert.NoError(t, IntoGrpcStatusError(&okStatusError{}))
+}
+
+func TestFromGrpcErrorIgnoresForeignErrorInfo(t *testing.T) {
+	st, err := status.New(codes.Aborted, ErrNodeIsNotLeader.Error()).WithDetails(&errdetails.ErrorInfo{
+		Reason: ReasonNodeIsNotLeader,
+		Domain: "other.domain",
+	})
+	require.NoError(t, err)
+
+	oxiaErr, metadata := FromGrpcError(st.Err())
+	assert.NotErrorIs(t, oxiaErr, ErrNodeIsNotLeader)
+	assert.Equal(t, codes.Aborted, status.Code(oxiaErr))
+	assert.Nil(t, metadata)
+}
+
 func TestIsRetryable(t *testing.T) {
 	assert.True(t, IsRetryable(io.EOF))
 	assert.True(t, IsRetryable(ErrAborted))
@@ -131,3 +180,10 @@ func TestIsRetryable(t *testing.T) {
 	assert.False(t, IsRetryable(errors.New("other")))
 	assert.False(t, IsRetryable(IntoGrpcStatusError(ErrResourceUnavailable)))
 }
+
+// okStatusError is an error that reports an OK gRPC status.
+type okStatusError struct{}
+
+func (*okStatusError) Error() string { return "ok" }
+
+func (*okStatusError) GRPCStatus() *status.Status { return status.New(codes.OK, "ok") }
