@@ -119,7 +119,8 @@ func exec(*cobra.Command, []string) error {
 				return err
 			}
 		} else {
-			for _, writes := range lev.GetRequests().Writes {
+			// A control request has no write requests
+			for _, writes := range lev.GetRequests().GetWrites() {
 				printPuts(le, writes.Puts)
 				printDeletes(le, writes.Deletes)
 				printDeleteRanges(le, writes.DeleteRanges)

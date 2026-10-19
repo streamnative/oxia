@@ -81,7 +81,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 
 	for gr := range client.RangeScan(context.Background(), Config.keyMin, Config.keyMax, options...) {
 		if gr.Err != nil {
-			return err
+			return gr.Err
 		}
 
 		common.WriteOutput(cmd.OutOrStdout(), gr.Key)
