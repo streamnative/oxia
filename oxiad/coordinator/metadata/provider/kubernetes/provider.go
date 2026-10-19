@@ -24,7 +24,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 	gproto "google.golang.org/protobuf/proto"
 	corev1 "k8s.io/api/core/v1"
@@ -35,7 +34,6 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
-	"k8s.io/klog/v2"
 
 	"github.com/oxia-db/oxia/common/concurrent"
 	"github.com/oxia-db/oxia/common/metric"
@@ -128,9 +126,6 @@ func NewProvider[T gproto.Message](
 		"The size of the coordinator metadata", metric.Bytes, nil, func() int64 {
 			return m.metadataSize.Load()
 		})
-
-	clientLogger := logr.FromSlogHandler(m.logger.With(slog.String("sub-component", "k8s-client")).Handler())
-	klog.SetLogger(clientLogger)
 	return m, nil
 }
 
