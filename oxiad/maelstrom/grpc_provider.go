@@ -125,6 +125,13 @@ func (m *maelstromGrpcProvider) HandleOxiaRequest(msgType MsgType, msg *Message[
 			m.sendResponse(msg, MsgTypeGetStatusResponse, gsr)
 		}
 
+	case MsgTypeDeleteShardRequest:
+		if dsr, err := m.getService(oxiaCoordination).(proto.OxiaCoordinationServer).DeleteShard(context.Background(), message.(*proto.DeleteShardRequest)); err != nil {
+			sendError(msg.Body.MsgId, msg.Src, err)
+		} else {
+			m.sendResponse(msg, MsgTypeDeleteShardResponse, dsr)
+		}
+
 	case MsgTypeHealthCheck:
 		m.sendResponse(msg, MsgTypeHealthCheckOk, wrapperspb.Int64(m.processId))
 	default:
