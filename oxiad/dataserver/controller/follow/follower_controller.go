@@ -467,17 +467,17 @@ func (fc *followerController) stateApplier() {
 	bo := commontime.NewBackOff(fc.ctx)
 	_ = backoff.RetryNotify(func() error {
 		for {
-			select {
-			case <-fc.ctx.Done():
-				return nil
-			case <-fc.stateApplierCond:
-			}
-
 			maxInclusive := fc.advertisedCommitOffset.Load()
 			if err := fc.applyCommittedEntries(maxInclusive); err != nil {
 				return err
 			}
 			bo.Reset()
+
+			select {
+			case <-fc.ctx.Done():
+				return nil
+			case <-fc.stateApplierCond:
+			}
 		}
 	}, bo, func(err error, d time.Duration) {
 		fc.log.Error("State applier failed, retrying",
