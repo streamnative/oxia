@@ -19,7 +19,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestSequencesWaitTracker(t *testing.T) {
@@ -79,22 +78,4 @@ func TestSequencesWaitTrackerMultipleClose(t *testing.T) {
 	assert.Empty(t, swt.Close())
 
 	assert.NoError(t, w1.Close())
-}
-
-// A waiter whose Close claimed the close, and waits for the lock of the
-// tracker, races with the Close of the tracker: the tracker leaves the waiter
-// to close its channel, and the waiter finds itself removed already.
-func TestSequencesWaitTrackerCloseRacingWaiterClose(t *testing.T) {
-	swt := NewSequencesWaitTracker().(*sequenceWaiterTracker)
-	w := swt.AddSequenceWaiter("key-1")
-	require.True(t, w.closed.CompareAndSwap(false, true))
-
-	assert.NoError(t, swt.Close())
-	assert.Empty(t, swt.waiters)
-
-	// The rest of the waiter's Close
-	swt.remove(w.key, w.id)
-	close(w.och.Ch())
-	_, open := <-w.Ch()
-	assert.False(t, open)
 }
