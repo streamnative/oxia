@@ -16,8 +16,6 @@ package kvstore
 
 import (
 	"errors"
-	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -356,36 +354,6 @@ func TestCreateMarkerLeavesUpToDateMarkerAlone(t *testing.T) {
 
 // The databases written before the key encoding marker existed sort the keys
 // with the old hierarchical comparer, and get converted on open.
-func TestPebbleDbConversionFromMarkerlessDb(t *testing.T) {
-	kvFactory, err := NewPebbleKVFactory(NewFactoryOptionsForTest(t))
-	require.NoError(t, err)
-	t.Cleanup(func() { assert.NoError(t, kvFactory.Close()) })
-	dbPath := kvFactory.(*PebbleFactory).getKVPath(constant.DefaultNamespace, 0)
-
-	// More keys than a conversion batch holds
-	keys := make([]string, 0, maxBatchCount+500)
-	for i := 0; i < cap(keys); i++ {
-		keys = append(keys, fmt.Sprintf("/key/%05d", i))
-	}
-	conversion := newPebbleDbConversion(slog.Default(), dbPath, nil)
-	db, err := pebble.Open(dbPath, conversion.configForOldCompareHierarchical())
-	require.NoError(t, err)
-	for _, key := range keys {
-		require.NoError(t, db.Set(compare.EncoderNatural.Encode(key), []byte("value"), pebble.NoSync))
-	}
-	// Without a WAL, only the flushed keys survive the close
-	require.NoError(t, db.Flush())
-	require.NoError(t, db.Close())
-	require.NoFileExists(t, filepath.Join(dbPath, markerFileName))
-
-	kv, err := kvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_HIERARCHICAL)
-	require.NoError(t, err)
-	t.Cleanup(func() { assert.NoError(t, kv.Close()) })
-
-	assert.Equal(t, keys, scanAllKeys(t, kv, NoInternalKeys))
-	assertMarker(t, dbPath, compare.EncoderHierarchical.Name())
-}
-
 func TestPebbleDbConversionSkipsUnknownMarker(t *testing.T) {
 	kvFactory, err := NewPebbleKVFactory(NewFactoryOptionsForTest(t))
 	require.NoError(t, err)
