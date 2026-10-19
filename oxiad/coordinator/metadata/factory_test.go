@@ -187,6 +187,39 @@ func TestNewFactoryFromOptionsLoadsFileClusterConfig(t *testing.T) {
 	require.Equal(t, "default", config.GetNamespaces()[0].GetName())
 }
 
+// The config provider watches its config map in the background, and the
+// Kubernetes client logs while the status provider gets created.
+func TestNewFactoryFromOptionsCreatesConfigMapProviders(t *testing.T) {
+	kubeconfig := filepath.Join(t.TempDir(), "kubeconfig")
+	require.NoError(t, os.WriteFile(kubeconfig, []byte(`apiVersion: v1
+kind: Config
+clusters:
+- name: test
+  cluster:
+    server: https://127.0.0.1:1
+contexts:
+- name: test
+  context:
+    cluster: test
+current-context: test
+`), 0o600))
+	t.Setenv("KUBECONFIG", kubeconfig)
+
+	factory, err := New(t.Context(), &option.Options{
+		Metadata: option.MetadataOptions{
+			Name: "coordinator-test",
+			ProviderOptions: option.ProviderOptions{
+				ProviderName: metadatacommon.NameConfigMap,
+				Kubernetes:   option.K8sMetadata{Namespace: "oxia"},
+			},
+		},
+	})
+	require.NoError(t, err)
+	assert.NotNil(t, factory.configProvider)
+	assert.NotNil(t, factory.statusProvider)
+	assert.NoError(t, factory.Close())
+}
+
 func TestNewFactoryFromOptionsMergesLegacyClusterConfigPath(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "legacy-cluster.yaml")
