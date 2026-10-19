@@ -130,6 +130,29 @@ func TestMaelstromHealthCheckClientCheckClosesAssignmentStreamsOfRestartedDataSe
 	require.NoError(t, stream.Context().Err())
 }
 
+func TestMaelstromCoordinatorRpcProviderDeleteShard(t *testing.T) {
+	lines := captureStdout(t)
+
+	coordinator := newDispatcher(newMaelstromGrpcProvider(), newMaelstromReplicationRpcProvider())
+	dataServer := newMaelstromGrpcProvider()
+	deleted := make(chan *proto.DeleteShardRequest, 1)
+	dataServer.RegisterService(&proto.OxiaCoordination_ServiceDesc, &deleteShardServer{deleted: deleted})
+
+	res := make(chan error, 1)
+	go func() {
+		_, err := newRpcProvider(coordinator).DeleteShard(t.Context(), &proto.DataServerIdentity{Internal: "n4"},
+			&proto.DeleteShardRequest{Namespace: constant.DefaultNamespace, Shard: 1, Term: 2})
+		res <- err
+	}()
+
+	msgType, request, protoMsg := parseRequest(receiveLines(t, lines, 1)[0])
+	require.Equal(t, MsgTypeDeleteShardRequest, msgType)
+	dataServer.HandleOxiaRequest(msgType, request.(*Message[OxiaMessage]), protoMsg)
+	deliver(coordinator, receiveLines(t, lines, 1)[0])
+	require.NoError(t, <-res)
+	require.EqualValues(t, 1, (<-deleted).Shard)
+}
+
 // deliver hands a Maelstrom message to the dispatcher, as the main loop does
 // with each line it reads.
 func deliver(d *dispatcher, line string) {
@@ -171,4 +194,16 @@ func loseProbe(t *testing.T, lines <-chan string, healthClient grpc_health_v1.He
 	_, err := healthClient.Check(ctx, &grpc_health_v1.HealthCheckRequest{})
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	receiveLines(t, lines, 1)
+}
+
+// deleteShardServer is a data server that records the shards it deletes.
+type deleteShardServer struct {
+	proto.UnimplementedOxiaCoordinationServer
+
+	deleted chan *proto.DeleteShardRequest
+}
+
+func (s *deleteShardServer) DeleteShard(_ context.Context, req *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error) {
+	s.deleted <- req
+	return &proto.DeleteShardResponse{}, nil
 }
