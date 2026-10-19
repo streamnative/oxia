@@ -703,7 +703,7 @@ func New(
 		drainingNodes:         make(map[string]dataservercontroller.Controller),
 		metadata:              metadata,
 		insID:                 insID,
-		assignmentsWatch:      commonwatch.New(&proto.ShardAssignments{}),
+		assignmentsWatch:      commonwatch.New[*proto.ShardAssignments](nil),
 	}
 
 	c.ctx, c.ctxCancel = context.WithCancel(context.Background())
