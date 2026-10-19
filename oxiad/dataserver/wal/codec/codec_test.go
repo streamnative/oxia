@@ -15,6 +15,7 @@
 package codec
 
 import (
+	"errors"
 	"os"
 	"path"
 	"testing"
@@ -46,6 +47,18 @@ func TestCodec_GetOrCreate(t *testing.T) {
 	assert.NoError(t, err)
 	assert.EqualValues(t, v2, codec)
 	assert.EqualValues(t, true, exist)
+}
+
+func TestGetOrCreateReturnsStatError(t *testing.T) {
+	file := path.Join(t.TempDir(), "file")
+	assert.NoError(t, os.WriteFile(file, nil, 0o600))
+
+	// Stat fails with ENOTDIR, not with a missing file
+	codec, exist, err := GetOrCreate(path.Join(file, "0"))
+	assert.Error(t, err)
+	assert.False(t, errors.Is(err, os.ErrNotExist))
+	assert.Nil(t, codec)
+	assert.False(t, exist)
 }
 
 // The WAL reader decodes the payload zero-copy, so the payload must not alias
