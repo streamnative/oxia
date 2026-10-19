@@ -22,6 +22,7 @@ import (
 	"golang.org/x/exp/slices"
 
 	"github.com/oxia-db/oxia/common/proto"
+	"github.com/oxia-db/oxia/oxiad/coordinator/runtime/balancer/selector"
 )
 
 func TestSelectMultipleAntiAffinitiesSatisfied(t *testing.T) {
@@ -53,4 +54,13 @@ func TestSelectMultipleAntiAffinitiesSatisfied(t *testing.T) {
 	assert.True(t, slices.Contains(esm, "s1") || slices.Contains(esm, "s2"))
 	assert.Contains(t, esm, "s3")
 	assert.Contains(t, esm, "s4")
+}
+
+func TestSelectFewerCandidatesThanReplicas(t *testing.T) {
+	_, err := NewSelector().Select(&Context{
+		Candidates: linkedhashset.New("s1"),
+		Namespace:  "ns-1",
+		Replicas:   2,
+	})
+	assert.ErrorIs(t, err, selector.ErrUnsatisfiedEnsembleReplicas)
 }
