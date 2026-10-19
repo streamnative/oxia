@@ -1,0 +1,88 @@
+// Copyright 2023-2026 The Oxia Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package perf
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/oxia-db/oxia/oxia"
+	"github.com/oxia-db/oxia/oxiad/dataserver"
+)
+
+func TestPerfRunWritesRandomPayloads(t *testing.T) {
+	server := newStandalone(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := runInBackground(ctx, New(testConfig(server.ServiceAddr(), true)))
+
+	client := newSyncClient(t, server.ServiceAddr())
+	assert.Eventually(t, func() bool {
+		keys, err := client.List(context.Background(), "key-", "key-~")
+		return err == nil && len(keys) > 0
+	}, 10*time.Second, 10*time.Millisecond)
+
+	cancel()
+	<-done
+	keys, err := client.List(context.Background(), "key-", "key-~")
+	require.NoError(t, err)
+	_, value, _, err := client.Get(context.Background(), keys[0])
+	require.NoError(t, err)
+	assert.Len(t, value, 16)
+	assert.NotEqual(t, make([]byte, 16), value)
+}
+
+func testConfig(serviceAddr string, randomPayload bool) Config {
+	return Config{
+		ServiceAddr:         serviceAddr,
+		Namespace:           oxia.DefaultNamespace,
+		RequestRate:         200,
+		ReadPercentage:      50,
+		KeysCardinality:     10,
+		ValueSize:           16,
+		RandomPayload:       randomPayload,
+		BatchLinger:         time.Millisecond,
+		MaxRequestsPerBatch: 10,
+		RequestTimeout:      200 * time.Millisecond,
+	}
+}
+
+func newStandalone(t *testing.T) *dataserver.Standalone {
+	t.Helper()
+	server, err := dataserver.NewStandalone(dataserver.NewTestConfig(t.TempDir()))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = server.Close() })
+	return server
+}
+
+func newSyncClient(t *testing.T, serviceAddr string) oxia.SyncClient {
+	t.Helper()
+	client, err := oxia.NewSyncClient(serviceAddr)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = client.Close() })
+	return client
+}
+
+func runInBackground(ctx context.Context, p Perf) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		p.Run(ctx)
+	}()
+	return done
+}

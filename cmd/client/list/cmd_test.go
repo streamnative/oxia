@@ -16,6 +16,7 @@ package list
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 
@@ -67,4 +68,19 @@ func TestList_exec(t *testing.T) {
 			common.MockedClient.AssertExpectations(t)
 		})
 	}
+}
+
+func TestListExecReturnsScanError(t *testing.T) {
+	common.MockedClient = common.NewMockClient()
+	ch := make(chan oxia.GetResult, 2)
+	ch <- oxia.GetResult{Key: "a"}
+	ch <- oxia.GetResult{Err: errors.New("scan failed")}
+	close(ch)
+	var emptyOptions []oxia.RangeScanOption
+	common.MockedClient.On("RangeScan", "a", "c", emptyOptions).Return(ch)
+
+	out, err := runCmd(Cmd, "--key-min a --key-max c", "")
+	assert.ErrorContains(t, err, "scan failed")
+	assert.Contains(t, out, "a")
+	common.MockedClient.AssertExpectations(t)
 }
