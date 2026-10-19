@@ -1620,3 +1620,57 @@ func readEntry(w Wal, offset int64) (*proto.LogEntry, error) {
 	entry, _, _, err := r.ReadNext()
 	return entry, multierr.Append(err, r.Close())
 }
+
+func TestWalRolloverFailureKeepsWalUsable(t *testing.T) {
+	f, w := createWal(t)
+	walImpl := w.(*wal)
+
+	// Fill the current segment (128KiB) with the wal directory read-only,
+	// so that the rollover fails to create the next segment
+	require.NoError(t, os.Chmod(walImpl.walPath, 0o500))
+	t.Cleanup(func() { _ = os.Chmod(walImpl.walPath, 0o700) })
+	payload := []byte(strings.Repeat("x", 1024))
+	var offset int64
+	var err error
+	for ; offset < 1_000; offset++ {
+		if err = w.Append(&proto.LogEntry{Term: 1, Offset: offset, Value: payload}); err != nil {
+			break
+		}
+	}
+	assert.ErrorContains(t, err, "failed to rollover segment")
+
+	// The full segment stays current, and the next append rolls over again
+	require.NoError(t, os.Chmod(walImpl.walPath, 0o700))
+	assert.NoError(t, w.Append(&proto.LogEntry{Term: 1, Offset: offset, Value: payload}))
+	assert.EqualValues(t, offset, w.LastOffset())
+
+	assert.NoError(t, w.Close())
+	assert.NoError(t, f.Close())
+}
+
+func TestWalTruncateLogReopenFailureKeepsWalClosable(t *testing.T) {
+	f, w := createWal(t)
+	walImpl := w.(*wal)
+
+	payload := []byte(strings.Repeat("x", 1024))
+	for i := int64(0); i < 300; i++ {
+		require.NoError(t, w.Append(&proto.LogEntry{Term: 1, Offset: i, Value: payload}))
+	}
+	segments, err := listAllSegments(walImpl.walPath)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(segments), 2)
+
+	// Truncating into the read-only segment reopens it for writing, which
+	// fails on a read-only file
+	target := segments[len(segments)-2]
+	c, err := newSegmentConfig(walImpl.walPath, target)
+	require.NoError(t, err)
+	require.NoError(t, os.Chmod(c.txnPath, 0o400))
+	t.Cleanup(func() { _ = os.Chmod(c.txnPath, 0o600) })
+
+	_, err = w.TruncateLog(target)
+	assert.Error(t, err)
+
+	assert.NotPanics(t, func() { _ = w.Close() })
+	assert.NoError(t, f.Close())
+}

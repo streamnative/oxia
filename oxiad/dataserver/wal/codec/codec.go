@@ -143,8 +143,7 @@ func GetOrCreate(basePath string) (_codec Codec, exist bool, err error) {
 	for {
 		if _, err := os.Stat(fullPath); err != nil {
 			if !os.IsNotExist(err) {
-				// unexpected behaviour
-				return nil, false, nil
+				return nil, false, err
 			}
 			if len(candidateCodecs) == 0 {
 				// complete recursive check, go back to the latest txn extension
