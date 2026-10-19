@@ -15,6 +15,7 @@
 package dataserver
 
 import (
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -152,4 +153,24 @@ func TestStandaloneCorruptedCommittedWalEntry(t *testing.T) {
 
 	_, err = NewStandalone(NewTestConfig(dir))
 	assert.ErrorIs(t, err, codec.ErrDataCorrupted)
+}
+
+func TestNewStandaloneReleasesWhatItStartedOnError(t *testing.T) {
+	// NewStandalone fails to bind the public port, after it opened the shards
+	publicListener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer publicListener.Close()
+	publicAddress := publicListener.Addr().String()
+
+	config := NewTestConfig(t.TempDir())
+	config.DataServerOptions.Server.Public.BindAddress = publicAddress
+	standaloneServer, err := NewStandalone(config)
+	require.ErrorContains(t, err, publicAddress)
+	assert.Nil(t, standaloneServer)
+
+	// A retry opens the same directories
+	config.DataServerOptions.Server.Public.BindAddress = "127.0.0.1:0"
+	standaloneServer, err = NewStandalone(config)
+	require.NoError(t, err)
+	assert.NoError(t, standaloneServer.Close())
 }
