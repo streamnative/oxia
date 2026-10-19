@@ -703,10 +703,7 @@ func New(
 		drainingNodes:         make(map[string]dataservercontroller.Controller),
 		metadata:              metadata,
 		insID:                 insID,
-		// Nil until the first computation: the data server controllers send
-		// no assignments before, as a data server initialized with empty
-		// assignments allows no authority, and rejects the clients
-		assignmentsWatch: commonwatch.New[*proto.ShardAssignments](nil),
+		assignmentsWatch:      commonwatch.New[*proto.ShardAssignments](nil),
 	}
 
 	c.ctx, c.ctxCancel = context.WithCancel(context.Background())
