@@ -185,15 +185,9 @@ func (p *PebbleFactory) NewSnapshotLoader(namespace string, shardId int64) (Snap
 	return newPebbleSnapshotLoader(p, vfs.Default, namespace, shardId)
 }
 
+// getKVPath returns the directory of the shard. The namespace must have passed
+// validation.ValidateNamespace, which keeps the path inside the data directory.
 func (p *PebbleFactory) getKVPath(namespace string, shard int64) string {
-	if namespace == "" {
-		slog.Warn(
-			"Missing namespace when getting KV path",
-			slog.Int64("shard", shard),
-		)
-		os.Exit(1)
-	}
-
 	return filepath.Join(p.dataDir, namespace, fmt.Sprint("shard-", shard))
 }
 

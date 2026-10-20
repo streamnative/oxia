@@ -17,7 +17,6 @@ package kvstore
 import (
 	"fmt"
 	"log/slog"
-	"os"
 )
 
 // pebbleLogger is the wrapper of slog to implement pebbel's logger interface.
@@ -37,9 +36,10 @@ func (pl *pebbleLogger) Errorf(format string, args ...any) {
 	)
 }
 
+// Fatalf panics after logging: Pebble calls it on corruption or a broken
+// invariant, and continues as if it did not return.
 func (pl *pebbleLogger) Fatalf(format string, args ...any) {
-	pl.zl.Warn(
-		fmt.Sprintf(format, args...),
-	)
-	os.Exit(1)
+	msg := fmt.Sprintf(format, args...)
+	pl.zl.Error(msg)
+	panic(msg)
 }

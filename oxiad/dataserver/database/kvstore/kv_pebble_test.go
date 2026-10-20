@@ -1172,6 +1172,28 @@ func TestPebbleSnapshotLoader_RejectsPathTraversal(t *testing.T) {
 	assert.NoError(t, factory.Close())
 }
 
+func TestPebbleFactoryNewKVRejectsEmptyNamespace(t *testing.T) {
+	factory, err := NewPebbleKVFactory(&FactoryOptions{DataDir: t.TempDir(), CacheSizeMB: 1})
+	require.NoError(t, err)
+	defer factory.Close()
+
+	kv, err := factory.NewKV("", 1, proto.KeySortingType_NATURAL)
+
+	assert.ErrorContains(t, err, "namespace must not be empty")
+	assert.Nil(t, kv)
+}
+
+func TestPebbleFactoryNewSnapshotLoaderRejectsEmptyNamespace(t *testing.T) {
+	factory, err := NewPebbleKVFactory(&FactoryOptions{DataDir: t.TempDir(), CacheSizeMB: 1})
+	require.NoError(t, err)
+	defer factory.Close()
+
+	loader, err := factory.NewSnapshotLoader("", 1)
+
+	assert.ErrorContains(t, err, "namespace must not be empty")
+	assert.Nil(t, loader)
+}
+
 func TestPebbleRangeScanNoLimits(t *testing.T) {
 	factory, err := NewPebbleKVFactory(NewFactoryOptionsForTest(t))
 	assert.NoError(t, err)
