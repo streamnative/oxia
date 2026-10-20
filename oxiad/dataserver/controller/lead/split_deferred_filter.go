@@ -63,9 +63,12 @@ func (lc *leaderController) startDeferredSplitFilter(termCtx context.Context, te
 		"namespace": lc.namespace,
 		"shard":     fmt.Sprintf("%d", lc.shardId),
 	}, func() {
-		if lc.waitForSplitFilterQuorum(termCtx, term, commitOffset) {
-			lc.applyDeferredSplitFilter(termCtx, term)
+		if !lc.waitForSplitFilterQuorum(termCtx, term, commitOffset) {
+			lc.log.Info("Stopped waiting for a majority of the shard to hold its entries: the node no longer leads the term",
+				slog.Int64("term", term))
+			return
 		}
+		lc.applyDeferredSplitFilter(termCtx, term)
 	})
 }
 
@@ -98,9 +101,10 @@ func (lc *leaderController) waitForSplitFilterQuorum(ctx context.Context, term i
 // splitFilterQuorum reports whether a majority of the shard holds the entries
 // up to offset, and whether the node still leads the term.
 func (lc *leaderController) splitFilterQuorum(term int64, offset int64) (held bool, leading bool) {
+	failpointErr := lc.failpoints.Trigger("splitFilterQuorum.beforeLock")
 	lc.RLock()
 	defer lc.RUnlock()
-	if lc.status != proto.ServingStatus_LEADER || lc.term.Load() != term {
+	if failpointErr != nil || lc.status != proto.ServingStatus_LEADER || lc.term.Load() != term {
 		return false, false
 	}
 	holders := 1
