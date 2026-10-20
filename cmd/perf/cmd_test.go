@@ -52,3 +52,14 @@ func TestRunPerfStopsOnClose(t *testing.T) {
 	require.NoError(t, process.Close())
 	assert.ErrorIs(t, process.(*closer).ctx.Err(), context.Canceled)
 }
+
+func TestRunPerfReturnsClientCreationError(t *testing.T) {
+	previous := config
+	config = testConfig("localhost:1", false)
+	t.Cleanup(func() { config = previous })
+
+	process, err := runPerf()
+
+	assert.ErrorContains(t, err, "failed to create Oxia client")
+	assert.Nil(t, process)
+}

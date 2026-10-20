@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/invopop/jsonschema"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -57,6 +58,18 @@ func TestCmdReturnsDataServerWriteError(t *testing.T) {
 
 	require.ErrorContains(t, err, "is a directory")
 	assert.FileExists(t, filepath.Join(dir, "coordinator.json"))
+}
+
+func TestParseThenWriteReturnsMarshalError(t *testing.T) {
+	dir := t.TempDir()
+	outputDir = dir
+	t.Cleanup(func() { outputDir = "" })
+
+	err := parseThenWrite(&jsonschema.Schema{Default: make(chan int)}, "invalid")
+
+	var unsupported *json.UnsupportedTypeError
+	require.ErrorAs(t, err, &unsupported)
+	assert.NoFileExists(t, filepath.Join(dir, "invalid.json"))
 }
 
 func runCreateSchema(t *testing.T, dir string) error {
