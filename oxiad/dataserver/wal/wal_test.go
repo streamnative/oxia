@@ -1989,6 +1989,37 @@ func TestWalSyncSkipsRolledSegmentDrainedByClose(t *testing.T) {
 	assert.EqualValues(t, 2, flushes.Load())
 }
 
+func TestWalSyncDoesNotUndoConcurrentTruncateLog(t *testing.T) {
+	fs := newFaultFS()
+	w := newFaultWal(t, fs, true)
+	appendEntries(t, w, 1, 0, 1, "v")
+	require.NoError(t, w.AppendAsync(&proto.LogEntry{Term: 1, Offset: 2, Value: []byte("v")}))
+
+	current := txnPath(w.walPath, 0)
+	flushing := make(chan struct{})
+	release := make(chan struct{})
+	var flushes atomic.Int32
+	fs.setHook(func(op fsOp, name string) error {
+		if op == opFlush && name == current && flushes.Add(1) == 1 {
+			close(flushing)
+			<-release
+		}
+		return nil
+	})
+
+	syncErr := make(chan error, 1)
+	go func() { syncErr <- w.Sync(context.Background()) }()
+	<-flushing
+	lastOffset, err := w.TruncateLog(1)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, lastOffset)
+	close(release)
+
+	assert.NoError(t, <-syncErr)
+	assert.EqualValues(t, 1, w.LastOffset())
+	assert.NoError(t, w.Close())
+}
+
 func TestWalClearFailsWhenSegmentCannotBeReopened(t *testing.T) {
 	fs := newFaultFS()
 	w := newFaultWal(t, fs, false)
