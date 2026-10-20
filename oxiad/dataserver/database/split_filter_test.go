@@ -1004,6 +1004,16 @@ func TestFilterDBForSplitFailsWhenChunkFailsToBeCommitted(t *testing.T) {
 	}
 }
 
+func TestDBSetSplitFilterFailsWhenMarshalFails(t *testing.T) {
+	d, kv := newHookedTestDB(t)
+	d.marshalJSON = failingMarshal[any]
+
+	err := d.SetSplitFilter(&SplitFilter{MaxHash: math.MaxUint32 / 2, ParentTerm: 1})
+	assert.ErrorIs(t, err, errInjected)
+	assert.Nil(t, d.splitFilter.Load())
+	assert.False(t, keyExists(t, kv, splitFilterKey))
+}
+
 func TestDBSetSplitFilterFailsWhenWriteFails(t *testing.T) {
 	for _, test := range []struct {
 		name string

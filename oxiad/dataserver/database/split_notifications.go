@@ -124,7 +124,8 @@ func (in inheritedNotifications) closedAt(lastOffset int64) inheritedNotificatio
 
 // filter returns the batches with the notifications that the child delivers:
 // it filters the ones it inherited.
-func (in inheritedNotifications) filter(batches []proto.EncodedNotificationBatch) (
+func (in inheritedNotifications) filter(batches []proto.EncodedNotificationBatch,
+	marshal func(*proto.NotificationBatch) ([]byte, error)) (
 	[]proto.EncodedNotificationBatch, error) {
 	if len(in) == 0 || len(batches) == 0 || batches[0].Offset > in[len(in)-1].LastOffset {
 		return batches, nil
@@ -142,7 +143,7 @@ func (in inheritedNotifications) filter(batches []proto.EncodedNotificationBatch
 			res[i] = batch
 			continue
 		}
-		filtered, err := filterNotificationBatch(batch, in[split].MinHash, in[split].MaxHash)
+		filtered, err := filterNotificationBatch(batch, in[split].MinHash, in[split].MaxHash, marshal)
 		if err != nil {
 			return nil, err
 		}
@@ -154,8 +155,8 @@ func (in inheritedNotifications) filter(batches []proto.EncodedNotificationBatch
 // filterNotificationBatch returns the batch with the notifications whose key
 // hash is in [minHash, maxHash]. A batch left without notifications is still
 // returned: the subscriber moves past its offset.
-func filterNotificationBatch(batch proto.EncodedNotificationBatch, minHash uint32, maxHash uint32) (
-	proto.EncodedNotificationBatch, error) {
+func filterNotificationBatch(batch proto.EncodedNotificationBatch, minHash uint32, maxHash uint32,
+	marshal func(*proto.NotificationBatch) ([]byte, error)) (proto.EncodedNotificationBatch, error) {
 	nb := &proto.NotificationBatch{}
 	if err := nb.UnmarshalVT(batch.Data); err != nil {
 		return proto.EncodedNotificationBatch{}, errors.Wrap(err, "failed to deserialize notification batch")
@@ -170,7 +171,7 @@ func filterNotificationBatch(batch proto.EncodedNotificationBatch, minHash uint3
 		return batch, nil
 	}
 	nb.Notifications = kept
-	data, err := nb.MarshalVT()
+	data, err := marshal(nb)
 	if err != nil {
 		return proto.EncodedNotificationBatch{}, err
 	}
@@ -180,7 +181,7 @@ func filterNotificationBatch(batch proto.EncodedNotificationBatch, minHash uint3
 // putInheritedNotifications adds the write of the inherited notifications to the
 // batch.
 func (d *db) putInheritedNotifications(batch kvstore.WriteBatch, in inheritedNotifications) error {
-	value, err := json.Marshal(in)
+	value, err := d.marshalJSON(in)
 	if err != nil {
 		return err
 	}

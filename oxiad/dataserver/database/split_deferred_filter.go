@@ -163,7 +163,7 @@ func (d *db) SetDeferredSplitFilter(filter *DeferredSplitFilter, parentHashRange
 }
 
 func (d *db) putDeferredSplitFilter(batch kvstore.WriteBatch, filter *DeferredSplitFilter) error {
-	value, err := json.Marshal(filter)
+	value, err := d.marshalJSON(filter)
 	if err != nil {
 		return err
 	}

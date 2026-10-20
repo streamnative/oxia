@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"go.uber.org/multierr"
 
 	"github.com/oxia-db/oxia/oxiad/dataserver/database/kvstore"
 
@@ -193,7 +194,7 @@ func (t *notificationsTrimmer) getFirstLast() (first, last int64, err error) {
 	if err != nil {
 		return constant.I64NegativeOne, constant.I64NegativeOne, err
 	}
-	defer it1.Close()
+	defer func() { err = multierr.Append(err, it1.Close()) }()
 	if !it1.Valid() {
 		// There are no entries in DB
 		return constant.I64NegativeOne, constant.I64NegativeOne, nil
@@ -207,7 +208,7 @@ func (t *notificationsTrimmer) getFirstLast() (first, last int64, err error) {
 	if err != nil {
 		return constant.I64NegativeOne, constant.I64NegativeOne, err
 	}
-	defer it2.Close()
+	defer func() { err = multierr.Append(err, it2.Close()) }()
 	if !it2.Valid() {
 		// There are no entries in DB
 		return constant.I64NegativeOne, constant.I64NegativeOne, nil
