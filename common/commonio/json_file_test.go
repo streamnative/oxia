@@ -103,6 +103,25 @@ func TestWriteJSONToFileReadOnlyDirectory(t *testing.T) {
 	assertDirEntries(t, dir)
 }
 
+func TestWriteJSONToFileUnreadableDirectory(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+	// Write and search permissions let the file be renamed into place, but the directory can't be opened to sync it
+	require.NoError(t, os.Chmod(dir, 0o300))
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+
+	err := WriteJSONToFile(path, map[string]string{"hello": "world"})
+	assert.ErrorIs(t, err, os.ErrPermission)
+
+	require.NoError(t, os.Chmod(dir, 0o700))
+	content, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"hello":"world"}`, string(content))
+}
+
 func TestWriteJSONToFileTargetIsDirectory(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.json")
