@@ -1990,6 +1990,17 @@ func TestWalClearFailsWhenSegmentCannotBeReopened(t *testing.T) {
 	assert.NoError(t, w.Close())
 }
 
+func TestWalClearFailsWhenWalDirectoryCannotBeListed(t *testing.T) {
+	fs := newFaultFS()
+	w := newFaultWal(t, fs, false)
+	appendEntries(t, w, 1, 0, 2, "v")
+	fs.failNth(opReadDir, w.walPath, 1)
+
+	assert.ErrorIs(t, w.Clear(), errInjected)
+
+	assert.NoError(t, w.Close())
+}
+
 func TestWalDeleteFailsWhenSegmentCannotBeClosed(t *testing.T) {
 	fs := newFaultFS()
 	w := newFaultWal(t, fs, false)

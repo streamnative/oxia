@@ -736,9 +736,11 @@ func (t *wal) clearWithoutLock() error {
 		return err
 	}
 
-	if t.readOnlySegments, err = newReadOnlySegmentsGroup(t.fs, t.walPath); err != nil {
+	readOnlySegments, err := newReadOnlySegmentsGroup(t.fs, t.walPath)
+	if err != nil {
 		return err
 	}
+	t.readOnlySegments = readOnlySegments
 
 	t.lastAppendedOffset.Store(InvalidOffset)
 	t.lastSyncedOffset.Store(InvalidOffset)
