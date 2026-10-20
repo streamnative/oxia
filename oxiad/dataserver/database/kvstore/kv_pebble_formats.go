@@ -299,20 +299,23 @@ func (p *pebbleDbConversion) convertDb(
 const maxBatchCount = 1000
 
 func copyData(from *pebble.DB, fromEncoder compare.Encoder,
-	to *pebble.DB, toEncoder compare.Encoder) error {
+	to *pebble.DB, toEncoder compare.Encoder) (err error) {
 	it, err := from.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return err
 	}
-
-	defer it.Close()
+	defer func() { err = multierr.Append(err, it.Close()) }()
 
 	it.First()
 
 	wb := to.NewBatch()
 	// Closes whichever batch is current when returning; full batches are
 	// closed when they are replaced
-	defer func() { _ = wb.Close() }()
+	defer func() {
+		if wb != nil {
+			err = multierr.Append(err, wb.Close())
+		}
+	}()
 	batchCount := 0
 	for it.Valid() {
 		key := fromEncoder.Decode(it.Key())
@@ -331,8 +334,10 @@ func copyData(from *pebble.DB, fromEncoder compare.Encoder,
 				return err
 			}
 
-			if err := wb.Close(); err != nil {
-				return err
+			closeErr := wb.Close()
+			wb = nil
+			if closeErr != nil {
+				return closeErr
 			}
 
 			batchCount = 0
