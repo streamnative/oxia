@@ -3677,12 +3677,21 @@ func TestFollowerControllerInstallSnapshotFailsToRecoverDatabase(t *testing.T) {
 }
 
 func TestFollowerControllerInstallSnapshotFailsWhenSplitFilterFails(t *testing.T) {
+	// The term is read when the database opens, then again by the filter
+	var termReads atomic.Int64
+	secondTermReadFails := func(key string) error {
+		if key == constant.InternalKeyPrefix+"term" && termReads.Add(1) == 2 {
+			return errors.New("read failed")
+		}
+		return nil
+	}
 	for _, test := range []struct {
 		name  string
 		hooks kvHooks
 	}{
 		{"filter", kvHooks{rangeScan: func() error { return errors.New("scan failed") }}},
 		{"record", kvHooks{flush: func() error { return errors.New("flush failed") }}},
+		{"read-term", kvHooks{get: secondTermReadFails}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			walFactory, kvFactory := newHookFactories(t)
@@ -4009,6 +4018,7 @@ type kvHooks struct {
 	newSnapshotLoader func() error
 	flush             func() error
 	rangeScan         func() error
+	get               func(key string) error
 	addChunk          func() error
 	complete          func() error
 }
@@ -4063,6 +4073,16 @@ func (kv *hookKV) Flush() error {
 		return err
 	}
 	return kv.KV.Flush()
+}
+
+func (kv *hookKV) Get(key string, comparisonType kvstore.ComparisonType,
+	opts kvstore.IteratorOpts) (string, []byte, io.Closer, error) {
+	if hook := kv.factory.getHooks().get; hook != nil {
+		if err := hook(key); err != nil {
+			return "", nil, nil, err
+		}
+	}
+	return kv.KV.Get(key, comparisonType, opts)
 }
 
 func (kv *hookKV) RangeScan(lowerBound, upperBound string,

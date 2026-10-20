@@ -77,6 +77,18 @@ func TestNewKVRaftStoreFailsOnFilePath(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestNewKVRaftStoreFailsWhenStoreIsOpen(t *testing.T) {
+	path := t.TempDir()
+	store, err := newKVRaftStore(path)
+	require.NoError(t, err)
+
+	_, err = newKVRaftStore(path)
+	assert.ErrorContains(t, err, "lock")
+
+	storeLogs(t, store, 1)
+	assert.NoError(t, store.Close())
+}
+
 func TestKVRaftStoreGetLogMissing(t *testing.T) {
 	store := newTestStore(t)
 	storeLogs(t, store, 1)

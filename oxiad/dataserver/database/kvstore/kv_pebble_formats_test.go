@@ -632,8 +632,7 @@ func makeUnremovable(t *testing.T, dir string) func() {
 }
 
 // valueBlocksRange returns the range of the file offsets of the value blocks
-// of an sstable written with the comparer of the old databases, and of their
-// index, which follows them.
+// of an sstable, and of their index, which follows them.
 func valueBlocksRange(t *testing.T, path string) (start, end int64) {
 	t.Helper()
 	f, err := vfs.Default.Open(path)
@@ -641,7 +640,10 @@ func valueBlocksRange(t *testing.T, path string) (start, end int64) {
 	readable, err := sstable.NewSimpleReadable(f)
 	require.NoError(t, err)
 	reader, err := sstable.NewReader(context.Background(), readable, sstable.ReaderOptions{
-		Comparers: sstable.Comparers{OxiaSlashSpanComparer.Name: OxiaSlashSpanComparer},
+		Comparers: sstable.Comparers{
+			OxiaSlashSpanComparer.Name:  OxiaSlashSpanComparer,
+			pebble.DefaultComparer.Name: pebble.DefaultComparer,
+		},
 	})
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, reader.Close()) }()
