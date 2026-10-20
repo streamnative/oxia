@@ -40,7 +40,5 @@ func init() {
 	Cmd.AddCommand(perf.Cmd)
 	Cmd.AddCommand(scan.Cmd)
 
-	if err := Cmd.MarkPersistentFlagRequired("shard"); err != nil {
-		panic(err)
-	}
+	cobra.CheckErr(Cmd.MarkPersistentFlagRequired("shard"))
 }
