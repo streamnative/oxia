@@ -805,3 +805,21 @@ func (r *failingNamespaceRuntime) CreateNamespace(name string, namespace *proto.
 	}
 	return r.Runtime.CreateNamespace(name, namespace)
 }
+
+func TestNamespaceReconcilerReconcileReturnsStatusLoadError(t *testing.T) {
+	base := namespaceRuntimeForErrors("default")
+	listErr := errors.New("status unavailable")
+	runtime := &failingMetadataRuntime{
+		mockNamespaceRuntime: base,
+		metadata: &failingMetadata{
+			Metadata:            base.metadata,
+			listNamespaceStatus: func() error { return listErr },
+		},
+	}
+
+	err := (&namespaceReconciler{runtime: runtime}).Reconcile(context.Background(), &proto.ClusterConfiguration{
+		Namespaces: []*proto.Namespace{base.metadata.configNS["default"]},
+	})
+	require.ErrorIs(t, err, listErr)
+	assert.Empty(t, base.deleted)
+}
