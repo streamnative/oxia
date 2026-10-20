@@ -18,11 +18,15 @@ import (
 	"crypto/rand"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync/atomic"
 	"testing"
 
+	"github.com/cockroachdb/pebble/v2/vfs/errorfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/proto"
 	"github.com/oxia-db/oxia/common/validation"
 )
@@ -42,6 +46,36 @@ func TestPebbleSnapshotNewFailsWhenMarkerIsMissing(t *testing.T) {
 
 	_, err := kv.Snapshot()
 	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestPebbleSnapshotNewFailsOnFilesystemErrors(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		kind errorfs.OpKind
+	}{
+		{"list", errorfs.OpList},
+		{"stat", errorfs.OpStat},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dataDir := t.TempDir()
+			snapshotPath := filepath.Join(dataDir, validation.KeywordNamespaceSnapshots, "shard-1", "snapshot-1")
+			// The checkpoint lists and stats the snapshot too: fail only the
+			// operations that follow the link of the marker
+			var armed atomic.Bool
+			factory := newFactoryWithFaults(t, dataDir, func(op errorfs.Op) bool {
+				if op.Kind == errorfs.OpLink && filepath.Base(op.Path) == markerFileName {
+					armed.Store(true)
+				}
+				return armed.Load() && op.Kind == test.kind && strings.HasPrefix(op.Path, snapshotPath)
+			})
+			kv, err := factory.NewKV(constant.DefaultNamespace, 1, proto.KeySortingType_NATURAL)
+			require.NoError(t, err)
+			t.Cleanup(func() { assert.NoError(t, kv.Close()) })
+
+			_, err = kv.Snapshot()
+			assert.ErrorIs(t, err, errorfs.ErrInjected)
+		})
+	}
 }
 
 // Closing a snapshot in the middle of sending a file closes the file.
@@ -108,4 +142,39 @@ func TestPebbleSnapshotChunkFailsWhenFileCannotBeOpened(t *testing.T) {
 
 	_, err = snapshot.Chunk()
 	assert.ErrorIs(t, err, os.ErrPermission)
+}
+
+func TestPebbleSnapshotChunkFailsOnFilesystemErrors(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		kind errorfs.OpKind
+	}{
+		{"read", errorfs.OpFileReadAt},
+		{"close", errorfs.OpFileClose},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dataDir := t.TempDir()
+			snapshotsDir := filepath.Join(dataDir, validation.KeywordNamespaceSnapshots)
+			// The checkpoint closes the files it writes: fail only the
+			// reads of the snapshot that follow it
+			var armed atomic.Bool
+			factory := newFactoryWithFaults(t, dataDir, func(op errorfs.Op) bool {
+				return armed.Load() && op.Kind == test.kind && strings.HasPrefix(op.Path, snapshotsDir)
+			})
+			kv, err := factory.NewKV(constant.DefaultNamespace, 1, proto.KeySortingType_NATURAL)
+			require.NoError(t, err)
+			t.Cleanup(func() { assert.NoError(t, kv.Close()) })
+			snapshot, err := kv.Snapshot()
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				armed.Store(false)
+				assert.NoError(t, snapshot.Close())
+			})
+			require.True(t, snapshot.Valid())
+
+			armed.Store(true)
+			_, err = snapshot.Chunk()
+			assert.ErrorIs(t, err, errorfs.ErrInjected)
+		})
+	}
 }

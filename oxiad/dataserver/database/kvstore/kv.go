@@ -18,6 +18,7 @@ import (
 	"io"
 	"testing"
 
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/pkg/errors"
 
 	"github.com/oxia-db/oxia/oxiad/common/crc"
@@ -204,6 +205,8 @@ type FactoryOptions struct {
 	UseWAL      bool
 	SyncData    bool
 	KvTrap      *KvTrap
+	// FS holds the databases and the snapshots. Nil is vfs.Default.
+	FS vfs.FS
 }
 
 var DefaultFactoryOptions = &FactoryOptions{
@@ -212,6 +215,7 @@ var DefaultFactoryOptions = &FactoryOptions{
 	UseWAL:      true,
 	SyncData:    true,
 	KvTrap:      nil,
+	FS:          vfs.Default,
 }
 
 func (fo *FactoryOptions) EnsureDefaults() {
@@ -221,6 +225,10 @@ func (fo *FactoryOptions) EnsureDefaults() {
 
 	if fo.CacheSizeMB == 0 {
 		fo.CacheSizeMB = DefaultFactoryOptions.CacheSizeMB
+	}
+
+	if fo.FS == nil {
+		fo.FS = DefaultFactoryOptions.FS
 	}
 }
 

@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/cockroachdb/pebble/v2/bloom"
 	"github.com/cockroachdb/pebble/v2/sstable"
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 
@@ -47,13 +48,15 @@ func makeSwapTmpDbPath(path string, encoder compare.Encoder) string {
 type pebbleDbConversion struct {
 	dbPath string
 	log    *slog.Logger
+	fs     vfs.FS
 	kvTrap *KvTrap
 }
 
-func newPebbleDbConversion(log *slog.Logger, dbPath string, kvTrap *KvTrap) *pebbleDbConversion {
+func newPebbleDbConversion(log *slog.Logger, fs vfs.FS, dbPath string, kvTrap *KvTrap) *pebbleDbConversion {
 	return &pebbleDbConversion{
 		dbPath: dbPath,
 		log:    log,
+		fs:     fs,
 		kvTrap: kvTrap,
 	}
 }
@@ -66,6 +69,7 @@ func pathExists(path string) bool {
 func (p *pebbleDbConversion) configForOldCompareHierarchical() *pebble.Options {
 	return &pebble.Options{
 		Comparer:           OxiaSlashSpanComparer,
+		FS:                 p.fs,
 		DisableWAL:         true,
 		Logger:             &pebbleLogger{p.log},
 		FormatMajorVersion: pebble.FormatVirtualSSTables,
@@ -92,6 +96,7 @@ func (p *pebbleDbConversion) configForNewerFormat() *pebble.Options {
 		}
 	}
 	return &pebble.Options{
+		FS:                 p.fs,
 		DisableWAL:         true,
 		Logger:             &pebbleLogger{p.log},
 		FormatMajorVersion: pebble.FormatVirtualSSTables,
