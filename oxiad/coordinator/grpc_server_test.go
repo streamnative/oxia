@@ -150,6 +150,28 @@ func TestNewGrpcServerFailsToStart(t *testing.T) {
 	}
 }
 
+// A configuration to seed that can't be stored fails the start, after the
+// coordinator became the leader.
+func TestNewGrpcServerFailsToSeedClusterConfiguration(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	readOnly := filepath.Join(t.TempDir(), "read-only")
+	require.NoError(t, os.Mkdir(readOnly, 0o500))
+	options := newTestOptions()
+	options.Metadata.ProviderName = option.ProviderFile
+	options.Metadata.File.StatusName = filepath.Join(t.TempDir(), option.DefaultFileStatusName)
+	options.Metadata.File.ConfigName = filepath.Join(readOnly, option.DefaultFileConfigName)
+
+	server, err := NewGrpcServer(t.Context(), commonwatch.New(options),
+		WithInitialClusterConfiguration(&proto.ClusterConfiguration{
+			Namespaces: []*proto.Namespace{{Name: "default", ReplicationFactor: 1, InitialShardCount: 1}},
+			Servers:    []*proto.DataServerIdentity{{Public: "s1:6648", Internal: "s1:6649"}},
+		}))
+	require.ErrorIs(t, err, os.ErrPermission)
+	assert.Nil(t, server)
+}
+
 func TestGrpcServerAppliesLogLevelChanges(t *testing.T) {
 	logging.ConfigureLogger()
 	originalLevel := logging.LogLevel

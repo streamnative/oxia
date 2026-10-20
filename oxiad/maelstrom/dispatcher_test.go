@@ -77,6 +77,15 @@ func TestDispatcherProxyToLeaderRepliesToClient(t *testing.T) {
 	}
 }
 
+func TestDispatcherProxyToLeaderPanicsOnUnsupportedType(t *testing.T) {
+	d := newDispatcher(newMaelstromGrpcProvider(), newMaelstromReplicationRpcProvider())
+	d.currentLeader = "n3"
+
+	require.Panics(t, func() {
+		d.proxyToLeader(MsgTypeWriteOk, &Message[BaseMessageBody]{Src: "c1"})
+	})
+}
+
 func TestDispatcherReceivedMessageServesOxiaRequests(t *testing.T) {
 	lines := captureStdout(t)
 
