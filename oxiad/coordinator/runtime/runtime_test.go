@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -40,6 +41,7 @@ import (
 	coordoption "github.com/oxia-db/oxia/oxiad/coordinator/option"
 	"github.com/oxia-db/oxia/oxiad/coordinator/rpc"
 	"github.com/oxia-db/oxia/oxiad/coordinator/rpc/rpctest"
+	"github.com/oxia-db/oxia/oxiad/coordinator/runtime/action"
 	"github.com/oxia-db/oxia/oxiad/coordinator/runtime/balancer/selector/ensemble"
 	dataservercontroller "github.com/oxia-db/oxia/oxiad/coordinator/runtime/controller/dataserver"
 	shardcontroller "github.com/oxia-db/oxia/oxiad/coordinator/runtime/controller/shard"
@@ -117,6 +119,146 @@ func TestRuntimeNewFailsWithoutInstanceID(t *testing.T) {
 	}
 	_, err := New(metadata, func(string) rpc.Provider { return rpctest.NewRpcProvider() })
 	require.ErrorContains(t, err, "status unavailable")
+}
+
+// The runtime does not start without the status, the configuration and the
+// load balancer configuration.
+func TestRuntimeNewFailsWithoutMetadata(t *testing.T) {
+	readErr := errors.New("metadata unavailable")
+	for _, tc := range []struct {
+		name  string
+		setup func(m *fakeMetadata)
+	}{
+		{"status", func(m *fakeMetadata) {
+			m.listNamespaceStatus = func() (map[string]commonobject.Borrowed[*proto.NamespaceStatus], error) {
+				return nil, readErr
+			}
+		}},
+		{"config", func(m *fakeMetadata) {
+			m.getConfig = func() (commonobject.Borrowed[*proto.ClusterConfiguration], error) {
+				return commonobject.Borrowed[*proto.ClusterConfiguration]{}, readErr
+			}
+		}},
+		{"load balancer config", func(m *fakeMetadata) {
+			m.getLoadBalancerConfig = func() (commonobject.Borrowed[*proto.LoadBalancer], error) {
+				return commonobject.Borrowed[*proto.LoadBalancer]{}, readErr
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			metadata := &fakeMetadata{Metadata: newTestMetadata(t, &proto.ClusterConfiguration{})}
+			tc.setup(metadata)
+			_, err := New(metadata, func(string) rpc.Provider { return rpctest.NewRpcProvider() })
+			require.ErrorIs(t, err, readErr)
+		})
+	}
+}
+
+// The shards of a namespace that is no longer in the configuration still get
+// a shard controller, and the data servers of their status a data server
+// controller.
+func TestRuntimeNewStartsControllersOfNamespaceMissingFromConfig(t *testing.T) {
+	server := &proto.DataServerIdentity{Public: "s1:9091", Internal: "s1:8191"}
+	metadata := newTestMetadata(t, &proto.ClusterConfiguration{Servers: []*proto.DataServerIdentity{server}})
+	require.NoError(t, metadata.CreateNamespaceStatus("removed", &proto.NamespaceStatus{
+		ReplicationFactor: 1,
+		Shards: map[int64]*proto.ShardMetadata{
+			0: {
+				Status:         proto.ShardStatusSteadyState,
+				Term:           1,
+				Leader:         server,
+				Ensemble:       []*proto.DataServerIdentity{server},
+				Int32HashRange: &proto.HashRange{Min: 0, Max: math.MaxUint32},
+			},
+		},
+	}))
+
+	r, err := New(metadata, func(string) rpc.Provider { return rpctest.NewRpcProvider() })
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, r.Close()) })
+
+	c := r.(*runtime)
+	c.RLock()
+	defer c.RUnlock()
+	assert.Contains(t, c.shardControllers, int64(0))
+	assert.Contains(t, c.dataServerControllers, server.GetNameOrDefault())
+}
+
+// A shard deletion reported after Close started is left to Close, which
+// closes the shard controllers itself.
+func TestRuntimeShardDeletedIgnoredAfterClose(t *testing.T) {
+	c := newNamespaceTestRuntime(t, newTestMetadata(t, &proto.ClusterConfiguration{}))
+	sc := &fakeShardController{}
+	c.shardControllers[0] = sc
+	require.NoError(t, c.Close())
+	require.EqualValues(t, 1, sc.closes.Load())
+
+	c.ShardDeleted(0)
+
+	assert.Contains(t, c.shardControllers, int64(0))
+	assert.EqualValues(t, 1, sc.closes.Load())
+}
+
+// A shard controller that fails to close is still removed.
+func TestRuntimeShardDeletedRemovesControllerFailingToClose(t *testing.T) {
+	c := newNamespaceTestRuntime(t, newTestMetadata(t, &proto.ClusterConfiguration{}))
+	sc := &fakeShardController{closeErr: errors.New("close failed")}
+	c.shardControllers[0] = sc
+
+	c.ShardDeleted(0)
+
+	assert.NotContains(t, c.shardControllers, int64(0))
+	assert.EqualValues(t, 1, sc.closes.Load())
+}
+
+// The status of a data server removed from the configuration is still
+// reported while it drains.
+func TestRuntimeGetDataServerStatusFallsBackToDrainingNodes(t *testing.T) {
+	c := newNamespaceTestRuntime(t, newTestMetadata(t, &proto.ClusterConfiguration{}))
+	c.drainingNodes["s1"] = &fakeDataServerController{
+		status:   dataservercontroller.NewStatus(dataservercontroller.Draining),
+		features: []proto.Feature{proto.Feature_FEATURE_DB_CHECKSUM},
+	}
+
+	status, found := c.GetDataServerStatus("s1")
+	require.True(t, found)
+	assert.Equal(t, proto.DataServerState_DATA_SERVER_STATE_DRAINING, status.GetState())
+	assert.Equal(t, []proto.Feature{proto.Feature_FEATURE_DB_CHECKSUM}, status.GetSupportedFeatures())
+
+	_, found = c.GetDataServerStatus("unknown")
+	assert.False(t, found)
+}
+
+func TestRuntimeCreateDataServerRejectsMissingIdentity(t *testing.T) {
+	c := newNamespaceTestRuntime(t, newTestMetadata(t, &proto.ClusterConfiguration{}))
+
+	assert.False(t, c.CreateDataServer("s1", &proto.DataServer{}))
+	assert.Empty(t, c.dataServerControllers)
+}
+
+// A data server added back while it drains gets a new controller, and its
+// draining one is closed.
+func TestRuntimeCreateDataServerReplacesDrainingController(t *testing.T) {
+	c := newNamespaceTestRuntime(t, newTestMetadata(t, &proto.ClusterConfiguration{}))
+	draining := &fakeDataServerController{}
+	c.drainingNodes["s1"] = draining
+	server := &proto.DataServerIdentity{Name: new("s1"), Public: "s1:9091", Internal: "s1:8191"}
+
+	require.True(t, c.CreateDataServer("s1", &proto.DataServer{Identity: server}))
+
+	assert.EqualValues(t, 1, draining.closes.Load())
+	assert.NotContains(t, c.drainingNodes, "s1")
+	require.Contains(t, c.dataServerControllers, "s1")
+	assert.NotSame(t, draining, c.dataServerControllers["s1"])
+	assert.False(t, c.CreateDataServer("s1", &proto.DataServer{Identity: server}))
+}
+
+func TestRuntimeDeleteDataServerIgnoresUnknownDataServer(t *testing.T) {
+	c := newNamespaceTestRuntime(t, newTestMetadata(t, &proto.ClusterConfiguration{}))
+
+	c.DeleteDataServer("unknown")
+
+	assert.Empty(t, c.drainingNodes)
 }
 
 func TestRuntimeCreateNamespaceReturnsStatusReadError(t *testing.T) {
@@ -389,6 +531,172 @@ func TestRuntimeCreateNamespaceHandlesStatusErrors(t *testing.T) {
 	}
 }
 
+// CreateNamespace creates nothing when it can't allocate the shard ids or
+// read the status of the other namespaces.
+func TestRuntimeCreateNamespaceReturnsAllocationErrors(t *testing.T) {
+	readErr := errors.New("metadata unavailable")
+	for _, tc := range []struct {
+		name  string
+		setup func(m *fakeMetadata)
+	}{
+		{"allocate shard ids", func(m *fakeMetadata) {
+			m.allocateShardIDs = func(uint32) (int64, error) { return 0, readErr }
+		}},
+		{"list status", func(m *fakeMetadata) {
+			m.listNamespaceStatus = func() (map[string]commonobject.Borrowed[*proto.NamespaceStatus], error) {
+				return nil, readErr
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := &proto.DataServerIdentity{Public: "server:6648", Internal: "server:6649"}
+			namespace := &proto.Namespace{Name: "default", InitialShardCount: 1, ReplicationFactor: 1}
+			metadata := &fakeMetadata{Metadata: newTestMetadata(t, &proto.ClusterConfiguration{
+				Servers:    []*proto.DataServerIdentity{server},
+				Namespaces: []*proto.Namespace{namespace},
+			})}
+			tc.setup(metadata)
+			c := newNamespaceTestRuntime(t, metadata)
+
+			require.ErrorIs(t, c.CreateNamespace(namespace.Name, namespace), readErr)
+			require.Empty(t, c.shardControllers)
+			_, exists, err := metadata.GetNamespaceStatus(namespace.Name)
+			require.NoError(t, err)
+			require.False(t, exists)
+		})
+	}
+}
+
+// The shard controllers are not started when the status can't be read back
+// after it was created: the next CreateNamespace starts them.
+func TestRuntimeCreateNamespaceReturnsControllerInitializationError(t *testing.T) {
+	server := &proto.DataServerIdentity{Public: "server:6648", Internal: "server:6649"}
+	namespace := &proto.Namespace{Name: "default", InitialShardCount: 1, ReplicationFactor: 1}
+	base := newTestMetadata(t, &proto.ClusterConfiguration{
+		Servers:    []*proto.DataServerIdentity{server},
+		Namespaces: []*proto.Namespace{namespace},
+	})
+	readErr := errors.New("status unavailable")
+	reads := 0
+	c := newNamespaceTestRuntime(t, &fakeMetadata{
+		Metadata: base,
+		getNamespaceStatus: func(name string) (commonobject.Borrowed[*proto.NamespaceStatus], bool, error) {
+			reads++
+			if reads == 2 {
+				return commonobject.Borrowed[*proto.NamespaceStatus]{}, false, readErr
+			}
+			return base.GetNamespaceStatus(name)
+		},
+	})
+
+	require.ErrorIs(t, c.CreateNamespace(namespace.Name, namespace), readErr)
+	require.Empty(t, c.shardControllers)
+	_, exists, err := base.GetNamespaceStatus(namespace.Name)
+	require.NoError(t, err)
+	require.True(t, exists)
+
+	require.NoError(t, c.CreateNamespace(namespace.Name, namespace))
+	require.Len(t, c.shardControllers, 1)
+}
+
+func TestRuntimeDeleteNamespaceIgnoresUnknownNamespace(t *testing.T) {
+	c := newNamespaceTestRuntime(t, newTestMetadata(t, &proto.ClusterConfiguration{}))
+	sc := &fakeShardController{}
+	c.shardControllers[0] = sc
+
+	c.DeleteNamespace("unknown")
+
+	assert.Zero(t, sc.deletes.Load())
+}
+
+func TestRuntimeSelectNewEnsembleReturnsDataServerListError(t *testing.T) {
+	listErr := errors.New("data servers unavailable")
+	c := newNamespaceTestRuntime(t, &fakeMetadata{
+		Metadata: newTestMetadata(t, &proto.ClusterConfiguration{}),
+		listDataServer: func() (map[string]commonobject.Borrowed[*proto.DataServer], error) {
+			return nil, listErr
+		},
+	})
+
+	_, err := c.selectNewEnsemble("default", 0, &proto.Namespace{ReplicationFactor: 1}, nil, nil)
+	assert.ErrorIs(t, err, listErr)
+}
+
+// The selected data servers must be known data servers with an identity.
+func TestRuntimeSelectNewEnsembleRejectsUnknownDataServers(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		selected string
+	}{
+		{"not registered", "ghost"},
+		{"without identity", "anonymous"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newNamespaceTestRuntime(t, &fakeMetadata{
+				Metadata: newTestMetadata(t, &proto.ClusterConfiguration{}),
+				listDataServer: func() (map[string]commonobject.Borrowed[*proto.DataServer], error) {
+					return map[string]commonobject.Borrowed[*proto.DataServer]{
+						"anonymous": commonobject.Borrow(&proto.DataServer{}),
+					}, nil
+				},
+			})
+			c.ensembleSelector = fixedEnsembleSelector{tc.selected}
+
+			_, err := c.selectNewEnsemble("default", 0, &proto.Namespace{ReplicationFactor: 1}, nil, nil)
+			assert.ErrorContains(t, err, "failed to find node "+tc.selected)
+		})
+	}
+}
+
+// Close closes the split controllers: a split that didn't reach its point of
+// no return is aborted.
+func TestRuntimeCloseAbortsSplits(t *testing.T) {
+	r, metadata := newInitiateSplitTestRuntime(t)
+	r.ctx, r.ctxCancel = context.WithCancel(t.Context())
+	_, _, err := r.InitiateSplit(constant.DefaultNamespace, splitParentShard, nil)
+	require.NoError(t, err)
+
+	require.NoError(t, r.Close())
+
+	r.RLock()
+	assert.Empty(t, r.splitControllers)
+	r.RUnlock()
+	parent, _, err := metadata.GetShardStatus(constant.DefaultNamespace, splitParentShard)
+	require.NoError(t, err)
+	assert.Nil(t, parent.UnsafeBorrow().GetSplit())
+}
+
+// A draining data server that becomes unavailable is closed, even if closing
+// it fails, and the shard controllers are told.
+func TestRuntimeBecameUnavailableClosesDrainingNode(t *testing.T) {
+	c := newNamespaceTestRuntime(t, newTestMetadata(t, &proto.ClusterConfiguration{}))
+	server := &proto.DataServerIdentity{Name: new("s1"), Public: "s1:9091", Internal: "s1:8191"}
+	draining := &fakeDataServerController{closeErr: errors.New("close failed")}
+	c.drainingNodes["s1"] = draining
+	sc := &fakeShardController{}
+	c.shardControllers[0] = sc
+
+	c.BecameUnavailable(server)
+
+	assert.NotContains(t, c.drainingNodes, "s1")
+	assert.Eventually(t, func() bool {
+		return draining.closes.Load() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+	assert.Equal(t, []*proto.DataServerIdentity{server}, sc.unavailable)
+}
+
+// An action on a shard without a controller, e.g. deleted in the meantime,
+// fails.
+func TestRuntimeDispatchActionFailsForUnknownShard(t *testing.T) {
+	c := newNamespaceTestRuntime(t, newTestMetadata(t, &proto.ClusterConfiguration{}))
+	ac := action.NewChangeEnsembleAction(42, &proto.DataServerIdentity{}, &proto.DataServerIdentity{})
+
+	c.dispatchAction(ac)
+
+	_, err := ac.Wait()
+	assert.ErrorIs(t, err, constant.ErrResourceUnavailable)
+}
+
 // The clients merge the results of the shards of a namespace in the order of
 // its keys, so the assignments of each namespace carry its key sorting. The
 // data servers keep the keys of a namespace without a key sorting in
@@ -483,6 +791,72 @@ func TestRuntimeComputeNewAssignmentsRetriesStatusLoadError(t *testing.T) {
 	require.True(t, ok)
 	require.Len(t, nsAssignments.Assignments, 1)
 	assert.Equal(t, server.GetPublic(), nsAssignments.Assignments[0].Leader)
+}
+
+func TestRuntimeComputeNewAssignmentsRetriesConfigLoadErrors(t *testing.T) {
+	loadErr := errors.New("config unavailable")
+	for _, tc := range []struct {
+		name  string
+		setup func(m *fakeMetadata, fail func() bool)
+	}{
+		{"config", func(m *fakeMetadata, fail func() bool) {
+			m.getConfig = func() (commonobject.Borrowed[*proto.ClusterConfiguration], error) {
+				if fail() {
+					return commonobject.Borrowed[*proto.ClusterConfiguration]{}, loadErr
+				}
+				return m.Metadata.GetConfig()
+			}
+		}},
+		{"namespaces", func(m *fakeMetadata, fail func() bool) {
+			m.listNamespace = func() (map[string]commonobject.Borrowed[*proto.Namespace], error) {
+				if fail() {
+					return nil, loadErr
+				}
+				return m.Metadata.ListNamespace()
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := &proto.DataServerIdentity{Public: "public:6648", Internal: "internal:6649"}
+			base := newTestMetadata(t, &proto.ClusterConfiguration{
+				Servers:    []*proto.DataServerIdentity{server},
+				Namespaces: []*proto.Namespace{{Name: "ns", InitialShardCount: 1, ReplicationFactor: 1}},
+			})
+			require.NoError(t, base.CreateNamespaceStatus("ns", &proto.NamespaceStatus{
+				ReplicationFactor: 1,
+				Shards: map[int64]*proto.ShardMetadata{
+					0: {
+						Status:         proto.ShardStatusSteadyState,
+						Leader:         server,
+						Ensemble:       []*proto.DataServerIdentity{server},
+						Int32HashRange: &proto.HashRange{Min: 0, Max: 100},
+					},
+				},
+			}))
+			failures := 2
+			metadata := &fakeMetadata{Metadata: base}
+			tc.setup(metadata, func() bool {
+				if failures > 0 {
+					failures--
+					return true
+				}
+				return false
+			})
+			c := &runtime{
+				ctx:              t.Context(),
+				logger:           slog.Default(),
+				metadata:         metadata,
+				assignmentsWatch: commonwatch.New(&proto.ShardAssignments{}),
+			}
+
+			c.computeNewAssignments()
+
+			require.Zero(t, failures)
+			nsAssignments, ok := c.assignmentsWatch.Load().Namespaces["ns"]
+			require.True(t, ok)
+			require.Len(t, nsAssignments.Assignments, 1)
+		})
+	}
 }
 
 func TestRuntimeComputeNewAssignmentsIncludesExtraAuthorities(t *testing.T) {
@@ -669,6 +1043,50 @@ func TestRuntimeFindDataServerFeaturesOmitsUnknownNodes(t *testing.T) {
 	assert.NotContains(t, features, dataServer.GetNameOrDefault())
 }
 
+// A data server registered without metadata is a candidate without labels.
+func TestDataServersToCandidatesAndMetadataDefaultsMissingMetadata(t *testing.T) {
+	labels := &proto.DataServerMetadata{Labels: map[string]string{"zone": "a"}}
+	candidates, metadata := dataServersToCandidatesAndMetadata(map[string]commonobject.Borrowed[*proto.DataServer]{
+		"s1": commonobject.Borrow(&proto.DataServer{Metadata: labels}),
+		"s2": commonobject.Borrow(&proto.DataServer{}),
+	})
+
+	assert.ElementsMatch(t, []string{"s1", "s2"}, candidates.Values())
+	assert.Same(t, labels, metadata["s1"])
+	require.NotNil(t, metadata["s2"])
+	assert.Empty(t, metadata["s2"].GetLabels())
+}
+
+// The data servers of a shard are its leader, the members of its ensemble,
+// and the ones being removed from it.
+func TestDataServersFromStatusIncludesAllShardMembers(t *testing.T) {
+	leader := &proto.DataServerIdentity{Public: "leader:9091", Internal: "leader:8191"}
+	member := &proto.DataServerIdentity{Public: "member:9091", Internal: "member:8191"}
+	removed := &proto.DataServerIdentity{Public: "removed:9091", Internal: "removed:8191"}
+	pendingDelete := &proto.DataServerIdentity{Public: "pending:9091", Internal: "pending:8191"}
+	status := map[string]commonobject.Borrowed[*proto.NamespaceStatus]{
+		"ns": commonobject.Borrow(&proto.NamespaceStatus{Shards: map[int64]*proto.ShardMetadata{
+			0: {
+				Leader:                  leader,
+				Ensemble:                []*proto.DataServerIdentity{leader, member},
+				RemovedNodes:            []*proto.DataServerIdentity{removed},
+				PendingDeleteShardNodes: []*proto.DataServerIdentity{pendingDelete},
+			},
+			// Without a leader
+			1: {Ensemble: []*proto.DataServerIdentity{member}},
+		}}),
+	}
+
+	var names []string
+	for _, server := range dataServersFromStatus(status) {
+		names = append(names, server.GetNameOrDefault())
+	}
+	assert.ElementsMatch(t, []string{
+		leader.GetNameOrDefault(), member.GetNameOrDefault(),
+		removed.GetNameOrDefault(), pendingDelete.GetNameOrDefault(),
+	}, names)
+}
+
 func newTestMetadata(t *testing.T, config *proto.ClusterConfiguration) coordmetadata.Metadata {
 	t.Helper()
 
@@ -704,14 +1122,17 @@ func newNamespaceTestRuntime(t *testing.T, metadata coordmetadata.Metadata) *run
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
 	c := &runtime{
-		ctx:              ctx,
-		ctxCancel:        cancel,
-		logger:           slog.Default(),
-		metadata:         metadata,
-		ensembleSelector: namespaceEnsembleSelector{},
-		shardControllers: make(map[int64]shardcontroller.Controller),
-		assignmentsWatch: commonwatch.New(&proto.ShardAssignments{}),
-		rpc:              rpctest.NewRpcProvider(),
+		ctx:                   ctx,
+		ctxCancel:             cancel,
+		logger:                slog.Default(),
+		metadata:              metadata,
+		ensembleSelector:      namespaceEnsembleSelector{},
+		shardControllers:      make(map[int64]shardcontroller.Controller),
+		splitControllers:      make(map[int64]*shardcontroller.SplitController),
+		dataServerControllers: make(map[string]dataservercontroller.Controller),
+		drainingNodes:         make(map[string]dataservercontroller.Controller),
+		assignmentsWatch:      commonwatch.New(&proto.ShardAssignments{}),
+		rpc:                   rpctest.NewRpcProvider(),
 	}
 	t.Cleanup(func() { require.NoError(t, c.Close()) })
 	return c
@@ -729,6 +1150,46 @@ type fakeMetadata struct {
 	patchNamespaceStatus  func(namespace string, modify func(*proto.NamespaceStatus) bool) error
 	updateShardStatus     func(namespace string, shard int64, shardMetadata *proto.ShardMetadata) error
 	deleteShardStatus     func(namespace string, shard int64) error
+	getConfig             func() (commonobject.Borrowed[*proto.ClusterConfiguration], error)
+	getLoadBalancerConfig func() (commonobject.Borrowed[*proto.LoadBalancer], error)
+	listNamespace         func() (map[string]commonobject.Borrowed[*proto.Namespace], error)
+	getNamespace          func(name string) (commonobject.Borrowed[*proto.Namespace], bool, error)
+	listDataServer        func() (map[string]commonobject.Borrowed[*proto.DataServer], error)
+}
+
+func (m *fakeMetadata) GetConfig() (commonobject.Borrowed[*proto.ClusterConfiguration], error) {
+	if m.getConfig != nil {
+		return m.getConfig()
+	}
+	return m.Metadata.GetConfig()
+}
+
+func (m *fakeMetadata) GetLoadBalancerConfig() (commonobject.Borrowed[*proto.LoadBalancer], error) {
+	if m.getLoadBalancerConfig != nil {
+		return m.getLoadBalancerConfig()
+	}
+	return m.Metadata.GetLoadBalancerConfig()
+}
+
+func (m *fakeMetadata) ListNamespace() (map[string]commonobject.Borrowed[*proto.Namespace], error) {
+	if m.listNamespace != nil {
+		return m.listNamespace()
+	}
+	return m.Metadata.ListNamespace()
+}
+
+func (m *fakeMetadata) GetNamespace(name string) (commonobject.Borrowed[*proto.Namespace], bool, error) {
+	if m.getNamespace != nil {
+		return m.getNamespace(name)
+	}
+	return m.Metadata.GetNamespace(name)
+}
+
+func (m *fakeMetadata) ListDataServer() (map[string]commonobject.Borrowed[*proto.DataServer], error) {
+	if m.listDataServer != nil {
+		return m.listDataServer()
+	}
+	return m.Metadata.ListDataServer()
 }
 
 func (m *fakeMetadata) GetInstanceID() (string, error) {
@@ -839,4 +1300,57 @@ func (s failingEnsembleSelector) Select(ctx *ensemble.Context) ([]string, error)
 		return nil, errors.New("not enough data servers")
 	}
 	return ctx.Candidates.Values(), nil
+}
+
+// fixedEnsembleSelector selects the same data servers for every shard.
+type fixedEnsembleSelector []string
+
+func (s fixedEnsembleSelector) Select(*ensemble.Context) ([]string, error) {
+	return s, nil
+}
+
+// fakeShardController records the calls the runtime makes. The methods that
+// it doesn't implement panic.
+type fakeShardController struct {
+	shardcontroller.Controller
+	closeErr    error
+	closes      atomic.Int64
+	deletes     atomic.Int64
+	unavailable []*proto.DataServerIdentity
+}
+
+func (c *fakeShardController) Close() error {
+	c.closes.Add(1)
+	return c.closeErr
+}
+
+func (c *fakeShardController) Delete() {
+	c.deletes.Add(1)
+}
+
+func (c *fakeShardController) BecameUnavailable(dataServer *proto.DataServerIdentity) {
+	c.unavailable = append(c.unavailable, dataServer)
+}
+
+// fakeDataServerController reports a fixed status and the features that its
+// data server supports. The methods that it doesn't implement panic.
+type fakeDataServerController struct {
+	dataservercontroller.Controller
+	status   dataservercontroller.Status
+	features []proto.Feature
+	closeErr error
+	closes   atomic.Int64
+}
+
+func (c *fakeDataServerController) GetStatus() dataservercontroller.Status {
+	return c.status
+}
+
+func (c *fakeDataServerController) GetFeatures() []proto.Feature {
+	return c.features
+}
+
+func (c *fakeDataServerController) Close() error {
+	c.closes.Add(1)
+	return c.closeErr
 }
