@@ -33,6 +33,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/oxia-db/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/oxiad/dataserver/database"
 	dataserverrpc "github.com/oxia-db/oxia/oxiad/dataserver/rpc"
 
@@ -556,8 +557,13 @@ func (fc *followerCursor) waitAtHead(ctx context.Context, reader wal.Reader, cur
 	if err := fc.ackTracker.WaitForHeadOffsetOrCommitAdvance(ctx, currentOffset+1, lastSentCommitOffset); err != nil {
 		return lastSentCommitOffset, err
 	}
-	if err := holdBackCommitAdvertisement(ctx, fc.ackTracker, currentOffset); err != nil {
-		return lastSentCommitOffset, err
+	if delay, ok := failpoint.Eval[time.Duration]("followerCursor.holdBackCommitAdvertisement"); ok {
+		waitCtx, cancel := context.WithTimeout(ctx, delay)
+		err := fc.ackTracker.WaitForHeadOffset(waitCtx, currentOffset+1)
+		cancel()
+		if err != nil && ctx.Err() != nil {
+			return lastSentCommitOffset, ctx.Err()
+		}
 	}
 
 	commitOffset := fc.ackTracker.CommitOffset()

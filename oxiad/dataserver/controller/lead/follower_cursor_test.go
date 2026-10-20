@@ -32,6 +32,7 @@ import (
 	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
 
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/common/rpc"
 	"github.com/oxia-db/oxia/oxiad/dataserver/database"
 	"github.com/oxia-db/oxia/oxiad/dataserver/database/kvstore"
@@ -968,6 +969,90 @@ func TestFollowerCursorRetriesWhenTheCommitAdvertisementFails(t *testing.T) {
 	}
 	assert.False(t, failAdvertisement.Load())
 	assert.EqualValues(t, 2, provider.streams.Load())
+}
+
+func TestFollowerCursorHoldsBackTheCommitAdvertisement(t *testing.T) {
+	if !failpoint.Enabled {
+		t.Skip("needs failpoints: disabled by the disable_trap tag")
+	}
+	const delay = 500 * time.Millisecond
+	failpoint.Enable("followerCursor.holdBackCommitAdvertisement", delay)
+	t.Cleanup(func() { failpoint.Disable("followerCursor.holdBackCommitAdvertisement") })
+	db, w := newCursorTestStores(t, &hookKVFactory{})
+	appendCursorTestEntries(t, w, 2)
+	ackTracker := NewQuorumAckTracker(3, 0, 0)
+	regular, err := ackTracker.NewCursorAcker(0)
+	require.NoError(t, err)
+	stream := rpc.NewMockRpcClient()
+
+	fc, err := NewFollowerCursor("f1", 1, constant.DefaultNamespace, 2, stream, ackTracker, w, db, 0, true)
+	require.NoError(t, err)
+	defer fc.Close()
+	req := <-stream.AppendReqs
+	require.EqualValues(t, 1, req.Entry.Offset)
+
+	advanced := time.Now()
+	ackTracker.AdvanceHeadOffset(1)
+	regular.Ack(1)
+	select {
+	case req = <-stream.AppendReqs:
+		assert.Nil(t, req.Entry)
+		assert.EqualValues(t, 1, req.CommitOffset)
+	case <-time.After(10 * time.Second):
+		assert.Fail(t, "the follower got no commit offset")
+	}
+	assert.GreaterOrEqual(t, time.Since(advanced), delay)
+}
+
+// A new entry ends the hold back, and carries the commit offset.
+func TestFollowerCursorSendsTheHeldBackCommitOffsetWithANewEntry(t *testing.T) {
+	if !failpoint.Enabled {
+		t.Skip("needs failpoints: disabled by the disable_trap tag")
+	}
+	failpoint.Enable("followerCursor.holdBackCommitAdvertisement", time.Hour)
+	t.Cleanup(func() { failpoint.Disable("followerCursor.holdBackCommitAdvertisement") })
+	db, w := newCursorTestStores(t, &hookKVFactory{})
+	appendCursorTestEntries(t, w, 2)
+	ackTracker := NewQuorumAckTracker(3, 0, 0)
+	regular, err := ackTracker.NewCursorAcker(0)
+	require.NoError(t, err)
+	stream := rpc.NewMockRpcClient()
+
+	fc, err := NewFollowerCursor("f1", 1, constant.DefaultNamespace, 2, stream, ackTracker, w, db, 0, true)
+	require.NoError(t, err)
+	req := <-stream.AppendReqs
+	require.EqualValues(t, 1, req.Entry.Offset)
+
+	ackTracker.AdvanceHeadOffset(1)
+	regular.Ack(1)
+	appendCursorTestEntries(t, w, 3)
+	ackTracker.AdvanceHeadOffset(2)
+	select {
+	case req = <-stream.AppendReqs:
+		assert.EqualValues(t, 2, req.Entry.GetOffset())
+		assert.EqualValues(t, 1, req.CommitOffset)
+	case <-time.After(10 * time.Second):
+		assert.Fail(t, "the follower got no entry")
+	}
+
+	// Closing the cursor ends the hold back of the next commit offset
+	regular.Ack(2)
+	require.EqualValues(t, 2, ackTracker.CommitOffset())
+	select {
+	case req = <-stream.AppendReqs:
+		assert.Fail(t, "unexpected append", "%+v", req)
+	case <-time.After(100 * time.Millisecond):
+	}
+	closed := make(chan struct{})
+	go func() {
+		fc.Close()
+		close(closed)
+	}()
+	select {
+	case <-closed:
+	case <-time.After(10 * time.Second):
+		assert.Fail(t, "the cursor didn't close")
+	}
 }
 
 // The follower can close its side of the stream: the cursor keeps sending
