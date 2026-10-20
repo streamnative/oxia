@@ -595,6 +595,29 @@ func TestPebbleDbConversionFailsWhenBackupCannotBeRestored(t *testing.T) {
 	assert.NoDirExists(t, dbPath)
 }
 
+// A failure to move the old database to its backup fails the conversion: the
+// next open converts the database again.
+func TestPebbleDbConversionFailsWhenOldDbCannotBeBackedUp(t *testing.T) {
+	kvFactory, _ := newNaturalDb(t)
+	options := NewFactoryOptionsForTest(t)
+	options.DataDir = kvFactory.(*PebbleFactory).options.DataDir
+	options.Failpoints = failpoint.New(map[string]func() error{
+		"convertDb.backupOldDb": func() error { return errFailpoint },
+	})
+	trapKvFactory, err := NewPebbleKVFactory(options)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, trapKvFactory.Close()) })
+
+	_, err = trapKvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_HIERARCHICAL)
+	assert.ErrorIs(t, err, errFailpoint)
+	assert.ErrorContains(t, err, "failed to backup old database")
+
+	kv, err := kvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_HIERARCHICAL)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/key/a"}, scanAllKeys(t, kv, NoInternalKeys))
+	assert.NoError(t, kv.Close())
+}
+
 func TestPebbleDbConversionFailsWhenNewDbCannotBeRenamed(t *testing.T) {
 	kvFactory, dbPath := newNaturalDb(t)
 	options := NewFactoryOptionsForTest(t)

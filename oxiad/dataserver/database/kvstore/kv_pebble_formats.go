@@ -268,7 +268,7 @@ func (p *pebbleDbConversion) convertDb(
 		return errors.Wrap(err, "failed to close new database")
 	}
 
-	if err := os.Rename(p.dbPath, oldDbBackupPath); err != nil {
+	if err := p.failpoints.Fail("convertDb.backupOldDb", os.Rename(p.dbPath, oldDbBackupPath)); err != nil {
 		return errors.Wrap(err, "failed to backup old database")
 	}
 
