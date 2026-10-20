@@ -318,7 +318,7 @@ func TestNewFileProviderFailures(t *testing.T) {
 	}
 }
 
-func TestNewConfigMapProviderRejectsEmptyName(t *testing.T) {
+func TestNewConfigMapProviderRejectsEmptyNameOnLeadership(t *testing.T) {
 	writeKubeconfig(t, `apiVersion: v1
 kind: Config
 clusters:
@@ -332,7 +332,7 @@ contexts:
 current-context: test
 `)
 
-	_, err := New(t.Context(), &option.Options{
+	factory, err := New(t.Context(), &option.Options{
 		Metadata: option.MetadataOptions{
 			ProviderOptions: option.ProviderOptions{
 				ProviderName: metadatacommon.NameConfigMap,
@@ -340,7 +340,11 @@ current-context: test
 			},
 		},
 	})
-	require.ErrorContains(t, err, "coordinator name must not be empty")
+	require.NoError(t, err)
+	defer func() { require.NoError(t, factory.Close()) }()
+
+	_, err = factory.statusProvider.WaitToBecomeLeader()
+	require.ErrorContains(t, err, "failed to create the leader elector")
 }
 
 func TestNewConfigMapProviderFailsWithoutKubeconfig(t *testing.T) {
