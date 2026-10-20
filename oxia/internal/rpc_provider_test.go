@@ -391,6 +391,25 @@ func TestRpcProvider_WriteStreamSetupRespectsTheDeadline(t *testing.T) {
 	assert.Never(t, func() bool { return leader.requests.Load() > 0 }, 300*time.Millisecond, 10*time.Millisecond)
 }
 
+func TestRpcProviderGetWriteStreamReplacesStreamThatFailsToClose(t *testing.T) {
+	leaderAddress := startTestOxiaClientServer(t, &writeServer{})
+	provider := NewRpcProvider(t.Context(), constant.DefaultNamespace, nil, nil, leaderAddress,
+		func() ShardManager { return &testShardManager{} })
+	defer func() {
+		assert.NoError(t, provider.Close())
+	}()
+	p := provider.(*rpcProvider)
+	old := &streamWrapper{target: "old-leader", stream: &fakeWriteStreamClient{closeSendErr: errors.New("close failed")}}
+	p.writeStreams[0] = old
+
+	sw, err := p.getWriteStream(t.Context(), 0, leaderAddress)
+
+	require.NoError(t, err)
+	assert.NotSame(t, old, sw)
+	assert.True(t, old.failed.Load())
+	assert.Same(t, sw, p.writeStreams[0])
+}
+
 func TestExecuteWithRetry_ShardRequestErrors(t *testing.T) {
 	for _, tt := range []struct {
 		name      string
@@ -778,4 +797,13 @@ func TestRpcProviderListAndRangeScanConsumerError(t *testing.T) {
 	assert.ErrorIs(t, err, failure)
 	assert.Equal(t, 1, consumed)
 	assert.Equal(t, int32(2), requests.Load())
+}
+
+type fakeWriteStreamClient struct {
+	proto.OxiaClient_WriteStreamClient
+	closeSendErr error
+}
+
+func (s *fakeWriteStreamClient) CloseSend() error {
+	return s.closeSendErr
 }
