@@ -47,16 +47,17 @@ var (
 
 func init() {
 	if !counterOK {
-		// coverage-ignore: runs only without an invariant TSC, which the CI CPUs have
+		// coverage-ignore: runs only without a constant-rate counter readable from user space
 		microsPerTick.Store(math.Float64bits(microsPerNano))
 	}
 }
 
 func timerTicks() int64 {
 	if !counterOK {
-		// coverage-ignore: runs only without an invariant TSC, which the CI CPUs have
+		// coverage-ignore: runs only without a constant-rate counter readable from user space
 		return int64(time.Since(timerEpoch))
 	}
+	// coverage-ignore: runs only with a constant-rate counter readable from user space
 	return readCounter()
 }
 
@@ -66,6 +67,7 @@ func elapsedMicros(start int64) int64 {
 	ticks := max(timerTicks()-start, 0)
 	rate := math.Float64frombits(microsPerTick.Load())
 	if rate == 0 {
+		// coverage-ignore: runs only with a constant-rate counter readable from user space
 		rate = calibrate()
 	}
 	return int64(float64(ticks) * rate)
@@ -80,10 +82,13 @@ func calibrate() float64 {
 	if ticks <= 0 {
 		return 0
 	}
+	// coverage-ignore: runs only with a constant-rate counter readable from user space
 	rate := float64(mono) * microsPerNano / float64(ticks)
 	if mono >= calibrationSpan {
+		// coverage-ignore: runs only with a constant-rate counter readable from user space
 		microsPerTick.Store(math.Float64bits(rate))
 	}
+	// coverage-ignore: runs only with a constant-rate counter readable from user space
 	return rate
 }
 
