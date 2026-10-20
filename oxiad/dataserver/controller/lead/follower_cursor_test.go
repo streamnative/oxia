@@ -21,12 +21,15 @@ import (
 	"io"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
 
 	"github.com/oxia-db/oxia/common/rpc"
@@ -768,4 +771,352 @@ func TestFollowerCursorAdvertisesCommitOffsetAtHeadWhenTheTermPinsIt(t *testing.
 			assert.NoError(t, kvf.Close())
 		})
 	}
+}
+
+func TestNewFollowerCursorFailsWithoutRoomInTheTracker(t *testing.T) {
+	db, w := newCursorTestStores(t, &hookKVFactory{})
+
+	// A replication factor of 1 has no follower
+	fc, err := NewFollowerCursor("f1", 1, constant.DefaultNamespace, 2, rpc.NewMockRpcClient(),
+		NewQuorumAckTracker(1, wal.InvalidOffset, wal.InvalidOffset), w, db, wal.InvalidOffset, false)
+	assert.ErrorIs(t, err, ErrTooManyCursors)
+	assert.Nil(t, fc)
+}
+
+// A follower that misses entries before the first one of the leader's wal can
+// only be brought up to date through a snapshot.
+func TestFollowerCursorSendsSnapshotToAFollowerBehindTheWal(t *testing.T) {
+	n := int64(10)
+	db, w := newCursorTestStores(t, &hookKVFactory{})
+	previousCrc := uint32(1)
+	_, err := w.AppendAsyncWithPreviousCrc(&proto.LogEntry{Term: 1, Offset: n, Value: []byte("v")}, &previousCrc)
+	require.NoError(t, err)
+	require.NoError(t, w.Sync(context.Background()))
+	stream := rpc.NewMockRpcClient()
+
+	fc, err := NewFollowerCursor("f1", 1, constant.DefaultNamespace, 2, stream, NewQuorumAckTracker(3, n, n-1), w,
+		db, n-5, false)
+	require.NoError(t, err)
+
+	select {
+	case chunk := <-stream.SendSnapshotStream.Requests:
+		assert.EqualValues(t, 1, chunk.Term)
+	case <-time.After(10 * time.Second):
+		assert.Fail(t, "the follower got no snapshot")
+	}
+	stream.SendSnapshotStream.Response <- &proto.SnapshotResponse{AckOffset: n - 1}
+	assert.NoError(t, fc.Close())
+}
+
+// A follower that reports it's not a member lost its data, e.g. after a
+// clean-up: the cursor brings it up to date from the start.
+func TestFollowerCursorRestartsWhenTheFollowerIsNotAMember(t *testing.T) {
+	db, w := newCursorTestStores(t, &hookKVFactory{})
+	appendCursorTestEntries(t, w, 2)
+	notMember := &atomic.Bool{}
+	notMember.Store(true)
+	provider := &hookStreamProvider{MockRpcClient: rpc.NewMockRpcClient()}
+	provider.getReplicateStream = func(stream proto.OxiaLogReplication_ReplicateClient) (
+		proto.OxiaLogReplication_ReplicateClient, error) {
+		if notMember.CompareAndSwap(true, false) {
+			return nil, constant.ErrNodeIsNotMember
+		}
+		return stream, nil
+	}
+
+	fc, err := NewFollowerCursor("f1", 1, constant.DefaultNamespace, 2, provider, NewQuorumAckTracker(3, 1, 0), w, db,
+		0, false)
+	require.NoError(t, err)
+	defer fc.Close()
+
+	select {
+	case req := <-provider.AppendReqs:
+		assert.EqualValues(t, 0, req.Entry.Offset)
+	case <-time.After(10 * time.Second):
+		assert.Fail(t, "the follower got no entry")
+	}
+	assert.EqualValues(t, wal.InvalidOffset, fc.AckOffset())
+}
+
+// The cursor retries a snapshot that it fails to read.
+func TestFollowerCursorRetriesTheSnapshotWhenItCantBeRead(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		snapshot func(kv kvstore.KV) (kvstore.Snapshot, error)
+	}{
+		{"open", func(kvstore.KV) (kvstore.Snapshot, error) { return nil, errInjected }},
+		{"chunk", func(kv kvstore.KV) (kvstore.Snapshot, error) {
+			snapshot, err := kv.Snapshot()
+			return failingChunkSnapshot{snapshot}, err
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			snapshots := &atomic.Int64{}
+			db, w := newCursorTestStores(t, &hookKVFactory{snapshot: func(kv kvstore.KV) (kvstore.Snapshot, error) {
+				snapshots.Add(1)
+				return test.snapshot(kv)
+			}})
+			// The wal is empty: the follower can only get a snapshot
+			var shard int64 = 2
+			_, err := db.ProcessWrite(&proto.WriteRequest{Shard: &shard, Puts: []*proto.PutRequest{{
+				Key:   "a",
+				Value: []byte("a"),
+			}}}, 0, 0, database.NoOpCallback)
+			require.NoError(t, err)
+			stream := rpc.NewMockRpcClient()
+
+			fc, err := NewFollowerCursor("f1", 1, constant.DefaultNamespace, shard, stream,
+				NewQuorumAckTracker(3, 0, 0), w, db, wal.InvalidOffset, false)
+			require.NoError(t, err)
+
+			assert.Eventually(t, func() bool { return snapshots.Load() >= 2 }, 10*time.Second, 10*time.Millisecond)
+			assert.NoError(t, fc.Close())
+			assert.Empty(t, stream.SendSnapshotStream.Requests)
+			assert.EqualValues(t, wal.InvalidOffset, fc.AckOffset())
+		})
+	}
+}
+
+// The cursor streams the entries again on a new stream when it fails to
+// read or to send them.
+func TestFollowerCursorRetriesTheEntriesWhenTheyCantBeStreamed(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		newReader func(w wal.Wal, after int64) (wal.Reader, error)
+		send      func(req *proto.Append) error
+	}{
+		{name: "open", newReader: func(wal.Wal, int64) (wal.Reader, error) { return nil, errInjected }},
+		{name: "read", newReader: func(w wal.Wal, after int64) (wal.Reader, error) {
+			return newFailingReader(w.NewReader(after))
+		}},
+		{name: "send", send: func(*proto.Append) error { return errInjected }},
+		{name: "send canceled", send: func(*proto.Append) error { return status.Error(codes.Canceled, "canceled") }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			db, w := newCursorTestStores(t, &hookKVFactory{})
+			appendCursorTestEntries(t, w, 1)
+			failReader := &atomic.Bool{}
+			failReader.Store(test.newReader != nil)
+			w = &hookWal{Wal: w, factory: &hookWalFactory{newReader: func(w wal.Wal, after int64) (wal.Reader, error) {
+				if failReader.CompareAndSwap(true, false) {
+					return test.newReader(w, after)
+				}
+				return w.NewReader(after)
+			}}}
+			failSend := &atomic.Bool{}
+			failSend.Store(test.send != nil)
+			provider := &hookStreamProvider{MockRpcClient: rpc.NewMockRpcClient()}
+			provider.getReplicateStream = func(stream proto.OxiaLogReplication_ReplicateClient) (
+				proto.OxiaLogReplication_ReplicateClient, error) {
+				send := func(req *proto.Append) error {
+					if failSend.CompareAndSwap(true, false) {
+						return test.send(req)
+					}
+					return nil
+				}
+				return &hookReplicateStream{OxiaLogReplication_ReplicateClient: stream, send: send}, nil
+			}
+
+			fc, err := NewFollowerCursor("f1", 1, constant.DefaultNamespace, 2, provider, NewQuorumAckTracker(3, 0, 0),
+				w, db, wal.InvalidOffset, false)
+			require.NoError(t, err)
+			defer fc.Close()
+
+			select {
+			case req := <-provider.AppendReqs:
+				assert.EqualValues(t, 0, req.Entry.Offset)
+			case <-time.After(10 * time.Second):
+				assert.Fail(t, "the follower got no entry")
+			}
+			assert.EqualValues(t, 2, provider.streams.Load())
+		})
+	}
+}
+
+// A cursor that fails to advertise the commit offset streams the entries
+// again on a new stream, along with the commit offset.
+func TestFollowerCursorRetriesWhenTheCommitAdvertisementFails(t *testing.T) {
+	db, w := newCursorTestStores(t, &hookKVFactory{})
+	appendCursorTestEntries(t, w, 2)
+	ackTracker := NewQuorumAckTracker(3, 0, 0)
+	regular, err := ackTracker.NewCursorAcker(0)
+	require.NoError(t, err)
+	failAdvertisement := &atomic.Bool{}
+	failAdvertisement.Store(true)
+	provider := &hookStreamProvider{MockRpcClient: rpc.NewMockRpcClient()}
+	provider.getReplicateStream = func(stream proto.OxiaLogReplication_ReplicateClient) (
+		proto.OxiaLogReplication_ReplicateClient, error) {
+		return &hookReplicateStream{OxiaLogReplication_ReplicateClient: stream, send: func(req *proto.Append) error {
+			if req.Entry == nil && failAdvertisement.CompareAndSwap(true, false) {
+				return errInjected
+			}
+			return nil
+		}}, nil
+	}
+
+	fc, err := NewFollowerCursor("f1", 1, constant.DefaultNamespace, 2, provider, ackTracker, w, db, 0, true)
+	require.NoError(t, err)
+	defer fc.Close()
+	req := <-provider.AppendReqs
+	require.EqualValues(t, 1, req.Entry.Offset)
+
+	ackTracker.AdvanceHeadOffset(1)
+	regular.Ack(1)
+	select {
+	case req = <-provider.AppendReqs:
+		assert.EqualValues(t, 1, req.Entry.GetOffset())
+		assert.EqualValues(t, 1, req.CommitOffset)
+	case <-time.After(10 * time.Second):
+		assert.Fail(t, "the follower got no entry")
+	}
+	assert.False(t, failAdvertisement.Load())
+	assert.EqualValues(t, 2, provider.streams.Load())
+}
+
+// The follower can close its side of the stream: the cursor keeps sending
+// the entries.
+func TestFollowerCursorKeepsStreamingWhenTheAcksEnd(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		recv func() (*proto.Ack, error)
+	}{
+		{"eof", func() (*proto.Ack, error) { return nil, io.EOF }},
+		// What the receiver gets once the follower closed the stream
+		{"closed", func() (*proto.Ack, error) { return nil, nil }}, //nolint:nilnil
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			db, w := newCursorTestStores(t, &hookKVFactory{})
+			appendCursorTestEntries(t, w, 1)
+			ackTracker := NewQuorumAckTracker(3, 0, 0)
+			acksEnded := make(chan struct{})
+			provider := &hookStreamProvider{MockRpcClient: rpc.NewMockRpcClient()}
+			provider.getReplicateStream = func(stream proto.OxiaLogReplication_ReplicateClient) (
+				proto.OxiaLogReplication_ReplicateClient, error) {
+				recv := func() (*proto.Ack, error) {
+					defer close(acksEnded)
+					return test.recv()
+				}
+				return &hookReplicateStream{OxiaLogReplication_ReplicateClient: stream, recv: recv}, nil
+			}
+
+			fc, err := NewFollowerCursor("f1", 1, constant.DefaultNamespace, 2, provider, ackTracker, w, db, 0, false)
+			require.NoError(t, err)
+			defer fc.Close()
+			<-acksEnded
+
+			appendCursorTestEntries(t, w, 2)
+			ackTracker.AdvanceHeadOffset(1)
+			select {
+			case req := <-provider.AppendReqs:
+				assert.EqualValues(t, 1, req.Entry.Offset)
+			case <-time.After(10 * time.Second):
+				assert.Fail(t, "the follower got no entry")
+			}
+			assert.EqualValues(t, 1, provider.streams.Load())
+		})
+	}
+}
+
+func TestFollowerCursorLogsTheEntriesAtDebugLevel(t *testing.T) {
+	logs := captureDebugLogs(t)
+	db, w := newCursorTestStores(t, &hookKVFactory{})
+	appendCursorTestEntries(t, w, 1)
+	stream := rpc.NewMockRpcClient()
+
+	fc, err := NewFollowerCursor("f1", 1, constant.DefaultNamespace, 2, stream, NewQuorumAckTracker(3, 0, 0), w, db,
+		wal.InvalidOffset, false)
+	require.NoError(t, err)
+	defer fc.Close()
+	<-stream.AppendReqs
+	stream.AckResps <- &proto.Ack{Offset: 0}
+	require.Eventually(t, func() bool { return fc.AckOffset() == 0 }, 10*time.Second, 10*time.Millisecond)
+
+	assert.Contains(t, logs(), "Sending entries to follower")
+	assert.Contains(t, logs(), "Received ack")
+}
+
+// newCursorTestStores returns the database and the wal of shard 2, on the
+// Pebble store that the hooks of kvFactory can override, which get closed at
+// the end of the test.
+func newCursorTestStores(t *testing.T, kvFactory *hookKVFactory) (database.DB, wal.Wal) {
+	t.Helper()
+
+	pebbleFactory, err := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	kvFactory.Factory = pebbleFactory
+	db, err := database.NewDB(constant.DefaultNamespace, 2, kvFactory, proto.KeySortingType_HIERARCHICAL, time.Hour,
+		time2.SystemClock)
+	require.NoError(t, err)
+	wf := wal.NewWalFactory(&wal.FactoryOptions{BaseWalDir: t.TempDir()})
+	w, err := wf.NewWal(constant.DefaultNamespace, 2, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		assert.NoError(t, w.Close())
+		assert.NoError(t, wf.Close())
+		assert.NoError(t, db.Close())
+		assert.NoError(t, pebbleFactory.Close())
+	})
+	return db, w
+}
+
+// appendCursorTestEntries appends the entries of term 1 up to count-1, from
+// the last one of the wal.
+func appendCursorTestEntries(t *testing.T, w wal.Wal, count int64) {
+	t.Helper()
+
+	for offset := w.LastOffset() + 1; offset < count; offset++ {
+		require.NoError(t, w.Append(&proto.LogEntry{Term: 1, Offset: offset, Value: []byte("v")}))
+	}
+}
+
+// failingChunkSnapshot fails to read its chunks.
+type failingChunkSnapshot struct {
+	kvstore.Snapshot
+}
+
+func (failingChunkSnapshot) Chunk() (kvstore.SnapshotChunk, error) {
+	return nil, errInjected
+}
+
+// hookStreamProvider opens the replicate streams of a mock rpc client, which
+// the getReplicateStream hook can replace, and counts them.
+type hookStreamProvider struct {
+	*rpc.MockRpcClient
+	getReplicateStream func(stream proto.OxiaLogReplication_ReplicateClient) (
+		proto.OxiaLogReplication_ReplicateClient, error)
+	streams atomic.Int64
+}
+
+func (p *hookStreamProvider) GetReplicateStream(ctx context.Context, follower string, namespace string, shard int64,
+	term int64) (proto.OxiaLogReplication_ReplicateClient, error) {
+	p.streams.Add(1)
+	stream, err := p.MockRpcClient.GetReplicateStream(ctx, follower, namespace, shard, term)
+	if err != nil || p.getReplicateStream == nil {
+		return stream, err
+	}
+	return p.getReplicateStream(stream)
+}
+
+// hookReplicateStream sends and receives on its stream, after the send hook
+// accepted the message, and receives from the recv hook instead if set.
+type hookReplicateStream struct {
+	proto.OxiaLogReplication_ReplicateClient
+	send func(req *proto.Append) error
+	recv func() (*proto.Ack, error)
+}
+
+func (s *hookReplicateStream) Send(req *proto.Append) error {
+	if s.send != nil {
+		if err := s.send(req); err != nil {
+			return err
+		}
+	}
+	return s.OxiaLogReplication_ReplicateClient.Send(req)
+}
+
+func (s *hookReplicateStream) Recv() (*proto.Ack, error) {
+	if s.recv != nil {
+		return s.recv()
+	}
+	return s.OxiaLogReplication_ReplicateClient.Recv()
 }

@@ -16,14 +16,18 @@ package lead
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/multierr"
 	pb "google.golang.org/protobuf/proto"
 
 	"github.com/oxia-db/oxia/common/constant"
@@ -666,18 +670,28 @@ func TestSessionDelete_DeferredSplitFilterNotifications(t *testing.T) {
 
 // hookedPrefixDB runs a hook once the next iterator over a prefix is created,
 // and counts the steps of its iterators and their checks of the entries of the
-// secondary indexes.
+// secondary indexes. The errors, when set, fail the calls of the database and of
+// its iterators, and get, when set, replaces Get.
 type hookedPrefixDB struct {
 	database.DB
 	afterPrefixIterator  func()
 	nextCalls            int
 	keepsIndexEntryCalls int
+
+	prefixIteratorErr  error
+	keepsIndexEntryErr error
+	recordErr          error
+	listErr            error
+	get                func(request *proto.GetRequest) (*proto.GetResponse, error)
 }
 
 func (db *hookedPrefixDB) hook(it database.PrefixIterator, err error) (database.PrefixIterator, error) {
 	if hook := db.afterPrefixIterator; hook != nil {
 		db.afterPrefixIterator = nil
 		hook()
+	}
+	if err == nil && db.prefixIteratorErr != nil {
+		err = multierr.Append(db.prefixIteratorErr, it.Close())
 	}
 	if err != nil {
 		return nil, err
@@ -693,6 +707,20 @@ func (db *hookedPrefixDB) KeyPrefixIterator(prefix, end string) (database.Prefix
 	return db.hook(db.DB.KeyPrefixIterator(prefix, end))
 }
 
+func (db *hookedPrefixDB) List(request *proto.ListRequest) (kvstore.KeyIterator, error) {
+	if db.listErr != nil {
+		return nil, db.listErr
+	}
+	return db.DB.List(request)
+}
+
+func (db *hookedPrefixDB) Get(request *proto.GetRequest) (*proto.GetResponse, error) {
+	if db.get != nil {
+		return db.get(request)
+	}
+	return db.DB.Get(request)
+}
+
 type hookedPrefixIterator struct {
 	database.PrefixIterator
 	db *hookedPrefixDB
@@ -705,7 +733,17 @@ func (it *hookedPrefixIterator) Next() bool {
 
 func (it *hookedPrefixIterator) KeepsIndexEntry(filter *database.DeferredSplitFilter, indexKey string) (bool, error) {
 	it.db.keepsIndexEntryCalls++
+	if it.db.keepsIndexEntryErr != nil {
+		return false, it.db.keepsIndexEntryErr
+	}
 	return it.PrefixIterator.KeepsIndexEntry(filter, indexKey)
+}
+
+func (it *hookedPrefixIterator) Record(key string, includeValue bool) (*proto.GetResponse, error) {
+	if it.db.recordErr != nil {
+		return nil, it.db.recordErr
+	}
+	return it.PrefixIterator.Record(key, includeValue)
 }
 
 // The queries of a secondary index that start before the last step of the
@@ -906,3 +944,159 @@ func TestSecondaryIndexes_DeferredSplitFilterQueryEnd(t *testing.T) {
 	}
 	assert.Equal(t, 2, db.keepsIndexEntryCalls)
 }
+
+// A shard that holds records outside its hash range, without the feature to
+// delete them, keeps them: only the members that support the feature can
+// apply the steps of the filter.
+func TestLeaderControllerStartDeferredSplitFilterWithoutFeature(t *testing.T) {
+	var shard int64 = 2
+	kvFactory, err := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	walFactory := newTestWalFactory(t)
+	left, right := splitKeys(splitTestChildRange)
+	db, err := database.NewDB(constant.DefaultNamespace, shard, kvFactory, proto.KeySortingType_HIERARCHICAL,
+		time.Hour, time2.SystemClock)
+	require.NoError(t, err)
+	_, err = db.ProcessWrite(splitChildRecords(5, left, right), 1, 0, WrapperUpdateOperationCallback)
+	require.NoError(t, err)
+	require.NoError(t, db.SetDeferredSplitFilter(&database.DeferredSplitFilter{
+		MinHash: splitTestChildRange.Min, MaxHash: splitTestChildRange.Max, ParentTerm: 1,
+	}, nil))
+	require.NoError(t, db.Close())
+
+	lc, err := NewLeaderController(&option.StorageOptions{}, constant.DefaultNamespace, shard, rpc.NewMockRpcClient(),
+		walFactory, kvFactory, nil)
+	require.NoError(t, err)
+	_, err = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 2})
+	require.NoError(t, err)
+	_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{Shard: shard, Term: 2,
+		ReplicationFactor: 1})
+	require.NoError(t, err)
+
+	// With a single replica, a step would be proposed right away
+	leaderDb := lc.(*leaderController).db
+	assert.Never(t, func() bool { return leaderDb.DeferredSplitFilter() == nil },
+		5*splitFilterQuorumCheckInterval, 10*time.Millisecond)
+	assert.EqualValues(t, -1, lc.(*leaderController).wal.LastOffset(), "the leader proposed a step of the filter")
+
+	assert.NoError(t, lc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
+// The deletion of the records outside the hash range stops once the node no
+// longer leads the term, and retries a step that fails while it leads it.
+func TestLeaderControllerApplyDeferredSplitFilter(t *testing.T) {
+	logs := watchSplitDeferredFilterLogs(t,
+		"Failed to delete records outside the hash range of the shard, retrying",
+		"Stopped deleting the records outside the hash range of the shard")
+
+	var shard int64 = 2
+	kvFactory, err := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	walFactory := newTestWalFactory(t)
+	left, right := splitKeys(splitTestChildRange)
+	require.NoError(t, newSplitChildDB(t, kvFactory, shard, splitChildRecords(5, left, right)).Close())
+
+	controller, err := NewLeaderController(&option.StorageOptions{}, constant.DefaultNamespace, shard,
+		rpc.NewMockRpcClient(), walFactory, kvFactory, nil)
+	require.NoError(t, err)
+	lc := controller.(*leaderController)
+	_, err = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 2})
+	require.NoError(t, err)
+	// No follower holds the entries of the leader: the deletion started by the
+	// election waits for them, and doesn't run
+	_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{Shard: shard, Term: 2,
+		ReplicationFactor: 3, FeaturesSupported: []proto.Feature{proto.Feature_FEATURE_SPLIT_DEFERRED_FILTER}})
+	require.NoError(t, err)
+	lastOffset := lc.wal.LastOffset()
+
+	// Another term
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		lc.applyDeferredSplitFilter(context.Background(), 3)
+	}()
+	waitFor(t, done, "the deletion to stop in another term")
+
+	// A frozen shard rejects the steps: the deletion retries them until the
+	// term ends
+	lc.frozen.Store(true)
+	ctx, cancel := context.WithCancel(context.Background())
+	done = make(chan struct{})
+	go func() {
+		defer close(done)
+		lc.applyDeferredSplitFilter(ctx, 2)
+	}()
+	waitFor(t, logs[0], "a failed step of the deletion")
+	cancel()
+	waitFor(t, done, "the deletion to stop at the end of the term")
+	waitFor(t, logs[1], "the deletion to log its stop")
+
+	assert.Equal(t, lastOffset, lc.wal.LastOffset(), "a step of the filter was proposed")
+	assert.NotNil(t, lc.db.DeferredSplitFilter())
+
+	assert.NoError(t, lc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
+// A query of a secondary index of a split child fails when it can't check
+// whether the child keeps an entry.
+func TestKeptIndexEntriesIteratorFailsWhenEntryCheckFails(t *testing.T) {
+	kvFactory, err := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, kvFactory.Close()) }()
+	left, right := splitKeys(splitTestChildRange)
+	child := newSplitChildDB(t, kvFactory, 2, splitChildRecords(5, left, right))
+	defer func() { assert.NoError(t, child.Close()) }()
+
+	checkErr := errors.New("check failed")
+	db := &hookedPrefixDB{DB: child, keepsIndexEntryErr: checkErr}
+	idx := "idx"
+	it, err := newSecondaryIndexListIterator(&proto.ListRequest{
+		SecondaryIndexName: &idx, StartInclusive: "sec-", EndExclusive: "sec-~",
+	}, db)
+	require.NoError(t, err)
+	assert.False(t, it.Valid())
+	assert.ErrorIs(t, it.Error(), checkErr)
+	assert.ErrorIs(t, it.Close(), checkErr)
+}
+
+// watchSplitDeferredFilterLogs returns a channel per message, closed once the
+// loggers created from then on log it. The test must create the leader
+// controller afterwards: it takes its logger from the default one.
+func watchSplitDeferredFilterLogs(t *testing.T, messages ...string) []chan struct{} {
+	t.Helper()
+	handler := &splitDeferredFilterLogWatcher{logged: map[string]chan struct{}{}, once: map[string]*sync.Once{}}
+	channels := make([]chan struct{}, len(messages))
+	for i, message := range messages {
+		channels[i] = make(chan struct{})
+		handler.logged[message] = channels[i]
+		handler.once[message] = &sync.Once{}
+	}
+	previous := slog.Default()
+	slog.SetDefault(slog.New(handler))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	return channels
+}
+
+// splitDeferredFilterLogWatcher is a log handler that drops the records, and
+// closes the channel of their message, if any.
+type splitDeferredFilterLogWatcher struct {
+	logged map[string]chan struct{}
+	once   map[string]*sync.Once
+}
+
+func (*splitDeferredFilterLogWatcher) Enabled(context.Context, slog.Level) bool { return true }
+
+func (w *splitDeferredFilterLogWatcher) Handle(_ context.Context, r slog.Record) error {
+	if ch, found := w.logged[r.Message]; found {
+		w.once[r.Message].Do(func() { close(ch) })
+	}
+	return nil
+}
+
+func (w *splitDeferredFilterLogWatcher) WithAttrs([]slog.Attr) slog.Handler { return w }
+
+func (w *splitDeferredFilterLogWatcher) WithGroup(string) slog.Handler { return w }
