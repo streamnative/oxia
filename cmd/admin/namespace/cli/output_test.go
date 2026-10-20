@@ -17,6 +17,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -114,4 +115,24 @@ func TestWriteNamespaceViewTableSkipsViewsWithoutNamespace(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
 	require.Len(t, lines, 2)
 	assert.Equal(t, []string{"ns-1", "2", "3"}, strings.Fields(lines[1]))
+}
+
+func TestWriteNamespaceTableReturnsWriteError(t *testing.T) {
+	err := writeNamespaceTable(&failingWriter{}, []*proto.Namespace{{Name: "ns\n1"}})
+
+	require.ErrorIs(t, err, errWriteFailed)
+}
+
+func TestWriteNamespaceViewTableReturnsWriteError(t *testing.T) {
+	err := writeNamespaceViewTable(&failingWriter{}, []*proto.NamespaceView{{Namespace: &proto.Namespace{Name: "ns\n1"}}})
+
+	require.ErrorIs(t, err, errWriteFailed)
+}
+
+var errWriteFailed = errors.New("write failed")
+
+type failingWriter struct{}
+
+func (*failingWriter) Write([]byte) (int, error) {
+	return 0, errWriteFailed
 }

@@ -17,6 +17,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -81,6 +82,12 @@ func TestWriteDataServerTableSkipsNilDataServer(t *testing.T) {
 	assert.Equal(t, "NAME  PUBLIC  INTERNAL  LABELS", strings.TrimSpace(out.String()))
 }
 
+func TestWriteDataServerTableReturnsWriteError(t *testing.T) {
+	err := WriteDataServer(&failingWriter{}, "table", newDataServerView("server\n1").GetDataServer())
+
+	require.ErrorIs(t, err, errWriteFailed)
+}
+
 func TestWriteDataServerViewRejectsUnsupportedFormat(t *testing.T) {
 	out := new(bytes.Buffer)
 
@@ -111,6 +118,20 @@ func TestWriteDataServerViewOmitsMissingStatus(t *testing.T) {
 	require.NoError(t, json.Unmarshal(out.Bytes(), &value))
 	assert.Contains(t, value, "data_server")
 	assert.NotContains(t, value, "data_server_status")
+}
+
+func TestWriteDataServerViewTableReturnsWriteError(t *testing.T) {
+	err := WriteDataServerView(&failingWriter{}, "table", newDataServerView("server\n1"))
+
+	require.ErrorIs(t, err, errWriteFailed)
+}
+
+var errWriteFailed = errors.New("write failed")
+
+type failingWriter struct{}
+
+func (*failingWriter) Write([]byte) (int, error) {
+	return 0, errWriteFailed
 }
 
 func newDataServerView(name string) *proto.DataServerView {

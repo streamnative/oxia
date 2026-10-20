@@ -23,6 +23,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestExecStopsWhenItsContextIsDone(t *testing.T) {
+	server := newStandalone(t)
+	previous := config
+	t.Cleanup(func() { config = previous })
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	Cmd.SetArgs([]string{"--service-address", server.ServiceAddr(), "--request-timeout", "200ms"})
+
+	assert.NoError(t, Cmd.ExecuteContext(ctx))
+}
+
 func TestRunPerfStopsOnClose(t *testing.T) {
 	server := newStandalone(t)
 	previous := config
