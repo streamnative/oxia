@@ -73,14 +73,8 @@ func (o *overrideChannel[T]) WriteLast(value T) {
 			// the notification from here
 			return
 
-		default:
-			// If the channel buffer is full, empty the channel and retry
-			select {
-			case <-o.ch:
-				continue
-			default:
-				continue
-			}
+		case <-o.ch:
+			// The channel buffer is full: drop the value it holds and retry
 		}
 	}
 }
