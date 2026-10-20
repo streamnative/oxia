@@ -17,6 +17,7 @@ package kvstore
 import (
 	"testing"
 
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -26,12 +27,15 @@ func TestFactoryOptionsEnsureDefaultsFillsMissingFields(t *testing.T) {
 
 	assert.Equal(t, DefaultFactoryOptions.DataDir, options.DataDir)
 	assert.Equal(t, DefaultFactoryOptions.CacheSizeMB, options.CacheSizeMB)
+	assert.Equal(t, vfs.Default, options.FS)
 }
 
 func TestFactoryOptionsEnsureDefaultsKeepsSetFields(t *testing.T) {
-	options := &FactoryOptions{DataDir: "/my/data", CacheSizeMB: 7}
+	fs := vfs.NewMem()
+	options := &FactoryOptions{DataDir: "/my/data", CacheSizeMB: 7, FS: fs}
 	options.EnsureDefaults()
 
 	assert.Equal(t, "/my/data", options.DataDir)
 	assert.EqualValues(t, 7, options.CacheSizeMB)
+	assert.Same(t, fs, options.FS)
 }

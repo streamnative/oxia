@@ -18,6 +18,7 @@ import (
 	"io"
 	"testing"
 
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/pkg/errors"
 
 	"github.com/oxia-db/oxia/oxiad/common/crc"
@@ -204,6 +205,11 @@ type FactoryOptions struct {
 	UseWAL      bool
 	SyncData    bool
 	KvTrap      *KvTrap
+	// FS is the filesystem that Pebble opens the databases on, and that the
+	// snapshots are read and written through, e.g. a vfs/errorfs wrapper that
+	// injects I/O errors. The key encoding markers, and the directory moves of
+	// a conversion, go through the os package. Nil is vfs.Default.
+	FS vfs.FS
 }
 
 var DefaultFactoryOptions = &FactoryOptions{
@@ -212,6 +218,7 @@ var DefaultFactoryOptions = &FactoryOptions{
 	UseWAL:      true,
 	SyncData:    true,
 	KvTrap:      nil,
+	FS:          vfs.Default,
 }
 
 func (fo *FactoryOptions) EnsureDefaults() {
@@ -221,6 +228,10 @@ func (fo *FactoryOptions) EnsureDefaults() {
 
 	if fo.CacheSizeMB == 0 {
 		fo.CacheSizeMB = DefaultFactoryOptions.CacheSizeMB
+	}
+
+	if fo.FS == nil {
+		fo.FS = DefaultFactoryOptions.FS
 	}
 }
 

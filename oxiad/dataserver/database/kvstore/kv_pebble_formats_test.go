@@ -101,7 +101,7 @@ func TestPebbleDbConversionFromMarkerlessDb(t *testing.T) {
 	for i := 0; i < cap(keys); i++ {
 		keys = append(keys, fmt.Sprintf("/key/%05d", i))
 	}
-	conversion := newPebbleDbConversion(slog.Default(), dbPath, nil)
+	conversion := newPebbleDbConversion(slog.Default(), vfs.Default, dbPath, nil)
 	db, err := pebble.Open(dbPath, conversion.configForOldCompareHierarchical())
 	require.NoError(t, err)
 	for _, key := range keys {
