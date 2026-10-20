@@ -34,10 +34,10 @@ type SequenceWaiter interface {
 type SequenceWaiterTracker interface {
 	io.Closer
 	// AddSequenceWaiter registers a waiter for the sequence, and sends it the last
-	// key that readLastKey returns, unless SequenceUpdated sent it a key during the
+	// key that loadFunc returns, unless SequenceUpdated sent it a key during the
 	// read, so the read can't override a newer key. The waiter is registered
 	// before the read, so a commit that the read misses sends its key.
-	AddSequenceWaiter(key string, readLastKey func() (string, bool, error)) (*sequenceWaiter, error)
+	AddSequenceWaiter(key string, loadFunc func() (string, bool, error)) (*sequenceWaiter, error)
 	SequenceUpdated(prefixKey string, lastSequenceKey string)
 }
 
@@ -94,7 +94,7 @@ func NewSequencesWaitTracker() SequenceWaiterTracker {
 }
 
 func (swt *sequenceWaiterTracker) AddSequenceWaiter(key string,
-	readLastKey func() (string, bool, error)) (*sequenceWaiter, error) {
+	loadFunc func() (string, bool, error)) (*sequenceWaiter, error) {
 	swt.Lock()
 	im, existing := swt.waiters[key]
 	if !existing {
@@ -108,7 +108,7 @@ func (swt *sequenceWaiterTracker) AddSequenceWaiter(key string,
 	swt.Unlock()
 
 	// Registered first: a commit that the read misses sends its key
-	lastKey, found, err := readLastKey()
+	lastKey, found, err := loadFunc()
 	if err != nil {
 		_ = sw.Close()
 		return nil, err
