@@ -20,6 +20,8 @@ import (
 	"net"
 	"net/http"
 	"runtime"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -61,24 +63,52 @@ func TestRunProfilingDisabledDoesNotStartServer(t *testing.T) {
 	assert.NoError(t, closer.Close())
 }
 
-func TestServeProfilingLogsListenFailure(t *testing.T) {
+func TestRunProfilingLogsListenFailure(t *testing.T) {
 	logs := captureLogs(t)
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	defer listener.Close()
+	PprofEnable = true
+	PprofBindAddress = listener.Addr().String()
+	t.Cleanup(func() {
+		PprofEnable = false
+		runtime.SetMutexProfileFraction(0)
+		runtime.SetBlockProfileRate(0)
+	})
 
-	serveProfiling(&http.Server{Addr: listener.Addr().String(), ReadHeaderTimeout: time.Second})
+	closer := RunProfiling(t.Context())
 
-	assert.Contains(t, logs.String(), "Unable to start debug profiling server")
+	assert.Eventually(t, func() bool {
+		return strings.Contains(logs.String(), "Unable to start debug profiling server")
+	}, 10*time.Second, 10*time.Millisecond)
+	assert.NoError(t, closer.Close())
 }
 
 // captureLogs routes the default logger to the returned buffer until the test ends.
-func captureLogs(t *testing.T) *bytes.Buffer {
+func captureLogs(t *testing.T) *syncBuffer {
 	t.Helper()
 	previous := slog.Default()
 	t.Cleanup(func() { slog.SetDefault(previous) })
 
-	logs := &bytes.Buffer{}
+	logs := &syncBuffer{}
 	slog.SetDefault(slog.New(slog.NewTextHandler(logs, nil)))
 	return logs
+}
+
+// syncBuffer is a buffer that a goroutine's logger writes while the test reads it.
+type syncBuffer struct {
+	sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.Lock()
+	defer b.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.Lock()
+	defer b.Unlock()
+	return b.buf.String()
 }
