@@ -275,6 +275,31 @@ func TestNotificationsTrimmerGetFirstLastFailsOnInvalidKey(t *testing.T) {
 	}
 }
 
+func TestNotificationsTrimmerGetFirstLastFailsWhenCloseFails(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		batches int64
+		closes  int64
+	}{
+		{"empty", 0, 1},
+		{"batches", 2, 2},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			trimmer, kv, _ := newIdleNotificationsTrimmer(t)
+			for offset := int64(0); offset < test.batches; offset++ {
+				putNotificationBatch(t, kv, offset, map[string]*proto.Notification{"a": {}})
+			}
+			hooked := &hookedKV{KV: kv}
+			trimmer.kv = hooked
+			hooked.failOn(opKeyIteratorClose, "")
+
+			_, _, err := trimmer.getFirstLast()
+			assert.ErrorIs(t, err, errInjected)
+			assert.Equal(t, test.closes, hooked.failures.Load())
+		})
+	}
+}
+
 func TestNotificationsTrimmerGetFirstLastWhenBatchesVanish(t *testing.T) {
 	trimmer, kv, _ := newIdleNotificationsTrimmer(t)
 	putNotificationBatch(t, kv, 0, map[string]*proto.Notification{"a": {}})

@@ -2952,6 +2952,7 @@ const (
 	opGetClose            = "Get.Close"
 	opKeyRangeScan        = "KeyRangeScan"
 	opKeyRangeScanReverse = "KeyRangeScanReverse"
+	opKeyIteratorClose    = "KeyIterator.Close"
 	opKeyPrefixIterator   = "KeyPrefixIterator"
 	opRangeScan           = "RangeScan"
 	opFlush               = "Flush"
@@ -3033,7 +3034,11 @@ func (kv *hookedKV) KeyRangeScan(lowerBound, upperBound string, opts kvstore.Ite
 	if kv.scanBounds != nil {
 		lowerBound, upperBound = kv.scanBounds(opKeyRangeScan, lowerBound, upperBound)
 	}
-	return kv.KV.KeyRangeScan(lowerBound, upperBound, opts)
+	it, err := kv.KV.KeyRangeScan(lowerBound, upperBound, opts)
+	if err != nil {
+		return nil, err
+	}
+	return &hookedKeyIterator{KeyIterator: it, kv: kv}, nil
 }
 
 func (kv *hookedKV) KeyRangeScanReverse(lowerBound, upperBound string, opts kvstore.IteratorOpts) (
@@ -3044,7 +3049,11 @@ func (kv *hookedKV) KeyRangeScanReverse(lowerBound, upperBound string, opts kvst
 	if kv.scanBounds != nil {
 		lowerBound, upperBound = kv.scanBounds(opKeyRangeScanReverse, lowerBound, upperBound)
 	}
-	return kv.KV.KeyRangeScanReverse(lowerBound, upperBound, opts)
+	it, err := kv.KV.KeyRangeScanReverse(lowerBound, upperBound, opts)
+	if err != nil {
+		return nil, err
+	}
+	return &hookedReverseKeyIterator{ReverseKeyIterator: it, kv: kv}, nil
 }
 
 func (kv *hookedKV) KeyPrefixIterator(prefix, end string) (kvstore.PrefixIterator, error) {
@@ -3152,6 +3161,34 @@ func (b *hookedWriteBatch) Commit() error {
 func (b *hookedWriteBatch) Close() error {
 	err := b.WriteBatch.Close()
 	if injected := b.kv.injected(opBatchClose, ""); injected != nil {
+		return injected
+	}
+	return err
+}
+
+// hookedKeyIterator is a key iterator of hookedKV.
+type hookedKeyIterator struct {
+	kvstore.KeyIterator
+	kv *hookedKV
+}
+
+func (it *hookedKeyIterator) Close() error {
+	err := it.KeyIterator.Close()
+	if injected := it.kv.injected(opKeyIteratorClose, ""); injected != nil {
+		return injected
+	}
+	return err
+}
+
+// hookedReverseKeyIterator is a reverse key iterator of hookedKV.
+type hookedReverseKeyIterator struct {
+	kvstore.ReverseKeyIterator
+	kv *hookedKV
+}
+
+func (it *hookedReverseKeyIterator) Close() error {
+	err := it.ReverseKeyIterator.Close()
+	if injected := it.kv.injected(opKeyIteratorClose, ""); injected != nil {
 		return injected
 	}
 	return err
