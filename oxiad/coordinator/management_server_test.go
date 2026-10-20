@@ -135,8 +135,7 @@ func newTestMetadata(t *testing.T, config *proto.ClusterConfiguration) coordmeta
 		},
 	})
 	require.NoError(t, err)
-	metadata, err := metadataFactory.CreateMetadata(t.Context())
-	require.NoError(t, err)
+	metadata := metadataFactory.CreateMetadata(t.Context())
 	_, err = metadata.WaitToBecomeLeader()
 	require.NoError(t, err)
 	t.Cleanup(func() {

@@ -31,7 +31,7 @@ var Cmd = &cobra.Command{
 	RunE:  exec,
 }
 
-func exec(_ *cobra.Command, _ []string) error {
+func exec(cmd *cobra.Command, _ []string) error {
 	client, err := common.Config.NewClient()
 	if err != nil {
 		return err
@@ -46,19 +46,30 @@ func exec(_ *cobra.Command, _ []string) error {
 
 	defer notifications.Close()
 
-	for notification := range notifications.Ch() {
-		args := []any{
-			slog.String("type", notification.Type.String()),
-			slog.String("key", notification.Key),
+	ctx := cmd.Context()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case notification, ok := <-notifications.Ch():
+			if !ok {
+				return nil
+			}
+			logNotification(notification)
 		}
-		if notification.Type == oxia.KeyCreated || notification.Type == oxia.KeyModified {
-			args = append(args, slog.Int64("version-id", notification.VersionId))
-		}
-		if notification.Type == oxia.KeyRangeRangeDeleted {
-			args = append(args, slog.String("key-range-end", notification.KeyRangeEnd))
-		}
-		slog.Info("", args...)
 	}
+}
 
-	return nil
+func logNotification(notification *oxia.Notification) {
+	args := []any{
+		slog.String("type", notification.Type.String()),
+		slog.String("key", notification.Key),
+	}
+	if notification.Type == oxia.KeyCreated || notification.Type == oxia.KeyModified {
+		args = append(args, slog.Int64("version-id", notification.VersionId))
+	}
+	if notification.Type == oxia.KeyRangeRangeDeleted {
+		args = append(args, slog.String("key-range-end", notification.KeyRangeEnd))
+	}
+	slog.Info("", args...)
 }

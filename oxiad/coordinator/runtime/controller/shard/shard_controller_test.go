@@ -103,8 +103,7 @@ func newTestMetadata(t *testing.T, metadataProvider provider.Provider[*proto.Clu
 		},
 	})
 	assert.NoError(t, err)
-	metadata, err := metadataFactory.CreateMetadata(t.Context())
-	assert.NoError(t, err)
+	metadata := metadataFactory.CreateMetadata(t.Context())
 	_, err = metadata.WaitToBecomeLeader()
 	assert.NoError(t, err)
 	t.Cleanup(func() {
@@ -3447,6 +3446,20 @@ func TestControllerOnChangeEnsembleReturnsShardStatusLoadError(t *testing.T) {
 	assert.Nil(t, s.currentElection.Load())
 }
 
+func TestControllerRefreshSkipsTerminatedController(t *testing.T) {
+	s := &controller{
+		namespace:     constant.DefaultNamespace,
+		shard:         5,
+		metadataStore: &hookedMetadata{},
+		electionOp:    make(chan *action.ElectionAction, chanBufferSize),
+		logger:        slog.Default(),
+	}
+	s.terminating.Store(true)
+
+	s.Refresh()
+	assert.Empty(t, s.electionOp)
+}
+
 // A refresh that can't load the shard status or the data servers doesn't
 // start an election: the next refresh checks the addresses again.
 func TestControllerRefreshSkipsMetadataLoadError(t *testing.T) {
@@ -3500,6 +3513,7 @@ func TestControllerRefreshSkipsMetadataLoadError(t *testing.T) {
 	assert.Len(t, s.electionOp, 1)
 }
 
+// A shard deleted while its controller terminates is not refreshed.
 // The pending deletions of a shard that was removed meanwhile, e.g. by a
 // namespace deletion, don't bring it back.
 func TestControllerHandlePendingDeleteShardKeepsRemovedShard(t *testing.T) {

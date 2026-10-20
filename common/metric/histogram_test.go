@@ -237,7 +237,8 @@ func TestTimer_RecordsElapsedTime(t *testing.T) {
 	require.GreaterOrEqual(t, h.s.sum.Sum(), int64(2_000))
 
 	// A timer started an hour ago lands past the last bucket bound.
-	Timer{h, time.Since(timerEpoch) - time.Hour}.Done()
+	hourTicks := int64(float64(time.Hour.Microseconds()) / calibrate())
+	Timer{h, timerTicks() - hourTicks}.Done()
 	require.EqualValues(t, 1, h.s.buckets[len(latencyBucketsMillis)].Sum())
 	require.InDelta(t, time.Hour.Microseconds(), h.s.sum.Sum(), float64(time.Minute.Microseconds()))
 }

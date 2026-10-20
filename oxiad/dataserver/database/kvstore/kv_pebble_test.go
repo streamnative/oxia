@@ -36,6 +36,7 @@ import (
 
 	"github.com/oxia-db/oxia/common/compare"
 	"github.com/oxia-db/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/common/proto"
 	"github.com/oxia-db/oxia/common/validation"
 	"github.com/oxia-db/oxia/oxiad/common/crc"
@@ -889,6 +890,17 @@ func TestPebbbleDoubleOpen(t *testing.T) {
 	assert.NoError(t, kv.Close())
 }
 
+func TestPebbleCloseClosesDbWhenFlushFails(t *testing.T) {
+	factory, kv := newKVWithFailpoint(t, "close.flush")
+
+	assert.ErrorIs(t, kv.Close(), errFailpoint)
+	assert.Len(t, factory.memTableSlots, maxMemTableSlots)
+
+	reopened, err := factory.NewKV(constant.DefaultNamespace, 1, proto.KeySortingType_NATURAL)
+	require.NoError(t, err)
+	assert.ErrorIs(t, reopened.Close(), errFailpoint)
+}
+
 func TestPebbleSnapshot(t *testing.T) {
 	copiedLocation := t.TempDir()
 	copiedLocationDbPath := filepath.Join(copiedLocation, constant.DefaultNamespace, "shard-1")
@@ -967,6 +979,55 @@ func TestPebbleSnapshot(t *testing.T) {
 		assert.NoError(t, kv2.Close())
 		assert.NoError(t, factory2.Close())
 	}
+}
+
+// A snapshot a caller keeps open outlives its database when the shard is
+// closed and reopened, e.g. a follower promoted to leader: the reopened
+// database must not name its next snapshot after the one still held.
+func TestPebbleSnapshotPathsStayUniqueAcrossReopen(t *testing.T) {
+	factory, err := NewPebbleKVFactory(NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	kv, err := factory.NewKV(constant.DefaultNamespace, 1, proto.KeySortingType_NATURAL)
+	require.NoError(t, err)
+	held, err := kv.Snapshot()
+	require.NoError(t, err)
+	require.NoError(t, kv.Close())
+
+	kv, err = factory.NewKV(constant.DefaultNamespace, 1, proto.KeySortingType_NATURAL)
+	require.NoError(t, err)
+	next, err := kv.Snapshot()
+	require.NoError(t, err)
+	assert.NotEqual(t, held.BasePath(), next.BasePath())
+	_, err = os.Stat(held.BasePath())
+	assert.NoError(t, err, "the held snapshot is intact")
+
+	assert.NoError(t, next.Close())
+	assert.NoError(t, held.Close())
+	assert.NoError(t, kv.Close())
+	assert.NoError(t, factory.Close())
+}
+
+func TestPebbleDatabaseGenerationCountsReplacementsAndDeletions(t *testing.T) {
+	factory, err := NewPebbleKVFactory(NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	kv, err := factory.NewKV(constant.DefaultNamespace, 1, proto.KeySortingType_NATURAL)
+	require.NoError(t, err)
+	assert.EqualValues(t, 0, factory.DatabaseGeneration(constant.DefaultNamespace, 1))
+	require.NoError(t, kv.Close())
+
+	loader, err := factory.NewSnapshotLoader(constant.DefaultNamespace, 1)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, factory.DatabaseGeneration(constant.DefaultNamespace, 1),
+		"a snapshot loader replaces the database from its creation")
+	assert.EqualValues(t, 0, factory.DatabaseGeneration(constant.DefaultNamespace, 2), "other shards are not affected")
+	require.NoError(t, loader.Close())
+
+	kv, err = factory.NewKV(constant.DefaultNamespace, 1, proto.KeySortingType_NATURAL)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, factory.DatabaseGeneration(constant.DefaultNamespace, 1), "reopening keeps the database")
+	require.NoError(t, kv.Delete())
+	assert.EqualValues(t, 2, factory.DatabaseGeneration(constant.DefaultNamespace, 1))
+	assert.NoError(t, factory.Close())
 }
 
 func TestPebbleSnapshot_Loader(t *testing.T) {
@@ -1753,6 +1814,86 @@ func TestPebbleBatchGetReadFailure(t *testing.T) {
 	assert.ErrorIs(t, wb.Commit(), os.ErrPermission)
 }
 
+func TestPebbleScanFailsWhenValueCannotBeRead(t *testing.T) {
+	kv := newKVWithUnreadableValueBlocks(t)
+
+	var visited []string
+	_, err := kv.Scan(nil, func(key string, _ []byte) (bool, error) {
+		visited = append(visited, key)
+		return true, nil
+	})
+	assert.ErrorIs(t, err, errorfs.ErrInjected)
+	assert.Equal(t, []string{"a"}, visited)
+}
+
+func TestPebbleBatchGetFailsWhenValueCannotBeRead(t *testing.T) {
+	kv := newKVWithUnreadableValueBlocks(t)
+	wb := kv.NewWriteBatch()
+
+	// The first Get of a batch reads through the batch, the next ones through
+	// an iterator
+	value, closer, err := wb.Get("a")
+	require.NoError(t, err)
+	assert.Equal(t, []byte("value-a"), value)
+	assert.NoError(t, closer.Close())
+	_, _, err = wb.Get("b")
+	assert.ErrorIs(t, err, errorfs.ErrInjected)
+	assert.ErrorIs(t, wb.Close(), errorfs.ErrInjected)
+}
+
+func TestPebbleIteratorValueFailsWhenValueCannotBeRead(t *testing.T) {
+	kv := newKVWithUnreadableValueBlocks(t)
+	it, err := kv.RangeScan("b", "", NoInternalKeys)
+	require.NoError(t, err)
+
+	require.True(t, it.Valid())
+	_, err = it.Value()
+	assert.ErrorIs(t, err, errorfs.ErrInjected)
+	assert.ErrorIs(t, it.Close(), errorfs.ErrInjected)
+}
+
+func TestPebbleReverseIteratorValueFailsWhenValueCannotBeRead(t *testing.T) {
+	kv := newKVWithUnreadableValueBlocks(t)
+	it, err := kv.KeyRangeScanReverse("a", "", NoInternalKeys)
+	require.NoError(t, err)
+
+	require.True(t, it.Valid())
+	_, err = it.(*PebbleReverseIterator).Value()
+	assert.ErrorIs(t, err, errorfs.ErrInjected)
+	assert.ErrorIs(t, it.Close(), errorfs.ErrInjected)
+}
+
+func TestPebblePrefixIteratorLookupFailsWhenValueCannotBeRead(t *testing.T) {
+	kv := newKVWithUnreadableValueBlocks(t)
+	it, err := kv.KeyPrefixIterator("", "")
+	require.NoError(t, err)
+
+	value, err := it.Lookup("a")
+	assert.NoError(t, err)
+	assert.Equal(t, []byte("value-a"), value)
+	_, err = it.Lookup("b")
+	assert.ErrorIs(t, err, errorfs.ErrInjected)
+	assert.ErrorIs(t, it.Close(), errorfs.ErrInjected)
+}
+
+// Pebble rejects a synced write without a WAL, the one commit failure that
+// it returns rather than reporting through the logger's Fatalf.
+func TestPebbleBatchCommitFailsWhenPebbleRejectsTheBatch(t *testing.T) {
+	options := NewFactoryOptionsForTest(t)
+	options.SyncData = true
+	factory, err := NewPebbleKVFactory(options)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, factory.Close()) })
+	kv, err := factory.NewKV(constant.DefaultNamespace, 1, proto.KeySortingType_NATURAL)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, kv.Close()) })
+
+	wb := kv.NewWriteBatch()
+	defer wb.Close()
+	require.NoError(t, wb.Put("a", []byte("a")))
+	assert.ErrorContains(t, wb.Commit(), "WAL disabled")
+}
+
 func toList(it KeyIterator) []string {
 	var list []string
 
@@ -2157,6 +2298,156 @@ func TestPebbleSnapshotLoaderFailsOnFilesystemErrors(t *testing.T) {
 	}
 }
 
+func TestPebbleGetFailsWhenIteratorCannotBeCreated(t *testing.T) {
+	for _, test := range []struct {
+		name           string
+		failpoint      string
+		comparisonType ComparisonType
+	}{
+		{"ceiling", "getCeiling.newIter", ComparisonCeiling},
+		{"lower", "getLower.newIter", ComparisonLower},
+		{"floor", "getLower.newIter", ComparisonFloor},
+		{"higher", "getHigher.newIter", ComparisonHigher},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, kv := newKVWithFailpoint(t, test.failpoint)
+
+			_, _, closer, err := kv.Get("a", test.comparisonType, NoInternalKeys)
+			assert.ErrorIs(t, err, errFailpoint)
+			assert.Nil(t, closer)
+			assert.NoError(t, kv.Close())
+		})
+	}
+}
+
+func TestPebbleKeyPrefixIteratorFailsWhenIteratorCannotBeCreated(t *testing.T) {
+	_, kv := newKVWithFailpoint(t, "keyPrefixIterator.newIter")
+
+	it, err := kv.KeyPrefixIterator("a", "")
+	assert.ErrorIs(t, err, errFailpoint)
+	assert.Nil(t, it)
+	assert.NoError(t, kv.Close())
+}
+
+func TestPebbleKeyRangeScanReverseFailsWhenIteratorCannotBeCreated(t *testing.T) {
+	_, kv := newKVWithFailpoint(t, "keyRangeScanReverse.newIter")
+
+	it, err := kv.KeyRangeScanReverse("a", "b", NoInternalKeys)
+	assert.ErrorIs(t, err, errFailpoint)
+	assert.Nil(t, it)
+	assert.NoError(t, kv.Close())
+}
+
+func TestPebbleRangeScanFailsWhenIteratorCannotBeCreated(t *testing.T) {
+	_, kv := newKVWithFailpoint(t, "rangeScan.newIter")
+
+	it, err := kv.RangeScan("a", "b", NoInternalKeys)
+	assert.ErrorIs(t, err, errFailpoint)
+	assert.Nil(t, it)
+	assert.NoError(t, kv.Close())
+}
+
+func TestPebbleSeekFailsWhenIteratorCannotBeCreated(t *testing.T) {
+	_, kv := newKVWithFailpoint(t, "seek.newIter")
+
+	it, err := kv.Seek("a", ComparisonCeiling)
+	assert.ErrorIs(t, err, errFailpoint)
+	assert.Nil(t, it)
+	assert.NoError(t, kv.Close())
+}
+
+func TestPebbleScanFailsWhenIteratorCannotBeCreated(t *testing.T) {
+	_, kv := newKVWithFailpoint(t, "scan.newIter")
+
+	next, err := kv.Scan(nil, func(string, []byte) (bool, error) {
+		return true, nil
+	})
+	assert.ErrorIs(t, err, errFailpoint)
+	assert.Nil(t, next)
+	assert.NoError(t, kv.Close())
+}
+
+func TestPebbleBatchRangeScanFailsWhenIteratorCannotBeCreated(t *testing.T) {
+	_, kv := newKVWithFailpoint(t, "batchRangeScan.newIter")
+	wb := kv.NewWriteBatch()
+
+	it, err := wb.RangeScan("a", "b")
+	assert.ErrorIs(t, err, errFailpoint)
+	assert.Nil(t, it)
+	assert.NoError(t, wb.Close())
+	assert.NoError(t, kv.Close())
+}
+
+func TestPebbleBatchPutFailsWhenSetFails(t *testing.T) {
+	_, kv := newKVWithFailpoint(t, "batchPut.set")
+	wb := kv.NewWriteBatch()
+
+	assert.ErrorIs(t, wb.Put("a", []byte("value")), errFailpoint)
+	assert.NoError(t, wb.Close())
+	assert.NoError(t, kv.Close())
+}
+
+func TestPebbleBatchPutMarshalableFailsWhenFinishFails(t *testing.T) {
+	_, kv := newKVWithFailpoint(t, "batchPutMarshalable.finish")
+	wb := kv.NewWriteBatch()
+
+	err := wb.PutMarshalable("a", &fakeMarshalable{size: 1, marshal: func(b []byte) (int, error) {
+		return copy(b, "v"), nil
+	}})
+	assert.ErrorIs(t, err, errFailpoint)
+	assert.NoError(t, wb.Close())
+	assert.NoError(t, kv.Close())
+}
+
+func TestPebbleBatchDeleteFailsWhenDeleteFails(t *testing.T) {
+	_, kv := newKVWithFailpoint(t, "batchDelete.delete")
+	wb := kv.NewWriteBatch()
+
+	assert.ErrorIs(t, wb.Delete("a"), errFailpoint)
+	assert.NoError(t, wb.Close())
+	assert.NoError(t, kv.Close())
+}
+
+func TestPebbleBatchGetFailsWhenIteratorCannotBeCreated(t *testing.T) {
+	_, kv := newKVWithFailpoint(t, "batchGet.newIter")
+	wb := kv.NewWriteBatch()
+
+	// The first Get of a batch reads through the batch, the next ones through
+	// an iterator
+	_, _, err := wb.Get("a")
+	assert.ErrorIs(t, err, ErrKeyNotFound)
+	_, closer, err := wb.Get("b")
+	assert.ErrorIs(t, err, errFailpoint)
+	assert.Nil(t, closer)
+	assert.NoError(t, wb.Close())
+	assert.NoError(t, kv.Close())
+}
+
+func TestPebbleBatchFindLowerFailsWhenIteratorCannotBeCreated(t *testing.T) {
+	_, kv := newKVWithFailpoint(t, "batchFindLower.newIter")
+	wb := kv.NewWriteBatch()
+
+	_, err := wb.FindLower("b")
+	assert.ErrorIs(t, err, errFailpoint)
+	assert.NoError(t, wb.Close())
+	assert.NoError(t, kv.Close())
+}
+
+func TestPebblePrefixIteratorLookupFailsWhenIteratorCannotBeCloned(t *testing.T) {
+	_, kv := newKVWithFailpoint(t, "prefixIteratorLookup.clone")
+	it, err := kv.KeyPrefixIterator("a", "")
+	require.NoError(t, err)
+
+	_, err = it.Lookup("a/b")
+	assert.ErrorIs(t, err, errFailpoint)
+	assert.NoError(t, it.Close())
+	assert.NoError(t, kv.Close())
+}
+
+func TestCloseFailedIterWithoutIterator(t *testing.T) {
+	assert.ErrorIs(t, closeFailedIter(nil, errFailpoint), errFailpoint)
+}
+
 // fakeMarshalable reserves size bytes, and fills them with marshal.
 type fakeMarshalable struct {
 	size    int
@@ -2177,6 +2468,25 @@ func opIs(kind errorfs.OpKind, path string) func(op errorfs.Op) bool {
 	return func(op errorfs.Op) bool {
 		return op.Kind == kind && (path == "" || op.Path == path)
 	}
+}
+
+// newFactoryWithFaults returns a factory on dataDir whose filesystem fails the
+// operations that inject matches with errorfs.ErrInjected.
+func newFactoryWithFaults(t *testing.T, dataDir string, inject func(op errorfs.Op) bool) Factory {
+	t.Helper()
+	injector := errorfs.InjectorFunc(func(op errorfs.Op) error {
+		if inject(op) {
+			return errorfs.ErrInjected
+		}
+		return nil
+	})
+	options := NewFactoryOptionsForTest(t)
+	options.DataDir = dataDir
+	options.FS = closeFaultFS{FS: errorfs.Wrap(vfs.Default, injector), injector: injector}
+	factory, err := NewPebbleKVFactory(options)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, factory.Close()) })
+	return factory
 }
 
 // newKVWithUnreadableSST returns a store with the key "b" in an sstable that
@@ -2216,4 +2526,99 @@ func newKVWithUnreadableSST(t *testing.T) KV {
 		t.Skip("the sstable is still readable, as when running as root")
 	}
 	return kv
+}
+
+// newKVWithUnreadableValueBlocks returns a store with the keys "a", "b" and
+// "c" in an sstable whose value blocks cannot be read: the value of "a" sits
+// with its key, and the others in the value blocks. Pebble only moves to the
+// value blocks the values of the keys that share the prefix of the previous
+// key: the sstable is written with a comparer that takes no key prefix, under
+// the name of the default one, and without bloom filters, which index the
+// prefixes.
+func newKVWithUnreadableValueBlocks(t *testing.T) KV {
+	t.Helper()
+	dataDir := t.TempDir()
+	dbPath := filepath.Join(dataDir, constant.DefaultNamespace, "shard-1")
+	require.NoError(t, createMarker(dbPath, compare.EncoderNatural.Name()))
+	comparer := *pebble.DefaultComparer
+	comparer.Split = func([]byte) int { return 0 }
+	db, err := pebble.Open(dbPath, &pebble.Options{
+		Comparer:           &comparer,
+		DisableWAL:         true,
+		FormatMajorVersion: pebble.FormatVirtualSSTables,
+	})
+	require.NoError(t, err)
+	for _, key := range []string{"a", "b", "c"} {
+		require.NoError(t, db.Set(compare.EncoderNatural.Encode(key), []byte("value-"+key), pebble.NoSync))
+	}
+	require.NoError(t, db.Flush())
+	require.NoError(t, db.Close())
+
+	ssts, err := filepath.Glob(filepath.Join(dbPath, "*.sst"))
+	require.NoError(t, err)
+	require.Len(t, ssts, 1)
+	start, end := valueBlocksRange(t, ssts[0])
+	factory := newFactoryWithFaults(t, dataDir, func(op errorfs.Op) bool {
+		return op.Kind == errorfs.OpFileReadAt && op.Path == ssts[0] && op.Offset >= start && op.Offset < end
+	})
+	kv, err := factory.NewKV(constant.DefaultNamespace, 1, proto.KeySortingType_NATURAL)
+	require.NoError(t, err)
+	require.Equal(t, dbPath, kv.(*Pebble).dbPath)
+	t.Cleanup(func() { assert.NoError(t, kv.Close()) })
+	return kv
+}
+
+// closeFaultFS passes the Close of the files and directories that it opens to
+// injector, as errorfs.OpFileClose: errorfs injects no close errors. A Close
+// that fails leaves the file open.
+type closeFaultFS struct {
+	vfs.FS
+	injector errorfs.Injector
+}
+
+func (fs closeFaultFS) Open(name string, opts ...vfs.OpenOption) (vfs.File, error) {
+	f, err := fs.FS.Open(name, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return closeFaultFile{File: f, path: name, injector: fs.injector}, nil
+}
+
+func (fs closeFaultFS) OpenDir(name string) (vfs.File, error) {
+	f, err := fs.FS.OpenDir(name)
+	if err != nil {
+		return nil, err
+	}
+	return closeFaultFile{File: f, path: name, injector: fs.injector}, nil
+}
+
+type closeFaultFile struct {
+	vfs.File
+	path     string
+	injector errorfs.Injector
+}
+
+func (f closeFaultFile) Close() error {
+	if err := f.injector.MaybeError(errorfs.Op{Kind: errorfs.OpFileClose, Path: f.path}); err != nil {
+		return err
+	}
+	return f.File.Close()
+}
+
+var errFailpoint = errors.New("failpoint")
+
+// newKVWithFailpoint returns a store whose failpoint name fails with
+// errFailpoint, along with its factory.
+func newKVWithFailpoint(t *testing.T, name string) (*PebbleFactory, KV) {
+	t.Helper()
+	options := NewFactoryOptionsForTest(t)
+	options.Failpoints = failpoint.New(map[string]func() error{
+		name: func() error { return errFailpoint },
+	})
+	factory, err := NewPebbleKVFactory(options)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, factory.Close()) })
+	kv, err := factory.NewKV(constant.DefaultNamespace, 1, proto.KeySortingType_NATURAL)
+	require.NoError(t, err)
+	return factory.(*PebbleFactory), kv
 }

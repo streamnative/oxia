@@ -62,16 +62,18 @@ func (f *flags) Reset() {
 	f.outputFormat = ""
 }
 
-var Cmd = newCommand()
+var Cmd = newCommand(goPromptTerminal{})
 
-func newCommand() *cobra.Command {
+func newCommand(t terminal) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:          "shell",
-		Aliases:      []string{"interactive", "terminal"},
-		Short:        "Start an interactive Oxia terminal",
-		Long:         `Start an interactive terminal for running Oxia client and admin commands.`,
-		Args:         cobra.NoArgs,
-		RunE:         exec,
+		Use:     "shell",
+		Aliases: []string{"interactive", "terminal"},
+		Short:   "Start an interactive Oxia terminal",
+		Long:    `Start an interactive terminal for running Oxia client and admin commands.`,
+		Args:    cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return exec(cmd, t)
+		},
 		SilenceUsage: true,
 	}
 
@@ -91,7 +93,9 @@ func newCommand() *cobra.Command {
 	return cmd
 }
 
-func exec(cmd *cobra.Command, _ []string) error {
+// exec runs the commands that it reads from the input of cmd, with t when the
+// input and the output are terminals.
+func exec(cmd *cobra.Command, t terminal) error {
 	if err := admincommons.ValidateOutputFormat(Config.outputFormat); err != nil {
 		return err
 	}
@@ -133,7 +137,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 		session.ctx = context.Background()
 	}
 	if session.interactive {
-		return session.runPrompt()
+		return session.runPrompt(t)
 	}
 	return session.runBuffered()
 }
@@ -246,9 +250,6 @@ func (r *repl) executeLine(line string) error {
 		err = clientExecutor.Execute(args)
 	}
 
-	if errors.Is(err, errExit) {
-		return errExit
-	}
 	if err != nil {
 		if r.interactive {
 			_, writeErr := fmt.Fprintf(r.errOut, "Error: %v\n", err)

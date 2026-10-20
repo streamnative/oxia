@@ -12,26 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !disable_trap
+//go:build linux || (darwin && !ios)
 
-package kvstore
+package metric
 
-type KvTrap struct {
-	hooks map[string]func() error
-}
+// The ARMv8 system counter ticks at a fixed rate, and Linux and macOS let user
+// space read it: their clock_gettime does. iOS doesn't.
+const counterOK = true
 
-func NewKvTrap(hooks map[string]func() error) *KvTrap {
-	return &KvTrap{
-		hooks: hooks,
-	}
-}
-
-func (trap *KvTrap) Trigger(name string) error {
-	if trap == nil {
-		return nil
-	}
-	if h := trap.hooks[name]; h != nil {
-		return h()
-	}
-	return nil
-}
+// readCounter reads CNTVCT_EL0.
+func readCounter() int64

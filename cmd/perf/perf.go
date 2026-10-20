@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
-	"os"
 	"sync/atomic"
 	"time"
 
@@ -30,6 +29,8 @@ import (
 
 	"github.com/oxia-db/oxia/oxia"
 )
+
+const DefaultStatsInterval = 10 * time.Second
 
 type Config struct {
 	ServiceAddr     string
@@ -44,56 +45,69 @@ type Config struct {
 	BatchLinger         time.Duration
 	MaxRequestsPerBatch int
 	RequestTimeout      time.Duration
+
+	// StatsInterval is the interval between the stats reports. Zero means use
+	// DefaultStatsInterval.
+	StatsInterval time.Duration
 }
 
 type Perf interface {
 	Run(context.Context)
 }
 
-func New(config Config) Perf {
+func New(config Config) (Perf, error) {
+	slog.Info(
+		"Starting Oxia perf client",
+		slog.Any("config", config),
+	)
+
+	client, err := oxia.NewAsyncClient(config.ServiceAddr,
+		oxia.WithNamespace(config.Namespace),
+		oxia.WithBatchLinger(config.BatchLinger),
+		oxia.WithMaxRequestsPerBatch(config.MaxRequestsPerBatch),
+		oxia.WithRequestTimeout(config.RequestTimeout),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Oxia client: %w", err)
+	}
+
+	keys := make([]string, config.KeysCardinality)
+	for i := uint32(0); i < config.KeysCardinality; i++ {
+		keys[i] = fmt.Sprintf("key-%d", i)
+	}
 	return &perf{
 		config: config,
-	}
+		client: client,
+		keys:   keys,
+	}, nil
 }
 
 type perf struct {
 	config    Config
+	client    oxia.AsyncClient
 	keys      []string
 	failedOps atomic.Int64
 }
 
+// Run sends the traffic until the context is done, then closes the client.
 func (p *perf) Run(ctx context.Context) {
-	slog.Info(
-		"Starting Oxia perf client",
-		slog.Any("config", p.config),
-	)
-
-	p.keys = make([]string, p.config.KeysCardinality)
-	for i := uint32(0); i < p.config.KeysCardinality; i++ {
-		p.keys[i] = fmt.Sprintf("key-%d", i)
-	}
-
-	client, err := oxia.NewAsyncClient(p.config.ServiceAddr, //nolint:contextcheck
-		oxia.WithNamespace(p.config.Namespace),
-		oxia.WithBatchLinger(p.config.BatchLinger),
-		oxia.WithMaxRequestsPerBatch(p.config.MaxRequestsPerBatch),
-		oxia.WithRequestTimeout(p.config.RequestTimeout),
-	)
-	if err != nil {
-		slog.Error(
-			"Failed to create Oxia client",
-			slog.Any("error", err),
-		)
-		os.Exit(1)
-	}
+	defer func() {
+		if err := p.client.Close(); err != nil {
+			slog.Warn("Failed to close Oxia client", slog.Any("error", err))
+		}
+	}()
 
 	writeLatencyCh := make(chan int64)
-	go p.generateWriteTraffic(ctx, client, writeLatencyCh)
+	go p.generateWriteTraffic(ctx, p.client, writeLatencyCh)
 
 	readLatencyCh := make(chan int64)
-	go p.generateReadTraffic(ctx, client, readLatencyCh)
+	go p.generateReadTraffic(ctx, p.client, readLatencyCh)
 
-	ticker := time.NewTicker(10 * time.Second)
+	statsInterval := p.config.StatsInterval
+	if statsInterval == 0 {
+		statsInterval = DefaultStatsInterval
+	}
+	ticker := time.NewTicker(statsInterval)
 	defer ticker.Stop()
 
 	wq := quantile.NewTargeted(0.50, 0.95, 0.99, 0.999, 1.0)
@@ -104,9 +118,10 @@ func (p *perf) Run(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
-			writeRate := float64(writeOps) / float64(10)
-			readRate := float64(readOps) / float64(10)
-			failedOpsRate := float64(p.failedOps.Swap(0)) / float64(10)
+			seconds := statsInterval.Seconds()
+			writeRate := float64(writeOps) / seconds
+			readRate := float64(readOps) / seconds
+			failedOpsRate := float64(p.failedOps.Swap(0)) / seconds
 			slog.Info(fmt.Sprintf(`Stats - Total ops: %6.1f ops/s - Failed ops: %6.1f ops/s
 			Write ops %6.1f w/s  Latency ms: 50%% %5.1f - 95%% %5.1f - 99%% %5.1f - 99.9%% %5.1f - max %6.1f
 			Read  ops %6.1f r/s  Latency ms: 50%% %5.1f - 95%% %5.1f - 99%% %5.1f - 99.9%% %5.1f - max %6.1f`,

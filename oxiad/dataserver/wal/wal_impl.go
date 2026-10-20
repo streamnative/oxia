@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/spf13/afero"
 	"go.uber.org/multierr"
 	"golang.org/x/exp/slices"
 
@@ -372,9 +373,7 @@ func (t *wal) trim(firstOffset int64, generation int64, beforeDelete func() erro
 }
 
 func (t *wal) Close() error {
-	if err := t.trimmer.Close(); err != nil {
-		return err
-	}
+	t.trimmer.Close()
 
 	t.Lock()
 	defer t.Unlock()
@@ -529,14 +528,9 @@ func (t *wal) rolloverSegment() error {
 	if !t.syncData {
 		// With sync disabled there are no sync rounds to hand the rolled-over
 		// segment to: close it inline
-		if err = rolled.SyncFileIfNeeded(); err != nil {
-			return err
-		}
-		if err = rolled.Close(); err != nil {
-			return err
-		}
+		err = multierr.Combine(rolled.SyncFileIfNeeded(), rolled.Close())
 		t.readOnlySegments.AddedNewSegment(rolled.BaseOffset())
-		return nil
+		return err
 	}
 
 	// Hand the rolled-over segment to the sync goroutine: its unsynced tail
@@ -594,14 +588,11 @@ func (t *wal) flushAndCloseRolledSegment(s ReadWriteSegment) error {
 func (t *wal) drainPendingCloseSegments() error {
 	var err error
 	for _, s := range t.pendingCloseSegments {
-		serr := multierr.Combine(
+		err = multierr.Append(err, multierr.Combine(
 			s.SyncFileIfNeeded(),
 			s.Flush(),
-			s.Close())
-		if serr == nil {
-			t.readOnlySegments.AddedNewSegment(s.BaseOffset())
-		}
-		err = multierr.Append(err, serr)
+			s.Close()))
+		t.readOnlySegments.AddedNewSegment(s.BaseOffset())
 	}
 	t.pendingCloseSegments = nil
 	return err
@@ -641,6 +632,7 @@ func (t *wal) runSync() {
 		t.RLock()
 		segment := t.currentSegment
 		lastAppendedOffset := t.lastAppendedOffset.Load()
+		generation := t.generation.Load()
 		pending := slices.Clone(t.pendingCloseSegments)
 		t.RUnlock()
 
@@ -663,13 +655,23 @@ func (t *wal) runSync() {
 				t.writeErrors.Inc()
 			} else {
 				timer.Done()
-				t.lastSyncedOffset.Store(lastAppendedOffset)
+				t.storeSyncedOffset(lastAppendedOffset, generation)
 			}
 		}
 
 		for _, callback := range callbacks {
 			callback(err)
 		}
+	}
+}
+
+// storeSyncedOffset stores the offset synced by a round, unless Clear or
+// TruncateLog dropped entries since the round read it.
+func (t *wal) storeSyncedOffset(offset int64, generation int64) {
+	t.RLock()
+	defer t.RUnlock()
+	if t.generation.Load() == generation {
+		t.lastSyncedOffset.Store(offset)
 	}
 }
 
@@ -736,9 +738,11 @@ func (t *wal) clearWithoutLock() error {
 		return err
 	}
 
-	if t.readOnlySegments, err = newReadOnlySegmentsGroup(t.fs, t.walPath); err != nil {
+	readOnlySegments, err := newReadOnlySegmentsGroup(t.fs, t.walPath)
+	if err != nil {
 		return err
 	}
+	t.readOnlySegments = readOnlySegments
 
 	t.lastAppendedOffset.Store(InvalidOffset)
 	t.lastSyncedOffset.Store(InvalidOffset)
@@ -929,7 +933,7 @@ func (t *wal) discardTrailingSegment(baseOffset int64) error {
 }
 
 func listAllSegments(fs vfs.FS, walPath string) (segments []int64, err error) {
-	dir, err := fs.ReadDir(walPath)
+	dir, err := afero.ReadDir(fs, walPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil

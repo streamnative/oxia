@@ -110,6 +110,36 @@ func TestManifestSetInstanceIDWriteError(t *testing.T) {
 	assert.Empty(t, m.GetInstanceID())
 }
 
+func TestReadInstanceID(t *testing.T) {
+	baseDir := t.TempDir()
+	m, err := NewManifest(baseDir)
+	require.NoError(t, err)
+	require.NoError(t, m.SetInstanceID("instance-1"))
+
+	instanceID, err := ReadInstanceID(baseDir)
+	require.NoError(t, err)
+	assert.Equal(t, "instance-1", instanceID)
+}
+
+func TestReadInstanceIDMissingManifest(t *testing.T) {
+	baseDir := filepath.Join(t.TempDir(), "db")
+
+	instanceID, err := ReadInstanceID(baseDir)
+	require.NoError(t, err)
+	assert.Empty(t, instanceID)
+
+	_, err = os.Stat(baseDir)
+	assert.True(t, os.IsNotExist(err))
+}
+
+func TestReadInstanceIDCorruptedFile(t *testing.T) {
+	baseDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(baseDir, filename), []byte("{not-json"), 0600))
+
+	_, err := ReadInstanceID(baseDir)
+	assert.Error(t, err)
+}
+
 func makeReadOnly(t *testing.T, dir string) {
 	t.Helper()
 	require.NoError(t, os.Chmod(dir, 0500))

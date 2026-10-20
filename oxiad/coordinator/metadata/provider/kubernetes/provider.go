@@ -92,19 +92,14 @@ func NewProvider[T gproto.Message](
 	codec metadatacodec.Codec[T],
 	watchEnabled metadatacommon.WatchMode,
 	name string,
-) (provider.Provider[T], error) {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return nil, errors.New("coordinator name must not be empty")
-	}
-
+) provider.Provider[T] {
 	m := &Provider[T]{
 		kubernetes:    kc,
 		namespace:     namespace,
 		configMapName: configMapName,
 		codec:         codec,
 		watchEnabled:  watchEnabled,
-		name:          name,
+		name:          strings.TrimSpace(name),
 		logger:        slog.With("component", "metadata-config-map"),
 
 		getLatencyHisto: metric.NewLatencyHistogram("oxia_coordinator_metadata_get_latency",
@@ -126,7 +121,7 @@ func NewProvider[T gproto.Message](
 		"The size of the coordinator metadata", metric.Bytes, nil, func() int64 {
 			return m.metadataSize.Load()
 		})
-	return m, nil
+	return m
 }
 
 func NewDefaultClientset() (kubernetes.Interface, error) {
@@ -293,9 +288,10 @@ func (m *Provider[T]) WaitToBecomeLeader() (<-chan struct{}, error) {
 	}
 
 	// Start leader election
+	// The elector rejects an empty coordinator name
 	leaderElector, err := leaderelection.NewLeaderElector(leaderElectionConfig)
 	if err != nil {
-		panic(err)
+		return nil, errors.Wrap(err, "failed to create the leader elector")
 	}
 	m.leaderElector.Store(leaderElector)
 

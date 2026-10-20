@@ -83,12 +83,8 @@ func New(ctx context.Context, options *option.Options) (*Factory, error) {
 		if err != nil {
 			return nil, err
 		}
-		if factory.configProvider, err = kubernetes.NewProvider(ctx, client, meta.Kubernetes.Namespace, meta.Kubernetes.ConfigNameOrDefault(), metadatacodec.ClusterConfigCodec, metadatacommon.WatchEnabled, meta.Name); err != nil {
-			return nil, err
-		}
-		if factory.statusProvider, err = kubernetes.NewProvider(ctx, client, meta.Kubernetes.Namespace, meta.Kubernetes.StatusNameOrDefault(), metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled, meta.Name); err != nil {
-			return nil, err
-		}
+		factory.configProvider = kubernetes.NewProvider(ctx, client, meta.Kubernetes.Namespace, meta.Kubernetes.ConfigNameOrDefault(), metadatacodec.ClusterConfigCodec, metadatacommon.WatchEnabled, meta.Name)
+		factory.statusProvider = kubernetes.NewProvider(ctx, client, meta.Kubernetes.Namespace, meta.Kubernetes.StatusNameOrDefault(), metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled, meta.Name)
 	case metadatacommon.NameRaft:
 		if factory.raft, err = raft.New(meta.Raft.Address, meta.Raft.BootstrapNodes, meta.Raft.DataDir, factory); err != nil {
 			return nil, fmt.Errorf("failed to create raft metadata provider: %w", err)
@@ -141,14 +137,14 @@ func (f *Factory) SeedClusterConfig(config *commonproto.ClusterConfiguration) er
 	return nil
 }
 
-func (f *Factory) CreateMetadata(ctx context.Context) (Metadata, error) {
+func (f *Factory) CreateMetadata(ctx context.Context) Metadata {
 	f.mu.Lock()
 	statusProvider := f.statusProvider
 	configProvider := f.configProvider
 	coordinatorName := f.coordinatorName
 	f.mu.Unlock()
 
-	return newDefaultMetadata(ctx, statusProvider, configProvider, coordinatorName), nil
+	return newDefaultMetadata(ctx, statusProvider, configProvider, coordinatorName)
 }
 
 // Close closes the metadata providers. It is safe to call more than once,

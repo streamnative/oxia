@@ -133,3 +133,19 @@ func TestMaelstromReplicationRpcProviderSendSnapshotIsNotImplemented(t *testing.
 		_, _ = newMaelstromReplicationRpcProvider().SendSnapshot(t.Context(), "n2", "default", 0, 1)
 	})
 }
+
+func TestMaelstromReplicateClientSendFailsOnUnserializableAppend(t *testing.T) {
+	failProtoMarshal(t)
+	client := &maelstromReplicateClient{follower: "n2", streamId: 1}
+
+	require.ErrorContains(t, client.Send(entryAppend(0)), "failed to serialize proto to json")
+	require.Zero(t, client.nextSeq)
+}
+
+func TestMaelstromReplicateClientSendFailsOnClosedStdout(t *testing.T) {
+	closeStdout(t)
+	client := &maelstromReplicateClient{follower: "n2", streamId: 1}
+
+	require.ErrorContains(t, client.Send(entryAppend(0)), "failed to write the message")
+	require.Zero(t, client.nextSeq)
+}

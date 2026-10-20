@@ -26,10 +26,11 @@ go test -v -run TestName ./path/to/package/...
 
 ## Project Structure
 
-The codebase uses Go workspaces with 5 modules:
+The codebase uses Go workspaces with 6 modules:
 
 - **cmd/** - CLI entry points (Cobra-based). Commands: `server`, `coordinator`, `client`, `admin`, `standalone`, `health`, `wal`, `perf`
 - **common/** - Shared code: gRPC proto definitions (`common/proto/`), RPC utilities, metrics, security
+- **dev/** - Development tools: `coverignore` removes the blocks marked with `// coverage-ignore` from the coverage profile
 - **oxia/** - Client library exposing `SyncClient` and `AsyncClient` interfaces
 - **oxiad/** - Server implementations:
   - `coordinator/` - Cluster management, shard orchestration, leader election
@@ -99,6 +100,16 @@ Key components:
 - **Fakes**: prefer one fake per interface, with a hook for each method a test overrides, over a fake type per test.
 - **End-to-end tests**: the tests that run a cluster or go through the public endpoints live in the top-level
   `tests/` module, not in the package.
+- **Coverage**: every statement is covered by a test. Reach a branch that the public behavior doesn't, in this
+  order:
+  1. Make the state impossible by construction, and remove the branch: e.g. a typed value instead of a type
+     assertion, or drop an error result that is never returned.
+  2. Use a failpoint (`common/failpoint`), which compiles to a no-op in release builds: to return the error
+     of a call that can't fail, e.g. a Pebble call, or to reproduce a behavior that is hard to reach, e.g. pause a
+     call at a named point to run a race deterministically, or crash between two steps.
+  3. Only for process termination (`os.Exit`, `main`, signal handling) and for what the CI environment can't
+     provide (a terminal, a CPU feature): mark the block with `// coverage-ignore: <reason>`.
+- **No test-only shortcuts**: never ignore an error, remove a check, or add a seam that exists only for a test.
 
 ## Validation
 

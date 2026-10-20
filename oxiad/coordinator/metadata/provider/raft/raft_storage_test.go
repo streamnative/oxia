@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	hashicorpraft "github.com/hashicorp/raft"
 	"github.com/stretchr/testify/assert"
@@ -77,6 +78,18 @@ func TestNewKVRaftStoreFailsOnFilePath(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestNewKVRaftStoreFailsWhenStoreIsOpen(t *testing.T) {
+	path := t.TempDir()
+	store, err := newKVRaftStore(path)
+	require.NoError(t, err)
+
+	_, err = newKVRaftStore(path)
+	assert.ErrorContains(t, err, "lock")
+
+	storeLogs(t, store, 1)
+	assert.NoError(t, store.Close())
+}
+
 func TestKVRaftStoreGetLogMissing(t *testing.T) {
 	store := newTestStore(t)
 	storeLogs(t, store, 1)
@@ -121,6 +134,15 @@ func TestKVRaftStoreStoreLogsReturnsPutError(t *testing.T) {
 	assert.True(t, batch.closed)
 }
 
+func TestKVRaftStoreStoreLogsReturnsEncodeError(t *testing.T) {
+	batch := &fakeWriteBatch{}
+	store := &kvRaftStore{kv: &fakeKV{batch: batch}}
+
+	err := store.StoreLog(&hashicorpraft.Log{Index: 1, AppendedAt: time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)})
+	require.ErrorContains(t, err, "year outside of range")
+	assert.True(t, batch.closed)
+}
+
 func TestKVRaftStoreDeleteRange(t *testing.T) {
 	store := newTestStore(t)
 	storeLogs(t, store, 1, 2, 3, 4, 5)
@@ -160,6 +182,14 @@ func TestKVRaftStoreStableStore(t *testing.T) {
 	n, err := store.GetUint64([]byte("counter"))
 	require.NoError(t, err)
 	assert.EqualValues(t, 42, n)
+}
+
+func TestKVRaftStoreGetUint64RejectsInvalidValue(t *testing.T) {
+	store := newTestStore(t)
+	require.NoError(t, store.Set([]byte("counter"), []byte("abc")))
+
+	_, err := store.GetUint64([]byte("counter"))
+	require.ErrorContains(t, err, "invalid value of counter")
 }
 
 // fakeKV implements the methods of the kv the store uses: the others panic.

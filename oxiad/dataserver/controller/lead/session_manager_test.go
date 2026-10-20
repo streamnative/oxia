@@ -564,6 +564,36 @@ func TestSessionManager(t *testing.T) {
 	assert.NoError(t, walf.Close())
 }
 
+func TestSessionManagerCreateSessionFailsWhenRegistrationIsRejected(t *testing.T) {
+	kvf, walf, sManager, lc := createSessionManager(t)
+	replaceSessionUpdateCallback(t, func(*proto.PutRequest) proto.Status { return proto.Status_SESSION_DOES_NOT_EXIST })
+
+	_, err := sManager.CreateSession(&proto.CreateSessionRequest{Shard: 1, SessionTimeoutMs: 5000})
+	assert.ErrorContains(t, err, "failed to register session")
+	sManager.RLock()
+	assert.Empty(t, sManager.sessions)
+	sManager.RUnlock()
+
+	assert.NoError(t, lc.Close())
+	assert.NoError(t, kvf.Close())
+	assert.NoError(t, walf.Close())
+}
+
+func TestSessionManagerCreateSessionFailsWhenMetadataFailsToMarshal(t *testing.T) {
+	kvf, walf, sManager, lc := createSessionManager(t)
+	sManager.marshalMetadata = func(*proto.SessionMetadata) ([]byte, error) { return nil, errInjected }
+
+	_, err := sManager.CreateSession(&proto.CreateSessionRequest{Shard: 1, SessionTimeoutMs: 5000})
+	assert.ErrorIs(t, err, errInjected)
+	sManager.RLock()
+	assert.Empty(t, sManager.sessions)
+	sManager.RUnlock()
+
+	assert.NoError(t, lc.Close())
+	assert.NoError(t, kvf.Close())
+	assert.NoError(t, walf.Close())
+}
+
 func TestMultipleSessionsExpiry(t *testing.T) {
 	shardId := int64(1)
 	// Invalid session timeout
@@ -1828,7 +1858,7 @@ func TestSessionManager_CloseWithInFlightExpiry(t *testing.T) {
 
 	closeDone := make(chan struct{})
 	go func() {
-		assert.NoError(t, sm.Close())
+		sm.Close()
 		close(closeDone)
 	}()
 
@@ -1895,7 +1925,7 @@ func TestSessionManager_ActiveSessionsMetric(t *testing.T) {
 	sm.Unlock()
 	assert.EqualValues(t, 1, readCounter())
 
-	assert.NoError(t, sm.Close())
+	sm.Close()
 	assert.EqualValues(t, 0, readCounter())
 }
 

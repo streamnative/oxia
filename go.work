@@ -3,6 +3,7 @@ go 1.27
 use (
 	cmd
 	common
+	dev
 	oxia
 	oxiad
 	tests

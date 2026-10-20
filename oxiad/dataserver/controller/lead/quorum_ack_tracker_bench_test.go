@@ -74,6 +74,6 @@ func benchmarkQuorumAckTracker(b *testing.B, batch int) {
 	b.StopTimer()
 
 	cancel()
-	_ = at.Close()
+	at.Close()
 	wg.Wait()
 }

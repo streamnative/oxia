@@ -1043,6 +1043,20 @@ func TestRuntimeFindDataServerFeaturesOmitsUnknownNodes(t *testing.T) {
 	assert.NotContains(t, features, dataServer.GetNameOrDefault())
 }
 
+func TestRuntimeFindDataServerFeaturesFallsBackToDrainingNodes(t *testing.T) {
+	features := []proto.Feature{proto.Feature_FEATURE_DB_CHECKSUM}
+	c := &runtime{
+		dataServerControllers: map[string]dataservercontroller.Controller{},
+		drainingNodes: map[string]dataservercontroller.Controller{
+			"s1:6649": &fakeDataServerController{features: features},
+		},
+	}
+
+	found := c.findDataServerFeatures([]*proto.DataServerIdentity{{Internal: "s1:6649"}})
+
+	assert.Equal(t, map[string][]proto.Feature{"s1:6649": features}, found)
+}
+
 // A data server registered without metadata is a candidate without labels.
 func TestDataServersToCandidatesAndMetadataDefaultsMissingMetadata(t *testing.T) {
 	labels := &proto.DataServerMetadata{Labels: map[string]string{"zone": "a"}}
@@ -1107,8 +1121,7 @@ func newTestMetadata(t *testing.T, config *proto.ClusterConfiguration) coordmeta
 	})
 	require.NoError(t, err)
 
-	metadata, err := metadataFactory.CreateMetadata(t.Context())
-	require.NoError(t, err)
+	metadata := metadataFactory.CreateMetadata(t.Context())
 	_, err = metadata.WaitToBecomeLeader()
 	require.NoError(t, err)
 	t.Cleanup(func() {

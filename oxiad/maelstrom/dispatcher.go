@@ -16,10 +16,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"log/slog"
-	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -32,7 +29,7 @@ import (
 )
 
 type Dispatcher interface {
-	ReceivedMessage(msgType MsgType, m any, message pb.Message)
+	ReceivedMessage(msgType MsgType, m any, message pb.Message) error
 	RpcRequest(ctx context.Context, dest string, msgType MsgType, message pb.Message) (pb.Message, error)
 }
 
@@ -41,9 +38,10 @@ type ResponseError struct {
 	err error
 }
 
+// ProxiedRequest is the client request that a proxied request answers.
 type ProxiedRequest struct {
-	msgType MsgType
-	msg     any
+	msgId  int64
+	origin string
 }
 
 var msgIdGenerator atomic.Int64
@@ -82,26 +80,29 @@ func (d *dispatcher) onOxiaRequestMessage(msgType MsgType, m *Message[OxiaMessag
 	go d.grpcProvider.HandleOxiaRequest(msgType, m, message)
 }
 
-func (d *dispatcher) onOxiaResponseMessage(_ MsgType, res *Message[OxiaMessage], message pb.Message) {
+func (d *dispatcher) onOxiaResponseMessage(_ MsgType, res *Message[OxiaMessage], message pb.Message) error {
 	ch, ok := d.requests[*res.Body.InReplyTo]
 	if !ok {
-		slog.Error("Invalid response id")
-		os.Exit(1)
+		return errors.Errorf("invalid response id %d", *res.Body.InReplyTo)
 	}
 
 	ch <- ResponseError{msg: message}
+	return nil
 }
 
-func (d *dispatcher) onOxiaStreamRequestMessage(msgType MsgType, m any, message pb.Message) {
+func (d *dispatcher) onOxiaStreamRequestMessage(msgType MsgType, m any, message pb.Message) error {
 	switch msgType {
 	case MsgTypeShardAssignmentsResponse:
 		msg := m.(*Message[OxiaStreamMessage])
 		d.applyShardAssignments(msg, message.(*proto.ShardAssignments))
 		// Ack every copy, also a stale one, so that the coordinator stops
 		// resending it
-		sendShardAssignmentsAck(msg.Src, msg.Body.StreamId, msg.Body.MsgId)
+		return sendShardAssignmentsAck(msg.Src, msg.Body.StreamId, msg.Body.MsgId)
 
 	case MsgTypeShardAssignmentsAck:
+		if d.coordinatorProvider == nil {
+			return errors.Errorf("unexpected %s on a data server", msgType)
+		}
 		msg := m.(*Message[OxiaStreamMessage])
 		d.coordinatorProvider.HandleShardAssignmentsAck(msg.Body.StreamId, *msg.Body.InReplyTo)
 
@@ -125,8 +126,9 @@ func (d *dispatcher) onOxiaStreamRequestMessage(msgType MsgType, m any, message 
 		d.grpcProvider.HandleStreamError(msg.Src, msg.Body.StreamId)
 
 	default:
-		panic(fmt.Sprintf("Unknown message type: %v", msgType))
+		return errors.Errorf("unknown stream message type %s", msgType)
 	}
+	return nil
 }
 
 // applyShardAssignments routes the requests to the leader in the assignments.
@@ -150,72 +152,62 @@ func (d *dispatcher) applyShardAssignments(msg *Message[OxiaStreamMessage], assi
 	}
 }
 
-func (d *dispatcher) onOxiaProxiedMessage(msgType MsgType, m any, _ pb.Message) {
-	proxiedMsgId, inReplyTo, _ := getOrigin(msgType, m)
+func (d *dispatcher) onOxiaProxiedMessage(msgType MsgType, m any, _ pb.Message) error {
+	msgId, inReplyTo, origin, err := getOrigin(msgType, m)
+	if err != nil {
+		return err
+	}
 
 	slog.Info(
 		"Received response for proxied message",
-		slog.Int64("proxied-msg-id", proxiedMsgId),
+		slog.Int64("proxied-msg-id", msgId),
 		slog.Int64("in-reply-to", inReplyTo),
 	)
 
 	switch msgType {
-	case MsgTypeHealthCheckOk:
-		res := m.(*Message[BaseMessageBody])
-		if ch, ok := d.requests[*res.Body.InReplyTo]; !ok {
-			slog.Error("Invalid response id")
-			os.Exit(1)
-		} else { //nolint:revive
-			ch <- ResponseError{msg: nil, err: nil}
-		}
 	case MsgTypeWrite, MsgTypeRead, MsgTypeCas:
 		switch d.currentLeader {
 		case "":
-			sendErrorNotInitialized(msgType, m)
+			sendErrorWithCode(msgId, origin, 11, "temporarily-unavailable")
 		case thisNode:
 			// We should answer
-			go d.grpcProvider.HandleClientRequest(msgType, m)
+			return d.grpcProvider.HandleClientRequest(msgType, m)
 		default:
-			d.proxyToLeader(msgType, m)
+			return d.proxyToLeader(msgType, m)
 		}
 
 		// Responses for proxied requests
 	case MsgTypeWriteOk, MsgTypeCasOk:
 		if pr, ok := d.proxiedRequests[inReplyTo]; ok {
-			msgId, _, origin := getOrigin(pr.msgType, pr.msg)
-			pm := &Message[BaseMessageBody]{
+			delete(d.proxiedRequests, inReplyTo)
+			return sendResponse(&Message[BaseMessageBody]{
 				Src:  thisNode,
-				Dest: origin,
+				Dest: pr.origin,
 				Body: BaseMessageBody{
 					Type:      msgType,
-					InReplyTo: &msgId,
+					InReplyTo: &pr.msgId,
 				},
-			}
-			b, _ := json.Marshal(pm)
-			fmt.Fprintln(os.Stdout, string(b))
-			delete(d.proxiedRequests, inReplyTo)
+			})
 		}
 
 	case MsgTypeReadOk:
 		if pr, ok := d.proxiedRequests[inReplyTo]; ok {
-			msgId, _, origin := getOrigin(pr.msgType, pr.msg)
-			pm := &Message[ReadResponse]{
+			delete(d.proxiedRequests, inReplyTo)
+			return sendResponse(&Message[ReadResponse]{
 				Src:  thisNode,
-				Dest: origin,
+				Dest: pr.origin,
 				Body: ReadResponse{
 					BaseMessageBody: BaseMessageBody{
 						Type:      MsgTypeReadOk,
-						InReplyTo: &msgId,
+						InReplyTo: &pr.msgId,
 					},
 					Value: m.(*Message[ReadResponse]).Body.Value,
 				},
-			}
-			b, _ := json.Marshal(pm)
-			fmt.Fprintln(os.Stdout, string(b))
-			delete(d.proxiedRequests, inReplyTo)
+			})
 		}
 
-	case MsgTypeError:
+	default:
+		// MsgTypeError, the last of the types that getOrigin accepts
 		e := m.(*Message[ErrorResponse])
 		if ch, ok := d.requests[inReplyTo]; ok {
 			ch <- ResponseError{
@@ -226,16 +218,14 @@ func (d *dispatcher) onOxiaProxiedMessage(msgType MsgType, m any, _ pb.Message) 
 			delete(d.requests, inReplyTo)
 		} else if pr, ok := d.proxiedRequests[inReplyTo]; ok {
 			// Got error for a proxied request
-			msgId, _, origin := getOrigin(pr.msgType, pr.msg)
-			sendErrorWithCode(msgId, origin, e.Body.Code, e.Body.Text)
 			delete(d.proxiedRequests, inReplyTo)
+			sendErrorWithCode(pr.msgId, pr.origin, e.Body.Code, e.Body.Text)
 		}
-	default:
-		panic(fmt.Sprintf("Unknown message type: %v", msgType))
 	}
+	return nil
 }
 
-func (d *dispatcher) ReceivedMessage(msgType MsgType, m any, message pb.Message) {
+func (d *dispatcher) ReceivedMessage(msgType MsgType, m any, message pb.Message) error {
 	d.Lock()
 	defer d.Unlock()
 
@@ -249,15 +239,16 @@ func (d *dispatcher) ReceivedMessage(msgType MsgType, m any, message pb.Message)
 	case msgType.isOxiaRequest():
 		d.onOxiaRequestMessage(msgType, m.(*Message[OxiaMessage]), message)
 	case msgType.isOxiaResponse():
-		d.onOxiaResponseMessage(msgType, m.(*Message[OxiaMessage]), message)
+		return d.onOxiaResponseMessage(msgType, m.(*Message[OxiaMessage]), message)
 	case msgType.isOxiaStreamRequest():
-		d.onOxiaStreamRequestMessage(msgType, m, message)
+		return d.onOxiaStreamRequestMessage(msgType, m, message)
 	default:
-		d.onOxiaProxiedMessage(msgType, m, message)
+		return d.onOxiaProxiedMessage(msgType, m, message)
 	}
+	return nil
 }
 
-func getOrigin(msgType MsgType, m any) (msgId int64, inReplyTo int64, origin string) {
+func getOrigin(msgType MsgType, m any) (msgId int64, inReplyTo int64, origin string, err error) {
 	switch msgType {
 	case MsgTypeWrite:
 		w := m.(*Message[Write])
@@ -305,19 +296,13 @@ func getOrigin(msgType MsgType, m any) (msgId int64, inReplyTo int64, origin str
 			inReplyTo = *e.Body.InReplyTo
 		}
 	default:
-		panic(fmt.Sprintf("Unknown message type: %v", msgType))
+		return 0, 0, "", errors.Errorf("unknown message type %s", msgType)
 	}
 
-	return msgId, inReplyTo, origin
+	return msgId, inReplyTo, origin, nil
 }
 
-func sendErrorNotInitialized(msgType MsgType, m any) {
-	msgId, _, origin := getOrigin(msgType, m)
-
-	sendErrorWithCode(msgId, origin, 11, "temporarily-unavailable")
-}
-
-func (d *dispatcher) proxyToLeader(msgType MsgType, m any) {
+func (d *dispatcher) proxyToLeader(msgType MsgType, m any) error {
 	proxyMsgId := msgIdGenerator.Add(1)
 
 	slog.Info(
@@ -325,15 +310,12 @@ func (d *dispatcher) proxyToLeader(msgType MsgType, m any) {
 		slog.Int64("proxied-msg-id", proxyMsgId),
 		slog.Any("msg-type", msgType),
 	)
-	d.proxiedRequests[proxyMsgId] = ProxiedRequest{
-		msgType: msgType,
-		msg:     m,
-	}
-
 	var pm any
+	var pr ProxiedRequest
 	switch msgType {
 	case MsgTypeWrite:
 		w := m.(*Message[Write])
+		pr = ProxiedRequest{msgId: w.Body.MsgId, origin: w.Src}
 		pm = &Message[Write]{
 			Src:  thisNode,
 			Dest: d.currentLeader,
@@ -348,6 +330,7 @@ func (d *dispatcher) proxyToLeader(msgType MsgType, m any) {
 		}
 	case MsgTypeRead:
 		r := m.(*Message[Read])
+		pr = ProxiedRequest{msgId: r.Body.MsgId, origin: r.Src}
 		pm = &Message[Read]{
 			Src:  thisNode,
 			Dest: d.currentLeader,
@@ -361,6 +344,7 @@ func (d *dispatcher) proxyToLeader(msgType MsgType, m any) {
 		}
 	case MsgTypeCas:
 		cas := m.(*Message[Cas])
+		pr = ProxiedRequest{msgId: cas.Body.MsgId, origin: cas.Src}
 		pm = &Message[Cas]{
 			Src:  thisNode,
 			Dest: d.currentLeader,
@@ -375,21 +359,23 @@ func (d *dispatcher) proxyToLeader(msgType MsgType, m any) {
 			},
 		}
 	default:
-		panic(fmt.Sprintf("unknown comparison type: %v", msgType))
+		return errors.Errorf("unknown client request type %s", msgType)
 	}
 
-	b, _ := json.Marshal(pm)
-	fmt.Fprintln(os.Stdout, string(b))
+	d.proxiedRequests[proxyMsgId] = pr
+	return sendResponse(pm)
 }
+
+// How long RpcRequest waits for the response.
+var rpcRequestTimeout = 5 * time.Second
 
 func (d *dispatcher) RpcRequest(ctx context.Context, dest string, msgType MsgType, message pb.Message) (pb.Message, error) {
 	msgId := msgIdGenerator.Add(1)
 
-	d.Lock()
-	ch := make(chan ResponseError, 1)
-	d.requests[msgId] = ch
-	d.Unlock()
-
+	oxiaMsg, err := toJSON(message)
+	if err != nil {
+		return nil, err
+	}
 	req := &Message[OxiaMessage]{
 		Src:  thisNode,
 		Dest: dest,
@@ -398,30 +384,30 @@ func (d *dispatcher) RpcRequest(ctx context.Context, dest string, msgType MsgTyp
 				Type:  msgType,
 				MsgId: msgId,
 			},
-			OxiaMsg: toJSON(message),
+			OxiaMsg: oxiaMsg,
 		},
 	}
 
-	b, err := json.Marshal(req)
-	if err != nil {
-		slog.Error(
-			"failed to serialize json",
-			slog.Any("error", err),
-		)
-		os.Exit(1)
-	}
+	d.Lock()
+	ch := make(chan ResponseError, 1)
+	d.requests[msgId] = ch
+	d.Unlock()
 
 	slog.Info(
 		"Sending message",
-		slog.Any("msg", b),
+		slog.Any("msg", req),
 	)
-
-	fmt.Fprintln(os.Stdout, string(b))
+	if err := sendResponse(req); err != nil {
+		d.Lock()
+		delete(d.requests, msgId)
+		d.Unlock()
+		return nil, err
+	}
 
 	select {
 	case w := <-ch:
 		return w.msg, w.err
-	case <-time.After(5 * time.Second):
+	case <-time.After(rpcRequestTimeout):
 		return nil, errors.New("timed out")
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -430,16 +416,12 @@ func (d *dispatcher) RpcRequest(ctx context.Context, dest string, msgType MsgTyp
 
 var protoMarshal = protojson.MarshalOptions{
 	EmitUnpopulated: true,
-}
+}.Marshal
 
-func toJSON(message pb.Message) []byte {
-	r, err := protoMarshal.Marshal(message)
+func toJSON(message pb.Message) ([]byte, error) {
+	r, err := protoMarshal(message)
 	if err != nil {
-		slog.Error(
-			"failed to serialize proto to json",
-			slog.Any("error", err),
-		)
-		os.Exit(1)
+		return nil, errors.Wrap(err, "failed to serialize proto to json")
 	}
-	return r
+	return r, nil
 }

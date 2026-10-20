@@ -208,8 +208,7 @@ coordinators:
 		},
 	})
 	require.NoError(t, err)
-	metadata, err := factory.CreateMetadata(t.Context())
-	require.NoError(t, err)
+	metadata := factory.CreateMetadata(t.Context())
 	defer func() {
 		require.NoError(t, metadata.Close())
 		require.NoError(t, factory.Close())

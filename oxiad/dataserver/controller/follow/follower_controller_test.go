@@ -3301,6 +3301,60 @@ func TestFollower_NewTermWaitsForPendingSyncs(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
+func TestFollowerControllerCheckpointReadsTheDatabase(t *testing.T) {
+	var shardId int64
+	kvFactory, err := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	walFactory := wal.NewWalFactory(&wal.FactoryOptions{BaseWalDir: t.TempDir()})
+	fc, err := NewFollowerController(&option.StorageOptions{}, constant.DefaultNamespace, shardId, walFactory, kvFactory, nil)
+	require.NoError(t, err)
+
+	checkpoint, err := fc.Checkpoint()
+	require.NoError(t, err)
+	commitOffset, term, err := database.ReadCheckpoint(checkpoint.BasePath())
+	require.NoError(t, err)
+	assert.EqualValues(t, wal.InvalidOffset, commitOffset)
+	assert.EqualValues(t, wal.InvalidTerm, term)
+	require.NoError(t, checkpoint.Close())
+
+	_, err = fc.NewTerm(&proto.NewTermRequest{Term: 4})
+	require.NoError(t, err)
+	checkpoint, err = fc.Checkpoint()
+	require.NoError(t, err)
+	_, term, err = database.ReadCheckpoint(checkpoint.BasePath())
+	require.NoError(t, err)
+	assert.EqualValues(t, 4, term, "the term is recorded in the database")
+	require.NoError(t, checkpoint.Close())
+
+	// The database is still the one of the checkpoint
+	require.NoError(t, fc.WithDatabase(checkpoint.Generation, func(dir string) error {
+		assert.Equal(t, kvFactory.DatabaseDir(constant.DefaultNamespace, shardId), dir)
+		return nil
+	}))
+	assert.ErrorIs(t, fc.WithDatabase(checkpoint.Generation+1, func(string) error { return nil }),
+		database.ErrDatabaseReplaced, "a checkpoint of a database since replaced")
+
+	require.NoError(t, fc.Close())
+	_, err = fc.Checkpoint()
+	assert.ErrorIs(t, err, constant.ErrResourceUnavailable)
+	assert.ErrorIs(t, fc.WithDatabase(checkpoint.Generation, func(string) error { return nil }),
+		constant.ErrResourceUnavailable)
+}
+
+func TestFollowerControllerCheckpointReturnsSnapshotError(t *testing.T) {
+	walFactory, kvFactory := newHookFactories(t)
+	fc := newFencedFollower(t, walFactory, kvFactory)
+	snapshotErr := errors.New("snapshot failed")
+	kvFactory.setHooks(func(h *kvHooks) { h.snapshot = func() error { return snapshotErr } })
+
+	checkpoint, err := fc.Checkpoint()
+	assert.ErrorIs(t, err, snapshotErr)
+	assert.Nil(t, checkpoint)
+
+	kvFactory.setHooks(func(h *kvHooks) { h.snapshot = nil })
+	assert.NoError(t, fc.Close())
+}
+
 // A follower created with the options of a new term applies them to the
 // database it opens, before it gets the new term itself.
 func TestFollowerControllerNewFollowerControllerAppliesNewTermOptions(t *testing.T) {
@@ -3355,11 +3409,17 @@ func TestFollowerControllerNewFollowerControllerFailsOnCorruptState(t *testing.T
 }
 
 func TestFollowerControllerCloseReportsWalCloseError(t *testing.T) {
+	logs := &logCapture{}
+	defaultLogger := slog.Default()
+	slog.SetDefault(slog.New(logs))
 	walFactory, kvFactory := newHookFactories(t)
 	fc := newFencedFollower(t, walFactory, kvFactory)
+	slog.SetDefault(defaultLogger)
 
 	walFactory.setHooks(func(h *walHooks) { h.close = func() error { return errors.New("close failed") } })
 	assert.ErrorContains(t, fc.Close(), "close failed")
+	assert.True(t, logs.has("Follower controller closed with error"))
+	assert.False(t, logs.has("Follower controller closed"))
 	// Closing again is a no-op
 	assert.NoError(t, fc.Close())
 }
@@ -3402,6 +3462,48 @@ func TestFollowerControllerRejectsRequestsOnceClosed(t *testing.T) {
 	assert.ErrorIs(t, err, constant.ErrResourceConflict)
 }
 
+// A request waiting for the lock of the follower while it closes is rejected
+// once it gets the lock.
+func TestFollowerControllerRejectsRequestsClosedWhileWaitingForTheLock(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		call func(fc FollowerController) error
+	}{
+		{"append-entries", func(fc FollowerController) error {
+			return fc.AppendEntries(rpc.NewMockServerReplicateStream())
+		}},
+		{"new-term", func(fc FollowerController) error {
+			_, err := fc.NewTerm(&proto.NewTermRequest{Term: 2})
+			return err
+		}},
+		{"truncate", func(fc FollowerController) error {
+			_, err := fc.Truncate(&proto.TruncateRequest{Term: 1, HeadEntryId: &proto.EntryId{Term: 1, Offset: 0}})
+			return err
+		}},
+		{"install-snapshot", func(fc FollowerController) error {
+			return fc.InstallSnapshot(newSnapshotStream(nil))
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			walFactory, kvFactory := newHookFactories(t)
+			fc := newFencedFollower(t, walFactory, kvFactory)
+			fci := fc.(*followerController)
+
+			fci.rwMutex.RLock()
+			callErr := make(chan error, 1)
+			go func() { callErr <- test.call(fc) }()
+			require.Eventually(t, writerIsWaiting(fci), 10*time.Second, time.Millisecond)
+			closeErr := make(chan error, 1)
+			go func() { closeErr <- fc.Close() }()
+			require.Eventually(t, fci.closed.Load, 10*time.Second, time.Millisecond)
+			fci.rwMutex.RUnlock()
+
+			assert.ErrorIs(t, <-callErr, constant.ErrResourceConflict)
+			assert.NoError(t, <-closeErr)
+		})
+	}
+}
+
 func TestFollowerControllerNewTermFailsWhenTermUpdateFails(t *testing.T) {
 	walFactory, kvFactory := newHookFactories(t)
 	fc := newFencedFollower(t, walFactory, kvFactory)
@@ -3439,6 +3541,28 @@ func TestFollowerControllerNewTermFailsWhenHeadEntryReadFails(t *testing.T) {
 	assert.ErrorContains(t, err, "read failed")
 
 	walFactory.setHooks(func(h *walHooks) { h.newReverseReader = nil })
+	assert.NoError(t, fc.Close())
+}
+
+// A new term that waits for the lock of the follower while it gets fenced in
+// a higher term is rejected once it gets the lock.
+func TestFollowerControllerNewTermRejectsTermFencedWhileWaitingForTheLock(t *testing.T) {
+	walFactory, kvFactory := newHookFactories(t)
+	fc := newFencedFollower(t, walFactory, kvFactory)
+	fci := fc.(*followerController)
+
+	fci.rwMutex.RLock()
+	newTermErr := make(chan error, 1)
+	go func() {
+		_, err := fc.NewTerm(&proto.NewTermRequest{Term: 2})
+		newTermErr <- err
+	}()
+	require.Eventually(t, writerIsWaiting(fci), 10*time.Second, time.Millisecond)
+	fci.term.Store(3)
+	fci.rwMutex.RUnlock()
+
+	assert.ErrorIs(t, <-newTermErr, constant.ErrInvalidTerm)
+	assert.EqualValues(t, 3, fc.Term())
 	assert.NoError(t, fc.Close())
 }
 
@@ -3572,6 +3696,42 @@ func TestFollowerControllerStateApplierRetriesEntriesFailingToApply(t *testing.T
 	assert.NoError(t, fc.Close())
 }
 
+func TestFollowerControllerProcessCommittedEntriesLoopStopsAfterMaxInclusive(t *testing.T) {
+	walFactory, kvFactory := newHookFactories(t)
+	fc := newReplicatingFollower(t, walFactory, kvFactory)
+	appendUncommittedEntries(t, fc, 2)
+	fci := fc.(*followerController)
+
+	fci.rwMutex.RLock()
+	snapshotGeneration := fci.snapshotGeneration
+	reader, err := fci.wal.NewReader(0)
+	fci.rwMutex.RUnlock()
+	require.NoError(t, err)
+	assert.NoError(t, fci.processCommittedEntriesLoop(reader, snapshotGeneration, 0))
+	assert.NoError(t, reader.Close())
+	assert.EqualValues(t, wal.InvalidOffset, fc.CommitOffset())
+
+	assert.NoError(t, fc.Close())
+}
+
+func TestFollowerControllerProcessCommittedEntriesLoopStopsAtWalEnd(t *testing.T) {
+	walFactory, kvFactory := newHookFactories(t)
+	fc := newReplicatingFollower(t, walFactory, kvFactory)
+	appendUncommittedEntries(t, fc, 2)
+	fci := fc.(*followerController)
+
+	fci.rwMutex.RLock()
+	snapshotGeneration := fci.snapshotGeneration
+	reader, err := fci.wal.NewReader(1)
+	fci.rwMutex.RUnlock()
+	require.NoError(t, err)
+	assert.NoError(t, fci.processCommittedEntriesLoop(reader, snapshotGeneration, 1))
+	assert.NoError(t, reader.Close())
+	assert.EqualValues(t, wal.InvalidOffset, fc.CommitOffset())
+
+	assert.NoError(t, fc.Close())
+}
+
 func TestFollowerControllerInstallSnapshotEndsOnEmptyStream(t *testing.T) {
 	for name, stream := range map[string]proto.OxiaLogReplication_SendSnapshotServer{
 		"eof": &hookSnapshotStream{
@@ -3677,12 +3837,21 @@ func TestFollowerControllerInstallSnapshotFailsToRecoverDatabase(t *testing.T) {
 }
 
 func TestFollowerControllerInstallSnapshotFailsWhenSplitFilterFails(t *testing.T) {
+	// The term is read when the database opens, then again by the filter
+	var termReads atomic.Int64
+	secondTermReadFails := func(key string) error {
+		if key == constant.InternalKeyPrefix+"term" && termReads.Add(1) == 2 {
+			return errors.New("read failed")
+		}
+		return nil
+	}
 	for _, test := range []struct {
 		name  string
 		hooks kvHooks
 	}{
 		{"filter", kvHooks{rangeScan: func() error { return errors.New("scan failed") }}},
 		{"record", kvHooks{flush: func() error { return errors.New("flush failed") }}},
+		{"read-term", kvHooks{get: secondTermReadFails}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			walFactory, kvFactory := newHookFactories(t)
@@ -3855,6 +4024,18 @@ func snapshotChunks(t *testing.T, term int64) []*proto.SnapshotChunk {
 	return chunks
 }
 
+// writerIsWaiting reports whether a writer waits for the lock of the follower,
+// which a reader holds: the lock then rejects new readers.
+func writerIsWaiting(fc *followerController) func() bool {
+	return func() bool {
+		if fc.rwMutex.TryRLock() {
+			fc.rwMutex.RUnlock()
+			return false
+		}
+		return true
+	}
+}
+
 func newSnapshotStream(chunks []*proto.SnapshotChunk) *rpc.MockServerSendSnapshotStream {
 	stream := rpc.NewMockServerSendSnapshotStream()
 	for _, chunk := range chunks {
@@ -4008,7 +4189,9 @@ type kvHooks struct {
 	newKV             func() error
 	newSnapshotLoader func() error
 	flush             func() error
+	snapshot          func() error
 	rangeScan         func() error
+	get               func(key string) error
 	addChunk          func() error
 	complete          func() error
 }
@@ -4063,6 +4246,23 @@ func (kv *hookKV) Flush() error {
 		return err
 	}
 	return kv.KV.Flush()
+}
+
+func (kv *hookKV) Snapshot() (kvstore.Snapshot, error) {
+	if err := runHook(kv.factory.getHooks().snapshot); err != nil {
+		return nil, err
+	}
+	return kv.KV.Snapshot()
+}
+
+func (kv *hookKV) Get(key string, comparisonType kvstore.ComparisonType,
+	opts kvstore.IteratorOpts) (string, []byte, io.Closer, error) {
+	if hook := kv.factory.getHooks().get; hook != nil {
+		if err := hook(key); err != nil {
+			return "", nil, nil, err
+		}
+	}
+	return kv.KV.Get(key, comparisonType, opts)
 }
 
 func (kv *hookKV) RangeScan(lowerBound, upperBound string,

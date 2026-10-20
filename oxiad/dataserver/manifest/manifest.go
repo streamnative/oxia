@@ -49,6 +49,19 @@ func NewManifest(dir string) (*Manifest, error) {
 	return m, nil
 }
 
+// ReadInstanceID returns the instance id recorded in the manifest in dir, without
+// creating the manifest. It is empty when the data server isn't bound to a cluster yet.
+func ReadInstanceID(dir string) (string, error) {
+	doc := &Document{}
+	if _, err := commonio.ReadJSONFromFile(filepath.Join(dir, filename), doc); err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	return doc.InstanceID, nil
+}
+
 func (m *Manifest) doRecovery() error {
 	doc := &Document{}
 	_, err := commonio.ReadJSONFromFile(m.path, doc)

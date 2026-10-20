@@ -99,7 +99,7 @@ func TestMaelstromGrpcProviderHandleOxiaRequestRepliesWithResponse(t *testing.T)
 			msgId := int64(100 + i)
 			provider.HandleOxiaRequest(tt.msgType, oxiaRequest("n1", tt.msgType, msgId), tt.request)
 
-			msgType, msg, response := parseRequest(receiveLines(t, lines, 1)[0])
+			msgType, msg, response := parseLine(t, receiveLines(t, lines, 1)[0])
 			require.Equal(t, tt.respType, msgType)
 			res := msg.(*Message[OxiaMessage])
 			require.Equal(t, "n1", res.Dest)
@@ -133,7 +133,7 @@ func TestMaelstromGrpcProviderHandleOxiaRequestRepliesWithError(t *testing.T) {
 			msgId := int64(200 + i)
 			provider.HandleOxiaRequest(tt.msgType, oxiaRequest("n1", tt.msgType, msgId), tt.request)
 
-			msgType, msg, _ := parseRequest(receiveLines(t, lines, 1)[0])
+			msgType, msg, _ := parseLine(t, receiveLines(t, lines, 1)[0])
 			require.Equal(t, MsgTypeError, msgType)
 			res := msg.(*Message[ErrorResponse])
 			require.Equal(t, "n1", res.Dest)
@@ -144,11 +144,17 @@ func TestMaelstromGrpcProviderHandleOxiaRequestRepliesWithError(t *testing.T) {
 	}
 }
 
-func TestMaelstromGrpcProviderHandleOxiaRequestPanicsOnUnknownType(t *testing.T) {
-	provider := newMaelstromGrpcProvider()
-	require.Panics(t, func() {
-		provider.HandleOxiaRequest(MsgTypeInit, oxiaRequest("n1", MsgTypeInit, 1), nil)
-	})
+func TestMaelstromGrpcProviderHandleOxiaRequestRepliesErrorOnUnknownType(t *testing.T) {
+	lines := captureStdout(t)
+
+	newMaelstromGrpcProvider().HandleOxiaRequest(MsgTypeInit, oxiaRequest("n1", MsgTypeInit, 1), nil)
+
+	msgType, msg, _ := parseLine(t, receiveLines(t, lines, 1)[0])
+	require.Equal(t, MsgTypeError, msgType)
+	res := msg.(*Message[ErrorResponse])
+	require.Equal(t, "n1", res.Dest)
+	require.Equal(t, int64(1), *res.Body.InReplyTo)
+	require.Equal(t, "unknown request type init", res.Body.Text)
 }
 
 func TestMaelstromGrpcProviderHandleOxiaStreamRequestIgnoresUnsupportedType(t *testing.T) {
@@ -203,6 +209,7 @@ func TestMaelstromGrpcProviderHandleClientRequestServesLinKvOperations(t *testin
 		}
 	}
 	kv := func() *fakeClientServer { return newKVClientServer(map[string]string{"1": "5"}) }
+	invalidValue := func() *fakeClientServer { return newKVClientServer(map[string]string{"1": "x"}) }
 	// The read of a compare-and-set succeeds, and its write fails
 	failingCasWrite := func(write func(*proto.WriteRequest) (*proto.WriteResponse, error)) func() *fakeClientServer {
 		return func() *fakeClientServer {
@@ -228,11 +235,13 @@ func TestMaelstromGrpcProviderHandleClientRequestServesLinKvOperations(t *testin
 		{"read missing key", kv, MsgTypeRead, readMessage(2), MsgTypeError, 20, 0},
 		{"read error", failing, MsgTypeRead, readMessage(1), MsgTypeError, 1000, 0},
 		{"read failed status", failingStatus, MsgTypeRead, readMessage(1), MsgTypeError, 1000, 0},
+		{"read invalid value", invalidValue, MsgTypeRead, readMessage(1), MsgTypeError, 1000, 0},
 		{"cas", kv, MsgTypeCas, casMessage(1, 5, 8), MsgTypeCasOk, 0, 0},
 		{"cas precondition failed", kv, MsgTypeCas, casMessage(1, 4, 8), MsgTypeError, 22, 0},
 		{"cas missing key", kv, MsgTypeCas, casMessage(2, 5, 8), MsgTypeError, 20, 0},
 		{"cas read error", failing, MsgTypeCas, casMessage(1, 5, 8), MsgTypeError, 1000, 0},
 		{"cas read failed status", failingStatus, MsgTypeCas, casMessage(1, 5, 8), MsgTypeError, 1000, 0},
+		{"cas invalid value", invalidValue, MsgTypeCas, casMessage(1, 5, 8), MsgTypeError, 1000, 0},
 		{"cas write error", failingCasWrite(failing().write), MsgTypeCas, casMessage(1, 5, 8), MsgTypeError, 1000, 0},
 		{"cas write failed status", failingCasWrite(failingStatus().write), MsgTypeCas, casMessage(1, 5, 8),
 			MsgTypeError, 1000, 0},
@@ -241,12 +250,12 @@ func TestMaelstromGrpcProviderHandleClientRequestServesLinKvOperations(t *testin
 		t.Run(tt.name, func(t *testing.T) {
 			provider := newMaelstromGrpcProvider()
 			provider.RegisterService(&proto.OxiaClient_ServiceDesc, tt.server())
-			provider.HandleClientRequest(tt.msgType, tt.msg)
+			require.NoError(t, provider.HandleClientRequest(tt.msgType, tt.msg))
 
-			msgId, _, origin := getOrigin(tt.msgType, tt.msg)
-			msgType, msg, _ := parseRequest(receiveLines(t, lines, 1)[0])
+			msgId, _, origin := requireOrigin(t, tt.msgType, tt.msg)
+			msgType, msg, _ := parseLine(t, receiveLines(t, lines, 1)[0])
 			require.Equal(t, tt.wantType, msgType)
-			_, inReplyTo, _ := getOrigin(msgType, msg)
+			_, inReplyTo, _ := requireOrigin(t, msgType, msg)
 			require.Equal(t, msgId, inReplyTo)
 			require.Equal(t, origin, destination(msg))
 			switch res := msg.(type) {
@@ -266,14 +275,68 @@ func TestMaelstromGrpcProviderHandleClientRequestAppliesWrites(t *testing.T) {
 
 	provider := newMaelstromGrpcProvider()
 	provider.RegisterService(&proto.OxiaClient_ServiceDesc, newKVClientServer(map[string]string{}))
-	provider.HandleClientRequest(MsgTypeWrite, writeMessage(1, 3))
-	provider.HandleClientRequest(MsgTypeCas, casMessage(1, 3, 4))
-	provider.HandleClientRequest(MsgTypeRead, readMessage(1))
+	require.NoError(t, provider.HandleClientRequest(MsgTypeWrite, writeMessage(1, 3)))
+	receiveLines(t, lines, 1)
+	require.NoError(t, provider.HandleClientRequest(MsgTypeCas, casMessage(1, 3, 4)))
+	receiveLines(t, lines, 1)
+	require.NoError(t, provider.HandleClientRequest(MsgTypeRead, readMessage(1)))
 
-	responses := receiveLines(t, lines, 3)
-	msgType, msg, _ := parseRequest(responses[2])
+	msgType, msg, _ := parseLine(t, receiveLines(t, lines, 1)[0])
 	require.Equal(t, MsgTypeReadOk, msgType)
 	require.Equal(t, int64(4), msg.(*Message[ReadResponse]).Body.Value)
+}
+
+func TestMaelstromGrpcProviderServeClientRequestLogsWriteFailure(t *testing.T) {
+	tests := []struct {
+		msgType MsgType
+		msg     any
+	}{
+		{MsgTypeWrite, writeMessage(1, 6)},
+		{MsgTypeRead, readMessage(1)},
+		{MsgTypeCas, casMessage(1, 5, 8)},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.msgType), func(t *testing.T) {
+			logs := captureLogs(t)
+			closeStdout(t)
+			records := map[string]string{"1": "5"}
+			provider := newMaelstromGrpcProvider()
+			provider.RegisterService(&proto.OxiaClient_ServiceDesc, newKVClientServer(records))
+
+			provider.serveClientRequest(tt.msgType, tt.msg)
+
+			require.Contains(t, logs.String(), "Failed to send the error")
+		})
+	}
+}
+
+func TestMaelstromGrpcProviderSendResponseRepliesErrorOnUnserializableResponse(t *testing.T) {
+	lines := captureStdout(t)
+
+	newMaelstromGrpcProvider().sendResponse(oxiaRequest("n1", MsgTypeGetStatusRequest, 3), MsgTypeGetStatusResponse,
+		wrapperspb.String("\xff"))
+
+	msgType, msg, _ := parseLine(t, receiveLines(t, lines, 1)[0])
+	require.Equal(t, MsgTypeError, msgType)
+	res := msg.(*Message[ErrorResponse])
+	require.Equal(t, "n1", res.Dest)
+	require.Equal(t, int64(3), *res.Body.InReplyTo)
+	require.Contains(t, res.Body.Text, "failed to serialize proto to json")
+}
+
+func TestMaelstromGrpcProviderSendResponseLogsWriteFailure(t *testing.T) {
+	logs := captureLogs(t)
+	closeStdout(t)
+
+	newMaelstromGrpcProvider().sendResponse(oxiaRequest("n1", MsgTypeHealthCheck, 3), MsgTypeHealthCheckOk,
+		wrapperspb.Int64(1))
+
+	require.Contains(t, logs.String(), "Failed to send the error")
+}
+
+func TestMaelstromGrpcProviderHandleClientRequestFailsOnUnexpectedRequest(t *testing.T) {
+	err := newMaelstromGrpcProvider().HandleClientRequest(MsgTypeWriteOk, &Message[BaseMessageBody]{Src: "n3"})
+	require.ErrorContains(t, err, "unexpected request write_ok")
 }
 
 func TestMaelstromReadServerStreamHeadersAreNotImplemented(t *testing.T) {
@@ -289,7 +352,7 @@ func TestMaelstromReplicateServerStreamSendAcksToLeader(t *testing.T) {
 	stream := newMaelstromReplicateServerStream(appendMessage("n1", 9, 0))
 	require.NoError(t, stream.Send(&proto.Ack{Offset: 4}))
 
-	msgType, msg, ack := parseRequest(receiveLines(t, lines, 1)[0])
+	msgType, msg, ack := parseLine(t, receiveLines(t, lines, 1)[0])
 	require.Equal(t, MsgTypeAck, msgType)
 	require.Equal(t, "n1", msg.(*Message[OxiaStreamMessage]).Dest)
 	require.Equal(t, int64(9), msg.(*Message[OxiaStreamMessage]).Body.StreamId)
@@ -298,6 +361,13 @@ func TestMaelstromReplicateServerStreamSendAcksToLeader(t *testing.T) {
 	// A reset stream acks nothing
 	stream.close()
 	require.Error(t, stream.Send(&proto.Ack{Offset: 5}))
+}
+
+func TestMaelstromReplicateServerStreamSendFailsOnUnserializableAck(t *testing.T) {
+	failProtoMarshal(t)
+	stream := newMaelstromReplicateServerStream(appendMessage("n1", 9, 0))
+
+	require.ErrorContains(t, stream.Send(&proto.Ack{Offset: 4}), "failed to serialize proto to json")
 }
 
 func TestMaelstromReplicateServerStreamRecvDiscardsEntriesAfterClose(t *testing.T) {
@@ -353,10 +423,7 @@ func TestMaelstromReplicateServerStreamContextCarriesShard(t *testing.T) {
 }
 
 func TestMaelstromReplicateServerStreamOnGapTimeoutIgnoresClosedStream(t *testing.T) {
-	logs := &lockedBuffer{}
-	previous := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(logs, nil)))
-	t.Cleanup(func() { slog.SetDefault(previous) })
+	logs := captureLogs(t)
 	stream := newMaelstromReplicateServerStream(appendMessage("n1", 9, 0))
 	// The append at 0 is missing, and the one at 1 waits for it
 	stream.early[1] = entryAppend(1)
@@ -398,7 +465,7 @@ func entryAppend(offset int64) *proto.Append {
 
 func requireStreamError(t *testing.T, line string, dest string, streamId int64) {
 	t.Helper()
-	msgType, msg, _ := parseRequest(line)
+	msgType, msg, _ := parseLine(t, line)
 	require.Equal(t, MsgTypeStreamError, msgType)
 	require.Equal(t, dest, msg.(*Message[OxiaStreamMessage]).Dest)
 	require.Equal(t, streamId, msg.(*Message[OxiaStreamMessage]).Body.StreamId)
@@ -530,6 +597,16 @@ func newKVClientServer(records map[string]string) *fakeClientServer {
 			}}}, nil
 		},
 	}
+}
+
+// captureLogs returns the logs written until the end of the test.
+func captureLogs(t *testing.T) *lockedBuffer {
+	t.Helper()
+	logs := &lockedBuffer{}
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	return logs
 }
 
 // lockedBuffer is a bytes.Buffer that can be written and read concurrently.

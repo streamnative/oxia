@@ -43,14 +43,8 @@ func init() {
 	Cmd.Flags().StringVarP(&Config.keyMin, "key-min", "s", "", "Key range minimum (inclusive)")
 	Cmd.Flags().StringVarP(&Config.keyMax, "key-max", "e", "", "Key range maximum (exclusive)")
 	Cmd.Flags().StringVarP(&Config.partitionKey, "partition-key", "p", "", "Partition Key to be used in override the shard routing")
-	err := Cmd.MarkFlagRequired("key-min")
-	if err != nil {
-		panic(err)
-	}
-	err = Cmd.MarkFlagRequired("key-max")
-	if err != nil {
-		panic(err)
-	}
+	cobra.CheckErr(Cmd.MarkFlagRequired("key-min"))
+	cobra.CheckErr(Cmd.MarkFlagRequired("key-max"))
 }
 
 var Cmd = &cobra.Command{

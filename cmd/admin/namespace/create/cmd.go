@@ -39,8 +39,8 @@ var Cmd = &cobra.Command{
 
 func init() {
 	fields.AddFlags(Cmd)
-	_ = Cmd.MarkFlagRequired(namespacecli.InitialShardsFlagName)
-	_ = Cmd.MarkFlagRequired(namespacecli.ReplicationFactorFlagName)
+	cobra.CheckErr(Cmd.MarkFlagRequired(namespacecli.InitialShardsFlagName))
+	cobra.CheckErr(Cmd.MarkFlagRequired(namespacecli.ReplicationFactorFlagName))
 }
 
 func exec(cmd *cobra.Command, args []string) error {

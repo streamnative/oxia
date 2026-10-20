@@ -48,12 +48,12 @@ func TestMaelstromShardAssignmentClientSendResendsUntilAcked(t *testing.T) {
 
 	// The data server gets it, and acks it
 	dataServer := &dispatcher{}
-	deliver(dataServer, push[1])
+	deliver(t, dataServer, push[1])
 	require.Equal(t, "n4", dataServer.currentLeader)
 	ack := ""
 	for ack == "" {
 		line := receiveLines(t, lines, 1)[0]
-		if msgType, _, _ := parseRequest(line); msgType == MsgTypeShardAssignmentsAck {
+		if msgType, _, _ := parseLine(t, line); msgType == MsgTypeShardAssignmentsAck {
 			ack = line
 		} else {
 			// A resend that went out before the ack
@@ -62,7 +62,7 @@ func TestMaelstromShardAssignmentClientSendResendsUntilAcked(t *testing.T) {
 	}
 
 	// The ack stops the resends
-	deliver(coordinator, ack)
+	deliver(t, coordinator, ack)
 	fmt.Fprintln(os.Stdout, "acked")
 	for line := receiveLines(t, lines, 1)[0]; line != "acked"; line = receiveLines(t, lines, 1)[0] {
 		require.Equal(t, push[0], line)
@@ -72,6 +72,29 @@ func TestMaelstromShardAssignmentClientSendResendsUntilAcked(t *testing.T) {
 		require.Failf(t, "the stream resent the acked assignments", "message: %s", line)
 	case <-time.After(5 * assignmentsResendInterval):
 	}
+}
+
+func TestMaelstromShardAssignmentClientSendFailsOnUnserializableAssignments(t *testing.T) {
+	coordinator := newDispatcher(newMaelstromGrpcProvider(), newMaelstromReplicationRpcProvider())
+	stream, err := newRpcProvider(coordinator).PushShardAssignments(t.Context(), &proto.DataServerIdentity{Internal: "n4"})
+	require.NoError(t, err)
+
+	err = stream.Send(&proto.ShardAssignments{
+		Namespaces: map[string]*proto.NamespaceShardsAssignment{"\xff": {}},
+	})
+
+	require.ErrorContains(t, err, "failed to serialize proto to json")
+}
+
+func TestMaelstromShardAssignmentClientSendClosesStreamOnWriteFailure(t *testing.T) {
+	closeStdout(t)
+	coordinator := newDispatcher(newMaelstromGrpcProvider(), newMaelstromReplicationRpcProvider())
+	stream, err := newRpcProvider(coordinator).PushShardAssignments(t.Context(), &proto.DataServerIdentity{Internal: "n4"})
+	require.NoError(t, err)
+
+	require.NoError(t, stream.Send(assignmentsWithLeader("n4")))
+
+	require.ErrorIs(t, stream.Context().Err(), context.Canceled)
 }
 
 func TestMaelstromHealthCheckClientCheckClosesAssignmentStreamsAtFailureThreshold(t *testing.T) {
@@ -151,10 +174,10 @@ func TestMaelstromCoordinatorRpcProviderDeleteShard(t *testing.T) {
 		res <- err
 	}()
 
-	msgType, request, protoMsg := parseRequest(receiveLines(t, lines, 1)[0])
+	msgType, request, protoMsg := parseLine(t, receiveLines(t, lines, 1)[0])
 	require.Equal(t, MsgTypeDeleteShardRequest, msgType)
 	dataServer.HandleOxiaRequest(msgType, request.(*Message[OxiaMessage]), protoMsg)
-	deliver(coordinator, receiveLines(t, lines, 1)[0])
+	deliver(t, coordinator, receiveLines(t, lines, 1)[0])
 	require.NoError(t, <-res)
 	require.EqualValues(t, 1, (<-deleted).Shard)
 }
@@ -341,8 +364,9 @@ func TestMaelstromHealthCheckClientFailsWhenCancelled(t *testing.T) {
 
 // deliver hands a Maelstrom message to the dispatcher, as the main loop does
 // with each line it reads.
-func deliver(d *dispatcher, line string) {
-	d.ReceivedMessage(parseRequest(line))
+func deliver(t *testing.T, d *dispatcher, line string) {
+	t.Helper()
+	require.NoError(t, d.ReceivedMessage(parseLine(t, line)))
 }
 
 func assignmentsWithLeader(leader string) *proto.ShardAssignments {
@@ -364,10 +388,10 @@ func answerProbe(t *testing.T, lines <-chan string, coordinator *dispatcher,
 		checked <- err
 	}()
 
-	msgType, probe, _ := parseRequest(receiveLines(t, lines, 1)[0])
+	msgType, probe, _ := parseLine(t, receiveLines(t, lines, 1)[0])
 	require.Equal(t, MsgTypeHealthCheck, msgType)
 	dataServer.HandleOxiaRequest(msgType, probe.(*Message[OxiaMessage]), nil)
-	deliver(coordinator, receiveLines(t, lines, 1)[0])
+	deliver(t, coordinator, receiveLines(t, lines, 1)[0])
 	require.NoError(t, <-checked)
 }
 
@@ -386,9 +410,9 @@ func loseProbe(t *testing.T, lines <-chan string, healthClient grpc_health_v1.He
 // and its answer back to the coordinator.
 func answerRequest(t *testing.T, lines <-chan string, coordinator *dispatcher, dataServer *maelstromGrpcProvider) {
 	t.Helper()
-	msgType, request, protoMsg := parseRequest(receiveLines(t, lines, 1)[0])
+	msgType, request, protoMsg := parseLine(t, receiveLines(t, lines, 1)[0])
 	dataServer.HandleOxiaRequest(msgType, request.(*Message[OxiaMessage]), protoMsg)
-	deliver(coordinator, receiveLines(t, lines, 1)[0])
+	deliver(t, coordinator, receiveLines(t, lines, 1)[0])
 }
 
 type callResult struct {

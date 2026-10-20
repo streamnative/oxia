@@ -17,9 +17,10 @@ package kvstore
 import (
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
+	"slices"
 
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 
@@ -27,11 +28,12 @@ import (
 )
 
 type pebbleSnapshot struct {
+	fs         vfs.FS
 	path       string
 	files      []string
 	chunkCount int32
 	chunkIndex int32
-	file       *os.File
+	file       vfs.File
 }
 
 type pebbleSnapshotChunk struct {
@@ -42,15 +44,17 @@ type pebbleSnapshotChunk struct {
 }
 
 func newPebbleSnapshot(p *Pebble) (Snapshot, error) {
+	fs := p.factory.options.FS
 	ps := &pebbleSnapshot{
+		fs: fs,
 		path: filepath.Join(p.factory.dataDir, validation.KeywordNamespaceSnapshots,
 			fmt.Sprintf("shard-%d", p.shardId),
-			fmt.Sprintf("snapshot-%d", p.snapshotCounter.Add(1))),
+			fmt.Sprintf("snapshot-%d", p.factory.snapshotCounter.Add(1))),
 	}
 
 	// Flush the DB to ensure the snapshot content is as close as possible to
 	// the last committed entry
-	if err := p.db.Flush(); err != nil {
+	if err := p.failpoints.Fail("snapshot.flush", p.db.Flush()); err != nil {
 		return nil, err
 	}
 
@@ -59,20 +63,26 @@ func newPebbleSnapshot(p *Pebble) (Snapshot, error) {
 	}
 
 	// Include marker file
-	if err := os.Link(
+	if err := fs.Link(
 		filepath.Join(p.dbPath, markerFileName),
 		filepath.Join(ps.path, markerFileName)); err != nil {
 		return nil, err
 	}
 
-	dirEntries, err := os.ReadDir(ps.path)
+	names, err := fs.List(ps.path)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, de := range dirEntries {
-		if !de.IsDir() {
-			ps.files = append(ps.files, de.Name())
+	// fs.List leaves the names unsorted: send the files in name order
+	slices.Sort(names)
+	for _, name := range names {
+		stat, err := fs.Stat(filepath.Join(ps.path, name))
+		if err != nil {
+			return nil, err
+		}
+		if !stat.IsDir() {
+			ps.files = append(ps.files, name)
 		}
 	}
 
@@ -84,7 +94,7 @@ func (ps *pebbleSnapshot) Close() error {
 	if ps.file != nil {
 		err = ps.file.Close()
 	}
-	return multierr.Combine(err, os.RemoveAll(ps.path))
+	return multierr.Combine(err, ps.fs.RemoveAll(ps.path))
 }
 
 func (ps *pebbleSnapshot) BasePath() string {
@@ -135,7 +145,7 @@ func (psf *pebbleSnapshotChunk) TotalCount() int32 {
 func (ps *pebbleSnapshot) initalizeChunkContent() error {
 	var err error
 	filePath := filepath.Join(ps.path, ps.files[0])
-	stat, err := os.Stat(filePath)
+	stat, err := ps.fs.Stat(filePath)
 	if err != nil {
 		return err
 	}
@@ -149,7 +159,7 @@ func (ps *pebbleSnapshot) initalizeChunkContent() error {
 		ps.chunkCount = 1
 	}
 
-	ps.file, err = os.Open(filePath)
+	ps.file, err = ps.fs.Open(filePath)
 	if err != nil {
 		return err
 	}
@@ -165,18 +175,14 @@ func (ps *pebbleSnapshot) NextChunkContent() ([]byte, error) {
 		}
 	}
 
-	_, err := ps.file.Seek(int64(ps.chunkIndex)*MaxSnapshotChunkSize, io.SeekStart)
-	if err != nil {
-		return nil, err
-	}
 	content := make([]byte, MaxSnapshotChunkSize)
-	byteCount, err := io.ReadFull(ps.file, content)
-	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
+	byteCount, err := ps.file.ReadAt(content, int64(ps.chunkIndex)*MaxSnapshotChunkSize)
+	// ReadAt fails with io.EOF on the last chunk of the file
+	if err != nil && !errors.Is(err, io.EOF) {
 		return nil, err
 	}
-	if int64(byteCount) < MaxSnapshotChunkSize {
-		content = content[:byteCount]
-
+	content = content[:byteCount]
+	if ps.chunkIndex == ps.chunkCount-1 {
 		err = ps.file.Close()
 		if err != nil {
 			return nil, err

@@ -2850,6 +2850,38 @@ func TestDBUpdateTermFailsWhenWriteFails(t *testing.T) {
 	}
 }
 
+func TestDBUpdateTermFailsWhenMarshalFails(t *testing.T) {
+	d, _ := newHookedTestDB(t)
+	d.marshalJSON = failingMarshal[any]
+
+	err := d.UpdateTerm(5, TermOptions{NotificationsEnabled: true})
+	assert.ErrorIs(t, err, errInjected)
+	term, _, err := d.ReadTerm()
+	require.NoError(t, err)
+	assert.Equal(t, wal.InvalidTerm, term)
+}
+
+func TestDBProcessWriteFailsWhenNotificationsMarshalFails(t *testing.T) {
+	d, kv := newHookedTestDB(t)
+	cacheNotifications(t, d)
+	d.marshalNotifications = failingMarshal[*proto.NotificationBatch]
+
+	_, err := d.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{Key: "a", Value: []byte("v")}}},
+		0, 0, NoOpCallback)
+	assert.ErrorIs(t, err, errInjected)
+	assert.False(t, keyExists(t, kv, "a"))
+}
+
+func TestDBGetSequenceUpdatesFailsWhenScanFails(t *testing.T) {
+	d, kv := newHookedTestDB(t)
+	kv.failOn(opKeyRangeScanReverse, "")
+
+	sw, err := d.GetSequenceUpdates("a")
+	assert.ErrorIs(t, err, errInjected)
+	assert.Nil(t, sw)
+	assert.Empty(t, d.sequenceWaiterTracker.(*sequenceWaiterTracker).waiters)
+}
+
 func TestGetStorageEntryMetadataFailsWhenReleaseFails(t *testing.T) {
 	for _, test := range []struct {
 		name  string
@@ -2920,6 +2952,7 @@ const (
 	opGetClose            = "Get.Close"
 	opKeyRangeScan        = "KeyRangeScan"
 	opKeyRangeScanReverse = "KeyRangeScanReverse"
+	opKeyIteratorClose    = "KeyIterator.Close"
 	opKeyPrefixIterator   = "KeyPrefixIterator"
 	opRangeScan           = "RangeScan"
 	opFlush               = "Flush"
@@ -2948,10 +2981,12 @@ type kvFailure struct {
 // hookedKV wraps a KV, along with the write batches, iterators and closers it
 // returns: a call fails with the failure that the test injects for it, after
 // the call is made if it returns something to release. afterRangeScan runs
-// once the next RangeScan created its iterator.
+// once the next RangeScan created its iterator. scanBounds, if set, returns
+// the bounds that KeyRangeScan and KeyRangeScanReverse scan instead.
 type hookedKV struct {
 	kvstore.KV
 	afterRangeScan func()
+	scanBounds     func(op, lowerBound, upperBound string) (string, string)
 	failure        atomic.Pointer[kvFailure]
 	failures       atomic.Int64
 }
@@ -2996,7 +3031,14 @@ func (kv *hookedKV) KeyRangeScan(lowerBound, upperBound string, opts kvstore.Ite
 	if err := kv.injected(opKeyRangeScan, lowerBound); err != nil {
 		return nil, err
 	}
-	return kv.KV.KeyRangeScan(lowerBound, upperBound, opts)
+	if kv.scanBounds != nil {
+		lowerBound, upperBound = kv.scanBounds(opKeyRangeScan, lowerBound, upperBound)
+	}
+	it, err := kv.KV.KeyRangeScan(lowerBound, upperBound, opts)
+	if err != nil {
+		return nil, err
+	}
+	return &hookedKeyIterator{KeyIterator: it, kv: kv}, nil
 }
 
 func (kv *hookedKV) KeyRangeScanReverse(lowerBound, upperBound string, opts kvstore.IteratorOpts) (
@@ -3004,7 +3046,14 @@ func (kv *hookedKV) KeyRangeScanReverse(lowerBound, upperBound string, opts kvst
 	if err := kv.injected(opKeyRangeScanReverse, lowerBound); err != nil {
 		return nil, err
 	}
-	return kv.KV.KeyRangeScanReverse(lowerBound, upperBound, opts)
+	if kv.scanBounds != nil {
+		lowerBound, upperBound = kv.scanBounds(opKeyRangeScanReverse, lowerBound, upperBound)
+	}
+	it, err := kv.KV.KeyRangeScanReverse(lowerBound, upperBound, opts)
+	if err != nil {
+		return nil, err
+	}
+	return &hookedReverseKeyIterator{ReverseKeyIterator: it, kv: kv}, nil
 }
 
 func (kv *hookedKV) KeyPrefixIterator(prefix, end string) (kvstore.PrefixIterator, error) {
@@ -3117,6 +3166,34 @@ func (b *hookedWriteBatch) Close() error {
 	return err
 }
 
+// hookedKeyIterator is a key iterator of hookedKV.
+type hookedKeyIterator struct {
+	kvstore.KeyIterator
+	kv *hookedKV
+}
+
+func (it *hookedKeyIterator) Close() error {
+	err := it.KeyIterator.Close()
+	if injected := it.kv.injected(opKeyIteratorClose, ""); injected != nil {
+		return injected
+	}
+	return err
+}
+
+// hookedReverseKeyIterator is a reverse key iterator of hookedKV.
+type hookedReverseKeyIterator struct {
+	kvstore.ReverseKeyIterator
+	kv *hookedKV
+}
+
+func (it *hookedReverseKeyIterator) Close() error {
+	err := it.ReverseKeyIterator.Close()
+	if injected := it.kv.injected(opKeyIteratorClose, ""); injected != nil {
+		return injected
+	}
+	return err
+}
+
 // hookedKeyValueIterator is an iterator of hookedKV.
 type hookedKeyValueIterator struct {
 	kvstore.KeyValueIterator
@@ -3185,4 +3262,8 @@ func (f *hookedKVFactory) NewKV(namespace string, shardId int64, keySorting prot
 	}
 	f.kv.KV = kv
 	return f.kv, nil
+}
+
+func failingMarshal[T any](T) ([]byte, error) {
+	return nil, errInjected
 }

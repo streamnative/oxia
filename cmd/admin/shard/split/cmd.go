@@ -33,7 +33,7 @@ func init() {
 	Cmd.Flags().Int64Var(&shardId, "shard", -1, "Shard ID to split")
 	Cmd.Flags().Uint32Var(&splitPoint, "split-point", 0, "Explicit hash split point (optional, defaults to midpoint)")
 
-	_ = Cmd.MarkFlagRequired("shard")
+	cobra.CheckErr(Cmd.MarkFlagRequired("shard"))
 }
 
 var Cmd = &cobra.Command{

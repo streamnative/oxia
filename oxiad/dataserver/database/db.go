@@ -216,6 +216,8 @@ func NewDB(namespace string, shardId int64, factory kvstore.Factory,
 		shardId:               shardId,
 		enabledFeatures:       sync.Map{},
 		sequenceWaiterTracker: NewSequencesWaitTracker(),
+		marshalJSON:           json.Marshal,
+		marshalNotifications:  (*proto.NotificationBatch).MarshalVT,
 		log: slog.With(
 			slog.String("component", "db"),
 			slog.String("namespace", namespace),
@@ -310,6 +312,11 @@ type db struct {
 
 	// The notification batches that a split child inherited, or nil
 	inheritedNotifications atomic.Pointer[inheritedNotifications]
+
+	// The encoders of the values that the database writes itself, set at
+	// construction
+	marshalJSON          func(v any) ([]byte, error)
+	marshalNotifications func(nb *proto.NotificationBatch) ([]byte, error)
 
 	putCounter                metric.Counter
 	deleteCounter             metric.Counter
@@ -739,7 +746,7 @@ func (d *db) addNotifications(batch kvstore.WriteBatch, notifications *Notificat
 	}
 	// The notifications cache keeps the bytes, which the batch copies
 	var err error
-	if notifications.encoded, err = nb.MarshalVT(); err != nil {
+	if notifications.encoded, err = d.marshalNotifications(nb); err != nil {
 		return err
 	}
 	return batch.Put(notificationKey(nb.Offset), notifications.encoded)
@@ -1043,8 +1050,12 @@ func (d *db) readLastNotificationOffset() (int64, error) {
 }
 
 func (d *db) readASCIILongOrDefault(key string, defaultValue int64) (int64, error) {
-	kv := d.kv
+	return readASCIILongOrDefault(d.kv, key, defaultValue)
+}
 
+// readASCIILongOrDefault reads the integer written in ASCII under key, or
+// returns defaultValue when the key is absent.
+func readASCIILongOrDefault(kv pointReader, key string, defaultValue int64) (int64, error) {
 	getReq := &proto.GetRequest{
 		Key:          key,
 		IncludeValue: true,
@@ -1075,7 +1086,7 @@ func (d *db) UpdateTerm(newTerm int64, options TermOptions) error {
 		return err
 	}
 
-	serOptions, err := json.Marshal(options)
+	serOptions, err := d.marshalJSON(options)
 	if err != nil {
 		return err
 	}
@@ -1423,7 +1434,13 @@ func deleteKeys(batch kvstore.WriteBatch, keys []string) error {
 	return nil
 }
 
-func applyGet(kv kvstore.KV, getReq *proto.GetRequest) (*proto.GetResponse, error) {
+// pointReader is the point read of a kvstore.KV, which the reader of a
+// snapshot's files provides as well.
+type pointReader interface {
+	Get(key string, comparisonType kvstore.ComparisonType, opts kvstore.IteratorOpts) (storedKey string, value []byte, closer io.Closer, err error)
+}
+
+func applyGet(kv pointReader, getReq *proto.GetRequest) (*proto.GetResponse, error) {
 	key, value, closer, err := kv.Get(getReq.Key, kvstore.ComparisonType(getReq.GetComparisonType()), kvstore.NoInternalKeys)
 
 	if errors.Is(err, kvstore.ErrKeyNotFound) {
@@ -1590,7 +1607,7 @@ func (d *db) ReadNextNotifications(ctx context.Context, startOffset int64) ([]pr
 	// Loaded after the read: a split child records where the batches it
 	// inherited end before it writes a batch of its own
 	if inherited := d.inheritedNotifications.Load(); inherited != nil {
-		return inherited.filter(batches)
+		return inherited.filter(batches, d.marshalNotifications)
 	}
 	return batches, nil
 }

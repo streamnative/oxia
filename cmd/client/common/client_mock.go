@@ -79,8 +79,13 @@ func (m *MockClient) RangeScan(_ context.Context, minKeyInclusive string, maxKey
 	return arg0
 }
 
-func (*MockClient) GetNotifications() (oxia.Notifications, error) {
-	return nil, errors.New("not implemented in mock")
+func (m *MockClient) GetNotifications() (oxia.Notifications, error) {
+	args := m.MethodCalled("GetNotifications")
+	notifications, ok := args.Get(0).(oxia.Notifications)
+	if !ok {
+		return nil, args.Error(1)
+	}
+	return notifications, args.Error(1)
 }
 
 func (*MockClient) GetSequenceUpdates(context.Context, string, ...oxia.GetSequenceUpdatesOption) (<-chan string, error) {

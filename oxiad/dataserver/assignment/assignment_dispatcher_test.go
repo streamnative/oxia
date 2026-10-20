@@ -559,7 +559,7 @@ func TestShardAssignmentDispatcherRegisterForUpdatesInitialSendError(t *testing.
 	dispatcher := NewShardAssignmentDispatcher(oxiadcommonrpc.NewClosableHealthServer(t.Context()))
 	defer dispatcher.Close()
 	s := dispatcher.(*shardAssignmentDispatcher)
-	require.NoError(t, s.updateShardAssignment(singleShardAssignments("server1")))
+	s.updateShardAssignment(singleShardAssignments("server1"))
 
 	sendErr := status.Error(codes.Unavailable, "client gone")
 	client := &fakeClient{ctx: t.Context(), send: func(*proto.ShardAssignments) error { return sendErr }}
@@ -580,7 +580,7 @@ func TestShardAssignmentDispatcherRegisterForUpdatesUpdateSendError(t *testing.T
 			dispatcher := NewShardAssignmentDispatcher(oxiadcommonrpc.NewClosableHealthServer(t.Context()))
 			defer dispatcher.Close()
 			s := dispatcher.(*shardAssignmentDispatcher)
-			require.NoError(t, s.updateShardAssignment(singleShardAssignments("server1")))
+			s.updateShardAssignment(singleShardAssignments("server1"))
 
 			// gRPC puts the address of the client in the context of its stream
 			ctx := peer.NewContext(t.Context(), &peer.Peer{Addr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1}})
@@ -600,7 +600,7 @@ func TestShardAssignmentDispatcherRegisterForUpdatesUpdateSendError(t *testing.T
 			}()
 
 			assert.True(t, pb.Equal(singleShardAssignments("server1"), <-sent))
-			require.NoError(t, s.updateShardAssignment(singleShardAssignments("server2")))
+			s.updateShardAssignment(singleShardAssignments("server2"))
 
 			assert.ErrorIs(t, <-done, sendErr)
 			assert.True(t, pb.Equal(singleShardAssignments("server2"), <-sent))
@@ -614,7 +614,7 @@ func TestShardAssignmentDispatcherRegisterForUpdatesUpdateSendError(t *testing.T
 func TestShardAssignmentDispatcherRegisterForUpdatesReturnsOnClose(t *testing.T) {
 	dispatcher := NewShardAssignmentDispatcher(oxiadcommonrpc.NewClosableHealthServer(t.Context()))
 	s := dispatcher.(*shardAssignmentDispatcher)
-	require.NoError(t, s.updateShardAssignment(singleShardAssignments("server1")))
+	s.updateShardAssignment(singleShardAssignments("server1"))
 
 	sent := make(chan struct{}, 1)
 	client := &fakeClient{ctx: t.Context(), send: func(*proto.ShardAssignments) error {
@@ -638,7 +638,7 @@ func TestShardAssignmentDispatcherUpdateShardAssignmentDebugLog(t *testing.T) {
 	logs := &bytes.Buffer{}
 	s.log = slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	require.NoError(t, s.updateShardAssignment(singleShardAssignments("server1")))
+	s.updateShardAssignment(singleShardAssignments("server1"))
 
 	// At debug level, the update logs the previous and the current assignments
 	assert.Contains(t, logs.String(), "level=DEBUG")

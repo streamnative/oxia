@@ -215,7 +215,10 @@ func (s *shardAssignmentDispatcher) PushShardAssignments(stream proto.OxiaCoordi
 	streamReader := ReadStream(
 		s.ctx,
 		stream,
-		s.updateShardAssignment,
+		func(assignments *proto.ShardAssignments) error {
+			s.updateShardAssignment(assignments)
+			return nil
+		},
 		map[string]string{
 			"oxia": "receive-shards-assignments",
 		},
@@ -226,7 +229,7 @@ func (s *shardAssignmentDispatcher) PushShardAssignments(stream proto.OxiaCoordi
 	return streamReader.Run()
 }
 
-func (s *shardAssignmentDispatcher) updateShardAssignment(assignments *proto.ShardAssignments) error {
+func (s *shardAssignmentDispatcher) updateShardAssignment(assignments *proto.ShardAssignments) {
 	// Once we receive the first update of the shards mapping, this service can be
 	// considered "ready" and it will be able to respond to service discovery requests
 	s.healthServer.SetServingStatus(oxiadcommonrpc.ReadinessProbeService, grpc_health_v1.HealthCheckResponse_SERVING)
@@ -264,8 +267,6 @@ func (s *shardAssignmentDispatcher) updateShardAssignment(assignments *proto.Sha
 		}
 		clientCh <- assignments
 	}
-
-	return nil
 }
 
 func (s *shardAssignmentDispatcher) GetLeader(shardId int64) string {
@@ -327,10 +328,7 @@ func NewStandaloneShardAssignmentDispatcher(numShards uint32, keySorting proto.K
 		},
 	}
 
-	err := assignmentDispatcher.updateShardAssignment(res)
-	if err != nil {
-		panic(err)
-	}
+	assignmentDispatcher.updateShardAssignment(res)
 	return assignmentDispatcher
 }
 

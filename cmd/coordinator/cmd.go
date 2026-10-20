@@ -26,6 +26,7 @@ import (
 
 	"github.com/oxia-db/oxia/common/codec"
 
+	"github.com/oxia-db/oxia/cmd/common/banner"
 	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/process"
 	oxiadcommonoption "github.com/oxia-db/oxia/oxiad/common/option"
@@ -124,6 +125,12 @@ func exec(cmd *cobra.Command, _ []string) error {
 				return nil, err
 			}
 		}
+		banner.Print(cmd.OutOrStdout(), cmd.Root().Version,
+			banner.Field{Name: "Component", Value: "COORDINATOR"},
+			banner.Field{Name: "Public Endpoint", Value: coordinatorOptions.Server.Public.BindAddress},
+			banner.Field{Name: "Internal Endpoint", Value: coordinatorOptions.Server.Internal.BindAddress},
+			banner.MetricsField(&coordinatorOptions.Observability.Metric),
+			banner.PprofField())
 		return coordinator.NewGrpcServer(context.Background(), optionsWatch)
 	})
 }

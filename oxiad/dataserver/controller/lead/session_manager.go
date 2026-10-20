@@ -18,9 +18,9 @@ import (
 	"container/heap"
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -39,7 +39,6 @@ import (
 
 const (
 	sessionKeyPrefix = constant.InternalKeyPrefix + "session"
-	sessionKeyFormat = sessionKeyPrefix + "/%016x"
 	sessionKeyLength = len(sessionKeyPrefix) + 1 + 16
 )
 
@@ -69,16 +68,14 @@ func shadowKeysRange(sessionKey string, features feature.Checker) (start string,
 }
 
 func KeyToId(key string) (SessionId, error) {
-	var id int64
-	items, err := fmt.Sscanf(key, sessionKeyFormat, &id)
+	hexId, found := strings.CutPrefix(key, sessionKeyPrefix+"/")
+	if !found {
+		return 0, errors.New("failed to parse session key: " + key)
+	}
+	id, err := strconv.ParseInt(hexId, 16, 64)
 	if err != nil {
 		return 0, err
 	}
-
-	if items != 1 {
-		return 0, errors.New("failed to parse session key: " + key)
-	}
-
 	return SessionId(id), nil
 }
 
@@ -95,7 +92,7 @@ func IsSessionKey(key string) bool {
 // --- SessionManager
 
 type SessionManager interface {
-	io.Closer
+	Close()
 	CreateSession(request *proto.CreateSessionRequest) (*proto.CreateSessionResponse, error)
 	KeepAlive(sessionId int64) error
 	CloseSession(request *proto.CloseSessionRequest) (*proto.CloseSessionResponse, error)
@@ -115,6 +112,9 @@ type sessionManager struct {
 	shardId          int64
 	sessions         map[SessionId]*session
 	log              *slog.Logger
+	// Serializes the metadata of the sessions it creates. Set once at
+	// construction
+	marshalMetadata func(*proto.SessionMetadata) ([]byte, error)
 
 	// expiryHeap orders the live sessions by expiry deadline; it is consumed
 	// by the expiry scheduler (expiryLoop) and guarded by the manager's lock.
@@ -145,6 +145,7 @@ func NewSessionManager(ctx context.Context, namespace string, shardId int64, con
 		namespace:        namespace,
 		shardId:          shardId,
 		leaderController: controller,
+		marshalMetadata:  (*proto.SessionMetadata).MarshalVT,
 		log: slog.With(
 			slog.String("component", "session-manager"),
 			slog.String("namespace", namespace),
@@ -204,7 +205,7 @@ func (sm *sessionManager) createSession(request *proto.CreateSessionRequest, min
 	metadata.Identity = request.ClientIdentity
 	defer metadata.ReturnToVTPool()
 
-	marshalledMetadata, err := metadata.MarshalVT()
+	marshalledMetadata, err := sm.marshalMetadata(metadata)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not marshal session metadata")
 	}
@@ -359,7 +360,7 @@ func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, 
 		}
 	}
 
-	sm.log.Info("All sessions", slog.Int("count", len(sessionKeys)))
+	sm.log.Info("Recovered sessions", slog.Int("count", len(sessionKeys)))
 
 	result := map[SessionId]*proto.SessionMetadata{}
 
@@ -458,15 +459,13 @@ func (sm *sessionManager) readOrphanedEphemerals(sessionKeys []string, shadowKey
 
 // Close stops the session manager and waits for its expiry scheduler to exit.
 // It must not be called while holding the leader lock, see stop.
-func (sm *sessionManager) Close() error {
+func (sm *sessionManager) Close() {
 	sm.stop()
 
 	// Wait for the expiry scheduler outside the manager lock: it acquires
 	// the lock to finish an in-flight expiry cycle — waiting under the lock
 	// would deadlock.
 	sm.latch.Wait()
-
-	return nil
 }
 
 // stop cancels the session manager and drops its sessions, without waiting for

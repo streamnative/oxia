@@ -20,11 +20,14 @@ import (
 	"fmt"
 	"io"
 	"testing"
+	"time"
 
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	pb "google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	"github.com/oxia-db/oxia/common/proto"
@@ -65,11 +68,11 @@ func TestDispatcherProxyToLeaderRepliesToClient(t *testing.T) {
 			`{"src":"n3","dest":"n2","body":{"type":"read_ok","in_reply_to":%d,"value":2}}`},
 	} {
 		request := decodeMessage(t, test.request)
-		deliver(d, test.request)
+		deliver(t, d, test.request)
 		forwarded := decodeMessage(t, receiveLines(t, lines, 1)[0])
 		require.Equal(t, "n3", forwarded.Dest)
 
-		deliver(d, fmt.Sprintf(test.reply, forwarded.Body.MsgId))
+		deliver(t, d, fmt.Sprintf(test.reply, forwarded.Body.MsgId))
 		reply := decodeMessage(t, receiveLines(t, lines, 1)[0])
 		assert.Equal(t, "c1", reply.Dest)
 		assert.Equal(t, request.Body.MsgId, *reply.Body.InReplyTo)
@@ -77,28 +80,29 @@ func TestDispatcherProxyToLeaderRepliesToClient(t *testing.T) {
 	}
 }
 
-func TestDispatcherProxyToLeaderPanicsOnUnsupportedType(t *testing.T) {
+func TestDispatcherProxyToLeaderFailsOnUnsupportedType(t *testing.T) {
 	d := newDispatcher(newMaelstromGrpcProvider(), newMaelstromReplicationRpcProvider())
 	d.currentLeader = "n3"
 
-	require.Panics(t, func() {
-		d.proxyToLeader(MsgTypeWriteOk, &Message[BaseMessageBody]{Src: "c1"})
-	})
+	err := d.proxyToLeader(MsgTypeWriteOk, &Message[BaseMessageBody]{Src: "c1"})
+
+	require.ErrorContains(t, err, "unknown client request type write_ok")
+	require.Empty(t, d.proxiedRequests)
 }
 
 func TestDispatcherReceivedMessageServesOxiaRequests(t *testing.T) {
 	lines := captureStdout(t)
 
 	dataServer := newDispatcher(newMaelstromGrpcProvider(), newMaelstromReplicationRpcProvider())
-	deliver(dataServer, marshalLine(t, &Message[OxiaMessage]{
+	deliver(t, dataServer, marshalLine(t, &Message[OxiaMessage]{
 		Src: "n1",
 		Body: OxiaMessage{
 			BaseMessageBody: BaseMessageBody{Type: MsgTypeHealthCheck, MsgId: 5},
-			OxiaMsg:         toJSON(&proto.GetStatusRequest{}),
+			OxiaMsg:         json.RawMessage(`{}`),
 		},
 	}))
 
-	msgType, msg, processId := parseRequest(receiveLines(t, lines, 1)[0])
+	msgType, msg, processId := parseLine(t, receiveLines(t, lines, 1)[0])
 	require.Equal(t, MsgTypeHealthCheckOk, msgType)
 	require.Equal(t, "n1", msg.(*Message[OxiaMessage]).Dest)
 	require.Equal(t, int64(5), *msg.(*Message[OxiaMessage]).Body.InReplyTo)
@@ -119,13 +123,13 @@ func TestDispatcherReceivedMessageRoutesReplicateStreams(t *testing.T) {
 
 	// The append reaches the follower's Replicate handler
 	require.NoError(t, client.Send(entryAppend(0)))
-	deliver(follower, receiveLines(t, lines, 1)[0])
+	deliver(t, follower, receiveLines(t, lines, 1)[0])
 	require.Equal(t, int64(0), <-replication.offsets)
 
 	// The ack of the follower reaches the leader's stream
 	serverStream := newMaelstromReplicateServerStream(appendMessage(thisNode, streamId, 0))
 	require.NoError(t, serverStream.Send(&proto.Ack{Offset: 0}))
-	deliver(leader, receiveLines(t, lines, 1)[0])
+	deliver(t, leader, receiveLines(t, lines, 1)[0])
 	ack, err := client.Recv()
 	require.NoError(t, err)
 	require.Equal(t, int64(0), ack.Offset)
@@ -133,18 +137,28 @@ func TestDispatcherReceivedMessageRoutesReplicateStreams(t *testing.T) {
 	// The leader resets the stream: the follower stops its handler, and tells
 	// the leader back, which fails its side of the stream
 	sendStreamError("n2", streamId)
-	deliver(follower, receiveLines(t, lines, 1)[0])
+	deliver(t, follower, receiveLines(t, lines, 1)[0])
 	require.ErrorIs(t, <-replication.done, io.EOF)
-	deliver(leader, receiveLines(t, lines, 1)[0])
+	deliver(t, leader, receiveLines(t, lines, 1)[0])
 	_, err = client.Recv()
 	require.Equal(t, codes.Unavailable, status.Code(err))
 }
 
-func TestDispatcherOnOxiaStreamRequestMessagePanicsOnUnknownType(t *testing.T) {
+func TestDispatcherReceivedMessageFailsOnShardAssignmentsAckOnDataServer(t *testing.T) {
 	d := newDispatcher(newMaelstromGrpcProvider(), newMaelstromReplicationRpcProvider())
-	require.Panics(t, func() {
-		d.onOxiaStreamRequestMessage(MsgTypeInit, &Message[OxiaStreamMessage]{}, nil)
-	})
+
+	err := d.ReceivedMessage(parseLine(t,
+		`{"src":"n2","dest":"n3","body":{"type":"shards-ack","msg_id":2,"in_reply_to":1,"stream_id":1}}`))
+
+	require.ErrorContains(t, err, "unexpected shards-ack on a data server")
+}
+
+func TestDispatcherOnOxiaStreamRequestMessageFailsOnUnknownType(t *testing.T) {
+	d := newDispatcher(newMaelstromGrpcProvider(), newMaelstromReplicationRpcProvider())
+
+	err := d.onOxiaStreamRequestMessage(MsgTypeInit, &Message[OxiaStreamMessage]{}, nil)
+
+	require.ErrorContains(t, err, "unknown stream message type init")
 }
 
 func TestDispatcherReceivedMessageRejectsClientRequestsWithoutLeader(t *testing.T) {
@@ -152,15 +166,15 @@ func TestDispatcherReceivedMessageRejectsClientRequestsWithoutLeader(t *testing.
 
 	d := newDispatcher(newMaelstromGrpcProvider(), newMaelstromReplicationRpcProvider())
 	for _, request := range []any{writeMessage(1, 2), readMessage(1), casMessage(1, 2, 3)} {
-		deliver(d, marshalLine(t, request))
+		deliver(t, d, marshalLine(t, request))
 
-		msgType, msg, _ := parseRequest(receiveLines(t, lines, 1)[0])
+		msgType, msg, _ := parseLine(t, receiveLines(t, lines, 1)[0])
 		require.Equal(t, MsgTypeError, msgType)
 		res := msg.(*Message[ErrorResponse])
 		require.Equal(t, "c1", res.Dest)
 		require.Equal(t, 11, res.Body.Code)
-		requestType, parsed, _ := parseRequest(marshalLine(t, request))
-		requestId, _, _ := getOrigin(requestType, parsed)
+		requestType, parsed, _ := parseLine(t, marshalLine(t, request))
+		requestId, _, _ := requireOrigin(t, requestType, parsed)
 		require.Equal(t, requestId, *res.Body.InReplyTo)
 	}
 }
@@ -173,8 +187,8 @@ func TestDispatcherReceivedMessageServesClientRequestsAsLeader(t *testing.T) {
 	d.grpcProvider.RegisterService(&proto.OxiaClient_ServiceDesc, newKVClientServer(map[string]string{}))
 	d.currentLeader = "n2"
 
-	deliver(d, marshalLine(t, writeMessage(1, 2)))
-	msgType, msg, _ := parseRequest(receiveLines(t, lines, 1)[0])
+	deliver(t, d, marshalLine(t, writeMessage(1, 2)))
+	msgType, msg, _ := parseLine(t, receiveLines(t, lines, 1)[0])
 	require.Equal(t, MsgTypeWriteOk, msgType)
 	require.Equal(t, "n2", msg.(*Message[BaseMessageBody]).Src)
 	require.Equal(t, "c1", msg.(*Message[BaseMessageBody]).Dest)
@@ -215,22 +229,22 @@ func TestDispatcherReceivedMessageProxiesClientRequestsToLeader(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			d := newDispatcher(newMaelstromGrpcProvider(), newMaelstromReplicationRpcProvider())
 			d.currentLeader = "n3"
-			requestType, request, _ := parseRequest(marshalLine(t, tt.request))
-			requestId, _, _ := getOrigin(requestType, request)
+			requestType, request, _ := parseLine(t, marshalLine(t, tt.request))
+			requestId, _, _ := requireOrigin(t, requestType, request)
 
 			// The request goes to the leader, under a new id
-			deliver(d, marshalLine(t, tt.request))
-			proxiedType, proxied, _ := parseRequest(receiveLines(t, lines, 1)[0])
+			deliver(t, d, marshalLine(t, tt.request))
+			proxiedType, proxied, _ := parseLine(t, receiveLines(t, lines, 1)[0])
 			require.Equal(t, requestType, proxiedType)
-			proxyId, _, _ := getOrigin(proxiedType, proxied)
+			proxyId, _, _ := requireOrigin(t, proxiedType, proxied)
 			require.Equal(t, "n3", destination(proxied))
 
 			// The answer of the leader goes back to the client
-			deliver(d, marshalLine(t, tt.response(proxyId)))
-			msgType, msg, _ := parseRequest(receiveLines(t, lines, 1)[0])
+			deliver(t, d, marshalLine(t, tt.response(proxyId)))
+			msgType, msg, _ := parseLine(t, receiveLines(t, lines, 1)[0])
 			require.Equal(t, tt.wantType, msgType)
 			require.Equal(t, "c1", destination(msg))
-			_, inReplyTo, _ := getOrigin(msgType, msg)
+			_, inReplyTo, _ := requireOrigin(t, msgType, msg)
 			require.Equal(t, requestId, inReplyTo)
 			switch res := msg.(type) {
 			case *Message[ReadResponse]:
@@ -245,11 +259,52 @@ func TestDispatcherReceivedMessageProxiesClientRequestsToLeader(t *testing.T) {
 	}
 }
 
-func TestDispatcherReceivedMessagePanicsOnUnknownType(t *testing.T) {
+func TestDispatcherReceivedMessageFailsOnUnknownType(t *testing.T) {
 	d := newDispatcher(newMaelstromGrpcProvider(), newMaelstromReplicationRpcProvider())
-	require.Panics(t, func() {
-		deliver(d, `{"src":"c1","dest":"n2","body":{"type":"unknown","msg_id":1}}`)
-	})
+
+	err := d.ReceivedMessage(parseLine(t, `{"src":"c1","dest":"n2","body":{"type":"unknown","msg_id":1}}`))
+
+	require.ErrorContains(t, err, "unknown message type unknown")
+}
+
+func TestDispatcherReceivedMessageFailsOnInvalidResponseId(t *testing.T) {
+	d := newDispatcher(newMaelstromGrpcProvider(), newMaelstromReplicationRpcProvider())
+
+	err := d.ReceivedMessage(parseLine(t, `{"src":"n2","body":{"type":"health-ok","in_reply_to":99,"m":0}}`))
+
+	require.ErrorContains(t, err, "invalid response id 99")
+}
+
+func TestDispatcherRpcRequestFailsOnUnserializableMessage(t *testing.T) {
+	d := newDispatcher(newMaelstromGrpcProvider(), newMaelstromReplicationRpcProvider())
+
+	_, err := d.RpcRequest(t.Context(), "n2", MsgTypeNewTermRequest, &proto.NewTermRequest{Namespace: "\xff"})
+
+	require.ErrorContains(t, err, "failed to serialize proto to json")
+	require.Empty(t, d.requests)
+}
+
+func TestDispatcherRpcRequestFailsOnClosedStdout(t *testing.T) {
+	closeStdout(t)
+	d := newDispatcher(newMaelstromGrpcProvider(), newMaelstromReplicationRpcProvider())
+
+	_, err := d.RpcRequest(t.Context(), "n2", MsgTypeNewTermRequest, &proto.NewTermRequest{})
+
+	require.ErrorContains(t, err, "failed to write the message")
+	require.Empty(t, d.requests)
+}
+
+func TestDispatcherRpcRequestTimesOutWithoutResponse(t *testing.T) {
+	previousTimeout := rpcRequestTimeout
+	rpcRequestTimeout = 10 * time.Millisecond
+	t.Cleanup(func() { rpcRequestTimeout = previousTimeout })
+	lines := captureStdout(t)
+	d := newDispatcher(newMaelstromGrpcProvider(), newMaelstromReplicationRpcProvider())
+
+	_, err := d.RpcRequest(t.Context(), "n2", MsgTypeNewTermRequest, &proto.NewTermRequest{})
+
+	require.ErrorContains(t, err, "timed out")
+	require.Equal(t, "n2", decodeMessage(t, receiveLines(t, lines, 1)[0]).Dest)
 }
 
 func TestGetOriginReadsInReplyTo(t *testing.T) {
@@ -264,7 +319,7 @@ func TestGetOriginReadsInReplyTo(t *testing.T) {
 		{MsgTypeCas, &Message[Cas]{Src: "c1", Body: Cas{BaseMessageBody: base}}},
 	}
 	for _, tt := range tests {
-		msgId, gotInReplyTo, origin := getOrigin(tt.msgType, tt.msg)
+		msgId, gotInReplyTo, origin := requireOrigin(t, tt.msgType, tt.msg)
 		require.Equal(t, int64(3), msgId)
 		require.Equal(t, inReplyTo, gotInReplyTo)
 		require.Equal(t, "c1", origin)
@@ -314,6 +369,13 @@ func destination(msg any) string {
 	}
 }
 
+func requireOrigin(t *testing.T, msgType MsgType, m any) (msgId int64, inReplyTo int64, origin string) {
+	t.Helper()
+	msgId, inReplyTo, origin, err := getOrigin(msgType, m)
+	require.NoError(t, err)
+	return msgId, inReplyTo, origin
+}
+
 // setThisNode makes the test run as the node id, which the messages it sends
 // carry as their source.
 func setThisNode(t *testing.T, node string) {
@@ -321,4 +383,12 @@ func setThisNode(t *testing.T, node string) {
 	previous := thisNode
 	thisNode = node
 	t.Cleanup(func() { thisNode = previous })
+}
+
+// failProtoMarshal makes the serialization of every proto message fail.
+func failProtoMarshal(t *testing.T) {
+	t.Helper()
+	previousMarshal := protoMarshal
+	protoMarshal = func(pb.Message) ([]byte, error) { return nil, errors.New("marshal failed") }
+	t.Cleanup(func() { protoMarshal = previousMarshal })
 }

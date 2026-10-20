@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -41,7 +42,7 @@ import (
 )
 
 func TestProviderUsesConfiguredCoordinatorName(t *testing.T) {
-	p, err := NewProvider(
+	p := NewProvider(
 		t.Context(),
 		fake.NewSimpleClientset(),
 		"ns",
@@ -50,7 +51,6 @@ func TestProviderUsesConfiguredCoordinatorName(t *testing.T) {
 		metadatacommon.WatchDisabled,
 		"coordinator-0",
 	)
-	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, p.Close())
 	})
@@ -59,8 +59,8 @@ func TestProviderUsesConfiguredCoordinatorName(t *testing.T) {
 	require.Equal(t, "coordinator-0", provider.name)
 }
 
-func TestProviderRejectsEmptyCoordinatorName(t *testing.T) {
-	_, err := NewProvider(
+func TestProviderWaitToBecomeLeaderRejectsEmptyCoordinatorName(t *testing.T) {
+	p := NewProvider(
 		t.Context(),
 		fake.NewSimpleClientset(),
 		"ns",
@@ -69,13 +69,18 @@ func TestProviderRejectsEmptyCoordinatorName(t *testing.T) {
 		metadatacommon.WatchDisabled,
 		" ",
 	)
-	require.ErrorContains(t, err, "coordinator name must not be empty")
+	t.Cleanup(func() {
+		require.NoError(t, p.Close())
+	})
+
+	_, err := p.WaitToBecomeLeader()
+	require.ErrorContains(t, err, "failed to create the leader elector")
 }
 
 func TestProviderGetLeaderNameUsesLeaderElector(t *testing.T) {
 	kc := fake.NewSimpleClientset()
 
-	p, err := NewProvider(
+	p := NewProvider(
 		t.Context(),
 		kc,
 		"ns",
@@ -84,12 +89,11 @@ func TestProviderGetLeaderNameUsesLeaderElector(t *testing.T) {
 		metadatacommon.WatchDisabled,
 		"coordinator-0",
 	)
-	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, p.Close())
 	})
 
-	_, err = p.WaitToBecomeLeader()
+	_, err := p.WaitToBecomeLeader()
 	require.NoError(t, err)
 
 	leader, err := p.GetLeaderName()
@@ -98,7 +102,7 @@ func TestProviderGetLeaderNameUsesLeaderElector(t *testing.T) {
 }
 
 func TestProviderGetLeaderNameUnavailable(t *testing.T) {
-	p, err := NewProvider(
+	p := NewProvider(
 		t.Context(),
 		fake.NewSimpleClientset(),
 		"ns",
@@ -107,12 +111,11 @@ func TestProviderGetLeaderNameUnavailable(t *testing.T) {
 		metadatacommon.WatchDisabled,
 		"coordinator-0",
 	)
-	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, p.Close())
 	})
 
-	_, err = p.GetLeaderName()
+	_, err := p.GetLeaderName()
 	require.True(t, errors.Is(err, metadataprovider.ErrCoordinatorLeaderUnavailable))
 }
 
@@ -282,6 +285,53 @@ func TestProviderSubscribeNotifiesStores(t *testing.T) {
 	require.Len(t, stored.Value.GetServers(), 1)
 }
 
+func TestProviderStoreFailsWhenDocumentCannotBeEncoded(t *testing.T) {
+	kc := fake.NewSimpleClientset()
+	encodeErr := errors.New("encode failed")
+	p := NewProvider(t.Context(), kc, "ns", "config", &fakeCodec{
+		Codec:       metadatacodec.ClusterConfigCodec,
+		marshalYAML: func(*commonproto.ClusterConfiguration) ([]byte, error) { return nil, encodeErr },
+	}, metadatacommon.WatchDisabled, "coordinator-0")
+	t.Cleanup(func() {
+		require.NoError(t, p.Close())
+	})
+
+	_, err := p.Store(metadataprovider.Versioned[*commonproto.ClusterConfiguration]{
+		Value:   newConfig(1),
+		Version: metadatacommon.NotExists,
+	})
+	require.ErrorIs(t, err, encodeErr)
+	configMaps, err := kc.CoreV1().ConfigMaps("ns").List(t.Context(), metav1.ListOptions{})
+	require.NoError(t, err)
+	assert.Empty(t, configMaps.Items)
+}
+
+func TestProviderWaitToBecomeLeaderSignalsLeaseLoss(t *testing.T) {
+	kc := fake.NewSimpleClientset()
+	var failUpdates atomic.Bool
+	kc.PrependReactor("update", "leases", func(k8stesting.Action) (bool, runtime.Object, error) {
+		if !failUpdates.Load() {
+			return false, nil, nil
+		}
+		return true, nil, errors.New("lease update failure")
+	})
+	p := NewProvider(t.Context(), kc, "ns", "status", metadatacodec.ClusterStatusCodec,
+		metadatacommon.WatchDisabled, "coordinator-0")
+	t.Cleanup(func() {
+		require.NoError(t, p.Close())
+	})
+	lost, err := p.WaitToBecomeLeader()
+	require.NoError(t, err)
+
+	failUpdates.Store(true)
+
+	select {
+	case <-lost:
+	case <-time.After(renewDeadline + 10*time.Second):
+		require.FailNow(t, "the lease loss was not signaled")
+	}
+}
+
 func TestProviderWaitToBecomeLeaderObservesOtherLeader(t *testing.T) {
 	now := metav1.NewMicroTime(time.Now())
 	holder := "coordinator-1"
@@ -295,9 +345,8 @@ func TestProviderWaitToBecomeLeaderObservesOtherLeader(t *testing.T) {
 			RenewTime:            &now,
 		},
 	})
-	p, err := NewProvider(t.Context(), kc, "ns", "config", metadatacodec.ClusterConfigCodec,
+	p := NewProvider(t.Context(), kc, "ns", "config", metadatacodec.ClusterConfigCodec,
 		metadatacommon.WatchDisabled, "coordinator-0")
-	require.NoError(t, err)
 
 	waited := make(chan error, 1)
 	go func() {
@@ -323,7 +372,7 @@ func TestProviderWaitToBecomeLeaderObservesOtherLeader(t *testing.T) {
 func newConfigProvider(t *testing.T, kc *fake.Clientset) metadataprovider.Provider[*commonproto.ClusterConfiguration] {
 	t.Helper()
 
-	p, err := NewProvider(
+	p := NewProvider(
 		t.Context(),
 		kc,
 		"ns",
@@ -332,7 +381,6 @@ func newConfigProvider(t *testing.T, kc *fake.Clientset) metadataprovider.Provid
 		metadatacommon.WatchDisabled,
 		"coordinator-0",
 	)
-	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, p.Close())
 	})
@@ -382,4 +430,13 @@ func requireServers(t *testing.T, p metadataprovider.Provider[*commonproto.Clust
 	loaded, err := p.Load()
 	require.NoError(t, err)
 	require.Len(t, loaded.Value.GetServers(), servers)
+}
+
+type fakeCodec struct {
+	metadatacodec.Codec[*commonproto.ClusterConfiguration]
+	marshalYAML func(value *commonproto.ClusterConfiguration) ([]byte, error)
+}
+
+func (c *fakeCodec) MarshalYAML(value *commonproto.ClusterConfiguration) ([]byte, error) {
+	return c.marshalYAML(value)
 }

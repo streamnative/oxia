@@ -52,18 +52,21 @@ func (e Executor) Execute(args []string) error {
 }
 
 func (e Executor) parseOutputCommand(args []string, usage string) (string, error) {
-	flags := e.newFlagSet(args[0])
+	flags, outputFormat := e.newFlagSet(args[0])
 	if err := flags.Parse(args[1:]); err != nil {
 		return "", fmt.Errorf("usage: %s", usage)
 	}
 	if flags.NArg() != 0 {
 		return "", fmt.Errorf("usage: %s", usage)
 	}
-	return adminOutputFormat(flags)
+	if err := admincommons.ValidateOutputFormat(*outputFormat); err != nil {
+		return "", err
+	}
+	return *outputFormat, nil
 }
 
 func (e Executor) parseGetCommand(args []string, usage string) (outputFormat string, name string, err error) {
-	flags := e.newFlagSet(args[0])
+	flags, output := e.newFlagSet(args[0])
 	if err := flags.Parse(args[1:]); err != nil {
 		return "", "", fmt.Errorf("usage: %s", usage)
 	}
@@ -71,31 +74,20 @@ func (e Executor) parseGetCommand(args []string, usage string) (outputFormat str
 		return "", "", fmt.Errorf("usage: %s", usage)
 	}
 
-	outputFormat, err = adminOutputFormat(flags)
-	if err != nil {
+	if err := admincommons.ValidateOutputFormat(*output); err != nil {
 		return "", "", err
 	}
 	name = strings.TrimSpace(flags.Arg(0))
 	if name == "" {
 		return "", "", fmt.Errorf("usage: %s", usage)
 	}
-	return outputFormat, name, nil
+	return *output, name, nil
 }
 
-func (e Executor) newFlagSet(name string) *pflag.FlagSet {
-	flags := pflag.NewFlagSet(name, pflag.ContinueOnError)
+// newFlagSet returns the flags of an admin command, and the output format that
+// they set.
+func (e Executor) newFlagSet(name string) (flags *pflag.FlagSet, outputFormat *string) {
+	flags = pflag.NewFlagSet(name, pflag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	flags.StringP("output", "o", e.OutputFormat, "")
-	return flags
-}
-
-func adminOutputFormat(flags *pflag.FlagSet) (string, error) {
-	outputFormat, err := flags.GetString("output")
-	if err != nil {
-		return "", err
-	}
-	if err := admincommons.ValidateOutputFormat(outputFormat); err != nil {
-		return "", err
-	}
-	return outputFormat, nil
+	return flags, flags.StringP("output", "o", e.OutputFormat, "")
 }

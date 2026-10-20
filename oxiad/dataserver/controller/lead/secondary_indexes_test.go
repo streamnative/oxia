@@ -1474,6 +1474,13 @@ func TestSecondaryIndexesUpdateCallbackOnPutFailsWhenBatchFails(t *testing.T) {
 	}
 }
 
+func TestWrapperUpdateCallbackValidatePutStopsAtSessionRejection(t *testing.T) {
+	replaceSessionUpdateCallback(t, func(*proto.PutRequest) proto.Status { return proto.Status_SESSION_DOES_NOT_EXIST })
+
+	status := WrapperUpdateOperationCallback.ValidatePut(&proto.PutRequest{Key: "a"}, testFeatureChecker{})
+	assert.Equal(t, proto.Status_SESSION_DOES_NOT_EXIST, status)
+}
+
 func TestSecondaryIndexListIteratorPanicsOnUnsupportedCalls(t *testing.T) {
 	it := &secondaryIndexListIterator{key: "not-an-index-entry"}
 	assert.Panics(t, func() { it.Key() })
@@ -1573,4 +1580,25 @@ func TestSecondaryIndexGetSkipsEntriesWithoutPrimaryKey(t *testing.T) {
 			assert.Equal(t, proto.Status_KEY_NOT_FOUND, res.Status)
 		})
 	}
+}
+
+// replaceSessionUpdateCallback makes the update callback of the sessions
+// validate the puts with validatePut, until the end of the test.
+func replaceSessionUpdateCallback(t *testing.T, validatePut func(*proto.PutRequest) proto.Status) {
+	t.Helper()
+	original := sessionManagerUpdateOperationCallback
+	sessionManagerUpdateOperationCallback = &hookUpdateCallback{
+		UpdateOperationCallback: original,
+		validatePut:             validatePut,
+	}
+	t.Cleanup(func() { sessionManagerUpdateOperationCallback = original })
+}
+
+type hookUpdateCallback struct {
+	database.UpdateOperationCallback
+	validatePut func(*proto.PutRequest) proto.Status
+}
+
+func (c *hookUpdateCallback) ValidatePut(req *proto.PutRequest, _ feature.Checker) proto.Status {
+	return c.validatePut(req)
 }

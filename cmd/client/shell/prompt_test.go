@@ -15,11 +15,41 @@
 package shell
 
 import (
+	"bytes"
+	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	prompt "github.com/c-bata/go-prompt"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func TestReplRunPromptExecutesLinesUntilExit(t *testing.T) {
+	out := new(bytes.Buffer)
+	errOut := new(bytes.Buffer)
+	session := &repl{ctx: context.Background(), out: out, errOut: errOut, prompt: "test> ", interactive: true}
+	term := &fakeTerminal{lines: []string{"help", "unknown", "exit", "help"}}
+
+	require.NoError(t, session.runPrompt(term))
+
+	assert.Equal(t, "test> ", term.prefix)
+	assert.Equal(t, 3, term.executed)
+	assert.Equal(t, helpText, out.String())
+	assert.Equal(t, "Error: unknown client command \"unknown\"\n", errOut.String())
+}
+
+func TestReplRunPromptReturnsErrorOutputFailure(t *testing.T) {
+	errOut, err := os.Create(filepath.Join(t.TempDir(), "err"))
+	require.NoError(t, err)
+	require.NoError(t, errOut.Close())
+	session := &repl{ctx: context.Background(), out: new(bytes.Buffer), errOut: errOut, interactive: true}
+	term := &fakeTerminal{lines: []string{"unknown", "help"}}
+
+	assert.ErrorIs(t, session.runPrompt(term), os.ErrClosed)
+	assert.Equal(t, 1, term.executed)
+}
 
 func TestCompleteFiltersPartialWord(t *testing.T) {
 	assertSuggestionTexts(t, complete(documentFor("ge")), "get")
@@ -54,4 +84,20 @@ func documentFor(text string) prompt.Document {
 	buffer := prompt.NewBuffer()
 	buffer.InsertText(text, false, true)
 	return *buffer.Document()
+}
+
+type fakeTerminal struct {
+	lines    []string
+	prefix   string
+	executed int
+}
+
+func (t *fakeTerminal) Run(prefix string, execute func(line string) (exit bool)) {
+	t.prefix = prefix
+	for _, line := range t.lines {
+		t.executed++
+		if execute(line) {
+			return
+		}
+	}
 }

@@ -130,6 +130,42 @@ func TestProviderStoreOnLeader(t *testing.T) {
 	assert.Equal(t, "leader", loadedStatus(t, p).GetInstanceId())
 }
 
+func TestProviderStoreFailsWhenStateIsNotJSON(t *testing.T) {
+	r := newInmemLeader(t)
+	p := NewProvider(t.Context(), r, &fakeCodec{
+		Codec:       metadatacodec.ClusterStatusCodec,
+		marshalJSON: func(*commonproto.ClusterStatus) ([]byte, error) { return []byte("not json"), nil },
+	}, metadatacommon.WatchDisabled)
+	defer func() { require.NoError(t, p.Close()) }()
+
+	_, err := p.Store(provider.Versioned[*commonproto.ClusterStatus]{
+		Value:   &commonproto.ClusterStatus{InstanceId: "leader"},
+		Version: metadatacommon.NotExists,
+	})
+	var syntaxErr *json.SyntaxError
+	require.ErrorAs(t, err, &syntaxErr)
+}
+
+func TestProviderStoreFailsWhenApplyFails(t *testing.T) {
+	r := newInmemLeader(t)
+	p := NewProvider(t.Context(), r, &fakeCodec{
+		Codec: metadatacodec.ClusterStatusCodec,
+		marshalJSON: func(value *commonproto.ClusterStatus) ([]byte, error) {
+			if err := r.node.Shutdown().Error(); err != nil {
+				return nil, err
+			}
+			return metadatacodec.ClusterStatusCodec.MarshalJSON(value)
+		},
+	}, metadatacommon.WatchDisabled)
+	defer func() { require.NoError(t, p.Close()) }()
+
+	_, err := p.Store(provider.Versioned[*commonproto.ClusterStatus]{
+		Value:   &commonproto.ClusterStatus{InstanceId: "leader"},
+		Version: metadatacommon.NotExists,
+	})
+	require.ErrorIs(t, err, hashicorpraft.ErrRaftShutdown)
+}
+
 func loadedValue(t *testing.T, p *Provider[*commonproto.ClusterStatus]) *commonproto.ClusterStatus {
 	t.Helper()
 	snapshot, err := p.Load()
@@ -180,4 +216,13 @@ func newInmemLeader(t *testing.T) *Raft {
 	require.Eventually(t, func() bool { return r.node.State() == hashicorpraft.Leader },
 		10*time.Second, 10*time.Millisecond)
 	return r
+}
+
+type fakeCodec struct {
+	metadatacodec.Codec[*commonproto.ClusterStatus]
+	marshalJSON func(value *commonproto.ClusterStatus) ([]byte, error)
+}
+
+func (c *fakeCodec) MarshalJSON(value *commonproto.ClusterStatus) ([]byte, error) {
+	return c.marshalJSON(value)
 }

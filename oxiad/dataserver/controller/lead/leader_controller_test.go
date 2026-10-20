@@ -3543,6 +3543,60 @@ func TestLeaderController_BecomeLeaderWithFollowerSeededFromSnapshot(t *testing.
 	}
 }
 
+func TestLeaderControllerCheckpointHoldsTheCommitOffsetAndTerm(t *testing.T) {
+	var shard int64 = 1
+	kvFactory, err := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	walFactory := newTestWalFactory(t)
+	lc, err := NewLeaderController(&option.StorageOptions{}, constant.DefaultNamespace, shard, rpc.NewMockRpcClient(),
+		walFactory, kvFactory, nil)
+	require.NoError(t, err)
+	_, err = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 2})
+	require.NoError(t, err)
+	_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{Shard: shard, Term: 2, ReplicationFactor: 1})
+	require.NoError(t, err)
+	for range 3 {
+		_, err = lc.WriteBlock(context.Background(), &proto.WriteRequest{
+			Shard: &shard,
+			Puts:  []*proto.PutRequest{{Key: "k", Value: []byte("v")}},
+		})
+		require.NoError(t, err)
+	}
+
+	checkpoint, err := lc.Checkpoint()
+	require.NoError(t, err)
+	commitOffset, term, err := database.ReadCheckpoint(checkpoint.BasePath())
+	require.NoError(t, err)
+	assert.EqualValues(t, 2, commitOffset)
+	assert.EqualValues(t, 2, term)
+	assert.NoError(t, checkpoint.Close())
+
+	// The database is still the one of the checkpoint
+	require.NoError(t, lc.WithDatabase(checkpoint.Generation, func(dir string) error {
+		assert.Equal(t, kvFactory.DatabaseDir(constant.DefaultNamespace, shard), dir)
+		return nil
+	}))
+	assert.ErrorIs(t, lc.WithDatabase(checkpoint.Generation+1, func(string) error { return nil }),
+		database.ErrDatabaseReplaced, "a checkpoint of a database since replaced")
+
+	require.NoError(t, lc.Close())
+	_, err = lc.Checkpoint()
+	assert.ErrorIs(t, err, constant.ErrResourceUnavailable)
+	assert.ErrorIs(t, lc.WithDatabase(checkpoint.Generation, func(string) error { return nil }),
+		constant.ErrResourceUnavailable)
+}
+
+func TestLeaderControllerCheckpointReturnsSnapshotError(t *testing.T) {
+	snapshotErr := errors.New("snapshot failed")
+	lc := newHookedLeaderController(t, rpc.NewMockRpcClient(), &hookKVFactory{
+		snapshot: func(kvstore.KV) (kvstore.Snapshot, error) { return nil, snapshotErr },
+	}, &hookWalFactory{})
+
+	checkpoint, err := lc.Checkpoint()
+	assert.ErrorIs(t, err, snapshotErr)
+	assert.Nil(t, checkpoint)
+}
+
 func TestLeaderControllerReportsOffsetGaugesWhileLeading(t *testing.T) {
 	previous := metric.GetMeter()
 	reader := sdkmetric.NewManualReader()
@@ -3881,6 +3935,27 @@ func TestLeaderControllerBecomeLeaderRejectsAFollowerOfAHigherTerm(t *testing.T)
 	assert.ErrorIs(t, err, constant.ErrInvalidTerm)
 }
 
+// A new leader that fails to propose the features it enables leaves the
+// controller fenced.
+func TestLeaderControllerBecomeLeaderFailsWhenTheFeatureEnableFailsToMarshal(t *testing.T) {
+	lc := newHookedLeaderController(t, rpc.NewMockRpcClient(), &hookKVFactory{}, &hookWalFactory{})
+	_, err := lc.NewTerm(&proto.NewTermRequest{Shard: 1, Term: 1})
+	require.NoError(t, err)
+	failing := &atomic.Bool{}
+	failing.Store(true)
+	failMarshals(lc.(*leaderController), failing)
+
+	_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
+		Shard:             1,
+		Term:              1,
+		ReplicationFactor: 1,
+		FeaturesSupported: []proto.Feature{proto.Feature_FEATURE_DB_CHECKSUM},
+	})
+	assert.ErrorIs(t, err, errInjected)
+	assert.Equal(t, proto.ServingStatus_FENCED, lc.Status())
+	assert.False(t, lc.IsFeatureEnabled(proto.Feature_FEATURE_DB_CHECKSUM))
+}
+
 func TestLeaderControllerBecomeLeaderRejectsMoreFollowersThanTheReplicationFactor(t *testing.T) {
 	lc := newHookedLeaderController(t, rpc.NewMockRpcClient(), &hookKVFactory{}, &hookWalFactory{})
 	_, err := lc.NewTerm(&proto.NewTermRequest{Shard: 1, Term: 1})
@@ -3902,57 +3977,64 @@ func TestLeaderControllerBecomeLeaderRejectsMoreFollowersThanTheReplicationFacto
 // as a cleanup: a failure doesn't fail the election, and the next leader
 // deletes them.
 func TestLeaderControllerBecomeLeaderKeepsTheOrphanedEphemeralsWhenTheirDeleteFails(t *testing.T) {
-	failAppends := &atomic.Bool{}
-	kvFactory, walFactory := newHookFactories(t)
-	walFactory.appendAndSync = func(w wal.Wal, entry *proto.LogEntry, callback func(entryCrc uint32, err error)) {
-		if failAppends.Load() {
-			callback(0, errInjected)
-			return
-		}
-		w.AppendAndSync(entry, callback)
-	}
-	options := &proto.NewTermOptions{KeySorting: proto.KeySortingType_NATURAL, EnableNotifications: true}
-	lc, err := NewLeaderController(&option.StorageOptions{}, constant.DefaultNamespace, 1, rpc.NewMockRpcClient(),
-		walFactory, kvFactory, options)
-	require.NoError(t, err)
-	t.Cleanup(func() { assert.NoError(t, lc.Close()) })
-	becomeLeader := func(term int64) {
-		t.Helper()
-		_, err := lc.NewTerm(&proto.NewTermRequest{Shard: 1, Term: term, Options: options})
-		require.NoError(t, err)
-		_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
-			Shard:             1,
-			Term:              term,
-			ReplicationFactor: 1,
+	for _, failure := range []string{"append", "marshal"} {
+		t.Run(failure, func(t *testing.T) {
+			failing := &atomic.Bool{}
+			kvFactory, walFactory := newHookFactories(t)
+			walFactory.appendAndSync = func(w wal.Wal, entry *proto.LogEntry, callback func(entryCrc uint32, err error)) {
+				if failure == "append" && failing.Load() {
+					callback(0, errInjected)
+					return
+				}
+				w.AppendAndSync(entry, callback)
+			}
+			options := &proto.NewTermOptions{KeySorting: proto.KeySortingType_NATURAL, EnableNotifications: true}
+			lc, err := NewLeaderController(&option.StorageOptions{}, constant.DefaultNamespace, 1, rpc.NewMockRpcClient(),
+				walFactory, kvFactory, options)
+			require.NoError(t, err)
+			t.Cleanup(func() { assert.NoError(t, lc.Close()) })
+			if failure == "marshal" {
+				failMarshals(lc.(*leaderController), failing)
+			}
+			becomeLeader := func(term int64) {
+				t.Helper()
+				_, err := lc.NewTerm(&proto.NewTermRequest{Shard: 1, Term: term, Options: options})
+				require.NoError(t, err)
+				_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{
+					Shard:             1,
+					Term:              term,
+					ReplicationFactor: 1,
+				})
+				require.NoError(t, err)
+			}
+			becomeLeader(1)
+
+			// The session end leaves the record behind on a natural-sorted shard
+			session, err := lc.CreateSession(&proto.CreateSessionRequest{Shard: 1, SessionTimeoutMs: 60_000})
+			require.NoError(t, err)
+			var shard int64 = 1
+			_, err = lc.WriteBlock(context.Background(), &proto.WriteRequest{Shard: &shard, Puts: []*proto.PutRequest{{
+				Key:       "a",
+				Value:     []byte("a"),
+				SessionId: &session.SessionId,
+			}}})
+			require.NoError(t, err)
+			_, err = lc.CloseSession(&proto.CloseSessionRequest{Shard: 1, SessionId: session.SessionId})
+			require.NoError(t, err)
+			require.True(t, keyExists(t, lc.(*leaderController), "a"))
+
+			failing.Store(true)
+			becomeLeader(2)
+			assert.Equal(t, proto.ServingStatus_LEADER, lc.Status())
+			assert.True(t, keyExists(t, lc.(*leaderController), "a"))
+
+			failing.Store(false)
+			becomeLeader(3)
+			assert.Eventually(t, func() bool {
+				return !keyExists(t, lc.(*leaderController), "a")
+			}, 10*time.Second, 10*time.Millisecond)
 		})
-		require.NoError(t, err)
 	}
-	becomeLeader(1)
-
-	// The session end leaves the record behind on a natural-sorted shard
-	session, err := lc.CreateSession(&proto.CreateSessionRequest{Shard: 1, SessionTimeoutMs: 60_000})
-	require.NoError(t, err)
-	var shard int64 = 1
-	_, err = lc.WriteBlock(context.Background(), &proto.WriteRequest{Shard: &shard, Puts: []*proto.PutRequest{{
-		Key:       "a",
-		Value:     []byte("a"),
-		SessionId: &session.SessionId,
-	}}})
-	require.NoError(t, err)
-	_, err = lc.CloseSession(&proto.CloseSessionRequest{Shard: 1, SessionId: session.SessionId})
-	require.NoError(t, err)
-	require.True(t, keyExists(t, lc.(*leaderController), "a"))
-
-	failAppends.Store(true)
-	becomeLeader(2)
-	assert.Equal(t, proto.ServingStatus_LEADER, lc.Status())
-	assert.True(t, keyExists(t, lc.(*leaderController), "a"))
-
-	failAppends.Store(false)
-	becomeLeader(3)
-	assert.Eventually(t, func() bool {
-		return !keyExists(t, lc.(*leaderController), "a")
-	}, 10*time.Second, 10*time.Millisecond)
 }
 
 func TestLeaderControllerAddFollowerRejectsWhenNotLeader(t *testing.T) {
@@ -4452,6 +4534,18 @@ func newHookFactories(t *testing.T) (*hookKVFactory, *hookWalFactory) {
 		assert.NoError(t, walFactory.Close())
 	})
 	return kvFactory, walFactory
+}
+
+// failMarshals makes the leader fail to serialize the log entries of its
+// proposals while failing is set.
+func failMarshals(lc *leaderController, failing *atomic.Bool) {
+	marshal := lc.marshalLogEntryValue
+	lc.marshalLogEntryValue = func(buf []byte, value *proto.LogEntryValue) ([]byte, []byte, error) {
+		if failing.Load() {
+			return buf, nil, errInjected
+		}
+		return marshal(buf, value)
+	}
 }
 
 // newHookedLeaderController creates a leader controller of shard 1 on the

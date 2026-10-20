@@ -23,6 +23,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestExecStopsWhenItsContextIsDone(t *testing.T) {
+	server := newStandalone(t)
+	previous := config
+	t.Cleanup(func() { config = previous })
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	Cmd.SetArgs([]string{"--service-address", server.ServiceAddr(), "--request-timeout", "200ms"})
+
+	assert.NoError(t, Cmd.ExecuteContext(ctx))
+}
+
 func TestRunPerfStopsOnClose(t *testing.T) {
 	server := newStandalone(t)
 	previous := config
@@ -40,4 +51,15 @@ func TestRunPerfStopsOnClose(t *testing.T) {
 
 	require.NoError(t, process.Close())
 	assert.ErrorIs(t, process.(*closer).ctx.Err(), context.Canceled)
+}
+
+func TestRunPerfReturnsClientCreationError(t *testing.T) {
+	previous := config
+	config = testConfig("localhost:1", false)
+	t.Cleanup(func() { config = previous })
+
+	process, err := runPerf()
+
+	assert.ErrorContains(t, err, "failed to create Oxia client")
+	assert.Nil(t, process)
 }

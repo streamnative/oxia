@@ -24,6 +24,7 @@ import (
 
 	"github.com/oxia-db/oxia/oxiad/dataserver/controller/follow"
 	"github.com/oxia-db/oxia/oxiad/dataserver/controller/lead"
+	"github.com/oxia-db/oxia/oxiad/dataserver/database"
 	"github.com/oxia-db/oxia/oxiad/dataserver/option"
 
 	"github.com/oxia-db/oxia/common/rpc"
@@ -120,6 +121,62 @@ func TestShardsDirector_GetOrCreateFollower(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
+func TestShardsDirectorRoutesCheckpointAndCommitOffsetToTheHostingController(t *testing.T) {
+	kvFactory, err := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	sd := NewShardsDirector(&option.StorageOptions{}, newTestWalFactory(t), kvFactory, rpc.NewMockRpcClient())
+	t.Cleanup(func() { assert.NoError(t, sd.Close()) })
+
+	// A shard led here, with two entries
+	var led int64 = 1
+	lc, err := sd.GetOrCreateLeader(constant.DefaultNamespace, led, nil)
+	require.NoError(t, err)
+	_, err = lc.NewTerm(&proto.NewTermRequest{Shard: led, Term: 1})
+	require.NoError(t, err)
+	_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{Shard: led, Term: 1, ReplicationFactor: 1})
+	require.NoError(t, err)
+	for _, key := range []string{"a", "b"} {
+		_, err = lc.WriteBlock(context.Background(), &proto.WriteRequest{
+			Shard: &led, Puts: []*proto.PutRequest{{Key: key, Value: []byte("v")}}})
+		require.NoError(t, err)
+	}
+	offset, err := sd.CommitOffset(led)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, offset)
+	checkpoint, err := sd.Checkpoint(led)
+	require.NoError(t, err)
+	commitOffset, _, err := database.ReadCheckpoint(checkpoint.BasePath())
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, commitOffset)
+	assert.NoError(t, checkpoint.Close())
+	require.NoError(t, sd.WithDatabase(led, checkpoint.Generation, func(dir string) error {
+		assert.Equal(t, sd.DatabaseDir(constant.DefaultNamespace, led), dir)
+		return nil
+	}))
+
+	// A shard followed here, with no entry yet
+	var followed int64 = 2
+	fc, err := sd.GetOrCreateFollower(constant.DefaultNamespace, followed, 1, nil)
+	require.NoError(t, err)
+	_, err = fc.NewTerm(&proto.NewTermRequest{Shard: followed, Term: 1})
+	require.NoError(t, err)
+	offset, err = sd.CommitOffset(followed)
+	require.NoError(t, err)
+	assert.EqualValues(t, wal.InvalidOffset, offset)
+	checkpoint, err = sd.Checkpoint(followed)
+	require.NoError(t, err)
+	assert.NoError(t, checkpoint.Close())
+	require.NoError(t, sd.WithDatabase(followed, checkpoint.Generation, func(string) error { return nil }))
+
+	// A shard not hosted here
+	var absent int64 = 3
+	_, err = sd.CommitOffset(absent)
+	assert.ErrorIs(t, err, constant.ErrNodeIsNotMember)
+	_, err = sd.Checkpoint(absent)
+	assert.ErrorIs(t, err, constant.ErrNodeIsNotMember)
+	assert.ErrorIs(t, sd.WithDatabase(absent, 0, func(string) error { return nil }), constant.ErrNodeIsNotMember)
+}
+
 func TestShardsDirectorGetOrCreateLeaderFollowerCloseError(t *testing.T) {
 	sd := newTestShardsDirector(t)
 	closeErr := errors.New("close failure")
@@ -192,6 +249,23 @@ func TestShardsDirectorDeleteShardLeaderError(t *testing.T) {
 	assert.Same(t, leader, lc)
 }
 
+func TestShardsDirectorDeleteShardFollowerError(t *testing.T) {
+	sd := newTestShardsDirector(t)
+	deleteErr := errors.New("delete failure")
+	follower := &fakeFollowerController{delete: func(*proto.DeleteShardRequest) (*proto.DeleteShardResponse, error) {
+		return nil, deleteErr
+	}}
+	sd.followers[1] = follower
+
+	_, err := sd.DeleteShard(&proto.DeleteShardRequest{Namespace: constant.DefaultNamespace, Shard: 1, Term: 1})
+	assert.ErrorIs(t, err, deleteErr)
+
+	// The follower stays in place
+	fc, err := sd.GetFollower(1)
+	assert.NoError(t, err)
+	assert.Same(t, follower, fc)
+}
+
 // A shard that the node doesn't host is opened from its storage, to delete it.
 func TestShardsDirectorDeleteShardNotHosted(t *testing.T) {
 	var shard int64 = 1
@@ -239,6 +313,34 @@ func TestShardsDirectorDeleteShardNotHostedInvalidNamespace(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestShardsDirectorCheckpointFailsWhenClosed(t *testing.T) {
+	sd := newTestShardsDirector(t)
+	require.NoError(t, sd.Close())
+
+	checkpoint, err := sd.Checkpoint(1)
+	assert.ErrorIs(t, err, constant.ErrResourceUnavailable)
+	assert.Nil(t, checkpoint)
+}
+
+func TestShardsDirectorCommitOffsetFailsWhenClosed(t *testing.T) {
+	sd := newTestShardsDirector(t)
+	require.NoError(t, sd.Close())
+
+	_, err := sd.CommitOffset(1)
+	assert.ErrorIs(t, err, constant.ErrResourceUnavailable)
+}
+
+func TestShardsDirectorWithDatabaseFailsWhenClosed(t *testing.T) {
+	sd := newTestShardsDirector(t)
+	require.NoError(t, sd.Close())
+
+	err := sd.WithDatabase(1, 0, func(string) error {
+		assert.Fail(t, "the database of a closed director was used")
+		return nil
+	})
+	assert.ErrorIs(t, err, constant.ErrResourceUnavailable)
+}
+
 // A namespace with a path traversal, that the controllers reject.
 const invalidNamespace = "../invalid"
 
@@ -273,9 +375,14 @@ func (f *fakeLeaderController) DeleteShard(request *proto.DeleteShardRequest) (*
 
 type fakeFollowerController struct {
 	follow.FollowerController
-	close func() error
+	close  func() error
+	delete func(request *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error)
 }
 
 func (f *fakeFollowerController) Close() error {
 	return f.close()
+}
+
+func (f *fakeFollowerController) Delete(request *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error) {
+	return f.delete(request)
 }

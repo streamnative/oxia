@@ -72,9 +72,7 @@ var (
 		"configmap": func(t *testing.T) provider.Provider[*proto.ClusterStatus] {
 			t.Helper()
 
-			p, err := kubernetes.NewProvider(t.Context(), newFake(), "ns", "n", metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled, "coordinator-test")
-			assert.NoError(t, err)
-			return p
+			return kubernetes.NewProvider(t.Context(), newFake(), "ns", "n", metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled, "coordinator-test")
 		},
 		"raft": func(t *testing.T) provider.Provider[*proto.ClusterStatus] {
 			t.Helper()
@@ -180,9 +178,7 @@ func TestProviderConfigResource(t *testing.T) {
 		"configmap": func(t *testing.T) provider.Provider[*proto.ClusterConfiguration] {
 			t.Helper()
 
-			p, err := kubernetes.NewProvider(t.Context(), newFake(), "ns", "config", metadatacodec.ClusterConfigCodec, metadatacommon.WatchDisabled, "coordinator-test")
-			assert.NoError(t, err)
-			return p
+			return kubernetes.NewProvider(t.Context(), newFake(), "ns", "config", metadatacodec.ClusterConfigCodec, metadatacommon.WatchDisabled, "coordinator-test")
 		},
 		"raft": func(t *testing.T) provider.Provider[*proto.ClusterConfiguration] {
 			t.Helper()
@@ -355,8 +351,7 @@ func TestConfigMapProviderReloadsAfterAppliedWriteFails(t *testing.T) {
 		}
 		return true, nil, errors.New("request timed out after the patch was applied")
 	})
-	p, err := kubernetes.NewProvider(t.Context(), kc, "ns", "status", metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled, testCoordinatorName)
-	require.NoError(t, err)
+	p := kubernetes.NewProvider(t.Context(), kc, "ns", "status", metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled, testCoordinatorName)
 	defer func() { assert.NoError(t, p.Close()) }()
 
 	setInstanceID := func(id string) error {
