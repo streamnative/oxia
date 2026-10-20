@@ -113,10 +113,6 @@ type OIDCProvider struct {
 	verifiedTokens tokenCache
 }
 
-func (*OIDCProvider) AcceptParamType() string {
-	return ProviderParamTypeToken
-}
-
 func (p *OIDCProvider) Authenticate(ctx context.Context, param any) (string, error) {
 	token, ok := param.(string)
 	if !ok {

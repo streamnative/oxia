@@ -282,10 +282,7 @@ func runCoordinator(dispatcher *dispatcher, servers []*commonproto.DataServerIde
 	}
 	c.closers = append(c.closers, metadataFactory)
 
-	metadata, err := metadataFactory.CreateMetadata(ctx)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create coordinator metadata")
-	}
+	metadata := metadataFactory.CreateMetadata(ctx)
 	c.closers = append(c.closers, metadata)
 	if _, err = metadata.WaitToBecomeLeader(); err != nil {
 		return nil, errors.Wrap(err, "failed to wait for coordinator metadata leadership")

@@ -103,8 +103,7 @@ func newTestMetadata(t *testing.T, metadataProvider provider.Provider[*proto.Clu
 		},
 	})
 	assert.NoError(t, err)
-	metadata, err := metadataFactory.CreateMetadata(t.Context())
-	assert.NoError(t, err)
+	metadata := metadataFactory.CreateMetadata(t.Context())
 	_, err = metadata.WaitToBecomeLeader()
 	assert.NoError(t, err)
 	t.Cleanup(func() {
