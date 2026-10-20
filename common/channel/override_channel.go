@@ -66,21 +66,13 @@ func (o *overrideChannel[T]) WriteLast(value T) {
 	o.Lock()
 	defer o.Unlock()
 
+	// The channel holds at most one value: either it is empty and the send
+	// proceeds, or it is full and the receive drops the old value
 	for {
 		select {
 		case o.ch <- value:
-			// If we were able to write on the channel, we're good: the receiver will eventually read
-			// the notification from here
 			return
-
-		default:
-			// If the channel buffer is full, empty the channel and retry
-			select {
-			case <-o.ch:
-				continue
-			default:
-				continue
-			}
+		case <-o.ch:
 		}
 	}
 }
