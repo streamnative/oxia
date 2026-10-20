@@ -245,16 +245,14 @@ func (sc *SplitController) driveStateMachine() error {
 
 		sc.logger.Info("Running split phase", slog.String("phase", phase.String()))
 
+		// GetPhaseOrDefault reads an unknown phase as Bootstrap
 		switch phase {
-		case proto.SplitPhaseBootstrap:
-			err = sc.runBootstrap()
 		case proto.SplitPhaseCatchUp:
 			err = sc.runCatchUp()
 		case proto.SplitPhaseCutover:
 			err = sc.runCutover()
 		default:
-			sc.logger.Error("Unknown split phase", slog.Any("phase", phase))
-			return nil
+			err = sc.runBootstrap()
 		}
 
 		if err != nil {

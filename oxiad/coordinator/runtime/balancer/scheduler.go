@@ -480,10 +480,7 @@ func (r *nodeBasedBalancer) startBackgroundScheduler() {
 			defer timer.Stop()
 			for {
 				select {
-				case _, more := <-timer.C:
-					if !more {
-						return
-					}
+				case <-timer.C:
 					channel.PushNoBlock(r.triggerCh, nil)
 				case <-r.ctx.Done():
 					return

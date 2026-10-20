@@ -15,7 +15,7 @@
 package leader
 
 import (
-	"math/rand"
+	"math"
 
 	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 
@@ -39,20 +39,18 @@ func (*leader) Select(context *Context) (*commonproto.DataServerIdentity, error)
 	}
 	_, _, leaders := state.NodeShardLeaders(candidates, context.Namespaces)
 
-	minLeaders := -1
+	minLeaders := math.MaxInt
 	var minLeadersNode *commonproto.DataServerIdentity
 
-	for idx, candidate := range context.Candidates {
+	for _, candidate := range context.Candidates {
+		leaderNum := 0
 		if shards, exist := leaders[candidate.GetNameOrDefault()]; exist {
-			leaderNum := shards.Size()
-			if minLeaders == -1 || leaderNum < minLeaders {
-				minLeaders = leaderNum
-				minLeadersNode = context.Candidates[idx]
-			}
+			leaderNum = shards.Size()
 		}
-	}
-	if minLeaders == -1 {
-		return context.Candidates[rand.Intn(len(context.Candidates))], nil //nolint:gosec
+		if leaderNum < minLeaders {
+			minLeaders = leaderNum
+			minLeadersNode = candidate
+		}
 	}
 	return minLeadersNode, nil
 }
