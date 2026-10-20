@@ -16,11 +16,14 @@ package file
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -59,4 +62,112 @@ func TestWatchFileReturnsErrorForMissingDirectory(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Nil(t, changes)
+}
+
+func TestWatchFileReturnsWatcherCreationError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	var limit syscall.Rlimit
+	require.NoError(t, syscall.Getrlimit(syscall.RLIMIT_NOFILE, &limit))
+	require.NoError(t, syscall.Setrlimit(syscall.RLIMIT_NOFILE, &syscall.Rlimit{Cur: 0, Max: limit.Max}))
+
+	changes, err := WatchFile(context.Background(), path)
+
+	require.NoError(t, syscall.Setrlimit(syscall.RLIMIT_NOFILE, &limit))
+	assert.ErrorIs(t, err, syscall.EMFILE)
+	assert.Nil(t, changes)
+}
+
+func TestWatchFileReturnsAddAndCloseErrors(t *testing.T) {
+	w := newFakeWatcher()
+	w.addErr = errors.New("add failed")
+	w.closeErr = errors.New("close failed")
+
+	changes, err := watchFile(context.Background(), "config.yaml", w)
+
+	assert.ErrorIs(t, err, w.addErr)
+	assert.ErrorIs(t, err, w.closeErr)
+	assert.Nil(t, changes)
+}
+
+func TestWatchFileClosesOnWatchError(t *testing.T) {
+	w := newFakeWatcher()
+	changes, err := watchFile(context.Background(), "config.yaml", w)
+	require.NoError(t, err)
+
+	w.errors <- errors.New("watch failed")
+
+	assertClosed(t, changes)
+	assert.True(t, w.closed)
+}
+
+func TestWatchFileClosesWhenWatcherCloses(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		close func(w *fakeWatcher)
+	}{
+		{name: "errors", close: func(w *fakeWatcher) { close(w.errors) }},
+		{name: "events", close: func(w *fakeWatcher) { close(w.events) }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			w := newFakeWatcher()
+			changes, err := watchFile(context.Background(), "config.yaml", w)
+			require.NoError(t, err)
+
+			test.close(w)
+
+			assertClosed(t, changes)
+		})
+	}
+}
+
+func TestWatchFileClosesWhenWatcherFailsToClose(t *testing.T) {
+	w := newFakeWatcher()
+	w.closeErr = errors.New("close failed")
+	ctx, cancel := context.WithCancel(context.Background())
+	changes, err := watchFile(ctx, "config.yaml", w)
+	require.NoError(t, err)
+
+	cancel()
+
+	assertClosed(t, changes)
+	assert.True(t, w.closed)
+}
+
+func assertClosed(t *testing.T, changes <-chan struct{}) {
+	t.Helper()
+	select {
+	case _, ok := <-changes:
+		assert.False(t, ok)
+	case <-time.After(10 * time.Second):
+		require.FailNow(t, "the changes were not closed")
+	}
+}
+
+type fakeWatcher struct {
+	addErr   error
+	closeErr error
+	events   chan fsnotify.Event
+	errors   chan error
+	closed   bool
+}
+
+func newFakeWatcher() *fakeWatcher {
+	return &fakeWatcher{events: make(chan fsnotify.Event), errors: make(chan error)}
+}
+
+func (w *fakeWatcher) Add(string) error {
+	return w.addErr
+}
+
+func (w *fakeWatcher) Events() <-chan fsnotify.Event {
+	return w.events
+}
+
+func (w *fakeWatcher) Errors() <-chan error {
+	return w.errors
+}
+
+func (w *fakeWatcher) Close() error {
+	w.closed = true
+	return w.closeErr
 }

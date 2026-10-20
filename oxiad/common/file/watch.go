@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 
 	"github.com/fsnotify/fsnotify"
+	"go.uber.org/multierr"
 
 	"github.com/oxia-db/oxia/common/channel"
 )
@@ -27,21 +28,24 @@ import (
 // WatchFile signals each time the file at path is created, written, renamed
 // or removed. The channel is closed when the watch fails or ctx is done.
 func WatchFile(ctx context.Context, path string) (<-chan struct{}, error) {
-	logger := slog.With(slog.String("component", "file-watch"), slog.String("path", path))
-	watcher, err := fsnotify.NewWatcher()
+	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err
 	}
-	if err := watcher.Add(filepath.Dir(path)); err != nil {
-		_ = watcher.Close()
-		return nil, err
+	return watchFile(ctx, path, fsnotifyWatcher{watcher: w})
+}
+
+func watchFile(ctx context.Context, path string, w watcher) (<-chan struct{}, error) {
+	logger := slog.With(slog.String("component", "file-watch"), slog.String("path", path))
+	if err := w.Add(filepath.Dir(path)); err != nil {
+		return nil, multierr.Append(err, w.Close())
 	}
 
 	changes := make(chan struct{}, 1)
 	go func() {
 		defer close(changes)
 		defer func() {
-			if err := watcher.Close(); err != nil {
+			if err := w.Close(); err != nil {
 				logger.Warn("Failed to close file watcher", slog.Any("error", err))
 			}
 		}()
@@ -50,12 +54,12 @@ func WatchFile(ctx context.Context, path string) (<-chan struct{}, error) {
 			select {
 			case <-ctx.Done():
 				return
-			case err, ok := <-watcher.Errors:
+			case err, ok := <-w.Errors():
 				if ok {
 					logger.Warn("File watch failed", slog.Any("error", err))
 				}
 				return
-			case event, ok := <-watcher.Events:
+			case event, ok := <-w.Events():
 				if !ok {
 					return
 				}
