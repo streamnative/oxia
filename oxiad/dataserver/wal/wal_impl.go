@@ -589,14 +589,11 @@ func (t *wal) flushAndCloseRolledSegment(s ReadWriteSegment) error {
 func (t *wal) drainPendingCloseSegments() error {
 	var err error
 	for _, s := range t.pendingCloseSegments {
-		serr := multierr.Combine(
+		err = multierr.Append(err, multierr.Combine(
 			s.SyncFileIfNeeded(),
 			s.Flush(),
-			s.Close())
-		if serr == nil {
-			t.readOnlySegments.AddedNewSegment(s.BaseOffset())
-		}
-		err = multierr.Append(err, serr)
+			s.Close()))
+		t.readOnlySegments.AddedNewSegment(s.BaseOffset())
 	}
 	t.pendingCloseSegments = nil
 	return err

@@ -2061,6 +2061,10 @@ func TestWalTruncateLogFailsWhenRolledSegmentCannotBeSynced(t *testing.T) {
 	_, err := w.TruncateLog(0)
 	assert.ErrorIs(t, err, errInjected)
 
+	entry, err := readEntry(w, 0)
+	require.NoError(t, err)
+	assert.EqualValues(t, 0, entry.Offset)
+
 	assert.NoError(t, w.Close())
 }
 
