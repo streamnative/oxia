@@ -3402,6 +3402,48 @@ func TestFollowerControllerRejectsRequestsOnceClosed(t *testing.T) {
 	assert.ErrorIs(t, err, constant.ErrResourceConflict)
 }
 
+// A request waiting for the lock of the follower while it closes is rejected
+// once it gets the lock.
+func TestFollowerControllerRejectsRequestsClosedWhileWaitingForTheLock(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		call func(fc FollowerController) error
+	}{
+		{"append-entries", func(fc FollowerController) error {
+			return fc.AppendEntries(rpc.NewMockServerReplicateStream())
+		}},
+		{"new-term", func(fc FollowerController) error {
+			_, err := fc.NewTerm(&proto.NewTermRequest{Term: 2})
+			return err
+		}},
+		{"truncate", func(fc FollowerController) error {
+			_, err := fc.Truncate(&proto.TruncateRequest{Term: 1, HeadEntryId: &proto.EntryId{Term: 1, Offset: 0}})
+			return err
+		}},
+		{"install-snapshot", func(fc FollowerController) error {
+			return fc.InstallSnapshot(newSnapshotStream(nil))
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			walFactory, kvFactory := newHookFactories(t)
+			fc := newFencedFollower(t, walFactory, kvFactory)
+			fci := fc.(*followerController)
+
+			fci.rwMutex.RLock()
+			callErr := make(chan error, 1)
+			go func() { callErr <- test.call(fc) }()
+			require.Eventually(t, writerIsWaiting(fci), 10*time.Second, time.Millisecond)
+			closeErr := make(chan error, 1)
+			go func() { closeErr <- fc.Close() }()
+			require.Eventually(t, fci.closed.Load, 10*time.Second, time.Millisecond)
+			fci.rwMutex.RUnlock()
+
+			assert.ErrorIs(t, <-callErr, constant.ErrResourceConflict)
+			assert.NoError(t, <-closeErr)
+		})
+	}
+}
+
 func TestFollowerControllerNewTermFailsWhenTermUpdateFails(t *testing.T) {
 	walFactory, kvFactory := newHookFactories(t)
 	fc := newFencedFollower(t, walFactory, kvFactory)
@@ -3439,6 +3481,28 @@ func TestFollowerControllerNewTermFailsWhenHeadEntryReadFails(t *testing.T) {
 	assert.ErrorContains(t, err, "read failed")
 
 	walFactory.setHooks(func(h *walHooks) { h.newReverseReader = nil })
+	assert.NoError(t, fc.Close())
+}
+
+// A new term that waits for the lock of the follower while it gets fenced in
+// a higher term is rejected once it gets the lock.
+func TestFollowerControllerNewTermRejectsTermFencedWhileWaitingForTheLock(t *testing.T) {
+	walFactory, kvFactory := newHookFactories(t)
+	fc := newFencedFollower(t, walFactory, kvFactory)
+	fci := fc.(*followerController)
+
+	fci.rwMutex.RLock()
+	newTermErr := make(chan error, 1)
+	go func() {
+		_, err := fc.NewTerm(&proto.NewTermRequest{Term: 2})
+		newTermErr <- err
+	}()
+	require.Eventually(t, writerIsWaiting(fci), 10*time.Second, time.Millisecond)
+	fci.term.Store(3)
+	fci.rwMutex.RUnlock()
+
+	assert.ErrorIs(t, <-newTermErr, constant.ErrInvalidTerm)
+	assert.EqualValues(t, 3, fc.Term())
 	assert.NoError(t, fc.Close())
 }
 
@@ -3569,6 +3633,42 @@ func TestFollowerControllerStateApplierRetriesEntriesFailingToApply(t *testing.T
 	assert.EqualValues(t, wal.InvalidOffset, fc.CommitOffset())
 
 	closeStream()
+	assert.NoError(t, fc.Close())
+}
+
+func TestFollowerControllerProcessCommittedEntriesLoopStopsAfterMaxInclusive(t *testing.T) {
+	walFactory, kvFactory := newHookFactories(t)
+	fc := newReplicatingFollower(t, walFactory, kvFactory)
+	appendUncommittedEntries(t, fc, 2)
+	fci := fc.(*followerController)
+
+	fci.rwMutex.RLock()
+	snapshotGeneration := fci.snapshotGeneration
+	reader, err := fci.wal.NewReader(0)
+	fci.rwMutex.RUnlock()
+	require.NoError(t, err)
+	assert.NoError(t, fci.processCommittedEntriesLoop(reader, snapshotGeneration, 0))
+	assert.NoError(t, reader.Close())
+	assert.EqualValues(t, wal.InvalidOffset, fc.CommitOffset())
+
+	assert.NoError(t, fc.Close())
+}
+
+func TestFollowerControllerProcessCommittedEntriesLoopStopsAtWalEnd(t *testing.T) {
+	walFactory, kvFactory := newHookFactories(t)
+	fc := newReplicatingFollower(t, walFactory, kvFactory)
+	appendUncommittedEntries(t, fc, 2)
+	fci := fc.(*followerController)
+
+	fci.rwMutex.RLock()
+	snapshotGeneration := fci.snapshotGeneration
+	reader, err := fci.wal.NewReader(1)
+	fci.rwMutex.RUnlock()
+	require.NoError(t, err)
+	assert.NoError(t, fci.processCommittedEntriesLoop(reader, snapshotGeneration, 1))
+	assert.NoError(t, reader.Close())
+	assert.EqualValues(t, wal.InvalidOffset, fc.CommitOffset())
+
 	assert.NoError(t, fc.Close())
 }
 
@@ -3862,6 +3962,18 @@ func snapshotChunks(t *testing.T, term int64) []*proto.SnapshotChunk {
 	}
 	require.NoError(t, snapshot.Close())
 	return chunks
+}
+
+// writerIsWaiting reports whether a writer waits for the lock of the follower,
+// which a reader holds: the lock then rejects new readers.
+func writerIsWaiting(fc *followerController) func() bool {
+	return func() bool {
+		if fc.rwMutex.TryRLock() {
+			fc.rwMutex.RUnlock()
+			return false
+		}
+		return true
+	}
 }
 
 func newSnapshotStream(chunks []*proto.SnapshotChunk) *rpc.MockServerSendSnapshotStream {
