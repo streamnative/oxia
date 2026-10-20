@@ -185,8 +185,10 @@ func (s *kvRaftStore) Get(key []byte) ([]byte, error) {
 	return copiedValue, closer.Close()
 }
 
+const uint64Size = 8
+
 func (s *kvRaftStore) SetUint64(key []byte, n uint64) error {
-	value := make([]byte, 8)
+	value := make([]byte, uint64Size)
 	binary.BigEndian.PutUint64(value, n)
 	return s.Set(key, value)
 }
@@ -195,6 +197,9 @@ func (s *kvRaftStore) GetUint64(key []byte) (uint64, error) {
 	value, err := s.Get(key)
 	if err != nil || len(value) == 0 {
 		return 0, err
+	}
+	if len(value) != uint64Size {
+		return 0, errors.Errorf("invalid value of %s: %d bytes instead of %d", key, len(value), uint64Size)
 	}
 
 	return binary.BigEndian.Uint64(value), nil

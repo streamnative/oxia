@@ -174,6 +174,14 @@ func TestKVRaftStoreStableStore(t *testing.T) {
 	assert.EqualValues(t, 42, n)
 }
 
+func TestKVRaftStoreGetUint64RejectsInvalidValue(t *testing.T) {
+	store := newTestStore(t)
+	require.NoError(t, store.Set([]byte("counter"), []byte("abc")))
+
+	_, err := store.GetUint64([]byte("counter"))
+	require.ErrorContains(t, err, "invalid value of counter")
+}
+
 // fakeKV implements the methods of the kv the store uses: the others panic.
 type fakeKV struct {
 	kvstore.KV
