@@ -67,9 +67,16 @@ type rpcProvider struct {
 }
 
 func NewRpcProvider(ctx context.Context, namespace string, tlsConf *tls.Config, authentication auth.Authentication,
+	serviceAddress string, shardManagerSupplier func() ShardManager, dialOptions ...grpc.DialOption,
+) RpcProvider {
+	return newRpcProvider(ctx, namespace, tlsConf, authentication, serviceAddress, shardManagerSupplier, nil,
+		dialOptions...)
+}
+
+func newRpcProvider(ctx context.Context, namespace string, tlsConf *tls.Config, authentication auth.Authentication,
 	serviceAddress string, shardManagerSupplier func() ShardManager, failpoints *failpoint.Failpoints,
 	dialOptions ...grpc.DialOption,
-) RpcProvider {
+) *rpcProvider {
 	return &rpcProvider{
 		ctx:                  ctx,
 		failpoints:           failpoints,

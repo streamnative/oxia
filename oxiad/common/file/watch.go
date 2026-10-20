@@ -28,7 +28,11 @@ import (
 
 // WatchFile signals each time the file at path is created, written, renamed
 // or removed. The channel is closed when the watch fails or ctx is done.
-func WatchFile(ctx context.Context, path string, failpoints *failpoint.Failpoints) (<-chan struct{}, error) {
+func WatchFile(ctx context.Context, path string) (<-chan struct{}, error) {
+	return watchFile(ctx, path, nil)
+}
+
+func watchFile(ctx context.Context, path string, failpoints *failpoint.Failpoints) (<-chan struct{}, error) {
 	logger := slog.With(slog.String("component", "file-watch"), slog.String("path", path))
 	watcher, err := fsnotify.NewWatcher()
 	if err = failpoints.Fail("watchFile.newWatcher", err); err != nil {

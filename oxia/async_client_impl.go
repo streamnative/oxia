@@ -81,7 +81,7 @@ func NewAsyncClient(serviceAddress string, opts ...ClientOption) (AsyncClient, e
 	var shardManager internal.ShardManager
 	rpcProvider := internal.NewRpcProvider(ctx, options.namespace, options.tls, options.authentication, options.serviceAddress, func() internal.ShardManager {
 		return shardManager
-	}, nil, grpcDialOptions...)
+	}, grpcDialOptions...)
 
 	batcherFactory := batch.NewBatcherFactory(
 		rpcProvider,
@@ -714,7 +714,10 @@ func aggregateAndSortRangeScanAcrossShards(order keyOrder, channels []chan range
 	// result with the lowest key and then reading again from that same
 	// channel
 	for h.Len() > 0 {
-		r := h.results[0]
+		r, ok := heap.Pop(h).(*ResultAndChannel)
+		if !ok {
+			panic("failed to cast")
+		}
 
 		outCh <- r.gr
 
@@ -725,10 +728,7 @@ func aggregateAndSortRangeScanAcrossShards(order keyOrder, channels []chan range
 
 		// read again from same channel
 		if next, ok := <-r.ch; ok {
-			h.results[0] = newResultAndChannel(order, next, r.ch)
-			heap.Fix(h, 0)
-		} else {
-			heap.Pop(h)
+			heap.Push(h, newResultAndChannel(order, next, r.ch))
 		}
 	}
 

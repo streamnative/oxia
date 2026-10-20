@@ -39,7 +39,11 @@ func ReadJSONFromFile(path string, value any) (bool, error) {
 // WriteJSONToFile replaces the file at path with value encoded in JSON: it
 // writes a temporary file, then renames it into place, so that the file holds
 // either the old or the new value.
-func WriteJSONToFile(path string, value any, failpoints *failpoint.Failpoints) error {
+func WriteJSONToFile(path string, value any) error {
+	return writeJSONToFile(path, value, nil)
+}
+
+func writeJSONToFile(path string, value any, failpoints *failpoint.Failpoints) error {
 	parentDir := filepath.Dir(path)
 	if err := os.MkdirAll(parentDir, 0755); err != nil {
 		return err

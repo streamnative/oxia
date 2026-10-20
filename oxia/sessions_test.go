@@ -119,7 +119,7 @@ func TestSessions_KeepAliveRetryDelayDoesNotGrow(t *testing.T) {
 	require.NoError(t, err)
 	shardManager := &staticShardManager{leader: options.serviceAddress}
 	rpcProvider := internal.NewRpcProvider(t.Context(), options.namespace, nil, nil, options.serviceAddress,
-		func() internal.ShardManager { return shardManager }, nil)
+		func() internal.ShardManager { return shardManager })
 	defer func() {
 		assert.NoError(t, rpcProvider.Close())
 	}()
@@ -240,7 +240,7 @@ func testSessionsFollowSplit(t *testing.T, test followSplitTest) {
 		shardManager = unnotifiedShardManager{splittable}
 	}
 	rpcProvider := internal.NewRpcProvider(t.Context(), options.namespace, nil, nil, options.serviceAddress,
-		func() internal.ShardManager { return shardManager }, nil)
+		func() internal.ShardManager { return shardManager })
 	defer func() {
 		assert.NoError(t, rpcProvider.Close())
 	}()
@@ -333,7 +333,7 @@ func TestSessions_ShardSplitDuringCreation(t *testing.T) {
 	require.NoError(t, err)
 	shardManager := newSplittableShardManager(options.serviceAddress)
 	rpcProvider := internal.NewRpcProvider(t.Context(), options.namespace, nil, nil, options.serviceAddress,
-		func() internal.ShardManager { return shardManager }, nil)
+		func() internal.ShardManager { return shardManager })
 	defer func() {
 		assert.NoError(t, rpcProvider.Close())
 	}()

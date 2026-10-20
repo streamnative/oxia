@@ -308,7 +308,7 @@ func TestRerouteKeepsEphemeralWriteOrderAcrossSplit(t *testing.T) {
 	client := newRerouteTestClient(shardManager, executor)
 	defer func() { assert.NoError(t, client.writeBatchManager.Close()) }()
 	rpcProvider := internal.NewRpcProvider(t.Context(), options.namespace, nil, nil, options.serviceAddress,
-		func() internal.ShardManager { return shardManager }, nil)
+		func() internal.ShardManager { return shardManager })
 	defer func() { assert.NoError(t, rpcProvider.Close()) }()
 	client.options = options
 	client.sessions = newSessions(t.Context(), shardManager, rpcProvider, options)

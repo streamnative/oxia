@@ -67,7 +67,7 @@ func TestWriteJSONAtomicallyCreatesParentDirectoryAndFile(t *testing.T) {
 
 	err := WriteJSONToFile(path, map[string]string{
 		"hello": "world",
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	content, err := os.ReadFile(path)
@@ -79,7 +79,7 @@ func TestWriteJSONToFileParentIsFile(t *testing.T) {
 	parent := filepath.Join(t.TempDir(), "parent")
 	require.NoError(t, os.WriteFile(parent, nil, 0o600))
 
-	err := WriteJSONToFile(filepath.Join(parent, "state.json"), map[string]string{}, nil)
+	err := WriteJSONToFile(filepath.Join(parent, "state.json"), map[string]string{})
 	assert.ErrorIs(t, err, syscall.ENOTDIR)
 }
 
@@ -87,7 +87,7 @@ func TestWriteJSONToFileUnsupportedValue(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.json")
 
-	err := WriteJSONToFile(path, make(chan int), nil)
+	err := WriteJSONToFile(path, make(chan int))
 	var unsupported *json.UnsupportedTypeError
 	assert.ErrorAs(t, err, &unsupported)
 	assertDirEntries(t, dir)
@@ -101,7 +101,7 @@ func TestWriteJSONToFileReadOnlyDirectory(t *testing.T) {
 	require.NoError(t, os.Chmod(dir, 0o500))
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
 
-	err := WriteJSONToFile(filepath.Join(dir, "state.json"), map[string]string{}, nil)
+	err := WriteJSONToFile(filepath.Join(dir, "state.json"), map[string]string{})
 	assert.ErrorIs(t, err, os.ErrPermission)
 	assertDirEntries(t, dir)
 }
@@ -116,7 +116,7 @@ func TestWriteJSONToFileUnreadableDirectory(t *testing.T) {
 	require.NoError(t, os.Chmod(dir, 0o300))
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
 
-	err := WriteJSONToFile(path, map[string]string{"hello": "world"}, nil)
+	err := WriteJSONToFile(path, map[string]string{"hello": "world"})
 	assert.ErrorIs(t, err, os.ErrPermission)
 
 	require.NoError(t, os.Chmod(dir, 0o700))
@@ -130,7 +130,7 @@ func TestWriteJSONToFileTargetIsDirectory(t *testing.T) {
 	path := filepath.Join(dir, "state.json")
 	require.NoError(t, os.MkdirAll(filepath.Join(path, "child"), 0o755))
 
-	err := WriteJSONToFile(path, map[string]string{}, nil)
+	err := WriteJSONToFile(path, map[string]string{})
 	var linkErr *os.LinkError
 	assert.ErrorAs(t, err, &linkErr)
 	// The temporary file is removed when the rename fails
@@ -148,7 +148,7 @@ func TestWriteJSONToFileTempFileFailures(t *testing.T) {
 				name: func() error { return injected },
 			})
 
-			err := WriteJSONToFile(path, map[string]string{"hello": "oxia"}, failpoints)
+			err := writeJSONToFile(path, map[string]string{"hello": "oxia"}, failpoints)
 
 			assert.ErrorIs(t, err, injected)
 			assertDirEntries(t, dir, "state.json")

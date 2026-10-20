@@ -33,7 +33,7 @@ func TestWatchFileSignalsWriteAndClosesOnCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	changes, err := WatchFile(ctx, path, nil)
+	changes, err := WatchFile(ctx, path)
 	require.NoError(t, err)
 
 	require.NoError(t, os.WriteFile(path, []byte("a: 1"), 0o600))
@@ -58,7 +58,7 @@ func TestWatchFileSignalsWriteAndClosesOnCancel(t *testing.T) {
 func TestWatchFileReturnsErrorForMissingDirectory(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "missing", "config.yaml")
 
-	changes, err := WatchFile(context.Background(), path, nil)
+	changes, err := WatchFile(context.Background(), path)
 
 	assert.Error(t, err)
 	assert.Nil(t, changes)
@@ -70,7 +70,7 @@ func TestWatchFileReturnsWatcherCreationError(t *testing.T) {
 		"watchFile.newWatcher": func() error { return injected },
 	})
 
-	changes, err := WatchFile(t.Context(), filepath.Join(t.TempDir(), "config.yaml"), failpoints)
+	changes, err := watchFile(t.Context(), filepath.Join(t.TempDir(), "config.yaml"), failpoints)
 
 	assert.ErrorIs(t, err, injected)
 	assert.Nil(t, changes)
@@ -82,7 +82,7 @@ func TestWatchFileClosesWhenTheWatchFails(t *testing.T) {
 		"watchFile.event": func() error { return errors.New("injected") },
 	})
 
-	changes, err := WatchFile(t.Context(), path, failpoints)
+	changes, err := watchFile(t.Context(), path, failpoints)
 	require.NoError(t, err)
 
 	require.NoError(t, os.WriteFile(path, []byte("a: 1"), 0o600))
@@ -100,7 +100,7 @@ func TestWatchFileClosesWhenTheWatcherFailsToClose(t *testing.T) {
 		},
 	})
 
-	changes, err := WatchFile(ctx, path, failpoints)
+	changes, err := watchFile(ctx, path, failpoints)
 	require.NoError(t, err)
 
 	cancel()

@@ -96,7 +96,7 @@ func NewProvider[T gproto.Message](
 	var watch cache.WatchFunc
 	if watchEnabled.Enabled() {
 		watch = func(ctx context.Context) (<-chan struct{}, error) {
-			return commonfile.WatchFile(ctx, p.path, nil)
+			return commonfile.WatchFile(ctx, p.path)
 		}
 	}
 	p.cache = cache.New(p.ctx, p.load, watch)
