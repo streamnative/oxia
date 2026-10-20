@@ -1583,6 +1583,307 @@ func TestWalTruncateLogWaitsForReads(t *testing.T) {
 	assert.NoError(t, f.Close())
 }
 
+func TestFactoryNewWalRejectsInvalidNamespace(t *testing.T) {
+	f := NewTestWalFactory(t)
+
+	_, err := f.NewWal("../escape", shard, nil)
+	assert.ErrorContains(t, err, "path traversal")
+}
+
+func TestFactoryNewWalFailsWhenWalPathIsFile(t *testing.T) {
+	dir := t.TempDir()
+	p := walPath(dir, constant.DefaultNamespace, shard)
+	require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+	require.NoError(t, os.WriteFile(p, nil, 0o644))
+	f := NewWalFactory(&FactoryOptions{BaseWalDir: dir})
+
+	_, err := f.NewWal(constant.DefaultNamespace, shard, nil)
+	assert.ErrorContains(t, err, "failed to list files in wal directory")
+}
+
+func TestFactoryNewWalFailsOnMalformedSegmentFileName(t *testing.T) {
+	dir := t.TempDir()
+	p := walPath(dir, constant.DefaultNamespace, shard)
+	require.NoError(t, os.MkdirAll(p, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(p, "segment"+codec.SupportedCodecs[0].GetTxnExtension()), nil, 0o644))
+	f := NewWalFactory(&FactoryOptions{BaseWalDir: dir})
+
+	_, err := f.NewWal(constant.DefaultNamespace, shard, nil)
+	assert.Error(t, err)
+}
+
+func TestFactoryNewWalFailsWhenPrecedingSegmentIsCorrupted(t *testing.T) {
+	f, w := newSmallWal(t)
+	appendEntries(t, w, 1, 0, 19, "v")
+	require.NoError(t, w.Close())
+	segments, err := listAllSegments(w.walPath)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(segments), 2)
+
+	// Corrupt the last record of the segment preceding the read-write one,
+	// whose crc the recovery chains the next appends from
+	preceding := segments[len(segments)-2]
+	c, err := newSegmentConfig(w.walPath, preceding)
+	require.NoError(t, err)
+	idx, err := c.codec.ReadIndex(c.idxPath)
+	require.NoError(t, err)
+	corruptPayload(t, c, codec.ReadInt(idx, uint32(len(idx)-4)))
+
+	_, err = f.NewWal(constant.DefaultNamespace, shard, nil)
+	assert.ErrorIs(t, err, codec.ErrDataCorrupted)
+}
+
+func TestFactoryNewWalFailsWhenTrailingSegmentCannotBeDiscarded(t *testing.T) {
+	f, w := newSmallWal(t)
+	appendEntries(t, w, 1, 0, 19, "v")
+	require.NoError(t, w.Close())
+	segments, err := listAllSegments(w.walPath)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(segments), 2)
+
+	// The segment preceding the read-write one lost its content, which makes
+	// the recovery discard the read-write one
+	preceding, err := newSegmentConfig(w.walPath, segments[len(segments)-2])
+	require.NoError(t, err)
+	require.NoError(t, os.Remove(preceding.idxPath))
+	info, err := os.Stat(preceding.txnPath)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(preceding.txnPath, make([]byte, info.Size()), 0o644))
+	// A non-empty directory in place of its index file cannot be removed
+	trailing, err := newSegmentConfig(w.walPath, segments[len(segments)-1])
+	require.NoError(t, err)
+	require.NoError(t, codec.RemoveFileIfExists(trailing.idxPath))
+	require.NoError(t, os.MkdirAll(filepath.Join(trailing.idxPath, "child"), 0o755))
+
+	_, err = f.NewWal(constant.DefaultNamespace, shard, nil)
+	assert.ErrorContains(t, err, "failed to recover wal")
+	assert.DirExists(t, trailing.idxPath)
+}
+
+func TestWalAppendRejectsNegativeOffset(t *testing.T) {
+	f, w := createWal(t)
+
+	err := w.AppendAsync(&proto.LogEntry{Term: 1, Offset: -1, Value: []byte("v")})
+	assert.ErrorContains(t, err, "invalid next offset")
+	assert.EqualValues(t, InvalidOffset, w.LastOffset())
+
+	assert.NoError(t, w.Close())
+	assert.NoError(t, f.Close())
+}
+
+// A log entry with all its fields at their zero value serializes to no bytes,
+// which a segment cannot hold.
+func TestWalAppendRejectsEmptyEntry(t *testing.T) {
+	f, w := createWal(t)
+
+	assert.ErrorIs(t, w.AppendAsync(&proto.LogEntry{}), codec.ErrEmptyPayload)
+	assert.EqualValues(t, InvalidOffset, w.LastOffset())
+
+	assert.NoError(t, w.Close())
+	assert.NoError(t, f.Close())
+}
+
+func TestWalAppendRejectsEntryLargerThanSegment(t *testing.T) {
+	f, w := newSmallWal(t)
+	appendEntries(t, w, 1, 0, 0, "v")
+
+	err := w.Append(&proto.LogEntry{Term: 1, Offset: 1, Value: make([]byte, 256)})
+	assert.ErrorIs(t, err, ErrSegmentFull)
+	assert.EqualValues(t, 0, w.LastOffset())
+
+	assert.NoError(t, w.Close())
+	assert.NoError(t, f.Close())
+}
+
+func TestWalAppendFailsWhenClearedSegmentCannotBeDeleted(t *testing.T) {
+	f, w := newSmallWal(t)
+	require.NoError(t, w.Clear())
+	require.NoError(t, os.Chmod(w.walPath, 0o500))
+	t.Cleanup(func() { assert.NoError(t, os.Chmod(w.walPath, 0o700)) })
+
+	err := w.Append(&proto.LogEntry{Term: 1, Offset: 5, Value: []byte("v")})
+	assert.ErrorIs(t, err, os.ErrPermission)
+	assert.EqualValues(t, InvalidOffset, w.LastOffset())
+
+	assert.NoError(t, w.Close())
+	assert.NoError(t, f.Close())
+}
+
+func TestWalAppendAndSyncReportsAppendFailure(t *testing.T) {
+	f, w := createWal(t)
+	require.NoError(t, w.Append(&proto.LogEntry{Term: 1, Offset: 0, Value: []byte("v")}))
+
+	done := make(chan error, 1)
+	w.AppendAndSync(&proto.LogEntry{Term: 1, Offset: 5, Value: []byte("v")}, func(_ uint32, err error) {
+		done <- err
+	})
+	assert.ErrorIs(t, <-done, ErrInvalidNextOffset)
+	assert.EqualValues(t, 0, w.LastOffset())
+
+	assert.NoError(t, w.Close())
+	assert.NoError(t, f.Close())
+}
+
+func TestWalReadAtIndexFailsOnUndecodableEntry(t *testing.T) {
+	options := &FactoryOptions{BaseWalDir: t.TempDir(), SegmentSize: 1024}
+	f := NewWalFactory(options)
+	w, err := f.NewWal(constant.DefaultNamespace, shard, nil)
+	require.NoError(t, err)
+	require.NoError(t, w.Append(&proto.LogEntry{Term: 1, Offset: 0, Value: []byte("v")}))
+	require.NoError(t, w.Close())
+
+	// Append a record that is not a log entry: a truncated varint
+	segment, err := newReadWriteSegment(w.(*wal).walPath, 0, 1024, 0, nil)
+	require.NoError(t, err)
+	require.NoError(t, segment.Append(1, []byte{0xff}))
+	require.NoError(t, segment.Close())
+
+	w, err = f.NewWal(constant.DefaultNamespace, shard, nil)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, w.LastOffset())
+
+	entry, err := readEntry(w, 0)
+	require.NoError(t, err)
+	assert.Equal(t, "v", string(entry.Value))
+	_, err = readEntry(w, 1)
+	assert.Error(t, err)
+
+	assert.NoError(t, w.Close())
+	assert.NoError(t, f.Close())
+}
+
+func TestWalReadAtIndexFailsWhenSegmentFileIsMissing(t *testing.T) {
+	f := NewWalFactory(&FactoryOptions{BaseWalDir: t.TempDir(), SegmentSize: 128})
+	w, err := f.NewWal(constant.DefaultNamespace, shard, nil)
+	require.NoError(t, err)
+	for i := int64(0); i < 20; i++ {
+		require.NoError(t, w.Append(&proto.LogEntry{Term: 1, Offset: i, Value: fmt.Appendf(nil, "v-%d", i)}))
+	}
+	c, err := newSegmentConfig(w.(*wal).walPath, 0)
+	require.NoError(t, err)
+	require.NoError(t, os.Remove(c.txnPath))
+
+	_, err = readEntry(w, 0)
+	assert.ErrorIs(t, err, os.ErrNotExist)
+	entry, err := readEntry(w, 19)
+	require.NoError(t, err)
+	assert.Equal(t, "v-19", string(entry.Value))
+
+	assert.NoError(t, w.Close())
+	assert.NoError(t, f.Close())
+}
+
+func TestWalTruncateLogRejectsOffsetPastLastEntry(t *testing.T) {
+	f, w := createWal(t)
+	appendEntries(t, w, 1, 0, 9, "v")
+
+	_, err := w.TruncateLog(20)
+	assert.ErrorIs(t, err, codec.ErrOffsetOutOfBounds)
+	assert.EqualValues(t, 9, w.LastOffset())
+
+	assert.NoError(t, w.Close())
+	assert.NoError(t, f.Close())
+}
+
+func TestWalTruncateLogFailsWhenWalDirectoryCannotBeRemoved(t *testing.T) {
+	f, w := newSmallWal(t)
+	appendEntries(t, w, 1, 0, 2, "v")
+	parent := filepath.Dir(w.walPath)
+	require.NoError(t, os.Chmod(parent, 0o500))
+	t.Cleanup(func() { assert.NoError(t, os.Chmod(parent, 0o700)) })
+
+	_, err := w.TruncateLog(InvalidOffset)
+	assert.ErrorContains(t, err, "failed to clear wal")
+	assert.DirExists(t, w.walPath)
+
+	assert.NoError(t, w.Close())
+	assert.NoError(t, f.Close())
+}
+
+func TestWalTruncateLogFailsWhenClearingBelowAllSegmentsFails(t *testing.T) {
+	f, w := newSmallWal(t)
+	require.NoError(t, w.Clear())
+	appendEntries(t, w, 1, 100, 119, "v")
+	parent := filepath.Dir(w.walPath)
+	require.NoError(t, os.Chmod(parent, 0o500))
+	t.Cleanup(func() { assert.NoError(t, os.Chmod(parent, 0o700)) })
+
+	_, err := w.TruncateLog(50)
+	assert.ErrorContains(t, err, "failed to clear wal")
+	assert.DirExists(t, w.walPath)
+
+	assert.NoError(t, w.Close())
+	assert.NoError(t, f.Close())
+}
+
+func TestWalTruncateLogFailsWhenCurrentSegmentCannotBeDeleted(t *testing.T) {
+	f, w := newSmallWal(t)
+	appendEntries(t, w, 1, 0, 19, "v")
+	current, err := newSegmentConfig(w.walPath, w.currentSegment.BaseOffset())
+	require.NoError(t, err)
+	require.NoError(t, os.Chmod(w.walPath, 0o500))
+	t.Cleanup(func() { assert.NoError(t, os.Chmod(w.walPath, 0o700)) })
+
+	_, err = w.TruncateLog(0)
+	assert.ErrorIs(t, err, os.ErrPermission)
+	assert.FileExists(t, current.txnPath)
+
+	assert.NoError(t, w.Close())
+	assert.NoError(t, f.Close())
+}
+
+func TestWalTruncateLogFailsWhenSegmentFileIsMissing(t *testing.T) {
+	f, w := newSmallWal(t)
+	appendEntries(t, w, 1, 0, 19, "v")
+	segments, err := listAllSegments(w.walPath)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(segments), 2)
+	highestReadOnly := segments[len(segments)-2]
+	c, err := newSegmentConfig(w.walPath, highestReadOnly)
+	require.NoError(t, err)
+	require.NoError(t, os.Remove(c.txnPath))
+
+	_, err = w.TruncateLog(highestReadOnly)
+	assert.ErrorIs(t, err, os.ErrNotExist)
+
+	assert.NoError(t, w.Close())
+	assert.NoError(t, f.Close())
+}
+
+func TestReaderReadNextFailsWhenClosed(t *testing.T) {
+	f, w := createWal(t)
+	appendEntries(t, w, 1, 0, 2, "v")
+
+	forward, err := w.NewReader(InvalidOffset)
+	require.NoError(t, err)
+	reverse, err := w.NewReverseReader()
+	require.NoError(t, err)
+	for _, r := range []Reader{forward, reverse} {
+		require.True(t, r.HasNext())
+		require.NoError(t, r.Close())
+
+		assert.False(t, r.HasNext())
+		_, _, _, err = r.ReadNext()
+		assert.ErrorIs(t, err, ErrReaderClosed)
+	}
+
+	assert.NoError(t, w.Close())
+	assert.NoError(t, f.Close())
+}
+
+func TestReverseReaderReadNextFailsOnEmptyWal(t *testing.T) {
+	f, w := createWal(t)
+
+	r, err := w.NewReverseReader()
+	require.NoError(t, err)
+	_, _, _, err = r.ReadNext()
+	assert.ErrorIs(t, err, codec.ErrOffsetOutOfBounds)
+	assert.NoError(t, r.Close())
+
+	assert.NoError(t, w.Close())
+	assert.NoError(t, f.Close())
+}
+
 // hookedReadWriteSegment runs a hook before each read of the segment.
 type hookedReadWriteSegment struct {
 	ReadWriteSegment
@@ -1610,6 +1911,16 @@ func appendRolledOver(t *testing.T, w Wal) {
 	impl.RLock()
 	defer impl.RUnlock()
 	require.Len(t, impl.pendingCloseSegments, 1)
+}
+
+// newSmallWal returns a wal with segments of 128 bytes, and without sync
+// rounds.
+func newSmallWal(t *testing.T) (Factory, *wal) {
+	t.Helper()
+	f := NewWalFactory(&FactoryOptions{BaseWalDir: t.TempDir(), SegmentSize: 128})
+	w, err := f.NewWal(constant.DefaultNamespace, shard, nil)
+	require.NoError(t, err)
+	return f, w.(*wal)
 }
 
 func readEntry(w Wal, offset int64) (*proto.LogEntry, error) {

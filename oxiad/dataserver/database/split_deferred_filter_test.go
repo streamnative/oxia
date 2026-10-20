@@ -16,12 +16,14 @@ package database
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protowire"
 	pb "google.golang.org/protobuf/proto"
 
 	"github.com/oxia-db/oxia/common/constant"
@@ -657,4 +659,126 @@ func TestDeferredSplitFilter_RangeScanRacingLastStep(t *testing.T) {
 	}
 	require.NoError(t, it.Close())
 	assert.Equal(t, kept, scanned)
+}
+
+func TestEntryPartitionKeyRejectsMalformedEntry(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		entry []byte
+	}{
+		{"truncated-partition-key",
+			append(protowire.AppendTag(nil, storageEntryPartitionKeyField, protowire.BytesType), 5, 'a')},
+		{"truncated-other-field", append(protowire.AppendTag(nil, storageEntryPartitionKeyField+1, protowire.VarintType), 0xff)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			partitionKey, found := entryPartitionKey(test.entry)
+			assert.Nil(t, partitionKey)
+			assert.False(t, found)
+		})
+	}
+}
+
+// A write of the child's own terms drops the record it finds that the child
+// doesn't keep: it fails when the callback fails, and leaves the record.
+func TestDeferredSplitFilterChildWriteFailsWhenDropCallbackFails(t *testing.T) {
+	db := newDeferredSplitTestDB(t, proto.KeySortingType_NATURAL)
+	putStorageEntry(t, db.RawKV(), FailureCallbackKey, nil)
+	require.NoError(t, db.SetDeferredSplitFilter(filterExcluding(FailureCallbackKey), nil))
+
+	_, err := db.ProcessWrite(&proto.WriteRequest{Deletes: []*proto.DeleteRequest{{Key: FailureCallbackKey}}},
+		0, 0, FailureCallback{})
+	assert.ErrorContains(t, err, "failure injection")
+	assert.True(t, keyExists(t, db.RawKV(), FailureCallbackKey))
+}
+
+func TestDeferredSplitFilterStepFailsWhenDropCallbackFails(t *testing.T) {
+	db := newDeferredSplitTestDB(t, proto.KeySortingType_NATURAL)
+	putStorageEntry(t, db.RawKV(), FailureCallbackKey, nil)
+	filter := filterExcluding(FailureCallbackKey)
+	require.NoError(t, db.SetDeferredSplitFilter(filter, nil))
+
+	_, err := db.ProcessControlRequest(&proto.ControlRequest{Value: &proto.ControlRequest_SplitFilter{
+		SplitFilter: &proto.SplitFilterRequest{MaxRecords: 100},
+	}}, 0, 0, FailureCallback{})
+	assert.ErrorContains(t, err, "failure injection")
+	assert.True(t, keyExists(t, db.RawKV(), FailureCallbackKey))
+	assert.Equal(t, filter, db.DeferredSplitFilter())
+}
+
+func TestPrefixIteratorKeepsIndexEntry(t *testing.T) {
+	db := newDeferredSplitTestDB(t, proto.KeySortingType_NATURAL)
+	_, err := db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
+		Key:              "a",
+		Value:            []byte("v"),
+		SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "idx", SecondaryKey: "x"}},
+	}}}, 0, 0, NoOpCallback)
+	require.NoError(t, err)
+	filter := &DeferredSplitFilter{MinHash: 0, MaxHash: math.MaxUint32}
+
+	it, err := db.KeyPrefixIterator(idxKeyPrefix+"/", "")
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, it.Close()) })
+	for _, test := range []struct {
+		name     string
+		indexKey string
+		kept     bool
+	}{
+		{"entry-of-record", secondaryIndexKey("idx", "x", "a"), true},
+		{"not-an-index-entry", "a", true},
+		{"missing-record", secondaryIndexKey("idx", "x", "b"), false},
+		{"entry-not-of-record", secondaryIndexKey("idx", "y", "a"), false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			kept, err := it.KeepsIndexEntry(filter, test.indexKey)
+			require.NoError(t, err)
+			assert.Equal(t, test.kept, kept)
+		})
+	}
+}
+
+func TestDeferredSplitFilterGetFailsOnCorruptedRecord(t *testing.T) {
+	db := newDeferredSplitTestDB(t, proto.KeySortingType_NATURAL)
+	putRawKey(t, db.RawKV(), "a", []byte{0xff})
+	require.NoError(t, db.SetDeferredSplitFilter(&DeferredSplitFilter{MinHash: 0, MaxHash: math.MaxUint32}, nil))
+
+	for _, comparison := range []proto.KeyComparisonType{proto.KeyComparisonType_EQUAL, proto.KeyComparisonType_FLOOR} {
+		_, err := db.Get(&proto.GetRequest{Key: "a", ComparisonType: comparison, IncludeValue: true})
+		assert.ErrorContains(t, err, "failed to Deserialize storage entry", "comparison %v", comparison)
+	}
+}
+
+func TestDeferredSplitFilterGetRejectsUnknownComparison(t *testing.T) {
+	db := newDeferredSplitTestDB(t, proto.KeySortingType_NATURAL)
+	setLeftChildFilter(t, db)
+
+	_, err := db.Get(&proto.GetRequest{Key: "a", ComparisonType: proto.KeyComparisonType(99)})
+	assert.ErrorContains(t, err, "unsupported comparison type")
+}
+
+func TestKeptRecordsIteratorError(t *testing.T) {
+	db := newDeferredSplitTestDB(t, proto.KeySortingType_NATURAL)
+	records := deferredSplitRecords(t, "key-%03d")
+	putDeferredSplitRecords(t, db, records)
+	setLeftChildFilter(t, db)
+
+	it, err := db.List(&proto.ListRequest{})
+	require.NoError(t, err)
+	var listed []string
+	for ; it.Valid(); it.Next() {
+		listed = append(listed, it.Key())
+	}
+	assert.NoError(t, it.Error())
+	assert.NoError(t, it.Close())
+	assert.Equal(t, keptKeys(db, records), listed)
+}
+
+// filterExcluding returns the deferred filter of the child of a split that
+// doesn't keep the record at key.
+func filterExcluding(key string) *DeferredSplitFilter {
+	left, right := splitRanges()
+	other := left
+	if isHashInRange(hash.Xxh332(key), left) {
+		other = right
+	}
+	return &DeferredSplitFilter{MinHash: other.Min, MaxHash: other.Max, ParentTerm: 1}
 }

@@ -27,6 +27,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/oxia-db/oxia/common/compare"
+	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/proto"
 )
 
@@ -349,4 +350,147 @@ func TestCreateMarkerLeavesUpToDateMarkerAlone(t *testing.T) {
 	markerData, err := os.ReadFile(markerPath)
 	assert.NoError(t, err)
 	assert.Equal(t, compare.EncoderHierarchical.Name(), string(markerData))
+}
+
+// The databases written before the key encoding marker existed sort the keys
+// with the old hierarchical comparer, and get converted on open.
+func TestPebbleDbConversionSkipsUnknownMarker(t *testing.T) {
+	kvFactory, err := NewPebbleKVFactory(NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, kvFactory.Close()) })
+	dbPath := kvFactory.(*PebbleFactory).getKVPath(constant.DefaultNamespace, 0)
+	require.NoError(t, createMarker(dbPath, "unknown-format"))
+
+	kv, err := kvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_NATURAL)
+	require.NoError(t, err)
+	assert.NoError(t, kv.Close())
+	assertMarker(t, dbPath, compare.EncoderNatural.Name())
+}
+
+func TestPebbleDbConversionFailsWhenMarkerIsUnreadable(t *testing.T) {
+	kvFactory, err := NewPebbleKVFactory(NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, kvFactory.Close()) })
+	dbPath := kvFactory.(*PebbleFactory).getKVPath(constant.DefaultNamespace, 0)
+	require.NoError(t, os.MkdirAll(filepath.Join(dbPath, markerFileName), 0o755))
+
+	_, err = kvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_NATURAL)
+	assert.ErrorContains(t, err, "failed to convert db")
+}
+
+func TestPebbleDbConversionFailsWhenLeftoverBackupCannotBeRemoved(t *testing.T) {
+	kvFactory, dbPath := newNaturalDb(t)
+	makeUnremovable(t, makeDbBackupPath(dbPath))
+
+	_, err := kvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_NATURAL)
+	assert.ErrorIs(t, err, os.ErrPermission)
+}
+
+// A conversion that fails holding the old database releases it: the retry
+// opens it.
+func TestPebbleDbConversionFailsWhenOldDbIsLocked(t *testing.T) {
+	kvFactory, dbPath := newNaturalDb(t)
+	lock, err := pebble.LockDirectory(dbPath, vfs.Default)
+	require.NoError(t, err)
+
+	_, err = kvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_HIERARCHICAL)
+	assert.ErrorContains(t, err, "failed to open old database")
+	require.NoError(t, lock.Close())
+	assertMarker(t, dbPath, compare.EncoderNatural.Name())
+}
+
+func TestPebbleDbConversionFailsWhenStaleTempDbCannotBeRemoved(t *testing.T) {
+	kvFactory, dbPath := newNaturalDb(t)
+	restore := makeUnremovable(t, makeSwapTmpDbPath(dbPath, compare.EncoderHierarchical))
+
+	_, err := kvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_HIERARCHICAL)
+	assert.ErrorIs(t, err, os.ErrPermission)
+
+	// The failed conversion closed the old db, or its lock would fail this retry
+	restore()
+	kv, err := kvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_HIERARCHICAL)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/key/a"}, scanAllKeys(t, kv, NoInternalKeys))
+	assert.NoError(t, kv.Close())
+}
+
+// The conversion is complete once the new database replaced the old one: a
+// failure to delete the old one leaves it as a backup, which the next open
+// deletes.
+func TestPebbleDbConversionFailsWhenBackupCannotBeRemoved(t *testing.T) {
+	kvFactory, dbPath := newNaturalDb(t)
+	makeUnremovable(t, dbPath)
+
+	_, err := kvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_HIERARCHICAL)
+	assert.ErrorContains(t, err, "failed to clean up old database backup")
+	assertMarker(t, dbPath, compare.EncoderHierarchical.Name())
+
+	require.NoError(t, os.Chmod(filepath.Join(makeDbBackupPath(dbPath), "unremovable"), 0o700))
+	kv, err := kvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_HIERARCHICAL)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/key/a"}, scanAllKeys(t, kv, NoInternalKeys))
+	assert.NoError(t, kv.Close())
+	assert.NoDirExists(t, makeDbBackupPath(dbPath))
+}
+
+func TestGetKeyEncoderFailsWhenMarkerIsUnreadable(t *testing.T) {
+	dbPath := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(dbPath, markerFileName), 0o755))
+
+	_, err := getKeyEncoder(dbPath, proto.KeySortingType_UNKNOWN)
+	assert.Error(t, err)
+}
+
+func TestGetKeyEncoderFailsOnUnknownMarker(t *testing.T) {
+	kvFactory, err := NewPebbleKVFactory(NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, kvFactory.Close()) })
+	dbPath := kvFactory.(*PebbleFactory).getKVPath(constant.DefaultNamespace, 0)
+	require.NoError(t, createMarker(dbPath, "unknown-format"))
+
+	_, err = kvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_UNKNOWN)
+	assert.ErrorContains(t, err, "unknown encoding sort type")
+}
+
+func TestCreateMarkerFailsWhenPathIsUnderFile(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "file")
+	require.NoError(t, os.WriteFile(file, nil, 0o644))
+
+	assert.Error(t, createMarker(filepath.Join(file, "db"), compare.EncoderNatural.Name()))
+}
+
+// newNaturalDb returns a factory and the path of a closed database with the
+// natural encoding, holding the key "/key/a".
+func newNaturalDb(t *testing.T) (Factory, string) {
+	t.Helper()
+	kvFactory, err := NewPebbleKVFactory(NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, kvFactory.Close()) })
+	kv, err := kvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_NATURAL)
+	require.NoError(t, err)
+	putAll(t, kv, "/key/a")
+	dbPath := kv.(*Pebble).dbPath
+	require.NoError(t, kv.Close())
+	return kvFactory, dbPath
+}
+
+// makeUnremovable creates dir, if missing, with a subdirectory "unremovable"
+// whose file cannot be removed, and returns the function that makes it
+// removable again, which also runs at the cleanup of the test.
+func makeUnremovable(t *testing.T, dir string) func() {
+	t.Helper()
+	unremovable := filepath.Join(dir, "unremovable")
+	require.NoError(t, os.MkdirAll(unremovable, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(unremovable, "file"), nil, 0o644))
+	require.NoError(t, os.Chmod(unremovable, 0o500))
+	restore := func() { _ = os.Chmod(unremovable, 0o700) }
+	t.Cleanup(restore)
+	return restore
+}
+
+func assertMarker(t *testing.T, dbPath string, expected string) {
+	t.Helper()
+	marker, err := os.ReadFile(filepath.Join(dbPath, markerFileName))
+	require.NoError(t, err)
+	assert.Equal(t, expected, string(marker))
 }

@@ -133,3 +133,25 @@ func TestV1_RecoverIndex(t *testing.T) {
 		assert.EqualValues(t, payloads[i], payload)
 	}
 }
+
+func TestV1ReadRecordWithValidationRejectsTruncatedHeader(t *testing.T) {
+	_, _, _, err := v1.ReadRecordWithValidation(make([]byte, 2), 0)
+	assert.ErrorIs(t, err, ErrOffsetOutOfBounds)
+}
+
+func TestV1WriteIndexFailsWhenDirectoryIsMissing(t *testing.T) {
+	p := path.Join(t.TempDir(), "missing", "0"+v1.GetIdxExtension())
+
+	err := v1.WriteIndex(p, []byte{0, 0, 0, 1})
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestV1ReadIndexFailsWhenFileIsMissing(t *testing.T) {
+	_, err := v1.ReadIndex(path.Join(t.TempDir(), "0"+v1.GetIdxExtension()))
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestV1ReadIndexFailsWhenPathIsDirectory(t *testing.T) {
+	_, err := v1.ReadIndex(t.TempDir())
+	assert.ErrorContains(t, err, "failed to read segment index file")
+}

@@ -16,6 +16,7 @@ package database
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -2485,4 +2486,186 @@ func TestApplyPutDetachesRequestValue(t *testing.T) {
 
 	assert.NoError(t, testDB.Close())
 	assert.NoError(t, factory.Close())
+}
+
+func TestNewDBFailsOnInvalidNamespace(t *testing.T) {
+	factory, err := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, factory.Close()) })
+
+	_, err = NewDB("../escape", 1, factory, proto.KeySortingType_NATURAL, 0, time.SystemClock)
+	assert.ErrorContains(t, err, "path traversal")
+}
+
+// The database refuses to open on an internal record that it cannot read back,
+// rather than serving the shard from a wrong state.
+func TestNewDBFailsOnCorruptedInternalRecord(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		key         string
+		value       []byte
+		errContains string
+	}{
+		{"last-version-id", commitLastVersionIdKey, []byte{0xff}, "failed to Deserialize storage entry"},
+		{"checksum", commitChecksumKey, marshalEntry(t, "abc"), "expected integer"},
+		{"negative-feature", featureFlagKeyPrefix + "/-1", marshalEntry(t, "-1"), "invalid feature flag key"},
+		{"unpadded-feature", featureFlagKeyPrefix + "/1", marshalEntry(t, "1"), "invalid feature flag key"},
+		{"split-filter-entry", splitFilterKey, []byte{0xff}, "failed to Deserialize storage entry"},
+		{"split-filter", splitFilterKey, marshalEntry(t, "{"), "invalid split filter"},
+		{"deferred-split-filter-entry", deferredSplitFilterKey, []byte{0xff}, "failed to Deserialize storage entry"},
+		{"deferred-split-filter", deferredSplitFilterKey, marshalEntry(t, "{"), "invalid deferred split filter"},
+		{"inherited-notifications-entry", inheritedNotificationsKey, []byte{0xff}, "failed to Deserialize storage entry"},
+		{"inherited-notifications", inheritedNotificationsKey, marshalEntry(t, "{"), "invalid inherited notifications"},
+		{"notification-key", notificationsPrefix + "/!", marshalEntry(t, ""), "failed to read last notification offset"},
+		{"trimmed-notifications", trimmedNotificationsKey, marshalEntry(t, "abc"),
+			"failed to read trimmed notifications offset"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			factory, err := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
+			require.NoError(t, err)
+			t.Cleanup(func() { assert.NoError(t, factory.Close()) })
+			db, err := NewDB(constant.DefaultNamespace, 1, factory, proto.KeySortingType_NATURAL, 0, time.SystemClock)
+			require.NoError(t, err)
+			putRawKey(t, db.RawKV(), test.key, test.value)
+			require.NoError(t, db.Close())
+
+			_, err = NewDB(constant.DefaultNamespace, 1, factory, proto.KeySortingType_NATURAL, 0, time.SystemClock)
+			assert.ErrorContains(t, err, test.errContains)
+
+			// The failed open released the store
+			kv, err := factory.NewKV(constant.DefaultNamespace, 1, proto.KeySortingType_NATURAL)
+			require.NoError(t, err)
+			assert.NoError(t, kv.Close())
+		})
+	}
+}
+
+func TestDBProcessControlRequestRejectsUnknownType(t *testing.T) {
+	db := newNotificationsTestDB(t)
+
+	_, err := db.ProcessControlRequest(&proto.ControlRequest{}, 0, 0, NoOpCallback)
+	assert.ErrorContains(t, err, "unknown control request type")
+	commitOffset, err := db.ReadCommitOffset()
+	require.NoError(t, err)
+	assert.EqualValues(t, -1, commitOffset)
+}
+
+func TestDBProcessWriteFailsWhenDeleteRangeCallbackFails(t *testing.T) {
+	db := newNotificationsTestDB(t)
+	_, err := db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{
+		{Key: FailureCallbackKey, Value: []byte("v")},
+	}}, 0, 0, NoOpCallback)
+	require.NoError(t, err)
+
+	_, err = db.ProcessWrite(&proto.WriteRequest{DeleteRanges: []*proto.DeleteRangeRequest{
+		{StartInclusive: "a", EndExclusive: "z"},
+	}}, 1, 0, FailureCallback{})
+	assert.ErrorContains(t, err, "failed to callback on delete range")
+
+	res, err := db.Get(&proto.GetRequest{Key: FailureCallbackKey})
+	require.NoError(t, err)
+	assert.Equal(t, proto.Status_OK, res.Status)
+}
+
+func TestDBProcessWriteLogsOperationsAtDebugLevel(t *testing.T) {
+	testDB := newNotificationsTestDB(t)
+	var logs strings.Builder
+	testDB.(*db).log = slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	_, err := testDB.ProcessWrite(&proto.WriteRequest{
+		Puts:         []*proto.PutRequest{{Key: "a", Value: []byte("v")}, {Key: "b", Value: []byte("v")}},
+		Deletes:      []*proto.DeleteRequest{{Key: "a"}},
+		DeleteRanges: []*proto.DeleteRangeRequest{{StartInclusive: "b", EndExclusive: "c"}},
+	}, 0, 0, NoOpCallback)
+	require.NoError(t, err)
+
+	assert.Contains(t, logs.String(), "Applied put operation")
+	assert.Contains(t, logs.String(), "Applied delete operation")
+	assert.Contains(t, logs.String(), "Applied delete range operation")
+}
+
+func TestDBGetFailsOnCorruptedRecord(t *testing.T) {
+	db := newNotificationsTestDB(t)
+	putRawKey(t, db.RawKV(), "a", []byte{0xff})
+
+	_, err := db.Get(&proto.GetRequest{Key: "a", IncludeValue: true})
+	assert.ErrorContains(t, err, "failed to Deserialize storage entry")
+}
+
+// The notifications are not storage entries: a scan of the internal keys
+// returns them as they are stored.
+func TestDBRangeScanReturnsNotificationsAsStored(t *testing.T) {
+	db := newNotificationsTestDB(t)
+	_, err := db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{Key: "a", Value: []byte("v")}}},
+		0, 0, NoOpCallback)
+	require.NoError(t, err)
+	stored := dumpKV(t, db)
+
+	it, err := db.RangeScan(&proto.RangeScanRequest{
+		StartInclusive:      notificationsPrefix + "/",
+		EndExclusive:        notificationsPrefix + "0",
+		IncludeInternalKeys: true,
+	})
+	require.NoError(t, err)
+	var count int
+	for ; it.Valid(); it.Next() {
+		res, err := it.Value()
+		require.NoError(t, err)
+		assert.Equal(t, stored[res.GetKey()], string(res.Value))
+		count++
+	}
+	assert.NoError(t, it.Close())
+	assert.Equal(t, 1, count)
+}
+
+func TestDBRangeScanFailsOnCorruptedRecord(t *testing.T) {
+	db := newNotificationsTestDB(t)
+	putRawKey(t, db.RawKV(), "a", []byte{0xff})
+
+	it, err := db.RangeScan(&proto.RangeScanRequest{StartInclusive: "a", EndExclusive: "b"})
+	require.NoError(t, err)
+	require.True(t, it.Valid())
+	_, err = it.Value()
+	assert.ErrorContains(t, err, "failed to Deserialize storage entry")
+	assert.NoError(t, it.Close())
+}
+
+func TestDBReadTermWithoutOptions(t *testing.T) {
+	db := newNotificationsTestDB(t)
+	putRawKey(t, db.RawKV(), termKey, marshalEntry(t, "5"))
+
+	term, options, err := db.ReadTerm()
+	require.NoError(t, err)
+	assert.EqualValues(t, 5, term)
+	assert.Equal(t, TermOptions{}, options)
+}
+
+func TestDBReadTermFailsOnCorruptedRecords(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		records map[string][]byte
+	}{
+		{"term", map[string][]byte{termKey: marshalEntry(t, "abc")}},
+		{"options-entry", map[string][]byte{termKey: marshalEntry(t, "5"), termOptionsKey: {0xff}}},
+		{"options-json", map[string][]byte{termKey: marshalEntry(t, "5"), termOptionsKey: marshalEntry(t, "{")}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			db := newNotificationsTestDB(t)
+			for key, value := range test.records {
+				putRawKey(t, db.RawKV(), key, value)
+			}
+
+			term, _, err := db.ReadTerm()
+			assert.Error(t, err)
+			assert.Equal(t, wal.InvalidTerm, term)
+		})
+	}
+}
+
+// marshalEntry returns the stored bytes of a storage entry holding value.
+func marshalEntry(t *testing.T, value string) []byte {
+	t.Helper()
+	b, err := (&proto.StorageEntry{Value: []byte(value)}).MarshalVT()
+	require.NoError(t, err)
+	return b
 }

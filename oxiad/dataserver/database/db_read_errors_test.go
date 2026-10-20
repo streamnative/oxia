@@ -137,3 +137,31 @@ func TestDB_NotificationsReadFailure(t *testing.T) {
 	_, err = db.ReadNextNotifications(ctx, 0)
 	assert.ErrorIs(t, err, os.ErrPermission)
 }
+
+func TestPrefixIteratorRecordFailsOnReadError(t *testing.T) {
+	db, dataDir := newReadErrorsTestDB(t)
+	_, err := db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{Key: "a", Value: []byte("v")}}},
+		0, 0, NoOpCallback)
+	require.NoError(t, err)
+	flushIntoUnreadableSST(t, db.RawKV(), dataDir)
+
+	it, err := db.KeyPrefixIterator("", "")
+	require.NoError(t, err)
+	_, err = it.Record("a", true)
+	assert.ErrorIs(t, err, os.ErrPermission)
+	_ = it.Close()
+}
+
+// newReadErrorsTestDB returns a database whose notifications trimmer stays
+// idle, and its data dir.
+func newReadErrorsTestDB(t *testing.T) (DB, string) {
+	t.Helper()
+	options := kvstore.NewFactoryOptionsForTest(t)
+	factory, err := kvstore.NewPebbleKVFactory(options)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, factory.Close()) })
+	db, err := NewDB(constant.DefaultNamespace, 1, factory, proto.KeySortingType_NATURAL, 1*time.Hour, time2.SystemClock)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, db.Close()) })
+	return db, options.DataDir
+}
