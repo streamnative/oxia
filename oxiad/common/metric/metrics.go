@@ -17,6 +17,7 @@ package metric
 import (
 	"context"
 	libtls "crypto/tls"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -78,7 +79,7 @@ func Start(bindAddress string, tlsConf *libtls.Config) (*PrometheusMetrics, erro
 	lc := net.ListenConfig{}
 	listener, err := lc.Listen(context.Background(), "tcp", bindAddress)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to start the metrics server on %s: %w", bindAddress, err)
 	}
 
 	p := &PrometheusMetrics{
@@ -89,6 +90,12 @@ func Start(bindAddress string, tlsConf *libtls.Config) (*PrometheusMetrics, erro
 		},
 		port: listener.Addr().(*net.TCPAddr).Port,
 	}
+
+	scheme := "http"
+	if tlsConf != nil {
+		scheme = "https"
+	}
+	slog.Info(fmt.Sprintf("Serving Prometheus metrics at %s://localhost:%d/metrics", scheme, p.port))
 
 	go process.DoWithLabels(
 		context.Background(),

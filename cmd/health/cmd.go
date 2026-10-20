@@ -63,8 +63,8 @@ func (c *Config) clientTLSConf() (*tls.Config, error) {
 var (
 	Cmd = &cobra.Command{
 		Use:   "health",
-		Short: "Oxia health probe",
-		Long:  `Oxia tool to check the health endpoint of a running service`,
+		Short: "Check the health of a running service",
+		Long:  `Check the gRPC health endpoint of a running coordinator or data server, e.g. in a Kubernetes probe.`,
 		Args:  cobra.NoArgs,
 		RunE:  exec,
 	}

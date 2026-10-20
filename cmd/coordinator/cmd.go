@@ -27,6 +27,7 @@ import (
 	"github.com/oxia-db/oxia/common/codec"
 
 	"github.com/oxia-db/oxia/cmd/common/banner"
+	"github.com/oxia-db/oxia/cmd/common/version"
 	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/process"
 	oxiadcommonoption "github.com/oxia-db/oxia/oxiad/common/option"
@@ -42,9 +43,15 @@ var (
 	Cmd = &cobra.Command{
 		Use:   "coordinator",
 		Short: "Start a coordinator",
-		Long:  `Start a coordinator`,
-		Args:  cobra.NoArgs,
-		RunE:  exec,
+		Long: `Start an Oxia coordinator, which manages the cluster: it assigns the shards to the data servers,
+elects their leaders, and balances them.
+
+Configure it with the flags, or with a configuration file passed with --sconfig, which the coordinator
+reloads when it changes.`,
+		Example: `  # Start a coordinator from a configuration file
+  oxia coordinator --sconfig conf/coordinator.yaml`,
+		Args: cobra.NoArgs,
+		RunE: exec,
 	}
 )
 
@@ -95,7 +102,8 @@ func init() {
 }
 
 func exec(cmd *cobra.Command, _ []string) error {
-	return process.RunProcess(cmd.Context(), func() (io.Closer, error) {
+	version.RegisterMetric(version.Get(cmd.Root().Version))
+	return process.RunProcess(cmd.Context(), "COORDINATOR", func() (io.Closer, error) {
 		optionsWatch := commonwatch.New(coordinatorOptions)
 		// configure the options
 		if cmd.Flags().Changed("sconfig") {

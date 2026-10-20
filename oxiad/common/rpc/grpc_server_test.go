@@ -20,6 +20,7 @@ import (
 	"log/slog"
 	"net"
 	"runtime"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -59,6 +60,19 @@ func TestGrpcServerCloseReleasesPort(t *testing.T) {
 		require.NoError(t, err, "the port is still bound after Close")
 		require.NoError(t, listener.Close())
 	}
+}
+
+func TestGrpcServerStartReturnsListenError(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer listener.Close()
+
+	s, err := Default.StartGrpcServer("public", listener.Addr().String(),
+		func(grpc.ServiceRegistrar) {}, nil, &auth.Options{}, nil)
+
+	require.ErrorIs(t, err, syscall.EADDRINUSE)
+	assert.ErrorContains(t, err, "failed to start the public gRPC server on "+listener.Addr().String())
+	assert.Nil(t, s)
 }
 
 func TestGrpcServerStartRejectsUnsupportedAuthProvider(t *testing.T) {

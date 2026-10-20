@@ -44,7 +44,7 @@ func init() {
 var Cmd = &cobra.Command{
 	Use:          "delete [flags] KEY",
 	Short:        "Delete one record",
-	Long:         `Delete the record with the given key, if they exists. If an expected version is provided, the delete will only take place if it matches the version of the current record on the server`,
+	Long:         `Delete the record with the given key, if it exists. If an expected version is provided, the delete only takes place if it matches the version of the current record on the server.`,
 	Args:         cobra.ExactArgs(1),
 	RunE:         exec,
 	SilenceUsage: true,

@@ -16,6 +16,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -41,6 +42,10 @@ func main() {
 			err := rootCmd.ExecuteContext(ctx)
 			stop()
 			if err != nil {
+				if errors.Is(err, syscall.EADDRINUSE) {
+					_, _ = fmt.Fprintln(os.Stderr, "Hint: another process already listens on this address. "+
+						"Stop it, or pick another address with the --*-addr flags or in the configuration file.")
+				}
 				os.Exit(1)
 			}
 		},

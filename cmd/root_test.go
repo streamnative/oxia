@@ -15,12 +15,15 @@
 package main
 
 import (
+	"bytes"
 	"log/slog"
 	"testing"
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
+	buildversion "github.com/oxia-db/oxia/cmd/common/version"
 	"github.com/oxia-db/oxia/oxiad/common/logging"
 )
 
@@ -67,4 +70,22 @@ func TestCall_LogLevel(t *testing.T) {
 			assert.ErrorIs(t, err, test.expectedErr)
 		})
 	}
+}
+
+func TestLogLevelErrorListsTheLevels(t *testing.T) {
+	assert.EqualError(t, LogLevelError("verbose"), "unknown log level (verbose): use one of debug, info, warn or error")
+}
+
+func TestRootPrintsTheBuild(t *testing.T) {
+	var out bytes.Buffer
+	rootCmd.SetOut(&out)
+	rootCmd.SetArgs([]string{"--version"})
+	rootCmd.Version = "1.2.3"
+	t.Cleanup(func() {
+		rootCmd.SetOut(nil)
+		rootCmd.Version = version
+	})
+
+	require.NoError(t, rootCmd.Execute())
+	assert.Equal(t, buildversion.Get("1.2.3").String(), out.String())
 }

@@ -27,12 +27,14 @@ import (
 	"github.com/oxia-db/oxia/cmd/admin"
 	"github.com/oxia-db/oxia/cmd/client"
 	"github.com/oxia-db/oxia/cmd/client/shell"
+	buildversion "github.com/oxia-db/oxia/cmd/common/version"
 	"github.com/oxia-db/oxia/cmd/coordinator"
 	"github.com/oxia-db/oxia/cmd/health"
 	"github.com/oxia-db/oxia/cmd/pebble"
 	"github.com/oxia-db/oxia/cmd/perf"
 	"github.com/oxia-db/oxia/cmd/server"
 	"github.com/oxia-db/oxia/cmd/standalone"
+	versioncmd "github.com/oxia-db/oxia/cmd/version"
 	"github.com/oxia-db/oxia/cmd/wal"
 )
 
@@ -40,9 +42,14 @@ var (
 	version     string
 	logLevelStr string
 	rootCmd     = &cobra.Command{
-		Use:               "oxia",
-		Short:             "Oxia root command",
-		Long:              `Oxia root command`,
+		Use:   "oxia",
+		Short: "Oxia, a scalable metadata store and coordination system",
+		Long: `Oxia is a scalable metadata store and coordination system for large-scale distributed systems.
+
+This binary runs the Oxia services (coordinator, server and standalone), and has the tools to
+read and write records, administer a cluster, and inspect its storage.
+
+Documentation: https://oxia-db.github.io/docs/what-is-oxia`,
 		PersistentPreRunE: configureLogLevel,
 		SilenceUsage:      true,
 		Version:           version,
@@ -52,7 +59,7 @@ var (
 type LogLevelError string
 
 func (l LogLevelError) Error() string {
-	return fmt.Sprintf("unknown log level (%s)", string(l))
+	return fmt.Sprintf("unknown log level (%s): use one of debug, info, warn or error", string(l))
 }
 
 func init() {
@@ -72,6 +79,10 @@ func init() {
 	rootCmd.AddCommand(admin.Cmd)
 	rootCmd.AddCommand(config.Cmd)
 	rootCmd.AddCommand(shell.Cmd)
+	rootCmd.AddCommand(versioncmd.Cmd)
+
+	cobra.AddTemplateFunc("build", func(version string) string { return buildversion.Get(version).String() })
+	rootCmd.SetVersionTemplate(`{{build .Version}}`)
 }
 
 func configureLogLevel(_ *cobra.Command, _ []string) error {

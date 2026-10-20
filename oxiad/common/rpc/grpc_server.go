@@ -18,6 +18,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -122,7 +123,7 @@ func newDefaultGrpcProvider(name, bindAddress string, registerFunc func(grpc.Ser
 	lc := net.ListenConfig{}
 	listener, err := lc.Listen(context.Background(), "tcp", bindAddress)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to start the %s gRPC server on %s: %w", name, bindAddress, err)
 	}
 
 	c.port = listener.Addr().(*net.TCPAddr).Port

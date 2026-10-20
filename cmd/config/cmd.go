@@ -18,16 +18,18 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/oxia-db/oxia/cmd/config/createschema"
+	"github.com/oxia-db/oxia/cmd/config/validate"
 )
 
 var (
 	Cmd = &cobra.Command{
 		Use:   "config",
-		Short: "Config Utils",
-		Long:  `Oxia configuration utilities`,
+		Short: "Configuration tools",
+		Long:  `Tools to generate and check the configuration files of the coordinator and the data server.`,
 	}
 )
 
 func init() {
 	Cmd.AddCommand(createschema.Cmd)
+	Cmd.AddCommand(validate.Cmd)
 }
