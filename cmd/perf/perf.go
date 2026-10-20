@@ -30,6 +30,8 @@ import (
 	"github.com/oxia-db/oxia/oxia"
 )
 
+const DefaultStatsInterval = 10 * time.Second
+
 type Config struct {
 	ServiceAddr     string
 	Namespace       string
@@ -43,6 +45,10 @@ type Config struct {
 	BatchLinger         time.Duration
 	MaxRequestsPerBatch int
 	RequestTimeout      time.Duration
+
+	// StatsInterval is the interval between the stats reports. Zero means use
+	// DefaultStatsInterval.
+	StatsInterval time.Duration
 }
 
 type Perf interface {
@@ -97,7 +103,11 @@ func (p *perf) Run(ctx context.Context) {
 	readLatencyCh := make(chan int64)
 	go p.generateReadTraffic(ctx, p.client, readLatencyCh)
 
-	ticker := time.NewTicker(10 * time.Second)
+	statsInterval := p.config.StatsInterval
+	if statsInterval == 0 {
+		statsInterval = DefaultStatsInterval
+	}
+	ticker := time.NewTicker(statsInterval)
 	defer ticker.Stop()
 
 	wq := quantile.NewTargeted(0.50, 0.95, 0.99, 0.999, 1.0)
@@ -108,9 +118,10 @@ func (p *perf) Run(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
-			writeRate := float64(writeOps) / float64(10)
-			readRate := float64(readOps) / float64(10)
-			failedOpsRate := float64(p.failedOps.Swap(0)) / float64(10)
+			seconds := statsInterval.Seconds()
+			writeRate := float64(writeOps) / seconds
+			readRate := float64(readOps) / seconds
+			failedOpsRate := float64(p.failedOps.Swap(0)) / seconds
 			slog.Info(fmt.Sprintf(`Stats - Total ops: %6.1f ops/s - Failed ops: %6.1f ops/s
 			Write ops %6.1f w/s  Latency ms: 50%% %5.1f - 95%% %5.1f - 99%% %5.1f - 99.9%% %5.1f - max %6.1f
 			Read  ops %6.1f r/s  Latency ms: 50%% %5.1f - 95%% %5.1f - 99%% %5.1f - 99.9%% %5.1f - max %6.1f`,

@@ -53,6 +53,7 @@ func init() {
 	Cmd.Flags().DurationVar(&config.BatchLinger, "batch-linger", oxia.DefaultBatchLinger, "Batch linger time")
 	Cmd.Flags().IntVar(&config.MaxRequestsPerBatch, "max-requests-per-batch", oxia.DefaultMaxRequestsPerBatch, "Maximum requests per batch")
 	Cmd.Flags().DurationVar(&config.RequestTimeout, "request-timeout", oxia.DefaultRequestTimeout, "Request timeout")
+	Cmd.Flags().DurationVar(&config.StatsInterval, "stats-interval", DefaultStatsInterval, "Interval between the stats reports")
 }
 
 func exec(cmd *cobra.Command, _ []string) error {
