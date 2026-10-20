@@ -184,23 +184,12 @@ func (c *runtime) InitiateSplit(namespace string, parentShardId int64, splitPoin
 
 	// Start split controller
 	sc := shardcontroller.NewSplitController(shardcontroller.SplitControllerConfig{
-		Namespace:     namespace,
-		ParentShardId: parentShardId,
-		Metadata:      c.metadata,
-		RpcProvider:   c.rpc,
-		EventListener: c,
-		Split:         parentSplit,
-		EnsembleSelector: func(ns string) ([]*proto.DataServerIdentity, error) {
-			status, err := c.metadata.ListNamespaceStatus()
-			if err != nil {
-				return nil, err
-			}
-			nsConfig, err := c.namespaceConfigForSplit(ns)
-			if err != nil {
-				return nil, err
-			}
-			return c.selectNewEnsemble(ns, 0, nsConfig, status, nil)
-		},
+		Namespace:                 namespace,
+		ParentShardId:             parentShardId,
+		Metadata:                  c.metadata,
+		RpcProvider:               c.rpc,
+		EventListener:             c,
+		Split:                     parentSplit,
 		SupportedFeaturesSupplier: c.findDataServerFeatures,
 	})
 	c.splitControllers[parentShardId] = sc
@@ -323,23 +312,12 @@ func (c *runtime) restartInProgressSplits(clusterStatus map[string]commonobject.
 			)
 
 			sc := shardcontroller.NewSplitController(shardcontroller.SplitControllerConfig{
-				Namespace:     ns,
-				ParentShardId: shardId,
-				Metadata:      c.metadata,
-				RpcProvider:   c.rpc,
-				EventListener: c,
-				Split:         meta.Split,
-				EnsembleSelector: func(namespace string) ([]*proto.DataServerIdentity, error) {
-					status, err := c.metadata.ListNamespaceStatus()
-					if err != nil {
-						return nil, err
-					}
-					nsConfig, err := c.namespaceConfigForSplit(namespace)
-					if err != nil {
-						return nil, err
-					}
-					return c.selectNewEnsemble(namespace, 0, nsConfig, status, nil)
-				},
+				Namespace:                 ns,
+				ParentShardId:             shardId,
+				Metadata:                  c.metadata,
+				RpcProvider:               c.rpc,
+				EventListener:             c,
+				Split:                     meta.Split,
 				SupportedFeaturesSupplier: c.findDataServerFeatures,
 			})
 			c.splitControllers[shardId] = sc

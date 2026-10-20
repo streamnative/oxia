@@ -49,9 +49,6 @@ type SplitController struct {
 	rpcProvider   rpc.Provider
 	eventListener controllerapi.ShardSplitEventListener
 
-	// ensembleSelector selects server ensembles for new shards.
-	ensembleSelector func(namespace string) ([]*proto.DataServerIdentity, error)
-
 	// supportedFeaturesSupplier reports the features supported by each data
 	// server, used to negotiate the feature set of the children's clean terms.
 	supportedFeaturesSupplier FeaturesSupplier
@@ -77,12 +74,11 @@ const DefaultSplitTimeout = 5 * time.Minute
 
 // SplitControllerConfig holds the configuration needed to create a SplitController.
 type SplitControllerConfig struct {
-	Namespace        string
-	ParentShardId    int64
-	Metadata         coordmetadata.Metadata
-	RpcProvider      rpc.Provider
-	EventListener    controllerapi.ShardSplitEventListener
-	EnsembleSelector func(namespace string) ([]*proto.DataServerIdentity, error)
+	Namespace     string
+	ParentShardId int64
+	Metadata      coordmetadata.Metadata
+	RpcProvider   rpc.Provider
+	EventListener controllerapi.ShardSplitEventListener
 	// Split is the split metadata of the parent shard: its child shards and
 	// its split point.
 	Split *proto.SplitMetadata
@@ -113,7 +109,6 @@ func NewSplitController(cfg SplitControllerConfig) *SplitController {
 		metadata:                  cfg.Metadata,
 		rpcProvider:               cfg.RpcProvider,
 		eventListener:             cfg.EventListener,
-		ensembleSelector:          cfg.EnsembleSelector,
 		supportedFeaturesSupplier: supportedFeaturesSupplier,
 		requiredFeatures:          make(map[int64][]proto.Feature),
 		logger: slog.With(
