@@ -122,34 +122,23 @@ func (s *internalRpcServer) Handshake(c context.Context, req *proto.HandshakeReq
 		return nil, status.Error(codes.InvalidArgument, "instance id must not be empty")
 	}
 
-	currentInstanceID := s.manifest.GetInstanceID()
-	switch currentInstanceID {
-	case "":
-		if err := s.manifest.SetInstanceID(req.InstanceId); err != nil {
-			if errors.Is(err, manifestpkg.ErrInstanceIDMismatch) {
-				return &proto.HandshakeResponse{
-					Status:            proto.HandshakeStatus_HANDSHAKE_STATUS_MISMATCH,
-					FeaturesSupported: feature.SupportedFeatures(),
-				}, nil
-			}
-			log.Warn("Failed to bind instance id", slog.Any("error", err))
-			return nil, err
-		}
-		return &proto.HandshakeResponse{
-			Status:            proto.HandshakeStatus_HANDSHAKE_STATUS_BOUND,
-			FeaturesSupported: feature.SupportedFeatures(),
-		}, nil
-	case req.InstanceId:
-		return &proto.HandshakeResponse{
-			Status:            proto.HandshakeStatus_HANDSHAKE_STATUS_ALREADY_BOUND,
-			FeaturesSupported: feature.SupportedFeatures(),
-		}, nil
+	bound, err := s.manifest.SetInstanceID(req.InstanceId)
+	var handshakeStatus proto.HandshakeStatus
+	switch {
+	case errors.Is(err, manifestpkg.ErrInstanceIDMismatch):
+		handshakeStatus = proto.HandshakeStatus_HANDSHAKE_STATUS_MISMATCH
+	case err != nil:
+		log.Warn("Failed to bind instance id", slog.Any("error", err))
+		return nil, err
+	case bound:
+		handshakeStatus = proto.HandshakeStatus_HANDSHAKE_STATUS_BOUND
 	default:
-		return &proto.HandshakeResponse{
-			Status:            proto.HandshakeStatus_HANDSHAKE_STATUS_MISMATCH,
-			FeaturesSupported: feature.SupportedFeatures(),
-		}, nil
+		handshakeStatus = proto.HandshakeStatus_HANDSHAKE_STATUS_ALREADY_BOUND
 	}
+	return &proto.HandshakeResponse{
+		Status:            handshakeStatus,
+		FeaturesSupported: feature.SupportedFeatures(),
+	}, nil
 }
 
 func (s *internalRpcServer) NewTerm(c context.Context, req *proto.NewTermRequest) (*proto.NewTermResponse, error) {

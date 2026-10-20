@@ -64,7 +64,8 @@ func TestInstanceIDFieldShowsInstanceID(t *testing.T) {
 	dataDir := t.TempDir()
 	m, err := manifest.NewManifest(dataDir)
 	require.NoError(t, err)
-	require.NoError(t, m.SetInstanceID("instance-1"))
+	_, err = m.SetInstanceID("instance-1")
+	require.NoError(t, err)
 
 	assert.Equal(t, Field{"InstanceID", "instance-1"}, InstanceIDField(dataDir))
 }

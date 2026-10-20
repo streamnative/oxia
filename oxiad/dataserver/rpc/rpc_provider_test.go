@@ -64,7 +64,8 @@ func TestReplicationRpcProviderSendSnapshotInvalidTarget(t *testing.T) {
 
 func TestReplicationRpcProviderTruncate(t *testing.T) {
 	manifest := newTestManifest(t)
-	require.NoError(t, manifest.SetInstanceID("instance-1"))
+	_, err := manifest.SetInstanceID("instance-1")
+	require.NoError(t, err)
 	provider, err := NewReplicationRpcProvider(&security.TLSOptions{}, manifest)
 	require.NoError(t, err)
 	t.Cleanup(func() { assert.NoError(t, provider.Close()) })
