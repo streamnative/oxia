@@ -16,4 +16,17 @@
 
 package logging
 
-var raceEnabled = false
+import (
+	"os"
+	"time"
+
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+)
+
+func newConsoleLogger() zerolog.Logger {
+	return log.Output(zerolog.SyncWriter(zerolog.ConsoleWriter{
+		Out:        os.Stdout,
+		TimeFormat: time.StampMicro,
+	}))
+}

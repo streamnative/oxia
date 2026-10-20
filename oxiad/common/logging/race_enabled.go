@@ -16,4 +16,18 @@
 
 package logging
 
-var raceEnabled = true
+import (
+	"os"
+
+	"github.com/rs/zerolog"
+)
+
+// newConsoleLogger writes plain JSON in the race builds: the zerolog console
+// writer reports data races in the tests.
+func newConsoleLogger() zerolog.Logger {
+	return zerolog.New(os.Stdout).
+		With().
+		Timestamp().
+		Stack().
+		Logger()
+}
