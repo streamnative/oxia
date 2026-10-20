@@ -16,6 +16,7 @@ package file
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -166,6 +167,44 @@ func TestCloseEndsWaitToBecomeLeader(t *testing.T) {
 	require.NoError(t, follower.Close())
 }
 
+func TestProviderWaitToBecomeLeaderReleasesLockTakenWhileClosing(t *testing.T) {
+	p := newTestProvider(t, filepath.Join(t.TempDir(), "metadata")).(*Provider[*commonproto.ClusterStatus])
+	unlocked := false
+	p.fileLock = &fakeFileLock{
+		tryLockContext: func(context.Context, time.Duration) (bool, error) {
+			p.ctxCancel()
+			return true, nil
+		},
+		unlock: func() error {
+			unlocked = true
+			return errors.New("unlock failed")
+		},
+	}
+
+	_, err := p.WaitToBecomeLeader()
+	require.ErrorIs(t, err, context.Canceled)
+	assert.True(t, unlocked)
+	require.NoError(t, p.Close())
+}
+
+func TestProviderCloseToleratesUnlockFailure(t *testing.T) {
+	p := newTestProvider(t, filepath.Join(t.TempDir(), "metadata")).(*Provider[*commonproto.ClusterStatus])
+	unlocks := 0
+	p.fileLock = &fakeFileLock{
+		tryLockContext: func(context.Context, time.Duration) (bool, error) { return true, nil },
+		unlock: func() error {
+			unlocks++
+			return errors.New("unlock failed")
+		},
+	}
+	_, err := p.WaitToBecomeLeader()
+	require.NoError(t, err)
+
+	require.NoError(t, p.Close())
+	require.NoError(t, p.Close())
+	assert.Equal(t, 1, unlocks)
+}
+
 // A writer that rewrites the file in place, as os.WriteFile does, truncates it
 // before it writes the new content, and one that replaces it may remove it
 // first. A reload in between waits for the new content: an empty configuration
@@ -296,4 +335,17 @@ func requireServers(t *testing.T, p provider.Provider[*commonproto.ClusterConfig
 	loaded, err := p.Load()
 	require.NoError(t, err)
 	require.Len(t, loaded.Value.GetServers(), servers)
+}
+
+type fakeFileLock struct {
+	tryLockContext func(ctx context.Context, retryDelay time.Duration) (bool, error)
+	unlock         func() error
+}
+
+func (l *fakeFileLock) TryLockContext(ctx context.Context, retryDelay time.Duration) (bool, error) {
+	return l.tryLockContext(ctx, retryDelay)
+}
+
+func (l *fakeFileLock) Unlock() error {
+	return l.unlock()
 }

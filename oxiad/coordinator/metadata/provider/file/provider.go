@@ -48,7 +48,7 @@ type Provider[T gproto.Message] struct {
 	mu           sync.Mutex
 	path         string
 	codec        metadatacodec.Codec[T]
-	fileLock     *flock.Flock
+	fileLock     fileLock
 	lockAcquired bool
 	watchEnabled metadatacommon.WatchMode
 	version      metadatacommon.Version
@@ -135,7 +135,9 @@ func (m *Provider[T]) WaitToBecomeLeader() (<-chan struct{}, error) {
 	if err := m.ctx.Err(); err != nil {
 		// Closed while the lock was being taken: Close found no lock to
 		// release, so release it here.
-		_ = m.fileLock.Unlock()
+		if unlockErr := m.fileLock.Unlock(); unlockErr != nil {
+			m.logger.Warn("Failed to release file lock on metadata", slog.Any("error", unlockErr))
+		}
 		return nil, errors.Wrapf(err, "provider closed while acquiring lock on %s", m.path)
 	}
 	m.lockAcquired = true
