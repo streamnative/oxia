@@ -599,6 +599,63 @@ func TestRuntimeComputeNewAssignmentsKeepsRemovedShardNodeAuthorities(t *testing
 	)
 }
 
+// The data servers get their first assignments once the runtime computed them,
+// not the empty ones the runtime starts with: a data server initialized with
+// those would reject the clients, as no authority is allowed.
+func TestRuntimeSubscribeShardAssignmentsWaitsForFirstComputation(t *testing.T) {
+	servers := []*proto.DataServerIdentity{
+		{Name: new("s1"), Public: "s1:9091", Internal: "s1:8191"},
+		{Name: new("s2"), Public: "s2:9091", Internal: "s2:8191"},
+		{Name: new("s3"), Public: "s3:9091", Internal: "s3:8191"},
+	}
+	metadata := newTestMetadata(t, &proto.ClusterConfiguration{
+		Namespaces: []*proto.Namespace{{
+			Name:              constant.DefaultNamespace,
+			InitialShardCount: 1,
+			ReplicationFactor: 3,
+		}},
+		Servers: servers,
+	})
+	_, err := metadata.AllocateShardIDs(1)
+	require.NoError(t, err)
+	require.NoError(t, metadata.CreateNamespaceStatus(constant.DefaultNamespace, &proto.NamespaceStatus{
+		ReplicationFactor: 3,
+		Shards: map[int64]*proto.ShardMetadata{0: {
+			Status:         proto.ShardStatusSteadyState,
+			Term:           1,
+			Leader:         servers[0],
+			Ensemble:       servers,
+			Int32HashRange: &proto.HashRange{Min: 0, Max: math.MaxUint32},
+		}},
+	}))
+
+	rpcProvider := rpctest.NewRpcProvider()
+	r, err := New(metadata, func(string) rpc.Provider { return rpcProvider })
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, r.Close()) })
+
+	// The data servers are ready for their assignments before the reconciler
+	// computes them
+	require.Eventually(t, func() bool {
+		for _, server := range servers {
+			if rpcProvider.GetNode(server).PushShardAssignmentsCount.Load() == 0 {
+				return false
+			}
+		}
+		return true
+	}, 10*time.Second, 10*time.Millisecond)
+	r.RecomputeAssignments()
+
+	for _, server := range servers {
+		select {
+		case assignments := <-rpcProvider.GetNode(server).ShardAssignmentsStream.Updates:
+			assert.Contains(t, assignments.GetAllowedAuthorities(), server.Public)
+		case <-time.After(10 * time.Second):
+			assert.Fail(t, "no assignments", server.GetNameOrDefault())
+		}
+	}
+}
+
 func TestRuntimeFindDataServerFeaturesOmitsUnknownNodes(t *testing.T) {
 	c := &runtime{
 		dataServerControllers: map[string]dataservercontroller.Controller{},

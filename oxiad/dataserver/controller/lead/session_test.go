@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/metric"
@@ -187,6 +188,28 @@ func TestSessionManager_RequeueRefreshed(t *testing.T) {
 	assert.Len(t, sm.expiryHeap, 1)
 	assert.Equal(t, rescued, sm.expiryHeap[0])
 	assert.Equal(t, -1, closed.heapIdx)
+}
+
+// A batch of due sessions that all got a heartbeat since is not deleted: the
+// bare manager has no leader controller to delete them with.
+func TestSessionManagerExpireSessionsSkipsRefreshedBatch(t *testing.T) {
+	sm := newBareSessionManager()
+	defer func() { assert.NoError(t, sm.Close()) }()
+
+	s := newTestSession(sm, 1, 10*time.Second)
+	now := sm.now()
+	s.deadline.Store(now - 1)
+	s.heapDeadline = now - 1
+	due, _ := sm.collectDueSessions()
+	require.Equal(t, []*session{s}, due)
+
+	s.heartbeat(sm.now())
+	sm.expireSessions(due)
+
+	sm.Lock()
+	defer sm.Unlock()
+	assert.Equal(t, s, sm.sessions[1])
+	assert.Equal(t, sessionHeap{s}, sm.expiryHeap)
 }
 
 func TestSessionHeap_Ordering(t *testing.T) {

@@ -16,11 +16,14 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/oxia-db/oxia/oxiad/dataserver/controller/follow"
+	"github.com/oxia-db/oxia/oxiad/dataserver/controller/lead"
 	"github.com/oxia-db/oxia/oxiad/dataserver/database"
 	"github.com/oxia-db/oxia/oxiad/dataserver/option"
 
@@ -172,4 +175,164 @@ func TestShardsDirectorRoutesCheckpointAndCommitOffsetToTheHostingController(t *
 	_, err = sd.Checkpoint(absent)
 	assert.ErrorIs(t, err, constant.ErrNodeIsNotMember)
 	assert.ErrorIs(t, sd.WithDatabase(absent, 0, func(string) error { return nil }), constant.ErrNodeIsNotMember)
+}
+
+func TestShardsDirectorGetOrCreateLeaderFollowerCloseError(t *testing.T) {
+	sd := newTestShardsDirector(t)
+	closeErr := errors.New("close failure")
+	follower := &fakeFollowerController{close: func() error { return closeErr }}
+	sd.followers[1] = follower
+
+	lc, err := sd.GetOrCreateLeader(constant.DefaultNamespace, 1, nil)
+	assert.ErrorIs(t, err, closeErr)
+	assert.Nil(t, lc)
+
+	// The follower stays in place
+	fc, err := sd.GetFollower(1)
+	assert.NoError(t, err)
+	assert.Same(t, follower, fc)
+	_, err = sd.GetLeader(1)
+	assert.ErrorIs(t, err, constant.ErrNodeIsNotLeader)
+}
+
+func TestShardsDirectorGetOrCreateLeaderFailsWhenClosed(t *testing.T) {
+	sd := newTestShardsDirector(t)
+	require.NoError(t, sd.Close())
+
+	lc, err := sd.GetOrCreateLeader(constant.DefaultNamespace, 1, nil)
+	assert.ErrorIs(t, err, constant.ErrResourceUnavailable)
+	assert.Nil(t, lc)
+	assert.Empty(t, sd.leaders)
+}
+
+func TestShardsDirectorGetOrCreateFollowerLeaderCloseError(t *testing.T) {
+	sd := newTestShardsDirector(t)
+	closeErr := errors.New("close failure")
+	leader := &fakeLeaderController{term: 2, close: func() error { return closeErr }}
+	sd.leaders[1] = leader
+
+	fc, err := sd.GetOrCreateFollower(constant.DefaultNamespace, 1, 2, nil)
+	assert.ErrorIs(t, err, closeErr)
+	assert.Nil(t, fc)
+
+	// The leader stays in place
+	lc, err := sd.GetLeader(1)
+	assert.NoError(t, err)
+	assert.Same(t, leader, lc)
+}
+
+func TestShardsDirectorGetOrCreateFollowerInvalidNamespace(t *testing.T) {
+	sd := newTestShardsDirector(t)
+
+	fc, err := sd.GetOrCreateFollower(invalidNamespace, 1, 1, nil)
+	assert.Error(t, err)
+	assert.Nil(t, fc)
+
+	_, err = sd.GetFollower(1)
+	assert.ErrorIs(t, err, ErrNodeIsNotFollower)
+}
+
+func TestShardsDirectorDeleteShardLeaderError(t *testing.T) {
+	sd := newTestShardsDirector(t)
+	deleteErr := errors.New("delete failure")
+	leader := &fakeLeaderController{deleteShard: func(*proto.DeleteShardRequest) (*proto.DeleteShardResponse, error) {
+		return nil, deleteErr
+	}}
+	sd.leaders[1] = leader
+
+	_, err := sd.DeleteShard(&proto.DeleteShardRequest{Namespace: constant.DefaultNamespace, Shard: 1, Term: 1})
+	assert.ErrorIs(t, err, deleteErr)
+
+	// The leader stays in place
+	lc, err := sd.GetLeader(1)
+	assert.NoError(t, err)
+	assert.Same(t, leader, lc)
+}
+
+// A shard that the node doesn't host is opened from its storage, to delete it.
+func TestShardsDirectorDeleteShardNotHosted(t *testing.T) {
+	var shard int64 = 1
+	kvFactory, err := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, kvFactory.Close()) })
+	walFactory := newTestWalFactory(t)
+	t.Cleanup(func() { assert.NoError(t, walFactory.Close()) })
+
+	// A previous instance of the node wrote an entry in the shard
+	sd := NewShardsDirector(&option.StorageOptions{}, walFactory, kvFactory, rpc.NewMockRpcClient())
+	lc, err := sd.GetOrCreateLeader(constant.DefaultNamespace, shard, nil)
+	require.NoError(t, err)
+	_, err = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 1})
+	require.NoError(t, err)
+	_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{Shard: shard, Term: 1, ReplicationFactor: 1})
+	require.NoError(t, err)
+	_, err = lc.WriteBlock(context.Background(), &proto.WriteRequest{
+		Shard: &shard,
+		Puts:  []*proto.PutRequest{{Key: "k1", Value: []byte("hello")}},
+	})
+	require.NoError(t, err)
+	require.NoError(t, sd.Close())
+
+	sd = NewShardsDirector(&option.StorageOptions{}, walFactory, kvFactory, rpc.NewMockRpcClient())
+	_, err = sd.DeleteShard(&proto.DeleteShardRequest{Namespace: constant.DefaultNamespace, Shard: shard, Term: 1})
+	require.NoError(t, err)
+
+	_, err = sd.GetFollower(shard)
+	assert.ErrorIs(t, err, ErrNodeIsNotFollower)
+
+	// The shard starts over empty
+	lc, err = sd.GetOrCreateLeader(constant.DefaultNamespace, shard, nil)
+	require.NoError(t, err)
+	res, err := lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 2})
+	require.NoError(t, err)
+	assert.EqualValues(t, wal.InvalidOffset, res.HeadEntryId.Offset)
+	assert.NoError(t, sd.Close())
+}
+
+func TestShardsDirectorDeleteShardNotHostedInvalidNamespace(t *testing.T) {
+	sd := newTestShardsDirector(t)
+
+	_, err := sd.DeleteShard(&proto.DeleteShardRequest{Namespace: invalidNamespace, Shard: 1, Term: 1})
+	assert.Error(t, err)
+}
+
+// A namespace with a path traversal, that the controllers reject.
+const invalidNamespace = "../invalid"
+
+func newTestShardsDirector(t *testing.T) *shardsDirector {
+	t.Helper()
+	kvFactory, err := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, kvFactory.Close()) })
+	walFactory := newTestWalFactory(t)
+	t.Cleanup(func() { assert.NoError(t, walFactory.Close()) })
+	return NewShardsDirector(&option.StorageOptions{}, walFactory, kvFactory, rpc.NewMockRpcClient()).(*shardsDirector)
+}
+
+type fakeLeaderController struct {
+	lead.LeaderController
+	term        int64
+	close       func() error
+	deleteShard func(request *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error)
+}
+
+func (f *fakeLeaderController) Term() int64 {
+	return f.term
+}
+
+func (f *fakeLeaderController) Close() error {
+	return f.close()
+}
+
+func (f *fakeLeaderController) DeleteShard(request *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error) {
+	return f.deleteShard(request)
+}
+
+type fakeFollowerController struct {
+	follow.FollowerController
+	close func() error
+}
+
+func (f *fakeFollowerController) Close() error {
+	return f.close()
 }

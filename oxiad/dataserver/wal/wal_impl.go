@@ -81,6 +81,7 @@ type wal struct {
 	// current segment. It takes the write side, before the mutex.
 	truncateLock sync.RWMutex
 
+	fs          codec.FS
 	walPath     string
 	namespace   string
 	shard       int64
@@ -148,8 +149,14 @@ func newWal(namespace string, shard int64, options *FactoryOptions, commitOffset
 		options.SegmentSize = DefaultFactoryOptions.SegmentSize
 	}
 
+	fs := options.fs
+	if fs == nil {
+		fs = codec.OSFS{}
+	}
+
 	labels := metric.LabelsForShard(namespace, shard)
 	w := &wal{
+		fs:                   fs,
 		walPath:              walPath(options.BaseWalDir, namespace, shard),
 		namespace:            namespace,
 		shard:                shard,
@@ -176,7 +183,7 @@ func newWal(namespace string, shard int64, options *FactoryOptions, commitOffset
 	}
 
 	var err error
-	if w.readOnlySegments, err = newReadOnlySegmentsGroup(w.walPath); err != nil {
+	if w.readOnlySegments, err = newReadOnlySegmentsGroup(w.fs, w.walPath); err != nil {
 		return nil, err
 	}
 
@@ -305,7 +312,7 @@ func (t *wal) readFromSegment(index int64) (val []byte, previousCrc uint32, entr
 // still be closed. Must be called while holding the mutex, or before the wal
 // gets shared.
 func (t *wal) openCurrentSegment(baseOffset int64, lastCrc uint32) error {
-	current, err := newReadWriteSegment(t.walPath, baseOffset, t.segmentSize, lastCrc, t.commitOffsetProvider)
+	current, err := newReadWriteSegment(t.fs, t.walPath, baseOffset, t.segmentSize, lastCrc, t.commitOffsetProvider)
 	if err != nil {
 		return err
 	}
@@ -716,7 +723,7 @@ func (t *wal) clearWithoutLock() error {
 		t.drainPendingCloseSegments(),
 		t.currentSegment.Close(),
 		t.readOnlySegments.Close(),
-		os.RemoveAll(t.walPath),
+		t.fs.RemoveAll(t.walPath),
 	)
 
 	if err != nil {
@@ -728,7 +735,7 @@ func (t *wal) clearWithoutLock() error {
 		return err
 	}
 
-	if t.readOnlySegments, err = newReadOnlySegmentsGroup(t.walPath); err != nil {
+	if t.readOnlySegments, err = newReadOnlySegmentsGroup(t.fs, t.walPath); err != nil {
 		return err
 	}
 
@@ -750,7 +757,7 @@ func (t *wal) Delete() error {
 
 	return multierr.Combine(
 		t.closeWithoutLock(),
-		os.RemoveAll(t.walPath),
+		t.fs.RemoveAll(t.walPath),
 	)
 }
 
@@ -842,7 +849,7 @@ func (t *wal) TruncateLog(lastSafeOffset int64) (int64, error) { //nolint:revive
 }
 
 func (t *wal) recoverWal() error {
-	segments, err := listAllSegments(t.walPath)
+	segments, err := listAllSegments(t.fs, t.walPath)
 	if err != nil {
 		return err
 	}
@@ -902,13 +909,13 @@ func (t *wal) discardTrailingSegment(baseOffset int64) error {
 		slog.String("wal-path", t.walPath),
 		slog.Int64("base-offset", baseOffset))
 
-	c, err := newSegmentConfig(t.walPath, baseOffset)
+	c, err := newSegmentConfig(t.fs, t.walPath, baseOffset)
 	if err != nil {
 		return err
 	}
 	if err = multierr.Combine(
-		codec.RemoveFileIfExists(c.idxPath),
-		codec.RemoveFileIfExists(c.txnPath),
+		codec.RemoveFileIfExists(t.fs, c.idxPath),
+		codec.RemoveFileIfExists(t.fs, c.txnPath),
 	); err != nil {
 		return err
 	}
@@ -916,12 +923,12 @@ func (t *wal) discardTrailingSegment(baseOffset int64) error {
 	if err = t.readOnlySegments.Close(); err != nil {
 		return err
 	}
-	t.readOnlySegments, err = newReadOnlySegmentsGroup(t.walPath)
+	t.readOnlySegments, err = newReadOnlySegmentsGroup(t.fs, t.walPath)
 	return err
 }
 
-func listAllSegments(walPath string) (segments []int64, err error) {
-	dir, err := os.ReadDir(walPath)
+func listAllSegments(fs codec.FS, walPath string) (segments []int64, err error) {
+	dir, err := fs.ReadDir(walPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil

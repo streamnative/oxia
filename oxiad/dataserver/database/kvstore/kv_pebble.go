@@ -57,16 +57,18 @@ func AbbreviatedKeyDisableSlash(key []byte) uint64 {
 
 var (
 	OxiaSlashSpanComparer = &pebble.Comparer{
-		Compare:            compare.CompareWithSlash,
-		Equal:              pebble.DefaultComparer.Equal,
-		AbbreviatedKey:     AbbreviatedKeyDisableSlash,
-		FormatKey:          pebble.DefaultComparer.FormatKey,
-		FormatValue:        pebble.DefaultComparer.FormatValue,
-		Separator:          pebble.DefaultComparer.Separator,
-		Split:              pebble.DefaultComparer.Split,
-		Successor:          pebble.DefaultComparer.Successor,
-		ImmediateSuccessor: pebble.DefaultComparer.ImmediateSuccessor,
-		Name:               "oxia-slash-spans",
+		Compare:              compare.CompareWithSlash,
+		Equal:                pebble.DefaultComparer.Equal,
+		AbbreviatedKey:       AbbreviatedKeyDisableSlash,
+		FormatKey:            pebble.DefaultComparer.FormatKey,
+		FormatValue:          pebble.DefaultComparer.FormatValue,
+		Separator:            pebble.DefaultComparer.Separator,
+		Split:                func([]byte) int { return 0 },
+		ComparePointSuffixes: compare.CompareWithSlash,
+		CompareRangeSuffixes: compare.CompareWithSlash,
+		Successor:            pebble.DefaultComparer.Successor,
+		ImmediateSuccessor:   pebble.DefaultComparer.ImmediateSuccessor,
+		Name:                 "oxia-slash-spans",
 	}
 )
 
@@ -218,15 +220,9 @@ func generationKey(namespace string, shardId int64) string {
 	return fmt.Sprintf("%s/%d", namespace, shardId)
 }
 
+// getKVPath returns the directory of the shard. The namespace must have passed
+// validation.ValidateNamespace, which keeps the path inside the data directory.
 func (p *PebbleFactory) getKVPath(namespace string, shard int64) string {
-	if namespace == "" {
-		slog.Warn(
-			"Missing namespace when getting KV path",
-			slog.Int64("shard", shard),
-		)
-		os.Exit(1)
-	}
-
 	return filepath.Join(p.dataDir, namespace, fmt.Sprint("shard-", shard))
 }
 

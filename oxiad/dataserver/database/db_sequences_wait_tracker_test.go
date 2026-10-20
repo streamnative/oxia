@@ -17,6 +17,7 @@ package database
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -78,4 +79,25 @@ func TestSequencesWaitTrackerMultipleClose(t *testing.T) {
 	assert.Empty(t, swt.Close())
 
 	assert.NoError(t, w1.Close())
+}
+
+// A waiter that closes while the tracker closes is closed once.
+func TestSequencesWaitTrackerCloseRacingWaiterClose(t *testing.T) {
+	swt := NewSequencesWaitTracker().(*sequenceWaiterTracker)
+	w := swt.AddSequenceWaiter("key-1")
+
+	// The waiter is closing, and waits for the tracker to remove it
+	swt.Lock()
+	closed := make(chan error)
+	go func() { closed <- w.Close() }()
+	assert.Eventually(t, w.closed.Load, 10*time.Second, time.Millisecond)
+
+	// What the tracker does with it, closing
+	w.closeWithoutLock()
+	swt.Unlock()
+	assert.NoError(t, <-closed)
+
+	_, open := <-w.Ch()
+	assert.False(t, open)
+	assert.Empty(t, swt.waiters)
 }

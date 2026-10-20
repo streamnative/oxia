@@ -26,6 +26,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/oxia-db/oxia/cmd/admin/commons"
+	"github.com/oxia-db/oxia/cmd/common/clientauth"
 	"github.com/oxia-db/oxia/common/proto"
 )
 
@@ -219,4 +220,55 @@ func Test_cmd_patchNamespace_RejectsInvalidReplicationFactor(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "namespace replication factor must be greater than 0")
 	assert.Contains(t, out, "namespace replication factor must be greater than 0")
+}
+
+func TestExecRejectsMissingOutputFlag(t *testing.T) {
+	commons.MockedAdminClient = commons.NewMockAdminClient()
+	t.Cleanup(func() { commons.MockedAdminClient = nil })
+
+	cmd := newPatchCmd()
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"ns-1", "--replication-factor", "3"})
+	err := cmd.Execute()
+	fields.Reset()
+
+	require.ErrorContains(t, err, "flag accessed but not defined: output")
+	commons.MockedAdminClient.AssertNotCalled(t, "PatchNamespace", mock.Anything)
+}
+
+func TestExecReturnsAdminClientError(t *testing.T) {
+	commons.MockedAdminClient = nil
+	commons.AdminConfig.Auth = clientauth.Config{Token: "token", TokenFile: "token-file"}
+	t.Cleanup(func() { commons.AdminConfig.Auth = clientauth.Config{} })
+
+	_, err := runCmd(newPatchCmd(), "ns-1", "--replication-factor", "3")
+
+	require.ErrorIs(t, err, clientauth.ErrAuthTokenConflict)
+}
+
+func TestExecReturnsPatchError(t *testing.T) {
+	commons.MockedAdminClient = commons.NewMockAdminClient()
+	t.Cleanup(func() { commons.MockedAdminClient = nil })
+	commons.MockedAdminClient.On("Close").Return(nil)
+	// Without a namespace to return, the mock fails the call
+	commons.MockedAdminClient.On("PatchNamespace", mock.Anything).Return(nil, nil)
+
+	_, err := runCmd(newPatchCmd(), "ns-1", "--notifications=false")
+
+	require.EqualError(t, err, "failed to patch namespace")
+	commons.MockedAdminClient.AssertExpectations(t)
+}
+
+func newPatchCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:          Cmd.Use,
+		Short:        Cmd.Short,
+		Long:         Cmd.Long,
+		Args:         Cmd.Args,
+		RunE:         Cmd.RunE,
+		SilenceUsage: Cmd.SilenceUsage,
+	}
+	fields.AddPatchFlags(cmd)
+	return cmd
 }

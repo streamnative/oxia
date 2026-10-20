@@ -16,6 +16,7 @@ package list
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/oxia-db/oxia/cmd/client/common"
+	"github.com/oxia-db/oxia/cmd/common/clientauth"
 	"github.com/oxia-db/oxia/oxia"
 )
 
@@ -50,6 +52,9 @@ func TestList_exec(t *testing.T) {
 		{"range-no-min", "--key-max c", []any{"", "c", emptyOptions}},
 		{"range-no-max", "--key-min a", []any{"a", "", emptyOptions}},
 		{"partition-key", "-s a -e c -p xyz", []any{"a", "c", []oxia.RangeScanOption{oxia.PartitionKey("xyz")}}},
+		{"index", "-s a -e c --index idx", []any{"a", "c", []oxia.RangeScanOption{oxia.UseIndex("idx")}}},
+		{"internal-keys", "-s a -e c --internal-keys", []any{"a", "c",
+			[]oxia.RangeScanOption{oxia.ShowInternalKeys(true)}}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			common.MockedClient = common.NewMockClient()
@@ -67,4 +72,37 @@ func TestList_exec(t *testing.T) {
 			common.MockedClient.AssertExpectations(t)
 		})
 	}
+}
+
+func TestListExecReturnsScanError(t *testing.T) {
+	common.MockedClient = common.NewMockClient()
+	ch := make(chan oxia.GetResult, 2)
+	ch <- oxia.GetResult{Key: "a"}
+	ch <- oxia.GetResult{Err: errors.New("scan failed")}
+	close(ch)
+	var emptyOptions []oxia.RangeScanOption
+	common.MockedClient.On("RangeScan", "a", "c", emptyOptions).Return(ch)
+
+	out, err := runCmd(Cmd, "--key-min a --key-max c", "")
+	assert.ErrorContains(t, err, "scan failed")
+	assert.Contains(t, out, "a")
+	common.MockedClient.AssertExpectations(t)
+}
+
+func TestExecReturnsNewClientError(t *testing.T) {
+	useConflictingClientAuth(t)
+
+	_, err := runCmd(Cmd, "-s a -e b", "")
+
+	assert.ErrorIs(t, err, clientauth.ErrAuthTokenConflict)
+}
+
+// useConflictingClientAuth makes the creation of the client fail, with
+// conflicting sources of the auth token.
+func useConflictingClientAuth(t *testing.T) {
+	t.Helper()
+	mocked, auth := common.MockedClient, common.Config.Auth
+	common.MockedClient = nil
+	common.Config.Auth = clientauth.Config{Token: "token", TokenFile: "token-file"}
+	t.Cleanup(func() { common.MockedClient, common.Config.Auth = mocked, auth })
 }

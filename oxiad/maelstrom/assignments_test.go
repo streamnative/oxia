@@ -48,6 +48,22 @@ func TestShardAssignmentsLeader(t *testing.T) {
 			},
 		},
 		{
+			name: "nil first assignment",
+			assignments: &proto.ShardAssignments{
+				Namespaces: map[string]*proto.NamespaceShardsAssignment{
+					constant.DefaultNamespace: {Assignments: []*proto.ShardAssignment{nil}},
+				},
+			},
+		},
+		{
+			name: "first assignment without leader",
+			assignments: &proto.ShardAssignments{
+				Namespaces: map[string]*proto.NamespaceShardsAssignment{
+					constant.DefaultNamespace: {Assignments: []*proto.ShardAssignment{{Shard: 1}}},
+				},
+			},
+		},
+		{
 			name: "valid leader",
 			assignments: &proto.ShardAssignments{
 				Namespaces: map[string]*proto.NamespaceShardsAssignment{

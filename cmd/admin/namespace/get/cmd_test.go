@@ -26,6 +26,7 @@ import (
 
 	"github.com/oxia-db/oxia/cmd/admin/commons"
 	namespacecli "github.com/oxia-db/oxia/cmd/admin/namespace/cli"
+	"github.com/oxia-db/oxia/cmd/common/clientauth"
 	"github.com/oxia-db/oxia/common/proto"
 )
 
@@ -256,4 +257,65 @@ func TestWriteNamespaceRejectsNilNamespace(t *testing.T) {
 	err := namespacecli.WriteNamespace(new(bytes.Buffer), "", nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "namespace must not be nil")
+}
+
+func TestExecRejectsMissingOutputFlag(t *testing.T) {
+	commons.MockedAdminClient = commons.NewMockAdminClient()
+	t.Cleanup(func() { commons.MockedAdminClient = nil })
+
+	cmd := newGetCmd()
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{})
+	err := cmd.Execute()
+
+	require.ErrorContains(t, err, "flag accessed but not defined: output")
+	commons.MockedAdminClient.AssertNotCalled(t, "ListNamespaces")
+}
+
+func TestExecReturnsAdminClientError(t *testing.T) {
+	commons.MockedAdminClient = nil
+	commons.AdminConfig.Auth = clientauth.Config{Token: "token", TokenFile: "token-file"}
+	t.Cleanup(func() { commons.AdminConfig.Auth = clientauth.Config{} })
+
+	_, err := runCmd(newGetCmd())
+
+	require.ErrorIs(t, err, clientauth.ErrAuthTokenConflict)
+}
+
+func TestExecReturnsListError(t *testing.T) {
+	commons.MockedAdminClient = commons.NewMockAdminClient()
+	t.Cleanup(func() { commons.MockedAdminClient = nil })
+	commons.MockedAdminClient.On("Close").Return(nil)
+	// Without namespaces to return, the mock fails the call
+	commons.MockedAdminClient.On("ListNamespaces").Return(nil, nil)
+
+	_, err := runCmd(newGetCmd())
+
+	require.EqualError(t, err, "no namespaces available")
+	commons.MockedAdminClient.AssertExpectations(t)
+}
+
+func TestExecReturnsGetError(t *testing.T) {
+	commons.MockedAdminClient = commons.NewMockAdminClient()
+	t.Cleanup(func() { commons.MockedAdminClient = nil })
+	commons.MockedAdminClient.On("Close").Return(nil)
+	// Without a namespace to return, the mock fails the call
+	commons.MockedAdminClient.On("GetNamespace", "ns-1").Return(nil, nil)
+
+	_, err := runCmd(newGetCmd(), "ns-1")
+
+	require.EqualError(t, err, "namespace not found")
+	commons.MockedAdminClient.AssertExpectations(t)
+}
+
+func newGetCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:          Cmd.Use,
+		Short:        Cmd.Short,
+		Long:         Cmd.Long,
+		Args:         Cmd.Args,
+		RunE:         Cmd.RunE,
+		SilenceUsage: Cmd.SilenceUsage,
+	}
 }

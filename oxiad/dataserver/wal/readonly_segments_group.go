@@ -47,19 +47,21 @@ type ReadOnlySegmentsGroup interface {
 type readOnlySegmentsGroup struct {
 	sync.Mutex
 
+	fs           codec.FS
 	basePath     string
 	allSegments  *redblacktree.Tree[int64, bool]
 	openSegments *redblacktree.Tree[int64, object.RefCount[ReadOnlySegment]]
 }
 
-func newReadOnlySegmentsGroup(basePath string) (ReadOnlySegmentsGroup, error) {
+func newReadOnlySegmentsGroup(fs codec.FS, basePath string) (ReadOnlySegmentsGroup, error) {
 	g := &readOnlySegmentsGroup{
+		fs:           fs,
 		basePath:     basePath,
 		allSegments:  redblacktree.New[int64, bool](),
 		openSegments: redblacktree.New[int64, object.RefCount[ReadOnlySegment]](),
 	}
 
-	segments, err := listAllSegments(basePath)
+	segments, err := listAllSegments(fs, basePath)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +124,7 @@ func (r *readOnlySegmentsGroup) Get(offset int64) (object.RefCount[ReadOnlySegme
 		return nil, codec.ErrOffsetOutOfBounds
 	}
 
-	rosegment, err := newReadOnlySegment(r.basePath, baseOffset.Key)
+	rosegment, err := newReadOnlySegment(r.fs, r.basePath, baseOffset.Key)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +134,7 @@ func (r *readOnlySegmentsGroup) Get(offset int64) (object.RefCount[ReadOnlySegme
 
 	r.openSegments.Put(rosegment.BaseOffset(), rc)
 	if err := r.cleanSegmentsCache(); err != nil {
-		return nil, err
+		return nil, multierr.Append(err, res.Close())
 	}
 	return res, nil
 }
@@ -167,15 +169,15 @@ func (r *readOnlySegmentsGroup) TrimSegments(offset int64, beforeDelete func() e
 			r.openSegments.Remove(s)
 		}
 
-		c, err2 := newSegmentConfig(r.basePath, s)
+		c, err2 := newSegmentConfig(r.fs, r.basePath, s)
 		if err2 != nil {
 			err = multierr.Append(err, err2)
 			continue
 		}
 
 		err2 = multierr.Combine(
-			codec.RemoveFileIfExists(c.idxPath),
-			codec.RemoveFileIfExists(c.txnPath),
+			codec.RemoveFileIfExists(r.fs, c.idxPath),
+			codec.RemoveFileIfExists(r.fs, c.txnPath),
 		)
 		if err2 != nil {
 			err = multierr.Append(err, err2)
@@ -224,7 +226,7 @@ func (r *readOnlySegmentsGroup) PollHighestSegment() (object.RefCount[ReadOnlySe
 		return segment, nil
 	}
 
-	roSegment, err := newReadOnlySegment(r.basePath, offset)
+	roSegment, err := newReadOnlySegment(r.fs, r.basePath, offset)
 	if err != nil {
 		return nil, err
 	}

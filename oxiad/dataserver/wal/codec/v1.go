@@ -112,8 +112,8 @@ func (*V1) WriteRecord(buf []byte, startOffset uint32, _ uint32, payload []byte)
 	return headerOffset + payloadSize, payloadCrc
 }
 
-func (*V1) WriteIndex(path string, index []byte) error {
-	idxFile, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0644)
+func (*V1) WriteIndex(fs FS, path string, index []byte) error {
+	idxFile, err := fs.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0644)
 	if err != nil {
 		return errors.Wrapf(err, "failed to open index file %s", path)
 	}
@@ -126,10 +126,10 @@ func (*V1) WriteIndex(path string, index []byte) error {
 	return idxFile.Close()
 }
 
-func (*V1) ReadIndex(path string) ([]byte, error) {
-	var idFile *os.File
+func (*V1) ReadIndex(fs FS, path string) ([]byte, error) {
+	var idFile File
 	var err error
-	if idFile, err = os.OpenFile(path, os.O_RDONLY, 0); err != nil {
+	if idFile, err = fs.OpenFile(path, os.O_RDONLY, 0); err != nil {
 		return nil, errors.Wrapf(err, "failed to open segment index file %s", path)
 	}
 	var indexBuf []byte

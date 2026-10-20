@@ -22,12 +22,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-logr/logr"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/rs/zerolog/pkgerrors"
 	slogzerolog "github.com/samber/slog-zerolog/v2"
 	"google.golang.org/protobuf/encoding/protojson"
 	pb "google.golang.org/protobuf/proto"
+	"k8s.io/klog/v2"
 
 	"github.com/oxia-db/oxia/oxiad/common/option"
 )
@@ -120,4 +122,5 @@ func ConfigureLogger() {
 		}.NewZerologHandler(),
 	)
 	slog.SetDefault(slogLogger)
+	klog.SetLogger(logr.FromSlogHandler(slogLogger.With(slog.String("component", "k8s-client")).Handler()))
 }

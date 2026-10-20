@@ -20,6 +20,7 @@ import (
 	"io"
 	"math"
 	"net"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -32,7 +33,12 @@ import (
 	"github.com/oxia-db/oxia/oxia/internal/model"
 )
 
+// neverCompleteAsyncClient never completes the operations. GetNotifications
+// returns notifications and notificationsErr.
 type neverCompleteAsyncClient struct {
+	notifications         Notifications
+	notificationsErr      error
+	notificationsRequests atomic.Int64
 }
 
 func (c *neverCompleteAsyncClient) Close() error { return nil }
@@ -62,7 +68,8 @@ func (c *neverCompleteAsyncClient) RangeScan(ctx context.Context, minKeyInclusiv
 }
 
 func (c *neverCompleteAsyncClient) GetNotifications() (Notifications, error) {
-	panic("not implemented")
+	c.notificationsRequests.Add(1)
+	return c.notifications, c.notificationsErr
 }
 
 func (c *neverCompleteAsyncClient) GetSequenceUpdates(ctx context.Context, prefixKey string, options ...GetSequenceUpdatesOption) (<-chan string, error) {

@@ -18,6 +18,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"sync"
@@ -34,7 +35,7 @@ import (
 func TestReadWriteSegment(t *testing.T) {
 	path := t.TempDir()
 
-	rw, err := newReadWriteSegment(path, 0, 128*1024, 0, nil)
+	rw, err := newReadWriteSegment(codec.OSFS{}, path, 0, 128*1024, 0, nil)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 0, rw.BaseOffset())
@@ -53,7 +54,7 @@ func TestReadWriteSegment(t *testing.T) {
 	assert.NoError(t, rw.Close())
 
 	// Re-open and recover the segment
-	rw, err = newReadWriteSegment(path, 0, 128*1024, 0, nil)
+	rw, err = newReadWriteSegment(codec.OSFS{}, path, 0, 128*1024, 0, nil)
 	assert.NoError(t, err)
 	assert.EqualValues(t, 0, rw.BaseOffset())
 	assert.EqualValues(t, 1, rw.LastOffset())
@@ -72,7 +73,7 @@ func TestReadWriteSegment(t *testing.T) {
 func TestReadWriteSegment_NonZero(t *testing.T) {
 	path := t.TempDir()
 
-	rw, err := newReadWriteSegment(path, 5, 128*1024, 0, nil)
+	rw, err := newReadWriteSegment(codec.OSFS{}, path, 5, 128*1024, 0, nil)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 5, rw.BaseOffset())
@@ -99,14 +100,14 @@ func TestReadWriteSegment_NonZero(t *testing.T) {
 	assert.NoError(t, rw.Close())
 
 	// Re-open and recover the segment
-	rw, err = newReadWriteSegment(path, 5, 128*1024, 0, nil)
+	rw, err = newReadWriteSegment(codec.OSFS{}, path, 5, 128*1024, 0, nil)
 	assert.NoError(t, err)
 	assert.EqualValues(t, 5, rw.BaseOffset())
 	assert.EqualValues(t, 6, rw.LastOffset())
 }
 
 func TestReadWriteSegment_HasSpace(t *testing.T) {
-	rw, err := newReadWriteSegment(t.TempDir(), 0, 1024, 0, nil)
+	rw, err := newReadWriteSegment(codec.OSFS{}, t.TempDir(), 0, 1024, 0, nil)
 	assert.NoError(t, err)
 	segment := rw.(*readWriteSegment)
 	headerSize := int(segment.c.codec.GetHeaderSize())
@@ -140,7 +141,7 @@ func TestReadWriteSegment_BrokenUncommittedData_ErrOffsetOutOfBounds(t *testing.
 
 	dir := t.TempDir()
 	// basic functionality test
-	rw, err := newReadWriteSegment(dir, 0, 1024, 0, commitOffsetProvider)
+	rw, err := newReadWriteSegment(codec.OSFS{}, dir, 0, 1024, 0, commitOffsetProvider)
 	assert.NoError(t, err)
 	payload1 := []byte("entry-0")
 	assert.NoError(t, rw.Append(0, payload1))
@@ -170,7 +171,7 @@ func TestReadWriteSegment_BrokenUncommittedData_ErrOffsetOutOfBounds(t *testing.
 	rwSegment.Close()
 
 	// recover the rw segment
-	rw, err = newReadWriteSegment(dir, 0, 1024, 0, commitOffsetProvider)
+	rw, err = newReadWriteSegment(codec.OSFS{}, dir, 0, 1024, 0, commitOffsetProvider)
 	assert.NoError(t, err)
 	assert.EqualValues(t, 1, rw.LastOffset())
 
@@ -188,7 +189,7 @@ func TestReadWriteSegment_BrokenCommittedData_ErrOffsetOutOfBounds(t *testing.T)
 
 	dir := t.TempDir()
 	// basic functionality test
-	rw, err := newReadWriteSegment(dir, 0, 1024, 0, commitOffsetProvider)
+	rw, err := newReadWriteSegment(codec.OSFS{}, dir, 0, 1024, 0, commitOffsetProvider)
 	assert.NoError(t, err)
 	payload1 := []byte("entry-0")
 	assert.NoError(t, rw.Append(0, payload1))
@@ -218,7 +219,7 @@ func TestReadWriteSegment_BrokenCommittedData_ErrOffsetOutOfBounds(t *testing.T)
 	rwSegment.Close()
 
 	// recover the rw segment
-	_, err = newReadWriteSegment(dir, 0, 1024, 0, commitOffsetProvider)
+	_, err = newReadWriteSegment(codec.OSFS{}, dir, 0, 1024, 0, commitOffsetProvider)
 	assert.ErrorIs(t, err, codec.ErrOffsetOutOfBounds)
 }
 
@@ -227,7 +228,7 @@ func TestReadWriteSegment_BrokenUncommittedData_ErrDataCorrupted(t *testing.T) {
 
 	dir := t.TempDir()
 	// basic functionality test
-	rw, err := newReadWriteSegment(dir, 0, 1024, 0, commitOffsetProvider)
+	rw, err := newReadWriteSegment(codec.OSFS{}, dir, 0, 1024, 0, commitOffsetProvider)
 	assert.NoError(t, err)
 	payload1 := []byte("entry-0")
 	assert.NoError(t, rw.Append(0, payload1))
@@ -257,7 +258,7 @@ func TestReadWriteSegment_BrokenUncommittedData_ErrDataCorrupted(t *testing.T) {
 	rwSegment.Close()
 
 	// recover the rw segment
-	rw, err = newReadWriteSegment(dir, 0, 1024, 0, commitOffsetProvider)
+	rw, err = newReadWriteSegment(codec.OSFS{}, dir, 0, 1024, 0, commitOffsetProvider)
 	assert.NoError(t, err)
 	assert.EqualValues(t, 1, rw.LastOffset())
 
@@ -275,7 +276,7 @@ func TestReadWriteSegment_BrokenCommittedData_ErrDataCorrupted(t *testing.T) {
 
 	dir := t.TempDir()
 	// basic functionality test
-	rw, err := newReadWriteSegment(dir, 0, 1024, 0, commitOffsetProvider)
+	rw, err := newReadWriteSegment(codec.OSFS{}, dir, 0, 1024, 0, commitOffsetProvider)
 	assert.NoError(t, err)
 	payload1 := []byte("entry-0")
 	assert.NoError(t, rw.Append(0, payload1))
@@ -305,7 +306,7 @@ func TestReadWriteSegment_BrokenCommittedData_ErrDataCorrupted(t *testing.T) {
 	rwSegment.Close()
 
 	// recover the rw segment
-	_, err = newReadWriteSegment(dir, 0, 1024, 0, commitOffsetProvider)
+	_, err = newReadWriteSegment(codec.OSFS{}, dir, 0, 1024, 0, commitOffsetProvider)
 	assert.ErrorIs(t, err, codec.ErrDataCorrupted)
 }
 
@@ -340,7 +341,7 @@ func TestReadWriteSegment_DiscardedDataNotResurrected(t *testing.T) {
 			}
 			commitOffsetProvider := ConfigurableCommitOffsetProvider{commitOffset: 2}
 
-			rw, err := newReadWriteSegment(dir, 0, 1024, 0, commitOffsetProvider)
+			rw, err := newReadWriteSegment(codec.OSFS{}, dir, 0, 1024, 0, commitOffsetProvider)
 			assert.NoError(t, err)
 			for i := int64(0); i <= 5; i++ {
 				assert.NoError(t, rw.Append(i, fmt.Appendf(nil, "old-entry-%d", i)))
@@ -351,7 +352,7 @@ func TestReadWriteSegment_DiscardedDataNotResurrected(t *testing.T) {
 			test.corrupt(rwSegment, fileOffset(rwSegment.writingIdx, 0, 3))
 			assert.NoError(t, rw.Close())
 
-			rw, err = newReadWriteSegment(dir, 0, 1024, 0, commitOffsetProvider)
+			rw, err = newReadWriteSegment(codec.OSFS{}, dir, 0, 1024, 0, commitOffsetProvider)
 			assert.NoError(t, err)
 			assert.EqualValues(t, 2, rw.LastOffset())
 			rwSegment = rw.(*readWriteSegment)
@@ -360,7 +361,7 @@ func TestReadWriteSegment_DiscardedDataNotResurrected(t *testing.T) {
 			assert.NoError(t, rw.Append(3, []byte("new-entry-3")))
 			assert.NoError(t, rw.Close())
 
-			rw, err = newReadWriteSegment(dir, 0, 1024, 0, commitOffsetProvider)
+			rw, err = newReadWriteSegment(codec.OSFS{}, dir, 0, 1024, 0, commitOffsetProvider)
 			assert.NoError(t, err)
 			assert.EqualValues(t, 3, rw.LastOffset())
 			payload, _, _, err := rw.Read(3)
@@ -373,7 +374,7 @@ func TestReadWriteSegment_DiscardedDataNotResurrected(t *testing.T) {
 
 func TestSegmentAppendShouldNotPanic(t *testing.T) {
 	basePath := t.TempDir()
-	rw, err := newReadWriteSegment(basePath, 0, 1024, 0, nil)
+	rw, err := newReadWriteSegment(codec.OSFS{}, basePath, 0, 1024, 0, nil)
 	assert.NoError(t, err)
 	for i := int64(0); i < 51; i++ {
 		err := rw.Append(i, fmt.Appendf(nil, "entry-%d", i))
@@ -390,7 +391,7 @@ func TestSegmentAppendShouldNotPanic(t *testing.T) {
 func TestReadWriteSegment_ConcurrentAppendReadFlush(t *testing.T) {
 	path := t.TempDir()
 
-	rw, err := newReadWriteSegment(path, 0, 10*1024*1024, 0, nil)
+	rw, err := newReadWriteSegment(codec.OSFS{}, path, 0, 10*1024*1024, 0, nil)
 	assert.NoError(t, err)
 
 	const entries = 5_000
@@ -454,7 +455,7 @@ func TestReadWriteSegment_ConcurrentAppendReadFlush(t *testing.T) {
 func TestReadWriteSegment_ReopenRemovesStaleIndex(t *testing.T) {
 	path := t.TempDir()
 
-	rw, err := newReadWriteSegment(path, 0, 128*1024, 0, nil)
+	rw, err := newReadWriteSegment(codec.OSFS{}, path, 0, 128*1024, 0, nil)
 	assert.NoError(t, err)
 	idxPath := rw.(*readWriteSegment).c.idxPath
 	assert.NoError(t, rw.Append(0, []byte("entry-0")))
@@ -463,7 +464,7 @@ func TestReadWriteSegment_ReopenRemovesStaleIndex(t *testing.T) {
 	_, err = os.Stat(idxPath)
 	assert.NoError(t, err)
 
-	rw, err = newReadWriteSegment(path, 0, 128*1024, 0, nil)
+	rw, err = newReadWriteSegment(codec.OSFS{}, path, 0, 128*1024, 0, nil)
 	assert.NoError(t, err)
 	_, err = os.Stat(idxPath)
 	assert.ErrorIs(t, err, os.ErrNotExist)
@@ -472,7 +473,7 @@ func TestReadWriteSegment_ReopenRemovesStaleIndex(t *testing.T) {
 	assert.NoError(t, rw.Close())
 
 	// The close wrote a fresh index for the appended entries
-	ro, err := newReadOnlySegment(path, 0)
+	ro, err := newReadOnlySegment(codec.OSFS{}, path, 0)
 	assert.NoError(t, err)
 	assert.EqualValues(t, 1, ro.LastOffset())
 	assert.NoError(t, ro.Close())
@@ -483,7 +484,7 @@ func TestReadWriteSegment_ReopenRemovesStaleIndex(t *testing.T) {
 func TestReadWriteSegment_CloseWithConcurrentFlush(t *testing.T) {
 	path := t.TempDir()
 
-	rw, err := newReadWriteSegment(path, 0, 128*1024, 0, nil)
+	rw, err := newReadWriteSegment(codec.OSFS{}, path, 0, 128*1024, 0, nil)
 	assert.NoError(t, err)
 	assert.NoError(t, rw.Append(0, []byte("entry-0")))
 
@@ -519,7 +520,7 @@ func TestReadWriteSegment_TruncateResetsLastCrc(t *testing.T) {
 				assert.NoError(t, os.WriteFile(segmentPath(dir, 0)+".txn", make([]byte, 1024), 0644))
 			}
 
-			rw, err := newReadWriteSegment(dir, 0, 1024, 0, nil)
+			rw, err := newReadWriteSegment(codec.OSFS{}, dir, 0, 1024, 0, nil)
 			assert.NoError(t, err)
 			for i := int64(0); i <= 5; i++ {
 				assert.NoError(t, rw.Append(i, fmt.Appendf(nil, "entry-%d", i)))
@@ -538,7 +539,7 @@ func TestReadWriteSegment_TruncateResetsLastCrc(t *testing.T) {
 			assert.NoError(t, rw.Append(3, []byte("new-entry-3")))
 			assert.NoError(t, rw.Close())
 
-			rw, err = newReadWriteSegment(dir, 0, 1024, 0, nil)
+			rw, err = newReadWriteSegment(codec.OSFS{}, dir, 0, 1024, 0, nil)
 			assert.NoError(t, err)
 			assert.EqualValues(t, 3, rw.LastOffset())
 			payload, previousCrc, _, err := rw.Read(3)
@@ -554,7 +555,7 @@ func TestReadWriteSegment_TruncateResetsLastCrc(t *testing.T) {
 // proceed while the copy is in flight, while Close waits for it before
 // unmapping the segment.
 func TestReadWriteSegmentReadConcurrentWithAppendAndClose(t *testing.T) {
-	rw, err := newReadWriteSegment(t.TempDir(), 0, 128*1024, 0, nil)
+	rw, err := newReadWriteSegment(codec.OSFS{}, t.TempDir(), 0, 128*1024, 0, nil)
 	require.NoError(t, err)
 	require.NoError(t, rw.Append(0, []byte("entry-0")))
 	hook, reading, release := blockFirstCall()
@@ -593,6 +594,175 @@ func TestReadWriteSegmentReadConcurrentWithAppendAndClose(t *testing.T) {
 	assert.ErrorIs(t, err, ErrSegmentClosed)
 }
 
+func TestReadWriteSegmentNewFailsWhenWalDirectoryCannotBeCreated(t *testing.T) {
+	parent := readOnlyDir(t)
+
+	_, err := newReadWriteSegment(codec.OSFS{}, filepath.Join(parent, "wal"), 0, 1024, 0, nil)
+	assert.ErrorIs(t, err, os.ErrPermission)
+	assert.ErrorContains(t, err, "failed to create wal directory")
+}
+
+func TestReadWriteSegmentNewFailsWhenSegmentFileCannotBeCreated(t *testing.T) {
+	dir := readOnlyDir(t)
+
+	_, err := newReadWriteSegment(codec.OSFS{}, dir, 0, 1024, 0, nil)
+	assert.ErrorIs(t, err, os.ErrPermission)
+	assert.ErrorContains(t, err, "failed to open segment file")
+}
+
+func TestReadWriteSegmentNewFailsOnFilesystemErrors(t *testing.T) {
+	// The stat that picks the codec, the extension of the new file to the
+	// segment size, and its mapping
+	for _, op := range []fsOp{opStat, opSeek, opWrite, opMap} {
+		t.Run(string(op), func(t *testing.T) {
+			dir := t.TempDir()
+			fs := newFaultFS()
+			fs.failNth(op, txnPath(dir, 0), 1)
+
+			_, err := newReadWriteSegment(fs, dir, 0, 1024, 0, nil)
+			assert.ErrorIs(t, err, errInjected)
+		})
+	}
+}
+
+func TestReadWriteSegmentNewFailsWhenDiscardedTailCannotBeZeroed(t *testing.T) {
+	dir := t.TempDir()
+	fs := newFaultFS()
+	commitOffsetProvider := ConfigurableCommitOffsetProvider{commitOffset: 1}
+	rw, err := newReadWriteSegment(fs, dir, 0, 1024, 0, commitOffsetProvider)
+	require.NoError(t, err)
+	for i := int64(0); i <= 3; i++ {
+		require.NoError(t, rw.Append(i, fmt.Appendf(nil, "entry-%d", i)))
+	}
+	// A torn write of the uncommitted entry 2, followed by the intact entry 3
+	rwSegment := rw.(*readWriteSegment)
+	rwSegment.txnMappedFile[fileOffset(rwSegment.writingIdx, 0, 2)+rwSegment.c.codec.GetHeaderSize()] ^= 0xFF
+	require.NoError(t, rw.Close())
+	fs.failNth(opFlush, txnPath(dir, 0), 1)
+
+	_, err = newReadWriteSegment(fs, dir, 0, 1024, 0, commitOffsetProvider)
+	assert.ErrorIs(t, err, errInjected)
+	assert.ErrorContains(t, err, "failed to zero the discarded tail")
+}
+
+func TestReadWriteSegmentReadReportsCorruptedRecord(t *testing.T) {
+	rw, err := newReadWriteSegment(codec.OSFS{}, t.TempDir(), 0, 1024, 0, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, rw.Close()) })
+	require.NoError(t, rw.Append(0, []byte("entry-0")))
+
+	rwSegment := rw.(*readWriteSegment)
+	payloadOffset := fileOffset(rwSegment.writingIdx, 0, 0) + rwSegment.c.codec.GetHeaderSize()
+	rwSegment.txnMappedFile[payloadOffset] ^= 0xff
+
+	_, _, _, err = rw.Read(0)
+	assert.ErrorIs(t, err, codec.ErrDataCorrupted)
+	assert.ErrorContains(t, err, "entryOffset: 0")
+}
+
+func TestReadWriteSegmentReadReportsEmptyRecord(t *testing.T) {
+	rw, err := newReadWriteSegment(codec.OSFS{}, t.TempDir(), 0, 1024, 0, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, rw.Close()) })
+	require.NoError(t, rw.Append(0, []byte("entry-0")))
+
+	rwSegment := rw.(*readWriteSegment)
+	binary.BigEndian.PutUint32(rwSegment.txnMappedFile[fileOffset(rwSegment.writingIdx, 0, 0):], 0)
+
+	_, _, _, err = rw.Read(0)
+	assert.ErrorIs(t, err, codec.ErrEmptyPayload)
+}
+
+func TestReadWriteSegmentAppendRejectsEmptyPayload(t *testing.T) {
+	rw, err := newReadWriteSegment(codec.OSFS{}, t.TempDir(), 0, 1024, 0, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, rw.Close()) })
+
+	assert.ErrorIs(t, rw.Append(0, nil), codec.ErrEmptyPayload)
+	assert.EqualValues(t, InvalidOffset, rw.LastOffset())
+}
+
+func TestReadWriteSegmentSyncFileIfNeededSkipsClosedSegment(t *testing.T) {
+	rw, err := newReadWriteSegment(codec.OSFS{}, t.TempDir(), 0, 1024, 0, nil)
+	require.NoError(t, err)
+	rwSegment := rw.(*readWriteSegment)
+	require.True(t, rwSegment.pendingFileSync.Load())
+	require.NoError(t, rw.Close())
+
+	assert.NoError(t, rw.SyncFileIfNeeded())
+	assert.True(t, rwSegment.pendingFileSync.Load())
+}
+
+func TestReadWriteSegmentSyncFileIfNeededReportsSyncFailure(t *testing.T) {
+	dir := t.TempDir()
+	fs := newFaultFS()
+	rw, err := newReadWriteSegment(fs, dir, 0, 1024, 0, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, rw.Close()) })
+	fs.failNth(opSync, txnPath(dir, 0), 1)
+
+	assert.ErrorIs(t, rw.SyncFileIfNeeded(), errInjected)
+	// The next call syncs the file again
+	assert.True(t, rw.(*readWriteSegment).pendingFileSync.Load())
+	assert.NoError(t, rw.SyncFileIfNeeded())
+	assert.False(t, rw.(*readWriteSegment).pendingFileSync.Load())
+}
+
+func TestReadWriteSegmentCloseReportsIndexWriteFailure(t *testing.T) {
+	for _, c := range codec.SupportedCodecs {
+		t.Run(c.GetTxnExtension(), func(t *testing.T) {
+			dir := t.TempDir()
+			// An existing txn file with the extension of a codec selects it
+			require.NoError(t, os.WriteFile(segmentPath(dir, 0)+c.GetTxnExtension(), make([]byte, 1024), 0o644))
+			fs := newFaultFS()
+			rw, err := newReadWriteSegment(fs, dir, 0, 1024, 0, nil)
+			require.NoError(t, err)
+			require.NoError(t, rw.Append(0, []byte("entry-0")))
+			idxPath := rw.(*readWriteSegment).c.idxPath
+			fs.failNth(opWrite, idxPath, 1)
+
+			assert.ErrorIs(t, rw.Close(), errInjected)
+		})
+	}
+}
+
+func TestReadWriteSegmentOpenTimestampIsCurrentTime(t *testing.T) {
+	rw, err := newReadWriteSegment(codec.OSFS{}, t.TempDir(), 0, 1024, 0, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, rw.Close()) })
+
+	before := time.Now()
+	ts := rw.OpenTimestamp()
+	assert.False(t, ts.Before(before))
+	assert.False(t, ts.After(time.Now()))
+}
+
+func TestReadWriteSegmentTruncateRejectsOffsetOutsideSegment(t *testing.T) {
+	rw, err := newReadWriteSegment(codec.OSFS{}, t.TempDir(), 10, 1024, 0, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, rw.Close()) })
+	require.NoError(t, rw.Append(10, []byte("entry-10")))
+
+	assert.ErrorIs(t, rw.Truncate(9), codec.ErrOffsetOutOfBounds)
+	assert.ErrorIs(t, rw.Truncate(11), codec.ErrOffsetOutOfBounds)
+	assert.EqualValues(t, 10, rw.LastOffset())
+}
+
+func TestReadWriteSegmentTruncateFailsOnCorruptedRecord(t *testing.T) {
+	rw, err := newReadWriteSegment(codec.OSFS{}, t.TempDir(), 0, 1024, 0, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, rw.Close()) })
+	require.NoError(t, rw.Append(0, []byte("entry-0")))
+	require.NoError(t, rw.Append(1, []byte("entry-1")))
+
+	rwSegment := rw.(*readWriteSegment)
+	payloadOffset := fileOffset(rwSegment.writingIdx, 0, 0) + rwSegment.c.codec.GetHeaderSize()
+	rwSegment.txnMappedFile[payloadOffset] ^= 0xff
+
+	assert.ErrorIs(t, rw.Truncate(0), codec.ErrDataCorrupted)
+	assert.EqualValues(t, 1, rw.LastOffset())
+}
+
 // hookedCodec runs a hook before each record read.
 type hookedCodec struct {
 	codec.Codec
@@ -628,4 +798,14 @@ func blockFirstCall() (hook func(), blocked <-chan struct{}, release func()) {
 		}
 	}
 	return hook, blockedCh, func() { releaseOnce.Do(func() { close(releaseCh) }) }
+}
+
+// readOnlyDir returns a directory in which no file can be created, and makes
+// it writable again for the cleanup of the test.
+func readOnlyDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	require.NoError(t, os.Chmod(dir, 0o500))
+	t.Cleanup(func() { assert.NoError(t, os.Chmod(dir, 0o700)) })
+	return dir
 }

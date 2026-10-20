@@ -621,3 +621,23 @@ func TestQuorumAckTracker_WaitForHeadOffsetOrCommitAdvance(t *testing.T) {
 		}
 	}, 10*time.Second, 10*time.Millisecond)
 }
+
+// A closed tracker doesn't account the acks of its cursors anymore.
+func TestCursorAckerAckAfterTrackerClose(t *testing.T) {
+	at := NewQuorumAckTracker(3, 1, wal.InvalidOffset)
+	c1, err := at.NewCursorAcker(wal.InvalidOffset)
+	assert.NoError(t, err)
+
+	assert.NoError(t, at.Close())
+	c1.Ack(1)
+	assert.Equal(t, wal.InvalidOffset, at.CommitOffset())
+}
+
+func TestQuorumAckTrackerWaitForCommitOffsetCanceled(t *testing.T) {
+	at := NewQuorumAckTracker(3, 1, wal.InvalidOffset)
+	defer at.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	assert.ErrorIs(t, at.WaitForCommitOffset(ctx, 1), context.Canceled)
+}

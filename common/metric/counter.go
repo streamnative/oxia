@@ -172,7 +172,7 @@ func getObservedSum(id sumID) *observedSum {
 	} else {
 		_, err = m.Int64ObservableCounter(id.name, unit, description, callback)
 	}
-	fatalOnErr(err, id.name)
+	panicOnErr(err, id.name)
 	sums[id] = o
 	return o
 }

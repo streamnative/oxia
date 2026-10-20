@@ -54,3 +54,18 @@ func TestReconfigureLogger_NoChangeReturnsFalse(t *testing.T) {
 	changed := ReconfigureLogger(&option.LogOptions{Level: "info"})
 	assert.False(t, changed)
 }
+
+func TestConfigureLoggerWithoutJSONAppliesLevel(t *testing.T) {
+	defer func(level slog.Level, json bool) {
+		LogLevel = level
+		LogJSON = json
+		ConfigureLogger()
+	}(LogLevel, LogJSON)
+
+	LogLevel = slog.LevelWarn
+	LogJSON = false
+	ConfigureLogger()
+
+	assert.False(t, slog.Default().Enabled(context.Background(), slog.LevelInfo))
+	assert.True(t, slog.Default().Enabled(context.Background(), slog.LevelWarn))
+}

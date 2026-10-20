@@ -193,7 +193,7 @@ func (d *dispatcher) onOxiaProxiedMessage(msgType MsgType, m any, _ pb.Message) 
 			}
 			b, _ := json.Marshal(pm)
 			fmt.Fprintln(os.Stdout, string(b))
-			delete(d.proxiedRequests, msgId)
+			delete(d.proxiedRequests, inReplyTo)
 		}
 
 	case MsgTypeReadOk:
@@ -212,7 +212,7 @@ func (d *dispatcher) onOxiaProxiedMessage(msgType MsgType, m any, _ pb.Message) 
 			}
 			b, _ := json.Marshal(pm)
 			fmt.Fprintln(os.Stdout, string(b))
-			delete(d.proxiedRequests, msgId)
+			delete(d.proxiedRequests, inReplyTo)
 		}
 
 	case MsgTypeError:

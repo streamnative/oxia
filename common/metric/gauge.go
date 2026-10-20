@@ -16,8 +16,8 @@ package metric
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
-	"os"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -34,13 +34,14 @@ type gauge struct {
 	registration metric.Registration
 }
 
+// Unregister stops observing the gauge. A failure is logged: it leaves a stale
+// series behind, which does not affect the component that is closing.
 func (g *gauge) Unregister() {
 	if err := g.registration.Unregister(); err != nil {
 		slog.Error(
 			"Failed to unregister gauge",
 			slog.Any("error", err),
 		)
-		os.Exit(1)
 	}
 }
 
@@ -66,7 +67,7 @@ func NewSyncGauge(name string, description string, unit Unit, labels map[string]
 		metric.WithUnit(string(unit)),
 		metric.WithDescription(description),
 	)
-	fatalOnErr(err, name)
+	panicOnErr(err, name)
 	return &syncGauge{
 		gauge: g,
 		attrs: getAttrs(labels),
@@ -78,7 +79,7 @@ func NewGauge(name string, description string, unit Unit, labels map[string]any,
 		metric.WithUnit(string(unit)),
 		metric.WithDescription(description),
 	)
-	fatalOnErr(err, name)
+	panicOnErr(err, name)
 
 	res := &gauge{
 		gauge:    g,
@@ -95,11 +96,7 @@ func NewGauge(name string, description string, unit Unit, labels map[string]any,
 	}, g)
 
 	if err != nil {
-		slog.Error(
-			"Failed to register gauge",
-			slog.Any("error", err),
-		)
-		os.Exit(1)
+		panic(fmt.Errorf("failed to register gauge %s: %w", name, err))
 	}
 	return res
 }

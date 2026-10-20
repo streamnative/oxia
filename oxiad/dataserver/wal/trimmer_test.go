@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"os"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -30,6 +32,7 @@ import (
 	"github.com/oxia-db/oxia/common/object"
 	time2 "github.com/oxia-db/oxia/common/time"
 	"github.com/oxia-db/oxia/oxiad/common/logging"
+	"github.com/oxia-db/oxia/oxiad/dataserver/wal/codec"
 
 	"github.com/oxia-db/oxia/common/proto"
 )
@@ -76,7 +79,7 @@ func TestWalTrimmerFlushesDatabaseBeforeDeletingSegments(t *testing.T) {
 	failFlush := atomic.Bool{}
 	commitOffsetProvider.flush = func() error {
 		flushes.Add(1)
-		segments, err := listAllSegments(segmentsPath)
+		segments, err := listAllSegments(codec.OSFS{}, segmentsPath)
 		assert.NoError(t, err)
 		assert.Contains(t, segments, int64(0))
 		if failFlush.Load() {
@@ -96,7 +99,7 @@ func TestWalTrimmerFlushesDatabaseBeforeDeletingSegments(t *testing.T) {
 			Timestamp: uint64(i),
 		}))
 	}
-	segments, err := listAllSegments(segmentsPath)
+	segments, err := listAllSegments(codec.OSFS{}, segmentsPath)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, len(segments), 3)
 	secondSegment := segments[1]
@@ -115,7 +118,7 @@ func TestWalTrimmerFlushesDatabaseBeforeDeletingSegments(t *testing.T) {
 		return flushes.Load() > 1
 	}, 10*time.Second, 10*time.Millisecond)
 	assert.EqualValues(t, secondSegment-1, w.FirstOffset())
-	segments, err = listAllSegments(segmentsPath)
+	segments, err = listAllSegments(codec.OSFS{}, segmentsPath)
 	require.NoError(t, err)
 	assert.Contains(t, segments, int64(0))
 
@@ -123,7 +126,7 @@ func TestWalTrimmerFlushesDatabaseBeforeDeletingSegments(t *testing.T) {
 	assert.Eventually(t, func() bool {
 		return w.FirstOffset() == secondSegment
 	}, 10*time.Second, 10*time.Millisecond)
-	segments, err = listAllSegments(segmentsPath)
+	segments, err = listAllSegments(codec.OSFS{}, segmentsPath)
 	require.NoError(t, err)
 	assert.NotContains(t, segments, int64(0))
 
@@ -385,4 +388,65 @@ func TestWalTrimUpToCommitOffset(t *testing.T) {
 			assert.NoError(t, w.Close())
 		})
 	}
+}
+
+func TestTrimmerDoTrimFailsWhenFirstEntryIsUnreadable(t *testing.T) {
+	w, tr, segments := newWalWithExpiredSegments(t)
+	c, err := newSegmentConfig(codec.OSFS{}, w.walPath, segments[0])
+	require.NoError(t, err)
+	require.NoError(t, os.Remove(c.txnPath))
+
+	err = tr.doTrim()
+	assert.ErrorContains(t, err, "failed to read from wal at offset 0")
+	assert.EqualValues(t, 0, w.FirstOffset())
+}
+
+func TestTrimmerDoTrimFailsWhenBinarySearchHitsUnreadableEntry(t *testing.T) {
+	w, tr, segments := newWalWithExpiredSegments(t)
+	// The first probe of the binary search over [0, 19]
+	med := int64(10)
+	i, _ := slices.BinarySearch(segments, med+1)
+	holding := segments[i-1]
+	require.NotEqual(t, segments[0], holding)
+	require.NotEqual(t, segments[len(segments)-1], holding)
+	c, err := newSegmentConfig(codec.OSFS{}, w.walPath, holding)
+	require.NoError(t, err)
+	require.NoError(t, os.Remove(c.txnPath))
+
+	err = tr.doTrim()
+	assert.ErrorContains(t, err, "failed to perform binary search")
+	assert.EqualValues(t, 0, w.FirstOffset())
+}
+
+// newWalWithExpiredSegments returns a wal holding the entries 0..19 across
+// several segments, all past their retention, and its trimmer, which runs
+// only when the test calls it.
+func newWalWithExpiredSegments(t *testing.T) (*wal, *trimmer, []int64) {
+	t.Helper()
+	options := &FactoryOptions{
+		BaseWalDir:  t.TempDir(),
+		Retention:   1 * time.Millisecond,
+		SegmentSize: 128,
+	}
+	clock := &time2.MockedClock{}
+	commitOffsetProvider := &mockedCommitOffsetProvider{}
+	commitOffsetProvider.commitOffset.Store(math.MaxInt64)
+
+	w, err := newWal(constant.DefaultNamespace, 1, options, commitOffsetProvider, clock, time.Hour)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, w.Close()) })
+	for i := int64(0); i < 20; i++ {
+		require.NoError(t, w.Append(&proto.LogEntry{
+			Offset:    i,
+			Value:     []byte(fmt.Sprintf("%d", i)),
+			Timestamp: uint64(i),
+		}))
+	}
+	clock.Set(1000)
+
+	impl := w.(*wal)
+	segments, err := listAllSegments(codec.OSFS{}, impl.walPath)
+	require.NoError(t, err)
+	require.Greater(t, len(segments), 3)
+	return impl, impl.trimmer.(*trimmer), segments
 }

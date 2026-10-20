@@ -21,8 +21,8 @@ import (
 )
 
 // RemoveFileIfExists removes the file, it will return nil if the file does not exist.
-func RemoveFileIfExists(path string) error {
-	err := os.Remove(path)
+func RemoveFileIfExists(fs FS, path string) error {
+	err := fs.Remove(path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}

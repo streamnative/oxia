@@ -24,6 +24,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protowire"
 
 	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/proto"
@@ -162,6 +163,16 @@ func TestInheritedNotifications_Filter(t *testing.T) {
 	assert.Same(t, &batches[2].Data[0], &filtered[0].Data[0])
 }
 
+func TestInheritedNotificationsFilterFailsOnCorruptedBatch(t *testing.T) {
+	in := inheritedNotifications(nil).withSplit(0, math.MaxUint32)
+	// A notification that can't be decoded
+	data := protowire.AppendBytes(protowire.AppendTag(nil, notificationBatchNotifications, protowire.BytesType),
+		[]byte{0xff})
+
+	_, err := in.filter([]proto.EncodedNotificationBatch{{Offset: 0, Data: data}})
+	assert.ErrorContains(t, err, "failed to deserialize notification batch")
+}
+
 // readNotifiedKeys returns the keys of the notifications of each batch from
 // startOffset on.
 func readNotifiedKeys(t *testing.T, db DB, startOffset int64) map[int64][]string {
@@ -287,4 +298,44 @@ func TestDB_InheritedNotificationsChildOfChild(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, map[int64][]string{0: keys[2:3], 1: keys[:3], 2: keys}, readNotifiedKeys(t, db, 0))
+}
+
+// The batches of the parent end where the child writes its first batch: a
+// write that fails to record it leaves them open.
+func TestDBCloseInheritedNotificationsFailsWhenWriteFails(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		op   string
+		key  string
+	}{
+		{"inherited-notifications", opBatchPutMarshalable, inheritedNotificationsKey},
+		{"commit", opBatchCommit, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			d, kv := newHookedTestDB(t)
+			setLeftChildFilter(t, d)
+			kv.failOn(test.op, test.key)
+
+			_, err := d.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{Key: "a", Value: []byte("v")}}},
+				0, 0, NoOpCallback)
+			assert.ErrorIs(t, err, errInjected)
+			assert.True(t, d.inheritedNotifications.Load().open())
+		})
+	}
+}
+
+func TestDBProcessControlRequestFailsWhenClosingInheritedNotificationsFails(t *testing.T) {
+	d, kv := newHookedTestDB(t)
+	setLeftChildFilter(t, d)
+	filter := d.DeferredSplitFilter()
+	kv.failOn(opBatchPutMarshalable, inheritedNotificationsKey)
+
+	// The step that ends the filter records that the batches of the parent end
+	// before it
+	_, err := d.ProcessControlRequest(&proto.ControlRequest{Value: &proto.ControlRequest_SplitFilter{
+		SplitFilter: &proto.SplitFilterRequest{MaxRecords: 100},
+	}}, 0, 0, NoOpCallback)
+	assert.ErrorIs(t, err, errInjected)
+	assert.Equal(t, filter, d.DeferredSplitFilter())
+	assert.True(t, d.inheritedNotifications.Load().open())
 }

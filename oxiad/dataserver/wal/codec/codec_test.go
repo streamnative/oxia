@@ -33,17 +33,17 @@ func TestCodec_GetOrCreate(t *testing.T) {
 	_, err = os.Create(path.Join(baseDir, v2FileName+v2.GetTxnExtension()))
 	assert.NoError(t, err)
 
-	codec, exist, err := GetOrCreate(path.Join(baseDir, nonExistFileName))
+	codec, exist, err := GetOrCreate(OSFS{}, path.Join(baseDir, nonExistFileName))
 	assert.NoError(t, err)
 	assert.EqualValues(t, v2, codec)
 	assert.EqualValues(t, false, exist)
 
-	codec, exist, err = GetOrCreate(path.Join(baseDir, v1FileName))
+	codec, exist, err = GetOrCreate(OSFS{}, path.Join(baseDir, v1FileName))
 	assert.NoError(t, err)
 	assert.EqualValues(t, v1, codec)
 	assert.EqualValues(t, true, exist)
 
-	codec, exist, err = GetOrCreate(path.Join(baseDir, v2FileName))
+	codec, exist, err = GetOrCreate(OSFS{}, path.Join(baseDir, v2FileName))
 	assert.NoError(t, err)
 	assert.EqualValues(t, v2, codec)
 	assert.EqualValues(t, true, exist)
@@ -54,7 +54,7 @@ func TestGetOrCreateReturnsStatError(t *testing.T) {
 	assert.NoError(t, os.WriteFile(file, nil, 0o600))
 
 	// Stat fails with ENOTDIR, not with a missing file
-	codec, exist, err := GetOrCreate(path.Join(file, "0"))
+	codec, exist, err := GetOrCreate(OSFS{}, path.Join(file, "0"))
 	assert.Error(t, err)
 	assert.False(t, errors.Is(err, os.ErrNotExist))
 	assert.Nil(t, codec)

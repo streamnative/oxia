@@ -15,6 +15,7 @@
 package option
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -138,6 +139,235 @@ metadata:
 `)
 
 	require.ErrorContains(t, opts.Validate(), "metadata.file.dir and deprecated cluster.configPath")
+}
+
+func TestPublicServerOptionsUnmarshalYAMLRejectsInvalidNode(t *testing.T) {
+	opts := &Options{}
+	err := yaml.Unmarshal([]byte("server:\n  public: [a, b]\n"), opts)
+	require.Error(t, err)
+}
+
+func TestMetadataOptionsValidateRejectsEmptyName(t *testing.T) {
+	mo := &MetadataOptions{Name: "  ", ProviderOptions: ProviderOptions{ProviderName: ProviderMemory}}
+	require.ErrorContains(t, mo.Validate(), "metadata.name must be set")
+}
+
+func TestMetadataOptionsGetStatusProviderOptions(t *testing.T) {
+	mo := &MetadataOptions{
+		Name: "coordinator-0",
+		ProviderOptions: ProviderOptions{
+			ProviderName: ProviderConfigMap,
+			Kubernetes:   K8sMetadata{Namespace: "oxia"},
+		},
+	}
+	require.Equal(t, mo.ProviderOptions, mo.GetStatusProviderOptions())
+}
+
+func TestMetadataOptionsApplyLegacyClusterConfigPathConfigMap(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		kubernetes K8sMetadata
+		configPath string
+		expected   K8sMetadata
+		err        string
+	}{
+		{
+			name:       "fills namespace and config name",
+			configPath: "configmap:oxia/oxia-config",
+			expected:   K8sMetadata{Namespace: "oxia", ConfigName: "oxia-config"},
+		},
+		{
+			name:       "keeps matching values",
+			kubernetes: K8sMetadata{Namespace: "oxia", ConfigName: "oxia-config"},
+			configPath: "configmap:oxia/oxia-config",
+			expected:   K8sMetadata{Namespace: "oxia", ConfigName: "oxia-config"},
+		},
+		{name: "missing name", configPath: "configmap:oxia", err: "invalid cluster.configPath"},
+		{name: "empty namespace", configPath: "configmap:/oxia-config", err: "invalid cluster.configPath"},
+		{name: "empty name", configPath: "configmap:oxia/", err: "invalid cluster.configPath"},
+		{
+			name:       "namespace conflict",
+			kubernetes: K8sMetadata{Namespace: "other"},
+			configPath: "configmap:oxia/oxia-config",
+			err:        "metadata.kubernetes.namespace",
+		},
+		{
+			name:       "config name conflict",
+			kubernetes: K8sMetadata{ConfigName: "other"},
+			configPath: "configmap:oxia/oxia-config",
+			err:        "metadata.kubernetes.configName",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mo := &MetadataOptions{ProviderOptions: ProviderOptions{
+				ProviderName: ProviderConfigMap,
+				Kubernetes:   tc.kubernetes,
+			}}
+			err := mo.ApplyLegacyClusterConfigPath(tc.configPath)
+			if tc.err != "" {
+				require.ErrorContains(t, err, tc.err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, mo.Kubernetes)
+		})
+	}
+}
+
+func TestMetadataOptionsApplyLegacyClusterConfigPathFileRejectsConfigMap(t *testing.T) {
+	mo := &MetadataOptions{ProviderOptions: ProviderOptions{ProviderName: ProviderFile}}
+	require.ErrorContains(t, mo.ApplyLegacyClusterConfigPath("configmap:oxia/oxia-config"),
+		"must be a file path when metadata provider is file")
+}
+
+func TestMetadataOptionsApplyLegacyClusterConfigPathOtherProviders(t *testing.T) {
+	mo := &MetadataOptions{ProviderOptions: ProviderOptions{ProviderName: ProviderRaft}}
+	require.NoError(t, mo.ApplyLegacyClusterConfigPath("configmap:oxia/oxia-config"))
+	require.Empty(t, mo.File.ConfigName)
+	require.Empty(t, mo.Kubernetes)
+
+	require.NoError(t, mo.ApplyLegacyClusterConfigPath("configs/cluster.yaml"))
+	require.Equal(t, "configs/cluster.yaml", mo.File.ConfigPath())
+}
+
+func TestProviderOptionsValidate(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		opts ProviderOptions
+		err  string
+	}{
+		{name: "memory", opts: ProviderOptions{ProviderName: ProviderMemory}},
+		{name: "file", opts: ProviderOptions{ProviderName: ProviderFile}},
+		{
+			name: "configmap",
+			opts: ProviderOptions{ProviderName: ProviderConfigMap, Kubernetes: K8sMetadata{Namespace: "oxia"}},
+		},
+		{name: "configmap without namespace", opts: ProviderOptions{ProviderName: ProviderConfigMap}, err: "k8s-namespace"},
+		{name: "raft", opts: ProviderOptions{ProviderName: ProviderRaft, Raft: RaftMetadata{Address: "localhost:0"}}},
+		{name: "raft without address", opts: ProviderOptions{ProviderName: ProviderRaft}, err: "raft-address"},
+		{name: "unknown", opts: ProviderOptions{ProviderName: "etcd"}, err: "must be one of"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.opts.Validate()
+			if tc.err != "" {
+				require.ErrorContains(t, err, tc.err)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestK8sMetadataUnmarshalJSON(t *testing.T) {
+	km := K8sMetadata{}
+	require.NoError(t, json.Unmarshal([]byte(`{"namespace":"oxia","configMapName":"status","configName":"config"}`), &km))
+	require.Equal(t, K8sMetadata{Namespace: "oxia", StatusName: "status", ConfigName: "config"}, km)
+
+	require.Error(t, json.Unmarshal([]byte(`{"namespace":1}`), &km))
+	require.ErrorContains(t, json.Unmarshal([]byte(`{"statusName":"a","configMapName":"b"}`), &km),
+		"kubernetes.statusName and deprecated kubernetes.configMapName")
+}
+
+func TestK8sMetadataUnmarshalYAMLRejectsInvalidNode(t *testing.T) {
+	km := K8sMetadata{}
+	require.Error(t, yaml.Unmarshal([]byte("[a, b]"), &km))
+}
+
+func TestK8sMetadataNameOrDefault(t *testing.T) {
+	km := K8sMetadata{}
+	require.Equal(t, DefaultK8sStatusName, km.StatusNameOrDefault())
+	require.Equal(t, DefaultK8sConfigName, km.ConfigNameOrDefault())
+}
+
+func TestFileMetadataUnmarshalJSON(t *testing.T) {
+	fm := FileMetadata{}
+	require.NoError(t, json.Unmarshal([]byte(`{"path":"data/status.json","configName":"cluster.yaml"}`), &fm))
+	require.Equal(t, FileMetadata{StatusName: "data/status.json", ConfigName: "cluster.yaml"}, fm)
+
+	require.Error(t, json.Unmarshal([]byte(`{"dir":1}`), &fm))
+}
+
+func TestFileMetadataUnmarshalYAMLRejectsInvalidNode(t *testing.T) {
+	fm := FileMetadata{}
+	require.Error(t, yaml.Unmarshal([]byte("[a, b]"), &fm))
+}
+
+func TestFileMetadataApplyCompatPath(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		data     string
+		expected FileMetadata
+		err      string
+	}{
+		{
+			name:     "dir and path",
+			data:     "dir: data\npath: data/status.json\n",
+			expected: FileMetadata{Dir: "data", StatusName: "status.json"},
+		},
+		{
+			name:     "dir, path and matching status name",
+			data:     "dir: data\npath: data/status.json\nstatusName: status.json\n",
+			expected: FileMetadata{Dir: "data", StatusName: "status.json"},
+		},
+		{
+			name: "dir conflicts with path",
+			data: "dir: other\npath: data/status.json\n",
+			err:  "file.dir and deprecated file.path",
+		},
+		{
+			name: "status name conflicts with path in dir",
+			data: "dir: data\npath: data/status.json\nstatusName: other.json\n",
+			err:  "different file names",
+		},
+		{
+			name: "status name conflicts with path",
+			data: "path: data/status.json\nstatusName: other.json\n",
+			err:  "different paths",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fm := FileMetadata{}
+			err := yaml.Unmarshal([]byte(tc.data), &fm)
+			if tc.err != "" {
+				require.ErrorContains(t, err, tc.err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, fm)
+		})
+	}
+}
+
+func TestFileMetadataApplyLegacyConfigPath(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		file       FileMetadata
+		configPath string
+		expected   string
+		err        string
+	}{
+		{name: "dir fills config name", file: FileMetadata{Dir: "configs"}, configPath: "configs/cluster.yaml",
+			expected: "configs/cluster.yaml"},
+		{name: "dir with matching config name", file: FileMetadata{Dir: "configs", ConfigName: "cluster.yaml"},
+			configPath: "configs/cluster.yaml", expected: "configs/cluster.yaml"},
+		{name: "dir with conflicting config name", file: FileMetadata{Dir: "configs", ConfigName: "other.yaml"},
+			configPath: "configs/cluster.yaml", err: "different file names"},
+		{name: "matching config path", file: FileMetadata{ConfigName: "configs/cluster.yaml"},
+			configPath: "configs/cluster.yaml", expected: "configs/cluster.yaml"},
+		{name: "conflicting config path", file: FileMetadata{ConfigName: "other.yaml"},
+			configPath: "configs/cluster.yaml", err: "different paths"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mo := &MetadataOptions{ProviderOptions: ProviderOptions{ProviderName: ProviderFile, File: tc.file}}
+			err := mo.ApplyLegacyClusterConfigPath(tc.configPath)
+			if tc.err != "" {
+				require.ErrorContains(t, err, tc.err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, mo.File.ConfigPath())
+		})
+	}
 }
 
 func readOptions(t *testing.T, data string) *Options {

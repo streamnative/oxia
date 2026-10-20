@@ -16,6 +16,7 @@ package oxia
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"slices"
 	"sync"
@@ -245,6 +246,19 @@ func TestNotificationsReceivedBatchResetsBackoff(t *testing.T) {
 	assert.ErrorIs(t, snm.getNotifications(), constant.ErrResourceUnavailable)
 	assert.Equal(t, 1, bo.resets)
 	assert.EqualValues(t, 5, snm.lastOffsetReceived)
+}
+
+func TestNotificationsReceivedBatchLogsAtDebugLevel(t *testing.T) {
+	snm, _ := newTestShardNotificationsManager(&notificationsTestScriptedStream{
+		batches: []*proto.NotificationBatch{{Offset: 5}},
+		err:     constant.ErrResourceUnavailable,
+	})
+	snm.initialized = true
+	logs := &debugLogs{}
+	snm.log = slog.New(logs)
+
+	assert.ErrorIs(t, snm.getNotifications(), constant.ErrResourceUnavailable)
+	assert.Contains(t, logs.messages(), "Received batch notification")
 }
 
 // notificationsTestServer serves the subscriptions of a client: it confirms
@@ -556,4 +570,93 @@ func TestNotificationsResumedWithoutConfirmation(t *testing.T) {
 	subscription.send(15)
 	subscription.send(16, "b")
 	assert.Equal(t, "b", nextNotification(t, nm).Key)
+}
+
+// A shard that is split after the subscription was closed is not followed.
+func TestNotificationsFollowSplitAfterClose(t *testing.T) {
+	snm, _ := newTestShardNotificationsManager(nil)
+	snm.nm.shardManager = &notificationsTestShardManager{shards: []int64{1, 2}, successors: map[int64][]int64{0: {1, 2}}}
+	snm.init = &shardInit{}
+	snm.init.pending.Store(1)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	snm.ctx = ctx
+
+	snm.followSplit()
+
+	// No subscription to the shards that replaced it takes over its initialization
+	assert.EqualValues(t, 1, snm.init.pending.Load())
+}
+
+// A stream that ends without an error is retried.
+func TestNotificationsStreamEnd(t *testing.T) {
+	snm, _ := newTestShardNotificationsManager(&notificationsTestScriptedStream{
+		batches: []*proto.NotificationBatch{nil},
+	})
+	assert.ErrorIs(t, snm.getNotifications(), io.EOF)
+
+	// Unless the subscription was closed
+	snm, _ = newTestShardNotificationsManager(&notificationsTestScriptedStream{
+		batches: []*proto.NotificationBatch{nil},
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	snm.ctx = ctx
+	assert.ErrorIs(t, snm.getNotifications(), context.Canceled)
+}
+
+// A notification that nobody receives does not keep a closed subscription from
+// ending.
+func TestNotificationsDeliverEndsWhenClosed(t *testing.T) {
+	key := "/a"
+	for name, test := range map[string]struct {
+		batch            *proto.NotificationBatch
+		lastOffset       int64
+		expectedReceived int64
+	}{
+		"notification": {
+			batch: &proto.NotificationBatch{Offset: 1, Timestamp: 1, Notifications: []*proto.NotificationEntry{{
+				Key:   &key,
+				Value: &proto.Notification{Type: proto.NotificationType_KEY_CREATED},
+			}}},
+			lastOffset:       0,
+			expectedReceived: 0,
+		},
+		// The confirmation of a resumed subscription after the batches that
+		// the retention deleted
+		"missed-notifications": {
+			batch:            &proto.NotificationBatch{Offset: 10},
+			lastOffset:       5,
+			expectedReceived: 5,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			snm, _ := newTestShardNotificationsManager(&notificationsTestScriptedStream{
+				batches: []*proto.NotificationBatch{test.batch},
+			})
+			snm.initialized = true
+			snm.lastOffsetReceived = test.lastOffset
+			snm.nm.multiplexCh = make(chan *Notification)
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			snm.ctx = ctx
+
+			assert.ErrorIs(t, snm.getNotifications(), context.Canceled)
+			assert.Equal(t, test.expectedReceived, snm.lastOffsetReceived)
+		})
+	}
+}
+
+func TestConvertNotificationType(t *testing.T) {
+	for protoType, expected := range map[proto.NotificationType]NotificationType{
+		proto.NotificationType_KEY_CREATED:       KeyCreated,
+		proto.NotificationType_KEY_MODIFIED:      KeyModified,
+		proto.NotificationType_KEY_DELETED:       KeyDeleted,
+		proto.NotificationType_KEY_RANGE_DELETED: KeyRangeRangeDeleted,
+	} {
+		assert.Equal(t, expected, convertNotificationType(protoType))
+	}
+	assert.PanicsWithValue(t, "Invalid notification type", func() {
+		convertNotificationType(proto.NotificationType(100))
+	})
 }

@@ -24,6 +24,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/oxia-db/oxia/cmd/client/common"
+	"github.com/oxia-db/oxia/cmd/common/clientauth"
 	"github.com/oxia-db/oxia/oxia"
 )
 
@@ -68,4 +69,22 @@ func TestDelete_exec(t *testing.T) {
 	assert.Empty(t, out)
 
 	common.MockedClient.AssertExpectations(t)
+}
+
+func TestExecReturnsNewClientError(t *testing.T) {
+	useConflictingClientAuth(t)
+
+	_, err := runCmd(Cmd, "x")
+
+	assert.ErrorIs(t, err, clientauth.ErrAuthTokenConflict)
+}
+
+// useConflictingClientAuth makes the creation of the client fail, with
+// conflicting sources of the auth token.
+func useConflictingClientAuth(t *testing.T) {
+	t.Helper()
+	mocked, auth := common.MockedClient, common.Config.Auth
+	common.MockedClient = nil
+	common.Config.Auth = clientauth.Config{Token: "token", TokenFile: "token-file"}
+	t.Cleanup(func() { common.MockedClient, common.Config.Auth = mocked, auth })
 }

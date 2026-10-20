@@ -18,7 +18,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
+	"log/slog"
 	"math"
 	"os"
 	"path/filepath"
@@ -31,6 +33,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/multierr"
 	"google.golang.org/protobuf/encoding/protojson"
 	pb "google.golang.org/protobuf/proto"
 
@@ -3336,4 +3339,795 @@ func TestFollowerControllerCheckpointReadsTheDatabase(t *testing.T) {
 	assert.ErrorIs(t, err, constant.ErrResourceUnavailable)
 	assert.ErrorIs(t, fc.WithDatabase(checkpoint.Generation, func(string) error { return nil }),
 		constant.ErrResourceUnavailable)
+}
+
+// A follower created with the options of a new term applies them to the
+// database it opens, before it gets the new term itself.
+func TestFollowerControllerNewFollowerControllerAppliesNewTermOptions(t *testing.T) {
+	walFactory, kvFactory := newHookFactories(t)
+	fc := newFencedFollower(t, walFactory, kvFactory)
+	require.NoError(t, fc.Close())
+
+	fc, err := NewFollowerController(&option.StorageOptions{}, constant.DefaultNamespace, 0, walFactory, kvFactory,
+		&proto.NewTermOptions{EnableNotifications: false})
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, fc.Term())
+	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
+	_, err = fc.(*followerController).db.ReadNextNotifications(context.Background(), 0)
+	assert.ErrorIs(t, err, database.ErrNotificationsDisabled)
+
+	assert.NoError(t, fc.Close())
+}
+
+func TestFollowerControllerNewFollowerControllerFailsWhenDatabaseOpenFails(t *testing.T) {
+	walFactory, kvFactory := newHookFactories(t)
+	kvFactory.setHooks(func(h *kvHooks) { h.newKV = func() error { return errors.New("open failed") } })
+
+	fc, err := NewFollowerController(&option.StorageOptions{}, constant.DefaultNamespace, 0, walFactory, kvFactory, nil)
+	assert.ErrorContains(t, err, "open failed")
+	assert.Nil(t, fc)
+}
+
+// A follower that can't read the state of its database fails, and closes the
+// database: a leaked database would hold the Pebble lock.
+func TestFollowerControllerNewFollowerControllerFailsOnCorruptState(t *testing.T) {
+	for _, key := range []string{"term", "commit-offset"} {
+		t.Run(key, func(t *testing.T) {
+			walFactory, kvFactory := newHookFactories(t)
+			kv, err := kvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_HIERARCHICAL)
+			require.NoError(t, err)
+			batch := kv.NewWriteBatch()
+			require.NoError(t, batch.Put(constant.InternalKeyPrefix+key, []byte{0xff, 0xff}))
+			require.NoError(t, batch.Commit())
+			require.NoError(t, batch.Close())
+			require.NoError(t, kv.Close())
+
+			fc, err := NewFollowerController(&option.StorageOptions{}, constant.DefaultNamespace, 0, walFactory,
+				kvFactory, nil)
+			assert.Error(t, err)
+			assert.Nil(t, fc)
+
+			kv, err = kvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_HIERARCHICAL)
+			require.NoError(t, err, "the database was left open")
+			assert.NoError(t, kv.Close())
+		})
+	}
+}
+
+func TestFollowerControllerCloseReportsWalCloseError(t *testing.T) {
+	walFactory, kvFactory := newHookFactories(t)
+	fc := newFencedFollower(t, walFactory, kvFactory)
+
+	walFactory.setHooks(func(h *walHooks) { h.close = func() error { return errors.New("close failed") } })
+	assert.ErrorContains(t, fc.Close(), "close failed")
+	// Closing again is a no-op
+	assert.NoError(t, fc.Close())
+}
+
+// The WAL trimming doesn't wait for a writer holding the lock of the follower:
+// it retries later.
+func TestFollowerControllerFlushDatabaseFailsWhileBusy(t *testing.T) {
+	walFactory, kvFactory := newHookFactories(t)
+	fc := newFencedFollower(t, walFactory, kvFactory)
+	fci := fc.(*followerController)
+
+	fci.rwMutex.Lock()
+	err := fci.FlushDatabase()
+	fci.rwMutex.Unlock()
+	assert.ErrorIs(t, err, constant.ErrResourceConflict)
+	assert.NoError(t, fci.FlushDatabase())
+
+	assert.NoError(t, fc.Close())
+}
+
+func TestFollowerControllerAppendEntriesRejectsNotMember(t *testing.T) {
+	walFactory, kvFactory := newHookFactories(t)
+	fc, err := NewFollowerController(&option.StorageOptions{}, constant.DefaultNamespace, 0, walFactory, kvFactory, nil)
+	require.NoError(t, err)
+
+	assert.ErrorIs(t, fc.AppendEntries(rpc.NewMockServerReplicateStream()), constant.ErrNodeIsNotMember)
+	assert.NoError(t, fc.Close())
+}
+
+func TestFollowerControllerRejectsRequestsOnceClosed(t *testing.T) {
+	walFactory, kvFactory := newHookFactories(t)
+	fc := newFencedFollower(t, walFactory, kvFactory)
+	require.NoError(t, fc.Close())
+
+	assert.ErrorIs(t, fc.AppendEntries(rpc.NewMockServerReplicateStream()), constant.ErrResourceConflict)
+	assert.ErrorIs(t, fc.InstallSnapshot(rpc.NewMockServerSendSnapshotStream()), constant.ErrResourceConflict)
+	_, err := fc.GetStatus(&proto.GetStatusRequest{})
+	assert.ErrorIs(t, err, constant.ErrResourceConflict)
+	_, err = fc.Delete(&proto.DeleteShardRequest{Term: 1})
+	assert.ErrorIs(t, err, constant.ErrResourceConflict)
+}
+
+func TestFollowerControllerNewTermFailsWhenTermUpdateFails(t *testing.T) {
+	walFactory, kvFactory := newHookFactories(t)
+	fc := newFencedFollower(t, walFactory, kvFactory)
+
+	kvFactory.setHooks(func(h *kvHooks) { h.flush = func() error { return errors.New("flush failed") } })
+	_, err := fc.NewTerm(&proto.NewTermRequest{Term: 2})
+	assert.ErrorIs(t, err, constant.ErrResourceUnavailable)
+	assert.ErrorContains(t, err, "flush failed")
+	assert.EqualValues(t, 1, fc.Term())
+
+	kvFactory.setHooks(func(h *kvHooks) { h.flush = nil })
+	assert.NoError(t, fc.Close())
+}
+
+func TestFollowerControllerNewTermFailsWhenWalSyncFails(t *testing.T) {
+	walFactory, kvFactory := newHookFactories(t)
+	fc := newFencedFollower(t, walFactory, kvFactory)
+
+	walFactory.setHooks(func(h *walHooks) { h.sync = func() error { return errors.New("sync failed") } })
+	_, err := fc.NewTerm(&proto.NewTermRequest{Term: 2})
+	assert.ErrorIs(t, err, constant.ErrResourceUnavailable)
+	assert.ErrorContains(t, err, "sync failed")
+
+	walFactory.setHooks(func(h *walHooks) { h.sync = nil })
+	assert.NoError(t, fc.Close())
+}
+
+func TestFollowerControllerNewTermFailsWhenHeadEntryReadFails(t *testing.T) {
+	walFactory, kvFactory := newHookFactories(t)
+	fc := newFencedFollower(t, walFactory, kvFactory)
+
+	walFactory.setHooks(func(h *walHooks) { h.newReverseReader = func() error { return errors.New("read failed") } })
+	_, err := fc.NewTerm(&proto.NewTermRequest{Term: 2})
+	assert.ErrorIs(t, err, constant.ErrResourceUnavailable)
+	assert.ErrorContains(t, err, "read failed")
+
+	walFactory.setHooks(func(h *walHooks) { h.newReverseReader = nil })
+	assert.NoError(t, fc.Close())
+}
+
+// A follower that replicates from a leader is no longer fenced: it can't get
+// truncated, nor install a snapshot.
+func TestFollowerControllerRejectsTruncateAndSnapshotWhileReplicating(t *testing.T) {
+	walFactory, kvFactory := newHookFactories(t)
+	fc := newFencedFollower(t, walFactory, kvFactory)
+
+	stream := rpc.NewMockServerReplicateStream()
+	appendErr := make(chan error, 1)
+	go func() { appendErr <- fc.AppendEntries(stream) }()
+	require.Eventually(t, closeChanIsNotNil(fc), 10*time.Second, 10*time.Millisecond)
+
+	_, err := fc.Truncate(&proto.TruncateRequest{Term: 1, HeadEntryId: &proto.EntryId{Term: 1, Offset: 0}})
+	assert.ErrorIs(t, err, constant.ErrResourceConflict)
+	assert.ErrorIs(t, fc.InstallSnapshot(rpc.NewMockServerSendSnapshotStream()), constant.ErrResourceConflict)
+
+	stream.Cancel()
+	assert.ErrorIs(t, <-appendErr, context.Canceled)
+	assert.NoError(t, fc.Close())
+}
+
+func TestFollowerControllerTruncateFailsWhenWalTruncateFails(t *testing.T) {
+	walFactory, kvFactory := newHookFactories(t)
+	fc := newFencedFollower(t, walFactory, kvFactory)
+
+	walFactory.setHooks(func(h *walHooks) { h.truncateLog = func() error { return errors.New("truncate failed") } })
+	_, err := fc.Truncate(&proto.TruncateRequest{Term: 1, HeadEntryId: &proto.EntryId{Term: 1, Offset: 0}})
+	assert.ErrorIs(t, err, constant.ErrResourceUnavailable)
+	assert.ErrorContains(t, err, "truncate failed")
+
+	assert.NoError(t, fc.Close())
+}
+
+// The state applier retries the committed entries that it fails to read from
+// the WAL, once the leader sends its next request.
+func TestFollowerControllerStateApplierRetriesWalReadFailures(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		err      error
+		setFault func(h *walHooks, fault func() error)
+	}{
+		{"open", errors.New("open failed"), func(h *walHooks, fault func() error) { h.newReader = fault }},
+		{"read", errors.New("read failed"), func(h *walHooks, fault func() error) { h.readNext = fault }},
+		{"reader-closed", wal.ErrReaderClosed, func(h *walHooks, fault func() error) { h.readNext = fault }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			walFactory, kvFactory := newHookFactories(t)
+			fc := newReplicatingFollower(t, walFactory, kvFactory)
+			appendUncommittedEntries(t, fc, 2)
+
+			var calls atomic.Int64
+			walFactory.setHooks(func(h *walHooks) {
+				test.setFault(h, func() error {
+					if calls.Add(1) == 1 {
+						return test.err
+					}
+					return nil
+				})
+			})
+
+			stream, closeStream := openStream(t, fc)
+			stream.AddRequest(&proto.Append{Term: 1, CommitOffset: 1})
+			require.Eventually(t, func() bool { return calls.Load() == 1 }, 10*time.Second, 10*time.Millisecond)
+			assert.EqualValues(t, wal.InvalidOffset, fc.CommitOffset())
+
+			// It retries with the next request of the leader
+			stream.AddRequest(&proto.Append{Term: 1, CommitOffset: 1})
+			assert.Eventually(t, func() bool { return fc.CommitOffset() == 1 }, 10*time.Second, 10*time.Millisecond)
+
+			closeStream()
+			assert.NoError(t, fc.Close())
+		})
+	}
+}
+
+// A failure to close a WAL reader doesn't fail the entries applied.
+func TestFollowerControllerStateApplierIgnoresReaderCloseError(t *testing.T) {
+	walFactory, kvFactory := newHookFactories(t)
+	fc := newReplicatingFollower(t, walFactory, kvFactory)
+	appendUncommittedEntries(t, fc, 2)
+
+	var closes atomic.Int64
+	walFactory.setHooks(func(h *walHooks) {
+		h.closeReader = func() error {
+			closes.Add(1)
+			return errors.New("close failed")
+		}
+	})
+
+	stream, closeStream := openStream(t, fc)
+	stream.AddRequest(&proto.Append{Term: 1, CommitOffset: 1})
+	assert.Eventually(t, func() bool { return fc.CommitOffset() == 1 }, 10*time.Second, 10*time.Millisecond)
+	assert.Eventually(t, func() bool { return closes.Load() == 1 }, 10*time.Second, 10*time.Millisecond)
+
+	closeStream()
+	assert.NoError(t, fc.Close())
+}
+
+// An entry that the state applier fails to apply, from the stream or from the
+// WAL, doesn't move the commit offset, and gets read again from the WAL.
+func TestFollowerControllerStateApplierRetriesEntriesFailingToApply(t *testing.T) {
+	walFactory, kvFactory := newHookFactories(t)
+	fc := newReplicatingFollower(t, walFactory, kvFactory)
+
+	var reads atomic.Int64
+	walFactory.setHooks(func(h *walHooks) {
+		h.readNext = func() error {
+			reads.Add(1)
+			return nil
+		}
+	})
+
+	stream, closeStream := openStream(t, fc)
+	stream.AddRequest(&proto.Append{
+		Term:         1,
+		Entry:        &proto.LogEntry{Term: 1, Offset: 0, Value: []byte{0xff, 0xff}},
+		CommitOffset: 0,
+	})
+	assert.EqualValues(t, 0, stream.GetResponse().Offset)
+
+	// The state applier retries with each request of the leader
+	assert.Eventually(t, func() bool {
+		stream.AddRequest(&proto.Append{Term: 1, CommitOffset: 0})
+		return reads.Load() >= 2
+	}, 10*time.Second, 50*time.Millisecond)
+	assert.EqualValues(t, wal.InvalidOffset, fc.CommitOffset())
+
+	closeStream()
+	assert.NoError(t, fc.Close())
+}
+
+func TestFollowerControllerInstallSnapshotEndsOnEmptyStream(t *testing.T) {
+	for name, stream := range map[string]proto.OxiaLogReplication_SendSnapshotServer{
+		"eof": &hookSnapshotStream{
+			MockServerSendSnapshotStream: rpc.NewMockServerSendSnapshotStream(),
+			recvErr:                      io.EOF,
+		},
+		"nil-chunk": newSnapshotStream(nil),
+	} {
+		t.Run(name, func(t *testing.T) {
+			walFactory, kvFactory := newHookFactories(t)
+			fc := newFencedFollower(t, walFactory, kvFactory)
+
+			assert.NoError(t, fc.InstallSnapshot(stream))
+			// The follower is left as it was
+			assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
+			assert.EqualValues(t, 1, fc.Term())
+
+			assert.NoError(t, fc.Close())
+		})
+	}
+}
+
+func TestFollowerControllerInstallSnapshotFailsWhenFirstChunkFails(t *testing.T) {
+	walFactory, kvFactory := newHookFactories(t)
+	fc := newFencedFollower(t, walFactory, kvFactory)
+
+	err := fc.InstallSnapshot(&hookSnapshotStream{
+		MockServerSendSnapshotStream: rpc.NewMockServerSendSnapshotStream(),
+		recvErr:                      context.Canceled,
+	})
+	assert.ErrorIs(t, err, constant.ErrResourceUnavailable)
+	assert.ErrorContains(t, err, "failed to read first snapshot chunk")
+	assert.Equal(t, proto.ServingStatus_FENCED, fc.Status())
+
+	assert.NoError(t, fc.Close())
+}
+
+// A snapshot install that fails leaves the follower with a database, from
+// which the leader can install the snapshot again.
+func TestFollowerControllerInstallSnapshotRecoversFromFailures(t *testing.T) {
+	chunks := snapshotChunks(t, 1)
+	require.Greater(t, len(chunks), 1)
+	failing := func() error { return errors.New("injected") }
+	failingOnce := func(call int64) func() error {
+		var calls atomic.Int64
+		return func() error {
+			if calls.Add(1) == call {
+				return errors.New("injected")
+			}
+			return nil
+		}
+	}
+	for _, test := range []struct {
+		name     string
+		walHooks walHooks
+		kvHooks  kvHooks
+		err      string
+	}{
+		{"clear-wal", walHooks{clear: failing}, kvHooks{}, "failed to clear WAL"},
+		{"new-loader", walHooks{}, kvHooks{newSnapshotLoader: failing}, "failed to create snapshot loader"},
+		{"first-chunk", walHooks{}, kvHooks{addChunk: failing}, "failed to add snapshot chunk"},
+		{"next-chunk", walHooks{}, kvHooks{addChunk: failingOnce(2)}, "failed to add snapshot chunk"},
+		{"complete", walHooks{}, kvHooks{complete: failing}, "failed to complete snapshot"},
+		{"open", walHooks{}, kvHooks{newKV: failingOnce(1)}, "failed to initialize database"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			walFactory, kvFactory := newHookFactories(t)
+			fc := newFencedFollower(t, walFactory, kvFactory)
+
+			walFactory.setHooks(func(h *walHooks) { *h = test.walHooks })
+			kvFactory.setHooks(func(h *kvHooks) { *h = test.kvHooks })
+			err := fc.InstallSnapshot(newSnapshotStream(chunks))
+			assert.ErrorIs(t, err, constant.ErrResourceUnavailable)
+			assert.ErrorContains(t, err, test.err)
+
+			walFactory.setHooks(func(h *walHooks) { *h = walHooks{} })
+			kvFactory.setHooks(func(h *kvHooks) { *h = kvHooks{} })
+			require.NoError(t, fc.InstallSnapshot(newSnapshotStream(chunks)))
+			assert.Equal(t, proto.ServingStatus_FOLLOWER, fc.Status())
+			assert.EqualValues(t, 99, fc.CommitOffset())
+
+			assert.NoError(t, fc.Close())
+		})
+	}
+}
+
+// A follower that fails to install a snapshot, and then to re-open its
+// database, is left without a database.
+func TestFollowerControllerInstallSnapshotFailsToRecoverDatabase(t *testing.T) {
+	walFactory, kvFactory := newHookFactories(t)
+	fc := newFencedFollower(t, walFactory, kvFactory)
+
+	kvFactory.setHooks(func(h *kvHooks) { h.newKV = func() error { return errors.New("open failed") } })
+	err := fc.InstallSnapshot(newSnapshotStream(snapshotChunks(t, 1)))
+	assert.ErrorContains(t, err, "failed to initialize database")
+	fci := fc.(*followerController)
+	assert.Nil(t, fci.db)
+
+	// Close needs the database: release the rest
+	fci.cancel()
+	fci.waitGroup.Wait()
+	assert.NoError(t, fci.wal.Close())
+}
+
+func TestFollowerControllerInstallSnapshotFailsWhenSplitFilterFails(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		hooks kvHooks
+	}{
+		{"filter", kvHooks{rangeScan: func() error { return errors.New("scan failed") }}},
+		{"record", kvHooks{flush: func() error { return errors.New("flush failed") }}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			walFactory, kvFactory := newHookFactories(t)
+			fc := newFencedFollower(t, walFactory, kvFactory)
+			fc.SetSplitHashRange(splitTestHashRange, nil, 1)
+
+			kvFactory.setHooks(func(h *kvHooks) { *h = test.hooks })
+			err := fc.InstallSnapshot(newSnapshotStream(snapshotChunks(t, 1)))
+			assert.ErrorIs(t, err, constant.ErrResourceUnavailable)
+			assert.ErrorContains(t, err, "failed to filter snapshot for split")
+			assert.NotEqual(t, proto.ServingStatus_FOLLOWER, fc.Status())
+
+			kvFactory.setHooks(func(h *kvHooks) { *h = kvHooks{} })
+			assert.NoError(t, fc.Close())
+		})
+	}
+}
+
+func TestFollowerControllerInstallSnapshotFailsWhenResponseFails(t *testing.T) {
+	walFactory, kvFactory := newHookFactories(t)
+	fc := newFencedFollower(t, walFactory, kvFactory)
+
+	stream := &hookSnapshotStream{
+		MockServerSendSnapshotStream: newSnapshotStream(snapshotChunks(t, 1)),
+		sendErr:                      errors.New("send failed"),
+	}
+	err := fc.InstallSnapshot(stream)
+	assert.ErrorIs(t, err, constant.ErrResourceUnavailable)
+	assert.ErrorContains(t, err, "failed to send snapshot response")
+	assert.NotEqual(t, proto.ServingStatus_FOLLOWER, fc.Status())
+
+	assert.NoError(t, fc.Close())
+}
+
+func TestFollowerControllerDeleteFailsWhenCloseFails(t *testing.T) {
+	walFactory, kvFactory := newHookFactories(t)
+	fc := newFencedFollower(t, walFactory, kvFactory)
+
+	walFactory.setHooks(func(h *walHooks) { h.close = func() error { return errors.New("close failed") } })
+	_, err := fc.Delete(&proto.DeleteShardRequest{Term: 1})
+	assert.ErrorIs(t, err, constant.ErrResourceUnavailable)
+	assert.ErrorContains(t, err, "close failed")
+}
+
+func TestFollowerControllerDeleteFailsWhenWalDeleteFails(t *testing.T) {
+	walFactory, kvFactory := newHookFactories(t)
+	fc := newFencedFollower(t, walFactory, kvFactory)
+
+	walFactory.setHooks(func(h *walHooks) { h.delete = func() error { return errors.New("delete failed") } })
+	_, err := fc.Delete(&proto.DeleteShardRequest{Term: 1})
+	assert.ErrorIs(t, err, constant.ErrResourceUnavailable)
+	assert.ErrorContains(t, err, "delete failed")
+}
+
+// The state applier logs the entries it applies at the debug level.
+func TestFollowerControllerStateApplierLogsAtDebugLevel(t *testing.T) {
+	logs := &logCapture{}
+	defaultLogger := slog.Default()
+	slog.SetDefault(slog.New(logs))
+	walFactory, kvFactory := newHookFactories(t)
+	fc, err := NewFollowerController(&option.StorageOptions{}, constant.DefaultNamespace, 0, walFactory, kvFactory, nil)
+	slog.SetDefault(defaultLogger)
+	require.NoError(t, err)
+	_, err = fc.NewTerm(&proto.NewTermRequest{Term: 1})
+	require.NoError(t, err)
+	_, err = fc.Truncate(&proto.TruncateRequest{
+		Term:        1,
+		HeadEntryId: &proto.EntryId{Term: 1, Offset: wal.InvalidOffset},
+	})
+	require.NoError(t, err)
+	appendUncommittedEntries(t, fc, 1)
+
+	stream, closeStream := openStream(t, fc)
+	stream.AddRequest(&proto.Append{Term: 1, CommitOffset: 0})
+	assert.Eventually(t, func() bool { return fc.CommitOffset() == 0 }, 10*time.Second, 10*time.Millisecond)
+	assert.True(t, logs.has("Apply committed entries"))
+	assert.True(t, logs.has("Reading entry"))
+
+	closeStream()
+	assert.NoError(t, fc.Close())
+}
+
+// newHookFactories returns a WAL factory and a database factory, which close
+// at the end of the test, and let it inject failures.
+func newHookFactories(t *testing.T) (*hookWalFactory, *hookKVFactory) {
+	t.Helper()
+	pebbleFactory, err := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	walFactory := &hookWalFactory{Factory: newTestWalFactory(t)}
+	kvFactory := &hookKVFactory{Factory: pebbleFactory}
+	t.Cleanup(func() {
+		assert.NoError(t, kvFactory.Close())
+		assert.NoError(t, walFactory.Close())
+	})
+	return walFactory, kvFactory
+}
+
+// newFencedFollower returns a follower of the shard 0, fenced in the term 1.
+func newFencedFollower(t *testing.T, walFactory wal.Factory, kvFactory kvstore.Factory) FollowerController {
+	t.Helper()
+	fc, err := NewFollowerController(&option.StorageOptions{}, constant.DefaultNamespace, 0, walFactory, kvFactory, nil)
+	require.NoError(t, err)
+	_, err = fc.NewTerm(&proto.NewTermRequest{Term: 1})
+	require.NoError(t, err)
+	return fc
+}
+
+// newReplicatingFollower returns a follower of the shard 0, which follows a
+// leader of the term 1 from an empty WAL.
+func newReplicatingFollower(t *testing.T, walFactory wal.Factory, kvFactory kvstore.Factory) FollowerController {
+	t.Helper()
+	fc := newFencedFollower(t, walFactory, kvFactory)
+	_, err := fc.Truncate(&proto.TruncateRequest{
+		Term:        1,
+		HeadEntryId: &proto.EntryId{Term: 1, Offset: wal.InvalidOffset},
+	})
+	require.NoError(t, err)
+	return fc
+}
+
+// appendUncommittedEntries replicates count entries, from the offset 0, in a
+// stream that it closes: the follower reads them back from the WAL once
+// committed.
+func appendUncommittedEntries(t *testing.T, fc FollowerController, count int64) {
+	t.Helper()
+	stream := rpc.NewMockServerReplicateStream()
+	appendErr := make(chan error, 1)
+	go func() { appendErr <- fc.AppendEntries(stream) }()
+	for offset := int64(0); offset < count; offset++ {
+		stream.AddRequest(createAddRequest(t, 1, offset, map[string]string{"a": fmt.Sprint(offset)}, wal.InvalidOffset))
+	}
+	for offset := int64(0); offset < count; offset++ {
+		assert.Equal(t, offset, stream.GetResponse().Offset)
+	}
+	stream.Cancel()
+	assert.ErrorIs(t, <-appendErr, context.Canceled)
+}
+
+// openStream opens a stream of the leader to the follower, and returns the
+// function that closes it.
+func openStream(t *testing.T, fc FollowerController) (*rpc.MockServerReplicateStream, func()) {
+	t.Helper()
+	stream := rpc.NewMockServerReplicateStream()
+	appendErr := make(chan error, 1)
+	go func() { appendErr <- fc.AppendEntries(stream) }()
+	return stream, func() {
+		stream.Cancel()
+		assert.ErrorIs(t, <-appendErr, context.Canceled)
+	}
+}
+
+// snapshotChunks returns the chunks of a snapshot of the term, with the
+// entries up to the offset 99.
+func snapshotChunks(t *testing.T, term int64) []*proto.SnapshotChunk {
+	t.Helper()
+	snapshot := prepareTestDb(t, term)
+	var chunks []*proto.SnapshotChunk
+	for ; snapshot.Valid(); snapshot.Next() {
+		chunk, err := snapshot.Chunk()
+		require.NoError(t, err)
+		chunks = append(chunks, &proto.SnapshotChunk{
+			Term:       term,
+			Name:       chunk.Name(),
+			Content:    chunk.Content(),
+			ChunkIndex: chunk.Index(),
+			ChunkCount: chunk.TotalCount(),
+		})
+	}
+	require.NoError(t, snapshot.Close())
+	return chunks
+}
+
+func newSnapshotStream(chunks []*proto.SnapshotChunk) *rpc.MockServerSendSnapshotStream {
+	stream := rpc.NewMockServerSendSnapshotStream()
+	for _, chunk := range chunks {
+		stream.AddChunk(chunk)
+	}
+	close(stream.Chunks)
+	return stream
+}
+
+// hookSnapshotStream fails the reception of the chunks with recvErr, and the
+// response with sendErr, when set.
+type hookSnapshotStream struct {
+	*rpc.MockServerSendSnapshotStream
+	recvErr error
+	sendErr error
+}
+
+func (s *hookSnapshotStream) Recv() (*proto.SnapshotChunk, error) {
+	if s.recvErr != nil {
+		return nil, s.recvErr
+	}
+	return s.MockServerSendSnapshotStream.Recv()
+}
+
+func (s *hookSnapshotStream) SendAndClose(response *proto.SnapshotResponse) error {
+	if s.sendErr != nil {
+		return s.sendErr
+	}
+	return s.MockServerSendSnapshotStream.SendAndClose(response)
+}
+
+// walHooks inject failures in the WALs, and in their readers: a hook that
+// returns an error fails the call. The hooks of the calls that release
+// resources run after them.
+type walHooks struct {
+	sync             func() error
+	truncateLog      func() error
+	newReader        func() error
+	newReverseReader func() error
+	clear            func() error
+	close            func() error
+	delete           func() error
+	readNext         func() error
+	closeReader      func() error
+}
+
+type hookWalFactory struct {
+	wal.Factory
+	mu    sync.Mutex
+	hooks walHooks
+}
+
+func (f *hookWalFactory) setHooks(set func(h *walHooks)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	set(&f.hooks)
+}
+
+func (f *hookWalFactory) getHooks() walHooks {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.hooks
+}
+
+func (f *hookWalFactory) NewWal(namespace string, shard int64, provider wal.CommitOffsetProvider) (wal.Wal, error) {
+	w, err := f.Factory.NewWal(namespace, shard, provider)
+	if err != nil {
+		return nil, err
+	}
+	return &hookWal{Wal: w, factory: f}, nil
+}
+
+func runHook(hook func() error) error {
+	if hook == nil {
+		return nil
+	}
+	return hook()
+}
+
+type hookWal struct {
+	wal.Wal
+	factory *hookWalFactory
+}
+
+func (w *hookWal) Sync(ctx context.Context) error {
+	if err := runHook(w.factory.getHooks().sync); err != nil {
+		return err
+	}
+	return w.Wal.Sync(ctx)
+}
+
+func (w *hookWal) TruncateLog(lastSafeEntry int64) (int64, error) {
+	if err := runHook(w.factory.getHooks().truncateLog); err != nil {
+		return wal.InvalidOffset, err
+	}
+	return w.Wal.TruncateLog(lastSafeEntry)
+}
+
+func (w *hookWal) NewReader(after int64) (wal.Reader, error) {
+	if err := runHook(w.factory.getHooks().newReader); err != nil {
+		return nil, err
+	}
+	r, err := w.Wal.NewReader(after)
+	if err != nil {
+		return nil, err
+	}
+	return &hookReader{Reader: r, factory: w.factory}, nil
+}
+
+func (w *hookWal) NewReverseReader() (wal.Reader, error) {
+	if err := runHook(w.factory.getHooks().newReverseReader); err != nil {
+		return nil, err
+	}
+	return w.Wal.NewReverseReader()
+}
+
+func (w *hookWal) Clear() error {
+	if err := runHook(w.factory.getHooks().clear); err != nil {
+		return err
+	}
+	return w.Wal.Clear()
+}
+
+func (w *hookWal) Close() error {
+	return multierr.Append(w.Wal.Close(), runHook(w.factory.getHooks().close))
+}
+
+func (w *hookWal) Delete() error {
+	return multierr.Append(w.Wal.Delete(), runHook(w.factory.getHooks().delete))
+}
+
+type hookReader struct {
+	wal.Reader
+	factory *hookWalFactory
+}
+
+func (r *hookReader) ReadNext() (entry *proto.LogEntry, previousCrc uint32, entryCrc uint32, err error) {
+	if err = runHook(r.factory.getHooks().readNext); err != nil {
+		return nil, 0, 0, err
+	}
+	return r.Reader.ReadNext()
+}
+
+func (r *hookReader) Close() error {
+	return multierr.Append(r.Reader.Close(), runHook(r.factory.getHooks().closeReader))
+}
+
+// kvHooks inject failures in the databases, and in their snapshot loaders: a
+// hook that returns an error fails the call.
+type kvHooks struct {
+	newKV             func() error
+	newSnapshotLoader func() error
+	flush             func() error
+	rangeScan         func() error
+	addChunk          func() error
+	complete          func() error
+}
+
+type hookKVFactory struct {
+	kvstore.Factory
+	mu    sync.Mutex
+	hooks kvHooks
+}
+
+func (f *hookKVFactory) setHooks(set func(h *kvHooks)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	set(&f.hooks)
+}
+
+func (f *hookKVFactory) getHooks() kvHooks {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.hooks
+}
+
+func (f *hookKVFactory) NewKV(namespace string, shardId int64, keySorting proto.KeySortingType) (kvstore.KV, error) {
+	if err := runHook(f.getHooks().newKV); err != nil {
+		return nil, err
+	}
+	kv, err := f.Factory.NewKV(namespace, shardId, keySorting)
+	if err != nil {
+		return nil, err
+	}
+	return &hookKV{KV: kv, factory: f}, nil
+}
+
+func (f *hookKVFactory) NewSnapshotLoader(namespace string, shardId int64) (kvstore.SnapshotLoader, error) {
+	if err := runHook(f.getHooks().newSnapshotLoader); err != nil {
+		return nil, err
+	}
+	loader, err := f.Factory.NewSnapshotLoader(namespace, shardId)
+	if err != nil {
+		return nil, err
+	}
+	return &hookSnapshotLoader{SnapshotLoader: loader, factory: f}, nil
+}
+
+type hookKV struct {
+	kvstore.KV
+	factory *hookKVFactory
+}
+
+func (kv *hookKV) Flush() error {
+	if err := runHook(kv.factory.getHooks().flush); err != nil {
+		return err
+	}
+	return kv.KV.Flush()
+}
+
+func (kv *hookKV) RangeScan(lowerBound, upperBound string,
+	opts kvstore.IteratorOpts) (kvstore.KeyValueIterator, error) {
+	if err := runHook(kv.factory.getHooks().rangeScan); err != nil {
+		return nil, err
+	}
+	return kv.KV.RangeScan(lowerBound, upperBound, opts)
+}
+
+type hookSnapshotLoader struct {
+	kvstore.SnapshotLoader
+	factory *hookKVFactory
+}
+
+func (l *hookSnapshotLoader) AddChunk(fileName string, chunkIndex int32, chunkCount int32, content []byte) error {
+	if err := runHook(l.factory.getHooks().addChunk); err != nil {
+		return err
+	}
+	return l.SnapshotLoader.AddChunk(fileName, chunkIndex, chunkCount, content)
+}
+
+func (l *hookSnapshotLoader) Complete() error {
+	if err := runHook(l.factory.getHooks().complete); err != nil {
+		return err
+	}
+	return l.SnapshotLoader.Complete()
 }

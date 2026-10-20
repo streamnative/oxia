@@ -12,39 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package concurrent
+package oxia
 
 import (
-	"io"
-	"log/slog"
-	"os"
-	"os/signal"
-	"syscall"
+	"errors"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
-func WaitUntilSignal(closers ...io.Closer) {
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+func TestWrapAdminErrorWithoutCause(t *testing.T) {
+	assert.Same(t, ErrUnauthorized, wrapAdminError(ErrUnauthorized, nil))
+}
 
-	sig := <-c
-	slog.Info(
-		"Received signal, exiting",
-		slog.String("signal", sig.String()),
-	)
-
-	code := 0
-	for _, closer := range closers {
-		if err := closer.Close(); err != nil {
-			slog.Error(
-				"Failed when shutting down server",
-				slog.Any("error", err),
-			)
-			code = 1
-		}
-	}
-
-	if code == 0 {
-		slog.Info("Shutdown Completed")
-	}
-	os.Exit(code)
+func TestAdminErrorWithoutCause(t *testing.T) {
+	err := &adminError{kind: ErrUnauthenticated}
+	assert.Equal(t, "unauthenticated", err.Error())
+	assert.ErrorIs(t, err, ErrUnauthenticated)
+	assert.NoError(t, errors.Unwrap(err))
 }

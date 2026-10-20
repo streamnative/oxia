@@ -16,6 +16,7 @@ package batch
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"sync"
 	"testing"
@@ -55,6 +56,7 @@ func TestReadBatchAdd(t *testing.T) {
 }
 
 func TestReadBatchComplete(t *testing.T) {
+	errFailure := errors.New("failure")
 	getResponseOk := &proto.GetResponse{
 		Value:  []byte{0},
 		Status: proto.Status_OK,
@@ -90,6 +92,12 @@ func TestReadBatchComplete(t *testing.T) {
 				Status: proto.Status_KEY_NOT_FOUND,
 			},
 			nil,
+		},
+		{
+			nil,
+			errFailure,
+			nil,
+			errFailure,
 		},
 	} {
 		execute := func(ctx context.Context, request *proto.ReadRequest) (*proto.ReadResponse, error) {

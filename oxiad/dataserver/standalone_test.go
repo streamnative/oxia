@@ -15,6 +15,7 @@
 package dataserver
 
 import (
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -26,10 +27,13 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	pb "google.golang.org/protobuf/proto"
 
+	"github.com/oxia-db/oxia/oxiad/dataserver/database"
+	"github.com/oxia-db/oxia/oxiad/dataserver/database/kvstore"
 	"github.com/oxia-db/oxia/oxiad/dataserver/wal/codec"
 
 	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/proto"
+	time2 "github.com/oxia-db/oxia/common/time"
 )
 
 func TestStandaloneSecondaryIndexNameValidation(t *testing.T) {
@@ -137,7 +141,7 @@ func TestStandaloneCorruptedCommittedWalEntry(t *testing.T) {
 
 	// Flip a payload byte of the first entry of the WAL
 	segment := filepath.Join(dir, "wal", constant.DefaultNamespace, "shard-0", "0")
-	c, exists, err := codec.GetOrCreate(segment)
+	c, exists, err := codec.GetOrCreate(codec.OSFS{}, segment)
 	require.NoError(t, err)
 	require.True(t, exists)
 	f, err := os.OpenFile(segment+c.GetTxnExtension(), os.O_RDWR, 0)
@@ -152,4 +156,130 @@ func TestStandaloneCorruptedCommittedWalEntry(t *testing.T) {
 
 	_, err = NewStandalone(NewTestConfig(dir))
 	assert.ErrorIs(t, err, codec.ErrDataCorrupted)
+}
+
+func TestNewStandaloneReleasesWhatItStartedOnError(t *testing.T) {
+	// NewStandalone fails to bind the public port, after it opened the shards
+	publicListener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer publicListener.Close()
+	publicAddress := publicListener.Addr().String()
+
+	config := NewTestConfig(t.TempDir())
+	config.DataServerOptions.Server.Public.BindAddress = publicAddress
+	standaloneServer, err := NewStandalone(config)
+	require.ErrorContains(t, err, publicAddress)
+	assert.Nil(t, standaloneServer)
+
+	// A retry opens the same directories
+	config.DataServerOptions.Server.Public.BindAddress = "127.0.0.1:0"
+	standaloneServer, err = NewStandalone(config)
+	require.NoError(t, err)
+	assert.NoError(t, standaloneServer.Close())
+}
+
+func TestNewStandaloneFailsWhenDataDirIsFile(t *testing.T) {
+	config := NewTestConfig(t.TempDir())
+	require.NoError(t, os.WriteFile(config.DataServerOptions.Storage.Database.Dir, nil, 0o644))
+
+	standaloneServer, err := NewStandalone(config)
+	assert.Error(t, err)
+	assert.Nil(t, standaloneServer)
+}
+
+// A standalone server doesn't enable the features of a cluster, e.g. the
+// database checksum: it refuses to lead a shard that has them enabled.
+func TestNewStandaloneFailsWhenShardHasUnsupportedFeature(t *testing.T) {
+	config := NewTestConfig(t.TempDir())
+	standaloneServer, err := NewStandalone(config)
+	require.NoError(t, err)
+	require.NoError(t, standaloneServer.Close())
+
+	kvFactory, err := kvstore.NewPebbleKVFactory(&kvstore.FactoryOptions{
+		DataDir: config.DataServerOptions.Storage.Database.Dir,
+	})
+	require.NoError(t, err)
+	db, err := database.NewDB(constant.DefaultNamespace, 0, kvFactory, config.KeySorting, time.Hour,
+		time2.SystemClock)
+	require.NoError(t, err)
+	commitOffset, err := db.ReadCommitOffset()
+	require.NoError(t, err)
+	_, err = db.ProcessControlRequest(&proto.ControlRequest{Value: &proto.ControlRequest_FeatureEnable{
+		FeatureEnable: &proto.FeatureEnableRequest{Features: []proto.Feature{proto.Feature_FEATURE_DB_CHECKSUM}},
+	}}, commitOffset, 0, database.NoOpCallback)
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+	require.NoError(t, kvFactory.Close())
+
+	standaloneServer, err = NewStandalone(config)
+	assert.ErrorIs(t, err, constant.ErrUnsupportedFeatures)
+	assert.Nil(t, standaloneServer)
+}
+
+func TestNewStandaloneFailsWhenTLSCertIsMissing(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing")
+	for _, test := range []struct {
+		name      string
+		configure func(config *StandaloneConfig)
+	}{
+		{"public", func(config *StandaloneConfig) {
+			config.DataServerOptions.Server.Public.TLS.CertFile = missing + ".crt"
+			config.DataServerOptions.Server.Public.TLS.KeyFile = missing + ".key"
+		}},
+		{"metrics", func(config *StandaloneConfig) {
+			config.DataServerOptions.Observability.Metric.Enabled = &constant.FlagTrue
+			config.DataServerOptions.Observability.Metric.BindAddress = "127.0.0.1:0"
+			config.DataServerOptions.Observability.Metric.TLS.CertFile = missing + ".crt"
+			config.DataServerOptions.Observability.Metric.TLS.KeyFile = missing + ".key"
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			config := NewTestConfig(t.TempDir())
+			test.configure(&config)
+
+			standaloneServer, err := NewStandalone(config)
+			assert.ErrorIs(t, err, os.ErrNotExist)
+			assert.Nil(t, standaloneServer)
+
+			// The failed start released what it opened
+			config = NewTestConfig(filepath.Dir(config.DataServerOptions.Storage.Database.Dir))
+			standaloneServer, err = NewStandalone(config)
+			require.NoError(t, err)
+			assert.NoError(t, standaloneServer.Close())
+		})
+	}
+}
+
+func TestNewStandaloneFailsWhenMetricsPortIsInUse(t *testing.T) {
+	metricsListener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer metricsListener.Close()
+	metricsAddress := metricsListener.Addr().String()
+
+	config := NewTestConfig(t.TempDir())
+	config.DataServerOptions.Observability.Metric.Enabled = &constant.FlagTrue
+	config.DataServerOptions.Observability.Metric.BindAddress = metricsAddress
+	standaloneServer, err := NewStandalone(config)
+	assert.ErrorContains(t, err, metricsAddress)
+	assert.Nil(t, standaloneServer)
+
+	// The failed start released what it opened, the public server too
+	config.DataServerOptions.Observability.Metric.Enabled = &constant.FlagFalse
+	standaloneServer, err = NewStandalone(config)
+	require.NoError(t, err)
+	assert.NoError(t, standaloneServer.Close())
+}
+
+// A standalone server has no followers to replicate to.
+func TestNoOpReplicationRpcProvider(t *testing.T) {
+	provider := newNoOpReplicationRpcProvider()
+
+	assert.Panics(t, func() {
+		_, _ = provider.GetReplicateStream(t.Context(), "follower", constant.DefaultNamespace, 0, 1)
+	})
+	assert.Panics(t, func() {
+		_, _ = provider.SendSnapshot(t.Context(), "follower", constant.DefaultNamespace, 0, 1)
+	})
+	assert.Panics(t, func() { _, _ = provider.Truncate("follower", &proto.TruncateRequest{}) })
+	assert.NoError(t, provider.Close())
 }

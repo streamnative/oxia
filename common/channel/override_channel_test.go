@@ -51,3 +51,26 @@ func TestOverrideChannel(t *testing.T) {
 	assert.True(t, done.Load())
 	assert.EqualValues(t, 5, lastWritten.Load())
 }
+
+func TestOverrideChannelReceiveContextCanceled(t *testing.T) {
+	och := NewOverrideChannel[int]()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	n, err := och.Receive(ctx)
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.Zero(t, n)
+}
+
+func TestOverrideChannelClose(t *testing.T) {
+	och := NewOverrideChannel[int]()
+	och.WriteLast(1)
+	assert.NoError(t, och.Close())
+
+	// The buffered value is still delivered, then the channel reports it is closed
+	n, ok := <-och.Ch()
+	assert.True(t, ok)
+	assert.Equal(t, 1, n)
+	_, ok = <-och.Ch()
+	assert.False(t, ok)
+}

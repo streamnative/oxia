@@ -15,8 +15,10 @@
 package commonio
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -68,4 +70,77 @@ func TestWriteJSONAtomicallyCreatesParentDirectoryAndFile(t *testing.T) {
 	content, err := os.ReadFile(path)
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"hello":"world"}`, string(content))
+}
+
+func TestWriteJSONToFileParentIsFile(t *testing.T) {
+	parent := filepath.Join(t.TempDir(), "parent")
+	require.NoError(t, os.WriteFile(parent, nil, 0o600))
+
+	err := WriteJSONToFile(filepath.Join(parent, "state.json"), map[string]string{})
+	assert.ErrorIs(t, err, syscall.ENOTDIR)
+}
+
+func TestWriteJSONToFileUnsupportedValue(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+
+	err := WriteJSONToFile(path, make(chan int))
+	var unsupported *json.UnsupportedTypeError
+	assert.ErrorAs(t, err, &unsupported)
+	assertDirEntries(t, dir)
+}
+
+func TestWriteJSONToFileReadOnlyDirectory(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	dir := t.TempDir()
+	require.NoError(t, os.Chmod(dir, 0o500))
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+
+	err := WriteJSONToFile(filepath.Join(dir, "state.json"), map[string]string{})
+	assert.ErrorIs(t, err, os.ErrPermission)
+	assertDirEntries(t, dir)
+}
+
+func TestWriteJSONToFileUnreadableDirectory(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+	// Write and search permissions let the file be renamed into place, but the directory can't be opened to sync it
+	require.NoError(t, os.Chmod(dir, 0o300))
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+
+	err := WriteJSONToFile(path, map[string]string{"hello": "world"})
+	assert.ErrorIs(t, err, os.ErrPermission)
+
+	require.NoError(t, os.Chmod(dir, 0o700))
+	content, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"hello":"world"}`, string(content))
+}
+
+func TestWriteJSONToFileTargetIsDirectory(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+	require.NoError(t, os.MkdirAll(filepath.Join(path, "child"), 0o755))
+
+	err := WriteJSONToFile(path, map[string]string{})
+	var linkErr *os.LinkError
+	assert.ErrorAs(t, err, &linkErr)
+	// The temporary file is removed when the rename fails
+	assertDirEntries(t, dir, "state.json")
+}
+
+func assertDirEntries(t *testing.T, dir string, expected ...string) {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		names = append(names, entry.Name())
+	}
+	assert.ElementsMatch(t, expected, names)
 }

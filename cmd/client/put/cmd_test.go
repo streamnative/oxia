@@ -16,12 +16,15 @@ package put
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
 
 	"github.com/oxia-db/oxia/cmd/client/common"
+	"github.com/oxia-db/oxia/cmd/common/clientauth"
 	"github.com/oxia-db/oxia/oxia"
 )
 
@@ -60,4 +63,59 @@ func TestPut_exec(t *testing.T) {
 			common.MockedClient.AssertExpectations(t)
 		})
 	}
+}
+
+func TestExecReturnsNewClientError(t *testing.T) {
+	useConflictingClientAuth(t)
+
+	_, err := runCmd(Cmd, "x y", "")
+
+	assert.ErrorIs(t, err, clientauth.ErrAuthTokenConflict)
+}
+
+func TestExecRejectsValueArgumentWithStdIn(t *testing.T) {
+	useMockedClient(t)
+
+	_, err := runCmd(Cmd, "x y -c", "z")
+
+	assert.EqualError(t, err, "the value can either be provided as argument or read from std-in")
+	common.MockedClient.AssertExpectations(t)
+}
+
+func TestExecReturnsStdInReadError(t *testing.T) {
+	useMockedClient(t)
+	Cmd.SetIn(&failingReader{})
+	Cmd.SetOut(new(bytes.Buffer))
+	Cmd.SetErr(new(bytes.Buffer))
+	Cmd.SetArgs([]string{"x", "-c"})
+
+	err := Cmd.Execute()
+	Config.Reset()
+
+	assert.ErrorIs(t, err, errRead)
+	common.MockedClient.AssertExpectations(t)
+}
+
+func useMockedClient(t *testing.T) {
+	t.Helper()
+	common.MockedClient = common.NewMockClient()
+	t.Cleanup(func() { common.MockedClient = nil })
+}
+
+var errRead = errors.New("read failed")
+
+type failingReader struct{}
+
+func (*failingReader) Read([]byte) (int, error) {
+	return 0, errRead
+}
+
+// useConflictingClientAuth makes the creation of the client fail, with
+// conflicting sources of the auth token.
+func useConflictingClientAuth(t *testing.T) {
+	t.Helper()
+	mocked, auth := common.MockedClient, common.Config.Auth
+	common.MockedClient = nil
+	common.Config.Auth = clientauth.Config{Token: "token", TokenFile: "token-file"}
+	t.Cleanup(func() { common.MockedClient, common.Config.Auth = mocked, auth })
 }

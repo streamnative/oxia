@@ -119,7 +119,8 @@ func exec(*cobra.Command, []string) error {
 				return err
 			}
 		} else {
-			for _, writes := range lev.GetRequests().Writes {
+			// A control request has no write requests
+			for _, writes := range lev.GetRequests().GetWrites() {
 				printPuts(le, writes.Puts)
 				printDeletes(le, writes.Deletes)
 				printDeleteRanges(le, writes.DeleteRanges)
@@ -164,7 +165,7 @@ func printDeletes(le *proto.LogEntry, deletes []*proto.DeleteRequest) {
 			slog.Int64("term", le.Term),
 		}
 		if d.ExpectedVersionId != nil {
-			args = append(args, slog.Int64("expected-version-i", d.GetExpectedVersionId()))
+			args = append(args, slog.Int64("expected-version-id", d.GetExpectedVersionId()))
 		}
 		slog.Info("", args...)
 	}

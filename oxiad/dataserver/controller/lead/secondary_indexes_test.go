@@ -17,6 +17,7 @@ package lead
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"slices"
@@ -99,10 +100,13 @@ type testFeatureChecker struct {
 	secondaryIndexNameValidation   bool
 	ephemeralCleanupNaturalSorting bool
 	secondaryIndexSkipUnchanged    bool
+	ephemeralSecondaryIndexCleanup bool
 }
 
 func (f testFeatureChecker) IsFeatureEnabled(candidate proto.Feature) bool {
 	switch candidate {
+	case proto.Feature_FEATURE_EPHEMERAL_SECONDARY_INDEX_CLEANUP:
+		return f.ephemeralSecondaryIndexCleanup
 	case proto.Feature_FEATURE_SECONDARY_INDEX_NAME_VALIDATION:
 		return f.secondaryIndexNameValidation
 	case proto.Feature_FEATURE_EPHEMERAL_CLEANUP_NATURAL_SORTING:
@@ -1425,4 +1429,148 @@ func TestDoSecondaryGet_UnsupportedComparisonType(t *testing.T) {
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())
 	assert.NoError(t, walFactory.Close())
+}
+
+func TestSecondaryIndexesUpdateCallbackOnPutFailsWhenBatchFails(t *testing.T) {
+	batchErr := errors.New("batch failed")
+	dropped := &proto.SecondaryIndex{IndexName: "idx", SecondaryKey: "old"}
+	added := &proto.SecondaryIndex{IndexName: "idx", SecondaryKey: "new"}
+	existing := &proto.StorageEntry{SecondaryIndexes: []*proto.SecondaryIndex{dropped}}
+	request := &proto.PutRequest{Key: "a", SecondaryIndexes: []*proto.SecondaryIndex{added}}
+
+	for _, tc := range []struct {
+		name           string
+		batch          mockWriteBatch
+		existing       *proto.StorageEntry
+		features       testFeatureChecker
+		expectedStatus proto.Status
+	}{{
+		name:           "delete-all-entries",
+		batch:          mockWriteBatch{secondaryIndexKey("a", dropped): batchErr},
+		existing:       existing,
+		expectedStatus: proto.Status_KEY_NOT_FOUND,
+	}, {
+		name:           "write-entries",
+		batch:          mockWriteBatch{secondaryIndexKey("a", added): batchErr},
+		expectedStatus: proto.Status_OK,
+	}, {
+		name:           "delete-dropped-entries",
+		batch:          mockWriteBatch{secondaryIndexKey("a", dropped): batchErr},
+		existing:       existing,
+		features:       testFeatureChecker{secondaryIndexSkipUnchanged: true},
+		expectedStatus: proto.Status_OK,
+	}, {
+		name:           "write-added-entries",
+		batch:          mockWriteBatch{secondaryIndexKey("a", added): batchErr},
+		existing:       existing,
+		features:       testFeatureChecker{secondaryIndexSkipUnchanged: true},
+		expectedStatus: proto.Status_OK,
+	}} {
+		t.Run(tc.name, func(t *testing.T) {
+			status, err := secondaryIndexesUpdateCallback.OnPut(tc.batch, nil, request, tc.existing, tc.features)
+			assert.ErrorIs(t, err, batchErr)
+			assert.Equal(t, tc.expectedStatus, status)
+		})
+	}
+}
+
+func TestSecondaryIndexListIteratorPanicsOnUnsupportedCalls(t *testing.T) {
+	it := &secondaryIndexListIterator{key: "not-an-index-entry"}
+	assert.Panics(t, func() { it.Key() })
+	assert.Panics(t, func() { it.Prev() })
+	assert.Panics(t, func() { it.SeekGE("a") })
+	assert.Panics(t, func() { it.SeekLT("a") })
+}
+
+func TestSecondaryIndexRangeScanIteratorKeyIsPrimaryKey(t *testing.T) {
+	db, _ := newReadErrorsTestDB(t)
+	_, err := db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
+		Key: "/a", Value: []byte("v"), SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "idx", SecondaryKey: "s"}},
+	}}}, 0, 0, WrapperUpdateOperationCallback)
+	require.NoError(t, err)
+
+	idx := "idx"
+	scan, err := newSecondaryIndexRangeScanIterator(&proto.RangeScanRequest{
+		SecondaryIndexName: &idx, StartInclusive: "a", EndExclusive: "z",
+	}, db)
+	require.NoError(t, err)
+	rangeIt := scan.(*secondaryIndexRangeIterator)
+	require.True(t, rangeIt.Valid())
+	assert.Equal(t, "/a", rangeIt.Key())
+	assert.False(t, rangeIt.Next())
+	assert.NoError(t, rangeIt.listIt.Error())
+	assert.NoError(t, scan.Close())
+}
+
+func TestSecondaryIndexQueriesFailWhenIteratorCreationFails(t *testing.T) {
+	child, _ := newReadErrorsTestDB(t)
+	iteratorErr := errors.New("iterator failed")
+	db := &hookedPrefixDB{DB: child, prefixIteratorErr: iteratorErr}
+	idx := "idx"
+
+	_, err := newSecondaryIndexListIterator(&proto.ListRequest{SecondaryIndexName: &idx, EndExclusive: "z"}, db)
+	assert.ErrorIs(t, err, iteratorErr)
+	_, err = newSecondaryIndexRangeScanIterator(&proto.RangeScanRequest{SecondaryIndexName: &idx, EndExclusive: "z"},
+		db)
+	assert.ErrorIs(t, err, iteratorErr)
+	_, err = secondaryIndexGet(&proto.GetRequest{Key: "a", SecondaryIndexName: &idx}, db)
+	assert.ErrorIs(t, err, iteratorErr)
+}
+
+func TestSecondaryIndexRangeScanFailsWhenRecordReadFails(t *testing.T) {
+	child, _ := newReadErrorsTestDB(t)
+	_, err := child.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
+		Key: "/a", Value: []byte("v"), SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "idx", SecondaryKey: "s"}},
+	}}}, 0, 0, WrapperUpdateOperationCallback)
+	require.NoError(t, err)
+	recordErr := errors.New("record read failed")
+	db := &hookedPrefixDB{DB: child, recordErr: recordErr}
+
+	idx := "idx"
+	scan, err := newSecondaryIndexRangeScanIterator(&proto.RangeScanRequest{
+		SecondaryIndexName: &idx, StartInclusive: "a", EndExclusive: "z",
+	}, db)
+	require.NoError(t, err)
+	require.True(t, scan.Valid())
+	res, err := scan.Value()
+	assert.ErrorIs(t, err, recordErr)
+	assert.Nil(t, res)
+	assert.NoError(t, scan.Close())
+}
+
+// An index entry whose primary key isn't escaped right fails the get that
+// finds it.
+func TestSecondaryIndexGetFailsOnMalformedPrimaryKey(t *testing.T) {
+	db, _ := newReadErrorsTestDB(t)
+	putKeys(t, db.RawKV(), secondaryIdxKeyPrefix+"/idx/s"+secondaryIdxSeparator+"%zz")
+
+	res, err := secondaryIndexGet(&proto.GetRequest{Key: "s", SecondaryIndexName: pb.String("idx")}, db)
+	var escapeErr url.EscapeError
+	assert.ErrorAs(t, err, &escapeErr)
+	assert.Nil(t, res)
+}
+
+// A get that finds an index entry without a primary key finds no record, rather
+// than fail.
+func TestSecondaryIndexGetSkipsEntriesWithoutPrimaryKey(t *testing.T) {
+	indexPrefix := secondaryIdxKeyPrefix + "/idx/"
+	for _, tc := range []struct {
+		comparison proto.KeyComparisonType
+		key        string
+		entry      string
+	}{
+		{comparison: proto.KeyComparisonType_LOWER, key: "", entry: indexPrefix},
+		{comparison: proto.KeyComparisonType_CEILING, key: "a", entry: indexPrefix + "b"},
+	} {
+		t.Run(tc.comparison.String(), func(t *testing.T) {
+			db, _ := newReadErrorsTestDB(t)
+			putKeys(t, db.RawKV(), tc.entry)
+
+			res, err := secondaryIndexGet(&proto.GetRequest{
+				Key: tc.key, SecondaryIndexName: pb.String("idx"), ComparisonType: tc.comparison,
+			}, db)
+			require.NoError(t, err)
+			assert.Equal(t, proto.Status_KEY_NOT_FOUND, res.Status)
+		})
+	}
 }

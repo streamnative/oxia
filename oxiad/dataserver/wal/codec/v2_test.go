@@ -270,9 +270,9 @@ func TestV2_WriteReadIndex(t *testing.T) {
 		binary.BigEndian.PutUint32(indexBuf[i*4:], uint32(i))
 	}
 	p := path.Join(dir, fileName+v2.GetIdxExtension())
-	err := v2.WriteIndex(p, indexBuf)
+	err := v2.WriteIndex(OSFS{}, p, indexBuf)
 	assert.NoError(t, err)
-	index, err := v2.ReadIndex(p)
+	index, err := v2.ReadIndex(OSFS{}, p)
 	assert.NoError(t, err)
 	for i := 0; i < elementsNum; i++ {
 		idx := ReadInt(index, uint32(i*4))
@@ -318,7 +318,7 @@ func TestV2_IndexBroken(t *testing.T) {
 		binary.BigEndian.PutUint32(indexBuf[i*4:], uint32(i))
 	}
 	p := path.Join(dir, fileName+v2.GetIdxExtension())
-	err := v2.WriteIndex(p, indexBuf)
+	err := v2.WriteIndex(OSFS{}, p, indexBuf)
 	assert.NoError(t, err)
 
 	// inject wrong data
@@ -330,15 +330,15 @@ func TestV2_IndexBroken(t *testing.T) {
 	_, err = file.WriteAt(faultData, 0)
 	assert.NoError(t, err)
 
-	_, err = v2.ReadIndex(p)
+	_, err = v2.ReadIndex(OSFS{}, p)
 	assert.ErrorIs(t, err, ErrDataCorrupted)
 }
 
 func TestV2_ReadEmptyIndex(t *testing.T) {
 	p := path.Join(t.TempDir(), "empty-index"+v2.GetIdxExtension())
-	assert.NoError(t, v2.WriteIndex(p, nil))
+	assert.NoError(t, v2.WriteIndex(OSFS{}, p, nil))
 
-	_, err := v2.ReadIndex(p)
+	_, err := v2.ReadIndex(OSFS{}, p)
 	assert.ErrorIs(t, err, ErrDataCorrupted)
 }
 
@@ -349,7 +349,7 @@ func TestV2_ReadEmptyIndexFile(t *testing.T) {
 	err := os.WriteFile(p, nil, 0644)
 	assert.NoError(t, err)
 
-	_, err = v2.ReadIndex(p)
+	_, err = v2.ReadIndex(OSFS{}, p)
 	assert.ErrorIs(t, err, ErrDataCorrupted)
 }
 
@@ -362,7 +362,7 @@ func TestV2_ReadShortIndex(t *testing.T) {
 	err := os.WriteFile(p, []byte{0x00, 0x01}, 0644)
 	assert.NoError(t, err)
 
-	_, err = v2.ReadIndex(p)
+	_, err = v2.ReadIndex(OSFS{}, p)
 	assert.ErrorIs(t, err, ErrDataCorrupted)
 }
 
@@ -385,4 +385,16 @@ func TestV2_RecoveryWithNotEnoughBuf(t *testing.T) {
 	assert.NoError(t, err)
 	assert.EqualValues(t, wPayloadCrc, rLastCrc)
 	assert.EqualValues(t, entryOffset, 0)
+}
+
+func TestV2WriteIndexFailsWhenDirectoryIsMissing(t *testing.T) {
+	p := path.Join(t.TempDir(), "missing", "0"+v2.GetIdxExtension())
+
+	err := v2.WriteIndex(OSFS{}, p, []byte{0, 0, 0, 1})
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestV2ReadIndexFailsWhenPathIsDirectory(t *testing.T) {
+	_, err := v2.ReadIndex(OSFS{}, t.TempDir())
+	assert.ErrorContains(t, err, "failed to read segment index file")
 }

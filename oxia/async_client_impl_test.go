@@ -442,6 +442,127 @@ func TestWriteKeysMustBeValidUTF8(t *testing.T) {
 	assert.Len(t, batchers[1].calls, 1)
 }
 
+func TestNewAsyncClientFailsOnInvalidOptions(t *testing.T) {
+	client, err := NewAsyncClient("localhost:0", WithRequestTimeout(0))
+	assert.ErrorIs(t, err, ErrInvalidOptionRequestTimeout)
+	assert.Nil(t, client)
+}
+
+// A write routed with the shard map from before a split, to a shard that never
+// had a write, goes to the shard that took over its key.
+func TestAsyncClientPutForwardedFromRemovedShard(t *testing.T) {
+	shardManager := &staticShardManager{shards: []int64{0}, successors: map[int64][]int64{0: {3}}}
+	client, batchers := newWriteTestClient(shardManager)
+	client.writeBatchManager.ShardsReplaced(map[int64][]int64{0: {3}})
+
+	resultCh := client.Put("a", []byte("v"))
+
+	assert.NotContains(t, batchers, int64(0))
+	require.Contains(t, batchers, int64(3))
+	require.Len(t, batchers[3].calls, 1)
+	put, ok := batchers[3].calls[0].(model.PutCall)
+	require.True(t, ok)
+	assert.Equal(t, "a", put.Key)
+	put.Callback(&proto.PutResponse{Status: proto.Status_OK, Version: &proto.Version{}}, nil)
+	result := <-resultCh
+	require.NoError(t, result.Err)
+	assert.Equal(t, "a", result.Key)
+}
+
+// A write routed to a removed shard that no shard replaced for its key fails.
+func TestAsyncClientPutToRemovedShardWithoutSuccessor(t *testing.T) {
+	client, batchers := newWriteTestClient(&staticShardManager{shards: []int64{0}})
+	client.writeBatchManager.ShardsReplaced(map[int64][]int64{0: {3}})
+
+	result := <-client.Put("a", []byte("v"))
+	assert.ErrorIs(t, result.Err, constant.ErrShardNotFound)
+	assert.Empty(t, batchers)
+}
+
+func TestAsyncClientForwardWritePanicsOnRead(t *testing.T) {
+	client, _ := newWriteTestClient(&staticShardManager{shards: []int64{0}})
+	assert.PanicsWithValue(t, "invalid call", func() {
+		client.forwardWrite(0, model.GetCall{Key: "a"})
+	})
+}
+
+// An ephemeral write fails when the session can't be established.
+func TestAsyncClientEphemeralPutFailsWithoutSession(t *testing.T) {
+	shardManager := &staticShardManager{shards: []int64{0}}
+	client, batchers := newWriteTestClient(shardManager)
+	expired, cancel := context.WithDeadline(t.Context(), time.Now())
+	defer cancel()
+	client.sessions = newSessions(expired, shardManager, &sessionsTestRpcProvider{},
+		clientOptions{requestTimeout: time.Second})
+
+	result := <-client.Put("a", []byte("v"), Ephemeral())
+	assert.ErrorIs(t, result.Err, context.DeadlineExceeded)
+	assert.Empty(t, batchers)
+}
+
+func TestAsyncClientDeleteRangeFailsOnStatus(t *testing.T) {
+	client, batchers := newWriteTestClient(&staticShardManager{shards: []int64{0, 1}})
+	resultCh := client.DeleteRange("a", "z")
+
+	deleteRangeCallAt(t, batchers, 0).Callback(deleteRangeOK, nil)
+	deleteRangeCallAt(t, batchers, 1).Callback(
+		&proto.DeleteRangeResponse{Status: proto.Status_SESSION_DOES_NOT_EXIST}, nil)
+	assert.ErrorIs(t, <-resultCh, ErrUnknownStatus)
+}
+
+func TestAsyncClientDeleteRangeWithPartitionKeyFails(t *testing.T) {
+	failure := errors.New("failure")
+	client, batchers := newWriteTestClient(&staticShardManager{shards: []int64{0, 1}})
+	resultCh := client.DeleteRange("a", "z", PartitionKey("pk"))
+
+	deleteRangeCallAt(t, batchers, 0).Callback(nil, failure)
+	assert.ErrorIs(t, <-resultCh, failure)
+	assert.NotContains(t, batchers, int64(1))
+}
+
+// The reads of a removed shard are sent again with the current shard map.
+func TestAsyncClientRerouteReads(t *testing.T) {
+	// The batcher of the test client holds a call per shard
+	client, batcher := newGetTestClient(2, 3)
+	partitionKey := "pk"
+
+	client.rerouteReads([]model.GetCall{{Key: "a"}, {Key: "b", PartitionKey: &partitionKey}})
+
+	assert.Equal(t, "a", (<-batcher.calls).Key)
+	assert.Equal(t, "b", (<-batcher.calls).Key)
+}
+
+func TestAsyncClientGetFailsOnUnsupportedComparison(t *testing.T) {
+	client, batcher := newGetTestClient(1, 2)
+
+	result := <-client.Get("a", &getComparisonType{proto.KeyComparisonType(100)})
+	assert.ErrorContains(t, result.Err, "unsupported comparison type")
+	assert.Empty(t, batcher.calls)
+}
+
+func TestSelectResponsePanicsOnUnknownComparison(t *testing.T) {
+	assert.PanicsWithValue(t, "unknown comparison type: 100", func() {
+		selectResponse(proto.KeyComparisonType(100), newKeyOrder(proto.KeySorting_KEY_SORTING_NATURAL),
+			keyNotFound, &proto.GetResponse{Status: proto.Status_OK})
+	})
+}
+
+func TestAsyncClientGetNotificationsFails(t *testing.T) {
+	provider := &notificationsTestRpcProvider{err: constant.ErrNotificationsNotEnabled}
+	provider.failures.Store(1)
+	client := &clientImpl{
+		ctx:          t.Context(),
+		options:      clientOptions{requestTimeout: 10 * time.Second},
+		shardManager: &notificationsTestShardManager{shards: []int64{0}},
+		rpcProvider:  provider,
+	}
+
+	notifications, err := client.GetNotifications()
+	assert.ErrorIs(t, err, constant.ErrNotificationsNotEnabled)
+	assert.Nil(t, notifications)
+	assert.Empty(t, client.notifications)
+}
+
 // A caller of List can stop reading once it cancelled the context, e.g. at the
 // first error: the lists of the other shards end without sending the results
 // they have left, and the channel is closed after them.
