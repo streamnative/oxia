@@ -3012,6 +3012,25 @@ func TestSplitControllerRunCutoverResetsToBootstrapOnParentElection(t *testing.T
 	assert.EqualValues(t, 6, unfrozen[0].Term)
 }
 
+// A Cutover round that expires before the children applied the parent's tail
+// is retried, and the split passes the point of no return once they did.
+func TestSplitControllerRunCutoverRetriesExpiredRound(t *testing.T) {
+	rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseCutover)
+	setBootstrappedState(t, metadata)
+	rpcMock.GetNode(ps1).FreezeShardResponse(105, nil)
+	rpcMock.GetNode(ls1).GetStatusResponse(5, proto.ServingStatus_FOLLOWER, 105, 100)
+	queueChildrenAppliedResponses(rpcMock, 105)
+	sc := newUnstartedSplitController(t, metadata, rpcMock, listener)
+	sc.catchUpRoundTimeout = 10 * time.Millisecond
+
+	require.NoError(t, sc.runCutover())
+
+	assert.Equal(t, proto.SplitPhaseFinalize, requireShardMetadata(t, metadata, constant.DefaultNamespace, 0).
+		GetSplit().GetPhaseOrDefault())
+	rpcMock.GetNode(ls1).ExpectGetStatusRequest(t, 1)
+	rpcMock.GetNode(ls1).ExpectGetStatusRequest(t, 1)
+}
+
 func TestSplitControllerRunFinalizeSkipsCompletedSplit(t *testing.T) {
 	rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseFinalize)
 	status := loadTestStatus(t, metadata)
@@ -3251,6 +3270,7 @@ func newUnstartedSplitController(t *testing.T, metadata coordmetadata.Metadata, 
 		eventListener:             listener,
 		supportedFeaturesSupplier: NoOpFeaturesSupplier,
 		requiredFeatures:          make(map[int64][]proto.Feature),
+		catchUpRoundTimeout:       DefaultCatchUpRoundTimeout,
 		logger:                    slog.Default(),
 	}
 	sc.ctx, sc.ctxCancel = context.WithCancel(context.Background())
