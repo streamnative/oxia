@@ -41,6 +41,7 @@ import (
 
 	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/metric"
+	"github.com/oxia-db/oxia/common/object"
 	time2 "github.com/oxia-db/oxia/common/time"
 
 	"github.com/oxia-db/oxia/common/proto"
@@ -1664,6 +1665,38 @@ func TestFactoryNewWalFailsWhenTrailingSegmentCannotBeDiscarded(t *testing.T) {
 	assert.DirExists(t, trailing.idxPath)
 }
 
+func TestWalRecoverWalFailsWhenReadOnlySegmentsCannotBeClosed(t *testing.T) {
+	f, w := newSmallWal(t)
+	appendEntries(t, w, 1, 0, 29, "v")
+	require.NoError(t, w.Close())
+	require.NoError(t, f.Close())
+	segments, err := listAllSegments(vfs.OSFS{}, w.walPath)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(segments), 3)
+
+	// The segment preceding the read-write one lost its content, which makes
+	// the recovery discard the read-write one
+	preceding, err := newSegmentConfig(vfs.OSFS{}, w.walPath, segments[len(segments)-2])
+	require.NoError(t, err)
+	require.NoError(t, os.Remove(preceding.idxPath))
+	info, err := os.Stat(preceding.txnPath)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(preceding.txnPath, make([]byte, info.Size()), 0o644))
+	// The first segment is open, and fails to close
+	group, err := newReadOnlySegmentsGroup(vfs.OSFS{}, w.walPath)
+	require.NoError(t, err)
+	rc, err := group.Get(segments[0])
+	require.NoError(t, err)
+	require.NoError(t, rc.Close())
+	closeErr := errors.New("close failure")
+	group.(*readOnlySegmentsGroup).openSegments.Put(segments[0], object.NewRefCount[ReadOnlySegment](
+		&failingCloseSegment{ReadOnlySegment: rc.Get(), closeErr: closeErr}))
+
+	recovering := &wal{fs: vfs.OSFS{}, walPath: w.walPath, readOnlySegments: group}
+	assert.ErrorIs(t, recovering.recoverWal(), closeErr)
+	assert.NoFileExists(t, txnPath(w.walPath, segments[len(segments)-1]))
+}
+
 func TestWalAppendRejectsNegativeOffset(t *testing.T) {
 	f, w := createWal(t)
 
@@ -2124,6 +2157,35 @@ func TestWalTruncateLogFailsOnFilesystemErrors(t *testing.T) {
 			assert.NoError(t, w.Close())
 		})
 	}
+}
+
+func TestWalTruncateLogFailsWhenDiscardedSegmentCannotBeClosed(t *testing.T) {
+	f, w := newSmallWal(t)
+	appendEntries(t, w, 1, 0, 29, "v")
+	segments, err := listAllSegments(vfs.OSFS{}, w.walPath)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(segments), 3)
+	closeErr := errors.New("close failure")
+	var polls atomic.Int32
+	w.Lock()
+	w.readOnlySegments = &hookedSegmentsGroup{
+		ReadOnlySegmentsGroup: w.readOnlySegments,
+		pollHook: func(segment object.RefCount[ReadOnlySegment]) object.RefCount[ReadOnlySegment] {
+			if polls.Add(1) > 1 {
+				return segment
+			}
+			return object.NewRefCount[ReadOnlySegment](
+				&failingCloseSegment{ReadOnlySegment: segment.Get(), closeErr: closeErr})
+		},
+	}
+	w.Unlock()
+
+	_, err = w.TruncateLog(0)
+	assert.ErrorIs(t, err, closeErr)
+	assert.NoFileExists(t, txnPath(w.walPath, segments[len(segments)-2]))
+
+	assert.NoError(t, w.Close())
+	assert.NoError(t, f.Close())
 }
 
 func TestFactoryNewWalFailsWhenWalDirectoryCannotBeListed(t *testing.T) {

@@ -313,6 +313,34 @@ func TestShardsDirectorDeleteShardNotHostedInvalidNamespace(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestShardsDirectorCheckpointFailsWhenClosed(t *testing.T) {
+	sd := newTestShardsDirector(t)
+	require.NoError(t, sd.Close())
+
+	checkpoint, err := sd.Checkpoint(1)
+	assert.ErrorIs(t, err, constant.ErrResourceUnavailable)
+	assert.Nil(t, checkpoint)
+}
+
+func TestShardsDirectorCommitOffsetFailsWhenClosed(t *testing.T) {
+	sd := newTestShardsDirector(t)
+	require.NoError(t, sd.Close())
+
+	_, err := sd.CommitOffset(1)
+	assert.ErrorIs(t, err, constant.ErrResourceUnavailable)
+}
+
+func TestShardsDirectorWithDatabaseFailsWhenClosed(t *testing.T) {
+	sd := newTestShardsDirector(t)
+	require.NoError(t, sd.Close())
+
+	err := sd.WithDatabase(1, 0, func(string) error {
+		assert.Fail(t, "the database of a closed director was used")
+		return nil
+	})
+	assert.ErrorIs(t, err, constant.ErrResourceUnavailable)
+}
+
 // A namespace with a path traversal, that the controllers reject.
 const invalidNamespace = "../invalid"
 

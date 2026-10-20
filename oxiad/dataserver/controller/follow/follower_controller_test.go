@@ -3341,6 +3341,20 @@ func TestFollowerControllerCheckpointReadsTheDatabase(t *testing.T) {
 		constant.ErrResourceUnavailable)
 }
 
+func TestFollowerControllerCheckpointReturnsSnapshotError(t *testing.T) {
+	walFactory, kvFactory := newHookFactories(t)
+	fc := newFencedFollower(t, walFactory, kvFactory)
+	snapshotErr := errors.New("snapshot failed")
+	kvFactory.setHooks(func(h *kvHooks) { h.snapshot = func() error { return snapshotErr } })
+
+	checkpoint, err := fc.Checkpoint()
+	assert.ErrorIs(t, err, snapshotErr)
+	assert.Nil(t, checkpoint)
+
+	kvFactory.setHooks(func(h *kvHooks) { h.snapshot = nil })
+	assert.NoError(t, fc.Close())
+}
+
 // A follower created with the options of a new term applies them to the
 // database it opens, before it gets the new term itself.
 func TestFollowerControllerNewFollowerControllerAppliesNewTermOptions(t *testing.T) {
@@ -4175,6 +4189,7 @@ type kvHooks struct {
 	newKV             func() error
 	newSnapshotLoader func() error
 	flush             func() error
+	snapshot          func() error
 	rangeScan         func() error
 	get               func(key string) error
 	addChunk          func() error
@@ -4231,6 +4246,13 @@ func (kv *hookKV) Flush() error {
 		return err
 	}
 	return kv.KV.Flush()
+}
+
+func (kv *hookKV) Snapshot() (kvstore.Snapshot, error) {
+	if err := runHook(kv.factory.getHooks().snapshot); err != nil {
+		return nil, err
+	}
+	return kv.KV.Snapshot()
 }
 
 func (kv *hookKV) Get(key string, comparisonType kvstore.ComparisonType,

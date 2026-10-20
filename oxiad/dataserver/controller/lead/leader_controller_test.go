@@ -3586,6 +3586,17 @@ func TestLeaderControllerCheckpointHoldsTheCommitOffsetAndTerm(t *testing.T) {
 		constant.ErrResourceUnavailable)
 }
 
+func TestLeaderControllerCheckpointReturnsSnapshotError(t *testing.T) {
+	snapshotErr := errors.New("snapshot failed")
+	lc := newHookedLeaderController(t, rpc.NewMockRpcClient(), &hookKVFactory{
+		snapshot: func(kvstore.KV) (kvstore.Snapshot, error) { return nil, snapshotErr },
+	}, &hookWalFactory{})
+
+	checkpoint, err := lc.Checkpoint()
+	assert.ErrorIs(t, err, snapshotErr)
+	assert.Nil(t, checkpoint)
+}
+
 func TestLeaderControllerReportsOffsetGaugesWhileLeading(t *testing.T) {
 	previous := metric.GetMeter()
 	reader := sdkmetric.NewManualReader()

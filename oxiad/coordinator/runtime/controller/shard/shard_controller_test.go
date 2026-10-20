@@ -3513,6 +3513,7 @@ func TestControllerRefreshSkipsMetadataLoadError(t *testing.T) {
 	assert.Len(t, s.electionOp, 1)
 }
 
+// A shard deleted while its controller terminates is not refreshed.
 // The pending deletions of a shard that was removed meanwhile, e.g. by a
 // namespace deletion, don't bring it back.
 func TestControllerHandlePendingDeleteShardKeepsRemovedShard(t *testing.T) {

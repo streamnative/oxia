@@ -24,6 +24,7 @@ import (
 	"github.com/oxia-db/oxia/common/proto"
 	commontime "github.com/oxia-db/oxia/common/time"
 	"github.com/oxia-db/oxia/oxiad/dataserver/database/kvstore"
+	"github.com/oxia-db/oxia/oxiad/dataserver/wal"
 )
 
 func TestReadCheckpointReturnsTheCommitOffsetAndTermOfTheFiles(t *testing.T) {
@@ -55,4 +56,39 @@ func TestReadCheckpointReturnsTheCommitOffsetAndTermOfTheFiles(t *testing.T) {
 	require.NoError(t, snapshot.Close())
 	_, err = os.Stat(snapshot.BasePath())
 	assert.True(t, os.IsNotExist(err), "closing the snapshot deletes it")
+}
+
+func TestReadCheckpointFailsWithoutDatabase(t *testing.T) {
+	commitOffset, term, err := ReadCheckpoint(t.TempDir())
+	assert.ErrorContains(t, err, "failed to open the checkpoint")
+	assert.EqualValues(t, wal.InvalidOffset, commitOffset)
+	assert.EqualValues(t, wal.InvalidTerm, term)
+}
+
+func TestReadCheckpointFailsOnCorruptState(t *testing.T) {
+	for key, message := range map[string]string{
+		commitOffsetKey: "failed to read the commit offset of the checkpoint",
+		termKey:         "failed to read the term of the checkpoint",
+	} {
+		t.Run(key, func(t *testing.T) {
+			factory, err := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
+			require.NoError(t, err)
+			defer func() { assert.NoError(t, factory.Close()) }()
+			kv, err := factory.NewKV("ns", 1, proto.KeySortingType_NATURAL)
+			require.NoError(t, err)
+			defer func() { assert.NoError(t, kv.Close()) }()
+			batch := kv.NewWriteBatch()
+			require.NoError(t, batch.Put(key, []byte{0xff, 0xff}))
+			require.NoError(t, batch.Commit())
+			require.NoError(t, batch.Close())
+			snapshot, err := kv.Snapshot()
+			require.NoError(t, err)
+			defer func() { assert.NoError(t, snapshot.Close()) }()
+
+			commitOffset, term, err := ReadCheckpoint(snapshot.BasePath())
+			assert.ErrorContains(t, err, message)
+			assert.EqualValues(t, wal.InvalidOffset, commitOffset)
+			assert.EqualValues(t, wal.InvalidTerm, term)
+		})
+	}
 }
