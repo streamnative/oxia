@@ -3183,6 +3183,36 @@ func TestSplitControllerAbortReturnsStatusErrors(t *testing.T) {
 	}
 }
 
+func TestSplitControllerRunRetriesAbortUntilClose(t *testing.T) {
+	rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseBootstrap)
+	var loads atomic.Int32
+	hooked := &hookedMetadata{
+		Metadata: metadata,
+		getNamespaceStatus: func(namespace string) (commonobject.Borrowed[*proto.NamespaceStatus], bool, error) {
+			loads.Add(1)
+			return failingNamespaceStatusLoad(namespace)
+		},
+	}
+	sc := newUnstartedSplitController(t, hooked, rpcMock, listener)
+	sc.ctxCancel()
+
+	done := make(chan struct{})
+	go func() {
+		sc.run()
+		close(done)
+	}()
+	require.Eventually(t, func() bool { return loads.Load() >= 2 }, 10*time.Second, 10*time.Millisecond)
+	sc.finalizeCtxCancel()
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		require.FailNow(t, "closing did not stop the abort retries")
+	}
+	assert.Empty(t, listener.aborts)
+	assert.NotNil(t, requireShardMetadata(t, metadata, constant.DefaultNamespace, 0).GetSplit())
+}
+
 // A namespace whose status is gone, e.g. because it was deleted, has no split
 // left to remove.
 func TestSplitControllerRemoveSplitSkipsMissingNamespaceStatus(t *testing.T) {

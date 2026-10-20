@@ -217,9 +217,9 @@ func (sc *SplitController) run() {
 	// wasn't persisted resumes after a restart.
 	if sc.ctx.Err() != nil {
 		sc.logger.Warn("Aborting split due to timeout or cancellation")
-		if err := backoff.RetryNotify(sc.abort, oxiatime.NewBackOff(sc.finalizeCtx), logRetry); err != nil &&
-			sc.finalizeCtx.Err() == nil {
-			sc.logger.Warn("Failed to persist the split abort", slog.Any("error", err))
+		if err := backoff.RetryNotify(sc.abort, oxiatime.NewBackOff(sc.finalizeCtx), logRetry); err != nil {
+			sc.logger.Info("Split abort stopped by close, it resumes from its persisted state after a restart",
+				slog.Any("error", err))
 		}
 	}
 }
@@ -245,16 +245,14 @@ func (sc *SplitController) driveStateMachine() error {
 
 		sc.logger.Info("Running split phase", slog.String("phase", phase.String()))
 
+		// currentPhase parses the phase: Cutover is the only one left
 		switch phase {
 		case proto.SplitPhaseBootstrap:
 			err = sc.runBootstrap()
 		case proto.SplitPhaseCatchUp:
 			err = sc.runCatchUp()
-		case proto.SplitPhaseCutover:
-			err = sc.runCutover()
 		default:
-			sc.logger.Error("Unknown split phase", slog.Any("phase", phase))
-			return nil
+			err = sc.runCutover()
 		}
 
 		if err != nil {
@@ -656,14 +654,12 @@ func (sc *SplitController) runCatchUpRound() (bool, error) {
 
 	for _, childId := range []int64{sc.leftChildId, sc.rightChildId} {
 		if err := sc.waitForChildCommitOffset(roundCtx, childId, target); err != nil {
-			if roundCtx.Err() != nil {
-				sc.logger.Info("CatchUp round timed out, retrying",
-					slog.Int64("child-shard", childId),
-					slog.Int64("target", target),
-				)
-				return false, nil
-			}
-			return false, err
+			sc.logger.Info("CatchUp round timed out, retrying",
+				slog.Int64("child-shard", childId),
+				slog.Int64("target", target),
+				slog.Any("error", err),
+			)
+			return false, nil
 		}
 	}
 	return true, nil
@@ -1214,7 +1210,8 @@ func (*SplitController) pickLeader(entries map[*proto.DataServerIdentity]*proto.
 // the loss of a member of any other shard, can't lose it. The child leader must
 // hold it too, as Finalize elects it again: its followers can't have entries
 // that it doesn't have. Uses the provided context for timeout control (the
-// round-based CatchUp algorithm passes a round-scoped context).
+// round-based CatchUp algorithm passes a round-scoped context): it retries
+// until the context ends, the only way it fails.
 func (sc *SplitController) waitForChildCommitOffset(ctx context.Context, childId int64, targetOffset int64) error {
 	return backoff.RetryNotify(func() error {
 		childMeta, err := sc.loadShardMeta(childId)
