@@ -142,6 +142,30 @@ func TestSelectLowerestLoadSelectorAfterShardMove(t *testing.T) {
 	assert.EqualValues(t, "sv-4", id)
 }
 
+func TestSelectLowerestLoadSelectorWithoutLoadRatios(t *testing.T) {
+	_, err := (&lowerestLoadSelector{}).Select(&Context{
+		Candidates:        linkedhashset.New("sv-1"),
+		LoadRatioSupplier: func() *model.Ratio { return nil },
+	})
+
+	assert.ErrorIs(t, err, selector.ErrNoFunctioning)
+}
+
+func TestSelectLowerestLoadSelectorWithoutRankedCandidates(t *testing.T) {
+	ratioSnapshot := DefaultShardsRank(&model.RatioParams{
+		NodeShardsInfos: map[string][]model.ShardInfo{
+			"sv-1": makeShardInfos("sv-1", 1, 0),
+		},
+	})
+
+	_, err := (&lowerestLoadSelector{}).Select(&Context{
+		Candidates:        linkedhashset.New("sv-2"),
+		LoadRatioSupplier: func() *model.Ratio { return ratioSnapshot },
+	})
+
+	assert.ErrorIs(t, err, selector.ErrNoFunctioning)
+}
+
 func makeShardInfos(nodeID string, count int, startID int) []model.ShardInfo {
 	shards := make([]model.ShardInfo, count)
 	for i := 0; i < count; i++ {

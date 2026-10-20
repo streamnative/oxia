@@ -17,16 +17,21 @@ package dataserver
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	grpcstatus "google.golang.org/grpc/status"
 	pb "google.golang.org/protobuf/proto"
 
 	"github.com/oxia-db/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/metric"
 	"github.com/oxia-db/oxia/common/proto"
 	"github.com/oxia-db/oxia/oxiad/common/health"
 	"github.com/oxia-db/oxia/oxiad/coordinator/rpc/rpctest"
@@ -824,4 +829,232 @@ func TestDataServerControllerSendAssignmentsDispatchWithRetriesSendsRightAfterHa
 	expectShardAssignmentsUpdate(t, node.ShardAssignmentsStream.Updates, &proto.ShardAssignments{})
 	assert.Equal(t, int64(1), node.PushShardAssignmentsCount.Load(),
 		"the stream must be opened once, after the handshake")
+}
+
+// A data server that is not initialized yet rejects the assignments stream:
+// the dispatcher keeps retrying until it accepts it.
+func TestDataServerControllerSendAssignmentsDispatchWithRetriesWaitsForInitialization(t *testing.T) {
+	addr := &proto.DataServerIdentity{Public: "my-server:9190", Internal: "my-server:8190"}
+	dataServer := &proto.DataServer{Identity: addr, Metadata: &proto.DataServerMetadata{}}
+
+	sap := rpctest.NewShardAssignmentsProvider()
+	nal := rpctest.NewNodeAvailabilityListener()
+	rpc := rpctest.NewRpcProvider()
+	node := rpc.GetNode(addr)
+	rpc.FailNode(addr, constant.ErrNotInitialized)
+
+	nc := NewController(context.Background(), dataServer, sap, nal, rpc, "test-instance", 10*time.Millisecond, testHealthPolicy)
+	defer func() {
+		assert.NoError(t, nc.Close())
+	}()
+
+	assert.Eventually(t, func() bool {
+		return node.PushShardAssignmentsCount.Load() >= 2
+	}, 10*time.Second, 10*time.Millisecond)
+	assert.Equal(t, Running, nc.GetStatus().GetState())
+
+	rpc.RecoverNode(addr)
+	expectShardAssignmentsUpdate(t, node.ShardAssignmentsStream.Updates, &proto.ShardAssignments{})
+}
+
+// Both health paths retry when they can't get a health client, and the data
+// server becomes Running once they can.
+func TestDataServerControllerHealthPingWithRetriesRetriesHealthClientErrors(t *testing.T) {
+	addr := &proto.DataServerIdentity{Public: "my-server:9190", Internal: "my-server:8190"}
+	dataServer := &proto.DataServer{Identity: addr, Metadata: &proto.DataServerMetadata{}}
+
+	sap := rpctest.NewShardAssignmentsProvider()
+	nal := rpctest.NewNodeAvailabilityListener()
+	var calls atomic.Int64
+	rpc := &fakeRpcProvider{RpcProvider: rpctest.NewRpcProvider()}
+	rpc.getHealthClient = func(node *proto.DataServerIdentity) (grpc_health_v1.HealthClient, error) {
+		if calls.Add(1) <= 4 {
+			return nil, errors.New("no connection")
+		}
+		return rpc.RpcProvider.GetHealthClient(node)
+	}
+
+	nc := NewController(context.Background(), dataServer, sap, nal, rpc, "test-instance", 10*time.Millisecond, testHealthPolicy)
+	defer func() {
+		assert.NoError(t, nc.Close())
+	}()
+
+	assert.Eventually(t, func() bool {
+		return nc.GetStatus().GetState() == Running
+	}, 10*time.Second, 10*time.Millisecond)
+	assert.Greater(t, calls.Load(), int64(4))
+	assert.Empty(t, nal.Events)
+}
+
+// When the health watch breaks and no health client can be obtained to verify
+// the data server, the verification leaves it to the ping loop: the data
+// server is not fenced.
+func TestDataServerControllerVerifyAfterWatchFailureLeavesHealthClientErrorToPingLoop(t *testing.T) {
+	addr := &proto.DataServerIdentity{Public: "my-server:9190", Internal: "my-server:8190"}
+	dataServer := &proto.DataServer{Identity: addr, Metadata: &proto.DataServerMetadata{}}
+
+	sap := rpctest.NewShardAssignmentsProvider()
+	nal := rpctest.NewNodeAvailabilityListener()
+	var failing atomic.Bool
+	var failedCalls atomic.Int64
+	rpc := &fakeRpcProvider{RpcProvider: rpctest.NewRpcProvider()}
+	rpc.getHealthClient = func(node *proto.DataServerIdentity) (grpc_health_v1.HealthClient, error) {
+		if failing.Load() {
+			failedCalls.Add(1)
+			return nil, errors.New("no connection")
+		}
+		return rpc.RpcProvider.GetHealthClient(node)
+	}
+	nc := NewController(context.Background(), dataServer, sap, nal, rpc, "test-instance", 10*time.Millisecond, slowPingHealthPolicy)
+	defer func() {
+		assert.NoError(t, nc.Close())
+	}()
+	assert.Eventually(t, func() bool {
+		return nc.GetStatus().GetState() == Running
+	}, 10*time.Second, 10*time.Millisecond)
+
+	failing.Store(true)
+	rpc.GetNode(addr).HealthClient.FailWatches(errors.New("stream reset"))
+
+	// The verification gets the first client, the watch retry the second one
+	assert.Eventually(t, func() bool {
+		return failedCalls.Load() >= 2
+	}, 10*time.Second, 10*time.Millisecond)
+	assert.Equal(t, Running, nc.GetStatus().GetState())
+	assert.Empty(t, nal.Events)
+}
+
+func TestDataServerControllerDrainIsIdempotent(t *testing.T) {
+	addr := &proto.DataServerIdentity{Public: "my-server:9190", Internal: "my-server:8190"}
+	dataServer := &proto.DataServer{Identity: addr, Metadata: &proto.DataServerMetadata{}}
+
+	rpc := rpctest.NewRpcProvider()
+	rpc.GetNode(addr).BlockHandshakes()
+	nc := NewController(context.Background(), dataServer, rpctest.NewShardAssignmentsProvider(),
+		rpctest.NewNodeAvailabilityListener(), rpc, "test-instance", time.Second, testHealthPolicy)
+	defer func() {
+		rpc.GetNode(addr).ReleaseHandshakes()
+		assert.NoError(t, nc.Close())
+	}()
+
+	nc.Drain()
+	drained := nc.GetStatus()
+	assert.Equal(t, Draining, drained.GetState())
+
+	nc.Drain()
+	assert.Equal(t, drained, nc.GetStatus(), "draining again must not advance the status")
+}
+
+func TestDataServerControllerCloseIsIdempotent(t *testing.T) {
+	addr := &proto.DataServerIdentity{Public: "my-server:9190", Internal: "my-server:8190"}
+	dataServer := &proto.DataServer{Identity: addr, Metadata: &proto.DataServerMetadata{}}
+
+	nc := NewController(context.Background(), dataServer, rpctest.NewShardAssignmentsProvider(),
+		rpctest.NewNodeAvailabilityListener(), rpctest.NewRpcProvider(), "test-instance", time.Second, testHealthPolicy)
+
+	assert.NoError(t, nc.Close())
+	assert.NoError(t, nc.Close())
+}
+
+// A handshake that doesn't bind the data server leaves it NotRunning, and the
+// next probe retries it.
+func TestDataServerControllerBecomeAvailableRejectsUnboundHandshake(t *testing.T) {
+	for _, status := range []proto.HandshakeStatus{
+		proto.HandshakeStatus_HANDSHAKE_STATUS_MISMATCH,
+		proto.HandshakeStatus_HANDSHAKE_STATUS_UNKNOWN,
+	} {
+		t.Run(status.String(), func(t *testing.T) {
+			addr := &proto.DataServerIdentity{Public: "my-server:9190", Internal: "my-server:8190"}
+			dataServer := &proto.DataServer{Identity: addr, Metadata: &proto.DataServerMetadata{}}
+
+			nal := rpctest.NewNodeAvailabilityListener()
+			var handshakes atomic.Int64
+			rpc := &fakeRpcProvider{RpcProvider: rpctest.NewRpcProvider()}
+			rpc.handshake = func(context.Context, *proto.DataServerIdentity, *proto.HandshakeRequest) (
+				*proto.HandshakeResponse, error) {
+				handshakes.Add(1)
+				return &proto.HandshakeResponse{Status: status}, nil
+			}
+			nc := NewController(context.Background(), dataServer, rpctest.NewShardAssignmentsProvider(),
+				nal, rpc, "test-instance", time.Second, testHealthPolicy)
+
+			assert.Eventually(t, func() bool {
+				return handshakes.Load() >= 2
+			}, 10*time.Second, 10*time.Millisecond)
+			assert.Equal(t, NotRunning, nc.GetStatus().GetState())
+			assert.Empty(t, nal.FeaturesDiscoveredEvents)
+
+			assert.NoError(t, nc.Close())
+		})
+	}
+}
+
+func TestDataServerControllerNewControllerReportsRunningGauge(t *testing.T) {
+	previous := metric.GetMeter()
+	reader := sdkmetric.NewManualReader()
+	metric.SetMeter(sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)).Meter("test"))
+	defer metric.SetMeter(previous)
+	readRunning := func() int64 {
+		var rm metricdata.ResourceMetrics
+		require.NoError(t, reader.Collect(context.Background(), &rm))
+		var total int64
+		for _, scope := range rm.ScopeMetrics {
+			for _, m := range scope.Metrics {
+				if m.Name != "oxia_coordinator_node_running" {
+					continue
+				}
+				gauge, ok := m.Data.(metricdata.Gauge[int64])
+				require.True(t, ok, "unexpected data: %#v", m.Data)
+				for _, dp := range gauge.DataPoints {
+					total += dp.Value
+				}
+			}
+		}
+		return total
+	}
+
+	addr := &proto.DataServerIdentity{Public: "my-server:9190", Internal: "my-server:8190"}
+	dataServer := &proto.DataServer{Identity: addr, Metadata: &proto.DataServerMetadata{}}
+	rpc := rpctest.NewRpcProvider()
+	node := rpc.GetNode(addr)
+	node.BlockHandshakes()
+	nc := NewController(context.Background(), dataServer, rpctest.NewShardAssignmentsProvider(),
+		rpctest.NewNodeAvailabilityListener(), rpc, "test-instance", time.Second, testHealthPolicy)
+	defer func() {
+		assert.NoError(t, nc.Close())
+	}()
+
+	assert.Eventually(t, func() bool {
+		return node.HandshakeCount.Load() >= 1
+	}, 10*time.Second, 10*time.Millisecond)
+	assert.Equal(t, int64(0), readRunning())
+
+	node.ReleaseHandshakes()
+	assert.Eventually(t, func() bool {
+		return readRunning() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+}
+
+// fakeRpcProvider calls the hook of each method that has one, and the
+// embedded RpcProvider otherwise.
+type fakeRpcProvider struct {
+	*rpctest.RpcProvider
+	getHealthClient func(node *proto.DataServerIdentity) (grpc_health_v1.HealthClient, error)
+	handshake       func(ctx context.Context, node *proto.DataServerIdentity, req *proto.HandshakeRequest) (
+		*proto.HandshakeResponse, error)
+}
+
+func (p *fakeRpcProvider) GetHealthClient(node *proto.DataServerIdentity) (grpc_health_v1.HealthClient, error) {
+	if p.getHealthClient != nil {
+		return p.getHealthClient(node)
+	}
+	return p.RpcProvider.GetHealthClient(node)
+}
+
+func (p *fakeRpcProvider) Handshake(ctx context.Context, node *proto.DataServerIdentity,
+	req *proto.HandshakeRequest) (*proto.HandshakeResponse, error) {
+	if p.handshake != nil {
+		return p.handshake(ctx, node, req)
+	}
+	return p.RpcProvider.Handshake(ctx, node, req)
 }
