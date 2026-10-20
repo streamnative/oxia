@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -38,7 +39,6 @@ import (
 
 const (
 	sessionKeyPrefix = constant.InternalKeyPrefix + "session"
-	sessionKeyFormat = sessionKeyPrefix + "/%016x"
 	sessionKeyLength = len(sessionKeyPrefix) + 1 + 16
 )
 
@@ -68,16 +68,14 @@ func shadowKeysRange(sessionKey string, features feature.Checker) (start string,
 }
 
 func KeyToId(key string) (SessionId, error) {
-	var id int64
-	items, err := fmt.Sscanf(key, sessionKeyFormat, &id)
+	hexId, found := strings.CutPrefix(key, sessionKeyPrefix+"/")
+	if !found {
+		return 0, errors.New("failed to parse session key: " + key)
+	}
+	id, err := strconv.ParseInt(hexId, 16, 64)
 	if err != nil {
 		return 0, err
 	}
-
-	if items != 1 {
-		return 0, errors.New("failed to parse session key: " + key)
-	}
-
 	return SessionId(id), nil
 }
 
