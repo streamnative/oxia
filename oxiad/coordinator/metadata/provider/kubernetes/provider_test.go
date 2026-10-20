@@ -41,7 +41,7 @@ import (
 )
 
 func TestProviderUsesConfiguredCoordinatorName(t *testing.T) {
-	p, err := NewProvider(
+	p := NewProvider(
 		t.Context(),
 		fake.NewSimpleClientset(),
 		"ns",
@@ -50,7 +50,6 @@ func TestProviderUsesConfiguredCoordinatorName(t *testing.T) {
 		metadatacommon.WatchDisabled,
 		"coordinator-0",
 	)
-	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, p.Close())
 	})
@@ -59,8 +58,8 @@ func TestProviderUsesConfiguredCoordinatorName(t *testing.T) {
 	require.Equal(t, "coordinator-0", provider.name)
 }
 
-func TestProviderRejectsEmptyCoordinatorName(t *testing.T) {
-	_, err := NewProvider(
+func TestProviderWaitToBecomeLeaderRejectsEmptyCoordinatorName(t *testing.T) {
+	p := NewProvider(
 		t.Context(),
 		fake.NewSimpleClientset(),
 		"ns",
@@ -69,13 +68,18 @@ func TestProviderRejectsEmptyCoordinatorName(t *testing.T) {
 		metadatacommon.WatchDisabled,
 		" ",
 	)
-	require.ErrorContains(t, err, "coordinator name must not be empty")
+	t.Cleanup(func() {
+		require.NoError(t, p.Close())
+	})
+
+	_, err := p.WaitToBecomeLeader()
+	require.ErrorContains(t, err, "failed to create the leader elector")
 }
 
 func TestProviderGetLeaderNameUsesLeaderElector(t *testing.T) {
 	kc := fake.NewSimpleClientset()
 
-	p, err := NewProvider(
+	p := NewProvider(
 		t.Context(),
 		kc,
 		"ns",
@@ -84,12 +88,11 @@ func TestProviderGetLeaderNameUsesLeaderElector(t *testing.T) {
 		metadatacommon.WatchDisabled,
 		"coordinator-0",
 	)
-	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, p.Close())
 	})
 
-	_, err = p.WaitToBecomeLeader()
+	_, err := p.WaitToBecomeLeader()
 	require.NoError(t, err)
 
 	leader, err := p.GetLeaderName()
@@ -98,7 +101,7 @@ func TestProviderGetLeaderNameUsesLeaderElector(t *testing.T) {
 }
 
 func TestProviderGetLeaderNameUnavailable(t *testing.T) {
-	p, err := NewProvider(
+	p := NewProvider(
 		t.Context(),
 		fake.NewSimpleClientset(),
 		"ns",
@@ -107,12 +110,11 @@ func TestProviderGetLeaderNameUnavailable(t *testing.T) {
 		metadatacommon.WatchDisabled,
 		"coordinator-0",
 	)
-	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, p.Close())
 	})
 
-	_, err = p.GetLeaderName()
+	_, err := p.GetLeaderName()
 	require.True(t, errors.Is(err, metadataprovider.ErrCoordinatorLeaderUnavailable))
 }
 
@@ -295,9 +297,8 @@ func TestProviderWaitToBecomeLeaderObservesOtherLeader(t *testing.T) {
 			RenewTime:            &now,
 		},
 	})
-	p, err := NewProvider(t.Context(), kc, "ns", "config", metadatacodec.ClusterConfigCodec,
+	p := NewProvider(t.Context(), kc, "ns", "config", metadatacodec.ClusterConfigCodec,
 		metadatacommon.WatchDisabled, "coordinator-0")
-	require.NoError(t, err)
 
 	waited := make(chan error, 1)
 	go func() {
@@ -323,7 +324,7 @@ func TestProviderWaitToBecomeLeaderObservesOtherLeader(t *testing.T) {
 func newConfigProvider(t *testing.T, kc *fake.Clientset) metadataprovider.Provider[*commonproto.ClusterConfiguration] {
 	t.Helper()
 
-	p, err := NewProvider(
+	p := NewProvider(
 		t.Context(),
 		kc,
 		"ns",
@@ -332,7 +333,6 @@ func newConfigProvider(t *testing.T, kc *fake.Clientset) metadataprovider.Provid
 		metadatacommon.WatchDisabled,
 		"coordinator-0",
 	)
-	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, p.Close())
 	})
