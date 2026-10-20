@@ -165,7 +165,7 @@ func printDeletes(le *proto.LogEntry, deletes []*proto.DeleteRequest) {
 			slog.Int64("term", le.Term),
 		}
 		if d.ExpectedVersionId != nil {
-			args = append(args, slog.Int64("expected-version-i", d.GetExpectedVersionId()))
+			args = append(args, slog.Int64("expected-version-id", d.GetExpectedVersionId()))
 		}
 		slog.Info("", args...)
 	}
