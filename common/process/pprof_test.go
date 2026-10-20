@@ -15,9 +15,13 @@
 package process
 
 import (
+	"bytes"
+	"log/slog"
+	"net"
 	"net/http"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -55,4 +59,26 @@ func TestRunProfilingDisabledDoesNotStartServer(t *testing.T) {
 	assert.Equal(t, "127.0.0.1:0", server.Addr)
 	assert.Equal(t, 0, runtime.SetMutexProfileFraction(-1))
 	assert.NoError(t, closer.Close())
+}
+
+func TestServeProfilingLogsListenFailure(t *testing.T) {
+	logs := captureLogs(t)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer listener.Close()
+
+	serveProfiling(&http.Server{Addr: listener.Addr().String(), ReadHeaderTimeout: time.Second})
+
+	assert.Contains(t, logs.String(), "Unable to start debug profiling server")
+}
+
+// captureLogs routes the default logger to the returned buffer until the test ends.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	previous := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	logs := &bytes.Buffer{}
+	slog.SetDefault(slog.New(slog.NewTextHandler(logs, nil)))
+	return logs
 }

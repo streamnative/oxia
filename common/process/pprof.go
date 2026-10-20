@@ -21,7 +21,6 @@ import (
 	"log/slog"
 	"net/http"
 	_ "net/http/pprof" //nolint:gosec
-	"os"
 	"runtime"
 	"runtime/pprof"
 	"time"
@@ -88,18 +87,21 @@ func RunProfiling(ctx context.Context) io.Closer {
 		map[string]string{
 			"oxia": "pprof",
 		},
-		func() {
-			if err := s.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				slog.Error(
-					"Unable to start debug profiling server",
-					slog.Any("error", err),
-					slog.String("component", "pprof"),
-				)
-				os.Exit(1)
-			}
-		})
+		func() { serveProfiling(s) })
 
 	return &profilingServer{s}
+}
+
+// serveProfiling serves pprof until the server is closed. A failure is logged:
+// the process keeps running without the profiling endpoint.
+func serveProfiling(s *http.Server) {
+	if err := s.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		slog.Error(
+			"Unable to start debug profiling server",
+			slog.Any("error", err),
+			slog.String("component", "pprof"),
+		)
+	}
 }
 
 // profilingServer scopes the contention-profiling rates to the pprof server
