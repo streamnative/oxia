@@ -148,11 +148,21 @@ func (p *hookedCommitOffsetProvider) CommitOffset() int64 {
 }
 
 // hookedSegmentsGroup runs hook when the trimming deletes its segments, and
-// getHook when a read looks a segment up.
+// getHook when a read looks a segment up. A truncation gets the segments it
+// polls through pollHook.
 type hookedSegmentsGroup struct {
 	ReadOnlySegmentsGroup
-	hook    func()
-	getHook func()
+	hook     func()
+	getHook  func()
+	pollHook func(segment object.RefCount[ReadOnlySegment]) object.RefCount[ReadOnlySegment]
+}
+
+func (g *hookedSegmentsGroup) PollHighestSegment() (object.RefCount[ReadOnlySegment], error) {
+	segment, err := g.ReadOnlySegmentsGroup.PollHighestSegment()
+	if err != nil || segment == nil || g.pollHook == nil {
+		return segment, err
+	}
+	return g.pollHook(segment), nil
 }
 
 func (g *hookedSegmentsGroup) Get(offset int64) (object.RefCount[ReadOnlySegment], error) {
@@ -416,6 +426,28 @@ func TestTrimmerDoTrimFailsWhenBinarySearchHitsUnreadableEntry(t *testing.T) {
 	err = tr.doTrim()
 	assert.ErrorContains(t, err, "failed to perform binary search")
 	assert.EqualValues(t, 0, w.FirstOffset())
+}
+
+// The binary search fails when the wal gets trimmed past the entries it
+// still has to probe.
+func TestTrimmerDoTrimFailsWhenBinarySearchEntryIsTrimmed(t *testing.T) {
+	w, tr, _ := newWalWithExpiredSegments(t)
+	// Only the entries before 5 expired: the search probes 10, then 5
+	tr.clock.(*time2.MockedClock).Set(6)
+	var lookups atomic.Int32
+	trimDuringProbe := func() {
+		if lookups.Add(1) == 2 {
+			require.NoError(t, w.trim(10, w.generation.Load(), func() error { return nil }))
+		}
+	}
+	w.Lock()
+	w.readOnlySegments = &hookedSegmentsGroup{ReadOnlySegmentsGroup: w.readOnlySegments, getHook: trimDuringProbe}
+	w.Unlock()
+
+	err := tr.doTrim()
+	assert.ErrorIs(t, err, ErrEntryNotFound)
+	assert.ErrorContains(t, err, "failed to create reader")
+	assert.EqualValues(t, 10, w.FirstOffset())
 }
 
 // newWalWithExpiredSegments returns a wal holding the entries 0..19 across

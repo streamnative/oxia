@@ -15,6 +15,7 @@
 package metric
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -41,4 +42,14 @@ func TestElapsedMicrosMatchesMonotonicClock(t *testing.T) {
 	check()
 	require.NotZero(t, microsPerTick.Load())
 	check()
+}
+
+// A counter read on another core may be behind the one of the process start:
+// it gives no rate yet.
+func TestCalibrateReturnsZeroWithoutTicks(t *testing.T) {
+	startTicks := epochTicks
+	epochTicks = math.MaxInt64
+	defer func() { epochTicks = startTicks }()
+
+	require.Zero(t, calibrate())
 }

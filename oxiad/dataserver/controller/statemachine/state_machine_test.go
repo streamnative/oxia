@@ -596,6 +596,28 @@ func TestApplyLogEntryWithSplitFilterWriteError(t *testing.T) {
 	assert.ErrorIs(t, err, callbackErr)
 }
 
+// An entry without any record of the child still advances its commit offset.
+func TestApplyLogEntryWithSplitFilterSkipsEntryOutsideRange(t *testing.T) {
+	db := newTestDB(t)
+
+	// The lower half of the hash space doesn't hold the key "d"
+	proposal := NewWriteProposal(4, &proto.WriteRequest{Puts: []*proto.PutRequest{{Key: "d", Value: []byte("v")}}})
+	_, err := ApplyLogEntryWithSplitFilter(db, &proto.LogEntry{
+		Term:      1,
+		Offset:    4,
+		Value:     marshalProposal(t, proposal),
+		Timestamp: proposal.GetTimestamp(),
+	}, database.NoOpCallback, &proto.HashRange{Min: 0, Max: 0x7FFFFFFF})
+	assert.NoError(t, err)
+
+	res, err := db.Get(&proto.GetRequest{Key: "d"})
+	assert.NoError(t, err)
+	assert.Equal(t, proto.Status_KEY_NOT_FOUND, res.Status)
+	commitOffset, err := db.ReadCommitOffset()
+	assert.NoError(t, err)
+	assert.EqualValues(t, 4, commitOffset)
+}
+
 func TestApplyLogEntryWithSplitFilterUnknownType(t *testing.T) {
 	db := newTestDB(t)
 

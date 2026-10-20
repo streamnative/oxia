@@ -2688,6 +2688,27 @@ func TestSplitControllerRunStopsFinalizeWhenChildIsRemoved(t *testing.T) {
 	assert.Equal(t, proto.SplitPhaseFinalize, shards[0].GetSplit().GetPhaseOrDefault())
 }
 
+// An abort that fails for good is logged, and leaves the split to resume from
+// its persisted state after a restart.
+func TestSplitControllerRunLogsAbortFailure(t *testing.T) {
+	rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseCatchUp)
+	setBootstrappedState(t, metadata)
+	failing := &hookedMetadata{Metadata: metadata, getShardStatus: permanentlyFailingShardStatusLoad(metadata, 1)}
+	logs := &bytes.Buffer{}
+	sc := newUnstartedSplitController(t, failing, rpcMock, listener)
+	sc.logger = slog.New(slog.NewTextHandler(logs, nil))
+	sc.ctxCancel()
+
+	sc.run()
+
+	assert.Contains(t, logs.String(), "Failed to persist the split abort")
+	assert.Empty(t, listener.aborts)
+	shards := loadTestStatus(t, metadata).Namespaces[constant.DefaultNamespace].GetShards()
+	assert.Equal(t, proto.SplitPhaseCatchUp, shards[0].GetSplit().GetPhaseOrDefault())
+	assert.Contains(t, shards, int64(1))
+	assert.Contains(t, shards, int64(2))
+}
+
 func TestSplitControllerDriveStateMachineReturnsShardStatusLoadError(t *testing.T) {
 	rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseBootstrap)
 	failing := &hookedMetadata{Metadata: metadata, getShardStatus: failingShardStatusLoad(metadata, 0, 1)}
@@ -2933,6 +2954,19 @@ func TestSplitControllerRunCatchUpRoundRequiresParentLeader(t *testing.T) {
 	assert.ErrorContains(t, err, "status unavailable")
 	_, err = sc.runCatchUpRound()
 	assert.ErrorContains(t, err, "parent has no leader")
+}
+
+// A child that can't be loaded for good fails the round before it times out.
+func TestSplitControllerRunCatchUpRoundReturnsChildLoadError(t *testing.T) {
+	rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseCatchUp)
+	setBootstrappedState(t, metadata)
+	rpcMock.GetNode(ps1).GetStatusResponse(5, proto.ServingStatus_LEADER, 105, 105)
+	failing := &hookedMetadata{Metadata: metadata, getShardStatus: permanentlyFailingShardStatusLoad(metadata, 1)}
+	sc := newUnstartedSplitController(t, failing, rpcMock, listener)
+
+	done, err := sc.runCatchUpRound()
+	assert.ErrorContains(t, err, "status unavailable")
+	assert.False(t, done)
 }
 
 // A Cutover step that fails is retried from the start of Cutover, without
@@ -3309,6 +3343,19 @@ func failingShardStatusLoad(metadata coordmetadata.Metadata, shard int64, nth in
 	return func(namespace string, id int64) (commonobject.Borrowed[*proto.ShardMetadata], bool, error) {
 		if id == shard && loads.Add(1) == nth {
 			return commonobject.Borrowed[*proto.ShardMetadata]{}, false, errors.New("status unavailable")
+		}
+		return metadata.GetShardStatus(namespace, id)
+	}
+}
+
+// permanentlyFailingShardStatusLoad is a GetShardStatus hook that fails every
+// load of a shard with an error that is not retried.
+func permanentlyFailingShardStatusLoad(metadata coordmetadata.Metadata, shard int64) func(string, int64) (
+	commonobject.Borrowed[*proto.ShardMetadata], bool, error) {
+	return func(namespace string, id int64) (commonobject.Borrowed[*proto.ShardMetadata], bool, error) {
+		if id == shard {
+			return commonobject.Borrowed[*proto.ShardMetadata]{}, false,
+				backoff.Permanent(errors.New("status unavailable"))
 		}
 		return metadata.GetShardStatus(namespace, id)
 	}
