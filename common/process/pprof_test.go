@@ -15,9 +15,15 @@
 package process
 
 import (
+	"bytes"
+	"log/slog"
+	"net"
 	"net/http"
 	"runtime"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -55,4 +61,54 @@ func TestRunProfilingDisabledDoesNotStartServer(t *testing.T) {
 	assert.Equal(t, "127.0.0.1:0", server.Addr)
 	assert.Equal(t, 0, runtime.SetMutexProfileFraction(-1))
 	assert.NoError(t, closer.Close())
+}
+
+func TestRunProfilingLogsListenFailure(t *testing.T) {
+	logs := captureLogs(t)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer listener.Close()
+	PprofEnable = true
+	PprofBindAddress = listener.Addr().String()
+	t.Cleanup(func() {
+		PprofEnable = false
+		runtime.SetMutexProfileFraction(0)
+		runtime.SetBlockProfileRate(0)
+	})
+
+	closer := RunProfiling(t.Context())
+
+	assert.Eventually(t, func() bool {
+		return strings.Contains(logs.String(), "Unable to start debug profiling server")
+	}, 10*time.Second, 10*time.Millisecond)
+	assert.NoError(t, closer.Close())
+}
+
+// captureLogs routes the default logger to the returned buffer until the test ends.
+func captureLogs(t *testing.T) *syncBuffer {
+	t.Helper()
+	previous := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	logs := &syncBuffer{}
+	slog.SetDefault(slog.New(slog.NewTextHandler(logs, nil)))
+	return logs
+}
+
+// syncBuffer is a buffer that a goroutine's logger writes while the test reads it.
+type syncBuffer struct {
+	sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.Lock()
+	defer b.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.Lock()
+	defer b.Unlock()
+	return b.buf.String()
 }

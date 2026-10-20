@@ -21,7 +21,6 @@ import (
 	"log/slog"
 	"net/http"
 	_ "net/http/pprof" //nolint:gosec
-	"os"
 	"runtime"
 	"runtime/pprof"
 	"time"
@@ -95,7 +94,6 @@ func RunProfiling(ctx context.Context) io.Closer {
 					slog.Any("error", err),
 					slog.String("component", "pprof"),
 				)
-				os.Exit(1)
 			}
 		})
 

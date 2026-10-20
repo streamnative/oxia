@@ -15,7 +15,10 @@
 package metric
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"log/slog"
 	"sync/atomic"
 	"testing"
 
@@ -23,6 +26,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/noop"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
@@ -38,6 +42,18 @@ func TestGaugeUnregisterStopsObserving(t *testing.T) {
 
 	g.Unregister()
 	assert.Empty(t, collect(t, reader).ScopeMetrics)
+}
+
+func TestGaugeUnregisterLogsFailure(t *testing.T) {
+	logs := captureLogs(t)
+	g := &gauge{registration: &fakeRegistration{
+		unregister: func() error { return errors.New("unregister failed") },
+	}}
+
+	g.Unregister()
+
+	assert.Contains(t, logs.String(), "Failed to unregister gauge")
+	assert.Contains(t, logs.String(), "unregister failed")
 }
 
 func TestNewGaugeCallbackSkipsCanceledCollection(t *testing.T) {
@@ -66,6 +82,31 @@ func TestNewGaugeCallbackSkipsCanceledCollection(t *testing.T) {
 	var rm metricdata.ResourceMetrics
 	assert.ErrorIs(t, reader.Collect(ctx, &rm), context.Canceled)
 	assert.Zero(t, calls.Load())
+}
+
+func TestNewGaugePanicsOnInvalidName(t *testing.T) {
+	withTestMeter(t)
+
+	assert.PanicsWithError(t, "failed to create metric 1gauge: invalid instrument name: 1gauge: must start with a letter",
+		func() { NewGauge("1gauge", "", Dimensionless, map[string]any{}, func() int64 { return 0 }) })
+}
+
+func TestNewGaugePanicsOnRegisterFailure(t *testing.T) {
+	previous := GetMeter()
+	t.Cleanup(func() { SetMeter(previous) })
+	SetMeter(&fakeMeter{registerCallback: func(metric.Callback, ...metric.Observable) (metric.Registration, error) {
+		return nil, errors.New("register failed")
+	}})
+
+	assert.PanicsWithError(t, "failed to register gauge gauge: register failed",
+		func() { NewGauge("gauge", "", Dimensionless, map[string]any{}, func() int64 { return 0 }) })
+}
+
+func TestNewSyncGaugePanicsOnInvalidName(t *testing.T) {
+	withTestMeter(t)
+
+	assert.PanicsWithError(t, "failed to create metric 1gauge: invalid instrument name: 1gauge: must start with a letter",
+		func() { NewSyncGauge("1gauge", "", Dimensionless, map[string]any{}) })
 }
 
 func TestSyncGaugeRecord(t *testing.T) {
@@ -112,4 +153,33 @@ func gaugeDataPoints(t *testing.T, rm metricdata.ResourceMetrics) []metricdata.D
 	data, ok := rm.ScopeMetrics[0].Metrics[0].Data.(metricdata.Gauge[int64])
 	require.True(t, ok)
 	return data.DataPoints
+}
+
+// captureLogs routes the default logger to the returned buffer until the test ends.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	previous := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	logs := &bytes.Buffer{}
+	slog.SetDefault(slog.New(slog.NewTextHandler(logs, nil)))
+	return logs
+}
+
+type fakeMeter struct {
+	noop.Meter
+	registerCallback func(metric.Callback, ...metric.Observable) (metric.Registration, error)
+}
+
+func (m *fakeMeter) RegisterCallback(f metric.Callback, insts ...metric.Observable) (metric.Registration, error) {
+	return m.registerCallback(f, insts...)
+}
+
+type fakeRegistration struct {
+	noop.Registration
+	unregister func() error
+}
+
+func (r *fakeRegistration) Unregister() error {
+	return r.unregister()
 }

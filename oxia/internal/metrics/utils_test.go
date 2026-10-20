@@ -18,9 +18,31 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"go.opentelemetry.io/otel/sdk/metric"
 
 	"github.com/oxia-db/oxia/common/proto"
 )
+
+const invalidNameError = "failed to create oxia client metric 1metric: invalid instrument name: 1metric: " +
+	"must start with a letter"
+
+func TestNewHistogramPanicsOnInvalidName(t *testing.T) {
+	meter := metric.NewMeterProvider().Meter("test")
+
+	assert.PanicsWithError(t, invalidNameError, func() { newHistogram(meter, "1metric", "") })
+}
+
+func TestNewMillisCounterPanicsOnInvalidName(t *testing.T) {
+	meter := metric.NewMeterProvider().Meter("test")
+
+	assert.PanicsWithError(t, invalidNameError, func() { newMillisCounter(meter, "1metric") })
+}
+
+func TestNewCounterPanicsOnInvalidName(t *testing.T) {
+	meter := metric.NewMeterProvider().Meter("test")
+
+	assert.PanicsWithError(t, invalidNameError, func() { newCounter(meter, "1metric", "") })
+}
 
 func TestReadMetrics(t *testing.T) {
 	valueSize, requestCount := readMetrics(&proto.ReadResponse{Gets: []*proto.GetResponse{

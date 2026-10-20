@@ -21,7 +21,6 @@ import (
 	"io"
 	"log/slog"
 	"net"
-	"os"
 	"time"
 
 	"google.golang.org/grpc"
@@ -145,23 +144,26 @@ func newDefaultGrpcProvider(name, bindAddress string, registerFunc func(grpc.Ser
 			"oxia": name,
 			"bind": listener.Addr().String(),
 		},
-		func() {
-			defer close(c.serveDone)
-			// Serve returns ErrServerStopped when Close() stopped the server before
-			// this goroutine was scheduled: a benign race, not a startup failure.
-			if err := c.server.Serve(listener); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
-				c.log.Error(
-					"Failed to start serving",
-					slog.Any("error", err),
-				)
-				os.Exit(1)
-			}
-		},
+		func() { c.serve(listener) },
 	)
 
 	c.log.Info("Started Grpc server")
 
 	return c, nil
+}
+
+// serve serves the requests until the server is closed. A failure is logged:
+// the server stops serving, and its owner still closes it.
+func (c *defaultGrpcServer) serve(listener net.Listener) {
+	defer close(c.serveDone)
+	// Serve returns ErrServerStopped when Close() stopped the server before
+	// this goroutine was scheduled: a benign race, not a serve failure.
+	if err := c.server.Serve(listener); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+		c.log.Error(
+			"Failed to serve",
+			slog.Any("error", err),
+		)
+	}
 }
 
 func (c *defaultGrpcServer) Port() int {
