@@ -1114,6 +1114,8 @@ func newTestElection(t *testing.T, metadata coordmetadata.Metadata, rpc coordrpc
 type hookedMetadata struct {
 	coordmetadata.Metadata
 	getDataServer           func(name string) (commonobject.Borrowed[*proto.DataServer], bool, error)
+	getNamespaceStatus      func(namespace string) (commonobject.Borrowed[*proto.NamespaceStatus], bool, error)
+	getShardStatus          func(namespace string, shard int64) (commonobject.Borrowed[*proto.ShardMetadata], bool, error)
 	listNamespaceStatus     func() (map[string]commonobject.Borrowed[*proto.NamespaceStatus], error)
 	getNamespaceTermOptions func(namespace string) (*proto.NewTermOptions, error)
 	patchNamespaceStatus    func(namespace string, modify func(*proto.NamespaceStatus) bool) error
@@ -1124,6 +1126,22 @@ func (m *hookedMetadata) GetDataServer(name string) (commonobject.Borrowed[*prot
 		return m.getDataServer(name)
 	}
 	return m.Metadata.GetDataServer(name)
+}
+
+func (m *hookedMetadata) GetNamespaceStatus(namespace string) (
+	commonobject.Borrowed[*proto.NamespaceStatus], bool, error) {
+	if m.getNamespaceStatus != nil {
+		return m.getNamespaceStatus(namespace)
+	}
+	return m.Metadata.GetNamespaceStatus(namespace)
+}
+
+func (m *hookedMetadata) GetShardStatus(namespace string, shard int64) (
+	commonobject.Borrowed[*proto.ShardMetadata], bool, error) {
+	if m.getShardStatus != nil {
+		return m.getShardStatus(namespace, shard)
+	}
+	return m.Metadata.GetShardStatus(namespace, shard)
 }
 
 func (m *hookedMetadata) ListNamespaceStatus() (map[string]commonobject.Borrowed[*proto.NamespaceStatus], error) {

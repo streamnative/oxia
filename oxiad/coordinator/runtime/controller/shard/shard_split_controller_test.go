@@ -36,6 +36,7 @@ import (
 	"github.com/stretchr/testify/require"
 	gproto "google.golang.org/protobuf/proto"
 
+	commonobject "github.com/oxia-db/oxia/common/object"
 	"github.com/oxia-db/oxia/oxiad/common/feature"
 	coordmetadata "github.com/oxia-db/oxia/oxiad/coordinator/metadata"
 	"github.com/oxia-db/oxia/oxiad/coordinator/metadata/provider/memory"
@@ -2579,5 +2580,748 @@ func TestSplitController_BootstrapKeepsConcurrentParentElection(t *testing.T) {
 	// observers from the parent leader
 	for range 6 {
 		rpcMock.GetNode(ps2).RemoveObserverResponse(nil)
+	}
+}
+
+// A split controller is started only with both children of the split: without
+// them, it has nothing to drive.
+func TestNewSplitControllerWithoutChildrenDoesNotStart(t *testing.T) {
+	for name, split := range map[string]*proto.SplitMetadata{
+		"no split":  nil,
+		"one child": {ChildShardIds: []int64{1}, SplitPoint: 500},
+	} {
+		t.Run(name, func(t *testing.T) {
+			rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseBootstrap)
+			sc := NewSplitController(SplitControllerConfig{
+				Namespace:     constant.DefaultNamespace,
+				ParentShardId: 0,
+				Split:         split,
+				Metadata:      metadata,
+				RpcProvider:   rpcMock,
+				EventListener: listener,
+			})
+			sc.Close()
+
+			assert.Empty(t, drainNewTermRequests(rpcMock.GetNode(ls1)))
+			assert.Empty(t, listener.aborts)
+			phase, exists, err := sc.currentPhase()
+			require.NoError(t, err)
+			assert.True(t, exists)
+			assert.Equal(t, proto.SplitPhaseBootstrap, phase)
+		})
+	}
+}
+
+// A split whose metadata is gone, e.g. because another coordinator completed
+// or aborted it, is neither driven nor aborted.
+func TestSplitControllerRunStopsWhenSplitIsRemoved(t *testing.T) {
+	rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseBootstrap)
+	status := loadTestStatus(t, metadata)
+	status.Namespaces[constant.DefaultNamespace].Shards[0].Split = nil
+	updateTestStatusShards(t, metadata, status, 0)
+
+	newUnstartedSplitController(t, metadata, rpcMock, listener).run()
+
+	assert.Empty(t, drainNewTermRequests(rpcMock.GetNode(ls1)))
+	assert.Empty(t, listener.aborts)
+	assert.Empty(t, listener.completions)
+	shards := loadTestStatus(t, metadata).Namespaces[constant.DefaultNamespace].GetShards()
+	assert.Contains(t, shards, int64(1))
+	assert.Contains(t, shards, int64(2))
+}
+
+// A split controller closed before it could load the split leaves it for the
+// next coordinator, instead of aborting it.
+func TestSplitControllerRunKeepsSplitWhenClosedBeforeLoadingIt(t *testing.T) {
+	rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseCutover)
+	setBootstrappedState(t, metadata)
+	failing := &hookedMetadata{
+		Metadata: metadata,
+		getShardStatus: func(string, int64) (commonobject.Borrowed[*proto.ShardMetadata], bool, error) {
+			return commonobject.Borrowed[*proto.ShardMetadata]{}, false, errors.New("status unavailable")
+		},
+	}
+	sc := newUnstartedSplitController(t, failing, rpcMock, listener)
+	sc.ctxCancel()
+	sc.finalizeCtxCancel()
+
+	sc.run()
+
+	assert.Empty(t, drainFreezeShardRequests(rpcMock.GetNode(ps1)))
+	assert.Empty(t, listener.aborts)
+	assert.Equal(t, proto.SplitPhaseCutover, requireShardMetadata(t, metadata, constant.DefaultNamespace, 0).
+		GetSplit().GetPhaseOrDefault())
+}
+
+// A child that is gone stops the split before the point of no return: it
+// resumes from its persisted state after a restart, and is not aborted.
+func TestSplitControllerRunStopsWhenChildIsRemoved(t *testing.T) {
+	rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseBootstrap)
+	rpcMock.GetNode(ls1).NewTermResponse(0, 0, nil)
+	rpcMock.GetNode(ls2).NewTermResponse(0, -1, nil)
+	rpcMock.GetNode(ls3).NewTermResponse(0, -1, nil)
+	queueChildResetResponses(rpcMock, ls1, ls2, ls3)
+	removed := &hookedMetadata{Metadata: metadata, getShardStatus: removedShardStatusLoad(t, metadata, 1)}
+
+	newUnstartedSplitController(t, removed, rpcMock, listener).run()
+
+	assert.Empty(t, listener.aborts)
+	shards := loadTestStatus(t, metadata).Namespaces[constant.DefaultNamespace].GetShards()
+	assert.Equal(t, proto.SplitPhaseBootstrap, shards[0].GetSplit().GetPhaseOrDefault())
+	assert.Contains(t, shards, int64(2))
+}
+
+// A child that is gone stops the split past the point of no return as well:
+// it resumes from its persisted state after a restart.
+func TestSplitControllerRunStopsFinalizeWhenChildIsRemoved(t *testing.T) {
+	rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseFinalize)
+	setBootstrappedState(t, metadata)
+	queueNewTermResponses(rpcMock, ps1, ps2, ps3)
+	removed := &hookedMetadata{Metadata: metadata, getShardStatus: removedShardStatusLoad(t, metadata, 1)}
+
+	newUnstartedSplitController(t, removed, rpcMock, listener).run()
+
+	assert.Empty(t, listener.completions)
+	assert.Len(t, drainNewTermRequests(rpcMock.GetNode(ps1)), 1)
+	assert.Empty(t, drainNewTermRequests(rpcMock.GetNode(ls1)))
+	shards := loadTestStatus(t, metadata).Namespaces[constant.DefaultNamespace].GetShards()
+	assert.Equal(t, proto.SplitPhaseFinalize, shards[0].GetSplit().GetPhaseOrDefault())
+}
+
+func TestSplitControllerDriveStateMachineReturnsShardStatusLoadError(t *testing.T) {
+	rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseBootstrap)
+	failing := &hookedMetadata{Metadata: metadata, getShardStatus: failingShardStatusLoad(metadata, 0, 1)}
+
+	err := newUnstartedSplitController(t, failing, rpcMock, listener).driveStateMachine()
+	assert.ErrorContains(t, err, "status unavailable")
+	assert.Empty(t, drainNewTermRequests(rpcMock.GetNode(ls1)))
+}
+
+// The phase of a split is moved along with its namespace status: without it,
+// there is no split to move.
+func TestSplitControllerUpdatePhaseReturnsNamespaceStatusLoadError(t *testing.T) {
+	for _, test := range []struct {
+		name               string
+		getNamespaceStatus func(string) (commonobject.Borrowed[*proto.NamespaceStatus], bool, error)
+		err                string
+	}{
+		{name: "load error", getNamespaceStatus: failingNamespaceStatusLoad, err: "namespace status unavailable"},
+		{name: "missing", getNamespaceStatus: missingNamespaceStatusLoad},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseBootstrap)
+			hooked := &hookedMetadata{Metadata: metadata, getNamespaceStatus: test.getNamespaceStatus}
+			sc := newUnstartedSplitController(t, hooked, rpcMock, listener)
+
+			err := sc.updatePhase(proto.SplitPhaseCatchUp)
+			if test.err != "" {
+				assert.ErrorContains(t, err, test.err)
+			} else {
+				assert.NoError(t, err)
+			}
+			for _, shard := range []int64{0, 1, 2} {
+				assert.Equal(t, proto.SplitPhaseBootstrap, requireShardMetadata(t, metadata, constant.DefaultNamespace,
+					shard).GetSplit().GetPhaseOrDefault())
+			}
+		})
+	}
+}
+
+// Bootstrap starts only from a parent in steady state: the children are fenced
+// at the term of its leader.
+func TestSplitControllerRunBootstrapRequiresSteadyParent(t *testing.T) {
+	t.Run("load error", func(t *testing.T) {
+		rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseBootstrap)
+		failing := &hookedMetadata{Metadata: metadata, getShardStatus: failingShardStatusLoad(metadata, 0, 1)}
+
+		assert.ErrorContains(t, newUnstartedSplitController(t, failing, rpcMock, listener).runBootstrap(),
+			"status unavailable")
+		assert.Empty(t, drainNewTermRequests(rpcMock.GetNode(ls1)))
+	})
+	t.Run("election", func(t *testing.T) {
+		rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseBootstrap)
+		status := loadTestStatus(t, metadata)
+		status.Namespaces[constant.DefaultNamespace].Shards[0].Status = proto.ShardStatusElection
+		updateTestStatusShards(t, metadata, status, 0)
+
+		assert.ErrorContains(t, newUnstartedSplitController(t, metadata, rpcMock, listener).runBootstrap(),
+			"parent shard is not in steady state")
+		assert.Empty(t, drainNewTermRequests(rpcMock.GetNode(ls1)))
+	})
+}
+
+// Bootstrap moves to CatchUp only once it recorded the parent term and the
+// child leaders that CatchUp checks the observer cursors against.
+func TestSplitControllerRunBootstrapReturnsBootstrapRecordErrors(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		metadata func(metadata coordmetadata.Metadata) coordmetadata.Metadata
+		err      string
+	}{
+		{name: "child status load", err: "status unavailable",
+			metadata: func(metadata coordmetadata.Metadata) coordmetadata.Metadata {
+				// The third load of the child follows its fence and its observers
+				return &hookedMetadata{Metadata: metadata, getShardStatus: failingShardStatusLoad(metadata, 1, 3)}
+			}},
+		{name: "status write", err: "store unavailable",
+			metadata: func(metadata coordmetadata.Metadata) coordmetadata.Metadata {
+				failing := &patchFailingMetadata{Metadata: metadata}
+				failing.failures.Store(1)
+				return failing
+			}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseBootstrap)
+			setBootstrappedState(t, metadata)
+			queueChildObserverResponses(rpcMock, ps1)
+			sc := newUnstartedSplitController(t, test.metadata(metadata), rpcMock, listener)
+
+			assert.ErrorContains(t, sc.runBootstrap(), test.err)
+			assert.Equal(t, proto.SplitPhaseBootstrap, requireShardMetadata(t, metadata, constant.DefaultNamespace, 0).
+				GetSplit().GetPhaseOrDefault())
+		})
+	}
+}
+
+// A child is recorded as fenced, with its leader, only once every step of its
+// fence succeeded: Bootstrap fences it again otherwise.
+func TestSplitControllerFenceAndResetChildReturnsErrors(t *testing.T) {
+	queueFence := func(rpcMock *rpctest.RpcProvider) {
+		for _, member := range []*proto.DataServerIdentity{ls1, ls2, ls3} {
+			rpcMock.GetNode(member).NewTermResponse(0, 0, nil)
+		}
+	}
+	for _, test := range []struct {
+		name    string
+		prepare func(t *testing.T, rpcMock *rpctest.RpcProvider, metadata coordmetadata.Metadata) coordmetadata.Metadata
+		err     string
+	}{
+		{name: "status load", err: "status unavailable",
+			prepare: func(_ *testing.T, _ *rpctest.RpcProvider, metadata coordmetadata.Metadata) coordmetadata.Metadata {
+				return &hookedMetadata{Metadata: metadata, getShardStatus: failingShardStatusLoad(metadata, 1, 1)}
+			}},
+		{name: "missing child", err: "child shard 1 not found",
+			prepare: func(t *testing.T, _ *rpctest.RpcProvider, metadata coordmetadata.Metadata) coordmetadata.Metadata {
+				t.Helper()
+				require.NoError(t, metadata.DeleteShardStatus(constant.DefaultNamespace, 1))
+				return metadata
+			}},
+		{name: "term options", err: "options unavailable",
+			prepare: func(_ *testing.T, _ *rpctest.RpcProvider, metadata coordmetadata.Metadata) coordmetadata.Metadata {
+				return &hookedMetadata{Metadata: metadata, getNamespaceTermOptions: failingTermOptionsLoad(metadata, 1)}
+			}},
+		{name: "member deletion", err: "failed to reset member",
+			prepare: func(_ *testing.T, rpcMock *rpctest.RpcProvider, metadata coordmetadata.Metadata) coordmetadata.Metadata {
+				queueFence(rpcMock)
+				for _, member := range []*proto.DataServerIdentity{ls1, ls2, ls3} {
+					rpcMock.GetNode(member).DeleteShardResponse(errors.New("delete failed"))
+				}
+				return metadata
+			}},
+		{name: "member term options", err: "options unavailable",
+			prepare: func(_ *testing.T, rpcMock *rpctest.RpcProvider, metadata coordmetadata.Metadata) coordmetadata.Metadata {
+				queueFence(rpcMock)
+				for _, member := range []*proto.DataServerIdentity{ls1, ls2, ls3} {
+					rpcMock.GetNode(member).DeleteShardResponse(nil)
+				}
+				return &hookedMetadata{Metadata: metadata, getNamespaceTermOptions: failingTermOptionsLoad(metadata, 2)}
+			}},
+		{name: "status write", err: "store unavailable",
+			prepare: func(_ *testing.T, rpcMock *rpctest.RpcProvider, metadata coordmetadata.Metadata) coordmetadata.Metadata {
+				queueFence(rpcMock)
+				queueChildResetResponses(rpcMock, ls1, ls2, ls3)
+				failing := &patchFailingMetadata{Metadata: metadata}
+				failing.failures.Store(1)
+				return failing
+			}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseBootstrap)
+			sc := newUnstartedSplitController(t, test.prepare(t, rpcMock, metadata), rpcMock, listener)
+
+			assert.ErrorContains(t, sc.fenceAndResetChild(1, 5), test.err)
+			if child, exists := testShardMetadata(metadata, constant.DefaultNamespace, 1); exists {
+				assert.Nil(t, child.GetLeader())
+				assert.EqualValues(t, 0, child.GetTerm())
+			}
+		})
+	}
+}
+
+// The members of a child are added as observers only once the child has a
+// leader: CatchUp measures the progress of the child on it.
+func TestSplitControllerAddChildObserversRequiresChildLeader(t *testing.T) {
+	rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseBootstrap)
+	failing := &hookedMetadata{Metadata: metadata, getShardStatus: failingShardStatusLoad(metadata, 1, 1)}
+	sc := newUnstartedSplitController(t, failing, rpcMock, listener)
+	parentRange := &proto.HashRange{Min: 0, Max: 1000}
+
+	assert.ErrorContains(t, sc.addChildObservers(1, ps1, 5, parentRange), "status unavailable")
+	assert.ErrorContains(t, sc.addChildObservers(1, ps1, 5, parentRange), "child shard 1 has no leader")
+}
+
+// CatchUp checks the observer cursors against what Bootstrap recorded in the
+// split of the parent: it can't go on without them.
+func TestSplitControllerRunCatchUpRequiresSplitMetadata(t *testing.T) {
+	t.Run("load error", func(t *testing.T) {
+		rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseCatchUp)
+		failing := &hookedMetadata{Metadata: metadata, getShardStatus: failingShardStatusLoad(metadata, 0, 1)}
+
+		assert.ErrorContains(t, newUnstartedSplitController(t, failing, rpcMock, listener).runCatchUp(),
+			"status unavailable")
+	})
+	t.Run("split removed", func(t *testing.T) {
+		rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseCatchUp)
+		status := loadTestStatus(t, metadata)
+		status.Namespaces[constant.DefaultNamespace].Shards[0].Split = nil
+		updateTestStatusShards(t, metadata, status, 0)
+
+		assert.ErrorContains(t, newUnstartedSplitController(t, metadata, rpcMock, listener).runCatchUp(),
+			"parent or split metadata missing")
+	})
+}
+
+// A child without a leader has no observer cursor to be stale: its leader is
+// compared with the one of Bootstrap once it has one.
+func TestSplitControllerRemoveStaleChildObserversSkipsChildWithoutLeader(t *testing.T) {
+	rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseCatchUp)
+	setBootstrappedState(t, metadata)
+	status := loadTestStatus(t, metadata)
+	status.Namespaces[constant.DefaultNamespace].Shards[1].Leader = nil
+	updateTestStatusShards(t, metadata, status, 1)
+	parentMeta := requireShardMetadata(t, metadata, constant.DefaultNamespace, 0)
+
+	failing := &hookedMetadata{Metadata: metadata, getShardStatus: failingShardStatusLoad(metadata, 1, 1)}
+	sc := newUnstartedSplitController(t, failing, rpcMock, listener)
+	_, err := sc.removeStaleChildObservers(parentMeta)
+	assert.ErrorContains(t, err, "status unavailable")
+
+	removed, err := sc.removeStaleChildObservers(parentMeta)
+	require.NoError(t, err)
+	assert.False(t, removed)
+}
+
+// A CatchUp round measures the progress of the children against the commit
+// offset of the parent leader: it can't start without one.
+func TestSplitControllerRunCatchUpRoundRequiresParentLeader(t *testing.T) {
+	rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseCatchUp)
+	status := loadTestStatus(t, metadata)
+	status.Namespaces[constant.DefaultNamespace].Shards[0].Leader = nil
+	updateTestStatusShards(t, metadata, status, 0)
+	failing := &hookedMetadata{Metadata: metadata, getShardStatus: failingShardStatusLoad(metadata, 0, 1)}
+	sc := newUnstartedSplitController(t, failing, rpcMock, listener)
+
+	_, err := sc.runCatchUpRound()
+	assert.ErrorContains(t, err, "status unavailable")
+	_, err = sc.runCatchUpRound()
+	assert.ErrorContains(t, err, "parent has no leader")
+}
+
+// A Cutover step that fails is retried from the start of Cutover, without
+// passing the point of no return.
+func TestSplitControllerRunCutoverReturnsErrors(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		prepare func(t *testing.T, rpcMock *rpctest.RpcProvider, metadata coordmetadata.Metadata) coordmetadata.Metadata
+		err     string
+	}{
+		{name: "cursors check", err: "status unavailable",
+			prepare: func(_ *testing.T, _ *rpctest.RpcProvider, metadata coordmetadata.Metadata) coordmetadata.Metadata {
+				return &hookedMetadata{Metadata: metadata, getShardStatus: failingShardStatusLoad(metadata, 0, 1)}
+			}},
+		{name: "parent load", err: "status unavailable",
+			prepare: func(_ *testing.T, _ *rpctest.RpcProvider, metadata coordmetadata.Metadata) coordmetadata.Metadata {
+				return &hookedMetadata{Metadata: metadata, getShardStatus: failingShardStatusLoad(metadata, 0, 2)}
+			}},
+		{name: "parent leader", err: "parent shard has no leader",
+			prepare: func(t *testing.T, _ *rpctest.RpcProvider, metadata coordmetadata.Metadata) coordmetadata.Metadata {
+				t.Helper()
+				status := loadTestStatus(t, metadata)
+				status.Namespaces[constant.DefaultNamespace].Shards[0].Leader = nil
+				updateTestStatusShards(t, metadata, status, 0)
+				return metadata
+			}},
+		{name: "freeze", err: "failed to freeze parent",
+			prepare: func(_ *testing.T, rpcMock *rpctest.RpcProvider, metadata coordmetadata.Metadata) coordmetadata.Metadata {
+				rpcMock.GetNode(ps1).FreezeShardResponse(0, errors.New("freeze failed"))
+				return metadata
+			}},
+		{name: "cursors check after round", err: "status unavailable",
+			prepare: func(_ *testing.T, rpcMock *rpctest.RpcProvider, metadata coordmetadata.Metadata) coordmetadata.Metadata {
+				queueCutoverDrainResponses(rpcMock)
+				return &hookedMetadata{Metadata: metadata, getShardStatus: failingShardStatusLoad(metadata, 0, 3)}
+			}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseCutover)
+			setBootstrappedState(t, metadata)
+			sc := newUnstartedSplitController(t, test.prepare(t, rpcMock, metadata), rpcMock, listener)
+
+			assert.ErrorContains(t, sc.runCutover(), test.err)
+			assert.Equal(t, proto.SplitPhaseCutover, requireShardMetadata(t, metadata, constant.DefaultNamespace, 0).
+				GetSplit().GetPhaseOrDefault())
+		})
+	}
+}
+
+func TestSplitControllerRunCutoverStopsWhenClosed(t *testing.T) {
+	rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseCutover)
+	setBootstrappedState(t, metadata)
+	sc := newUnstartedSplitController(t, metadata, rpcMock, listener)
+	sc.ctxCancel()
+
+	err := sc.runCutover()
+	assert.ErrorIs(t, err, context.Canceled)
+	var permanent *backoff.PermanentError
+	assert.ErrorAs(t, err, &permanent)
+	assert.Equal(t, proto.SplitPhaseCutover, requireShardMetadata(t, metadata, constant.DefaultNamespace, 0).
+		GetSplit().GetPhaseOrDefault())
+}
+
+// A leader election of the parent while the children drain its tail closes
+// the observer cursors: Cutover unfreezes the parent, in the new term, and the
+// split starts over from Bootstrap.
+func TestSplitControllerRunCutoverResetsToBootstrapOnParentElection(t *testing.T) {
+	rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseCutover)
+	setBootstrappedState(t, metadata)
+	queueCutoverDrainResponses(rpcMock)
+	var parentLoads atomic.Int32
+	elected := &hookedMetadata{
+		Metadata: metadata,
+		getShardStatus: func(namespace string, shard int64) (commonobject.Borrowed[*proto.ShardMetadata], bool, error) {
+			// The third load of the parent follows the first drain round
+			if shard == 0 && parentLoads.Add(1) == 3 {
+				status := loadTestStatus(t, metadata)
+				status.Namespaces[constant.DefaultNamespace].Shards[0].Term = 6
+				status.Namespaces[constant.DefaultNamespace].Shards[0].Leader = ps2
+				updateTestStatusShards(t, metadata, status, 0)
+			}
+			return metadata.GetShardStatus(namespace, shard)
+		},
+	}
+
+	require.NoError(t, newUnstartedSplitController(t, elected, rpcMock, listener).runCutover())
+
+	assert.Equal(t, proto.SplitPhaseBootstrap, requireShardMetadata(t, metadata, constant.DefaultNamespace, 0).
+		GetSplit().GetPhaseOrDefault())
+	frozen := drainFreezeShardRequests(rpcMock.GetNode(ps1))
+	require.Len(t, frozen, 1)
+	assert.True(t, frozen[0].Frozen)
+	unfrozen := drainFreezeShardRequests(rpcMock.GetNode(ps2))
+	require.Len(t, unfrozen, 1)
+	assert.False(t, unfrozen[0].Frozen)
+	assert.EqualValues(t, 6, unfrozen[0].Term)
+}
+
+func TestSplitControllerRunFinalizeSkipsCompletedSplit(t *testing.T) {
+	rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseFinalize)
+	status := loadTestStatus(t, metadata)
+	status.Namespaces[constant.DefaultNamespace].Shards[0].Split = nil
+	updateTestStatusShards(t, metadata, status, 0)
+
+	require.NoError(t, newUnstartedSplitController(t, metadata, rpcMock, listener).runFinalize())
+	assert.Empty(t, drainNewTermRequests(rpcMock.GetNode(ps1)))
+	assert.Empty(t, listener.completions)
+}
+
+// The split completes only once its status records the children as
+// independent shards: Finalize is retried otherwise.
+func TestSplitControllerRunFinalizeReturnsDetachError(t *testing.T) {
+	rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseFinalize)
+	setBootstrappedState(t, metadata)
+	queueNewTermResponses(rpcMock, ps1, ps2, ps3)
+	queueChildrenReelectionResponses(rpcMock)
+	var patches atomic.Int32
+	failing := &hookedMetadata{
+		Metadata: metadata,
+		patchNamespaceStatus: func(namespace string, modify func(*proto.NamespaceStatus) bool) error {
+			// The children's new terms are written first, then their detachment
+			if patches.Add(1) == 3 {
+				return errors.New("store unavailable")
+			}
+			return metadata.PatchNamespaceStatus(namespace, modify)
+		},
+	}
+
+	assert.ErrorContains(t, newUnstartedSplitController(t, failing, rpcMock, listener).runFinalize(),
+		"store unavailable")
+	assert.Empty(t, listener.completions)
+	assert.Equal(t, proto.SplitPhaseFinalize, requireShardMetadata(t, metadata, constant.DefaultNamespace, 0).
+		GetSplit().GetPhaseOrDefault())
+}
+
+// A child is re-elected in a clean term only once every step of its
+// re-election succeeded: Finalize retries it otherwise.
+func TestSplitControllerReelectChildReturnsErrors(t *testing.T) {
+	for _, test := range []struct {
+		name         string
+		bootstrapped bool
+		prepare      func(t *testing.T, rpcMock *rpctest.RpcProvider, metadata coordmetadata.Metadata) coordmetadata.Metadata
+		err          string
+	}{
+		{name: "status load", err: "status unavailable",
+			prepare: func(_ *testing.T, _ *rpctest.RpcProvider, metadata coordmetadata.Metadata) coordmetadata.Metadata {
+				return &hookedMetadata{Metadata: metadata, getShardStatus: failingShardStatusLoad(metadata, 1, 1)}
+			}},
+		{name: "missing child", err: "child shard 1 not found",
+			prepare: func(t *testing.T, _ *rpctest.RpcProvider, metadata coordmetadata.Metadata) coordmetadata.Metadata {
+				t.Helper()
+				require.NoError(t, metadata.DeleteShardStatus(constant.DefaultNamespace, 1))
+				return metadata
+			}},
+		{name: "no leader", err: "child shard 1 has no leader",
+			prepare: func(_ *testing.T, _ *rpctest.RpcProvider, metadata coordmetadata.Metadata) coordmetadata.Metadata {
+				return metadata
+			}},
+		{name: "term write", bootstrapped: true, err: "store unavailable",
+			prepare: func(_ *testing.T, _ *rpctest.RpcProvider, metadata coordmetadata.Metadata) coordmetadata.Metadata {
+				failing := &patchFailingMetadata{Metadata: metadata}
+				failing.failures.Store(1)
+				return failing
+			}},
+		{name: "term options", bootstrapped: true, err: "options unavailable",
+			prepare: func(_ *testing.T, _ *rpctest.RpcProvider, metadata coordmetadata.Metadata) coordmetadata.Metadata {
+				return &hookedMetadata{Metadata: metadata, getNamespaceTermOptions: failingTermOptionsLoad(metadata, 1)}
+			}},
+		{name: "fence", bootstrapped: true, err: "failed to reach quorum",
+			prepare: func(_ *testing.T, rpcMock *rpctest.RpcProvider, metadata coordmetadata.Metadata) coordmetadata.Metadata {
+				rpcMock.GetNode(ls1).NewTermResponse(5, 105, nil)
+				rpcMock.FailNode(ls2, errors.New("node down"))
+				rpcMock.FailNode(ls3, errors.New("node down"))
+				return metadata
+			}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseFinalize)
+			if test.bootstrapped {
+				setBootstrappedState(t, metadata)
+			}
+			sc := newUnstartedSplitController(t, test.prepare(t, rpcMock, metadata), rpcMock, listener)
+
+			assert.ErrorContains(t, sc.reelectChild(t.Context(), 1), test.err)
+		})
+	}
+}
+
+// An abort removes the split even when it can't reach the parent leader: the
+// unfreeze and the removal of the observers are best-effort.
+func TestSplitControllerAbortRemovesSplitWithoutParentLeader(t *testing.T) {
+	t.Run("parent removed", func(t *testing.T) {
+		rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseCutover)
+		require.NoError(t, metadata.DeleteShardStatus(constant.DefaultNamespace, 0))
+
+		require.NoError(t, newUnstartedSplitController(t, metadata, rpcMock, listener).abort())
+		assert.Empty(t, drainFreezeShardRequests(rpcMock.GetNode(ps1)))
+		assertSplitAborted(t, metadata, listener)
+	})
+	t.Run("parent leader unreachable", func(t *testing.T) {
+		rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseCutover)
+		setBootstrappedState(t, metadata)
+		rpcMock.FailNode(ps1, errors.New("node down"))
+
+		require.NoError(t, newUnstartedSplitController(t, metadata, rpcMock, listener).abort())
+		frozen := drainFreezeShardRequests(rpcMock.GetNode(ps1))
+		require.Len(t, frozen, 1)
+		assert.False(t, frozen[0].Frozen)
+		assertSplitAborted(t, metadata, listener)
+		assert.Nil(t, requireShardMetadata(t, metadata, constant.DefaultNamespace, 0).GetSplit())
+	})
+}
+
+// An abort keeps the split until it can load the children and store its
+// removal: it is retried otherwise.
+func TestSplitControllerAbortReturnsStatusErrors(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		metadata func(metadata coordmetadata.Metadata) coordmetadata.Metadata
+		err      string
+	}{
+		{name: "child status load", err: "status unavailable",
+			metadata: func(metadata coordmetadata.Metadata) coordmetadata.Metadata {
+				return &hookedMetadata{Metadata: metadata, getShardStatus: failingShardStatusLoad(metadata, 1, 1)}
+			}},
+		{name: "namespace status load", err: "namespace status unavailable",
+			metadata: func(metadata coordmetadata.Metadata) coordmetadata.Metadata {
+				return &hookedMetadata{Metadata: metadata, getNamespaceStatus: failingNamespaceStatusLoad}
+			}},
+		{name: "status write", err: "store unavailable",
+			metadata: func(metadata coordmetadata.Metadata) coordmetadata.Metadata {
+				failing := &patchFailingMetadata{Metadata: metadata}
+				failing.failures.Store(1)
+				return failing
+			}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseBootstrap)
+			sc := newUnstartedSplitController(t, test.metadata(metadata), rpcMock, listener)
+
+			assert.ErrorContains(t, sc.abort(), test.err)
+			assert.Empty(t, listener.aborts)
+			shards := loadTestStatus(t, metadata).Namespaces[constant.DefaultNamespace].GetShards()
+			assert.NotNil(t, shards[0].GetSplit())
+			assert.Contains(t, shards, int64(1))
+			assert.Contains(t, shards, int64(2))
+		})
+	}
+}
+
+// A namespace whose status is gone, e.g. because it was deleted, has no split
+// left to remove.
+func TestSplitControllerRemoveSplitSkipsMissingNamespaceStatus(t *testing.T) {
+	rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseBootstrap)
+	missing := &hookedMetadata{Metadata: metadata, getNamespaceStatus: missingNamespaceStatusLoad}
+
+	require.NoError(t, newUnstartedSplitController(t, missing, rpcMock, listener).removeSplit())
+	assert.Contains(t, loadTestStatus(t, metadata).Namespaces[constant.DefaultNamespace].GetShards(), int64(1))
+}
+
+// The shards of a split are updated along with their namespace status: without
+// it, there are no shards to update.
+func TestSplitControllerUpdateShardsMetaIfReturnsNamespaceStatusLoadError(t *testing.T) {
+	for _, test := range []struct {
+		name               string
+		getNamespaceStatus func(string) (commonobject.Borrowed[*proto.NamespaceStatus], bool, error)
+		err                string
+	}{
+		{name: "load error", getNamespaceStatus: failingNamespaceStatusLoad, err: "namespace status unavailable"},
+		{name: "missing", getNamespaceStatus: missingNamespaceStatusLoad},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseBootstrap)
+			hooked := &hookedMetadata{Metadata: metadata, getNamespaceStatus: test.getNamespaceStatus}
+			sc := newUnstartedSplitController(t, hooked, rpcMock, listener)
+
+			applied, err := sc.updateShardsMetaIf(nil, map[int64]func(meta *proto.ShardMetadata){
+				0: func(meta *proto.ShardMetadata) { meta.Term = 6 },
+			})
+			if test.err != "" {
+				assert.ErrorContains(t, err, test.err)
+			} else {
+				assert.NoError(t, err)
+			}
+			assert.False(t, applied)
+			assert.EqualValues(t, 5, requireShardMetadata(t, metadata, constant.DefaultNamespace, 0).GetTerm())
+		})
+	}
+}
+
+// The progress of a child is read from its leader: a child that can't be
+// loaded, or has no leader yet, is waited for.
+func TestSplitControllerWaitForChildCommitOffsetRetriesChildLoad(t *testing.T) {
+	rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseCatchUp)
+	setBootstrappedState(t, metadata)
+	withoutLeader := requireShardMetadata(t, metadata, constant.DefaultNamespace, 1)
+	withoutLeader.Leader = nil
+	var loads atomic.Int32
+	hooked := &hookedMetadata{
+		Metadata: metadata,
+		getShardStatus: func(namespace string, shard int64) (commonobject.Borrowed[*proto.ShardMetadata], bool, error) {
+			if shard == 1 {
+				switch loads.Add(1) {
+				case 1:
+					return commonobject.Borrowed[*proto.ShardMetadata]{}, false, errors.New("status unavailable")
+				case 2:
+					return commonobject.Borrow(gproto.CloneOf(withoutLeader)), true, nil
+				}
+			}
+			return metadata.GetShardStatus(namespace, shard)
+		},
+	}
+	for _, member := range []*proto.DataServerIdentity{ls1, ls2} {
+		rpcMock.GetNode(member).GetStatusResponse(5, proto.ServingStatus_FOLLOWER, 105, 105)
+	}
+
+	sc := newUnstartedSplitController(t, hooked, rpcMock, listener)
+	require.NoError(t, sc.waitForChildCommitOffset(t.Context(), 1, 105))
+	assert.EqualValues(t, 3, loads.Load())
+}
+
+// newUnstartedSplitController returns a split controller for the split of
+// setupSplitTest, without starting it: the tests run its steps directly.
+func newUnstartedSplitController(t *testing.T, metadata coordmetadata.Metadata, rpcMock *rpctest.RpcProvider,
+	listener *mockShardSplitEventListener) *SplitController {
+	t.Helper()
+	sc := &SplitController{
+		namespace:                 constant.DefaultNamespace,
+		parentShardId:             0,
+		leftChildId:               1,
+		rightChildId:              2,
+		splitPoint:                500,
+		metadata:                  metadata,
+		rpcProvider:               rpcMock,
+		eventListener:             listener,
+		supportedFeaturesSupplier: NoOpFeaturesSupplier,
+		requiredFeatures:          make(map[int64][]proto.Feature),
+		logger:                    slog.Default(),
+	}
+	sc.ctx, sc.ctxCancel = context.WithCancel(context.Background())
+	sc.finalizeCtx, sc.finalizeCtxCancel = context.WithCancel(context.Background())
+	t.Cleanup(func() {
+		sc.ctxCancel()
+		sc.finalizeCtxCancel()
+	})
+	return sc
+}
+
+// failingShardStatusLoad is a GetShardStatus hook that fails the nth load of a
+// shard, counting from 1.
+func failingShardStatusLoad(metadata coordmetadata.Metadata, shard int64, nth int32) func(string, int64) (
+	commonobject.Borrowed[*proto.ShardMetadata], bool, error) {
+	var loads atomic.Int32
+	return func(namespace string, id int64) (commonobject.Borrowed[*proto.ShardMetadata], bool, error) {
+		if id == shard && loads.Add(1) == nth {
+			return commonobject.Borrowed[*proto.ShardMetadata]{}, false, errors.New("status unavailable")
+		}
+		return metadata.GetShardStatus(namespace, id)
+	}
+}
+
+// removedShardStatusLoad removes a shard from the status, and returns a
+// GetShardStatus hook that still loads it, as a load that raced with its
+// removal.
+func removedShardStatusLoad(t *testing.T, metadata coordmetadata.Metadata, shard int64) func(string, int64) (
+	commonobject.Borrowed[*proto.ShardMetadata], bool, error) {
+	t.Helper()
+	removed := requireShardMetadata(t, metadata, constant.DefaultNamespace, shard)
+	require.NoError(t, metadata.DeleteShardStatus(constant.DefaultNamespace, shard))
+	return func(namespace string, id int64) (commonobject.Borrowed[*proto.ShardMetadata], bool, error) {
+		if id == shard {
+			return commonobject.Borrow(gproto.CloneOf(removed)), true, nil
+		}
+		return metadata.GetShardStatus(namespace, id)
+	}
+}
+
+// failingTermOptionsLoad is a GetNamespaceTermOptions hook that fails the nth
+// load, counting from 1.
+func failingTermOptionsLoad(metadata coordmetadata.Metadata, nth int32) func(string) (*proto.NewTermOptions, error) {
+	var loads atomic.Int32
+	return func(namespace string) (*proto.NewTermOptions, error) {
+		if loads.Add(1) == nth {
+			return nil, errors.New("options unavailable")
+		}
+		return metadata.GetNamespaceTermOptions(namespace)
+	}
+}
+
+func failingNamespaceStatusLoad(string) (commonobject.Borrowed[*proto.NamespaceStatus], bool, error) {
+	return commonobject.Borrowed[*proto.NamespaceStatus]{}, false, errors.New("namespace status unavailable")
+}
+
+func missingNamespaceStatusLoad(string) (commonobject.Borrowed[*proto.NamespaceStatus], bool, error) {
+	return commonobject.Borrowed[*proto.NamespaceStatus]{}, false, nil
+}
+
+// assertSplitAborted checks that the children of the split were removed, and
+// the abort notified.
+func assertSplitAborted(t *testing.T, metadata coordmetadata.Metadata, listener *mockShardSplitEventListener) {
+	t.Helper()
+	shards := loadTestStatus(t, metadata).Namespaces[constant.DefaultNamespace].GetShards()
+	assert.NotContains(t, shards, int64(1))
+	assert.NotContains(t, shards, int64(2))
+	select {
+	case <-listener.aborts:
+	default:
+		assert.Fail(t, "the split abort was not notified")
 	}
 }
