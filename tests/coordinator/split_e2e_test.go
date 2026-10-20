@@ -835,14 +835,19 @@ func setupSplitClusterWithShards(t *testing.T, rpcProviderFactory rpc2.ProviderF
 		rpcProviderFactory,
 	)
 
+	// The handshake of a data server that completes after the first election
+	// of a shard makes the shard controller elect it again, to pin the
+	// features of the ensemble: a split that starts before then fails, or
+	// starts over once the election changes the term of the parent
 	metadata := coordinatorInstance.Metadata()
 	require.Eventually(t, func() bool {
 		shards := mock.StatusSnapshot(t, metadata).Namespaces[constant.DefaultNamespace].Shards
 		if len(shards) != int(initialShardCount) {
 			return false
 		}
-		for _, shard := range shards {
-			if shard.GetStatusOrDefault() != proto.ShardStatusSteadyState {
+		for shardID, shard := range shards {
+			if shard.GetStatusOrDefault() != proto.ShardStatusSteadyState ||
+				!leaderEnablesEnsembleFeatures(coordinatorInstance, servers, shardID, shard) {
 				return false
 			}
 		}
@@ -960,6 +965,38 @@ func (c *splitTestCluster) liveAddressExcluding(excludedIDs ...string) *proto.Da
 		}
 	}
 	return nil
+}
+
+// leaderEnablesEnsembleFeatures reports whether the coordinator completed the
+// handshake of every member of the shard, and the leader of the shard enabled
+// every feature that they all support: the shard controller has no feature
+// left to pin with a new election.
+func leaderEnablesEnsembleFeatures(coordinator coordruntime.Runtime, servers map[string]*dataserver.Server,
+	shardID int64, shard *proto.ShardMetadata) bool {
+	if shard.GetLeader() == nil {
+		return false
+	}
+	var memberFeatures [][]proto.Feature
+	for _, member := range shard.GetEnsemble() {
+		status, found := coordinator.GetDataServerStatus(member.GetNameOrDefault())
+		if !found || status.GetState() != proto.DataServerState_DATA_SERVER_STATE_RUNNING {
+			return false
+		}
+		memberFeatures = append(memberFeatures, status.GetSupportedFeatures())
+	}
+	leader, err := servers[shard.GetLeader().GetNameOrDefault()].GetShardDirector().GetLeader(shardID)
+	if err != nil {
+		return false
+	}
+	for _, f := range memberFeatures[0] {
+		supported := !slices.ContainsFunc(memberFeatures, func(features []proto.Feature) bool {
+			return !slices.Contains(features, f)
+		})
+		if supported && !leader.IsFeatureEnabled(f) {
+			return false
+		}
+	}
+	return true
 }
 
 // ---- Notifications test ----
