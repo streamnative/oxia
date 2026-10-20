@@ -106,7 +106,13 @@ func newReadWriteSegment(fs vfs.FS, basePath string, baseOffset int64, segmentSi
 		return nil, errors.Wrapf(err, "failed to open segment file %s", ms.c.txnPath)
 	}
 
-	if !c.segmentExists {
+	info, err := fs.Stat(c.txnPath)
+	if err != nil {
+		return nil, multierr.Append(
+			errors.Wrapf(err, "failed to stat segment file %s", ms.c.txnPath),
+			ms.txnFile.Close())
+	}
+	if info.Size() < int64(segmentSize) {
 		if err = initFileWithZeroes(ms.txnFile, segmentSize); err != nil {
 			return nil, multierr.Append(err, ms.txnFile.Close())
 		}
@@ -339,7 +345,7 @@ func (ms *readWriteSegment) Delete() error {
 	return multierr.Combine(
 		ms.Close(),
 		vfs.RemoveFileIfExists(ms.c.fs, ms.c.idxPath),
-		ms.c.fs.Remove(ms.c.txnPath),
+		vfs.RemoveFileIfExists(ms.c.fs, ms.c.txnPath),
 	)
 }
 

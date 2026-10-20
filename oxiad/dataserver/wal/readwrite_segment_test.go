@@ -626,6 +626,17 @@ func TestReadWriteSegmentNewFailsOnFilesystemErrors(t *testing.T) {
 	}
 }
 
+func TestReadWriteSegmentNewFailsWhenSegmentFileCannotBeStatted(t *testing.T) {
+	dir := t.TempDir()
+	fs := newFaultFS()
+	// The first stat picks the codec
+	fs.failNth(opStat, txnPath(dir, 0), 2)
+
+	_, err := newReadWriteSegment(fs, dir, 0, 1024, 0, nil)
+	assert.ErrorIs(t, err, errInjected)
+	assert.ErrorContains(t, err, "failed to stat segment file")
+}
+
 func TestReadWriteSegmentNewFailsWhenDiscardedTailCannotBeZeroed(t *testing.T) {
 	dir := t.TempDir()
 	fs := newFaultFS()
