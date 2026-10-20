@@ -3355,11 +3355,17 @@ func TestFollowerControllerNewFollowerControllerFailsOnCorruptState(t *testing.T
 }
 
 func TestFollowerControllerCloseReportsWalCloseError(t *testing.T) {
+	logs := &logCapture{}
+	defaultLogger := slog.Default()
+	slog.SetDefault(slog.New(logs))
 	walFactory, kvFactory := newHookFactories(t)
 	fc := newFencedFollower(t, walFactory, kvFactory)
+	slog.SetDefault(defaultLogger)
 
 	walFactory.setHooks(func(h *walHooks) { h.close = func() error { return errors.New("close failed") } })
 	assert.ErrorContains(t, fc.Close(), "close failed")
+	assert.True(t, logs.has("Follower controller closed with error"))
+	assert.False(t, logs.has("Follower controller closed"))
 	// Closing again is a no-op
 	assert.NoError(t, fc.Close())
 }

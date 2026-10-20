@@ -278,11 +278,11 @@ func (fc *followerController) Close() error {
 	if fc.logSynchronizer.IsValid() {
 		fc.logSynchronizer.Close()
 	}
-	return multierr.Combine(
-		err,
+	err = multierr.Combine(
 		fc.wal.Close(),
 		fc.db.Close(),
 	)
+	return err
 }
 
 func (fc *followerController) Status() proto.ServingStatus {
