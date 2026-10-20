@@ -14,7 +14,7 @@
 
 .PHONY: build
 build:
-	go build -tags disable_trap -ldflags "-X main.version=$(shell git describe --tags --always | cut -c2-)" -v -o bin/oxia ./cmd
+	go build -tags disable_trap -ldflags "-X main.version=$(shell git describe --tags --always --match 'v*' | sed 's/^v//')" -v -o bin/oxia ./cmd
 
 # Build target: iterate through PLATFORMS and perform cross-compilation for each combination.
 
@@ -34,7 +34,7 @@ distribution:
 		if [ "$$GOOS" = "windows" ]; then OUTPUT_NAME=$${OUTPUT_NAME}.exe; fi; \
 		echo "Building $$GOOS/$${GOARCH} to $${OUTPUT_NAME}"; \
 		GOOS=$${GOOS} GOARCH=$${GOARCH} go build \
-			-ldflags "-X main.version=$$(git describe --tags --always | cut -c2-)" \
+			-ldflags "-X main.version=$$(git describe --tags --always --match 'v*' | sed 's/^v//')" \
 			-tags disable_trap \
 			-v \
 			-o $${OUTPUT_NAME} ./cmd; \
@@ -52,7 +52,7 @@ release-build:
 	@mkdir -p $(OUTPUT_DIR)/bin $(OUTPUT_DIR)/conf
 	GOOS=$(GOOS) GOARCH=$(GOARCH) go build \
 		-tags disable_trap \
-		-ldflags "-X main.version=$$(git describe --tags --always | cut -c2-)" \
+		-ldflags "-X main.version=$$(git describe --tags --always --match 'v*' | sed 's/^v//')" \
 		-v \
 		-o $(OUTPUT_DIR)/bin/$(OUTPUT_NAME) ./cmd
 	@cp conf/dataserver.yaml $(OUTPUT_DIR)/conf/
