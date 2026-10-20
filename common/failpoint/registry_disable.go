@@ -14,15 +14,13 @@
 
 //go:build disable_trap
 
-package lead
+package failpoint
 
-import (
-	"context"
-	"time"
-)
+func Enable(string, any) {}
 
-func SetObserverCommitAdvertisementDelay(time.Duration) {}
+func Disable(string) {}
 
-func holdBackCommitAdvertisement(context.Context, QuorumAckTracker, int64) error {
-	return nil
+func Eval[T any](string) (T, bool) {
+	var zero T
+	return zero, false
 }

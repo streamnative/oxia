@@ -46,6 +46,7 @@ import (
 	"github.com/oxia-db/oxia/common/proto"
 
 	"github.com/oxia-db/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/common/hash"
 	"github.com/oxia-db/oxia/common/rpc"
 	time2 "github.com/oxia-db/oxia/common/time"
@@ -331,8 +332,8 @@ func TestCoordinator_ShardSplit_WritesDuringSplit(t *testing.T) {
 	// that covers it. Hold the advertisement back, unless a new entry carries
 	// it: once the parent is frozen, the children receive its tail long before
 	// they can apply it.
-	lead.SetObserverCommitAdvertisementDelay(2 * time.Second)
-	defer lead.SetObserverCommitAdvertisementDelay(0)
+	failpoint.Enable("followerCursor.holdBackCommitAdvertisement", 2*time.Second)
+	t.Cleanup(func() { failpoint.Disable("followerCursor.holdBackCommitAdvertisement") })
 
 	c := setupSplitCluster(t)
 	defer c.close(t)
