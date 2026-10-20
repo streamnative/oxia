@@ -16,54 +16,59 @@ package file
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"path/filepath"
 
 	"github.com/fsnotify/fsnotify"
 
 	"github.com/oxia-db/oxia/common/channel"
+	"github.com/oxia-db/oxia/common/failpoint"
 )
 
 // WatchFile signals each time the file at path is created, written, renamed
 // or removed. The channel is closed when the watch fails or ctx is done.
-func WatchFile(ctx context.Context, path string) (<-chan struct{}, error) {
+func WatchFile(ctx context.Context, path string, failpoints *failpoint.Failpoints) (<-chan struct{}, error) {
 	logger := slog.With(slog.String("component", "file-watch"), slog.String("path", path))
 	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
+	if err = failpoints.Fail("watchFile.newWatcher", err); err != nil {
+		if watcher != nil {
+			err = errors.Join(err, watcher.Close())
+		}
 		return nil, err
 	}
 	if err := watcher.Add(filepath.Dir(path)); err != nil {
-		_ = watcher.Close()
-		return nil, err
+		return nil, errors.Join(err, watcher.Close())
 	}
 
 	changes := make(chan struct{}, 1)
 	go func() {
 		defer close(changes)
 		defer func() {
-			if err := watcher.Close(); err != nil {
+			if err := failpoints.Fail("watchFile.close", watcher.Close()); err != nil {
 				logger.Warn("Failed to close file watcher", slog.Any("error", err))
 			}
 		}()
 		watchedPath := filepath.Clean(path)
+		// The watcher closes its channels only once it is closed, when this
+		// loop has returned
 		for {
+			var err error
 			select {
 			case <-ctx.Done():
 				return
-			case err, ok := <-watcher.Errors:
-				if ok {
-					logger.Warn("File watch failed", slog.Any("error", err))
-				}
-				return
-			case event, ok := <-watcher.Events:
-				if !ok {
-					return
-				}
-				if filepath.Clean(event.Name) == watchedPath &&
-					event.Op&(fsnotify.Create|fsnotify.Write|fsnotify.Rename|fsnotify.Remove) != 0 {
-					channel.PushNoBlock(changes, struct{}{})
+			case err = <-watcher.Errors:
+			case event := <-watcher.Events:
+				if err = failpoints.Trigger("watchFile.event"); err == nil {
+					if filepath.Clean(event.Name) == watchedPath &&
+						event.Op&(fsnotify.Create|fsnotify.Write|fsnotify.Rename|fsnotify.Remove) != 0 {
+						channel.PushNoBlock(changes, struct{}{})
+					}
+					continue
 				}
 			}
+			logger.Warn("File watch failed", slog.Any("error", err))
+			return
 		}
 	}()
 	return changes, nil
