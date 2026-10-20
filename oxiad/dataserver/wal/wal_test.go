@@ -1703,6 +1703,21 @@ func TestWalAppendRejectsEmptyEntry(t *testing.T) {
 	assert.NoError(t, f.Close())
 }
 
+func TestWalAppendFailsWhenEntryCannotBeMarshaled(t *testing.T) {
+	f, w := newSmallWal(t)
+	w.Lock()
+	w.marshalEntry = func(buf []byte, _ *proto.LogEntry) ([]byte, []byte, error) {
+		return buf, nil, errInjected
+	}
+	w.Unlock()
+
+	assert.ErrorIs(t, w.AppendAsync(&proto.LogEntry{Term: 1, Offset: 0, Value: []byte("v")}), errInjected)
+	assert.EqualValues(t, InvalidOffset, w.LastOffset())
+
+	assert.NoError(t, w.Close())
+	assert.NoError(t, f.Close())
+}
+
 func TestWalAppendRejectsEntryLargerThanSegment(t *testing.T) {
 	f, w := newSmallWal(t)
 	appendEntries(t, w, 1, 0, 0, "v")

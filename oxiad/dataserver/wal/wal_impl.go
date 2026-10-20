@@ -123,6 +123,8 @@ type wal struct {
 	// Reusable serialization buffer: only accessed by appendAsync0, while
 	// holding the WAL write lock
 	marshalBuf []byte
+	// marshalEntry serializes an entry into the buffer, growing it when needed
+	marshalEntry func(buf []byte, entry *proto.LogEntry) (newBuf []byte, data []byte, err error)
 
 	trimmer Trimmer
 
@@ -165,6 +167,9 @@ func newWal(namespace string, shard int64, options *FactoryOptions, commitOffset
 		segmentSize:          uint32(options.SegmentSize),
 		syncData:             options.SyncData,
 		commitOffsetProvider: commitOffsetProvider,
+		marshalEntry: func(buf []byte, entry *proto.LogEntry) ([]byte, []byte, error) {
+			return proto.MarshalToBuffer(buf, entry)
+		},
 
 		appendLatency: metric.NewLatencyHistogram("oxia_server_wal_append_latency",
 			"The time it takes to append entries to the WAL", labels),
@@ -444,7 +449,7 @@ func (t *wal) appendAsync0(entry *proto.LogEntry, previousCrc *uint32) error {
 
 	// Serialize into the reusable buffer instead of allocating per entry:
 	// val is copied into the segment before the lock is released
-	marshalBuf, val, err := proto.MarshalToBuffer(t.marshalBuf, entry)
+	marshalBuf, val, err := t.marshalEntry(t.marshalBuf, entry)
 	if err != nil {
 		t.writeErrors.Inc()
 		return err
