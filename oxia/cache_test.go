@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -329,6 +330,28 @@ func TestCacheManagerStopsWhenNotificationsEnd(t *testing.T) {
 	assert.NoError(t, cm.Close())
 }
 
+func TestCacheManagerHandleNotificationLogsAtDebugLevel(t *testing.T) {
+	logs := captureDebugLogs(t)
+	client := &recordsClient{records: map[string][]byte{}}
+	c, err := newCacheImpl[string](client, json.Marshal, json.Unmarshal)
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, c.Close()) }()
+	value := "v1"
+	client.write("/key", &value)
+	_, _, err = c.Get(context.Background(), "/key")
+	require.NoError(t, err)
+	cm := &cacheManager{ctx: context.Background(), caches: []internalCache{c}}
+
+	value = "v2"
+	client.write("/key", &value)
+	cm.handleNotification(&Notification{Type: KeyModified, Key: "/key", VersionId: 1})
+
+	assert.Contains(t, logs.messages(), "Received notification")
+	cached, _, err := c.Get(context.Background(), "/key")
+	require.NoError(t, err)
+	assert.Equal(t, "v2", cached)
+}
+
 func TestCachePutFailsOnSerializationError(t *testing.T) {
 	errSerialize := errors.New("unsupported value")
 	client := &recordsClient{records: map[string][]byte{}}
@@ -432,4 +455,39 @@ func (n *testNotifications) Ch() <-chan *Notification { return n.ch }
 func (n *testNotifications) Close() error {
 	n.closed.Store(true)
 	return nil
+}
+
+// debugLogs records the messages of all the log records, at every level.
+type debugLogs struct {
+	sync.Mutex
+	logged []string
+}
+
+func (*debugLogs) Enabled(context.Context, slog.Level) bool { return true }
+
+func (l *debugLogs) Handle(_ context.Context, record slog.Record) error {
+	l.Lock()
+	defer l.Unlock()
+	l.logged = append(l.logged, record.Message)
+	return nil
+}
+
+func (l *debugLogs) WithAttrs([]slog.Attr) slog.Handler { return l }
+
+func (l *debugLogs) WithGroup(string) slog.Handler { return l }
+
+func (l *debugLogs) messages() []string {
+	l.Lock()
+	defer l.Unlock()
+	return append([]string(nil), l.logged...)
+}
+
+// captureDebugLogs makes the default logger record its messages, until the test ends.
+func captureDebugLogs(t *testing.T) *debugLogs {
+	t.Helper()
+	logs := &debugLogs{}
+	previous := slog.Default()
+	slog.SetDefault(slog.New(logs))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	return logs
 }

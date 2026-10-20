@@ -248,6 +248,19 @@ func TestNotificationsReceivedBatchResetsBackoff(t *testing.T) {
 	assert.EqualValues(t, 5, snm.lastOffsetReceived)
 }
 
+func TestNotificationsReceivedBatchLogsAtDebugLevel(t *testing.T) {
+	snm, _ := newTestShardNotificationsManager(&notificationsTestScriptedStream{
+		batches: []*proto.NotificationBatch{{Offset: 5}},
+		err:     constant.ErrResourceUnavailable,
+	})
+	snm.initialized = true
+	logs := &debugLogs{}
+	snm.log = slog.New(logs)
+
+	assert.ErrorIs(t, snm.getNotifications(), constant.ErrResourceUnavailable)
+	assert.Contains(t, logs.messages(), "Received batch notification")
+}
+
 // notificationsTestServer serves the subscriptions of a client: it confirms
 // each one at the offset it starts from, or at the shard's commit offset 0, and
 // lets the test send the next batches, or fail the stream.
