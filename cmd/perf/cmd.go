@@ -76,7 +76,11 @@ func (c *closer) Close() error {
 }
 
 func runPerf() (io.Closer, error) {
+	p, err := New(config)
+	if err != nil {
+		return nil, err
+	}
 	closer := newCloser(context.Background())
-	go New(config).Run(closer.ctx)
+	go p.Run(closer.ctx)
 	return closer, nil
 }
