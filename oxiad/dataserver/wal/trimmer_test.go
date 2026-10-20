@@ -27,6 +27,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/multierr"
 
 	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/object"
@@ -148,11 +149,26 @@ func (p *hookedCommitOffsetProvider) CommitOffset() int64 {
 }
 
 // hookedSegmentsGroup runs hook when the trimming deletes its segments, and
-// getHook when a read looks a segment up.
+// getHook when a read looks a segment up. pollHook replaces the segments that
+// the truncation polls, and closeErr fails Close.
 type hookedSegmentsGroup struct {
 	ReadOnlySegmentsGroup
-	hook    func()
-	getHook func()
+	hook     func()
+	getHook  func()
+	pollHook func(segment object.RefCount[ReadOnlySegment]) object.RefCount[ReadOnlySegment]
+	closeErr error
+}
+
+func (g *hookedSegmentsGroup) Close() error {
+	return multierr.Append(g.ReadOnlySegmentsGroup.Close(), g.closeErr)
+}
+
+func (g *hookedSegmentsGroup) PollHighestSegment() (object.RefCount[ReadOnlySegment], error) {
+	segment, err := g.ReadOnlySegmentsGroup.PollHighestSegment()
+	if err != nil || segment == nil || g.pollHook == nil {
+		return segment, err
+	}
+	return g.pollHook(segment), nil
 }
 
 func (g *hookedSegmentsGroup) Get(offset int64) (object.RefCount[ReadOnlySegment], error) {
@@ -416,6 +432,27 @@ func TestTrimmerDoTrimFailsWhenBinarySearchHitsUnreadableEntry(t *testing.T) {
 	err = tr.doTrim()
 	assert.ErrorContains(t, err, "failed to perform binary search")
 	assert.EqualValues(t, 0, w.FirstOffset())
+}
+
+func TestTrimmerDoTrimFailsWhenProbedEntryIsTrimmedConcurrently(t *testing.T) {
+	w, tr, segments := newWalWithExpiredSegments(t)
+	// The binary search over [0, 19] probes 10, then 5: the entries from 8 on
+	// have not expired
+	tr.clock.(*time2.MockedClock).Set(6)
+	require.Less(t, segments[1], int64(8))
+	var gets int
+	w.Lock()
+	w.readOnlySegments = &hookedSegmentsGroup{ReadOnlySegmentsGroup: w.readOnlySegments, getHook: func() {
+		if gets++; gets == 2 {
+			require.NoError(t, w.trim(8, w.generation.Load(), func() error { return nil }))
+		}
+	}}
+	w.Unlock()
+
+	err := tr.doTrim()
+	assert.ErrorIs(t, err, ErrEntryNotFound)
+	assert.ErrorContains(t, err, "failed to create reader")
+	assert.EqualValues(t, 8, w.FirstOffset())
 }
 
 // newWalWithExpiredSegments returns a wal holding the entries 0..19 across

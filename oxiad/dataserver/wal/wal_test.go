@@ -41,6 +41,7 @@ import (
 
 	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/metric"
+	"github.com/oxia-db/oxia/common/object"
 	time2 "github.com/oxia-db/oxia/common/time"
 
 	"github.com/oxia-db/oxia/common/proto"
@@ -1664,6 +1665,21 @@ func TestFactoryNewWalFailsWhenTrailingSegmentCannotBeDiscarded(t *testing.T) {
 	assert.DirExists(t, trailing.idxPath)
 }
 
+func TestWalDiscardTrailingSegmentFailsWhenSegmentsCannotBeClosed(t *testing.T) {
+	f, w := newSmallWal(t)
+	appendEntries(t, w, 1, 0, 19, "v")
+	group := &hookedSegmentsGroup{ReadOnlySegmentsGroup: w.readOnlySegments, closeErr: errInjected}
+	w.Lock()
+	w.readOnlySegments = group
+	w.Unlock()
+
+	assert.ErrorIs(t, w.discardTrailingSegment(1000), errInjected)
+
+	group.closeErr = nil
+	assert.NoError(t, w.Close())
+	assert.NoError(t, f.Close())
+}
+
 func TestWalAppendRejectsNegativeOffset(t *testing.T) {
 	f, w := createWal(t)
 
@@ -2014,6 +2030,30 @@ func TestWalSyncSkipsRolledSegmentDrainedByClose(t *testing.T) {
 	assert.NoError(t, <-closeErr)
 	assert.NoError(t, <-syncErr)
 	assert.EqualValues(t, 2, flushes.Load())
+}
+
+func TestWalTruncateLogFailsWhenDiscardedSegmentCannotBeClosed(t *testing.T) {
+	f, w := newSmallWal(t)
+	appendEntries(t, w, 1, 0, 19, "v")
+	segments, err := listAllSegments(vfs.OSFS{}, w.walPath)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(segments), 3)
+	w.Lock()
+	w.readOnlySegments = &hookedSegmentsGroup{ReadOnlySegmentsGroup: w.readOnlySegments,
+		pollHook: func(segment object.RefCount[ReadOnlySegment]) object.RefCount[ReadOnlySegment] {
+			return object.NewRefCount[ReadOnlySegment](
+				&failingCloseSegment{ReadOnlySegment: segment.Get(), closeErr: errInjected})
+		}}
+	w.Unlock()
+
+	_, err = w.TruncateLog(segments[len(segments)-3])
+	assert.ErrorIs(t, err, errInjected)
+	c, err := newSegmentConfig(vfs.OSFS{}, w.walPath, segments[len(segments)-2])
+	require.NoError(t, err)
+	assert.NoFileExists(t, c.txnPath)
+
+	assert.NoError(t, w.Close())
+	assert.NoError(t, f.Close())
 }
 
 func TestWalSyncDoesNotUndoConcurrentTruncateLog(t *testing.T) {
