@@ -19,16 +19,10 @@ codecov:
 
 coverage:
   status:
+    # Fail PRs that leave any line uncovered, overall or in the lines they change
     project:
-      # Fail PRs that lower the coverage of main by more than threshold.
-      # Identical runs differ by ~0.1%, from timing-dependent paths.
       default:
-        target: auto
-        threshold: 0.25%
-      # Fail PRs that take the overall coverage below the minimum
-      minimum:
-        target: 95%
-    # Fail PRs whose changed lines are less covered than the minimum
+        target: 100%
     patch:
       default:
         target: 100%
