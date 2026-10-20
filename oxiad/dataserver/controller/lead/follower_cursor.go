@@ -49,7 +49,7 @@ import (
 // The FollowerCursor represents a cursor on the leader WAL that sends entries to a specific follower and receives a
 // stream of acknowledgments from that follower.
 type FollowerCursor interface {
-	io.Closer
+	Close()
 
 	ShardId() int64
 
@@ -193,7 +193,7 @@ func NewObserverFollowerCursor( //nolint:revive
 	ackOffset int64,
 	splitHashRange *proto.Int32HashRange,
 	splitParentHashRange *proto.Int32HashRange,
-) (FollowerCursor, error) {
+) FollowerCursor {
 	labels := map[string]any{
 		"namespace": namespace,
 		"shard":     shardId,
@@ -256,7 +256,7 @@ func NewObserverFollowerCursor( //nolint:revive
 		)
 	})
 
-	return fc, nil
+	return fc
 }
 
 func (fc *followerCursor) shouldSendSnapshot() bool {
@@ -297,11 +297,10 @@ func (fc *followerCursor) shouldSendSnapshot() bool {
 	return false
 }
 
-func (fc *followerCursor) Close() error {
+func (fc *followerCursor) Close() {
 	fc.closed.Store(true)
 	fc.cancel()
 	fc.latch.Wait()
-	return nil
 }
 
 func (fc *followerCursor) ShardId() int64 {

@@ -325,8 +325,7 @@ func TestQuorumAckTracker_ClearPending(t *testing.T) {
 	}()
 
 	time.Sleep(100 * time.Millisecond)
-	err := at.Close()
-	assert.NoError(t, err)
+	at.Close()
 
 	// Wait for the result from asyncRes
 	select {
@@ -487,7 +486,7 @@ func TestQuorumAckTracker_CloseWaitsForInFlightCallback(t *testing.T) {
 
 	closeDone := make(chan struct{})
 	go func() {
-		assert.NoError(t, at.Close())
+		at.Close()
 		close(closeDone)
 	}()
 
@@ -628,7 +627,7 @@ func TestCursorAckerAckAfterTrackerClose(t *testing.T) {
 	c1, err := at.NewCursorAcker(wal.InvalidOffset)
 	assert.NoError(t, err)
 
-	assert.NoError(t, at.Close())
+	at.Close()
 	c1.Ack(1)
 	assert.Equal(t, wal.InvalidOffset, at.CommitOffset())
 }

@@ -12,26 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//revive:disable-next-line:var-naming
-package codec
+package vfs
 
 import (
+	"errors"
 	"os"
-	"path"
-	"testing"
-
-	"github.com/edsrzf/mmap-go"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
-func TestOSFSMapRejectsFileNotOpenedByIt(t *testing.T) {
-	f, err := OSFS{}.OpenFile(path.Join(t.TempDir(), "file"), os.O_CREATE|os.O_RDWR, 0o644)
-	require.NoError(t, err)
-	t.Cleanup(func() { assert.NoError(t, f.Close()) })
-	wrapped := struct{ File }{f}
+// RemoveFileIfExists removes the file, it will return nil if the file does not exist.
+func RemoveFileIfExists(fs FS, path string) error {
+	err := fs.Remove(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
 
-	m, err := OSFS{}.Map(wrapped, 1, mmap.RDONLY)
-	assert.ErrorContains(t, err, "not opened by OSFS")
-	assert.Nil(t, m)
+	return nil
 }

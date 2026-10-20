@@ -20,6 +20,8 @@ import (
 	"sync"
 
 	"github.com/pkg/errors"
+
+	"github.com/oxia-db/oxia/oxiad/common/vfs"
 )
 
 var (
@@ -105,14 +107,14 @@ type Codec interface {
 	// - path: is the location where the index file will be written.
 	// - index: is the byte slice that contains the index data.
 	// Returns an error if the file cannot be written or if any I/O issues occur.
-	WriteIndex(fs FS, path string, index []byte) error
+	WriteIndex(fs vfs.FS, path string, index []byte) error
 
 	// ReadIndex reads the index data from the specified file path.
 	// Parameters
 	// - fs: holds the index file.
 	// - path is the location of the index file to be read.
 	// Returns the index data as a byte slice and an error if any I/O issues occur.
-	ReadIndex(fs FS, path string) ([]byte, error)
+	ReadIndex(fs vfs.FS, path string) ([]byte, error)
 
 	// RecoverIndex attempts to recover the index from a txn byte buffer.
 	//
@@ -138,7 +140,7 @@ var SupportedCodecs = []Codec{latestCodec, v1} // the latest codec should be alw
 
 // GetOrCreate checks if a file with the specified extension exists at the basePath, in fs, to support compatible with
 // the old codec versions.
-func GetOrCreate(fs FS, basePath string) (_codec Codec, exist bool, err error) {
+func GetOrCreate(fs vfs.FS, basePath string) (_codec Codec, exist bool, err error) {
 	_codec = latestCodec
 	fullPath := basePath + _codec.GetTxnExtension()
 	candidateCodecs := SupportedCodecs[1:] // pop the latest version

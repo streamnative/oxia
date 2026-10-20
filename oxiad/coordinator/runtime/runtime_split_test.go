@@ -31,6 +31,7 @@ import (
 	pb "google.golang.org/protobuf/proto"
 
 	"github.com/oxia-db/oxia/common/constant"
+	commonobject "github.com/oxia-db/oxia/common/object"
 	"github.com/oxia-db/oxia/common/proto"
 	"github.com/oxia-db/oxia/oxiad/common/feature"
 	commonwatch "github.com/oxia-db/oxia/oxiad/common/watch"
@@ -594,17 +595,6 @@ func TestRuntimeInitiateSplitFailsIfParentElectionStarts(t *testing.T) {
 	assert.Empty(t, r.splitControllers)
 }
 
-// featuresDataServerController is a data server controller that only reports
-// the features that its data server supports.
-type featuresDataServerController struct {
-	dataservercontroller.Controller
-	features []proto.Feature
-}
-
-func (c *featuresDataServerController) GetFeatures() []proto.Feature {
-	return c.features
-}
-
 // The children of a split inherit the features enabled on the parent, and
 // the split can't complete if the ensemble of a child doesn't support them.
 // InitiateSplit selects the ensembles of the children among the data servers
@@ -625,7 +615,7 @@ func TestRuntimeInitiateSplitSelectsChildrenSupportingParentFeatures(t *testing.
 				return f == proto.Feature_FEATURE_ORDERED_WRITES
 			})
 		}
-		r.dataServerControllers[server.GetNameOrDefault()] = &featuresDataServerController{features: features}
+		r.dataServerControllers[server.GetNameOrDefault()] = &fakeDataServerController{features: features}
 	}
 
 	leftChild, rightChild, err := r.InitiateSplit(constant.DefaultNamespace, splitParentShard, nil)
@@ -699,4 +689,125 @@ func TestRuntimeInitiateSplitRejectsChangeEnsemblePlannedBefore(t *testing.T) {
 	}
 	assert.Equal(t, []string{splitPs1.GetPublic(), splitPs2.GetPublic(), splitPs3.GetPublic()}, members)
 	assert.Empty(t, parent.GetPendingDeleteShardNodes())
+}
+
+func TestRuntimeInitiateSplitUsesGivenSplitPoint(t *testing.T) {
+	r, metadata := newInitiateSplitTestRuntime(t)
+	sp := uint32(1000)
+
+	leftChild, rightChild, err := r.InitiateSplit(constant.DefaultNamespace, splitParentShard, &sp)
+	require.NoError(t, err)
+
+	left, _, err := metadata.GetShardStatus(constant.DefaultNamespace, leftChild)
+	require.NoError(t, err)
+	assert.Equal(t, uint32(0), left.UnsafeBorrow().GetInt32HashRange().GetMin())
+	assert.Equal(t, sp, left.UnsafeBorrow().GetInt32HashRange().GetMax())
+	right, _, err := metadata.GetShardStatus(constant.DefaultNamespace, rightChild)
+	require.NoError(t, err)
+	assert.Equal(t, sp+1, right.UnsafeBorrow().GetInt32HashRange().GetMin())
+	assert.Equal(t, splitParentMaxKey, right.UnsafeBorrow().GetInt32HashRange().GetMax())
+}
+
+// InitiateSplit changes nothing when the request is invalid, or when it can't
+// read or write what the split needs.
+func TestRuntimeInitiateSplitFailsWithoutChanges(t *testing.T) {
+	metadataErr := errors.New("metadata unavailable")
+	outside := splitParentMaxKey
+	for _, tc := range []struct {
+		name       string
+		namespace  string
+		splitPoint *uint32
+		setup      func(r *runtime, m *fakeMetadata)
+		err        string
+	}{
+		{name: "unknown namespace", namespace: "unknown", err: `namespace "unknown" not found`},
+		{name: "split point outside the shard", splitPoint: &outside, err: "is outside shard's hash range"},
+		{name: "status unavailable", setup: func(_ *runtime, m *fakeMetadata) {
+			m.listNamespaceStatus = func() (map[string]commonobject.Borrowed[*proto.NamespaceStatus], error) {
+				return nil, metadataErr
+			}
+		}, err: metadataErr.Error()},
+		{name: "shard ids unavailable", setup: func(_ *runtime, m *fakeMetadata) {
+			m.allocateShardIDs = func(uint32) (int64, error) { return 0, metadataErr }
+		}, err: "failed to allocate the child shard ids"},
+		{name: "namespace config unavailable", setup: func(_ *runtime, m *fakeMetadata) {
+			m.getNamespace = func(string) (commonobject.Borrowed[*proto.Namespace], bool, error) {
+				return commonobject.Borrowed[*proto.Namespace]{}, false, metadataErr
+			}
+		}, err: metadataErr.Error()},
+		{name: "no ensemble for the left child", setup: func(r *runtime, _ *fakeMetadata) {
+			r.ensembleSelector = failingEnsembleSelector{succeeding: 0, calls: new(0)}
+		}, err: "failed to select ensemble for left child"},
+		{name: "no ensemble for the right child", setup: func(r *runtime, _ *fakeMetadata) {
+			r.ensembleSelector = failingEnsembleSelector{succeeding: 1, calls: new(0)}
+		}, err: "failed to select ensemble for right child"},
+		{name: "status write failed", setup: func(_ *runtime, m *fakeMetadata) {
+			m.patchNamespaceStatus = func(string, func(*proto.NamespaceStatus) bool) error { return metadataErr }
+		}, err: "failed to persist the split"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r, metadata := newInitiateSplitTestRuntime(t)
+			if tc.setup != nil {
+				tc.setup(r, metadata)
+			}
+			namespace := cmp.Or(tc.namespace, constant.DefaultNamespace)
+
+			_, _, err := r.InitiateSplit(namespace, splitParentShard, tc.splitPoint)
+			assert.ErrorContains(t, err, tc.err)
+
+			parent, _, err := metadata.GetShardStatus(constant.DefaultNamespace, splitParentShard)
+			require.NoError(t, err)
+			assert.Nil(t, parent.UnsafeBorrow().GetSplit())
+			r.RLock()
+			defer r.RUnlock()
+			assert.Empty(t, r.shardControllers)
+			assert.Empty(t, r.splitControllers)
+		})
+	}
+}
+
+func TestValidateSplitParentRejectsUnsplittableShards(t *testing.T) {
+	steady := func(modify func(*proto.ShardMetadata)) *proto.ShardMetadata {
+		shard := &proto.ShardMetadata{
+			Status:         proto.ShardStatusSteadyState,
+			Int32HashRange: &proto.HashRange{Min: 0, Max: 100},
+		}
+		modify(shard)
+		return shard
+	}
+	for _, tc := range []struct {
+		name   string
+		parent *proto.ShardMetadata
+		err    string
+	}{
+		{"missing", nil, "not found"},
+		{"pending ensemble change", steady(func(s *proto.ShardMetadata) {
+			s.PendingDeleteShardNodes = []*proto.DataServerIdentity{splitPs1}
+		}), "has pending ensemble changes"},
+		{"single hash", steady(func(s *proto.ShardMetadata) {
+			s.Int32HashRange = &proto.HashRange{Min: 7, Max: 7}
+		}), "hash range is too small to split"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.ErrorContains(t, validateSplitParent("ns", 1, tc.parent), tc.err)
+		})
+	}
+	assert.NoError(t, validateSplitParent("ns", 1, steady(func(*proto.ShardMetadata) {})))
+}
+
+// The split of a shard of a namespace removed from the configuration uses the
+// default namespace configuration.
+func TestRuntimeNamespaceConfigForSplitDefaultsRemovedNamespace(t *testing.T) {
+	r, metadata := newInitiateSplitTestRuntime(t)
+
+	nsConfig, err := r.namespaceConfigForSplit("removed")
+	require.NoError(t, err)
+	assert.True(t, pb.Equal(&proto.Namespace{}, nsConfig))
+
+	readErr := errors.New("config unavailable")
+	metadata.getNamespace = func(string) (commonobject.Borrowed[*proto.Namespace], bool, error) {
+		return commonobject.Borrowed[*proto.Namespace]{}, false, readErr
+	}
+	_, err = r.namespaceConfigForSplit(constant.DefaultNamespace)
+	assert.ErrorIs(t, err, readErr)
 }

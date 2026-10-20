@@ -22,6 +22,7 @@ import (
 	"github.com/emirpasic/gods/v2/trees/redblacktree"
 	"go.uber.org/multierr"
 
+	"github.com/oxia-db/oxia/oxiad/common/vfs"
 	"github.com/oxia-db/oxia/oxiad/dataserver/wal/codec"
 
 	"github.com/oxia-db/oxia/common/object"
@@ -47,13 +48,13 @@ type ReadOnlySegmentsGroup interface {
 type readOnlySegmentsGroup struct {
 	sync.Mutex
 
-	fs           codec.FS
+	fs           vfs.FS
 	basePath     string
 	allSegments  *redblacktree.Tree[int64, bool]
 	openSegments *redblacktree.Tree[int64, object.RefCount[ReadOnlySegment]]
 }
 
-func newReadOnlySegmentsGroup(fs codec.FS, basePath string) (ReadOnlySegmentsGroup, error) {
+func newReadOnlySegmentsGroup(fs vfs.FS, basePath string) (ReadOnlySegmentsGroup, error) {
 	g := &readOnlySegmentsGroup{
 		fs:           fs,
 		basePath:     basePath,
@@ -176,8 +177,8 @@ func (r *readOnlySegmentsGroup) TrimSegments(offset int64, beforeDelete func() e
 		}
 
 		err2 = multierr.Combine(
-			codec.RemoveFileIfExists(r.fs, c.idxPath),
-			codec.RemoveFileIfExists(r.fs, c.txnPath),
+			vfs.RemoveFileIfExists(r.fs, c.idxPath),
+			vfs.RemoveFileIfExists(r.fs, c.txnPath),
 		)
 		if err2 != nil {
 			err = multierr.Append(err, err2)

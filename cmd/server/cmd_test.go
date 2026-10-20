@@ -16,12 +16,16 @@ package server
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -287,4 +291,159 @@ func TestServerRunsUntilItsContextIsDone(t *testing.T) {
 		"--public-addr", "localhost:0", "--internal-addr", "localhost:0", "--metrics-addr", "localhost:0"})
 
 	assert.NoError(t, Cmd.ExecuteContext(ctx))
+}
+
+func TestExecReturnsConfigFileReadError(t *testing.T) {
+	resetCmd(t)
+	Cmd.SetArgs([]string{"--sconfig", filepath.Join(t.TempDir(), "missing.yaml")})
+
+	err := Cmd.ExecuteContext(t.Context())
+
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestExecReturnsConfigFileParseError(t *testing.T) {
+	resetCmd(t)
+	configPath := writeConfigFile(t, invalidConfig)
+	Cmd.SetArgs([]string{"--sconfig", configPath})
+
+	err := Cmd.ExecuteContext(t.Context())
+
+	assert.ErrorContains(t, err, "yaml")
+}
+
+func TestExecReloadsChangedConfigFile(t *testing.T) {
+	resetCmd(t)
+	handler := newRecordingHandler(t)
+	config := validConfig(t.TempDir())
+	configPath := writeConfigFile(t, config)
+	Cmd.SetArgs([]string{"--sconfig", configPath})
+	ctx, cancel := context.WithCancel(t.Context())
+	errs := make(chan error, 1)
+	go func() {
+		errs <- Cmd.ExecuteContext(ctx)
+	}()
+	require.True(t, handler.waitFor("Starting Oxia dataServer"))
+
+	overwriteConfigFile(t, configPath, invalidConfig)
+	require.True(t, handler.waitFor("parse updated configuration file failed"))
+	overwriteConfigFile(t, configPath, config)
+	require.True(t, handler.waitFor("configuration file has changed."))
+	cancel()
+
+	assert.NoError(t, <-errs)
+}
+
+func TestExecReturnsValidationError(t *testing.T) {
+	resetCmd(t)
+	dir := t.TempDir()
+	Cmd.SetArgs([]string{"--data-dir", dir, "--wal-dir", dir,
+		"--public-addr", "localhost:0", "--internal-addr", "localhost:0", "--metrics-addr", "localhost:0"})
+
+	err := Cmd.ExecuteContext(t.Context())
+
+	assert.ErrorContains(t, err, "are the same directory")
+}
+
+const invalidConfig = `
+server:
+  public: [invalid yaml syntax
+`
+
+const configFileSize = 512
+
+func validConfig(dir string) string {
+	return fmt.Sprintf(`
+server:
+  public:
+    bindAddress: "localhost:0"
+  internal:
+    bindAddress: "localhost:0"
+storage:
+  wal:
+    dir: %q
+  database:
+    dir: %q
+observability:
+  metric:
+    bindAddress: "localhost:0"
+`, filepath.Join(dir, "wal"), filepath.Join(dir, "db"))
+}
+
+func writeConfigFile(t *testing.T, content string) string {
+	t.Helper()
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(configPath, paddedConfig(content), 0600))
+	return configPath
+}
+
+func overwriteConfigFile(t *testing.T, configPath string, content string) {
+	t.Helper()
+	file, err := os.OpenFile(configPath, os.O_WRONLY, 0)
+	require.NoError(t, err)
+	_, err = file.WriteAt(paddedConfig(content), 0)
+	require.NoError(t, err)
+	require.NoError(t, file.Close())
+}
+
+func paddedConfig(content string) []byte {
+	return []byte(content + "#" + strings.Repeat(" ", configFileSize-len(content)-2) + "\n")
+}
+
+func resetCmd(t *testing.T) {
+	t.Helper()
+	options := *dataServerOptions
+	t.Cleanup(func() {
+		*dataServerOptions = options
+		sconfFile = ""
+		Cmd.Flags().VisitAll(func(flag *pflag.Flag) { flag.Changed = false })
+	})
+}
+
+type recordingHandler struct {
+	messages chan string
+}
+
+func newRecordingHandler(t *testing.T) *recordingHandler {
+	t.Helper()
+	handler := &recordingHandler{messages: make(chan string, 1000)}
+	defaultLogger := slog.Default()
+	slog.SetDefault(slog.New(handler))
+	t.Cleanup(func() { slog.SetDefault(defaultLogger) })
+	return handler
+}
+
+func (*recordingHandler) Enabled(context.Context, slog.Level) bool {
+	return true
+}
+
+func (h *recordingHandler) Handle(_ context.Context, record slog.Record) error {
+	select {
+	case h.messages <- record.Message:
+	default:
+	}
+	return nil
+}
+
+func (h *recordingHandler) WithAttrs([]slog.Attr) slog.Handler {
+	return h
+}
+
+func (h *recordingHandler) WithGroup(string) slog.Handler {
+	return h
+}
+
+func (h *recordingHandler) waitFor(message string) bool {
+	timer := time.NewTimer(10 * time.Second)
+	defer timer.Stop()
+	for {
+		select {
+		case received := <-h.messages:
+			if received == message {
+				return true
+			}
+		case <-timer.C:
+			return false
+		}
+	}
 }

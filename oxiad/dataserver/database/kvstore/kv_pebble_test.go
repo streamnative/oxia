@@ -1802,6 +1802,86 @@ func TestPebbleBatchGetReadFailure(t *testing.T) {
 	assert.ErrorIs(t, wb.Commit(), os.ErrPermission)
 }
 
+func TestPebbleScanFailsWhenValueCannotBeRead(t *testing.T) {
+	kv := newKVWithUnreadableValueBlocks(t)
+
+	var visited []string
+	_, err := kv.Scan(nil, func(key string, _ []byte) (bool, error) {
+		visited = append(visited, key)
+		return true, nil
+	})
+	assert.ErrorIs(t, err, errorfs.ErrInjected)
+	assert.Equal(t, []string{"a"}, visited)
+}
+
+func TestPebbleBatchGetFailsWhenValueCannotBeRead(t *testing.T) {
+	kv := newKVWithUnreadableValueBlocks(t)
+	wb := kv.NewWriteBatch()
+
+	// The first Get of a batch reads through the batch, the next ones through
+	// an iterator
+	value, closer, err := wb.Get("a")
+	require.NoError(t, err)
+	assert.Equal(t, []byte("value-a"), value)
+	assert.NoError(t, closer.Close())
+	_, _, err = wb.Get("b")
+	assert.ErrorIs(t, err, errorfs.ErrInjected)
+	assert.ErrorIs(t, wb.Close(), errorfs.ErrInjected)
+}
+
+func TestPebbleIteratorValueFailsWhenValueCannotBeRead(t *testing.T) {
+	kv := newKVWithUnreadableValueBlocks(t)
+	it, err := kv.RangeScan("b", "", NoInternalKeys)
+	require.NoError(t, err)
+
+	require.True(t, it.Valid())
+	_, err = it.Value()
+	assert.ErrorIs(t, err, errorfs.ErrInjected)
+	assert.ErrorIs(t, it.Close(), errorfs.ErrInjected)
+}
+
+func TestPebbleReverseIteratorValueFailsWhenValueCannotBeRead(t *testing.T) {
+	kv := newKVWithUnreadableValueBlocks(t)
+	it, err := kv.KeyRangeScanReverse("a", "", NoInternalKeys)
+	require.NoError(t, err)
+
+	require.True(t, it.Valid())
+	_, err = it.(*PebbleReverseIterator).Value()
+	assert.ErrorIs(t, err, errorfs.ErrInjected)
+	assert.ErrorIs(t, it.Close(), errorfs.ErrInjected)
+}
+
+func TestPebblePrefixIteratorLookupFailsWhenValueCannotBeRead(t *testing.T) {
+	kv := newKVWithUnreadableValueBlocks(t)
+	it, err := kv.KeyPrefixIterator("", "")
+	require.NoError(t, err)
+
+	value, err := it.Lookup("a")
+	assert.NoError(t, err)
+	assert.Equal(t, []byte("value-a"), value)
+	_, err = it.Lookup("b")
+	assert.ErrorIs(t, err, errorfs.ErrInjected)
+	assert.ErrorIs(t, it.Close(), errorfs.ErrInjected)
+}
+
+// Pebble rejects a synced write without a WAL, the one commit failure that
+// it returns rather than reporting through the logger's Fatalf.
+func TestPebbleBatchCommitFailsWhenPebbleRejectsTheBatch(t *testing.T) {
+	options := NewFactoryOptionsForTest(t)
+	options.SyncData = true
+	factory, err := NewPebbleKVFactory(options)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, factory.Close()) })
+	kv, err := factory.NewKV(constant.DefaultNamespace, 1, proto.KeySortingType_NATURAL)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, kv.Close()) })
+
+	wb := kv.NewWriteBatch()
+	defer wb.Close()
+	require.NoError(t, wb.Put("a", []byte("a")))
+	assert.ErrorContains(t, wb.Commit(), "WAL disabled")
+}
+
 func toList(it KeyIterator) []string {
 	var list []string
 
@@ -2228,6 +2308,25 @@ func opIs(kind errorfs.OpKind, path string) func(op errorfs.Op) bool {
 	}
 }
 
+// newFactoryWithFaults returns a factory on dataDir whose filesystem fails the
+// operations that inject matches with errorfs.ErrInjected.
+func newFactoryWithFaults(t *testing.T, dataDir string, inject func(op errorfs.Op) bool) Factory {
+	t.Helper()
+	injector := errorfs.InjectorFunc(func(op errorfs.Op) error {
+		if inject(op) {
+			return errorfs.ErrInjected
+		}
+		return nil
+	})
+	options := NewFactoryOptionsForTest(t)
+	options.DataDir = dataDir
+	options.FS = closeFaultFS{FS: errorfs.Wrap(vfs.Default, injector), injector: injector}
+	factory, err := NewPebbleKVFactory(options)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, factory.Close()) })
+	return factory
+}
+
 // newKVWithUnreadableSST returns a store with the key "b" in an sstable that
 // stays readable, and "c" and "d" in one that is unreadable. They don't
 // overlap, so they are in the same level, and a lookup only opens the second
@@ -2265,4 +2364,81 @@ func newKVWithUnreadableSST(t *testing.T) KV {
 		t.Skip("the sstable is still readable, as when running as root")
 	}
 	return kv
+}
+
+// newKVWithUnreadableValueBlocks returns a store with the keys "a", "b" and
+// "c" in an sstable whose value blocks cannot be read: the value of "a" sits
+// with its key, and the others in the value blocks. Pebble only moves to the
+// value blocks the values of the keys that share the prefix of the previous
+// key: the sstable is written with a comparer that takes no key prefix, under
+// the name of the default one, and without bloom filters, which index the
+// prefixes.
+func newKVWithUnreadableValueBlocks(t *testing.T) KV {
+	t.Helper()
+	dataDir := t.TempDir()
+	dbPath := filepath.Join(dataDir, constant.DefaultNamespace, "shard-1")
+	require.NoError(t, createMarker(dbPath, compare.EncoderNatural.Name()))
+	comparer := *pebble.DefaultComparer
+	comparer.Split = func([]byte) int { return 0 }
+	db, err := pebble.Open(dbPath, &pebble.Options{
+		Comparer:           &comparer,
+		DisableWAL:         true,
+		FormatMajorVersion: pebble.FormatVirtualSSTables,
+	})
+	require.NoError(t, err)
+	for _, key := range []string{"a", "b", "c"} {
+		require.NoError(t, db.Set(compare.EncoderNatural.Encode(key), []byte("value-"+key), pebble.NoSync))
+	}
+	require.NoError(t, db.Flush())
+	require.NoError(t, db.Close())
+
+	ssts, err := filepath.Glob(filepath.Join(dbPath, "*.sst"))
+	require.NoError(t, err)
+	require.Len(t, ssts, 1)
+	start, end := valueBlocksRange(t, ssts[0])
+	factory := newFactoryWithFaults(t, dataDir, func(op errorfs.Op) bool {
+		return op.Kind == errorfs.OpFileReadAt && op.Path == ssts[0] && op.Offset >= start && op.Offset < end
+	})
+	kv, err := factory.NewKV(constant.DefaultNamespace, 1, proto.KeySortingType_NATURAL)
+	require.NoError(t, err)
+	require.Equal(t, dbPath, kv.(*Pebble).dbPath)
+	t.Cleanup(func() { assert.NoError(t, kv.Close()) })
+	return kv
+}
+
+// closeFaultFS passes the Close of the files and directories that it opens to
+// injector, as errorfs.OpFileClose: errorfs injects no close errors. A Close
+// that fails leaves the file open.
+type closeFaultFS struct {
+	vfs.FS
+	injector errorfs.Injector
+}
+
+func (fs closeFaultFS) Open(name string, opts ...vfs.OpenOption) (vfs.File, error) {
+	f, err := fs.FS.Open(name, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return closeFaultFile{File: f, path: name, injector: fs.injector}, nil
+}
+
+func (fs closeFaultFS) OpenDir(name string) (vfs.File, error) {
+	f, err := fs.FS.OpenDir(name)
+	if err != nil {
+		return nil, err
+	}
+	return closeFaultFile{File: f, path: name, injector: fs.injector}, nil
+}
+
+type closeFaultFile struct {
+	vfs.File
+	path     string
+	injector errorfs.Injector
+}
+
+func (f closeFaultFile) Close() error {
+	if err := f.injector.MaybeError(errorfs.Op{Kind: errorfs.OpFileClose, Path: f.path}); err != nil {
+		return err
+	}
+	return f.File.Close()
 }

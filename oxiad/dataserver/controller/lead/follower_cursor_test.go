@@ -161,7 +161,7 @@ func TestFollowerCursor(t *testing.T) {
 	assert.EqualValues(t, 1, req.Entry.Offset)
 	assert.EqualValues(t, 0, req.CommitOffset)
 
-	assert.NoError(t, fc.Close())
+	fc.Close()
 	assert.NoError(t, w.Close())
 	assert.NoError(t, wf.Close())
 	assert.NoError(t, db.Close())
@@ -255,7 +255,7 @@ func TestFollowerCursor_SendSnapshot(t *testing.T) {
 		"first Append after snapshot must have non-zero PreviousEntryCrc")
 	assert.EqualValues(t, n, firstAppend.Entry.Offset)
 
-	assert.NoError(t, fc.Close())
+	fc.Close()
 	assert.NoError(t, w.Close())
 	assert.NoError(t, wf.Close())
 	assert.NoError(t, db.Close())
@@ -313,7 +313,7 @@ func TestFollowerCursor_StreamToFollowerRightBeforeWalStart(t *testing.T) {
 
 	// Complete a snapshot in progress: closing the cursor waits for it
 	stream.SendSnapshotStream.Response <- &proto.SnapshotResponse{AckOffset: n - 1}
-	assert.NoError(t, fc.Close())
+	fc.Close()
 	assert.NoError(t, w.Close())
 	assert.NoError(t, wf.Close())
 	assert.NoError(t, db.Close())
@@ -374,7 +374,7 @@ func TestFollowerCursor_StreamToEmptyFollowerWhenWalComplete(t *testing.T) {
 	}
 	assert.Empty(t, stream.SendSnapshotStream.Requests)
 
-	assert.NoError(t, fc.Close())
+	fc.Close()
 	assert.NoError(t, w.Close())
 	assert.NoError(t, wf.Close())
 	assert.NoError(t, db.Close())
@@ -413,7 +413,7 @@ func TestFollowerCursor_CloseWaitsForInFlightSnapshot(t *testing.T) {
 	t.Cleanup(func() {
 		stream.unblock()
 		if fc != nil {
-			assert.NoError(t, fc.Close())
+			fc.Close()
 		}
 		assert.NoError(t, w.Close())
 		assert.NoError(t, wf.Close())
@@ -433,9 +433,10 @@ func TestFollowerCursor_CloseWaitsForInFlightSnapshot(t *testing.T) {
 		t.Fatal("timed out waiting for snapshot send to start")
 	}
 
-	closeDone := make(chan error, 1)
+	closeDone := make(chan struct{})
 	go func() {
-		closeDone <- fc.Close()
+		fc.Close()
+		close(closeDone)
 	}()
 
 	select {
@@ -445,8 +446,7 @@ func TestFollowerCursor_CloseWaitsForInFlightSnapshot(t *testing.T) {
 	}
 
 	select {
-	case err := <-closeDone:
-		assert.NoError(t, err)
+	case <-closeDone:
 		t.Fatal("Close returned before the snapshot sender exited")
 	case <-time.After(100 * time.Millisecond):
 	}
@@ -454,8 +454,7 @@ func TestFollowerCursor_CloseWaitsForInFlightSnapshot(t *testing.T) {
 	stream.unblock()
 
 	select {
-	case err := <-closeDone:
-		assert.NoError(t, err)
+	case <-closeDone:
 	case <-time.After(10 * time.Second):
 		t.Fatal("timed out waiting for cursor close")
 	}
@@ -583,9 +582,8 @@ func TestObserverFollowerCursor_AdvertisesCommitOffsetAtHead(t *testing.T) {
 	assert.NoError(t, err)
 
 	// The observer was seeded with a snapshot up to entry 0
-	fc, err := NewObserverFollowerCursor("child-1", term, constant.DefaultNamespace, shard, stream, ackTracker,
+	fc := NewObserverFollowerCursor("child-1", term, constant.DefaultNamespace, shard, stream, ackTracker,
 		w, db, 0, &proto.Int32HashRange{MinHashInclusive: 0, MaxHashInclusive: 100}, nil)
-	assert.NoError(t, err)
 
 	// The observer streams entry 1 with the commit offset of that moment (0)
 	// and parks at the head of the wal
@@ -613,7 +611,7 @@ func TestObserverFollowerCursor_AdvertisesCommitOffsetAtHead(t *testing.T) {
 		// Expected. There should be nothing in the channel
 	}
 
-	assert.NoError(t, fc.Close())
+	fc.Close()
 	assert.NoError(t, w.Close())
 	assert.NoError(t, wf.Close())
 	assert.NoError(t, db.Close())
@@ -666,9 +664,8 @@ func TestObserverFollowerCursor_SeedsChildWithAnEntry(t *testing.T) {
 	regular, err := ackTracker.NewCursorAcker(wal.InvalidOffset)
 	assert.NoError(t, err)
 
-	fc, err := NewObserverFollowerCursor("child-1", term, constant.DefaultNamespace, shard, provider, ackTracker,
+	fc := NewObserverFollowerCursor("child-1", term, constant.DefaultNamespace, shard, provider, ackTracker,
 		w, db, wal.InvalidOffset, &proto.Int32HashRange{MinHashInclusive: 0, MaxHashInclusive: 100}, nil)
-	assert.NoError(t, err)
 
 	time.Sleep(100 * time.Millisecond)
 	assert.Empty(t, provider.snapshots, "snapshot sent before the first commit")
@@ -708,7 +705,7 @@ func TestObserverFollowerCursor_SeedsChildWithAnEntry(t *testing.T) {
 	assert.EqualValues(t, 1, req.Entry.Offset)
 	assert.Empty(t, provider.snapshots)
 
-	assert.NoError(t, fc.Close())
+	fc.Close()
 	assert.NoError(t, w.Close())
 	assert.NoError(t, wf.Close())
 	assert.NoError(t, db.Close())
@@ -763,8 +760,8 @@ func TestFollowerCursorAdvertisesCommitOffsetAtHeadWhenTheTermPinsIt(t *testing.
 				default:
 				}
 			}
-			assert.NoError(t, fc.Close())
-			assert.NoError(t, ackTracker.Close())
+			fc.Close()
+			ackTracker.Close()
 			assert.NoError(t, w.Close())
 			assert.NoError(t, wf.Close())
 			assert.NoError(t, db.Close())
@@ -805,7 +802,7 @@ func TestFollowerCursorSendsSnapshotToAFollowerBehindTheWal(t *testing.T) {
 		assert.Fail(t, "the follower got no snapshot")
 	}
 	stream.SendSnapshotStream.Response <- &proto.SnapshotResponse{AckOffset: n - 1}
-	assert.NoError(t, fc.Close())
+	fc.Close()
 }
 
 // A follower that reports it's not a member lost its data, e.g. after a
@@ -870,7 +867,7 @@ func TestFollowerCursorRetriesTheSnapshotWhenItCantBeRead(t *testing.T) {
 			require.NoError(t, err)
 
 			assert.Eventually(t, func() bool { return snapshots.Load() >= 2 }, 10*time.Second, 10*time.Millisecond)
-			assert.NoError(t, fc.Close())
+			fc.Close()
 			assert.Empty(t, stream.SendSnapshotStream.Requests)
 			assert.EqualValues(t, wal.InvalidOffset, fc.AckOffset())
 		})

@@ -40,6 +40,7 @@ import (
 	pb "google.golang.org/protobuf/proto"
 
 	commonoption "github.com/oxia-db/oxia/oxiad/common/option"
+	"github.com/oxia-db/oxia/oxiad/common/vfs"
 	"github.com/oxia-db/oxia/oxiad/dataserver/option"
 
 	"github.com/oxia-db/oxia/common/rpc"
@@ -3305,7 +3306,7 @@ func corruptWalEntry(t *testing.T, walDir string, shard int64, offset int64) {
 	t.Helper()
 
 	segment := filepath.Join(walDir, constant.DefaultNamespace, fmt.Sprint("shard-", shard), "0")
-	c, exists, err := codec.GetOrCreate(codec.OSFS{}, segment)
+	c, exists, err := codec.GetOrCreate(vfs.OSFS{}, segment)
 	require.NoError(t, err)
 	require.True(t, exists)
 

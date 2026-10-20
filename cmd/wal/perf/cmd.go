@@ -16,6 +16,7 @@ package perf
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"math"
 	"sync"
@@ -58,7 +59,7 @@ func init() {
 	Cmd.Flags().Int64Var(&options.retentionSecond, "retention-second", 3600, "retention time for the wal")
 }
 
-func run(*cobra.Command, []string) error {
+func run(cmd *cobra.Command, _ []string) error {
 	factory := wal.NewWalFactory(&wal.FactoryOptions{
 		BaseWalDir:  common.WalOption.WalDir,
 		Retention:   math.MaxInt64,
@@ -92,8 +93,7 @@ func run(*cobra.Command, []string) error {
 	}
 
 	wg.Wait()
-	printResults(threadTimesArray, writeEntryTimesArray, readEntryTimesArray)
-	return nil
+	return printResults(cmd.OutOrStdout(), threadTimesArray, writeEntryTimesArray, readEntryTimesArray)
 }
 
 func runWriter(writeAheadLog wal.Wal, data []byte, threadTimesArray, writeEntryTimesArray []int64) {
@@ -151,27 +151,29 @@ func runReader(writeAheadLog wal.Wal, readerIdx int64, threadTimesArray, readEnt
 	)
 }
 
-func printResults(threadTimesArray, writeEntryTimesArray, readEntryTimesArray []int64) {
+func printResults(out io.Writer, threadTimesArray, writeEntryTimesArray, readEntryTimesArray []int64) error {
 	for i := 0; i < len(threadTimesArray); i++ {
 		threadName := "Writer"
 		if i > 0 {
 			threadName = fmt.Sprintf("Reader%d", i-1)
 		}
 
-		if _, err := fmt.Printf("Thread: %s, Total entry: %d, Total time: %s, Throughput: %f ops/s\n",
+		if _, err := fmt.Fprintf(out, "Thread: %s, Total entry: %d, Total time: %s, Throughput: %f ops/s\n",
 			threadName,
 			options.entryCount,
 			time.Duration(threadTimesArray[i])*time.Microsecond,
 			float64(options.entryCount)/float64(threadTimesArray[i])*1000000); err != nil {
-			panic(err)
+			return err
 		}
 	}
 
-	printLatench("Writer", writeEntryTimesArray)
-	printLatench("Reader", readEntryTimesArray)
+	if err := printLatench(out, "Writer", writeEntryTimesArray); err != nil {
+		return err
+	}
+	return printLatench(out, "Reader", readEntryTimesArray)
 }
 
-func printLatench(name string, datas []int64) {
+func printLatench(out io.Writer, name string, datas []int64) error {
 	summary := prometheus.NewSummary(prometheus.SummaryOpts{
 		Name: name,
 		Help: "",
@@ -189,7 +191,7 @@ func printLatench(name string, datas []int64) {
 	}
 	metrics, err := gather.Gather()
 	if err != nil {
-		panic(err)
+		return err
 	}
 	p50, p90, p99, p999 := float64(0), float64(0), float64(0), float64(0)
 	for _, metric := range metrics {
@@ -209,7 +211,7 @@ func printLatench(name string, datas []int64) {
 			}
 		}
 	}
-	if _, err := fmt.Printf(`
+	_, err = fmt.Fprintf(out, `
 Histogram of %s latency:
 P50:  %s
 P90:  %s 
@@ -220,7 +222,6 @@ P999: %s
 		time.Duration(p90)*time.Microsecond,
 		time.Duration(p99)*time.Microsecond,
 		time.Duration(p999)*time.Microsecond,
-	); err != nil {
-		panic(err)
-	}
+	)
+	return err
 }

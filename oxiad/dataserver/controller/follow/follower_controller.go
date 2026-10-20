@@ -286,7 +286,7 @@ func (fc *followerController) Close() error {
 	fc.rwMutex.Lock()
 	defer fc.rwMutex.Unlock()
 	if fc.logSynchronizer.IsValid() {
-		err = multierr.Append(err, fc.logSynchronizer.Close())
+		fc.logSynchronizer.Close()
 	}
 	return multierr.Combine(
 		err,
@@ -394,9 +394,7 @@ func (fc *followerController) NewTerm(req *proto.NewTermRequest) (*proto.NewTerm
 	}
 
 	if fc.logSynchronizer.IsValid() {
-		if err := fc.logSynchronizer.Close(); err != nil {
-			return nil, errors.Wrapf(multierr.Combine(constant.ErrResourceUnavailable, err), "failed to close log synchronizer")
-		}
+		fc.logSynchronizer.Close()
 		fc.logSynchronizer = nil
 	}
 

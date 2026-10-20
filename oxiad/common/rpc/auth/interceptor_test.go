@@ -30,8 +30,7 @@ import (
 
 func TestGrpcAuthenticationDelegatorGetUnaryInterceptorCallsHandlerWithValidToken(t *testing.T) {
 	provider := &recordingProvider{}
-	delegator, err := NewGrpcAuthenticationDelegator(provider)
-	require.NoError(t, err)
+	delegator := NewGrpcAuthenticationDelegator(provider)
 	ctx := metadata.NewIncomingContext(newPeerContext(), metadata.Pairs(MetadataAuthorizationKey, TokenPrefix+"token"))
 
 	res, err := delegator.GetUnaryInterceptor()(ctx, "request", &grpc.UnaryServerInfo{},
@@ -45,8 +44,7 @@ func TestGrpcAuthenticationDelegatorGetUnaryInterceptorCallsHandlerWithValidToke
 }
 
 func TestGrpcAuthenticationDelegatorGetUnaryInterceptorRejectsMissingToken(t *testing.T) {
-	delegator, err := NewGrpcAuthenticationDelegator(&recordingProvider{})
-	require.NoError(t, err)
+	delegator := NewGrpcAuthenticationDelegator(&recordingProvider{})
 	handlerCalled := false
 
 	res, err := delegator.GetUnaryInterceptor()(newPeerContext(), "request", &grpc.UnaryServerInfo{},
@@ -59,13 +57,6 @@ func TestGrpcAuthenticationDelegatorGetUnaryInterceptorRejectsMissingToken(t *te
 	assert.Equal(t, codes.Unauthenticated, status.Code(err))
 	assert.Contains(t, status.Convert(err).Message(), ErrEmptyToken.Error())
 	assert.False(t, handlerCalled)
-}
-
-func TestNewGrpcAuthenticationDelegatorRejectsUnknownParamType(t *testing.T) {
-	delegator, err := NewGrpcAuthenticationDelegator(&recordingProvider{paramType: "certificate"})
-
-	assert.ErrorIs(t, err, ErrUnMatchedAuthenticationParamType)
-	assert.Nil(t, delegator)
 }
 
 func TestValidateTokenWithContext(t *testing.T) {
@@ -131,16 +122,7 @@ func TestRedactToken(t *testing.T) {
 
 // recordingProvider accepts any token and records the last one.
 type recordingProvider struct {
-	// paramType overrides the accepted parameter type, the token type when empty
-	paramType string
-	token     string
-}
-
-func (p *recordingProvider) AcceptParamType() string {
-	if p.paramType != "" {
-		return p.paramType
-	}
-	return ProviderParamTypeToken
+	token string
 }
 
 func (p *recordingProvider) Authenticate(_ context.Context, param any) (string, error) {

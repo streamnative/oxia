@@ -12,25 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//revive:disable-next-line:var-naming
-package codec
+package vfs
 
 import (
-	"io"
-	"os"
-
 	"github.com/edsrzf/mmap-go"
+	"github.com/spf13/afero"
 )
 
 // FS holds the files of the wal, and maps the segment files in memory. The
 // server uses OSFS: the tests use another FS to make its operations fail.
 type FS interface {
-	Stat(name string) (os.FileInfo, error)
-	ReadDir(name string) ([]os.DirEntry, error)
-	MkdirAll(path string, perm os.FileMode) error
-	OpenFile(name string, flag int, perm os.FileMode) (File, error)
-	Remove(name string) error
-	RemoveAll(path string) error
+	afero.Fs
 
 	// Map maps the first length bytes of a file opened by this FS, or the
 	// whole file when length is negative.
@@ -42,7 +34,5 @@ type FS interface {
 }
 
 type File interface {
-	io.ReadWriteSeeker
-	io.Closer
-	Sync() error
+	afero.File
 }

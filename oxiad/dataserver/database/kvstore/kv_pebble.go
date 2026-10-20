@@ -156,7 +156,7 @@ func NewPebbleKVFactory(options *FactoryOptions) (Factory, error) {
 // The snapshots are left behind by a previous run: the "snapshots" name is
 // reserved, so nothing else can be in there.
 func (p *PebbleFactory) cleanupSnapshots() error {
-	return os.RemoveAll(filepath.Join(p.dataDir, validation.KeywordNamespaceSnapshots))
+	return p.options.FS.RemoveAll(filepath.Join(p.dataDir, validation.KeywordNamespaceSnapshots))
 }
 
 func (p *PebbleFactory) Close() error {
@@ -192,7 +192,7 @@ func (p *PebbleFactory) NewKV(namespace string, shardId int64, keySorting proto.
 }
 
 func (p *PebbleFactory) NewSnapshotLoader(namespace string, shardId int64) (SnapshotLoader, error) {
-	return newPebbleSnapshotLoader(p, vfs.Default, namespace, shardId)
+	return newPebbleSnapshotLoader(p, p.options.FS, namespace, shardId)
 }
 
 func (p *PebbleFactory) DatabaseDir(namespace string, shardId int64) string {
@@ -352,7 +352,7 @@ func newKVPebble(factory *PebbleFactory, namespace string, shardId int64, keySor
 		Cache:        factory.cache,
 		MemTableSize: memTableSize,
 		Levels:       levelOptions,
-		FS:           vfs.Default,
+		FS:           factory.options.FS,
 		DisableWAL:   !factory.options.UseWAL,
 		Logger:       &pebbleLogger{log},
 		// Pebble fills in the events left out, as it does without a listener
@@ -361,7 +361,7 @@ func newKVPebble(factory *PebbleFactory, namespace string, shardId int64, keySor
 		FormatMajorVersion: pebble.FormatVirtualSSTables,
 	}
 
-	pebbleConv := newPebbleDbConversion(log, pb.dbPath, pb.kvTrap)
+	pebbleConv := newPebbleDbConversion(log, factory.options.FS, pb.dbPath, pb.kvTrap)
 	if err := pebbleConv.checkConvertDB(pb.keyEncoder); err != nil {
 		return nil, errors.Wrap(err, "failed to convert db")
 	}
@@ -1260,9 +1260,9 @@ func (p *PebblePrefixIterator) backward() bool {
 }
 
 // pebbleSnapshotLoader writes the snapshot files through fs, which is
-// vfs.Default in production. It is a vfs.FS rather than plain os calls so
-// that the tests can install a snapshot on vfs.NewCrashableMem, which
-// simulates a machine crash by keeping only what was synced.
+// FactoryOptions.FS. The tests also install a snapshot on
+// vfs.NewCrashableMem, which simulates a machine crash by keeping only what
+// was synced.
 type pebbleSnapshotLoader struct {
 	pf        *PebbleFactory
 	namespace string

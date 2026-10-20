@@ -60,7 +60,7 @@ func TestHandleInitSkipsMessagesBeforeInit(t *testing.T) {
 
 	require.Equal(t, "n2", thisNode)
 	require.Equal(t, []string{"n1", "n2", "n3"}, allNodes)
-	msgType, msg, _ := parseRequest(receiveLines(t, lines, 1)[0])
+	msgType, msg, _ := parseLine(t, receiveLines(t, lines, 1)[0])
 	require.Equal(t, MsgType("init_ok"), msgType)
 	initOk := msg.(*Message[BaseMessageBody])
 	require.Equal(t, "n2", initOk.Src)
@@ -72,6 +72,24 @@ func TestRunCoordinatorRejectsTooFewDataServers(t *testing.T) {
 	d := newDispatcher(newMaelstromGrpcProvider(), newMaelstromReplicationRpcProvider())
 	_, err := runCoordinator(d, []*proto.DataServerIdentity{{Public: "n2", Internal: "n2"}})
 	require.ErrorContains(t, err, "failed to seed coordinator namespaces")
+}
+
+func TestRunCoordinatorRejectsDuplicateDataServers(t *testing.T) {
+	d := newDispatcher(newMaelstromGrpcProvider(), newMaelstromReplicationRpcProvider())
+	name := "n2"
+	_, err := runCoordinator(d, []*proto.DataServerIdentity{
+		{Name: &name, Public: "n2", Internal: "n2"},
+		{Name: &name, Public: "n2", Internal: "n2"},
+	})
+	require.ErrorContains(t, err, "failed to seed coordinator data servers")
+}
+
+func TestConfigureLoggerWritesJSON(t *testing.T) {
+	restoreLogging(t)
+
+	configureLogger()
+
+	require.IsType(t, &slog.JSONHandler{}, slog.Default().Handler())
 }
 
 func TestRunFailsWithoutInit(t *testing.T) {
@@ -93,9 +111,9 @@ func TestRunServesDataServerUntilInputEnds(t *testing.T) {
 
 	require.NoError(t, err)
 	received := receiveLines(t, lines, 2)
-	msgType, _, _ := parseRequest(received[0])
+	msgType, _, _ := parseLine(t, received[0])
 	require.Equal(t, MsgType("init_ok"), msgType)
-	msgType, msg, _ := parseRequest(received[1])
+	msgType, msg, _ := parseLine(t, received[1])
 	require.Equal(t, MsgTypeError, msgType)
 	require.Equal(t, int64(5), *msg.(*Message[ErrorResponse]).Body.InReplyTo)
 }
@@ -106,7 +124,7 @@ func TestRunServesCoordinatorUntilInputEnds(t *testing.T) {
 
 	require.NoError(t, run(newScanner(initMessage("n1")), t.TempDir()))
 
-	msgType, _, _ := parseRequest(receiveLines(t, lines, 1)[0])
+	msgType, _, _ := parseLine(t, receiveLines(t, lines, 1)[0])
 	require.Equal(t, MsgType("init_ok"), msgType)
 }
 
@@ -130,6 +148,51 @@ func TestRunFailsWhenDataServerCantStart(t *testing.T) {
 	err := run(newScanner(initMessage("n2")), dataDir)
 
 	require.ErrorContains(t, err, "failed to create dataserver manifest")
+}
+
+func TestRunFailsWhenDataServerWalDirIsDataDir(t *testing.T) {
+	restoreNodes(t)
+	captureStdout(t)
+	dataDir := t.TempDir()
+	nodeDir := filepath.Join(dataDir, "n2")
+	require.NoError(t, os.MkdirAll(filepath.Join(nodeDir, "db"), 0o755))
+	require.NoError(t, os.Symlink(filepath.Join(nodeDir, "db"), filepath.Join(nodeDir, "wal")))
+
+	err := run(newScanner(initMessage("n2")), dataDir)
+
+	require.ErrorContains(t, err, "failed to start dataserver")
+}
+
+func TestRunFailsOnMalformedMessage(t *testing.T) {
+	tests := []struct {
+		name  string
+		lines []string
+	}{
+		{"before init", []string{`not json`, initMessage("n2")}},
+		{"after init", []string{initMessage("n2"), `not json`}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			restoreNodes(t)
+			captureStdout(t)
+
+			err := run(newScanner(tt.lines...), t.TempDir())
+
+			require.ErrorContains(t, err, `failed to unmarshal "not json"`)
+		})
+	}
+}
+
+func TestRunFailsOnInvalidResponseId(t *testing.T) {
+	restoreNodes(t)
+	captureStdout(t)
+
+	err := run(newScanner(
+		initMessage("n2"),
+		`{"src":"n1","dest":"n2","body":{"type":"term-resp","in_reply_to":99,"m":{}}}`,
+	), t.TempDir())
+
+	require.ErrorContains(t, err, "invalid response id 99")
 }
 
 // restoreLogging restores the logging configuration that the test changes.

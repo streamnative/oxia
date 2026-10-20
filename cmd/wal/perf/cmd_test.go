@@ -15,9 +15,9 @@
 package perf
 
 import (
-	"io"
+	"bytes"
+	"errors"
 	"math"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -48,6 +48,26 @@ func TestRunWritesAndReadsEntries(t *testing.T) {
 	require.NoError(t, factory.Close())
 }
 
+func TestRunReturnsOutputErrors(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		writes int
+	}{
+		{name: "thread", writes: 0},
+		{name: "histogram", writes: 2},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			setWalOption(t, t.TempDir(), "default")
+			out := &failingWriter{writes: test.writes, err: errors.New("output closed")}
+			Cmd.SetOut(out)
+			t.Cleanup(func() { Cmd.SetOut(nil) })
+			Cmd.SetArgs([]string{"--entry-count", "1", "--reader-count", "1", "--sync-data=false"})
+
+			assert.ErrorIs(t, Cmd.Execute(), out.err)
+		})
+	}
+}
+
 func TestRunPanicsOnInvalidNamespace(t *testing.T) {
 	setWalOption(t, t.TempDir(), "../ns")
 
@@ -67,22 +87,24 @@ func setWalOption(t *testing.T, dir string, namespace string) {
 // runPerf runs the command and returns what it printed on stdout.
 func runPerf(t *testing.T, args ...string) (string, error) {
 	t.Helper()
-	reader, writer, err := os.Pipe()
-	require.NoError(t, err)
-	stdout := os.Stdout
-	os.Stdout = writer
-	output := make(chan string)
-	go func() {
-		data, _ := io.ReadAll(reader)
-		output <- string(data)
-	}()
-
+	stdout := &bytes.Buffer{}
+	Cmd.SetOut(stdout)
+	t.Cleanup(func() { Cmd.SetOut(nil) })
 	Cmd.SetArgs(args)
-	err = Cmd.Execute()
+	err := Cmd.Execute()
+	return stdout.String(), err
+}
 
-	os.Stdout = stdout
-	require.NoError(t, writer.Close())
-	result := <-output
-	require.NoError(t, reader.Close())
-	return result, err
+// failingWriter accepts the given number of writes, and fails the next ones.
+type failingWriter struct {
+	writes int
+	err    error
+}
+
+func (w *failingWriter) Write(p []byte) (int, error) {
+	if w.writes == 0 {
+		return 0, w.err
+	}
+	w.writes--
+	return len(p), nil
 }

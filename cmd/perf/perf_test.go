@@ -15,7 +15,11 @@
 package perf
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -26,10 +30,18 @@ import (
 	"github.com/oxia-db/oxia/oxiad/dataserver"
 )
 
+func TestNewFailsWhenServerIsUnreachable(t *testing.T) {
+	config := testConfig("localhost:1", false)
+
+	_, err := New(config)
+
+	assert.ErrorContains(t, err, "failed to create Oxia client")
+}
+
 func TestPerfRunWritesZeroPayloads(t *testing.T) {
 	server := newStandalone(t)
 	ctx, cancel := context.WithCancel(context.Background())
-	done := runInBackground(ctx, New(testConfig(server.ServiceAddr(), false)))
+	done := runInBackground(ctx, newPerf(t, testConfig(server.ServiceAddr(), false)))
 
 	client := newSyncClient(t, server.ServiceAddr())
 	var keys []string
@@ -50,7 +62,7 @@ func TestPerfRunCountsFailedOperations(t *testing.T) {
 	// Closed by the test itself: Standalone.Close panics when called twice
 	server, err := dataserver.NewStandalone(dataserver.NewTestConfig(t.TempDir()))
 	require.NoError(t, err)
-	p := New(testConfig(server.ServiceAddr(), false)).(*perf)
+	p := newPerf(t, testConfig(server.ServiceAddr(), false)).(*perf)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := runInBackground(ctx, p)
 
@@ -71,7 +83,7 @@ func TestPerfRunCountsFailedOperations(t *testing.T) {
 func TestPerfRunWritesRandomPayloads(t *testing.T) {
 	server := newStandalone(t)
 	ctx, cancel := context.WithCancel(context.Background())
-	done := runInBackground(ctx, New(testConfig(server.ServiceAddr(), true)))
+	done := runInBackground(ctx, newPerf(t, testConfig(server.ServiceAddr(), true)))
 
 	client := newSyncClient(t, server.ServiceAddr())
 	assert.Eventually(t, func() bool {
@@ -87,6 +99,21 @@ func TestPerfRunWritesRandomPayloads(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, value, 16)
 	assert.NotEqual(t, make([]byte, 16), value)
+}
+
+func TestPerfRunReportsStats(t *testing.T) {
+	server := newStandalone(t)
+	logs := captureLogs(t)
+	config := testConfig(server.ServiceAddr(), false)
+	config.StatsInterval = 10 * time.Millisecond
+	ctx, cancel := context.WithCancel(context.Background())
+	done := runInBackground(ctx, newPerf(t, config))
+
+	assert.Eventually(t, func() bool {
+		return strings.Contains(logs.String(), "Stats - Total ops")
+	}, 10*time.Second, 10*time.Millisecond)
+	cancel()
+	<-done
 }
 
 func testConfig(serviceAddr string, randomPayload bool) Config {
@@ -118,6 +145,39 @@ func newSyncClient(t *testing.T, serviceAddr string) oxia.SyncClient {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = client.Close() })
 	return client
+}
+
+func newPerf(t *testing.T, config Config) Perf {
+	t.Helper()
+	p, err := New(config)
+	require.NoError(t, err)
+	return p
+}
+
+func captureLogs(t *testing.T) *lockedBuffer {
+	t.Helper()
+	buffer := &lockedBuffer{}
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(buffer, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	return buffer
+}
+
+type lockedBuffer struct {
+	mu     sync.Mutex
+	buffer bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buffer.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buffer.String()
 }
 
 func runInBackground(ctx context.Context, p Perf) <-chan struct{} {

@@ -108,9 +108,10 @@ func (r *recordingReplicationServer) Truncate(ctx context.Context, req *proto.Tr
 
 // deliverToFollower feeds Maelstrom messages to the follower side of the
 // replicate streams, as the dispatcher does with each line it reads.
-func deliverToFollower(provider *maelstromGrpcProvider, lines []string) {
+func deliverToFollower(t *testing.T, provider *maelstromGrpcProvider, lines []string) {
+	t.Helper()
 	for _, line := range lines {
-		msgType, msg, protoMsg := parseRequest(line)
+		msgType, msg, protoMsg := parseLine(t, line)
 		provider.HandleOxiaStreamRequest(msgType, msg.(*Message[OxiaStreamMessage]), protoMsg)
 	}
 }
@@ -137,7 +138,7 @@ func TestReplicateStreamDeliversEntriesInSendOrder(t *testing.T) {
 	follower := newRecordingReplicationServer()
 	provider := newMaelstromGrpcProvider()
 	provider.RegisterService(&proto.OxiaLogReplication_ServiceDesc, follower)
-	deliverToFollower(provider, messages)
+	deliverToFollower(t, provider, messages)
 
 	// Like on a gRPC stream, the follower gets the entries in the order the
 	// leader sent them
@@ -173,7 +174,7 @@ func TestReplicateStreamResetsWhenAppendsAreLost(t *testing.T) {
 	follower := newRecordingReplicationServer()
 	provider := newMaelstromGrpcProvider()
 	provider.RegisterService(&proto.OxiaLogReplication_ServiceDesc, follower)
-	deliverToFollower(provider, messages)
+	deliverToFollower(t, provider, messages)
 
 	// The stream stops at the gap and gets reset, like a broken connection
 	select {
@@ -189,7 +190,7 @@ func TestReplicateStreamResetsWhenAppendsAreLost(t *testing.T) {
 	require.Equal(t, []int64{0, 1}, received)
 
 	// The leader is told, so that its cursor reconnects
-	msgType, msg, _ := parseRequest(receiveLines(t, lines, 1)[0])
+	msgType, msg, _ := parseLine(t, receiveLines(t, lines, 1)[0])
 	require.Equal(t, MsgTypeStreamError, msgType)
 	require.Equal(t, client.(*maelstromReplicateClient).streamId, msg.(*Message[OxiaStreamMessage]).Body.StreamId)
 }

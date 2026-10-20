@@ -59,7 +59,7 @@ func newTestSession(sm *sessionManager, id SessionId, timeout time.Duration) *se
 
 func TestSession_HeartbeatExtendsDeadline(t *testing.T) {
 	sm := newBareSessionManager()
-	defer func() { assert.NoError(t, sm.Close()) }()
+	defer sm.Close()
 
 	timeout := 10 * time.Second
 	s := newTestSession(sm, 1, timeout)
@@ -75,7 +75,7 @@ func TestSession_HeartbeatExtendsDeadline(t *testing.T) {
 
 func TestSession_KeepAliveAfterRemove(t *testing.T) {
 	sm := newBareSessionManager()
-	defer func() { assert.NoError(t, sm.Close()) }()
+	defer sm.Close()
 
 	s := newTestSession(sm, 1, 10*time.Second)
 
@@ -96,7 +96,7 @@ func TestSession_KeepAliveAfterRemove(t *testing.T) {
 // is already armed to fire soon enough.
 func TestSession_StartNudgesSchedulerOnEarlierDeadline(t *testing.T) {
 	sm := newBareSessionManager()
-	defer func() { assert.NoError(t, sm.Close()) }()
+	defer sm.Close()
 
 	drainWake := func() bool {
 		select {
@@ -119,7 +119,7 @@ func TestSession_StartNudgesSchedulerOnEarlierDeadline(t *testing.T) {
 
 func TestSessionManager_CollectDueSessions(t *testing.T) {
 	sm := newBareSessionManager()
-	defer func() { assert.NoError(t, sm.Close()) }()
+	defer sm.Close()
 
 	due := newTestSession(sm, 1, 10*time.Second)
 	refreshed := newTestSession(sm, 2, 10*time.Second)
@@ -157,7 +157,7 @@ func TestSessionManager_CollectDueSessions(t *testing.T) {
 // re-queued.
 func TestSessionManager_RequeueRefreshed(t *testing.T) {
 	sm := newBareSessionManager()
-	defer func() { assert.NoError(t, sm.Close()) }()
+	defer sm.Close()
 
 	expired := newTestSession(sm, 1, 10*time.Second)
 	rescued := newTestSession(sm, 2, 10*time.Second)
@@ -194,7 +194,7 @@ func TestSessionManager_RequeueRefreshed(t *testing.T) {
 // bare manager has no leader controller to delete them with.
 func TestSessionManagerExpireSessionsSkipsRefreshedBatch(t *testing.T) {
 	sm := newBareSessionManager()
-	defer func() { assert.NoError(t, sm.Close()) }()
+	defer sm.Close()
 
 	s := newTestSession(sm, 1, 10*time.Second)
 	now := sm.now()
@@ -214,7 +214,7 @@ func TestSessionManagerExpireSessionsSkipsRefreshedBatch(t *testing.T) {
 
 func TestSessionHeap_Ordering(t *testing.T) {
 	sm := newBareSessionManager()
-	defer func() { assert.NoError(t, sm.Close()) }()
+	defer sm.Close()
 
 	newTestSession(sm, 1, 30*time.Second)
 	newTestSession(sm, 2, 10*time.Second)
@@ -240,7 +240,7 @@ func TestSessionHeap_Ordering(t *testing.T) {
 // this mainly gives the race detector something to chew on.
 func TestSession_ConcurrentKeepAliveAndRemove(t *testing.T) {
 	sm := newBareSessionManager()
-	defer func() { assert.NoError(t, sm.Close()) }()
+	defer sm.Close()
 
 	const sessions = 32
 	for i := 0; i < sessions; i++ {

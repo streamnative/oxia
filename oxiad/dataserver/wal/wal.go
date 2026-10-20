@@ -23,7 +23,7 @@ import (
 
 	"github.com/oxia-db/oxia/common/proto"
 	time2 "github.com/oxia-db/oxia/common/time"
-	"github.com/oxia-db/oxia/oxiad/dataserver/wal/codec"
+	"github.com/oxia-db/oxia/oxiad/common/vfs"
 )
 
 var (
@@ -52,7 +52,7 @@ type FactoryOptions struct {
 
 	// The files of the wal, the ones of the operating system when not set:
 	// the tests make its operations fail
-	fs codec.FS
+	fs vfs.FS
 }
 
 var DefaultFactoryOptions = &FactoryOptions{

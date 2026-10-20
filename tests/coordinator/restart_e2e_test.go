@@ -187,16 +187,29 @@ func TestCoordinator_RestartKeepsTermPinningAllFeatures(t *testing.T) {
 		return ns.GetNamespaceStatus().GetShards()[0]
 	}
 
-	// The leader enables every feature
+	// The leader enables every feature. The restarted coordinator starts a
+	// new election unless every follower already follows the term.
 	coordinatorServer, adminClient := startCoordinator()
 	var shard *proto.ShardMetadata
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		shard = getShard(adminClient)
 		assert.Equal(c, proto.ShardStatusSteadyState, shard.GetStatusOrDefault())
-		if assert.NotNil(c, shard.GetLeader()) {
-			lead, err := servers[shard.GetLeader().GetNameOrDefault()].GetShardDirector().GetLeader(0)
+		if !assert.NotNil(c, shard.GetLeader()) {
+			return
+		}
+		leader := shard.GetLeader().GetNameOrDefault()
+		lead, err := servers[leader].GetShardDirector().GetLeader(0)
+		if assert.NoError(c, err) {
+			assert.True(c, lead.IsFeatureEnabled(proto.Feature_FEATURE_ORDERED_WRITES))
+		}
+		for _, dataServer := range shard.GetEnsemble() {
+			if dataServer.GetNameOrDefault() == leader {
+				continue
+			}
+			follower, err := servers[dataServer.GetNameOrDefault()].GetShardDirector().GetFollower(0)
 			if assert.NoError(c, err) {
-				assert.True(c, lead.IsFeatureEnabled(proto.Feature_FEATURE_ORDERED_WRITES))
+				assert.Equal(c, proto.ServingStatus_FOLLOWER, follower.Status())
+				assert.Equal(c, shard.GetTerm(), follower.Term())
 			}
 		}
 	}, 30*time.Second, 50*time.Millisecond)
