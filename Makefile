@@ -82,6 +82,7 @@ test-kv:
 lint:
 	#brew install golangci-lint
 	go work edit -json | jq -r '.Use[].DiskPath'  | xargs -I{} golangci-lint run {}/...
+	go work edit -json | jq -r '.Use[].DiskPath'  | xargs -I{} go vet -tags disable_trap -stdmethods=false ./{}/...
 
 clean:
 	rm -f bin/oxia bin/oxia-maelstrom

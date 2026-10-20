@@ -2611,6 +2611,7 @@ var errFailpoint = errors.New("failpoint")
 // errFailpoint, along with its factory.
 func newKVWithFailpoint(t *testing.T, name string) (*PebbleFactory, KV) {
 	t.Helper()
+	skipWithoutFailpoints(t)
 	options := NewFactoryOptionsForTest(t)
 	options.Failpoints = failpoint.New(map[string]func() error{
 		name: func() error { return errFailpoint },
@@ -2621,4 +2622,11 @@ func newKVWithFailpoint(t *testing.T, name string) (*PebbleFactory, KV) {
 	kv, err := factory.NewKV(constant.DefaultNamespace, 1, proto.KeySortingType_NATURAL)
 	require.NoError(t, err)
 	return factory.(*PebbleFactory), kv
+}
+
+func skipWithoutFailpoints(t *testing.T) {
+	t.Helper()
+	if !failpoint.Enabled {
+		t.Skip("needs failpoints: disabled by the disable_trap tag")
+	}
 }

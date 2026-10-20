@@ -18,6 +18,10 @@
 // tests. The builds with the disable_trap tag compile it to a no-op.
 package failpoint
 
+// Enabled reports whether the failpoints run their hooks: false in the builds
+// with the disable_trap tag, whose tests that need a failpoint skip.
+const Enabled = true
+
 // Failpoints holds the hooks of the failpoints, by name. A nil *Failpoints has
 // none.
 type Failpoints struct {

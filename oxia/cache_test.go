@@ -322,6 +322,9 @@ func TestNewCacheSharesTheNotifications(t *testing.T) {
 }
 
 func TestNewCacheFailsWhenTheValueCacheFails(t *testing.T) {
+	if !failpoint.Enabled {
+		t.Skip("needs failpoints: disabled by the disable_trap tag")
+	}
 	injected := errors.New("injected")
 	notifications := &testNotifications{ch: make(chan *Notification)}
 	cm, err := newCacheManager(newSyncClient(&neverCompleteAsyncClient{notifications: notifications}),

@@ -69,6 +69,7 @@ func TestWatchFileReturnsErrorForMissingDirectory(t *testing.T) {
 }
 
 func TestWatchFileReturnsWatcherCreationError(t *testing.T) {
+	skipWithoutFailpoints(t)
 	injected := errors.New("injected")
 	failpoints := failpoint.New(map[string]func() error{
 		"watchFile.newWatcher": func() error { return injected },
@@ -81,6 +82,7 @@ func TestWatchFileReturnsWatcherCreationError(t *testing.T) {
 }
 
 func TestWatchFileClosesWhenTheWatchFails(t *testing.T) {
+	skipWithoutFailpoints(t)
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	failpoints := failpoint.New(map[string]func() error{
 		"watchFile.event": func() error { return errors.New("injected") },
@@ -145,6 +147,7 @@ func TestWatchFileClosesWhenTheWatcherFails(t *testing.T) {
 }
 
 func TestWatchFileClosesWhenTheWatcherFailsToClose(t *testing.T) {
+	skipWithoutFailpoints(t)
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	ctx, cancel := context.WithCancel(t.Context())
 	closed := make(chan struct{})
@@ -174,5 +177,12 @@ func assertClosed(t *testing.T, changes <-chan struct{}) {
 		assert.False(t, ok)
 	case <-time.After(10 * time.Second):
 		require.FailNow(t, "the changes channel was not closed")
+	}
+}
+
+func skipWithoutFailpoints(t *testing.T) {
+	t.Helper()
+	if !failpoint.Enabled {
+		t.Skip("needs failpoints: disabled by the disable_trap tag")
 	}
 }

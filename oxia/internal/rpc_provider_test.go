@@ -354,6 +354,9 @@ func TestRpcProvider_WritesGoToTheNewLeader(t *testing.T) {
 }
 
 func TestRpcProviderWritesGoToTheNewLeaderWhenTheOldStreamFailsToClose(t *testing.T) {
+	if !failpoint.Enabled {
+		t.Skip("needs failpoints: disabled by the disable_trap tag")
+	}
 	shardId := int64(0)
 	shardManager := &testShardManager{}
 	oldLeader := &writeServer{}

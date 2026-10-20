@@ -32,7 +32,7 @@ var observerCommitAdvertisementDelay atomic.Int64
 
 // SetObserverCommitAdvertisementDelay sets the delay of the commit offset
 // advertisements of the observer cursors, for tests. Builds with the
-// disable_trap tag leave it out.
+// disable_trap tag ignore it.
 func SetObserverCommitAdvertisementDelay(delay time.Duration) {
 	observerCommitAdvertisementDelay.Store(int64(delay))
 }

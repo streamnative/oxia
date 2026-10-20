@@ -180,6 +180,9 @@ func TestNewGrpcServerFailsToSeedClusterConfiguration(t *testing.T) {
 // A runtime that fails to start fails the start, after the coordinator became
 // the leader.
 func TestNewGrpcServerFailsToStartRuntime(t *testing.T) {
+	if !failpoint.Enabled {
+		t.Skip("needs failpoints: disabled by the disable_trap tag")
+	}
 	failpointErr := errors.New("failpoint")
 	options := newTestOptions()
 	failpoints := failpoint.New(map[string]func() error{

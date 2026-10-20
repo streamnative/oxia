@@ -16,7 +16,13 @@
 
 package failpoint
 
+const Enabled = false
+
 type Failpoints struct{}
+
+func New(map[string]func() error) *Failpoints {
+	return &Failpoints{}
+}
 
 func (*Failpoints) Trigger(string) error {
 	return nil

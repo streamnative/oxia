@@ -171,6 +171,9 @@ func TestCloseEndsWaitToBecomeLeader(t *testing.T) {
 // A provider closed after its wait took the lock, but before the wait returned,
 // releases the lock in the wait.
 func TestCloseEndsWaitToBecomeLeaderAfterLockAcquired(t *testing.T) {
+	if !failpoint.Enabled {
+		t.Skip("needs failpoints: disabled by the disable_trap tag")
+	}
 	path := filepath.Join(t.TempDir(), "metadata")
 	var p statusProvider
 	p, err := newProvider(t.Context(), path, metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled, "test",
