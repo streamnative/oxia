@@ -15,7 +15,8 @@
 name: Milestone
 
 # Records the release that a change ships in, on the next release milestone,
-# i.e. the open milestone with the nearest due date:
+# i.e. the open minor-release milestone (e.g. 0.18.0 or 0.19) with the nearest
+# due date. Patch milestones (e.g. 0.17.2) are for backports, set by hand.
 # - a PR merged into main without a milestone
 # - an issue closed as completed without a milestone
 # - the open PRs and issues of a milestone that gets closed, at its release
@@ -54,9 +55,9 @@ jobs:
               sort: 'due_on',
               direction: 'asc',
             })
-            const next = milestones.find((m) => m.due_on)
+            const next = milestones.find((m) => m.due_on && /^v?\d+\.\d+(\.0)?$/.test(m.title))
             if (!next) {
-              core.notice('No open milestone with a due date')
+              core.notice('No open minor-release milestone with a due date')
               return
             }
             let numbers = [context.issue.number]
