@@ -235,7 +235,15 @@ func (m *maelstromShardAssignmentClient) sendUntilAcked(msgId int64) {
 		return
 	}
 
-	sendResponse(m.unacked)
+	if err := sendResponse(m.unacked); err != nil {
+		slog.Warn(
+			"Failed to send the shard assignments, closing the stream",
+			slog.String("node", m.node),
+			slog.Any("error", err),
+		)
+		m.cancel()
+		return
+	}
 	time.AfterFunc(assignmentsResendInterval, func() { m.sendUntilAcked(msgId) })
 }
 

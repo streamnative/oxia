@@ -128,7 +128,7 @@ func receiveInit(scanner *bufio.Scanner) error {
 		slog.Any("all-nodes", allNodes),
 	)
 
-	sendResponse(Message[EmptyResponse]{
+	return sendResponse(Message[EmptyResponse]{
 		Src:  thisNode,
 		Dest: init.Src,
 		Body: EmptyResponse{BaseMessageBody{
@@ -137,8 +137,6 @@ func receiveInit(scanner *bufio.Scanner) error {
 			InReplyTo: &init.Body.MsgId,
 		}},
 	})
-
-	return nil
 }
 
 func main() {

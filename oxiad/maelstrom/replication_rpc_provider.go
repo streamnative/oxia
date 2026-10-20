@@ -16,10 +16,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"log/slog"
-	"os"
 	"sync"
 
 	"google.golang.org/grpc/codes"
@@ -157,7 +154,7 @@ func (m *maelstromReplicateClient) Send(request *proto.Append) error {
 	if err != nil {
 		return err
 	}
-	b, err := json.Marshal(&Message[OxiaStreamMessage]{
+	if err := sendResponse(&Message[OxiaStreamMessage]{
 		Src:  thisNode,
 		Dest: m.follower,
 		Body: OxiaStreamMessage{
@@ -169,13 +166,10 @@ func (m *maelstromReplicateClient) Send(request *proto.Append) error {
 			StreamId: m.streamId,
 			Seq:      m.nextSeq,
 		},
-	})
-	if err != nil {
-		panic("failed to serialize json")
+	}); err != nil {
+		return err
 	}
 	m.nextSeq++
-
-	fmt.Fprintln(os.Stdout, string(b))
 	return nil
 }
 

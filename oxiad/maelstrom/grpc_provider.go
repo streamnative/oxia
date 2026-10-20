@@ -17,7 +17,6 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -135,7 +134,7 @@ func (m *maelstromGrpcProvider) HandleOxiaRequest(msgType MsgType, msg *Message[
 	case MsgTypeHealthCheck:
 		m.sendResponse(msg, MsgTypeHealthCheckOk, wrapperspb.Int64(m.processId))
 	default:
-		panic(fmt.Sprintf("unknown msgType: %v", msgType))
+		sendError(msg.Body.MsgId, msg.Src, errors.Errorf("unknown request type %s", msgType))
 	}
 }
 
@@ -244,16 +243,16 @@ func (m *maelstromGrpcProvider) serveClientRequest(msgType MsgType, msg any) {
 			sendError(w.Body.MsgId, w.Src, errors.Errorf("Failed to perform write op: %#v", res.Puts[0].Status))
 		} else {
 			// Ok
-			b, _ := json.Marshal(&Message[BaseMessageBody]{
+			if err := sendResponse(&Message[BaseMessageBody]{
 				Src:  thisNode,
 				Dest: w.Src,
 				Body: BaseMessageBody{
 					Type:      MsgTypeWriteOk,
 					InReplyTo: &w.Body.MsgId,
 				},
-			})
-
-			fmt.Fprintln(os.Stdout, string(b))
+			}); err != nil {
+				sendError(w.Body.MsgId, w.Src, err)
+			}
 		}
 
 	case MsgTypeRead:
@@ -279,8 +278,11 @@ func (m *maelstromGrpcProvider) serveClientRequest(msgType MsgType, msg any) {
 		default:
 			// Ok
 			var value int64
-			_, _ = fmt.Sscanf(string(res.Gets[0].Value), "%d", &value)
-			b, _ := json.Marshal(&Message[ReadResponse]{
+			if _, err := fmt.Sscanf(string(res.Gets[0].Value), "%d", &value); err != nil {
+				sendError(r.Body.MsgId, r.Src, errors.Wrap(err, "invalid stored value"))
+				return
+			}
+			if err := sendResponse(&Message[ReadResponse]{
 				Src:  thisNode,
 				Dest: r.Src,
 				Body: ReadResponse{
@@ -290,9 +292,9 @@ func (m *maelstromGrpcProvider) serveClientRequest(msgType MsgType, msg any) {
 					},
 					Value: value,
 				},
-			})
-
-			fmt.Fprintln(os.Stdout, string(b))
+			}); err != nil {
+				sendError(r.Body.MsgId, r.Src, err)
+			}
 		}
 
 	case MsgTypeCas:
@@ -320,7 +322,10 @@ func (m *maelstromGrpcProvider) serveClientRequest(msgType MsgType, msg any) {
 
 		// Check the existing value
 		var existingValue int64
-		_, _ = fmt.Sscanf(string(res.Gets[0].Value), "%d", &existingValue)
+		if _, err := fmt.Sscanf(string(res.Gets[0].Value), "%d", &existingValue); err != nil {
+			sendError(c.Body.MsgId, c.Src, errors.Wrap(err, "invalid stored value"))
+			return
+		}
 		if existingValue != c.Body.From {
 			sendErrorWithCode(c.Body.MsgId, c.Src, 22, "precondition-failed")
 			return
@@ -340,16 +345,16 @@ func (m *maelstromGrpcProvider) serveClientRequest(msgType MsgType, msg any) {
 			sendError(c.Body.MsgId, c.Src, errors.Errorf("Failed to perform write op: %#v", writeRes.Puts[0].Status))
 		} else {
 			// Ok
-			b, _ := json.Marshal(&Message[BaseMessageBody]{
+			if err := sendResponse(&Message[BaseMessageBody]{
 				Src:  thisNode,
 				Dest: c.Src,
 				Body: BaseMessageBody{
 					Type:      MsgTypeCasOk,
 					InReplyTo: &c.Body.MsgId,
 				},
-			})
-
-			fmt.Fprintln(os.Stdout, string(b))
+			}); err != nil {
+				sendError(c.Body.MsgId, c.Src, err)
+			}
 		}
 
 	default:
@@ -363,7 +368,7 @@ func (m *maelstromGrpcProvider) sendResponse(req *Message[OxiaMessage], msgType 
 		sendError(req.Body.MsgId, req.Src, err)
 		return
 	}
-	b, err := json.Marshal(&Message[OxiaMessage]{
+	if err := sendResponse(&Message[OxiaMessage]{
 		Src:  thisNode,
 		Dest: req.Src,
 		Body: OxiaMessage{
@@ -374,12 +379,9 @@ func (m *maelstromGrpcProvider) sendResponse(req *Message[OxiaMessage], msgType 
 			},
 			OxiaMsg: oxiaMsg,
 		},
-	})
-	if err != nil {
-		panic("failed to serialize json")
+	}); err != nil {
+		sendError(req.Body.MsgId, req.Src, err)
 	}
-
-	fmt.Fprintln(os.Stdout, string(b))
 }
 
 func (m *maelstromGrpcProvider) getService(name string) any {
@@ -471,7 +473,7 @@ func (m *maelstromReplicateServerStream) Send(response *proto.Ack) error {
 	if err != nil {
 		return err
 	}
-	b, _ := json.Marshal(&Message[OxiaStreamMessage]{
+	return sendResponse(&Message[OxiaStreamMessage]{
 		Src:  thisNode,
 		Dest: m.client,
 		Body: OxiaStreamMessage{
@@ -483,9 +485,6 @@ func (m *maelstromReplicateServerStream) Send(response *proto.Ack) error {
 			StreamId: m.streamId,
 		},
 	})
-
-	fmt.Fprintln(os.Stdout, string(b))
-	return nil
 }
 
 func (m *maelstromReplicateServerStream) Recv() (*proto.Append, error) {

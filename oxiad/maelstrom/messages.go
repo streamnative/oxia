@@ -179,13 +179,14 @@ type ErrorResponse struct {
 	Text string `json:"text"`
 }
 
-func sendResponse(response any) {
+func sendResponse(response any) error {
 	b, err := json.Marshal(response)
 	if err != nil {
-		panic("failed to serialize json")
+		return errors.Wrap(err, "failed to serialize json")
 	}
 
 	fmt.Fprintln(os.Stdout, string(b))
+	return nil
 }
 
 func sendError(msgId int64, dest string, err error) {
@@ -217,8 +218,8 @@ func sendStreamError(dest string, streamId int64) {
 
 // sendShardAssignmentsAck tells the coordinator that the shard assignments
 // message msgId reached this node, see maelstromShardAssignmentClient.Send.
-func sendShardAssignmentsAck(dest string, streamId int64, msgId int64) {
-	sendResponse(&Message[OxiaStreamMessage]{
+func sendShardAssignmentsAck(dest string, streamId int64, msgId int64) error {
+	return sendResponse(&Message[OxiaStreamMessage]{
 		Src:  thisNode,
 		Dest: dest,
 		Body: OxiaStreamMessage{

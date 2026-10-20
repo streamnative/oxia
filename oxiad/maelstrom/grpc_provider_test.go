@@ -144,11 +144,17 @@ func TestMaelstromGrpcProviderHandleOxiaRequestRepliesWithError(t *testing.T) {
 	}
 }
 
-func TestMaelstromGrpcProviderHandleOxiaRequestPanicsOnUnknownType(t *testing.T) {
-	provider := newMaelstromGrpcProvider()
-	require.Panics(t, func() {
-		provider.HandleOxiaRequest(MsgTypeInit, oxiaRequest("n1", MsgTypeInit, 1), nil)
-	})
+func TestMaelstromGrpcProviderHandleOxiaRequestRepliesErrorOnUnknownType(t *testing.T) {
+	lines := captureStdout(t)
+
+	newMaelstromGrpcProvider().HandleOxiaRequest(MsgTypeInit, oxiaRequest("n1", MsgTypeInit, 1), nil)
+
+	msgType, msg, _ := parseLine(t, receiveLines(t, lines, 1)[0])
+	require.Equal(t, MsgTypeError, msgType)
+	res := msg.(*Message[ErrorResponse])
+	require.Equal(t, "n1", res.Dest)
+	require.Equal(t, int64(1), *res.Body.InReplyTo)
+	require.Equal(t, "unknown request type init", res.Body.Text)
 }
 
 func TestMaelstromGrpcProviderHandleOxiaStreamRequestIgnoresUnsupportedType(t *testing.T) {
@@ -203,6 +209,7 @@ func TestMaelstromGrpcProviderHandleClientRequestServesLinKvOperations(t *testin
 		}
 	}
 	kv := func() *fakeClientServer { return newKVClientServer(map[string]string{"1": "5"}) }
+	invalidValue := func() *fakeClientServer { return newKVClientServer(map[string]string{"1": "x"}) }
 	// The read of a compare-and-set succeeds, and its write fails
 	failingCasWrite := func(write func(*proto.WriteRequest) (*proto.WriteResponse, error)) func() *fakeClientServer {
 		return func() *fakeClientServer {
@@ -228,11 +235,13 @@ func TestMaelstromGrpcProviderHandleClientRequestServesLinKvOperations(t *testin
 		{"read missing key", kv, MsgTypeRead, readMessage(2), MsgTypeError, 20, 0},
 		{"read error", failing, MsgTypeRead, readMessage(1), MsgTypeError, 1000, 0},
 		{"read failed status", failingStatus, MsgTypeRead, readMessage(1), MsgTypeError, 1000, 0},
+		{"read invalid value", invalidValue, MsgTypeRead, readMessage(1), MsgTypeError, 1000, 0},
 		{"cas", kv, MsgTypeCas, casMessage(1, 5, 8), MsgTypeCasOk, 0, 0},
 		{"cas precondition failed", kv, MsgTypeCas, casMessage(1, 4, 8), MsgTypeError, 22, 0},
 		{"cas missing key", kv, MsgTypeCas, casMessage(2, 5, 8), MsgTypeError, 20, 0},
 		{"cas read error", failing, MsgTypeCas, casMessage(1, 5, 8), MsgTypeError, 1000, 0},
 		{"cas read failed status", failingStatus, MsgTypeCas, casMessage(1, 5, 8), MsgTypeError, 1000, 0},
+		{"cas invalid value", invalidValue, MsgTypeCas, casMessage(1, 5, 8), MsgTypeError, 1000, 0},
 		{"cas write error", failingCasWrite(failing().write), MsgTypeCas, casMessage(1, 5, 8), MsgTypeError, 1000, 0},
 		{"cas write failed status", failingCasWrite(failingStatus().write), MsgTypeCas, casMessage(1, 5, 8),
 			MsgTypeError, 1000, 0},
@@ -243,10 +252,10 @@ func TestMaelstromGrpcProviderHandleClientRequestServesLinKvOperations(t *testin
 			provider.RegisterService(&proto.OxiaClient_ServiceDesc, tt.server())
 			require.NoError(t, provider.HandleClientRequest(tt.msgType, tt.msg))
 
-			msgId, _, origin := getOrigin(tt.msgType, tt.msg)
+			msgId, _, origin := requireOrigin(t, tt.msgType, tt.msg)
 			msgType, msg, _ := parseLine(t, receiveLines(t, lines, 1)[0])
 			require.Equal(t, tt.wantType, msgType)
-			_, inReplyTo, _ := getOrigin(msgType, msg)
+			_, inReplyTo, _ := requireOrigin(t, msgType, msg)
 			require.Equal(t, msgId, inReplyTo)
 			require.Equal(t, origin, destination(msg))
 			switch res := msg.(type) {

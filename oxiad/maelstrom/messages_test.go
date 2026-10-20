@@ -22,10 +22,8 @@ import (
 	pb "google.golang.org/protobuf/proto"
 )
 
-func TestSendResponsePanicsOnUnserializableMessage(t *testing.T) {
-	require.PanicsWithValue(t, "failed to serialize json", func() {
-		sendResponse(make(chan int))
-	})
+func TestSendResponseFailsOnUnserializableMessage(t *testing.T) {
+	require.ErrorContains(t, sendResponse(make(chan int)), "failed to serialize json")
 }
 
 func TestSendErrorRepliesWithGenericCode(t *testing.T) {
