@@ -24,6 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/oxia-db/oxia/cmd/wal/common"
+	"github.com/oxia-db/oxia/common/proto"
 	"github.com/oxia-db/oxia/oxiad/dataserver/wal"
 )
 
@@ -77,6 +78,40 @@ func TestRunPanicsOnInvalidNamespace(t *testing.T) {
 	})
 }
 
+func TestRunWriterPanicsOnAppendError(t *testing.T) {
+	setEntryCount(t, 1)
+	w := &fakeWal{appendErr: errors.New("append failed")}
+
+	assert.PanicsWithError(t, "append failed", func() {
+		runWriter(w, []byte("a"), make([]int64, 1), make([]int64, 1))
+	})
+}
+
+func TestRunReaderPanicsOnNewReaderError(t *testing.T) {
+	setEntryCount(t, 1)
+	w := &fakeWal{readerErr: errors.New("reader failed")}
+
+	assert.PanicsWithError(t, "reader failed", func() {
+		runReader(w, 0, make([]int64, 2), make([]int64, 1))
+	})
+}
+
+func TestRunReaderPanicsOnReadError(t *testing.T) {
+	setEntryCount(t, 1)
+	w := &fakeWal{reader: &fakeReader{err: errors.New("read failed")}}
+
+	assert.PanicsWithError(t, "read failed", func() {
+		runReader(w, 0, make([]int64, 2), make([]int64, 1))
+	})
+}
+
+func setEntryCount(t *testing.T, entryCount int64) {
+	t.Helper()
+	previous := options.entryCount
+	options.entryCount = entryCount
+	t.Cleanup(func() { options.entryCount = previous })
+}
+
 func setWalOption(t *testing.T, dir string, namespace string) {
 	t.Helper()
 	previous := common.WalOption
@@ -107,4 +142,32 @@ func (w *failingWriter) Write(p []byte) (int, error) {
 	}
 	w.writes--
 	return len(p), nil
+}
+
+type fakeWal struct {
+	wal.Wal
+	appendErr error
+	reader    wal.Reader
+	readerErr error
+}
+
+func (w *fakeWal) AppendAndSync(_ *proto.LogEntry, callback func(entryCrc uint32, err error)) {
+	callback(0, w.appendErr)
+}
+
+func (w *fakeWal) NewReader(int64) (wal.Reader, error) {
+	return w.reader, w.readerErr
+}
+
+type fakeReader struct {
+	wal.Reader
+	err error
+}
+
+func (*fakeReader) HasNext() bool {
+	return true
+}
+
+func (r *fakeReader) ReadNext() (entry *proto.LogEntry, previousCrc uint32, entryCrc uint32, err error) {
+	return nil, 0, 0, r.err
 }

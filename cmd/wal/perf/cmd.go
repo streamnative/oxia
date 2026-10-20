@@ -22,7 +22,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
+	"github.com/bmizerany/perks/quantile"
 	"github.com/spf13/cobra"
 
 	"github.com/oxia-db/oxia/oxiad/dataserver/wal"
@@ -173,55 +173,29 @@ func printResults(out io.Writer, threadTimesArray, writeEntryTimesArray, readEnt
 	return printLatench(out, "Reader", readEntryTimesArray)
 }
 
+const (
+	p50  = 0.5
+	p90  = 0.9
+	p99  = 0.99
+	p999 = 0.999
+)
+
 func printLatench(out io.Writer, name string, datas []int64) error {
-	summary := prometheus.NewSummary(prometheus.SummaryOpts{
-		Name: name,
-		Help: "",
-		Objectives: map[float64]float64{
-			0.5:   0.05,
-			0.9:   0.01,
-			0.99:  0.001,
-			0.999: 0.0001,
-		},
-	})
-	gather := prometheus.NewRegistry()
-	gather.MustRegister(summary)
+	latencies := quantile.NewTargeted(p50, p90, p99, p999)
 	for _, t := range datas {
-		summary.Observe(float64(t))
+		latencies.Insert(float64(t))
 	}
-	metrics, err := gather.Gather()
-	if err != nil {
-		return err
-	}
-	p50, p90, p99, p999 := float64(0), float64(0), float64(0), float64(0)
-	for _, metric := range metrics {
-		for _, s := range metric.Metric[0].Summary.Quantile {
-			v := int64(*s.Quantile * 1000)
-			switch v {
-			case 500:
-				p50 = *s.Value
-			case 900:
-				p90 = *s.Value
-			case 990:
-				p99 = *s.Value
-			case 999:
-				p999 = *s.Value
-			default:
-				panic("unknown summary quantile")
-			}
-		}
-	}
-	_, err = fmt.Fprintf(out, `
+	_, err := fmt.Fprintf(out, `
 Histogram of %s latency:
 P50:  %s
 P90:  %s 
 P99:  %s 
 P999: %s
 `, name,
-		time.Duration(p50)*time.Microsecond,
-		time.Duration(p90)*time.Microsecond,
-		time.Duration(p99)*time.Microsecond,
-		time.Duration(p999)*time.Microsecond,
+		time.Duration(latencies.Query(p50))*time.Microsecond,
+		time.Duration(latencies.Query(p90))*time.Microsecond,
+		time.Duration(latencies.Query(p99))*time.Microsecond,
+		time.Duration(latencies.Query(p999))*time.Microsecond,
 	)
 	return err
 }
