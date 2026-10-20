@@ -641,6 +641,7 @@ func (t *wal) runSync() {
 		t.RLock()
 		segment := t.currentSegment
 		lastAppendedOffset := t.lastAppendedOffset.Load()
+		generation := t.generation.Load()
 		pending := slices.Clone(t.pendingCloseSegments)
 		t.RUnlock()
 
@@ -663,13 +664,23 @@ func (t *wal) runSync() {
 				t.writeErrors.Inc()
 			} else {
 				timer.Done()
-				t.lastSyncedOffset.Store(lastAppendedOffset)
+				t.storeSyncedOffset(lastAppendedOffset, generation)
 			}
 		}
 
 		for _, callback := range callbacks {
 			callback(err)
 		}
+	}
+}
+
+// storeSyncedOffset stores the offset synced by a round, unless Clear or
+// TruncateLog dropped entries since the round read it.
+func (t *wal) storeSyncedOffset(offset int64, generation int64) {
+	t.RLock()
+	defer t.RUnlock()
+	if t.generation.Load() == generation {
+		t.lastSyncedOffset.Store(offset)
 	}
 }
 
