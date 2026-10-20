@@ -26,10 +26,11 @@ go test -v -run TestName ./path/to/package/...
 
 ## Project Structure
 
-The codebase uses Go workspaces with 5 modules:
+The codebase uses Go workspaces with 6 modules:
 
 - **cmd/** - CLI entry points (Cobra-based). Commands: `server`, `coordinator`, `client`, `admin`, `standalone`, `health`, `wal`, `perf`
 - **common/** - Shared code: gRPC proto definitions (`common/proto/`), RPC utilities, metrics, security
+- **dev/** - Development tools: `coverignore` removes the blocks marked with `// coverage-ignore` from the coverage profile
 - **oxia/** - Client library exposing `SyncClient` and `AsyncClient` interfaces
 - **oxiad/** - Server implementations:
   - `coordinator/` - Cluster management, shard orchestration, leader election

@@ -340,6 +340,7 @@ func (s *GrpcServer) watchLeadership(leadershipLost <-chan struct{}, handler fun
 // before it can run elections or move ensembles alongside the new leader, and
 // a restart rejoins the election from a clean state. Overridable in tests.
 var onLeadershipLost = func() {
+	// coverage-ignore: terminates the process
 	os.Exit(1)
 }
 
