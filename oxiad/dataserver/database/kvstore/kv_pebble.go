@@ -35,8 +35,8 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/oxiad/common/crc"
-	"github.com/oxia-db/oxia/oxiad/common/failpoint"
 
 	"github.com/oxia-db/oxia/common/proto"
 
