@@ -88,3 +88,30 @@ func TestStorageOptionsRejectsSameWalAndDataDir(t *testing.T) {
 		})
 	}
 }
+
+func TestStorageOptionsValidateUnresolvableDir(t *testing.T) {
+	dir := t.TempDir()
+	cwd := filepath.Join(dir, "unsearchable")
+	require.NoError(t, os.Mkdir(cwd, 0755))
+	t.Chdir(cwd)
+	require.NoError(t, os.Chmod(cwd, 0))
+	t.Cleanup(func() { require.NoError(t, os.Chmod(cwd, 0755)) })
+
+	for _, tt := range []struct {
+		name    string
+		walDir  string
+		dataDir string
+	}{
+		{name: "relative wal dir", walDir: "wal", dataDir: dir},
+		{name: "relative data dir", walDir: dir, dataDir: "db"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			options := StorageOptions{}
+			options.WithDefault()
+			options.WAL.Dir = tt.walDir
+			options.Database.Dir = tt.dataDir
+
+			assert.ErrorIs(t, options.Validate(), os.ErrPermission)
+		})
+	}
+}
