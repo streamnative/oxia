@@ -22,13 +22,18 @@ import (
 type goPromptTerminal struct{}
 
 func (goPromptTerminal) Run(prefix string, execute func(line string) (exit bool)) {
+	// coverage-ignore: go-prompt opens /dev/tty before it applies the options
 	exit := false
 	prompt.New(
-		func(line string) { exit = execute(line) },
+		func(line string) {
+			// coverage-ignore: go-prompt calls it on the input of a terminal
+			exit = execute(line)
+		},
 		complete,
 		prompt.OptionPrefix(prefix),
 		prompt.OptionMaxSuggestion(promptMaxSuggestions),
 		prompt.OptionSetExitCheckerOnInput(func(_ string, breakline bool) bool {
+			// coverage-ignore: go-prompt calls it on the input of a terminal
 			return breakline && exit
 		}),
 	).Run()

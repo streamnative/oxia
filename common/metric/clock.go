@@ -47,15 +47,17 @@ var (
 
 func init() {
 	if !counterOK {
+		// coverage-ignore: runs only without an invariant TSC, which the CI CPUs have
 		microsPerTick.Store(math.Float64bits(microsPerNano))
 	}
 }
 
 func timerTicks() int64 {
-	if counterOK {
-		return readCounter()
+	if !counterOK {
+		// coverage-ignore: runs only without an invariant TSC, which the CI CPUs have
+		return int64(time.Since(timerEpoch))
 	}
-	return int64(time.Since(timerEpoch))
+	return readCounter()
 }
 
 // elapsedMicros returns the µs elapsed since start, a timerTicks reading.
