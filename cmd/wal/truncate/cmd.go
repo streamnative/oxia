@@ -63,31 +63,21 @@ func exec(*cobra.Command, []string) error {
 	}
 	defer writeAheadLog.Close()
 
-	if options.safePointEntry != math.MaxInt64 {
-		slog.Info("truncating the entries. ", slog.Int64("start", options.safePointEntry),
-			slog.Int64("end", writeAheadLog.LastOffset()))
-		newLastEntry, err := writeAheadLog.TruncateLog(options.safePointEntry)
-		if err != nil {
-			return err
-		}
-		slog.Info("truncate complete", slog.Int64("newLastEntry", newLastEntry))
+	if options.safePointEntry == math.MaxInt64 && !options.lastEntry {
+		slog.Info("no operation applied")
 		return nil
 	}
 
+	safePoint := options.safePointEntry
 	if options.lastEntry {
-		lastOffset := writeAheadLog.LastOffset()
-		safePoint := lastOffset - 1
-		slog.Info("truncating the last entry. ",
-			slog.Int64("start", safePoint),
-			slog.Int64("end", lastOffset))
-		newLastEntry, err := writeAheadLog.TruncateLog(safePoint)
-		if err != nil {
-			return err
-		}
-		slog.Info("truncate complete", slog.Int64("newLastEntry", newLastEntry))
-		return nil
+		safePoint = writeAheadLog.LastOffset() - 1
 	}
-
-	slog.Info("no operation applied")
+	slog.Info("truncating the entries. ", slog.Int64("start", safePoint),
+		slog.Int64("end", writeAheadLog.LastOffset()))
+	newLastEntry, err := writeAheadLog.TruncateLog(safePoint)
+	if err != nil {
+		return err
+	}
+	slog.Info("truncate complete", slog.Int64("newLastEntry", newLastEntry))
 	return nil
 }
