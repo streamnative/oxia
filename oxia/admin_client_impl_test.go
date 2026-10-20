@@ -54,6 +54,9 @@ type mockAdminRpcClient struct {
 	listNamespacesErr       error
 	getNamespaceResp        *proto.GetNamespaceResponse
 	getNamespaceErr         error
+	splitShardReq           *proto.SplitShardRequest
+	splitShardResp          *proto.SplitShardResponse
+	splitShardErr           error
 }
 
 func (m *mockAdminRpcClient) ListDataServers(ctx context.Context, _ *proto.ListDataServersRequest, _ ...grpc.CallOption) (*proto.ListDataServersResponse, error) {
@@ -102,8 +105,13 @@ func (m *mockAdminRpcClient) ListNamespaces(context.Context, *proto.ListNamespac
 	return m.listNamespacesResp, m.listNamespacesErr
 }
 
-func (*mockAdminRpcClient) SplitShard(context.Context, *proto.SplitShardRequest, ...grpc.CallOption) (*proto.SplitShardResponse, error) {
-	panic("unexpected SplitShard call")
+func (m *mockAdminRpcClient) SplitShard(
+	_ context.Context,
+	req *proto.SplitShardRequest,
+	_ ...grpc.CallOption,
+) (*proto.SplitShardResponse, error) {
+	m.splitShardReq = req
+	return m.splitShardResp, m.splitShardErr
 }
 
 type mockAdminClientPool struct {
@@ -220,6 +228,68 @@ func TestAdminClientListDataServersMapsAuthErrors(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrUnauthenticated)
 	assert.Equal(t, codes.Unauthenticated, grpcstatus.Code(err))
+}
+
+// The admin server address resolves to no client: the request fails without
+// being retried.
+func TestAdminClientListDataServersFailsWithoutClient(t *testing.T) {
+	pool := &mockAdminClientPool{}
+	admin := &adminClientImpl{adminAddr: "admin-addr", clientPool: pool}
+
+	_, err := admin.ListDataServers(context.Background())
+	assert.ErrorIs(t, err, ErrUnknown)
+	assert.ErrorContains(t, err, errUnableToConnectToAdminServer)
+	assert.Equal(t, []string{"admin-addr"}, pool.targets)
+}
+
+func TestAdminClientRequestsFailOnServerError(t *testing.T) {
+	errServer := grpcstatus.Error(codes.Internal, "server error")
+	admin := &adminClientImpl{
+		adminAddr: "admin-addr",
+		clientPool: &mockAdminClientPool{
+			adminClient: &mockAdminRpcClient{
+				listDataServersErr:  errServer,
+				getDataServerErr:    errServer,
+				createDataServerErr: errServer,
+				patchDataServerErr:  errServer,
+				deleteDataServerErr: errServer,
+				createNamespaceErr:  errServer,
+				patchNamespaceErr:   errServer,
+				deleteNamespaceErr:  errServer,
+				listNamespacesErr:   errServer,
+				getNamespaceErr:     errServer,
+			},
+		},
+	}
+	ctx := context.Background()
+
+	for name, request := range map[string]func() (any, error){
+		"list-data-servers": func() (any, error) { return admin.ListDataServers(ctx) },
+		"get-data-server":   func() (any, error) { return admin.GetDataServer(ctx, "server-1") },
+		"create-data-server": func() (any, error) {
+			return admin.CreateDataServer(ctx, &proto.DataServer{})
+		},
+		"patch-data-server": func() (any, error) {
+			return admin.PatchDataServer(ctx, &proto.DataServer{})
+		},
+		"delete-data-server": func() (any, error) { return admin.DeleteDataServer(ctx, "server-1") },
+		"create-namespace": func() (any, error) {
+			return admin.CreateNamespace(ctx, &proto.Namespace{Name: "ns"})
+		},
+		"patch-namespace": func() (any, error) {
+			return admin.PatchNamespace(ctx, &proto.Namespace{Name: "ns"})
+		},
+		"delete-namespace": func() (any, error) { return admin.DeleteNamespace(ctx, "ns") },
+		"list-namespaces":  func() (any, error) { return admin.ListNamespaces(ctx) },
+		"get-namespace":    func() (any, error) { return admin.GetNamespace(ctx, "ns") },
+	} {
+		t.Run(name, func(t *testing.T) {
+			result, err := request()
+			assert.ErrorIs(t, err, ErrUnknown)
+			assert.Equal(t, codes.Internal, grpcstatus.Code(err))
+			assert.Nil(t, result)
+		})
+	}
 }
 
 func TestAdminClientListDataServersReturnsResponse(t *testing.T) {
@@ -583,6 +653,44 @@ func TestAdminClientGetNamespaceReturnsResponse(t *testing.T) {
 	assert.EqualValues(t, 3, namespace.GetNamespace().GetReplicationFactor())
 	assert.Equal(t, proto.KeySortingType_NATURAL.String(), namespace.GetNamespace().GetKeySorting())
 	assert.NotNil(t, namespace.GetNamespaceStatus())
+}
+
+func TestAdminClientSplitShard(t *testing.T) {
+	adminClient := &mockAdminRpcClient{
+		splitShardResp: &proto.SplitShardResponse{LeftChildShard: 2, RightChildShard: 3},
+	}
+	admin := &adminClientImpl{
+		adminAddr:  "admin-addr",
+		clientPool: &mockAdminClientPool{adminClient: adminClient},
+	}
+
+	result := admin.SplitShard(context.Background(), "ns", 1, nil)
+	require.NoError(t, result.Error)
+	assert.EqualValues(t, 2, result.LeftChildShardId)
+	assert.EqualValues(t, 3, result.RightChildShardId)
+	assert.Equal(t, "ns", adminClient.splitShardReq.GetNamespace())
+	assert.EqualValues(t, 1, adminClient.splitShardReq.GetShard())
+	assert.Nil(t, adminClient.splitShardReq.SplitPoint)
+
+	splitPoint := uint32(1000)
+	result = admin.SplitShard(context.Background(), "ns", 1, &splitPoint)
+	require.NoError(t, result.Error)
+	require.NotNil(t, adminClient.splitShardReq.SplitPoint)
+	assert.Equal(t, splitPoint, adminClient.splitShardReq.GetSplitPoint())
+}
+
+func TestAdminClientSplitShardFailsOnServerError(t *testing.T) {
+	admin := &adminClientImpl{
+		adminAddr: "admin-addr",
+		clientPool: &mockAdminClientPool{adminClient: &mockAdminRpcClient{
+			splitShardErr: grpcstatus.Error(codes.PermissionDenied, "forbidden"),
+		}},
+	}
+
+	result := admin.SplitShard(context.Background(), "ns", 1, nil)
+	assert.ErrorIs(t, result.Error, ErrUnauthorized)
+	assert.Zero(t, result.LeftChildShardId)
+	assert.Zero(t, result.RightChildShardId)
 }
 
 func TestWrapAdminErrorPreservesCause(t *testing.T) {

@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -147,6 +148,64 @@ func TestShardManagerChanged(t *testing.T) {
 	assert.NotEqual(t, changed, s.Changed())
 }
 
+func TestShardManagerGetPanicsWithoutShardForKey(t *testing.T) {
+	s := &shardManagerImpl{
+		shardStrategy: numericKeyStrategy{},
+		shards:        map[int64]Shard{0: {Id: 0, HashRange: hashRange(0, 99)}},
+	}
+	assert.EqualValues(t, 0, s.Get("10"))
+	assert.PanicsWithValue(t, "shard not found", func() { s.Get("150") })
+}
+
+// The requests for a shard missing from the shard map go to the service address.
+func TestShardManagerLeaderOfUnknownShard(t *testing.T) {
+	s := &shardManagerImpl{
+		serviceAddress: "service:6648",
+		shards:         map[int64]Shard{0: {Id: 0, Leader: "leader:6648"}},
+	}
+	assert.Equal(t, "leader:6648", s.Leader(0))
+	assert.Equal(t, "service:6648", s.Leader(1))
+}
+
+func TestShardManagerReceiveFailsOnInvalidAssignments(t *testing.T) {
+	for name, tt := range map[string]struct {
+		assignments *proto.NamespaceShardsAssignment
+		namespace   string
+		err         string
+	}{
+		"other-namespace": {
+			assignments: &proto.NamespaceShardsAssignment{},
+			namespace:   "other",
+			err:         "namespace not found in shards assignments",
+		},
+		"unsupported-boundaries": {
+			assignments: &proto.NamespaceShardsAssignment{Assignments: []*proto.ShardAssignment{{Shard: 5}}},
+			namespace:   "default",
+			err:         "shard 5 has an unsupported hash range boundary",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := &shardManagerImpl{
+				rpcProvider: &singleAssignmentsRpcProvider{assignments: &proto.ShardAssignments{
+					Namespaces: map[string]*proto.NamespaceShardsAssignment{tt.namespace: tt.assignments},
+				}},
+				namespace:  "default",
+				shards:     make(map[int64]Shard),
+				successors: make(map[int64][]Shard),
+				changed:    make(chan struct{}),
+				updatedWg:  concurrent.NewWaitGroup(1),
+				logger:     slog.Default(),
+			}
+			s.ctx, s.cancel = context.WithCancel(t.Context())
+			defer s.cancel()
+
+			err := s.receive(&backoff.ZeroBackOff{})
+			assert.ErrorContains(t, err, tt.err)
+			assert.Empty(t, s.GetAll())
+		})
+	}
+}
+
 // Sends the shard assignments a number of times, then fails with err.
 type failingAssignmentsStream struct {
 	grpc.ClientStream
@@ -246,13 +305,18 @@ func (s *singleAssignmentsStream) Recv() (*proto.ShardAssignments, error) {
 	return nil, s.ctx.Err()
 }
 
+// Sends the given assignments if set, else one shard with the key sorting.
 type singleAssignmentsRpcProvider struct {
 	RpcProvider
-	keySorting proto.KeySorting
+	keySorting  proto.KeySorting
+	assignments *proto.ShardAssignments
 }
 
 func (p *singleAssignmentsRpcProvider) GetShardAssignments(ctx context.Context, _ string,
 	request *proto.ShardAssignmentsRequest) (proto.OxiaClient_GetShardAssignmentsClient, error) {
+	if p.assignments != nil {
+		return &singleAssignmentsStream{ctx: ctx, assignments: p.assignments}, nil
+	}
 	return &singleAssignmentsStream{ctx: ctx, assignments: &proto.ShardAssignments{
 		Namespaces: map[string]*proto.NamespaceShardsAssignment{
 			request.Namespace: {

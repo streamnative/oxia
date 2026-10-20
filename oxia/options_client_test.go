@@ -15,18 +15,19 @@
 package oxia
 
 import (
+	"context"
+	"crypto/tls"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric/noop"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+
+	"github.com/oxia-db/oxia/common/auth"
 )
-
-type mockResolver struct {
-	scheme string
-}
-
-func (r *mockResolver) Scheme() string                     { return r.scheme }
-func (r *mockResolver) Resolve(_ string, _ AddressUpdater) {}
 
 func TestWithDialResolver(t *testing.T) {
 	r := &mockResolver{scheme: "test"}
@@ -53,3 +54,102 @@ func TestWithDialResolver_EmptyScheme(t *testing.T) {
 	_, err := newClientOptions("localhost:6648", WithDialResolver(&mockResolver{scheme: ""}))
 	assert.ErrorContains(t, err, "must not be empty")
 }
+
+func TestWithNamespace(t *testing.T) {
+	options, err := newClientOptions("localhost:6648", WithNamespace("ns"))
+	require.NoError(t, err)
+	assert.Equal(t, "ns", options.namespace)
+
+	options, err = newClientOptions("localhost:6648", WithNamespace(""))
+	assert.ErrorIs(t, err, ErrInvalidOptionNamespace)
+	assert.Equal(t, DefaultNamespace, options.namespace)
+}
+
+func TestWithMeterProvider(t *testing.T) {
+	meterProvider := sdkmetric.NewMeterProvider()
+	options, err := newClientOptions("localhost:6648", WithMeterProvider(meterProvider))
+	require.NoError(t, err)
+	assert.Same(t, meterProvider, options.meterProvider)
+
+	// Without a meter provider, the client records no metrics
+	options, err = newClientOptions("localhost:6648", WithMeterProvider(nil))
+	require.NoError(t, err)
+	assert.IsType(t, noop.MeterProvider{}, options.meterProvider)
+}
+
+func TestWithGlobalMeterProvider(t *testing.T) {
+	options, err := newClientOptions("localhost:6648", WithGlobalMeterProvider())
+	require.NoError(t, err)
+	assert.Equal(t, otel.GetMeterProvider(), options.meterProvider)
+}
+
+func TestWithSessionTimeout(t *testing.T) {
+	options, err := newClientOptions("localhost:6648", WithSessionTimeout(20*time.Second))
+	require.NoError(t, err)
+	assert.Equal(t, 20*time.Second, options.sessionTimeout)
+	// The session keep-alive defaults to a tenth of its timeout
+	assert.Equal(t, 2*time.Second, options.sessionKeepAliveTicker)
+
+	options, err = newClientOptions("localhost:6648", WithSessionTimeout(0))
+	assert.ErrorIs(t, err, ErrInvalidOptionSessionTimeout)
+	assert.Equal(t, DefaultSessionTimeout, options.sessionTimeout)
+}
+
+func TestWithIdentity(t *testing.T) {
+	options, err := newClientOptions("localhost:6648", WithIdentity("client-1"))
+	require.NoError(t, err)
+	assert.Equal(t, "client-1", options.identity)
+
+	_, err = newClientOptions("localhost:6648", WithIdentity(""))
+	assert.ErrorIs(t, err, ErrInvalidOptionIdentity)
+}
+
+func TestWithTLS(t *testing.T) {
+	tlsConf := &tls.Config{MinVersion: tls.VersionTLS13}
+	options, err := newClientOptions("localhost:6648", WithTLS(tlsConf))
+	require.NoError(t, err)
+	assert.Same(t, tlsConf, options.tls)
+
+	_, err = newClientOptions("localhost:6648", WithTLS(nil))
+	assert.ErrorIs(t, err, ErrInvalidOptionTLS)
+}
+
+func TestWithAuthentication(t *testing.T) {
+	authentication := &mockAuthentication{}
+	options, err := newClientOptions("localhost:6648", WithAuthentication(authentication))
+	require.NoError(t, err)
+	assert.Same(t, authentication, options.authentication)
+
+	_, err = newClientOptions("localhost:6648", WithAuthentication(nil))
+	assert.ErrorIs(t, err, ErrInvalidOptionAuthentication)
+}
+
+func TestWithSessionKeepAliveTicker(t *testing.T) {
+	options, err := newClientOptions("localhost:6648", WithSessionKeepAliveTicker(5*time.Second))
+	require.NoError(t, err)
+	assert.Equal(t, 5*time.Second, options.sessionKeepAliveTicker)
+}
+
+// The errors of all the invalid options are reported.
+func TestNewClientOptionsReportsAllErrors(t *testing.T) {
+	_, err := newClientOptions("localhost:6648", WithIdentity(""), WithTLS(nil))
+	assert.ErrorIs(t, err, ErrInvalidOptionIdentity)
+	assert.ErrorIs(t, err, ErrInvalidOptionTLS)
+}
+
+type mockResolver struct {
+	scheme string
+}
+
+func (r *mockResolver) Scheme() string                     { return r.scheme }
+func (r *mockResolver) Resolve(_ string, _ AddressUpdater) {}
+
+var _ auth.Authentication = (*mockAuthentication)(nil)
+
+type mockAuthentication struct{}
+
+func (*mockAuthentication) GetRequestMetadata(context.Context, ...string) (map[string]string, error) {
+	return map[string]string{}, nil
+}
+
+func (*mockAuthentication) RequireTransportSecurity() bool { return false }

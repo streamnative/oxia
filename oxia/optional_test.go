@@ -37,3 +37,10 @@ func TestOptionalEmpty(t *testing.T) {
 	assert.False(t, ok)
 	assert.Equal(t, "", es)
 }
+
+func TestOptionalMustGet(t *testing.T) {
+	assert.Equal(t, 1, optionalOf(1).MustGet())
+	assert.PanicsWithValue(t, "optional empty on MustGet call", func() {
+		empty[int]().MustGet()
+	})
+}

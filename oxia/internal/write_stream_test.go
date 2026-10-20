@@ -16,6 +16,7 @@ package internal
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 	"testing"
 
@@ -26,13 +27,18 @@ import (
 )
 
 // silentWriteStream counts the requests sent on it, and never answers them.
+// Sending fails with sendErr, if set.
 type silentWriteStream struct {
 	grpc.ClientStream
-	ctx  context.Context
-	sent atomic.Int64
+	ctx     context.Context
+	sent    atomic.Int64
+	sendErr error
 }
 
 func (s *silentWriteStream) Send(*proto.WriteRequest) error {
+	if s.sendErr != nil {
+		return s.sendErr
+	}
 	s.sent.Add(1)
 	return nil
 }
@@ -63,4 +69,19 @@ func TestStreamWrapper_DoesNotSendAfterTheDeadline(t *testing.T) {
 	assert.ErrorIs(t, err, context.Canceled)
 	assert.False(t, prepared)
 	assert.EqualValues(t, 0, stream.sent.Load())
+}
+
+// A stream that failed to send a request is replaced for the next one.
+func TestStreamWrapperSendFailsTheStream(t *testing.T) {
+	errSend := errors.New("send failed")
+	streamCtx, cancelStream := context.WithCancel(t.Context())
+	defer cancelStream()
+	stream := &silentWriteStream{ctx: streamCtx, sendErr: errSend}
+	sw := newStreamWrapper(0, "leader", stream, cancelStream)
+
+	_, err := sw.Send(t.Context(), func() (*proto.WriteRequest, error) {
+		return &proto.WriteRequest{}, nil
+	})
+	assert.ErrorIs(t, err, errSend)
+	assert.True(t, sw.failed.Load())
 }
