@@ -89,3 +89,29 @@ func TestWriteNamespaceViewsRejectsNilView(t *testing.T) {
 	require.EqualError(t, err, "namespace must not be nil")
 	assert.Empty(t, out.String())
 }
+
+func TestWriteNamespaceTableSkipsNilNamespace(t *testing.T) {
+	out := new(bytes.Buffer)
+
+	err := writeNamespaceTable(out, []*proto.Namespace{nil, {Name: "ns-1", InitialShardCount: 2, ReplicationFactor: 3}})
+
+	require.NoError(t, err)
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	require.Len(t, lines, 2)
+	assert.Equal(t, []string{"ns-1", "2", "3"}, strings.Fields(lines[1]))
+}
+
+func TestWriteNamespaceViewTableSkipsViewsWithoutNamespace(t *testing.T) {
+	out := new(bytes.Buffer)
+
+	err := writeNamespaceViewTable(out, []*proto.NamespaceView{
+		nil,
+		{},
+		{Namespace: &proto.Namespace{Name: "ns-1", InitialShardCount: 2, ReplicationFactor: 3}},
+	})
+
+	require.NoError(t, err)
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	require.Len(t, lines, 2)
+	assert.Equal(t, []string{"ns-1", "2", "3"}, strings.Fields(lines[1]))
+}
