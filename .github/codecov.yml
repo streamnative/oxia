@@ -19,18 +19,13 @@ codecov:
 
 coverage:
   status:
-    # Overall coverage of the PR against its base commit on main.
-    # Set informational to false to fail PRs that lower it by more than threshold.
-    # Identical runs differ by ~0.1%, from timing-dependent paths.
+    # Fail PRs that leave any line uncovered, overall or in the lines they change
     project:
       default:
-        target: auto
-        threshold: 0.25%
-        informational: true
-    # Coverage of the lines the PR changes
+        target: 100%
     patch:
       default:
-        informational: true
+        target: 100%
 
 ignore:
   - "**/*.pb.go"
