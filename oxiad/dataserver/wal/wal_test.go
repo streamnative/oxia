@@ -1728,6 +1728,32 @@ func TestWalAppendAndSyncReportsAppendFailure(t *testing.T) {
 	assert.NoError(t, f.Close())
 }
 
+func TestWalAppendAsyncWithPreviousCrcRejectsWrongOffset(t *testing.T) {
+	f, w := createWal(t)
+	require.NoError(t, w.Append(&proto.LogEntry{Term: 1, Offset: 0, Value: []byte("v")}))
+	previousCrc := uint32(1)
+
+	crc, err := w.AppendAsyncWithPreviousCrc(&proto.LogEntry{Term: 1, Offset: 5, Value: []byte("v")}, &previousCrc)
+	assert.ErrorIs(t, err, ErrInvalidNextOffset)
+	assert.Zero(t, crc)
+	assert.EqualValues(t, 0, w.LastOffset())
+
+	assert.NoError(t, w.Close())
+	assert.NoError(t, f.Close())
+}
+
+func TestWalAppendAsyncWithPreviousCrcFailsWhenClosed(t *testing.T) {
+	f, w := createWal(t)
+	require.NoError(t, w.Close())
+	previousCrc := uint32(1)
+
+	crc, err := w.AppendAsyncWithPreviousCrc(&proto.LogEntry{Term: 1, Offset: 0, Value: []byte("v")}, &previousCrc)
+	assert.ErrorIs(t, err, constant.ErrResourceUnavailable)
+	assert.Zero(t, crc)
+
+	assert.NoError(t, f.Close())
+}
+
 func TestWalReadAtIndexFailsOnUndecodableEntry(t *testing.T) {
 	options := &FactoryOptions{BaseWalDir: t.TempDir(), SegmentSize: 1024}
 	f := NewWalFactory(options)
