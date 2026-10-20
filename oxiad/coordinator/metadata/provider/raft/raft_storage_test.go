@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	hashicorpraft "github.com/hashicorp/raft"
 	"github.com/stretchr/testify/assert"
@@ -130,6 +131,15 @@ func TestKVRaftStoreStoreLogsReturnsPutError(t *testing.T) {
 	store := &kvRaftStore{kv: &fakeKV{batch: batch}}
 
 	require.ErrorIs(t, store.StoreLog(&hashicorpraft.Log{Index: 1}), errPut)
+	assert.True(t, batch.closed)
+}
+
+func TestKVRaftStoreStoreLogsReturnsEncodeError(t *testing.T) {
+	batch := &fakeWriteBatch{}
+	store := &kvRaftStore{kv: &fakeKV{batch: batch}}
+
+	err := store.StoreLog(&hashicorpraft.Log{Index: 1, AppendedAt: time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)})
+	require.ErrorContains(t, err, "year outside of range")
 	assert.True(t, batch.closed)
 }
 

@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -282,6 +283,55 @@ func TestProviderSubscribeNotifiesStores(t *testing.T) {
 	require.Len(t, stored.Value.GetServers(), 1)
 }
 
+func TestProviderStoreFailsWhenDocumentCannotBeEncoded(t *testing.T) {
+	kc := fake.NewSimpleClientset()
+	encodeErr := errors.New("encode failed")
+	p, err := NewProvider(t.Context(), kc, "ns", "config", &fakeCodec{
+		Codec:       metadatacodec.ClusterConfigCodec,
+		marshalYAML: func(*commonproto.ClusterConfiguration) ([]byte, error) { return nil, encodeErr },
+	}, metadatacommon.WatchDisabled, "coordinator-0")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, p.Close())
+	})
+
+	_, err = p.Store(metadataprovider.Versioned[*commonproto.ClusterConfiguration]{
+		Value:   newConfig(1),
+		Version: metadatacommon.NotExists,
+	})
+	require.ErrorIs(t, err, encodeErr)
+	configMaps, err := kc.CoreV1().ConfigMaps("ns").List(t.Context(), metav1.ListOptions{})
+	require.NoError(t, err)
+	assert.Empty(t, configMaps.Items)
+}
+
+func TestProviderWaitToBecomeLeaderSignalsLeaseLoss(t *testing.T) {
+	kc := fake.NewSimpleClientset()
+	var failUpdates atomic.Bool
+	kc.PrependReactor("update", "leases", func(k8stesting.Action) (bool, runtime.Object, error) {
+		if !failUpdates.Load() {
+			return false, nil, nil
+		}
+		return true, nil, errors.New("lease update failure")
+	})
+	p, err := NewProvider(t.Context(), kc, "ns", "status", metadatacodec.ClusterStatusCodec,
+		metadatacommon.WatchDisabled, "coordinator-0")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, p.Close())
+	})
+	lost, err := p.WaitToBecomeLeader()
+	require.NoError(t, err)
+
+	failUpdates.Store(true)
+
+	select {
+	case <-lost:
+	case <-time.After(renewDeadline + 10*time.Second):
+		require.FailNow(t, "the lease loss was not signaled")
+	}
+}
+
 func TestProviderWaitToBecomeLeaderObservesOtherLeader(t *testing.T) {
 	now := metav1.NewMicroTime(time.Now())
 	holder := "coordinator-1"
@@ -382,4 +432,13 @@ func requireServers(t *testing.T, p metadataprovider.Provider[*commonproto.Clust
 	loaded, err := p.Load()
 	require.NoError(t, err)
 	require.Len(t, loaded.Value.GetServers(), servers)
+}
+
+type fakeCodec struct {
+	metadatacodec.Codec[*commonproto.ClusterConfiguration]
+	marshalYAML func(value *commonproto.ClusterConfiguration) ([]byte, error)
+}
+
+func (c *fakeCodec) MarshalYAML(value *commonproto.ClusterConfiguration) ([]byte, error) {
+	return c.marshalYAML(value)
 }

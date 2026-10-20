@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/emirpasic/gods/v2/lists/arraylist"
 	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 	"github.com/stretchr/testify/assert"
 
@@ -871,6 +872,44 @@ func TestNodeBasedBalancerBalanceHighestNodeStopsWhenAllNodesQuarantined(t *test
 	b.balanceHighestNode(loadRatios, candidates, map[string]*proto.DataServerMetadata{}, &sync.WaitGroup{})
 
 	assert.Empty(t, sel.namespace)
+	assert.Empty(t, b.actionCh)
+}
+
+func TestNodeBasedBalancerBalanceHighestNodeIgnoresMissingNode(t *testing.T) {
+	sel := &contextRecordingSelector{}
+	b := newTestBalancer(t.Context(), func() {}, newBalancedMockMetadata(), sel)
+	loadRatios := model.NewRatio(1, 0, 0.1, arraylist.New[*model.NodeLoadRatio](nil))
+
+	b.balanceHighestNode(loadRatios, linkedhashset.New[string](), map[string]*proto.DataServerMetadata{}, &sync.WaitGroup{})
+
+	assert.Empty(t, sel.namespace)
+	assert.Empty(t, b.actionCh)
+}
+
+func TestNodeBasedBalancerBalanceHighestNodeIgnoresMissingShard(t *testing.T) {
+	sel := &contextRecordingSelector{}
+	b := newTestBalancer(t.Context(), func() {}, newBalancedMockMetadata(), sel)
+	loadRatios := model.NewRatio(1, 0, 0.1, arraylist.New(&model.NodeLoadRatio{
+		NodeID:      "sv-1",
+		Node:        dataServer("sv-1"),
+		Ratio:       1,
+		ShardRatios: arraylist.New[*model.ShardLoadRatio](nil),
+	}))
+
+	b.balanceHighestNode(loadRatios, linkedhashset.New("sv-1"), map[string]*proto.DataServerMetadata{}, &sync.WaitGroup{})
+
+	assert.Empty(t, sel.namespace)
+	assert.Empty(t, b.actionCh)
+}
+
+func TestNodeBasedBalancerSwapShardKeepsShardOnSelectedSourceNode(t *testing.T) {
+	metadata := newBalancedMockMetadata()
+	b := newTestBalancer(t.Context(), func() {}, metadata, &fixedSelector{target: "sv-1"})
+
+	swapped, err := swapShardOffNode(t, b, metadata, "ns")
+
+	assert.NoError(t, err)
+	assert.False(t, swapped)
 	assert.Empty(t, b.actionCh)
 }
 
