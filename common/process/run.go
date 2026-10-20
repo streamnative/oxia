@@ -20,13 +20,19 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 )
 
 // RunProcess starts the process and the profiler, and closes them once ctx is
-// done, e.g. when the process receives a termination signal. It logs when the
-// process named name is ready, and when it stopped.
+// done or the process receives SIGINT or SIGTERM. A signal received while the
+// process starts closes it as soon as it has started. It logs when the process
+// named name is ready, and when it stopped.
 func RunProcess(ctx context.Context, name string, startProcess func() (io.Closer, error)) error {
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer stop()
 	start := time.Now()
 	profiler := RunProfiling(ctx)
 	process, err := startProcess()
