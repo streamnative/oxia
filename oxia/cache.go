@@ -92,12 +92,19 @@ func NewCache[T any](client SyncClient, serializeFunc SerializeFunc, deserialize
 		return nil, err
 	}
 
-	return newCache[T](cm, serializeFunc, deserializeFunc)
+	return newCache[T](cm, valueCacheConfig, serializeFunc, deserializeFunc)
 }
 
 const (
 	defaultCacheTTL = 5 * time.Minute
 )
+
+// valueCacheConfig sizes the values that a cache holds.
+var valueCacheConfig = ristretto.Config{
+	NumCounters: 1_000_000,
+	MaxCost:     64 * 1024 * 1024,
+	BufferItems: 64,
+}
 
 type cacheManager struct {
 	sync.Mutex
@@ -167,11 +174,12 @@ func (cm *cacheManager) handleNotification(n *Notification) {
 	}
 }
 
-func newCache[T any](cm *cacheManager, serializeFunc SerializeFunc, deserializeFunc DeserializeFunc) (Cache[T], error) {
+func newCache[T any](cm *cacheManager, valueCacheConfig ristretto.Config, serializeFunc SerializeFunc,
+	deserializeFunc DeserializeFunc) (Cache[T], error) {
 	cm.Lock()
 	defer cm.Unlock()
 
-	cache, err := newCacheImpl[T](cm.client, serializeFunc, deserializeFunc)
+	cache, err := newCacheImpl[T](cm.client, valueCacheConfig, serializeFunc, deserializeFunc)
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +229,8 @@ type keyLoads struct {
 	evictions uint64
 }
 
-func newCacheImpl[Value any](client SyncClient, serializeFunc SerializeFunc, deserializeFunc DeserializeFunc) (*cacheImpl[Value], error) {
+func newCacheImpl[Value any](client SyncClient, valueCacheConfig ristretto.Config, serializeFunc SerializeFunc,
+	deserializeFunc DeserializeFunc) (*cacheImpl[Value], error) {
 	c := &cacheImpl[Value]{
 		client:          client,
 		serializeFunc:   serializeFunc,
@@ -230,11 +239,7 @@ func newCacheImpl[Value any](client SyncClient, serializeFunc SerializeFunc, des
 	}
 
 	var err error
-	c.valueCache, err = ristretto.NewCache(&ristretto.Config{
-		NumCounters: 1_000_000,
-		MaxCost:     64 * 1024 * 1024,
-		BufferItems: 64,
-	})
+	c.valueCache, err = ristretto.NewCache(&valueCacheConfig)
 	if err != nil {
 		return nil, err
 	}

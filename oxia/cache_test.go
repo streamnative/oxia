@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dgraph-io/ristretto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -100,7 +101,7 @@ func (r *recordsClient) write(key string, value *string) {
 func loadRacing(t *testing.T, client *recordsClient, change func(c *cacheImpl[string])) *cacheImpl[string] {
 	t.Helper()
 
-	c, err := newCacheImpl[string](client, json.Marshal, json.Unmarshal)
+	c, err := newCacheImpl[string](client, valueCacheConfig, json.Marshal, json.Unmarshal)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		assert.NoError(t, c.Close())
@@ -206,7 +207,7 @@ func TestCacheGetAfterWrite(t *testing.T) {
 
 	t.Run("put", func(t *testing.T) {
 		client := &recordsClient{records: map[string][]byte{}}
-		c, err := newCacheImpl[string](client, json.Marshal, json.Unmarshal)
+		c, err := newCacheImpl[string](client, valueCacheConfig, json.Marshal, json.Unmarshal)
 		require.NoError(t, err)
 		defer c.Close()
 
@@ -227,7 +228,7 @@ func TestCacheGetAfterWrite(t *testing.T) {
 
 	t.Run("delete", func(t *testing.T) {
 		client := &recordsClient{records: map[string][]byte{}}
-		c, err := newCacheImpl[string](client, json.Marshal, json.Unmarshal)
+		c, err := newCacheImpl[string](client, valueCacheConfig, json.Marshal, json.Unmarshal)
 		require.NoError(t, err)
 		defer c.Close()
 
@@ -249,7 +250,7 @@ func TestCacheGetLoadingWhileClosing(t *testing.T) {
 	v1 := "v1"
 	client := &recordsClient{records: map[string][]byte{}}
 	client.write("/key", &v1)
-	c, err := newCacheImpl[string](client, json.Marshal, json.Unmarshal)
+	c, err := newCacheImpl[string](client, valueCacheConfig, json.Marshal, json.Unmarshal)
 	require.NoError(t, err)
 
 	read := make(chan struct{})
@@ -319,6 +320,19 @@ func TestNewCacheSharesTheNotifications(t *testing.T) {
 	assert.True(t, notifications.closed.Load())
 }
 
+func TestNewCacheReturnsValueCacheError(t *testing.T) {
+	cm, err := newCacheManager(newSyncClient(&neverCompleteAsyncClient{
+		notifications: &testNotifications{ch: make(chan *Notification)},
+	}))
+	require.NoError(t, err)
+
+	_, err = newCache[string](cm, ristretto.Config{}, json.Marshal, json.Unmarshal)
+
+	assert.EqualError(t, err, "NumCounters can't be zero")
+	assert.Empty(t, cm.caches)
+	assert.NoError(t, cm.Close())
+}
+
 // The cache manager stops once the notifications end.
 func TestCacheManagerStopsWhenNotificationsEnd(t *testing.T) {
 	notifications := &testNotifications{ch: make(chan *Notification)}
@@ -333,7 +347,7 @@ func TestCacheManagerStopsWhenNotificationsEnd(t *testing.T) {
 func TestCacheManagerHandleNotificationLogsAtDebugLevel(t *testing.T) {
 	logs := captureDebugLogs(t)
 	client := &recordsClient{records: map[string][]byte{}}
-	c, err := newCacheImpl[string](client, json.Marshal, json.Unmarshal)
+	c, err := newCacheImpl[string](client, valueCacheConfig, json.Marshal, json.Unmarshal)
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, c.Close()) }()
 	value := "v1"
@@ -355,7 +369,7 @@ func TestCacheManagerHandleNotificationLogsAtDebugLevel(t *testing.T) {
 func TestCachePutFailsOnSerializationError(t *testing.T) {
 	errSerialize := errors.New("unsupported value")
 	client := &recordsClient{records: map[string][]byte{}}
-	c, err := newCacheImpl[string](client, func(any) ([]byte, error) { return nil, errSerialize }, json.Unmarshal)
+	c, err := newCacheImpl[string](client, valueCacheConfig, func(any) ([]byte, error) { return nil, errSerialize }, json.Unmarshal)
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, c.Close()) }()
 
@@ -367,7 +381,7 @@ func TestCachePutFailsOnSerializationError(t *testing.T) {
 // A key that does not exist is cached as such.
 func TestCacheGetCachesKeyNotFound(t *testing.T) {
 	client := &recordsClient{records: map[string][]byte{}}
-	c, err := newCacheImpl[string](client, json.Marshal, json.Unmarshal)
+	c, err := newCacheImpl[string](client, valueCacheConfig, json.Marshal, json.Unmarshal)
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, c.Close()) }()
 
@@ -384,7 +398,7 @@ func TestCacheGetCachesKeyNotFound(t *testing.T) {
 func TestCacheGetFailsOnReadError(t *testing.T) {
 	errRead := errors.New("read failed")
 	client := &recordsClient{records: map[string][]byte{}, getErr: errRead}
-	c, err := newCacheImpl[string](client, json.Marshal, json.Unmarshal)
+	c, err := newCacheImpl[string](client, valueCacheConfig, json.Marshal, json.Unmarshal)
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, c.Close()) }()
 
@@ -399,7 +413,7 @@ func TestCacheGetFailsOnReadError(t *testing.T) {
 
 func TestCacheReadModifyUpdateCreatesMissingRecord(t *testing.T) {
 	client := &recordsClient{records: map[string][]byte{}}
-	c, err := newCacheImpl[string](client, json.Marshal, json.Unmarshal)
+	c, err := newCacheImpl[string](client, valueCacheConfig, json.Marshal, json.Unmarshal)
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, c.Close()) }()
 
@@ -428,7 +442,7 @@ func TestCacheReadModifyUpdateFailsWithoutRetrying(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			client := &recordsClient{records: map[string][]byte{}, getErr: test.getErr, putErr: test.putErr}
-			c, err := newCacheImpl[string](client, json.Marshal, json.Unmarshal)
+			c, err := newCacheImpl[string](client, valueCacheConfig, json.Marshal, json.Unmarshal)
 			require.NoError(t, err)
 			defer func() { assert.NoError(t, c.Close()) }()
 
