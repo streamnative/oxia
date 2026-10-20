@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -190,6 +191,18 @@ func TestExecReturnsStdoutError(t *testing.T) {
 	err = execute("--json")
 
 	assert.Error(t, err)
+}
+
+func TestExecRejectsTimestampOutOfJSONRange(t *testing.T) {
+	setWalOption(t, t.TempDir(), "default")
+	timestamp := time.Date(10001, time.January, 1, 0, 0, 0, 0, time.UTC).UnixMilli()
+	writeWal(t, &proto.LogEntry{Term: 1, Offset: 0, Timestamp: uint64(timestamp),
+		Value: writeRequestsValue(t, &proto.WriteRequest{})})
+
+	stdout, err := runScan(t, "--json")
+
+	assert.ErrorContains(t, err, "year outside of range")
+	assert.Empty(t, stdout)
 }
 
 func TestExecSkipsControlRequests(t *testing.T) {

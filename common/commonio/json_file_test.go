@@ -16,6 +16,7 @@ package commonio
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -23,6 +24,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/oxia-db/oxia/common/failpoint"
 )
 
 func TestReadJSONFromFile(t *testing.T) {
@@ -132,6 +135,28 @@ func TestWriteJSONToFileTargetIsDirectory(t *testing.T) {
 	assert.ErrorAs(t, err, &linkErr)
 	// The temporary file is removed when the rename fails
 	assertDirEntries(t, dir, "state.json")
+}
+
+func TestWriteJSONToFileTempFileFailures(t *testing.T) {
+	for _, name := range []string{"writeJSONToFile.write", "writeJSONToFile.sync", "writeJSONToFile.close"} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "state.json")
+			require.NoError(t, os.WriteFile(path, []byte(`{"hello":"world"}`), 0o600))
+			injected := errors.New("injected")
+			failpoints := failpoint.New(map[string]func() error{
+				name: func() error { return injected },
+			})
+
+			err := writeJSONToFile(path, map[string]string{"hello": "oxia"}, failpoints)
+
+			assert.ErrorIs(t, err, injected)
+			assertDirEntries(t, dir, "state.json")
+			content, err := os.ReadFile(path)
+			require.NoError(t, err)
+			assert.JSONEq(t, `{"hello":"world"}`, string(content))
+		})
+	}
 }
 
 func assertDirEntries(t *testing.T, dir string, expected ...string) {

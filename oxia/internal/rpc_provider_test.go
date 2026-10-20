@@ -34,6 +34,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/oxia-db/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/common/proto"
 	"github.com/oxia-db/oxia/common/rpc"
 )
@@ -348,6 +349,37 @@ func TestRpcProvider_WritesGoToTheNewLeader(t *testing.T) {
 	defer cancel()
 	assert.NoError(t, executeTestWrite(ctx, provider, shardId))
 
+	assert.EqualValues(t, 1, oldLeader.requests.Load())
+	assert.EqualValues(t, 1, newLeader.requests.Load())
+}
+
+func TestRpcProviderWritesGoToTheNewLeaderWhenTheOldStreamFailsToClose(t *testing.T) {
+	shardId := int64(0)
+	shardManager := &testShardManager{}
+	oldLeader := &writeServer{}
+	oldLeaderAddress := startTestOxiaClientServer(t, oldLeader)
+	newLeader := &writeServer{}
+	newLeaderAddress := startTestOxiaClientServer(t, newLeader)
+	shardManager.leader.Store(&oldLeaderAddress)
+	closeFailures := atomic.Int64{}
+	failpoints := failpoint.New(map[string]func() error{
+		"getWriteStream.closeOldStream": func() error {
+			closeFailures.Add(1)
+			return errors.New("injected")
+		},
+	})
+
+	provider := newRpcProvider(t.Context(), constant.DefaultNamespace, nil, nil, newLeaderAddress,
+		func() ShardManager { return shardManager }, failpoints)
+	defer func() {
+		assert.NoError(t, provider.Close())
+	}()
+
+	require.NoError(t, executeTestWrite(t.Context(), provider, shardId))
+	shardManager.leader.Store(&newLeaderAddress)
+	require.NoError(t, executeTestWrite(t.Context(), provider, shardId))
+
+	assert.EqualValues(t, 1, closeFailures.Load())
 	assert.EqualValues(t, 1, oldLeader.requests.Load())
 	assert.EqualValues(t, 1, newLeader.requests.Load())
 }

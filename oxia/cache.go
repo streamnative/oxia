@@ -26,6 +26,7 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/common/process"
 )
 
@@ -103,6 +104,7 @@ type cacheManager struct {
 	sync.Mutex
 
 	client        SyncClient
+	failpoints    *failpoint.Failpoints
 	notifications Notifications
 	caches        []internalCache
 
@@ -110,9 +112,10 @@ type cacheManager struct {
 	cancel context.CancelFunc
 }
 
-func newCacheManager(client SyncClient) (*cacheManager, error) {
+func newCacheManager(client SyncClient, failpoints *failpoint.Failpoints) (*cacheManager, error) {
 	cm := &cacheManager{
-		client: client,
+		client:     client,
+		failpoints: failpoints,
 	}
 
 	cm.ctx, cm.cancel = context.WithCancel(context.Background())
@@ -171,7 +174,7 @@ func newCache[T any](cm *cacheManager, serializeFunc SerializeFunc, deserializeF
 	cm.Lock()
 	defer cm.Unlock()
 
-	cache, err := newCacheImpl[T](cm.client, serializeFunc, deserializeFunc)
+	cache, err := newCacheImpl[T](cm.client, cm.failpoints, serializeFunc, deserializeFunc)
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +224,8 @@ type keyLoads struct {
 	evictions uint64
 }
 
-func newCacheImpl[Value any](client SyncClient, serializeFunc SerializeFunc, deserializeFunc DeserializeFunc) (*cacheImpl[Value], error) {
+func newCacheImpl[Value any](client SyncClient, failpoints *failpoint.Failpoints, serializeFunc SerializeFunc,
+	deserializeFunc DeserializeFunc) (*cacheImpl[Value], error) {
 	c := &cacheImpl[Value]{
 		client:          client,
 		serializeFunc:   serializeFunc,
@@ -235,7 +239,8 @@ func newCacheImpl[Value any](client SyncClient, serializeFunc SerializeFunc, des
 		MaxCost:     64 * 1024 * 1024,
 		BufferItems: 64,
 	})
-	if err != nil {
+	if err = failpoints.Fail("newCacheImpl.newCache", err); err != nil {
+		c.valueCache.Close()
 		return nil, err
 	}
 	return c, nil

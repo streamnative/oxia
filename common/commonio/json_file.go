@@ -16,8 +16,11 @@ package commonio
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+
+	"github.com/oxia-db/oxia/common/failpoint"
 )
 
 func ReadJSONFromFile(path string, value any) (bool, error) {
@@ -33,7 +36,14 @@ func ReadJSONFromFile(path string, value any) (bool, error) {
 	return true, json.Unmarshal(data, value)
 }
 
+// WriteJSONToFile replaces the file at path with value encoded in JSON: it
+// writes a temporary file, then renames it into place, so that the file holds
+// either the old or the new value.
 func WriteJSONToFile(path string, value any) error {
+	return writeJSONToFile(path, value, nil)
+}
+
+func writeJSONToFile(path string, value any, failpoints *failpoint.Failpoints) error {
 	parentDir := filepath.Dir(path)
 	if err := os.MkdirAll(parentDir, 0755); err != nil {
 		return err
@@ -49,31 +59,28 @@ func WriteJSONToFile(path string, value any) error {
 		return err
 	}
 	tmpName := tmp.Name()
-	defer func() {
-		_ = os.Remove(tmpName)
-	}()
 
-	if _, err = tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		return err
+	if err := writeAndClose(tmp, data, failpoints); err != nil {
+		return errors.Join(err, os.Remove(tmpName))
 	}
-	if err = tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if err = tmp.Close(); err != nil {
-		return err
-	}
-
 	if err := os.Rename(tmpName, path); err != nil {
-		return err
+		return errors.Join(err, os.Remove(tmpName))
 	}
 
 	dir, err := os.Open(parentDir)
 	if err != nil {
 		return err
 	}
-	defer dir.Close()
+	return errors.Join(dir.Sync(), dir.Close())
+}
 
-	return dir.Sync()
+func writeAndClose(file *os.File, data []byte, failpoints *failpoint.Failpoints) error {
+	_, err := file.Write(data)
+	if err = failpoints.Fail("writeJSONToFile.write", err); err != nil {
+		return errors.Join(err, file.Close())
+	}
+	if err := failpoints.Fail("writeJSONToFile.sync", file.Sync()); err != nil {
+		return errors.Join(err, file.Close())
+	}
+	return failpoints.Fail("writeJSONToFile.close", file.Close())
 }

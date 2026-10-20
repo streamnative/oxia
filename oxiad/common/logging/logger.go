@@ -24,7 +24,6 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"github.com/rs/zerolog/pkgerrors"
 	slogzerolog "github.com/samber/slog-zerolog/v2"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -98,20 +97,7 @@ func ConfigureLogger() {
 		Logger()
 
 	if !LogJSON {
-		if raceEnabled {
-			// Use simple non-colored logger in tests to avoid
-			// data races
-			zerologLogger = zerolog.New(os.Stdout).
-				With().
-				Timestamp().
-				Stack().
-				Logger()
-		} else {
-			zerologLogger = log.Output(zerolog.SyncWriter(zerolog.ConsoleWriter{
-				Out:        os.Stdout,
-				TimeFormat: time.StampMicro,
-			}))
-		}
+		zerologLogger = newConsoleLogger()
 	}
 
 	slogLogger := slog.New(

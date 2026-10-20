@@ -16,6 +16,7 @@ package file
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -23,6 +24,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/oxia-db/oxia/common/failpoint"
 )
 
 func TestWatchFileSignalsWriteAndClosesOnCancel(t *testing.T) {
@@ -59,4 +62,62 @@ func TestWatchFileReturnsErrorForMissingDirectory(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Nil(t, changes)
+}
+
+func TestWatchFileReturnsWatcherCreationError(t *testing.T) {
+	injected := errors.New("injected")
+	failpoints := failpoint.New(map[string]func() error{
+		"watchFile.newWatcher": func() error { return injected },
+	})
+
+	changes, err := watchFile(t.Context(), filepath.Join(t.TempDir(), "config.yaml"), failpoints)
+
+	assert.ErrorIs(t, err, injected)
+	assert.Nil(t, changes)
+}
+
+func TestWatchFileClosesWhenTheWatchFails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	failpoints := failpoint.New(map[string]func() error{
+		"watchFile.event": func() error { return errors.New("injected") },
+	})
+
+	changes, err := watchFile(t.Context(), path, failpoints)
+	require.NoError(t, err)
+
+	require.NoError(t, os.WriteFile(path, []byte("a: 1"), 0o600))
+	assertClosed(t, changes)
+}
+
+func TestWatchFileClosesWhenTheWatcherFailsToClose(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	ctx, cancel := context.WithCancel(t.Context())
+	closed := make(chan struct{})
+	failpoints := failpoint.New(map[string]func() error{
+		"watchFile.close": func() error {
+			close(closed)
+			return errors.New("injected")
+		},
+	})
+
+	changes, err := watchFile(ctx, path, failpoints)
+	require.NoError(t, err)
+
+	cancel()
+	assertClosed(t, changes)
+	select {
+	case <-closed:
+	default:
+		assert.Fail(t, "the watcher was not closed")
+	}
+}
+
+func assertClosed(t *testing.T, changes <-chan struct{}) {
+	t.Helper()
+	select {
+	case _, ok := <-changes:
+		assert.False(t, ok)
+	case <-time.After(10 * time.Second):
+		require.FailNow(t, "the changes channel was not closed")
+	}
 }

@@ -41,3 +41,5 @@ ignore:
   - "common/rpc/mock.go"
   - "cmd/main.go"
   - "oxiad/maelstrom/main.go"
+  # A benchmark tool
+  - "cmd/wal/perf/cmd.go"
