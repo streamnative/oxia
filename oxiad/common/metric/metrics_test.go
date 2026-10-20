@@ -30,6 +30,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"syscall"
 	"testing"
 	"time"
 
@@ -121,7 +122,8 @@ func TestStartReturnsListenError(t *testing.T) {
 
 	metrics, err := Start(listener.Addr().String(), nil)
 
-	assert.Error(t, err)
+	assert.ErrorIs(t, err, syscall.EADDRINUSE)
+	assert.ErrorContains(t, err, "failed to start the metrics server on "+listener.Addr().String())
 	assert.Nil(t, metrics)
 }
 

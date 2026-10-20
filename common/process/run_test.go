@@ -24,12 +24,13 @@ import (
 )
 
 func TestRunProcessClosesTheProcessWhenItsContextIsDone(t *testing.T) {
+	logs := captureLogs(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	process := &testCloser{}
 	started := make(chan struct{})
 	done := make(chan error, 1)
 	go func() {
-		done <- RunProcess(ctx, func() (io.Closer, error) {
+		done <- RunProcess(ctx, "TEST", func() (io.Closer, error) {
 			close(started)
 			return process, nil
 		})
@@ -40,12 +41,15 @@ func TestRunProcessClosesTheProcessWhenItsContextIsDone(t *testing.T) {
 	cancel()
 	assert.NoError(t, <-done)
 	assert.True(t, process.closed)
+	assert.Contains(t, logs.String(), "Oxia TEST is ready")
+	assert.Contains(t, logs.String(), "Oxia TEST is shutting down")
+	assert.Contains(t, logs.String(), "Oxia TEST stopped")
 }
 
 func TestRunProcessFailsWhenTheProcessFailsToStart(t *testing.T) {
 	startErr := errors.New("start failure")
 
-	err := RunProcess(t.Context(), func() (io.Closer, error) { return nil, startErr })
+	err := RunProcess(t.Context(), "TEST", func() (io.Closer, error) { return nil, startErr })
 
 	assert.ErrorIs(t, err, startErr)
 	assert.ErrorContains(t, err, "failed to start the process")
@@ -56,7 +60,7 @@ func TestRunProcessFailsWhenTheProcessFailsToClose(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	err := RunProcess(ctx, func() (io.Closer, error) { return &testCloser{err: closeErr}, nil })
+	err := RunProcess(ctx, "TEST", func() (io.Closer, error) { return &testCloser{err: closeErr}, nil })
 
 	assert.ErrorIs(t, err, closeErr)
 	assert.ErrorContains(t, err, "failed to shut down the process")

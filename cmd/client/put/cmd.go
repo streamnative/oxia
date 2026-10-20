@@ -54,7 +54,7 @@ func init() {
 var Cmd = &cobra.Command{
 	Use:          "put [flags] KEY [VALUE]",
 	Short:        "Put value",
-	Long:         `Put a value and associated it with the given key, either inserting a new entry or updating the existing one. If an expected version is provided, the put will only take place if it matches the version of the current record on the server`,
+	Long:         `Put a value with the given key, either inserting a new record or updating the existing one. If an expected version is provided, the put only takes place if it matches the version of the current record on the server.`,
 	Args:         cobra.RangeArgs(1, 2),
 	RunE:         exec,
 	SilenceUsage: true,

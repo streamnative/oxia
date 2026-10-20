@@ -39,8 +39,8 @@ var (
 	options = scanOptions{}
 	Cmd     = &cobra.Command{
 		Use:   "scan",
-		Short: "scan the WAL",
-		Long:  `scan the WAL`,
+		Short: "Scan the write-ahead log",
+		Long:  `Print the entries of the write-ahead log, optionally between two offsets.`,
 		Args:  cobra.NoArgs,
 		RunE:  exec,
 	}

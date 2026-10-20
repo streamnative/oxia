@@ -30,8 +30,8 @@ import (
 var (
 	Cmd = &cobra.Command{
 		Use:   "perf",
-		Short: "Oxia perf client",
-		Long:  `Oxia tool for basic performance tests`,
+		Short: "Run a load test against a cluster",
+		Long:  `Run a simple load test against an Oxia cluster, and report the throughput and the latencies.`,
 		Args:  cobra.NoArgs,
 		RunE:  exec,
 	}
@@ -57,7 +57,7 @@ func init() {
 }
 
 func exec(cmd *cobra.Command, _ []string) error {
-	return process.RunProcess(cmd.Context(), runPerf)
+	return process.RunProcess(cmd.Context(), "PERF", runPerf)
 }
 
 type closer struct {

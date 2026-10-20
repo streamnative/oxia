@@ -22,8 +22,8 @@ import (
 var (
 	Cmd = &cobra.Command{
 		Use:   "pebble",
-		Short: "Pebble DB utils",
-		Long:  `Tools for the Pebble DB`,
+		Short: "Pebble database tools",
+		Long:  `Tools to inspect the Pebble database of a data server.`,
 	}
 )
 

@@ -34,8 +34,8 @@ var (
 	options = truncateOptions{}
 	Cmd     = &cobra.Command{
 		Use:   "truncate",
-		Short: "truncate the WAL",
-		Long:  `truncate the WAL by some conditions`,
+		Short: "Truncate the write-ahead log",
+		Long:  `Remove the entries at the end of the write-ahead log, after the last safe entry or only the last entry.`,
 		Args:  cobra.NoArgs,
 		RunE:  exec,
 	}

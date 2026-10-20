@@ -36,7 +36,7 @@ import (
 var (
 	Cmd = &cobra.Command{
 		Use:   "client",
-		Short: "Read/Write records",
+		Short: "Read and write records",
 		Long:  `Operations to get, create, delete, and modify key-value records in an oxia cluster`,
 	}
 )
