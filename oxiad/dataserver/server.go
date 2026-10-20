@@ -111,7 +111,7 @@ func NewWithOptionsWatch(parent context.Context, optionsWatch *commonwatch.Watch
 func NewWithGrpcProvider(parent context.Context, optionsWatch *commonwatch.Watch[*option.Options], provider commonrpc.GrpcProvider,
 	replicationRpcProvider dataserverrpc.ReplicationRpcProvider, manifest *manifestpkg.Manifest) (_ *Server, err error) {
 	options := optionsWatch.Load()
-	slog.Info("Starting Oxia dataServer", slog.Any("options", options))
+	slog.Info("Starting Oxia DATASERVER", slog.Any("options", options))
 
 	storage := &options.Storage
 	// Embedded servers can skip the validation that the server command runs,

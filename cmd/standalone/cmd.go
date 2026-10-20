@@ -27,6 +27,7 @@ import (
 
 	"github.com/oxia-db/oxia/oxiad/dataserver/database/kvstore"
 
+	"github.com/oxia-db/oxia/cmd/common/banner"
 	"github.com/oxia-db/oxia/common/process"
 	"github.com/oxia-db/oxia/oxiad/dataserver"
 )
@@ -87,6 +88,14 @@ func init() {
 
 func exec(cmd *cobra.Command, _ []string) error {
 	return process.RunProcess(cmd.Context(), func() (io.Closer, error) {
+		options := &conf.DataServerOptions
+		banner.Print(cmd.OutOrStdout(), cmd.Root().Version,
+			banner.Field{Name: "Component", Value: "STANDALONE"},
+			banner.Field{Name: "Public Endpoint", Value: options.Server.Public.BindAddress},
+			banner.MetricsField(&options.Observability.Metric),
+			banner.PprofField(),
+			banner.Field{Name: "WAL Dir", Value: options.Storage.WAL.Dir},
+			banner.Field{Name: "Data Dir", Value: options.Storage.Database.Dir})
 		return dataserver.NewStandalone(conf)
 	})
 }

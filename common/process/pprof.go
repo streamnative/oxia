@@ -16,7 +16,6 @@ package process
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -77,10 +76,6 @@ func RunProfiling(ctx context.Context) io.Closer {
 		"Starting pprof server",
 		slog.String("address", s.Addr),
 	)
-	slog.Info(fmt.Sprintf("  use http://%s/debug/pprof to access the browser", s.Addr))
-	slog.Info(fmt.Sprintf("  use `go tool pprof http://%s/debug/pprof/profile` to get pprof file(cpu info)", s.Addr))
-	slog.Info(fmt.Sprintf("  use `go tool pprof http://%s/debug/pprof/heap` to get inuse_space file", s.Addr))
-	slog.Info("")
 
 	go DoWithLabels(
 		ctx,
