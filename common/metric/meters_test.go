@@ -15,11 +15,19 @@
 package metric
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/otel/attribute"
 )
+
+func TestPanicOnErrPanicsWithMetricName(t *testing.T) {
+	assert.NotPanics(t, func() { panicOnErr(nil, "metric") })
+	assert.PanicsWithError(t, "failed to create metric metric: failed", func() {
+		panicOnErr(errors.New("failed"), "metric")
+	})
+}
 
 func TestGetAttrSetConvertsLabelTypes(t *testing.T) {
 	set := getAttrSet(map[string]any{
@@ -39,4 +47,10 @@ func TestGetAttrSetConvertsLabelTypes(t *testing.T) {
 		attribute.Bool("bool", true),
 		attribute.String("string", "value"),
 	), set)
+}
+
+func TestGetAttrSetPanicsOnInvalidLabelType(t *testing.T) {
+	assert.PanicsWithValue(t, "invalid type int32 of metric label shard", func() {
+		getAttrSet(map[string]any{"shard": int32(1)})
+	})
 }
