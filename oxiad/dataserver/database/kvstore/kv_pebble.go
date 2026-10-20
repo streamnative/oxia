@@ -36,6 +36,7 @@ import (
 	"go.uber.org/multierr"
 
 	"github.com/oxia-db/oxia/oxiad/common/crc"
+	"github.com/oxia-db/oxia/oxiad/common/failpoint"
 
 	"github.com/oxia-db/oxia/common/proto"
 
@@ -188,7 +189,7 @@ func (p *PebbleFactory) returnMemTableSlot() {
 }
 
 func (p *PebbleFactory) NewKV(namespace string, shardId int64, keySorting proto.KeySortingType) (KV, error) {
-	return newKVPebble(p, namespace, shardId, keySorting, p.options.KvTrap)
+	return newKVPebble(p, namespace, shardId, keySorting, p.options.Failpoints)
 }
 
 func (p *PebbleFactory) NewSnapshotLoader(namespace string, shardId int64) (SnapshotLoader, error) {
@@ -259,10 +260,10 @@ type Pebble struct {
 	writeStallTime  metric.Counter
 	writeStallStart atomic.Int64
 
-	kvTrap *KvTrap
+	failpoints *failpoint.Failpoints
 }
 
-func newKVPebble(factory *PebbleFactory, namespace string, shardId int64, keySorting proto.KeySortingType, trap *KvTrap) (KV, error) {
+func newKVPebble(factory *PebbleFactory, namespace string, shardId int64, keySorting proto.KeySortingType, failpoints *failpoint.Failpoints) (KV, error) {
 	if err := validation.ValidateNamespace(namespace); err != nil {
 		return nil, err
 	}
@@ -275,13 +276,13 @@ func newKVPebble(factory *PebbleFactory, namespace string, shardId int64, keySor
 		return l
 	}
 	pb := &Pebble{
-		ctx:       ctx,
-		cancel:    cancelFunc,
-		factory:   factory,
-		namespace: namespace,
-		shardId:   shardId,
-		dbPath:    factory.getKVPath(namespace, shardId),
-		kvTrap:    trap,
+		ctx:        ctx,
+		cancel:     cancelFunc,
+		factory:    factory,
+		namespace:  namespace,
+		shardId:    shardId,
+		dbPath:     factory.getKVPath(namespace, shardId),
+		failpoints: failpoints,
 
 		batchCommitLatency: metric.NewLatencyHistogram("oxia_server_kv_batch_commit_latency",
 			"The latency for committing a batch into the database", labels),
@@ -361,7 +362,7 @@ func newKVPebble(factory *PebbleFactory, namespace string, shardId int64, keySor
 		FormatMajorVersion: pebble.FormatVirtualSSTables,
 	}
 
-	pebbleConv := newPebbleDbConversion(log, factory.options.FS, pb.dbPath, pb.kvTrap)
+	pebbleConv := newPebbleDbConversion(log, factory.options.FS, pb.dbPath, pb.failpoints)
 	if err := pebbleConv.checkConvertDB(pb.keyEncoder); err != nil {
 		return nil, errors.Wrap(err, "failed to convert db")
 	}

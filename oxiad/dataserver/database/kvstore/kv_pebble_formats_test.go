@@ -34,6 +34,7 @@ import (
 	"github.com/oxia-db/oxia/common/compare"
 	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/proto"
+	"github.com/oxia-db/oxia/oxiad/common/failpoint"
 )
 
 func TestPebbleDbConversion(t *testing.T) {
@@ -139,7 +140,7 @@ func TestPebbleDbConversionPreservesDataAfterCrash(t *testing.T) {
 		CacheSizeMB: 1,
 		UseWAL:      false,
 		SyncData:    false,
-		KvTrap: NewKvTrap(map[string]func() error{
+		Failpoints: failpoint.New(map[string]func() error{
 			"convertCrashAfterMoveOldDb": func() error {
 				return errors.New("you hit the trap")
 			},
@@ -215,7 +216,7 @@ func TestPebbleDbCleanupBackupAfterCrashDuringFinalCleanup(t *testing.T) {
 		CacheSizeMB: 1,
 		UseWAL:      false,
 		SyncData:    false,
-		KvTrap: NewKvTrap(map[string]func() error{
+		Failpoints: failpoint.New(map[string]func() error{
 			"convertCrashAfterMoveNewDb": func() error {
 				return errors.New("you hit the trap")
 			},
@@ -580,7 +581,7 @@ func TestPebbleDbConversionFailsWhenNewDbCannotBeRenamed(t *testing.T) {
 	kvFactory, dbPath := newNaturalDb(t)
 	options := NewFactoryOptionsForTest(t)
 	options.DataDir = kvFactory.(*PebbleFactory).options.DataDir
-	options.KvTrap = NewKvTrap(map[string]func() error{
+	options.Failpoints = failpoint.New(map[string]func() error{
 		"convertCrashAfterMoveOldDb": func() error {
 			return os.RemoveAll(makeSwapTmpDbPath(dbPath, compare.EncoderHierarchical))
 		},

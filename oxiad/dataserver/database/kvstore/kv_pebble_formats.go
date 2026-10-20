@@ -30,6 +30,7 @@ import (
 	"github.com/oxia-db/oxia/common/proto"
 
 	"github.com/oxia-db/oxia/common/compare"
+	"github.com/oxia-db/oxia/oxiad/common/failpoint"
 )
 
 const (
@@ -46,18 +47,18 @@ func makeSwapTmpDbPath(path string, encoder compare.Encoder) string {
 }
 
 type pebbleDbConversion struct {
-	dbPath string
-	log    *slog.Logger
-	fs     vfs.FS
-	kvTrap *KvTrap
+	dbPath     string
+	log        *slog.Logger
+	fs         vfs.FS
+	failpoints *failpoint.Failpoints
 }
 
-func newPebbleDbConversion(log *slog.Logger, fs vfs.FS, dbPath string, kvTrap *KvTrap) *pebbleDbConversion {
+func newPebbleDbConversion(log *slog.Logger, fs vfs.FS, dbPath string, failpoints *failpoint.Failpoints) *pebbleDbConversion {
 	return &pebbleDbConversion{
-		dbPath: dbPath,
-		log:    log,
-		fs:     fs,
-		kvTrap: kvTrap,
+		dbPath:     dbPath,
+		log:        log,
+		fs:         fs,
+		failpoints: failpoints,
 	}
 }
 
@@ -272,7 +273,7 @@ func (p *pebbleDbConversion) convertDb(
 		return errors.Wrap(err, "failed to backup old database")
 	}
 
-	if err = p.kvTrap.Trigger("convertCrashAfterMoveOldDb"); err != nil {
+	if err = p.failpoints.Trigger("convertCrashAfterMoveOldDb"); err != nil {
 		return err
 	}
 
@@ -280,7 +281,7 @@ func (p *pebbleDbConversion) convertDb(
 		return errors.Wrap(err, "failed to rename new database")
 	}
 
-	if err = p.kvTrap.Trigger("convertCrashAfterMoveNewDb"); err != nil {
+	if err = p.failpoints.Trigger("convertCrashAfterMoveNewDb"); err != nil {
 		return err
 	}
 
