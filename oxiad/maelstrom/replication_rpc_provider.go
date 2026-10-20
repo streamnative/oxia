@@ -114,10 +114,7 @@ func (r *maelstromReplicationRpcProvider) HandleStreamError(streamId int64) {
 		return
 	}
 
-	select {
-	case s.failed <- status.Error(codes.Unavailable, "replicate stream reset by peer"):
-	default:
-	}
+	s.failed <- status.Error(codes.Unavailable, "replicate stream reset by peer")
 }
 
 func (r *maelstromReplicationRpcProvider) Truncate(follower string, req *proto.TruncateRequest) (*proto.TruncateResponse, error) {

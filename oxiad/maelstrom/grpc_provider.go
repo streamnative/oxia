@@ -32,6 +32,7 @@ import (
 
 	"github.com/oxia-db/oxia/oxiad/common/rpc"
 
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/common/proto"
 	"github.com/oxia-db/oxia/oxiad/common/rpc/auth"
 )
@@ -297,7 +298,8 @@ func (m *maelstromGrpcProvider) serveClientRequest(msgType MsgType, msg any) {
 			}
 		}
 
-	case MsgTypeCas:
+	default:
+		// MsgTypeCas, the last request that HandleClientRequest accepts
 		c := msg.(*Message[Cas])
 		stream := newMaelstromReadServerStream()
 		err := m.getService(oxiaClient).(proto.OxiaClientServer).Read(&proto.ReadRequest{
@@ -356,9 +358,6 @@ func (m *maelstromGrpcProvider) serveClientRequest(msgType MsgType, msg any) {
 				sendError(c.Body.MsgId, c.Src, err)
 			}
 		}
-
-	default:
-		// HandleClientRequest only passes the lin-kv requests
 	}
 }
 
@@ -445,11 +444,12 @@ var replicateStreamGapTimeout = time.Second
 type maelstromReplicateServerStream struct {
 	BaseStream
 
-	requests  chan *proto.Append
-	done      chan struct{}
-	closeOnce sync.Once
-	streamId  int64
-	client    string
+	requests   chan *proto.Append
+	done       chan struct{}
+	closeOnce  sync.Once
+	streamId   int64
+	client     string
+	failpoints *failpoint.Failpoints
 
 	// Appends that arrived ahead of their turn, by sequence number
 	seqMutex sync.Mutex
@@ -582,6 +582,9 @@ func (m *maelstromReplicateServerStream) push(req *proto.Append) {
 	case <-m.done:
 		return
 	default:
+	}
+	if err := m.failpoints.Trigger("push.beforeSend"); err != nil {
+		m.close()
 	}
 
 	select {

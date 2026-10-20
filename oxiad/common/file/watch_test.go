@@ -19,6 +19,10 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -86,6 +90,57 @@ func TestWatchFileClosesWhenTheWatchFails(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, os.WriteFile(path, []byte("a: 1"), 0o600))
+	assertClosed(t, changes)
+}
+
+func TestWatchFileClosesWhenTheWatcherFails(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	paused := make(chan struct{})
+	release := make(chan struct{})
+	var pause sync.Once
+	failpoints := failpoint.New(map[string]func() error{
+		"watchFile.event": func() error {
+			pause.Do(func() {
+				close(paused)
+				<-release
+			})
+			return nil
+		},
+	})
+
+	changes, err := watchFile(t.Context(), path, failpoints)
+	require.NoError(t, err)
+
+	switch runtime.GOOS {
+	case "linux":
+		// inotify reports an overflow once the events that nobody reads pass
+		// its queue limit
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "first"), nil, 0o600))
+		select {
+		case <-paused:
+		case <-time.After(10 * time.Second):
+			require.FailNow(t, "no event for the written file")
+		}
+		data, err := os.ReadFile("/proc/sys/fs/inotify/max_queued_events")
+		require.NoError(t, err)
+		limit, err := strconv.Atoi(strings.TrimSpace(string(data)))
+		require.NoError(t, err)
+		// The watcher reads a batch of the events from the queue before it
+		// waits for the watch to take them
+		for i := range limit + 4096 {
+			require.NoError(t, os.WriteFile(filepath.Join(dir, strconv.Itoa(i)), nil, 0o600))
+		}
+	case "darwin", "dragonfly", "freebsd", "netbsd", "openbsd":
+		// kqueue reports the failure to list a directory whose content changed
+		require.NoError(t, os.Chmod(dir, 0o300))
+		t.Cleanup(func() { assert.NoError(t, os.Chmod(dir, 0o700)) })
+		require.NoError(t, os.WriteFile(path, nil, 0o600))
+	default:
+		t.Skipf("no way to fail the watcher on %s", runtime.GOOS)
+	}
+	close(release)
+
 	assertClosed(t, changes)
 }
 
