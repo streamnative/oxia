@@ -93,6 +93,23 @@ func TestPebbleDbConversion(t *testing.T) {
 	assert.NoError(t, kv.Close())
 }
 
+func TestPebbleDbConversionFromHierarchicalDb(t *testing.T) {
+	kvFactory, err := NewPebbleKVFactory(NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, kvFactory.Close()) })
+	oldKV, err := kvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_HIERARCHICAL)
+	require.NoError(t, err)
+	putAll(t, oldKV, "/key/a/1", "/key/b", "/key/a")
+	dbPath := oldKV.(*Pebble).dbPath
+	require.NoError(t, oldKV.Close())
+
+	kv, err := kvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_NATURAL)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/key/a", "/key/a/1", "/key/b"}, scanAllKeys(t, kv, NoInternalKeys))
+	assert.NoError(t, kv.Close())
+	assertMarker(t, dbPath, compare.EncoderNatural.Name())
+}
+
 func TestPebbleDbConversionFromMarkerlessDb(t *testing.T) {
 	kvFactory, err := NewPebbleKVFactory(NewFactoryOptionsForTest(t))
 	require.NoError(t, err)
