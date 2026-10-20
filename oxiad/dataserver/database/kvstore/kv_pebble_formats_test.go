@@ -616,6 +616,18 @@ func TestPebbleDbConversionFailsWhenNewDbCannotBeRenamed(t *testing.T) {
 	assert.NoError(t, kv.Close())
 }
 
+func TestPebbleDbConversionConvertDbFailsWhenOldDbCannotBeBackedUp(t *testing.T) {
+	_, dbPath := newNaturalDb(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(makeDbBackupPath(dbPath), "other"), 0o755))
+	conversion := newPebbleDbConversion(slog.Default(), vfs.Default, dbPath, nil)
+
+	err := conversion.convertDb(
+		conversion.configForNewerFormat(), compare.EncoderNatural,
+		conversion.configForNewerFormat(), compare.EncoderHierarchical)
+	assert.ErrorContains(t, err, "failed to backup old database")
+	assertMarker(t, dbPath, compare.EncoderNatural.Name())
+}
+
 func TestGetKeyEncoderFailsWhenMarkerIsUnreadable(t *testing.T) {
 	dbPath := t.TempDir()
 	require.NoError(t, os.Mkdir(filepath.Join(dbPath, markerFileName), 0o755))
