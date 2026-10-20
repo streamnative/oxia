@@ -21,8 +21,8 @@ import (
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/pkg/errors"
 
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/oxiad/common/crc"
-	"github.com/oxia-db/oxia/oxiad/common/failpoint"
 
 	"github.com/oxia-db/oxia/common/proto"
 )

@@ -36,10 +36,10 @@ import (
 
 	"github.com/oxia-db/oxia/common/compare"
 	"github.com/oxia-db/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/common/proto"
 	"github.com/oxia-db/oxia/common/validation"
 	"github.com/oxia-db/oxia/oxiad/common/crc"
-	"github.com/oxia-db/oxia/oxiad/common/failpoint"
 )
 
 func TestOxiaSlashSpanComparerMeetsPebbleContract(t *testing.T) {

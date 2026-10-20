@@ -30,7 +30,7 @@ import (
 	"github.com/oxia-db/oxia/common/proto"
 
 	"github.com/oxia-db/oxia/common/compare"
-	"github.com/oxia-db/oxia/oxiad/common/failpoint"
+	"github.com/oxia-db/oxia/common/failpoint"
 )
 
 const (
