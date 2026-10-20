@@ -1753,6 +1753,68 @@ func TestPebbleBatchGetReadFailure(t *testing.T) {
 	assert.ErrorIs(t, wb.Commit(), os.ErrPermission)
 }
 
+func TestPebbleScanFailsWhenValueCannotBeRead(t *testing.T) {
+	kv := newKVWithUnreadableValueBlocks(t)
+
+	var visited []string
+	_, err := kv.Scan(nil, func(key string, _ []byte) (bool, error) {
+		visited = append(visited, key)
+		return true, nil
+	})
+	assert.ErrorIs(t, err, errorfs.ErrInjected)
+	assert.Equal(t, []string{"a"}, visited)
+}
+
+func TestPebbleBatchGetFailsWhenValueCannotBeRead(t *testing.T) {
+	kv := newKVWithUnreadableValueBlocks(t)
+	wb := kv.NewWriteBatch()
+
+	// The first Get of a batch reads through the batch, the next ones through
+	// an iterator
+	value, closer, err := wb.Get("a")
+	require.NoError(t, err)
+	assert.Equal(t, []byte("value-a"), value)
+	assert.NoError(t, closer.Close())
+	_, _, err = wb.Get("b")
+	assert.ErrorIs(t, err, errorfs.ErrInjected)
+	assert.ErrorIs(t, wb.Close(), errorfs.ErrInjected)
+}
+
+func TestPebbleIteratorValueFailsWhenValueCannotBeRead(t *testing.T) {
+	kv := newKVWithUnreadableValueBlocks(t)
+	it, err := kv.RangeScan("b", "", NoInternalKeys)
+	require.NoError(t, err)
+
+	require.True(t, it.Valid())
+	_, err = it.Value()
+	assert.ErrorIs(t, err, errorfs.ErrInjected)
+	assert.ErrorIs(t, it.Close(), errorfs.ErrInjected)
+}
+
+func TestPebbleReverseIteratorValueFailsWhenValueCannotBeRead(t *testing.T) {
+	kv := newKVWithUnreadableValueBlocks(t)
+	it, err := kv.KeyRangeScanReverse("a", "", NoInternalKeys)
+	require.NoError(t, err)
+
+	require.True(t, it.Valid())
+	_, err = it.(*PebbleReverseIterator).Value()
+	assert.ErrorIs(t, err, errorfs.ErrInjected)
+	assert.ErrorIs(t, it.Close(), errorfs.ErrInjected)
+}
+
+func TestPebblePrefixIteratorLookupFailsWhenValueCannotBeRead(t *testing.T) {
+	kv := newKVWithUnreadableValueBlocks(t)
+	it, err := kv.KeyPrefixIterator("", "")
+	require.NoError(t, err)
+
+	value, err := it.Lookup("a")
+	assert.NoError(t, err)
+	assert.Equal(t, []byte("value-a"), value)
+	_, err = it.Lookup("b")
+	assert.ErrorIs(t, err, errorfs.ErrInjected)
+	assert.ErrorIs(t, it.Close(), errorfs.ErrInjected)
+}
+
 // Pebble rejects a synced write without a WAL, the one commit failure that
 // it returns rather than reporting through the logger's Fatalf.
 func TestPebbleBatchCommitFailsWhenPebbleRejectsTheBatch(t *testing.T) {
@@ -2252,6 +2314,46 @@ func newKVWithUnreadableSST(t *testing.T) KV {
 		assert.NoError(t, f.Close())
 		t.Skip("the sstable is still readable, as when running as root")
 	}
+	return kv
+}
+
+// newKVWithUnreadableValueBlocks returns a store with the keys "a", "b" and
+// "c" in an sstable whose value blocks cannot be read: the value of "a" sits
+// with its key, and the others in the value blocks. Pebble only moves to the
+// value blocks the values of the keys that share the prefix of the previous
+// key: the sstable is written with a comparer that takes no key prefix, under
+// the name of the default one, and without bloom filters, which index the
+// prefixes.
+func newKVWithUnreadableValueBlocks(t *testing.T) KV {
+	t.Helper()
+	dataDir := t.TempDir()
+	dbPath := filepath.Join(dataDir, constant.DefaultNamespace, "shard-1")
+	require.NoError(t, createMarker(dbPath, compare.EncoderNatural.Name()))
+	comparer := *pebble.DefaultComparer
+	comparer.Split = func([]byte) int { return 0 }
+	db, err := pebble.Open(dbPath, &pebble.Options{
+		Comparer:           &comparer,
+		DisableWAL:         true,
+		FormatMajorVersion: pebble.FormatVirtualSSTables,
+	})
+	require.NoError(t, err)
+	for _, key := range []string{"a", "b", "c"} {
+		require.NoError(t, db.Set(compare.EncoderNatural.Encode(key), []byte("value-"+key), pebble.NoSync))
+	}
+	require.NoError(t, db.Flush())
+	require.NoError(t, db.Close())
+
+	ssts, err := filepath.Glob(filepath.Join(dbPath, "*.sst"))
+	require.NoError(t, err)
+	require.Len(t, ssts, 1)
+	start, end := valueBlocksRange(t, ssts[0])
+	factory := newFactoryWithFaults(t, dataDir, func(op errorfs.Op) bool {
+		return op.Kind == errorfs.OpFileReadAt && op.Path == ssts[0] && op.Offset >= start && op.Offset < end
+	})
+	kv, err := factory.NewKV(constant.DefaultNamespace, 1, proto.KeySortingType_NATURAL)
+	require.NoError(t, err)
+	require.Equal(t, dbPath, kv.(*Pebble).dbPath)
+	t.Cleanup(func() { assert.NoError(t, kv.Close()) })
 	return kv
 }
 
