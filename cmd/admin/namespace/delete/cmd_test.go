@@ -23,9 +23,11 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/oxia-db/oxia/cmd/admin/commons"
+	"github.com/oxia-db/oxia/cmd/common/clientauth"
 	"github.com/oxia-db/oxia/common/proto"
 )
 
@@ -121,4 +123,52 @@ func Test_cmd_deleteNamespace_RejectsEmptyName(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "namespace must not be empty")
 	assert.Contains(t, out, "namespace must not be empty")
+}
+
+func TestExecRejectsMissingOutputFlag(t *testing.T) {
+	commons.MockedAdminClient = commons.NewMockAdminClient()
+	t.Cleanup(func() { commons.MockedAdminClient = nil })
+
+	cmd := newDeleteCmd()
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"ns-1"})
+	err := cmd.Execute()
+
+	require.ErrorContains(t, err, "flag accessed but not defined: output")
+	commons.MockedAdminClient.AssertNotCalled(t, "DeleteNamespace", mock.Anything)
+}
+
+func TestExecReturnsAdminClientError(t *testing.T) {
+	commons.MockedAdminClient = nil
+	commons.AdminConfig.Auth = clientauth.Config{Token: "token", TokenFile: "token-file"}
+	t.Cleanup(func() { commons.AdminConfig.Auth = clientauth.Config{} })
+
+	_, err := runCmd(newDeleteCmd(), "ns-1")
+
+	require.ErrorIs(t, err, clientauth.ErrAuthTokenConflict)
+}
+
+func TestExecReturnsDeleteError(t *testing.T) {
+	commons.MockedAdminClient = commons.NewMockAdminClient()
+	t.Cleanup(func() { commons.MockedAdminClient = nil })
+	commons.MockedAdminClient.On("Close").Return(nil)
+	// Without a namespace to return, the mock fails the call
+	commons.MockedAdminClient.On("DeleteNamespace", "ns-1").Return(nil, nil)
+
+	_, err := runCmd(newDeleteCmd(), "ns-1")
+
+	require.EqualError(t, err, "failed to delete namespace")
+	commons.MockedAdminClient.AssertExpectations(t)
+}
+
+func newDeleteCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:          Cmd.Use,
+		Short:        Cmd.Short,
+		Long:         Cmd.Long,
+		Args:         Cmd.Args,
+		RunE:         Cmd.RunE,
+		SilenceUsage: Cmd.SilenceUsage,
+	}
 }

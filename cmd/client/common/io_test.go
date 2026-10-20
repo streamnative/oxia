@@ -17,6 +17,8 @@ package common
 
 import (
 	"bytes"
+	"encoding/hex"
+	"errors"
 	"testing"
 	"time"
 
@@ -48,4 +50,82 @@ func TestWriteOutput(t *testing.T) {
 			assert.Equal(t, test.expected, b.String())
 		})
 	}
+}
+
+func TestWriteOutputWritesStringsAndBytes(t *testing.T) {
+	b := bytes.NewBufferString("")
+	WriteOutput(b, "a")
+	WriteOutput(b, []string{"b", "c"})
+	WriteOutput(b, []byte("d"))
+	assert.Equal(t, "a\nb\nc\nd\n", b.String())
+}
+
+func TestWriteOutputPanicsOnMarshalError(t *testing.T) {
+	assert.Panics(t, func() { WriteOutput(bytes.NewBufferString(""), make(chan int)) })
+}
+
+func TestWriteOutputPanicsOnWriteError(t *testing.T) {
+	for _, test := range []struct {
+		name          string
+		value         any
+		successWrites int
+	}{
+		{"json", OutputError{Err: "hello"}, 0},
+		{"string", "a", 0},
+		{"string-newline", "a", 1},
+		{"string-slice", []string{"a"}, 0},
+		{"bytes", []byte("a"), 0},
+		{"bytes-newline", []byte("a"), 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			w := &failingWriter{successWrites: test.successWrites}
+			assert.PanicsWithError(t, errWrite.Error(), func() { WriteOutput(w, test.value) })
+		})
+	}
+}
+
+func TestWriteHexDump(t *testing.T) {
+	b := bytes.NewBufferString("")
+	WriteHexDump(b, []byte("abc"))
+	assert.Equal(t, "00000000  61 62 63                                          |abc|\n", b.String())
+}
+
+func TestWriteHexDumpPanicsOnWriteError(t *testing.T) {
+	w := &failingWriter{}
+	assert.PanicsWithError(t, errWrite.Error(), func() { WriteHexDump(w, []byte("abc")) })
+}
+
+func TestWriteHexDumpPanicsOnCloseError(t *testing.T) {
+	// The dump of a partial line is completed when the dumper closes: the
+	// writes of the line itself succeed, and only the completion fails
+	w := &failingWriter{successWrites: countWrites(t, []byte("a"))}
+	assert.PanicsWithError(t, errWrite.Error(), func() { WriteHexDump(w, []byte("a")) })
+}
+
+var errWrite = errors.New("write failed")
+
+// failingWriter accepts the first successWrites writes, then fails all the
+// others.
+type failingWriter struct {
+	successWrites int
+	writes        int
+}
+
+func (w *failingWriter) Write(p []byte) (int, error) {
+	w.writes++
+	if w.writes > w.successWrites {
+		return 0, errWrite
+	}
+	return len(p), nil
+}
+
+// countWrites returns how many writes the hex dumper makes for buffer before
+// it closes.
+func countWrites(t *testing.T, buffer []byte) int {
+	t.Helper()
+	w := &failingWriter{successWrites: 1 << 30}
+	dump := hex.Dumper(w)
+	_, err := dump.Write(buffer)
+	assert.NoError(t, err)
+	return w.writes
 }

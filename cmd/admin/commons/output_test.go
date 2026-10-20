@@ -17,6 +17,7 @@ package commons
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -66,4 +67,46 @@ func TestWriteStructuredOutputJSONUsesEncodingJSONForSlices(t *testing.T) {
 	require.NoError(t, json.Unmarshal(out.Bytes(), &actual))
 	status := actual[0]["data_server_status"].(map[string]any)
 	assert.EqualValues(t, proto.DataServerState_DATA_SERVER_STATE_DRAINING, status["state"])
+}
+
+func TestWriteStructuredOutputRejectsTableFormat(t *testing.T) {
+	out := new(bytes.Buffer)
+
+	err := WriteStructuredOutput(out, OutputTable, map[string]string{"k": "v"})
+
+	require.ErrorContains(t, err, `unsupported structured output format "table"`)
+	assert.Empty(t, out.String())
+}
+
+func TestWriteStructuredOutputJSONReturnsMarshalError(t *testing.T) {
+	out := new(bytes.Buffer)
+
+	err := WriteStructuredOutput(out, OutputJSON, make(chan int))
+
+	var unsupported *json.UnsupportedTypeError
+	require.ErrorAs(t, err, &unsupported)
+	assert.Empty(t, out.String())
+}
+
+func TestWriteStructuredOutputYAMLReturnsMarshalError(t *testing.T) {
+	out := new(bytes.Buffer)
+
+	err := WriteStructuredOutput(out, OutputYAML, failingYAMLMarshaler{})
+
+	require.EqualError(t, err, "marshal failed")
+	assert.Empty(t, out.String())
+}
+
+func TestWriteStructuredOutputYAMLEndsWithNewline(t *testing.T) {
+	out := new(bytes.Buffer)
+
+	require.NoError(t, WriteStructuredOutput(out, OutputYAML, map[string]string{"k": "v"}))
+
+	assert.Equal(t, "k: v\n", out.String())
+}
+
+type failingYAMLMarshaler struct{}
+
+func (failingYAMLMarshaler) MarshalYAML() (any, error) {
+	return nil, errors.New("marshal failed")
 }

@@ -26,6 +26,48 @@ import (
 	"github.com/oxia-db/oxia/oxiad/dataserver"
 )
 
+func TestPerfRunWritesZeroPayloads(t *testing.T) {
+	server := newStandalone(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := runInBackground(ctx, New(testConfig(server.ServiceAddr(), false)))
+
+	client := newSyncClient(t, server.ServiceAddr())
+	var keys []string
+	assert.Eventually(t, func() bool {
+		var err error
+		keys, err = client.List(context.Background(), "key-", "key-~")
+		return err == nil && len(keys) > 0
+	}, 10*time.Second, 10*time.Millisecond)
+
+	cancel()
+	<-done
+	_, value, _, err := client.Get(context.Background(), keys[0])
+	require.NoError(t, err)
+	assert.Equal(t, make([]byte, 16), value)
+}
+
+func TestPerfRunCountsFailedOperations(t *testing.T) {
+	// Closed by the test itself: Standalone.Close panics when called twice
+	server, err := dataserver.NewStandalone(dataserver.NewTestConfig(t.TempDir()))
+	require.NoError(t, err)
+	p := New(testConfig(server.ServiceAddr(), false)).(*perf)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := runInBackground(ctx, p)
+
+	client := newSyncClient(t, server.ServiceAddr())
+	assert.Eventually(t, func() bool {
+		keys, err := client.List(context.Background(), "key-", "key-~")
+		return err == nil && len(keys) > 0
+	}, 10*time.Second, 10*time.Millisecond)
+	require.NoError(t, server.Close())
+
+	assert.Eventually(t, func() bool {
+		return p.failedOps.Load() > 0
+	}, 10*time.Second, 10*time.Millisecond)
+	cancel()
+	<-done
+}
+
 func TestPerfRunWritesRandomPayloads(t *testing.T) {
 	server := newStandalone(t)
 	ctx, cancel := context.WithCancel(context.Background())
