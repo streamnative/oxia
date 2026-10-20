@@ -360,7 +360,7 @@ func (sm *sessionManager) readSessions() (map[SessionId]*proto.SessionMetadata, 
 		}
 	}
 
-	sm.log.Info("All sessions", slog.Int("count", len(sessionKeys)))
+	sm.log.Info("Recovered sessions", slog.Int("count", len(sessionKeys)))
 
 	result := map[SessionId]*proto.SessionMetadata{}
 

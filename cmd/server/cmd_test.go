@@ -323,7 +323,7 @@ func TestExecReloadsChangedConfigFile(t *testing.T) {
 	go func() {
 		errs <- Cmd.ExecuteContext(ctx)
 	}()
-	require.True(t, handler.waitFor("Starting Oxia dataServer"))
+	require.True(t, handler.waitFor("Starting Oxia DATASERVER"))
 
 	overwriteConfigFile(t, configPath, invalidConfig)
 	require.True(t, handler.waitFor("parse updated configuration file failed"))
