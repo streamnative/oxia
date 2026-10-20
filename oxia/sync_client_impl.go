@@ -65,7 +65,7 @@ func (c *syncClientImpl) getCacheManager() (*cacheManager, error) {
 	}
 
 	var err error
-	c.cacheManager, err = newCacheManager(c)
+	c.cacheManager, err = newCacheManager(c, nil)
 	return c.cacheManager, err
 }
 
