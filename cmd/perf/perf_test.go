@@ -15,7 +15,11 @@
 package perf
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -97,6 +101,21 @@ func TestPerfRunWritesRandomPayloads(t *testing.T) {
 	assert.NotEqual(t, make([]byte, 16), value)
 }
 
+func TestPerfRunReportsStats(t *testing.T) {
+	server := newStandalone(t)
+	logs := captureLogs(t)
+	config := testConfig(server.ServiceAddr(), false)
+	config.StatsInterval = 10 * time.Millisecond
+	ctx, cancel := context.WithCancel(context.Background())
+	done := runInBackground(ctx, newPerf(t, config))
+
+	assert.Eventually(t, func() bool {
+		return strings.Contains(logs.String(), "Stats - Total ops")
+	}, 10*time.Second, 10*time.Millisecond)
+	cancel()
+	<-done
+}
+
 func testConfig(serviceAddr string, randomPayload bool) Config {
 	return Config{
 		ServiceAddr:         serviceAddr,
@@ -133,6 +152,32 @@ func newPerf(t *testing.T, config Config) Perf {
 	p, err := New(config)
 	require.NoError(t, err)
 	return p
+}
+
+func captureLogs(t *testing.T) *lockedBuffer {
+	t.Helper()
+	buffer := &lockedBuffer{}
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(buffer, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	return buffer
+}
+
+type lockedBuffer struct {
+	mu     sync.Mutex
+	buffer bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buffer.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buffer.String()
 }
 
 func runInBackground(ctx context.Context, p Perf) <-chan struct{} {
