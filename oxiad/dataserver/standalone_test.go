@@ -27,6 +27,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	pb "google.golang.org/protobuf/proto"
 
+	"github.com/oxia-db/oxia/oxiad/common/vfs"
 	"github.com/oxia-db/oxia/oxiad/dataserver/database"
 	"github.com/oxia-db/oxia/oxiad/dataserver/database/kvstore"
 	"github.com/oxia-db/oxia/oxiad/dataserver/wal/codec"
@@ -141,7 +142,7 @@ func TestStandaloneCorruptedCommittedWalEntry(t *testing.T) {
 
 	// Flip a payload byte of the first entry of the WAL
 	segment := filepath.Join(dir, "wal", constant.DefaultNamespace, "shard-0", "0")
-	c, exists, err := codec.GetOrCreate(codec.OSFS{}, segment)
+	c, exists, err := codec.GetOrCreate(vfs.OSFS{}, segment)
 	require.NoError(t, err)
 	require.True(t, exists)
 	f, err := os.OpenFile(segment+c.GetTxnExtension(), os.O_RDWR, 0)

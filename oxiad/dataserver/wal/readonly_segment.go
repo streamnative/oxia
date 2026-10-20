@@ -26,6 +26,7 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 
+	"github.com/oxia-db/oxia/oxiad/common/vfs"
 	"github.com/oxia-db/oxia/oxiad/dataserver/wal/codec"
 )
 
@@ -59,7 +60,7 @@ type readOnlySegment struct {
 	lastCrc    uint32
 	closed     bool
 
-	txnFile       codec.File
+	txnFile       vfs.File
 	txnMappedFile mmap.MMap
 
 	// Index file maps a logical "offset" to a physical file offset within the wal segment
@@ -67,7 +68,7 @@ type readOnlySegment struct {
 	openTimestamp time.Time
 }
 
-func newReadOnlySegment(fs codec.FS, basePath string, baseOffset int64) (ReadOnlySegment, error) {
+func newReadOnlySegment(fs vfs.FS, basePath string, baseOffset int64) (ReadOnlySegment, error) {
 	c, err := newSegmentConfig(fs, basePath, baseOffset)
 	if err != nil {
 		return nil, err

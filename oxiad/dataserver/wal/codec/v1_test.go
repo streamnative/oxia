@@ -23,6 +23,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/oxia-db/oxia/oxiad/common/vfs"
 )
 
 func TestV1_GetHeaderSize(t *testing.T) {
@@ -87,9 +89,9 @@ func TestV1_WriteReadIndex(t *testing.T) {
 		binary.BigEndian.PutUint32(indexBuf[i*4:], uint32(i))
 	}
 	p := path.Join(dir, fileName+v1.GetIdxExtension())
-	err := v1.WriteIndex(OSFS{}, p, indexBuf)
+	err := v1.WriteIndex(vfs.OSFS{}, p, indexBuf)
 	assert.NoError(t, err)
-	index, err := v1.ReadIndex(OSFS{}, p)
+	index, err := v1.ReadIndex(vfs.OSFS{}, p)
 	assert.NoError(t, err)
 	for i := 0; i < elementsNum; i++ {
 		idx := ReadInt(index, uint32(i*4))
@@ -99,9 +101,9 @@ func TestV1_WriteReadIndex(t *testing.T) {
 
 func TestV1_ReadEmptyIndex(t *testing.T) {
 	p := path.Join(t.TempDir(), "empty-index"+v1.GetIdxExtension())
-	assert.NoError(t, v1.WriteIndex(OSFS{}, p, nil))
+	assert.NoError(t, v1.WriteIndex(vfs.OSFS{}, p, nil))
 
-	_, err := v1.ReadIndex(OSFS{}, p)
+	_, err := v1.ReadIndex(vfs.OSFS{}, p)
 	assert.ErrorIs(t, err, ErrDataCorrupted)
 }
 
@@ -142,16 +144,16 @@ func TestV1ReadRecordWithValidationRejectsTruncatedHeader(t *testing.T) {
 func TestV1WriteIndexFailsWhenDirectoryIsMissing(t *testing.T) {
 	p := path.Join(t.TempDir(), "missing", "0"+v1.GetIdxExtension())
 
-	err := v1.WriteIndex(OSFS{}, p, []byte{0, 0, 0, 1})
+	err := v1.WriteIndex(vfs.OSFS{}, p, []byte{0, 0, 0, 1})
 	assert.ErrorIs(t, err, os.ErrNotExist)
 }
 
 func TestV1ReadIndexFailsWhenFileIsMissing(t *testing.T) {
-	_, err := v1.ReadIndex(OSFS{}, path.Join(t.TempDir(), "0"+v1.GetIdxExtension()))
+	_, err := v1.ReadIndex(vfs.OSFS{}, path.Join(t.TempDir(), "0"+v1.GetIdxExtension()))
 	assert.ErrorIs(t, err, os.ErrNotExist)
 }
 
 func TestV1ReadIndexFailsWhenPathIsDirectory(t *testing.T) {
-	_, err := v1.ReadIndex(OSFS{}, t.TempDir())
+	_, err := v1.ReadIndex(vfs.OSFS{}, t.TempDir())
 	assert.ErrorContains(t, err, "failed to read segment index file")
 }

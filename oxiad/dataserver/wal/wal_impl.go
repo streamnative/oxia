@@ -28,6 +28,7 @@ import (
 	"go.uber.org/multierr"
 	"golang.org/x/exp/slices"
 
+	"github.com/oxia-db/oxia/oxiad/common/vfs"
 	"github.com/oxia-db/oxia/oxiad/dataserver/wal/codec"
 
 	"github.com/oxia-db/oxia/common/concurrent"
@@ -81,7 +82,7 @@ type wal struct {
 	// current segment. It takes the write side, before the mutex.
 	truncateLock sync.RWMutex
 
-	fs          codec.FS
+	fs          vfs.FS
 	walPath     string
 	namespace   string
 	shard       int64
@@ -151,7 +152,7 @@ func newWal(namespace string, shard int64, options *FactoryOptions, commitOffset
 
 	fs := options.fs
 	if fs == nil {
-		fs = codec.OSFS{}
+		fs = vfs.OSFS{}
 	}
 
 	labels := metric.LabelsForShard(namespace, shard)
@@ -914,8 +915,8 @@ func (t *wal) discardTrailingSegment(baseOffset int64) error {
 		return err
 	}
 	if err = multierr.Combine(
-		codec.RemoveFileIfExists(t.fs, c.idxPath),
-		codec.RemoveFileIfExists(t.fs, c.txnPath),
+		vfs.RemoveFileIfExists(t.fs, c.idxPath),
+		vfs.RemoveFileIfExists(t.fs, c.txnPath),
 	); err != nil {
 		return err
 	}
@@ -927,7 +928,7 @@ func (t *wal) discardTrailingSegment(baseOffset int64) error {
 	return err
 }
 
-func listAllSegments(fs codec.FS, walPath string) (segments []int64, err error) {
+func listAllSegments(fs vfs.FS, walPath string) (segments []int64, err error) {
 	dir, err := fs.ReadDir(walPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {

@@ -24,6 +24,7 @@ import (
 	"go.uber.org/multierr"
 
 	"github.com/oxia-db/oxia/oxiad/common/crc"
+	"github.com/oxia-db/oxia/oxiad/common/vfs"
 )
 
 // Txn File:
@@ -148,7 +149,7 @@ func (*V2) WriteRecord(buf []byte, startOffset uint32, previousCrc uint32, paylo
 	return headerOffset + payloadSize, payloadCrc
 }
 
-func (v *V2) WriteIndex(fs FS, path string, index []byte) error {
+func (v *V2) WriteIndex(fs vfs.FS, path string, index []byte) error {
 	idxFile, err := fs.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0644)
 	if err != nil {
 		return errors.Wrapf(err, "failed to open index file %s", path)
@@ -165,8 +166,8 @@ func (v *V2) WriteIndex(fs FS, path string, index []byte) error {
 	return idxFile.Close()
 }
 
-func (v *V2) ReadIndex(fs FS, path string) ([]byte, error) {
-	var idFile File
+func (v *V2) ReadIndex(fs vfs.FS, path string) ([]byte, error) {
+	var idFile vfs.File
 	var err error
 	if idFile, err = fs.OpenFile(path, os.O_RDONLY, 0); err != nil {
 		return nil, errors.Wrapf(err, "failed to open segment index file %s", path)
