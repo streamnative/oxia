@@ -81,7 +81,7 @@ func NewAsyncClient(serviceAddress string, opts ...ClientOption) (AsyncClient, e
 	var shardManager internal.ShardManager
 	rpcProvider := internal.NewRpcProvider(ctx, options.namespace, options.tls, options.authentication, options.serviceAddress, func() internal.ShardManager {
 		return shardManager
-	}, grpcDialOptions...)
+	}, nil, grpcDialOptions...)
 
 	batcherFactory := batch.NewBatcherFactory(
 		rpcProvider,

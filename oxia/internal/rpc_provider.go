@@ -32,6 +32,7 @@ import (
 
 	"github.com/oxia-db/oxia/common/auth"
 	"github.com/oxia-db/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/common/proto"
 	"github.com/oxia-db/oxia/common/rpc"
 	commontime "github.com/oxia-db/oxia/common/time"
@@ -60,15 +61,18 @@ type rpcProvider struct {
 	writeStreamsMutex    sync.RWMutex
 	writeStreams         map[int64]*streamWrapper
 
-	ctx       context.Context
-	namespace string
+	ctx        context.Context
+	namespace  string
+	failpoints *failpoint.Failpoints
 }
 
 func NewRpcProvider(ctx context.Context, namespace string, tlsConf *tls.Config, authentication auth.Authentication,
-	serviceAddress string, shardManagerSupplier func() ShardManager, dialOptions ...grpc.DialOption,
+	serviceAddress string, shardManagerSupplier func() ShardManager, failpoints *failpoint.Failpoints,
+	dialOptions ...grpc.DialOption,
 ) RpcProvider {
 	return &rpcProvider{
 		ctx:                  ctx,
+		failpoints:           failpoints,
 		namespace:            namespace,
 		clientPool:           rpc.NewClientPool(tlsConf, authentication, dialOptions...),
 		serviceAddress:       serviceAddress,
@@ -297,7 +301,7 @@ func (p *rpcProvider) getWriteStream(ctx context.Context, shardId int64, target 
 	// and be sent again
 	if old, ok := p.writeStreams[shardId]; ok {
 		old.failed.Store(true)
-		if err := old.stream.CloseSend(); err != nil {
+		if err := p.failpoints.Fail("getWriteStream.closeOldStream", old.stream.CloseSend()); err != nil {
 			slog.Warn("failed to close old write stream",
 				slog.Int64("shard", shardId),
 				slog.Any("error", err),

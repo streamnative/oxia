@@ -353,7 +353,7 @@ func TestCloseClosesShardManager(t *testing.T) {
 	shardManager := &staticShardManager{}
 	ctx, cancel := context.WithCancel(context.Background())
 	rpcProvider := internal.NewRpcProvider(ctx, "default", nil, nil, "localhost:6648",
-		func() internal.ShardManager { return shardManager })
+		func() internal.ShardManager { return shardManager }, nil)
 	client := &clientImpl{
 		shardManager:      shardManager,
 		writeBatchManager: batch.NewWriteManager(ctx, nil, nil),

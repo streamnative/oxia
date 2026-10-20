@@ -34,6 +34,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/oxia-db/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/common/proto"
 	"github.com/oxia-db/oxia/common/rpc"
 )
@@ -277,7 +278,7 @@ func TestRpcProvider_RetryWhenShardLeaderIsUnreachable(t *testing.T) {
 				return (&net.Dialer{}).DialContext(ctx, "tcp", address)
 			}
 			provider := NewRpcProvider(t.Context(), constant.DefaultNamespace, nil, nil, newLeader,
-				func() ShardManager { return shardManager }, grpc.WithContextDialer(dialer))
+				func() ShardManager { return shardManager }, nil, grpc.WithContextDialer(dialer))
 			defer func() {
 				assert.NoError(t, provider.Close())
 			}()
@@ -305,7 +306,7 @@ func TestRpcProvider_RetryWhenHintedLeaderIsUnreachable(t *testing.T) {
 			shardManager.leader.Store(&oldLeader)
 
 			provider := NewRpcProvider(t.Context(), constant.DefaultNamespace, nil, nil, newLeader,
-				func() ShardManager { return shardManager })
+				func() ShardManager { return shardManager }, nil)
 			defer func() {
 				assert.NoError(t, provider.Close())
 			}()
@@ -335,7 +336,7 @@ func TestRpcProvider_WritesGoToTheNewLeader(t *testing.T) {
 	shardManager.leader.Store(&oldLeaderAddress)
 
 	provider := NewRpcProvider(t.Context(), constant.DefaultNamespace, nil, nil, newLeaderAddress,
-		func() ShardManager { return shardManager })
+		func() ShardManager { return shardManager }, nil)
 	defer func() {
 		assert.NoError(t, provider.Close())
 	}()
@@ -348,6 +349,37 @@ func TestRpcProvider_WritesGoToTheNewLeader(t *testing.T) {
 	defer cancel()
 	assert.NoError(t, executeTestWrite(ctx, provider, shardId))
 
+	assert.EqualValues(t, 1, oldLeader.requests.Load())
+	assert.EqualValues(t, 1, newLeader.requests.Load())
+}
+
+func TestRpcProviderWritesGoToTheNewLeaderWhenTheOldStreamFailsToClose(t *testing.T) {
+	shardId := int64(0)
+	shardManager := &testShardManager{}
+	oldLeader := &writeServer{}
+	oldLeaderAddress := startTestOxiaClientServer(t, oldLeader)
+	newLeader := &writeServer{}
+	newLeaderAddress := startTestOxiaClientServer(t, newLeader)
+	shardManager.leader.Store(&oldLeaderAddress)
+	closeFailures := atomic.Int64{}
+	failpoints := failpoint.New(map[string]func() error{
+		"getWriteStream.closeOldStream": func() error {
+			closeFailures.Add(1)
+			return errors.New("injected")
+		},
+	})
+
+	provider := NewRpcProvider(t.Context(), constant.DefaultNamespace, nil, nil, newLeaderAddress,
+		func() ShardManager { return shardManager }, failpoints)
+	defer func() {
+		assert.NoError(t, provider.Close())
+	}()
+
+	require.NoError(t, executeTestWrite(t.Context(), provider, shardId))
+	shardManager.leader.Store(&newLeaderAddress)
+	require.NoError(t, executeTestWrite(t.Context(), provider, shardId))
+
+	assert.EqualValues(t, 1, closeFailures.Load())
 	assert.EqualValues(t, 1, oldLeader.requests.Load())
 	assert.EqualValues(t, 1, newLeader.requests.Load())
 }
@@ -375,7 +407,7 @@ func TestRpcProvider_WriteStreamSetupRespectsTheDeadline(t *testing.T) {
 		return (&net.Dialer{}).DialContext(ctx, "tcp", address)
 	}
 	provider := NewRpcProvider(t.Context(), constant.DefaultNamespace, nil, nil, leaderAddress,
-		func() ShardManager { return shardManager }, grpc.WithContextDialer(dialer))
+		func() ShardManager { return shardManager }, nil, grpc.WithContextDialer(dialer))
 	defer func() {
 		assert.NoError(t, provider.Close())
 	}()
@@ -435,7 +467,7 @@ func TestExecuteWithRetry_ShardRequestErrors(t *testing.T) {
 // next attempt.
 func TestRpcProvider_KeepAliveFailsFastWhenTargetIsUnreachable(t *testing.T) {
 	provider := NewRpcProvider(t.Context(), constant.DefaultNamespace, nil, nil, "",
-		func() ShardManager { return nil })
+		func() ShardManager { return nil }, nil)
 	defer func() {
 		assert.NoError(t, provider.Close())
 	}()
@@ -476,7 +508,7 @@ func TestRpcProvider_SessionRequestsFailFastWhenTargetIsNotLeader(t *testing.T) 
 			})
 
 			provider := NewRpcProvider(t.Context(), constant.DefaultNamespace, nil, nil, "",
-				func() ShardManager { return nil })
+				func() ShardManager { return nil }, nil)
 			defer func() {
 				assert.NoError(t, provider.Close())
 			}()
@@ -525,7 +557,7 @@ func TestRpcProvider_ShardWithoutLeader(t *testing.T) {
 	shardManager.leader.Store(&noLeader)
 
 	provider := NewRpcProvider(t.Context(), constant.DefaultNamespace, nil, nil, leader,
-		func() ShardManager { return shardManager })
+		func() ShardManager { return shardManager }, nil)
 	pool := &recordingClientPool{ClientPool: provider.(*rpcProvider).clientPool}
 	provider.(*rpcProvider).clientPool = pool
 	defer func() {
@@ -552,7 +584,7 @@ func TestRpcProvider_ShardWithoutLeader(t *testing.T) {
 func TestRpcProviderExecuteReadWithoutShard(t *testing.T) {
 	serviceAddress := startTestOxiaClientServer(t, testOxiaClientServer{})
 	provider := NewRpcProvider(t.Context(), constant.DefaultNamespace, nil, nil, serviceAddress,
-		func() ShardManager { return nil })
+		func() ShardManager { return nil }, nil)
 	defer func() {
 		assert.NoError(t, provider.Close())
 	}()
@@ -570,7 +602,7 @@ func TestRpcProviderShardRequestsFailOnUnknownShard(t *testing.T) {
 	for _, tt := range shardRequests(&shardId) {
 		t.Run(tt.name, func(t *testing.T) {
 			provider := NewRpcProvider(t.Context(), constant.DefaultNamespace, nil, nil, "",
-				func() ShardManager { return nil })
+				func() ShardManager { return nil }, nil)
 			defer func() {
 				assert.NoError(t, provider.Close())
 			}()
@@ -591,7 +623,7 @@ func TestRpcProviderShardRequestsFailWhenConnectionFails(t *testing.T) {
 			shardManager := &testShardManager{}
 			shardManager.leader.Store(&leader)
 			provider := NewRpcProvider(t.Context(), constant.DefaultNamespace, nil, nil, "",
-				func() ShardManager { return shardManager })
+				func() ShardManager { return shardManager }, nil)
 			pool := &recordingClientPool{ClientPool: provider.(*rpcProvider).clientPool, err: errConnect}
 			provider.(*rpcProvider).clientPool = pool
 			defer func() {
@@ -638,7 +670,7 @@ func TestRpcProviderFixedTargetRequestsFailWithoutLeader(t *testing.T) {
 	for _, tt := range fixedTargetRequests() {
 		t.Run(tt.name, func(t *testing.T) {
 			provider := NewRpcProvider(t.Context(), constant.DefaultNamespace, nil, nil, "",
-				func() ShardManager { return nil })
+				func() ShardManager { return nil }, nil)
 			pool := &recordingClientPool{ClientPool: provider.(*rpcProvider).clientPool}
 			provider.(*rpcProvider).clientPool = pool
 			defer func() {
@@ -654,7 +686,7 @@ func TestRpcProviderFixedTargetRequestsFailWithoutLeader(t *testing.T) {
 func TestRpcProviderGetSequenceUpdates(t *testing.T) {
 	target := startTestOxiaClientServer(t, testOxiaClientServer{})
 	provider := NewRpcProvider(t.Context(), constant.DefaultNamespace, nil, nil, "",
-		func() ShardManager { return nil })
+		func() ShardManager { return nil }, nil)
 	defer func() {
 		assert.NoError(t, provider.Close())
 	}()
@@ -669,7 +701,7 @@ func TestRpcProviderGetSequenceUpdates(t *testing.T) {
 func TestRpcProviderStreamRequestsFailOnCanceledContext(t *testing.T) {
 	target := startTestOxiaClientServer(t, testOxiaClientServer{})
 	provider := NewRpcProvider(t.Context(), constant.DefaultNamespace, nil, nil, "",
-		func() ShardManager { return nil })
+		func() ShardManager { return nil }, nil)
 	defer func() {
 		assert.NoError(t, provider.Close())
 	}()
@@ -753,7 +785,7 @@ func TestRpcProviderListAndRangeScanConsumerError(t *testing.T) {
 	shardManager := &testShardManager{}
 	shardManager.leader.Store(&address)
 	provider := NewRpcProvider(t.Context(), constant.DefaultNamespace, nil, nil, address,
-		func() ShardManager { return shardManager })
+		func() ShardManager { return shardManager }, nil)
 	defer func() {
 		assert.NoError(t, provider.Close())
 	}()
