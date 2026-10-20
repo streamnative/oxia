@@ -79,6 +79,16 @@ func TestPebbleSnapshotNewFailsOnFilesystemErrors(t *testing.T) {
 	}
 }
 
+func TestPebbleSnapshotNewFailsWhenFlushFails(t *testing.T) {
+	factory, kv := newKVWithFailpoint(t, "snapshot.flush")
+
+	snapshot, err := kv.Snapshot()
+	assert.ErrorIs(t, err, errFailpoint)
+	assert.Nil(t, snapshot)
+	assert.NoDirExists(t, filepath.Join(factory.dataDir, validation.KeywordNamespaceSnapshots, "shard-1"))
+	assert.NoError(t, kv.Close())
+}
+
 // Closing a snapshot in the middle of sending a file closes the file.
 func TestPebbleSnapshotCloseClosesPartiallyReadFile(t *testing.T) {
 	kv := newSeekScanKV(t, proto.KeySortingType_NATURAL)

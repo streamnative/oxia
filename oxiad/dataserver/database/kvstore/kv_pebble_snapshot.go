@@ -54,7 +54,7 @@ func newPebbleSnapshot(p *Pebble) (Snapshot, error) {
 
 	// Flush the DB to ensure the snapshot content is as close as possible to
 	// the last committed entry
-	if err := p.db.Flush(); err != nil {
+	if err := p.failpoints.Fail("snapshot.flush", p.db.Flush()); err != nil {
 		return nil, err
 	}
 

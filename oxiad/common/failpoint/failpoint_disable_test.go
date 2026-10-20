@@ -12,26 +12,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !disable_trap
+//go:build disable_trap
 
-package kvstore
+package failpoint
 
-type KvTrap struct {
-	hooks map[string]func() error
+import (
+	"errors"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
+
+func TestFailpointsTriggerDisabled(t *testing.T) {
+	f := &Failpoints{}
+
+	assert.NoError(t, f.Trigger("point"))
 }
 
-func NewKvTrap(hooks map[string]func() error) *KvTrap {
-	return &KvTrap{
-		hooks: hooks,
-	}
-}
+func TestFailpointsFailDisabled(t *testing.T) {
+	f := &Failpoints{}
+	callErr := errors.New("call")
 
-func (trap *KvTrap) Trigger(name string) error {
-	if trap == nil {
-		return nil
-	}
-	if h := trap.hooks[name]; h != nil {
-		return h()
-	}
-	return nil
+	assert.NoError(t, f.Fail("point", nil))
+	assert.ErrorIs(t, f.Fail("point", callErr), callErr)
 }

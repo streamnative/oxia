@@ -14,10 +14,14 @@
 
 //go:build disable_trap
 
-package kvstore
+package failpoint
 
-type KvTrap struct{}
+type Failpoints struct{}
 
-func (trap *KvTrap) Trigger(string) error {
+func (*Failpoints) Trigger(string) error {
 	return nil
+}
+
+func (*Failpoints) Fail(_ string, err error) error {
+	return err
 }

@@ -22,6 +22,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/oxia-db/oxia/oxiad/common/crc"
+	"github.com/oxia-db/oxia/oxiad/common/failpoint"
 
 	"github.com/oxia-db/oxia/common/proto"
 )
@@ -204,7 +205,7 @@ type FactoryOptions struct {
 	CacheSizeMB int64
 	UseWAL      bool
 	SyncData    bool
-	KvTrap      *KvTrap
+	Failpoints  *failpoint.Failpoints
 	// FS holds the databases and the snapshots. Nil is vfs.Default.
 	FS vfs.FS
 }
@@ -214,7 +215,7 @@ var DefaultFactoryOptions = &FactoryOptions{
 	CacheSizeMB: 100,
 	UseWAL:      true,
 	SyncData:    true,
-	KvTrap:      nil,
+	Failpoints:  nil,
 	FS:          vfs.Default,
 }
 
