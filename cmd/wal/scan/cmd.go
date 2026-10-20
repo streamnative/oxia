@@ -16,9 +16,9 @@ package scan
 
 import (
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"math"
+	"os"
 	"time"
 
 	"github.com/oxia-db/oxia/common/proto"
@@ -111,11 +111,7 @@ func exec(*cobra.Command, []string) error {
 				WriteRequests: lev.GetRequests(),
 			}
 
-			ser, err := json.Marshal(logEntry)
-			if err != nil {
-				return err
-			}
-			if _, err := fmt.Println(string(ser)); err != nil {
+			if err := json.NewEncoder(os.Stdout).Encode(logEntry); err != nil {
 				return err
 			}
 		} else {
