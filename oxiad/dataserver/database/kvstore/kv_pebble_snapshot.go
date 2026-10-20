@@ -181,9 +181,8 @@ func (ps *pebbleSnapshot) NextChunkContent() ([]byte, error) {
 	if err != nil && !errors.Is(err, io.EOF) {
 		return nil, err
 	}
-	if int64(byteCount) < MaxSnapshotChunkSize {
-		content = content[:byteCount]
-
+	content = content[:byteCount]
+	if ps.chunkIndex == ps.chunkCount-1 {
 		err = ps.file.Close()
 		if err != nil {
 			return nil, err

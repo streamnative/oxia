@@ -22,6 +22,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/cockroachdb/pebble/v2/vfs/errorfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -177,4 +178,44 @@ func TestPebbleSnapshotChunkFailsOnFilesystemErrors(t *testing.T) {
 			assert.ErrorIs(t, err, errorfs.ErrInjected)
 		})
 	}
+}
+
+func TestPebbleSnapshotChunkClosesFileOfChunkMultipleSize(t *testing.T) {
+	var opened, closed int
+	injector := errorfs.InjectorFunc(func(op errorfs.Op) error {
+		switch op.Kind {
+		case errorfs.OpOpen:
+			opened++
+		case errorfs.OpFileClose:
+			closed++
+		default:
+		}
+		return nil
+	})
+	memFS := vfs.NewMem()
+	snapshot := &pebbleSnapshot{
+		fs:    closeFaultFS{FS: errorfs.Wrap(memFS, injector), injector: injector},
+		path:  "snapshot",
+		files: []string{"chunk-multiple", "small"},
+	}
+	require.NoError(t, memFS.MkdirAll(snapshot.path, 0o755))
+	for name, size := range map[string]int64{"chunk-multiple": 2 * MaxSnapshotChunkSize, "small": 10} {
+		f, err := memFS.Create(filepath.Join(snapshot.path, name), vfs.WriteCategoryUnspecified)
+		require.NoError(t, err)
+		_, err = f.Write(make([]byte, size))
+		require.NoError(t, err)
+		require.NoError(t, f.Close())
+	}
+
+	var chunks int
+	for ; snapshot.Valid(); snapshot.Next() {
+		_, err := snapshot.Chunk()
+		require.NoError(t, err)
+		chunks++
+	}
+
+	assert.Equal(t, 3, chunks)
+	assert.Equal(t, 2, opened)
+	assert.Equal(t, opened, closed)
+	assert.NoError(t, snapshot.Close())
 }
