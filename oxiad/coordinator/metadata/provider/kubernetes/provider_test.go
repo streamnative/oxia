@@ -17,14 +17,19 @@ package kubernetes
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 
 	commonproto "github.com/oxia-db/oxia/common/proto"
 	metadatacommon "github.com/oxia-db/oxia/oxiad/coordinator/metadata/common"
@@ -162,6 +167,122 @@ func TestProviderReloadKeepsStoredDocumentUntilConfigMapIsRestored(t *testing.T)
 	})
 	require.NoError(t, p.Reload())
 	requireServers(t, p, 2)
+}
+
+func TestNewDefaultClientsetUsesKubeconfig(t *testing.T) {
+	kubeconfig := filepath.Join(t.TempDir(), "kubeconfig")
+	require.NoError(t, os.WriteFile(kubeconfig, []byte(`apiVersion: v1
+kind: Config
+clusters:
+- name: test
+  cluster:
+    server: https://127.0.0.1:1
+contexts:
+- name: test
+  context:
+    cluster: test
+current-context: test
+`), 0o600))
+	t.Setenv("KUBECONFIG", kubeconfig)
+
+	kc, err := NewDefaultClientset()
+	require.NoError(t, err)
+	assert.NotNil(t, kc)
+}
+
+func TestNewDefaultClientsetFailsWithoutCluster(t *testing.T) {
+	kubeconfig := filepath.Join(t.TempDir(), "kubeconfig")
+	require.NoError(t, os.WriteFile(kubeconfig, []byte("apiVersion: v1\nkind: Config\n"), 0o600))
+	t.Setenv("KUBECONFIG", kubeconfig)
+	t.Setenv("KUBERNETES_SERVICE_HOST", "")
+	t.Setenv("KUBERNETES_SERVICE_PORT", "")
+
+	_, err := NewDefaultClientset()
+	require.Error(t, err)
+}
+
+func TestProviderLoadReturnsGetError(t *testing.T) {
+	kc := fake.NewSimpleClientset()
+	errGet := errors.New("get failure")
+	kc.PrependReactor("get", "configmaps", func(k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errGet
+	})
+	p := newConfigProvider(t, kc)
+
+	_, err := p.Load()
+	require.ErrorIs(t, err, errGet)
+}
+
+// A document that can't be decoded must stop the coordinator, rather than be
+// served or overwritten.
+func TestProviderLoadPanicsOnUndecodableDocument(t *testing.T) {
+	kc := fake.NewSimpleClientset()
+	cm := makeDesiredConfigMap("config", metadatacodec.ClusterConfigCodec.GetKey(), []byte("servers: [unterminated"),
+		metadatacommon.NotExists)
+	_, err := kc.CoreV1().ConfigMaps("ns").Create(t.Context(), cm, metav1.CreateOptions{})
+	require.NoError(t, err)
+	p := newConfigProvider(t, kc)
+
+	assert.Panics(t, func() { _, _ = p.Load() })
+}
+
+func TestProviderSubscribeNotifiesStores(t *testing.T) {
+	p := newConfigProvider(t, fake.NewSimpleClientset())
+	subscription := p.Subscribe()
+	defer subscription.Close()
+
+	_, err := p.Store(metadataprovider.Versioned[*commonproto.ClusterConfiguration]{
+		Value:   newConfig(1),
+		Version: metadatacommon.NotExists,
+	})
+	require.NoError(t, err)
+
+	select {
+	case <-subscription.Changed():
+	case <-time.After(10 * time.Second):
+		require.FailNow(t, "the subscription was not notified of the store")
+	}
+	stored, err := subscription.Get()
+	require.NoError(t, err)
+	require.Len(t, stored.Value.GetServers(), 1)
+}
+
+func TestProviderWaitToBecomeLeaderObservesOtherLeader(t *testing.T) {
+	now := metav1.NewMicroTime(time.Now())
+	holder := "coordinator-1"
+	leaseSeconds := int32(leaseDuration / time.Second)
+	kc := fake.NewSimpleClientset(&coordinationv1.Lease{
+		ObjectMeta: metav1.ObjectMeta{Name: "config", Namespace: "ns"},
+		Spec: coordinationv1.LeaseSpec{
+			HolderIdentity:       &holder,
+			LeaseDurationSeconds: &leaseSeconds,
+			AcquireTime:          &now,
+			RenewTime:            &now,
+		},
+	})
+	p, err := NewProvider(t.Context(), kc, "ns", "config", metadatacodec.ClusterConfigCodec,
+		metadatacommon.WatchDisabled, "coordinator-0")
+	require.NoError(t, err)
+
+	waited := make(chan error, 1)
+	go func() {
+		_, err := p.WaitToBecomeLeader()
+		waited <- err
+	}()
+
+	require.Eventually(t, func() bool {
+		leader, err := p.GetLeaderName()
+		return err == nil && leader == holder
+	}, 10*time.Second, 10*time.Millisecond)
+
+	// The lease is held by the other coordinator: closing ends the wait
+	require.NoError(t, p.Close())
+	select {
+	case err := <-waited:
+		require.Error(t, err)
+	case <-time.After(10 * time.Second):
+		require.FailNow(t, "closing did not end the wait for the leadership")
+	}
 }
 
 func newConfigProvider(t *testing.T, kc *fake.Clientset) metadataprovider.Provider[*commonproto.ClusterConfiguration] {

@@ -22,11 +22,13 @@ import (
 	"time"
 
 	hashicorpraft "github.com/hashicorp/raft"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	commonproto "github.com/oxia-db/oxia/common/proto"
 	metadatacommon "github.com/oxia-db/oxia/oxiad/coordinator/metadata/common"
 	metadatacodec "github.com/oxia-db/oxia/oxiad/coordinator/metadata/common/codec"
+	"github.com/oxia-db/oxia/oxiad/coordinator/metadata/provider"
 )
 
 // An applied entry reaches the cache in the background through OnApplied, and
@@ -66,9 +68,116 @@ func TestProviderCacheFollowsAppliedEntries(t *testing.T) {
 	require.Equal(t, "second", loadedValue(t, p).GetInstanceId())
 }
 
+func TestProviderLoadLatestPanicsOnUndecodableState(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	r := &Raft{logger: logger, sc: newStateContainer(logger, nil)}
+	r.sc.Documents[metadatacodec.ClusterStatusCodec.GetKey()] = &documentContainer{
+		State:          json.RawMessage("not json"),
+		CurrentVersion: 0,
+	}
+	p := &Provider[*commonproto.ClusterStatus]{codec: metadatacodec.ClusterStatusCodec, raft: r}
+
+	assert.Panics(t, func() { p.loadLatest() })
+}
+
+func TestProviderGetLeaderNameUnavailable(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	r := &Raft{logger: logger, sc: newStateContainer(logger, nil)}
+	p := NewProvider(t.Context(), r, metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled)
+	defer func() { require.NoError(t, p.Close()) }()
+
+	_, err := p.GetLeaderName()
+	require.ErrorIs(t, err, provider.ErrCoordinatorLeaderUnavailable)
+}
+
+func TestProviderStoreFailsOnFollower(t *testing.T) {
+	r, _ := newInmemRaft(t)
+	p := NewProvider(t.Context(), r, metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled)
+	defer func() { require.NoError(t, p.Close()) }()
+
+	_, err := p.Store(provider.Versioned[*commonproto.ClusterStatus]{
+		Value:   &commonproto.ClusterStatus{InstanceId: "follower"},
+		Version: metadatacommon.NotExists,
+	})
+	require.ErrorIs(t, err, hashicorpraft.ErrNotLeader)
+}
+
+func TestProviderStoreOnLeader(t *testing.T) {
+	r := newInmemLeader(t)
+	p := NewProvider(t.Context(), r, metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled)
+	defer func() { require.NoError(t, p.Close()) }()
+
+	version, err := p.Store(provider.Versioned[*commonproto.ClusterStatus]{
+		Value:   &commonproto.ClusterStatus{InstanceId: "leader"},
+		Version: metadatacommon.NotExists,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, metadatacommon.Version("0"), version)
+
+	// A stale expected version is rejected by the FSM
+	_, err = p.Store(provider.Versioned[*commonproto.ClusterStatus]{
+		Value:   &commonproto.ClusterStatus{InstanceId: "stale"},
+		Version: metadatacommon.NotExists,
+	})
+	require.ErrorIs(t, err, metadatacommon.ErrBadVersion)
+
+	// Undecodable values are refused before reaching raft
+	_, err = p.Store(provider.Versioned[*commonproto.ClusterStatus]{
+		Value:   &commonproto.ClusterStatus{InstanceId: "\xff"},
+		Version: version,
+	})
+	require.Error(t, err)
+	assert.Equal(t, "leader", loadedStatus(t, p).GetInstanceId())
+}
+
 func loadedValue(t *testing.T, p *Provider[*commonproto.ClusterStatus]) *commonproto.ClusterStatus {
 	t.Helper()
 	snapshot, err := p.Load()
 	require.NoError(t, err)
 	return snapshot.Value
+}
+
+func loadedStatus(t *testing.T, p provider.Provider[*commonproto.ClusterStatus]) *commonproto.ClusterStatus {
+	t.Helper()
+	snapshot, err := p.Load()
+	require.NoError(t, err)
+	return snapshot.Value
+}
+
+// newInmemRaft starts a raft node on in-memory stores and transport, with
+// timeouts short enough for it to win its election right away once it is
+// bootstrapped: until then, it stays a follower. The logger is at debug level,
+// which the provider logs its writes at.
+func newInmemRaft(t *testing.T) (*Raft, hashicorpraft.Server) {
+	t.Helper()
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	sc := newStateContainer(logger, nil)
+	address, transport := hashicorpraft.NewInmemTransport("")
+	config := hashicorpraft.DefaultConfig()
+	config.LocalID = hashicorpraft.ServerID(address)
+	config.HeartbeatTimeout = 50 * time.Millisecond
+	config.ElectionTimeout = 50 * time.Millisecond
+	config.LeaderLeaseTimeout = 50 * time.Millisecond
+	config.CommitTimeout = 5 * time.Millisecond
+	config.Logger = newHclogAdapter(logger, &slog.LevelVar{})
+	store := hashicorpraft.NewInmemStore()
+	node, err := hashicorpraft.NewRaft(config, sc, store, store, hashicorpraft.NewInmemSnapshotStore(), transport)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, node.Shutdown().Error()) })
+
+	return &Raft{logger: logger, sc: sc, node: node}, hashicorpraft.Server{ID: config.LocalID, Address: address}
+}
+
+// newInmemLeader returns a single node raft, once it leads.
+func newInmemLeader(t *testing.T) *Raft {
+	t.Helper()
+
+	r, server := newInmemRaft(t)
+	require.NoError(t, r.node.BootstrapCluster(hashicorpraft.Configuration{
+		Servers: []hashicorpraft.Server{server},
+	}).Error())
+	require.Eventually(t, func() bool { return r.node.State() == hashicorpraft.Leader },
+		10*time.Second, 10*time.Millisecond)
+	return r
 }
