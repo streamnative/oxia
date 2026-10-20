@@ -18,9 +18,12 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRunProcessClosesTheProcessWhenItsContextIsDone(t *testing.T) {
@@ -46,6 +49,41 @@ func TestRunProcessClosesTheProcessWhenItsContextIsDone(t *testing.T) {
 	assert.Contains(t, logs.String(), "Oxia TEST stopped")
 }
 
+func TestRunProcessClosesTheProcessOnATerminationSignal(t *testing.T) {
+	for _, sig := range []os.Signal{os.Interrupt, syscall.SIGTERM} {
+		t.Run(sig.String(), func(t *testing.T) {
+			logs := captureLogs(t)
+			process := &testCloser{}
+			started := make(chan struct{})
+			done := make(chan error, 1)
+			go func() {
+				done <- RunProcess(t.Context(), "TEST", func() (io.Closer, error) {
+					close(started)
+					return process, nil
+				})
+			}()
+
+			<-started
+			signalSelf(t, sig)
+			assert.NoError(t, <-done)
+			assert.True(t, process.closed)
+			assert.Contains(t, logs.String(), "Oxia TEST stopped")
+		})
+	}
+}
+
+func TestRunProcessClosesTheProcessOnASignalDuringItsStart(t *testing.T) {
+	process := &testCloser{}
+
+	err := RunProcess(t.Context(), "TEST", func() (io.Closer, error) {
+		signalSelf(t, syscall.SIGTERM)
+		return process, nil
+	})
+
+	assert.NoError(t, err)
+	assert.True(t, process.closed)
+}
+
 func TestRunProcessFailsWhenTheProcessFailsToStart(t *testing.T) {
 	startErr := errors.New("start failure")
 
@@ -64,6 +102,13 @@ func TestRunProcessFailsWhenTheProcessFailsToClose(t *testing.T) {
 
 	assert.ErrorIs(t, err, closeErr)
 	assert.ErrorContains(t, err, "failed to shut down the process")
+}
+
+func signalSelf(t *testing.T, sig os.Signal) {
+	t.Helper()
+	self, err := os.FindProcess(os.Getpid())
+	require.NoError(t, err)
+	require.NoError(t, self.Signal(sig))
 }
 
 type testCloser struct {
