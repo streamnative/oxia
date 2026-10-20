@@ -288,16 +288,15 @@ func TestProviderSubscribeNotifiesStores(t *testing.T) {
 func TestProviderStoreFailsWhenDocumentCannotBeEncoded(t *testing.T) {
 	kc := fake.NewSimpleClientset()
 	encodeErr := errors.New("encode failed")
-	p, err := NewProvider(t.Context(), kc, "ns", "config", &fakeCodec{
+	p := NewProvider(t.Context(), kc, "ns", "config", &fakeCodec{
 		Codec:       metadatacodec.ClusterConfigCodec,
 		marshalYAML: func(*commonproto.ClusterConfiguration) ([]byte, error) { return nil, encodeErr },
 	}, metadatacommon.WatchDisabled, "coordinator-0")
-	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, p.Close())
 	})
 
-	_, err = p.Store(metadataprovider.Versioned[*commonproto.ClusterConfiguration]{
+	_, err := p.Store(metadataprovider.Versioned[*commonproto.ClusterConfiguration]{
 		Value:   newConfig(1),
 		Version: metadatacommon.NotExists,
 	})
@@ -316,9 +315,8 @@ func TestProviderWaitToBecomeLeaderSignalsLeaseLoss(t *testing.T) {
 		}
 		return true, nil, errors.New("lease update failure")
 	})
-	p, err := NewProvider(t.Context(), kc, "ns", "status", metadatacodec.ClusterStatusCodec,
+	p := NewProvider(t.Context(), kc, "ns", "status", metadatacodec.ClusterStatusCodec,
 		metadatacommon.WatchDisabled, "coordinator-0")
-	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, p.Close())
 	})
