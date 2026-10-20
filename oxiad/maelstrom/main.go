@@ -83,17 +83,15 @@ var allNodes []string
 
 var errNoInit = errors.New("no init received")
 
+var errNotInitMessage = errors.New("invalid message type")
+
 func handleInit(scanner *bufio.Scanner) error {
 	for {
 		err := receiveInit(scanner)
-		if errors.Is(err, errNoInit) {
-			return err
-		}
-		if err != nil {
+		if errors.Is(err, errNotInitMessage) {
 			continue
 		}
-
-		return nil
+		return err
 	}
 }
 
@@ -107,13 +105,16 @@ func receiveInit(scanner *bufio.Scanner) error {
 		"Got line",
 		slog.Any("line", []byte(line)),
 	)
-	reqType, req, _ := parseRequest(line)
+	reqType, req, _, err := parseRequest(line)
+	if err != nil {
+		return err
+	}
 	if reqType != MsgTypeInit {
 		slog.Error(
 			"Unexpected request while waiting for init",
 			slog.Any("req", req),
 		)
-		return errors.New("invalid message type")
+		return errNotInitMessage
 	}
 
 	init := req.(*Message[Init])
@@ -127,7 +128,7 @@ func receiveInit(scanner *bufio.Scanner) error {
 		slog.Any("all-nodes", allNodes),
 	)
 
-	sendResponse(Message[EmptyResponse]{
+	return sendResponse(Message[EmptyResponse]{
 		Src:  thisNode,
 		Dest: init.Src,
 		Body: EmptyResponse{BaseMessageBody{
@@ -136,25 +137,10 @@ func receiveInit(scanner *bufio.Scanner) error {
 			InReplyTo: &init.Body.MsgId,
 		}},
 	})
-
-	return nil
 }
 
 func main() {
-	logging.ConfigureLogger()
-	// NOTE: we must change the default logger to use Stderr for output,
-	// because stdout is used as communication channel, see `sendErrorWithCode` for
-	// more details.
-	slog.SetDefault(slog.New(slog.NewJSONHandler(
-		os.Stderr,
-		&slog.HandlerOptions{},
-	)))
-
-	path, _ := os.Getwd()
-	slog.Info(
-		"Starting Oxia in Maelstrom mode",
-		slog.String("PWD", path),
-	)
+	configureLogger()
 	// One subdirectory per Maelstrom run (os.Getppid() is the Maelstrom process
 	// that spawned every node): a node restarted by the kill nemesis reopens its
 	// own data, while separate runs don't share state.
@@ -165,10 +151,25 @@ func main() {
 	}
 }
 
-// run serves the Maelstrom messages read by scanner until its input ends. The
-// node n1 runs the coordinator, and the others run a data server that keeps its
-// data in a subdirectory of dataDir, per node id.
+// configureLogger writes the logs to stderr, because stdout is the channel of
+// the Maelstrom messages, see sendErrorWithCode.
+func configureLogger() {
+	logging.ConfigureLogger()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(
+		os.Stderr,
+		&slog.HandlerOptions{},
+	)))
+}
+
+// run serves the Maelstrom messages read by scanner until its input ends, and
+// fails on a message it can't handle, e.g. a malformed one. The node n1 runs
+// the coordinator, and the others run a data server that keeps its data in a
+// subdirectory of dataDir, per node id.
 func run(scanner *bufio.Scanner, dataDir string) error {
+	slog.Info(
+		"Starting Oxia in Maelstrom mode",
+		slog.String("data-dir", dataDir),
+	)
 	if err := handleInit(scanner); err != nil {
 		return err
 	}
@@ -198,13 +199,20 @@ func run(scanner *bufio.Scanner, dataDir string) error {
 		return err
 	}
 
-	for scanner.Scan() {
-		line := scanner.Text()
-		rt, req, protoMsg := parseRequest(line)
+	return multierr.Append(serve(scanner, dispatcher), node.Close())
+}
 
-		dispatcher.ReceivedMessage(rt, req, protoMsg)
+func serve(scanner *bufio.Scanner, dispatcher *dispatcher) error {
+	for scanner.Scan() {
+		rt, req, protoMsg, err := parseRequest(scanner.Text())
+		if err != nil {
+			return err
+		}
+		if err := dispatcher.ReceivedMessage(rt, req, protoMsg); err != nil {
+			return err
+		}
 	}
-	return multierr.Append(scanner.Err(), node.Close())
+	return scanner.Err()
 }
 
 func runDataServer(grpcProvider *maelstromGrpcProvider, replicationGrpcProvider *maelstromReplicationRpcProvider,
