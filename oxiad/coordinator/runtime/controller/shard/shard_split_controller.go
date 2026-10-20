@@ -58,6 +58,8 @@ type SplitController struct {
 	// attempts must pin (see checkChildFeatures)
 	requiredFeatures map[int64][]proto.Feature
 
+	catchUpRoundTimeout time.Duration
+
 	// ctx ends with Close or with the split timeout, which bounds the phases
 	// that can still be aborted. finalizeCtx only ends with Close: Finalize is
 	// past the point of no return, and must complete the split however long it
@@ -93,6 +95,10 @@ type SplitControllerConfig struct {
 	// past it, the split keeps going until it completes.
 	// Zero means use DefaultSplitTimeout.
 	SplitTimeout time.Duration
+
+	// CatchUpRoundTimeout is the maximum duration of a round of CatchUp or of
+	// Cutover. Zero means use DefaultCatchUpRoundTimeout.
+	CatchUpRoundTimeout time.Duration
 }
 
 // NewSplitController creates a new SplitController and starts it running
@@ -121,6 +127,10 @@ func NewSplitController(cfg SplitControllerConfig) *SplitController {
 	splitTimeout := cfg.SplitTimeout
 	if splitTimeout == 0 {
 		splitTimeout = DefaultSplitTimeout
+	}
+	sc.catchUpRoundTimeout = cfg.CatchUpRoundTimeout
+	if sc.catchUpRoundTimeout == 0 {
+		sc.catchUpRoundTimeout = DefaultCatchUpRoundTimeout
 	}
 	sc.ctx, sc.ctxCancel = context.WithTimeout(context.Background(), splitTimeout)
 	sc.finalizeCtx, sc.finalizeCtxCancel = context.WithCancel(context.Background())
@@ -512,14 +522,14 @@ func (sc *SplitController) addChildObservers(childId int64, parentLeader *proto.
 	return nil
 }
 
-// CatchUpRoundTimeout is the maximum time to wait for children to reach a
+// DefaultCatchUpRoundTimeout is the maximum time to wait for children to reach a
 // snapshot of the parent's commitOffset. If the round times out, re-read
 // the parent's commitOffset and try again.
-const CatchUpRoundTimeout = 10 * time.Second
+const DefaultCatchUpRoundTimeout = 10 * time.Second
 
 // runCatchUp monitors children's commitOffset until they reach the parent's
 // current position. Uses a round-based algorithm: snapshot the parent's
-// commitOffset, wait up to 10s for both children to reach it. If the round
+// commitOffset, wait up to the round timeout for both children to reach it. If the round
 // expires (parent under heavy write load), re-read and try again.
 //
 // The commit offset of a member of a child is the offset of the parent's
@@ -618,7 +628,7 @@ func (sc *SplitController) removeStaleChildObservers(parentMeta *proto.ShardMeta
 }
 
 // runCatchUpRound snapshots the parent's commitOffset and waits up to
-// CatchUpRoundTimeout for both children to reach it. Returns true if all
+// the catch-up round timeout for both children to reach it. Returns true if all
 // children caught up, false if the round timed out (caller should retry).
 func (sc *SplitController) runCatchUpRound() (bool, error) {
 	parentMeta, err := sc.loadParentMeta()
@@ -641,7 +651,7 @@ func (sc *SplitController) runCatchUpRound() (bool, error) {
 		slog.Int64("target-commit-offset", target),
 	)
 
-	roundCtx, roundCancel := context.WithTimeout(sc.ctx, CatchUpRoundTimeout)
+	roundCtx, roundCancel := context.WithTimeout(sc.ctx, sc.catchUpRoundTimeout)
 	defer roundCancel()
 
 	for _, childId := range []int64{sc.leftChildId, sc.rightChildId} {
@@ -866,12 +876,12 @@ func (sc *SplitController) detachChildren() error {
 	})
 }
 
-// cutoverCatchUpRound waits up to CatchUpRoundTimeout for both children to
+// cutoverCatchUpRound waits up to the catch-up round timeout for both children to
 // APPLY every entry up to the parent's frozen head (see runCutover). Returns
 // true if both reached it, false if the round timed out (the caller retries).
 // Because the parent is frozen, the target is fixed.
 func (sc *SplitController) cutoverCatchUpRound(target int64) bool {
-	roundCtx, roundCancel := context.WithTimeout(sc.ctx, CatchUpRoundTimeout)
+	roundCtx, roundCancel := context.WithTimeout(sc.ctx, sc.catchUpRoundTimeout)
 	defer roundCancel()
 
 	for _, childId := range []int64{sc.leftChildId, sc.rightChildId} {
