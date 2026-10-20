@@ -16,7 +16,6 @@
 package codec
 
 import (
-	"fmt"
 	"io"
 	"os"
 
@@ -46,52 +45,4 @@ type File interface {
 	io.ReadWriteSeeker
 	io.Closer
 	Sync() error
-}
-
-// OSFS is the FS of the operating system.
-type OSFS struct{}
-
-func (OSFS) Stat(name string) (os.FileInfo, error) {
-	return os.Stat(name)
-}
-
-func (OSFS) ReadDir(name string) ([]os.DirEntry, error) {
-	return os.ReadDir(name)
-}
-
-func (OSFS) MkdirAll(path string, perm os.FileMode) error {
-	return os.MkdirAll(path, perm)
-}
-
-func (OSFS) OpenFile(name string, flag int, perm os.FileMode) (File, error) {
-	f, err := os.OpenFile(name, flag, perm)
-	if err != nil {
-		// A nil *os.File in a File would not compare equal to nil
-		return nil, err
-	}
-	return f, nil
-}
-
-func (OSFS) Remove(name string) error {
-	return os.Remove(name)
-}
-
-func (OSFS) RemoveAll(path string) error {
-	return os.RemoveAll(path)
-}
-
-func (OSFS) Map(f File, length int, prot int) (mmap.MMap, error) {
-	osFile, ok := f.(*os.File)
-	if !ok {
-		return nil, fmt.Errorf("cannot map a %T: it was not opened by OSFS", f)
-	}
-	return mmap.MapRegion(osFile, length, prot, 0, 0)
-}
-
-func (OSFS) Flush(m mmap.MMap) error {
-	return m.Flush()
-}
-
-func (OSFS) Unmap(m *mmap.MMap) error {
-	return m.Unmap()
 }
