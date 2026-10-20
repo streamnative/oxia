@@ -442,6 +442,25 @@ func TestShellReadsNonTerminalFilesBuffered(t *testing.T) {
 	assert.Equal(t, helpText, string(written))
 }
 
+func TestShellRunsTerminalWhenInputAndOutputAreTerminals(t *testing.T) {
+	in, err := os.Open(os.DevNull)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, in.Close()) })
+	out, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, out.Close()) })
+	cmd := &cobra.Command{}
+	cmd.SetIn(in)
+	cmd.SetOut(out)
+	cmd.SetErr(new(bytes.Buffer))
+	term := &fakeTerminal{lines: []string{"help", "exit"}}
+
+	require.NoError(t, exec(cmd, term))
+
+	assert.Equal(t, defaultPrompt, term.prefix)
+	assert.Equal(t, 2, term.executed)
+}
+
 func TestShellReturnsEmptyInputWithoutOutput(t *testing.T) {
 	cmd := newTestCommand("")
 
