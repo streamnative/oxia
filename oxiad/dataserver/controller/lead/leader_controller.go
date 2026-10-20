@@ -165,6 +165,9 @@ type leaderController struct {
 	// Reusable serialization buffer: only accessed by proposeLocked, while
 	// holding proposeMu
 	marshalBuf []byte
+	// Serializes the log entry values of the proposals into marshalBuf. Set
+	// once at construction
+	marshalLogEntryValue func(buf []byte, value *proto.LogEntryValue) (newBuf []byte, data []byte, err error)
 
 	writeLatencyHisto       metric.LatencyHistogram
 	headOffsetGauge         metric.Gauge
@@ -189,6 +192,9 @@ func NewLeaderController(storageOptions *option.StorageOptions, namespace string
 		quorumAckTracker: nil,
 		rpcClient:        rpcClient,
 		followers:        make(map[string]FollowerCursor),
+		marshalLogEntryValue: func(buf []byte, value *proto.LogEntryValue) ([]byte, []byte, error) {
+			return proto.MarshalToBuffer(buf, value)
+		},
 
 		writeLatencyHisto: metric.NewLatencyHistogram("oxia_server_leader_write_latency",
 			"Latency for write operations in the leader", labels),
@@ -1314,7 +1320,7 @@ func (lc *leaderController) proposeLocked(ctx context.Context, proposalSupplier 
 	// Wal interface contract), and the next proposal can only overwrite the
 	// buffer once this one releases proposeMu. The completion callbacks never
 	// reference value: the database apply uses the proposal object.
-	marshalBuf, value, err := proto.MarshalToBuffer(lc.marshalBuf, entryValue)
+	marshalBuf, value, err := lc.marshalLogEntryValue(lc.marshalBuf, entryValue)
 	if err != nil {
 		return err
 	}
