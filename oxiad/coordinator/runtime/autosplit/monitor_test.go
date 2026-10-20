@@ -26,6 +26,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	commonobject "github.com/oxia-db/oxia/common/object"
 	"github.com/oxia-db/oxia/common/proto"
 	coordmetadata "github.com/oxia-db/oxia/oxiad/coordinator/metadata"
 	metadatacommon "github.com/oxia-db/oxia/oxiad/coordinator/metadata/common"
@@ -36,11 +37,15 @@ import (
 type mockRpcProvider struct {
 	mu       sync.Mutex
 	statuses map[int64]*proto.GetStatusResponse
+	errs     map[int64]error
 }
 
 func (m *mockRpcProvider) GetStatus(_ context.Context, _ *proto.DataServerIdentity, req *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if err, ok := m.errs[req.Shard]; ok {
+		return nil, err
+	}
 	if resp, ok := m.statuses[req.Shard]; ok {
 		return resp, nil
 	}
@@ -708,6 +713,136 @@ func TestMonitor_StartCloseLifecycle(t *testing.T) {
 	m.Start()
 	time.Sleep(10 * time.Millisecond) // let a few ticks run
 	m.Close()                         // must return without hanging or panicking
+}
+
+func TestNewMonitorDefaultsCollectionInterval(t *testing.T) {
+	metadata := newTestMetadata(t, &proto.ClusterConfiguration{})
+
+	m := NewMonitor(metadata, &mockRpcProvider{}, &mockSplitter{}, 0)
+
+	assert.Equal(t, DefaultCollectionInterval, m.collectionInterval)
+}
+
+func TestMonitorEvaluateKeepsTrackersOnConfigError(t *testing.T) {
+	metadata := &fakeMetadata{
+		Metadata:  newTestMetadata(t, &proto.ClusterConfiguration{}),
+		configErr: errors.New("config unavailable"),
+	}
+	m := NewMonitor(metadata, &mockRpcProvider{}, &mockSplitter{}, time.Millisecond)
+	key := shardKey{namespace: "default", shardId: 0}
+	m.trackers[key] = &shardStatsTracker{}
+
+	m.evaluate()
+
+	// With auto-split disabled, as it is in the config, evaluate would have
+	// cleared the trackers
+	assert.Contains(t, m.trackers, key)
+}
+
+func TestMonitorEvaluateSkipsOnStatusError(t *testing.T) {
+	base := newTestMetadata(t, oversizedAutoSplitConfig("0s"))
+	leader := &proto.DataServerIdentity{Public: "s1:9091", Internal: "s1:8191"}
+	require.NoError(t, base.CreateNamespaceStatus("default", &proto.NamespaceStatus{
+		Shards: map[int64]*proto.ShardMetadata{0: steadyShard(leader, 0, 4294967295)},
+	}))
+	metadata := &fakeMetadata{Metadata: base, listNamespaceStatusErr: errors.New("status unavailable")}
+	rpcMock := &mockRpcProvider{statuses: make(map[int64]*proto.GetStatusResponse)}
+	rpcMock.setStats(0, &proto.ShardStats{DbSizeBytes: 200 * 1024 * 1024})
+	splitter := &mockSplitter{}
+
+	NewMonitor(metadata, rpcMock, splitter, time.Millisecond).evaluate()
+
+	assert.Empty(t, splitter.getSplits())
+}
+
+// Only the steady-state shards that have a leader, are not being split, have
+// no pending ensemble change and whose stats can be collected are split.
+func TestMonitorEvaluateSkipsIneligibleShards(t *testing.T) {
+	metadata := newTestMetadata(t, oversizedAutoSplitConfig("0s"))
+	leader := &proto.DataServerIdentity{Public: "s1:9091", Internal: "s1:8191"}
+	width := uint32(1 << 29)
+	shard := func(id int64) *proto.ShardMetadata {
+		return steadyShard(leader, uint32(id)*width, uint32(id+1)*width-1)
+	}
+	withoutLeader := shard(0)
+	withoutLeader.Leader = nil
+	splitChild := shard(1)
+	splitChild.Split = &proto.SplitMetadata{ParentShardId: 9}
+	pendingDelete := shard(2)
+	pendingDelete.PendingDeleteShardNodes = []*proto.DataServerIdentity{leader}
+	require.NoError(t, metadata.CreateNamespaceStatus("default", &proto.NamespaceStatus{
+		Shards: map[int64]*proto.ShardMetadata{
+			0: withoutLeader,
+			1: splitChild,
+			2: pendingDelete,
+			3: shard(3), // its stats can't be collected
+			4: shard(4),
+		},
+	}))
+	rpcMock := &mockRpcProvider{
+		statuses: make(map[int64]*proto.GetStatusResponse),
+		errs:     map[int64]error{3: errors.New("unreachable")},
+	}
+	for id := range int64(5) {
+		rpcMock.setStats(id, &proto.ShardStats{DbSizeBytes: 200 * 1024 * 1024})
+	}
+	splitter := &mockSplitter{}
+
+	NewMonitor(metadata, rpcMock, splitter, time.Millisecond).evaluate()
+
+	assert.Equal(t, []splitCall{{namespace: "default", shardId: 4}}, splitter.getSplits())
+}
+
+// A malformed stabilization_period falls back to the default instead of
+// disabling the stabilization window.
+func TestMonitorEvaluateMalformedStabilizationFallsBackToDefault(t *testing.T) {
+	metadata := newTestMetadata(t, oversizedAutoSplitConfig("5min"))
+	leader := &proto.DataServerIdentity{Public: "s1:9091", Internal: "s1:8191"}
+	require.NoError(t, metadata.CreateNamespaceStatus("default", &proto.NamespaceStatus{
+		Shards: map[int64]*proto.ShardMetadata{0: steadyShard(leader, 0, 4294967295)},
+	}))
+	rpcMock := &mockRpcProvider{statuses: make(map[int64]*proto.GetStatusResponse)}
+	rpcMock.setStats(0, &proto.ShardStats{DbSizeBytes: 200 * 1024 * 1024})
+	splitter := &mockSplitter{}
+
+	NewMonitor(metadata, rpcMock, splitter, time.Millisecond).evaluate()
+
+	assert.Empty(t, splitter.getSplits())
+}
+
+// oversizedAutoSplitConfig enables auto-split for the shards over 100 MB, with
+// the given stabilization period and no cooldown.
+func oversizedAutoSplitConfig(stabilizationPeriod string) *proto.ClusterConfiguration {
+	return &proto.ClusterConfiguration{
+		AutoSplit: &proto.AutoSplitConfig{
+			Enabled:             true,
+			MaxShardSizeMb:      100,
+			StabilizationPeriod: stabilizationPeriod,
+			CooldownPeriod:      "0s",
+		},
+	}
+}
+
+// fakeMetadata returns the error of each method that has one, and calls the
+// embedded Metadata otherwise.
+type fakeMetadata struct {
+	coordmetadata.Metadata
+	configErr              error
+	listNamespaceStatusErr error
+}
+
+func (m *fakeMetadata) GetConfig() (commonobject.Borrowed[*proto.ClusterConfiguration], error) {
+	if m.configErr != nil {
+		return commonobject.Borrowed[*proto.ClusterConfiguration]{}, m.configErr
+	}
+	return m.Metadata.GetConfig()
+}
+
+func (m *fakeMetadata) ListNamespaceStatus() (map[string]commonobject.Borrowed[*proto.NamespaceStatus], error) {
+	if m.listNamespaceStatusErr != nil {
+		return nil, m.listNamespaceStatusErr
+	}
+	return m.Metadata.ListNamespaceStatus()
 }
 
 func strPtr(s string) *string { return &s }

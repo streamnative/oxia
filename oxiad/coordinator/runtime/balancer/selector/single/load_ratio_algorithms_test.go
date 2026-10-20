@@ -17,6 +17,7 @@ package single
 import (
 	"testing"
 
+	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/oxia-db/oxia/common/proto"
@@ -94,4 +95,22 @@ func TestDefaultShardsRank(t *testing.T) {
 	assert.Equal(t, 0.06666666666666667, nodeRatio.Ratio)
 	shardRatios = nodeRatio.ShardRatios
 	assert.Equal(t, 1, shardRatios.Size())
+}
+
+func TestDefaultShardsRankSkipsQuarantineNodes(t *testing.T) {
+	ratioSnapshot := DefaultShardsRank(&model.RatioParams{
+		NodeShardsInfos: map[string][]model.ShardInfo{
+			"sv-1": {{Namespace: "ns-1", ShardID: 1}, {Namespace: "ns-1", ShardID: 2}},
+			"sv-2": {{Namespace: "ns-1", ShardID: 3}},
+		},
+		QuarantineNodes: linkedhashset.New("sv-1"),
+	})
+
+	var nodes []string
+	for iter := ratioSnapshot.NodeIterator(); iter.Next(); {
+		nodes = append(nodes, iter.Value().NodeID)
+	}
+	assert.Equal(t, []string{"sv-2"}, nodes)
+	// The shards of the quarantined node still count in the total
+	assert.InDelta(t, 1.0/3, ratioSnapshot.MaxNodeLoadRatio(), 1e-9)
 }
