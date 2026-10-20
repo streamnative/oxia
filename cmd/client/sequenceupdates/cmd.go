@@ -15,7 +15,6 @@
 package sequenceupdates
 
 import (
-	"context"
 	"log/slog"
 
 	"github.com/spf13/cobra"
@@ -49,7 +48,7 @@ var Cmd = &cobra.Command{
 	RunE:  exec,
 }
 
-func exec(_ *cobra.Command, args []string) error {
+func exec(cmd *cobra.Command, args []string) error {
 	client, err := common.Config.NewClient()
 	if err != nil {
 		return err
@@ -58,7 +57,7 @@ func exec(_ *cobra.Command, args []string) error {
 	defer client.Close()
 
 	Config.key = args[0]
-	updates, err := client.GetSequenceUpdates(context.Background(), Config.key, oxia.PartitionKey(Config.partitionKey))
+	updates, err := client.GetSequenceUpdates(cmd.Context(), Config.key, oxia.PartitionKey(Config.partitionKey))
 	if err != nil {
 		return err
 	}
