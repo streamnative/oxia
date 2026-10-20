@@ -192,31 +192,44 @@ func (cc *ClusterConfiguration) GetDataServer(id string) (*DataServer, bool) {
 	}
 
 	for _, server := range cc.GetServers() {
-		if server.GetNameOrDefault() != id {
-			continue
+		if server.GetNameOrDefault() == id {
+			return cc.newDataServer(server), true
 		}
-
-		identity := server
-		if server.GetName() == "" {
-			name := server.GetNameOrDefault()
-			identity = &DataServerIdentity{
-				Name:     &name,
-				Public:   server.GetPublic(),
-				Internal: server.GetInternal(),
-			}
-		}
-
-		dataServer := &DataServer{
-			Identity: identity,
-			Metadata: &DataServerMetadata{},
-		}
-		if metadata, found := cc.GetServerMetadata()[id]; found {
-			dataServer.Metadata = metadata
-		}
-		return dataServer, true
 	}
 
 	return nil, false
+}
+
+// GetDataServers returns the data servers of the configuration, in the order
+// of its servers.
+func (cc *ClusterConfiguration) GetDataServers() []*DataServer {
+	servers := cc.GetServers()
+	dataServers := make([]*DataServer, 0, len(servers))
+	for _, server := range servers {
+		dataServers = append(dataServers, cc.newDataServer(server))
+	}
+	return dataServers
+}
+
+func (cc *ClusterConfiguration) newDataServer(server *DataServerIdentity) *DataServer {
+	name := server.GetNameOrDefault()
+	identity := server
+	if server.GetName() == "" {
+		identity = &DataServerIdentity{
+			Name:     &name,
+			Public:   server.GetPublic(),
+			Internal: server.GetInternal(),
+		}
+	}
+
+	dataServer := &DataServer{
+		Identity: identity,
+		Metadata: &DataServerMetadata{},
+	}
+	if metadata, found := cc.GetServerMetadata()[name]; found {
+		dataServer.Metadata = metadata
+	}
+	return dataServer
 }
 
 func (cc *ClusterConfiguration) GetCoordinator(name string) (*Coordinator, bool) {
