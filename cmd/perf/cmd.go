@@ -33,7 +33,7 @@ var (
 		Short: "Oxia perf client",
 		Long:  `Oxia tool for basic performance tests`,
 		Args:  cobra.NoArgs,
-		Run:   exec,
+		RunE:  exec,
 	}
 
 	config = Config{}
@@ -55,8 +55,8 @@ func init() {
 	Cmd.Flags().DurationVar(&config.RequestTimeout, "request-timeout", oxia.DefaultRequestTimeout, "Request timeout")
 }
 
-func exec(*cobra.Command, []string) {
-	process.RunProcess(runPerf)
+func exec(cmd *cobra.Command, _ []string) error {
+	return process.RunProcess(cmd.Context(), runPerf)
 }
 
 type closer struct {

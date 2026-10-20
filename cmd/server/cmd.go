@@ -46,7 +46,7 @@ var (
 		Short: "Start a server",
 		Long:  `Long description`,
 		Args:  cobra.NoArgs,
-		Run:   exec,
+		RunE:  exec,
 	}
 )
 
@@ -116,8 +116,8 @@ func init() {
 	}
 }
 
-func exec(cmd *cobra.Command, _ []string) {
-	process.RunProcess(func() (io.Closer, error) {
+func exec(cmd *cobra.Command, _ []string) error {
+	return process.RunProcess(cmd.Context(), func() (io.Closer, error) {
 		optionsWatch := commonwatch.New(dataServerOptions)
 		switch {
 		case cmd.Flags().Changed("sconfig"):
