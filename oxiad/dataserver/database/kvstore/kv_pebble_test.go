@@ -42,8 +42,11 @@ import (
 )
 
 func TestOxiaSlashSpanComparerMeetsPebbleContract(t *testing.T) {
-	keys := [][]byte{[]byte("a"), []byte("b"), []byte("c")}
-	assert.NoError(t, pebble.CheckComparer(OxiaSlashSpanComparer.EnsureDefaults(), keys, nil))
+	keys := [][]byte{
+		[]byte("a"), []byte("b"), []byte("a/b"), []byte("a-c"), []byte("/a/b/c"), []byte("/b"),
+		[]byte("/key/01499"), []byte("0"),
+	}
+	assert.NoError(t, pebble.CheckComparer(OxiaSlashSpanComparer.EnsureDefaults(), [][]byte{nil}, keys))
 }
 
 func TestPebbbleSimple(t *testing.T) {
