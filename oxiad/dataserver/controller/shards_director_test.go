@@ -138,6 +138,16 @@ func TestShardsDirectorGetOrCreateLeaderFollowerCloseError(t *testing.T) {
 	assert.ErrorIs(t, err, constant.ErrNodeIsNotLeader)
 }
 
+func TestShardsDirectorGetOrCreateLeaderFailsWhenClosed(t *testing.T) {
+	sd := newTestShardsDirector(t)
+	require.NoError(t, sd.Close())
+
+	lc, err := sd.GetOrCreateLeader(constant.DefaultNamespace, 1, nil)
+	assert.ErrorIs(t, err, constant.ErrResourceUnavailable)
+	assert.Nil(t, lc)
+	assert.Empty(t, sd.leaders)
+}
+
 func TestShardsDirectorGetOrCreateFollowerLeaderCloseError(t *testing.T) {
 	sd := newTestShardsDirector(t)
 	closeErr := errors.New("close failure")

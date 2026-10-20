@@ -27,6 +27,7 @@ import (
 
 	"github.com/oxia-db/oxia/oxiad/dataserver/database/kvstore"
 
+	"github.com/oxia-db/oxia/common/concurrent"
 	"github.com/oxia-db/oxia/common/constant"
 	time2 "github.com/oxia-db/oxia/common/time"
 
@@ -204,6 +205,98 @@ func TestNotificationsTrimmerTrimNotificationsFailsWhenTrimmingFails(t *testing.
 	}
 }
 
+func TestNotificationsTrimmerRunKeepsTrimmingAfterFailure(t *testing.T) {
+	kv := &hookedKV{KV: newTestKV(t)}
+	t.Cleanup(func() { assert.NoError(t, kv.Close()) })
+	kv.failOn(opKeyRangeScan, "")
+	ctx, cancel := context.WithCancel(context.Background())
+	waitClose := concurrent.NewWaitGroup(1)
+	trimmer := newNotificationsTrimmer(ctx, constant.DefaultNamespace, 1, kv, time.Millisecond, waitClose,
+		time2.SystemClock, &fakeTrimListener{})
+	assert.Equal(t, minNotificationTrimmingInterval, trimmer.interval)
+
+	assert.Eventually(t, func() bool { return kv.failures.Load() >= 2 }, 10*time.Second, 10*time.Millisecond)
+	cancel()
+	assert.NoError(t, waitClose.Wait(context.Background()))
+}
+
+func TestNotificationsTrimmerTrimNotificationsFailsWhenStorageFails(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		op   string
+		key  string
+	}{
+		{"first", opKeyRangeScan, ""},
+		{"last", opKeyRangeScanReverse, ""},
+		{"read", opGet, notificationKey(0)},
+		{"delete", opBatchDeleteRange, ""},
+		{"commit", opBatchCommit, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			trimmer, kv, listener := newIdleNotificationsTrimmer(t)
+			for offset := int64(0); offset < 5; offset++ {
+				putNotificationBatch(t, kv, offset, map[string]*proto.Notification{"a": {}})
+			}
+			hooked := &hookedKV{KV: kv}
+			trimmer.kv = hooked
+			hooked.failOn(test.op, test.key)
+			reverted := false
+			listener.trimmingHook = func(kvstore.WriteBatch, int64) (func(), error) {
+				return func() { reverted = true }, nil
+			}
+
+			err := trimmer.trimNotifications()
+			assert.ErrorIs(t, err, errInjected)
+			assert.Equal(t, test.op == opBatchCommit, reverted)
+			assert.Empty(t, listener.trimmedOffsets)
+			assert.True(t, keyExists(t, kv, notificationKey(0)))
+		})
+	}
+}
+
+// A batch deleted in the meantime is no longer to trim.
+func TestNotificationsTrimmerTrimNotificationsSkipsVanishedFirstBatch(t *testing.T) {
+	trimmer, kv, listener := newIdleNotificationsTrimmer(t)
+	putNotificationBatch(t, kv, 0, map[string]*proto.Notification{"a": {}})
+	hooked := &hookedKV{KV: kv}
+	trimmer.kv = hooked
+	hooked.failWith(opGet, notificationKey(0), kvstore.ErrKeyNotFound)
+
+	assert.NoError(t, trimmer.trimNotifications())
+	assert.Empty(t, listener.trimmedOffsets)
+	assert.True(t, keyExists(t, kv, notificationKey(0)))
+}
+
+// The binary search over offsets with gaps probes offsets without a batch,
+// whose next batch is past the end of the window it searches.
+func TestNotificationsTrimmerTrimNotificationsWithSparseOffsets(t *testing.T) {
+	trimmer, kv, listener := newIdleNotificationsTrimmer(t)
+	putNotificationBatchAt(t, kv, 0, 0)
+	// Within the retention
+	putNotificationBatchAt(t, kv, 10, trimmer.clock.Now().UnixMilli())
+
+	require.NoError(t, trimmer.trimNotifications())
+	assert.Equal(t, []int64{0}, listener.trimmedOffsets)
+	assert.False(t, keyExists(t, kv, notificationKey(0)))
+	assert.True(t, keyExists(t, kv, notificationKey(10)))
+}
+
+func TestNotificationsTrimmerReadFromPastLastBatch(t *testing.T) {
+	trimmer, kv, _ := newIdleNotificationsTrimmer(t)
+	putNotificationBatch(t, kv, 0, map[string]*proto.Notification{"a": {}})
+
+	// The next key is not a batch
+	putRawKey(t, kv, sessionKeyPrefix+"/0000000000000001", []byte{})
+	_, _, err := trimmer.readFrom(1)
+	assert.ErrorIs(t, err, kvstore.ErrKeyNotFound)
+
+	// The next key is not a valid batch key
+	putRawKey(t, kv, notificationsPrefix+"/z", []byte{})
+	_, _, err = trimmer.readFrom(1)
+	assert.Error(t, err)
+	assert.NotErrorIs(t, err, kvstore.ErrKeyNotFound)
+}
+
 // newIdleNotificationsTrimmer returns a trimmer that runs only when the test
 // calls it, with every batch past its retention, its store and its listener.
 func newIdleNotificationsTrimmer(t *testing.T) (*notificationsTrimmer, kvstore.KV, *fakeTrimListener) {
@@ -220,6 +313,16 @@ func newIdleNotificationsTrimmer(t *testing.T) (*notificationsTrimmer, kvstore.K
 		log:                        slog.Default(),
 		listener:                   listener,
 	}, kv, listener
+}
+
+// putNotificationBatchAt writes the batch at offset, of the time timestampMillis.
+func putNotificationBatchAt(t *testing.T, kv kvstore.KV, offset int64, timestampMillis int64) {
+	t.Helper()
+	notifications := newNotifications(0, offset, uint64(timestampMillis), 1)
+	notifications.add("a", &proto.Notification{})
+	data, err := notifications.seal().MarshalVT()
+	require.NoError(t, err)
+	putRawKey(t, kv, notificationKey(offset), data)
 }
 
 // fakeTrimListener records the trimmed offsets, and runs trimmingHook, if set,
