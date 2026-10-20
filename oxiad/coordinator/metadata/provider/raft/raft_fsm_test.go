@@ -16,11 +16,14 @@ package raft
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 
 	hashicorpraft "github.com/hashicorp/raft"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	commonproto "github.com/oxia-db/oxia/common/proto"
@@ -107,4 +110,108 @@ func TestStateContainerPersistRetainsSnapshot(t *testing.T) {
 	restoredStatus, err := metadatacodec.ClusterStatusCodec.UnmarshalJSON(doc.State)
 	require.NoError(t, err)
 	require.Equal(t, "snapshot-test", restoredStatus.InstanceId)
+}
+
+func TestStateContainerApplyRejectsUndecodableEntry(t *testing.T) {
+	sc := newStateContainer(slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
+
+	res, ok := sc.Apply(&hashicorpraft.Log{Data: []byte("not json")}).(*applyResult)
+	require.True(t, ok)
+	assert.False(t, res.changeApplied)
+	assert.Empty(t, sc.Documents)
+}
+
+func TestStateContainerRestoreRejectsUndecodableSnapshot(t *testing.T) {
+	sc := newStateContainer(slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
+	rc := &fakeReadCloser{Reader: strings.NewReader("not json")}
+
+	require.Error(t, sc.Restore(rc))
+	assert.True(t, rc.closed)
+}
+
+// A snapshot taken before the container held several documents only has the
+// status state: it is restored as the status document.
+func TestStateContainerRestoreLegacySnapshot(t *testing.T) {
+	sc := newStateContainer(slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
+	rc := &fakeReadCloser{Reader: strings.NewReader(`{"state":{"instanceId":"legacy"},"current_version":3}`)}
+
+	require.NoError(t, sc.Restore(rc))
+	assert.True(t, rc.closed)
+	state, version := sc.documentState(metadatacodec.ClusterStatusCodec.GetKey())
+	assert.EqualValues(t, 3, version)
+	status, err := metadatacodec.ClusterStatusCodec.UnmarshalJSON(state)
+	require.NoError(t, err)
+	assert.Equal(t, "legacy", status.InstanceId)
+}
+
+func TestStateContainerRestoreEmptyLegacySnapshot(t *testing.T) {
+	sc := newStateContainer(slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
+
+	require.NoError(t, sc.Restore(&fakeReadCloser{Reader: strings.NewReader(`{}`)}))
+	state, version := sc.documentState(metadatacodec.ClusterStatusCodec.GetKey())
+	assert.Nil(t, state)
+	assert.EqualValues(t, 0, version)
+}
+
+func TestStateContainerPersistCancelsOnFailure(t *testing.T) {
+	errSink := errors.New("sink failure")
+	for _, tc := range []struct {
+		name      string
+		documents map[string]*documentContainer
+		sink      *fakeSnapshotSink
+	}{
+		{
+			name:      "unmarshalable state",
+			documents: map[string]*documentContainer{"key": {State: json.RawMessage("{")}},
+			sink:      &fakeSnapshotSink{},
+		},
+		{name: "write failure", sink: &fakeSnapshotSink{writeErr: errSink}},
+		{name: "close failure", sink: &fakeSnapshotSink{closeErr: errSink}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sc := newStateContainer(slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
+			if tc.documents != nil {
+				sc.Documents = tc.documents
+			}
+
+			require.Error(t, sc.Persist(tc.sink))
+			assert.True(t, tc.sink.canceled)
+		})
+	}
+}
+
+type fakeReadCloser struct {
+	io.Reader
+	closed bool
+}
+
+func (r *fakeReadCloser) Close() error {
+	r.closed = true
+	return nil
+}
+
+type fakeSnapshotSink struct {
+	writeErr error
+	closeErr error
+	canceled bool
+}
+
+func (*fakeSnapshotSink) ID() string {
+	return "fake"
+}
+
+func (s *fakeSnapshotSink) Write(p []byte) (int, error) {
+	if s.writeErr != nil {
+		return 0, s.writeErr
+	}
+	return len(p), nil
+}
+
+func (s *fakeSnapshotSink) Close() error {
+	return s.closeErr
+}
+
+func (s *fakeSnapshotSink) Cancel() error {
+	s.canceled = true
+	return nil
 }

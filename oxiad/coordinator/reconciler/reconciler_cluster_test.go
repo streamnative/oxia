@@ -23,8 +23,10 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/stretchr/testify/require"
 
+	commonobject "github.com/oxia-db/oxia/common/object"
 	"github.com/oxia-db/oxia/common/proto"
 	"github.com/oxia-db/oxia/oxiad/common/cache"
+	coordmetadata "github.com/oxia-db/oxia/oxiad/coordinator/metadata"
 	"github.com/oxia-db/oxia/oxiad/coordinator/metadata/provider"
 )
 
@@ -116,4 +118,98 @@ func TestClusterReconcilerReconcileWithRetriesRetriesReconcileError(t *testing.T
 		require.NoError(t, err)
 		require.True(t, exists)
 	}
+}
+
+func TestClusterReconcilerNewReturnsConfigurationLoadError(t *testing.T) {
+	base := namespaceRuntimeForErrors()
+	loadErr := errors.New("configuration unavailable")
+	runtime := &failingMetadataRuntime{
+		mockNamespaceRuntime: base,
+		metadata: &failingMetadata{
+			Metadata:  base.metadata,
+			getConfig: func() error { return loadErr },
+		},
+	}
+
+	reconciler, err := New(t.Context(), runtime)
+	require.ErrorIs(t, err, loadErr)
+	require.Nil(t, reconciler)
+}
+
+func TestClusterReconcilerReconcileWithRetriesRetriesConfigurationLoadError(t *testing.T) {
+	base := namespaceRuntimeForErrors("default")
+	base.metadata.config = &proto.ClusterConfiguration{Namespaces: []*proto.Namespace{base.metadata.configNS["default"]}}
+	loads := 0
+	runtime := &failingMetadataRuntime{
+		mockNamespaceRuntime: base,
+		metadata: &failingMetadata{
+			Metadata: base.metadata,
+			getConfig: func() error {
+				loads++
+				if loads == 1 {
+					return errors.New("configuration unavailable")
+				}
+				return nil
+			},
+		},
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	reconciler := &clusterReconciler{
+		ctx:         ctx,
+		ctxCancel:   cancel,
+		logger:      slog.Default(),
+		runtime:     runtime,
+		reconcilers: []Reconciler{&namespaceReconciler{runtime: runtime}},
+	}
+	config := cache.New(ctx, func(context.Context) (*provider.Versioned[*proto.ClusterConfiguration], error) {
+		return &provider.Versioned[*proto.ClusterConfiguration]{Value: base.metadata.config}, nil
+	}, nil)
+	subscription := config.Subscribe()
+
+	// Closing the configuration closes the subscription, which ends the
+	// reconciliation without closing the reconciler
+	require.NoError(t, config.Close())
+	reconciler.reconcileWithRetries(subscription, &countingBackOff{})
+
+	require.Equal(t, 2, loads)
+	_, exists, err := base.metadata.GetNamespaceStatus("default")
+	require.NoError(t, err)
+	require.True(t, exists)
+	require.NoError(t, reconciler.Close())
+}
+
+// failingMetadataRuntime is a namespace runtime with the metadata replaced.
+type failingMetadataRuntime struct {
+	*mockNamespaceRuntime
+	metadata coordmetadata.Metadata
+}
+
+func (r *failingMetadataRuntime) Metadata() coordmetadata.Metadata {
+	return r.metadata
+}
+
+// failingMetadata wraps a metadata: each hook, when set and failing, fails the
+// method instead of calling the wrapped metadata.
+type failingMetadata struct {
+	coordmetadata.Metadata
+	getConfig           func() error
+	listNamespaceStatus func() error
+}
+
+func (m *failingMetadata) GetConfig() (commonobject.Borrowed[*proto.ClusterConfiguration], error) {
+	if m.getConfig != nil {
+		if err := m.getConfig(); err != nil {
+			return commonobject.Borrowed[*proto.ClusterConfiguration]{}, err
+		}
+	}
+	return m.Metadata.GetConfig()
+}
+
+func (m *failingMetadata) ListNamespaceStatus() (map[string]commonobject.Borrowed[*proto.NamespaceStatus], error) {
+	if m.listNamespaceStatus != nil {
+		if err := m.listNamespaceStatus(); err != nil {
+			return nil, err
+		}
+	}
+	return m.Metadata.ListNamespaceStatus()
 }

@@ -191,6 +191,72 @@ func TestProviderReloadKeepsDocumentUntilFileIsRewritten(t *testing.T) {
 	requireServers(t, p, 2)
 }
 
+func TestNewProviderFailsWhenParentIsAFile(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "file")
+	require.NoError(t, os.WriteFile(file, nil, 0o600))
+
+	_, err := NewProvider(t.Context(), filepath.Join(file, "dir", "metadata"), metadatacodec.ClusterStatusCodec,
+		metadatacommon.WatchDisabled, "test")
+	require.Error(t, err)
+}
+
+func TestNewProviderFailsWhenParentCannotBeCreated(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores the directory permissions")
+	}
+	readOnly := filepath.Join(t.TempDir(), "read-only")
+	require.NoError(t, os.Mkdir(readOnly, 0o500))
+
+	_, err := NewProvider(t.Context(), filepath.Join(readOnly, "dir", "metadata"), metadatacodec.ClusterStatusCodec,
+		metadatacommon.WatchDisabled, "test")
+	require.ErrorIs(t, err, os.ErrPermission)
+}
+
+func TestProviderGetLeaderNameReturnsName(t *testing.T) {
+	p := newTestProvider(t, filepath.Join(t.TempDir(), "metadata"))
+	defer func() { require.NoError(t, p.Close()) }()
+
+	name, err := p.GetLeaderName()
+	require.NoError(t, err)
+	assert.Equal(t, "test", name)
+}
+
+func TestProviderLoadFailsWhenPathIsADirectory(t *testing.T) {
+	p := newTestProvider(t, t.TempDir())
+	defer func() { require.NoError(t, p.Close()) }()
+
+	_, err := p.Load()
+	require.Error(t, err)
+}
+
+func TestProviderStoreFailsWhenFileCannotBeRead(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "metadata")
+	p := newTestProvider(t, path)
+	defer func() { require.NoError(t, p.Close()) }()
+	loaded, err := p.Load()
+	require.NoError(t, err)
+
+	// The file is replaced by something that can't be read
+	require.NoError(t, os.Mkdir(path, 0o755))
+
+	_, err = p.Store(provider.Versioned[*commonproto.ClusterStatus]{
+		Value:   &commonproto.ClusterStatus{},
+		Version: loaded.Version,
+	})
+	require.Error(t, err)
+}
+
+// A document that can't be decoded must stop the coordinator, rather than be
+// served or overwritten.
+func TestProviderLoadPanicsOnUndecodableDocument(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "metadata")
+	require.NoError(t, os.WriteFile(path, []byte("instanceId: [unterminated"), 0o600))
+	p := newTestProvider(t, path)
+	defer func() { require.NoError(t, p.Close()) }()
+
+	assert.Panics(t, func() { _, _ = p.Load() })
+}
+
 // writeConfigFile writes a configuration with the given number of servers, in
 // place.
 func writeConfigFile(path string, servers int) error {
