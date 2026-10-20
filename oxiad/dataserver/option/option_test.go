@@ -23,6 +23,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestWALOptionsIsSyncEnabled(t *testing.T) {
+	// Unset, the WAL syncs its writes
+	assert.True(t, (&WALOptions{}).IsSyncEnabled())
+
+	disabled := false
+	assert.False(t, (&WALOptions{Sync: &disabled}).IsSyncEnabled())
+
+	enabled := true
+	assert.True(t, (&WALOptions{Sync: &enabled}).IsSyncEnabled())
+}
+
+func TestFeatureFlagsOptionsIsAuthorityValidationEnabled(t *testing.T) {
+	// Unset, the authority is validated
+	assert.True(t, (&FeatureFlagsOptions{}).IsAuthorityValidationEnabled())
+
+	disabled := false
+	assert.False(t, (&FeatureFlagsOptions{AuthorityValidation: &disabled}).IsAuthorityValidationEnabled())
+
+	enabled := true
+	assert.True(t, (&FeatureFlagsOptions{AuthorityValidation: &enabled}).IsAuthorityValidationEnabled())
+}
+
 func TestStorageOptionsRejectsSameWalAndDataDir(t *testing.T) {
 	dir := t.TempDir()
 	link := filepath.Join(t.TempDir(), "link")

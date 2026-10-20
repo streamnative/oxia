@@ -39,3 +39,79 @@ func TestNewManifestCreatesDirectoryAndFile(t *testing.T) {
 
 	assert.Empty(t, m.GetInstanceID())
 }
+
+func TestNewManifestCorruptedFile(t *testing.T) {
+	baseDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(baseDir, filename), []byte("{not-json"), 0600))
+
+	_, err := NewManifest(baseDir)
+	assert.Error(t, err)
+}
+
+func TestNewManifestUnreadableFile(t *testing.T) {
+	baseDir := t.TempDir()
+	// A directory in place of the file can't be read as a file
+	require.NoError(t, os.Mkdir(filepath.Join(baseDir, filename), 0755))
+
+	_, err := NewManifest(baseDir)
+	assert.Error(t, err)
+}
+
+func TestNewManifestFailsToCreateFile(t *testing.T) {
+	parentDir := t.TempDir()
+	makeReadOnly(t, parentDir)
+
+	_, err := NewManifest(filepath.Join(parentDir, "db"))
+	assert.ErrorIs(t, err, os.ErrPermission)
+}
+
+func TestManifestSetInstanceID(t *testing.T) {
+	baseDir := t.TempDir()
+	m, err := NewManifest(baseDir)
+	require.NoError(t, err)
+
+	require.NoError(t, m.SetInstanceID("instance-1"))
+	assert.Equal(t, "instance-1", m.GetInstanceID())
+
+	// Setting the same id again is a no-op
+	assert.NoError(t, m.SetInstanceID("instance-1"))
+
+	// The id survives a restart
+	reopened, err := NewManifest(baseDir)
+	require.NoError(t, err)
+	assert.Equal(t, "instance-1", reopened.GetInstanceID())
+}
+
+func TestManifestSetInstanceIDEmpty(t *testing.T) {
+	m, err := NewManifest(t.TempDir())
+	require.NoError(t, err)
+
+	assert.Error(t, m.SetInstanceID(""))
+	assert.Empty(t, m.GetInstanceID())
+}
+
+func TestManifestSetInstanceIDMismatch(t *testing.T) {
+	m, err := NewManifest(t.TempDir())
+	require.NoError(t, err)
+	require.NoError(t, m.SetInstanceID("instance-1"))
+
+	assert.ErrorIs(t, m.SetInstanceID("instance-2"), ErrInstanceIDMismatch)
+	assert.Equal(t, "instance-1", m.GetInstanceID())
+}
+
+func TestManifestSetInstanceIDWriteError(t *testing.T) {
+	baseDir := t.TempDir()
+	m, err := NewManifest(baseDir)
+	require.NoError(t, err)
+
+	makeReadOnly(t, baseDir)
+
+	assert.ErrorIs(t, m.SetInstanceID("instance-1"), os.ErrPermission)
+	assert.Empty(t, m.GetInstanceID())
+}
+
+func makeReadOnly(t *testing.T, dir string) {
+	t.Helper()
+	require.NoError(t, os.Chmod(dir, 0500))
+	t.Cleanup(func() { _ = os.Chmod(dir, 0700) })
+}
