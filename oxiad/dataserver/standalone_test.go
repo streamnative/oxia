@@ -15,6 +15,7 @@
 package dataserver
 
 import (
+	"math"
 	"net"
 	"os"
 	"path/filepath"
@@ -214,6 +215,24 @@ func TestNewStandaloneFailsWhenShardHasUnsupportedFeature(t *testing.T) {
 
 	standaloneServer, err = NewStandalone(config)
 	assert.ErrorIs(t, err, constant.ErrUnsupportedFeatures)
+	assert.Nil(t, standaloneServer)
+}
+
+func TestNewStandaloneFailsWhenShardIsAtLastTerm(t *testing.T) {
+	config := NewTestConfig(t.TempDir())
+	kvFactory, err := kvstore.NewPebbleKVFactory(&kvstore.FactoryOptions{
+		DataDir: config.DataServerOptions.Storage.Database.Dir,
+	})
+	require.NoError(t, err)
+	db, err := database.NewDB(constant.DefaultNamespace, 0, kvFactory, config.KeySorting, time.Hour,
+		time2.SystemClock)
+	require.NoError(t, err)
+	require.NoError(t, db.UpdateTerm(math.MaxInt64, database.TermOptions{}))
+	require.NoError(t, db.Close())
+	require.NoError(t, kvFactory.Close())
+
+	standaloneServer, err := NewStandalone(config)
+	assert.ErrorIs(t, err, constant.ErrInvalidTerm)
 	assert.Nil(t, standaloneServer)
 }
 
