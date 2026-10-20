@@ -49,7 +49,7 @@ import (
 // The FollowerCursor represents a cursor on the leader WAL that sends entries to a specific follower and receives a
 // stream of acknowledgments from that follower.
 type FollowerCursor interface {
-	io.Closer
+	Close()
 
 	ShardId() int64
 
@@ -297,11 +297,10 @@ func (fc *followerCursor) shouldSendSnapshot() bool {
 	return false
 }
 
-func (fc *followerCursor) Close() error {
+func (fc *followerCursor) Close() {
 	fc.closed.Store(true)
 	fc.cancel()
 	fc.latch.Wait()
-	return nil
 }
 
 func (fc *followerCursor) ShardId() int64 {

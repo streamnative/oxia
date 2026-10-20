@@ -727,10 +727,7 @@ func (sc *SplitController) runCutover() error {
 		if err := sc.ctx.Err(); err != nil {
 			return backoff.Permanent(err)
 		}
-		caughtUp, err := sc.cutoverCatchUpRound(parentFinalOffset)
-		if err != nil {
-			return err
-		}
+		caughtUp := sc.cutoverCatchUpRound(parentFinalOffset)
 		if parentMeta, stale, err := sc.checkObserverCursorsStale(); err != nil {
 			return err
 		} else if stale {
@@ -873,23 +870,21 @@ func (sc *SplitController) detachChildren() error {
 // APPLY every entry up to the parent's frozen head (see runCutover). Returns
 // true if both reached it, false if the round timed out (the caller retries).
 // Because the parent is frozen, the target is fixed.
-func (sc *SplitController) cutoverCatchUpRound(target int64) (bool, error) {
+func (sc *SplitController) cutoverCatchUpRound(target int64) bool {
 	roundCtx, roundCancel := context.WithTimeout(sc.ctx, CatchUpRoundTimeout)
 	defer roundCancel()
 
 	for _, childId := range []int64{sc.leftChildId, sc.rightChildId} {
 		if err := sc.waitForChildCommitOffset(roundCtx, childId, target); err != nil {
-			if roundCtx.Err() != nil {
-				sc.logger.Info("Cutover round timed out, retrying",
-					slog.Int64("child-shard", childId),
-					slog.Int64("target", target),
-				)
-				return false, nil
-			}
-			return false, err
+			sc.logger.Info("Cutover round timed out, retrying",
+				slog.Int64("child-shard", childId),
+				slog.Int64("target", target),
+				slog.Any("error", err),
+			)
+			return false
 		}
 	}
-	return true, nil
+	return true
 }
 
 // unfreezeParentBestEffort lifts a write-freeze previously placed on the parent

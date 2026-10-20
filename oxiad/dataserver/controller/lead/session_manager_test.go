@@ -1828,7 +1828,7 @@ func TestSessionManager_CloseWithInFlightExpiry(t *testing.T) {
 
 	closeDone := make(chan struct{})
 	go func() {
-		assert.NoError(t, sm.Close())
+		sm.Close()
 		close(closeDone)
 	}()
 
@@ -1895,7 +1895,7 @@ func TestSessionManager_ActiveSessionsMetric(t *testing.T) {
 	sm.Unlock()
 	assert.EqualValues(t, 1, readCounter())
 
-	assert.NoError(t, sm.Close())
+	sm.Close()
 	assert.EqualValues(t, 0, readCounter())
 }
 

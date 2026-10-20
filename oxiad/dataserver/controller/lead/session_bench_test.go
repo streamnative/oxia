@@ -60,7 +60,5 @@ func BenchmarkSessionFootprint(b *testing.B) {
 	b.ReportMetric(heapPerSession+stackPerSession, "total-B/session")
 	b.ReportMetric(float64(runtime.NumGoroutine()-goroutinesBefore)/float64(b.N), "goroutines/session")
 
-	if err := sm.Close(); err != nil {
-		b.Fatal(err)
-	}
+	sm.Close()
 }

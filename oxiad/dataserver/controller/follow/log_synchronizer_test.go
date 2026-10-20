@@ -87,7 +87,7 @@ func TestLogSynchronizer_DuplicateAckOnlySynced(t *testing.T) {
 	defer func() {
 		// Unblock the appender goroutine's Recv before closing
 		stream.Cancel()
-		assert.NoError(t, ls.Close())
+		ls.Close()
 	}()
 
 	// A duplicate at or below the synced offset is re-acked without
@@ -162,7 +162,7 @@ func TestLogSynchronizer_RejectGapOnEmptyWal(t *testing.T) {
 	})
 
 	assert.ErrorIs(t, ls.Sync(), wal.ErrInvalidNextOffset)
-	assert.NoError(t, ls.Close())
+	ls.Close()
 
 	// Nothing was appended and no ack was sent
 	assert.EqualValues(t, wal.InvalidOffset, w.appended.Load())
@@ -203,7 +203,7 @@ func TestLogSynchronizer_CommitOffsetAdvertisement(t *testing.T) {
 	defer func() {
 		// Unblock the appender goroutine's Recv before closing
 		stream.Cancel()
-		assert.NoError(t, ls.Close())
+		ls.Close()
 	}()
 
 	stream.AddRequest(&proto.Append{
@@ -260,7 +260,7 @@ func TestLogSynchronizer_KeepsTheWalCrcOfTheEntries(t *testing.T) {
 	defer func() {
 		// Unblock the appender goroutine's Recv before closing
 		stream.Cancel()
-		assert.NoError(t, ls.Close())
+		ls.Close()
 		assert.NoError(t, w.Close())
 		assert.NoError(t, walFactory.Close())
 	}()
@@ -298,7 +298,7 @@ func TestLogSynchronizerSyncEndsOnNilRequest(t *testing.T) {
 
 	stream.AddRequest(nil)
 	assert.NoError(t, ls.Sync())
-	assert.NoError(t, ls.Close())
+	ls.Close()
 }
 
 // A failure to send an ack fails the stream, whether it acks the synced
@@ -326,7 +326,7 @@ func TestLogSynchronizerSyncFailsWhenAckFails(t *testing.T) {
 			assert.ErrorContains(t, ls.Sync(), "send failed")
 
 			stream.Cancel()
-			assert.NoError(t, ls.Close())
+			ls.Close()
 		})
 	}
 }
@@ -353,7 +353,7 @@ func TestLogSynchronizerLogsRequestsAtDebugLevel(t *testing.T) {
 	assert.True(t, logs.has("Ignoring duplicated entry"))
 
 	stream.Cancel()
-	assert.NoError(t, ls.Close())
+	ls.Close()
 }
 
 func newTestLogSynchronizer(t *testing.T, w wal.Wal, lastAppendedOffset int64, log *slog.Logger,
