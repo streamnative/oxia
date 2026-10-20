@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
-	"os"
 	"sync/atomic"
 	"time"
 
@@ -50,48 +49,53 @@ type Perf interface {
 	Run(context.Context)
 }
 
-func New(config Config) Perf {
+func New(config Config) (Perf, error) {
+	slog.Info(
+		"Starting Oxia perf client",
+		slog.Any("config", config),
+	)
+
+	client, err := oxia.NewAsyncClient(config.ServiceAddr,
+		oxia.WithNamespace(config.Namespace),
+		oxia.WithBatchLinger(config.BatchLinger),
+		oxia.WithMaxRequestsPerBatch(config.MaxRequestsPerBatch),
+		oxia.WithRequestTimeout(config.RequestTimeout),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Oxia client: %w", err)
+	}
+
+	keys := make([]string, config.KeysCardinality)
+	for i := uint32(0); i < config.KeysCardinality; i++ {
+		keys[i] = fmt.Sprintf("key-%d", i)
+	}
 	return &perf{
 		config: config,
-	}
+		client: client,
+		keys:   keys,
+	}, nil
 }
 
 type perf struct {
 	config    Config
+	client    oxia.AsyncClient
 	keys      []string
 	failedOps atomic.Int64
 }
 
+// Run sends the traffic until the context is done, then closes the client.
 func (p *perf) Run(ctx context.Context) {
-	slog.Info(
-		"Starting Oxia perf client",
-		slog.Any("config", p.config),
-	)
-
-	p.keys = make([]string, p.config.KeysCardinality)
-	for i := uint32(0); i < p.config.KeysCardinality; i++ {
-		p.keys[i] = fmt.Sprintf("key-%d", i)
-	}
-
-	client, err := oxia.NewAsyncClient(p.config.ServiceAddr, //nolint:contextcheck
-		oxia.WithNamespace(p.config.Namespace),
-		oxia.WithBatchLinger(p.config.BatchLinger),
-		oxia.WithMaxRequestsPerBatch(p.config.MaxRequestsPerBatch),
-		oxia.WithRequestTimeout(p.config.RequestTimeout),
-	)
-	if err != nil {
-		slog.Error(
-			"Failed to create Oxia client",
-			slog.Any("error", err),
-		)
-		os.Exit(1)
-	}
+	defer func() {
+		if err := p.client.Close(); err != nil {
+			slog.Warn("Failed to close Oxia client", slog.Any("error", err))
+		}
+	}()
 
 	writeLatencyCh := make(chan int64)
-	go p.generateWriteTraffic(ctx, client, writeLatencyCh)
+	go p.generateWriteTraffic(ctx, p.client, writeLatencyCh)
 
 	readLatencyCh := make(chan int64)
-	go p.generateReadTraffic(ctx, client, readLatencyCh)
+	go p.generateReadTraffic(ctx, p.client, readLatencyCh)
 
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()

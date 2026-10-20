@@ -26,10 +26,18 @@ import (
 	"github.com/oxia-db/oxia/oxiad/dataserver"
 )
 
+func TestNewFailsWhenServerIsUnreachable(t *testing.T) {
+	config := testConfig("localhost:1", false)
+
+	_, err := New(config)
+
+	assert.ErrorContains(t, err, "failed to create Oxia client")
+}
+
 func TestPerfRunWritesZeroPayloads(t *testing.T) {
 	server := newStandalone(t)
 	ctx, cancel := context.WithCancel(context.Background())
-	done := runInBackground(ctx, New(testConfig(server.ServiceAddr(), false)))
+	done := runInBackground(ctx, newPerf(t, testConfig(server.ServiceAddr(), false)))
 
 	client := newSyncClient(t, server.ServiceAddr())
 	var keys []string
@@ -50,7 +58,7 @@ func TestPerfRunCountsFailedOperations(t *testing.T) {
 	// Closed by the test itself: Standalone.Close panics when called twice
 	server, err := dataserver.NewStandalone(dataserver.NewTestConfig(t.TempDir()))
 	require.NoError(t, err)
-	p := New(testConfig(server.ServiceAddr(), false)).(*perf)
+	p := newPerf(t, testConfig(server.ServiceAddr(), false)).(*perf)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := runInBackground(ctx, p)
 
@@ -71,7 +79,7 @@ func TestPerfRunCountsFailedOperations(t *testing.T) {
 func TestPerfRunWritesRandomPayloads(t *testing.T) {
 	server := newStandalone(t)
 	ctx, cancel := context.WithCancel(context.Background())
-	done := runInBackground(ctx, New(testConfig(server.ServiceAddr(), true)))
+	done := runInBackground(ctx, newPerf(t, testConfig(server.ServiceAddr(), true)))
 
 	client := newSyncClient(t, server.ServiceAddr())
 	assert.Eventually(t, func() bool {
@@ -118,6 +126,13 @@ func newSyncClient(t *testing.T, serviceAddr string) oxia.SyncClient {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = client.Close() })
 	return client
+}
+
+func newPerf(t *testing.T, config Config) Perf {
+	t.Helper()
+	p, err := New(config)
+	require.NoError(t, err)
+	return p
 }
 
 func runInBackground(ctx context.Context, p Perf) <-chan struct{} {

@@ -83,7 +83,11 @@ func BenchmarkServer(b *testing.B) {
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(5*time.Minute))
 	defer cancel()
 
-	perf.New(perfConf).Run(ctx)
+	p, err := perf.New(perfConf)
+	if err != nil {
+		b.Fatal(err)
+	}
+	p.Run(ctx)
 
 	pprof.StopCPUProfile()
 
