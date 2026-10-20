@@ -794,10 +794,6 @@ func (s *controller) Refresh() {
 		s.logger.Warn("Failed to refresh the ensemble addresses", slog.Any("error", err))
 		return
 	}
-	if !exists && s.terminating.Load() {
-		// The shard was deleted since the check above
-		return
-	}
 	shardMeta := common.Must(borrowedMeta, exists,
 		"bug: shard metadata missing while syncing server addresses: namespace=", s.namespace, " shard=",
 		s.shard).UnsafeBorrow()

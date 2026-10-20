@@ -31,6 +31,7 @@ import (
 	pb "google.golang.org/protobuf/proto"
 
 	"github.com/oxia-db/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/common/hash"
 	"github.com/oxia-db/oxia/common/proto"
 	"github.com/oxia-db/oxia/common/rpc"
@@ -978,6 +979,49 @@ func TestLeaderControllerStartDeferredSplitFilterWithoutFeature(t *testing.T) {
 	assert.Never(t, func() bool { return leaderDb.DeferredSplitFilter() == nil },
 		5*splitFilterQuorumCheckInterval, 10*time.Millisecond)
 	assert.EqualValues(t, -1, lc.(*leaderController).wal.LastOffset(), "the leader proposed a step of the filter")
+
+	assert.NoError(t, lc.Close())
+	assert.NoError(t, kvFactory.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
+// A new term that comes while the leader waits for a majority of the shard to
+// hold its entries stops the wait: the deletion doesn't start in the old term.
+func TestLeaderControllerStartDeferredSplitFilterStopsWhenTermChanges(t *testing.T) {
+	logs := watchSplitDeferredFilterLogs(t,
+		"Stopped waiting for a majority of the shard to hold its entries: the node no longer leads the term")
+
+	var shard int64 = 2
+	kvFactory, err := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	walFactory := newTestWalFactory(t)
+	left, right := splitKeys(splitTestChildRange)
+	require.NoError(t, newSplitChildDB(t, kvFactory, shard, splitChildRecords(5, left, right)).Close())
+
+	var lc LeaderController
+	newTermErr := make(chan error, 1)
+	failpoints := failpoint.New(map[string]func() error{
+		// The leader checks the quorum after the new term fenced it
+		"splitFilterQuorum.beforeLock": func() error {
+			_, err := lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 3})
+			newTermErr <- err
+			return nil
+		},
+	})
+	lc, err = newLeaderController(&option.StorageOptions{}, constant.DefaultNamespace, shard, rpc.NewMockRpcClient(),
+		walFactory, kvFactory, nil, failpoints)
+	require.NoError(t, err)
+	_, err = lc.NewTerm(&proto.NewTermRequest{Shard: shard, Term: 2})
+	require.NoError(t, err)
+	_, err = lc.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{Shard: shard, Term: 2,
+		ReplicationFactor: 1, FeaturesSupported: []proto.Feature{proto.Feature_FEATURE_SPLIT_DEFERRED_FILTER}})
+	require.NoError(t, err)
+
+	waitFor(t, logs[0], "the wait for the quorum to stop")
+	assert.NoError(t, <-newTermErr)
+	assert.Equal(t, proto.ServingStatus_FENCED, lc.Status())
+	assert.EqualValues(t, 3, lc.Term())
+	assert.NotNil(t, lc.(*leaderController).db.DeferredSplitFilter())
 
 	assert.NoError(t, lc.Close())
 	assert.NoError(t, kvFactory.Close())

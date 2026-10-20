@@ -154,17 +154,16 @@ func (p *pebbleDbConversion) checkConvertDB(desiredEncoding compare.Encoder) err
 			confOld, compare.EncoderNatural,
 			confNew, desiredEncoding)
 
-	case compare.EncoderNatural.Name(),
-		compare.EncoderHierarchical.Name():
-		confOld := p.configForNewerFormat()
-		confNew := p.configForNewerFormat()
-		oldEncoder, err := compare.GetEncoder(keyEncodingMarker)
-		if err != nil {
-			return err
-		}
+	case compare.EncoderNatural.Name():
 		return p.convertDb(
-			confOld, oldEncoder,
-			confNew, desiredEncoding)
+			p.configForNewerFormat(), compare.EncoderNatural,
+			p.configForNewerFormat(), desiredEncoding)
+
+	case compare.EncoderHierarchical.Name():
+		return p.convertDb(
+			p.configForNewerFormat(), compare.EncoderHierarchical,
+			p.configForNewerFormat(), desiredEncoding)
+
 	default:
 		p.log.Warn("Found unknown encoding type. No conversion performed",
 			slog.String("keyEncodingMarker", keyEncodingMarker))
@@ -269,7 +268,7 @@ func (p *pebbleDbConversion) convertDb(
 		return errors.Wrap(err, "failed to close new database")
 	}
 
-	if err := os.Rename(p.dbPath, oldDbBackupPath); err != nil {
+	if err := p.failpoints.Fail("convertDb.backupOldDb", os.Rename(p.dbPath, oldDbBackupPath)); err != nil {
 		return errors.Wrap(err, "failed to backup old database")
 	}
 

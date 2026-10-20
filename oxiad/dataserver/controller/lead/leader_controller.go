@@ -42,6 +42,7 @@ import (
 	"github.com/oxia-db/oxia/common/concurrent"
 	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/entity"
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/common/metric"
 	"github.com/oxia-db/oxia/common/process"
 	"github.com/oxia-db/oxia/common/proto"
@@ -175,6 +176,8 @@ type leaderController struct {
 	checksumGauge           metric.SyncGauge
 	walChecksumGauge        metric.SyncGauge
 	followerAckOffsetGauges map[string]metric.Gauge
+
+	failpoints *failpoint.Failpoints
 }
 
 func NewLeaderController(storageOptions *option.StorageOptions, namespace string, shardId int64,
@@ -182,8 +185,17 @@ func NewLeaderController(storageOptions *option.StorageOptions, namespace string
 	walFactory wal.Factory, kvFactory kvstore.Factory,
 	newTermOptions *proto.NewTermOptions,
 ) (LeaderController, error) {
+	return newLeaderController(storageOptions, namespace, shardId, rpcClient, walFactory, kvFactory, newTermOptions, nil)
+}
+
+func newLeaderController(storageOptions *option.StorageOptions, namespace string, shardId int64,
+	rpcClient dataserverrpc.ReplicationRpcProvider,
+	walFactory wal.Factory, kvFactory kvstore.Factory,
+	newTermOptions *proto.NewTermOptions, failpoints *failpoint.Failpoints,
+) (LeaderController, error) {
 	labels := metric.LabelsForShard(namespace, shardId)
 	lc := &leaderController{
+		failpoints:       failpoints,
 		status:           proto.ServingStatus_NOT_MEMBER,
 		namespace:        namespace,
 		shardId:          shardId,

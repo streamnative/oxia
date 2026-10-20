@@ -28,6 +28,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/common/metric"
 	"github.com/oxia-db/oxia/common/proto"
 	"github.com/oxia-db/oxia/common/rpc"
@@ -329,6 +330,35 @@ func TestLogSynchronizerSyncFailsWhenAckFails(t *testing.T) {
 			ls.Close()
 		})
 	}
+}
+
+// A failure to append an entry to the wal fails the stream, without acking it.
+func TestLogSynchronizerSyncFailsWhenAppendFails(t *testing.T) {
+	appendErr := errors.New("append failed")
+	walFactory := wal.NewWalFactory(&wal.FactoryOptions{
+		BaseWalDir: t.TempDir(),
+		Failpoints: failpoint.New(map[string]func() error{
+			"appendAsync.marshal": func() error { return appendErr },
+		}),
+	})
+	w, err := walFactory.NewWal("test", 0, nil)
+	require.NoError(t, err)
+	stream := rpc.NewMockServerReplicateStream()
+	ls := newTestLogSynchronizer(t, w, wal.InvalidOffset, slog.Default(), stream)
+
+	stream.AddRequest(&proto.Append{
+		Term:         1,
+		Entry:        &proto.LogEntry{Term: 1, Offset: 0, Value: []byte("v")},
+		CommitOffset: wal.InvalidOffset,
+	})
+	assert.ErrorIs(t, ls.Sync(), appendErr)
+
+	stream.Cancel()
+	ls.Close()
+	assert.EqualValues(t, wal.InvalidOffset, w.LastOffset())
+	assert.Empty(t, stream.Responses)
+	assert.NoError(t, w.Close())
+	assert.NoError(t, walFactory.Close())
 }
 
 // The stream logs the requests it receives at the debug level.

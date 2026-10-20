@@ -124,6 +124,24 @@ func TestPebbleDbConversionFromMarkerlessDb(t *testing.T) {
 	assertMarker(t, dbPath, compare.EncoderHierarchical.Name())
 }
 
+func TestPebbleDbConversionFromHierarchicalDb(t *testing.T) {
+	kvFactory, err := NewPebbleKVFactory(NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, kvFactory.Close()) })
+	kv, err := kvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_HIERARCHICAL)
+	require.NoError(t, err)
+	putAll(t, kv, "/key/a", "/key/a/1", "/key/b")
+	dbPath := kv.(*Pebble).dbPath
+	require.NoError(t, kv.Close())
+
+	kv, err = kvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_NATURAL)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, kv.Close()) })
+
+	assert.Equal(t, []string{"/key/a", "/key/a/1", "/key/b"}, scanAllKeys(t, kv, NoInternalKeys))
+	assertMarker(t, dbPath, compare.EncoderNatural.Name())
+}
+
 func TestPebbleDbConversionPreservesDataAfterCrash(t *testing.T) {
 	// Create DB with natural format and insert some test keys
 	tmpDir := t.TempDir()
@@ -575,6 +593,29 @@ func TestPebbleDbConversionFailsWhenBackupCannotBeRestored(t *testing.T) {
 	assert.ErrorIs(t, err, os.ErrPermission)
 	assert.DirExists(t, makeDbBackupPath(dbPath))
 	assert.NoDirExists(t, dbPath)
+}
+
+// A failure to move the old database to its backup fails the conversion: the
+// next open converts the database again.
+func TestPebbleDbConversionFailsWhenOldDbCannotBeBackedUp(t *testing.T) {
+	kvFactory, _ := newNaturalDb(t)
+	options := NewFactoryOptionsForTest(t)
+	options.DataDir = kvFactory.(*PebbleFactory).options.DataDir
+	options.Failpoints = failpoint.New(map[string]func() error{
+		"convertDb.backupOldDb": func() error { return errFailpoint },
+	})
+	trapKvFactory, err := NewPebbleKVFactory(options)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, trapKvFactory.Close()) })
+
+	_, err = trapKvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_HIERARCHICAL)
+	assert.ErrorIs(t, err, errFailpoint)
+	assert.ErrorContains(t, err, "failed to backup old database")
+
+	kv, err := kvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_HIERARCHICAL)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/key/a"}, scanAllKeys(t, kv, NoInternalKeys))
+	assert.NoError(t, kv.Close())
 }
 
 func TestPebbleDbConversionFailsWhenNewDbCannotBeRenamed(t *testing.T) {
