@@ -216,17 +216,14 @@ func (v *V2) RecoverIndex(buf []byte, startFileOffset uint32, baseEntryOffset in
 				// we might read the end of the segment.
 				break
 			}
-			// data corruption
-			if errors.Is(err, ErrOffsetOutOfBounds) || errors.Is(err, ErrDataCorrupted) {
-				if commitOffset != nil && currentEntryOffset > *commitOffset {
-					// uncommitted data corruption, simply discard it
-					slog.Warn("discard the corrupted uncommitted data.",
-						slog.Int64("entryId", currentEntryOffset), slog.Any("error", err))
-					break
-				}
-				return nil, 0, 0, 0, errors.Wrapf(err, "entryOffset: %d", currentEntryOffset)
+			// data corruption: ErrOffsetOutOfBounds or ErrDataCorrupted
+			if commitOffset != nil && currentEntryOffset > *commitOffset {
+				// uncommitted data corruption, simply discard it
+				slog.Warn("discard the corrupted uncommitted data.",
+					slog.Int64("entryId", currentEntryOffset), slog.Any("error", err))
+				break
 			}
-			return nil, 0, 0, 0, err
+			return nil, 0, 0, 0, errors.Wrapf(err, "entryOffset: %d", currentEntryOffset)
 		}
 		lastCrc = payloadCrc
 		index = binary.BigEndian.AppendUint32(index, newFileOffset)
