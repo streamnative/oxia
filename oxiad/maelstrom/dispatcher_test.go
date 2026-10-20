@@ -141,6 +141,15 @@ func TestDispatcherReceivedMessageRoutesReplicateStreams(t *testing.T) {
 	require.Equal(t, codes.Unavailable, status.Code(err))
 }
 
+func TestDispatcherReceivedMessageFailsOnShardAssignmentsAckOnDataServer(t *testing.T) {
+	d := newDispatcher(newMaelstromGrpcProvider(), newMaelstromReplicationRpcProvider())
+
+	err := d.ReceivedMessage(parseLine(t,
+		`{"src":"n2","dest":"n3","body":{"type":"shards-ack","msg_id":2,"in_reply_to":1,"stream_id":1}}`))
+
+	require.ErrorContains(t, err, "unexpected shards-ack on a data server")
+}
+
 func TestDispatcherOnOxiaStreamRequestMessageFailsOnUnknownType(t *testing.T) {
 	d := newDispatcher(newMaelstromGrpcProvider(), newMaelstromReplicationRpcProvider())
 

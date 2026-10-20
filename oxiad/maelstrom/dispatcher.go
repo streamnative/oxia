@@ -103,6 +103,9 @@ func (d *dispatcher) onOxiaStreamRequestMessage(msgType MsgType, m any, message 
 		return sendShardAssignmentsAck(msg.Src, msg.Body.StreamId, msg.Body.MsgId)
 
 	case MsgTypeShardAssignmentsAck:
+		if d.coordinatorProvider == nil {
+			return errors.Errorf("unexpected %s on a data server", msgType)
+		}
 		msg := m.(*Message[OxiaStreamMessage])
 		d.coordinatorProvider.HandleShardAssignmentsAck(msg.Body.StreamId, *msg.Body.InReplyTo)
 
