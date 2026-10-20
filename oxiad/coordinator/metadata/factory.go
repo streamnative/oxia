@@ -141,14 +141,14 @@ func (f *Factory) SeedClusterConfig(config *commonproto.ClusterConfiguration) er
 	return nil
 }
 
-func (f *Factory) CreateMetadata(ctx context.Context) (Metadata, error) {
+func (f *Factory) CreateMetadata(ctx context.Context) Metadata {
 	f.mu.Lock()
 	statusProvider := f.statusProvider
 	configProvider := f.configProvider
 	coordinatorName := f.coordinatorName
 	f.mu.Unlock()
 
-	return newDefaultMetadata(ctx, statusProvider, configProvider, coordinatorName), nil
+	return newDefaultMetadata(ctx, statusProvider, configProvider, coordinatorName)
 }
 
 // Close closes the metadata providers. It is safe to call more than once,

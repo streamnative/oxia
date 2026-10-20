@@ -775,17 +775,8 @@ func (lc *leaderController) addObserver(observerKey string, follower string, fol
 	// fences the child shard with the same term as the parent, so the child
 	// can validate incoming entries. If the parent gets a new election (term
 	// advances), stale entries from old observer cursors are rejected.
-	cursor, err := NewObserverFollowerCursor(follower, lc.term.Load(), lc.namespace, targetShardId,
+	cursor := NewObserverFollowerCursor(follower, lc.term.Load(), lc.namespace, targetShardId,
 		lc.rpcClient, lc.quorumAckTracker, lc.wal, lc.db, followerHeadEntryId.Offset, splitHashRange, splitParentHashRange)
-	if err != nil {
-		lc.log.Error(
-			"Failed to create observer follower cursor",
-			slog.Any("error", err),
-			slog.String("follower", follower),
-			slog.Int64("term", lc.term.Load()),
-		)
-		return err
-	}
 
 	lc.log.Info(
 		"Added observer follower",

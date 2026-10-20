@@ -234,10 +234,7 @@ func NewGrpcServer(parent context.Context, optionsWatch *commonwatch.Watch[*opti
 	// The metadata retries its status writes until they succeed or its
 	// context is canceled: deriving it from the server context lets Close stop
 	// the retries before closing the runtime, which waits for its controllers.
-	metadata, err = metadataFactory.CreateMetadata(ctx)
-	if err != nil {
-		return nil, err
-	}
+	metadata = metadataFactory.CreateMetadata(ctx)
 
 	managementSv := options.Server.Public
 	managementSvTLS, err := managementSv.TLS.TryIntoServerTLSConf()

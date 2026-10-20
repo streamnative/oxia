@@ -193,7 +193,7 @@ func NewObserverFollowerCursor( //nolint:revive
 	ackOffset int64,
 	splitHashRange *proto.Int32HashRange,
 	splitParentHashRange *proto.Int32HashRange,
-) (FollowerCursor, error) {
+) FollowerCursor {
 	labels := map[string]any{
 		"namespace": namespace,
 		"shard":     shardId,
@@ -256,7 +256,7 @@ func NewObserverFollowerCursor( //nolint:revive
 		)
 	})
 
-	return fc, nil
+	return fc
 }
 
 func (fc *followerCursor) shouldSendSnapshot() bool {

@@ -94,13 +94,7 @@ func newDefaultGrpcProvider(name, bindAddress string, registerFunc func(grpc.Ser
 				slog.Any("error", err))
 			return nil, err
 		}
-		delegator, err := auth.NewGrpcAuthenticationDelegator(provider)
-		if err != nil {
-			slog.Error("Failed to init grpc authentication delegator",
-				slog.Any("authOptions", *authOptions),
-				slog.Any("error", err))
-			return nil, err
-		}
+		delegator := auth.NewGrpcAuthenticationDelegator(provider)
 		unaryInterceptors = append(unaryInterceptors, delegator.GetUnaryInterceptor())
 		streamInterceptors = append(streamInterceptors, delegator.GetStreamInterceptor())
 	}
