@@ -16,12 +16,15 @@ package commonio
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+
+	"github.com/spf13/afero"
 )
 
-func ReadJSONFromFile(path string, value any) (bool, error) {
-	data, err := os.ReadFile(path)
+func ReadJSONFromFile(fs afero.Fs, path string, value any) (bool, error) {
+	data, err := afero.ReadFile(fs, path)
 	if err != nil {
 		return false, err
 	}
@@ -33,9 +36,11 @@ func ReadJSONFromFile(path string, value any) (bool, error) {
 	return true, json.Unmarshal(data, value)
 }
 
-func WriteJSONToFile(path string, value any) error {
+// WriteJSONToFile replaces the file at path with the JSON of value: it writes
+// a temporary file, then renames it.
+func WriteJSONToFile(fs afero.Fs, path string, value any) (err error) {
 	parentDir := filepath.Dir(path)
-	if err := os.MkdirAll(parentDir, 0755); err != nil {
+	if err := fs.MkdirAll(parentDir, 0755); err != nil {
 		return err
 	}
 
@@ -44,36 +49,35 @@ func WriteJSONToFile(path string, value any) error {
 		return err
 	}
 
-	tmp, err := os.CreateTemp(parentDir, "."+filepath.Base(path)+".*")
+	tmp, err := afero.TempFile(fs, parentDir, "."+filepath.Base(path)+".*")
 	if err != nil {
 		return err
 	}
 	tmpName := tmp.Name()
 	defer func() {
-		_ = os.Remove(tmpName)
+		// The temporary file doesn't exist anymore once it is renamed
+		if removeErr := fs.Remove(tmpName); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+			err = errors.Join(err, removeErr)
+		}
 	}()
 
-	if _, err = tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		return err
+	if _, err := tmp.Write(data); err != nil {
+		return errors.Join(err, tmp.Close())
 	}
-	if err = tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		return err
+	if err := tmp.Sync(); err != nil {
+		return errors.Join(err, tmp.Close())
 	}
-	if err = tmp.Close(); err != nil {
-		return err
-	}
-
-	if err := os.Rename(tmpName, path); err != nil {
+	if err := tmp.Close(); err != nil {
 		return err
 	}
 
-	dir, err := os.Open(parentDir)
+	if err := fs.Rename(tmpName, path); err != nil {
+		return err
+	}
+
+	dir, err := fs.Open(parentDir)
 	if err != nil {
 		return err
 	}
-	defer dir.Close()
-
-	return dir.Sync()
+	return errors.Join(dir.Sync(), dir.Close())
 }

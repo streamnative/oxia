@@ -21,6 +21,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/spf13/afero"
+
 	"github.com/oxia-db/oxia/common/commonio"
 )
 
@@ -33,6 +35,7 @@ type Document struct {
 }
 
 type Manifest struct {
+	fs   afero.Fs
 	path string
 	mu   sync.Mutex
 
@@ -41,6 +44,7 @@ type Manifest struct {
 
 func NewManifest(dir string) (*Manifest, error) {
 	m := &Manifest{
+		fs:   afero.NewOsFs(),
 		path: filepath.Join(dir, filename),
 	}
 	if err := m.doRecovery(); err != nil {
@@ -51,10 +55,10 @@ func NewManifest(dir string) (*Manifest, error) {
 
 func (m *Manifest) doRecovery() error {
 	doc := &Document{}
-	_, err := commonio.ReadJSONFromFile(m.path, doc)
+	_, err := commonio.ReadJSONFromFile(m.fs, m.path, doc)
 	if err != nil {
 		if os.IsNotExist(err) {
-			if err := commonio.WriteJSONToFile(m.path, doc); err != nil {
+			if err := commonio.WriteJSONToFile(m.fs, m.path, doc); err != nil {
 				return err
 			}
 			m.document.Store(doc)
@@ -87,7 +91,7 @@ func (m *Manifest) SetInstanceID(id string) error {
 	switch {
 	case current == nil || current.InstanceID == "":
 		next := &Document{InstanceID: id}
-		if err := commonio.WriteJSONToFile(m.path, next); err != nil {
+		if err := commonio.WriteJSONToFile(m.fs, m.path, next); err != nil {
 			return err
 		}
 		m.document.Store(next)
