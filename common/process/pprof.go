@@ -58,7 +58,7 @@ func DoWithLabels(ctx context.Context, labels map[string]string, f func()) {
 		})
 }
 
-func RunProfiling() io.Closer {
+func RunProfiling(ctx context.Context) io.Closer {
 	s := &http.Server{
 		Addr:              PprofBindAddress,
 		Handler:           http.DefaultServeMux,
@@ -84,7 +84,7 @@ func RunProfiling() io.Closer {
 	slog.Info("")
 
 	go DoWithLabels(
-		context.Background(),
+		ctx,
 		map[string]string{
 			"oxia": "pprof",
 		},

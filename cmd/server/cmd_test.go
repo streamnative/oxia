@@ -15,6 +15,7 @@
 package server
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -263,10 +264,10 @@ observability:
 }
 
 func TestCmdPreRunAppliesRetentionFlags(t *testing.T) {
-	run := Cmd.Run
-	t.Cleanup(func() { Cmd.Run = run })
+	run := Cmd.RunE
+	t.Cleanup(func() { Cmd.RunE = run })
 	invoked := false
-	Cmd.Run = func(*cobra.Command, []string) { invoked = true }
+	Cmd.RunE = func(*cobra.Command, []string) error { invoked = true; return nil }
 
 	Cmd.SetArgs([]string{"--wal-retention-time", "5m", "--notifications-retention-time", "7m"})
 	err := Cmd.Execute()
@@ -275,4 +276,15 @@ func TestCmdPreRunAppliesRetentionFlags(t *testing.T) {
 	assert.True(t, invoked)
 	assert.Equal(t, 5*time.Minute, time.Duration(dataServerOptions.Storage.WAL.Retention))
 	assert.Equal(t, 7*time.Minute, time.Duration(dataServerOptions.Storage.Notification.Retention))
+}
+
+func TestServerRunsUntilItsContextIsDone(t *testing.T) {
+	dir := t.TempDir()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	Cmd.SetArgs([]string{"--data-dir", filepath.Join(dir, "db"), "--wal-dir", filepath.Join(dir, "wal"),
+		"--public-addr", "localhost:0", "--internal-addr", "localhost:0", "--metrics-addr", "localhost:0"})
+
+	assert.NoError(t, Cmd.ExecuteContext(ctx))
 }

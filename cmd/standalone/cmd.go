@@ -39,7 +39,7 @@ var (
 		Short: "Start a standalone service",
 		Long:  `Long description`,
 		Args:  cobra.NoArgs,
-		Run:   exec,
+		RunE:  exec,
 	}
 )
 
@@ -85,8 +85,8 @@ func init() {
 	}
 }
 
-func exec(*cobra.Command, []string) {
-	process.RunProcess(func() (io.Closer, error) {
+func exec(cmd *cobra.Command, _ []string) error {
+	return process.RunProcess(cmd.Context(), func() (io.Closer, error) {
 		return dataserver.NewStandalone(conf)
 	})
 }

@@ -15,6 +15,7 @@
 package coordinator
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -349,7 +350,9 @@ func TestCoordinator_CommandLineFlags(t *testing.T) {
 	originalConfFile := sconfFile
 	defer func() { sconfFile = originalConfFile }()
 
-	// Reset the global options
+	// Reset the global options, which the flags of the command are bound to
+	originalOptions := coordinatorOptions
+	defer func() { coordinatorOptions = originalOptions }()
 	coordinatorOptions = option.NewDefaultOptions()
 
 	// Create a config file
@@ -398,4 +401,14 @@ metadata:
 	assert.Equal(t, "0.0.0.0:7001", coordinatorOptions.Server.Internal.BindAddress)
 	assert.Equal(t, "0.0.0.0:8080", coordinatorOptions.Observability.Metric.BindAddress)
 	assert.Equal(t, "memory", coordinatorOptions.Metadata.ProviderName)
+}
+
+func TestCoordinatorRunsUntilItsContextIsDone(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	Cmd.SetArgs([]string{"--metadata", "memory", "--public-addr", "localhost:0", "--internal-addr", "localhost:0",
+		"--metrics-addr", "localhost:0"})
+
+	assert.NoError(t, Cmd.ExecuteContext(ctx))
 }

@@ -16,6 +16,9 @@ package standalone
 
 import (
 	"bytes"
+	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -27,10 +30,10 @@ import (
 )
 
 func TestStandalone_RejectsPositionalArgs(t *testing.T) {
-	run := Cmd.Run
-	t.Cleanup(func() { Cmd.Run = run })
+	run := Cmd.RunE
+	t.Cleanup(func() { Cmd.RunE = run })
 	invoked := false
-	Cmd.Run = func(*cobra.Command, []string) { invoked = true }
+	Cmd.RunE = func(*cobra.Command, []string) error { invoked = true; return nil }
 
 	// A bool flag never takes the next argument: "false" is a stray positional and the WAL sync stays on
 	Cmd.SetArgs([]string{"--wal-sync-data", "false"})
@@ -41,13 +44,13 @@ func TestStandalone_RejectsPositionalArgs(t *testing.T) {
 }
 
 func TestStandalonePreRunEAppliesFlags(t *testing.T) {
-	run := Cmd.Run
+	run := Cmd.RunE
 	t.Cleanup(func() {
-		Cmd.Run = run
+		Cmd.RunE = run
 		_ = Cmd.Flags().Parse([]string{"--key-sorting", "hierarchical"})
 	})
 	invoked := false
-	Cmd.Run = func(*cobra.Command, []string) { invoked = true }
+	Cmd.RunE = func(*cobra.Command, []string) error { invoked = true; return nil }
 
 	Cmd.SetArgs([]string{"--key-sorting", "natural", "--wal-retention-time", "5m",
 		"--notifications-retention-time", "7m"})
@@ -61,13 +64,13 @@ func TestStandalonePreRunEAppliesFlags(t *testing.T) {
 }
 
 func TestStandalonePreRunERejectsInvalidKeySorting(t *testing.T) {
-	run := Cmd.Run
+	run := Cmd.RunE
 	t.Cleanup(func() {
-		Cmd.Run = run
+		Cmd.RunE = run
 		_ = Cmd.Flags().Parse([]string{"--key-sorting", "hierarchical"})
 	})
 	invoked := false
-	Cmd.Run = func(*cobra.Command, []string) { invoked = true }
+	Cmd.RunE = func(*cobra.Command, []string) error { invoked = true; return nil }
 	Cmd.SetOut(new(bytes.Buffer))
 	Cmd.SetErr(new(bytes.Buffer))
 
@@ -92,4 +95,25 @@ func TestStandaloneKeySortingCompletion(t *testing.T) {
 
 	assert.Contains(t, out.String(), "hierarchical\tUse file-system like hierarchical sorting based on `/`")
 	assert.Contains(t, out.String(), "natural\tUse natural, byte-wise sorting")
+}
+
+func TestStandaloneRunsUntilItsContextIsDone(t *testing.T) {
+	dir := t.TempDir()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	Cmd.SetArgs([]string{"--data-dir", filepath.Join(dir, "db"), "--wal-dir", filepath.Join(dir, "wal"),
+		"--public-addr", "localhost:0", "--metrics-addr", "localhost:0"})
+
+	assert.NoError(t, Cmd.ExecuteContext(ctx))
+}
+
+func TestStandaloneFailsWhenItCantStart(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "file")
+	require.NoError(t, os.WriteFile(dataDir, nil, 0o600))
+
+	Cmd.SetArgs([]string{"--data-dir", dataDir, "--wal-dir", t.TempDir(),
+		"--public-addr", "localhost:0", "--metrics-addr", "localhost:0"})
+
+	assert.ErrorContains(t, Cmd.ExecuteContext(t.Context()), "failed to start the process")
 }

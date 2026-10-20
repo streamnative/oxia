@@ -15,26 +15,27 @@
 package process
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"io"
 	"log/slog"
-	"os"
-
-	"github.com/oxia-db/oxia/common/concurrent"
 )
 
-func RunProcess(startProcess func() (io.Closer, error)) {
-	profiler := RunProfiling()
+// RunProcess starts the process and the profiler, and closes them once ctx is
+// done, e.g. when the process receives a termination signal.
+func RunProcess(ctx context.Context, startProcess func() (io.Closer, error)) error {
+	profiler := RunProfiling(ctx)
 	process, err := startProcess()
 	if err != nil {
-		slog.Error(
-			"Failed to start the process",
-			slog.Any("error", err),
-		)
-		os.Exit(1)
+		return errors.Join(fmt.Errorf("failed to start the process: %w", err), profiler.Close())
 	}
 
-	concurrent.WaitUntilSignal(
-		process,
-		profiler,
-	)
+	<-ctx.Done()
+	slog.Info("Shutting down", slog.Any("cause", context.Cause(ctx)))
+	if err := errors.Join(process.Close(), profiler.Close()); err != nil {
+		return fmt.Errorf("failed to shut down the process: %w", err)
+	}
+	slog.Info("Shutdown Completed")
+	return nil
 }

@@ -32,7 +32,7 @@ func TestRunProfilingEnablesContentionProfiles(t *testing.T) {
 		runtime.SetBlockProfileRate(0)
 	})
 
-	closer := RunProfiling()
+	closer := RunProfiling(t.Context())
 
 	// SetMutexProfileFraction with a negative value only reads the current
 	// setting. There is no equivalent getter for the block profile rate.
@@ -47,7 +47,7 @@ func TestRunProfilingDisabledDoesNotStartServer(t *testing.T) {
 	PprofEnable = false
 	PprofBindAddress = "127.0.0.1:0"
 
-	closer := RunProfiling()
+	closer := RunProfiling(t.Context())
 
 	// The plain server is returned without listening, and contention profiling stays off
 	server, ok := closer.(*http.Server)

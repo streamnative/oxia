@@ -43,7 +43,7 @@ var (
 		Short: "Start a coordinator",
 		Long:  `Start a coordinator`,
 		Args:  cobra.NoArgs,
-		Run:   exec,
+		RunE:  exec,
 	}
 )
 
@@ -93,8 +93,8 @@ func init() {
 	Cmd.Flags().StringVar(&controller.TLS.ServerName, "peer-tls-server-name", "", "Peer tls server name")
 }
 
-func exec(cmd *cobra.Command, _ []string) {
-	process.RunProcess(func() (io.Closer, error) {
+func exec(cmd *cobra.Command, _ []string) error {
+	return process.RunProcess(cmd.Context(), func() (io.Closer, error) {
 		optionsWatch := commonwatch.New(coordinatorOptions)
 		// configure the options
 		if cmd.Flags().Changed("sconfig") {
