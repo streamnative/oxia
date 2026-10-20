@@ -159,6 +159,16 @@ func TestReadOnlySegmentNewFailsWhenTxnFileIsMissing(t *testing.T) {
 	assert.ErrorContains(t, err, "failed to open segment txn file")
 }
 
+func TestReadOnlySegmentNewFailsWhenTxnFileCannotBeStatted(t *testing.T) {
+	dir := t.TempDir()
+	c, _ := writeSegment(t, dir, 3)
+	fs := newFaultFS()
+	fs.failNth(opStat, c.txnPath, 1)
+
+	_, err := newReadOnlySegment(fs, dir, 0)
+	assert.ErrorIs(t, err, errInjected)
+}
+
 func TestReadOnlySegmentNewFailsWhenTxnFileIsEmpty(t *testing.T) {
 	dir := t.TempDir()
 	c, err := newSegmentConfig(codec.OSFS{}, dir, 0)
@@ -177,6 +187,23 @@ func TestReadOnlySegmentNewFailsWhenIndexIsUnreadable(t *testing.T) {
 
 	_, err := newReadOnlySegment(codec.OSFS{}, dir, 0)
 	assert.ErrorContains(t, err, "failed to decode segment index file")
+}
+
+func TestReadOnlySegmentNewFailsWhenIndexCannotBeClosed(t *testing.T) {
+	for _, cd := range codec.SupportedCodecs {
+		t.Run(cd.GetIdxExtension(), func(t *testing.T) {
+			dir := t.TempDir()
+			// An existing txn file with the extension of a codec selects it
+			require.NoError(t, os.WriteFile(segmentPath(dir, 0)+cd.GetTxnExtension(), make([]byte, 1024), 0o644))
+			c, _ := writeSegment(t, dir, 3)
+			fs := newFaultFS()
+			fs.failNth(opClose, c.idxPath, 1)
+
+			_, err := newReadOnlySegment(fs, dir, 0)
+			assert.ErrorIs(t, err, errInjected)
+			assert.ErrorContains(t, err, "failed to close segment index file")
+		})
+	}
 }
 
 func TestReadOnlySegmentNewFailsWhenIndexRebuildFindsCorruption(t *testing.T) {

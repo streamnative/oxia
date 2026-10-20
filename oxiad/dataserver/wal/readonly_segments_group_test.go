@@ -120,6 +120,31 @@ func TestReadOnlySegmentsGroupNewFailsWhenPathIsFile(t *testing.T) {
 	assert.ErrorContains(t, err, "failed to list files in wal directory")
 }
 
+// A segment evicted from the cache as soon as Get opened it gets closed by
+// GetLastCrc, which reports the failure.
+func TestReadOnlySegmentsGroupGetLastCrcFailsWhenEvictedSegmentCannotBeClosed(t *testing.T) {
+	fs := newFaultFS()
+	w := newFaultWal(t, fs, false)
+	appendEntries(t, w, 1, 0, 59, "v")
+	require.NoError(t, w.Close())
+	segments, err := listAllSegments(fs, w.walPath)
+	require.NoError(t, err)
+	// The last segment is the read-write one
+	require.Greater(t, len(segments), maxReadOnlySegmentsInCacheCount+1)
+	group, err := newReadOnlySegmentsGroup(fs, w.walPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, group.Close()) })
+	for _, s := range segments[1 : maxReadOnlySegmentsInCacheCount+1] {
+		rc, err := group.Get(s)
+		require.NoError(t, err)
+		require.NoError(t, rc.Close())
+	}
+	fs.failNth(opClose, txnPath(w.walPath, segments[0]), 1)
+
+	_, err = group.GetLastCrc(segments[0])
+	assert.ErrorIs(t, err, errInjected)
+}
+
 func TestReadOnlySegmentsGroupGetFailsBeforeFirstSegment(t *testing.T) {
 	walBasePath, _ := writeClosedWal(t)
 	group, err := newReadOnlySegmentsGroup(codec.OSFS{}, walBasePath)
@@ -193,6 +218,23 @@ func TestReadOnlySegmentsGroupTrimSegmentsReportsUnremovableFiles(t *testing.T) 
 	assert.NoFileExists(t, c.txnPath)
 	_, err = group.Get(segments[0])
 	assert.ErrorIs(t, err, codec.ErrOffsetOutOfBounds)
+}
+
+// A segment that cannot be statted is left on the disk: the trimming goes on
+// with the next ones.
+func TestReadOnlySegmentsGroupTrimSegmentsReportsUnstattableSegment(t *testing.T) {
+	walBasePath, segments := writeClosedWal(t)
+	require.GreaterOrEqual(t, len(segments), 3)
+	fs := newFaultFS()
+	group, err := newReadOnlySegmentsGroup(fs, walBasePath)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, group.Close()) })
+	fs.failNth(opStat, txnPath(walBasePath, segments[0]), 1)
+
+	err = group.TrimSegments(segments[2], func() error { return nil })
+	assert.ErrorIs(t, err, errInjected)
+	assert.FileExists(t, txnPath(walBasePath, segments[0]))
+	assert.NoFileExists(t, txnPath(walBasePath, segments[1]))
 }
 
 func TestReadOnlySegmentsGroupPollHighestSegmentFailsWhenTxnFileIsMissing(t *testing.T) {

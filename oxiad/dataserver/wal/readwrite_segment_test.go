@@ -610,6 +610,41 @@ func TestReadWriteSegmentNewFailsWhenSegmentFileCannotBeCreated(t *testing.T) {
 	assert.ErrorContains(t, err, "failed to open segment file")
 }
 
+func TestReadWriteSegmentNewFailsOnFilesystemErrors(t *testing.T) {
+	// The stat that picks the codec, the extension of the new file to the
+	// segment size, and its mapping
+	for _, op := range []fsOp{opStat, opSeek, opWrite, opMap} {
+		t.Run(string(op), func(t *testing.T) {
+			dir := t.TempDir()
+			fs := newFaultFS()
+			fs.failNth(op, txnPath(dir, 0), 1)
+
+			_, err := newReadWriteSegment(fs, dir, 0, 1024, 0, nil)
+			assert.ErrorIs(t, err, errInjected)
+		})
+	}
+}
+
+func TestReadWriteSegmentNewFailsWhenDiscardedTailCannotBeZeroed(t *testing.T) {
+	dir := t.TempDir()
+	fs := newFaultFS()
+	commitOffsetProvider := ConfigurableCommitOffsetProvider{commitOffset: 1}
+	rw, err := newReadWriteSegment(fs, dir, 0, 1024, 0, commitOffsetProvider)
+	require.NoError(t, err)
+	for i := int64(0); i <= 3; i++ {
+		require.NoError(t, rw.Append(i, fmt.Appendf(nil, "entry-%d", i)))
+	}
+	// A torn write of the uncommitted entry 2, followed by the intact entry 3
+	rwSegment := rw.(*readWriteSegment)
+	rwSegment.txnMappedFile[fileOffset(rwSegment.writingIdx, 0, 2)+rwSegment.c.codec.GetHeaderSize()] ^= 0xFF
+	require.NoError(t, rw.Close())
+	fs.failNth(opFlush, txnPath(dir, 0), 1)
+
+	_, err = newReadWriteSegment(fs, dir, 0, 1024, 0, commitOffsetProvider)
+	assert.ErrorIs(t, err, errInjected)
+	assert.ErrorContains(t, err, "failed to zero the discarded tail")
+}
+
 func TestReadWriteSegmentReadReportsCorruptedRecord(t *testing.T) {
 	rw, err := newReadWriteSegment(codec.OSFS{}, t.TempDir(), 0, 1024, 0, nil)
 	require.NoError(t, err)
@@ -656,6 +691,39 @@ func TestReadWriteSegmentSyncFileIfNeededSkipsClosedSegment(t *testing.T) {
 
 	assert.NoError(t, rw.SyncFileIfNeeded())
 	assert.True(t, rwSegment.pendingFileSync.Load())
+}
+
+func TestReadWriteSegmentSyncFileIfNeededReportsSyncFailure(t *testing.T) {
+	dir := t.TempDir()
+	fs := newFaultFS()
+	rw, err := newReadWriteSegment(fs, dir, 0, 1024, 0, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, rw.Close()) })
+	fs.failNth(opSync, txnPath(dir, 0), 1)
+
+	assert.ErrorIs(t, rw.SyncFileIfNeeded(), errInjected)
+	// The next call syncs the file again
+	assert.True(t, rw.(*readWriteSegment).pendingFileSync.Load())
+	assert.NoError(t, rw.SyncFileIfNeeded())
+	assert.False(t, rw.(*readWriteSegment).pendingFileSync.Load())
+}
+
+func TestReadWriteSegmentCloseReportsIndexWriteFailure(t *testing.T) {
+	for _, c := range codec.SupportedCodecs {
+		t.Run(c.GetTxnExtension(), func(t *testing.T) {
+			dir := t.TempDir()
+			// An existing txn file with the extension of a codec selects it
+			require.NoError(t, os.WriteFile(segmentPath(dir, 0)+c.GetTxnExtension(), make([]byte, 1024), 0o644))
+			fs := newFaultFS()
+			rw, err := newReadWriteSegment(fs, dir, 0, 1024, 0, nil)
+			require.NoError(t, err)
+			require.NoError(t, rw.Append(0, []byte("entry-0")))
+			idxPath := rw.(*readWriteSegment).c.idxPath
+			fs.failNth(opWrite, idxPath, 1)
+
+			assert.ErrorIs(t, rw.Close(), errInjected)
+		})
+	}
 }
 
 func TestReadWriteSegmentOpenTimestampIsCurrentTime(t *testing.T) {

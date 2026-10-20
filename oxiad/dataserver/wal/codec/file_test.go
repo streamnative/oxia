@@ -21,8 +21,21 @@ import (
 	"path"
 	"testing"
 
+	"github.com/edsrzf/mmap-go"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func TestOSFSMapRejectsFileNotOpenedByIt(t *testing.T) {
+	f, err := OSFS{}.OpenFile(path.Join(t.TempDir(), "file"), os.O_CREATE|os.O_RDWR, 0o644)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, f.Close()) })
+	wrapped := struct{ File }{f}
+
+	m, err := OSFS{}.Map(wrapped, 1, mmap.RDONLY)
+	assert.ErrorContains(t, err, "not opened by OSFS")
+	assert.Nil(t, m)
+}
 
 func TestRemoveFileIfExists(t *testing.T) {
 	t.Run("file not exists", func(t *testing.T) {
