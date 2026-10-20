@@ -1487,7 +1487,6 @@ func (lc *leaderController) GetNotifications(ctx context.Context, req *proto.Not
 		cb.OnComplete(constant.ErrNotificationsNotEnabled)
 		return
 	}
-	qat := lc.quorumAckTracker
 
 	var offsetExclusive int64
 	if req.StartOffsetExclusive != nil {
@@ -1498,12 +1497,7 @@ func (lc *leaderController) GetNotifications(ctx context.Context, req *proto.Not
 			offsetExclusive = trimmed
 		}
 	} else {
-		if qat == nil {
-			lc.RUnlock()
-			cb.OnComplete(constant.ErrInvalidStatus)
-			return
-		}
-		offsetExclusive = qat.CommitOffset()
+		offsetExclusive = lc.quorumAckTracker.CommitOffset()
 	}
 
 	lc.waitGroup.Go(func() {
