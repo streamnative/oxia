@@ -15,6 +15,7 @@
 package kvstore
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -24,7 +25,9 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble/v2/sstable"
 	"github.com/cockroachdb/pebble/v2/vfs"
+	"github.com/cockroachdb/pebble/v2/vfs/errorfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -363,6 +366,43 @@ func TestPebbleDbConversionReadFailure(t *testing.T) {
 	assert.NoError(t, kv.Close())
 }
 
+// The values of an old database sit in value blocks, which the copy reads
+// one by one: the comparer of the old databases takes no key prefix, so every
+// key shares the prefix of the previous one.
+func TestPebbleDbConversionFailsWhenOldValueCannotBeRead(t *testing.T) {
+	kvFactory, err := NewPebbleKVFactory(NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, kvFactory.Close()) })
+	dataDir := kvFactory.(*PebbleFactory).dataDir
+	dbPath := kvFactory.(*PebbleFactory).getKVPath(constant.DefaultNamespace, 0)
+	conversion := newPebbleDbConversion(slog.Default(), vfs.Default, dbPath, nil)
+	db, err := pebble.Open(dbPath, conversion.configForOldCompareHierarchical())
+	require.NoError(t, err)
+	for _, key := range []string{"/key/a", "/key/b"} {
+		require.NoError(t, db.Set(compare.EncoderNatural.Encode(key), []byte("value"), pebble.NoSync))
+	}
+	require.NoError(t, db.Flush())
+	require.NoError(t, db.Close())
+
+	ssts, err := filepath.Glob(filepath.Join(dbPath, "*.sst"))
+	require.NoError(t, err)
+	require.Len(t, ssts, 1)
+	start, end := valueBlocksRange(t, ssts[0])
+	faultyFactory := newFactoryWithFaults(t, dataDir, func(op errorfs.Op) bool {
+		return op.Kind == errorfs.OpFileReadAt && op.Path == ssts[0] && op.Offset >= start && op.Offset < end
+	})
+
+	_, err = faultyFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_HIERARCHICAL)
+	assert.ErrorIs(t, err, errorfs.ErrInjected)
+	assert.ErrorContains(t, err, "failed to copy db data")
+
+	// The failed conversion left the old database in place
+	kv, err := kvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_HIERARCHICAL)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/key/a", "/key/b"}, scanAllKeys(t, kv, NoInternalKeys))
+	assert.NoError(t, kv.Close())
+}
+
 func TestCreateMarkerLeavesUpToDateMarkerAlone(t *testing.T) {
 	dbPath := t.TempDir()
 	markerPath := filepath.Join(dbPath, markerFileName)
@@ -429,6 +469,59 @@ func TestPebbleDbConversionFailsWhenOldDbIsLocked(t *testing.T) {
 	assert.ErrorContains(t, err, "failed to open old database")
 	require.NoError(t, lock.Close())
 	assertMarker(t, dbPath, compare.EncoderNatural.Name())
+}
+
+func TestPebbleDbConversionFailsWhenTempDbCannotBeCreated(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("the permissions don't apply to root")
+	}
+	kvFactory, dbPath := newNaturalDb(t)
+	parent := filepath.Dir(dbPath)
+	require.NoError(t, os.Chmod(parent, 0o500))
+	t.Cleanup(func() { _ = os.Chmod(parent, 0o700) })
+
+	_, err := kvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_HIERARCHICAL)
+	assert.ErrorIs(t, err, os.ErrPermission)
+
+	// The failed conversion closed the old db, or its lock would fail this retry
+	require.NoError(t, os.Chmod(parent, 0o700))
+	kv, err := kvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_HIERARCHICAL)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/key/a"}, scanAllKeys(t, kv, NoInternalKeys))
+	assert.NoError(t, kv.Close())
+}
+
+func TestPebbleDbConversionFailsWhenDbCannotBeClosed(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		tmpDb    bool
+		expected string
+	}{
+		{"old", false, "failed to close old database"},
+		{"new", true, "failed to close new database"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			kvFactory, dbPath := newNaturalDb(t)
+			closeFailingPath := dbPath
+			if test.tmpDb {
+				closeFailingPath = makeSwapTmpDbPath(dbPath, compare.EncoderHierarchical)
+			}
+			// Pebble holds the directory of a database open until it closes
+			faultyFactory := newFactoryWithFaults(t, kvFactory.(*PebbleFactory).dataDir, func(op errorfs.Op) bool {
+				return op.Kind == errorfs.OpFileClose && op.Path == closeFailingPath
+			})
+
+			_, err := faultyFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_HIERARCHICAL)
+			assert.ErrorIs(t, err, errorfs.ErrInjected)
+			assert.ErrorContains(t, err, test.expected)
+
+			// The failed conversion released both databases
+			kv, err := kvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_HIERARCHICAL)
+			require.NoError(t, err)
+			assert.Equal(t, []string{"/key/a"}, scanAllKeys(t, kv, NoInternalKeys))
+			assert.NoError(t, kv.Close())
+		})
+	}
 }
 
 func TestPebbleDbConversionFailsWhenStaleTempDbCannotBeRemoved(t *testing.T) {
@@ -536,6 +629,28 @@ func makeUnremovable(t *testing.T, dir string) func() {
 	restore := func() { _ = os.Chmod(unremovable, 0o700) }
 	t.Cleanup(restore)
 	return restore
+}
+
+// valueBlocksRange returns the range of the file offsets of the value blocks
+// of an sstable written with the comparer of the old databases, and of their
+// index, which follows them.
+func valueBlocksRange(t *testing.T, path string) (start, end int64) {
+	t.Helper()
+	f, err := vfs.Default.Open(path)
+	require.NoError(t, err)
+	readable, err := sstable.NewSimpleReadable(f)
+	require.NoError(t, err)
+	reader, err := sstable.NewReader(context.Background(), readable, sstable.ReaderOptions{
+		Comparers: sstable.Comparers{OxiaSlashSpanComparer.Name: OxiaSlashSpanComparer},
+	})
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, reader.Close()) }()
+	layout, err := reader.Layout()
+	require.NoError(t, err)
+	require.NotEmpty(t, layout.ValueBlock)
+	start = int64(layout.ValueBlock[0].Offset)
+	end = int64(layout.ValueIndex.Offset + layout.ValueIndex.Length)
+	return start, end
 }
 
 func assertMarker(t *testing.T, dbPath string, expected string) {

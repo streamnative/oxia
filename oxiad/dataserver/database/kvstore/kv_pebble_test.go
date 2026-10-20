@@ -1753,6 +1753,24 @@ func TestPebbleBatchGetReadFailure(t *testing.T) {
 	assert.ErrorIs(t, wb.Commit(), os.ErrPermission)
 }
 
+// Pebble rejects a synced write without a WAL, the one commit failure that
+// it returns rather than reporting through the logger's Fatalf.
+func TestPebbleBatchCommitFailsWhenPebbleRejectsTheBatch(t *testing.T) {
+	options := NewFactoryOptionsForTest(t)
+	options.SyncData = true
+	factory, err := NewPebbleKVFactory(options)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, factory.Close()) })
+	kv, err := factory.NewKV(constant.DefaultNamespace, 1, proto.KeySortingType_NATURAL)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, kv.Close()) })
+
+	wb := kv.NewWriteBatch()
+	defer wb.Close()
+	require.NoError(t, wb.Put("a", []byte("a")))
+	assert.ErrorContains(t, wb.Commit(), "WAL disabled")
+}
+
 func toList(it KeyIterator) []string {
 	var list []string
 
@@ -2179,6 +2197,25 @@ func opIs(kind errorfs.OpKind, path string) func(op errorfs.Op) bool {
 	}
 }
 
+// newFactoryWithFaults returns a factory on dataDir whose filesystem fails the
+// operations that inject matches with errorfs.ErrInjected.
+func newFactoryWithFaults(t *testing.T, dataDir string, inject func(op errorfs.Op) bool) Factory {
+	t.Helper()
+	injector := errorfs.InjectorFunc(func(op errorfs.Op) error {
+		if inject(op) {
+			return errorfs.ErrInjected
+		}
+		return nil
+	})
+	options := NewFactoryOptionsForTest(t)
+	options.DataDir = dataDir
+	options.FS = closeFaultFS{FS: errorfs.Wrap(vfs.Default, injector), injector: injector}
+	factory, err := NewPebbleKVFactory(options)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, factory.Close()) })
+	return factory
+}
+
 // newKVWithUnreadableSST returns a store with the key "b" in an sstable that
 // stays readable, and "c" and "d" in one that is unreadable. They don't
 // overlap, so they are in the same level, and a lookup only opens the second
@@ -2216,4 +2253,41 @@ func newKVWithUnreadableSST(t *testing.T) KV {
 		t.Skip("the sstable is still readable, as when running as root")
 	}
 	return kv
+}
+
+// closeFaultFS passes the Close of the files and directories that it opens to
+// injector, as errorfs.OpFileClose: errorfs injects no close errors. A Close
+// that fails leaves the file open.
+type closeFaultFS struct {
+	vfs.FS
+	injector errorfs.Injector
+}
+
+func (fs closeFaultFS) Open(name string, opts ...vfs.OpenOption) (vfs.File, error) {
+	f, err := fs.FS.Open(name, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return closeFaultFile{File: f, path: name, injector: fs.injector}, nil
+}
+
+func (fs closeFaultFS) OpenDir(name string) (vfs.File, error) {
+	f, err := fs.FS.OpenDir(name)
+	if err != nil {
+		return nil, err
+	}
+	return closeFaultFile{File: f, path: name, injector: fs.injector}, nil
+}
+
+type closeFaultFile struct {
+	vfs.File
+	path     string
+	injector errorfs.Injector
+}
+
+func (f closeFaultFile) Close() error {
+	if err := f.injector.MaybeError(errorfs.Op{Kind: errorfs.OpFileClose, Path: f.path}); err != nil {
+		return err
+	}
+	return f.File.Close()
 }
