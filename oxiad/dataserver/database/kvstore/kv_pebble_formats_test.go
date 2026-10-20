@@ -600,6 +600,51 @@ func TestPebbleDbConversionFailsWhenNewDbCannotBeRenamed(t *testing.T) {
 	assert.NoError(t, kv.Close())
 }
 
+func TestPebbleDbConversionCopyDataFailsWhenPebbleCallFails(t *testing.T) {
+	fullBatch := make([]string, maxBatchCount)
+	for i := range fullBatch {
+		fullBatch[i] = fmt.Sprintf("/key/%04d", i)
+	}
+	for _, test := range []struct {
+		failpoint string
+		keys      []string
+	}{
+		{"copyData.newIter", []string{"/key/a"}},
+		{"copyData.set", []string{"/key/a"}},
+		{"copyData.commitBatch", fullBatch},
+		{"copyData.closeBatch", fullBatch},
+		{"copyData.commitLastBatch", []string{"/key/a"}},
+	} {
+		t.Run(test.failpoint, func(t *testing.T) {
+			options := NewFactoryOptionsForTest(t)
+			kvFactory, err := NewPebbleKVFactory(options)
+			require.NoError(t, err)
+			t.Cleanup(func() { assert.NoError(t, kvFactory.Close()) })
+			oldKV, err := kvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_NATURAL)
+			require.NoError(t, err)
+			putAll(t, oldKV, test.keys...)
+			require.NoError(t, oldKV.Close())
+
+			trapOptions := *options
+			trapOptions.Failpoints = failpoint.New(map[string]func() error{
+				test.failpoint: func() error { return errFailpoint },
+			})
+			trapKvFactory, err := NewPebbleKVFactory(&trapOptions)
+			require.NoError(t, err)
+			t.Cleanup(func() { assert.NoError(t, trapKvFactory.Close()) })
+
+			_, err = trapKvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_HIERARCHICAL)
+			assert.ErrorIs(t, err, errFailpoint)
+			assert.NotContains(t, err.Error(), "leaked")
+
+			kv, err := kvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_HIERARCHICAL)
+			require.NoError(t, err)
+			assert.Equal(t, test.keys, scanAllKeys(t, kv, NoInternalKeys))
+			assert.NoError(t, kv.Close())
+		})
+	}
+}
+
 func TestGetKeyEncoderFailsWhenMarkerIsUnreadable(t *testing.T) {
 	dbPath := t.TempDir()
 	require.NoError(t, os.Mkdir(filepath.Join(dbPath, markerFileName), 0o755))

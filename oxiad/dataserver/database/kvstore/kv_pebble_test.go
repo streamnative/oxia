@@ -2298,6 +2298,156 @@ func TestPebbleSnapshotLoaderFailsOnFilesystemErrors(t *testing.T) {
 	}
 }
 
+func TestPebbleGetFailsWhenIteratorCannotBeCreated(t *testing.T) {
+	for _, test := range []struct {
+		name           string
+		failpoint      string
+		comparisonType ComparisonType
+	}{
+		{"ceiling", "getCeiling.newIter", ComparisonCeiling},
+		{"lower", "getLower.newIter", ComparisonLower},
+		{"floor", "getLower.newIter", ComparisonFloor},
+		{"higher", "getHigher.newIter", ComparisonHigher},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, kv := newKVWithFailpoint(t, test.failpoint)
+
+			_, _, closer, err := kv.Get("a", test.comparisonType, NoInternalKeys)
+			assert.ErrorIs(t, err, errFailpoint)
+			assert.Nil(t, closer)
+			assert.NoError(t, kv.Close())
+		})
+	}
+}
+
+func TestPebbleKeyPrefixIteratorFailsWhenIteratorCannotBeCreated(t *testing.T) {
+	_, kv := newKVWithFailpoint(t, "keyPrefixIterator.newIter")
+
+	it, err := kv.KeyPrefixIterator("a", "")
+	assert.ErrorIs(t, err, errFailpoint)
+	assert.Nil(t, it)
+	assert.NoError(t, kv.Close())
+}
+
+func TestPebbleKeyRangeScanReverseFailsWhenIteratorCannotBeCreated(t *testing.T) {
+	_, kv := newKVWithFailpoint(t, "keyRangeScanReverse.newIter")
+
+	it, err := kv.KeyRangeScanReverse("a", "b", NoInternalKeys)
+	assert.ErrorIs(t, err, errFailpoint)
+	assert.Nil(t, it)
+	assert.NoError(t, kv.Close())
+}
+
+func TestPebbleRangeScanFailsWhenIteratorCannotBeCreated(t *testing.T) {
+	_, kv := newKVWithFailpoint(t, "rangeScan.newIter")
+
+	it, err := kv.RangeScan("a", "b", NoInternalKeys)
+	assert.ErrorIs(t, err, errFailpoint)
+	assert.Nil(t, it)
+	assert.NoError(t, kv.Close())
+}
+
+func TestPebbleSeekFailsWhenIteratorCannotBeCreated(t *testing.T) {
+	_, kv := newKVWithFailpoint(t, "seek.newIter")
+
+	it, err := kv.Seek("a", ComparisonCeiling)
+	assert.ErrorIs(t, err, errFailpoint)
+	assert.Nil(t, it)
+	assert.NoError(t, kv.Close())
+}
+
+func TestPebbleScanFailsWhenIteratorCannotBeCreated(t *testing.T) {
+	_, kv := newKVWithFailpoint(t, "scan.newIter")
+
+	next, err := kv.Scan(nil, func(string, []byte) (bool, error) {
+		return true, nil
+	})
+	assert.ErrorIs(t, err, errFailpoint)
+	assert.Nil(t, next)
+	assert.NoError(t, kv.Close())
+}
+
+func TestPebbleBatchRangeScanFailsWhenIteratorCannotBeCreated(t *testing.T) {
+	_, kv := newKVWithFailpoint(t, "batchRangeScan.newIter")
+	wb := kv.NewWriteBatch()
+
+	it, err := wb.RangeScan("a", "b")
+	assert.ErrorIs(t, err, errFailpoint)
+	assert.Nil(t, it)
+	assert.NoError(t, wb.Close())
+	assert.NoError(t, kv.Close())
+}
+
+func TestPebbleBatchPutFailsWhenSetFails(t *testing.T) {
+	_, kv := newKVWithFailpoint(t, "batchPut.set")
+	wb := kv.NewWriteBatch()
+
+	assert.ErrorIs(t, wb.Put("a", []byte("value")), errFailpoint)
+	assert.NoError(t, wb.Close())
+	assert.NoError(t, kv.Close())
+}
+
+func TestPebbleBatchPutMarshalableFailsWhenFinishFails(t *testing.T) {
+	_, kv := newKVWithFailpoint(t, "batchPutMarshalable.finish")
+	wb := kv.NewWriteBatch()
+
+	err := wb.PutMarshalable("a", &fakeMarshalable{size: 1, marshal: func(b []byte) (int, error) {
+		return copy(b, "v"), nil
+	}})
+	assert.ErrorIs(t, err, errFailpoint)
+	assert.NoError(t, wb.Close())
+	assert.NoError(t, kv.Close())
+}
+
+func TestPebbleBatchDeleteFailsWhenDeleteFails(t *testing.T) {
+	_, kv := newKVWithFailpoint(t, "batchDelete.delete")
+	wb := kv.NewWriteBatch()
+
+	assert.ErrorIs(t, wb.Delete("a"), errFailpoint)
+	assert.NoError(t, wb.Close())
+	assert.NoError(t, kv.Close())
+}
+
+func TestPebbleBatchGetFailsWhenIteratorCannotBeCreated(t *testing.T) {
+	_, kv := newKVWithFailpoint(t, "batchGet.newIter")
+	wb := kv.NewWriteBatch()
+
+	// The first Get of a batch reads through the batch, the next ones through
+	// an iterator
+	_, _, err := wb.Get("a")
+	assert.ErrorIs(t, err, ErrKeyNotFound)
+	_, closer, err := wb.Get("b")
+	assert.ErrorIs(t, err, errFailpoint)
+	assert.Nil(t, closer)
+	assert.NoError(t, wb.Close())
+	assert.NoError(t, kv.Close())
+}
+
+func TestPebbleBatchFindLowerFailsWhenIteratorCannotBeCreated(t *testing.T) {
+	_, kv := newKVWithFailpoint(t, "batchFindLower.newIter")
+	wb := kv.NewWriteBatch()
+
+	_, err := wb.FindLower("b")
+	assert.ErrorIs(t, err, errFailpoint)
+	assert.NoError(t, wb.Close())
+	assert.NoError(t, kv.Close())
+}
+
+func TestPebblePrefixIteratorLookupFailsWhenIteratorCannotBeCloned(t *testing.T) {
+	_, kv := newKVWithFailpoint(t, "prefixIteratorLookup.clone")
+	it, err := kv.KeyPrefixIterator("a", "")
+	require.NoError(t, err)
+
+	_, err = it.Lookup("a/b")
+	assert.ErrorIs(t, err, errFailpoint)
+	assert.NoError(t, it.Close())
+	assert.NoError(t, kv.Close())
+}
+
+func TestCloseFailedIterWithoutIterator(t *testing.T) {
+	assert.ErrorIs(t, closeFailedIter(nil, errFailpoint), errFailpoint)
+}
+
 // fakeMarshalable reserves size bytes, and fills them with marshal.
 type fakeMarshalable struct {
 	size    int
