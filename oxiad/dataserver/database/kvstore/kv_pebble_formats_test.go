@@ -576,6 +576,29 @@ func TestPebbleDbConversionFailsWhenBackupCannotBeRestored(t *testing.T) {
 	assert.NoDirExists(t, dbPath)
 }
 
+func TestPebbleDbConversionFailsWhenNewDbCannotBeRenamed(t *testing.T) {
+	kvFactory, dbPath := newNaturalDb(t)
+	options := NewFactoryOptionsForTest(t)
+	options.DataDir = kvFactory.(*PebbleFactory).options.DataDir
+	options.KvTrap = NewKvTrap(map[string]func() error{
+		"convertCrashAfterMoveOldDb": func() error {
+			return os.RemoveAll(makeSwapTmpDbPath(dbPath, compare.EncoderHierarchical))
+		},
+	})
+	trapKvFactory, err := NewPebbleKVFactory(options)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, trapKvFactory.Close()) })
+
+	_, err = trapKvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_HIERARCHICAL)
+	assert.ErrorContains(t, err, "failed to rename new database")
+	assert.DirExists(t, makeDbBackupPath(dbPath))
+
+	kv, err := kvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_HIERARCHICAL)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/key/a"}, scanAllKeys(t, kv, NoInternalKeys))
+	assert.NoError(t, kv.Close())
+}
+
 func TestGetKeyEncoderFailsWhenMarkerIsUnreadable(t *testing.T) {
 	dbPath := t.TempDir()
 	require.NoError(t, os.Mkdir(filepath.Join(dbPath, markerFileName), 0o755))

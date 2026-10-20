@@ -74,6 +74,16 @@ func TestRunCoordinatorRejectsTooFewDataServers(t *testing.T) {
 	require.ErrorContains(t, err, "failed to seed coordinator namespaces")
 }
 
+func TestRunCoordinatorRejectsDuplicateDataServers(t *testing.T) {
+	d := newDispatcher(newMaelstromGrpcProvider(), newMaelstromReplicationRpcProvider())
+	name := "n2"
+	_, err := runCoordinator(d, []*proto.DataServerIdentity{
+		{Name: &name, Public: "n2", Internal: "n2"},
+		{Name: &name, Public: "n2", Internal: "n2"},
+	})
+	require.ErrorContains(t, err, "failed to seed coordinator data servers")
+}
+
 func TestRunFailsWithoutInit(t *testing.T) {
 	restoreNodes(t)
 
@@ -130,6 +140,19 @@ func TestRunFailsWhenDataServerCantStart(t *testing.T) {
 	err := run(newScanner(initMessage("n2")), dataDir)
 
 	require.ErrorContains(t, err, "failed to create dataserver manifest")
+}
+
+func TestRunFailsWhenDataServerWalDirIsDataDir(t *testing.T) {
+	restoreNodes(t)
+	captureStdout(t)
+	dataDir := t.TempDir()
+	nodeDir := filepath.Join(dataDir, "n2")
+	require.NoError(t, os.MkdirAll(filepath.Join(nodeDir, "db"), 0o755))
+	require.NoError(t, os.Symlink(filepath.Join(nodeDir, "db"), filepath.Join(nodeDir, "wal")))
+
+	err := run(newScanner(initMessage("n2")), dataDir)
+
+	require.ErrorContains(t, err, "failed to start dataserver")
 }
 
 // restoreLogging restores the logging configuration that the test changes.
