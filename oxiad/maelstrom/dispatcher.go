@@ -32,7 +32,7 @@ import (
 )
 
 type Dispatcher interface {
-	ReceivedMessage(msgType MsgType, m any, message pb.Message)
+	ReceivedMessage(msgType MsgType, m any, message pb.Message) error
 	RpcRequest(ctx context.Context, dest string, msgType MsgType, message pb.Message) (pb.Message, error)
 }
 
@@ -82,14 +82,14 @@ func (d *dispatcher) onOxiaRequestMessage(msgType MsgType, m *Message[OxiaMessag
 	go d.grpcProvider.HandleOxiaRequest(msgType, m, message)
 }
 
-func (d *dispatcher) onOxiaResponseMessage(_ MsgType, res *Message[OxiaMessage], message pb.Message) {
+func (d *dispatcher) onOxiaResponseMessage(_ MsgType, res *Message[OxiaMessage], message pb.Message) error {
 	ch, ok := d.requests[*res.Body.InReplyTo]
 	if !ok {
-		slog.Error("Invalid response id")
-		os.Exit(1)
+		return errors.Errorf("invalid response id %d", *res.Body.InReplyTo)
 	}
 
 	ch <- ResponseError{msg: message}
+	return nil
 }
 
 func (d *dispatcher) onOxiaStreamRequestMessage(msgType MsgType, m any, message pb.Message) {
@@ -150,7 +150,7 @@ func (d *dispatcher) applyShardAssignments(msg *Message[OxiaStreamMessage], assi
 	}
 }
 
-func (d *dispatcher) onOxiaProxiedMessage(msgType MsgType, m any, _ pb.Message) {
+func (d *dispatcher) onOxiaProxiedMessage(msgType MsgType, m any, _ pb.Message) error {
 	proxiedMsgId, inReplyTo, _ := getOrigin(msgType, m)
 
 	slog.Info(
@@ -160,21 +160,13 @@ func (d *dispatcher) onOxiaProxiedMessage(msgType MsgType, m any, _ pb.Message) 
 	)
 
 	switch msgType {
-	case MsgTypeHealthCheckOk:
-		res := m.(*Message[BaseMessageBody])
-		if ch, ok := d.requests[*res.Body.InReplyTo]; !ok {
-			slog.Error("Invalid response id")
-			os.Exit(1)
-		} else { //nolint:revive
-			ch <- ResponseError{msg: nil, err: nil}
-		}
 	case MsgTypeWrite, MsgTypeRead, MsgTypeCas:
 		switch d.currentLeader {
 		case "":
 			sendErrorNotInitialized(msgType, m)
 		case thisNode:
 			// We should answer
-			go d.grpcProvider.HandleClientRequest(msgType, m)
+			return d.grpcProvider.HandleClientRequest(msgType, m)
 		default:
 			d.proxyToLeader(msgType, m)
 		}
@@ -233,9 +225,10 @@ func (d *dispatcher) onOxiaProxiedMessage(msgType MsgType, m any, _ pb.Message) 
 	default:
 		panic(fmt.Sprintf("Unknown message type: %v", msgType))
 	}
+	return nil
 }
 
-func (d *dispatcher) ReceivedMessage(msgType MsgType, m any, message pb.Message) {
+func (d *dispatcher) ReceivedMessage(msgType MsgType, m any, message pb.Message) error {
 	d.Lock()
 	defer d.Unlock()
 
@@ -249,12 +242,13 @@ func (d *dispatcher) ReceivedMessage(msgType MsgType, m any, message pb.Message)
 	case msgType.isOxiaRequest():
 		d.onOxiaRequestMessage(msgType, m.(*Message[OxiaMessage]), message)
 	case msgType.isOxiaResponse():
-		d.onOxiaResponseMessage(msgType, m.(*Message[OxiaMessage]), message)
+		return d.onOxiaResponseMessage(msgType, m.(*Message[OxiaMessage]), message)
 	case msgType.isOxiaStreamRequest():
 		d.onOxiaStreamRequestMessage(msgType, m, message)
 	default:
-		d.onOxiaProxiedMessage(msgType, m, message)
+		return d.onOxiaProxiedMessage(msgType, m, message)
 	}
+	return nil
 }
 
 func getOrigin(msgType MsgType, m any) (msgId int64, inReplyTo int64, origin string) {
@@ -385,11 +379,10 @@ func (d *dispatcher) proxyToLeader(msgType MsgType, m any) {
 func (d *dispatcher) RpcRequest(ctx context.Context, dest string, msgType MsgType, message pb.Message) (pb.Message, error) {
 	msgId := msgIdGenerator.Add(1)
 
-	d.Lock()
-	ch := make(chan ResponseError, 1)
-	d.requests[msgId] = ch
-	d.Unlock()
-
+	oxiaMsg, err := toJSON(message)
+	if err != nil {
+		return nil, err
+	}
 	req := &Message[OxiaMessage]{
 		Src:  thisNode,
 		Dest: dest,
@@ -398,18 +391,19 @@ func (d *dispatcher) RpcRequest(ctx context.Context, dest string, msgType MsgTyp
 				Type:  msgType,
 				MsgId: msgId,
 			},
-			OxiaMsg: toJSON(message),
+			OxiaMsg: oxiaMsg,
 		},
 	}
 
 	b, err := json.Marshal(req)
 	if err != nil {
-		slog.Error(
-			"failed to serialize json",
-			slog.Any("error", err),
-		)
-		os.Exit(1)
+		return nil, errors.Wrap(err, "failed to serialize json")
 	}
+
+	d.Lock()
+	ch := make(chan ResponseError, 1)
+	d.requests[msgId] = ch
+	d.Unlock()
 
 	slog.Info(
 		"Sending message",
@@ -432,14 +426,10 @@ var protoMarshal = protojson.MarshalOptions{
 	EmitUnpopulated: true,
 }
 
-func toJSON(message pb.Message) []byte {
+func toJSON(message pb.Message) ([]byte, error) {
 	r, err := protoMarshal.Marshal(message)
 	if err != nil {
-		slog.Error(
-			"failed to serialize proto to json",
-			slog.Any("error", err),
-		)
-		os.Exit(1)
+		return nil, errors.Wrap(err, "failed to serialize proto to json")
 	}
-	return r
+	return r, nil
 }

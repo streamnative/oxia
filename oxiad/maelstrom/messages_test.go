@@ -19,6 +19,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
+	pb "google.golang.org/protobuf/proto"
 )
 
 func TestSendResponsePanicsOnUnserializableMessage(t *testing.T) {
@@ -33,7 +34,7 @@ func TestSendErrorRepliesWithGenericCode(t *testing.T) {
 
 	sendError(7, "c1", errors.New("write failed"))
 
-	msgType, msg, _ := parseRequest(receiveLines(t, lines, 1)[0])
+	msgType, msg, _ := parseLine(t, receiveLines(t, lines, 1)[0])
 	require.Equal(t, MsgTypeError, msgType)
 	res := msg.(*Message[ErrorResponse])
 	require.Equal(t, "n2", res.Src)
@@ -41,4 +42,35 @@ func TestSendErrorRepliesWithGenericCode(t *testing.T) {
 	require.Equal(t, int64(7), *res.Body.InReplyTo)
 	require.Equal(t, 1000, res.Body.Code)
 	require.Equal(t, "write failed", res.Body.Text)
+}
+
+func TestParseRequestFailsOnMalformedMessage(t *testing.T) {
+	tests := []struct {
+		name    string
+		line    string
+		wantErr string
+	}{
+		{"not json", `not json`, "failed to unmarshal"},
+		{"invalid client request", `{"src":"c1","body":{"type":"write","msg_id":1,"key":"k"}}`,
+			"failed to unmarshal the write message"},
+		{"invalid stream message", `{"src":"n1","body":{"type":"ack","stream_id":"s","m":{}}}`,
+			"failed to unmarshal the ack message"},
+		{"invalid stream proto", `{"src":"n1","body":{"type":"ack","stream_id":1,"m":{"unknown":1}}}`,
+			"failed to unmarshal the proto json of the ack message"},
+		{"invalid proto", `{"src":"n2","body":{"type":"term-resp","in_reply_to":1,"m":{"unknown":1}}}`,
+			"failed to unmarshal the proto json of the term-resp message"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, _, err := parseRequest(tt.line)
+			require.ErrorContains(t, err, tt.wantErr)
+		})
+	}
+}
+
+func parseLine(t *testing.T, line string) (MsgType, any, pb.Message) {
+	t.Helper()
+	msgType, msg, protoMsg, err := parseRequest(line)
+	require.NoError(t, err)
+	return msgType, msg, protoMsg
 }

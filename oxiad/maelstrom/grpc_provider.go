@@ -215,7 +215,19 @@ func (m *maelstromGrpcProvider) HandleStreamError(src string, streamId int64) {
 	}
 }
 
-func (m *maelstromGrpcProvider) HandleClientRequest(msgType MsgType, msg any) {
+// HandleClientRequest serves a request of the Maelstrom lin-kv workload in the
+// background, and fails if msgType is not one.
+func (m *maelstromGrpcProvider) HandleClientRequest(msgType MsgType, msg any) error {
+	switch msgType {
+	case MsgTypeWrite, MsgTypeRead, MsgTypeCas:
+		go m.serveClientRequest(msgType, msg)
+		return nil
+	default:
+		return errors.Errorf("unexpected request %s", msgType)
+	}
+}
+
+func (m *maelstromGrpcProvider) serveClientRequest(msgType MsgType, msg any) {
 	switch msgType {
 	case MsgTypeWrite:
 		w := msg.(*Message[Write])
@@ -341,15 +353,16 @@ func (m *maelstromGrpcProvider) HandleClientRequest(msgType MsgType, msg any) {
 		}
 
 	default:
-		slog.Error(
-			"Unexpected request",
-			slog.Any("msg-type", msgType),
-		)
-		os.Exit(1)
+		// HandleClientRequest only passes the lin-kv requests
 	}
 }
 
 func (m *maelstromGrpcProvider) sendResponse(req *Message[OxiaMessage], msgType MsgType, response pb.Message) {
+	oxiaMsg, err := toJSON(response)
+	if err != nil {
+		sendError(req.Body.MsgId, req.Src, err)
+		return
+	}
 	b, err := json.Marshal(&Message[OxiaMessage]{
 		Src:  thisNode,
 		Dest: req.Src,
@@ -359,7 +372,7 @@ func (m *maelstromGrpcProvider) sendResponse(req *Message[OxiaMessage], msgType 
 				MsgId:     msgIdGenerator.Add(1),
 				InReplyTo: &req.Body.MsgId,
 			},
-			OxiaMsg: toJSON(response),
+			OxiaMsg: oxiaMsg,
 		},
 	})
 	if err != nil {
@@ -454,6 +467,10 @@ func (m *maelstromReplicateServerStream) Send(response *proto.Ack) error {
 	default:
 	}
 
+	oxiaMsg, err := toJSON(response)
+	if err != nil {
+		return err
+	}
 	b, _ := json.Marshal(&Message[OxiaStreamMessage]{
 		Src:  thisNode,
 		Dest: m.client,
@@ -462,7 +479,7 @@ func (m *maelstromReplicateServerStream) Send(response *proto.Ack) error {
 				Type:  MsgTypeAck,
 				MsgId: msgIdGenerator.Add(1),
 			},
-			OxiaMsg:  toJSON(response),
+			OxiaMsg:  oxiaMsg,
 			StreamId: m.streamId,
 		},
 	})

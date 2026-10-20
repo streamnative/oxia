@@ -153,6 +153,10 @@ type maelstromReplicateClient struct {
 }
 
 func (m *maelstromReplicateClient) Send(request *proto.Append) error {
+	oxiaMsg, err := toJSON(request)
+	if err != nil {
+		return err
+	}
 	b, err := json.Marshal(&Message[OxiaStreamMessage]{
 		Src:  thisNode,
 		Dest: m.follower,
@@ -161,7 +165,7 @@ func (m *maelstromReplicateClient) Send(request *proto.Append) error {
 				Type:  MsgTypeAppend,
 				MsgId: msgIdGenerator.Add(1),
 			},
-			OxiaMsg:  toJSON(request),
+			OxiaMsg:  oxiaMsg,
 			StreamId: m.streamId,
 			Seq:      m.nextSeq,
 		},

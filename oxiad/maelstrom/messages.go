@@ -21,6 +21,7 @@ import (
 	"os"
 	"reflect"
 
+	"github.com/pkg/errors"
 	"google.golang.org/protobuf/encoding/protojson"
 	pb "google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/wrapperspb"
@@ -292,16 +293,11 @@ var protoMsgMapping = map[MsgType]pb.Message{
 	MsgTypeShardAssignmentsResponse: &proto.ShardAssignments{},
 }
 
-func parseRequest(line string) (msgType MsgType, msg any, protoMsg pb.Message) {
+func parseRequest(line string) (msgType MsgType, msg any, protoMsg pb.Message, err error) {
 	frame := &Message[BaseMessageBody]{}
 
 	if err := json.Unmarshal([]byte(line), frame); err != nil {
-		slog.Error(
-			"failed to unmarshal",
-			slog.String("line", line),
-			slog.Any("error", err),
-		)
-		os.Exit(1)
+		return "", nil, nil, errors.Wrapf(err, "failed to unmarshal %q", line)
 	}
 
 	msg = frame
@@ -312,11 +308,7 @@ func parseRequest(line string) (msgType MsgType, msg any, protoMsg pb.Message) {
 		// that may still be reading a previously parsed message.
 		sm := reflect.New(reflect.TypeOf(prototype).Elem()).Interface()
 		if err := json.Unmarshal([]byte(line), sm); err != nil {
-			slog.Error(
-				"failed to unmarshal the proper struct",
-				slog.Any("error", err),
-			)
-			os.Exit(1)
+			return "", nil, nil, errors.Wrapf(err, "failed to unmarshal the %s message", msgType)
 		}
 
 		msg = sm
@@ -328,38 +320,22 @@ func parseRequest(line string) (msgType MsgType, msg any, protoMsg pb.Message) {
 		if msgType.isOxiaStreamRequest() {
 			om := &Message[OxiaStreamMessage]{}
 			if err := json.Unmarshal([]byte(line), om); err != nil {
-				slog.Error(
-					"failed to unmarshal the proper struct",
-					slog.Any("error", err),
-				)
-				os.Exit(1)
+				return "", nil, nil, errors.Wrapf(err, "failed to unmarshal the %s message", msgType)
 			}
 
 			msg = om
 			if err := protojson.Unmarshal(om.Body.OxiaMsg, protoMsg); err != nil {
-				slog.Error(
-					"failed to unmarshal proto json",
-					slog.Any("error", err),
-				)
-				os.Exit(1)
+				return "", nil, nil, errors.Wrapf(err, "failed to unmarshal the proto json of the %s message", msgType)
 			}
 		} else {
 			om := &Message[OxiaMessage]{}
 			if err := json.Unmarshal([]byte(line), om); err != nil {
-				slog.Error(
-					"failed to unmarshal the proper struct",
-					slog.Any("error", err),
-				)
-				os.Exit(1)
+				return "", nil, nil, errors.Wrapf(err, "failed to unmarshal the %s message", msgType)
 			}
 
 			msg = om
 			if err := protojson.Unmarshal(om.Body.OxiaMsg, protoMsg); err != nil {
-				slog.Error(
-					"failed to unmarshal proto json",
-					slog.Any("error", err),
-				)
-				os.Exit(1)
+				return "", nil, nil, errors.Wrapf(err, "failed to unmarshal the proto json of the %s message", msgType)
 			}
 		}
 	}
@@ -369,5 +345,5 @@ func parseRequest(line string) (msgType MsgType, msg any, protoMsg pb.Message) {
 		slog.Any("type", msgType),
 		slog.Any("proto-msg", protoMsg),
 	)
-	return msgType, msg, protoMsg
+	return msgType, msg, protoMsg, nil
 }
