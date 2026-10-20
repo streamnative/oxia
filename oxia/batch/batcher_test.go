@@ -174,6 +174,25 @@ func TestBatcherCloseWithConcurrentAdds(t *testing.T) {
 	}
 }
 
+func TestBatcherCloseFailsOpenBatch(t *testing.T) {
+	added := make(chan struct{})
+	failed := make(chan error, 1)
+	var batches int
+	factory := &BatcherFactory{Linger: time.Hour, MaxRequestsPerBatch: 100}
+	batcher := factory.NewBatcher(context.Background(), 1, "test-write", func() Batch {
+		batches++
+		return &signalingBatch{added: added, failed: failed}
+	})
+
+	batcher.Add(1)
+	<-added
+	assert.NoError(t, batcher.Close())
+
+	assert.ErrorIs(t, <-failed, ErrShuttingDown)
+	// Run failed the batch it was lingering on, instead of failing the call in a new batch
+	assert.Equal(t, 1, batches)
+}
+
 func TestBatcher(t *testing.T) {
 	for _, item := range []struct {
 		name             string
@@ -213,4 +232,21 @@ func TestBatcher(t *testing.T) {
 			}
 		})
 	}
+}
+
+// signalingBatch signals on added when a call is added to it, and sends its
+// failure on failed.
+type signalingBatch struct {
+	calls  int
+	added  chan<- struct{}
+	failed chan<- error
+}
+
+func (*signalingBatch) CanAdd(any) bool  { return true }
+func (b *signalingBatch) Size() int      { return b.calls }
+func (*signalingBatch) Complete()        {}
+func (b *signalingBatch) Fail(err error) { b.failed <- err }
+func (b *signalingBatch) Add(any) {
+	b.calls++
+	b.added <- struct{}{}
 }

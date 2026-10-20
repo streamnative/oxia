@@ -31,6 +31,7 @@ import (
 	"github.com/oxia-db/oxia/cmd/wal/common"
 	"github.com/oxia-db/oxia/common/proto"
 	"github.com/oxia-db/oxia/oxiad/dataserver/wal"
+	"github.com/oxia-db/oxia/oxiad/dataserver/wal/codec"
 )
 
 func TestExecPrintsOperationsAsLogs(t *testing.T) {
@@ -139,6 +140,37 @@ func TestExecRejectsUndecodableEntry(t *testing.T) {
 	_, err := runScan(t)
 
 	assert.Error(t, err)
+}
+
+func TestExecRejectsCorruptedEntry(t *testing.T) {
+	setWalOption(t, t.TempDir(), "default")
+	// A small segment size rolls the first entries into a read-only segment, whose entries in the middle are only
+	// validated when they are read
+	factory := wal.NewWalFactory(&wal.FactoryOptions{
+		BaseWalDir:  common.WalOption.WalDir,
+		Retention:   math.MaxInt64,
+		SegmentSize: 256,
+	})
+	w, err := factory.NewWal(common.WalOption.Namespace, common.WalOption.Shard, nil)
+	require.NoError(t, err)
+	for offset := int64(0); offset < 8; offset++ {
+		require.NoError(t, w.Append(&proto.LogEntry{Term: 1, Offset: offset, Value: writeRequestsValue(t,
+			&proto.WriteRequest{Puts: []*proto.PutRequest{{Key: "key", Value: []byte("value")}}})}))
+	}
+	require.NoError(t, w.Close())
+	require.NoError(t, factory.Close())
+	segment, err := os.OpenFile(filepath.Join(common.WalOption.WalDir, "default", "shard-1", "0.txnx"), os.O_RDWR, 0)
+	require.NoError(t, err)
+	_, err = segment.WriteAt([]byte{0xaa, 0xbb}, 120)
+	require.NoError(t, err)
+	require.NoError(t, segment.Close())
+
+	logs := captureLogs(t)
+	_, err = runScan(t)
+
+	assert.ErrorIs(t, err, codec.ErrDataCorrupted)
+	// The entries before the corrupted one were printed
+	assert.NotEmpty(t, decodeLogs(t, logs))
 }
 
 func TestExecReturnsStdoutError(t *testing.T) {

@@ -99,6 +99,20 @@ func TestWriteDataServerViewWritesEmptyObjectForNilView(t *testing.T) {
 	assert.JSONEq(t, "{}", out.String())
 }
 
+func TestWriteDataServerViewOmitsMissingStatus(t *testing.T) {
+	out := new(bytes.Buffer)
+	view := newDataServerView("server-1")
+	view.DataServerStatus = nil
+
+	err := WriteDataServerView(out, "json", view)
+
+	require.NoError(t, err)
+	var value map[string]any
+	require.NoError(t, json.Unmarshal(out.Bytes(), &value))
+	assert.Contains(t, value, "data_server")
+	assert.NotContains(t, value, "data_server_status")
+}
+
 func newDataServerView(name string) *proto.DataServerView {
 	return &proto.DataServerView{
 		DataServer: &proto.DataServer{

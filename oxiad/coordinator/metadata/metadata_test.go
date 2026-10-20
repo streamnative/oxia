@@ -606,6 +606,44 @@ func TestMetadataWaitToBecomeLeaderFailsWhenReloadFails(t *testing.T) {
 	}
 }
 
+// The check for a deleted configuration, after the reloads, fails the takeover
+// when it can't load the configuration, or the status of an unconfigured
+// cluster.
+func TestMetadataWaitToBecomeLeaderFailsWhenLoadFails(t *testing.T) {
+	for _, test := range []struct {
+		name           string
+		statusProvider provider.Provider[*commonproto.ClusterStatus]
+		configProvider provider.Provider[*commonproto.ClusterConfiguration]
+		expected       string
+	}{
+		{
+			name:           "config",
+			statusProvider: newStatusProvider(),
+			configProvider: fakeProvider[*commonproto.ClusterConfiguration]{
+				Provider: newConfigProvider(),
+				load:     failLoad[*commonproto.ClusterConfiguration]("config load failure"),
+			},
+			expected: "config load failure",
+		},
+		{
+			name: "status",
+			statusProvider: fakeProvider[*commonproto.ClusterStatus]{
+				Provider: newStatusProvider(),
+				load:     failLoad[*commonproto.ClusterStatus]("status load failure"),
+			},
+			configProvider: newConfigProvider(),
+			expected:       "status load failure",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			metadata := newTestMetadata(t, test.statusProvider, test.configProvider, "")
+
+			_, err := metadata.WaitToBecomeLeader()
+			require.ErrorContains(t, err, test.expected)
+		})
+	}
+}
+
 func TestMetadataGetSelfFailsWhenNotConfigured(t *testing.T) {
 	metadata := newTestMetadata(t, newStatusProvider(), newConfigProvider(), "coordinator-0")
 

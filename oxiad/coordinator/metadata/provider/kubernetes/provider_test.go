@@ -24,6 +24,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,6 +33,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 
+	"github.com/oxia-db/oxia/common/metric"
 	commonproto "github.com/oxia-db/oxia/common/proto"
 	metadatacommon "github.com/oxia-db/oxia/oxiad/coordinator/metadata/common"
 	metadatacodec "github.com/oxia-db/oxia/oxiad/coordinator/metadata/common/codec"
@@ -224,6 +227,38 @@ func TestProviderLoadPanicsOnUndecodableDocument(t *testing.T) {
 	p := newConfigProvider(t, kc)
 
 	assert.Panics(t, func() { _, _ = p.Load() })
+}
+
+func TestProviderReportsMetadataSize(t *testing.T) {
+	previous := metric.GetMeter()
+	reader := sdkmetric.NewManualReader()
+	metric.SetMeter(sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)).Meter("test"))
+	defer metric.SetMeter(previous)
+	data, err := metadatacodec.ClusterConfigCodec.MarshalYAML(newConfig(2))
+	require.NoError(t, err)
+	kc := fake.NewSimpleClientset()
+	_, err = kc.CoreV1().ConfigMaps("ns").Create(t.Context(), newConfigMap(t, 2), metav1.CreateOptions{})
+	require.NoError(t, err)
+	p := newConfigProvider(t, kc)
+
+	requireServers(t, p, 2)
+
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(t.Context(), &rm))
+	var sizes []int64
+	for _, scope := range rm.ScopeMetrics {
+		for _, m := range scope.Metrics {
+			if m.Name != "oxia_coordinator_metadata_size" {
+				continue
+			}
+			gauge, ok := m.Data.(metricdata.Gauge[int64])
+			require.True(t, ok, "unexpected data: %#v", m.Data)
+			for _, dp := range gauge.DataPoints {
+				sizes = append(sizes, dp.Value)
+			}
+		}
+	}
+	assert.Equal(t, []int64{int64(len(data))}, sizes)
 }
 
 func TestProviderSubscribeNotifiesStores(t *testing.T) {

@@ -92,6 +92,8 @@ func TestStateContainerPersistRetainsSnapshot(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, snapshot.Persist(sink))
+	// Raft releases the snapshot once it is persisted
+	snapshot.Release()
 
 	// The snapshot must be retained, not canceled
 	snapshots, err := store.List()

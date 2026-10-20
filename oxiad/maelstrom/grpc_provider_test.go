@@ -15,8 +15,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"io"
+	"log/slog"
 	"sync"
 	"testing"
 
@@ -124,6 +126,7 @@ func TestMaelstromGrpcProviderHandleOxiaRequestRepliesWithError(t *testing.T) {
 		{MsgTypeAddFollowerRequest, &proto.AddFollowerRequest{}},
 		{MsgTypeTruncateRequest, &proto.TruncateRequest{}},
 		{MsgTypeGetStatusRequest, &proto.GetStatusRequest{}},
+		{MsgTypeDeleteShardRequest, &proto.DeleteShardRequest{}},
 	}
 	for i, tt := range tests {
 		t.Run(string(tt.msgType), func(t *testing.T) {
@@ -349,6 +352,21 @@ func TestMaelstromReplicateServerStreamContextCarriesShard(t *testing.T) {
 	require.Equal(t, []string{"default"}, md.Get("namespace"))
 }
 
+func TestMaelstromReplicateServerStreamOnGapTimeoutIgnoresClosedStream(t *testing.T) {
+	logs := &lockedBuffer{}
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	stream := newMaelstromReplicateServerStream(appendMessage("n1", 9, 0))
+	// The append at 0 is missing, and the one at 1 waits for it
+	stream.early[1] = entryAppend(1)
+	stream.close()
+
+	stream.onGapTimeout(0)
+
+	require.NotContains(t, logs.String(), "Replicate stream lost appends")
+}
+
 func TestMaelstromReplicateServerStreamHeadersAreNotImplemented(t *testing.T) {
 	stream := newMaelstromReplicateServerStream(appendMessage("n1", 9, 0))
 	require.Panics(t, func() { _ = stream.SetHeader(metadata.MD{}) })
@@ -512,4 +530,22 @@ func newKVClientServer(records map[string]string) *fakeClientServer {
 			}}}, nil
 		},
 	}
+}
+
+// lockedBuffer is a bytes.Buffer that can be written and read concurrently.
+type lockedBuffer struct {
+	sync.Mutex
+	buffer bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.Lock()
+	defer b.Unlock()
+	return b.buffer.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.Lock()
+	defer b.Unlock()
+	return b.buffer.String()
 }
