@@ -531,10 +531,9 @@ func (p *Pebble) Close() error {
 			g.Unregister()
 		}
 
-		if err := p.failpoints.Fail("close.flush", p.db.Flush()); err != nil {
-			return err
-		}
-		err := p.db.Close()
+		err := multierr.Append(
+			p.failpoints.Fail("close.flush", p.db.Flush()),
+			p.db.Close())
 		if p.memTableSlot {
 			p.factory.returnMemTableSlot()
 		}

@@ -39,6 +39,7 @@ import (
 	"github.com/oxia-db/oxia/common/proto"
 	"github.com/oxia-db/oxia/common/validation"
 	"github.com/oxia-db/oxia/oxiad/common/crc"
+	"github.com/oxia-db/oxia/oxiad/common/failpoint"
 )
 
 func TestOxiaSlashSpanComparerMeetsPebbleContract(t *testing.T) {
@@ -887,6 +888,17 @@ func TestPebbbleDoubleOpen(t *testing.T) {
 	assert.Nil(t, kv2)
 
 	assert.NoError(t, kv.Close())
+}
+
+func TestPebbleCloseClosesDbWhenFlushFails(t *testing.T) {
+	factory, kv := newKVWithFailpoint(t, "close.flush")
+
+	assert.ErrorIs(t, kv.Close(), errFailpoint)
+	assert.Len(t, factory.memTableSlots, maxMemTableSlots)
+
+	reopened, err := factory.NewKV(constant.DefaultNamespace, 1, proto.KeySortingType_NATURAL)
+	require.NoError(t, err)
+	assert.ErrorIs(t, reopened.Close(), errFailpoint)
 }
 
 func TestPebbleSnapshot(t *testing.T) {
@@ -2441,4 +2453,22 @@ func (f closeFaultFile) Close() error {
 		return err
 	}
 	return f.File.Close()
+}
+
+var errFailpoint = errors.New("failpoint")
+
+// newKVWithFailpoint returns a store whose failpoint name fails with
+// errFailpoint, along with its factory.
+func newKVWithFailpoint(t *testing.T, name string) (*PebbleFactory, KV) {
+	t.Helper()
+	options := NewFactoryOptionsForTest(t)
+	options.Failpoints = failpoint.New(map[string]func() error{
+		name: func() error { return errFailpoint },
+	})
+	factory, err := NewPebbleKVFactory(options)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, factory.Close()) })
+	kv, err := factory.NewKV(constant.DefaultNamespace, 1, proto.KeySortingType_NATURAL)
+	require.NoError(t, err)
+	return factory.(*PebbleFactory), kv
 }
