@@ -37,7 +37,7 @@ func (flags *flags) Reset() {
 
 func init() {
 	Cmd.Flags().StringVarP(&Config.partitionKey, "partition-key", "p", "", "Partition Key to be used in override the shard routing")
-	_ = Cmd.MarkFlagRequired("partition-key")
+	cobra.CheckErr(Cmd.MarkFlagRequired("partition-key"))
 }
 
 var Cmd = &cobra.Command{
