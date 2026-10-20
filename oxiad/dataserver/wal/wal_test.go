@@ -29,6 +29,7 @@ import (
 
 	"github.com/edsrzf/mmap-go"
 	"github.com/pkg/errors"
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -2045,6 +2046,7 @@ func TestWalTruncateLogFailsOnFilesystemErrors(t *testing.T) {
 
 func TestFactoryNewWalFailsWhenWalDirectoryCannotBeListed(t *testing.T) {
 	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(walPath(dir, constant.DefaultNamespace, shard), 0755))
 	fs := newFaultFS()
 	// The second listing, by the recovery, after the one of the read-only group
 	fs.failNth(opReadDir, walPath(dir, constant.DefaultNamespace, shard), 2)
@@ -2254,13 +2256,6 @@ func (fs *faultFS) Stat(name string) (os.FileInfo, error) {
 	return fs.OSFS.Stat(name)
 }
 
-func (fs *faultFS) ReadDir(name string) ([]os.DirEntry, error) {
-	if err := fs.check(opReadDir, name); err != nil {
-		return nil, err
-	}
-	return fs.OSFS.ReadDir(name)
-}
-
 func (fs *faultFS) MkdirAll(path string, perm os.FileMode) error {
 	if err := fs.check(opMkdirAll, path); err != nil {
 		return err
@@ -2268,7 +2263,7 @@ func (fs *faultFS) MkdirAll(path string, perm os.FileMode) error {
 	return fs.OSFS.MkdirAll(path, perm)
 }
 
-func (fs *faultFS) OpenFile(name string, flag int, perm os.FileMode) (vfs.File, error) {
+func (fs *faultFS) OpenFile(name string, flag int, perm os.FileMode) (afero.File, error) {
 	if err := fs.check(opOpenFile, name); err != nil {
 		return nil, err
 	}
@@ -2277,6 +2272,10 @@ func (fs *faultFS) OpenFile(name string, flag int, perm os.FileMode) (vfs.File, 
 		return nil, err
 	}
 	return &faultFile{File: f, fs: fs, name: name}, nil
+}
+
+func (fs *faultFS) Open(name string) (afero.File, error) {
+	return fs.OpenFile(name, os.O_RDONLY, 0)
 }
 
 func (fs *faultFS) Remove(name string) error {
@@ -2345,6 +2344,13 @@ func (f *faultFile) Read(p []byte) (int, error) {
 		return 0, err
 	}
 	return f.File.Read(p)
+}
+
+func (f *faultFile) Readdir(count int) ([]os.FileInfo, error) {
+	if err := f.fs.check(opReadDir, f.name); err != nil {
+		return nil, err
+	}
+	return f.File.Readdir(count)
 }
 
 func (f *faultFile) Write(p []byte) (int, error) {

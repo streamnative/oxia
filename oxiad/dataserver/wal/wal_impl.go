@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/spf13/afero"
 	"go.uber.org/multierr"
 	"golang.org/x/exp/slices"
 
@@ -929,7 +930,7 @@ func (t *wal) discardTrailingSegment(baseOffset int64) error {
 }
 
 func listAllSegments(fs vfs.FS, walPath string) (segments []int64, err error) {
-	dir, err := fs.ReadDir(walPath)
+	dir, err := afero.ReadDir(fs, walPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
