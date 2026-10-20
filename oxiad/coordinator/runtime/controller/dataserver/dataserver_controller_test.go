@@ -896,21 +896,23 @@ func TestDataServerControllerVerifyAfterWatchFailureLeavesHealthClientErrorToPin
 	sap := rpctest.NewShardAssignmentsProvider()
 	nal := rpctest.NewNodeAvailabilityListener()
 	var failing atomic.Bool
-	var failedCalls atomic.Int64
+	var clients, failedCalls atomic.Int64
 	rpc := &fakeRpcProvider{RpcProvider: rpctest.NewRpcProvider()}
 	rpc.getHealthClient = func(node *proto.DataServerIdentity) (grpc_health_v1.HealthClient, error) {
 		if failing.Load() {
 			failedCalls.Add(1)
 			return nil, errors.New("no connection")
 		}
+		clients.Add(1)
 		return rpc.RpcProvider.GetHealthClient(node)
 	}
 	nc := NewController(context.Background(), dataServer, sap, nal, rpc, "test-instance", 10*time.Millisecond, slowPingHealthPolicy)
 	defer func() {
 		assert.NoError(t, nc.Close())
 	}()
+	// The ping loop and the health watch each hold their client
 	assert.Eventually(t, func() bool {
-		return nc.GetStatus().GetState() == Running
+		return nc.GetStatus().GetState() == Running && clients.Load() >= 2
 	}, 10*time.Second, 10*time.Millisecond)
 
 	failing.Store(true)
