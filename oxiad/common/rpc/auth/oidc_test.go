@@ -515,6 +515,16 @@ func TestOIDCProviderAuthenticateRejectsNonJSONPayload(t *testing.T) {
 	assert.ErrorAs(t, err, &syntaxErr)
 }
 
+func TestOIDCProviderAuthenticateRejectsNonStringIssuer(t *testing.T) {
+	provider := &OIDCProvider{providers: map[string]*ProviderWithVerifier{}}
+	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"iss":1}`))
+
+	_, err := provider.Authenticate(context.Background(), "header."+payload+".signature")
+
+	var typeErr *json.UnmarshalTypeError
+	assert.ErrorAs(t, err, &typeErr)
+}
+
 func TestOIDCProviderAuthenticateRejectsMissingUserNameClaim(t *testing.T) {
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)

@@ -130,23 +130,24 @@ func (p *OIDCProvider) Authenticate(ctx context.Context, param any) (string, err
 	if err != nil {
 		return "", err
 	}
-	unsecureJwtPayload := &struct {
-		Issuer string `json:"iss"`
-	}{}
-	if err = json.Unmarshal(payload, unsecureJwtPayload); err != nil {
+	// The claims are trusted only once the verifier checks the signature of this
+	// payload
+	rawClaims := map[string]json.RawMessage{}
+	if err = json.Unmarshal(payload, &rawClaims); err != nil {
 		return "", err
 	}
-	issuer := unsecureJwtPayload.Issuer
+	var issuer string
+	if rawIssuer, ok := rawClaims["iss"]; ok {
+		if err = json.Unmarshal(rawIssuer, &issuer); err != nil {
+			return "", err
+		}
+	}
 	oidcProvider, exist := p.providers[issuer]
 	if !exist {
 		return "", ErrUnknownIssuer
 	}
 	idToken, err := oidcProvider.verifier.Verify(ctx, token)
 	if err != nil {
-		return "", err
-	}
-	rawClaims := map[string]json.RawMessage{}
-	if err = idToken.Claims(&rawClaims); err != nil {
 		return "", err
 	}
 
