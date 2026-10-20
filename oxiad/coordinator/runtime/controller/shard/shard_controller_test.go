@@ -3446,6 +3446,20 @@ func TestControllerOnChangeEnsembleReturnsShardStatusLoadError(t *testing.T) {
 	assert.Nil(t, s.currentElection.Load())
 }
 
+func TestControllerRefreshSkipsTerminatedController(t *testing.T) {
+	s := &controller{
+		namespace:     constant.DefaultNamespace,
+		shard:         5,
+		metadataStore: &hookedMetadata{},
+		electionOp:    make(chan *action.ElectionAction, chanBufferSize),
+		logger:        slog.Default(),
+	}
+	s.terminating.Store(true)
+
+	s.Refresh()
+	assert.Empty(t, s.electionOp)
+}
+
 // A refresh that can't load the shard status or the data servers doesn't
 // start an election: the next refresh checks the addresses again.
 func TestControllerRefreshSkipsMetadataLoadError(t *testing.T) {

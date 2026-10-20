@@ -16,6 +16,7 @@ package coordinator
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net"
 	"os"
@@ -25,6 +26,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/proto"
@@ -32,6 +35,7 @@ import (
 	"github.com/oxia-db/oxia/oxiad/common/logging"
 	commonoption "github.com/oxia-db/oxia/oxiad/common/option"
 	commonwatch "github.com/oxia-db/oxia/oxiad/common/watch"
+	coordmetadata "github.com/oxia-db/oxia/oxiad/coordinator/metadata"
 	"github.com/oxia-db/oxia/oxiad/coordinator/option"
 )
 
@@ -172,6 +176,29 @@ func TestNewGrpcServerFailsToSeedClusterConfiguration(t *testing.T) {
 	assert.Nil(t, server)
 }
 
+// A cluster configuration that can't be reconciled fails the start, after the
+// coordinator became the leader.
+func TestNewGrpcServerFailsToReconcileClusterConfiguration(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores file permissions")
+	}
+	statusPath := filepath.Join(t.TempDir(), option.DefaultFileStatusName)
+	require.NoError(t, os.WriteFile(statusPath, []byte("instanceId: coordinator-test\n"), 0o400))
+	options := newTestOptions()
+	options.Metadata.ProviderName = option.ProviderFile
+	options.Metadata.File.StatusName = statusPath
+	options.Metadata.File.ConfigName = filepath.Join(t.TempDir(), option.DefaultFileConfigName)
+
+	server, err := NewGrpcServer(t.Context(), commonwatch.New(options),
+		WithInitialClusterConfiguration(&proto.ClusterConfiguration{
+			Namespaces: []*proto.Namespace{{Name: "default", ReplicationFactor: 1, InitialShardCount: 1}},
+			Servers:    []*proto.DataServerIdentity{{Public: "s1:6648", Internal: "s1:6649"}},
+		}))
+	require.ErrorIs(t, err, os.ErrPermission)
+	assert.ErrorContains(t, err, "failed to reconcile the cluster configuration")
+	assert.Nil(t, server)
+}
+
 func TestGrpcServerAppliesLogLevelChanges(t *testing.T) {
 	logging.ConfigureLogger()
 	originalLevel := logging.LogLevel
@@ -226,6 +253,38 @@ func TestGrpcServerWatchLeadershipTerminatesWithoutHandler(t *testing.T) {
 	assert.True(t, terminated)
 }
 
+// A coordinator that fails to stop part of its coordination still stops the
+// rest before the handler is called.
+func TestGrpcServerWatchLeadershipStopsCoordinatingDespiteCloseFailure(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	factory, err := coordmetadata.New(ctx, newTestOptions())
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, factory.Close()) })
+	metadata := factory.CreateMetadata(ctx)
+	closeErr := errors.New("close failure")
+	server := &GrpcServer{
+		ctx:          ctx,
+		ctxCancel:    cancel,
+		logger:       slog.Default(),
+		healthServer: health.NewServer(),
+		management:   newManagementServer(metadata),
+		reconciler:   &fakeReconciler{closeErr: closeErr},
+		runtime:      &testRuntime{},
+		metadata:     metadata,
+	}
+	lost := make(chan struct{})
+	close(lost)
+	called := false
+
+	server.watchLeadership(lost, func() { called = true })
+	assert.True(t, called)
+	require.ErrorIs(t, server.stopCoordinating(), closeErr)
+	require.ErrorIs(t, ctx.Err(), context.Canceled)
+	checked, err := server.healthServer.Check(t.Context(), &grpc_health_v1.HealthCheckRequest{})
+	require.NoError(t, err)
+	assert.Equal(t, grpc_health_v1.HealthCheckResponse_NOT_SERVING, checked.GetStatus())
+}
+
 // newTestOptions returns the options of a coordinator on the memory metadata,
 // listening on free ports, without metrics.
 func newTestOptions() *option.Options {
@@ -236,4 +295,16 @@ func newTestOptions() *option.Options {
 	options.Metadata.Name = "coordinator-test"
 	options.Metadata.ProviderName = option.ProviderMemory
 	return options
+}
+
+type fakeReconciler struct {
+	closeErr error
+}
+
+func (r *fakeReconciler) Close() error {
+	return r.closeErr
+}
+
+func (*fakeReconciler) Reconcile(context.Context, *proto.ClusterConfiguration) error {
+	return nil
 }

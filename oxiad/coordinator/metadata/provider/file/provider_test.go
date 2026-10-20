@@ -16,6 +16,7 @@ package file
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -246,6 +247,24 @@ func TestProviderStoreFailsWhenFileCannotBeRead(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestProviderStoreFailsWhenDocumentCannotBeEncoded(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "metadata")
+	encodeErr := errors.New("encode failed")
+	p, err := NewProvider(t.Context(), path, &fakeCodec{
+		Codec:       metadatacodec.ClusterStatusCodec,
+		marshalYAML: func(*commonproto.ClusterStatus) ([]byte, error) { return nil, encodeErr },
+	}, metadatacommon.WatchDisabled, "test")
+	require.NoError(t, err)
+	defer func() { require.NoError(t, p.Close()) }()
+
+	_, err = p.Store(provider.Versioned[*commonproto.ClusterStatus]{
+		Value:   &commonproto.ClusterStatus{},
+		Version: metadatacommon.NotExists,
+	})
+	require.ErrorIs(t, err, encodeErr)
+	assert.NoFileExists(t, path)
+}
+
 // A document that can't be decoded must stop the coordinator, rather than be
 // served or overwritten.
 func TestProviderLoadPanicsOnUndecodableDocument(t *testing.T) {
@@ -296,4 +315,13 @@ func requireServers(t *testing.T, p provider.Provider[*commonproto.ClusterConfig
 	loaded, err := p.Load()
 	require.NoError(t, err)
 	require.Len(t, loaded.Value.GetServers(), servers)
+}
+
+type fakeCodec struct {
+	metadatacodec.Codec[*commonproto.ClusterStatus]
+	marshalYAML func(value *commonproto.ClusterStatus) ([]byte, error)
+}
+
+func (c *fakeCodec) MarshalYAML(value *commonproto.ClusterStatus) ([]byte, error) {
+	return c.marshalYAML(value)
 }
