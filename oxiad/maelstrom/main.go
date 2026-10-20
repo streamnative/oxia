@@ -18,6 +18,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -27,6 +28,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
+	"go.uber.org/multierr"
 
 	commonproto "github.com/oxia-db/oxia/common/proto"
 	commonwatch "github.com/oxia-db/oxia/oxiad/common/watch"
@@ -41,7 +43,6 @@ import (
 	"github.com/oxia-db/oxia/oxiad/dataserver"
 	manifestpkg "github.com/oxia-db/oxia/oxiad/dataserver/manifest"
 
-	"github.com/oxia-db/oxia/common/commonio"
 	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/oxiad/common/logging"
 )
@@ -80,20 +81,25 @@ func configureLogLevel(_ *cobra.Command, _ []string) error {
 var thisNode string
 var allNodes []string
 
-func handleInit(scanner *bufio.Scanner) {
+var errNoInit = errors.New("no init received")
+
+func handleInit(scanner *bufio.Scanner) error {
 	for {
-		if err := receiveInit(scanner); err != nil {
+		err := receiveInit(scanner)
+		if errors.Is(err, errNoInit) {
+			return err
+		}
+		if err != nil {
 			continue
 		}
 
-		return
+		return nil
 	}
 }
 
 func receiveInit(scanner *bufio.Scanner) error {
 	if !scanner.Scan() {
-		slog.Error("no init received")
-		os.Exit(1)
+		return errNoInit
 	}
 
 	line := scanner.Text()
@@ -149,8 +155,23 @@ func main() {
 		"Starting Oxia in Maelstrom mode",
 		slog.String("PWD", path),
 	)
-	scanner := bufio.NewScanner(os.Stdin)
-	handleInit(scanner)
+	// One subdirectory per Maelstrom run (os.Getppid() is the Maelstrom process
+	// that spawned every node): a node restarted by the kill nemesis reopens its
+	// own data, while separate runs don't share state.
+	dataDir := filepath.Join(os.TempDir(), "oxia-maelstrom", strconv.Itoa(os.Getppid()))
+	if err := run(bufio.NewScanner(os.Stdin), dataDir); err != nil {
+		slog.Error("Failed to run the Maelstrom node", slog.Any("error", err))
+		os.Exit(1)
+	}
+}
+
+// run serves the Maelstrom messages read by scanner until its input ends. The
+// node n1 runs the coordinator, and the others run a data server that keeps its
+// data in a subdirectory of dataDir, per node id.
+func run(scanner *bufio.Scanner, dataDir string) error {
+	if err := handleInit(scanner); err != nil {
+		return err
+	}
 
 	// Start event loop to handle requests
 	grpcProvider := newMaelstromGrpcProvider()
@@ -167,49 +188,14 @@ func main() {
 		}
 	}
 
+	var node io.Closer
+	var err error
 	if thisNode == "n1" {
-		if err := runCoordinator(dispatcher, servers); err != nil {
-			slog.Error(
-				"failed to start coordinator",
-				slog.Any("error", err),
-			)
-			os.Exit(1)
+		if node, err = runCoordinator(dispatcher, servers); err != nil {
+			return errors.Wrap(err, "failed to start coordinator")
 		}
-	} else {
-		// Any other node will be a storage node.
-		// One subdirectory per Maelstrom run (os.Getppid() is the Maelstrom process
-		// that spawned every node) and per node id: a node restarted by the kill
-		// nemesis reopens its own data, while separate runs don't share state.
-		dataDir := filepath.Join(os.TempDir(), "oxia-maelstrom", strconv.Itoa(os.Getppid()))
-		slog.Info(
-			"Using data dir",
-			slog.String("data-dir", dataDir),
-			slog.String("node-id", thisNode),
-		)
-
-		dataServerOption := option.NewDefaultOptions()
-		dataServerOption.FeatureFlags.AuthorityValidation = new(bool)
-		dataServerOption.Observability.Metric.Enabled = &constant.FlagFalse
-		dataServerOption.Storage.Database.Dir = filepath.Join(dataDir, thisNode, "db")
-		dataServerOption.Storage.WAL.Dir = filepath.Join(dataDir, thisNode, "wal")
-		manifest, err := manifestpkg.NewManifest(dataServerOption.Storage.Database.Dir)
-		if err != nil {
-			slog.Error(
-				"failed to create dataserver manifest",
-				slog.Any("error", err),
-			)
-			os.Exit(1)
-		}
-		_, err = dataserver.NewWithGrpcProvider(
-			context.Background(),
-			commonwatch.New(dataServerOption),
-			grpcProvider,
-			replicationGrpcProvider,
-			manifest,
-		)
-		if err != nil {
-			return
-		}
+	} else if node, err = runDataServer(grpcProvider, replicationGrpcProvider, dataDir); err != nil {
+		return err
 	}
 
 	for scanner.Scan() {
@@ -218,11 +204,62 @@ func main() {
 
 		dispatcher.ReceivedMessage(rt, req, protoMsg)
 	}
+	return multierr.Append(scanner.Err(), node.Close())
 }
 
-func runCoordinator(dispatcher *dispatcher, servers []*commonproto.DataServerIdentity) error {
+func runDataServer(grpcProvider *maelstromGrpcProvider, replicationGrpcProvider *maelstromReplicationRpcProvider,
+	dataDir string) (*dataserver.Server, error) {
+	slog.Info(
+		"Using data dir",
+		slog.String("data-dir", dataDir),
+		slog.String("node-id", thisNode),
+	)
+
+	dataServerOption := option.NewDefaultOptions()
+	dataServerOption.FeatureFlags.AuthorityValidation = new(bool)
+	dataServerOption.Observability.Metric.Enabled = &constant.FlagFalse
+	dataServerOption.Storage.Database.Dir = filepath.Join(dataDir, thisNode, "db")
+	dataServerOption.Storage.WAL.Dir = filepath.Join(dataDir, thisNode, "wal")
+	manifest, err := manifestpkg.NewManifest(dataServerOption.Storage.Database.Dir)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create dataserver manifest")
+	}
+	server, err := dataserver.NewWithGrpcProvider(
+		context.Background(),
+		commonwatch.New(dataServerOption),
+		grpcProvider,
+		replicationGrpcProvider,
+		manifest,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to start dataserver")
+	}
+	return server, nil
+}
+
+// coordinator closes what runCoordinator started, in the reverse order.
+type coordinator struct {
+	cancel  context.CancelFunc
+	closers []io.Closer
+}
+
+func (c *coordinator) Close() error {
+	c.cancel()
+	var err error
+	for i := len(c.closers) - 1; i >= 0; i-- {
+		err = multierr.Append(err, c.closers[i].Close())
+	}
+	return err
+}
+
+func runCoordinator(dispatcher *dispatcher, servers []*commonproto.DataServerIdentity) (_ io.Closer, err error) {
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	c := &coordinator{cancel: cancel}
+	defer func() {
+		if err != nil {
+			err = multierr.Append(err, c.Close())
+		}
+	}()
 
 	clusterConfig := &commonproto.ClusterConfiguration{
 		Namespaces: []*commonproto.Namespace{{
@@ -241,31 +278,26 @@ func runCoordinator(dispatcher *dispatcher, servers []*commonproto.DataServerIde
 		},
 	})
 	if err != nil {
-		return errors.Wrap(err, "failed to create coordinator metadata factory")
+		return nil, errors.Wrap(err, "failed to create coordinator metadata factory")
 	}
+	c.closers = append(c.closers, metadataFactory)
 
 	metadata, err := metadataFactory.CreateMetadata(ctx)
 	if err != nil {
-		_ = commonio.CloseIfNotNil(metadataFactory)
-		return errors.Wrap(err, "failed to create coordinator metadata")
+		return nil, errors.Wrap(err, "failed to create coordinator metadata")
 	}
+	c.closers = append(c.closers, metadata)
 	if _, err = metadata.WaitToBecomeLeader(); err != nil {
-		_ = commonio.CloseIfNotNil(metadata)
-		_ = commonio.CloseIfNotNil(metadataFactory)
-		return errors.Wrap(err, "failed to wait for coordinator metadata leadership")
+		return nil, errors.Wrap(err, "failed to wait for coordinator metadata leadership")
 	}
 	for _, server := range clusterConfig.GetServers() {
 		if err := metadata.CreateDataServer(&commonproto.DataServer{Identity: server}); err != nil {
-			_ = commonio.CloseIfNotNil(metadata)
-			_ = commonio.CloseIfNotNil(metadataFactory)
-			return errors.Wrap(err, "failed to seed coordinator data servers")
+			return nil, errors.Wrap(err, "failed to seed coordinator data servers")
 		}
 	}
 	for _, namespace := range clusterConfig.GetNamespaces() {
 		if err := metadata.CreateNamespace(namespace); err != nil {
-			_ = commonio.CloseIfNotNil(metadata)
-			_ = commonio.CloseIfNotNil(metadataFactory)
-			return errors.Wrap(err, "failed to seed coordinator namespaces")
+			return nil, errors.Wrap(err, "failed to seed coordinator namespaces")
 		}
 	}
 
@@ -276,17 +308,15 @@ func runCoordinator(dispatcher *dispatcher, servers []*commonproto.DataServerIde
 		},
 	)
 	if err != nil {
-		_ = commonio.CloseIfNotNil(metadata)
-		_ = commonio.CloseIfNotNil(metadataFactory)
-		return errors.Wrap(err, "failed to create coordinator")
+		return nil, errors.Wrap(err, "failed to create coordinator")
 	}
+	c.closers = append(c.closers, coordinatorRuntime)
 
-	if _, err := coordreconciler.New(ctx, coordinatorRuntime); err != nil {
-		_ = commonio.CloseIfNotNil(coordinatorRuntime)
-		_ = commonio.CloseIfNotNil(metadata)
-		_ = commonio.CloseIfNotNil(metadataFactory)
-		return errors.Wrap(err, "failed to reconcile the cluster configuration")
+	reconciler, err := coordreconciler.New(ctx, coordinatorRuntime)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to reconcile the cluster configuration")
 	}
+	c.closers = append(c.closers, reconciler)
 
-	return nil
+	return c, nil
 }
