@@ -21,6 +21,7 @@ import (
 
 	"github.com/pkg/errors"
 
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/common/proto"
 	time2 "github.com/oxia-db/oxia/common/time"
 	"github.com/oxia-db/oxia/oxiad/common/vfs"
@@ -53,6 +54,9 @@ type FactoryOptions struct {
 	// The files of the wal, the ones of the operating system when not set:
 	// the tests make its operations fail
 	fs vfs.FS
+
+	// Failpoints injects failures into the wal, for the tests: none when nil.
+	Failpoints *failpoint.Failpoints
 }
 
 var DefaultFactoryOptions = &FactoryOptions{

@@ -70,11 +70,15 @@ func TestManifestSetInstanceID(t *testing.T) {
 	m, err := NewManifest(baseDir)
 	require.NoError(t, err)
 
-	require.NoError(t, m.SetInstanceID("instance-1"))
+	bound, err := m.SetInstanceID("instance-1")
+	require.NoError(t, err)
+	assert.True(t, bound)
 	assert.Equal(t, "instance-1", m.GetInstanceID())
 
 	// Setting the same id again is a no-op
-	assert.NoError(t, m.SetInstanceID("instance-1"))
+	bound, err = m.SetInstanceID("instance-1")
+	require.NoError(t, err)
+	assert.False(t, bound)
 
 	// The id survives a restart
 	reopened, err := NewManifest(baseDir)
@@ -86,16 +90,19 @@ func TestManifestSetInstanceIDEmpty(t *testing.T) {
 	m, err := NewManifest(t.TempDir())
 	require.NoError(t, err)
 
-	assert.Error(t, m.SetInstanceID(""))
+	_, err = m.SetInstanceID("")
+	assert.Error(t, err)
 	assert.Empty(t, m.GetInstanceID())
 }
 
 func TestManifestSetInstanceIDMismatch(t *testing.T) {
 	m, err := NewManifest(t.TempDir())
 	require.NoError(t, err)
-	require.NoError(t, m.SetInstanceID("instance-1"))
+	_, err = m.SetInstanceID("instance-1")
+	require.NoError(t, err)
 
-	assert.ErrorIs(t, m.SetInstanceID("instance-2"), ErrInstanceIDMismatch)
+	_, err = m.SetInstanceID("instance-2")
+	assert.ErrorIs(t, err, ErrInstanceIDMismatch)
 	assert.Equal(t, "instance-1", m.GetInstanceID())
 }
 
@@ -106,7 +113,8 @@ func TestManifestSetInstanceIDWriteError(t *testing.T) {
 
 	makeReadOnly(t, baseDir)
 
-	assert.ErrorIs(t, m.SetInstanceID("instance-1"), os.ErrPermission)
+	_, err = m.SetInstanceID("instance-1")
+	assert.ErrorIs(t, err, os.ErrPermission)
 	assert.Empty(t, m.GetInstanceID())
 }
 
@@ -114,7 +122,8 @@ func TestReadInstanceID(t *testing.T) {
 	baseDir := t.TempDir()
 	m, err := NewManifest(baseDir)
 	require.NoError(t, err)
-	require.NoError(t, m.SetInstanceID("instance-1"))
+	_, err = m.SetInstanceID("instance-1")
+	require.NoError(t, err)
 
 	instanceID, err := ReadInstanceID(baseDir)
 	require.NoError(t, err)

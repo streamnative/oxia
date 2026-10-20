@@ -34,13 +34,9 @@ func (*dataServerReconciler) Close() error { return nil }
 func (r *dataServerReconciler) Reconcile(_ context.Context, snapshot *proto.ClusterConfiguration) error {
 	desired := hashset.New[string]()
 
-	for _, server := range snapshot.GetServers() {
-		serverName := server.GetNameOrDefault()
+	for _, dataServer := range snapshot.ListDataServers() {
+		serverName := dataServer.GetNameOrDefault()
 		desired.Add(serverName)
-		dataServer, exist := snapshot.GetDataServer(serverName)
-		if !exist {
-			continue
-		}
 		r.runtime.CreateDataServer(serverName, dataServer)
 	}
 

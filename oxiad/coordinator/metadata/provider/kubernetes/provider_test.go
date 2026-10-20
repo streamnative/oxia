@@ -34,6 +34,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/common/metric"
 	commonproto "github.com/oxia-db/oxia/common/proto"
 	metadatacommon "github.com/oxia-db/oxia/oxiad/coordinator/metadata/common"
@@ -304,6 +305,42 @@ func TestProviderStoreFailsWhenDocumentCannotBeEncoded(t *testing.T) {
 	configMaps, err := kc.CoreV1().ConfigMaps("ns").List(t.Context(), metav1.ListOptions{})
 	require.NoError(t, err)
 	assert.Empty(t, configMaps.Items)
+}
+
+func TestProviderStoreFailsToSerializeConfigMap(t *testing.T) {
+	kc := fake.NewSimpleClientset()
+	failpointErr := errors.New("failpoint")
+	p := newProvider(t.Context(), kc, "ns", "config", metadatacodec.ClusterConfigCodec, metadatacommon.WatchDisabled,
+		"coordinator-0", failpoint.New(map[string]func() error{
+			"store.marshal": func() error { return failpointErr },
+		}))
+	t.Cleanup(func() {
+		require.NoError(t, p.Close())
+	})
+
+	_, err := p.Store(metadataprovider.Versioned[*commonproto.ClusterConfiguration]{
+		Value:   newConfig(1),
+		Version: metadatacommon.NotExists,
+	})
+	require.ErrorIs(t, err, failpointErr)
+	configMaps, err := kc.CoreV1().ConfigMaps("ns").List(t.Context(), metav1.ListOptions{})
+	require.NoError(t, err)
+	assert.Empty(t, configMaps.Items)
+}
+
+// A write that creates the config map fails with ErrBadVersion when another
+// coordinator created it first.
+func TestProviderStoreRejectsCreatingExistingConfigMap(t *testing.T) {
+	kc := fake.NewSimpleClientset()
+	p := newConfigProvider(t, kc)
+	_, err := kc.CoreV1().ConfigMaps("ns").Create(t.Context(), newConfigMap(t, 1), metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	_, err = p.Store(metadataprovider.Versioned[*commonproto.ClusterConfiguration]{
+		Value:   newConfig(2),
+		Version: metadatacommon.NotExists,
+	})
+	require.ErrorIs(t, err, metadatacommon.ErrBadVersion)
 }
 
 func TestProviderWaitToBecomeLeaderSignalsLeaseLoss(t *testing.T) {

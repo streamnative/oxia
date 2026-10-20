@@ -164,16 +164,14 @@ func (v *V1) RecoverIndex(buf []byte, startFileOffset uint32, baseEntryOffset in
 		var payloadSize uint32
 		var err error
 		if payloadSize, _, _, err = v.ReadHeaderWithValidation(buf, newFileOffset); err != nil {
-			if errors.Is(err, ErrEmptyPayload) || errors.Is(err, ErrOffsetOutOfBounds) {
-				// we might read the end of the segment.
-				break
-			}
-			return nil, 0, 0, 0, err
+			break
 		}
 		index = binary.BigEndian.AppendUint32(index, newFileOffset)
 		newFileOffset += v.GetHeaderSize() + payloadSize
 		currentEntryOffset++
 	}
 
-	return index, lastCrc, newFileOffset, currentEntryOffset - 1, nil
+	// V1 has no checksum: the validation fails only on an empty payload or a
+	// record out of bounds, which is the end of the segment.
+	return index, lastCrc, newFileOffset, currentEntryOffset - 1, nil //nolint:nilerr
 }

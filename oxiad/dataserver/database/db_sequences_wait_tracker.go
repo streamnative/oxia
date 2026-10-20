@@ -104,11 +104,8 @@ func (swt *sequenceWaiterTracker) AddSequenceWaiter(key string) *sequenceWaiter 
 }
 
 func (swt *sequenceWaiterTracker) removeWithoutLock(key string, id sequenceWaiterID) {
-	im, existing := swt.waiters[key]
-	if !existing {
-		return
-	}
-
+	// The waiters of the key are gone when the tracker closed first
+	im := swt.waiters[key]
 	delete(im, id)
 	if len(im) == 0 {
 		delete(swt.waiters, key)

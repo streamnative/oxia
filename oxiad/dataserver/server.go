@@ -166,9 +166,6 @@ func NewWithGrpcProvider(parent context.Context, optionsWatch *commonwatch.Watch
 		}
 		err = multierr.Append(err, s.kvFactory.Close())
 		err = multierr.Append(err, s.walFactory.Close())
-		if s.metrics != nil {
-			err = multierr.Append(err, s.metrics.Close())
-		}
 	}()
 
 	s.wg.Go(func() {
@@ -213,8 +210,8 @@ func NewWithGrpcProvider(parent context.Context, optionsWatch *commonwatch.Watch
 		if err != nil {
 			return nil, err
 		}
-		s.metrics, err = metric.Start(observability.Metric.BindAddress, metricTLS) //nolint:contextcheck
-		if err != nil {
+		// The last step to fail: the release on an error has no metrics to close
+		if s.metrics, err = metric.Start(observability.Metric.BindAddress, metricTLS); err != nil { //nolint:contextcheck
 			return nil, err
 		}
 	}

@@ -16,6 +16,7 @@ package raft
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"testing"
@@ -25,6 +26,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/oxia-db/oxia/common/failpoint"
 	commonproto "github.com/oxia-db/oxia/common/proto"
 	metadatacommon "github.com/oxia-db/oxia/oxiad/coordinator/metadata/common"
 	metadatacodec "github.com/oxia-db/oxia/oxiad/coordinator/metadata/common/codec"
@@ -37,8 +39,7 @@ import (
 func TestProviderCacheFollowsAppliedEntries(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	r := &Raft{logger: logger, sc: newStateContainer(logger, nil)}
-	p, ok := NewProvider(t.Context(), r, metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled).(*Provider[*commonproto.ClusterStatus])
-	require.True(t, ok)
+	p := NewProvider(t.Context(), r, metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled)
 	defer func() { require.NoError(t, p.Close()) }()
 	r.sc.interceptor = p
 	require.Empty(t, loadedValue(t, p).GetInstanceId())
@@ -164,6 +165,21 @@ func TestProviderStoreFailsWhenApplyFails(t *testing.T) {
 		Version: metadatacommon.NotExists,
 	})
 	require.ErrorIs(t, err, hashicorpraft.ErrRaftShutdown)
+}
+
+func TestProviderStoreFailsWhenStateMachineFails(t *testing.T) {
+	r := newInmemLeader(t)
+	r.sc.failpoints = failpoint.New(map[string]func() error{
+		"apply": func() error { return errors.New("failpoint") },
+	})
+	p := NewProvider(t.Context(), r, metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled)
+	defer func() { require.NoError(t, p.Close()) }()
+
+	_, err := p.Store(provider.Versioned[*commonproto.ClusterStatus]{
+		Value:   &commonproto.ClusterStatus{InstanceId: "leader"},
+		Version: metadatacommon.NotExists,
+	})
+	require.ErrorContains(t, err, "failed to apply new cluster state")
 }
 
 func loadedValue(t *testing.T, p *Provider[*commonproto.ClusterStatus]) *commonproto.ClusterStatus {

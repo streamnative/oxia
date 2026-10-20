@@ -40,6 +40,7 @@ import (
 	"github.com/oxia-db/oxia/oxiad/dataserver/wal/codec"
 
 	"github.com/oxia-db/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/common/metric"
 	"github.com/oxia-db/oxia/common/object"
 	time2 "github.com/oxia-db/oxia/common/time"
@@ -1718,6 +1719,20 @@ func TestWalAppendRejectsEmptyEntry(t *testing.T) {
 
 	assert.NoError(t, w.Close())
 	assert.NoError(t, f.Close())
+}
+
+func TestWalAppendFailsToSerializeEntry(t *testing.T) {
+	failpointErr := errors.New("failpoint")
+	options := &FactoryOptions{BaseWalDir: t.TempDir(), Failpoints: failpoint.New(map[string]func() error{
+		"appendAsync.marshal": func() error { return failpointErr },
+	})}
+	w, err := newWal(constant.DefaultNamespace, shard, options, nil, time2.SystemClock, time.Hour)
+	require.NoError(t, err)
+
+	assert.ErrorIs(t, w.AppendAsync(&proto.LogEntry{Term: 1, Offset: 0, Value: []byte("v")}), failpointErr)
+	assert.EqualValues(t, InvalidOffset, w.LastOffset())
+
+	assert.NoError(t, w.Close())
 }
 
 func TestWalAppendRejectsEntryLargerThanSegment(t *testing.T) {

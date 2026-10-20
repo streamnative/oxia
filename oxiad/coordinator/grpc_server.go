@@ -29,6 +29,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/oxia-db/oxia/common/commonio"
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/common/proto"
 	coordmetadata "github.com/oxia-db/oxia/oxiad/coordinator/metadata"
 	coordreconciler "github.com/oxia-db/oxia/oxiad/coordinator/reconciler"
@@ -172,7 +173,12 @@ func New(parent context.Context, options *option.Options, serverOpts ...ServerOp
 // watch, allowing the caller to publish configuration updates at runtime
 // (e.g. from a configuration file watcher). Most callers should use New
 // instead.
-func NewGrpcServer(parent context.Context, optionsWatch *commonwatch.Watch[*option.Options], serverOpts ...ServerOption) (_ *GrpcServer, err error) {
+func NewGrpcServer(parent context.Context, optionsWatch *commonwatch.Watch[*option.Options], serverOpts ...ServerOption) (*GrpcServer, error) {
+	return newGrpcServer(parent, optionsWatch, nil, serverOpts...)
+}
+
+func newGrpcServer(parent context.Context, optionsWatch *commonwatch.Watch[*option.Options],
+	failpoints *failpoint.Failpoints, serverOpts ...ServerOption) (_ *GrpcServer, err error) {
 	so := newServerOptions(serverOpts)
 	// Fail fast, before binding the ports and waiting for the leadership.
 	if err := so.validate(); err != nil {
@@ -266,7 +272,7 @@ func NewGrpcServer(parent context.Context, optionsWatch *commonwatch.Watch[*opti
 		return nil, err
 	}
 	runtime, err = coordruntime.New(metadata, rpc.NewRpcProviderFactory(controllerTLS)) //nolint:contextcheck
-	if err != nil {
+	if err = failpoints.Fail("newGrpcServer.newRuntime", err); err != nil {
 		return nil, err
 	}
 	management.setRuntime(runtime)

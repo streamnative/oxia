@@ -78,7 +78,8 @@ func newTestManifest(t *testing.T, instanceID string) *manifestpkg.Manifest {
 		return manifest
 	}
 
-	require.NoError(t, manifest.SetInstanceID(instanceID))
+	_, err = manifest.SetInstanceID(instanceID)
+	require.NoError(t, err)
 	return manifest
 }
 

@@ -82,6 +82,30 @@ func TestClusterConfigurationGetDataServerNil(t *testing.T) {
 	assert.Nil(t, server)
 }
 
+func TestClusterConfigurationListDataServers(t *testing.T) {
+	name := "server-1"
+	config := &ClusterConfiguration{
+		Servers: []*DataServerIdentity{
+			{Public: "server-0:6648", Internal: "server-0:6649"},
+			{Name: &name, Public: "server-1:6648", Internal: "server-1:6649"},
+		},
+		ServerMetadata: map[string]*DataServerMetadata{
+			"server-1": {Labels: map[string]string{"zone": "a"}},
+		},
+	}
+
+	dataServers := config.ListDataServers()
+	require.Len(t, dataServers, 2)
+	assert.Equal(t, "server-0:6649", dataServers[0].GetIdentity().GetName())
+	assert.Equal(t, "server-0:6648", dataServers[0].GetIdentity().GetPublic())
+	assert.Empty(t, dataServers[0].GetMetadata().GetLabels())
+	assert.Equal(t, "server-1", dataServers[1].GetIdentity().GetName())
+	assert.Equal(t, map[string]string{"zone": "a"}, dataServers[1].GetMetadata().GetLabels())
+
+	var nilConfig *ClusterConfiguration
+	assert.Empty(t, nilConfig.ListDataServers())
+}
+
 func TestClusterConfigurationGetCoordinator(t *testing.T) {
 	config := &ClusterConfiguration{
 		Coordinators: []*Coordinator{

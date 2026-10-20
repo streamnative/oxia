@@ -30,6 +30,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/oxia-db/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/common/proto"
 	"github.com/oxia-db/oxia/common/security"
 	"github.com/oxia-db/oxia/oxiad/common/logging"
@@ -173,6 +174,20 @@ func TestNewGrpcServerFailsToSeedClusterConfiguration(t *testing.T) {
 			Servers:    []*proto.DataServerIdentity{{Public: "s1:6648", Internal: "s1:6649"}},
 		}))
 	require.ErrorIs(t, err, os.ErrPermission)
+	assert.Nil(t, server)
+}
+
+// A runtime that fails to start fails the start, after the coordinator became
+// the leader.
+func TestNewGrpcServerFailsToStartRuntime(t *testing.T) {
+	failpointErr := errors.New("failpoint")
+	options := newTestOptions()
+	failpoints := failpoint.New(map[string]func() error{
+		"newGrpcServer.newRuntime": func() error { return failpointErr },
+	})
+
+	server, err := newGrpcServer(t.Context(), commonwatch.New(options), failpoints)
+	require.ErrorIs(t, err, failpointErr)
 	assert.Nil(t, server)
 }
 
