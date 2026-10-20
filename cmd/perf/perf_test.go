@@ -17,6 +17,7 @@ package perf
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 	"sync"
@@ -116,6 +117,18 @@ func TestPerfRunReportsStats(t *testing.T) {
 	<-done
 }
 
+func TestPerfRunLogsCloseError(t *testing.T) {
+	logs := captureLogs(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	p := &perf{config: testConfig("", false), client: &fakeAsyncClient{closeErr: errors.New("close failed")}}
+
+	p.Run(ctx)
+
+	assert.Contains(t, logs.String(), "Failed to close Oxia client")
+	assert.Contains(t, logs.String(), "close failed")
+}
+
 func testConfig(serviceAddr string, randomPayload bool) Config {
 	return Config{
 		ServiceAddr:         serviceAddr,
@@ -187,4 +200,13 @@ func runInBackground(ctx context.Context, p Perf) <-chan struct{} {
 		p.Run(ctx)
 	}()
 	return done
+}
+
+type fakeAsyncClient struct {
+	oxia.AsyncClient
+	closeErr error
+}
+
+func (c *fakeAsyncClient) Close() error {
+	return c.closeErr
 }

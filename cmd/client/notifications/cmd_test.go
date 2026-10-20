@@ -46,11 +46,26 @@ func TestExecReturnsNewClientError(t *testing.T) {
 func TestExecReturnsNotificationsErrorAndClosesClient(t *testing.T) {
 	common.MockedClient = common.NewMockClient()
 	t.Cleanup(func() { common.MockedClient = nil })
+	common.MockedClient.On("GetNotifications").Return(nil, errNotifications)
 	common.MockedClient.On("Close").Return(nil)
 
 	err := runCmd()
 
-	assert.EqualError(t, err, "not implemented in mock")
+	assert.ErrorIs(t, err, errNotifications)
+	common.MockedClient.AssertExpectations(t)
+}
+
+func TestExecReturnsWhenNotificationsEnd(t *testing.T) {
+	common.MockedClient = common.NewMockClient()
+	t.Cleanup(func() { common.MockedClient = nil })
+	notifications := &fakeNotifications{ch: make(chan *oxia.Notification)}
+	close(notifications.ch)
+	common.MockedClient.On("GetNotifications").Return(notifications, nil)
+	common.MockedClient.On("Close").Return(nil)
+
+	require.NoError(t, runCmd())
+
+	assert.True(t, notifications.closed)
 	common.MockedClient.AssertExpectations(t)
 }
 
@@ -116,7 +131,24 @@ func runCmd() error {
 	return Cmd.Execute()
 }
 
-var errWaitTimeout = errors.New("timed out waiting for the notification")
+var (
+	errWaitTimeout   = errors.New("timed out waiting for the notification")
+	errNotifications = errors.New("notifications failed")
+)
+
+type fakeNotifications struct {
+	ch     chan *oxia.Notification
+	closed bool
+}
+
+func (n *fakeNotifications) Ch() <-chan *oxia.Notification {
+	return n.ch
+}
+
+func (n *fakeNotifications) Close() error {
+	n.closed = true
+	return nil
+}
 
 type recordingHandler struct {
 	records chan map[string]any
