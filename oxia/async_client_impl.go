@@ -714,11 +714,7 @@ func aggregateAndSortRangeScanAcrossShards(order keyOrder, channels []chan range
 	// result with the lowest key and then reading again from that same
 	// channel
 	for h.Len() > 0 {
-		r, ok := heap.Pop(h).(*ResultAndChannel)
-		if !ok {
-			panic("failed to cast")
-		}
-
+		r := h.results[0]
 		outCh <- r.gr
 
 		if r.gr.Err != nil {
@@ -728,7 +724,10 @@ func aggregateAndSortRangeScanAcrossShards(order keyOrder, channels []chan range
 
 		// read again from same channel
 		if next, ok := <-r.ch; ok {
-			heap.Push(h, newResultAndChannel(order, next, r.ch))
+			h.results[0] = newResultAndChannel(order, next, r.ch)
+			heap.Fix(h, 0)
+		} else {
+			heap.Pop(h)
 		}
 	}
 
