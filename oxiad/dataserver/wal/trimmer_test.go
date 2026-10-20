@@ -32,6 +32,7 @@ import (
 	"github.com/oxia-db/oxia/common/object"
 	time2 "github.com/oxia-db/oxia/common/time"
 	"github.com/oxia-db/oxia/oxiad/common/logging"
+	"github.com/oxia-db/oxia/oxiad/dataserver/wal/codec"
 
 	"github.com/oxia-db/oxia/common/proto"
 )
@@ -78,7 +79,7 @@ func TestWalTrimmerFlushesDatabaseBeforeDeletingSegments(t *testing.T) {
 	failFlush := atomic.Bool{}
 	commitOffsetProvider.flush = func() error {
 		flushes.Add(1)
-		segments, err := listAllSegments(segmentsPath)
+		segments, err := listAllSegments(codec.OSFS{}, segmentsPath)
 		assert.NoError(t, err)
 		assert.Contains(t, segments, int64(0))
 		if failFlush.Load() {
@@ -98,7 +99,7 @@ func TestWalTrimmerFlushesDatabaseBeforeDeletingSegments(t *testing.T) {
 			Timestamp: uint64(i),
 		}))
 	}
-	segments, err := listAllSegments(segmentsPath)
+	segments, err := listAllSegments(codec.OSFS{}, segmentsPath)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, len(segments), 3)
 	secondSegment := segments[1]
@@ -117,7 +118,7 @@ func TestWalTrimmerFlushesDatabaseBeforeDeletingSegments(t *testing.T) {
 		return flushes.Load() > 1
 	}, 10*time.Second, 10*time.Millisecond)
 	assert.EqualValues(t, secondSegment-1, w.FirstOffset())
-	segments, err = listAllSegments(segmentsPath)
+	segments, err = listAllSegments(codec.OSFS{}, segmentsPath)
 	require.NoError(t, err)
 	assert.Contains(t, segments, int64(0))
 
@@ -125,7 +126,7 @@ func TestWalTrimmerFlushesDatabaseBeforeDeletingSegments(t *testing.T) {
 	assert.Eventually(t, func() bool {
 		return w.FirstOffset() == secondSegment
 	}, 10*time.Second, 10*time.Millisecond)
-	segments, err = listAllSegments(segmentsPath)
+	segments, err = listAllSegments(codec.OSFS{}, segmentsPath)
 	require.NoError(t, err)
 	assert.NotContains(t, segments, int64(0))
 
@@ -391,7 +392,7 @@ func TestWalTrimUpToCommitOffset(t *testing.T) {
 
 func TestTrimmerDoTrimFailsWhenFirstEntryIsUnreadable(t *testing.T) {
 	w, tr, segments := newWalWithExpiredSegments(t)
-	c, err := newSegmentConfig(w.walPath, segments[0])
+	c, err := newSegmentConfig(codec.OSFS{}, w.walPath, segments[0])
 	require.NoError(t, err)
 	require.NoError(t, os.Remove(c.txnPath))
 
@@ -408,7 +409,7 @@ func TestTrimmerDoTrimFailsWhenBinarySearchHitsUnreadableEntry(t *testing.T) {
 	holding := segments[i-1]
 	require.NotEqual(t, segments[0], holding)
 	require.NotEqual(t, segments[len(segments)-1], holding)
-	c, err := newSegmentConfig(w.walPath, holding)
+	c, err := newSegmentConfig(codec.OSFS{}, w.walPath, holding)
 	require.NoError(t, err)
 	require.NoError(t, os.Remove(c.txnPath))
 
@@ -444,7 +445,7 @@ func newWalWithExpiredSegments(t *testing.T) (*wal, *trimmer, []int64) {
 	clock.Set(1000)
 
 	impl := w.(*wal)
-	segments, err := listAllSegments(impl.walPath)
+	segments, err := listAllSegments(codec.OSFS{}, impl.walPath)
 	require.NoError(t, err)
 	require.Greater(t, len(segments), 3)
 	return impl, impl.trimmer.(*trimmer), segments

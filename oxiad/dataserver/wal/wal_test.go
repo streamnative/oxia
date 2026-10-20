@@ -27,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/edsrzf/mmap-go"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -38,6 +39,7 @@ import (
 
 	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/metric"
+	time2 "github.com/oxia-db/oxia/common/time"
 
 	"github.com/oxia-db/oxia/common/proto"
 )
@@ -997,20 +999,20 @@ func TestWal_RecoverAfterLostRolledOverSegment(t *testing.T) {
 	assert.NoError(t, w.Close())
 
 	basePath := walPath(dir, constant.DefaultNamespace, shard)
-	segments, err := listAllSegments(basePath)
+	segments, err := listAllSegments(codec.OSFS{}, basePath)
 	assert.NoError(t, err)
 	assert.GreaterOrEqual(t, len(segments), 3)
 
 	// Simulate the power loss: the second-to-last segment never reached the
 	// disk (all zeroes, no index), while the last segment kept its content
 	lost := segments[len(segments)-2]
-	lostConfig, err := newSegmentConfig(basePath, lost)
+	lostConfig, err := newSegmentConfig(codec.OSFS{}, basePath, lost)
 	assert.NoError(t, err)
 	info, err := os.Stat(lostConfig.txnPath)
 	assert.NoError(t, err)
 	assert.NoError(t, os.WriteFile(lostConfig.txnPath, make([]byte, info.Size()), 0644))
 	assert.NoError(t, os.Remove(lostConfig.idxPath))
-	lastConfig, err := newSegmentConfig(basePath, segments[len(segments)-1])
+	lastConfig, err := newSegmentConfig(codec.OSFS{}, basePath, segments[len(segments)-1])
 	assert.NoError(t, err)
 	assert.NoError(t, os.Remove(lastConfig.idxPath))
 
@@ -1071,16 +1073,16 @@ func TestWal_RecoverAfterAllSegmentsContentLost(t *testing.T) {
 	assert.NoError(t, w.Close())
 
 	basePath := walPath(dir, constant.DefaultNamespace, shard)
-	segments, err := listAllSegments(basePath)
+	segments, err := listAllSegments(codec.OSFS{}, basePath)
 	assert.NoError(t, err)
 	assert.GreaterOrEqual(t, len(segments), 3)
 	for _, segment := range segments {
-		c, err := newSegmentConfig(basePath, segment)
+		c, err := newSegmentConfig(codec.OSFS{}, basePath, segment)
 		assert.NoError(t, err)
 		info, err := os.Stat(c.txnPath)
 		assert.NoError(t, err)
 		assert.NoError(t, os.WriteFile(c.txnPath, make([]byte, info.Size()), 0644))
-		assert.NoError(t, codec.RemoveFileIfExists(c.idxPath))
+		assert.NoError(t, codec.RemoveFileIfExists(codec.OSFS{}, c.idxPath))
 	}
 
 	w, err = f.NewWal(constant.DefaultNamespace, shard, nil)
@@ -1090,7 +1092,7 @@ func TestWal_RecoverAfterAllSegmentsContentLost(t *testing.T) {
 
 	// Only the first segment file survives, and the wal is appendable from
 	// scratch
-	remaining, err := listAllSegments(basePath)
+	remaining, err := listAllSegments(codec.OSFS{}, basePath)
 	assert.NoError(t, err)
 	assert.Equal(t, []int64{0}, remaining)
 
@@ -1176,12 +1178,12 @@ func TestWal_RecoveryFailureUnregistersGauge(t *testing.T) {
 	// crc: the last segment is reopened for writes, and its stale index
 	// cannot be removed
 	basePath := walPath(dir, constant.DefaultNamespace, shard)
-	segments, err := listAllSegments(basePath)
+	segments, err := listAllSegments(codec.OSFS{}, basePath)
 	assert.NoError(t, err)
 	assert.GreaterOrEqual(t, len(segments), 2)
-	lastConfig, err := newSegmentConfig(basePath, segments[len(segments)-1])
+	lastConfig, err := newSegmentConfig(codec.OSFS{}, basePath, segments[len(segments)-1])
 	assert.NoError(t, err)
-	assert.NoError(t, codec.RemoveFileIfExists(lastConfig.idxPath))
+	assert.NoError(t, codec.RemoveFileIfExists(codec.OSFS{}, lastConfig.idxPath))
 	assert.NoError(t, os.MkdirAll(filepath.Join(lastConfig.idxPath, "not-empty"), 0755))
 
 	w, err = f.NewWal(constant.DefaultNamespace, shard, nil)
@@ -1616,16 +1618,16 @@ func TestFactoryNewWalFailsWhenPrecedingSegmentIsCorrupted(t *testing.T) {
 	f, w := newSmallWal(t)
 	appendEntries(t, w, 1, 0, 19, "v")
 	require.NoError(t, w.Close())
-	segments, err := listAllSegments(w.walPath)
+	segments, err := listAllSegments(codec.OSFS{}, w.walPath)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, len(segments), 2)
 
 	// Corrupt the last record of the segment preceding the read-write one,
 	// whose crc the recovery chains the next appends from
 	preceding := segments[len(segments)-2]
-	c, err := newSegmentConfig(w.walPath, preceding)
+	c, err := newSegmentConfig(codec.OSFS{}, w.walPath, preceding)
 	require.NoError(t, err)
-	idx, err := c.codec.ReadIndex(c.idxPath)
+	idx, err := c.codec.ReadIndex(codec.OSFS{}, c.idxPath)
 	require.NoError(t, err)
 	corruptPayload(t, c, codec.ReadInt(idx, uint32(len(idx)-4)))
 
@@ -1637,22 +1639,22 @@ func TestFactoryNewWalFailsWhenTrailingSegmentCannotBeDiscarded(t *testing.T) {
 	f, w := newSmallWal(t)
 	appendEntries(t, w, 1, 0, 19, "v")
 	require.NoError(t, w.Close())
-	segments, err := listAllSegments(w.walPath)
+	segments, err := listAllSegments(codec.OSFS{}, w.walPath)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, len(segments), 2)
 
 	// The segment preceding the read-write one lost its content, which makes
 	// the recovery discard the read-write one
-	preceding, err := newSegmentConfig(w.walPath, segments[len(segments)-2])
+	preceding, err := newSegmentConfig(codec.OSFS{}, w.walPath, segments[len(segments)-2])
 	require.NoError(t, err)
 	require.NoError(t, os.Remove(preceding.idxPath))
 	info, err := os.Stat(preceding.txnPath)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(preceding.txnPath, make([]byte, info.Size()), 0o644))
 	// A non-empty directory in place of its index file cannot be removed
-	trailing, err := newSegmentConfig(w.walPath, segments[len(segments)-1])
+	trailing, err := newSegmentConfig(codec.OSFS{}, w.walPath, segments[len(segments)-1])
 	require.NoError(t, err)
-	require.NoError(t, codec.RemoveFileIfExists(trailing.idxPath))
+	require.NoError(t, codec.RemoveFileIfExists(codec.OSFS{}, trailing.idxPath))
 	require.NoError(t, os.MkdirAll(filepath.Join(trailing.idxPath, "child"), 0o755))
 
 	_, err = f.NewWal(constant.DefaultNamespace, shard, nil)
@@ -1733,7 +1735,7 @@ func TestWalReadAtIndexFailsOnUndecodableEntry(t *testing.T) {
 	require.NoError(t, w.Close())
 
 	// Append a record that is not a log entry: a truncated varint
-	segment, err := newReadWriteSegment(w.(*wal).walPath, 0, 1024, 0, nil)
+	segment, err := newReadWriteSegment(codec.OSFS{}, w.(*wal).walPath, 0, 1024, 0, nil)
 	require.NoError(t, err)
 	require.NoError(t, segment.Append(1, []byte{0xff}))
 	require.NoError(t, segment.Close())
@@ -1759,7 +1761,7 @@ func TestWalReadAtIndexFailsWhenSegmentFileIsMissing(t *testing.T) {
 	for i := int64(0); i < 20; i++ {
 		require.NoError(t, w.Append(&proto.LogEntry{Term: 1, Offset: i, Value: fmt.Appendf(nil, "v-%d", i)}))
 	}
-	c, err := newSegmentConfig(w.(*wal).walPath, 0)
+	c, err := newSegmentConfig(codec.OSFS{}, w.(*wal).walPath, 0)
 	require.NoError(t, err)
 	require.NoError(t, os.Remove(c.txnPath))
 
@@ -1819,7 +1821,7 @@ func TestWalTruncateLogFailsWhenClearingBelowAllSegmentsFails(t *testing.T) {
 func TestWalTruncateLogFailsWhenCurrentSegmentCannotBeDeleted(t *testing.T) {
 	f, w := newSmallWal(t)
 	appendEntries(t, w, 1, 0, 19, "v")
-	current, err := newSegmentConfig(w.walPath, w.currentSegment.BaseOffset())
+	current, err := newSegmentConfig(codec.OSFS{}, w.walPath, w.currentSegment.BaseOffset())
 	require.NoError(t, err)
 	require.NoError(t, os.Chmod(w.walPath, 0o500))
 	t.Cleanup(func() { assert.NoError(t, os.Chmod(w.walPath, 0o700)) })
@@ -1835,11 +1837,11 @@ func TestWalTruncateLogFailsWhenCurrentSegmentCannotBeDeleted(t *testing.T) {
 func TestWalTruncateLogFailsWhenSegmentFileIsMissing(t *testing.T) {
 	f, w := newSmallWal(t)
 	appendEntries(t, w, 1, 0, 19, "v")
-	segments, err := listAllSegments(w.walPath)
+	segments, err := listAllSegments(codec.OSFS{}, w.walPath)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, len(segments), 2)
 	highestReadOnly := segments[len(segments)-2]
-	c, err := newSegmentConfig(w.walPath, highestReadOnly)
+	c, err := newSegmentConfig(codec.OSFS{}, w.walPath, highestReadOnly)
 	require.NoError(t, err)
 	require.NoError(t, os.Remove(c.txnPath))
 
@@ -1882,6 +1884,197 @@ func TestReverseReaderReadNextFailsOnEmptyWal(t *testing.T) {
 
 	assert.NoError(t, w.Close())
 	assert.NoError(t, f.Close())
+}
+
+func TestWalAppendFailsWhenSegmentAfterClearCannotBeOpened(t *testing.T) {
+	fs := newFaultFS()
+	w := newFaultWal(t, fs, false)
+	fs.failNth(opOpenFile, txnPath(w.walPath, 5), 1)
+
+	err := w.AppendAsync(&proto.LogEntry{Term: 1, Offset: 5, Value: []byte("v")})
+	assert.ErrorIs(t, err, errInjected)
+	assert.EqualValues(t, InvalidOffset, w.LastOffset())
+
+	assert.NoError(t, w.Close())
+}
+
+func TestWalAppendFailsWhenRolledSegmentCannotBeClosed(t *testing.T) {
+	for _, op := range []fsOp{opSync, opClose} {
+		t.Run(string(op), func(t *testing.T) {
+			fs := newFaultFS()
+			// Without sync rounds, the rollover closes the rolled segment itself
+			w := newFaultWal(t, fs, false)
+			fs.failNth(op, txnPath(w.walPath, 0), 1)
+
+			var err error
+			for offset := int64(0); err == nil && offset < 100; offset++ {
+				err = w.AppendAsync(&proto.LogEntry{Term: 1, Offset: offset, Value: []byte("v")})
+			}
+			assert.ErrorIs(t, err, errInjected)
+			assert.ErrorContains(t, err, "failed to rollover segment")
+
+			assert.NoError(t, w.Close())
+		})
+	}
+}
+
+func TestWalSyncReportsRolledSegmentFailure(t *testing.T) {
+	for _, op := range []fsOp{opSync, opFlush} {
+		t.Run(string(op), func(t *testing.T) {
+			fs := newFaultFS()
+			w := newFaultWal(t, fs, true)
+			appendAsyncUntilRolledOver(t, w)
+			fs.failNth(op, txnPath(w.walPath, 0), 1)
+
+			assert.ErrorIs(t, w.Sync(context.Background()), errInjected)
+			assert.EqualValues(t, InvalidOffset, w.LastOffset())
+
+			// The next round makes the rolled segment durable
+			assert.NoError(t, w.Sync(context.Background()))
+			assert.EqualValues(t, w.lastAppendedOffset.Load(), w.LastOffset())
+			assert.NoError(t, w.Close())
+		})
+	}
+}
+
+// A cold path draining the rolled segment while the sync round flushes it
+// closes it: the round leaves it alone.
+func TestWalSyncSkipsRolledSegmentDrainedByClose(t *testing.T) {
+	fs := newFaultFS()
+	w := newFaultWal(t, fs, true)
+	appendAsyncUntilRolledOver(t, w)
+
+	rolled := txnPath(w.walPath, 0)
+	flushing := make(chan struct{})
+	draining := make(chan struct{})
+	release := make(chan struct{})
+	var flushes atomic.Int32
+	fs.setHook(func(op fsOp, name string) error {
+		if op == opFlush && name == rolled {
+			switch flushes.Add(1) {
+			case 1:
+				// The sync round
+				close(flushing)
+				<-release
+			case 2:
+				// Close, which holds the wal lock from now on
+				close(draining)
+			default:
+			}
+		}
+		return nil
+	})
+
+	syncErr := make(chan error, 1)
+	go func() { syncErr <- w.Sync(context.Background()) }()
+	<-flushing
+	closeErr := make(chan error, 1)
+	go func() { closeErr <- w.Close() }()
+	<-draining
+	close(release)
+
+	assert.NoError(t, <-closeErr)
+	assert.NoError(t, <-syncErr)
+	assert.EqualValues(t, 2, flushes.Load())
+}
+
+func TestWalClearFailsWhenSegmentCannotBeReopened(t *testing.T) {
+	fs := newFaultFS()
+	w := newFaultWal(t, fs, false)
+	appendEntries(t, w, 1, 0, 2, "v")
+	fs.failNth(opOpenFile, txnPath(w.walPath, 0), 1)
+
+	assert.ErrorIs(t, w.Clear(), errInjected)
+
+	assert.NoError(t, w.Close())
+}
+
+func TestWalDeleteFailsWhenSegmentCannotBeClosed(t *testing.T) {
+	fs := newFaultFS()
+	w := newFaultWal(t, fs, false)
+	appendEntries(t, w, 1, 0, 2, "v")
+	fs.failNth(opClose, txnPath(w.walPath, 0), 1)
+
+	assert.ErrorIs(t, w.Delete(), errInjected)
+	assert.DirExists(t, w.walPath)
+}
+
+func TestWalTruncateLogFailsWhenRolledSegmentCannotBeSynced(t *testing.T) {
+	fs := newFaultFS()
+	w := newFaultWal(t, fs, true)
+	appendAsyncUntilRolledOver(t, w)
+	fs.failNth(opSync, txnPath(w.walPath, 0), 1)
+
+	_, err := w.TruncateLog(0)
+	assert.ErrorIs(t, err, errInjected)
+
+	assert.NoError(t, w.Close())
+}
+
+func TestWalTruncateLogFailsOnFilesystemErrors(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		op   fsOp
+		// The truncation goes into the segment truncateFromEnd segments from
+		// the end of the wal (the current one being 1), and the operation
+		// fails on the one failFromEnd segments from the end
+		truncateFromEnd int
+		failFromEnd     int
+	}{
+		{"close-truncated-segment", opClose, 2, 2},
+		{"truncate-reopened-segment", opFlush, 2, 2},
+		{"delete-discarded-segment", opRemove, 3, 2},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fs := newFaultFS()
+			w := newFaultWal(t, fs, false)
+			appendEntries(t, w, 1, 0, 29, "v")
+			segments, err := listAllSegments(fs, w.walPath)
+			require.NoError(t, err)
+			require.GreaterOrEqual(t, len(segments), 3)
+			fs.failNth(test.op, txnPath(w.walPath, segments[len(segments)-test.failFromEnd]), 1)
+
+			_, err = w.TruncateLog(segments[len(segments)-test.truncateFromEnd])
+			assert.ErrorIs(t, err, errInjected)
+
+			assert.NoError(t, w.Close())
+		})
+	}
+}
+
+func TestFactoryNewWalFailsWhenWalDirectoryCannotBeListed(t *testing.T) {
+	dir := t.TempDir()
+	fs := newFaultFS()
+	// The second listing, by the recovery, after the one of the read-only group
+	fs.failNth(opReadDir, walPath(dir, constant.DefaultNamespace, shard), 2)
+
+	options := &FactoryOptions{BaseWalDir: dir, SegmentSize: 128, fs: fs}
+	_, err := newWal(constant.DefaultNamespace, shard, options, nil, time2.SystemClock, time.Hour)
+	assert.ErrorIs(t, err, errInjected)
+}
+
+func TestFactoryNewWalFailsWhenTrailingSegmentCannotBeStatted(t *testing.T) {
+	fs := newFaultFS()
+	w := newFaultWal(t, fs, false)
+	appendEntries(t, w, 1, 0, 19, "v")
+	require.NoError(t, w.Close())
+	segments, err := listAllSegments(fs, w.walPath)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(segments), 2)
+
+	// The segment preceding the read-write one lost its content, which makes
+	// the recovery discard the read-write one
+	preceding, err := newSegmentConfig(fs, w.walPath, segments[len(segments)-2])
+	require.NoError(t, err)
+	require.NoError(t, os.Remove(preceding.idxPath))
+	require.NoError(t, os.Truncate(preceding.txnPath, 0))
+	require.NoError(t, os.Truncate(preceding.txnPath, 128))
+	fs.failNth(opStat, txnPath(w.walPath, segments[len(segments)-1]), 1)
+
+	options := &FactoryOptions{BaseWalDir: filepath.Dir(filepath.Dir(w.walPath)), SegmentSize: 128, fs: fs}
+	_, err = newWal(constant.DefaultNamespace, shard, options, nil, time2.SystemClock, time.Hour)
+	assert.ErrorIs(t, err, errInjected)
+	assert.FileExists(t, txnPath(w.walPath, segments[len(segments)-1]))
 }
 
 // hookedReadWriteSegment runs a hook before each read of the segment.
@@ -1967,14 +2160,14 @@ func TestWalTruncateLogReopenFailureKeepsWalClosable(t *testing.T) {
 	for i := int64(0); i < 300; i++ {
 		require.NoError(t, w.Append(&proto.LogEntry{Term: 1, Offset: i, Value: payload}))
 	}
-	segments, err := listAllSegments(walImpl.walPath)
+	segments, err := listAllSegments(codec.OSFS{}, walImpl.walPath)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, len(segments), 2)
 
 	// Truncating into the read-only segment reopens it for writing, which
 	// fails on a read-only file
 	target := segments[len(segments)-2]
-	c, err := newSegmentConfig(walImpl.walPath, target)
+	c, err := newSegmentConfig(codec.OSFS{}, walImpl.walPath, target)
 	require.NoError(t, err)
 	require.NoError(t, os.Chmod(c.txnPath, 0o400))
 	t.Cleanup(func() { _ = os.Chmod(c.txnPath, 0o600) })
@@ -1984,4 +2177,219 @@ func TestWalTruncateLogReopenFailureKeepsWalClosable(t *testing.T) {
 
 	assert.NotPanics(t, func() { _ = w.Close() })
 	assert.NoError(t, f.Close())
+}
+
+// fsOp is an operation of faultFS, or of a file it opened.
+type fsOp string
+
+const (
+	opStat      fsOp = "stat"
+	opReadDir   fsOp = "readDir"
+	opMkdirAll  fsOp = "mkdirAll"
+	opOpenFile  fsOp = "openFile"
+	opRemove    fsOp = "remove"
+	opRemoveAll fsOp = "removeAll"
+	opMap       fsOp = "map"
+	opFlush     fsOp = "flush"
+	opUnmap     fsOp = "unmap"
+	opRead      fsOp = "read"
+	opWrite     fsOp = "write"
+	opSeek      fsOp = "seek"
+	opSync      fsOp = "sync"
+	opClose     fsOp = "close"
+)
+
+var errInjected = errors.New("injected filesystem failure")
+
+// faultFS runs the operations on the operating system, after passing them to
+// the hook along with the path of their file (of the mapped file, for a
+// mapping): an error of the hook fails the operation. Close and Unmap release
+// the resource before failing, as close(2) does. The wal goroutines call it
+// concurrently with the test that sets the hook: mu guards the hook and the
+// mappings.
+type faultFS struct {
+	codec.OSFS
+
+	mu       sync.Mutex
+	hook     func(op fsOp, name string) error
+	mappings map[*byte]string
+}
+
+func newFaultFS() *faultFS {
+	return &faultFS{mappings: map[*byte]string{}}
+}
+
+func (fs *faultFS) setHook(hook func(op fsOp, name string) error) {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	fs.hook = hook
+}
+
+// failNth fails the nth next call of op on the file at name with errInjected.
+func (fs *faultFS) failNth(op fsOp, name string, n int32) {
+	var calls atomic.Int32
+	fs.setHook(func(o fsOp, oName string) error {
+		if o == op && oName == name && calls.Add(1) == n {
+			return errInjected
+		}
+		return nil
+	})
+}
+
+func (fs *faultFS) check(op fsOp, name string) error {
+	fs.mu.Lock()
+	hook := fs.hook
+	fs.mu.Unlock()
+	if hook == nil {
+		return nil
+	}
+	return hook(op, name)
+}
+
+func (fs *faultFS) Stat(name string) (os.FileInfo, error) {
+	if err := fs.check(opStat, name); err != nil {
+		return nil, err
+	}
+	return fs.OSFS.Stat(name)
+}
+
+func (fs *faultFS) ReadDir(name string) ([]os.DirEntry, error) {
+	if err := fs.check(opReadDir, name); err != nil {
+		return nil, err
+	}
+	return fs.OSFS.ReadDir(name)
+}
+
+func (fs *faultFS) MkdirAll(path string, perm os.FileMode) error {
+	if err := fs.check(opMkdirAll, path); err != nil {
+		return err
+	}
+	return fs.OSFS.MkdirAll(path, perm)
+}
+
+func (fs *faultFS) OpenFile(name string, flag int, perm os.FileMode) (codec.File, error) {
+	if err := fs.check(opOpenFile, name); err != nil {
+		return nil, err
+	}
+	f, err := fs.OSFS.OpenFile(name, flag, perm)
+	if err != nil {
+		return nil, err
+	}
+	return &faultFile{File: f, fs: fs, name: name}, nil
+}
+
+func (fs *faultFS) Remove(name string) error {
+	if err := fs.check(opRemove, name); err != nil {
+		return err
+	}
+	return fs.OSFS.Remove(name)
+}
+
+func (fs *faultFS) RemoveAll(path string) error {
+	if err := fs.check(opRemoveAll, path); err != nil {
+		return err
+	}
+	return fs.OSFS.RemoveAll(path)
+}
+
+func (fs *faultFS) Map(f codec.File, length int, prot int) (mmap.MMap, error) {
+	file := f.(*faultFile)
+	if err := fs.check(opMap, file.name); err != nil {
+		return nil, err
+	}
+	m, err := fs.OSFS.Map(file.File, length, prot)
+	if err == nil && len(m) > 0 {
+		fs.mu.Lock()
+		fs.mappings[&m[0]] = file.name
+		fs.mu.Unlock()
+	}
+	return m, err
+}
+
+func (fs *faultFS) Flush(m mmap.MMap) error {
+	if err := fs.check(opFlush, fs.mappedFile(m)); err != nil {
+		return err
+	}
+	return fs.OSFS.Flush(m)
+}
+
+func (fs *faultFS) Unmap(m *mmap.MMap) error {
+	name := fs.mappedFile(*m)
+	if len(*m) > 0 {
+		fs.mu.Lock()
+		delete(fs.mappings, &(*m)[0])
+		fs.mu.Unlock()
+	}
+	return multierr.Append(fs.OSFS.Unmap(m), fs.check(opUnmap, name))
+}
+
+func (fs *faultFS) mappedFile(m mmap.MMap) string {
+	if len(m) == 0 {
+		return ""
+	}
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	return fs.mappings[&m[0]]
+}
+
+// faultFile is a file opened by faultFS.
+type faultFile struct {
+	codec.File
+	fs   *faultFS
+	name string
+}
+
+func (f *faultFile) Read(p []byte) (int, error) {
+	if err := f.fs.check(opRead, f.name); err != nil {
+		return 0, err
+	}
+	return f.File.Read(p)
+}
+
+func (f *faultFile) Write(p []byte) (int, error) {
+	if err := f.fs.check(opWrite, f.name); err != nil {
+		return 0, err
+	}
+	return f.File.Write(p)
+}
+
+func (f *faultFile) Seek(offset int64, whence int) (int64, error) {
+	if err := f.fs.check(opSeek, f.name); err != nil {
+		return 0, err
+	}
+	return f.File.Seek(offset, whence)
+}
+
+func (f *faultFile) Sync() error {
+	if err := f.fs.check(opSync, f.name); err != nil {
+		return err
+	}
+	return f.File.Sync()
+}
+
+func (f *faultFile) Close() error {
+	return multierr.Append(f.File.Close(), f.fs.check(opClose, f.name))
+}
+
+// newFaultWal returns a wal on fs, with segments of 128 bytes.
+func newFaultWal(t *testing.T, fs *faultFS, syncData bool) *wal {
+	t.Helper()
+	options := &FactoryOptions{BaseWalDir: t.TempDir(), SegmentSize: 128, SyncData: syncData, fs: fs}
+	w, err := newWal(constant.DefaultNamespace, shard, options, nil, time2.SystemClock, time.Hour)
+	require.NoError(t, err)
+	return w.(*wal)
+}
+
+// appendAsyncUntilRolledOver appends entries to the wal without syncing them,
+// up to the first rollover.
+func appendAsyncUntilRolledOver(t *testing.T, w *wal) {
+	t.Helper()
+	for offset := w.lastAppendedOffset.Load() + 1; w.currentSegment.BaseOffset() == 0; offset++ {
+		require.NoError(t, w.AppendAsync(&proto.LogEntry{Term: 1, Offset: offset, Value: []byte("v")}))
+	}
+}
+
+// txnPath returns the path of the txn file of the segment at baseOffset in dir.
+func txnPath(dir string, baseOffset int64) string {
+	return segmentPath(dir, baseOffset) + codec.SupportedCodecs[0].GetTxnExtension()
 }

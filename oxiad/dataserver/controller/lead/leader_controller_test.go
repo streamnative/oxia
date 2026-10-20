@@ -3305,7 +3305,7 @@ func corruptWalEntry(t *testing.T, walDir string, shard int64, offset int64) {
 	t.Helper()
 
 	segment := filepath.Join(walDir, constant.DefaultNamespace, fmt.Sprint("shard-", shard), "0")
-	c, exists, err := codec.GetOrCreate(segment)
+	c, exists, err := codec.GetOrCreate(codec.OSFS{}, segment)
 	require.NoError(t, err)
 	require.True(t, exists)
 
