@@ -45,7 +45,7 @@ type Provider[T gproto.Message] struct {
 	logger  *slog.Logger
 }
 
-func NewProvider[T gproto.Message](ctx context.Context, r *Raft, codec metadatacodec.Codec[T], watchEnabled metadatacommon.WatchMode) provider.Provider[T] {
+func NewProvider[T gproto.Message](ctx context.Context, r *Raft, codec metadatacodec.Codec[T], watchEnabled metadatacommon.WatchMode) *Provider[T] {
 	ctx, cancel := context.WithCancel(ctx)
 	p := &Provider[T]{
 		codec:     codec,

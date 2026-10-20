@@ -15,6 +15,7 @@
 package option
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -242,11 +243,7 @@ func (mpo ProviderOptions) Validate() error {
 		if mpo.Raft.Address == "" {
 			return errors.New("raft-address must be set with metadata=raft")
 		}
-	case metadataconstant.NameFile:
-		if mpo.File.StatusPath() == "" {
-			return errors.New("metadata.file status path must be set with metadata=file")
-		}
-	case metadataconstant.NameMemory:
+	case metadataconstant.NameFile, metadataconstant.NameMemory:
 	default:
 		return errors.New(`must be one of "memory", "configmap", "raft" or "file"`)
 	}
@@ -402,20 +399,14 @@ func (fm *FileMetadata) applyLegacyConfigPath(configPath string) error {
 }
 
 func (fm FileMetadata) StatusPath() string {
-	return filePath(fm.Dir, fm.StatusName, DefaultFileStatusName)
+	return filePath(fm.Dir, cmp.Or(fm.StatusName, DefaultFileStatusName))
 }
 
 func (fm FileMetadata) ConfigPath() string {
-	return filePath(fm.Dir, fm.ConfigName, DefaultFileConfigName)
+	return filePath(fm.Dir, cmp.Or(fm.ConfigName, DefaultFileConfigName))
 }
 
-func filePath(dir, name, defaultName string) string {
-	if name == "" {
-		name = defaultName
-	}
-	if name == "" {
-		return ""
-	}
+func filePath(dir, name string) string {
 	if dir == "" {
 		return name
 	}
