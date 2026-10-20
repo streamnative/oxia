@@ -41,6 +41,11 @@ import (
 	"github.com/oxia-db/oxia/oxiad/common/crc"
 )
 
+func TestOxiaSlashSpanComparerMeetsPebbleContract(t *testing.T) {
+	keys := [][]byte{[]byte("a"), []byte("b"), []byte("c")}
+	assert.NoError(t, pebble.CheckComparer(OxiaSlashSpanComparer.EnsureDefaults(), keys, nil))
+}
+
 func TestPebbbleSimple(t *testing.T) {
 	factory, err := NewPebbleKVFactory(NewFactoryOptionsForTest(t))
 	assert.NoError(t, err)

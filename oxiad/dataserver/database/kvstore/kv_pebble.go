@@ -57,16 +57,17 @@ func AbbreviatedKeyDisableSlash(key []byte) uint64 {
 
 var (
 	OxiaSlashSpanComparer = &pebble.Comparer{
-		Compare:            compare.CompareWithSlash,
-		Equal:              pebble.DefaultComparer.Equal,
-		AbbreviatedKey:     AbbreviatedKeyDisableSlash,
-		FormatKey:          pebble.DefaultComparer.FormatKey,
-		FormatValue:        pebble.DefaultComparer.FormatValue,
-		Separator:          pebble.DefaultComparer.Separator,
-		Split:              pebble.DefaultComparer.Split,
-		Successor:          pebble.DefaultComparer.Successor,
-		ImmediateSuccessor: pebble.DefaultComparer.ImmediateSuccessor,
-		Name:               "oxia-slash-spans",
+		Compare:              compare.CompareWithSlash,
+		Equal:                pebble.DefaultComparer.Equal,
+		AbbreviatedKey:       AbbreviatedKeyDisableSlash,
+		FormatKey:            pebble.DefaultComparer.FormatKey,
+		FormatValue:          pebble.DefaultComparer.FormatValue,
+		Separator:            pebble.DefaultComparer.Separator,
+		Split:                pebble.DefaultComparer.Split,
+		ComparePointSuffixes: pebble.DefaultComparer.ComparePointSuffixes,
+		Successor:            pebble.DefaultComparer.Successor,
+		ImmediateSuccessor:   pebble.DefaultComparer.ImmediateSuccessor,
+		Name:                 "oxia-slash-spans",
 	}
 )
 
