@@ -3956,6 +3956,56 @@ func TestLeaderControllerBecomeLeaderFailsWhenTheFeatureEnableFailsToMarshal(t *
 	assert.False(t, lc.IsFeatureEnabled(proto.Feature_FEATURE_DB_CHECKSUM))
 }
 
+// A failed BecomeLeader leaves the controller fenced, as NewTerm does: it
+// doesn't keep the tracker, the follower cursors or the session manager of
+// the term it failed to lead.
+func TestLeaderControllerBecomeLeaderReleasesTheTermItFailsToLead(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		canceled bool
+		expected error
+	}{
+		{name: "wait for commit", canceled: true, expected: context.Canceled},
+		{name: "feature enable", expected: errInjected},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			kvFactory, walFactory := newHookFactories(t)
+			if test.canceled {
+				appendTestEntry(t, walFactory, marshalTestWrite(t, "a"))
+			}
+			lc := newHookedLeaderController(t, rpc.NewMockRpcClient(), kvFactory, walFactory).(*leaderController)
+			_, err := lc.NewTerm(&proto.NewTermRequest{Shard: 1, Term: 2})
+			require.NoError(t, err)
+			failing := &atomic.Bool{}
+			failing.Store(true)
+			failMarshals(lc, failing)
+
+			ctx, cancel := context.WithCancel(context.Background())
+			if test.canceled {
+				cancel()
+			}
+			defer cancel()
+			_, err = lc.BecomeLeader(ctx, &proto.BecomeLeaderRequest{
+				Shard:             1,
+				Term:              2,
+				ReplicationFactor: 2,
+				FollowerMaps:      map[string]*proto.EntryId{"f1": constant2.InvalidEntryId},
+				FeaturesSupported: []proto.Feature{proto.Feature_FEATURE_DB_CHECKSUM},
+			})
+			assert.ErrorIs(t, err, test.expected)
+
+			lc.RLock()
+			defer lc.RUnlock()
+			assert.Equal(t, proto.ServingStatus_FENCED, lc.status)
+			assert.Nil(t, lc.quorumAckTracker)
+			assert.Empty(t, lc.followers)
+			assert.Empty(t, lc.observers)
+			assert.Error(t, lc.termCtx.Err())
+			assert.Error(t, lc.sessionManager.(*sessionManager).ctx.Err())
+		})
+	}
+}
+
 func TestLeaderControllerBecomeLeaderRejectsMoreFollowersThanTheReplicationFactor(t *testing.T) {
 	lc := newHookedLeaderController(t, rpc.NewMockRpcClient(), &hookKVFactory{}, &hookWalFactory{})
 	_, err := lc.NewTerm(&proto.NewTermRequest{Shard: 1, Term: 1})

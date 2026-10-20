@@ -376,30 +376,7 @@ func (lc *leaderController) newTerm(req *proto.NewTermRequest) (*proto.NewTermRe
 	// not inherit a stale write-freeze from a previous (aborted) cutover.
 	lc.frozen.Store(false)
 
-	lc.unregisterOffsetGauges()
-
-	if lc.quorumAckTracker != nil {
-		// Closing the tracker waits for the callback that is running, which
-		// can be retrying an entry that failed to apply
-		lc.termCancel()
-		lc.quorumAckTracker.Close()
-		lc.quorumAckTracker = nil
-	}
-
-	for _, follower := range lc.followers {
-		follower.Close()
-	}
-
-	for _, observer := range lc.observers {
-		observer.Close()
-	}
-
-	for _, g := range lc.followerAckOffsetGauges {
-		g.Unregister()
-	}
-
-	lc.followers = nil
-	lc.observers = nil
+	lc.prepareNewTerm()
 
 	// The proposals return once their entry is appended to the wal, before it
 	// is synced, while the head is read from the last synced entry: wait for
@@ -427,23 +404,41 @@ func (lc *leaderController) newTerm(req *proto.NewTermRequest) (*proto.NewTermRe
 	}, nil
 }
 
+// prepareNewTerm closes what leading the term opened: the quorum tracker, the
+// follower and observer cursors, and their gauges. It must be called while
+// holding the leader lock.
+func (lc *leaderController) prepareNewTerm() {
+	lc.unregisterOffsetGauges()
+
+	if lc.quorumAckTracker != nil {
+		// Closing the tracker waits for the callback that is running, which
+		// can be retrying an entry that failed to apply
+		lc.termCancel()
+		lc.quorumAckTracker.Close()
+		lc.quorumAckTracker = nil
+	}
+
+	for _, follower := range lc.followers {
+		follower.Close()
+	}
+
+	for _, observer := range lc.observers {
+		observer.Close()
+	}
+
+	for _, g := range lc.followerAckOffsetGauges {
+		g.Unregister()
+	}
+
+	lc.followers = nil
+	lc.observers = nil
+}
+
+// becomeLeader must be called while holding the leader lock, once
+// BecomeLeader accepted the request. On failure, the caller releases what it
+// started.
 func (lc *leaderController) becomeLeader(ctx context.Context, req *proto.BecomeLeaderRequest) error {
-	lc.Lock()
-	defer lc.Unlock()
-
-	if lc.closed {
-		return constant.ErrResourceUnavailable
-	}
-
-	if lc.status != proto.ServingStatus_FENCED {
-		return constant.ErrInvalidStatus
-	}
-
 	term := lc.term.Load()
-	if req.Term != term {
-		return constant.ErrInvalidTerm
-	}
-
 	lc.replicationFactor = req.GetReplicationFactor()
 	lc.followers = make(map[string]FollowerCursor)
 	lc.observers = make(map[string]FollowerCursor)
@@ -532,9 +527,6 @@ func (lc *leaderController) becomeLeader(ctx context.Context, req *proto.BecomeL
 		// in the log ahead of every write of this term and the effective
 		// feature set never changes mid-term.
 		if err := lc.proposeFeaturesEnableLocked(ctx, proposeEnabledFeature); err != nil {
-			// Nothing was appended: fall back to the fenced state so the
-			// failed BecomeLeader leaves the controller where it found it.
-			lc.status = proto.ServingStatus_FENCED
 			return err
 		}
 	}
@@ -569,7 +561,33 @@ func (lc *leaderController) becomeLeader(ctx context.Context, req *proto.BecomeL
 //     possible that their head entry id is higher than the leader and
 //     therefore need truncating.
 func (lc *leaderController) BecomeLeader(ctx context.Context, req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error) {
-	if err := lc.becomeLeader(ctx, req); err != nil {
+	lc.Lock()
+	if lc.closed {
+		lc.Unlock()
+		return nil, constant.ErrResourceUnavailable
+	}
+	if lc.status != proto.ServingStatus_FENCED {
+		lc.Unlock()
+		return nil, constant.ErrInvalidStatus
+	}
+	if req.Term != lc.term.Load() {
+		lc.Unlock()
+		return nil, constant.ErrInvalidTerm
+	}
+
+	err := lc.becomeLeader(ctx, req)
+	if err != nil {
+		lc.status = proto.ServingStatus_FENCED
+		lc.replicationFactor = 0
+		lc.prepareNewTerm()
+		lc.sessionManager.stop()
+	}
+	sessionManager := lc.sessionManager
+	lc.Unlock()
+	if err != nil {
+		// Wait for the expiry scheduler of the stopped session manager only
+		// once the leader lock is released, see sessionManager.stop.
+		sessionManager.Close()
 		return nil, err
 	}
 	return &proto.BecomeLeaderResponse{}, nil
