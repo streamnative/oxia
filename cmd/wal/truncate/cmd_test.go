@@ -25,6 +25,7 @@ import (
 	"github.com/oxia-db/oxia/cmd/wal/common"
 	"github.com/oxia-db/oxia/common/proto"
 	"github.com/oxia-db/oxia/oxiad/dataserver/wal"
+	"github.com/oxia-db/oxia/oxiad/dataserver/wal/codec"
 )
 
 func TestExecTruncatesAfterLastSafeEntry(t *testing.T) {
@@ -34,6 +35,15 @@ func TestExecTruncatesAfterLastSafeEntry(t *testing.T) {
 	require.NoError(t, execute("--last-safe-entry", "2"))
 
 	assert.EqualValues(t, 2, lastOffset(t))
+}
+
+func TestExecRejectsLastSafeEntryAfterLastEntry(t *testing.T) {
+	setWalOption(t, t.TempDir(), "default")
+	writeWal(t, 5)
+
+	assert.ErrorIs(t, execute("--last-safe-entry", "10"), codec.ErrOffsetOutOfBounds)
+
+	assert.EqualValues(t, 4, lastOffset(t))
 }
 
 func TestExecTruncatesLastEntry(t *testing.T) {
