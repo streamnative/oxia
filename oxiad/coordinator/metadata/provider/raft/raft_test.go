@@ -27,6 +27,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/oxia-db/oxia/common/failpoint"
 )
 
 // testRaftAddress binds the transport to a free port: the node ID, and so the
@@ -99,6 +101,20 @@ func TestNewFailsOnCorruptLog(t *testing.T) {
 
 	_, err = New(testRaftAddress, []string{testRaftAddress}, dataDir, nil)
 	require.ErrorContains(t, err, "failed to create raft node")
+}
+
+func TestNewFailsToCheckExistingState(t *testing.T) {
+	dataDir := t.TempDir()
+	failpointErr := errors.New("failpoint")
+	_, err := newRaft(testRaftAddress, []string{testRaftAddress}, dataDir, nil, failpoint.New(map[string]func() error{
+		"new.hasExistingState": func() error { return failpointErr },
+	}))
+	require.ErrorIs(t, err, failpointErr)
+
+	// The failed start released the address and the data dir
+	r, err := New(testRaftAddress, []string{testRaftAddress}, dataDir, nil)
+	require.NoError(t, err)
+	require.NoError(t, r.Close())
 }
 
 func TestNewFailsToBootstrapWithoutNodes(t *testing.T) {

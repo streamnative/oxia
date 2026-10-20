@@ -26,6 +26,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/oxia-db/oxia/common/failpoint"
 	commonproto "github.com/oxia-db/oxia/common/proto"
 	metadatacommon "github.com/oxia-db/oxia/oxiad/coordinator/metadata/common"
 	metadatacodec "github.com/oxia-db/oxia/oxiad/coordinator/metadata/common/codec"
@@ -165,6 +166,39 @@ func TestCloseEndsWaitToBecomeLeader(t *testing.T) {
 	require.NoError(t, leader.Close())
 	requireBecomesLeader(t, acquired)
 	require.NoError(t, follower.Close())
+}
+
+// A provider closed after its wait took the lock, but before the wait returned,
+// releases the lock in the wait.
+func TestCloseEndsWaitToBecomeLeaderAfterLockAcquired(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "metadata")
+	var p statusProvider
+	p, err := newProvider(t.Context(), path, metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled, "test",
+		failpoint.New(map[string]func() error{
+			"waitToBecomeLeader.locked": func() error { return p.Close() },
+		}))
+	require.NoError(t, err)
+
+	_, err = p.WaitToBecomeLeader()
+	require.ErrorIs(t, err, context.Canceled)
+
+	follower := newTestProvider(t, path)
+	requireBecomesLeader(t, startWaitToBecomeLeader(follower))
+	require.NoError(t, follower.Close())
+}
+
+// A lock that fails to be released is only logged: closing the provider still
+// succeeds.
+func TestCloseIgnoresUnlockFailure(t *testing.T) {
+	p, err := newProvider(t.Context(), filepath.Join(t.TempDir(), "metadata"), metadatacodec.ClusterStatusCodec,
+		metadatacommon.WatchDisabled, "test", failpoint.New(map[string]func() error{
+			"close.unlock": func() error { return errors.New("failpoint") },
+		}))
+	require.NoError(t, err)
+	_, err = p.WaitToBecomeLeader()
+	require.NoError(t, err)
+
+	require.NoError(t, p.Close())
 }
 
 // A writer that rewrites the file in place, as os.WriteFile does, truncates it

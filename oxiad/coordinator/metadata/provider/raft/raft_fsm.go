@@ -23,6 +23,7 @@ import (
 	"github.com/hashicorp/raft"
 	"go.uber.org/multierr"
 
+	"github.com/oxia-db/oxia/common/failpoint"
 	metadatacodec "github.com/oxia-db/oxia/oxiad/coordinator/metadata/common/codec"
 )
 
@@ -39,6 +40,7 @@ type stateContainer struct {
 	Documents   map[string]*documentContainer `json:"-"`
 	logger      *slog.Logger
 	interceptor Interceptor
+	failpoints  *failpoint.Failpoints
 }
 
 func newStateContainer(logger *slog.Logger, interceptor Interceptor) *stateContainer {
@@ -51,6 +53,9 @@ func newStateContainer(logger *slog.Logger, interceptor Interceptor) *stateConta
 
 // Apply applies a Raft log entry to the FSM.
 func (sc *stateContainer) Apply(logEntry *raft.Log) any {
+	if err := sc.failpoints.Trigger("apply"); err != nil {
+		return err
+	}
 	// Each log entry contains the whole state
 	opCmd := raftOpCmd{}
 	err := json.Unmarshal(logEntry.Data, &opCmd)

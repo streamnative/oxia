@@ -36,6 +36,7 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 
 	"github.com/oxia-db/oxia/common/concurrent"
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/common/metric"
 	"github.com/oxia-db/oxia/common/process"
 	commonproto "github.com/oxia-db/oxia/common/proto"
@@ -82,7 +83,8 @@ type Provider[T gproto.Message] struct {
 
 	cache *cache.Cache[provider.Versioned[T]]
 
-	logger *slog.Logger
+	logger     *slog.Logger
+	failpoints *failpoint.Failpoints
 }
 
 func NewProvider[T gproto.Message](
@@ -93,7 +95,20 @@ func NewProvider[T gproto.Message](
 	watchEnabled metadatacommon.WatchMode,
 	name string,
 ) provider.Provider[T] {
+	return newProvider(ctx, kc, namespace, configMapName, codec, watchEnabled, name, nil)
+}
+
+func newProvider[T gproto.Message](
+	ctx context.Context,
+	kc kubernetes.Interface,
+	namespace, configMapName string,
+	codec metadatacodec.Codec[T],
+	watchEnabled metadatacommon.WatchMode,
+	name string,
+	failpoints *failpoint.Failpoints,
+) *Provider[T] {
 	m := &Provider[T]{
+		failpoints:    failpoints,
 		kubernetes:    kc,
 		namespace:     namespace,
 		configMapName: configMapName,
@@ -198,7 +213,7 @@ func (m *Provider[T]) write(snapshot provider.Versioned[T]) (*provider.Versioned
 	}
 	cmData := makeDesiredConfigMap(m.configMapName, m.codec.GetKey(), data, snapshot.Version)
 	desiredBytes, err := json.Marshal(cmData)
-	if err != nil {
+	if err = m.failpoints.Fail("store.marshal", err); err != nil {
 		return nil, err
 	}
 
