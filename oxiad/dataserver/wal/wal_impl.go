@@ -372,9 +372,7 @@ func (t *wal) trim(firstOffset int64, generation int64, beforeDelete func() erro
 }
 
 func (t *wal) Close() error {
-	if err := t.trimmer.Close(); err != nil {
-		return err
-	}
+	t.trimmer.Close()
 
 	t.Lock()
 	defer t.Unlock()

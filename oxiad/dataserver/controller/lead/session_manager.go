@@ -18,7 +18,6 @@ import (
 	"container/heap"
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/url"
 	"strings"
@@ -95,7 +94,7 @@ func IsSessionKey(key string) bool {
 // --- SessionManager
 
 type SessionManager interface {
-	io.Closer
+	Close()
 	CreateSession(request *proto.CreateSessionRequest) (*proto.CreateSessionResponse, error)
 	KeepAlive(sessionId int64) error
 	CloseSession(request *proto.CloseSessionRequest) (*proto.CloseSessionResponse, error)
@@ -458,15 +457,13 @@ func (sm *sessionManager) readOrphanedEphemerals(sessionKeys []string, shadowKey
 
 // Close stops the session manager and waits for its expiry scheduler to exit.
 // It must not be called while holding the leader lock, see stop.
-func (sm *sessionManager) Close() error {
+func (sm *sessionManager) Close() {
 	sm.stop()
 
 	// Wait for the expiry scheduler outside the manager lock: it acquires
 	// the lock to finish an in-flight expiry cycle — waiting under the lock
 	// would deadlock.
 	sm.latch.Wait()
-
-	return nil
 }
 
 // stop cancels the session manager and drops its sessions, without waiting for

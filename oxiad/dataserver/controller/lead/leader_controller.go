@@ -297,9 +297,7 @@ func (lc *leaderController) NewTerm(req *proto.NewTermRequest) (*proto.NewTermRe
 
 	// newTerm stopped the session manager: wait for its expiry scheduler only
 	// once the leader lock is released, see sessionManager.stop.
-	if err = sessionManager.Close(); err != nil {
-		return nil, err
-	}
+	sessionManager.Close()
 	return res, nil
 }
 
@@ -354,22 +352,16 @@ func (lc *leaderController) newTerm(req *proto.NewTermRequest) (*proto.NewTermRe
 		// Closing the tracker waits for the callback that is running, which
 		// can be retrying an entry that failed to apply
 		lc.termCancel()
-		if err := lc.quorumAckTracker.Close(); err != nil {
-			return nil, err
-		}
+		lc.quorumAckTracker.Close()
 		lc.quorumAckTracker = nil
 	}
 
 	for _, follower := range lc.followers {
-		if err := follower.Close(); err != nil {
-			return nil, err
-		}
+		follower.Close()
 	}
 
 	for _, observer := range lc.observers {
-		if err := observer.Close(); err != nil {
-			return nil, err
-		}
+		observer.Close()
 	}
 
 	for _, g := range lc.followerAckOffsetGauges {
@@ -650,9 +642,7 @@ func (lc *leaderController) RemoveObserver(req *proto.RemoveObserverRequest) (*p
 		return &proto.RemoveObserverResponse{}, nil
 	}
 
-	if err := observer.Close(); err != nil {
-		return nil, err
-	}
+	observer.Close()
 
 	delete(lc.observers, observerKey)
 	delete(lc.followerAckOffsetGauges, observerKey)
@@ -1574,7 +1564,8 @@ func (lc *leaderController) Close() error {
 
 	// close stopped the session manager: wait for its expiry scheduler only
 	// once the leader lock is released, see sessionManager.stop.
-	return multierr.Append(err, sessionManager.Close())
+	sessionManager.Close()
+	return err
 }
 
 func (lc *leaderController) close() error {
@@ -1586,18 +1577,18 @@ func (lc *leaderController) close() error {
 
 	var err error
 	if lc.quorumAckTracker != nil {
-		err = multierr.Append(err, lc.quorumAckTracker.Close())
+		lc.quorumAckTracker.Close()
 	}
 	lc.quorumAckTracker = nil
 
 	lc.waitGroup.Wait()
 	for _, follower := range lc.followers {
-		err = multierr.Append(err, follower.Close())
+		follower.Close()
 	}
 	lc.followers = nil
 
 	for _, observer := range lc.observers {
-		err = multierr.Append(err, observer.Close())
+		observer.Close()
 	}
 	lc.observers = nil
 
@@ -1716,7 +1707,8 @@ func (lc *leaderController) DeleteShard(request *proto.DeleteShardRequest) (*pro
 	// deleteShard leaves the controller closed, and so the session manager
 	// stopped: wait for its expiry scheduler only once the leader lock is
 	// released, see sessionManager.stop.
-	return res, multierr.Append(err, sessionManager.Close())
+	sessionManager.Close()
+	return res, err
 }
 
 // deleteShard must be called while holding the leader lock.
