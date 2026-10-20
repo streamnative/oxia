@@ -1965,7 +1965,7 @@ func TestReverseReaderReadNextFailsOnEmptyWal(t *testing.T) {
 	assert.NoError(t, f.Close())
 }
 
-func TestWalAppendFailsWhenSegmentAfterClearCannotBeOpened(t *testing.T) {
+func TestWalAppendRetriesSegmentAfterClearThatCannotBeOpened(t *testing.T) {
 	fs := newFaultFS()
 	w := newFaultWal(t, fs, false)
 	fs.failNth(opOpenFile, txnPath(w.walPath, 5), 1)
@@ -1973,6 +1973,11 @@ func TestWalAppendFailsWhenSegmentAfterClearCannotBeOpened(t *testing.T) {
 	err := w.AppendAsync(&proto.LogEntry{Term: 1, Offset: 5, Value: []byte("v")})
 	assert.ErrorIs(t, err, errInjected)
 	assert.EqualValues(t, InvalidOffset, w.LastOffset())
+
+	require.NoError(t, w.AppendAsync(&proto.LogEntry{Term: 1, Offset: 5, Value: []byte("v")}))
+	entry, err := readEntry(w, 5)
+	require.NoError(t, err)
+	assert.EqualValues(t, 5, entry.Offset)
 
 	assert.NoError(t, w.Close())
 }
@@ -2005,6 +2010,37 @@ func TestWalAppendFailsWhenRolledSegmentCannotBeClosed(t *testing.T) {
 			assert.NoError(t, w.Close())
 		})
 	}
+}
+
+func TestWalAppendRetriesRolloverAfterSegmentCreationFailure(t *testing.T) {
+	w, _, offset := failSegmentCreationOnRollover(t)
+
+	require.NoError(t, w.AppendAsync(&proto.LogEntry{Term: 1, Offset: offset, Value: []byte("v")}))
+	for o := int64(0); o <= offset; o++ {
+		entry, err := readEntry(w, o)
+		require.NoError(t, err)
+		assert.EqualValues(t, o, entry.Offset)
+	}
+
+	assert.NoError(t, w.Close())
+}
+
+func TestWalRecoversSegmentThatFailedToBeCreated(t *testing.T) {
+	w, options, offset := failSegmentCreationOnRollover(t)
+	require.NoError(t, w.Close())
+
+	reopened, err := newWal(constant.DefaultNamespace, shard, options, nil, time2.SystemClock, time.Hour)
+	require.NoError(t, err)
+	assert.EqualValues(t, offset-1, reopened.LastOffset())
+
+	require.NoError(t, reopened.AppendAsync(&proto.LogEntry{Term: 1, Offset: offset, Value: []byte("v")}))
+	for o := int64(0); o <= offset; o++ {
+		entry, err := readEntry(reopened, o)
+		require.NoError(t, err)
+		assert.EqualValues(t, o, entry.Offset)
+	}
+
+	assert.NoError(t, reopened.Close())
 }
 
 func TestWalSyncReportsRolledSegmentFailure(t *testing.T) {
@@ -2556,6 +2592,38 @@ func appendAsyncUntilRolledOver(t *testing.T, w *wal) {
 	for offset := w.lastAppendedOffset.Load() + 1; w.currentSegment.BaseOffset() == 0; offset++ {
 		require.NoError(t, w.AppendAsync(&proto.LogEntry{Term: 1, Offset: offset, Value: []byte("v")}))
 	}
+}
+
+// failSegmentCreationOnRollover appends entries to a wal with segments of 128
+// bytes, failing the extension of the next segment file to its size, and
+// returns the wal, its options and the offset of the append that failed.
+func failSegmentCreationOnRollover(t *testing.T) (Wal, *FactoryOptions, int64) {
+	t.Helper()
+	fs := newFaultFS()
+	options := &FactoryOptions{BaseWalDir: t.TempDir(), SegmentSize: 128, fs: fs}
+	w, err := newWal(constant.DefaultNamespace, shard, options, nil, time2.SystemClock, time.Hour)
+	require.NoError(t, err)
+	walPath := w.(*wal).walPath
+	firstSegment := txnPath(walPath, 0)
+	var writes atomic.Int32
+	fs.setHook(func(op fsOp, name string) error {
+		if op == opWrite && name != firstSegment && strings.HasSuffix(name, codec.SupportedCodecs[0].GetTxnExtension()) &&
+			writes.Add(1) == 1 {
+			return errInjected
+		}
+		return nil
+	})
+
+	offset := int64(0)
+	for ; offset < 100; offset++ {
+		if err = w.AppendAsync(&proto.LogEntry{Term: 1, Offset: offset, Value: []byte("v")}); err != nil {
+			break
+		}
+	}
+	require.ErrorIs(t, err, errInjected)
+	require.ErrorContains(t, err, "failed to rollover segment")
+	require.FileExists(t, txnPath(walPath, offset))
+	return w, options, offset
 }
 
 // txnPath returns the path of the txn file of the segment at baseOffset in dir.
