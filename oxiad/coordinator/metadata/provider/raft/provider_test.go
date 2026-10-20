@@ -37,8 +37,7 @@ import (
 func TestProviderCacheFollowsAppliedEntries(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	r := &Raft{logger: logger, sc: newStateContainer(logger, nil)}
-	p, ok := NewProvider(t.Context(), r, metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled).(*Provider[*commonproto.ClusterStatus])
-	require.True(t, ok)
+	p := NewProvider(t.Context(), r, metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled)
 	defer func() { require.NoError(t, p.Close()) }()
 	r.sc.interceptor = p
 	require.Empty(t, loadedValue(t, p).GetInstanceId())

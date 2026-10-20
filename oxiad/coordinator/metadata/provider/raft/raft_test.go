@@ -90,6 +90,21 @@ func TestNewFailsOnSnapshotStoreError(t *testing.T) {
 	require.ErrorContains(t, err, "failed to create snapshot store")
 }
 
+func TestNewFailsWhenSnapshotsCannotBeListed(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	dataDir := t.TempDir()
+	snapshotsDir := filepath.Join(dataDir, testRaftAddress, "snapshots")
+	require.NoError(t, os.MkdirAll(snapshotsDir, 0o755))
+	require.NoError(t, os.Chmod(snapshotsDir, 0o300))
+	t.Cleanup(func() { assert.NoError(t, os.Chmod(snapshotsDir, 0o755)) })
+
+	_, err := New(testRaftAddress, []string{testRaftAddress}, dataDir, nil)
+	require.ErrorContains(t, err, "failed to check existing state")
+	assert.ErrorContains(t, err, "permission denied")
+}
+
 func TestNewFailsOnCorruptLog(t *testing.T) {
 	dataDir := t.TempDir()
 	store, err := newKVRaftStore(filepath.Join(dataDir, testRaftAddress, "store"))

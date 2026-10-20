@@ -107,14 +107,17 @@ func New(
 		return nil, errors.Wrap(err, "failed to create snapshot store")
 	}
 
+	hasState, err := hashicorpraft.HasExistingState(metadataRaft.store, metadataRaft.store, snapshotStore)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to check existing state")
+	}
+
 	metadataRaft.node, err = hashicorpraft.NewRaft(config, metadataRaft.sc, metadataRaft.store, metadataRaft.store, snapshotStore, metadataRaft.transport)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create raft node")
 	}
 
-	if hasState, err := hashicorpraft.HasExistingState(metadataRaft.store, metadataRaft.store, snapshotStore); err != nil {
-		return nil, errors.Wrap(err, "failed to check existing state")
-	} else if !hasState {
+	if !hasState {
 		configuration := hashicorpraft.Configuration{
 			Servers: getRaftServers(raftBootstrapNodes),
 		}
