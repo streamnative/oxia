@@ -15,11 +15,12 @@
 package wal
 
 import (
+	"github.com/oxia-db/oxia/oxiad/common/vfs"
 	"github.com/oxia-db/oxia/oxiad/dataserver/wal/codec"
 )
 
 type segmentConfig struct {
-	fs            codec.FS
+	fs            vfs.FS
 	codec         codec.Codec
 	segmentExists bool
 	txnPath       string
@@ -27,7 +28,7 @@ type segmentConfig struct {
 	baseOffset    int64
 }
 
-func newSegmentConfig(fs codec.FS, basePath string, baseOffset int64) (*segmentConfig, error) {
+func newSegmentConfig(fs vfs.FS, basePath string, baseOffset int64) (*segmentConfig, error) {
 	_codec, segmentExists, err := codec.GetOrCreate(fs, segmentPath(basePath, baseOffset))
 	if err != nil {
 		return nil, err

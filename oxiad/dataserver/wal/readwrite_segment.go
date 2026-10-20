@@ -27,6 +27,7 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 
+	"github.com/oxia-db/oxia/oxiad/common/vfs"
 	"github.com/oxia-db/oxia/oxiad/dataserver/wal/codec"
 )
 
@@ -65,7 +66,7 @@ type readWriteSegment struct {
 	// and its index entry. Read loads it without taking the mutex.
 	lastOffset    atomic.Int64
 	lastCrc       uint32
-	txnFile       codec.File
+	txnFile       vfs.File
 	txnMappedFile mmap.MMap
 
 	currentFileOffset uint32
@@ -81,7 +82,7 @@ type readWriteSegment struct {
 	pendingFileSync atomic.Bool
 }
 
-func newReadWriteSegment(fs codec.FS, basePath string, baseOffset int64, segmentSize uint32, lastCrc uint32,
+func newReadWriteSegment(fs vfs.FS, basePath string, baseOffset int64, segmentSize uint32, lastCrc uint32,
 	commitOffsetProvider CommitOffsetProvider) (ReadWriteSegment, error) {
 	var err error
 	if _, err = fs.Stat(basePath); os.IsNotExist(err) {
@@ -117,7 +118,7 @@ func newReadWriteSegment(fs codec.FS, basePath string, baseOffset int64, segment
 	// remove it, so that a crash before the Close that rewrites it cannot
 	// leave it lying next to newer txn data. Close writes a fresh one.
 	if c.segmentExists {
-		if err = codec.RemoveFileIfExists(fs, c.idxPath); err != nil {
+		if err = vfs.RemoveFileIfExists(fs, c.idxPath); err != nil {
 			return nil, multierr.Append(
 				errors.Wrapf(err, "failed to remove stale segment index file %s", c.idxPath),
 				ms.txnFile.Close())
@@ -337,7 +338,7 @@ func (ms *readWriteSegment) Close() error {
 func (ms *readWriteSegment) Delete() error {
 	return multierr.Combine(
 		ms.Close(),
-		codec.RemoveFileIfExists(ms.c.fs, ms.c.idxPath),
+		vfs.RemoveFileIfExists(ms.c.fs, ms.c.idxPath),
 		ms.c.fs.Remove(ms.c.txnPath),
 	)
 }
@@ -371,7 +372,7 @@ func (ms *readWriteSegment) Truncate(lastSafeOffset int64) error {
 // initFileWithZeroes extends the file to its full segment size, without
 // fsync-ing it: the file metadata is made durable by SyncFileIfNeeded before
 // the first entries of the segment get acknowledged.
-func initFileWithZeroes(f codec.File, size uint32) error {
+func initFileWithZeroes(f vfs.File, size uint32) error {
 	if _, err := f.Seek(int64(size), 0); err != nil {
 		return err
 	}

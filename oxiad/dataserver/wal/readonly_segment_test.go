@@ -24,20 +24,21 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/oxia-db/oxia/oxiad/common/vfs"
 	"github.com/oxia-db/oxia/oxiad/dataserver/wal/codec"
 )
 
 func TestReadOnlySegment(t *testing.T) {
 	path := t.TempDir()
 
-	rw, err := newReadWriteSegment(codec.OSFS{}, path, 0, 128*1024, 0, nil)
+	rw, err := newReadWriteSegment(vfs.OSFS{}, path, 0, 128*1024, 0, nil)
 	assert.NoError(t, err)
 	for i := int64(0); i < 10; i++ {
 		assert.NoError(t, rw.Append(i, []byte(fmt.Sprintf("entry-%d", i))))
 	}
 	assert.NoError(t, rw.Close())
 
-	ro, err := newReadOnlySegment(codec.OSFS{}, path, 0)
+	ro, err := newReadOnlySegment(vfs.OSFS{}, path, 0)
 	assert.NoError(t, err)
 	assert.EqualValues(t, 0, ro.BaseOffset())
 	assert.EqualValues(t, 9, ro.LastOffset())
@@ -64,7 +65,7 @@ func TestReadOnlySegment(t *testing.T) {
 func TestRO_auto_recover_empty_index(t *testing.T) {
 	path := t.TempDir()
 
-	rw, err := newReadWriteSegment(codec.OSFS{}, path, 0, 128*1024, 0, nil)
+	rw, err := newReadWriteSegment(vfs.OSFS{}, path, 0, 128*1024, 0, nil)
 	assert.NoError(t, err)
 	for i := int64(0); i < 10; i++ {
 		assert.NoError(t, rw.Append(i, []byte(fmt.Sprintf("entry-%d", i))))
@@ -75,9 +76,9 @@ func TestRO_auto_recover_empty_index(t *testing.T) {
 	// Replace the index with a valid empty one, as written by the close of a
 	// previous, then-empty incarnation of the segment
 	assert.NoError(t, os.Remove(rwSegment.c.idxPath))
-	assert.NoError(t, rwSegment.c.codec.WriteIndex(codec.OSFS{}, rwSegment.c.idxPath, nil))
+	assert.NoError(t, rwSegment.c.codec.WriteIndex(vfs.OSFS{}, rwSegment.c.idxPath, nil))
 
-	ro, err := newReadOnlySegment(codec.OSFS{}, path, 0)
+	ro, err := newReadOnlySegment(vfs.OSFS{}, path, 0)
 	assert.NoError(t, err)
 	assert.EqualValues(t, 0, ro.BaseOffset())
 	assert.EqualValues(t, 9, ro.LastOffset())
@@ -97,7 +98,7 @@ func TestRO_auto_recover_empty_index(t *testing.T) {
 func TestRO_EmptySegment(t *testing.T) {
 	path := t.TempDir()
 
-	rw, err := newReadWriteSegment(codec.OSFS{}, path, 0, 128*1024, 0, nil)
+	rw, err := newReadWriteSegment(vfs.OSFS{}, path, 0, 128*1024, 0, nil)
 	assert.NoError(t, err)
 	rwSegment := rw.(*readWriteSegment)
 	assert.NoError(t, rw.Close())
@@ -105,7 +106,7 @@ func TestRO_EmptySegment(t *testing.T) {
 	_, err = os.Stat(rwSegment.c.idxPath)
 	assert.ErrorIs(t, err, os.ErrNotExist)
 
-	ro, err := newReadOnlySegment(codec.OSFS{}, path, 0)
+	ro, err := newReadOnlySegment(vfs.OSFS{}, path, 0)
 	assert.Nil(t, ro)
 	assert.ErrorIs(t, err, ErrEmptySegment)
 }
@@ -113,7 +114,7 @@ func TestRO_EmptySegment(t *testing.T) {
 func TestRO_auto_recover_broken_index(t *testing.T) {
 	path := t.TempDir()
 
-	rw, err := newReadWriteSegment(codec.OSFS{}, path, 0, 128*1024, 0, nil)
+	rw, err := newReadWriteSegment(vfs.OSFS{}, path, 0, 128*1024, 0, nil)
 	assert.NoError(t, err)
 	for i := int64(0); i < 10; i++ {
 		assert.NoError(t, rw.Append(i, []byte(fmt.Sprintf("entry-%d", i))))
@@ -131,7 +132,7 @@ func TestRO_auto_recover_broken_index(t *testing.T) {
 	_, err = file.WriteAt(faultData, 0)
 	assert.NoError(t, err)
 
-	ro, err := newReadOnlySegment(codec.OSFS{}, path, 0)
+	ro, err := newReadOnlySegment(vfs.OSFS{}, path, 0)
 	assert.NoError(t, err)
 	assert.EqualValues(t, 0, ro.BaseOffset())
 	assert.EqualValues(t, 9, ro.LastOffset())
@@ -154,7 +155,7 @@ func TestRO_auto_recover_broken_index(t *testing.T) {
 }
 
 func TestReadOnlySegmentNewFailsWhenTxnFileIsMissing(t *testing.T) {
-	_, err := newReadOnlySegment(codec.OSFS{}, t.TempDir(), 0)
+	_, err := newReadOnlySegment(vfs.OSFS{}, t.TempDir(), 0)
 	assert.ErrorIs(t, err, os.ErrNotExist)
 	assert.ErrorContains(t, err, "failed to open segment txn file")
 }
@@ -171,11 +172,11 @@ func TestReadOnlySegmentNewFailsWhenTxnFileCannotBeStatted(t *testing.T) {
 
 func TestReadOnlySegmentNewFailsWhenTxnFileIsEmpty(t *testing.T) {
 	dir := t.TempDir()
-	c, err := newSegmentConfig(codec.OSFS{}, dir, 0)
+	c, err := newSegmentConfig(vfs.OSFS{}, dir, 0)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(c.txnPath, nil, 0o644))
 
-	_, err = newReadOnlySegment(codec.OSFS{}, dir, 0)
+	_, err = newReadOnlySegment(vfs.OSFS{}, dir, 0)
 	assert.ErrorContains(t, err, "failed to map segment txn file")
 }
 
@@ -185,7 +186,7 @@ func TestReadOnlySegmentNewFailsWhenIndexIsUnreadable(t *testing.T) {
 	require.NoError(t, os.Remove(c.idxPath))
 	require.NoError(t, os.Mkdir(c.idxPath, 0o755))
 
-	_, err := newReadOnlySegment(codec.OSFS{}, dir, 0)
+	_, err := newReadOnlySegment(vfs.OSFS{}, dir, 0)
 	assert.ErrorContains(t, err, "failed to decode segment index file")
 }
 
@@ -212,7 +213,7 @@ func TestReadOnlySegmentNewFailsWhenIndexRebuildFindsCorruption(t *testing.T) {
 	require.NoError(t, os.Remove(c.idxPath))
 	corruptPayload(t, c, offsets[1])
 
-	_, err := newReadOnlySegment(codec.OSFS{}, dir, 0)
+	_, err := newReadOnlySegment(vfs.OSFS{}, dir, 0)
 	assert.ErrorIs(t, err, codec.ErrDataCorrupted)
 	assert.ErrorContains(t, err, "failed to rebuild segment index file")
 }
@@ -226,7 +227,7 @@ func TestReadOnlySegmentNewServesRebuiltIndexWhenItCannotBeWritten(t *testing.T)
 	require.NoError(t, os.Chmod(dir, 0o500))
 	t.Cleanup(func() { assert.NoError(t, os.Chmod(dir, 0o700)) })
 
-	ro, err := newReadOnlySegment(codec.OSFS{}, dir, 0)
+	ro, err := newReadOnlySegment(vfs.OSFS{}, dir, 0)
 	require.NoError(t, err)
 	t.Cleanup(func() { assert.NoError(t, ro.Close()) })
 
@@ -244,7 +245,7 @@ func TestReadOnlySegmentNewFailsWhenLastRecordIsCorrupted(t *testing.T) {
 	c, offsets := writeSegment(t, dir, 3)
 	corruptPayload(t, c, offsets[2])
 
-	_, err := newReadOnlySegment(codec.OSFS{}, dir, 0)
+	_, err := newReadOnlySegment(vfs.OSFS{}, dir, 0)
 	assert.ErrorIs(t, err, codec.ErrDataCorrupted)
 }
 
@@ -253,7 +254,7 @@ func TestReadOnlySegmentReadReportsCorruptedRecord(t *testing.T) {
 	c, offsets := writeSegment(t, dir, 3)
 	corruptPayload(t, c, offsets[1])
 
-	ro, err := newReadOnlySegment(codec.OSFS{}, dir, 0)
+	ro, err := newReadOnlySegment(vfs.OSFS{}, dir, 0)
 	require.NoError(t, err)
 	t.Cleanup(func() { assert.NoError(t, ro.Close()) })
 
@@ -270,9 +271,9 @@ func TestReadOnlySegmentReadReportsEmptyRecord(t *testing.T) {
 	for _, o := range []uint32{offsets[0], 1000, offsets[2]} {
 		idx = binary.BigEndian.AppendUint32(idx, o)
 	}
-	require.NoError(t, c.codec.WriteIndex(codec.OSFS{}, c.idxPath, idx))
+	require.NoError(t, c.codec.WriteIndex(vfs.OSFS{}, c.idxPath, idx))
 
-	ro, err := newReadOnlySegment(codec.OSFS{}, dir, 0)
+	ro, err := newReadOnlySegment(vfs.OSFS{}, dir, 0)
 	require.NoError(t, err)
 	t.Cleanup(func() { assert.NoError(t, ro.Close()) })
 
@@ -285,7 +286,7 @@ func TestReadOnlySegmentReadReportsEmptyRecord(t *testing.T) {
 // records.
 func writeSegment(t *testing.T, dir string, entries int) (*segmentConfig, []uint32) {
 	t.Helper()
-	rw, err := newReadWriteSegment(codec.OSFS{}, dir, 0, 1024, 0, nil)
+	rw, err := newReadWriteSegment(vfs.OSFS{}, dir, 0, 1024, 0, nil)
 	require.NoError(t, err)
 	for i := int64(0); i < int64(entries); i++ {
 		require.NoError(t, rw.Append(i, []byte(fmt.Sprintf("entry-%d", i))))
