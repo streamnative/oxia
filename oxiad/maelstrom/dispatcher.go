@@ -16,10 +16,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"log/slog"
-	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -206,7 +203,8 @@ func (d *dispatcher) onOxiaProxiedMessage(msgType MsgType, m any, _ pb.Message) 
 			})
 		}
 
-	case MsgTypeError:
+	default:
+		// MsgTypeError, the last of the types that getOrigin accepts
 		e := m.(*Message[ErrorResponse])
 		if ch, ok := d.requests[inReplyTo]; ok {
 			ch <- ResponseError{
@@ -220,8 +218,6 @@ func (d *dispatcher) onOxiaProxiedMessage(msgType MsgType, m any, _ pb.Message) 
 			delete(d.proxiedRequests, inReplyTo)
 			sendErrorWithCode(pr.msgId, pr.origin, e.Body.Code, e.Body.Text)
 		}
-	default:
-		return errors.Errorf("unknown message type %s", msgType)
 	}
 	return nil
 }
@@ -367,6 +363,9 @@ func (d *dispatcher) proxyToLeader(msgType MsgType, m any) error {
 	return sendResponse(pm)
 }
 
+// How long RpcRequest waits for the response.
+var rpcRequestTimeout = 5 * time.Second
+
 func (d *dispatcher) RpcRequest(ctx context.Context, dest string, msgType MsgType, message pb.Message) (pb.Message, error) {
 	msgId := msgIdGenerator.Add(1)
 
@@ -386,11 +385,6 @@ func (d *dispatcher) RpcRequest(ctx context.Context, dest string, msgType MsgTyp
 		},
 	}
 
-	b, err := json.Marshal(req)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to serialize json")
-	}
-
 	d.Lock()
 	ch := make(chan ResponseError, 1)
 	d.requests[msgId] = ch
@@ -398,15 +392,19 @@ func (d *dispatcher) RpcRequest(ctx context.Context, dest string, msgType MsgTyp
 
 	slog.Info(
 		"Sending message",
-		slog.Any("msg", b),
+		slog.Any("msg", req),
 	)
-
-	fmt.Fprintln(os.Stdout, string(b))
+	if err := sendResponse(req); err != nil {
+		d.Lock()
+		delete(d.requests, msgId)
+		d.Unlock()
+		return nil, err
+	}
 
 	select {
 	case w := <-ch:
 		return w.msg, w.err
-	case <-time.After(5 * time.Second):
+	case <-time.After(rpcRequestTimeout):
 		return nil, errors.New("timed out")
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -415,10 +413,10 @@ func (d *dispatcher) RpcRequest(ctx context.Context, dest string, msgType MsgTyp
 
 var protoMarshal = protojson.MarshalOptions{
 	EmitUnpopulated: true,
-}
+}.Marshal
 
 func toJSON(message pb.Message) ([]byte, error) {
-	r, err := protoMarshal.Marshal(message)
+	r, err := protoMarshal(message)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to serialize proto to json")
 	}

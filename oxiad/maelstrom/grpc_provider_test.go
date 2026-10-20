@@ -286,6 +286,54 @@ func TestMaelstromGrpcProviderHandleClientRequestAppliesWrites(t *testing.T) {
 	require.Equal(t, int64(4), msg.(*Message[ReadResponse]).Body.Value)
 }
 
+func TestMaelstromGrpcProviderServeClientRequestLogsWriteFailure(t *testing.T) {
+	tests := []struct {
+		msgType MsgType
+		msg     any
+	}{
+		{MsgTypeWrite, writeMessage(1, 6)},
+		{MsgTypeRead, readMessage(1)},
+		{MsgTypeCas, casMessage(1, 5, 8)},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.msgType), func(t *testing.T) {
+			logs := captureLogs(t)
+			closeStdout(t)
+			records := map[string]string{"1": "5"}
+			provider := newMaelstromGrpcProvider()
+			provider.RegisterService(&proto.OxiaClient_ServiceDesc, newKVClientServer(records))
+
+			provider.serveClientRequest(tt.msgType, tt.msg)
+
+			require.Contains(t, logs.String(), "Failed to send the error")
+		})
+	}
+}
+
+func TestMaelstromGrpcProviderSendResponseRepliesErrorOnUnserializableResponse(t *testing.T) {
+	lines := captureStdout(t)
+
+	newMaelstromGrpcProvider().sendResponse(oxiaRequest("n1", MsgTypeGetStatusRequest, 3), MsgTypeGetStatusResponse,
+		wrapperspb.String("\xff"))
+
+	msgType, msg, _ := parseLine(t, receiveLines(t, lines, 1)[0])
+	require.Equal(t, MsgTypeError, msgType)
+	res := msg.(*Message[ErrorResponse])
+	require.Equal(t, "n1", res.Dest)
+	require.Equal(t, int64(3), *res.Body.InReplyTo)
+	require.Contains(t, res.Body.Text, "failed to serialize proto to json")
+}
+
+func TestMaelstromGrpcProviderSendResponseLogsWriteFailure(t *testing.T) {
+	logs := captureLogs(t)
+	closeStdout(t)
+
+	newMaelstromGrpcProvider().sendResponse(oxiaRequest("n1", MsgTypeHealthCheck, 3), MsgTypeHealthCheckOk,
+		wrapperspb.Int64(1))
+
+	require.Contains(t, logs.String(), "Failed to send the error")
+}
+
 func TestMaelstromGrpcProviderHandleClientRequestFailsOnUnexpectedRequest(t *testing.T) {
 	err := newMaelstromGrpcProvider().HandleClientRequest(MsgTypeWriteOk, &Message[BaseMessageBody]{Src: "n3"})
 	require.ErrorContains(t, err, "unexpected request write_ok")
@@ -313,6 +361,13 @@ func TestMaelstromReplicateServerStreamSendAcksToLeader(t *testing.T) {
 	// A reset stream acks nothing
 	stream.close()
 	require.Error(t, stream.Send(&proto.Ack{Offset: 5}))
+}
+
+func TestMaelstromReplicateServerStreamSendFailsOnUnserializableAck(t *testing.T) {
+	failProtoMarshal(t)
+	stream := newMaelstromReplicateServerStream(appendMessage("n1", 9, 0))
+
+	require.ErrorContains(t, stream.Send(&proto.Ack{Offset: 4}), "failed to serialize proto to json")
 }
 
 func TestMaelstromReplicateServerStreamRecvDiscardsEntriesAfterClose(t *testing.T) {
@@ -368,10 +423,7 @@ func TestMaelstromReplicateServerStreamContextCarriesShard(t *testing.T) {
 }
 
 func TestMaelstromReplicateServerStreamOnGapTimeoutIgnoresClosedStream(t *testing.T) {
-	logs := &lockedBuffer{}
-	previous := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(logs, nil)))
-	t.Cleanup(func() { slog.SetDefault(previous) })
+	logs := captureLogs(t)
 	stream := newMaelstromReplicateServerStream(appendMessage("n1", 9, 0))
 	// The append at 0 is missing, and the one at 1 waits for it
 	stream.early[1] = entryAppend(1)
@@ -545,6 +597,16 @@ func newKVClientServer(records map[string]string) *fakeClientServer {
 			}}}, nil
 		},
 	}
+}
+
+// captureLogs returns the logs written until the end of the test.
+func captureLogs(t *testing.T) *lockedBuffer {
+	t.Helper()
+	logs := &lockedBuffer{}
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	return logs
 }
 
 // lockedBuffer is a bytes.Buffer that can be written and read concurrently.
