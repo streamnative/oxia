@@ -19,6 +19,7 @@ import (
 )
 
 type segmentConfig struct {
+	fs            codec.FS
 	codec         codec.Codec
 	segmentExists bool
 	txnPath       string
@@ -26,13 +27,14 @@ type segmentConfig struct {
 	baseOffset    int64
 }
 
-func newSegmentConfig(basePath string, baseOffset int64) (*segmentConfig, error) {
-	_codec, segmentExists, err := codec.GetOrCreate(segmentPath(basePath, baseOffset))
+func newSegmentConfig(fs codec.FS, basePath string, baseOffset int64) (*segmentConfig, error) {
+	_codec, segmentExists, err := codec.GetOrCreate(fs, segmentPath(basePath, baseOffset))
 	if err != nil {
 		return nil, err
 	}
 
 	return &segmentConfig{
+		fs:            fs,
 		codec:         _codec,
 		segmentExists: segmentExists,
 		txnPath:       segmentPath(basePath, baseOffset) + _codec.GetTxnExtension(),

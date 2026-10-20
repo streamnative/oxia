@@ -49,7 +49,7 @@ func TestReadOnlySegmentsGroupTrimSegments(t *testing.T) {
 			}))
 		}
 		walBasePath := w.(*wal).walPath
-		readOnlySegments, err := newReadOnlySegmentsGroup(walBasePath)
+		readOnlySegments, err := newReadOnlySegmentsGroup(codec.OSFS{}, walBasePath)
 		assert.NoError(t, err)
 
 		// Ensure newReadOnlySegment will return an NotExists error
@@ -83,9 +83,9 @@ func TestReadOnlySegmentsGroupTrimSegmentsKeepsHeldSegmentReadable(t *testing.T)
 	assert.NoError(t, w.Close())
 	assert.NoError(t, walFactory.Close())
 
-	readOnlySegments, err := newReadOnlySegmentsGroup(walBasePath)
+	readOnlySegments, err := newReadOnlySegmentsGroup(codec.OSFS{}, walBasePath)
 	assert.NoError(t, err)
-	c, err := newSegmentConfig(walBasePath, 0)
+	c, err := newSegmentConfig(codec.OSFS{}, walBasePath, 0)
 	assert.NoError(t, err)
 
 	rc, err := readOnlySegments.Get(0)
@@ -116,13 +116,13 @@ func TestReadOnlySegmentsGroupNewFailsWhenPathIsFile(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "wal")
 	require.NoError(t, os.WriteFile(p, nil, 0o644))
 
-	_, err := newReadOnlySegmentsGroup(p)
+	_, err := newReadOnlySegmentsGroup(codec.OSFS{}, p)
 	assert.ErrorContains(t, err, "failed to list files in wal directory")
 }
 
 func TestReadOnlySegmentsGroupGetFailsBeforeFirstSegment(t *testing.T) {
 	walBasePath, _ := writeClosedWal(t)
-	group, err := newReadOnlySegmentsGroup(walBasePath)
+	group, err := newReadOnlySegmentsGroup(codec.OSFS{}, walBasePath)
 	require.NoError(t, err)
 	t.Cleanup(func() { assert.NoError(t, group.Close()) })
 
@@ -133,7 +133,7 @@ func TestReadOnlySegmentsGroupGetFailsBeforeFirstSegment(t *testing.T) {
 func TestReadOnlySegmentsGroupGetReleasesSegmentWhenEvictionFails(t *testing.T) {
 	walBasePath, segments := writeClosedWal(t)
 	require.GreaterOrEqual(t, len(segments), 2)
-	g, err := newReadOnlySegmentsGroup(walBasePath)
+	g, err := newReadOnlySegmentsGroup(codec.OSFS{}, walBasePath)
 	require.NoError(t, err)
 	group := g.(*readOnlySegmentsGroup)
 
@@ -158,7 +158,7 @@ func TestReadOnlySegmentsGroupGetReleasesSegmentWhenEvictionFails(t *testing.T) 
 func TestReadOnlySegmentsGroupGetEvictsExpiredSegments(t *testing.T) {
 	walBasePath, segments := writeClosedWal(t)
 	require.GreaterOrEqual(t, len(segments), 3)
-	group, err := newReadOnlySegmentsGroup(walBasePath)
+	group, err := newReadOnlySegmentsGroup(codec.OSFS{}, walBasePath)
 	require.NoError(t, err)
 	t.Cleanup(func() { assert.NoError(t, group.Close()) })
 
@@ -178,13 +178,13 @@ func TestReadOnlySegmentsGroupGetEvictsExpiredSegments(t *testing.T) {
 func TestReadOnlySegmentsGroupTrimSegmentsReportsUnremovableFiles(t *testing.T) {
 	walBasePath, segments := writeClosedWal(t)
 	require.GreaterOrEqual(t, len(segments), 3)
-	c, err := newSegmentConfig(walBasePath, segments[0])
+	c, err := newSegmentConfig(codec.OSFS{}, walBasePath, segments[0])
 	require.NoError(t, err)
 	// A non-empty directory in place of the index file cannot be removed
 	require.NoError(t, os.Remove(c.idxPath))
 	require.NoError(t, os.MkdirAll(filepath.Join(c.idxPath, "child"), 0o755))
 
-	group, err := newReadOnlySegmentsGroup(walBasePath)
+	group, err := newReadOnlySegmentsGroup(codec.OSFS{}, walBasePath)
 	require.NoError(t, err)
 	t.Cleanup(func() { assert.NoError(t, group.Close()) })
 
@@ -199,10 +199,10 @@ func TestReadOnlySegmentsGroupPollHighestSegmentFailsWhenTxnFileIsMissing(t *tes
 	walBasePath, segments := writeClosedWal(t)
 	require.GreaterOrEqual(t, len(segments), 2)
 	highest := segments[len(segments)-2]
-	c, err := newSegmentConfig(walBasePath, highest)
+	c, err := newSegmentConfig(codec.OSFS{}, walBasePath, highest)
 	require.NoError(t, err)
 
-	group, err := newReadOnlySegmentsGroup(walBasePath)
+	group, err := newReadOnlySegmentsGroup(codec.OSFS{}, walBasePath)
 	require.NoError(t, err)
 	t.Cleanup(func() { assert.NoError(t, group.Close()) })
 	require.NoError(t, os.Remove(c.txnPath))
@@ -233,7 +233,7 @@ func writeClosedWal(t *testing.T) (string, []int64) {
 	require.NoError(t, w.Close())
 	require.NoError(t, walFactory.Close())
 
-	segments, err := listAllSegments(walBasePath)
+	segments, err := listAllSegments(codec.OSFS{}, walBasePath)
 	require.NoError(t, err)
 	return walBasePath, segments
 }

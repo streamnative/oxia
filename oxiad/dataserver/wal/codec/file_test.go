@@ -30,7 +30,7 @@ func TestRemoveFileIfExists(t *testing.T) {
 		_, err := os.Stat(path)
 		assert.True(t, errors.Is(err, os.ErrNotExist))
 
-		err = RemoveFileIfExists(path)
+		err = RemoveFileIfExists(OSFS{}, path)
 		assert.NoError(t, err)
 	})
 
@@ -40,7 +40,7 @@ func TestRemoveFileIfExists(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NoError(t, f.Close())
 
-		err = RemoveFileIfExists(path)
+		err = RemoveFileIfExists(OSFS{}, path)
 		assert.NoError(t, err)
 
 		_, err = os.Stat(path)

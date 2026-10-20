@@ -141,7 +141,7 @@ func TestStandaloneCorruptedCommittedWalEntry(t *testing.T) {
 
 	// Flip a payload byte of the first entry of the WAL
 	segment := filepath.Join(dir, "wal", constant.DefaultNamespace, "shard-0", "0")
-	c, exists, err := codec.GetOrCreate(segment)
+	c, exists, err := codec.GetOrCreate(codec.OSFS{}, segment)
 	require.NoError(t, err)
 	require.True(t, exists)
 	f, err := os.OpenFile(segment+c.GetTxnExtension(), os.O_RDWR, 0)

@@ -59,7 +59,7 @@ type readOnlySegment struct {
 	lastCrc    uint32
 	closed     bool
 
-	txnFile       *os.File
+	txnFile       codec.File
 	txnMappedFile mmap.MMap
 
 	// Index file maps a logical "offset" to a physical file offset within the wal segment
@@ -67,8 +67,8 @@ type readOnlySegment struct {
 	openTimestamp time.Time
 }
 
-func newReadOnlySegment(basePath string, baseOffset int64) (ReadOnlySegment, error) {
-	c, err := newSegmentConfig(basePath, baseOffset)
+func newReadOnlySegment(fs codec.FS, basePath string, baseOffset int64) (ReadOnlySegment, error) {
+	c, err := newSegmentConfig(fs, basePath, baseOffset)
 	if err != nil {
 		return nil, err
 	}
@@ -78,24 +78,24 @@ func newReadOnlySegment(basePath string, baseOffset int64) (ReadOnlySegment, err
 		openTimestamp: time.Now(),
 	}
 
-	if ms.txnFile, err = os.OpenFile(ms.c.txnPath, os.O_RDONLY, 0); err != nil {
+	if ms.txnFile, err = fs.OpenFile(ms.c.txnPath, os.O_RDONLY, 0); err != nil {
 		return nil, errors.Wrapf(err, "failed to open segment txn file %s", ms.c.txnPath)
 	}
 
-	if ms.txnMappedFile, err = mmap.MapRegion(ms.txnFile, -1, mmap.RDONLY, 0, 0); err != nil {
+	if ms.txnMappedFile, err = fs.Map(ms.txnFile, -1, mmap.RDONLY); err != nil {
 		return nil, multierr.Append(
 			errors.Wrapf(err, "failed to map segment txn file %s", ms.c.txnPath),
 			ms.txnFile.Close())
 	}
 
-	if ms.idx, err = ms.c.codec.ReadIndex(ms.c.idxPath); err != nil {
+	if ms.idx, err = ms.c.codec.ReadIndex(fs, ms.c.idxPath); err != nil {
 		// A missing index file is expected when the process crashed between a
 		// rollover and the sync round that closes the rolled-over segment:
 		// rebuild it from the txn file, like for a corrupted one
 		if !errors.Is(err, codec.ErrDataCorrupted) && !errors.Is(err, os.ErrNotExist) {
 			return nil, multierr.Combine(
 				errors.Wrapf(err, "failed to decode segment index file %s", ms.c.idxPath),
-				ms.txnMappedFile.Unmap(),
+				ms.c.fs.Unmap(&ms.txnMappedFile),
 				ms.txnFile.Close())
 		}
 		slog.Warn("The segment index file is missing or corrupted and the index is being rebuilt.",
@@ -106,12 +106,12 @@ func newReadOnlySegment(basePath string, baseOffset int64) (ReadOnlySegment, err
 			slog.Error("The segment index file rebuild failed.", slog.String("path", ms.c.idxPath))
 			return nil, multierr.Combine(
 				errors.Wrapf(err, "failed to rebuild segment index file %s", ms.c.idxPath),
-				ms.txnMappedFile.Unmap(),
+				ms.c.fs.Unmap(&ms.txnMappedFile),
 				ms.txnFile.Close())
 		}
 		if len(ms.idx) > 0 {
 			slog.Info("The segment index file has been rebuilt.", slog.String("path", ms.c.idxPath))
-			if err := ms.c.codec.WriteIndex(ms.c.idxPath, ms.idx); err != nil {
+			if err := ms.c.codec.WriteIndex(fs, ms.c.idxPath, ms.idx); err != nil {
 				slog.Warn("write recovered segment index failed. it can continue work but will retry writing after restart.",
 					slog.String("path", ms.c.idxPath))
 			}
@@ -125,7 +125,7 @@ func newReadOnlySegment(basePath string, baseOffset int64) (ReadOnlySegment, err
 		// and acknowledged
 		return nil, multierr.Combine(
 			errors.Wrapf(ErrEmptySegment, "segment file %s", ms.c.txnPath),
-			ms.txnMappedFile.Unmap(),
+			ms.c.fs.Unmap(&ms.txnMappedFile),
 			ms.txnFile.Close())
 	}
 
@@ -134,7 +134,7 @@ func newReadOnlySegment(basePath string, baseOffset int64) (ReadOnlySegment, err
 	// recover the last crc
 	fo := fileOffset(ms.idx, ms.c.baseOffset, ms.lastOffset)
 	if _, _, ms.lastCrc, err = ms.c.codec.ReadHeaderWithValidation(ms.txnMappedFile, fo); err != nil {
-		return nil, multierr.Combine(err, ms.txnMappedFile.Unmap(), ms.txnFile.Close())
+		return nil, multierr.Combine(err, ms.c.fs.Unmap(&ms.txnMappedFile), ms.txnFile.Close())
 	}
 	return ms, nil
 }
@@ -172,7 +172,7 @@ func (ms *readOnlySegment) Close() error {
 
 	ms.closed = true
 	return multierr.Combine(
-		ms.txnMappedFile.Unmap(),
+		ms.c.fs.Unmap(&ms.txnMappedFile),
 		ms.txnFile.Close(),
 	)
 }
@@ -180,8 +180,8 @@ func (ms *readOnlySegment) Close() error {
 func (ms *readOnlySegment) Delete() error {
 	return multierr.Combine(
 		ms.Close(),
-		os.Remove(ms.c.idxPath),
-		os.Remove(ms.c.txnPath),
+		ms.c.fs.Remove(ms.c.idxPath),
+		ms.c.fs.Remove(ms.c.txnPath),
 	)
 }
 
