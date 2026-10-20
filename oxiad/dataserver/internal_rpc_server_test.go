@@ -586,6 +586,17 @@ func TestInternalSendSnapshotFollowerError(t *testing.T) {
 	assertOxiaError(t, err, constant.ErrInvalidTerm)
 }
 
+func TestInternalGetStatusFollowerError(t *testing.T) {
+	server := newDirectorTestInternalServer(&testShardsDirector{
+		getFollower: func(int64) (follow.FollowerController, error) {
+			return nil, constant.ErrResourceUnavailable
+		},
+	})
+
+	_, err := server.GetStatus(context.Background(), &proto.GetStatusRequest{Shard: 1})
+	assertOxiaError(t, err, constant.ErrResourceUnavailable)
+}
+
 func TestInternalGetStatusDirectorError(t *testing.T) {
 	server := newDirectorTestInternalServer(&testShardsDirector{
 		getFollower: notFollower,

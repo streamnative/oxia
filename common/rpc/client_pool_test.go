@@ -56,7 +56,7 @@ func TestClientPool_RemovesConnectionAfterHealthFailure(t *testing.T) {
 }
 
 func TestClientPool_RemovesConnectionWhenHealthPingHangs(t *testing.T) {
-	_, target := newTestBlockingHealthServer(t)
+	_, target, _ := newTestBlockingHealthServer(t)
 
 	pool := NewClientPool(nil, nil).(*clientPool)
 	defer pool.Close()
@@ -333,26 +333,34 @@ func newTestFlakyHealthServer(t *testing.T, failures int32) (*grpc.Server, strin
 	return server, listener.Addr().String()
 }
 
+// blockingHealthServer answers no Check call, and signals each one on checks
+// when it has room.
 type blockingHealthServer struct {
 	grpc_health_v1.UnimplementedHealthServer
+	checks chan struct{}
 }
 
-func (*blockingHealthServer) Check(
+func (s *blockingHealthServer) Check(
 	ctx context.Context,
 	_ *grpc_health_v1.HealthCheckRequest,
 ) (*grpc_health_v1.HealthCheckResponse, error) {
+	select {
+	case s.checks <- struct{}{}:
+	default:
+	}
 	<-ctx.Done()
 	return nil, ctx.Err()
 }
 
-func newTestBlockingHealthServer(t *testing.T) (*grpc.Server, string) {
+func newTestBlockingHealthServer(t *testing.T) (*grpc.Server, string, <-chan struct{}) {
 	t.Helper()
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 
+	healthServer := &blockingHealthServer{checks: make(chan struct{}, 1)}
 	server := grpc.NewServer()
-	grpc_health_v1.RegisterHealthServer(server, &blockingHealthServer{})
+	grpc_health_v1.RegisterHealthServer(server, healthServer)
 
 	go func() {
 		_ = server.Serve(listener)
@@ -362,7 +370,7 @@ func newTestBlockingHealthServer(t *testing.T) (*grpc.Server, string) {
 		server.Stop()
 	})
 
-	return server, listener.Addr().String()
+	return server, listener.Addr().String(), healthServer.checks
 }
 
 func newTestGrpcServerWithoutHealth(t *testing.T) (*grpc.Server, string) {

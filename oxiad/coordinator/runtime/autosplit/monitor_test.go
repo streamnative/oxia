@@ -769,6 +769,8 @@ func TestMonitorEvaluateSkipsIneligibleShards(t *testing.T) {
 	splitChild.Split = &proto.SplitMetadata{ParentShardId: 9}
 	pendingDelete := shard(2)
 	pendingDelete.PendingDeleteShardNodes = []*proto.DataServerIdentity{leader}
+	electing := shard(5)
+	electing.Status = proto.ShardStatusElection
 	require.NoError(t, metadata.CreateNamespaceStatus("default", &proto.NamespaceStatus{
 		Shards: map[int64]*proto.ShardMetadata{
 			0: withoutLeader,
@@ -776,13 +778,14 @@ func TestMonitorEvaluateSkipsIneligibleShards(t *testing.T) {
 			2: pendingDelete,
 			3: shard(3), // its stats can't be collected
 			4: shard(4),
+			5: electing,
 		},
 	}))
 	rpcMock := &mockRpcProvider{
 		statuses: make(map[int64]*proto.GetStatusResponse),
 		errs:     map[int64]error{3: errors.New("unreachable")},
 	}
-	for id := range int64(5) {
+	for id := range int64(6) {
 		rpcMock.setStats(id, &proto.ShardStats{DbSizeBytes: 200 * 1024 * 1024})
 	}
 	splitter := &mockSplitter{}
