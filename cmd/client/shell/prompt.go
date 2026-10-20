@@ -146,31 +146,16 @@ var (
 	}
 )
 
-func (r *repl) runPrompt() error {
-	var (
-		exitRequested bool
-		runErr        error
-	)
-
-	p := prompt.New(
-		func(line string) {
-			err := r.executeLine(line)
-			switch {
-			case errors.Is(err, errExit):
-				exitRequested = true
-			case err != nil:
-				runErr = err
-			default:
-			}
-		},
-		complete,
-		prompt.OptionPrefix(r.prompt),
-		prompt.OptionMaxSuggestion(promptMaxSuggestions),
-		prompt.OptionSetExitCheckerOnInput(func(_ string, breakline bool) bool {
-			return breakline && (exitRequested || runErr != nil)
-		}),
-	)
-	p.Run()
+func (r *repl) runPrompt(t terminal) error {
+	var runErr error
+	t.Run(r.prompt, func(line string) bool {
+		err := r.executeLine(line)
+		if errors.Is(err, errExit) {
+			return true
+		}
+		runErr = err
+		return err != nil
+	})
 	return runErr
 }
 
