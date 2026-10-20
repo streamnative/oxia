@@ -1,0 +1,34 @@
+// Copyright 2023-2026 The Oxia Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include "textflag.h"
+
+// func readCounter() int64
+TEXT ·readCounter(SB), NOSPLIT, $0-8
+	RDTSC
+	SHLQ $32, DX
+	ORQ  DX, AX
+	MOVQ AX, ret+0(FP)
+	RET
+
+// func cpuid(leaf uint32) (eax, ebx, ecx, edx uint32)
+TEXT ·cpuid(SB), NOSPLIT, $0-24
+	MOVL leaf+0(FP), AX
+	XORL CX, CX
+	CPUID
+	MOVL AX, eax+8(FP)
+	MOVL BX, ebx+12(FP)
+	MOVL CX, ecx+16(FP)
+	MOVL DX, edx+20(FP)
+	RET
