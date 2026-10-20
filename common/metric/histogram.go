@@ -70,18 +70,14 @@ func newHistogram(name string, unit Unit, description string, labels map[string]
 	}
 }
 
-// timerEpoch anchors the timers on the monotonic clock: time.Since(timerEpoch)
-// reads only the monotonic clock, while time.Now also reads the wall clock,
-// which a duration does not need.
-var timerEpoch = time.Now()
-
 type Timer struct {
 	histo *latencyHistogram
-	start time.Duration
+	// A timerTicks reading.
+	start int64
 }
 
 func (tm Timer) Done() {
-	micros := (time.Since(timerEpoch) - tm.start).Microseconds()
+	micros := elapsedMicros(tm.start)
 	tm.histo.s.record(float64(micros)/1000.0, micros)
 }
 
@@ -99,7 +95,7 @@ type latencyHistogram struct {
 }
 
 func (t *latencyHistogram) Timer() Timer {
-	return Timer{t, time.Since(timerEpoch)}
+	return Timer{t, timerTicks()}
 }
 
 func NewLatencyHistogram(name string, description string, labels map[string]any) LatencyHistogram {
