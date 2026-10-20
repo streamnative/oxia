@@ -205,10 +205,7 @@ type FactoryOptions struct {
 	UseWAL      bool
 	SyncData    bool
 	KvTrap      *KvTrap
-	// FS is the filesystem that Pebble opens the databases on, and that the
-	// snapshots are read and written through, e.g. a vfs/errorfs wrapper that
-	// injects I/O errors. The key encoding markers, and the directory moves of
-	// a conversion, go through the os package. Nil is vfs.Default.
+	// FS holds the databases and the snapshots. Nil is vfs.Default.
 	FS vfs.FS
 }
 
