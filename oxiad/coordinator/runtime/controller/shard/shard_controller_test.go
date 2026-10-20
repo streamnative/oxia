@@ -32,6 +32,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	gproto "google.golang.org/protobuf/proto"
 
@@ -3534,6 +3536,59 @@ func TestControllerHandlePendingDeleteShardKeepsRemovedShard(t *testing.T) {
 	rpc.GetNode(removed).ExpectDeleteShardRequest(t, shard, 2)
 	_, exists := testShardMetadata(metadata, constant.DefaultNamespace, shard)
 	assert.False(t, exists)
+}
+
+// The term gauge of a shard reports the term of its last leader election, and
+// -1 until the shard controller runs one.
+func TestNewControllerReportsTermGauge(t *testing.T) {
+	previous := metric.GetMeter()
+	reader := sdkmetric.NewManualReader()
+	metric.SetMeter(sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)).Meter("test"))
+	defer metric.SetMeter(previous)
+	readTerm := func() int64 {
+		var rm metricdata.ResourceMetrics
+		require.NoError(t, reader.Collect(context.Background(), &rm))
+		for _, scope := range rm.ScopeMetrics {
+			for _, m := range scope.Metrics {
+				if m.Name != "oxia_coordinator_term" {
+					continue
+				}
+				gauge, ok := m.Data.(metricdata.Gauge[int64])
+				require.True(t, ok, "unexpected data: %#v", m.Data)
+				require.Len(t, gauge.DataPoints, 1)
+				return gauge.DataPoints[0].Value
+			}
+		}
+		require.FailNow(t, "the term gauge was not reported")
+		return 0
+	}
+
+	var shard int64 = 5
+	rpc := rpctest.NewRpcProvider()
+	s1 := &proto.DataServerIdentity{Public: "s1:9091", Internal: "s1:8191"}
+	metadata := newTestMetadata(t, memory.NewProvider(metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled, ""),
+		&proto.ClusterConfiguration{})
+	sc := newTestController(t, metadata, constant.DefaultNamespace, shard, namespaceConfig, &proto.ShardMetadata{
+		Status:   proto.ShardStatusSteadyState,
+		Term:     1,
+		Leader:   s1,
+		Ensemble: []*proto.DataServerIdentity{s1},
+	}, NoOpFeaturesSupplier, rpc, DefaultPeriodicTasksInterval)
+	t.Cleanup(func() {
+		assert.NoError(t, sc.Close())
+	})
+
+	// The controller verifies the stored leader before electing one
+	rpc.GetNode(s1).ExpectGetStatusRequest(t, shard)
+	assert.EqualValues(t, -1, readTerm())
+
+	rpc.GetNode(s1).NewTermResponse(1, 0, nil)
+	rpc.GetNode(s1).BecomeLeaderResponse(nil)
+	rpc.GetNode(s1).GetStatusResponse(1, proto.ServingStatus_FOLLOWER, 0, 0)
+	rpc.GetNode(s1).ExpectBecomeLeaderRequest(t, shard, 2, 1)
+	assert.Eventually(t, func() bool {
+		return readTerm() == 2
+	}, 10*time.Second, 10*time.Millisecond)
 }
 
 // unknownAction is an action that the shard controller doesn't handle.
