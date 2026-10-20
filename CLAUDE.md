@@ -103,7 +103,7 @@ Key components:
   order:
   1. Make the state impossible by construction, and remove the branch: e.g. a typed value instead of a type
      assertion, or drop an error result that is never returned.
-  2. Use a failpoint (`oxiad/common/failpoint`), which compiles to a no-op in release builds: to return the error
+  2. Use a failpoint (`common/failpoint`), which compiles to a no-op in release builds: to return the error
      of a call that can't fail, e.g. a Pebble call, or to reproduce a behavior that is hard to reach, e.g. pause a
      call at a named point to run a race deterministically, or crash between two steps.
   3. Only for process termination (`os.Exit`, `main`, signal handling) and for what the CI environment can't
