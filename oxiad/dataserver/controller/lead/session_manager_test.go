@@ -579,6 +579,21 @@ func TestSessionManagerCreateSessionFailsWhenRegistrationIsRejected(t *testing.T
 	assert.NoError(t, walf.Close())
 }
 
+func TestSessionManagerCreateSessionFailsWhenMetadataFailsToMarshal(t *testing.T) {
+	kvf, walf, sManager, lc := createSessionManager(t)
+	sManager.marshalMetadata = func(*proto.SessionMetadata) ([]byte, error) { return nil, errInjected }
+
+	_, err := sManager.CreateSession(&proto.CreateSessionRequest{Shard: 1, SessionTimeoutMs: 5000})
+	assert.ErrorIs(t, err, errInjected)
+	sManager.RLock()
+	assert.Empty(t, sManager.sessions)
+	sManager.RUnlock()
+
+	assert.NoError(t, lc.Close())
+	assert.NoError(t, kvf.Close())
+	assert.NoError(t, walf.Close())
+}
+
 func TestMultipleSessionsExpiry(t *testing.T) {
 	shardId := int64(1)
 	// Invalid session timeout

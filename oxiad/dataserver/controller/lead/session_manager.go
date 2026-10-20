@@ -112,6 +112,9 @@ type sessionManager struct {
 	shardId          int64
 	sessions         map[SessionId]*session
 	log              *slog.Logger
+	// Serializes the metadata of the sessions it creates. Set once at
+	// construction
+	marshalMetadata func(*proto.SessionMetadata) ([]byte, error)
 
 	// expiryHeap orders the live sessions by expiry deadline; it is consumed
 	// by the expiry scheduler (expiryLoop) and guarded by the manager's lock.
@@ -142,6 +145,7 @@ func NewSessionManager(ctx context.Context, namespace string, shardId int64, con
 		namespace:        namespace,
 		shardId:          shardId,
 		leaderController: controller,
+		marshalMetadata:  (*proto.SessionMetadata).MarshalVT,
 		log: slog.With(
 			slog.String("component", "session-manager"),
 			slog.String("namespace", namespace),
@@ -201,7 +205,7 @@ func (sm *sessionManager) createSession(request *proto.CreateSessionRequest, min
 	metadata.Identity = request.ClientIdentity
 	defer metadata.ReturnToVTPool()
 
-	marshalledMetadata, err := metadata.MarshalVT()
+	marshalledMetadata, err := sm.marshalMetadata(metadata)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not marshal session metadata")
 	}
