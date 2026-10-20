@@ -249,6 +249,23 @@ func TestShardsDirectorDeleteShardLeaderError(t *testing.T) {
 	assert.Same(t, leader, lc)
 }
 
+func TestShardsDirectorDeleteShardFollowerError(t *testing.T) {
+	sd := newTestShardsDirector(t)
+	deleteErr := errors.New("delete failure")
+	follower := &fakeFollowerController{delete: func(*proto.DeleteShardRequest) (*proto.DeleteShardResponse, error) {
+		return nil, deleteErr
+	}}
+	sd.followers[1] = follower
+
+	_, err := sd.DeleteShard(&proto.DeleteShardRequest{Namespace: constant.DefaultNamespace, Shard: 1, Term: 1})
+	assert.ErrorIs(t, err, deleteErr)
+
+	// The follower stays in place
+	fc, err := sd.GetFollower(1)
+	assert.NoError(t, err)
+	assert.Same(t, follower, fc)
+}
+
 // A shard that the node doesn't host is opened from its storage, to delete it.
 func TestShardsDirectorDeleteShardNotHosted(t *testing.T) {
 	var shard int64 = 1
@@ -330,9 +347,14 @@ func (f *fakeLeaderController) DeleteShard(request *proto.DeleteShardRequest) (*
 
 type fakeFollowerController struct {
 	follow.FollowerController
-	close func() error
+	close  func() error
+	delete func(request *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error)
 }
 
 func (f *fakeFollowerController) Close() error {
 	return f.close()
+}
+
+func (f *fakeFollowerController) Delete(request *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error) {
+	return f.delete(request)
 }
