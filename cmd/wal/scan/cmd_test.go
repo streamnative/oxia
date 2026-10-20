@@ -61,6 +61,7 @@ func TestExecPrintsOperationsAsLogs(t *testing.T) {
 	assert.Equal(t, 7.0, records[1]["session-id"])
 	assert.Equal(t, map[string]any{"op": "delete", "key": "c", "offset": 0.0, "term": 1.0}, pick(records[2]))
 	assert.Equal(t, map[string]any{"op": "delete", "key": "d", "offset": 0.0, "term": 1.0}, pick(records[3]))
+	assert.Equal(t, 4.0, records[3]["expected-version-id"])
 	assert.Equal(t, "delete-range", records[4]["op"])
 	assert.Equal(t, "e", records[4]["key-start"])
 	assert.Equal(t, "f", records[4]["key-end"])
