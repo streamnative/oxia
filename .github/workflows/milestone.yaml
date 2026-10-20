@@ -1,0 +1,74 @@
+# Copyright 2026 The Oxia Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Milestone
+
+# Records the release that a change ships in, on the next release milestone,
+# i.e. the open milestone with the nearest due date:
+# - a PR merged into main without a milestone
+# - an issue closed as completed without a milestone
+# - the open PRs and issues of a milestone that gets closed, at its release
+# Open PRs and issues get a milestone only when a maintainer plans them for a
+# release.
+# pull_request_target gives PRs from forks a token that can set the milestone;
+# the job never checks out the PR's code.
+on:
+  pull_request_target:
+    types: [closed]
+    branches:
+      - main
+  issues:
+    types: [closed]
+  milestone:
+    types: [closed]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  milestone:
+    if: >-
+      (github.event_name == 'pull_request_target' && github.event.pull_request.merged && !github.event.pull_request.milestone) ||
+      (github.event_name == 'issues' && github.event.issue.state_reason == 'completed' && !github.event.issue.milestone) ||
+      github.event_name == 'milestone'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const milestones = await github.paginate(github.rest.issues.listMilestones, {
+              ...context.repo,
+              state: 'open',
+              sort: 'due_on',
+              direction: 'asc',
+            })
+            const next = milestones.find((m) => m.due_on)
+            if (!next) {
+              core.notice('No open milestone with a due date')
+              return
+            }
+            let numbers = [context.issue.number]
+            if (context.eventName === 'milestone') {
+              const open = await github.paginate(github.rest.issues.listForRepo, {
+                ...context.repo,
+                milestone: context.payload.milestone.number,
+                state: 'open',
+              })
+              numbers = open.map((item) => item.number)
+            }
+            for (const number of numbers) {
+              await github.rest.issues.update({ ...context.repo, issue_number: number, milestone: next.number })
+              core.notice(`#${number} -> ${next.title}`)
+            }
