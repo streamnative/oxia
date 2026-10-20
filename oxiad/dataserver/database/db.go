@@ -216,6 +216,8 @@ func NewDB(namespace string, shardId int64, factory kvstore.Factory,
 		shardId:               shardId,
 		enabledFeatures:       sync.Map{},
 		sequenceWaiterTracker: NewSequencesWaitTracker(),
+		marshalJSON:           json.Marshal,
+		marshalNotifications:  (*proto.NotificationBatch).MarshalVT,
 		log: slog.With(
 			slog.String("component", "db"),
 			slog.String("namespace", namespace),
@@ -310,6 +312,11 @@ type db struct {
 
 	// The notification batches that a split child inherited, or nil
 	inheritedNotifications atomic.Pointer[inheritedNotifications]
+
+	// The encoders of the values that the database writes itself, set at
+	// construction
+	marshalJSON          func(v any) ([]byte, error)
+	marshalNotifications func(nb *proto.NotificationBatch) ([]byte, error)
 
 	putCounter                metric.Counter
 	deleteCounter             metric.Counter
@@ -739,7 +746,7 @@ func (d *db) addNotifications(batch kvstore.WriteBatch, notifications *Notificat
 	}
 	// The notifications cache keeps the bytes, which the batch copies
 	var err error
-	if notifications.encoded, err = nb.MarshalVT(); err != nil {
+	if notifications.encoded, err = d.marshalNotifications(nb); err != nil {
 		return err
 	}
 	return batch.Put(notificationKey(nb.Offset), notifications.encoded)
@@ -1075,7 +1082,7 @@ func (d *db) UpdateTerm(newTerm int64, options TermOptions) error {
 		return err
 	}
 
-	serOptions, err := json.Marshal(options)
+	serOptions, err := d.marshalJSON(options)
 	if err != nil {
 		return err
 	}
@@ -1590,7 +1597,7 @@ func (d *db) ReadNextNotifications(ctx context.Context, startOffset int64) ([]pr
 	// Loaded after the read: a split child records where the batches it
 	// inherited end before it writes a batch of its own
 	if inherited := d.inheritedNotifications.Load(); inherited != nil {
-		return inherited.filter(batches)
+		return inherited.filter(batches, d.marshalNotifications)
 	}
 	return batches, nil
 }

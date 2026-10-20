@@ -365,7 +365,7 @@ type SplitFilter struct {
 // e.g. it replays them from its log after a restart, as a leader too, and the
 // replay filters the entries of terms up to ParentTerm with the recorded one.
 func (d *db) SetSplitFilter(filter *SplitFilter) error {
-	value, err := json.Marshal(filter)
+	value, err := d.marshalJSON(filter)
 	if err != nil {
 		return err
 	}

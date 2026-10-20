@@ -254,6 +254,45 @@ func TestNotificationsTrimmerTrimNotificationsFailsWhenStorageFails(t *testing.T
 	}
 }
 
+func TestNotificationsTrimmerGetFirstLastFailsOnInvalidKey(t *testing.T) {
+	for _, op := range []string{opKeyRangeScan, opKeyRangeScanReverse} {
+		t.Run(op, func(t *testing.T) {
+			trimmer, kv, _ := newIdleNotificationsTrimmer(t)
+			putNotificationBatch(t, kv, 0, map[string]*proto.Notification{"a": {}})
+			putRawKey(t, kv, notificationsPrefix+"/z", []byte{})
+			hooked := &hookedKV{KV: kv}
+			trimmer.kv = hooked
+			hooked.scanBounds = func(scanOp, lowerBound, upperBound string) (string, string) {
+				if scanOp == op {
+					return notificationsPrefix + "/z", notificationsPrefix + "/zz"
+				}
+				return lowerBound, upperBound
+			}
+
+			_, _, err := trimmer.getFirstLast()
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestNotificationsTrimmerGetFirstLastWhenBatchesVanish(t *testing.T) {
+	trimmer, kv, _ := newIdleNotificationsTrimmer(t)
+	putNotificationBatch(t, kv, 0, map[string]*proto.Notification{"a": {}})
+	hooked := &hookedKV{KV: kv}
+	trimmer.kv = hooked
+	hooked.scanBounds = func(op, lowerBound, upperBound string) (string, string) {
+		if op == opKeyRangeScanReverse {
+			return notificationsPrefix + "/z", notificationsPrefix + "/zz"
+		}
+		return lowerBound, upperBound
+	}
+
+	first, last, err := trimmer.getFirstLast()
+	require.NoError(t, err)
+	assert.Equal(t, int64(-1), first)
+	assert.Equal(t, int64(-1), last)
+}
+
 // A batch deleted in the meantime is no longer to trim.
 func TestNotificationsTrimmerTrimNotificationsSkipsVanishedFirstBatch(t *testing.T) {
 	trimmer, kv, listener := newIdleNotificationsTrimmer(t)

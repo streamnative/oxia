@@ -131,7 +131,7 @@ func TestInheritedNotifications_Filter(t *testing.T) {
 	}
 	delivered := map[int64][]string{}
 	for name, child := range children {
-		filtered, err := child.filter(batches)
+		filtered, err := child.filter(batches, (*proto.NotificationBatch).MarshalVT)
 		require.NoError(t, err)
 		for offset, keys := range batchKeys(t, filtered) {
 			if offset == 25 {
@@ -153,12 +153,12 @@ func TestInheritedNotifications_Filter(t *testing.T) {
 
 	// The shard of the third quarter delivers that quarter of the batch of the
 	// first shard, and the low half of the batch of the high child
-	filtered, err := children["high-low"].filter(batches)
+	filtered, err := children["high-low"].filter(batches, (*proto.NotificationBatch).MarshalVT)
 	require.NoError(t, err)
 	assert.Equal(t, map[int64][]string{5: {keys[2]}, 15: keys[:3], 25: keys}, batchKeys(t, filtered))
 
 	// A batch with nothing to drop is returned as it is
-	filtered, err = children["high-low"].filter(batches[2:])
+	filtered, err = children["high-low"].filter(batches[2:], (*proto.NotificationBatch).MarshalVT)
 	require.NoError(t, err)
 	assert.Same(t, &batches[2].Data[0], &filtered[0].Data[0])
 }
@@ -169,8 +169,17 @@ func TestInheritedNotificationsFilterFailsOnCorruptedBatch(t *testing.T) {
 	data := protowire.AppendBytes(protowire.AppendTag(nil, notificationBatchNotifications, protowire.BytesType),
 		[]byte{0xff})
 
-	_, err := in.filter([]proto.EncodedNotificationBatch{{Offset: 0, Data: data}})
+	_, err := in.filter([]proto.EncodedNotificationBatch{{Offset: 0, Data: data}}, (*proto.NotificationBatch).MarshalVT)
 	assert.ErrorContains(t, err, "failed to deserialize notification batch")
+}
+
+func TestInheritedNotificationsFilterFailsWhenMarshalFails(t *testing.T) {
+	keys, quarters := quarterKeys(t)
+	in := inheritedNotifications(nil).withSplit(quarters[0].Min, quarters[1].Max)
+
+	_, err := in.filter([]proto.EncodedNotificationBatch{keysBatch(t, 0, keys...)},
+		failingMarshal[*proto.NotificationBatch])
+	assert.ErrorIs(t, err, errInjected)
 }
 
 // readNotifiedKeys returns the keys of the notifications of each batch from
@@ -232,7 +241,7 @@ func TestDB_InheritedNotifications(t *testing.T) {
 		&proto.HashRange{Min: 0, Max: math.MaxUint32})).closedAt(1)
 	inherited, err := child.(*db).notificationsTracker.ReadNextNotifications(context.Background(), 0)
 	require.NoError(t, err)
-	filtered, err := lowChild.filter(inherited[:2])
+	filtered, err := lowChild.filter(inherited[:2], (*proto.NotificationBatch).MarshalVT)
 	require.NoError(t, err)
 	assert.Equal(t, map[int64][]string{0: keys[:2], 1: keys[:2]}, batchKeys(t, filtered))
 
@@ -322,6 +331,18 @@ func TestDBCloseInheritedNotificationsFailsWhenWriteFails(t *testing.T) {
 			assert.True(t, d.inheritedNotifications.Load().open())
 		})
 	}
+}
+
+func TestDBPutInheritedNotificationsFailsWhenMarshalFails(t *testing.T) {
+	d, kv := newHookedTestDB(t)
+	d.marshalJSON = failingMarshal[any]
+	batch := d.kv.NewWriteBatch()
+	defer batch.Close()
+
+	err := d.putInheritedNotifications(batch, inheritedNotifications(nil).withSplit(0, math.MaxUint32))
+	assert.ErrorIs(t, err, errInjected)
+	require.NoError(t, batch.Commit())
+	assert.False(t, keyExists(t, kv, inheritedNotificationsKey))
 }
 
 func TestDBProcessControlRequestFailsWhenClosingInheritedNotificationsFails(t *testing.T) {

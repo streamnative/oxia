@@ -782,6 +782,16 @@ func TestDBSetDeferredSplitFilterFailsWhenWriteFails(t *testing.T) {
 	}
 }
 
+func TestDBSetDeferredSplitFilterFailsWhenMarshalFails(t *testing.T) {
+	d, kv := newHookedTestDB(t)
+	d.marshalJSON = failingMarshal[any]
+
+	err := d.SetDeferredSplitFilter(&DeferredSplitFilter{MaxHash: math.MaxUint32 / 2, ParentTerm: 1}, nil)
+	assert.ErrorIs(t, err, errInjected)
+	assert.Nil(t, d.DeferredSplitFilter())
+	assert.False(t, keyExists(t, kv, deferredSplitFilterKey))
+}
+
 func TestPrefixIteratorKeepsIndexEntryFailsWhenRecordReadFails(t *testing.T) {
 	d, kv := newHookedTestDB(t)
 	_, err := d.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
