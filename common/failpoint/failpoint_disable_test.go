@@ -24,13 +24,17 @@ import (
 )
 
 func TestFailpointsTriggerDisabled(t *testing.T) {
-	f := &Failpoints{}
+	f := New(map[string]func() error{
+		"point": func() error { return errors.New("hook") },
+	})
 
 	assert.NoError(t, f.Trigger("point"))
 }
 
 func TestFailpointsFailDisabled(t *testing.T) {
-	f := &Failpoints{}
+	f := New(map[string]func() error{
+		"point": func() error { return errors.New("hook") },
+	})
 	callErr := errors.New("call")
 
 	assert.NoError(t, f.Fail("point", nil))

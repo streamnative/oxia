@@ -16,7 +16,12 @@
 
 package lead
 
-import "context"
+import (
+	"context"
+	"time"
+)
+
+func SetObserverCommitAdvertisementDelay(time.Duration) {}
 
 func holdBackCommitAdvertisement(context.Context, QuorumAckTracker, int64) error {
 	return nil

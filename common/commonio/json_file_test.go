@@ -138,6 +138,9 @@ func TestWriteJSONToFileTargetIsDirectory(t *testing.T) {
 }
 
 func TestWriteJSONToFileTempFileFailures(t *testing.T) {
+	if !failpoint.Enabled {
+		t.Skip("needs failpoints: disabled by the disable_trap tag")
+	}
 	for _, name := range []string{"writeJSONToFile.write", "writeJSONToFile.sync", "writeJSONToFile.close"} {
 		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()

@@ -308,6 +308,9 @@ func TestProviderStoreFailsWhenDocumentCannotBeEncoded(t *testing.T) {
 }
 
 func TestProviderStoreFailsToSerializeConfigMap(t *testing.T) {
+	if !failpoint.Enabled {
+		t.Skip("needs failpoints: disabled by the disable_trap tag")
+	}
 	kc := fake.NewSimpleClientset()
 	failpointErr := errors.New("failpoint")
 	p := newProvider(t.Context(), kc, "ns", "config", metadatacodec.ClusterConfigCodec, metadatacommon.WatchDisabled,

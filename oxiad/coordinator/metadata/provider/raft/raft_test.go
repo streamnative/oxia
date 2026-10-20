@@ -104,6 +104,7 @@ func TestNewFailsOnCorruptLog(t *testing.T) {
 }
 
 func TestNewFailsToCheckExistingState(t *testing.T) {
+	skipWithoutFailpoints(t)
 	dataDir := t.TempDir()
 	failpointErr := errors.New("failpoint")
 	_, err := newRaft(testRaftAddress, []string{testRaftAddress}, dataDir, nil, failpoint.New(map[string]func() error{

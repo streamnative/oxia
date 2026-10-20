@@ -988,6 +988,9 @@ func TestLeaderControllerStartDeferredSplitFilterWithoutFeature(t *testing.T) {
 // A new term that comes while the leader waits for a majority of the shard to
 // hold its entries stops the wait: the deletion doesn't start in the old term.
 func TestLeaderControllerStartDeferredSplitFilterStopsWhenTermChanges(t *testing.T) {
+	if !failpoint.Enabled {
+		t.Skip("needs failpoints: disabled by the disable_trap tag")
+	}
 	logs := watchSplitDeferredFilterLogs(t,
 		"Stopped waiting for a majority of the shard to hold its entries: the node no longer leads the term")
 

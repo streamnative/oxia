@@ -1722,6 +1722,9 @@ func TestWalAppendRejectsEmptyEntry(t *testing.T) {
 }
 
 func TestWalAppendFailsToSerializeEntry(t *testing.T) {
+	if !failpoint.Enabled {
+		t.Skip("needs failpoints: disabled by the disable_trap tag")
+	}
 	failpointErr := errors.New("failpoint")
 	options := &FactoryOptions{BaseWalDir: t.TempDir(), Failpoints: failpoint.New(map[string]func() error{
 		"appendAsync.marshal": func() error { return failpointErr },

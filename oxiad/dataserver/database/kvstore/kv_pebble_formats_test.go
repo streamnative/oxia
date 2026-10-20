@@ -143,6 +143,7 @@ func TestPebbleDbConversionFromHierarchicalDb(t *testing.T) {
 }
 
 func TestPebbleDbConversionPreservesDataAfterCrash(t *testing.T) {
+	skipWithoutFailpoints(t)
 	// Create DB with natural format and insert some test keys
 	tmpDir := t.TempDir()
 	kvFactory, err := NewPebbleKVFactory(&FactoryOptions{
@@ -219,6 +220,7 @@ func TestPebbleDbConversionPreservesDataAfterCrash(t *testing.T) {
 }
 
 func TestPebbleDbCleanupBackupAfterCrashDuringFinalCleanup(t *testing.T) {
+	skipWithoutFailpoints(t)
 	// Create DB with natural format and insert some test keys
 	tmpDir := t.TempDir()
 	kvFactory, err := NewPebbleKVFactory(&FactoryOptions{
@@ -598,6 +600,7 @@ func TestPebbleDbConversionFailsWhenBackupCannotBeRestored(t *testing.T) {
 // A failure to move the old database to its backup fails the conversion: the
 // next open converts the database again.
 func TestPebbleDbConversionFailsWhenOldDbCannotBeBackedUp(t *testing.T) {
+	skipWithoutFailpoints(t)
 	kvFactory, _ := newNaturalDb(t)
 	options := NewFactoryOptionsForTest(t)
 	options.DataDir = kvFactory.(*PebbleFactory).options.DataDir
@@ -619,6 +622,7 @@ func TestPebbleDbConversionFailsWhenOldDbCannotBeBackedUp(t *testing.T) {
 }
 
 func TestPebbleDbConversionFailsWhenNewDbCannotBeRenamed(t *testing.T) {
+	skipWithoutFailpoints(t)
 	kvFactory, dbPath := newNaturalDb(t)
 	options := NewFactoryOptionsForTest(t)
 	options.DataDir = kvFactory.(*PebbleFactory).options.DataDir
@@ -642,6 +646,7 @@ func TestPebbleDbConversionFailsWhenNewDbCannotBeRenamed(t *testing.T) {
 }
 
 func TestPebbleDbConversionCopyDataFailsWhenPebbleCallFails(t *testing.T) {
+	skipWithoutFailpoints(t)
 	fullBatch := make([]string, maxBatchCount)
 	for i := range fullBatch {
 		fullBatch[i] = fmt.Sprintf("/key/%04d", i)

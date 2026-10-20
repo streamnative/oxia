@@ -334,6 +334,9 @@ func TestLogSynchronizerSyncFailsWhenAckFails(t *testing.T) {
 
 // A failure to append an entry to the wal fails the stream, without acking it.
 func TestLogSynchronizerSyncFailsWhenAppendFails(t *testing.T) {
+	if !failpoint.Enabled {
+		t.Skip("needs failpoints: disabled by the disable_trap tag")
+	}
 	appendErr := errors.New("append failed")
 	walFactory := wal.NewWalFactory(&wal.FactoryOptions{
 		BaseWalDir: t.TempDir(),

@@ -168,6 +168,7 @@ func TestProviderStoreFailsWhenApplyFails(t *testing.T) {
 }
 
 func TestProviderStoreFailsWhenStateMachineFails(t *testing.T) {
+	skipWithoutFailpoints(t)
 	r := newInmemLeader(t)
 	r.sc.failpoints = failpoint.New(map[string]func() error{
 		"apply": func() error { return errors.New("failpoint") },
@@ -241,4 +242,11 @@ type fakeCodec struct {
 
 func (c *fakeCodec) MarshalJSON(value *commonproto.ClusterStatus) ([]byte, error) {
 	return c.marshalJSON(value)
+}
+
+func skipWithoutFailpoints(t *testing.T) {
+	t.Helper()
+	if !failpoint.Enabled {
+		t.Skip("needs failpoints: disabled by the disable_trap tag")
+	}
 }
