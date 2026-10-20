@@ -950,7 +950,10 @@ func TestCompatPublicRpcServer(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, shardAssignments.Namespaces[constant.DefaultNamespace].Assignments, 1)
 
-	notifications, err := client.GetNotifications(ctx, &proto.NotificationsRequest{Shard: shard})
+	startOffset := int64(-1)
+	notifications, err := client.GetNotifications(ctx, &proto.NotificationsRequest{
+		Shard: shard, StartOffsetExclusive: &startOffset,
+	})
 	require.NoError(t, err)
 
 	writeResponse, err := client.Write(ctx, &proto.WriteRequest{
