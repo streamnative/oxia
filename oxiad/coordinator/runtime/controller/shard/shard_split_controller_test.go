@@ -15,6 +15,7 @@
 package shard
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -2898,6 +2899,24 @@ func TestSplitControllerRemoveStaleChildObserversSkipsChildWithoutLeader(t *test
 	removed, err := sc.removeStaleChildObservers(parentMeta)
 	require.NoError(t, err)
 	assert.False(t, removed)
+}
+
+func TestSplitControllerRemoveStaleChildObserversLogsRemovalFailure(t *testing.T) {
+	rpcMock, metadata, listener := setupSplitTest(t, proto.SplitPhaseCatchUp)
+	setBootstrappedState(t, metadata)
+	status := loadTestStatus(t, metadata)
+	status.Namespaces[constant.DefaultNamespace].Shards[1].Leader = ls2
+	updateTestStatusShards(t, metadata, status, 1)
+	parentMeta := requireShardMetadata(t, metadata, constant.DefaultNamespace, 0)
+	rpcMock.FailNode(ps1, errors.New("node down"))
+	logs := &bytes.Buffer{}
+	sc := newUnstartedSplitController(t, metadata, rpcMock, listener)
+	sc.logger = slog.New(slog.NewTextHandler(logs, nil))
+
+	removed, err := sc.removeStaleChildObservers(parentMeta)
+	require.NoError(t, err)
+	assert.True(t, removed)
+	assert.Contains(t, logs.String(), "Failed to remove the stale observer")
 }
 
 // A CatchUp round measures the progress of the children against the commit

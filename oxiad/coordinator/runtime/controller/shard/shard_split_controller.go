@@ -615,13 +615,19 @@ func (sc *SplitController) removeStaleChildObservers(parentMeta *proto.ShardMeta
 			slog.String("old-leader", bootstrapLeader),
 			slog.String("new-leader", childMeta.Leader.GetInternal()),
 		)
-		_, _ = sc.rpcProvider.RemoveObserver(sc.ctx, parentMeta.Leader, &proto.RemoveObserverRequest{
+		if _, err := sc.rpcProvider.RemoveObserver(sc.ctx, parentMeta.Leader, &proto.RemoveObserverRequest{
 			Namespace:    sc.namespace,
 			Shard:        sc.parentShardId,
 			Term:         parentMeta.Term,
 			FollowerName: bootstrapLeader,
 			TargetShard:  childId,
-		})
+		}); err != nil {
+			sc.logger.Warn("Failed to remove the stale observer",
+				slog.Int64("child-shard", childId),
+				slog.String("old-leader", bootstrapLeader),
+				slog.Any("error", err),
+			)
+		}
 		return true, nil
 	}
 	return false, nil
