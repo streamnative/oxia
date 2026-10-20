@@ -132,7 +132,7 @@ func (r *readOnlySegmentsGroup) Get(offset int64) (object.RefCount[ReadOnlySegme
 
 	r.openSegments.Put(rosegment.BaseOffset(), rc)
 	if err := r.cleanSegmentsCache(); err != nil {
-		return nil, err
+		return nil, multierr.Append(err, res.Close())
 	}
 	return res, nil
 }

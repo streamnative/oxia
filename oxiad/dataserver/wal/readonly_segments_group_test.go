@@ -15,6 +15,7 @@
 package wal
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,7 +24,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/multierr"
 
+	"github.com/oxia-db/oxia/common/object"
 	"github.com/oxia-db/oxia/common/proto"
 	"github.com/oxia-db/oxia/oxiad/dataserver/wal/codec"
 )
@@ -127,6 +130,31 @@ func TestReadOnlySegmentsGroupGetFailsBeforeFirstSegment(t *testing.T) {
 	assert.ErrorIs(t, err, codec.ErrOffsetOutOfBounds)
 }
 
+func TestReadOnlySegmentsGroupGetReleasesSegmentWhenEvictionFails(t *testing.T) {
+	walBasePath, segments := writeClosedWal(t)
+	require.GreaterOrEqual(t, len(segments), 2)
+	g, err := newReadOnlySegmentsGroup(walBasePath)
+	require.NoError(t, err)
+	group := g.(*readOnlySegmentsGroup)
+
+	rc, err := group.Get(segments[0])
+	require.NoError(t, err)
+	require.NoError(t, rc.Close())
+	closeErr := errors.New("close failure")
+	group.openSegments.Put(segments[0], object.NewRefCount[ReadOnlySegment](
+		&failingCloseSegment{ReadOnlySegment: rc.Get(), closeErr: closeErr}))
+
+	res, err := group.Get(segments[1])
+	assert.ErrorIs(t, err, closeErr)
+	assert.Nil(t, res)
+	cached, ok := group.openSegments.Get(segments[1])
+	require.True(t, ok)
+	assert.EqualValues(t, 1, cached.RefCnt())
+
+	require.NoError(t, group.Close())
+	assert.True(t, cached.Get().(*readOnlySegment).closed)
+}
+
 func TestReadOnlySegmentsGroupGetEvictsExpiredSegments(t *testing.T) {
 	walBasePath, segments := writeClosedWal(t)
 	require.GreaterOrEqual(t, len(segments), 3)
@@ -208,4 +236,17 @@ func writeClosedWal(t *testing.T) (string, []int64) {
 	segments, err := listAllSegments(walBasePath)
 	require.NoError(t, err)
 	return walBasePath, segments
+}
+
+// failingCloseSegment is a segment that expired from the cache, and fails to
+// close.
+type failingCloseSegment struct {
+	ReadOnlySegment
+	closeErr error
+}
+
+func (*failingCloseSegment) OpenTimestamp() time.Time { return time.Time{} }
+
+func (s *failingCloseSegment) Close() error {
+	return multierr.Append(s.ReadOnlySegment.Close(), s.closeErr)
 }
