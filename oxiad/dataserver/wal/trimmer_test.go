@@ -400,6 +400,26 @@ func TestWalTrimUpToCommitOffset(t *testing.T) {
 	}
 }
 
+func TestTrimmerDoTrimSkipsEmptyWal(t *testing.T) {
+	options := &FactoryOptions{
+		BaseWalDir:  t.TempDir(),
+		Retention:   1 * time.Millisecond,
+		SegmentSize: 128,
+	}
+	clock := &time2.MockedClock{}
+	clock.Set(1000)
+	commitOffsetProvider := &mockedCommitOffsetProvider{}
+	commitOffsetProvider.commitOffset.Store(math.MaxInt64)
+	w, err := newWal(constant.DefaultNamespace, 1, options, commitOffsetProvider, clock, time.Hour)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, w.Close()) })
+	impl := w.(*wal)
+
+	require.NoError(t, impl.trimmer.(*trimmer).doTrim())
+	assert.EqualValues(t, InvalidOffset, w.FirstOffset())
+	assert.EqualValues(t, InvalidOffset, w.LastOffset())
+}
+
 func TestTrimmerDoTrimFailsWhenFirstEntryIsUnreadable(t *testing.T) {
 	w, tr, segments := newWalWithExpiredSegments(t)
 	c, err := newSegmentConfig(vfs.OSFS{}, w.walPath, segments[0])

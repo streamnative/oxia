@@ -29,6 +29,7 @@ import (
 	pb "google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/common/proto"
 )
 
@@ -412,6 +413,26 @@ func TestMaelstromReplicateServerStreamDeliverClosesStreamOnOverflow(t *testing.
 	stream.deliver(int64(cap(stream.requests)), entryAppend(int64(cap(stream.requests))))
 	_, err := stream.Recv()
 	require.ErrorIs(t, err, io.EOF)
+}
+
+// An entry for a stream closed while push sends it is dropped, without the
+// warning of an overflow, even when the buffer is full.
+func TestMaelstromReplicateServerStreamPushDropsEntryOfStreamClosedDuringSend(t *testing.T) {
+	logs := captureLogs(t)
+	stream := newMaelstromReplicateServerStream(appendMessage("n1", 9, 0))
+	for seq := range int64(cap(stream.requests)) {
+		stream.push(entryAppend(seq))
+	}
+	stream.failpoints = failpoint.New(map[string]func() error{
+		"push.beforeSend": func() error { return errors.New("closed") },
+	})
+
+	stream.push(entryAppend(int64(cap(stream.requests))))
+
+	_, err := stream.Recv()
+	require.ErrorIs(t, err, io.EOF)
+	require.Len(t, stream.requests, cap(stream.requests))
+	require.NotContains(t, logs.String(), "Replicate stream buffer overflow")
 }
 
 func TestMaelstromReplicateServerStreamContextCarriesShard(t *testing.T) {

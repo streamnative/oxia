@@ -347,6 +347,25 @@ func TestRerouteDeleteRangeWithoutSuccessors(t *testing.T) {
 	assert.ErrorIs(t, results[0], constant.ErrShardNotFound)
 }
 
+func TestRerouteDeleteRangeWithPartitionKeyWithoutSuccessor(t *testing.T) {
+	client, batchers := newWriteTestClient(&staticShardManager{shards: []int64{1}})
+	partitionKey := "pk"
+
+	var results []error
+	client.rerouteWrites(0, nil, nil, []model.DeleteRangeCall{{
+		MinKeyInclusive: "a",
+		MaxKeyExclusive: "z",
+		PartitionKey:    &partitionKey,
+		Callback: func(_ *proto.DeleteRangeResponse, err error) {
+			results = append(results, err)
+		},
+	}})
+
+	assert.Empty(t, batchers)
+	require.Len(t, results, 1)
+	assert.ErrorIs(t, results[0], constant.ErrShardNotFound)
+}
+
 // The shard manager receives the shard assignments in the background, until it
 // is closed.
 func TestCloseClosesShardManager(t *testing.T) {

@@ -18,6 +18,7 @@ package metric
 // frequency changes and idle states: CPUID.80000007H:EDX[8].
 var counterOK = func() bool {
 	if maxLeaf, _, _, _ := cpuid(0x8000_0000); maxLeaf < 0x8000_0007 {
+		// coverage-ignore: runs only on a CPU without the CPUID leaf of the invariant TSC
 		return false
 	}
 	_, _, _, edx := cpuid(0x8000_0007)

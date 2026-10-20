@@ -1033,6 +1033,7 @@ func TestLeaderControllerStartDeferredSplitFilterStopsWhenTermChanges(t *testing
 func TestLeaderControllerApplyDeferredSplitFilter(t *testing.T) {
 	logs := watchSplitDeferredFilterLogs(t,
 		"Failed to delete records outside the hash range of the shard, retrying",
+		"Failed to delete records outside the hash range of the shard, retrying",
 		"Stopped deleting the records outside the hash range of the shard")
 
 	var shard int64 = 2
@@ -1073,9 +1074,10 @@ func TestLeaderControllerApplyDeferredSplitFilter(t *testing.T) {
 		lc.applyDeferredSplitFilter(ctx, 2)
 	}()
 	waitFor(t, logs[0], "a failed step of the deletion")
+	waitFor(t, logs[1], "a failed retry of the step")
 	cancel()
 	waitFor(t, done, "the deletion to stop at the end of the term")
-	waitFor(t, logs[1], "the deletion to log its stop")
+	waitFor(t, logs[2], "the deletion to log its stop")
 
 	assert.Equal(t, lastOffset, lc.wal.LastOffset(), "a step of the filter was proposed")
 	assert.NotNil(t, lc.db.DeferredSplitFilter())
@@ -1108,16 +1110,16 @@ func TestKeptIndexEntriesIteratorFailsWhenEntryCheckFails(t *testing.T) {
 }
 
 // watchSplitDeferredFilterLogs returns a channel per message, closed once the
-// loggers created from then on log it. The test must create the leader
-// controller afterwards: it takes its logger from the default one.
+// loggers created from then on log it: a message given n times gets a channel
+// per occurrence, in order. The test must create the leader controller
+// afterwards: it takes its logger from the default one.
 func watchSplitDeferredFilterLogs(t *testing.T, messages ...string) []chan struct{} {
 	t.Helper()
-	handler := &splitDeferredFilterLogWatcher{logged: map[string]chan struct{}{}, once: map[string]*sync.Once{}}
+	handler := &splitDeferredFilterLogWatcher{logged: map[string][]chan struct{}{}}
 	channels := make([]chan struct{}, len(messages))
 	for i, message := range messages {
 		channels[i] = make(chan struct{})
-		handler.logged[message] = channels[i]
-		handler.once[message] = &sync.Once{}
+		handler.logged[message] = append(handler.logged[message], channels[i])
 	}
 	previous := slog.Default()
 	slog.SetDefault(slog.New(handler))
@@ -1126,17 +1128,20 @@ func watchSplitDeferredFilterLogs(t *testing.T, messages ...string) []chan struc
 }
 
 // splitDeferredFilterLogWatcher is a log handler that drops the records, and
-// closes the channel of their message, if any.
+// closes the next channel of their message, if any.
 type splitDeferredFilterLogWatcher struct {
-	logged map[string]chan struct{}
-	once   map[string]*sync.Once
+	mu     sync.Mutex
+	logged map[string][]chan struct{}
 }
 
 func (*splitDeferredFilterLogWatcher) Enabled(context.Context, slog.Level) bool { return true }
 
 func (w *splitDeferredFilterLogWatcher) Handle(_ context.Context, r slog.Record) error {
-	if ch, found := w.logged[r.Message]; found {
-		w.once[r.Message].Do(func() { close(ch) })
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if channels := w.logged[r.Message]; len(channels) > 0 {
+		close(channels[0])
+		w.logged[r.Message] = channels[1:]
 	}
 	return nil
 }

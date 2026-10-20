@@ -87,6 +87,23 @@ func TestConnectionReturnsClientError(t *testing.T) {
 	assert.ErrorContains(t, err, "error connecting to localhost:1")
 }
 
+// Closing the connection stops the health loop while a ping is in flight,
+// without counting the cancelled ping as a failure.
+func TestConnectionCloseStopsHealthPingInFlight(t *testing.T) {
+	_, target, checks := newTestBlockingHealthServer(t)
+	conn, err := newConnectionWithHealthConfig(target, nil, nil, nil,
+		func(string) { t.Error("the closed connection was reported as failed") }, time.Millisecond, time.Hour)
+	require.NoError(t, err)
+
+	select {
+	case <-checks:
+	case <-time.After(10 * time.Second):
+		require.FailNow(t, "no health ping")
+	}
+	require.NoError(t, conn.Close())
+	assert.False(t, conn.disconnected.Load())
+}
+
 func checkTestConnection(conn *connection) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
