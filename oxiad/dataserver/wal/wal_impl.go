@@ -34,6 +34,7 @@ import (
 
 	"github.com/oxia-db/oxia/common/concurrent"
 	"github.com/oxia-db/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/common/object"
 	"github.com/oxia-db/oxia/common/process"
 	time2 "github.com/oxia-db/oxia/common/time"
@@ -84,6 +85,7 @@ type wal struct {
 	truncateLock sync.RWMutex
 
 	fs          vfs.FS
+	failpoints  *failpoint.Failpoints
 	walPath     string
 	namespace   string
 	shard       int64
@@ -159,6 +161,7 @@ func newWal(namespace string, shard int64, options *FactoryOptions, commitOffset
 	labels := metric.LabelsForShard(namespace, shard)
 	w := &wal{
 		fs:                   fs,
+		failpoints:           options.Failpoints,
 		walPath:              walPath(options.BaseWalDir, namespace, shard),
 		namespace:            namespace,
 		shard:                shard,
@@ -445,7 +448,7 @@ func (t *wal) appendAsync0(entry *proto.LogEntry, previousCrc *uint32) error {
 	// Serialize into the reusable buffer instead of allocating per entry:
 	// val is copied into the segment before the lock is released
 	marshalBuf, val, err := proto.MarshalToBuffer(t.marshalBuf, entry)
-	if err != nil {
+	if err = t.failpoints.Fail("appendAsync.marshal", err); err != nil {
 		t.writeErrors.Inc()
 		return err
 	}
