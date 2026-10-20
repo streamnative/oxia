@@ -49,7 +49,7 @@ func newPebbleSnapshot(p *Pebble) (Snapshot, error) {
 		fs: fs,
 		path: filepath.Join(p.factory.dataDir, validation.KeywordNamespaceSnapshots,
 			fmt.Sprintf("shard-%d", p.shardId),
-			fmt.Sprintf("snapshot-%d", p.snapshotCounter.Add(1))),
+			fmt.Sprintf("snapshot-%d", p.factory.snapshotCounter.Add(1))),
 	}
 
 	// Flush the DB to ensure the snapshot content is as close as possible to

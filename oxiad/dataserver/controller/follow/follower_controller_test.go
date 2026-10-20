@@ -3301,6 +3301,46 @@ func TestFollower_NewTermWaitsForPendingSyncs(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
+func TestFollowerControllerCheckpointReadsTheDatabase(t *testing.T) {
+	var shardId int64
+	kvFactory, err := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	walFactory := wal.NewWalFactory(&wal.FactoryOptions{BaseWalDir: t.TempDir()})
+	fc, err := NewFollowerController(&option.StorageOptions{}, constant.DefaultNamespace, shardId, walFactory, kvFactory, nil)
+	require.NoError(t, err)
+
+	checkpoint, err := fc.Checkpoint()
+	require.NoError(t, err)
+	commitOffset, term, err := database.ReadCheckpoint(checkpoint.BasePath())
+	require.NoError(t, err)
+	assert.EqualValues(t, wal.InvalidOffset, commitOffset)
+	assert.EqualValues(t, wal.InvalidTerm, term)
+	require.NoError(t, checkpoint.Close())
+
+	_, err = fc.NewTerm(&proto.NewTermRequest{Term: 4})
+	require.NoError(t, err)
+	checkpoint, err = fc.Checkpoint()
+	require.NoError(t, err)
+	_, term, err = database.ReadCheckpoint(checkpoint.BasePath())
+	require.NoError(t, err)
+	assert.EqualValues(t, 4, term, "the term is recorded in the database")
+	require.NoError(t, checkpoint.Close())
+
+	// The database is still the one of the checkpoint
+	require.NoError(t, fc.WithDatabase(checkpoint.Generation, func(dir string) error {
+		assert.Equal(t, kvFactory.DatabaseDir(constant.DefaultNamespace, shardId), dir)
+		return nil
+	}))
+	assert.ErrorIs(t, fc.WithDatabase(checkpoint.Generation+1, func(string) error { return nil }),
+		database.ErrDatabaseReplaced, "a checkpoint of a database since replaced")
+
+	require.NoError(t, fc.Close())
+	_, err = fc.Checkpoint()
+	assert.ErrorIs(t, err, constant.ErrResourceUnavailable)
+	assert.ErrorIs(t, fc.WithDatabase(checkpoint.Generation, func(string) error { return nil }),
+		constant.ErrResourceUnavailable)
+}
+
 // A follower created with the options of a new term applies them to the
 // database it opens, before it gets the new term itself.
 func TestFollowerControllerNewFollowerControllerAppliesNewTermOptions(t *testing.T) {

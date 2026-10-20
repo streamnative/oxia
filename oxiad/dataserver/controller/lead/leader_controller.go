@@ -79,6 +79,16 @@ type LeaderController interface {
 	AddFollower(request *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error)
 
 	GetStatus(request *proto.GetStatusRequest) (*proto.GetStatusResponse, error)
+	// Checkpoint takes a checkpoint of the database, for a backup. It holds
+	// the controller's read lock during the flush: a change of term waits
+	// for it.
+	Checkpoint() (*database.Checkpoint, error)
+	// WithDatabase runs fn with the directory of the database, under the
+	// controller's read lock, while the database is still the one a
+	// checkpoint of the given generation was taken from; it returns
+	// database.ErrDatabaseReplaced otherwise. A file fn writes next to the
+	// database thus never lands in a database that replaced it.
+	WithDatabase(generation uint64, fn func(dir string) error) error
 	DeleteShard(request *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error)
 	RemoveObserver(request *proto.RemoveObserverRequest) (*proto.RemoveObserverResponse, error)
 	Freeze(request *proto.FreezeShardRequest) (*proto.FreezeShardResponse, error)
@@ -146,6 +156,7 @@ type leaderController struct {
 	closed         bool
 	wal            wal.Wal
 	db             database.DB
+	kvFactory      kvstore.Factory
 	termOptions    database.TermOptions
 	rpcClient      dataserverrpc.ReplicationRpcProvider
 	sessionManager SessionManager
@@ -173,6 +184,7 @@ func NewLeaderController(storageOptions *option.StorageOptions, namespace string
 		status:           proto.ServingStatus_NOT_MEMBER,
 		namespace:        namespace,
 		shardId:          shardId,
+		kvFactory:        kvFactory,
 		term:             &atomic.Int64{},
 		quorumAckTracker: nil,
 		rpcClient:        rpcClient,
@@ -1668,6 +1680,32 @@ func (lc *leaderController) CommitOffset() int64 {
 // it.
 func (lc *leaderController) FlushDatabase() error {
 	return lc.db.Flush()
+}
+
+func (lc *leaderController) Checkpoint() (*database.Checkpoint, error) {
+	lc.RLock()
+	defer lc.RUnlock()
+	if lc.closed || lc.db == nil {
+		return nil, constant.ErrResourceUnavailable
+	}
+	snapshot, err := lc.db.Snapshot()
+	if err != nil {
+		return nil, err
+	}
+	return &database.Checkpoint{Snapshot: snapshot,
+		Generation: lc.kvFactory.DatabaseGeneration(lc.namespace, lc.shardId)}, nil
+}
+
+func (lc *leaderController) WithDatabase(generation uint64, fn func(dir string) error) error {
+	lc.RLock()
+	defer lc.RUnlock()
+	if lc.closed || lc.db == nil {
+		return constant.ErrResourceUnavailable
+	}
+	if lc.kvFactory.DatabaseGeneration(lc.namespace, lc.shardId) != generation {
+		return database.ErrDatabaseReplaced
+	}
+	return fn(lc.kvFactory.DatabaseDir(lc.namespace, lc.shardId))
 }
 
 func (lc *leaderController) GetStatus(_ *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
