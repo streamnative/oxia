@@ -789,6 +789,7 @@ func TestNodeBasedBalancerCloseStopsBackgroundTasks(t *testing.T) {
 
 	assert.NoError(t, lb.Close())
 	assert.ErrorIs(t, lb.(*nodeBasedBalancer).ctx.Err(), context.Canceled)
+	assert.NotPanics(t, lb.Trigger)
 }
 
 func TestNodeBasedBalancerRebalanceEnsembleFailsOnStatusError(t *testing.T) {
