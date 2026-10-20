@@ -97,6 +97,7 @@ jobs:
         with:
           files: ./coverage.out
           disable_search: true
+          fail_ci_if_error: true
           # Empty on fork PRs, where the action falls back to a tokenless upload
           token: ${{ secrets.CODECOV_TOKEN }}
 
