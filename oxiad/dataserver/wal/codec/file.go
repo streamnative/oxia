@@ -17,85 +17,8 @@ package codec
 
 import (
 	"errors"
-	"fmt"
-	"io"
 	"os"
-
-	"github.com/edsrzf/mmap-go"
 )
-
-// FS holds the files of the wal, and maps the segment files in memory. The
-// server uses OSFS: the tests use another FS to make its operations fail.
-type FS interface {
-	Stat(name string) (os.FileInfo, error)
-	ReadDir(name string) ([]os.DirEntry, error)
-	MkdirAll(path string, perm os.FileMode) error
-	OpenFile(name string, flag int, perm os.FileMode) (File, error)
-	Remove(name string) error
-	RemoveAll(path string) error
-
-	// Map maps the first length bytes of a file opened by this FS, or the
-	// whole file when length is negative.
-	Map(f File, length int, prot int) (mmap.MMap, error)
-	// Flush syncs the changes of the mapping to the file.
-	Flush(m mmap.MMap) error
-	// Unmap releases the mapping, and sets it to nil.
-	Unmap(m *mmap.MMap) error
-}
-
-type File interface {
-	io.ReadWriteSeeker
-	io.Closer
-	Sync() error
-}
-
-// OSFS is the FS of the operating system.
-type OSFS struct{}
-
-func (OSFS) Stat(name string) (os.FileInfo, error) {
-	return os.Stat(name)
-}
-
-func (OSFS) ReadDir(name string) ([]os.DirEntry, error) {
-	return os.ReadDir(name)
-}
-
-func (OSFS) MkdirAll(path string, perm os.FileMode) error {
-	return os.MkdirAll(path, perm)
-}
-
-func (OSFS) OpenFile(name string, flag int, perm os.FileMode) (File, error) {
-	f, err := os.OpenFile(name, flag, perm)
-	if err != nil {
-		// A nil *os.File in a File would not compare equal to nil
-		return nil, err
-	}
-	return f, nil
-}
-
-func (OSFS) Remove(name string) error {
-	return os.Remove(name)
-}
-
-func (OSFS) RemoveAll(path string) error {
-	return os.RemoveAll(path)
-}
-
-func (OSFS) Map(f File, length int, prot int) (mmap.MMap, error) {
-	osFile, ok := f.(*os.File)
-	if !ok {
-		return nil, fmt.Errorf("cannot map a %T: it was not opened by OSFS", f)
-	}
-	return mmap.MapRegion(osFile, length, prot, 0, 0)
-}
-
-func (OSFS) Flush(m mmap.MMap) error {
-	return m.Flush()
-}
-
-func (OSFS) Unmap(m *mmap.MMap) error {
-	return m.Unmap()
-}
 
 // RemoveFileIfExists removes the file, it will return nil if the file does not exist.
 func RemoveFileIfExists(fs FS, path string) error {
