@@ -160,15 +160,11 @@ func (v *V1) RecoverIndex(buf []byte, startFileOffset uint32, baseEntryOffset in
 	index = BorrowEmptyIndexBuf()
 	currentEntryOffset := baseEntryOffset
 
-	for newFileOffset < maxSize {
-		var payloadSize uint32
-		var err error
-		if payloadSize, _, _, err = v.ReadHeaderWithValidation(buf, newFileOffset); err != nil {
-			if errors.Is(err, ErrEmptyPayload) || errors.Is(err, ErrOffsetOutOfBounds) {
-				// we might read the end of the segment.
-				break
-			}
-			return nil, 0, 0, 0, err
+	// The records end at an empty payload or at the end of buf
+	for uint64(newFileOffset)+uint64(v.HeaderSize) <= uint64(maxSize) {
+		payloadSize := ReadInt(buf, newFileOffset)
+		if payloadSize == 0 || uint64(newFileOffset)+uint64(v.HeaderSize)+uint64(payloadSize) > uint64(maxSize) {
+			break
 		}
 		index = binary.BigEndian.AppendUint32(index, newFileOffset)
 		newFileOffset += v.GetHeaderSize() + payloadSize

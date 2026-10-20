@@ -136,6 +136,11 @@ func TestV1_RecoverIndex(t *testing.T) {
 	}
 }
 
+func TestV1ReadHeaderWithValidationRejectsEmptyPayload(t *testing.T) {
+	_, _, _, err := v1.ReadHeaderWithValidation(make([]byte, 8), 0)
+	assert.ErrorIs(t, err, ErrEmptyPayload)
+}
+
 func TestV1ReadRecordWithValidationRejectsTruncatedHeader(t *testing.T) {
 	_, _, _, err := v1.ReadRecordWithValidation(make([]byte, 2), 0)
 	assert.ErrorIs(t, err, ErrOffsetOutOfBounds)
