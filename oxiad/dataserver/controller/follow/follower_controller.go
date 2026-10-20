@@ -333,11 +333,8 @@ func (fc *followerController) AppendEntries(stream proto.OxiaLogReplication_Repl
 			return nil, constant.ErrResourceConflict
 		}
 
-		if s := proto.ServingStatus(fc.status.Load()); s != proto.ServingStatus_FENCED && s != proto.ServingStatus_FOLLOWER {
-			if s == proto.ServingStatus_NOT_MEMBER {
-				return nil, constant.ErrNodeIsNotMember
-			}
-			return nil, constant.ErrInvalidStatus
+		if proto.ServingStatus(fc.status.Load()) == proto.ServingStatus_NOT_MEMBER {
+			return nil, constant.ErrNodeIsNotMember
 		}
 		if fc.logSynchronizer.IsValid() {
 			return nil, constant.ErrResourceConflict
