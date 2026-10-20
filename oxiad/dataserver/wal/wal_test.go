@@ -1908,11 +1908,21 @@ func TestWalAppendFailsWhenRolledSegmentCannotBeClosed(t *testing.T) {
 			fs.failNth(op, txnPath(w.walPath, 0), 1)
 
 			var err error
-			for offset := int64(0); err == nil && offset < 100; offset++ {
-				err = w.AppendAsync(&proto.LogEntry{Term: 1, Offset: offset, Value: []byte("v")})
+			offset := int64(0)
+			for ; offset < 100; offset++ {
+				if err = w.AppendAsync(&proto.LogEntry{Term: 1, Offset: offset, Value: []byte("v")}); err != nil {
+					break
+				}
 			}
 			assert.ErrorIs(t, err, errInjected)
 			assert.ErrorContains(t, err, "failed to rollover segment")
+
+			require.NoError(t, w.AppendAsync(&proto.LogEntry{Term: 1, Offset: offset, Value: []byte("v")}))
+			for o := int64(0); o <= offset; o++ {
+				entry, err := readEntry(w, o)
+				require.NoError(t, err)
+				assert.EqualValues(t, o, entry.Offset)
+			}
 
 			assert.NoError(t, w.Close())
 		})

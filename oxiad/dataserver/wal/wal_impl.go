@@ -529,14 +529,9 @@ func (t *wal) rolloverSegment() error {
 	if !t.syncData {
 		// With sync disabled there are no sync rounds to hand the rolled-over
 		// segment to: close it inline
-		if err = rolled.SyncFileIfNeeded(); err != nil {
-			return err
-		}
-		if err = rolled.Close(); err != nil {
-			return err
-		}
+		err = multierr.Combine(rolled.SyncFileIfNeeded(), rolled.Close())
 		t.readOnlySegments.AddedNewSegment(rolled.BaseOffset())
-		return nil
+		return err
 	}
 
 	// Hand the rolled-over segment to the sync goroutine: its unsynced tail
