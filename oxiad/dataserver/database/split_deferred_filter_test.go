@@ -617,22 +617,6 @@ func TestDeferredSplitFilter_UnreadableRecord(t *testing.T) {
 	assert.Equal(t, []string{keptKey}, heldKeys(t, db))
 }
 
-// hookedRangeScanKV runs a hook once the next RangeScan created its iterator.
-type hookedRangeScanKV struct {
-	kvstore.KV
-	afterRangeScan func()
-}
-
-func (kv *hookedRangeScanKV) RangeScan(lowerBound, upperBound string, opts kvstore.IteratorOpts) (
-	kvstore.KeyValueIterator, error) {
-	it, err := kv.KV.RangeScan(lowerBound, upperBound, opts)
-	if hook := kv.afterRangeScan; hook != nil {
-		kv.afterRangeScan = nil
-		hook()
-	}
-	return it, err
-}
-
 // TestDeferredSplitFilter_RangeScanRacingLastStep checks that a range scan that
 // starts before the last step of the deferred split filter skips the records
 // that the step deletes, which its iterator still holds.
@@ -644,7 +628,7 @@ func TestDeferredSplitFilter_RangeScanRacingLastStep(t *testing.T) {
 	kept := keptKeys(child, records)
 
 	d := child.(*db)
-	d.kv = &hookedRangeScanKV{KV: d.kv, afterRangeScan: func() {
+	d.kv = &hookedKV{KV: d.kv, afterRangeScan: func() {
 		applySplitFilterStep(t, child, 100, uint32(len(records)))
 	}}
 
@@ -770,6 +754,88 @@ func TestKeptRecordsIteratorError(t *testing.T) {
 	assert.NoError(t, it.Error())
 	assert.NoError(t, it.Close())
 	assert.Equal(t, keptKeys(db, records), listed)
+}
+
+func TestDBSetDeferredSplitFilterFailsWhenWriteFails(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		op   string
+		key  string
+	}{
+		{"filter", opBatchPutMarshalable, deferredSplitFilterKey},
+		{"inherited-notifications", opBatchPutMarshalable, inheritedNotificationsKey},
+		{"split-filter", opBatchDelete, splitFilterKey},
+		{"commit", opBatchCommit, ""},
+		{"flush", opFlush, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			d, kv := newHookedTestDB(t)
+			filter := &SplitFilter{MinHash: 0, MaxHash: math.MaxUint32 / 2, ParentTerm: 1}
+			require.NoError(t, d.SetSplitFilter(filter))
+			kv.failOn(test.op, test.key)
+
+			err := d.SetDeferredSplitFilter(&DeferredSplitFilter{MaxHash: math.MaxUint32 / 2, ParentTerm: 1}, nil)
+			assert.ErrorIs(t, err, errInjected)
+			assert.Nil(t, d.DeferredSplitFilter())
+			assert.Equal(t, filter, d.splitFilter.Load())
+		})
+	}
+}
+
+func TestPrefixIteratorKeepsIndexEntryFailsWhenRecordReadFails(t *testing.T) {
+	d, kv := newHookedTestDB(t)
+	_, err := d.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
+		Key:              "a",
+		Value:            []byte("v"),
+		SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "idx", SecondaryKey: "x"}},
+	}}}, 0, 0, NoOpCallback)
+	require.NoError(t, err)
+	it, err := d.KeyPrefixIterator(idxKeyPrefix+"/", "")
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, it.Close()) })
+	kv.failOn(opLookup, "a")
+
+	_, err = it.KeepsIndexEntry(&DeferredSplitFilter{MaxHash: math.MaxUint32}, secondaryIndexKey("idx", "x", "a"))
+	assert.ErrorIs(t, err, errInjected)
+}
+
+func TestDeferredSplitFilterGetFailsWhenReadFails(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		comparison proto.KeyComparisonType
+		op         string
+	}{
+		{"equal", proto.KeyComparisonType_EQUAL, opGet},
+		{"floor-value", proto.KeyComparisonType_FLOOR, opValue},
+		{"ceiling-value", proto.KeyComparisonType_CEILING, opValue},
+		{"ceiling-iteration", proto.KeyComparisonType_CEILING, opIteratorError},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			d, kv := newHookedTestDB(t)
+			// The only record is one the child doesn't keep: the ceiling lookup
+			// goes through to the end of the records
+			putStorageEntry(t, d.kv, "a", nil)
+			require.NoError(t, d.SetDeferredSplitFilter(filterExcluding("a"), nil))
+			kv.failOn(test.op, "")
+
+			_, err := d.Get(&proto.GetRequest{Key: "a", ComparisonType: test.comparison, IncludeValue: true})
+			assert.ErrorIs(t, err, errInjected)
+		})
+	}
+}
+
+func TestKeptRecordsIteratorFailsWhenValueReadFails(t *testing.T) {
+	d, kv := newHookedTestDB(t)
+	putStorageEntry(t, d.kv, "a", nil)
+	putStorageEntry(t, d.kv, "b", nil)
+	setLeftChildFilter(t, d)
+	kv.failOn(opValue, "")
+
+	it, err := d.List(&proto.ListRequest{})
+	require.NoError(t, err)
+	assert.False(t, it.Valid())
+	assert.ErrorIs(t, it.Error(), errInjected)
+	assert.ErrorIs(t, it.Close(), errInjected)
 }
 
 // filterExcluding returns the deferred filter of the child of a split that

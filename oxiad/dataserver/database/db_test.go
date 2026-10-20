@@ -16,6 +16,7 @@ package database
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -2662,10 +2663,526 @@ func TestDBReadTermFailsOnCorruptedRecords(t *testing.T) {
 	}
 }
 
+// Opening a database releases its store when it fails to read the state of
+// the shard: the next open gets it.
+func TestNewDBFailsWhenReadFails(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		op   string
+		key  string
+	}{
+		{"feature-flags", opKeyRangeScan, featureFlagKeyPrefix + "/"},
+		{"last-notification", opGet, lastNotificationKey},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			pebbleFactory, err := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
+			require.NoError(t, err)
+			t.Cleanup(func() { assert.NoError(t, pebbleFactory.Close()) })
+			kv := &hookedKV{}
+			kv.failOn(test.op, test.key)
+			retention := 12 * maxNotificationTrimmingInterval
+
+			_, err = NewDB(constant.DefaultNamespace, 1, &hookedKVFactory{Factory: pebbleFactory, kv: kv},
+				proto.KeySortingType_NATURAL, retention, time.SystemClock)
+			assert.ErrorIs(t, err, errInjected)
+
+			d, err := NewDB(constant.DefaultNamespace, 1, pebbleFactory, proto.KeySortingType_NATURAL, retention,
+				time.SystemClock)
+			require.NoError(t, err)
+			assert.NoError(t, d.Close())
+		})
+	}
+}
+
+func TestDBProcessControlRequestFailsWhenWriteFails(t *testing.T) {
+	checksum := proto.Feature_FEATURE_DB_CHECKSUM
+	for _, test := range []struct {
+		name string
+		op   string
+		key  string
+	}{
+		{"commit-offset", opBatchPutMarshalable, commitOffsetKey},
+		{"feature-flag", opBatchPutMarshalable, featureFlagKey(checksum)},
+		{"commit", opBatchCommit, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			d, kv := newHookedTestDB(t)
+			kv.failOn(test.op, test.key)
+
+			_, err := d.ProcessControlRequest(&proto.ControlRequest{Value: &proto.ControlRequest_FeatureEnable{
+				FeatureEnable: &proto.FeatureEnableRequest{Features: []proto.Feature{checksum}},
+			}}, 0, 0, NoOpCallback)
+			assert.ErrorIs(t, err, errInjected)
+			assert.False(t, d.IsFeatureEnabled(checksum))
+			assertCommitOffset(t, d, kv, -1)
+		})
+	}
+}
+
+func TestDBProcessWriteFailsWhenWriteFails(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		op   string
+		key  string
+	}{
+		{"record", opBatchPutMarshalable, "a"},
+		{"commit-offset", opBatchPutMarshalable, commitOffsetKey},
+		{"last-version-id", opBatchPutMarshalable, commitLastVersionIdKey},
+		{"notifications", opBatchPutMarshalable, notificationKey(1)},
+		{"checksum", opBatchPutMarshalable, commitChecksumKey},
+		{"commit", opBatchCommit, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			d, kv := newHookedTestDB(t)
+			_, err := d.ProcessControlRequest(&proto.ControlRequest{Value: &proto.ControlRequest_FeatureEnable{
+				FeatureEnable: &proto.FeatureEnableRequest{Features: []proto.Feature{proto.Feature_FEATURE_DB_CHECKSUM}},
+			}}, 0, 0, NoOpCallback)
+			require.NoError(t, err)
+			checksum := d.ReadChecksum()
+			kv.failOn(test.op, test.key)
+
+			_, err = d.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{Key: "a", Value: []byte("v")}}},
+				1, 0, NoOpCallback)
+			assert.ErrorIs(t, err, errInjected)
+			assert.Equal(t, checksum, d.ReadChecksum())
+			assertCommitOffset(t, d, kv, 0)
+			assert.False(t, keyExists(t, d.kv, "a"))
+		})
+	}
+}
+
+// A rejected write is recorded as applied, with no effect: the failure to
+// record it fails the write.
+func TestDBProcessWriteFailsWhenRejectedWriteFailsToBeRecorded(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		op   string
+		key  string
+	}{
+		{"commit-offset", opBatchPutMarshalable, commitOffsetKey},
+		{"commit", opBatchCommit, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			d, kv := newHookedTestDB(t)
+			kv.failOn(test.op, test.key)
+
+			// A sequential put without a partition key is rejected
+			_, err := d.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
+				Key: "a", Value: []byte("v"), SequenceKeyDelta: []uint64{1},
+			}}}, 0, 0, NoOpCallback)
+			assert.ErrorIs(t, err, errInjected)
+			assert.NotErrorIs(t, err, ErrWriteRejected)
+			assertCommitOffset(t, d, kv, -1)
+		})
+	}
+}
+
+func TestDBProcessWriteDeleteFailsWhenWriteFails(t *testing.T) {
+	d, kv := newHookedTestDB(t)
+	putStorageEntry(t, d.kv, "a", nil)
+	kv.failOn(opBatchDelete, "a")
+
+	_, err := d.ProcessWrite(&proto.WriteRequest{Deletes: []*proto.DeleteRequest{{Key: "a"}}}, 0, 0, NoOpCallback)
+	assert.ErrorIs(t, err, errInjected)
+	assert.True(t, keyExists(t, d.kv, "a"))
+}
+
+func TestDBProcessWriteDeleteRangeFailsWhenStorageFails(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		op   string
+		key  string
+	}{
+		{"scan", opBatchRangeScan, ""},
+		{"value", opValue, "b"},
+		{"close", opIteratorClose, ""},
+		{"delete", opBatchDelete, "b"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			d, kv := newHookedTestDB(t)
+			putStorageEntry(t, d.kv, "a", nil)
+			putStorageEntry(t, d.kv, "b", nil)
+			kv.failOn(test.op, test.key)
+
+			_, err := d.ProcessWrite(&proto.WriteRequest{DeleteRanges: []*proto.DeleteRangeRequest{{
+				StartInclusive: "a", EndExclusive: "c",
+			}}}, 0, 0, NoOpCallback)
+			assert.ErrorIs(t, err, errInjected)
+			assert.True(t, keyExists(t, d.kv, "a"))
+			assert.True(t, keyExists(t, d.kv, "b"))
+		})
+	}
+}
+
+func TestDBListFailsWhenScanFails(t *testing.T) {
+	d, kv := newHookedTestDB(t)
+	// A child that holds records it doesn't keep scans their values
+	setLeftChildFilter(t, d)
+	kv.failOn(opRangeScan, "")
+
+	_, err := d.List(&proto.ListRequest{})
+	assert.ErrorIs(t, err, errInjected)
+}
+
+func TestDBKeyPrefixIteratorFailsWhenScanFails(t *testing.T) {
+	d, kv := newHookedTestDB(t)
+	kv.failOn(opKeyPrefixIterator, "")
+
+	_, err := d.KeyPrefixIterator("a", "")
+	assert.ErrorIs(t, err, errInjected)
+	_, err = d.ListPrefix("a", "")
+	assert.ErrorIs(t, err, errInjected)
+}
+
+func TestDBUpdateTermFailsWhenWriteFails(t *testing.T) {
+	for _, key := range []string{termKey, termOptionsKey} {
+		t.Run(key, func(t *testing.T) {
+			d, kv := newHookedTestDB(t)
+			kv.failOn(opBatchPutMarshalable, key)
+
+			err := d.UpdateTerm(5, TermOptions{NotificationsEnabled: true})
+			assert.ErrorIs(t, err, errInjected)
+			kv.failure.Store(nil)
+			term, _, err := d.ReadTerm()
+			require.NoError(t, err)
+			assert.Equal(t, wal.InvalidTerm, term)
+		})
+	}
+}
+
+func TestGetStorageEntryMetadataFailsWhenReleaseFails(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		value []byte
+	}{
+		{"entry", marshalEntry(t, "v")},
+		// The failure to release the read is a storage failure, which doesn't
+		// reject the request as a notification record would
+		{"corrupted-entry", []byte{0xff}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			d, kv := newHookedTestDB(t)
+			putRawKey(t, d.kv, "a", test.value)
+			kv.failOn(opBatchGetClose, "a")
+			batch := d.kv.NewWriteBatch()
+			defer batch.Close()
+
+			se, err := GetStorageEntryMetadata(batch, "a")
+			assert.ErrorIs(t, err, errInjected)
+			assert.Nil(t, se)
+		})
+	}
+}
+
+// assertCommitOffset asserts that the commit offset of the database d, over
+// kv, is expected.
+func assertCommitOffset(t *testing.T, d DB, kv *hookedKV, expected int64) {
+	t.Helper()
+	kv.failure.Store(nil)
+	offset, err := d.ReadCommitOffset()
+	require.NoError(t, err)
+	assert.Equal(t, expected, offset)
+}
+
 // marshalEntry returns the stored bytes of a storage entry holding value.
 func marshalEntry(t *testing.T, value string) []byte {
 	t.Helper()
 	b, err := (&proto.StorageEntry{Value: []byte(value)}).MarshalVT()
 	require.NoError(t, err)
 	return b
+}
+
+// newHookedTestDB returns a database over a hookedKV, which all its components
+// read and write through, and whose notifications trimmer stays idle.
+func newHookedTestDB(t *testing.T) (*db, *hookedKV) {
+	t.Helper()
+	pebbleFactory, err := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, pebbleFactory.Close()) })
+	kv := &hookedKV{}
+	d, err := NewDB(constant.DefaultNamespace, 1, &hookedKVFactory{Factory: pebbleFactory, kv: kv},
+		proto.KeySortingType_NATURAL, 12*maxNotificationTrimmingInterval, time.SystemClock)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		kv.failure.Store(nil)
+		assert.NoError(t, d.Close())
+	})
+	return d.(*db), kv
+}
+
+// errInjected is the failure that hookedKV injects.
+var errInjected = errors.New("injected failure")
+
+// The calls of hookedKV, and of the write batches, iterators and closers it
+// returns, that a test can make fail.
+const (
+	opGet                 = "Get"
+	opGetClose            = "Get.Close"
+	opKeyRangeScan        = "KeyRangeScan"
+	opKeyRangeScanReverse = "KeyRangeScanReverse"
+	opKeyPrefixIterator   = "KeyPrefixIterator"
+	opRangeScan           = "RangeScan"
+	opFlush               = "Flush"
+	opLookup              = "Lookup"
+	opValue               = "Value"
+	opIteratorError       = "Error"
+	opIteratorClose       = "Close"
+	opBatchPut            = "Batch.Put"
+	opBatchPutMarshalable = "Batch.PutMarshalable"
+	opBatchDelete         = "Batch.Delete"
+	opBatchDeleteRange    = "Batch.DeleteRange"
+	opBatchGetClose       = "Batch.Get.Close"
+	opBatchRangeScan      = "Batch.RangeScan"
+	opBatchCommit         = "Batch.Commit"
+	opBatchClose          = "Batch.Close"
+)
+
+// kvFailure makes the calls of op fail with err: the ones on key, or all of
+// them if key is empty.
+type kvFailure struct {
+	op  string
+	key string
+	err error
+}
+
+// hookedKV wraps a KV, along with the write batches, iterators and closers it
+// returns: a call fails with the failure that the test injects for it, after
+// the call is made if it returns something to release. afterRangeScan runs
+// once the next RangeScan created its iterator.
+type hookedKV struct {
+	kvstore.KV
+	afterRangeScan func()
+	failure        atomic.Pointer[kvFailure]
+	failures       atomic.Int64
+}
+
+// failOn makes the calls of op on key, or on any key if empty, fail with
+// errInjected.
+func (kv *hookedKV) failOn(op, key string) {
+	kv.failWith(op, key, errInjected)
+}
+
+func (kv *hookedKV) failWith(op, key string, err error) {
+	kv.failure.Store(&kvFailure{op: op, key: key, err: err})
+}
+
+// injected returns the failure of the call of op on key, or nil.
+func (kv *hookedKV) injected(op, key string) error {
+	if f := kv.failure.Load(); f != nil && f.op == op && (f.key == "" || f.key == key) {
+		kv.failures.Add(1)
+		return f.err
+	}
+	return nil
+}
+
+func (kv *hookedKV) NewWriteBatch() kvstore.WriteBatch {
+	return &hookedWriteBatch{WriteBatch: kv.KV.NewWriteBatch(), kv: kv}
+}
+
+func (kv *hookedKV) Get(key string, comparisonType kvstore.ComparisonType, opts kvstore.IteratorOpts) (
+	string, []byte, io.Closer, error) {
+	if err := kv.injected(opGet, key); err != nil {
+		return "", nil, nil, err
+	}
+	storedKey, value, closer, err := kv.KV.Get(key, comparisonType, opts)
+	if err != nil {
+		return storedKey, value, closer, err
+	}
+	return storedKey, value, &hookedCloser{Closer: closer, err: kv.injected(opGetClose, storedKey)}, nil
+}
+
+func (kv *hookedKV) KeyRangeScan(lowerBound, upperBound string, opts kvstore.IteratorOpts) (
+	kvstore.KeyIterator, error) {
+	if err := kv.injected(opKeyRangeScan, lowerBound); err != nil {
+		return nil, err
+	}
+	return kv.KV.KeyRangeScan(lowerBound, upperBound, opts)
+}
+
+func (kv *hookedKV) KeyRangeScanReverse(lowerBound, upperBound string, opts kvstore.IteratorOpts) (
+	kvstore.ReverseKeyIterator, error) {
+	if err := kv.injected(opKeyRangeScanReverse, lowerBound); err != nil {
+		return nil, err
+	}
+	return kv.KV.KeyRangeScanReverse(lowerBound, upperBound, opts)
+}
+
+func (kv *hookedKV) KeyPrefixIterator(prefix, end string) (kvstore.PrefixIterator, error) {
+	if err := kv.injected(opKeyPrefixIterator, prefix); err != nil {
+		return nil, err
+	}
+	it, err := kv.KV.KeyPrefixIterator(prefix, end)
+	if err != nil {
+		return nil, err
+	}
+	return &hookedPrefixIterator{PrefixIterator: it, kv: kv}, nil
+}
+
+func (kv *hookedKV) RangeScan(lowerBound, upperBound string, opts kvstore.IteratorOpts) (
+	kvstore.KeyValueIterator, error) {
+	if err := kv.injected(opRangeScan, lowerBound); err != nil {
+		return nil, err
+	}
+	it, err := kv.KV.RangeScan(lowerBound, upperBound, opts)
+	if hook := kv.afterRangeScan; hook != nil {
+		kv.afterRangeScan = nil
+		hook()
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &hookedKeyValueIterator{KeyValueIterator: it, kv: kv}, nil
+}
+
+func (kv *hookedKV) Seek(key string, comparisonType kvstore.ComparisonType) (kvstore.KeyValueIterator, error) {
+	it, err := kv.KV.Seek(key, comparisonType)
+	if err != nil {
+		return nil, err
+	}
+	return &hookedKeyValueIterator{KeyValueIterator: it, kv: kv}, nil
+}
+
+func (kv *hookedKV) Flush() error {
+	if err := kv.injected(opFlush, ""); err != nil {
+		return err
+	}
+	return kv.KV.Flush()
+}
+
+// hookedWriteBatch is a write batch of hookedKV.
+type hookedWriteBatch struct {
+	kvstore.WriteBatch
+	kv *hookedKV
+}
+
+func (b *hookedWriteBatch) Put(key string, value []byte) error {
+	if err := b.kv.injected(opBatchPut, key); err != nil {
+		return err
+	}
+	return b.WriteBatch.Put(key, value)
+}
+
+func (b *hookedWriteBatch) PutMarshalable(key string, m kvstore.ProtoMarshalable) error {
+	if err := b.kv.injected(opBatchPutMarshalable, key); err != nil {
+		return err
+	}
+	return b.WriteBatch.PutMarshalable(key, m)
+}
+
+func (b *hookedWriteBatch) Delete(key string) error {
+	if err := b.kv.injected(opBatchDelete, key); err != nil {
+		return err
+	}
+	return b.WriteBatch.Delete(key)
+}
+
+func (b *hookedWriteBatch) DeleteRange(lowerBound, upperBound string) error {
+	if err := b.kv.injected(opBatchDeleteRange, lowerBound); err != nil {
+		return err
+	}
+	return b.WriteBatch.DeleteRange(lowerBound, upperBound)
+}
+
+func (b *hookedWriteBatch) Get(key string) ([]byte, io.Closer, error) {
+	value, closer, err := b.WriteBatch.Get(key)
+	if err != nil {
+		return value, closer, err
+	}
+	return value, &hookedCloser{Closer: closer, err: b.kv.injected(opBatchGetClose, key)}, nil
+}
+
+func (b *hookedWriteBatch) RangeScan(lowerBound, upperBound string) (kvstore.KeyValueIterator, error) {
+	if err := b.kv.injected(opBatchRangeScan, lowerBound); err != nil {
+		return nil, err
+	}
+	it, err := b.WriteBatch.RangeScan(lowerBound, upperBound)
+	if err != nil {
+		return nil, err
+	}
+	return &hookedKeyValueIterator{KeyValueIterator: it, kv: b.kv}, nil
+}
+
+func (b *hookedWriteBatch) Commit() error {
+	if err := b.kv.injected(opBatchCommit, ""); err != nil {
+		return err
+	}
+	return b.WriteBatch.Commit()
+}
+
+func (b *hookedWriteBatch) Close() error {
+	err := b.WriteBatch.Close()
+	if injected := b.kv.injected(opBatchClose, ""); injected != nil {
+		return injected
+	}
+	return err
+}
+
+// hookedKeyValueIterator is an iterator of hookedKV.
+type hookedKeyValueIterator struct {
+	kvstore.KeyValueIterator
+	kv *hookedKV
+}
+
+func (it *hookedKeyValueIterator) Value() ([]byte, error) {
+	if err := it.kv.injected(opValue, it.Key()); err != nil {
+		return nil, err
+	}
+	return it.KeyValueIterator.Value()
+}
+
+func (it *hookedKeyValueIterator) Error() error {
+	if err := it.kv.injected(opIteratorError, ""); err != nil {
+		return err
+	}
+	return it.KeyValueIterator.Error()
+}
+
+func (it *hookedKeyValueIterator) Close() error {
+	err := it.KeyValueIterator.Close()
+	if injected := it.kv.injected(opIteratorClose, ""); injected != nil {
+		return injected
+	}
+	return err
+}
+
+// hookedPrefixIterator is a prefix iterator of hookedKV.
+type hookedPrefixIterator struct {
+	kvstore.PrefixIterator
+	kv *hookedKV
+}
+
+func (it *hookedPrefixIterator) Lookup(key string) ([]byte, error) {
+	if err := it.kv.injected(opLookup, key); err != nil {
+		return nil, err
+	}
+	return it.PrefixIterator.Lookup(key)
+}
+
+// hookedCloser releases a read of hookedKV, and then fails with err, if set.
+type hookedCloser struct {
+	io.Closer
+	err error
+}
+
+func (c *hookedCloser) Close() error {
+	err := c.Closer.Close()
+	if c.err != nil {
+		return c.err
+	}
+	return err
+}
+
+// hookedKVFactory opens the KV of a database with the factory, wrapped in kv.
+type hookedKVFactory struct {
+	kvstore.Factory
+	kv *hookedKV
+}
+
+func (f *hookedKVFactory) NewKV(namespace string, shardId int64, keySorting proto.KeySortingType) (kvstore.KV, error) {
+	kv, err := f.Factory.NewKV(namespace, shardId, keySorting)
+	if err != nil {
+		return nil, err
+	}
+	f.kv.KV = kv
+	return f.kv, nil
 }

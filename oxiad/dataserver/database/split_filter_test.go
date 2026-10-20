@@ -24,6 +24,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	pb "google.golang.org/protobuf/proto"
 
 	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/hash"
@@ -930,4 +931,97 @@ func TestFilterDBForSplitFailsOnCorruptedNotificationBatch(t *testing.T) {
 	err := FilterDBForSplit(kv, left)
 	assert.ErrorContains(t, err, "failed to classify internal key")
 	assert.ErrorContains(t, err, "failed to deserialize notification batch")
+}
+
+// A filter that fails commits none of its changes, as long as it fits in one
+// chunk.
+func TestFilterDBForSplitFailsWhenStorageFails(t *testing.T) {
+	left, right := splitRanges()
+	keptKey := keyInRange(t, "kept-%d", left)
+	otherKey := keyInRange(t, "other-%d", right)
+	indexedKey := keyInRange(t, "indexed-%d", right)
+	ephemeralKey := keyInRange(t, "ephemeral-%d", right)
+	index := &proto.SecondaryIndex{IndexName: "idx", SecondaryKey: "x"}
+	indexEntryKey := secondaryIndexEntryKey(url.PathEscape(indexedKey), index)
+	shadowKey := fmt.Sprintf("%s/%016x/%s", sessionKeyPrefix, 5, url.PathEscape(ephemeralKey))
+
+	for _, test := range []struct {
+		name string
+		op   string
+		key  string
+	}{
+		{"checksum", opBatchDelete, commitChecksumKey},
+		{"record-value", opValue, keptKey},
+		{"record", opBatchDelete, otherKey},
+		{"index-entry", opBatchDelete, indexEntryKey},
+		{"session-shadow", opBatchDelete, shadowKey},
+		{"notifications-value", opValue, notificationKey(0)},
+		{"notifications-filtered", opBatchPutMarshalable, notificationKey(0)},
+		{"notifications-deleted", opBatchDelete, notificationKey(1)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			kv := newTestKV(t)
+			putRawKey(t, kv, commitChecksumKey, []byte("1"))
+			for _, key := range []string{keptKey, otherKey} {
+				putStorageEntry(t, kv, key, nil)
+			}
+			putRecord(t, kv, indexedKey, &proto.StorageEntry{SecondaryIndexes: []*proto.SecondaryIndex{index}})
+			putRawKey(t, kv, indexEntryKey, nil)
+			putRecord(t, kv, ephemeralKey, &proto.StorageEntry{SessionId: pb.Int64(5)})
+			putRawKey(t, kv, shadowKey, nil)
+			putNotificationBatch(t, kv, 0, map[string]*proto.Notification{keptKey: {}, otherKey: {}})
+			putNotificationBatch(t, kv, 1, map[string]*proto.Notification{otherKey: {}})
+			hooked := &hookedKV{KV: kv}
+			hooked.failOn(test.op, test.key)
+
+			assert.ErrorIs(t, FilterDBForSplit(hooked, left), errInjected)
+			for _, key := range []string{commitChecksumKey, otherKey, indexEntryKey, shadowKey, notificationKey(1)} {
+				assert.True(t, keyExists(t, kv, key), "key %q", key)
+			}
+			assert.Len(t, readNotificationBatch(t, kv, 0).Notifications, 2)
+		})
+	}
+}
+
+func TestFilterDBForSplitFailsWhenChunkFailsToBeCommitted(t *testing.T) {
+	oldCount := splitFilterMaxBatchCount
+	splitFilterMaxBatchCount = 1
+	defer func() { splitFilterMaxBatchCount = oldCount }()
+	left, right := splitRanges()
+
+	for _, op := range []string{opBatchCommit, opBatchClose} {
+		t.Run(op, func(t *testing.T) {
+			kv := newTestKV(t)
+			otherKey := keyInRange(t, "other-%d", right)
+			putStorageEntry(t, kv, otherKey, nil)
+			hooked := &hookedKV{KV: kv}
+			hooked.failOn(op, "")
+
+			err := FilterDBForSplit(hooked, left)
+			assert.ErrorIs(t, err, errInjected)
+			assert.ErrorContains(t, err, "split filter chunk")
+		})
+	}
+}
+
+func TestDBSetSplitFilterFailsWhenWriteFails(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		op   string
+		key  string
+	}{
+		{"filter", opBatchPutMarshalable, splitFilterKey},
+		{"commit", opBatchCommit, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			d, kv := newHookedTestDB(t)
+			kv.failOn(test.op, test.key)
+
+			err := d.SetSplitFilter(&SplitFilter{MaxHash: math.MaxUint32 / 2, ParentTerm: 1})
+			assert.ErrorIs(t, err, errInjected)
+			assert.Nil(t, d.splitFilter.Load())
+			kv.failure.Store(nil)
+			assert.False(t, keyExists(t, kv, splitFilterKey))
+		})
+	}
 }

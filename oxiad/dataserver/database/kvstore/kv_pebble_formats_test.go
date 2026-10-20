@@ -465,6 +465,24 @@ func TestPebbleDbConversionFailsWhenBackupCannotBeRemoved(t *testing.T) {
 	assert.NoDirExists(t, makeDbBackupPath(dbPath))
 }
 
+// A conversion that crashed left only the backup of the database, which the
+// next open fails to restore: it fails, and keeps the backup.
+func TestPebbleDbConversionFailsWhenBackupCannotBeRestored(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("the permissions don't apply to root")
+	}
+	kvFactory, dbPath := newNaturalDb(t)
+	require.NoError(t, os.Rename(dbPath, makeDbBackupPath(dbPath)))
+	parent := filepath.Dir(dbPath)
+	require.NoError(t, os.Chmod(parent, 0o500))
+	t.Cleanup(func() { _ = os.Chmod(parent, 0o700) })
+
+	_, err := kvFactory.NewKV(constant.DefaultNamespace, 0, proto.KeySortingType_NATURAL)
+	assert.ErrorIs(t, err, os.ErrPermission)
+	assert.DirExists(t, makeDbBackupPath(dbPath))
+	assert.NoDirExists(t, dbPath)
+}
+
 func TestGetKeyEncoderFailsWhenMarkerIsUnreadable(t *testing.T) {
 	dbPath := t.TempDir()
 	require.NoError(t, os.Mkdir(filepath.Join(dbPath, markerFileName), 0o755))

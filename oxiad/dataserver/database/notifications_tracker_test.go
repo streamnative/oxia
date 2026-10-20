@@ -277,3 +277,60 @@ func TestNotificationsTrackerReadNextNotificationsLogsWaitAtDebugLevel(t *testin
 	assert.ErrorIs(t, err, context.Canceled)
 	assert.Contains(t, logs.String(), "Waiting for notification to be available")
 }
+
+func TestNotificationsTrackerReadNextNotificationsFailsWhenReadFails(t *testing.T) {
+	for _, op := range []string{opRangeScan, opValue} {
+		t.Run(op, func(t *testing.T) {
+			d, kv := newHookedTestDB(t)
+			writeNotificationBatches(t, d, 1)
+			kv.failOn(op, notificationKey(0))
+
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			_, err := d.ReadNextNotifications(ctx, 0)
+			assert.ErrorIs(t, err, errInjected)
+		})
+	}
+}
+
+// A trim that fails leaves the batches as they were, not trimmed.
+func TestNotificationsTrackerTrimmingFailsWhenWriteFails(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		op   string
+		key  string
+	}{
+		{"trimmed-offset", opBatchPutMarshalable, trimmedNotificationsKey},
+		{"commit", opBatchCommit, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			d, kv := newHookedTestDB(t)
+			writeNotificationBatches(t, d, 3)
+			kv.failOn(test.op, test.key)
+			// Trims every batch, past its retention, for the tracker
+			trimmer := &notificationsTrimmer{
+				kv:                         kv,
+				notificationsRetentionTime: time.Millisecond,
+				clock:                      time2.SystemClock,
+				log:                        slog.Default(),
+				listener:                   d.notificationsTracker,
+			}
+
+			assert.ErrorIs(t, trimmer.trimNotifications(), errInjected)
+			assert.EqualValues(t, -1, d.TrimmedNotificationsOffset())
+			kv.failure.Store(nil)
+			assert.True(t, keyExists(t, kv, notificationKey(0)))
+		})
+	}
+}
+
+// writeNotificationBatches writes count batches of notifications to d, from
+// offset 0 on, at the time 0.
+func writeNotificationBatches(t *testing.T, d DB, count int64) {
+	t.Helper()
+	for offset := int64(0); offset < count; offset++ {
+		_, err := d.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{Key: "a", Value: []byte("v")}}},
+			offset, 0, NoOpCallback)
+		require.NoError(t, err)
+	}
+}

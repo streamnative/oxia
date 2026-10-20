@@ -420,6 +420,23 @@ func TestInternalBecomeLeaderError(t *testing.T) {
 	assertOxiaError(t, err, constant.ErrInvalidStatus)
 }
 
+func TestInternalNewTermGetOrCreateLeaderError(t *testing.T) {
+	server := newDirectorTestInternalServer(&testShardsDirector{
+		getFollower:       notFollower,
+		getOrCreateLeader: closedDirectorLeader,
+	})
+
+	_, err := server.NewTerm(context.Background(), &proto.NewTermRequest{Shard: 1, Term: 1})
+	assertOxiaError(t, err, constant.ErrResourceUnavailable)
+}
+
+func TestInternalBecomeLeaderGetOrCreateLeaderError(t *testing.T) {
+	server := newDirectorTestInternalServer(&testShardsDirector{getOrCreateLeader: closedDirectorLeader})
+
+	_, err := server.BecomeLeader(context.Background(), &proto.BecomeLeaderRequest{Shard: 1, Term: 1})
+	assertOxiaError(t, err, constant.ErrResourceUnavailable)
+}
+
 func TestInternalAddFollower(t *testing.T) {
 	server := newDirectorTestInternalServer(&testShardsDirector{getLeader: notLeader})
 	_, err := server.AddFollower(context.Background(), &proto.AddFollowerRequest{Shard: 1})
@@ -481,6 +498,13 @@ func TestInternalFreezeShardError(t *testing.T) {
 
 	_, err := server.FreezeShard(context.Background(), &proto.FreezeShardRequest{Shard: 1, Term: 1})
 	assertOxiaError(t, err, constant.ErrInvalidTerm)
+}
+
+func TestInternalFreezeShardGetLeaderError(t *testing.T) {
+	server := newDirectorTestInternalServer(&testShardsDirector{getLeader: notLeader})
+
+	_, err := server.FreezeShard(context.Background(), &proto.FreezeShardRequest{Shard: 1, Term: 1})
+	assertOxiaError(t, err, constant.ErrNodeIsNotLeader)
 }
 
 func TestInternalTruncate(t *testing.T) {
@@ -680,6 +704,11 @@ func notFollower(int64) (follow.FollowerController, error) {
 
 func notLeader(int64) (lead.LeaderController, error) {
 	return nil, constant.ErrNodeIsNotLeader
+}
+
+// closedDirectorLeader fails to create a leader, as a closed shards director.
+func closedDirectorLeader(string, int64) (lead.LeaderController, error) {
+	return nil, constant.ErrResourceUnavailable
 }
 
 type testFollowerController struct {
