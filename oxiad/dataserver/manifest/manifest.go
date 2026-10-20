@@ -67,7 +67,7 @@ func (m *Manifest) doRecovery() error {
 	_, err := commonio.ReadJSONFromFile(m.path, doc)
 	if err != nil {
 		if os.IsNotExist(err) {
-			if err := commonio.WriteJSONToFile(m.path, doc); err != nil {
+			if err := commonio.WriteJSONToFile(m.path, doc, nil); err != nil {
 				return err
 			}
 			m.document.Store(doc)
@@ -100,7 +100,7 @@ func (m *Manifest) SetInstanceID(id string) error {
 	switch {
 	case current == nil || current.InstanceID == "":
 		next := &Document{InstanceID: id}
-		if err := commonio.WriteJSONToFile(m.path, next); err != nil {
+		if err := commonio.WriteJSONToFile(m.path, next, nil); err != nil {
 			return err
 		}
 		m.document.Store(next)

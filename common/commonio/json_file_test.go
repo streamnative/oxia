@@ -16,6 +16,7 @@ package commonio
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -23,6 +24,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/oxia-db/oxia/common/failpoint"
 )
 
 func TestReadJSONFromFile(t *testing.T) {
@@ -64,7 +67,7 @@ func TestWriteJSONAtomicallyCreatesParentDirectoryAndFile(t *testing.T) {
 
 	err := WriteJSONToFile(path, map[string]string{
 		"hello": "world",
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	content, err := os.ReadFile(path)
@@ -76,7 +79,7 @@ func TestWriteJSONToFileParentIsFile(t *testing.T) {
 	parent := filepath.Join(t.TempDir(), "parent")
 	require.NoError(t, os.WriteFile(parent, nil, 0o600))
 
-	err := WriteJSONToFile(filepath.Join(parent, "state.json"), map[string]string{})
+	err := WriteJSONToFile(filepath.Join(parent, "state.json"), map[string]string{}, nil)
 	assert.ErrorIs(t, err, syscall.ENOTDIR)
 }
 
@@ -84,7 +87,7 @@ func TestWriteJSONToFileUnsupportedValue(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.json")
 
-	err := WriteJSONToFile(path, make(chan int))
+	err := WriteJSONToFile(path, make(chan int), nil)
 	var unsupported *json.UnsupportedTypeError
 	assert.ErrorAs(t, err, &unsupported)
 	assertDirEntries(t, dir)
@@ -98,7 +101,7 @@ func TestWriteJSONToFileReadOnlyDirectory(t *testing.T) {
 	require.NoError(t, os.Chmod(dir, 0o500))
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
 
-	err := WriteJSONToFile(filepath.Join(dir, "state.json"), map[string]string{})
+	err := WriteJSONToFile(filepath.Join(dir, "state.json"), map[string]string{}, nil)
 	assert.ErrorIs(t, err, os.ErrPermission)
 	assertDirEntries(t, dir)
 }
@@ -113,7 +116,7 @@ func TestWriteJSONToFileUnreadableDirectory(t *testing.T) {
 	require.NoError(t, os.Chmod(dir, 0o300))
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
 
-	err := WriteJSONToFile(path, map[string]string{"hello": "world"})
+	err := WriteJSONToFile(path, map[string]string{"hello": "world"}, nil)
 	assert.ErrorIs(t, err, os.ErrPermission)
 
 	require.NoError(t, os.Chmod(dir, 0o700))
@@ -127,11 +130,33 @@ func TestWriteJSONToFileTargetIsDirectory(t *testing.T) {
 	path := filepath.Join(dir, "state.json")
 	require.NoError(t, os.MkdirAll(filepath.Join(path, "child"), 0o755))
 
-	err := WriteJSONToFile(path, map[string]string{})
+	err := WriteJSONToFile(path, map[string]string{}, nil)
 	var linkErr *os.LinkError
 	assert.ErrorAs(t, err, &linkErr)
 	// The temporary file is removed when the rename fails
 	assertDirEntries(t, dir, "state.json")
+}
+
+func TestWriteJSONToFileTempFileFailures(t *testing.T) {
+	for _, name := range []string{"writeJSONToFile.write", "writeJSONToFile.sync", "writeJSONToFile.close"} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "state.json")
+			require.NoError(t, os.WriteFile(path, []byte(`{"hello":"world"}`), 0o600))
+			injected := errors.New("injected")
+			failpoints := failpoint.New(map[string]func() error{
+				name: func() error { return injected },
+			})
+
+			err := WriteJSONToFile(path, map[string]string{"hello": "oxia"}, failpoints)
+
+			assert.ErrorIs(t, err, injected)
+			assertDirEntries(t, dir, "state.json")
+			content, err := os.ReadFile(path)
+			require.NoError(t, err)
+			assert.JSONEq(t, `{"hello":"world"}`, string(content))
+		})
+	}
 }
 
 func assertDirEntries(t *testing.T, dir string, expected ...string) {
