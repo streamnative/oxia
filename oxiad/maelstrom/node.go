@@ -179,7 +179,10 @@ func run(scanner *bufio.Scanner, dataDir string) error {
 	var node io.Closer
 	var err error
 	if thisNode == "n1" {
-		if node, err = runCoordinator(dispatcher, servers); err != nil {
+		options := &coordoption.Options{Metadata: coordoption.MetadataOptions{
+			ProviderOptions: coordoption.ProviderOptions{ProviderName: metadatacommon.NameMemory},
+		}}
+		if node, err = runCoordinator(dispatcher, options, servers); err != nil {
 			return errors.Wrap(err, "failed to start coordinator")
 		}
 	} else if node, err = runDataServer(grpcProvider, replicationGrpcProvider, dataDir); err != nil {
@@ -247,7 +250,10 @@ func (c *coordinator) Close() error {
 	return err
 }
 
-func runCoordinator(dispatcher *dispatcher, servers []*commonproto.DataServerIdentity) (_ io.Closer, err error) {
+// runCoordinator starts a coordinator that keeps its metadata with the
+// provider of options.
+func runCoordinator(dispatcher *dispatcher, options *coordoption.Options,
+	servers []*commonproto.DataServerIdentity) (_ io.Closer, err error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &coordinator{cancel: cancel}
 	defer func() {
@@ -256,6 +262,24 @@ func runCoordinator(dispatcher *dispatcher, servers []*commonproto.DataServerIde
 		}
 	}()
 
+	metadataFactory, err := coordmetadata.New(ctx, options)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create coordinator metadata factory")
+	}
+	c.closers = append(c.closers, metadataFactory)
+
+	metadata := metadataFactory.CreateMetadata(ctx)
+	c.closers = append(c.closers, metadata)
+	if err := c.start(ctx, dispatcher, metadata, servers); err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+// start seeds metadata with the data servers and the default namespace, and
+// coordinates them. The caller closes c, also when start fails.
+func (c *coordinator) start(ctx context.Context, dispatcher *dispatcher, metadata coordmetadata.Metadata,
+	servers []*commonproto.DataServerIdentity) error {
 	clusterConfig := &commonproto.ClusterConfiguration{
 		Namespaces: []*commonproto.Namespace{{
 			Name:              constant.DefaultNamespace,
@@ -265,50 +289,35 @@ func runCoordinator(dispatcher *dispatcher, servers []*commonproto.DataServerIde
 		Servers: servers,
 	}
 
-	metadataFactory, err := coordmetadata.New(ctx, &coordoption.Options{
-		Metadata: coordoption.MetadataOptions{
-			ProviderOptions: coordoption.ProviderOptions{
-				ProviderName: metadatacommon.NameMemory,
-			},
-		},
-	})
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create coordinator metadata factory")
-	}
-	c.closers = append(c.closers, metadataFactory)
-
-	metadata := metadataFactory.CreateMetadata(ctx)
-	c.closers = append(c.closers, metadata)
-	if _, err = metadata.WaitToBecomeLeader(); err != nil {
-		return nil, errors.Wrap(err, "failed to wait for coordinator metadata leadership")
+	if _, err := metadata.WaitToBecomeLeader(); err != nil {
+		return errors.Wrap(err, "failed to wait for coordinator metadata leadership")
 	}
 	for _, server := range clusterConfig.GetServers() {
 		if err := metadata.CreateDataServer(&commonproto.DataServer{Identity: server}); err != nil {
-			return nil, errors.Wrap(err, "failed to seed coordinator data servers")
+			return errors.Wrap(err, "failed to seed coordinator data servers")
 		}
 	}
 	for _, namespace := range clusterConfig.GetNamespaces() {
 		if err := metadata.CreateNamespace(namespace); err != nil {
-			return nil, errors.Wrap(err, "failed to seed coordinator namespaces")
+			return errors.Wrap(err, "failed to seed coordinator namespaces")
 		}
 	}
 
-	coordinatorRuntime, err := coordruntime.New(
+	coordinatorRuntime, err := coordruntime.New( //nolint:contextcheck
 		metadata,
 		func(instanceID string) rpc.Provider {
 			return newRpcProvider(dispatcher)
 		},
 	)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create coordinator")
+		return errors.Wrap(err, "failed to create coordinator")
 	}
 	c.closers = append(c.closers, coordinatorRuntime)
 
 	reconciler, err := coordreconciler.New(ctx, coordinatorRuntime)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to reconcile the cluster configuration")
+		return errors.Wrap(err, "failed to reconcile the cluster configuration")
 	}
 	c.closers = append(c.closers, reconciler)
-
-	return c, nil
+	return nil
 }

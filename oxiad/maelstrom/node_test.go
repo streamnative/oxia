@@ -16,16 +16,22 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 
+	commonobject "github.com/oxia-db/oxia/common/object"
 	"github.com/oxia-db/oxia/common/proto"
 	"github.com/oxia-db/oxia/oxiad/common/logging"
+	coordmetadata "github.com/oxia-db/oxia/oxiad/coordinator/metadata"
+	metadatacommon "github.com/oxia-db/oxia/oxiad/coordinator/metadata/common"
+	coordoption "github.com/oxia-db/oxia/oxiad/coordinator/option"
 )
 
 func TestLogLevelErrorError(t *testing.T) {
@@ -70,18 +76,65 @@ func TestHandleInitSkipsMessagesBeforeInit(t *testing.T) {
 
 func TestRunCoordinatorRejectsTooFewDataServers(t *testing.T) {
 	d := newDispatcher(newMaelstromGrpcProvider(), newMaelstromReplicationRpcProvider())
-	_, err := runCoordinator(d, []*proto.DataServerIdentity{{Public: "n2", Internal: "n2"}})
+	_, err := runCoordinator(d, memoryOptions(), []*proto.DataServerIdentity{{Public: "n2", Internal: "n2"}})
 	require.ErrorContains(t, err, "failed to seed coordinator namespaces")
 }
 
 func TestRunCoordinatorRejectsDuplicateDataServers(t *testing.T) {
 	d := newDispatcher(newMaelstromGrpcProvider(), newMaelstromReplicationRpcProvider())
 	name := "n2"
-	_, err := runCoordinator(d, []*proto.DataServerIdentity{
+	_, err := runCoordinator(d, memoryOptions(), []*proto.DataServerIdentity{
 		{Name: &name, Public: "n2", Internal: "n2"},
 		{Name: &name, Public: "n2", Internal: "n2"},
 	})
 	require.ErrorContains(t, err, "failed to seed coordinator data servers")
+}
+
+func TestRunCoordinatorFailsOnUnknownMetadataProvider(t *testing.T) {
+	d := newDispatcher(newMaelstromGrpcProvider(), newMaelstromReplicationRpcProvider())
+	options := memoryOptions()
+	options.Metadata.ProviderName = "unknown"
+
+	_, err := runCoordinator(d, options, dataServers("n2", "n3", "n4"))
+
+	require.ErrorContains(t, err, "failed to create coordinator metadata factory")
+}
+
+func TestCoordinatorStartFailsOnMetadataError(t *testing.T) {
+	errMetadata := errors.New("metadata failed")
+	tests := []struct {
+		name     string
+		metadata func(*fakeMetadata)
+		wantErr  string
+	}{
+		{"leadership", func(m *fakeMetadata) {
+			m.waitToBecomeLeader = func() (<-chan struct{}, error) { return nil, errMetadata }
+		}, "failed to wait for coordinator metadata leadership"},
+		{"runtime", func(m *fakeMetadata) {
+			m.listNamespaceStatus = func() (map[string]commonobject.Borrowed[*proto.NamespaceStatus], error) {
+				return nil, errMetadata
+			}
+		}, "failed to create coordinator"},
+		{"reconciler", func(m *fakeMetadata) {
+			m.allocateShardIDs = func(uint32) (int64, error) { return 0, errMetadata }
+		}, "failed to reconcile the cluster configuration"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			captureStdout(t)
+			ctx, cancel := context.WithCancel(t.Context())
+			c := &coordinator{cancel: cancel}
+			defer func() { require.NoError(t, c.Close()) }()
+			metadata := newFakeMetadata(t)
+			tt.metadata(metadata)
+
+			err := c.start(ctx, newDispatcher(newMaelstromGrpcProvider(), newMaelstromReplicationRpcProvider()),
+				metadata, dataServers("n2", "n3", "n4"))
+
+			require.ErrorIs(t, err, errMetadata)
+			require.ErrorContains(t, err, tt.wantErr)
+		})
+	}
 }
 
 func TestConfigureLoggerWritesJSON(t *testing.T) {
@@ -219,4 +272,61 @@ func newScanner(lines ...string) *bufio.Scanner {
 func initMessage(node string) string {
 	return `{"src":"c0","dest":"` + node + `","body":{"type":"init","msg_id":1,"node_id":"` + node +
 		`","node_ids":["n1","n2","n3","n4"]}}`
+}
+
+func memoryOptions() *coordoption.Options {
+	return &coordoption.Options{Metadata: coordoption.MetadataOptions{
+		ProviderOptions: coordoption.ProviderOptions{ProviderName: metadatacommon.NameMemory},
+	}}
+}
+
+func dataServers(nodes ...string) []*proto.DataServerIdentity {
+	servers := make([]*proto.DataServerIdentity, 0, len(nodes))
+	for _, node := range nodes {
+		servers = append(servers, &proto.DataServerIdentity{Public: node, Internal: node})
+	}
+	return servers
+}
+
+// fakeMetadata is a memory metadata whose hooks, when set, replace its
+// methods.
+type fakeMetadata struct {
+	coordmetadata.Metadata
+
+	waitToBecomeLeader  func() (<-chan struct{}, error)
+	listNamespaceStatus func() (map[string]commonobject.Borrowed[*proto.NamespaceStatus], error)
+	allocateShardIDs    func(count uint32) (int64, error)
+}
+
+func newFakeMetadata(t *testing.T) *fakeMetadata {
+	t.Helper()
+	factory, err := coordmetadata.New(t.Context(), memoryOptions())
+	require.NoError(t, err)
+	metadata := factory.CreateMetadata(t.Context())
+	t.Cleanup(func() {
+		require.NoError(t, metadata.Close())
+		require.NoError(t, factory.Close())
+	})
+	return &fakeMetadata{Metadata: metadata}
+}
+
+func (m *fakeMetadata) WaitToBecomeLeader() (<-chan struct{}, error) {
+	if m.waitToBecomeLeader != nil {
+		return m.waitToBecomeLeader()
+	}
+	return m.Metadata.WaitToBecomeLeader()
+}
+
+func (m *fakeMetadata) ListNamespaceStatus() (map[string]commonobject.Borrowed[*proto.NamespaceStatus], error) {
+	if m.listNamespaceStatus != nil {
+		return m.listNamespaceStatus()
+	}
+	return m.Metadata.ListNamespaceStatus()
+}
+
+func (m *fakeMetadata) AllocateShardIDs(count uint32) (int64, error) {
+	if m.allocateShardIDs != nil {
+		return m.allocateShardIDs(count)
+	}
+	return m.Metadata.AllocateShardIDs(count)
 }

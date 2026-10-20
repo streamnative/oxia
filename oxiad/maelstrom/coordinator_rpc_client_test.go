@@ -86,6 +86,17 @@ func TestMaelstromShardAssignmentClientSendFailsOnUnserializableAssignments(t *t
 	require.ErrorContains(t, err, "failed to serialize proto to json")
 }
 
+func TestMaelstromShardAssignmentClientSendClosesStreamOnWriteFailure(t *testing.T) {
+	closeStdout(t)
+	coordinator := newDispatcher(newMaelstromGrpcProvider(), newMaelstromReplicationRpcProvider())
+	stream, err := newRpcProvider(coordinator).PushShardAssignments(t.Context(), &proto.DataServerIdentity{Internal: "n4"})
+	require.NoError(t, err)
+
+	require.NoError(t, stream.Send(assignmentsWithLeader("n4")))
+
+	require.ErrorIs(t, stream.Context().Err(), context.Canceled)
+}
+
 func TestMaelstromHealthCheckClientCheckClosesAssignmentStreamsAtFailureThreshold(t *testing.T) {
 	lines := captureStdout(t)
 

@@ -20,11 +20,14 @@ import (
 	"fmt"
 	"io"
 	"testing"
+	"time"
 
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	pb "google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	"github.com/oxia-db/oxia/common/proto"
@@ -281,6 +284,29 @@ func TestDispatcherRpcRequestFailsOnUnserializableMessage(t *testing.T) {
 	require.Empty(t, d.requests)
 }
 
+func TestDispatcherRpcRequestFailsOnClosedStdout(t *testing.T) {
+	closeStdout(t)
+	d := newDispatcher(newMaelstromGrpcProvider(), newMaelstromReplicationRpcProvider())
+
+	_, err := d.RpcRequest(t.Context(), "n2", MsgTypeNewTermRequest, &proto.NewTermRequest{})
+
+	require.ErrorContains(t, err, "failed to write the message")
+	require.Empty(t, d.requests)
+}
+
+func TestDispatcherRpcRequestTimesOutWithoutResponse(t *testing.T) {
+	previousTimeout := rpcRequestTimeout
+	rpcRequestTimeout = 10 * time.Millisecond
+	t.Cleanup(func() { rpcRequestTimeout = previousTimeout })
+	lines := captureStdout(t)
+	d := newDispatcher(newMaelstromGrpcProvider(), newMaelstromReplicationRpcProvider())
+
+	_, err := d.RpcRequest(t.Context(), "n2", MsgTypeNewTermRequest, &proto.NewTermRequest{})
+
+	require.ErrorContains(t, err, "timed out")
+	require.Equal(t, "n2", decodeMessage(t, receiveLines(t, lines, 1)[0]).Dest)
+}
+
 func TestGetOriginReadsInReplyTo(t *testing.T) {
 	inReplyTo := int64(4)
 	base := BaseMessageBody{MsgId: 3, InReplyTo: &inReplyTo}
@@ -357,4 +383,12 @@ func setThisNode(t *testing.T, node string) {
 	previous := thisNode
 	thisNode = node
 	t.Cleanup(func() { thisNode = previous })
+}
+
+// failProtoMarshal makes the serialization of every proto message fail.
+func failProtoMarshal(t *testing.T) {
+	t.Helper()
+	previousMarshal := protoMarshal
+	protoMarshal = func(pb.Message) ([]byte, error) { return nil, errors.New("marshal failed") }
+	t.Cleanup(func() { protoMarshal = previousMarshal })
 }

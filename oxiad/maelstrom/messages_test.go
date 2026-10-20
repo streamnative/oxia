@@ -15,6 +15,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/pkg/errors"
@@ -24,6 +26,12 @@ import (
 
 func TestSendResponseFailsOnUnserializableMessage(t *testing.T) {
 	require.ErrorContains(t, sendResponse(make(chan int)), "failed to serialize json")
+}
+
+func TestSendResponseFailsOnClosedStdout(t *testing.T) {
+	closeStdout(t)
+
+	require.ErrorContains(t, sendResponse(&Message[EmptyResponse]{}), "failed to write the message")
 }
 
 func TestSendErrorRepliesWithGenericCode(t *testing.T) {
@@ -40,6 +48,24 @@ func TestSendErrorRepliesWithGenericCode(t *testing.T) {
 	require.Equal(t, int64(7), *res.Body.InReplyTo)
 	require.Equal(t, 1000, res.Body.Code)
 	require.Equal(t, "write failed", res.Body.Text)
+}
+
+func TestSendErrorWithCodeLogsWriteFailure(t *testing.T) {
+	logs := captureLogs(t)
+	closeStdout(t)
+
+	sendErrorWithCode(7, "c1", 11, "temporarily-unavailable")
+
+	require.Contains(t, logs.String(), "Failed to send the error")
+}
+
+func TestSendStreamErrorLogsWriteFailure(t *testing.T) {
+	logs := captureLogs(t)
+	closeStdout(t)
+
+	sendStreamError("n2", 9)
+
+	require.Contains(t, logs.String(), "Failed to send the stream error")
 }
 
 func TestParseRequestFailsOnMalformedMessage(t *testing.T) {
@@ -71,4 +97,16 @@ func parseLine(t *testing.T, line string) (MsgType, any, pb.Message) {
 	msgType, msg, protoMsg, err := parseRequest(line)
 	require.NoError(t, err)
 	return msgType, msg, protoMsg
+}
+
+// closeStdout makes every message the test sends fail, as when Maelstrom
+// stopped reading the output of the node.
+func closeStdout(t *testing.T) {
+	t.Helper()
+	previousStdout := os.Stdout
+	closed, err := os.Create(filepath.Join(t.TempDir(), "stdout"))
+	require.NoError(t, err)
+	require.NoError(t, closed.Close())
+	os.Stdout = closed
+	t.Cleanup(func() { os.Stdout = previousStdout })
 }
