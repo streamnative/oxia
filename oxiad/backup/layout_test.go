@@ -24,10 +24,8 @@ import (
 )
 
 func TestNewLineageIsRandomHex(t *testing.T) {
-	a, err := NewLineage()
-	require.NoError(t, err)
-	b, err := NewLineage()
-	require.NoError(t, err)
+	a := NewLineage()
+	b := NewLineage()
 	assert.Len(t, a, 16)
 	assert.Regexp(t, "^[0-9a-f]{16}$", a)
 	assert.NotEqual(t, a, b)

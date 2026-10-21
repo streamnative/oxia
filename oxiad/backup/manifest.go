@@ -20,7 +20,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"slices"
 	"time"
 
@@ -195,12 +194,8 @@ func ReadManifest(ctx context.Context, store blob.Store, key string) (*Manifest,
 		return nil, fmt.Errorf("backup: read manifest %s: %w", key, err)
 	}
 	defer func() { _ = r.Close() }()
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return nil, fmt.Errorf("backup: read manifest %s: %w", key, err)
-	}
 	m := &Manifest{}
-	if err := json.Unmarshal(data, m); err != nil {
+	if err := json.NewDecoder(r).Decode(m); err != nil {
 		return nil, fmt.Errorf("%w: %s: %w", ErrInvalidManifest, key, err)
 	}
 	if err := m.Validate(); err != nil {
