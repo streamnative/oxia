@@ -34,9 +34,11 @@ type ReadOnlySegmentsGroup interface {
 	Get(offset int64) (object.RefCount[ReadOnlySegment], error)
 
 	// TrimSegments deletes the segments that end before the one holding offset.
-	// When there are any, it calls beforeDelete first, and deletes none if it
-	// fails.
-	TrimSegments(offset int64, beforeDelete func() error) error
+	// currentSegment is the base offset of the read-write segment: once offset
+	// reaches it, all the segments before it get deleted, and the ones that a
+	// rollover adds after the caller read it are kept. When there are any to
+	// delete, it calls beforeDelete first, and deletes none if it fails.
+	TrimSegments(offset int64, currentSegment int64, beforeDelete func() error) error
 
 	GetLastCrc(baseOffset int64) (uint32, error)
 
@@ -140,8 +142,8 @@ func (r *readOnlySegmentsGroup) Get(offset int64) (object.RefCount[ReadOnlySegme
 	return res, nil
 }
 
-func (r *readOnlySegmentsGroup) TrimSegments(offset int64, beforeDelete func() error) error {
-	cutoffSegment, found := r.cutoffSegment(offset)
+func (r *readOnlySegmentsGroup) TrimSegments(offset int64, currentSegment int64, beforeDelete func() error) error {
+	cutoffSegment, found := r.cutoffSegment(offset, currentSegment)
 	if !found {
 		return nil
 	}
@@ -190,13 +192,15 @@ func (r *readOnlySegmentsGroup) TrimSegments(offset int64, beforeDelete func() e
 
 // cutoffSegment returns the base offset of the last segment that ends before
 // the one holding offset.
-func (r *readOnlySegmentsGroup) cutoffSegment(offset int64) (int64, bool) {
+func (r *readOnlySegmentsGroup) cutoffSegment(offset int64, currentSegment int64) (int64, bool) {
 	r.Lock()
 	defer r.Unlock()
 
 	// Find the segment that ends before the trim offset
 	segmentToKeep := offset
-	if node, found := r.allSegments.Floor(offset); found {
+	if offset >= currentSegment {
+		segmentToKeep = currentSegment
+	} else if node, found := r.allSegments.Floor(offset); found {
 		segmentToKeep = node.Key
 	}
 

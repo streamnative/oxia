@@ -354,13 +354,17 @@ func (t *wal) FirstOffset() int64 {
 func (t *wal) trim(firstOffset int64, generation int64, beforeDelete func() error) error {
 	t.RLock()
 	segments := t.readOnlySegments
+	// Once firstOffset reaches the current segment, the segments before it are
+	// all closed: firstOffset is at most the last synced offset, and a segment
+	// gets closed before the offsets that follow it are synced
+	currentSegment := t.currentSegment.BaseOffset()
 	dropped := t.generation.Load() != generation
 	t.RUnlock()
 	if dropped || firstOffset <= t.firstOffset.Load() {
 		return nil
 	}
 
-	if err := segments.TrimSegments(firstOffset, beforeDelete); err != nil {
+	if err := segments.TrimSegments(firstOffset, currentSegment, beforeDelete); err != nil {
 		return err
 	}
 

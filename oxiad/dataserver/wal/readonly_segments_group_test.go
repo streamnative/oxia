@@ -57,7 +57,7 @@ func TestReadOnlySegmentsGroupTrimSegments(t *testing.T) {
 		err = os.Remove(filepath.Join(walBasePath, "0.txnx"))
 		assert.NoError(t, err)
 
-		err = readOnlySegments.TrimSegments(6, func() error { return nil })
+		err = readOnlySegments.TrimSegments(6, w.(*wal).currentSegment.BaseOffset(), func() error { return nil })
 		assert.NoError(t, err)
 	})
 }
@@ -84,6 +84,8 @@ func TestReadOnlySegmentsGroupTrimSegmentsKeepsHeldSegmentReadable(t *testing.T)
 	assert.NoError(t, w.Close())
 	assert.NoError(t, walFactory.Close())
 
+	segments, err := listAllSegments(vfs.OSFS{}, walBasePath)
+	assert.NoError(t, err)
 	readOnlySegments, err := newReadOnlySegmentsGroup(vfs.OSFS{}, walBasePath)
 	assert.NoError(t, err)
 	c, err := newSegmentConfig(vfs.OSFS{}, walBasePath, 0)
@@ -92,7 +94,7 @@ func TestReadOnlySegmentsGroupTrimSegmentsKeepsHeldSegmentReadable(t *testing.T)
 	rc, err := readOnlySegments.Get(0)
 	assert.NoError(t, err)
 	segment := rc.Get()
-	err = readOnlySegments.TrimSegments(segment.LastOffset()+1, func() error { return nil })
+	err = readOnlySegments.TrimSegments(segment.LastOffset()+1, segments[len(segments)-1], func() error { return nil })
 	assert.NoError(t, err)
 	assert.NoFileExists(t, c.txnPath)
 	assert.NoFileExists(t, c.idxPath)
@@ -111,6 +113,29 @@ func TestReadOnlySegmentsGroupTrimSegmentsKeepsHeldSegmentReadable(t *testing.T)
 	assert.NoError(t, rc.Close())
 	assert.EqualValues(t, 0, rc.RefCnt())
 	assert.NoError(t, readOnlySegments.Close())
+}
+
+// A trim offset at the base offset of the current segment deletes every
+// segment of the group, while the current segment, once a rollover adds it to
+// the group, is kept.
+func TestReadOnlySegmentsGroupTrimSegmentsAtCurrentSegmentDeletesAllSegments(t *testing.T) {
+	walBasePath, segments := writeClosedWal(t)
+	require.GreaterOrEqual(t, len(segments), 3)
+	current := segments[len(segments)-1]
+	group, err := newReadOnlySegmentsGroup(vfs.OSFS{}, walBasePath)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, group.Close()) })
+
+	require.NoError(t, group.TrimSegments(current, current, func() error { return nil }))
+	for _, s := range segments[:len(segments)-1] {
+		assert.NoFileExists(t, txnPath(walBasePath, s))
+	}
+	_, err = group.Get(current - 1)
+	assert.ErrorIs(t, err, codec.ErrOffsetOutOfBounds)
+
+	group.AddedNewSegment(current)
+	require.NoError(t, group.TrimSegments(current+1, current, func() error { return nil }))
+	assert.FileExists(t, txnPath(walBasePath, current))
 }
 
 func TestReadOnlySegmentsGroupNewFailsWhenPathIsFile(t *testing.T) {
@@ -214,7 +239,7 @@ func TestReadOnlySegmentsGroupTrimSegmentsReportsUnremovableFiles(t *testing.T) 
 	require.NoError(t, err)
 	t.Cleanup(func() { assert.NoError(t, group.Close()) })
 
-	err = group.TrimSegments(segments[1], func() error { return nil })
+	err = group.TrimSegments(segments[1], segments[len(segments)-1], func() error { return nil })
 	assert.Error(t, err)
 	assert.NoFileExists(t, c.txnPath)
 	_, err = group.Get(segments[0])
@@ -232,7 +257,7 @@ func TestReadOnlySegmentsGroupTrimSegmentsReportsUnstattableSegment(t *testing.T
 	t.Cleanup(func() { assert.NoError(t, group.Close()) })
 	fs.failNth(opStat, txnPath(walBasePath, segments[0]), 1)
 
-	err = group.TrimSegments(segments[2], func() error { return nil })
+	err = group.TrimSegments(segments[2], segments[len(segments)-1], func() error { return nil })
 	assert.ErrorIs(t, err, errInjected)
 	assert.FileExists(t, txnPath(walBasePath, segments[0]))
 	assert.NoFileExists(t, txnPath(walBasePath, segments[1]))
