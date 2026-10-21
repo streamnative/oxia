@@ -62,13 +62,9 @@ release-build:
 maelstrom:
 	go build -tags disable_trap -v -o bin/oxia-maelstrom ./oxiad/maelstrom
 
-# Generated code, test harnesses, process entry points and a benchmark tool
-COVERAGE_EXCLUDE := \.pb\.go:|^github\.com/oxia-db/oxia/(oxiad/coordinator/rpc/rpctest/|tests/mock/|cmd/client/common/client_mock\.go:|common/rpc/mock\.go:|cmd/main\.go:|oxiad/maelstrom/main\.go:|cmd/wal/perf/cmd\.go:)
-
 # -coverpkg counts the code that any test exercises, so the integration tests
 # under tests/ add to the coverage of the packages they run. coverignore then
-# removes the blocks marked with // coverage-ignore from the profile, and grep
-# the files in COVERAGE_EXCLUDE.
+# removes the blocks marked with // coverage-ignore from the profile.
 test: build
 	go test -race -coverpkg=github.com/oxia-db/oxia/... -coverprofile=coverage.out \
 	 ./cmd/...     \
@@ -78,14 +74,18 @@ test: build
 	 ./oxiad/...   \
 	 ./tests/...
 	go run ./dev/coverignore -trim github.com/oxia-db/oxia/ coverage.out
-	grep -vE '$(COVERAGE_EXCLUDE)' coverage.out > coverage.tmp && mv coverage.tmp coverage.out
 
-# Fails on any block of the profile that no test runs. A block appears once per
-# test binary that runs it, so it is covered when any of its counts is not zero.
+# The files that .github/codecov.yml ignores
+COVERAGE_EXCLUDE := \.pb\.go:|^github\.com/oxia-db/oxia/(oxiad/coordinator/rpc/rpctest/|tests/mock/|cmd/client/common/client_mock\.go:|common/rpc/mock\.go:|cmd/main\.go:|oxiad/maelstrom/main\.go:|cmd/wal/perf/cmd\.go:)
+
+# Fails on any block of the profile outside COVERAGE_EXCLUDE that no test runs.
+# A block appears once per test binary that runs it, so it is covered when any
+# of its counts is not zero.
 .PHONY: check-coverage
 check-coverage:
-	@awk 'NR > 1 { if ($$NF > 0) hit[$$1] = 1; else if (!($$1 in hit)) hit[$$1] = 0 } \
-	END { for (b in hit) if (!hit[b]) { print "not covered: " b; n++ } exit n > 0 }' coverage.out
+	@grep -vE '$(COVERAGE_EXCLUDE)' coverage.out | awk 'NR > 1 { if ($$NF > 0) hit[$$1] = 1; \
+	else if (!($$1 in hit)) hit[$$1] = 0 } \
+	END { for (b in hit) if (!hit[b]) { print "not covered: " b; n++ } exit n > 0 }'
 
 .PHONY: test-kv
 test-kv:
