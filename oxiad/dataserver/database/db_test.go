@@ -1658,6 +1658,13 @@ func TestDBSequentialKeysTailNotOfTheSequence(t *testing.T) {
 	}
 }
 
+func TestIsSequenceValue(t *testing.T) {
+	assert.True(t, isSequenceValue("00000000000000000005"))
+	assert.False(t, isSequenceValue("05"))
+	assert.False(t, isSequenceValue("0000000000000000000x"))
+	assert.False(t, isSequenceValue("/0000000000000000000"))
+}
+
 func TestDB_SequenceKeyValidation(t *testing.T) {
 	for _, test := range []struct {
 		name        string

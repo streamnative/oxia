@@ -96,13 +96,24 @@ func generateUniqueKeyFromSequences(batch kvstore.WriteBatch, req *proto.PutRequ
 // continue below such a key, which then stays its last key, so every later put
 // would get the same key, and replace the record of the previous one.
 func parseSequenceValue(part string, features feature.Checker) (uint64, error) {
-	if features.IsFeatureEnabled(proto.Feature_FEATURE_SEQUENCE_LAST_KEY_SEPARATOR) &&
-		(len(part) != sequenceValueDigits || strings.Trim(part, "0123456789") != "") {
+	if features.IsFeatureEnabled(proto.Feature_FEATURE_SEQUENCE_LAST_KEY_SEPARATOR) && !isSequenceValue(part) {
 		return 0, errors.Errorf("not a value of %d digits", sequenceValueDigits)
 	}
 	var value uint64
 	_, err := fmt.Sscanf(part, "%020d", &value)
 	return value, err
+}
+
+func isSequenceValue(part string) bool {
+	if len(part) != sequenceValueDigits {
+		return false
+	}
+	for i := 0; i < len(part); i++ {
+		if part[i] < '0' || part[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func findCurrentLastKeyInSequence(wb kvstore.WriteBatch, req *proto.PutRequest,
