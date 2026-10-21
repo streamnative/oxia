@@ -143,11 +143,14 @@ func (s *internalRpcServer) Handshake(c context.Context, req *proto.HandshakeReq
 
 func (s *internalRpcServer) NewTerm(c context.Context, req *proto.NewTermRequest) (*proto.NewTermResponse, error) {
 	log := s.log.With(
-		slog.Any("req", req),
+		slog.String("namespace", req.Namespace),
+		slog.Int64("shard", req.Shard),
+		slog.Int64("term", req.Term),
 		slog.String("peer", rpc.GetPeer(c)),
 	)
 
 	log.Info("Received NewTerm request")
+	log.Debug("NewTerm request", slog.Any("req", req))
 
 	// NewTerm applies to both followers and leaders
 	// First check if we have already a follower controller running
