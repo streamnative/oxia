@@ -172,11 +172,11 @@ func (g *hookedSegmentsGroup) Get(offset int64) (object.RefCount[ReadOnlySegment
 	return g.ReadOnlySegmentsGroup.Get(offset)
 }
 
-func (g *hookedSegmentsGroup) TrimSegments(offset int64, beforeDelete func() error) error {
+func (g *hookedSegmentsGroup) TrimSegments(offset int64, currentSegment int64, beforeDelete func() error) error {
 	if g.hook != nil {
 		g.hook()
 	}
-	return g.ReadOnlySegmentsGroup.TrimSegments(offset, beforeDelete)
+	return g.ReadOnlySegmentsGroup.TrimSegments(offset, currentSegment, beforeDelete)
 }
 
 // A follower clears its wal when it installs a snapshot, and truncates it for a
@@ -418,6 +418,32 @@ func TestTrimmerDoTrimSkipsEmptyWal(t *testing.T) {
 	require.NoError(t, impl.trimmer.(*trimmer).doTrim())
 	assert.EqualValues(t, InvalidOffset, w.FirstOffset())
 	assert.EqualValues(t, InvalidOffset, w.LastOffset())
+}
+
+// The trimming deletes the last read-only segment once the trim offset reaches
+// the current segment, but not past the commit offset. The next trimming reads
+// the first entry from the current segment.
+func TestTrimmerDoTrimDeletesLastReadOnlySegmentUpToCommitOffset(t *testing.T) {
+	w, tr, segments := newWalWithExpiredSegments(t)
+	current := segments[len(segments)-1]
+	commitOffsetProvider := tr.commitOffsetProvider.(*mockedCommitOffsetProvider)
+
+	commitOffsetProvider.commitOffset.Store(current - 1)
+	require.NoError(t, tr.doTrim())
+	assert.EqualValues(t, current-1, w.FirstOffset())
+	remaining, err := listAllSegments(vfs.OSFS{}, w.walPath)
+	require.NoError(t, err)
+	assert.Equal(t, segments[len(segments)-2:], remaining)
+
+	commitOffsetProvider.commitOffset.Store(math.MaxInt64)
+	require.NoError(t, tr.doTrim())
+	assert.EqualValues(t, 19, w.FirstOffset())
+	remaining, err = listAllSegments(vfs.OSFS{}, w.walPath)
+	require.NoError(t, err)
+	assert.Equal(t, []int64{current}, remaining)
+
+	require.NoError(t, tr.doTrim())
+	assert.EqualValues(t, 19, w.FirstOffset())
 }
 
 func TestTrimmerDoTrimFailsWhenFirstEntryIsUnreadable(t *testing.T) {
