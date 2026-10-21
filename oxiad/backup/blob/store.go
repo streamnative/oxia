@@ -46,7 +46,10 @@ type Store interface {
 
 	// Put stores the content of r under key, replacing the object there if
 	// any. The size of the content needn't be known in advance.
-	Put(ctx context.Context, key string, r io.Reader) error
+	// Put stores the object at key, replacing any. The body is seekable so
+	// that a store can size the object and retry a send without buffering
+	// it: a file, or an in-memory reader.
+	Put(ctx context.Context, key string, body io.ReadSeeker) error
 	// Get returns the content of the object at key, or ErrNotFound.
 	Get(ctx context.Context, key string) (io.ReadCloser, error)
 	// List calls visit for every object whose key starts with prefix, in key

@@ -18,7 +18,6 @@ backup:
   interval: 1h               # target maximum age of a shard's newest backup
   retention: 7d              # how far back a restore can go
   maxConcurrentPerServer: 2  # backup and cleanup jobs running at once on one data server
-  compression: true          # compress the SST files on upload (zstd)
   scheduleInterval: 30s      # how often the coordinator checks what is due
   cleanupInterval: 24h       # how often expired backups are deleted
 ```
@@ -83,7 +82,7 @@ result is reported once, then the next request starts the next job.
 
 ```
 <destination>/<namespace>/shard-<id>/
-  sst/<lineage>-<file-number>.sst[.zst]   # each SST uploaded once, shared by every backup that lists it
+  sst/<lineage>-<file-number>.sst         # each SST uploaded once, shared by every backup that lists it
   backups/<backup-id>/                     # the small per-backup files: MANIFEST, OPTIONS, markers
   backups/<backup-id>.json                 # the backup manifest, written last
 ```
@@ -103,16 +102,17 @@ result is reported once, then the next request starts the next job.
   time, the lineage, and the list of SSTs and other files with their sizes
   and CRC32C checksums. A backup exists only once its manifest is written: an
   interrupted backup leaves orphaned SSTs, never a partial backup.
-- The **commit offset** in the manifest is the one read from the database
-  right before the flush that precedes the checkpoint: the checkpoint holds
-  every entry up to it, and may hold a few more.
+- The **commit offset** and the **term** in the manifest are read from the
+  files of the checkpoint, where every batch wrote them with its data: the
+  backup holds every entry up to the commit offset, and none past it.
 
 ## Taking a backup
 
-1. The replica reads the commit offset and the term, flushes the database
-   and takes a Pebble checkpoint, which hard-links the SSTs: compaction can't
-   delete them while they upload. The checkpoint is taken under the
-   controller's read lock, so a change of term waits for the flush.
+1. The replica flushes the database and takes a Pebble checkpoint, which
+   hard-links the SSTs: compaction can't delete them while they upload. The
+   checkpoint is taken under the controller's read lock, so a change of term
+   waits for the flush. The commit offset and the term of the backup are
+   read from the files of the checkpoint.
 2. It compares the checkpoint's SSTs with the SSTs of its last backup, and
    uploads only the missing ones. It reuses the SSTs of its last backup only
    if that backup is younger than `retention` minus a safety margin (the
@@ -248,6 +248,7 @@ stopped at.
   future work.
 - A new lineage costs a full upload, and the bucket holds about two copies of
   the shard for one retention period.
-- Compression trades CPU on the data server for upload volume: Oxia stores
-  the L0 SSTs uncompressed, and every backup's flush produces one.
+- The SSTs are uploaded as Pebble stores them: uncompressed at L0, Snappy
+  below. A second compression at upload would spend the CPU of the data
+  server on data that is compressed already, for little gain.
 - Encryption relies on the bucket's server-side encryption.

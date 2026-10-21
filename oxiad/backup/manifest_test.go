@@ -15,6 +15,7 @@
 package backup
 
 import (
+	"bytes"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -35,7 +36,6 @@ func TestManifestValidate(t *testing.T) {
 		"shard":          func(m *Manifest) { m.Shard = -1 },
 		"lineage":        func(m *Manifest) { m.Lineage = "" },
 		"range":          func(m *Manifest) { m.Range = Range{Min: 2, Max: 1} },
-		"compression":    func(m *Manifest) { m.Compression = "gzip" },
 		"id":             func(m *Manifest) { m.ID = "garbage" },
 		"id lineage":     func(m *Manifest) { m.ID = "2026-10-03T14-00-00Z-other" },
 		"file key":       func(m *Manifest) { m.SSTs[0].Key = "" },
@@ -158,11 +158,34 @@ func newManifest(namespace string, shard int64, lineage string, at time.Time) *M
 		CommitOffset:    1234,
 		CreatedAt:       at,
 		SSTs: []File{
-			{Name: "000005.sst", Key: p.SSTKey(lineage, "000005.sst", ""), Size: 1000, StoredSize: 1000, CRC32C: 1},
-			{Name: "000007.sst", Key: p.SSTKey(lineage, "000007.sst", ""), Size: 2000, StoredSize: 2000, CRC32C: 2},
+			{Name: "000005.sst", Key: p.SSTKey(lineage, "000005.sst"), Size: 1000, CRC32C: 1},
+			{Name: "000007.sst", Key: p.SSTKey(lineage, "000007.sst"), Size: 2000, CRC32C: 2},
 		},
 		Files: []File{
-			{Name: "MANIFEST-000001", Key: p.FileKey(id, "MANIFEST-000001"), Size: 300, StoredSize: 300, CRC32C: 3},
+			{Name: "MANIFEST-000001", Key: p.FileKey(id, "MANIFEST-000001"), Size: 300, CRC32C: 3},
 		},
 	}
+}
+
+// A manifest copied under another namespace, e.g. a prefix copied in the
+// bucket, must not be read as a backup of that namespace: its summary would
+// point back at the original, and the cleanup of the copy would delete the
+// manifests of the original.
+func TestReadManifestRejectsAManifestStoredUnderAnotherKey(t *testing.T) {
+	store := blob.NewMemory()
+	m := newManifest("orders", 12, "abcd", time.Date(2026, 10, 3, 14, 0, 0, 0, time.UTC))
+	require.NoError(t, WriteManifest(t.Context(), store, m))
+	data, err := json.Marshal(m)
+	require.NoError(t, err)
+	id, _ := ParseID(m.ID)
+	copied := ShardPath{Namespace: "orders-copy", Shard: 12}.ManifestKey(id)
+	require.NoError(t, store.Put(t.Context(), copied, bytes.NewReader(data)))
+
+	_, err = ReadManifest(t.Context(), store, copied)
+	assert.ErrorIs(t, err, ErrInvalidManifest)
+	_, err = ListManifests(t.Context(), store, ShardPath{Namespace: "orders-copy", Shard: 12})
+	assert.ErrorIs(t, err, ErrInvalidManifest)
+	own, err := ReadManifest(t.Context(), store, m.Summary().ManifestKey())
+	require.NoError(t, err)
+	assert.Equal(t, m.ID, own.ID)
 }

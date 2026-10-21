@@ -18,25 +18,12 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"net/url"
 	"slices"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 )
-
-// MemoryScheme is the URL scheme of the in-process stores: "mem://<name>"
-// opens the store of that name, shared by every opener in the process. The
-// name is the host and the path of the URL, so "mem://a/x" and "mem://a/y"
-// are two stores.
-const MemoryScheme = "mem"
-
-func init() {
-	Register(MemoryScheme, func(_ context.Context, destination *url.URL) (Store, error) {
-		return SharedMemory(destination.Host + destination.Path), nil
-	})
-}
 
 var (
 	sharedMemoryMu sync.Mutex
@@ -117,7 +104,7 @@ func (m *Memory) Touch(key string, lastModified time.Time) {
 	}
 }
 
-func (m *Memory) Put(ctx context.Context, key string, r io.Reader) error {
+func (m *Memory) Put(ctx context.Context, key string, body io.ReadSeeker) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -129,7 +116,7 @@ func (m *Memory) Put(ctx context.Context, key string, r io.Reader) error {
 			return err
 		}
 	}
-	data, err := io.ReadAll(r)
+	data, err := io.ReadAll(body)
 	if err != nil {
 		return err
 	}

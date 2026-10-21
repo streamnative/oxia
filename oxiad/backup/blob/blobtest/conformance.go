@@ -46,6 +46,14 @@ func RunConformance(t *testing.T, newStore func(t *testing.T) blob.Store) {
 		require.NoError(t, store.Put(t.Context(), "dir/file", bytes.NewReader(content)))
 		assert.Equal(t, content, get(t, store, "dir/file"))
 	})
+	t.Run("PutStoresALargeObjectInOnePut", func(t *testing.T) {
+		// Above the size at which a multipart upload would start on S3: a
+		// store sends an object of any size the SSTs reach as one object
+		store := newStore(t)
+		content := bytes.Repeat([]byte("0123456789abcdef"), 17<<20/16)
+		require.NoError(t, store.Put(t.Context(), "large", bytes.NewReader(content)))
+		assert.Equal(t, content, get(t, store, "large"))
+	})
 	t.Run("PutReplacesExistingObject", func(t *testing.T) {
 		store := newStore(t)
 		require.NoError(t, store.Put(t.Context(), "k", strings.NewReader("one")))

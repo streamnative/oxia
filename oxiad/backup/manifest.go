@@ -43,11 +43,8 @@ type File struct {
 	Name string `json:"name"`
 	// Key is the object that holds the file.
 	Key string `json:"key"`
-	// Size is the size of the file, in bytes.
+	// Size is the size of the file, and of the object, in bytes.
 	Size int64 `json:"size"`
-	// StoredSize is the size of the object, which differs from Size when the
-	// object is compressed.
-	StoredSize int64 `json:"stored_size"`
 	// CRC32C is the checksum of the file (the Castagnoli polynomial).
 	CRC32C uint32 `json:"crc32c"`
 }
@@ -67,16 +64,13 @@ type Manifest struct {
 	// NamespaceConfig is the configuration of the namespace when the backup
 	// was taken, in the protobuf JSON format, for a restore to recreate it.
 	NamespaceConfig json.RawMessage `json:"namespace_config,omitempty"`
-	Term            int64           `json:"term"`
-	// CommitOffset is the commit offset read right before the checkpoint: the
-	// backup holds every entry up to it, and may hold a few more.
+	// Term and CommitOffset are read from the files of the checkpoint: the
+	// backup holds every entry up to CommitOffset, and none past it.
+	Term         int64     `json:"term"`
 	CommitOffset int64     `json:"commit_offset"`
 	CreatedAt    time.Time `json:"created_at"`
-	// Compression names the compression of the SST objects: "zstd", or empty
-	// when they are stored as they are.
-	Compression string `json:"compression,omitempty"`
-	SSTs        []File `json:"ssts"`
-	Files       []File `json:"files"`
+	SSTs         []File    `json:"ssts"`
+	Files        []File    `json:"files"`
 }
 
 // Validate checks that the manifest describes a backup this code can
@@ -89,8 +83,6 @@ func (m *Manifest) Validate() error {
 		return fmt.Errorf("%w: missing namespace, shard or lineage", ErrInvalidManifest)
 	case m.Range.Min > m.Range.Max:
 		return fmt.Errorf("%w: hash range %s", ErrInvalidManifest, m.Range)
-	case m.Compression != "" && m.Compression != CompressionZstd:
-		return fmt.Errorf("%w: unknown compression %q", ErrInvalidManifest, m.Compression)
 	}
 	id, err := ParseID(m.ID)
 	if err != nil {
@@ -107,10 +99,6 @@ func (m *Manifest) Validate() error {
 	return nil
 }
 
-// CompressionZstd is the Compression of a manifest whose SST objects are
-// zstd-compressed.
-const CompressionZstd = "zstd"
-
 // Summary is what the retention rule, the restore planning and the listings
 // need of a backup: its manifest without the file lists.
 type Summary struct {
@@ -124,7 +112,7 @@ type Summary struct {
 	Range        Range
 	Term         int64
 	CommitOffset int64
-	// SizeBytes is the size of the files of the backup, before compression.
+	// SizeBytes is the size of the files of the backup.
 	SizeBytes int64
 	SSTCount  int
 	// NamespaceConfig is the configuration of the namespace recorded in the
@@ -196,7 +184,10 @@ func WriteManifest(ctx context.Context, store blob.Store, m *Manifest) error {
 	return nil
 }
 
-// ReadManifest reads and validates the manifest at key. It returns
+// ReadManifest reads and validates the manifest at key, which must be the
+// key the manifest names for itself: the summary of a manifest points back
+// at its key, and the deletions of the cleanup follow it, so a manifest
+// copied under another namespace or shard is invalid there. It returns
 // blob.ErrNotFound when there is none.
 func ReadManifest(ctx context.Context, store blob.Store, key string) (*Manifest, error) {
 	r, err := store.Get(ctx, key)
@@ -214,6 +205,9 @@ func ReadManifest(ctx context.Context, store blob.Store, key string) (*Manifest,
 	}
 	if err := m.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: %s", err, key)
+	}
+	if own := m.Summary().ManifestKey(); own != key {
+		return nil, fmt.Errorf("%w: %s describes the backup at %s", ErrInvalidManifest, key, own)
 	}
 	return m, nil
 }
