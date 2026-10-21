@@ -26,15 +26,3 @@ coverage:
     patch:
       default:
         target: 100%
-
-ignore:
-  - "**/*.pb.go"
-  # Test harnesses and process entry points
-  - "oxiad/coordinator/rpc/rpctest"
-  - "tests/mock"
-  - "cmd/client/common/client_mock.go"
-  - "common/rpc/mock.go"
-  - "cmd/main.go"
-  - "oxiad/maelstrom/main.go"
-  # A benchmark tool
-  - "cmd/wal/perf/cmd.go"

@@ -101,6 +101,9 @@ jobs:
           # Empty on fork PRs, where the action falls back to a tokenless upload
           token: ${{ secrets.CODECOV_TOKEN }}
 
+      - name: Check coverage
+        run: make check-coverage
+
   chaos-mesh:
     name: Run chaos-mesh
     if: github.event_name == 'pull_request'
