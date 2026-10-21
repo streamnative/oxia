@@ -261,8 +261,47 @@ func (f *fakeAPI) DeleteObjects(ctx context.Context, params *awss3.DeleteObjects
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	out := &awss3.DeleteObjectsOutput{}
 	for _, object := range params.Delete.Objects {
-		delete(f.objects, aws.ToString(object.Key))
+		key := aws.ToString(object.Key)
+		// Some stores report a missing key as an error, which the store
+		// ignores; a key under "denied/" fails, as a policy would make it
+		switch {
+		case strings.Contains(key, "/denied/"):
+			out.Errors = append(out.Errors, types.Error{Key: aws.String(key), Code: aws.String("AccessDenied"),
+				Message: aws.String("not allowed")})
+			continue
+		case f.objects[key].data == nil:
+			out.Errors = append(out.Errors, types.Error{Key: aws.String(key), Code: aws.String("NoSuchKey")})
+			continue
+		}
+		delete(f.objects, key)
 	}
-	return &awss3.DeleteObjectsOutput{}, nil
+	return out, nil
+}
+
+func TestOpenReportsAConfigurationThatDoesNotLoad(t *testing.T) {
+	t.Setenv("AWS_PROFILE", "no-such-profile")
+	t.Setenv("AWS_CONFIG_FILE", "/dev/null")
+	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", "/dev/null")
+	u, err := url.Parse("s3://bucket/prefix")
+	require.NoError(t, err)
+	_, err = Open(t.Context(), u)
+	assert.ErrorContains(t, err, "load configuration")
+}
+
+func TestStoreReportsTheErrorsOfTheAPI(t *testing.T) {
+	store := New(newFakeAPI(), "bucket", "base")
+	require.NoError(t, store.Put(t.Context(), "a", strings.NewReader("v")))
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	assert.ErrorContains(t, store.List(ctx, "", func(blob.Object) error { return nil }), "list")
+	assert.ErrorContains(t, store.Delete(ctx, []string{"a"}), "delete 1 objects")
+
+	// A missing key is deleted already; a denied one fails the call
+	require.NoError(t, store.Delete(t.Context(), []string{"a", "missing"}))
+	err := store.Delete(t.Context(), []string{"denied/x"})
+	assert.ErrorContains(t, err, "AccessDenied")
+	assert.ErrorContains(t, err, "denied/x")
+	assert.NoError(t, store.Close())
 }
