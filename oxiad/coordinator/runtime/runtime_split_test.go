@@ -173,8 +173,7 @@ func newSplitTestRuntime(t *testing.T) *splitTestRuntime {
 	// can at any moment
 	recomputing := &fakeMetadata{Metadata: metadata}
 	recomputing.afterStatusWrites(func() {
-		// An unrelated shard's election completing
-		r.LeaderElected(splitOtherShard, splitPs2, nil)
+		r.computeNewAssignments()
 		r.snapshotsLock.Lock()
 		r.snapshots = append(r.snapshots, r.assignmentsWatch.Load())
 		r.snapshotsLock.Unlock()
@@ -269,8 +268,7 @@ func (r *splitTestRuntime) queueChildrenAppliedResponses() {
 func (r *splitTestRuntime) publishedSnapshots() []*proto.ShardAssignments {
 	r.snapshotsLock.Lock()
 	defer r.snapshotsLock.Unlock()
-	// The split controller finished with a recompute of its own
-	return append(slices.Clone(r.snapshots), r.assignmentsWatch.Load())
+	return slices.Clone(r.snapshots)
 }
 
 // checkAssignments verifies that the shards of a namespace partition the whole

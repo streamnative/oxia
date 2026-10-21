@@ -793,6 +793,66 @@ func TestRuntimeComputeNewAssignmentsRetriesStatusLoadError(t *testing.T) {
 	assert.Equal(t, server.GetPublic(), nsAssignments.Assignments[0].Leader)
 }
 
+// The shard assignments are recomputed in the background: a callback that
+// asks for them while holding the runtime lock doesn't wait for the cluster
+// status to become available again, and doesn't hold the lock meanwhile.
+func TestRuntimeComputeNewAssignmentsDoesNotHoldTheLock(t *testing.T) {
+	server := &proto.DataServerIdentity{Public: "public:6648", Internal: "internal:6649"}
+	base := newTestMetadata(t, &proto.ClusterConfiguration{
+		Servers:    []*proto.DataServerIdentity{server},
+		Namespaces: []*proto.Namespace{{Name: "ns", InitialShardCount: 1, ReplicationFactor: 1}},
+	})
+	require.NoError(t, base.CreateNamespaceStatus("ns", &proto.NamespaceStatus{
+		ReplicationFactor: 1,
+		Shards: map[int64]*proto.ShardMetadata{
+			0: {
+				Status:         proto.ShardStatusSteadyState,
+				Leader:         server,
+				Ensemble:       []*proto.DataServerIdentity{server},
+				Int32HashRange: &proto.HashRange{Min: 0, Max: 100},
+			},
+		},
+	}))
+	var unavailable atomic.Bool
+	unavailable.Store(true)
+	var failures atomic.Int32
+	ctx, cancel := context.WithCancel(t.Context())
+	c := &runtime{
+		ctx:    ctx,
+		logger: slog.Default(),
+		metadata: &fakeMetadata{
+			Metadata: base,
+			listNamespaceStatus: func() (map[string]commonobject.Borrowed[*proto.NamespaceStatus], error) {
+				if unavailable.Load() {
+					failures.Add(1)
+					return nil, errors.New("status unavailable")
+				}
+				return base.ListNamespaceStatus()
+			},
+		},
+		shardControllers:   map[int64]shardcontroller.Controller{},
+		assignmentsWatch:   commonwatch.New(&proto.ShardAssignments{}),
+		assignmentsTrigger: make(chan any, 1),
+	}
+	c.wg.Go(c.startAssignmentsWorker)
+	t.Cleanup(func() {
+		cancel()
+		c.wg.Wait()
+	})
+
+	c.ShardDeleted(0)
+
+	require.Eventually(t, func() bool { return failures.Load() >= 2 }, 10*time.Second, 10*time.Millisecond)
+	require.True(t, c.TryLock())
+	c.Unlock()
+
+	unavailable.Store(false)
+	require.Eventually(t, func() bool {
+		_, ok := c.assignmentsWatch.Load().Namespaces["ns"]
+		return ok
+	}, 10*time.Second, 10*time.Millisecond)
+}
+
 func TestRuntimeComputeNewAssignmentsRetriesConfigLoadErrors(t *testing.T) {
 	loadErr := errors.New("config unavailable")
 	for _, tc := range []struct {

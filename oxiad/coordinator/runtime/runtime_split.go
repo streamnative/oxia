@@ -249,7 +249,7 @@ func (c *runtime) SplitComplete(parentShard int64, leftChild int64, rightChild i
 		sc.Delete()
 	}
 
-	c.computeNewAssignments()
+	c.triggerComputeNewAssignments()
 }
 
 // SplitAborted is called by the SplitController when a split has been
@@ -277,7 +277,7 @@ func (c *runtime) SplitAborted(parentShard int64, leftChild int64, rightChild in
 		}
 	}
 
-	c.computeNewAssignments()
+	c.triggerComputeNewAssignments()
 }
 
 func (c *runtime) namespaceConfigForSplit(namespace string) (*proto.Namespace, error) {

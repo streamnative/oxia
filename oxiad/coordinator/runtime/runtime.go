@@ -28,6 +28,7 @@ import (
 	"go.uber.org/multierr"
 	pb "google.golang.org/protobuf/proto"
 
+	"github.com/oxia-db/oxia/common/channel"
 	"github.com/oxia-db/oxia/common/constant"
 	commonobject "github.com/oxia-db/oxia/common/object"
 	"github.com/oxia-db/oxia/oxiad/common/health"
@@ -84,15 +85,14 @@ type runtime struct {
 	autoSplitMonitor *autosplit.Monitor
 	ensembleSelector selector.Selector[*ensemble.Context, []string]
 
-	assignmentsWatch *commonwatch.Watch[*proto.ShardAssignments]
+	assignmentsWatch   *commonwatch.Watch[*proto.ShardAssignments]
+	assignmentsTrigger chan any
 
 	rpc rpc.Provider
 }
 
 func (c *runtime) LeaderElected(int64, *proto.DataServerIdentity, []*proto.DataServerIdentity) {
-	c.Lock()
-	defer c.Unlock()
-	c.computeNewAssignments()
+	c.triggerComputeNewAssignments()
 }
 
 func (c *runtime) ShardDeleted(shard int64) {
@@ -110,7 +110,7 @@ func (c *runtime) ShardDeleted(shard int64) {
 	if exists {
 		delete(c.shardControllers, shard)
 	}
-	c.computeNewAssignments()
+	c.triggerComputeNewAssignments()
 	c.Unlock()
 
 	if exists {
@@ -321,9 +321,7 @@ func (c *runtime) DeleteNamespace(namespace string) {
 }
 
 func (c *runtime) RecomputeAssignments() {
-	c.Lock()
-	defer c.Unlock()
-	c.computeNewAssignments()
+	c.triggerComputeNewAssignments()
 	c.loadBalancer.Trigger()
 }
 
@@ -537,7 +535,24 @@ func (c *runtime) dispatchAction(ac action.Action) {
 	sc.Dispatch(ac)
 }
 
-// This is called while already holding the lock on the coordinator.
+// triggerComputeNewAssignments doesn't block, so it can be called while
+// holding the lock on the coordinator.
+func (c *runtime) triggerComputeNewAssignments() {
+	channel.PushNoBlock(c.assignmentsTrigger, nil)
+}
+
+func (c *runtime) startAssignmentsWorker() {
+	for {
+		select {
+		case <-c.assignmentsTrigger:
+			c.computeNewAssignments()
+
+		case <-c.ctx.Done():
+			return
+		}
+	}
+}
+
 func (c *runtime) computeNewAssignments() {
 	_ = backoff.RetryNotify(c.computeNewAssignments0, oxiatime.NewBackOff(c.ctx), func(err error, retryAfter time.Duration) {
 		c.logger.Warn("Failed to compute the shard assignments, retrying later",
@@ -704,6 +719,7 @@ func New(
 		metadata:              metadata,
 		insID:                 insID,
 		assignmentsWatch:      commonwatch.New[*proto.ShardAssignments](nil),
+		assignmentsTrigger:    make(chan any, 1),
 	}
 
 	c.ctx, c.ctxCancel = context.WithCancel(context.Background())
@@ -777,6 +793,11 @@ func New(
 		process.DoWithLabels(c.ctx, map[string]string{
 			"component": "coordinator-action-worker",
 		}, c.startBackgroundActionWorker)
+	})
+	c.wg.Go(func() {
+		process.DoWithLabels(c.ctx, map[string]string{
+			"component": "coordinator-assignments-worker",
+		}, c.startAssignmentsWorker)
 	})
 	c.loadBalancer.Start()
 
