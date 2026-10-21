@@ -32,6 +32,7 @@ import (
 	grpcstatus "google.golang.org/grpc/status"
 
 	"github.com/oxia-db/oxia/common/proto"
+	"github.com/oxia-db/oxia/oxiad/backup"
 	commonwatch "github.com/oxia-db/oxia/oxiad/common/watch"
 	coordmetadata "github.com/oxia-db/oxia/oxiad/coordinator/metadata"
 	coordoption "github.com/oxia-db/oxia/oxiad/coordinator/option"
@@ -1574,4 +1575,134 @@ type splitRuntime struct {
 
 func (*splitRuntime) InitiateSplit(_ string, shard int64, _ *uint32) (leftShardID int64, rightShardID int64, err error) {
 	return shard + 1, shard + 2, nil
+}
+
+func (*testRuntime) RequestBackup(string, *int64) (int, error) {
+	return 0, coordruntime.ErrBackupsUnsupported
+}
+
+func (*testRuntime) ListBackups(context.Context, string, *int64, string) ([]*proto.BackupInfo, error) {
+	return nil, coordruntime.ErrBackupsUnsupported
+}
+
+// backupTestRuntime serves the backup operations with the given results.
+type backupTestRuntime struct {
+	*testRuntime
+	requestBackup    func(namespace string, shard *int64) (int, error)
+	listBackups      func(namespace string, shard *int64, destination string) ([]*proto.BackupInfo, error)
+	restoreNamespace func(req *proto.RestoreNamespaceRequest) (*proto.RestoreNamespaceResponse, error)
+}
+
+func (r *backupTestRuntime) RequestBackup(namespace string, shard *int64) (int, error) {
+	return r.requestBackup(namespace, shard)
+}
+
+func (r *backupTestRuntime) ListBackups(_ context.Context, namespace string, shard *int64, destination string) ([]*proto.BackupInfo, error) {
+	return r.listBackups(namespace, shard, destination)
+}
+
+func (r *backupTestRuntime) RestoreNamespace(_ context.Context, req *proto.RestoreNamespaceRequest) (*proto.RestoreNamespaceResponse, error) {
+	return r.restoreNamespace(req)
+}
+
+func TestManagementServerBackupOperations(t *testing.T) {
+	metadata := newTestMetadata(t, &proto.ClusterConfiguration{})
+	shard := int64(7)
+	runtime := &backupTestRuntime{
+		testRuntime:   &testRuntime{metadata: metadata},
+		requestBackup: func(string, *int64) (int, error) { return 3, nil },
+		listBackups: func(namespace string, _ *int64, destination string) ([]*proto.BackupInfo, error) {
+			return []*proto.BackupInfo{{Shard: 7, BackupId: namespace + "@" + destination}}, nil
+		},
+	}
+	management := newReadyManagementServer(metadata, runtime)
+
+	requested, err := management.RequestBackup(context.Background(), &proto.RequestBackupRequest{Namespace: "ns", Shard: &shard})
+	require.NoError(t, err)
+	assert.EqualValues(t, 3, requested.GetShards())
+	listed, err := management.ListBackups(context.Background(), &proto.ListBackupsRequest{Namespace: "ns", Destination: "s3://b"})
+	require.NoError(t, err)
+	require.Len(t, listed.GetBackups(), 1)
+	assert.Equal(t, "ns@s3://b", listed.GetBackups()[0].GetBackupId())
+
+	// The errors of the runtime map to gRPC codes
+	for name, test := range map[string]struct {
+		err  error
+		code codes.Code
+	}{
+		"unsupported":    {coordruntime.ErrBackupsUnsupported, codes.Unimplemented},
+		"no destination": {coordruntime.ErrNoBackupDestination, codes.FailedPrecondition},
+		"other":          {errors.New("data server unavailable"), codes.Unknown},
+	} {
+		t.Run(name, func(t *testing.T) {
+			runtime.requestBackup = func(string, *int64) (int, error) { return 0, test.err }
+			runtime.listBackups = func(string, *int64, string) ([]*proto.BackupInfo, error) { return nil, test.err }
+			_, err := management.RequestBackup(context.Background(), &proto.RequestBackupRequest{Namespace: "ns"})
+			assert.Equal(t, test.code, grpcstatus.Code(err))
+			_, err = management.ListBackups(context.Background(), &proto.ListBackupsRequest{Namespace: "ns"})
+			assert.Equal(t, test.code, grpcstatus.Code(err))
+		})
+	}
+
+	// Without a runtime, the server is not ready
+	notReady := newManagementServer(metadata)
+	_, err = notReady.RequestBackup(context.Background(), &proto.RequestBackupRequest{Namespace: "ns"})
+	assert.Error(t, err)
+	_, err = notReady.ListBackups(context.Background(), &proto.ListBackupsRequest{Namespace: "ns"})
+	assert.Error(t, err)
+}
+
+func (*testRuntime) RestoreNamespace(context.Context, *proto.RestoreNamespaceRequest) (*proto.RestoreNamespaceResponse, error) {
+	return nil, coordruntime.ErrBackupsUnsupported
+}
+
+func TestManagementServerRestoreNamespace(t *testing.T) {
+	metadata := newTestMetadata(t, &proto.ClusterConfiguration{})
+	runtime := &backupTestRuntime{
+		testRuntime: &testRuntime{metadata: metadata},
+		restoreNamespace: func(req *proto.RestoreNamespaceRequest) (*proto.RestoreNamespaceResponse, error) {
+			return &proto.RestoreNamespaceResponse{Shards: []*proto.RestoredShard{{Shard: 1, BackupId: req.GetTargetNamespace()}}}, nil
+		},
+	}
+	management := newReadyManagementServer(metadata, runtime)
+	valid := &proto.RestoreNamespaceRequest{SourceNamespace: "orders", TargetNamespace: "orders-restored", AsOfMillis: 1}
+
+	res, err := management.RestoreNamespace(context.Background(), valid)
+	require.NoError(t, err)
+	require.Len(t, res.GetShards(), 1)
+	assert.Equal(t, "orders-restored", res.GetShards()[0].GetBackupId())
+
+	// The request is validated before reaching the runtime
+	for name, req := range map[string]*proto.RestoreNamespaceRequest{
+		"invalid target": {SourceNamespace: "orders", TargetNamespace: "not a name!", AsOfMillis: 1},
+		"missing source": {TargetNamespace: "orders-restored", AsOfMillis: 1},
+		"missing time":   {SourceNamespace: "orders", TargetNamespace: "orders-restored"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := management.RestoreNamespace(context.Background(), req)
+			assert.Equal(t, codes.InvalidArgument, grpcstatus.Code(err))
+		})
+	}
+
+	// The errors of the runtime map to gRPC codes
+	for name, test := range map[string]struct {
+		err  error
+		code codes.Code
+	}{
+		"exists":     {metadatacommon.ErrAlreadyExists, codes.AlreadyExists},
+		"no backup":  {backup.ErrNoBackup, codes.InvalidArgument},
+		"invalid id": {backup.ErrInvalidID, codes.InvalidArgument},
+	} {
+		t.Run(name, func(t *testing.T) {
+			runtime.restoreNamespace = func(*proto.RestoreNamespaceRequest) (*proto.RestoreNamespaceResponse, error) {
+				return nil, test.err
+			}
+			_, err := management.RestoreNamespace(context.Background(), valid)
+			assert.Equal(t, test.code, grpcstatus.Code(err))
+		})
+	}
+
+	// Without a runtime, the server is not ready
+	_, err = newManagementServer(metadata).RestoreNamespace(context.Background(), valid)
+	assert.Error(t, err)
 }

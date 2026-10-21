@@ -823,3 +823,15 @@ func TestNamespaceReconcilerReconcileReturnsStatusLoadError(t *testing.T) {
 	require.ErrorIs(t, err, listErr)
 	assert.Empty(t, base.deleted)
 }
+
+func (*mockNamespaceRuntime) RequestBackup(string, *int64) (int, error) {
+	return 0, coordruntime.ErrBackupsUnsupported
+}
+
+func (*mockNamespaceRuntime) ListBackups(context.Context, string, *int64, string) ([]*proto.BackupInfo, error) {
+	return nil, coordruntime.ErrBackupsUnsupported
+}
+
+func (*mockNamespaceRuntime) RestoreNamespace(context.Context, *proto.RestoreNamespaceRequest) (*proto.RestoreNamespaceResponse, error) {
+	return nil, coordruntime.ErrBackupsUnsupported
+}
