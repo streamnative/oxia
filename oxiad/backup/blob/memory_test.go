@@ -15,6 +15,8 @@
 package blob_test
 
 import (
+	"context"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -74,4 +76,56 @@ func TestOpenResolvesSharedMemoryByName(t *testing.T) {
 func TestOpenRejectsUnknownScheme(t *testing.T) {
 	_, err := blob.Open(t.Context(), "ftp://host/path")
 	assert.ErrorContains(t, err, `unsupported destination scheme "ftp"`)
+}
+
+func TestMemoryHonorsACancelledContext(t *testing.T) {
+	store := blob.NewMemory()
+	require.NoError(t, store.Put(t.Context(), "k", strings.NewReader("v")))
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	assert.ErrorIs(t, store.Put(ctx, "k", strings.NewReader("v")), context.Canceled)
+	_, err := store.Get(ctx, "k")
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.ErrorIs(t, store.List(ctx, "", func(blob.Object) error { return nil }), context.Canceled)
+	_, err = store.ListDirs(ctx, "")
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.ErrorIs(t, store.Delete(ctx, []string{"k"}), context.Canceled)
+	assert.NoError(t, store.Close())
+}
+
+func TestMemoryTouchRestampsAnObject(t *testing.T) {
+	store := blob.NewMemory()
+	require.NoError(t, store.Put(t.Context(), "k", strings.NewReader("v")))
+	at := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	store.Touch("k", at)
+	store.Touch("missing", at)
+	var objects []blob.Object
+	require.NoError(t, store.List(t.Context(), "", func(o blob.Object) error {
+		objects = append(objects, o)
+		return nil
+	}))
+	require.Len(t, objects, 1)
+	assert.Equal(t, at, objects[0].LastModified)
+}
+
+func TestRegisterPanicsOnADuplicateScheme(t *testing.T) {
+	opener := func(context.Context, *url.URL) (blob.Store, error) { return blob.NewMemory(), nil }
+	blob.Register("test-duplicate", opener)
+	assert.Panics(t, func() { blob.Register("test-duplicate", opener) })
+}
+
+func TestOpenRejectsAnInvalidDestination(t *testing.T) {
+	_, err := blob.Open(t.Context(), "::not a url")
+	assert.ErrorContains(t, err, "invalid destination")
+}
+
+// failingBody fails every read, as a file that went away does.
+type failingBody struct{ strings.Reader }
+
+func (*failingBody) Read([]byte) (int, error) { return 0, assert.AnError }
+
+func TestMemoryPutReportsABodyThatFailsToRead(t *testing.T) {
+	store := blob.NewMemory()
+	assert.ErrorIs(t, store.Put(t.Context(), "k", &failingBody{}), assert.AnError)
+	assert.Empty(t, store.Keys())
 }

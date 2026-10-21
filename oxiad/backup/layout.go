@@ -50,12 +50,11 @@ var ErrInvalidID = errors.New("backup: invalid backup id")
 
 // NewLineage returns a new random lineage: the identity of one database of
 // one replica, which the SST object keys of its backups carry.
-func NewLineage() (string, error) {
+func NewLineage() string {
 	var b [lineageBytes]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return "", fmt.Errorf("backup: generate lineage: %w", err)
-	}
-	return hex.EncodeToString(b[:]), nil
+	// crypto/rand never returns an error: it crashes the program instead
+	_, _ = rand.Read(b[:])
+	return hex.EncodeToString(b[:])
 }
 
 // ID identifies a backup of a shard: its start time, to the second, and the

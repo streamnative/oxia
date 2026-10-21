@@ -16,7 +16,9 @@ package backup
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -188,4 +190,38 @@ func TestReadManifestRejectsAManifestStoredUnderAnotherKey(t *testing.T) {
 	own, err := ReadManifest(t.Context(), store, m.Summary().ManifestKey())
 	require.NoError(t, err)
 	assert.Equal(t, m.ID, own.ID)
+}
+
+func TestSummaryNewerFollowsTheOrderOfIDs(t *testing.T) {
+	at := time.Date(2026, 10, 3, 14, 0, 0, 0, time.UTC)
+	older := newManifest("orders", 12, "abcd", at).Summary()
+	newer := newManifest("orders", 12, "abcd", at.Add(time.Second)).Summary()
+	assert.True(t, newer.Newer(older))
+	assert.False(t, older.Newer(newer))
+	assert.False(t, older.Newer(older))
+}
+
+func TestWriteManifestReportsAnInvalidNamespaceConfigurationAndAFailedWrite(t *testing.T) {
+	store := blob.NewMemory()
+	m := newManifest("orders", 12, "abcd", time.Date(2026, 10, 3, 14, 0, 0, 0, time.UTC))
+	m.NamespaceConfig = json.RawMessage(`{not json`)
+	assert.ErrorContains(t, WriteManifest(t.Context(), store, m), "encode manifest")
+
+	m = newManifest("orders", 12, "abcd", time.Date(2026, 10, 3, 14, 0, 0, 0, time.UTC))
+	store.FailPut(func(string) error { return errors.New("bucket unavailable") })
+	err := WriteManifest(t.Context(), store, m)
+	assert.ErrorContains(t, err, "write manifest")
+	assert.ErrorContains(t, err, "bucket unavailable")
+}
+
+func TestListingsReportTheErrorsOfTheStore(t *testing.T) {
+	store := blob.NewMemory()
+	m := newManifest("orders", 12, "abcd", time.Date(2026, 10, 3, 14, 0, 0, 0, time.UTC))
+	require.NoError(t, WriteManifest(t.Context(), store, m))
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, err := ListManifests(ctx, store, ShardPath{Namespace: "orders", Shard: 12})
+	assert.ErrorIs(t, err, context.Canceled)
+	_, err = ListShards(ctx, store, "orders")
+	assert.ErrorIs(t, err, context.Canceled)
 }
