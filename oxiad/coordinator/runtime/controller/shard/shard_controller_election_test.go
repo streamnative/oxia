@@ -543,6 +543,27 @@ func TestElectionWaitForGracePeriodAlreadyComplete(t *testing.T) {
 	assert.Less(t, elapsed, 10*time.Millisecond, "should return immediately when all responses received")
 }
 
+// A follower that is not added by the leader yet, behind it, or unreachable,
+// is asked again until it catches up.
+func TestElectionEnsureFollowerCaughtRetriesUntilCaughtUp(t *testing.T) {
+	var shard int64 = 5
+	rpc := rpctest.NewRpcProvider()
+	leader := testDataServer("leader")
+	follower := testDataServer("follower")
+	e := newTestElection(t, nil, rpc, shard, &proto.ShardMetadata{})
+
+	rpc.GetNode(follower).EnqueueGetStatusError(constant.ErrNodeIsNotMember)
+	rpc.GetNode(follower).GetStatusResponse(2, proto.ServingStatus_FOLLOWER, 9, 9)
+	rpc.GetNode(follower).EnqueueGetStatusError(errors.New("unreachable"))
+	rpc.GetNode(follower).GetStatusResponse(2, proto.ServingStatus_FOLLOWER, 10, 10)
+
+	e.ensureFollowerCaught([]*proto.DataServerIdentity{leader, follower}, leader, &proto.EntryId{Term: 2, Offset: 10})
+
+	for range 4 {
+		rpc.GetNode(follower).ExpectGetStatusRequest(t, shard)
+	}
+}
+
 func TestElectionCheckRemovedEntriesReplicationFactor3(t *testing.T) {
 	s1 := testDataServer("s1")
 	s2 := testDataServer("s2")
