@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"strings"
 
+	admincommons "github.com/oxia-db/oxia/cmd/admin/commons"
 	namespacecli "github.com/oxia-db/oxia/cmd/admin/namespace/cli"
 	"github.com/oxia-db/oxia/common/proto"
 	"github.com/oxia-db/oxia/common/validation"
@@ -95,7 +96,7 @@ func (e Executor) namespaceCreate(args []string) error {
 
 func (e Executor) parseNamespaceCreateCommand(args []string) (string, *proto.Namespace, error) {
 	const usage = "admin namespace create [--output FORMAT] --initial-shards COUNT --replication-factor FACTOR [--notifications BOOL] [--key-sorting TYPE] NAMESPACE"
-	flags := e.newFlagSet("namespace-create")
+	flags, outputFormat := e.newFlagSet("namespace-create")
 
 	var (
 		initialShardCount uint32
@@ -136,12 +137,11 @@ func (e Executor) parseNamespaceCreateCommand(args []string) (string, *proto.Nam
 	if parsedKeySorting == proto.KeySortingType_UNKNOWN {
 		return "", nil, errors.New(`key sorting must be one of "natural" or "hierarchical"`)
 	}
-	outputFormat, err := adminOutputFormat(flags)
-	if err != nil {
+	if err := admincommons.ValidateOutputFormat(*outputFormat); err != nil {
 		return "", nil, err
 	}
 
-	return outputFormat, &proto.Namespace{
+	return *outputFormat, &proto.Namespace{
 		Name:                 name,
 		InitialShardCount:    initialShardCount,
 		ReplicationFactor:    replicationFactor,
@@ -168,7 +168,7 @@ func (e Executor) namespacePatch(args []string) error {
 
 func (e Executor) parseNamespacePatchCommand(args []string) (string, *proto.Namespace, error) {
 	const usage = "admin namespace patch [--output FORMAT] [--replication-factor FACTOR] [--notifications BOOL] NAMESPACE"
-	flags := e.newFlagSet("namespace-patch")
+	flags, outputFormat := e.newFlagSet("namespace-patch")
 
 	var (
 		replicationFactor uint32
@@ -195,8 +195,7 @@ func (e Executor) parseNamespacePatchCommand(args []string) (string, *proto.Name
 	if err := validation.ValidateNamespace(name); err != nil {
 		return "", nil, err
 	}
-	outputFormat, err := adminOutputFormat(flags)
-	if err != nil {
+	if err := admincommons.ValidateOutputFormat(*outputFormat); err != nil {
 		return "", nil, err
 	}
 
@@ -207,7 +206,7 @@ func (e Executor) parseNamespacePatchCommand(args []string) (string, *proto.Name
 	if notificationsChanged {
 		namespace.NotificationsEnabled = &notifications
 	}
-	return outputFormat, namespace, nil
+	return *outputFormat, namespace, nil
 }
 
 func (e Executor) namespaceDelete(args []string) error {

@@ -14,10 +14,29 @@
 
 //go:build disable_trap
 
-package lead
+package failpoint
 
-import "context"
+import (
+	"errors"
+	"testing"
 
-func holdBackCommitAdvertisement(context.Context, QuorumAckTracker, int64) error {
-	return nil
+	"github.com/stretchr/testify/assert"
+)
+
+func TestFailpointsTriggerDisabled(t *testing.T) {
+	f := New(map[string]func() error{
+		"point": func() error { return errors.New("hook") },
+	})
+
+	assert.NoError(t, f.Trigger("point"))
+}
+
+func TestFailpointsFailDisabled(t *testing.T) {
+	f := New(map[string]func() error{
+		"point": func() error { return errors.New("hook") },
+	})
+	callErr := errors.New("call")
+
+	assert.NoError(t, f.Fail("point", nil))
+	assert.ErrorIs(t, f.Fail("point", callErr), callErr)
 }

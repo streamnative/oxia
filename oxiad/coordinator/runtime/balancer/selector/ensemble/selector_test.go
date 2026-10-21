@@ -22,6 +22,8 @@ import (
 	"golang.org/x/exp/slices"
 
 	"github.com/oxia-db/oxia/common/proto"
+	"github.com/oxia-db/oxia/oxiad/coordinator/runtime/balancer/selector"
+	"github.com/oxia-db/oxia/oxiad/coordinator/runtime/balancer/selector/single"
 )
 
 func TestSelectMultipleAntiAffinitiesSatisfied(t *testing.T) {
@@ -53,4 +55,50 @@ func TestSelectMultipleAntiAffinitiesSatisfied(t *testing.T) {
 	assert.True(t, slices.Contains(esm, "s1") || slices.Contains(esm, "s2"))
 	assert.Contains(t, esm, "s3")
 	assert.Contains(t, esm, "s4")
+}
+
+func TestSelectFewerCandidatesThanReplicas(t *testing.T) {
+	_, err := NewSelector().Select(&Context{
+		Candidates: linkedhashset.New("s1"),
+		Namespace:  "ns-1",
+		Replicas:   2,
+	})
+	assert.ErrorIs(t, err, selector.ErrUnsatisfiedEnsembleReplicas)
+}
+
+func TestSelectFailsWhenAntiAffinityUnsatisfied(t *testing.T) {
+	_, err := NewSelector().Select(&Context{
+		CandidatesMetadata: map[string]*proto.DataServerMetadata{
+			"s1": {Labels: map[string]string{"region": "us-east"}},
+			"s2": {Labels: map[string]string{"region": "us-east"}},
+		},
+		Candidates:     linkedhashset.New("s1", "s2"),
+		Namespace:      "ns-1",
+		AntiAffinities: []*proto.AntiAffinity{{Labels: []string{"region"}, Mode: proto.AntiAffinityModeStrict}},
+		Replicas:       2,
+	})
+
+	assert.ErrorIs(t, err, selector.ErrUnsatisfiedAntiAffinity)
+}
+
+func TestSelectFailsWhenReplicasUnsatisfied(t *testing.T) {
+	ensembleSelector := &ensemble{singleServerSelector: &fakeSingleSelector{selections: []string{"s1", ""}}}
+
+	_, err := ensembleSelector.Select(&Context{
+		Candidates: linkedhashset.New("s1", "s2"),
+		Replicas:   2,
+	})
+
+	assert.ErrorIs(t, err, selector.ErrUnsatisfiedEnsembleReplicas)
+}
+
+// fakeSingleSelector returns the selections in order.
+type fakeSingleSelector struct {
+	selections []string
+}
+
+func (s *fakeSingleSelector) Select(*single.Context) (string, error) {
+	selection := s.selections[0]
+	s.selections = s.selections[1:]
+	return selection, nil
 }

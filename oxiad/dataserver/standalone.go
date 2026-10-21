@@ -38,6 +38,7 @@ import (
 
 	"github.com/oxia-db/oxia/oxiad/dataserver/wal"
 
+	"github.com/oxia-db/oxia/common/commonio"
 	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/proto"
 )
@@ -82,7 +83,7 @@ func NewTestConfig(dir string) StandaloneConfig {
 // NumShards defaults to 1.
 //
 // Use ServiceAddr to obtain the address that Oxia clients should connect to.
-func NewStandalone(config StandaloneConfig) (*Standalone, error) {
+func NewStandalone(config StandaloneConfig) (_ *Standalone, err error) {
 	config.DataServerOptions.WithDefault()
 	if err := config.DataServerOptions.Validate(); err != nil {
 		return nil, err
@@ -99,12 +100,6 @@ func NewStandalone(config StandaloneConfig) (*Standalone, error) {
 	s := &Standalone{config: config}
 
 	storageOptions := config.DataServerOptions.Storage
-	// Unlike the server command, the standalone command does not validate the
-	// options, and the storage must not be opened with a wal dir that is the
-	// data dir
-	if err := storageOptions.Validate(); err != nil {
-		return nil, err
-	}
 	kvOptions := kvstore.FactoryOptions{
 		DataDir:     storageOptions.Database.Dir,
 		UseWAL:      false, // WAL is kept outside the KV store
@@ -117,14 +112,28 @@ func NewStandalone(config StandaloneConfig) (*Standalone, error) {
 		SegmentSize: wal.DefaultFactoryOptions.SegmentSize,
 		SyncData:    storageOptions.WAL.IsSyncEnabled(),
 	})
-	var err error
 	if s.kvFactory, err = kvstore.NewPebbleKVFactory(&kvOptions); err != nil {
 		return nil, err
 	}
+	defer func() {
+		if err == nil {
+			return
+		}
+		// Same order as Close
+		if s.healthServer != nil {
+			err = multierr.Append(err, s.healthServer.Close())
+		}
+		err = multierr.Append(err, commonio.CloseIfNotNil(s.shardsDirector))
+		err = multierr.Append(err, commonio.CloseIfNotNil(s.shardAssignmentDispatcher))
+		if s.rpc != nil {
+			err = multierr.Append(err, s.rpc.Close())
+		}
+		err = multierr.Append(err, s.kvFactory.Close())
+	}()
 
 	s.shardsDirector = controller.NewShardsDirector(&storageOptions, s.walFactory, s.kvFactory, newNoOpReplicationRpcProvider())
 
-	if err := s.initializeShards(config.NumShards); err != nil {
+	if err = s.initializeShards(config.NumShards); err != nil {
 		return nil, err
 	}
 
@@ -199,6 +208,7 @@ func (s *Standalone) initializeShards(numShards uint32) error {
 				proto.Feature_FEATURE_DELETE_RANGE_NOTIFICATION_RECORDS,
 				proto.Feature_FEATURE_SEQUENCE_KEY_VALIDATION,
 				proto.Feature_FEATURE_SECONDARY_INDEX_SKIP_UNCHANGED,
+				proto.Feature_FEATURE_RANGE_END_INCLUSIVE,
 			},
 		}); err != nil {
 			return err

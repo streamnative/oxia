@@ -15,6 +15,7 @@
 package statemachine
 
 import (
+	"errors"
 	"math"
 	"testing"
 
@@ -24,6 +25,7 @@ import (
 	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/proto"
 	"github.com/oxia-db/oxia/common/time"
+	featurepkg "github.com/oxia-db/oxia/oxiad/common/feature"
 	"github.com/oxia-db/oxia/oxiad/dataserver/database"
 	"github.com/oxia-db/oxia/oxiad/dataserver/database/kvstore"
 	"github.com/oxia-db/oxia/oxiad/dataserver/wal"
@@ -502,4 +504,149 @@ func TestApplyLogEntry_ControlRequestPersistsCommitOffsetForWalReplay(t *testing
 		}
 		assert.NoError(t, reader.Close())
 	}
+}
+
+func TestApplyLogEntryControlRequestError(t *testing.T) {
+	db := newTestDB(t)
+
+	_, err := ApplyLogEntry(db, &proto.LogEntry{
+		Term:  1,
+		Value: marshalProposal(t, NewControlProposal(0, unsupportedFeatureRequest())),
+	}, database.NoOpCallback)
+	assert.ErrorIs(t, err, constant.ErrUnsupportedFeatures)
+
+	commitOffset, err := db.ReadCommitOffset()
+	assert.NoError(t, err)
+	assert.EqualValues(t, wal.InvalidOffset, commitOffset)
+}
+
+func TestApplyLogEntryWriteError(t *testing.T) {
+	db := newTestDB(t)
+	callbackErr := errors.New("callback failure")
+
+	_, err := ApplyLogEntry(db, &proto.LogEntry{
+		Term:  1,
+		Value: marshalProposal(t, NewWriteProposal(0, &proto.WriteRequest{Puts: []*proto.PutRequest{{Key: "a"}}})),
+	}, &fakeUpdateOperationCallback{UpdateOperationCallback: database.NoOpCallback, onPut: failingOnPut(callbackErr)})
+	assert.ErrorIs(t, err, callbackErr)
+
+	res, err := db.Get(&proto.GetRequest{Key: "a"})
+	assert.NoError(t, err)
+	assert.Equal(t, proto.Status_KEY_NOT_FOUND, res.Status)
+}
+
+func TestApplyLogEntryUnknownType(t *testing.T) {
+	db := newTestDB(t)
+
+	// An entry value without any request
+	_, err := ApplyLogEntry(db, &proto.LogEntry{Term: 1, Value: []byte{}}, database.NoOpCallback)
+	assert.ErrorContains(t, err, "unknown proposal type")
+}
+
+func TestApplyLogEntryWithSplitFilterControlRequest(t *testing.T) {
+	db := newTestDB(t)
+
+	proposal := NewControlProposal(3, &proto.ControlRequest{
+		Value: &proto.ControlRequest_FeatureEnable{
+			FeatureEnable: &proto.FeatureEnableRequest{Features: []proto.Feature{proto.Feature_FEATURE_DB_CHECKSUM}},
+		},
+	})
+	response, err := ApplyLogEntryWithSplitFilter(db, &proto.LogEntry{
+		Term:      1,
+		Offset:    3,
+		Value:     marshalProposal(t, proposal),
+		Timestamp: proposal.GetTimestamp(),
+	}, database.NoOpCallback, &proto.HashRange{Min: 0, Max: 0x7FFFFFFF})
+	assert.NoError(t, err)
+	assert.NotNil(t, response.Checksum)
+	assert.True(t, db.IsFeatureEnabled(proto.Feature_FEATURE_DB_CHECKSUM))
+
+	commitOffset, err := db.ReadCommitOffset()
+	assert.NoError(t, err)
+	assert.EqualValues(t, 3, commitOffset)
+}
+
+func TestApplyLogEntryWithSplitFilterControlRequestError(t *testing.T) {
+	db := newTestDB(t)
+
+	_, err := ApplyLogEntryWithSplitFilter(db, &proto.LogEntry{
+		Term:  1,
+		Value: marshalProposal(t, NewControlProposal(0, unsupportedFeatureRequest())),
+	}, database.NoOpCallback, &proto.HashRange{Min: 0, Max: math.MaxUint32})
+	assert.ErrorIs(t, err, constant.ErrUnsupportedFeatures)
+}
+
+func TestApplyLogEntryWithSplitFilterInvalidBytes(t *testing.T) {
+	db := newTestDB(t)
+
+	_, err := ApplyLogEntryWithSplitFilter(db, &proto.LogEntry{Term: 1, Value: []byte("invalid-protobuf-bytes")},
+		database.NoOpCallback, &proto.HashRange{Min: 0, Max: math.MaxUint32})
+	assert.Error(t, err)
+}
+
+func TestApplyLogEntryWithSplitFilterWriteError(t *testing.T) {
+	db := newTestDB(t)
+	callbackErr := errors.New("callback failure")
+
+	_, err := ApplyLogEntryWithSplitFilter(db, &proto.LogEntry{
+		Term:  1,
+		Value: marshalProposal(t, NewWriteProposal(0, &proto.WriteRequest{Puts: []*proto.PutRequest{{Key: "a"}}})),
+	}, &fakeUpdateOperationCallback{UpdateOperationCallback: database.NoOpCallback, onPut: failingOnPut(callbackErr)},
+		&proto.HashRange{Min: 0, Max: math.MaxUint32})
+	assert.ErrorIs(t, err, callbackErr)
+}
+
+// An entry without any record of the child still advances its commit offset.
+func TestApplyLogEntryWithSplitFilterSkipsEntryOutsideRange(t *testing.T) {
+	db := newTestDB(t)
+
+	// The lower half of the hash space doesn't hold the key "d"
+	proposal := NewWriteProposal(4, &proto.WriteRequest{Puts: []*proto.PutRequest{{Key: "d", Value: []byte("v")}}})
+	_, err := ApplyLogEntryWithSplitFilter(db, &proto.LogEntry{
+		Term:      1,
+		Offset:    4,
+		Value:     marshalProposal(t, proposal),
+		Timestamp: proposal.GetTimestamp(),
+	}, database.NoOpCallback, &proto.HashRange{Min: 0, Max: 0x7FFFFFFF})
+	assert.NoError(t, err)
+
+	res, err := db.Get(&proto.GetRequest{Key: "d"})
+	assert.NoError(t, err)
+	assert.Equal(t, proto.Status_KEY_NOT_FOUND, res.Status)
+	commitOffset, err := db.ReadCommitOffset()
+	assert.NoError(t, err)
+	assert.EqualValues(t, 4, commitOffset)
+}
+
+func TestApplyLogEntryWithSplitFilterUnknownType(t *testing.T) {
+	db := newTestDB(t)
+
+	_, err := ApplyLogEntryWithSplitFilter(db, &proto.LogEntry{Term: 1, Value: []byte{}},
+		database.NoOpCallback, &proto.HashRange{Min: 0, Max: math.MaxUint32})
+	assert.ErrorContains(t, err, "unknown proposal type")
+}
+
+func unsupportedFeatureRequest() *proto.ControlRequest {
+	return &proto.ControlRequest{
+		Value: &proto.ControlRequest_FeatureEnable{
+			FeatureEnable: &proto.FeatureEnableRequest{Features: []proto.Feature{proto.Feature(math.MaxInt32)}},
+		},
+	}
+}
+
+func failingOnPut(err error) func() (proto.Status, error) {
+	return func() (proto.Status, error) { return proto.Status_OK, err }
+}
+
+type fakeUpdateOperationCallback struct {
+	database.UpdateOperationCallback
+	onPut func() (proto.Status, error)
+}
+
+func (f *fakeUpdateOperationCallback) OnPut(batch kvstore.WriteBatch, notifications *database.Notifications,
+	req *proto.PutRequest, se *proto.StorageEntry, features featurepkg.Checker) (proto.Status, error) {
+	if f.onPut != nil {
+		return f.onPut()
+	}
+	return f.UpdateOperationCallback.OnPut(batch, notifications, req, se, features)
 }

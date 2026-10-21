@@ -33,6 +33,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/oxia-db/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/oxiad/dataserver/database"
 	dataserverrpc "github.com/oxia-db/oxia/oxiad/dataserver/rpc"
 
@@ -49,7 +50,7 @@ import (
 // The FollowerCursor represents a cursor on the leader WAL that sends entries to a specific follower and receives a
 // stream of acknowledgments from that follower.
 type FollowerCursor interface {
-	io.Closer
+	Close()
 
 	ShardId() int64
 
@@ -193,7 +194,7 @@ func NewObserverFollowerCursor( //nolint:revive
 	ackOffset int64,
 	splitHashRange *proto.Int32HashRange,
 	splitParentHashRange *proto.Int32HashRange,
-) (FollowerCursor, error) {
+) FollowerCursor {
 	labels := map[string]any{
 		"namespace": namespace,
 		"shard":     shardId,
@@ -256,7 +257,7 @@ func NewObserverFollowerCursor( //nolint:revive
 		)
 	})
 
-	return fc, nil
+	return fc
 }
 
 func (fc *followerCursor) shouldSendSnapshot() bool {
@@ -297,11 +298,10 @@ func (fc *followerCursor) shouldSendSnapshot() bool {
 	return false
 }
 
-func (fc *followerCursor) Close() error {
+func (fc *followerCursor) Close() {
 	fc.closed.Store(true)
 	fc.cancel()
 	fc.latch.Wait()
-	return nil
 }
 
 func (fc *followerCursor) ShardId() int64 {
@@ -557,8 +557,13 @@ func (fc *followerCursor) waitAtHead(ctx context.Context, reader wal.Reader, cur
 	if err := fc.ackTracker.WaitForHeadOffsetOrCommitAdvance(ctx, currentOffset+1, lastSentCommitOffset); err != nil {
 		return lastSentCommitOffset, err
 	}
-	if err := holdBackCommitAdvertisement(ctx, fc.ackTracker, currentOffset); err != nil {
-		return lastSentCommitOffset, err
+	if delay, ok := failpoint.Eval[time.Duration]("followerCursor.holdBackCommitAdvertisement"); ok {
+		waitCtx, cancel := context.WithTimeout(ctx, delay)
+		err := fc.ackTracker.WaitForHeadOffset(waitCtx, currentOffset+1)
+		cancel()
+		if err != nil && ctx.Err() != nil {
+			return lastSentCommitOffset, ctx.Err()
+		}
 	}
 
 	commitOffset := fc.ackTracker.CommitOffset()

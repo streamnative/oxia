@@ -20,6 +20,8 @@ import (
 	"github.com/emirpasic/gods/v2/sets/linkedhashset"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	balancerselector "github.com/oxia-db/oxia/oxiad/coordinator/runtime/balancer/selector"
 )
 
 func TestFinalSelectorIgnoresCandidateInsertionOrder(t *testing.T) {
@@ -69,4 +71,10 @@ func TestFinalSelectorAdvancesWithReplicaOrdinal(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.NotEqual(t, first, second)
+}
+
+func TestFinalSelectorSelectFailsWithoutCandidates(t *testing.T) {
+	_, err := (&finalSelector{}).Select(&Context{Candidates: linkedhashset.New[string]()})
+
+	assert.ErrorIs(t, err, balancerselector.ErrNoFunctioning)
 }

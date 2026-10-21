@@ -16,12 +16,10 @@ package process
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	_ "net/http/pprof" //nolint:gosec
-	"os"
 	"runtime"
 	"runtime/pprof"
 	"time"
@@ -58,7 +56,7 @@ func DoWithLabels(ctx context.Context, labels map[string]string, f func()) {
 		})
 }
 
-func RunProfiling() io.Closer {
+func RunProfiling(ctx context.Context) io.Closer {
 	s := &http.Server{
 		Addr:              PprofBindAddress,
 		Handler:           http.DefaultServeMux,
@@ -78,13 +76,9 @@ func RunProfiling() io.Closer {
 		"Starting pprof server",
 		slog.String("address", s.Addr),
 	)
-	slog.Info(fmt.Sprintf("  use http://%s/debug/pprof to access the browser", s.Addr))
-	slog.Info(fmt.Sprintf("  use `go tool pprof http://%s/debug/pprof/profile` to get pprof file(cpu info)", s.Addr))
-	slog.Info(fmt.Sprintf("  use `go tool pprof http://%s/debug/pprof/heap` to get inuse_space file", s.Addr))
-	slog.Info("")
 
 	go DoWithLabels(
-		context.Background(),
+		ctx,
 		map[string]string{
 			"oxia": "pprof",
 		},
@@ -95,7 +89,6 @@ func RunProfiling() io.Closer {
 					slog.Any("error", err),
 					slog.String("component", "pprof"),
 				)
-				os.Exit(1)
 			}
 		})
 

@@ -27,6 +27,7 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 
+	"github.com/oxia-db/oxia/oxiad/common/vfs"
 	"github.com/oxia-db/oxia/oxiad/dataserver/wal/codec"
 )
 
@@ -65,7 +66,7 @@ type readWriteSegment struct {
 	// and its index entry. Read loads it without taking the mutex.
 	lastOffset    atomic.Int64
 	lastCrc       uint32
-	txnFile       *os.File
+	txnFile       vfs.File
 	txnMappedFile mmap.MMap
 
 	currentFileOffset uint32
@@ -81,16 +82,16 @@ type readWriteSegment struct {
 	pendingFileSync atomic.Bool
 }
 
-func newReadWriteSegment(basePath string, baseOffset int64, segmentSize uint32, lastCrc uint32,
+func newReadWriteSegment(fs vfs.FS, basePath string, baseOffset int64, segmentSize uint32, lastCrc uint32,
 	commitOffsetProvider CommitOffsetProvider) (ReadWriteSegment, error) {
 	var err error
-	if _, err = os.Stat(basePath); os.IsNotExist(err) {
-		if err = os.MkdirAll(basePath, 0755); err != nil {
+	if _, err = fs.Stat(basePath); os.IsNotExist(err) {
+		if err = fs.MkdirAll(basePath, 0755); err != nil {
 			return nil, errors.Wrapf(err, "failed to create wal directory %s", basePath)
 		}
 	}
 
-	c, err := newSegmentConfig(basePath, baseOffset)
+	c, err := newSegmentConfig(fs, basePath, baseOffset)
 	if err != nil {
 		return nil, err
 	}
@@ -101,11 +102,17 @@ func newReadWriteSegment(basePath string, baseOffset int64, segmentSize uint32, 
 		lastCrc:     lastCrc,
 	}
 
-	if ms.txnFile, err = os.OpenFile(ms.c.txnPath, os.O_CREATE|os.O_RDWR, 0644); err != nil {
+	if ms.txnFile, err = fs.OpenFile(ms.c.txnPath, os.O_CREATE|os.O_RDWR, 0644); err != nil {
 		return nil, errors.Wrapf(err, "failed to open segment file %s", ms.c.txnPath)
 	}
 
-	if !c.segmentExists {
+	info, err := fs.Stat(c.txnPath)
+	if err != nil {
+		return nil, multierr.Append(
+			errors.Wrapf(err, "failed to stat segment file %s", ms.c.txnPath),
+			ms.txnFile.Close())
+	}
+	if info.Size() < int64(segmentSize) {
 		if err = initFileWithZeroes(ms.txnFile, segmentSize); err != nil {
 			return nil, multierr.Append(err, ms.txnFile.Close())
 		}
@@ -117,14 +124,14 @@ func newReadWriteSegment(basePath string, baseOffset int64, segmentSize uint32, 
 	// remove it, so that a crash before the Close that rewrites it cannot
 	// leave it lying next to newer txn data. Close writes a fresh one.
 	if c.segmentExists {
-		if err = codec.RemoveFileIfExists(c.idxPath); err != nil {
+		if err = vfs.RemoveFileIfExists(fs, c.idxPath); err != nil {
 			return nil, multierr.Append(
 				errors.Wrapf(err, "failed to remove stale segment index file %s", c.idxPath),
 				ms.txnFile.Close())
 		}
 	}
 
-	if ms.txnMappedFile, err = mmap.MapRegion(ms.txnFile, int(segmentSize), mmap.RDWR, 0, 0); err != nil {
+	if ms.txnMappedFile, err = fs.Map(ms.txnFile, int(segmentSize), mmap.RDWR); err != nil {
 		return nil, multierr.Append(
 			errors.Wrapf(err, "failed to map segment file %s", ms.c.txnPath),
 			ms.txnFile.Close())
@@ -143,7 +150,7 @@ func newReadWriteSegment(basePath string, baseOffset int64, segmentSize uint32, 
 		ms.currentFileOffset, ms.c.baseOffset, commitOffset); err != nil {
 		return nil, multierr.Combine(
 			errors.Wrapf(err, "failed to rebuild index for segment file %s", ms.c.txnPath),
-			ms.txnMappedFile.Unmap(),
+			ms.c.fs.Unmap(&ms.txnMappedFile),
 			ms.txnFile.Close())
 	}
 	// If the segment is empty, preserve the caller's CRC seed so that it can
@@ -157,7 +164,7 @@ func newReadWriteSegment(basePath string, baseOffset int64, segmentSize uint32, 
 		codec.ReturnIndexBuf(&ms.writingIdx)
 		return nil, multierr.Combine(
 			errors.Wrapf(err, "failed to zero the discarded tail of segment file %s", ms.c.txnPath),
-			ms.txnMappedFile.Unmap(),
+			ms.c.fs.Unmap(&ms.txnMappedFile),
 			ms.txnFile.Close())
 	}
 	return ms, nil
@@ -284,7 +291,7 @@ func (ms *readWriteSegment) Flush() error {
 	if ms.txnMappedFile == nil {
 		return nil
 	}
-	return ms.txnMappedFile.Flush()
+	return ms.c.fs.Flush(ms.txnMappedFile)
 }
 
 // SyncFileIfNeeded is invoked by the WAL sync goroutine before Flush and, as a
@@ -324,11 +331,11 @@ func (ms *readWriteSegment) Close() error {
 	}
 
 	err := multierr.Combine(
-		ms.txnMappedFile.Unmap(),
+		ms.c.fs.Unmap(&ms.txnMappedFile),
 		ms.txnFile.Close(),
 	)
 	if len(ms.writingIdx) > 0 {
-		err = multierr.Append(err, ms.c.codec.WriteIndex(ms.c.idxPath, ms.writingIdx))
+		err = multierr.Append(err, ms.c.codec.WriteIndex(ms.c.fs, ms.c.idxPath, ms.writingIdx))
 	}
 	codec.ReturnIndexBuf(&ms.writingIdx)
 	return err
@@ -337,8 +344,8 @@ func (ms *readWriteSegment) Close() error {
 func (ms *readWriteSegment) Delete() error {
 	return multierr.Combine(
 		ms.Close(),
-		codec.RemoveFileIfExists(ms.c.idxPath),
-		os.Remove(ms.c.txnPath),
+		vfs.RemoveFileIfExists(ms.c.fs, ms.c.idxPath),
+		vfs.RemoveFileIfExists(ms.c.fs, ms.c.txnPath),
 	)
 }
 
@@ -371,7 +378,7 @@ func (ms *readWriteSegment) Truncate(lastSafeOffset int64) error {
 // initFileWithZeroes extends the file to its full segment size, without
 // fsync-ing it: the file metadata is made durable by SyncFileIfNeeded before
 // the first entries of the segment get acknowledged.
-func initFileWithZeroes(f *os.File, size uint32) error {
+func initFileWithZeroes(f vfs.File, size uint32) error {
 	if _, err := f.Seek(int64(size), 0); err != nil {
 		return err
 	}

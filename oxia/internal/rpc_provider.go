@@ -32,6 +32,7 @@ import (
 
 	"github.com/oxia-db/oxia/common/auth"
 	"github.com/oxia-db/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/common/proto"
 	"github.com/oxia-db/oxia/common/rpc"
 	commontime "github.com/oxia-db/oxia/common/time"
@@ -60,15 +61,25 @@ type rpcProvider struct {
 	writeStreamsMutex    sync.RWMutex
 	writeStreams         map[int64]*streamWrapper
 
-	ctx       context.Context
-	namespace string
+	ctx        context.Context
+	namespace  string
+	failpoints *failpoint.Failpoints
 }
 
 func NewRpcProvider(ctx context.Context, namespace string, tlsConf *tls.Config, authentication auth.Authentication,
 	serviceAddress string, shardManagerSupplier func() ShardManager, dialOptions ...grpc.DialOption,
 ) RpcProvider {
+	return newRpcProvider(ctx, namespace, tlsConf, authentication, serviceAddress, shardManagerSupplier, nil,
+		dialOptions...)
+}
+
+func newRpcProvider(ctx context.Context, namespace string, tlsConf *tls.Config, authentication auth.Authentication,
+	serviceAddress string, shardManagerSupplier func() ShardManager, failpoints *failpoint.Failpoints,
+	dialOptions ...grpc.DialOption,
+) *rpcProvider {
 	return &rpcProvider{
 		ctx:                  ctx,
+		failpoints:           failpoints,
 		namespace:            namespace,
 		clientPool:           rpc.NewClientPool(tlsConf, authentication, dialOptions...),
 		serviceAddress:       serviceAddress,
@@ -165,7 +176,8 @@ func (p *rpcProvider) ExecuteRead(ctx context.Context, request *proto.ReadReques
 	}, isRetryableShardRequest)
 }
 
-func (p *rpcProvider) ExecuteList(ctx context.Context, request *proto.ListRequest, listResponseConsumer func(*proto.ListResponse)) error {
+func (p *rpcProvider) ExecuteList(ctx context.Context, request *proto.ListRequest,
+	listResponseConsumer func(*proto.ListResponse) error) error {
 	verified := false
 	_, err := executeWithRetry(ctx, func(hint constant.ErrorMetadata) (struct{}, error) {
 		target, err := p.getTargetByShard(request.Shard, hint)
@@ -189,7 +201,9 @@ func (p *rpcProvider) ExecuteList(ctx context.Context, request *proto.ListReques
 			if err != nil {
 				return struct{}{}, err
 			}
-			listResponseConsumer(response)
+			if err = listResponseConsumer(response); err != nil {
+				return struct{}{}, err
+			}
 			verified = true
 		}
 	}, func(err error) bool {
@@ -198,7 +212,8 @@ func (p *rpcProvider) ExecuteList(ctx context.Context, request *proto.ListReques
 	return err
 }
 
-func (p *rpcProvider) ExecuteRangeScan(ctx context.Context, request *proto.RangeScanRequest, rangeScanResponseConsumer func(*proto.RangeScanResponse)) error {
+func (p *rpcProvider) ExecuteRangeScan(ctx context.Context, request *proto.RangeScanRequest,
+	rangeScanResponseConsumer func(*proto.RangeScanResponse) error) error {
 	verified := false
 	_, err := executeWithRetry(ctx, func(hint constant.ErrorMetadata) (struct{}, error) {
 		target, err := p.getTargetByShard(request.Shard, hint)
@@ -222,7 +237,9 @@ func (p *rpcProvider) ExecuteRangeScan(ctx context.Context, request *proto.Range
 			if err != nil {
 				return struct{}{}, err
 			}
-			rangeScanResponseConsumer(response)
+			if err = rangeScanResponseConsumer(response); err != nil {
+				return struct{}{}, err
+			}
 			verified = true
 		}
 	}, func(err error) bool {
@@ -291,7 +308,7 @@ func (p *rpcProvider) getWriteStream(ctx context.Context, shardId int64, target 
 	// and be sent again
 	if old, ok := p.writeStreams[shardId]; ok {
 		old.failed.Store(true)
-		if err := old.stream.CloseSend(); err != nil {
+		if err := p.failpoints.Fail("getWriteStream.closeOldStream", old.stream.CloseSend()); err != nil {
 			slog.Warn("failed to close old write stream",
 				slog.Int64("shard", shardId),
 				slog.Any("error", err),

@@ -35,6 +35,7 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/oxiad/common/crc"
 
 	"github.com/oxia-db/oxia/common/proto"
@@ -57,16 +58,18 @@ func AbbreviatedKeyDisableSlash(key []byte) uint64 {
 
 var (
 	OxiaSlashSpanComparer = &pebble.Comparer{
-		Compare:            compare.CompareWithSlash,
-		Equal:              pebble.DefaultComparer.Equal,
-		AbbreviatedKey:     AbbreviatedKeyDisableSlash,
-		FormatKey:          pebble.DefaultComparer.FormatKey,
-		FormatValue:        pebble.DefaultComparer.FormatValue,
-		Separator:          pebble.DefaultComparer.Separator,
-		Split:              pebble.DefaultComparer.Split,
-		Successor:          pebble.DefaultComparer.Successor,
-		ImmediateSuccessor: pebble.DefaultComparer.ImmediateSuccessor,
-		Name:               "oxia-slash-spans",
+		Compare:              compare.CompareWithSlash,
+		Equal:                pebble.DefaultComparer.Equal,
+		AbbreviatedKey:       AbbreviatedKeyDisableSlash,
+		FormatKey:            pebble.DefaultComparer.FormatKey,
+		FormatValue:          pebble.DefaultComparer.FormatValue,
+		Separator:            pebble.DefaultComparer.Separator,
+		Split:                func([]byte) int { return 0 },
+		ComparePointSuffixes: compare.CompareWithSlash,
+		CompareRangeSuffixes: compare.CompareWithSlash,
+		Successor:            pebble.DefaultComparer.Successor,
+		ImmediateSuccessor:   pebble.DefaultComparer.ImmediateSuccessor,
+		Name:                 "oxia-slash-spans",
 	}
 )
 
@@ -96,6 +99,16 @@ type PebbleFactory struct {
 	// free memtable slot
 	memTableSlotsLock sync.Mutex
 	memTableSlots     []func()
+
+	// snapshotCounter names the snapshot directories, across every database
+	// the factory opens: a database reopened on the same shard must not
+	// reuse the path of a snapshot a caller still holds
+	snapshotCounter atomic.Int64
+
+	// generations counts the replacements of the database of each shard,
+	// see Factory.DatabaseGeneration
+	generationsLock sync.Mutex
+	generations     map[string]uint64
 
 	gaugeCacheSize metric.Gauge
 }
@@ -144,7 +157,7 @@ func NewPebbleKVFactory(options *FactoryOptions) (Factory, error) {
 // The snapshots are left behind by a previous run: the "snapshots" name is
 // reserved, so nothing else can be in there.
 func (p *PebbleFactory) cleanupSnapshots() error {
-	return os.RemoveAll(filepath.Join(p.dataDir, validation.KeywordNamespaceSnapshots))
+	return p.options.FS.RemoveAll(filepath.Join(p.dataDir, validation.KeywordNamespaceSnapshots))
 }
 
 func (p *PebbleFactory) Close() error {
@@ -176,36 +189,54 @@ func (p *PebbleFactory) returnMemTableSlot() {
 }
 
 func (p *PebbleFactory) NewKV(namespace string, shardId int64, keySorting proto.KeySortingType) (KV, error) {
-	return newKVPebble(p, namespace, shardId, keySorting, p.options.KvTrap)
+	return newKVPebble(p, namespace, shardId, keySorting, p.options.Failpoints)
 }
 
 func (p *PebbleFactory) NewSnapshotLoader(namespace string, shardId int64) (SnapshotLoader, error) {
-	return newPebbleSnapshotLoader(p, vfs.Default, namespace, shardId)
+	return newPebbleSnapshotLoader(p, p.options.FS, namespace, shardId)
 }
 
-func (p *PebbleFactory) getKVPath(namespace string, shard int64) string {
-	if namespace == "" {
-		slog.Warn(
-			"Missing namespace when getting KV path",
-			slog.Int64("shard", shard),
-		)
-		os.Exit(1)
-	}
+func (p *PebbleFactory) DatabaseDir(namespace string, shardId int64) string {
+	return p.getKVPath(namespace, shardId)
+}
 
+func (p *PebbleFactory) DatabaseGeneration(namespace string, shardId int64) uint64 {
+	p.generationsLock.Lock()
+	defer p.generationsLock.Unlock()
+	return p.generations[generationKey(namespace, shardId)]
+}
+
+// databaseReplaced records that the database of a shard is being replaced
+// or deleted.
+func (p *PebbleFactory) databaseReplaced(namespace string, shardId int64) {
+	p.generationsLock.Lock()
+	defer p.generationsLock.Unlock()
+	if p.generations == nil {
+		p.generations = map[string]uint64{}
+	}
+	p.generations[generationKey(namespace, shardId)]++
+}
+
+func generationKey(namespace string, shardId int64) string {
+	return fmt.Sprintf("%s/%d", namespace, shardId)
+}
+
+// getKVPath returns the directory of the shard. The namespace must have passed
+// validation.ValidateNamespace, which keeps the path inside the data directory.
+func (p *PebbleFactory) getKVPath(namespace string, shard int64) string {
 	return filepath.Join(p.dataDir, namespace, fmt.Sprint("shard-", shard))
 }
 
 type Pebble struct {
-	ctx             context.Context
-	cancel          context.CancelFunc
-	factory         *PebbleFactory
-	namespace       string
-	shardId         int64
-	dbPath          string
-	db              *pebble.DB
-	snapshotCounter atomic.Int64
-	writeOptions    *pebble.WriteOptions
-	memTableSlot    bool
+	ctx          context.Context
+	cancel       context.CancelFunc
+	factory      *PebbleFactory
+	namespace    string
+	shardId      int64
+	dbPath       string
+	db           *pebble.DB
+	writeOptions *pebble.WriteOptions
+	memTableSlot bool
 
 	keyEncoder compare.Encoder
 
@@ -229,10 +260,10 @@ type Pebble struct {
 	writeStallTime  metric.Counter
 	writeStallStart atomic.Int64
 
-	kvTrap *KvTrap
+	failpoints *failpoint.Failpoints
 }
 
-func newKVPebble(factory *PebbleFactory, namespace string, shardId int64, keySorting proto.KeySortingType, trap *KvTrap) (KV, error) {
+func newKVPebble(factory *PebbleFactory, namespace string, shardId int64, keySorting proto.KeySortingType, failpoints *failpoint.Failpoints) (KV, error) {
 	if err := validation.ValidateNamespace(namespace); err != nil {
 		return nil, err
 	}
@@ -245,13 +276,13 @@ func newKVPebble(factory *PebbleFactory, namespace string, shardId int64, keySor
 		return l
 	}
 	pb := &Pebble{
-		ctx:       ctx,
-		cancel:    cancelFunc,
-		factory:   factory,
-		namespace: namespace,
-		shardId:   shardId,
-		dbPath:    factory.getKVPath(namespace, shardId),
-		kvTrap:    trap,
+		ctx:        ctx,
+		cancel:     cancelFunc,
+		factory:    factory,
+		namespace:  namespace,
+		shardId:    shardId,
+		dbPath:     factory.getKVPath(namespace, shardId),
+		failpoints: failpoints,
 
 		batchCommitLatency: metric.NewLatencyHistogram("oxia_server_kv_batch_commit_latency",
 			"The latency for committing a batch into the database", labels),
@@ -322,7 +353,7 @@ func newKVPebble(factory *PebbleFactory, namespace string, shardId int64, keySor
 		Cache:        factory.cache,
 		MemTableSize: memTableSize,
 		Levels:       levelOptions,
-		FS:           vfs.Default,
+		FS:           factory.options.FS,
 		DisableWAL:   !factory.options.UseWAL,
 		Logger:       &pebbleLogger{log},
 		// Pebble fills in the events left out, as it does without a listener
@@ -331,7 +362,7 @@ func newKVPebble(factory *PebbleFactory, namespace string, shardId int64, keySor
 		FormatMajorVersion: pebble.FormatVirtualSSTables,
 	}
 
-	pebbleConv := newPebbleDbConversion(log, pb.dbPath, pb.kvTrap)
+	pebbleConv := newPebbleDbConversion(log, factory.options.FS, pb.dbPath, pb.failpoints)
 	if err := pebbleConv.checkConvertDB(pb.keyEncoder); err != nil {
 		return nil, errors.Wrap(err, "failed to convert db")
 	}
@@ -500,10 +531,9 @@ func (p *Pebble) Close() error {
 			g.Unregister()
 		}
 
-		if err := p.db.Flush(); err != nil {
-			return err
-		}
-		err := p.db.Close()
+		err := multierr.Append(
+			p.failpoints.Fail("close.flush", p.db.Flush()),
+			p.db.Close())
 		if p.memTableSlot {
 			p.factory.returnMemTableSlot()
 		}
@@ -512,6 +542,7 @@ func (p *Pebble) Close() error {
 }
 
 func (p *Pebble) Delete() error {
+	p.factory.databaseReplaced(p.namespace, p.shardId)
 	return multierr.Combine(
 		p.Close(),
 		os.RemoveAll(p.factory.getKVPath(p.namespace, p.shardId)),
@@ -549,8 +580,8 @@ func (p *Pebble) getFloor(key []byte, itOpts IteratorOpts) (returnedKey string, 
 
 func (p *Pebble) getCeiling(key []byte, itOpts IteratorOpts) (returnedKey string, value []byte, closer io.Closer, err error) {
 	it, err := p.db.NewIter(newIterOptions(p.keyEncoder, itOpts, key, nil))
-	if err != nil {
-		return "", nil, nil, err
+	if err = p.failpoints.Fail("getCeiling.newIter", err); err != nil {
+		return "", nil, nil, closeFailedIter(it, err)
 	}
 	skipper := newInternalRegionSkipper(p.keyEncoder, itOpts)
 
@@ -573,8 +604,8 @@ func (p *Pebble) getLower(key []byte, itOpts IteratorOpts) (returnedKey string, 
 	}
 
 	it, err := p.db.NewIter(newIterOptions(p.keyEncoder, itOpts, nil, key))
-	if err != nil {
-		return "", nil, nil, err
+	if err = p.failpoints.Fail("getLower.newIter", err); err != nil {
+		return "", nil, nil, closeFailedIter(it, err)
 	}
 	skipper := newInternalRegionSkipper(p.keyEncoder, itOpts)
 
@@ -591,8 +622,8 @@ func (p *Pebble) getLower(key []byte, itOpts IteratorOpts) (returnedKey string, 
 
 func (p *Pebble) getHigher(key []byte, itOpts IteratorOpts) (returnedKey string, value []byte, closer io.Closer, err error) {
 	it, err := p.db.NewIter(newIterOptions(p.keyEncoder, itOpts, key, nil))
-	if err != nil {
-		return "", nil, nil, err
+	if err = p.failpoints.Fail("getHigher.newIter", err); err != nil {
+		return "", nil, nil, closeFailedIter(it, err)
 	}
 	skipper := newInternalRegionSkipper(p.keyEncoder, itOpts)
 
@@ -621,6 +652,15 @@ func closeNotFound(it *pebble.Iterator, notFound error) error {
 		return err
 	}
 	return notFound
+}
+
+// closeFailedIter closes the iterator that a failed call returned anyway, if
+// any.
+func closeFailedIter(it *pebble.Iterator, err error) error {
+	if it == nil {
+		return err
+	}
+	return multierr.Append(err, it.Close())
 }
 
 func (p *Pebble) Get(key string, comparisonType ComparisonType, itOpts IteratorOpts) (returnedKey string, value []byte, closer io.Closer, err error) {
@@ -676,8 +716,8 @@ func (p *Pebble) KeyPrefixIterator(prefix, end string) (PrefixIterator, error) {
 		}
 	}
 	pbit, err := p.db.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})
-	if err != nil {
-		return nil, err
+	if err = p.failpoints.Fail("keyPrefixIterator.newIter", err); err != nil {
+		return nil, closeFailedIter(pbit, err)
 	}
 
 	return &PebblePrefixIterator{p: p, pi: pbit, ranges: ranges}, nil
@@ -692,8 +732,8 @@ func (p *Pebble) KeyRangeScanReverse(lowerBound, upperBound string, itOpts Itera
 		ub = p.keyEncoder.Encode(upperBound)
 	}
 	pbit, err := p.db.NewIter(newIterOptions(p.keyEncoder, itOpts, lb, ub))
-	if err != nil {
-		return nil, err
+	if err = p.failpoints.Fail("keyRangeScanReverse.newIter", err); err != nil {
+		return nil, closeFailedIter(pbit, err)
 	}
 	skipper := newInternalRegionSkipper(p.keyEncoder, itOpts)
 	if pbit.Last() {
@@ -707,13 +747,21 @@ func (p *Pebble) RangeScan(lowerBound, upperBound string, itOpts IteratorOpts) (
 	if lowerBound != "" {
 		lb = p.keyEncoder.Encode(lowerBound)
 	}
-	if upperBound != "" {
+	switch {
+	case itOpts.IncludeUpperBound:
+		// The smallest key above the upper bound. Appending to the key, rather
+		// than to the encoded key, wouldn't do: with the hierarchical sorting,
+		// a key ending in "//" would move to the next level.
+		ub = append(bytes.Clone(p.keyEncoder.Encode(upperBound)), 0)
+	case upperBound != "":
 		ub = p.keyEncoder.Encode(upperBound)
+	default:
+		// No upper bound
 	}
 
 	pbit, err := p.db.NewIter(newIterOptions(p.keyEncoder, itOpts, lb, ub))
-	if err != nil {
-		return nil, err
+	if err = p.failpoints.Fail("rangeScan.newIter", err); err != nil {
+		return nil, closeFailedIter(pbit, err)
 	}
 
 	skipper := newInternalRegionSkipper(p.keyEncoder, itOpts)
@@ -745,8 +793,8 @@ func (p *Pebble) Seek(key string, comparisonType ComparisonType) (KeyValueIterat
 	}
 
 	pbit, err := p.db.NewIter(newIterOptions(p.keyEncoder, NoInternalKeys, lower, upper))
-	if err != nil {
-		return nil, err
+	if err = p.failpoints.Fail("seek.newIter", err); err != nil {
+		return nil, closeFailedIter(pbit, err)
 	}
 	it := &PebbleIterator{p, pbit, newInternalRegionSkipper(p.keyEncoder, NoInternalKeys)}
 	switch comparisonType {
@@ -765,8 +813,8 @@ func (p *Pebble) Seek(key string, comparisonType ComparisonType) (KeyValueIterat
 
 func (p *Pebble) Scan(start []byte, visit func(key string, value []byte) (bool, error)) ([]byte, error) {
 	pbit, err := p.db.NewIter(newIterOptions(p.keyEncoder, NoInternalKeys, start, nil))
-	if err != nil {
-		return nil, err
+	if err = p.failpoints.Fail("scan.newIter", err); err != nil {
+		return nil, closeFailedIter(pbit, err)
 	}
 	skipper := newInternalRegionSkipper(p.keyEncoder, NoInternalKeys)
 	for valid := pbit.First() && skipper.forward(pbit); valid; valid = pbit.Next() && skipper.forward(pbit) {
@@ -873,8 +921,8 @@ func (b *PebbleBatch) RangeScan(lowerBound, upperBound string) (KeyValueIterator
 		LowerBound: lb,
 		UpperBound: ub,
 	})
-	if err != nil {
-		return nil, err
+	if err = b.p.failpoints.Fail("batchRangeScan.newIter", err); err != nil {
+		return nil, closeFailedIter(pbit, err)
 	}
 	pbit.SeekGE(lb)
 	return &PebbleIterator{b.p, pbit, internalRegionSkipper{}}, nil
@@ -912,7 +960,7 @@ func (b *PebbleBatch) closeGetIter() error {
 }
 
 func (b *PebbleBatch) Put(key string, value []byte) error {
-	err := b.b.Set(b.p.keyEncoder.Encode(key), value, b.p.writeOptions)
+	err := b.p.failpoints.Fail("batchPut.set", b.b.Set(b.p.keyEncoder.Encode(key), value, b.p.writeOptions))
 	if err != nil {
 		b.p.writeErrors.Inc()
 	}
@@ -934,7 +982,7 @@ func (b *PebbleBatch) PutMarshalable(key string, m ProtoMarshalable) error {
 		b.p.writeErrors.Inc()
 		return errors.Errorf("kv: marshaled size %d does not match the reserved record size %d", n, len(op.Value))
 	}
-	if err := op.Finish(); err != nil {
+	if err := b.p.failpoints.Fail("batchPutMarshalable.finish", op.Finish()); err != nil {
 		b.p.writeErrors.Inc()
 		return err
 	}
@@ -942,7 +990,7 @@ func (b *PebbleBatch) PutMarshalable(key string, m ProtoMarshalable) error {
 }
 
 func (b *PebbleBatch) Delete(key string) error {
-	err := b.b.Delete(b.p.keyEncoder.Encode(key), b.p.writeOptions)
+	err := b.p.failpoints.Fail("batchDelete.delete", b.b.Delete(b.p.keyEncoder.Encode(key), b.p.writeOptions))
 	if err != nil {
 		b.p.writeErrors.Inc()
 	}
@@ -963,9 +1011,9 @@ func (b *PebbleBatch) Get(key string) ([]byte, io.Closer, error) {
 	}
 	if b.getIter == nil {
 		it, err := b.b.NewIter(&getIterOptions)
-		if err != nil {
+		if err = b.p.failpoints.Fail("batchGet.newIter", err); err != nil {
 			b.p.readErrors.Inc()
-			return nil, nil, err
+			return nil, nil, closeFailedIter(it, err)
 		}
 		b.getIter = it
 	} else {
@@ -994,8 +1042,8 @@ func (b *PebbleBatch) FindLower(key string) (lowerKey string, err error) {
 	it, err := b.b.NewIter(&pebble.IterOptions{
 		UpperBound: b.p.keyEncoder.Encode(key),
 	})
-	if err != nil {
-		return "", err
+	if err = b.p.failpoints.Fail("batchFindLower.newIter", err); err != nil {
+		return "", closeFailedIter(it, err)
 	}
 
 	if !it.Last() {
@@ -1174,9 +1222,9 @@ func (p *PebblePrefixIterator) Error() error {
 func (p *PebblePrefixIterator) Lookup(key string) ([]byte, error) {
 	if p.lookupIter == nil {
 		it, err := p.pi.Clone(pebble.CloneOptions{IterOptions: &lookupIterOptions})
-		if err != nil {
+		if err = p.p.failpoints.Fail("prefixIteratorLookup.clone", err); err != nil {
 			p.p.readErrors.Inc()
-			return nil, err
+			return nil, closeFailedIter(it, err)
 		}
 		p.lookupIter = it
 	}
@@ -1221,9 +1269,9 @@ func (p *PebblePrefixIterator) backward() bool {
 }
 
 // pebbleSnapshotLoader writes the snapshot files through fs, which is
-// vfs.Default in production. It is a vfs.FS rather than plain os calls so
-// that the tests can install a snapshot on vfs.NewCrashableMem, which
-// simulates a machine crash by keeping only what was synced.
+// FactoryOptions.FS. The tests also install a snapshot on
+// vfs.NewCrashableMem, which simulates a machine crash by keeping only what
+// was synced.
 type pebbleSnapshotLoader struct {
 	pf        *PebbleFactory
 	namespace string
@@ -1247,6 +1295,9 @@ func newPebbleSnapshotLoader(pf *PebbleFactory, fs vfs.FS, namespace string, sha
 		dbPath:    pf.getKVPath(namespace, shard),
 	}
 
+	// The database is replaced from here on, whether or not the install
+	// completes
+	pf.databaseReplaced(namespace, shard)
 	if err := fs.RemoveAll(sl.dbPath); err != nil {
 		return nil, errors.Wrap(err, "failed to remove existing database")
 	}

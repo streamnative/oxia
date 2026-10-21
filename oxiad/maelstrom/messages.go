@@ -21,6 +21,7 @@ import (
 	"os"
 	"reflect"
 
+	"github.com/pkg/errors"
 	"google.golang.org/protobuf/encoding/protojson"
 	pb "google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/wrapperspb"
@@ -178,13 +179,16 @@ type ErrorResponse struct {
 	Text string `json:"text"`
 }
 
-func sendResponse(response any) {
+func sendResponse(response any) error {
 	b, err := json.Marshal(response)
 	if err != nil {
-		panic("failed to serialize json")
+		return errors.Wrap(err, "failed to serialize json")
 	}
 
-	fmt.Fprintln(os.Stdout, string(b))
+	if _, err := fmt.Fprintln(os.Stdout, string(b)); err != nil {
+		return errors.Wrap(err, "failed to write the message")
+	}
+	return nil
 }
 
 func sendError(msgId int64, dest string, err error) {
@@ -196,7 +200,7 @@ func sendError(msgId int64, dest string, err error) {
 // the role of the transport-level stream reset that gRPC provides and the
 // Maelstrom fire-and-forget messages don't.
 func sendStreamError(dest string, streamId int64) {
-	b, err := json.Marshal(&Message[OxiaStreamMessage]{
+	if err := sendResponse(&Message[OxiaStreamMessage]{
 		Src:  thisNode,
 		Dest: dest,
 		Body: OxiaStreamMessage{
@@ -206,18 +210,20 @@ func sendStreamError(dest string, streamId int64) {
 			},
 			StreamId: streamId,
 		},
-	})
-	if err != nil {
-		panic("failed to serialize json")
+	}); err != nil {
+		slog.Warn(
+			"Failed to send the stream error",
+			slog.String("dest", dest),
+			slog.Int64("stream-id", streamId),
+			slog.Any("error", err),
+		)
 	}
-
-	fmt.Fprintln(os.Stdout, string(b))
 }
 
 // sendShardAssignmentsAck tells the coordinator that the shard assignments
 // message msgId reached this node, see maelstromShardAssignmentClient.Send.
-func sendShardAssignmentsAck(dest string, streamId int64, msgId int64) {
-	sendResponse(&Message[OxiaStreamMessage]{
+func sendShardAssignmentsAck(dest string, streamId int64, msgId int64) error {
+	return sendResponse(&Message[OxiaStreamMessage]{
 		Src:  thisNode,
 		Dest: dest,
 		Body: OxiaStreamMessage{
@@ -232,7 +238,7 @@ func sendShardAssignmentsAck(dest string, streamId int64, msgId int64) {
 }
 
 func sendErrorWithCode(msgId int64, dest string, code int, text string) {
-	b, err := json.Marshal(&Message[ErrorResponse]{
+	if err := sendResponse(&Message[ErrorResponse]{
 		Src:  thisNode,
 		Dest: dest,
 		Body: ErrorResponse{
@@ -244,12 +250,14 @@ func sendErrorWithCode(msgId int64, dest string, code int, text string) {
 			Code: code,
 			Text: text,
 		},
-	})
-	if err != nil {
-		panic("failed to serialize json")
+	}); err != nil {
+		slog.Warn(
+			"Failed to send the error",
+			slog.String("dest", dest),
+			slog.Int64("in-reply-to", msgId),
+			slog.Any("error", err),
+		)
 	}
-
-	fmt.Fprintln(os.Stdout, string(b))
 }
 
 var jsonMsgMapping = map[MsgType]any{
@@ -283,6 +291,8 @@ var protoMsgMapping = map[MsgType]pb.Message{
 	MsgTypeAddFollowerResponse:  &proto.AddFollowerResponse{},
 	MsgTypeGetStatusRequest:     &proto.GetStatusRequest{},
 	MsgTypeGetStatusResponse:    &proto.GetStatusResponse{},
+	MsgTypeDeleteShardRequest:   &proto.DeleteShardRequest{},
+	MsgTypeDeleteShardResponse:  &proto.DeleteShardResponse{},
 
 	// The process id of the data server, see maelstromGrpcProvider.processId
 	MsgTypeHealthCheckOk: &wrapperspb.Int64Value{},
@@ -290,16 +300,11 @@ var protoMsgMapping = map[MsgType]pb.Message{
 	MsgTypeShardAssignmentsResponse: &proto.ShardAssignments{},
 }
 
-func parseRequest(line string) (msgType MsgType, msg any, protoMsg pb.Message) {
+func parseRequest(line string) (msgType MsgType, msg any, protoMsg pb.Message, err error) {
 	frame := &Message[BaseMessageBody]{}
 
 	if err := json.Unmarshal([]byte(line), frame); err != nil {
-		slog.Error(
-			"failed to unmarshal",
-			slog.String("line", line),
-			slog.Any("error", err),
-		)
-		os.Exit(1)
+		return "", nil, nil, errors.Wrapf(err, "failed to unmarshal %q", line)
 	}
 
 	msg = frame
@@ -310,11 +315,7 @@ func parseRequest(line string) (msgType MsgType, msg any, protoMsg pb.Message) {
 		// that may still be reading a previously parsed message.
 		sm := reflect.New(reflect.TypeOf(prototype).Elem()).Interface()
 		if err := json.Unmarshal([]byte(line), sm); err != nil {
-			slog.Error(
-				"failed to unmarshal the proper struct",
-				slog.Any("error", err),
-			)
-			os.Exit(1)
+			return "", nil, nil, errors.Wrapf(err, "failed to unmarshal the %s message", msgType)
 		}
 
 		msg = sm
@@ -322,42 +323,22 @@ func parseRequest(line string) (msgType MsgType, msg any, protoMsg pb.Message) {
 
 	protoPrototype, ok := protoMsgMapping[frame.Body.Type]
 	if ok {
+		om := &Message[OxiaStreamMessage]{}
+		if err := json.Unmarshal([]byte(line), om); err != nil {
+			return "", nil, nil, errors.Wrapf(err, "failed to unmarshal the %s message", msgType)
+		}
 		protoMsg = reflect.New(reflect.TypeOf(protoPrototype).Elem()).Interface().(pb.Message)
-		if msgType.isOxiaStreamRequest() {
-			om := &Message[OxiaStreamMessage]{}
-			if err := json.Unmarshal([]byte(line), om); err != nil {
-				slog.Error(
-					"failed to unmarshal the proper struct",
-					slog.Any("error", err),
-				)
-				os.Exit(1)
-			}
+		if err := protojson.Unmarshal(om.Body.OxiaMsg, protoMsg); err != nil {
+			return "", nil, nil, errors.Wrapf(err, "failed to unmarshal the proto json of the %s message", msgType)
+		}
 
-			msg = om
-			if err := protojson.Unmarshal(om.Body.OxiaMsg, protoMsg); err != nil {
-				slog.Error(
-					"failed to unmarshal proto json",
-					slog.Any("error", err),
-				)
-				os.Exit(1)
-			}
-		} else {
-			om := &Message[OxiaMessage]{}
-			if err := json.Unmarshal([]byte(line), om); err != nil {
-				slog.Error(
-					"failed to unmarshal the proper struct",
-					slog.Any("error", err),
-				)
-				os.Exit(1)
-			}
-
-			msg = om
-			if err := protojson.Unmarshal(om.Body.OxiaMsg, protoMsg); err != nil {
-				slog.Error(
-					"failed to unmarshal proto json",
-					slog.Any("error", err),
-				)
-				os.Exit(1)
+		msg = om
+		if !msgType.isOxiaStreamRequest() {
+			msg = &Message[OxiaMessage]{
+				Id:   om.Id,
+				Src:  om.Src,
+				Dest: om.Dest,
+				Body: OxiaMessage{BaseMessageBody: om.Body.BaseMessageBody, OxiaMsg: om.Body.OxiaMsg},
 			}
 		}
 	}
@@ -367,5 +348,5 @@ func parseRequest(line string) (msgType MsgType, msg any, protoMsg pb.Message) {
 		slog.Any("type", msgType),
 		slog.Any("proto-msg", protoMsg),
 	)
-	return msgType, msg, protoMsg
+	return msgType, msg, protoMsg, nil
 }

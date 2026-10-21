@@ -21,6 +21,8 @@ import (
 
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
+
+	"github.com/oxia-db/oxia/oxiad/common/vfs"
 )
 
 // Txn File:
@@ -112,8 +114,8 @@ func (*V1) WriteRecord(buf []byte, startOffset uint32, _ uint32, payload []byte)
 	return headerOffset + payloadSize, payloadCrc
 }
 
-func (*V1) WriteIndex(path string, index []byte) error {
-	idxFile, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0644)
+func (*V1) WriteIndex(fs vfs.FS, path string, index []byte) error {
+	idxFile, err := fs.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0644)
 	if err != nil {
 		return errors.Wrapf(err, "failed to open index file %s", path)
 	}
@@ -126,10 +128,10 @@ func (*V1) WriteIndex(path string, index []byte) error {
 	return idxFile.Close()
 }
 
-func (*V1) ReadIndex(path string) ([]byte, error) {
-	var idFile *os.File
+func (*V1) ReadIndex(fs vfs.FS, path string) ([]byte, error) {
+	var idFile vfs.File
 	var err error
-	if idFile, err = os.OpenFile(path, os.O_RDONLY, 0); err != nil {
+	if idFile, err = fs.OpenFile(path, os.O_RDONLY, 0); err != nil {
 		return nil, errors.Wrapf(err, "failed to open segment index file %s", path)
 	}
 	var indexBuf []byte
@@ -162,16 +164,14 @@ func (v *V1) RecoverIndex(buf []byte, startFileOffset uint32, baseEntryOffset in
 		var payloadSize uint32
 		var err error
 		if payloadSize, _, _, err = v.ReadHeaderWithValidation(buf, newFileOffset); err != nil {
-			if errors.Is(err, ErrEmptyPayload) || errors.Is(err, ErrOffsetOutOfBounds) {
-				// we might read the end of the segment.
-				break
-			}
-			return nil, 0, 0, 0, err
+			break
 		}
 		index = binary.BigEndian.AppendUint32(index, newFileOffset)
 		newFileOffset += v.GetHeaderSize() + payloadSize
 		currentEntryOffset++
 	}
 
-	return index, lastCrc, newFileOffset, currentEntryOffset - 1, nil
+	// V1 has no checksum: the validation fails only on an empty payload or a
+	// record out of bounds, which is the end of the segment.
+	return index, lastCrc, newFileOffset, currentEntryOffset - 1, nil //nolint:nilerr
 }

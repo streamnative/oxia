@@ -23,8 +23,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"go.uber.org/multierr"
-
 	"github.com/oxia-db/oxia/common/channel"
 	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/metric"
@@ -89,16 +87,18 @@ func (ls *LogSynchronizer) Sync() error {
 }
 
 func (ls *LogSynchronizer) SyncAndClose() error {
-	return multierr.Combine(ls.Sync(), ls.Close())
+	err := ls.Sync()
+	ls.Close()
+	return err
 }
 
 func (ls *LogSynchronizer) IsValid() bool {
 	return ls != nil && !ls.closed.Load()
 }
 
-func (ls *LogSynchronizer) Close() error {
+func (ls *LogSynchronizer) Close() {
 	if !ls.closed.CompareAndSwap(false, true) {
-		return nil
+		return
 	}
 	ls.cancel()
 	channel.PushNoBlock(ls.finish, context.Canceled)
@@ -107,7 +107,6 @@ func (ls *LogSynchronizer) Close() error {
 	// Free the entries the state applier didn't take: it reads them from the
 	// wal once the stream is closed
 	ls.appended.clear()
-	return nil
 }
 
 func (ls *LogSynchronizer) bgAppender(stream proto.OxiaLogReplication_ReplicateServer, syncCond chan struct{}, onAppend func()) error {

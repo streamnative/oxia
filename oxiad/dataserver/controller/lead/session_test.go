@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/metric"
@@ -58,7 +59,7 @@ func newTestSession(sm *sessionManager, id SessionId, timeout time.Duration) *se
 
 func TestSession_HeartbeatExtendsDeadline(t *testing.T) {
 	sm := newBareSessionManager()
-	defer func() { assert.NoError(t, sm.Close()) }()
+	defer sm.Close()
 
 	timeout := 10 * time.Second
 	s := newTestSession(sm, 1, timeout)
@@ -74,7 +75,7 @@ func TestSession_HeartbeatExtendsDeadline(t *testing.T) {
 
 func TestSession_KeepAliveAfterRemove(t *testing.T) {
 	sm := newBareSessionManager()
-	defer func() { assert.NoError(t, sm.Close()) }()
+	defer sm.Close()
 
 	s := newTestSession(sm, 1, 10*time.Second)
 
@@ -95,7 +96,7 @@ func TestSession_KeepAliveAfterRemove(t *testing.T) {
 // is already armed to fire soon enough.
 func TestSession_StartNudgesSchedulerOnEarlierDeadline(t *testing.T) {
 	sm := newBareSessionManager()
-	defer func() { assert.NoError(t, sm.Close()) }()
+	defer sm.Close()
 
 	drainWake := func() bool {
 		select {
@@ -118,7 +119,7 @@ func TestSession_StartNudgesSchedulerOnEarlierDeadline(t *testing.T) {
 
 func TestSessionManager_CollectDueSessions(t *testing.T) {
 	sm := newBareSessionManager()
-	defer func() { assert.NoError(t, sm.Close()) }()
+	defer sm.Close()
 
 	due := newTestSession(sm, 1, 10*time.Second)
 	refreshed := newTestSession(sm, 2, 10*time.Second)
@@ -156,7 +157,7 @@ func TestSessionManager_CollectDueSessions(t *testing.T) {
 // re-queued.
 func TestSessionManager_RequeueRefreshed(t *testing.T) {
 	sm := newBareSessionManager()
-	defer func() { assert.NoError(t, sm.Close()) }()
+	defer sm.Close()
 
 	expired := newTestSession(sm, 1, 10*time.Second)
 	rescued := newTestSession(sm, 2, 10*time.Second)
@@ -189,9 +190,31 @@ func TestSessionManager_RequeueRefreshed(t *testing.T) {
 	assert.Equal(t, -1, closed.heapIdx)
 }
 
+// A batch of due sessions that all got a heartbeat since is not deleted: the
+// bare manager has no leader controller to delete them with.
+func TestSessionManagerExpireSessionsSkipsRefreshedBatch(t *testing.T) {
+	sm := newBareSessionManager()
+	defer sm.Close()
+
+	s := newTestSession(sm, 1, 10*time.Second)
+	now := sm.now()
+	s.deadline.Store(now - 1)
+	s.heapDeadline = now - 1
+	due, _ := sm.collectDueSessions()
+	require.Equal(t, []*session{s}, due)
+
+	s.heartbeat(sm.now())
+	sm.expireSessions(due)
+
+	sm.Lock()
+	defer sm.Unlock()
+	assert.Equal(t, s, sm.sessions[1])
+	assert.Equal(t, sessionHeap{s}, sm.expiryHeap)
+}
+
 func TestSessionHeap_Ordering(t *testing.T) {
 	sm := newBareSessionManager()
-	defer func() { assert.NoError(t, sm.Close()) }()
+	defer sm.Close()
 
 	newTestSession(sm, 1, 30*time.Second)
 	newTestSession(sm, 2, 10*time.Second)
@@ -217,7 +240,7 @@ func TestSessionHeap_Ordering(t *testing.T) {
 // this mainly gives the race detector something to chew on.
 func TestSession_ConcurrentKeepAliveAndRemove(t *testing.T) {
 	sm := newBareSessionManager()
-	defer func() { assert.NoError(t, sm.Close()) }()
+	defer sm.Close()
 
 	const sessions = 32
 	for i := 0; i < sessions; i++ {

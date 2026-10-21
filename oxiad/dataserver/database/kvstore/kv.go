@@ -18,8 +18,10 @@ import (
 	"io"
 	"testing"
 
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/pkg/errors"
 
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/oxiad/common/crc"
 
 	"github.com/oxia-db/oxia/common/proto"
@@ -203,7 +205,9 @@ type FactoryOptions struct {
 	CacheSizeMB int64
 	UseWAL      bool
 	SyncData    bool
-	KvTrap      *KvTrap
+	Failpoints  *failpoint.Failpoints
+	// FS holds the databases and the snapshots. Nil is vfs.Default.
+	FS vfs.FS
 }
 
 var DefaultFactoryOptions = &FactoryOptions{
@@ -211,7 +215,8 @@ var DefaultFactoryOptions = &FactoryOptions{
 	CacheSizeMB: 100,
 	UseWAL:      true,
 	SyncData:    true,
-	KvTrap:      nil,
+	Failpoints:  nil,
+	FS:          vfs.Default,
 }
 
 func (fo *FactoryOptions) EnsureDefaults() {
@@ -221,6 +226,10 @@ func (fo *FactoryOptions) EnsureDefaults() {
 
 	if fo.CacheSizeMB == 0 {
 		fo.CacheSizeMB = DefaultFactoryOptions.CacheSizeMB
+	}
+
+	if fo.FS == nil {
+		fo.FS = DefaultFactoryOptions.FS
 	}
 }
 
@@ -240,10 +249,25 @@ type Factory interface {
 	NewKV(namespace string, shardId int64, keySorting proto.KeySortingType) (KV, error)
 
 	NewSnapshotLoader(namespace string, shardId int64) (SnapshotLoader, error)
+
+	// DatabaseDir returns the directory that holds the database of a shard,
+	// which NewSnapshotLoader replaces as a whole. The files kept next to the
+	// database, e.g. the backup record of the shard, go with it.
+	DatabaseDir(namespace string, shardId int64) string
+
+	// DatabaseGeneration counts the replacements of the database of a shard
+	// since the factory opened: a snapshot loader created for it, or its
+	// deletion. A caller that took a checkpoint compares it to tell whether
+	// the database on disk is still the one it checkpointed.
+	DatabaseGeneration(namespace string, shardId int64) uint64
 }
 
 type IteratorOpts struct {
 	IncludeInternalKeys bool
+	// IncludeUpperBound makes RangeScan and KeyRangeScan include the key of
+	// their upper bound. An empty upper bound is then the empty key, rather
+	// than no bound.
+	IncludeUpperBound bool
 }
 
 var (

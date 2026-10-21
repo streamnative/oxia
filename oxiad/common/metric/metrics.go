@@ -22,10 +22,10 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/pkg/errors"
+	promclient "github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/prometheus"
@@ -37,24 +37,25 @@ import (
 )
 
 func init() {
+	otel.SetMeterProvider(mustNewMeterProvider(promclient.DefaultRegisterer))
+}
+
+// mustNewMeterProvider creates the provider that exports the metrics to the
+// registerer. It panics if the registerer rejects the exporter, e.g. when it
+// is already registered.
+func mustNewMeterProvider(registerer promclient.Registerer) *metric.MeterProvider {
 	// Histograms are aggregated by common/metric, which hands them over to the
 	// exporter as a producer.
-	exporter, err := prometheus.New(prometheus.WithProducer(metric2.HistogramProducer))
+	exporter, err := prometheus.New(prometheus.WithRegisterer(registerer),
+		prometheus.WithProducer(metric2.HistogramProducer))
 	if err != nil {
-		slog.Error(
-			"Failed to initialize Prometheus metrics exporter",
-			slog.Any("error", err),
-		)
-		os.Exit(1)
+		panic(errors.Wrap(err, "failed to initialize Prometheus metrics exporter"))
 	}
 
 	// Since v1.44.0 the SDK caps each instrument at 2000 attribute sets, collapsing the excess into a single
 	// `otel.metric.overflow` series. Per-shard labels can exceed that in large clusters, so disable the limit.
-	provider := metric.NewMeterProvider(metric.WithReader(exporter),
+	return metric.NewMeterProvider(metric.WithReader(exporter),
 		metric.WithCardinalityLimit(0))
-
-	// Set as the default provider
-	otel.SetMeterProvider(provider)
 }
 
 type PrometheusMetrics struct {
@@ -78,7 +79,7 @@ func Start(bindAddress string, tlsConf *libtls.Config) (*PrometheusMetrics, erro
 	lc := net.ListenConfig{}
 	listener, err := lc.Listen(context.Background(), "tcp", bindAddress)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to start the metrics server on %s: %w", bindAddress, err)
 	}
 
 	p := &PrometheusMetrics{
@@ -101,23 +102,27 @@ func Start(bindAddress string, tlsConf *libtls.Config) (*PrometheusMetrics, erro
 		map[string]string{
 			"oxia": "metrics",
 		},
-		func() {
-			if tlsConf != nil {
-				err = p.server.ServeTLS(listener, "", "")
-			} else {
-				err = p.server.Serve(listener)
-			}
-			if err != nil && !errors.Is(err, http.ErrServerClosed) {
-				slog.Error(
-					"Failed to serve metrics",
-					slog.Any("error", err),
-				)
-				os.Exit(1)
-			}
-		},
+		func() { p.serve(listener) },
 	)
 
 	return p, nil
+}
+
+// serve serves the metrics until the server is closed. A failure is logged:
+// the process keeps running without the metrics endpoint.
+func (p *PrometheusMetrics) serve(listener net.Listener) {
+	var err error
+	if p.server.TLSConfig != nil {
+		err = p.server.ServeTLS(listener, "", "")
+	} else {
+		err = p.server.Serve(listener)
+	}
+	if err != nil && !errors.Is(err, http.ErrServerClosed) {
+		slog.Error(
+			"Failed to serve metrics",
+			slog.Any("error", err),
+		)
+	}
 }
 
 func (p *PrometheusMetrics) Port() int {

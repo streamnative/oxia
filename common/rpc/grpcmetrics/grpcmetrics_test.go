@@ -250,6 +250,22 @@ func TestRegisterPreInitializesSeries(t *testing.T) {
 	assert.Empty(t, values)
 }
 
+func TestMethodMetricsHandledWithUnknownCode(t *testing.T) {
+	reader := withReader(t)
+	unknown := codes.Code(100)
+
+	getMethodMetrics(false, unary, "/"+testService+"/EmptyCall").handledWith(status.Error(unknown, "unknown"))
+
+	values, _ := series(t, reader, "grpc_server_handled_total")
+	assert.Equal(t, int64(1), values[labelSet(unary, "EmptyCall", unknown)])
+}
+
+func TestSplitMethodNameWithoutService(t *testing.T) {
+	service, method := splitMethodName("/EmptyCall")
+	assert.Equal(t, "unknown", service)
+	assert.Equal(t, "unknown", method)
+}
+
 type nopServerStream struct {
 	grpc.ServerStream
 }

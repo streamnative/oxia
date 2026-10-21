@@ -32,10 +32,11 @@ var (
 	outputDir string
 	Cmd       = &cobra.Command{
 		Use:   "create-schema",
-		Short: "Create configuration schema",
-		Long:  `Create configuration schema`,
-		Args:  cobra.NoArgs,
-		RunE:  exec,
+		Short: "Write the JSON schemas of the configuration files",
+		Long: `Write the JSON schemas of the coordinator and data server configuration files, coordinator.json
+and dataserver.json, to the output directory. Editors use them to validate and complete the files.`,
+		Args: cobra.NoArgs,
+		RunE: exec,
 	}
 )
 

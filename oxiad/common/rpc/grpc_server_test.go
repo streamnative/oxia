@@ -15,11 +15,15 @@
 package rpc
 
 import (
+	"bytes"
 	"fmt"
+	"log/slog"
 	"net"
 	"runtime"
+	"syscall"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
@@ -29,7 +33,7 @@ import (
 func TestGrpcServer_CloseBeforeServeStarts(t *testing.T) {
 	// Regression test: when Close() completes before the Serve() goroutine is
 	// scheduled, Serve() returns grpc.ErrServerStopped. That must be treated as
-	// a normal shutdown, not a startup failure that os.Exit(1)s the process.
+	// a normal shutdown, not a serve failure.
 	// GOMAXPROCS(1) keeps the Serve goroutine queued until after Close().
 	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(1))
 
@@ -56,4 +60,44 @@ func TestGrpcServerCloseReleasesPort(t *testing.T) {
 		require.NoError(t, err, "the port is still bound after Close")
 		require.NoError(t, listener.Close())
 	}
+}
+
+func TestGrpcServerStartReturnsListenError(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer listener.Close()
+
+	s, err := Default.StartGrpcServer("public", listener.Addr().String(),
+		func(grpc.ServiceRegistrar) {}, nil, &auth.Options{}, nil)
+
+	require.ErrorIs(t, err, syscall.EADDRINUSE)
+	assert.ErrorContains(t, err, "failed to start the public gRPC server on "+listener.Addr().String())
+	assert.Nil(t, s)
+}
+
+func TestGrpcServerStartRejectsUnsupportedAuthProvider(t *testing.T) {
+	registered := false
+	s, err := Default.StartGrpcServer("test", "127.0.0.1:0",
+		func(grpc.ServiceRegistrar) { registered = true }, nil, &auth.Options{Provider: "ldap"}, nil)
+
+	require.ErrorIs(t, err, auth.ErrUnsupportedProvider)
+	require.Nil(t, s)
+	require.False(t, registered)
+}
+
+func TestGrpcServerServeLogsFailure(t *testing.T) {
+	logs := &bytes.Buffer{}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	require.NoError(t, listener.Close())
+	c := &defaultGrpcServer{
+		server:    grpc.NewServer(),
+		log:       slog.New(slog.NewTextHandler(logs, nil)),
+		serveDone: make(chan struct{}),
+	}
+
+	c.serve(listener)
+
+	assert.Contains(t, logs.String(), "Failed to serve")
+	assert.NoError(t, c.Close())
 }

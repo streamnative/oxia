@@ -40,10 +40,8 @@ func (s *server) Select(selectorContext *Context) (string, error) {
 			return serverId, nil
 		}
 	}
-	if serverId == "" {
-		panic("unexpected behaviour")
-	}
-	return serverId, nil
+	// Only the final selector picks a server, and it gives up only when no candidate is left
+	return "", selector.ErrNoCandidates
 }
 
 func NewSelector() selector.Selector[*Context, string] {

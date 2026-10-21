@@ -34,13 +34,17 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/oxia-db/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/common/proto"
 	"github.com/oxia-db/oxia/common/rpc"
 )
 
-// testOxiaClientServer answers every data request with an empty success.
+// testOxiaClientServer answers every data request with an empty success, or
+// runs the hook of a test for the lists and the range scans.
 type testOxiaClientServer struct {
 	proto.UnimplementedOxiaClientServer
+	list      func(*proto.ListRequest, proto.OxiaClient_ListServer) error
+	rangeScan func(*proto.RangeScanRequest, proto.OxiaClient_RangeScanServer) error
 }
 
 func (testOxiaClientServer) WriteStream(stream proto.OxiaClient_WriteStreamServer) error {
@@ -70,11 +74,18 @@ func (testOxiaClientServer) Read(request *proto.ReadRequest, stream proto.OxiaCl
 	return stream.Send(response)
 }
 
-func (testOxiaClientServer) List(_ *proto.ListRequest, stream proto.OxiaClient_ListServer) error {
+func (s testOxiaClientServer) List(request *proto.ListRequest, stream proto.OxiaClient_ListServer) error {
+	if s.list != nil {
+		return s.list(request, stream)
+	}
 	return stream.Send(&proto.ListResponse{})
 }
 
-func (testOxiaClientServer) RangeScan(_ *proto.RangeScanRequest, stream proto.OxiaClient_RangeScanServer) error {
+func (s testOxiaClientServer) RangeScan(request *proto.RangeScanRequest,
+	stream proto.OxiaClient_RangeScanServer) error {
+	if s.rangeScan != nil {
+		return s.rangeScan(request, stream)
+	}
 	return stream.Send(&proto.RangeScanResponse{})
 }
 
@@ -234,10 +245,12 @@ func shardRequests(shardId *int64) []shardRequest {
 			return err
 		}},
 		{"list", func(ctx context.Context, provider RpcProvider) error {
-			return provider.ExecuteList(ctx, &proto.ListRequest{Shard: shardId}, func(*proto.ListResponse) {})
+			return provider.ExecuteList(ctx, &proto.ListRequest{Shard: shardId},
+				func(*proto.ListResponse) error { return nil })
 		}},
 		{"range-scan", func(ctx context.Context, provider RpcProvider) error {
-			return provider.ExecuteRangeScan(ctx, &proto.RangeScanRequest{Shard: shardId}, func(*proto.RangeScanResponse) {})
+			return provider.ExecuteRangeScan(ctx, &proto.RangeScanRequest{Shard: shardId},
+				func(*proto.RangeScanResponse) error { return nil })
 		}},
 	}
 }
@@ -336,6 +349,40 @@ func TestRpcProvider_WritesGoToTheNewLeader(t *testing.T) {
 	defer cancel()
 	assert.NoError(t, executeTestWrite(ctx, provider, shardId))
 
+	assert.EqualValues(t, 1, oldLeader.requests.Load())
+	assert.EqualValues(t, 1, newLeader.requests.Load())
+}
+
+func TestRpcProviderWritesGoToTheNewLeaderWhenTheOldStreamFailsToClose(t *testing.T) {
+	if !failpoint.Enabled {
+		t.Skip("needs failpoints: disabled by the disable_trap tag")
+	}
+	shardId := int64(0)
+	shardManager := &testShardManager{}
+	oldLeader := &writeServer{}
+	oldLeaderAddress := startTestOxiaClientServer(t, oldLeader)
+	newLeader := &writeServer{}
+	newLeaderAddress := startTestOxiaClientServer(t, newLeader)
+	shardManager.leader.Store(&oldLeaderAddress)
+	closeFailures := atomic.Int64{}
+	failpoints := failpoint.New(map[string]func() error{
+		"getWriteStream.closeOldStream": func() error {
+			closeFailures.Add(1)
+			return errors.New("injected")
+		},
+	})
+
+	provider := newRpcProvider(t.Context(), constant.DefaultNamespace, nil, nil, newLeaderAddress,
+		func() ShardManager { return shardManager }, failpoints)
+	defer func() {
+		assert.NoError(t, provider.Close())
+	}()
+
+	require.NoError(t, executeTestWrite(t.Context(), provider, shardId))
+	shardManager.leader.Store(&newLeaderAddress)
+	require.NoError(t, executeTestWrite(t.Context(), provider, shardId))
+
+	assert.EqualValues(t, 1, closeFailures.Load())
 	assert.EqualValues(t, 1, oldLeader.requests.Load())
 	assert.EqualValues(t, 1, newLeader.requests.Load())
 }
@@ -477,17 +524,22 @@ func TestRpcProvider_SessionRequestsFailFastWhenTargetIsNotLeader(t *testing.T) 
 	}
 }
 
-// recordingClientPool records the targets that connections are requested for.
+// recordingClientPool records the targets that connections are requested for,
+// and fails to connect with err, if set.
 type recordingClientPool struct {
 	rpc.ClientPool
 	mutex   sync.Mutex
 	targets []string
+	err     error
 }
 
 func (p *recordingClientPool) GetClientRpc(target string) (proto.OxiaClientClient, error) {
 	p.mutex.Lock()
 	p.targets = append(p.targets, target)
 	p.mutex.Unlock()
+	if p.err != nil {
+		return nil, p.err
+	}
 	return p.ClientPool.GetClientRpc(target)
 }
 
@@ -531,6 +583,140 @@ func TestRpcProvider_ShardWithoutLeader(t *testing.T) {
 	assert.NotContains(t, pool.Targets(), "")
 }
 
+// The requests without a shard go to the service address.
+func TestRpcProviderExecuteReadWithoutShard(t *testing.T) {
+	serviceAddress := startTestOxiaClientServer(t, testOxiaClientServer{})
+	provider := NewRpcProvider(t.Context(), constant.DefaultNamespace, nil, nil, serviceAddress,
+		func() ShardManager { return nil })
+	defer func() {
+		assert.NoError(t, provider.Close())
+	}()
+
+	response, err := provider.ExecuteRead(t.Context(), &proto.ReadRequest{Gets: []*proto.GetRequest{{Key: "key"}}})
+	require.NoError(t, err)
+	require.Len(t, response.Gets, 1)
+	assert.Equal(t, proto.Status_KEY_NOT_FOUND, response.Gets[0].Status)
+}
+
+// A shard missing from the shard map was split or merged: the shard requests
+// fail right away, so that the caller reroutes them.
+func TestRpcProviderShardRequestsFailOnUnknownShard(t *testing.T) {
+	shardId := int64(0)
+	for _, tt := range shardRequests(&shardId) {
+		t.Run(tt.name, func(t *testing.T) {
+			provider := NewRpcProvider(t.Context(), constant.DefaultNamespace, nil, nil, "",
+				func() ShardManager { return nil })
+			defer func() {
+				assert.NoError(t, provider.Close())
+			}()
+
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			assert.ErrorIs(t, tt.execute(ctx, provider), constant.ErrShardNotFound)
+		})
+	}
+}
+
+func TestRpcProviderShardRequestsFailWhenConnectionFails(t *testing.T) {
+	errConnect := errors.New("invalid target")
+	shardId := int64(0)
+	leader := "leader:6648"
+	for _, tt := range shardRequests(&shardId) {
+		t.Run(tt.name, func(t *testing.T) {
+			shardManager := &testShardManager{}
+			shardManager.leader.Store(&leader)
+			provider := NewRpcProvider(t.Context(), constant.DefaultNamespace, nil, nil, "",
+				func() ShardManager { return shardManager })
+			pool := &recordingClientPool{ClientPool: provider.(*rpcProvider).clientPool, err: errConnect}
+			provider.(*rpcProvider).clientPool = pool
+			defer func() {
+				assert.NoError(t, provider.Close())
+			}()
+
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			assert.ErrorIs(t, tt.execute(ctx, provider), errConnect)
+			assert.Equal(t, []string{leader}, pool.Targets())
+		})
+	}
+}
+
+// fixedTargetRequests are the requests that go to a target chosen by the caller.
+func fixedTargetRequests() []shardRequest {
+	return []shardRequest{
+		{"shard-assignments", func(ctx context.Context, provider RpcProvider) error {
+			_, err := provider.GetShardAssignments(ctx, "", &proto.ShardAssignmentsRequest{})
+			return err
+		}},
+		{"sequence-updates", func(ctx context.Context, provider RpcProvider) error {
+			_, err := provider.GetSequenceUpdates(ctx, "", &proto.GetSequenceUpdatesRequest{})
+			return err
+		}},
+		{"notifications", func(ctx context.Context, provider RpcProvider) error {
+			_, err := provider.GetNotifications(ctx, "", &proto.NotificationsRequest{})
+			return err
+		}},
+		{"create-session", func(ctx context.Context, provider RpcProvider) error {
+			_, err := provider.CreateSession(ctx, "", &proto.CreateSessionRequest{})
+			return err
+		}},
+		{"close-session", func(ctx context.Context, provider RpcProvider) error {
+			_, err := provider.CloseSession(ctx, "", &proto.CloseSessionRequest{})
+			return err
+		}},
+	}
+}
+
+// The empty target is the leader of a shard that has no leader: the requests
+// to a fixed target fail fast without connecting to it.
+func TestRpcProviderFixedTargetRequestsFailWithoutLeader(t *testing.T) {
+	for _, tt := range fixedTargetRequests() {
+		t.Run(tt.name, func(t *testing.T) {
+			provider := NewRpcProvider(t.Context(), constant.DefaultNamespace, nil, nil, "",
+				func() ShardManager { return nil })
+			pool := &recordingClientPool{ClientPool: provider.(*rpcProvider).clientPool}
+			provider.(*rpcProvider).clientPool = pool
+			defer func() {
+				assert.NoError(t, provider.Close())
+			}()
+
+			assert.ErrorIs(t, tt.execute(t.Context(), provider), errShardHasNoLeader)
+			assert.Empty(t, pool.Targets())
+		})
+	}
+}
+
+func TestRpcProviderGetSequenceUpdates(t *testing.T) {
+	target := startTestOxiaClientServer(t, testOxiaClientServer{})
+	provider := NewRpcProvider(t.Context(), constant.DefaultNamespace, nil, nil, "",
+		func() ShardManager { return nil })
+	defer func() {
+		assert.NoError(t, provider.Close())
+	}()
+
+	// The server does not implement the request: the stream reports it
+	stream, err := provider.GetSequenceUpdates(t.Context(), target, &proto.GetSequenceUpdatesRequest{Key: "key"})
+	require.NoError(t, err)
+	_, err = stream.Recv()
+	assert.Equal(t, codes.Unimplemented, status.Code(err), "unexpected error: %v", err)
+}
+
+func TestRpcProviderStreamRequestsFailOnCanceledContext(t *testing.T) {
+	target := startTestOxiaClientServer(t, testOxiaClientServer{})
+	provider := NewRpcProvider(t.Context(), constant.DefaultNamespace, nil, nil, "",
+		func() ShardManager { return nil })
+	defer func() {
+		assert.NoError(t, provider.Close())
+	}()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, err := provider.GetSequenceUpdates(ctx, target, &proto.GetSequenceUpdatesRequest{Key: "key"})
+	assert.Equal(t, codes.Canceled, status.Code(err), "unexpected error: %v", err)
+	_, err = provider.GetNotifications(ctx, target, &proto.NotificationsRequest{})
+	assert.Equal(t, codes.Canceled, status.Code(err), "unexpected error: %v", err)
+}
+
 func TestShardMapTimer(t *testing.T) {
 	changed := make(chan struct{})
 	timer := &ShardMapTimer{Changed: changed}
@@ -572,4 +758,59 @@ func TestExecuteWithRetryWakesUpOnShardMapChange(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, 2, result)
+}
+
+// The consumer of the responses of a list or a range scan ends it with an
+// error, which is returned without a retry.
+func TestRpcProviderListAndRangeScanConsumerError(t *testing.T) {
+	var requests atomic.Int32
+	keys := []string{"a", "b", "c"}
+	address := startTestOxiaClientServer(t, testOxiaClientServer{
+		list: func(_ *proto.ListRequest, stream proto.OxiaClient_ListServer) error {
+			requests.Add(1)
+			for _, key := range keys {
+				if err := stream.Send(&proto.ListResponse{Keys: []string{key}}); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+		rangeScan: func(_ *proto.RangeScanRequest, stream proto.OxiaClient_RangeScanServer) error {
+			requests.Add(1)
+			for _, key := range keys {
+				if err := stream.Send(&proto.RangeScanResponse{Records: []*proto.GetResponse{{Key: &key}}}); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	})
+	shardManager := &testShardManager{}
+	shardManager.leader.Store(&address)
+	provider := NewRpcProvider(t.Context(), constant.DefaultNamespace, nil, nil, address,
+		func() ShardManager { return shardManager })
+	defer func() {
+		assert.NoError(t, provider.Close())
+	}()
+
+	shardId := int64(0)
+	failure := errors.New("failure")
+	consumed := 0
+	err := provider.ExecuteList(t.Context(), &proto.ListRequest{Shard: &shardId}, func(*proto.ListResponse) error {
+		consumed++
+		return failure
+	})
+	assert.ErrorIs(t, err, failure)
+	assert.Equal(t, 1, consumed)
+	assert.Equal(t, int32(1), requests.Load())
+
+	consumed = 0
+	err = provider.ExecuteRangeScan(t.Context(), &proto.RangeScanRequest{Shard: &shardId},
+		func(*proto.RangeScanResponse) error {
+			consumed++
+			return failure
+		})
+	assert.ErrorIs(t, err, failure)
+	assert.Equal(t, 1, consumed)
+	assert.Equal(t, int32(2), requests.Load())
 }

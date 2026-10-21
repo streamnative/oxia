@@ -392,6 +392,18 @@ func TestWriteBatchCanAdd(t *testing.T) {
 	}
 }
 
+func TestWriteBatchCanAddPanicsOnRead(t *testing.T) {
+	factory := &writeBatchFactory{
+		metrics:     metrics.NewMetrics(noop.NewMeterProvider()),
+		maxByteSize: 100,
+	}
+	batch := factory.newBatch(&shardId)
+
+	assert.PanicsWithValue(t, "invalid call", func() {
+		batch.CanAdd(model.GetCall{Key: "a"})
+	})
+}
+
 // A call whose caller gave up on it before the request is first handed to gRPC
 // is dropped: it fails with an error telling that it was not sent, and the
 // other calls are sent without it, keeping their op index.

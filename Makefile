@@ -14,7 +14,7 @@
 
 .PHONY: build
 build:
-	go build -tags disable_trap -ldflags "-X main.version=$(shell git describe --tags --always | cut -c2-)" -v -o bin/oxia ./cmd
+	go build -tags disable_trap -ldflags "-X main.version=$(shell git describe --tags --always --match 'v*' | sed 's/^v//')" -v -o bin/oxia ./cmd
 
 # Build target: iterate through PLATFORMS and perform cross-compilation for each combination.
 
@@ -34,7 +34,7 @@ distribution:
 		if [ "$$GOOS" = "windows" ]; then OUTPUT_NAME=$${OUTPUT_NAME}.exe; fi; \
 		echo "Building $$GOOS/$${GOARCH} to $${OUTPUT_NAME}"; \
 		GOOS=$${GOOS} GOARCH=$${GOARCH} go build \
-			-ldflags "-X main.version=$$(git describe --tags --always | cut -c2-)" \
+			-ldflags "-X main.version=$$(git describe --tags --always --match 'v*' | sed 's/^v//')" \
 			-tags disable_trap \
 			-v \
 			-o $${OUTPUT_NAME} ./cmd; \
@@ -52,7 +52,7 @@ release-build:
 	@mkdir -p $(OUTPUT_DIR)/bin $(OUTPUT_DIR)/conf
 	GOOS=$(GOOS) GOARCH=$(GOARCH) go build \
 		-tags disable_trap \
-		-ldflags "-X main.version=$$(git describe --tags --always | cut -c2-)" \
+		-ldflags "-X main.version=$$(git describe --tags --always --match 'v*' | sed 's/^v//')" \
 		-v \
 		-o $(OUTPUT_DIR)/bin/$(OUTPUT_NAME) ./cmd
 	@cp conf/dataserver.yaml $(OUTPUT_DIR)/conf/
@@ -63,14 +63,29 @@ maelstrom:
 	go build -tags disable_trap -v -o bin/oxia-maelstrom ./oxiad/maelstrom
 
 # -coverpkg counts the code that any test exercises, so the integration tests
-# under tests/ add to the coverage of the packages they run
+# under tests/ add to the coverage of the packages they run. coverignore then
+# removes the blocks marked with // coverage-ignore from the profile.
 test: build
 	go test -race -coverpkg=github.com/oxia-db/oxia/... -coverprofile=coverage.out \
 	 ./cmd/...     \
 	 ./common/...  \
+	 ./dev/...     \
 	 ./oxia/...    \
 	 ./oxiad/...   \
 	 ./tests/...
+	go run ./dev/coverignore -trim github.com/oxia-db/oxia/ coverage.out
+
+# The files that .github/codecov.yml ignores
+COVERAGE_EXCLUDE := \.pb\.go:|^github\.com/oxia-db/oxia/(oxiad/coordinator/rpc/rpctest/|tests/mock/|cmd/client/common/client_mock\.go:|common/rpc/mock\.go:|cmd/main\.go:|oxiad/maelstrom/main\.go:|cmd/wal/perf/cmd\.go:)
+
+# Fails on any block of the profile outside COVERAGE_EXCLUDE that no test runs.
+# A block appears once per test binary that runs it, so it is covered when any
+# of its counts is not zero.
+.PHONY: check-coverage
+check-coverage:
+	@grep -vE '$(COVERAGE_EXCLUDE)' coverage.out | awk 'NR > 1 { if ($$NF > 0) hit[$$1] = 1; \
+	else if (!($$1 in hit)) hit[$$1] = 0 } \
+	END { for (b in hit) if (!hit[b]) { print "not covered: " b; n++ } exit n > 0 }'
 
 .PHONY: test-kv
 test-kv:
@@ -79,6 +94,7 @@ test-kv:
 lint:
 	#brew install golangci-lint
 	go work edit -json | jq -r '.Use[].DiskPath'  | xargs -I{} golangci-lint run {}/...
+	go work edit -json | jq -r '.Use[].DiskPath'  | xargs -I{} go vet -tags disable_trap -stdmethods=false ./{}/...
 
 clean:
 	rm -f bin/oxia bin/oxia-maelstrom

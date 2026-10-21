@@ -19,7 +19,16 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/oxia-db/oxia/common/proto"
 )
+
+func TestStateToProtoReportsUnspecifiedForUnknownState(t *testing.T) {
+	assert.Equal(t, proto.DataServerState_DATA_SERVER_STATE_RUNNING, Running.ToProto())
+	assert.Equal(t, proto.DataServerState_DATA_SERVER_STATE_UNAVAILABLE, NotRunning.ToProto())
+	assert.Equal(t, proto.DataServerState_DATA_SERVER_STATE_DRAINING, Draining.ToProto())
+	assert.Equal(t, proto.DataServerState_DATA_SERVER_STATE_UNSPECIFIED, State(99).ToProto())
+}
 
 // The first transition, the data server joining, isn't timed: a data server
 // that never failed has no transition time. The later ones are.

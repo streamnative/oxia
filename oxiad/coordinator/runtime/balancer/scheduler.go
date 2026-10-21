@@ -69,7 +69,6 @@ func (r *nodeBasedBalancer) Action() <-chan action.Action {
 }
 
 func (r *nodeBasedBalancer) Close() error {
-	close(r.triggerCh)
 	r.ctxCancel()
 	r.wg.Wait()
 	return nil
@@ -481,10 +480,7 @@ func (r *nodeBasedBalancer) startBackgroundScheduler() {
 			defer timer.Stop()
 			for {
 				select {
-				case _, more := <-timer.C:
-					if !more {
-						return
-					}
+				case <-timer.C:
 					channel.PushNoBlock(r.triggerCh, nil)
 				case <-r.ctx.Done():
 					return
@@ -501,10 +497,7 @@ func (r *nodeBasedBalancer) startBackgroundNotifier() {
 		}, func() {
 			for {
 				select {
-				case _, more := <-r.triggerCh:
-					if !more {
-						return
-					}
+				case <-r.triggerCh:
 					if r.rebalanceEnsemble() { // if shard is balanced
 						r.rebalanceLeader()
 					}

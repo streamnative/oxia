@@ -187,16 +187,29 @@ func TestCoordinator_RestartKeepsTermPinningAllFeatures(t *testing.T) {
 		return ns.GetNamespaceStatus().GetShards()[0]
 	}
 
-	// The leader enables every feature
+	// The leader enables every feature. The restarted coordinator starts a
+	// new election unless every follower already follows the term.
 	coordinatorServer, adminClient := startCoordinator()
 	var shard *proto.ShardMetadata
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		shard = getShard(adminClient)
 		assert.Equal(c, proto.ShardStatusSteadyState, shard.GetStatusOrDefault())
-		if assert.NotNil(c, shard.GetLeader()) {
-			lead, err := servers[shard.GetLeader().GetNameOrDefault()].GetShardDirector().GetLeader(0)
+		if !assert.NotNil(c, shard.GetLeader()) {
+			return
+		}
+		leader := shard.GetLeader().GetNameOrDefault()
+		lead, err := servers[leader].GetShardDirector().GetLeader(0)
+		if assert.NoError(c, err) {
+			assert.True(c, lead.IsFeatureEnabled(proto.Feature_FEATURE_ORDERED_WRITES))
+		}
+		for _, dataServer := range shard.GetEnsemble() {
+			if dataServer.GetNameOrDefault() == leader {
+				continue
+			}
+			follower, err := servers[dataServer.GetNameOrDefault()].GetShardDirector().GetFollower(0)
 			if assert.NoError(c, err) {
-				assert.True(c, lead.IsFeatureEnabled(proto.Feature_FEATURE_ORDERED_WRITES))
+				assert.Equal(c, proto.ServingStatus_FOLLOWER, follower.Status())
+				assert.Equal(c, shard.GetTerm(), follower.Term())
 			}
 		}
 	}, 30*time.Second, 50*time.Millisecond)
@@ -227,4 +240,79 @@ func TestCoordinator_RestartKeepsTermPinningAllFeatures(t *testing.T) {
 	assert.Equal(t, proto.ShardStatusSteadyState, restarted.GetStatusOrDefault())
 	assert.Equal(t, shard.GetTerm(), restarted.GetTerm())
 	assert.Equal(t, shard.GetLeader().GetNameOrDefault(), restarted.GetLeader().GetNameOrDefault())
+}
+
+// A coordinator restarted while its configuration is missing, e.g. after its
+// cluster.yaml was deleted, would reconcile an empty configuration and delete
+// every namespace. It fails to start instead, and once the configuration is
+// restored, it starts with the shard and its data.
+func TestNewGrpcServerRejectsDeletedConfiguration(t *testing.T) {
+	s1, sa1 := newServer(t)
+	defer func() {
+		assert.NoError(t, s1.Close())
+	}()
+
+	metadataDir := t.TempDir()
+	configPath := filepath.Join(metadataDir, coordoption.DefaultFileConfigName)
+	configData, err := metadatacodec.ClusterConfigCodec.MarshalYAML(newClusterConfig([]*proto.Namespace{{
+		Name:              constant.DefaultNamespace,
+		ReplicationFactor: 1,
+		InitialShardCount: 1,
+	}}, []*proto.DataServerIdentity{sa1}))
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(configPath, configData, 0o600))
+
+	startCoordinator := func() (*coordserver.GrpcServer, error) {
+		options := coordoption.NewDefaultOptions()
+		options.Server.Internal.BindAddress = "127.0.0.1:0"
+		options.Server.Public.BindAddress = "127.0.0.1:0"
+		options.Observability.Metric.Enabled = &constant.FlagFalse
+		options.Metadata.ProviderName = metadatacommon.NameFile
+		options.Metadata.File.Dir = metadataDir
+		return coordserver.NewGrpcServer(t.Context(), commonwatch.New(options))
+	}
+	requireSteadyState := func(coordinatorServer *coordserver.GrpcServer) {
+		t.Helper()
+		adminClient, err := oxia.NewAdminClient(fmt.Sprintf("127.0.0.1:%d", coordinatorServer.PublicPort()), nil, nil)
+		require.NoError(t, err)
+		defer func() {
+			assert.NoError(t, adminClient.Close())
+		}()
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			ns, err := adminClient.GetNamespace(t.Context(), constant.DefaultNamespace)
+			if assert.NoError(c, err) {
+				assert.Equal(c, proto.ShardStatusSteadyState, ns.GetNamespaceStatus().GetShards()[0].GetStatusOrDefault())
+			}
+		}, 30*time.Second, 50*time.Millisecond)
+	}
+
+	coordinatorServer, err := startCoordinator()
+	require.NoError(t, err)
+	requireSteadyState(coordinatorServer)
+	client, err := oxia.NewSyncClient(sa1.GetPublic(), oxia.WithNamespace(constant.DefaultNamespace))
+	require.NoError(t, err)
+	defer func() {
+		assert.NoError(t, client.Close())
+	}()
+	_, _, err = client.Put(t.Context(), "/key", []byte("value"))
+	require.NoError(t, err)
+	require.NoError(t, coordinatorServer.Close())
+
+	require.NoError(t, os.Remove(configPath))
+	coordinatorServer, err = startCoordinator()
+	if err == nil {
+		require.NoError(t, coordinatorServer.Close())
+	}
+	require.ErrorContains(t, err, "the cluster configuration is missing")
+
+	require.NoError(t, os.WriteFile(configPath, configData, 0o600))
+	coordinatorServer, err = startCoordinator()
+	require.NoError(t, err)
+	defer func() {
+		assert.NoError(t, coordinatorServer.Close())
+	}()
+	requireSteadyState(coordinatorServer)
+	_, value, _, err := client.Get(t.Context(), "/key")
+	require.NoError(t, err)
+	assert.Equal(t, []byte("value"), value)
 }

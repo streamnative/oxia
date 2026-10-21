@@ -15,8 +15,7 @@
 package metrics
 
 import (
-	"log/slog"
-	"os"
+	"fmt"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -27,31 +26,27 @@ import (
 
 func newHistogram(meter metric.Meter, name string, unit ometric.Unit) metric.Int64Histogram {
 	histogram, err := meter.Int64Histogram(name, metric.WithUnit(string(unit)))
-	fatalOnErr(err, name)
+	panicOnErr(err, name)
 	return histogram
 }
 
 func newMillisCounter(meter metric.Meter, name string) metric.Float64Counter {
 	counter, err := meter.Float64Counter(name, metric.WithUnit(string(ometric.Milliseconds)))
-	fatalOnErr(err, name)
+	panicOnErr(err, name)
 	return counter
 }
 
 func newCounter(meter metric.Meter, name string, unit ometric.Unit) metric.Int64Counter {
 	counter, err := meter.Int64Counter(name, metric.WithUnit(string(unit)))
-	fatalOnErr(err, name)
+	panicOnErr(err, name)
 	return counter
 }
 
-func fatalOnErr(err error, name string) {
+// panicOnErr fails the creation of a client metric. The OTel SDK only fails it
+// for a programming error, e.g. an invalid name, which a caller cannot handle.
+func panicOnErr(err error, name string) {
 	if err != nil {
-		slog.Error(
-			"Failed to create metric",
-			slog.Any("error", err),
-			slog.String("component", "oxia-client"),
-			slog.String("MetricName", name),
-		)
-		os.Exit(1)
+		panic(fmt.Errorf("failed to create oxia client metric %s: %w", name, err))
 	}
 }
 

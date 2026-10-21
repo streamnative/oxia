@@ -25,13 +25,16 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/spf13/afero"
 	"go.uber.org/multierr"
 	"golang.org/x/exp/slices"
 
+	"github.com/oxia-db/oxia/oxiad/common/vfs"
 	"github.com/oxia-db/oxia/oxiad/dataserver/wal/codec"
 
 	"github.com/oxia-db/oxia/common/concurrent"
 	"github.com/oxia-db/oxia/common/constant"
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/common/object"
 	"github.com/oxia-db/oxia/common/process"
 	time2 "github.com/oxia-db/oxia/common/time"
@@ -81,6 +84,8 @@ type wal struct {
 	// current segment. It takes the write side, before the mutex.
 	truncateLock sync.RWMutex
 
+	fs          vfs.FS
+	failpoints  *failpoint.Failpoints
 	walPath     string
 	namespace   string
 	shard       int64
@@ -148,8 +153,15 @@ func newWal(namespace string, shard int64, options *FactoryOptions, commitOffset
 		options.SegmentSize = DefaultFactoryOptions.SegmentSize
 	}
 
+	fs := options.fs
+	if fs == nil {
+		fs = vfs.OSFS{}
+	}
+
 	labels := metric.LabelsForShard(namespace, shard)
 	w := &wal{
+		fs:                   fs,
+		failpoints:           options.Failpoints,
 		walPath:              walPath(options.BaseWalDir, namespace, shard),
 		namespace:            namespace,
 		shard:                shard,
@@ -176,7 +188,7 @@ func newWal(namespace string, shard int64, options *FactoryOptions, commitOffset
 	}
 
 	var err error
-	if w.readOnlySegments, err = newReadOnlySegmentsGroup(w.walPath); err != nil {
+	if w.readOnlySegments, err = newReadOnlySegmentsGroup(w.fs, w.walPath); err != nil {
 		return nil, err
 	}
 
@@ -301,13 +313,15 @@ func (t *wal) readFromSegment(index int64) (val []byte, previousCrc uint32, entr
 }
 
 // openCurrentSegment opens the read-write segment that becomes the current
-// one. Must be called while holding the mutex, or before the wal gets shared.
-func (t *wal) openCurrentSegment(baseOffset int64, lastCrc uint32) (err error) {
-	if t.currentSegment, err = newReadWriteSegment(t.walPath, baseOffset, t.segmentSize, lastCrc,
-		t.commitOffsetProvider); err != nil {
+// one. On failure, the previous current segment is kept, so that the wal can
+// still be closed. Must be called while holding the mutex, or before the wal
+// gets shared.
+func (t *wal) openCurrentSegment(baseOffset int64, lastCrc uint32) error {
+	current, err := newReadWriteSegment(t.fs, t.walPath, baseOffset, t.segmentSize, lastCrc, t.commitOffsetProvider)
+	if err != nil {
 		return err
 	}
-	current := t.currentSegment
+	t.currentSegment = current
 	t.publishedCurrentSegment.Store(&current)
 	return nil
 }
@@ -362,9 +376,7 @@ func (t *wal) trim(firstOffset int64, generation int64, beforeDelete func() erro
 }
 
 func (t *wal) Close() error {
-	if err := t.trimmer.Close(); err != nil {
-		return err
-	}
+	t.trimmer.Close()
 
 	t.Lock()
 	defer t.Unlock()
@@ -436,7 +448,7 @@ func (t *wal) appendAsync0(entry *proto.LogEntry, previousCrc *uint32) error {
 	// Serialize into the reusable buffer instead of allocating per entry:
 	// val is copied into the segment before the lock is released
 	marshalBuf, val, err := proto.MarshalToBuffer(t.marshalBuf, entry)
-	if err != nil {
+	if err = t.failpoints.Fail("appendAsync.marshal", err); err != nil {
 		t.writeErrors.Inc()
 		return err
 	}
@@ -519,14 +531,9 @@ func (t *wal) rolloverSegment() error {
 	if !t.syncData {
 		// With sync disabled there are no sync rounds to hand the rolled-over
 		// segment to: close it inline
-		if err = rolled.SyncFileIfNeeded(); err != nil {
-			return err
-		}
-		if err = rolled.Close(); err != nil {
-			return err
-		}
+		err = multierr.Combine(rolled.SyncFileIfNeeded(), rolled.Close())
 		t.readOnlySegments.AddedNewSegment(rolled.BaseOffset())
-		return nil
+		return err
 	}
 
 	// Hand the rolled-over segment to the sync goroutine: its unsynced tail
@@ -584,14 +591,11 @@ func (t *wal) flushAndCloseRolledSegment(s ReadWriteSegment) error {
 func (t *wal) drainPendingCloseSegments() error {
 	var err error
 	for _, s := range t.pendingCloseSegments {
-		serr := multierr.Combine(
+		err = multierr.Append(err, multierr.Combine(
 			s.SyncFileIfNeeded(),
 			s.Flush(),
-			s.Close())
-		if serr == nil {
-			t.readOnlySegments.AddedNewSegment(s.BaseOffset())
-		}
-		err = multierr.Append(err, serr)
+			s.Close()))
+		t.readOnlySegments.AddedNewSegment(s.BaseOffset())
 	}
 	t.pendingCloseSegments = nil
 	return err
@@ -631,6 +635,7 @@ func (t *wal) runSync() {
 		t.RLock()
 		segment := t.currentSegment
 		lastAppendedOffset := t.lastAppendedOffset.Load()
+		generation := t.generation.Load()
 		pending := slices.Clone(t.pendingCloseSegments)
 		t.RUnlock()
 
@@ -653,13 +658,23 @@ func (t *wal) runSync() {
 				t.writeErrors.Inc()
 			} else {
 				timer.Done()
-				t.lastSyncedOffset.Store(lastAppendedOffset)
+				t.storeSyncedOffset(lastAppendedOffset, generation)
 			}
 		}
 
 		for _, callback := range callbacks {
 			callback(err)
 		}
+	}
+}
+
+// storeSyncedOffset stores the offset synced by a round, unless Clear or
+// TruncateLog dropped entries since the round read it.
+func (t *wal) storeSyncedOffset(offset int64, generation int64) {
+	t.RLock()
+	defer t.RUnlock()
+	if t.generation.Load() == generation {
+		t.lastSyncedOffset.Store(offset)
 	}
 }
 
@@ -714,7 +729,7 @@ func (t *wal) clearWithoutLock() error {
 		t.drainPendingCloseSegments(),
 		t.currentSegment.Close(),
 		t.readOnlySegments.Close(),
-		os.RemoveAll(t.walPath),
+		t.fs.RemoveAll(t.walPath),
 	)
 
 	if err != nil {
@@ -726,9 +741,11 @@ func (t *wal) clearWithoutLock() error {
 		return err
 	}
 
-	if t.readOnlySegments, err = newReadOnlySegmentsGroup(t.walPath); err != nil {
+	readOnlySegments, err := newReadOnlySegmentsGroup(t.fs, t.walPath)
+	if err != nil {
 		return err
 	}
+	t.readOnlySegments = readOnlySegments
 
 	t.lastAppendedOffset.Store(InvalidOffset)
 	t.lastSyncedOffset.Store(InvalidOffset)
@@ -748,7 +765,7 @@ func (t *wal) Delete() error {
 
 	return multierr.Combine(
 		t.closeWithoutLock(),
-		os.RemoveAll(t.walPath),
+		t.fs.RemoveAll(t.walPath),
 	)
 }
 
@@ -840,7 +857,7 @@ func (t *wal) TruncateLog(lastSafeOffset int64) (int64, error) { //nolint:revive
 }
 
 func (t *wal) recoverWal() error {
-	segments, err := listAllSegments(t.walPath)
+	segments, err := listAllSegments(t.fs, t.walPath)
 	if err != nil {
 		return err
 	}
@@ -900,13 +917,13 @@ func (t *wal) discardTrailingSegment(baseOffset int64) error {
 		slog.String("wal-path", t.walPath),
 		slog.Int64("base-offset", baseOffset))
 
-	c, err := newSegmentConfig(t.walPath, baseOffset)
+	c, err := newSegmentConfig(t.fs, t.walPath, baseOffset)
 	if err != nil {
 		return err
 	}
 	if err = multierr.Combine(
-		codec.RemoveFileIfExists(c.idxPath),
-		codec.RemoveFileIfExists(c.txnPath),
+		vfs.RemoveFileIfExists(t.fs, c.idxPath),
+		vfs.RemoveFileIfExists(t.fs, c.txnPath),
 	); err != nil {
 		return err
 	}
@@ -914,12 +931,12 @@ func (t *wal) discardTrailingSegment(baseOffset int64) error {
 	if err = t.readOnlySegments.Close(); err != nil {
 		return err
 	}
-	t.readOnlySegments, err = newReadOnlySegmentsGroup(t.walPath)
+	t.readOnlySegments, err = newReadOnlySegmentsGroup(t.fs, t.walPath)
 	return err
 }
 
-func listAllSegments(walPath string) (segments []int64, err error) {
-	dir, err := os.ReadDir(walPath)
+func listAllSegments(fs vfs.FS, walPath string) (segments []int64, err error) {
+	dir, err := afero.ReadDir(fs, walPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil

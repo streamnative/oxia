@@ -24,6 +24,7 @@ import (
 	"go.uber.org/multierr"
 
 	"github.com/oxia-db/oxia/oxiad/common/crc"
+	"github.com/oxia-db/oxia/oxiad/common/vfs"
 )
 
 // Txn File:
@@ -148,8 +149,8 @@ func (*V2) WriteRecord(buf []byte, startOffset uint32, previousCrc uint32, paylo
 	return headerOffset + payloadSize, payloadCrc
 }
 
-func (v *V2) WriteIndex(path string, index []byte) error {
-	idxFile, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0644)
+func (v *V2) WriteIndex(fs vfs.FS, path string, index []byte) error {
+	idxFile, err := fs.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0644)
 	if err != nil {
 		return errors.Wrapf(err, "failed to open index file %s", path)
 	}
@@ -165,10 +166,10 @@ func (v *V2) WriteIndex(path string, index []byte) error {
 	return idxFile.Close()
 }
 
-func (v *V2) ReadIndex(path string) ([]byte, error) {
-	var idFile *os.File
+func (v *V2) ReadIndex(fs vfs.FS, path string) ([]byte, error) {
+	var idFile vfs.File
 	var err error
-	if idFile, err = os.OpenFile(path, os.O_RDONLY, 0); err != nil {
+	if idFile, err = fs.OpenFile(path, os.O_RDONLY, 0); err != nil {
 		return nil, errors.Wrapf(err, "failed to open segment index file %s", path)
 	}
 	var indexBuf []byte
@@ -215,17 +216,14 @@ func (v *V2) RecoverIndex(buf []byte, startFileOffset uint32, baseEntryOffset in
 				// we might read the end of the segment.
 				break
 			}
-			// data corruption
-			if errors.Is(err, ErrOffsetOutOfBounds) || errors.Is(err, ErrDataCorrupted) {
-				if commitOffset != nil && currentEntryOffset > *commitOffset {
-					// uncommitted data corruption, simply discard it
-					slog.Warn("discard the corrupted uncommitted data.",
-						slog.Int64("entryId", currentEntryOffset), slog.Any("error", err))
-					break
-				}
-				return nil, 0, 0, 0, errors.Wrapf(err, "entryOffset: %d", currentEntryOffset)
+			// data corruption: a record out of bounds or with a wrong checksum
+			if commitOffset != nil && currentEntryOffset > *commitOffset {
+				// uncommitted data corruption, simply discard it
+				slog.Warn("discard the corrupted uncommitted data.",
+					slog.Int64("entryId", currentEntryOffset), slog.Any("error", err))
+				break
 			}
-			return nil, 0, 0, 0, err
+			return nil, 0, 0, 0, errors.Wrapf(err, "entryOffset: %d", currentEntryOffset)
 		}
 		lastCrc = payloadCrc
 		index = binary.BigEndian.AppendUint32(index, newFileOffset)

@@ -16,12 +16,14 @@ package database
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protowire"
 	pb "google.golang.org/protobuf/proto"
 
 	"github.com/oxia-db/oxia/common/constant"
@@ -615,22 +617,6 @@ func TestDeferredSplitFilter_UnreadableRecord(t *testing.T) {
 	assert.Equal(t, []string{keptKey}, heldKeys(t, db))
 }
 
-// hookedRangeScanKV runs a hook once the next RangeScan created its iterator.
-type hookedRangeScanKV struct {
-	kvstore.KV
-	afterRangeScan func()
-}
-
-func (kv *hookedRangeScanKV) RangeScan(lowerBound, upperBound string, opts kvstore.IteratorOpts) (
-	kvstore.KeyValueIterator, error) {
-	it, err := kv.KV.RangeScan(lowerBound, upperBound, opts)
-	if hook := kv.afterRangeScan; hook != nil {
-		kv.afterRangeScan = nil
-		hook()
-	}
-	return it, err
-}
-
 // TestDeferredSplitFilter_RangeScanRacingLastStep checks that a range scan that
 // starts before the last step of the deferred split filter skips the records
 // that the step deletes, which its iterator still holds.
@@ -642,7 +628,7 @@ func TestDeferredSplitFilter_RangeScanRacingLastStep(t *testing.T) {
 	kept := keptKeys(child, records)
 
 	d := child.(*db)
-	d.kv = &hookedRangeScanKV{KV: d.kv, afterRangeScan: func() {
+	d.kv = &hookedKV{KV: d.kv, afterRangeScan: func() {
 		applySplitFilterStep(t, child, 100, uint32(len(records)))
 	}}
 
@@ -657,4 +643,218 @@ func TestDeferredSplitFilter_RangeScanRacingLastStep(t *testing.T) {
 	}
 	require.NoError(t, it.Close())
 	assert.Equal(t, kept, scanned)
+}
+
+func TestEntryPartitionKeyRejectsMalformedEntry(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		entry []byte
+	}{
+		{"truncated-partition-key",
+			append(protowire.AppendTag(nil, storageEntryPartitionKeyField, protowire.BytesType), 5, 'a')},
+		{"truncated-other-field", append(protowire.AppendTag(nil, storageEntryPartitionKeyField+1, protowire.VarintType), 0xff)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			partitionKey, found := entryPartitionKey(test.entry)
+			assert.Nil(t, partitionKey)
+			assert.False(t, found)
+		})
+	}
+}
+
+// A write of the child's own terms drops the record it finds that the child
+// doesn't keep: it fails when the callback fails, and leaves the record.
+func TestDeferredSplitFilterChildWriteFailsWhenDropCallbackFails(t *testing.T) {
+	db := newDeferredSplitTestDB(t, proto.KeySortingType_NATURAL)
+	putStorageEntry(t, db.RawKV(), FailureCallbackKey, nil)
+	require.NoError(t, db.SetDeferredSplitFilter(filterExcluding(FailureCallbackKey), nil))
+
+	_, err := db.ProcessWrite(&proto.WriteRequest{Deletes: []*proto.DeleteRequest{{Key: FailureCallbackKey}}},
+		0, 0, FailureCallback{})
+	assert.ErrorContains(t, err, "failure injection")
+	assert.True(t, keyExists(t, db.RawKV(), FailureCallbackKey))
+}
+
+func TestDeferredSplitFilterStepFailsWhenDropCallbackFails(t *testing.T) {
+	db := newDeferredSplitTestDB(t, proto.KeySortingType_NATURAL)
+	putStorageEntry(t, db.RawKV(), FailureCallbackKey, nil)
+	filter := filterExcluding(FailureCallbackKey)
+	require.NoError(t, db.SetDeferredSplitFilter(filter, nil))
+
+	_, err := db.ProcessControlRequest(&proto.ControlRequest{Value: &proto.ControlRequest_SplitFilter{
+		SplitFilter: &proto.SplitFilterRequest{MaxRecords: 100},
+	}}, 0, 0, FailureCallback{})
+	assert.ErrorContains(t, err, "failure injection")
+	assert.True(t, keyExists(t, db.RawKV(), FailureCallbackKey))
+	assert.Equal(t, filter, db.DeferredSplitFilter())
+}
+
+func TestPrefixIteratorKeepsIndexEntry(t *testing.T) {
+	db := newDeferredSplitTestDB(t, proto.KeySortingType_NATURAL)
+	_, err := db.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
+		Key:              "a",
+		Value:            []byte("v"),
+		SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "idx", SecondaryKey: "x"}},
+	}}}, 0, 0, NoOpCallback)
+	require.NoError(t, err)
+	filter := &DeferredSplitFilter{MinHash: 0, MaxHash: math.MaxUint32}
+
+	it, err := db.KeyPrefixIterator(idxKeyPrefix+"/", "")
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, it.Close()) })
+	for _, test := range []struct {
+		name     string
+		indexKey string
+		kept     bool
+	}{
+		{"entry-of-record", secondaryIndexKey("idx", "x", "a"), true},
+		{"not-an-index-entry", "a", true},
+		{"missing-record", secondaryIndexKey("idx", "x", "b"), false},
+		{"entry-not-of-record", secondaryIndexKey("idx", "y", "a"), false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			kept, err := it.KeepsIndexEntry(filter, test.indexKey)
+			require.NoError(t, err)
+			assert.Equal(t, test.kept, kept)
+		})
+	}
+}
+
+func TestDeferredSplitFilterGetFailsOnCorruptedRecord(t *testing.T) {
+	db := newDeferredSplitTestDB(t, proto.KeySortingType_NATURAL)
+	putRawKey(t, db.RawKV(), "a", []byte{0xff})
+	require.NoError(t, db.SetDeferredSplitFilter(&DeferredSplitFilter{MinHash: 0, MaxHash: math.MaxUint32}, nil))
+
+	for _, comparison := range []proto.KeyComparisonType{proto.KeyComparisonType_EQUAL, proto.KeyComparisonType_FLOOR} {
+		_, err := db.Get(&proto.GetRequest{Key: "a", ComparisonType: comparison, IncludeValue: true})
+		assert.ErrorContains(t, err, "failed to Deserialize storage entry", "comparison %v", comparison)
+	}
+}
+
+func TestDeferredSplitFilterGetRejectsUnknownComparison(t *testing.T) {
+	db := newDeferredSplitTestDB(t, proto.KeySortingType_NATURAL)
+	setLeftChildFilter(t, db)
+
+	_, err := db.Get(&proto.GetRequest{Key: "a", ComparisonType: proto.KeyComparisonType(99)})
+	assert.ErrorContains(t, err, "unsupported comparison type")
+}
+
+func TestKeptRecordsIteratorError(t *testing.T) {
+	db := newDeferredSplitTestDB(t, proto.KeySortingType_NATURAL)
+	records := deferredSplitRecords(t, "key-%03d")
+	putDeferredSplitRecords(t, db, records)
+	setLeftChildFilter(t, db)
+
+	it, err := db.List(&proto.ListRequest{})
+	require.NoError(t, err)
+	var listed []string
+	for ; it.Valid(); it.Next() {
+		listed = append(listed, it.Key())
+	}
+	assert.NoError(t, it.Error())
+	assert.NoError(t, it.Close())
+	assert.Equal(t, keptKeys(db, records), listed)
+}
+
+func TestDBSetDeferredSplitFilterFailsWhenWriteFails(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		op   string
+		key  string
+	}{
+		{"filter", opBatchPutMarshalable, deferredSplitFilterKey},
+		{"inherited-notifications", opBatchPutMarshalable, inheritedNotificationsKey},
+		{"split-filter", opBatchDelete, splitFilterKey},
+		{"commit", opBatchCommit, ""},
+		{"flush", opFlush, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			d, kv := newHookedTestDB(t)
+			filter := &SplitFilter{MinHash: 0, MaxHash: math.MaxUint32 / 2, ParentTerm: 1}
+			require.NoError(t, d.SetSplitFilter(filter))
+			kv.failOn(test.op, test.key)
+
+			err := d.SetDeferredSplitFilter(&DeferredSplitFilter{MaxHash: math.MaxUint32 / 2, ParentTerm: 1}, nil)
+			assert.ErrorIs(t, err, errInjected)
+			assert.Nil(t, d.DeferredSplitFilter())
+			assert.Equal(t, filter, d.splitFilter.Load())
+		})
+	}
+}
+
+func TestDBSetDeferredSplitFilterFailsWhenMarshalFails(t *testing.T) {
+	d, kv := newHookedTestDB(t)
+	d.marshalJSON = failingMarshal[any]
+
+	err := d.SetDeferredSplitFilter(&DeferredSplitFilter{MaxHash: math.MaxUint32 / 2, ParentTerm: 1}, nil)
+	assert.ErrorIs(t, err, errInjected)
+	assert.Nil(t, d.DeferredSplitFilter())
+	assert.False(t, keyExists(t, kv, deferredSplitFilterKey))
+}
+
+func TestPrefixIteratorKeepsIndexEntryFailsWhenRecordReadFails(t *testing.T) {
+	d, kv := newHookedTestDB(t)
+	_, err := d.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{
+		Key:              "a",
+		Value:            []byte("v"),
+		SecondaryIndexes: []*proto.SecondaryIndex{{IndexName: "idx", SecondaryKey: "x"}},
+	}}}, 0, 0, NoOpCallback)
+	require.NoError(t, err)
+	it, err := d.KeyPrefixIterator(idxKeyPrefix+"/", "")
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, it.Close()) })
+	kv.failOn(opLookup, "a")
+
+	_, err = it.KeepsIndexEntry(&DeferredSplitFilter{MaxHash: math.MaxUint32}, secondaryIndexKey("idx", "x", "a"))
+	assert.ErrorIs(t, err, errInjected)
+}
+
+func TestDeferredSplitFilterGetFailsWhenReadFails(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		comparison proto.KeyComparisonType
+		op         string
+	}{
+		{"equal", proto.KeyComparisonType_EQUAL, opGet},
+		{"floor-value", proto.KeyComparisonType_FLOOR, opValue},
+		{"ceiling-value", proto.KeyComparisonType_CEILING, opValue},
+		{"ceiling-iteration", proto.KeyComparisonType_CEILING, opIteratorError},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			d, kv := newHookedTestDB(t)
+			// The only record is one the child doesn't keep: the ceiling lookup
+			// goes through to the end of the records
+			putStorageEntry(t, d.kv, "a", nil)
+			require.NoError(t, d.SetDeferredSplitFilter(filterExcluding("a"), nil))
+			kv.failOn(test.op, "")
+
+			_, err := d.Get(&proto.GetRequest{Key: "a", ComparisonType: test.comparison, IncludeValue: true})
+			assert.ErrorIs(t, err, errInjected)
+		})
+	}
+}
+
+func TestKeptRecordsIteratorFailsWhenValueReadFails(t *testing.T) {
+	d, kv := newHookedTestDB(t)
+	putStorageEntry(t, d.kv, "a", nil)
+	putStorageEntry(t, d.kv, "b", nil)
+	setLeftChildFilter(t, d)
+	kv.failOn(opValue, "")
+
+	it, err := d.List(&proto.ListRequest{})
+	require.NoError(t, err)
+	assert.False(t, it.Valid())
+	assert.ErrorIs(t, it.Error(), errInjected)
+	assert.ErrorIs(t, it.Close(), errInjected)
+}
+
+// filterExcluding returns the deferred filter of the child of a split that
+// doesn't keep the record at key.
+func filterExcluding(key string) *DeferredSplitFilter {
+	left, right := splitRanges()
+	other := left
+	if isHashInRange(hash.Xxh332(key), left) {
+		other = right
+	}
+	return &DeferredSplitFilter{MinHash: other.Min, MaxHash: other.Max, ParentTerm: 1}
 }

@@ -30,10 +30,10 @@ import (
 var (
 	Cmd = &cobra.Command{
 		Use:   "perf",
-		Short: "Oxia perf client",
-		Long:  `Oxia tool for basic performance tests`,
+		Short: "Run a load test against a cluster",
+		Long:  `Run a simple load test against an Oxia cluster, and report the throughput and the latencies.`,
 		Args:  cobra.NoArgs,
-		Run:   exec,
+		RunE:  exec,
 	}
 
 	config = Config{}
@@ -53,10 +53,11 @@ func init() {
 	Cmd.Flags().DurationVar(&config.BatchLinger, "batch-linger", oxia.DefaultBatchLinger, "Batch linger time")
 	Cmd.Flags().IntVar(&config.MaxRequestsPerBatch, "max-requests-per-batch", oxia.DefaultMaxRequestsPerBatch, "Maximum requests per batch")
 	Cmd.Flags().DurationVar(&config.RequestTimeout, "request-timeout", oxia.DefaultRequestTimeout, "Request timeout")
+	Cmd.Flags().DurationVar(&config.StatsInterval, "stats-interval", DefaultStatsInterval, "Interval between the stats reports")
 }
 
-func exec(*cobra.Command, []string) {
-	process.RunProcess(runPerf)
+func exec(cmd *cobra.Command, _ []string) error {
+	return process.RunProcess(cmd.Context(), "PERF", runPerf)
 }
 
 type closer struct {
@@ -76,7 +77,11 @@ func (c *closer) Close() error {
 }
 
 func runPerf() (io.Closer, error) {
+	p, err := New(config)
+	if err != nil {
+		return nil, err
+	}
 	closer := newCloser(context.Background())
-	go New(config).Run(closer.ctx)
+	go p.Run(closer.ctx)
 	return closer, nil
 }

@@ -22,12 +22,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-logr/logr"
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"github.com/rs/zerolog/pkgerrors"
 	slogzerolog "github.com/samber/slog-zerolog/v2"
 	"google.golang.org/protobuf/encoding/protojson"
 	pb "google.golang.org/protobuf/proto"
+	"k8s.io/klog/v2"
 
 	"github.com/oxia-db/oxia/oxiad/common/option"
 )
@@ -96,20 +97,7 @@ func ConfigureLogger() {
 		Logger()
 
 	if !LogJSON {
-		if raceEnabled {
-			// Use simple non-colored logger in tests to avoid
-			// data races
-			zerologLogger = zerolog.New(os.Stdout).
-				With().
-				Timestamp().
-				Stack().
-				Logger()
-		} else {
-			zerologLogger = log.Output(zerolog.SyncWriter(zerolog.ConsoleWriter{
-				Out:        os.Stdout,
-				TimeFormat: time.StampMicro,
-			}))
-		}
+		zerologLogger = newConsoleLogger()
 	}
 
 	slogLogger := slog.New(
@@ -120,4 +108,5 @@ func ConfigureLogger() {
 		}.NewZerologHandler(),
 	)
 	slog.SetDefault(slogLogger)
+	klog.SetLogger(logr.FromSlogHandler(slogLogger.With(slog.String("component", "k8s-client")).Handler()))
 }

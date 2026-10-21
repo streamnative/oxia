@@ -16,6 +16,7 @@ package file
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -25,6 +26,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/oxia-db/oxia/common/failpoint"
 	commonproto "github.com/oxia-db/oxia/common/proto"
 	metadatacommon "github.com/oxia-db/oxia/oxiad/coordinator/metadata/common"
 	metadatacodec "github.com/oxia-db/oxia/oxiad/coordinator/metadata/common/codec"
@@ -166,6 +168,42 @@ func TestCloseEndsWaitToBecomeLeader(t *testing.T) {
 	require.NoError(t, follower.Close())
 }
 
+// A provider closed after its wait took the lock, but before the wait returned,
+// releases the lock in the wait.
+func TestCloseEndsWaitToBecomeLeaderAfterLockAcquired(t *testing.T) {
+	if !failpoint.Enabled {
+		t.Skip("needs failpoints: disabled by the disable_trap tag")
+	}
+	path := filepath.Join(t.TempDir(), "metadata")
+	var p statusProvider
+	p, err := newProvider(t.Context(), path, metadatacodec.ClusterStatusCodec, metadatacommon.WatchDisabled, "test",
+		failpoint.New(map[string]func() error{
+			"waitToBecomeLeader.locked": func() error { return p.Close() },
+		}))
+	require.NoError(t, err)
+
+	_, err = p.WaitToBecomeLeader()
+	require.ErrorIs(t, err, context.Canceled)
+
+	follower := newTestProvider(t, path)
+	requireBecomesLeader(t, startWaitToBecomeLeader(follower))
+	require.NoError(t, follower.Close())
+}
+
+// A lock that fails to be released is only logged: closing the provider still
+// succeeds.
+func TestCloseIgnoresUnlockFailure(t *testing.T) {
+	p, err := newProvider(t.Context(), filepath.Join(t.TempDir(), "metadata"), metadatacodec.ClusterStatusCodec,
+		metadatacommon.WatchDisabled, "test", failpoint.New(map[string]func() error{
+			"close.unlock": func() error { return errors.New("failpoint") },
+		}))
+	require.NoError(t, err)
+	_, err = p.WaitToBecomeLeader()
+	require.NoError(t, err)
+
+	require.NoError(t, p.Close())
+}
+
 // A writer that rewrites the file in place, as os.WriteFile does, truncates it
 // before it writes the new content, and one that replaces it may remove it
 // first. A reload in between waits for the new content: an empty configuration
@@ -189,6 +227,90 @@ func TestProviderReloadKeepsDocumentUntilFileIsRewritten(t *testing.T) {
 	finishRewriteLater(t, path, 2)
 	require.NoError(t, p.Reload())
 	requireServers(t, p, 2)
+}
+
+func TestNewProviderFailsWhenParentIsAFile(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "file")
+	require.NoError(t, os.WriteFile(file, nil, 0o600))
+
+	_, err := NewProvider(t.Context(), filepath.Join(file, "dir", "metadata"), metadatacodec.ClusterStatusCodec,
+		metadatacommon.WatchDisabled, "test")
+	require.Error(t, err)
+}
+
+func TestNewProviderFailsWhenParentCannotBeCreated(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores the directory permissions")
+	}
+	readOnly := filepath.Join(t.TempDir(), "read-only")
+	require.NoError(t, os.Mkdir(readOnly, 0o500))
+
+	_, err := NewProvider(t.Context(), filepath.Join(readOnly, "dir", "metadata"), metadatacodec.ClusterStatusCodec,
+		metadatacommon.WatchDisabled, "test")
+	require.ErrorIs(t, err, os.ErrPermission)
+}
+
+func TestProviderGetLeaderNameReturnsName(t *testing.T) {
+	p := newTestProvider(t, filepath.Join(t.TempDir(), "metadata"))
+	defer func() { require.NoError(t, p.Close()) }()
+
+	name, err := p.GetLeaderName()
+	require.NoError(t, err)
+	assert.Equal(t, "test", name)
+}
+
+func TestProviderLoadFailsWhenPathIsADirectory(t *testing.T) {
+	p := newTestProvider(t, t.TempDir())
+	defer func() { require.NoError(t, p.Close()) }()
+
+	_, err := p.Load()
+	require.Error(t, err)
+}
+
+func TestProviderStoreFailsWhenFileCannotBeRead(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "metadata")
+	p := newTestProvider(t, path)
+	defer func() { require.NoError(t, p.Close()) }()
+	loaded, err := p.Load()
+	require.NoError(t, err)
+
+	// The file is replaced by something that can't be read
+	require.NoError(t, os.Mkdir(path, 0o755))
+
+	_, err = p.Store(provider.Versioned[*commonproto.ClusterStatus]{
+		Value:   &commonproto.ClusterStatus{},
+		Version: loaded.Version,
+	})
+	require.Error(t, err)
+}
+
+func TestProviderStoreFailsWhenDocumentCannotBeEncoded(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "metadata")
+	encodeErr := errors.New("encode failed")
+	p, err := NewProvider(t.Context(), path, &fakeCodec{
+		Codec:       metadatacodec.ClusterStatusCodec,
+		marshalYAML: func(*commonproto.ClusterStatus) ([]byte, error) { return nil, encodeErr },
+	}, metadatacommon.WatchDisabled, "test")
+	require.NoError(t, err)
+	defer func() { require.NoError(t, p.Close()) }()
+
+	_, err = p.Store(provider.Versioned[*commonproto.ClusterStatus]{
+		Value:   &commonproto.ClusterStatus{},
+		Version: metadatacommon.NotExists,
+	})
+	require.ErrorIs(t, err, encodeErr)
+	assert.NoFileExists(t, path)
+}
+
+// A document that can't be decoded must stop the coordinator, rather than be
+// served or overwritten.
+func TestProviderLoadPanicsOnUndecodableDocument(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "metadata")
+	require.NoError(t, os.WriteFile(path, []byte("instanceId: [unterminated"), 0o600))
+	p := newTestProvider(t, path)
+	defer func() { require.NoError(t, p.Close()) }()
+
+	assert.Panics(t, func() { _, _ = p.Load() })
 }
 
 // writeConfigFile writes a configuration with the given number of servers, in
@@ -230,4 +352,13 @@ func requireServers(t *testing.T, p provider.Provider[*commonproto.ClusterConfig
 	loaded, err := p.Load()
 	require.NoError(t, err)
 	require.Len(t, loaded.Value.GetServers(), servers)
+}
+
+type fakeCodec struct {
+	metadatacodec.Codec[*commonproto.ClusterStatus]
+	marshalYAML func(value *commonproto.ClusterStatus) ([]byte, error)
+}
+
+func (c *fakeCodec) MarshalYAML(value *commonproto.ClusterStatus) ([]byte, error) {
+	return c.marshalYAML(value)
 }

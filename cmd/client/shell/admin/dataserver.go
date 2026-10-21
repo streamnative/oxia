@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"strings"
 
+	admincommons "github.com/oxia-db/oxia/cmd/admin/commons"
 	dataservercli "github.com/oxia-db/oxia/cmd/admin/dataserver/cli"
 	cmdparse "github.com/oxia-db/oxia/cmd/common/parse"
 	"github.com/oxia-db/oxia/common/proto"
@@ -95,7 +96,7 @@ func (e Executor) dataServerCreate(args []string) error {
 
 func (e Executor) parseDataServerCreateCommand(args []string) (string, *proto.DataServer, error) {
 	const usage = "admin dataserver create [--output FORMAT] --public ADDRESS --internal ADDRESS [--label KEY=VALUE] NAME"
-	flags := e.newFlagSet("dataserver-create")
+	flags, outputFormat := e.newFlagSet("dataserver-create")
 
 	var (
 		publicAddress   string
@@ -128,12 +129,11 @@ func (e Executor) parseDataServerCreateCommand(args []string) (string, *proto.Da
 	if err != nil {
 		return "", nil, err
 	}
-	outputFormat, err := adminOutputFormat(flags)
-	if err != nil {
+	if err := admincommons.ValidateOutputFormat(*outputFormat); err != nil {
 		return "", nil, err
 	}
 
-	return outputFormat, &proto.DataServer{
+	return *outputFormat, &proto.DataServer{
 		Identity: &proto.DataServerIdentity{
 			Name:     &name,
 			Public:   publicAddress,
@@ -163,7 +163,7 @@ func (e Executor) dataServerPatch(args []string) error {
 
 func (e Executor) parseDataServerPatchCommand(args []string) (string, *proto.DataServer, error) {
 	const usage = "admin dataserver patch [--output FORMAT] [--public ADDRESS] [--internal ADDRESS] [--label KEY=VALUE] NAME"
-	flags := e.newFlagSet("dataserver-patch")
+	flags, outputFormat := e.newFlagSet("dataserver-patch")
 
 	var (
 		publicAddress   string
@@ -207,8 +207,7 @@ func (e Executor) parseDataServerPatchCommand(args []string) (string, *proto.Dat
 		}
 		metadata = &proto.DataServerMetadata{Labels: parsedLabels}
 	}
-	outputFormat, err := adminOutputFormat(flags)
-	if err != nil {
+	if err := admincommons.ValidateOutputFormat(*outputFormat); err != nil {
 		return "", nil, err
 	}
 
@@ -224,7 +223,7 @@ func (e Executor) parseDataServerPatchCommand(args []string) (string, *proto.Dat
 	if internalChanged {
 		dataServer.Identity.Internal = internalAddress
 	}
-	return outputFormat, dataServer, nil
+	return *outputFormat, dataServer, nil
 }
 
 func (e Executor) dataServerDelete(args []string) error {

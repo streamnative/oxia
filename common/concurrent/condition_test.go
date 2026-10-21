@@ -100,6 +100,21 @@ func TestCondSignal(t *testing.T) {
 	c.Signal()
 }
 
+func TestCondSignalWithoutWaiterKeepsOnePendingWakeup(t *testing.T) {
+	var m sync.Mutex
+	c := NewConditionContext(&m)
+
+	m.Lock()
+	defer m.Unlock()
+	c.Signal()
+	c.Signal()
+
+	assert.NoError(t, c.Wait(context.Background()))
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	assert.ErrorIs(t, c.Wait(ctx), context.DeadlineExceeded)
+}
+
 func TestCondSignalGenerations(t *testing.T) {
 	var m sync.Mutex
 	c := NewConditionContext(&m)

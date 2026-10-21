@@ -15,10 +15,15 @@
 package coordinator
 
 import (
+	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -349,7 +354,9 @@ func TestCoordinator_CommandLineFlags(t *testing.T) {
 	originalConfFile := sconfFile
 	defer func() { sconfFile = originalConfFile }()
 
-	// Reset the global options
+	// Reset the global options, which the flags of the command are bound to
+	originalOptions := coordinatorOptions
+	defer func() { coordinatorOptions = originalOptions }()
 	coordinatorOptions = option.NewDefaultOptions()
 
 	// Create a config file
@@ -398,4 +405,162 @@ metadata:
 	assert.Equal(t, "0.0.0.0:7001", coordinatorOptions.Server.Internal.BindAddress)
 	assert.Equal(t, "0.0.0.0:8080", coordinatorOptions.Observability.Metric.BindAddress)
 	assert.Equal(t, "memory", coordinatorOptions.Metadata.ProviderName)
+}
+
+func TestCoordinatorRunsUntilItsContextIsDone(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	Cmd.SetArgs([]string{"--metadata", "memory", "--public-addr", "localhost:0", "--internal-addr", "localhost:0",
+		"--metrics-addr", "localhost:0"})
+
+	assert.NoError(t, Cmd.ExecuteContext(ctx))
+}
+
+func TestExecReturnsConfigFileReadError(t *testing.T) {
+	resetCmd(t)
+	Cmd.SetArgs([]string{"--sconfig", filepath.Join(t.TempDir(), "missing.yaml")})
+
+	err := Cmd.ExecuteContext(t.Context())
+
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestExecReturnsConfigFileParseError(t *testing.T) {
+	resetCmd(t)
+	configPath := writeConfigFile(t, invalidConfig)
+	Cmd.SetArgs([]string{"--sconfig", configPath})
+
+	err := Cmd.ExecuteContext(t.Context())
+
+	assert.ErrorContains(t, err, "yaml")
+}
+
+func TestExecReloadsChangedConfigFile(t *testing.T) {
+	resetCmd(t)
+	handler := newRecordingHandler(t)
+	configPath := writeConfigFile(t, validConfig)
+	Cmd.SetArgs([]string{"--sconfig", configPath})
+	ctx, cancel := context.WithCancel(t.Context())
+	errs := make(chan error, 1)
+	go func() {
+		errs <- Cmd.ExecuteContext(ctx)
+	}()
+	require.True(t, handler.waitFor("Starting Oxia coordinator"))
+
+	overwriteConfigFile(t, configPath, invalidConfig)
+	require.True(t, handler.waitFor("parse updated configuration file failed"))
+	overwriteConfigFile(t, configPath, validConfig)
+	require.True(t, handler.waitFor("configuration file has changed."))
+	cancel()
+
+	assert.NoError(t, <-errs)
+}
+
+func TestExecReturnsValidationError(t *testing.T) {
+	resetCmd(t)
+	Cmd.SetArgs([]string{"--metadata", "invalid-provider", "--public-addr", "localhost:0",
+		"--internal-addr", "localhost:0", "--metrics-addr", "localhost:0"})
+
+	err := Cmd.ExecuteContext(t.Context())
+
+	assert.ErrorContains(t, err, "must be one of")
+}
+
+const validConfig = `
+server:
+  public:
+    bindAddress: "localhost:0"
+  internal:
+    bindAddress: "localhost:0"
+observability:
+  metric:
+    bindAddress: "localhost:0"
+metadata:
+  providerName: "memory"
+`
+
+const invalidConfig = `
+server:
+  public: [invalid yaml syntax
+`
+
+const configFileSize = 512
+
+func writeConfigFile(t *testing.T, content string) string {
+	t.Helper()
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(configPath, paddedConfig(content), 0600))
+	return configPath
+}
+
+func overwriteConfigFile(t *testing.T, configPath string, content string) {
+	t.Helper()
+	file, err := os.OpenFile(configPath, os.O_WRONLY, 0)
+	require.NoError(t, err)
+	_, err = file.WriteAt(paddedConfig(content), 0)
+	require.NoError(t, err)
+	require.NoError(t, file.Close())
+}
+
+func paddedConfig(content string) []byte {
+	return []byte(content + "#" + strings.Repeat(" ", configFileSize-len(content)-2) + "\n")
+}
+
+func resetCmd(t *testing.T) {
+	t.Helper()
+	options := *coordinatorOptions
+	t.Cleanup(func() {
+		*coordinatorOptions = options
+		sconfFile = ""
+		Cmd.Flags().VisitAll(func(flag *pflag.Flag) { flag.Changed = false })
+	})
+}
+
+type recordingHandler struct {
+	messages chan string
+}
+
+func newRecordingHandler(t *testing.T) *recordingHandler {
+	t.Helper()
+	handler := &recordingHandler{messages: make(chan string, 1000)}
+	defaultLogger := slog.Default()
+	slog.SetDefault(slog.New(handler))
+	t.Cleanup(func() { slog.SetDefault(defaultLogger) })
+	return handler
+}
+
+func (*recordingHandler) Enabled(context.Context, slog.Level) bool {
+	return true
+}
+
+func (h *recordingHandler) Handle(_ context.Context, record slog.Record) error {
+	select {
+	case h.messages <- record.Message:
+	default:
+	}
+	return nil
+}
+
+func (h *recordingHandler) WithAttrs([]slog.Attr) slog.Handler {
+	return h
+}
+
+func (h *recordingHandler) WithGroup(string) slog.Handler {
+	return h
+}
+
+func (h *recordingHandler) waitFor(message string) bool {
+	timer := time.NewTimer(10 * time.Second)
+	defer timer.Stop()
+	for {
+		select {
+		case received := <-h.messages:
+			if received == message {
+				return true
+			}
+		case <-timer.C:
+			return false
+		}
+	}
 }

@@ -22,8 +22,6 @@ import (
 
 const (
 	ProviderOIDC = "oidc"
-
-	ProviderParamTypeToken = "token"
 )
 
 var Disabled = Options{}
@@ -59,7 +57,6 @@ var (
 
 // todo: add metrics
 type AuthenticationProvider interface {
-	AcceptParamType() string
 	Authenticate(ctx context.Context, param any) (string, error)
 }
 

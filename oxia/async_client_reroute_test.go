@@ -34,6 +34,7 @@ import (
 	"github.com/oxia-db/oxia/oxia/internal"
 	"github.com/oxia-db/oxia/oxia/internal/batch"
 	"github.com/oxia-db/oxia/oxia/internal/metrics"
+	"github.com/oxia-db/oxia/oxia/internal/model"
 )
 
 // splittableShardManager is a ShardManager whose shards can be split, to
@@ -248,6 +249,36 @@ func TestRerouteKeepsWriteOrderAcrossSplit(t *testing.T) {
 	require.NoError(t, (<-put2).Err)
 
 	assert.Equal(t, []string{"k=v1", "k=v2"}, executor.appliedWrites())
+}
+
+func TestRerouteSendsDeleteToSuccessorOfPartitionKey(t *testing.T) {
+	shardManager := newSplittableShardManager("")
+	client := &clientImpl{shardManager: shardManager}
+	shardManager.split(0, 1, 2)
+	partitionKey := "partition"
+	sent := map[int64][]any{}
+	send := func(shardId int64, call any) { sent[shardId] = append(sent[shardId], call) }
+
+	client.sendToSuccessors(0, model.DeleteCall{Key: "key", PartitionKey: &partitionKey}, send)
+	client.sendToSuccessors(0, model.DeleteRangeCall{MinKeyInclusive: "a", MaxKeyExclusive: "z",
+		PartitionKey: &partitionKey}, send)
+
+	successor := shardManager.Get(partitionKey)
+	require.Len(t, sent, 1)
+	require.Len(t, sent[successor], 2)
+	assert.Equal(t, "key", sent[successor][0].(model.DeleteCall).Key)
+	assert.Equal(t, "a", sent[successor][1].(model.DeleteRangeCall).MinKeyInclusive)
+}
+
+func TestRerouteFailsDeleteWithoutSuccessor(t *testing.T) {
+	client := &clientImpl{shardManager: newSplittableShardManager("")}
+	errs := make(chan error, 1)
+
+	client.sendToSuccessors(0, model.DeleteCall{Key: "key", Callback: func(_ *proto.DeleteResponse, err error) {
+		errs <- err
+	}}, func(int64, any) { t.Error("unexpected send") })
+
+	assert.ErrorIs(t, <-errs, constant.ErrShardNotFound)
 }
 
 // An ephemeral put that waits for its session on a shard when the shard splits

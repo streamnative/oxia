@@ -25,8 +25,10 @@ import (
 
 	"github.com/gofrs/flock"
 	"github.com/pkg/errors"
+	"go.uber.org/multierr"
 	gproto "google.golang.org/protobuf/proto"
 
+	"github.com/oxia-db/oxia/common/failpoint"
 	commonproto "github.com/oxia-db/oxia/common/proto"
 	"github.com/oxia-db/oxia/oxiad/common/cache"
 	commonfile "github.com/oxia-db/oxia/oxiad/common/file"
@@ -60,8 +62,9 @@ type Provider[T gproto.Message] struct {
 	ctx       context.Context
 	ctxCancel context.CancelFunc
 
-	cache  *cache.Cache[provider.Versioned[T]]
-	logger *slog.Logger
+	cache      *cache.Cache[provider.Versioned[T]]
+	logger     *slog.Logger
+	failpoints *failpoint.Failpoints
 }
 
 func NewProvider[T gproto.Message](
@@ -71,6 +74,17 @@ func NewProvider[T gproto.Message](
 	watchEnabled metadatacommon.WatchMode,
 	name string,
 ) (provider.Provider[T], error) {
+	return newProvider(ctx, path, codec, watchEnabled, name, nil)
+}
+
+func newProvider[T gproto.Message](
+	ctx context.Context,
+	path string,
+	codec metadatacodec.Codec[T],
+	watchEnabled metadatacommon.WatchMode,
+	name string,
+	failpoints *failpoint.Failpoints,
+) (*Provider[T], error) {
 	p := &Provider[T]{
 		path:         path,
 		codec:        codec,
@@ -79,9 +93,10 @@ func NewProvider[T gproto.Message](
 		// The file does not hold the version: a document that this provider
 		// has not written yet, e.g. one written before a restart, has the
 		// first version, because NotExists means that there is no document.
-		version: metadatacommon.NextVersion(metadatacommon.NotExists),
-		name:    name,
-		logger:  slog.With(slog.String("component", "metadata-file-provider"), slog.String("path", path)),
+		version:    metadatacommon.NextVersion(metadatacommon.NotExists),
+		name:       name,
+		logger:     slog.With(slog.String("component", "metadata-file-provider"), slog.String("path", path)),
+		failpoints: failpoints,
 	}
 	p.ctx, p.ctxCancel = context.WithCancel(ctx)
 	parentDir := filepath.Dir(path)
@@ -114,7 +129,7 @@ func (m *Provider[T]) Close() error {
 		return nil
 	}
 	m.lockAcquired = false
-	if err := m.fileLock.Unlock(); err != nil {
+	if err := m.failpoints.Fail("close.unlock", m.fileLock.Unlock()); err != nil {
 		m.logger.Warn(
 			"Failed to release file lock on metadata",
 			slog.Any("error", err),
@@ -130,9 +145,10 @@ func (m *Provider[T]) WaitToBecomeLeader() (<-chan struct{}, error) {
 	if _, err := m.fileLock.TryLockContext(m.ctx, lockRetryDelay); err != nil {
 		return nil, errors.Wrapf(err, "failed to acquire lock on %s", m.path)
 	}
+	failpointErr := m.failpoints.Trigger("waitToBecomeLeader.locked")
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if err := m.ctx.Err(); err != nil {
+	if err := multierr.Append(failpointErr, m.ctx.Err()); err != nil {
 		// Closed while the lock was being taken: Close found no lock to
 		// release, so release it here.
 		_ = m.fileLock.Unlock()

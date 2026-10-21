@@ -17,15 +17,21 @@ package shell
 import (
 	"bytes"
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"testing/iotest"
 
 	prompt "github.com/c-bata/go-prompt"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	admincommons "github.com/oxia-db/oxia/cmd/admin/commons"
+	"github.com/oxia-db/oxia/cmd/common/clientauth"
 	"github.com/oxia-db/oxia/common/proto"
 
 	"github.com/oxia-db/oxia/cmd/client/common"
@@ -393,6 +399,105 @@ func TestShellRejectsUnterminatedQuote(t *testing.T) {
 	common.MockedClient.AssertExpectations(t)
 }
 
+func TestShellRejectsInvalidOutputFormat(t *testing.T) {
+	Config.outputFormat = "name"
+	t.Cleanup(Config.Reset)
+
+	err := exec(newTestCommand(""), nil)
+
+	assert.EqualError(t, err, `unsupported output format "name", expected one of: json, yaml, table`)
+}
+
+func TestShellExecRunsWithoutCommandContext(t *testing.T) {
+	cmd := newTestCommand("help")
+
+	require.NoError(t, exec(cmd, nil))
+
+	out, ok := cmd.OutOrStdout().(*bytes.Buffer)
+	require.True(t, ok)
+	assert.Equal(t, helpText, out.String())
+}
+
+func TestShellReadsNonTerminalFilesBuffered(t *testing.T) {
+	in, inWriter, err := os.Pipe()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = in.Close() })
+	_, err = inWriter.WriteString("\n\nhelp\nexit\nhelp\n")
+	require.NoError(t, err)
+	require.NoError(t, inWriter.Close())
+	outPath := filepath.Join(t.TempDir(), "out")
+	out, err := os.Create(outPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	cmd := &cobra.Command{}
+	cmd.SetIn(in)
+	cmd.SetOut(out)
+	cmd.SetErr(new(bytes.Buffer))
+
+	require.NoError(t, exec(cmd, nil))
+
+	written, err := os.ReadFile(outPath)
+	require.NoError(t, err)
+	assert.Equal(t, helpText, string(written))
+}
+
+func TestShellRunsTerminalWhenInputAndOutputAreTerminals(t *testing.T) {
+	in, err := os.Open(os.DevNull)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, in.Close()) })
+	out, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, out.Close()) })
+	cmd := &cobra.Command{}
+	cmd.SetIn(in)
+	cmd.SetOut(out)
+	cmd.SetErr(new(bytes.Buffer))
+	term := &fakeTerminal{lines: []string{"help", "exit"}}
+
+	require.NoError(t, exec(cmd, term))
+
+	assert.Equal(t, defaultPrompt, term.prefix)
+	assert.Equal(t, 2, term.executed)
+}
+
+func TestShellReturnsEmptyInputWithoutOutput(t *testing.T) {
+	cmd := newTestCommand("")
+
+	require.NoError(t, exec(cmd, nil))
+
+	out, ok := cmd.OutOrStdout().(*bytes.Buffer)
+	require.True(t, ok)
+	assert.Empty(t, out.String())
+}
+
+func TestShellReturnsInputReadError(t *testing.T) {
+	readErr := errors.New("read failure")
+	cmd := newTestCommand("")
+	cmd.SetIn(iotest.ErrReader(readErr))
+
+	assert.ErrorIs(t, exec(cmd, nil), readErr)
+}
+
+func TestShellReturnsClientCreationError(t *testing.T) {
+	oldCommonConfig := common.Config
+	common.Config.Auth = clientauth.Config{Token: "token", TokenFile: "token-file"}
+	t.Cleanup(func() { common.Config = oldCommonConfig })
+
+	err := exec(newTestCommand("get k\n"), nil)
+
+	assert.ErrorIs(t, err, clientauth.ErrAuthTokenConflict)
+}
+
+func TestShellReturnsAdminClientCreationError(t *testing.T) {
+	Config.adminAuth = clientauth.Config{Token: "token", TokenFile: "token-file"}
+	t.Cleanup(Config.Reset)
+
+	err := exec(newTestCommand("admin namespace list\n"), nil)
+
+	assert.ErrorIs(t, err, clientauth.ErrAuthTokenConflict)
+}
+
 func TestPromptSuggestions(t *testing.T) {
 	assertSuggestionTexts(t, suggestionsFor(nil), "admin", "get", "put", "delete", "delete-range", "list", "range-scan", "help", "exit", "quit")
 	assertSuggestionTexts(t, suggestionsFor([]string{"admin"}), "namespace", "dataserver", "shard")
@@ -403,6 +508,15 @@ func TestPromptSuggestions(t *testing.T) {
 	assertSuggestionTexts(t, suggestionsFor([]string{"list"}), "--key-min", "--key-max", "--partition-key", "--index", "--internal-keys")
 	assertSuggestionTexts(t, suggestionsFor([]string{"range-scan"}), "--key-min", "--key-max", "--hex", "--include-version", "--partition-key", "--index", "--internal-keys")
 	assertSuggestionTexts(t, suggestionsFor([]string{"admin", "shard", "split"}), "--namespace", "--shard", "--split-point")
+}
+
+// newTestCommand returns a command that was never executed, so it carries no context.
+func newTestCommand(input string) *cobra.Command {
+	cmd := &cobra.Command{}
+	cmd.SetIn(bytes.NewBufferString(input))
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+	return cmd
 }
 
 func assertSuggestionTexts(t *testing.T, suggestions []prompt.Suggest, expected ...string) {

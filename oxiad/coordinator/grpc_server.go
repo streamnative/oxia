@@ -29,6 +29,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/oxia-db/oxia/common/commonio"
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/common/proto"
 	coordmetadata "github.com/oxia-db/oxia/oxiad/coordinator/metadata"
 	coordreconciler "github.com/oxia-db/oxia/oxiad/coordinator/reconciler"
@@ -110,7 +111,9 @@ func WithOnLeadershipLost(handler func()) ServerOption {
 // cluster configuration when none exists yet. It allows bootstrapping a
 // cluster programmatically, without a cluster configuration file or a
 // separate admin call. If a configuration is already present it is left
-// untouched.
+// untouched. A configuration that was deleted while the cluster status still
+// has namespaces is not seeded again: the coordinator doesn't start until the
+// configuration is restored.
 //
 // The configuration is validated before the coordinator starts: an invalid
 // one fails [New] and is never stored.
@@ -170,7 +173,12 @@ func New(parent context.Context, options *option.Options, serverOpts ...ServerOp
 // watch, allowing the caller to publish configuration updates at runtime
 // (e.g. from a configuration file watcher). Most callers should use New
 // instead.
-func NewGrpcServer(parent context.Context, optionsWatch *commonwatch.Watch[*option.Options], serverOpts ...ServerOption) (_ *GrpcServer, err error) {
+func NewGrpcServer(parent context.Context, optionsWatch *commonwatch.Watch[*option.Options], serverOpts ...ServerOption) (*GrpcServer, error) {
+	return newGrpcServer(parent, optionsWatch, nil, serverOpts...)
+}
+
+func newGrpcServer(parent context.Context, optionsWatch *commonwatch.Watch[*option.Options],
+	failpoints *failpoint.Failpoints, serverOpts ...ServerOption) (_ *GrpcServer, err error) {
 	so := newServerOptions(serverOpts)
 	// Fail fast, before binding the ports and waiting for the leadership.
 	if err := so.validate(); err != nil {
@@ -232,10 +240,7 @@ func NewGrpcServer(parent context.Context, optionsWatch *commonwatch.Watch[*opti
 	// The metadata retries its status writes until they succeed or its
 	// context is canceled: deriving it from the server context lets Close stop
 	// the retries before closing the runtime, which waits for its controllers.
-	metadata, err = metadataFactory.CreateMetadata(ctx)
-	if err != nil {
-		return nil, err
-	}
+	metadata = metadataFactory.CreateMetadata(ctx)
 
 	managementSv := options.Server.Public
 	managementSvTLS, err := managementSv.TLS.TryIntoServerTLSConf()
@@ -267,7 +272,7 @@ func NewGrpcServer(parent context.Context, optionsWatch *commonwatch.Watch[*opti
 		return nil, err
 	}
 	runtime, err = coordruntime.New(metadata, rpc.NewRpcProviderFactory(controllerTLS)) //nolint:contextcheck
-	if err != nil {
+	if err = failpoints.Fail("newGrpcServer.newRuntime", err); err != nil {
 		return nil, err
 	}
 	management.setRuntime(runtime)
@@ -341,6 +346,7 @@ func (s *GrpcServer) watchLeadership(leadershipLost <-chan struct{}, handler fun
 // before it can run elections or move ensembles alongside the new leader, and
 // a restart rejoins the election from a clean state. Overridable in tests.
 var onLeadershipLost = func() {
+	// coverage-ignore: terminates the process
 	os.Exit(1)
 }
 

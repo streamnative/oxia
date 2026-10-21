@@ -17,13 +17,16 @@ package database
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protowire"
 
 	"github.com/oxia-db/oxia/oxiad/dataserver/database/kvstore"
 
@@ -226,4 +229,108 @@ func TestDB_DeleteRangeNotificationRecordsCached(t *testing.T) {
 
 	// Only the batch of the delete range itself is left
 	assert.EqualValues(t, 3, firstNotification(t, d))
+}
+
+func TestParseNotificationBatchRejectsMalformedData(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		data []byte
+	}{
+		{"truncated-tag", []byte{0xff}},
+		{"truncated-offset", append(protowire.AppendTag(nil, notificationBatchOffsetField, protowire.VarintType), 0xff)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, _, err := parseNotificationBatch(test.data)
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestNotificationsTrackerReadNextNotificationsFailsOnCorruptedBatch(t *testing.T) {
+	factory, err := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, factory.Close()) })
+	d, err := NewDB(constant.DefaultNamespace, 1, factory, proto.KeySortingType_NATURAL, time.Hour, time2.SystemClock)
+	require.NoError(t, err)
+	putRawKey(t, d.RawKV(), notificationKey(0), []byte{0xff})
+	require.NoError(t, d.Close())
+
+	// Reopened, the database reads the batch from the store
+	d, err = NewDB(constant.DefaultNamespace, 1, factory, proto.KeySortingType_NATURAL, time.Hour, time2.SystemClock)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, d.Close()) })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, err = d.ReadNextNotifications(ctx, 0)
+	assert.ErrorContains(t, err, "failed to Deserialize notification batch")
+}
+
+func TestNotificationsTrackerReadNextNotificationsLogsWaitAtDebugLevel(t *testing.T) {
+	d := newNotificationsTestDB(t)
+	var logs strings.Builder
+	d.(*db).notificationsTracker.log = slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := d.ReadNextNotifications(ctx, 0)
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.Contains(t, logs.String(), "Waiting for notification to be available")
+}
+
+func TestNotificationsTrackerReadNextNotificationsFailsWhenReadFails(t *testing.T) {
+	for _, op := range []string{opRangeScan, opValue} {
+		t.Run(op, func(t *testing.T) {
+			d, kv := newHookedTestDB(t)
+			writeNotificationBatches(t, d, 1)
+			kv.failOn(op, notificationKey(0))
+
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			_, err := d.ReadNextNotifications(ctx, 0)
+			assert.ErrorIs(t, err, errInjected)
+		})
+	}
+}
+
+// A trim that fails leaves the batches as they were, not trimmed.
+func TestNotificationsTrackerTrimmingFailsWhenWriteFails(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		op   string
+		key  string
+	}{
+		{"trimmed-offset", opBatchPutMarshalable, trimmedNotificationsKey},
+		{"commit", opBatchCommit, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			d, kv := newHookedTestDB(t)
+			writeNotificationBatches(t, d, 3)
+			kv.failOn(test.op, test.key)
+			// Trims every batch, past its retention, for the tracker
+			trimmer := &notificationsTrimmer{
+				kv:                         kv,
+				notificationsRetentionTime: time.Millisecond,
+				clock:                      time2.SystemClock,
+				log:                        slog.Default(),
+				listener:                   d.notificationsTracker,
+			}
+
+			assert.ErrorIs(t, trimmer.trimNotifications(), errInjected)
+			assert.EqualValues(t, -1, d.TrimmedNotificationsOffset())
+			kv.failure.Store(nil)
+			assert.True(t, keyExists(t, kv, notificationKey(0)))
+		})
+	}
+}
+
+// writeNotificationBatches writes count batches of notifications to d, from
+// offset 0 on, at the time 0.
+func writeNotificationBatches(t *testing.T, d DB, count int64) {
+	t.Helper()
+	for offset := int64(0); offset < count; offset++ {
+		_, err := d.ProcessWrite(&proto.WriteRequest{Puts: []*proto.PutRequest{{Key: "a", Value: []byte("v")}}},
+			offset, 0, NoOpCallback)
+		require.NoError(t, err)
+	}
 }

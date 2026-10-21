@@ -15,26 +15,37 @@
 package process
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
-
-	"github.com/oxia-db/oxia/common/concurrent"
+	"os/signal"
+	"syscall"
+	"time"
 )
 
-func RunProcess(startProcess func() (io.Closer, error)) {
-	profiler := RunProfiling()
+// RunProcess starts the process and the profiler, and closes them once ctx is
+// done or the process receives SIGINT or SIGTERM. A signal received while the
+// process starts closes it as soon as it has started. It logs when the process
+// named name is ready, and when it stopped.
+func RunProcess(ctx context.Context, name string, startProcess func() (io.Closer, error)) error {
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	start := time.Now()
+	profiler := RunProfiling(ctx)
 	process, err := startProcess()
 	if err != nil {
-		slog.Error(
-			"Failed to start the process",
-			slog.Any("error", err),
-		)
-		os.Exit(1)
+		return errors.Join(fmt.Errorf("failed to start the process: %w", err), profiler.Close())
 	}
+	slog.Info(fmt.Sprintf("Oxia %s is ready", name), slog.String("startup", time.Since(start).Round(time.Millisecond).String()))
 
-	concurrent.WaitUntilSignal(
-		process,
-		profiler,
-	)
+	<-ctx.Done()
+	slog.Info(fmt.Sprintf("Oxia %s is shutting down", name), slog.Any("cause", context.Cause(ctx)))
+	if err := errors.Join(process.Close(), profiler.Close()); err != nil {
+		return fmt.Errorf("failed to shut down the process: %w", err)
+	}
+	slog.Info(fmt.Sprintf("Oxia %s stopped", name), slog.String("uptime", time.Since(start).Round(time.Second).String()))
+	return nil
 }

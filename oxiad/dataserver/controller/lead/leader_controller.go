@@ -42,6 +42,7 @@ import (
 	"github.com/oxia-db/oxia/common/concurrent"
 	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/entity"
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/common/metric"
 	"github.com/oxia-db/oxia/common/process"
 	"github.com/oxia-db/oxia/common/proto"
@@ -79,6 +80,16 @@ type LeaderController interface {
 	AddFollower(request *proto.AddFollowerRequest) (*proto.AddFollowerResponse, error)
 
 	GetStatus(request *proto.GetStatusRequest) (*proto.GetStatusResponse, error)
+	// Checkpoint takes a checkpoint of the database, for a backup. It holds
+	// the controller's read lock during the flush: a change of term waits
+	// for it.
+	Checkpoint() (*database.Checkpoint, error)
+	// WithDatabase runs fn with the directory of the database, under the
+	// controller's read lock, while the database is still the one a
+	// checkpoint of the given generation was taken from; it returns
+	// database.ErrDatabaseReplaced otherwise. A file fn writes next to the
+	// database thus never lands in a database that replaced it.
+	WithDatabase(generation uint64, fn func(dir string) error) error
 	DeleteShard(request *proto.DeleteShardRequest) (*proto.DeleteShardResponse, error)
 	RemoveObserver(request *proto.RemoveObserverRequest) (*proto.RemoveObserverResponse, error)
 	Freeze(request *proto.FreezeShardRequest) (*proto.FreezeShardResponse, error)
@@ -146,6 +157,7 @@ type leaderController struct {
 	closed         bool
 	wal            wal.Wal
 	db             database.DB
+	kvFactory      kvstore.Factory
 	termOptions    database.TermOptions
 	rpcClient      dataserverrpc.ReplicationRpcProvider
 	sessionManager SessionManager
@@ -154,6 +166,9 @@ type leaderController struct {
 	// Reusable serialization buffer: only accessed by proposeLocked, while
 	// holding proposeMu
 	marshalBuf []byte
+	// Serializes the log entry values of the proposals into marshalBuf. Set
+	// once at construction
+	marshalLogEntryValue func(buf []byte, value *proto.LogEntryValue) (newBuf []byte, data []byte, err error)
 
 	writeLatencyHisto       metric.LatencyHistogram
 	headOffsetGauge         metric.Gauge
@@ -161,6 +176,8 @@ type leaderController struct {
 	checksumGauge           metric.SyncGauge
 	walChecksumGauge        metric.SyncGauge
 	followerAckOffsetGauges map[string]metric.Gauge
+
+	failpoints *failpoint.Failpoints
 }
 
 func NewLeaderController(storageOptions *option.StorageOptions, namespace string, shardId int64,
@@ -168,39 +185,34 @@ func NewLeaderController(storageOptions *option.StorageOptions, namespace string
 	walFactory wal.Factory, kvFactory kvstore.Factory,
 	newTermOptions *proto.NewTermOptions,
 ) (LeaderController, error) {
+	return newLeaderController(storageOptions, namespace, shardId, rpcClient, walFactory, kvFactory, newTermOptions, nil)
+}
+
+func newLeaderController(storageOptions *option.StorageOptions, namespace string, shardId int64,
+	rpcClient dataserverrpc.ReplicationRpcProvider,
+	walFactory wal.Factory, kvFactory kvstore.Factory,
+	newTermOptions *proto.NewTermOptions, failpoints *failpoint.Failpoints,
+) (LeaderController, error) {
 	labels := metric.LabelsForShard(namespace, shardId)
 	lc := &leaderController{
+		failpoints:       failpoints,
 		status:           proto.ServingStatus_NOT_MEMBER,
 		namespace:        namespace,
 		shardId:          shardId,
+		kvFactory:        kvFactory,
 		term:             &atomic.Int64{},
 		quorumAckTracker: nil,
 		rpcClient:        rpcClient,
 		followers:        make(map[string]FollowerCursor),
+		marshalLogEntryValue: func(buf []byte, value *proto.LogEntryValue) ([]byte, []byte, error) {
+			return proto.MarshalToBuffer(buf, value)
+		},
 
 		writeLatencyHisto: metric.NewLatencyHistogram("oxia_server_leader_write_latency",
 			"Latency for write operations in the leader", labels),
 		followerAckOffsetGauges: map[string]metric.Gauge{},
 	}
 
-	lc.headOffsetGauge = metric.NewGauge("oxia_server_leader_head_offset",
-		"The current head offset", "offset", labels, func() int64 {
-			qat := lc.quorumAckTracker
-			if qat != nil {
-				return qat.HeadOffset()
-			}
-
-			return -1
-		})
-	lc.commitOffsetGauge = metric.NewGauge("oxia_server_leader_commit_offset",
-		"The current commit offset", "offset", labels, func() int64 {
-			qat := lc.quorumAckTracker
-			if qat != nil {
-				return qat.CommitOffset()
-			}
-
-			return -1
-		})
 	lc.checksumGauge = metric.NewSyncGauge("oxia_dataserver_db_checksum",
 		"The current DB checksum value", "count", labels)
 	lc.walChecksumGauge = metric.NewSyncGauge("oxia_dataserver_wal_checksum",
@@ -315,9 +327,7 @@ func (lc *leaderController) NewTerm(req *proto.NewTermRequest) (*proto.NewTermRe
 
 	// newTerm stopped the session manager: wait for its expiry scheduler only
 	// once the leader lock is released, see sessionManager.stop.
-	if err = sessionManager.Close(); err != nil {
-		return nil, err
-	}
+	sessionManager.Close()
 	return res, nil
 }
 
@@ -366,37 +376,7 @@ func (lc *leaderController) newTerm(req *proto.NewTermRequest) (*proto.NewTermRe
 	// not inherit a stale write-freeze from a previous (aborted) cutover.
 	lc.frozen.Store(false)
 
-	lc.headOffsetGauge.Unregister()
-	lc.commitOffsetGauge.Unregister()
-
-	if lc.quorumAckTracker != nil {
-		// Closing the tracker waits for the callback that is running, which
-		// can be retrying an entry that failed to apply
-		lc.termCancel()
-		if err := lc.quorumAckTracker.Close(); err != nil {
-			return nil, err
-		}
-		lc.quorumAckTracker = nil
-	}
-
-	for _, follower := range lc.followers {
-		if err := follower.Close(); err != nil {
-			return nil, err
-		}
-	}
-
-	for _, observer := range lc.observers {
-		if err := observer.Close(); err != nil {
-			return nil, err
-		}
-	}
-
-	for _, g := range lc.followerAckOffsetGauges {
-		g.Unregister()
-	}
-
-	lc.followers = nil
-	lc.observers = nil
+	lc.prepareNewTerm()
 
 	// The proposals return once their entry is appended to the wal, before it
 	// is synced, while the head is read from the last synced entry: wait for
@@ -424,23 +404,41 @@ func (lc *leaderController) newTerm(req *proto.NewTermRequest) (*proto.NewTermRe
 	}, nil
 }
 
+// prepareNewTerm closes what leading the term opened: the quorum tracker, the
+// follower and observer cursors, and their gauges. It must be called while
+// holding the leader lock.
+func (lc *leaderController) prepareNewTerm() {
+	lc.unregisterOffsetGauges()
+
+	if lc.quorumAckTracker != nil {
+		// Closing the tracker waits for the callback that is running, which
+		// can be retrying an entry that failed to apply
+		lc.termCancel()
+		lc.quorumAckTracker.Close()
+		lc.quorumAckTracker = nil
+	}
+
+	for _, follower := range lc.followers {
+		follower.Close()
+	}
+
+	for _, observer := range lc.observers {
+		observer.Close()
+	}
+
+	for _, g := range lc.followerAckOffsetGauges {
+		g.Unregister()
+	}
+
+	lc.followers = nil
+	lc.observers = nil
+}
+
+// becomeLeader must be called while holding the leader lock, once
+// BecomeLeader accepted the request. On failure, the caller releases what it
+// started.
 func (lc *leaderController) becomeLeader(ctx context.Context, req *proto.BecomeLeaderRequest) error {
-	lc.Lock()
-	defer lc.Unlock()
-
-	if lc.closed {
-		return constant.ErrResourceUnavailable
-	}
-
-	if lc.status != proto.ServingStatus_FENCED {
-		return constant.ErrInvalidStatus
-	}
-
 	term := lc.term.Load()
-	if req.Term != term {
-		return constant.ErrInvalidTerm
-	}
-
 	lc.replicationFactor = req.GetReplicationFactor()
 	lc.followers = make(map[string]FollowerCursor)
 	lc.observers = make(map[string]FollowerCursor)
@@ -463,6 +461,7 @@ func (lc *leaderController) becomeLeader(ctx context.Context, req *proto.BecomeL
 	// followers seeded from the same snapshot drop them as duplicates.
 	headOffset := max(lc.leaderElectionHeadEntryId.Offset, leaderCommitOffset)
 	lc.quorumAckTracker = NewQuorumAckTracker(req.GetReplicationFactor(), headOffset, leaderCommitOffset)
+	lc.registerOffsetGauges(lc.quorumAckTracker)
 	lc.termCtx, lc.termCancel = context.WithCancel(lc.ctx)
 	lc.sessionManager = NewSessionManager(lc.ctx, lc.namespace, lc.shardId, lc)
 
@@ -528,9 +527,6 @@ func (lc *leaderController) becomeLeader(ctx context.Context, req *proto.BecomeL
 		// in the log ahead of every write of this term and the effective
 		// feature set never changes mid-term.
 		if err := lc.proposeFeaturesEnableLocked(ctx, proposeEnabledFeature); err != nil {
-			// Nothing was appended: fall back to the fenced state so the
-			// failed BecomeLeader leaves the controller where it found it.
-			lc.status = proto.ServingStatus_FENCED
 			return err
 		}
 	}
@@ -565,7 +561,33 @@ func (lc *leaderController) becomeLeader(ctx context.Context, req *proto.BecomeL
 //     possible that their head entry id is higher than the leader and
 //     therefore need truncating.
 func (lc *leaderController) BecomeLeader(ctx context.Context, req *proto.BecomeLeaderRequest) (*proto.BecomeLeaderResponse, error) {
-	if err := lc.becomeLeader(ctx, req); err != nil {
+	lc.Lock()
+	if lc.closed {
+		lc.Unlock()
+		return nil, constant.ErrResourceUnavailable
+	}
+	if lc.status != proto.ServingStatus_FENCED {
+		lc.Unlock()
+		return nil, constant.ErrInvalidStatus
+	}
+	if req.Term != lc.term.Load() {
+		lc.Unlock()
+		return nil, constant.ErrInvalidTerm
+	}
+
+	err := lc.becomeLeader(ctx, req)
+	if err != nil {
+		lc.status = proto.ServingStatus_FENCED
+		lc.replicationFactor = 0
+		lc.prepareNewTerm()
+		lc.sessionManager.stop()
+	}
+	sessionManager := lc.sessionManager
+	lc.Unlock()
+	if err != nil {
+		// Wait for the expiry scheduler of the stopped session manager only
+		// once the leader lock is released, see sessionManager.stop.
+		sessionManager.Close()
 		return nil, err
 	}
 	return &proto.BecomeLeaderResponse{}, nil
@@ -668,9 +690,7 @@ func (lc *leaderController) RemoveObserver(req *proto.RemoveObserverRequest) (*p
 		return &proto.RemoveObserverResponse{}, nil
 	}
 
-	if err := observer.Close(); err != nil {
-		return nil, err
-	}
+	observer.Close()
 
 	delete(lc.observers, observerKey)
 	delete(lc.followerAckOffsetGauges, observerKey)
@@ -793,17 +813,8 @@ func (lc *leaderController) addObserver(observerKey string, follower string, fol
 	// fences the child shard with the same term as the parent, so the child
 	// can validate incoming entries. If the parent gets a new election (term
 	// advances), stale entries from old observer cursors are rejected.
-	cursor, err := NewObserverFollowerCursor(follower, lc.term.Load(), lc.namespace, targetShardId,
+	cursor := NewObserverFollowerCursor(follower, lc.term.Load(), lc.namespace, targetShardId,
 		lc.rpcClient, lc.quorumAckTracker, lc.wal, lc.db, followerHeadEntryId.Offset, splitHashRange, splitParentHashRange)
-	if err != nil {
-		lc.log.Error(
-			"Failed to create observer follower cursor",
-			slog.Any("error", err),
-			slog.String("follower", follower),
-			slog.Int64("term", lc.term.Load()),
-		)
-		return err
-	}
 
 	lc.log.Info(
 		"Added observer follower",
@@ -1339,7 +1350,7 @@ func (lc *leaderController) proposeLocked(ctx context.Context, proposalSupplier 
 	// Wal interface contract), and the next proposal can only overwrite the
 	// buffer once this one releases proposeMu. The completion callbacks never
 	// reference value: the database apply uses the proposal object.
-	marshalBuf, value, err := proto.MarshalToBuffer(lc.marshalBuf, entryValue)
+	marshalBuf, value, err := lc.marshalLogEntryValue(lc.marshalBuf, entryValue)
 	if err != nil {
 		return err
 	}
@@ -1476,7 +1487,6 @@ func (lc *leaderController) GetNotifications(ctx context.Context, req *proto.Not
 		cb.OnComplete(constant.ErrNotificationsNotEnabled)
 		return
 	}
-	qat := lc.quorumAckTracker
 
 	var offsetExclusive int64
 	if req.StartOffsetExclusive != nil {
@@ -1487,12 +1497,7 @@ func (lc *leaderController) GetNotifications(ctx context.Context, req *proto.Not
 			offsetExclusive = trimmed
 		}
 	} else {
-		if qat == nil {
-			lc.RUnlock()
-			cb.OnComplete(constant.ErrInvalidStatus)
-			return
-		}
-		offsetExclusive = qat.CommitOffset()
+		offsetExclusive = lc.quorumAckTracker.CommitOffset()
 	}
 
 	lc.waitGroup.Go(func() {
@@ -1572,6 +1577,27 @@ func (lc *leaderController) GetNotifications(ctx context.Context, req *proto.Not
 	lc.RUnlock()
 }
 
+// registerOffsetGauges reports the offsets of the tracker of the term being
+// led. The gauges capture the tracker, which newTerm replaces.
+func (lc *leaderController) registerOffsetGauges(tracker QuorumAckTracker) {
+	lc.unregisterOffsetGauges()
+	labels := metric.LabelsForShard(lc.namespace, lc.shardId)
+	lc.headOffsetGauge = metric.NewGauge("oxia_server_leader_head_offset",
+		"The current head offset", "offset", labels, tracker.HeadOffset)
+	lc.commitOffsetGauge = metric.NewGauge("oxia_server_leader_commit_offset",
+		"The current commit offset", "offset", labels, tracker.CommitOffset)
+}
+
+func (lc *leaderController) unregisterOffsetGauges() {
+	if lc.headOffsetGauge == nil {
+		return
+	}
+	lc.headOffsetGauge.Unregister()
+	lc.commitOffsetGauge.Unregister()
+	lc.headOffsetGauge = nil
+	lc.commitOffsetGauge = nil
+}
+
 func (lc *leaderController) Close() error {
 	lc.Lock()
 	err := lc.close()
@@ -1580,7 +1606,8 @@ func (lc *leaderController) Close() error {
 
 	// close stopped the session manager: wait for its expiry scheduler only
 	// once the leader lock is released, see sessionManager.stop.
-	return multierr.Append(err, sessionManager.Close())
+	sessionManager.Close()
+	return err
 }
 
 func (lc *leaderController) close() error {
@@ -1592,21 +1619,22 @@ func (lc *leaderController) close() error {
 
 	var err error
 	if lc.quorumAckTracker != nil {
-		err = multierr.Append(err, lc.quorumAckTracker.Close())
+		lc.quorumAckTracker.Close()
 	}
 	lc.quorumAckTracker = nil
 
 	lc.waitGroup.Wait()
 	for _, follower := range lc.followers {
-		err = multierr.Append(err, follower.Close())
+		follower.Close()
 	}
 	lc.followers = nil
 
 	for _, observer := range lc.observers {
-		err = multierr.Append(err, observer.Close())
+		observer.Close()
 	}
 	lc.observers = nil
 
+	lc.unregisterOffsetGauges()
 	for _, g := range lc.followerAckOffsetGauges {
 		g.Unregister()
 	}
@@ -1684,6 +1712,32 @@ func (lc *leaderController) FlushDatabase() error {
 	return lc.db.Flush()
 }
 
+func (lc *leaderController) Checkpoint() (*database.Checkpoint, error) {
+	lc.RLock()
+	defer lc.RUnlock()
+	if lc.closed || lc.db == nil {
+		return nil, constant.ErrResourceUnavailable
+	}
+	snapshot, err := lc.db.Snapshot()
+	if err != nil {
+		return nil, err
+	}
+	return &database.Checkpoint{Snapshot: snapshot,
+		Generation: lc.kvFactory.DatabaseGeneration(lc.namespace, lc.shardId)}, nil
+}
+
+func (lc *leaderController) WithDatabase(generation uint64, fn func(dir string) error) error {
+	lc.RLock()
+	defer lc.RUnlock()
+	if lc.closed || lc.db == nil {
+		return constant.ErrResourceUnavailable
+	}
+	if lc.kvFactory.DatabaseGeneration(lc.namespace, lc.shardId) != generation {
+		return database.ErrDatabaseReplaced
+	}
+	return fn(lc.kvFactory.DatabaseDir(lc.namespace, lc.shardId))
+}
+
 func (lc *leaderController) GetStatus(_ *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {
 	lc.RLock()
 	defer lc.RUnlock()
@@ -1721,7 +1775,8 @@ func (lc *leaderController) DeleteShard(request *proto.DeleteShardRequest) (*pro
 	// deleteShard leaves the controller closed, and so the session manager
 	// stopped: wait for its expiry scheduler only once the leader lock is
 	// released, see sessionManager.stop.
-	return res, multierr.Append(err, sessionManager.Close())
+	sessionManager.Close()
+	return res, err
 }
 
 // deleteShard must be called while holding the leader lock.

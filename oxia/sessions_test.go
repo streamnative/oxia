@@ -385,3 +385,126 @@ func TestSessions_ShardSplitDuringCreation(t *testing.T) {
 	assert.Equal(t, []int64{1, 2}, server.created)
 	assert.ElementsMatch(t, []shardSession{{1, 11}, {2, 12}}, server.closed)
 }
+
+// A shard split after the sessions were closed is not followed.
+func TestSessionsFollowSplitsAfterClose(t *testing.T) {
+	shardManager := &notificationsTestShardManager{shards: []int64{1, 2}, successors: map[int64][]int64{0: {1, 2}}}
+	s := newSessions(t.Context(), shardManager, &sessionsTestRpcProvider{}, clientOptions{requestTimeout: time.Second})
+	cs := s.newClientSession(0)
+	cs.sessionId, cs.established = 10, true
+	s.sessionsByShard[0] = cs
+	s.cancelSessions()
+
+	s.Lock()
+	s.followSplits()
+	s.Unlock()
+
+	assert.Equal(t, map[int64]*clientSession{0: cs}, s.sessionsByShard)
+}
+
+// A session that is not established yet has nothing for the shards that
+// replaced its shard to inherit.
+func TestSessionsFollowSplitsSkipsSessionNotEstablished(t *testing.T) {
+	shardManager := &notificationsTestShardManager{shards: []int64{1, 2}, successors: map[int64][]int64{0: {1, 2}}}
+	s := newSessions(t.Context(), shardManager, &sessionsTestRpcProvider{}, clientOptions{requestTimeout: time.Second})
+	defer s.cancelSessions()
+	cs := s.newClientSession(0)
+	s.sessionsByShard[0] = cs
+
+	s.Lock()
+	s.followSplits()
+	s.Unlock()
+
+	assert.Equal(t, map[int64]*clientSession{0: cs}, s.sessionsByShard)
+	assert.NoError(t, cs.ctx.Err())
+}
+
+// The operations waiting for a session fail once the client context expires,
+// but not when the client is closed.
+func TestClientSessionExecuteWithIdFailsWhenContextExpires(t *testing.T) {
+	expired, cancel := context.WithDeadline(t.Context(), time.Now())
+	defer cancel()
+	s := newSessions(expired, &staticShardManager{shards: []int64{0}}, &sessionsTestRpcProvider{},
+		clientOptions{requestTimeout: time.Second})
+	cs := s.newClientSession(0)
+
+	var results []error
+	err := cs.executeWithId(func(sessionId int64, err error) {
+		assert.EqualValues(t, -1, sessionId)
+		results = append(results, err)
+	})
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.ErrorIs(t, results[0], context.DeadlineExceeded)
+
+	s = newSessions(t.Context(), &staticShardManager{shards: []int64{0}}, &sessionsTestRpcProvider{},
+		clientOptions{requestTimeout: time.Second})
+	cs = s.newClientSession(0)
+	s.cancelSessions()
+	err = cs.executeWithId(func(int64, error) {
+		assert.Fail(t, "the callback of a closed session was invoked")
+	})
+	assert.NoError(t, err)
+}
+
+func TestClientSessionClose(t *testing.T) {
+	errClose := errors.New("close failed")
+	for name, test := range map[string]struct {
+		closeErr error
+		expected error
+	}{
+		"closed":            {nil, nil},
+		"session-not-found": {constant.ErrSessionNotFound, nil},
+		"error":             {errClose, errClose},
+	} {
+		t.Run(name, func(t *testing.T) {
+			provider := &sessionsTestRpcProvider{closeErr: test.closeErr}
+			s := newSessions(t.Context(), &staticShardManager{shards: []int64{0}, leader: "leader:6648"}, provider,
+				clientOptions{requestTimeout: time.Second})
+			defer s.cancelSessions()
+			cs := s.newClientSession(0)
+			cs.sessionId = 10
+
+			err := cs.Close()
+			if test.expected == nil {
+				assert.NoError(t, err)
+			} else {
+				assert.ErrorIs(t, err, test.expected)
+			}
+			assert.Error(t, cs.ctx.Err())
+			assert.Equal(t, []string{"leader:6648"}, provider.closeTargets)
+			assert.Equal(t, []*proto.CloseSessionRequest{{Shard: 0, SessionId: 10}}, provider.closeRequests)
+		})
+	}
+}
+
+// sessionsTestRpcProvider fails the creation of the sessions with createErr,
+// and their closing with closeErr. It records the requests to close them.
+type sessionsTestRpcProvider struct {
+	internal.RpcProvider
+	createErr     error
+	closeErr      error
+	closeTargets  []string
+	closeRequests []*proto.CloseSessionRequest
+}
+
+func (p *sessionsTestRpcProvider) CreateSession(ctx context.Context, _ string,
+	_ *proto.CreateSessionRequest) (*proto.CreateSessionResponse, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if p.createErr != nil {
+		return nil, p.createErr
+	}
+	return &proto.CreateSessionResponse{SessionId: 1}, nil
+}
+
+func (p *sessionsTestRpcProvider) CloseSession(_ context.Context, target string,
+	request *proto.CloseSessionRequest) (*proto.CloseSessionResponse, error) {
+	p.closeTargets = append(p.closeTargets, target)
+	p.closeRequests = append(p.closeRequests, request)
+	if p.closeErr != nil {
+		return nil, p.closeErr
+	}
+	return &proto.CloseSessionResponse{}, nil
+}

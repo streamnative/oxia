@@ -16,8 +16,11 @@ package follow
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -25,6 +28,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/common/metric"
 	"github.com/oxia-db/oxia/common/proto"
 	"github.com/oxia-db/oxia/common/rpc"
@@ -84,7 +88,7 @@ func TestLogSynchronizer_DuplicateAckOnlySynced(t *testing.T) {
 	defer func() {
 		// Unblock the appender goroutine's Recv before closing
 		stream.Cancel()
-		assert.NoError(t, ls.Close())
+		ls.Close()
 	}()
 
 	// A duplicate at or below the synced offset is re-acked without
@@ -159,7 +163,7 @@ func TestLogSynchronizer_RejectGapOnEmptyWal(t *testing.T) {
 	})
 
 	assert.ErrorIs(t, ls.Sync(), wal.ErrInvalidNextOffset)
-	assert.NoError(t, ls.Close())
+	ls.Close()
 
 	// Nothing was appended and no ack was sent
 	assert.EqualValues(t, wal.InvalidOffset, w.appended.Load())
@@ -200,7 +204,7 @@ func TestLogSynchronizer_CommitOffsetAdvertisement(t *testing.T) {
 	defer func() {
 		// Unblock the appender goroutine's Recv before closing
 		stream.Cancel()
-		assert.NoError(t, ls.Close())
+		ls.Close()
 	}()
 
 	stream.AddRequest(&proto.Append{
@@ -257,7 +261,7 @@ func TestLogSynchronizer_KeepsTheWalCrcOfTheEntries(t *testing.T) {
 	defer func() {
 		// Unblock the appender goroutine's Recv before closing
 		stream.Cancel()
-		assert.NoError(t, ls.Close())
+		ls.Close()
 		assert.NoError(t, w.Close())
 		assert.NoError(t, walFactory.Close())
 	}()
@@ -285,4 +289,159 @@ func TestLogSynchronizer_KeepsTheWalCrcOfTheEntries(t *testing.T) {
 		assert.Equalf(t, entryCrc, kept.entryCrc, "crc of the entry at offset %d", offset)
 	}
 	assert.NoError(t, reader.Close())
+}
+
+// A nil request ends the stream, like its end.
+func TestLogSynchronizerSyncEndsOnNilRequest(t *testing.T) {
+	w := &stubWal{}
+	stream := rpc.NewMockServerReplicateStream()
+	ls := newTestLogSynchronizer(t, w, wal.InvalidOffset, slog.Default(), stream)
+
+	stream.AddRequest(nil)
+	assert.NoError(t, ls.Sync())
+	ls.Close()
+}
+
+// A failure to send an ack fails the stream, whether it acks the synced
+// entries or re-acks a duplicate, as the leader doesn't support cumulative acks.
+func TestLogSynchronizerSyncFailsWhenAckFails(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		offset int64
+	}{
+		{"ack", 3},
+		{"re-ack", 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			w := &stubWal{}
+			w.appended.Store(2)
+			w.synced.Store(2)
+			stream := &ackFailingStream{MockServerReplicateStream: rpc.NewMockServerReplicateStream()}
+			ls := newTestLogSynchronizer(t, w, 2, slog.Default(), stream)
+
+			stream.AddRequest(&proto.Append{
+				Term:         1,
+				Entry:        &proto.LogEntry{Term: 1, Offset: test.offset},
+				CommitOffset: wal.InvalidOffset,
+			})
+			assert.ErrorContains(t, ls.Sync(), "send failed")
+
+			stream.Cancel()
+			ls.Close()
+		})
+	}
+}
+
+// A failure to append an entry to the wal fails the stream, without acking it.
+func TestLogSynchronizerSyncFailsWhenAppendFails(t *testing.T) {
+	if !failpoint.Enabled {
+		t.Skip("needs failpoints: disabled by the disable_trap tag")
+	}
+	appendErr := errors.New("append failed")
+	walFactory := wal.NewWalFactory(&wal.FactoryOptions{
+		BaseWalDir: t.TempDir(),
+		Failpoints: failpoint.New(map[string]func() error{
+			"appendAsync.marshal": func() error { return appendErr },
+		}),
+	})
+	w, err := walFactory.NewWal("test", 0, nil)
+	require.NoError(t, err)
+	stream := rpc.NewMockServerReplicateStream()
+	ls := newTestLogSynchronizer(t, w, wal.InvalidOffset, slog.Default(), stream)
+
+	stream.AddRequest(&proto.Append{
+		Term:         1,
+		Entry:        &proto.LogEntry{Term: 1, Offset: 0, Value: []byte("v")},
+		CommitOffset: wal.InvalidOffset,
+	})
+	assert.ErrorIs(t, ls.Sync(), appendErr)
+
+	stream.Cancel()
+	ls.Close()
+	assert.EqualValues(t, wal.InvalidOffset, w.LastOffset())
+	assert.Empty(t, stream.Responses)
+	assert.NoError(t, w.Close())
+	assert.NoError(t, walFactory.Close())
+}
+
+// The stream logs the requests it receives at the debug level.
+func TestLogSynchronizerLogsRequestsAtDebugLevel(t *testing.T) {
+	w := &stubWal{}
+	w.appended.Store(wal.InvalidOffset)
+	w.synced.Store(wal.InvalidOffset)
+	logs := &logCapture{}
+	stream := rpc.NewMockServerReplicateStream()
+	ls := newTestLogSynchronizer(t, w, wal.InvalidOffset, slog.New(logs), stream)
+
+	entry := &proto.Append{Term: 1, Entry: &proto.LogEntry{Term: 1, Offset: 0}, CommitOffset: wal.InvalidOffset}
+	stream.AddRequest(entry)
+	assert.EqualValues(t, 0, stream.GetResponse().Offset)
+	stream.AddRequest(entry)
+	assert.EqualValues(t, 0, stream.GetResponse().Offset)
+	stream.AddRequest(&proto.Append{Term: 1, CommitOffset: 0})
+	assert.Eventually(t, func() bool {
+		return logs.has("Received commit-offset advertisement")
+	}, 10*time.Second, 10*time.Millisecond)
+	assert.True(t, logs.has("Add entry"))
+	assert.True(t, logs.has("Ignoring duplicated entry"))
+
+	stream.Cancel()
+	ls.Close()
+}
+
+func newTestLogSynchronizer(t *testing.T, w wal.Wal, lastAppendedOffset int64, log *slog.Logger,
+	stream proto.OxiaLogReplication_ReplicateServer) *LogSynchronizer {
+	t.Helper()
+	lastAppended := &atomic.Int64{}
+	lastAppended.Store(lastAppendedOffset)
+	advertisedCommitOffset := &atomic.Int64{}
+	advertisedCommitOffset.Store(wal.InvalidOffset)
+	return NewLogSynchronizer(LogSynchronizerParams{
+		Log:                    log,
+		Namespace:              "test",
+		ShardId:                0,
+		Term:                   1,
+		Wal:                    w,
+		AdvertisedCommitOffset: advertisedCommitOffset,
+		LastAppendedOffset:     lastAppended,
+		WriteLatencyHisto: metric.NewLatencyHistogram("oxia_test_log_synchronizer",
+			"test", map[string]any{}),
+		StateApplierCond: make(chan struct{}, 1),
+		Stream:           stream,
+		OnAppend:         func() {},
+	})
+}
+
+// ackFailingStream fails to send any ack.
+type ackFailingStream struct {
+	*rpc.MockServerReplicateStream
+}
+
+func (*ackFailingStream) Send(*proto.Ack) error {
+	return errors.New("send failed")
+}
+
+// logCapture records the messages of the log records, at every level.
+type logCapture struct {
+	mu       sync.Mutex
+	messages []string
+}
+
+func (*logCapture) Enabled(context.Context, slog.Level) bool { return true }
+
+func (c *logCapture) Handle(_ context.Context, record slog.Record) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.messages = append(c.messages, record.Message)
+	return nil
+}
+
+func (c *logCapture) WithAttrs([]slog.Attr) slog.Handler { return c }
+
+func (c *logCapture) WithGroup(string) slog.Handler { return c }
+
+func (c *logCapture) has(message string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return slices.Contains(c.messages, message)
 }

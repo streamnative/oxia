@@ -334,13 +334,12 @@ func (m *Monitor) computeOvershoot(key shardKey, leader *proto.DataServerIdentit
 
 	leaderID := leader.GetNameOrDefault()
 
-	switch {
-	case tracker.leader != leaderID:
+	if tracker.leader != leaderID {
 		// Leader changed (or first sample): the cumulative counters belong to a
 		// different process, so drop the rate until we have two same-leader
 		// samples rather than computing a spurious cross-leader delta.
 		tracker.throughputOps = 0
-	case tracker.lastStats != nil:
+	} else if tracker.lastStats != nil {
 		elapsed := now.Sub(tracker.lastSampleTime).Seconds()
 		if elapsed > 0 {
 			prevTotal := tracker.lastStats.GetReadOpsTotal() + tracker.lastStats.GetWriteOpsTotal()
@@ -354,8 +353,6 @@ func (m *Monitor) computeOvershoot(key shardKey, leader *proto.DataServerIdentit
 				tracker.throughputOps = 0
 			}
 		}
-	default:
-		// Same leader, first sample for this tracker: no rate to compute yet.
 	}
 
 	tracker.leader = leaderID

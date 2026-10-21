@@ -26,6 +26,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"github.com/oxia-db/oxia/common/auth"
 )
 
 func TestConnectionReconnectsToNewAddressOfRestartedServer(t *testing.T) {
@@ -76,6 +78,30 @@ func TestConnectionDialsNameOfTLSTarget(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		require.Fail(t, "the name of the target was never dialed")
 	}
+}
+
+func TestConnectionReturnsClientError(t *testing.T) {
+	// Credentials that require TLS can't go over a plaintext connection
+	_, err := newConnection("localhost:1", nil, auth.NewTokenAuthenticationWithToken("token", true), nil,
+		func(string) {})
+	assert.ErrorContains(t, err, "error connecting to localhost:1")
+}
+
+// Closing the connection stops the health loop while a ping is in flight,
+// without counting the cancelled ping as a failure.
+func TestConnectionCloseStopsHealthPingInFlight(t *testing.T) {
+	_, target, checks := newTestBlockingHealthServer(t)
+	conn, err := newConnectionWithHealthConfig(target, nil, nil, nil,
+		func(string) { t.Error("the closed connection was reported as failed") }, time.Millisecond, time.Hour)
+	require.NoError(t, err)
+
+	select {
+	case <-checks:
+	case <-time.After(10 * time.Second):
+		require.FailNow(t, "no health ping")
+	}
+	require.NoError(t, conn.Close())
+	assert.False(t, conn.disconnected.Load())
 }
 
 func checkTestConnection(conn *connection) error {

@@ -26,6 +26,8 @@ import (
 
 	"github.com/oxia-db/oxia/common/codec"
 
+	"github.com/oxia-db/oxia/cmd/common/banner"
+	"github.com/oxia-db/oxia/cmd/common/version"
 	"github.com/oxia-db/oxia/common/constant"
 	"github.com/oxia-db/oxia/common/process"
 	oxiadcommonoption "github.com/oxia-db/oxia/oxiad/common/option"
@@ -41,9 +43,15 @@ var (
 	Cmd = &cobra.Command{
 		Use:   "coordinator",
 		Short: "Start a coordinator",
-		Long:  `Start a coordinator`,
-		Args:  cobra.NoArgs,
-		Run:   exec,
+		Long: `Start an Oxia coordinator, which manages the cluster: it assigns the shards to the data servers,
+elects their leaders, and balances them.
+
+Configure it with the flags, or with a configuration file passed with --sconfig, which the coordinator
+reloads when it changes.`,
+		Example: `  # Start a coordinator from a configuration file
+  oxia coordinator --sconfig conf/coordinator.yaml`,
+		Args: cobra.NoArgs,
+		RunE: exec,
 	}
 )
 
@@ -93,8 +101,9 @@ func init() {
 	Cmd.Flags().StringVar(&controller.TLS.ServerName, "peer-tls-server-name", "", "Peer tls server name")
 }
 
-func exec(cmd *cobra.Command, _ []string) {
-	process.RunProcess(func() (io.Closer, error) {
+func exec(cmd *cobra.Command, _ []string) error {
+	version.RegisterMetric(version.Get(cmd.Root().Version))
+	return process.RunProcess(cmd.Context(), "COORDINATOR", func() (io.Closer, error) {
 		optionsWatch := commonwatch.New(coordinatorOptions)
 		// configure the options
 		if cmd.Flags().Changed("sconfig") {
@@ -124,6 +133,12 @@ func exec(cmd *cobra.Command, _ []string) {
 				return nil, err
 			}
 		}
+		banner.Print(cmd.OutOrStdout(), cmd.Root().Version,
+			banner.Field{Name: "Component", Value: "COORDINATOR"},
+			banner.Field{Name: "Public Endpoint", Value: coordinatorOptions.Server.Public.BindAddress},
+			banner.Field{Name: "Internal Endpoint", Value: coordinatorOptions.Server.Internal.BindAddress},
+			banner.MetricsField(&coordinatorOptions.Observability.Metric),
+			banner.PprofField())
 		return coordinator.NewGrpcServer(context.Background(), optionsWatch)
 	})
 }

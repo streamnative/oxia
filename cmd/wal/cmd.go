@@ -27,8 +27,8 @@ import (
 var (
 	Cmd = &cobra.Command{
 		Use:   "wal",
-		Short: "Wal utils",
-		Long:  `Tools for the oxia WAL`,
+		Short: "Write-ahead log tools",
+		Long:  `Tools to inspect and repair the write-ahead log of a data server.`,
 	}
 )
 
@@ -40,7 +40,5 @@ func init() {
 	Cmd.AddCommand(perf.Cmd)
 	Cmd.AddCommand(scan.Cmd)
 
-	if err := Cmd.MarkPersistentFlagRequired("shard"); err != nil {
-		panic(err)
-	}
+	cobra.CheckErr(Cmd.MarkPersistentFlagRequired("shard"))
 }

@@ -30,6 +30,13 @@ func TestWatchLoad(t *testing.T) {
 	assert.Equal(t, "initial", value)
 }
 
+func TestWatchLoadPanicsWithoutValue(t *testing.T) {
+	// A Watch not built by New holds no value, so Load can't return a T
+	w := &Watch[string]{}
+
+	assert.PanicsWithValue(t, "watch value type mismatch", func() { w.Load() })
+}
+
 func TestSubscribePublish(t *testing.T) {
 	w := New(&proto.ClusterConfiguration{})
 	r := w.Subscribe()

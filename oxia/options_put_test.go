@@ -37,3 +37,21 @@ func TestInvalidArgumentStatus(t *testing.T) {
 	result := toPutResult("key", &proto.PutResponse{Status: proto.Status_INVALID_ARGUMENT})
 	assert.ErrorIs(t, result.Err, ErrInvalidOptions)
 }
+
+func TestSequenceKeysDeltasValidation(t *testing.T) {
+	_, err := newPutOptions([]PutOption{SequenceKeysDeltas(1)})
+	assert.ErrorIs(t, err, ErrInvalidOptions)
+	assert.ErrorContains(t, err, "requires PartitionKey()")
+
+	_, err = newPutOptions([]PutOption{SequenceKeysDeltas(1), PartitionKey("p"), ExpectedVersionId(1)})
+	assert.ErrorIs(t, err, ErrInvalidOptions)
+	assert.ErrorContains(t, err, "does not allow to specify an ExpectedVersionId")
+
+	_, err = newPutOptions([]PutOption{SequenceKeysDeltas(0, 1), PartitionKey("p")})
+	assert.ErrorIs(t, err, ErrInvalidOptions)
+	assert.ErrorContains(t, err, "first delta in sequence keys delta must always be > 0")
+
+	putOpts, err := newPutOptions([]PutOption{SequenceKeysDeltas(1, 0), PartitionKey("p")})
+	require.NoError(t, err)
+	assert.Equal(t, []uint64{1, 0}, putOpts.sequenceKeysDeltas)
+}

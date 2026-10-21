@@ -60,7 +60,7 @@ func init() {
 var Cmd = &cobra.Command{
 	Use:   "get [flags] KEY",
 	Short: "Get one record",
-	Long:  `Get the values of the recover associated with the given key.`,
+	Long:  `Get the value of the record with the given key.`,
 	Args:  cobra.ExactArgs(1),
 	RunE:  exec,
 }

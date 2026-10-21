@@ -34,6 +34,8 @@ import (
 
 	"github.com/oxia-db/oxia/oxiad/dataserver/database/kvstore"
 
+	"github.com/oxia-db/oxia/cmd/common/banner"
+	"github.com/oxia-db/oxia/cmd/common/version"
 	"github.com/oxia-db/oxia/common/process"
 	"github.com/oxia-db/oxia/oxiad/dataserver"
 )
@@ -43,10 +45,18 @@ var (
 	dataServerOptions = option.NewDefaultOptions()
 	Cmd               = &cobra.Command{
 		Use:   "server",
-		Short: "Start a server",
-		Long:  `Long description`,
-		Args:  cobra.NoArgs,
-		Run:   exec,
+		Short: "Start a data server",
+		Long: `Start an Oxia data server, which stores and serves the shards that the coordinator assigns to it.
+
+Configure it with the flags, or with a configuration file passed with --sconfig, which the data server
+reloads when it changes.`,
+		Example: `  # Start a data server with the default addresses and directories
+  oxia server
+
+  # Start a data server from a configuration file
+  oxia server --sconfig conf/dataserver.yaml`,
+		Args: cobra.NoArgs,
+		RunE: exec,
 	}
 )
 
@@ -116,8 +126,9 @@ func init() {
 	}
 }
 
-func exec(cmd *cobra.Command, _ []string) {
-	process.RunProcess(func() (io.Closer, error) {
+func exec(cmd *cobra.Command, _ []string) error {
+	version.RegisterMetric(version.Get(cmd.Root().Version))
+	return process.RunProcess(cmd.Context(), "DATASERVER", func() (io.Closer, error) {
 		optionsWatch := commonwatch.New(dataServerOptions)
 		switch {
 		case cmd.Flags().Changed("sconfig"):
@@ -148,6 +159,15 @@ func exec(cmd *cobra.Command, _ []string) {
 			}
 		}
 
+		banner.Print(cmd.OutOrStdout(), cmd.Root().Version,
+			banner.Field{Name: "Component", Value: "DATASERVER"},
+			banner.InstanceIDField(dataServerOptions.Storage.Database.Dir),
+			banner.Field{Name: "Public Endpoint", Value: dataServerOptions.Server.Public.BindAddress},
+			banner.Field{Name: "Internal Endpoint", Value: dataServerOptions.Server.Internal.BindAddress},
+			banner.MetricsField(&dataServerOptions.Observability.Metric),
+			banner.PprofField(),
+			banner.Field{Name: "WAL Dir", Value: dataServerOptions.Storage.WAL.Dir},
+			banner.Field{Name: "Data Dir", Value: dataServerOptions.Storage.Database.Dir})
 		return dataserver.NewWithOptionsWatch(context.Background(), optionsWatch)
 	})
 }

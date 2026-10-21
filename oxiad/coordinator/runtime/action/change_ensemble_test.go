@@ -68,3 +68,28 @@ func TestChangeEnsembleAction_WithoutCallback(t *testing.T) {
 	_, err = action.Wait()
 	assert.Error(t, err)
 }
+
+func TestChangeEnsembleActionDoneIgnoresLaterCompletions(t *testing.T) {
+	var completions, failures int
+	action := NewChangeEnsembleActionWithCallback(0, &proto.DataServerIdentity{}, &proto.DataServerIdentity{},
+		concurrent.NewOnce(func(any) { completions++ }, func(error) { failures++ }))
+	action.Done(nil)
+	action.Done(nil)
+	action.Error(errors.New("error"))
+
+	_, err := action.Wait()
+	assert.NoError(t, err)
+	assert.Equal(t, 1, completions)
+	assert.Equal(t, 0, failures)
+}
+
+func TestChangeEnsembleActionErrorIgnoresLaterCompletions(t *testing.T) {
+	action := NewChangeEnsembleAction(0, &proto.DataServerIdentity{}, &proto.DataServerIdentity{})
+	first := errors.New("first")
+	action.Error(first)
+	action.Error(errors.New("second"))
+	action.Done(nil)
+
+	_, err := action.Wait()
+	assert.ErrorIs(t, err, first)
+}

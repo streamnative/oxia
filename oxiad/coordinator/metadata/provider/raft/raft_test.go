@@ -17,6 +17,9 @@ package raft
 import (
 	"io"
 	"log/slog"
+	"net"
+	"os"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -24,7 +27,101 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/oxia-db/oxia/common/failpoint"
 )
+
+// testRaftAddress binds the transport to a free port: the node ID, and so the
+// data dir, is the address as given.
+const testRaftAddress = "127.0.0.1:0"
+
+func TestNewBootstrapsAndReopens(t *testing.T) {
+	dataDir := t.TempDir()
+
+	r, err := New(testRaftAddress, []string{testRaftAddress}, dataDir, nil)
+	require.NoError(t, err)
+	require.NoError(t, r.Close())
+	require.NoError(t, r.Close(), "close is idempotent")
+
+	// The state is there now: the node restarts without bootstrapping again
+	r, err = New(testRaftAddress, nil, dataDir, nil)
+	require.NoError(t, err)
+	require.NoError(t, r.Close())
+}
+
+func TestNewFailsOnUnwritableDataDir(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "file")
+	require.NoError(t, os.WriteFile(dataDir, nil, 0o600))
+
+	_, err := New(testRaftAddress, []string{testRaftAddress}, dataDir, nil)
+	require.ErrorContains(t, err, "failed to create data dir")
+}
+
+func TestNewFailsOnInvalidAddress(t *testing.T) {
+	_, err := New("invalid-address", nil, t.TempDir(), nil)
+	require.ErrorContains(t, err, "failed to resolve raft address")
+}
+
+func TestNewFailsWhenAddressInUse(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer listener.Close()
+	address := listener.Addr().String()
+
+	_, err = New(address, []string{address}, t.TempDir(), nil)
+	require.ErrorContains(t, err, "failed to create raft transport")
+}
+
+func TestNewFailsOnStoreError(t *testing.T) {
+	dataDir := t.TempDir()
+	nodeDir := filepath.Join(dataDir, testRaftAddress)
+	require.NoError(t, os.MkdirAll(nodeDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(nodeDir, "store"), nil, 0o600))
+
+	_, err := New(testRaftAddress, []string{testRaftAddress}, dataDir, nil)
+	require.ErrorContains(t, err, "failed to create data store")
+}
+
+func TestNewFailsOnSnapshotStoreError(t *testing.T) {
+	dataDir := t.TempDir()
+	nodeDir := filepath.Join(dataDir, testRaftAddress)
+	require.NoError(t, os.MkdirAll(nodeDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(nodeDir, "snapshots"), nil, 0o600))
+
+	_, err := New(testRaftAddress, []string{testRaftAddress}, dataDir, nil)
+	require.ErrorContains(t, err, "failed to create snapshot store")
+}
+
+func TestNewFailsOnCorruptLog(t *testing.T) {
+	dataDir := t.TempDir()
+	store, err := newKVRaftStore(filepath.Join(dataDir, testRaftAddress, "store"))
+	require.NoError(t, err)
+	require.NoError(t, store.Set([]byte("log-00000000000000000001"), []byte("not json")))
+	require.NoError(t, store.Close())
+
+	_, err = New(testRaftAddress, []string{testRaftAddress}, dataDir, nil)
+	require.ErrorContains(t, err, "failed to create raft node")
+}
+
+func TestNewFailsToCheckExistingState(t *testing.T) {
+	skipWithoutFailpoints(t)
+	dataDir := t.TempDir()
+	failpointErr := errors.New("failpoint")
+	_, err := newRaft(testRaftAddress, []string{testRaftAddress}, dataDir, nil, failpoint.New(map[string]func() error{
+		"new.hasExistingState": func() error { return failpointErr },
+	}))
+	require.ErrorIs(t, err, failpointErr)
+
+	// The failed start released the address and the data dir
+	r, err := New(testRaftAddress, []string{testRaftAddress}, dataDir, nil)
+	require.NoError(t, err)
+	require.NoError(t, r.Close())
+}
+
+func TestNewFailsToBootstrapWithoutNodes(t *testing.T) {
+	_, err := New(testRaftAddress, nil, t.TempDir(), nil)
+	require.ErrorContains(t, err, "failed to create raft node")
+}
 
 type leadershipResult struct {
 	lost <-chan struct{}

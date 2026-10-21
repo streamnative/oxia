@@ -58,6 +58,16 @@ type FollowerController interface {
 	CommitOffset() int64
 	Status() proto.ServingStatus
 	GetStatus(request *proto.GetStatusRequest) (*proto.GetStatusResponse, error)
+	// Checkpoint takes a checkpoint of the database, for a backup. It holds
+	// the controller's read lock during the flush: a snapshot install waits
+	// for it, and it fails while one replaces the database.
+	Checkpoint() (*database.Checkpoint, error)
+	// WithDatabase runs fn with the directory of the database, under the
+	// controller's read lock, while the database is still the one a
+	// checkpoint of the given generation was taken from; it returns
+	// database.ErrDatabaseReplaced otherwise. A file fn writes next to the
+	// database thus never lands in a database that replaced it.
+	WithDatabase(generation uint64, fn func(dir string) error) error
 	// NewTerm
 	//
 	// Node handles a new term request
@@ -276,13 +286,13 @@ func (fc *followerController) Close() error {
 	fc.rwMutex.Lock()
 	defer fc.rwMutex.Unlock()
 	if fc.logSynchronizer.IsValid() {
-		err = multierr.Append(err, fc.logSynchronizer.Close())
+		fc.logSynchronizer.Close()
 	}
-	return multierr.Combine(
-		err,
+	err = multierr.Combine(
 		fc.wal.Close(),
 		fc.db.Close(),
 	)
+	return err
 }
 
 func (fc *followerController) Status() proto.ServingStatus {
@@ -323,11 +333,8 @@ func (fc *followerController) AppendEntries(stream proto.OxiaLogReplication_Repl
 			return nil, constant.ErrResourceConflict
 		}
 
-		if s := proto.ServingStatus(fc.status.Load()); s != proto.ServingStatus_FENCED && s != proto.ServingStatus_FOLLOWER {
-			if s == proto.ServingStatus_NOT_MEMBER {
-				return nil, constant.ErrNodeIsNotMember
-			}
-			return nil, constant.ErrInvalidStatus
+		if proto.ServingStatus(fc.status.Load()) == proto.ServingStatus_NOT_MEMBER {
+			return nil, constant.ErrNodeIsNotMember
 		}
 		if fc.logSynchronizer.IsValid() {
 			return nil, constant.ErrResourceConflict
@@ -384,9 +391,7 @@ func (fc *followerController) NewTerm(req *proto.NewTermRequest) (*proto.NewTerm
 	}
 
 	if fc.logSynchronizer.IsValid() {
-		if err := fc.logSynchronizer.Close(); err != nil {
-			return nil, errors.Wrapf(multierr.Combine(constant.ErrResourceUnavailable, err), "failed to close log synchronizer")
-		}
+		fc.logSynchronizer.Close()
 		fc.logSynchronizer = nil
 	}
 
@@ -467,17 +472,17 @@ func (fc *followerController) stateApplier() {
 	bo := commontime.NewBackOff(fc.ctx)
 	_ = backoff.RetryNotify(func() error {
 		for {
-			select {
-			case <-fc.ctx.Done():
-				return nil
-			case <-fc.stateApplierCond:
-			}
-
 			maxInclusive := fc.advertisedCommitOffset.Load()
 			if err := fc.applyCommittedEntries(maxInclusive); err != nil {
 				return err
 			}
 			bo.Reset()
+
+			select {
+			case <-fc.ctx.Done():
+				return nil
+			case <-fc.stateApplierCond:
+			}
 		}
 	}, bo, func(err error, d time.Duration) {
 		fc.log.Error("State applier failed, retrying",
@@ -899,6 +904,32 @@ func (fc *followerController) loadSnapshotChunks(loader kvstore.SnapshotLoader, 
 		}
 		totalSize += int64(len(snapChunk.Content))
 	}
+}
+
+func (fc *followerController) Checkpoint() (*database.Checkpoint, error) {
+	fc.rwMutex.RLock()
+	defer fc.rwMutex.RUnlock()
+	if fc.closed.Load() || fc.db == nil {
+		return nil, constant.ErrResourceUnavailable
+	}
+	snapshot, err := fc.db.Snapshot()
+	if err != nil {
+		return nil, err
+	}
+	return &database.Checkpoint{Snapshot: snapshot,
+		Generation: fc.kvFactory.DatabaseGeneration(fc.namespace, fc.shardId)}, nil
+}
+
+func (fc *followerController) WithDatabase(generation uint64, fn func(dir string) error) error {
+	fc.rwMutex.RLock()
+	defer fc.rwMutex.RUnlock()
+	if fc.closed.Load() || fc.db == nil {
+		return constant.ErrResourceUnavailable
+	}
+	if fc.kvFactory.DatabaseGeneration(fc.namespace, fc.shardId) != generation {
+		return database.ErrDatabaseReplaced
+	}
+	return fn(fc.kvFactory.DatabaseDir(fc.namespace, fc.shardId))
 }
 
 func (fc *followerController) GetStatus(_ *proto.GetStatusRequest) (*proto.GetStatusResponse, error) {

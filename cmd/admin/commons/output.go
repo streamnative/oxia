@@ -59,8 +59,15 @@ func WriteStructuredOutput(out io.Writer, format string, value any) error {
 	}
 }
 
-func NewTableWriter(out io.Writer) *tabwriter.Writer {
-	return tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+// WriteTable writes the header, then the rows, in aligned columns.
+func WriteTable(out io.Writer, header []string, rows [][]string) error {
+	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	for _, row := range append([][]string{header}, rows...) {
+		if _, err := fmt.Fprintln(tw, strings.Join(row, "\t")); err != nil {
+			return err
+		}
+	}
+	return tw.Flush()
 }
 
 func FormatLabels(labels map[string]string) string {
@@ -91,13 +98,9 @@ func writeJSON(out io.Writer, value any) error {
 }
 
 func writeYAML(out io.Writer, value any) error {
-	data, err := yaml.Marshal(value)
-	if err != nil {
+	encoder := yaml.NewEncoder(out)
+	if err := encoder.Encode(value); err != nil {
 		return err
 	}
-	if len(data) == 0 || data[len(data)-1] != '\n' {
-		data = append(data, '\n')
-	}
-	_, err = out.Write(data)
-	return err
+	return encoder.Close()
 }

@@ -17,7 +17,6 @@ package lead
 import (
 	"context"
 	"errors"
-	"io"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -40,7 +39,7 @@ var (
 //
 // The quorum ack tracker is also used to block until the head offset or commit offset are advanced.
 type QuorumAckTracker interface {
-	io.Closer
+	Close()
 
 	CommitOffset() int64
 
@@ -344,7 +343,7 @@ func (q *quorumAckTracker) notifyCommitOffsetAdvanced(commitOffset int64) {
 	}
 }
 
-func (q *quorumAckTracker) Close() error {
+func (q *quorumAckTracker) Close() {
 	q.Lock()
 	alreadyClosed := q.closed
 	q.closed = true
@@ -357,7 +356,6 @@ func (q *quorumAckTracker) Close() error {
 	// Wait for the callbacks goroutine to fail the pending requests and drain:
 	// once Close returns, no callback is running or will ever run.
 	<-q.callbacksDone
-	return nil
 }
 
 func (q *quorumAckTracker) NewCursorAcker(ackOffset int64) (CursorAcker, error) {

@@ -48,6 +48,22 @@ func TestShardAssignmentsLeader(t *testing.T) {
 			},
 		},
 		{
+			name: "nil first assignment",
+			assignments: &proto.ShardAssignments{
+				Namespaces: map[string]*proto.NamespaceShardsAssignment{
+					constant.DefaultNamespace: {Assignments: []*proto.ShardAssignment{nil}},
+				},
+			},
+		},
+		{
+			name: "first assignment without leader",
+			assignments: &proto.ShardAssignments{
+				Namespaces: map[string]*proto.NamespaceShardsAssignment{
+					constant.DefaultNamespace: {Assignments: []*proto.ShardAssignment{{Shard: 1}}},
+				},
+			},
+		},
+		{
 			name: "valid leader",
 			assignments: &proto.ShardAssignments{
 				Namespaces: map[string]*proto.NamespaceShardsAssignment{
@@ -105,11 +121,11 @@ func TestDispatcherSkipsEmptyAssignmentLeaderUpdate(t *testing.T) {
 
 	d := &dispatcher{currentLeader: "existing"}
 	require.NotPanics(t, func() {
-		d.onOxiaStreamRequestMessage(
+		require.NoError(t, d.onOxiaStreamRequestMessage(
 			MsgTypeShardAssignmentsResponse,
 			&Message[OxiaStreamMessage]{Src: "n1", Body: OxiaStreamMessage{StreamId: 1}},
 			&proto.ShardAssignments{Namespaces: map[string]*proto.NamespaceShardsAssignment{}},
-		)
+		))
 	})
 	require.Equal(t, "existing", d.currentLeader)
 }

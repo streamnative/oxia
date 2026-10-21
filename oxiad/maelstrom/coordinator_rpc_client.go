@@ -199,6 +199,10 @@ func (m *maelstromShardAssignmentClient) Send(response *proto.ShardAssignments) 
 	if leader, ok := getDefaultNamespaceLeader(assignments); ok {
 		m.provider.dispatcher.currentLeader = leader
 	}
+	oxiaMsg, err := toJSON(response)
+	if err != nil {
+		return err
+	}
 	req := &Message[OxiaStreamMessage]{
 		Src:  thisNode,
 		Dest: m.node,
@@ -207,7 +211,7 @@ func (m *maelstromShardAssignmentClient) Send(response *proto.ShardAssignments) 
 				Type:  MsgTypeShardAssignmentsResponse,
 				MsgId: msgIdGenerator.Add(1),
 			},
-			OxiaMsg:  toJSON(response),
+			OxiaMsg:  oxiaMsg,
 			StreamId: m.streamId,
 		},
 	}
@@ -231,7 +235,15 @@ func (m *maelstromShardAssignmentClient) sendUntilAcked(msgId int64) {
 		return
 	}
 
-	sendResponse(m.unacked)
+	if err := sendResponse(m.unacked); err != nil {
+		slog.Warn(
+			"Failed to send the shard assignments, closing the stream",
+			slog.String("node", m.node),
+			slog.Any("error", err),
+		)
+		m.cancel()
+		return
+	}
 	time.AfterFunc(assignmentsResendInterval, func() { m.sendUntilAcked(msgId) })
 }
 

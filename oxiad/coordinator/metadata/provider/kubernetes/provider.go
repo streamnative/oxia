@@ -24,7 +24,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 	gproto "google.golang.org/protobuf/proto"
 	corev1 "k8s.io/api/core/v1"
@@ -35,9 +34,9 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
-	"k8s.io/klog/v2"
 
 	"github.com/oxia-db/oxia/common/concurrent"
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/common/metric"
 	"github.com/oxia-db/oxia/common/process"
 	commonproto "github.com/oxia-db/oxia/common/proto"
@@ -84,7 +83,8 @@ type Provider[T gproto.Message] struct {
 
 	cache *cache.Cache[provider.Versioned[T]]
 
-	logger *slog.Logger
+	logger     *slog.Logger
+	failpoints *failpoint.Failpoints
 }
 
 func NewProvider[T gproto.Message](
@@ -94,19 +94,27 @@ func NewProvider[T gproto.Message](
 	codec metadatacodec.Codec[T],
 	watchEnabled metadatacommon.WatchMode,
 	name string,
-) (provider.Provider[T], error) {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return nil, errors.New("coordinator name must not be empty")
-	}
+) provider.Provider[T] {
+	return newProvider(ctx, kc, namespace, configMapName, codec, watchEnabled, name, nil)
+}
 
+func newProvider[T gproto.Message](
+	ctx context.Context,
+	kc kubernetes.Interface,
+	namespace, configMapName string,
+	codec metadatacodec.Codec[T],
+	watchEnabled metadatacommon.WatchMode,
+	name string,
+	failpoints *failpoint.Failpoints,
+) *Provider[T] {
 	m := &Provider[T]{
+		failpoints:    failpoints,
 		kubernetes:    kc,
 		namespace:     namespace,
 		configMapName: configMapName,
 		codec:         codec,
 		watchEnabled:  watchEnabled,
-		name:          name,
+		name:          strings.TrimSpace(name),
 		logger:        slog.With("component", "metadata-config-map"),
 
 		getLatencyHisto: metric.NewLatencyHistogram("oxia_coordinator_metadata_get_latency",
@@ -128,10 +136,7 @@ func NewProvider[T gproto.Message](
 		"The size of the coordinator metadata", metric.Bytes, nil, func() int64 {
 			return m.metadataSize.Load()
 		})
-
-	clientLogger := logr.FromSlogHandler(m.logger.With(slog.String("sub-component", "k8s-client")).Handler())
-	klog.SetLogger(clientLogger)
-	return m, nil
+	return m
 }
 
 func NewDefaultClientset() (kubernetes.Interface, error) {
@@ -208,7 +213,7 @@ func (m *Provider[T]) write(snapshot provider.Versioned[T]) (*provider.Versioned
 	}
 	cmData := makeDesiredConfigMap(m.configMapName, m.codec.GetKey(), data, snapshot.Version)
 	desiredBytes, err := json.Marshal(cmData)
-	if err != nil {
+	if err = m.failpoints.Fail("store.marshal", err); err != nil {
 		return nil, err
 	}
 
@@ -298,9 +303,10 @@ func (m *Provider[T]) WaitToBecomeLeader() (<-chan struct{}, error) {
 	}
 
 	// Start leader election
+	// The elector rejects an empty coordinator name
 	leaderElector, err := leaderelection.NewLeaderElector(leaderElectionConfig)
 	if err != nil {
-		panic(err)
+		return nil, errors.Wrap(err, "failed to create the leader elector")
 	}
 	m.leaderElector.Store(leaderElector)
 

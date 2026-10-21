@@ -17,7 +17,6 @@ package wal
 import (
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"time"
 
@@ -43,7 +42,7 @@ type CommitOffsetProvider interface {
 }
 
 type Trimmer interface {
-	io.Closer
+	Close()
 }
 
 func newTrimmer(namespace string, shard int64, wal *wal, retention time.Duration, checkInterval time.Duration, clock time2.Clock,
@@ -92,16 +91,14 @@ type trimmer struct {
 	waitClose chan any
 }
 
-func (t *trimmer) Close() error {
+func (t *trimmer) Close() {
 	select {
 	case <-t.ctx.Done():
-		return nil
 	default:
 		t.cancel()
 		t.ticker.Stop()
 
 		<-t.waitClose
-		return nil
 	}
 }
 

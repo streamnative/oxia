@@ -18,6 +18,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -46,12 +47,12 @@ func syncCounterFactory(m metric.Meter) counterFactory {
 	return counterFactory{
 		newCounter: func(name string, description string, unit Unit, labels map[string]any) Counter {
 			c, err := m.Int64Counter(name, metric.WithUnit(string(unit)), metric.WithDescription(description))
-			fatalOnErr(err, name)
+			panicOnErr(err, name)
 			return &syncCounter{add: c.Add, attrs: getAttrs(labels)}
 		},
 		newUpDownCounter: func(name string, description string, unit Unit, labels map[string]any) UpDownCounter {
 			c, err := m.Int64UpDownCounter(name, metric.WithUnit(string(unit)), metric.WithDescription(description))
-			fatalOnErr(err, name)
+			panicOnErr(err, name)
 			return &syncCounter{add: c.Add, attrs: getAttrs(labels)}
 		},
 	}
@@ -123,6 +124,22 @@ func TestCounter_ExportedDataUnchanged(t *testing.T) {
 	// Sanity check on the scenario itself.
 	require.Empty(t, expected[0].Metrics)
 	require.Len(t, expected[1].Metrics, 4)
+}
+
+func TestNewCounterPanicsOnInvalidName(t *testing.T) {
+	withTestMeter(t)
+
+	assert.PanicsWithError(t,
+		"failed to create metric 1counter: invalid instrument name: 1counter: must start with a letter",
+		func() { NewCounter("1counter", "", Dimensionless, map[string]any{}) })
+}
+
+func TestNewUpDownCounterPanicsOnInvalidName(t *testing.T) {
+	withTestMeter(t)
+
+	assert.PanicsWithError(t,
+		"failed to create metric 1counter: invalid instrument name: 1counter: must start with a letter",
+		func() { NewUpDownCounter("1counter", "", Dimensionless, map[string]any{}) })
 }
 
 // The SDK ignores the callbacks of an observable instrument created again on

@@ -15,8 +15,8 @@
 package cli
 
 import (
-	"fmt"
 	"io"
+	"strconv"
 
 	"github.com/pkg/errors"
 
@@ -70,54 +70,40 @@ func writeNamespaceOutput(out io.Writer, format string, value any, writeTable fu
 	if err := commons.ValidateOutputFormat(format); err != nil {
 		return err
 	}
-	format = commons.NormalizeOutputFormat(format)
-	switch format {
-	case commons.OutputJSON, commons.OutputYAML:
-		return commons.WriteStructuredOutput(out, format, value)
-	case commons.OutputTable:
+	if commons.NormalizeOutputFormat(format) == commons.OutputTable {
 		return writeTable()
-	default:
-		return errors.Errorf("unsupported output format %q", format)
 	}
+	return commons.WriteStructuredOutput(out, format, value)
 }
 
 func writeNamespaceTable(out io.Writer, namespaces []*proto.Namespace) error {
-	tw := commons.NewTableWriter(out)
-	if _, err := fmt.Fprintln(tw, "NAME\tINITIAL_SHARDS\tREPLICATION_FACTOR"); err != nil {
-		return err
-	}
+	rows := make([][]string, 0, len(namespaces))
 	for _, namespace := range namespaces {
 		if namespace == nil {
 			continue
 		}
-		if _, err := fmt.Fprintf(tw, "%s\t%d\t%d\n",
-			namespace.GetName(),
-			namespace.GetInitialShardCount(),
-			namespace.GetReplicationFactor(),
-		); err != nil {
-			return err
-		}
+		rows = append(rows, namespaceRow(namespace))
 	}
-	return tw.Flush()
+	return commons.WriteTable(out, namespaceTableHeader, rows)
 }
 
 func writeNamespaceViewTable(out io.Writer, namespaces []*proto.NamespaceView) error {
-	tw := commons.NewTableWriter(out)
-	if _, err := fmt.Fprintln(tw, "NAME\tINITIAL_SHARDS\tREPLICATION_FACTOR"); err != nil {
-		return err
-	}
+	rows := make([][]string, 0, len(namespaces))
 	for _, view := range namespaces {
 		if view == nil || view.GetNamespace() == nil {
 			continue
 		}
-		namespace := view.GetNamespace()
-		if _, err := fmt.Fprintf(tw, "%s\t%d\t%d\n",
-			namespace.GetName(),
-			namespace.GetInitialShardCount(),
-			namespace.GetReplicationFactor(),
-		); err != nil {
-			return err
-		}
+		rows = append(rows, namespaceRow(view.GetNamespace()))
 	}
-	return tw.Flush()
+	return commons.WriteTable(out, namespaceTableHeader, rows)
+}
+
+var namespaceTableHeader = []string{"NAME", "INITIAL_SHARDS", "REPLICATION_FACTOR"}
+
+func namespaceRow(namespace *proto.Namespace) []string {
+	return []string{
+		namespace.GetName(),
+		strconv.FormatUint(uint64(namespace.GetInitialShardCount()), 10),
+		strconv.FormatUint(uint64(namespace.GetReplicationFactor()), 10),
+	}
 }

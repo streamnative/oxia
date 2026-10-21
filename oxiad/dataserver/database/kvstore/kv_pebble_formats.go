@@ -23,12 +23,14 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/cockroachdb/pebble/v2/bloom"
 	"github.com/cockroachdb/pebble/v2/sstable"
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 
 	"github.com/oxia-db/oxia/common/proto"
 
 	"github.com/oxia-db/oxia/common/compare"
+	"github.com/oxia-db/oxia/common/failpoint"
 )
 
 const (
@@ -45,16 +47,18 @@ func makeSwapTmpDbPath(path string, encoder compare.Encoder) string {
 }
 
 type pebbleDbConversion struct {
-	dbPath string
-	log    *slog.Logger
-	kvTrap *KvTrap
+	dbPath     string
+	log        *slog.Logger
+	fs         vfs.FS
+	failpoints *failpoint.Failpoints
 }
 
-func newPebbleDbConversion(log *slog.Logger, dbPath string, kvTrap *KvTrap) *pebbleDbConversion {
+func newPebbleDbConversion(log *slog.Logger, fs vfs.FS, dbPath string, failpoints *failpoint.Failpoints) *pebbleDbConversion {
 	return &pebbleDbConversion{
-		dbPath: dbPath,
-		log:    log,
-		kvTrap: kvTrap,
+		dbPath:     dbPath,
+		log:        log,
+		fs:         fs,
+		failpoints: failpoints,
 	}
 }
 
@@ -66,6 +70,7 @@ func pathExists(path string) bool {
 func (p *pebbleDbConversion) configForOldCompareHierarchical() *pebble.Options {
 	return &pebble.Options{
 		Comparer:           OxiaSlashSpanComparer,
+		FS:                 p.fs,
 		DisableWAL:         true,
 		Logger:             &pebbleLogger{p.log},
 		FormatMajorVersion: pebble.FormatVirtualSSTables,
@@ -92,6 +97,7 @@ func (p *pebbleDbConversion) configForNewerFormat() *pebble.Options {
 		}
 	}
 	return &pebble.Options{
+		FS:                 p.fs,
 		DisableWAL:         true,
 		Logger:             &pebbleLogger{p.log},
 		FormatMajorVersion: pebble.FormatVirtualSSTables,
@@ -148,17 +154,16 @@ func (p *pebbleDbConversion) checkConvertDB(desiredEncoding compare.Encoder) err
 			confOld, compare.EncoderNatural,
 			confNew, desiredEncoding)
 
-	case compare.EncoderNatural.Name(),
-		compare.EncoderHierarchical.Name():
-		confOld := p.configForNewerFormat()
-		confNew := p.configForNewerFormat()
-		oldEncoder, err := compare.GetEncoder(keyEncodingMarker)
-		if err != nil {
-			return err
-		}
+	case compare.EncoderNatural.Name():
 		return p.convertDb(
-			confOld, oldEncoder,
-			confNew, desiredEncoding)
+			p.configForNewerFormat(), compare.EncoderNatural,
+			p.configForNewerFormat(), desiredEncoding)
+
+	case compare.EncoderHierarchical.Name():
+		return p.convertDb(
+			p.configForNewerFormat(), compare.EncoderHierarchical,
+			p.configForNewerFormat(), desiredEncoding)
+
 	default:
 		p.log.Warn("Found unknown encoding type. No conversion performed",
 			slog.String("keyEncodingMarker", keyEncodingMarker))
@@ -251,7 +256,7 @@ func (p *pebbleDbConversion) convertDb(
 		return multierr.Append(errors.Wrap(err, "failed to open new database"), oldDb.Close())
 	}
 
-	if err := copyData(oldDb, oldEncoder, newDb, newEncoder); err != nil {
+	if err := p.copyData(oldDb, oldEncoder, newDb, newEncoder); err != nil {
 		return multierr.Combine(errors.Wrap(err, "failed to copy db data"), oldDb.Close(), newDb.Close())
 	}
 
@@ -263,11 +268,11 @@ func (p *pebbleDbConversion) convertDb(
 		return errors.Wrap(err, "failed to close new database")
 	}
 
-	if err := os.Rename(p.dbPath, oldDbBackupPath); err != nil {
+	if err := p.failpoints.Fail("convertDb.backupOldDb", os.Rename(p.dbPath, oldDbBackupPath)); err != nil {
 		return errors.Wrap(err, "failed to backup old database")
 	}
 
-	if err = p.kvTrap.Trigger("convertCrashAfterMoveOldDb"); err != nil {
+	if err = p.failpoints.Trigger("convertCrashAfterMoveOldDb"); err != nil {
 		return err
 	}
 
@@ -275,7 +280,7 @@ func (p *pebbleDbConversion) convertDb(
 		return errors.Wrap(err, "failed to rename new database")
 	}
 
-	if err = p.kvTrap.Trigger("convertCrashAfterMoveNewDb"); err != nil {
+	if err = p.failpoints.Trigger("convertCrashAfterMoveNewDb"); err != nil {
 		return err
 	}
 
@@ -295,21 +300,21 @@ func (p *pebbleDbConversion) convertDb(
 
 const maxBatchCount = 1000
 
-func copyData(from *pebble.DB, fromEncoder compare.Encoder,
-	to *pebble.DB, toEncoder compare.Encoder) error {
+func (p *pebbleDbConversion) copyData(from *pebble.DB, fromEncoder compare.Encoder,
+	to *pebble.DB, toEncoder compare.Encoder) (err error) {
 	it, err := from.NewIter(&pebble.IterOptions{})
-	if err != nil {
-		return err
+	if err = p.failpoints.Fail("copyData.newIter", err); err != nil {
+		return closeFailedIter(it, err)
 	}
-
-	defer it.Close()
 
 	it.First()
 
 	wb := to.NewBatch()
-	// Closes whichever batch is current when returning; full batches are
-	// closed when they are replaced
-	defer func() { _ = wb.Close() }()
+	// Closes the iterator and whichever batch is current when returning; full
+	// batches are closed when they are replaced
+	defer func() {
+		err = multierr.Combine(err, wb.Close(), it.Close())
+	}()
 	batchCount := 0
 	for it.Valid() {
 		key := fromEncoder.Decode(it.Key())
@@ -319,21 +324,21 @@ func copyData(from *pebble.DB, fromEncoder compare.Encoder,
 		}
 
 		encodedKey := toEncoder.Encode(key)
-		if err := wb.Set(encodedKey, value, pebble.NoSync); err != nil {
+		if err := p.failpoints.Fail("copyData.set", wb.Set(encodedKey, value, pebble.NoSync)); err != nil {
 			return err
 		}
 
 		if batchCount++; batchCount >= maxBatchCount {
-			if err := wb.Commit(pebble.NoSync); err != nil {
+			if err := p.failpoints.Fail("copyData.commitBatch", wb.Commit(pebble.NoSync)); err != nil {
 				return err
 			}
 
-			if err := wb.Close(); err != nil {
-				return err
-			}
-
-			batchCount = 0
+			full := wb
 			wb = to.NewBatch()
+			batchCount = 0
+			if err := p.failpoints.Fail("copyData.closeBatch", full.Close()); err != nil {
+				return err
+			}
 		}
 
 		it.Next()
@@ -346,7 +351,7 @@ func copyData(from *pebble.DB, fromEncoder compare.Encoder,
 
 	// Commit the last batch
 	if batchCount > 0 {
-		if err := wb.Commit(pebble.NoSync); err != nil {
+		if err := p.failpoints.Fail("copyData.commitLastBatch", wb.Commit(pebble.NoSync)); err != nil {
 			return err
 		}
 	}

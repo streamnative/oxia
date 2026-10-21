@@ -33,7 +33,11 @@ type SequenceWaiter interface {
 
 type SequenceWaiterTracker interface {
 	io.Closer
-	AddSequenceWaiter(key string) *sequenceWaiter
+	// AddSequenceWaiter registers a waiter for the sequence, and sends it the last
+	// key that loadFunc returns, unless SequenceUpdated sent it a key during the
+	// read, so the read can't override a newer key. The waiter is registered
+	// before the read, so a commit that the read misses sends its key.
+	AddSequenceWaiter(key string, loadFunc func() (string, bool, error)) (*sequenceWaiter, error)
 	SequenceUpdated(prefixKey string, lastSequenceKey string)
 }
 
@@ -52,6 +56,8 @@ type sequenceWaiter struct {
 	tracker *sequenceWaiterTracker
 
 	closed atomic.Bool
+	// updated is set once SequenceUpdated sends the waiter a key
+	updated atomic.Bool
 }
 
 func (sw *sequenceWaiter) Receive(ctx context.Context) (string, error) {
@@ -87,10 +93,9 @@ func NewSequencesWaitTracker() SequenceWaiterTracker {
 	}
 }
 
-func (swt *sequenceWaiterTracker) AddSequenceWaiter(key string) *sequenceWaiter {
+func (swt *sequenceWaiterTracker) AddSequenceWaiter(key string,
+	loadFunc func() (string, bool, error)) (*sequenceWaiter, error) {
 	swt.Lock()
-	defer swt.Unlock()
-
 	im, existing := swt.waiters[key]
 	if !existing {
 		im = map[sequenceWaiterID]*sequenceWaiter{}
@@ -98,17 +103,31 @@ func (swt *sequenceWaiterTracker) AddSequenceWaiter(key string) *sequenceWaiter 
 	}
 
 	id := sequenceWaiterID(swt.idGen.Add(1))
-	sw := &sequenceWaiter{key, id, channel.NewOverrideChannel[string](), swt, atomic.Bool{}}
+	sw := &sequenceWaiter{key: key, id: id, och: channel.NewOverrideChannel[string](), tracker: swt}
 	im[id] = sw
-	return sw
+	swt.Unlock()
+
+	// Registered first: a commit that the read misses sends its key
+	lastKey, found, err := loadFunc()
+	if err != nil {
+		_ = sw.Close()
+		return nil, err
+	}
+	if found {
+		swt.Lock()
+		// Once SequenceUpdated sends a key, it sends the key of every later
+		// commit too: the waiter gets the read's key, or a newer one, anyway
+		if !sw.updated.Load() && !sw.closed.Load() {
+			sw.och.WriteLast(lastKey)
+		}
+		swt.Unlock()
+	}
+	return sw, nil
 }
 
 func (swt *sequenceWaiterTracker) removeWithoutLock(key string, id sequenceWaiterID) {
-	im, existing := swt.waiters[key]
-	if !existing {
-		return
-	}
-
+	// The waiters of the key are gone when the tracker closed first
+	im := swt.waiters[key]
 	delete(im, id)
 	if len(im) == 0 {
 		delete(swt.waiters, key)
@@ -126,6 +145,7 @@ func (swt *sequenceWaiterTracker) SequenceUpdated(prefixKey string, lastSequence
 	defer swt.RUnlock()
 
 	for _, w := range swt.waiters[prefixKey] {
+		w.updated.Store(true)
 		w.och.WriteLast(lastSequenceKey)
 	}
 }

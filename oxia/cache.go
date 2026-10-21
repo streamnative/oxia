@@ -26,6 +26,7 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 
+	"github.com/oxia-db/oxia/common/failpoint"
 	"github.com/oxia-db/oxia/common/process"
 )
 
@@ -103,6 +104,7 @@ type cacheManager struct {
 	sync.Mutex
 
 	client        SyncClient
+	failpoints    *failpoint.Failpoints
 	notifications Notifications
 	caches        []internalCache
 
@@ -110,9 +112,10 @@ type cacheManager struct {
 	cancel context.CancelFunc
 }
 
-func newCacheManager(client SyncClient) (*cacheManager, error) {
+func newCacheManager(client SyncClient, failpoints *failpoint.Failpoints) (*cacheManager, error) {
 	cm := &cacheManager{
-		client: client,
+		client:     client,
+		failpoints: failpoints,
 	}
 
 	cm.ctx, cm.cancel = context.WithCancel(context.Background())
@@ -171,7 +174,7 @@ func newCache[T any](cm *cacheManager, serializeFunc SerializeFunc, deserializeF
 	cm.Lock()
 	defer cm.Unlock()
 
-	cache, err := newCacheImpl[T](cm.client, serializeFunc, deserializeFunc)
+	cache, err := newCacheImpl[T](cm.client, cm.failpoints, serializeFunc, deserializeFunc)
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +224,8 @@ type keyLoads struct {
 	evictions uint64
 }
 
-func newCacheImpl[Value any](client SyncClient, serializeFunc SerializeFunc, deserializeFunc DeserializeFunc) (*cacheImpl[Value], error) {
+func newCacheImpl[Value any](client SyncClient, failpoints *failpoint.Failpoints, serializeFunc SerializeFunc,
+	deserializeFunc DeserializeFunc) (*cacheImpl[Value], error) {
 	c := &cacheImpl[Value]{
 		client:          client,
 		serializeFunc:   serializeFunc,
@@ -235,7 +239,8 @@ func newCacheImpl[Value any](client SyncClient, serializeFunc SerializeFunc, des
 		MaxCost:     64 * 1024 * 1024,
 		BufferItems: 64,
 	})
-	if err != nil {
+	if err = failpoints.Fail("newCacheImpl.newCache", err); err != nil {
+		c.valueCache.Close()
 		return nil, err
 	}
 	return c, nil
@@ -256,8 +261,8 @@ func (c *cacheImpl[Value]) handleNotification(n *Notification) {
 }
 
 // The eviction and the Set of a load that raced it are ordered by the loads
-// mutex: either the load sees the eviction and skips its Set, or ristretto
-// applies the Del after the Set, as both go through its buffer in order.
+// mutex: either the load sees the eviction and skips its Set, or the Set is
+// applied before the eviction, which removes it.
 func (c *cacheImpl[Value]) evict(key string) {
 	c.loadsMutex.Lock()
 	defer c.loadsMutex.Unlock()
@@ -317,11 +322,18 @@ func (c *cacheImpl[Value]) load(ctx context.Context, key string) (value Value, v
 	// Cache the record only if the key was not evicted since the load started,
 	// as the eviction can be of a change applied after the server read it
 	set := func(cr cachedResult[Value], cost int64, ttl time.Duration) {
+		// Close waits for the Set: Wait would block forever on a cache that
+		// stopped applying its buffer
+		c.RLock()
+		defer c.RUnlock()
 		c.loadsMutex.Lock()
 		defer c.loadsMutex.Unlock()
 
 		if kl.evictions == evictions {
 			c.valueCache.SetWithTTL(key, cr, cost, ttl)
+			// Apply the Set now: an eviction removes the records in the
+			// store, not the buffered ones
+			c.valueCache.Wait()
 		}
 	}
 

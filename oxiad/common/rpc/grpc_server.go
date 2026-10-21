@@ -18,10 +18,10 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
-	"os"
 	"time"
 
 	"google.golang.org/grpc"
@@ -95,13 +95,7 @@ func newDefaultGrpcProvider(name, bindAddress string, registerFunc func(grpc.Ser
 				slog.Any("error", err))
 			return nil, err
 		}
-		delegator, err := auth.NewGrpcAuthenticationDelegator(provider)
-		if err != nil {
-			slog.Error("Failed to init grpc authentication delegator",
-				slog.Any("authOptions", *authOptions),
-				slog.Any("error", err))
-			return nil, err
-		}
+		delegator := auth.NewGrpcAuthenticationDelegator(provider)
 		unaryInterceptors = append(unaryInterceptors, delegator.GetUnaryInterceptor())
 		streamInterceptors = append(streamInterceptors, delegator.GetStreamInterceptor())
 	}
@@ -129,7 +123,7 @@ func newDefaultGrpcProvider(name, bindAddress string, registerFunc func(grpc.Ser
 	lc := net.ListenConfig{}
 	listener, err := lc.Listen(context.Background(), "tcp", bindAddress)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to start the %s gRPC server on %s: %w", name, bindAddress, err)
 	}
 
 	c.port = listener.Addr().(*net.TCPAddr).Port
@@ -145,23 +139,26 @@ func newDefaultGrpcProvider(name, bindAddress string, registerFunc func(grpc.Ser
 			"oxia": name,
 			"bind": listener.Addr().String(),
 		},
-		func() {
-			defer close(c.serveDone)
-			// Serve returns ErrServerStopped when Close() stopped the server before
-			// this goroutine was scheduled: a benign race, not a startup failure.
-			if err := c.server.Serve(listener); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
-				c.log.Error(
-					"Failed to start serving",
-					slog.Any("error", err),
-				)
-				os.Exit(1)
-			}
-		},
+		func() { c.serve(listener) },
 	)
 
 	c.log.Info("Started Grpc server")
 
 	return c, nil
+}
+
+// serve serves the requests until the server is closed. A failure is logged:
+// the server stops serving, and its owner still closes it.
+func (c *defaultGrpcServer) serve(listener net.Listener) {
+	defer close(c.serveDone)
+	// Serve returns ErrServerStopped when Close() stopped the server before
+	// this goroutine was scheduled: a benign race, not a serve failure.
+	if err := c.server.Serve(listener); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+		c.log.Error(
+			"Failed to serve",
+			slog.Any("error", err),
+		)
+	}
 }
 
 func (c *defaultGrpcServer) Port() int {

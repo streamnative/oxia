@@ -23,6 +23,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestWALOptionsIsSyncEnabled(t *testing.T) {
+	// Unset, the WAL syncs its writes
+	assert.True(t, (&WALOptions{}).IsSyncEnabled())
+
+	disabled := false
+	assert.False(t, (&WALOptions{Sync: &disabled}).IsSyncEnabled())
+
+	enabled := true
+	assert.True(t, (&WALOptions{Sync: &enabled}).IsSyncEnabled())
+}
+
+func TestFeatureFlagsOptionsIsAuthorityValidationEnabled(t *testing.T) {
+	// Unset, the authority is validated
+	assert.True(t, (&FeatureFlagsOptions{}).IsAuthorityValidationEnabled())
+
+	disabled := false
+	assert.False(t, (&FeatureFlagsOptions{AuthorityValidation: &disabled}).IsAuthorityValidationEnabled())
+
+	enabled := true
+	assert.True(t, (&FeatureFlagsOptions{AuthorityValidation: &enabled}).IsAuthorityValidationEnabled())
+}
+
 func TestStorageOptionsRejectsSameWalAndDataDir(t *testing.T) {
 	dir := t.TempDir()
 	link := filepath.Join(t.TempDir(), "link")
@@ -63,6 +85,33 @@ func TestStorageOptionsRejectsSameWalAndDataDir(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 			}
+		})
+	}
+}
+
+func TestStorageOptionsValidateUnresolvableDir(t *testing.T) {
+	dir := t.TempDir()
+	cwd := filepath.Join(dir, "unsearchable")
+	require.NoError(t, os.Mkdir(cwd, 0755))
+	t.Chdir(cwd)
+	require.NoError(t, os.Chmod(cwd, 0))
+	t.Cleanup(func() { require.NoError(t, os.Chmod(cwd, 0755)) })
+
+	for _, tt := range []struct {
+		name    string
+		walDir  string
+		dataDir string
+	}{
+		{name: "relative wal dir", walDir: "wal", dataDir: dir},
+		{name: "relative data dir", walDir: dir, dataDir: "db"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			options := StorageOptions{}
+			options.WithDefault()
+			options.WAL.Dir = tt.walDir
+			options.Database.Dir = tt.dataDir
+
+			assert.ErrorIs(t, options.Validate(), os.ErrPermission)
 		})
 	}
 }

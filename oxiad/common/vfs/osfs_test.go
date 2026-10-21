@@ -12,38 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//revive:disable-next-line:var-naming
-package codec
+package vfs
 
 import (
-	"errors"
 	"os"
 	"path"
 	"testing"
 
+	"github.com/edsrzf/mmap-go"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestRemoveFileIfExists(t *testing.T) {
-	t.Run("file not exists", func(t *testing.T) {
-		path := path.Join(t.TempDir(), "file_not_exists")
-		_, err := os.Stat(path)
-		assert.True(t, errors.Is(err, os.ErrNotExist))
+func TestOSFSMapRejectsFileNotOpenedByIt(t *testing.T) {
+	f, err := OSFS{}.OpenFile(path.Join(t.TempDir(), "file"), os.O_CREATE|os.O_RDWR, 0o644)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, f.Close()) })
+	wrapped := struct{ File }{f}
 
-		err = RemoveFileIfExists(path)
-		assert.NoError(t, err)
-	})
-
-	t.Run("file exists", func(t *testing.T) {
-		path := path.Join(t.TempDir(), "file_exists")
-		f, err := os.Create(path)
-		assert.NoError(t, err)
-		assert.NoError(t, f.Close())
-
-		err = RemoveFileIfExists(path)
-		assert.NoError(t, err)
-
-		_, err = os.Stat(path)
-		assert.True(t, errors.Is(err, os.ErrNotExist))
-	})
+	m, err := OSFS{}.Map(wrapped, 1, mmap.RDONLY)
+	assert.ErrorContains(t, err, "not opened by OSFS")
+	assert.Nil(t, m)
 }

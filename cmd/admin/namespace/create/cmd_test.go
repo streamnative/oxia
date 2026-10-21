@@ -27,6 +27,7 @@ import (
 
 	"github.com/oxia-db/oxia/cmd/admin/commons"
 	namespacecli "github.com/oxia-db/oxia/cmd/admin/namespace/cli"
+	"github.com/oxia-db/oxia/cmd/common/clientauth"
 	"github.com/oxia-db/oxia/common/proto"
 )
 
@@ -191,4 +192,88 @@ func Test_cmd_createNamespace_RejectsInvalidKeySorting(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `key sorting must be one of "natural" or "hierarchical"`)
 	assert.Contains(t, out, `key sorting must be one of "natural" or "hierarchical"`)
+}
+
+func TestExecRejectsMissingOutputFlag(t *testing.T) {
+	commons.MockedAdminClient = commons.NewMockAdminClient()
+	t.Cleanup(func() { commons.MockedAdminClient = nil })
+
+	cmd := newCreateCmd()
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"ns-1", "--initial-shards", "4", "--replication-factor", "3"})
+	err := cmd.Execute()
+	fields.Reset()
+
+	require.ErrorContains(t, err, "flag accessed but not defined: output")
+	commons.MockedAdminClient.AssertNotCalled(t, "CreateNamespace", mock.Anything)
+}
+
+func TestExecRejectsZeroInitialShards(t *testing.T) {
+	commons.MockedAdminClient = commons.NewMockAdminClient()
+	t.Cleanup(func() { commons.MockedAdminClient = nil })
+
+	_, err := runCmd(newCreateCmd(), "ns-1", "--initial-shards", "0", "--replication-factor", "3")
+
+	require.EqualError(t, err, "namespace initial shard count must be greater than 0")
+	commons.MockedAdminClient.AssertNotCalled(t, "CreateNamespace", mock.Anything)
+}
+
+func TestExecRejectsZeroReplicationFactor(t *testing.T) {
+	commons.MockedAdminClient = commons.NewMockAdminClient()
+	t.Cleanup(func() { commons.MockedAdminClient = nil })
+
+	_, err := runCmd(newCreateCmd(), "ns-1", "--initial-shards", "4", "--replication-factor", "0")
+
+	require.EqualError(t, err, "namespace replication factor must be greater than 0")
+	commons.MockedAdminClient.AssertNotCalled(t, "CreateNamespace", mock.Anything)
+}
+
+func TestExecRejectsUnparsableKeySorting(t *testing.T) {
+	commons.MockedAdminClient = commons.NewMockAdminClient()
+	t.Cleanup(func() { commons.MockedAdminClient = nil })
+
+	_, err := runCmd(newCreateCmd(), "ns-1", "--initial-shards", "4", "--replication-factor", "3",
+		"--key-sorting", "random")
+
+	require.EqualError(t, err, `must be one of "natural" or "hierarchical"`)
+	commons.MockedAdminClient.AssertNotCalled(t, "CreateNamespace", mock.Anything)
+}
+
+func TestExecReturnsAdminClientError(t *testing.T) {
+	commons.MockedAdminClient = nil
+	commons.AdminConfig.Auth = clientauth.Config{Token: "token", TokenFile: "token-file"}
+	t.Cleanup(func() { commons.AdminConfig.Auth = clientauth.Config{} })
+
+	_, err := runCmd(newCreateCmd(), "ns-1", "--initial-shards", "4", "--replication-factor", "3")
+
+	require.ErrorIs(t, err, clientauth.ErrAuthTokenConflict)
+}
+
+func TestExecReturnsCreateError(t *testing.T) {
+	commons.MockedAdminClient = commons.NewMockAdminClient()
+	t.Cleanup(func() { commons.MockedAdminClient = nil })
+	commons.MockedAdminClient.On("Close").Return(nil)
+	// Without a namespace to return, the mock fails the call
+	commons.MockedAdminClient.On("CreateNamespace", mock.Anything).Return(nil, nil)
+
+	_, err := runCmd(newCreateCmd(), "ns-1", "--initial-shards", "4", "--replication-factor", "3")
+
+	require.EqualError(t, err, "failed to create namespace")
+	commons.MockedAdminClient.AssertExpectations(t)
+}
+
+func newCreateCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:          Cmd.Use,
+		Short:        Cmd.Short,
+		Long:         Cmd.Long,
+		Args:         Cmd.Args,
+		RunE:         Cmd.RunE,
+		SilenceUsage: Cmd.SilenceUsage,
+	}
+	fields.AddFlags(cmd)
+	_ = cmd.MarkFlagRequired(namespacecli.InitialShardsFlagName)
+	_ = cmd.MarkFlagRequired(namespacecli.ReplicationFactorFlagName)
+	return cmd
 }

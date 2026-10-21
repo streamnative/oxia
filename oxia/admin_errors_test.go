@@ -12,20 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//revive:disable-next-line:var-naming
-package codec
+package oxia
 
 import (
 	"errors"
-	"os"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
-// RemoveFileIfExists removes the file, it will return nil if the file does not exist.
-func RemoveFileIfExists(path string) error {
-	err := os.Remove(path)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
+func TestWrapAdminErrorWithoutCause(t *testing.T) {
+	assert.Same(t, ErrUnauthorized, wrapAdminError(ErrUnauthorized, nil))
+}
 
-	return nil
+func TestAdminErrorWithoutCause(t *testing.T) {
+	err := &adminError{kind: ErrUnauthenticated}
+	assert.Equal(t, "unauthenticated", err.Error())
+	assert.ErrorIs(t, err, ErrUnauthenticated)
+	assert.NoError(t, errors.Unwrap(err))
 }

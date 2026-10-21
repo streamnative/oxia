@@ -49,6 +49,19 @@ func NewManifest(dir string) (*Manifest, error) {
 	return m, nil
 }
 
+// ReadInstanceID returns the instance id recorded in the manifest in dir, without
+// creating the manifest. It is empty when the data server isn't bound to a cluster yet.
+func ReadInstanceID(dir string) (string, error) {
+	doc := &Document{}
+	if _, err := commonio.ReadJSONFromFile(filepath.Join(dir, filename), doc); err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	return doc.InstanceID, nil
+}
+
 func (m *Manifest) doRecovery() error {
 	doc := &Document{}
 	_, err := commonio.ReadJSONFromFile(m.path, doc)
@@ -75,9 +88,12 @@ func (m *Manifest) GetInstanceID() string {
 	return doc.InstanceID
 }
 
-func (m *Manifest) SetInstanceID(id string) error {
+// SetInstanceID binds the data server to the instance id, and reports whether
+// this call bound it: binding the bound id again does nothing, and another id
+// fails with ErrInstanceIDMismatch.
+func (m *Manifest) SetInstanceID(id string) (bound bool, err error) {
 	if id == "" {
-		return errors.New("instance id must not be empty")
+		return false, errors.New("instance id must not be empty")
 	}
 
 	m.mu.Lock()
@@ -88,13 +104,13 @@ func (m *Manifest) SetInstanceID(id string) error {
 	case current == nil || current.InstanceID == "":
 		next := &Document{InstanceID: id}
 		if err := commonio.WriteJSONToFile(m.path, next); err != nil {
-			return err
+			return false, err
 		}
 		m.document.Store(next)
-		return nil
+		return true, nil
 	case current.InstanceID == id:
-		return nil
+		return false, nil
 	default:
-		return ErrInstanceIDMismatch
+		return false, ErrInstanceIDMismatch
 	}
 }

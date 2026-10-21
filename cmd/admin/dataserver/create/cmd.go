@@ -40,8 +40,8 @@ var Cmd = &cobra.Command{
 
 func init() {
 	fields.AddFlags(Cmd.Flags())
-	_ = Cmd.MarkFlagRequired(dataservercli.PublicFlagName)
-	_ = Cmd.MarkFlagRequired(dataservercli.InternalFlagName)
+	cobra.CheckErr(Cmd.MarkFlagRequired(dataservercli.PublicFlagName))
+	cobra.CheckErr(Cmd.MarkFlagRequired(dataservercli.InternalFlagName))
 }
 
 func exec(cmd *cobra.Command, args []string) error {

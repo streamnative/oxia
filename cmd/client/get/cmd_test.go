@@ -16,6 +16,7 @@ package get
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/oxia-db/oxia/cmd/client/common"
+	"github.com/oxia-db/oxia/cmd/common/clientauth"
 	"github.com/oxia-db/oxia/oxia"
 )
 
@@ -53,6 +55,7 @@ func Test_exec(t *testing.T) {
 		{"ceiling", "y -t ceiling", []any{"y", []oxia.GetOption{oxia.ComparisonCeiling()}}, "value-y"},
 		{"lower", "y -t lower", []any{"y", []oxia.GetOption{oxia.ComparisonLower()}}, "value-y"},
 		{"higher", "y -t higher", []any{"y", []oxia.GetOption{oxia.ComparisonHigher()}}, "value-y"},
+		{"index", "y --index idx", []any{"y", []oxia.GetOption{oxia.UseIndex("idx")}}, "value-y"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			common.MockedClient = common.NewMockClient()
@@ -66,4 +69,66 @@ func Test_exec(t *testing.T) {
 			common.MockedClient.AssertExpectations(t)
 		})
 	}
+}
+
+func TestExecRejectsInvalidComparisonType(t *testing.T) {
+	useMockedClient(t)
+
+	_, err := runCmd(Cmd, "y -t unknown", "")
+
+	assert.EqualError(t, err, "invalid comparison type: unknown")
+	common.MockedClient.AssertExpectations(t)
+}
+
+func TestExecWritesHexDump(t *testing.T) {
+	useMockedClient(t)
+	var emptyOptions []oxia.GetOption
+	common.MockedClient.On("Get", "y", emptyOptions).Return("y", []byte("abc"), oxia.Version{}, nil)
+
+	out, err := runCmd(Cmd, "y --hex", "")
+
+	assert.NoError(t, err)
+	assert.Equal(t, "00000000  61 62 63                                          |abc|", out)
+	common.MockedClient.AssertExpectations(t)
+}
+
+func TestExecWritesVersion(t *testing.T) {
+	useMockedClient(t)
+	var emptyOptions []oxia.GetOption
+	common.MockedClient.On("Get", "x", emptyOptions).Return("y", []byte("value-y"), oxia.Version{}, nil)
+
+	out, err := runCmd(Cmd, "x -v", "")
+
+	assert.NoError(t, err)
+	value, version, found := strings.Cut(out, "\n---\n")
+	assert.True(t, found)
+	assert.Equal(t, "value-y", value)
+	var outputVersion common.OutputVersion
+	assert.NoError(t, json.Unmarshal([]byte(version), &outputVersion))
+	assert.Equal(t, "y", outputVersion.Key)
+	common.MockedClient.AssertExpectations(t)
+}
+
+func TestExecReturnsNewClientError(t *testing.T) {
+	useConflictingClientAuth(t)
+
+	_, err := runCmd(Cmd, "x", "")
+
+	assert.ErrorIs(t, err, clientauth.ErrAuthTokenConflict)
+}
+
+func useMockedClient(t *testing.T) {
+	t.Helper()
+	common.MockedClient = common.NewMockClient()
+	t.Cleanup(func() { common.MockedClient = nil })
+}
+
+// useConflictingClientAuth makes the creation of the client fail, with
+// conflicting sources of the auth token.
+func useConflictingClientAuth(t *testing.T) {
+	t.Helper()
+	mocked, auth := common.MockedClient, common.Config.Auth
+	common.MockedClient = nil
+	common.Config.Auth = clientauth.Config{Token: "token", TokenFile: "token-file"}
+	t.Cleanup(func() { common.MockedClient, common.Config.Auth = mocked, auth })
 }

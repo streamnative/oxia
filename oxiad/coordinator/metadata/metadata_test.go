@@ -103,6 +103,35 @@ func TestMetadataWaitToBecomeLeaderFailsWhenRecoveryFails(t *testing.T) {
 	require.ErrorContains(t, err, "store unavailable")
 }
 
+// A takeover with a missing configuration and a status with namespaces fails,
+// and writes nothing: the configuration was deleted, and reconciling it as
+// empty would delete every namespace.
+func TestMetadataWaitToBecomeLeaderRejectsDeletedConfiguration(t *testing.T) {
+	statusProvider := newStoredStatusProvider(t)
+	version := loaded(t, statusProvider).Version
+	metadata := newTestMetadata(t, statusProvider, newConfigProvider(), "")
+
+	_, err := metadata.WaitToBecomeLeader()
+	require.ErrorContains(t, err, "the cluster configuration is missing")
+	require.Equal(t, version, loaded(t, statusProvider).Version)
+}
+
+// A cluster that was never configured, e.g. one set up through the admin API,
+// restarts with an instance id and no configuration: an empty configuration
+// deletes nothing, so the takeover succeeds.
+func TestMetadataWaitToBecomeLeaderAcceptsUnconfiguredCluster(t *testing.T) {
+	statusProvider := newStatusProvider()
+	_, err := statusProvider.Store(provider.Versioned[*commonproto.ClusterStatus]{
+		Value:   &commonproto.ClusterStatus{InstanceId: "instance"},
+		Version: metadataconstant.NotExists,
+	})
+	require.NoError(t, err)
+	metadata := newTestMetadata(t, statusProvider, newConfigProvider(), "")
+
+	_, err = metadata.WaitToBecomeLeader()
+	require.NoError(t, err)
+}
+
 // newLeaderMetadata returns a metadata that holds the leadership. Closing lost
 // loses it, and once superseded is set, every status write is refused on the
 // version, as when another coordinator took over and wrote the status.
@@ -179,8 +208,7 @@ coordinators:
 		},
 	})
 	require.NoError(t, err)
-	metadata, err := factory.CreateMetadata(t.Context())
-	require.NoError(t, err)
+	metadata := factory.CreateMetadata(t.Context())
 	defer func() {
 		require.NoError(t, metadata.Close())
 		require.NoError(t, factory.Close())
@@ -536,7 +564,277 @@ func TestMetadataStatusWritersGiveUpOnceCanceled(t *testing.T) {
 	require.NoError(t, metadata.Close())
 }
 
+func TestMetadataWaitToBecomeLeaderFailsWhenReloadFails(t *testing.T) {
+	lost := make(chan struct{})
+	waitToBecomeLeader := func() (<-chan struct{}, error) { return lost, nil }
+	for _, test := range []struct {
+		name           string
+		statusProvider provider.Provider[*commonproto.ClusterStatus]
+		configProvider provider.Provider[*commonproto.ClusterConfiguration]
+		expected       string
+	}{
+		{
+			name: "status",
+			statusProvider: fakeProvider[*commonproto.ClusterStatus]{
+				Provider:           newStatusProvider(),
+				waitToBecomeLeader: waitToBecomeLeader,
+				reload:             func() error { return errors.New("status reload failure") },
+			},
+			configProvider: newConfigProvider(),
+			expected:       "failed to reload the cluster status: status reload failure",
+		},
+		{
+			name: "config",
+			statusProvider: fakeProvider[*commonproto.ClusterStatus]{
+				Provider:           newStatusProvider(),
+				waitToBecomeLeader: waitToBecomeLeader,
+			},
+			configProvider: fakeProvider[*commonproto.ClusterConfiguration]{
+				Provider: newConfigProvider(),
+				reload:   func() error { return errors.New("config reload failure") },
+			},
+			expected: "failed to reload the cluster configuration: config reload failure",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			metadata := newTestMetadata(t, test.statusProvider, test.configProvider, "")
+
+			_, err := metadata.WaitToBecomeLeader()
+			require.ErrorContains(t, err, test.expected)
+		})
+	}
+}
+
+// The check for a deleted configuration, after the reloads, fails the takeover
+// when it can't load the configuration, or the status of an unconfigured
+// cluster.
+func TestMetadataWaitToBecomeLeaderFailsWhenLoadFails(t *testing.T) {
+	for _, test := range []struct {
+		name           string
+		statusProvider provider.Provider[*commonproto.ClusterStatus]
+		configProvider provider.Provider[*commonproto.ClusterConfiguration]
+		expected       string
+	}{
+		{
+			name:           "config",
+			statusProvider: newStatusProvider(),
+			configProvider: fakeProvider[*commonproto.ClusterConfiguration]{
+				Provider: newConfigProvider(),
+				load:     failLoad[*commonproto.ClusterConfiguration]("config load failure"),
+			},
+			expected: "config load failure",
+		},
+		{
+			name: "status",
+			statusProvider: fakeProvider[*commonproto.ClusterStatus]{
+				Provider: newStatusProvider(),
+				load:     failLoad[*commonproto.ClusterStatus]("status load failure"),
+			},
+			configProvider: newConfigProvider(),
+			expected:       "status load failure",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			metadata := newTestMetadata(t, test.statusProvider, test.configProvider, "")
+
+			_, err := metadata.WaitToBecomeLeader()
+			require.ErrorContains(t, err, test.expected)
+		})
+	}
+}
+
+func TestMetadataGetSelfFailsWhenNotConfigured(t *testing.T) {
+	metadata := newTestMetadata(t, newStatusProvider(), newConfigProvider(), "coordinator-0")
+
+	_, err := metadata.GetSelf()
+	require.ErrorContains(t, err, `coordinator "coordinator-0" not found`)
+}
+
+func TestMetadataGetLeaderReturnsConfiguredCoordinator(t *testing.T) {
+	configProvider := newConfigProvider()
+	_, err := configProvider.Store(provider.Versioned[*commonproto.ClusterConfiguration]{
+		Value: &commonproto.ClusterConfiguration{Coordinators: []*commonproto.Coordinator{{
+			Name:          "coordinator-0",
+			PublicAddress: "coordinator-0:6651",
+		}}},
+		Version: metadataconstant.NotExists,
+	})
+	require.NoError(t, err)
+	statusProvider := memory.NewProvider(metadatacodec.ClusterStatusCodec, metadataconstant.WatchDisabled,
+		"coordinator-0")
+	metadata := newTestMetadata(t, statusProvider, configProvider, "coordinator-0")
+
+	leader, err := metadata.GetLeader()
+	require.NoError(t, err)
+	require.Equal(t, "coordinator-0:6651", leader.GetPublicAddress())
+}
+
+// A status write refused on the version fails, whether the coordinator never
+// led, or is closing.
+func TestMetadataStatusVersionConflictWithoutLeadershipFails(t *testing.T) {
+	newMetadata := func(ctx context.Context) Metadata {
+		return newDefaultMetadata(ctx, fakeProvider[*commonproto.ClusterStatus]{
+			Provider: newStatusProvider(),
+			store: func(provider.Versioned[*commonproto.ClusterStatus]) (metadataconstant.Version, error) {
+				return metadataconstant.NotExists, metadataconstant.ErrBadVersion
+			},
+		}, newConfigProvider(), "")
+	}
+
+	notLeading := newMetadata(t.Context())
+	defer func() { require.NoError(t, notLeading.Close()) }()
+	_, err := notLeading.AllocateShardIDs(1)
+	require.ErrorIs(t, err, metadataconstant.ErrBadVersion)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	closing := newMetadata(ctx)
+	cancel()
+	_, err = closing.AllocateShardIDs(1)
+	require.ErrorIs(t, err, metadataconstant.ErrBadVersion)
+	require.NoError(t, closing.Close())
+}
+
+func TestMetadataStatusWritesReturnLoadError(t *testing.T) {
+	metadata := newTestMetadata(t, fakeProvider[*commonproto.ClusterStatus]{
+		Provider: newStatusProvider(),
+		load:     failLoad[*commonproto.ClusterStatus]("status unavailable"),
+	}, newConfigProvider(), "")
+
+	_, err := metadata.AllocateShardIDs(1)
+	require.ErrorContains(t, err, "status unavailable")
+}
+
+// Deleting a namespace status retries until the namespace is marked deleting.
+func TestMetadataDeleteNamespaceStatusRetries(t *testing.T) {
+	statusProvider := newStoredStatusProvider(t)
+	var writes atomic.Int32
+	metadata := newTestMetadata(t, fakeProvider[*commonproto.ClusterStatus]{
+		Provider: statusProvider,
+		store: func(snapshot provider.Versioned[*commonproto.ClusterStatus]) (metadataconstant.Version, error) {
+			if writes.Add(1) == 1 {
+				return metadataconstant.NotExists, errors.New("store unavailable")
+			}
+			return statusProvider.Store(snapshot)
+		},
+	}, newConfigProvider(), "")
+
+	deleted := metadata.DeleteNamespaceStatus("default").UnsafeBorrow()
+	require.NotNil(t, deleted)
+	require.EqualValues(t, 2, writes.Load())
+	require.Equal(t, commonproto.ShardStatusDeleting,
+		loaded(t, statusProvider).Value.GetNamespaces()["default"].GetShards()[0].GetStatus())
+}
+
+func TestMetadataDeleteNamespaceStatusMissing(t *testing.T) {
+	metadata := newTestMetadata(t, newStoredStatusProvider(t), newConfigProvider(), "")
+
+	require.Nil(t, metadata.DeleteNamespaceStatus("missing").UnsafeBorrow())
+}
+
+func TestMetadataDeleteShardStatusMissing(t *testing.T) {
+	statusProvider := newStoredStatusProvider(t)
+	metadata := newTestMetadata(t, statusProvider, newConfigProvider(), "")
+	version := loaded(t, statusProvider).Version
+
+	require.NoError(t, metadata.DeleteShardStatus("missing", 0))
+	require.NoError(t, metadata.DeleteShardStatus("default", 1))
+	require.Equal(t, version, loaded(t, statusProvider).Version, "nothing to delete: nothing is written")
+}
+
+// --- Configuration ---
+
+func TestMetadataConfigWritesReturnLoadError(t *testing.T) {
+	metadata := newTestMetadata(t, newStatusProvider(), fakeProvider[*commonproto.ClusterConfiguration]{
+		Provider: newConfigProvider(),
+		load:     failLoad[*commonproto.ClusterConfiguration]("configuration unavailable"),
+	}, "")
+
+	require.ErrorContains(t, metadata.CreateNamespace(&commonproto.Namespace{Name: "default"}),
+		"configuration unavailable")
+}
+
+func TestMetadataCreateNamespaceRejectsInvalidConfiguration(t *testing.T) {
+	configProvider := newStoredConfigProvider(t, nil)
+	metadata := newTestMetadata(t, newStatusProvider(), configProvider, "")
+
+	err := metadata.CreateNamespace(&commonproto.Namespace{Name: "other", ReplicationFactor: 1})
+	require.ErrorContains(t, err, "initialShardCount")
+	require.Len(t, loaded(t, configProvider).Value.GetNamespaces(), 1)
+}
+
+func TestMetadataPatchNamespaceSkipsOtherNamespaces(t *testing.T) {
+	configProvider := newStoredConfigProvider(t, []*commonproto.Namespace{
+		{Name: "first", ReplicationFactor: 1, InitialShardCount: 1},
+		{Name: "second", ReplicationFactor: 1, InitialShardCount: 1},
+	})
+	metadata := newTestMetadata(t, newStatusProvider(), configProvider, "")
+
+	notificationsEnabled := false
+	updated, err := metadata.PatchNamespace(&commonproto.Namespace{
+		Name:                 "second",
+		NotificationsEnabled: &notificationsEnabled,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "second", updated.GetName())
+	require.False(t, updated.GetNotificationsEnabled())
+
+	deleted, err := metadata.DeleteNamespace("second")
+	require.NoError(t, err)
+	require.Equal(t, "second", deleted.GetName())
+	namespaces := loaded(t, configProvider).Value.GetNamespaces()
+	require.Len(t, namespaces, 1)
+	require.Equal(t, "first", namespaces[0].GetName())
+}
+
+func TestMetadataPatchDataServerUpdatesAddresses(t *testing.T) {
+	configProvider := newStoredConfigProvider(t, nil)
+	metadata := newTestMetadata(t, newStatusProvider(), configProvider, "")
+
+	updated, err := metadata.PatchDataServer(&commonproto.DataServer{
+		Identity: &commonproto.DataServerIdentity{Name: gproto.String("s2"), Internal: "s2:7000"},
+		Metadata: &commonproto.DataServerMetadata{Labels: map[string]string{"zone": "a"}},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "s2:7000", updated.GetIdentity().GetInternal())
+	require.Equal(t, "s2:6648", updated.GetIdentity().GetPublic())
+	require.Equal(t, map[string]string{"zone": "a"}, updated.GetMetadata().GetLabels())
+
+	config := loaded(t, configProvider).Value
+	require.Equal(t, "s2:7000", config.GetServers()[1].GetInternal())
+	require.Equal(t, map[string]string{"zone": "a"}, config.GetServerMetadata()["s2"].GetLabels())
+
+	deleted, err := metadata.DeleteDataServer("s2")
+	require.NoError(t, err)
+	require.Equal(t, "s2", deleted.GetIdentity().GetName())
+	require.Len(t, loaded(t, configProvider).Value.GetServers(), 1)
+}
+
 // --- Helpers ---
+
+// newStoredConfigProvider returns a configuration provider that stores the
+// data servers s1 and s2, and the namespaces, or the namespace default.
+func newStoredConfigProvider(
+	t *testing.T,
+	namespaces []*commonproto.Namespace,
+) provider.Provider[*commonproto.ClusterConfiguration] {
+	t.Helper()
+	if namespaces == nil {
+		namespaces = []*commonproto.Namespace{{Name: "default", ReplicationFactor: 1, InitialShardCount: 1}}
+	}
+	configProvider := newConfigProvider()
+	_, err := configProvider.Store(provider.Versioned[*commonproto.ClusterConfiguration]{
+		Value: &commonproto.ClusterConfiguration{
+			Namespaces: namespaces,
+			Servers: []*commonproto.DataServerIdentity{
+				{Name: gproto.String("s1"), Public: "s1:6648", Internal: "s1:6649"},
+				{Name: gproto.String("s2"), Public: "s2:6648", Internal: "s2:6649"},
+			},
+		},
+		Version: metadataconstant.NotExists,
+	})
+	require.NoError(t, err)
+	return configProvider
+}
 
 // newTestMetadata returns a metadata on the providers, closed with the test.
 func newTestMetadata(

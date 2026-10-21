@@ -27,6 +27,8 @@ import (
 
 	"github.com/oxia-db/oxia/oxiad/dataserver/database/kvstore"
 
+	"github.com/oxia-db/oxia/cmd/common/banner"
+	"github.com/oxia-db/oxia/cmd/common/version"
 	"github.com/oxia-db/oxia/common/process"
 	"github.com/oxia-db/oxia/oxiad/dataserver"
 )
@@ -36,10 +38,17 @@ var (
 
 	Cmd = &cobra.Command{
 		Use:   "standalone",
-		Short: "Start a standalone service",
-		Long:  `Long description`,
-		Args:  cobra.NoArgs,
-		Run:   exec,
+		Short: "Start a single-process Oxia service",
+		Long: `Start Oxia as a single process, which serves the clients without a coordinator.
+
+Use it for development and tests: it doesn't replicate the data.`,
+		Example: `  # Start a standalone service on localhost:6648
+  oxia standalone
+
+  # Start a standalone service with 4 shards, and its data under /var/lib/oxia
+  oxia standalone --shards 4 --data-dir /var/lib/oxia/db --wal-dir /var/lib/oxia/wal`,
+		Args: cobra.NoArgs,
+		RunE: exec,
 	}
 )
 
@@ -85,8 +94,17 @@ func init() {
 	}
 }
 
-func exec(*cobra.Command, []string) {
-	process.RunProcess(func() (io.Closer, error) {
+func exec(cmd *cobra.Command, _ []string) error {
+	version.RegisterMetric(version.Get(cmd.Root().Version))
+	return process.RunProcess(cmd.Context(), "STANDALONE", func() (io.Closer, error) {
+		options := &conf.DataServerOptions
+		banner.Print(cmd.OutOrStdout(), cmd.Root().Version,
+			banner.Field{Name: "Component", Value: "STANDALONE"},
+			banner.Field{Name: "Public Endpoint", Value: options.Server.Public.BindAddress},
+			banner.MetricsField(&options.Observability.Metric),
+			banner.PprofField(),
+			banner.Field{Name: "WAL Dir", Value: options.Storage.WAL.Dir},
+			banner.Field{Name: "Data Dir", Value: options.Storage.Database.Dir})
 		return dataserver.NewStandalone(conf)
 	})
 }
