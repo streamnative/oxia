@@ -274,8 +274,9 @@ func (f *fakeAPI) DeleteObjects(ctx context.Context, params *awss3.DeleteObjects
 		case f.objects[key].data == nil:
 			out.Errors = append(out.Errors, types.Error{Key: aws.String(key), Code: aws.String("NoSuchKey")})
 			continue
+		default:
+			delete(f.objects, key)
 		}
-		delete(f.objects, key)
 	}
 	return out, nil
 }
