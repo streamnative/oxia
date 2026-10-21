@@ -683,25 +683,32 @@ func TestPublicRpcServerWriteStreamInvalidMetadata(t *testing.T) {
 
 func TestPublicRpcServerRead(t *testing.T) {
 	logs := &bytes.Buffer{}
+	readErr := constant.ErrResourceUnavailable
 	lc := &testLeaderController{
-		read: func(_ context.Context, _ *proto.ReadRequest, onNext func(*proto.GetResponse) error) error {
+		read: func(_ context.Context, request *proto.ReadRequest, onNext func(*proto.GetResponse) error) error {
+			if len(request.Gets) > 0 && request.Gets[0].Key == "fail" {
+				return readErr
+			}
 			return onNext(&proto.GetResponse{Value: []byte("v")})
 		},
 	}
 	server := newTestPublicRpcServer(logs, lc)
 
 	var sent []*proto.ReadResponse
-	err := server.Read(&proto.ReadRequest{Shard: pb.Int64(0)}, &testStream[any, proto.ReadResponse]{
+	stream := &testStream[any, proto.ReadResponse]{
 		ctx: context.Background(),
 		send: func(response *proto.ReadResponse) error {
 			sent = append(sent, response)
 			return nil
 		},
-	})
-	require.NoError(t, err)
+	}
+	require.NoError(t, server.Read(&proto.ReadRequest{Shard: pb.Int64(0)}, stream))
 	require.Len(t, sent, 1)
 	assert.Equal(t, []byte("v"), sent[0].Gets[0].Value)
 	assert.Contains(t, logs.String(), "Read request")
+
+	err := server.Read(&proto.ReadRequest{Shard: pb.Int64(0), Gets: []*proto.GetRequest{{Key: "fail"}}}, stream)
+	assertOxiaError(t, err, readErr)
 }
 
 func TestPublicRpcServerList(t *testing.T) {
