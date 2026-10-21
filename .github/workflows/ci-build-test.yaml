@@ -214,7 +214,7 @@ jobs:
         run: |
           cd maelstrom
           ./maelstrom test -w lin-kv  --bin ../bin/oxia-maelstrom \
-                --time-limit 60  --concurrency 2n  --latency 10 --latency-dist uniform --nemesis partition
+                --time-limit 120 --concurrency 2n --latency 10 --latency-dist uniform --nemesis partition --nemesis-interval 20
 
       - name: Upload test results
         uses: actions/upload-artifact@v6
