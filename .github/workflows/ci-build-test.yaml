@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: Build
+name: CI
 
 on:
   pull_request:
@@ -100,6 +100,30 @@ jobs:
           fail_ci_if_error: true
           # Empty on fork PRs, where the action falls back to a tokenless upload
           token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage
+          path: coverage.out
+          retention-days: 1
+
+  coverage:
+    name: Full Coverage
+    needs: build
+    runs-on: cncf-ubuntu-4-16-x86
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download coverage
+        uses: actions/download-artifact@v7
+        with:
+          name: coverage
+
+      - name: Check coverage
+        run: make check-coverage
 
   chaos-mesh:
     name: Run chaos-mesh

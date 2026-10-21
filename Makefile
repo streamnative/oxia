@@ -75,6 +75,18 @@ test: build
 	 ./tests/...
 	go run ./dev/coverignore -trim github.com/oxia-db/oxia/ coverage.out
 
+# The files that .github/codecov.yml ignores
+COVERAGE_EXCLUDE := \.pb\.go:|^github\.com/oxia-db/oxia/(oxiad/coordinator/rpc/rpctest/|tests/mock/|cmd/client/common/client_mock\.go:|common/rpc/mock\.go:|cmd/main\.go:|oxiad/maelstrom/main\.go:|cmd/wal/perf/cmd\.go:)
+
+# Fails on any block of the profile outside COVERAGE_EXCLUDE that no test runs.
+# A block appears once per test binary that runs it, so it is covered when any
+# of its counts is not zero.
+.PHONY: check-coverage
+check-coverage:
+	@grep -vE '$(COVERAGE_EXCLUDE)' coverage.out | awk 'NR > 1 { if ($$NF > 0) hit[$$1] = 1; \
+	else if (!($$1 in hit)) hit[$$1] = 0 } \
+	END { for (b in hit) if (!hit[b]) { print "not covered: " b; n++ } exit n > 0 }'
+
 .PHONY: test-kv
 test-kv:
 	go test -race -timeout 2m ./tests/kvscript/...
