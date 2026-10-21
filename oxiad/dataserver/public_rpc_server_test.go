@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"strings"
@@ -445,25 +446,26 @@ func TestResolveLeaderValidatesAuthorityBeforeLeaderLookup(t *testing.T) {
 	assert.Equal(t, codes.PermissionDenied, grpcstatus.Code(err))
 }
 
-func TestWarnOnStreamErrorSkipsClientDisconnectErrors(t *testing.T) {
+func TestLogFailure(t *testing.T) {
 	var buf bytes.Buffer
 	server := &publicRpcServer{
 		log: slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})),
 	}
 
-	server.warnOnStreamError(context.Background(), "read", errors.New("unexpected failure"))
+	server.complain("Failed", errors.New("unexpected failure"), slog.String("operation", "read"))
 	assert.Contains(t, buf.String(), "level=WARN")
+	assert.Contains(t, buf.String(), "operation=read")
+	assert.Contains(t, buf.String(), `error="unexpected failure`)
 
-	// When the client goes away mid-stream, the transport cancels the stream
-	// context before the send error reaches the handler.
-	doneCtx, cancel := context.WithCancel(context.Background())
-	cancel()
-	buf.Reset()
-	server.warnOnStreamError(doneCtx, "read", grpcstatus.Error(codes.Unavailable, "transport is closing"))
-	assert.Empty(t, buf.String())
+	for _, err := range []error{constant.ErrNodeIsNotLeader, fmt.Errorf("closing: %w", constant.ErrResourceUnavailable)} {
+		buf.Reset()
+		server.complain("Failed", err)
+		assert.Contains(t, buf.String(), "level=DEBUG")
+	}
 
 	buf.Reset()
-	server.warnOnStreamError(context.Background(), "read", context.Canceled)
+	server.complain("Failed", context.Canceled)
+	server.complain("Failed", context.DeadlineExceeded)
 	assert.Empty(t, buf.String())
 }
 

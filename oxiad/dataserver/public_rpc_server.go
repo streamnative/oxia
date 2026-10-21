@@ -132,11 +132,8 @@ func (s *publicRpcServer) GetShardAssignments(req *proto.ShardAssignmentsRequest
 	}
 	err := s.assignmentDispatcher.RegisterForUpdates(req, srv)
 	if err != nil {
-		s.log.Warn(
-			"Failed to add client for shards assignments notifications",
-			slog.Any("error", err),
-			slog.String("peer", rpc.GetPeer(streamContext)),
-		)
+		s.complain("Failed to add client for shards assignments notifications", err,
+			slog.String("peer", rpc.GetPeer(streamContext)))
 		return constant.IntoGrpcStatusError(err)
 	}
 
@@ -159,10 +156,7 @@ func (s *publicRpcServer) Write(ctx context.Context, write *proto.WriteRequest) 
 
 	wr, err := lc.WriteBlock(ctx, write)
 	if err != nil {
-		s.log.Warn(
-			"Failed to perform write operation",
-			slog.Any("error", err),
-		)
+		s.complain("Failed to perform write operation", err)
 		return nil, constant.IntoGrpcStatusError(err)
 	}
 
@@ -286,7 +280,7 @@ func (s *publicRpcServer) WriteStream(stream proto.OxiaClient_WriteStreamServer)
 	select {
 	case err := <-finished:
 		if err != nil {
-			s.log.Warn("Failed to perform write operation", slog.Any("error", err))
+			s.complain("Failed to perform write operation", err)
 			return constant.IntoGrpcStatusError(err)
 		}
 		return nil
@@ -301,15 +295,19 @@ func (s *publicRpcServer) WriteStream(stream proto.OxiaClient_WriteStreamServer)
 	}
 }
 
-// warnOnStreamError logs failures of streaming data operations, except the
-// expected ones. The stream context ends whenever the client goes away — it
-// cancels the RPC, its deadline expires, or its connection shuts down — so
-// failures with a done context are not worth a warning.
-func (s *publicRpcServer) warnOnStreamError(ctx context.Context, operation string, err error) {
-	if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+// complain logs the failure of a client request, except a cancellation or an
+// expired deadline. The failures that redirect the client to another node are
+// logged at debug level.
+func (s *publicRpcServer) complain(msg string, err error, args ...any) {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return
 	}
-	s.log.Warn("Failed to perform operation", slog.String("operation", operation), slog.Any("error", err))
+	args = append(args, slog.Any("error", err))
+	if errors.Is(err, constant.ErrNodeIsNotLeader) || errors.Is(err, constant.ErrResourceUnavailable) {
+		s.log.Debug(msg, args...)
+		return
+	}
+	s.log.Warn(msg, args...)
 }
 
 func (s *publicRpcServer) Read(request *proto.ReadRequest, stream proto.OxiaClient_ReadServer) error {
@@ -335,7 +333,7 @@ func (s *publicRpcServer) Read(request *proto.ReadRequest, stream proto.OxiaClie
 		err = batcher.Flush()
 	}
 	if err != nil {
-		s.warnOnStreamError(ctx, "read", err)
+		s.complain("Failed to perform operation", err, slog.String("operation", "read"))
 		return constant.IntoGrpcStatusError(err)
 	}
 	return nil
@@ -374,7 +372,7 @@ func (s *publicRpcServer) List(request *proto.ListRequest, stream proto.OxiaClie
 		err = stream.Send(&proto.ListResponse{EndInclusive: true})
 	}
 	if err != nil {
-		s.warnOnStreamError(ctx, "list", err)
+		s.complain("Failed to perform operation", err, slog.String("operation", "list"))
 		return constant.IntoGrpcStatusError(err)
 	}
 	return nil
@@ -416,7 +414,7 @@ func (s *publicRpcServer) RangeScan(request *proto.RangeScanRequest, stream prot
 		err = stream.Send(&proto.RangeScanResponse{EndInclusive: true})
 	}
 	if err != nil {
-		s.warnOnStreamError(ctx, "range-scan", err)
+		s.complain("Failed to perform operation", err, slog.String("operation", "range-scan"))
 		return constant.IntoGrpcStatusError(err)
 	}
 	return nil
@@ -460,10 +458,7 @@ func (s *publicRpcServer) GetNotifications(req *proto.NotificationsRequest, stre
 		select {
 		case err := <-finish:
 			if err != nil {
-				s.log.Warn(
-					"Failed to handle notifications request",
-					slog.Any("error", err),
-				)
+				s.complain("Failed to handle notifications request", err)
 				return constant.IntoGrpcStatusError(err)
 			}
 			return nil
@@ -491,10 +486,7 @@ func (s *publicRpcServer) CreateSession(ctx context.Context, req *proto.CreateSe
 	}
 	res, err := lc.CreateSession(req)
 	if err != nil {
-		s.log.Warn(
-			"Failed to create session",
-			slog.Any("error", err),
-		)
+		s.complain("Failed to create session", err)
 		return nil, constant.IntoGrpcStatusError(err)
 	}
 	return res, nil
@@ -515,10 +507,7 @@ func (s *publicRpcServer) KeepAlive(ctx context.Context, req *proto.SessionHeart
 	}
 	err = lc.KeepAlive(req.SessionId)
 	if err != nil {
-		s.log.Warn(
-			"Failed to listen to heartbeats",
-			slog.Any("error", err),
-		)
+		s.complain("Failed to listen to heartbeats", err)
 		return nil, constant.IntoGrpcStatusError(err)
 	}
 	return &proto.KeepAliveResponse{}, nil
@@ -537,7 +526,7 @@ func (s *publicRpcServer) CloseSession(ctx context.Context, req *proto.CloseSess
 	res, err := lc.CloseSession(req)
 	if err != nil {
 		if !errors.Is(err, constant.ErrSessionNotFound) {
-			s.log.Warn("Failed to close session", slog.Any("error", err))
+			s.complain("Failed to close session", err)
 		}
 		return nil, constant.IntoGrpcStatusError(err)
 	}
@@ -593,7 +582,7 @@ func (s *publicRpcServer) resolveLeader(ctx context.Context, shardId *int64) (le
 		if errors.Is(err, constant.ErrNodeIsNotLeader) {
 			return nil, constant.IntoGrpcStatusError(err, constant.WithLeaderHint(shardID, s.assignmentDispatcher.GetLeader(shardID)))
 		}
-		s.log.Warn("Failed to get the leader controller", slog.Any("error", err))
+		s.complain("Failed to get the leader controller", err)
 		return nil, constant.IntoGrpcStatusError(err)
 	}
 	return lc, nil
