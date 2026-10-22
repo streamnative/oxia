@@ -77,6 +77,7 @@ func ConfigureLogger() {
 	logLevelVar.Set(LogLevel)
 
 	zerolog.TimeFieldFormat = time.RFC3339Nano
+	zerolog.DurationFieldInteger = true
 	//nolint
 	zerolog.ErrorStackMarshaler = pkgerrors.MarshalStack
 
