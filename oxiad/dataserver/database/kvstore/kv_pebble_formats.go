@@ -293,7 +293,7 @@ func (p *pebbleDbConversion) convertDb(
 	throughput := oldDbSizeMB / duration.Seconds()
 	p.log.Info("Completed conversion of db",
 		slog.String("path", p.dbPath),
-		slog.Duration("elapsed-time-millis", duration),
+		slog.Duration("elapsed-time", duration),
 		slog.Float64("throughput-mbps", throughput))
 	return nil
 }

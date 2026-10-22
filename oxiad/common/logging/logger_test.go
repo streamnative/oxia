@@ -74,7 +74,7 @@ func TestConfigureLoggerWithoutJSONAppliesLevel(t *testing.T) {
 	assert.True(t, slog.Default().Enabled(context.Background(), slog.LevelWarn))
 }
 
-func TestConfigureLoggerWritesDurationsInMilliseconds(t *testing.T) {
+func TestConfigureLoggerWritesDurationsWithTheirUnit(t *testing.T) {
 	stdout := os.Stdout
 	r, w, err := os.Pipe()
 	require.NoError(t, err)
@@ -92,6 +92,6 @@ func TestConfigureLoggerWritesDurationsInMilliseconds(t *testing.T) {
 
 	out, err := io.ReadAll(r)
 	require.NoError(t, err)
-	assert.Contains(t, string(out), `"retry-after":2414,`)
+	assert.Contains(t, string(out), `"retry-after":"2.414989107s"`)
 	assert.Contains(t, string(out), `"attempt":3`)
 }
