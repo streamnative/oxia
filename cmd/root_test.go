@@ -17,11 +17,13 @@ package main
 import (
 	"bytes"
 	"log/slog"
+	"os"
 	"testing"
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/term"
 
 	buildversion "github.com/oxia-db/oxia/cmd/common/version"
 	"github.com/oxia-db/oxia/oxiad/common/logging"
@@ -68,6 +70,36 @@ func TestCall_LogLevel(t *testing.T) {
 				assert.False(t, invoked)
 			}
 			assert.ErrorIs(t, err, test.expectedErr)
+		})
+	}
+}
+
+func TestCall_LogJSON(t *testing.T) {
+	tests := []struct {
+		name         string
+		args         []string
+		expectedJSON bool
+	}{
+		{"default", []string{}, !term.IsTerminal(int(os.Stdout.Fd()))},
+		{"enabled", []string{"-j"}, true},
+		{"disabled", []string{"--log-json=false"}, false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			logLevelStr = logging.DefaultLogLevel.String()
+			t.Cleanup(func() {
+				require.NoError(t, rootCmd.PersistentFlags().Set("log-json", "false"))
+				rootCmd.PersistentFlags().Lookup("log-json").Changed = false
+				logging.LogJSON = false
+			})
+			var captured bool
+			rootCmd.SetArgs(test.args)
+			rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
+				captured = logging.LogJSON
+				return nil
+			}
+			require.NoError(t, rootCmd.Execute())
+			assert.Equal(t, test.expectedJSON, captured)
 		})
 	}
 }
