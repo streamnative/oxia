@@ -58,7 +58,7 @@ type Perf interface {
 func New(config Config) (Perf, error) {
 	slog.Info(
 		"Starting Oxia perf client",
-		slog.Any("config", config),
+		slog.String("config", fmt.Sprintf("%+v", config)),
 	)
 
 	client, err := oxia.NewAsyncClient(config.ServiceAddr,

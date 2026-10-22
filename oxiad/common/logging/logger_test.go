@@ -16,10 +16,14 @@ package logging
 
 import (
 	"context"
+	"io"
 	"log/slog"
+	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/oxia-db/oxia/oxiad/common/option"
 )
@@ -68,4 +72,26 @@ func TestConfigureLoggerWithoutJSONAppliesLevel(t *testing.T) {
 
 	assert.False(t, slog.Default().Enabled(context.Background(), slog.LevelInfo))
 	assert.True(t, slog.Default().Enabled(context.Background(), slog.LevelWarn))
+}
+
+func TestConfigureLoggerWritesDurationsWithTheirUnit(t *testing.T) {
+	stdout := os.Stdout
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stdout = w
+	t.Cleanup(func() {
+		os.Stdout = stdout
+		ConfigureLogger()
+	})
+
+	LogLevel = slog.LevelInfo
+	LogJSON = true
+	ConfigureLogger()
+	slog.Info("retrying", slog.Duration("retry-after", 2414989107*time.Nanosecond), slog.Int("attempt", 3))
+	require.NoError(t, w.Close())
+
+	out, err := io.ReadAll(r)
+	require.NoError(t, err)
+	assert.Contains(t, string(out), `"retry-after":"2.414989107s"`)
+	assert.Contains(t, string(out), `"attempt":3`)
 }

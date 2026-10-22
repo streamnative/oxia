@@ -752,9 +752,9 @@ func (lc *leaderController) Freeze(req *proto.FreezeShardRequest) (*proto.Freeze
 
 func (lc *leaderController) addFollower(follower string, followerHeadEntryId *proto.EntryId) error {
 	term := lc.term.Load()
-	followerHeadEntryId, err := lc.truncateFollowerIfNeeded(follower, lc.shardId, followerHeadEntryId)
+	truncatedHeadEntryId, err := lc.truncateFollowerIfNeeded(follower, lc.shardId, followerHeadEntryId)
 	if err != nil {
-		lc.log.Error(
+		lc.log.Warn(
 			"Failed to truncate follower",
 			slog.Any("error", err),
 			slog.String("follower", follower),
@@ -763,6 +763,7 @@ func (lc *leaderController) addFollower(follower string, followerHeadEntryId *pr
 		)
 		return err
 	}
+	followerHeadEntryId = truncatedHeadEntryId
 
 	cursor, err := NewFollowerCursor(follower, term, lc.namespace, lc.shardId, lc.rpcClient, lc.quorumAckTracker, lc.wal, lc.db,
 		followerHeadEntryId.Offset, slices.Contains(lc.termOptions.Features, proto.Feature_FEATURE_COMMIT_ADVERTISEMENT))
