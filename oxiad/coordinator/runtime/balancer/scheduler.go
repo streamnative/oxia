@@ -555,14 +555,14 @@ func (r *nodeBasedBalancer) rebalanceLeader() {
 	r.actionCh <- ac
 	leader, err := ac.Wait()
 	if err != nil {
-		r.logger.Warn("quarantine the shard due to failed election", slog.Int64("shard", shard),
+		r.logger.Warn("quarantine the shard due to failed election", slog.String("namespace", move.Namespace), slog.Int64("shard", shard),
 			slog.Any("old-leader", oldLeader), slog.Any("error", err))
 		r.shardQuarantineShardMap.Store(shard, time.Now())
 		return
 	}
-	r.logger.Info("triggered new election", slog.Int64("shard", shard), slog.Any("old-leader", oldLeader), slog.Any("new-leader", leader))
+	r.logger.Info("triggered new election", slog.String("namespace", move.Namespace), slog.Int64("shard", shard), slog.Any("old-leader", oldLeader), slog.Any("new-leader", leader))
 	if leader == oldLeader { // no changes
-		r.logger.Info("quarantine the shard due to no leader changed", slog.Int64("shard", shard), slog.Any("old-leader", oldLeader), slog.Any("new-leader", leader))
+		r.logger.Info("quarantine the shard due to no leader changed", slog.String("namespace", move.Namespace), slog.Int64("shard", shard), slog.Any("old-leader", oldLeader), slog.Any("new-leader", leader))
 		r.shardQuarantineShardMap.Store(shard, time.Now())
 	}
 }

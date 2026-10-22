@@ -558,6 +558,19 @@ func TestInternalReplicateInvalidMetadata(t *testing.T) {
 	}
 }
 
+func TestInternalReplicateFollowerError(t *testing.T) {
+	server := newDirectorTestInternalServer(&testShardsDirector{
+		getOrCreateFollower: func(string, int64, int64) (follow.FollowerController, error) {
+			return nil, constant.ErrResourceUnavailable
+		},
+	})
+
+	err := server.Replicate(&testStream[proto.Append, proto.Ack]{
+		ctx: replicationContext(constant.MetadataTerm, "2"),
+	})
+	assertOxiaError(t, err, constant.ErrResourceUnavailable)
+}
+
 func TestInternalSendSnapshotInvalidMetadata(t *testing.T) {
 	server := newDirectorTestInternalServer(&testShardsDirector{
 		getOrCreateFollower: func(string, int64, int64) (follow.FollowerController, error) {

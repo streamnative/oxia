@@ -510,6 +510,55 @@ func TestTrim(t *testing.T) {
 	assert.NoError(t, f.Close())
 }
 
+// Once the trim offset reaches the current segment, every read-only segment
+// ends before it: the trimming deletes them all, the last one included.
+func TestWalTrimInCurrentSegmentDeletesAllReadOnlySegments(t *testing.T) {
+	options := &FactoryOptions{BaseWalDir: t.TempDir(), SegmentSize: 128, SyncData: true}
+	w, err := newWal(constant.DefaultNamespace, shard, options, nil, time2.SystemClock, time.Hour)
+	require.NoError(t, err)
+	appendEntries(t, w, 1, 0, 19, "entry")
+	impl := w.(*wal)
+	segments, err := listAllSegments(vfs.OSFS{}, impl.walPath)
+	require.NoError(t, err)
+	require.Greater(t, len(segments), 2)
+	current := segments[len(segments)-1]
+	require.Less(t, current, w.LastOffset())
+
+	trimOffset := current + 1
+	require.NoError(t, impl.trim(trimOffset, impl.generation.Load(), func() error { return nil }))
+	assert.EqualValues(t, trimOffset, w.FirstOffset())
+	for _, s := range segments[:len(segments)-1] {
+		c, err := newSegmentConfig(vfs.OSFS{}, impl.walPath, s)
+		require.NoError(t, err)
+		assert.NoFileExists(t, c.txnPath)
+		assert.NoFileExists(t, c.idxPath)
+	}
+
+	assertReadsFrom := func(w Wal, firstOffset int64) {
+		t.Helper()
+		r, err := w.NewReader(firstOffset - 1)
+		require.NoError(t, err)
+		for offset := firstOffset; offset <= 19; offset++ {
+			require.True(t, r.HasNext())
+			entry, _, _, err := r.ReadNext()
+			require.NoError(t, err)
+			assert.Equal(t, fmt.Sprintf("entry-%d", offset), string(entry.Value))
+		}
+		assert.False(t, r.HasNext())
+		assert.NoError(t, r.Close())
+	}
+	assertReadsFrom(w, trimOffset)
+	require.NoError(t, w.Close())
+
+	// After a restart, the wal starts from the current segment
+	w, err = newWal(constant.DefaultNamespace, shard, options, nil, time2.SystemClock, time.Hour)
+	require.NoError(t, err)
+	assert.EqualValues(t, current, w.FirstOffset())
+	assert.EqualValues(t, 19, w.LastOffset())
+	assertReadsFrom(w, current)
+	assert.NoError(t, w.Close())
+}
+
 func TestDelete(t *testing.T) {
 	f, w := createWal(t)
 

@@ -205,7 +205,6 @@ func (snm *shardNotificationsManager) getNotificationsWithRetries() { //nolint:r
 			if !snm.initialized && !constant.IsRetryable(err) {
 				snm.initialized = true
 				snm.nm.initWaitGroup.Fail(err)
-				snm.nm.cancel()
 			}
 		}, timer)
 
