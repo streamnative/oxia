@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"slices"
@@ -34,6 +35,8 @@ import (
 	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go/logging"
+	"github.com/johannesboyne/gofakes3"
+	"github.com/johannesboyne/gofakes3/backend/s3mem"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -49,6 +52,26 @@ const destinationEnv = "OXIA_TEST_S3_DESTINATION"
 func TestStoreConformanceOnFakeAPI(t *testing.T) {
 	blobtest.RunConformance(t, func(*testing.T) blob.Store {
 		return New(newFakeAPI(), "bucket", "/base/prefix/")
+	})
+}
+
+// The store through the real client, against an S3 server in this process:
+// the signing, the checksums, the sizing of the bodies and the parsing of the
+// responses are the SDK's, which the fake API leaves out.
+func TestStoreConformanceThroughTheClient(t *testing.T) {
+	t.Setenv("AWS_ACCESS_KEY_ID", "key")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "secret")
+	blobtest.RunConformance(t, func(t *testing.T) blob.Store {
+		t.Helper()
+		backend := s3mem.New()
+		require.NoError(t, backend.CreateBucket("bucket"))
+		server := httptest.NewServer(gofakes3.New(backend).Server())
+		t.Cleanup(server.Close)
+		query := url.Values{"region": {"us-east-1"}, "endpoint": {server.URL}, "path-style": {"true"}}
+		u := url.URL{Scheme: Scheme, Host: "bucket", Path: "/base/prefix", RawQuery: query.Encode()}
+		store, err := blob.Open(t.Context(), u.String())
+		require.NoError(t, err)
+		return store
 	})
 }
 
