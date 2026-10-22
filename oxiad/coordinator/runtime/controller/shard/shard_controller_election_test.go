@@ -24,6 +24,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	gproto "google.golang.org/protobuf/proto"
 
 	"github.com/oxia-db/oxia/common/constant"
@@ -1184,4 +1186,12 @@ func (m *hookedMetadata) PatchNamespaceStatus(namespace string, modify func(*pro
 		return m.patchNamespaceStatus(namespace, modify)
 	}
 	return m.Metadata.PatchNamespaceStatus(namespace, modify)
+}
+
+func TestRetryFailureLevel(t *testing.T) {
+	unreachable := status.Error(codes.Unavailable, "connection error: dial tcp: lookup oxia-2: no such host")
+	assert.Equal(t, slog.LevelDebug, retryFailureLevel(unreachable))
+	assert.Equal(t, slog.LevelDebug, retryFailureLevel(errors.Wrap(unreachable, "fence new term")))
+	assert.Equal(t, slog.LevelWarn, retryFailureLevel(constant.ErrInvalidTerm))
+	assert.Equal(t, slog.LevelWarn, retryFailureLevel(status.Error(codes.Internal, "internal error")))
 }

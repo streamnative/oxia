@@ -28,6 +28,8 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"golang.org/x/exp/maps"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	gproto "google.golang.org/protobuf/proto"
 
 	"github.com/oxia-db/oxia/oxiad/common/feature"
@@ -190,7 +192,7 @@ func (e *Election) fenceNewTermQuorum(term int64, options *proto.NewTermOptions,
 					case errors.Is(err, constant.ErrNotInitialized):
 						e.logger.Debug("FenceNewTerm is waiting for data server initialization", slog.Any("data-server", pinedServer))
 					case err != nil:
-						e.logger.Warn("FenceNewTerm failed", slog.Any("error", err), slog.Any("data-server", pinedServer))
+						e.logger.Log(fencingContext, retryFailureLevel(err), "FenceNewTerm failed", slog.Any("error", err), slog.Any("data-server", pinedServer))
 					default:
 						e.logger.Info("Processed fenceNewTerm response", slog.Any("data-server", pinedServer), slog.Any("entry-id", res.HeadEntryId))
 					}
@@ -412,7 +414,7 @@ func (e *Election) ensureFollowerCaught(ensemble []*proto.DataServerIdentity, le
 							slog.Duration("retry-after", duration),
 						)
 					default:
-						e.logger.Warn("Failed to get the follower status",
+						e.logger.Log(e.ctx, retryFailureLevel(err), "Failed to get the follower status",
 							slog.Any("server", server),
 							slog.Any("error", err),
 							slog.Duration("retry-after", duration),
@@ -507,7 +509,7 @@ func (e *Election) fencingFailedFollowers(term int64, options *proto.NewTermOpti
 						}
 						return err
 					}, bo, func(err error, duration time.Duration) {
-						e.logger.Warn(
+						e.logger.Log(e.ctx, retryFailureLevel(err),
 							"Failed to fenceNewTermAndAddFollower, retrying later",
 							slog.Any("error", err),
 							slog.Any("follower", follower),
@@ -1077,4 +1079,14 @@ func chooseCandidates(candidatesStatus map[*proto.DataServerIdentity]*proto.Entr
 		}
 	}
 	return candidates
+}
+
+// retryFailureLevel is the level of a failed attempt toward a data server. A
+// server that can't be reached, e.g. while it restarts, is reported by its data
+// server controller.
+func retryFailureLevel(err error) slog.Level {
+	if status.Code(err) == codes.Unavailable {
+		return slog.LevelDebug
+	}
+	return slog.LevelWarn
 }
