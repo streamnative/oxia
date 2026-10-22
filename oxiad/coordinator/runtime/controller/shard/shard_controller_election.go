@@ -786,20 +786,14 @@ func (e *Election) start() (newLeader *proto.DataServerIdentity, err error) {
 		return nil, err
 	}
 	if e.logger.Enabled(e.ctx, slog.LevelInfo) {
-		f := make([]struct {
-			ServerAddress *proto.DataServerIdentity `json:"server-address"`
-			EntryId       *proto.EntryId            `json:"entry-id"`
-		}, 0)
-		for sa, entryId := range followers {
-			f = append(f, struct {
-				ServerAddress *proto.DataServerIdentity `json:"server-address"`
-				EntryId       *proto.EntryId            `json:"entry-id"`
-			}{ServerAddress: sa, EntryId: entryId})
+		f := make(map[string]*proto.EntryId, len(followers))
+		for dataServer, entryId := range followers {
+			f[dataServer.GetNameOrDefault()] = entryId
 		}
 		e.logger.Info(
 			"Successfully moved ensemble to a new term",
 			slog.Int64("term", e.mutableShardMetadata.Term),
-			slog.Any("new-leader", newLeader),
+			slog.String("new-leader", newLeader.GetNameOrDefault()),
 			slog.Any("followers", f),
 		)
 	}
@@ -831,8 +825,8 @@ func (e *Election) start() (newLeader *proto.DataServerIdentity, err error) {
 	e.logger.Info(
 		"Elected new leader",
 		slog.Int64("term", e.mutableShardMetadata.Term),
-		slog.Any("leader", e.mutableShardMetadata.Leader),
-		slog.Any("ensemble", e.mutableShardMetadata.Ensemble),
+		slog.String("leader", e.mutableShardMetadata.Leader.GetNameOrDefault()),
+		slog.Any("ensemble", dataServerNames(e.mutableShardMetadata.Ensemble)),
 	)
 	timer.Done()
 

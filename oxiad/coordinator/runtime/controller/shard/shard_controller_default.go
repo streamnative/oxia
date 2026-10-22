@@ -188,7 +188,12 @@ func NewController(
 
 	s.ctx, s.ctxCancel = context.WithCancel(context.Background())
 
-	s.logger.Info("Started shard controller", slog.Any("shard-metadata", shardMetadata))
+	s.logger.Info("Started shard controller",
+		slog.Any("status", shardMetadata.Status),
+		slog.Int64("term", shardMetadata.Term),
+		slog.String("leader", shardMetadata.Leader.GetNameOrDefault()),
+		slog.Any("ensemble", dataServerNames(shardMetadata.Ensemble)),
+	)
 
 	s.wg.Go(func() {
 		process.DoWithLabels(
