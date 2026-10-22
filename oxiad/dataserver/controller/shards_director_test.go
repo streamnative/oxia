@@ -121,6 +121,18 @@ func TestShardsDirector_GetOrCreateFollower(t *testing.T) {
 	assert.NoError(t, walFactory.Close())
 }
 
+func TestShardsDirectorGetOrCreateFollowerAfterClose(t *testing.T) {
+	kvFactory, _ := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
+	walFactory := newTestWalFactory(t)
+	sd := NewShardsDirector(&option.StorageOptions{}, walFactory, kvFactory, rpc.NewMockRpcClient())
+	assert.NoError(t, sd.Close())
+
+	fc, err := sd.GetOrCreateFollower(constant.DefaultNamespace, 1, 1, nil)
+	assert.ErrorIs(t, err, constant.ErrResourceUnavailable)
+	assert.Nil(t, fc)
+	assert.NoError(t, walFactory.Close())
+}
+
 func TestShardsDirectorRoutesCheckpointAndCommitOffsetToTheHostingController(t *testing.T) {
 	kvFactory, err := kvstore.NewPebbleKVFactory(kvstore.NewFactoryOptionsForTest(t))
 	require.NoError(t, err)
