@@ -22,6 +22,7 @@ import (
 	"log/slog"
 	"os"
 	"sync"
+	"sync/atomic"
 
 	"go.uber.org/multierr"
 	"google.golang.org/grpc"
@@ -30,6 +31,7 @@ import (
 
 	"github.com/oxia-db/oxia/common/commonio"
 	"github.com/oxia-db/oxia/common/failpoint"
+	commonmetric "github.com/oxia-db/oxia/common/metric"
 	"github.com/oxia-db/oxia/common/proto"
 	coordmetadata "github.com/oxia-db/oxia/oxiad/coordinator/metadata"
 	coordreconciler "github.com/oxia-db/oxia/oxiad/coordinator/reconciler"
@@ -140,6 +142,8 @@ type GrpcServer struct {
 	metadata         coordmetadata.Metadata
 	metadataFactory  *coordmetadata.Factory
 	metrics          *metric.PrometheusMetrics
+	leader           *atomic.Bool
+	leaderGauge      commonmetric.Gauge
 
 	stopOnce sync.Once
 	stopErr  error
@@ -197,6 +201,7 @@ func newGrpcServer(parent context.Context, optionsWatch *commonwatch.Watch[*opti
 		metadata             coordmetadata.Metadata
 		metadataFactory      *coordmetadata.Factory
 		metricsServer        *metric.PrometheusMetrics
+		leaderGauge          commonmetric.Gauge
 	)
 	defer func() {
 		if err == nil {
@@ -204,6 +209,9 @@ func newGrpcServer(parent context.Context, optionsWatch *commonwatch.Watch[*opti
 		}
 
 		cancel()
+		if leaderGauge != nil {
+			leaderGauge.Unregister()
+		}
 		err = multierr.Append(err, closePointer(metricsServer))
 		err = multierr.Append(err, commonio.CloseIfNotNil(managementGrpcServer))
 		err = multierr.Append(err, commonio.CloseIfNotNil(reconciler))
@@ -224,6 +232,12 @@ func newGrpcServer(parent context.Context, optionsWatch *commonwatch.Watch[*opti
 	if err != nil {
 		return nil, err
 	}
+	metricsServer, err = startMetricsServer(options.Observability.Metric) //nolint:contextcheck
+	if err != nil {
+		return nil, err
+	}
+	leader := &atomic.Bool{}
+	leaderGauge = newLeaderGauge(leader)
 	controller := &options.Controller
 	controllerTLS, err := controller.TLS.TryIntoClientTLSConf()
 	if err != nil {
@@ -268,6 +282,7 @@ func newGrpcServer(parent context.Context, optionsWatch *commonwatch.Watch[*opti
 	if err != nil {
 		return nil, err
 	}
+	leader.Store(true)
 	if err = so.seedClusterConfig(metadataFactory); err != nil {
 		return nil, err
 	}
@@ -281,10 +296,6 @@ func newGrpcServer(parent context.Context, optionsWatch *commonwatch.Watch[*opti
 		return nil, err
 	}
 
-	metricsServer, err = startMetricsServer(options.Observability.Metric) //nolint:contextcheck
-	if err != nil {
-		return nil, err
-	}
 	server := GrpcServer{
 		ctx:              ctx,
 		ctxCancel:        cancel,
@@ -300,6 +311,8 @@ func newGrpcServer(parent context.Context, optionsWatch *commonwatch.Watch[*opti
 		metadata:         metadata,
 		metadataFactory:  metadataFactory,
 		metrics:          metricsServer,
+		leader:           leader,
+		leaderGauge:      leaderGauge,
 	}
 	server.wg.Go(func() {
 		process.DoWithLabels(ctx, map[string]string{
@@ -373,6 +386,16 @@ func startMetricsServer(metrics commonoption.MetricOptions) (*metric.PrometheusM
 	return metric.Start(metrics.BindAddress, metricTLS)
 }
 
+func newLeaderGauge(leader *atomic.Bool) commonmetric.Gauge {
+	return commonmetric.NewGauge("oxia_coordinator_is_leader",
+		"Whether the coordinator holds the leadership of the cluster metadata", "", nil, func() int64 {
+			if leader.Load() {
+				return 1
+			}
+			return 0
+		})
+}
+
 func (s *GrpcServer) backgroundHandleConfChange() {
 	receiver := s.optionsWatch.Subscribe()
 
@@ -404,6 +427,7 @@ func (s *GrpcServer) stopCoordinating() error {
 		// retries, which could otherwise block closing the runtime forever
 		// (e.g. after losing the leadership).
 		s.ctxCancel()
+		s.leader.Store(false)
 		s.healthServer.Shutdown()
 		s.management.stop()
 		s.stopErr = multierr.Combine(
@@ -428,6 +452,7 @@ func (s *GrpcServer) Close() error {
 		s.stopCoordinating(),
 		s.metadataFactory.Close(),
 	)
+	s.leaderGauge.Unregister()
 	if s.metrics != nil {
 		err = multierr.Append(err, s.metrics.Close())
 	}
