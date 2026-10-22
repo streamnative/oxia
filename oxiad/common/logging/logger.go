@@ -108,5 +108,8 @@ func ConfigureLogger() {
 		}.NewZerologHandler(),
 	)
 	slog.SetDefault(slogLogger)
-	klog.SetLogger(logr.FromSlogHandler(slogLogger.With(slog.String("component", "k8s-client")).Handler()))
+	klog.SetLogger(logr.FromSlogHandler(&maxLevelHandler{
+		Handler: slogLogger.With(slog.String("component", "k8s-client")).Handler(),
+		level:   slog.LevelWarn,
+	}))
 }
