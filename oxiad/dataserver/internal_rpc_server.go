@@ -201,9 +201,10 @@ func (s *internalRpcServer) NewTerm(c context.Context, req *proto.NewTermRequest
 	} else {
 		log.Info(
 			"New term processing completed",
-			slog.Any("response", res),
+			slog.Any("head-entry", res.HeadEntryId),
 			slog.Int64("leaderTerm", leader.Term()),
 		)
+		log.Debug("NewTerm response", slog.Any("response", res))
 	}
 	return res, constant.IntoGrpcStatusError(err2)
 }
