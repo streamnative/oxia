@@ -2807,7 +2807,9 @@ func TestControllerFeaturesDiscoveredPinsNewFeaturesOfRollingUpgrade(t *testing.
 	supply := func(servers []*proto.DataServerIdentity) map[string][]proto.Feature {
 		features := make(map[string][]proto.Feature, len(servers))
 		for _, server := range servers {
-			features[server.GetNameOrDefault()] = dataServers[server.GetNameOrDefault()].GetFeatures()
+			if supported, handshaken := dataServers[server.GetNameOrDefault()].GetFeatures(); handshaken {
+				features[server.GetNameOrDefault()] = supported
+			}
 		}
 		return features
 	}

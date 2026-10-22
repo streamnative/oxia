@@ -23,10 +23,12 @@ import (
 )
 
 // FeaturesSupplier returns the features that each data server supports, by
-// name, as their handshakes reported them.
+// name, as their handshakes reported them. A data server that has not
+// completed a handshake with this coordinator yet has no entry.
 type FeaturesSupplier = func(dataServers []*proto.DataServerIdentity) map[string][]proto.Feature
 
-// NoOpFeaturesSupplier reports no features for any data server.
+// NoOpFeaturesSupplier reports every data server as handshaken, with no
+// features.
 func NoOpFeaturesSupplier(dataServers []*proto.DataServerIdentity) map[string][]proto.Feature {
 	features := make(map[string][]proto.Feature, len(dataServers))
 	for _, dataServer := range dataServers {

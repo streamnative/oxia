@@ -18,6 +18,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -918,6 +919,34 @@ func TestElectionFenceNewTermAndAddFollowerReturnsAddFollowerError(t *testing.T)
 	assert.Equal(t, int64(3), request.GetFollowerHeadEntryId().GetOffset())
 }
 
+// A follower is fenced and added only once it has completed its handshake
+// with the coordinator: before it, its features are unknown, and the leader
+// would reject it as missing every feature required by the shard.
+func TestElectionFenceNewTermAndAddFollowerWaitsForHandshake(t *testing.T) {
+	leader := testDataServer("leader")
+	follower := testDataServer("follower")
+	rpc := rpctest.NewRpcProvider()
+	e := newTestElection(t, nil, rpc, 5, &proto.ShardMetadata{})
+	e.dataServerSupportedFeaturesSupplier = func([]*proto.DataServerIdentity) map[string][]proto.Feature {
+		return map[string][]proto.Feature{}
+	}
+
+	err := e.fenceNewTermAndAddFollower(t.Context(), 2, &proto.NewTermOptions{}, leader, follower)
+	assert.ErrorIs(t, err, ErrFollowerNotHandshaken)
+	rpc.GetNode(follower).ExpectNoMoreNewTermRequest(t)
+
+	features := []proto.Feature{proto.Feature_FEATURE_DB_CHECKSUM}
+	e.dataServerSupportedFeaturesSupplier = func([]*proto.DataServerIdentity) map[string][]proto.Feature {
+		return map[string][]proto.Feature{follower.GetNameOrDefault(): features}
+	}
+	rpc.GetNode(follower).NewTermResponse(1, 3, nil)
+	rpc.GetNode(leader).AddFollowerResponse(nil)
+
+	assert.NoError(t, e.fenceNewTermAndAddFollower(t.Context(), 2, &proto.NewTermOptions{}, leader, follower))
+	request := rpc.GetNode(leader).ExpectAddFollowerRequest(t, 5, 2)
+	assert.Equal(t, features, request.GetFollowerFeatures().GetSupported())
+}
+
 // A follower that rejects the term of the election as invalid is in a newer
 // term already: the election stops trying to add it.
 func TestElectionFencingFailedFollowersStopsOnInvalidTerm(t *testing.T) {
@@ -938,6 +967,37 @@ func TestElectionFencingFailedFollowersStopsOnInvalidTerm(t *testing.T) {
 
 	rpc.GetNode(follower).ExpectNewTermRequest(t, 5, 2, false)
 	rpc.GetNode(follower).ExpectNoMoreNewTermRequest(t)
+}
+
+// The election keeps retrying a failed follower until its handshake completes.
+func TestElectionFencingFailedFollowersWaitsForHandshake(t *testing.T) {
+	leader := testDataServer("leader")
+	follower := testDataServer("follower")
+	rpc := rpctest.NewRpcProvider()
+	e := newTestElection(t, nil, rpc, 5, &proto.ShardMetadata{})
+	var handshaken atomic.Bool
+	e.dataServerSupportedFeaturesSupplier = func([]*proto.DataServerIdentity) map[string][]proto.Feature {
+		if !handshaken.Load() {
+			return map[string][]proto.Feature{}
+		}
+		return map[string][]proto.Feature{follower.GetNameOrDefault(): {}}
+	}
+
+	done := make(chan struct{})
+	go func() {
+		e.fencingFailedFollowers(2, &proto.NewTermOptions{}, []*proto.DataServerIdentity{leader, follower}, leader,
+			map[*proto.DataServerIdentity]*proto.EntryId{})
+		close(done)
+	}()
+	rpc.GetNode(follower).ExpectNoMoreNewTermRequest(t)
+
+	rpc.GetNode(follower).NewTermResponse(1, 3, nil)
+	rpc.GetNode(leader).AddFollowerResponse(nil)
+	handshaken.Store(true)
+
+	requireClosed(t, done, "fencingFailedFollowers to add the follower")
+	rpc.GetNode(follower).ExpectNewTermRequest(t, 5, 2, false)
+	rpc.GetNode(leader).ExpectAddFollowerRequest(t, 5, 2)
 }
 
 // A data server that is swapped out again while it is still among the

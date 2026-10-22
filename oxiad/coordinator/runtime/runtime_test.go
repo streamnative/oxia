@@ -1043,6 +1043,19 @@ func TestRuntimeFindDataServerFeaturesOmitsUnknownNodes(t *testing.T) {
 	assert.NotContains(t, features, dataServer.GetNameOrDefault())
 }
 
+// The features of a data server are unknown until its first handshake.
+func TestRuntimeFindDataServerFeaturesSkipsDataServersNotHandshaken(t *testing.T) {
+	c := &runtime{
+		dataServerControllers: map[string]dataservercontroller.Controller{
+			"s1:6649": &fakeDataServerController{},
+		},
+	}
+
+	found := c.findDataServerFeatures([]*proto.DataServerIdentity{{Internal: "s1:6649"}})
+
+	assert.Empty(t, found)
+}
+
 func TestRuntimeFindDataServerFeaturesFallsBackToDrainingNodes(t *testing.T) {
 	features := []proto.Feature{proto.Feature_FEATURE_DB_CHECKSUM}
 	c := &runtime{
@@ -1346,7 +1359,8 @@ func (c *fakeShardController) BecameUnavailable(dataServer *proto.DataServerIden
 }
 
 // fakeDataServerController reports a fixed status and the features that its
-// data server supports. The methods that it doesn't implement panic.
+// data server supports, or no handshake if they are nil. The methods that it
+// doesn't implement panic.
 type fakeDataServerController struct {
 	dataservercontroller.Controller
 	status   dataservercontroller.Status
@@ -1359,8 +1373,8 @@ func (c *fakeDataServerController) GetStatus() dataservercontroller.Status {
 	return c.status
 }
 
-func (c *fakeDataServerController) GetFeatures() []proto.Feature {
-	return c.features
+func (c *fakeDataServerController) GetFeatures() ([]proto.Feature, bool) {
+	return c.features, c.features != nil
 }
 
 func (c *fakeDataServerController) Close() error {
