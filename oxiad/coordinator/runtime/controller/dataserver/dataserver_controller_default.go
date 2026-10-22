@@ -202,12 +202,12 @@ func (n *controller) sendAssignmentsDispatchWithRetries() {
 		case errors.Is(err, constant.ErrNotInitialized):
 			n.logger.Debug(
 				"Waiting for data server initialization before sending assignments",
-				slog.Duration("retry-after", duration),
+				slog.Int64("retry-after-ms", duration.Milliseconds()),
 			)
 		default:
 			n.logger.Warn(
 				"Failed to send assignments updates to storage data server",
-				slog.Duration("retry-after", duration),
+				slog.Int64("retry-after-ms", duration.Milliseconds()),
 				slog.Any("error", err),
 			)
 		}
@@ -291,7 +291,7 @@ func (n *controller) healthPingWithRetries() {
 	}, n.healthCheckBackoff, func(err error, duration time.Duration) {
 		n.logger.Warn(
 			"Failed to check storage data server health by ping-pong",
-			slog.Duration("retry-after", duration),
+			slog.Int64("retry-after-ms", duration.Milliseconds()),
 			slog.Any("error", err),
 		)
 		n.becomeUnavailable(failureEpoch)
@@ -340,7 +340,7 @@ func (n *controller) healthWatchWithRetries() {
 	}, n.healthCheckBackoff, func(err error, duration time.Duration) {
 		n.logger.Warn("Failed to check storage data server health by watch",
 			slog.Any("error", err),
-			slog.Duration("retry-after", duration),
+			slog.Int64("retry-after-ms", duration.Milliseconds()),
 		)
 	})
 }

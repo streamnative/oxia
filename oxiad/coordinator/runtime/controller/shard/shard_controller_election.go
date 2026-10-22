@@ -409,13 +409,13 @@ func (e *Election) ensureFollowerCaught(ensemble []*proto.DataServerIdentity, le
 						e.logger.Info("Follower has not been added by leader yet",
 							slog.Any("server", server),
 							slog.Int64("shard", e.shard),
-							slog.Duration("retry-after", duration),
+							slog.Int64("retry-after-ms", duration.Milliseconds()),
 						)
 					default:
 						e.logger.Warn("Failed to get the follower status",
 							slog.Any("server", server),
 							slog.Any("error", err),
-							slog.Duration("retry-after", duration),
+							slog.Int64("retry-after-ms", duration.Milliseconds()),
 						)
 					}
 				})
@@ -512,7 +512,7 @@ func (e *Election) fencingFailedFollowers(term int64, options *proto.NewTermOpti
 							slog.Any("error", err),
 							slog.Any("follower", follower),
 							slog.Int64("term", term),
-							slog.Duration("retry-after", duration),
+							slog.Int64("retry-after-ms", duration.Milliseconds()),
 						)
 					})
 				},
@@ -990,7 +990,7 @@ func (e *Election) Start() *proto.DataServerIdentity {
 			e.logger.Debug(
 				"Leader election is waiting for data server initialization",
 				slog.Int64("term", term),
-				slog.Duration("retry-after", duration),
+				slog.Int64("retry-after-ms", duration.Milliseconds()),
 			)
 			return
 		}
@@ -999,7 +999,7 @@ func (e *Election) Start() *proto.DataServerIdentity {
 				"Leader election is retrying to pin a different feature set",
 				slog.Int64("term", term),
 				slog.String("reason", err.Error()),
-				slog.Duration("retry-after", duration),
+				slog.Int64("retry-after-ms", duration.Milliseconds()),
 			)
 			return
 		}
@@ -1008,7 +1008,7 @@ func (e *Election) Start() *proto.DataServerIdentity {
 			"Leader election has failed, retrying later",
 			slog.Int64("term", term),
 			slog.Any("error", err),
-			slog.Duration("retry-after", duration),
+			slog.Int64("retry-after-ms", duration.Milliseconds()),
 		)
 	})
 	return newLeader

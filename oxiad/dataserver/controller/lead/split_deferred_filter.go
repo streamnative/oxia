@@ -170,7 +170,7 @@ func (lc *leaderController) applyDeferredSplitFilter(ctx context.Context, term i
 		log.Warn(
 			"Failed to delete records outside the hash range of the shard, retrying",
 			slog.Any("error", err),
-			slog.Duration("retry-after", retryAfter),
+			slog.Int64("retry-after-ms", retryAfter.Milliseconds()),
 		)
 		select {
 		case <-ctx.Done():

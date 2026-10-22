@@ -206,7 +206,7 @@ func NewController(
 					s.logger.Warn(
 						"Failed to start the shard controller, retrying later",
 						slog.Any("error", err),
-						slog.Duration("retry-after", duration),
+						slog.Int64("retry-after-ms", duration.Milliseconds()),
 					)
 				})
 			},

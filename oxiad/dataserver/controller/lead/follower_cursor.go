@@ -331,7 +331,7 @@ func (fc *followerCursor) run() {
 			fc.log.Warn(
 				"Error while pushing entries to follower",
 				slog.Any("error", err),
-				slog.Duration("retry-after", duration),
+				slog.Int64("retry-after-ms", duration.Milliseconds()),
 			)
 		})
 }
@@ -468,7 +468,7 @@ func (fc *followerCursor) sendSnapshot() error {
 		"Successfully sent snapshot to follower",
 		slog.Int64("chunks-count", chunksCount),
 		slog.String("total-size", humanize.IBytes(uint64(totalSize))),
-		slog.Any("elapsed-time", elapsedTime),
+		slog.Int64("elapsed-time-ms", elapsedTime.Milliseconds()),
 		slog.String("throughput", fmt.Sprintf("%s/s", humanize.IBytes(uint64(throughput)))),
 		slog.Int64("follower-ack-offset", response.AckOffset),
 	)

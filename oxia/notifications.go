@@ -194,7 +194,7 @@ func (snm *shardNotificationsManager) getNotificationsWithRetries() { //nolint:r
 				snm.log.Error(
 					"Error while getting notifications",
 					slog.Any("error", err),
-					slog.Duration("retry-after", duration),
+					slog.Int64("retry-after-ms", duration.Milliseconds()),
 				)
 			}
 

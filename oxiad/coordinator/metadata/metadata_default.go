@@ -344,7 +344,7 @@ func (m *defaultMetadata) DeleteNamespaceStatus(namespace string) commonobject.B
 		m.logger.Warn(
 			"failed to mark namespace deleting",
 			slog.Any("error", err),
-			slog.Duration("retry-after", duration),
+			slog.Int64("retry-after-ms", duration.Milliseconds()),
 		)
 	})
 	if err != nil {

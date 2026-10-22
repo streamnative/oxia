@@ -488,7 +488,7 @@ func (fc *followerController) stateApplier() {
 		fc.log.Error("State applier failed, retrying",
 			slog.Int64("term", fc.term.Load()),
 			slog.Any("error", err),
-			slog.Duration("retry-after", d),
+			slog.Int64("retry-after-ms", d.Milliseconds()),
 		)
 	})
 }

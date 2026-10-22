@@ -84,7 +84,7 @@ func startSession(sessionId SessionId, sessionMetadata *proto.SessionMetadata, s
 		"Session started",
 		slog.Int64("session-id", int64(sessionId)),
 		slog.String("client-identity", s.clientIdentity),
-		slog.Duration("session-timeout", s.timeout),
+		slog.Int64("session-timeout-ms", s.timeout.Milliseconds()),
 	)
 	return s
 }

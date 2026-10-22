@@ -251,7 +251,7 @@ func (s *shardManagerImpl) receiveWithRecovery() {
 				s.logger.Warn(
 					"Failed receiving shard assignments, retrying later",
 					slog.Any("error", err),
-					slog.Duration("retry-after", duration),
+					slog.Int64("retry-after-ms", duration.Milliseconds()),
 				)
 			}
 		},

@@ -95,7 +95,7 @@ func (su *sequenceUpdates) getSequenceUpdatesWithRetries() { //nolint:revive
 				su.log.Error(
 					"Error while getting sequence updates",
 					slog.Any("error", err),
-					slog.Duration("retry-after", duration),
+					slog.Int64("retry-after-ms", duration.Milliseconds()),
 				)
 			}
 		})

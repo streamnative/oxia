@@ -542,7 +542,7 @@ func (c *runtime) computeNewAssignments() {
 	_ = backoff.RetryNotify(c.computeNewAssignments0, oxiatime.NewBackOff(c.ctx), func(err error, retryAfter time.Duration) {
 		c.logger.Warn("Failed to compute the shard assignments, retrying later",
 			slog.Any("error", err),
-			slog.Duration("retry-after", retryAfter))
+			slog.Int64("retry-after-ms", retryAfter.Milliseconds()))
 	})
 }
 

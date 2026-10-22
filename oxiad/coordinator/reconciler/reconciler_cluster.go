@@ -132,7 +132,7 @@ func (r *clusterReconciler) reconcileWithRetries(
 	}, bo, func(err error, retryAfter time.Duration) {
 		r.logger.Warn("failed to reconcile config update",
 			slog.Any("error", err),
-			slog.Duration("retry-after", retryAfter))
+			slog.Int64("retry-after-ms", retryAfter.Milliseconds()))
 	})
 	r.logger.Info("Cluster configuration watcher closed")
 }

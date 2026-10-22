@@ -1440,7 +1440,7 @@ func (lc *leaderController) retryApply(ctx context.Context, w wal.Wal, offset in
 			slog.Int64("term", lc.term.Load()),
 			slog.Int64("offset", offset),
 			slog.Any("error", err),
-			slog.Duration("retry-after", retryAfter),
+			slog.Int64("retry-after-ms", retryAfter.Milliseconds()),
 		)
 		select {
 		case <-ctx.Done():

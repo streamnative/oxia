@@ -145,7 +145,7 @@ func (c *Cache[T]) Reload() error {
 		return err
 	}, oxiatime.NewBackOff(c.ctx), func(err error, retryAfter time.Duration) {
 		c.logger.Warn("Failed to load, retrying later",
-			slog.Any("error", err), slog.Duration("retry-after", retryAfter))
+			slog.Any("error", err), slog.Int64("retry-after-ms", retryAfter.Milliseconds()))
 	})
 }
 
@@ -227,7 +227,7 @@ func (c *Cache[T]) runWatcher() {
 		}
 	}, bo, func(err error, retryAfter time.Duration) {
 		c.logger.Warn("Watch failed, restarting later",
-			slog.Any("error", err), slog.Duration("retry-after", retryAfter))
+			slog.Any("error", err), slog.Int64("retry-after-ms", retryAfter.Milliseconds()))
 	})
 	c.logger.Info("Cache watcher closed")
 }

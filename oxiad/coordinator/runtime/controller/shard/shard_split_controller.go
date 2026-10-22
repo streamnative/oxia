@@ -170,7 +170,7 @@ func (sc *SplitController) run() {
 		sc.logger.Warn(
 			"Split state machine step failed, retrying",
 			slog.Any("error", err),
-			slog.Duration("retry-after", duration),
+			slog.Int64("retry-after-ms", duration.Milliseconds()),
 		)
 	}
 	err := backoff.RetryNotify(func() error {
@@ -1269,7 +1269,7 @@ func (sc *SplitController) waitForChildCommitOffset(ctx context.Context, childId
 			slog.Int64("child-shard", childId),
 			slog.Int64("target-offset", targetOffset),
 			slog.Any("error", err),
-			slog.Duration("retry-after", duration),
+			slog.Int64("retry-after-ms", duration.Milliseconds()),
 		)
 	})
 }

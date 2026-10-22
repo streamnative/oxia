@@ -127,7 +127,7 @@ func (t *notificationsTrimmer) trimNotifications() error {
 		slog.Int64("first-offset", first),
 		slog.Int64("last-offset", last),
 		slog.Time("current-time", t.clock.Now()),
-		slog.Duration("retention-time", t.notificationsRetentionTime),
+		slog.Int64("retention-time-ms", t.notificationsRetentionTime.Milliseconds()),
 	)
 
 	if last == constant.I64NegativeOne {

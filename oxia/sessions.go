@@ -282,7 +282,7 @@ func (cs *clientSession) createSessionWithRetries() {
 			cs.log.Error(
 				"Error while creating session",
 				slog.Any("error", err),
-				slog.Duration("retry-after", duration),
+				slog.Int64("retry-after-ms", duration.Milliseconds()),
 			)
 		}
 	}, timer)
@@ -357,7 +357,7 @@ func (cs *clientSession) setEstablished(sessionId int64) {
 				slog.Debug(
 					"Failed to send session heartbeat, retrying later",
 					slog.Any("error", err),
-					slog.Duration("retry-after", duration),
+					slog.Int64("retry-after-ms", duration.Milliseconds()),
 				)
 			})
 
