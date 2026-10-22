@@ -201,17 +201,22 @@ func newGrpcServer(parent context.Context, optionsWatch *commonwatch.Watch[*opti
 		metadata             coordmetadata.Metadata
 		metadataFactory      *coordmetadata.Factory
 		metricsServer        *metric.PrometheusMetrics
-		leaderGauge          commonmetric.Gauge
 	)
+	leader := &atomic.Bool{}
+	leaderGauge := commonmetric.NewGauge("oxia_coordinator_is_leader",
+		"Whether the coordinator holds the leadership of the cluster metadata", "", nil, func() int64 {
+			if leader.Load() {
+				return 1
+			}
+			return 0
+		})
 	defer func() {
 		if err == nil {
 			return
 		}
 
 		cancel()
-		if leaderGauge != nil {
-			leaderGauge.Unregister()
-		}
+		leaderGauge.Unregister()
 		err = multierr.Append(err, closePointer(metricsServer))
 		err = multierr.Append(err, commonio.CloseIfNotNil(managementGrpcServer))
 		err = multierr.Append(err, commonio.CloseIfNotNil(reconciler))
@@ -236,8 +241,6 @@ func newGrpcServer(parent context.Context, optionsWatch *commonwatch.Watch[*opti
 	if err != nil {
 		return nil, err
 	}
-	leader := &atomic.Bool{}
-	leaderGauge = newLeaderGauge(leader)
 	controller := &options.Controller
 	controllerTLS, err := controller.TLS.TryIntoClientTLSConf()
 	if err != nil {
@@ -384,16 +387,6 @@ func startMetricsServer(metrics commonoption.MetricOptions) (*metric.PrometheusM
 		return nil, err
 	}
 	return metric.Start(metrics.BindAddress, metricTLS)
-}
-
-func newLeaderGauge(leader *atomic.Bool) commonmetric.Gauge {
-	return commonmetric.NewGauge("oxia_coordinator_is_leader",
-		"Whether the coordinator holds the leadership of the cluster metadata", "", nil, func() int64 {
-			if leader.Load() {
-				return 1
-			}
-			return 0
-		})
 }
 
 func (s *GrpcServer) backgroundHandleConfChange() {
