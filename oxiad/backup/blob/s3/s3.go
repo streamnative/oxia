@@ -26,6 +26,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/url"
 	"strings"
 
@@ -33,6 +34,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/smithy-go/logging"
 
 	"github.com/oxia-db/oxia/oxiad/backup/blob"
 )
@@ -72,7 +74,9 @@ func Open(ctx context.Context, destination *url.URL) (blob.Store, error) {
 		return nil, fmt.Errorf("s3: invalid destination %q: want s3://<bucket>/<prefix>", destination)
 	}
 	query := destination.Query()
-	var loadOptions []func(*config.LoadOptions) error
+	loadOptions := []func(*config.LoadOptions) error{
+		config.WithLogger(sdkLogger{log: slog.With(slog.String("component", "s3-blob-store"))}),
+	}
 	if region := query.Get("region"); region != "" {
 		loadOptions = append(loadOptions, config.WithRegion(region))
 	}
@@ -207,4 +211,29 @@ func (s *Store) Delete(ctx context.Context, keys []string) error {
 
 func (*Store) Close() error {
 	return nil
+}
+
+// sdkLogger gives the messages of the AWS SDK to slog, at their level. The
+// SDK writes them to stderr otherwise, whatever their level: e.g. a debug
+// line for every object read from a store that keeps no checksum of its
+// objects, since there is none to validate the response with.
+type sdkLogger struct {
+	log *slog.Logger
+}
+
+func (l sdkLogger) Logf(classification logging.Classification, format string, v ...any) {
+	var level slog.Level
+	switch classification {
+	case logging.Debug:
+		level = slog.LevelDebug
+	case logging.Warn:
+		level = slog.LevelWarn
+	default:
+		level = slog.LevelInfo
+	}
+	ctx := context.Background()
+	if !l.log.Enabled(ctx, level) {
+		return
+	}
+	l.log.Log(ctx, level, fmt.Sprintf(format, v...))
 }

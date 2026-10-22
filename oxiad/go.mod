@@ -6,6 +6,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.47.3
 	github.com/aws/aws-sdk-go-v2/config v1.33.9
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.3
+	github.com/aws/smithy-go v1.28.5
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/cockroachdb/pebble/v2 v2.1.7
 	github.com/coreos/go-oidc/v3 v3.17.0
@@ -68,7 +69,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.38.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.43.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.51.4 // indirect
-	github.com/aws/smithy-go v1.28.5 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bmizerany/perks v0.0.0-20230307044200-03f9df79da1e // indirect

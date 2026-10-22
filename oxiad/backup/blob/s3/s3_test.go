@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/url"
 	"os"
 	"slices"
@@ -32,6 +33,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/smithy-go/logging"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -120,6 +122,33 @@ func TestOpenAppliesEndpointAndPathStyle(t *testing.T) {
 	assert.Equal(t, "eu-west-1", options.Region)
 	assert.Equal(t, "http://localhost:1", aws.ToString(options.BaseEndpoint))
 	assert.True(t, options.UsePathStyle)
+	assert.IsType(t, sdkLogger{}, options.Logger)
+}
+
+func TestSDKLoggerLogsAtTheLevelOfTheClassification(t *testing.T) {
+	for _, tc := range []struct {
+		classification logging.Classification
+		want           string
+	}{
+		{logging.Debug, "level=DEBUG"},
+		{logging.Warn, "level=WARN"},
+		{logging.Classification("OTHER"), "level=INFO"},
+	} {
+		t.Run(string(tc.classification), func(t *testing.T) {
+			var out bytes.Buffer
+			logger := sdkLogger{log: slog.New(slog.NewTextHandler(&out, &slog.HandlerOptions{Level: slog.LevelDebug}))}
+			logger.Logf(tc.classification, "request %d of %s", 3, "put")
+			assert.Contains(t, out.String(), tc.want)
+			assert.Contains(t, out.String(), `msg="request 3 of put"`)
+		})
+	}
+}
+
+func TestSDKLoggerSkipsTheDisabledLevels(t *testing.T) {
+	var out bytes.Buffer
+	logger := sdkLogger{log: slog.New(slog.NewTextHandler(&out, &slog.HandlerOptions{Level: slog.LevelInfo}))}
+	logger.Logf(logging.Debug, "quiet")
+	assert.Empty(t, out.String())
 }
 
 // createBucket creates the bucket of the store if it doesn't exist, for the
