@@ -2111,6 +2111,42 @@ func TestWalSyncReportsRolledSegmentFailure(t *testing.T) {
 	}
 }
 
+func TestWalSyncWritesRolledSegmentIndexBeforeClosingIt(t *testing.T) {
+	fs := newFaultFS()
+	w := newFaultWal(t, fs, true)
+	appendAsyncUntilRolledOver(t, w)
+
+	rolled := txnPath(w.walPath, 0)
+	index := idxPath(w.walPath, 0)
+	indexErr := make(chan error, 1)
+	fs.setHook(func(op fsOp, name string) error {
+		if op == opUnmap && name == rolled {
+			_, err := codec.SupportedCodecs[0].ReadIndex(vfs.OSFS{}, index)
+			indexErr <- err
+		}
+		return nil
+	})
+
+	require.NoError(t, w.Sync(context.Background()))
+	assert.NoError(t, <-indexErr)
+	assert.NoError(t, w.Close())
+}
+
+func TestWalSyncReportsRolledSegmentIndexFailure(t *testing.T) {
+	fs := newFaultFS()
+	w := newFaultWal(t, fs, true)
+	appendAsyncUntilRolledOver(t, w)
+	fs.failNth(opWrite, idxPath(w.walPath, 0), 1)
+
+	assert.ErrorIs(t, w.Sync(context.Background()), errInjected)
+	assert.EqualValues(t, InvalidOffset, w.LastOffset())
+
+	// The next round writes the index
+	assert.NoError(t, w.Sync(context.Background()))
+	assert.EqualValues(t, w.lastAppendedOffset.Load(), w.LastOffset())
+	assert.NoError(t, w.Close())
+}
+
 // A cold path draining the rolled segment while the sync round flushes it
 // closes it: the round leaves it alone.
 func TestWalSyncSkipsRolledSegmentDrainedByClose(t *testing.T) {
@@ -2678,4 +2714,8 @@ func failSegmentCreationOnRollover(t *testing.T) (Wal, *FactoryOptions, int64) {
 // txnPath returns the path of the txn file of the segment at baseOffset in dir.
 func txnPath(dir string, baseOffset int64) string {
 	return segmentPath(dir, baseOffset) + codec.SupportedCodecs[0].GetTxnExtension()
+}
+
+func idxPath(dir string, baseOffset int64) string {
+	return segmentPath(dir, baseOffset) + codec.SupportedCodecs[0].GetIdxExtension()
 }

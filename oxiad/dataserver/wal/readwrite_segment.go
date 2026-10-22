@@ -49,6 +49,10 @@ type ReadWriteSegment interface {
 	// acknowledged, so that the file metadata (size, directory entry) is
 	// durable by then.
 	SyncFileIfNeeded() error
+
+	// WriteIndex writes the index file of a segment that takes no more
+	// appends, before it gets opened read-only; Close then skips writing it.
+	WriteIndex() error
 }
 
 type readWriteSegment struct {
@@ -80,6 +84,7 @@ type readWriteSegment struct {
 
 	segmentSize     uint32
 	pendingFileSync atomic.Bool
+	indexWritten    bool
 }
 
 func newReadWriteSegment(fs vfs.FS, basePath string, baseOffset int64, segmentSize uint32, lastCrc uint32,
@@ -334,11 +339,25 @@ func (ms *readWriteSegment) Close() error {
 		ms.c.fs.Unmap(&ms.txnMappedFile),
 		ms.txnFile.Close(),
 	)
-	if len(ms.writingIdx) > 0 {
+	if len(ms.writingIdx) > 0 && !ms.indexWritten {
 		err = multierr.Append(err, ms.c.codec.WriteIndex(ms.c.fs, ms.c.idxPath, ms.writingIdx))
 	}
 	codec.ReturnIndexBuf(&ms.writingIdx)
 	return err
+}
+
+func (ms *readWriteSegment) WriteIndex() error {
+	ms.Lock()
+	defer ms.Unlock()
+
+	if ms.txnMappedFile == nil {
+		return nil
+	}
+	if err := ms.c.codec.WriteIndex(ms.c.fs, ms.c.idxPath, ms.writingIdx); err != nil {
+		return err
+	}
+	ms.indexWritten = true
+	return nil
 }
 
 func (ms *readWriteSegment) Delete() error {
