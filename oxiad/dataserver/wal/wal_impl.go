@@ -560,6 +560,9 @@ func (t *wal) flushAndCloseRolledSegment(s ReadWriteSegment) error {
 	if err := s.Flush(); err != nil {
 		return err
 	}
+	if err := s.WriteIndex(); err != nil {
+		return err
+	}
 
 	// Atomically move the segment from the pending list to the read-only
 	// group, so that there is no instant where readers find it in neither.
@@ -583,9 +586,6 @@ func (t *wal) flushAndCloseRolledSegment(s ReadWriteSegment) error {
 		return nil
 	}
 
-	// The read-only group can open the segment even before this Close has
-	// written the index file: a missing index gets rebuilt from the txn file
-	// (see newReadOnlySegment)
 	return s.Close()
 }
 
