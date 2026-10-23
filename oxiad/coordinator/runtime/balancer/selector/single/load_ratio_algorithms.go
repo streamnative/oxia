@@ -23,14 +23,9 @@ import (
 )
 
 func DefaultShardsRank(params *model.RatioParams) *model.Ratio {
-	totalShards := 0
-	for _, shards := range params.NodeShardsInfos {
-		totalShards += len(shards)
-	}
-	fTotalShards := float64(totalShards)
-
-	// the 1 means we are using count as a ratio.
-	shardLoadRatio := 1 / fTotalShards
+	// Loads are replica counts, which float64 compares exactly. Fractions of the
+	// total don't: 10/48 - 9/48 > 1/48, so the balancer would never settle.
+	const shardLoadRatio = 1.0
 
 	nodeLoadRatios := arraylist.New[*model.NodeLoadRatio]()
 
@@ -52,7 +47,7 @@ func DefaultShardsRank(params *model.RatioParams) *model.Ratio {
 				Ratio:     shardLoadRatio,
 			})
 		}
-		nodeLoadRatio := float64(len(shards)) / fTotalShards
+		nodeLoadRatio := float64(len(shards))
 
 		if first {
 			maxNodeLoadRatio = nodeLoadRatio

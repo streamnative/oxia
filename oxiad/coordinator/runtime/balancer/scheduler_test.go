@@ -826,6 +826,36 @@ func TestNodeBasedBalancerRebalanceEnsembleLogsAtDebugLevel(t *testing.T) {
 	assert.Contains(t, logs.String(), "end shard rebalance")
 }
 
+func TestNodeBasedBalancerRebalanceEnsembleSettlesOnUnevenSpread(t *testing.T) {
+	// 11 replicas on 3 nodes -> 4/4/3 should be stable
+	metadata := newBalancedMockMetadata()
+	sv1, sv2 := metadata.nodeMap["sv-1"], metadata.nodeMap["sv-2"]
+	metadata.status.Namespaces["ns-2"] = &proto.NamespaceStatus{
+		ReplicationFactor: 2,
+		Shards: map[int64]*proto.ShardMetadata{
+			3: {Status: proto.ShardStatusSteadyState, Leader: sv1, Ensemble: []*proto.DataServerIdentity{sv1, sv2}},
+		},
+	}
+	metadata.nsConfigs["ns-2"] = &proto.Namespace{Name: "ns-2", ReplicationFactor: 2}
+	b := newTestBalancer(t.Context(), func() {}, metadata, single.NewSelector())
+	swaps := make(chan int64, 1000)
+	go func() {
+		for ac := range b.actionCh {
+			swaps <- ac.GetShard()
+			ac.Done(nil)
+		}
+	}()
+
+	assert.True(t, b.rebalanceEnsemble())
+	assert.True(t, b.IsBalanced())
+	close(b.actionCh)
+	select {
+	case shard := <-swaps:
+		t.Fatalf("expected no swap, got a swap of shard %d", shard)
+	default:
+	}
+}
+
 func TestNodeBasedBalancerBalanceHighestNodeIgnoresEmptyRatios(t *testing.T) {
 	sel := &contextRecordingSelector{}
 	b := newTestBalancer(t.Context(), func() {}, newBalancedMockMetadata(), sel)
@@ -1120,7 +1150,7 @@ func swapShardOffNode(t *testing.T, b *nodeBasedBalancer, metadata *mockMetadata
 		"sv-2": {shard},
 		"sv-3": {},
 	}})
-	return b.swapShard(&model.ShardLoadRatio{ShardInfo: &shard, Ratio: 0.5}, metadata.nodeMap["sv-1"],
+	return b.swapShard(&model.ShardLoadRatio{ShardInfo: &shard, Ratio: 1}, metadata.nodeMap["sv-1"],
 		&sync.WaitGroup{}, loadRatios, candidates, candidatesMetadata)
 }
 
