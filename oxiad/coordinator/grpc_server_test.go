@@ -17,10 +17,15 @@ package coordinator
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -289,6 +294,7 @@ func TestGrpcServerWatchLeadershipStopsCoordinatingDespiteCloseFailure(t *testin
 		reconciler:   &fakeReconciler{closeErr: closeErr},
 		runtime:      &testRuntime{},
 		metadata:     metadata,
+		leader:       &atomic.Bool{},
 	}
 	lost := make(chan struct{})
 	close(lost)
@@ -301,6 +307,71 @@ func TestGrpcServerWatchLeadershipStopsCoordinatingDespiteCloseFailure(t *testin
 	checked, err := server.healthServer.Check(t.Context(), &grpc_health_v1.HealthCheckRequest{})
 	require.NoError(t, err)
 	assert.Equal(t, grpc_health_v1.HealthCheckResponse_NOT_SERVING, checked.GetStatus())
+}
+
+// A standby coordinator serves its metrics while it waits for the leadership,
+// and reports whether it holds it.
+func TestGrpcServerServesMetricsAsStandby(t *testing.T) {
+	options := newTestOptions()
+	options.Metadata.ProviderName = option.ProviderFile
+	options.Metadata.File.StatusName = filepath.Join(t.TempDir(), option.DefaultFileStatusName)
+	options.Metadata.File.ConfigName = filepath.Join(t.TempDir(), option.DefaultFileConfigName)
+	holderFactory, err := coordmetadata.New(t.Context(), options)
+	require.NoError(t, err)
+	holder := holderFactory.CreateMetadata(t.Context())
+	_, err = holder.WaitToBecomeLeader()
+	require.NoError(t, err)
+
+	free, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	metricsAddress := free.Addr().String()
+	require.NoError(t, free.Close())
+	options.Observability.Metric = commonoption.MetricOptions{
+		Enabled:     &constant.FlagTrue,
+		BindAddress: metricsAddress,
+	}
+	type startResult struct {
+		server *GrpcServer
+		err    error
+	}
+	started := make(chan startResult, 1)
+	go func() {
+		server, err := NewGrpcServer(t.Context(), commonwatch.New(options))
+		started <- startResult{server: server, err: err}
+	}()
+	requireLeader := func(expected int) {
+		t.Helper()
+		pattern := regexp.MustCompile(fmt.Sprintf(`(?m)^oxia_coordinator_is_leader(\{[^}]*\})? %d$`, expected))
+		assert.EventuallyWithT(t, func(c *assert.CollectT) {
+			request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+metricsAddress+"/metrics", http.NoBody)
+			require.NoError(c, err)
+			response, err := http.DefaultClient.Do(request)
+			require.NoError(c, err)
+			defer response.Body.Close()
+			body, err := io.ReadAll(response.Body)
+			require.NoError(c, err)
+			assert.Regexp(c, pattern, string(body))
+		}, 10*time.Second, 10*time.Millisecond)
+	}
+
+	requireLeader(0)
+	select {
+	case result := <-started:
+		require.FailNow(t, "the standby started while the leadership is held", "err: %v", result.err)
+	default:
+	}
+
+	require.NoError(t, holder.Close())
+	require.NoError(t, holderFactory.Close())
+	var result startResult
+	select {
+	case result = <-started:
+		require.NoError(t, result.err)
+	case <-time.After(time.Minute):
+		require.FailNow(t, "the standby did not become the leader")
+	}
+	requireLeader(1)
+	require.NoError(t, result.server.Close())
 }
 
 // newTestOptions returns the options of a coordinator on the memory metadata,
