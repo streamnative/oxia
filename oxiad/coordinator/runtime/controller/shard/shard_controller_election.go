@@ -49,6 +49,7 @@ var (
 	ErrNotReadyForChangeEnsemble         = errors.New("shard is not ready for change ensemble, please retry later")
 	ErrInvalidChangeEnsemble             = errors.New("invalid change ensemble")
 	ErrFollowerNotCaughtUp               = errors.New("follower not caught up yet")
+	ErrFollowerNotHandshaken             = errors.New("follower has not completed its handshake yet")
 	ErrElectionFailed                    = errors.New("the election failed to elect a leader")
 	ErrChangeEnsembleLosesFeatureSupport = errors.New(
 		"change ensemble would remove support for negotiated shard features")
@@ -430,15 +431,18 @@ func (e *Election) ensureFollowerCaught(ensemble []*proto.DataServerIdentity, le
 
 func (e *Election) fenceNewTermAndAddFollower(ctx context.Context, term int64, options *proto.NewTermOptions,
 	leader *proto.DataServerIdentity, follower *proto.DataServerIdentity) error {
+	// The leader refuses a joiner whose binary does not cover the features
+	// required by the shard: wait for the handshake to know the follower's.
+	followerFeatures, handshaken := e.dataServerSupportedFeaturesSupplier(
+		[]*proto.DataServerIdentity{follower})[follower.GetNameOrDefault()]
+	if !handshaken {
+		return ErrFollowerNotHandshaken
+	}
+
 	fr, err := e.fenceNewTerm(ctx, term, options, follower)
 	if err != nil {
 		return err
 	}
-
-	// Report the follower's supported features (from the latest handshake) so
-	// the leader can refuse a joiner whose binary does not cover the features
-	// required by the shard.
-	followerFeatures := e.dataServerSupportedFeaturesSupplier([]*proto.DataServerIdentity{follower})[follower.GetNameOrDefault()]
 
 	if _, err := e.provider.AddFollower(ctx, leader, &proto.AddFollowerRequest{
 		Namespace:    e.namespace,
@@ -507,7 +511,11 @@ func (e *Election) fencingFailedFollowers(term int64, options *proto.NewTermOpti
 						}
 						return err
 					}, bo, func(err error, duration time.Duration) {
-						e.logger.Warn(
+						level := slog.LevelWarn
+						if errors.Is(err, ErrFollowerNotHandshaken) {
+							level = slog.LevelInfo
+						}
+						e.logger.Log(e.ctx, level,
 							"Failed to fenceNewTermAndAddFollower, retrying later",
 							slog.Any("error", err),
 							slog.Any("follower", follower),

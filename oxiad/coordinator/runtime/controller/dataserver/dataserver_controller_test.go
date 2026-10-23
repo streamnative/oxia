@@ -525,6 +525,8 @@ func TestDataServerControllerBecomeAvailableRetriesFailedHandshakeOnNextProbe(t 
 	}, 10*time.Second, 10*time.Millisecond)
 	assert.Equal(t, NotRunning, nc.GetStatus().GetState())
 	assert.Len(t, nal.FeaturesDiscoveredEvents, 0)
+	_, handshaken := nc.GetFeatures()
+	assert.False(t, handshaken)
 
 	rpc.Lock()
 	node.SetHandshakeError(nil)
@@ -583,7 +585,9 @@ func TestDataServerControllerBecomeAvailableReportsChangedFeatures(t *testing.T)
 
 	expectReport()
 	assert.Equal(t, Running, nc.GetStatus().GetState())
-	assert.Equal(t, []proto.Feature{proto.Feature_FEATURE_DB_CHECKSUM}, nc.GetFeatures())
+	features, handshaken := nc.GetFeatures()
+	assert.True(t, handshaken)
+	assert.Equal(t, []proto.Feature{proto.Feature_FEATURE_DB_CHECKSUM}, features)
 
 	// The data server restarts with the same binary
 	restart([]proto.Feature{proto.Feature_FEATURE_DB_CHECKSUM})
@@ -594,7 +598,8 @@ func TestDataServerControllerBecomeAvailableReportsChangedFeatures(t *testing.T)
 	restart(upgraded)
 	expectReport()
 	assert.Equal(t, int64(3), node.HandshakeCount.Load())
-	assert.Equal(t, upgraded, nc.GetFeatures())
+	features, _ = nc.GetFeatures()
+	assert.Equal(t, upgraded, features)
 
 	// Close waits for the health checks, so a report would be in the channel
 	assert.NoError(t, nc.Close())
@@ -985,6 +990,8 @@ func TestDataServerControllerBecomeAvailableRejectsUnboundHandshake(t *testing.T
 			}, 10*time.Second, 10*time.Millisecond)
 			assert.Equal(t, NotRunning, nc.GetStatus().GetState())
 			assert.Empty(t, nal.FeaturesDiscoveredEvents)
+			_, handshaken := nc.GetFeatures()
+			assert.False(t, handshaken)
 
 			assert.NoError(t, nc.Close())
 		})

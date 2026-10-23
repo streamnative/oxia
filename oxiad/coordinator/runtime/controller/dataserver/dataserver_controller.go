@@ -45,10 +45,10 @@ type Controller interface {
 	// advancing it doesn't change the data server's.
 	GetStatus() Status
 
-	// GetFeatures returns the features that the data server
-	// supports, as its last handshake reported them, or none before its
-	// first handshake.
-	GetFeatures() []proto.Feature
+	// GetFeatures returns the features that the data server supports, as its
+	// last handshake reported them, and whether a handshake succeeded: before
+	// the first one, the features are unknown.
+	GetFeatures() ([]proto.Feature, bool)
 
 	// Drain moves a data server removed from the configuration to Draining:
 	// it keeps receiving the shard assignments until it becomes unavailable.

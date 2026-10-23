@@ -146,13 +146,13 @@ func (c *runtime) ListDataServerStatus() map[string]*proto.DataServerStatus {
 	for name, dataServerController := range c.dataServerControllers {
 		statuses[name] = &proto.DataServerStatus{
 			State:             dataServerController.GetStatus().GetState().ToProto(),
-			SupportedFeatures: dataServerController.GetFeatures(),
+			SupportedFeatures: supportedFeatures(dataServerController),
 		}
 	}
 	for name, dataServerController := range c.drainingNodes {
 		statuses[name] = &proto.DataServerStatus{
 			State:             dataServerController.GetStatus().GetState().ToProto(),
-			SupportedFeatures: dataServerController.GetFeatures(),
+			SupportedFeatures: supportedFeatures(dataServerController),
 		}
 	}
 	return statuses
@@ -171,7 +171,7 @@ func (c *runtime) GetDataServerStatus(name string) (*proto.DataServerStatus, boo
 	}
 	return &proto.DataServerStatus{
 		State:             dataServerController.GetStatus().GetState().ToProto(),
-		SupportedFeatures: dataServerController.GetFeatures(),
+		SupportedFeatures: supportedFeatures(dataServerController),
 	}, true
 }
 
@@ -339,16 +339,23 @@ func (c *runtime) findDataServerFeaturesLocked(dataServers []*proto.DataServerId
 	features := make(map[string][]proto.Feature)
 	for _, dataServer := range dataServers {
 		dataServerID := dataServer.GetNameOrDefault()
-		if serverController, exist := c.dataServerControllers[dataServerID]; exist {
-			features[dataServerID] = serverController.GetFeatures()
+		serverController, exist := c.dataServerControllers[dataServerID]
+		if !exist {
+			// fallback to draining node if alive not found
+			serverController, exist = c.drainingNodes[dataServerID]
+		}
+		if !exist {
 			continue
 		}
-		// fallback to draining node if alive not found
-		if serverController, exist := c.drainingNodes[dataServerID]; exist {
-			features[dataServerID] = serverController.GetFeatures()
-			continue
+		if supported, handshaken := serverController.GetFeatures(); handshaken {
+			features[dataServerID] = supported
 		}
 	}
+	return features
+}
+
+func supportedFeatures(serverController dataservercontroller.Controller) []proto.Feature {
+	features, _ := serverController.GetFeatures()
 	return features
 }
 

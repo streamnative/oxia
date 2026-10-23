@@ -72,6 +72,9 @@ type controller struct {
 	status *commonwatch.Watch[Status]
 	// supportedFeatures are the features that the last handshake reported.
 	supportedFeatures []proto.Feature
+	// handshaken is set once a handshake succeeds: until then, the features
+	// that the node supports are unknown.
+	handshaken bool
 	// handshaking is set while a handshake is in flight: the health paths keep
 	// observing SERVING while the node is NotRunning, and at most one of them
 	// handshakes it at a time.
@@ -86,10 +89,10 @@ func (n *controller) GetStatus() Status {
 	return n.status.Load()
 }
 
-func (n *controller) GetFeatures() []proto.Feature {
+func (n *controller) GetFeatures() ([]proto.Feature, bool) {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
-	return n.supportedFeatures
+	return n.supportedFeatures, n.handshaken
 }
 
 func (n *controller) Drain() {
@@ -469,6 +472,7 @@ func (n *controller) becomeAvailable(observedEpoch int64) {
 	featuresChanged := len(feature.Missing(features, n.supportedFeatures)) > 0 ||
 		len(feature.Missing(n.supportedFeatures, features)) > 0
 	n.supportedFeatures = features
+	n.handshaken = true
 	if status = n.status.Load(); status.GetState() == NotRunning && status.epoch == observedEpoch {
 		status.Advance(Running)
 		n.status.Publish(status)
